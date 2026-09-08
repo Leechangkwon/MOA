@@ -25,7 +25,7 @@
 | 권한 없는 데이터 노출 | SQL `WHERE` 에서 제외 — 응답에 아예 없음 | T-2, T-3 |
 | XSS | 서버 이스케이프 + `textContent` + CSP + 다운로드 `attachment` | T-4 |
 | SQL 인젝션 | Prepared Statement 만, 정렬 허용 목록, 오류 은닉 | T-5 |
-| SSRF | 기능 자체 없음(또는 Q-7) + `allow_url_fopen=Off` + `disable_functions` | T-6 |
+| SSRF | "URL로 가져오기"는 `src/Fetch.php` 한 곳에서만: https·443 만, 도메인 화이트리스트, IP 검증 + 고정 접속, 리다이렉트 금지, 업로드와 동일 검증 | T-6 |
 
 자세한 근거와 남은 위험은 `SECURITY.md` 를 보세요.
 

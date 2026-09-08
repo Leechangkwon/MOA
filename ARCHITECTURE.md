@@ -126,7 +126,7 @@
    │
    ├─ [3] 라우팅                       ─── 경로+메서드 → handlers/xxx.php
    │
-   ├─ [4] Authz::…()  ★ 권한 판단      ─── 실패 → 404(존재 숨김)/403 + Audit::deny()
+   ├─ [4] Authz::…()  ★ 권한 판단      ─── 실패 → 403 (동일 문구) + Audit::deny()   ※ 없는 ID 만 404
    │
    ├─ [5] 실제 처리 (DB는 값 바인딩만, 파일은 Storage 통해서만)
    │
@@ -279,9 +279,9 @@ final class Authz
                                              WHERE id = :id AND deleted_at IS NULL  ─▶ [DB] files
                                            없으면 → 404
                                        [권한 ✔] Authz::canRead($u, $file)
-                                             false → 404 (403 아님! 존재 자체를 숨김)
-                                                   → [LOG] deny 'file.download' 기록
-                                       [4] scan_status = 'pending'/'infected' → 404 (선택)
+                                             false → 403 {"error":"권한이 없습니다"} (파일명·레벨 등 아무 정보 없이)
+                                                   → [LOG] deny 'file.download' 기록   ※ Q-6 결정: 과제 기준 403 통일
+                                       [4] scan_status = 'pending'/'infected' → 403 (검사 중/격리, 선택)
                                        [5] 경로 = Storage::pathOf($file['stored_name'])
                                              · basename() 처리, UUID 형식 정규식 검사
                                              · realpath()가 storage 디렉터리 안인지 확인
@@ -298,7 +298,7 @@ final class Authz
 | 단계 | 어디서 | 무엇을 막나 |
 |---|---|---|
 | [권한 ✔] | PHP Authz, **스토리지 접근 전** | ID만 알면 받는 문제(기존 t-box 취약점) |
-| 404 통일 | PHP | "파일은 있는데 권한이 없다"는 힌트 노출 |
+| 403 동일 문구 + UUID 외부 ID | PHP | 응답 본문으로 파일 정보가 새는 것, 순차 ID 열거 |
 | [5] | PHP Storage | 경로 조작(`../../etc/passwd`) |
 | [8] | 응답 헤더 | 업로드된 HTML이 같은 도메인에서 실행되는 저장형 XSS |
 
@@ -315,7 +315,7 @@ final class Authz
                                       [3] SELECT * FROM files WHERE id=:id AND deleted_at IS NULL ─▶ [DB]
                                           없으면 404
                                       [권한 ✔ 1] Authz::canRead($u, $file)
-                                          false → 404 (볼 수도 없는 파일은 존재도 모른 척)
+                                          false → 403 (읽을 수 없는 파일은 삭제 시도도 403, 정보 없이)
                                       [권한 ✔ 2] Authz::canDelete($u, $file)
                                           false → 403 → [LOG] deny 'file.delete'
                                       [4] BEGIN
@@ -344,8 +344,107 @@ final class Authz
 |---|---|---|---|---|
 | 목록/검색 | **SQL WHERE절** (조회 자체에 포함) | `visibleFilesWhere` | 401만 존재 | 기본 미기록 |
 | 업로드 | DB에 쓰기 **전** | `canUploadAs` + `Upload::validate` | 403 / 400 / 413 | 성공·거부 모두 |
-| 다운로드 | 파일 시스템 접근 **전** | `canRead` | 404 (통일) | 성공·거부 모두 |
-| 삭제 | UPDATE **전** | `canRead` → `canDelete` | 404 → 403 | 성공·거부 모두 |
+| 다운로드 | 파일 시스템 접근 **전** | `canRead` | 403 (동일 문구) / 없는 ID 404 | 성공·거부 모두 |
+| 삭제 | UPDATE **전** | `canRead` → `canDelete` | 403 (동일 문구) | 성공·거부 모두 |
+| URL 가져오기 | 외부 접속 **전** + 저장 **전** | `canFetch` → `Fetch::check` → `Upload::validate` | 403 / 400 / 429 (동일 문구) | 성공·거부 모두(사유 포함) |
+
+### 5.6 URL로 파일 가져오기 — `POST /api/files/fetch` (PRD F-14, S-05)
+
+기존 t-box 의 `fetch_url.php` 가 SSRF 로 뚫린 기능이다. 이번엔 "서버가 갈 수 있는 곳을 미리 정해두고, 검사한 곳과 실제 가는 곳이 같음을 보장하고, 가져온 것을 업로드와 똑같이 검사"한다.
+
+```
+ 브라우저                 PHP (files_fetch.php → src/Fetch.php)                              외부
+ ───────                 ─────────────────────────────────────                              ────
+ POST url=https://…  ─▶ [1] 세션 → user, CSRF
+                        [권한 ✔] Authz::canFetch($u)  → Manager 이상만 (아니면 403 + deny)
+                        [2] 속도 제한: 사용자별 10회/시간 초과 → 429 + deny
+                        [3] URL 정규화·검사 (PRD S-05 ①②④)
+                              parse_url 실패 / scheme ≠ https / port ≠ 443(또는 없음)
+                              / userinfo 있음 / 호스트가 IP·localhost·숫자표기 / 정규식 불통 → 400 + deny(사유)
+                        [4] 화이트리스트 (③): host ∈ FETCH_ALLOWED_HOSTS 정확 일치. 아니면 → deny 'host_not_allowed'
+                        [5] DNS 해석 → 모든 A/AAAA 가 공인 IP 인지 (⑤). 하나라도 내부 → deny 'private_ip'
+                        [6] cURL 로 접속 — 검사한 IP 로 고정 (⑥⑦⑧)                            ─▶ https://host:443
+                              CURLOPT_PROTOCOLS=HTTPS, CURLOPT_RESOLVE="host:443:검사한IP",
+                              FOLLOWLOCATION=false, CONNECTTIMEOUT=3, TIMEOUT=10,
+                              MAXFILESIZE=100MB, 응답은 임시파일(/var/lib/tbox/tmp)로 스트리밍
+                              3xx → deny 'redirect' / 수신 바이트 초과 → deny 'too_large'
+                        [7] 파일명 결정: Content-Disposition → URL 마지막 경로 → 정리(Upload 와 동일 규칙)
+                        [8] Upload::validate(임시파일, 파일명)  ← 수동 업로드와 **같은 함수** (⑨)
+                              확장자·MIME 불일치·크기 → deny 'invalid_file'
+                        [9] 이후는 5.2 업로드 [4]~[5] 와 동일: UUID 저장명, sha256, 트랜잭션, Audit 'file.fetch' allow
+ ◀── 201 {id, name}    (실패 시 본문은 항상 {"error":"가져올 수 없습니다"} — 사유는 감사 로그에만, ⑩)
+```
+
+| 단계 | 어디서 | 무엇을 막나 |
+|---|---|---|
+| [3][4] | PHP Fetch | `file://`, 내부 포트, IP 직접 지정, 표기 우회, 허용되지 않은 출처 |
+| [5][6] | PHP Fetch + cURL | 허용 도메인이 내부 IP 를 가리키는 경우, DNS 리바인딩, 리다이렉트로 내부 진입 |
+| [8] | PHP Upload | URL 로 웹셸·HTML 반입 (업로드 하드닝을 우회하는 두 번째 입구가 되지 않게) |
+| 응답 | PHP | 내부 서비스 응답을 읽어내는 것 (SSRF 의 진짜 목적) |
+| 인프라 | php.ini · 방화벽 | `allow_url_fopen=Off`, 소켓 함수 차단, 아웃바운드 443 만 — 코드 실수의 안전망 |
+
+```php
+// src/Fetch.php — 외부 요청 코드는 이 파일에만 존재한다 (PRD S-05 ⑬)
+final class Fetch
+{
+    private const PRIVATE_CIDRS = [
+        '0.0.0.0/8','10.0.0.0/8','100.64.0.0/10','127.0.0.0/8','169.254.0.0/16','172.16.0.0/12',
+        '192.0.0.0/24','192.168.0.0/16','198.18.0.0/15','224.0.0.0/4','240.0.0.0/4',
+        '::1/128','::/128','fc00::/7','fe80::/10','::ffff:0:0/96',
+    ];
+
+    /** 검사 통과 시 [host, ip] 반환, 실패 시 FetchDenied(사유) 예외 */
+    public static function check(string $url, array $allowedHosts): array
+    {
+        $p = parse_url($url);
+        if (!$p || ($p['scheme'] ?? '') !== 'https')            throw new FetchDenied('scheme');
+        if (isset($p['port']) && $p['port'] !== 443)             throw new FetchDenied('port');
+        if (isset($p['user']) || isset($p['pass']))              throw new FetchDenied('host_not_allowed');
+        $host = strtolower(rtrim($p['host'] ?? '', '.'));
+        if (!preg_match('/^[a-z0-9.-]{1,253}$/', $host))         throw new FetchDenied('host_not_allowed');
+        if (filter_var($host, FILTER_VALIDATE_IP) || $host === 'localhost' || ctype_digit(str_replace('.', '', $host)))
+                                                                  throw new FetchDenied('host_not_allowed');
+        if (!in_array($host, $allowedHosts, true))               throw new FetchDenied('host_not_allowed');
+
+        $records = array_merge(dns_get_record($host, DNS_A) ?: [], dns_get_record($host, DNS_AAAA) ?: []);
+        if (!$records)                                            throw new FetchDenied('private_ip');
+        foreach ($records as $r) {
+            $ip = $r['ip'] ?? $r['ipv6'];
+            if (self::isPrivate($ip))                             throw new FetchDenied('private_ip');
+        }
+        return [$host, $records[0]['ip'] ?? $records[0]['ipv6']];
+    }
+
+    public static function download(string $url, string $host, string $ip, string $tmpPath): void
+    {
+        $fh = fopen($tmpPath, 'wb');
+        $ch = curl_init($url);
+        curl_setopt_array($ch, [
+            CURLOPT_PROTOCOLS       => CURLPROTO_HTTPS,
+            CURLOPT_REDIR_PROTOCOLS => 0,
+            CURLOPT_FOLLOWLOCATION  => false,
+            CURLOPT_RESOLVE         => ["$host:443:$ip"],          // 검사한 IP 로만 접속 (리바인딩 방지)
+            CURLOPT_CONNECTTIMEOUT  => 3,
+            CURLOPT_TIMEOUT         => 10,
+            CURLOPT_MAXFILESIZE     => 100 * 1024 * 1024,
+            CURLOPT_FILE            => $fh,
+            CURLOPT_SSL_VERIFYPEER  => true,
+            CURLOPT_SSL_VERIFYHOST  => 2,
+        ]);
+        $ok   = curl_exec($ch);
+        $code = curl_getinfo($ch, CURLINFO_RESPONSE_CODE);
+        curl_close($ch); fclose($fh);
+        if (!$ok)                       throw new FetchDenied('fetch_failed');
+        if ($code >= 300 && $code < 400) throw new FetchDenied('redirect');
+        if ($code !== 200)              throw new FetchDenied('fetch_failed');
+        if (filesize($tmpPath) > 100 * 1024 * 1024) throw new FetchDenied('too_large');
+    }
+    // isPrivate(): inet_pton + CIDR 비교 (생략)
+}
+```
+
+> 위 코드는 설계 예시다. 구현 시 `isPrivate` 의 IPv6·IPv4 매핑 처리, 임시파일 정리(성공·실패 모두), 예외 → 감사 로그 사유 매핑을 T-6 로 검증한다.
+
 
 ---
 
@@ -363,6 +462,7 @@ final class Authz
 ```sql
 CREATE TABLE files (
     id            BIGSERIAL PRIMARY KEY,
+    public_id     UUID        NOT NULL UNIQUE DEFAULT gen_random_uuid(),  -- URL 에 노출되는 ID (순차 열거 방지, PRD S-09-5)
     original_name TEXT        NOT NULL,                 -- 사용자가 올린 이름 (화면 표시용, 출력 시 이스케이프)
     stored_name   TEXT        NOT NULL UNIQUE,          -- 서버가 만든 이름: UUID.ext  (경로 없음)
     ext           TEXT        NOT NULL,                 -- 화이트리스트 통과한 확장자
@@ -592,10 +692,10 @@ php_admin_value[session.cookie_httponly] = 1
 php_admin_value[session.cookie_secure]   = 1
 php_admin_value[session.cookie_samesite] = Lax
 php_admin_value[session.use_strict_mode] = 1      ; 세션 고정 공격 방지
-php_admin_value[allow_url_fopen]     = Off        ; ★ file_get_contents('http://...') 자체를 막음 (SSRF 예방, S-05)
+php_admin_value[allow_url_fopen]     = Off        ; ★ file_get_contents('http://...') 자체를 막음. 외부 요청은 src/Fetch.php 의 cURL 만 (S-05 ⑫⑬)
 php_admin_value[open_basedir]        = /var/www/tbox:/var/lib/tbox:/etc/tbox:/tmp
-; cURL·소켓으로 SSRF 가 재발하지 않게 (SECURITY.md R-03). php-curl 은 설치하지 않는다
-php_admin_value[disable_functions]   = curl_exec,curl_multi_exec,fsockopen,pfsockopen,stream_socket_client,exec,system,shell_exec,passthru,popen,proc_open
+; 소켓·프로세스 함수 차단 (SECURITY.md R-03). cURL 은 F-14 에 필요하므로 허용 — 대신 src/Fetch.php 밖의 curl_* 는 린트가 반려
+php_admin_value[disable_functions]   = fsockopen,pfsockopen,stream_socket_client,stream_socket_server,exec,system,shell_exec,passthru,popen,proc_open
 ```
 
 > `allow_url_fopen = Off` 와 `open_basedir` 는 "실수로 SSRF·경로 탈출 코드를 짜도" 실행 단계에서 한 번 더 막아주는 안전망이다.
@@ -656,6 +756,7 @@ php_admin_value[disable_functions]   = curl_exec,curl_multi_exec,fsockopen,pfsoc
 
  서버 ──▶ 밖으로 나가는 연결: 기본 거부
           허용: DNS(53) · NTP(123) · 패키지 미러(443) · 백업 저장소 · ClamAV 시그니처 · 원격 로그 서버
+                · F-14 허용 도메인(FETCH_ALLOWED_HOSTS)의 443 — 가능하면 해당 IP 대역만
           → SSRF·데이터 유출·C2 통신 통로를 처음부터 막는다
 ```
 
@@ -739,7 +840,7 @@ SELECT actor_id, count(*) FROM audit_logs
 | `download.php` 권한 검사 없음 | `canRead` 통과 전엔 스토리지에 닿지 않음, 실패는 404 | 5.3 |
 | `search.php` SQL 문자열 결합 | 값 바인딩 + 정렬 허용 목록 | 5.1 |
 | `tr.innerHTML = ...` | `textContent` + 서버 이스케이프 + CSP | 4장 [7], 8장 |
-| `fetch_url.php` (SSRF) | 기능 없음 + `allow_url_fopen=Off` | 9장 |
+| `fetch_url.php` (SSRF): `file_get_contents($url)` 무검증 | `src/Fetch.php` 한 곳: https·443 만, 화이트리스트, IP 검증 + 고정 접속, 리다이렉트 금지, `Upload::validate`, 응답 비노출 + `allow_url_fopen=Off` | 5.6, 9장 |
 | 업로드 무검증, `uploads/` 가 웹 루트 안, `chmod 777` | 화이트리스트·MIME 검사, `/var/lib/tbox/storage` 0750 | 5.2, 6.3 |
 | `audit_logs` 테이블만 있고 미기록 | 모든 민감 행동 DB+파일 이중 기록, Append-only | 7장 |
 | 비밀번호 평문 | Argon2id 해시 | 10장 |
@@ -763,7 +864,7 @@ SELECT actor_id, count(*) FROM audit_logs
 | ☐ | 파일 경로를 만들 때 사용자 입력이 한 글자라도 들어가나? → 들어가면 반려 |
 | ☐ | 상태를 바꾸는 요청(POST/PATCH/DELETE)에 CSRF 검사가 있나? |
 | ☐ | 성공·거부 모두 `Audit` 에 기록하나? |
-| ☐ | 외부 URL 로 요청하는 코드(`curl`, `file_get_contents('http…')`)가 새로 생겼나? → PRD S-05 심사 |
+| ☐ | `src/Fetch.php` 밖에 외부 요청 코드(`curl_*`, 소켓)가 생겼나? → 반려. Fetch.php 를 고쳤나? → S-05 13개 조건 재확인 + T-6 |
 | ☐ | 오류 메시지에 DB 오류·경로·스택 트레이스가 섞여 나가나? |
 | ☐ | 새 패키지·라이브러리·외부 도구를 추가했나? → `deploy/DEPENDENCIES.md` 갱신 + EOL 확인 (S-10-C) |
 | ☐ | 새 기능이 만드는 이벤트가 경보 규칙(AL-x)에 필요하진 않나? (S-11-A) |

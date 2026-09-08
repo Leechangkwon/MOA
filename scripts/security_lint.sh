@@ -24,7 +24,14 @@ check "SQL 조각과 변수가 같은 줄에 (SELECT/WHERE/LIKE ... \$var)"  '\b
 check "PDO::query / exec 직접 호출 (Db::run 만 허용)"          '->(query|exec)\('                                             'S-04'
 check "원격 URL 열기: file_get_contents('http / fopen('http"   "(file_get_contents|fopen|readfile)\(\s*['\"](https?|ftp|gopher|dict|file):" 'S-05'
 check "변수 URL 열기: file_get_contents(\$url) 등"               "(file_get_contents|fopen|readfile|copy)\(\s*\\\$[A-Za-z_]*(url|uri|link|src|href|remote)" 'S-05'
-check "cURL / 소켓 함수"                                       'curl_(init|exec|multi_exec)|fsockopen|pfsockopen|stream_socket_client' 'S-05'
+check "소켓 함수 (fsockopen 등)"                                'fsockopen|pfsockopen|stream_socket_client|stream_socket_server'  'S-05'
+# cURL 은 src/Fetch.php 한 파일에서만 허용 (PRD S-05 ⑬)
+curl_hits=$(grep -rnE "${INCLUDE[@]}" "${EXCLUDE[@]}" -- 'curl_(init|exec|multi_exec|setopt)' "$ROOT" 2>/dev/null | grep -v '/src/Fetch\.php:' || true)
+if [ -n "$curl_hits" ]; then
+  echo "✖ cURL 사용이 src/Fetch.php 밖에 있음  [S-05 ⑬]"; echo "$curl_hits" | sed 's/^/    /'; fail=1
+else
+  echo "✔ cURL 사용이 src/Fetch.php 밖에 있음  [S-05 ⑬]"
+fi
 check "요청 파라미터의 역할값 사용 (\$_GET/\$_POST['role'])"    "\\\$_(GET|POST|REQUEST|COOKIE)\[['\"](role|is_admin|team_id)['\"]\]" 'S-01'
 check "Authz 밖에서 역할 문자열 직접 비교"                      "\\['role'\\]\s*===?\s*'(Admin|Manager|Employee|Guest)'"        'S-01'
 check "코드 실행 함수 (eval/exec/system/shell_exec/passthru)"   '\b(eval|exec|system|shell_exec|passthru|popen|proc_open)\('   'S-09'
