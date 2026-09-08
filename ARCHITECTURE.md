@@ -90,10 +90,11 @@
 │   ├── schema.sql                   테이블 정의
 │   └── grants.sql                   DB 계정 권한 (최소 권한)
 ├── scripts/                       운영 스크립트 (백업·정합성 검사·휴지통 비우기)
-└── config/
-    └── config.php.example           예시만 Git에. 실제 config.php는 아래 위치
+├── deploy/                        nginx.conf, php-fpm-pool.conf, DEPENDENCIES.md
+├── .env                           ✖ 실제 설정 (DB 비밀번호 등). 권한 0600, .gitignore 로 Git 제외
+└── .env.example                     키 이름만 적은 예시 (값 없음). 이것만 Git 에
 
-/etc/tbox/config.php               ✖ 실제 설정 (DB 비밀번호 등). 권한 0600, Git 제외
+/etc/tbox/CONTACTS.md              ✖ 사고 연락망 (저장소 밖)
 /var/lib/tbox/storage/             ✖ 실제 업로드 파일. 권한 0750, PHP 실행 불가
 /var/lib/tbox/quarantine/          ✖ 악성코드 검사 대기 파일 (선택)
 /var/log/tbox/                     ✖ audit.log, app.log
@@ -104,7 +105,7 @@
 |---|---|
 | `public/` 만 nginx root → `src/`, `config/`가 URL로 안 보임 | 설정 파일·소스 노출 |
 | 업로드 파일이 웹 루트 밖 → `/uploads/shell.php` 같은 URL이 존재하지 않음 | 업로드 파일 실행(웹셸) |
-| 실제 설정은 `/etc/tbox/` → 저장소에 비밀번호가 없음 | Git 유출 (PRD S-09-6) |
+| 실제 설정은 `.env` (public/ 밖, 0600) → URL로 안 보이고, `.gitignore` 로 저장소에도 없음 | Git 유출 (PRD S-09-6). 기존 t-box 저장소에는 `.env` 가 실제로 커밋돼 있었다 |
 
 ---
 
@@ -136,7 +137,7 @@
 
 ### 4.1 Authz.php — 권한 판단은 이 파일 하나에 모은다
 
-PRD 5장의 권한 매트릭스를 **코드로 그대로 옮긴 곳**이다. 다른 파일에서 `if ($role === 'Admin')` 같은 판단을 직접 쓰는 것을 금지하고, 항상 여기 함수를 부른다.
+PRD 5장의 권한 매트릭스를 판단하는 **유일한 곳**이다. 역할 × 레벨 표는 `permissions` 테이블(6.2-1)에서 읽고, 소유자·팀 규칙은 아래 코드로 판단한다. (아래 예시는 이해를 위해 표를 코드로 풀어 쓴 것이며, 실제 구현은 `permissions` 조회로 대체한다.) 다른 파일에서 `if ($role === 'Admin')` 같은 판단을 직접 쓰는 것을 금지하고, 항상 여기 함수를 부른다.
 
 ```php
 <?php
@@ -384,6 +385,52 @@ CREATE INDEX files_visible_idx ON files (access_level, team_id) WHERE deleted_at
 CREATE INDEX files_name_idx    ON files (lower(original_name)) WHERE deleted_at IS NULL;
 ```
 
+### 6.2-1 `permissions` 테이블 — 권한 매트릭스를 데이터로
+
+PRD 5.1·5.2 의 역할 × 레벨 표를 16행으로 저장한다. `Authz` 는 부팅 시 이 표를 읽어 캐시하고, 소유자·팀 규칙(5.3)만 코드로 판단한다.
+
+```sql
+CREATE TABLE permissions (
+    role         TEXT NOT NULL CHECK (role IN ('Admin','Manager','Employee','Guest')),
+    access_level TEXT NOT NULL CHECK (access_level IN ('public','internal','team','admin-only')),
+    can_read     BOOLEAN NOT NULL DEFAULT false,   -- 목록·다운로드 (team 은 "같은 팀이면" 의 전제)
+    can_upload   BOOLEAN NOT NULL DEFAULT false,   -- 이 레벨로 올릴 수 있나
+    PRIMARY KEY (role, access_level)
+);
+-- 시드: PRD 5.1 / 5.2 그대로
+INSERT INTO permissions VALUES
+('Admin','public',true,true),   ('Admin','internal',true,true),   ('Admin','team',true,true),   ('Admin','admin-only',true,true),
+('Manager','public',true,true), ('Manager','internal',true,true), ('Manager','team',true,true), ('Manager','admin-only',false,false),
+('Employee','public',true,true),('Employee','internal',true,true),('Employee','team',true,true),('Employee','admin-only',false,false),
+('Guest','public',true,false),  ('Guest','internal',false,false), ('Guest','team',false,false), ('Guest','admin-only',false,false);
+```
+
+| 규칙 | 이유 |
+|---|---|
+| 앱 계정(`tbox_app`)은 이 표에 **SELECT 만** | 화면·API 어디서도 권한 표를 바꿀 수 없어야 한다 (바꿀 수 있으면 그게 곧 권한 상승 경로) |
+| 변경은 마이그레이션 파일 + 코드 리뷰 + `SECURITY.md` 이력 | 권한 표 변경은 곧 보안 정책 변경 |
+| `team` 의 `can_read=true` 는 "같은 팀일 때" 라는 뜻 | 팀 일치 여부는 `Authz::canRead` 가 `users.team_id` 와 비교 |
+
+### 6.2-2 `sessions` 테이블 — DB 세션
+
+PHP 기본 파일 세션을 쓰지 않고 DB 에 둔다. 비활성화·비밀번호 변경 시 그 사용자의 행을 지우면 **모든 기기에서 즉시 로그아웃**된다 (SECURITY R-10).
+
+```sql
+CREATE TABLE sessions (
+    id           CHAR(64)    PRIMARY KEY,           -- 쿠키 토큰(32바이트 난수)의 SHA-256. 토큰 원문은 저장하지 않음
+    user_id      BIGINT      NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    created_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
+    last_seen_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    expires_at   TIMESTAMPTZ NOT NULL,              -- 유휴 30분 / 절대 8시간 (PRD S-09-2)
+    ip           INET,
+    user_agent   TEXT
+);
+CREATE INDEX sessions_user_idx ON sessions (user_id);
+```
+
+흐름: 로그인 성공 → `random_bytes(32)` → 쿠키에 hex 토큰(HttpOnly·Secure·SameSite=Lax) → DB 에는 `hash('sha256', 토큰)`. 요청마다 해시로 조회 → `expires_at` 확인 → `last_seen_at` 갱신. 로그아웃은 행 삭제.
+DB 가 유출돼도 해시만 있으므로 세션을 위조할 수 없다.
+
 ### 6.3 실제 파일의 위치와 이름
 
 ```
@@ -560,7 +607,7 @@ php_admin_value[disable_functions]   = curl_exec,curl_multi_exec,fsockopen,pfsoc
 | 계정 | 용도 | 권한 |
 |---|---|---|
 | `tbox_owner` | 스키마 생성·마이그레이션 (배포 시에만) | 테이블 소유 |
-| `tbox_app` | PHP 앱 런타임 | `users teams files`: SELECT/INSERT/UPDATE · `audit_logs`: SELECT/INSERT 만 · DELETE/DROP 없음 |
+| `tbox_app` | PHP 앱 런타임 | `users teams files`: SELECT/INSERT/UPDATE · `sessions`: SELECT/INSERT/UPDATE/DELETE · `permissions`: **SELECT 만** · `audit_logs`: SELECT/INSERT 만 · DROP 없음 |
 | `tbox_backup` | 백업 스크립트 | 전체 SELECT (읽기 전용) |
 
 > 파일 삭제가 논리 삭제(UPDATE)이므로 앱 계정에 `DELETE` 권한 자체가 필요 없다. 30일 실제 정리는 `tbox_owner` 권한의 배치 스크립트가 수행한다.
