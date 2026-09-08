@@ -1,0 +1,208 @@
+# t-box 보안 재검토 (SECURITY.md)
+
+| 항목 | 내용 |
+|---|---|
+| 검토 대상 | `PRD.md` v1.0, `ARCHITECTURE.md` v1.0 |
+| 검토 일자 | 2026-09-08 |
+| 검토 단계 | **설계 검토** (코드 없음). 아래 "막힘" 판정은 *"문서대로 구현되면 막힌다"* 는 뜻이며, 구현 후 5장 절차로 **실제 실행 검증**을 다시 해야 한다 |
+| 검토 방식 | 문서 대조 + 기존 t-box(`/var/www/html`)의 실제 취약 코드와 비교 |
+| 결론 요약 | 실습에서 뚫린 5가지는 설계상 모두 차단됨. 단, **감사 로그 조회 화면을 통한 정보 누출(R-01)** 등 설계에 빠진 항목 있음 → 2장 |
+
+---
+
+## 1. 실습에서 뚫린 5가지 — 하나씩 확인
+
+### 1.1 한눈에 보기
+
+| # | 공격 | 기존 t-box에서 뚫린 코드 | 새 설계의 방어 | 판정 | 구현 시 반드시 확인 |
+|---|---|---|---|---|---|
+| 1 | 프론트 권한 우회 | `assets/app.js` 버튼 `display:none` + `api/files.php` DELETE 무검사 | 단일 입구 → `Auth::requireLogin` → `Authz::canDelete` → CSRF | **막힘** | 라우트에 권한 정책 미등록 시 실행 불가하게 강제 (1.2-③) |
+| 2 | 권한 없는 데이터 노출 | `api/files.php` GET 전체 반환 + JS `VISIBLE_BY_ROLE` 필터 | `Authz::visibleFilesWhere` 가 SQL WHERE 생성, COUNT도 동일, 단건은 404 통일 | **막힘** | 목록형 엔드포인트 **전부**(감사 로그·휴지통 포함)에 같은 원칙 적용 (→ R-01) |
+| 3 | XSS | `api/upload.php` 무검증 저장 + `tr.innerHTML` 출력 | 서버 `htmlspecialchars` + JS `textContent` + CSP(인라인 금지) + 다운로드 `attachment` + HTML/SVG 업로드 차단 | **막힘** | 감사 로그 화면의 `user_agent`·`target_name` 출력도 이스케이프 (공격자 통제 값) |
+| 4 | SQL 인젝션 | `api/search.php` `"LIKE '%$q%'"` 문자열 결합 + 오류 메시지 노출 | PDO 값 바인딩만 허용, `ORDER BY` 허용 목록, `LIKE` 이스케이프, 오류 은닉, DB 최소 권한, Argon2id | **막힘** | `PDO::ATTR_EMULATE_PREPARES = false` 설정, `LIMIT/OFFSET` 정수 캐스팅 |
+| 5 | SSRF | `api/fetch_url.php` `file_get_contents($url)` | 기능 자체 제외(NG-4) + `allow_url_fopen=Off` | **막힘** | `php-curl` 미설치 또는 `disable_functions` 로 `curl_exec` 차단, 서버 아웃바운드 방화벽 (1.6) |
+
+### 1.2 ① 프론트 권한 우회 — 왜 막히나
+
+| 공격 단계 (실습 때) | 새 설계에서 벌어지는 일 | 근거 |
+|---|---|---|
+| 개발자도구로 삭제 버튼 되살리기 | 버튼은 되살릴 수 있다. 그러나 버튼은 **권한의 근거가 아님** | PRD 7.1, ARCH 2장 |
+| 콘솔에서 `fetch('/api/files/1',{method:'DELETE'})` | ① CSRF 토큰 없음 → 403 ② 토큰을 붙여도 `Authz::canDelete(Employee, 남의 파일)` = false → 403 + 감사 로그 `deny` | ARCH 5.4 |
+| `switch_role.php?role=Admin` 으로 역할 전환 | 파일 자체가 없다. 역할은 세션 `user_id` → DB `users.role` 에서만 읽음 | ARCH 4장 [1] |
+| 다른 `.php` 를 직접 호출해 검사 우회 | nginx가 `index.php` 외 `.php` 요청을 404 처리 | ARCH 8장 |
+
+**설계에 남아 있는 약점 → 보완 필요**
+
+| 약점 | 위험 | 보완 |
+|---|---|---|
+| ③ `Authz` 호출은 "규칙"일 뿐, 핸들러 하나가 호출을 빠뜨리면 무효 | 높음 | 라우터의 라우트 테이블에 `policy` 를 **필수 항목**으로 두고, 정책이 없는 라우트는 등록 단계에서 예외를 던지게 한다. 예: `route('DELETE','/api/files/{id}', 'files_delete', policy: 'file.delete')` |
+| 비활성화·역할 변경된 사용자의 기존 세션 | 중간 | ARCH 4장 [1]의 "요청마다 DB 재조회"를 **필수**로 명시하고, `is_active=false` 면 세션 즉시 파기 |
+
+### 1.3 ② 권한 없는 데이터 노출 — 왜 막히나
+
+| 공격 단계 (실습 때) | 새 설계에서 벌어지는 일 | 근거 |
+|---|---|---|
+| Network 탭에서 `/api/files` 응답 원문 열기 | 응답에는 SQL이 돌려준 행만 있고, WHERE절이 이미 `admin-only` 를 제외했으므로 **응답 원문에 존재하지 않음** | ARCH 5.1, PRD 7.2 |
+| `total` 건수로 숨은 파일 개수 추측 | COUNT도 같은 WHERE → 내가 볼 수 있는 개수만 | ARCH 5.1 [5] |
+| ID 바꿔가며 `/api/files/57` 조회 | 권한 없으면 404, 없는 ID도 404 — 구분 불가 | PRD S-09-5 |
+| `/uploads/…` 직접 URL 접근 | 경로가 웹 루트 밖. `/protected/` 는 `internal` | ARCH 3장, 8장 |
+
+**설계에 남아 있는 약점 → 보완 필요**
+
+| 약점 | 위험 | 보완 |
+|---|---|---|
+| **감사 로그 조회(Manager)** — 팀원이 `admin-only` 파일 다운로드를 시도해 `deny` 가 기록되면, 그 로그의 `target_name`(예: `급여명세_홍길동.pdf`)을 Manager가 본다. 즉 **다른 경로로 파일명이 누출** | **높음** | Manager 조회 시 `target_name`·`target_id` 는 **자기가 읽을 수 있는 파일만** 노출하고 나머지는 `[비공개 파일]` 로 마스킹. 마스킹도 SQL(JOIN + Authz 조건)에서 수행 |
+| 순차 정수 ID (`id=57`) | 낮음 | 외부 노출 ID를 UUID로 (`public_id UUID UNIQUE`). 존재 추측·열거 자체를 어렵게 |
+| `deleted_at IS NULL` 조건을 각 쿼리가 개별로 붙임 | 중간 | `Authz::visibleFilesWhere` 가 `deleted_at IS NULL` 을 **항상 포함**해 한 곳에서만 관리 |
+
+### 1.4 ③ XSS — 왜 막히나
+
+| 공격 단계 (실습 때) | 새 설계에서 벌어지는 일 | 근거 |
+|---|---|---|
+| 설명란에 `<img src=x onerror=alert(1)>` 업로드 | 저장은 된다(길이 제한 내). 출력 시 `htmlspecialchars` / `textContent` → **글자로만 표시** | PRD 7.3 |
+| 혹시 어딘가 `innerHTML` 이 남았다면? | CSP `script-src 'self'` 가 인라인 이벤트 핸들러·인라인 스크립트 실행을 차단 (2차 방어) | ARCH 8장 |
+| `evil.html` 을 업로드해 같은 도메인에서 열기 | ① `.html/.svg` 업로드 거부 ② 어떻게든 저장돼도 다운로드는 `application/octet-stream` + `attachment` + `nosniff` → 브라우저가 렌더링하지 않음 | PRD S-06, ARCH 5.3 [8] |
+| XSS로 세션 쿠키 탈취 | 쿠키 `HttpOnly` → 스크립트가 읽을 수 없음 | ARCH 9장 |
+
+**설계에 남아 있는 약점 → 보완 필요**
+
+| 약점 | 위험 | 보완 |
+|---|---|---|
+| 감사 로그 화면이 `user_agent`, `target_name`, `reason` 을 표시 — 모두 공격자가 만들 수 있는 값 | 중간 | 감사 로그 화면도 5.1 목록 화면과 **같은 렌더링 규칙**(textContent) 적용을 PRD 10장에 명시 |
+| 검색어를 화면에 되돌려 보여줄 때("'회의'로 검색한 결과") 반사형 XSS | 중간 | 검색어 표시도 이스케이프. 서버 렌더링이면 템플릿 함수 `e()` 강제 |
+| CSP `style-src 'self'` 인데 인라인 `style=` 속성을 쓰면 화면이 깨져 개발자가 CSP를 완화할 유혹 | 낮음 | 개발 초기부터 CSP를 켜고 개발 (나중에 켜면 완화하게 됨) |
+
+### 1.5 ④ SQL 인젝션 — 왜 막히나
+
+| 공격 단계 (실습 때) | 새 설계에서 벌어지는 일 | 근거 |
+|---|---|---|
+| `' OR '1'='1` | 검색어가 값으로 바인딩되어 문자 그대로 `LIKE '%'' OR ''1''=''1%'` 를 찾음 → 0건 | PRD 7.4 |
+| `' UNION SELECT username,password,… FROM users --` | 같은 이유로 0건. 설령 성공해도 `password_hash` 는 Argon2id → 즉시 악용 불가 | PRD S-09-4 |
+| 문법을 깨서 오류 메시지로 구조 파악 | `display_errors=Off`, 화면엔 "요청을 처리할 수 없습니다" | ARCH 9장 |
+| 정렬 파라미터 `sort=id;DROP TABLE files` | 허용 목록 밖 → 기본값으로 대체. 앱 계정에 `DROP` 권한 없음 | ARCH 5.1 [3], 10장 |
+
+**설계에 남아 있는 약점 → 보완 필요**
+
+| 약점 | 위험 | 보완 |
+|---|---|---|
+| PDO 기본값은 **에뮬레이트 prepared**(드라이버가 문자열을 조립) | 중간 | `Db.php` 에서 `PDO::ATTR_EMULATE_PREPARES => false` 고정 → PostgreSQL 서버측 바인딩 |
+| `Db.php` 가 `query($rawSql)` 같은 함수를 노출하면 결국 결합 코드가 생김 | 중간 | `Db::run(string $sql, array $params)` 하나만 공개. 코드 검색(`security_lint.sh`)으로 `"… $` 패턴 자동 반려 |
+| `LIMIT/OFFSET`, 감사 로그 필터(`action`, `actor_id`) 등 부수 파라미터 | 중간 | 정수는 `(int)` 캐스팅 후 바인딩, 문자열 필터는 허용 목록 |
+
+### 1.6 ⑤ SSRF — 왜 막히나
+
+| 공격 단계 (실습 때) | 새 설계에서 벌어지는 일 | 근거 |
+|---|---|---|
+| URL 칸에 `http://127.0.0.1:3000`, `file:///etc/passwd` | **URL을 받는 기능이 없다** | PRD NG-4 |
+| 개발자가 나중에 실수로 `file_get_contents('http://…')` 추가 | `allow_url_fopen=Off` 로 PHP가 원격 스킴 자체를 거부 | ARCH 9장 |
+| `open_basedir` 밖 경로 읽기 (`file:///etc/passwd`) | `open_basedir` 로 차단 | ARCH 9장 |
+
+**설계에 남아 있는 약점 → 보완 필요**
+
+| 약점 | 위험 | 보완 |
+|---|---|---|
+| `allow_url_fopen` 은 **cURL 확장을 막지 못함** | 높음 (재발 경로) | `php-curl` 미설치를 표준으로, 불가피하면 `disable_functions = curl_exec,curl_multi_exec,fsockopen,pfsockopen,stream_socket_client` |
+| 서버 자체의 아웃바운드 통제가 문서에 없음 | 중간 | OS 방화벽(ufw/nftables)에서 아웃바운드 **기본 거부**, 허용: DNS·NTP·패키지 미러·백업 저장소·ClamAV 시그니처 서버. ARCH 11장에 추가 |
+| 향후 "미리보기·썸네일" 요구가 들어올 때 | 중간 | PRD S-05 ①~⑥ 심사 + **격리된 별도 워커**(네트워크 없는 컨테이너)에서만 변환 — PRD NG-1 각주로 명시 |
+
+---
+
+## 2. 5가지 외의 위험 — 위험도 높은 순
+
+위험도: **치명** > **높음** > **중간** > **낮음**  ·  설계 상태: ✅ 반영 / ◐ 부분 / ❌ 없음
+
+| 순위 | ID | 위험 | 위험도 | 설계 상태 | 무엇이 문제인가 | 보완 (→ 반영할 문서) |
+|---|---|---|---|---|---|---|
+| 1 | R-01 | 감사 로그 경유 정보 누출 | **높음** | ❌ | Manager가 팀원의 `deny` 로그에서 admin-only 파일명을 봄 (1.3) | 볼 수 없는 파일의 `target_name/target_id` 마스킹을 SQL에서 (→ PRD 7.7, ARCH 7장) |
+| 2 | R-02 | 악성 파일 유통 (매크로 docx, 위장 실행파일, zip 속 exe) | **높음** | ◐ 선택(2단계) | 파일 공유 서비스의 본질적 위험. 서버는 무사해도 **직원 PC가 감염** | ClamAV 스캔을 MVP 필수로. `pending` 상태는 다운로드 불가, `infected` 는 격리 + Admin 알림 (→ PRD S-06, F-05) |
+| 3 | R-03 | SSRF 재발 경로 (cURL, 아웃바운드 미통제) | **높음** | ◐ | `allow_url_fopen=Off` 만으론 부족 (1.6) | `disable_functions` + 아웃바운드 기본 거부 (→ ARCH 9, 11장) |
+| 4 | R-04 | 권한 정책 누락 (핸들러가 Authz를 안 부름) | **높음** | ◐ 규칙만 | 사람의 실수 하나로 S-01 전체 무효 | 라우트 테이블 `policy` 필수 + 린트 (→ ARCH 4장) |
+| 5 | R-05 | Admin 계정 탈취 (비밀번호 단일 요소) | **높음** | ◐ | Admin 하나 털리면 급여·인사 자료 전부 노출. 잠금 5회는 브루트포스만 막음 | Admin·Manager **MFA(TOTP)** 필수, Admin 로그인은 사내 특정 IP 대역 제한 (→ PRD F-01, S-09-4) |
+| 6 | R-06 | 계정 잠금을 이용한 서비스 거부 | 중간 | ❌ | 공격자가 `admin01` 에 틀린 비밀번호 5번 → 관리자 10분 잠금 반복 | 계정 잠금 + **IP 단위 속도 제한** 병행, 잠금 시 관리자 알림 (→ PRD F-01) |
+| 7 | R-07 | PATCH 대량 할당 (mass assignment) | 중간 | ❌ | `/api/files/{id}` PATCH 가 요청 JSON을 그대로 UPDATE 하면 `uploaded_by`, `team_id`, `sha256` 까지 바뀔 수 있음 | 변경 허용 필드를 `description`, `access_level`(+`team_id`) 로 **명시적 화이트리스트** (→ PRD 8장, ARCH handlers) |
+| 8 | R-08 | 백업 암호화 키 관리 | 중간 | ◐ | "키는 다른 장소에" 만 있음. 키 분실 = 백업 전체 무용, 키 유출 = 전체 데이터 유출 | 키 보관 위치·담당자 2인·회전 주기·복구 리허설에 키 복구 포함 (→ PRD 7.8, ARCH 11장) |
+| 9 | R-09 | 다운로드 대역폭 DoS | 중간 | ◐ "속도 제한" 언급만 | 100MB 파일을 스크립트로 반복 다운로드 → 사내망 마비 | nginx `limit_req`(로그인 5r/m, 다운로드 30r/m), `limit_conn`, `limit_rate` 구체 수치 (→ ARCH 8장) |
+| 10 | R-10 | 세션 수명 관리 | 중간 | ◐ | 로그아웃·비밀번호 변경·비활성화 시 **다른 기기 세션**이 살아 있음 | DB 세션 저장 + `users.session_version` 증가로 전체 무효화, 로그아웃은 서버측 `session_destroy` (→ PRD S-09-2, ARCH 9장) |
+| 11 | R-11 | 감사 로그 무결성 (DB 관리자·root 는 지울 수 있음) | 중간 | ◐ | 앱 계정만 막았음. 내부자(DBA)·서버 침해엔 무력 | `audit.log` 를 **원격 syslog/SIEM 으로 실시간 전송**(추가 전용). 일별 로그 해시 체인 (→ ARCH 7장) |
+| 12 | R-12 | Guest 계정 생명주기 | 중간 | ❌ | 협력사 계정에 만료가 없어 프로젝트 끝나도 영구 접근 | `users.expires_at` 필수(Guest), 만료 시 자동 비활성화, 90일 미접속 계정 비활성화 (→ PRD 3장, F-10) |
+| 13 | R-13 | 파일 무결성 검증이 "선택" | 중간 | ◐ | 서버 침해 시 스토리지 파일을 바꿔치기(악성 문서로 교체)해도 감지 못함 | 다운로드 시 sha256 대조를 **필수**로(100MB 도 ~0.3초), 주간 정합성 검사 결과를 감사 로그에 (→ ARCH 5.3 [6]) |
+| 14 | R-14 | 비밀 정보 실수 커밋 | 중간 | ◐ | `.gitignore` 만 믿음. 기존 t-box 저장소엔 실제로 `.env` 가 존재했음 | `pre-commit` 시크릿 스캔(gitleaks), `config.php.example` 만 커밋 (→ PRD S-09-6) |
+| 15 | R-15 | 패치 관리 | 중간 | ❌ | PHP·nginx·PostgreSQL 보안 업데이트 주기 미정 | 월 1회 정기 패치 + 치명 CVE 72시간 내, `unattended-upgrades` 보안 채널 (→ ARCH 11장) |
+| 16 | R-16 | 파일명 시각 혼동 (RTL 오버라이드·동형 문자) | 낮음 | ◐ | `report‮fdp.exe` 가 `reportexe.pdf` 처럼 보임 — 단, 실행파일은 업로드 자체가 차단됨 | 화면의 확장자·형식 표시는 DB `ext`·`mime` 컬럼에서(원본명이 아니라) (→ PRD 10장) |
+| 17 | R-17 | 로그인 후 리다이렉트(`?next=`) 오픈 리다이렉트 | 낮음 | ❌ | 피싱: 진짜 로그인 후 가짜 사이트로 이동 | `next` 는 `/` 로 시작하는 상대 경로만 허용 (→ PRD F-01) |
+| 18 | R-18 | 서버 시간 불일치 | 낮음 | ❌ | 감사 로그 시각이 어긋나면 사고 조사가 불가 | NTP(chrony) 필수, DB `now()` 사용 통일 (→ ARCH 11장) |
+| 19 | R-19 | 팀 모델 변경 위험 (Q-1) | 낮음 (설계 리스크) | ◐ | Manager 가 여러 팀을 맡게 되면 `team_id` 단일 컬럼 전제의 `Authz` 가 전면 수정 | 1단계 전에 Q-1 확정. 확장 시 `user_teams` 조인 테이블로 `visibleFilesWhere` 만 수정되도록 (→ PRD 14장) |
+| 20 | R-20 | 레벨 하향·대량 삭제의 단독 실행 | 낮음 | ❌ | Admin 1인 실수/악의로 `admin-only → public` 즉시 반영 | 레벨 하향은 확인 단계 + 감사 로그 `detail` 에 이전값, 대량 삭제 API 미제공 (→ PRD 5.3) |
+
+### 2.1 이미 잘 반영된 항목 (확인 완료, 추가 조치 불필요)
+
+| 항목 | 근거 |
+|---|---|
+| 업로드 파일 실행(웹셸) | 스토리지 웹 루트 밖 + nginx `.php` 404 + UUID 이름 + `open_basedir` (ARCH 3, 6.3, 8, 9) |
+| 경로 조작 | 저장 경로에 사용자 입력 0글자, `realpath` 검사 (ARCH 5.3 [5]) |
+| CSRF | 토큰 + `SameSite=Lax` + 상태 변경은 POST/PATCH/DELETE 만 (ARCH 4장 [2]) |
+| 세션 고정 | `session.use_strict_mode=1` + 로그인 시 재발급 (ARCH 9장, PRD S-09-2) |
+| 클릭재킹 | `frame-ancestors 'none'`, `X-Frame-Options: DENY` (ARCH 8장) |
+| 헤더 인젝션(파일명) | `filename*=UTF-8''` 인코딩, 원본명은 헤더에 직접 사용 안 함 (ARCH 6.3) |
+| 오류 정보 노출 | `display_errors=Off`, 통일 메시지 (ARCH 9장) |
+| 고아 파일 / 반쪽 저장 | 업로드를 트랜잭션으로, 실패 시 파일 삭제 (ARCH 5.2 [5]) |
+| 실수 삭제 | 30일 논리 삭제 + Admin 복구 (PRD F-07, F-11) |
+| 비밀번호 저장 | Argon2id (PRD S-09-4) |
+| 소스·설정 노출 | `public/` 만 root, `/etc/tbox/config.php` 0600 (ARCH 3장) |
+
+---
+
+## 3. 판정 요약
+
+| 질문 | 답 |
+|---|---|
+| 실습에서 뚫린 5가지가 이 설계대로 만들면 막히는가? | **예, 5가지 모두 설계상 차단된다.** 각각 1차 방어 + 2차 방어(CSP, `allow_url_fopen=Off`, DB 권한 등)가 있다 |
+| 그대로 구현하면 끝인가? | **아니다.** 2장의 R-01 ~ R-05 (높음) 는 설계 문서에 빠져 있거나 약하다. 특히 **R-01(감사 로그 누출)** 은 "권한 없는 데이터 노출"이 다른 문으로 다시 들어오는 경우다 |
+| 가장 먼저 고칠 것 | R-01, R-04 (설계 문서 수정으로 해결 가능, 비용 낮음) → R-02, R-05 (MVP 범위 결정 필요) → R-03 (서버 설정) |
+
+### 3.1 문서 보완 액션 목록
+
+| # | 문서 | 위치 | 보완 내용 | 관련 |
+|---|---|---|---|---|
+| A-1 | PRD | 7.7 감사 로그 | Manager 조회 시 볼 수 없는 파일의 `target_name/id` 마스킹 규칙 추가 | R-01 |
+| A-2 | ARCH | 4장 | 라우트 테이블에 `policy` 필수, 미등록 시 부팅 실패 | R-04 |
+| A-3 | PRD | S-06, F-05 | 악성코드 스캔을 MVP 필수로 상향, `pending/infected` 동작 정의 | R-02 |
+| A-4 | ARCH | 9장, 11장 | `disable_functions`, 아웃바운드 방화벽 기본 거부 규칙 | R-03 |
+| A-5 | PRD | F-01, S-09-4 | Admin/Manager MFA, IP 단위 속도 제한, 잠금 알림 | R-05, R-06 |
+| A-6 | PRD | 8장 PATCH | 변경 허용 필드 화이트리스트 명시 | R-07 |
+| A-7 | PRD/ARCH | 7.8 / 11장 | 백업 키 관리(보관·2인·회전), 세션 전체 무효화, 원격 로그 전송, 패치 주기, NTP | R-08, R-10, R-11, R-15, R-18 |
+| A-8 | PRD | 3장, F-10 | Guest `expires_at`, 휴면 계정 비활성화 | R-12 |
+| A-9 | ARCH | 5.3 [6] | sha256 대조를 선택 → 필수 | R-13 |
+| A-10 | ARCH | 5.1, 6.2 | `Authz::visibleFilesWhere` 에 `deleted_at IS NULL` 포함, `public_id UUID` 도입 | 1.3 |
+
+---
+
+## 4. 구현 후 재검토 절차 (반드시 실행으로 확인)
+
+설계 검토는 "문서대로 만들면" 이라는 가정 위에 있다. 구현이 끝나면 **추정하지 않고** 아래를 실제로 실행해 증거를 남긴다.
+
+| 단계 | 할 일 | 증거로 남길 것 |
+|---|---|---|
+| 1 | PRD 12장 T-1 ~ T-16 을 **전부 실행** (`curl`·브라우저·`psql`) | 실행한 명령과 **응답 원문**(상태 코드·본문) |
+| 2 | 코드 정적 점검 `scripts/security_lint.sh` | `innerHTML`, SQL 문자열 결합(`"… $`), `curl_exec`, `file_get_contents('http`, `eval`, `exec` 검색 결과 = 0건 |
+| 3 | 라우트 테이블 대조 | 모든 라우트에 `policy` 가 있고, `Authz` 함수와 PRD 5장 매트릭스가 1:1 로 맞는지 표로 대조 |
+| 4 | 서버 설정 확인 | `php -i | grep -E 'allow_url_fopen|open_basedir|disable_functions|display_errors'`, `nginx -T` 에서 `internal`, `client_max_body_size`, 헤더 |
+| 5 | DB 권한 확인 | `\dp audit_logs` 에서 `tbox_app` 에 UPDATE/DELETE 없음 |
+| 6 | 감사 로그 확인 | T-1 ~ T-13 수행 후 `SELECT action,result,reason FROM audit_logs ORDER BY id DESC LIMIT 30` 에 각 시도가 있는지 |
+| 7 | 결과 기록 | 아래 5장 검토 이력에 **통과/실패/미검증** 을 항목별로 기록. 실행 못 한 항목은 "미검증" 으로 남기고 "안전" 이라 쓰지 않는다 |
+
+### 4.1 판정 용어
+
+| 용어 | 뜻 |
+|---|---|
+| **통과** | 실행했고, 기대 결과와 응답 원문이 일치함 |
+| **실패** | 실행했고, 공격이 성공했거나 기대와 다름 → 커밋 금지 |
+| **미검증** | 실행하지 못함(환경 부재 등). "안전" 판정으로 취급하지 않음 |
+
+---
+
+## 5. 검토 이력
+
+| 일자 | 단계 | 검토자 | 범위 | 결과 | 비고 |
+|---|---|---|---|---|---|
+| 2026-09-08 | 설계 검토 | Fable (AI) | PRD v1.0, ARCHITECTURE v1.0 | 5대 공격: 설계상 차단 · 추가 위험 20건 도출(높음 5) | 코드 없음 → 구현 후 4장 절차 재실행 필요. 액션 A-1 ~ A-10 미반영 |
