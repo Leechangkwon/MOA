@@ -1,7 +1,7 @@
 # t-box 아키텍처 문서 (초보자용)
 
 > 기준 문서: `PRD.md` v1.0 — 요구사항 ID(S-01 ~ S-09, F-01 ~ F-13)는 PRD의 것을 그대로 쓴다.
-> 기술: **순수 PHP 8.2 (프레임워크 없음) + PostgreSQL 14 + nginx**
+> 기술: **순수 PHP 8.4 (프레임워크 없음) + PostgreSQL 16 + nginx · Ubuntu 24.04 LTS**
 
 | 항목 | 내용 |
 |---|---|
@@ -498,7 +498,7 @@ server {
     location = /index.php {
         include fastcgi_params;
         fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name;
-        fastcgi_pass unix:/run/php/php8.2-fpm-tbox.sock;
+        fastcgi_pass unix:/run/php/php8.4-fpm-tbox.sock;
     }
     location ~ \.php$ { return 404; }
 
@@ -526,12 +526,14 @@ server { listen 80; server_name tbox.internal; return 301 https://$host$request_
 
 ## 9. PHP 설정 (php-fpm 풀: `tbox`)
 
+> 버전: **PHP 8.4** (8.2는 2026-12-31 보안 지원 종료 — PRD 11장 버전 선택 기준). 설치 후 `php -v` 로 확인.
+
 ```ini
-; /etc/php/8.2/fpm/pool.d/tbox.conf
+; /etc/php/8.4/fpm/pool.d/tbox.conf
 [tbox]
 user  = tbox-php
 group = tbox-php
-listen = /run/php/php8.2-fpm-tbox.sock
+listen = /run/php/php8.4-fpm-tbox.sock
 php_admin_value[upload_max_filesize] = 100M
 php_admin_value[post_max_size]       = 105M
 php_admin_value[max_file_uploads]    = 1          ; 요청당 파일 1개 (PRD S-06)
@@ -545,6 +547,8 @@ php_admin_value[session.cookie_samesite] = Lax
 php_admin_value[session.use_strict_mode] = 1      ; 세션 고정 공격 방지
 php_admin_value[allow_url_fopen]     = Off        ; ★ file_get_contents('http://...') 자체를 막음 (SSRF 예방, S-05)
 php_admin_value[open_basedir]        = /var/www/tbox:/var/lib/tbox:/etc/tbox:/tmp
+; cURL·소켓으로 SSRF 가 재발하지 않게 (SECURITY.md R-03). php-curl 은 설치하지 않는다
+php_admin_value[disable_functions]   = curl_exec,curl_multi_exec,fsockopen,pfsockopen,stream_socket_client,exec,system,shell_exec,passthru,popen,proc_open
 ```
 
 > `allow_url_fopen = Off` 와 `open_basedir` 는 "실수로 SSRF·경로 탈출 코드를 짜도" 실행 단계에서 한 번 더 막아주는 안전망이다.
@@ -579,7 +583,7 @@ php_admin_value[open_basedir]        = /var/www/tbox:/var/lib/tbox:/etc/tbox:/tm
 ### 11.2 복구 순서 (PRD 7.8 절차의 명령 대응)
 
 ```
- 1. 서비스 중단     sudo systemctl stop php8.2-fpm ; nginx 점검 페이지 전환
+ 1. 서비스 중단     sudo systemctl stop php8.4-fpm ; nginx 점검 페이지 전환
  2. 범위 판단       "DB만" / "파일만" / "둘 다", 목표 시점 T 결정
  3. 무결성 확인     sha256sum -c db-YYYYMMDD.dump.sha256
  4. DB 복구         age -d db-YYYYMMDD.dump.age | pg_restore -d tbox --clean
@@ -587,14 +591,98 @@ php_admin_value[open_basedir]        = /var/www/tbox:/var/lib/tbox:/etc/tbox:/tm
  5. 파일 복구       restic restore <snapshot@T> --target /var/lib/tbox/storage
  6. 정합성 검사     php scripts/consistency_check.php --strict
  7. 스모크 테스트   로그인 → 목록 → 업로드 → 다운로드 → 권한 매트릭스(PRD 5장) 확인
- 8. 재개 + 기록     systemctl start php8.2-fpm ; Audit system 'ops.restore' ; 사고 보고서
+ 8. 재개 + 기록     systemctl start php8.4-fpm ; Audit system 'ops.restore' ; 사고 보고서
 ```
 
 > 복구 리허설은 **분기 1회**, 운영 서버가 아닌 **별도 서버**에서 한다. 소요 시간을 재서 RTO 4시간 안에 드는지 확인한다.
 
+### 11.3 서버 보안 기준선 (Hardening) — PRD S-10-A
+
+앱 코드와 무관하게 **서버를 세운 날** 적용하고, 매월 T-17~T-19 로 재확인한다.
+
+```
+ 인터넷 ─✖─┐                                  (사내망 밖에서는 아예 닿지 않음)
+             │
+ 사내망/VPN ──┼──▶ 443/tcp  nginx            ← 허용 (사내 대역만)
+             ├──▶ 22/tcp   sshd  (키 인증만)  ← 허용 (관리망 대역만)
+             └──✖ 그 외 전부 거부
+
+ 서버 ──▶ 밖으로 나가는 연결: 기본 거부
+          허용: DNS(53) · NTP(123) · 패키지 미러(443) · 백업 저장소 · ClamAV 시그니처 · 원격 로그 서버
+          → SSRF·데이터 유출·C2 통신 통로를 처음부터 막는다
+```
+
+| 영역 | 설정 | 확인 |
+|---|---|---|
+| 방화벽 | `ufw default deny incoming; ufw default deny outgoing;` 그 뒤 위 허용 규칙만 | `ufw status verbose` |
+| SSH | `/etc/ssh/sshd_config.d/tbox.conf`: `PasswordAuthentication no`, `PermitRootLogin no`, `AllowGroups tbox-admin`, `MaxAuthTries 3` + `fail2ban` sshd jail | `sshd -T \| grep -iE 'passwordauth\|permitroot'` |
+| 계정 | 관리자는 개인 계정 + `sudo`(그룹 `tbox-admin`). `tbox-php`, `tbox-backup`, `postgres` 는 `nologin` | `getent passwd \| grep -v nologin` |
+| PostgreSQL | `listen_addresses = 'localhost'`, `pg_hba.conf` 는 `scram-sha-256` + 로컬 소켓만 | `ss -tlnp \| grep 5432` → 127.0.0.1 만 |
+| 불필요 서비스 | `avahi`, `cups`, `rpcbind` 등 제거. 리스닝 포트는 443·22·5432(로컬) 만 | `ss -tlnp` |
+| 파일 시스템 | `/var/lib/tbox/storage` 를 `noexec,nosuid,nodev` 옵션의 별도 마운트로 | `findmnt /var/lib/tbox/storage` |
+| 시간 | `chrony` 활성, 사내 NTP | `chronyc tracking` |
+| 자동 패치 | `unattended-upgrades` 보안 채널, 재시작은 일요일 02:00 점검창 | `/var/log/unattended-upgrades/` |
+| 무결성 감시 | `/var/www/tbox`, `/etc/nginx`, `/etc/php`, `/etc/tbox` 에 AIDE(또는 `debsums`) 일일 검사 → 변경 시 AL-9 | AIDE 보고서 |
+| 웹 방화벽 (선택) | `libnginx-mod-security` + OWASP CRS, 1개월 탐지 모드 후 차단 모드 | nginx error log |
+
+> **왜 아웃바운드까지 막나**: 제로데이로 앱이 뚫리는 것은 막을 수 없을 수 있다. 하지만 뚫린 뒤 공격자가 데이터를 **밖으로 보내거나** 추가 도구를 **내려받는** 연결을 막으면 피해가 "침입"에서 그친다.
+
+### 11.4 감시와 경보 — PRD S-11-A
+
+```
+ PHP Audit ──▶ audit_logs (DB) ──▶ 관리 화면 (조회)
+     │
+     └──▶ /var/log/tbox/audit.log ──▶ rsyslog(TLS) ──▶ [원격 로그 서버]  ← 추가 전용, 서버 침해 시에도 남음
+ nginx access/error ─────────────────┘                     │
+ sshd / sudo / unattended-upgrades ──┘                     ▼
+                                                    경보 규칙 AL-1 ~ AL-9  ──▶ 알림 채널(메신저/메일) ──▶ 운영 담당
+```
+
+| 구성 | 도구 (예) | 메모 |
+|---|---|---|
+| 전송 | `rsyslog` (omfwd, TLS) 또는 `vector`/`fluent-bit` | `audit.log` 는 한 줄 JSON 이라 파싱이 쉽다 |
+| 저장·검색 | 원격 서버의 Loki / OpenSearch / 단순 파일 + `logrotate` (규모에 맞게) | **앱 서버와 다른 계정·다른 호스트**에 둘 것 |
+| 경보 | Loki ruler / Grafana alert / `cron` + SQL 쿼리 스크립트 | 규모가 작으면 `scripts/alerts.php` 가 5분마다 `audit_logs` 를 SQL 로 훑어 조건 충족 시 알림을 보내도 충분 |
+| "로그 끊김" 감시 | 원격 서버 쪽에서 30분 무수신 시 경보 (AL-7) | 앱 서버가 침해되면 앱 서버의 경보는 믿을 수 없으므로 **밖에서** 감시 |
+
+경보 규칙 AL-1 ~ AL-9 의 조건은 PRD 7.11 표를 그대로 쓴다. 예: AL-1 을 SQL 로 쓰면
+
+```sql
+SELECT actor_id, count(*) FROM audit_logs
+ WHERE result = 'deny' AND action IN ('file.download','file.read')
+   AND happened_at > now() - interval '10 minutes'
+ GROUP BY actor_id HAVING count(*) >= 5;
+```
+
+### 11.5 운영 캘린더 — PRD S-11-B
+
+| 주기 | 자동/수동 | 작업 | 산출물 |
+|---|---|---|---|
+| 매일 | 자동 | 보안 패치 · 백업 + 검증(11.1) · ClamAV 시그니처 · AIDE · 경보 | 알림 채널 |
+| 매주 (월) | 수동 30분 | 감사 로그 리뷰, 정합성 검사 결과, 실패 로그인 추이, 디스크 사용량 | 주간 점검표 |
+| 매월 (첫 주) | 수동 2시간 | 전체 패치 + 재시작, 계정·권한 대사(퇴사자·Guest 만료), `security_lint.sh` + T-1~T-23 | `SECURITY.md` 5장 한 줄 |
+| 분기 | 수동 반나절 | 복구 리허설(11.2), `SECURITY.md` 전면 재검토, EOL 잔여 확인, 의존성 목록 갱신 | `SECURITY.md` 개정 |
+| 연 1회 | 외부 포함 | 모의해킹, 침해 대응 훈련(11.6), 백업 키·SSH 키·DB 비밀번호 회전 | 보고서 |
+
+### 11.6 침해 대응 절차 (Incident Response) — PRD S-10-E
+
+사고 당일에 절차를 만들 수는 없다. 아래를 인쇄해 두고 연 1회 연습한다.
+
+| 단계 | 시한 | 할 일 | 하지 말 것 |
+|---|---|---|---|
+| 0. 인지 | — | 경보(AL-x)·사용자 신고·외부 통보. 사고 담당자 1인 지정, 시각 기록 시작 | 혼자 판단해 무시 |
+| 1. 격리 | 1시간 내 | 사내망 스위치/방화벽에서 서버 격리(전원은 끄지 않음), 의심 계정 비활성화·세션 무효화 | **서버 재부팅·삭제** (증거 소멸) |
+| 2. 증거 보전 | 격리 직후 | 디스크 스냅샷, 메모리 덤프(가능하면), 원격 로그 서버 사본 잠금, 타임라인 작성 | 원본에서 직접 조사 |
+| 3. 범위 파악 | 24시간 내 | 감사 로그로 **어떤 파일이 누구에게 나갔나** 확정 (다운로드 로그가 여기서 쓰인다), 침입 경로 추정 | 추정을 확정처럼 보고 |
+| 4. 근절·복구 | RTO 4시간 (격리 후) | 깨끗한 서버 재구축 + 11.2 절차로 백업 복구(침입 **이전** 시점), 비밀 전체 교체 | 침해된 서버를 "치료"해서 재사용 |
+| 5. 통보 | 법·규정 시한 | 개인정보(급여 등) 유출 시 개인정보보호법상 통지·신고 기한(인지 후 72시간) 준수, 영향 사용자 안내 | 축소 보고 |
+| 6. 사후 | 2주 내 | 원인·대응 보고서, `SECURITY.md` 에 R-xx 추가, 재발 방지 T-xx 추가, 훈련 시나리오 갱신 | 문서 없이 종결 |
+
+연락망(`/etc/tbox/CONTACTS.md`, 저장소 밖): 사고 담당 · 개발 · 인프라 · 정보보호 책임자 · 법무.
+
 ---
 
-## 12. 기존 t-box와 무엇이 달라졋나 (대응표)
+## 12. 기존 t-box와 무엇이 달라졌나 (대응표)
 
 | 기존 t-box (뚫린 버전) | 새 t-box | 관련 절 |
 |---|---|---|
@@ -609,6 +697,9 @@ php_admin_value[open_basedir]        = /var/www/tbox:/var/lib/tbox:/etc/tbox:/tm
 | `audit_logs` 테이블만 있고 미기록 | 모든 민감 행동 DB+파일 이중 기록, Append-only | 7장 |
 | 비밀번호 평문 | Argon2id 해시 | 10장 |
 | 백업 없음 | 일일 DB/파일 백업 + WAL + 분기 리허설 | 11장 |
+| 서버 설정 언급 없음 (`chmod 777`, 역할 전환 URL) | 방화벽 인·아웃바운드 기본 거부, SSH 키 인증, 서비스 계정 nologin | 11.3 |
+| 로그를 보는 사람 없음 | 원격 로그 서버 + 경보 AL-1~AL-9 + 운영 캘린더 | 11.4, 11.5 |
+| 사고 나면? (계획 없음) | 침해 대응 6단계 절차 | 11.6 |
 
 ---
 
@@ -627,3 +718,5 @@ php_admin_value[open_basedir]        = /var/www/tbox:/var/lib/tbox:/etc/tbox:/tm
 | ☐ | 성공·거부 모두 `Audit` 에 기록하나? |
 | ☐ | 외부 URL 로 요청하는 코드(`curl`, `file_get_contents('http…')`)가 새로 생겼나? → PRD S-05 심사 |
 | ☐ | 오류 메시지에 DB 오류·경로·스택 트레이스가 섞여 나가나? |
+| ☐ | 새 패키지·라이브러리·외부 도구를 추가했나? → `deploy/DEPENDENCIES.md` 갱신 + EOL 확인 (S-10-C) |
+| ☐ | 새 기능이 만드는 이벤트가 경보 규칙(AL-x)에 필요하진 않나? (S-11-A) |
