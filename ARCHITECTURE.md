@@ -1,7 +1,7 @@
 # t-box 아키텍처 문서 (초보자용)
 
 > 기준 문서: `PRD.md` v1.0 — 요구사항 ID(S-01 ~ S-09, F-01 ~ F-13)는 PRD의 것을 그대로 쓴다.
-> 기술: **순수 PHP 8.4 (프레임워크 없음) + PostgreSQL 16 + nginx · Ubuntu 24.04 LTS**
+> 기술: **순수 PHP 8.1 (프레임워크 없음) + PostgreSQL 14 + nginx 1.18 · Ubuntu 22.04 (실습 VM 설치본, PRD 11장 Q-11)**
 
 | 항목 | 내용 |
 |---|---|
@@ -645,7 +645,7 @@ server {
     location = /index.php {
         include fastcgi_params;
         fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name;
-        fastcgi_pass unix:/run/php/php8.4-fpm-tbox.sock;
+        fastcgi_pass unix:/run/php/php8.1-fpm-tbox.sock;
     }
     location ~ \.php$ { return 404; }
 
@@ -673,14 +673,14 @@ server { listen 80; server_name tbox.internal; return 301 https://$host$request_
 
 ## 9. PHP 설정 (php-fpm 풀: `tbox`)
 
-> 버전: **PHP 8.4** (8.2는 2026-12-31 보안 지원 종료 — PRD 11장 버전 선택 기준). 설치 후 `php -v` 로 확인.
+> 버전: **PHP 8.1** (실습 VM 설치본, Q-11). 코드는 8.1 문법만 사용. 8.1 은 보안 지원이 종료됐으므로 운영 전환 시 8.4 로 업그레이드 (SECURITY R-21). 필요 확장: `php8.1-pgsql php8.1-fpm php8.1-curl(F-14) php8.1-mbstring` — `php -m` 으로 확인.
 
 ```ini
-; /etc/php/8.4/fpm/pool.d/tbox.conf
+; /etc/php/8.1/fpm/pool.d/tbox.conf
 [tbox]
 user  = tbox-php
 group = tbox-php
-listen = /run/php/php8.4-fpm-tbox.sock
+listen = /run/php/php8.1-fpm-tbox.sock
 php_admin_value[upload_max_filesize] = 100M
 php_admin_value[post_max_size]       = 105M
 php_admin_value[max_file_uploads]    = 1          ; 요청당 파일 1개 (PRD S-06)
@@ -730,7 +730,7 @@ php_admin_value[disable_functions]   = fsockopen,pfsockopen,stream_socket_client
 ### 11.2 복구 순서 (PRD 7.8 절차의 명령 대응)
 
 ```
- 1. 서비스 중단     sudo systemctl stop php8.4-fpm ; nginx 점검 페이지 전환
+ 1. 서비스 중단     sudo systemctl stop php8.1-fpm ; nginx 점검 페이지 전환
  2. 범위 판단       "DB만" / "파일만" / "둘 다", 목표 시점 T 결정
  3. 무결성 확인     sha256sum -c db-YYYYMMDD.dump.sha256
  4. DB 복구         age -d db-YYYYMMDD.dump.age | pg_restore -d tbox --clean
@@ -738,7 +738,7 @@ php_admin_value[disable_functions]   = fsockopen,pfsockopen,stream_socket_client
  5. 파일 복구       restic restore <snapshot@T> --target /var/lib/tbox/storage
  6. 정합성 검사     php scripts/consistency_check.php --strict
  7. 스모크 테스트   로그인 → 목록 → 업로드 → 다운로드 → 권한 매트릭스(PRD 5장) 확인
- 8. 재개 + 기록     systemctl start php8.4-fpm ; Audit system 'ops.restore' ; 사고 보고서
+ 8. 재개 + 기록     systemctl start php8.1-fpm ; Audit system 'ops.restore' ; 사고 보고서
 ```
 
 > 복구 리허설은 **분기 1회**, 운영 서버가 아닌 **별도 서버**에서 한다. 소요 시간을 재서 RTO 4시간 안에 드는지 확인한다.
