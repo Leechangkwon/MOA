@@ -37,7 +37,7 @@ src/         Auth · Authz · Audit · Db · Storage · Upload · handlers/
 db/          schema.sql · grants.sql · seed.sql
 deploy/      sites/tbox-v{1,2}{,-local}.conf · switch-site.sh · install.sh · php-fpm-pool.conf · DEPENDENCIES.md
 scripts/     security_lint.sh · backup_*.sh · consistency_check.php
-.env.example 설정 키 예시 (실제 .env 는 커밋하지 않음)
+.env.example 설정 키 예시 (실제 설정은 저장소 루트 .env — .gitignore 로 Git 제외)
 ```
 
 ## 설치 · 실행
@@ -45,18 +45,19 @@ scripts/     security_lint.sh · backup_*.sh · consistency_check.php
 실습 VM(Ubuntu 22.04 · PHP 8.1 · PostgreSQL 14 · nginx 1.18) 기준입니다. 설정 내용은 `ARCHITECTURE.md` 3장 배포 메모와 8·9·10장 그대로입니다.
 
 ```bash
-sudo bash deploy/install.sh          # 1) 계정·디렉터리·DB·.env·php-fpm 풀·nginx 사이트 파일
+sudo bash deploy/install.sh          # 1) 계정·디렉터리·DB·설정 파일(저장소 루트 .env)·php-fpm 풀·nginx 사이트 파일
 sudo bash deploy/switch-site.sh v2   # 2) 80 포트(도메인)에 v2 를 꽂는다
 ```
 
-**1) `install.sh`** 는 한 번에 다 합니다 — 전용 계정 `tbox-php`, 웹 루트 밖 디렉터리(`/var/lib/tbox`, `/var/log/tbox`, `/etc/tbox`),
-PostgreSQL 역할·DB·스키마·최소 권한, `.env` 생성, php-fpm 풀(`/etc/php/8.1/fpm/pool.d/tbox.conf`),
-nginx 사이트 파일 설치와 로컬 포트 enable.
+**1) `install.sh`** 는 한 번에 다 합니다 — 전용 계정 `tbox-php`, 웹 루트 밖 디렉터리(`/var/lib/tbox-v2`, `/var/log/tbox-v2`, `/etc/tbox-v2`),
+PostgreSQL 역할·DB·스키마·최소 권한, 설정 파일 `.env`(저장소 루트) 생성(`APP_SECRET` 포함), **시드 계정 5개**,
+php-fpm 풀(`/etc/php/8.1/fpm/pool.d/tbox.conf`), nginx 사이트 파일 설치와 로컬 포트 enable.
 **도메인에 공개 중인 버전은 바꾸지 않습니다** — 그건 2)의 몫입니다. (TLS 인증서는 만들지 않습니다. 아래 "왜 80 포트인가" 참고.)
 
 **2) `switch-site.sh`** 는 80 포트에 꽂을 버전을 고릅니다. `v1` / `v2` / `v3` / `status`.
 
-**멱등합니다.** 두 스크립트 모두 여러 번 실행해도 안전하고, 이미 있는 `.env` 의 비밀번호는 바꾸지 않습니다.
+**멱등합니다.** 두 스크립트 모두 여러 번 실행해도 안전하고, 이미 있는 저장소 루트 `.env` 의 비밀번호는 바꾸지 않습니다.
+운영 전환 검토용으로 옮겨 두었던 `/etc/tbox-v2/tbox.env` 가 남아 있으면 값을 그대로 보존해 저장소 루트 `.env` 로 **되돌려 옮깁니다**(`mv`).
 패키지는 설치하지 않습니다 — 없으면 무엇이 없는지 알려 주고 멈춥니다.
 
 ### 왜 80 포트인가 — 세 버전을 한 포트로 (`ARCHITECTURE.md` 3장 배포 메모)
@@ -72,12 +73,12 @@ VM 의 **80 포트 하나**로만 전달합니다. 그래서 VM 은 TLS 를 하�
 | 버전 | 디렉터리 | 공개 사이트 | 항상 열린 로컬 포트 | DB | php-fpm 풀 |
 |---|---|---|---|---|---|
 | v1 실습(취약) | `/var/www/html` (강사 저장소, 불변) | `tbox-v1` | `127.0.0.1:8081` | `tbox` | 기본 `www` |
-| **v2 보안 보완 (이 저장소)** | `/var/www/html/T-Box_Re` | `tbox-v2` | `127.0.0.1:8082` | `tbox_re` | `tbox` (tbox-php) |
+| **v2 보안 보완 (이 저장소)** | `/var/www/tbox-v2` | `tbox-v2` | `127.0.0.1:8082` | `tbox_re` | `tbox` (tbox-php) |
 | v3 새 T-BOX (미착수) | `/var/www/tbox-v3` | `tbox-v3` | `127.0.0.1:8083` | 별도 | 별도 |
 
 - 실제 접속 IP 는 `set_real_ip_from 192.168.104.100` + `real_ip_header X-Forwarded-For` 로 복원합니다 — **프록시 IP 가 보낸 헤더만** 신뢰하므로 다른 곳에서 온 위조 헤더는 무시됩니다 (`SECURITY.md` R-30·R-31).
 - HSTS(`S-09-1`)는 공개용 `tbox-v2` 에만 붙습니다. 로컬 8082(평문)에 붙이면 접속이 불가능해집니다.
-- v1 사이트에는 `deploy/old-site-deny.conf` 가 include 되어 `/T-Box_Re/` 접근이 404 입니다 (v2 소스가 v1 경유로 새는 것 차단).
+- v2 저장소는 `/var/www/tbox-v2` 로, v1 웹 루트(`/var/www/html`) 밖입니다 — v1 경유로 v2 의 소스·`.env`·SQL 에 닿는 URL 이 없습니다 (`SECURITY.md` R-29).
 
 ### 접속 주소
 
@@ -105,6 +106,8 @@ sudo bash deploy/switch-site.sh v2       # 도메인에 재구축 사이트를 �
 `nginx -t` 가 실패하면 **바꾸기 전 링크 상태로 되돌리고 중단**합니다(reload 하지 않음).
 옛 사이트 파일(`tbox`, `tbox-re`, `tbox.bak-1단계`)은 지우지 않고 `/etc/nginx/sites-available/legacy-1단계/` 로 옮겨 보존합니다.
 
+> **저장소 위치를 옮기면** nginx `root`·php-fpm `open_basedir` 가 옛 경로를 가리켜 사이트가 멈춥니다(503). 옮긴 직후 `sudo bash deploy/install.sh && sudo bash deploy/switch-site.sh v2` 를 다시 실행하세요. 스크립트는 자기 위치에서 저장소 경로를 계산합니다.
+
 ### 설치 후 확인
 
 공개 80 포트에 무엇이 꽂혀 있든 v2 를 확인할 수 있도록, 아래는 **v2 로컬 포트 8082** 기준입니다.
@@ -120,8 +123,8 @@ curl -s -o /dev/null -w '%{http_code}\n' http://127.0.0.1:8082/db/schema.sql
 curl -s -o /dev/null -w '%{http_code}\n' http://127.0.0.1:8082/protected/x
 curl -s -o /dev/null -w '%{http_code}\n' http://127.0.0.1:8082/foo.php
 
-# 3) v1 실습 사이트 경유로도 보이지 않나 (404)
-curl -s -o /dev/null -w '%{http_code}\n' http://127.0.0.1:8081/T-Box_Re/src/Db.php
+# 3) v1 실습 사이트가 여전히 살아 있나 (200) — v2 저장소는 v1 웹 루트 밖이라 경유 노출 없음
+curl -s -o /dev/null -w '%{http_code}\n' http://127.0.0.1:8081/index.php
 
 # 4) 도메인 경유(v2 공개 중일 때): 200 + HSTS + CSP
 curl -s -D - -o /dev/null https://changkwon.mso.so/api/health
@@ -139,7 +142,63 @@ sudo -u postgres psql -d tbox_re -c '\dp audit_logs'
 bash scripts/security_lint.sh
 ```
 
-`.env` 는 `deploy/install.sh` 가 만들고 **커밋하지 않습니다**(`.gitignore`). 키 목록은 `.env.example` 을 보세요.
+#### 설정 파일 — 저장소 루트 `.env` (`PRD.md` S-09-6)
+
+실제 설정은 저장소 루트 `.env` 한 곳에만 있습니다. `public/` 밖이라 URL 로 보이지 않고, `.gitignore` 의 `.env` 줄로 Git 에는 들어가지 않습니다.
+소유 `changkwon:tbox-php`, 권한 `0640` — 개발자(`changkwon`)는 읽고 고치고, 앱 계정(`tbox-php`)은 그룹으로 **읽기만** 해 자기 설정을 고쳐 쓸 수 없으며, 그 외 계정은 읽지도 못합니다.
+`deploy/install.sh` 가 만들고 소유·권한을 매번 맞춥니다. 키 목록은 저장소의 `.env.example` 을 보세요(값 없음, 이것만 커밋).
+(운영 전환 시 `/etc/tbox-v2/tbox.env`(`root:tbox-php`)로 이전 검토 — 심층 방어. `PRD.md` S-09-6)
+
+```bash
+ls -l .env                           # -rw-r----- changkwon tbox-php  이어야 합니다 (앱 그룹 밖이면 sudo)
+cat .env                             # 값 보기
+nano .env                            # 값 고치기
+sudo systemctl reload php8.1-fpm     # 고친 뒤 반영
+```
+
+`APP_SECRET`(CSRF 토큰 HMAC 키)이 없으면 설치 스크립트가 `openssl rand -hex 32` 로 만들어 덧붙입니다 — 기존 값은 바꾸지 않습니다.
+
+### 시드 계정 (2단계)
+
+`install.sh` 는 `users` 가 **비어 있을 때만** `scripts/seed_users.php` 를 실행해 아래 5계정을 만듭니다.
+비밀번호는 계정마다 무작위 16자로 생성되며, **저장소·README 에는 적지 않습니다**(`PRD.md` S-09-6).
+평문은 `/etc/tbox-v2/seed-accounts.txt`(`0600 root`) 한 곳에만 있습니다.
+
+| 아이디 | 역할 | 팀 |
+|---|---|---|
+| `admin01` | Admin | — |
+| `manager01` | Manager | 개발팀 |
+| `employee01` | Employee | 개발팀 |
+| `employee02` | Employee | 영업팀 |
+| `guest01` | Guest | — |
+
+```bash
+sudo cat /etc/tbox-v2/seed-accounts.txt      # 한 줄에 "아이디 역할 비밀번호"
+```
+
+계정이 이미 있으면 스크립트는 `건너뜀` 만 출력하고 아무것도 바꾸지 않습니다(비밀번호 파일도 그대로 둡니다).
+비밀번호를 잃어버렸다면 `sudo -u postgres psql -d tbox_re -c 'DELETE FROM users'` 후 재설치가 아니라,
+10단계 계정 관리(F-10)나 `psql` 로 해시를 직접 교체하세요 — `users` 를 지우면 파일·감사 로그의 참조가 깨집니다.
+
+### 로그인 확인 (2단계)
+
+```bash
+# 1) 로그인 없이 API → 401 / 화면 → 302 /login
+curl -s -o /dev/null -w '%{http_code}\n' https://changkwon.mso.so/api/me          # 401
+curl -s -D - -o /dev/null https://changkwon.mso.so/ | grep -i '^location'           # /login
+
+# 2) 로그인 (비밀번호는 파일에서 셸 변수로만 읽습니다 — 화면·히스토리에 남기지 않기 위해)
+P=$(sudo awk '$1=="employee01"{print $NF}' /etc/tbox-v2/seed-accounts.txt)
+curl -s -c jar -X POST -H 'Content-Type: application/json' \
+     --data-binary "$(printf '{"username":"employee01","password":"%s"}' "$P")" \
+     https://changkwon.mso.so/api/login                                             # {"ok":true}
+
+# 3) 내 정보 + CSRF 토큰 (쿠키는 HttpOnly·Secure·SameSite=Lax, 만료 없음 — 수명은 DB 가 판단)
+curl -s -b jar https://changkwon.mso.so/api/me
+
+# 4) CSRF 헤더 없이 로그아웃 → 403
+curl -s -b jar -X POST https://changkwon.mso.so/api/logout                          # 권한이 없습니다
+```
 
 ## 백업 · 복구 절차
 

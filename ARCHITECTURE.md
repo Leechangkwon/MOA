@@ -91,7 +91,7 @@
 │   └── grants.sql                   DB 계정 권한 (최소 권한)
 ├── scripts/                       운영 스크립트 (백업·정합성 검사·휴지통 비우기)
 ├── deploy/                        nginx.conf, php-fpm-pool.conf, DEPENDENCIES.md
-├── .env                           ✖ 실제 설정 (DB 비밀번호 등). 권한 0600, .gitignore 로 Git 제외
+├── .env                           ✖ 실제 설정 (DB 비밀번호·APP_SECRET). changkwon:tbox-php 0640, .gitignore 로 Git 제외
 └── .env.example                     키 이름만 적은 예시 (값 없음). 이것만 Git 에
 
 /etc/tbox/CONTACTS.md              ✖ 사고 연락망 (저장소 밖)
@@ -112,19 +112,20 @@
 > | 버전 | 디렉터리 | nginx 사이트 파일 | 항상 열어 두는 로컬 포트 | DB | php-fpm 풀 |
 > |---|---|---|---|---|---|
 > | v1 실습(취약) | `/var/www/html` (강사 저장소, 불변) | `tbox-v1` / `tbox-v1-local` | `127.0.0.1:8081` | `tbox` | 기본 `www` |
-> | **v2 보안 보완 (이 저장소)** | `/var/www/html/T-Box_Re` (= 위 그림의 `/var/www/tbox`) | `tbox-v2` / `tbox-v2-local` | `127.0.0.1:8082` | `tbox_re` | `tbox` (tbox-php) |
+> | **v2 보안 보완 (이 저장소)** | `/var/www/tbox-v2` (= 위 그림의 `/var/www/tbox`) | `tbox-v2` / `tbox-v2-local` | `127.0.0.1:8082` | `tbox_re` | `tbox` (tbox-php) |
 > | v3 새 T-BOX (미착수) | `/var/www/tbox-v3` | `tbox-v3` / `tbox-v3-local` | `127.0.0.1:8083` | 별도 | 별도 |
 >
 > - 공개용 파일(`tbox-vN`)은 `listen 80` 만, 로컬용(`tbox-vN-local`)은 `listen 127.0.0.1:808N` 만. 로컬 포트는 SSH 포트 포워딩으로 본인만 본다.
 > - HTTPS(S-09-1)는 프록시가 담당한다. VM 의 nginx 는 TLS 를 하지 않는다(자체 서명 인증서 불필요). 프록시→VM 구간은 사내망 평문 → SECURITY R-30.
 > - 실제 접속 IP: `set_real_ip_from 192.168.104.100` + `real_ip_header X-Forwarded-For` — **프록시 IP 가 보낸 헤더만** 신뢰. 다른 곳에서 온 위조 헤더는 무시된다. 프록시가 헤더를 보내는지는 전환 후 실측(로그 형식에 `$http_x_forwarded_for` 포함).
-> - v2 저장소가 v1 웹 루트 안에 있으므로 v1 사이트 파일에 `deploy/old-site-deny.conf` include (`/T-Box_Re/` → 404) 유지. `.env` 는 `changkwon:tbox-php` 소유 **0640** (php-fpm 계정이 읽어야 하므로 0600 의 실질적 동치).
+> - **v2 의 저장소 밖 디렉터리는 `-v2` 접미사로 v1 과 분리한다** (2026-09-09, 방향 A): 설정·비밀 `/etc/tbox-v2` (owner.pgpass·seed-accounts.txt), 업로드 `/var/lib/tbox-v2/storage`·세션 `/var/lib/tbox-v2/sessions`, 로그 `/var/log/tbox-v2` (audit.log·app.log). v1 은 이 폴더들을 쓰지 않는다. **아래 6·8·9·11장의 `/var/lib/tbox`·`/var/log/tbox`·`/etc/tbox` 는 설계 참조 경로이며, 이 VM 의 실제 배포 경로는 위 `-v2` 판이다** (실배포 값은 `deploy/*` 파일이 정본).
+> - v2 저장소는 `/var/www/tbox-v2` — v1 웹 루트(`/var/www/html`) 밖이다. 그래서 v1 경유로 v2 의 소스·`.env`·SQL 에 닿는 URL 이 애초에 없다 (SECURITY R-29 해소, 2026-09-09 이동). 실제 설정은 `.env` (저장소 루트, `public/` 밖, `changkwon:tbox-php` 0640 — php-fpm 계정이 그룹으로 읽음). `.gitignore` 로 Git 에서 제외한다. (운영 전환 시 `/etc/tbox/tbox.env` 로 이전 검토 — S-09-6)
 
 | 왜 이렇게 나누나 | 막히는 공격 |
 |---|---|
 | `public/` 만 nginx root → `src/`, `config/`가 URL로 안 보임 | 설정 파일·소스 노출 |
 | 업로드 파일이 웹 루트 밖 → `/uploads/shell.php` 같은 URL이 존재하지 않음 | 업로드 파일 실행(웹셸) |
-| 실제 설정은 `.env` (public/ 밖, 0600) → URL로 안 보이고, `.gitignore` 로 저장소에도 없음 | Git 유출 (PRD S-09-6). 기존 t-box 저장소에는 `.env` 가 실제로 커밋돼 있었다 |
+| 실제 설정은 `.env` (public/ 밖, `.gitignore` 로 저장소에도 없음) → URL 로 안 보이고 Git 에도 안 들어감 | Git 유출 (PRD S-09-6). *(정정 2026-09-09: 기존 t-box 저장소도 `.gitignore` 로 `.env` 를 제외하고 있었다 — 실측. 기존 앱의 실제 문제는 `db.php` 에 DB 계정·비밀번호 기본값 `tbox/tbox` 가 코드에 박혀 있던 것이다)* |
 
 ---
 
@@ -153,6 +154,22 @@
    │
    └─ [7] 응답 (JSON 또는 파일 스트림). HTML이면 전부 htmlspecialchars   ← PRD S-03
 ```
+
+### 4.0 인증·세션·CSRF 세부 (2단계 결정, 2026-09-09)
+
+| 항목 | 결정 | 이유 |
+|---|---|---|
+| 세션 쿠키 | `tbox_session=<64자 hex>`; `HttpOnly; Secure; SameSite=Lax; Path=/`; **Max-Age 없음**(브라우저 세션 쿠키). 유효성은 언제나 DB 가 판단(유휴 30분·절대 8시간, `.env`) | 쿠키 만료를 늘려도 서버가 거부 |
+| 세션 재발급 | 로그인 성공 시 기존 쿠키의 세션 행 삭제 → `random_bytes(32)` 새 토큰 → DB 에는 SHA-256 만 | 세션 고정 공격 차단 (S-09-2) |
+| 만료 정리 | 로그인 때 `DELETE FROM sessions WHERE expires_at < now() OR last_seen_at < now() - 유휴` | 배치 없이 자연 정리 |
+| 잠금 | `users.failed_count` 5회 → `locked_until = now()+10분`, 그동안 423 `{"error":"로그인 시도가 너무 많습니다. 잠시 후 다시 시도하세요"}`. 성공 시 0 으로 | F-01, S-09-4 |
+| 실패 응답 | 아이디 없음·비밀번호 틀림·비활성 계정 모두 401 동일 문구. 아이디 없음일 때도 더미 해시로 `password_verify` 실행 | 계정 존재 여부·응답 시간 차이 최소화 (PRD 10장) |
+| IP 속도 제한 | nginx `limit_req_zone $binary_remote_addr zone=tbox_login:1m rate=30r/m; burst=10 nodelay` → `POST /api/login` 만, 초과 429 | 계정 잠금(R-06 DoS)과 무차별 대입을 함께 완화. 30r/m 은 "6회 시도 → 잠금" 실습이 429 에 먼저 걸리지 않게 잡은 값 (S-09-8) |
+| CSRF 토큰 | `hash_hmac('sha256', 'csrf:'.세션해시, APP_SECRET)` — **저장하지 않고 세션마다 계산**. 클라이언트는 `GET /api/me` 로 받아 `X-CSRF-Token` 헤더로 보냄. `Http::requireCsrf` 가 `hash_equals` 비교, 불일치·누락 403 | 스키마 변경 없이 세션에 결속. `APP_SECRET` 은 `.env`(install.sh 가 생성) |
+| 로그인 CSRF | `/api/login` 은 `Content-Type: application/json` 만 받음(폼 인코딩 거부) + SameSite=Lax | 크로스사이트 폼 전송 불가 |
+| 미로그인 처리 | `/api/*` → 401 JSON + `Audit::deny(auth.required)`. 그 외 화면 경로 → **302 `/login`** (감사 로그 없음 — 세션 만료 후 첫 방문은 공격이 아님) | API 는 명확한 거부, 화면은 사용성 |
+| 시드 계정 | `scripts/seed_users.php`(CLI, install.sh 가 users 가 비었을 때 실행): admin01(Admin) · manager01(Manager, 개발팀) · employee01(Employee, 개발팀) · employee02(Employee, 영업팀) · guest01(Guest). 비밀번호는 **무작위 16자**로 생성해 `/etc/tbox/seed-accounts.txt`(0600 root) 에만 기록. 저장소·README 에 비밀번호를 적지 않는다 | 기본 비밀번호 커밋 금지 (S-09-6) |
+| 비밀번호 해시 | `password_hash(…, PASSWORD_ARGON2ID)` 기본 파라미터 | S-09-4 |
 
 ### 4.1 Authz.php — 권한 판단은 이 파일 하나에 모은다
 
@@ -632,6 +649,8 @@ GRANT  USAGE, SELECT  ON SEQUENCE audit_logs_id_seq TO tbox_app;
 
 > 위 한 줄이 바로 "실습에서 뚫렸던 시도"가 이번엔 **막히고 기록된** 모습이다.
 
+> **로그인 행의 "누가"**: `auth.login` 은 세션이 만들어지기 전이라 `actor_*` 가 NULL 이고, 대상 사용자는 `target_type=user`, `target_id`, `target_name=username` 에 남는다. 실패(`deny`)도 같다 — 입력된 아이디가 `target_name` 이다. 조회할 때 `actor_name` 대신 `target_name` 을 본다 (2단계 결정).
+
 ---
 
 ## 8. nginx 설정 (핵심만)
@@ -657,6 +676,15 @@ server {
     add_header X-Frame-Options "DENY" always;
     add_header Referrer-Policy "no-referrer" always;
     add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;   # 실습 VM: 공개용 tbox-v2 에만(프록시 뒤 https). 로컬 808N 포트 설정에는 넣지 않음
+
+    # 로그인 IP 속도 제한 (4.0). zone 정의는 http 컨텍스트(deploy/sites/tbox-common.conf)
+    # 실제 파일은 `= /api/login/`(뒤 슬래시) 블록도 같은 내용으로 둔다 — Http::path() 가 끝 `/` 를 떼므로 슬래시만 붙여 속도 제한을 우회하는 것을 막는다 (2단계 실측)
+    location = /api/login {
+        limit_req zone=tbox_login burst=10 nodelay;
+        limit_req_status 429;
+        include fastcgi_params; fastcgi_param SCRIPT_FILENAME $document_root/index.php;
+        fastcgi_pass unix:/run/php/php8.1-fpm-tbox.sock;
+    }
 
     # 정적 파일
     location /assets/ { try_files $uri =404; expires 7d; }

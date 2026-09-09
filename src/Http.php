@@ -2,11 +2,12 @@
 declare(strict_types=1);
 
 /**
- * src/Http.php — 요청 파싱과 응답 통일 (PRD S-01 실패 응답, S-09-5, S-09-7)
+ * src/Http.php — 요청 파싱과 응답 통일 (PRD S-01 실패 응답, S-09-3, S-09-5, S-09-7)
  *
  * 오류 본문은 언제나 {"error":"..."} 한 가지 모양이다.
  * 특히 401/403/404 는 대상에 대한 어떤 정보도 담지 않는다
  * (파일이 있는데 권한이 없는 것인지, 아예 없는 것인지 구분되면 그것만으로 정보 유출이다).
+ * 문구는 아래 상수뿐이다 — 예외 메시지·DB 오류·경로가 본문에 섞여 나가는 경로를 만들지 않는다.
  */
 final class Http
 {
@@ -14,6 +15,15 @@ final class Http
     public const MSG_FORBIDDEN    = '권한이 없습니다';
     public const MSG_UNAUTHORIZED = '로그인이 필요합니다';
     public const MSG_NOT_FOUND    = '찾을 수 없습니다';
+    public const MSG_BAD_REQUEST  = '잘못된 요청입니다';
+
+    /** 로그인 실패 — 아이디 없음·비밀번호 틀림·비활성 계정이 모두 이 문구 하나다 (PRD 10장) */
+    public const MSG_LOGIN_FAILED = '아이디 또는 비밀번호가 올바르지 않습니다';
+    /** 계정 잠금 (PRD F-01, S-09-4, ARCH 4.0) */
+    public const MSG_LOGIN_LOCKED = '로그인 시도가 너무 많습니다. 잠시 후 다시 시도하세요';
+
+    /** JSON 본문 상한 — 로그인·삭제 같은 작은 요청만 JSON 으로 받는다 */
+    private const MAX_JSON_BYTES = 65536;
 
     /** @param array<string,mixed> $data */
     public static function json(array $data, int $code = 200): void
@@ -62,6 +72,7 @@ final class Http
     public static function clientIp(): ?string
     {
         // 프록시 헤더(X-Forwarded-For)는 위조 가능하므로 읽지 않는다.
+        // 실제 IP 복원은 nginx 가 신뢰하는 프록시 IP 에 대해서만 한다 (SECURITY R-30 · R-31).
         $ip = $_SERVER['REMOTE_ADDR'] ?? null;
         if (!is_string($ip) || filter_var($ip, FILTER_VALIDATE_IP) === false) {
             return null;
@@ -79,12 +90,94 @@ final class Http
     }
 
     /**
-     * 상태를 바꾸는 요청(POST/PUT/PATCH/DELETE)의 CSRF 토큰 검사 (PRD S-09-3).
+     * 화면 경로용 리다이렉트 (ARCH 4.0 "미로그인 처리": /api/* 는 401, 화면은 302 /login).
      *
-     * 1단계에는 아직 세션과 토큰 발급이 없다. 그래서 지금은
-     * "세션이 없으면 통과시키지 않는다"만 강제한다 — 세션 없이 상태 변경 요청이
-     * 핸들러까지 도달하는 경로를 처음부터 만들지 않기 위함이다.
-     * TODO(2단계): 세션에 저장한 토큰과 X-CSRF-Token 헤더를 hash_equals 로 비교, 불일치 403.
+     * $path 는 **코드에 적힌 고정 문자열만** 넘긴다. 사용자 입력을 넣을 수 없도록
+     * 허용 형태(슬래시로 시작하는 소문자 경로)를 여기서 한 번 더 검사한다 —
+     * 오픈 리다이렉트(`//evil.example`, `http://…`)가 생길 통로를 없앤다.
+     */
+    public static function redirect(string $path): void
+    {
+        if (preg_match('#^/[a-z0-9/_.-]*$#', $path) !== 1 || strpos($path, '//') !== false) {
+            throw new RuntimeException('허용되지 않는 리다이렉트 경로입니다');
+        }
+        if (!headers_sent()) {
+            http_response_code(302);
+            header('Location: ' . $path);
+            header('Cache-Control: no-store');
+        }
+        exit;
+    }
+
+    /**
+     * JSON 본문 파싱. 폼 인코딩(application/x-www-form-urlencoded, multipart)은 받지 않는다 —
+     * 크로스사이트에서 자동 전송할 수 있는 형식을 상태 변경 API 가 받지 않게 하는 것이 목적이다
+     * (ARCH 4.0 "로그인 CSRF"). 형식이 어긋나면 전부 400 동일 문구다.
+     *
+     * @return array<string,mixed>
+     */
+    public static function jsonBody(): array
+    {
+        $ctype = (string) ($_SERVER['CONTENT_TYPE'] ?? '');
+        if (stripos($ctype, 'application/json') !== 0) {
+            self::error(400, self::MSG_BAD_REQUEST);
+        }
+        $raw = file_get_contents('php://input', false, null, 0, self::MAX_JSON_BYTES + 1);
+        if ($raw === false) {
+            self::error(400, self::MSG_BAD_REQUEST);
+        }
+        if (strlen($raw) > self::MAX_JSON_BYTES) {
+            self::error(400, self::MSG_BAD_REQUEST);
+        }
+        $data = json_decode($raw, true, 8, JSON_INVALID_UTF8_SUBSTITUTE);
+        if (!is_array($data)) {
+            self::error(400, self::MSG_BAD_REQUEST);
+        }
+        return $data;
+    }
+
+    /**
+     * 세션 쿠키 발급 (PRD S-09-2, ARCH 4.0).
+     *   HttpOnly  — JS 가 읽지 못한다 (XSS 로 토큰을 훔쳐 갈 수 없다)
+     *   Secure    — 평문 http 로는 전송되지 않는다
+     *   SameSite=Lax — 크로스사이트 POST 에 쿠키가 실리지 않는다
+     *   Path=/    — 도메인 안 모든 경로
+     *   만료 없음 — 브라우저 세션 쿠키. 수명 판단은 언제나 DB(sessions)가 한다
+     */
+    public static function setSessionCookie(string $token): void
+    {
+        self::sendCookie(Auth::COOKIE_NAME, $token, false);
+    }
+
+    /** 쿠키 즉시 만료 (Max-Age=0). 속성은 발급 때와 같아야 브라우저가 같은 쿠키로 인식한다. */
+    public static function clearSessionCookie(): void
+    {
+        self::sendCookie(Auth::COOKIE_NAME, '', true);
+    }
+
+    private static function sendCookie(string $name, string $value, bool $expire): void
+    {
+        if (headers_sent()) {
+            throw new RuntimeException('헤더가 이미 전송되어 쿠키를 설정할 수 없습니다');
+        }
+        $options = [
+            'path'     => '/',
+            'secure'   => true,
+            'httponly' => true,
+            'samesite' => 'Lax',
+        ];
+        if ($expire) {
+            $options['expires'] = 1;   // 1970-01-01 → 브라우저가 즉시 버린다
+        }
+        setcookie($name, $value, $options);
+    }
+
+    /**
+     * 상태를 바꾸는 요청(POST/PUT/PATCH/DELETE)의 CSRF 토큰 검사 (PRD S-09-3, ARCH 4.0).
+     *
+     * 토큰은 저장하지 않고 세션 해시 + APP_SECRET 으로 계산한다(Auth::csrfToken).
+     * 클라이언트는 GET /api/me 로 받아 X-CSRF-Token 헤더에 실어 보낸다.
+     * 누락·불일치는 대상 정보를 담지 않는 403 동일 문구다.
      */
     public static function requireCsrf(): void
     {
@@ -95,6 +188,15 @@ final class Http
         if (Auth::currentUser() === null) {
             self::error(401, self::MSG_UNAUTHORIZED);
         }
-        // TODO(2단계): 토큰 비교
+
+        $sent = $_SERVER['HTTP_X_CSRF_TOKEN'] ?? '';
+        // hash_equals 는 길이가 다르면 false 를 낸다. 시간차 비교(==)를 쓰지 않는다.
+        if (!is_string($sent) || !hash_equals(Auth::csrfToken(), $sent)) {
+            Audit::deny('csrf', 'token_mismatch', [
+                'target_type' => 'system',
+                'target_name' => $method . ' ' . self::path(),
+            ]);
+            self::error(403, self::MSG_FORBIDDEN);
+        }
     }
 }

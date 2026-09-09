@@ -29,17 +29,28 @@ require_once dirname(__DIR__) . '/src/bootstrap.php';
  *   순차 정수 ID 를 URL 로 받지 않으므로 열거 공격의 표면이 없다.
  * 정책 이름은 Authz::KNOWN_POLICIES 에 있는 것만 쓸 수 있다.
  *
- * 1단계에는 공개 라우트 두 개뿐이다. 2단계부터 인증·파일 라우트가 붙는다.
+ * 2단계 라우트: 로그인 화면·로그인 API 만 public 이고, 나머지는 전부 로그인이 필요하다.
+ * `/` 는 1단계의 public 에서 authenticated 로 바뀌었다 — 로그인 없이는 아무것도 못 본다.
  */
 const TBOX_ROUTES = [
-    ['GET', '/',            'home.php',   Authz::POLICY_PUBLIC],
-    ['GET', '/api/health',  'health.php', Authz::POLICY_PUBLIC],
+    ['GET',  '/',            'home.php',       Authz::POLICY_AUTHENTICATED],
+    ['GET',  '/login',       'login_page.php', Authz::POLICY_PUBLIC],
+    ['POST', '/api/login',   'login.php',      Authz::POLICY_PUBLIC],
+    ['POST', '/api/logout',  'logout.php',     Authz::POLICY_AUTHENTICATED],
+    ['GET',  '/api/me',      'me.php',         Authz::POLICY_AUTHENTICATED],
+    ['GET',  '/api/health',  'health.php',     Authz::POLICY_PUBLIC],
 ];
 
 const TBOX_HANDLER_DIR = __DIR__ . '/../src/handlers/';
 
 /** `{id}` 자리에 허용되는 문자 (UUID). 경로 변수는 이 형태만 핸들러에 전달된다. */
 const TBOX_ID_PATTERN = '[0-9a-f-]{36}';
+
+/** 미로그인 화면 요청을 보내는 곳. 코드 상수이며 요청 값이 섞이지 않는다 (ARCH 4.0). */
+const TBOX_LOGIN_PATH = '/login';
+
+/** 이미 로그인한 사용자가 로그인 화면에 왔을 때 보내는 곳 (src/handlers/login_page.php). */
+const TBOX_HOME_PATH = '/';
 
 /**
  * 라우트 표가 스스로 성립하는지 검사한다. 하나라도 어긋나면 요청을 처리하지 않는다.
@@ -153,6 +164,12 @@ if ($matched === null) {
 // ─── [2] 인증 · [3] CSRF · [4] 인가 ────────────────────────────
 $user = null;
 if ($policy !== Authz::POLICY_PUBLIC) {
+    // 미로그인 처리 (ARCH 4.0): API 는 401 JSON + Audit::deny, 화면 경로는 302 /login.
+    // 화면 경로에 감사 로그를 남기지 않는 이유 — 세션이 만료된 뒤의 첫 방문은 공격이 아니고,
+    // 그런 요청까지 남기면 실제 공격 흔적이 묻힌다 (PRD S-07 취지).
+    if (Auth::currentUser() === null && strpos($reqPath, '/api/') !== 0) {
+        Http::redirect(TBOX_LOGIN_PATH);
+    }
     $user = Auth::requireLogin();          // 실패 시 401 + Audit::deny (Auth 안에서)
     Http::requireCsrf();                   // 상태 변경 요청의 토큰 검사 (PRD S-09-3)
 

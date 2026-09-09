@@ -35,3 +35,56 @@ code {
   font-size: .9em;
   color: var(--accent);
 }
+
+/* ─── 2단계: 로그인 화면 · 홈 상단바 ─────────────────────────── */
+.card--narrow { max-width: 24rem; }
+
+.topbar {
+  display: flex;
+  gap: 1rem;
+  align-items: flex-start;
+  justify-content: space-between;
+  margin-bottom: 1.25rem;
+}
+.topbar h1 { margin-bottom: .35rem; }
+.topbar .lead { margin: 0; }
+
+.form { display: grid; gap: 1rem; margin: 1.25rem 0 0; }
+.field { display: grid; gap: .35rem; }
+.field__label { font-size: .9rem; color: var(--muted); }
+.field input {
+  padding: .55rem .65rem;
+  font: inherit;
+  color: var(--fg);
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+}
+.field input:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+
+.btn {
+  padding: .55rem 1rem;
+  font: inherit;
+  color: #fff;
+  background: var(--accent);
+  border: 1px solid var(--accent);
+  border-radius: 6px;
+  cursor: pointer;
+}
+.btn:hover { filter: brightness(1.08); }
+.btn:disabled { cursor: default; opacity: .55; }
+.btn--quiet {
+  color: var(--accent);
+  background: #fff;
+  border-color: var(--line);
+  white-space: nowrap;
+}
+
+/* 오류 문구 자리. 서버가 준 문구만 textContent 로 들어간다 (app.js). */
+.msg {
+  min-height: 1.6em;
+  margin: 1rem 0 0;
+  color: #a3221f;
+  font-size: .95rem;
+}
+.msg:empty { margin: 0; }
