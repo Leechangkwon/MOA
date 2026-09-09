@@ -1,0 +1,37 @@
+/* public/assets/app.css — 1단계 최소 스타일
+   외부 폰트·CDN 을 불러오지 않는다. CSP 가 default-src 'self' 이므로 외부 자원은 차단된다. */
+:root {
+  --bg: #f6f7f9;
+  --fg: #1c1f24;
+  --muted: #5b6472;
+  --line: #d8dde4;
+  --accent: #1d5fbf;
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  padding: 2.5rem 1.25rem;
+  background: var(--bg);
+  color: var(--fg);
+  font: 16px/1.6 system-ui, -apple-system, "Noto Sans KR", sans-serif;
+}
+.card {
+  max-width: 40rem;
+  margin: 0 auto;
+  padding: 1.75rem 1.75rem 2rem;
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+}
+h1 { margin: 0 0 .5rem; font-size: 1.4rem; }
+.lead { margin: 0 0 1.25rem; color: var(--muted); }
+.checks { margin: 0; padding-left: 1.2rem; color: var(--muted); }
+.checks li { margin: .35rem 0; }
+code {
+  padding: .1rem .35rem;
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  font-size: .9em;
+  color: var(--accent);
+}

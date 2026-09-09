@@ -1,0 +1,64 @@
+-- db/grants.sql — DB 계정 최소 권한 (ARCHITECTURE 10장 · 7.2, PRD S-09-10, S-07)
+--
+-- 실행 계정: postgres (슈퍼유저). schema.sql · seed.sql 이 끝난 뒤 실행한다.
+-- 실행 예:  sudo -u postgres psql -d tbox_re -v ON_ERROR_STOP=1 -f db/grants.sql
+--
+-- 원칙
+--   · 앱 계정 tbox_app 은 "필요한 표에, 필요한 동작만".
+--   · 파일 삭제는 논리 삭제(UPDATE deleted_at)이므로 files 에 DELETE 권한이 아예 필요 없다.
+--   · permissions 는 SELECT 만  → 화면·API 로 권한 표를 바꿀 수 없다(권한 상승 경로 차단, ARCH 6.2-1).
+--   · audit_logs 는 SELECT·INSERT 만 → 코드 버그가 있어도, 침입자가 앱 계정을 얻어도 지울 수 없다(Append-only).
+--   · DROP / TRUNCATE / ALTER 는 어디에도 주지 않는다(테이블 소유자 tbox_owner 만 가능).
+--   · 스키마에 표를 만들 권한(CREATE)과 이 DB 에 접속할 권한(CONNECT)은 PUBLIC 에서 회수하고
+--     필요한 역할에만 준다(아래 ①~③).
+
+\set ON_ERROR_STOP on
+
+-- 스키마 사용 권한.
+-- `REVOKE ALL ON SCHEMA public FROM PUBLIC` 은 하지 않되(USAGE 를 통째로 끊으면 확장·도구 동작을
+-- 예측 불가하게 바꾼다), CREATE 와 CONNECT 는 회수한다. 아래 두 REVOKE 가 그것이다.
+GRANT USAGE ON SCHEMA public TO tbox_app;
+
+-- ① 앱 계정(및 PUBLIC 에 속한 모든 역할)이 public 스키마에 표를 만들 수 없게 한다. — PRD S-09-10
+--    PostgreSQL 14 는 public 스키마의 CREATE 를 PUBLIC 에 기본 부여한다. 그 결과 1단계 검토에서
+--    tbox_app 으로 `CREATE TABLE hax(i int)` 가 성공했다(최소 권한 위반).
+--    USAGE 는 남겨 두므로 기존 표 접근에는 영향이 없다.
+REVOKE CREATE ON SCHEMA public FROM PUBLIC;
+
+-- ②  마이그레이션 계정만 표를 만들 수 있다. tbox_owner 는 배포 시에만 쓰이고
+--    비밀번호는 /etc/tbox/owner.pgpass (0600 root) 에만 있다. — ARCH 10장
+--    (①로 PUBLIC 의 CREATE 를 회수했으므로, 이 GRANT 가 없으면 db/schema.sql 재적용이 실패한다.)
+GRANT CREATE, USAGE ON SCHEMA public TO tbox_owner;
+
+-- ③ 이 DB 에 접속할 수 있는 역할을 명시한 둘로 한정한다. — PRD S-09-10
+--    같은 PostgreSQL 인스턴스에는 옛 t-box 의 역할(`tbox` 등)이 함께 있다.
+--    PUBLIC 의 기본 CONNECT 를 그대로 두면 그 역할들로도 tbox_re 에 붙을 수 있다.
+REVOKE CONNECT ON DATABASE tbox_re FROM PUBLIC;
+GRANT  CONNECT ON DATABASE tbox_re TO tbox_app, tbox_owner;
+
+-- ─── 먼저 전부 회수한다(재실행 시 과거 권한이 남지 않게) ───
+REVOKE ALL ON teams, users, permissions, files, audit_logs, sessions FROM tbox_app;
+
+-- ─── 표별 권한 ───
+GRANT SELECT, INSERT, UPDATE                 ON users     TO tbox_app;
+GRANT SELECT, INSERT, UPDATE                 ON teams     TO tbox_app;
+GRANT SELECT, INSERT, UPDATE                 ON files     TO tbox_app;
+GRANT SELECT, INSERT, UPDATE, DELETE         ON sessions  TO tbox_app;   -- 로그아웃·세션 폐기(R-10)에 DELETE 필요
+GRANT SELECT                                 ON permissions TO tbox_app; -- ★ SELECT 만
+GRANT SELECT, INSERT                         ON audit_logs  TO tbox_app; -- ★ UPDATE/DELETE/TRUNCATE 없음 (PRD S-07)
+
+-- ─── 시퀀스 (INSERT 하는 표의 id 발급에 필요) ───
+GRANT USAGE, SELECT ON SEQUENCE users_id_seq      TO tbox_app;
+GRANT USAGE, SELECT ON SEQUENCE teams_id_seq      TO tbox_app;
+GRANT USAGE, SELECT ON SEQUENCE files_id_seq      TO tbox_app;
+GRANT USAGE, SELECT ON SEQUENCE audit_logs_id_seq TO tbox_app;
+-- sessions.id 는 CHAR(64) 해시이므로 시퀀스가 없다. permissions 도 시퀀스가 없다.
+
+-- ─── 앞으로 만들 표에 자동으로 권한이 새지 않게 한다 ───
+-- (기본 권한을 설정하지 않는다 = 새 표는 명시적으로 GRANT 해야 앱이 쓸 수 있다)
+
+-- ─── tbox_backup (읽기 전용 백업 계정) — PRD S-08 / ARCH 11.1
+-- 9단계(백업·운영)에서 만든다. 자리만 남긴다:
+--   CREATE ROLE tbox_backup LOGIN PASSWORD '...';
+--   GRANT USAGE ON SCHEMA public TO tbox_backup;
+--   GRANT SELECT ON ALL TABLES IN SCHEMA public TO tbox_backup;

@@ -123,7 +123,7 @@
 | 1 | R-01 | ~~감사 로그 경유 정보 누출~~ | ~~높음~~ | ✅ 해소 | Manager 열람 자체를 제거 (Q-8, 2026-09-08). Admin 전용 | — |
 | 2 | R-02 | 악성 파일 유통 (매크로 docx, 위장 실행파일, zip 속 exe) | **높음** | ◐ 선택(2단계) | 파일 공유 서비스의 본질적 위험. 서버는 무사해도 **직원 PC가 감염** | ClamAV 스캔을 MVP 필수로. `pending` 상태는 다운로드 불가, `infected` 는 격리 + Admin 알림 (→ PRD S-06, F-05) |
 | 3 | R-03 | SSRF 경로 통제 (F-14 구현으로 cURL 허용) | **높음** | ◐ 설계 | cURL 이 필요해졌으므로 "함수 차단" 대신 "한 파일에 격리 + 린트 + 방화벽" 으로 통제 (1.6) | `src/Fetch.php` 격리, 린트 반려, 소켓 함수 차단 유지, 아웃바운드 443 만 (→ ARCH 5.6, 9, 11.3) |
-| 4 | R-04 | 권한 정책 누락 (핸들러가 Authz를 안 부름) | **높음** | ◐ 규칙만 | 사람의 실수 하나로 S-01 전체 무효 | 라우트 테이블 `policy` 필수 + 린트 (→ ARCH 4장) |
+| 4 | R-04 | 권한 정책 누락 (핸들러가 Authz를 안 부름) | **높음** | ✅ 구현·확인 (1단계, 2026-09-09: 모르는 정책·없는 핸들러 → 전 요청 500, 로그에 사유) | 사람의 실수 하나로 S-01 전체 무효 | 라우트 테이블 `policy` 필수 + 린트 (→ ARCH 4장) |
 | 5 | R-05 | Admin 계정 탈취 (비밀번호 단일 요소) | **높음** | ◐ | Admin 하나 털리면 급여·인사 자료 전부 노출. 잠금 5회는 브루트포스만 막음 | Admin·Manager **MFA(TOTP)** 필수, Admin 로그인은 사내 특정 IP 대역 제한 (→ PRD F-01, S-09-4) |
 | 6 | R-06 | 계정 잠금을 이용한 서비스 거부 | 중간 | ❌ | 공격자가 `admin01` 에 틀린 비밀번호 5번 → 관리자 10분 잠금 반복 | 계정 잠금 + **IP 단위 속도 제한** 병행, 잠금 시 관리자 알림 (→ PRD F-01) |
 | 7 | R-07 | PATCH 대량 할당 (mass assignment) | 중간 | ❌ | `/api/files/{id}` PATCH 가 요청 JSON을 그대로 UPDATE 하면 `uploaded_by`, `team_id`, `sha256` 까지 바뀔 수 있음 | 변경 허용 필드를 `description`, `access_level`(+`team_id`) 로 **명시적 화이트리스트** (→ PRD 8장, ARCH handlers) |
@@ -242,6 +242,10 @@
 | — | R-25 | 침해 시 증거 소멸 (재부팅·삭제) | 중간 | ✅ 설계 | 침해 대응 1·2단계 "하지 말 것" 명시, 연 1회 훈련 |
 | — | R-26 | 개인정보(급여) 유출 시 법적 통지 기한 미준수 | 중간 | ✅ 설계 | 침해 대응 5단계에 72시간 통지 명시. 법무 연락망 |
 | — | R-27 | 외부 도구(ClamAV·restic) 자체의 취약점 | 낮음 | ◐ | `DEPENDENCIES.md` 에 포함, 배포판 패키지 + 자동 패치 대상 |
+| — | R-28 | ~~실습 VM 에서 HSTS·80→443 리다이렉트 생략~~ → 구조 재확인: 강사 리버스 프록시가 TLS 종단·http→https 301, VM 80 으로 전달 (ARCH 3장 배포 메모) | 낮음 | ✅ **해소** (2026-09-09) | v2 를 80 공개로 전환(`deploy/switch-site.sh v2`). 실측 `curl -D - https://changkwon.mso.so/api/health` → `strict-transport-security: max-age=31536000; includeSubDomains`, `http://` → 301 |
+| — | R-29 | 새 저장소가 **옛 취약 사이트의 웹 루트 안**(`/var/www/html/T-Box_Re`)에 있음 | 높음 → 완화 | ✅ 차단 확인 (1단계) | 옛 사이트에 `deploy/old-site-deny.conf` include (`/T-Box_Re/` → 404). 실측 `http://호스트/T-Box_Re/src/Db.php`·`/.env`·`/db/schema.sql` 전부 404, 옛 사이트 `/index.php` 200 유지. 저장소를 옮기면 이 include 는 불필요 |
+| — | R-30 | **프록시→VM 내부 구간 평문 HTTP** | 중간 | ◐ **위험 수용** (사내망) | 감사 로그 IP 우려는 실측으로 해소: 프록시가 `X-Forwarded-For`·`X-Forwarded-Proto` 를 보내고 `set_real_ip_from 192.168.104.100` 으로 `$remote_addr` 가 실제 클라이언트 IP(로그 원문 `1.222.243.244 "192.168.104.100" "1.222.243.244" "https"`). 내부 구간 암호화는 운영 전환 시(VM 직접 443) |
+| — | R-31 | **VM 80 포트에 사내망 어디서나 직접 접속 가능** (프록시 우회) | 중간 | ◐ | IP 위조는 불가 — 실측: 127.0.0.1 에서 `X-Forwarded-For: 8.8.8.8` 보내도 `$remote_addr` = 127.0.0.1. 접속 자체 차단은 9단계 방화벽(80 은 192.168.104.100 만 허용) |
 
 ### 6.4 2차 검토 후에도 남는 한계 — 솔직하게
 
@@ -264,7 +268,7 @@
 | A-16 | ARCH 9장 | `disable_functions` — F-14 결정으로 cURL 은 허용, 소켓·프로세스 함수만 차단 + Fetch.php 격리 | ✅ 반영(수정) |
 | A-19 | PRD 7.5, ARCH 5.6 | F-14 "URL로 가져오기" 13개 안전 조건 + 처리 흐름 + T-6 페이로드 | ✅ 반영 (2026-09-08) |
 | A-20 | PRD 5·7·8장, ARCH 5장 | Q-6 403 통일, Q-8 Admin 전용 반영 | ✅ 반영 (2026-09-08) |
-| A-17 | `deploy/DEPENDENCIES.md` | 의존성 목록 파일 생성 | ⬜ 서버 구축(5단계) 시 |
+| A-17 | `deploy/DEPENDENCIES.md` | 의존성 목록 파일 생성 | ✅ 1단계에서 생성 (실측 버전·EOL 표). php-curl·mbstring 은 7단계 전 추가 |
 | A-18 | `/etc/tbox/CONTACTS.md` | 사고 연락망 (저장소 밖) | ⬜ 운영 착수 시 |
 
 ---
@@ -276,4 +280,7 @@
 | 2026-09-08 | 설계 검토 (1차) | Fable (AI) | PRD v1.0, ARCHITECTURE v1.0 | 5대 공격: 설계상 차단 · 추가 위험 20건 도출(높음 5) | 코드 없음 → 구현 후 4장 절차 재실행 필요. 액션 A-1 ~ A-10 미반영 |
 | 2026-09-08 | 결정 반영 (Q-10·Q-11) | Fable (AI) | PRD·ARCH | F-14 허용 목록 초기값 비움·Manager 이상 확정. **설치 환경 실측: PHP 8.1.2 / PostgreSQL 14.24 / nginx 1.18 / Ubuntu 22.04** — 사용자 결정으로 8.1 유지, R-21 위험 수용으로 상태 변경 | php-curl·mbstring 미설치 → 7단계 전 설치 필요 |
 | 2026-09-08 | 결정 반영 (Q-6·Q-7·Q-8) | Fable (AI) | PRD·ARCH | 403 통일(정보 미포함 + UUID), 감사 로그 Admin 전용(R-01 해소), F-14 URL 가져오기 **구현 확정** + S-05 13개 조건 재작성 | Q-10(허용 도메인 초기값) 대기. 7단계 검토 시 T-6 전부 실행 |
+| 2026-09-09 | **1단계 구현 검토** (뼈대·DB) | Fable (AI) | `public/index.php`·`src/bootstrap·Audit·Storage·Upload(골격)`·`db/*.sql`·`deploy/*`·`.env.example` | **통과**: URL 차단(`/.env` `/src/Db.php` `/db/schema.sql` `/foo.php` `/protected/x` `/.git/config` `/PRD.md` 전부 404, 옛 사이트 경유 `/T-Box_Re/*` 404), `/api/health` 200, 404/405 JSON, CSP 등 헤더 4개, `\dt` 6 표, tbox_app 권한 = users/teams/files SIU · sessions SIUD · permissions S · audit_logs SI, 스키마 CREATE 없음(`permission denied for schema public`), DB CONNECT 는 tbox_app·tbox_owner 만, 정책 미등록 라우트 → 전 요청 500(CLI 재현 + app.log), 린트 0건, `.env` 미추적. **실패 후 수정**: 1회차 재지시로 스키마 CREATE·PUBLIC CONNECT 회수, storage 그룹 www-data. **미검증**: 401/403+Audit::deny 실제 경로(라우트 없음, 2단계), CSRF 토큰 비교(2단계), 옛 역할 `tbox` 접속 거부 응답 원문(권한 값 f 로만 확인), T-17~T-19 서버 기준선 | R-04 ✅, R-28·R-29 추가, A-17 ✅. 사용자 자기 공격(관문 ③) 후 커밋 |
+| 2026-09-09 | **1단계 보완 검토** (80 포트 공개 전환·버전 스위치) | Fable (AI) | `deploy/sites/*.conf`, `deploy/switch-site.sh`, `deploy/install.sh` | **통과**: 도메인 경유 `/api/health` 200 + HSTS·CSP 등 헤더, `/.env` `/src/Db.php` `/db/*.sql` `/foo.php` `/index.php` `/protected/x` `/.git/config` `/PRD.md` `/deploy/install.sh` `/T-Box_Re/*` 전부 404, `http://` 301. 로컬 8081(v1)·8082(v2) 200. XFF 위조 무시 실측. v1↔v2 전환·복귀, `nginx -t` 실패 시 자동 복구(Opus 보고). 린트 0건, `.env` 미추적. **미검증**: 프록시의 업로드 크기 제한(6단계 T-9 때 실측) | R-28 ✅, R-30·R-31 실측 반영. 자기 공격(관문 ③) 대기 |
+| 2026-09-09 | **1단계 자기 공격 (관문 ③)** | 사용자 | 도메인 `https://changkwon.mso.so` | `/` → 1단계 화면, `/api/health` → `{"ok":true}`, `/.env` 404, `/src/Db.php` 404, `/db/schema.sql` 404, `/T-Box_Re/src/Db.php` 404, `psql \dt` 6 rows (audit_logs·files·permissions·sessions·teams·users) | **통과** → 1단계 커밋 |
 | 2026-09-08 | 설계 검토 (2차, 앱 밖) | Fable (AI) | 강사 강조 5영역 + 원칙 3가지 | R-21 ~ R-27 추가(높음 3). **EOL 직전 버전(R-21) 발견·수정**. S-10·S-11·T-17~23·ARCH 11.3~11.6 반영 | A-11 ~ A-16 반영 완료, A-17·A-18 은 서버 구축 시. A-1 ~ A-10 은 여전히 미반영 |

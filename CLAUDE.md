@@ -63,7 +63,7 @@ Opus 에게 넘기는 프롬프트는 아래 항목을 모두 포함한다.
 - `ARCHITECTURE.md` 13장 체크리스트를 완료 전에 스스로 점검한다.
 - **보안 핵심 파일**은 지시서의 "수정 파일"에 명시된 경우에만 고친다:
   `src/Authz.php`, `src/Auth.php`, `src/Db.php`, `src/Storage.php`, `src/Upload.php`, `src/Audit.php`,
-  `db/schema.sql`, `db/grants.sql`, `deploy/nginx.conf`, `deploy/php-fpm-pool.conf`, `public/index.php`(라우트 테이블)
+  `db/schema.sql`, `db/grants.sql`, `deploy/sites/*.conf`, `deploy/switch-site.sh`, `deploy/install.sh`, `deploy/php-fpm-pool.conf`, `public/index.php`(라우트 테이블)
 - 새 외부 요청 코드(HTTP 클라이언트, 소켓)는 만들지 않는다. 필요하면 멈추고 PRD S-05 심사를 요청한다.
 - 비밀 정보(`.env`, 인증서, 키)는 저장소에 넣지 않는다. 예시는 `.env.example` 만.
 - 완료 보고는 2장의 "보고 형식"을 따른다. 테스트를 돌리지 못했으면 돌리지 못했다고 쓴다.

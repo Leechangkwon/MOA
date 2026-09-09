@@ -101,6 +101,25 @@
 /var/backups/tbox/                 ✖ 백업 (암호화, 0700)
 ```
 
+> **실습 VM 배포 메모 (2026-09-09 개정)** — 이 VM 의 외부 노출 구조는 VM 에서 바꿀 수 없다.
+>
+> ```
+> 브라우저 ──https──▶ 강사 리버스 프록시 (changkwon.mso.so = 112.220.89.250, TLS 종단, http→https 301)
+>                        └──http──▶ 이 VM 192.168.105.44 : **80 포트 하나** (프록시 내부 IP 192.168.104.100)
+> ```
+> - 따라서 도메인으로 공개되는 웹은 **한 번에 한 버전**이다. 버전은 세 개를 나란히 유지하고 `deploy/switch-site.sh vN` 으로 80 포트에 꽂을 버전만 고른다.
+>
+> | 버전 | 디렉터리 | nginx 사이트 파일 | 항상 열어 두는 로컬 포트 | DB | php-fpm 풀 |
+> |---|---|---|---|---|---|
+> | v1 실습(취약) | `/var/www/html` (강사 저장소, 불변) | `tbox-v1` / `tbox-v1-local` | `127.0.0.1:8081` | `tbox` | 기본 `www` |
+> | **v2 보안 보완 (이 저장소)** | `/var/www/html/T-Box_Re` (= 위 그림의 `/var/www/tbox`) | `tbox-v2` / `tbox-v2-local` | `127.0.0.1:8082` | `tbox_re` | `tbox` (tbox-php) |
+> | v3 새 T-BOX (미착수) | `/var/www/tbox-v3` | `tbox-v3` / `tbox-v3-local` | `127.0.0.1:8083` | 별도 | 별도 |
+>
+> - 공개용 파일(`tbox-vN`)은 `listen 80` 만, 로컬용(`tbox-vN-local`)은 `listen 127.0.0.1:808N` 만. 로컬 포트는 SSH 포트 포워딩으로 본인만 본다.
+> - HTTPS(S-09-1)는 프록시가 담당한다. VM 의 nginx 는 TLS 를 하지 않는다(자체 서명 인증서 불필요). 프록시→VM 구간은 사내망 평문 → SECURITY R-30.
+> - 실제 접속 IP: `set_real_ip_from 192.168.104.100` + `real_ip_header X-Forwarded-For` — **프록시 IP 가 보낸 헤더만** 신뢰. 다른 곳에서 온 위조 헤더는 무시된다. 프록시가 헤더를 보내는지는 전환 후 실측(로그 형식에 `$http_x_forwarded_for` 포함).
+> - v2 저장소가 v1 웹 루트 안에 있으므로 v1 사이트 파일에 `deploy/old-site-deny.conf` include (`/T-Box_Re/` → 404) 유지. `.env` 는 `changkwon:tbox-php` 소유 **0640** (php-fpm 계정이 읽어야 하므로 0600 의 실질적 동치).
+
 | 왜 이렇게 나누나 | 막히는 공격 |
 |---|---|
 | `public/` 만 nginx root → `src/`, `config/`가 URL로 안 보임 | 설정 파일·소스 노출 |
@@ -544,7 +563,8 @@ DB 가 유출돼도 해시만 있으므로 세션을 위조할 수 없다.
 |---|---|
 | 이름은 서버가 만든 **UUID**만 사용 | 사용자 파일명(`../../x`)이 경로에 절대 들어가지 않음 |
 | 앞 2글자/다음 2글자로 하위 폴더 분산 | 한 폴더에 수십만 개가 쌓이는 것 방지 |
-| 디렉터리 `0750`, 파일 `0640`, 소유자 `tbox-php` | 다른 계정·웹 서버가 직접 읽지 못함 |
+| 최상위 `storage/` 는 **setgid(`2750`)**, 하위 폴더는 `Storage::put()` 이 `0750` 으로 만들고 파일은 `0640` | 하위 폴더가 그룹 `www-data` 를 상속해야 nginx `internal` 경로가 읽을 수 있다(1단계 실측: setgid 없으면 하위 폴더 그룹이 `tbox-php`·`o+rx` 로 생김). **6단계에서 install.sh 와 Storage.php 에 적용** (2026-09-09 결정) |
+| 디렉터리 `0750`, 파일 `0640`, 소유자 `tbox-php`, **그룹 `www-data`** | 다른 계정이 읽지 못함. nginx(www-data)는 그룹 읽기로 `internal` 경로(8장 `/protected/`, X-Accel-Redirect)에서만 내준다 — PHP 가 권한 확인을 끝낸 뒤에만 도달하는 경로 |
 | 디렉터리에 실행 권한·PHP 핸들러 없음 | 어떤 파일이 들어와도 실행되지 않음 |
 | 원본 파일명은 DB에만, 다운로드 헤더에 인코딩해서 사용 | 헤더 인젝션(CR/LF) 방지 |
 
@@ -616,6 +636,9 @@ GRANT  USAGE, SELECT  ON SEQUENCE audit_logs_id_seq TO tbox_app;
 
 ## 8. nginx 설정 (핵심만)
 
+> **실습 VM 에서는** 아래 예시의 `listen 443 ssl` · 인증서 · 80→443 리다이렉트 블록을 **쓰지 않는다.** TLS 는 강사 프록시가 종단하고 VM 에는 80 으로 들어온다(3장 배포 메모). 실제 파일은 `deploy/sites/tbox-v2.conf`(공개, `listen 80`)와 `deploy/sites/tbox-v2-local.conf`(`127.0.0.1:8082`) 이며, 그 외 항목(root·헤더·단일 입구·`internal`·숨김 파일 404)은 아래와 동일하다. 추가로 `set_real_ip_from 192.168.104.100; real_ip_header X-Forwarded-For;` 를 넣고, HSTS 는 공개용(`tbox-v2`)에만 넣는다(브라우저는 프록시를 통해 항상 https 로 보므로 유효). 운영 전환 시에는 아래 원문대로 VM 이 직접 443 을 받는다.
+
+
 ```nginx
 server {
     listen 443 ssl http2;
@@ -633,7 +656,7 @@ server {
     add_header X-Content-Type-Options "nosniff" always;
     add_header X-Frame-Options "DENY" always;
     add_header Referrer-Policy "no-referrer" always;
-    add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
+    add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;   # 실습 VM: 공개용 tbox-v2 에만(프록시 뒤 https). 로컬 808N 포트 설정에는 넣지 않음
 
     # 정적 파일
     location /assets/ { try_files $uri =404; expires 7d; }
@@ -656,9 +679,9 @@ server {
     }
 
     # 숨김 파일·백업 파일 차단
-    location ~ /\. { deny all; }
+    location ~ /\. { return 404; }        # 403(deny all) 이 아니라 404 — 존재 여부 자체를 숨긴다 (PRD 13장 1단계 기준, S-09-5 취지)
 }
-server { listen 80; server_name tbox.internal; return 301 https://$host$request_uri; }
+server { listen 80; server_name tbox.internal; return 301 https://$host$request_uri; }   # ※ 실습 VM 에서는 생략 — 80 은 프록시가 전달해 오는 앱 트래픽이고, http→https 301 은 프록시가 한다
 ```
 
 | 설정 | 어떤 요구사항 |
@@ -693,7 +716,7 @@ php_admin_value[session.cookie_secure]   = 1
 php_admin_value[session.cookie_samesite] = Lax
 php_admin_value[session.use_strict_mode] = 1      ; 세션 고정 공격 방지
 php_admin_value[allow_url_fopen]     = Off        ; ★ file_get_contents('http://...') 자체를 막음. 외부 요청은 src/Fetch.php 의 cURL 만 (S-05 ⑫⑬)
-php_admin_value[open_basedir]        = /var/www/tbox:/var/lib/tbox:/etc/tbox:/tmp
+php_admin_value[open_basedir]        = /var/www/tbox:/var/lib/tbox:/var/log/tbox:/etc/tbox:/tmp   ; /var/log/tbox 는 Audit 이 audit.log 를 직접 append 하므로 필요
 ; 소켓·프로세스 함수 차단 (SECURITY.md R-03). cURL 은 F-14 에 필요하므로 허용 — 대신 src/Fetch.php 밖의 curl_* 는 린트가 반려
 php_admin_value[disable_functions]   = fsockopen,pfsockopen,stream_socket_client,stream_socket_server,exec,system,shell_exec,passthru,popen,proc_open
 ```
