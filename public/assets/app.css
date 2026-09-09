@@ -88,3 +88,94 @@ code {
   font-size: .95rem;
 }
 .msg:empty { margin: 0; }
+
+/* ─── 3단계: 파일 목록 · 업로드 폼 ───────────────────────────── */
+/* [hidden] 은 브라우저 기본 스타일이지만, .field 의 display:grid 가 그것을 덮는다.
+   JS 가 el.hidden 으로만 표시를 바꾸므로 여기서 우선순위를 되돌린다. */
+[hidden] { display: none !important; }
+
+.card--wide { max-width: 68rem; }
+
+.notice {
+  margin: 0 0 1.25rem;
+  padding: .7rem .85rem;
+  color: #7a4a06;
+  background: #fff8ec;
+  border: 1px solid #f0d9b0;
+  border-radius: 6px;
+  font-size: .92rem;
+}
+
+.panel {
+  margin-top: 1.5rem;
+  padding-top: 1.25rem;
+  border-top: 1px solid var(--line);
+}
+.panel h2 { margin: 0 0 .75rem; font-size: 1.05rem; }
+
+.form--grid {
+  grid-template-columns: repeat(auto-fit, minmax(13rem, 1fr));
+  align-items: end;
+}
+.field select {
+  padding: .55rem .5rem;
+  font: inherit;
+  color: var(--fg);
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+}
+.field input[type="file"] { font-size: .9rem; }
+
+.toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: .5rem;
+  margin-bottom: .85rem;
+}
+.toolbar input[type="search"],
+.toolbar select {
+  padding: .5rem .55rem;
+  font: inherit;
+  color: var(--fg);
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+}
+.toolbar input[type="search"] { flex: 1 1 14rem; min-width: 0; }
+
+.table-wrap { overflow-x: auto; }
+table.files {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: .92rem;
+}
+table.files th,
+table.files td {
+  padding: .5rem .55rem;
+  text-align: left;
+  vertical-align: top;
+  border-bottom: 1px solid var(--line);
+  word-break: break-word;
+}
+table.files th {
+  position: sticky;
+  top: 0;
+  background: var(--bg);
+  color: var(--muted);
+  font-weight: 600;
+  white-space: nowrap;
+}
+table.files td.actions { white-space: nowrap; }
+table.files td.actions .btn { margin-right: .3rem; }
+
+.btn--small { padding: .3rem .55rem; font-size: .85rem; }
+
+.muted { color: var(--muted); font-size: .9rem; }
+
+.pager {
+  display: flex;
+  gap: .6rem;
+  align-items: center;
+  margin-top: .9rem;
+}

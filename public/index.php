@@ -39,6 +39,15 @@ const TBOX_ROUTES = [
     ['POST', '/api/logout',  'logout.php',     Authz::POLICY_AUTHENTICATED],
     ['GET',  '/api/me',      'me.php',         Authz::POLICY_AUTHENTICATED],
     ['GET',  '/api/health',  'health.php',     Authz::POLICY_PUBLIC],
+
+    // 3단계 라우트 — 정책은 전부 authenticated 다(로그인만 요구).
+    // 역할·팀 기반 정책('file.read'/'file.upload'/'file.delete')으로 바꾸는 것이 4단계이며,
+    // 그 전후 비교가 과제의 핵심이다 (PRD 13장 3·4단계). 지금은 "로그인했으면 전부 허용"이다.
+    ['GET',    '/api/files',               'files_list.php',     Authz::POLICY_AUTHENTICATED],
+    ['POST',   '/api/files',               'files_upload.php',   Authz::POLICY_AUTHENTICATED],
+    ['GET',    '/api/files/{id}/download', 'files_download.php', Authz::POLICY_AUTHENTICATED],
+    ['DELETE', '/api/files/{id}',          'files_delete.php',   Authz::POLICY_AUTHENTICATED],
+    ['GET',    '/api/teams',               'teams.php',          Authz::POLICY_AUTHENTICATED],
 ];
 
 const TBOX_HANDLER_DIR = __DIR__ . '/../src/handlers/';

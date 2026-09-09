@@ -4,40 +4,207 @@ declare(strict_types=1);
 /**
  * src/Storage.php — 실제 파일 저장·읽기 (ARCHITECTURE 6.3, PRD S-06)
  *
- * ★ 1단계에서는 **골격만** 둔다. 본문은 6단계(업로드 하드닝)에서 채운다.
- *   지금 로직을 넣지 않는 이유: 검증되지 않은 파일 경로 코드가 저장소에 먼저 들어오면
- *   "일단 돌아가니까" 그대로 남을 위험이 있다. 호출하면 예외로 즉시 실패한다.
+ * 이 파일이 저장소 경로를 만드는 **유일한 곳**이다. 밖에서는 경로 문자열을 조립하지 않는다.
  *
- * 6단계에서 지킬 규칙 (ARCH 6.3 표)
- *   1) 저장 이름은 서버가 만든 UUID + 화이트리스트 확장자만. 사용자 파일명은 한 글자도 경로에 넣지 않는다.
+ * 지키는 규칙 (ARCH 6.3 표)
+ *   1) 저장 이름은 서버가 만든 UUIDv4 + 확장자만. 사용자 파일명은 한 글자도 경로에 넣지 않는다.
+ *      (원본 파일명은 DB `files.original_name` 에만 있고, 다운로드 헤더에서 인코딩되어 쓰인다)
  *   2) 경로는 STORAGE_DIR(.env 고정값) + UUID 앞 2글자/다음 2글자 하위 폴더로만 조립한다.
  *   3) 조립한 절대 경로가 realpath 로 STORAGE_DIR 안에 있는지 다시 확인한다(경로 탈출 방어, T-11).
  *   4) 디렉터리 0750 / 파일 0640, 소유자 tbox-php. 실행 권한 없음.
- *   5) 다운로드는 nginx X-Accel-Redirect(/protected/) 로 넘긴다 — 권한 검사를 통과한 뒤에만.
+ *   5) 다운로드 전송 방식 — **3단계: PHP readfile()**.
+ *      X-Accel-Redirect(nginx `/protected/` internal) 로의 전환은 6단계에서 결정한다:
+ *      하위 폴더를 nginx 그룹(www-data)이 읽으려면 상위 폴더 setgid(2750)가 필요하고,
+ *      그 변경은 install.sh 와 함께 6단계·SECURITY R-34 에서 다룬다 (2026-09-09 결정).
+ *
+ * 3단계에 없는 것: purge()(30일 휴지통 실제 삭제, 9단계 배치), 확장자 화이트리스트(6단계 Upload).
  */
 final class Storage
 {
     private const NOT_IMPLEMENTED = '아직 구현되지 않았습니다';
 
-    /** UUID 로 만든 stored_name 을 저장소 안 절대 경로로 바꾼다 (사용자 입력 불가) */
+    /** stored_name 의 UUID 부분 (UUIDv4 만) */
+    private const UUID_RE = '/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/';
+
+    /** stored_name 전체 = UUIDv4 + '.' + 소문자·숫자 확장자 */
+    private const STORED_RE = '/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\.[a-z0-9]{1,10}$/';
+
+    /** 확장자 허용 형태 (내용 화이트리스트는 6단계 Upload::ALLOWED_EXT) */
+    private const EXT_RE = '/^[a-z0-9]{1,10}$/';
+
+    private const DIR_MODE  = 0750;
+    private const FILE_MODE = 0640;
+
+    /**
+     * 저장소 루트. .env 의 STORAGE_DIR 고정값이며 요청 값이 섞이지 않는다.
+     * 없거나 디렉터리가 아니면 예외 — "조용히 다른 곳에 저장"되는 경로를 만들지 않는다.
+     */
+    public static function baseDir(): string
+    {
+        $configured = Env::get('STORAGE_DIR');
+        $real       = realpath($configured);
+        if ($real === false || !is_dir($real)) {
+            throw new RuntimeException('저장소 디렉터리를 찾을 수 없습니다');
+        }
+        return $real;
+    }
+
+    /**
+     * 새 저장 이름을 만든다. 이름을 만드는 곳은 여기 하나뿐이다.
+     * $ext 는 Upload::checkExtension() 을 통과한 값이지만, 여기서도 형태를 다시 검사한다.
+     */
+    public static function newStoredName(string $ext): string
+    {
+        if (preg_match(self::EXT_RE, $ext) !== 1) {
+            throw new RuntimeException('허용되지 않는 확장자 형태입니다');
+        }
+        return tbox_uuid_v4() . '.' . $ext;
+    }
+
+    /**
+     * stored_name 을 저장소 안 절대 경로로 바꾼다 (사용자 입력 불가).
+     *
+     * 이중 방어
+     *   ① stored_name 이 "UUIDv4.확장자" 형태인지 정규식 검사 — `..`·`/` 는 통과할 수 없다.
+     *   ② 상위 폴더가 이미 있으면 realpath 결과가 baseDir 안인지 다시 확인.
+     */
     public static function pathFor(string $storedName): string
     {
-        throw new RuntimeException(self::NOT_IMPLEMENTED);
+        if (preg_match(self::STORED_RE, $storedName) !== 1) {
+            throw new RuntimeException('허용되지 않는 저장 이름입니다');
+        }
+        $base = self::baseDir();
+        $dir  = $base . '/' . substr($storedName, 0, 2) . '/' . substr($storedName, 2, 2);
+
+        if (is_dir($dir)) {
+            $realDir = realpath($dir);
+            if ($realDir === false || strpos($realDir . '/', $base . '/') !== 0) {
+                throw new RuntimeException('저장소 밖의 경로입니다');
+            }
+            $dir = $realDir;
+        }
+        return $dir . '/' . $storedName;
     }
 
-    /** 업로드 임시 파일을 저장소로 옮긴다. 성공 시 stored_name 반환 */
-    public static function put(string $tmpPath, string $ext): string
+    /**
+     * 실제 바이트가 있는지 확인한다. 다운로드 핸들러는 감사 로그(allow)를 남기기 **전에**
+     * 이것을 부른다 — 파일이 없는데 "다운로드 성공" 이 기록되는 일을 막는다.
+     */
+    public static function assertExists(string $storedName): void
     {
-        throw new RuntimeException(self::NOT_IMPLEMENTED);
+        $path = self::pathFor($storedName);
+        if (!is_file($path) || !is_readable($path)) {
+            throw new RuntimeException('저장된 파일을 찾을 수 없습니다');
+        }
     }
 
-    /** 권한 검사를 통과한 파일을 nginx 내부 경로로 넘긴다 (X-Accel-Redirect) */
+    /**
+     * 업로드 임시 파일을 저장소로 옮긴다. 성공 시 저장된 절대 경로를 반환한다.
+     * 실패는 예외 — 호출자(files_upload.php)가 트랜잭션을 롤백한다.
+     *
+     * $storedName 은 newStoredName() 이 만든 값만 넘긴다.
+     */
+    public static function put(string $tmpPath, string $storedName): string
+    {
+        if (!is_uploaded_file($tmpPath)) {
+            // HTTP 업로드로 들어온 임시 파일이 아니면 옮기지 않는다.
+            throw new RuntimeException('업로드된 파일이 아닙니다');
+        }
+        $path = self::pathFor($storedName);
+        $dir  = dirname($path);
+
+        if (!is_dir($dir) && !mkdir($dir, self::DIR_MODE, true) && !is_dir($dir)) {
+            throw new RuntimeException('저장 폴더를 만들 수 없습니다');
+        }
+        if (!move_uploaded_file($tmpPath, $path)) {
+            throw new RuntimeException('파일을 저장소로 옮길 수 없습니다');
+        }
+        if (!chmod($path, self::FILE_MODE)) {
+            throw new RuntimeException('파일 권한을 설정할 수 없습니다');
+        }
+        return $path;
+    }
+
+    /**
+     * 옮겨 둔 파일을 되돌린다 (업로드 트랜잭션 롤백용).
+     * purge()(30일 휴지통 실제 삭제)와는 다른 용도다 — 방금 이 요청이 만든 파일만 지운다.
+     */
+    public static function removeUploaded(string $storedName): void
+    {
+        $path = self::pathFor($storedName);
+        if (is_file($path)) {
+            unlink($path);
+        }
+    }
+
+    /**
+     * 권한 검사를 통과한 파일을 응답으로 내려 준다 (ARCH 5.3 [8]).
+     *
+     * 3단계는 readfile() 로 PHP 가 직접 전송한다(위 클래스 주석 5번).
+     * $mime 은 DB 에 기록된 판별 결과이며 **응답 Content-Type 으로 쓰지 않는다** —
+     * 업로드된 HTML·SVG 가 브라우저에서 렌더링되는 저장형 XSS 를 막기 위해
+     * 항상 application/octet-stream + attachment 로 내린다 (bootstrap 의 nosniff 와 함께).
+     */
     public static function stream(string $storedName, string $originalName, string $mime): void
     {
-        throw new RuntimeException(self::NOT_IMPLEMENTED);
+        $path = self::pathFor($storedName);
+        if (!is_file($path) || !is_readable($path)) {
+            throw new RuntimeException('저장된 파일을 찾을 수 없습니다');
+        }
+        $size = filesize($path);
+        if ($size === false) {
+            throw new RuntimeException('파일 크기를 읽을 수 없습니다');
+        }
+
+        // 헤더에 들어가는 이름은 두 가지 모두 CR/LF·제어문자가 제거된 값이다(헤더 인젝션 방어).
+        $header = self::headerName($originalName);
+
+        if (!headers_sent()) {
+            header('Content-Type: application/octet-stream');
+            header('Content-Length: ' . $size);
+            header('Content-Disposition: attachment; filename="' . self::asciiName($header)
+                . '"; filename*=UTF-8\'\'' . rawurlencode($header));
+            header('Cache-Control: no-store');
+        }
+
+        // 버퍼를 비우고(부분 출력이 섞이지 않게) 바로 전송한다. $path 는 위에서 만든 저장소 경로다.
+        while (ob_get_level() > 0) {
+            ob_end_clean();
+        }
+        readfile($path);
+        exit;
     }
 
-    /** 30일 지난 논리 삭제 파일의 실제 바이트 제거 (배치, tbox_owner 권한) */
+    /** 헤더에 쓸 원본 이름 — 제어문자·CR/LF·경로 구분자 제거 (다운로드 헤더 인젝션 방어) */
+    private static function headerName(string $originalName): string
+    {
+        $name = str_replace('\\', '/', $originalName);
+        $name = basename($name);
+        $name = (string) preg_replace('/[\x00-\x1f\x7f]+/', '', $name);
+        $name = trim($name);
+        return $name === '' ? 'download' : $name;
+    }
+
+    /**
+     * filename= 에 쓸 ASCII 대체명. [A-Za-z0-9._-] 외 문자는 '_' 로 바꾼다.
+     * 한글만으로 된 이름은 알파벳·숫자가 하나도 남지 않으므로 'download' 로 대체한다
+     * (filename* 쪽에 UTF-8 원본명이 그대로 들어가므로 최신 브라우저는 원래 이름으로 저장한다).
+     */
+    private static function asciiName(string $name): string
+    {
+        $ascii = (string) preg_replace('/[^A-Za-z0-9._-]+/', '_', $name);
+        $ascii = (string) preg_replace('/_+/', '_', $ascii);
+        $ascii = trim($ascii, '_');
+        if ($ascii === '' || preg_match('/[A-Za-z0-9]/', $ascii) !== 1) {
+            return 'download';
+        }
+        if (strpos($ascii, '.') === 0) {
+            $ascii = 'download' . $ascii;   // 앞이 '.' 이면 숨김파일처럼 보인다
+        }
+        return substr($ascii, 0, 100);
+    }
+
+    /** 30일 지난 논리 삭제 파일의 실제 바이트 제거 (배치, 9단계 scripts/purge_trash.php) */
     public static function purge(string $storedName): void
     {
         throw new RuntimeException(self::NOT_IMPLEMENTED);
@@ -46,6 +213,22 @@ final class Storage
     /** 저장된 파일의 SHA-256 (정합성 검사, PRD S-08) */
     public static function sha256(string $storedName): string
     {
-        throw new RuntimeException(self::NOT_IMPLEMENTED);
+        $hash = hash_file('sha256', self::pathFor($storedName));
+        if ($hash === false) {
+            throw new RuntimeException('파일 해시를 계산할 수 없습니다');
+        }
+        return $hash;
+    }
+
+    /** stored_name 이 허용 형태인지 (호출자 검증용) */
+    public static function isValidStoredName(string $storedName): bool
+    {
+        return preg_match(self::STORED_RE, $storedName) === 1;
+    }
+
+    /** 외부 노출 ID(public_id) 가 UUIDv4 형태인지 — 핸들러가 경로 변수를 검사할 때 쓴다 */
+    public static function isValidUuid(string $value): bool
+    {
+        return preg_match(self::UUID_RE, $value) === 1;
     }
 }

@@ -199,4 +199,62 @@ final class Http
             self::error(403, self::MSG_FORBIDDEN);
         }
     }
+
+    /* ─── 쿼리스트링 읽기 (3단계, 목록·검색용) ─────────────────────
+     * 세 함수의 공통 원칙: **거부하지 않고 안전한 값으로 좁힌다.**
+     *   검색·정렬·페이지 파라미터는 사용자가 URL 을 손으로 고치기 쉬운 자리다.
+     *   여기서 400 을 내면 화면이 깨질 뿐이고 막아지는 것은 없다. 대신
+     *   길이를 자르고, 허용 목록 밖 값은 기본값으로 바꾸고, 정수 형태만 인정한다
+     *   (ARCH 5.1 [2][3], PRD S-04 "ORDER BY 는 허용 목록").
+     */
+
+    /** 문자열 쿼리 — 문자열이 아니면 '', 제어문자 제거, $maxChars 자로 자른다 */
+    public static function queryText(string $key, int $maxChars): string
+    {
+        $raw = $_GET[$key] ?? '';
+        if (!is_string($raw) || $raw === '') {
+            return '';
+        }
+        // 잘못된 UTF-8 은 DB(UTF8)·JSON 모두에서 문제를 만든다 → 값을 버린다
+        if (preg_match('//u', $raw) !== 1) {
+            return '';
+        }
+        $clean = (string) preg_replace('/[\x00-\x1f\x7f]+/u', ' ', $raw);
+        $clean = trim($clean);
+        if ($clean === '') {
+            return '';
+        }
+        if (iconv_strlen($clean, 'UTF-8') > $maxChars) {
+            $clean = (string) iconv_substr($clean, 0, $maxChars, 'UTF-8');
+        }
+        return $clean;
+    }
+
+    /**
+     * 허용 목록 안의 값만 통과시킨다. 밖의 값·누락은 $default (400 이 아니다).
+     *
+     * @param list<string> $allowed 코드에 적힌 고정 목록
+     */
+    public static function queryChoice(string $key, array $allowed, string $default): string
+    {
+        $raw = $_GET[$key] ?? null;
+        if (is_string($raw) && in_array($raw, $allowed, true)) {
+            return $raw;
+        }
+        return $default;
+    }
+
+    /** 정수 쿼리 — 숫자 형태가 아니거나 범위를 벗어나면 $default */
+    public static function queryInt(string $key, int $default, int $min, int $max): int
+    {
+        $raw = $_GET[$key] ?? null;
+        if (!is_string($raw) || preg_match('/^[0-9]{1,9}$/', $raw) !== 1) {
+            return $default;
+        }
+        $value = (int) $raw;
+        if ($value < $min || $value > $max) {
+            return $default;
+        }
+        return $value;
+    }
 }
