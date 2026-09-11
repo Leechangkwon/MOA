@@ -110,6 +110,8 @@ final class Upload
      * $_FILES 한 건을 검증한다. 통과하면 ['ext','mime','size','sha256'] 반환.
      *
      * 순서(ARCH 5.2 [3]): 오류코드 → uploaded_file → 크기 → 확장자(이중 포함) → MIME 짝 → sha256.
+     * 앞의 두 가지(HTTP 업로드 고유 검사)만 여기서 하고, 나머지 **내용 규칙은
+     * validatePath() 한 곳**에 있다 — URL 가져오기(F-14)가 같은 규칙을 쓰기 위해서다 (PRD S-05 ⑨).
      * 일일 총량(checkDailyQuota)은 권한·검증을 통과한 뒤 핸들러가 INSERT 직전에 부른다.
      *
      * @param array<string,mixed> $file $_FILES['file'] 한 건
@@ -135,8 +137,35 @@ final class Upload
             throw new RuntimeException('not_uploaded_file');
         }
 
-        // 크기는 클라이언트가 보낸 $file['size'] 를 믿지 않고 실제 파일에서 읽는다.
-        $size = filesize($tmp);
+        $name = $file['name'] ?? null;
+
+        return self::validatePath($tmp, is_string($name) ? $name : '');
+    }
+
+    /**
+     * **파일 하나의 내용 규칙**을 검사한다 — 크기 → 확장자(이중 포함) → MIME 짝 → sha256.
+     *
+     * 검증 규칙 함수는 프로젝트에 **이 하나뿐**이다 (PRD S-05 ⑨ "수동 업로드와 동일한
+     * Upload::validate"). 두 입구가 이것을 함께 쓴다.
+     *   · 수동 업로드 : validate($_FILES 한 건) 이 HTTP 업로드 고유 검사(오류코드·is_uploaded_file)를
+     *                   먼저 하고 이 함수를 부른다.
+     *   · URL 가져오기: files_fetch.php 가 임시파일 경로와 정한 파일명으로 이 함수를 **직접** 부른다.
+     *     가져온 파일은 HTTP 업로드가 아니므로 is_uploaded_file 이 참일 수 없다 —
+     *     대신 "임시 디렉터리 안의 파일인가" 를 Storage::putLocal() 이 확인한다.
+     *
+     * 규칙을 한 함수에 둔 이유: 갈라 두면 언제 한쪽만 고쳐진다. 그때 **URL 가져오기가
+     * 업로드 하드닝을 우회하는 두 번째 입구**가 된다 (ARCH 5.6 [8] 표).
+     *
+     * @return array{ext:string,mime:string,size:int,sha256:string}
+     */
+    public static function validatePath(string $tmpPath, string $originalName): array
+    {
+        if ($tmpPath === '' || !is_file($tmpPath)) {
+            throw new RuntimeException('size_unreadable');
+        }
+
+        // 크기는 클라이언트가 보낸 $file['size'] 나 Content-Length 를 믿지 않고 실제 파일에서 읽는다.
+        $size = filesize($tmpPath);
         if ($size === false) {
             throw new RuntimeException('size_unreadable');
         }
@@ -148,11 +177,10 @@ final class Upload
             throw new RuntimeException('too_large');
         }
 
-        $name = $file['name'] ?? null;
-        $ext  = self::checkExtension(is_string($name) ? $name : '');
-        $mime = self::checkMime($tmp, $ext);
+        $ext  = self::checkExtension($originalName);
+        $mime = self::checkMime($tmpPath, $ext);
 
-        $sha256 = hash_file('sha256', $tmp);
+        $sha256 = hash_file('sha256', $tmpPath);
         if ($sha256 === false) {
             throw new RuntimeException('hash_failed');
         }

@@ -34,7 +34,7 @@
 | `hash`, `openssl` | 세션 토큰 해시, `random_bytes` | ✅ 설치됨 |
 | `fileinfo` | 업로드 MIME 판별 (6단계, PRD S-06) | ✅ 설치됨 |
 | `sodium` | Argon2id 비밀번호 해시 (2단계, PRD S-09-4) | ✅ 설치됨 |
-| `php8.1-curl` | F-14 "URL 로 파일 가져오기" (`src/Fetch.php`) | ⏳ **미설치 — 7단계 전 설치 예정** (`apt-get install php8.1-curl`) |
+| `php8.1-curl` | F-14 "URL 로 파일 가져오기" (`src/Fetch.php`) | ✅ **설치됨 (7단계, 2026-09-11 실측)** — `php8.1-curl 8.1.2-1ubuntu2.25`, libcurl 7.81.0. 확인: `php -m \| grep -x curl`, `dpkg -l php8.1-curl`. `deploy/install.sh` 1절 패키지 확인 목록에 포함 |
 | `php8.1-mbstring` | 파일명·설명 문자열 처리 | ⏳ **미설치 — 7단계 전 설치 예정** (`apt-get install php8.1-mbstring`) |
 | `iconv` (PHP 코어 내장, 8.1 기본 로드) | 파일명·설명의 문자 수 계산·자르기 (`iconv_strlen`/`iconv_substr`) — mbstring 미설치 동안의 대체. 3단계 도입(2026-09-09) | ✅ 설치됨 (별도 패키지 없음). mbstring 설치 후에도 그대로 써도 됨 |
 

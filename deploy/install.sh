@@ -30,6 +30,7 @@ DB_HOST="127.0.0.1"
 DB_PORT="5432"
 
 STORAGE_DIR="/var/lib/tbox-v2/storage"
+TMP_DIR="/var/lib/tbox-v2/tmp"        # F-14 가져오기 임시파일 (7단계, PRD S-05 ⑧)
 SESSION_DIR="/var/lib/tbox-v2/sessions"
 LOG_DIR="/var/log/tbox-v2"
 CONF_DIR="/etc/tbox-v2"
@@ -87,7 +88,9 @@ env_value() {
 # ─────────────────────────────────────────────────────────────
 step "1. 필요한 패키지 확인"
 MISSING=()
-for pkg in php8.1-fpm php8.1-pgsql nginx postgresql; do
+# php8.1-curl 은 F-14(URL 로 파일 가져오기)의 외부 요청에 필요하다 — 7단계부터 필수다
+# (ARCH 9장 "필요 확장", deploy/DEPENDENCIES.md 3장). 없으면 다른 패키지와 같은 규칙으로 멈춘다.
+for pkg in php8.1-fpm php8.1-pgsql php8.1-curl nginx postgresql; do
   if dpkg-query -W -f='${Status}' "$pkg" 2>/dev/null | grep -q "ok installed"; then
     info "설치됨: ${pkg}"
   else
@@ -104,6 +107,7 @@ for bin in openssl nginx php-fpm8.1 psql runuser; do
   command -v "$bin" >/dev/null 2>&1 || die "실행 파일을 찾을 수 없다: ${bin}"
 done
 info "PHP 확장 pgsql: $(php -m | grep -cx pgsql) (1 이어야 함)"
+info "PHP 확장 curl:  $(php -m | grep -cx curl) (1 이어야 함 — F-14, PRD S-05)"
 
 # ─────────────────────────────────────────────────────────────
 # 2. 전용 계정과 디렉터리  — PRD S-09-10, ARCH 3장
@@ -141,6 +145,10 @@ install -d -o "$APP_USER" -g "$APP_USER" -m 0750 "$STORAGE_DIR"
 chgrp -R "$APP_USER" "$STORAGE_DIR"
 # 세션 디렉터리는 nginx 가 읽을 일이 없다 — 0700 tbox-php 그대로 (R-10)
 install -d -o "$APP_USER" -g "$APP_USER" -m 0700 "$SESSION_DIR"
+# 가져오기(F-14) 임시 디렉터리 — 7단계. 저장소의 **형제** 디렉터리라 같은 파일시스템이고
+# (Storage::putLocal 의 rename 이 디스크를 넘지 않는다) php-fpm 의 open_basedir 안이다.
+# 앱만 쓰므로 0700 tbox-php. 여기 남는 파일은 실패한 가져오기의 흔적이다(정상 상태는 0건).
+install -d -o "$APP_USER" -g "$APP_USER" -m 0700 "$TMP_DIR"
 install -d -o "$APP_USER" -g adm         -m 0750 "$LOG_DIR"
 install -d -o root       -g "$APP_USER"  -m 0750 "$CONF_DIR"
 # 감사 로그 파일 사본 — Audit.php 가 직접 append 한다 (ARCH 7.1)
@@ -166,7 +174,7 @@ if command -v chattr >/dev/null 2>&1; then
 else
   info "경고: chattr 이 없다 (e2fsprogs) — 감사 로그 추가 전용 보호를 걸지 못했다 (R-11)"
 fi
-info "디렉터리: ${STORAGE_DIR} 0750 ${APP_USER}:${APP_USER} / ${SESSION_DIR} 0700 ${APP_USER} / ${LOG_DIR} 0750 / ${CONF_DIR} 0750"
+info "디렉터리: ${STORAGE_DIR} 0750 ${APP_USER}:${APP_USER} / ${TMP_DIR} 0700 ${APP_USER} / ${SESSION_DIR} 0700 ${APP_USER} / ${LOG_DIR} 0750 / ${CONF_DIR} 0750"
 
 # ─────────────────────────────────────────────────────────────
 # 3. TLS — 이 VM 에서는 만들지 않는다 (ARCH 3장 배포 메모, PRD S-09-1)
@@ -471,6 +479,10 @@ if [ -e "$OLD_ENV_FILE" ]; then
 else
   printf '     /etc/tbox-v2/tbox.env: 없음 (정상)\n'
 fi
+
+printf '\n   가져오기 임시 디렉터리 (F-14, 남은 파일은 0 이어야 한다):\n'
+printf '     %s\n' "$(ls -ld "$TMP_DIR")"
+printf '     남은 임시파일: %s 개\n' "$(ls -A "$TMP_DIR" | wc -l)"
 
 printf '\n   감사 로그 파일 사본 보호 (a = 추가 전용. ARCH 7.1, PRD S-07):\n'
 printf '     %s\n' "$(lsattr "${LOG_DIR}/audit.log" 2>/dev/null || echo "lsattr 실행 불가")"

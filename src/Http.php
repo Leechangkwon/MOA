@@ -17,6 +17,14 @@ final class Http
     public const MSG_NOT_FOUND    = '찾을 수 없습니다';
     public const MSG_BAD_REQUEST  = '잘못된 요청입니다';
 
+    /**
+     * URL 로 가져오기(F-14) 실패 — 스킴·포트·호스트·리다이렉트·크기·검증·속도 제한이
+     * **전부 이 문구 하나**다 (PRD S-05 ⑩ "응답 비노출"). 사유는 감사 로그에만 남고,
+     * 상태 코드만 400 / 403 / 429 로 갈린다. 본문으로 사유가 갈라지면 그 자체가
+     * "내부에 무엇이 있는지" 를 알려 주는 신호가 된다.
+     */
+    public const MSG_FETCH_FAILED = '가져올 수 없습니다';
+
     /** 로그인 실패 — 아이디 없음·비밀번호 틀림·비활성 계정이 모두 이 문구 하나다 (PRD 10장) */
     public const MSG_LOGIN_FAILED = '아이디 또는 비밀번호가 올바르지 않습니다';
     /** 계정 잠금 (PRD F-01, S-09-4, ARCH 4.0) */

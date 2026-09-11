@@ -50,6 +50,11 @@ const TBOX_ROUTES = [
     //   file.delete : 삭제할 수 있는 역할인가 (Guest 는 여기서 끝)
     ['GET',    '/api/files',               'files_list.php',     'file.read'],
     ['POST',   '/api/files',               'files_upload.php',   'file.upload'],
+    // 7단계 — URL 로 파일 가져오기 (PRD F-14, S-05, ARCH 5.6).
+    //   file.fetch : Manager 이상만 (PRD 5.4). Employee·Guest 는 여기서 끝난다(authz.route deny).
+    //   `{id}` 는 UUID 36자만 받으므로 `/api/files/fetch` 와 충돌하지 않지만,
+    //   **의도를 드러내기 위해** `/api/files/{id}` 계열보다 위에 둔다.
+    ['POST',   '/api/files/fetch',         'files_fetch.php',    'file.fetch'],
     ['GET',    '/api/files/{id}/download', 'files_download.php', 'file.read'],
     // 5단계 — 설명·접근 등급 변경 (PRD 8장 PATCH 행, F-08, ARCH 5.7).
     //   file.update : 고칠 수 있는 역할인가 (Guest 는 여기서 끝 — authz.route deny).

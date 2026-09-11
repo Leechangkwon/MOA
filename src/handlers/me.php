@@ -30,4 +30,8 @@ Http::json([
     'team_id'    => $user['team_id'],
     'csrf_token' => Auth::csrfToken(),
     'upload_levels' => Authz::uploadableLevels($user),
+    // 7단계 — "URL 로 가져오기" 패널을 그릴지 여부 (F-14, Manager 이상).
+    // 화면은 이 값만 본다. 역할 문자열을 보고 화면이 스스로 판단하지 않는다 (PRD S-01).
+    // 감추는 것은 편의일 뿐이고, POST /api/files/fetch 는 라우터 정책 file.fetch 가 다시 막는다.
+    'can_fetch'     => Authz::canFetch($user),
 ]);

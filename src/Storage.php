@@ -52,6 +52,24 @@ final class Storage
     }
 
     /**
+     * 가져오기(F-14) 임시 디렉터리 — 저장소의 **형제** 디렉터리 `/var/lib/tbox-v2/tmp` 다 (7단계).
+     *
+     * 경로를 상수로 적지 않고 `STORAGE_DIR` 의 부모에서 만드는 이유: 설정이 가리키는 곳과
+     * 다른 디스크에 임시파일이 생기면 putLocal() 의 rename() 이 파일시스템을 넘어야 하고,
+     * open_basedir 밖으로 나갈 수도 있다. 디렉터리는 deploy/install.sh 가 0700 tbox-php 로 만든다
+     * (php-fpm 의 open_basedir 에 /var/lib/tbox-v2 가 이미 들어 있다 — ARCH 9장).
+     * 없으면 예외 — "조용히 /tmp 에 떨어지는" 경로를 만들지 않는다.
+     */
+    public static function tmpDir(): string
+    {
+        $real = realpath(dirname(self::baseDir()) . '/tmp');
+        if ($real === false || !is_dir($real)) {
+            throw new RuntimeException('임시 디렉터리를 찾을 수 없습니다');
+        }
+        return $real;
+    }
+
+    /**
      * 새 저장 이름을 만든다. 이름을 만드는 곳은 여기 하나뿐이다.
      * $ext 는 Upload::checkExtension() 을 통과한 값이지만, 여기서도 형태를 다시 검사한다.
      */
@@ -119,6 +137,45 @@ final class Storage
             throw new RuntimeException('저장 폴더를 만들 수 없습니다');
         }
         if (!move_uploaded_file($tmpPath, $path)) {
+            throw new RuntimeException('파일을 저장소로 옮길 수 없습니다');
+        }
+        if (!chmod($path, self::FILE_MODE)) {
+            throw new RuntimeException('파일 권한을 설정할 수 없습니다');
+        }
+        return $path;
+    }
+
+    /**
+     * **가져온** 임시 파일을 저장소로 옮긴다 (7단계 F-14, PRD S-05 ⑨ 이후 저장 단계).
+     *
+     * put() 과 다른 점은 출처 검사 한 가지뿐이다. 가져온 파일은 HTTP 업로드가 아니므로
+     * `is_uploaded_file()` 이 참일 수 없다 — 대신 **임시 디렉터리(tmpDir) 안의 실제 파일인지**
+     * realpath 로 확인한다. realpath 는 심볼릭 링크를 풀어 주므로, 링크로 저장소 밖(예 /etc/passwd)을
+     * 가리키는 파일을 넘겨도 여기서 걸린다. 그래서 이 함수에 넘길 수 있는 경로는
+     * 사실상 tempnam(Storage::tmpDir(), …) 이 만든 것뿐이다.
+     *
+     * is_uploaded_file 검사를 그냥 지우고 put() 을 재사용하지 않는 이유: 그러면 **업로드 경로의
+     * 보호까지 함께 풀린다.** 두 입구는 각자의 출처 검사를 갖고, 그다음 규칙(경로 조립·권한·검증)은
+     * 공유한다.
+     */
+    public static function putLocal(string $tmpPath, string $storedName): string
+    {
+        $tmpDir = self::tmpDir();
+        $real   = realpath($tmpPath);
+        if ($real === false || !is_file($real)) {
+            throw new RuntimeException('임시 파일을 찾을 수 없습니다');
+        }
+        if (strpos($real, $tmpDir . '/') !== 0) {
+            throw new RuntimeException('임시 디렉터리 밖의 파일입니다');
+        }
+
+        $path = self::pathFor($storedName);
+        $dir  = dirname($path);
+
+        if (!is_dir($dir) && !mkdir($dir, self::DIR_MODE, true) && !is_dir($dir)) {
+            throw new RuntimeException('저장 폴더를 만들 수 없습니다');
+        }
+        if (!rename($real, $path)) {
             throw new RuntimeException('파일을 저장소로 옮길 수 없습니다');
         }
         if (!chmod($path, self::FILE_MODE)) {

@@ -1,5 +1,5 @@
 'use strict';
-/* public/assets/app.js — 5단계: 로그인 · 로그아웃 · 파일 목록/업로드/다운로드/삭제/수정
+/* public/assets/app.js — 7단계: 로그인 · 로그아웃 · 파일 목록/업로드/다운로드/삭제/수정 · URL 로 가져오기
  *
  * 규칙 (PRD S-03, S-09-3, ARCHITECTURE 13장 체크리스트)
  *   · DOM 에 값을 넣을 때는 textContent 만 쓴다. HTML 문자열을 그대로 넣는 API
@@ -162,7 +162,7 @@ function initLogin(form) {
 }
 
 /* ─── 파일 화면 (5단계) ─────────────────────────────────────── */
-function initFiles(csrfToken, uploadLevels) {
+function initFiles(csrfToken, uploadLevels, canFetch) {
   var msg = document.getElementById('msg');
   var body = document.getElementById('files-body');
   var empty = document.getElementById('files-empty');
@@ -180,6 +180,14 @@ function initFiles(csrfToken, uploadLevels) {
   var teamField = document.getElementById('upload-team-field');
   var teamSelect = document.getElementById('upload-team');
   var uploadSubmit = document.getElementById('upload-submit');
+  var fetchPanel = document.getElementById('fetch-panel');
+  var fetchForm = document.getElementById('fetch-form');
+  var fetchUrl = document.getElementById('fetch-url');
+  var fetchDesc = document.getElementById('fetch-description');
+  var fetchLevel = document.getElementById('fetch-level');
+  var fetchTeamField = document.getElementById('fetch-team-field');
+  var fetchTeam = document.getElementById('fetch-team');
+  var fetchSubmit = document.getElementById('fetch-submit');
 
   var state = { q: '', sort: 'created_at', dir: 'desc', page: 1, total: 0, perPage: 20 };
 
@@ -419,10 +427,16 @@ function initFiles(csrfToken, uploadLevels) {
         return readJson(response).then(function (data) {
           var teams = data && Array.isArray(data.teams) ? data.teams : [];
           teams.forEach(function (team) {
-            var option = document.createElement('option');
-            option.value = String(team.id);
-            setText(option, team.name);
-            teamSelect.appendChild(option);
+            // 같은 목록을 업로드 폼과 가져오기 폼 두 곳의 <select> 에 만든다.
+            [teamSelect, fetchTeam].forEach(function (select) {
+              if (!select) {
+                return;
+              }
+              var option = document.createElement('option');
+              option.value = String(team.id);
+              setText(option, team.name);
+              select.appendChild(option);
+            });
           });
           return null;
         });
@@ -436,6 +450,64 @@ function initFiles(csrfToken, uploadLevels) {
     if (teamField) {
       teamField.hidden = levelSelect.value !== 'team';
     }
+  }
+
+  function syncFetchTeamField() {
+    if (fetchTeamField && fetchLevel) {
+      fetchTeamField.hidden = fetchLevel.value !== 'team';
+    }
+  }
+
+  /**
+   * URL 로 가져오기 (POST /api/files/fetch, 7단계 F-14).
+   * 사용자가 적은 주소를 **그대로** 보낸다 — 허용된 주소인지, 내부망을 가리키는지는 서버가 본다.
+   * 실패 문구는 서버가 준 "가져올 수 없습니다" 하나뿐이고, 브라우저는 사유를 추측하지 않는다.
+   */
+  function fetchByUrl(event) {
+    event.preventDefault();
+    setText(msg, '');
+
+    if (!fetchUrl || fetchUrl.value === '') {
+      return;
+    }
+
+    var payload = { url: fetchUrl.value, description: fetchDesc ? fetchDesc.value : '' };
+    payload.access_level = fetchLevel ? fetchLevel.value : '';
+    if (payload.access_level === 'team' && fetchTeam) {
+      payload.team_id = fetchTeam.value;
+    }
+
+    fetchSubmit.disabled = true;
+    fetch('/api/files/fetch', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken },
+      body: JSON.stringify(payload),
+      credentials: 'same-origin',
+      cache: 'no-store'
+    })
+      .then(function (response) {
+        if (response.status === 401) {
+          toLogin();
+          return null;
+        }
+        return readJson(response).then(function (data) {
+          if (response.status === 201) {
+            fetchForm.reset();
+            syncFetchTeamField();
+            state.page = 1;
+            loadFiles();
+            return null;
+          }
+          setText(msg, errorMessage(data));
+          return null;
+        });
+      })
+      .catch(function () {
+        setText(msg, GENERIC_ERROR);
+      })
+      .then(function () {
+        fetchSubmit.disabled = false;
+      });
   }
 
   function upload(event) {
@@ -519,6 +591,12 @@ function initFiles(csrfToken, uploadLevels) {
   if (uploadForm) {
     uploadForm.addEventListener('submit', upload);
   }
+  if (fetchLevel) {
+    fetchLevel.addEventListener('change', syncFetchTeamField);
+  }
+  if (fetchForm) {
+    fetchForm.addEventListener('submit', fetchByUrl);
+  }
 
   // 업로드 레벨 선택지는 서버가 준 목록으로만 만든다. 하나도 없으면(Guest) 업로드 패널을 감춘다.
   // 감추는 것은 편의일 뿐이다 — 그래도 POST /api/files 는 서버가 다시 막는다 (PRD S-01).
@@ -527,7 +605,14 @@ function initFiles(csrfToken, uploadLevels) {
     uploadForm.parentNode.hidden = true;
   }
 
+  // "URL 로 가져오기" 패널은 서버가 can_fetch === true 를 준 경우에만 연다 (F-14, Manager 이상).
+  // 레벨 선택지는 업로드와 같은 목록(서버가 정한 upload_levels)을 쓴다.
+  if (fetchPanel) {
+    fetchPanel.hidden = canFetch !== true || fillLevelOptions(fetchLevel, uploadLevels) === 0;
+  }
+
   syncTeamField();
+  syncFetchTeamField();
   loadTeams();
   loadFiles();
 }
@@ -553,8 +638,13 @@ function initHome(button) {
           button.disabled = false;
           // 파일 화면은 토큰을 받은 뒤에 시작한다(업로드·삭제에 토큰이 필요하다).
           // upload_levels 는 서버가 정한 업로드 레벨 선택지다(4단계). 배열이 아니면 빈 목록으로 본다.
+          // can_fetch 는 "URL 로 가져오기" 패널 표시 여부다(7단계). true 가 아니면 열지 않는다.
           if (document.getElementById('files-body')) {
-            initFiles(csrfToken, Array.isArray(body.upload_levels) ? body.upload_levels : []);
+            initFiles(
+              csrfToken,
+              Array.isArray(body.upload_levels) ? body.upload_levels : [],
+              body.can_fetch === true
+            );
           }
         }
         return null;

@@ -80,6 +80,22 @@ final class Audit
         'file.upload|deny|quota_exceeded'         => '{actor} 이(가) 파일 「{target}」 을(를) 올리려 했지만 하루 업로드 한도(2GB)를 넘어 거부했습니다',
         'file.upload|error|upload_failed'         => '{actor} 이(가) 파일 「{target}」 을(를) 올리는 중 서버 오류가 나서 되돌렸습니다',
 
+        // ── URL 로 가져오기 (files_fetch, Fetch — 7단계, ARCH 7.4 file.fetch 14행) ──
+        'file.fetch|allow'                        => '{actor} 이(가) 허용된 외부 주소에서 파일 「{target}」 을(를) 가져와 {level} 등급으로 저장했습니다',
+        'file.fetch|deny|scheme'                  => '{actor} 이(가) https 가 아닌 주소로 파일 가져오기를 요청해서 막았습니다',
+        'file.fetch|deny|port'                    => '{actor} 이(가) 443 이 아닌 포트로 파일 가져오기를 요청해서 막았습니다 (내부 포트 탐색 의심)',
+        'file.fetch|deny|host_not_allowed'        => '{actor} 이(가) 허용 목록에 없는 주소(또는 IP·localhost·잘못된 표기)로 파일 가져오기를 요청해서 막았습니다',
+        'file.fetch|deny|private_ip'              => '{actor} 이(가) 요청한 주소가 내부망 IP 로 해석되어 파일 가져오기를 막았습니다 (SSRF 의심)',
+        'file.fetch|deny|redirect'                => '{actor} 이(가) 요청한 주소가 다른 곳으로 넘기는(리다이렉트) 응답을 보내 파일 가져오기를 막았습니다',
+        'file.fetch|deny|too_large'               => '{actor} 이(가) 요청한 주소의 파일이 100MB 를 넘어 가져오기를 막았습니다',
+        'file.fetch|deny|fetch_failed'            => '{actor} 이(가) 요청한 주소에서 파일을 받을 수 없었습니다 (연결 실패·시간 초과·200 이 아닌 응답)',
+        'file.fetch|deny|invalid_file'            => '{actor} 이(가) 외부 주소에서 가져온 파일 「{target}」 이(가) 업로드 규칙(확장자·내용·크기)에 맞지 않아 저장하지 않았습니다',
+        'file.fetch|deny|rate_limited'            => '{actor} 이(가) 한 시간에 10회를 넘게 파일 가져오기를 요청해서 막았습니다',
+        'file.fetch|deny|bad_request'             => '{actor} 이(가) 파일 가져오기 요청을 잘못된 형식(URL 없음·등급 오류·팀 오류)으로 보내 거부했습니다',
+        'file.fetch|deny|role_not_permitted'      => '{actor} 이(가) 파일 「{target}」 을(를) {level} 등급으로 가져오려 했지만 그 등급으로 올릴 권한이 없어 막았습니다',
+        'file.fetch|deny|team_mismatch'           => '{actor} 이(가) 파일 「{target}」 을(를) 자기 팀이 아닌 팀의 team 등급으로 가져오려 해서 막았습니다',
+        'file.fetch|error|fetch_failed'           => '{actor} 이(가) 외부 주소에서 가져온 파일 「{target}」 을(를) 저장하는 중 서버 오류가 나서 되돌렸습니다',
+
         // ── 다운로드 (files_download) ──
         'file.download|allow'                     => '{actor} 이(가) {level} 등급 파일 「{target}」 을(를) 내려받았습니다',
         'file.download|deny|role_not_permitted'   => '{actor} 이(가) {level} 등급 파일 「{target}」 을(를) 내려받으려 했지만 권한이 없어 막았습니다',

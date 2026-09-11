@@ -861,6 +861,7 @@ GRANT  USAGE, SELECT  ON SEQUENCE audit_logs_id_seq TO tbox_app;
 | `changed` | 어떻게 | 이번 요청으로 바뀐 필드 이름 목록 (예 `["description"]`) | 핸들러 | `file.update`·`file.level_change` (5단계) |
 | `source_host` · `source_ip` | 어디서(출처) | F-14 로 가져온 파일의 허용 도메인과 검사·고정한 IP. **URL 전체는 남기지 않는다**(경로에 토큰·개인정보가 있을 수 있음). 거부 행에도 host 는 남긴다(정규화에 실패했으면 `?`) | 핸들러 | `file.fetch` (7단계) |
 | `http_status` | 왜 | 외부 응답 상태 코드 (거부 사유 `redirect`·`fetch_failed` 의 근거). 사용자에게는 보이지 않는다 (S-05 ⑩) | 핸들러 | `file.fetch` deny |
+| `upload_reason` | 왜 | `invalid_file` 거부의 세부 사유(`ext_not_allowed`·`mime_mismatch`·`too_large`·`quota_exceeded`…) — Upload 검증 코드 그대로 | 핸들러 | `file.fetch` deny `invalid_file` (7단계 검토에서 등록, 8단계 이후 반영) |
 | `filters` | 어떻게 | 감사 로그 조회에 적용한 필터(키·값 객체). 값은 500자 절단 | 핸들러 | `audit.view` (8단계) |
 | `artifact` · `checksum` · `bytes` | 무엇을 | 백업 산출물 파일명·sha256·크기 | 배치 | `backup.run`·`backup.restore` (9단계) |
 | `checked` · `mismatches` | 왜 | 정합성 검사 건수와 불일치 목록(`stored_name`·종류, 최대 50건) | 배치 | `audit.integrity` (9단계) |
@@ -997,8 +998,8 @@ php_admin_value[post_max_size]       = 105M
 php_admin_value[max_file_uploads]    = 1          ; 요청당 파일 1개 (PRD S-06)
 php_admin_value[display_errors]      = Off        ; PRD S-09-7
 php_admin_value[log_errors]          = On
-php_admin_value[error_log]           = /var/log/tbox/app.log
-php_admin_value[session.save_path]   = /var/lib/tbox/sessions   ; 웹 루트 밖
+php_admin_value[error_log]           = /var/log/tbox-v2/app.log
+php_admin_value[session.save_path]   = /var/lib/tbox-v2/sessions   ; 웹 루트 밖 (환경 분리 후 -v2, 2026-09-09)
 php_admin_value[session.cookie_httponly] = 1
 php_admin_value[session.cookie_secure]   = 1
 php_admin_value[session.cookie_samesite] = Lax
@@ -1027,29 +1028,39 @@ php_admin_value[disable_functions]   = fsockopen,pfsockopen,stream_socket_client
 
 ## 11. 운영 — 백업과 복구 (PRD S-08)
 
-### 11.1 백업 일정 (cron, 계정 `tbox-backup`)
+### 11.1 백업 일정 (cron `/etc/cron.d/tbox-v2`, root 실행 — 9단계 확정 2026-09-11)
 
-| 시각 | 스크립트 | 내용 | 산출물 |
+> **도구 결정(9단계, PRD S-10-C "배포판 패키지만·새 패키지 0")**: 실습 VM 에 `age`·`restic` 이 없고 새로 설치하지 않는다.
+> 암호화는 `gpg --symmetric --cipher-algo AES256`(gnupg, 기본 설치), 파일 백업은 `tar` 전체 + `rsync` 로컬 미러로 대체한다.
+> 키는 `/etc/tbox-v2/backup.key`(0600 root, `openssl rand -hex 32`) — **분실 = 백업 전체 무용**(R-08). 사본을 서버 밖 2인 보관.
+> WAL 아카이브(15분 RPO)·원격 저장소(Q-4)·원격 로그(rsyslog TLS)는 대상 서버가 없어 **예시 설정만** 둔다(`deploy/postgresql/archive.conf.example`, `deploy/rsyslog/tbox-v2.conf.example`) — 실제 RPO 는 일 1회(24시간)이며 운영 전환 조건에 포함.
+
+| 시각 | 스크립트 | 내용 | 산출물 · 감사 기록 |
 |---|---|---|---|
-| 매 15분 | (PostgreSQL 설정) `archive_command` | WAL 아카이브 | `/var/backups/tbox/wal/` → 원격 |
-| 03:00 | `scripts/backup_db.sh` | `pg_dump -Fc` → `age`로 암호화 → sha256 | `db-YYYYMMDD.dump.age` + `.sha256` |
-| 03:30 | `scripts/backup_files.sh` | `restic backup /var/lib/tbox/storage` (증분, 암호화 내장) | restic 저장소 (로컬 + 원격) |
-| 04:00 | `scripts/purge_trash.php` | 30일 지난 휴지통 파일 실제 삭제 | audit `file.purge` |
-| 04:30 | `scripts/verify_backup.sh` | 체크섬 검증, 파일 수·크기 대조, 결과 알림 | 알림 (2회 연속 실패 시 경보) |
-| 매주 일 02:00 | `scripts/consistency_check.php` | DB ↔ 스토리지 정합성 (고아 파일, 누락 파일, sha256) | 보고서 |
+| (미적용) 매 15분 | PostgreSQL `archive_command` | WAL 아카이브 → 원격 | 예시 설정만. 운영 전환 시 |
+| 03:00 | `scripts/backup_db.sh` | `pg_dump -Fc`(역할 `tbox_backup`, 읽기 전용) → 파이프로 `gpg --symmetric` → sha256. 평문 덤프를 디스크에 남기지 않음 | `/var/backups/tbox-v2/db/db-YYYYMMDD-HHMM.dump.gpg` + `.sha256` · 보관 일 7·주 4·월 6 · `backup.run allow|error` |
+| 03:30 | `scripts/backup_files.sh` | `tar -C /var/lib/tbox-v2 -cz storage \| gpg` + `rsync -a --delete` 로컬 미러 | `files/files-YYYYMMDD.tar.gz.gpg` + `.sha256`, `files-mirror/` · `backup.run` |
+| 04:00 | `scripts/purge_trash.php` | 30일 지난 휴지통 파일 실제 삭제 → `files.purged_at` 기록(행은 남김, 감사 추적) | `file.purge allow|error` |
+| 04:30 | `scripts/verify_backup.sh` | 최신 산출물 `sha256sum -c` + gpg 복호화 시험(`pg_restore -l` 목록만) | `audit.integrity allow|error`, 2회 연속 실패 → `alert.raised AL-8` |
+| 00:05 | `scripts/audit_chain.php` | `audit.log` 일별 sha256 해시 체인(R-11) | `/var/lib/tbox-v2/audit-chain.txt`, `audit.integrity` |
+| 매 5분 | `scripts/alerts.php` | AL-1·AL-2·AL-5·AL-7·AL-10 SQL 판정, 중복 억제 30분 | `/var/log/tbox-v2/alerts.log`, `alert.raised` |
+| 매주 일 02:00 | `scripts/consistency_check.php` | DB ↔ 스토리지 정합성 (고아·누락·sha256) | `audit.integrity`, 불일치 → `alert.raised AL-6` |
+
+셸 스크립트의 감사 기록은 `scripts/audit_cli.php <action> <result> [reason] --target … --detail JSON` 로 남긴다(문장 표에 없는 조합은 실패). 복구는 `scripts/restore.sh`(11.2). 서버 기준선 점검은 `scripts/check_baseline.sh`(읽기 전용), 강화 적용은 `deploy/hardening.sh --apply`(기본은 출력만 — 원격 세션 차단 위험이 있어 사용자가 직접 실행).
 
 ### 11.2 복구 순서 (PRD 7.8 절차의 명령 대응)
 
 ```
  1. 서비스 중단     sudo systemctl stop php8.1-fpm ; nginx 점검 페이지 전환
  2. 범위 판단       "DB만" / "파일만" / "둘 다", 목표 시점 T 결정
- 3. 무결성 확인     sha256sum -c db-YYYYMMDD.dump.sha256
- 4. DB 복구         age -d db-YYYYMMDD.dump.age | pg_restore -d tbox --clean
+ 3. 무결성 확인     sha256sum -c db-YYYYMMDD-HHMM.dump.gpg.sha256
+ 4. DB 복구         gpg --batch --passphrase-file /etc/tbox-v2/backup.key -d db-YYYYMMDD-HHMM.dump.gpg | pg_restore -d tbox_re --clean --if-exists
+                    (= scripts/restore.sh --db <파일>; 리허설은 --dbname tbox_re_restore 로 별도 DB 에)
                     (시점 복구 필요 시: 베이스 백업 + WAL 로 recovery_target_time = T)
- 5. 파일 복구       restic restore <snapshot@T> --target /var/lib/tbox/storage
+ 5. 파일 복구       gpg -d files-YYYYMMDD.tar.gz.gpg | tar -C /var/lib/tbox-v2 -xz   (= scripts/restore.sh --files <파일>)
  6. 정합성 검사     php scripts/consistency_check.php --strict
  7. 스모크 테스트   로그인 → 목록 → 업로드 → 다운로드 → 권한 매트릭스(PRD 5장) 확인
- 8. 재개 + 기록     systemctl start php8.1-fpm ; Audit system 'ops.restore' ; 사고 보고서
+ 8. 재개 + 기록     systemctl start php8.1-fpm ; 감사 기록 backup.restore (restore.sh 가 남김) ; 사고 보고서
 ```
 
 > 복구 리허설은 **분기 1회**, 운영 서버가 아닌 **별도 서버**에서 한다. 소요 시간을 재서 RTO 4시간 안에 드는지 확인한다.

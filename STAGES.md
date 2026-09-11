@@ -26,7 +26,7 @@
 | 4 | 서버 인가 — `Authz` 판정, 목록 SQL WHERE, 다운로드·삭제·업로드 권한, 403 동일 문구, `granted_by`·`route`·`login_ref`, 검토 계정 `qa_`, `audit.log` 보호 (+ 감사 로그 요약 문장 `summary` 포함) | ✅ | ✅ 2026-09-10 | ✅ 2026-09-10 (T-1·T-2·T-3 통과) | ⚠ 일괄 수행 대기 | 4단계 커밋 (2026-09-11) |
 | 5 | 입력/출력 안전 — 이스케이프·CSP·CSRF 재확인·바인딩 전수·정렬 허용 목록·오류 은닉, PATCH(설명·레벨 변경), R-36 | ✅ | ✅ 2026-09-11 | ✅ 2026-09-11 (T-4·T-5·T-14 통과) | ⚠ 일괄 수행 대기 | 5단계 커밋 (2026-09-11) |
 | 6 | 업로드 하드닝 — 확장자 화이트리스트·MIME 짝·이중 확장자·일일 총량·100MB 경계 확정·sha256 대조·저장소 그룹 회수(R-34) | ✅ | ✅ 2026-09-11 | ✅ 2026-09-11 (T-7~T-11 통과) | ⚠ 일괄 수행 대기 | 6단계 커밋 (2026-09-11) |
-| 7 | SSRF 방어 — `POST /api/files/fetch` + `src/Fetch.php` (S-05 13개 조건), `php8.1-curl` 설치 | ⬜ | | | | |
+| 7 | SSRF 방어 — `POST /api/files/fetch` + `src/Fetch.php` (S-05 13개 조건), `php8.1-curl` 설치 | ✅ | ✅ 2026-09-11 | ✅ 2026-09-11 (T-6 통과) | ⚠ 일괄 수행 대기 | 7단계 커밋 (2026-09-11) |
 | 8 | 감사 로그 조회 화면(Admin) — `audit.view` 기록, 육하원칙 6필터 | ⬜ | | | | |
 | 9 | 운영 — 백업·복구·정합성 검사·경보(AL-1)·서버 기준선·원격 로그·해시 체인, README 완성 | ⬜ | | | | |
 | 10 (여유) | 계정 관리·휴지통 복구·Guest 만료·MFA | ⬜ | | | | |
@@ -277,12 +277,37 @@ sudo -u postgres psql -d tbox_re -c "SELECT happened_at, actor_name, action, res
 | 2026-09-11 | 결정 | 100MB 경계: 정확히 100MB 파일은 올라가야 하나? | PRD S-06 "100MB" 를 포함 경계로 확정 — nginx 는 101m 으로 요청 전체를 받고 PHP `Upload::MAX_BYTES`(104,857,600) 초과만 거부. 3단계 재검토 관찰 ① 해소 |
 | 2026-09-11 | 결정 | HWP 파일의 실제 MIME 은 무엇인가? 이 VM 은 `application/cdfv2`(OLE 컨테이너) | `hwp` 칸에만 허용. 부작용: 구형 MS Office OLE 문서를 `.hwp` 로 위장하면 통과 — ClamAV(Q-3) 없는 한 남는 위험, R-02 비고에 기록 |
 
-### 7단계 — SSRF 방어 ⬜ (S-05, F-14 · T-6)
+### 7단계 — SSRF 방어 ✅ (S-05, F-14 · T-6) — 2026-09-11 커밋
 
-**개발 사항(예정)**: `php8.1-curl` 설치(`DEPENDENCIES.md` 갱신), `src/Fetch.php` 한 파일에 격리, https·443 만, 호스트 화이트리스트(`.env` `FETCH_ALLOWED_HOSTS`, 초기 비움), IP 검증 + `CURLOPT_RESOLVE` 고정, 리다이렉트 금지, 크기·시간 상한, `Upload::validate` 재사용, 응답 비노출, Manager 이상 + 시간당 10회, 문장 틀 `file.fetch` 선행 추가
-**검토 체크(예정)**: S-05 검증 표 페이로드 **전부**(`file://`·`http://`·`127.0.0.1`·`169.254.169.254`·`localhost`·`2130706433`·`[::1]`·`user@host`·`:8443`·허용 외 도메인·내부 IP 해석·302·`shell.php`) → 전부 "가져올 수 없습니다" + 감사 로그 사유 · `grep -rn curl_ src public` → `Fetch.php` 만
-**자기 공격 체크(예정)**: 위 페이로드 중 5개 골라 브라우저·curl 로 → 전부 같은 문구 · 감사 로그에 사유 확인
-**학습 기록**: (진행하면서 기록)
+**개발 사항**
+- [x] `php8.1-curl`(배포판 패키지) 설치, `DEPENDENCIES.md` 갱신
+- [x] 외부 요청 코드는 `src/Fetch.php` **한 파일**(린트가 다른 곳의 `curl_*` 반려)
+- [x] S-05 13개 조건: https·443 만, userinfo·IP 표기·`localhost`·퓌니코드 거부, 허용 목록 **정확 일치**(비면 전부 거부, 와일드카드 금지), DNS 해석 결과 전부 공인 IP(IPv6 매핑·호환 표기 환원), 검사한 IP 로 `CURLOPT_RESOLVE` 고정 + host 를 정규화 값으로 URL 재조립, 리다이렉트 미추적(3xx = 실패), 3s/10s·100MB(헤더+실수신 바이트+사후 크기 3중), 가져온 파일은 업로드와 **같은** `Upload::validatePath`, 응답 비노출(문구 하나), Manager 이상 + 시간당 10회, 임시파일 항상 정리
+- [x] 감사 로그: 사유 코드 14종, `source_host`·`source_ip`·`http_status` (URL 전체는 기록 안 함)
+- [x] 화면: 서버 `can_fetch` 가 참일 때만 "URL 로 가져오기" 패널
+
+**검토 체크 (Fable ②)** — 2026-09-11 통과 (`SECURITY.md` 7장 "7단계 구현 검토")
+- [x] 단위 69건(`isPrivate` 28 + `check` 41): 스킴·포트·IP 표기 9종·userinfo 3종·유사 도메인·`%2f@`·`#@`·퓌니코드·와일드카드·공백·길이 → 전부 거부, 끝 점·대문자·`:443` → 정규화 통과
+- [x] e2e 11건(임시 계정 `qa_manager02`): 성공 2(internal `matrix`, team1 `same_team`, sha256 일치), 302 `redirect`, 404 `fetch_failed`, `.php` `invalid_file`, 표기 우회 3종 `host_not_allowed`, admin-only 403, team2 403, 11회째 429
+- [x] Employee·Guest 403(라우터), CSRF 없음 403, 폼 400, 실패 본문 전부 `{"error":"가져올 수 없습니다"}`, URL 전체 로그 0, 임시 디렉터리 잔여 0
+- [x] 검토 뒤 `.env` 허용 목록을 **비움** → 현재 서비스는 전부 거부(Q-10 운영 결정)
+- [ ] **미검증** 내부 IP 로 해석되는 도메인(DNS 조작 불가 → 단위로 대체), 100MB 초과 e2e(CLI 로 대체), 브라우저 패널 → 관문 ③
+
+**자기 공격 체크 (사용자 ③)** — manager01 로 (허용 목록이 비어 있으므로 **전부** 거부돼야 정상)
+- [ ] 화면 "URL 로 가져오기" 에 `file:///etc/passwd` → "가져올 수 없습니다"
+- [ ] `http://raw.githubusercontent.com/git/git/master/README.md`(http) → 같은 문구
+- [ ] `https://127.0.0.1/`, `https://169.254.169.254/latest/meta-data`, `https://localhost/`, `https://2130706433/` → 같은 문구
+- [ ] `https://raw.githubusercontent.com/git/git/master/README.md`(허용 목록에 없음) → 같은 문구
+- [ ] `sudo tail -n 8 /var/log/tbox-v2/audit.log` 에 사유가 `scheme`·`host_not_allowed` 로 구분돼 남고 문장에 "SSRF"·"내부망" 설명이 있음. 화면 문구는 전부 같았음을 확인
+- [ ] employee01 로는 패널 자체가 안 보이고, F12 Console 로 `fetch('/api/files/fetch',{method:'POST',headers:{'Content-Type':'application/json','X-CSRF-Token':'…'},body:'{"url":"https://a/b.txt","access_level":"internal"}'}).then(r=>r.status)` → `403`
+
+**학습 기록**
+
+| 날짜 | 구분 | 내용 | 해소·근거 |
+|---|---|---|---|
+| 2026-09-11 | 해소 | (검토 중) 검토 계정 두 개가 시간당 10회 한도를 자체 시험으로 다 써서 Fable 이 e2e 를 못 돌림 | 속도 제한은 허용·거부를 **모두** 세도록 설계돼 있어(거부 반복으로도 막힘) 의도된 동작. 임시 Manager 계정 `qa_manager02` 를 만들어 시험하고 파일·세션·계정을 삭제(감사 행은 남김). 교훈: 한도가 있는 기능은 구현자와 검토자가 **다른 계정**을 써야 한다 |
+| 2026-09-11 | 결정 | 시험 때 넣은 허용 호스트(`raw.githubusercontent.com`, `github.com`)를 남길까? | PRD Q-10 대로 **비움**. 운영자가 필요할 때 정적 파일을 직접 내려주는 호스트만 `.env` 에 추가하고 `php-fpm reload`. Google Drive 류는 리다이렉트를 쓰므로 원리적으로 불가 |
+| 2026-09-11 | 해소 | 왜 URL 전체를 감사 로그에 남기지 않나? | URL 경로에 토큰·개인정보가 들어갈 수 있어 host·ip·상태 코드만 남긴다(ARCH 7.5). 조사에 필요한 "어디서 가져왔나"는 host 로 충분 |
 
 ### 8단계 — 감사 로그 조회 ⬜ (S-07 · T-12, T-13)
 

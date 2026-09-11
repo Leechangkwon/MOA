@@ -33,6 +33,7 @@ require_once __DIR__ . '/Authz.php';
 require_once __DIR__ . '/Audit.php';
 require_once __DIR__ . '/Storage.php';
 require_once __DIR__ . '/Upload.php';
+require_once __DIR__ . '/Fetch.php';   // F-14 외부 요청 (7단계, PRD S-05 ⑬)
 
 /**
  * 요청 식별자 (UUIDv4). random_bytes 로 만든다 — 예측 가능한 값이면

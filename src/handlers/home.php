@@ -4,7 +4,7 @@ declare(strict_types=1);
 /**
  * src/handlers/home.php — GET / (정책: authenticated)
  *
- * 6단계 화면: 파일 목록(검색·정렬·페이지) · 업로드 폼(허용 형식 안내) · 다운로드/삭제/수정 버튼.
+ * 7단계 화면: 파일 목록(검색·정렬·페이지) · 업로드 폼 · "URL 로 가져오기" 폼 · 다운로드/삭제/수정 버튼.
  *
  * 서버가 HTML 에 넣는 동적 값은 **사용자명·역할 두 개뿐**이고, 둘 다 DB 에서 읽은 값이며
  * (요청에 실려 온 값이 아니다 — PRD S-01) htmlspecialchars(ENT_QUOTES) 를 거친다 (PRD S-03).
@@ -12,6 +12,8 @@ declare(strict_types=1);
  *
  * ★ 5단계에도 화면에 권한 로직을 두지 않는다. 삭제·수정 버튼은 서버가 행마다 내려 준
  *   `can_delete`·`can_edit` 로만, 업로드 레벨 선택지는 서버가 내려 준 `upload_levels` 로만 만든다.
+ *   7단계의 "URL 로 가져오기" 패널도 같다 — `hidden` 으로 두고 `/api/me` 의 `can_fetch` 가
+ *   참일 때만 app.js 가 연다. 화면은 역할 문자열을 보지 않는다 (F-14 는 Manager 이상, PRD 5.4).
  *   그래서 업로드 <select> 는 여기서 **비워 둔다** — 화면이 레벨 목록을 알고 있으면
  *   그것이 곧 화면에 심어 둔 권한 판단이 된다. "버튼을 숨기는 것" 은 편의일 뿐
  *   권한의 근거가 아니다 (PRD 10장, S-01) — 허용 여부는 서버 Authz 가 매 요청 판단한다.
@@ -42,7 +44,7 @@ if (!headers_sent()) {
 <main class="card card--wide">
   <header class="topbar">
     <div>
-      <h1>t-box (재구축) — 6단계</h1>
+      <h1>t-box (재구축) — 7단계</h1>
       <p class="lead">
         <strong><?= $displayName ?></strong> 님으로 로그인했습니다 ·
         역할 <code><?= $displayRole ?></code>
@@ -58,6 +60,14 @@ if (!headers_sent()) {
     <code>shell.php.txt</code> 같은 이중 확장자도 거부합니다. 한 파일은 최대 100MB,
     한 사람이 하루에 올릴 수 있는 총량은 2GB 입니다.
     내려받을 때는 저장된 파일의 해시를 기록과 대조한 뒤에만 전송합니다.
+  </p>
+  <p class="notice">
+    7단계: <strong>URL 로 가져오기(Manager 이상)를 열었습니다.</strong>
+    서버는 <code>https</code> · 443 포트 · <strong>허용 목록에 정확히 일치하는 주소</strong>만 갑니다.
+    주소가 내부망 IP 로 해석되면 가지 않고, 리다이렉트도 따라가지 않습니다.
+    가져온 파일은 직접 올린 파일과 <strong>똑같은 검사</strong>를 거칩니다.
+    실패하면 이유를 알려 주지 않고 <code>가져올 수 없습니다</code> 한 문장만 보여 줍니다 —
+    이유는 감사 로그에만 남습니다.
   </p>
   <p class="notice">
     목록에는 볼 수 있는 파일만 담기고(SQL 조건), 다운로드·삭제·업로드·수정은 요청마다 서버가
@@ -86,6 +96,30 @@ if (!headers_sent()) {
         <select id="upload-team"></select>
       </label>
       <button id="upload-submit" class="btn" type="submit">올리기</button>
+    </form>
+  </section>
+
+  <section class="panel" id="fetch-panel" hidden>
+    <h2>URL 로 가져오기</h2>
+    <form id="fetch-form" class="form form--grid" autocomplete="off">
+      <label class="field">
+        <span class="field__label">주소 (https 만 · 허용된 사이트만)</span>
+        <input id="fetch-url" type="url" maxlength="2048" required>
+      </label>
+      <label class="field">
+        <span class="field__label">설명 (500자 이내)</span>
+        <input id="fetch-description" type="text" maxlength="500">
+      </label>
+      <label class="field">
+        <span class="field__label">접근 레벨</span>
+        <!-- 선택지는 /api/me 의 upload_levels 로 app.js 가 채운다 (서버가 정한다) -->
+        <select id="fetch-level"></select>
+      </label>
+      <label class="field" id="fetch-team-field" hidden>
+        <span class="field__label">팀</span>
+        <select id="fetch-team"></select>
+      </label>
+      <button id="fetch-submit" class="btn" type="submit">가져오기</button>
     </form>
   </section>
 
