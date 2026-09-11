@@ -1,0 +1,514 @@
+<!--
+  totp-generator.html — 오프라인 2단계 인증(TOTP) 코드 생성기 · t-box 11단계 부록
+  근거: PRD.md F-17 · SECURITY.md R-40 · 서버 구현 src/Totp.php 와 같은 규격(RFC 6238)
+
+  [용도]
+    스마트폰 인증 앱을 쓸 수 없을 때 쓰는 대안. 이 파일 하나를 PC 에 저장해 브라우저로 열면
+    비밀 키(base32) 또는 otpauth 주소로부터 6자리 코드를 30초마다 계산한다.
+    네트워크 요청 0 · 외부 스크립트 0 · 서버와 통신하지 않는다. 계산은 전부 이 파일 안에서 한다.
+
+  [경고 — SECURITY.md R-40]
+    이 생성기를 "로그인하는 그 PC" 에 두면 두 번째 겹이 그 PC 하나로 줄어든다.
+    그 PC 를 쥔 사람(악성코드·자리 비움)은 비밀번호와 코드를 함께 얻는다.
+    스마트폰 인증 앱은 기기가 분리돼 있어 더 강하다. 가능하면 앱을 쓴다.
+
+  [저장 위치]
+    이 파일은 사용자 PC 에 두는 것이 전제다. 비밀 키는 기본적으로 메모리에만 있고,
+    「이 브라우저에 기억」 을 켠 경우에만 그 브라우저의 localStorage 키 tbox-totp-secret 에 남는다.
+    「지우기」 는 저장값과 화면을 모두 지운다. 서버에는 아무것도 보내지 않는다.
+
+  [검토자가 볼 곳]
+    · base32 해독 base32Decode()  · 8바이트 카운터 counterBytes()
+    · HMAC-SHA1 hmacSha1() (WebCrypto crypto.subtle 만 사용)
+    · 동적 절단·자릿수 totpCode()  · 입력 파싱 parseInput()
+    · RFC 6238 부록 B 시험값 TEST_VECTORS / runSelfTest()
+    · 저장 처리 saveSecret() · clearAll()
+    · DOM 조작은 textContent 와 createElement 만 — HTML 문자열 주입·동적 코드 실행·외부 리소스 없음.
+-->
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data:">
+<title>t-box 오프라인 2단계 코드 생성기</title>
+<style>
+  :root { color-scheme: light dark; }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 24px 16px 48px;
+    font-family: system-ui, -apple-system, "Segoe UI", "Noto Sans KR", "Malgun Gothic", sans-serif;
+    font-size: 15px; line-height: 1.6;
+    background: #f5f6f8; color: #1b1c1f;
+  }
+  .wrap { max-width: 560px; margin: 0 auto; }
+  h1 { font-size: 20px; margin: 0 0 4px; }
+  .sub { margin: 0 0 20px; font-size: 13px; color: #5b5f66; }
+  .card {
+    background: #fff; border: 1px solid #dfe1e6; border-radius: 10px;
+    padding: 16px; margin-bottom: 16px;
+  }
+  label { display: block; font-weight: 600; margin-bottom: 6px; }
+  textarea {
+    width: 100%; min-height: 72px; padding: 10px; font-size: 14px;
+    font-family: ui-monospace, SFMono-Regular, Consolas, "DejaVu Sans Mono", monospace;
+    border: 1px solid #c7cad1; border-radius: 8px; background: #fff; color: inherit;
+    resize: vertical; word-break: break-all;
+  }
+  .row { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; align-items: center; }
+  button {
+    font: inherit; font-weight: 600; padding: 8px 14px; border-radius: 8px;
+    border: 1px solid #c7cad1; background: #eef0f3; color: inherit; cursor: pointer;
+  }
+  button.primary { background: #1f5fd0; border-color: #1f5fd0; color: #fff; }
+  button:disabled { opacity: .5; cursor: default; }
+  .code {
+    font-family: ui-monospace, SFMono-Regular, Consolas, "DejaVu Sans Mono", monospace;
+    font-size: 40px; font-weight: 700; letter-spacing: .12em;
+    margin: 4px 0 2px; word-break: break-all;
+  }
+  .next {
+    font-family: ui-monospace, SFMono-Regular, Consolas, "DejaVu Sans Mono", monospace;
+    font-size: 16px; color: #5b5f66;
+  }
+  .bar { height: 8px; border-radius: 4px; background: #e2e5ea; overflow: hidden; margin: 10px 0 6px; }
+  .bar > div { height: 100%; width: 0; background: #1f5fd0; }
+  .meta { font-size: 13px; color: #5b5f66; }
+  .warn {
+    font-size: 13px; border-left: 3px solid #c9821b; padding: 6px 0 6px 10px;
+    background: #fdf6e9; border-radius: 0 6px 6px 0; margin-top: 10px;
+  }
+  .msg { font-size: 13px; margin-top: 10px; min-height: 1.6em; color: #a33021; }
+  .msg.ok { color: #1d6b3a; }
+  .check { display: flex; gap: 8px; align-items: flex-start; font-size: 14px; }
+  .check input { margin-top: 5px; }
+  .result { font-family: ui-monospace, SFMono-Regular, Consolas, monospace; font-size: 13px; margin-top: 10px; }
+  .result div { padding: 1px 0; }
+  .result .bad { color: #a33021; }
+  .result .good { color: #1d6b3a; }
+  .result .head { font-weight: 700; }
+  h2 { font-size: 15px; margin: 0 0 8px; }
+  .foot { font-size: 12px; color: #6b6f76; }
+  @media (prefers-color-scheme: dark) {
+    body { background: #17181b; color: #e6e7ea; }
+    .sub, .meta, .next, .foot { color: #a2a7b0; }
+    .card { background: #1f2126; border-color: #34373d; }
+    textarea { background: #16181c; border-color: #43464d; }
+    button { background: #2a2d33; border-color: #43464d; }
+    button.primary { background: #3b7ae4; border-color: #3b7ae4; color: #fff; }
+    .bar { background: #34373d; }
+    .warn { background: #2a2419; border-left-color: #c9821b; }
+    .msg { color: #f0a49a; }
+    .msg.ok { color: #8fd6a8; }
+    .result .bad { color: #f0a49a; }
+    .result .good { color: #8fd6a8; }
+  }
+  @media (max-width: 420px) {
+    .code { font-size: 32px; }
+  }
+</style>
+
+<div class="wrap">
+  <h1>t-box 오프라인 2단계 코드 생성기</h1>
+  <p class="sub">RFC 6238 TOTP · HMAC-SHA1 · 이 파일 안에서만 계산합니다 (네트워크 요청 없음)</p>
+
+  <div class="card">
+    <label for="secret">비밀 키 또는 otpauth 주소</label>
+    <textarea id="secret" spellcheck="false" autocomplete="off"
+      placeholder="예) GEZD GNBV GY3T QOJQ ...  또는  otpauth://totp/t-box:아이디?secret=...&amp;digits=6&amp;period=30&amp;algorithm=SHA1"></textarea>
+    <div class="row">
+      <button id="apply" class="primary" type="button">코드 만들기</button>
+      <button id="clear" type="button">지우기</button>
+    </div>
+    <div class="row">
+      <span class="check">
+        <input id="remember" type="checkbox">
+        <label for="remember" style="font-weight:400;margin:0">이 브라우저에 기억</label>
+      </span>
+    </div>
+    <p class="warn">기억하면 이 PC 를 쓰는 사람은 누구나 코드를 볼 수 있습니다. 스마트폰 인증 앱이 더 강합니다.</p>
+    <p id="msg" class="msg"></p>
+  </div>
+
+  <div class="card">
+    <h2>지금의 코드</h2>
+    <div id="code" class="code">------</div>
+    <div id="next" class="next">다음 코드 ------</div>
+    <div class="bar"><div id="bar"></div></div>
+    <div id="left" class="meta">비밀 키를 넣고 「코드 만들기」 를 누르세요.</div>
+    <div class="row">
+      <button id="copy" type="button">복사</button>
+    </div>
+    <div id="info" class="meta" style="margin-top:10px"></div>
+  </div>
+
+  <div class="card">
+    <h2>시각 확인</h2>
+    <div id="utc" class="meta">—</div>
+    <div class="meta">코드가 계속 틀리면 PC 시계를 맞추세요 (서버는 ±30초까지 인정합니다).</div>
+  </div>
+
+  <div class="card">
+    <h2>자체 점검</h2>
+    <div class="meta">RFC 6238 부록 B 의 공개 시험값(SHA1)으로 이 파일의 계산이 맞는지 확인합니다. 비밀 키가 없어도 됩니다.</div>
+    <div class="row"><button id="selftest" type="button">자체 점검 실행</button></div>
+    <div id="testout" class="result"></div>
+  </div>
+
+  <p class="foot">비밀 키는 기본적으로 메모리에만 있습니다. 서버로 보내지 않으며, 로그도 남기지 않습니다. 근거: PRD F-17 · SECURITY R-40 · 서버 구현 src/Totp.php</p>
+</div>
+
+<script>
+(function () {
+  'use strict';
+
+  var ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
+  var STORE_KEY = 'tbox-totp-secret';
+
+  /* RFC 6238 부록 B — SHA1 시험값. 비밀은 ASCII "12345678901234567890" 의 base32.
+     기대값은 8자리이며, 6자리는 그 뒤 6자리다. */
+  var TEST_SECRET = 'GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ';
+  var TEST_VECTORS = [
+    { time: 59,          expect: '94287082' },
+    { time: 1111111109,  expect: '07081804' },
+    { time: 1111111111,  expect: '14050471' },
+    { time: 1234567890,  expect: '89005924' },
+    { time: 2000000000,  expect: '69279037' },
+    { time: 20000000000, expect: '65353130' }
+  ];
+
+  var el = {
+    secret:   document.getElementById('secret'),
+    apply:    document.getElementById('apply'),
+    clear:    document.getElementById('clear'),
+    remember: document.getElementById('remember'),
+    msg:      document.getElementById('msg'),
+    code:     document.getElementById('code'),
+    next:     document.getElementById('next'),
+    bar:      document.getElementById('bar'),
+    left:     document.getElementById('left'),
+    copy:     document.getElementById('copy'),
+    info:     document.getElementById('info'),
+    utc:      document.getElementById('utc'),
+    selftest: document.getElementById('selftest'),
+    testout:  document.getElementById('testout')
+  };
+
+  /* 현재 상태 — 비밀은 여기(메모리)에만 둔다. */
+  var state = { key: null, digits: 6, period: 30, label: '', counter: -1, code: '', next: '' };
+  var pending = false;
+
+  /* ---------- 계산부 ---------- */
+
+  /** base32(RFC 4648) → Uint8Array. 공백·하이픈·소문자·패딩 허용. 실패하면 null. */
+  function base32Decode(text) {
+    var clean = String(text).toUpperCase().replace(/[\s\-_]+/g, '').replace(/=+$/, '');
+    if (clean.length === 0) { return null; }
+    var bits = 0, value = 0, out = [], i, idx;
+    for (i = 0; i < clean.length; i++) {
+      idx = ALPHABET.indexOf(clean.charAt(i));
+      if (idx < 0) { return null; }
+      value = (value << 5) | idx;
+      bits += 5;
+      if (bits >= 8) {
+        bits -= 8;
+        out.push((value >>> bits) & 0xff);
+      }
+    }
+    if (out.length === 0) { return null; }
+    return new Uint8Array(out);
+  }
+
+  /** 시간 스텝 번호 → 8바이트 big-endian (RFC 4226 §5.1). */
+  function counterBytes(counter) {
+    var buf = new ArrayBuffer(8);
+    var view = new DataView(buf);
+    var high = Math.floor(counter / 4294967296);
+    var low = counter - high * 4294967296;
+    view.setUint32(0, high);
+    view.setUint32(4, low);
+    return buf;
+  }
+
+  /** HMAC-SHA1 — WebCrypto 만 쓴다 (자체 SHA1 구현 없음). */
+  function hmacSha1(keyBytes, msgBuf) {
+    return crypto.subtle
+      .importKey('raw', keyBytes, { name: 'HMAC', hash: { name: 'SHA-1' } }, false, ['sign'])
+      .then(function (cryptoKey) { return crypto.subtle.sign('HMAC', cryptoKey, msgBuf); });
+  }
+
+  /** HOTP 동적 절단 (RFC 4226 §5.3) → digits 자리 문자열. */
+  function totpCode(keyBytes, counter, digits) {
+    return hmacSha1(keyBytes, counterBytes(counter)).then(function (sig) {
+      var mac = new Uint8Array(sig);
+      var offset = mac[mac.length - 1] & 0x0f;
+      var binary = ((mac[offset] & 0x7f) * 16777216)
+                 + ((mac[offset + 1] & 0xff) * 65536)
+                 + ((mac[offset + 2] & 0xff) * 256)
+                 +  (mac[offset + 3] & 0xff);
+      var text = String(binary % Math.pow(10, digits));
+      while (text.length < digits) { text = '0' + text; }
+      return text;
+    });
+  }
+
+  /* ---------- 입력 파싱 ---------- */
+
+  /** 입력 한 줄 → { key, digits, period, label } 또는 { error }. */
+  function parseInput(raw) {
+    var text = String(raw).trim();
+    if (text === '') { return { error: '비밀 키 또는 otpauth 주소를 넣어 주세요.' }; }
+
+    var digits = 6, period = 30, label = '', secretText = text;
+
+    if (/^otpauth:/i.test(text)) {
+      if (!/^otpauth:\/\/totp\//i.test(text)) {
+        return { error: '시간 기반(otpauth://totp/) 주소만 지원합니다.' };
+      }
+      var qmark = text.indexOf('?');
+      if (qmark < 0) { return { error: 'otpauth 주소에 secret 값이 없습니다.' }; }
+
+      label = decodePart(text.slice('otpauth://totp/'.length, qmark));
+      var params = {};
+      var parts = text.slice(qmark + 1).split('&');
+      for (var i = 0; i < parts.length; i++) {
+        var eq = parts[i].indexOf('=');
+        if (eq < 0) { continue; }
+        params[decodePart(parts[i].slice(0, eq)).toLowerCase()] = decodePart(parts[i].slice(eq + 1));
+      }
+
+      if (!params.secret) { return { error: 'otpauth 주소에 secret 값이 없습니다.' }; }
+      secretText = params.secret;
+
+      if (params.algorithm && params.algorithm.toUpperCase().replace(/-/g, '') !== 'SHA1') {
+        return { error: '지원하지 않는 알고리즘입니다 (SHA1 만 됩니다): ' + params.algorithm };
+      }
+      if (params.digits) {
+        if (params.digits !== '6' && params.digits !== '8') {
+          return { error: '자릿수는 6 또는 8 만 지원합니다: ' + params.digits };
+        }
+        digits = Number(params.digits);
+      }
+      if (params.period) {
+        if (!/^[0-9]{1,3}$/.test(params.period) || Number(params.period) < 1) {
+          return { error: '주기(period) 값이 올바르지 않습니다: ' + params.period };
+        }
+        period = Number(params.period);
+      }
+    }
+
+    var key = base32Decode(secretText);
+    if (key === null) {
+      return { error: 'base32 비밀 키 형식이 아닙니다. A~Z 와 2~7 만 쓸 수 있습니다 (공백·하이픈·소문자는 괜찮습니다).' };
+    }
+    if (key.length < 10) {
+      return { error: '비밀 키가 너무 짧습니다. 화면에 나온 값을 끝까지 붙여 넣었는지 확인하세요.' };
+    }
+    return { key: key, digits: digits, period: period, label: label };
+  }
+
+  /** 퍼센트 인코딩 해제. 잘못된 값이면 원문 그대로 둔다(예외를 화면에 내지 않는다). */
+  function decodePart(text) {
+    try { return decodeURIComponent(String(text).replace(/\+/g, ' ')); }
+    catch (e) { return String(text); }
+  }
+
+  /* ---------- 화면 ---------- */
+
+  function setMsg(text, ok) {
+    el.msg.textContent = text;
+    el.msg.className = ok ? 'msg ok' : 'msg';
+  }
+
+  function resetCodeView(note) {
+    state.key = null;
+    state.counter = -1;
+    state.code = '';
+    state.next = '';
+    el.code.textContent = '------';
+    el.next.textContent = '다음 코드 ------';
+    el.bar.style.width = '0%';
+    el.info.textContent = '';
+    el.left.textContent = note;
+  }
+
+  function apply(fromStorage) {
+    var parsed = parseInput(el.secret.value);
+    if (parsed.error) {
+      resetCodeView('비밀 키를 넣고 「코드 만들기」 를 누르세요.');
+      setMsg(parsed.error, false);
+      return false;
+    }
+    state.key = parsed.key;
+    state.digits = parsed.digits;
+    state.period = parsed.period;
+    state.label = parsed.label;
+    state.counter = -1;
+    el.info.textContent = (parsed.label ? '계정 ' + parsed.label + ' · ' : '')
+      + parsed.digits + '자리 · ' + parsed.period + '초 · HMAC-SHA1';
+    setMsg(fromStorage ? '이 브라우저에 기억해 둔 비밀 키를 불러왔습니다.' : '비밀 키를 읽었습니다. 코드는 30초마다 바뀝니다.', true);
+    if (el.remember.checked) { saveSecret(); }
+    tick();
+    return true;
+  }
+
+  /** 1초마다: 남은 초·진행 막대·UTC 갱신, 스텝이 바뀌면 코드 다시 계산. */
+  function tick() {
+    var now = Date.now();
+    el.utc.textContent = 'PC 시각(UTC) ' + new Date(now).toISOString().replace('T', ' ').slice(0, 19)
+      + '  ·  로컬 ' + new Date(now).toTimeString().slice(0, 8);
+
+    if (!state.key) { return; }
+
+    var seconds = Math.floor(now / 1000);
+    var counter = Math.floor(seconds / state.period);
+    var used = seconds - counter * state.period;
+    var left = state.period - used;
+
+    el.left.textContent = left + '초 뒤에 바뀝니다';
+    el.bar.style.width = Math.round((left / state.period) * 100) + '%';
+
+    if (counter !== state.counter && !pending) {
+      pending = true;
+      var wanted = counter;
+      Promise.all([
+        totpCode(state.key, wanted, state.digits),
+        totpCode(state.key, wanted + 1, state.digits)
+      ]).then(function (pair) {
+        pending = false;
+        if (!state.key) { return; }
+        state.counter = wanted;
+        state.code = pair[0];
+        state.next = pair[1];
+        el.code.textContent = pair[0];
+        el.next.textContent = '다음 코드 ' + pair[1];
+      }).catch(function () {
+        pending = false;
+        resetCodeView('계산에 실패했습니다.');
+        setMsg('코드를 계산할 수 없습니다. 비밀 키를 다시 확인해 주세요.', false);
+      });
+    }
+  }
+
+  /* ---------- 저장 ---------- */
+
+  function saveSecret() {
+    try {
+      localStorage.setItem(STORE_KEY, el.secret.value.trim());
+    } catch (e) {
+      el.remember.checked = false;
+      setMsg('이 브라우저에 저장할 수 없습니다 (개인정보 보호 모드일 수 있습니다).', false);
+    }
+  }
+
+  function forgetSecret() {
+    try { localStorage.removeItem(STORE_KEY); } catch (e) { /* 저장소가 막혀 있으면 지울 것도 없다 */ }
+  }
+
+  function clearAll() {
+    forgetSecret();
+    el.remember.checked = false;
+    el.secret.value = '';
+    resetCodeView('비밀 키를 넣고 「코드 만들기」 를 누르세요.');
+    el.testout.textContent = '';
+    setMsg('비밀 키와 저장값을 모두 지웠습니다.', true);
+  }
+
+  /* ---------- 자체 점검 ---------- */
+
+  function addLine(text, cls) {
+    var line = document.createElement('div');
+    line.textContent = text;
+    if (cls) { line.className = cls; }
+    el.testout.appendChild(line);
+  }
+
+  function runSelfTest() {
+    el.testout.textContent = '';
+    var key = base32Decode(TEST_SECRET);
+    if (key === null) { addLine('시험 비밀 키 해독 실패', 'bad'); return; }
+
+    el.selftest.disabled = true;
+    addLine('RFC 6238 부록 B (SHA1) — 비밀 "12345678901234567890"', 'head');
+
+    var passed = 0;
+    var chain = Promise.resolve();
+    TEST_VECTORS.forEach(function (vec) {
+      chain = chain.then(function () {
+        var counter = Math.floor(vec.time / 30);
+        return Promise.all([
+          totpCode(key, counter, 8),
+          totpCode(key, counter, 6)
+        ]).then(function (pair) {
+          var want6 = vec.expect.slice(2);
+          var ok = (pair[0] === vec.expect) && (pair[1] === want6);
+          if (ok) { passed++; }
+          addLine((ok ? '통과  ' : '실패  ') + 'T=' + vec.time
+            + '  8자리 ' + pair[0] + ' (기대 ' + vec.expect + ')'
+            + '  6자리 ' + pair[1] + ' (기대 ' + want6 + ')', ok ? 'good' : 'bad');
+        });
+      });
+    });
+
+    chain.then(function () {
+      addLine(passed + '/' + TEST_VECTORS.length + (passed === TEST_VECTORS.length
+        ? ' 통과 — 이 파일의 계산은 표준과 같습니다.'
+        : ' 통과 — 실패 항목이 있습니다. 이 파일을 쓰지 마세요.'),
+        passed === TEST_VECTORS.length ? 'head good' : 'head bad');
+      el.selftest.disabled = false;
+    }).catch(function () {
+      addLine('점검 중 오류가 났습니다. 브라우저가 HMAC-SHA1 을 지원하지 않을 수 있습니다.', 'bad');
+      el.selftest.disabled = false;
+    });
+  }
+
+  /* ---------- 시작 ---------- */
+
+  el.apply.addEventListener('click', function () { apply(false); });
+  el.clear.addEventListener('click', clearAll);
+  el.selftest.addEventListener('click', runSelfTest);
+
+  el.remember.addEventListener('change', function () {
+    if (el.remember.checked) {
+      if (el.secret.value.trim() === '') {
+        el.remember.checked = false;
+        setMsg('먼저 비밀 키를 넣어 주세요.', false);
+        return;
+      }
+      saveSecret();
+      if (el.remember.checked) { setMsg('이 브라우저에 기억했습니다. 이 PC 를 쓰는 사람은 누구나 코드를 볼 수 있습니다.', false); }
+    } else {
+      forgetSecret();
+      setMsg('저장값을 지웠습니다. 지금 화면의 비밀 키는 메모리에만 있습니다.', true);
+    }
+  });
+
+  el.copy.addEventListener('click', function () {
+    if (!state.code) { setMsg('복사할 코드가 없습니다.', false); return; }
+    if (!navigator.clipboard || !navigator.clipboard.writeText) {
+      setMsg('이 브라우저에서는 복사 버튼이 동작하지 않습니다. 코드를 직접 선택해 복사하세요.', false);
+      return;
+    }
+    navigator.clipboard.writeText(state.code).then(function () {
+      setMsg('코드를 복사했습니다.', true);
+    }).catch(function () {
+      setMsg('복사하지 못했습니다. 코드를 직접 선택해 복사하세요.', false);
+    });
+  });
+
+  if (!window.crypto || !window.crypto.subtle) {
+    el.apply.disabled = true;
+    el.selftest.disabled = true;
+    el.copy.disabled = true;
+    setMsg('이 브라우저에서는 암호 계산 기능(crypto.subtle)을 쓸 수 없습니다. 이 파일을 PC 에 저장해 파일로 열거나 localhost 로 열어 주세요.', false);
+  } else {
+    var saved = null;
+    try { saved = localStorage.getItem(STORE_KEY); } catch (e) { saved = null; }
+    if (saved) {
+      el.secret.value = saved;
+      el.remember.checked = true;
+      apply(true);
+    }
+  }
+
+  tick();
+  setInterval(tick, 1000);
+})();
+</script>

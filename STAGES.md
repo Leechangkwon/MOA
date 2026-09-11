@@ -428,7 +428,7 @@ sudo -u postgres psql -d tbox_re -c "SELECT happened_at, actor_name, action, res
 - [x] Admin: `POST /api/users/{uid}/password/reset`·`/mfa/reset` (사유 필수, 자기 자신 금지, 대상 세션 전부 종료)
 - [x] 화면: 홈이 `next` 를 보고 강제 화면만 표시(비밀번호 변경 → 2단계 인증 등록 → 정상 홈). 계정 관리 화면에서 임시 비밀번호 1회 표시·재발급·2단계 초기화 버튼
 - [x] 정적 자원 캐시: `app.js`·`app.css` 에 버전 쿼리(`?v=파일수정시각`) — 보정이 브라우저 캐시(7일)에 갇히지 않게
-- [ ] (부록, F-17) 오프라인 2단계 코드 생성기 `public/assets/totp-generator.html` — 외부 스크립트·네트워크 0, base32/`otpauth://` 입력, RFC 6238 자체 점검 버튼, 저장 선택·지우기, R-40 경고. 로컬 검토 사이트 `http://localhost:8082/assets/totp-generator.html` 로 내려받아 PC 에 저장
+- [x] (부록, F-17) 오프라인 2단계 코드 생성기 `public/assets/totp-generator.html` — 외부 스크립트·네트워크 0, base32/`otpauth://` 입력, RFC 6238 자체 점검 버튼, 저장 선택·지우기, R-40 경고. 로컬 검토 사이트 `http://localhost:8082/assets/totp-generator.html` 로 내려받아 PC 에 저장
 
 **검토 체크 (Fable ②)** — 2026-09-11 통과 (`SECURITY.md` 7장 「11단계 구현 검토」)
 - [x] 마이그레이션 뒤 기존 계정 `must_change_password=true`; 검토 계정으로 로그인 → `next=password_change`, `/api/files` 403 + `auth.gate deny`
@@ -439,6 +439,7 @@ sudo -u postgres psql -d tbox_re -c "SELECT happened_at, actor_name, action, res
 - [x] 검토 계정 5개는 절차를 마치고 새 비밀번호를 `/etc/tbox-v2/seed-accounts.txt`(qa 줄)에, TOTP 비밀을 `/etc/tbox-v2/qa-totp.txt`(root 0600)에 기록
 
 **자기 공격 체크 (사용자 ③)**
+- [ ] (F-17) `http://localhost:8082/assets/totp-generator.html` 을 열어 「다른 이름으로 저장」 → PC 에서 파일로 열기 → 「자체 점검 실행」 이 **6/6 통과** 인지 → 홈 「2단계 인증 켜기」의 비밀 키를 붙여 나온 6자리로 확정이 되는지
 - [ ] 시드 계정(`admin01` 등)으로 로그인 → 비밀번호 변경 화면만 보이는지 → 변경 → 2단계 인증 등록 화면 → 인증 앱 등록·확정 → 정상 홈
 - [ ] 절차 중에 주소창으로 `/api/files` 를 열면 403 과 안내 문구
 - [ ] `admin01` 로 계정 하나 생성 → 임시 비밀번호가 **한 번만** 보이는지 → 그 계정으로 다른 브라우저 로그인 → 절차 강제
