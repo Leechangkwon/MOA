@@ -236,7 +236,7 @@
 | 순위 | ID | 위험 | 위험도 | 상태 | 보완 |
 |---|---|---|---|---|---|
 | — | R-21 | **보안 지원 종료 버전 사용** (PHP 8.1 — 2025-12-31 종료, PostgreSQL 14 — 2026-11-12 종료) | **높음** | ◐ **위험 수용** (Q-11, 2026-09-08) | 사유: 교육 참가자 전원 동일 VM. 완화: 사내망 전용(NG-4), 아웃바운드 차단, Ubuntu 배포판 보안 패치는 계속 적용됨(8.1.2-1ubuntu2.x — Canonical 이 백포트). **실서비스 전환 조건**: PHP 8.4·PostgreSQL 16 으로 업그레이드 후 T-1~T-23 재실행 |
-| — | R-22 | 서버 인바운드·SSH 무방비 | **높음** | ◐ 9단계: `check_baseline.sh` 실측 — ufw inactive, SSH `PasswordAuthentication yes`·`PermitRootLogin without-password`·`MaxAuthTries 6` (**주의 3·미적용 2**). 적용 스크립트 `deploy/hardening.sh --apply` 준비됨, **미적용**(원격 세션 차단 위험 — 사용자가 콘솔에서 실행) | ARCH 11.3 적용 후 T-17·T-18 재실행 |
+| — | R-22 | 서버 인바운드·SSH 무방비 | **높음** | ◐ 9단계: `check_baseline.sh` 실측 — ufw inactive, SSH `PasswordAuthentication yes`·`PermitRootLogin without-password`·`MaxAuthTries 6` (**주의 3·미적용 2**). 적용 스크립트 `deploy/hardening.sh --apply` 준비됨, **미적용**(원격 세션 차단 위험 — 사용자가 콘솔에서 실행). ⚠ 2026-09-11 비교 조사(8.5): `sshd_config.d/50-cloud-init.conf`(`PasswordAuthentication yes`)가 드롭인 `tbox.conf` 보다 **먼저 읽혀** 적용을 무력화할 결함 — 8.4-12, 수정 전 `--apply` 금지 | ARCH 11.3 적용 후 T-17·T-18 재실행 |
 | — | R-23 | **운영 절차의 실행 여부** — 문서는 있으나 사람이 안 돌리면 없는 것 | **높음** | ◐ 9단계: 백업·검증·정리·정합성·해시 체인·경보 7종을 `/etc/cron.d/tbox-v2` 로 자동화(5분 경보는 syslog 로 실행 확인). 사람 몫: 주간 리뷰·월간 패치·분기 리허설·키 사본 보관 | 캘린더 실행을 월간 보고, 자동화 가능한 것(패치·백업·경보·린트)은 전부 자동화해 사람 의존 최소화 |
 | — | R-24 | 앱 서버 안의 경보는 서버 침해 시 신뢰 불가 | 중간 | ✅ 설계 | 로그 끊김·경보 판정은 **원격 로그 서버에서** (ARCH 11.4) |
 | — | R-25 | 침해 시 증거 소멸 (재부팅·삭제) | 중간 | ✅ 설계 | 침해 대응 1·2단계 "하지 말 것" 명시, 연 1회 훈련 |
