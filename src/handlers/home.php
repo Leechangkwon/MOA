@@ -50,7 +50,14 @@ if (!headers_sent()) {
         역할 <code><?= $displayRole ?></code>
       </p>
     </div>
-    <button id="logout" class="btn btn--quiet" type="button">로그아웃</button>
+    <div class="topbar__actions">
+      <!-- 8단계: "감사 로그" 링크는 **항상 HTML 에 있고 hidden 이다**. 서버가 /api/me 로 내려 준
+           can_view_audit 이 참일 때만 app.js 가 연다 (F-09, Admin 만 — PRD 5.4 Q-8).
+           여기(서버 HTML)에 역할 비교를 넣지 않는다: 판단은 Authz 한 곳에서만 한다.
+           링크를 개발자도구로 되살려도 /audit·/api/audit 은 라우터 정책 audit.read 가 다시 막는다. -->
+      <a id="audit-link" class="btn btn--quiet" href="/audit" hidden>감사 로그</a>
+      <button id="logout" class="btn btn--quiet" type="button">로그아웃</button>
+    </div>
   </header>
 
   <p class="notice">

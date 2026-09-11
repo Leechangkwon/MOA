@@ -34,4 +34,8 @@ Http::json([
     // 화면은 이 값만 본다. 역할 문자열을 보고 화면이 스스로 판단하지 않는다 (PRD S-01).
     // 감추는 것은 편의일 뿐이고, POST /api/files/fetch 는 라우터 정책 file.fetch 가 다시 막는다.
     'can_fetch'     => Authz::canFetch($user),
+    // 8단계 — "감사 로그" 링크를 보일지 여부 (F-09, Admin 만, PRD 5.4 Q-8).
+    // can_fetch 와 똑같은 성격의 **화면 편의 값**이다. 링크를 되살려 /audit 이나
+    // /api/audit 을 직접 불러도 라우터 정책 audit.read 가 다시 막는다 (PRD S-01, 10장).
+    'can_view_audit' => Authz::canReadAudit($user),
 ]);

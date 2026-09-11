@@ -124,6 +124,10 @@ final class Audit
         'file.level_change|deny|downgrade_not_permitted' => '{actor} 이(가) 파일 「{target}」 의 접근 등급을 {level} 등급으로 낮추려 했지만 등급을 낮추는 것은 관리자만 할 수 있어 막았습니다',
         'file.level_change|deny|role_not_permitted'      => '{actor} 이(가) 파일 「{target}」 의 접근 등급을 {level} 등급으로 바꾸려 했지만 그 등급을 지정할 권한이 없어 막았습니다',
         'file.level_change|deny|team_mismatch'           => '{actor} 이(가) 파일 「{target}」 을(를) 자기 팀이 아닌 팀의 team 등급으로 바꾸려 해서 막았습니다',
+
+        // ── 감사 로그 조회 (audit_list — 8단계, ARCH 7.4 `audit.view|allow`) ──
+        // 로그를 본 것도 로그다. 적용한 필터는 detail.filters 에 남는다 (ARCH 7.5).
+        'audit.view|allow'                        => '{actor} 이(가) 감사 로그를 조회했습니다 (필터는 상세 기록)',
     ];
 
     /** 자리표시자에 넣을 값이 없을 때 (ARCH 7.4) */

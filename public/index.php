@@ -62,6 +62,14 @@ const TBOX_ROUTES = [
     ['PATCH',  '/api/files/{id}',          'files_update.php',   'file.update'],
     ['DELETE', '/api/files/{id}',          'files_delete.php',   'file.delete'],
     ['GET',    '/api/teams',               'teams.php',          Authz::POLICY_AUTHENTICATED],
+
+    // 8단계 — 감사 로그 조회 (PRD F-09, S-07, 5.4 Q-8, ARCH 7.6).
+    //   audit.read : Admin 만 (Authz::canReadAudit). Manager·Employee·Guest 는 여기서 끝나고
+    //                그 시도 자체가 `authz.route|deny` 로 남는다 (T-13).
+    //   `/audit` 는 화면이고 `/api/audit` 는 데이터다. 둘 다 **같은 정책**을 쓴다 —
+    //   화면만 숨기고 API 를 열어 두면 그것이 곧 우회 경로다 (PRD S-01).
+    ['GET',    '/api/audit',               'audit_list.php',     'audit.read'],
+    ['GET',    '/audit',                   'audit_page.php',     'audit.read'],
 ];
 
 const TBOX_HANDLER_DIR = __DIR__ . '/../src/handlers/';

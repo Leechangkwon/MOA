@@ -1,5 +1,6 @@
 'use strict';
-/* public/assets/app.js — 7단계: 로그인 · 로그아웃 · 파일 목록/업로드/다운로드/삭제/수정 · URL 로 가져오기
+/* public/assets/app.js — 8단계: 로그인 · 로그아웃 · 파일 목록/업로드/다운로드/삭제/수정 ·
+ *                          URL 로 가져오기 · 감사 로그 조회 화면
  *
  * 규칙 (PRD S-03, S-09-3, ARCHITECTURE 13장 체크리스트)
  *   · DOM 에 값을 넣을 때는 textContent 만 쓴다. HTML 문자열을 그대로 넣는 API
@@ -617,6 +618,216 @@ function initFiles(csrfToken, uploadLevels, canFetch) {
   loadFiles();
 }
 
+/* ─── 감사 로그 화면 (8단계 — GET /audit + GET /api/audit) ────────
+ *
+ * PRD 10장 "감사 로그" · S-07 "조회 화면 필터" · ARCH 7.6 · SECURITY 1.4.
+ *
+ * ★ 이 화면이 그리는 값은 **전부 공격자가 값을 정할 수 있는 문자열**이다:
+ *   target_name(파일명)·user_agent(요청 헤더)·summary(파일명이 섞인 문장)·detail.
+ *   그래서 다른 화면과 똑같이 createElement + textContent 로만 만든다.
+ *   detail 은 JSON.stringify 한 **문자열**을 textContent 로 넣고 <details> 로 접는다 —
+ *   접었다 펴는 동작은 브라우저 기본 기능이라 인라인 스크립트가 필요 없다(CSP).
+ * ★ 권한 판단을 여기서 하지 않는다. 이 화면에 들어온 것 자체가 라우터 정책 audit.read 를
+ *   통과했다는 뜻이고, /api/audit 도 같은 정책이 매 요청 다시 검사한다 (PRD S-01).
+ */
+function initAudit() {
+  var msg = document.getElementById('msg');
+  var body = document.getElementById('audit-body');
+  var empty = document.getElementById('audit-empty');
+  var pageInfo = document.getElementById('page-info');
+  var prev = document.getElementById('page-prev');
+  var next = document.getElementById('page-next');
+  var form = document.getElementById('audit-filter');
+  var reset = document.getElementById('audit-reset');
+
+  /** 쿼리 파라미터 이름 → 입력 칸 id (육하원칙 6항목). 서버가 값을 다시 검사한다. */
+  var FILTERS = [
+    ['actor', 'f-actor'],
+    ['from', 'f-from'],
+    ['to', 'f-to'],
+    ['ip', 'f-ip'],
+    ['target', 'f-target'],
+    ['level', 'f-level'],
+    ['action', 'f-action'],
+    ['result', 'f-result'],
+    ['reason', 'f-reason'],
+    ['granted_by', 'f-granted']
+  ];
+
+  var state = { page: 1, total: 0, perPage: 20 };
+
+  function clearRows() {
+    while (body.firstChild) {
+      body.removeChild(body.firstChild);
+    }
+  }
+
+  function addCell(row, value) {
+    var td = document.createElement('td');
+    setText(td, value === null || value === undefined || value === '' ? '—' : value);
+    row.appendChild(td);
+    return td;
+  }
+
+  /** 표에 넣지 않은 나머지 항목(요청 id · user_agent · detail)을 한 덩어리 글자로 만든다. */
+  function detailText(row) {
+    var detail = '';
+    try {
+      detail = row.detail === null || row.detail === undefined ? '' : JSON.stringify(row.detail);
+    } catch (e) {
+      detail = '';
+    }
+    return 'request_id: ' + (row.request_id || '—') + '\n' +
+      'user_agent: ' + (row.user_agent === null || row.user_agent === undefined ? '—' : row.user_agent) + '\n' +
+      'detail: ' + (detail === '' ? '—' : detail);
+  }
+
+  function addDetailCell(row, data) {
+    var td = document.createElement('td');
+    var details = document.createElement('details');
+    var label = document.createElement('summary');
+    setText(label, '펼치기');
+    details.appendChild(label);
+    var pre = document.createElement('pre');
+    pre.className = 'audit-detail';
+    setText(pre, detailText(data));
+    details.appendChild(pre);
+    td.appendChild(details);
+    row.appendChild(td);
+  }
+
+  /** "왜" 칸 — 거부는 reason, 허용은 detail.granted_by (PRD 7.7 "허용에도 근거") */
+  function whyOf(data) {
+    if (typeof data.reason === 'string' && data.reason !== '') {
+      return data.reason;
+    }
+    if (data.detail && typeof data.detail.granted_by === 'string') {
+      return data.detail.granted_by;
+    }
+    return '';
+  }
+
+  function targetOf(data) {
+    var name = data.target_name === null || data.target_name === undefined ? '' : data.target_name;
+    if (name === '') {
+      return '';
+    }
+    if (typeof data.target_type === 'string' && data.target_type !== '') {
+      return data.target_type + ' · ' + name;
+    }
+    return name;
+  }
+
+  function render(data) {
+    clearRows();
+    var rows = data && Array.isArray(data.rows) ? data.rows : [];
+    state.total = typeof data.total === 'number' ? data.total : 0;
+    state.perPage = typeof data.per_page === 'number' && data.per_page > 0 ? data.per_page : 20;
+    state.page = typeof data.page === 'number' && data.page > 0 ? data.page : 1;
+
+    rows.forEach(function (item) {
+      var row = document.createElement('tr');
+      addCell(row, item.happened_at);
+      addCell(row, item.actor_name);
+      addCell(row, item.actor_role);
+      addCell(row, item.action);
+      addCell(row, targetOf(item));
+      addCell(row, item.access_level);
+      addCell(row, item.result);
+      addCell(row, whyOf(item));
+      addCell(row, item.ip);
+      addCell(row, item.summary);
+      addDetailCell(row, item);
+      body.appendChild(row);
+    });
+
+    if (empty) {
+      empty.hidden = rows.length !== 0;
+    }
+
+    var lastPage = state.total === 0 ? 1 : Math.ceil(state.total / state.perPage);
+    setText(pageInfo, state.page + ' / ' + lastPage + ' 페이지 · 전체 ' + state.total + '건');
+    if (prev) {
+      prev.disabled = state.page <= 1;
+    }
+    if (next) {
+      next.disabled = state.page >= lastPage;
+    }
+  }
+
+  /** 비어 있지 않은 칸만 쿼리에 싣는다. 값 검사·허용 목록은 전부 서버가 한다. */
+  function buildQuery() {
+    var parts = ['page=' + encodeURIComponent(String(state.page))];
+    FILTERS.forEach(function (pair) {
+      var el = document.getElementById(pair[1]);
+      if (!el) {
+        return;
+      }
+      var value = typeof el.value === 'string' ? el.value : '';
+      if (value === '') {
+        return;
+      }
+      parts.push(encodeURIComponent(pair[0]) + '=' + encodeURIComponent(value));
+    });
+    return '?' + parts.join('&');
+  }
+
+  function load() {
+    fetch('/api/audit' + buildQuery(), { credentials: 'same-origin', cache: 'no-store' })
+      .then(function (response) {
+        if (response.status === 401) {
+          toLogin();
+          return null;
+        }
+        return readJson(response).then(function (data) {
+          if (!response.ok) {
+            setText(msg, errorMessage(data));
+            return null;
+          }
+          setText(msg, '');
+          render(data);
+          return null;
+        });
+      })
+      .catch(function () {
+        setText(msg, GENERIC_ERROR);
+      });
+  }
+
+  if (form) {
+    form.addEventListener('submit', function (event) {
+      event.preventDefault();
+      state.page = 1;
+      load();
+    });
+  }
+  if (reset) {
+    reset.addEventListener('click', function () {
+      if (form) {
+        form.reset();
+      }
+      state.page = 1;
+      load();
+    });
+  }
+  if (prev) {
+    prev.addEventListener('click', function () {
+      if (state.page > 1) {
+        state.page -= 1;
+        load();
+      }
+    });
+  }
+  if (next) {
+    next.addEventListener('click', function () {
+      state.page += 1;
+      load();
+    });
+  }
+
+  load();
+}
+
 /* ─── 로그인한 화면 (홈) ────────────────────────────────────── */
 function initHome(button) {
   var msg = document.getElementById('msg');
@@ -645,6 +856,17 @@ function initHome(button) {
               Array.isArray(body.upload_levels) ? body.upload_levels : [],
               body.can_fetch === true
             );
+          }
+          // 8단계 — "감사 로그" 링크는 서버가 can_view_audit === true 를 준 경우에만 연다
+          // (F-09, Admin 만). 링크를 되살려도 /audit·/api/audit 은 서버가 다시 막는다.
+          var auditLink = document.getElementById('audit-link');
+          if (auditLink) {
+            auditLink.hidden = body.can_view_audit !== true;
+          }
+          // 감사 로그 화면(/audit)이면 표를 채운다. 이 화면에 들어왔다는 것 자체가
+          // 라우터 정책 audit.read 를 통과했다는 뜻이다.
+          if (document.getElementById('audit-body')) {
+            initAudit();
           }
         }
         return null;

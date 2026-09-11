@@ -181,3 +181,35 @@ table.files td.actions .btn:last-child { margin-right: 0; }
   align-items: center;
   margin-top: .9rem;
 }
+
+/* ─── 8단계: 감사 로그 화면 ──────────────────────────────────── */
+/* 상단바의 링크·버튼 묶음 (감사 로그 링크는 서버가 can_view_audit 을 준 경우에만 보인다) */
+.topbar__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: .4rem;
+  align-items: center;
+}
+.topbar__actions .btn { text-decoration: none; line-height: 1.4; }
+
+/* 감사 로그 표는 열이 많다 — 글자를 조금 줄이고 가로 스크롤(.table-wrap)에 맡긴다 */
+#audit-body td { font-size: .88rem; }
+
+/* detail·request_id·user_agent 를 접었다 펴는 칸.
+   내용은 app.js 가 textContent 로만 넣는다 (SECURITY 1.4). */
+#audit-body details > summary {
+  color: var(--accent);
+  cursor: pointer;
+  white-space: nowrap;
+}
+.audit-detail {
+  max-width: 28rem;
+  margin: .4rem 0 0;
+  padding: .5rem .6rem;
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  font-size: .82rem;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
