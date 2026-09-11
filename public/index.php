@@ -40,13 +40,18 @@ const TBOX_ROUTES = [
     ['GET',  '/api/me',      'me.php',         Authz::POLICY_AUTHENTICATED],
     ['GET',  '/api/health',  'health.php',     Authz::POLICY_PUBLIC],
 
-    // 3단계 라우트 — 정책은 전부 authenticated 다(로그인만 요구).
-    // 역할·팀 기반 정책('file.read'/'file.upload'/'file.delete')으로 바꾸는 것이 4단계이며,
-    // 그 전후 비교가 과제의 핵심이다 (PRD 13장 3·4단계). 지금은 "로그인했으면 전부 허용"이다.
-    ['GET',    '/api/files',               'files_list.php',     Authz::POLICY_AUTHENTICATED],
-    ['POST',   '/api/files',               'files_upload.php',   Authz::POLICY_AUTHENTICATED],
-    ['GET',    '/api/files/{id}/download', 'files_download.php', Authz::POLICY_AUTHENTICATED],
-    ['DELETE', '/api/files/{id}',          'files_delete.php',   Authz::POLICY_AUTHENTICATED],
+    // 4단계 라우트 — 파일 관련 라우트는 역할·팀 정책을 쓴다 (PRD S-01, 13장 4단계).
+    // 여기(라우터)의 정책은 "이 역할이 그 종류의 행위를 할 수 있는가"까지만 본다 —
+    // 대상 파일을 아직 읽지 않았기 때문이다. 특정 파일에 대한 판단은 핸들러가 행을 읽은 뒤
+    // Authz::decideRead / decideDelete / decideUploadAs 로 다시 한다 (ARCH 4.1, 5.1~5.4).
+    //   file.read   : 목록·다운로드. 라우터 단계는 통과시키고 행 단위로 판정한다
+    //                 (목록은 SQL WHERE 가, 다운로드는 decideRead 가 거른다 — PRD S-02)
+    //   file.upload : 업로드할 수 있는 역할인가 (Guest 는 여기서 끝 — authz.route deny)
+    //   file.delete : 삭제할 수 있는 역할인가 (Guest 는 여기서 끝)
+    ['GET',    '/api/files',               'files_list.php',     'file.read'],
+    ['POST',   '/api/files',               'files_upload.php',   'file.upload'],
+    ['GET',    '/api/files/{id}/download', 'files_download.php', 'file.read'],
+    ['DELETE', '/api/files/{id}',          'files_delete.php',   'file.delete'],
     ['GET',    '/api/teams',               'teams.php',          Authz::POLICY_AUTHENTICATED],
 ];
 
@@ -154,7 +159,7 @@ foreach (TBOX_ROUTES as $route) {
         continue;
     }
     array_shift($m);
-    $matched = [$handler, $policy, array_values($m)];
+    $matched = [$handler, $policy, array_values($m), $path];
     break;
 }
 
@@ -168,7 +173,17 @@ if ($matched === null) {
     Http::error(404, Http::MSG_NOT_FOUND);
 }
 
-[$handlerFile, $policy, $params] = $matched;
+[$handlerFile, $policy, $params, $routePattern] = $matched;
+
+/**
+ * 이 요청이 어느 라우트였나 — 감사 로그의 `detail.route` (ARCH 7.5, PRD S-07 "요청 경로").
+ *
+ * 값은 **라우트 표의 패턴**(`DELETE /api/files/{id}`)이며 실제 UUID 가 아니다.
+ * 실제 경로를 남기면 감사 로그가 파일 ID 목록이 되어, 로그를 읽을 수 있는 사람에게
+ * 열거 재료를 주게 된다. 404/405 로 끝난 요청에는 라우트가 없으므로 정의되지 않는다.
+ * 인증 검사보다 **먼저** 정의한다 — 401·403 으로 끝나는 행에도 경로가 남아야 한다.
+ */
+define('TBOX_ROUTE', $reqMethod . ' ' . $routePattern);
 
 // ─── [2] 인증 · [3] CSRF · [4] 인가 ────────────────────────────
 $user = null;
@@ -185,7 +200,8 @@ if ($policy !== Authz::POLICY_PUBLIC) {
     if (!Authz::authorize($policy, $user)) {
         Audit::deny('authz.route', 'role_not_permitted', [
             'target_type' => 'system',
-            'target_name' => $reqMethod . ' ' . $reqPath,
+            // 실제 경로가 아니라 라우트 패턴을 남긴다 (ARCH 7.5 route, PRD S-07 "요청 경로")
+            'target_name' => TBOX_ROUTE,
             'detail'      => ['policy' => $policy],
         ]);
         Http::error(403, Http::MSG_FORBIDDEN);   // 대상 정보를 담지 않는 동일 문구 (PRD S-09-5)

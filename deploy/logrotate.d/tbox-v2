@@ -1,0 +1,52 @@
+# deploy/logrotate.d/tbox-v2 → /etc/logrotate.d/tbox-v2 (deploy/install.sh 6절이 복사)
+#
+# 감사 로그 파일 사본을 "커지지 않게" 회전한다 (ARCH 7.1 "파일 사본을 추가만 되게 만드는 방법",
+# PRD S-07 "파일 사본 보호", SECURITY R-11). DB 쪽은 db/grants.sql 이 이미 추가 전용이다.
+#
+# 확인:  sudo logrotate -d /etc/logrotate.d/tbox-v2   (오류 0)
+# 주의:  logrotate 는 **줄 끝 주석을 지원하지 않는다**(값의 일부로 읽는다 — 2026-09-10 실측).
+#        그래서 설명은 전부 줄 하나를 통째로 쓴다.
+
+# ── 감사 로그 — 증거 파일이므로 속성(chattr +a)까지 함께 다룬다 ──
+/var/log/tbox-v2/audit.log {
+    # 로그 디렉터리 소유가 root 가 아니다(tbox-php:adm 0750) → 그 계정·그룹으로 회전한다
+    su tbox-php adm
+    # 일 단위 회전 (ARCH 7.1 표)
+    daily
+    # 365개 보관 = 보존 1년 (PRD S-07 "보존 기간 1년")
+    rotate 365
+    # 옛 파일은 압축해 디스크를 아낀다
+    compress
+    # 바로 직전 파일은 압축하지 않는다 — 사고 직후 tail 로 바로 읽기 위해
+    delaycompress
+    # 파일 이름에 날짜를 붙인다(audit.log-20260910) — 번호보다 사람이 읽기 쉽다
+    dateext
+    # 아직 파일이 없어도 오류로 보지 않는다 (설치 직후)
+    missingok
+    # 빈 파일은 회전하지 않는다 — 빈 조각이 365개 쌓이지 않게
+    notifempty
+    # 새 파일 권한: 앱(tbox-php)은 쓰고, adm 그룹(운영자)은 읽기만
+    create 0640 tbox-php adm
+    prerotate
+        # +a(추가 전용)가 걸려 있으면 이름을 바꿀 수 없다 → 회전 직전에 해제한다(root 만 가능)
+        /usr/bin/chattr -a /var/log/tbox-v2/audit.log 2>/dev/null || true
+    endscript
+    postrotate
+        # 새로 만들어진 파일에 다시 +a 를 건다 — 앱도 덧붙이기만 할 수 있다
+        /usr/bin/chattr +a /var/log/tbox-v2/audit.log 2>/dev/null || true
+    endscript
+}
+
+# ── 애플리케이션 로그 — 증거가 아니므로 속성 조작 없이 회전만 ──
+/var/log/tbox-v2/app.log {
+    su tbox-php adm
+    daily
+    # 앱 로그는 90일 (PRD 11장 "웹 서버 접근 로그 90일" 과 같은 기준)
+    rotate 90
+    compress
+    delaycompress
+    dateext
+    missingok
+    notifempty
+    create 0640 tbox-php adm
+}

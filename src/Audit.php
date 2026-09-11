@@ -13,6 +13,19 @@ declare(strict_types=1);
  *
  * 절대 기록하지 않는 것: 비밀번호, 세션 토큰·쿠키, 파일 본문 (PRD 7.7 "민감정보 금지").
  * detail 배열에 그런 키가 섞여 들어오면 값을 지우고 '[제거됨]' 으로 바꾼다 — 실수로 새는 경로를 막는다.
+ *
+ * ── 요약 문장 (summary) — PRD 7.7 "요약 문장 필수", ARCHITECTURE 7.4 ──
+ * 모든 행에 초보자용 한국어 한 문장을 **기록 시점에** 함께 저장한다. 조회 시점에 번역하지 않는 이유는
+ * ① `tail -f audit.log` 만으로 읽히고 ② 나중에 문장 틀을 바꿔도 과거 기록은 당시 문장 그대로 남아
+ * 증거로서 흔들리지 않기 때문이다 (ARCH 7.4 "왜").
+ *
+ * 문장 틀은 아래 SUMMARY_TEMPLATES 상수 표 하나에만 둔다 — ARCH 7.4 표를 글자 그대로 옮긴 것이다.
+ * **표에 없는 (action, result, reason) 조합은 예외 → 기록 실패 → 요청 실패(500)** 이다.
+ * 조용한 "기본 문장" 으로 넘어가지 않는다: 새 행동·새 사유를 추가하는 사람이 ARCH 7.4 에 문장 틀을
+ * 빠뜨리면 첫 요청에서 바로 드러나야 한다. 이 표가 곧 사유 코드 등록부다.
+ *
+ * 문장에 넣는 값은 세 개뿐이다 — {actor}=actor_name, {target}=target_name, {level}=access_level.
+ * 요청 값·detail·user_agent·ip 는 문장에 넣지 않는다 (PRD 7.7 "비밀값 금지 규칙은 그대로").
  */
 final class Audit
 {
@@ -26,15 +39,74 @@ final class Audit
     private const RESULT_DENY  = 'deny';
     private const RESULT_ERROR = 'error';
 
+    /**
+     * 요약 문장 틀 — ARCHITECTURE 7.4 표 33행을 글자 그대로 옮긴 것 (2026-09-10 결정, PRD S-07).
+     * 키는 `action|result|reason`. allow 는 reason 이 없으므로 `action|allow` 두 칸이다.
+     * 표에 행을 추가할 때는 ARCH 7.4 를 먼저 고치고 여기에 같은 문장을 옮긴다 — 두 곳이 어긋나면 안 된다.
+     *
+     * @var array<string,string>
+     */
+    private const SUMMARY_TEMPLATES = [
+        // ── 인증 (Auth) ──
+        'auth.login|allow'                        => '{target} 이(가) 로그인했습니다',
+        'auth.login|deny|bad_credentials'         => '{target} 계정으로 로그인을 시도했지만 아이디 또는 비밀번호가 틀렸습니다',
+        'auth.login|deny|locked'                  => '{target} 계정으로 로그인을 시도했지만 실패 5회로 10분 잠긴 계정입니다',
+        'auth.login|deny|inactive'                => '{target} 계정으로 로그인을 시도했지만 비활성화된 계정입니다',
+        'auth.logout|allow'                       => '{actor} 이(가) 로그아웃했습니다',
+        'auth.required|deny|not_authenticated'    => '로그인하지 않은 채 {target} 에 접근하려 해서 막았습니다',
+
+        // ── 공통 관문 (Http::requireCsrf, index.php 라우트 정책) ──
+        'csrf|deny|token_mismatch'                => '{actor} 이(가) {target} 요청을 보냈지만 CSRF 토큰이 없거나 달라서 막았습니다 (다른 사이트에서 몰래 보낸 요청일 수 있음)',
+        'authz.route|deny|role_not_permitted'     => '{actor} 이(가) 권한이 없는 기능({target})을 쓰려 해서 막았습니다',
+
+        // ── 업로드 (files_upload, Upload) ──
+        'file.upload|allow'                       => '{actor} 이(가) 파일 「{target}」 을(를) {level} 등급으로 올렸습니다',
+        'file.upload|deny|role_not_permitted'     => '{actor} 이(가) 파일 「{target}」 을(를) {level} 등급으로 올리려 했지만 그 등급으로 올릴 권한이 없어 막았습니다',
+        'file.upload|deny|team_mismatch'          => '{actor} 이(가) 파일 「{target}」 을(를) 자기 팀이 아닌 팀의 team 등급으로 올리려 해서 막았습니다',
+        'file.upload|deny|no_file'                => '{actor} 이(가) 파일 없이 업로드를 요청해서 거부했습니다',
+        'file.upload|deny|empty_file'             => '{actor} 이(가) 0바이트 파일 「{target}」 을(를) 올리려 해서 거부했습니다',
+        'file.upload|deny|too_large'              => '{actor} 이(가) 100MB 를 넘는 파일 「{target}」 을(를) 올리려 해서 거부했습니다',
+        'file.upload|deny|bad_access_level'       => '{actor} 이(가) 파일 「{target}」 을(를) 존재하지 않는 접근 등급으로 올리려 해서 거부했습니다',
+        'file.upload|deny|bad_team'               => '{actor} 이(가) 파일 「{target}」 을(를) 없는 팀 또는 팀 지정 없이 team 등급으로 올리려 해서 거부했습니다',
+        'file.upload|deny|description_too_long'   => '{actor} 이(가) 올린 파일 「{target}」 의 설명이 500자를 넘어 거부했습니다',
+        'file.upload|deny|bad_encoding'           => '{actor} 이(가) 올린 파일의 이름 또는 설명이 올바른 문자(UTF-8)가 아니어서 거부했습니다',
+        'file.upload|deny|upload_error'           => '{actor} 이(가) 보낸 업로드 요청의 형식이 잘못되어(파일 여러 개 등) 거부했습니다',
+        'file.upload|deny|not_uploaded_file'      => '{actor} 이(가) 보낸 업로드가 정상적인 HTTP 업로드가 아니어서 거부했습니다',
+        'file.upload|deny|size_unreadable'        => '{actor} 이(가) 올린 파일 「{target}」 의 크기를 읽을 수 없어 거부했습니다',
+        'file.upload|deny|hash_failed'            => '{actor} 이(가) 올린 파일 「{target}」 의 무결성 값을 계산할 수 없어 거부했습니다',
+        'file.upload|deny|ext_not_allowed'        => '{actor} 이(가) 허용되지 않는 종류의 파일 「{target}」 을(를) 올리려 해서 거부했습니다',
+        'file.upload|deny|mime_mismatch'          => '{actor} 이(가) 올린 파일 「{target}」 의 실제 내용이 확장자와 달라(위장 파일 의심) 거부했습니다',
+        'file.upload|error|upload_failed'         => '{actor} 이(가) 파일 「{target}」 을(를) 올리는 중 서버 오류가 나서 되돌렸습니다',
+
+        // ── 다운로드 (files_download) ──
+        'file.download|allow'                     => '{actor} 이(가) {level} 등급 파일 「{target}」 을(를) 내려받았습니다',
+        'file.download|deny|role_not_permitted'   => '{actor} 이(가) {level} 등급 파일 「{target}」 을(를) 내려받으려 했지만 권한이 없어 막았습니다',
+        'file.download|deny|team_mismatch'        => '{actor} 이(가) 다른 팀의 team 등급 파일 「{target}」 을(를) 내려받으려 해서 막았습니다',
+        'file.download|error|file_missing'        => '{actor} 이(가) 파일 「{target}」 을(를) 내려받으려 했지만 저장소에 실제 파일이 없습니다 (점검 필요)',
+
+        // ── 삭제 (files_delete) ──
+        'file.delete|allow'                       => '{actor} 이(가) {level} 등급 파일 「{target}」 을(를) 삭제했습니다 (30일 휴지통)',
+        'file.delete|deny|role_not_permitted'     => '{actor} 이(가) {level} 등급 파일 「{target}」 을(를) 삭제하려 했지만 볼 권한조차 없어 막았습니다',
+        'file.delete|deny|not_owner'              => '{actor} 이(가) 다른 사람이 올린 파일 「{target}」 을(를) 삭제하려 해서 막았습니다',
+        'file.delete|deny|team_mismatch'          => '{actor} 이(가) 다른 팀의 파일 「{target}」 을(를) 삭제하려 해서 막았습니다',
+    ];
+
+    /** 자리표시자에 넣을 값이 없을 때 (ARCH 7.4) */
+    private const ACTOR_ANONYMOUS = '(로그인 전)';
+    private const VALUE_UNKNOWN   = '?';
+
+    /** 요약 문장 최대 길이 (ARCH 7.4 "문장 길이는 1,000자에서 자른다") */
+    private const SUMMARY_MAX_CHARS = 1000;
+
     private const SQL_INSERT = <<<'SQL'
         INSERT INTO audit_logs
             (request_id, actor_id, actor_name, actor_role, action,
              target_type, target_id, target_name, access_level,
-             result, reason, ip, user_agent, detail)
+             result, reason, ip, user_agent, detail, summary)
         VALUES
             (CAST(:request_id AS uuid), :actor_id, :actor_name, :actor_role, :action,
              :target_type, :target_id, :target_name, :access_level,
-             :result, :reason, CAST(:ip AS inet), :user_agent, CAST(:detail AS jsonb))
+             :result, :reason, CAST(:ip AS inet), :user_agent, CAST(:detail AS jsonb), :summary)
         SQL;
 
     /** 성공한 행동 (PRD 7.7 표의 "성공 시") */
@@ -64,9 +136,15 @@ final class Audit
     {
         $user = self::actor();
 
+        // 호출자가 준 detail 을 먼저 씻고(scrub), 그 위에 자동 키를 덮어쓴다 (ARCH 7.5).
+        // 자동 값이 우선인 이유: route·actor_team·login_ref 는 "요청이 무엇이었나·누구였나" 이고
+        // 핸들러가 바꿔 적을 수 있으면 기록의 근거가 흔들린다 (PRD S-07 기록 원칙 "누가·어디서").
         $detail = isset($ctx['detail']) && is_array($ctx['detail'])
             ? self::scrub($ctx['detail'])
-            : null;
+            : [];
+        $detail = array_merge($detail, self::autoDetail($user));
+        $detail = $detail === [] ? null : $detail;
+
         $detailJson = $detail === null || $detail === []
             ? null
             : json_encode($detail, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
@@ -91,8 +169,89 @@ final class Audit
             'user_agent'   => Http::userAgent(),
         ];
 
+        // 요약 문장을 두 저장소보다 **먼저** 만든다 (ARCH 7.4).
+        // 문장 틀이 없으면 여기서 예외가 나므로 DB·파일 어느 쪽에도 반쪽 기록이 남지 않는다.
+        $row['summary'] = self::summary($action, $result, $reason, $row);
+
         self::toDatabase($row, $detailJson);
         self::toFile($row, $detail);
+    }
+
+    /**
+     * 모든 행에 자동으로 들어가는 detail 키 세 개 (ARCH 7.5 등록부, PRD S-07 육하원칙).
+     *
+     *   route      — 어디서·어떻게. **라우트 패턴**(`DELETE /api/files/{id}`)이며 실제 UUID 가 아니다.
+     *                로그가 파일 ID 목록이 되지 않게 하려는 것이다. CLI 배치는 `cli:스크립트명`.
+     *   actor_team — 누가. 행동 **당시**의 팀 id (나중에 팀을 옮겨도 판정 근거가 남는다).
+     *   login_ref  — 누가. 로그인 1회당 고정되는 12자. 세션 id(이미 토큰의 해시)에서 한 번 더
+     *                단방향 파생하므로 이 값으로 쿠키도 세션 행도 찾을 수 없다.
+     *                **세션 토큰 원문·그 해시 자체는 어디에도 넣지 않는다** (PRD 7.7 민감정보 금지).
+     *
+     * @param array<string,mixed>|null $user
+     * @return array<string,mixed>
+     */
+    private static function autoDetail(?array $user): array
+    {
+        $out = [];
+
+        $route = null;
+        if (defined('TBOX_ROUTE')) {
+            $route = (string) constant('TBOX_ROUTE');
+        } elseif (PHP_SAPI === 'cli') {
+            $route = 'cli:' . basename((string) ($_SERVER['SCRIPT_NAME'] ?? ''));
+        }
+        if ($route !== null && $route !== '') {
+            $out['route'] = $route;
+        }
+
+        // 미로그인 행(auth.login·auth.required)에는 누가에 해당하는 값이 없다 → 키를 넣지 않는다.
+        if ($user !== null) {
+            $out['actor_team'] = $user['team_id'] === null ? null : (int) $user['team_id'];
+            $sessionId = isset($user['session_id']) ? (string) $user['session_id'] : '';
+            if ($sessionId !== '') {
+                $out['login_ref'] = substr(hash('sha256', 'audit-login-ref:' . $sessionId), 0, 12);
+            }
+        }
+
+        return $out;
+    }
+
+    /**
+     * 요약 문장 한 줄을 만든다 — 문장은 SUMMARY_TEMPLATES(= ARCH 7.4 표) 에서만 나온다.
+     *
+     * 표에 없는 조합이면 예외를 던진다. 기본 문장으로 조용히 넘어가지 않는다
+     * (PRD 7.7 "요약 문장 필수": 조합에 문장 틀이 없으면 기록 실패 = 요청 실패).
+     *
+     * @param array<string,mixed> $row write() 가 만든 행. actor_name / target_name / access_level 만 읽는다.
+     */
+    private static function summary(string $action, string $result, ?string $reason, array $row): string
+    {
+        $key = $reason === null
+            ? $action . '|' . $result
+            : $action . '|' . $result . '|' . $reason;
+
+        if (!isset(self::SUMMARY_TEMPLATES[$key])) {
+            throw new RuntimeException('감사 로그 요약 문장 틀이 없습니다: ' . $key);
+        }
+
+        // 치환하는 값은 이 셋뿐이다. detail·user_agent·ip·요청 파라미터는 문장에 넣지 않는다 (ARCH 7.4).
+        //
+        // ★ strtr 배열 방식으로 **한 번에** 치환한다 (ARCH 7.4 규칙). str_replace 배열은 순차 치환이라
+        //   앞 단계에서 넣은 값 안의 `{level}` 같은 문자열을 뒤 단계가 다시 치환해 기록이 왜곡된다
+        //   (파일명 `{level}{target}{actor}.txt` 가 `internal{target}{actor}.txt` 로 남은 실측 사례).
+        //   strtr 은 원문을 한 번만 훑고 치환된 값은 다시 검사하지 않는다 —
+        //   값 안의 문자는 어떤 경우에도 자리표시자로 해석되지 않는다.
+        $text = strtr(self::SUMMARY_TEMPLATES[$key], [
+            '{actor}'  => $row['actor_name']   === null ? self::ACTOR_ANONYMOUS : (string) $row['actor_name'],
+            '{target}' => $row['target_name']  === null ? self::VALUE_UNKNOWN   : (string) $row['target_name'],
+            '{level}'  => $row['access_level'] === null ? self::VALUE_UNKNOWN   : (string) $row['access_level'],
+        ]);
+
+        if (iconv_strlen($text, 'UTF-8') > self::SUMMARY_MAX_CHARS) {
+            $text = (string) iconv_substr($text, 0, self::SUMMARY_MAX_CHARS, 'UTF-8');
+        }
+
+        return $text;
     }
 
     /** @param array<string,mixed> $row */
@@ -113,11 +272,15 @@ final class Audit
             ':ip'           => $row['ip'],
             ':user_agent'   => $row['user_agent'],
             ':detail'       => $detailJson,
+            ':summary'      => $row['summary'],
         ]);
     }
 
     /**
      * 파일 사본 — 한 줄 JSON append. 경로는 .env 의 고정 값이며 사용자 입력이 섞이지 않는다.
+     *
+     * summary 는 한 줄의 **마지막 키**가 되게 넣는다 — 사람이 `tail` 로 볼 때 끝만 읽으면 되도록
+     * (ARCH 7.3 예시, PRD 7.7 "사람이 tail 로 파일만 봐도 무슨 일이 있었는지 알 수 있게 한다").
      *
      * @param array<string,mixed>      $row
      * @param array<string,mixed>|null $detail
@@ -125,9 +288,12 @@ final class Audit
     private static function toFile(array $row, ?array $detail): void
     {
         $path = Env::get('AUDIT_LOG_FILE');
+        $summary = $row['summary'];
+        unset($row['summary']);
         if ($detail !== null && $detail !== []) {
             $row['detail'] = $detail;
         }
+        $row['summary'] = $summary;
         $line = json_encode($row, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
         if ($line === false) {
             throw new RuntimeException('감사 로그를 직렬화할 수 없습니다');

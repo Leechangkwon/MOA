@@ -2,15 +2,16 @@
 declare(strict_types=1);
 
 /**
- * src/handlers/files_upload.php — POST /api/files (multipart/form-data) (정책: authenticated)
+ * src/handlers/files_upload.php — POST /api/files (multipart/form-data) (정책: file.upload)
  *
- * ★ 3단계: 권한 검사 없음 — 4단계에서 `Authz::canUploadAs($user, $level, $teamId)` 를
- *   [3] 자리에 넣는다. 지금은 Guest 가 admin-only 로 올려도 201 이 나온다.
- *   그것이 이 단계의 정상 동작이다(PRD 13장 3단계, 4단계 전후 비교용).
+ * ★ 4단계: 레벨·팀을 읽은 **직후**, 파일 검증·저장 **전에**
+ *   `Authz::decideUploadAs($user, $level, $teamId)` 로 판정한다 (ARCH 5.2 "[권한 ✔ A]").
+ *   화면의 <select> 를 조작해 admin-only 나 남의 팀을 보내도 여기서 403 + 감사 로그 deny 다.
+ *   Guest 는 라우터의 `file.upload` 정책에서 이미 끝난다(authz.route deny).
  *
- * 요구사항: PRD F-05, 7.6(S-06), 8장 API 표, ARCH 5.2
+ * 요구사항: PRD F-05, S-01, 7.6(S-06), 8장 API 표, ARCH 5.2
  *
- * 3단계에도 지키는 것
+ * 그 밖에 지키는 것
  *   · CSRF: 라우터 [3] 의 Http::requireCsrf() 가 X-CSRF-Token 헤더를 검사한다 (PRD S-09-3)
  *   · 값은 전부 바인딩 (PRD S-04)
  *   · 저장 이름은 서버가 만든 UUID 뿐. **사용자 파일명은 경로에 한 글자도 들어가지 않는다** (PRD S-06)
@@ -30,7 +31,7 @@ declare(strict_types=1);
  * scripts/security_lint.sh 의 "요청 파라미터의 역할값 사용" 검사(role·is_admin·팀 첨자)에 걸린다.
  * 팀 번호는 역할이 아니라 사용자가 고른 업로드 대상 팀이지만(PRD F-05),
  * 린트를 예외 처리하기보다 요청 값을 읽는 통로를 한 곳으로 모으는 편이 안전하다.
- * 실제 권한 판단(그 팀으로 올릴 수 있는가)은 4단계 Authz::canUploadAs 가 한다.
+ * 실제 권한 판단(그 팀으로 올릴 수 있는가)은 아래 [3-2] Authz::decideUploadAs 가 한다.
  */
 $formText = static function (string $key): string {
     $raw = $_POST[$key] ?? '';
@@ -73,7 +74,7 @@ if ($original === '') {
     $original = 'file';
 }
 
-// ─── [3] 설명·접근 레벨·팀 (권한 검사는 4단계) ─────────────────
+// ─── [3] 설명·접근 레벨·팀 ─────────────────────────────────────
 $description = $formText('description');
 if ($description !== '' && preg_match('//u', $description) !== 1) {
     $rejectBadRequest('bad_encoding', $original, null);
@@ -104,6 +105,20 @@ if ($level === 'team') {
         $rejectBadRequest('bad_team', $original, $level);
     }
     $teamId = (int) $teamRow['id'];
+}
+
+// ─── [3-2] 권한 ✔ A — 이 레벨(+팀)로 올릴 수 있나 (검증·저장 전, ARCH 5.2) ───
+// 판정 코드는 Authz 가 돌려준 것을 그대로 기록한다 (ARCH 4.1).
+[$mayUpload, $uploadCode] = Authz::decideUploadAs($user, $level, $teamId);
+if (!$mayUpload) {
+    // 응답은 403 동일 문구뿐이다. 대상 팀 같은 서버가 아는 값은 로그에만 남긴다 (PRD S-07).
+    Audit::deny('file.upload', $uploadCode, [
+        'target_type'  => 'file',
+        'target_name'  => $original,
+        'access_level' => $level,
+        'detail'       => ['target_team' => $teamId],
+    ]);
+    Http::error(403, Http::MSG_FORBIDDEN);
 }
 
 // ─── [4] 업로드 검증 (크기·확장자 형태·MIME·해시) ───────────────
@@ -160,10 +175,14 @@ try {
         'target_name'  => $original,
         'access_level' => $level,
         'detail'       => [
-            'ext'        => $checked['ext'],
-            'mime'       => $checked['mime'],
-            'size_bytes' => $checked['size'],
-            'team_id'    => $teamId,
+            'ext'         => $checked['ext'],
+            'mime'        => $checked['mime'],
+            'size_bytes'  => $checked['size'],
+            // 육하원칙 칸 (ARCH 7.5): 왜 허용됐나 · 어떤 내용인가 · 누가 올렸나 · 어느 팀인가
+            'granted_by'  => $uploadCode,
+            'sha256'      => $checked['sha256'],
+            'owner_id'    => (int) $user['id'],
+            'target_team' => $teamId,
         ],
     ]);
 

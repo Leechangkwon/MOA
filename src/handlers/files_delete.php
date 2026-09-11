@@ -2,17 +2,17 @@
 declare(strict_types=1);
 
 /**
- * src/handlers/files_delete.php — DELETE /api/files/{id} (정책: authenticated)
+ * src/handlers/files_delete.php — DELETE /api/files/{id} (정책: file.delete)
  *
- * ★ 3단계: 권한 검사 없음 — 4단계에서 파일 행을 읽은 **직후**, UPDATE 전에
- *   `Authz::canRead($user, $file)` → `Authz::canDelete($user, $file)` 를 넣는다
- *   (실패 → Audit::deny + 403 동일 문구). 지금은 로그인만 했으면 남의 파일도 지워진다.
- *   이것이 기존 t-box 취약점 A("버튼만 숨기고 API 는 누구나")의 재현 상태다
- *   (PRD 13장 3단계, 4단계 T-1 비교용).
+ * ★ 4단계: 파일 행을 읽은 **직후**, UPDATE 전에 두 번 판정한다 (ARCH 5.4)
+ *     [권한 ✔ 1] decideRead  — 볼 수 없는 파일은 삭제 시도도 403 (존재 여부조차 알려 주지 않는다)
+ *     [권한 ✔ 2] decideDelete — 소유자·팀 규칙 (PRD 5.3)
+ *   둘 다 실패는 감사 로그 deny + 403 동일 문구다. 이것이 기존 t-box 취약점 A
+ *   ("버튼만 숨기고 API 는 누구나")를 막는 자리다 — 화면에서 버튼을 되살려도 여기서 걸린다.
  *
- * 요구사항: PRD F-07, 8장 API 표, ARCH 5.4
+ * 요구사항: PRD F-07, S-01 · S-07, 8장 API 표, ARCH 5.4
  *
- * 3단계에도 지키는 것
+ * 그 밖에 지키는 것
  *   · CSRF: 라우터 [3] 의 Http::requireCsrf() 가 이미 검사했다 (PRD S-09-3)
  *   · 논리 삭제만 한다 — `deleted_at`·`deleted_by` 를 채우고 실제 바이트는 남긴다
  *     (30일 휴지통, F-07/F-11. 실제 삭제는 9단계 배치 scripts/purge_trash.php)
@@ -35,7 +35,9 @@ $sqlFind = <<<'SQL'
            f.original_name,
            f.access_level,
            f.team_id,
-           f.uploaded_by
+           f.uploaded_by,
+           f.sha256,
+           f.size_bytes
       FROM files f
      WHERE f.public_id = CAST(:pid AS uuid)
        AND f.deleted_at IS NULL
@@ -55,7 +57,34 @@ if (!is_array($file)) {
     Http::error(404, Http::MSG_NOT_FOUND);
 }
 
-// ★ 4단계에서 이 자리에 Authz::canRead → Authz::canDelete 가 들어간다.
+// ─── [권한 ✔ 1·2] 읽기 → 삭제 판정 (UPDATE 전, ARCH 5.4) ───
+// 감사 로그의 "무엇을" 칸. 사용자 응답에는 나가지 않고 로그에만 남는다 (PRD S-07).
+$auditWhat = [
+    'owner_id'    => (int) $file['uploaded_by'],
+    'target_team' => $file['team_id'] === null ? null : (int) $file['team_id'],
+    'sha256'      => (string) $file['sha256'],
+    'size_bytes'  => (int) $file['size_bytes'],
+];
+$auditTarget = [
+    'target_type'  => 'file',
+    'target_id'    => (int) $file['id'],
+    'target_name'  => (string) $file['original_name'],
+    'access_level' => (string) $file['access_level'],
+];
+
+// [1] 볼 수 없는 파일이면 삭제 판정까지 가지 않는다 (사유: role_not_permitted 또는 team_mismatch)
+[$mayRead, $readCode] = Authz::decideRead($user, $file);
+if (!$mayRead) {
+    Audit::deny('file.delete', $readCode, $auditTarget + ['detail' => $auditWhat]);
+    Http::error(403, Http::MSG_FORBIDDEN);
+}
+
+// [2] 소유자·팀 규칙 (사유: not_owner · team_mismatch · role_not_permitted)
+[$mayDelete, $deleteCode] = Authz::decideDelete($user, $file);
+if (!$mayDelete) {
+    Audit::deny('file.delete', $deleteCode, $auditTarget + ['detail' => $auditWhat]);
+    Http::error(403, Http::MSG_FORBIDDEN);
+}
 
 $fileId = (int) $file['id'];
 
@@ -72,12 +101,12 @@ try {
         Http::error(404, Http::MSG_NOT_FOUND);
     }
 
-    Audit::allow('file.delete', [
-        'target_type'  => 'file',
-        'target_id'    => $fileId,
-        'target_name'  => (string) $file['original_name'],
-        'access_level' => (string) $file['access_level'],
-        'detail'       => ['mode' => 'soft_delete'],
+    Audit::allow('file.delete', $auditTarget + [
+        // 허용 근거(granted_by)는 Authz 가 돌려준 코드 그대로 (ARCH 4.1, PRD S-07 "허용에도 근거")
+        'detail' => array_merge(
+            ['mode' => 'soft_delete', 'granted_by' => $deleteCode],
+            $auditWhat
+        ),
     ]);
 
     $db->commit();

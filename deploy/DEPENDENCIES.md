@@ -1,7 +1,7 @@
 # deploy/DEPENDENCIES.md — 이 앱이 의존하는 것 전부 (PRD S-10-C, CLAUDE.md 7장)
 
 버전은 **실습 VM 에서 실측한 값**이다. 기억이나 문서가 아니라 명령 출력이 근거다.
-측정일: 2026-09-09 (1단계)
+측정일: 2026-09-09 (1단계) · 경로 갱신 2026-09-10 (4단계, `-v2` 분리 반영)
 
 ## 1. 실측 버전
 
@@ -58,12 +58,25 @@ PostgreSQL 확장도 설치하지 않는다 — UUID 는 PostgreSQL 13+ 내장 `
 |---|---|---|
 | php-fpm 계정 | `tbox-php` (system, nologin, 홈 없음) | — |
 | php-fpm 소켓 | `/run/php/php8.1-fpm-tbox.sock` | 0660 www-data:www-data |
-| 업로드 저장소 | `/var/lib/tbox/storage` | 0750 tbox-php |
-| PHP 세션(예비) | `/var/lib/tbox/sessions` | 0700 tbox-php |
-| 로그 | `/var/log/tbox/{audit,app}.log` | 0640 tbox-php:adm |
-| 설정(저장소 밖) | `/etc/tbox/owner.pgpass` | 0600 root |
+| 업로드 저장소 | `/var/lib/tbox-v2/storage` | 0750 tbox-php |
+| PHP 세션(예비) | `/var/lib/tbox-v2/sessions` | 0700 tbox-php |
+| 로그 | `/var/log/tbox-v2/{audit,app}.log` (audit.log 는 `chattr +a`) | 0640 tbox-php:adm |
+| 설정(저장소 밖) | `/etc/tbox-v2/owner.pgpass`, `/etc/tbox-v2/seed-accounts.txt` | 0600 root |
 | TLS | `/etc/ssl/tbox/{fullchain,privkey}.pem` | privkey 0640 root:www-data |
 | DB 역할 | `tbox_owner`(소유), `tbox_app`(런타임 최소 권한) | `db/grants.sql` |
+
+### 5.1 쓰는 외부 도구 (배포판 기본 패키지, 4단계 추가)
+
+감사 로그 **파일 사본**을 보호하기 위해 두 도구를 쓴다 (ARCH 7.1 표, PRD S-07 "파일 사본 보호", SECURITY R-11).
+둘 다 Ubuntu 22.04 기본 설치본에 이미 들어 있다 — 새로 설치하는 패키지가 아니다(공급망 표면 증가 없음, PRD S-10-C).
+
+| 도구 | 패키지 | 쓰는 곳 | 왜 필요한가 | 확인 명령 |
+|---|---|---|---|---|
+| `chattr` · `lsattr` | `e2fsprogs` (기본 설치) | `deploy/install.sh` 2절, `deploy/logrotate.d/tbox-v2` 의 pre/postrotate | `audit.log` 에 `+a`(추가 전용) 를 걸어 앱·침입자가 **덧붙이기만** 하게 한다. 해제는 root 만 | `lsattr /var/log/tbox-v2/audit.log` 에 `a` |
+| `logrotate` | `logrotate` (기본 설치) | `deploy/install.sh` 6절이 `deploy/logrotate.d/tbox-v2` → `/etc/logrotate.d/tbox-v2` 로 복사 | 감사 로그를 일 단위로 회전하며 **365일 보존**(PRD S-07). 회전 전후로 `+a` 를 풀고 다시 건다 | `logrotate -d /etc/logrotate.d/tbox-v2` 오류 0 |
+
+> 파일시스템이 `+a` 를 지원하지 않으면(overlayfs 등) `install.sh` 는 멈추지 않고 경고만 남긴다 —
+> 보호가 걸리지 않은 사실이 설치 출력과 `lsattr` 에 드러나는 편이, 걸린 줄 알고 넘어가는 것보다 안전하다.
 
 ## 6. 갱신 규칙
 

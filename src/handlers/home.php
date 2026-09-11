@@ -4,15 +4,17 @@ declare(strict_types=1);
 /**
  * src/handlers/home.php — GET / (정책: authenticated)
  *
- * 3단계 화면: 파일 목록(검색·정렬·페이지) · 업로드 폼 · 다운로드/삭제 버튼.
+ * 4단계 화면: 파일 목록(검색·정렬·페이지) · 업로드 폼 · 다운로드/삭제 버튼.
  *
  * 서버가 HTML 에 넣는 동적 값은 **사용자명·역할 두 개뿐**이고, 둘 다 DB 에서 읽은 값이며
  * (요청에 실려 온 값이 아니다 — PRD S-01) htmlspecialchars(ENT_QUOTES) 를 거친다 (PRD S-03).
  * 파일 목록은 서버가 HTML 로 만들지 않는다 — JS 가 /api/files 응답을 textContent 로만 그린다.
  *
- * ★ 3단계에는 화면 권한 로직도 두지 않는다: 삭제 버튼을 모든 사용자에게 보인다.
- *   4단계에서도 "버튼을 숨기는 것" 은 편의일 뿐 권한의 근거가 아니다 (PRD 10장, S-01) —
- *   허용 여부는 서버 Authz 가 매 요청 판단한다.
+ * ★ 4단계에도 화면에 권한 로직을 두지 않는다. 삭제 버튼은 서버가 행마다 내려 준
+ *   `can_delete` 로만, 업로드 레벨 선택지는 서버가 내려 준 `upload_levels` 로만 만든다.
+ *   그래서 업로드 <select> 는 여기서 **비워 둔다** — 화면이 레벨 목록을 알고 있으면
+ *   그것이 곧 화면에 심어 둔 권한 판단이 된다. "버튼을 숨기는 것" 은 편의일 뿐
+ *   권한의 근거가 아니다 (PRD 10장, S-01) — 허용 여부는 서버 Authz 가 매 요청 판단한다.
  *
  * 인라인 <script>·style 속성·on* 이벤트 속성을 쓰지 않는다 (CSP: script-src 'self').
  *
@@ -40,7 +42,7 @@ if (!headers_sent()) {
 <main class="card card--wide">
   <header class="topbar">
     <div>
-      <h1>t-box (재구축) — 3단계</h1>
+      <h1>t-box (재구축) — 4단계</h1>
       <p class="lead">
         <strong><?= $displayName ?></strong> 님으로 로그인했습니다 ·
         역할 <code><?= $displayRole ?></code>
@@ -50,9 +52,10 @@ if (!headers_sent()) {
   </header>
 
   <p class="notice">
-    3단계는 <strong>역할·팀 권한 검사가 없는 상태</strong>입니다. 로그인만 하면 모든 파일이
-    보이고 다운로드·삭제가 됩니다(과제의 4단계 전후 비교용). 인증·CSRF·SQL 바인딩·출력
-    이스케이프·저장 경로 안전은 이 단계에도 적용돼 있습니다.
+    4단계부터 <strong>역할·팀 권한을 서버가 판단합니다.</strong> 목록에는 볼 수 있는 파일만
+    담기고(SQL 조건), 다운로드·삭제·업로드는 요청마다 서버가 다시 검사합니다.
+    <strong>버튼이 보이지 않아도 요청은 서버가 다시 검사합니다</strong> — 버튼을 되살리거나
+    콘솔에서 직접 호출해도 결과는 같습니다.
   </p>
 
   <section class="panel">
@@ -68,12 +71,8 @@ if (!headers_sent()) {
       </label>
       <label class="field">
         <span class="field__label">접근 레벨</span>
-        <select id="upload-level">
-          <option value="public">public — 전체 공개</option>
-          <option value="internal">internal — 사내 전체</option>
-          <option value="team">team — 팀 전용</option>
-          <option value="admin-only">admin-only — 관리자 전용</option>
-        </select>
+        <!-- 선택지는 /api/me 의 upload_levels 로 app.js 가 채운다 (서버가 정한다) -->
+        <select id="upload-level"></select>
       </label>
       <label class="field" id="upload-team-field" hidden>
         <span class="field__label">팀</span>

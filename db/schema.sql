@@ -95,7 +95,8 @@ CREATE TABLE audit_logs (
     reason       TEXT,                   -- role_not_permitted / not_owner / mime_mismatch ...
     ip           INET,
     user_agent   TEXT,
-    detail       JSONB                   -- 이전값→새값 등. 비밀번호·토큰·파일내용 금지
+    detail       JSONB,                  -- 이전값→새값 등. 비밀번호·토큰·파일내용 금지
+    summary      TEXT        NOT NULL    -- 초보자용 한국어 요약 한 문장. 기록 시점에 ARCH 7.4 문장 표로 생성 (2026-09-10)
 );
 CREATE INDEX audit_time_idx  ON audit_logs (happened_at DESC);
 CREATE INDEX audit_actor_idx ON audit_logs (actor_id, happened_at DESC);

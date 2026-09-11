@@ -168,7 +168,7 @@
 | CSRF 토큰 | `hash_hmac('sha256', 'csrf:'.세션해시, APP_SECRET)` — **저장하지 않고 세션마다 계산**. 클라이언트는 `GET /api/me` 로 받아 `X-CSRF-Token` 헤더로 보냄. `Http::requireCsrf` 가 `hash_equals` 비교, 불일치·누락 403 | 스키마 변경 없이 세션에 결속. `APP_SECRET` 은 `.env`(install.sh 가 생성) |
 | 로그인 CSRF | `/api/login` 은 `Content-Type: application/json` 만 받음(폼 인코딩 거부) + SameSite=Lax | 크로스사이트 폼 전송 불가 |
 | 미로그인 처리 | `/api/*` → 401 JSON + `Audit::deny(auth.required)`. 그 외 화면 경로 → **302 `/login`** (감사 로그 없음 — 세션 만료 후 첫 방문은 공격이 아님) | API 는 명확한 거부, 화면은 사용성 |
-| 시드 계정 | `scripts/seed_users.php`(CLI, install.sh 가 users 가 비었을 때 실행): admin01(Admin) · manager01(Manager, 개발팀) · employee01(Employee, 개발팀) · employee02(Employee, 영업팀) · guest01(Guest). 비밀번호는 **무작위 16자**로 생성해 `/etc/tbox/seed-accounts.txt`(0600 root) 에만 기록. 저장소·README 에 비밀번호를 적지 않는다 | 기본 비밀번호 커밋 금지 (S-09-6) |
+| 시드 계정 | `scripts/seed_users.php`(CLI, install.sh 가 users 가 비었을 때 실행): admin01(Admin) · manager01(Manager, 개발팀) · employee01(Employee, 개발팀) · employee02(Employee, 영업팀) · guest01(Guest) — 사용자의 자기 공격·시연용. **검토 계정** `qa_admin01` · `qa_manager01` · `qa_employee01` · `qa_employee02` · `qa_guest01` 을 같은 역할·팀으로 함께 만든다(2026-09-10, PRD S-07 "검토 요청 표식") — Fable·Opus 의 curl 검토는 이 계정만 쓴다. 감사 로그에서 `actor_name LIKE 'qa\_%'` 이면 검토 행동, 아니면 사용자 행동. 운영 배포는 `--no-qa` 로 검토 계정을 만들지 않는다. 비밀번호는 **무작위 16자**로 생성해 `/etc/tbox-v2/seed-accounts.txt`(0600 root) 에만 기록. 저장소·README 에 비밀번호를 적지 않는다 | 기본 비밀번호 커밋 금지 (S-09-6) |
 | 비밀번호 해시 | `password_hash(…, PASSWORD_ARGON2ID)` 기본 파라미터 | S-09-4 |
 
 ### 4.1 Authz.php — 권한 판단은 이 파일 하나에 모은다
@@ -231,6 +231,32 @@ final class Authz
 }
 ```
 
+**판정 코드 — "왜 허용/거부됐나"를 로그에 남기기 위해 (2026-09-10 추가, PRD S-07 "허용에도 근거")**
+
+`canRead`·`canUploadAs`·`canDelete` 는 참/거짓만 돌려주므로 감사 로그의 "왜"가 비게 된다. 그래서 같은 판단을 하되 **코드까지 돌려주는** 함수를 두고, `can*` 은 그 함수의 결과가 허용인지 보는 얇은 껍데기로 만든다. 판정 로직은 여전히 이 파일 한 곳에만 있다.
+
+```php
+/** @return array{0: bool, 1: string}  [허용 여부, 코드] */
+public static function decideRead(array $u, array $file): array;             // 5.1
+public static function decideUploadAs(array $u, string $level, ?int $teamId): array;  // 5.2
+public static function decideDelete(array $u, array $file): array;           // 5.3 (canRead 를 먼저 통과했다는 전제)
+public static function canRead(array $u, array $file): bool { return self::decideRead($u, $file)[0]; }  // 나머지도 같은 꼴
+```
+
+| 결과 | 코드 (7.5 등록부와 동일) | 뜻 | 기록 위치 |
+|---|---|---|---|
+| 허용 | `matrix` | 역할 × 레벨 표(`permissions`)가 허용 (public·internal·admin-only) | `detail.granted_by` |
+| 허용 | `same_team` | team 레벨, 사용자 팀 = 파일 팀 | `detail.granted_by` |
+| 허용 | `all_teams` | team 레벨, 모든 팀을 보는 역할(Admin) | `detail.granted_by` |
+| 허용 | `owner` | 삭제: 본인이 올린 파일 | `detail.granted_by` |
+| 허용 | `team_scope` | 삭제: Manager 가 자기 팀 파일 | `detail.granted_by` |
+| 허용 | `admin_all` | 삭제: Admin 은 모든 파일 | `detail.granted_by` |
+| 거부 | `role_not_permitted` | 표가 거부 (Guest 의 internal, Employee 의 admin-only …) | `reason` |
+| 거부 | `team_mismatch` | team 레벨인데 다른 팀 | `reason` |
+| 거부 | `not_owner` | 삭제: 남이 올린 파일 (Employee), Manager 는 남의 팀 파일이면 `team_mismatch` | `reason` |
+
+핸들러는 이 코드를 **그대로** `Audit::allow(..., ['detail' => ['granted_by' => $code]])` 또는 `Audit::deny($action, $code, ...)` 에 넘긴다. 핸들러가 코드를 지어내거나 바꾸면 린트 대상이다. 거부 코드는 7.4 문장 표의 `reason` 과 같은 값이어야 한다(표에 없는 조합은 기록 실패 = 요청 실패).
+
 > **초보자 메모**: "권한이 이상하다" 싶으면 볼 파일은 이거 하나다. 매트릭스(PRD 5장)와 이 파일이 1:1로 맞는지 코드 리뷰 때 항상 비교한다.
 
 ---
@@ -256,8 +282,11 @@ final class Authz
                                                  ORDER BY <허용된 컬럼> LIMIT 20 OFFSET ? ─▶ [DB] files
                                         [5] COUNT(*) 도 같은 WHERE → 전체 건수 노출 안 함
                                         [6] JSON 응답 (Content-Type: application/json)
- ◀── {files:[...20건], total: n, page: 1}
+ ◀── {files:[...20건 — 행마다 can_delete(bool) 포함], total: n, page: 1}
  화면은 받은 것만 그림 (textContent 사용, innerHTML 금지) (S-03)
+ ※ can_delete 는 삭제 버튼을 보일지 정하는 **화면 편의 값**이다 (4단계, PRD 10장 "버튼 표시는 권한의 근거가 아님").
+   서버가 Authz::decideDelete 로 계산해 내려 주고, 실제 삭제 요청은 5.4 에서 서버가 다시 판단한다.
+   같은 이유로 GET /api/me 는 업로드 가능 레벨 목록 upload_levels 를 내려 주어 업로드 폼의 선택지를 채운다.
 ```
 
 | 단계 | 어디서 | 무엇을 막나 |
@@ -605,6 +634,17 @@ DB 가 유출돼도 해시만 있으므로 세션을 위조할 수 없다.
 | DB `audit_logs` | 검색·필터 쉬움, 관리 화면에서 조회 | DB가 침해되면 함께 위험 | **원본** (조회용) |
 | 파일 `audit.log` | DB와 독립, 외부 SIEM으로 전송 쉬움 | 검색 불편 | **사본** (증거 보전용) |
 
+**파일 사본을 "추가만 되게" 만드는 방법 (2026-09-10 추가, PRD S-07 "파일 사본 보호", R-11)**
+
+| 무엇 | 어떻게 | 어디에 구현 | 확인 명령 |
+|---|---|---|---|
+| 앱이 지우거나 고칠 수 없게 | `chattr +a /var/log/tbox-v2/audit.log` — 파일 소유자(`tbox-php`)여도 덧붙이기만 된다. 해제는 root 만 | `deploy/install.sh` (파일 생성 직후) | `lsattr` 에 `a` |
+| 커지지 않게 | `logrotate`: `daily`, `rotate 365`, `compress`, `delaycompress`, `dateext`, `missingok`, `notifempty`, `create 0640 tbox-php adm`, `prerotate` 에서 `chattr -a`, `postrotate` 에서 새 파일에 `chattr +a` | `deploy/logrotate.d/tbox-v2` → `/etc/logrotate.d/tbox-v2` (install.sh 가 복사) | `logrotate -d /etc/logrotate.d/tbox-v2` 오류 0 |
+| 서버가 털려도 남게 | rsyslog(omfile 감시 → TLS 전송) 로 원격 로그 서버에 실시간 사본 | 9단계 (ARCH 11.4) | 원격에서 줄 수 대조 |
+| 지워졌는지 알 수 있게 | 일별 마지막 줄 sha256 을 다음 날 첫 줄에 기록(해시 체인) | 9단계 `scripts/audit_chain.php` | 체인 검증 스크립트 |
+
+> DB 쪽은 `db/grants.sql`(아래) 로 이미 추가 전용이다 — 2026-09-10 실측 `\dp audit_logs` → `tbox_app=ar`. 파일 쪽 두 줄(속성·회전)이 없었던 것을 같은 날 발견해 4단계 운영 보강으로 넣는다.
+
 ### 7.2 `audit_logs` 테이블과 "지울 수 없게" 만드는 방법
 
 ```sql
@@ -624,7 +664,8 @@ CREATE TABLE audit_logs (
     reason       TEXT,                   -- role_not_permitted / not_owner / mime_mismatch ...
     ip           INET,
     user_agent   TEXT,
-    detail       JSONB                   -- 이전값→새값 등. 비밀번호·토큰·파일내용 금지
+    detail       JSONB,                  -- 이전값→새값 등. 비밀번호·토큰·파일내용 금지
+    summary      TEXT        NOT NULL    -- 초보자용 한국어 요약 한 문장. 기록 시점에 7.4 문장 표로 생성 (2026-09-10)
 );
 CREATE INDEX audit_time_idx  ON audit_logs (happened_at DESC);
 CREATE INDEX audit_actor_idx ON audit_logs (actor_id, happened_at DESC);
@@ -644,12 +685,120 @@ GRANT  USAGE, SELECT  ON SEQUENCE audit_logs_id_seq TO tbox_app;
 {"happened_at":"2026-09-08T14:03:11+09:00","request_id":"8f3a...","actor_id":12,"actor_name":"employee01",
  "actor_role":"Employee","action":"file.download","target_type":"file","target_id":57,
  "target_name":"급여명세_2026.pdf","access_level":"admin-only","result":"deny",
- "reason":"role_not_permitted","ip":"10.0.1.23","user_agent":"Mozilla/5.0 ..."}
+ "reason":"role_not_permitted","ip":"10.0.1.23","user_agent":"Mozilla/5.0 ...",
+ "summary":"employee01 이(가) admin-only 등급 파일 「급여명세_2026.pdf」 을(를) 내려받으려 했지만 권한이 없어 막았습니다"}
 ```
 
-> 위 한 줄이 바로 "실습에서 뚫렸던 시도"가 이번엔 **막히고 기록된** 모습이다.
+> 위 한 줄이 바로 "실습에서 뚫렸던 시도"가 이번엔 **막히고 기록된** 모습이다. 마지막 `summary` 만 읽어도 무슨 일인지 알 수 있다.
 
 > **로그인 행의 "누가"**: `auth.login` 은 세션이 만들어지기 전이라 `actor_*` 가 NULL 이고, 대상 사용자는 `target_type=user`, `target_id`, `target_name=username` 에 남는다. 실패(`deny`)도 같다 — 입력된 아이디가 `target_name` 이다. 조회할 때 `actor_name` 대신 `target_name` 을 본다 (2단계 결정).
+
+### 7.4 요약 문장 표 — `summary` 는 이 표로만 만든다 (2026-09-10 결정, PRD S-07)
+
+**왜**: 원본 항목(`action`·`result`·`reason`)은 코드 언어라 초보자가 읽기 어렵다. 그래서 기록 시점에 한국어 한 문장을 함께 저장한다. 조회 시점에 번역하지 않고 **기록 시점에 저장**하는 이유는 ① `tail -f audit.log` 만으로 읽히고 ② 나중에 문장 틀을 바꿔도 과거 기록의 문장은 당시 그대로 남아 증거로서 흔들리지 않기 때문이다.
+
+**규칙**
+- 문장 틀은 `src/Audit.php` 의 상수 표 하나에만 둔다. 키는 `action|result|reason` (allow 는 reason 이 없으므로 `action|allow`).
+- 표에 없는 조합은 **예외 → 기록 실패 → 요청 실패(500)**. 새 행동·새 사유를 추가하는 사람이 문장 틀을 빠뜨리면 첫 요청에서 바로 드러난다. 조용한 기본 문장으로 넘어가지 않는다.
+- 자리표시자는 세 개뿐: `{actor}` = `actor_name`(없으면 `(로그인 전)`), `{target}` = `target_name`, `{level}` = `access_level`. 요청 값·`detail`·`user_agent` 는 문장에 넣지 않는다.
+- 치환은 **한 번에**(`strtr` 배열 방식) 한다. 순차 치환(`str_replace` 배열)을 쓰면 파일명 안의 `{level}` 같은 문자열이 다시 치환되어 기록이 왜곡된다 — 2026-09-10 검토에서 파일명 `{level}{target}{actor}.txt` 가 `internal{target}{actor}.txt` 로 기록된 것을 실측해 추가한 규칙. 값 안의 문자는 어떤 경우에도 자리표시자로 해석하지 않는다.
+- 파일명은 「 」 로 감싼다. 문장 길이는 1,000자에서 자른다(`target_name` 은 이미 500자 제한).
+- 아래 표가 곧 **사유 코드 등록부**다. 4단계 이후 핸들러가 쓰는 `reason` 은 이 표에 있는 값만 쓴다.
+- `summary` 는 **사람이 읽기 위한 보조 필드**다. 파일명은 사용자가 정한 자유 텍스트라 `「x」 을(를) 삭제했습니다.txt` 같은 이름으로 문장을 흉내 낼 수 있다(2026-09-10 실측). 조사·분쟁 때의 판단 근거는 `action`·`result`·`reason`·`target_id` 구조화 컬럼이며, 8단계 조회 화면은 `summary` 를 다른 사용자 입력과 똑같이 이스케이프(`textContent`)해 출력한다.
+
+| 키 (`action|result|reason`) | 문장 틀 | 쓰는 곳 |
+|---|---|---|
+| `auth.login|allow` | `{target} 이(가) 로그인했습니다` | Auth (actor 없음 → target) |
+| `auth.login|deny|bad_credentials` | `{target} 계정으로 로그인을 시도했지만 아이디 또는 비밀번호가 틀렸습니다` | Auth |
+| `auth.login|deny|locked` | `{target} 계정으로 로그인을 시도했지만 실패 5회로 10분 잠긴 계정입니다` | Auth |
+| `auth.login|deny|inactive` | `{target} 계정으로 로그인을 시도했지만 비활성화된 계정입니다` | Auth |
+| `auth.logout|allow` | `{actor} 이(가) 로그아웃했습니다` | Auth |
+| `auth.required|deny|not_authenticated` | `로그인하지 않은 채 {target} 에 접근하려 해서 막았습니다` | Auth::requireLogin |
+| `csrf|deny|token_mismatch` | `{actor} 이(가) {target} 요청을 보냈지만 CSRF 토큰이 없거나 달라서 막았습니다 (다른 사이트에서 몰래 보낸 요청일 수 있음)` | Http::requireCsrf |
+| `authz.route|deny|role_not_permitted` | `{actor} 이(가) 권한이 없는 기능({target})을 쓰려 해서 막았습니다` | index.php |
+| `file.upload|allow` | `{actor} 이(가) 파일 「{target}」 을(를) {level} 등급으로 올렸습니다` | files_upload |
+| `file.upload|deny|role_not_permitted` | `{actor} 이(가) 파일 「{target}」 을(를) {level} 등급으로 올리려 했지만 그 등급으로 올릴 권한이 없어 막았습니다` | 4단계 canUploadAs |
+| `file.upload|deny|team_mismatch` | `{actor} 이(가) 파일 「{target}」 을(를) 자기 팀이 아닌 팀의 team 등급으로 올리려 해서 막았습니다` | 4단계 canUploadAs |
+| `file.upload|deny|no_file` | `{actor} 이(가) 파일 없이 업로드를 요청해서 거부했습니다` | files_upload |
+| `file.upload|deny|empty_file` | `{actor} 이(가) 0바이트 파일 「{target}」 을(를) 올리려 해서 거부했습니다` | Upload |
+| `file.upload|deny|too_large` | `{actor} 이(가) 100MB 를 넘는 파일 「{target}」 을(를) 올리려 해서 거부했습니다` | Upload |
+| `file.upload|deny|bad_access_level` | `{actor} 이(가) 파일 「{target}」 을(를) 존재하지 않는 접근 등급으로 올리려 해서 거부했습니다` | files_upload |
+| `file.upload|deny|bad_team` | `{actor} 이(가) 파일 「{target}」 을(를) 없는 팀 또는 팀 지정 없이 team 등급으로 올리려 해서 거부했습니다` | files_upload |
+| `file.upload|deny|description_too_long` | `{actor} 이(가) 올린 파일 「{target}」 의 설명이 500자를 넘어 거부했습니다` | files_upload |
+| `file.upload|deny|bad_encoding` | `{actor} 이(가) 올린 파일의 이름 또는 설명이 올바른 문자(UTF-8)가 아니어서 거부했습니다` | files_upload |
+| `file.upload|deny|upload_error` | `{actor} 이(가) 보낸 업로드 요청의 형식이 잘못되어(파일 여러 개 등) 거부했습니다` | Upload |
+| `file.upload|deny|not_uploaded_file` | `{actor} 이(가) 보낸 업로드가 정상적인 HTTP 업로드가 아니어서 거부했습니다` | Upload |
+| `file.upload|deny|size_unreadable` | `{actor} 이(가) 올린 파일 「{target}」 의 크기를 읽을 수 없어 거부했습니다` | Upload |
+| `file.upload|deny|hash_failed` | `{actor} 이(가) 올린 파일 「{target}」 의 무결성 값을 계산할 수 없어 거부했습니다` | Upload |
+| `file.upload|deny|ext_not_allowed` | `{actor} 이(가) 허용되지 않는 종류의 파일 「{target}」 을(를) 올리려 해서 거부했습니다` | 6단계 Upload |
+| `file.upload|deny|mime_mismatch` | `{actor} 이(가) 올린 파일 「{target}」 의 실제 내용이 확장자와 달라(위장 파일 의심) 거부했습니다` | 6단계 Upload |
+| `file.upload|error|upload_failed` | `{actor} 이(가) 파일 「{target}」 을(를) 올리는 중 서버 오류가 나서 되돌렸습니다` | files_upload |
+| `file.download|allow` | `{actor} 이(가) {level} 등급 파일 「{target}」 을(를) 내려받았습니다` | files_download |
+| `file.download|deny|role_not_permitted` | `{actor} 이(가) {level} 등급 파일 「{target}」 을(를) 내려받으려 했지만 권한이 없어 막았습니다` | 4단계 canRead |
+| `file.download|deny|team_mismatch` | `{actor} 이(가) 다른 팀의 team 등급 파일 「{target}」 을(를) 내려받으려 해서 막았습니다` | 4단계 canRead |
+| `file.download|error|file_missing` | `{actor} 이(가) 파일 「{target}」 을(를) 내려받으려 했지만 저장소에 실제 파일이 없습니다 (점검 필요)` | files_download |
+| `file.delete|allow` | `{actor} 이(가) {level} 등급 파일 「{target}」 을(를) 삭제했습니다 (30일 휴지통)` | files_delete |
+| `file.delete|deny|role_not_permitted` | `{actor} 이(가) {level} 등급 파일 「{target}」 을(를) 삭제하려 했지만 볼 권한조차 없어 막았습니다` | 4단계 canRead 실패 |
+| `file.delete|deny|not_owner` | `{actor} 이(가) 다른 사람이 올린 파일 「{target}」 을(를) 삭제하려 해서 막았습니다` | 4단계 canDelete |
+| `file.delete|deny|team_mismatch` | `{actor} 이(가) 다른 팀의 파일 「{target}」 을(를) 삭제하려 해서 막았습니다` | 4단계 canDelete(Manager) |
+
+> 7·8·9단계(URL 가져오기·감사 로그 조회·백업)의 행동은 그 단계 지시서에서 이 표에 행을 먼저 추가한 뒤 구현한다.
+
+**기존 DB 반영**: `deploy/install.sh` 는 표가 이미 있으면 `schema.sql` 을 건너뛴다. 따라서 컬럼 추가는 `db/migrations/2026-09-10_audit_summary.sql` 로 하고, 소유자 계정으로 한 번 실행한다(기존 행은 같은 문장 표로 채운 뒤 `NOT NULL` 을 건다). 실행: `sudo -u postgres psql -d tbox_re -v ON_ERROR_STOP=1 -f db/migrations/2026-09-10_audit_summary.sql`. 새로 설치하는 DB 는 `schema.sql` 에 컬럼이 이미 들어 있으므로 마이그레이션이 필요 없다.
+
+### 7.5 `detail` 표준 키 등록부 — 육하원칙을 채우는 나머지 칸 (2026-09-10 추가, PRD S-07 "기록 원칙")
+
+7.2 의 고정 컬럼만으로는 "왜 허용됐나", "같은 로그인에서 이어진 행동인가", "어떤 내용의 파일인가"에 답할 수 없다. 스키마를 다시 바꾸지 않고 `detail`(JSONB) 에 **정해진 키**로 채운다. 아래 표에 없는 키를 새로 쓰려면 이 표를 먼저 고친다. 값은 전부 `Audit::scrub()` 을 거치며(비밀 키 이름은 `[제거됨]`), 문자열은 500자에서 잘린다.
+
+| 키 | 육하원칙 | 값 | 누가 채우나 | 어느 행에 |
+|---|---|---|---|---|
+| `route` | 어디서·어떻게 | `메서드 라우트패턴` 예 `GET /api/files/{id}/download`. **실제 UUID 가 아니라 라우트 표의 패턴** — 로그가 파일 ID 목록이 되지 않게 | `Audit::write()` 자동 (`TBOX_ROUTE` 상수, 라우터가 매칭 직후 정의) | 모든 행. CLI(배치)는 `cli:스크립트명` |
+| `actor_team` | 누가 | 행동 당시 사용자의 `team_id` (정수 또는 null) | `Audit::write()` 자동 (`Auth::currentUser()`) | 로그인된 모든 행 |
+| `login_ref` | 누가 | 로그인 1회당 고정되는 12자 16진수. `substr(hash('sha256', 'audit-login-ref:' . $session_id), 0, 12)` — 세션 id(토큰의 해시)에서 **한 번 더 단방향으로 파생**하므로 이 값으로 쿠키도 세션 행도 찾을 수 없다. 키 이름에 `session`·`hash` 를 쓰지 않는 이유는 `FORBIDDEN_DETAIL_KEYS` 부분 일치 때문 | `Audit::write()` 자동 | 로그인된 모든 행 |
+| `granted_by` | 왜 | 4.1 판정 코드 중 허용 코드 하나 | 핸들러가 `Authz::decide*()` 결과를 그대로 | 인가를 거친 `allow` 행 (`file.download`·`file.delete`·`file.upload`) |
+| `sha256` | 무엇을 | 파일 내용 해시 64자 (DB `files.sha256`) | 핸들러 | `file.download`·`file.delete`·`file.upload`(allow) |
+| `size_bytes` | 무엇을 | 파일 크기 | 핸들러 | 위와 같음 |
+| `mode` | 어떻게 | `soft_delete` / `purge` / `restore` | 핸들러 | `file.delete`·`file.purge`·`file.restore` |
+| `before` · `after` | 어떻게 | 이전값 → 새값 (레벨 변경·역할 변경) | 핸들러 | `file.level_change`·`user.role_change` (5·10단계) |
+| `policy` | 어떻게 | 라우트에 붙은 정책 이름 | 라우터 | `authz.route` deny |
+| `reason_text` | 왜 | 관리자가 입력한 사유 (500자) | 핸들러 | 역할 변경·비활성화·강제 삭제·레벨 하향 (10단계) |
+| `owner_id` | 무엇을 | 파일을 올린 사용자 id — 삭제·다운로드 판정에 쓰인 값 | 핸들러 | `file.delete`·`file.download` |
+| `target_team` | 무엇을 | 파일의 `team_id` (team 레벨이 아니면 null) — `actor_team` 과 나란히 놓으면 `same_team`·`team_mismatch` 판정을 로그만으로 재검산할 수 있다 | 핸들러 | `file.download`·`file.delete`·`file.upload` |
+| `ext` · `mime` | 무엇을 | 저장 확장자와 finfo 로 판별한 실제 MIME (DB `files.ext`·`files.mime` 과 같은 값) — 파일명이 아니라 내용 종류를 남긴다 (R-16) | 핸들러 | `file.upload`(allow) |
+| `moved` | 어떻게 | 업로드 실패 시 임시파일이 이미 저장소로 옮겨진 뒤였는지(true/false) — 고아 파일 정리 여부를 로그로 확인 | 핸들러 | `file.upload`(error) |
+
+**검토 행동과 사용자 행동 가르기** — 두 조건 중 하나면 검토다. 둘 다 아니면 사용자(또는 침입자)다.
+
+```sql
+-- 사용자 행동만 (검토 계정·검토 UA 제외)
+SELECT happened_at, actor_name, ip, action, result, summary
+  FROM audit_logs
+ WHERE COALESCE(actor_name, target_name) NOT LIKE 'qa\_%'
+   AND COALESCE(user_agent, '') NOT LIKE 'tbox-review/%'
+ ORDER BY id DESC LIMIT 20;
+```
+
+**조회 예 (누가·언제·어디서·무엇을·어떻게·왜 한 줄로)**
+
+```sql
+SELECT happened_at, actor_name, detail->>'login_ref' AS login_ref, ip, user_agent,
+       action, target_name, access_level, result,
+       COALESCE(reason, detail->>'granted_by') AS why
+  FROM audit_logs ORDER BY id DESC LIMIT 20;
+```
+
+### 7.6 조회 — 8단계 `GET /api/audit` 와 화면 (PRD S-07 "조회 화면 필터", 10장 "감사 로그")
+
+| 항목 | 설계 |
+|---|---|
+| 정책 | 라우트 정책 `audit.read` (Admin 만, Q-8). Employee 의 호출은 403 + `authz.route|deny` 기록 (T-13) |
+| 조회 자체를 기록 | 핸들러 첫 줄에서 `Audit::allow('audit.view', [detail: 적용한 필터])` — 로그를 본 것도 로그에 남는다 (PRD 7.7 "감사 로그 조회") |
+| 필터 (육하원칙 6개) | 누가 `actor` (`actor_name` 또는 `login_ref`), 언제 `from`·`to`, 어디서 `ip`, 무엇을 `target`(`target_name` 부분 일치)·`level`, 어떻게 `action`, 왜 `result`·`reason`·`granted_by`. 전부 바인딩, `action`·`result`·`level` 은 허용 목록 |
+| 정렬·페이지 | `happened_at DESC` 고정, `page` 20건, `audit_time_idx` 사용 |
+| 응답 | 구조화 컬럼 + `detail` + `summary`. 화면은 `summary` 를 `textContent` 로만 출력(7.4 "파일명이 문장을 흉내") |
+| 내보내기 | 없음(비목표). 필요하면 서버에서 `psql \\copy` |
+
+**아직 없는 행동 (단계별로 7.4 표에 문장 틀을 먼저 추가한 뒤 구현)**: `file.restore`·`file.purge`(10단계 F-11), `file.level_change`(5단계 PATCH, before/after 필수), `audit.view`(8단계 — 조회 자체를 기록, PRD S-07), `user.create`·`user.role_change`·`user.deactivate`(10단계 F-10, reason_text 필수), `auth.password_change`·`auth.revoke_sessions`(10단계 F-10, 다른 기기 세션 강제 종료 — R-10), `backup.run`·`backup.restore`(9단계), `audit.integrity`(9단계 일별 무결성 값·정합성 검사 결과, AL-6). 이 목록이 PRD 7.7 "기록해야 하는 행동" 표와 1:1 이어야 한다.
 
 ---
 
@@ -834,7 +983,7 @@ php_admin_value[disable_functions]   = fsockopen,pfsockopen,stream_socket_client
      └──▶ /var/log/tbox/audit.log ──▶ rsyslog(TLS) ──▶ [원격 로그 서버]  ← 추가 전용, 서버 침해 시에도 남음
  nginx access/error ─────────────────┘                     │
  sshd / sudo / unattended-upgrades ──┘                     ▼
-                                                    경보 규칙 AL-1 ~ AL-9  ──▶ 알림 채널(메신저/메일) ──▶ 운영 담당
+                                                    경보 규칙 AL-1 ~ AL-11 ──▶ 알림 채널(메신저/메일) ──▶ 운영 담당
 ```
 
 | 구성 | 도구 (예) | 메모 |
@@ -844,7 +993,7 @@ php_admin_value[disable_functions]   = fsockopen,pfsockopen,stream_socket_client
 | 경보 | Loki ruler / Grafana alert / `cron` + SQL 쿼리 스크립트 | 규모가 작으면 `scripts/alerts.php` 가 5분마다 `audit_logs` 를 SQL 로 훑어 조건 충족 시 알림을 보내도 충분 |
 | "로그 끊김" 감시 | 원격 서버 쪽에서 30분 무수신 시 경보 (AL-7) | 앱 서버가 침해되면 앱 서버의 경보는 믿을 수 없으므로 **밖에서** 감시 |
 
-경보 규칙 AL-1 ~ AL-9 의 조건은 PRD 7.11 표를 그대로 쓴다. 예: AL-1 을 SQL 로 쓰면
+경보 규칙 AL-1 ~ AL-11 의 조건은 PRD 7.11 표를 그대로 쓴다 (AL-10 계정 공유 의심·AL-11 admin-only 다운로드 요약은 2026-09-10 추가). 예: AL-1 을 SQL 로 쓰면
 
 ```sql
 SELECT actor_id, count(*) FROM audit_logs
@@ -897,7 +1046,7 @@ SELECT actor_id, count(*) FROM audit_logs
 | 비밀번호 평문 | Argon2id 해시 | 10장 |
 | 백업 없음 | 일일 DB/파일 백업 + WAL + 분기 리허설 | 11장 |
 | 서버 설정 언급 없음 (`chmod 777`, 역할 전환 URL) | 방화벽 인·아웃바운드 기본 거부, SSH 키 인증, 서비스 계정 nologin | 11.3 |
-| 로그를 보는 사람 없음 | 원격 로그 서버 + 경보 AL-1~AL-9 + 운영 캘린더 | 11.4, 11.5 |
+| 로그를 보는 사람 없음 | 원격 로그 서버 + 경보 AL-1~AL-11 + 운영 캘린더 | 11.4, 11.5 |
 | 사고 나면? (계획 없음) | 침해 대응 6단계 절차 | 11.6 |
 
 ---

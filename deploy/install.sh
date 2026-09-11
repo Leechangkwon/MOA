@@ -34,7 +34,8 @@ SESSION_DIR="/var/lib/tbox-v2/sessions"
 LOG_DIR="/var/log/tbox-v2"
 CONF_DIR="/etc/tbox-v2"
 OWNER_PGPASS="${CONF_DIR}/owner.pgpass"
-SEED_FILE="${CONF_DIR}/seed-accounts.txt"   # 시드 계정 비밀번호 (0600 root, ARCH 4.0)
+SEED_FILE="${CONF_DIR}/seed-accounts.txt"   # 시드·검토 계정 비밀번호 (0600 root, ARCH 4.0)
+LOGROTATE_CONF="/etc/logrotate.d/tbox-v2"   # 감사 로그 회전 (ARCH 7.1, PRD S-07)
 
 # CERT_* 는 자체 서명 인증서를 쓰던 때의 값이다. 이제 VM 은 TLS 를 하지 않으므로
 # 인증서를 만들지 않는다(3단계 삭제). 두 변수는 그대로 남긴다 —
@@ -143,6 +144,22 @@ if [ ! -e "${LOG_DIR}/audit.log" ]; then
 fi
 if [ ! -e "${LOG_DIR}/app.log" ]; then
   install -o "$APP_USER" -g adm -m 0640 /dev/null "${LOG_DIR}/app.log"
+fi
+
+# 2-1. 감사 로그 파일을 "추가만 가능" 하게 잠근다 — chattr +a (ARCH 7.1, PRD S-07 "파일 사본 보호").
+#      +a 가 걸리면 소유자(tbox-php)여도 덧붙이기만 되고, 지우거나 고치거나 이름을 바꿀 수 없다.
+#      해제는 root 만 할 수 있고, 회전은 logrotate 가 prerotate/postrotate 에서 처리한다(6절).
+#      파일시스템이 지원하지 않을 수 있으므로(overlayfs·tmpfs 등) 실패해도 설치를 멈추지 않는다 —
+#      대신 경고를 남긴다. "걸린 줄 알았는데 안 걸려 있었다" 가 가장 나쁜 상태이므로 결과를 출력한다.
+if command -v chattr >/dev/null 2>&1; then
+  if chattr +a "${LOG_DIR}/audit.log" 2>/dev/null; then
+    info "감사 로그를 추가 전용으로 잠갔다: chattr +a ${LOG_DIR}/audit.log"
+  else
+    info "경고: chattr +a 를 걸지 못했다 (파일시스템 미지원?) — audit.log 는 지워질 수 있다 (R-11)"
+  fi
+  info "$(lsattr "${LOG_DIR}/audit.log" 2>/dev/null || echo "lsattr 실행 불가: ${LOG_DIR}/audit.log")"
+else
+  info "경고: chattr 이 없다 (e2fsprogs) — 감사 로그 추가 전용 보호를 걸지 못했다 (R-11)"
 fi
 info "디렉터리: ${STORAGE_DIR} 0750 ${APP_USER}:www-data / ${SESSION_DIR} 0700 ${APP_USER} / ${LOG_DIR} 0750 / ${CONF_DIR} 0750"
 
@@ -313,6 +330,25 @@ step "6. php-fpm 풀과 nginx 사이트"
 install -o root -g root -m 0644 "${REPO_DIR}/deploy/php-fpm-pool.conf" "$FPM_POOL"
 info "복사: ${FPM_POOL}"
 
+# 6-1. 로그 회전 — 감사 로그는 일 단위·365일·압축, 회전 전후로 chattr 을 풀고 다시 건다.
+#      (ARCH 7.1 표, PRD S-07 "파일 사본 보호", SECURITY R-11)
+#      logrotate 는 소유자·권한이 느슨한 설정 파일을 무시하므로 root:root 0644 로 넣는다.
+install -o root -g root -m 0644 "${REPO_DIR}/deploy/logrotate.d/tbox-v2" "$LOGROTATE_CONF"
+info "복사: ${LOGROTATE_CONF}"
+# 문법 검사 — -d 는 실제로 회전하지 않고 설정만 읽는다. 오류가 있으면 여기서 멈춘다.
+if ! logrotate -d "$LOGROTATE_CONF" >/dev/null 2>"${LOGROTATE_CONF}.check"; then
+  cat "${LOGROTATE_CONF}.check" >&2
+  rm -f "${LOGROTATE_CONF}.check"
+  die "logrotate 설정 문법 오류: ${LOGROTATE_CONF}"
+fi
+if grep -q '^error:' "${LOGROTATE_CONF}.check"; then
+  cat "${LOGROTATE_CONF}.check" >&2
+  rm -f "${LOGROTATE_CONF}.check"
+  die "logrotate 설정 문법 오류: ${LOGROTATE_CONF}"
+fi
+rm -f "${LOGROTATE_CONF}.check"
+info "logrotate 문법 확인 통과 (logrotate -d ${LOGROTATE_CONF})"
+
 # nginx 사이트 파일 설치·전환은 deploy/switch-site.sh 한 곳에서만 한다.
 #   · 이 스크립트는 **공개 중인 버전을 바꾸지 않는다** — 도메인에 무엇이 보이는지는 운영 결정이다.
 #     설치 때문에 실습 사이트가 갑자기 내려가거나, 반대로 v2 가 내려가는 일이 없어야 한다.
@@ -353,11 +389,14 @@ done
   || info "경고: /run/php/php8.1-fpm-tbox.sock 이 아직 없다"
 
 # ─────────────────────────────────────────────────────────────
-# 7. 시드 계정 (ARCH 4.0, PRD S-09-4 · S-09-6)
-#    users 가 비어 있을 때만 5계정을 만든다. 비밀번호는 스크립트가 무작위로 만들고
+# 7. 시드 계정 · 검토 계정 (ARCH 4.0, PRD S-07 · S-09-4 · S-09-6)
+#    seed_users.php 가 **계정별로** 없는 것만 만든다(멱등). 비밀번호는 무작위이고
 #    평문은 /etc/tbox-v2/seed-accounts.txt (0600 root) 에만 남는다 — 저장소·README 에는 없다.
+#    새로 만든 계정 줄은 기존 파일에 **덧붙인다**(>>). 기존 줄을 지우면 이미 쓰고 있는
+#    계정의 비밀번호를 잃는다 — 되찾을 방법이 없다(해시만 DB 에 있다).
+#    운영 배포에서 검토 계정을 빼려면: php scripts/seed_users.php --no-qa
 # ─────────────────────────────────────────────────────────────
-step "7. 시드 계정"
+step "7. 시드 계정 · 검토 계정"
 set +e
 SEED_OUT="$(php "${REPO_DIR}/scripts/seed_users.php" 2>&1)"
 SEED_RC=$?
@@ -366,16 +405,24 @@ if [ "$SEED_RC" -ne 0 ]; then
   printf '%s\n' "$SEED_OUT" >&2
   die "시드 계정 생성 실패 (scripts/seed_users.php)"
 fi
-# 계정 줄(`username role password`)이 실제로 나왔을 때만 파일을 쓴다.
-# '건너뜀' 만 나온 재실행에서 기존 파일을 덮어써 비밀번호를 잃지 않기 위함이다.
-if printf '%s\n' "$SEED_OUT" | grep -qE '^[a-z0-9_.-]+ (Admin|Manager|Employee|Guest) [0-9a-f]{16}$'; then
-  umask 077
-  printf '%s\n' "$SEED_OUT" > "$SEED_FILE"
-  umask 022
+# 계정 줄(`username role password`)만 골라 파일에 **덧붙인다**.
+# 덮어쓰지 않는 이유: 이미 쓰고 있는 계정의 평문 비밀번호는 이 파일에만 있다(DB 에는 해시뿐).
+# 한 줄도 안 나온 재실행에서는 파일을 건드리지 않는다.
+SEED_NEW="$(printf '%s\n' "$SEED_OUT" | grep -E '^[a-z0-9_.-]+ (Admin|Manager|Employee|Guest) [0-9a-f]{16}$' || true)"
+if [ -n "$SEED_NEW" ]; then
+  if [ ! -e "$SEED_FILE" ]; then
+    umask 077
+    : > "$SEED_FILE"
+    umask 022
+  fi
   chown root:root "$SEED_FILE"
   chmod 0600 "$SEED_FILE"
-  info "시드 계정 5개 생성 — 비밀번호는 ${SEED_FILE} (0600 root) 에만 있다"
+  # 마지막 줄에 개행이 없으면 먼저 넣는다 (기존 줄에 붙어 버리는 것 방지)
+  if [ -s "$SEED_FILE" ] && [ -n "$(tail -c1 "$SEED_FILE")" ]; then printf '\n' >> "$SEED_FILE"; fi
+  printf '%s\n' "$SEED_NEW" >> "$SEED_FILE"
+  info "새 계정 $(printf '%s\n' "$SEED_NEW" | wc -l)개를 ${SEED_FILE} (0600 root) 에 덧붙였다 — 기존 줄은 그대로다"
   info "$(ls -l "$SEED_FILE")"
+  info "만든 계정: $(printf '%s\n' "$SEED_NEW" | awk '{printf "%s ", $1}')"
 else
   printf '   %s\n' "$SEED_OUT"
   if [ -f "$SEED_FILE" ]; then
@@ -419,6 +466,10 @@ if [ -e "$OLD_ENV_FILE" ]; then
 else
   printf '     /etc/tbox-v2/tbox.env: 없음 (정상)\n'
 fi
+
+printf '\n   감사 로그 파일 사본 보호 (a = 추가 전용. ARCH 7.1, PRD S-07):\n'
+printf '     %s\n' "$(lsattr "${LOG_DIR}/audit.log" 2>/dev/null || echo "lsattr 실행 불가")"
+printf '     회전 설정: %s\n' "$(ls -l "$LOGROTATE_CONF" 2>/dev/null || echo '없음')"
 
 printf '\n   테이블 목록 (6개 기대):\n'
 psql_su -d "$DB_NAME" -c "\dt" | sed 's/^/     /'

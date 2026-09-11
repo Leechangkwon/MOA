@@ -1,5 +1,5 @@
 'use strict';
-/* public/assets/app.js — 3단계: 로그인 · 로그아웃 · 파일 목록/업로드/다운로드/삭제
+/* public/assets/app.js — 4단계: 로그인 · 로그아웃 · 파일 목록/업로드/다운로드/삭제
  *
  * 규칙 (PRD S-03, S-09-3, ARCHITECTURE 13장 체크리스트)
  *   · DOM 에 값을 넣을 때는 textContent 만 쓴다. HTML 문자열을 그대로 넣는 API
@@ -9,7 +9,9 @@
  *     문자로만 화면에 들어간다(저장형 XSS 차단).
  *   · 권한 판단을 브라우저에서 하지 않는다. 버튼을 숨기는 것은 편의일 뿐,
  *     허용 여부는 서버 Authz 가 매 요청 판단한다 (PRD S-01).
- *     ★ 3단계에는 화면 권한 로직이 아예 없다 — 삭제 버튼을 모든 사용자에게 보인다.
+ *     ★ 4단계: 역할 문자열을 이 파일에서 비교하지 않는다. 화면이 보는 것은 서버가 준
+ *       두 값뿐이다 — 목록 행의 can_delete(삭제 버튼) 와 /api/me 의 upload_levels(레벨 선택지).
+ *       버튼이 보이지 않아도, 콘솔에서 직접 요청을 보내도 서버가 다시 검사한다 (PRD 10장).
  *   · 상태를 바꾸는 요청에는 CSRF 토큰 헤더(X-CSRF-Token)를 붙인다 (PRD S-09-3).
  *     토큰은 GET /api/me 로 받는다. 세션 쿠키는 HttpOnly 이므로 JS 가 읽지 않는다.
  *     업로드(FormData)에도 같은 헤더를 붙이고, Content-Type 은 **지정하지 않는다**
@@ -25,6 +27,46 @@ var GENERIC_ERROR = '요청을 처리할 수 없습니다. 잠시 후 다시 시
 
 /** 서버가 내려 준 파일 ID 형태 (UUIDv4). 링크를 만들기 전에 반드시 확인한다. */
 var UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
+
+/**
+ * 업로드 레벨의 **화면 문구**. 어떤 레벨을 고를 수 있는지는 서버(/api/me 의 upload_levels)가
+ * 정하고, 여기 표는 그 값에 붙일 한국어 설명일 뿐이다. 표에 없는 값이 오면 만들지 않는다
+ * (서버가 보낸 문자열이 그대로 <option value> 가 되지 않게 하는 방어).
+ */
+var LEVEL_LABELS = {
+  'public': 'public — 전체 공개',
+  'internal': 'internal — 사내 전체',
+  'team': 'team — 팀 전용',
+  'admin-only': 'admin-only — 관리자 전용'
+};
+
+/**
+ * <select> 를 서버가 준 목록으로 채운다. createElement + textContent 만 쓴다.
+ * 만들어진 선택지 개수를 돌려준다 (0 이면 업로드할 수 있는 레벨이 하나도 없다는 뜻).
+ */
+function fillLevelOptions(select, levels) {
+  var made = 0;
+  if (!select) {
+    return 0;
+  }
+  while (select.firstChild) {
+    select.removeChild(select.firstChild);
+  }
+  if (!Array.isArray(levels)) {
+    return 0;
+  }
+  levels.forEach(function (level) {
+    if (typeof level !== 'string' || !Object.prototype.hasOwnProperty.call(LEVEL_LABELS, level)) {
+      return;
+    }
+    var option = document.createElement('option');
+    option.value = level;
+    setText(option, LEVEL_LABELS[level]);
+    select.appendChild(option);
+    made += 1;
+  });
+  return made;
+}
 
 /** 텍스트를 안전하게 넣는 유일한 통로. 화면 코드는 이 함수만 쓴다. */
 function setText(el, value) {
@@ -116,8 +158,8 @@ function initLogin(form) {
   });
 }
 
-/* ─── 파일 화면 (3단계) ─────────────────────────────────────── */
-function initFiles(csrfToken) {
+/* ─── 파일 화면 (4단계) ─────────────────────────────────────── */
+function initFiles(csrfToken, uploadLevels) {
   var msg = document.getElementById('msg');
   var body = document.getElementById('files-body');
   var empty = document.getElementById('files-empty');
@@ -199,14 +241,18 @@ function initFiles(csrfToken) {
       setText(link, '다운로드');
       td.appendChild(link);
 
-      var button = document.createElement('button');
-      button.type = 'button';
-      button.className = 'btn btn--quiet btn--small';
-      setText(button, '삭제');
-      button.addEventListener('click', function () {
-        deleteFile(file.id);
-      });
-      td.appendChild(button);
+      // 삭제 버튼은 서버가 그 행에 대해 can_delete 를 참으로 준 경우에만 만든다.
+      // 화면이 역할·소유자를 따져서 정하지 않는다 — 판단은 서버가 이미 했다 (PRD S-01, 10장).
+      if (file.can_delete === true) {
+        var button = document.createElement('button');
+        button.type = 'button';
+        button.className = 'btn btn--quiet btn--small';
+        setText(button, '삭제');
+        button.addEventListener('click', function () {
+          deleteFile(file.id);
+        });
+        td.appendChild(button);
+      }
     }
 
     row.appendChild(td);
@@ -387,6 +433,13 @@ function initFiles(csrfToken) {
     uploadForm.addEventListener('submit', upload);
   }
 
+  // 업로드 레벨 선택지는 서버가 준 목록으로만 만든다. 하나도 없으면(Guest) 업로드 패널을 감춘다.
+  // 감추는 것은 편의일 뿐이다 — 그래도 POST /api/files 는 서버가 다시 막는다 (PRD S-01).
+  var levelCount = fillLevelOptions(levelSelect, uploadLevels);
+  if (levelCount === 0 && uploadForm && uploadForm.parentNode) {
+    uploadForm.parentNode.hidden = true;
+  }
+
   syncTeamField();
   loadTeams();
   loadFiles();
@@ -412,8 +465,9 @@ function initHome(button) {
           csrfToken = body.csrf_token;
           button.disabled = false;
           // 파일 화면은 토큰을 받은 뒤에 시작한다(업로드·삭제에 토큰이 필요하다).
+          // upload_levels 는 서버가 정한 업로드 레벨 선택지다(4단계). 배열이 아니면 빈 목록으로 본다.
           if (document.getElementById('files-body')) {
-            initFiles(csrfToken);
+            initFiles(csrfToken, Array.isArray(body.upload_levels) ? body.upload_levels : []);
           }
         }
         return null;
