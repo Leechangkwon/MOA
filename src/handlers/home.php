@@ -254,7 +254,7 @@ if (!headers_sent()) {
           <p class="field__label">인증 앱에 등록하는 순서</p>
           <ol class="steps">
             <li>스마트폰에 <strong>인증 앱</strong>을 설치합니다 — Google Authenticator · Microsoft Authenticator ·
-                Aegis · 1Password 중 아무거나 됩니다.</li>
+                Aegis(Android, 오픈소스) · FreeOTP(iOS·Android, 오픈소스) 중 아무거나 됩니다. **모두 무료**이고 계정 가입 없이 쓸 수 있으며, 등록 뒤에는 인터넷 없이도 코드가 나옵니다.</li>
             <li>앱에서 <strong>“수동 입력”(설정 키 입력)</strong> 을 고릅니다. QR 을 찍는 화면이 아니라
                 글자로 적어 넣는 화면입니다.</li>
             <li>계정 이름은 <code>t-box:아이디</code>, 키는 <strong>아래 「비밀 키」 문자열을 그대로</strong>

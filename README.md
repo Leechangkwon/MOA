@@ -312,7 +312,7 @@ curl -s -b jar -X POST -H 'Content-Type: application/json' -H "X-CSRF-Token: $TO
 | 항목 | 값 |
 |---|---|
 | 방식 | TOTP (HMAC-SHA1 · 30초 · 6자리 · 허용 오차 ±1스텝) |
-| 인증 앱 | Google Authenticator · Aegis · 1Password 등 표준 TOTP 앱이면 모두 |
+| 인증 앱 | Google Authenticator · Microsoft Authenticator · Aegis · FreeOTP 등 표준 TOTP 앱이면 모두 (전부 무료). 유료 비밀번호 관리자(1Password 등)에 든 TOTP 기능도 됨 |
 | 구현 | `src/Totp.php` — 외부 라이브러리 없이 `hash_hmac('sha1')` 로 직접 (공급망 최소화, S-10-C) |
 | 비밀 보관 | `users.mfa_secret`(base32). **켜져 있을 때만** 값이 있고, 끄면 `NULL` 로 지웁니다 |
 | 화면 | QR 라이브러리를 쓰지 않으므로 비밀 키와 `otpauth://` 주소를 **글자로** 보여 줍니다 — 인증 앱에 손으로 입력합니다 |
@@ -325,7 +325,7 @@ curl -s -b jar -X POST -H 'Content-Type: application/json' -H "X-CSRF-Token: $TO
 켜는 순서 (홈 화면 「내 계정」)
 
 1. 스마트폰에 **인증 앱**을 설치합니다 — Google Authenticator · Microsoft Authenticator ·
-   Aegis · 1Password 중 아무거나 됩니다.
+   Aegis(Android, 오픈소스) · FreeOTP(iOS·Android, 오픈소스) 중 아무거나 됩니다. **모두 무료**이고 계정 가입 없이 쓸 수 있으며, 등록 뒤에는 인터넷 없이도 코드가 나옵니다.
 2. 홈 화면에서 **「2단계 인증 켜기」** — 서버가 비밀 키와 `otpauth://` 주소를 보여 줍니다.
    이때는 아직 **켜지지 않았습니다**. 비밀 키는 **다시 보여 주지 않으므로 지금 옮겨 적습니다.**
 3. 앱에서 **「수동 입력」(설정 키 입력)** 을 고르고, 계정 이름 `t-box:아이디` · 키는 화면의 비밀 키를
