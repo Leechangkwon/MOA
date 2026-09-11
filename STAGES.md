@@ -459,6 +459,7 @@ sudo -u postgres psql -d tbox_re -c "SELECT happened_at, actor_name, action, res
 | 2026-09-11 | 서버 계정(`changkwon`) 비밀번호는 어떻게 바꿔? (사고 후속 R-38) | `passwd` 를 **직접 연 터미널**에서 친다. 현재 비밀번호 → 새 비밀번호 → 한 번 더. 입력 중 글자가 전혀 안 보이는 것이 정상. 짧거나 사전 단어면 `BAD PASSWORD` 로 거부. 이 비밀번호는 SSH·sudo 용이며 t-box 웹 계정 비밀번호와 별개. 바꿔도 지금 SSH 창은 안 끊기고 다음 접속부터 적용 — **새 창에서 접속 확인 뒤** 기존 창을 닫는다. 명령줄에 비밀번호를 적으면 히스토리에 남으니(R-38 의 원인) 항상 프롬프트로 입력 | `passwd` → `password updated successfully` · `sudo -k && sudo true` (새 비밀번호로 sudo 확인) |
 | 2026-09-11 | `passwd` 안내를 보고 `.` 과 `Current password` 를 명령처럼 쳤다 → `filename argument required` / `command not found` | 안내 글의 번호 `1.` `2.` 와 `Current password:` 는 **컴퓨터가 물어보는 문구**라 직접 치는 것이 아니다. 터미널에 치는 것은 `passwd` 한 단어뿐이고, 그 뒤에 나오는 물음에 비밀번호만 입력한다. `.` 만 치면 셸의 `source` 명령이라 파일 이름을 요구한다 | `passwd` 를 치고 `Current password:` 가 **자동으로** 나오는지 본다 |
 | 2026-09-11 | 서버 시간이 UTC 인데 KST 로 바꿔 줘 | 시각은 세 층(OS·PostgreSQL·PHP)이 따로 갖고 있어 **함께** 바꿔야 한다. OS `timedatectl set-timezone Asia/Seoul`, DB `ALTER SYSTEM SET timezone`, PHP `date.timezone`. 저장된 시각(`TIMESTAMPTZ`)은 절대 시각이라 데이터는 안 바뀌고 표시만 `+09` 로 나온다. cron 도 KST 로 돈다. 자세한 절차는 README 「서버 시간대」 | `timedatectl` · `date` · `psql -Atc "show timezone"` · `php -r 'echo date("c");'` |
+| 2026-09-11 | `password` 라고 쳤더니 `Command 'password' not found` | 명령 이름은 **`passwd`** 다 — password 에서 `or` 를 뺀 여섯 글자(p·a·s·s·w·d). 유닉스 초기에 명령 이름을 짧게 줄이던 관습이 남은 것(`ls`=list, `cd`=change directory, `mv`=move 도 같은 계열). 오타면 셸이 "비슷한 명령이 있다"며 다른 것을 추천하는데(1password 등) 그건 무시한다 | `passwd` 를 치고 `Current password:` 가 자동으로 나오는지 |
 
 ---
 
