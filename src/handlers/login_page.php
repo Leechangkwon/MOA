@@ -51,12 +51,14 @@ if (!headers_sent()) {
       <input id="password" name="password" type="password"
              maxlength="1024" required>
     </label>
-    <!-- 10단계 (SECURITY R-05) — 2단계 인증 코드. **필요한지 아닌지는 서버가 정한다.**
-         칸은 언제나 보이고, 값이 있으면 그대로 실어 보낸다. 켜 두지 않은 계정에는 쓰이지 않고,
-         켠 계정에 코드가 없거나 틀리면 서버가 401 **동일 문구**로 막는다 —
-         "이 계정은 2단계 인증을 쓴다" 를 로그인 전에 알려 주지 않기 위해서다. -->
-    <label class="field">
-      <span class="field__label">2단계 인증 코드 (선택 · 6자리)</span>
+    <!-- 2단계 인증 코드 칸 — **순차 2단계 로그인** (ARCH 4.0, SECURITY R-05).
+         처음에는 hidden 이다. ① 아이디·비밀번호만 보내고 ② 서버가 401 + mfa_required 로 답하면
+         app.js 가 이 칸을 펼쳐 포커스를 준다. 2단계 인증을 켜지 않은 사람은 이 칸을 볼 일이 없다.
+         칸을 처음부터 보여 주지 않는 이유는 헷갈림을 줄이기 위해서이고,
+         **누가 2단계 인증을 쓰는지는 비밀번호를 맞힌 사람에게만** 알려 준다(계정 정보 노출 방지).
+         칸을 개발자도구로 되살려 코드를 넣어도 서버가 다시 검사한다 — 화면은 판단하지 않는다. -->
+    <label class="field" id="otp-field" hidden>
+      <span class="field__label">인증 앱의 6자리 코드</span>
       <input id="otp" name="otp" type="text" inputmode="numeric"
              autocomplete="one-time-code" pattern="[0-9]{6}"
              maxlength="6" spellcheck="false">

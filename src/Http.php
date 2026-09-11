@@ -29,6 +29,12 @@ final class Http
     public const MSG_LOGIN_FAILED = '아이디 또는 비밀번호가 올바르지 않습니다';
     /** 계정 잠금 (PRD F-01, S-09-4, ARCH 4.0) */
     public const MSG_LOGIN_LOCKED = '로그인 시도가 너무 많습니다. 잠시 후 다시 시도하세요';
+    /**
+     * 순차 2단계 로그인의 1단계 응답 (ARCH 4.0 "2단계 인증 로그인 흐름").
+     * **비밀번호가 맞은 사람에게만** 나간다 — 비밀번호가 틀리면 MSG_LOGIN_FAILED 이고
+     * 그 계정이 2단계 인증을 쓰는지 알 수 없다(계정 정보 노출 방지).
+     */
+    public const MSG_MFA_REQUIRED = '2단계 인증 코드가 필요합니다';
 
     /** JSON 본문 상한 — 로그인·삭제 같은 작은 요청만 JSON 으로 받는다 */
     private const MAX_JSON_BYTES = 65536;

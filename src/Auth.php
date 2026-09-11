@@ -12,6 +12,23 @@ final class AuthLockedException extends RuntimeException
 }
 
 /**
+ * 비밀번호는 맞았는데 그 계정에 2단계 인증이 켜져 있고 코드가 오지 않았을 때 던진다
+ * (ARCH 4.0 "2단계 인증 로그인 흐름", 사용자 결정 2026-09-11).
+ * 핸들러(src/handlers/login.php)가 잡아서 401 + `mfa_required:true` 로 답한다.
+ *
+ * 이것을 "실패" 로 세지 않는 이유: **비밀번호를 아는 본인**이 순차 로그인의 1단계를 끝낸
+ * 정상 상태다. 여기서 실패 횟수를 올리면 코드를 한 번도 틀리지 않은 사용자가 잠긴다.
+ * 코드를 **틀린** 경우(bad_code)는 그대로 실패로 세어 5회면 잠근다 — 비밀번호를 알아낸
+ * 공격자가 6자리를 무제한으로 시험하지 못하게 하는 장치는 그쪽이다.
+ *
+ * 이 응답이 "이 계정은 2단계 인증을 쓴다" 를 알려 주는 것은 **비밀번호가 맞은 사람에게만**이다.
+ * 비밀번호가 틀리면 401 동일 문구이고 mfa_required 는 붙지 않는다 (계정 정보 노출 방지).
+ */
+final class AuthMfaRequiredException extends RuntimeException
+{
+}
+
+/**
  * src/Auth.php — "누구인가" (ARCH 4장 [1] · 4.0, PRD S-01, S-09-2, S-09-4, SECURITY R-10)
  *
  * 원칙
@@ -272,7 +289,8 @@ final class Auth
      *
      * @param string|null $otp 2단계 인증 코드 6자리. 켜지지 않은 계정에는 쓰이지 않는다
      * @return array<string,mixed>|null 성공 시 사용자, 실패 시 null (호출자가 401)
-     * @throws AuthLockedException 계정이 잠겨 있을 때 (호출자가 423)
+     * @throws AuthLockedException      계정이 잠겨 있을 때 (호출자가 423)
+     * @throws AuthMfaRequiredException 비밀번호는 맞았고 코드가 더 필요할 때 (호출자가 401 + mfa_required)
      */
     public static function login(string $username, string $password, ?string $otp = null): ?array
     {
@@ -327,17 +345,20 @@ final class Auth
             return null;
         }
 
-        // 7) 2단계 인증 (SECURITY R-05). 켜 둔 계정은 코드 없이는 들어올 수 없다.
-        //    코드 없음·틀림 모두 401 동일 문구이고, **실패 카운트를 올린다** —
-        //    비밀번호를 알아낸 공격자가 코드 6자리를 무제한으로 시험하지 못하게 한다(5회 잠금).
+        // 7) 2단계 인증 (SECURITY R-05, ARCH 4.0 "2단계 인증 로그인 흐름").
+        //    여기에 닿았다는 것은 **비밀번호가 맞았다**는 뜻이다. 두 경우를 가른다.
+        //      · 코드가 아직 없다  → 순차 로그인의 1단계 완료. 세션은 주지 않고 예외로 알린다.
+        //        **실패 횟수를 올리지 않는다** — 코드를 틀린 적이 없는 본인이 잠기면 안 된다.
+        //      · 코드가 틀렸다     → 401 동일 문구 + **실패 횟수 증가**(5회 잠금).
+        //        비밀번호를 알아낸 공격자가 6자리를 무제한 시험하지 못하게 막는 것은 이쪽이다.
+        //    두 경우 모두 감사 로그에 사유(code_required·bad_code)가 남는다.
         if ($row['mfa_enabled'] === true) {
             $secret = is_string($row['mfa_secret']) ? $row['mfa_secret'] : '';
             $code   = is_string($otp) ? trim($otp) : '';
 
             if ($code === '') {
-                self::countFailure((int) $row['id']);
                 self::denyMfa($name, (int) $row['id'], 'code_required');
-                return null;
+                throw new AuthMfaRequiredException('2단계 인증 코드가 필요합니다');
             }
             if ($secret === '' || !Totp::verify($secret, $code)) {
                 self::countFailure((int) $row['id']);

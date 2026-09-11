@@ -22,8 +22,9 @@ $body = Http::jsonBody();
 
 $username = $body['username'] ?? null;
 $password = $body['password'] ?? null;
-// 10단계 — 2단계 인증 코드(선택). 켜 두지 않은 계정에는 쓰이지 않는다 (SECURITY R-05).
-// **필요한지 아닌지는 서버가 정한다** — 화면은 늘 칸을 보여 주고 값이 있으면 실어 보낼 뿐이다.
+// 2단계 인증 코드 — 순차 로그인의 **2단계에서만** 온다 (ARCH 4.0, SECURITY R-05).
+// 1단계(아이디·비밀번호만)에서 이 계정에 TOTP 가 켜져 있으면 서버가 401 + mfa_required 로 답하고,
+// 화면은 그때 비로소 코드 칸을 펼쳐 세 값을 다시 보낸다. **필요한지는 서버가 정한다.**
 $otp = $body['otp'] ?? null;
 
 // 형식 검사 — 여기서 걸리는 것은 "인증 실패" 가 아니라 "요청이 잘못된 것" 이므로 400 이다.
@@ -40,6 +41,12 @@ try {
     $result = Auth::login($username, $password, $otp === null ? null : (string) $otp);
 } catch (AuthLockedException $e) {
     Http::error(423, Http::MSG_LOGIN_LOCKED);
+} catch (AuthMfaRequiredException $e) {
+    // 비밀번호는 맞았고 코드만 더 필요하다 — 세션은 발급하지 않았고 실패로도 세지 않았다.
+    // mfa_required 는 **비밀번호를 맞힌 사람에게만** 나가는 유일한 추가 정보다.
+    // (비밀번호가 틀리면 아래 401 동일 문구뿐이라 2단계 인증 사용 여부를 알 수 없다.)
+    Http::json(['error' => Http::MSG_MFA_REQUIRED, 'mfa_required' => true], 401);
+    exit;
 }
 
 if ($result === null) {

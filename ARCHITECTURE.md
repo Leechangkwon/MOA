@@ -170,6 +170,7 @@
 | 미로그인 처리 | `/api/*` → 401 JSON + `Audit::deny(auth.required)`. 그 외 화면 경로 → **302 `/login`** (감사 로그 없음 — 세션 만료 후 첫 방문은 공격이 아님) | API 는 명확한 거부, 화면은 사용성 |
 | 시드 계정 | `scripts/seed_users.php`(CLI, install.sh 가 users 가 비었을 때 실행): admin01(Admin) · manager01(Manager, 개발팀) · employee01(Employee, 개발팀) · employee02(Employee, 영업팀) · guest01(Guest) — 사용자의 자기 공격·시연용. **검토 계정** `qa_admin01` · `qa_manager01` · `qa_employee01` · `qa_employee02` · `qa_guest01` 을 같은 역할·팀으로 함께 만든다(2026-09-10, PRD S-07 "검토 요청 표식") — Fable·Opus 의 curl 검토는 이 계정만 쓴다. 감사 로그에서 `actor_name LIKE 'qa\_%'` 이면 검토 행동, 아니면 사용자 행동. 운영 배포는 `--no-qa` 로 검토 계정을 만들지 않는다. 비밀번호는 **무작위 16자**로 생성해 `/etc/tbox-v2/seed-accounts.txt`(0600 root) 에만 기록. 저장소·README 에 비밀번호를 적지 않는다 | 기본 비밀번호 커밋 금지 (S-09-6) |
 | 비밀번호 해시 | `password_hash(…, PASSWORD_ARGON2ID)` 기본 파라미터 | S-09-4 |
+| **2단계 인증 로그인 흐름 (10단계, 사용자 결정 2026-09-11)** | **순차 2단계**: ① 아이디·비밀번호만 보낸다 → 비밀번호가 맞고 그 계정에 TOTP 가 켜져 있으면 서버가 `401 {"error":"2단계 인증 코드가 필요합니다","mfa_required":true}` 로 답한다(세션 발급 없음, **실패 횟수에 세지 않음**, 감사 `auth.mfa deny code_required`) → ② 화면이 그때 코드 칸을 펼치고 아이디·비밀번호·코드를 다시 보낸다 → 코드가 틀리면 `401` 동일 문구 + `auth.mfa deny bad_code` + **실패 횟수 증가**(5회 잠금), 맞으면 세션 발급. 켜지 않은 계정은 ①에서 바로 로그인된다. 로그인 화면에는 코드 칸이 **처음엔 없다** | 비밀번호를 모르는 사람은 계정의 2단계 인증 여부를 알 수 없다(계정 정보 노출 방지, R-32 와 같은 원칙). 비밀번호가 맞은 사람에게만 다음 단계를 알려 준다 — 코드 칸을 모든 사용자에게 항상 보여 헷갈리게 하지 않는다(관문 ③ 피드백 ⑥) |
 
 ### 4.1 Authz.php — 권한 판단은 이 파일 하나에 모은다
 

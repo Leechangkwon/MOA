@@ -154,10 +154,67 @@ function formatSize(bytes) {
   return (n / (1024 * 1024)).toFixed(1) + ' MB';
 }
 
-/* ─── 로그인 화면 ───────────────────────────────────────────── */
+/* ─── 로그인 화면 — 순차 2단계 (ARCH 4.0 "2단계 인증 로그인 흐름") ───
+ *
+ * ① 아이디·비밀번호만 보낸다. 코드 칸(#otp-field)은 처음엔 hidden 이다.
+ * ② 서버가 401 + mfa_required:true 로 답하면(= 비밀번호는 맞았고 그 계정이 TOTP 를 켰다)
+ *    코드 칸을 펼쳐 포커스를 주고, 같은 아이디·비밀번호에 코드를 더해 다시 보낸다.
+ * ③ 코드가 틀리면 401 동일 문구(mfa_required 없음) — 코드 칸만 비우고 2단계에 머문다
+ *    (다시 코드를 넣어 재시도할 수 있게. 틀린 코드는 서버가 실패 5회로 세어 잠근다).
+ *
+ * ★ 화면은 "이 계정이 2단계 인증을 쓰는지" 를 **미리 알지 못한다**. 서버가 1단계 응답으로
+ *   알려 줄 때까지 칸을 열지 않는다 (PRD S-01: 판단은 서버, 화면은 결과를 그릴 뿐).
+ * ★ 비밀번호는 2단계 요청에 다시 실어야 하므로 **JS 변수에 잠깐만** 들고 있는다.
+ *   쿠키·localStorage·sessionStorage 에 넣지 않는다 — 페이지를 떠나면 같이 사라진다.
+ *   비밀번호 칸은 2단계로 넘어갈 때 비우고, 비어 있어도 전송이 막히지 않게
+ *   그동안만 required 를 뗀다(브라우저 기본 검사는 submit 이벤트보다 먼저 돈다).
+ */
 function initLogin(form) {
   var msg = document.getElementById('msg');
   var submit = document.getElementById('login-submit');
+  var otpField = document.getElementById('otp-field');
+  var otpInput = document.getElementById('otp');
+  var passwordInput = form.elements.password;
+
+  /** 1단계에서 받은 비밀번호를 2단계 요청까지만 들고 있는 자리 (저장소에 쓰지 않는다) */
+  var pendingPassword = null;
+
+  /** 지금 2단계(코드 입력) 화면인가 */
+  function inStep2() {
+    return otpField !== null && otpField.hidden !== true;
+  }
+
+  /** 1단계로 되돌린다 — 들고 있던 비밀번호를 버리고 코드 칸을 닫는다 */
+  function resetToStep1() {
+    pendingPassword = null;
+    if (otpField) {
+      otpField.hidden = true;
+    }
+    if (otpInput) {
+      otpInput.value = '';
+    }
+    if (passwordInput) {
+      passwordInput.value = '';
+      passwordInput.required = true;
+    }
+  }
+
+  /** 서버가 "코드가 더 필요하다" 고 답했을 때만 2단계로 넘어간다 */
+  function enterStep2(password) {
+    pendingPassword = password;
+    if (passwordInput) {
+      // 비밀번호는 화면에서 지우고 변수에만 둔다. 빈 칸이 전송을 막지 않게 required 를 뗀다.
+      passwordInput.value = '';
+      passwordInput.required = false;
+    }
+    if (otpField) {
+      otpField.hidden = false;
+    }
+    if (otpInput) {
+      otpInput.value = '';
+      otpInput.focus();
+    }
+  }
 
   form.addEventListener('submit', function (event) {
     // 브라우저 기본 폼 전송(폼 인코딩)을 막는다 — 서버는 JSON 만 받는다 (ARCH 4.0).
@@ -167,10 +224,19 @@ function initLogin(form) {
       submit.disabled = true;
     }
 
+    var typed = passwordInput ? passwordInput.value : '';
     var payload = {
       username: form.elements.username.value,
-      password: form.elements.password.value
+      // 2단계에서는 비밀번호 칸이 비어 있다 — 들고 있던 값을 다시 쓴다.
+      // 사용자가 2단계에서 비밀번호를 다시 적었다면 적은 쪽이 이긴다.
+      password: typed !== '' ? typed : (pendingPassword === null ? '' : pendingPassword)
     };
+    // 코드는 2단계에서 값이 있을 때만 싣는다. 비어 있으면 키 자체를 넣지 않는다 —
+    // 2단계 인증을 켜지 않은 계정의 요청은 예전과 한 글자도 달라지지 않는다.
+    var otp = inStep2() && otpInput ? String(otpInput.value).trim() : '';
+    if (otp !== '') {
+      payload.otp = otp;
+    }
 
     fetch('/api/login', {
       method: 'POST',
@@ -181,17 +247,37 @@ function initLogin(form) {
     })
       .then(function (response) {
         if (response.status === 200) {
+          pendingPassword = null;
           window.location.assign(HOME_PATH);
           return null;
         }
         return readJson(response).then(function (body) {
+          if (body && body.mfa_required === true) {
+            // 1단계 통과 — 비밀번호는 맞았다. 코드만 받아서 다시 보내면 된다.
+            // (여기서는 서버가 실패 횟수를 올리지 않는다 — 아직 아무것도 틀리지 않았다.)
+            enterStep2(payload.password);
+            setText(msg, '이 계정은 2단계 인증이 켜져 있습니다. 인증 앱의 6자리 코드를 넣으세요');
+            return null;
+          }
+          // 서버가 준 문구만 띄운다. 브라우저가 사유를 추측하지 않는다.
           setText(msg, errorMessage(body));
-          form.elements.password.value = '';
+          if (inStep2() && response.status === 401) {
+            // 코드가 틀렸다 — 2단계에 머물고 코드 칸만 비운다.
+            // (코드는 30초마다 바뀐다. 틀린 값을 남겨 두면 다시 눌러도 또 틀린다.)
+            if (otpInput) {
+              otpInput.value = '';
+              otpInput.focus();
+            }
+            return null;
+          }
+          // 그 밖의 실패(아이디·비밀번호 틀림, 잠금 423 등)는 처음부터 다시.
+          resetToStep1();
           return null;
         });
       })
       .catch(function () {
         setText(msg, GENERIC_ERROR);
+        resetToStep1();
       })
       .then(function () {
         if (submit) {
@@ -199,6 +285,9 @@ function initLogin(form) {
         }
       });
   });
+
+  // 화면을 새로 열 때는 언제나 1단계에서 시작한다(뒤로 가기로 되살아난 값 제거).
+  resetToStep1();
 }
 
 /* ─── 파일 화면 (5단계) ───────────────────────────────────────

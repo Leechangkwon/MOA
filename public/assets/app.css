@@ -258,3 +258,7 @@ table.files td.actions .btn:last-child { margin-right: 0; }
 
 /* "인증 앱에 바로 추가" (otpauth://) 링크 — href 는 app.js 가 otpauth:// 확인 뒤에만 넣는다 */
 #mfa-uri-link { color: var(--accent); }
+
+/* ─── 로그인 화면: 2단계 인증 코드 칸 ───────────────────────────────
+   순차 2단계 로그인(ARCH 4.0)이라 이 칸은 처음엔 hidden 이고, 서버가 mfa_required 로
+   답했을 때만 app.js 가 연다. 숨김은 위의 [hidden] 규칙이 맡으므로 따로 규칙이 필요 없다. */
