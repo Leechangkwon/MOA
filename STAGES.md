@@ -31,7 +31,7 @@
 | 9 | 운영 — 백업·복구·정합성 검사·경보(AL-1 외 5종)·서버 기준선 점검·해시 체인, README 완성 (원격 로그·WAL·방화벽 적용은 미적용) | ✅ | ✅ 2026-09-11 | ✅ 2026-09-11 (T-15·T-17~T-20 통과, 기준선 주의 6) | ⚠ 일괄 수행 대기 | 9단계 커밋 (2026-09-11) |
 | 10 | 계정 관리(F-10)·휴지통 복구(F-11)·Guest 만료(R-12)·비밀번호 변경·2단계 인증 TOTP(R-05) | ✅ | ✅ 2026-09-11 | ✅ 2026-09-11 (T-22 통과, 재지시 1회) | ⚠ 일괄 수행 대기 | 10단계 커밋 (2026-09-11) |
 | 11 | 최초 로그인 강제 절차 — 임시 비밀번호·최초 로그인 비밀번호 변경 강제·2단계 인증 필수(F-16, 사용자 결정 2026-09-11) | ✅ | ✅ 2026-09-11 | ✅ 2026-09-11 (관문 우회 10종 403, 검토 계정 5개 이행 완료) | ⚠ 대기 — 시드 계정 첫 로그인 | 11단계 커밋 |
-| **12** | **12-1** 공통 셸·기능별 화면 분리·디자인(F-20) · **12-2** 미리보기(F-18) · **12-3** 조직·권한 관리(F-19) — 사용자 요청 2026-09-12 | 🔧 진행 | ⏳ | ⏳ | ⏳ | — |
+| **12** | **12-1** 공통 셸·기능별 화면 분리·디자인(F-20) · **12-2** 미리보기(F-18) · **12-3** 조직·권한 관리(F-19) — 사용자 요청 2026-09-12 | ✅ 구현·검토 | ✅ 2026-09-12 | ✅ 2026-09-12 (12-2 재지시 1회) | ⚠ 사용자 확인 대기 (브라우저 화면·PDF 미리보기·조직 화면) | `3f4281b` · `506d6de` · 12-3 커밋 |
 
 ---
 
@@ -466,7 +466,7 @@ sudo -u postgres psql -d tbox_re -c "SELECT happened_at, actor_name, action, res
 
 ---
 
-### 12단계 — 화면 재구성·디자인 · 미리보기 · 조직·권한 관리 🔧 (F-18, F-19, F-20 · T-24~T-27) — 사용자 요청 2026-09-12
+### 12단계 — 화면 재구성·디자인 · 미리보기 · 조직·권한 관리 ✅ 구현·검토 완료, 관문 ③ 대기 (F-18, F-19, F-20 · T-24~T-27) — 사용자 요청 2026-09-12
 
 > 사용자 요구(원문 요지, 2026-09-12): "push 해줘. 파일 목록에 다운로드/삭제/수정이 있는데 **미리보기**도 만들어 줘 — 파일 형식에 따라 해당 파일을 조회하여 어떤 내용을 가진 파일인지 확인이 필요해. **클로드 디자인**을 활용해서 페이지의 디자인 UI/UX 도 모던하게 개선해 줘. 하단에 내 계정, 휴지통 삭제된 파일 복구 등이 있는데 **각 기능별로 정리해서 접근 방식**을 정리해 줘 — 현재는 1페이지에 모든 기능이 다 나오고 있는데 파일 관련이면 파일로, 계정 관련이면 환경 설정으로. 또한 **조직 권한 관리 기능**도 추가해 줘."
 > 해석(Fable): 세 묶음으로 나눠 차례로 간다 — **12-1** 공통 셸 + 기능별 페이지 분리 + 디자인(F-20) → **12-2** 미리보기(F-18) → **12-3** 조직·권한 관리(F-19). 각 묶음마다 ① Opus 구현 → ② Fable 실행 검토 → ④ 커밋, 관문 ③(사용자)은 12-3 뒤 일괄. **"조직 권한 관리"** 는 팀(조직) 생성·변경·비활성화 + 구성원 배정 + 권한 매트릭스 **조회**로 해석했다. 매트릭스 **편집**은 PRD 9장·ARCH 6.2-1 의 "앱 계정 SELECT 만" 결정과 충돌하므로 넣지 않고 PRD **Q-12** 로 남겼다(SECURITY R-43). 사용자가 편집을 원하면 Q-12 결정 뒤 별도 단계.
@@ -492,19 +492,19 @@ sudo -u postgres psql -d tbox_re -c "SELECT happened_at, actor_name, action, res
 - [x] `scripts/security_lint.sh` 0건
 
 **개발 사항 — 12-3 조직·권한 관리 (F-19)**
-- [ ] 마이그레이션 `db/migrations/2026-09-12_teams_active.sql`(`is_active`·`created_at`·`updated_at`·이름 길이 CHECK, 멱등) + `schema.sql` 동기화
-- [ ] `Authz.php`: 정책 `org.manage` + `canManageOrg`(Admin) — `KNOWN_POLICIES`·`authorize()`
-- [ ] 핸들러: `org_page.php`(`/org`), `org_teams.php`(GET), `org_team_create.php`(POST), `org_team_update.php`(PATCH), `org_team_members.php`(GET), `org_permissions.php`(GET, 읽기 전용) — 라우트 6개
-- [ ] 비활성 팀 효과: `teams.php` 활성만, `users_create`·`users_update`·`files_upload`·`files_fetch`·`files_update` 에서 `team_inactive` 400
-- [ ] `Audit.php` 문장 틀 `team.create|…`·`team.update|…` 8개
-- [ ] `me.php`: `can_manage_org`; 셸 내비 「조직·권한」 표시
-- [ ] 화면 `/org`: 팀 카드 · 팀 생성/이름 변경/비활성화(사유 필수) · 구성원 표 + 배정(기존 `PATCH /api/users/{uid}` 호출, 사유 필수) · 권한 매트릭스 표(읽기 전용 + "편집 불가 — 이유")
-- [ ] `grants.sql` 불변 확인(`permissions` SELECT 만), `\dp` 대조
+- [x] 마이그레이션 `db/migrations/2026-09-12_teams_active.sql`(`is_active`·`created_at`·`updated_at`·이름 길이 CHECK, 멱등) + `schema.sql` 동기화
+- [x] `Authz.php`: 정책 `org.manage` + `canManageOrg`(Admin) — `KNOWN_POLICIES`·`authorize()`
+- [x] 핸들러: `org_page.php`(`/org`), `org_teams.php`(GET), `org_team_create.php`(POST), `org_team_update.php`(PATCH), `org_team_members.php`(GET), `org_permissions.php`(GET, 읽기 전용) — 라우트 6개
+- [x] 비활성 팀 효과: `teams.php` 활성만, `users_create`·`users_update`·`files_upload`·`files_fetch`·`files_update` 에서 `team_inactive` 400
+- [x] `Audit.php` 문장 틀 `team.create|…`·`team.update|…` 8개
+- [x] `me.php`: `can_manage_org`; 셸 내비 「조직·권한」 표시
+- [x] 화면 `/org`: 팀 카드 · 팀 생성/이름 변경/비활성화(사유 필수) · 구성원 표 + 배정(기존 `PATCH /api/users/{uid}` 호출, 사유 필수) · 권한 매트릭스 표(읽기 전용 + "편집 불가 — 이유")
+- [x] `grants.sql` 불변 확인(`permissions` SELECT 만), `\dp` 대조
 
 **검토 체크 (Fable ②)** — 묶음마다
 - [x] 12-1 (2026-09-12 통과): T-26 (Employee 세션 `/trash`·`/users`·`/org`·`/audit` 403, `/settings` 200; 강제 절차 세션 `/settings` 302), 기존 T-1·T-4·T-14 재확인(기능 이동 뒤 회귀), 린트 0
 - [x] 12-2 (2026-09-12 통과, 재지시 1회 — raw 프레임 헤더): T-24 (권한 = 읽기), T-25 (`<img onerror>` txt/csv/md 글자 그대로, raw 헤더 `sandbox`·`nosniff`, txt raw 400), zip/docx 추출 정상·손상 파일 `parse_failed`, 감사 `file.preview` 행·detail 에 내용 0
-- [ ] 12-3: T-27 (Manager 403+감사, 사유 없음 400, 중복 409, 구성원 있는 팀 비활성화 400, 비활성 팀 업로드·배정 400, before/after 기록), `\dp` 로 `permissions` SELECT-only 불변
+- [x] 12-3 (2026-09-12 통과): T-27 (Manager 403+감사, 사유 없음 400, 중복 409, 구성원 있는 팀 비활성화 400, 비활성 팀 업로드·배정 400, before/after 기록), `\dp` 로 `permissions` SELECT-only 불변
 
 **자기 공격 체크 (사용자 ③)** — 12-3 커밋 뒤
 - [ ] employee01 로 로그인 → 개발자도구로 내비의 `hidden` 을 지워 「휴지통」「조직·권한」「감사 로그」를 눌러 본다 → 전부 403 화면, 감사 로그에 `deny`
@@ -530,6 +530,9 @@ sudo -u postgres psql -d tbox_re -c "SELECT happened_at, actor_name, action, res
 | 2026-09-12 | 해소 | (12-2 검토, Fable 발견) raw 미리보기 응답에 nginx 전역 `X-Frame-Options: DENY`·CSP `frame-ancestors 'none'` 이 함께 실려 **모달 `<iframe>` 이 막힐 상태** — 서버 검토가 브라우저 없이도 헤더로 잡아낸 결함 | raw 경로만 nginx `location ~` 으로 분리(전역 헤더 미상속) + 앱이 `frame-ancestors 'self'`·`SAMEORIGIN` 송출. 재실측 CSP 1개. 배운 것: nginx `location ~` 정규식에 `{36}` 이 있으면 **따옴표로 감싸야** 한다(중괄호를 블록으로 읽어 `nginx -t` 실패) |
 | 2026-09-12 | 관찰 | `/preview/raw/`(끝 슬래시)는 라우터가 슬래시를 떼고 같은 핸들러로 보내지만 nginx 새 location 에는 안 잡혀 **전역(더 조이는) 헤더**가 붙는다 | 권한·형식 검사는 동일 → 우회 아님. 화면은 서버가 준 `src`(슬래시 없음)만 씀. 헤더 일관성을 원하면 정규식을 `raw/?$` 로 — 사용자 결정 사항으로 남김 |
 | 2026-09-12 | 미검증 | PDF 가 `<iframe sandbox>` 안에서 실제로 그려지는지, 이미지·텍스트·표·zip·docx 모달 표시 — 브라우저 없음 | 서버 측(JSON 본문·헤더·권한·감사)은 전부 실측. **관문 ③ 첫 항목**으로 확인 요청. 안 되면 「새 탭에서 열기」 |
+| 2026-09-12 | 해소 | (12-3 구현 중 Opus 발견) PHP `false` 를 PDO 에 그대로 바인딩하면 PostgreSQL 이 `invalid input syntax for type boolean: ""` 로 거절해 500 | `CAST(:active AS boolean)` + 문자열 `'true'`/`'false'` 로 바인딩(`users_update` 와 같은 방식). 규칙: 불리언은 문자열로 넘기고 SQL 에서 CAST |
+| 2026-09-12 | 관찰 | 12-2·12-3 검토가 남긴 시험 흔적 — 파일 `qa-preview-*` 13개 + `qa-team-inactive.txt`(qa_employee01, 개발팀 team 레벨), 팀 `qa-team-검토2`(id 3, 비활성). qa_employee01 의 팀은 원복(1) | 지우지 않았다(운영 데이터 불가침). 삭제 여부는 사용자 결정 — 파일은 휴지통 경로로, 팀은 비활성 그대로 두는 것을 권고 |
+| 2026-09-12 | 결정 | 단계 커밋마다 `git push` (사용자 지시 "push 해줘" 이후 관행) — CLAUDE.md 6장 문구 갱신 | 12단계 설계·12-1·12-2·12-3 커밋 전부 origin/main 에 반영 |
 
 ---
 
@@ -546,6 +549,7 @@ sudo -u postgres psql -d tbox_re -c "SELECT happened_at, actor_name, action, res
 | 5 | admin01 | 8단계 감사 로그 화면에서 위 1~4 의 시도를 필터로 찾기, `audit.view` 기록 확인 | 10분 |
 | 6 | (서버) | 9단계 백업 → 파일 삭제 → 복구 → 정합성, `check_baseline.sh`, 경보 로그 확인 | 15분 |
 | 7 | admin01 + 새 계정 | 10단계 계정 생성·비활성화 즉시 401(T-22), 비밀번호 변경, 2단계 인증 켜기·로그인, 휴지통 복구 | 15분 |
+| 7-2 | admin01 · employee01 · manager01 | **12단계**: 12단계 절 "자기 공격 체크" 7항목 — 새 화면 동작, 미리보기(PDF·txt·csv·zip·docx), 내비 hidden 되살려 403, 조직·권한 화면 | 20분 |
 | 8 | — | 각 단계 절의 체크박스를 채우고, 막히지 않은 항목이 있으면 그 단계 "학습 기록" 에 적어 보고 → Fable 이 `SECURITY.md` 7장에 결과 행 추가(실패 시 보정 커밋) | — |
 
 > 결과를 알릴 때는 "N단계 통과" 또는 "N단계 X 항목이 안 막힘 — 응답 원문 …" 처럼 **단계 번호와 원문**을 함께 적으면 기록이 정확해진다.

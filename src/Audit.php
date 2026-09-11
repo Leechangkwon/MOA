@@ -239,6 +239,18 @@ final class Audit
         'user.mfa_reset|allow'                          => '{actor} 이(가) 계정 「{target}」 의 2단계 인증을 초기화하고 모든 세션을 끊었습니다 (사유는 상세 기록)',
         'user.mfa_reset|deny|self_change'               => '{actor} 이(가) 자기 자신의 2단계 인증을 초기화하려 해서 거부했습니다',
         'user.mfa_reset|deny|bad_request'               => '{actor} 이(가) 계정 「{target}」 2단계 인증 초기화를 사유 없이 요청해서 거부했습니다',
+
+        // ── 조직(팀) 관리 (12-3 org_team_* — F-19, ARCH 5.9 · 7.4, Admin 만) ──
+        // 사유(detail.reason_text)와 이전값→새값(detail.before/after)은 전부 상세에 남는다.
+        // 팀을 지우는 행동은 없다 — 비활성화도 team.update 의 is_active 변경으로 기록된다.
+        'team.create|allow'                             => '{actor} 이(가) 팀 「{target}」 을(를) 만들었습니다 (사유는 상세 기록)',
+        'team.create|deny|bad_request'                  => '{actor} 이(가) 팀 생성 요청을 잘못된 형식(이름·사유)으로 보내 거부했습니다',
+        'team.create|deny|already_exists'               => '{actor} 이(가) 이미 있는 이름 「{target}」 으로 팀을 만들려 해서 거부했습니다',
+        'team.update|allow'                             => '{actor} 이(가) 팀 「{target}」 의 정보를 바꿨습니다 (이전값→새값·사유는 상세 기록)',
+        'team.update|deny|bad_request'                  => '{actor} 이(가) 팀 「{target}」 변경 요청을 잘못된 형식으로 보내 거부했습니다',
+        'team.update|deny|not_found'                    => '{actor} 이(가) 없는 팀을 바꾸려 해서 거부했습니다',
+        'team.update|deny|team_has_members'             => '{actor} 이(가) 구성원이 남아 있는 팀 「{target}」 을(를) 비활성화하려 해서 거부했습니다 (먼저 재배정)',
+        'team.update|deny|already_exists'               => '{actor} 이(가) 팀 「{target}」 의 이름을 이미 있는 이름으로 바꾸려 해서 거부했습니다',
     ];
 
     /** 자리표시자에 넣을 값이 없을 때 (ARCH 7.4) */

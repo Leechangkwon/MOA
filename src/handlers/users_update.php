@@ -172,9 +172,13 @@ if ($newExpires === null && Authz::requiresExpiry($newRole)) {
 }
 
 // 팀이 실제로 있나
+//   12-3 (F-19, ARCH 5.9): **활성 팀만** 있는 것으로 본다 — 비활성 팀으로의 새 배정은
+//   기존 거부 경로(bad_request → 400)로 끝난다. 이미 그 팀에 있는 사람을 **다른 필드만**
+//   바꾸는 요청은 아래 조건(`!== $current['team_id']`) 덕에 팀을 다시 검사하지 않는다 —
+//   팀이 비활성이 된 뒤에도 그 사람의 만료일·역할은 고칠 수 있어야 하기 때문이다.
 if ($newTeam !== null && $newTeam !== $current['team_id']) {
     $sqlTeam = <<<'SQL'
-        SELECT 1 AS ok FROM teams WHERE id = :id
+        SELECT 1 AS ok FROM teams WHERE id = :id AND is_active
         SQL;
     if (!is_array($db->run($sqlTeam, [':id' => $newTeam])->fetch())) {
         $reject($denyAction, 'bad_request');

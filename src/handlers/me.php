@@ -70,6 +70,12 @@ Http::json([
     // 새 판단 규칙을 만들지 않았다(Authz 에 새 메서드를 추가하지 않는다). 항목을 되살려도
     // /trash 와 /api/files/trash 는 라우터 정책 role:Admin 이 다시 막는다 (PRD S-01).
     'can_view_trash'   => Authz::canManageUsers($user),
+    // 12-3 — 좌측 내비의 「조직·권한」 항목을 보일지 여부 (F-19, Admin 만, PRD 5.4 · 10장).
+    // can_manage_users 와 **다른 판정 함수**를 쓴다 — 자격은 지금 같지만 라우트 정책 이름이
+    // 갈라져 있어(org.manage), 한쪽이 바뀌어도 다른 쪽이 따라 바뀌지 않는다.
+    // 다른 can_* 와 똑같은 **화면 편의 값**이며, 항목을 되살려 /org 나 /api/org/* 를 직접
+    // 불러도 라우터 정책 org.manage 가 다시 막는다 (PRD S-01, T-27).
+    'can_manage_org'   => Authz::canManageOrg($user),
     // 10단계 — 내 2단계 인증이 켜져 있나 (R-05). 권한이 아니라 상태이며,
     // 화면이 "켜기" 를 보일지 "끄기" 를 보일지 고르는 데만 쓴다.
     'mfa_enabled'      => ($user['mfa_enabled'] ?? false) === true,

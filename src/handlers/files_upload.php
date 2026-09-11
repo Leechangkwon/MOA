@@ -98,8 +98,10 @@ if ($level === 'team') {
     if (preg_match('/^[1-9][0-9]{0,8}$/', $teamRaw) !== 1) {
         $rejectBadRequest('bad_team', $original, $level);
     }
+    // 12-3 (F-19, ARCH 5.9): **활성 팀만** 있는 것으로 본다 — 비활성 팀으로 올리려는 요청은
+    // 기존 거부 경로(bad_team → 400)로 끝난다. 이미 그 팀에 있는 파일은 그대로다.
     $sqlTeam = <<<'SQL'
-        SELECT id FROM teams WHERE id = :id
+        SELECT id FROM teams WHERE id = :id AND is_active
         SQL;
     $teamRow = Db::instance()->run($sqlTeam, [':id' => (int) $teamRaw])->fetch();
     if (!is_array($teamRow)) {

@@ -766,6 +766,102 @@ dialog.modal::backdrop { background: rgba(17, 24, 39, .48); }
 }
 .otp-hint { margin: 0; font-size: 12px; color: var(--muted); }
 
+/* ─── 조직·권한 (12-3, F-19) — 좌측 팀 카드 · 우측 상세 + 매트릭스 ───
+ *
+ * 표현만 담는다. 무엇이 보이는지는 서버가 내려 준 값(`can_manage_org`·`/api/org/*`)이 정하고,
+ * 허용 여부는 언제나 서버 Authz 가 매 요청 다시 판단한다 (PRD S-01).
+ */
+.org-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 320px) minmax(0, 1fr);
+  gap: 18px;
+  align-items: start;
+}
+.org-side { display: flex; flex-direction: column; gap: 18px; min-width: 0; }
+
+.org-teams__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.org-cards { display: flex; flex-direction: column; gap: 10px; }
+
+/* 팀 카드 — <button> 이다(클릭·키보드 모두 자연스럽게 동작하도록) */
+.team-card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 100%;
+  padding: 14px 16px;
+  text-align: left;
+  font: inherit;
+  color: var(--fg);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--r-card);
+  cursor: pointer;
+}
+.team-card:hover { border-color: var(--accent); }
+.team-card.is-selected {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+.team-card:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+.team-card__head { display: flex; align-items: center; gap: 8px; }
+.team-card__name { font-size: 15px; font-weight: 700; overflow-wrap: anywhere; }
+.team-card__stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  color: var(--muted);
+  font-size: 12.5px;
+}
+.team-card__stats strong { color: var(--fg); font-size: 13px; }
+
+.org-detail { display: flex; flex-direction: column; gap: 16px; }
+.org-detail__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.org-detail__text { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; min-width: 0; }
+.org-detail__name { font-size: 16px; font-weight: 700; overflow-wrap: anywhere; }
+.org-detail__actions { display: flex; flex-wrap: wrap; gap: 8px; }
+#org-detail { display: flex; flex-direction: column; gap: 16px; }
+
+.org-matrix { display: flex; flex-direction: column; gap: 16px; }
+.org-matrix__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.org-matrix__head .badge .icon { display: inline-flex; }
+.matrix-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 18px;
+}
+.matrix-block { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+table.matrix td.matrix__cell { text-align: center; }
+table.matrix td.matrix__cell .icon { display: inline-flex; color: var(--ok-fg); }
+#org-matrix-rules { font-size: 13px; }
+
+/* 폼을 담은 모달 — 12-2 미리보기 모달보다 좁다(입력 칸 몇 개뿐이다) */
+dialog.modal--form { width: min(520px, calc(100vw - 32px)); }
+dialog.modal--form .modal__body { display: grid; gap: 14px; background: var(--surface); }
+
+@media (max-width: 1199.98px) {
+  .org-layout { grid-template-columns: minmax(0, 1fr); }
+}
+
 /* ─── 반응형 — 960px 미만은 상단 바 + 접이식 내비 ────────────────── */
 @media (max-width: 959.98px) {
   .app { flex-direction: column; }
@@ -786,6 +882,8 @@ dialog.modal::backdrop { background: rgba(17, 24, 39, .48); }
   }
   .login__lead { font-size: 24px; }
   .login__points { display: none; }
+  /* 매트릭스 두 표는 좁은 화면에서 위아래로 쌓는다 (12-3) */
+  .matrix-grid { grid-template-columns: minmax(0, 1fr); }
 }
 
 @media (min-width: 960px) {

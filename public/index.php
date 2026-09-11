@@ -118,6 +118,23 @@ const TBOX_ROUTES = [
     //   화면만 열어 두고 API 를 막지 않거나 그 반대면 그것이 곧 우회 경로다 (PRD S-01).
     ['GET',    '/trash',                    'trash_page.php',    'role:Admin'],
     ['GET',    '/settings',                 'settings_page.php', Authz::POLICY_AUTHENTICATED],
+
+    // 12-3 — 조직·권한 (PRD F-19 · 5.4 · 8장 `/api/org/*` 행, ARCH 5.9).
+    //   org.manage : Admin 만 (Authz::canManageOrg). 나머지 역할은 여기서 끝나고
+    //                그 시도 자체가 `authz.route|deny` 로 남는다 (T-27).
+    //   `/org` 화면과 `/api/org/*` 데이터는 **같은 정책**을 쓴다 — 화면만 숨기고 API 를
+    //   열어 두면 그것이 곧 우회 경로다 (PRD S-01, 계정 관리·감사 로그와 같은 원칙).
+    //   `{num}` 은 순차 정수인 teams.id 다 (계정 id 와 같은 형태).
+    //   ★ 팀을 지우는 라우트(DELETE)는 만들지 않는다 — 파일·계정·감사 기록이 팀을 참조하므로
+    //     비활성화(`PATCH … {is_active:false}`)까지만 있다 (ARCH 5.9).
+    //   ★ 권한 매트릭스는 GET 하나뿐이다. 쓰기 라우트가 없고 DB 권한도 SELECT 만이다
+    //     (ARCH 6.2-1 · 10장, SECURITY R-43, PRD Q-12).
+    ['GET',    '/org',                           'org_page.php',         'org.manage'],
+    ['GET',    '/api/org/teams',                 'org_teams.php',        'org.manage'],
+    ['POST',   '/api/org/teams',                 'org_team_create.php',  'org.manage'],
+    ['PATCH',  '/api/org/teams/{num}',           'org_team_update.php',  'org.manage'],
+    ['GET',    '/api/org/teams/{num}/members',   'org_team_members.php', 'org.manage'],
+    ['GET',    '/api/org/permissions',           'org_permissions.php',  'org.manage'],
 ];
 
 /**

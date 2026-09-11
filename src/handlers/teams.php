@@ -18,8 +18,13 @@ declare(strict_types=1);
  * @var list<string>        $params 경로 변수 없음
  */
 
+/*
+ * 12-3 (F-19, ARCH 5.9) — **활성 팀만** 돌려준다. 비활성 팀은 선택지에서 사라지고,
+ * 그 팀으로 올리거나 배정하려는 요청은 각 핸들러가 400 으로 막는다. 목록에서 빠지는 것은
+ * 편의이고 막는 것은 서버다 (PRD S-01). 이미 그 팀에 있는 파일·계정은 그대로다.
+ */
 $sqlTeams = <<<'SQL'
-    SELECT id, name FROM teams ORDER BY id
+    SELECT id, name FROM teams WHERE is_active ORDER BY id
     SQL;
 
 $rows  = Db::instance()->run($sqlTeams)->fetchAll();

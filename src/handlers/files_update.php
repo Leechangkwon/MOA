@@ -142,8 +142,12 @@ if (array_key_exists('access_level', $body)) {
 
 // 팀 — 새 등급이 team 일 때만 의미가 있다. team 이 아니면 요청에 무엇이 실려 있든 NULL 로 정규화한다
 // (DB CHECK team_requires_team_id 와 같은 규칙. team 이 아닌 행에 팀이 남아 있지 않게 한다).
+// 12-3 (F-19, ARCH 5.9): **활성 팀만** 있는 것으로 본다 — 비활성 팀으로 옮기려는 요청은
+// 기존 거부 경로(bad_team → 400)로 끝난다. 검사는 **팀이 실제로 바뀔 때만** 한다:
+// 이미 비활성 팀에 있는 파일의 설명만 고치는 PATCH 까지 막을 이유가 없기 때문이다
+// (읽기 판정은 team_id 일치만 보고, 그 규칙은 12-3 에서 바뀌지 않았다 — ARCH 4.1).
 $sqlTeam = <<<'SQL'
-    SELECT id FROM teams WHERE id = :id
+    SELECT id FROM teams WHERE id = :id AND is_active
     SQL;
 
 $newTeamId = null;
@@ -154,11 +158,17 @@ if ($newLevel === 'team') {
         if (preg_match('/^[1-9][0-9]{0,8}$/', $teamText) !== 1) {
             $reject('bad_team');
         }
-        $teamRow = $db->run($sqlTeam, [':id' => (int) $teamText])->fetch();
-        if (!is_array($teamRow)) {
-            $reject('bad_team');
+        $wantTeamId = (int) $teamText;
+        if ($wantTeamId === $currentTeamId) {
+            // 팀을 그대로 다시 보낸 요청 — 바뀌는 것이 없으므로 활성 여부를 다시 묻지 않는다.
+            $newTeamId = $currentTeamId;
+        } else {
+            $teamRow = $db->run($sqlTeam, [':id' => $wantTeamId])->fetch();
+            if (!is_array($teamRow)) {
+                $reject('bad_team');
+            }
+            $newTeamId = (int) $teamRow['id'];
         }
-        $newTeamId = (int) $teamRow['id'];
     } else {
         // 요청이 팀을 건드리지 않았다면 지금 팀을 그대로 둔다. 지금도 없으면 team 등급이 될 수 없다.
         $newTeamId = $currentTeamId;

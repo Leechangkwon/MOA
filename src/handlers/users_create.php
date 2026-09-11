@@ -125,9 +125,12 @@ if ($reason === '' || iconv_strlen($reason, 'UTF-8') > 500) {
 $db = Db::instance();
 
 // ─── [8] 팀이 실제로 있나 ──────────────────────────────────────
+//        12-3 (F-19, ARCH 5.9): **활성 팀만** 있는 것으로 본다. 비활성 팀은 "없는 팀" 과
+//        똑같이 다뤄져 기존 거부 경로(bad_request → 400)로 끝난다 — 새 사유 코드를 만들지
+//        않는다(감사 문장 표에 없는 조합은 기록 실패 = 500 이 되기 때문이다, ARCH 7.4).
 if ($teamId !== null) {
     $sqlTeam = <<<'SQL'
-        SELECT 1 AS ok FROM teams WHERE id = :id
+        SELECT 1 AS ok FROM teams WHERE id = :id AND is_active
         SQL;
     if (!is_array($db->run($sqlTeam, [':id' => $teamId])->fetch())) {
         $rejectBadRequest($body);

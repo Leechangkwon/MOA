@@ -10,10 +10,20 @@
 
 -- ─────────────────────────────────────────────────────────────
 -- teams — Manager·Employee 의 소속. 'team' 레벨 판정에 필요 (PRD 9장)
+--
+--   12-3 (F-19, ARCH 5.9 · 6.2-1) — 팀은 **지우지 않는다**. files.team_id·users.team_id 와
+--   감사 기록이 팀을 참조하므로 행을 지우면 추적이 끊어진다. 대신 is_active=false 로 내리고,
+--   비활성 팀에는 새 배정·새 업로드가 막힌다(이미 그 팀에 있는 것은 그대로).
+--   이름 길이는 앱(org_team_create·org_team_update)이 먼저 보지만 DB 도 마지막 그물로 막는다.
+--   (기존 DB 는 db/migrations/2026-09-12_teams_active.sql 로 같은 모양이 된다.)
 -- ─────────────────────────────────────────────────────────────
 CREATE TABLE teams (
-    id   BIGSERIAL PRIMARY KEY,
-    name TEXT NOT NULL UNIQUE
+    id         BIGSERIAL   PRIMARY KEY,
+    name       TEXT        NOT NULL UNIQUE,
+    is_active  BOOLEAN     NOT NULL DEFAULT true,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    CONSTRAINT teams_name_len CHECK (length(name) BETWEEN 1 AND 50)
 );
 
 -- ─────────────────────────────────────────────────────────────

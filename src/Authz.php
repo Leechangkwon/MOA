@@ -36,6 +36,9 @@ final class Authz
         'file.fetch',
         'audit.read',
         'user.manage',
+        // 12-3 — 조직·권한 관리 (PRD F-19 · 5.4, ARCH 5.9). user.manage 를 재사용하지 않는 이유는
+        // 감사 로그와 라우트 표에서 "무엇을 관리했나" 가 이름만으로 갈리게 하기 위해서다.
+        'org.manage',
     ];
 
     /**
@@ -442,6 +445,23 @@ final class Authz
         return self::roleOf($u) === 'Admin';
     }
 
+    /**
+     * PRD 5.4 — 팀(조직) 관리와 권한 매트릭스 **조회**는 Admin 만 (12-3, F-19, ARCH 5.9).
+     *
+     * 계정 관리(canManageUsers)와 같은 자격이지만 **판정 함수를 따로 둔다** — 라우트 정책
+     * 이름(`org.manage`)이 감사 로그(`authz.route deny` 의 detail.policy)와 라우트 표에서
+     * "계정을 관리하려 했나, 조직을 관리하려 했나" 를 이름만으로 가르게 하기 위해서다.
+     * 한쪽의 자격이 바뀌어도 다른 쪽이 따라 바뀌지 않는다.
+     *
+     * 매트릭스는 **읽기 전용**이다. 편집 경로는 이 자격으로도 열리지 않는다 —
+     * 앱 DB 계정이 `permissions` 에 SELECT 만 갖는 것이 권한 상승 방어의 핵심이다
+     * (ARCH 6.2-1, SECURITY R-43, PRD Q-12).
+     */
+    public static function canManageOrg(array $u): bool
+    {
+        return self::roleOf($u) === 'Admin';
+    }
+
     /* ─── 10단계: 계정 관리 (F-10) — 역할에 관한 모든 판단은 여기 모은다 ───────── */
 
     /**
@@ -590,6 +610,9 @@ final class Authz
 
             case 'user.manage':
                 return self::canManageUsers($u);
+
+            case 'org.manage':
+                return self::canManageOrg($u);
 
             default:
                 // 알 수 없는 정책 이름은 통과시키지 않는다 (기본 거부)

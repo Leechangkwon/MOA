@@ -16,6 +16,12 @@ final class Http
     public const MSG_UNAUTHORIZED = '로그인이 필요합니다';
     public const MSG_NOT_FOUND    = '찾을 수 없습니다';
     public const MSG_BAD_REQUEST  = '잘못된 요청입니다';
+    /**
+     * 이미 있는 이름과 부딪힌 요청 (12-3 팀 생성·이름 변경, PRD 8장 `/api/org/teams` 행의 409).
+     * 대상에 대한 정보가 아니라 **요청한 사람이 방금 적은 이름**이 겹쳤다는 사실만 알린다 —
+     * 팀 이름은 이 화면(Admin 전용)에서 이미 전부 보이는 값이라 새어 나가는 정보가 없다.
+     */
+    public const MSG_CONFLICT     = '이미 있는 이름입니다';
 
     /**
      * URL 로 가져오기(F-14) 실패 — 스킴·포트·호스트·리다이렉트·크기·검증·속도 제한이

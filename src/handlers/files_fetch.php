@@ -112,8 +112,10 @@ if ($level === 'team') {
     if (preg_match('/^[1-9][0-9]{0,8}$/', $teamRaw) !== 1) {
         $rejectFetch(400, 'bad_request', null, $level);
     }
+    // 12-3 (F-19, ARCH 5.9): **활성 팀만** 있는 것으로 본다 — 비활성 팀으로 가져오려는
+    // 요청은 기존 거부 경로(bad_request → 400)로 끝난다.
     $sqlTeam = <<<'SQL'
-        SELECT id FROM teams WHERE id = :id
+        SELECT id FROM teams WHERE id = :id AND is_active
         SQL;
     $teamRow = Db::instance()->run($sqlTeam, [':id' => (int) $teamRaw])->fetch();
     if (!is_array($teamRow)) {

@@ -60,7 +60,29 @@ scripts/     security_lint.sh · seed_users.php
 | 휴지통 | `/trash` | `role:Admin` | 삭제된 파일 목록과 복구 (30일) |
 | 내 계정 | `/settings` | authenticated | 내 정보(아이디·역할·팀) · 비밀번호 변경 · 2단계 인증 |
 | 계정 관리 | `/users` | `user.manage` | 계정 생성·역할/팀/만료 변경·임시 비밀번호 재발급·2단계 인증 초기화 |
+| 조직·권한 | `/org` | `org.manage` | 팀 생성·이름 변경·비활성화, 구성원 표·배정, 권한 매트릭스 **조회** |
 | 감사 로그 | `/audit` | `audit.read` | 육하원칙 6필터 + 기록 표 |
+
+### 조직·권한 (`PRD.md` F-19 · `ARCHITECTURE.md` 5.9)
+
+`/org` 는 **관리자 전용**(`org.manage`)이며 세 가지를 합니다.
+
+- **팀 관리** — 팀 만들기 · 이름 변경 · 비활성화/활성화. 변경마다 **사유가 필수**이고
+  감사 로그 `team.create`·`team.update` 에 사유와 **이전값 → 새값**(`detail.before`/`after`)이 남습니다.
+  **팀은 지우지 않습니다** — 파일(`files.team_id`)·계정(`users.team_id`)·감사 기록이 팀을
+  가리키고 있어, 지우면 "어느 팀의 파일이었나" 를 되짚을 수 없기 때문입니다. 그래서 삭제 대신
+  `is_active=false` 로 내리고, 그것도 **활성 구성원이 0명일 때만** 됩니다(먼저 재배정 — 400
+  `team_has_members`). 비활성 팀은 `GET /api/teams` 선택지에서 빠지고, 그 팀으로의 새 배정·
+  업로드·URL 가져오기·등급 변경은 400 으로 막힙니다. 이미 그 팀에 있는 파일·계정은 그대로입니다.
+- **구성원 배정** — 팀별 구성원(아이디·역할·활성)을 보여 주고, 배정은 **새 API 를 만들지 않고**
+  기존 `PATCH /api/users/{uid}` 의 `team_id` 변경을 그대로 부릅니다. 자기 자신 금지·마지막
+  관리자 보호·**세션 즉시 종료**(T-22) 같은 규칙이 두 곳으로 갈라지지 않게 하기 위해서입니다.
+- **권한 매트릭스 조회** — `permissions` 16행(역할 × 접근 레벨)을 **읽기 전용**으로 보여 줍니다.
+  편집 기능은 넣지 않았습니다: 화면에서 고칠 수 있게 하려면 앱 DB 계정에 그 표의 변경 권한이
+  필요해지고, 그 순간 앱의 결함 하나가 **권한 상승** 경로가 됩니다. 앱 계정 `tbox_app` 은 이
+  표에 **SELECT 만** 갖습니다(`db/grants.sql`, `ARCHITECTURE.md` 6.2-1 · 10장). 편집이 필요해지면
+  별도 DB 롤·2인 승인·`permission.change` 감사와 함께 `PRD.md` **Q-12** 로 결정합니다
+  (`SECURITY.md` R-43).
 
 ### 미리보기 (`PRD.md` F-18 · `ARCHITECTURE.md` 5.8)
 
@@ -120,6 +142,7 @@ php-fpm 풀(`/etc/php/8.1/fpm/pool.d/tbox.conf`), nginx 사이트 파일 설치�
 ```bash
 sudo -u postgres psql -d tbox_re -v ON_ERROR_STOP=1 -f db/migrations/2026-09-10_audit_summary.sql  # audit_logs.summary (8단계)
 sudo -u postgres psql -d tbox_re -v ON_ERROR_STOP=1 -f db/migrations/2026-09-11_purged_at.sql      # files.purged_at  (9단계)
+sudo -u postgres psql -d tbox_re -v ON_ERROR_STOP=1 -f db/migrations/2026-09-12_teams_active.sql   # teams.is_active·created_at·updated_at (12-3)
 ```
 
 **멱등합니다.** 두 스크립트 모두 여러 번 실행해도 안전하고, 이미 있는 저장소 루트 `.env` 의 비밀번호는 바꾸지 않습니다.

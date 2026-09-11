@@ -1,7 +1,7 @@
 'use strict';
 /* public/assets/app.js — 12단계(12-1): 공통 셸 + 기능별 화면
  *   로그인 · 파일(`/`) · 휴지통(`/trash`) · 내 계정(`/settings`) ·
- *   계정 관리(`/users`) · 감사 로그(`/audit`)
+ *   계정 관리(`/users`) · 조직·권한(`/org`, 12-3) · 감사 로그(`/audit`)
  *
  * 어느 화면인지는 서버가 <body data-page="…"> 로 알려 주고, 아래 bootPage() 가 그 값으로만
  * 갈라진다. 화면이 늘어나도 기능 함수(initFiles·initTrash·initAccount·initUsers·initAudit·
@@ -2307,6 +2307,719 @@ function initUsers(csrfToken) {
   load();
 }
 
+/* ─── 조직·권한 화면 (12-3 — PRD F-19, ARCH 5.9) ───────────────────
+ *
+ * 좌측 팀 카드 → 우측 상세·구성원 표 → 아래 권한 매트릭스(읽기 전용).
+ *
+ * ★ 이 화면도 역할 문자열을 비교하지 않는다. 구성원 표의 역할·매트릭스의 역할 이름은
+ *   서버가 준 값을 **글자 그대로** 보여 줄 뿐이고, 매트릭스의 행 순서마저 서버가 보낸
+ *   순서를 그대로 따른다. 무엇을 할 수 있는지는 서버 Authz 가 매 요청 판단한다 (PRD S-01).
+ * ★ 구성원 배정은 새 API 가 아니라 기존 PATCH /api/users/{uid} 를 부른다 —
+ *   자기 자신 금지·마지막 Admin 보호·세션 종료(T-22)가 두 곳으로 갈라지지 않게 (ARCH 5.9).
+ * ★ 매트릭스에는 편집 경로가 없다. 앱 DB 계정이 permissions 표에 읽기 권한만 갖는 것이
+ *   권한 상승 방어의 핵심이기 때문이다 (ARCH 6.2-1, SECURITY R-43, PRD Q-12).
+ * ★ 실패 문구는 서버가 준 것만 보여 준다(브라우저가 사유를 추측하지 않는다).
+ */
+
+/** 매트릭스 표의 **열 순서** — 화면 머리글(공개·사내·팀·관리자)과 같은 차례다. */
+var MATRIX_LEVELS = ['public', 'internal', 'team', 'admin-only'];
+
+function initOrg(csrfToken) {
+  var msg = document.getElementById('msg');
+
+  var cardBox = document.getElementById('org-teams');
+  var cardEmpty = document.getElementById('org-teams-empty');
+
+  var detail = document.getElementById('org-detail');
+  var detailNone = document.getElementById('org-detail-none');
+  var detailName = document.getElementById('org-detail-name');
+  var detailBadge = document.getElementById('org-detail-badge');
+  var detailMeta = document.getElementById('org-detail-meta');
+  var membersBody = document.getElementById('org-members');
+  var membersEmpty = document.getElementById('org-members-empty');
+
+  var newButton = document.getElementById('org-team-new');
+  var renameButton = document.getElementById('org-rename');
+  var assignButton = document.getElementById('org-assign');
+  var toggleButton = document.getElementById('org-toggle');
+
+  var createDialog = document.getElementById('team-create-dialog');
+  var createForm = document.getElementById('team-create-form');
+  var createName = document.getElementById('tc-name');
+  var createReason = document.getElementById('tc-reason');
+  var createMsg = document.getElementById('tc-msg');
+  var createCancel = document.getElementById('tc-cancel');
+
+  var renameDialog = document.getElementById('team-rename-dialog');
+  var renameForm = document.getElementById('team-rename-form');
+  var renameTarget = document.getElementById('tr-target');
+  var renameName = document.getElementById('tr-name');
+  var renameReason = document.getElementById('tr-reason');
+  var renameMsg = document.getElementById('tr-msg');
+  var renameCancel = document.getElementById('tr-cancel');
+
+  var assignDialog = document.getElementById('team-assign-dialog');
+  var assignForm = document.getElementById('team-assign-form');
+  var assignUser = document.getElementById('ta-user');
+  var assignTeam = document.getElementById('ta-team');
+  var assignReason = document.getElementById('ta-reason');
+  var assignMsg = document.getElementById('ta-msg');
+  var assignCancel = document.getElementById('ta-cancel');
+
+  var activeDialog = document.getElementById('team-active-dialog');
+  var activeForm = document.getElementById('team-active-form');
+  var activeTitle = document.getElementById('td-title');
+  var activeNote = document.getElementById('td-note');
+  var activeReason = document.getElementById('td-reason');
+  var activeMsg = document.getElementById('td-msg');
+  var activeCancel = document.getElementById('td-cancel');
+  var activeSubmit = document.getElementById('td-submit');
+
+  /** 화면이 들고 있는 것: 팀 목록과 지금 고른 팀 번호뿐이다(권한 값은 들지 않는다). */
+  var state = { teams: [], selected: null };
+
+  /* ── 통신 ──────────────────────────────────────────────────── */
+
+  /** GET — 401 → 로그인, 403+next → 강제 절차 화면. 그 밖은 {ok,status,data} */
+  function getJson(path) {
+    return fetch(path, { credentials: 'same-origin', cache: 'no-store' }).then(function (response) {
+      if (response.status === 401) {
+        toLogin();
+        return null;
+      }
+      return readJson(response).then(function (data) {
+        if (toGate(response, data)) {
+          return null;
+        }
+        return { ok: response.ok, status: response.status, data: data };
+      });
+    });
+  }
+
+  /** 상태를 바꾸는 요청 — CSRF 토큰 헤더를 반드시 붙인다 (PRD S-09-3) */
+  function sendJson(method, path, payload) {
+    return fetch(path, {
+      method: method,
+      headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken },
+      body: JSON.stringify(payload),
+      credentials: 'same-origin',
+      cache: 'no-store'
+    }).then(function (response) {
+      if (response.status === 401) {
+        toLogin();
+        return null;
+      }
+      return readJson(response).then(function (data) {
+        if (toGate(response, data)) {
+          return null;
+        }
+        return { ok: response.ok, status: response.status, data: data };
+      });
+    });
+  }
+
+  /* ── 대화상자 열고 닫기 ────────────────────────────────────── */
+
+  function openDialog(dialog) {
+    if (!dialog || typeof dialog.showModal !== 'function') {
+      setText(msg, '이 브라우저에서는 이 창을 열 수 없습니다');
+      return false;
+    }
+    if (!dialog.open) {
+      dialog.showModal();
+    }
+    return true;
+  }
+
+  function closeDialog(dialog) {
+    if (dialog && dialog.open) {
+      dialog.close();
+    }
+  }
+
+  /* ── 팀 카드 ───────────────────────────────────────────────── */
+
+  function statBlock(label, value) {
+    var span = document.createElement('span');
+    setText(span, label + ' ');
+    var strong = document.createElement('strong');
+    setText(strong, value);
+    span.appendChild(strong);
+    return span;
+  }
+
+  function makeCard(team) {
+    var card = document.createElement('button');
+    card.type = 'button';
+    card.className = team.id === state.selected ? 'team-card is-selected' : 'team-card';
+    card.setAttribute('aria-pressed', team.id === state.selected ? 'true' : 'false');
+
+    var head = document.createElement('span');
+    head.className = 'team-card__head';
+    var name = document.createElement('strong');
+    name.className = 'team-card__name';
+    setText(name, team.name);
+    head.appendChild(name);
+
+    var badge = document.createElement('span');
+    badge.className = team.is_active === true ? 'badge badge--ok' : 'badge badge--off';
+    setText(badge, team.is_active === true ? '활성' : '비활성');
+    head.appendChild(badge);
+    card.appendChild(head);
+
+    var stats = document.createElement('span');
+    stats.className = 'team-card__stats';
+    stats.appendChild(statBlock('구성원', team.member_count));
+    stats.appendChild(statBlock('Manager', team.manager_count));
+    stats.appendChild(statBlock('파일', team.file_count));
+    card.appendChild(stats);
+
+    card.addEventListener('click', function () {
+      select(team.id);
+    });
+    return card;
+  }
+
+  function renderCards() {
+    if (!cardBox) {
+      return;
+    }
+    cardBox.replaceChildren();
+    state.teams.forEach(function (team) {
+      cardBox.appendChild(makeCard(team));
+    });
+    if (cardEmpty) {
+      cardEmpty.hidden = state.teams.length !== 0;
+    }
+  }
+
+  /** 지금 고른 팀의 자료 (없으면 null) */
+  function selectedTeam() {
+    var found = null;
+    state.teams.forEach(function (team) {
+      if (team.id === state.selected) {
+        found = team;
+      }
+    });
+    return found;
+  }
+
+  /* ── 상세·구성원 ───────────────────────────────────────────── */
+
+  function renderDetail() {
+    var team = selectedTeam();
+    if (detailNone) {
+      detailNone.hidden = team !== null;
+    }
+    if (detail) {
+      detail.hidden = team === null;
+    }
+    if (team === null) {
+      return;
+    }
+    setText(detailName, team.name);
+    if (detailBadge) {
+      detailBadge.className = team.is_active === true ? 'badge badge--ok' : 'badge badge--off';
+      setText(detailBadge, team.is_active === true ? '활성' : '비활성');
+    }
+    setText(detailMeta, '만든 날 ' + team.created_at + ' · 마지막 변경 ' + team.updated_at);
+    if (toggleButton) {
+      toggleButton.className = team.is_active === true
+        ? 'btn btn--danger btn--small'
+        : 'btn btn--quiet btn--small';
+      setText(toggleButton, team.is_active === true ? '비활성화' : '활성화');
+    }
+  }
+
+  function renderMembers(data) {
+    if (!membersBody) {
+      return;
+    }
+    membersBody.replaceChildren();
+    var members = data && Array.isArray(data.members) ? data.members : [];
+    members.forEach(function (member) {
+      var row = document.createElement('tr');
+
+      var nameCell = document.createElement('td');
+      var strong = document.createElement('strong');
+      setText(strong, member.username);
+      nameCell.appendChild(strong);
+      row.appendChild(nameCell);
+
+      var roleCell = document.createElement('td');
+      setText(roleCell, member.role);
+      row.appendChild(roleCell);
+
+      var stateCell = document.createElement('td');
+      var badge = document.createElement('span');
+      badge.className = member.is_active === true ? 'badge badge--ok' : 'badge badge--off';
+      setText(badge, member.is_active === true ? '활성' : '비활성');
+      stateCell.appendChild(badge);
+      row.appendChild(stateCell);
+
+      var actions = document.createElement('td');
+      actions.className = 'actions';
+      var move = document.createElement('button');
+      move.type = 'button';
+      move.className = 'btn btn--quiet btn--small';
+      setText(move, '다른 팀으로…');
+      move.addEventListener('click', function () {
+        openAssign(member.id, null);
+      });
+      actions.appendChild(move);
+      row.appendChild(actions);
+
+      membersBody.appendChild(row);
+    });
+    if (membersEmpty) {
+      membersEmpty.hidden = members.length !== 0;
+    }
+  }
+
+  function loadMembers() {
+    if (state.selected === null) {
+      return;
+    }
+    getJson('/api/org/teams/' + encodeURIComponent(String(state.selected)) + '/members')
+      .then(function (result) {
+        if (result === null) {
+          return null;
+        }
+        if (!result.ok) {
+          setText(msg, errorMessage(result.data));
+          return null;
+        }
+        renderMembers(result.data);
+        return null;
+      })
+      .catch(function () {
+        setText(msg, GENERIC_ERROR);
+      });
+  }
+
+  function select(id) {
+    state.selected = typeof id === 'number' ? id : null;
+    renderCards();
+    renderDetail();
+    if (membersBody) {
+      membersBody.replaceChildren();
+    }
+    loadMembers();
+  }
+
+  function loadTeams(keepSelection) {
+    return getJson('/api/org/teams')
+      .then(function (result) {
+        if (result === null) {
+          return null;
+        }
+        if (!result.ok) {
+          setText(msg, errorMessage(result.data));
+          return null;
+        }
+        state.teams = result.data && Array.isArray(result.data.teams) ? result.data.teams : [];
+        if (keepSelection !== true) {
+          state.selected = null;
+        }
+        renderCards();
+        renderDetail();
+        return null;
+      })
+      .catch(function () {
+        setText(msg, GENERIC_ERROR);
+      });
+  }
+
+  /* ── 권한 매트릭스 (읽기 전용) ─────────────────────────────── */
+
+  function fillMatrix(tbody, roles, byRole, flag) {
+    if (!tbody) {
+      return;
+    }
+    tbody.replaceChildren();
+    roles.forEach(function (role) {
+      var row = document.createElement('tr');
+      var head = document.createElement('td');
+      setText(head, role);
+      row.appendChild(head);
+      MATRIX_LEVELS.forEach(function (level) {
+        var cell = document.createElement('td');
+        cell.className = 'matrix__cell';
+        var entry = Object.prototype.hasOwnProperty.call(byRole[role], level) ? byRole[role][level] : null;
+        if (entry !== null && entry[flag] === true) {
+          cell.appendChild(makeIcon('check'));
+          cell.setAttribute('title', '허용');
+        } else {
+          setText(cell, '—');
+          cell.setAttribute('title', '허용 안 됨');
+        }
+        row.appendChild(cell);
+      });
+      tbody.appendChild(row);
+    });
+  }
+
+  function renderMatrix(data) {
+    var readBody = document.getElementById('org-matrix-read');
+    var uploadBody = document.getElementById('org-matrix-upload');
+    var rulesBox = document.getElementById('org-matrix-rules');
+
+    var rows = data && Array.isArray(data.permissions) ? data.permissions : [];
+    var byRole = Object.create(null);
+    var roles = [];      // 서버가 보낸 차례 그대로 (화면이 역할 순서를 정하지 않는다)
+    rows.forEach(function (entry) {
+      if (!entry || typeof entry.role !== 'string' || typeof entry.access_level !== 'string') {
+        return;
+      }
+      if (!Object.prototype.hasOwnProperty.call(byRole, entry.role)) {
+        byRole[entry.role] = Object.create(null);
+        roles.push(entry.role);
+      }
+      byRole[entry.role][entry.access_level] = entry;
+    });
+
+    fillMatrix(readBody, roles, byRole, 'can_read');
+    fillMatrix(uploadBody, roles, byRole, 'can_upload');
+
+    if (rulesBox) {
+      rulesBox.replaceChildren();
+      var rules = data && Array.isArray(data.rules) ? data.rules : [];
+      rules.forEach(function (text) {
+        var item = document.createElement('li');
+        setText(item, text);
+        rulesBox.appendChild(item);
+      });
+    }
+  }
+
+  function loadMatrix() {
+    getJson('/api/org/permissions')
+      .then(function (result) {
+        if (result === null) {
+          return null;
+        }
+        if (!result.ok) {
+          setText(msg, errorMessage(result.data));
+          return null;
+        }
+        renderMatrix(result.data);
+        return null;
+      })
+      .catch(function () {
+        setText(msg, GENERIC_ERROR);
+      });
+  }
+
+  /* ── 배정 대화상자 — 계정 목록과 팀 목록을 채운다 ──────────── */
+
+  /** 계정 <select> 를 기존 /api/users 응답으로 채운다(계정 관리 화면과 같은 자료). */
+  function fillUserOptions(preselectId) {
+    if (!assignUser) {
+      return;
+    }
+    assignUser.replaceChildren();
+    var placeholder = document.createElement('option');
+    placeholder.value = '';
+    placeholder.disabled = true;
+    placeholder.selected = true;
+    setText(placeholder, '계정을 고르세요');
+    assignUser.appendChild(placeholder);
+
+    function addPage(pageNo) {
+      return getJson('/api/users?page=' + encodeURIComponent(String(pageNo))).then(function (result) {
+        if (result === null || !result.ok) {
+          return null;
+        }
+        var data = result.data;
+        var users = data && Array.isArray(data.users) ? data.users : [];
+        users.forEach(function (item) {
+          var option = document.createElement('option');
+          option.value = String(item.id);
+          var label = item.username + ' · ' + item.role;
+          if (typeof item.team_name === 'string' && item.team_name !== '') {
+            label += ' · ' + item.team_name;
+          }
+          if (item.is_active !== true) {
+            label += ' (비활성)';
+          }
+          setText(option, label);
+          if (typeof preselectId === 'number' && item.id === preselectId) {
+            option.selected = true;
+          }
+          assignUser.appendChild(option);
+        });
+        var perPage = typeof data.per_page === 'number' && data.per_page > 0 ? data.per_page : 50;
+        var total = typeof data.total === 'number' ? data.total : 0;
+        if (pageNo * perPage < total && pageNo < 20) {
+          return addPage(pageNo + 1);
+        }
+        return null;
+      });
+    }
+
+    addPage(1).catch(function () {
+      setText(assignMsg, GENERIC_ERROR);
+    });
+  }
+
+  /** 팀 <select> — **활성 팀만** 담는다. 비활성 팀으로의 배정은 서버가 400 으로 막는다. */
+  function fillTeamOptions(preselectId) {
+    if (!assignTeam) {
+      return;
+    }
+    assignTeam.replaceChildren();
+    var placeholder = document.createElement('option');
+    placeholder.value = '';
+    placeholder.disabled = true;
+    placeholder.selected = true;
+    setText(placeholder, '팀을 고르세요');
+    assignTeam.appendChild(placeholder);
+
+    state.teams.forEach(function (team) {
+      if (team.is_active !== true) {
+        return;
+      }
+      var option = document.createElement('option');
+      option.value = String(team.id);
+      setText(option, team.name);
+      if (typeof preselectId === 'number' && team.id === preselectId) {
+        option.selected = true;
+      }
+      assignTeam.appendChild(option);
+    });
+  }
+
+  function openAssign(userId, teamId) {
+    setText(assignMsg, '');
+    if (assignReason) {
+      assignReason.value = '';
+    }
+    fillUserOptions(typeof userId === 'number' ? userId : null);
+    fillTeamOptions(typeof teamId === 'number' ? teamId : null);
+    openDialog(assignDialog);
+  }
+
+  /* ── 단추 ──────────────────────────────────────────────────── */
+
+  if (newButton) {
+    newButton.addEventListener('click', function () {
+      setText(createMsg, '');
+      if (createName) {
+        createName.value = '';
+      }
+      if (createReason) {
+        createReason.value = '';
+      }
+      openDialog(createDialog);
+    });
+  }
+
+  if (renameButton) {
+    renameButton.addEventListener('click', function () {
+      var team = selectedTeam();
+      if (team === null) {
+        return;
+      }
+      setText(renameMsg, '');
+      setText(renameTarget, '지금 이름: ' + team.name);
+      if (renameName) {
+        renameName.value = team.name;
+      }
+      if (renameReason) {
+        renameReason.value = '';
+      }
+      openDialog(renameDialog);
+    });
+  }
+
+  if (assignButton) {
+    assignButton.addEventListener('click', function () {
+      var team = selectedTeam();
+      if (team === null) {
+        return;
+      }
+      openAssign(null, team.id);
+    });
+  }
+
+  if (toggleButton) {
+    toggleButton.addEventListener('click', function () {
+      var team = selectedTeam();
+      if (team === null) {
+        return;
+      }
+      setText(activeMsg, '');
+      if (activeReason) {
+        activeReason.value = '';
+      }
+      if (team.is_active === true) {
+        setText(activeTitle, '팀 비활성화');
+        setText(activeNote, '「' + team.name + '」 을(를) 비활성화합니다. 비활성 팀에는 새 배정·새 업로드가 막힙니다.'
+          + ' 활성 구성원이 0명일 때만 됩니다 — 지금 활성 구성원 ' + team.member_count + '명.');
+        setText(activeSubmit, '비활성화');
+      } else {
+        setText(activeTitle, '팀 활성화');
+        setText(activeNote, '「' + team.name + '」 을(를) 다시 활성화합니다. 배정·업로드 선택지에 다시 나타납니다.');
+        setText(activeSubmit, '활성화');
+      }
+      openDialog(activeDialog);
+    });
+  }
+
+  if (createCancel) {
+    createCancel.addEventListener('click', function () {
+      closeDialog(createDialog);
+    });
+  }
+  if (renameCancel) {
+    renameCancel.addEventListener('click', function () {
+      closeDialog(renameDialog);
+    });
+  }
+  if (assignCancel) {
+    assignCancel.addEventListener('click', function () {
+      closeDialog(assignDialog);
+    });
+  }
+  if (activeCancel) {
+    activeCancel.addEventListener('click', function () {
+      closeDialog(activeDialog);
+    });
+  }
+
+  /* ── 제출 ──────────────────────────────────────────────────── */
+
+  if (createForm) {
+    createForm.addEventListener('submit', function (event) {
+      event.preventDefault();
+      setText(createMsg, '');
+      sendJson('POST', '/api/org/teams', {
+        name: createName.value,
+        reason_text: createReason.value
+      })
+        .then(function (result) {
+          if (result === null) {
+            return null;
+          }
+          if (result.status !== 201) {
+            setText(createMsg, errorMessage(result.data));
+            return null;
+          }
+          closeDialog(createDialog);
+          setText(msg, '팀을 만들었습니다.');
+          return loadTeams(true);
+        })
+        .catch(function () {
+          setText(createMsg, GENERIC_ERROR);
+        });
+    });
+  }
+
+  if (renameForm) {
+    renameForm.addEventListener('submit', function (event) {
+      event.preventDefault();
+      var team = selectedTeam();
+      if (team === null) {
+        return;
+      }
+      setText(renameMsg, '');
+      sendJson('PATCH', '/api/org/teams/' + encodeURIComponent(String(team.id)), {
+        name: renameName.value,
+        reason_text: renameReason.value
+      })
+        .then(function (result) {
+          if (result === null) {
+            return null;
+          }
+          if (!result.ok) {
+            setText(renameMsg, errorMessage(result.data));
+            return null;
+          }
+          closeDialog(renameDialog);
+          setText(msg, '팀 이름을 바꿨습니다. 이전값 → 새값이 감사 로그에 남았습니다.');
+          return loadTeams(true);
+        })
+        .catch(function () {
+          setText(renameMsg, GENERIC_ERROR);
+        });
+    });
+  }
+
+  if (activeForm) {
+    activeForm.addEventListener('submit', function (event) {
+      event.preventDefault();
+      var team = selectedTeam();
+      if (team === null) {
+        return;
+      }
+      setText(activeMsg, '');
+      sendJson('PATCH', '/api/org/teams/' + encodeURIComponent(String(team.id)), {
+        is_active: team.is_active !== true,
+        reason_text: activeReason.value
+      })
+        .then(function (result) {
+          if (result === null) {
+            return null;
+          }
+          if (!result.ok) {
+            // 「구성원이 남아 있다」 같은 사유 문구도 서버가 준 것을 그대로 보여 준다.
+            setText(activeMsg, errorMessage(result.data));
+            return null;
+          }
+          closeDialog(activeDialog);
+          setText(msg, '팀 상태를 바꿨습니다.');
+          return loadTeams(true).then(function () {
+            renderDetail();
+            return null;
+          });
+        })
+        .catch(function () {
+          setText(activeMsg, GENERIC_ERROR);
+        });
+    });
+  }
+
+  if (assignForm) {
+    assignForm.addEventListener('submit', function (event) {
+      event.preventDefault();
+      setText(assignMsg, '');
+      var userId = assignUser ? assignUser.value : '';
+      var teamId = assignTeam ? assignTeam.value : '';
+      if (userId === '' || teamId === '') {
+        setText(assignMsg, '계정과 팀을 모두 고르세요.');
+        return;
+      }
+      // 배정은 **기존 계정 변경 API** 다 (ARCH 5.9). 값은 그대로 보내고 판단은 서버가 한다.
+      sendJson('PATCH', '/api/users/' + encodeURIComponent(userId), {
+        team_id: teamId,
+        reason_text: assignReason.value
+      })
+        .then(function (result) {
+          if (result === null) {
+            return null;
+          }
+          if (!result.ok) {
+            setText(assignMsg, errorMessage(result.data));
+            return null;
+          }
+          closeDialog(assignDialog);
+          setText(msg, '팀을 배정했습니다. 그 계정의 모든 기기 세션이 끊겼습니다.');
+          return loadTeams(true).then(function () {
+            renderDetail();
+            loadMembers();
+            return null;
+          });
+        })
+        .catch(function () {
+          setText(assignMsg, GENERIC_ERROR);
+        });
+    });
+  }
+
+  loadTeams(false);
+  loadMatrix();
+}
+
 /* ─── 최초 로그인 강제 절차 화면 (11단계 — PRD F-16, ARCH 4.0) ────
  *
  * 서버가 /api/me 로 내려 준 `next` 가 있으면 홈은 **그 절차 화면만** 보여 준다.
@@ -2488,8 +3201,10 @@ function initShell(me, csrfToken) {
   var canTrash = me.can_view_trash === true;
   var canUsers = me.can_manage_users === true;
   var canAudit = me.can_view_audit === true;
-  // 「조직·권한」은 12-3 에서 can_manage_org 로 연다. 지금은 언제나 닫혀 있다.
-  var canOrg = false;
+  // 12-3 — 「조직·권한」은 /api/me 의 can_manage_org 가 참일 때만 열린다 (F-19).
+  // 다른 can_* 와 같은 **표시용** 값이다. 항목을 개발자도구로 되살려 /org 나 /api/org/* 를
+  // 직접 불러도 라우트 정책 org.manage 가 막고 authz.route|deny 로 남는다 (PRD S-01, T-27).
+  var canOrg = me.can_manage_org === true;
 
   function showNav(id, open) {
     var el = document.getElementById(id);
@@ -2627,6 +3342,13 @@ function bootPage(page) {
           // 라우트 정책 user.manage 를 통과한 화면이다 (Admin 만).
           if (document.getElementById('users-body')) {
             initUsers(csrfToken);
+          }
+          return null;
+        }
+        if (page === 'org') {
+          // 라우트 정책 org.manage 를 통과한 화면이다 (Admin 만, 12-3 F-19).
+          if (document.getElementById('org-teams')) {
+            initOrg(csrfToken);
           }
           return null;
         }
