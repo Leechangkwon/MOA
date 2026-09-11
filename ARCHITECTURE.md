@@ -1107,7 +1107,7 @@ php_admin_value[disable_functions]   = fsockopen,pfsockopen,stream_socket_client
 | 영역 | 설정 | 확인 |
 |---|---|---|
 | 방화벽 | `ufw default deny incoming; ufw default deny outgoing;` 그 뒤 위 허용 규칙만 | `ufw status verbose` |
-| SSH | `/etc/ssh/sshd_config.d/tbox.conf`: `PasswordAuthentication no`, `PermitRootLogin no`, `AllowGroups tbox-admin`, `MaxAuthTries 3` + `fail2ban` sshd jail | `sshd -T \| grep -iE 'passwordauth\|permitroot'` |
+| SSH | `/etc/ssh/sshd_config.d/`**`00-tbox.conf`**: `PasswordAuthentication no`, `PermitRootLogin no`, `AllowUsers <계정>@<관리망>`(옵션), `MaxAuthTries 3` + `fail2ban` sshd jail<br>**이름 순서 규칙** — `Include /etc/ssh/sshd_config.d/*.conf` 는 글꼴 순서로 읽고 sshd 는 **같은 키워드의 첫 값이 이긴다.** 그래서 우리 드롭인은 `00-` 접두(이 서버의 `50-cloud-init.conf` = `PasswordAuthentication yes` 보다 앞)이고, 충돌하는 남의 드롭인은 `<이름>.conf.disabled-by-tbox-<날짜>` 로 이름을 바꿔 Include 에서 뺀다(삭제 X). 검증은 파일이 아니라 **실효값** `sshd -T` 문자열 대조 (SECURITY 8.4-12) | `sshd -T \| grep -iE 'passwordauth\|permitroot\|maxauth\|allowusers'` |
 | 계정 | 관리자는 개인 계정 + `sudo`(그룹 `tbox-admin`). `tbox-php`, `tbox-backup`, `postgres` 는 `nologin` | `getent passwd \| grep -v nologin` |
 | PostgreSQL | `listen_addresses = 'localhost'`, `pg_hba.conf` 는 `scram-sha-256` + 로컬 소켓만 | `ss -tlnp \| grep 5432` → 127.0.0.1 만 |
 | 불필요 서비스 | `avahi`, `cups`, `rpcbind` 등 제거. 리스닝 포트는 443·22·5432(로컬) 만 | `ss -tlnp` |

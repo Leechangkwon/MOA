@@ -615,12 +615,45 @@ sudo systemctl start php8.1-fpm                             # --stop-service 를
 ```bash
 sudo bash scripts/check_baseline.sh      # 읽기 전용. 아무것도 바꾸지 않는다
 sudo bash deploy/hardening.sh            # 무엇을 바꿀지 출력만 (dry-run)
-sudo bash deploy/hardening.sh --apply    # 실제 적용 — ★ 콘솔에서 사람이 직접
+# 적용 — ★ 콘솔에서, 또는 다른 SSH 창을 하나 더 열어 둔 채 사람이 직접
+sudo bash deploy/hardening.sh --apply --i-have-a-second-session \
+     [--admin-net 10.0.4.0/24] [--allow-users "changkwon@10.0.4.0/24"] \
+     [--sudo-password changkwon] [--lock-user eric]
 ```
 
 > `--apply` 는 **원격 SSH 세션을 끊을 수 있습니다.** `ufw enable` 은 기본 거부 상태로 켜지고,
 > `PasswordAuthentication no` 는 공개키를 등록하지 않은 계정을 잠급니다.
 > 적용 전에 ① 공개키 로그인이 되는지 ② VM 콘솔로 들어갈 방법이 있는지 ③ 관리망 대역이 맞는지 확인하세요.
+
+**순서는 출력 → 협의 → 적용입니다.** 먼저 옵션 없이 돌려 무엇이 바뀌는지 보고(위 1행),
+내 계정이 아닌 것(`eric` 등)은 **계정 소유자(강사)와 협의**한 뒤, 마지막에 `--apply` 를 줍니다.
+`--apply` 는 `--i-have-a-second-session`(다른 SSH 창·콘솔을 열어 두었다는 확인) 없이는 거부합니다.
+
+| 옵션 | 뜻 | 기본 |
+|---|---|---|
+| `--admin-net <CIDR>` | 22 번을 허용할 관리망 대역 | `10.0.4.0/24` (사용자의 실제 SSH 출처 `10.0.4.173` 이 있는 대역) |
+| `--allow-users "<계정>@<대역>"` | sshd `AllowUsers` 로 **접속 계정·출처**를 제한 | 넣지 않음 |
+| `--sudo-password <계정>` | `/etc/sudoers.d/99-<계정>-nopasswd` 를 `ALL=(ALL:ALL) ALL` 로 바꿔 sudo 에 비밀번호를 요구 (`visudo -c` 검사, 실패 시 원복) | 현황만 출력 |
+| `--lock-user <계정>` | `passwd -l <계정>` — **협의 후에만** | 하지 않음 |
+| `--from-ip <IP>` | 현재 세션 출처 IP 를 직접 지정 (자동 탐지 실패 시) | 자동 탐지 |
+
+> **자기 잠금 방지**: 스크립트는 현재 세션의 출처 IP를 찾아, 그 IP가 `--admin-net` 과
+> `--allow-users` 안에 들어 있는지 먼저 검사하고 **아니면 거부**합니다(종료 코드 2).
+> 예전 기본값 `192.168.0.0/16` 은 관리자의 출처(`10.0.4.173`)를 **빼고** 침입 출처(`192.168.200.50`)를
+> **넣는** 값이었습니다 — 그래서 기본값을 `10.0.4.0/24` 로 바꿨습니다(더 넓게 필요하면 `--admin-net 10.0.0.0/8`).
+
+> **실효값은 `sshd -T` 로 검증합니다** — 파일을 썼다고 적용된 것이 아닙니다.
+> `/etc/ssh/sshd_config` 의 `Include /etc/ssh/sshd_config.d/*.conf` 는 **글꼴 순서**로 읽고
+> sshd 는 **같은 키워드의 첫 값이 이깁니다.** 이 서버의 `50-cloud-init.conf` 는 `PasswordAuthentication yes`
+> 라서, 예전 드롭인 이름 `tbox.conf` 로는 적용해도 비밀번호 로그인이 그대로 켜져 있었습니다(SECURITY 8.4-12).
+> 그래서 드롭인 이름은 **`00-tbox.conf`** 이고, 충돌하는 남의 드롭인은 `--apply` 때
+> `<이름>.conf.disabled-by-tbox-<날짜>` 로 **이름만 바꿔**(삭제하지 않고) Include 에서 뺍니다.
+> 적용 뒤에는 `sshd -T` 의 `passwordauthentication`·`permitrootlogin`·`maxauthtries`·`allowusers` 를
+> 목표값과 문자열로 대조해 하나라도 다르면 **실패(종료 코드 2)** 로 끝납니다. 직접 볼 때는:
+>
+> ```bash
+> sudo sshd -T | grep -iE 'passwordauth|permitroot|maxauth|kbdinteractive|allowusers'
+> ```
 
 ## 감사 로그 보는 법
 
