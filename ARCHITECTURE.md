@@ -171,6 +171,7 @@
 | 시드 계정 | `scripts/seed_users.php`(CLI, install.sh 가 users 가 비었을 때 실행): admin01(Admin) · manager01(Manager, 개발팀) · employee01(Employee, 개발팀) · employee02(Employee, 영업팀) · guest01(Guest) — 사용자의 자기 공격·시연용. **검토 계정** `qa_admin01` · `qa_manager01` · `qa_employee01` · `qa_employee02` · `qa_guest01` 을 같은 역할·팀으로 함께 만든다(2026-09-10, PRD S-07 "검토 요청 표식") — Fable·Opus 의 curl 검토는 이 계정만 쓴다. 감사 로그에서 `actor_name LIKE 'qa\_%'` 이면 검토 행동, 아니면 사용자 행동. 운영 배포는 `--no-qa` 로 검토 계정을 만들지 않는다. 비밀번호는 **무작위 16자**로 생성해 `/etc/tbox-v2/seed-accounts.txt`(0600 root) 에만 기록. 저장소·README 에 비밀번호를 적지 않는다 | 기본 비밀번호 커밋 금지 (S-09-6) |
 | 비밀번호 해시 | `password_hash(…, PASSWORD_ARGON2ID)` 기본 파라미터 | S-09-4 |
 | **2단계 인증 로그인 흐름 (10단계, 사용자 결정 2026-09-11)** | **순차 2단계**: ① 아이디·비밀번호만 보낸다 → 비밀번호가 맞고 그 계정에 TOTP 가 켜져 있으면 서버가 `401 {"error":"2단계 인증 코드가 필요합니다","mfa_required":true}` 로 답한다(세션 발급 없음, **실패 횟수에 세지 않음**, 감사 `auth.mfa deny code_required`) → ② 화면이 그때 코드 칸을 펼치고 아이디·비밀번호·코드를 다시 보낸다 → 코드가 틀리면 `401` 동일 문구 + `auth.mfa deny bad_code` + **실패 횟수 증가**(5회 잠금), 맞으면 세션 발급. 켜지 않은 계정은 ①에서 바로 로그인된다. 로그인 화면에는 코드 칸이 **처음엔 없다** | 비밀번호를 모르는 사람은 계정의 2단계 인증 여부를 알 수 없다(계정 정보 노출 방지, R-32 와 같은 원칙). 비밀번호가 맞은 사람에게만 다음 단계를 알려 준다 — 코드 칸을 모든 사용자에게 항상 보여 헷갈리게 하지 않는다(관문 ③ 피드백 ⑥) |
+| **최초 로그인 강제 절차 (11단계, 사용자 결정 2026-09-11 · PRD F-16)** | `users.must_change_password`·`users.mfa_setup_required`(BOOLEAN NOT NULL DEFAULT false)·`users.password_changed_at`. **생성**: Admin 은 비밀번호를 보내지 않고 서버가 임시 비밀번호(16자, 헷갈리는 글자 `0O1lI` 제외, `random_int`)를 만들어 201 에 `temp_password` 로 한 번만 돌려준다 + 두 플래그 true. **로그인**: 기존 순차 2단계 그대로(TOTP 켜진 계정은 코드 필요) → 세션 발급 → 200 `{ok:true, next:"password_change"|"mfa_setup"|null}`. **관문(`public/index.php`, 인증 뒤·핸들러 앞)**: `must_change_password` 이면 허용 목록(`GET /`, `GET /api/me`, `POST /api/logout`, `POST /api/me/password`) 밖 요청은 `403 {"error":"비밀번호를 먼저 변경해야 합니다","next":"password_change"}` + `auth.gate deny password_change_required`(route 패턴); 아니고 `mfa_setup_required` 이면 허용 목록 + `POST /api/me/mfa/enroll`·`confirm` 밖은 `403 {…,"next":"mfa_setup"}` + `auth.gate deny mfa_setup_required`. **해제**: 비밀번호 변경 성공 → `must_change_password=false`, `password_changed_at=now()`(현재와 같은 값은 400 `same_password`); TOTP 확정 성공 → `mfa_setup_required=false`; TOTP 해제 → `mfa_setup_required=true`(필수 정책). **Admin 재발급/초기화**: `POST /api/users/{uid}/password/reset`(새 임시 비밀번호 한 번만 응답, `must_change_password=true`, 세션 전부 종료), `POST /api/users/{uid}/mfa/reset`(`mfa_secret=NULL`, `mfa_enabled=false`, `mfa_setup_required=true`, 세션 전부 종료) — 둘 다 사유 필수·자기 자신 `self_change` 거부. **이행**: 마이그레이션이 기존 활성 계정 전부에 `must_change_password=true`, `mfa_setup_required = NOT mfa_enabled` 를 넣는다 — 패치 뒤 첫 로그인이 강제 절차가 된다(행 삭제·재생성 없음) | 임시 비밀번호를 만든 Admin 이 그 값을 계속 아는 상태를 **첫 로그인에서 끝낸다**(R-33·R-39). "2단계 인증은 선택" 이던 10단계 결정을 사용자 결정으로 **필수**로 바꾼다 — 서버 관문이 막으므로 화면을 우회해도 절차를 건너뛸 수 없다. 관문을 라우터 한 곳에 두는 이유는 핸들러마다 검사하다 하나를 빠뜨리는 실수를 막기 위해서다(4단계 서버 인가와 같은 원칙) |
 
 ### 4.1 Authz.php — 권한 판단은 이 파일 하나에 모은다
 
@@ -812,6 +813,15 @@ GRANT  USAGE, SELECT  ON SEQUENCE audit_logs_id_seq TO tbox_app;
 | `user.expiry_change|allow` | `{actor} 이(가) 계정 「{target}」 의 만료일을 바꿨습니다 (이전 → 새 값·사유는 상세 기록)` | 10단계 — 역할·활성이 아니라 `expires_at` 만 바뀐 경우 (검토 보완 C) |
 | `user.expired|deny|session_expired` | `{actor} 의 Guest 계정이 만료되어 살아 있던 세션을 끊었습니다` | 10단계 재지시 — `Auth::currentUser()` 가 만료된 Guest 의 세션을 즉시 파기 (R-12) |
 | `auth.mfa_enroll|deny|bad_code` | `{actor} 이(가) 2단계 인증을 켜려 했지만 확인 코드가 틀렸습니다` | 10단계 (검토 보완 B) |
+| `auth.gate|deny|password_change_required` | `{target} 이(가) 비밀번호를 아직 바꾸지 않은 상태로 다른 기능을 요청해서 거부했습니다` | 11단계 관문 (target = 본인, route 패턴은 상세) |
+| `auth.gate|deny|mfa_setup_required` | `{target} 이(가) 2단계 인증을 아직 설정하지 않은 상태로 다른 기능을 요청해서 거부했습니다` | 11단계 관문 |
+| `auth.password_change|deny|same_password` | `{actor} 이(가) 비밀번호를 현재와 같은 값으로 바꾸려 해서 거부했습니다` | 11단계 |
+| `user.password_reset|allow` | `{actor} 이(가) 계정 「{target}」 의 임시 비밀번호를 재발급하고 모든 세션을 끊었습니다 (사유는 상세 기록)` | 11단계 users (Admin) |
+| `user.password_reset|deny|self_change` | `{actor} 이(가) 자기 자신의 임시 비밀번호를 재발급하려 해서 거부했습니다` | 11단계 |
+| `user.password_reset|deny|bad_request` | `{actor} 이(가) 계정 「{target}」 임시 비밀번호 재발급을 사유 없이 요청해서 거부했습니다` | 11단계 |
+| `user.mfa_reset|allow` | `{actor} 이(가) 계정 「{target}」 의 2단계 인증을 초기화하고 모든 세션을 끊었습니다 (사유는 상세 기록)` | 11단계 |
+| `user.mfa_reset|deny|self_change` | `{actor} 이(가) 자기 자신의 2단계 인증을 초기화하려 해서 거부했습니다` | 11단계 |
+| `user.mfa_reset|deny|bad_request` | `{actor} 이(가) 계정 「{target}」 2단계 인증 초기화를 사유 없이 요청해서 거부했습니다` | 11단계 |
 | `auth.mfa_enroll|deny|already_enabled` | `{actor} 이(가) 이미 켜져 있는 2단계 인증을 다시 등록하려 해서 거부했습니다` | 10단계 (검토 보완 B) |
 | `auth.mfa_disable|deny|bad_code` | `{actor} 이(가) 2단계 인증을 끄려 했지만 인증 코드가 틀렸습니다` | 10단계 (검토 보완 B) |
 | `auth.mfa_disable|deny|bad_credentials` | `{actor} 이(가) 2단계 인증을 끄려 했지만 현재 비밀번호가 틀렸습니다` | 10단계 (검토 보완 B) |
@@ -859,6 +869,9 @@ GRANT  USAGE, SELECT  ON SEQUENCE audit_logs_id_seq TO tbox_app;
 | 키 | 육하원칙 | 값 | 누가 채우나 | 어느 행에 |
 |---|---|---|---|---|
 | `route` | 어디서·어떻게 | `메서드 라우트패턴` 예 `GET /api/files/{id}/download`. **실제 UUID 가 아니라 라우트 표의 패턴** — 로그가 파일 ID 목록이 되지 않게 | `Audit::write()` 자동 (`TBOX_ROUTE` 상수, 라우터가 매칭 직후 정의) | 모든 행. CLI(배치)는 `cli:스크립트명` |
+| `temp_password_issued` | 어떻게 | `true` — 임시 비밀번호를 발급했다는 사실만. **값은 절대 기록하지 않는다** | 핸들러 | `user.create`·`user.password_reset` |
+| `forced` | 왜 | `true` — 최초 로그인 강제 절차 중에 한 변경 | 핸들러 | `auth.password_change allow`·`auth.mfa_enroll allow` |
+| `next` | 어떻게 | 관문이 요구한 다음 단계 `password_change`·`mfa_setup` | 라우터 | `auth.gate deny` |
 | `actor_team` | 누가 | 행동 당시 사용자의 `team_id` (정수 또는 null) | `Audit::write()` 자동 (`Auth::currentUser()`) | 로그인된 모든 행 |
 | `login_ref` | 누가 | 로그인 1회당 고정되는 12자 16진수. `substr(hash('sha256', 'audit-login-ref:' . $session_id), 0, 12)` — 세션 id(토큰의 해시)에서 **한 번 더 단방향으로 파생**하므로 이 값으로 쿠키도 세션 행도 찾을 수 없다. 키 이름에 `session`·`hash` 를 쓰지 않는 이유는 `FORBIDDEN_DETAIL_KEYS` 부분 일치 때문 | `Audit::write()` 자동 | 로그인된 모든 행 |
 | `granted_by` | 왜 | 4.1 판정 코드 중 허용 코드 하나 | 핸들러가 `Authz::decide*()` 결과를 그대로 | 인가를 거친 `allow` 행 (`file.download`·`file.delete`·`file.upload`) |

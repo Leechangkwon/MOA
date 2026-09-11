@@ -183,6 +183,7 @@
 | F-12 | 내 활동 보기 | 본인 다운로드·업로드 이력 | 선택 |
 | F-13 | 만료되는 공유 링크 | 서명된 1회용 링크 (기간 만료) | 선택 |
 | F-14 | URL로 파일 가져오기 | 허용된 외부 사이트(https)의 파일을 서버가 받아 업로드와 동일하게 저장. **S-05 13개 조건 필수**, Manager 이상 | 필수 (7단계) |
+| F-16 | **최초 로그인 강제 절차** (사용자 결정 2026-09-11) | ① Admin 이 만드는 계정은 **서버가 임시 비밀번호를 생성**해 생성 응답에 딱 한 번 돌려준다(Admin 이 비밀번호를 정하지 않는다). ② 임시 비밀번호로 처음 로그인하면 **비밀번호 변경**을 먼저 요구하고, 그 뒤 **2단계 인증(TOTP) 등록**을 요구한다. 둘을 마치기 전에는 다른 기능을 쓸 수 없다(서버가 403 으로 막고, 화면은 그 절차만 보여 준다). ③ 2단계 인증은 **모든 역할에 필수**다 — 끄면 다음 요청부터 다시 등록을 요구한다. ④ **패치 시점의 기존 활성 계정도 다음 로그인이 "최초 로그인"** 으로 취급된다(데이터 삭제·재생성 없음). ⑤ Admin 은 임시 비밀번호 재발급·2단계 인증 초기화를 할 수 있다(사유 필수, 자기 자신 금지, 대상 세션 전부 종료) | 필수 (11단계) |
 
 ---
 
@@ -551,11 +552,14 @@
 | DELETE | `/api/files/{id}` | 삭제(논리) | 5.3 표대로 | 403 / 404 |
 | POST | `/api/files/{id}/restore` | 복구 | Admin | 403 |
 | GET | `/api/audit` | 감사 로그 조회 | Admin 만 | 403 |
-| GET/POST | `/api/users` | 계정 목록 · 생성(`username`·`password` 12자 이상·`role` 4종·`team_id`·Guest 는 `expires_at` 필수·`reason_text` 필수) | Admin (`user.manage`) | 400 / 403 |
+| GET/POST | `/api/users` | 계정 목록 · 생성(`username`·`role` 4종·`team_id`·Guest 는 `expires_at` 필수·`reason_text` 필수). **비밀번호는 받지 않는다** — 서버가 임시 비밀번호를 만들어 201 응답 `temp_password` 로 **한 번만** 돌려준다(F-16). `password` 키가 오면 400 | Admin (`user.manage`) | 400 / 403 |
 | PATCH | `/api/users/{uid}` | 역할·팀·활성·만료일 변경 (`reason_text` 필수, 자기 자신 금지, 마지막 활성 Admin 강등·비활성화 금지). 역할·팀 변경·비활성화는 대상의 모든 세션을 즉시 끊음(T-22) | Admin | 400 / 403 / 404 |
+| POST | `/api/users/{uid}/password/reset` | 임시 비밀번호 재발급(`reason_text` 필수, 자기 자신 금지). 새 임시 비밀번호를 한 번만 응답, 대상은 다음 로그인에 변경 강제, 대상 세션 전부 종료 (F-16 ⑤) | Admin | 400 / 403 / 404 |
+| POST | `/api/users/{uid}/mfa/reset` | 2단계 인증 초기화(`reason_text` 필수, 자기 자신 금지). 비밀 삭제 → 대상은 다음 로그인 뒤 재등록 강제, 세션 전부 종료 (F-16 ⑤) | Admin | 400 / 403 / 404 |
 | GET | `/api/files/trash` | 휴지통 목록(논리 삭제·미영구삭제) | Admin | 403 |
-| POST | `/api/me/password` | 내 비밀번호 변경(현재 비밀번호 확인, 12자 이상, 다른 기기 세션 종료) | 세션 존재 + CSRF | 400 |
-| POST | `/api/me/mfa/enroll` · `confirm` · `disable` | 2단계 인증(TOTP) 등록·확정·해제 (해제는 현재 비밀번호 + 코드) | 세션 존재 + CSRF | 400 |
+| POST | `/api/me/password` | 내 비밀번호 변경(현재 비밀번호 확인, 12자 이상, **현재와 같은 값 금지**, 다른 기기 세션 종료). 성공 시 `must_change_password` 해제 (F-16) | 세션 존재 + CSRF (강제 절차 중에도 허용) | 400 |
+| POST | `/api/me/mfa/enroll` · `confirm` · `disable` | 2단계 인증(TOTP) 등록·확정·해제 (해제는 현재 비밀번호 + 코드). **확정 시 `mfa_setup_required` 해제, 해제 시 다시 켜짐**(필수 정책, F-16 ③) | 세션 존재 + CSRF (enroll·confirm 은 강제 절차 중에도 허용) | 400 |
+| (관문) | 인증 필요 라우트 전부 | `must_change_password` 이면 `GET /`·`/api/me`·`/api/logout`·`/api/me/password` 외 **403 `{next:"password_change"}`**; 그 뒤 `mfa_setup_required` 이면 위 + `/api/me/mfa/enroll`·`confirm` 외 **403 `{next:"mfa_setup"}`**. 로그인 200 응답과 `/api/me` 에 같은 `next` 값 (F-16 ②) | 세션 존재 | 403 |
 
 ---
 
