@@ -363,5 +363,7 @@
 | 6 | 정합성 검사 주기 주 1회 → **일 1회**(cron), AL-6 즉시 | Opus | 계획 |
 | 7 | CLAUDE.md: "구현자(Opus)는 운영 데이터를 복구·재시드하지 않는다. 이상 발견 시 멈추고 보고" 명문화 | Fable | 이번 커밋 |
 | 8 | `eric` 의 06:37 평문 덤프(postgres 0664)는 증거로 보존하되, 사건 종결 후 삭제 또는 암호화(평문 전체 데이터 = 유출 위험) | 사용자 | 종결 후 |
+| 9 | **문서(md) 무결성 확인 완료** — 사용자 질문("md 파일도 바뀌지 않았을까? 추측 아닌 정확히")에 네 근거로 답: git(사건 창 커밋·reflog·`.git` 변경 0, `fsck` 정상, `6bc3f14` 이후 md 변경은 이 세션 커밋만) · mtime(두 접속 창에 바뀐 저장소 파일은 이 세션의 것만) · `eric` Claude 세션 기록 파싱(Bash 7회, Edit/Write 0회; 2차 접속 16:11~16:26 KST 는 `ll`·`claude`·`date`·`history`, sudo 0) · md 전수 검색(파괴 문구 없음). 상세 STAGES 2-2 ⑩ | Fable | ✅ 2026-09-11 |
+| 10 | **감사 로그 오기록 1건** — `audit_logs` id 1177(16:15:08 KST, `backup.restore allow`, scope db-tables)은 Fable 의 1차 복구 시도 뒤 남긴 행이나 그 트랜잭션은 `setval` 오류로 **롤백**돼 실제 복구가 아니었다. 로그는 추가 전용이라 지울 수 없고, `backup.restore` 는 문장 표에 `allow` 만 있어 `error` 를 남길 수도 없었다. 조치: 사용자가 실행할 복구 스크립트의 기록에 `corrects_row:1177` 을 넣어 바로잡고, 문장 표에 `backup.restore error restore_failed` 추가를 다음 보정(Opus)에 포함 — 복구 스크립트는 **성공을 확인한 뒤에만** 기록을 남겨야 한다는 교훈 | Fable → Opus | 기록 예정 |
 
 증거 위치: `/var/log/auth.log`(sshd·sudo), `last -F eric`, `/var/backups/tbox-v2/tbox_re_2026-09-11_063736.dump`(sha256 `4cad1006dcf23c9e614e933b82333cd1713d98fa9e30c1ef823de30f51fd80cf`), 이 문서. **아무것도 지우지 않았다.**
