@@ -24,7 +24,8 @@
     · HMAC-SHA1 hmacSha1() (WebCrypto crypto.subtle 만 사용)
     · 동적 절단·자릿수 totpCode()  · 입력 파싱 parseInput()  · 4자 묶음 표시 groupFours()
     · 잠금 키 유도 deriveLockKey() (PBKDF2-SHA256 600000회)
-    · 암호화 lockToVault() · 복호화 openVault() · 저장 saveVault() / 열기 unlockVault() / 지우기 wipeVault()
+    · 암호화 lockToVault() · 복호화 openVault() · 저장 saveVault()(「잠금 문구 확인」 칸과 대조) /
+      열기 unlockVault()(확인 칸 없음 — 한 번만 입력) / 지우기 wipeVault()
     · 옛 평문 저장값 즉시 삭제 dropLegacySecret()
     · RFC 6238 부록 B 시험값 TEST_VECTORS / runSelfTest() + 잠금 왕복·틀린 문구·평문 미포함 점검 vaultSelfTest()
     · DOM 조작은 textContent 와 createElement 만 — HTML 문자열 주입·동적 코드 실행·외부 리소스 없음.
@@ -138,6 +139,8 @@
     <div id="groups" class="groups"></div>
     <label for="lock-pass">잠금 문구 (「잠가 저장」 할 때만 필요)</label>
     <input id="lock-pass" type="password" autocomplete="off" spellcheck="false">
+    <label for="lock-pass2">잠금 문구 확인 (같은 문구를 한 번 더)</label>
+    <input id="lock-pass2" type="password" autocomplete="off" spellcheck="false">
     <p id="pass-hint" class="warn" hidden>단어 2~3개를 권합니다 (12자 이상). 잊으면 되돌릴 수 없습니다.</p>
     <div class="row">
       <button id="apply" class="primary" type="button">코드 만들기</button>
@@ -209,6 +212,7 @@
     secret:     document.getElementById('secret'),
     groups:     document.getElementById('groups'),
     lockPass:   document.getElementById('lock-pass'),
+    lockPass2:  document.getElementById('lock-pass2'),
     passHint:   document.getElementById('pass-hint'),
     apply:      document.getElementById('apply'),
     save:       document.getElementById('save'),
@@ -576,6 +580,11 @@
       setMsg('잠금 문구는 ' + MIN_PASS + '자 이상이어야 합니다. 단어 2~3개를 권합니다.', false);
       return;
     }
+    /* 오타로 잠그면 되돌릴 방법이 없다 — 「잠금 문구 확인」 칸과 정확히 같을 때만 저장한다. */
+    if (passphrase !== el.lockPass2.value) {
+      setMsg('두 문구가 다릅니다. 같은 문구를 두 번 입력해 주세요.', false);
+      return;
+    }
 
     el.save.disabled = true;
     el.apply.disabled = true;
@@ -589,6 +598,7 @@
       /* 문구·평문은 남기지 않는다 — 입력 칸을 비우고 메모리 변수로만 계산한다. */
       el.secret.value = '';
       el.lockPass.value = '';
+      el.lockPass2.value = '';
       el.groups.textContent = '';
       el.passHint.hidden = true;
       showCards();
@@ -633,6 +643,7 @@
     resetCodeView('저장된 암호문은 그대로입니다. 문구를 넣고 「열기」 를 누르세요.');
     el.secret.value = '';
     el.lockPass.value = '';
+    el.lockPass2.value = '';
     el.unlockPass.value = '';
     el.groups.textContent = '';
     el.passHint.hidden = true;
@@ -647,6 +658,7 @@
     resetCodeView('비밀 키를 넣고 「코드 만들기」 를 누르세요.');
     el.secret.value = '';
     el.lockPass.value = '';
+    el.lockPass2.value = '';
     el.unlockPass.value = '';
     el.groups.textContent = '';
     el.passHint.hidden = true;
