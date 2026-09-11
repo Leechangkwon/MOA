@@ -1,0 +1,61 @@
+# deploy/postgresql/archive.conf.example
+#
+# PostgreSQL WAL 아카이브 **예시 설정** — PRD 7.8 S-08 (RPO 15분), ARCHITECTURE 11.1 표 첫 줄
+#
+# ★ 이 파일은 **적용되어 있지 않다.** 9단계에서 만들지 않은 이유는 두 가지다.
+#   1) `archive_mode` 를 바꾸려면 PostgreSQL 을 **재시작**해야 한다(reload 로는 안 된다).
+#      같은 인스턴스에 실습용 옛 t-box DB(`tbox`)가 함께 있어 재시작이 그쪽에도 영향을 준다.
+#   2) WAL 을 보낼 **원격 저장소가 정해지지 않았다** (PRD 14장 Q-4 미결). 같은 디스크에 쌓는
+#      WAL 은 3-2-1 원칙의 어느 사본도 되지 못하고 디스크만 채운다(현재 사용률 89%).
+#
+#   따라서 **현재 실제 RPO 는 일 1회(최대 24시간)** 이며, 그 사실을 README·SECURITY 에 적는다.
+#   운영 전환의 조건에 "WAL 아카이브 + 원격 저장소" 를 넣는다.
+#
+# ── 적용 방법 (운영 전환 시) ─────────────────────────────────
+#   1. 이 파일을 복사한다
+#        sudo install -o postgres -g postgres -m 0644 \
+#          deploy/postgresql/archive.conf.example /etc/postgresql/14/main/conf.d/tbox-archive.conf
+#      (`conf.d` 가 postgresql.conf 에서 include_dir 로 읽히는지 먼저 확인:
+#         sudo -u postgres psql -c "SHOW config_file"  →  그 파일에서 include_dir 줄 확인)
+#   2. 아카이브 목적지를 만든다 (원격 마운트·전용 계정)
+#        sudo install -d -o postgres -g postgres -m 0700 /mnt/backup-remote/wal
+#   3. PostgreSQL 재시작 (archive_mode 는 재시작이 필요하다)
+#        sudo systemctl restart postgresql
+#   4. 확인
+#        sudo -u postgres psql -c "SHOW archive_mode"          → on
+#        sudo -u postgres psql -c "SELECT pg_switch_wal()"     → 파일이 목적지에 생기는지
+#        sudo -u postgres psql -x -c "SELECT * FROM pg_stat_archiver"  → failed_count 0
+
+# ── 설정 ─────────────────────────────────────────────────────
+
+# WAL 을 아카이브할 수 있을 만큼 자세히 남긴다.
+wal_level = replica
+
+# 아카이브 켜기 (★ 재시작 필요)
+archive_mode = on
+
+# 15분마다 강제로 WAL 을 끊어 넘긴다 → 최대 손실 15분 (PRD S-08 RPO).
+# 트래픽이 많으면 그 전에 꽉 차서 넘어가므로, 이 값은 "최악의 경우" 상한이다.
+archive_timeout = 15min
+
+# 아카이브 명령. 세 가지 규칙을 지킨다.
+#   · 목적지에 같은 이름이 **이미 있으면 덮어쓰지 않는다**(test ! -f). 덮어쓰면 복구가 깨진다.
+#   · 성공했을 때만 0 을 반환한다. 0 이 아니면 PostgreSQL 이 그 WAL 을 지우지 않고 다시 시도한다.
+#   · %p(원본 경로)·%f(파일 이름)는 PostgreSQL 이 채운다.
+# 원격 저장소가 정해지면 cp 대신 rsync(전용 계정·키 인증)로 바꾼다. 예:
+#   archive_command = 'rsync -a --ignore-existing %p tbox-backup@백업호스트:/srv/tbox-wal/%f'
+archive_command = 'test ! -f /mnt/backup-remote/wal/%f && cp %p /mnt/backup-remote/wal/%f'
+
+# 아카이브가 밀릴 때를 대비한 여유 (기본값보다 넉넉히)
+max_wal_size = 1GB
+min_wal_size = 128MB
+
+# ── 시점 복구(PITR) 하는 법 — ARCH 11.2 4단계 "시점 복구 필요 시" ──
+#   1) 베이스 백업(pg_basebackup 또는 scripts/backup_db.sh 의 덤프)으로 데이터 디렉터리를 만든다
+#   2) 데이터 디렉터리에 recovery.signal 파일을 만든다 (PostgreSQL 12+)
+#   3) postgresql.conf 에 아래를 넣고 시작한다
+#        restore_command = 'cp /mnt/backup-remote/wal/%f %p'
+#        recovery_target_time = '2026-09-11 03:00:00+09'
+#        recovery_target_action = 'promote'
+#   4) 로그에서 "recovery stopping before ..." 를 확인하고, 정합성 검사를 돌린다
+#        php scripts/consistency_check.php --strict

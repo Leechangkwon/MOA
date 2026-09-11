@@ -68,12 +68,18 @@ CREATE TABLE files (
     created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
     deleted_at    TIMESTAMPTZ,                          -- NULL 이면 살아있는 파일
     deleted_by    BIGINT      REFERENCES users(id),
+    -- 30일 지난 휴지통 파일의 **실제 바이트**를 배치가 지운 시각 (9단계, PRD S-08, ARCH 11.1).
+    -- 행은 남긴다 — 감사 로그가 target_id 로 이 행을 가리키고 있고, stored_name 이 있어야
+    -- 저장소에 남은 고아 파일을 나중에 대조할 수 있다 (scripts/consistency_check.php).
+    purged_at     TIMESTAMPTZ,
     -- team 레벨이면 team_id 필수 (PRD 4장 규칙을 DB가 강제)
     CONSTRAINT team_requires_team_id
         CHECK (access_level <> 'team' OR team_id IS NOT NULL)
 );
 CREATE INDEX files_visible_idx ON files (access_level, team_id) WHERE deleted_at IS NULL;
 CREATE INDEX files_name_idx    ON files (lower(original_name)) WHERE deleted_at IS NULL;
+-- 휴지통 정리 배치(scripts/purge_trash.php)가 훑는 행만 담는 부분 인덱스 (9단계)
+CREATE INDEX files_purge_idx   ON files (deleted_at) WHERE deleted_at IS NOT NULL AND purged_at IS NULL;
 
 -- ─────────────────────────────────────────────────────────────
 -- audit_logs — Append-only (ARCH 7.2, PRD S-07)

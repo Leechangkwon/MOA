@@ -1,0 +1,42 @@
+# deploy/cron.d/tbox-v2 → /etc/cron.d/tbox-v2   (deploy/install.sh 6-2 가 복사, root:root 0644)
+#
+# t-box 재구축 운영 일정 — PRD 7.8 S-08 (백업·검증·정리) · 7.11 S-11-A·S-11-B (경보·점검 주기)
+#                          ARCHITECTURE 11.1 표 그대로.
+#
+# /etc/cron.d 형식은 사용자 crontab 과 달리 **여섯 번째 칸이 실행 계정**이다.
+#   분 시 일 월 요일  계정  명령
+#
+# 실행 계정이 root 인 이유
+#   · 백업 키(/etc/tbox-v2/backup.key)와 백업 계정 비밀번호(backup.pgpass)가 0600 root 다.
+#   · 백업 산출물 디렉터리(/var/backups/tbox-v2)가 0700 root 다.
+#   · 정합성 검사는 저장소(0750 tbox-php)를 통째로 읽어야 한다.
+#   PHP 배치는 .env 의 tbox_app 계정으로 DB 에 붙는다 — DB 권한까지 root 가 되는 것은 아니다.
+#
+# MAILTO="" : 이 VM 에는 MTA 가 없다. 결과는 감사 로그(audit_logs)·alerts.log 에 남는다.
+#             메일로 보내려면 MTA 를 세운 뒤 이 값을 운영자 주소로 바꾼다.
+# PATH      : cron 의 기본 PATH 는 짧다. gpg·pg_dump·php 가 모두 들어가도록 명시한다.
+#
+# 확인:  cat /etc/cron.d/tbox-v2     (형식 검사는 `run-parts --test` 로 하지 않는다 — cron.d 는
+#                                     실행 파일 디렉터리가 아니라 crontab 조각 디렉터리다)
+#        각 명령을 손으로 한 번 돌려 보는 것이 가장 확실한 검사다.
+
+MAILTO=""
+PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+SHELL=/bin/bash
+
+# 분  시  일  월 요일  계정  명령
+#
+# 03:00  DB 전체 백업 (pg_dump -Fc | gpg AES256, 보관 일 7·주 4·월 6)
+0    3   *   *  *     root  bash /var/www/tbox-v2/scripts/backup_db.sh
+# 03:30  업로드 파일 백업 (tar|gpg 전체 + rsync 로컬 미러)
+30   3   *   *  *     root  bash /var/www/tbox-v2/scripts/backup_files.sh
+# 04:00  휴지통 30일 정리 (바이트만 삭제, files.purged_at 기록)
+0    4   *   *  *     root  php  /var/www/tbox-v2/scripts/purge_trash.php
+# 04:30  백업 검증 (sha256sum -c + gpg 복호화 시험). 2회 연속 실패 → AL-8
+30   4   *   *  *     root  bash /var/www/tbox-v2/scripts/verify_backup.sh
+# 00:05  감사 로그 해시 체인 (전날 파일이 회전됐으면 그것까지 이어 적는다)
+5    0   *   *  *     root  php  /var/www/tbox-v2/scripts/audit_chain.php
+# 매주 일 02:00  DB ↔ 저장소 정합성 검사. 불일치 → AL-6
+0    2   *   *  0     root  php  /var/www/tbox-v2/scripts/consistency_check.php --quiet
+# 5분마다  경보 판정 (AL-1·AL-2·AL-5·AL-7·AL-10·AL-12)
+*/5  *   *   *  *     root  php  /var/www/tbox-v2/scripts/alerts.php

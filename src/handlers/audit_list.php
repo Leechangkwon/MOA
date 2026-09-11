@@ -38,6 +38,9 @@ $allowedActions = [
     'file.upload', 'file.fetch', 'file.download', 'file.delete',
     'file.update', 'file.level_change',
     'audit.view',
+    // 9단계 운영 배치 (ARCH 7.4 · 11.1) — cron 이 남기는 행. actor_* 가 비어 있어
+    // 「누가」 필터로는 찾을 수 없고, 「어떻게(action)」 로 골라야 보인다.
+    'file.purge', 'backup.run', 'backup.restore', 'audit.integrity', 'alert.raised',
 ];
 
 /** 접근 등급 허용 목록 (PRD 4장) */

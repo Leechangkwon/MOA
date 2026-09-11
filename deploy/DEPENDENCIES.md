@@ -1,7 +1,7 @@
 # deploy/DEPENDENCIES.md — 이 앱이 의존하는 것 전부 (PRD S-10-C, CLAUDE.md 7장)
 
 버전은 **실습 VM 에서 실측한 값**이다. 기억이나 문서가 아니라 명령 출력이 근거다.
-측정일: 2026-09-09 (1단계) · 경로 갱신 2026-09-10 (4단계, `-v2` 분리 반영)
+측정일: 2026-09-09 (1단계) · 경로 갱신 2026-09-10 (4단계, `-v2` 분리 반영) · 운영 도구 추가 2026-09-11 (9단계)
 
 ## 1. 실측 버전
 
@@ -11,6 +11,11 @@
 | PHP (FPM/CLI) | 8.1.2-1ubuntu2.25 | `php -v` |
 | PostgreSQL | 14.24 (Ubuntu 14.24-0ubuntu0.22.04.1) | `psql --version` |
 | nginx | 1.18.0 (Ubuntu) | `nginx -v` |
+| GnuPG (`gpg`) | 2.2.27 (libgcrypt 1.9.4) | `gpg --version` |
+| rsync | 3.2.7 (protocol 31) | `rsync --version` |
+| tar (GNU) | 1.34 | `tar --version` |
+| cron | Vixie cron (Ubuntu `cron` 패키지, 서비스 active) | `systemctl is-active cron` |
+| systemd-timesyncd | systemd 249 (NTP 동기화 active) | `timedatectl` |
 
 ## 2. 지원 종료(EOL) 와 그에 따른 위험
 
@@ -62,10 +67,16 @@ PostgreSQL 확장도 설치하지 않는다 — UUID 는 PostgreSQL 13+ 내장 `
 | PHP 세션(예비) | `/var/lib/tbox-v2/sessions` | 0700 tbox-php |
 | 로그 | `/var/log/tbox-v2/{audit,app}.log` (audit.log 는 `chattr +a`) | 0640 tbox-php:adm |
 | 설정(저장소 밖) | `/etc/tbox-v2/owner.pgpass`, `/etc/tbox-v2/seed-accounts.txt` | 0600 root |
+| 백업 키 (9단계) | `/etc/tbox-v2/backup.key` — gpg 대칭키. **잃으면 백업 전체를 못 연다**(R-08) | 0600 root |
+| 백업 계정 비밀번호 (9단계) | `/etc/tbox-v2/backup.pgpass` (`tbox_backup`, 읽기 전용) | 0600 root |
+| 백업 산출물 (9단계) | `/var/backups/tbox-v2/{db,files,weekly,monthly,files-mirror}` — 웹 루트·업로드 밖 | 0700 root |
+| 경보 로그 (9단계) | `/var/log/tbox-v2/alerts.log` | 0640 tbox-php:adm |
+| 경보 상태·해시 체인 (9단계) | `/var/lib/tbox-v2/alerts-state.json`, `/var/lib/tbox-v2/audit-chain.txt` | 0600 root |
+| cron 일정 (9단계) | `/etc/cron.d/tbox-v2` (`deploy/cron.d/tbox-v2` 복사, 실행 계정 root) | 0644 root |
 | TLS | `/etc/ssl/tbox/{fullchain,privkey}.pem` | privkey 0640 root:www-data |
-| DB 역할 | `tbox_owner`(소유), `tbox_app`(런타임 최소 권한) | `db/grants.sql` |
+| DB 역할 | `tbox_owner`(소유), `tbox_app`(런타임 최소 권한), `tbox_backup`(**SELECT 만**, 9단계) | `db/grants.sql` |
 
-### 5.1 쓰는 외부 도구 (배포판 기본 패키지, 4단계 추가)
+### 5.1 쓰는 외부 도구 (배포판 기본 패키지, 4단계 추가 · 9단계 확장)
 
 감사 로그 **파일 사본**을 보호하기 위해 두 도구를 쓴다 (ARCH 7.1 표, PRD S-07 "파일 사본 보호", SECURITY R-11).
 둘 다 Ubuntu 22.04 기본 설치본에 이미 들어 있다 — 새로 설치하는 패키지가 아니다(공급망 표면 증가 없음, PRD S-10-C).
@@ -77,6 +88,37 @@ PostgreSQL 확장도 설치하지 않는다 — UUID 는 PostgreSQL 13+ 내장 `
 
 > 파일시스템이 `+a` 를 지원하지 않으면(overlayfs 등) `install.sh` 는 멈추지 않고 경고만 남긴다 —
 > 보호가 걸리지 않은 사실이 설치 출력과 `lsattr` 에 드러나는 편이, 걸린 줄 알고 넘어가는 것보다 안전하다.
+
+### 5.2 운영(백업·경보) 도구 — 9단계 추가 (2026-09-11)
+
+전부 Ubuntu 22.04 기본 설치본에 이미 있다. **새로 설치한 패키지는 0개**다 (PRD S-10-C).
+
+| 도구 | 패키지 | 쓰는 곳 | 왜 필요한가 | 확인 명령 |
+|---|---|---|---|---|
+| `gpg` | `gnupg` (기본) | `scripts/backup_db.sh`·`backup_files.sh`·`verify_backup.sh`·`restore.sh` | 백업 산출물을 **저장 전에** AES-256 대칭키로 암호화한다 (PRD S-08 "백업 보안"). 키는 `/etc/tbox-v2/backup.key` 0600 root | `gpg --version` |
+| `tar` | `tar` (기본) | `backup_files.sh`·`restore.sh` | 업로드 저장소 전체를 한 스트림으로 묶어 gpg 에 바로 파이프한다(평문 중간 파일 없음) | `tar --version` |
+| `rsync` | `rsync` (기본) | `backup_files.sh`·`restore.sh` | 로컬 미러(`files-mirror/`) 동기화 — 파일 하나를 실수로 지웠을 때 즉시 되돌리는 자리 | `rsync --version` |
+| `pg_dump`/`pg_restore` | `postgresql-client-14` (DB 와 함께 설치됨) | `backup_db.sh`·`verify_backup.sh`·`restore.sh` | DB 전체 백업(`-Fc`)과 복구·목록 검증 | `pg_dump --version` |
+| `cron` | `cron` (기본, 서비스 active) | `/etc/cron.d/tbox-v2` (`deploy/cron.d/tbox-v2` 를 install.sh 가 복사) | 백업·정리·검증·정합성·체인·경보 일정 (ARCH 11.1) | `cat /etc/cron.d/tbox-v2` |
+| `systemd-timesyncd` | `systemd` (기본, NTP active) | 시각 동기화 | 감사 로그 시각 정합성 (PRD S-10-A) | `timedatectl` |
+| `openssl` | `openssl` (기본) | `deploy/install.sh` | 백업 키·DB 비밀번호 난수 생성 | `openssl version` |
+| `sha256sum` | `coreutils` (기본) | 백업 체크섬 | PRD S-08 "백업마다 SHA-256 체크섬 기록, 매일 검증" | `sha256sum --version` |
+
+### 5.3 문서가 요구했지만 **쓰지 않기로 한** 도구 (9단계 결정, 2026-09-11)
+
+PRD S-10-C 가 "배포판 패키지만·의존성 0 이 기본" 이라고 못박고 있어, 문서가 예시로 든 도구라도
+실습 VM 에 없으면 **설치하지 않고 대체**했다. 결정과 대체 수단, 남은 위험을 함께 적는다.
+
+| 문서가 든 도구 | 어디에 | 결정 | 대체 수단 | 남은 위험 |
+|---|---|---|---|---|
+| `age` | PRD S-08 "암호화(`age`/GPG)" | **미사용** (미설치) | `gpg --symmetric --cipher-algo AES256` | 없음 — 문서가 GPG 를 나란히 허용한다 |
+| `restic` | PRD S-08 "증분 백업(`restic`/`rsync`)" | **미사용** (미설치) | `tar` 전체 + `rsync --delete` 로컬 미러, 보관 7개 | 중복 제거가 없어 **디스크를 더 쓴다**. 저장소가 커지면 재검토 |
+| `chrony` | PRD S-10-A "시간 동기화: `chrony` 필수" | **미사용** (미설치) | `systemd-timesyncd` (동기화 active 실측) | 낮음 — 동기화 자체는 되고 있다. `chronyc tracking` 대신 `timedatectl` 로 확인 |
+| `fail2ban` | PRD S-10-A "SSH ... `fail2ban`" | **미적용** (미설치) | sshd `MaxAuthTries 3`(hardening.sh), 앱 로그인 잠금 5회/10분(S-09-4), nginx 로그인 속도 제한 | ◐ SSH 브루트포스를 **차단**하지는 못한다. 운영 전환 조건 |
+| `ClamAV` | PRD S-10-A·S-11-B | **미포함** (Q-3 결정 2026-09-11) | `files.scan_status` 컬럼과 차단 자리만 유지 | ◐ R-02 유지 |
+| `AIDE`/`debsums` | ARCH 11.3 "무결성 감시 → AL-9" | **미적용** | `scripts/check_baseline.sh` 수동 점검 | ◐ AL-9 자동 탐지 없음 |
+| `rsyslog` TLS 전송 | PRD S-10-E, ARCH 11.4 | **미적용** — 보낼 서버가 없다 | 예시 설정 `deploy/rsyslog/tbox-v2.conf.example` + `chattr +a` + `scripts/audit_chain.php` 해시 체인 | ❗ root 를 잃으면 감사 로그를 믿을 수 없다 (R-11). 운영 전환 조건 |
+| PostgreSQL WAL 아카이브 | PRD S-08 RPO 15분 | **미적용** — 재시작 필요 + 원격 저장소 미결(Q-4) | 예시 설정 `deploy/postgresql/archive.conf.example` | ❗ **실제 RPO 는 일 1회(최대 24시간)** 다. 운영 전환 조건 |
 
 ## 6. 갱신 규칙
 

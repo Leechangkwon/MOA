@@ -28,7 +28,7 @@
 | 6 | 업로드 하드닝 — 확장자 화이트리스트·MIME 짝·이중 확장자·일일 총량·100MB 경계 확정·sha256 대조·저장소 그룹 회수(R-34) | ✅ | ✅ 2026-09-11 | ✅ 2026-09-11 (T-7~T-11 통과) | ⚠ 일괄 수행 대기 | 6단계 커밋 (2026-09-11) |
 | 7 | SSRF 방어 — `POST /api/files/fetch` + `src/Fetch.php` (S-05 13개 조건), `php8.1-curl` 설치 | ✅ | ✅ 2026-09-11 | ✅ 2026-09-11 (T-6 통과) | ⚠ 일괄 수행 대기 | 7단계 커밋 (2026-09-11) |
 | 8 | 감사 로그 조회 화면(Admin) — `audit.view` 기록, 육하원칙 6필터 | ✅ | ✅ 2026-09-11 | ✅ 2026-09-11 (T-12·T-13 통과) | ⚠ 일괄 수행 대기 | 8단계 커밋 (2026-09-11) |
-| 9 | 운영 — 백업·복구·정합성 검사·경보(AL-1)·서버 기준선·원격 로그·해시 체인, README 완성 | ⬜ | | | | |
+| 9 | 운영 — 백업·복구·정합성 검사·경보(AL-1 외 5종)·서버 기준선 점검·해시 체인, README 완성 (원격 로그·WAL·방화벽 적용은 미적용) | ✅ | ✅ 2026-09-11 | ✅ 2026-09-11 (T-15·T-17~T-20 통과, 기준선 주의 6) | ⚠ 일괄 수행 대기 | 9단계 커밋 (2026-09-11) |
 | 10 (여유) | 계정 관리·휴지통 복구·Guest 만료·MFA | ⬜ | | | | |
 
 ---
@@ -338,12 +338,40 @@ sudo -u postgres psql -d tbox_re -c "SELECT happened_at, actor_name, action, res
 | 2026-09-11 | 해소 | 로그인 실패 기록은 "누가" 필터(`actor=계정명`)로 왜 안 나오나? | 로그인은 세션이 생기기 **전**이라 `actor_*` 가 비어 있고 대상 계정이 `target_name` 에 있다(ARCH 7.3). 로그인 기록은 "무엇을 = 계정명" 필터로 찾는다. README 조회 요령에 적음 |
 | 2026-09-11 | 결정 | 없는 주소(404)·잘못된 메서드(405) 요청도 감사 로그에 남길까? | 남기지 않는다. 외부 ID 가 UUID 라 열거가 비현실적이고, 경로 스캔은 nginx access log 에 90일 남는다. 라우트 매칭 전이라 패턴이 아닌 실제 경로만 남길 수 있어 S-07 "요청 경로" 규칙과 충돌 |
 
-### 9단계 — 운영 ⬜ (S-08, S-10, S-11 · T-15, T-17~T-20)
+### 9단계 — 운영 ✅ (S-08, S-10, S-11 · T-15, T-17~T-20) — 2026-09-11 커밋
 
-**개발 사항(예정)**: `backup_db.sh`(pg_dump+age+sha256)·`backup_files.sh`·`verify_backup.sh`·`purge_trash.php`·`consistency_check.php`·`audit_chain.php`·`alerts.php`(AL-1), cron, `tbox_backup` 역할, 복구 절차 README, 서버 기준선(ufw·sshd·chrony, 가능한 범위), rsyslog 원격 전송, `DEPENDENCIES.md` 최종
-**검토 체크(예정)**: T-15 백업 → 삭제 → 복구 → 정합성 통과(시간 측정) · T-17 `sshd -T`·`ufw status` · T-18 `ss -tlnp` · T-19 버전 · T-20 AL-1 경보 도착
-**자기 공격 체크(예정)**: 파일 1개 지우고 백업에서 복구해 sha256 일치 확인 · employee01 로 admin-only 6회 요청 → 경보
-**학습 기록**: (진행하면서 기록)
+**개발 사항**
+- [x] 백업: `backup_db.sh`(pg_dump → 파이프로 gpg AES256, 평문 미저장, 보관 일 7·주 4·월 6)·`backup_files.sh`(tar|gpg + rsync 미러)·`verify_backup.sh`(sha256·복호화 시험, 2회 연속 실패 → AL-8). 읽기 전용 역할 `tbox_backup`, 키 `/etc/tbox-v2/backup.key`(0600 root — **분실 = 백업 무용**, 사본 별도 보관)
+- [x] 복구: `restore.sh`(ARCH 11.2 순서, 운영 DB 덮기는 `--yes-production` 필수, 리허설은 별도 DB) + 복구 뒤 `grants.sql` 재적용 절차
+- [x] 배치: `purge_trash.php`(30일 휴지통 바이트 삭제, 행은 `purged_at` 로 유지)·`consistency_check.php`(누락·고아·sha256 → AL-6)·`audit_chain.php`(감사 로그 파일 일별 해시 체인)·`alerts.php`(AL-1·2·5·7·10·12, 30분 중복 억제) — `/etc/cron.d/tbox-v2` 7줄
+- [x] `check_baseline.sh`(T-17~T-19 읽기 전용 점검)·`deploy/hardening.sh`(ufw·sshd 적용 계획, **기본은 출력만**)
+- [x] README: 설치·운영(백업·복구·감시)·감사 로그 보는 법·검토 계정 절
+- [ ] **미적용(결정)**: WAL 아카이브(RPO 15분 → 실제 일 1회), 원격 로그 서버·3-2-1 원격 사본(Q-4 미결), 방화벽·SSH 강화 적용(원격 세션 차단 위험 — 사용자가 콘솔에서 `sudo bash deploy/hardening.sh --apply`), 알림 채널(메일·메신저 없음, 로그만)
+
+**검토 체크 (Fable ②)** — 2026-09-11 통과 (`SECURITY.md` 7장 "9단계 구현 검토")
+- [x] T-15 백업 → 검증 → 파일 바이트 삭제(정합성 exit 2 + AL-6) → `restore.sh --files` → sha256 원본=복구=DB, strict 통과, 다운로드 200. DB 는 별도 DB 로 리허설(표 6·행 수 일치). 소요 5분 21초(Opus)·13초(Fable 재실행)
+- [x] purge: 31일 전으로 조작한 시험 행 1건만 삭제·`purged_at`·`file.purge` 기록, 최근 삭제 파일은 유지
+- [x] 해시 체인 2회 같은 값·`--verify` 통과·값 변조 시 실패, `audit_cli` 로 `auth.login` 위조 → 거부
+- [x] T-20 AL-1 발동 + 30분 중복 억제, AL-2(잠금 423 + 429)·AL-5·AL-8·AL-10 실측, cron 5분 실행 로그
+- [x] T-17~T-19 점검 출력: OK 15 · 주의 6(SSH 비밀번호 로그인 허용·root 로그인·MaxAuthTries 6·chrony 없음·PHP EOL·postgres 셸) · 미적용 6(ufw·fail2ban·원격 로그·WAL)
+- [ ] **미검증** hardening 적용 후 상태, logrotate 회전 뒤 체인, `--stop-service` 복구
+
+**자기 공격 체크 (사용자 ③)** — 서버 콘솔에서
+- [ ] **T-15** `sudo bash scripts/backup_db.sh && sudo bash scripts/backup_files.sh` → `sudo ls -l /var/backups/tbox-v2/db /var/backups/tbox-v2/files` 에 `.gpg`·`.sha256` 생김 → `sudo bash scripts/verify_backup.sh` 통과
+- [ ] 파일 하나를 올린 뒤 그 저장 파일을 `sudo rm` 으로 지우고 `sudo php scripts/consistency_check.php` → "불일치 1건" + `alerts.log` 에 AL-6 → `sudo bash scripts/restore.sh --files <최신 파일 이름>` → 다시 검사 → 불일치 0, 다운로드 정상
+- [ ] **T-17~T-19** `sudo bash scripts/check_baseline.sh` 를 읽고 "주의" 항목이 왜 남았는지(비밀번호 SSH·ufw 미적용) 이해. 적용할지 결정 — 적용하려면 **콘솔(원격 아님)에서** `sudo bash deploy/hardening.sh --apply`
+- [ ] **T-20** employee01 로 admin-only 파일 다운로드를 6회 시도(403) → 5분 안에 `sudo tail -n 2 /var/log/tbox-v2/alerts.log` 에 AL-1 (cron 이 5분마다 돈다. 바로 보려면 `sudo php scripts/alerts.php`)
+- [ ] `sudo cat /etc/cron.d/tbox-v2` 로 일정 7줄 확인, `sudo cat /etc/tbox-v2/backup.key` 를 **다른 곳에 사본 보관**(R-08)
+
+**학습 기록**
+
+| 날짜 | 구분 | 내용 | 해소·근거 |
+|---|---|---|---|
+| 2026-09-11 | 결정 | 문서의 `age`·`restic`·`chrony`·`fail2ban` 이 VM 에 없다 — 설치할까? | 새 패키지 0 원칙(S-10-C)대로 설치하지 않고 있는 도구로 대체: `age`→`gpg`, `restic`→`tar`+`rsync`, `chrony`→`systemd-timesyncd`(동기화 확인됨), `fail2ban`→없음(SSH 차단 불가, 주의로 남김). `DEPENDENCIES.md` 5.3 "쓰지 않기로 한 도구" |
+| 2026-09-11 | 결정 | 방화벽(ufw)·SSH 강화를 스크립트가 자동 적용해도 되나? | **하지 않는다.** 원격 SSH 세션에서 규칙을 잘못 걸면 접속이 끊긴다. `hardening.sh` 는 계획만 출력하고 `--apply` 는 사람이 콘솔에서 공개키 로그인을 확인한 뒤 실행 |
+| 2026-09-11 | 해소 | (검토 중) `restore.sh` 에 경로를 넘겼더니 "파일 이름으로 지정" 이라며 거부됨 | 산출물은 `/var/backups/tbox-v2/{db,files}/` 안의 **파일 이름만** 받는다(경로 조작 방지). 운영 DB 를 덮는 `--db` 는 `--yes-production` 이 없으면 거부하고 리허설 명령을 알려 준다 |
+| 2026-09-11 | 해소 | 복구한 DB 에 앱 계정 권한이 비어 있다 | `pg_restore --no-privileges` 로 뜨기 때문. 운영 DB 를 복구한 뒤에는 `db/grants.sql` 을 다시 실행해야 `tbox_app=ar` 등 최소 권한이 돌아온다 — README 복구 절차에 단계로 추가 |
+| 2026-09-11 | 해소 | 경보 AL-1 시험을 다시 했는데 왜 안 뜨나? | 같은 대상에 30분 안에 이미 발동했으면 **중복 억제**로 건너뛴다(`alerts-state.json`). `--dry-run` 출력에 "이미 발동해 건너뛴다" 가 보이면 정상 |
 
 ### 10단계 (여유 시) — 계정 관리·복구·Guest 만료·MFA ⬜ (F-10, F-11, R-05, R-12 · T-22)
 
@@ -352,6 +380,23 @@ sudo -u postgres psql -d tbox_re -c "SELECT happened_at, actor_name, action, res
 **학습 기록**: (진행하면서 기록)
 
 ---
+
+## 2-1. 10단계 뒤 일괄 자기 공격 — 진행 순서 (관문 ③, 사용자)
+
+일괄 진행 모드에서는 4~10단계의 관문 ③을 한 번에 수행한다. **각 단계 절의 "자기 공격 체크" 를 위에서부터 차례로** 하되, 아래 순서가 효율적이다(계정 전환 최소화). 시드 계정 비밀번호: `sudo cat /etc/tbox-v2/seed-accounts.txt`.
+
+| 순서 | 계정 | 할 일 (단계 절 참조) | 걸리는 시간 |
+|---|---|---|---|
+| 1 | employee01 | 4단계 T-2·T-3·T-1 (목록에 admin-only 없음, 직접 다운로드 403, 콘솔 삭제 403) → 3단계 캡처와 비교 | 10분 |
+| 2 | employee01 | 5단계 T-4 XSS 업로드·T-5 검색 인젝션·T-14 토큰 없는 삭제·F-08 등급 하향 거부 | 10분 |
+| 3 | employee01 | 6단계 T-7 `.php`·T-8 위장 `.pdf`·이중 확장자·T-10 저장 경로 URL | 10분 |
+| 4 | manager01 | 7단계 URL 가져오기 페이로드 6종(허용 목록이 비어 전부 거부) | 5분 |
+| 5 | admin01 | 8단계 감사 로그 화면에서 위 1~4 의 시도를 필터로 찾기, `audit.view` 기록 확인 | 10분 |
+| 6 | (서버) | 9단계 백업 → 파일 삭제 → 복구 → 정합성, `check_baseline.sh`, 경보 로그 확인 | 15분 |
+| 7 | admin01 + 새 계정 | 10단계 계정 생성·비활성화 즉시 401(T-22), 비밀번호 변경, 2단계 인증 켜기·로그인, 휴지통 복구 | 15분 |
+| 8 | — | 각 단계 절의 체크박스를 채우고, 막히지 않은 항목이 있으면 그 단계 "학습 기록" 에 적어 보고 → Fable 이 `SECURITY.md` 7장에 결과 행 추가(실패 시 보정 커밋) | — |
+
+> 결과를 알릴 때는 "N단계 통과" 또는 "N단계 X 항목이 안 막힘 — 응답 원문 …" 처럼 **단계 번호와 원문**을 함께 적으면 기록이 정확해진다.
 
 ## 3. 학습 기록 — 단계와 무관한 기초 (터미널·리눅스)
 

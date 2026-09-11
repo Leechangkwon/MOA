@@ -19,12 +19,11 @@ declare(strict_types=1);
  *      nginx `/protected/` `internal` 블록은 404 보장용으로만 남는다 (T-10).
  *   6) 다운로드 전 sha256 대조는 핸들러(files_download)가 이 클래스의 sha256() 으로 한다 (R-13).
  *
- * 아직 없는 것: purge()(30일 휴지통 실제 삭제, 9단계 배치).
+ *   7) purge()(30일 휴지통 실제 삭제) 는 9단계 배치 scripts/purge_trash.php 가 부른다.
+ *      DB 행은 지우지 않고 files.purged_at 만 찍는다 — 감사 추적을 끊지 않기 위해서다 (ARCH 11.1).
  */
 final class Storage
 {
-    private const NOT_IMPLEMENTED = '아직 구현되지 않았습니다';
-
     /** stored_name 의 UUID 부분 (UUIDv4 만) */
     private const UUID_RE = '/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/';
 
@@ -263,10 +262,32 @@ final class Storage
         return substr($ascii, 0, 100);
     }
 
-    /** 30일 지난 논리 삭제 파일의 실제 바이트 제거 (배치, 9단계 scripts/purge_trash.php) */
+    /**
+     * 30일 지난 논리 삭제 파일의 실제 바이트 제거 (배치, 9단계 scripts/purge_trash.php).
+     *
+     * 경로는 pathFor() 하나로만 만든다 — 여기도 "UUIDv4.확장자" 형태 검사와 realpath 확인을
+     * 그대로 통과해야 하므로, 배치가 DB 에서 읽은 stored_name 이 어떤 값이든 저장소 밖의
+     * 파일을 지울 수 없다(DB 가 침해돼 stored_name 에 `../` 가 들어가도 예외로 끝난다).
+     *
+     * 파일이 이미 없으면 **성공으로 본다**. 배치가 중간에 죽었다 다시 돌거나, 사람이 먼저
+     * 지웠거나, 업로드 롤백으로 바이트만 없는 행일 수 있다 — 그 상태의 목표는 "바이트가 없다"
+     * 이고 이미 달성돼 있다. 여기서 예외를 던지면 그 행은 영원히 `purged_at` 이 안 찍혀
+     * 매일 같은 실패를 반복한다.
+     *
+     * 지우지 못한 경우(권한·I/O)는 예외다 — 호출자가 `file.purge error purge_failed` 로 남긴다.
+     */
     public static function purge(string $storedName): void
     {
-        throw new RuntimeException(self::NOT_IMPLEMENTED);
+        $path = self::pathFor($storedName);
+        if (!file_exists($path)) {
+            return;                      // 이미 없다 = 목표 달성
+        }
+        if (!is_file($path)) {
+            throw new RuntimeException('저장소 경로가 일반 파일이 아닙니다');
+        }
+        if (!unlink($path)) {
+            throw new RuntimeException('저장된 파일을 지울 수 없습니다');
+        }
     }
 
     /** 저장된 파일의 SHA-256 (정합성 검사, PRD S-08) */

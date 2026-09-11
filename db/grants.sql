@@ -57,8 +57,31 @@ GRANT USAGE, SELECT ON SEQUENCE audit_logs_id_seq TO tbox_app;
 -- ─── 앞으로 만들 표에 자동으로 권한이 새지 않게 한다 ───
 -- (기본 권한을 설정하지 않는다 = 새 표는 명시적으로 GRANT 해야 앱이 쓸 수 있다)
 
--- ─── tbox_backup (읽기 전용 백업 계정) — PRD S-08 / ARCH 11.1
--- 9단계(백업·운영)에서 만든다. 자리만 남긴다:
---   CREATE ROLE tbox_backup LOGIN PASSWORD '...';
---   GRANT USAGE ON SCHEMA public TO tbox_backup;
---   GRANT SELECT ON ALL TABLES IN SCHEMA public TO tbox_backup;
+-- ─── tbox_backup (읽기 전용 백업 계정) — PRD S-08 / ARCH 10장 · 11.1 (9단계, 2026-09-11)
+--
+-- 역할 **생성**과 비밀번호는 deploy/install.sh 가 한다(무작위 → /etc/tbox-v2/backup.pgpass 0600 root).
+-- 이 파일은 권한만 다룬다 — 권한이 두 곳에 흩어지면 회수 누락이 생긴다.
+--
+-- 왜 읽기 전용인가: 백업은 "정리된 형태의 전체 데이터" 라 원본보다 위험하다 (PRD S-08 백업 보안).
+-- 그 계정이 쓰기까지 되면, 백업 키가 새는 순간 데이터 유출이 아니라 데이터 **조작**이 된다.
+-- pg_dump 에 필요한 것은 SELECT 뿐이다(시퀀스 현재값까지 뜨려면 시퀀스 SELECT 도 필요하다).
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'tbox_backup') THEN
+        RAISE EXCEPTION 'tbox_backup 역할이 없다 — deploy/install.sh 가 먼저 만든다 (ARCH 10장)';
+    END IF;
+END
+$$;
+
+GRANT CONNECT ON DATABASE tbox_re TO tbox_backup;
+GRANT USAGE   ON SCHEMA   public  TO tbox_backup;
+
+-- 재실행 시 과거 권한이 남지 않게 먼저 전부 회수한다(위 tbox_app 과 같은 방식).
+REVOKE ALL ON teams, users, permissions, files, audit_logs, sessions FROM tbox_backup;
+
+GRANT SELECT ON ALL TABLES    IN SCHEMA public TO tbox_backup;   -- ★ SELECT 만
+GRANT SELECT ON ALL SEQUENCES IN SCHEMA public TO tbox_backup;   -- 시퀀스 현재값 (pg_dump)
+
+-- 앞으로 만들 표에 자동으로 권한이 붙지 않게 기본 권한(ALTER DEFAULT PRIVILEGES)은 설정하지 않는다.
+-- 새 표를 만들면 이 파일에 한 줄을 더해 다시 실행한다 — 백업에서 표가 빠지는 것은
+-- 여기서 드러나야 하고, 조용히 권한이 따라붙는 것보다 낫다.

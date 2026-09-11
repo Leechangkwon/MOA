@@ -40,7 +40,8 @@ final class Audit
     private const RESULT_ERROR = 'error';
 
     /**
-     * 요약 문장 틀 — ARCHITECTURE 7.4 표 33행을 글자 그대로 옮긴 것 (2026-09-10 결정, PRD S-07).
+     * 요약 문장 틀 — ARCHITECTURE 7.4 표를 글자 그대로 옮긴 것 (2026-09-10 결정, PRD S-07.
+     * 9단계 운영 배치 8행 추가 2026-09-11).
      * 키는 `action|result|reason`. allow 는 reason 이 없으므로 `action|allow` 두 칸이다.
      * 표에 행을 추가할 때는 ARCH 7.4 를 먼저 고치고 여기에 같은 문장을 옮긴다 — 두 곳이 어긋나면 안 된다.
      *
@@ -128,6 +129,20 @@ final class Audit
         // ── 감사 로그 조회 (audit_list — 8단계, ARCH 7.4 `audit.view|allow`) ──
         // 로그를 본 것도 로그다. 적용한 필터는 detail.filters 에 남는다 (ARCH 7.5).
         'audit.view|allow'                        => '{actor} 이(가) 감사 로그를 조회했습니다 (필터는 상세 기록)',
+
+        // ── 운영 배치 (9단계, ARCH 7.4 · 11.1) ──
+        // 여기 8행은 사람이 아니라 cron 이 남긴다 — actor_* 가 전부 NULL 이므로 {actor} 는
+        // '(로그인 전)' 이 된다. 그래서 문장에 {actor} 를 쓰는 것은 backup.restore 한 행뿐이고
+        // (사람이 손으로 실행하는 복구), 나머지는 주어 없이 "무엇이 일어났나" 만 적는다.
+        // 근거 수치(산출물·검증값·검사 건수·불일치 목록·경보 근거)는 전부 detail 로 간다 (ARCH 7.5).
+        'file.purge|allow'                        => '휴지통에 30일 넘게 있던 {level} 등급 파일 「{target}」 을(를) 배치가 영구 삭제했습니다',
+        'file.purge|error|purge_failed'           => '휴지통 파일 「{target}」 영구 삭제 중 오류가 나서 건너뛰었습니다 (점검 필요)',
+        'backup.run|allow'                        => '백업이 완료되었습니다 (대상·산출물·검증값은 상세 기록)',
+        'backup.run|error|backup_failed'          => '백업이 실패했습니다 (사유는 상세 기록·app.log) — 2회 연속이면 경보 AL-8',
+        'backup.restore|allow'                    => '{actor} 이(가) 백업에서 복구를 실행했습니다 (대상 시점·범위는 상세 기록)',
+        'audit.integrity|allow'                   => '정합성·무결성 점검을 마쳤습니다 (검사 건수·불일치 0)',
+        'audit.integrity|error|mismatch'          => '정합성·무결성 점검에서 불일치가 발견되었습니다 (목록은 상세 기록) — 경보 AL-6',
+        'alert.raised|allow'                      => '경보 {target} 조건이 충족되어 알림을 보냈습니다 (근거는 상세 기록)',
     ];
 
     /** 자리표시자에 넣을 값이 없을 때 (ARCH 7.4) */

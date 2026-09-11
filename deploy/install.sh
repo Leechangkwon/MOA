@@ -38,6 +38,15 @@ OWNER_PGPASS="${CONF_DIR}/owner.pgpass"
 SEED_FILE="${CONF_DIR}/seed-accounts.txt"   # 시드·검토 계정 비밀번호 (0600 root, ARCH 4.0)
 LOGROTATE_CONF="/etc/logrotate.d/tbox-v2"   # 감사 로그 회전 (ARCH 7.1, PRD S-07)
 
+# ── 9단계 운영 (백업·경보·정합성) — PRD S-08 · S-11, ARCH 11.1 ──
+DB_BACKUP_ROLE="tbox_backup"                  # 읽기 전용 백업 계정 (ARCH 10장)
+BACKUP_PGPASS="${CONF_DIR}/backup.pgpass"     # 위 계정 비밀번호 (0600 root)
+BACKUP_KEY="${CONF_DIR}/backup.key"           # gpg 대칭키 (0600 root) — 분실 = 백업 전체 무용 (R-08)
+BACKUP_ROOT="/var/backups/tbox-v2"            # 산출물 (0700 root, 웹 루트·업로드 밖)
+CRON_FILE="/etc/cron.d/tbox-v2"               # 백업·정리·검증·경보 일정 (ARCH 11.1)
+ALERT_STATE="/var/lib/tbox-v2/alerts-state.json"   # 경보 중복 억제 상태 (0600 root)
+AUDIT_CHAIN="/var/lib/tbox-v2/audit-chain.txt"     # 감사 로그 해시 체인 (0600 root, R-11)
+
 # CERT_* 는 자체 서명 인증서를 쓰던 때의 값이다. 이제 VM 은 TLS 를 하지 않으므로
 # 인증서를 만들지 않는다(3단계 삭제). 두 변수는 그대로 남긴다 —
 #   CERT_CN  : APP_URL(브라우저가 보는 주소)과 자체 확인 메시지에 쓰인다
@@ -174,6 +183,39 @@ if command -v chattr >/dev/null 2>&1; then
 else
   info "경고: chattr 이 없다 (e2fsprogs) — 감사 로그 추가 전용 보호를 걸지 못했다 (R-11)"
 fi
+# 2-2. 운영 배치용 자리 — 백업 산출물·경보 로그·상태 파일 (9단계, PRD S-08 · S-11, ARCH 11.1)
+#      백업 디렉터리는 0700 root: "백업 디렉터리 0700, 전용 계정만. 웹 루트·업로드 디렉터리 안에
+#      두지 않는다" (PRD S-08 백업 보안). 앱 계정(tbox-php)은 여기를 읽지도 못한다 —
+#      앱이 뚫려도 전체 데이터 사본에는 닿지 않는다.
+install -d -o root -g root -m 0700 "$BACKUP_ROOT" \
+        "${BACKUP_ROOT}/db" "${BACKUP_ROOT}/files" "${BACKUP_ROOT}/weekly" \
+        "${BACKUP_ROOT}/monthly" "${BACKUP_ROOT}/files-mirror"
+info "백업 디렉터리: ${BACKUP_ROOT} 0700 root (db·files·weekly·monthly·files-mirror)"
+
+# 경보 로그 — 감사 로그와 같은 디렉터리·같은 소유. alerts.php 가 한 줄 JSON 으로 덧붙인다.
+# audit.log 와 달리 chattr +a 를 걸지 않는다: 경보는 증거가 아니라 알림 사본이고,
+# 원본 근거는 audit_logs 의 alert.raised 행이다 (ARCH 11.4).
+if [ ! -e "${LOG_DIR}/alerts.log" ]; then
+  install -o "$APP_USER" -g adm -m 0640 /dev/null "${LOG_DIR}/alerts.log"
+fi
+
+# 상태 파일 두 개는 root 만 읽고 쓴다 — 경보 근거·해시 체인은 침입자에게 보여 줄 값이 아니다.
+[ -e "$ALERT_STATE" ] || install -o root -g root -m 0600 /dev/null "$ALERT_STATE"
+[ -e "$AUDIT_CHAIN" ] || install -o root -g root -m 0600 /dev/null "$AUDIT_CHAIN"
+
+# 백업 암호화 키 — **이미 있으면 절대 바꾸지 않는다.** 키가 바뀌면 그 전 백업을 전부 못 연다.
+if [ -s "$BACKUP_KEY" ]; then
+  info "백업 키 있음: ${BACKUP_KEY} (그대로 둔다 — 바꾸면 이전 백업을 못 연다)"
+else
+  umask 077
+  openssl rand -hex 32 > "$BACKUP_KEY"
+  umask 022
+  chown root:root "$BACKUP_KEY"
+  chmod 0600 "$BACKUP_KEY"
+  info "백업 키 생성: ${BACKUP_KEY} (0600 root)"
+  info "  ★ 이 키의 사본을 **서버 밖**에 2인 보관할 것 — 잃으면 모든 백업이 무용지물이다 (R-08, PRD S-10-E)"
+fi
+
 info "디렉터리: ${STORAGE_DIR} 0750 ${APP_USER}:${APP_USER} / ${TMP_DIR} 0700 ${APP_USER} / ${SESSION_DIR} 0700 ${APP_USER} / ${LOG_DIR} 0750 / ${CONF_DIR} 0750"
 
 # ─────────────────────────────────────────────────────────────
@@ -230,6 +272,25 @@ fi
 psql_su -qc "ALTER ROLE ${DB_APP_ROLE} NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS"
 psql_su -qc "ALTER ROLE ${DB_OWNER_ROLE} NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS"
 
+# 4-2-1. tbox_backup — 읽기 전용 백업 계정 (9단계, ARCH 10장 · 11.1, PRD S-08).
+#        비밀번호는 백업 스크립트만 쓰므로 매 실행 새로 만들어 /etc/tbox-v2/backup.pgpass 에 둔다.
+#        명령줄·환경변수에 넣지 않는다 — `ps` 로 다른 계정에게 보이면 안 된다.
+BACKUP_PASS="$(openssl rand -hex 16)"
+if role_exists "$DB_BACKUP_ROLE"; then
+  psql_su -qc "ALTER ROLE ${DB_BACKUP_ROLE} WITH LOGIN PASSWORD '${BACKUP_PASS}'"
+  info "역할 있음: ${DB_BACKUP_ROLE} (백업용 비밀번호 재발급)"
+else
+  psql_su -qc "CREATE ROLE ${DB_BACKUP_ROLE} WITH LOGIN PASSWORD '${BACKUP_PASS}'"
+  info "역할 생성: ${DB_BACKUP_ROLE} (읽기 전용)"
+fi
+psql_su -qc "ALTER ROLE ${DB_BACKUP_ROLE} NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS"
+umask 077
+printf '%s:%s:%s:%s:%s\n' "$DB_HOST" "$DB_PORT" "$DB_NAME" "$DB_BACKUP_ROLE" "$BACKUP_PASS" > "$BACKUP_PGPASS"
+chown root:root "$BACKUP_PGPASS"
+chmod 0600 "$BACKUP_PGPASS"
+umask 022
+info "백업 계정 비밀번호 저장: ${BACKUP_PGPASS} (0600 root)"
+
 # 4-3. DB
 if db_exists "$DB_NAME"; then
   info "DB 있음: ${DB_NAME}"
@@ -251,6 +312,19 @@ else
   PGPASSWORD="$OWNER_PASS" psql -h "$DB_HOST" -p "$DB_PORT" -U "$DB_OWNER_ROLE" -d "$DB_NAME" \
     -v ON_ERROR_STOP=1 -q -f "${REPO_DIR}/db/seed.sql"
 fi
+
+# 4-4-1. 마이그레이션 확인 — 표가 이미 있으면 schema.sql 을 건너뛰므로(4-4), 나중에 더해진
+#        컬럼은 db/migrations/*.sql 로만 들어온다. 여기서는 **적용하지 않고 알려만 준다** —
+#        운영 DB 에 DDL 을 자동으로 거는 스크립트는 만들지 않는다(ARCH 7.4 "기존 DB 반영").
+for _mig in "summary|audit_logs|2026-09-10_audit_summary.sql" "purged_at|files|2026-09-11_purged_at.sql"; do
+  _col="${_mig%%|*}"; _rest="${_mig#*|}"; _tbl="${_rest%%|*}"; _file="${_rest##*|}"
+  _has="$(psql_su -d "$DB_NAME" -Atc "SELECT 1 FROM information_schema.columns WHERE table_name='${_tbl}' AND column_name='${_col}'")"
+  if [ "$_has" = "1" ]; then
+    info "마이그레이션 적용됨: ${_tbl}.${_col}"
+  else
+    info "★ 마이그레이션 필요: ${_tbl}.${_col} — sudo -u postgres psql -d ${DB_NAME} -v ON_ERROR_STOP=1 -f db/migrations/${_file}"
+  fi
+done
 
 # 4-5. 권한 — 항상 적용한다(파일 자체가 REVOKE 후 GRANT 이므로 멱등)
 info "권한 적용: db/grants.sql (postgres 로 실행)"
@@ -312,6 +386,7 @@ SESSION_MAX_HOURS=8
 STORAGE_DIR=${STORAGE_DIR}
 AUDIT_LOG_FILE=${LOG_DIR}/audit.log
 FETCH_ALLOWED_HOSTS=
+ALERT_COMMAND=
 APP_URL=${APP_URL}
 ENVEOF
   umask 022
@@ -361,6 +436,14 @@ if grep -q '^error:' "${LOGROTATE_CONF}.check"; then
 fi
 rm -f "${LOGROTATE_CONF}.check"
 info "logrotate 문법 확인 통과 (logrotate -d ${LOGROTATE_CONF})"
+
+# 6-2. cron — 백업·정리·검증·정합성·체인·경보 일정 (9단계, ARCH 11.1 표).
+#      /etc/cron.d 형식이라 **실행 계정 칸(root)** 이 있다. 백업 키·pgpass 를 읽어야 하므로 root 다.
+#      MAILTO="" 로 두어 메일을 보내지 않는다 — 이 VM 에는 MTA 가 없고, 결과는 감사 로그에 남는다.
+#      cron.d 파일은 root 소유 0644 가 아니면 cron 이 **조용히 무시한다**.
+install -o root -g root -m 0644 "${REPO_DIR}/deploy/cron.d/tbox-v2" "$CRON_FILE"
+info "복사: ${CRON_FILE}"
+info "$(head -c 0 /dev/null; grep -c '^[^#]' "$CRON_FILE") 개 작업 등록 (cat ${CRON_FILE} 로 확인)"
 
 # nginx 사이트 파일 설치·전환은 deploy/switch-site.sh 한 곳에서만 한다.
 #   · 이 스크립트는 **공개 중인 버전을 바꾸지 않는다** — 도메인에 무엇이 보이는지는 운영 결정이다.
@@ -495,12 +578,31 @@ printf '\n   audit_logs / permissions 권한 (앱 계정에 UPDATE·DELETE 가 �
 psql_su -d "$DB_NAME" -c "\dp audit_logs" | sed 's/^/     /'
 psql_su -d "$DB_NAME" -c "\dp permissions" | sed 's/^/     /'
 
+printf '\n   백업 계정 %s 은 읽기 전용이어야 한다 (ARCH 10장, PRD S-08):\n' "$DB_BACKUP_ROLE"
+psql_su -d "$DB_NAME" -Atc "SELECT relname, array_to_string(array_agg(privilege_type ORDER BY privilege_type), ',')
+     FROM information_schema.table_privileges tp
+     JOIN pg_class c ON c.relname = tp.table_name
+    WHERE grantee = '${DB_BACKUP_ROLE}' AND table_schema = 'public'
+    GROUP BY relname ORDER BY relname" | sed 's/^/     /'
+
+printf '\n   운영 배치 자리 (9단계, PRD S-08 · S-11):\n'
+printf '     %s\n' "$(ls -ld "$BACKUP_ROOT")"
+printf '     %s\n' "$(ls -l "$BACKUP_KEY" 2>/dev/null || echo '백업 키 없음')"
+printf '     %s\n' "$(ls -l "$BACKUP_PGPASS" 2>/dev/null || echo 'backup.pgpass 없음')"
+printf '     %s\n' "$(ls -l "$CRON_FILE" 2>/dev/null || echo 'cron 파일 없음')"
+printf '     %s\n' "$(ls -l "$ALERT_STATE" 2>/dev/null || echo 'alerts-state.json 없음')"
+printf '     %s\n' "$(ls -l "$AUDIT_CHAIN" 2>/dev/null || echo 'audit-chain.txt 없음')"
+printf '     백업 산출물 사용량: %s\n' "$(du -sh "$BACKUP_ROOT" 2>/dev/null | awk '{print $1}')"
+printf '     디스크: %s\n' "$(df -h / | awk 'NR==2{print $3" / "$2" ("$5" 사용)"}')"
+
 printf '\n설치 완료.\n'
 printf '  도메인 %s/ 은 지금 80 포트에 꽂힌 버전을 보여 준다 (현재: %s).\n' \
   "$APP_URL" "${CURRENT_PUBLIC:-tbox-v1}"
 printf '  시드 계정 비밀번호 보기:      sudo cat %s\n' "$SEED_FILE"
 printf '  앱 설정 보기 / 고치기:        sudo cat %s  /  sudo nano %s (그다음 sudo systemctl reload %s)\n' \
   "$ENV_FILE" "$ENV_FILE" "$FPM_SERVICE"
+printf '  백업을 지금 한 번 돌려 보려면: sudo bash scripts/backup_db.sh && sudo bash scripts/backup_files.sh\n'
+printf '  ★ 백업 키 %s 의 사본을 서버 밖에 보관할 것 — 잃으면 백업을 못 연다 (R-08)\n' "$BACKUP_KEY"
 printf '  v2(이 저장소)를 공개하려면:  sudo bash deploy/switch-site.sh v2\n'
 printf '  버전 상태 보기:              sudo bash deploy/switch-site.sh status\n'
 printf '  공개와 무관하게 늘 열린 창구: v1 → http://127.0.0.1:8081/ , v2 → %s/\n' "$LOCAL_HTTP"

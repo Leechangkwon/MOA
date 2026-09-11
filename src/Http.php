@@ -88,8 +88,22 @@ final class Http
         return $ip;
     }
 
+    /**
+     * 요청을 보낸 도구 이름. **요청이 준 값이므로 언제나 위조 가능한 참고값**이다
+     * (검토 행동 표식 `tbox-review/…` 도 그래서 "표식" 이지 인증이 아니다 — CLAUDE.md 3장).
+     *
+     * CLI(9단계 운영 배치)에는 HTTP 헤더가 아예 없다. null 로 두면 감사 로그에서 배치 행과
+     * "UA 를 안 보낸 브라우저" 가 구별되지 않으므로, CLI 일 때만 `cli:스크립트명` 을 넣는다
+     * (ARCH 7.5 route 키의 `cli:스크립트명` 과 같은 표기). 스크립트 이름은 서버 파일명이지
+     * 사용자 입력이 아니고, 그래도 basename 으로 경로를 떼고 형태를 좁혀 쓴다.
+     */
     public static function userAgent(): ?string
     {
+        if (PHP_SAPI === 'cli') {
+            $script = basename((string) ($_SERVER['SCRIPT_NAME'] ?? ($_SERVER['argv'][0] ?? '')));
+            $script = (string) preg_replace('/[^A-Za-z0-9._-]/', '', $script);
+            return $script === '' ? 'cli' : 'cli:' . substr($script, 0, 100);
+        }
         $ua = $_SERVER['HTTP_USER_AGENT'] ?? null;
         if (!is_string($ua) || $ua === '') {
             return null;
