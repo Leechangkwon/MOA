@@ -828,7 +828,7 @@ GRANT  USAGE, SELECT  ON SEQUENCE audit_logs_id_seq TO tbox_app;
 | `user.expired|deny|guest_expired` | `{target} 계정으로 로그인을 시도했지만 만료된 Guest 계정입니다` | 10단계 Auth::login (R-12 expires_at) |
 | `auth.password_change|allow` | `{actor} 이(가) 비밀번호를 바꾸고 다른 기기의 세션을 모두 끊었습니다` | 10단계 password (본인) |
 | `auth.password_change|deny|bad_credentials` | `{actor} 이(가) 비밀번호를 바꾸려 했지만 현재 비밀번호가 틀렸습니다` | 10단계 |
-| `auth.password_change|deny|weak_password` | `{actor} 이(가) 비밀번호를 바꾸려 했지만 새 비밀번호가 규칙(12자 이상)에 맞지 않습니다` | 10단계 (S-09-4) |
+| `auth.password_change|deny|weak_password` | `{actor} 이(가) 비밀번호를 바꾸려 했지만 새 비밀번호가 규칙(10자 이상)에 맞지 않습니다` | 10단계 (S-09-4) |
 | `auth.mfa_enroll|allow` | `{actor} 이(가) 2단계 인증(TOTP)을 켰습니다` | 10단계 (R-05) |
 | `auth.mfa_disable|allow` | `{actor} 이(가) 2단계 인증(TOTP)을 껐습니다` | 10단계 |
 | `auth.mfa|deny|bad_code` | `{target} 계정으로 로그인하면서 2단계 인증 코드를 틀렸습니다` | 10단계 Auth::login |

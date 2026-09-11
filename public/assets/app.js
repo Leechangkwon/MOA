@@ -1890,7 +1890,7 @@ function initForcedGate(csrfToken, firstStep, mfaEnabled) {
             pwNew.value = '';
             pwConfirm.value = '';
             if (!response.ok) {
-              // 서버가 준 문구만 띄운다(같은 값·12자 미만·현재 비밀번호 오류를 구분하지 않는다).
+              // 서버가 준 문구만 띄운다(같은 값·10자 미만·현재 비밀번호 오류를 구분하지 않는다).
               setText(msg, errorMessage(data));
               return null;
             }

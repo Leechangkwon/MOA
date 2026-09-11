@@ -135,7 +135,7 @@ try {
         if (is_array($db->run($sqlExists, [':username' => $username])->fetch())) {
             continue;
         }
-        // 16자 hex = 64비트 무작위. PRD S-09-4 의 최소 12자를 넘고, 사람이 옮겨 적을 수 있는 길이.
+        // 16자 hex = 64비트 무작위. PRD S-09-4 의 최소 10자를 넘고, 사람이 옮겨 적을 수 있는 길이.
         $plain = bin2hex(random_bytes(8));
         $hash  = password_hash($plain, PASSWORD_ARGON2ID);
         if (!is_string($hash)) {

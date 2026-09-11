@@ -5,7 +5,7 @@ declare(strict_types=1);
  * src/handlers/users_create.php — POST /api/users (정책: user.manage → Admin 만, PRD 5.4)
  *
  * 요구사항: PRD F-10 · 3장(1인 1계정, 역할은 Admin 만 변경) · 5.4 · S-07("관리자 행동 사유") ·
- *           S-09-4(Argon2id, 최소 12자), 8장 `/api/users` 행,
+ *           S-09-4(Argon2id, 최소 10자), 8장 `/api/users` 행,
  *           ARCH 7.4 `user.create|allow`·`deny|bad_request`·`deny|already_exists`, 7.5 `reason_text`,
  *           SECURITY R-12(Guest 만료) · R-20(관리자 행동에 사유)
  *

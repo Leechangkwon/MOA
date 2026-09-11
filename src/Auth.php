@@ -55,8 +55,8 @@ final class Auth
      */
     public const USERNAME_RE = '/^[a-z0-9_.-]{3,64}$/';
 
-    /** PRD S-09-4 "최소 12자". 계정 생성·비밀번호 변경이 같은 값을 본다 */
-    public const MIN_PASSWORD_CHARS = 12;
+    /** PRD S-09-4 "최소 10자". 계정 생성·비밀번호 변경이 같은 값을 본다 */
+    public const MIN_PASSWORD_CHARS = 10;
 
     /** 비밀번호 입력 상한 (Argon2id 계산 시간을 요청으로 늘리지 못하게) */
     public const MAX_PASSWORD_BYTES = 1024;
@@ -479,7 +479,7 @@ final class Auth
      *
      * 하는 일
      *   1) **현재 비밀번호**를 다시 확인한다 — 세션이 잠깐 새어 나가도 비밀번호까지 바꾸지 못하게.
-     *   2) 새 비밀번호가 12자 이상인지, **현재와 다른 값**인지 본다 (PRD S-09-4, F-16 `same_password`).
+     *   2) 새 비밀번호가 10자 이상인지, **현재와 다른 값**인지 본다 (PRD S-09-4, F-16 `same_password`).
      *   3) Argon2id 해시로 갈아 끼우고, **지금 이 세션만 남기고** 그 사용자의 세션을 전부 지운다.
      *      (바꾼 기기에서 다시 로그인하게 만들 이유는 없고, 다른 기기는 즉시 끊겨야 한다.)
      *   4) 결과를 감사 로그에 남긴다. 비밀번호는 옛것도 새것도 남기지 않는다.
@@ -525,7 +525,7 @@ final class Auth
             return [false, 'same_password', 0];
         }
 
-        // 12자 이상 (PRD S-09-4). 글자 수로 센다 — 한글 12자도 12자다.
+        // 10자 이상 (PRD S-09-4). 글자 수로 센다 — 한글 10자도 10자다.
         if (preg_match('//u', $new) !== 1
             || strlen($new) > self::MAX_PASSWORD_BYTES
             || iconv_strlen($new, 'UTF-8') < self::MIN_PASSWORD_CHARS

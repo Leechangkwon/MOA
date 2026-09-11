@@ -89,12 +89,12 @@ if (!headers_sent()) {
           <input id="forced-pw-current" type="password" maxlength="1024" required>
         </label>
         <label class="field">
-          <span class="field__label">새 비밀번호 (12자 이상 · 임시 비밀번호와 달라야 합니다)</span>
-          <input id="forced-pw-new" type="password" maxlength="1024" minlength="12" required>
+          <span class="field__label">새 비밀번호 (10자 이상 · 임시 비밀번호와 달라야 합니다)</span>
+          <input id="forced-pw-new" type="password" maxlength="1024" minlength="10" required>
         </label>
         <label class="field">
           <span class="field__label">새 비밀번호 확인</span>
-          <input id="forced-pw-confirm" type="password" maxlength="1024" minlength="12" required>
+          <input id="forced-pw-confirm" type="password" maxlength="1024" minlength="10" required>
         </label>
         <button id="forced-pw-submit" class="btn" type="submit">비밀번호 바꾸기</button>
       </form>
@@ -235,8 +235,8 @@ if (!headers_sent()) {
         <input id="pw-current" type="password" maxlength="1024" required>
       </label>
       <label class="field">
-        <span class="field__label">새 비밀번호 (12자 이상)</span>
-        <input id="pw-new" type="password" maxlength="1024" minlength="12" required>
+        <span class="field__label">새 비밀번호 (10자 이상)</span>
+        <input id="pw-new" type="password" maxlength="1024" minlength="10" required>
       </label>
       <button id="pw-submit" class="btn" type="submit">비밀번호 바꾸기</button>
     </form>

@@ -218,7 +218,7 @@ sudo cat /etc/tbox-v2/seed-accounts.txt      # 한 줄에 "아이디 역할 비�
 | 순서 | 할 일 | 명령 |
 |---|---|---|
 | 1 | 계정 주인이 **첫 로그인** | 브라우저에서 `/` |
-| 2 | 화면 **「내 계정 → 비밀번호 바꾸기」** 로 각자 비밀번호 변경 (12자 이상) | `POST /api/me/password` |
+| 2 | 화면 **「내 계정 → 비밀번호 바꾸기」** 로 각자 비밀번호 변경 (10자 이상) | `POST /api/me/password` |
 | 3 | 전원이 바꾼 것을 확인 — `password_changed_at` 이 채워졌으면 본인이 바꾼 것입니다 (11단계 F-16) | 아래 SQL |
 | 4 | **파일 삭제** | `sudo shred -u /etc/tbox-v2/seed-accounts.txt` |
 

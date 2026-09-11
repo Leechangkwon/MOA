@@ -200,7 +200,7 @@ final class Audit
         // 비밀번호·TOTP 비밀·코드는 어떤 형태로도 이 표의 문장에 들어가지 않는다.
         'auth.password_change|allow'                    => '{actor} 이(가) 비밀번호를 바꾸고 다른 기기의 세션을 모두 끊었습니다',
         'auth.password_change|deny|bad_credentials'     => '{actor} 이(가) 비밀번호를 바꾸려 했지만 현재 비밀번호가 틀렸습니다',
-        'auth.password_change|deny|weak_password'       => '{actor} 이(가) 비밀번호를 바꾸려 했지만 새 비밀번호가 규칙(12자 이상)에 맞지 않습니다',
+        'auth.password_change|deny|weak_password'       => '{actor} 이(가) 비밀번호를 바꾸려 했지만 새 비밀번호가 규칙(10자 이상)에 맞지 않습니다',
         'auth.mfa_enroll|allow'                         => '{actor} 이(가) 2단계 인증(TOTP)을 켰습니다',
         'auth.mfa_enroll|deny|bad_code'                 => '{actor} 이(가) 2단계 인증을 켜려 했지만 확인 코드가 틀렸습니다',
         'auth.mfa_enroll|deny|already_enabled'          => '{actor} 이(가) 이미 켜져 있는 2단계 인증을 다시 등록하려 해서 거부했습니다',

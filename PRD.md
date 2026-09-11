@@ -424,7 +424,7 @@
 | S-09-1 | 전송 구간 | HTTPS 전용. HTTP는 리다이렉트, HSTS 적용 |
 | S-09-2 | 세션 | 쿠키 `HttpOnly` `Secure` `SameSite=Lax`, 로그인 성공 시 세션 ID 재발급, 유휴 30분·최대 8시간 만료 |
 | S-09-3 | CSRF | 상태를 바꾸는 요청(POST/PUT/DELETE)에 CSRF 토큰 필수 |
-| S-09-4 | 비밀번호 | `password_hash()` Argon2id, 최소 12자, 실패 5회 10분 잠금 |
+| S-09-4 | 비밀번호 | `password_hash()` Argon2id, **최소 10자**(사용자 결정 2026-09-11, 원안 12자 — 2단계 인증이 전 역할 필수가 되어 낮춤), 실패 5회 10분 잠금 |
 | S-09-5 | 접근 제어 오류 응답 | 권한 없는 자원은 항상 403 + 동일 문구, 대상 정보 미포함. 외부 노출 ID 는 UUID |
 | S-09-6 | 비밀 정보 관리 | DB 접속 정보 등은 **`.env`** (저장소 루트, `public/` 밖, `changkwon:tbox-php` 0640)로 분리. Git에는 `.env.example`만(`.gitignore` 로 `.env` 제외). 커밋 전 시크릿 스캔. *(운영 전환 시 `/etc/tbox/tbox.env`(root:tbox-php)로 이전 검토 — 심층 방어)* |
 | S-09-7 | 오류 표시 | 운영 환경에서 `display_errors=Off`, 스택 트레이스 노출 금지 |
@@ -557,7 +557,7 @@
 | POST | `/api/users/{uid}/password/reset` | 임시 비밀번호 재발급(`reason_text` 필수, 자기 자신 금지). 새 임시 비밀번호를 한 번만 응답, 대상은 다음 로그인에 변경 강제, 대상 세션 전부 종료 (F-16 ⑤) | Admin | 400 / 403 / 404 |
 | POST | `/api/users/{uid}/mfa/reset` | 2단계 인증 초기화(`reason_text` 필수, 자기 자신 금지). 비밀 삭제 → 대상은 다음 로그인 뒤 재등록 강제, 세션 전부 종료 (F-16 ⑤) | Admin | 400 / 403 / 404 |
 | GET | `/api/files/trash` | 휴지통 목록(논리 삭제·미영구삭제) | Admin | 403 |
-| POST | `/api/me/password` | 내 비밀번호 변경(현재 비밀번호 확인, 12자 이상, **현재와 같은 값 금지**, 다른 기기 세션 종료). 성공 시 `must_change_password` 해제 (F-16) | 세션 존재 + CSRF (강제 절차 중에도 허용) | 400 |
+| POST | `/api/me/password` | 내 비밀번호 변경(현재 비밀번호 확인, 10자 이상, **현재와 같은 값 금지**, 다른 기기 세션 종료). 성공 시 `must_change_password` 해제 (F-16) | 세션 존재 + CSRF (강제 절차 중에도 허용) | 400 |
 | POST | `/api/me/mfa/enroll` · `confirm` · `disable` | 2단계 인증(TOTP) 등록·확정·해제 (해제는 현재 비밀번호 + 코드). **확정 시 `mfa_setup_required` 해제, 해제 시 다시 켜짐**(필수 정책, F-16 ③) | 세션 존재 + CSRF (enroll·confirm 은 강제 절차 중에도 허용) | 400 |
 | (관문) | 인증 필요 라우트 전부 | `must_change_password` 이면 `GET /`·`/api/me`·`/api/logout`·`/api/me/password` 외 **403 `{next:"password_change"}`**; 그 뒤 `mfa_setup_required` 이면 위 + `/api/me/mfa/enroll`·`confirm` 외 **403 `{next:"mfa_setup"}`**. 로그인 200 응답과 `/api/me` 에 같은 `next` 값 (F-16 ②) | 세션 존재 | 403 |
 
