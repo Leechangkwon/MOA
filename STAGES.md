@@ -429,6 +429,7 @@ sudo -u postgres psql -d tbox_re -c "SELECT happened_at, actor_name, action, res
 - [x] 화면: 홈이 `next` 를 보고 강제 화면만 표시(비밀번호 변경 → 2단계 인증 등록 → 정상 홈). 계정 관리 화면에서 임시 비밀번호 1회 표시·재발급·2단계 초기화 버튼
 - [x] 정적 자원 캐시: `app.js`·`app.css` 에 버전 쿼리(`?v=파일수정시각`) — 보정이 브라우저 캐시(7일)에 갇히지 않게
 - [x] (부록, F-17) 오프라인 2단계 코드 생성기 `public/assets/totp-generator.html` — 외부 스크립트·네트워크 0, base32/`otpauth://` 입력, RFC 6238 자체 점검 버튼, 저장 선택·지우기, R-40 경고. 로컬 검토 사이트 `http://localhost:8082/assets/totp-generator.html` 로 내려받아 PC 에 저장
+- [ ] (부록, F-17-2) 생성기 저장을 **문구로 잠근 암호문**으로(PBKDF2-SHA256·AES-GCM, 평문 저장 제거, 잠금·해제 왕복 자체 점검) + 비밀 키 **4자 묶음 표시**(t-box 등록 화면·생성기)
 
 **검토 체크 (Fable ②)** — 2026-09-11 통과 (`SECURITY.md` 7장 「11단계 구현 검토」)
 - [x] 마이그레이션 뒤 기존 계정 `must_change_password=true`; 검토 계정으로 로그인 → `next=password_change`, `/api/files` 403 + `auth.gate deny`
@@ -521,6 +522,7 @@ sudo -u postgres psql -d tbox_re -c "SELECT happened_at, actor_name, action, res
 | 2026-09-11 | 비밀번호를 바꾸면 DB 에 저장될 텐데, DB 는 어떻게 확인하나? | DB 에는 비밀번호가 **없다** — 단방향 해시(Argon2id, `$argon2id$…`)만 있어 원문을 되돌릴 수 없고, 로그인 때 입력값을 같은 방식으로 계산해 **비교**만 한다. 그래서 "바뀌었는지" 는 해시 문자열이 달라졌는지·`password_changed_at` 이 찍혔는지·`must_change_password` 가 false 가 됐는지로 본다. DB 는 `psql` 로 들어가 SQL 로 본다(나가기 `\q`, 표 목록 `\dt`, 표 구조 `\d users`) | `sudo -u postgres psql -d tbox_re` 뒤 `SELECT username, left(password_hash,22), password_changed_at, must_change_password, mfa_enabled FROM users ORDER BY id;` |
 | 2026-09-11 | "암호화하고 복호화하는 절차인가?" (문구로 잠근 저장 제안에 대해) | 그렇다. 등록 때: t-box 의 무작위 비밀 키 + 사용자 문구 → PBKDF2-SHA256 으로 잠금 키 → AES-GCM 으로 비밀 키를 암호화 → **암호문만** PC 에 저장(문구·잠금 키·원본은 저장 안 함). 쓸 때: 문구 → 같은 계산 → 복호화 → 코드 계산. 문구가 틀리면 AES-GCM 이 스스로 실패를 알린다. 공격자는 문구와 **암호문(PC)** 둘 다 필요 → "가진 것" 겹 유지 | 설계 그림은 대화 기록·SECURITY R-40 후속 |
 | 2026-09-11 | "SHA-256 으로 암호화하고 AES 로 복호화하면 되는 거 아냐?" | **해시와 암호화는 다르다.** SHA-256 은 한 방향(믹서기: 주스에서 과일로 못 돌아감) — 복호화라는 것이 없고 누구도 되돌릴 수 없다. AES 는 양방향(자물쇠: 같은 키로 잠그고 푼다). 잠근 알고리즘과 푸는 알고리즘은 같아야 하므로 "SHA-256 으로 잠그고 AES 로 푼다" 는 성립하지 않는다. 권고안에서 SHA-256 은 **문구를 키 모양으로 바꾸는 데만**, 잠그기·풀기는 **둘 다 AES** 가 한다. 정확한 문장: "SHA-256 으로 키를 만들고, AES 로 잠그고 AES 로 푼다" | 같은 원리가 비밀번호 저장에도: DB 의 `password_hash` 는 SHA 계열이 아닌 Argon2id 해시이지만 역시 한 방향이라 관리자도 원문을 못 본다(앞 질문 참조) |
+| 2026-09-11 | 결정 | "오케이 진행해" — 문구로 잠근 저장(ⓐ)·4자 묶음 표시(ⓑ) 채택, QR(ⓒ)은 후속 | PRD F-17-2, SECURITY R-40 갱신 → Opus 구현 지시 |
 
 ---
 
