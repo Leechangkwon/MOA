@@ -307,7 +307,10 @@ Admin·Manager 는 켜는 것을 권합니다.
    스마트폰에서 이 화면을 보고 있다면 **「인증 앱에 바로 추가 (otpauth 링크)」** 를 눌러도 됩니다.
 4. 앱에 뜬 6자리 코드를 **「확인하고 켜기」** 에 적습니다.
    코드가 맞아야 켜집니다 — 등록에 실패한 사람이 자기 계정에 못 들어가는 일을 막기 위해서입니다.
-5. 그 뒤 로그인 화면의 **「2단계 인증 코드」** 칸에 **비밀번호 + 그 시각의 코드**를 적어야 들어옵니다.
+5. 그 뒤 로그인은 **두 걸음**이 됩니다 — 먼저 아이디·비밀번호만 넣고 「로그인」,
+   그러면 **그때 코드 칸이 나타나므로** 인증 앱의 6자리를 넣고 다시 「로그인」 합니다.
+   (2단계 인증을 켜지 않은 계정에는 코드 칸이 아예 나타나지 않습니다. 비밀번호가 틀리면
+   코드 칸도 나오지 않습니다 — 비밀번호를 모르는 사람은 그 계정의 2단계 인증 여부를 알 수 없습니다.)
 
 ### 인증 앱 없이 코드 구하기 (`scripts/totp_code.php`) — 검토·시험용
 
@@ -377,6 +380,8 @@ curl -s -b jar -X POST https://changkwon.mso.so/api/logout                      
 `deploy/install.sh` 가 `deploy/cron.d/tbox-v2` 를 복사합니다. 실행 계정은 **root** 입니다 — 백업 키(`0600 root`)와
 백업 디렉터리(`0700 root`)를 읽어야 하기 때문입니다. DB 에는 여전히 `.env` 의 `tbox_app` 계정으로 붙습니다.
 
+표의 시각은 **서버 로컬 시각 = KST** 입니다(아래 「서버 시간대」).
+
 | 시각 | 스크립트 | 하는 일 | 남는 기록 |
 |---|---|---|---|
 | 03:00 | `scripts/backup_db.sh` | `pg_dump -Fc` → 파이프로 바로 `gpg AES256` → `.sha256`. 보관 일 7 · 주 4 · 월 6 | `backup.run allow\|error` |
@@ -394,6 +399,22 @@ sudo bash scripts/verify_backup.sh
 sudo php  scripts/consistency_check.php
 sudo php  scripts/alerts.php --dry-run  # 판정만 하고 경보는 남기지 않는다
 ```
+
+### 서버 시간대 — KST 로 통일 (2026-09-11)
+
+VM 은 UTC 로 설치돼 있었고 감사 로그·`date`·cron 이 모두 UTC 로 보여 사용자가 읽기 어려웠습니다.
+세 층을 **같은 값**으로 맞췄습니다. 하나만 바꾸면 화면과 로그의 시각이 9시간 어긋나 보이니 항상 함께 바꿉니다.
+
+| 층 | 설정 | 확인 |
+|---|---|---|
+| OS (`date`, cron, auth.log, nginx 로그) | `sudo timedatectl set-timezone Asia/Seoul` → `cron`·`rsyslog` 재시작, `nginx` reload | `timedatectl` → `Time zone: Asia/Seoul (KST, +0900)` |
+| PostgreSQL (`now()` 표시, 날짜 필터 해석, 서버 로그) | `ALTER SYSTEM SET timezone='Asia/Seoul'; ALTER SYSTEM SET log_timezone='Asia/Seoul'; SELECT pg_reload_conf();` (`postgresql.auto.conf` 에 기록돼 `postgresql.conf` 의 `Etc/UTC` 를 덮음) | `psql -Atc "show timezone"` |
+| PHP (`date()`, 경보 AL-7 업무시간 판정) | `/etc/php/8.1/{fpm,cli}/conf.d/99-tbox-timezone.ini` = `date.timezone = Asia/Seoul` (사본 `deploy/php/99-tbox-timezone.ini`) → `php8.1-fpm` 재시작 | `php -r 'echo date("c");'` → `+09:00` |
+
+**저장된 데이터는 바뀌지 않습니다.** 모든 시각 컬럼이 `TIMESTAMPTZ`(절대 시각)이고 앱은 DB `now()` 와
+오프셋이 붙은 `date('c')` 만 쓰므로, 바뀐 것은 표시·해석입니다. 같은 사건이 전에는 `07:15+00`, 지금은 `16:15+09` 로 보입니다.
+감사 로그 화면에서 날짜 필터 `2026-09-11` 은 이제 **한국 시간 하루**를 뜻합니다.
+cron 일정(03:00 백업 등)도 KST 로 돕니다.
 
 ### 산출물이 어디에 있나
 

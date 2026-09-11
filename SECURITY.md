@@ -137,7 +137,7 @@
 | 15 | R-15 | 패치 관리 | 중간 | ◐ 9단계 실측: `unattended-upgrades` 켜짐(check_baseline OK). 월 1회 전체 패치·CVSS≥9 72시간은 운영 캘린더(S-11-B) 실행 여부에 달림 | PHP·nginx·PostgreSQL 보안 업데이트 주기 미정 | 월 1회 정기 패치 + 치명 CVE 72시간 내, `unattended-upgrades` 보안 채널 (→ ARCH 11장) |
 | 16 | R-16 | 파일명 시각 혼동 (RTL 오버라이드·동형 문자) | 낮음 | ◐ | `report‮fdp.exe` 가 `reportexe.pdf` 처럼 보임 — 단, 실행파일은 업로드 자체가 차단됨 | 화면의 확장자·형식 표시는 DB `ext`·`mime` 컬럼에서(원본명이 아니라) (→ PRD 10장) |
 | 17 | R-17 | 로그인 후 리다이렉트(`?next=`) 오픈 리다이렉트 | 낮음 | ✅ 해당 없음(구현 확인 2026-09-11): `next` 파라미터 자체가 없고 `Http::redirect()` 는 코드 상수 경로만 받으며 `//`·스킴을 거부한다 | 피싱: 진짜 로그인 후 가짜 사이트로 이동 | `next` 는 `/` 로 시작하는 상대 경로만 허용 (→ PRD F-01) |
-| 18 | R-18 | 서버 시간 불일치 | 낮음 | ✅ 9단계: `timedatectl` synchronized=yes(systemd-timesyncd). chrony 는 미설치(S-10-C, 문서 기준과 다름을 DEPENDENCIES 5.3 에 기록) | 감사 로그 시각이 어긋나면 사고 조사가 불가 | NTP(chrony) 필수, DB `now()` 사용 통일 (→ ARCH 11장) |
+| 18 | R-18 | 서버 시간 불일치 | 낮음 | ✅ 9단계: `timedatectl` synchronized=yes(systemd-timesyncd). chrony 는 미설치(S-10-C, 문서 기준과 다름을 DEPENDENCIES 5.3 에 기록). 2026-09-11 사용자 요청으로 OS·PostgreSQL·PHP 시간대를 `Asia/Seoul` 로 통일(README 「서버 시간대」) — 동기화(NTP)는 그대로, 표시만 KST | 감사 로그 시각이 어긋나면 사고 조사가 불가 | NTP(chrony) 필수, DB `now()` 사용 통일 (→ ARCH 11장) |
 | 19 | R-19 | 팀 모델 변경 위험 (Q-1) | 낮음 (설계 리스크) | ◐ | Manager 가 여러 팀을 맡게 되면 `team_id` 단일 컬럼 전제의 `Authz` 가 전면 수정 | 1단계 전에 Q-1 확정. 확장 시 `user_teams` 조인 테이블로 `visibleFilesWhere` 만 수정되도록 (→ PRD 14장) |
 | 20 | R-20 | 레벨 하향·대량 삭제의 단독 실행 | 낮음 | ◐ 5단계: 하향은 Admin 만(`downgrade_not_permitted`) + `detail.before/after` 기록. 확인 단계(사유 입력)는 10단계 `reason_text`. 대량 삭제 API 없음 | Admin 1인 실수/악의로 `admin-only → public` 즉시 반영 | 레벨 하향은 확인 단계 + 감사 로그 `detail` 에 이전값, 대량 삭제 API 미제공 (→ PRD 5.3) |
 
