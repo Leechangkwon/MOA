@@ -7,8 +7,11 @@ declare(strict_types=1);
  * 요구사항: PRD F-10 · 10장 화면 요구사항("계정 관리 — 목록·생성·역할 변경, Admin 만"),
  *           S-03(출력 이스케이프), S-07("관리자 행동 사유"), SECURITY R-05 · R-12 · R-20
  *
- * 이 파일이 HTML 에 넣는 동적 값은 **사용자명·역할 두 개뿐**이며 둘 다 DB 에서 읽은 값이고
- * htmlspecialchars(ENT_QUOTES) 를 거친다. 계정 목록은 서버가 HTML 로 만들지 않는다 —
+ * 12단계(F-20)에서 공통 셸(`src/views/shell_*.php`)을 적용했다. 상단바·"파일 목록으로" 링크는
+ * 좌측 내비가 대신하고, 본문 마크업·id·요청은 그대로다 — **서버 규칙·권한·API 는 바뀌지 않았다.**
+ *
+ * 이 화면이 HTML 에 넣는 동적 값은 공통 셸의 **사용자명·역할 두 개뿐**이며 둘 다 DB 에서 읽은
+ * 값이고 htmlspecialchars(ENT_QUOTES) 를 거친다. 계정 목록은 서버가 HTML 로 만들지 않는다 —
  * app.js 가 `/api/users` 응답을 **textContent 로만** 그린다 (아이디도 사용자가 정한 문자열이다).
  *
  * ★ 이 파일에도 역할 비교를 두지 않는다. "Admin 만" 은 라우트 정책 `user.manage` 가 판단하고
@@ -24,37 +27,17 @@ declare(strict_types=1);
  * @var list<string>        $params 경로 변수 없음
  */
 
-$displayName = htmlspecialchars((string) $user['username'], ENT_QUOTES, 'UTF-8');
-$displayRole = htmlspecialchars((string) $user['role'], ENT_QUOTES, 'UTF-8');
-
-if (!headers_sent()) {
-    header('Content-Type: text/html; charset=utf-8');
-    header('Cache-Control: no-store');
-}
+$pageTitle = '계정 관리';
+$activeNav = 'users';
+$pageKey   = 'users';
+require __DIR__ . '/../views/shell_top.php';
 ?>
-<!doctype html>
-<html lang="ko">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>계정 관리 · t-box (재구축)</title>
-<link rel="stylesheet" href="/assets/app.css">
-</head>
-<body>
-<main class="card card--wide">
-  <header class="topbar">
-    <div>
-      <h1>계정 관리</h1>
-      <p class="lead">
-        <strong><?= $displayName ?></strong> 님으로 로그인했습니다 ·
-        역할 <code><?= $displayRole ?></code>
-      </p>
-    </div>
-    <div class="topbar__actions">
-      <a class="btn btn--quiet" href="/">파일 목록으로</a>
-      <button id="logout" class="btn btn--quiet" type="button">로그아웃</button>
-    </div>
-  </header>
+    <header class="page-head">
+      <div class="page-head__text">
+        <h1 class="page-head__title">계정 관리</h1>
+        <p class="page-head__sub">계정 생성 · 역할·팀·만료 변경 · 임시 비밀번호 재발급 · 2단계 인증 초기화</p>
+      </div>
+    </header>
 
   <p class="notice">
     이 화면은 <strong>관리자만</strong> 볼 수 있습니다. 계정은 <strong>1인 1개</strong>이며
@@ -73,7 +56,7 @@ if (!headers_sent()) {
   </p>
 
   <section class="panel">
-    <h2>계정 만들기</h2>
+    <div class="panel__head"><h2 class="panel__title">계정 만들기</h2></div>
     <form id="user-create-form" class="form form--grid" autocomplete="off">
       <label class="field">
         <span class="field__label">아이디 (소문자·숫자·<code>_ . -</code>, 3~64자)</span>
@@ -108,7 +91,7 @@ if (!headers_sent()) {
   </section>
 
   <section class="panel">
-    <h2>계정 목록</h2>
+    <div class="panel__head"><h2 class="panel__title">계정 목록</h2></div>
     <div class="table-wrap">
       <table class="files">
         <thead>
@@ -129,15 +112,13 @@ if (!headers_sent()) {
     </div>
     <p id="users-empty" class="muted" hidden>표시할 계정이 없습니다.</p>
 
-    <div class="pager">
-      <button id="page-prev" class="btn btn--quiet" type="button">이전</button>
+    <div class="table-foot">
       <span id="page-info" class="muted"></span>
-      <button id="page-next" class="btn btn--quiet" type="button">다음</button>
+      <div class="pager">
+        <button id="page-prev" class="btn btn--quiet btn--small" type="button">이전</button>
+        <button id="page-next" class="btn btn--quiet btn--small" type="button">다음</button>
+      </div>
     </div>
   </section>
 
-  <p id="msg" class="msg" role="alert" aria-live="polite"></p>
-</main>
-<script src="/assets/app.js"></script>
-</body>
-</html>
+<?php require __DIR__ . '/../views/shell_bottom.php'; ?>

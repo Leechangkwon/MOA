@@ -6,8 +6,11 @@ declare(strict_types=1);
  *
  * 요구사항: PRD F-09 · 10장(감사 로그 화면), S-07 "조회 화면 필터", ARCH 7.6, SECURITY 1.4
  *
- * 이 파일이 HTML 에 넣는 동적 값은 **사용자명·역할 두 개뿐**이며 둘 다 DB 에서 읽은 값이고
- * htmlspecialchars(ENT_QUOTES) 를 거친다 (PRD S-03). 감사 로그 행은 서버가 HTML 로 만들지 않는다 —
+ * 12단계(F-20)에서 공통 셸(`src/views/shell_*.php`)을 적용했다. 상단바·"파일 목록으로" 링크는
+ * 좌측 내비가 대신하고, 본문 마크업·id·요청은 그대로다 — **서버 규칙·권한·API 는 바뀌지 않았다.**
+ *
+ * 이 화면이 HTML 에 넣는 동적 값은 공통 셸의 **사용자명·역할 두 개뿐**이며 둘 다 DB 에서 읽은
+ * 값이고 htmlspecialchars(ENT_QUOTES) 를 거친다 (PRD S-03). 감사 로그 행은 서버가 HTML 로 만들지 않는다 —
  * app.js 가 `/api/audit` 응답을 **textContent 로만** 그린다.
  * `summary`·`target_name`·`user_agent`·`detail` 은 공격자가 값을 정할 수 있는 문자열이므로
  * (파일명·UA) 다른 사용자 입력과 똑같이 다룬다 (SECURITY 1.4 보완, ARCH 7.4 마지막 규칙).
@@ -21,37 +24,17 @@ declare(strict_types=1);
  * @var list<string>        $params 경로 변수 없음
  */
 
-$displayName = htmlspecialchars((string) $user['username'], ENT_QUOTES, 'UTF-8');
-$displayRole = htmlspecialchars((string) $user['role'], ENT_QUOTES, 'UTF-8');
-
-if (!headers_sent()) {
-    header('Content-Type: text/html; charset=utf-8');
-    header('Cache-Control: no-store');
-}
+$pageTitle = '감사 로그';
+$activeNav = 'audit';
+$pageKey   = 'audit';
+require __DIR__ . '/../views/shell_top.php';
 ?>
-<!doctype html>
-<html lang="ko">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>감사 로그 · t-box (재구축)</title>
-<link rel="stylesheet" href="/assets/app.css">
-</head>
-<body>
-<main class="card card--wide">
-  <header class="topbar">
-    <div>
-      <h1>감사 로그</h1>
-      <p class="lead">
-        <strong><?= $displayName ?></strong> 님으로 로그인했습니다 ·
-        역할 <code><?= $displayRole ?></code>
-      </p>
-    </div>
-    <div class="topbar__actions">
-      <a class="btn btn--quiet" href="/">파일 목록으로</a>
-      <button id="logout" class="btn btn--quiet" type="button">로그아웃</button>
-    </div>
-  </header>
+    <header class="page-head">
+      <div class="page-head__text">
+        <h1 class="page-head__title">감사 로그</h1>
+        <p class="page-head__sub">누가 · 언제 · 어디서 · 무엇을 · 어떻게 · 왜 — 여섯 가지로 찾습니다.</p>
+      </div>
+    </header>
 
   <p class="notice">
     이 화면은 <strong>관리자만</strong> 볼 수 있고, <strong>이 조회 자체도 감사 로그에 남습니다</strong>
@@ -60,7 +43,7 @@ if (!headers_sent()) {
   </p>
 
   <section class="panel">
-    <h2>필터 — 누가 · 언제 · 어디서 · 무엇을 · 어떻게 · 왜</h2>
+    <div class="panel__head"><h2 class="panel__title">필터 — 누가 · 언제 · 어디서 · 무엇을 · 어떻게 · 왜</h2></div>
     <form id="audit-filter" class="form form--grid" autocomplete="off">
       <label class="field">
         <span class="field__label">누가 — 계정명 또는 로그인 회차(12자)</span>
@@ -158,7 +141,7 @@ if (!headers_sent()) {
   </section>
 
   <section class="panel">
-    <h2>기록</h2>
+    <div class="panel__head"><h2 class="panel__title">기록</h2></div>
     <div class="table-wrap">
       <table class="files">
         <thead>
@@ -181,15 +164,13 @@ if (!headers_sent()) {
     </div>
     <p id="audit-empty" class="muted" hidden>조건에 맞는 기록이 없습니다.</p>
 
-    <div class="pager">
-      <button id="page-prev" class="btn btn--quiet" type="button">이전</button>
+    <div class="table-foot">
       <span id="page-info" class="muted"></span>
-      <button id="page-next" class="btn btn--quiet" type="button">다음</button>
+      <div class="pager">
+        <button id="page-prev" class="btn btn--quiet btn--small" type="button">이전</button>
+        <button id="page-next" class="btn btn--quiet btn--small" type="button">다음</button>
+      </div>
     </div>
   </section>
 
-  <p id="msg" class="msg" role="alert" aria-live="polite"></p>
-</main>
-<script src="/assets/app.js"></script>
-</body>
-</html>
+<?php require __DIR__ . '/../views/shell_bottom.php'; ?>

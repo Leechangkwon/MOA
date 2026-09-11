@@ -1,285 +1,671 @@
-/* public/assets/app.css — 1단계 최소 스타일
-   외부 폰트·CDN 을 불러오지 않는다. CSP 가 default-src 'self' 이므로 외부 자원은 차단된다. */
+/* public/assets/app.css — 12단계(12-1) 공통 셸 · 기능별 화면 · 디자인 토큰 (PRD F-20)
+ *
+ * 규칙
+ *   · 외부 폰트·CDN·이미지 URL 을 하나도 불러오지 않는다 (CSP `default-src 'self'`).
+ *     서체는 OS 에 이미 있는 것만 쓴다.
+ *   · 화면 코드(HTML·JS)에는 인라인 `style=""` 이 없다 (CSP `style-src 'self'`).
+ *     보이고 안 보이고는 전부 **클래스와 `hidden` 속성**으로만 바꾼다.
+ *   · 이 파일은 **표현만** 담는다. 무엇을 보여 줄지는 서버가 내려 준 값(`/api/me` 의 `can_*`)이
+ *     정하고, 허용 여부는 언제나 서버 Authz 가 매 요청 다시 판단한다 (PRD S-01, 10장).
+ */
+
+/* ─── 토큰 (디자인 캔버스에서 옮겨 온 값) ──────────────────────────── */
 :root {
-  --bg: #f6f7f9;
+  --bg: #f4f6f9;
+  --surface: #ffffff;
+  --surface-2: #fafbfc;
   --fg: #1c1f24;
   --muted: #5b6472;
-  --line: #d8dde4;
+  --muted-2: #8b95a3;
+  --line: #dfe4ea;
   --accent: #1d5fbf;
+  --accent-soft: #e8f0fb;
+  --accent-line: #cfdff6;
+  --accent-dark: #174b98;
+  --danger: #a3221f;
+  --danger-soft: #fdf1f1;
+  --danger-line: #f0c7c7;
+  --warn-fg: #7a4a06;
+  --warn-bg: #fff8ec;
+  --warn-line: #f0d9b0;
+  --ok-fg: #1e7a3c;
+  --ok-bg: #e6f4ea;
+  --brand-navy: #14213d;
+
+  --r-card: 12px;
+  --r-ctl: 8px;
+  --r-pill: 999px;
+  --sidebar-w: 232px;
+  --h-input: 40px;
+  --h-btn: 36px;
+  --h-icon: 32px;
+
+  --font: system-ui, -apple-system, "Apple SD Gothic Neo", "Malgun Gothic", "Noto Sans KR", sans-serif;
+  --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
 }
+
 * { box-sizing: border-box; }
+
+/* [hidden] 은 브라우저 기본 스타일이지만 flex/grid 가 그것을 덮는다.
+   JS 가 el.hidden 으로만 표시를 바꾸므로 여기서 우선순위를 되돌린다. */
+[hidden] { display: none !important; }
+
+html, body { height: 100%; }
+
 body {
   margin: 0;
-  padding: 2.5rem 1.25rem;
   background: var(--bg);
   color: var(--fg);
-  font: 16px/1.6 system-ui, -apple-system, "Noto Sans KR", sans-serif;
+  font-family: var(--font);
+  font-size: 15px;
+  line-height: 1.55;
+  -webkit-font-smoothing: antialiased;
 }
-.card {
-  max-width: 40rem;
-  margin: 0 auto;
-  padding: 1.75rem 1.75rem 2rem;
-  background: #fff;
-  border: 1px solid var(--line);
-  border-radius: 10px;
-}
-h1 { margin: 0 0 .5rem; font-size: 1.4rem; }
-.lead { margin: 0 0 1.25rem; color: var(--muted); }
-.checks { margin: 0; padding-left: 1.2rem; color: var(--muted); }
-.checks li { margin: .35rem 0; }
+
+a { color: var(--accent); text-decoration: none; }
+a:hover { color: var(--accent-dark); }
+
+h1, h2, h3 { margin: 0; letter-spacing: -.01em; }
+
 code {
   padding: .1rem .35rem;
   background: var(--bg);
   border: 1px solid var(--line);
-  border-radius: 4px;
-  font-size: .9em;
+  border-radius: 5px;
+  font-family: var(--mono);
+  font-size: .88em;
   color: var(--accent);
 }
+.mono { font-family: var(--mono); }
+.muted { color: var(--muted); font-size: 13.5px; }
 
-/* ─── 2단계: 로그인 화면 · 홈 상단바 ─────────────────────────── */
-.card--narrow { max-width: 24rem; }
-
-.topbar {
-  display: flex;
-  gap: 1rem;
-  align-items: flex-start;
-  justify-content: space-between;
-  margin-bottom: 1.25rem;
-}
-.topbar h1 { margin-bottom: .35rem; }
-.topbar .lead { margin: 0; }
-
-.form { display: grid; gap: 1rem; margin: 1.25rem 0 0; }
-.field { display: grid; gap: .35rem; }
-.field__label { font-size: .9rem; color: var(--muted); }
-.field input {
-  padding: .55rem .65rem;
-  font: inherit;
-  color: var(--fg);
-  background: #fff;
-  border: 1px solid var(--line);
-  border-radius: 6px;
-}
-.field input:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
-
-.btn {
-  padding: .55rem 1rem;
-  font: inherit;
-  color: #fff;
-  background: var(--accent);
+/* 키보드 사용자를 위한 본문 건너뛰기 — 초점을 받을 때만 보인다 */
+.skip {
+  position: absolute;
+  left: -9999px;
+  top: 0;
+  z-index: 50;
+  padding: 8px 14px;
+  background: var(--surface);
   border: 1px solid var(--accent);
-  border-radius: 6px;
-  cursor: pointer;
+  border-radius: var(--r-ctl);
 }
-.btn:hover { filter: brightness(1.08); }
-.btn:disabled { cursor: default; opacity: .55; }
-.btn--quiet {
-  color: var(--accent);
-  background: #fff;
-  border-color: var(--line);
-  white-space: nowrap;
+.skip:focus { left: 8px; top: 8px; }
+
+/* ─── 공통 셸 — 좌측 내비 + 본문 (PRD 10장 「공통 셸」, F-20) ───────── */
+.app { display: flex; min-height: 100%; }
+
+/* 좁은 화면에서만 보이는 상단 바. 넓은 화면에서는 미디어 쿼리가 감춘다. */
+.appbar {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: 52px;
+  padding: 0 12px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--line);
 }
+.appbar__brand { font-size: 15px; font-weight: 700; }
+.appbar__page { color: var(--muted); font-size: 13.5px; }
 
-/* 오류 문구 자리. 서버가 준 문구만 textContent 로 들어간다 (app.js). */
-.msg {
-  min-height: 1.6em;
-  margin: 1rem 0 0;
-  color: #a3221f;
-  font-size: .95rem;
-}
-.msg:empty { margin: 0; }
-
-/* ─── 3단계: 파일 목록 · 업로드 폼 ───────────────────────────── */
-/* [hidden] 은 브라우저 기본 스타일이지만, .field 의 display:grid 가 그것을 덮는다.
-   JS 가 el.hidden 으로만 표시를 바꾸므로 여기서 우선순위를 되돌린다. */
-[hidden] { display: none !important; }
-
-.card--wide { max-width: 68rem; }
-
-.notice {
-  margin: 0 0 1.25rem;
-  padding: .7rem .85rem;
-  color: #7a4a06;
-  background: #fff8ec;
-  border: 1px solid #f0d9b0;
-  border-radius: 6px;
-  font-size: .92rem;
+.sidebar {
+  display: flex;
+  flex-direction: column;
+  width: var(--sidebar-w);
+  flex-shrink: 0;
+  padding: 20px 12px 16px;
+  background: var(--surface);
+  border-right: 1px solid var(--line);
 }
 
-.panel {
-  margin-top: 1.5rem;
-  padding-top: 1.25rem;
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0 8px 18px;
+}
+.brand__mark {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  flex-shrink: 0;
+  border-radius: 9px;
+  background: var(--accent);
+  color: #fff;
+}
+.brand__text { display: flex; flex-direction: column; min-width: 0; }
+.brand__name { font-size: 15px; font-weight: 700; }
+.brand__sub { font-size: 11.5px; color: var(--muted); }
+
+.nav-title {
+  margin: 18px 12px 6px;
+  font-size: 11.5px;
+  font-weight: 600;
+  letter-spacing: .06em;
+  color: var(--muted-2);
+  text-transform: uppercase;
+}
+.nav { display: flex; flex-direction: column; gap: 2px; }
+.nav__item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: 40px;
+  padding: 0 12px;
+  border-radius: var(--r-ctl);
+  color: var(--muted);
+  font-size: 14.5px;
+  font-weight: 500;
+}
+.nav__item:hover { background: #f0f3f7; color: var(--fg); }
+.nav__item.is-active { background: var(--accent-soft); color: var(--accent); }
+.nav__item .icon { display: inline-flex; flex-shrink: 0; }
+
+.sidebar__spacer { flex-grow: 1; min-height: 12px; }
+
+.userchip {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 8px 0;
   border-top: 1px solid var(--line);
 }
-.panel h2 { margin: 0 0 .75rem; font-size: 1.05rem; }
+.userchip__avatar {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-size: 13px;
+  font-weight: 700;
+}
+.userchip__text { display: flex; flex-direction: column; flex-grow: 1; min-width: 0; }
+.userchip__name { font-size: 13.5px; font-weight: 600; overflow-wrap: anywhere; }
+.userchip__role { font-size: 12px; color: var(--muted); }
 
+.main {
+  display: flex;
+  flex-direction: column;
+  flex-grow: 1;
+  min-width: 0;
+  gap: 20px;
+  padding: 28px 36px 40px;
+}
+
+.page-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+.page-head__text { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.page-head__title { font-size: 22px; font-weight: 700; letter-spacing: -.015em; }
+.page-head__sub { margin: 0; color: var(--muted); font-size: 14px; }
+.page-head__actions { display: flex; flex-wrap: wrap; gap: 8px; }
+
+/* ─── 카드 · 패널 ──────────────────────────────────────────────── */
+.card {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--r-card);
+}
+.card--pad { padding: 22px 24px; }
+.card--flush { overflow: hidden; }
+
+.panel {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 22px 24px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--r-card);
+}
+.panel__head { display: flex; flex-direction: column; gap: 2px; }
+.panel__title { font-size: 16px; font-weight: 700; }
+.panel__sub { margin: 0; color: var(--muted); font-size: 13px; }
+
+.grid-2 {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(22rem, 1fr));
+  gap: 20px;
+  align-items: start;
+}
+.span-all { grid-column: 1 / -1; }
+
+/* 내 정보 카드의 값 상자 (아이디·역할·팀) */
+.info-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr));
+  gap: 12px;
+}
+.info-item {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 12px 14px;
+  border-radius: 10px;
+  background: var(--bg);
+}
+.info-item__value { font-size: 15px; font-weight: 600; overflow-wrap: anywhere; }
+
+/* ─── 버튼 ─────────────────────────────────────────────────────── */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  height: var(--h-btn);
+  padding: 0 14px;
+  border: 1px solid var(--accent);
+  border-radius: var(--r-ctl);
+  background: var(--accent);
+  color: #fff;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.btn:hover { background: var(--accent-dark); border-color: var(--accent-dark); color: #fff; }
+.btn:disabled { cursor: default; opacity: .5; }
+.btn .icon { display: inline-flex; flex-shrink: 0; }
+
+.btn--quiet {
+  background: var(--surface);
+  color: var(--fg);
+  border-color: var(--line);
+  font-weight: 500;
+}
+.btn--quiet:hover { background: var(--surface-2); color: var(--accent); border-color: var(--accent); }
+
+.btn--danger {
+  background: var(--surface);
+  color: var(--danger);
+  border-color: var(--danger-line);
+  font-weight: 500;
+}
+.btn--danger:hover { background: var(--danger-soft); color: var(--danger); border-color: var(--danger); }
+
+.btn--icon {
+  width: var(--h-icon);
+  height: var(--h-icon);
+  padding: 0;
+  border-radius: 7px;
+  background: var(--surface);
+  color: var(--muted);
+  border: 1px solid var(--line);
+}
+.btn--icon:hover { background: var(--surface); color: var(--accent); border-color: var(--accent); }
+
+.btn--small { height: 30px; padding: 0 10px; font-size: 13px; }
+.btn--plain { border-color: transparent; background: transparent; }
+.btn--plain:hover { border-color: var(--line); background: var(--surface-2); }
+
+.btn:focus-visible,
+.nav__item:focus-visible,
+a:focus-visible,
+input:focus-visible,
+select:focus-visible,
+summary:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+/* ─── 폼 ───────────────────────────────────────────────────────── */
+.form { display: grid; gap: 14px; margin: 0; }
 .form--grid {
-  grid-template-columns: repeat(auto-fit, minmax(13rem, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr));
   align-items: end;
 }
-.field select {
-  padding: .55rem .5rem;
-  font: inherit;
-  color: var(--fg);
-  background: #fff;
+.field { display: grid; gap: 6px; min-width: 0; }
+.field--full { grid-column: 1 / -1; }
+.field__label { font-size: 13px; font-weight: 600; color: var(--muted); }
+
+.field input,
+.field select,
+.input {
+  height: var(--h-input);
+  padding: 0 12px;
   border: 1px solid var(--line);
-  border-radius: 6px;
+  border-radius: var(--r-ctl);
+  background: var(--surface);
+  color: var(--fg);
+  font: inherit;
+  font-size: 14.5px;
+  min-width: 0;
 }
-.field input[type="file"] { font-size: .9rem; }
+.field input[type="file"] {
+  height: auto;
+  padding: 9px 12px;
+  font-size: 13.5px;
+}
+.field input[type="date"] { padding-right: 8px; }
+
+.form-actions { display: flex; flex-wrap: wrap; gap: 8px; justify-content: flex-end; }
 
 .toolbar {
   display: flex;
   flex-wrap: wrap;
-  gap: .5rem;
-  margin-bottom: .85rem;
+  gap: 8px;
+  align-items: center;
 }
 .toolbar input[type="search"],
 .toolbar select {
-  padding: .5rem .55rem;
-  font: inherit;
-  color: var(--fg);
-  background: #fff;
+  height: var(--h-input);
+  padding: 0 12px;
   border: 1px solid var(--line);
-  border-radius: 6px;
+  border-radius: var(--r-ctl);
+  background: var(--surface);
+  color: var(--fg);
+  font: inherit;
+  font-size: 14.5px;
 }
-.toolbar input[type="search"] { flex: 1 1 14rem; min-width: 0; }
+.toolbar input[type="search"] { flex: 1 1 16rem; min-width: 0; }
 
+/* ─── 표 ───────────────────────────────────────────────────────── */
 .table-wrap { overflow-x: auto; }
 table.files {
   width: 100%;
   border-collapse: collapse;
-  font-size: .92rem;
-}
-table.files th,
-table.files td {
-  padding: .5rem .55rem;
-  text-align: left;
-  vertical-align: top;
-  border-bottom: 1px solid var(--line);
-  word-break: break-word;
+  font-size: 14px;
 }
 table.files th {
-  position: sticky;
-  top: 0;
-  background: var(--bg);
-  color: var(--muted);
+  padding: 10px 14px;
+  text-align: left;
+  font-size: 12.5px;
   font-weight: 600;
+  letter-spacing: .02em;
+  color: var(--muted);
+  background: var(--surface-2);
+  border-bottom: 1px solid var(--line);
   white-space: nowrap;
 }
-table.files td.actions { white-space: nowrap; }
-table.files td.actions .btn { margin-right: .3rem; }
-/* 5단계: 한 칸에 다운로드·삭제·수정 세 버튼이 들어간다 — 마지막 버튼 뒤 여백은 없앤다 */
-table.files td.actions .btn:last-child { margin-right: 0; }
-
-.btn--small { padding: .3rem .55rem; font-size: .85rem; }
-
-.muted { color: var(--muted); font-size: .9rem; }
-
-.pager {
-  display: flex;
-  gap: .6rem;
-  align-items: center;
-  margin-top: .9rem;
+table.files td {
+  padding: 12px 14px;
+  text-align: left;
+  vertical-align: middle;
+  border-bottom: 1px solid var(--line);
+  overflow-wrap: anywhere;
 }
+table.files tbody tr:last-child td { border-bottom: 0; }
+table.files td.actions { white-space: nowrap; text-align: right; }
+table.files td.actions .btn { margin-left: 6px; }
+table.files td.actions .btn:first-child { margin-left: 0; }
 
-/* ─── 8단계: 감사 로그 화면 ──────────────────────────────────── */
-/* 상단바의 링크·버튼 묶음 (감사 로그 링크는 서버가 can_view_audit 을 준 경우에만 보인다) */
-.topbar__actions {
+.table-foot {
   display: flex;
   flex-wrap: wrap;
-  gap: .4rem;
   align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 12px 16px;
+  background: var(--surface-2);
+  border-top: 1px solid var(--line);
 }
-.topbar__actions .btn { text-decoration: none; line-height: 1.4; }
+.pager { display: flex; gap: 6px; align-items: center; }
 
 /* 감사 로그 표는 열이 많다 — 글자를 조금 줄이고 가로 스크롤(.table-wrap)에 맡긴다 */
-#audit-body td { font-size: .88rem; }
-
-/* detail·request_id·user_agent 를 접었다 펴는 칸.
-   내용은 app.js 가 textContent 로만 넣는다 (SECURITY 1.4). */
-#audit-body details > summary {
-  color: var(--accent);
-  cursor: pointer;
-  white-space: nowrap;
-}
+#audit-body td { font-size: 13px; }
+#audit-body details > summary { color: var(--accent); cursor: pointer; white-space: nowrap; }
 .audit-detail {
   max-width: 28rem;
   margin: .4rem 0 0;
   padding: .5rem .6rem;
   background: var(--bg);
   border: 1px solid var(--line);
-  border-radius: 6px;
-  font-size: .82rem;
+  border-radius: var(--r-ctl);
+  font-family: var(--mono);
+  font-size: 12.5px;
   white-space: pre-wrap;
   word-break: break-all;
 }
 
-/* ─── 10단계: 내 계정(비밀번호 변경·2단계 인증) · 계정 관리 · 휴지통 ───
-   화면 구성만 다룬다. 무엇을 보여 줄지는 서버가 내려 준 값(can_manage_users·mfa_enabled)이
-   정하고, 허용 여부는 언제나 서버 Authz 가 매 요청 다시 판단한다 (PRD S-01, 10장). */
-
-/* 폼 격자(.form--grid) 안에서 한 줄을 통째로 쓰는 설명 문단 */
-.field--full { grid-column: 1 / -1; }
-
-.mfa {
-  margin-top: 1rem;
-  padding-top: .9rem;
-  border-top: 1px dashed var(--line);
+/* ─── 배지 — 접근 레벨 (한글 라벨, title 에 원래 값) ─────────────── */
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 22px;
+  padding: 0 9px;
+  border-radius: var(--r-pill);
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+  background: #eef0f3;
+  color: #6b7482;
 }
-.mfa > p { margin: 0 0 .6rem; }
-.mfa .audit-detail { max-width: 34rem; }
+.badge--public { background: var(--ok-bg); color: var(--ok-fg); }
+.badge--internal { background: var(--accent-soft); color: var(--accent); }
+.badge--team { background: #efeafc; color: #5b3fbf; }
+.badge--admin-only { background: var(--danger-soft); color: var(--danger); }
+.badge--ok { background: var(--ok-bg); color: var(--ok-fg); }
+.badge--off { background: #eef0f3; color: #6b7482; }
 
-/* 계정 관리 표는 칸이 많아 좁은 화면에서 넘친다 — 표 자체가 .table-wrap 안에서 가로 스크롤된다 */
-#users-body td.actions { white-space: nowrap; }
-#trash-body td.actions { white-space: nowrap; }
+/* ─── 알림 · 안내 ──────────────────────────────────────────────── */
+.msg {
+  min-height: 1.4em;
+  margin: 0;
+  color: var(--danger);
+  font-size: 14px;
+}
+.msg:empty { min-height: 0; }
 
-/* ─── 화면 보정: 홈 안내 상자 · 2단계 인증 절차 (사용자 피드백 ①③) ───
-   문구만 담는 순수 표현 규칙이다. 무엇을 보여 줄지는 여전히 서버가 정한다. */
-
-/* 개발 단계별 안내문을 없애고 합친 "이 서비스는 이렇게 동작합니다" 상자 */
-.notice__title { margin: 0 0 .4rem; font-weight: 600; }
+.notice {
+  margin: 0;
+  padding: 12px 14px;
+  color: var(--warn-fg);
+  background: var(--warn-bg);
+  border: 1px solid var(--warn-line);
+  border-radius: 10px;
+  font-size: 13.5px;
+  line-height: 1.6;
+}
+.notice__title { margin: 0 0 .4rem; font-weight: 700; }
 .notice__list { margin: 0; padding-left: 1.1rem; }
 .notice__list li { margin: .18rem 0; }
 
-/* 2단계 인증 등록 절차 — 번호 매긴 목록 */
-.steps { margin: .2rem 0 .8rem; padding-left: 1.3rem; font-size: .92rem; }
-.steps li { margin: .3rem 0; }
-
-/* 비밀 키를 옮겨 적으라는 경고 한 줄 */
 .warn {
-  margin: 0 0 .7rem;
-  padding: .55rem .7rem;
-  color: #8a2f2f;
-  background: #fdf1f1;
-  border: 1px solid #f0c7c7;
-  border-radius: 6px;
-  font-size: .9rem;
+  margin: 0;
+  padding: 10px 12px;
+  color: var(--danger);
+  background: var(--danger-soft);
+  border: 1px solid var(--danger-line);
+  border-radius: 10px;
+  font-size: 13.5px;
+  line-height: 1.6;
+}
+.ok-note {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 14px;
+  border-radius: 10px;
+  background: var(--ok-bg);
+  color: var(--ok-fg);
+  font-size: 13.5px;
 }
 
-/* "인증 앱에 바로 추가" (otpauth://) 링크 — href 는 app.js 가 otpauth:// 확인 뒤에만 넣는다 */
-#mfa-uri-link { color: var(--accent); }
+.steps { margin: .2rem 0 .6rem; padding-left: 1.3rem; font-size: 13.5px; }
+.steps li { margin: .3rem 0; }
 
-/* ─── 로그인 화면: 2단계 인증 코드 칸 ───────────────────────────────
-   순차 2단계 로그인(ARCH 4.0)이라 이 칸은 처음엔 hidden 이고, 서버가 mfa_required 로
-   답했을 때만 app.js 가 연다. 숨김은 위의 [hidden] 규칙이 맡으므로 따로 규칙이 필요 없다. */
+/* ─── 최초 로그인 강제 절차 (F-16) ──────────────────────────────── */
+.gate {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 22px 24px;
+  background: var(--surface);
+  border: 1px solid var(--accent-line);
+  border-radius: var(--r-card);
+}
+.gate h2 { font-size: 17px; font-weight: 700; }
 
-/* ─── 최초 로그인 강제 절차 · 임시 비밀번호 상자 (11단계 — PRD F-16) ────
-   표현 규칙일 뿐이다. 무엇을 보여 줄지는 서버가 준 `next` 가 정하고,
-   막는 것은 언제나 서버 관문(public/index.php)이다. */
-
-/* 절차 화면은 한 번에 하나만 보인다 — 나머지는 app.js 가 hidden 으로 접는다 */
-#forced-gate h2 { margin-top: 0; }
-
-/* 임시 비밀번호를 한 번만 보여 주는 읽기 전용 칸.
-   옮겨 적기 좋게 고정폭 글꼴로, 글자 사이를 조금 벌린다. */
+/* 임시 비밀번호를 한 번만 보여 주는 읽기 전용 칸 (11단계 F-16) */
 .temp-password {
   width: 100%;
-  margin: .2rem 0 .5rem;
-  padding: .5rem .6rem;
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  font-size: 1.05rem;
+  height: var(--h-input);
+  margin: .3rem 0 .5rem;
+  padding: 0 12px;
+  font-family: var(--mono);
+  font-size: 15px;
   letter-spacing: .06em;
-  border: 1px solid var(--line, #d8d8d8);
-  border-radius: 6px;
-  background: #fff;
+  color: var(--fg);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--r-ctl);
+}
+
+/* 2단계 인증 묶음 */
+.mfa { display: flex; flex-direction: column; gap: 12px; }
+.mfa .audit-detail { max-width: 34rem; }
+#mfa-uri-link { font-size: 13.5px; font-weight: 600; }
+
+/* ─── 모달 (<dialog>) — 12-2 미리보기가 쓴다 ────────────────────── */
+dialog.modal {
+  width: min(960px, calc(100vw - 32px));
+  max-width: none;
+  max-height: calc(100vh - 64px);
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: var(--r-card);
+  background: var(--surface);
+  color: var(--fg);
+  overflow: hidden;
+}
+dialog.modal::backdrop { background: rgba(17, 24, 39, .48); }
+.modal__head {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--line);
+}
+.modal__title { font-size: 16px; font-weight: 700; overflow-wrap: anywhere; }
+.modal__meta { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; font-size: 12.5px; color: var(--muted); }
+.modal__body { padding: 20px 24px; overflow: auto; background: var(--surface-2); }
+.modal__foot {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 12px 20px;
+  border-top: 1px solid var(--line);
+}
+
+/* ─── 로그인 화면 ──────────────────────────────────────────────── */
+.login { display: flex; min-height: 100%; }
+.login__brand {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 32px;
+  width: 42%;
+  max-width: 560px;
+  flex-shrink: 0;
+  padding: 48px 56px;
+  background: var(--brand-navy);
+  color: #fff;
+}
+.login__brand-top { display: flex; align-items: center; gap: 12px; }
+.login__mark {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 11px;
+  background: var(--accent);
+  color: #fff;
+}
+.login__brand-name { font-size: 18px; font-weight: 700; }
+.login__brand-sub { font-size: 12.5px; color: #aeb8cc; }
+.login__lead { margin: 0; font-size: 30px; line-height: 1.25; font-weight: 700; letter-spacing: -.02em; }
+.login__copy { margin: 0; max-width: 26rem; color: #c5cddd; font-size: 15px; line-height: 1.65; }
+.login__points { display: flex; flex-direction: column; gap: 10px; margin-top: 8px; }
+.login__point { display: flex; align-items: center; gap: 10px; color: #dfe5f0; font-size: 14px; }
+.login__point .icon { color: #7fb3ff; flex-shrink: 0; display: inline-flex; }
+.login__foot { margin: 0; font-size: 12.5px; color: #8e9ab3; }
+
+.login__pane {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-grow: 1;
+  padding: 32px 20px;
+}
+.login__card {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  width: 100%;
+  max-width: 420px;
+  padding: 32px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--r-card);
+}
+.login__title { font-size: 22px; font-weight: 700; }
+.login__sub { margin: 0; font-size: 14px; color: var(--muted); }
+.login__submit { height: 44px; font-size: 15px; }
+
+/* 2단계 인증 코드 칸 — 서버가 mfa_required 로 답했을 때만 app.js 가 연다 */
+.otp-box {
+  display: grid;
+  gap: 6px;
+  padding: 14px;
+  border-radius: 10px;
+  background: var(--accent-soft);
+  border: 1px solid var(--accent-line);
+}
+.otp-box .field__label { display: flex; align-items: center; gap: 8px; color: var(--accent); }
+.otp-box .field__label .icon { display: inline-flex; }
+.otp-box input {
+  font-family: var(--mono);
+  font-size: 20px;
+  letter-spacing: .35em;
+  text-align: center;
+}
+.otp-hint { margin: 0; font-size: 12px; color: var(--muted); }
+
+/* ─── 반응형 — 960px 미만은 상단 바 + 접이식 내비 ────────────────── */
+@media (max-width: 959.98px) {
+  .app { flex-direction: column; }
+  .sidebar {
+    width: auto;
+    border-right: 0;
+    border-bottom: 1px solid var(--line);
+  }
+  /* 접혀 있는 상태: app.js 가 aria-expanded 와 함께 hidden 을 토글한다 */
+  .sidebar__spacer { display: none; }
+  .main { padding: 20px 16px 32px; }
+  .login { flex-direction: column; }
+  .login__brand {
+    width: auto;
+    max-width: none;
+    padding: 24px 20px;
+    gap: 18px;
+  }
+  .login__lead { font-size: 24px; }
+  .login__points { display: none; }
+}
+
+@media (min-width: 960px) {
+  .appbar { display: none; }
+  .sidebar {
+    position: sticky;
+    top: 0;
+    height: 100vh;
+  }
+  /* 넓은 화면에서는 내비가 늘 열려 있다 — 좁은 화면의 hidden 토글을 무시한다 */
+  .sidebar[hidden] { display: flex !important; }
 }

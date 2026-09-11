@@ -104,6 +104,14 @@ const TBOX_ROUTES = [
     // 의도를 드러내려고 위에 둔다(7단계 `/api/files/fetch` 와 같은 이유).
     ['GET',    '/api/files/trash',          'files_trash.php',   'role:Admin'],
     ['POST',   '/api/files/{id}/restore',   'files_restore.php', 'role:Admin'],
+
+    // 12단계 — 기능별 화면 분리 (PRD F-20, 8장 「화면(HTML)」 행, 10장 화면 요구사항).
+    //   한 페이지에 쌓여 있던 기능을 화면 단위로 나눈 것이며 **권한 규칙은 그대로**다:
+    //   휴지통 화면은 데이터(`GET /api/files/trash`)와 **같은 정책** role:Admin 을 쓰고,
+    //   「내 계정」 화면은 본인 계정 API 와 같은 authenticated 를 쓴다.
+    //   화면만 열어 두고 API 를 막지 않거나 그 반대면 그것이 곧 우회 경로다 (PRD S-01).
+    ['GET',    '/trash',                    'trash_page.php',    'role:Admin'],
+    ['GET',    '/settings',                 'settings_page.php', Authz::POLICY_AUTHENTICATED],
 ];
 
 /**
@@ -335,6 +343,16 @@ if ($policy !== Authz::POLICY_PUBLIC) {
                 // route 패턴은 Audit 이 TBOX_ROUTE 에서 자동으로 넣는다 (ARCH 7.5 route).
                 'detail'      => ['next' => $gateNext],
             ]);
+            /* 12단계 (PRD F-20, 8장 「화면(HTML)」 행) — 막힌 것이 **화면 요청**이면
+             * 403 JSON 대신 절차 화면이 있는 `/` 로 302 를 보낸다. 강제 절차 화면은 `/` 에만
+             * 있으므로, 다른 화면에서 403 JSON 을 그대로 받으면 사용자는 "아무것도 안 되는
+             * 빈 화면" 을 보게 된다. **막는 판단·감사 기록은 위와 똑같고**(Audit::deny 는 이미
+             * 남았다) 응답 형태만 바뀐다. API(`/api/*`)는 기존 403 + next 그대로다 —
+             * 화면 편의를 위해 API 의 계약을 바꾸지 않는다.
+             */
+            if (strpos($reqPath, '/api/') !== 0 && $reqPath !== TBOX_HOME_PATH) {
+                Http::redirect(TBOX_HOME_PATH);
+            }
             // 다른 403 과 달리 `next` 를 함께 준다 — 막힌 사람이 본인이고,
             // 자기 계정의 다음 걸음을 모르면 절차를 끝낼 수 없기 때문이다 (ARCH 4.0).
             Http::json([

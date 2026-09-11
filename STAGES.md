@@ -473,14 +473,14 @@ sudo -u postgres psql -d tbox_re -c "SELECT happened_at, actor_name, action, res
 > 원격 push: 사용자 지시("push 해줘")로 2026-09-12 `6f4d8fe..75c03b8` 49 커밋을 `origin/main` 에 올렸다(Q-9 의 "push 는 결정 전 보류" 는 이 지시로 해소).
 
 **개발 사항 — 12-1 공통 셸·화면 분리·디자인 (F-20)**
-- [ ] 디자인 캔버스(Claude Design): 로그인 · 파일(목록+미리보기 모달) · 설정 · 조직·권한 4 아트보드. 토큰(색·간격·서체 스택·모서리)을 `app.css` `:root` 로 옮긴다. 외부 폰트·CDN 0 (CSP `self`)
-- [ ] `src/views/shell_top.php`·`shell_bottom.php`: 좌측 내비(파일·휴지통·설정·관리[계정 관리·조직·권한·감사 로그]) + 사용자 칩 + 로그아웃. 동적 값은 사용자명·역할·활성 메뉴 키 3개, 전부 `htmlspecialchars`. 내비 항목은 기본 `hidden`, `/api/me` 의 `can_*` 로만 표시
-- [ ] 페이지 분리: `/`(파일 — 목록·검색·올리기 패널·URL 가져오기 패널·강제 절차), `/trash`(`role:Admin`), `/settings`(`authenticated` — 내 정보·비밀번호·2단계 인증), 기존 `/users`·`/audit` 는 셸만 적용
-- [ ] `public/index.php`: 라우트 `/trash`·`/settings` 추가, 강제 절차(F-16) 중 `/` 외 **화면** 요청은 302 → `/` (API 는 기존 403+next)
-- [ ] `me.php`: `can_view_trash`(Admin)·`team_name` 추가 (`can_manage_org` 는 12-3)
-- [ ] `app.js`: `<body data-page>` 로 페이지별 init, 공통 `initShell()`(내비 표시·로그아웃·강제 절차 리다이렉트). 기능 코드는 이동만, 규칙 변경 0. innerHTML 0
-- [ ] `app.css` 전면 교체(토큰·레이아웃·표·모달·폼·버튼·상태 배지), 반응형(≥960px 사이드바 / 미만 상단 바+접이식)
-- [ ] README 「화면」절 갱신
+- [x] 디자인 캔버스(Claude Design): 로그인 · 파일(목록+미리보기 모달) · 설정 · 조직·권한 4 아트보드. 토큰(색·간격·서체 스택·모서리)을 `app.css` `:root` 로 옮긴다. 외부 폰트·CDN 0 (CSP `self`)
+- [x] `src/views/shell_top.php`·`shell_bottom.php`: 좌측 내비(파일·휴지통·설정·관리[계정 관리·조직·권한·감사 로그]) + 사용자 칩 + 로그아웃. 동적 값은 사용자명·역할·활성 메뉴 키 3개, 전부 `htmlspecialchars`. 내비 항목은 기본 `hidden`, `/api/me` 의 `can_*` 로만 표시
+- [x] 페이지 분리: `/`(파일 — 목록·검색·올리기 패널·URL 가져오기 패널·강제 절차), `/trash`(`role:Admin`), `/settings`(`authenticated` — 내 정보·비밀번호·2단계 인증), 기존 `/users`·`/audit` 는 셸만 적용
+- [x] `public/index.php`: 라우트 `/trash`·`/settings` 추가, 강제 절차(F-16) 중 `/` 외 **화면** 요청은 302 → `/` (API 는 기존 403+next)
+- [x] `me.php`: `can_view_trash`(Admin)·`team_name` 추가 (`can_manage_org` 는 12-3)
+- [x] `app.js`: `<body data-page>` 로 페이지별 init, 공통 `initShell()`(내비 표시·로그아웃·강제 절차 리다이렉트). 기능 코드는 이동만, 규칙 변경 0. innerHTML 0
+- [x] `app.css` 전면 교체(토큰·레이아웃·표·모달·폼·버튼·상태 배지), 반응형(≥960px 사이드바 / 미만 상단 바+접이식)
+- [x] README 「화면」절 갱신
 
 **개발 사항 — 12-2 미리보기 (F-18)**
 - [ ] `php8.1-zip` 설치 + `deploy/DEPENDENCIES.md` 3장 실측 행 (S-10-C: 배포판 패키지)
@@ -502,7 +502,7 @@ sudo -u postgres psql -d tbox_re -c "SELECT happened_at, actor_name, action, res
 - [ ] `grants.sql` 불변 확인(`permissions` SELECT 만), `\dp` 대조
 
 **검토 체크 (Fable ②)** — 묶음마다
-- [ ] 12-1: T-26 (Employee 세션 `/trash`·`/users`·`/org`·`/audit` 403, `/settings` 200; 강제 절차 세션 `/settings` 302), 기존 T-1·T-4·T-14 재확인(기능 이동 뒤 회귀), 린트 0
+- [x] 12-1 (2026-09-12 통과): T-26 (Employee 세션 `/trash`·`/users`·`/org`·`/audit` 403, `/settings` 200; 강제 절차 세션 `/settings` 302), 기존 T-1·T-4·T-14 재확인(기능 이동 뒤 회귀), 린트 0
 - [ ] 12-2: T-24 (권한 = 읽기), T-25 (`<img onerror>` txt/csv/md 글자 그대로, raw 헤더 `sandbox`·`nosniff`, txt raw 400), zip/docx 추출 정상·손상 파일 `parse_failed`, 감사 `file.preview` 행·detail 에 내용 0
 - [ ] 12-3: T-27 (Manager 403+감사, 사유 없음 400, 중복 409, 구성원 있는 팀 비활성화 400, 비활성 팀 업로드·배정 400, before/after 기록), `\dp` 로 `permissions` SELECT-only 불변
 
@@ -524,6 +524,9 @@ sudo -u postgres psql -d tbox_re -c "SELECT happened_at, actor_name, action, res
 | 2026-09-12 | 요청 | 미리보기 · Claude Design 으로 디자인 개선 · 기능별 화면 분리(파일/설정) · 조직 권한 관리 | PRD F-18·F-19·F-20, ARCH 5.8·5.9, SECURITY R-41~R-44, 이 절. 순서 12-1 → 12-2 → 12-3 |
 | 2026-09-12 | 결정(가정) | "조직 권한 관리" 에서 **권한 매트릭스 편집은 넣지 않음** — 기존 "앱 계정은 `permissions` SELECT 만" 결정과 충돌 | Fable 가정으로 진행, PRD Q-12 로 남김. 사용자가 편집을 원하면 Q-12 결정 후 별도 설계(R-43) |
 | 2026-09-12 | 관찰 | 서버 디스크 사용 96% (남은 공간 약 530MB) — 백업·덤프가 쌓이는 중 | `df -h /`. 미리보기용 `php8.1-zip` 은 수백 KB 라 문제없지만, 백업 보존 주기·`/var/backups/tbox-v2` 정리는 사용자 결정 필요(운영 항목) |
+| 2026-09-12 | 해소 | (12-1 구현 중 Opus 발견) 이 VM 에 PHP `mbstring` 확장이 없어 `mb_substr` 를 쓴 셸이 500 — `DEPENDENCIES.md` 에 "7단계 전 설치 예정" 으로만 남아 있던 항목 | 의존성을 늘리지 않고 `preg_match('/^./u')` 로 대체. 기존 코드도 `iconv_*` 만 쓴다. 규칙: 문자열 처리는 `iconv`, 새 확장은 S-10-C 심사 후 |
+| 2026-09-12 | 관찰 | 응답에 `Content-Security-Policy` 헤더가 **두 번** 나간다 — nginx `add_header` 와 `src/bootstrap.php` 가 같은 값을 각각 보냄(12-1 이전부터) | 값이 같아 브라우저 해석은 동일. 정리 여부는 사용자 결정(한 곳만 남기면 그 곳이 단일 진실). 12단계 범위 밖 |
+| 2026-09-12 | 미검증 | 12-1 화면 동작(내비 토글·접이식 패널·아이콘 클론·배지·강제 절차 302 뒤 화면) — 서버에 브라우저가 없음 | 서버 측은 curl 실측(T-26 행렬·`/api/me`·`/api/files` 필드 불변·T-14 403), JS 는 `node --check` 문법만. **브라우저 확인은 관문 ③(사용자)** |
 
 ---
 

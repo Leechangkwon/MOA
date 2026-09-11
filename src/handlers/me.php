@@ -17,6 +17,10 @@ declare(strict_types=1);
  *     이것은 **선택지일 뿐 권한이 아니다**: 목록에 없는 값을 보내도 서버가 다시 검사한다
  *     (Authz::decideUploadAs, PRD S-01).
  *
+ *   · team_name — 「내 계정」 화면의 「내 정보」 카드에 보여 줄 팀 이름 (12단계 F-20).
+ *     화면이 team_id 로 팀 이름을 스스로 찾지 않게 서버가 읽어 준다. 팀이 없으면 null 이다.
+ *     **표시용 값이며 권한이 아니다** — 팀 판정은 언제나 서버 Authz 가 세션의 team_id 로 한다.
+ *
  * 내부 id 는 내지 않는다 — 외부에 노출할 필요가 없는 값이다 (PRD S-09-5 취지).
  * 응답은 Cache-Control: no-store 로 나간다 (Http::json).
  *
@@ -24,10 +28,29 @@ declare(strict_types=1);
  * @var list<string>             $params 경로 변수 없음
  */
 
+/*
+ * 팀 이름 조회 (12단계 F-20). team_id 는 **세션에서 읽은 서버 값**이고 요청이 정하지 않는다.
+ * SQL 은 Db::run 의 이름 바인딩만 쓴다 — 문자열 결합이 없다 (PRD S-04).
+ */
+$sqlTeamName = <<<'SQL'
+    SELECT name FROM teams WHERE id = :id
+    SQL;
+
+$teamName = null;
+$myTeamId = $user['team_id'] ?? null;
+if ($myTeamId !== null && $myTeamId !== '') {
+    $teamRow = Db::instance()->run($sqlTeamName, [':id' => (int) $myTeamId])->fetch();
+    if (is_array($teamRow)) {
+        $teamName = (string) $teamRow['name'];
+    }
+}
+
 Http::json([
     'username'   => (string) $user['username'],
     'role'       => (string) $user['role'],
     'team_id'    => $user['team_id'],
+    // 12단계 — 「내 계정」 화면이 보여 줄 팀 이름(없으면 null). 표시용이며 권한이 아니다 (F-20).
+    'team_name'  => $teamName,
     'csrf_token' => Auth::csrfToken(),
     'upload_levels' => Authz::uploadableLevels($user),
     // 7단계 — "URL 로 가져오기" 패널을 그릴지 여부 (F-14, Manager 이상).
@@ -42,6 +65,11 @@ Http::json([
     // can_fetch·can_view_audit 과 똑같은 **화면 편의 값**이다. 링크를 되살려 /users 나
     // /api/users·/api/files/trash 를 직접 불러도 라우터 정책이 다시 막는다 (PRD S-01).
     'can_manage_users' => Authz::canManageUsers($user),
+    // 12단계 — 좌측 내비의 「휴지통」 항목을 보일지 여부 (F-11 · F-20, Admin 만, PRD 5.4).
+    // 휴지통은 계정 관리와 **같은 자격**(Authz::canManageUsers = Admin)으로 열린다 —
+    // 새 판단 규칙을 만들지 않았다(Authz 에 새 메서드를 추가하지 않는다). 항목을 되살려도
+    // /trash 와 /api/files/trash 는 라우터 정책 role:Admin 이 다시 막는다 (PRD S-01).
+    'can_view_trash'   => Authz::canManageUsers($user),
     // 10단계 — 내 2단계 인증이 켜져 있나 (R-05). 권한이 아니라 상태이며,
     // 화면이 "켜기" 를 보일지 "끄기" 를 보일지 고르는 데만 쓴다.
     'mfa_enabled'      => ($user['mfa_enabled'] ?? false) === true,

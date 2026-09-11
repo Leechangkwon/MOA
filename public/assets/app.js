@@ -1,6 +1,15 @@
 'use strict';
-/* public/assets/app.js — 10단계: 로그인 · 로그아웃 · 파일 목록/업로드/다운로드/삭제/수정 ·
- *                          URL 로 가져오기 · 감사 로그 조회 화면
+/* public/assets/app.js — 12단계(12-1): 공통 셸 + 기능별 화면
+ *   로그인 · 파일(`/`) · 휴지통(`/trash`) · 내 계정(`/settings`) ·
+ *   계정 관리(`/users`) · 감사 로그(`/audit`)
+ *
+ * 어느 화면인지는 서버가 <body data-page="…"> 로 알려 주고, 아래 bootPage() 가 그 값으로만
+ * 갈라진다. 화면이 늘어나도 기능 함수(initFiles·initTrash·initAccount·initUsers·initAudit·
+ * initForcedGate·initLogin)는 그대로다 — 12-1 은 **자리를 옮겼을 뿐** 요청·검증 규칙을
+ * 한 줄도 바꾸지 않았다 (PRD F-20).
+ *
+ * 아이콘은 서버 HTML 의 <template id="tpl-icon-…"> 을 cloneNode 로 복제해 붙인다.
+ * 문자열을 HTML 로 바꾸는 API(inner/outer HTML 계열)를 쓰지 않고, 이모지도 쓰지 않는다.
  *
  * 규칙 (PRD S-03, S-09-3, ARCHITECTURE 13장 체크리스트)
  *   · DOM 에 값을 넣을 때는 textContent 만 쓴다. HTML 문자열을 그대로 넣는 API
@@ -116,6 +125,76 @@ function setText(el, value) {
   if (el) {
     el.textContent = value === null || value === undefined ? '' : String(value);
   }
+}
+
+/* ─── 아이콘 — <template> 복제만 쓴다 (CSP `script-src 'self'`, S-03) ───
+ *
+ * SVG 마크업은 **서버가 만든 HTML**(src/views/shell_bottom.php · login_page.php)의
+ * <template> 안에 있고, 여기서는 그 조각을 cloneNode 로 복제해 붙이기만 한다.
+ * 문자열 → HTML 변환이 한 곳도 없으므로 저장형 XSS 의 통로가 생기지 않는다.
+ */
+function makeIcon(name) {
+  var host = document.createElement('span');
+  host.className = 'icon';
+  var tpl = document.getElementById('tpl-icon-' + String(name));
+  if (tpl && tpl.content) {
+    host.appendChild(tpl.content.cloneNode(true));
+  }
+  return host;
+}
+
+/** HTML 에 미리 놓인 [data-icon] 자리를 채운다 (내비·머리 단추 등) */
+function paintIcons(root) {
+  var scope = root || document;
+  var slots = scope.querySelectorAll('[data-icon]');
+  var i;
+  for (i = 0; i < slots.length; i++) {
+    if (slots[i].firstChild === null) {
+      slots[i].appendChild(makeIcon(slots[i].getAttribute('data-icon')));
+    }
+  }
+}
+
+/**
+ * 표의 작업 칸에 쓰는 아이콘 단추. 그림만 있으면 뜻이 전해지지 않으므로
+ * **한글 이름**을 title 과 aria-label 에 함께 넣는다(화면 낭독기·마우스 올림 모두).
+ */
+function makeIconButton(iconName, label) {
+  var button = document.createElement('button');
+  button.type = 'button';
+  button.className = 'btn btn--icon';
+  button.setAttribute('title', label);
+  button.setAttribute('aria-label', label);
+  button.appendChild(makeIcon(iconName));
+  return button;
+}
+
+/**
+ * 접근 레벨 배지의 **화면 문구**. 값 자체는 서버가 정하고(PRD 4장의 네 가지),
+ * 여기 표는 그 값에 붙일 한국어 라벨일 뿐이다. 표에 없는 값이 오면 배지를 만들지 않고
+ * 받은 문자열을 그대로 글자로만 보여 준다 — 서버 문자열이 class 이름이 되지 않게 하는 방어.
+ */
+var LEVEL_BADGE_LABELS = {
+  'public': '공개',
+  'internal': '사내',
+  'team': '팀',
+  'admin-only': '관리자'
+};
+
+/** 표의 「레벨」 칸 — 배지 span 하나. 원래 값은 title 에 남겨 둔다(감사·문의용). */
+function addLevelCell(row, level) {
+  var td = document.createElement('td');
+  if (typeof level === 'string' && Object.prototype.hasOwnProperty.call(LEVEL_BADGE_LABELS, level)) {
+    var badge = document.createElement('span');
+    badge.className = 'badge badge--' + level;
+    badge.setAttribute('title', level);
+    setText(badge, LEVEL_BADGE_LABELS[level]);
+    td.appendChild(badge);
+  } else {
+    setText(td, level);
+  }
+  row.appendChild(td);
+  return td;
 }
 
 /**
@@ -337,6 +416,9 @@ function initFiles(csrfToken, uploadLevels, canFetch, myTeamId) {
   var teamField = document.getElementById('upload-team-field');
   var teamSelect = document.getElementById('upload-team');
   var uploadSubmit = document.getElementById('upload-submit');
+  var uploadPanel = document.getElementById('upload-panel');
+  var uploadToggle = document.getElementById('upload-toggle');
+  var fetchToggle = document.getElementById('fetch-toggle');
   var fetchPanel = document.getElementById('fetch-panel');
   var fetchForm = document.getElementById('fetch-form');
   var fetchUrl = document.getElementById('fetch-url');
@@ -469,6 +551,11 @@ function initFiles(csrfToken, uploadLevels, canFetch, myTeamId) {
       });
   }
 
+  /*
+   * 작업 칸 — 12단계부터 **아이콘 단추**다. 뜻은 title·aria-label 의 한글이 전한다.
+   * 무엇을 만들지는 여전히 서버가 행마다 내려 준 can_delete·can_edit 만 본다 —
+   * 화면이 역할·소유자를 따지지 않는다 (PRD S-01, 10장). 규칙은 그대로이고 모양만 바뀌었다.
+   */
   function addActions(row, file) {
     var td = document.createElement('td');
     td.className = 'actions';
@@ -477,33 +564,29 @@ function initFiles(csrfToken, uploadLevels, canFetch, myTeamId) {
     if (UUID_RE.test(file.id)) {
       var link = document.createElement('a');
       link.setAttribute('href', '/api/files/' + file.id + '/download');
-      link.className = 'btn btn--quiet btn--small';
-      setText(link, '다운로드');
+      link.className = 'btn btn--icon';
+      link.setAttribute('title', '다운로드');
+      link.setAttribute('aria-label', '다운로드');
+      link.appendChild(makeIcon('download'));
       td.appendChild(link);
 
-      // 삭제 버튼은 서버가 그 행에 대해 can_delete 를 참으로 준 경우에만 만든다.
-      // 화면이 역할·소유자를 따져서 정하지 않는다 — 판단은 서버가 이미 했다 (PRD S-01, 10장).
-      if (file.can_delete === true) {
-        var button = document.createElement('button');
-        button.type = 'button';
-        button.className = 'btn btn--quiet btn--small';
-        setText(button, '삭제');
-        button.addEventListener('click', function () {
-          deleteFile(file.id);
-        });
-        td.appendChild(button);
-      }
-
-      // 수정 버튼도 서버가 그 행에 대해 can_edit 를 참으로 준 경우에만 만든다.
+      // 수정 버튼은 서버가 그 행에 대해 can_edit 를 참으로 준 경우에만 만든다.
       if (file.can_edit === true) {
-        var editButton = document.createElement('button');
-        editButton.type = 'button';
-        editButton.className = 'btn btn--quiet btn--small';
-        setText(editButton, '수정');
+        var editButton = makeIconButton('edit', '수정');
         editButton.addEventListener('click', function () {
           editFile(file);
         });
         td.appendChild(editButton);
+      }
+
+      // 삭제 버튼도 서버가 그 행에 대해 can_delete 를 참으로 준 경우에만 만든다.
+      // 화면이 역할·소유자를 따져서 정하지 않는다 — 판단은 서버가 이미 했다 (PRD S-01, 10장).
+      if (file.can_delete === true) {
+        var button = makeIconButton('trash', '삭제');
+        button.addEventListener('click', function () {
+          deleteFile(file.id);
+        });
+        td.appendChild(button);
       }
     }
 
@@ -521,7 +604,7 @@ function initFiles(csrfToken, uploadLevels, canFetch, myTeamId) {
       var row = document.createElement('tr');
       addCell(row, file.name);
       addCell(row, formatSize(file.size_bytes));
-      addCell(row, file.access_level);
+      addLevelCell(row, file.access_level);
       addCell(row, file.team_name === null || file.team_name === undefined ? '—' : file.team_name);
       addCell(row, file.uploaded_by);
       addCell(row, file.created_at);
@@ -771,18 +854,46 @@ function initFiles(csrfToken, uploadLevels, canFetch, myTeamId) {
     fetchForm.addEventListener('submit', fetchByUrl);
   }
 
-  // 업로드 레벨 선택지는 서버가 준 목록으로만 만든다. 하나도 없으면(Guest) 업로드 패널을 감춘다.
-  // 감추는 것은 편의일 뿐이다 — 그래도 POST /api/files 는 서버가 다시 막는다 (PRD S-01).
-  var hasTeam = myTeamId !== null && myTeamId !== undefined && String(myTeamId) !== '';
-  var levelCount = fillLevelOptions(levelSelect, uploadLevels, hasTeam);
-  if (levelCount === 0 && uploadForm && uploadForm.parentNode) {
-    uploadForm.parentNode.hidden = true;
+  /**
+   * 머리 단추로 접었다 펴는 패널 (12단계 — 한 화면에 폼이 늘 펼쳐져 있지 않게).
+   * 여는 것은 표현일 뿐이고, 무엇을 보낼 수 있는지는 서버가 다시 판단한다 (PRD S-01).
+   */
+  function bindPanelToggle(toggle, panel) {
+    if (!toggle || !panel) {
+      return;
+    }
+    toggle.addEventListener('click', function () {
+      var open = panel.hidden === true;
+      panel.hidden = !open;
+      toggle.setAttribute('aria-expanded', open ? 'true' : 'false');
+    });
   }
 
-  // "URL 로 가져오기" 패널은 서버가 can_fetch === true 를 준 경우에만 연다 (F-14, Manager 이상).
-  // 레벨 선택지는 업로드와 같은 목록(서버가 정한 upload_levels)을 쓴다.
+  // 업로드 레벨 선택지는 서버가 준 목록으로만 만든다. 하나도 없으면(Guest) 올리기 단추·패널을
+  // 감춘다. 감추는 것은 편의일 뿐이다 — 그래도 POST /api/files 는 서버가 다시 막는다 (PRD S-01).
+  var hasTeam = myTeamId !== null && myTeamId !== undefined && String(myTeamId) !== '';
+  var canUpload = fillLevelOptions(levelSelect, uploadLevels, hasTeam) > 0;
+  if (uploadToggle) {
+    uploadToggle.hidden = !canUpload;
+  }
+  if (uploadPanel) {
+    uploadPanel.hidden = true;
+  }
+  if (canUpload) {
+    bindPanelToggle(uploadToggle, uploadPanel);
+  }
+
+  // "URL 로 가져오기" 단추·패널은 서버가 can_fetch === true 를 준 경우에만 연다
+  // (F-14, Manager 이상). 레벨 선택지는 업로드와 같은 목록(서버가 정한 upload_levels)을 쓴다.
+  var canFetchUrl = canFetch === true && fillLevelOptions(fetchLevel, uploadLevels, hasTeam) > 0;
+  if (fetchToggle) {
+    fetchToggle.hidden = !canFetchUrl;
+  }
   if (fetchPanel) {
-    fetchPanel.hidden = canFetch !== true || fillLevelOptions(fetchLevel, uploadLevels, hasTeam) === 0;
+    fetchPanel.hidden = true;
+  }
+  if (canFetchUrl) {
+    bindPanelToggle(fetchToggle, fetchPanel);
   }
 
   syncTeamField();
@@ -1282,17 +1393,14 @@ function initTrash(csrfToken, onRestored) {
       var row = document.createElement('tr');
       addCell(row, file.name);
       addCell(row, formatSize(file.size_bytes));
-      addCell(row, file.access_level);
+      addLevelCell(row, file.access_level);
       addCell(row, file.uploaded_by);
       addCell(row, file.deleted_by);
       addCell(row, file.deleted_at);
       var td = document.createElement('td');
       td.className = 'actions';
       if (UUID_RE.test(file.id)) {
-        var button = document.createElement('button');
-        button.type = 'button';
-        button.className = 'btn btn--quiet btn--small';
-        setText(button, '복구');
+        var button = makeIconButton('restore', '복구');
         button.addEventListener('click', function () {
           restore(file.id);
         });
@@ -1861,16 +1969,15 @@ function initForcedGate(csrfToken, firstStep, mfaEnabled) {
   hideEverythingElse();
 
   /*
-   * 2단계 인증 등록 화면은 「내 계정」의 것을 **그대로 옮겨 온다**(initAccount 가 붙인
-   * 이벤트도 함께 따라온다). 같은 화면을 두 벌 만들면 언젠가 한쪽만 고쳐진다.
+   * 2단계 인증 등록 화면은 「내 계정」(`/settings`)과 **같은 파일**을 서버가 이 슬롯
+   * (`#forced-mfa-slot`)에 include 해 둔 것이다 (src/views/mfa_enroll.php). 예전처럼
+   * 화면 조각을 JS 가 옮겨 붙이지 않는다 — 같은 마크업이 한 벌뿐이라 옮길 것이 없다.
+   * initAccount 가 그 조각에 이벤트를 붙이고, 2단계 인증이 꺼진 상태이므로 스스로 펼쳐진다.
    */
-  initAccount(csrfToken, mfaEnabled, function () {
-    refresh();
-  });
-  var mfaOff = document.getElementById('mfa-off');
-  if (slot && mfaOff) {
-    slot.appendChild(mfaOff);
-    mfaOff.hidden = false;
+  if (slot) {
+    initAccount(csrfToken, mfaEnabled, function () {
+      refresh();
+    });
   }
 
   if (pwForm) {
@@ -1931,12 +2038,117 @@ function initForcedGate(csrfToken, firstStep, mfaEnabled) {
   show(firstStep);
 }
 
-/* ─── 로그인한 화면 (홈) ────────────────────────────────────── */
-function initHome(button) {
-  var msg = document.getElementById('msg');
-  var csrfToken = null;
+/* ─── 내 계정 화면의 「내 정보」 (12단계 F-20) ─────────────────────
+ *
+ * 아이디·역할은 서버가 이미 HTML 에 넣었고(공통 셸·설정 화면, htmlspecialchars),
+ * 팀 이름만 /api/me 의 team_name 을 textContent 로 넣는다. 화면이 team_id 로 팀 이름을
+ * 스스로 찾지 않는다 — 무엇을 보여 줄지는 서버가 정한다 (PRD S-01).
+ */
+function initSettings(me) {
+  var team = document.getElementById('me-team');
+  if (team) {
+    setText(team, typeof me.team_name === 'string' && me.team_name !== '' ? me.team_name : '—');
+  }
+}
 
-  // 세션이 살아 있는지 확인하고 CSRF 토큰을 받아 둔다.
+/* ─── 공통 셸 (12단계 F-20 — PRD 10장 「공통 셸」) ─────────────────
+ *
+ * 모든 화면이 공유하는 좌측 내비·사용자 칩·로그아웃·좁은 화면 메뉴를 맡는다.
+ *
+ * ★ 내비 항목은 서버 HTML 에서 전부 `hidden` 으로 나가고, 여기서 여는 근거는 오직
+ *   /api/me 의 can_* 플래그뿐이다. 이 파일은 역할 문자열을 비교하지 않는다 (PRD S-01).
+ *   항목을 개발자도구로 되살려도 /trash·/users·/org·/audit 은 라우트 정책이 다시 막고
+ *   그 시도가 authz.route|deny 로 감사 로그에 남는다 — 표시는 편의, 근거는 라우트 정책이다.
+ */
+function initShell(me, csrfToken) {
+  var msg = document.getElementById('msg');
+  var sidebar = document.getElementById('sidebar');
+  var navToggle = document.getElementById('nav-toggle');
+  var logout = document.getElementById('logout');
+
+  /** 최초 로그인 강제 절차가 남았나 (있으면 다른 화면으로 갈 길을 접어 둔다) */
+  var inGate = typeof me.next === 'string' && me.next !== '';
+
+  var canTrash = me.can_view_trash === true;
+  var canUsers = me.can_manage_users === true;
+  var canAudit = me.can_view_audit === true;
+  // 「조직·권한」은 12-3 에서 can_manage_org 로 연다. 지금은 언제나 닫혀 있다.
+  var canOrg = false;
+
+  function showNav(id, open) {
+    var el = document.getElementById(id);
+    if (el) {
+      el.hidden = inGate ? true : !open;
+    }
+  }
+
+  showNav('nav-files', true);
+  showNav('nav-settings', true);
+  showNav('nav-trash', canTrash);
+  showNav('nav-users', canUsers);
+  showNav('nav-org', canOrg);
+  showNav('nav-audit', canAudit);
+
+  // 「관리」 묶음은 그 안에 열린 항목이 하나라도 있을 때만 제목째 보인다.
+  var adminGroup = document.getElementById('nav-admin-group');
+  if (adminGroup) {
+    adminGroup.hidden = inGate || !(canUsers || canOrg || canAudit);
+  }
+
+  /* 좁은 화면(960px 미만)의 접이식 내비. 넓은 화면에서는 CSS 가 내비를 늘 펼쳐 두므로
+     여기서 hidden 을 켜 두어도 영향이 없다 (app.css 의 min-width: 960px 규칙). */
+  if (sidebar && navToggle) {
+    sidebar.hidden = true;
+    navToggle.setAttribute('aria-expanded', 'false');
+    navToggle.addEventListener('click', function () {
+      var open = sidebar.hidden === true;
+      sidebar.hidden = !open;
+      navToggle.setAttribute('aria-expanded', open ? 'true' : 'false');
+    });
+  }
+
+  if (logout) {
+    logout.disabled = false;
+    logout.addEventListener('click', function () {
+      if (csrfToken === null) {
+        setText(msg, GENERIC_ERROR);
+        return;
+      }
+      logout.disabled = true;
+      fetch('/api/logout', {
+        method: 'POST',
+        headers: { 'X-CSRF-Token': csrfToken },
+        credentials: 'same-origin',
+        cache: 'no-store'
+      })
+        .then(function (response) {
+          if (response.status === 200 || response.status === 401) {
+            toLogin();
+            return null;
+          }
+          return readJson(response).then(function (body) {
+            setText(msg, errorMessage(body));
+            logout.disabled = false;
+            return null;
+          });
+        })
+        .catch(function () {
+          setText(msg, GENERIC_ERROR);
+          logout.disabled = false;
+        });
+    });
+  }
+}
+
+/* ─── 화면별 시작 (12단계 F-20) ────────────────────────────────────
+ *
+ * 어느 화면인지는 서버가 <body data-page="…"> 로 알려 준다. 화면 코드가 URL 을 읽어
+ * 스스로 판단하지 않는다. 무엇을 그릴 수 있는지는 여전히 서버가 정하고(라우트 정책 ·
+ * /api/me 의 can_*), 여기 분기는 **어떤 함수를 부를지**만 고른다.
+ */
+function bootPage(page) {
+  var msg = document.getElementById('msg');
+
   fetch('/api/me', { credentials: 'same-origin', cache: 'no-store' })
     .then(function (response) {
       if (response.status === 401) {
@@ -1946,63 +2158,68 @@ function initHome(button) {
       if (!response.ok) {
         return null;
       }
-      return readJson(response).then(function (body) {
-        if (typeof body.csrf_token === 'string') {
-          csrfToken = body.csrf_token;
-          button.disabled = false;
-          /*
-           * 11단계 (PRD F-16) — 최초 로그인 강제 절차가 남아 있으면 **그 화면만** 그린다.
-           * 값은 서버가 준 `next` 하나뿐이고 화면이 스스로 판단하지 않는다.
-           * 절차 화면이 없는 다른 페이지(/users·/audit)는 관문이 애초에 403 으로 막는다.
-           */
-          var forcedNext = typeof body.next === 'string' ? body.next : null;
-          if (forcedNext !== null && document.getElementById('forced-gate')) {
-            initForcedGate(csrfToken, forcedNext, body.mfa_enabled === true);
+      return readJson(response).then(function (me) {
+        if (typeof me.csrf_token !== 'string') {
+          return null;
+        }
+        var csrfToken = me.csrf_token;
+        var next = typeof me.next === 'string' && me.next !== '' ? me.next : null;
+
+        /*
+         * 최초 로그인 강제 절차(F-16)가 남았는데 파일 화면이 아니면 `/` 로 보낸다.
+         * 서버 관문도 화면 요청을 302 로 돌려보내지만, 이미 열려 있는 창을 맞춰 주는 것은
+         * 화면의 몫이다. **막는 것은 서버**이고 이 줄은 안내일 뿐이다 (PRD S-01).
+         */
+        if (next !== null && page !== 'files') {
+          window.location.replace(HOME_PATH);
+          return null;
+        }
+
+        initShell(me, csrfToken);
+
+        if (page === 'files') {
+          if (next !== null && document.getElementById('forced-gate')) {
+            initForcedGate(csrfToken, next, me.mfa_enabled === true);
             return null;
           }
-          // 파일 화면은 토큰을 받은 뒤에 시작한다(업로드·삭제에 토큰이 필요하다).
-          // upload_levels 는 서버가 정한 업로드 레벨 선택지다(4단계). 배열이 아니면 빈 목록으로 본다.
-          // can_fetch 는 "URL 로 가져오기" 패널 표시 여부다(7단계). true 가 아니면 열지 않는다.
           if (document.getElementById('files-body')) {
             initFiles(
               csrfToken,
-              Array.isArray(body.upload_levels) ? body.upload_levels : [],
-              body.can_fetch === true,
+              Array.isArray(me.upload_levels) ? me.upload_levels : [],
+              me.can_fetch === true,
               // team_id 는 레벨 기본값(team)·팀 선택 기본값에만 쓰는 화면 편의 값이다 (PRD S-01).
-              typeof body.team_id === 'number' || typeof body.team_id === 'string' ? body.team_id : null
+              typeof me.team_id === 'number' || typeof me.team_id === 'string' ? me.team_id : null
             );
           }
-          // 8단계 — "감사 로그" 링크는 서버가 can_view_audit === true 를 준 경우에만 연다
-          // (F-09, Admin 만). 링크를 되살려도 /audit·/api/audit 은 서버가 다시 막는다.
-          var auditLink = document.getElementById('audit-link');
-          if (auditLink) {
-            auditLink.hidden = body.can_view_audit !== true;
-          }
-          // 10단계 — "계정 관리" 링크는 can_manage_users === true 일 때만 연다 (F-10, Admin 만).
-          // 링크를 되살려도 /users·/api/users 는 라우터 정책 user.manage 가 다시 막는다.
-          var usersLink = document.getElementById('users-link');
-          if (usersLink) {
-            usersLink.hidden = body.can_manage_users !== true;
-          }
-          // 10단계 — 내 계정(비밀번호 변경·2단계 인증). 로그인한 사람이면 누구나 자기 것만.
-          if (document.getElementById('password-form')) {
-            initAccount(csrfToken, body.mfa_enabled === true);
-          }
-          // 10단계 — 휴지통 패널도 서버가 준 can_manage_users 로만 연다 (F-11, Admin 만).
-          var trashPanel = document.getElementById('trash-panel');
-          if (trashPanel && body.can_manage_users === true) {
-            trashPanel.hidden = false;
+          return null;
+        }
+        if (page === 'trash') {
+          // 이 화면에 들어왔다는 것 자체가 라우트 정책 role:Admin 을 통과했다는 뜻이다.
+          if (document.getElementById('trash-body')) {
             initTrash(csrfToken);
           }
-          // 10단계 — 계정 관리 화면(/users). 여기 들어왔다는 것 자체가 정책 user.manage 통과다.
+          return null;
+        }
+        if (page === 'settings') {
+          initSettings(me);
+          if (document.getElementById('password-form')) {
+            initAccount(csrfToken, me.mfa_enabled === true);
+          }
+          return null;
+        }
+        if (page === 'users') {
+          // 라우트 정책 user.manage 를 통과한 화면이다 (Admin 만).
           if (document.getElementById('users-body')) {
             initUsers(csrfToken);
           }
-          // 감사 로그 화면(/audit)이면 표를 채운다. 이 화면에 들어왔다는 것 자체가
-          // 라우터 정책 audit.read 를 통과했다는 뜻이다.
+          return null;
+        }
+        if (page === 'audit') {
+          // 라우트 정책 audit.read 를 통과한 화면이다 (Admin 만).
           if (document.getElementById('audit-body')) {
             initAudit();
           }
+          return null;
         }
         return null;
       });
@@ -2010,46 +2227,23 @@ function initHome(button) {
     .catch(function () {
       setText(msg, GENERIC_ERROR);
     });
-
-  button.disabled = true;
-  button.addEventListener('click', function () {
-    if (csrfToken === null) {
-      setText(msg, GENERIC_ERROR);
-      return;
-    }
-    button.disabled = true;
-    fetch('/api/logout', {
-      method: 'POST',
-      headers: { 'X-CSRF-Token': csrfToken },
-      credentials: 'same-origin',
-      cache: 'no-store'
-    })
-      .then(function (response) {
-        if (response.status === 200 || response.status === 401) {
-          toLogin();
-          return null;
-        }
-        return readJson(response).then(function (body) {
-          setText(msg, errorMessage(body));
-          button.disabled = false;
-          return null;
-        });
-      })
-      .catch(function () {
-        setText(msg, GENERIC_ERROR);
-        button.disabled = false;
-      });
-  });
 }
 
 document.addEventListener('DOMContentLoaded', function () {
-  var form = document.getElementById('login-form');
-  if (form) {
-    initLogin(form);
+  // 서버 HTML 의 <template> 아이콘을 [data-icon] 자리에 붙인다 (문자열 → HTML 변환 0).
+  paintIcons(document);
+
+  var page = document.body && document.body.dataset ? document.body.dataset.page : '';
+
+  if (page === 'login') {
+    var form = document.getElementById('login-form');
+    if (form) {
+      initLogin(form);
+    }
     return;
   }
-  var logout = document.getElementById('logout');
-  if (logout) {
-    initHome(logout);
+  if (typeof page !== 'string' || page === '') {
+    return;
   }
+  bootPage(page);
 });

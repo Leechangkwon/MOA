@@ -34,6 +34,7 @@
 ```
 public/      nginx root — index.php(단일 입구), assets/
 src/         Auth · Authz · Audit · Db · Storage · Upload · handlers/
+             views/  공통 셸(shell_top.php · shell_bottom.php) · 화면 조각(mfa_enroll.php)
 db/          schema.sql · grants.sql · seed.sql
 deploy/      sites/tbox-v{1,2}{,-local}.conf · switch-site.sh · install.sh · php-fpm-pool.conf · DEPENDENCIES.md
              hardening.sh(기준선 적용 — 기본 출력만) · cron.d/tbox-v2 · logrotate.d/tbox-v2
@@ -44,6 +45,26 @@ scripts/     security_lint.sh · seed_users.php
              check_baseline.sh (서버 기준선 점검, 읽기 전용) · lib/cli_bootstrap.php
 .env.example 설정 키 예시 (실제 설정은 저장소 루트 .env — .gitignore 로 Git 제외)
 ```
+
+## 화면 (`PRD.md` F-20 · 10장)
+
+기능별로 화면이 나뉘어 있고, **좌측 내비가 있는 공통 셸**(`src/views/shell_*.php`)을 함께 씁니다.
+내비 항목은 서버 HTML 에서 전부 `hidden` 으로 나가고 `GET /api/me` 의 `can_*` 플래그가 참일 때만
+열립니다 — **보이는 것은 편의일 뿐이고, 막는 것은 라우트 정책입니다.** 개발자도구로 항목을
+되살려도 아래 정책이 다시 403 으로 막고 그 시도가 `authz.route|deny` 로 감사 로그에 남습니다.
+
+| 화면 | 경로 | 라우트 정책 | 내용 |
+|---|---|---|---|
+| 로그인 | `/login` | public | 아이디·비밀번호 → (2단계 인증을 켠 계정만) 6자리 코드 |
+| 파일 | `/` | authenticated | 목록·검색·정렬·페이지, 「파일 올리기」·「URL 로 가져오기」 접이식 패널, 행 작업(다운로드·수정·삭제) |
+| 휴지통 | `/trash` | `role:Admin` | 삭제된 파일 목록과 복구 (30일) |
+| 내 계정 | `/settings` | authenticated | 내 정보(아이디·역할·팀) · 비밀번호 변경 · 2단계 인증 |
+| 계정 관리 | `/users` | `user.manage` | 계정 생성·역할/팀/만료 변경·임시 비밀번호 재발급·2단계 인증 초기화 |
+| 감사 로그 | `/audit` | `audit.read` | 육하원칙 6필터 + 기록 표 |
+
+최초 로그인 강제 절차(`PRD.md` F-16)는 **파일 화면(`/`)에만** 있습니다. 절차가 남은 계정이
+다른 화면을 열면 서버가 `/` 로 **302** 를 보내고(그 시도는 `auth.gate|deny` 로 남습니다),
+API 요청은 예전과 같이 **403 `{"next":…}`** 입니다.
 
 ## 설치 · 실행
 
@@ -218,7 +239,7 @@ sudo cat /etc/tbox-v2/seed-accounts.txt      # 한 줄에 "아이디 역할 비�
 | 순서 | 할 일 | 명령 |
 |---|---|---|
 | 1 | 계정 주인이 **첫 로그인** | 브라우저에서 `/` |
-| 2 | 화면 **「내 계정 → 비밀번호 바꾸기」** 로 각자 비밀번호 변경 (10자 이상) | `POST /api/me/password` |
+| 2 | **「내 계정」 화면(`/settings`) → 비밀번호 바꾸기** 로 각자 비밀번호 변경 (10자 이상) | `POST /api/me/password` |
 | 3 | 전원이 바꾼 것을 확인 — `password_changed_at` 이 채워졌으면 본인이 바꾼 것입니다 (11단계 F-16) | 아래 SQL |
 | 4 | **파일 삭제** | `sudo shred -u /etc/tbox-v2/seed-accounts.txt` |
 
@@ -234,7 +255,7 @@ sudo shred -u /etc/tbox-v2/seed-accounts.txt
 
 > 과제 기간에는 관문 ③(사용자 자기 공격)에서 시드 계정으로 로그인해야 하므로 **파일을 남겨 둡니다**
 > — 위험을 알고 받아들인 상태입니다(`SECURITY.md` R-33). 운영 배포에서는 위 4단계를 반드시 끝냅니다.
-> 비밀번호를 잃어버린 계정은 파일을 되살릴 수 없으므로, Admin 이 계정 관리 화면에서
+> 비밀번호를 잃어버린 계정은 파일을 되살릴 수 없으므로, Admin 이 계정 관리 화면(`/users`)에서
 > **새 계정을 만들어 넘기거나** `psql` 로 해시를 교체합니다.
 
 ## 계정 관리 (10단계 · `PRD.md` F-10)
@@ -287,7 +308,7 @@ curl -s -b jar -X PATCH -H 'Content-Type: application/json' -H "X-CSRF-Token: $T
 
 ### 삭제된 파일 복구 — 휴지통 (10단계 · F-11)
 
-삭제는 **논리 삭제**이고 30일 동안 되돌릴 수 있습니다. Admin 은 홈 화면의 「휴지통」 패널
+삭제는 **논리 삭제**이고 30일 동안 되돌릴 수 있습니다. Admin 은 **「휴지통」 화면(`/trash`)**
 또는 API 로 복구합니다. 30일이 지나 배치(`scripts/purge_trash.php`)가 실제 파일을 지운 뒤에는
 목록에 나오지 않고 복구도 되지 않습니다(`purged_at` 이 채워진 행).
 
@@ -322,11 +343,11 @@ curl -s -b jar -X POST -H 'Content-Type: application/json' -H "X-CSRF-Token: $TO
 6자리 코드는 서버가 보내 주는 것이 아니라 **스마트폰 인증 앱이 30초마다 스스로 만들어 냅니다.**
 앱과 서버가 같은 비밀 키와 같은 시계를 보고 각자 계산하기 때문에, 네트워크도 문자메시지도 필요 없습니다.
 
-켜는 순서 (홈 화면 「내 계정」)
+켜는 순서 (「내 계정」 화면 `/settings`)
 
 1. 스마트폰에 **인증 앱**을 설치합니다 — Google Authenticator · Microsoft Authenticator ·
    Aegis(Android, 오픈소스) · FreeOTP(iOS·Android, 오픈소스) 중 아무거나 됩니다. **모두 무료**이고 계정 가입 없이 쓸 수 있으며, 등록 뒤에는 인터넷 없이도 코드가 나옵니다.
-2. 홈 화면에서 **「2단계 인증 켜기」** — 서버가 비밀 키와 `otpauth://` 주소를 보여 줍니다.
+2. 「내 계정」 화면(`/settings`)에서 **「2단계 인증 켜기」** — 서버가 비밀 키와 `otpauth://` 주소를 보여 줍니다.
    이때는 아직 **켜지지 않았습니다**. 비밀 키는 **다시 보여 주지 않으므로 지금 옮겨 적습니다.**
 3. 앱에서 **「수동 입력」(설정 키 입력)** 을 고르고, 계정 이름 `t-box:아이디` · 키는 화면의 비밀 키를
    그대로 넣습니다. 종류는 **시간 기반(Time based) · 6자리** 입니다.
@@ -399,10 +420,10 @@ scp changkwon@192.168.105.44:/var/www/tbox-v2/public/assets/totp-generator.html 
 
 **② 쓰는 순서**
 
-1. 홈 화면 **「2단계 인증 켜기」** 가 보여 준 **비밀 키**(또는 `otpauth://` 주소)를 복사합니다.
-   홈 화면도 생성기도 비밀 키를 **4자씩 띄어**(`GEZD GNBV GY3T QOJQ …`) 보여 줍니다 — 옮겨 적기 오류를
+1. 「내 계정」 화면(`/settings`)의 **「2단계 인증 켜기」** 가 보여 준 **비밀 키**(또는 `otpauth://` 주소)를 복사합니다.
+   t-box 화면도 생성기도 비밀 키를 **4자씩 띄어**(`GEZD GNBV GY3T QOJQ …`) 보여 줍니다 — 옮겨 적기 오류를
    줄이려는 **표시 방식**일 뿐, 값은 같습니다(띈 채로 붙여 넣어도 됩니다).
-2. 생성기의 입력 칸에 붙입니다. 칸 아래에 **4자 묶음으로 다듬어진 키**가 나오니 홈 화면의 값과 눈으로 대조하세요.
+2. 생성기의 입력 칸에 붙입니다. 칸 아래에 **4자 묶음으로 다듬어진 키**가 나오니 t-box 화면의 값과 눈으로 대조하세요.
 3. **「코드 만들기」** — 6자리 코드, 남은 초, **다음 코드**가 나옵니다. 이 단계는 **아무것도 저장하지 않습니다**
    (창을 닫으면 사라집니다). 경계에서 코드가 바뀔 것 같으면 「다음 코드」 를 쓰세요.
 4. 다음부터 붙여 넣기가 번거로우면 **잠금 문구**(8자 이상, 단어 2~3개 권장)를 정해 **「잠가 저장」** 을 누릅니다.
