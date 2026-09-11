@@ -80,10 +80,8 @@ if (!headers_sent()) {
         <input id="u-username" type="text" maxlength="64" inputmode="latin"
                autocapitalize="none" autocorrect="off" spellcheck="false" required>
       </label>
-      <label class="field">
-        <span class="field__label">최초 비밀번호 (12자 이상)</span>
-        <input id="u-password" type="password" maxlength="1024" minlength="12" required>
-      </label>
+      <!-- 11단계 (PRD F-16): 비밀번호 칸이 없다. 서버가 임시 비밀번호를 만들어 생성 응답에 한 번만 돌려주고,
+           본인이 첫 로그인에서 바꾼다. Admin 이 비밀번호를 정하면 Admin 이 그 값을 계속 아는 상태가 남기 때문이다(R-39). -->
       <label class="field">
         <span class="field__label">역할</span>
         <select id="u-role">

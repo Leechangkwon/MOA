@@ -17,7 +17,13 @@ declare(strict_types=1);
  *
  * 응답
  *   200 `{ok, sessions_revoked}`   — 바꾼 뒤 **이 세션만 남고** 다른 기기는 즉시 끊긴다
- *   400 현재 비밀번호 오류(`bad_credentials`) · 새 비밀번호 규칙 위반(`weak_password`)
+ *   400 현재 비밀번호 오류(`bad_credentials`) · 새 비밀번호 규칙 위반(`weak_password`) ·
+ *       현재와 같은 값(`same_password`, 11단계 F-16)
+ *
+ * 11단계 (PRD F-16, ARCH 4.0): 이 라우트는 **최초 로그인 강제 절차 중에도 열려 있다**(관문 허용 목록).
+ * 성공하면 `must_change_password` 해제와 `password_changed_at` 기록이 Auth::changePassword 안의
+ * 같은 UPDATE 문장에서 함께 일어나고, 강제 절차 중의 변경이면 감사 detail 에 `forced: true` 가 붙는다 —
+ * 플래그를 만지는 코드가 여러 곳에 흩어지지 않게 전부 Auth 한 곳에 둔다.
  *
  * 왜 현재 비밀번호 오류가 401 이 아니라 400 인가: 이 요청은 이미 인증을 통과했다.
  * 401 로 답하면 화면(app.js)이 "세션이 끊겼다" 로 보고 로그인 화면으로 보내 버린다.

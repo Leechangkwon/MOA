@@ -43,6 +43,14 @@ CREATE TABLE users (
     mfa_secret    TEXT,
     mfa_enabled   BOOLEAN     NOT NULL DEFAULT false,
     updated_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
+    -- 최초 로그인 강제 절차 (11단계, PRD F-16, ARCH 4.0).
+    --   must_change_password — 임시 비밀번호 상태. true 인 동안 라우터 관문이 비밀번호 변경 외 모든 요청을 막는다
+    --   mfa_setup_required   — 2단계 인증을 아직 등록하지 않았다. 비밀번호를 바꾼 뒤 이 관문이 이어진다
+    --   password_changed_at  — 본인이 비밀번호를 마지막으로 바꾼 시각(NULL = 한 번도 바꾸지 않음).
+    --                          마이그레이션의 이행 조건이자 R-33("시드 비밀번호 파일 수명") 판단 근거다
+    must_change_password BOOLEAN NOT NULL DEFAULT false,
+    mfa_setup_required   BOOLEAN NOT NULL DEFAULT false,
+    password_changed_at  TIMESTAMPTZ,
     -- Guest 는 만료일 필수 (PRD 3장 Guest 생명주기, SECURITY R-12).
     -- 앱 코드가 한 군데라도 검사를 빠뜨려도 만료 없는 Guest 행은 존재할 수 없다.
     CONSTRAINT guest_requires_expires_at

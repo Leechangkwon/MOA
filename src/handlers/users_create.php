@@ -11,7 +11,6 @@ declare(strict_types=1);
  *
  * 받는 값 (JSON, **허용 키 목록 밖의 키가 하나라도 있으면 400**)
  *   username    아이디 — Auth::USERNAME_RE 와 **같은 규칙**(소문자·숫자·`_.-`, 3~64자)
- *   password    최초 비밀번호 — 12자 이상 (PRD S-09-4). 저장은 Argon2id 해시만
  *   role        Admin | Manager | Employee | Guest — **Authz 의 허용 목록에 정확히 있는 값만**.
  *               요청이 보낸 문자열을 그대로 컬럼에 넣지 않는다 (금지 패턴)
  *   team_id     팀 번호 (없으면 null). Guest 는 팀을 가질 수 없다 (PRD 3장)
@@ -19,8 +18,16 @@ declare(strict_types=1);
  *               DB CHECK(guest_requires_expires_at)가 마지막 그물이다
  *   reason_text 왜 이 계정을 만드는가 — **필수**, 500자 (PRD S-07 "관리자 행동 사유")
  *
+ * 11단계 (PRD F-16 ①, ARCH 4.0) — **비밀번호를 받지 않는다.**
+ *   Admin 이 비밀번호를 정하면 그 값을 Admin 이 계속 알고 있는 상태가 이어진다(SECURITY R-39).
+ *   그래서 서버가 임시 비밀번호를 만들고(Auth::generateTempPassword), 201 응답에 `temp_password`
+ *   로 **딱 한 번** 돌려주며, 만든 계정에는 `must_change_password`·`mfa_setup_required` 를 켠다 —
+ *   대상은 첫 로그인에서 비밀번호를 바꾸고 2단계 인증을 등록해야 다른 기능을 쓸 수 있다.
+ *   `password` 키가 오면 허용 키 목록 밖이므로 400 이다(옛 방식으로 되돌아갈 통로를 남기지 않는다).
+ *
  * 절대 하지 않는 것
- *   · 비밀번호를 응답·감사 로그·app.log 에 남기지 않는다. `detail` 에 넣지도 않는다
+ *   · 비밀번호를 응답(생성 201 의 `temp_password` 제외)·감사 로그·app.log 에 남기지 않는다.
+ *     `detail` 에는 값이 아니라 **사실**만 남는다 — `temp_password_issued: true` (ARCH 7.5)
  *     (Audit::scrub 이 다시 한 번 막지만, 애초에 넣지 않는 것이 규칙이다).
  *   · 요청의 역할 문자열을 검사 없이 쓰지 않는다.
  *   · 역할 비교를 이 파일에서 하지 않는다 — 전부 Authz 함수를 부른다.
@@ -30,7 +37,7 @@ declare(strict_types=1);
  */
 
 /** 허용 키 — 여기 없는 키가 오면 요청 전체를 거부한다 (SECURITY R-07 과 같은 원칙) */
-$allowedFields = ['username', 'password', 'role', 'team_id', 'expires_at', 'reason_text'];
+$allowedFields = ['username', 'role', 'team_id', 'expires_at', 'reason_text'];
 
 $body = Http::jsonBody();
 
@@ -58,15 +65,9 @@ if (!is_string($username) || preg_match(Auth::USERNAME_RE, $username) !== 1) {
 }
 $username = (string) $username;
 
-// ─── [3] 비밀번호 (PRD S-09-4: 12자 이상) ───────────────────────
-$password = $body['password'] ?? null;
-if (!is_string($password)
-    || preg_match('//u', $password) !== 1
-    || strlen($password) > Auth::MAX_PASSWORD_BYTES
-    || iconv_strlen($password, 'UTF-8') < Auth::MIN_PASSWORD_CHARS
-) {
-    $rejectBadRequest($body);
-}
+// ─── [3] 비밀번호는 받지 않는다 (11단계 F-16 ①) ─────────────────
+//        임시 비밀번호는 아래 [10] 에서 서버가 만든다. `password` 키가 오면
+//        위 [1] 허용 키 검사에서 이미 400 으로 끝났다.
 
 // ─── [4] 역할 — 허용 목록 정확 일치 (Authz 안에서만 판단) ────────
 $role = $body['role'] ?? null;
@@ -145,16 +146,19 @@ if (is_array($db->run($sqlExists, [':username' => $username])->fetch())) {
     Http::error(400, Http::MSG_BAD_REQUEST);
 }
 
-// ─── [10] 저장 — 해시만 넣는다 (PRD S-09-4, T-16) ───────────────
-$hash = password_hash($password, PASSWORD_ARGON2ID);
+// ─── [10] 저장 — 임시 비밀번호를 만들고 해시만 넣는다 (F-16 ①, PRD S-09-4, T-16) ───
+//         두 플래그를 함께 켠다: 첫 로그인에 비밀번호 변경 → 2단계 인증 등록.
+$temp = Auth::generateTempPassword();
+$hash = password_hash($temp, PASSWORD_ARGON2ID);
 if (!is_string($hash)) {
     throw new RuntimeException('비밀번호 해시를 만들 수 없습니다');
 }
-unset($password, $body['password']);   // 평문을 이 뒤 코드로 흘려보내지 않는다
 
 $sqlInsert = <<<'SQL'
-    INSERT INTO users (username, password_hash, role, team_id, expires_at)
-    VALUES (:username, :hash, :role, :team_id, CAST(:expires AS timestamptz))
+    INSERT INTO users (username, password_hash, role, team_id, expires_at,
+                       must_change_password, mfa_setup_required)
+    VALUES (:username, :hash, :role, :team_id, CAST(:expires AS timestamptz),
+            true, true)
     RETURNING id
     SQL;
 
@@ -183,6 +187,8 @@ try {
             'target_team'   => $teamId,
             'expires_at'    => $expiresAt,
             'reason_text'   => $reason,
+            // 값이 아니라 **사실**만 (ARCH 7.5 temp_password_issued, SECURITY R-39)
+            'temp_password_issued' => true,
         ],
     ]);
     $db->commit();
@@ -202,12 +208,18 @@ try {
     throw $e;
 }
 
-// 응답에 비밀번호·해시는 없다. 만든 사람이 화면에서 바로 확인할 값만 담는다.
+/*
+ * 응답에 해시는 없다. 임시 비밀번호 평문은 **이 응답 한 번**만 나가고 어디에도 저장되지 않는다
+ * (ARCH 4.0, SECURITY R-39). 화면은 이 값을 한 번 보여 주고 "다시 볼 수 없습니다" 라고 알린다.
+ * 응답은 Cache-Control: no-store 로 나간다 (Http::json).
+ */
 Http::json([
-    'id'         => $newId,
-    'username'   => $username,
-    'role'       => $role,
-    'team_id'    => $teamId,
-    'expires_at' => $expiresAt,
-    'is_active'  => true,
+    'id'            => $newId,
+    'username'      => $username,
+    'role'          => $role,
+    'team_id'       => $teamId,
+    'expires_at'    => $expiresAt,
+    'is_active'     => true,
+    'temp_password' => $temp,
 ], 201);
+unset($temp, $hash, $body);   // 평문을 이 뒤 코드로 흘려보내지 않는다

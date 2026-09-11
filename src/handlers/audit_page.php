@@ -129,6 +129,10 @@ if (!headers_sent()) {
           <option value="auth.mfa">auth.mfa</option>
           <option value="auth.mfa_enroll">auth.mfa_enroll</option>
           <option value="auth.mfa_disable">auth.mfa_disable</option>
+          <!-- 11단계 (F-16) -->
+          <option value="auth.gate">auth.gate</option>
+          <option value="user.password_reset">user.password_reset</option>
+          <option value="user.mfa_reset">user.mfa_reset</option>
         </select>
       </label>
       <label class="field">

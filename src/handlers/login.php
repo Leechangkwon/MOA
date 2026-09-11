@@ -53,4 +53,10 @@ if ($result === null) {
     Http::error(401, Http::MSG_LOGIN_FAILED);
 }
 
-Http::json(['ok' => true]);
+/*
+ * 11단계 (PRD F-16 ②, ARCH 4.0) — 세션은 발급됐지만 **아직 다 끝난 것이 아닐 수 있다**.
+ * `next` 는 "다음에 무엇을 해야 하나" 한 값뿐이고(`password_change`·`mfa_setup`·null),
+ * 계산은 Auth::nextStep 한 곳에서만 한다 — /api/me 도 같은 값을 돌려준다.
+ * 이 값은 **편의**다: 화면이 무시하고 다른 기능을 불러도 라우터 관문이 403 으로 막는다.
+ */
+Http::json(['ok' => true, 'next' => Auth::nextStep($result)]);

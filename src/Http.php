@@ -36,6 +36,16 @@ final class Http
      */
     public const MSG_MFA_REQUIRED = '2단계 인증 코드가 필요합니다';
 
+    /**
+     * 최초 로그인 강제 절차의 관문 문구 (11단계, PRD F-16, ARCH 4.0 「최초 로그인 강제 절차」).
+     *
+     * 이 둘만 예외적으로 "무엇이 막았는지" 를 알려 준다 — 막힌 사람이 **본인**이고,
+     * 본인이 다음에 무엇을 해야 하는지(`next`)를 모르면 절차를 끝낼 수 없기 때문이다.
+     * 다른 403 과 달리 대상에 대한 정보가 아니라 **자기 계정의 상태**만 담는다.
+     */
+    public const MSG_PASSWORD_CHANGE_REQUIRED = '비밀번호를 먼저 변경해야 합니다';
+    public const MSG_MFA_SETUP_REQUIRED       = '2단계 인증을 먼저 설정해야 합니다';
+
     /** JSON 본문 상한 — 로그인·삭제 같은 작은 요청만 JSON 으로 받는다 */
     private const MAX_JSON_BYTES = 65536;
 

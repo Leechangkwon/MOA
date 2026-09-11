@@ -48,6 +48,10 @@ $allowedActions = [
     'user.create', 'user.role_change', 'user.expiry_change',
     'user.deactivate', 'user.activate', 'user.expired',
     'auth.password_change', 'auth.mfa_enroll', 'auth.mfa_disable', 'auth.mfa',
+    // 11단계 최초 로그인 강제 절차 (F-16) — 관문 거부와 Admin 의 재발급·초기화.
+    // `auth.gate` 는 "절차를 마치지 않은 계정이 다른 기능을 두드린 횟수" 라서
+    // 조회 화면에서 골라 볼 수 있어야 한다(정상적으로도 몇 건씩 생긴다).
+    'auth.gate', 'user.password_reset', 'user.mfa_reset',
 ];
 
 /** 접근 등급 허용 목록 (PRD 4장) */

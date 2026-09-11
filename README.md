@@ -197,6 +197,13 @@ sudo systemctl reload php8.1-fpm     # 고친 뒤 반영
 
 > 10단계부터 **Guest 계정에는 만료일이 함께 들어갑니다**(생성 시점 + 90일, `SECURITY.md` R-12).
 > 만료된 뒤에는 비밀번호가 맞아도 로그인할 수 없습니다.
+>
+> 🔴 **11단계 패치 뒤 첫 로그인에는 비밀번호 변경 · 2단계 인증 등록이 강제됩니다**
+> (`PRD.md` F-16). 패치 시점에 살아 있던 계정 전부(시드 5개 · 검토 5개 포함)가 대상이며,
+> 마이그레이션 `db/migrations/2026-09-11_users_first_login.sql` 이 플래그만 켭니다 —
+> 계정을 지우거나 다시 만들지 않습니다. 그래서 위 표의 비밀번호로 로그인하면
+> 곧바로 「비밀번호를 변경해 주세요」 화면이 뜨고, 그 절차를 마치기 전에는 다른 기능이
+> 전부 **403** 입니다(서버 관문이 막습니다. 화면만 되살려도 소용없습니다).
 
 ```bash
 sudo cat /etc/tbox-v2/seed-accounts.txt      # 한 줄에 "아이디 역할 비밀번호"
@@ -212,13 +219,14 @@ sudo cat /etc/tbox-v2/seed-accounts.txt      # 한 줄에 "아이디 역할 비�
 |---|---|---|
 | 1 | 계정 주인이 **첫 로그인** | 브라우저에서 `/` |
 | 2 | 화면 **「내 계정 → 비밀번호 바꾸기」** 로 각자 비밀번호 변경 (12자 이상) | `POST /api/me/password` |
-| 3 | 전원이 바꾼 것을 확인 — `updated_at` 이 `created_at` 보다 뒤면 바꾼 것입니다 | 아래 SQL |
+| 3 | 전원이 바꾼 것을 확인 — `password_changed_at` 이 채워졌으면 본인이 바꾼 것입니다 (11단계 F-16) | 아래 SQL |
 | 4 | **파일 삭제** | `sudo shred -u /etc/tbox-v2/seed-accounts.txt` |
 
 ```bash
-# 3) 아직 최초 비밀번호를 쓰고 있는 계정 (updated_at 이 created_at 과 같음)
+# 3) 아직 최초(또는 임시) 비밀번호를 쓰고 있는 계정 — password_changed_at 이 비어 있습니다
 sudo -u postgres psql -d tbox_re -c \
-  "SELECT username, role, created_at, updated_at FROM users WHERE updated_at <= created_at ORDER BY id"
+  "SELECT username, role, must_change_password, mfa_setup_required, password_changed_at
+     FROM users WHERE is_active AND password_changed_at IS NULL ORDER BY id"
 
 # 4) 전원이 바꿨으면 지웁니다 (되돌릴 수 없습니다)
 sudo shred -u /etc/tbox-v2/seed-accounts.txt
@@ -238,7 +246,9 @@ Admin 만 `/users` 화면과 `GET/POST /api/users`, `PATCH /api/users/{uid}` 를
 |---|---|
 | 1인 1개 | 계정은 사람마다 하나입니다. 공용 계정·시드 계정을 실무에 쓰지 않습니다 — 감사 로그의 「누가」는 계정이 사람에 1:1 로 묶일 때만 성립합니다 (`PRD.md` 3장 · S-07) |
 | 사유 필수 | 계정 생성·역할 변경·비활성화·재활성화에는 **사유(`reason_text`, 500자)가 필수**입니다. 없으면 400 이고, 적은 사유는 감사 로그 `detail.reason_text` 에 남습니다 (S-07 "관리자 행동 사유", R-20) |
-| 비밀번호 | 최초 비밀번호는 **12자 이상**이고 Argon2id 해시로만 저장됩니다. 응답·로그에 평문이 나오는 곳은 없습니다 |
+| 비밀번호 | **Admin 이 비밀번호를 정하지 않습니다**(11단계 F-16). 서버가 임시 비밀번호 16자를 만들어 **생성 응답에 딱 한 번** 돌려주고, 저장은 Argon2id 해시뿐입니다. 요청에 `password` 키를 넣으면 400 입니다. 감사 로그에는 값이 아니라 `detail.temp_password_issued: true` 만 남습니다 |
+| 첫 로그인 | 새 계정은 **비밀번호 변경 → 2단계 인증 등록**을 마쳐야 다른 기능을 쓸 수 있습니다. 마치기 전의 모든 요청은 403 `{"next":"password_change"\|"mfa_setup"}` 이고 `auth.gate|deny` 로 남습니다 |
+| 재발급 · 초기화 | 비밀번호를 잊었거나 인증 앱이 든 휴대폰을 잃으면 Admin 이 **임시 비밀번호 재발급**·**2단계 인증 초기화**를 합니다. 둘 다 **사유 필수 · 자기 자신 금지**이고, 대상의 **모든 세션이 끊깁니다** |
 | 역할 | `Admin`·`Manager`·`Employee`·`Guest` 넷뿐입니다. 그 밖의 값은 400 입니다 |
 | Guest 만료 | **Guest 계정은 만료일이 필수**입니다(`SECURITY.md` R-12). 만료된 뒤에는 비밀번호가 맞아도 로그인할 수 없고 `user.expired` 가 남습니다. DB CHECK 가 마지막 그물입니다 |
 | 자기 자신 | Admin 도 **자기 역할·활성 상태는 바꿀 수 없습니다**(`self_change`). 자기 계정의 비밀번호·2단계 인증은 「내 계정」에서 합니다 |
@@ -250,11 +260,21 @@ Admin 만 `/users` 화면과 `GET/POST /api/users`, `PATCH /api/users/{uid}` 를
 # 목록 (Admin 세션 필요. 비밀번호 해시·TOTP 비밀은 응답에 없습니다)
 curl -s -b jar https://changkwon.mso.so/api/users
 
-# 계정 만들기
+# 계정 만들기 — 비밀번호는 보내지 않습니다. 201 응답의 temp_password 가 한 번만 나옵니다
 curl -s -b jar -X POST -H 'Content-Type: application/json' -H "X-CSRF-Token: $TOKEN" \
-  --data-binary '{"username":"hong.gildong","password":"바꿀비밀번호12자이상","role":"Employee",
+  --data-binary '{"username":"hong.gildong","role":"Employee",
                   "team_id":1,"reason_text":"2026-09-11 입사 (인사팀 요청)"}' \
   https://changkwon.mso.so/api/users
+# → {"id":25,"username":"hong.gildong",…,"temp_password":"…16자…"}
+#   이 값은 **다시 볼 수 없습니다.** 안전한 경로로 본인에게만 전달하고, 본인은 첫 로그인에서 바꿉니다.
+
+# 임시 비밀번호 재발급 · 2단계 인증 초기화 (사유 필수 · 자기 자신 금지 · 대상 세션 전부 종료)
+curl -s -b jar -X POST -H 'Content-Type: application/json' -H "X-CSRF-Token: $TOKEN" \
+  --data-binary '{"reason_text":"본인 확인 후 비밀번호 분실 재발급 (2026-09-11)"}' \
+  https://changkwon.mso.so/api/users/25/password/reset
+curl -s -b jar -X POST -H 'Content-Type: application/json' -H "X-CSRF-Token: $TOKEN" \
+  --data-binary '{"reason_text":"휴대폰 분실 — 인증 앱 재등록 필요 (2026-09-11)"}' \
+  https://changkwon.mso.so/api/users/25/mfa/reset
 
 # 역할 변경 · 비활성화 (사유 필수)
 curl -s -b jar -X PATCH -H 'Content-Type: application/json' -H "X-CSRF-Token: $TOKEN" \
@@ -280,8 +300,14 @@ curl -s -b jar -X POST -H 'Content-Type: application/json' -H "X-CSRF-Token: $TO
 ## 2단계 인증 (TOTP) — 10단계 · `SECURITY.md` R-05
 
 비밀번호 하나만으로는 Admin 계정이 털리면 급여·인사 자료가 통째로 넘어갑니다.
-그래서 **모든 사용자가 자기 계정에 2단계 인증(TOTP, RFC 6238)을 켤 수 있습니다.**
-Admin·Manager 는 켜는 것을 권합니다.
+그래서 **2단계 인증(TOTP, RFC 6238)은 모든 역할에 필수입니다** (11단계 사용자 결정 · `PRD.md` F-16 ③).
+
+| 언제 | 무슨 일이 일어나나 |
+|---|---|
+| 새 계정의 첫 로그인 | ① 임시 비밀번호로 로그인 → ② **비밀번호 변경** → ③ **2단계 인증 등록**. ②③ 을 마치기 전에는 홈 화면이 그 절차만 보여 주고, 서버는 다른 요청을 403 `{"next":…}` 으로 막습니다 |
+| 기존 계정 (패치 뒤 첫 로그인) | 같습니다. 이미 2단계 인증을 켜 둔 계정은 ③ 을 건너뜁니다(`mfa_setup_required = NOT mfa_enabled`) |
+| 2단계 인증을 끄면 | 끌 수는 있지만 **다음 요청부터 다시 등록을 요구**합니다(`mfa_setup_required` 가 다시 켜집니다). "끄기" 는 비밀 키를 갈아 끼우는 길이지 면제가 아닙니다 |
+| 인증 앱을 잃으면 | 본인은 로그인할 수 없습니다. Admin 이 **2단계 인증 초기화**(사유 필수)를 하면 다음 로그인 뒤 다시 등록합니다 |
 
 | 항목 | 값 |
 |---|---|

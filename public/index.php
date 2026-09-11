@@ -12,6 +12,7 @@ declare(strict_types=1);
  *   [1] 라우트 매칭           없으면 404, 경로는 맞고 메서드만 다르면 405
  *   [2] Auth::requireLogin()  policy 가 'public' 이 아니면 필수 → 없으면 401
  *   [3] Http::requireCsrf()   상태를 바꾸는 요청의 토큰 검사 (PRD S-09-3)
+ *   [3-1] 최초 로그인 관문    ★ 비밀번호 변경·2단계 인증 등록을 마치지 않았으면 403 (11단계 F-16)
  *   [4] Authz::authorize()    ★ 권한 판단. 실패 → Audit::deny + 403(동일 문구)
  *   [5] 핸들러 실행
  *
@@ -85,6 +86,12 @@ const TBOX_ROUTES = [
     ['PATCH',  '/api/users/{num}',         'users_update.php',   'user.manage'],
     ['GET',    '/users',                   'users_page.php',     'user.manage'],
 
+    // 11단계 — 임시 비밀번호 재발급 · 2단계 인증 초기화 (PRD F-16 ⑤, 8장, ARCH 4.0).
+    //   정책은 계정 관리와 같은 user.manage (Admin 만). 자기 자신 금지·사유 필수는
+    //   핸들러가 Authz::decideUserChange 로 판단한다 — 역할 비교를 핸들러에 복사하지 않는다.
+    ['POST',   '/api/users/{num}/password/reset', 'users_password_reset.php', 'user.manage'],
+    ['POST',   '/api/users/{num}/mfa/reset',      'users_mfa_reset.php',      'user.manage'],
+
     // 본인 계정 관리 — 로그인한 사람이면 누구나 자기 것만 (PRD 7.7 "비밀번호 변경", R-05).
     // 대상은 언제나 **세션의 본인**이며 요청 본문에 대상 계정을 받지 않는다.
     ['POST',   '/api/me/password',         'password_change.php', Authz::POLICY_AUTHENTICATED],
@@ -97,6 +104,25 @@ const TBOX_ROUTES = [
     // 의도를 드러내려고 위에 둔다(7단계 `/api/files/fetch` 와 같은 이유).
     ['GET',    '/api/files/trash',          'files_trash.php',   'role:Admin'],
     ['POST',   '/api/files/{id}/restore',   'files_restore.php', 'role:Admin'],
+];
+
+/**
+ * 최초 로그인 강제 절차의 **허용 목록** (11단계, PRD F-16 ②, ARCH 4.0 「최초 로그인 강제 절차」).
+ *
+ * 값은 `메서드 라우트패턴` 문자열이며 라우터가 매칭 직후 정의하는 TBOX_ROUTE 와 **정확히** 비교한다.
+ * 실제 경로가 아니라 패턴을 쓰는 이유는 감사 로그(detail.route)와 같은 표기를 쓰기 위해서다.
+ *
+ * `GET /login` 은 정책이 public 이라 관문 자체를 지나지 않는다(그래서 목록에 없다).
+ */
+const TBOX_GATE_ALLOW_PASSWORD_CHANGE = [
+    'GET /',                    // 홈 — 화면이 강제 절차 화면만 그린다
+    'GET /api/me',              // 지금 무엇을 해야 하나(`next`)
+    'POST /api/logout',         // 절차를 미루고 나가는 길은 언제나 열어 둔다
+    'POST /api/me/password',    // 절차 그 자체
+];
+const TBOX_GATE_ALLOW_MFA_SETUP = [
+    'POST /api/me/mfa/enroll',
+    'POST /api/me/mfa/confirm',
 ];
 
 const TBOX_HANDLER_DIR = __DIR__ . '/../src/handlers/';
@@ -277,6 +303,49 @@ if ($policy !== Authz::POLICY_PUBLIC) {
     }
     $user = Auth::requireLogin();          // 실패 시 401 + Audit::deny (Auth 안에서)
     Http::requireCsrf();                   // 상태 변경 요청의 토큰 검사 (PRD S-09-3)
+
+    /* ─── [3-1] 최초 로그인 강제 절차 관문 (11단계, PRD F-16, ARCH 4.0) ───────────
+     *
+     * 임시 비밀번호로 처음 들어온 사람(또는 Admin 이 재발급·초기화한 사람)은
+     * **비밀번호 변경 → 2단계 인증 등록**을 마치기 전에는 다른 기능을 쓸 수 없다.
+     *
+     * 왜 여기 한 곳인가: 핸들러마다 검사하면 언젠가 하나를 빠뜨리고, 빠뜨린 그 하나가
+     * 우회 경로가 된다 (4단계 서버 인가와 같은 원칙, SECURITY R-04). 화면(app.js)이
+     * 절차 화면만 보여 주는 것은 **편의**일 뿐이고, 막는 것은 이 관문이다.
+     *
+     * 인가(authorize)보다 **앞**에 둔다: 절차를 마치지 않은 계정에는 역할이 무엇이든
+     * "먼저 절차를 끝내라" 가 답이기 때문이다. 판단 근거(must_change_password·
+     * mfa_setup_required)는 매 요청 DB 에서 읽은 값이고 요청이 정하지 않는다 (PRD S-01).
+     */
+    $gateNext = Auth::nextStep($user);
+    if ($gateNext !== null) {
+        $gateAllowed = $gateNext === 'mfa_setup'
+            ? array_merge(TBOX_GATE_ALLOW_PASSWORD_CHANGE, TBOX_GATE_ALLOW_MFA_SETUP)
+            : TBOX_GATE_ALLOW_PASSWORD_CHANGE;
+
+        if (!in_array(TBOX_ROUTE, $gateAllowed, true)) {
+            $gateReason = $gateNext === 'password_change'
+                ? 'password_change_required'
+                : 'mfa_setup_required';
+            Audit::deny('auth.gate', $gateReason, [
+                // 막힌 사람이 곧 대상이다 (ARCH 7.4 문장 틀의 {target}).
+                'target_type' => 'user',
+                'target_id'   => (int) $user['id'],
+                'target_name' => (string) $user['username'],
+                // route 패턴은 Audit 이 TBOX_ROUTE 에서 자동으로 넣는다 (ARCH 7.5 route).
+                'detail'      => ['next' => $gateNext],
+            ]);
+            // 다른 403 과 달리 `next` 를 함께 준다 — 막힌 사람이 본인이고,
+            // 자기 계정의 다음 걸음을 모르면 절차를 끝낼 수 없기 때문이다 (ARCH 4.0).
+            Http::json([
+                'error' => $gateNext === 'password_change'
+                    ? Http::MSG_PASSWORD_CHANGE_REQUIRED
+                    : Http::MSG_MFA_SETUP_REQUIRED,
+                'next'  => $gateNext,
+            ], 403);
+            exit;
+        }
+    }
 
     if (!Authz::authorize($policy, $user)) {
         Audit::deny('authz.route', 'role_not_permitted', [

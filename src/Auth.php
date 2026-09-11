@@ -82,6 +82,10 @@ final class Auth
                u.team_id       AS team_id,
                u.is_active     AS is_active,
                u.mfa_enabled   AS mfa_enabled,
+               -- 11단계 (PRD F-16) — 최초 로그인 강제 절차의 두 플래그.
+               -- 라우터 관문이 요청마다 보는 값이라 세션 조회에 함께 싣는다(쿼리 1회 유지).
+               u.must_change_password AS must_change_password,
+               u.mfa_setup_required   AS mfa_setup_required,
                (u.expires_at IS NOT NULL AND u.expires_at < now()) AS is_expired
           FROM sessions s
           JOIN users   u ON u.id = s.user_id
@@ -113,6 +117,7 @@ final class Auth
         SELECT id, username, password_hash, role, team_id, is_active,
                failed_count, locked_until,
                mfa_enabled, mfa_secret,
+               must_change_password, mfa_setup_required,
                (locked_until IS NOT NULL AND locked_until > now()) AS is_locked,
                (expires_at IS NOT NULL AND expires_at < now())     AS is_expired
           FROM users
@@ -121,17 +126,21 @@ final class Auth
 
     /** 비밀번호 변경(10단계) — 현재 비밀번호 확인용. 세션의 user_id 로만 찾는다 */
     private const SQL_LOAD_BY_ID = <<<'SQL'
-        SELECT id, username, password_hash
+        SELECT id, username, password_hash, must_change_password
           FROM users
          WHERE id = :id
         SQL;
 
     private const SQL_SET_PASSWORD = <<<'SQL'
         UPDATE users
-           SET password_hash = :hash,
-               failed_count  = 0,
-               locked_until  = NULL,
-               updated_at    = now()
+           SET password_hash        = :hash,
+               failed_count         = 0,
+               locked_until         = NULL,
+               -- 11단계 (PRD F-16): 비밀번호를 바꾼 **그 문장**에서 강제 플래그를 내린다.
+               -- 두 문장으로 나누면 사이에서 실패했을 때 "바뀌었는데 계속 막히는" 상태가 남는다.
+               must_change_password = false,
+               password_changed_at  = now(),
+               updated_at           = now()
          WHERE id = :id
         SQL;
 
@@ -235,6 +244,10 @@ final class Auth
             // 10단계 — 화면이 "2단계 인증 켜기/끄기" 를 어떻게 보일지 정하는 값 (R-05).
             // 권한이 아니라 상태다. 실제 검증은 언제나 로그인 때 서버가 한다.
             'mfa_enabled' => $row['mfa_enabled'] === true,
+            // 11단계 — 최초 로그인 강제 절차 (PRD F-16). 라우터 관문이 이 두 값만 본다.
+            // **요청에서 읽지 않는다** — 언제나 DB 의 현재 값이다 (PRD S-01).
+            'must_change_password' => $row['must_change_password'] === true,
+            'mfa_setup_required'   => $row['mfa_setup_required'] === true,
         ];
         return self::$user;
     }
@@ -410,8 +423,55 @@ final class Auth
             'team_id'     => $row['team_id'] === null ? null : (int) $row['team_id'],
             'session_id'  => $newId,
             'mfa_enabled' => $row['mfa_enabled'] === true,
+            // 11단계 — 로그인 응답의 `next` 를 계산하는 값 (PRD F-16, ARCH 4.0)
+            'must_change_password' => $row['must_change_password'] === true,
+            'mfa_setup_required'   => $row['mfa_setup_required'] === true,
         ];
         return self::$user;
+    }
+
+    /**
+     * 최초 로그인 강제 절차에서 **다음에 무엇을 해야 하나** (11단계, PRD F-16, ARCH 4.0).
+     *
+     * 순서가 있다: 비밀번호 변경 → 2단계 인증 등록 → 끝(null).
+     * 이 함수는 **판단을 한 곳에 모으기 위한 것**이다 — 로그인 응답(`next`)·`/api/me`·
+     * 라우터 관문이 전부 같은 값을 보고 움직여야 화면과 서버가 어긋나지 않는다.
+     * 값은 언제나 DB 에서 읽은 사용자 배열에서 나오며 요청 값은 섞이지 않는다 (PRD S-01).
+     *
+     * @param array<string,mixed> $user Auth::currentUser() 또는 Auth::login() 이 돌려준 배열
+     * @return 'password_change'|'mfa_setup'|null
+     */
+    public static function nextStep(array $user): ?string
+    {
+        if (($user['must_change_password'] ?? false) === true) {
+            return 'password_change';
+        }
+        if (($user['mfa_setup_required'] ?? false) === true) {
+            return 'mfa_setup';
+        }
+        return null;
+    }
+
+    /**
+     * 임시 비밀번호 생성 (11단계, PRD F-16 ①, ARCH 4.0, SECURITY R-39).
+     *
+     * 16자 · 무작위는 `random_int` 만 쓴다(`mt_rand`·`rand`·`uniqid` 는 예측 가능하다).
+     * 알파벳에서 `0 O 1 l I` 를 뺀 이유는 사람이 **입으로 전하고 손으로 옮겨 적기** 때문이다 —
+     * 헷갈리는 글자가 있으면 "안 된다" 는 문의가 늘고, 그때마다 재발급이 오가면서
+     * 임시 비밀번호가 더 많은 경로로 돌아다닌다.
+     *
+     * 이 값은 만든 자리(생성·재발급 응답)에서 딱 한 번 나가고 어디에도 저장하지 않는다 —
+     * 저장되는 것은 Argon2id 해시뿐이고, 감사 로그에는 `temp_password_issued: true` 만 남는다.
+     */
+    public static function generateTempPassword(): string
+    {
+        $alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789';
+        $max      = strlen($alphabet) - 1;
+        $out      = '';
+        for ($i = 0; $i < 16; $i++) {
+            $out .= $alphabet[random_int(0, $max)];
+        }
+        return $out;
     }
 
     /**
@@ -419,7 +479,7 @@ final class Auth
      *
      * 하는 일
      *   1) **현재 비밀번호**를 다시 확인한다 — 세션이 잠깐 새어 나가도 비밀번호까지 바꾸지 못하게.
-     *   2) 새 비밀번호가 12자 이상인지 본다 (PRD S-09-4).
+     *   2) 새 비밀번호가 12자 이상인지, **현재와 다른 값**인지 본다 (PRD S-09-4, F-16 `same_password`).
      *   3) Argon2id 해시로 갈아 끼우고, **지금 이 세션만 남기고** 그 사용자의 세션을 전부 지운다.
      *      (바꾼 기기에서 다시 로그인하게 만들 이유는 없고, 다른 기기는 즉시 끊겨야 한다.)
      *   4) 결과를 감사 로그에 남긴다. 비밀번호는 옛것도 새것도 남기지 않는다.
@@ -427,7 +487,7 @@ final class Auth
      * 실패해도 응답 문구는 호출자가 정하고, 여기서는 **사유 코드**만 돌려준다.
      *
      * @param array<string,mixed> $actor 현재 로그인한 사용자 (요청 값이 아니다)
-     * @return array{0:bool,1:?string,2:int} [성공 여부, 사유 코드, 끊은 세션 수]
+     * @return array{0:bool,1:?string,2:int} [성공 여부, 사유 코드(bad_credentials·weak_password·same_password), 끊은 세션 수]
      */
     public static function changePassword(array $actor, string $current, string $new): array
     {
@@ -444,6 +504,25 @@ final class Auth
         if (!is_array($row) || !password_verify($current, (string) $row['password_hash'])) {
             Audit::deny('auth.password_change', 'bad_credentials', $target);
             return [false, 'bad_credentials', 0];
+        }
+
+        /*
+         * 지금 이 변경이 **최초 로그인 강제 절차** 안에서 일어난 것인가 (11단계, PRD F-16).
+         * 값은 DB 의 현재 플래그이고 요청이 정하지 않는다. 감사 detail 의 `forced` 로만 쓴다
+         * (ARCH 7.5 `forced`) — "임시 비밀번호를 받은 사람이 실제로 첫 로그인에서 바꿨나" 를
+         * 나중에 로그만으로 셀 수 있게 하는 값이다 (SECURITY R-39).
+         */
+        $forced = $row['must_change_password'] === true;
+
+        /*
+         * 현재와 **같은 값**으로 바꾸는 것은 거부한다 (11단계, PRD 8장 `/api/me/password` 행).
+         * 강제 절차의 핵심은 "발급자가 아는 값을 무효로 만드는 것" 인데, 같은 값을 다시 넣으면
+         * 플래그만 내려가고 임시 비밀번호는 그대로 살아 있다 — 절차가 형식만 남는다.
+         * 비교는 해시로만 한다(평문끼리 비교하지 않는다).
+         */
+        if (password_verify($new, (string) $row['password_hash'])) {
+            Audit::deny('auth.password_change', 'same_password', $target);
+            return [false, 'same_password', 0];
         }
 
         // 12자 이상 (PRD S-09-4). 글자 수로 센다 — 한글 12자도 12자다.
@@ -471,9 +550,11 @@ final class Auth
                 ':keep'    => $keep,
             ])->rowCount();
 
-            Audit::allow('auth.password_change', $target + [
-                'detail' => ['sessions_revoked' => $revoked],
-            ]);
+            $detail = ['sessions_revoked' => $revoked];
+            if ($forced) {
+                $detail['forced'] = true;     // ARCH 7.5 `forced`
+            }
+            Audit::allow('auth.password_change', $target + ['detail' => $detail]);
             $db->commit();
         } catch (Throwable $e) {
             $db->rollback();

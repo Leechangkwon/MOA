@@ -142,6 +142,22 @@ function toLogin() {
   window.location.assign(LOGIN_PATH);
 }
 
+/**
+ * 최초 로그인 강제 절차 관문이 막은 응답인가 (11단계 — PRD F-16, ARCH 4.0).
+ *
+ * 서버는 절차를 마치지 않은 계정의 요청을 `403 {error, next}` 로 막는다. 화면이 그 상태를
+ * 모른 채 남아 있으면 "아무것도 안 되는 화면" 이 되므로, 홈으로 보내 절차 화면을 보여 준다.
+ * **막는 것은 서버**이고 이 함수는 안내일 뿐이다 (PRD S-01).
+ */
+function toGate(response, data) {
+  if (response && response.status === 403
+      && data && typeof data.next === 'string' && data.next !== '') {
+    window.location.assign(HOME_PATH);
+    return true;
+  }
+  return false;
+}
+
 /** 크기 표시 — 숫자만 다룬다(서버 문자열을 그대로 쓰지 않는다) */
 function formatSize(bytes) {
   var n = typeof bytes === 'number' && isFinite(bytes) && bytes >= 0 ? bytes : 0;
@@ -987,7 +1003,7 @@ function initAudit() {
  *   두 값 모두 textContent 로만 넣는다(다른 모든 값과 같은 규칙).
  * ★ 오류 문구는 서버가 준 것만 쓴다 — 브라우저가 "코드가 틀렸습니다" 같은 말을 지어내지 않는다.
  */
-function initAccount(csrfToken, mfaEnabled) {
+function initAccount(csrfToken, mfaEnabled, onMfaEnabled) {
   var msg = document.getElementById('msg');
   var pwForm = document.getElementById('password-form');
   var pwCurrent = document.getElementById('pw-current');
@@ -1021,6 +1037,10 @@ function initAccount(csrfToken, mfaEnabled) {
         return null;
       }
       return readJson(response).then(function (data) {
+        // 강제 절차 관문(403 + next)에 막혔으면 홈으로 — 화면과 서버 상태를 맞춘다 (11단계)
+        if (toGate(response, data)) {
+          return null;
+        }
         return { ok: response.ok, data: data };
       });
     });
@@ -1144,6 +1164,10 @@ function initAccount(csrfToken, mfaEnabled) {
           clearMfaUriLink();
           showMfa(true);
           setText(msg, '2단계 인증을 켰습니다.');
+          // 11단계 — 최초 로그인 강제 절차에서 불렀다면 여기서 끝이다(호출자가 다음을 정한다).
+          if (typeof onMfaEnabled === 'function') {
+            onMfaEnabled();
+          }
           return null;
         })
         .catch(function () {
@@ -1327,6 +1351,88 @@ function initUsers(csrfToken) {
 
   var state = { page: 1, total: 0, perPage: 50 };
 
+  /*
+   * 11단계 (PRD F-16 ①) — 생성 폼의 **비밀번호 칸을 없앤다.** 비밀번호는 서버가 만들고
+   * 201 응답에 딱 한 번 돌려준다. 칸을 남겨 두면 Admin 이 정한 값을 계속 아는 옛 방식으로
+   * 되돌아갈 여지가 생기고, 서버는 이제 `password` 키를 400 으로 거부한다.
+   */
+  if (fPassword && fPassword.parentNode && fPassword.parentNode.parentNode) {
+    fPassword.parentNode.parentNode.removeChild(fPassword.parentNode);
+  }
+  fPassword = null;
+
+  /**
+   * 임시 비밀번호를 **한 번만** 보여 주는 상자 (11단계, SECURITY R-39).
+   * 값은 읽기 전용 입력칸의 value 로만 넣고(문서에 HTML 로 쓰지 않는다), 닫으면 지운다.
+   * 다시 볼 방법은 없다 — 서버에도 해시만 있고, 잃으면 재발급이 답이다.
+   */
+  function showTempPassword(username, temp) {
+    if (typeof temp !== 'string' || temp === '' || !form || !form.parentNode) {
+      return;
+    }
+    var old = document.getElementById('temp-password-box');
+    if (old && old.parentNode) {
+      old.parentNode.removeChild(old);
+    }
+
+    var box = document.createElement('div');
+    box.id = 'temp-password-box';
+    box.className = 'notice';
+
+    var title = document.createElement('p');
+    title.className = 'notice__title';
+    setText(title, '계정 「' + username + '」 의 임시 비밀번호');
+    box.appendChild(title);
+
+    var field = document.createElement('input');
+    field.type = 'text';
+    field.readOnly = true;
+    field.className = 'temp-password';
+    field.value = temp;                 // 값은 value 로만 (문서에 글자로 심지 않는다)
+    box.appendChild(field);
+
+    var warn = document.createElement('p');
+    warn.className = 'warn';
+    setText(warn, '이 값은 다시 볼 수 없습니다. 안전한 경로로 본인에게만 전달하세요');
+    box.appendChild(warn);
+
+    var close = document.createElement('button');
+    close.type = 'button';
+    close.className = 'btn btn--quiet btn--small';
+    setText(close, '닫기');
+    close.addEventListener('click', function () {
+      field.value = '';
+      if (box.parentNode) {
+        box.parentNode.removeChild(box);
+      }
+    });
+    box.appendChild(close);
+
+    form.parentNode.insertBefore(box, form.nextSibling);
+  }
+
+  /** 상태 변경 요청 공통 (JSON + CSRF). 401 → 로그인, 403+next → 강제 절차 화면 */
+  function postJson(path, payload) {
+    return fetch(path, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken },
+      body: JSON.stringify(payload),
+      credentials: 'same-origin',
+      cache: 'no-store'
+    }).then(function (response) {
+      if (response.status === 401) {
+        toLogin();
+        return null;
+      }
+      return readJson(response).then(function (data) {
+        if (toGate(response, data)) {
+          return null;
+        }
+        return { ok: response.ok, status: response.status, data: data };
+      });
+    });
+  }
+
   function clearRows() {
     while (body.firstChild) {
       body.removeChild(body.firstChild);
@@ -1360,6 +1466,9 @@ function initUsers(csrfToken) {
           return null;
         }
         return readJson(response).then(function (data) {
+          if (toGate(response, data)) {
+            return null;
+          }
           if (!response.ok) {
             setText(msg, errorMessage(data));
             return null;
@@ -1431,6 +1540,70 @@ function initUsers(csrfToken) {
     });
     td.appendChild(roleButton);
 
+    /*
+     * 11단계 (PRD F-16 ⑤) — 임시 비밀번호 재발급 · 2단계 인증 초기화.
+     * 둘 다 **사유가 필수**이고 자기 자신에게는 쓸 수 없다(위에서 (본인) 로 끝났다).
+     * 화면은 사유를 받아 보낼 뿐이고, 허용 여부·자기 자신 금지는 서버가 다시 판단한다.
+     */
+    var pwResetButton = document.createElement('button');
+    pwResetButton.type = 'button';
+    pwResetButton.className = 'btn btn--quiet btn--small';
+    setText(pwResetButton, '임시 비밀번호 재발급');
+    pwResetButton.addEventListener('click', function () {
+      var reason = askReason('계정 「' + item.username + '」 임시 비밀번호 재발급');
+      if (reason === null) {
+        return;
+      }
+      setText(msg, '');
+      postJson('/api/users/' + String(item.id) + '/password/reset', { reason_text: reason })
+        .then(function (result) {
+          if (result === null) {
+            return null;
+          }
+          if (!result.ok) {
+            setText(msg, errorMessage(result.data));
+            return null;
+          }
+          setText(msg, '임시 비밀번호를 재발급하고 그 계정의 모든 세션을 끊었습니다.');
+          showTempPassword(item.username, result.data.temp_password);
+          load();
+          return null;
+        })
+        .catch(function () {
+          setText(msg, GENERIC_ERROR);
+        });
+    });
+    td.appendChild(pwResetButton);
+
+    var mfaResetButton = document.createElement('button');
+    mfaResetButton.type = 'button';
+    mfaResetButton.className = 'btn btn--quiet btn--small';
+    setText(mfaResetButton, '2단계 인증 초기화');
+    mfaResetButton.addEventListener('click', function () {
+      var reason = askReason('계정 「' + item.username + '」 2단계 인증 초기화');
+      if (reason === null) {
+        return;
+      }
+      setText(msg, '');
+      postJson('/api/users/' + String(item.id) + '/mfa/reset', { reason_text: reason })
+        .then(function (result) {
+          if (result === null) {
+            return null;
+          }
+          if (!result.ok) {
+            setText(msg, errorMessage(result.data));
+            return null;
+          }
+          setText(msg, '2단계 인증을 초기화했습니다. 대상은 다음 로그인 뒤 다시 등록해야 합니다.');
+          load();
+          return null;
+        })
+        .catch(function () {
+          setText(msg, GENERIC_ERROR);
+        });
+    });
+    td.appendChild(mfaResetButton);
+
     var activeButton = document.createElement('button');
     activeButton.type = 'button';
     activeButton.className = 'btn btn--quiet btn--small';
@@ -1495,6 +1668,9 @@ function initUsers(csrfToken) {
           return null;
         }
         return readJson(response).then(function (data) {
+          if (toGate(response, data)) {
+            return null;
+          }
           if (!response.ok) {
             setText(msg, errorMessage(data));
             return null;
@@ -1541,9 +1717,9 @@ function initUsers(csrfToken) {
     form.addEventListener('submit', function (event) {
       event.preventDefault();
       setText(msg, '');
+      // 비밀번호는 보내지 않는다 — 서버가 만들어 201 응답으로 한 번 돌려준다 (F-16 ①)
       var payload = {
         username: fUsername.value,
-        password: fPassword.value,
         role: fRole.value,
         reason_text: fReason.value
       };
@@ -1554,29 +1730,21 @@ function initUsers(csrfToken) {
         payload.expires_at = fExpires.value;
       }
       fSubmit.disabled = true;
-      fetch('/api/users', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken },
-        body: JSON.stringify(payload),
-        credentials: 'same-origin',
-        cache: 'no-store'
-      })
-        .then(function (response) {
-          if (response.status === 401) {
-            toLogin();
+      var newName = String(payload.username);
+      postJson('/api/users', payload)
+        .then(function (result) {
+          if (result === null) {
             return null;
           }
-          return readJson(response).then(function (data) {
-            fPassword.value = '';
-            if (response.status !== 201) {
-              setText(msg, errorMessage(data));
-              return null;
-            }
-            form.reset();
-            setText(msg, '계정을 만들었습니다. 최초 비밀번호는 본인에게 직접 전달하고, 첫 로그인 뒤 바꾸게 하세요.');
-            load();
+          if (result.status !== 201) {
+            setText(msg, errorMessage(result.data));
             return null;
-          });
+          }
+          form.reset();
+          setText(msg, '계정을 만들었습니다. 아래 임시 비밀번호를 본인에게만 전달하세요 — 첫 로그인에서 반드시 바꾸게 됩니다.');
+          showTempPassword(newName, result.data.temp_password);
+          load();
+          return null;
         })
         .catch(function () {
           setText(msg, GENERIC_ERROR);
@@ -1605,6 +1773,154 @@ function initUsers(csrfToken) {
   load();
 }
 
+/* ─── 최초 로그인 강제 절차 화면 (11단계 — PRD F-16, ARCH 4.0) ────
+ *
+ * 서버가 /api/me 로 내려 준 `next` 가 있으면 홈은 **그 절차 화면만** 보여 준다.
+ *   'password_change' → 비밀번호 변경 (현재·새·확인)
+ *   'mfa_setup'       → 2단계 인증 등록 (「내 계정」의 등록 UI 를 그대로 옮겨 쓴다)
+ *   null              → 절차 끝. 홈을 다시 열어 평소 화면을 그린다
+ *
+ * ★ 화면을 감추는 것은 **편의**일 뿐이다. 개발자도구로 되살려 API 를 직접 불러도
+ *   라우터 관문이 403 으로 막고 감사 로그(auth.gate)에 남긴다 (PRD S-01).
+ * ★ 모든 문구는 textContent 로만 넣는다(다른 화면과 같은 규칙).
+ */
+function initForcedGate(csrfToken, firstStep, mfaEnabled) {
+  var msg = document.getElementById('msg');
+  var gate = document.getElementById('forced-gate');
+  var pwBox = document.getElementById('forced-password');
+  var mfaBox = document.getElementById('forced-mfa');
+  var pwForm = document.getElementById('forced-password-form');
+  var pwCurrent = document.getElementById('forced-pw-current');
+  var pwNew = document.getElementById('forced-pw-new');
+  var pwConfirm = document.getElementById('forced-pw-confirm');
+  var pwSubmit = document.getElementById('forced-pw-submit');
+  var logoutLink = document.getElementById('forced-logout');
+  var slot = document.getElementById('forced-mfa-slot');
+
+  /** 절차 화면 말고는 전부 감춘다 (상단 머리말과 알림 줄만 남긴다) */
+  function hideEverythingElse() {
+    var main = document.querySelector('main');
+    if (!main) {
+      return;
+    }
+    var kids = main.children;
+    for (var i = 0; i < kids.length; i++) {
+      var el = kids[i];
+      if (el === gate || el.id === 'msg' || el.tagName === 'HEADER') {
+        continue;
+      }
+      el.hidden = true;
+    }
+  }
+
+  /** 지금 보여 줄 걸음을 고른다. null 이면 절차가 끝났으므로 홈을 다시 연다. */
+  function show(step) {
+    if (step !== 'password_change' && step !== 'mfa_setup') {
+      window.location.assign(HOME_PATH);
+      return;
+    }
+    if (gate) {
+      gate.hidden = false;
+    }
+    if (pwBox) {
+      pwBox.hidden = step !== 'password_change';
+    }
+    if (mfaBox) {
+      mfaBox.hidden = step !== 'mfa_setup';
+    }
+  }
+
+  /** 서버에 "다음은 무엇인가" 를 다시 묻는다 — 판단은 언제나 서버가 한다 */
+  function refresh() {
+    fetch('/api/me', { credentials: 'same-origin', cache: 'no-store' })
+      .then(function (response) {
+        if (response.status === 401) {
+          toLogin();
+          return null;
+        }
+        return readJson(response).then(function (body) {
+          show(typeof body.next === 'string' ? body.next : null);
+          return null;
+        });
+      })
+      .catch(function () {
+        setText(msg, GENERIC_ERROR);
+      });
+  }
+
+  hideEverythingElse();
+
+  /*
+   * 2단계 인증 등록 화면은 「내 계정」의 것을 **그대로 옮겨 온다**(initAccount 가 붙인
+   * 이벤트도 함께 따라온다). 같은 화면을 두 벌 만들면 언젠가 한쪽만 고쳐진다.
+   */
+  initAccount(csrfToken, mfaEnabled, function () {
+    refresh();
+  });
+  var mfaOff = document.getElementById('mfa-off');
+  if (slot && mfaOff) {
+    slot.appendChild(mfaOff);
+    mfaOff.hidden = false;
+  }
+
+  if (pwForm) {
+    pwForm.addEventListener('submit', function (event) {
+      event.preventDefault();
+      setText(msg, '');
+      if (pwNew.value !== pwConfirm.value) {
+        // 서버에 보내기 전의 입력 확인이다(권한·사유 판단이 아니다).
+        setText(msg, '새 비밀번호와 확인 값이 다릅니다.');
+        return;
+      }
+      pwSubmit.disabled = true;
+      fetch('/api/me/password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken },
+        body: JSON.stringify({ current: pwCurrent.value, 'new': pwNew.value }),
+        credentials: 'same-origin',
+        cache: 'no-store'
+      })
+        .then(function (response) {
+          if (response.status === 401) {
+            toLogin();
+            return null;
+          }
+          return readJson(response).then(function (data) {
+            pwCurrent.value = '';
+            pwNew.value = '';
+            pwConfirm.value = '';
+            if (!response.ok) {
+              // 서버가 준 문구만 띄운다(같은 값·12자 미만·현재 비밀번호 오류를 구분하지 않는다).
+              setText(msg, errorMessage(data));
+              return null;
+            }
+            setText(msg, '비밀번호를 바꿨습니다.');
+            refresh();
+            return null;
+          });
+        })
+        .catch(function () {
+          setText(msg, GENERIC_ERROR);
+        })
+        .then(function () {
+          pwSubmit.disabled = false;
+        });
+    });
+  }
+
+  if (logoutLink) {
+    // 로그아웃은 홈의 로그아웃 단추가 하는 일과 **똑같다** — 그 단추를 그대로 누른다.
+    logoutLink.addEventListener('click', function () {
+      var real = document.getElementById('logout');
+      if (real) {
+        real.click();
+      }
+    });
+  }
+
+  show(firstStep);
+}
+
 /* ─── 로그인한 화면 (홈) ────────────────────────────────────── */
 function initHome(button) {
   var msg = document.getElementById('msg');
@@ -1624,6 +1940,16 @@ function initHome(button) {
         if (typeof body.csrf_token === 'string') {
           csrfToken = body.csrf_token;
           button.disabled = false;
+          /*
+           * 11단계 (PRD F-16) — 최초 로그인 강제 절차가 남아 있으면 **그 화면만** 그린다.
+           * 값은 서버가 준 `next` 하나뿐이고 화면이 스스로 판단하지 않는다.
+           * 절차 화면이 없는 다른 페이지(/users·/audit)는 관문이 애초에 403 으로 막는다.
+           */
+          var forcedNext = typeof body.next === 'string' ? body.next : null;
+          if (forcedNext !== null && document.getElementById('forced-gate')) {
+            initForcedGate(csrfToken, forcedNext, body.mfa_enabled === true);
+            return null;
+          }
           // 파일 화면은 토큰을 받은 뒤에 시작한다(업로드·삭제에 토큰이 필요하다).
           // upload_levels 는 서버가 정한 업로드 레벨 선택지다(4단계). 배열이 아니면 빈 목록으로 본다.
           // can_fetch 는 "URL 로 가져오기" 패널 표시 여부다(7단계). true 가 아니면 열지 않는다.

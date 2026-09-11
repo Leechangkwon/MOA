@@ -110,13 +110,21 @@ $sqlExists = <<<'SQL'
     SELECT 1 AS one FROM users WHERE username = :username
     SQL;
 
+/*
+ * 11단계 (PRD F-16 ④) — **새로 만드는 계정**은 첫 로그인에 비밀번호 변경 → 2단계 인증 등록을
+ * 마쳐야 한다. 설치 때 발급된 평문이 /etc/tbox-v2/seed-accounts.txt 로 남는 구조(SECURITY R-33)이므로,
+ * 그 값의 수명을 첫 로그인에서 끝내는 것이 이 두 플래그다.
+ * 이미 있는 계정은 위 "건너뜀" 분기에서 손대지 않는다 — 재실행이 남의 절차 상태를 되돌리지 않는다.
+ */
 $insert = <<<'SQL'
-    INSERT INTO users (username, password_hash, role, team_id, expires_at)
+    INSERT INTO users (username, password_hash, role, team_id, expires_at,
+                       must_change_password, mfa_setup_required)
     VALUES (:username, :password_hash, :role, :team_id,
             CASE WHEN :role_for_expiry = 'Guest'
                  THEN now() + make_interval(days => CAST(:guest_days AS integer))
                  ELSE NULL
-            END)
+            END,
+            true, true)
     SQL;
 
 $lines = [];

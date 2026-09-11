@@ -48,7 +48,17 @@ final class Audit
      *
      * @var list<string>
      */
-    private const ALLOWED_DETAIL_KEYS = ['sessions_revoked'];
+    private const ALLOWED_DETAIL_KEYS = [
+        'sessions_revoked',
+        /*
+         * 11단계 (PRD F-16, ARCH 7.5). 셋 다 등록부에 있는 키이고 값에 비밀이 없다.
+         *   temp_password_issued — 임시 비밀번호를 **발급했다는 사실**(true)만. 값은 절대 남기지 않는다.
+         *                          이름에 `password` 가 들어가 부분 일치에 걸리므로 예외로 등록한다.
+         *   forced               — 최초 로그인 강제 절차 중에 한 변경인가 (true)
+         *   next                 — 관문이 요구한 다음 단계 (`password_change`·`mfa_setup`)
+         */
+        'temp_password_issued', 'forced', 'next',
+    ];
 
     private const RESULT_ALLOW = 'allow';
     private const RESULT_DENY  = 'deny';
@@ -199,6 +209,19 @@ final class Audit
         'auth.mfa_disable|deny|bad_credentials'         => '{actor} 이(가) 2단계 인증을 끄려 했지만 현재 비밀번호가 틀렸습니다',
         'auth.mfa|deny|bad_code'                        => '{target} 계정으로 로그인하면서 2단계 인증 코드를 틀렸습니다',
         'auth.mfa|deny|code_required'                   => '{target} 계정은 2단계 인증이 켜져 있는데 코드 없이 로그인을 시도해 막았습니다',
+
+        // ── 최초 로그인 강제 절차 (11단계 — PRD F-16, ARCH 4.0, SECURITY R-05 · R-33 · R-39) ──
+        // 관문(auth.gate)은 라우터 한 곳에서만 기록한다. 막힌 사람이 곧 대상이므로 {target} 을 쓴다.
+        // 임시 비밀번호 값은 어느 문장에도 들어가지 않는다 — detail 에도 사실(true)만 남는다.
+        'auth.gate|deny|password_change_required'       => '{target} 이(가) 비밀번호를 아직 바꾸지 않은 상태로 다른 기능을 요청해서 거부했습니다',
+        'auth.gate|deny|mfa_setup_required'             => '{target} 이(가) 2단계 인증을 아직 설정하지 않은 상태로 다른 기능을 요청해서 거부했습니다',
+        'auth.password_change|deny|same_password'       => '{actor} 이(가) 비밀번호를 현재와 같은 값으로 바꾸려 해서 거부했습니다',
+        'user.password_reset|allow'                     => '{actor} 이(가) 계정 「{target}」 의 임시 비밀번호를 재발급하고 모든 세션을 끊었습니다 (사유는 상세 기록)',
+        'user.password_reset|deny|self_change'          => '{actor} 이(가) 자기 자신의 임시 비밀번호를 재발급하려 해서 거부했습니다',
+        'user.password_reset|deny|bad_request'          => '{actor} 이(가) 계정 「{target}」 임시 비밀번호 재발급을 사유 없이 요청해서 거부했습니다',
+        'user.mfa_reset|allow'                          => '{actor} 이(가) 계정 「{target}」 의 2단계 인증을 초기화하고 모든 세션을 끊었습니다 (사유는 상세 기록)',
+        'user.mfa_reset|deny|self_change'               => '{actor} 이(가) 자기 자신의 2단계 인증을 초기화하려 해서 거부했습니다',
+        'user.mfa_reset|deny|bad_request'               => '{actor} 이(가) 계정 「{target}」 2단계 인증 초기화를 사유 없이 요청해서 거부했습니다',
     ];
 
     /** 자리표시자에 넣을 값이 없을 때 (ARCH 7.4) */

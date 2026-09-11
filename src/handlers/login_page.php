@@ -32,7 +32,9 @@ if (!headers_sent()) {
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>로그인 · t-box</title>
-<link rel="stylesheet" href="/assets/app.css">
+<!-- 자산 주소에 파일이 마지막으로 바뀐 시각(정수)을 붙인다 — 화면 코드를 고쳐도
+     브라우저가 옛 파일을 계속 쓰는 일을 막는다 (11단계. 출력은 정수뿐이라 이스케이프 대상 없음). -->
+<link rel="stylesheet" href="/assets/app.css?v=<?= (int) filemtime(__DIR__ . '/../../public/assets/app.css') ?>">
 </head>
 <body>
 <main class="card card--narrow">
@@ -68,6 +70,6 @@ if (!headers_sent()) {
 
   <p id="msg" class="msg" role="alert" aria-live="polite"></p>
 </main>
-<script src="/assets/app.js"></script>
+<script src="/assets/app.js?v=<?= (int) filemtime(__DIR__ . '/../../public/assets/app.js') ?>"></script>
 </body>
 </html>

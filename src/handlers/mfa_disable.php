@@ -73,9 +73,13 @@ unset($password, $otp, $body);
 
 $sqlDisable = <<<'SQL'
     UPDATE users
-       SET mfa_enabled = false,
-           mfa_secret  = NULL,
-           updated_at  = now()
+       SET mfa_enabled        = false,
+           mfa_secret         = NULL,
+           -- 11단계 (PRD F-16 ③) — 2단계 인증은 **모든 역할에 필수**다.
+           -- 끄는 것 자체는 허용하되(비밀을 갈아 끼우는 유일한 길이다),
+           -- 다음 요청부터 관문이 다시 등록을 요구한다. 같은 UPDATE 문장에서 켠다.
+           mfa_setup_required = true,
+           updated_at         = now()
      WHERE id = :id
     SQL;
 

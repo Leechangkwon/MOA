@@ -30,7 +30,7 @@
 | 8 | 감사 로그 조회 화면(Admin) — `audit.view` 기록, 육하원칙 6필터 | ✅ | ✅ 2026-09-11 | ✅ 2026-09-11 (T-12·T-13 통과) | ⚠ 일괄 수행 대기 | 8단계 커밋 (2026-09-11) |
 | 9 | 운영 — 백업·복구·정합성 검사·경보(AL-1 외 5종)·서버 기준선 점검·해시 체인, README 완성 (원격 로그·WAL·방화벽 적용은 미적용) | ✅ | ✅ 2026-09-11 | ✅ 2026-09-11 (T-15·T-17~T-20 통과, 기준선 주의 6) | ⚠ 일괄 수행 대기 | 9단계 커밋 (2026-09-11) |
 | 10 | 계정 관리(F-10)·휴지통 복구(F-11)·Guest 만료(R-12)·비밀번호 변경·2단계 인증 TOTP(R-05) | ✅ | ✅ 2026-09-11 | ✅ 2026-09-11 (T-22 통과, 재지시 1회) | ⚠ 일괄 수행 대기 | 10단계 커밋 (2026-09-11) |
-| 11 | 최초 로그인 강제 절차 — 임시 비밀번호·최초 로그인 비밀번호 변경 강제·2단계 인증 필수(F-16, 사용자 결정 2026-09-11) | ⏳ | ⏳ Opus 구현 중 | — | — | — |
+| 11 | 최초 로그인 강제 절차 — 임시 비밀번호·최초 로그인 비밀번호 변경 강제·2단계 인증 필수(F-16, 사용자 결정 2026-09-11) | ✅ | ✅ 2026-09-11 | ✅ 2026-09-11 (관문 우회 10종 403, 검토 계정 5개 이행 완료) | ⚠ 대기 — 시드 계정 첫 로그인 | 11단계 커밋 |
 
 ---
 
@@ -414,28 +414,28 @@ sudo -u postgres psql -d tbox_re -c "SELECT happened_at, actor_name, action, res
 
 ---
 
-### 11단계 — 최초 로그인 강제 절차: 임시 비밀번호·비밀번호 변경 강제·2단계 인증 필수 ⏳ (F-16, R-05, R-33, R-39) — 사용자 결정 2026-09-11
+### 11단계 — 최초 로그인 강제 절차: 임시 비밀번호·비밀번호 변경 강제·2단계 인증 필수 ✅ (F-16, R-05, R-33, R-39) — 사용자 결정·구현·검토 2026-09-11
 
 > 사용자 요구(원문 요지): "2차 인증 여부는 1차 비밀번호 뒤에 설정을 요구하고 사용자가 지정하게 한다. 관리자가 만든 아이디는 임시 비밀번호로 주고 최초 로그인 때 비밀번호 변경과 2차 인증 설정을 요구한다. 패치 이후 시점부터 최초 로그인으로 적용(과거 데이터 삭제 아님)."
 > 해석(Fable, 보고 후 확정): "2차 비밀번호" 는 **현재의 TOTP 2단계 인증**으로 구현한다(사용자가 자기 인증 앱에 직접 등록 = "사용자가 지정"). 사람이 외우는 두 번째 비밀번호는 첫 번째와 같은 종류(아는 것)라 보안상 한 겹이 아니어서 채택하지 않았다. "패치 이후 최초 로그인" 은 **기존 활성 계정 전부의 다음 로그인**으로 해석해 마이그레이션이 플래그를 켠다.
 
 **개발 사항**
-- [ ] DB: `users.must_change_password`·`users.mfa_setup_required`(BOOLEAN NOT NULL DEFAULT false)·`users.password_changed_at`. 마이그레이션이 기존 활성 계정 전부에 `must_change_password=true`, `mfa_setup_required = NOT mfa_enabled`
-- [ ] 계정 생성: Admin 은 비밀번호를 보내지 않는다. 서버가 임시 비밀번호(16자, `0O1lI` 제외)를 만들어 201 에 **한 번만** 돌려준다. 감사에는 발급 사실만
-- [ ] 로그인 200 응답·`/api/me` 에 `next`(`password_change`·`mfa_setup`·null)
-- [ ] 라우터 관문: 플래그가 켜진 세션은 허용 목록 밖 요청 **403 + next** (`auth.gate deny …` 기록)
-- [ ] 비밀번호 변경 성공 → `must_change_password` 해제(같은 값 400). TOTP 확정 → `mfa_setup_required` 해제. TOTP 해제 → 다시 켜짐(필수)
-- [ ] Admin: `POST /api/users/{uid}/password/reset`·`/mfa/reset` (사유 필수, 자기 자신 금지, 대상 세션 전부 종료)
-- [ ] 화면: 홈이 `next` 를 보고 강제 화면만 표시(비밀번호 변경 → 2단계 인증 등록 → 정상 홈). 계정 관리 화면에서 임시 비밀번호 1회 표시·재발급·2단계 초기화 버튼
-- [ ] 정적 자원 캐시: `app.js`·`app.css` 에 버전 쿼리(`?v=파일수정시각`) — 보정이 브라우저 캐시(7일)에 갇히지 않게
+- [x] DB: `users.must_change_password`·`users.mfa_setup_required`(BOOLEAN NOT NULL DEFAULT false)·`users.password_changed_at`. 마이그레이션이 기존 활성 계정 전부에 `must_change_password=true`, `mfa_setup_required = NOT mfa_enabled`
+- [x] 계정 생성: Admin 은 비밀번호를 보내지 않는다. 서버가 임시 비밀번호(16자, `0O1lI` 제외)를 만들어 201 에 **한 번만** 돌려준다. 감사에는 발급 사실만
+- [x] 로그인 200 응답·`/api/me` 에 `next`(`password_change`·`mfa_setup`·null)
+- [x] 라우터 관문: 플래그가 켜진 세션은 허용 목록 밖 요청 **403 + next** (`auth.gate deny …` 기록)
+- [x] 비밀번호 변경 성공 → `must_change_password` 해제(같은 값 400). TOTP 확정 → `mfa_setup_required` 해제. TOTP 해제 → 다시 켜짐(필수)
+- [x] Admin: `POST /api/users/{uid}/password/reset`·`/mfa/reset` (사유 필수, 자기 자신 금지, 대상 세션 전부 종료)
+- [x] 화면: 홈이 `next` 를 보고 강제 화면만 표시(비밀번호 변경 → 2단계 인증 등록 → 정상 홈). 계정 관리 화면에서 임시 비밀번호 1회 표시·재발급·2단계 초기화 버튼
+- [x] 정적 자원 캐시: `app.js`·`app.css` 에 버전 쿼리(`?v=파일수정시각`) — 보정이 브라우저 캐시(7일)에 갇히지 않게
 
-**검토 체크 (Fable ②)**
-- [ ] 마이그레이션 뒤 기존 계정 `must_change_password=true`; 검토 계정으로 로그인 → `next=password_change`, `/api/files` 403 + `auth.gate deny`
-- [ ] 비밀번호 변경(같은 값 400 → 새 값 200) → `next=mfa_setup`, `/api/files` 여전히 403, `enroll`·`confirm` 은 200 → `next=null` → `/api/files` 200
-- [ ] Admin 생성: `password` 키 → 400, 없이 → 201 + `temp_password` 16자, 감사 detail 에 값 0건, 새 계정 로그인 → 절차 강제
-- [ ] 재발급·초기화: 대상 세션 2개 모두 401, 자기 자신 400 `self_change`, 사유 없음 400, Manager 403
-- [ ] TOTP 해제 → 다음 요청 403 `mfa_setup`; 린트 0, `\dp` 불변
-- [ ] 검토 계정 5개는 절차를 마치고 새 비밀번호를 `/etc/tbox-v2/seed-accounts.txt`(qa 줄)에, TOTP 비밀을 `/etc/tbox-v2/qa-totp.txt`(root 0600)에 기록
+**검토 체크 (Fable ②)** — 2026-09-11 통과 (`SECURITY.md` 7장 「11단계 구현 검토」)
+- [x] 마이그레이션 뒤 기존 계정 `must_change_password=true`; 검토 계정으로 로그인 → `next=password_change`, `/api/files` 403 + `auth.gate deny`
+- [x] 비밀번호 변경(같은 값 400 → 새 값 200) → `next=mfa_setup`, `/api/files` 여전히 403, `enroll`·`confirm` 은 200 → `next=null` → `/api/files` 200
+- [x] Admin 생성: `password` 키 → 400, 없이 → 201 + `temp_password` 16자, 감사 detail 에 값 0건, 새 계정 로그인 → 절차 강제
+- [x] 재발급·초기화: 대상 세션 2개 모두 401, 자기 자신 400 `self_change`, 사유 없음 400, Manager 403
+- [x] TOTP 해제 → 다음 요청 403 `mfa_setup`; 린트 0, `\dp` 불변
+- [x] 검토 계정 5개는 절차를 마치고 새 비밀번호를 `/etc/tbox-v2/seed-accounts.txt`(qa 줄)에, TOTP 비밀을 `/etc/tbox-v2/qa-totp.txt`(root 0600)에 기록
 
 **자기 공격 체크 (사용자 ③)**
 - [ ] 시드 계정(`admin01` 등)으로 로그인 → 비밀번호 변경 화면만 보이는지 → 변경 → 2단계 인증 등록 화면 → 인증 앱 등록·확정 → 정상 홈
@@ -448,6 +448,7 @@ sudo -u postgres psql -d tbox_re -c "SELECT happened_at, actor_name, action, res
 
 | 날짜 | 구분 | 내용 | 해소·근거 |
 |---|---|---|---|
+| 2026-09-11 | 해소 | (검토 중 Fable 실수) 검토 스크립트가 비밀번호 변경 API 필드 이름을 잘못 써(`current_password`/`new_password`, 실제는 `current`/`new`) 변경이 전부 400 인데, 스크립트 끝의 "새 비밀번호 파일 설치" 는 그대로 실행돼 `seed-accounts.txt` 의 검토 계정 5줄이 **DB 와 다른 값**으로 덮였다 | 원래 값은 하위 에이전트(Opus) 기록에 남아 있어 복원 → 5계정 로그인 200 으로 검증 → 스크립트를 "절차 완료(files 200)를 확인한 계정만 갱신, 5개 모두 아니면 설치 중단" 으로 고쳐 재실행. 교훈은 8.4-10 과 같다: **설치·기록은 성공을 확인한 뒤에만.** 시드 계정(admin01 등) 줄은 건드리지 않았다 |
 | 2026-09-11 | 결정 | 10단계의 "2단계 인증은 선택" 을 뒤집어 **필수**로 | 사용자 결정. 서버 관문(403)이 막으므로 화면 우회 불가 |
 | 2026-09-11 | 궁금 | "로그인 창에 2차 비밀번호 입력이 있다" | 서버가 보내는 HTML 은 칸이 `hidden` 이고 공개 호스트에서도 확인됨. 브라우저가 **7일 캐시된 옛 app.js** 를 쓰고 있을 가능성 → Ctrl+F5(강력 새로고침). 재발 방지로 자원 버전 쿼리 추가(개발 사항) |
 | 2026-09-11 | 궁금 | "페이지가 안 열린다 — 아직 작업 중이라서?" (Opus 구현 도중) | 두 가지가 겹쳤다. ① **10초 자체 장애(19:21:58~19:22:08 KST)**: Opus 가 라우트 표에 새 핸들러 2개를 먼저 적고 파일은 뒤에 만들어, 그 사이 라우터의 "핸들러 파일 없음" 검사가 모든 요청을 거부(`app.log` 34건). 이 서버는 **작업 트리를 그대로 서비스**하므로 편집 = 배포다. ② 그 뒤로는 서버 안(nginx·PHP·DB)·프록시→백엔드 경로(`https://192.168.104.100`, Host 헤더) 모두 200 인데, 사용자 브라우저의 요청은 18:47:47 이후 **한 건도 도착하지 않았고** 공개 IP `112.220.89.250` 은 80·443 모두 연결 불가 → 공개 입구(강사 프록시의 바깥쪽·DNS·방화벽) 문제로 판단. 같은 IP 를 쓰는 다른 수강생 주소로 교차 확인 가능 | `sudo tail /var/log/tbox-v2/app.log` · `sudo tail /var/log/nginx/tbox-v2.access.log`(내 IP 가 있나) · `curl -sk --resolve changkwon.mso.so:443:192.168.104.100 https://changkwon.mso.so/login -o /dev/null -w "%{http_code}"`. 재발 방지 후보: 구현은 별도 체크아웃에서 하고 검토 뒤 전환(`deploy/switch-site.sh` 활용) — 다음 결정 |

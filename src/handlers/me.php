@@ -45,4 +45,12 @@ Http::json([
     // 10단계 — 내 2단계 인증이 켜져 있나 (R-05). 권한이 아니라 상태이며,
     // 화면이 "켜기" 를 보일지 "끄기" 를 보일지 고르는 데만 쓴다.
     'mfa_enabled'      => ($user['mfa_enabled'] ?? false) === true,
+    // 11단계 — 최초 로그인 강제 절차 (PRD F-16, ARCH 4.0).
+    //   next — 지금 무엇을 해야 하나: 'password_change' → 'mfa_setup' → null(끝).
+    //          로그인 200 응답과 **같은 값**이며 계산은 Auth::nextStep 한 곳에서만 한다.
+    //   두 플래그는 화면이 상태를 그대로 보여 줄 수 있게 함께 준다. 셋 다 **상태**일 뿐
+    //   권한이 아니고, 화면이 이 값을 무시해도 라우터 관문이 서버에서 막는다 (PRD S-01).
+    'next'                 => Auth::nextStep($user),
+    'must_change_password' => ($user['must_change_password'] ?? false) === true,
+    'mfa_setup_required'   => ($user['mfa_setup_required'] ?? false) === true,
 ]);

@@ -43,7 +43,7 @@ $auditTarget = [
 ];
 
 $sqlState = <<<'SQL'
-    SELECT mfa_enabled, mfa_secret FROM users WHERE id = :id
+    SELECT mfa_enabled, mfa_secret, mfa_setup_required FROM users WHERE id = :id
     SQL;
 
 $row = $db->run($sqlState, [':id' => $userId])->fetch();
@@ -69,16 +69,25 @@ unset($otp, $body);
 
 $sqlEnable = <<<'SQL'
     UPDATE users
-       SET mfa_enabled = true,
-           updated_at  = now()
+       SET mfa_enabled        = true,
+           -- 11단계 (PRD F-16 ②) — 강제 절차의 마지막 걸음. 켜지는 **그 문장**에서 함께 내린다.
+           -- 두 문장으로 나누면 사이에서 실패했을 때 "켰는데 계속 막히는" 상태가 남는다.
+           mfa_setup_required = false,
+           updated_at         = now()
      WHERE id = :id
        AND mfa_secret IS NOT NULL
     SQL;
 
+/*
+ * 지금 이 등록이 **최초 로그인 강제 절차** 안에서 일어난 것인가 (11단계, ARCH 7.5 `forced`).
+ * DB 의 현재 플래그이고 요청이 정하지 않는다 — 감사 detail 로만 쓴다.
+ */
+$forced = $row['mfa_setup_required'] === true;
+
 $db->begin();
 try {
     $db->run($sqlEnable, [':id' => $userId]);
-    Audit::allow('auth.mfa_enroll', $auditTarget);
+    Audit::allow('auth.mfa_enroll', $auditTarget + ($forced ? ['detail' => ['forced' => true]] : []));
     $db->commit();
 } catch (Throwable $e) {
     $db->rollback();

@@ -42,7 +42,12 @@ if (!headers_sent()) {
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>t-box (재구축)</title>
-<link rel="stylesheet" href="/assets/app.css">
+<!-- 자산 주소에 파일이 마지막으로 바뀐 시각(정수)을 붙인다 (11단계).
+     화면 코드를 고쳐도 브라우저가 옛 파일을 계속 쓰면, 서버는 새 규칙인데 화면만
+     옛 규칙인 상태가 된다 — 강제 절차처럼 화면과 서버가 함께 움직여야 하는 기능에서는
+     그것이 곧 "안 막히는 것처럼 보이는" 오해가 된다. 출력값은 filemtime 의 **정수**뿐이라
+     이스케이프 대상이 없다(사용자 입력이 섞이지 않는다). -->
+<link rel="stylesheet" href="/assets/app.css?v=<?= (int) filemtime(__DIR__ . '/../../public/assets/app.css') ?>">
 </head>
 <body>
 <main class="card card--wide">
@@ -67,6 +72,44 @@ if (!headers_sent()) {
       <button id="logout" class="btn btn--quiet" type="button">로그아웃</button>
     </div>
   </header>
+
+  <!-- ─── 11단계: 최초 로그인 강제 절차 (PRD F-16, ARCH 4.0) ──────────────────
+       임시 비밀번호로 처음 들어온 사람은 **비밀번호 변경 → 2단계 인증 등록**을 마칠 때까지
+       다른 화면을 보지 못한다. app.js 가 /api/me 의 `next` 를 보고 이 상자만 남기고
+       나머지(안내·업로드·목록·내 계정·휴지통)를 감춘다.
+       ★ 감추는 것은 **편의**일 뿐 막는 것이 아니다 — 화면을 되살려 API 를 직접 불러도
+         라우터 관문(public/index.php)이 403 으로 막고 감사 로그에 남긴다 (PRD S-01). -->
+  <section class="panel" id="forced-gate" hidden>
+    <div id="forced-password" hidden>
+      <h2>비밀번호를 변경해 주세요</h2>
+      <p class="muted">임시 비밀번호로 처음 로그인했거나 관리자가 재발급했습니다. 새 비밀번호를 정한 뒤 2단계 인증을 설정하면 서비스를 쓸 수 있습니다</p>
+      <form id="forced-password-form" class="form form--grid" autocomplete="off">
+        <label class="field">
+          <span class="field__label">현재 비밀번호 (받은 임시 비밀번호)</span>
+          <input id="forced-pw-current" type="password" maxlength="1024" required>
+        </label>
+        <label class="field">
+          <span class="field__label">새 비밀번호 (12자 이상 · 임시 비밀번호와 달라야 합니다)</span>
+          <input id="forced-pw-new" type="password" maxlength="1024" minlength="12" required>
+        </label>
+        <label class="field">
+          <span class="field__label">새 비밀번호 확인</span>
+          <input id="forced-pw-confirm" type="password" maxlength="1024" minlength="12" required>
+        </label>
+        <button id="forced-pw-submit" class="btn" type="submit">비밀번호 바꾸기</button>
+      </form>
+    </div>
+
+    <div id="forced-mfa" hidden>
+      <h2>2단계 인증을 설정해 주세요</h2>
+      <p class="muted">비밀번호는 바뀌었습니다. 마지막으로 인증 앱을 등록하면 서비스를 쓸 수 있습니다. 2단계 인증은 모든 계정에 필요합니다.</p>
+      <!-- app.js 가 「내 계정」의 등록 UI(#mfa-off)를 **그대로 옮겨 와서** 여기에 붙인다.
+           같은 화면을 두 벌 만들면 한쪽만 고쳐지는 날이 온다. -->
+      <div id="forced-mfa-slot"></div>
+    </div>
+
+    <p><button id="forced-logout" class="btn btn--quiet btn--small" type="button">로그아웃</button></p>
+  </section>
 
   <!-- 사용자 피드백 ①: 개발 단계별 안내문(6·7·…)을 없애고 **서비스 설명 한 상자**로 합쳤다.
        여기에 역할 이름(Admin·Manager …)을 적지 않는다 — 무엇이 보이는지는 서버가 정한다. -->
@@ -291,6 +334,6 @@ if (!headers_sent()) {
 
   <p id="msg" class="msg" role="alert" aria-live="polite"></p>
 </main>
-<script src="/assets/app.js"></script>
+<script src="/assets/app.js?v=<?= (int) filemtime(__DIR__ . '/../../public/assets/app.js') ?>"></script>
 </body>
 </html>
