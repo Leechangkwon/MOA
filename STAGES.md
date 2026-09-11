@@ -509,6 +509,7 @@ sudo -u postgres psql -d tbox_re -c "SELECT happened_at, actor_name, action, res
 | 2026-09-11 | `passwd` 안내를 보고 `.` 과 `Current password` 를 명령처럼 쳤다 → `filename argument required` / `command not found` | 안내 글의 번호 `1.` `2.` 와 `Current password:` 는 **컴퓨터가 물어보는 문구**라 직접 치는 것이 아니다. 터미널에 치는 것은 `passwd` 한 단어뿐이고, 그 뒤에 나오는 물음에 비밀번호만 입력한다. `.` 만 치면 셸의 `source` 명령이라 파일 이름을 요구한다 | `passwd` 를 치고 `Current password:` 가 **자동으로** 나오는지 본다 |
 | 2026-09-11 | 서버 시간이 UTC 인데 KST 로 바꿔 줘 | 시각은 세 층(OS·PostgreSQL·PHP)이 따로 갖고 있어 **함께** 바꿔야 한다. OS `timedatectl set-timezone Asia/Seoul`, DB `ALTER SYSTEM SET timezone`, PHP `date.timezone`. 저장된 시각(`TIMESTAMPTZ`)은 절대 시각이라 데이터는 안 바뀌고 표시만 `+09` 로 나온다. cron 도 KST 로 돈다. 자세한 절차는 README 「서버 시간대」 | `timedatectl` · `date` · `psql -Atc "show timezone"` · `php -r 'echo date("c");'` |
 | 2026-09-11 | `password` 라고 쳤더니 `Command 'password' not found` | 명령 이름은 **`passwd`** 다 — password 에서 `or` 를 뺀 여섯 글자(p·a·s·s·w·d). 유닉스 초기에 명령 이름을 짧게 줄이던 관습이 남은 것(`ls`=list, `cd`=change directory, `mv`=move 도 같은 계열). 오타면 셸이 "비슷한 명령이 있다"며 다른 것을 추천하는데(1password 등) 그건 무시한다 | `passwd` 를 치고 `Current password:` 가 자동으로 나오는지 |
+| 2026-09-11 | 시드 계정 비밀번호는 어디서 보나? | `/etc/tbox-v2/seed-accounts.txt` — root 만 읽을 수 있어(0600) `sudo` 가 필요하다. 한 줄에 `아이디 역할 비밀번호`. 시드 5개(`admin01`·`manager01`·`employee01`·`employee02`·`guest01`)만 사용자용이고 `qa_*` 5줄은 AI 검토 전용. **첫 로그인에서 비밀번호를 바꾸면 이 파일의 값은 옛 값**이 된다 → 5개 모두 바꾼 뒤 `sudo rm` (R-33). 값을 채팅·메신저에 붙이지 않는다 | `sudo cat /etc/tbox-v2/seed-accounts.txt` (내 터미널에서만) |
 
 ---
 
