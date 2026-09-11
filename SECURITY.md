@@ -375,6 +375,7 @@
 | 12 | **`deploy/hardening.sh` 결함 발견(비교로 드러남)** — 이 서버에도 `/etc/ssh/sshd_config.d/50-cloud-init.conf` = `PasswordAuthentication yes` 가 있고 `sshd_config` 12행이 `Include sshd_config.d/*.conf` 다. sshd 는 **먼저 나온 값이 이긴다**. 스크립트가 쓰는 드롭인은 `tbox.conf` → 글꼴 순서에서 `50-cloud-init.conf` 가 앞이라 `--apply` 해도 **비밀번호 로그인이 그대로 켜진 채** "적용 확인" 으로 넘어갈 수 있었다. 조치: 드롭인 이름을 `00-tbox.conf` 로 바꾸거나 cloud-init 파일을 함께 제거하고, 적용 뒤 반드시 `sshd -T \| grep passwordauthentication` 으로 **실효값**을 검증하도록 스크립트·README 수정 | Opus(다음 보정) | 계획 |
 | 13 | **자격증명 교체** — 침입자는 `.env` 에서 `DB_NAME/USER/HOST/PORT` 만 읽었고(대화 기록 실측) `DB_PASSWORD` 는 읽지 않았으나, 06:37 평문 덤프에 **전 계정의 비밀번호 해시(bcrypt)** 가 들어 있다. 순서가 중요: eric 이 root 인 동안 교체는 무의미 → **3번(SSH 강화·sudo 정리) 뒤에** `tbox_app` 롤 비밀번호·`.env`·시드 계정 비밀번호를 교체(README 「시드 계정」·`/api/me/password`) | 사용자 | 3번 뒤 |
 | 14 | **계정 잠금 DoS 공유 약점** — 다른 보고서가 남긴 항목이 우리에게도 해당: 잠금이 **계정 단위**(실패 5회 → 10분, S-09-4)라 아이디만 알면 누구나 그 계정을 계속 잠글 수 있다. 우리는 real_ip 가 있어 nginx 속도 제한은 실제 클라이언트별로 걸리지만 계정 잠금은 별개. 후보: (계정+IP) 조합 잠금 또는 지연(backoff). PRD 결정 사항으로 넘김 | 사용자 결정 → Opus | 검토 |
+| 15 | **admin01 임시 비밀번호 재발급(앱 밖 예외 경로)** — 사용자가 첫 로그인에서 정한 새 비밀번호를 유실, 유일한 Admin 이라 앱 안 재발급 불가. `scratchpad/reset_admin01.sh` 로 해시 갱신·`must_change_password=true`·잠금 해제·시드 파일 갱신을 **사용자가 실행**. 앱 감사 로그에는 행이 없고 sudo 로그와 이 표에만 남는다. 재발 방지: Admin 2인 이상(후속 결정) | 사용자 | 실행 대기 |
 
 증거 위치: `/var/log/auth.log`(sshd·sudo), `last -F eric`, `/var/backups/tbox-v2/tbox_re_2026-09-11_063736.dump`(sha256 `4cad1006dcf23c9e614e933b82333cd1713d98fa9e30c1ef823de30f51fd80cf`), 이 문서. **아무것도 지우지 않았다.**
 
