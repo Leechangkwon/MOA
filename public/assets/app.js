@@ -118,6 +118,14 @@ function setText(el, value) {
   }
 }
 
+/**
+ * 옮겨 적기 오류를 줄이려고 **표시용으로만** 4자씩 띄운다 (PRD F-17-2).
+ * 값 자체는 바뀌지 않는다 — otpauth 주소·서버로 보내는 값에는 쓰지 않는다.
+ */
+function groupFours(value) {
+  return String(value === null || value === undefined ? '' : value).replace(/(.{4})/g, '$1 ').trim();
+}
+
 /** 서버 응답 본문에서 오류 문구만 꺼낸다. 문자열이 아니면 고정 문구로 바꾼다. */
 function errorMessage(body) {
   if (body && typeof body.error === 'string' && body.error !== '') {
@@ -1120,7 +1128,9 @@ function initAccount(csrfToken, mfaEnabled, onMfaEnabled) {
             setText(msg, errorMessage(result.data));
             return null;
           }
-          setText(mfaSecret, result.data.secret);
+          // 비밀 키는 **표시만** 4자씩 띄운다 (PRD F-17-2). 값은 그대로 —
+          // otpauth 주소·복사 대상은 원본이어야 인증 앱이 읽는다.
+          setText(mfaSecret, groupFours(result.data.secret));
           setText(mfaUri, result.data.otpauth);
           // 서버가 준 문자열을 링크로 만들기 전에 **스킴을 확인**한다 — javascript: 같은 값이
           // href 로 들어가지 못하게 하는 최소 방어다. 확인을 통과할 때만 href 를 넣는다.
