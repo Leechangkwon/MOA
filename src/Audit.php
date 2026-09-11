@@ -58,6 +58,14 @@ final class Audit
          *   next                 — 관문이 요구한 다음 단계 (`password_change`·`mfa_setup`)
          */
         'temp_password_issued', 'forced', 'next',
+        /*
+         * 12-2 미리보기 (PRD F-18, ARCH 7.5 등록부 `preview_kind`·`part`).
+         *   preview_kind — 서버가 DB `ext` 로 판정한 갈래 (image·pdf·text·table·archive·office·none)
+         *   part         — meta(JSON 본문) / raw(inline 원본). 한 미리보기가 두 행으로 남는 것을 가른다
+         * 둘 다 오늘의 FORBIDDEN_DETAIL_KEYS 부분 일치에는 걸리지 않지만, 등록부에 있는 키임을
+         * 코드에서도 드러내려고 여기 적는다. **파일 내용은 어느 쪽에도 들어가지 않는다**.
+         */
+        'preview_kind', 'part',
     ];
 
     private const RESULT_ALLOW = 'allow';
@@ -128,6 +136,15 @@ final class Audit
         'file.download|deny|team_mismatch'        => '{actor} 이(가) 다른 팀의 team 등급 파일 「{target}」 을(를) 내려받으려 해서 막았습니다',
         'file.download|error|file_missing'        => '{actor} 이(가) 파일 「{target}」 을(를) 내려받으려 했지만 저장소에 실제 파일이 없습니다 (점검 필요)',
         'file.download|error|hash_mismatch'       => '{actor} 이(가) 파일 「{target}」 을(를) 내려받으려 했지만 저장된 파일의 내용이 기록과 달라 전송을 막았습니다 (변조 의심, 점검 필요)',
+
+        // ── 미리보기 (files_preview · files_preview_raw — 12-2, ARCH 7.4 file.preview 7행) ──
+        'file.preview|allow'                      => '{actor} 이(가) {level} 등급 파일 「{target}」 을(를) 미리보기로 열었습니다',
+        'file.preview|deny|role_not_permitted'    => '{actor} 이(가) {level} 등급 파일 「{target}」 을(를) 미리보기로 열려 했지만 권한이 없어 막았습니다',
+        'file.preview|deny|team_mismatch'         => '{actor} 이(가) 다른 팀의 team 등급 파일 「{target}」 을(를) 미리보기로 열려 해서 막았습니다',
+        'file.preview|deny|preview_not_available' => '{actor} 이(가) 미리보기를 지원하지 않는 형식의 파일 「{target}」 을(를) 원본 표시로 열려 해서 거부했습니다',
+        'file.preview|error|file_missing'         => '{actor} 이(가) 파일 「{target}」 을(를) 미리보기로 열려 했지만 저장소에 실제 파일이 없습니다 (점검 필요)',
+        'file.preview|error|hash_mismatch'        => '{actor} 이(가) 파일 「{target}」 을(를) 미리보기로 열려 했지만 저장된 파일의 내용이 기록과 달라 표시를 막았습니다 (변조 의심, 점검 필요)',
+        'file.preview|error|parse_failed'         => '{actor} 이(가) 파일 「{target}」 의 미리보기를 요청했지만 내용을 읽어 내지 못했습니다 (손상 또는 지원 범위 밖)',
 
         // ── 삭제 (files_delete) ──
         'file.delete|allow'                       => '{actor} 이(가) {level} 등급 파일 「{target}」 을(를) 삭제했습니다 (30일 휴지통)',

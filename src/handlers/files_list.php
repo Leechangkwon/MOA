@@ -48,6 +48,7 @@ $sqlList = <<<'SQL'
            f.size_bytes,
            f.description,
            f.access_level,
+           f.ext,
            f.team_id,
            f.uploaded_by,
            t.name       AS team_name,
@@ -131,6 +132,10 @@ foreach ($rows as $row) {
         // 5단계: 수정("설명·등급 바꾸기") 버튼을 보일지 정하는 같은 성격의 편의 값이다.
         // 실제 PATCH 는 files_update 가 decideRead → decideEdit → decideLevelChange 로 다시 판단한다.
         'can_edit'    => Authz::decideEdit($user, $row)[0],
+        // 12-2 (F-18): 이 파일을 미리보기로 열면 어떤 모양이 나오나 — 서버가 DB `ext` 로
+        // 판정한 갈래다(Preview::kindFor). 화면은 확장자를 보지 않는다(ARCH 5.8).
+        // 값이 'none' 이어도 미리보기는 열 수 있고, 정보 카드만 나온다.
+        'preview_kind' => Preview::kindFor((string) $row['ext']),
     ];
 }
 

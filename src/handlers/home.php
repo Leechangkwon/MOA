@@ -189,4 +189,61 @@ require __DIR__ . '/../views/shell_top.php';
     </section>
 
     <p class="muted">내가 볼 수 있는 파일만 · 다운로드는 항상 파일로 저장 · 모든 행동은 감사 로그</p>
+
+    <!-- ─── 미리보기 모달 (PRD F-18, ARCH 5.8) ──────────────────────────────
+         **여기에는 값이 하나도 적혀 있지 않다.** 파일명·크기·등급·팀·올린 사람·시각·형식·
+         sha256·본문은 전부 app.js 가 서버 응답(GET /api/files/{id}/preview)에서 받아
+         textContent·setAttribute 로만 넣는다 — 파일 이름·내용에 어떤 문자가 있어도
+         글자로만 들어간다(PRD S-03 — 문자열을 HTML 로 바꾸는 API 금지).
+
+         본문(#preview-body)은 갈래마다 다르다: 이미지는 <img>, PDF 는 <iframe sandbox>,
+         나머지는 <pre>·<table> 의 글자다. <img>·<iframe> 의 src 는 서버가 준 값이
+         `/api/files/` 로 **시작할 때만** 넣는다 (ARCH 5.8 화면 규칙, R-41).
+
+         「새 탭에서 열기」는 이미지·PDF 일 때만 보인다 — 브라우저가 sandbox iframe 안에서
+         PDF 를 그리지 못하는 경우의 대안이며, 그 응답에도 같은 CSP 가 그대로 붙는다. -->
+    <dialog id="preview-dialog" class="modal" aria-labelledby="preview-name">
+      <div class="modal__head">
+        <span class="preview__mark"><span class="icon" data-icon="eye"></span></span>
+        <div class="preview__headtext">
+          <h2 class="modal__title" id="preview-name"></h2>
+          <div class="modal__meta">
+            <span id="preview-size"></span>
+            <span id="preview-level"></span>
+            <span id="preview-team"></span>
+            <span id="preview-uploader"></span>
+          </div>
+        </div>
+        <button id="preview-close-x" class="btn btn--icon" type="button" title="닫기" aria-label="닫기">
+          <span class="icon" data-icon="x"></span>
+        </button>
+      </div>
+
+      <div class="preview__main">
+        <div class="modal__body preview__body" id="preview-body"></div>
+        <aside class="preview__info">
+          <div class="preview__label">형식</div>
+          <div class="preview__value" id="preview-kind"></div>
+          <div class="preview__label">sha256</div>
+          <div class="preview__value mono" id="preview-sha"></div>
+          <div class="preview__label">올린 시각</div>
+          <div class="preview__value" id="preview-created"></div>
+          <div class="preview__label">권한 근거</div>
+          <div class="preview__value">서버 Authz 가 허용한 파일입니다</div>
+          <p class="preview__warn">미리보기 내용은 글자 그대로만 표시됩니다. 스크립트·서식은 실행되지 않습니다.</p>
+        </aside>
+      </div>
+
+      <div class="modal__foot">
+        <p id="preview-msg" class="msg preview__msg"></p>
+        <a id="preview-download" class="btn btn--quiet" href="/">
+          <span class="icon" data-icon="download"></span>다운로드
+        </a>
+        <!-- rel="noopener noreferrer": 새 탭이 이 창(window.opener)에 손대지 못하게 한다 -->
+        <a id="preview-open" class="btn btn--quiet" href="/" target="_blank" rel="noopener noreferrer" hidden>
+          <span class="icon" data-icon="link"></span>새 탭에서 열기
+        </a>
+        <button id="preview-close" class="btn" type="button">닫기</button>
+      </div>
+    </dialog>
 <?php require __DIR__ . '/../views/shell_bottom.php'; ?>

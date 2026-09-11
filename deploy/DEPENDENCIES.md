@@ -40,6 +40,7 @@
 | `fileinfo` | 업로드 MIME 판별 (6단계, PRD S-06) | ✅ 설치됨 |
 | `sodium` | Argon2id 비밀번호 해시 (2단계, PRD S-09-4) | ✅ 설치됨 |
 | `php8.1-curl` | F-14 "URL 로 파일 가져오기" (`src/Fetch.php`) | ✅ **설치됨 (7단계, 2026-09-11 실측)** — `php8.1-curl 8.1.2-1ubuntu2.25`, libcurl 7.81.0. 확인: `php -m \| grep -x curl`, `dpkg -l php8.1-curl`. `deploy/install.sh` 1절 패키지 확인 목록에 포함 |
+| `php8.1-zip` | **F-18 미리보기** — zip 항목 목록·office(docx·pptx·xlsx·hwpx) 텍스트 발췌 (`src/Preview.php`). **중앙 디렉터리와 지정한 멤버만** 읽고 압축을 풀지 않는다 (ARCH 5.8, SECURITY R-42) | ✅ **설치됨 (12-2, 2026-09-12 실측)** — `php8.1-zip 8.1.2-1ubuntu2.26`, ext zip 1.19.5 / libzip 1.7.3. 확인: `php -m \| grep -x zip`, `dpkg -l php8.1-zip`. 배포판(Ubuntu 22.04) 패키지라 보안 패치 경로·EOL 이 PHP 8.1 과 같다 (PRD S-10-C) |
 | `php8.1-mbstring` | 파일명·설명 문자열 처리 | ⏳ **미설치 — 7단계 전 설치 예정** (`apt-get install php8.1-mbstring`) |
 | `iconv` (PHP 코어 내장, 8.1 기본 로드) | 파일명·설명의 문자 수 계산·자르기 (`iconv_strlen`/`iconv_substr`) — mbstring 미설치 동안의 대체. 3단계 도입(2026-09-09) | ✅ 설치됨 (별도 패키지 없음). mbstring 설치 후에도 그대로 써도 됨 |
 

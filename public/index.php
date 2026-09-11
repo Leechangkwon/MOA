@@ -57,6 +57,12 @@ const TBOX_ROUTES = [
     //   **의도를 드러내기 위해** `/api/files/{id}` 계열보다 위에 둔다.
     ['POST',   '/api/files/fetch',         'files_fetch.php',    'file.fetch'],
     ['GET',    '/api/files/{id}/download', 'files_download.php', 'file.read'],
+    // 12-2 — 미리보기 (PRD F-18, 8장 API 표 `/preview`·`/preview/raw` 행, ARCH 5.8).
+    //   정책은 다운로드와 **같은** file.read 다 — 미리보기는 읽기의 다른 모양일 뿐이고,
+    //   그 파일을 볼 수 있는지는 핸들러가 decideRead 로 다시 판단한다(다운로드와 같은 코드 경로).
+    //   `{id}` 뒤에 고정 세그먼트가 붙는 형태는 `/download` 와 같다.
+    ['GET',    '/api/files/{id}/preview',     'files_preview.php',     'file.read'],
+    ['GET',    '/api/files/{id}/preview/raw', 'files_preview_raw.php', 'file.read'],
     // 5단계 — 설명·접근 등급 변경 (PRD 8장 PATCH 행, F-08, ARCH 5.7).
     //   file.update : 고칠 수 있는 역할인가 (Guest 는 여기서 끝 — authz.route deny).
     //                 그 파일을 고칠 수 있는가는 핸들러가 decideRead → decideEdit 로 다시 판단한다.

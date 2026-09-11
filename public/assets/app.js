@@ -181,6 +181,44 @@ var LEVEL_BADGE_LABELS = {
   'admin-only': '관리자'
 };
 
+/**
+ * 미리보기 갈래의 **화면 문구** (12-2, PRD F-18). 갈래 자체는 서버가 DB `ext` 로 정하고
+ * (`Preview::kindFor`), 여기 표는 그 값에 붙일 한국어 설명일 뿐이다 — 화면은 확장자를 보지 않는다.
+ */
+var PREVIEW_KIND_LABELS = {
+  'image': '이미지',
+  'pdf': 'PDF 문서',
+  'text': '텍스트 원문',
+  'table': '표 (csv)',
+  'archive': '압축 파일 항목 목록',
+  'office': '문서 텍스트 발췌',
+  'none': '미리보기를 지원하지 않는 형식'
+};
+
+/**
+ * <img>·<iframe>·「새 탭에서 열기」의 주소는 **서버가 준 값이 `/api/files/` 로 시작할 때만**
+ * 쓴다 (ARCH 5.8 화면 규칙, SECURITY R-41). 다른 값이면 빈 문자열을 돌려주고 호출부가
+ * 정보 카드로 바꾼다 — 서버 응답이 바뀌어도 화면이 남의 출처를 끼워 넣지 않는다.
+ */
+function safeFileSrc(value) {
+  if (typeof value !== 'string' || value.indexOf('/api/files/') !== 0) {
+    return '';
+  }
+  return value;
+}
+
+/** 접근 레벨 배지 하나를 만든다(표의 칸·미리보기 머리 양쪽에서 쓴다). 모르는 값이면 null. */
+function makeLevelBadge(level) {
+  if (typeof level !== 'string' || !Object.prototype.hasOwnProperty.call(LEVEL_BADGE_LABELS, level)) {
+    return null;
+  }
+  var badge = document.createElement('span');
+  badge.className = 'badge badge--' + level;
+  badge.setAttribute('title', level);
+  setText(badge, LEVEL_BADGE_LABELS[level]);
+  return badge;
+}
+
 /** 표의 「레벨」 칸 — 배지 span 하나. 원래 값은 title 에 남겨 둔다(감사·문의용). */
 function addLevelCell(row, level) {
   var td = document.createElement('td');
@@ -551,6 +589,372 @@ function initFiles(csrfToken, uploadLevels, canFetch, myTeamId) {
       });
   }
 
+  /* ─── 미리보기 모달 (12-2 — PRD F-18, ARCH 5.8, SECURITY R-41) ──────────
+   *
+   * 규칙
+   *   · 본문은 **서버 응답의 갈래(kind)** 로만 갈라진다. 화면이 확장자·MIME 을 보고 정하지 않는다.
+   *   · 글자는 전부 textContent 다. 문자열을 HTML 로 바꾸는 API(inner/outer HTML 계열)는
+   *     여기에도 없다 (PRD S-03).
+   *   · <img>·<iframe> 의 src 는 safeFileSrc() 를 통과한 값만 setAttribute 로 넣는다.
+   *     PDF 는 토큰 없는 sandbox(스크립트·폼·팝업·같은 출처 전부 금지) + referrerpolicy 로 끼운다.
+   *     응답 자체에도 `Content-Security-Policy: sandbox` 가 붙어 있다(서버가 붙인다).
+   *   · 닫을 때 본문을 비우고 src 를 지운다 — 닫힌 모달이 파일을 계속 물고 있지 않게.
+   */
+  var previewDialog = document.getElementById('preview-dialog');
+  var previewBody = document.getElementById('preview-body');
+  var previewName = document.getElementById('preview-name');
+  var previewSize = document.getElementById('preview-size');
+  var previewLevel = document.getElementById('preview-level');
+  var previewTeam = document.getElementById('preview-team');
+  var previewUploader = document.getElementById('preview-uploader');
+  var previewKind = document.getElementById('preview-kind');
+  var previewSha = document.getElementById('preview-sha');
+  var previewCreated = document.getElementById('preview-created');
+  var previewMsg = document.getElementById('preview-msg');
+  var previewDownload = document.getElementById('preview-download');
+  var previewOpen = document.getElementById('preview-open');
+  var previewClose = document.getElementById('preview-close');
+  var previewCloseX = document.getElementById('preview-close-x');
+
+  /** 본문을 비운다. <img>·<iframe> 은 지우기 전에 src 를 먼저 없앤다. */
+  function clearPreviewBody() {
+    if (!previewBody) {
+      return;
+    }
+    var media = previewBody.querySelectorAll('img, iframe');
+    var i;
+    for (i = 0; i < media.length; i++) {
+      media[i].removeAttribute('src');
+    }
+    previewBody.replaceChildren();
+  }
+
+  /** 본문 자리에 놓는 안내 카드(글자만). 지원하지 않는 형식·읽기 실패에 쓴다. */
+  function previewCard(text, extra) {
+    var card = document.createElement('div');
+    card.className = 'preview-card';
+    var p = document.createElement('p');
+    p.className = 'preview-card__text';
+    setText(p, text);
+    card.appendChild(p);
+    if (typeof extra === 'string' && extra !== '') {
+      var sub = document.createElement('p');
+      sub.className = 'preview-card__sub';
+      setText(sub, extra);
+      card.appendChild(sub);
+    }
+    return card;
+  }
+
+  /** 본문 위에 붙이는 한 줄 안내(잘림·인코딩). 글자만 넣는다. */
+  function previewNote(text) {
+    var note = document.createElement('p');
+    note.className = 'preview-note';
+    setText(note, text);
+    return note;
+  }
+
+  function renderPreviewImage(data) {
+    var src = safeFileSrc(data.src);
+    if (src === '') {
+      return previewCard('이미지를 표시할 수 없습니다.', '서버가 준 주소가 파일 주소 형태가 아닙니다.');
+    }
+    var img = document.createElement('img');
+    img.className = 'preview-img';
+    img.setAttribute('alt', typeof data.name === 'string' ? data.name : '미리보기 이미지');
+    img.setAttribute('src', src);
+    return img;
+  }
+
+  function renderPreviewPdf(data) {
+    var src = safeFileSrc(data.src);
+    if (src === '') {
+      return previewCard('문서를 표시할 수 없습니다.', '서버가 준 주소가 파일 주소 형태가 아닙니다.');
+    }
+    var frame = document.createElement('iframe');
+    frame.className = 'preview-frame';
+    // 토큰이 하나도 없는 sandbox = 스크립트·폼·팝업·같은 출처 전부 금지
+    frame.setAttribute('sandbox', '');
+    frame.setAttribute('referrerpolicy', 'no-referrer');
+    frame.setAttribute('title', typeof data.name === 'string' ? data.name : 'PDF 미리보기');
+    frame.setAttribute('src', src);
+    return frame;
+  }
+
+  function renderPreviewText(data) {
+    var wrap = document.createDocumentFragment();
+    if (data.truncated === true) {
+      wrap.appendChild(previewNote('파일이 길어 앞부분 64KiB 만 표시합니다. 전체 내용은 다운로드로 확인하세요.'));
+    }
+    if (data.encoding === 'CP949') {
+      wrap.appendChild(previewNote('CP949 로 저장된 파일이라 UTF-8 로 바꿔 표시합니다.'));
+    } else if (data.encoding === 'unknown') {
+      wrap.appendChild(previewNote('문자 인코딩을 알 수 없어 일부 글자가 치환문자(�)로 보일 수 있습니다.'));
+    }
+    var pre = document.createElement('pre');
+    pre.className = 'preview-pre';
+    setText(pre, typeof data.content === 'string' ? data.content : '');
+    wrap.appendChild(pre);
+    return wrap;
+  }
+
+  function renderPreviewOffice(data) {
+    var wrap = document.createDocumentFragment();
+    if (data.truncated === true) {
+      wrap.appendChild(previewNote('문서가 길어 앞부분 20,000자만 표시합니다. 전체 내용은 다운로드로 확인하세요.'));
+    }
+    wrap.appendChild(previewNote('서식·그림 없이 글자만 뽑은 발췌입니다.'));
+    var pre = document.createElement('pre');
+    pre.className = 'preview-pre';
+    setText(pre, typeof data.excerpt === 'string' ? data.excerpt : '');
+    wrap.appendChild(pre);
+    return wrap;
+  }
+
+  function renderPreviewTable(data) {
+    var rows = Array.isArray(data.rows) ? data.rows : [];
+    if (rows.length === 0) {
+      return previewCard('표에 표시할 내용이 없습니다.');
+    }
+    var wrap = document.createDocumentFragment();
+    if (data.truncated === true) {
+      wrap.appendChild(previewNote('표가 커서 앞 200행 × 50열까지만 표시합니다.'));
+    }
+    var table = document.createElement('table');
+    table.className = 'preview-table';
+    var tbody = document.createElement('tbody');
+    rows.forEach(function (cells) {
+      var tr = document.createElement('tr');
+      var list = Array.isArray(cells) ? cells : [];
+      list.forEach(function (cell) {
+        // 칸 하나하나가 textContent 다 — `<script>` 든 `<img onerror>` 든 글자로만 들어간다.
+        var td = document.createElement('td');
+        setText(td, cell);
+        tr.appendChild(td);
+      });
+      tbody.appendChild(tr);
+    });
+    table.appendChild(tbody);
+    var scroll = document.createElement('div');
+    scroll.className = 'preview-scroll';
+    scroll.appendChild(table);
+    wrap.appendChild(scroll);
+    return wrap;
+  }
+
+  function renderPreviewArchive(data) {
+    var entries = Array.isArray(data.entries) ? data.entries : [];
+    var wrap = document.createDocumentFragment();
+    var total = typeof data.total_entries === 'number' ? data.total_entries : entries.length;
+    wrap.appendChild(previewNote(
+      '압축을 풀지 않고 목록만 읽었습니다 · 전체 ' + total + '개 중 ' + entries.length + '개 표시'
+    ));
+    if (entries.length === 0) {
+      wrap.appendChild(previewCard('압축 파일 안에 항목이 없습니다.'));
+      return wrap;
+    }
+    var table = document.createElement('table');
+    table.className = 'preview-table';
+    var thead = document.createElement('thead');
+    var headRow = document.createElement('tr');
+    ['이름', '크기', '압축 크기', '폴더'].forEach(function (label) {
+      var th = document.createElement('th');
+      th.setAttribute('scope', 'col');
+      setText(th, label);
+      headRow.appendChild(th);
+    });
+    thead.appendChild(headRow);
+    table.appendChild(thead);
+    var tbody = document.createElement('tbody');
+    entries.forEach(function (entry) {
+      var tr = document.createElement('tr');
+      var name = document.createElement('td');
+      setText(name, entry && entry.name);
+      tr.appendChild(name);
+      var size = document.createElement('td');
+      setText(size, formatSize(entry && entry.size));
+      tr.appendChild(size);
+      var comp = document.createElement('td');
+      setText(comp, formatSize(entry && entry.compressed));
+      tr.appendChild(comp);
+      var dir = document.createElement('td');
+      setText(dir, entry && entry.is_dir === true ? '예' : '—');
+      tr.appendChild(dir);
+      tbody.appendChild(tr);
+    });
+    table.appendChild(tbody);
+    var scroll = document.createElement('div');
+    scroll.className = 'preview-scroll';
+    scroll.appendChild(table);
+    wrap.appendChild(scroll);
+    return wrap;
+  }
+
+  function renderPreviewNone(data) {
+    if (data.reason === 'parse_failed') {
+      return previewCard(
+        '내용을 읽어 내지 못했습니다.',
+        '파일이 손상되었거나 미리보기가 다루지 못하는 구조입니다. 다운로드로 확인하세요.'
+      );
+    }
+    return previewCard(
+      '미리보기를 지원하지 않는 형식입니다.',
+      '파일 정보는 오른쪽에 있습니다. 내용은 다운로드로 확인하세요.'
+    );
+  }
+
+  /** 서버 응답 하나로 모달 전체(머리·본문·정보 패널·발)를 그린다. */
+  function renderPreview(data) {
+    var kind = typeof data.kind === 'string' ? data.kind : 'none';
+
+    setText(previewName, data.name);
+    setText(previewSize, formatSize(data.size_bytes));
+    if (previewLevel) {
+      previewLevel.replaceChildren();
+      var badge = makeLevelBadge(data.access_level);
+      if (badge) {
+        previewLevel.appendChild(badge);
+      } else {
+        setText(previewLevel, data.access_level);
+      }
+    }
+    setText(previewTeam, data.team_name === null || data.team_name === undefined ? '' : data.team_name);
+    setText(previewUploader, data.uploaded_by);
+    setText(previewCreated, data.created_at);
+    setText(previewSha, data.sha256_short);
+
+    var kindLabel = Object.prototype.hasOwnProperty.call(PREVIEW_KIND_LABELS, kind)
+      ? PREVIEW_KIND_LABELS[kind]
+      : PREVIEW_KIND_LABELS.none;
+    var ext = typeof data.ext === 'string' && data.ext !== '' ? ' (' + data.ext + ')' : '';
+    setText(previewKind, kindLabel + ext);
+
+    clearPreviewBody();
+    var node;
+    if (kind === 'image') {
+      node = renderPreviewImage(data);
+    } else if (kind === 'pdf') {
+      node = renderPreviewPdf(data);
+    } else if (kind === 'text') {
+      node = renderPreviewText(data);
+    } else if (kind === 'table') {
+      node = renderPreviewTable(data);
+    } else if (kind === 'archive') {
+      node = renderPreviewArchive(data);
+    } else if (kind === 'office') {
+      node = renderPreviewOffice(data);
+    } else {
+      node = renderPreviewNone(data);
+    }
+    if (previewBody && node) {
+      previewBody.appendChild(node);
+    }
+
+    // 「새 탭에서 열기」는 원본을 그대로 띄우는 이미지·PDF 일 때만 보인다.
+    // 그 응답에도 서버가 붙인 CSP sandbox·nosniff 가 그대로 적용된다 (R-41).
+    if (previewOpen) {
+      var rawSrc = kind === 'image' || kind === 'pdf' ? safeFileSrc(data.src) : '';
+      if (rawSrc === '') {
+        previewOpen.hidden = true;
+        previewOpen.setAttribute('href', '/');
+      } else {
+        previewOpen.setAttribute('href', rawSrc);
+        previewOpen.hidden = false;
+      }
+    }
+  }
+
+  /** 행의 「미리보기」 단추가 부른다. 권한은 서버가 이 요청에서 다시 판단한다 (PRD S-01). */
+  function openPreview(file) {
+    if (!previewDialog || !previewBody || !UUID_RE.test(file.id)) {
+      setText(msg, GENERIC_ERROR);
+      return;
+    }
+
+    // 응답이 오기 전에도 머리에는 목록이 준 값을 먼저 채운다(빈 모달이 뜨지 않게).
+    clearPreviewBody();
+    setText(previewMsg, '');
+    setText(previewName, file.name);
+    setText(previewSize, formatSize(file.size_bytes));
+    setText(previewTeam, file.team_name === null || file.team_name === undefined ? '' : file.team_name);
+    setText(previewUploader, file.uploaded_by);
+    setText(previewCreated, file.created_at);
+    setText(previewSha, '');
+    setText(previewKind, '');
+    if (previewLevel) {
+      previewLevel.replaceChildren();
+      var badge = makeLevelBadge(file.access_level);
+      if (badge) {
+        previewLevel.appendChild(badge);
+      }
+    }
+    if (previewOpen) {
+      previewOpen.hidden = true;
+      previewOpen.setAttribute('href', '/');
+    }
+    if (previewDownload) {
+      // 다운로드는 기존 동작 그대로(항상 첨부) — 같은 접두 검사를 거쳐 주소를 넣는다.
+      var downloadHref = safeFileSrc('/api/files/' + file.id + '/download');
+      previewDownload.setAttribute('href', downloadHref === '' ? '/' : downloadHref);
+    }
+    previewBody.appendChild(previewCard('불러오는 중입니다…'));
+
+    if (typeof previewDialog.showModal === 'function') {
+      if (!previewDialog.open) {
+        previewDialog.showModal();
+      }
+    } else {
+      setText(msg, '이 브라우저에서는 미리보기를 열 수 없습니다');
+      return;
+    }
+
+    fetch('/api/files/' + file.id + '/preview', { credentials: 'same-origin', cache: 'no-store' })
+      .then(function (response) {
+        if (response.status === 401) {
+          toLogin();
+          return null;
+        }
+        return readJson(response).then(function (data) {
+          if (toGate(response, data)) {
+            return null;
+          }
+          if (!response.ok) {
+            // 403·404 문구는 서버가 준 것만 쓴다(사유를 브라우저가 추측하지 않는다).
+            clearPreviewBody();
+            previewBody.appendChild(previewCard(errorMessage(data)));
+            setText(previewKind, '');
+            return null;
+          }
+          renderPreview(data);
+          return null;
+        });
+      })
+      .catch(function () {
+        clearPreviewBody();
+        previewBody.appendChild(previewCard(GENERIC_ERROR));
+      });
+  }
+
+  function closePreview() {
+    if (previewDialog && previewDialog.open) {
+      previewDialog.close();
+    }
+  }
+
+  if (previewDialog) {
+    // close 는 Esc 키로도 일어난다 — 어느 경로든 본문을 비운다.
+    previewDialog.addEventListener('close', function () {
+      clearPreviewBody();
+      setText(previewMsg, '');
+    });
+  }
+  if (previewClose) {
+    previewClose.addEventListener('click', closePreview);
+  }
+  if (previewCloseX) {
+    previewCloseX.addEventListener('click', closePreview);
+  }
+
   /*
    * 작업 칸 — 12단계부터 **아이콘 단추**다. 뜻은 title·aria-label 의 한글이 전한다.
    * 무엇을 만들지는 여전히 서버가 행마다 내려 준 can_delete·can_edit 만 본다 —
@@ -562,6 +966,18 @@ function initFiles(csrfToken, uploadLevels, canFetch, myTeamId) {
 
     // 서버가 준 ID 가 UUID 형태일 때만 링크를 만든다(주소에 예상 밖의 문자가 들어가지 않게).
     if (UUID_RE.test(file.id)) {
+      // 「미리보기」는 **모든 행**에 만든다 — 지원하지 않는 형식이면 서버가 kind:'none' 을 주고
+      // 정보 카드만 나온다. preview_kind 는 마우스 올림 문구(title)의 참고용일 뿐이고,
+      // 무엇을 보여 줄지는 서버 응답이 정한다 (ARCH 5.8).
+      var kindLabel = Object.prototype.hasOwnProperty.call(PREVIEW_KIND_LABELS, file.preview_kind)
+        ? PREVIEW_KIND_LABELS[file.preview_kind]
+        : '';
+      var previewButton = makeIconButton('eye', kindLabel === '' ? '미리보기' : '미리보기 — ' + kindLabel);
+      previewButton.addEventListener('click', function () {
+        openPreview(file);
+      });
+      td.appendChild(previewButton);
+
       var link = document.createElement('a');
       link.setAttribute('href', '/api/files/' + file.id + '/download');
       link.className = 'btn btn--icon';

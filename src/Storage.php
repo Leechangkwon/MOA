@@ -233,6 +233,74 @@ final class Storage
         exit;
     }
 
+    /**
+     * 미리보기 원본을 **inline** 으로 내려 준다 (12-2 F-18, ARCH 5.8 [5-raw], SECURITY R-41).
+     *
+     * stream() 과 다른 것은 **헤더뿐**이다 — 경로 검사·버퍼 비우기·readfile·exit 는 같다.
+     * stream() 은 한 글자도 고치지 않는다: 다운로드의 "항상 첨부" 규칙(PRD F-06, S-03)은
+     * 그대로 두고, inline 은 **별도 경로**로만 존재한다.
+     *
+     * inline 이 위험한 이유와 그 대응 (R-41)
+     *   · PDF 는 내장 스크립트·폼·외부 링크를 가질 수 있고, 이미지는 형식 재해석(sniffing)의
+     *     표적이 된다. 같은 출처에서 렌더되면 사이트 쿠키·DOM 에 닿을 가능성이 생긴다.
+     *   · 그래서 ① 형식은 **DB `mime`** (업로드 때 finfo 로 확정한 값)만 받고, 방어적으로
+     *     여기서 다시 image/png·jpeg·gif·application/pdf 인지 확인한다 — 아니면 예외다.
+     *     ② `Content-Security-Policy: sandbox; default-src 'none'; frame-ancestors 'self'` 를 붙인다.
+     *     sandbox 가 붙은 응답을 브라우저는 **불투명 출처(opaque origin)** 로 다루므로, 문서 안
+     *     스크립트가 t-box 출처·쿠키·DOM 에 닿을 수 없다. ③ `nosniff` 로 형식 재해석을 막고
+     *     ④ `no-store` 로 캐시에 남기지 않으며 ⑤ `no-referrer` 로 주소를 흘리지 않는다.
+     *
+     *   · **프레임 허용은 이 응답 하나뿐이다** (12-2 보정, 2026-09-12 Fable 실측).
+     *     사이트 기본값은 `frame-ancestors 'none'` + `X-Frame-Options: DENY` 라 **같은 출처의
+     *     `<iframe>` 까지** 막혀, 미리보기 모달이 PDF 를 전혀 띄우지 못했다. 그래서 이 응답만
+     *     `frame-ancestors 'self'` 로 좁혀 열고 `X-Frame-Options: SAMEORIGIN` 으로 덮어쓴다
+     *     (`header()` 는 같은 이름을 **교체**하므로 bootstrap 의 DENY 가 사라진다).
+     *     남의 사이트가 이 응답을 끼우는 것은 `frame-ancestors 'self'` 가 그대로 막고,
+     *     끼운 문서 안에서 할 수 있는 일은 `sandbox` 가 전부 끈다. 다른 모든 경로(화면·API·
+     *     다운로드)의 `frame-ancestors 'none'`·`DENY` 는 **그대로다**.
+     *
+     * $mime 은 `Upload::MIME_BY_EXT` 를 통과해 DB 에 기록된 값만 들어온다는 전제이지만,
+     * 그 전제가 깨져도(DB 침해 등) 아래 정규식이 막는다.
+     */
+    public static function streamInline(string $storedName, string $originalName, string $mime): void
+    {
+        if (preg_match('#^(image/(png|jpeg|gif)|application/pdf)$#', $mime) !== 1) {
+            throw new RuntimeException('미리보기로 보낼 수 없는 형식입니다');
+        }
+
+        $path = self::pathFor($storedName);
+        if (!is_file($path) || !is_readable($path)) {
+            throw new RuntimeException('저장된 파일을 찾을 수 없습니다');
+        }
+        $size = filesize($path);
+        if ($size === false) {
+            throw new RuntimeException('파일 크기를 읽을 수 없습니다');
+        }
+
+        // 헤더에 들어가는 이름은 stream() 과 같은 두 함수를 거친 값이다(헤더 인젝션 방어).
+        $header = self::headerName($originalName);
+
+        if (!headers_sent()) {
+            header('Content-Type: ' . $mime);
+            header('Content-Length: ' . $size);
+            header('Content-Disposition: inline; filename="' . self::asciiName($header)
+                . '"; filename*=UTF-8\'\'' . rawurlencode($header));
+            header("Content-Security-Policy: sandbox; default-src 'none'; frame-ancestors 'self'");
+            // bootstrap(4번 블록)의 `X-Frame-Options: DENY` 를 **교체**한다 — 같은 출처의
+            // 미리보기 모달이 이 응답을 <iframe sandbox> 로 끼울 수 있어야 하기 때문이다.
+            header('X-Frame-Options: SAMEORIGIN');
+            header('X-Content-Type-Options: nosniff');
+            header('Cache-Control: no-store');
+            header('Referrer-Policy: no-referrer');
+        }
+
+        while (ob_get_level() > 0) {
+            ob_end_clean();
+        }
+        readfile($path);
+        exit;
+    }
+
     /** 헤더에 쓸 원본 이름 — 제어문자·CR/LF·경로 구분자 제거 (다운로드 헤더 인젝션 방어) */
     private static function headerName(string $originalName): string
     {

@@ -483,13 +483,13 @@ sudo -u postgres psql -d tbox_re -c "SELECT happened_at, actor_name, action, res
 - [x] README 「화면」절 갱신
 
 **개발 사항 — 12-2 미리보기 (F-18)**
-- [ ] `php8.1-zip` 설치 + `deploy/DEPENDENCIES.md` 3장 실측 행 (S-10-C: 배포판 패키지)
-- [ ] `src/Preview.php`: `kindFor(ext)`, 갈래별 추출(`text`·`table`·`archive`·`office`), 상한 상수(ARCH 5.8 표), XML 파서 미사용
-- [ ] `handlers/files_preview.php`(JSON) · `files_preview_raw.php`(image·pdf inline + `CSP: sandbox` + `nosniff` + `no-store`), 라우트 2개(정책 `file.read`)
-- [ ] `files_list.php` 행에 `preview_kind`
-- [ ] `Audit.php` 문장 틀 `file.preview|…` 7개, detail 키 `preview_kind`·`part` 등록
-- [ ] 화면: 행 「미리보기」 버튼 → `<dialog>` 모달(머리: 이름·크기·등급 / 본문: 갈래별 / 발: 다운로드·새 탭에서 열기(pdf)·닫기). `src` 는 `/api/files/` 접두 검사
-- [ ] `scripts/security_lint.sh` 0건
+- [x] `php8.1-zip` 설치 + `deploy/DEPENDENCIES.md` 3장 실측 행 (S-10-C: 배포판 패키지)
+- [x] `src/Preview.php`: `kindFor(ext)`, 갈래별 추출(`text`·`table`·`archive`·`office`), 상한 상수(ARCH 5.8 표), XML 파서 미사용
+- [x] `handlers/files_preview.php`(JSON) · `files_preview_raw.php`(image·pdf inline + `CSP: sandbox` + `nosniff` + `no-store`), 라우트 2개(정책 `file.read`)
+- [x] `files_list.php` 행에 `preview_kind`
+- [x] `Audit.php` 문장 틀 `file.preview|…` 7개, detail 키 `preview_kind`·`part` 등록
+- [x] 화면: 행 「미리보기」 버튼 → `<dialog>` 모달(머리: 이름·크기·등급 / 본문: 갈래별 / 발: 다운로드·새 탭에서 열기(pdf)·닫기). `src` 는 `/api/files/` 접두 검사
+- [x] `scripts/security_lint.sh` 0건
 
 **개발 사항 — 12-3 조직·권한 관리 (F-19)**
 - [ ] 마이그레이션 `db/migrations/2026-09-12_teams_active.sql`(`is_active`·`created_at`·`updated_at`·이름 길이 CHECK, 멱등) + `schema.sql` 동기화
@@ -503,7 +503,7 @@ sudo -u postgres psql -d tbox_re -c "SELECT happened_at, actor_name, action, res
 
 **검토 체크 (Fable ②)** — 묶음마다
 - [x] 12-1 (2026-09-12 통과): T-26 (Employee 세션 `/trash`·`/users`·`/org`·`/audit` 403, `/settings` 200; 강제 절차 세션 `/settings` 302), 기존 T-1·T-4·T-14 재확인(기능 이동 뒤 회귀), 린트 0
-- [ ] 12-2: T-24 (권한 = 읽기), T-25 (`<img onerror>` txt/csv/md 글자 그대로, raw 헤더 `sandbox`·`nosniff`, txt raw 400), zip/docx 추출 정상·손상 파일 `parse_failed`, 감사 `file.preview` 행·detail 에 내용 0
+- [x] 12-2 (2026-09-12 통과, 재지시 1회 — raw 프레임 헤더): T-24 (권한 = 읽기), T-25 (`<img onerror>` txt/csv/md 글자 그대로, raw 헤더 `sandbox`·`nosniff`, txt raw 400), zip/docx 추출 정상·손상 파일 `parse_failed`, 감사 `file.preview` 행·detail 에 내용 0
 - [ ] 12-3: T-27 (Manager 403+감사, 사유 없음 400, 중복 409, 구성원 있는 팀 비활성화 400, 비활성 팀 업로드·배정 400, before/after 기록), `\dp` 로 `permissions` SELECT-only 불변
 
 **자기 공격 체크 (사용자 ③)** — 12-3 커밋 뒤
@@ -527,6 +527,9 @@ sudo -u postgres psql -d tbox_re -c "SELECT happened_at, actor_name, action, res
 | 2026-09-12 | 해소 | (12-1 구현 중 Opus 발견) 이 VM 에 PHP `mbstring` 확장이 없어 `mb_substr` 를 쓴 셸이 500 — `DEPENDENCIES.md` 에 "7단계 전 설치 예정" 으로만 남아 있던 항목 | 의존성을 늘리지 않고 `preg_match('/^./u')` 로 대체. 기존 코드도 `iconv_*` 만 쓴다. 규칙: 문자열 처리는 `iconv`, 새 확장은 S-10-C 심사 후 |
 | 2026-09-12 | 관찰 | 응답에 `Content-Security-Policy` 헤더가 **두 번** 나간다 — nginx `add_header` 와 `src/bootstrap.php` 가 같은 값을 각각 보냄(12-1 이전부터) | 값이 같아 브라우저 해석은 동일. 정리 여부는 사용자 결정(한 곳만 남기면 그 곳이 단일 진실). 12단계 범위 밖 |
 | 2026-09-12 | 미검증 | 12-1 화면 동작(내비 토글·접이식 패널·아이콘 클론·배지·강제 절차 302 뒤 화면) — 서버에 브라우저가 없음 | 서버 측은 curl 실측(T-26 행렬·`/api/me`·`/api/files` 필드 불변·T-14 403), JS 는 `node --check` 문법만. **브라우저 확인은 관문 ③(사용자)** |
+| 2026-09-12 | 해소 | (12-2 검토, Fable 발견) raw 미리보기 응답에 nginx 전역 `X-Frame-Options: DENY`·CSP `frame-ancestors 'none'` 이 함께 실려 **모달 `<iframe>` 이 막힐 상태** — 서버 검토가 브라우저 없이도 헤더로 잡아낸 결함 | raw 경로만 nginx `location ~` 으로 분리(전역 헤더 미상속) + 앱이 `frame-ancestors 'self'`·`SAMEORIGIN` 송출. 재실측 CSP 1개. 배운 것: nginx `location ~` 정규식에 `{36}` 이 있으면 **따옴표로 감싸야** 한다(중괄호를 블록으로 읽어 `nginx -t` 실패) |
+| 2026-09-12 | 관찰 | `/preview/raw/`(끝 슬래시)는 라우터가 슬래시를 떼고 같은 핸들러로 보내지만 nginx 새 location 에는 안 잡혀 **전역(더 조이는) 헤더**가 붙는다 | 권한·형식 검사는 동일 → 우회 아님. 화면은 서버가 준 `src`(슬래시 없음)만 씀. 헤더 일관성을 원하면 정규식을 `raw/?$` 로 — 사용자 결정 사항으로 남김 |
+| 2026-09-12 | 미검증 | PDF 가 `<iframe sandbox>` 안에서 실제로 그려지는지, 이미지·텍스트·표·zip·docx 모달 표시 — 브라우저 없음 | 서버 측(JSON 본문·헤더·권한·감사)은 전부 실측. **관문 ③ 첫 항목**으로 확인 요청. 안 되면 「새 탭에서 열기」 |
 
 ---
 

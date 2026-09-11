@@ -33,6 +33,7 @@ require_once __DIR__ . '/Authz.php';
 require_once __DIR__ . '/Audit.php';
 require_once __DIR__ . '/Storage.php';
 require_once __DIR__ . '/Upload.php';
+require_once __DIR__ . '/Preview.php';  // F-18 미리보기 추출 (12-2, ARCH 5.8)
 require_once __DIR__ . '/Fetch.php';   // F-14 외부 요청 (7단계, PRD S-05 ⑬)
 require_once __DIR__ . '/Totp.php';    // 2단계 인증 TOTP (10단계, SECURITY R-05)
 
