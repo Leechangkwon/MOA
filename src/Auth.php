@@ -173,7 +173,12 @@ final class Auth
         if ($u === null) {
             Audit::deny('auth.required', 'not_authenticated', [
                 'target_type' => 'system',
-                'target_name' => Http::method() . ' ' . Http::path(),
+                // 실제 경로가 아니라 라우트 패턴을 남긴다 (SECURITY R-36, ARCH 7.5 route).
+                // 경로 원문을 남기면 감사 로그가 파일 UUID 목록이 되어 열거 재료가 된다.
+                // 라우터가 매칭 직후 정의하는 TBOX_ROUTE 를 쓰고, 없으면(라우팅 전) 메서드+경로로 되돌린다.
+                'target_name' => defined('TBOX_ROUTE')
+                    ? (string) constant('TBOX_ROUTE')
+                    : Http::method() . ' ' . Http::path(),
             ]);
             Http::error(401, Http::MSG_UNAUTHORIZED);
         }

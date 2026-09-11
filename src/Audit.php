@@ -89,6 +89,22 @@ final class Audit
         'file.delete|deny|role_not_permitted'     => '{actor} 이(가) {level} 등급 파일 「{target}」 을(를) 삭제하려 했지만 볼 권한조차 없어 막았습니다',
         'file.delete|deny|not_owner'              => '{actor} 이(가) 다른 사람이 올린 파일 「{target}」 을(를) 삭제하려 해서 막았습니다',
         'file.delete|deny|team_mismatch'          => '{actor} 이(가) 다른 팀의 파일 「{target}」 을(를) 삭제하려 해서 막았습니다',
+
+        // ── 수정 · 레벨 변경 (files_update — 5단계, ARCH 7.4) ──
+        'file.update|allow'                       => '{actor} 이(가) 파일 「{target}」 의 설명을 수정했습니다',
+        'file.update|deny|role_not_permitted'     => '{actor} 이(가) 파일 「{target}」 을(를) 수정하려 했지만 볼 권한조차 없어 막았습니다',
+        'file.update|deny|not_owner'              => '{actor} 이(가) 다른 사람이 올린 파일 「{target}」 을(를) 수정하려 해서 막았습니다',
+        'file.update|deny|team_mismatch'          => '{actor} 이(가) 다른 팀의 파일 「{target}」 을(를) 수정하려 해서 막았습니다',
+        'file.update|deny|bad_request'            => '{actor} 이(가) 파일 「{target}」 수정 요청을 허용되지 않는 형식(모르는 항목·JSON 아님)으로 보내 거부했습니다',
+        'file.update|deny|bad_access_level'       => '{actor} 이(가) 파일 「{target}」 을(를) 존재하지 않는 접근 등급으로 바꾸려 해서 거부했습니다',
+        'file.update|deny|bad_team'               => '{actor} 이(가) 파일 「{target}」 을(를) 없는 팀 또는 팀 지정 없이 team 등급으로 바꾸려 해서 거부했습니다',
+        'file.update|deny|description_too_long'   => '{actor} 이(가) 파일 「{target}」 의 설명을 500자 넘게 바꾸려 해서 거부했습니다',
+        'file.update|deny|bad_encoding'           => '{actor} 이(가) 파일 「{target}」 의 설명을 올바르지 않은 문자(UTF-8)로 바꾸려 해서 거부했습니다',
+        'file.update|deny|no_change'              => '{actor} 이(가) 파일 「{target}」 수정을 요청했지만 바뀌는 값이 없어 거부했습니다',
+        'file.level_change|allow'                 => '{actor} 이(가) 파일 「{target}」 의 접근 등급을 {level} 등급으로 바꿨습니다 (이전 등급은 상세 기록)',
+        'file.level_change|deny|downgrade_not_permitted' => '{actor} 이(가) 파일 「{target}」 의 접근 등급을 {level} 등급으로 낮추려 했지만 등급을 낮추는 것은 관리자만 할 수 있어 막았습니다',
+        'file.level_change|deny|role_not_permitted'      => '{actor} 이(가) 파일 「{target}」 의 접근 등급을 {level} 등급으로 바꾸려 했지만 그 등급을 지정할 권한이 없어 막았습니다',
+        'file.level_change|deny|team_mismatch'           => '{actor} 이(가) 파일 「{target}」 을(를) 자기 팀이 아닌 팀의 team 등급으로 바꾸려 해서 막았습니다',
     ];
 
     /** 자리표시자에 넣을 값이 없을 때 (ARCH 7.4) */

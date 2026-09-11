@@ -254,6 +254,11 @@ public static function canRead(array $u, array $file): bool { return self::decid
 | 거부 | `role_not_permitted` | 표가 거부 (Guest 의 internal, Employee 의 admin-only …) | `reason` |
 | 거부 | `team_mismatch` | team 레벨인데 다른 팀 | `reason` |
 | 거부 | `not_owner` | 삭제: 남이 올린 파일 (Employee), Manager 는 남의 팀 파일이면 `team_mismatch` | `reason` |
+| 거부 | `downgrade_not_permitted` | 레벨 변경(5단계): 등급을 **낮추는** 변경(`admin-only`→`team`→`internal`→`public` 방향)은 Admin 만 (PRD 4장·5.3) | `reason` |
+
+**5단계 추가 — 수정(PATCH) 판정 (2026-09-11)**
+- `decideEdit(array $u, array $file): array` — 설명·레벨을 고칠 수 있는 기본 자격. `decideDelete` 와 같은 소유자·팀 규칙(PRD 5.3: Admin 모두 `admin_all`, Manager 본인 `owner`·자기 팀 `team_scope`, Employee 본인 `owner`, Guest 불가). 목록의 `can_edit` 도 이 함수로 계산한다.
+- `decideLevelChange(array $u, array $file, string $newLevel, ?int $newTeamId): array` — `decideEdit` 통과가 전제. 새 등급이 현재보다 **낮으면**(순서 `admin-only` > `team` > `internal` > `public`) Admin 이 아닌 한 `downgrade_not_permitted`; 그 뒤 새 등급·팀을 지정할 자격은 `decideUploadAs($u, $newLevel, $newTeamId)` 와 같다(코드 재사용). 허용 코드는 `decideUploadAs` 의 것(`matrix`·`same_team`·`all_teams`).
 
 핸들러는 이 코드를 **그대로** `Audit::allow(..., ['detail' => ['granted_by' => $code]])` 또는 `Audit::deny($action, $code, ...)` 에 넘긴다. 핸들러가 코드를 지어내거나 바꾸면 린트 대상이다. 거부 코드는 7.4 문장 표의 `reason` 과 같은 값이어야 한다(표에 없는 조합은 기록 실패 = 요청 실패).
 
@@ -350,13 +355,14 @@ public static function canRead(array $u, array $file): bool { return self::decid
                                        [5] 경로 = Storage::pathOf($file['stored_name'])
                                              · basename() 처리, UUID 형식 정규식 검사
                                              · realpath()가 storage 디렉터리 안인지 확인
-                                       [6] (선택) 파일 sha256 재계산 ≠ DB 값 → 500 + 경보
+                                       [6] 파일 sha256 재계산 ≠ DB 값 → 500 + Audit::error hash_mismatch (AL-6)
+                                           ※ 6단계부터 **필수** (R-13, 2026-09-11). 100MB 도 0.3초 안팎
                                        [7] Audit::allow('file.download', file)        ─▶ [DB]+[LOG]
                                        [8] 헤더:
                                              Content-Type: application/octet-stream
                                              Content-Disposition: attachment; filename*=UTF-8''인코딩된원본명
                                              X-Content-Type-Options: nosniff
-                                           readfile() 또는 X-Accel-Redirect (nginx 내부 경로)   ─▶ [FS]
+                                           readfile() (6단계 확정, X-Accel 미사용 — 6.3·R-34)   ─▶ [FS]
  ◀── 파일 바이트 스트림 (브라우저는 항상 "저장"으로 처리)
 ```
 
@@ -513,6 +519,35 @@ final class Fetch
 
 ---
 
+### 5.7 설명·접근 레벨 변경 — `PATCH /api/files/{id}` (PRD F-08, 5.3, R-07 · 5단계, 2026-09-11)
+
+```
+ 브라우저                      PHP (files_update.php)                                         PostgreSQL
+ ───────                      ───────────────────────                                        ──────────
+ PATCH {description?, access_level?, team_id?}  (JSON 만, X-CSRF-Token)
+                        ─▶ [1] 세션 → user, CSRF (라우터). 정책 file.update (Guest 는 라우터에서 403)
+                           [2] 본문 필드 **화이트리스트**: description · access_level · team_id 만.
+                               모르는 키가 하나라도 있으면 400 + deny bad_request (R-07 대량 할당 차단 —
+                               uploaded_by·sha256·stored_name 같은 컬럼은 요청으로 절대 바뀌지 않는다)
+                           [3] SELECT 파일 행 (deleted_at IS NULL) 없으면 404
+                           [권한 ✔ 1] decideRead   → 실패 403 + deny file.update|role_not_permitted
+                           [권한 ✔ 2] decideEdit   → 실패 403 + deny file.update|not_owner / team_mismatch
+                           [4] 값 검증 (업로드와 같은 규칙): 설명 500자·UTF-8·제어문자 제거, 레벨 4종, team 은 team_id 필수·존재
+                               바뀌는 값이 하나도 없으면 400 + deny no_change
+                           [권한 ✔ 3] 레벨·팀이 바뀌면 decideLevelChange → 실패 403 + deny file.level_change|…
+                           [5] BEGIN → UPDATE files SET description/access_level/team_id (바인딩) WHERE id
+                               → Audit::allow('file.level_change', detail.before/after) 또는 ('file.update') → COMMIT
+ ◀── 200 {ok:true}
+```
+
+| 단계 | 무엇을 막나 |
+|---|---|
+| [2] | 요청 JSON 을 그대로 UPDATE 하는 대량 할당(R-07) — 허용 3필드 밖은 400 |
+| [권한 ✔ 2·3] | 남의 파일 수정, 등급 하향으로 노출 범위 확대(R-20, AL-5), 남의 팀으로 옮기기 |
+| detail.before/after | "이전값 → 새값" 이 없으면 하향 변경을 조사할 수 없다 (PRD 7.7 접근 레벨 변경) |
+
+> 화면: 목록 행의 `can_edit`(서버 계산) 가 참일 때만 "수정" 버튼을 만든다. 버튼은 편의이며, PATCH 는 위 순서대로 서버가 다시 판단한다.
+
 ## 6. 저장 위치 — 파일 정보 vs 실제 파일
 
 ### 6.1 두 곳에 나눠 저장하는 이유
@@ -609,8 +644,8 @@ DB 가 유출돼도 해시만 있으므로 세션을 위조할 수 없다.
 |---|---|
 | 이름은 서버가 만든 **UUID**만 사용 | 사용자 파일명(`../../x`)이 경로에 절대 들어가지 않음 |
 | 앞 2글자/다음 2글자로 하위 폴더 분산 | 한 폴더에 수십만 개가 쌓이는 것 방지 |
-| 최상위 `storage/` 는 **setgid(`2750`)**, 하위 폴더는 `Storage::put()` 이 `0750` 으로 만들고 파일은 `0640` | 하위 폴더가 그룹 `www-data` 를 상속해야 nginx `internal` 경로가 읽을 수 있다(1단계 실측: setgid 없으면 하위 폴더 그룹이 `tbox-php`·`o+rx` 로 생김). **6단계에서 install.sh 와 Storage.php 에 적용** (2026-09-09 결정) |
-| 디렉터리 `0750`, 파일 `0640`, 소유자 `tbox-php`, **그룹 `www-data`** | 다른 계정이 읽지 못함. nginx(www-data)는 그룹 읽기로 `internal` 경로(8장 `/protected/`, X-Accel-Redirect)에서만 내준다 — PHP 가 권한 확인을 끝낸 뒤에만 도달하는 경로 |
+| 최상위 `storage/` 와 하위 폴더 모두 `0750`, 파일 `0640` — setgid 없음 | ~~setgid(2750)+그룹 www-data 상속~~ 은 X-Accel 전제였음. **6단계 결정(2026-09-11, R-34)**: 다운로드는 PHP `readfile()` 로 확정 → nginx 가 저장소를 읽을 필요가 없으므로 그룹 상속도 필요 없다 |
+| 디렉터리 `0750`, 파일 `0640`, 소유자·**그룹 `tbox-php`** (6단계부터) | 다른 계정·웹 서버(`www-data`)가 직접 읽지 못한다. 옛 취약판 v1 이 같은 VM 에서 `www-data` 로 돌기 때문에 그룹 `www-data` 읽기는 곧 v1 웹셸의 읽기 권한이었다(R-34) → `install.sh` 가 `/var/lib/tbox-v2`·`storage` 그룹을 `tbox-php` 로 회수. nginx `/protected/` `internal` 블록은 404 보장용으로만 남긴다 |
 | 디렉터리에 실행 권한·PHP 핸들러 없음 | 어떤 파일이 들어와도 실행되지 않음 |
 | 원본 파일명은 DB에만, 다운로드 헤더에 인코딩해서 사용 | 헤더 인젝션(CR/LF) 방지 |
 
@@ -733,6 +768,53 @@ GRANT  USAGE, SELECT  ON SEQUENCE audit_logs_id_seq TO tbox_app;
 | `file.upload|deny|ext_not_allowed` | `{actor} 이(가) 허용되지 않는 종류의 파일 「{target}」 을(를) 올리려 해서 거부했습니다` | 6단계 Upload |
 | `file.upload|deny|mime_mismatch` | `{actor} 이(가) 올린 파일 「{target}」 의 실제 내용이 확장자와 달라(위장 파일 의심) 거부했습니다` | 6단계 Upload |
 | `file.upload|error|upload_failed` | `{actor} 이(가) 파일 「{target}」 을(를) 올리는 중 서버 오류가 나서 되돌렸습니다` | files_upload |
+| `file.upload|deny|double_extension` | `{actor} 이(가) 이중 확장자 파일 「{target}」 을(를) 올리려 해서 거부했습니다 (실행 파일 위장 의심)` | 6단계 Upload (`a.pdf.php`, `shell.php.txt`) |
+| `file.upload|deny|quota_exceeded` | `{actor} 이(가) 파일 「{target}」 을(를) 올리려 했지만 하루 업로드 한도(2GB)를 넘어 거부했습니다` | 6단계 Upload (PRD S-06 일일 총량) |
+| `file.fetch|allow` | `{actor} 이(가) 허용된 외부 주소에서 파일 「{target}」 을(를) 가져와 {level} 등급으로 저장했습니다` | 7단계 files_fetch (target = 저장된 파일명, detail.source_host) |
+| `file.fetch|deny|scheme` | `{actor} 이(가) https 가 아닌 주소로 파일 가져오기를 요청해서 막았습니다` | 7단계 Fetch::check (S-05 ①) |
+| `file.fetch|deny|port` | `{actor} 이(가) 443 이 아닌 포트로 파일 가져오기를 요청해서 막았습니다 (내부 포트 탐색 의심)` | 7단계 Fetch::check (S-05 ②) |
+| `file.fetch|deny|host_not_allowed` | `{actor} 이(가) 허용 목록에 없는 주소(또는 IP·localhost·잘못된 표기)로 파일 가져오기를 요청해서 막았습니다` | 7단계 Fetch::check (S-05 ③④) |
+| `file.fetch|deny|private_ip` | `{actor} 이(가) 요청한 주소가 내부망 IP 로 해석되어 파일 가져오기를 막았습니다 (SSRF 의심)` | 7단계 Fetch::check (S-05 ⑤) |
+| `file.fetch|deny|redirect` | `{actor} 이(가) 요청한 주소가 다른 곳으로 넘기는(리다이렉트) 응답을 보내 파일 가져오기를 막았습니다` | 7단계 Fetch::download (S-05 ⑦) |
+| `file.fetch|deny|too_large` | `{actor} 이(가) 요청한 주소의 파일이 100MB 를 넘어 가져오기를 막았습니다` | 7단계 Fetch::download (S-05 ⑧) |
+| `file.fetch|deny|fetch_failed` | `{actor} 이(가) 요청한 주소에서 파일을 받을 수 없었습니다 (연결 실패·시간 초과·200 이 아닌 응답)` | 7단계 Fetch::download |
+| `file.fetch|deny|invalid_file` | `{actor} 이(가) 외부 주소에서 가져온 파일 「{target}」 이(가) 업로드 규칙(확장자·내용·크기)에 맞지 않아 저장하지 않았습니다` | 7단계 Upload::validate 재사용 (S-05 ⑨) |
+| `file.fetch|deny|rate_limited` | `{actor} 이(가) 한 시간에 10회를 넘게 파일 가져오기를 요청해서 막았습니다` | 7단계 files_fetch (S-05 ⑪) |
+| `file.fetch|deny|bad_request` | `{actor} 이(가) 파일 가져오기 요청을 잘못된 형식(URL 없음·등급 오류·팀 오류)으로 보내 거부했습니다` | 7단계 files_fetch |
+| `file.fetch|deny|role_not_permitted` | `{actor} 이(가) 파일 「{target}」 을(를) {level} 등급으로 가져오려 했지만 그 등급으로 올릴 권한이 없어 막았습니다` | 7단계 decideUploadAs 재사용 |
+| `file.fetch|deny|team_mismatch` | `{actor} 이(가) 파일 「{target}」 을(를) 자기 팀이 아닌 팀의 team 등급으로 가져오려 해서 막았습니다` | 7단계 decideUploadAs 재사용 |
+| `file.fetch|error|fetch_failed` | `{actor} 이(가) 외부 주소에서 가져온 파일 「{target}」 을(를) 저장하는 중 서버 오류가 나서 되돌렸습니다` | 7단계 files_fetch 트랜잭션 실패 |
+| `audit.view|allow` | `{actor} 이(가) 감사 로그를 조회했습니다 (필터는 상세 기록)` | 8단계 audit_list (조회 자체를 기록, PRD 7.7) |
+| `file.restore|allow` | `{actor} 이(가) 휴지통의 {level} 등급 파일 「{target}」 을(를) 복구했습니다` | 10단계 files_restore (Admin) |
+| `file.restore|deny|not_found_in_trash` | `{actor} 이(가) 휴지통에 없는 파일을 복구하려 해서 거부했습니다` | 10단계 files_restore |
+| `file.purge|allow` | `휴지통에 30일 넘게 있던 {level} 등급 파일 「{target}」 을(를) 배치가 영구 삭제했습니다` | 9단계 scripts/purge_trash.php (actor 없음 = 시스템) |
+| `file.purge|error|purge_failed` | `휴지통 파일 「{target}」 영구 삭제 중 오류가 나서 건너뛰었습니다 (점검 필요)` | 9단계 purge_trash |
+| `backup.run|allow` | `백업이 완료되었습니다 (대상·산출물·검증값은 상세 기록)` | 9단계 scripts/backup_*.sh → audit_cli.php (시스템) |
+| `backup.run|error|backup_failed` | `백업이 실패했습니다 (사유는 상세 기록·app.log) — 2회 연속이면 경보 AL-8` | 9단계 |
+| `backup.restore|allow` | `{actor} 이(가) 백업에서 복구를 실행했습니다 (대상 시점·범위는 상세 기록)` | 9단계 scripts/restore.sh (운영자, actor = 실행 계정명) |
+| `audit.integrity|allow` | `정합성·무결성 점검을 마쳤습니다 (검사 건수·불일치 0)` | 9단계 consistency_check.php · audit_chain.php |
+| `audit.integrity|error|mismatch` | `정합성·무결성 점검에서 불일치가 발견되었습니다 (목록은 상세 기록) — 경보 AL-6` | 9단계 |
+| `alert.raised|allow` | `경보 {target} 조건이 충족되어 알림을 보냈습니다 (근거는 상세 기록)` | 9단계 scripts/alerts.php (target = AL-1 등 규칙 번호) |
+| `user.create|allow` | `{actor} 이(가) 계정 「{target}」 을(를) 만들었습니다 (역할·팀·사유는 상세 기록)` | 10단계 users (Admin) |
+| `user.create|deny|bad_request` | `{actor} 이(가) 계정 생성 요청을 잘못된 형식(아이디·비밀번호·역할·팀·사유)으로 보내 거부했습니다` | 10단계 |
+| `user.create|deny|already_exists` | `{actor} 이(가) 이미 있는 아이디 「{target}」 로 계정을 만들려 해서 거부했습니다` | 10단계 |
+| `user.role_change|allow` | `{actor} 이(가) 계정 「{target}」 의 역할을 바꿨습니다 (이전 → 새 역할·사유는 상세 기록)` | 10단계 (detail.before/after/reason_text) |
+| `user.role_change|deny|bad_request` | `{actor} 이(가) 계정 「{target}」 의 역할 변경을 잘못된 형식(역할·팀·사유 없음)으로 요청해서 거부했습니다` | 10단계 |
+| `user.role_change|deny|self_change` | `{actor} 이(가) 자기 자신의 역할을 바꾸려 해서 거부했습니다 (관리자 권한 자기 부여·자기 강등 방지)` | 10단계 |
+| `user.deactivate|allow` | `{actor} 이(가) 계정 「{target}」 을(를) 비활성화하고 모든 세션을 끊었습니다 (사유는 상세 기록)` | 10단계 (R-10 revokeAllSessions) |
+| `user.deactivate|deny|self_change` | `{actor} 이(가) 자기 자신을 비활성화하려 해서 거부했습니다` | 10단계 |
+| `user.deactivate|deny|bad_request` | `{actor} 이(가) 계정 「{target}」 비활성화를 사유 없이 요청해서 거부했습니다` | 10단계 |
+| `user.activate|allow` | `{actor} 이(가) 계정 「{target}」 을(를) 다시 활성화했습니다 (사유는 상세 기록)` | 10단계 |
+| `user.expired|deny|guest_expired` | `{target} 계정으로 로그인을 시도했지만 만료된 Guest 계정입니다` | 10단계 Auth::login (R-12 expires_at) |
+| `auth.password_change|allow` | `{actor} 이(가) 비밀번호를 바꾸고 다른 기기의 세션을 모두 끊었습니다` | 10단계 password (본인) |
+| `auth.password_change|deny|bad_credentials` | `{actor} 이(가) 비밀번호를 바꾸려 했지만 현재 비밀번호가 틀렸습니다` | 10단계 |
+| `auth.password_change|deny|weak_password` | `{actor} 이(가) 비밀번호를 바꾸려 했지만 새 비밀번호가 규칙(12자 이상)에 맞지 않습니다` | 10단계 (S-09-4) |
+| `auth.mfa_enroll|allow` | `{actor} 이(가) 2단계 인증(TOTP)을 켰습니다` | 10단계 (R-05) |
+| `auth.mfa_disable|allow` | `{actor} 이(가) 2단계 인증(TOTP)을 껐습니다` | 10단계 |
+| `auth.mfa|deny|bad_code` | `{target} 계정으로 로그인하면서 2단계 인증 코드를 틀렸습니다` | 10단계 Auth::login |
+| `auth.mfa|deny|code_required` | `{target} 계정은 2단계 인증이 켜져 있는데 코드 없이 로그인을 시도해 막았습니다` | 10단계 Auth::login |
+| `authz.route|deny|role_not_permitted` (재사용) | — | 8·10단계 Employee 의 `/api/audit`·`/api/users` 호출 (T-13) |
+| `file.download|error|hash_mismatch` | `{actor} 이(가) 파일 「{target}」 을(를) 내려받으려 했지만 저장된 파일의 내용이 기록과 달라 전송을 막았습니다 (변조 의심, 점검 필요)` | 6단계 files_download (R-13 sha256 대조 필수, AL-6) |
 | `file.download|allow` | `{actor} 이(가) {level} 등급 파일 「{target}」 을(를) 내려받았습니다` | files_download |
 | `file.download|deny|role_not_permitted` | `{actor} 이(가) {level} 등급 파일 「{target}」 을(를) 내려받으려 했지만 권한이 없어 막았습니다` | 4단계 canRead |
 | `file.download|deny|team_mismatch` | `{actor} 이(가) 다른 팀의 team 등급 파일 「{target}」 을(를) 내려받으려 해서 막았습니다` | 4단계 canRead |
@@ -741,6 +823,20 @@ GRANT  USAGE, SELECT  ON SEQUENCE audit_logs_id_seq TO tbox_app;
 | `file.delete|deny|role_not_permitted` | `{actor} 이(가) {level} 등급 파일 「{target}」 을(를) 삭제하려 했지만 볼 권한조차 없어 막았습니다` | 4단계 canRead 실패 |
 | `file.delete|deny|not_owner` | `{actor} 이(가) 다른 사람이 올린 파일 「{target}」 을(를) 삭제하려 해서 막았습니다` | 4단계 canDelete |
 | `file.delete|deny|team_mismatch` | `{actor} 이(가) 다른 팀의 파일 「{target}」 을(를) 삭제하려 해서 막았습니다` | 4단계 canDelete(Manager) |
+| `file.update|allow` | `{actor} 이(가) 파일 「{target}」 의 설명을 수정했습니다` | 5단계 files_update (설명만 바뀜) |
+| `file.update|deny|role_not_permitted` | `{actor} 이(가) 파일 「{target}」 을(를) 수정하려 했지만 볼 권한조차 없어 막았습니다` | 5단계 decideRead 실패 |
+| `file.update|deny|not_owner` | `{actor} 이(가) 다른 사람이 올린 파일 「{target}」 을(를) 수정하려 해서 막았습니다` | 5단계 decideEdit |
+| `file.update|deny|team_mismatch` | `{actor} 이(가) 다른 팀의 파일 「{target}」 을(를) 수정하려 해서 막았습니다` | 5단계 decideEdit |
+| `file.update|deny|bad_request` | `{actor} 이(가) 파일 「{target}」 수정 요청을 허용되지 않는 형식(모르는 항목·JSON 아님)으로 보내 거부했습니다` | 5단계 files_update (R-07 필드 화이트리스트) |
+| `file.update|deny|bad_access_level` | `{actor} 이(가) 파일 「{target}」 을(를) 존재하지 않는 접근 등급으로 바꾸려 해서 거부했습니다` | 5단계 files_update |
+| `file.update|deny|bad_team` | `{actor} 이(가) 파일 「{target}」 을(를) 없는 팀 또는 팀 지정 없이 team 등급으로 바꾸려 해서 거부했습니다` | 5단계 files_update |
+| `file.update|deny|description_too_long` | `{actor} 이(가) 파일 「{target}」 의 설명을 500자 넘게 바꾸려 해서 거부했습니다` | 5단계 files_update |
+| `file.update|deny|bad_encoding` | `{actor} 이(가) 파일 「{target}」 의 설명을 올바르지 않은 문자(UTF-8)로 바꾸려 해서 거부했습니다` | 5단계 files_update |
+| `file.update|deny|no_change` | `{actor} 이(가) 파일 「{target}」 수정을 요청했지만 바뀌는 값이 없어 거부했습니다` | 5단계 files_update |
+| `file.level_change|allow` | `{actor} 이(가) 파일 「{target}」 의 접근 등급을 {level} 등급으로 바꿨습니다 (이전 등급은 상세 기록)` | 5단계 files_update (레벨·팀이 바뀜, detail.before/after 필수) |
+| `file.level_change|deny|downgrade_not_permitted` | `{actor} 이(가) 파일 「{target}」 의 접근 등급을 {level} 등급으로 낮추려 했지만 등급을 낮추는 것은 관리자만 할 수 있어 막았습니다` | 5단계 decideLevelChange (PRD 4장·5.3) |
+| `file.level_change|deny|role_not_permitted` | `{actor} 이(가) 파일 「{target}」 의 접근 등급을 {level} 등급으로 바꾸려 했지만 그 등급을 지정할 권한이 없어 막았습니다` | 5단계 decideLevelChange(decideUploadAs 재사용) |
+| `file.level_change|deny|team_mismatch` | `{actor} 이(가) 파일 「{target}」 을(를) 자기 팀이 아닌 팀의 team 등급으로 바꾸려 해서 막았습니다` | 5단계 decideLevelChange |
 
 > 7·8·9단계(URL 가져오기·감사 로그 조회·백업)의 행동은 그 단계 지시서에서 이 표에 행을 먼저 추가한 뒤 구현한다.
 
@@ -759,7 +855,17 @@ GRANT  USAGE, SELECT  ON SEQUENCE audit_logs_id_seq TO tbox_app;
 | `sha256` | 무엇을 | 파일 내용 해시 64자 (DB `files.sha256`) | 핸들러 | `file.download`·`file.delete`·`file.upload`(allow) |
 | `size_bytes` | 무엇을 | 파일 크기 | 핸들러 | 위와 같음 |
 | `mode` | 어떻게 | `soft_delete` / `purge` / `restore` | 핸들러 | `file.delete`·`file.purge`·`file.restore` |
-| `before` · `after` | 어떻게 | 이전값 → 새값 (레벨 변경·역할 변경) | 핸들러 | `file.level_change`·`user.role_change` (5·10단계) |
+| `before` · `after` | 어떻게 | 이전값 → 새값 (레벨 변경·역할 변경). 레벨 변경은 `{"access_level":…, "team_id":…}` 객체 두 개 | 핸들러 | `file.level_change`·`user.role_change` (5·10단계) |
+| `changed` | 어떻게 | 이번 요청으로 바뀐 필드 이름 목록 (예 `["description"]`) | 핸들러 | `file.update`·`file.level_change` (5단계) |
+| `source_host` · `source_ip` | 어디서(출처) | F-14 로 가져온 파일의 허용 도메인과 검사·고정한 IP. **URL 전체는 남기지 않는다**(경로에 토큰·개인정보가 있을 수 있음). 거부 행에도 host 는 남긴다(정규화에 실패했으면 `?`) | 핸들러 | `file.fetch` (7단계) |
+| `http_status` | 왜 | 외부 응답 상태 코드 (거부 사유 `redirect`·`fetch_failed` 의 근거). 사용자에게는 보이지 않는다 (S-05 ⑩) | 핸들러 | `file.fetch` deny |
+| `filters` | 어떻게 | 감사 로그 조회에 적용한 필터(키·값 객체). 값은 500자 절단 | 핸들러 | `audit.view` (8단계) |
+| `artifact` · `checksum` · `bytes` | 무엇을 | 백업 산출물 파일명·sha256·크기 | 배치 | `backup.run`·`backup.restore` (9단계) |
+| `checked` · `mismatches` | 왜 | 정합성 검사 건수와 불일치 목록(`stored_name`·종류, 최대 50건) | 배치 | `audit.integrity` (9단계) |
+| `rule` · `evidence` | 왜 | 경보 규칙 번호와 근거(대상 계정·건수·기간) | 배치 | `alert.raised` (9단계) |
+| `chain_prev` · `chain_hash` | 무엇을 | 감사 로그 파일 해시 체인: 직전 일자 마지막 해시 · 오늘 파일 sha256 (R-11) | 배치 | `audit.integrity` (9단계) |
+| `target_role` · `target_active` | 무엇을 | 대상 계정의 역할·활성 여부(변경 후 값) | 핸들러 | `user.*` (10단계) |
+| `sessions_revoked` | 어떻게 | 끊은 세션 수 (R-10 전 기기 로그아웃) | 핸들러 | `auth.password_change`·`user.deactivate`·`user.role_change` (10단계) |
 | `policy` | 어떻게 | 라우트에 붙은 정책 이름 | 라우터 | `authz.route` deny |
 | `reason_text` | 왜 | 관리자가 입력한 사유 (500자) | 핸들러 | 역할 변경·비활성화·강제 삭제·레벨 하향 (10단계) |
 | `owner_id` | 무엇을 | 파일을 올린 사용자 id — 삭제·다운로드 판정에 쓰인 값 | 핸들러 | `file.delete`·`file.download` |
@@ -798,7 +904,7 @@ SELECT happened_at, actor_name, detail->>'login_ref' AS login_ref, ip, user_agen
 | 응답 | 구조화 컬럼 + `detail` + `summary`. 화면은 `summary` 를 `textContent` 로만 출력(7.4 "파일명이 문장을 흉내") |
 | 내보내기 | 없음(비목표). 필요하면 서버에서 `psql \\copy` |
 
-**아직 없는 행동 (단계별로 7.4 표에 문장 틀을 먼저 추가한 뒤 구현)**: `file.restore`·`file.purge`(10단계 F-11), `file.level_change`(5단계 PATCH, before/after 필수), `audit.view`(8단계 — 조회 자체를 기록, PRD S-07), `user.create`·`user.role_change`·`user.deactivate`(10단계 F-10, reason_text 필수), `auth.password_change`·`auth.revoke_sessions`(10단계 F-10, 다른 기기 세션 강제 종료 — R-10), `backup.run`·`backup.restore`(9단계), `audit.integrity`(9단계 일별 무결성 값·정합성 검사 결과, AL-6). 이 목록이 PRD 7.7 "기록해야 하는 행동" 표와 1:1 이어야 한다.
+**행동 목록 상태 (2026-09-11)**: 5단계 `file.update`·`file.level_change`, 7단계 `file.fetch`, 8단계 `audit.view`, 9단계 `file.purge`·`backup.run`·`backup.restore`·`audit.integrity`·`alert.raised`, 10단계 `file.restore`·`user.create`·`user.role_change`·`user.deactivate`·`user.activate`·`user.expired`·`auth.password_change`·`auth.mfa_enroll`·`auth.mfa_disable`·`auth.mfa` 의 문장 틀이 7.4 표에 **모두 등록**되었다(일괄 진행 모드에서 단계별 지시서 작성 전에 한 번에 추가). 이 목록이 PRD 7.7 "기록해야 하는 행동" 표와 1:1 이어야 하며, 새 행동은 여기와 7.4 표에 먼저 넣는다. `auth.revoke_sessions` 는 별도 행동이 아니라 `auth.password_change`·`user.deactivate` 의 결과(detail.sessions_revoked)로 기록한다.
 
 ---
 
@@ -817,7 +923,10 @@ server {
     root  /var/www/tbox/public;          # ★ public/ 만 노출
     index index.php;
 
-    client_max_body_size 100m;           # PRD S-06: 100MB 초과는 앱에 닿기 전 413
+    client_max_body_size 101m;           # PRD S-06: 100MB 초과는 앱에 닿기 전 413.
+                                         # 6단계 결정(2026-09-11): 100m 이면 multipart 오버헤드 때문에 정확히 100MB 파일이 413 이 된다
+                                         # (3단계 재검토 실측). nginx 는 101m 으로 요청 전체를 받고, 정확한 100MB(104,857,600 B)
+                                         # 경계는 PHP Upload::MAX_BYTES 가 판정한다. 101MB 파일은 여전히 nginx 413.
 
     # 보안 헤더 (PRD S-03, S-09-9)
     add_header Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; object-src 'none'; base-uri 'none'; frame-ancestors 'none'" always;

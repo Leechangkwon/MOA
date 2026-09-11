@@ -1,5 +1,5 @@
 'use strict';
-/* public/assets/app.js — 4단계: 로그인 · 로그아웃 · 파일 목록/업로드/다운로드/삭제
+/* public/assets/app.js — 5단계: 로그인 · 로그아웃 · 파일 목록/업로드/다운로드/삭제/수정
  *
  * 규칙 (PRD S-03, S-09-3, ARCHITECTURE 13장 체크리스트)
  *   · DOM 에 값을 넣을 때는 textContent 만 쓴다. HTML 문자열을 그대로 넣는 API
@@ -9,9 +9,12 @@
  *     문자로만 화면에 들어간다(저장형 XSS 차단).
  *   · 권한 판단을 브라우저에서 하지 않는다. 버튼을 숨기는 것은 편의일 뿐,
  *     허용 여부는 서버 Authz 가 매 요청 판단한다 (PRD S-01).
- *     ★ 4단계: 역할 문자열을 이 파일에서 비교하지 않는다. 화면이 보는 것은 서버가 준
- *       두 값뿐이다 — 목록 행의 can_delete(삭제 버튼) 와 /api/me 의 upload_levels(레벨 선택지).
+ *     ★ 5단계: 역할 문자열을 이 파일에서 비교하지 않는다. 화면이 보는 것은 서버가 준
+ *       세 값뿐이다 — 목록 행의 can_delete(삭제 버튼)·can_edit(수정 버튼) 와
+ *       /api/me 의 upload_levels(레벨 선택지).
  *       버튼이 보이지 않아도, 콘솔에서 직접 요청을 보내도 서버가 다시 검사한다 (PRD 10장).
+ *     ★ 수정(PATCH)에 넣을 값도 화면이 판단하지 않는다. 사용자가 적은 등급·팀을 **그대로**
+ *       보내고, 허용 여부와 거부 사유 문구는 전부 서버 응답을 그대로 보여 준다 (PRD S-01).
  *   · 상태를 바꾸는 요청에는 CSRF 토큰 헤더(X-CSRF-Token)를 붙인다 (PRD S-09-3).
  *     토큰은 GET /api/me 로 받는다. 세션 쿠키는 HttpOnly 이므로 JS 가 읽지 않는다.
  *     업로드(FormData)에도 같은 헤더를 붙이고, Content-Type 은 **지정하지 않는다**
@@ -158,7 +161,7 @@ function initLogin(form) {
   });
 }
 
-/* ─── 파일 화면 (4단계) ─────────────────────────────────────── */
+/* ─── 파일 화면 (5단계) ─────────────────────────────────────── */
 function initFiles(csrfToken, uploadLevels) {
   var msg = document.getElementById('msg');
   var body = document.getElementById('files-body');
@@ -229,6 +232,78 @@ function initFiles(csrfToken, uploadLevels) {
       });
   }
 
+  /**
+   * 설명·접근 등급 바꾸기 (PATCH /api/files/{id}).
+   * 사용자가 적은 값을 **그대로** 보낸다 — 등급을 고를 자격이 있는지, 낮추는 변경인지는
+   * 서버(Authz)가 판단한다. 여기서 미리 걸러내면 그것이 곧 화면에 심은 권한 판단이 된다.
+   * 보내는 것은 **바뀐 키만**이다 (허용 항목은 description·access_level·team_id 셋뿐).
+   */
+  function editFile(file) {
+    if (!UUID_RE.test(file.id)) {
+      setText(msg, GENERIC_ERROR);
+      return;
+    }
+
+    var currentDescription = typeof file.description === 'string' ? file.description : '';
+    var description = window.prompt('설명 (500자 이내)', currentDescription);
+    if (description === null) {
+      return;   // 취소 → 아무것도 보내지 않는다
+    }
+
+    var payload = {};
+    if (description !== currentDescription) {
+      payload.description = description;
+    }
+
+    var currentLevel = typeof file.access_level === 'string' ? file.access_level : '';
+    var level = window.prompt('접근 등급 (public / internal / team / admin-only)', currentLevel);
+    if (level !== null) {
+      if (level !== currentLevel) {
+        payload.access_level = level;
+      }
+      if (level === 'team') {
+        var currentTeam =
+          file.team_id === null || file.team_id === undefined ? '' : String(file.team_id);
+        var team = window.prompt('팀 번호', currentTeam);
+        if (team !== null && team !== currentTeam) {
+          payload.team_id = team;
+        }
+      }
+    }
+
+    if (Object.keys(payload).length === 0) {
+      // 서버도 400 으로 막지만, 굳이 바뀌는 값이 없는 요청을 보내지 않는다.
+      return;
+    }
+
+    setText(msg, '');
+    fetch('/api/files/' + file.id, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken },
+      body: JSON.stringify(payload),
+      credentials: 'same-origin',
+      cache: 'no-store'
+    })
+      .then(function (response) {
+        if (response.status === 401) {
+          toLogin();
+          return null;
+        }
+        if (response.status === 200) {
+          loadFiles();
+          return null;
+        }
+        return readJson(response).then(function (data) {
+          // 403·400 문구는 서버가 준 것만 쓴다 (사유를 브라우저가 추측하지 않는다).
+          setText(msg, errorMessage(data));
+          return null;
+        });
+      })
+      .catch(function () {
+        setText(msg, GENERIC_ERROR);
+      });
+  }
+
   function addActions(row, file) {
     var td = document.createElement('td');
     td.className = 'actions';
@@ -252,6 +327,18 @@ function initFiles(csrfToken, uploadLevels) {
           deleteFile(file.id);
         });
         td.appendChild(button);
+      }
+
+      // 수정 버튼도 서버가 그 행에 대해 can_edit 를 참으로 준 경우에만 만든다.
+      if (file.can_edit === true) {
+        var editButton = document.createElement('button');
+        editButton.type = 'button';
+        editButton.className = 'btn btn--quiet btn--small';
+        setText(editButton, '수정');
+        editButton.addEventListener('click', function () {
+          editFile(file);
+        });
+        td.appendChild(editButton);
       }
     }
 

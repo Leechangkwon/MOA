@@ -19,8 +19,9 @@ declare(strict_types=1);
  *   · LIKE 값은 와일드카드(`%` `_`)와 이스케이프 문자를 무력화해서 넣는다
  *   · 목록 조회는 감사 로그를 남기지 않는다 (ARCH 5.1 마지막 줄, PRD S-07)
  *   · 내부 `files.id` 는 응답에 넣지 않는다. 외부 ID 는 `public_id`(UUID) 뿐이다 (PRD S-09-5)
- *   · 행마다 `can_delete` 를 함께 내려 준다 — 삭제 버튼을 보일지 정하는 **화면 편의 값**이다.
- *     버튼이 보이든 안 보이든 실제 삭제는 서버가 다시 판단한다 (PRD 10장, ARCH 5.1 메모)
+ *   · 행마다 `can_delete`·`can_edit` 를 함께 내려 준다 — 삭제·수정 버튼을 보일지 정하는
+ *     **화면 편의 값**이다. 버튼이 보이든 안 보이든 실제 삭제·수정은 서버가 다시 판단한다
+ *     (PRD 10장, ARCH 5.1 메모·5.7 화면 메모)
  *
  * @var array<string,mixed> $user   라우터가 넘긴 현재 사용자 (요청 파라미터가 아니다)
  * @var list<string>        $params 경로 변수 없음
@@ -127,6 +128,9 @@ foreach ($rows as $row) {
         'uploaded_by' => (string) $row['uploader'],
         'created_at'  => (string) $row['created_at'],
         'can_delete'  => Authz::decideDelete($user, $row)[0],
+        // 5단계: 수정("설명·등급 바꾸기") 버튼을 보일지 정하는 같은 성격의 편의 값이다.
+        // 실제 PATCH 는 files_update 가 decideRead → decideEdit → decideLevelChange 로 다시 판단한다.
+        'can_edit'    => Authz::decideEdit($user, $row)[0],
     ];
 }
 

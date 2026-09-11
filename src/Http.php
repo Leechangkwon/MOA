@@ -194,7 +194,11 @@ final class Http
         if (!is_string($sent) || !hash_equals(Auth::csrfToken(), $sent)) {
             Audit::deny('csrf', 'token_mismatch', [
                 'target_type' => 'system',
-                'target_name' => $method . ' ' . self::path(),
+                // 실제 경로가 아니라 라우트 패턴을 남긴다 (SECURITY R-36, ARCH 7.5 route).
+                // 문장 틀(ARCH 7.4 `csrf|deny|token_mismatch`)은 그대로이고 값만 패턴으로 바뀐다.
+                'target_name' => defined('TBOX_ROUTE')
+                    ? (string) constant('TBOX_ROUTE')
+                    : $method . ' ' . self::path(),
             ]);
             self::error(403, self::MSG_FORBIDDEN);
         }

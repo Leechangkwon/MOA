@@ -31,6 +31,7 @@ final class Authz
         'role:Manager+',
         'file.read',
         'file.upload',
+        'file.update',
         'file.delete',
         'file.fetch',
         'audit.read',
@@ -51,9 +52,22 @@ final class Authz
     public const CODE_ROLE_NOT_PERMITTED = 'role_not_permitted';
     public const CODE_TEAM_MISMATCH      = 'team_mismatch';
     public const CODE_NOT_OWNER          = 'not_owner';
+    /** 5단계 — 등급을 낮추는 변경은 Admin 만 (PRD 4장·5.3, ARCH 4.1 표) */
+    public const CODE_DOWNGRADE_NOT_PERMITTED = 'downgrade_not_permitted';
 
     /** 화면 선택지(`/api/me` 의 upload_levels)에 쓰는 레벨 표시 순서 (PRD 4장 순서 그대로) */
     private const LEVEL_ORDER = ['public', 'internal', 'team', 'admin-only'];
+
+    /**
+     * 레벨의 "노출 범위" 순서 (PRD 4장). 숫자가 작을수록 더 많은 사람이 본다.
+     * 값을 낮추는 변경(`admin-only` → `public`)이 곧 노출 범위를 넓히는 변경이다 (SECURITY R-20).
+     */
+    public const LEVEL_RANK = [
+        'public'     => 0,
+        'internal'   => 1,
+        'team'       => 2,
+        'admin-only' => 3,
+    ];
 
     private const SQL_MATRIX = <<<'SQL'
         SELECT role, access_level, can_read, can_upload FROM permissions
@@ -242,6 +256,70 @@ final class Authz
      */
     public static function decideDelete(array $u, array $file): array
     {
+        return self::decideOwnership($u, $file);
+    }
+
+    /**
+     * PRD 5.3 수정 — 설명·레벨을 고칠 수 있는 기본 자격 + 근거 코드 (ARCH 4.1 "5단계 추가").
+     * **decideRead 를 먼저 통과했다는 전제**이며, 규칙과 코드는 삭제(decideDelete)와 **같다**:
+     * Admin 은 모두(`admin_all`), Manager 는 본인(`owner`)·자기 팀(`team_scope`),
+     * Employee 는 본인(`owner`), Guest 는 불가(`role_not_permitted`).
+     * 둘이 같은 규칙이므로 구현도 한 곳(decideOwnership)만 둔다 — 한쪽만 고쳐져 어긋나는 일을 막는다.
+     *
+     * 목록의 `can_edit` 도 이 함수로 계산한다 (ARCH 4.1, 5.7 화면 메모).
+     *
+     * @param array<string,mixed> $u
+     * @param array<string,mixed> $file
+     * @return array{0:bool,1:string}
+     */
+    public static function decideEdit(array $u, array $file): array
+    {
+        return self::decideOwnership($u, $file);
+    }
+
+    /**
+     * PRD 5.3 레벨 변경 — `decideEdit` 통과가 전제 (ARCH 4.1 "5단계 추가", 5.7 [권한 ✔ 3]).
+     *
+     *   ① 새 등급이 지금보다 **낮으면**(노출 범위가 넓어지면) Admin 이 아닌 한 거부
+     *      (PRD 4장 "레벨을 낮추는 변경은 Admin 만", SECURITY R-20)
+     *   ② 그 뒤 "그 등급·그 팀을 지정할 자격" 은 업로드와 완전히 같다 → decideUploadAs 재사용.
+     *      허용 코드도 그쪽 것(`matrix`·`same_team`·`all_teams`)을 그대로 쓴다.
+     *
+     * 알 수 없는 레벨 문자열은 ①을 건너뛰고 ②에서 표(permissions)에 없는 조합으로 거부된다.
+     *
+     * @param array<string,mixed> $u
+     * @param array<string,mixed> $file
+     * @return array{0:bool,1:string}
+     */
+    public static function decideLevelChange(array $u, array $file, string $newLevel, ?int $newTeamId): array
+    {
+        $current = (string) $file['access_level'];
+
+        if (isset(self::LEVEL_RANK[$newLevel], self::LEVEL_RANK[$current])
+            && self::LEVEL_RANK[$newLevel] < self::LEVEL_RANK[$current]
+            && !self::mayDowngrade(self::roleOf($u))
+        ) {
+            return [false, self::CODE_DOWNGRADE_NOT_PERMITTED];
+        }
+
+        return self::decideUploadAs($u, $newLevel, $newTeamId);
+    }
+
+    /** 등급을 낮출 수 있는 역할인가 (PRD 5.3 "Admin: 낮추는 변경 포함") */
+    private static function mayDowngrade(string $role): bool
+    {
+        return $role === 'Admin';
+    }
+
+    /**
+     * 소유자·팀 규칙 (PRD 5.3). 삭제(decideDelete)와 수정(decideEdit)이 함께 쓴다.
+     *
+     * @param array<string,mixed> $u
+     * @param array<string,mixed> $file
+     * @return array{0:bool,1:string}
+     */
+    private static function decideOwnership(array $u, array $file): array
+    {
         $role     = self::roleOf($u);
         $me       = (int) $u['id'];
         $owner    = (int) $file['uploaded_by'];
@@ -324,6 +402,17 @@ final class Authz
         return self::decideDelete($u, $file)[0];
     }
 
+    /**
+     * PRD 5.3 수정. 판정은 decideEdit 한 곳에만 있다 (decideRead 통과가 전제).
+     *
+     * @param array<string,mixed> $u
+     * @param array<string,mixed> $file
+     */
+    public static function canEdit(array $u, array $file): bool
+    {
+        return self::decideEdit($u, $file)[0];
+    }
+
     /** PRD 5.4 — URL 로 파일 가져오기(F-14)는 Manager 이상 */
     public static function canFetch(array $u): bool
     {
@@ -392,6 +481,11 @@ final class Authz
                 return $file === null ? true : self::canRead($u, $file);
 
             case 'file.upload':
+                return self::canUploadAtAll($u);
+
+            case 'file.update':
+                // 라우트 단계는 "고칠 수 있는 종류의 역할인가" 까지만 본다 (Guest 는 여기서 끝).
+                // 특정 파일에 대한 판단은 핸들러의 decideRead → decideEdit → decideLevelChange 다 (ARCH 5.7).
                 return self::canUploadAtAll($u);
 
             case 'file.delete':

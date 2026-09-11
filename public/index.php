@@ -51,6 +51,10 @@ const TBOX_ROUTES = [
     ['GET',    '/api/files',               'files_list.php',     'file.read'],
     ['POST',   '/api/files',               'files_upload.php',   'file.upload'],
     ['GET',    '/api/files/{id}/download', 'files_download.php', 'file.read'],
+    // 5단계 — 설명·접근 등급 변경 (PRD 8장 PATCH 행, F-08, ARCH 5.7).
+    //   file.update : 고칠 수 있는 역할인가 (Guest 는 여기서 끝 — authz.route deny).
+    //                 그 파일을 고칠 수 있는가는 핸들러가 decideRead → decideEdit 로 다시 판단한다.
+    ['PATCH',  '/api/files/{id}',          'files_update.php',   'file.update'],
     ['DELETE', '/api/files/{id}',          'files_delete.php',   'file.delete'],
     ['GET',    '/api/teams',               'teams.php',          Authz::POLICY_AUTHENTICATED],
 ];

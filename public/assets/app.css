@@ -168,6 +168,8 @@ table.files th {
 }
 table.files td.actions { white-space: nowrap; }
 table.files td.actions .btn { margin-right: .3rem; }
+/* 5단계: 한 칸에 다운로드·삭제·수정 세 버튼이 들어간다 — 마지막 버튼 뒤 여백은 없앤다 */
+table.files td.actions .btn:last-child { margin-right: 0; }
 
 .btn--small { padding: .3rem .55rem; font-size: .85rem; }
 

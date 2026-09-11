@@ -24,7 +24,7 @@
 | 3 | 업로드·목록·다운로드·삭제 (**권한 검사 없음, 의도**) | ✅ | ✅ | ✅ 2026-09-09 · 재검토 09-10 | ✅ 2026-09-09(뚫림 캡처) | `754d756` |
 | 3+ | 감사 로그 요약 문장(`summary`) · 육하원칙 문서 | ✅ | ✅ | ✅ 2026-09-10 | ⚠ `audit.log` 직접 읽기 — 일괄 수행 시 | 4단계 커밋에 포함 |
 | 4 | 서버 인가 — `Authz` 판정, 목록 SQL WHERE, 다운로드·삭제·업로드 권한, 403 동일 문구, `granted_by`·`route`·`login_ref`, 검토 계정 `qa_`, `audit.log` 보호 (+ 감사 로그 요약 문장 `summary` 포함) | ✅ | ✅ 2026-09-10 | ✅ 2026-09-10 (T-1·T-2·T-3 통과) | ⚠ 일괄 수행 대기 | 4단계 커밋 (2026-09-11) |
-| 5 | 입력/출력 안전 — 이스케이프·CSP·CSRF 재확인·바인딩 전수·정렬 허용 목록·오류 은닉, PATCH(설명·레벨 변경) | ⬜ | | | | |
+| 5 | 입력/출력 안전 — 이스케이프·CSP·CSRF 재확인·바인딩 전수·정렬 허용 목록·오류 은닉, PATCH(설명·레벨 변경), R-36 | ✅ | ✅ 2026-09-11 | ✅ 2026-09-11 (T-4·T-5·T-14 통과) | ⚠ 일괄 수행 대기 | 5단계 커밋 (2026-09-11) |
 | 6 | 업로드 하드닝 — 확장자 화이트리스트·MIME 짝·이중 확장자·일일 총량·100MB 경계 확정·X-Accel 결정(R-34) | ⬜ | | | | |
 | 7 | SSRF 방어 — `POST /api/files/fetch` + `src/Fetch.php` (S-05 13개 조건), `php8.1-curl` 설치 | ⬜ | | | | |
 | 8 | 감사 로그 조회 화면(Admin) — `audit.view` 기록, 육하원칙 6필터 | ⬜ | | | | |
@@ -213,12 +213,36 @@ sudo -u postgres psql -d tbox_re -c "SELECT happened_at, actor_name, action, res
 | 2026-09-10 | 요청 | 단계별로 점검할 수 있게 개발 사항·체크사항을 별도 문서로, 사용자의 어려움·궁금·해소를 단계별로 기록 의무화 | 이 문서(`STAGES.md`) 신설 + `CLAUDE.md` 9장 기록 의무 추가 |
 | 2026-09-10 | 해소 | (검토 중 발견) 화면이 레벨 목록·삭제 버튼을 스스로 정하면 "화면에 심은 권한 판단"이 된다 | 선택지(`upload_levels`)와 버튼(`can_delete`)을 **서버가 내려 주고** 화면은 그대로 그린다. 그래도 요청은 서버가 다시 검사 — 버튼을 되살려도 403 (PRD 10장, ARCH 5.1 메모). 관문 ③ T-1 이 바로 이 확인 |
 
-### 5단계 — 입력/출력 안전 ⬜ (S-03, S-04, S-09-3 · T-4, T-5, T-14)
+### 5단계 — 입력/출력 안전 + 설명·레벨 변경 ✅ (S-03, S-04, S-09-3, F-08 · T-4, T-5, T-14) — 2026-09-11 커밋
 
-**개발 사항(예정)**: 출력 이스케이프 전수 점검(`home.php` 동적 값·app.js `textContent`), CSP 유지, CSRF 재확인, 바인딩 전수 확인, 정렬 허용 목록, 오류 은닉(500 동일 문구), `PATCH /api/files/{id}`(설명·레벨 변경 — 허용 필드 화이트리스트 R-07, 레벨 하향은 Admin 만, `before/after` 기록, 문장 틀 `file.level_change` 선행 추가)
-**검토 체크(예정)**: T-4 설명란 `<img src=x onerror=alert(1)>` → 글자 그대로 · T-5 `' OR '1'='1`·UNION·`sort` 주입 → 0건/기본값, DB 오류 문구 0 · T-14 토큰 없이 삭제 → 403 · 린트 0건
-**자기 공격 체크(예정)**: 설명란에 XSS 페이로드 업로드 → 알림창 없음 · 검색창에 `' OR '1'='1` → 0건 · Console `fetch DELETE` 토큰 없이 → 403
-**학습 기록**: (진행하면서 기록)
+**개발 사항**
+- [x] 출력 이스케이프 전수 점검: 서버 HTML 동적 값 2곳(`username`·`role`) 모두 `htmlspecialchars`, app.js 는 `textContent`·UUID 검사 뒤 href 만. 고칠 곳 0건
+- [x] SQL 전수: 25개 전부 고정 문자열 + 바인딩, `ORDER BY` 허용 목록, `LIMIT/OFFSET` 정수 바인딩, `PDO::query/exec` 0
+- [x] CSRF: 상태 변경 라우트 4개(logout·upload·PATCH·DELETE) 전부 라우터에서 검사, 로그인은 JSON 전용 + SameSite
+- [x] `PATCH /api/files/{id}` — 허용 필드 `description`·`access_level`·`team_id` 만(R-07), `decideRead → decideEdit → decideLevelChange`, **등급 하향은 Admin 만**, `before/after`·`changed` 기록, UPDATE 는 고정 조각 3개
+- [x] 화면: 서버 `can_edit` 가 참일 때만 "수정" 버튼(prompt 3단계). 판단은 서버가 다시 한다
+- [x] R-36: `csrf`·`auth.required` 거부 기록의 대상을 실제 UUID 경로 → 라우트 패턴으로
+
+**검토 체크 (Fable ②)** — 2026-09-11 통과 (`SECURITY.md` 7장 "5단계 구현 검토")
+- [x] T-4 설명 `<img src=x onerror=alert(1)>`·`<svg onload>`·파일명 `"><script>` → JSON 문자열 그대로, 홈 HTML 0회, 다운로드 첨부 헤더
+- [x] T-5 `' OR '1'='1`·UNION·`;DROP`·`sort/dir/page` 주입 → 200 + 0건/기본값, 오류 문구 0. PATCH 설명 SQL 조각은 글자 그대로 저장
+- [x] T-14 토큰 없이 PATCH/DELETE/POST → 403, 기록 대상이 `PATCH /api/files/{id}` 패턴
+- [x] PATCH 권한 22종(본인·남·읽기 불가·Manager·Admin 하향·Guest·형식 오류·불변 컬럼) 전부 기대값
+- [x] 오류 은닉: 저장 파일을 잠시 옮겨 500 유도 → 본문 `{"error":"서버 오류"}` 만
+- [ ] **미검증** 브라우저 "수정" 버튼 흐름(prompt) → 관문 ③
+
+**자기 공격 체크 (사용자 ③)** — employee01 로
+- [ ] **T-4** 업로드 설명란에 `<img src=x onerror=alert(1)>` 를 넣어 올리기 → 목록에 **글자 그대로** 보이고 알림창이 뜨지 않음. F12 → Network → `/api/files` 응답에서 그 문자열이 JSON 문자열 안에 있음
+- [ ] **T-5** 검색창에 `' OR '1'='1` → 0건, 오류 문구 없음. 주소창에서 `/api/files?sort=id;DROP TABLE files` → 정상 목록(기본 정렬)
+- [ ] **T-14** F12 → Console 에서 토큰 없이 `fetch('/api/files/<본인 파일 UUID>',{method:'DELETE'}).then(r=>r.status)` → `403`
+- [ ] **F-08** 본인 파일의 "수정" 버튼으로 등급을 `internal` 로 올리기 → 성공. 다시 `public` 으로 **내리기** → "권한이 없습니다"(하향은 Admin 만). `sudo tail -n 3 /var/log/tbox-v2/audit.log` 에 `downgrade_not_permitted` 와 한국어 문장 확인
+
+**학습 기록**
+
+| 날짜 | 구분 | 내용 | 해소·근거 |
+|---|---|---|---|
+| 2026-09-11 | 해소 | (검토 중 발견) 검토 스크립트가 따옴표 든 파일명을 로컬 파일 경로로 쓰다 실패 → PATCH 시험이 빈 ID 로 나가 전부 405 | 앱이 아니라 스크립트 문제. curl 은 `-F "file=@경로;filename=표시이름"` 으로 **로컬 경로와 서버에 보내는 이름을 분리**해야 한다. 같은 이유로 `-F 'description=<…'` 은 `<` 를 파일 읽기로 해석하므로 `--form-string` 을 쓴다 |
+| 2026-09-11 | 결정 | 등급 하향(`admin-only`→`public` 방향)은 누가 할 수 있나 | PRD 4장·5.3: **Admin 만**. 코드 `Authz::decideLevelChange` 의 `LEVEL_RANK` 비교. 실측: Employee 하향 403 `downgrade_not_permitted`, Admin 하향 200 + `before/after` 기록 |
 
 ### 6단계 — 업로드 하드닝 ⬜ (S-06 · T-7~T-11)
 
