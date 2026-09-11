@@ -44,11 +44,26 @@ var LEVEL_LABELS = {
   'admin-only': 'admin-only — 관리자 전용'
 };
 
+/** 아직 아무것도 고르지 않았을 때의 자리표시 문구 (사용자 피드백 ②) */
+var LEVEL_PLACEHOLDER = '접근 레벨을 선택하세요';
+
 /**
  * <select> 를 서버가 준 목록으로 채운다. createElement + textContent 만 쓴다.
- * 만들어진 선택지 개수를 돌려준다 (0 이면 업로드할 수 있는 레벨이 하나도 없다는 뜻).
+ * 만들어진 **실제 레벨** 개수를 돌려준다 (0 이면 업로드할 수 있는 레벨이 하나도 없다는 뜻).
+ *
+ * 맨 앞에는 value="" 인 **비활성 자리표시**를 넣는다 — 고르지 않은 채로 올리기를 누르는 일을
+ * 막기 위해서다 (PRD 4장 "레벨을 반드시 고른다"). 기본 선택은 가장 좁은 team 이고,
+ * team 을 고를 수 없거나 소속 팀이 없는 계정(Admin 등)은 자리표시가 선택된 채로 남아
+ * 사용자가 직접 고르게 된다.
+ *
+ * ★ 여기서도 역할을 보지 않는다. 고를 수 있는 레벨은 서버가 준 upload_levels 뿐이고,
+ *   기본값을 team 으로 미리 고르는 것은 **편의**일 뿐이다 — 허용 여부는 서버가 매 요청 판단한다.
+ *
+ * @param {Element|null}   select
+ * @param {Array|null}     levels    서버(/api/me)가 준 upload_levels
+ * @param {boolean}        hasTeam   이 사용자에게 소속 팀(team_id)이 있나
  */
-function fillLevelOptions(select, levels) {
+function fillLevelOptions(select, levels, hasTeam) {
   var made = 0;
   if (!select) {
     return 0;
@@ -59,6 +74,14 @@ function fillLevelOptions(select, levels) {
   if (!Array.isArray(levels)) {
     return 0;
   }
+
+  var placeholder = document.createElement('option');
+  placeholder.value = '';
+  placeholder.disabled = true;
+  setText(placeholder, LEVEL_PLACEHOLDER);
+  select.appendChild(placeholder);
+
+  var hasTeamLevel = false;
   levels.forEach(function (level) {
     if (typeof level !== 'string' || !Object.prototype.hasOwnProperty.call(LEVEL_LABELS, level)) {
       return;
@@ -68,7 +91,23 @@ function fillLevelOptions(select, levels) {
     setText(option, LEVEL_LABELS[level]);
     select.appendChild(option);
     made += 1;
+    if (level === 'team') {
+      hasTeamLevel = true;
+    }
   });
+
+  if (made === 0) {
+    // 올릴 수 있는 레벨이 없으면 자리표시만 남는다(폼 자체를 호출부가 감춘다).
+    select.value = '';
+    return 0;
+  }
+  // 기본값: 팀이 있고 team 을 고를 수 있으면 가장 안전한 team, 아니면 자리표시.
+  if (hasTeam === true && hasTeamLevel) {
+    select.value = 'team';
+  } else {
+    placeholder.selected = true;
+    select.value = '';
+  }
   return made;
 }
 
@@ -162,8 +201,12 @@ function initLogin(form) {
   });
 }
 
-/* ─── 파일 화면 (5단계) ─────────────────────────────────────── */
-function initFiles(csrfToken, uploadLevels, canFetch) {
+/* ─── 파일 화면 (5단계) ───────────────────────────────────────
+ * myTeamId — /api/me 가 준 이 사용자의 소속 팀(team_id, 없으면 null).
+ *   레벨 기본값(team)과 팀 <select> 기본 선택에만 쓰는 **화면 편의 값**이다.
+ *   다른 팀을 골라 보내는 것을 화면에서 막지 않는다 — 서버가 403 으로 막고 감사 로그에 남긴다.
+ */
+function initFiles(csrfToken, uploadLevels, canFetch, myTeamId) {
   var msg = document.getElementById('msg');
   var body = document.getElementById('files-body');
   var empty = document.getElementById('files-empty');
@@ -427,6 +470,7 @@ function initFiles(csrfToken, uploadLevels, canFetch) {
         }
         return readJson(response).then(function (data) {
           var teams = data && Array.isArray(data.teams) ? data.teams : [];
+          var mine = myTeamId === null || myTeamId === undefined ? '' : String(myTeamId);
           teams.forEach(function (team) {
             // 같은 목록을 업로드 폼과 가져오기 폼 두 곳의 <select> 에 만든다.
             [teamSelect, fetchTeam].forEach(function (select) {
@@ -436,6 +480,11 @@ function initFiles(csrfToken, uploadLevels, canFetch) {
               var option = document.createElement('option');
               option.value = String(team.id);
               setText(option, team.name);
+              // 내 팀을 기본 선택으로 둔다(편의). 다른 팀을 고르는 것은 그대로 허용한다 —
+              // 남의 팀으로 올리려는 요청은 서버가 403 으로 막고 감사 로그에 남긴다 (PRD S-01).
+              if (mine !== '' && String(team.id) === mine) {
+                option.selected = true;
+              }
               select.appendChild(option);
             });
           });
@@ -474,6 +523,11 @@ function initFiles(csrfToken, uploadLevels, canFetch) {
 
     var payload = { url: fetchUrl.value, description: fetchDesc ? fetchDesc.value : '' };
     payload.access_level = fetchLevel ? fetchLevel.value : '';
+    if (payload.access_level === '') {
+      // 서버도 400 으로 막지만, 무엇을 빠뜨렸는지 바로 알려 준다 (사용자 피드백 ②).
+      setText(msg, LEVEL_PLACEHOLDER);
+      return;
+    }
     if (payload.access_level === 'team' && fetchTeam) {
       payload.team_id = fetchTeam.value;
     }
@@ -517,6 +571,11 @@ function initFiles(csrfToken, uploadLevels, canFetch) {
 
     if (!fileInput.files || fileInput.files.length !== 1) {
       // 서버도 400 으로 막지만, 굳이 빈 요청을 보내지 않는다.
+      return;
+    }
+    if (!levelSelect || levelSelect.value === '') {
+      // 접근 레벨을 고르지 않은 채로는 보내지 않는다. 서버도 400 으로 막는다 (사용자 피드백 ②).
+      setText(msg, LEVEL_PLACEHOLDER);
       return;
     }
 
@@ -601,7 +660,8 @@ function initFiles(csrfToken, uploadLevels, canFetch) {
 
   // 업로드 레벨 선택지는 서버가 준 목록으로만 만든다. 하나도 없으면(Guest) 업로드 패널을 감춘다.
   // 감추는 것은 편의일 뿐이다 — 그래도 POST /api/files 는 서버가 다시 막는다 (PRD S-01).
-  var levelCount = fillLevelOptions(levelSelect, uploadLevels);
+  var hasTeam = myTeamId !== null && myTeamId !== undefined && String(myTeamId) !== '';
+  var levelCount = fillLevelOptions(levelSelect, uploadLevels, hasTeam);
   if (levelCount === 0 && uploadForm && uploadForm.parentNode) {
     uploadForm.parentNode.hidden = true;
   }
@@ -609,7 +669,7 @@ function initFiles(csrfToken, uploadLevels, canFetch) {
   // "URL 로 가져오기" 패널은 서버가 can_fetch === true 를 준 경우에만 연다 (F-14, Manager 이상).
   // 레벨 선택지는 업로드와 같은 목록(서버가 정한 upload_levels)을 쓴다.
   if (fetchPanel) {
-    fetchPanel.hidden = canFetch !== true || fillLevelOptions(fetchLevel, uploadLevels) === 0;
+    fetchPanel.hidden = canFetch !== true || fillLevelOptions(fetchLevel, uploadLevels, hasTeam) === 0;
   }
 
   syncTeamField();
@@ -851,6 +911,7 @@ function initAccount(csrfToken, mfaEnabled) {
   var mfaEnrollBtn = document.getElementById('mfa-enroll');
   var mfaSecret = document.getElementById('mfa-secret');
   var mfaUri = document.getElementById('mfa-uri');
+  var mfaUriLink = document.getElementById('mfa-uri-link');
   var mfaConfirmForm = document.getElementById('mfa-confirm-form');
   var mfaCode = document.getElementById('mfa-code');
   var mfaDisableForm = document.getElementById('mfa-disable-form');
@@ -876,12 +937,26 @@ function initAccount(csrfToken, mfaEnabled) {
     });
   }
 
+  /** "코드를 어디서 구하나" 에 대한 답 — 상태 문구 뒤에 늘 붙인다 (사용자 피드백 ③) */
+  var MFA_CODE_HINT =
+    ' 코드는 스마트폰 인증 앱(Google Authenticator·Microsoft Authenticator 등)이 ' +
+    '30초마다 만들어 주는 6자리 숫자입니다.';
+
+  /** otpauth 링크를 지운다(등록이 끝났거나 아직 받지 않았을 때) */
+  function clearMfaUriLink() {
+    if (mfaUriLink) {
+      mfaUriLink.removeAttribute('href');
+      mfaUriLink.hidden = true;
+    }
+  }
+
   function showMfa(enabled) {
     setText(
       mfaState,
-      enabled
+      (enabled
         ? '2단계 인증이 켜져 있습니다. 로그인할 때 인증 앱의 6자리 코드가 필요합니다.'
         : '2단계 인증이 꺼져 있습니다. 켜면 비밀번호가 새어 나가도 코드 없이는 로그인할 수 없습니다.'
+      ) + MFA_CODE_HINT
     );
     if (mfaOff) {
       mfaOff.hidden = enabled;
@@ -938,6 +1013,14 @@ function initAccount(csrfToken, mfaEnabled) {
           }
           setText(mfaSecret, result.data.secret);
           setText(mfaUri, result.data.otpauth);
+          // 서버가 준 문자열을 링크로 만들기 전에 **스킴을 확인**한다 — javascript: 같은 값이
+          // href 로 들어가지 못하게 하는 최소 방어다. 확인을 통과할 때만 href 를 넣는다.
+          clearMfaUriLink();
+          if (mfaUriLink && typeof result.data.otpauth === 'string'
+              && result.data.otpauth.indexOf('otpauth://') === 0) {
+            mfaUriLink.setAttribute('href', result.data.otpauth);
+            mfaUriLink.hidden = false;
+          }
           if (mfaSetup) {
             mfaSetup.hidden = false;
           }
@@ -969,6 +1052,7 @@ function initAccount(csrfToken, mfaEnabled) {
           // 비밀은 화면에서도 지운다 — 등록이 끝나면 더 보여 줄 이유가 없다.
           setText(mfaSecret, '');
           setText(mfaUri, '');
+          clearMfaUriLink();
           showMfa(true);
           setText(msg, '2단계 인증을 켰습니다.');
           return null;
@@ -1458,7 +1542,9 @@ function initHome(button) {
             initFiles(
               csrfToken,
               Array.isArray(body.upload_levels) ? body.upload_levels : [],
-              body.can_fetch === true
+              body.can_fetch === true,
+              // team_id 는 레벨 기본값(team)·팀 선택 기본값에만 쓰는 화면 편의 값이다 (PRD S-01).
+              typeof body.team_id === 'number' || typeof body.team_id === 'string' ? body.team_id : null
             );
           }
           // 8단계 — "감사 로그" 링크는 서버가 can_view_audit === true 를 준 경우에만 연다

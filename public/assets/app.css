@@ -232,3 +232,29 @@ table.files td.actions .btn:last-child { margin-right: 0; }
 /* 계정 관리 표는 칸이 많아 좁은 화면에서 넘친다 — 표 자체가 .table-wrap 안에서 가로 스크롤된다 */
 #users-body td.actions { white-space: nowrap; }
 #trash-body td.actions { white-space: nowrap; }
+
+/* ─── 화면 보정: 홈 안내 상자 · 2단계 인증 절차 (사용자 피드백 ①③) ───
+   문구만 담는 순수 표현 규칙이다. 무엇을 보여 줄지는 여전히 서버가 정한다. */
+
+/* 개발 단계별 안내문을 없애고 합친 "이 서비스는 이렇게 동작합니다" 상자 */
+.notice__title { margin: 0 0 .4rem; font-weight: 600; }
+.notice__list { margin: 0; padding-left: 1.1rem; }
+.notice__list li { margin: .18rem 0; }
+
+/* 2단계 인증 등록 절차 — 번호 매긴 목록 */
+.steps { margin: .2rem 0 .8rem; padding-left: 1.3rem; font-size: .92rem; }
+.steps li { margin: .3rem 0; }
+
+/* 비밀 키를 옮겨 적으라는 경고 한 줄 */
+.warn {
+  margin: 0 0 .7rem;
+  padding: .55rem .7rem;
+  color: #8a2f2f;
+  background: #fdf1f1;
+  border: 1px solid #f0c7c7;
+  border-radius: 6px;
+  font-size: .9rem;
+}
+
+/* "인증 앱에 바로 추가" (otpauth://) 링크 — href 는 app.js 가 otpauth:// 확인 뒤에만 넣는다 */
+#mfa-uri-link { color: var(--accent); }

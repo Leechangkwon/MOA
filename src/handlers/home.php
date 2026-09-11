@@ -4,7 +4,11 @@ declare(strict_types=1);
 /**
  * src/handlers/home.php — GET / (정책: authenticated)
  *
- * 7단계 화면: 파일 목록(검색·정렬·페이지) · 업로드 폼 · "URL 로 가져오기" 폼 · 다운로드/삭제/수정 버튼.
+ * 홈 화면: 파일 목록(검색·정렬·페이지) · 업로드 폼 · "URL 로 가져오기" 폼 ·
+ * 다운로드/삭제/수정 버튼 · 내 계정(비밀번호·2단계 인증) · 휴지통.
+ *
+ * ★ 화면 문구에 "N단계" 같은 **개발 진행 단계 번호를 쓰지 않는다** (사용자 피드백 ①).
+ *   단계 번호는 개발자용 기록이라 주석·STAGES.md 에만 남기고, 사용자에게는 서비스 설명만 보인다.
  *
  * 서버가 HTML 에 넣는 동적 값은 **사용자명·역할 두 개뿐**이고, 둘 다 DB 에서 읽은 값이며
  * (요청에 실려 온 값이 아니다 — PRD S-01) htmlspecialchars(ENT_QUOTES) 를 거친다 (PRD S-03).
@@ -44,7 +48,7 @@ if (!headers_sent()) {
 <main class="card card--wide">
   <header class="topbar">
     <div>
-      <h1>t-box (재구축) — 10단계</h1>
+      <h1>t-box (재구축)</h1>
       <p class="lead">
         <strong><?= $displayName ?></strong> 님으로 로그인했습니다 ·
         역할 <code><?= $displayRole ?></code>
@@ -64,27 +68,20 @@ if (!headers_sent()) {
     </div>
   </header>
 
-  <p class="notice">
-    6단계: <strong>업로드를 잠갔습니다.</strong>
-    허용 확장자는 <code>pdf docx xlsx pptx hwp hwpx txt csv md png jpg jpeg gif zip</code> 뿐이고,
-    서버가 파일 내용을 직접 판별해 <strong>실제 내용(MIME)과 확장자가 다르면 거부</strong>합니다.
-    <code>shell.php.txt</code> 같은 이중 확장자도 거부합니다. 한 파일은 최대 100MB,
-    한 사람이 하루에 올릴 수 있는 총량은 2GB 입니다.
-    내려받을 때는 저장된 파일의 해시를 기록과 대조한 뒤에만 전송합니다.
-  </p>
-  <p class="notice">
-    7단계: <strong>URL 로 가져오기(Manager 이상)를 열었습니다.</strong>
-    서버는 <code>https</code> · 443 포트 · <strong>허용 목록에 정확히 일치하는 주소</strong>만 갑니다.
-    주소가 내부망 IP 로 해석되면 가지 않고, 리다이렉트도 따라가지 않습니다.
-    가져온 파일은 직접 올린 파일과 <strong>똑같은 검사</strong>를 거칩니다.
-    실패하면 이유를 알려 주지 않고 <code>가져올 수 없습니다</code> 한 문장만 보여 줍니다 —
-    이유는 감사 로그에만 남습니다.
-  </p>
-  <p class="notice">
-    목록에는 볼 수 있는 파일만 담기고(SQL 조건), 다운로드·삭제·업로드·수정은 요청마다 서버가
-    다시 검사합니다. <strong>버튼이 보이지 않아도 요청은 서버가 다시 검사합니다</strong> —
-    버튼을 되살리거나 콘솔에서 직접 호출해도 결과는 같습니다.
-  </p>
+  <!-- 사용자 피드백 ①: 개발 단계별 안내문(6·7·…)을 없애고 **서비스 설명 한 상자**로 합쳤다.
+       여기에 역할 이름(Admin·Manager …)을 적지 않는다 — 무엇이 보이는지는 서버가 정한다. -->
+  <div class="notice">
+    <p class="notice__title">이 서비스는 이렇게 동작합니다</p>
+    <ul class="notice__list">
+      <li>목록에는 <strong>내가 볼 수 있는 파일만</strong> 나옵니다.</li>
+      <li>올릴 수 있는 형식은 <code>pdf docx xlsx pptx hwp hwpx txt csv md png jpg jpeg gif zip</code>
+          이고, 한 파일은 최대 100MB · 한 사람이 하루에 올릴 수 있는 총량은 2GB 입니다.</li>
+      <li>다운로드는 브라우저에서 열리지 않고 <strong>항상 파일로 저장</strong>됩니다.</li>
+      <li>올리기·내려받기·지우기 등 <strong>모든 행동은 감사 로그에 남습니다</strong>.</li>
+      <li>URL 가져오기 · 감사 로그 · 계정 관리 · 휴지통은 <strong>권한이 있는 계정에만 보입니다</strong>.</li>
+      <li>거부되거나 잘 안 되면 관리자에게 문의하세요.</li>
+    </ul>
+  </div>
 
   <section class="panel">
     <h2>파일 올리기</h2>
@@ -94,13 +91,16 @@ if (!headers_sent()) {
         <input id="upload-file" type="file" required>
       </label>
       <label class="field">
-        <span class="field__label">설명 (500자 이내)</span>
+        <span class="field__label">설명 (선택, 500자 이내)</span>
         <input id="upload-description" type="text" maxlength="500">
       </label>
       <label class="field">
-        <span class="field__label">접근 레벨</span>
-        <!-- 선택지는 /api/me 의 upload_levels 로 app.js 가 채운다 (서버가 정한다) -->
-        <select id="upload-level"></select>
+        <span class="field__label">접근 레벨 (필수)</span>
+        <!-- 선택지는 /api/me 의 upload_levels 로 app.js 가 채운다 (서버가 정한다).
+             맨 앞의 "접근 레벨을 선택하세요" 자리표시(value="" disabled)도 app.js 가 넣는다 —
+             고르지 않고 올리는 일을 막기 위해서다. 기본값은 가장 좁은 team(내 팀)이고,
+             팀이 없는 계정은 자리표시가 선택돼 있어 반드시 직접 고르게 된다. -->
+        <select id="upload-level" required></select>
       </label>
       <label class="field" id="upload-team-field" hidden>
         <span class="field__label">팀</span>
@@ -118,13 +118,13 @@ if (!headers_sent()) {
         <input id="fetch-url" type="url" maxlength="2048" required>
       </label>
       <label class="field">
-        <span class="field__label">설명 (500자 이내)</span>
+        <span class="field__label">설명 (선택, 500자 이내)</span>
         <input id="fetch-description" type="text" maxlength="500">
       </label>
       <label class="field">
-        <span class="field__label">접근 레벨</span>
-        <!-- 선택지는 /api/me 의 upload_levels 로 app.js 가 채운다 (서버가 정한다) -->
-        <select id="fetch-level"></select>
+        <span class="field__label">접근 레벨 (필수)</span>
+        <!-- 업로드 폼과 같다 — 선택지·자리표시·기본값을 전부 app.js 가 서버 값으로 만든다 -->
+        <select id="fetch-level" required></select>
       </label>
       <label class="field" id="fetch-team-field" hidden>
         <span class="field__label">팀</span>
@@ -200,17 +200,37 @@ if (!headers_sent()) {
 
     <!-- 2단계 인증 (SECURITY R-05). QR 라이브러리를 넣지 않으므로 비밀과 otpauth 주소를
          **글자 그대로** 보여 주고 사용자가 인증 앱에 손으로 옮겨 적는다.
-         화면에 나오는 값은 전부 app.js 가 textContent 로 넣는다. -->
+         화면에 나오는 값은 전부 app.js 가 textContent / setAttribute 로 넣는다.
+         사용자 피드백 ③: "코드를 어디서 구하나" 가 화면만 보고 답이 되도록 절차를 번호로 적는다. -->
     <div class="mfa">
-      <p id="mfa-state" class="muted">2단계 인증 상태를 확인하는 중입니다.</p>
+      <p id="mfa-state" class="muted">2단계 인증 상태를 불러오는 중…</p>
 
       <div id="mfa-off" hidden>
         <button id="mfa-enroll" class="btn btn--quiet" type="button">2단계 인증 켜기</button>
         <div id="mfa-setup" hidden>
-          <p class="muted">아래 값을 인증 앱(Google Authenticator 등)에 입력한 뒤, 앱이 보여 주는 6자리 코드를 적으세요.</p>
-          <p class="field__label">비밀 키</p>
+          <p class="field__label">인증 앱에 등록하는 순서</p>
+          <ol class="steps">
+            <li>스마트폰에 <strong>인증 앱</strong>을 설치합니다 — Google Authenticator · Microsoft Authenticator ·
+                Aegis · 1Password 중 아무거나 됩니다.</li>
+            <li>앱에서 <strong>“수동 입력”(설정 키 입력)</strong> 을 고릅니다. QR 을 찍는 화면이 아니라
+                글자로 적어 넣는 화면입니다.</li>
+            <li>계정 이름은 <code>t-box:아이디</code>, 키는 <strong>아래 「비밀 키」 문자열을 그대로</strong>
+                넣습니다. 종류는 <strong>시간 기반(Time based) · 6자리</strong> 입니다.
+                — 또는 지금 이 화면을 스마트폰에서 보고 있다면 아래
+                <strong>「인증 앱에 바로 추가」</strong> 링크를 누르면 앱이 대신 받아 적습니다.</li>
+            <li>앱에 <strong>6자리 코드</strong>가 뜹니다(30초마다 새로 바뀝니다). 그 숫자를 아래 칸에 넣고
+                <strong>「확인하고 켜기」</strong> 를 누릅니다.</li>
+            <li>그 뒤로는 로그인할 때마다 <strong>비밀번호 + 그 시각의 6자리 코드</strong>가 필요합니다.</li>
+          </ol>
+          <p class="warn">
+            비밀 키를 잃으면 앱을 처음부터 다시 등록해야 하니 <strong>지금 옮겨 적으세요.</strong>
+            이 문자열은 다시 보여 주지 않습니다.
+          </p>
+          <p class="field__label">비밀 키 (인증 앱에 손으로 넣는 값)</p>
           <pre id="mfa-secret" class="audit-detail"></pre>
           <p class="field__label">otpauth 주소</p>
+          <!-- href 는 비워 둔다. app.js 가 서버가 준 문자열이 otpauth:// 로 시작할 때만 넣는다. -->
+          <p><a id="mfa-uri-link" hidden>인증 앱에 바로 추가 (otpauth 링크)</a></p>
           <pre id="mfa-uri" class="audit-detail"></pre>
           <form id="mfa-confirm-form" class="form form--grid" autocomplete="off">
             <label class="field">
