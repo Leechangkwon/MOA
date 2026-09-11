@@ -25,7 +25,7 @@
 | 3+ | 감사 로그 요약 문장(`summary`) · 육하원칙 문서 | ✅ | ✅ | ✅ 2026-09-10 | ⚠ `audit.log` 직접 읽기 — 일괄 수행 시 | 4단계 커밋에 포함 |
 | 4 | 서버 인가 — `Authz` 판정, 목록 SQL WHERE, 다운로드·삭제·업로드 권한, 403 동일 문구, `granted_by`·`route`·`login_ref`, 검토 계정 `qa_`, `audit.log` 보호 (+ 감사 로그 요약 문장 `summary` 포함) | ✅ | ✅ 2026-09-10 | ✅ 2026-09-10 (T-1·T-2·T-3 통과) | ⚠ 일괄 수행 대기 | 4단계 커밋 (2026-09-11) |
 | 5 | 입력/출력 안전 — 이스케이프·CSP·CSRF 재확인·바인딩 전수·정렬 허용 목록·오류 은닉, PATCH(설명·레벨 변경), R-36 | ✅ | ✅ 2026-09-11 | ✅ 2026-09-11 (T-4·T-5·T-14 통과) | ⚠ 일괄 수행 대기 | 5단계 커밋 (2026-09-11) |
-| 6 | 업로드 하드닝 — 확장자 화이트리스트·MIME 짝·이중 확장자·일일 총량·100MB 경계 확정·X-Accel 결정(R-34) | ⬜ | | | | |
+| 6 | 업로드 하드닝 — 확장자 화이트리스트·MIME 짝·이중 확장자·일일 총량·100MB 경계 확정·sha256 대조·저장소 그룹 회수(R-34) | ✅ | ✅ 2026-09-11 | ✅ 2026-09-11 (T-7~T-11 통과) | ⚠ 일괄 수행 대기 | 6단계 커밋 (2026-09-11) |
 | 7 | SSRF 방어 — `POST /api/files/fetch` + `src/Fetch.php` (S-05 13개 조건), `php8.1-curl` 설치 | ⬜ | | | | |
 | 8 | 감사 로그 조회 화면(Admin) — `audit.view` 기록, 육하원칙 6필터 | ⬜ | | | | |
 | 9 | 운영 — 백업·복구·정합성 검사·경보(AL-1)·서버 기준선·원격 로그·해시 체인, README 완성 | ⬜ | | | | |
@@ -244,12 +244,38 @@ sudo -u postgres psql -d tbox_re -c "SELECT happened_at, actor_name, action, res
 | 2026-09-11 | 해소 | (검토 중 발견) 검토 스크립트가 따옴표 든 파일명을 로컬 파일 경로로 쓰다 실패 → PATCH 시험이 빈 ID 로 나가 전부 405 | 앱이 아니라 스크립트 문제. curl 은 `-F "file=@경로;filename=표시이름"` 으로 **로컬 경로와 서버에 보내는 이름을 분리**해야 한다. 같은 이유로 `-F 'description=<…'` 은 `<` 를 파일 읽기로 해석하므로 `--form-string` 을 쓴다 |
 | 2026-09-11 | 결정 | 등급 하향(`admin-only`→`public` 방향)은 누가 할 수 있나 | PRD 4장·5.3: **Admin 만**. 코드 `Authz::decideLevelChange` 의 `LEVEL_RANK` 비교. 실측: Employee 하향 403 `downgrade_not_permitted`, Admin 하향 200 + `before/after` 기록 |
 
-### 6단계 — 업로드 하드닝 ⬜ (S-06 · T-7~T-11)
+### 6단계 — 업로드 하드닝 ✅ (S-06, R-13, R-34 · T-7~T-11) — 2026-09-11 커밋
 
-**개발 사항(예정)**: 확장자 화이트리스트(`pdf docx xlsx pptx hwp hwpx txt csv md png jpg jpeg gif zip`), finfo MIME ↔ 확장자 짝, 이중 확장자 거부, 일일 총량 2GB, 100MB 경계 확정(nginx 101m + PHP 100MB), X-Accel 전환 여부 결정(R-34), sha256 대조 필수(R-13), ClamAV 여부 결정(Q-3)
-**검토 체크(예정)**: T-7 `.php` 거부 · T-8 `shell.php`→`.pdf` 위장 거부(`mime_mismatch`) · T-9 101MB 413 · T-10 `/protected/…` 404 · T-11 `../` 무력화 · `evil.html` 은 업로드 거부
-**자기 공격 체크(예정)**: `.php` 올리기 → 400 · 이름만 `.pdf` 로 바꾼 PHP → 400 · 저장 경로 URL 직접 접근 → 404
-**학습 기록**: (진행하면서 기록)
+**개발 사항**
+- [x] 확장자 화이트리스트 14종(PRD 7.6), 없는 확장자·목록 밖 → `ext_not_allowed`
+- [x] finfo 실제 내용(MIME) ↔ 확장자 짝 표 — 어긋나면 `mime_mismatch`. `application/octet-stream` 은 어디에도 허용하지 않음
+- [x] 이중 확장자(`shell.php.txt`, `.htaccess.txt`) → `double_extension`; 제어문자로 세그먼트 쪼개기 방어
+- [x] 정확히 100MB 는 통과, +1바이트 거부(PHP), 101MB 는 nginx 413 (`client_max_body_size 101m`)
+- [x] 사용자별 24시간 2GB(`quota_exceeded`, 삭제 파일 포함)
+- [x] 다운로드 전 sha256 대조 필수 — 불일치 500 + `hash_mismatch` 기록, 전송 안 함 (R-13)
+- [x] 다운로드는 PHP `readfile()` 확정, 저장소 그룹 `www-data` → `tbox-php` 회수 (R-34 해소)
+- [x] ClamAV 는 과제 범위 밖으로 결정(Q-3), `scan_status` 자리만 유지
+
+**검토 체크 (Fable ②)** — 2026-09-11 통과 (`SECURITY.md` 7장 "6단계 구현 검토")
+- [x] T-7 `shell.php` → 400, 저장소 파일 수 불변 · T-8 PHP 내용 `doc.pdf`·텍스트 `img.png` → 400 `mime_mismatch`, `evil.html` → 400
+- [x] 이중 확장자 3종 400, `report.final.txt` 201 · T-9 100MB 201 / +1B 400 / 101MB 413 · T-10 세 경로 404 · T-11 `passwd.txt` + UUID 저장
+- [x] sha256 변조 → 500 `{"error":"서버 오류"}` + `hash_mismatch`, 원복 200 · 그룹 회수 후 `www-data` 읽기 거부
+- [x] 일일 총량 SQL 부풀림 → 400 `quota_exceeded` → 실제 크기로 원복(DB↔FS 전수 대조 불일치 0)
+- [ ] **미검증** 진짜 HWP 5.x 파일(스텁만), 브라우저 업로드 폼 → 관문 ③
+
+**자기 공격 체크 (사용자 ③)** — employee01 로
+- [ ] **T-7** 메모장에 `<?php echo 1;` 을 적어 `shell.php` 로 저장 → 업로드 → "잘못된 요청입니다"
+- [ ] **T-8** 같은 파일 이름만 `doc.pdf` 로 바꿔 업로드 → 거부. `sudo tail -n 2 /var/log/tbox-v2/audit.log` 에 `mime_mismatch` 문장
+- [ ] **T-10** 정상 파일 하나 올린 뒤 `sudo -u postgres psql -d tbox_re -c "select stored_name from files order by id desc limit 1"` 로 저장 이름을 보고 `https://changkwon.mso.so/protected/앞2/다음2/저장이름` 접속 → 404
+- [ ] 이중 확장자 `x.php.txt` 업로드 → 거부
+
+**학습 기록**
+
+| 날짜 | 구분 | 내용 | 해소·근거 |
+|---|---|---|---|
+| 2026-09-11 | 해소 | (검토 중 발견) `/dev/zero` 로 만든 100MB `.txt` 는 업로드가 거부된다 — 왜? | 내용이 NUL 바이트라 finfo 가 `application/octet-stream` 으로 판별하고 `txt` 짝 표에 없어 `mime_mismatch`. **크기가 아니라 내용 검사에 걸린 것**. 줄바꿈 있는 텍스트로 만들어야 `text/plain` 이 된다. 위장 파일 검사가 의도대로 작동한 사례 |
+| 2026-09-11 | 결정 | 100MB 경계: 정확히 100MB 파일은 올라가야 하나? | PRD S-06 "100MB" 를 포함 경계로 확정 — nginx 는 101m 으로 요청 전체를 받고 PHP `Upload::MAX_BYTES`(104,857,600) 초과만 거부. 3단계 재검토 관찰 ① 해소 |
+| 2026-09-11 | 결정 | HWP 파일의 실제 MIME 은 무엇인가? 이 VM 은 `application/cdfv2`(OLE 컨테이너) | `hwp` 칸에만 허용. 부작용: 구형 MS Office OLE 문서를 `.hwp` 로 위장하면 통과 — ClamAV(Q-3) 없는 한 남는 위험, R-02 비고에 기록 |
 
 ### 7단계 — SSRF 방어 ⬜ (S-05, F-14 · T-6)
 

@@ -12,12 +12,14 @@ declare(strict_types=1);
  *   2) 경로는 STORAGE_DIR(.env 고정값) + UUID 앞 2글자/다음 2글자 하위 폴더로만 조립한다.
  *   3) 조립한 절대 경로가 realpath 로 STORAGE_DIR 안에 있는지 다시 확인한다(경로 탈출 방어, T-11).
  *   4) 디렉터리 0750 / 파일 0640, 소유자 tbox-php. 실행 권한 없음.
- *   5) 다운로드 전송 방식 — **3단계: PHP readfile()**.
- *      X-Accel-Redirect(nginx `/protected/` internal) 로의 전환은 6단계에서 결정한다:
- *      하위 폴더를 nginx 그룹(www-data)이 읽으려면 상위 폴더 setgid(2750)가 필요하고,
- *      그 변경은 install.sh 와 함께 6단계·SECURITY R-34 에서 다룬다 (2026-09-09 결정).
+ *   5) 다운로드 전송 방식 — **PHP readfile() 확정** (6단계 결정 2026-09-11, ARCH 6.3 · SECURITY R-34).
+ *      X-Accel-Redirect 는 쓰지 않는다. nginx(www-data)가 저장소를 읽을 필요가 없으므로
+ *      install.sh 가 /var/lib/tbox-v2 · storage 의 그룹을 www-data → tbox-php 로 회수했다
+ *      (같은 VM 의 취약판 v1 이 www-data 로 돌기 때문에 그룹 읽기 = v1 웹셸의 읽기였다).
+ *      nginx `/protected/` `internal` 블록은 404 보장용으로만 남는다 (T-10).
+ *   6) 다운로드 전 sha256 대조는 핸들러(files_download)가 이 클래스의 sha256() 으로 한다 (R-13).
  *
- * 3단계에 없는 것: purge()(30일 휴지통 실제 삭제, 9단계 배치), 확장자 화이트리스트(6단계 Upload).
+ * 아직 없는 것: purge()(30일 휴지통 실제 삭제, 9단계 배치).
  */
 final class Storage
 {
@@ -29,7 +31,7 @@ final class Storage
     /** stored_name 전체 = UUIDv4 + '.' + 소문자·숫자 확장자 */
     private const STORED_RE = '/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\.[a-z0-9]{1,10}$/';
 
-    /** 확장자 허용 형태 (내용 화이트리스트는 6단계 Upload::ALLOWED_EXT) */
+    /** 확장자 허용 형태 (내용 화이트리스트는 Upload::ALLOWED_EXT — 6단계) */
     private const EXT_RE = '/^[a-z0-9]{1,10}$/';
 
     private const DIR_MODE  = 0750;
@@ -140,7 +142,7 @@ final class Storage
     /**
      * 권한 검사를 통과한 파일을 응답으로 내려 준다 (ARCH 5.3 [8]).
      *
-     * 3단계는 readfile() 로 PHP 가 직접 전송한다(위 클래스 주석 5번).
+     * 전송은 readfile() 로 PHP 가 직접 한다 — 6단계 확정이다(위 클래스 주석 5번, R-34).
      * $mime 은 DB 에 기록된 판별 결과이며 **응답 Content-Type 으로 쓰지 않는다** —
      * 업로드된 HTML·SVG 가 브라우저에서 렌더링되는 저장형 XSS 를 막기 위해
      * 항상 application/octet-stream + attachment 로 내린다 (bootstrap 의 nosniff 와 함께).

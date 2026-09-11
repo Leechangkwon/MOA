@@ -4,7 +4,7 @@ declare(strict_types=1);
 /**
  * src/handlers/home.php — GET / (정책: authenticated)
  *
- * 5단계 화면: 파일 목록(검색·정렬·페이지) · 업로드 폼 · 다운로드/삭제/수정 버튼.
+ * 6단계 화면: 파일 목록(검색·정렬·페이지) · 업로드 폼(허용 형식 안내) · 다운로드/삭제/수정 버튼.
  *
  * 서버가 HTML 에 넣는 동적 값은 **사용자명·역할 두 개뿐**이고, 둘 다 DB 에서 읽은 값이며
  * (요청에 실려 온 값이 아니다 — PRD S-01) htmlspecialchars(ENT_QUOTES) 를 거친다 (PRD S-03).
@@ -42,7 +42,7 @@ if (!headers_sent()) {
 <main class="card card--wide">
   <header class="topbar">
     <div>
-      <h1>t-box (재구축) — 5단계</h1>
+      <h1>t-box (재구축) — 6단계</h1>
       <p class="lead">
         <strong><?= $displayName ?></strong> 님으로 로그인했습니다 ·
         역할 <code><?= $displayRole ?></code>
@@ -52,7 +52,14 @@ if (!headers_sent()) {
   </header>
 
   <p class="notice">
-    5단계: <strong>설명·접근 등급 변경이 추가되었고, 화면 출력은 전부 이스케이프됩니다.</strong>
+    6단계: <strong>업로드를 잠갔습니다.</strong>
+    허용 확장자는 <code>pdf docx xlsx pptx hwp hwpx txt csv md png jpg jpeg gif zip</code> 뿐이고,
+    서버가 파일 내용을 직접 판별해 <strong>실제 내용(MIME)과 확장자가 다르면 거부</strong>합니다.
+    <code>shell.php.txt</code> 같은 이중 확장자도 거부합니다. 한 파일은 최대 100MB,
+    한 사람이 하루에 올릴 수 있는 총량은 2GB 입니다.
+    내려받을 때는 저장된 파일의 해시를 기록과 대조한 뒤에만 전송합니다.
+  </p>
+  <p class="notice">
     목록에는 볼 수 있는 파일만 담기고(SQL 조건), 다운로드·삭제·업로드·수정은 요청마다 서버가
     다시 검사합니다. <strong>버튼이 보이지 않아도 요청은 서버가 다시 검사합니다</strong> —
     버튼을 되살리거나 콘솔에서 직접 호출해도 결과는 같습니다.
@@ -62,7 +69,7 @@ if (!headers_sent()) {
     <h2>파일 올리기</h2>
     <form id="upload-form" class="form form--grid" autocomplete="off">
       <label class="field">
-        <span class="field__label">파일 (최대 100MB)</span>
+        <span class="field__label">파일 (최대 100MB · 허용 형식만 · 하루 2GB)</span>
         <input id="upload-file" type="file" required>
       </label>
       <label class="field">

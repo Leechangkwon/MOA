@@ -19,6 +19,8 @@ declare(strict_types=1);
  *     같은 도메인에서 실행되는 저장형 XSS 를 막는다 (bootstrap 의 nosniff 와 함께, PRD S-03)
  *   · 다운로드 성공은 반드시 감사 로그에 남긴다. 단, 실제 파일 존재 확인을 **기록 전에** 해서
  *     "받지 못했는데 성공으로 기록" 되는 일을 막는다 (PRD S-07)
+ *   · 6단계: 저장된 파일의 sha256 을 DB 값과 **대조한 뒤에만** allow 기록·전송한다
+ *     (ARCH 5.3 [6], SECURITY R-13 — 저장소 파일 바꿔치기 탐지). 불일치는 500 + error 기록
  *
  * @var array<string,mixed> $user   라우터가 넘긴 현재 사용자
  * @var list<string>        $params $params[0] = public_id
@@ -89,6 +91,23 @@ try {
         'access_level' => (string) $file['access_level'],
     ]);
     throw $e;   // bootstrap 예외 핸들러 → 500 + {"error":"서버 오류"}
+}
+
+// ─── sha256 대조 (6단계 필수, ARCH 5.3 [6], SECURITY R-13) ───────
+// 저장된 바이트가 업로드 당시의 기록과 같은지 **전송 전에** 확인한다. 서버가 뚫려 저장소 파일이
+// 악성 문서로 바뀌어도 여기서 멈춘다. 다르면 allow 를 남기지 않고 error(hash_mismatch) 만 남기며
+// (AL-6 경보 대상), 응답은 bootstrap 예외 경로와 같은 500 + {"error":"서버 오류"} 다 —
+// "해시가 달라서 막았다" 는 사실조차 응답으로 알려 주지 않는다.
+$actualHash = Storage::sha256($storedName);
+if (!hash_equals((string) $file['sha256'], $actualHash)) {
+    Audit::error('file.download', 'hash_mismatch', [
+        'target_type'  => 'file',
+        'target_id'    => (int) $file['id'],
+        'target_name'  => (string) $file['original_name'],
+        'access_level' => (string) $file['access_level'],
+        'detail'       => $auditWhat,
+    ]);
+    Http::error(500, '서버 오류');
 }
 
 Audit::allow('file.download', [

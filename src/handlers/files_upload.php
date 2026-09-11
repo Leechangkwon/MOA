@@ -49,7 +49,8 @@ $rejectBadRequest = static function (string $reason, ?string $name, ?string $lev
 };
 
 // ─── [1] 파일 필드 확인 ────────────────────────────────────────
-// 101MB 같은 과대 요청은 nginx(client_max_body_size 100m)가 413 으로 먼저 끊는다.
+// 101MB 같은 과대 요청은 nginx(client_max_body_size 101m)가 413 으로 먼저 끊는다.
+// 정확히 100MB(104,857,600 B) 경계는 PHP Upload::MAX_BYTES 가 판정한다 (ARCH 8장 6단계 결정).
 $uploaded = $_FILES['file'] ?? null;
 if (!is_array($uploaded)) {
     $rejectBadRequest('no_file', null, null);
@@ -121,12 +122,23 @@ if (!$mayUpload) {
     Http::error(403, Http::MSG_FORBIDDEN);
 }
 
-// ─── [4] 업로드 검증 (크기·확장자 형태·MIME·해시) ───────────────
-// 3단계 최소 검증이다. 확장자 화이트리스트·MIME 짝·이중 확장자는 6단계 (src/Upload.php 주석).
+// ─── [4] 업로드 검증 (크기·확장자 화이트리스트·이중 확장자·MIME 짝·해시) ───
+// 6단계: PRD S-06 전부를 Upload 이 판정한다 (T-7 · T-8 · 이중 확장자, src/Upload.php 주석).
 try {
     $checked = Upload::validate($uploaded);
 } catch (RuntimeException $e) {
     // 예외 메시지는 사유 코드다. 사용자에게는 나가지 않는다.
+    $rejectBadRequest($e->getMessage(), $original, $level);
+    return;
+}
+
+// ─── [4-2] 일일 총량 2GB (6단계, PRD S-06) ─────────────────────
+// 검증을 통과한 크기로 INSERT **전에** 본다. 삭제한 파일도 합계에 들어가므로
+// "올리고 지우기" 로 한도를 넘길 수 없다. 초과 응답은 413 이 아니라 다른 검증 실패와 같은
+// 400 동일 문구다 — 413 은 nginx 크기 제한의 몫이고, 사유는 감사 로그에만 남는다.
+try {
+    Upload::checkDailyQuota((int) $user['id'], $checked['size']);
+} catch (RuntimeException $e) {
     $rejectBadRequest($e->getMessage(), $original, $level);
     return;
 }

@@ -128,12 +128,17 @@ for _pair in "/var/lib/tbox|/var/lib/tbox-v2" "/var/log/tbox|/var/log/tbox-v2" "
   fi
 done
 
-# 저장 디렉터리 그룹은 www-data (ARCH 6.3, 2026-09-09 개정).
-# 이유: 다운로드는 PHP 가 권한 확인을 끝낸 뒤 X-Accel-Redirect 로 nginx 에 넘긴다.
-#       nginx(www-data)는 그 internal 경로(ARCH 8장 `/protected/`, 외부 URL 로는 접근 불가)에서만
-#       파일을 읽으므로 그룹 읽기 권한이 필요하다. 쓰기는 소유자(tbox-php)만 — 0750 / 파일 0640.
-install -d -o "$APP_USER" -g www-data    -m 0750 /var/lib/tbox-v2
-install -d -o "$APP_USER" -g www-data    -m 0750 "$STORAGE_DIR"
+# 저장 디렉터리 그룹은 tbox-php — **6단계 결정(2026-09-11, ARCH 6.3 · SECURITY R-34)**.
+# 이유: 다운로드는 X-Accel-Redirect 가 아니라 PHP readfile() 로 확정했다. 그러면 nginx(www-data)가
+#       저장소를 읽을 일이 아예 없다. 같은 VM 에서 옛 취약판 v1 이 www-data 로 돌기 때문에
+#       "그룹 www-data 읽기" 는 곧 v1 웹셸의 읽기 권한이었다 → 그룹을 tbox-php 로 회수한다.
+#       nginx 의 `/protected/` `internal` 블록은 404 보장용으로만 남긴다 (T-10).
+#       쓰기는 소유자(tbox-php)만 — 디렉터리 0750 / 파일 0640.
+install -d -o "$APP_USER" -g "$APP_USER" -m 0750 /var/lib/tbox-v2
+install -d -o "$APP_USER" -g "$APP_USER" -m 0750 "$STORAGE_DIR"
+# install -d 는 이미 있는 디렉터리의 소유·권한도 맞춰 주지만 **하위 폴더·파일까지는 손대지 않는다**.
+# 3단계까지 www-data 그룹으로 만들어진 것이 남아 있을 수 있으므로 한 번 훑어 회수한다(멱등).
+chgrp -R "$APP_USER" "$STORAGE_DIR"
 # 세션 디렉터리는 nginx 가 읽을 일이 없다 — 0700 tbox-php 그대로 (R-10)
 install -d -o "$APP_USER" -g "$APP_USER" -m 0700 "$SESSION_DIR"
 install -d -o "$APP_USER" -g adm         -m 0750 "$LOG_DIR"
@@ -161,7 +166,7 @@ if command -v chattr >/dev/null 2>&1; then
 else
   info "경고: chattr 이 없다 (e2fsprogs) — 감사 로그 추가 전용 보호를 걸지 못했다 (R-11)"
 fi
-info "디렉터리: ${STORAGE_DIR} 0750 ${APP_USER}:www-data / ${SESSION_DIR} 0700 ${APP_USER} / ${LOG_DIR} 0750 / ${CONF_DIR} 0750"
+info "디렉터리: ${STORAGE_DIR} 0750 ${APP_USER}:${APP_USER} / ${SESSION_DIR} 0700 ${APP_USER} / ${LOG_DIR} 0750 / ${CONF_DIR} 0750"
 
 # ─────────────────────────────────────────────────────────────
 # 3. TLS — 이 VM 에서는 만들지 않는다 (ARCH 3장 배포 메모, PRD S-09-1)
