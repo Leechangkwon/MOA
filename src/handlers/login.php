@@ -22,17 +22,22 @@ $body = Http::jsonBody();
 
 $username = $body['username'] ?? null;
 $password = $body['password'] ?? null;
+// 10단계 — 2단계 인증 코드(선택). 켜 두지 않은 계정에는 쓰이지 않는다 (SECURITY R-05).
+// **필요한지 아닌지는 서버가 정한다** — 화면은 늘 칸을 보여 주고 값이 있으면 실어 보낼 뿐이다.
+$otp = $body['otp'] ?? null;
 
 // 형식 검사 — 여기서 걸리는 것은 "인증 실패" 가 아니라 "요청이 잘못된 것" 이므로 400 이다.
 // (401 로 답하면 잘못 만든 클라이언트가 계정 잠금 카운트를 올릴 수 있다)
+// otp 는 없어도 되고, 있으면 짧은 문자열이어야 한다. 값의 옳고 그름은 Auth 가 본다.
 if (!is_string($username) || !is_string($password)
     || $username === '' || $password === ''
-    || strlen($username) > 64 || strlen($password) > 1024) {
+    || strlen($username) > 64 || strlen($password) > 1024
+    || ($otp !== null && (!is_string($otp) || strlen($otp) > 16))) {
     Http::error(400, Http::MSG_BAD_REQUEST);
 }
 
 try {
-    $result = Auth::login($username, $password);
+    $result = Auth::login($username, $password, $otp === null ? null : (string) $otp);
 } catch (AuthLockedException $e) {
     Http::error(423, Http::MSG_LOGIN_LOCKED);
 }

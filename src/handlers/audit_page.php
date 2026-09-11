@@ -107,7 +107,28 @@ if (!headers_sent()) {
           <option value="file.delete">file.delete</option>
           <option value="file.update">file.update</option>
           <option value="file.level_change">file.level_change</option>
+          <option value="file.restore">file.restore</option>
           <option value="audit.view">audit.view</option>
+          <!-- 9단계 운영 배치 — cron 이 남기는 행. actor_* 가 비어 있어
+               「누가」로는 찾을 수 없고 여기(어떻게)로 골라야 보인다. -->
+          <option value="file.purge">file.purge</option>
+          <option value="backup.run">backup.run</option>
+          <option value="backup.restore">backup.restore</option>
+          <option value="audit.integrity">audit.integrity</option>
+          <option value="alert.raised">alert.raised</option>
+          <!-- 10단계 계정 관리·본인 계정 (F-10, R-05, R-12).
+               이 목록은 서버 audit_list.php 의 $allowedActions 와 **함께** 늘어난다 —
+               한쪽만 늘리면 선택지가 있는데 걸리지 않거나, 걸리는데 선택지가 없다. -->
+          <option value="user.create">user.create</option>
+          <option value="user.role_change">user.role_change</option>
+          <option value="user.expiry_change">user.expiry_change</option>
+          <option value="user.deactivate">user.deactivate</option>
+          <option value="user.activate">user.activate</option>
+          <option value="user.expired">user.expired</option>
+          <option value="auth.password_change">auth.password_change</option>
+          <option value="auth.mfa">auth.mfa</option>
+          <option value="auth.mfa_enroll">auth.mfa_enroll</option>
+          <option value="auth.mfa_disable">auth.mfa_disable</option>
         </select>
       </label>
       <label class="field">

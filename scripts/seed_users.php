@@ -94,6 +94,14 @@ $qaAccounts = [
     ['qa_employee02', 'Employee', $salesTeam],
     ['qa_guest01',    'Guest',    null],
 ];
+
+/**
+ * 10단계 (SECURITY R-12, PRD 3장 "Guest 생명주기") — **Guest 계정은 만료일이 필수**다.
+ * DB CHECK(guest_requires_expires_at)가 없는 값을 거부하므로, 여기서 넣지 않으면
+ * 시드 자체가 실패한다. 90일은 "협력사 프로젝트 한 분기" 를 기준으로 잡은 값이고,
+ * 늘리고 줄이는 것은 계정 관리 화면(F-10)에서 사유와 함께 한다.
+ */
+$guestDays = 90;
 if ($makeQa) {
     $accounts = array_merge($accounts, $qaAccounts);
 }
@@ -103,8 +111,12 @@ $sqlExists = <<<'SQL'
     SQL;
 
 $insert = <<<'SQL'
-    INSERT INTO users (username, password_hash, role, team_id)
-    VALUES (:username, :password_hash, :role, :team_id)
+    INSERT INTO users (username, password_hash, role, team_id, expires_at)
+    VALUES (:username, :password_hash, :role, :team_id,
+            CASE WHEN :role_for_expiry = 'Guest'
+                 THEN now() + make_interval(days => CAST(:guest_days AS integer))
+                 ELSE NULL
+            END)
     SQL;
 
 $lines = [];
@@ -122,10 +134,14 @@ try {
             throw new RuntimeException('비밀번호 해시를 만들 수 없습니다');
         }
         $db->run($insert, [
-            ':username'      => $username,
-            ':password_hash' => $hash,
-            ':role'          => $role,
-            ':team_id'       => $teamId,
+            ':username'        => $username,
+            ':password_hash'   => $hash,
+            ':role'            => $role,
+            ':team_id'         => $teamId,
+            // Guest 만 만료일을 받는다 (10단계, SECURITY R-12). 값은 전부 바인딩이며
+            // 역할 문자열은 위 $accounts 표(코드 상수)에서만 온다 — 요청 값이 아니다.
+            ':role_for_expiry' => $role,
+            ':guest_days'      => $guestDays,
         ]);
         $lines[] = $username . ' ' . $role . ' ' . $plain;
     }

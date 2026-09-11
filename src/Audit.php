@@ -33,7 +33,22 @@ final class Audit
     private const FORBIDDEN_DETAIL_KEYS = [
         'password', 'passwd', 'pass', 'token', 'cookie', 'secret',
         'authorization', 'session', 'hash', 'csrf',
+        // 10단계 (SECURITY R-05) — 2단계 인증의 비밀·코드는 어떤 이름으로도 남지 않는다.
+        // 'secret' 은 이미 위에 있고, 여기 둘은 `otp`·`mfa_secret`·`mfa_code` 같은 이름을 막는다.
+        'otp', 'mfa',
     ];
+
+    /**
+     * 위 목록은 **부분 일치**라 안전한 키까지 함께 걸린다. 그 예외를 여기에 **정확히 일치**로 적는다.
+     *
+     * `sessions_revoked` 는 ARCH 7.5 등록부에 있는 키로 값이 "끊은 세션 **수**"(정수)다.
+     * 토큰도 세션 id 도 아니어서 남겨도 되는 값인데, 이름에 `session` 이 들어가 있어
+     * 부분 일치에 걸린다(2026-09-11 10단계 구현에서 실측). 목록을 느슨하게 푸는 대신
+     * 이 키 하나만 정확 일치로 통과시킨다 — 새 예외를 더할 때는 ARCH 7.5 를 먼저 고친다.
+     *
+     * @var list<string>
+     */
+    private const ALLOWED_DETAIL_KEYS = ['sessions_revoked'];
 
     private const RESULT_ALLOW = 'allow';
     private const RESULT_DENY  = 'deny';
@@ -143,6 +158,47 @@ final class Audit
         'audit.integrity|allow'                   => '정합성·무결성 점검을 마쳤습니다 (검사 건수·불일치 0)',
         'audit.integrity|error|mismatch'          => '정합성·무결성 점검에서 불일치가 발견되었습니다 (목록은 상세 기록) — 경보 AL-6',
         'alert.raised|allow'                      => '경보 {target} 조건이 충족되어 알림을 보냈습니다 (근거는 상세 기록)',
+
+        // ── 휴지통 복구 (10단계 files_restore — F-11, Admin 만) ──
+        'file.restore|allow'                      => '{actor} 이(가) 휴지통의 {level} 등급 파일 「{target}」 을(를) 복구했습니다',
+        'file.restore|deny|not_found_in_trash'    => '{actor} 이(가) 휴지통에 없는 파일을 복구하려 해서 거부했습니다',
+
+        // ── 계정 관리 (10단계 users_* — F-10, Admin 만. PRD S-07 "관리자 행동 사유") ──
+        // 사유(detail.reason_text)·이전값/새값(detail.before/after)·끊은 세션 수는 전부 상세에 남는다.
+        'user.create|allow'                       => '{actor} 이(가) 계정 「{target}」 을(를) 만들었습니다 (역할·팀·사유는 상세 기록)',
+        'user.create|deny|bad_request'            => '{actor} 이(가) 계정 생성 요청을 잘못된 형식(아이디·비밀번호·역할·팀·사유)으로 보내 거부했습니다',
+        'user.create|deny|already_exists'         => '{actor} 이(가) 이미 있는 아이디 「{target}」 로 계정을 만들려 해서 거부했습니다',
+        'user.role_change|allow'                  => '{actor} 이(가) 계정 「{target}」 의 역할을 바꿨습니다 (이전 → 새 역할·사유는 상세 기록)',
+        'user.role_change|deny|bad_request'       => '{actor} 이(가) 계정 「{target}」 의 역할 변경을 잘못된 형식(역할·팀·사유 없음)으로 요청해서 거부했습니다',
+        'user.role_change|deny|self_change'       => '{actor} 이(가) 자기 자신의 역할을 바꾸려 해서 거부했습니다 (관리자 권한 자기 부여·자기 강등 방지)',
+        'user.role_change|deny|last_admin'        => '{actor} 이(가) 마지막 활성 관리자 계정 「{target}」 의 역할을 낮추려 해서 거부했습니다 (관리자 0명 방지)',
+        'user.deactivate|allow'                   => '{actor} 이(가) 계정 「{target}」 을(를) 비활성화하고 모든 세션을 끊었습니다 (사유는 상세 기록)',
+        'user.deactivate|deny|bad_request'        => '{actor} 이(가) 계정 「{target}」 비활성화를 사유 없이 요청해서 거부했습니다',
+        'user.deactivate|deny|self_change'        => '{actor} 이(가) 자기 자신을 비활성화하려 해서 거부했습니다',
+        'user.deactivate|deny|last_admin'         => '{actor} 이(가) 마지막 활성 관리자 계정 「{target}」 을(를) 비활성화하려 해서 거부했습니다 (관리자 0명 방지)',
+        'user.activate|allow'                     => '{actor} 이(가) 계정 「{target}」 을(를) 다시 활성화했습니다 (사유는 상세 기록)',
+        'user.activate|deny|bad_request'          => '{actor} 이(가) 계정 「{target}」 재활성화를 잘못된 형식(사유 없음 등)으로 요청해서 거부했습니다',
+        'user.expiry_change|allow'                => '{actor} 이(가) 계정 「{target}」 의 만료일을 바꿨습니다 (이전 → 새 값·사유는 상세 기록)',
+
+        // ── Guest 만료 (10단계 — SECURITY R-12) ──
+        // 두 자리에서 막는다: 로그인 시도(guest_expired)와 **이미 살아 있던 세션**(session_expired).
+        // 뒤엣것이 없으면 만료 직전에 로그인한 Guest 가 최대 8시간 더 돌아다닌다 (10단계 검토 실측).
+        'user.expired|deny|guest_expired'         => '{target} 계정으로 로그인을 시도했지만 만료된 Guest 계정입니다',
+        'user.expired|deny|session_expired'       => '{actor} 의 Guest 계정이 만료되어 살아 있던 세션을 끊었습니다',
+
+        // ── 비밀번호 변경 · 2단계 인증 (10단계 — PRD S-09-4, SECURITY R-05 · R-10) ──
+        // 비밀번호·TOTP 비밀·코드는 어떤 형태로도 이 표의 문장에 들어가지 않는다.
+        'auth.password_change|allow'                    => '{actor} 이(가) 비밀번호를 바꾸고 다른 기기의 세션을 모두 끊었습니다',
+        'auth.password_change|deny|bad_credentials'     => '{actor} 이(가) 비밀번호를 바꾸려 했지만 현재 비밀번호가 틀렸습니다',
+        'auth.password_change|deny|weak_password'       => '{actor} 이(가) 비밀번호를 바꾸려 했지만 새 비밀번호가 규칙(12자 이상)에 맞지 않습니다',
+        'auth.mfa_enroll|allow'                         => '{actor} 이(가) 2단계 인증(TOTP)을 켰습니다',
+        'auth.mfa_enroll|deny|bad_code'                 => '{actor} 이(가) 2단계 인증을 켜려 했지만 확인 코드가 틀렸습니다',
+        'auth.mfa_enroll|deny|already_enabled'          => '{actor} 이(가) 이미 켜져 있는 2단계 인증을 다시 등록하려 해서 거부했습니다',
+        'auth.mfa_disable|allow'                        => '{actor} 이(가) 2단계 인증(TOTP)을 껐습니다',
+        'auth.mfa_disable|deny|bad_code'                => '{actor} 이(가) 2단계 인증을 끄려 했지만 인증 코드가 틀렸습니다',
+        'auth.mfa_disable|deny|bad_credentials'         => '{actor} 이(가) 2단계 인증을 끄려 했지만 현재 비밀번호가 틀렸습니다',
+        'auth.mfa|deny|bad_code'                        => '{target} 계정으로 로그인하면서 2단계 인증 코드를 틀렸습니다',
+        'auth.mfa|deny|code_required'                   => '{target} 계정은 2단계 인증이 켜져 있는데 코드 없이 로그인을 시도해 막았습니다',
     ];
 
     /** 자리표시자에 넣을 값이 없을 때 (ARCH 7.4) */
@@ -410,6 +466,9 @@ final class Audit
     private static function isForbiddenKey(string $key): bool
     {
         $lower = strtolower($key);
+        if (in_array($lower, self::ALLOWED_DETAIL_KEYS, true)) {
+            return false;   // 정확히 일치하는 예외만 통과 (위 상수 주석 참고)
+        }
         foreach (self::FORBIDDEN_DETAIL_KEYS as $bad) {
             if (strpos($lower, $bad) !== false) {
                 return true;

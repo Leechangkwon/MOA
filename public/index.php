@@ -70,12 +70,51 @@ const TBOX_ROUTES = [
     //   화면만 숨기고 API 를 열어 두면 그것이 곧 우회 경로다 (PRD S-01).
     ['GET',    '/api/audit',               'audit_list.php',     'audit.read'],
     ['GET',    '/audit',                   'audit_page.php',     'audit.read'],
+
+    // 10단계 — 계정 관리 (PRD F-10, 5.4, 8장 `/api/users` 행) · 휴지통 복구 (F-11) ·
+    //          비밀번호 변경 · 2단계 인증 TOTP (SECURITY R-05 · R-10 · R-12 · R-20 · R-33).
+    //   user.manage : Admin 만 (Authz::canManageUsers). 나머지 역할은 여기서 끝나고
+    //                 그 시도 자체가 `authz.route|deny` 로 남는다.
+    //   `/users` 화면과 `/api/users` 데이터는 **같은 정책**을 쓴다 — 화면만 숨기고 API 를
+    //   열어 두면 그것이 곧 우회 경로다 (PRD S-01, 8단계 감사 로그와 같은 원칙).
+    //   `{uid}` 는 순차 정수(users.id)라 UUID 인 `{id}` 와 형태가 다르다 → `{num}` 자리표시자.
+    //   계정 id 는 파일과 달리 열거해도 새는 정보가 없고(목록 자체가 Admin 전용),
+    //   URL 에 UUID 를 따로 두는 것보다 화면·로그가 단순하다.
+    ['GET',    '/api/users',               'users_list.php',     'user.manage'],
+    ['POST',   '/api/users',               'users_create.php',   'user.manage'],
+    ['PATCH',  '/api/users/{num}',         'users_update.php',   'user.manage'],
+    ['GET',    '/users',                   'users_page.php',     'user.manage'],
+
+    // 본인 계정 관리 — 로그인한 사람이면 누구나 자기 것만 (PRD 7.7 "비밀번호 변경", R-05).
+    // 대상은 언제나 **세션의 본인**이며 요청 본문에 대상 계정을 받지 않는다.
+    ['POST',   '/api/me/password',         'password_change.php', Authz::POLICY_AUTHENTICATED],
+    ['POST',   '/api/me/mfa/enroll',       'mfa_enroll.php',      Authz::POLICY_AUTHENTICATED],
+    ['POST',   '/api/me/mfa/confirm',      'mfa_confirm.php',     Authz::POLICY_AUTHENTICATED],
+    ['POST',   '/api/me/mfa/disable',      'mfa_disable.php',     Authz::POLICY_AUTHENTICATED],
+
+    // 휴지통 — Admin 만 (PRD 5.4 "삭제된 파일 복구(30일 내)", F-11).
+    // `/api/files/trash` 는 `{id}`(UUID 36자)와 형태가 달라 `/api/files/{id}` 계열과 충돌하지 않지만,
+    // 의도를 드러내려고 위에 둔다(7단계 `/api/files/fetch` 와 같은 이유).
+    ['GET',    '/api/files/trash',          'files_trash.php',   'role:Admin'],
+    ['POST',   '/api/files/{id}/restore',   'files_restore.php', 'role:Admin'],
 ];
 
 const TBOX_HANDLER_DIR = __DIR__ . '/../src/handlers/';
 
-/** `{id}` 자리에 허용되는 문자 (UUID). 경로 변수는 이 형태만 핸들러에 전달된다. */
-const TBOX_ID_PATTERN = '[0-9a-f-]{36}';
+/**
+ * 경로 자리표시자 → 허용 문자.
+ *
+ *   `{id}`  파일의 외부 ID (UUID 36자). 순차 정수를 URL 로 받지 않으므로 열거 표면이 없다 (PRD S-09-5).
+ *   `{num}` 계정 id 같은 순차 정수 (10단계, 최대 9자리). UUID 와 형태가 겹치지 않는다.
+ *
+ * 자리표시자는 이 표에 있는 것만 쓸 수 있고, 표에 없는 `{…}` 가 경로에 있으면
+ * tbox_validate_routes() 가 부팅을 막는다(정규식이 아니라 문자 그대로 매칭되어
+ * 어떤 요청과도 맞지 않는 죽은 라우트가 되는 것을 방지).
+ */
+const TBOX_PATH_PATTERNS = [
+    '{id}'  => '[0-9a-f-]{36}',
+    '{num}' => '[0-9]{1,9}',
+];
 
 /** 미로그인 화면 요청을 보내는 곳. 코드 상수이며 요청 값이 섞이지 않는다 (ARCH 4.0). */
 const TBOX_LOGIN_PATH = '/login';
@@ -114,8 +153,16 @@ function tbox_validate_routes(): array
             $problems[] = $where . ': 알 수 없는 메서드';
         }
         if (!is_string($path) || $path === '' || $path[0] !== '/'
-            || preg_match('#^(/|(/(\{id\}|[a-z0-9_.-]+))+)$#', $path) !== 1) {
+            || preg_match('#^(/|(/(\{[a-z]+\}|[a-z0-9_.-]+))+)$#', $path) !== 1) {
             $problems[] = $where . ': 경로 패턴이 허용 형태가 아니다';
+        } elseif (preg_match_all('/\{[a-z]+\}/', $path, $found) > 0) {
+            // 표에 없는 자리표시자(`{uid}` 같은 오타)는 정규식이 아니라 글자 그대로 매칭되어
+            // 어떤 요청과도 맞지 않는 죽은 라우트가 된다. 그래서 부팅 시점에 막는다.
+            foreach ($found[0] as $token) {
+                if (!array_key_exists($token, TBOX_PATH_PATTERNS)) {
+                    $problems[] = $where . ': 모르는 경로 자리표시자 ' . $token;
+                }
+            }
         }
         if (!is_string($policy) || !in_array($policy, Authz::KNOWN_POLICIES, true)) {
             $problems[] = $where . ': 정책이 Authz::KNOWN_POLICIES 에 없다 (policy=' . var_export($policy, true) . ')';
@@ -137,16 +184,33 @@ function tbox_validate_routes(): array
 }
 
 /**
- * 경로 패턴을 정규식으로 바꾼다. `{id}` 만 자리표시자로 인정한다.
+ * 경로 패턴을 정규식으로 바꾼다. TBOX_PATH_PATTERNS 에 있는 자리표시자만 인정한다.
+ *
+ * 패턴 문자열은 라우트 표에 적힌 고정 값이고 요청 값이 아니다. 그래도 자리표시자 **밖**의
+ * 모든 조각은 preg_quote 를 거치므로, 경로에 정규식 메타문자가 들어가도 그대로 글자로 다뤄진다.
+ * 자리표시자가 여러 개면 왼쪽부터 차례로 캡처 그룹이 되어 $params[0], $params[1] … 이 된다.
  */
 function tbox_pattern_to_regex(string $path): string
 {
-    $parts = explode('{id}', $path);
-    $out   = [];
-    foreach ($parts as $p) {
-        $out[] = preg_quote($p, '#');
+    $regex = '';
+    $rest  = $path;
+
+    while ($rest !== '') {
+        // 가장 먼저 나오는 자리표시자를 찾는다 (없으면 나머지를 통째로 글자로 처리)
+        if (preg_match('/\{[a-z]+\}/', $rest, $m, PREG_OFFSET_CAPTURE) !== 1) {
+            $regex .= preg_quote($rest, '#');
+            break;
+        }
+        $token  = $m[0][0];
+        $at     = (int) $m[0][1];
+        $regex .= preg_quote(substr($rest, 0, $at), '#');
+        // 표에 없는 자리표시자는 tbox_validate_routes() 가 부팅에서 막는다.
+        // 그래도 여기서 다시 확인해, 검사를 건너뛴 경로가 "무엇이든 매칭" 이 되지 않게 한다.
+        $regex .= '(' . (TBOX_PATH_PATTERNS[$token] ?? '(?!)') . ')';
+        $rest   = substr($rest, $at + strlen($token));
     }
-    return '#^' . implode('(' . TBOX_ID_PATTERN . ')', $out) . '$#';
+
+    return '#^' . $regex . '$#';
 }
 
 // ─── [0-1] 라우트 표 자체 검사 (정책 미등록 → 부팅 실패) ─────────

@@ -41,6 +41,13 @@ $allowedActions = [
     // 9단계 운영 배치 (ARCH 7.4 · 11.1) — cron 이 남기는 행. actor_* 가 비어 있어
     // 「누가」 필터로는 찾을 수 없고, 「어떻게(action)」 로 골라야 보인다.
     'file.purge', 'backup.run', 'backup.restore', 'audit.integrity', 'alert.raised',
+    // 10단계 계정 관리·휴지통 복구·본인 계정 (ARCH 7.4 10단계 행).
+    // 문장 표(Audit::SUMMARY_TEMPLATES)와 이 목록은 **함께** 늘어난다 — 표에만 넣고 여기를
+    // 빠뜨리면 그 행동이 조회 화면의 「어떻게」 필터에서 사라진다.
+    'file.restore',
+    'user.create', 'user.role_change', 'user.expiry_change',
+    'user.deactivate', 'user.activate', 'user.expired',
+    'auth.password_change', 'auth.mfa_enroll', 'auth.mfa_disable', 'auth.mfa',
 ];
 
 /** 접근 등급 허용 목록 (PRD 4장) */

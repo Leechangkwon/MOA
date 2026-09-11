@@ -551,7 +551,11 @@
 | DELETE | `/api/files/{id}` | 삭제(논리) | 5.3 표대로 | 403 / 404 |
 | POST | `/api/files/{id}/restore` | 복구 | Admin | 403 |
 | GET | `/api/audit` | 감사 로그 조회 | Admin 만 | 403 |
-| GET/POST | `/api/users` | 계정 관리 | Admin | 403 |
+| GET/POST | `/api/users` | 계정 목록 · 생성(`username`·`password` 12자 이상·`role` 4종·`team_id`·Guest 는 `expires_at` 필수·`reason_text` 필수) | Admin (`user.manage`) | 400 / 403 |
+| PATCH | `/api/users/{uid}` | 역할·팀·활성·만료일 변경 (`reason_text` 필수, 자기 자신 금지, 마지막 활성 Admin 강등·비활성화 금지). 역할·팀 변경·비활성화는 대상의 모든 세션을 즉시 끊음(T-22) | Admin | 400 / 403 / 404 |
+| GET | `/api/files/trash` | 휴지통 목록(논리 삭제·미영구삭제) | Admin | 403 |
+| POST | `/api/me/password` | 내 비밀번호 변경(현재 비밀번호 확인, 12자 이상, 다른 기기 세션 종료) | 세션 존재 + CSRF | 400 |
+| POST | `/api/me/mfa/enroll` · `confirm` · `disable` | 2단계 인증(TOTP) 등록·확정·해제 (해제는 현재 비밀번호 + 코드) | 세션 존재 + CSRF | 400 |
 
 ---
 

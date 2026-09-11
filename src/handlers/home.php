@@ -44,7 +44,7 @@ if (!headers_sent()) {
 <main class="card card--wide">
   <header class="topbar">
     <div>
-      <h1>t-box (재구축) — 7단계</h1>
+      <h1>t-box (재구축) — 10단계</h1>
       <p class="lead">
         <strong><?= $displayName ?></strong> 님으로 로그인했습니다 ·
         역할 <code><?= $displayRole ?></code>
@@ -56,6 +56,10 @@ if (!headers_sent()) {
            여기(서버 HTML)에 역할 비교를 넣지 않는다: 판단은 Authz 한 곳에서만 한다.
            링크를 개발자도구로 되살려도 /audit·/api/audit 은 라우터 정책 audit.read 가 다시 막는다. -->
       <a id="audit-link" class="btn btn--quiet" href="/audit" hidden>감사 로그</a>
+      <!-- 10단계: "계정 관리" 링크도 같은 방식이다 — 항상 HTML 에 있고 hidden 이며,
+           서버가 /api/me 로 내려 준 can_manage_users 가 참일 때만 app.js 가 연다 (F-10, Admin 만).
+           링크를 개발자도구로 되살려도 /users·/api/users 는 라우터 정책 user.manage 가 다시 막는다. -->
+      <a id="users-link" class="btn btn--quiet" href="/users" hidden>계정 관리</a>
       <button id="logout" class="btn btn--quiet" type="button">로그아웃</button>
     </div>
   </header>
@@ -170,6 +174,99 @@ if (!headers_sent()) {
       <span id="page-info" class="muted"></span>
       <button id="page-next" class="btn btn--quiet" type="button">다음</button>
     </div>
+  </section>
+
+  <!-- ─── 10단계: 내 계정 (비밀번호 변경 · 2단계 인증) ─────────────────
+       대상은 언제나 **세션의 본인**이다. 화면이 "누구의" 를 고르지 않는다. -->
+  <section class="panel">
+    <h2>내 계정</h2>
+
+    <form id="password-form" class="form form--grid" autocomplete="off">
+      <p class="field field--full muted">
+        비밀번호를 바꾸면 <strong>다른 기기의 세션이 모두 끊깁니다</strong>(지금 이 창은 유지됩니다).
+        설치할 때 발급된 최초 비밀번호는 첫 로그인 뒤 바꾸고,
+        <code>/etc/tbox-v2/seed-accounts.txt</code> 는 지우는 것이 운영 절차입니다.
+      </p>
+      <label class="field">
+        <span class="field__label">현재 비밀번호</span>
+        <input id="pw-current" type="password" maxlength="1024" required>
+      </label>
+      <label class="field">
+        <span class="field__label">새 비밀번호 (12자 이상)</span>
+        <input id="pw-new" type="password" maxlength="1024" minlength="12" required>
+      </label>
+      <button id="pw-submit" class="btn" type="submit">비밀번호 바꾸기</button>
+    </form>
+
+    <!-- 2단계 인증 (SECURITY R-05). QR 라이브러리를 넣지 않으므로 비밀과 otpauth 주소를
+         **글자 그대로** 보여 주고 사용자가 인증 앱에 손으로 옮겨 적는다.
+         화면에 나오는 값은 전부 app.js 가 textContent 로 넣는다. -->
+    <div class="mfa">
+      <p id="mfa-state" class="muted">2단계 인증 상태를 확인하는 중입니다.</p>
+
+      <div id="mfa-off" hidden>
+        <button id="mfa-enroll" class="btn btn--quiet" type="button">2단계 인증 켜기</button>
+        <div id="mfa-setup" hidden>
+          <p class="muted">아래 값을 인증 앱(Google Authenticator 등)에 입력한 뒤, 앱이 보여 주는 6자리 코드를 적으세요.</p>
+          <p class="field__label">비밀 키</p>
+          <pre id="mfa-secret" class="audit-detail"></pre>
+          <p class="field__label">otpauth 주소</p>
+          <pre id="mfa-uri" class="audit-detail"></pre>
+          <form id="mfa-confirm-form" class="form form--grid" autocomplete="off">
+            <label class="field">
+              <span class="field__label">인증 앱이 보여 주는 6자리 코드</span>
+              <input id="mfa-code" type="text" inputmode="numeric" pattern="[0-9]{6}" maxlength="6" required>
+            </label>
+            <button id="mfa-confirm" class="btn" type="submit">확인하고 켜기</button>
+          </form>
+        </div>
+      </div>
+
+      <form id="mfa-disable-form" class="form form--grid" autocomplete="off" hidden>
+        <p class="field field--full muted">
+          끄려면 <strong>현재 비밀번호와 지금의 코드</strong>가 모두 필요합니다 —
+          세션만 훔친 사람이 2단계 인증을 꺼 버리지 못하게 하기 위해서입니다.
+        </p>
+        <label class="field">
+          <span class="field__label">현재 비밀번호</span>
+          <input id="mfa-off-password" type="password" maxlength="1024" required>
+        </label>
+        <label class="field">
+          <span class="field__label">2단계 인증 코드</span>
+          <input id="mfa-off-code" type="text" inputmode="numeric" pattern="[0-9]{6}" maxlength="6" required>
+        </label>
+        <button id="mfa-disable" class="btn btn--quiet" type="submit">2단계 인증 끄기</button>
+      </form>
+    </div>
+  </section>
+
+  <!-- ─── 10단계: 휴지통 (F-11, Admin 만) ───────────────────────────────
+       감사 로그 링크와 같은 방식이다 — 항상 HTML 에 있고 hidden 이며,
+       /api/me 의 can_manage_users 가 참일 때만 app.js 가 연다.
+       패널을 되살려도 GET /api/files/trash · POST …/restore 는 정책 role:Admin 이 다시 막는다. -->
+  <section class="panel" id="trash-panel" hidden>
+    <h2>휴지통 — 삭제된 파일 복구</h2>
+    <p class="muted">
+      삭제는 30일 동안 되돌릴 수 있습니다. 30일이 지나 배치가 실제 파일을 지운 뒤에는
+      목록에 나오지 않고 복구할 수도 없습니다.
+    </p>
+    <div class="table-wrap">
+      <table class="files">
+        <thead>
+          <tr>
+            <th scope="col">이름</th>
+            <th scope="col">크기</th>
+            <th scope="col">레벨</th>
+            <th scope="col">올린 사람</th>
+            <th scope="col">지운 사람</th>
+            <th scope="col">지운 시각</th>
+            <th scope="col">작업</th>
+          </tr>
+        </thead>
+        <tbody id="trash-body"></tbody>
+      </table>
+    </div>
+    <p id="trash-empty" class="muted" hidden>휴지통이 비어 있습니다.</p>
   </section>
 
   <p id="msg" class="msg" role="alert" aria-live="polite"></p>

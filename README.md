@@ -6,7 +6,7 @@
 |---|---|
 | 스택 | 순수 PHP 8.1 (프레임워크 없음) · PostgreSQL 14 · nginx 1.18 · Ubuntu 22.04 — 실습 VM 설치본 그대로 (운영 전환 시 업그레이드, SECURITY R-21) |
 | 진행 방식 | AI와 기능 하나씩 → **내가 직접 공격해 검증** → 한글 커밋 |
-| 상태 | 9단계(운영: 백업·복구·정합성·경보·서버 기준선) 구현 완료 — 검토·자기 공격 대기 (2026-09-11) |
+| 상태 | 1~10단계 구현·Fable 검토 완료 (2026-09-11) — 사용자 자기 공격(관문 ③) 일괄 수행 대기, 순서는 `STAGES.md` 2-1. 방화벽·SSH 강화 적용(`deploy/hardening.sh --apply`)·WAL·원격 로그는 미적용(운영 결정) |
 
 ## 문서
 
@@ -195,9 +195,120 @@ sudo systemctl reload php8.1-fpm     # 고친 뒤 반영
 | `employee02` | Employee | 영업팀 |
 | `guest01` | Guest | — |
 
+> 10단계부터 **Guest 계정에는 만료일이 함께 들어갑니다**(생성 시점 + 90일, `SECURITY.md` R-12).
+> 만료된 뒤에는 비밀번호가 맞아도 로그인할 수 없습니다.
+
 ```bash
 sudo cat /etc/tbox-v2/seed-accounts.txt      # 한 줄에 "아이디 역할 비밀번호"
 ```
+
+#### 🔴 시드 비밀번호 파일은 **쓰고 나면 지웁니다** (`SECURITY.md` R-33)
+
+`/etc/tbox-v2/seed-accounts.txt` 는 **평문 비밀번호**가 그대로 들어 있는 파일입니다.
+`0600 root` 라 일반 사용자는 못 읽지만, root 를 얻은 침입자에게는 계정 전부가 한 번에 넘어갑니다.
+그래서 이 파일의 수명을 아래처럼 정합니다.
+
+| 순서 | 할 일 | 명령 |
+|---|---|---|
+| 1 | 계정 주인이 **첫 로그인** | 브라우저에서 `/` |
+| 2 | 화면 **「내 계정 → 비밀번호 바꾸기」** 로 각자 비밀번호 변경 (12자 이상) | `POST /api/me/password` |
+| 3 | 전원이 바꾼 것을 확인 — `updated_at` 이 `created_at` 보다 뒤면 바꾼 것입니다 | 아래 SQL |
+| 4 | **파일 삭제** | `sudo shred -u /etc/tbox-v2/seed-accounts.txt` |
+
+```bash
+# 3) 아직 최초 비밀번호를 쓰고 있는 계정 (updated_at 이 created_at 과 같음)
+sudo -u postgres psql -d tbox_re -c \
+  "SELECT username, role, created_at, updated_at FROM users WHERE updated_at <= created_at ORDER BY id"
+
+# 4) 전원이 바꿨으면 지웁니다 (되돌릴 수 없습니다)
+sudo shred -u /etc/tbox-v2/seed-accounts.txt
+```
+
+> 과제 기간에는 관문 ③(사용자 자기 공격)에서 시드 계정으로 로그인해야 하므로 **파일을 남겨 둡니다**
+> — 위험을 알고 받아들인 상태입니다(`SECURITY.md` R-33). 운영 배포에서는 위 4단계를 반드시 끝냅니다.
+> 비밀번호를 잃어버린 계정은 파일을 되살릴 수 없으므로, Admin 이 계정 관리 화면에서
+> **새 계정을 만들어 넘기거나** `psql` 로 해시를 교체합니다.
+
+## 계정 관리 (10단계 · `PRD.md` F-10)
+
+Admin 만 `/users` 화면과 `GET/POST /api/users`, `PATCH /api/users/{uid}` 를 쓸 수 있습니다.
+다른 역할은 화면도 API 도 **403** 이고, 그 시도 자체가 `authz.route|deny` 로 감사 로그에 남습니다.
+
+| 규칙 | 내용 |
+|---|---|
+| 1인 1개 | 계정은 사람마다 하나입니다. 공용 계정·시드 계정을 실무에 쓰지 않습니다 — 감사 로그의 「누가」는 계정이 사람에 1:1 로 묶일 때만 성립합니다 (`PRD.md` 3장 · S-07) |
+| 사유 필수 | 계정 생성·역할 변경·비활성화·재활성화에는 **사유(`reason_text`, 500자)가 필수**입니다. 없으면 400 이고, 적은 사유는 감사 로그 `detail.reason_text` 에 남습니다 (S-07 "관리자 행동 사유", R-20) |
+| 비밀번호 | 최초 비밀번호는 **12자 이상**이고 Argon2id 해시로만 저장됩니다. 응답·로그에 평문이 나오는 곳은 없습니다 |
+| 역할 | `Admin`·`Manager`·`Employee`·`Guest` 넷뿐입니다. 그 밖의 값은 400 입니다 |
+| Guest 만료 | **Guest 계정은 만료일이 필수**입니다(`SECURITY.md` R-12). 만료된 뒤에는 비밀번호가 맞아도 로그인할 수 없고 `user.expired` 가 남습니다. DB CHECK 가 마지막 그물입니다 |
+| 자기 자신 | Admin 도 **자기 역할·활성 상태는 바꿀 수 없습니다**(`self_change`). 자기 계정의 비밀번호·2단계 인증은 「내 계정」에서 합니다 |
+| 마지막 관리자 | **마지막 활성 Admin** 은 강등·비활성화되지 않습니다(`last_admin`). 관리자가 0명이 되면 아무도 되돌릴 수 없습니다 |
+| 전 기기 로그아웃 | 역할·팀을 바꾸거나 계정을 끄면 **그 사람의 모든 세션이 즉시 삭제**됩니다 (`PRD.md` T-22, `SECURITY.md` R-10). 끊은 개수는 `detail.sessions_revoked` 에 남습니다 |
+| 삭제 없음 | 계정을 지우는 기능은 없습니다. 파일·감사 로그가 계정을 가리키고 있어 지우면 추적이 끊어집니다 — 그만 쓸 계정은 **비활성화**합니다 |
+
+```bash
+# 목록 (Admin 세션 필요. 비밀번호 해시·TOTP 비밀은 응답에 없습니다)
+curl -s -b jar https://changkwon.mso.so/api/users
+
+# 계정 만들기
+curl -s -b jar -X POST -H 'Content-Type: application/json' -H "X-CSRF-Token: $TOKEN" \
+  --data-binary '{"username":"hong.gildong","password":"바꿀비밀번호12자이상","role":"Employee",
+                  "team_id":1,"reason_text":"2026-09-11 입사 (인사팀 요청)"}' \
+  https://changkwon.mso.so/api/users
+
+# 역할 변경 · 비활성화 (사유 필수)
+curl -s -b jar -X PATCH -H 'Content-Type: application/json' -H "X-CSRF-Token: $TOKEN" \
+  --data-binary '{"role":"Manager","reason_text":"팀장 발령 (2026-09-11)"}' \
+  https://changkwon.mso.so/api/users/12
+curl -s -b jar -X PATCH -H 'Content-Type: application/json' -H "X-CSRF-Token: $TOKEN" \
+  --data-binary '{"is_active":false,"reason_text":"퇴사 (2026-09-30)"}' \
+  https://changkwon.mso.so/api/users/12
+```
+
+### 삭제된 파일 복구 — 휴지통 (10단계 · F-11)
+
+삭제는 **논리 삭제**이고 30일 동안 되돌릴 수 있습니다. Admin 은 홈 화면의 「휴지통」 패널
+또는 API 로 복구합니다. 30일이 지나 배치(`scripts/purge_trash.php`)가 실제 파일을 지운 뒤에는
+목록에 나오지 않고 복구도 되지 않습니다(`purged_at` 이 채워진 행).
+
+```bash
+curl -s -b jar https://changkwon.mso.so/api/files/trash
+curl -s -b jar -X POST -H 'Content-Type: application/json' -H "X-CSRF-Token: $TOKEN" \
+  https://changkwon.mso.so/api/files/<파일UUID>/restore
+```
+
+## 2단계 인증 (TOTP) — 10단계 · `SECURITY.md` R-05
+
+비밀번호 하나만으로는 Admin 계정이 털리면 급여·인사 자료가 통째로 넘어갑니다.
+그래서 **모든 사용자가 자기 계정에 2단계 인증(TOTP, RFC 6238)을 켤 수 있습니다.**
+Admin·Manager 는 켜는 것을 권합니다.
+
+| 항목 | 값 |
+|---|---|
+| 방식 | TOTP (HMAC-SHA1 · 30초 · 6자리 · 허용 오차 ±1스텝) |
+| 인증 앱 | Google Authenticator · Aegis · 1Password 등 표준 TOTP 앱이면 모두 |
+| 구현 | `src/Totp.php` — 외부 라이브러리 없이 `hash_hmac('sha1')` 로 직접 (공급망 최소화, S-10-C) |
+| 비밀 보관 | `users.mfa_secret`(base32). **켜져 있을 때만** 값이 있고, 끄면 `NULL` 로 지웁니다 |
+| 화면 | QR 라이브러리를 쓰지 않으므로 비밀 키와 `otpauth://` 주소를 **글자로** 보여 줍니다 — 인증 앱에 손으로 입력합니다 |
+
+켜는 순서 (홈 화면 「내 계정」)
+
+1. **「2단계 인증 켜기」** — 서버가 비밀을 만들어 보여 줍니다. 이때는 아직 **켜지지 않았습니다**.
+2. 인증 앱에 비밀을 넣고, 앱이 보여 주는 6자리 코드를 **「확인하고 켜기」** 에 적습니다.
+   코드가 맞아야 켜집니다 — 등록에 실패한 사람이 자기 계정에 못 들어가는 일을 막기 위해서입니다.
+3. 그 뒤 로그인 화면의 **「2단계 인증 코드」** 칸에 코드를 적어야 들어옵니다.
+
+끄려면 **현재 비밀번호와 지금의 코드**가 모두 필요합니다 — 세션만 훔친 사람이 2단계 인증을
+꺼 버리지 못하게 하기 위해서입니다.
+
+> 코드가 없거나 틀리면 응답은 로그인 실패와 **똑같은 401 문구**입니다
+> ("이 계정은 2단계 인증을 쓴다" 를 알려 주지 않습니다). 사유는 감사 로그에만
+> `auth.mfa|deny|code_required`·`bad_code` 로 남고, **실패 5회면 계정이 10분 잠깁니다**
+> — 비밀번호를 알아낸 공격자가 코드 6자리를 무제한으로 시험하지 못하게 하는 장치입니다.
+>
+> **인증 앱을 잃어버렸다면** 스스로 끌 수 없습니다. Admin 이 `psql` 로 되돌립니다:
+> `sudo -u postgres psql -d tbox_re -c "UPDATE users SET mfa_enabled=false, mfa_secret=NULL WHERE username='아이디'"`
+> (이 작업은 감사 로그에 남지 않으므로, 누가 왜 했는지 운영 기록에 따로 남깁니다.)
 
 계정이 이미 있으면 스크립트는 `건너뜀` 만 출력하고 아무것도 바꾸지 않습니다(비밀번호 파일도 그대로 둡니다).
 비밀번호를 잃어버렸다면 `sudo -u postgres psql -d tbox_re -c 'DELETE FROM users'` 후 재설치가 아니라,

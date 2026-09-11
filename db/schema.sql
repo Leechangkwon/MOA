@@ -20,6 +20,12 @@ CREATE TABLE teams (
 -- users — 역할은 4종으로 DB 가 강제한다 (PRD 9장 제약 조건)
 --   password_hash 는 Argon2id 해시만 저장(2단계, PRD S-09-4). 평문 비밀번호는 어디에도 저장하지 않는다.
 --   failed_count / locked_until — 실패 5회 10분 잠금 (PRD S-09-4)
+--   expires_at / mfa_* / updated_at — 10단계 (F-10, SECURITY R-12 · R-05).
+--     · expires_at  : 계정 만료 시각. **Guest 는 필수**(아래 CHECK). 만료 뒤 로그인은 401 + user.expired
+--     · mfa_secret  : TOTP 공유 비밀(base32). 켜져 있을 때만 값이 있고 끄면 NULL 로 되돌린다.
+--                     응답(enroll 1회)·감사 로그 어디에도 나가지 않는다
+--     · mfa_enabled : 2단계 인증을 켰나. 켠 계정은 코드 없이 로그인할 수 없다
+--     · updated_at  : 역할·활성·비밀번호·MFA 가 마지막으로 바뀐 시각
 -- ─────────────────────────────────────────────────────────────
 CREATE TABLE users (
     id            BIGSERIAL PRIMARY KEY,
@@ -32,7 +38,15 @@ CREATE TABLE users (
     is_active     BOOLEAN     NOT NULL DEFAULT true,
     failed_count  INT         NOT NULL DEFAULT 0,
     locked_until  TIMESTAMPTZ,
-    created_at    TIMESTAMPTZ NOT NULL DEFAULT now()
+    created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
+    expires_at    TIMESTAMPTZ,
+    mfa_secret    TEXT,
+    mfa_enabled   BOOLEAN     NOT NULL DEFAULT false,
+    updated_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
+    -- Guest 는 만료일 필수 (PRD 3장 Guest 생명주기, SECURITY R-12).
+    -- 앱 코드가 한 군데라도 검사를 빠뜨려도 만료 없는 Guest 행은 존재할 수 없다.
+    CONSTRAINT guest_requires_expires_at
+        CHECK (role <> 'Guest' OR expires_at IS NOT NULL)
 );
 
 -- ─────────────────────────────────────────────────────────────

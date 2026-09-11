@@ -38,4 +38,11 @@ Http::json([
     // can_fetch 와 똑같은 성격의 **화면 편의 값**이다. 링크를 되살려 /audit 이나
     // /api/audit 을 직접 불러도 라우터 정책 audit.read 가 다시 막는다 (PRD S-01, 10장).
     'can_view_audit' => Authz::canReadAudit($user),
+    // 10단계 — "계정 관리" 링크와 휴지통 패널을 보일지 여부 (F-10 · F-11, Admin 만, PRD 5.4).
+    // can_fetch·can_view_audit 과 똑같은 **화면 편의 값**이다. 링크를 되살려 /users 나
+    // /api/users·/api/files/trash 를 직접 불러도 라우터 정책이 다시 막는다 (PRD S-01).
+    'can_manage_users' => Authz::canManageUsers($user),
+    // 10단계 — 내 2단계 인증이 켜져 있나 (R-05). 권한이 아니라 상태이며,
+    // 화면이 "켜기" 를 보일지 "끄기" 를 보일지 고르는 데만 쓴다.
+    'mfa_enabled'      => ($user['mfa_enabled'] ?? false) === true,
 ]);

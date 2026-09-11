@@ -51,6 +51,16 @@ if (!headers_sent()) {
       <input id="password" name="password" type="password"
              maxlength="1024" required>
     </label>
+    <!-- 10단계 (SECURITY R-05) — 2단계 인증 코드. **필요한지 아닌지는 서버가 정한다.**
+         칸은 언제나 보이고, 값이 있으면 그대로 실어 보낸다. 켜 두지 않은 계정에는 쓰이지 않고,
+         켠 계정에 코드가 없거나 틀리면 서버가 401 **동일 문구**로 막는다 —
+         "이 계정은 2단계 인증을 쓴다" 를 로그인 전에 알려 주지 않기 위해서다. -->
+    <label class="field">
+      <span class="field__label">2단계 인증 코드 (선택 · 6자리)</span>
+      <input id="otp" name="otp" type="text" inputmode="numeric"
+             autocomplete="one-time-code" pattern="[0-9]{6}"
+             maxlength="6" spellcheck="false">
+    </label>
     <button id="login-submit" class="btn" type="submit">로그인</button>
   </form>
 

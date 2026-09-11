@@ -807,6 +807,13 @@ GRANT  USAGE, SELECT  ON SEQUENCE audit_logs_id_seq TO tbox_app;
 | `user.deactivate|deny|self_change` | `{actor} 이(가) 자기 자신을 비활성화하려 해서 거부했습니다` | 10단계 |
 | `user.deactivate|deny|bad_request` | `{actor} 이(가) 계정 「{target}」 비활성화를 사유 없이 요청해서 거부했습니다` | 10단계 |
 | `user.activate|allow` | `{actor} 이(가) 계정 「{target}」 을(를) 다시 활성화했습니다 (사유는 상세 기록)` | 10단계 |
+| `user.activate|deny|bad_request` | `{actor} 이(가) 계정 「{target}」 재활성화를 잘못된 형식(사유 없음 등)으로 요청해서 거부했습니다` | 10단계 (검토 보완 A) |
+| `user.expiry_change|allow` | `{actor} 이(가) 계정 「{target}」 의 만료일을 바꿨습니다 (이전 → 새 값·사유는 상세 기록)` | 10단계 — 역할·활성이 아니라 `expires_at` 만 바뀐 경우 (검토 보완 C) |
+| `user.expired|deny|session_expired` | `{actor} 의 Guest 계정이 만료되어 살아 있던 세션을 끊었습니다` | 10단계 재지시 — `Auth::currentUser()` 가 만료된 Guest 의 세션을 즉시 파기 (R-12) |
+| `auth.mfa_enroll|deny|bad_code` | `{actor} 이(가) 2단계 인증을 켜려 했지만 확인 코드가 틀렸습니다` | 10단계 (검토 보완 B) |
+| `auth.mfa_enroll|deny|already_enabled` | `{actor} 이(가) 이미 켜져 있는 2단계 인증을 다시 등록하려 해서 거부했습니다` | 10단계 (검토 보완 B) |
+| `auth.mfa_disable|deny|bad_code` | `{actor} 이(가) 2단계 인증을 끄려 했지만 인증 코드가 틀렸습니다` | 10단계 (검토 보완 B) |
+| `auth.mfa_disable|deny|bad_credentials` | `{actor} 이(가) 2단계 인증을 끄려 했지만 현재 비밀번호가 틀렸습니다` | 10단계 (검토 보완 B) |
 | `user.expired|deny|guest_expired` | `{target} 계정으로 로그인을 시도했지만 만료된 Guest 계정입니다` | 10단계 Auth::login (R-12 expires_at) |
 | `auth.password_change|allow` | `{actor} 이(가) 비밀번호를 바꾸고 다른 기기의 세션을 모두 끊었습니다` | 10단계 password (본인) |
 | `auth.password_change|deny|bad_credentials` | `{actor} 이(가) 비밀번호를 바꾸려 했지만 현재 비밀번호가 틀렸습니다` | 10단계 |
@@ -868,7 +875,8 @@ GRANT  USAGE, SELECT  ON SEQUENCE audit_logs_id_seq TO tbox_app;
 | `rule` · `evidence` | 왜 | 경보 규칙 번호와 근거(대상 계정·건수·기간) | 배치 | `alert.raised` (9단계) |
 | `chain_prev` · `chain_hash` | 무엇을 | 감사 로그 파일 해시 체인: 직전 일자 마지막 해시 · 오늘 파일 sha256 (R-11) | 배치 | `audit.integrity` (9단계) |
 | `target_role` · `target_active` | 무엇을 | 대상 계정의 역할·활성 여부(변경 후 값) | 핸들러 | `user.*` (10단계) |
-| `sessions_revoked` | 어떻게 | 끊은 세션 수 (R-10 전 기기 로그아웃) | 핸들러 | `auth.password_change`·`user.deactivate`·`user.role_change` (10단계) |
+| `sessions_revoked` | 어떻게 | 끊은 세션 수 (R-10 전 기기 로그아웃). **`FORBIDDEN_DETAIL_KEYS` 의 `session` 부분 일치 예외** — `Audit::ALLOWED_DETAIL_KEYS` 에 정확 일치로 등록(값은 정수 개수, 토큰이 아니다) | 핸들러 | `auth.password_change`·`user.deactivate`·`user.role_change` (10단계) |
+| `expires_at` | 무엇을 | 계정 만료일(Guest 필수). 생성·변경 행에 값 그대로 | 핸들러 | `user.create`·`user.expiry_change`·`user.role_change` (10단계) |
 | `policy` | 어떻게 | 라우트에 붙은 정책 이름 | 라우터 | `authz.route` deny |
 | `reason_text` | 왜 | 관리자가 입력한 사유 (500자) | 핸들러 | 역할 변경·비활성화·강제 삭제·레벨 하향 (10단계) |
 | `owner_id` | 무엇을 | 파일을 올린 사용자 id — 삭제·다운로드 판정에 쓰인 값 | 핸들러 | `file.delete`·`file.download` |

@@ -1,5 +1,5 @@
 'use strict';
-/* public/assets/app.js — 8단계: 로그인 · 로그아웃 · 파일 목록/업로드/다운로드/삭제/수정 ·
+/* public/assets/app.js — 10단계: 로그인 · 로그아웃 · 파일 목록/업로드/다운로드/삭제/수정 ·
  *                          URL 로 가져오기 · 감사 로그 조회 화면
  *
  * 규칙 (PRD S-03, S-09-3, ARCHITECTURE 13장 체크리스트)
@@ -828,6 +828,610 @@ function initAudit() {
   load();
 }
 
+/* ─── 내 계정 (10단계 — 비밀번호 변경 · 2단계 인증 TOTP) ──────────
+ *
+ * PRD 7.7("비밀번호 변경 · 다른 기기 세션 강제 종료") · S-09-4, SECURITY R-05 · R-10 · R-33.
+ *
+ * ★ 대상은 언제나 **세션의 본인**이다. 화면이 "누구의 비밀번호를" 을 고르지 않는다.
+ * ★ 2단계 인증 비밀(secret)과 otpauth 주소는 서버가 enroll 응답으로 딱 한 번 내려 준다.
+ *   QR 라이브러리를 쓰지 않으므로 **글자 그대로** 보여 주고 사용자가 인증 앱에 옮겨 적는다.
+ *   두 값 모두 textContent 로만 넣는다(다른 모든 값과 같은 규칙).
+ * ★ 오류 문구는 서버가 준 것만 쓴다 — 브라우저가 "코드가 틀렸습니다" 같은 말을 지어내지 않는다.
+ */
+function initAccount(csrfToken, mfaEnabled) {
+  var msg = document.getElementById('msg');
+  var pwForm = document.getElementById('password-form');
+  var pwCurrent = document.getElementById('pw-current');
+  var pwNew = document.getElementById('pw-new');
+  var pwSubmit = document.getElementById('pw-submit');
+
+  var mfaState = document.getElementById('mfa-state');
+  var mfaOff = document.getElementById('mfa-off');
+  var mfaSetup = document.getElementById('mfa-setup');
+  var mfaEnrollBtn = document.getElementById('mfa-enroll');
+  var mfaSecret = document.getElementById('mfa-secret');
+  var mfaUri = document.getElementById('mfa-uri');
+  var mfaConfirmForm = document.getElementById('mfa-confirm-form');
+  var mfaCode = document.getElementById('mfa-code');
+  var mfaDisableForm = document.getElementById('mfa-disable-form');
+  var mfaOffPassword = document.getElementById('mfa-off-password');
+  var mfaOffCode = document.getElementById('mfa-off-code');
+
+  /** 상태 변경 요청 공통 (JSON + CSRF 토큰). 401 이면 로그인 화면으로. */
+  function post(path, payload) {
+    return fetch(path, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken },
+      body: JSON.stringify(payload),
+      credentials: 'same-origin',
+      cache: 'no-store'
+    }).then(function (response) {
+      if (response.status === 401) {
+        toLogin();
+        return null;
+      }
+      return readJson(response).then(function (data) {
+        return { ok: response.ok, data: data };
+      });
+    });
+  }
+
+  function showMfa(enabled) {
+    setText(
+      mfaState,
+      enabled
+        ? '2단계 인증이 켜져 있습니다. 로그인할 때 인증 앱의 6자리 코드가 필요합니다.'
+        : '2단계 인증이 꺼져 있습니다. 켜면 비밀번호가 새어 나가도 코드 없이는 로그인할 수 없습니다.'
+    );
+    if (mfaOff) {
+      mfaOff.hidden = enabled;
+    }
+    if (mfaDisableForm) {
+      mfaDisableForm.hidden = !enabled;
+    }
+    if (mfaSetup && enabled) {
+      mfaSetup.hidden = true;
+    }
+  }
+
+  if (pwForm) {
+    pwForm.addEventListener('submit', function (event) {
+      event.preventDefault();
+      setText(msg, '');
+      pwSubmit.disabled = true;
+      post('/api/me/password', { current: pwCurrent.value, 'new': pwNew.value })
+        .then(function (result) {
+          if (result === null) {
+            return null;
+          }
+          pwCurrent.value = '';
+          pwNew.value = '';
+          if (!result.ok) {
+            setText(msg, errorMessage(result.data));
+            return null;
+          }
+          var revoked = typeof result.data.sessions_revoked === 'number' ? result.data.sessions_revoked : 0;
+          setText(msg, '비밀번호를 바꿨습니다. 끊은 다른 기기 세션: ' + revoked + '개');
+          return null;
+        })
+        .catch(function () {
+          setText(msg, GENERIC_ERROR);
+        })
+        .then(function () {
+          pwSubmit.disabled = false;
+        });
+    });
+  }
+
+  if (mfaEnrollBtn) {
+    mfaEnrollBtn.addEventListener('click', function () {
+      setText(msg, '');
+      mfaEnrollBtn.disabled = true;
+      post('/api/me/mfa/enroll', {})
+        .then(function (result) {
+          if (result === null) {
+            return null;
+          }
+          if (!result.ok) {
+            setText(msg, errorMessage(result.data));
+            return null;
+          }
+          setText(mfaSecret, result.data.secret);
+          setText(mfaUri, result.data.otpauth);
+          if (mfaSetup) {
+            mfaSetup.hidden = false;
+          }
+          return null;
+        })
+        .catch(function () {
+          setText(msg, GENERIC_ERROR);
+        })
+        .then(function () {
+          mfaEnrollBtn.disabled = false;
+        });
+    });
+  }
+
+  if (mfaConfirmForm) {
+    mfaConfirmForm.addEventListener('submit', function (event) {
+      event.preventDefault();
+      setText(msg, '');
+      post('/api/me/mfa/confirm', { otp: mfaCode.value })
+        .then(function (result) {
+          if (result === null) {
+            return null;
+          }
+          mfaCode.value = '';
+          if (!result.ok) {
+            setText(msg, errorMessage(result.data));
+            return null;
+          }
+          // 비밀은 화면에서도 지운다 — 등록이 끝나면 더 보여 줄 이유가 없다.
+          setText(mfaSecret, '');
+          setText(mfaUri, '');
+          showMfa(true);
+          setText(msg, '2단계 인증을 켰습니다.');
+          return null;
+        })
+        .catch(function () {
+          setText(msg, GENERIC_ERROR);
+        });
+    });
+  }
+
+  if (mfaDisableForm) {
+    mfaDisableForm.addEventListener('submit', function (event) {
+      event.preventDefault();
+      setText(msg, '');
+      post('/api/me/mfa/disable', {
+        current_password: mfaOffPassword.value,
+        otp: mfaOffCode.value
+      })
+        .then(function (result) {
+          if (result === null) {
+            return null;
+          }
+          mfaOffPassword.value = '';
+          mfaOffCode.value = '';
+          if (!result.ok) {
+            setText(msg, errorMessage(result.data));
+            return null;
+          }
+          showMfa(false);
+          setText(msg, '2단계 인증을 껐습니다.');
+          return null;
+        })
+        .catch(function () {
+          setText(msg, GENERIC_ERROR);
+        });
+    });
+  }
+
+  showMfa(mfaEnabled === true);
+}
+
+/* ─── 휴지통 (10단계 F-11 — Admin 만) ────────────────────────────
+ *
+ * 패널을 여는 것은 서버가 준 can_manage_users 뿐이다(화면이 역할을 보지 않는다).
+ * 되살려서 직접 호출해도 GET /api/files/trash · POST …/restore 는 정책 role:Admin 이 다시 막는다.
+ */
+function initTrash(csrfToken, onRestored) {
+  var msg = document.getElementById('msg');
+  var body = document.getElementById('trash-body');
+  var empty = document.getElementById('trash-empty');
+
+  function clearRows() {
+    while (body.firstChild) {
+      body.removeChild(body.firstChild);
+    }
+  }
+
+  function addCell(row, value) {
+    var td = document.createElement('td');
+    setText(td, value === null || value === undefined || value === '' ? '—' : value);
+    row.appendChild(td);
+    return td;
+  }
+
+  function restore(id) {
+    if (!UUID_RE.test(id)) {
+      setText(msg, GENERIC_ERROR);
+      return;
+    }
+    setText(msg, '');
+    fetch('/api/files/' + id + '/restore', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken },
+      body: '{}',
+      credentials: 'same-origin',
+      cache: 'no-store'
+    })
+      .then(function (response) {
+        if (response.status === 401) {
+          toLogin();
+          return null;
+        }
+        if (response.status === 200) {
+          load();
+          if (typeof onRestored === 'function') {
+            onRestored();
+          }
+          return null;
+        }
+        return readJson(response).then(function (data) {
+          setText(msg, errorMessage(data));
+          return null;
+        });
+      })
+      .catch(function () {
+        setText(msg, GENERIC_ERROR);
+      });
+  }
+
+  function render(data) {
+    clearRows();
+    var files = data && Array.isArray(data.files) ? data.files : [];
+    files.forEach(function (file) {
+      var row = document.createElement('tr');
+      addCell(row, file.name);
+      addCell(row, formatSize(file.size_bytes));
+      addCell(row, file.access_level);
+      addCell(row, file.uploaded_by);
+      addCell(row, file.deleted_by);
+      addCell(row, file.deleted_at);
+      var td = document.createElement('td');
+      td.className = 'actions';
+      if (UUID_RE.test(file.id)) {
+        var button = document.createElement('button');
+        button.type = 'button';
+        button.className = 'btn btn--quiet btn--small';
+        setText(button, '복구');
+        button.addEventListener('click', function () {
+          restore(file.id);
+        });
+        td.appendChild(button);
+      }
+      row.appendChild(td);
+      body.appendChild(row);
+    });
+    if (empty) {
+      empty.hidden = files.length !== 0;
+    }
+  }
+
+  function load() {
+    fetch('/api/files/trash', { credentials: 'same-origin', cache: 'no-store' })
+      .then(function (response) {
+        if (response.status === 401) {
+          toLogin();
+          return null;
+        }
+        return readJson(response).then(function (data) {
+          if (!response.ok) {
+            setText(msg, errorMessage(data));
+            return null;
+          }
+          render(data);
+          return null;
+        });
+      })
+      .catch(function () {
+        setText(msg, GENERIC_ERROR);
+      });
+  }
+
+  load();
+}
+
+/* ─── 계정 관리 화면 (10단계 F-10 — GET /users + /api/users, Admin 만) ─
+ *
+ * PRD 10장 화면 요구사항 · S-07("관리자 행동 사유") · 3장(1인 1계정), SECURITY R-12 · R-20.
+ *
+ * ★ 이 화면이 그리는 값(아이디·역할·팀 이름)도 사용자가 정한 문자열이다 →
+ *   다른 화면과 똑같이 createElement + textContent 로만 만든다.
+ * ★ 권한 판단을 브라우저에서 하지 않는다. 이 화면에 들어온 것 자체가 라우터 정책 user.manage 를
+ *   통과했다는 뜻이고, /api/users 도 같은 정책이 매 요청 다시 검사한다.
+ *   자기 자신·마지막 관리자 금지도 서버(Authz)가 판단한다 — 화면은 서버가 준 is_self 로
+ *   버튼을 감추기만 하고, 되살려 눌러도 400 이 돌아온다.
+ * ★ 역할 변경·활성 변경에는 **사유가 필수**다. 사유가 비면 보내지 않고(그래도 서버가 400),
+ *   사유 원문은 서버 감사 로그 detail.reason_text 에만 남는다.
+ */
+function initUsers(csrfToken) {
+  var msg = document.getElementById('msg');
+  var body = document.getElementById('users-body');
+  var empty = document.getElementById('users-empty');
+  var pageInfo = document.getElementById('page-info');
+  var prev = document.getElementById('page-prev');
+  var next = document.getElementById('page-next');
+  var form = document.getElementById('user-create-form');
+  var fUsername = document.getElementById('u-username');
+  var fPassword = document.getElementById('u-password');
+  var fRole = document.getElementById('u-role');
+  var fTeam = document.getElementById('u-team');
+  var fExpires = document.getElementById('u-expires');
+  var fReason = document.getElementById('u-reason');
+  var fSubmit = document.getElementById('u-submit');
+
+  var state = { page: 1, total: 0, perPage: 50 };
+
+  function clearRows() {
+    while (body.firstChild) {
+      body.removeChild(body.firstChild);
+    }
+  }
+
+  function addCell(row, value) {
+    var td = document.createElement('td');
+    setText(td, value === null || value === undefined || value === '' ? '—' : value);
+    row.appendChild(td);
+    return td;
+  }
+
+  /** PATCH /api/users/{uid} — 바뀌는 값 + 사유만 보낸다 */
+  function patch(id, payload) {
+    if (typeof id !== 'number' || !isFinite(id) || id <= 0) {
+      setText(msg, GENERIC_ERROR);
+      return;
+    }
+    setText(msg, '');
+    fetch('/api/users/' + String(id), {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken },
+      body: JSON.stringify(payload),
+      credentials: 'same-origin',
+      cache: 'no-store'
+    })
+      .then(function (response) {
+        if (response.status === 401) {
+          toLogin();
+          return null;
+        }
+        return readJson(response).then(function (data) {
+          if (!response.ok) {
+            setText(msg, errorMessage(data));
+            return null;
+          }
+          load();
+          return null;
+        });
+      })
+      .catch(function () {
+        setText(msg, GENERIC_ERROR);
+      });
+  }
+
+  /** 사유를 받는다. 비우거나 취소하면 아무것도 보내지 않는다(서버도 400 으로 막는다). */
+  function askReason(what) {
+    var reason = window.prompt(what + '\n사유를 적어 주세요 (필수 · 감사 로그에 남습니다)', '');
+    if (reason === null) {
+      return null;
+    }
+    if (reason.replace(/\s+/g, '') === '') {
+      setText(msg, '사유를 적어야 합니다.');
+      return null;
+    }
+    return reason;
+  }
+
+  function addActions(row, item) {
+    var td = document.createElement('td');
+    td.className = 'actions';
+
+    // 자기 자신은 이 화면에서 바꿀 수 없다(서버 Authz 의 self_change 와 같은 규칙).
+    if (item.is_self === true) {
+      setText(td, '(본인)');
+      row.appendChild(td);
+      return;
+    }
+
+    var roleButton = document.createElement('button');
+    roleButton.type = 'button';
+    roleButton.className = 'btn btn--quiet btn--small';
+    setText(roleButton, '역할·팀·만료');
+    roleButton.addEventListener('click', function () {
+      var role = window.prompt('역할 (Admin / Manager / Employee / Guest)', item.role);
+      if (role === null) {
+        return;
+      }
+      var payload = {};
+      if (role !== item.role) {
+        payload.role = role;
+      }
+      var currentTeam = item.team_id === null || item.team_id === undefined ? '' : String(item.team_id);
+      var team = window.prompt('팀 번호 (비우면 팀 없음)', currentTeam);
+      if (team !== null && team !== currentTeam) {
+        payload.team_id = team === '' ? null : team;
+      }
+      var expires = window.prompt('만료일 YYYY-MM-DD (Guest 는 필수 · 비우면 없음)', '');
+      if (expires !== null && expires !== '') {
+        payload.expires_at = expires;
+      }
+      if (Object.keys(payload).length === 0) {
+        return;
+      }
+      var reason = askReason('계정 「' + item.username + '」 변경');
+      if (reason === null) {
+        return;
+      }
+      payload.reason_text = reason;
+      patch(item.id, payload);
+    });
+    td.appendChild(roleButton);
+
+    var activeButton = document.createElement('button');
+    activeButton.type = 'button';
+    activeButton.className = 'btn btn--quiet btn--small';
+    setText(activeButton, item.is_active === true ? '비활성화' : '다시 활성화');
+    activeButton.addEventListener('click', function () {
+      var reason = askReason(
+        '계정 「' + item.username + '」 ' + (item.is_active === true ? '비활성화' : '재활성화')
+      );
+      if (reason === null) {
+        return;
+      }
+      patch(item.id, { is_active: item.is_active !== true, reason_text: reason });
+    });
+    td.appendChild(activeButton);
+
+    row.appendChild(td);
+  }
+
+  function render(data) {
+    clearRows();
+    var users = data && Array.isArray(data.users) ? data.users : [];
+    state.total = typeof data.total === 'number' ? data.total : 0;
+    state.perPage = typeof data.per_page === 'number' && data.per_page > 0 ? data.per_page : 50;
+    state.page = typeof data.page === 'number' && data.page > 0 ? data.page : 1;
+
+    users.forEach(function (item) {
+      var row = document.createElement('tr');
+      addCell(row, item.id);
+      addCell(row, item.username);
+      addCell(row, item.role);
+      addCell(row, item.team_name);
+      addCell(row, item.is_active === true ? '활성' : '비활성');
+      addCell(row, item.expires_at === null ? '—' : item.expires_at + (item.is_expired === true ? ' (만료)' : ''));
+      addCell(row, item.mfa_enabled === true ? '켜짐' : '꺼짐');
+      addCell(row, item.created_at);
+      addActions(row, item);
+      body.appendChild(row);
+    });
+
+    if (empty) {
+      empty.hidden = users.length !== 0;
+    }
+
+    var lastPage = state.total === 0 ? 1 : Math.ceil(state.total / state.perPage);
+    setText(pageInfo, state.page + ' / ' + lastPage + ' 페이지 · 전체 ' + state.total + '명');
+    if (prev) {
+      prev.disabled = state.page <= 1;
+    }
+    if (next) {
+      next.disabled = state.page >= lastPage;
+    }
+  }
+
+  function load() {
+    fetch('/api/users?page=' + encodeURIComponent(String(state.page)), {
+      credentials: 'same-origin',
+      cache: 'no-store'
+    })
+      .then(function (response) {
+        if (response.status === 401) {
+          toLogin();
+          return null;
+        }
+        return readJson(response).then(function (data) {
+          if (!response.ok) {
+            setText(msg, errorMessage(data));
+            return null;
+          }
+          render(data);
+          return null;
+        });
+      })
+      .catch(function () {
+        setText(msg, GENERIC_ERROR);
+      });
+  }
+
+  function loadTeams() {
+    if (!fTeam) {
+      return;
+    }
+    var blank = document.createElement('option');
+    blank.value = '';
+    setText(blank, '(팀 없음)');
+    fTeam.appendChild(blank);
+    fetch('/api/teams', { credentials: 'same-origin', cache: 'no-store' })
+      .then(function (response) {
+        if (!response.ok) {
+          return null;
+        }
+        return readJson(response).then(function (data) {
+          var teams = data && Array.isArray(data.teams) ? data.teams : [];
+          teams.forEach(function (team) {
+            var option = document.createElement('option');
+            option.value = String(team.id);
+            setText(option, team.name);
+            fTeam.appendChild(option);
+          });
+          return null;
+        });
+      })
+      .catch(function () {
+        // 팀 목록을 못 받아도 나머지 화면은 동작한다.
+      });
+  }
+
+  if (form) {
+    form.addEventListener('submit', function (event) {
+      event.preventDefault();
+      setText(msg, '');
+      var payload = {
+        username: fUsername.value,
+        password: fPassword.value,
+        role: fRole.value,
+        reason_text: fReason.value
+      };
+      if (fTeam && fTeam.value !== '') {
+        payload.team_id = fTeam.value;
+      }
+      if (fExpires && fExpires.value !== '') {
+        payload.expires_at = fExpires.value;
+      }
+      fSubmit.disabled = true;
+      fetch('/api/users', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken },
+        body: JSON.stringify(payload),
+        credentials: 'same-origin',
+        cache: 'no-store'
+      })
+        .then(function (response) {
+          if (response.status === 401) {
+            toLogin();
+            return null;
+          }
+          return readJson(response).then(function (data) {
+            fPassword.value = '';
+            if (response.status !== 201) {
+              setText(msg, errorMessage(data));
+              return null;
+            }
+            form.reset();
+            setText(msg, '계정을 만들었습니다. 최초 비밀번호는 본인에게 직접 전달하고, 첫 로그인 뒤 바꾸게 하세요.');
+            load();
+            return null;
+          });
+        })
+        .catch(function () {
+          setText(msg, GENERIC_ERROR);
+        })
+        .then(function () {
+          fSubmit.disabled = false;
+        });
+    });
+  }
+  if (prev) {
+    prev.addEventListener('click', function () {
+      if (state.page > 1) {
+        state.page -= 1;
+        load();
+      }
+    });
+  }
+  if (next) {
+    next.addEventListener('click', function () {
+      state.page += 1;
+      load();
+    });
+  }
+
+  loadTeams();
+  load();
+}
+
 /* ─── 로그인한 화면 (홈) ────────────────────────────────────── */
 function initHome(button) {
   var msg = document.getElementById('msg');
@@ -862,6 +1466,26 @@ function initHome(button) {
           var auditLink = document.getElementById('audit-link');
           if (auditLink) {
             auditLink.hidden = body.can_view_audit !== true;
+          }
+          // 10단계 — "계정 관리" 링크는 can_manage_users === true 일 때만 연다 (F-10, Admin 만).
+          // 링크를 되살려도 /users·/api/users 는 라우터 정책 user.manage 가 다시 막는다.
+          var usersLink = document.getElementById('users-link');
+          if (usersLink) {
+            usersLink.hidden = body.can_manage_users !== true;
+          }
+          // 10단계 — 내 계정(비밀번호 변경·2단계 인증). 로그인한 사람이면 누구나 자기 것만.
+          if (document.getElementById('password-form')) {
+            initAccount(csrfToken, body.mfa_enabled === true);
+          }
+          // 10단계 — 휴지통 패널도 서버가 준 can_manage_users 로만 연다 (F-11, Admin 만).
+          var trashPanel = document.getElementById('trash-panel');
+          if (trashPanel && body.can_manage_users === true) {
+            trashPanel.hidden = false;
+            initTrash(csrfToken);
+          }
+          // 10단계 — 계정 관리 화면(/users). 여기 들어왔다는 것 자체가 정책 user.manage 통과다.
+          if (document.getElementById('users-body')) {
+            initUsers(csrfToken);
           }
           // 감사 로그 화면(/audit)이면 표를 채운다. 이 화면에 들어왔다는 것 자체가
           // 라우터 정책 audit.read 를 통과했다는 뜻이다.

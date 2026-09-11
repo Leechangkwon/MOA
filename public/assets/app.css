@@ -213,3 +213,22 @@ table.files td.actions .btn:last-child { margin-right: 0; }
   white-space: pre-wrap;
   word-break: break-all;
 }
+
+/* ─── 10단계: 내 계정(비밀번호 변경·2단계 인증) · 계정 관리 · 휴지통 ───
+   화면 구성만 다룬다. 무엇을 보여 줄지는 서버가 내려 준 값(can_manage_users·mfa_enabled)이
+   정하고, 허용 여부는 언제나 서버 Authz 가 매 요청 다시 판단한다 (PRD S-01, 10장). */
+
+/* 폼 격자(.form--grid) 안에서 한 줄을 통째로 쓰는 설명 문단 */
+.field--full { grid-column: 1 / -1; }
+
+.mfa {
+  margin-top: 1rem;
+  padding-top: .9rem;
+  border-top: 1px dashed var(--line);
+}
+.mfa > p { margin: 0 0 .6rem; }
+.mfa .audit-detail { max-width: 34rem; }
+
+/* 계정 관리 표는 칸이 많아 좁은 화면에서 넘친다 — 표 자체가 .table-wrap 안에서 가로 스크롤된다 */
+#users-body td.actions { white-space: nowrap; }
+#trash-body td.actions { white-space: nowrap; }

@@ -54,6 +54,17 @@ final class Authz
     public const CODE_NOT_OWNER          = 'not_owner';
     /** 5단계 — 등급을 낮추는 변경은 Admin 만 (PRD 4장·5.3, ARCH 4.1 표) */
     public const CODE_DOWNGRADE_NOT_PERMITTED = 'downgrade_not_permitted';
+    /** 10단계 — 계정 관리(F-10) 거부 코드 (ARCH 7.4 `user.*|deny|…` 행) */
+    public const CODE_SELF_CHANGE = 'self_change';   // 자기 역할 변경·자기 비활성화
+    public const CODE_LAST_ADMIN  = 'last_admin';    // 마지막 활성 Admin 을 낮추거나 끄기
+
+    /**
+     * 10단계 — 계정에 줄 수 있는 역할 (PRD 3장 4종, db/schema.sql users_role_check 와 같은 값).
+     *
+     * 요청 본문의 역할 문자열을 **그대로** 컬럼에 넣지 않는다. 이 목록에 정확히 있는 값만
+     * 통과시키고(`isAssignableRole`), 그 검사도 역할 판단이므로 이 파일 안에서만 한다.
+     */
+    private const ROLES = ['Admin', 'Manager', 'Employee', 'Guest'];
 
     /** 화면 선택지(`/api/me` 의 upload_levels)에 쓰는 레벨 표시 순서 (PRD 4장 순서 그대로) */
     private const LEVEL_ORDER = ['public', 'internal', 'team', 'admin-only'];
@@ -429,6 +440,86 @@ final class Authz
     public static function canManageUsers(array $u): bool
     {
         return self::roleOf($u) === 'Admin';
+    }
+
+    /* ─── 10단계: 계정 관리 (F-10) — 역할에 관한 모든 판단은 여기 모은다 ───────── */
+
+    /**
+     * 요청이 보낸 역할 문자열을 계정에 넣어도 되나 (허용 목록 정확 일치).
+     * 핸들러는 이 함수를 통과한 값만 컬럼에 쓴다 — 요청 값이 그대로 role 이 되지 않게 하는 자리다.
+     */
+    public static function isAssignableRole(string $role): bool
+    {
+        return in_array($role, self::ROLES, true);
+    }
+
+    /** 이 역할의 계정은 만료일(expires_at)이 반드시 있어야 하나 (SECURITY R-12, Guest) */
+    public static function requiresExpiry(string $role): bool
+    {
+        return $role === 'Guest';
+    }
+
+    /** 이 역할의 계정이 팀에 속할 수 있나 (PRD 3장 "Guest 는 팀 없음") */
+    public static function allowsTeam(string $role): bool
+    {
+        return $role !== 'Guest';
+    }
+
+    /** 이 계정이 "활성 관리자" 인가 — 마지막 Admin 보호 판정에 쓴다 */
+    private static function isActiveAdmin(array $u): bool
+    {
+        return self::roleOf($u) === 'Admin' && ($u['is_active'] ?? false) === true;
+    }
+
+    /** 새 역할이 관리자 자리를 내려놓는 변경인가 */
+    private static function losesAdmin(string $newRole): bool
+    {
+        return $newRole !== 'Admin';
+    }
+
+    private const SQL_ACTIVE_ADMINS = <<<'SQL'
+        SELECT count(*) AS n FROM users WHERE role = 'Admin' AND is_active = true
+        SQL;
+
+    /** 지금 활성 상태인 Admin 계정 수 */
+    private static function activeAdminCount(): int
+    {
+        $row = Db::instance()->run(self::SQL_ACTIVE_ADMINS)->fetch();
+        return is_array($row) ? (int) $row['n'] : 0;
+    }
+
+    /**
+     * PRD 5.4 / F-10 — Admin 이 **다른 계정**을 고칠 수 있나 + 거부 코드 (10단계).
+     *
+     * 라우트 정책 `user.manage` 가 "Admin 인가" 를 이미 봤다. 여기서 보는 것은 두 가지 금지다.
+     *
+     *   ① `self_change` — 자기 자신을 고치는 요청은 통째로 막는다.
+     *      자기 역할 올리기·내리기, 자기 비활성화가 전부 여기서 끝난다. 계정 관리는 "남의 계정"
+     *      에 대한 행위이고, 자기 계정의 비밀번호·2단계 인증은 `/api/me/*` 에 따로 있다.
+     *   ② `last_admin` — 마지막 활성 Admin 을 강등하거나 비활성화하면 아무도 계정을 관리할 수
+     *      없게 된다(잠김). 활성 Admin 수를 세어 1명일 때 그 사람에 대한 강등·비활성화를 막는다.
+     *
+     * 이 두 판단은 전부 역할을 보는 판단이므로 Authz 안에 있다 (ARCH 4.1).
+     *
+     * @param array<string,mixed> $actor   요청을 보낸 Admin
+     * @param array<string,mixed> $target  고치려는 계정의 **현재** DB 행 (role·is_active 필수)
+     * @param array<string,mixed> $changes 적용하려는 값 (role·is_active 만 본다)
+     * @return array{0:bool,1:string} [허용 여부, 코드]
+     */
+    public static function decideUserChange(array $actor, array $target, array $changes): array
+    {
+        if ((int) $actor['id'] === (int) $target['id']) {
+            return [false, self::CODE_SELF_CHANGE];
+        }
+
+        $losesRole   = isset($changes['role']) && self::losesAdmin((string) $changes['role']);
+        $turnedOff   = array_key_exists('is_active', $changes) && $changes['is_active'] === false;
+
+        if (self::isActiveAdmin($target) && ($losesRole || $turnedOff) && self::activeAdminCount() <= 1) {
+            return [false, self::CODE_LAST_ADMIN];
+        }
+
+        return [true, self::CODE_ADMIN_ALL];
     }
 
     /** 업로드 자체가 가능한 역할인가 (Guest 는 불가 — PRD 5.2) */

@@ -31,8 +31,18 @@ final class Auth
     /** 쿠키 토큰: random_bytes(32) 의 hex → 정확히 64자의 소문자 16진수 */
     private const TOKEN_RE = '/^[0-9a-f]{64}$/';
 
-    /** 아이디 형식 — db/schema.sql 의 users CHECK 제약과 같다 (소문자만) */
-    private const USERNAME_RE = '/^[a-z0-9_.-]{3,64}$/';
+    /**
+     * 아이디 형식 — db/schema.sql 의 users CHECK 제약과 같다 (소문자만).
+     * 10단계에서 계정 생성(F-10)이 같은 규칙을 써야 하므로 public 으로 연다 —
+     * 형식 규칙이 두 곳에 복사되면 언젠가 한쪽만 느슨해진다.
+     */
+    public const USERNAME_RE = '/^[a-z0-9_.-]{3,64}$/';
+
+    /** PRD S-09-4 "최소 12자". 계정 생성·비밀번호 변경이 같은 값을 본다 */
+    public const MIN_PASSWORD_CHARS = 12;
+
+    /** 비밀번호 입력 상한 (Argon2id 계산 시간을 요청으로 늘리지 못하게) */
+    public const MAX_PASSWORD_BYTES = 1024;
 
     /** PRD S-09-4: 실패 5회 → 10분 잠금 */
     private const MAX_FAILED   = 5;
@@ -53,7 +63,9 @@ final class Auth
                u.username      AS username,
                u.role          AS role,
                u.team_id       AS team_id,
-               u.is_active     AS is_active
+               u.is_active     AS is_active,
+               u.mfa_enabled   AS mfa_enabled,
+               (u.expires_at IS NOT NULL AND u.expires_at < now()) AS is_expired
           FROM sessions s
           JOIN users   u ON u.id = s.user_id
          WHERE s.id = :id
@@ -83,9 +95,32 @@ final class Auth
     private const SQL_LOAD_USER = <<<'SQL'
         SELECT id, username, password_hash, role, team_id, is_active,
                failed_count, locked_until,
-               (locked_until IS NOT NULL AND locked_until > now()) AS is_locked
+               mfa_enabled, mfa_secret,
+               (locked_until IS NOT NULL AND locked_until > now()) AS is_locked,
+               (expires_at IS NOT NULL AND expires_at < now())     AS is_expired
           FROM users
          WHERE username = :username
+        SQL;
+
+    /** 비밀번호 변경(10단계) — 현재 비밀번호 확인용. 세션의 user_id 로만 찾는다 */
+    private const SQL_LOAD_BY_ID = <<<'SQL'
+        SELECT id, username, password_hash
+          FROM users
+         WHERE id = :id
+        SQL;
+
+    private const SQL_SET_PASSWORD = <<<'SQL'
+        UPDATE users
+           SET password_hash = :hash,
+               failed_count  = 0,
+               locked_until  = NULL,
+               updated_at    = now()
+         WHERE id = :id
+        SQL;
+
+    /** 비밀번호를 바꾼 **그 세션만** 남기고 나머지를 끊는다 (SECURITY R-10) */
+    private const SQL_DROP_OTHER_SESSIONS = <<<'SQL'
+        DELETE FROM sessions WHERE user_id = :user_id AND id <> :keep
         SQL;
 
     private const SQL_CLEAR_FAILED = <<<'SQL'
@@ -150,6 +185,28 @@ final class Auth
             return null;
         }
 
+        /*
+         * 만료된 계정(Guest)의 살아 있는 세션도 즉시 파기한다 (SECURITY R-12, 10단계 검토 재지시).
+         *
+         * 로그인 때만 만료를 보면, 만료 **직전**에 들어온 Guest 가 최대 8시간(절대 만료)까지
+         * 그대로 돌아다닌다 — 10단계 검토에서 실측된 실패다. 비활성화와 똑같이 다룬다:
+         * 세션 행을 지우고 null 을 돌려주면 호출자(requireLogin)가 401 로 끝낸다.
+         *
+         * 기록은 세션을 지우기 **전에** 남긴다. Audit 은 actor 를 Auth::currentUser() 에서 읽는데
+         * 지금은 그 함수가 아직 해석 중(self::$user = null)이라 actor_* 는 비어 있다 —
+         * 그래서 문장 틀의 {actor} 는 `(로그인 전)` 이 되고, 누구였는지는 target_name 에 남는다
+         * (ARCH 7.4 `user.expired|deny|session_expired`).
+         */
+        if ($row['is_expired'] === true) {
+            Audit::deny('user.expired', 'session_expired', [
+                'target_type' => 'user',
+                'target_id'   => (int) $row['id'],
+                'target_name' => (string) $row['username'],
+            ]);
+            $db->run(self::SQL_DROP_SESSION, [':id' => $id]);
+            return null;
+        }
+
         $db->run(self::SQL_TOUCH, [':id' => $id]);
 
         self::$user = [
@@ -158,6 +215,9 @@ final class Auth
             'role'       => (string) $row['role'],
             'team_id'    => $row['team_id'] === null ? null : (int) $row['team_id'],
             'session_id' => (string) $row['session_id'],
+            // 10단계 — 화면이 "2단계 인증 켜기/끄기" 를 어떻게 보일지 정하는 값 (R-05).
+            // 권한이 아니라 상태다. 실제 검증은 언제나 로그인 때 서버가 한다.
+            'mfa_enabled' => $row['mfa_enabled'] === true,
         ];
         return self::$user;
     }
@@ -200,12 +260,21 @@ final class Auth
     }
 
     /**
-     * 아이디·비밀번호 확인 (PRD F-01, S-09-4, ARCH 4.0).
+     * 아이디·비밀번호(+ 2단계 인증 코드) 확인 (PRD F-01, S-09-4, ARCH 4.0, SECURITY R-05 · R-12).
      *
+     * 순서 — 뒤로 갈수록 "앞 단계를 통과한 사람만" 도달한다.
+     *   1) 아이디 형식 → 2) 계정 조회 → 3) 잠금 → 4) 비활성 → 5) 비밀번호
+     *   → 6) **Guest 만료**(10단계 R-12) → 7) **2단계 인증 코드**(10단계 R-05) → 8) 세션 발급
+     *
+     * 만료·2단계 인증을 비밀번호 **뒤**에 두는 이유: 앞에 두면 비밀번호를 모르는 사람이
+     * "이 계정은 만료됐다 / MFA 를 쓴다" 를 응답으로 알아낼 수 있다(계정 상태 탐색).
+     * 실패 응답은 전부 401 동일 문구이며 사유는 감사 로그에만 남는다.
+     *
+     * @param string|null $otp 2단계 인증 코드 6자리. 켜지지 않은 계정에는 쓰이지 않는다
      * @return array<string,mixed>|null 성공 시 사용자, 실패 시 null (호출자가 401)
      * @throws AuthLockedException 계정이 잠겨 있을 때 (호출자가 423)
      */
-    public static function login(string $username, string $password): ?array
+    public static function login(string $username, string $password, ?string $otp = null): ?array
     {
         $db   = Db::instance();
         $name = trim($username);
@@ -241,16 +310,43 @@ final class Auth
 
         // 5) 비밀번호 확인 (PASSWORD_ARGON2ID. 알고리즘이 하나뿐이므로 rehash 는 다루지 않는다)
         if (!password_verify($password, (string) $row['password_hash'])) {
-            $db->run(self::SQL_COUNT_FAILED, [
-                ':id'          => (int) $row['id'],
-                ':max_failed'  => self::MAX_FAILED,
-                ':lock_min'    => self::LOCK_MINUTES,
-            ]);
+            self::countFailure((int) $row['id']);
             self::denyLogin($name, 'bad_credentials');
             return null;
         }
 
-        // 6) 성공 — 세션 재발급 (ARCH 4.0)
+        // 6) Guest 계정 만료 (SECURITY R-12, PRD 3장 "Guest 생명주기").
+        //    DB CHECK 가 Guest 에 expires_at 을 강제하므로 만료일 없는 Guest 는 존재하지 않는다.
+        //    만료된 계정은 비밀번호가 맞아도 들어올 수 없다. 응답은 401 동일 문구다.
+        if ($row['is_expired'] === true) {
+            Audit::deny('user.expired', 'guest_expired', [
+                'target_type' => 'user',
+                'target_id'   => (int) $row['id'],
+                'target_name' => (string) $row['username'],
+            ]);
+            return null;
+        }
+
+        // 7) 2단계 인증 (SECURITY R-05). 켜 둔 계정은 코드 없이는 들어올 수 없다.
+        //    코드 없음·틀림 모두 401 동일 문구이고, **실패 카운트를 올린다** —
+        //    비밀번호를 알아낸 공격자가 코드 6자리를 무제한으로 시험하지 못하게 한다(5회 잠금).
+        if ($row['mfa_enabled'] === true) {
+            $secret = is_string($row['mfa_secret']) ? $row['mfa_secret'] : '';
+            $code   = is_string($otp) ? trim($otp) : '';
+
+            if ($code === '') {
+                self::countFailure((int) $row['id']);
+                self::denyMfa($name, (int) $row['id'], 'code_required');
+                return null;
+            }
+            if ($secret === '' || !Totp::verify($secret, $code)) {
+                self::countFailure((int) $row['id']);
+                self::denyMfa($name, (int) $row['id'], 'bad_code');
+                return null;
+            }
+        }
+
+        // 8) 성공 — 세션 재발급 (ARCH 4.0)
         $userId = (int) $row['id'];
         $oldId  = self::cookieSessionId();
         $token  = bin2hex(random_bytes(32));
@@ -287,13 +383,83 @@ final class Auth
 
         self::$resolved = true;
         self::$user = [
-            'id'         => $userId,
-            'username'   => (string) $row['username'],
-            'role'       => (string) $row['role'],
-            'team_id'    => $row['team_id'] === null ? null : (int) $row['team_id'],
-            'session_id' => $newId,
+            'id'          => $userId,
+            'username'    => (string) $row['username'],
+            'role'        => (string) $row['role'],
+            'team_id'     => $row['team_id'] === null ? null : (int) $row['team_id'],
+            'session_id'  => $newId,
+            'mfa_enabled' => $row['mfa_enabled'] === true,
         ];
         return self::$user;
+    }
+
+    /**
+     * 비밀번호 변경 (PRD 7.7 "인증 · 비밀번호 변경 · 다른 기기 세션 강제 종료", S-09-4, R-10).
+     *
+     * 하는 일
+     *   1) **현재 비밀번호**를 다시 확인한다 — 세션이 잠깐 새어 나가도 비밀번호까지 바꾸지 못하게.
+     *   2) 새 비밀번호가 12자 이상인지 본다 (PRD S-09-4).
+     *   3) Argon2id 해시로 갈아 끼우고, **지금 이 세션만 남기고** 그 사용자의 세션을 전부 지운다.
+     *      (바꾼 기기에서 다시 로그인하게 만들 이유는 없고, 다른 기기는 즉시 끊겨야 한다.)
+     *   4) 결과를 감사 로그에 남긴다. 비밀번호는 옛것도 새것도 남기지 않는다.
+     *
+     * 실패해도 응답 문구는 호출자가 정하고, 여기서는 **사유 코드**만 돌려준다.
+     *
+     * @param array<string,mixed> $actor 현재 로그인한 사용자 (요청 값이 아니다)
+     * @return array{0:bool,1:?string,2:int} [성공 여부, 사유 코드, 끊은 세션 수]
+     */
+    public static function changePassword(array $actor, string $current, string $new): array
+    {
+        $db     = Db::instance();
+        $userId = (int) $actor['id'];
+
+        $target = [
+            'target_type' => 'user',
+            'target_id'   => $userId,
+            'target_name' => (string) $actor['username'],
+        ];
+
+        $row = $db->run(self::SQL_LOAD_BY_ID, [':id' => $userId])->fetch();
+        if (!is_array($row) || !password_verify($current, (string) $row['password_hash'])) {
+            Audit::deny('auth.password_change', 'bad_credentials', $target);
+            return [false, 'bad_credentials', 0];
+        }
+
+        // 12자 이상 (PRD S-09-4). 글자 수로 센다 — 한글 12자도 12자다.
+        if (preg_match('//u', $new) !== 1
+            || strlen($new) > self::MAX_PASSWORD_BYTES
+            || iconv_strlen($new, 'UTF-8') < self::MIN_PASSWORD_CHARS
+        ) {
+            Audit::deny('auth.password_change', 'weak_password', $target);
+            return [false, 'weak_password', 0];
+        }
+
+        $hash = password_hash($new, PASSWORD_ARGON2ID);
+        if (!is_string($hash)) {
+            throw new RuntimeException('비밀번호 해시를 만들 수 없습니다');
+        }
+
+        $keep    = (string) ($actor['session_id'] ?? '');
+        $revoked = 0;
+
+        $db->begin();
+        try {
+            $db->run(self::SQL_SET_PASSWORD, [':hash' => $hash, ':id' => $userId]);
+            $revoked = $db->run(self::SQL_DROP_OTHER_SESSIONS, [
+                ':user_id' => $userId,
+                ':keep'    => $keep,
+            ])->rowCount();
+
+            Audit::allow('auth.password_change', $target + [
+                'detail' => ['sessions_revoked' => $revoked],
+            ]);
+            $db->commit();
+        } catch (Throwable $e) {
+            $db->rollback();
+            throw $e;
+        }
+
+        return [true, null, $revoked];
     }
 
     /** 로그아웃 (PRD F-02): 서버측 세션 행 삭제가 본체이고, 쿠키 삭제는 정리다. */
@@ -313,12 +479,14 @@ final class Auth
     }
 
     /**
-     * 그 사용자의 모든 세션을 끊는다 (SECURITY R-10).
-     * 비밀번호 변경·비활성화·역할 변경에서 부른다 — F-10(10단계)에서 쓰인다.
+     * 그 사용자의 모든 세션을 끊는다 (SECURITY R-10) — 모든 기기에서 즉시 로그아웃된다.
+     * 비활성화·역할/팀 변경에서 부른다 (10단계 F-10, T-22).
+     *
+     * 끊은 세션 수를 돌려준다 — 감사 로그의 `detail.sessions_revoked` (ARCH 7.5).
      */
-    public static function revokeAllSessions(int $userId): void
+    public static function revokeAllSessions(int $userId): int
     {
-        Db::instance()->run(self::SQL_DROP_USER_SESSIONS, [':user_id' => $userId]);
+        return Db::instance()->run(self::SQL_DROP_USER_SESSIONS, [':user_id' => $userId])->rowCount();
     }
 
     /** 쿠키에 실려 온 토큰의 세션 해시. 형식이 어긋나면 null (DB 를 건드리지 않는다). */
@@ -340,6 +508,33 @@ final class Auth
         Audit::deny('auth.login', $reason, [
             'target_type' => 'user',
             'target_name' => $name,
+        ]);
+    }
+
+    /**
+     * 2단계 인증 실패 기록 (ARCH 7.4 `auth.mfa|deny|code_required`·`bad_code`).
+     * 코드(otp)도 비밀(secret)도 넘기지 않는다 — 사유 코드만 남는다.
+     */
+    private static function denyMfa(string $name, int $userId, string $reason): void
+    {
+        Audit::deny('auth.mfa', $reason, [
+            'target_type' => 'user',
+            'target_id'   => $userId,
+            'target_name' => $name,
+        ]);
+    }
+
+    /**
+     * 로그인 실패 1회 기록 (PRD S-09-4 "실패 5회 10분 잠금").
+     * 비밀번호 오류와 2단계 인증 오류가 **같은 카운터**를 쓴다 — 비밀번호를 알아낸 공격자가
+     * 코드 6자리를 무제한 시험하지 못하게 하는 것이 목적이다.
+     */
+    private static function countFailure(int $userId): void
+    {
+        Db::instance()->run(self::SQL_COUNT_FAILED, [
+            ':id'         => $userId,
+            ':max_failed' => self::MAX_FAILED,
+            ':lock_min'   => self::LOCK_MINUTES,
         ]);
     }
 }
