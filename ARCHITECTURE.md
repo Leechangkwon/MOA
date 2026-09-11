@@ -84,7 +84,13 @@
 │       ├── files_download.php
 │       ├── files_delete.php
 │       ├── audit_list.php
+│       ├── files_preview.php · files_preview_raw.php   (12-2, F-18)
+│       ├── org_page.php · org_teams.php · org_team_create.php · org_team_update.php · org_team_members.php · org_permissions.php  (12-3, F-19)
+│       ├── trash_page.php · settings_page.php          (12-1, F-20)
 │       └── ...
+│   ├── Preview.php                  미리보기 형식 판정·본문 추출 (12-2). 외부 요청 0, XML 파서 0(정규식 발췌)
+│   └── views/
+│       ├── shell_top.php · shell_bottom.php   공통 셸(내비·사용자 칩) — 동적 값은 사용자명·역할·활성 메뉴 키 3개, 전부 이스케이프 (12-1)
 ├── views/                         ✖ HTML 템플릿 (출력 시 전부 이스케이프)
 ├── db/
 │   ├── schema.sql                   테이블 정의
@@ -550,6 +556,55 @@ final class Fetch
 
 > 화면: 목록 행의 `can_edit`(서버 계산) 가 참일 때만 "수정" 버튼을 만든다. 버튼은 편의이며, PATCH 는 위 순서대로 서버가 다시 판단한다.
 
+
+### 5.8 미리보기 — `GET /api/files/{id}/preview` · `/preview/raw` (PRD F-18, S-03 · 12-2, 2026-09-12)
+
+"내려받지 않고 무슨 파일인지 본다". 권한은 **다운로드(5.3)와 한 글자도 다르지 않다** — 같은 `Authz::decideRead`, 같은 403 문구, 같은 sha256 대조. 다른 것은 **응답의 모양**뿐이다.
+
+| 순서 | 무엇을 | 왜 |
+|---|---|---|
+| [1] | UUID 형식 확인 → `files` 조회(`deleted_at IS NULL`) → 없으면 404 | 5.3 과 동일 |
+| [2] | `Authz::decideRead` → 거부면 `file.preview deny` 기록 + 403 | 권한은 서버, 다운로드와 같은 표 |
+| [3] | `Preview::kindFor($ext)` 로 갈래 결정 — **요청 파라미터가 아니라 DB `files.ext`** (업로드 때 화이트리스트·finfo 를 통과한 값) | 요청값으로 형식을 고르면 `.zip` 을 `image` 라고 속여 `inline` 전송을 유도할 수 있다 |
+| [4] | `Storage::assertExists` + sha256 대조 → 어긋나면 `error hash_mismatch` + 500 | 변조 파일을 화면에 띄우지 않는다(R-13) |
+| [5-JSON] | 갈래별 본문을 만들어 JSON 으로 응답. `image`·`pdf` 는 본문 대신 `src: "/api/files/{id}/preview/raw"` | 화면이 그리는 방법이 갈래마다 다르다 |
+| [5-raw] | `image`·`pdf` 만 파일을 `readfile` 로 흘린다. 헤더: `Content-Type: <DB mime>` · `Content-Disposition: inline; filename*=…` · **`Content-Security-Policy: sandbox; default-src 'none'`** · `X-Content-Type-Options: nosniff` · `Cache-Control: no-store` · `Referrer-Policy: no-referrer`. 다른 갈래는 400 `preview_not_available` | `sandbox` 가 붙은 응답은 브라우저가 **불투명 출처(opaque origin)** 로 다룬다 — PDF 안의 스크립트·폼이 t-box 출처·쿠키·DOM 에 닿을 수 없다. `nosniff` 는 형식 재해석을 막는다 |
+| [6] | `file.preview allow` 기록 (`detail.preview_kind`, JSON 은 `part: meta`, raw 는 `part: raw`) | 누가 무엇을 봤는지 — 다운로드와 같은 무게 |
+
+**갈래와 상한** (`src/Preview.php` 상수 하나에 모은다 — 상한은 "서버를 멈추게 하는 파일"을 막기 위한 것이다, R-42)
+
+| 갈래 `kind` | 확장자 | 서버가 하는 일 | 상한 |
+|---|---|---|---|
+| `image` | png jpg jpeg gif | raw 로 inline 전송 | 파일 자체 100MB 이하(업로드 상한) |
+| `pdf` | pdf | raw 로 inline 전송 | 같음 |
+| `text` | txt md | 앞 1MiB 만 읽어 UTF-8 검사(`iconv` — 아니면 CP949→UTF-8 시도, 둘 다 실패면 `encoding: unknown` 으로 치환문자) → 앞 **64KiB** 로 자름, `truncated` | 1MiB 읽기 · 64KiB 응답 |
+| `table` | csv | 앞 1MiB 를 `str_getcsv` 로 행 분해 → **200행 × 50열** | 200×50 |
+| `archive` | zip | `ZipArchive` 로 **중앙 디렉터리만** 읽어 항목 이름·크기·압축 크기·디렉터리 여부. 내용은 절대 풀지 않는다 | 항목 200개 표시, 전체 개수는 `total_entries` |
+| `office` | docx pptx xlsx hwpx | `ZipArchive` 에서 **정해진 멤버만** 꺼내 정규식으로 텍스트 노드만 모은다 — docx `word/document.xml` `<w:t>`, pptx `ppt/slides/slide*.xml` `<a:t>`(번호순), xlsx `xl/sharedStrings.xml` `<t>`("문자열 목록 발췌" 로 표기), hwpx `Contents/section*.xml` `<hp:t>`. **XML 파서를 쓰지 않는다**(XXE·엔티티 확장 자체가 없다). `html_entity_decode` 후 공백 정리 | 멤버 하나 8MiB 이하만(`statName` 으로 먼저 확인), 발췌 **20,000자** |
+| `none` | hwp, 그 외 | 기본 정보(이름·크기·형식·sha256 앞 12자·올린 사람·시각)만 | — |
+
+- `ZipArchive` 는 `php8.1-zip`(Ubuntu 22.04 배포판 패키지)이 필요하다 → `deploy/DEPENDENCIES.md` 3장에 실측 기록(PRD S-10-C 심사: 배포판 패키지·보안 패치 경로 동일·EOL 은 PHP 와 같음).
+- 목록 응답(5.1)에 행마다 `preview_kind` 를 넣는다 — 화면은 이 값이 `none` 이어도 「미리보기」를 열 수 있되 정보 카드만 나온다. 값은 서버 계산(`Preview::kindFor`), 화면은 확장자를 보지 않는다.
+- 화면(모달 `<dialog>`): `image` 는 `<img>`, `pdf` 는 `<iframe sandbox referrerpolicy="no-referrer">`(토큰 없는 `sandbox` = 스크립트·폼·팝업·같은 출처 전부 금지) — 둘 다 `src` 는 서버가 준 값이 `/api/files/` 로 **시작할 때만** 넣는다. `text`·`office` 는 `<pre>` 의 `textContent`, `table` 은 `<td>` 마다 `textContent`, `archive` 는 `<li>` 마다 `textContent`. innerHTML 은 어디에도 없다(린트 S-03). 브라우저가 sandbox iframe 안 PDF 렌더를 막는 경우를 위해 「새 탭에서 열기」(raw 를 최상위로 — 응답 CSP `sandbox` 가 그대로 적용된다)를 함께 둔다. **PDF 렌더 가능 여부는 브라우저 실측(관문 ③)** 이다.
+- 페이지 CSP 는 그대로다: `default-src 'self'` 가 `frame-src`·`img-src` 에 적용되어 같은 출처 raw 를 허용하고, `frame-ancestors 'none'` 은 t-box 화면이 남의 사이트에 끼워지는 것을 막는 별개 규칙이다.
+
+### 5.9 조직·권한 관리 — `/api/org/*` (PRD F-19, 5.4, S-07 · 12-3, 2026-09-12)
+
+Admin 전용. 정책 `org.manage`(`Authz::canManageOrg` = Admin) 를 `KNOWN_POLICIES` 에 추가한다 — `user.manage` 를 재사용하지 않는 이유는 감사 로그와 라우트 표에서 "무엇을 관리했나" 가 이름만으로 갈리게 하기 위해서다.
+
+| 요청 | 하는 일 | 검사 순서 |
+|---|---|---|
+| `GET /api/org/teams` | `teams` + 구성원 수(`users.is_active`)·살아있는 파일 수(`deleted_at IS NULL`) | 정책 → 조회 |
+| `POST /api/org/teams` `{name, reason_text}` | 팀 생성 | 정책 → 형식(`name` trim 1~50자, 제어문자 없음; `reason_text` 1~500자) → 중복(`lower(name)` 비교 → 409 `already_exists`) → INSERT → `team.create allow` |
+| `PATCH /api/org/teams/{num}` `{name?, is_active?, reason_text}` | 이름 변경 · 활성/비활성 | 정책 → 대상 존재(404) → 형식 → 비활성화 요청이면 **활성 구성원 수 0 확인**(아니면 400 `team_has_members`) → 중복 → UPDATE(`updated_at=now()`) → `team.update allow` (`detail.before/after` = 바뀐 필드만, `reason_text`) |
+| `GET /api/org/teams/{num}/members` | 구성원 표 | 정책 → 존재 → `users WHERE team_id = …` (비활성 계정 포함, `is_active` 로 표시) |
+| `GET /api/org/permissions` | `permissions` 16행 그대로 + 5.3 규칙 문구(상수) | 정책 → SELECT. **UPDATE 경로 없음** — DB 계정 권한도 SELECT 만(10장) |
+
+- **팀은 지우지 않는다.** `files.team_id`·`users.team_id`·감사 기록이 참조한다. 대신 `teams.is_active=false`(마이그레이션 `db/migrations/2026-09-12_teams_active.sql`: `is_active BOOLEAN NOT NULL DEFAULT true`, `created_at`, `updated_at`, `CHECK (length(name) BETWEEN 1 AND 50)`).
+- 비활성 팀의 효과(코드 위치): `GET /api/teams` 는 활성만 돌려준다(선택지). `users_update`·`users_create` 의 `team_id` 가 비활성 팀이면 400 `team_inactive`. `files_upload`·`files_fetch`·`files_update` 에서 팀 존재를 확인하는 자리에서 **활성**도 확인 → 400 `team_inactive`. 이미 그 팀에 있는 파일·계정은 그대로다(읽기 판정은 `team_id` 일치만 본다 — 4.1 불변).
+- 구성원 배정은 새 API 를 만들지 않는다. `/org` 화면이 기존 `PATCH /api/users/{uid}` `{team_id, reason_text}` 를 부른다 — 한 규칙(자기 자신 금지·마지막 Admin 보호·세션 종료 T-22)이 두 곳에 갈라지지 않게.
+- 감사 문장(7.4)에 `team.create|allow`·`team.create|deny|bad_request`·`team.create|deny|already_exists`·`team.update|allow`·`team.update|deny|bad_request`·`team.update|deny|not_found`·`team.update|deny|team_has_members`·`team.update|deny|already_exists` 를 더한다. `target_type=team`, `target_name` 은 팀 이름.
+
 ## 6. 저장 위치 — 파일 정보 vs 실제 파일
 
 ### 6.1 두 곳에 나눠 저장하는 이유
@@ -612,6 +667,8 @@ INSERT INTO permissions VALUES
 | 앱 계정(`tbox_app`)은 이 표에 **SELECT 만** | 화면·API 어디서도 권한 표를 바꿀 수 없어야 한다 (바꿀 수 있으면 그게 곧 권한 상승 경로) |
 | 변경은 마이그레이션 파일 + 코드 리뷰 + `SECURITY.md` 이력 | 권한 표 변경은 곧 보안 정책 변경 |
 | `team` 의 `can_read=true` 는 "같은 팀일 때" 라는 뜻 | 팀 일치 여부는 `Authz::canRead` 가 `users.team_id` 와 비교 |
+
+> **`teams` 표 (12-3, 2026-09-12)** — `id, name(UNIQUE, 1~50자), is_active, created_at, updated_at`. 팀은 지우지 않고 `is_active=false` 로 내린다(5.9). `permissions` 는 12-3 뒤에도 **앱 계정 SELECT 만** — 조직·권한 화면의 매트릭스는 읽기 전용이다(PRD Q-12).
 
 ### 6.2-2 `sessions` 테이블 — DB 세션
 
@@ -858,6 +915,22 @@ GRANT  USAGE, SELECT  ON SEQUENCE audit_logs_id_seq TO tbox_app;
 | `file.level_change|deny|role_not_permitted` | `{actor} 이(가) 파일 「{target}」 의 접근 등급을 {level} 등급으로 바꾸려 했지만 그 등급을 지정할 권한이 없어 막았습니다` | 5단계 decideLevelChange(decideUploadAs 재사용) |
 | `file.level_change|deny|team_mismatch` | `{actor} 이(가) 파일 「{target}」 을(를) 자기 팀이 아닌 팀의 team 등급으로 바꾸려 해서 막았습니다` | 5단계 decideLevelChange |
 
+| `file.preview|allow` | `{actor} 이(가) {level} 등급 파일 「{target}」 을(를) 미리보기로 열었습니다` | 12-2 files_preview · files_preview_raw (`detail.preview_kind`·`part`) |
+| `file.preview|deny|role_not_permitted` | `{actor} 이(가) {level} 등급 파일 「{target}」 을(를) 미리보기로 열려 했지만 권한이 없어 막았습니다` | 12-2 decideRead |
+| `file.preview|deny|team_mismatch` | `{actor} 이(가) 다른 팀의 team 등급 파일 「{target}」 을(를) 미리보기로 열려 해서 막았습니다` | 12-2 decideRead |
+| `file.preview|deny|preview_not_available` | `{actor} 이(가) 미리보기를 지원하지 않는 형식의 파일 「{target}」 을(를) 원본 표시로 열려 해서 거부했습니다` | 12-2 raw 에 image·pdf 외 형식 |
+| `file.preview|error|file_missing` | `{actor} 이(가) 파일 「{target}」 을(를) 미리보기로 열려 했지만 저장소에 실제 파일이 없습니다 (점검 필요)` | 12-2 |
+| `file.preview|error|hash_mismatch` | `{actor} 이(가) 파일 「{target}」 을(를) 미리보기로 열려 했지만 저장된 파일의 내용이 기록과 달라 표시를 막았습니다 (변조 의심, 점검 필요)` | 12-2 (R-13, AL-6) |
+| `file.preview|error|parse_failed` | `{actor} 이(가) 파일 「{target}」 의 미리보기를 요청했지만 내용을 읽어 내지 못했습니다 (손상 또는 지원 범위 밖)` | 12-2 zip/office 추출 실패 — 화면에는 정보 카드만 |
+| `team.create|allow` | `{actor} 이(가) 팀 「{target}」 을(를) 만들었습니다 (사유는 상세 기록)` | 12-3 org_team_create |
+| `team.create|deny|bad_request` | `{actor} 이(가) 팀 생성 요청을 잘못된 형식(이름·사유)으로 보내 거부했습니다` | 12-3 |
+| `team.create|deny|already_exists` | `{actor} 이(가) 이미 있는 이름 「{target}」 으로 팀을 만들려 해서 거부했습니다` | 12-3 |
+| `team.update|allow` | `{actor} 이(가) 팀 「{target}」 의 정보를 바꿨습니다 (이전값→새값·사유는 상세 기록)` | 12-3 org_team_update (`detail.before/after`) |
+| `team.update|deny|bad_request` | `{actor} 이(가) 팀 「{target}」 변경 요청을 잘못된 형식으로 보내 거부했습니다` | 12-3 |
+| `team.update|deny|not_found` | `{actor} 이(가) 없는 팀을 바꾸려 해서 거부했습니다` | 12-3 |
+| `team.update|deny|team_has_members` | `{actor} 이(가) 구성원이 남아 있는 팀 「{target}」 을(를) 비활성화하려 해서 거부했습니다 (먼저 재배정)` | 12-3 |
+| `team.update|deny|already_exists` | `{actor} 이(가) 팀 「{target}」 의 이름을 이미 있는 이름으로 바꾸려 해서 거부했습니다` | 12-3 |
+
 > 7·8·9단계(URL 가져오기·감사 로그 조회·백업)의 행동은 그 단계 지시서에서 이 표에 행을 먼저 추가한 뒤 구현한다.
 
 **기존 DB 반영**: `deploy/install.sh` 는 표가 이미 있으면 `schema.sql` 을 건너뛴다. 따라서 컬럼 추가는 `db/migrations/2026-09-10_audit_summary.sql` 로 하고, 소유자 계정으로 한 번 실행한다(기존 행은 같은 문장 표로 채운 뒤 `NOT NULL` 을 건다). 실행: `sudo -u postgres psql -d tbox_re -v ON_ERROR_STOP=1 -f db/migrations/2026-09-10_audit_summary.sql`. 새로 설치하는 DB 는 `schema.sql` 에 컬럼이 이미 들어 있으므로 마이그레이션이 필요 없다.
@@ -878,6 +951,8 @@ GRANT  USAGE, SELECT  ON SEQUENCE audit_logs_id_seq TO tbox_app;
 | `sha256` | 무엇을 | 파일 내용 해시 64자 (DB `files.sha256`) | 핸들러 | `file.download`·`file.delete`·`file.upload`(allow) |
 | `size_bytes` | 무엇을 | 파일 크기 | 핸들러 | 위와 같음 |
 | `mode` | 어떻게 | `soft_delete` / `purge` / `restore` | 핸들러 | `file.delete`·`file.purge`·`file.restore` |
+| `preview_kind` | 무엇을 | `image`·`pdf`·`text`·`table`·`archive`·`office`·`none` — 서버가 DB `ext` 로 판정한 갈래 (12-2) | 핸들러 | `file.preview` |
+| `part` | 어떻게 | `meta`(JSON 본문) / `raw`(inline 원본) — 한 미리보기가 두 행으로 남을 수 있음을 구분 (12-2) | 핸들러 | `file.preview` |
 | `before` · `after` | 어떻게 | 이전값 → 새값 (레벨 변경·역할 변경). 레벨 변경은 `{"access_level":…, "team_id":…}` 객체 두 개 | 핸들러 | `file.level_change`·`user.role_change` (5·10단계) |
 | `changed` | 어떻게 | 이번 요청으로 바뀐 필드 이름 목록 (예 `["description"]`) | 핸들러 | `file.update`·`file.level_change` (5단계) |
 | `source_host` · `source_ip` | 어디서(출처) | F-14 로 가져온 파일의 허용 도메인과 검사·고정한 IP. **URL 전체는 남기지 않는다**(경로에 토큰·개인정보가 있을 수 있음). 거부 행에도 host 는 남긴다(정규화에 실패했으면 `?`) | 핸들러 | `file.fetch` (7단계) |
