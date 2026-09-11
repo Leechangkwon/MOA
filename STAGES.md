@@ -428,6 +428,7 @@ sudo -u postgres psql -d tbox_re -c "SELECT happened_at, actor_name, action, res
 - [x] Admin: `POST /api/users/{uid}/password/reset`·`/mfa/reset` (사유 필수, 자기 자신 금지, 대상 세션 전부 종료)
 - [x] 화면: 홈이 `next` 를 보고 강제 화면만 표시(비밀번호 변경 → 2단계 인증 등록 → 정상 홈). 계정 관리 화면에서 임시 비밀번호 1회 표시·재발급·2단계 초기화 버튼
 - [x] 정적 자원 캐시: `app.js`·`app.css` 에 버전 쿼리(`?v=파일수정시각`) — 보정이 브라우저 캐시(7일)에 갇히지 않게
+- [ ] (부록, F-17) 오프라인 2단계 코드 생성기 `tools/totp-generator.html` — 외부 스크립트·네트워크 0, base32/`otpauth://` 입력, RFC 6238 자체 점검 버튼, 저장 선택·지우기, R-40 경고. 로컬 검토 사이트 `http://localhost:8082/tools/totp-generator.html` 로 내려받아 PC 에 저장
 
 **검토 체크 (Fable ②)** — 2026-09-11 통과 (`SECURITY.md` 7장 「11단계 구현 검토」)
 - [x] 마이그레이션 뒤 기존 계정 `must_change_password=true`; 검토 계정으로 로그인 → `next=password_change`, `/api/files` 403 + `auth.gate deny`
@@ -452,6 +453,7 @@ sudo -u postgres psql -d tbox_re -c "SELECT happened_at, actor_name, action, res
 | 2026-09-11 | 결정 | 10단계의 "2단계 인증은 선택" 을 뒤집어 **필수**로 | 사용자 결정. 서버 관문(403)이 막으므로 화면 우회 불가 |
 | 2026-09-11 | 결정 | 비밀번호 최소 길이 12자 → **10자** (사용자 요청) | PRD S-09-4·8장, ARCH 7.4 문장 틀, `Auth::MIN_PASSWORD_CHARS`, 화면 `minlength`·라벨, README 를 함께 바꿈(Opus 구현·Fable 검증). 근거: 2단계 인증이 전 역할 필수가 되어 비밀번호 단독 강도 요구를 낮출 여지. 참고 기준 NIST SP 800-63B 는 최소 8자 + 길이 상한 완화 + 흔한 비밀번호 차단을 권고 — "흔한 비밀번호 목록 차단" 은 미구현(후속 후보) |
 | 2026-09-11 | 궁금 | "2차 인증 앱, 공짜는 없어? 아니면 우리가 따로 만들던가" | 안내문에 유료 제품(1Password)이 섞여 오해를 줌. **무료 앱이 표준**: Google Authenticator·Microsoft Authenticator(무료, 가입 불필요), Aegis(Android)·FreeOTP(iOS·Android, 둘 다 오픈소스). TOTP 는 공개 표준(RFC 6238)이라 어떤 앱이든 같은 코드가 나오고, 등록 뒤에는 인터넷이 필요 없다. 우리가 만드는 것도 가능(서버의 `scripts/totp_code.php` 가 이미 같은 계산을 함)하지만 **로그인하는 기기와 다른 기기**에 있어야 두 번째 겹이 되므로, 스마트폰 앱을 권장. 스마트폰이 없을 때의 대안(PC 에 두는 오프라인 생성기)은 사용자 결정 사항 | 안내문에서 1Password 제거, 무료 앱·오프라인 동작 명시(README·홈 화면) |
+| 2026-09-11 | 결정 | "우리가 만들자" — 오프라인 코드 생성기 자체 제작 | PRD F-17·SECURITY R-40 으로 선반영. 스마트폰 앱이 더 강하다는 점(기기 분리)은 그대로 안내하고, 생성기는 **대안**으로 위치. 서버에 JS 실행 환경이 없어 자동 시험 불가 → 파일 안 자체 점검 버튼(RFC 6238 부록 B 시험값)으로 사용자가 브라우저에서 PASS 확인 |
 | 2026-09-11 | 궁금 | "로그인 창에 2차 비밀번호 입력이 있다" | 서버가 보내는 HTML 은 칸이 `hidden` 이고 공개 호스트에서도 확인됨. 브라우저가 **7일 캐시된 옛 app.js** 를 쓰고 있을 가능성 → Ctrl+F5(강력 새로고침). 재발 방지로 자원 버전 쿼리 추가(개발 사항) |
 | 2026-09-11 | 궁금 | "페이지가 안 열린다 — 아직 작업 중이라서?" (Opus 구현 도중) | 두 가지가 겹쳤다. ① **10초 자체 장애(19:21:58~19:22:08 KST)**: Opus 가 라우트 표에 새 핸들러 2개를 먼저 적고 파일은 뒤에 만들어, 그 사이 라우터의 "핸들러 파일 없음" 검사가 모든 요청을 거부(`app.log` 34건). 이 서버는 **작업 트리를 그대로 서비스**하므로 편집 = 배포다. ② 그 뒤로는 서버 안(nginx·PHP·DB)·프록시→백엔드 경로(`https://192.168.104.100`, Host 헤더) 모두 200 인데, 사용자 브라우저의 요청은 18:47:47 이후 **한 건도 도착하지 않았고** 공개 IP `112.220.89.250` 은 80·443 모두 연결 불가 → 공개 입구(강사 프록시의 바깥쪽·DNS·방화벽) 문제로 판단. 같은 IP 를 쓰는 다른 수강생 주소로 교차 확인 가능 | `sudo tail /var/log/tbox-v2/app.log` · `sudo tail /var/log/nginx/tbox-v2.access.log`(내 IP 가 있나) · `curl -sk --resolve changkwon.mso.so:443:192.168.104.100 https://changkwon.mso.so/login -o /dev/null -w "%{http_code}"`. 재발 방지 후보: 구현은 별도 체크아웃에서 하고 검토 뒤 전환(`deploy/switch-site.sh` 활용) — 다음 결정 |
 
