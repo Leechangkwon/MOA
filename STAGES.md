@@ -790,6 +790,7 @@ sudo -u postgres psql -d tbox_re -c "SELECT happened_at, actor_name, action, res
 
 ---
 | 2026-09-13 | "`/chrome` 을 치니 Status: Disabled · Extension: Not detected 로 뜬다 — 이렇게 뜨는 게 맞나?" | 맞다. Claude in Chrome 확장은 **Claude Code 가 실행되는 컴퓨터의 크롬**과 붙는다. 이 세션은 서버(VM, 크롬 없음)에서 돌고 있어 PC 의 크롬을 감지할 수 없다. 서버에서 이카운트 화면을 읽으려면 PC 에서 `claude --chrome` 으로 세션을 열어야 하고, 아니면 화면 캡처(품목등록·거래처등록·발주서 입력·구매 현황)를 붙이는 것이 현실적이다. 확장은 읽기 전용이 아니므로 켜더라도 사이트 권한을 이카운트 도메인에만 준다 |
+| 2026-09-13 | PC 의 캡처 파일을 서버로 옮기려고 PowerShell 명령을 Claude Code 세션(`!`)에 입력 → `bash: syntax error` | 이 세션의 `!` 는 **서버의 bash** 에서 실행된다. PowerShell 명령은 **PC 의 PowerShell 창**에서 실행해야 하고, 파일이 PC 에 있으므로 복사 명령도 PC 쪽에서 내야 한다(`scp 로컬파일 사용자@서버:경로`). 구분법: 프롬프트가 `PS C:\…>` 이면 PC, `changkwon@eric:~$` 이면 서버 |
 
 ## 4. 이 문서를 채우는 규칙 (요약 — 원문은 `CLAUDE.md` 9장)
 
