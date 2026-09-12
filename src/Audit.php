@@ -67,6 +67,15 @@ final class Audit
          */
         'preview_kind', 'part',
         /*
+         * 16-1 관리 기능 재인증 (PRD F-23, ARCH 7.5 등록부 `window_minutes`).
+         *   window_minutes — 재인증 창의 길이(분, 정수 15). 코드 상수 Auth::REAUTH_MINUTES 를
+         *                    그대로 남긴다 — 나중에 창을 줄이거나 늘렸을 때 "그때는 몇 분이었나" 를
+         *                    로그만으로 알 수 있게 하는 값이다. 비밀번호·시각·세션 값이 아니다.
+         * FORBIDDEN_DETAIL_KEYS 의 부분 일치에는 걸리지 않지만, 등록부에 있는 키임을 코드에서도
+         * 드러내려고 여기 적는다 (preview_kind·part 와 같은 이유).
+         */
+        'window_minutes',
+        /*
          * 9단계 해시 체인 + 13단계 재봉인 (ARCH 7.1 · 7.5, SECURITY R-11 · R-50).
          *   chain_hash          — 그날 감사 로그 파일의 sha256. 이름에 `hash` 가 들어가 부분 일치에
          *                         걸려 2026-09-12 까지 `[제거됨]` 으로 남고 있었다(실측: 09-12 00:05 행).
@@ -206,6 +215,11 @@ final class Audit
         'backup.run|allow'                        => '백업이 완료되었습니다 (대상·산출물·검증값은 상세 기록)',
         'backup.run|error|backup_failed'          => '백업이 실패했습니다 (사유는 상세 기록·app.log) — 2회 연속이면 경보 AL-8',
         'backup.restore|allow'                    => '{actor} 이(가) 백업에서 복구를 실행했습니다 (대상 시점·범위는 상세 기록)',
+        // 16-2 (SECURITY 8.4-10): 복구가 **실패**한 경우의 자리. 이 행이 없던 동안 실패한 복구는
+        // 기록될 곳이 없어(문장 표에 allow 뿐) 로그가 조용했고, 그 자리에 남은 것은 롤백된
+        // 트랜잭션의 `allow` 한 줄(audit_logs id 1177)이었다. 복구 스크립트는 성공을 확인한
+        // 뒤에만 allow 를 남기고, 중단된 경로에서는 이 error 를 남긴다(어느 단계에서 멈췄는지는 detail.step).
+        'backup.restore|error|restore_failed'     => '백업 복구가 실패해 되돌렸습니다 (단계는 상세 기록)',
         'audit.integrity|allow'                   => '정합성·무결성 점검을 마쳤습니다 (검사 건수·불일치 0)',
         'audit.integrity|error|mismatch'          => '정합성·무결성 점검에서 불일치가 발견되었습니다 (목록은 상세 기록) — 경보 AL-6',
         'alert.raised|allow'                      => '경보 {target} 조건이 충족되어 알림을 보냈습니다 (근거는 상세 기록)',
@@ -263,6 +277,14 @@ final class Audit
         // 임시 비밀번호 값은 어느 문장에도 들어가지 않는다 — detail 에도 사실(true)만 남는다.
         'auth.gate|deny|password_change_required'       => '{target} 이(가) 비밀번호를 아직 바꾸지 않은 상태로 다른 기능을 요청해서 거부했습니다',
         'auth.gate|deny|mfa_setup_required'             => '{target} 이(가) 2단계 인증을 아직 설정하지 않은 상태로 다른 기능을 요청해서 거부했습니다',
+
+        // ── 관리 기능 재인증 — sudo 모드 (16-1 — PRD F-23, ARCH 4.0 · 7.4, SECURITY R-59) ──
+        // 관문(auth.gate)은 라우터 한 곳에서만 기록한다. 막힌 사람이 곧 대상이므로 {target} 을 쓴다
+        // (강제 절차 관문의 두 행과 같은 모양). 재인증 창구의 성공·실패는 auth.reauth 로 남고,
+        // 비밀번호는 어느 문장에도 들어가지 않는다.
+        'auth.gate|deny|reauth_required'                => '{target} 이(가) 비밀번호를 다시 확인하지 않은 채 관리 기능을 요청해서 거부했습니다',
+        'auth.reauth|allow'                             => '{actor} 이(가) 관리 기능을 쓰려고 비밀번호를 다시 확인했습니다',
+        'auth.reauth|deny|bad_credentials'              => '{actor} 이(가) 관리 기능을 쓰려고 비밀번호를 다시 확인했지만 비밀번호가 틀렸습니다',
         'auth.password_change|deny|same_password'       => '{actor} 이(가) 비밀번호를 현재와 같은 값으로 바꾸려 해서 거부했습니다',
         'user.password_reset|allow'                     => '{actor} 이(가) 계정 「{target}」 의 임시 비밀번호를 재발급하고 모든 세션을 끊었습니다 (사유는 상세 기록)',
         'user.password_reset|deny|self_change'          => '{actor} 이(가) 자기 자신의 임시 비밀번호를 재발급하려 해서 거부했습니다',

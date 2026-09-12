@@ -217,6 +217,33 @@ php scripts/wiki_check.php
 > 아니고, **접근 등급을 고르는 책임은 올리는 사람에게 있습니다.** 같은 문구가 업로드 화면에도
 > 있습니다 — "검출기가 있으니 등급은 대충" 이 되면 오히려 위험이 커집니다.
 
+### 재인증 — 관리 기능을 쓰기 전에 비밀번호를 한 번 더 (`PRD.md` F-23 · `ARCHITECTURE.md` 4.0 · `SECURITY.md` R-59)
+
+**계정 관리 · 조직·권한 · 감사 로그 · 휴지통 · 위키**는 로그인만으로 열리지 않습니다.
+그 영역에 들어갈 때 **비밀번호를 한 번 더** 확인하고, 확인한 창은 **15분** 동안만 열려 있습니다
+(GitHub·AWS 의 "sudo 모드" 와 같은 방식).
+
+- **로그인 직후에도 한 번은 묻습니다.** 로그인은 이 창을 열지 않습니다 — 자리를 비운 사이의
+  브라우저나 새어 나간 세션 쿠키만으로는 관리 기능에 닿지 못하게 하는 것이 목적입니다.
+- 화면에서 관리 메뉴를 누르면 **`/reauth` 화면**(비밀번호 한 칸)으로 가고, 확인하면 원래 가려던
+  화면으로 돌아갑니다. 화면을 열어 둔 채 15분이 지나면 그 자리에서 **작은 창(모달)** 이 떠서
+  다시 묻고, 확인하면 막혔던 요청이 다시 나갑니다.
+- 확인은 **그 기기, 그 창(세션)** 에만 적용됩니다. 다른 기기의 로그인에는 영향이 없습니다.
+- **재인증은 권한을 만들지 않습니다.** Employee 가 비밀번호를 맞혀도 `/users` 는 그대로 403 입니다
+  (막는 순서가 "권한 확인 → 재인증 확인" 이기 때문입니다).
+- 비밀번호를 틀리면 **로그인과 같은 카운터**로 셉니다 — 5회면 계정이 10분 잠기고 그 계정의 모든
+  세션이 끊깁니다(`SECURITY.md` R-48). 맞히면 카운터는 0 으로 돌아갑니다.
+- 2단계 인증 코드는 다시 묻지 않습니다(로그인에서 이미 거쳤습니다). 「내 계정」의 비밀번호 변경·
+  2단계 인증 창구(`/api/me/*`)와 파일 기능은 **재인증과 무관**하게 그대로 씁니다.
+
+```bash
+# 직접 확인 (Admin 계정으로 로그인한 뒤)
+curl -s -b jar http://127.0.0.1:8082/api/users
+# → 403 {"error":"관리 기능을 쓰려면 비밀번호를 다시 확인해야 합니다","next":"reauth"}
+curl -s -o /dev/null -w '%{http_code} %{redirect_url}\n' -b jar http://127.0.0.1:8082/users
+# → 302 /reauth?to=users     (돌아갈 곳은 고정 표의 키 다섯 개뿐입니다 — 주소를 요청 값으로 받지 않습니다)
+```
+
 최초 로그인 강제 절차(`PRD.md` F-16)는 **파일 화면(`/`)에만** 있습니다. 절차가 남은 계정이
 다른 화면을 열면 서버가 `/` 로 **302** 를 보내고(그 시도는 `auth.gate|deny` 로 남습니다),
 API 요청은 예전과 같이 **403 `{"next":…}`** 입니다.
@@ -663,8 +690,9 @@ curl -s -b jar -X POST https://changkwon.mso.so/api/logout                      
 | 04:00 | `scripts/purge_trash.php` | 30일 지난 휴지통 파일의 **바이트만** 삭제, `files.purged_at` 기록(행은 남김) | `file.purge allow\|error` |
 | 04:30 | `scripts/verify_backup.sh` | 최신 산출물 `sha256sum -c` + gpg 복호화 시험(`pg_restore -l`·`tar -tz` 목록만) | `audit.integrity`, 2회 연속 실패 → `alert.raised AL-8` |
 | 00:05 | `scripts/audit_chain.php --yesterday` | **어제** 회전 파일(`audit.log-YYYYMMDD`)의 sha256 을 체인에 봉인 (오늘 파일은 아직 자라므로 적지 않습니다) | `audit.integrity` (`chain_prev`·`chain_hash`) |
-| 일 02:00 | `scripts/consistency_check.php` | DB ↔ 저장소 정합성(누락·고아·sha256) | `audit.integrity`, 불일치 → `alert.raised AL-6` |
+| **매일 02:00** | `scripts/consistency_check.php` | DB ↔ 저장소 정합성(누락·고아·sha256). 2026-09-12 에 **주 1회 → 일 1회**로 당겼습니다(`SECURITY.md` 8.4-6) — 앱 밖에서 파일이 사라져도 하루 안에 드러납니다 | `audit.integrity`, 불일치 → `alert.raised AL-6` |
 | 5분마다 | `scripts/alerts.php` | 경보 규칙 AL-1·AL-2·AL-5·AL-7·AL-10·AL-12 판정 (AL-2 는 로그인뿐 아니라 **로그인 뒤** 인증 실패 — `/api/me/password`·`/api/me/mfa/*` — 도 함께 셉니다, `ARCHITECTURE.md` 11.4) | `/var/log/tbox-v2/alerts.log` + `alert.raised` |
+| (같은 실행) | `scripts/alerts.php` — **서버 층** | `/var/log/auth.log` 도 읽습니다: **AL-3** 최근 30일 안에 본 적 없는 `계정@IP` 의 SSH 로그인 성공, **AL-9** `sudo … COMMAND=` 에 `psql`·`pg_dump`·`pg_restore`·`dropdb`·`truncate`·`chattr`·`rm`·`find … -delete` 가 든 실행 (2026-09-11 사고 후속, `SECURITY.md` 8.4-5). 명령은 앞 200자만 남기고 `PGPASSWORD=`·`password=` 조각은 `[제거됨]` 으로 지웁니다 | 같음 |
 
 ```bash
 cat /etc/cron.d/tbox-v2                 # 일정 확인 (cron.d 는 6번째 칸이 실행 계정이다)
@@ -672,6 +700,10 @@ sudo bash scripts/backup_db.sh          # 손으로 한 번 돌려보기
 sudo bash scripts/verify_backup.sh
 sudo php  scripts/consistency_check.php
 sudo php  scripts/alerts.php --dry-run  # 판정만 하고 경보는 남기지 않는다
+# 서버 층 규칙(AL-3·AL-9)은 auth.log 를 읽으므로 **root** 여야 합니다. 사본으로 시험하려면:
+sudo php  scripts/alerts.php --auth-log /tmp/auth-sample.log --dry-run
+#   --auth-log 를 주면 읽기 오프셋을 저장하지 않습니다(운영 읽기 위치를 밀지 않습니다).
+#   root 가 아니면 그 두 규칙만 「[건너뜀]」 을 찍고 나머지는 그대로 판정합니다.
 ```
 
 ### 서버 시간대 — KST 로 통일 (2026-09-11)

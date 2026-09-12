@@ -161,7 +161,13 @@ CREATE TABLE sessions (
     last_seen_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     expires_at   TIMESTAMPTZ NOT NULL,              -- 유휴 30분 / 절대 8시간 (PRD S-09-2)
     ip           INET,
-    user_agent   TEXT
+    user_agent   TEXT,
+    -- 16-1 (PRD F-23, ARCH 4.0 「관리 기능 재인증 — sudo 모드」): 이 **세션**이 마지막으로
+    -- 비밀번호를 다시 확인한 시각. NULL 이면 아직 확인하지 않았다는 뜻이고, 관리 영역
+    -- (user.manage·org.manage·audit.read·role:Admin)은 최근 15분 안의 값일 때만 열린다.
+    -- 로그인은 이 값을 놓지 않는다 — 관리 영역 첫 진입에 반드시 한 번 묻는다.
+    -- (기존 DB 는 db/migrations/2026-09-12_sessions_reauth.sql 로 같은 모양이 된다.)
+    reauth_at    TIMESTAMPTZ
 );
 CREATE INDEX sessions_user_idx ON sessions (user_id);
 

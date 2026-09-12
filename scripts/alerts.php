@@ -7,9 +7,12 @@ declare(strict_types=1);
  *   ARCHITECTURE 11.1 (5분마다 cron) · 11.4 (경보 구성) · 7.4 `alert.raised|allow` · 7.5 `rule`·`evidence`
  *
  * 사용법
- *   sudo php scripts/alerts.php [--dry-run] [--rule AL-1]
- *     --dry-run : 판정만 하고 경보를 남기지 않는다 (규칙을 고친 뒤 확인용)
- *     --rule    : 한 규칙만 돌린다
+ *   sudo php scripts/alerts.php [--dry-run] [--rule AL-1] [--auth-log <경로>]
+ *     --dry-run   : 판정만 하고 경보를 남기지 않는다 (규칙을 고친 뒤 확인용)
+ *     --rule      : 한 규칙만 돌린다
+ *     --auth-log  : /var/log/auth.log 대신 **그 파일**을 읽는다 (16-2 시험용).
+ *                   이때는 읽기 오프셋을 상태 파일에 **쓰지 않는다** — 시험이 운영의
+ *                   읽기 위치를 밀어 놓으면 그 사이의 진짜 줄을 영영 건너뛰기 때문이다.
  *
  * 왜 SQL 인가: 경보는 "이미 남은 기록" 을 읽어 판정한다. 앱 코드에 경보 조건을 흩어 두면
  * 새 핸들러를 만들 때마다 빠뜨리고, 무엇보다 **기록되지 않은 일은 경보도 못 한다**는 사실이
@@ -22,11 +25,23 @@ declare(strict_types=1);
  * 알림 채널: 이 VM 에는 없다. 발동하면 `/var/log/tbox-v2/alerts.log` 한 줄 JSON +
  * `alert.raised allow` 감사 기록까지다 (cli_raise_alert, `.env` 의 ALERT_COMMAND 주석 참고).
  *
+ * 서버 층 규칙 — 16-2 추가 (2026-09-11 사고 후속, SECURITY 8.4-5, ARCH 11.4, PRD T-37)
+ *   앱의 감사 로그만 보면 **앱 밖에서 일어난 일**(SSH 접속·sudo 실행)은 보이지 않는다.
+ *   2026-09-11 침투는 전부 앱 밖이었고 audit_logs 에는 흔적이 없었다. 그래서 두 규칙이
+ *   `/var/log/auth.log`(와 회전된 `.1`)를 함께 읽는다.
+ *     AL-3 (확장) : `sshd … Accepted (publickey|password) for <계정> from <IP>` 중
+ *                   최근 30일 안에 본 적 없는 `계정@IP` → 경보
+ *     AL-9        : `sudo: <계정> : … COMMAND=<명령>` 의 명령이 데이터·로그를 지우거나 통째로
+ *                   읽는 종류(psql·pg_dump·pg_restore·dropdb·truncate·chattr·rm·find -delete)면 경보
+ *   읽기 위치(inode·오프셋)는 상태 파일에 둔다 — 5분마다 전체를 다시 읽지 않고, 회전되면
+ *   (inode 가 바뀌면) 처음부터 읽는다. auth.log 는 0640 syslog:adm 이라 **root 가 아니면 읽지
+ *   못한다**; 그때는 두 규칙만 `[건너뜀]` 을 찍고 나머지 규칙은 그대로 판정한다.
+ *
  * 이 스크립트가 판정하지 않는 규칙과 이유
- *   AL-3 (처음 보는 IP) · AL-4 (대량 다운로드) · AL-11 (일일 요약) — 9단계 범위 밖(지시서)
+ *   AL-4 (대량 다운로드) · AL-11 (일일 요약) — 9단계 범위 밖(지시서)
  *   AL-8 (백업 2회 연속 실패) — scripts/verify_backup.sh 가 직접 판정한다(실패 횟수 파일)
- *   AL-9 (새 포트·새 sudo 사용자·파일 변경) — 감사 로그가 아니라 OS 를 봐야 한다.
- *                                            scripts/check_baseline.sh 가 현재 상태만 보여 준다(미자동화)
+ *   AL-9 의 나머지 절반(새 리스닝 포트·`/var/www` 파일 변경, PRD 7.11) — 감사 로그도 auth.log 도
+ *        아니라 OS 상태를 봐야 한다. scripts/check_baseline.sh 가 현재 상태만 보여 준다(미자동화)
  */
 
 require_once __DIR__ . '/lib/cli_bootstrap.php';
@@ -34,6 +49,16 @@ require_once __DIR__ . '/lib/cli_bootstrap.php';
 const STATE_FILE     = '/var/lib/tbox-v2/alerts-state.json';
 /** 같은 규칙·같은 대상은 이 시간 안에 다시 발동하지 않는다 (분) */
 const DEDUP_MINUTES  = 30;
+
+/** 서버 층 규칙이 읽는 인증 로그 (16-2). 회전된 직전 파일까지 본다 */
+const AUTH_LOG       = '/var/log/auth.log';
+const AUTH_LOG_PREV  = '/var/log/auth.log.1';
+/** AL-3: `계정@IP` 를 처음 본 시각을 이 기간 동안 기억한다 (일) */
+const SSH_SEEN_DAYS  = 30;
+/** AL-9: 명령은 앞 이만큼만 근거에 남긴다 (인자에 비밀값이 섞여 있을 수 있다) */
+const SUDO_CMD_CHARS = 200;
+/** 한 번에 읽는 auth.log 의 최대 바이트 — 회전 직후의 큰 파일로 메모리를 쓰지 않게 */
+const AUTH_LOG_MAX_BYTES = 4 * 1024 * 1024;
 
 $argv    = $_SERVER['argv'];
 $dryRun  = cli_flag($argv, 'dry-run');
@@ -44,17 +69,57 @@ if ($onlyRaw !== null && preg_match('/^AL-[0-9]{1,2}$/', $onlyRaw) !== 1) {
 }
 $only = $onlyRaw;
 
+/*
+ * 16-2 — 시험용 인자. 사본 auth.log 를 읽어 AL-3·AL-9 를 확인한다 (PRD T-37).
+ * 경로는 **운영자가 셸에서 준 값**이지 요청 값이 아니다. 그래도 파일이 실제로 읽히는지만
+ * 확인하고(존재·읽기 권한), 이 값으로 무엇을 만들거나 실행하지 않는다.
+ * 이 인자를 쓰면 상태 파일의 읽기 오프셋을 **갱신하지 않는다** — 아래 al_read_auth_log 참고.
+ */
+$authLogArg = cli_option($argv, 'auth-log');
+if ($authLogArg !== null && ($authLogArg === '' || !is_file($authLogArg) || !is_readable($authLogArg))) {
+    cli_warn('[사용법 오류] --auth-log 파일을 읽을 수 없다: ' . $authLogArg);
+    exit(TBOX_CLI_BAD_USAGE);
+}
+
 $db = Db::instance();
 
 // ─── 중복 억제 상태 ─────────────────────────────────────────────
 /** @var array<string,string> `규칙|대상` => 마지막 발동 시각(ISO) */
 $state = [];
+/**
+ * 16-2 — 서버 층 규칙이 함께 쓰는 상태 (같은 파일 안의 **예약 키** 세 개).
+ * 중복 억제 키는 언제나 `AL-n|대상` 형태라 이 세 이름과 부딪히지 않는다.
+ *   ssh_seen        `계정@IP` => 처음 본 시각(ISO). 30일이 지난 항목은 저장할 때 버린다.
+ *   auth_log_inode  마지막으로 읽은 auth.log 의 inode — 바뀌었으면 회전된 것이다.
+ *   auth_log_offset 그 파일에서 어디까지 읽었나 (바이트).
+ */
+$sshSeen = [];
+$authPos = ['inode' => 0, 'offset' => 0];
+
 if (is_file(STATE_FILE)) {
     $raw = file_get_contents(STATE_FILE);
     if ($raw !== false && $raw !== '') {
-        $parsed = json_decode($raw, true, 4);
+        $parsed = json_decode($raw, true, 5);
         if (is_array($parsed)) {
             foreach ($parsed as $k => $v) {
+                if ($k === 'ssh_seen') {
+                    if (is_array($v)) {
+                        foreach ($v as $seenKey => $seenAt) {
+                            if (is_string($seenKey) && is_string($seenAt)) {
+                                $sshSeen[$seenKey] = $seenAt;
+                            }
+                        }
+                    }
+                    continue;
+                }
+                if ($k === 'auth_log_inode' && is_int($v)) {
+                    $authPos['inode'] = $v;
+                    continue;
+                }
+                if ($k === 'auth_log_offset' && is_int($v)) {
+                    $authPos['offset'] = $v;
+                    continue;
+                }
                 if (is_string($k) && is_string($v)) {
                     $state[$k] = $v;
                 }
@@ -92,6 +157,152 @@ $raise = function (string $rule, string $subject, array $evidence) use (
 };
 
 $want = static fn(string $rule): bool => $only === null || $only === $rule;
+
+/**
+ * `auth.log` 의 **새로 늘어난 부분**을 읽어 줄 목록으로 돌려준다 (16-2, ARCH 11.4).
+ *
+ * 왜 오프셋인가: 5분마다 도는 배치가 매번 파일 전체를 읽으면 ① 같은 줄을 30일 내내 다시
+ * 판정하고 ② 커진 파일에서 시간·메모리를 쓴다. 그래서 "어디까지 읽었나" 를 상태 파일에
+ * 남긴다. 파일이 **회전**되면 inode 가 바뀌므로 그것으로 알아채고, 회전된 직전 파일
+ * (`auth.log.1`)의 남은 꼬리를 먼저 읽은 뒤 새 파일을 처음부터 읽는다 — 회전 순간의 줄이
+ * 사라지지 않게. 파일이 잘렸으면(크기 < 오프셋) 처음부터 읽는다.
+ *
+ * `$override`(= `--auth-log`)가 있으면 그 파일을 **통째로** 읽고 오프셋은 돌려주지 않는다
+ * (`advance = false`). 시험이 운영의 읽기 위치를 밀어 놓으면 그 사이에 들어온 진짜 줄을
+ * 영영 건너뛰기 때문이다.
+ *
+ * 읽지 못하면(권한 없음 = root 가 아님) `ok = false` 를 돌려주고, 부르는 쪽이 그 규칙만
+ * 건너뛴다. 나머지 규칙(audit_logs SQL)은 그대로 돈다.
+ *
+ * @param array{inode:int,offset:int} $pos
+ * @return array{ok:bool, reason:string, lines:list<string>, inode:int, offset:int, advance:bool, path:string}
+ */
+function al_read_auth_log(?string $override, array $pos): array
+{
+    $empty = [
+        'ok'      => false,
+        'reason'  => '',
+        'lines'   => [],
+        'inode'   => $pos['inode'],
+        'offset'  => $pos['offset'],
+        'advance' => false,
+        'path'    => $override ?? AUTH_LOG,
+    ];
+
+    // ── 시험 모드: 사본 파일을 통째로 읽고 오프셋은 건드리지 않는다 ──
+    if ($override !== null) {
+        $text = file_get_contents($override, false, null, 0, AUTH_LOG_MAX_BYTES);
+        if ($text === false) {
+            return ['reason' => 'unreadable'] + $empty;
+        }
+        return [
+            'ok'      => true,
+            'reason'  => '',
+            'lines'   => al_split_lines($text),
+            'inode'   => $pos['inode'],
+            'offset'  => $pos['offset'],
+            'advance' => false,
+            'path'    => $override,
+        ];
+    }
+
+    if (!is_readable(AUTH_LOG)) {
+        // 0640 syslog:adm — root 가 아니면 여기서 끝난다 (cron 은 root 로 돈다)
+        return ['reason' => 'permission'] + $empty;
+    }
+
+    $stat = @stat(AUTH_LOG);
+    if (!is_array($stat)) {
+        return ['reason' => 'unreadable'] + $empty;
+    }
+    $inode = (int) $stat['ino'];
+    $size  = (int) $stat['size'];
+
+    $lines  = [];
+    $offset = $pos['offset'];
+
+    if ($inode !== $pos['inode']) {
+        // 회전됐거나 첫 실행이다. 직전 파일의 남은 꼬리를 먼저 읽어 둔다(있으면).
+        if ($pos['inode'] !== 0 && $pos['offset'] > 0 && is_readable(AUTH_LOG_PREV)) {
+            $prevStat = @stat(AUTH_LOG_PREV);
+            if (is_array($prevStat) && (int) $prevStat['ino'] === $pos['inode']
+                && (int) $prevStat['size'] > $pos['offset']
+            ) {
+                $tail = file_get_contents(
+                    AUTH_LOG_PREV,
+                    false,
+                    null,
+                    $pos['offset'],
+                    min(AUTH_LOG_MAX_BYTES, (int) $prevStat['size'] - $pos['offset'])
+                );
+                if ($tail !== false) {
+                    $lines = al_split_lines($tail);
+                }
+            }
+        }
+        $offset = 0;
+    } elseif ($size < $offset) {
+        // 잘렸다(truncate). 처음부터 다시 읽는다.
+        $offset = 0;
+    }
+
+    if ($size > $offset) {
+        $take = min(AUTH_LOG_MAX_BYTES, $size - $offset);
+        $text = file_get_contents(AUTH_LOG, false, null, $offset, $take);
+        if ($text === false) {
+            return ['reason' => 'unreadable'] + $empty;
+        }
+        $lines  = array_merge($lines, al_split_lines($text));
+        $offset += $take;
+    }
+
+    return [
+        'ok'      => true,
+        'reason'  => '',
+        'lines'   => $lines,
+        'inode'   => $inode,
+        'offset'  => $offset,
+        'advance' => true,
+        'path'    => AUTH_LOG,
+    ];
+}
+
+/** 읽은 덩어리를 줄 단위로 자른다 (빈 줄은 버린다) */
+function al_split_lines(string $text): array
+{
+    $out = [];
+    foreach (preg_split('/\r?\n/', $text) ?: [] as $line) {
+        if (is_string($line) && $line !== '') {
+            $out[] = $line;
+        }
+    }
+    return $out;
+}
+
+/** 로그 줄 앞의 시각 표기만 떼어 낸다 (`Sep 12 16:32:01` 또는 RFC3339). 없으면 빈 문자열 */
+function al_line_time(string $line): string
+{
+    if (preg_match('/^([A-Z][a-z]{2}\s+\d{1,2}\s+\d{2}:\d{2}:\d{2}|\d{4}-\d{2}-\d{2}T[0-9:.+\-]+)/', $line, $m) === 1) {
+        return $m[1];
+    }
+    return '';
+}
+
+/**
+ * sudo 명령에서 **비밀값 조각을 지우고** 앞 200자만 남긴다 (16-2).
+ * `PGPASSWORD=…`·`password=…` 는 통째로 `[제거됨]` 으로 바꾼다 — 경보 근거는 감사 로그에도
+ * 들어가므로 "무엇을 실행했나" 만 남고 "그 값" 은 남지 않아야 한다 (PRD 7.7).
+ */
+function al_scrub_command(string $cmd): string
+{
+    $clean = (string) preg_replace('/(?:PGPASSWORD|password)=\S+/i', '[제거됨]', $cmd);
+    $utf8  = iconv('UTF-8', 'UTF-8//IGNORE', $clean);
+    $clean = is_string($utf8) ? $utf8 : '';
+    if (iconv_strlen($clean, 'UTF-8') > SUDO_CMD_CHARS) {
+        $clean = (string) iconv_substr($clean, 0, SUDO_CMD_CHARS, 'UTF-8');
+    }
+    return $clean;
+}
 
 cli_say('경보 판정 시작 (' . date('c') . ')');
 
@@ -312,15 +523,141 @@ if ($want('AL-12')) {
     cli_say(sprintf('AL-12 대상 %d명', count($rows)));
 }
 
+// ─────────────────────────────────────────────────────────────
+// AL-3 (확장) · AL-9 — 서버 층 (16-2, SECURITY 8.4-5, ARCH 11.4, PRD T-37)
+//   audit_logs 가 아니라 `/var/log/auth.log` 를 읽는다. 2026-09-11 침투는 전부 앱 **밖**에서
+//   일어났고 앱 감사 로그에는 한 줄도 남지 않았다 — SSH 로 들어와 sudo 로 데이터를 지웠다.
+//   그래서 두 규칙은 그 로그를 직접 본다.
+//     AL-3 : 새 출처의 SSH 성공 — `Accepted <방식> for <계정> from <IP>` 중
+//            상태 파일의 `ssh_seen[계정@IP]` 첫 관측이 30일 안에 없는 것
+//     AL-9 : 위험한 sudo 실행 — `sudo: <계정> : … COMMAND=<명령>` 의 명령이
+//            데이터·로그를 지우거나 통째로 읽는 종류
+//   auth.log 를 읽지 못하면(root 가 아니면) 이 두 규칙만 건너뛴다.
+// ─────────────────────────────────────────────────────────────
+$sshSeenChanged = false;
+$authPosChanged = false;
+
+if ($want('AL-3') || $want('AL-9')) {
+    $read = al_read_auth_log($authLogArg, $authPos);
+
+    if (!$read['ok']) {
+        cli_say(sprintf(
+            'AL-3·AL-9 [건너뜀] %s 를 읽지 못했다 (%s) — root 로 실행해야 한다',
+            $read['path'],
+            $read['reason'] === 'permission' ? '권한 없음' : '읽기 실패'
+        ));
+    } else {
+        $sshNew  = 0;
+        $sudoHit = 0;
+        $seenCut = $now - SSH_SEEN_DAYS * 24 * 3600;
+
+        foreach ($read['lines'] as $line) {
+            // ── AL-3: SSH 로그인 성공 ──
+            if ($want('AL-3')
+                && preg_match(
+                    '/sshd\[\d+\]:\s+Accepted\s+(publickey|password|keyboard-interactive\/pam)\s+for\s+(\S+)\s+from\s+(\S+)/',
+                    $line,
+                    $m
+                ) === 1
+            ) {
+                $method  = $m[1];
+                $account = $m[2];
+                $srcIp   = $m[3];
+                $seenKey = $account . '@' . $srcIp;
+
+                $firstAt = isset($sshSeen[$seenKey]) ? strtotime($sshSeen[$seenKey]) : false;
+                if ($firstAt === false || $firstAt < $seenCut) {
+                    // 30일 안에 본 적 없는 출처다 (계정 탈취·새 경로 — PRD 7.11 AL-3)
+                    $sshNew++;
+                    $raise('AL-3', $seenKey, [
+                        'rule_text' => 'SSH 로그인 성공 — 최근 30일 안에 본 적 없는 계정@출처',
+                        'user'      => $account,
+                        'ip'        => $srcIp,
+                        'method'    => $method,
+                        'when'      => al_line_time($line),
+                        'window'    => SSH_SEEN_DAYS . ' days',
+                    ]);
+                    /*
+                     * 첫 관측 시각은 **처음 본 때**로 둔다(볼 때마다 갱신하지 않는다) —
+                     * 30일이 지나면 저장 단계에서 버려지고, 그 뒤 다시 들어오면 새 출처로
+                     * 한 번 더 알린다. 기억은 메모리에 바로 넣는다: 같은 실행 안에서 같은
+                     * `계정@IP` 가 여러 줄 나와도 알림은 한 번이다.
+                     * 파일에 남기는 것은 **운영 로그를 읽었고 dry-run 이 아닐 때만**이다 —
+                     * 시험(`--auth-log`)이 만든 가짜 출처가 운영 상태에 섞이면 그 뒤 진짜
+                     * 접속이 "이미 아는 출처" 로 조용해진다.
+                     */
+                    $sshSeen[$seenKey] = date('c', $now);
+                    if (!$dryRun && $authLogArg === null) {
+                        $sshSeenChanged = true;
+                    }
+                }
+                continue;
+            }
+
+            // ── AL-9: 위험한 sudo 실행 ──
+            if ($want('AL-9')
+                && preg_match('/sudo:\s+(\S+) : .* COMMAND=(.*)$/', $line, $m) === 1
+            ) {
+                $account = $m[1];
+                $command = $m[2];
+                if (preg_match(
+                        '/(^|\/|\s)(psql|pg_dump|pg_restore|dropdb|truncate|chattr)\b|(^|\s)rm\s|find\b.*-delete/',
+                        $command
+                    ) !== 1
+                ) {
+                    continue;   // 일상적인 sudo(예: systemctl status)는 알리지 않는다
+                }
+                $sudoHit++;
+                $raise('AL-9', $account, [
+                    'rule_text' => 'sudo 로 데이터·로그를 지우거나 통째로 읽는 명령 실행',
+                    'user'      => $account,
+                    // 비밀값 조각을 지우고 앞 200자만 (PRD 7.7)
+                    'command'   => al_scrub_command($command),
+                    'when'      => al_line_time($line),
+                ]);
+            }
+        }
+
+        if ($read['advance']
+            && ($read['inode'] !== $authPos['inode'] || $read['offset'] !== $authPos['offset'])
+        ) {
+            $authPos['inode']  = $read['inode'];
+            $authPos['offset'] = $read['offset'];
+            $authPosChanged    = true;
+        }
+
+        cli_say(sprintf(
+            'AL-3·AL-9 %s 새 줄 %d개 — 새 출처 SSH %d건, 위험한 sudo %d건%s',
+            $read['path'],
+            count($read['lines']),
+            $sshNew,
+            $sudoHit,
+            $read['advance'] ? '' : ' (시험 모드: 오프셋을 저장하지 않는다)'
+        ));
+    }
+}
+
 // ─── 상태 저장 (오래된 항목은 버린다 — 파일이 무한히 자라지 않게) ───
-if ($stateChanged) {
+if ($stateChanged || $sshSeenChanged || $authPosChanged) {
     foreach ($state as $k => $v) {
         $t = strtotime($v);
         if ($t === false || ($now - $t) > 7 * 24 * 3600) {
             unset($state[$k]);
         }
     }
-    $json = json_encode($state, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_PRETTY_PRINT);
+    // 30일이 지난 `계정@IP` 는 버린다 — 그 뒤 다시 들어오면 "처음 보는 출처" 로 다시 알린다
+    foreach ($sshSeen as $k => $v) {
+        $t = strtotime($v);
+        if ($t === false || ($now - $t) > SSH_SEEN_DAYS * 24 * 3600) {
+            unset($sshSeen[$k]);
+        }
+    }
+    $payload = $state + [
+        'ssh_seen'        => $sshSeen,
+        'auth_log_inode'  => $authPos['inode'],
+        'auth_log_offset' => $authPos['offset'],
+    ];
+    $json = json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_PRETTY_PRINT);
     if ($json === false) {
         throw new RuntimeException('경보 상태를 직렬화할 수 없습니다');
     }

@@ -36,7 +36,24 @@
 
 var LOGIN_PATH = '/login';
 var HOME_PATH = '/';
+var REAUTH_PATH = '/reauth';
 var GENERIC_ERROR = '요청을 처리할 수 없습니다. 잠시 후 다시 시도하세요';
+
+/**
+ * 16-1 재인증(sudo 모드) — 돌아갈 화면의 **키 → 경로** 고정 맵 (PRD F-23).
+ *
+ * 서버(public/index.php 의 TBOX_REAUTH_PATHS)와 **같은 내용**의 표다. `/reauth` 화면의
+ * <form data-to="…"> 에는 서버가 이 표의 키(users·org·audit·trash·wiki)만 넣어 주고,
+ * 화면은 키가 이 맵에 있을 때만 그 **맵의 값**으로 이동한다. 주소 문자열을 요청 값이나
+ * data 속성에서 만들지 않는다 — 오픈 리다이렉트가 생길 자리가 없다.
+ */
+var REAUTH_PATHS = {
+  'users': '/users',
+  'org': '/org',
+  'audit': '/audit',
+  'trash': '/trash',
+  'wiki': '/wiki'
+};
 
 /** 서버가 내려 준 파일 ID 형태 (UUIDv4). 링크를 만들기 전에 반드시 확인한다. */
 var UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
@@ -301,10 +318,259 @@ function toLogin() {
 function toGate(response, data) {
   if (response && response.status === 403
       && data && typeof data.next === 'string' && data.next !== '') {
+    // 16-1 — `next:"reauth"` 는 강제 절차가 아니라 **재인증 관문**이다 (PRD F-23).
+    // 홈으로 보내지 않고 모달로 비밀번호를 다시 묻고, 성공하면 막혔던 요청을 다시 보낸다.
+    if (data.next === 'reauth') {
+      return handleReauth(response, data, null);
+    }
     window.location.assign(HOME_PATH);
     return true;
   }
   return false;
+}
+
+/* ─── 관리 기능 재인증 — sudo 모드 (16-1, PRD F-23 · 10장 「재인증」, ARCH 4.0) ───
+ *
+ * 관리 화면(계정·조직·감사 로그·휴지통·위키)의 API 가 15분 창이 닫힌 뒤에 불리면 서버가
+ * `403 {error, next:"reauth"}` 로 답한다. 그때 이 모달이 열려 현재 비밀번호를 한 번 받고,
+ * 성공하면 **막혔던 요청을 그대로 다시 보낸다**(모달을 띄운 쪽이 넘긴 함수 또는 화면의 로더).
+ *
+ * ★ 막는 것도 여는 것도 서버다. 이 코드는 안내일 뿐이며, 모달을 지워도 관리 API 는 그대로
+ *   403 이다 (PRD S-01). 실패 문구는 **서버가 준 문구만** 쓴다.
+ * ★ 모달은 createElement + textContent 로만 만든다(문자열 → HTML 변환 0, PRD S-03).
+ * ★ 비밀번호는 요청 본문에만 실리고 변수에 남겨 두지 않는다(보낸 직후 칸을 비운다).
+ */
+
+/** 재인증이 끝난 뒤 다시 부를 화면의 데이터 로더. 화면이 시작할 때 등록한다. */
+var reauthRetry = null;
+
+/** 모달이 두 번 겹쳐 열리지 않게 하는 빗장 (여러 요청이 동시에 403 을 받을 수 있다) */
+var reauthOpen = false;
+
+/** 화면별 데이터 로더 등록 — 재인증 성공 뒤 이 함수를 다시 부른다 */
+function setReauthRetry(fn) {
+  reauthRetry = typeof fn === 'function' ? fn : null;
+}
+
+/** 상태 변경 요청에 붙일 CSRF 토큰 (bootPage 가 /api/me 에서 받아 넣는다) */
+var reauthCsrf = null;
+
+/**
+ * 재인증이 필요해서 막힌 응답인가. 맞으면 모달을 열고 true 를 돌려준다.
+ *
+ * @param retry 성공 뒤 다시 보낼 요청(함수). 없으면 화면이 등록한 로더, 그것도 없으면
+ *              현재 화면을 다시 읽는다(reload) — 어느 쪽이든 **원래 요청이 다시 나간다**.
+ */
+function handleReauth(response, data, retry) {
+  if (!response || response.status !== 403
+      || !data || data.next !== 'reauth') {
+    return false;
+  }
+  openReauthModal(function () {
+    if (typeof retry === 'function') {
+      retry();
+      return;
+    }
+    if (typeof reauthRetry === 'function') {
+      reauthRetry();
+      return;
+    }
+    window.location.reload();
+  });
+  return true;
+}
+
+/** 모달 하나를 만들어 띄운다. 성공하면 onDone() 을 부르고 닫는다. */
+function openReauthModal(onDone) {
+  if (reauthOpen) {
+    return;
+  }
+  if (typeof window.HTMLDialogElement !== 'function' || typeof document.createElement('dialog').showModal !== 'function') {
+    // <dialog> 를 못 쓰는 브라우저는 재인증 **화면**으로 보낸다 (같은 서버 관문을 지난다).
+    window.location.assign(REAUTH_PATH);
+    return;
+  }
+  reauthOpen = true;
+
+  var dialog = document.createElement('dialog');
+  dialog.className = 'modal reauth-modal';
+
+  var title = document.createElement('h2');
+  title.className = 'modal__title';
+  setText(title, '비밀번호 다시 확인');
+  dialog.appendChild(title);
+
+  var lead = document.createElement('p');
+  lead.className = 'modal__lead';
+  setText(lead, '관리 기능을 쓰려면 비밀번호를 다시 확인합니다. 확인한 창은 15분 동안 열려 있습니다.');
+  dialog.appendChild(lead);
+
+  var form = document.createElement('form');
+  form.setAttribute('method', 'dialog');
+  form.className = 'reauth__form';
+
+  var label = document.createElement('label');
+  label.className = 'field';
+  var labelText = document.createElement('span');
+  labelText.className = 'field__label';
+  setText(labelText, '현재 비밀번호');
+  var input = document.createElement('input');
+  input.type = 'password';
+  input.maxLength = 1024;
+  input.autocomplete = 'current-password';
+  input.required = true;
+  label.appendChild(labelText);
+  label.appendChild(input);
+  form.appendChild(label);
+
+  var row = document.createElement('div');
+  row.className = 'modal__actions';
+  var submit = document.createElement('button');
+  submit.type = 'submit';
+  submit.className = 'btn';
+  setText(submit, '확인');
+  var cancel = document.createElement('button');
+  cancel.type = 'button';
+  cancel.className = 'btn btn--quiet';
+  setText(cancel, '취소');
+  row.appendChild(submit);
+  row.appendChild(cancel);
+  form.appendChild(row);
+
+  var hint = document.createElement('p');
+  hint.className = 'muted';
+  setText(hint, '비밀번호를 5번 틀리면 계정이 10분 잠기고 열려 있던 모든 창이 닫힙니다.');
+  form.appendChild(hint);
+
+  var modalMsg = document.createElement('p');
+  modalMsg.className = 'msg';
+  modalMsg.setAttribute('role', 'alert');
+  modalMsg.setAttribute('aria-live', 'polite');
+  form.appendChild(modalMsg);
+
+  dialog.appendChild(form);
+  document.body.appendChild(dialog);
+
+  function close() {
+    reauthOpen = false;
+    if (dialog.open) {
+      dialog.close();
+    }
+    if (dialog.parentNode) {
+      dialog.parentNode.removeChild(dialog);
+    }
+  }
+
+  cancel.addEventListener('click', function () {
+    close();
+  });
+
+  form.addEventListener('submit', function (event) {
+    event.preventDefault();
+    if (reauthCsrf === null) {
+      setText(modalMsg, GENERIC_ERROR);
+      return;
+    }
+    var value = input.value;
+    if (value === '') {
+      return;
+    }
+    submit.disabled = true;
+    setText(modalMsg, '');
+    postReauth(value, reauthCsrf).then(function (result) {
+      submit.disabled = false;
+      input.value = '';
+      if (result.ok) {
+        close();
+        if (typeof onDone === 'function') {
+          onDone();
+        }
+        return;
+      }
+      if (result.toLogin) {
+        toLogin();
+        return;
+      }
+      setText(modalMsg, result.message);
+    });
+    value = '';
+  });
+
+  dialog.showModal();
+  input.focus();
+}
+
+/**
+ * POST /api/me/reauth — 재인증 창구 (PRD 8장). 응답 문구는 서버가 준 것만 쓴다.
+ *
+ * @return Promise<{ok:boolean, message:string, toLogin:boolean}>
+ */
+function postReauth(password, csrfToken) {
+  return fetch('/api/me/reauth', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken },
+    body: JSON.stringify({ password: password }),
+    credentials: 'same-origin',
+    cache: 'no-store'
+  })
+    .then(function (response) {
+      if (response.status === 401) {
+        // 5회째 실패로 계정이 잠기면 세션까지 끊긴다 (R-48) — 그때는 로그인 화면으로.
+        return { ok: false, message: GENERIC_ERROR, toLogin: true };
+      }
+      return readJson(response).then(function (data) {
+        if (response.ok) {
+          return { ok: true, message: '', toLogin: false };
+        }
+        return { ok: false, message: errorMessage(data), toLogin: false };
+      });
+    })
+    .catch(function () {
+      return { ok: false, message: GENERIC_ERROR, toLogin: false };
+    });
+}
+
+/**
+ * `/reauth` 화면 (PRD 8장 `/reauth?to=키` 행). 확인에 성공하면 `to` 키가 가리키는 화면으로
+ * 간다 — 키는 **서버가 HTML 에 넣어 준 고정 값**이고, 경로는 위 REAUTH_PATHS 맵에서 온다.
+ * 맵에 없는 키(또는 빈 값)면 홈으로 간다.
+ */
+function initReauthPage(form, csrfToken) {
+  var msg = document.getElementById('reauth-msg');
+  var input = document.getElementById('reauth-password');
+  var submit = document.getElementById('reauth-submit');
+  var key = form.getAttribute('data-to');
+  var target = typeof key === 'string' && Object.prototype.hasOwnProperty.call(REAUTH_PATHS, key)
+    ? REAUTH_PATHS[key]
+    : HOME_PATH;
+
+  form.addEventListener('submit', function (event) {
+    event.preventDefault();
+    if (csrfToken === null) {
+      setText(msg, GENERIC_ERROR);
+      return;
+    }
+    var value = input.value;
+    if (value === '') {
+      return;
+    }
+    submit.disabled = true;
+    setText(msg, '');
+    postReauth(value, csrfToken).then(function (result) {
+      submit.disabled = false;
+      input.value = '';
+      if (result.ok) {
+        window.location.assign(target);
+        return;
+      }
+      if (result.toLogin) {
+        toLogin();
+        return;
+      }
+      setText(msg, result.message);
+    });
+    value = '';
+  });
 }
 
 /** 크기 표시 — 숫자만 다룬다(서버 문자열을 그대로 쓰지 않는다) */
@@ -1687,6 +1953,10 @@ function initAudit() {
           return null;
         }
         return readJson(response).then(function (data) {
+          // 16-1 — 15분 창이 닫힌 뒤의 403 이면 모달로 다시 묻고, 성공하면 이 요청을 다시 보낸다
+          if (handleReauth(response, data, load)) {
+            return null;
+          }
           if (!response.ok) {
             setText(msg, errorMessage(data));
             return null;
@@ -2000,6 +2270,10 @@ function initTrash(csrfToken, onRestored) {
           return null;
         }
         return readJson(response).then(function (data) {
+          // 16-1 — 창이 닫혀 막혔으면 모달로 다시 묻고, 성공하면 이 복구 요청을 다시 보낸다
+          if (handleReauth(response, data, function () { restore(id); })) {
+            return null;
+          }
           setText(msg, errorMessage(data));
           return null;
         });
@@ -2045,6 +2319,10 @@ function initTrash(csrfToken, onRestored) {
           return null;
         }
         return readJson(response).then(function (data) {
+          // 16-1 — 재인증 창이 닫혀 막힌 요청이면 모달을 띄우고 성공 뒤 다시 보낸다 (F-23)
+          if (handleReauth(response, data, load)) {
+            return null;
+          }
           if (!response.ok) {
             setText(msg, errorMessage(data));
             return null;
@@ -2509,6 +2787,10 @@ function initUsers(csrfToken) {
       load();
     });
   }
+
+  // 16-1 — 재인증 모달이 성공한 뒤 다시 부를 로더 (PRD F-23). 등록하지 않으면 화면을
+  // 통째로 다시 읽는다 — 어느 쪽이든 막혔던 요청이 다시 나간다.
+  setReauthRetry(load);
 
   loadTeams();
   load();
@@ -3223,6 +3505,12 @@ function initOrg(csrfToken) {
     });
   }
 
+  // 16-1 — 재인증 성공 뒤 팀 목록부터 다시 읽는다 (PRD F-23)
+  setReauthRetry(function () {
+    loadTeams(false);
+    loadMatrix();
+  });
+
   loadTeams(false);
   loadMatrix();
 }
@@ -3746,6 +4034,9 @@ function bootPage(page) {
           return null;
         }
         var csrfToken = me.csrf_token;
+        // 16-1 — 재인증 모달이 쓸 CSRF 토큰 (PRD F-23). 모달은 어느 화면에서든 열릴 수 있어
+        // 토큰을 한 곳에 둔다. 토큰은 세션에 결속돼 있어 다른 세션에서는 쓸 수 없다 (ARCH 4.0).
+        reauthCsrf = csrfToken;
         var next = typeof me.next === 'string' && me.next !== '' ? me.next : null;
 
         /*
@@ -3840,6 +4131,34 @@ document.addEventListener('DOMContentLoaded', function () {
     if (form) {
       initLogin(form);
     }
+    return;
+  }
+  /*
+   * 16-1 재인증 화면 (`/reauth`, PRD F-23). 공통 셸을 쓰지만 셸의 화면 키 목록에 없는
+   * 화면이라 <body data-page> 는 비어 있다 — 그래서 **폼이 있는지**로 알아본다
+   * (로그인 화면과 같은 방식). 셸(내비·로그아웃)은 다른 화면과 똑같이 initShell 이 그린다.
+   */
+  var reauthForm = document.getElementById('reauth-form');
+  if (reauthForm) {
+    fetch('/api/me', { credentials: 'same-origin', cache: 'no-store' })
+      .then(function (response) {
+        if (response.status === 401) {
+          toLogin();
+          return null;
+        }
+        return readJson(response).then(function (me) {
+          if (typeof me.csrf_token !== 'string') {
+            return null;
+          }
+          reauthCsrf = me.csrf_token;
+          initShell(me, me.csrf_token);
+          initReauthPage(reauthForm, me.csrf_token);
+          return null;
+        });
+      })
+      .catch(function () {
+        setText(document.getElementById('reauth-msg'), GENERIC_ERROR);
+      });
     return;
   }
   if (typeof page !== 'string' || page === '') {

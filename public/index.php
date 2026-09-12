@@ -14,6 +14,8 @@ declare(strict_types=1);
  *   [3] Http::requireCsrf()   상태를 바꾸는 요청의 토큰 검사 (PRD S-09-3)
  *   [3-1] 최초 로그인 관문    ★ 비밀번호 변경·2단계 인증 등록을 마치지 않았으면 403 (11단계 F-16)
  *   [4] Authz::authorize()    ★ 권한 판단. 실패 → Audit::deny + 403(동일 문구)
+ *   [3-2] 관리 기능 재인증 관문 ★ 인가를 통과한 관리 영역 요청이라도 15분 안에 비밀번호를
+ *                              다시 확인하지 않았으면 403 `next:"reauth"` / 화면은 302 (16-1 F-23)
  *   [5] 핸들러 실행
  *
  * ★ 라우트마다 policy 를 반드시 적는다. "권한 검사를 잊었다"가 코드 리뷰가 아니라
@@ -169,7 +171,53 @@ const TBOX_ROUTES = [
     ['GET',    '/api/me/shares',                 'shares_list.php',      Authz::POLICY_AUTHENTICATED],
     ['DELETE', '/api/shares/{num}',              'share_revoke.php',     Authz::POLICY_AUTHENTICATED],
     ['GET',    '/s/{token}',                     'share_download.php',   Authz::POLICY_PUBLIC],
+
+    // 16-1 — 관리 기능 재인증, sudo 모드 (PRD F-23 · 8장 2행 · 10장 「재인증」, ARCH 4.0).
+    //   두 라우트 모두 정책은 `authenticated` 다 — 재인증하러 가는 길에 재인증을 요구하면
+    //   들어갈 방법이 없다. **이 두 라우트는 아무 권한도 주지 않는다**: 여기서 비밀번호를
+    //   맞혀도 무엇을 할 수 있는지는 관리 라우트의 정책(user.manage·org.manage·audit.read·
+    //   role:Admin)이 그대로 정한다. 관문 [3-2] 가 인가 **뒤**에 있기 때문이다 (T-36).
+    //   POST /api/me/reauth 는 다른 본인 계정 창구와 같은 자리에 두어야 마땅하지만,
+    //   16단계에서 더한 것임을 드러내려고 목록 끝에 둔다(동작은 위치와 무관하다).
+    //   nginx 는 이 경로(끝 슬래시 변형 포함)에 `tbox_login` 존을 건다 — 비밀번호를 다시
+    //   받는 창구라 무차별 대입의 표적이다 (SECURITY R-59, 13단계와 같은 방식).
+    ['POST',   '/api/me/reauth',                 'reauth.php',           Authz::POLICY_AUTHENTICATED],
+    ['GET',    '/reauth',                        'reauth_page.php',      Authz::POLICY_AUTHENTICATED],
 ];
+
+/**
+ * 재인증 관문이 화면 요청을 돌려보낼 때 쓰는 **고정 표** (16-1, PRD F-23, ARCH 4.0).
+ *
+ * 왼쪽은 라우트 패턴(= TBOX_ROUTE 와 같은 표기), 오른쪽은 `/reauth?to=` 에 붙일 키다.
+ * 요청에서 온 문자열은 이 표의 **키를 고르는 데만** 쓰이고 Location 헤더에는 표에 적힌
+ * 다섯 글자(`users`·`org`·`audit`·`trash`·`wiki`) 중 하나만 들어간다 — 오픈 리다이렉트가
+ * 생길 자리가 없다. 표에 없는 관리 라우트(예: `PATCH /api/users/{num}`)는 API 이거나
+ * 돌아갈 화면이 없는 경우이므로 꼬리표 없이 `/reauth` 로 보낸다.
+ */
+const TBOX_REAUTH_RETURN = [
+    'GET /users'       => 'users',
+    'GET /org'         => 'org',
+    'GET /audit'       => 'audit',
+    'GET /trash'       => 'trash',
+    'GET /wiki'        => 'wiki',
+    'GET /wiki/{slug}' => 'wiki',
+];
+
+/**
+ * 키 → 돌아갈 **고정 경로**. `/reauth` 화면(reauth_page.php)이 `?to=` 값이 표에 있는지
+ * 확인하는 데 쓰고, 실제 이동은 app.js 의 **같은 내용의 맵**이 한다.
+ * 경로 문자열이 요청 값에서 만들어지는 곳은 서버에도 화면에도 없다 (PRD F-23).
+ */
+const TBOX_REAUTH_PATHS = [
+    'users' => '/users',
+    'org'   => '/org',
+    'audit' => '/audit',
+    'trash' => '/trash',
+    'wiki'  => '/wiki',
+];
+
+/** 재인증 화면의 경로. 코드 상수이며 요청 값이 섞이지 않는다 (TBOX_LOGIN_PATH 와 같다). */
+const TBOX_REAUTH_PATH = '/reauth';
 
 /**
  * 최초 로그인 강제 절차의 **허용 목록** (11단계, PRD F-16 ②, ARCH 4.0 「최초 로그인 강제 절차」).
@@ -440,6 +488,56 @@ if ($policy !== Authz::POLICY_PUBLIC) {
             'detail'      => ['policy' => $policy],
         ]);
         Http::error(403, Http::MSG_FORBIDDEN);   // 대상 정보를 담지 않는 동일 문구 (PRD S-09-5)
+    }
+
+    /* ─── [3-2] 관리 기능 재인증 관문 — sudo 모드 (16-1, PRD F-23, ARCH 4.0) ──────
+     *
+     * 관리 영역(계정·조직/권한·감사 로그·휴지통·위키)은 세션이 있어도 **최근 15분 안에
+     * 비밀번호를 다시 확인한 세션**만 쓸 수 있다. 훔친 쿠키·자리 비움만으로 관리자 콘솔에
+     * 닿지 못하게 하는 겹이다 (GitHub·AWS 의 sudo 모드와 같은 원리).
+     *
+     * ★ 인가(authorize) **뒤**에 둔다. 순서가 뒤바뀌면 "권한이 없는 사람에게 먼저 비밀번호를
+     *   묻는" 모양이 되어, 재인증이 마치 권한을 만들어 주는 것처럼 보인다. 지금 순서에서는
+     *   Employee 가 `/api/users` 를 부르면 재인증 여부와 무관하게 `authz.route deny` 403 이고,
+     *   재인증에 성공한 뒤에도 똑같다 — **재인증은 권한을 만들지 않는다** (PRD T-36).
+     *
+     * ★ 강제 절차([3-1]) 중에는 관리 라우트가 그 앞에서 이미 막히므로 여기 닿지 않는다.
+     *   순서만 지키면 두 관문이 서로를 방해하지 않는다.
+     *
+     * 판단 근거(`reauth_fresh`)는 매 요청 DB 가 계산한 값이고(Auth::SQL_LOOKUP, DB 시계
+     * 하나), 요청이 정하지 않는다 (PRD S-01). 대상 정책 목록은 Authz 한 곳에 있다 —
+     * 라우터가 정책 이름을 직접 비교하지 않는다 (ARCH 4.1).
+     */
+    if (Authz::requiresReauth($policy) && ($user['reauth_fresh'] ?? false) !== true) {
+        Audit::deny('auth.gate', 'reauth_required', [
+            // 막힌 사람이 곧 대상이다 (ARCH 7.4 문장 틀의 {target}, 강제 절차 관문과 같은 모양).
+            'target_type' => 'user',
+            'target_id'   => (int) $user['id'],
+            'target_name' => (string) $user['username'],
+            // route 패턴은 Audit 이 TBOX_ROUTE 에서 자동으로 넣는다 (ARCH 7.5 route).
+            'detail'      => ['next' => 'reauth', 'policy' => $policy],
+        ]);
+
+        /* 화면 요청이면 재인증 화면으로 302 — 403 JSON 을 그대로 받으면 사용자는 "아무것도
+         * 안 되는 빈 화면" 을 본다(강제 절차 관문의 302 와 같은 판단). 꼬리표(`?to=`)에
+         * 들어가는 값은 **고정 표에서 고른 키**뿐이고 요청 문자열이 아니다. 표에 없는 화면은
+         * 꼬리표 없이 보낸다 — 그러면 확인 뒤 홈으로 간다.
+         */
+        if (strpos($reqPath, '/api/') !== 0) {
+            $reauthKey = TBOX_REAUTH_RETURN[TBOX_ROUTE] ?? null;
+            Http::redirect(
+                $reauthKey === null ? TBOX_REAUTH_PATH : TBOX_REAUTH_PATH . '?to=' . $reauthKey
+            );
+        }
+
+        // API 는 강제 절차 관문과 **같은 모양**의 403 이다 — 화면이 한 가지 처리(모달)로
+        // 받을 수 있게. `next` 를 주는 이유도 같다: 막힌 사람이 본인이고, 다음 걸음을
+        // 모르면 관리 화면을 열 수 없다 (ARCH 4.0).
+        Http::json([
+            'error' => Http::MSG_REAUTH_REQUIRED,
+            'next'  => 'reauth',
+        ], 403);
+        exit;
     }
 }
 

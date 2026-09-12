@@ -42,6 +42,33 @@ final class Authz
     ];
 
     /**
+     * 관리 기능 재인증(sudo 모드)이 필요한 **라우트 정책** (16-1, PRD F-23, ARCH 4.0).
+     *
+     * 여기 든 정책이 붙은 라우트는 세션이 있어도 **최근 15분 안에 비밀번호를 다시 확인한
+     * 세션**만 쓸 수 있다. 관리 영역이 곧 이 네 정책이다:
+     *   user.manage  계정 관리 (`/users`, `/api/users*`)
+     *   org.manage   조직·권한 (`/org`, `/api/org/*`)
+     *   audit.read   감사 로그 (`/audit`, `/api/audit`)
+     *   role:Admin   휴지통·위키 (`/trash`, `/api/files/trash`, `/api/files/{id}/restore`, `/wiki*`)
+     *
+     * 목록이 **정책 이름**인 이유: 경로 목록으로 두면 라우트를 하나 더할 때마다 두 곳을
+     * 고쳐야 하고 언젠가 한쪽을 빠뜨린다. 정책은 라우트 표에 이미 하나씩 붙어 있으므로,
+     * 새 관리 라우트를 만들면 재인증이 **자동으로** 따라붙는다 (SECURITY R-04 와 같은 원칙).
+     *
+     * 여기 **없는** 것: `authenticated`(본인 계정 창구 `/api/me/*` 는 이미 현재 비밀번호·코드를
+     * 묻는다), `file.*`(일상 업무를 15분마다 끊지 않는다 — PRD F-23 "본인 계정 기능은 대상이
+     * 아니다", T-36 의 `/api/me/password`·`/api/files` 행).
+     *
+     * @var list<string>
+     */
+    public const REAUTH_POLICIES = [
+        'user.manage',
+        'org.manage',
+        'audit.read',
+        'role:Admin',
+    ];
+
+    /**
      * 판정 코드 (ARCH 4.1 표 · 7.5 `detail` 등록부 · 7.4 문장 표의 reason 과 같은 값).
      * 허용 코드는 `detail.granted_by` 로, 거부 코드는 `reason` 으로 그대로 기록된다.
      * 핸들러는 이 코드를 지어내거나 바꾸지 않고 decide*() 가 돌려준 값을 그대로 넘긴다.
@@ -601,6 +628,19 @@ final class Authz
             }
         }
         return false;
+    }
+
+    /**
+     * 이 라우트 정책이 관리 기능 재인증 대상인가 (16-1, PRD F-23, ARCH 4.0 재인증 행).
+     *
+     * 판단은 이 파일 하나에서만 한다 — 라우터가 `in_array($policy, [...])` 를 직접 쓰면
+     * 권한·정책 판단이 Authz 밖으로 새어 나간다 (ARCH 4.1, CLAUDE.md 4장 금지 패턴).
+     * 이 함수는 **권한을 판단하지 않는다**: "이 정책은 다시 물어야 하는 영역인가" 뿐이고,
+     * 그 사람이 무엇을 할 수 있는지는 authorize() 가 이미 판단한 뒤다(관문 순서: 인가 → 재인증).
+     */
+    public static function requiresReauth(string $policy): bool
+    {
+        return in_array($policy, self::REAUTH_POLICIES, true);
     }
 
     /**

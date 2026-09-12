@@ -1080,3 +1080,21 @@ dialog.modal--form .modal__body { display: grid; gap: 14px; background: var(--su
    레벨 배지(.badge--public 등)와 같은 모양을 쓰되 색만 경고 계열로 둔다.
    배지는 **표시일 뿐**이고 등급 규칙은 서버가 막는다 (PRD 10장 "버튼 표시는 권한의 근거가 아님"). */
 .badge--sensitive { background: var(--danger-soft); color: var(--danger); }
+
+/* ─── 관리 기능 재인증 — sudo 모드 (16-1, PRD F-23 · 10장 「재인증」) ───
+ *
+ * 화면(`/reauth`)과 모달(관리 화면에서 15분 창이 닫혔을 때) 둘 다 같은 폼 한 벌을 쓴다.
+ * 여기 있는 것은 **표현뿐**이다 — 막고 여는 판단은 서버 관문 [3-2] 가 한다 (PRD S-01).
+ * 모달은 app.js 가 createElement 로 만들고(문자열 → HTML 변환 0), 아래 클래스만 붙인다.
+ */
+.reauth { max-width: 560px; display: grid; gap: 16px; }
+.reauth__form { display: grid; gap: 14px; }
+.reauth__form .btn { justify-self: start; }
+
+dialog.reauth-modal {
+  width: min(420px, calc(100vw - 32px));
+  padding: 20px 24px;
+}
+dialog.reauth-modal .modal__title { margin-bottom: 6px; }
+dialog.reauth-modal .modal__lead { font-size: 13px; color: var(--muted); margin-bottom: 14px; }
+.modal__actions { display: flex; gap: 8px; }

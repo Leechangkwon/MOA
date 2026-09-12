@@ -18,9 +18,15 @@
 #   · 평문 덤프·평문 tar 를 디스크에 남기지 않는다 — gpg 출력은 파이프로만 흐른다.
 #   · 인자로 받은 산출물 이름은 **백업 디렉터리 안의 파일**이어야 한다(경로 탈출 방지).
 #
-# 감사 기록:  backup.restore allow
+# 감사 기록:  backup.restore allow  /  backup.restore error restore_failed (16-2)
 #   배치에는 로그인 사용자가 없으므로 actor_* 는 NULL 이다. 실행한 사람은 target_name 에
 #   `$SUDO_USER`(sudo 를 건 계정)로 남긴다 — "누가 복구했나" 를 로그만으로 알 수 있게.
+#
+#   ★ 16-2 (SECURITY 8.4-10): **성공 기록은 성공을 확인한 뒤에만** 남긴다. 2026-09-11 에는
+#     복구 트랜잭션이 롤백됐는데도 `backup.restore allow` 한 줄(audit_logs id 1177)이 남았고,
+#     문장 표에 `error` 가 없어 "실패했다" 를 적을 수도 없었다. 이제 중단된 경로(die·set -e·
+#     정합성 검사 실패)에서는 `backup.restore error restore_failed` 를 남기고, 어느 단계에서
+#     멈췄는지는 detail.step 에 적는다. 두 줄이 함께 남는 경우는 없다(성공 아니면 실패 하나).
 set -euo pipefail
 
 REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -48,7 +54,28 @@ SKIP_CHECK=0
 YES_PROD=0
 
 say() { printf '   %s\n' "$*"; }
-die() { printf '\n[중단] %s\n' "$*" >&2; exit 1; }
+
+# ── 16-2: 실패를 감사 로그에 남긴다 (SECURITY 8.4-10, ARCH 7.4 backup.restore|error) ──
+# CURRENT_STEP 은 "지금 어느 단계인가" 이고 ARCH 11.2 의 단계 이름을 쓴다.
+# AUDIT_READY 는 인자 검사를 통과한 뒤에만 1 이 된다 — 사용법 오류(인자 오타·root 아님)까지
+# 감사 로그에 남기면 "복구가 실패했다" 는 기록이 실제로 시도하지도 않은 실행으로 채워진다.
+# RESTORE_RECORDED 는 실패 기록이 두 번 남지 않게 하는 빗장이다(die → trap 순서).
+CURRENT_STEP="start"
+AUDIT_READY=0
+RESTORE_RECORDED=0
+
+record_failure() {
+  [ "$AUDIT_READY" -eq 1 ] || return 0
+  [ "$RESTORE_RECORDED" -eq 0 ] || return 0
+  RESTORE_RECORDED=1
+  php "${REPO_DIR}/scripts/audit_cli.php" backup.restore error restore_failed \
+    --target "${OPERATOR:-root}" --target-type user \
+    --detail "$(printf '{"step":"%s","scope":"%s","dbname":"%s"}' \
+      "$CURRENT_STEP" "${RESTORED:-}" "$DB_NAME")" \
+    >/dev/null || printf '[경고] 실패 감사 기록을 남기지 못했다\n' >&2
+}
+
+die() { printf '\n[중단] %s\n' "$*" >&2; record_failure; exit 1; }
 
 usage() {
   cat >&2 <<'USAGE'
@@ -97,6 +124,10 @@ RESTORED=""
 OPERATOR="${SUDO_USER:-root}"
 START_TS="$(date +%s)"
 
+# 여기부터는 "실제로 복구를 시도한" 구간이다 — 이 뒤의 중단은 감사 로그에 남는다 (16-2).
+AUDIT_READY=1
+CURRENT_STEP="verify"
+
 printf '\n== 복구 시작 %s (실행 %s) ==\n' "$(date -Is)" "$OPERATOR"
 
 # ── ARCH 11.2 [1] 서비스 중단 ──────────────────────────────────
@@ -113,7 +144,17 @@ restore_finish_service() {
     say "[8] ${FPM_SERVICE} 재시작"
   fi
 }
-trap restore_finish_service EXIT
+
+# 종료 코드가 0 이 아니면(= die, `set -e` 로 멈춘 명령, 정합성 검사 실패) 실패를 먼저 기록하고
+# 서비스를 되살린다. die 로 온 경우에는 record_failure 가 이미 빗장을 걸어 두 번 남지 않는다.
+restore_on_exit() {
+  rc=$?
+  if [ "$rc" -ne 0 ]; then
+    record_failure
+  fi
+  restore_finish_service
+}
+trap restore_on_exit EXIT
 
 # ── ARCH 11.2 [3] 무결성 확인 ──────────────────────────────────
 verify_checksum() {  # verify_checksum <디렉터리> <파일명>
@@ -127,6 +168,7 @@ verify_checksum() {  # verify_checksum <디렉터리> <파일명>
 
 # ── ARCH 11.2 [4] DB 복구 ──────────────────────────────────────
 if [ -n "$DB_ARTIFACT" ]; then
+  CURRENT_STEP="db_checksum"
   verify_checksum "$DB_DIR" "$DB_ARTIFACT"
 
   if [ "$DB_NAME" = "$PROD_DB" ] && [ "$YES_PROD" -ne 1 ]; then
@@ -148,6 +190,7 @@ if [ -n "$DB_ARTIFACT" ]; then
   printf '%s:%s:%s:%s:%s\n' "$DB_HOST" "$DB_PORT" "$DB_NAME" "$DB_OWNER_ROLE" "$OWNER_PASS" > "$TMP_PGPASS"
   unset OWNER_PASS
 
+  CURRENT_STEP="pg_restore"
   say "[4] DB 복구: ${DB_ARTIFACT} → ${DB_NAME} (역할 ${DB_OWNER_ROLE}, --clean --if-exists)"
   RC_FILE="$(mktemp "${BACKUP_ROOT}/.restore-rc.XXXXXX")"
   set +e
@@ -172,9 +215,11 @@ fi
 
 # ── ARCH 11.2 [5] 파일 복구 ────────────────────────────────────
 if [ -n "$FILES_ARTIFACT" ]; then
+  CURRENT_STEP="files_checksum"
   verify_checksum "$FILES_DIR" "$FILES_ARTIFACT"
   [ -d "$TARGET_DIR" ] || die "복구 목적지가 없다: ${TARGET_DIR}"
 
+  CURRENT_STEP="files_extract"
   say "[5] 파일 복구: ${FILES_ARTIFACT} → ${TARGET_DIR}"
   TARGET_BASE="$(basename "$TARGET_DIR")"
   TARGET_PARENT="$(dirname "$TARGET_DIR")"
@@ -217,6 +262,7 @@ fi
 
 # ── ARCH 11.2 [6] 정합성 검사 ──────────────────────────────────
 CHECK_RESULT="skipped"
+CURRENT_STEP="consistency_check"
 if [ "$SKIP_CHECK" -eq 0 ]; then
   say "[6] 정합성 검사 (php scripts/consistency_check.php --strict)"
   set +e
@@ -236,11 +282,19 @@ fi
 ELAPSED=$(( $(date +%s) - START_TS ))
 
 # ── ARCH 11.2 [8] 기록 ─────────────────────────────────────────
-php "${REPO_DIR}/scripts/audit_cli.php" backup.restore allow \
-  --target "$OPERATOR" --target-type user \
-  --detail "$(printf '{"scope":"%s","artifact":"%s","dbname":"%s","target_dir":"%s","consistency":"%s","elapsed_sec":%s}' \
-    "$RESTORED" "${DB_ARTIFACT}${DB_ARTIFACT:+${FILES_ARTIFACT:+ }}${FILES_ARTIFACT}" "$DB_NAME" "$TARGET_DIR" "$CHECK_RESULT" "$ELAPSED")" \
-  || printf '[경고] 감사 기록 실패\n' >&2
+# 16-2 (SECURITY 8.4-10): `allow` 는 **성공을 확인한 뒤에만** 남긴다. 정합성 검사가 실패했으면
+# 복구가 끝난 것이 아니므로 `error restore_failed` 를 남기고 0 이 아닌 코드로 끝낸다
+# (아래 마지막 줄이 그 코드를 만들고, EXIT trap 이 기록을 남긴다).
+CURRENT_STEP="record"
+if [ "$CHECK_RESULT" != "fail" ]; then
+  php "${REPO_DIR}/scripts/audit_cli.php" backup.restore allow \
+    --target "$OPERATOR" --target-type user \
+    --detail "$(printf '{"scope":"%s","artifact":"%s","dbname":"%s","target_dir":"%s","consistency":"%s","elapsed_sec":%s}' \
+      "$RESTORED" "${DB_ARTIFACT}${DB_ARTIFACT:+${FILES_ARTIFACT:+ }}${FILES_ARTIFACT}" "$DB_NAME" "$TARGET_DIR" "$CHECK_RESULT" "$ELAPSED")" \
+    || printf '[경고] 감사 기록 실패\n' >&2
+else
+  printf '[기록] 정합성 검사가 실패해 성공 기록(allow)을 남기지 않는다 — 실패로 기록한다\n' >&2
+fi
 
 printf '\n복구 끝 — 범위 %s / 정합성 %s / %s초\n' "$RESTORED" "$CHECK_RESULT" "$ELAPSED"
 printf '다음: [7] 스모크 테스트(로그인 → 목록 → 업로드 → 다운로드 → 권한 매트릭스) — PRD 7.8\n'

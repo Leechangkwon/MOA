@@ -62,6 +62,16 @@ final class Http
      */
     public const MSG_SENSITIVE_LEVEL_REQUIRED = '민감정보가 보여 team 또는 admin-only 로만 올릴 수 있습니다';
 
+    /**
+     * 관리 기능 재인증 관문의 문구 (16-1, PRD F-23, ARCH 4.0 「관리 기능 재인증 — sudo 모드」).
+     *
+     * 강제 절차 관문의 두 문구와 같은 성격이다 — 막힌 사람이 **본인**이고, 다음에 무엇을
+     * 해야 하는지(`next: "reauth"`)를 모르면 관리 화면을 열 수 없다. 대상·권한에 대한
+     * 정보는 담지 않는다(권한이 없어서 막힌 경우는 이 관문보다 **앞**의 authz.route 403 이고
+     * 거기서는 언제나 MSG_FORBIDDEN 동일 문구다 — 재인증은 권한을 만들지 않는다).
+     */
+    public const MSG_REAUTH_REQUIRED = '관리 기능을 쓰려면 비밀번호를 다시 확인해야 합니다';
+
     /** JSON 본문 상한 — 로그인·삭제 같은 작은 요청만 JSON 으로 받는다 */
     private const MAX_JSON_BYTES = 65536;
 
@@ -149,10 +159,16 @@ final class Http
      * $path 는 **코드에 적힌 고정 문자열만** 넘긴다. 사용자 입력을 넣을 수 없도록
      * 허용 형태(슬래시로 시작하는 소문자 경로)를 여기서 한 번 더 검사한다 —
      * 오픈 리다이렉트(`//evil.example`, `http://…`)가 생길 통로를 없앤다.
+     *
+     * 16-1 (PRD F-23 · T-36): 재인증 관문이 보내는 `/reauth?to=<키>` 때문에 허용 형태를
+     * **최소로** 넓혔다 — 꼬리표는 `?to=` 뒤에 영문 소문자 1~16자 하나뿐이다(`&`·`=`·`%`·
+     * 숫자·슬래시가 들어갈 자리가 없다). 그 자리에 들어가는 값은 요청에서 온 문자열이 아니라
+     * 라우터의 고정 표(`TBOX_REAUTH_RETURN`)에 적힌 키(`users`·`org`·`audit`·`trash`·`wiki`)
+     * 뿐이며, 표에 없으면 꼬리표 없이 `/reauth` 로 보낸다 — 요청 값은 Location 에 닿지 않는다.
      */
     public static function redirect(string $path): void
     {
-        if (preg_match('#^/[a-z0-9/_.-]*$#', $path) !== 1 || strpos($path, '//') !== false) {
+        if (preg_match('#^/[a-z0-9/_.-]*(\?to=[a-z]{1,16})?$#', $path) !== 1 || strpos($path, '//') !== false) {
             throw new RuntimeException('허용되지 않는 리다이렉트 경로입니다');
         }
         if (!headers_sent()) {

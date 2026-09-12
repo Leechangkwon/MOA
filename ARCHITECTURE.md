@@ -943,6 +943,7 @@ GRANT  USAGE, SELECT  ON SEQUENCE audit_logs_id_seq TO tbox_app;
 | `backup.run|allow` | `백업이 완료되었습니다 (대상·산출물·검증값은 상세 기록)` | 9단계 scripts/backup_*.sh → audit_cli.php (시스템) |
 | `backup.run|error|backup_failed` | `백업이 실패했습니다 (사유는 상세 기록·app.log) — 2회 연속이면 경보 AL-8` | 9단계 |
 | `backup.restore|allow` | `{actor} 이(가) 백업에서 복구를 실행했습니다 (대상 시점·범위는 상세 기록)` | 9단계 scripts/restore.sh (운영자, actor = 실행 계정명) |
+| `backup.restore|error|restore_failed` | `백업 복구가 실패해 되돌렸습니다 (단계는 상세 기록)` | 16-2 scripts/restore.sh 의 중단 경로(die·EXIT trap·정합성 검사 실패). `detail.step` 에 멈춘 단계. **성공 기록(allow)은 성공을 확인한 뒤에만** 남긴다 (SECURITY 8.4-10) |
 | `audit.integrity|allow` | `정합성·무결성 점검을 마쳤습니다 (검사 건수·불일치 0)` | 9단계 consistency_check.php · audit_chain.php |
 | `audit.integrity|error|mismatch` | `정합성·무결성 점검에서 불일치가 발견되었습니다 (목록은 상세 기록) — 경보 AL-6` | 9단계 |
 | `alert.raised|allow` | `경보 {target} 조건이 충족되어 알림을 보냈습니다 (근거는 상세 기록)` | 9단계 scripts/alerts.php (target = AL-1 등 규칙 번호) |
@@ -964,6 +965,9 @@ GRANT  USAGE, SELECT  ON SEQUENCE audit_logs_id_seq TO tbox_app;
 | `auth.mfa_enroll|deny|bad_code` | `{actor} 이(가) 2단계 인증을 켜려 했지만 확인 코드가 틀렸습니다` | 10단계 (검토 보완 B) |
 | `auth.gate|deny|password_change_required` | `{target} 이(가) 비밀번호를 아직 바꾸지 않은 상태로 다른 기능을 요청해서 거부했습니다` | 11단계 관문 (target = 본인, route 패턴은 상세) |
 | `auth.gate|deny|mfa_setup_required` | `{target} 이(가) 2단계 인증을 아직 설정하지 않은 상태로 다른 기능을 요청해서 거부했습니다` | 11단계 관문 |
+| `auth.gate|deny|reauth_required` | `{target} 이(가) 비밀번호를 다시 확인하지 않은 채 관리 기능을 요청해서 거부했습니다` | 16-1 관문 [3-2] (target = 본인, route 패턴·`next`·`policy` 는 상세) |
+| `auth.reauth|allow` | `{actor} 이(가) 관리 기능을 쓰려고 비밀번호를 다시 확인했습니다` | 16-1 `POST /api/me/reauth` (Auth::reauth, `detail.window_minutes`) |
+| `auth.reauth|deny|bad_credentials` | `{actor} 이(가) 관리 기능을 쓰려고 비밀번호를 다시 확인했지만 비밀번호가 틀렸습니다` | 16-1 (실패는 로그인 뒤 창구와 같은 카운터 — R-48) |
 | `auth.password_change|deny|same_password` | `{actor} 이(가) 비밀번호를 현재와 같은 값으로 바꾸려 해서 거부했습니다` | 11단계 |
 | `user.password_reset|allow` | `{actor} 이(가) 계정 「{target}」 의 임시 비밀번호를 재발급하고 모든 세션을 끊었습니다 (사유는 상세 기록)` | 11단계 users (Admin) |
 | `user.password_reset|deny|self_change` | `{actor} 이(가) 자기 자신의 임시 비밀번호를 재발급하려 해서 거부했습니다` | 11단계 |
@@ -1076,6 +1080,8 @@ GRANT  USAGE, SELECT  ON SEQUENCE audit_logs_id_seq TO tbox_app;
 | `artifact` · `checksum` · `bytes` | 무엇을 | 백업 산출물 파일명·sha256·크기 | 배치 | `backup.run`·`backup.restore` (9단계) |
 | `checked` · `mismatches` | 왜 | 정합성 검사 건수와 불일치 목록(`stored_name`·종류, 최대 50건) | 배치 | `audit.integrity` (9단계) |
 | `rule` · `evidence` | 왜 | 경보 규칙 번호와 근거(대상 계정·건수·기간) | 배치 | `alert.raised` (9단계) |
+| `step` | 어디서 | 배치가 **멈춘 단계** 이름 (`pg_dump`·`pg_restore`·`files_extract`·`consistency_check`…). 경로가 아니라 단계 이름이며 인자·비밀값은 넣지 않는다 | 배치 | `backup.run error`·`backup.restore error` (9단계 · 16-2) |
+| `window_minutes` | 어떻게 | 관리 기능 재인증 창의 길이(분, `Auth::REAUTH_MINUTES`). 나중에 창을 조정해도 "그때는 몇 분이었나" 를 로그만으로 알 수 있게 한다. 시각·세션 값이 아니다 | Auth::reauth | `auth.reauth allow` (16-1) |
 | `chain_prev` · `chain_hash` | 무엇을 | 감사 로그 파일 해시 체인: 직전 일자 마지막 해시 · 봉인한 날 파일의 sha256 (R-11). `chain_hash` 는 이름에 `hash` 가 들어가 `FORBIDDEN_DETAIL_KEYS` 부분 일치에 걸려 2026-09-12 까지 `[제거됨]` 으로 남고 있었다(실측) — 공개돼야 의미가 있는 무결성 증거이므로 `Audit::ALLOWED_DETAIL_KEYS` 에 정확 일치로 등록한다(13단계) | 배치 | `audit.integrity` (9단계) |
 | `resealed_from_hash` · `resealed_from_lines` · `resealed_from_bytes` · `relinked` | 왜·어떻게 | `--reseal` 이 덮어쓰기 **전**의 해시·줄수·바이트수와, 다시 이은 뒤따르는 항목의 개수. 재봉인은 "사람이 체인을 고친" 사건이므로 무엇이 무엇으로 바뀌었는지가 남아야 한다 (R-50). `resealed_from_hash` 도 `hash` 부분 일치 예외로 등록 | 배치 | `audit.integrity allow` (13단계) |
 | `target_role` · `target_active` | 무엇을 | 대상 계정의 역할·활성 여부(변경 후 값) | 핸들러 | `user.*` (10단계) |
@@ -1262,7 +1268,7 @@ php_admin_value[disable_functions]   = fsockopen,pfsockopen,stream_socket_client
 | 04:30 | `scripts/verify_backup.sh` | 최신 산출물 `sha256sum -c` + gpg 복호화 시험(`pg_restore -l` 목록만) | `audit.integrity allow|error`, 2회 연속 실패 → `alert.raised AL-8` |
 | 00:05 | `scripts/audit_chain.php` | `audit.log` 일별 sha256 해시 체인(R-11) | `/var/lib/tbox-v2/audit-chain.txt`, `audit.integrity` |
 | 매 5분 | `scripts/alerts.php` | AL-1·AL-2·AL-5·AL-7·AL-10 SQL 판정, 중복 억제 30분 | `/var/log/tbox-v2/alerts.log`, `alert.raised` |
-| 매주 일 02:00 | `scripts/consistency_check.php` | DB ↔ 스토리지 정합성 (고아·누락·sha256) | `audit.integrity`, 불일치 → `alert.raised AL-6` |
+| **매일 02:00** (16-2, 2026-09-12 — 주 1회에서 당김, SECURITY 8.4-6) | `scripts/consistency_check.php` | DB ↔ 스토리지 정합성 (고아·누락·sha256) | `audit.integrity`, 불일치 → `alert.raised AL-6` |
 
 셸 스크립트의 감사 기록은 `scripts/audit_cli.php <action> <result> [reason] --target … --detail JSON` 로 남긴다(문장 표에 없는 조합은 실패). 복구는 `scripts/restore.sh`(11.2). 서버 기준선 점검은 `scripts/check_baseline.sh`(읽기 전용), 강화 적용은 `deploy/hardening.sh --apply`(기본은 출력만 — 원격 세션 차단 위험이 있어 사용자가 직접 실행).
 

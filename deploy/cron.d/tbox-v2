@@ -40,7 +40,13 @@ SHELL=/bin/bash
 #         어제는 영영 봉인되지 않았다 → --verify 가 매일 실패하고 AL-6 헛경보 (SECURITY R-50).
 #         잘못 적힌 지난 항목은 사람이 `--reseal YYYY-MM-DD` 로 한 번만 바로잡는다.
 5    0   *   *  *     root  php  /var/www/tbox-v2/scripts/audit_chain.php --yesterday
-# 매주 일 02:00  DB ↔ 저장소 정합성 검사. 불일치 → AL-6
-0    2   *   *  0     root  php  /var/www/tbox-v2/scripts/consistency_check.php --quiet
-# 5분마다  경보 판정 (AL-1·AL-2·AL-5·AL-7·AL-10·AL-12)
+# 매일 02:00  DB ↔ 저장소 정합성 검사. 불일치 → AL-6
+#         16-2(2026-09-12, SECURITY 8.4-6): **주 1회 → 일 1회**로 당겼다. 2026-09-11 사고에서
+#         앱 밖 삭제가 일어난 뒤 정합성이 깨진 상태로 최대 7일 조용할 수 있었다(요일 칸이 `0`).
+#         하루치 검사 비용(파일 수만큼의 stat + sha256)은 이 규모에서 문제가 되지 않는다.
+0    2   *   *  *     root  php  /var/www/tbox-v2/scripts/consistency_check.php --quiet
+# 5분마다  경보 판정 (AL-1·AL-2·AL-5·AL-7·AL-10·AL-12 = audit_logs SQL,
+#          AL-3·AL-9 = /var/log/auth.log — 16-2, SECURITY 8.4-5)
+#          auth.log 는 0640 syslog:adm 이라 **root 로 실행할 때만** 그 두 규칙이 돈다.
+#          읽지 못하면 그 규칙만 `[건너뜀]` 을 찍고 나머지는 그대로 판정한다.
 */5  *   *   *  *     root  php  /var/www/tbox-v2/scripts/alerts.php

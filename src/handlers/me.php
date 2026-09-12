@@ -91,4 +91,9 @@ Http::json([
     'next'                 => Auth::nextStep($user),
     'must_change_password' => ($user['must_change_password'] ?? false) === true,
     'mfa_setup_required'   => ($user['mfa_setup_required'] ?? false) === true,
+    // 16-1 — 관리 기능 재인증 (PRD F-23, ARCH 4.0). 이 세션의 창이 지금 열려 있나.
+    // 다른 can_* 와 같은 **화면 편의 값**이다: 화면이 관리 링크를 누르기 전에 모달을 미리
+    // 띄울지 고르는 데만 쓴다. 값이 무엇이든 막는 것은 라우터 관문 [3-2] 이고,
+    // 이 값을 true 로 고쳐 보내도 서버는 요청마다 DB(sessions.reauth_at)를 다시 본다 (PRD S-01).
+    'reauth_fresh'         => ($user['reauth_fresh'] ?? false) === true,
 ]);

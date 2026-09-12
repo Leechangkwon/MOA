@@ -66,6 +66,15 @@ final class Auth
     private const LOCK_MINUTES = 10;
 
     /**
+     * 관리 기능 재인증(sudo 모드)의 창 길이 — 분 (16-1, PRD F-23, ARCH 4.0).
+     *
+     * 이 값 안에 비밀번호를 다시 확인한 세션만 관리 영역을 쓸 수 있다. 창을 늘리는 요청
+     * 파라미터·연장 API 는 만들지 않는다 — 늘릴 수 있는 창은 창이 아니다(SECURITY R-59).
+     * 판정은 SQL_LOOKUP 의 `reauth_fresh` 가 **DB 시계 하나**로 한다.
+     */
+    public const REAUTH_MINUTES = 15;
+
+    /**
      * 아이디가 없을 때 대신 검증하는 고정 Argon2id 해시.
      * 평문은 만들 때 쓰고 버린 무작위 24바이트이며 어디에도 남기지 않았다 — 이 해시로는 로그인할 수 없다.
      * 부팅 시 password_hash() 로 만들지 않는 이유: 요청마다 해시 1회가 더 늘어나고,
@@ -86,7 +95,14 @@ final class Auth
                -- 라우터 관문이 요청마다 보는 값이라 세션 조회에 함께 싣는다(쿼리 1회 유지).
                u.must_change_password AS must_change_password,
                u.mfa_setup_required   AS mfa_setup_required,
-               (u.expires_at IS NOT NULL AND u.expires_at < now()) AS is_expired
+               (u.expires_at IS NOT NULL AND u.expires_at < now()) AS is_expired,
+               -- 16-1 (PRD F-23) — 관리 기능 재인증(sudo 모드).
+               -- 판정을 앱이 아니라 **DB 시계 하나**로 한다: 앱 서버와 DB 의 시계가 어긋나도
+               -- 창의 길이가 흔들리지 않고, 요청마다 쿼리를 하나 더 늘리지도 않는다.
+               s.reauth_at    AS reauth_at,
+               (s.reauth_at IS NOT NULL
+                AND s.reauth_at > now() - make_interval(mins => CAST(:reauth_min AS integer)))
+                              AS reauth_fresh
           FROM sessions s
           JOIN users   u ON u.id = s.user_id
          WHERE s.id = :id
@@ -151,6 +167,18 @@ final class Auth
 
     private const SQL_CLEAR_FAILED = <<<'SQL'
         UPDATE users SET failed_count = 0, locked_until = NULL WHERE id = :id
+        SQL;
+
+    /**
+     * 관리 기능 재인증 성공 — **지금 이 세션 행만** 창을 연다 (16-1, PRD F-23, ARCH 4.0).
+     *
+     * user_id 로 갱신하지 않는 이유: 사무실 PC 에서 한 번 확인한 것이 집 노트북·훔친 쿠키의
+     * 세션까지 함께 열어 주면 그것은 세션마다 묻는 뜻이 사라진다. 창의 길이는 여기서 정하지
+     * 않는다 — `now()` 만 놓고, 15분 판정은 SQL_LOOKUP 의 reauth_fresh 가 한다.
+     */
+    private const SQL_SET_REAUTH = <<<'SQL'
+        UPDATE sessions SET reauth_at = now() WHERE id = :id
+        RETURNING (reauth_at + make_interval(mins => CAST(:reauth_min AS integer))) AS reauth_until
         SQL;
 
     /**
@@ -226,8 +254,9 @@ final class Auth
         }
         $db  = Db::instance();
         $row = $db->run(self::SQL_LOOKUP, [
-            ':id'       => $id,
-            ':idle_min' => Env::getInt('SESSION_IDLE_MIN'),
+            ':id'         => $id,
+            ':idle_min'   => Env::getInt('SESSION_IDLE_MIN'),
+            ':reauth_min' => self::REAUTH_MINUTES,
         ])->fetch();
 
         if (!is_array($row)) {
@@ -276,6 +305,15 @@ final class Auth
             // **요청에서 읽지 않는다** — 언제나 DB 의 현재 값이다 (PRD S-01).
             'must_change_password' => $row['must_change_password'] === true,
             'mfa_setup_required'   => $row['mfa_setup_required'] === true,
+            /*
+             * 16-1 — 관리 기능 재인증 (PRD F-23, ARCH 4.0). 라우터 관문 [3-2] 가 보는 값이다.
+             *   reauth_fresh — 15분 창 안인가. 판정은 위 SQL 이 DB 시계로 했고 앱은 참/거짓만 읽는다.
+             *   reauth_at    — 마지막 확인 시각(없으면 null). 화면이 "언제까지 열려 있나" 를
+             *                  보여 주는 데만 쓰고 **판정에는 쓰지 않는다**.
+             * 요청에서 읽지 않는다 — 언제나 DB 의 현재 값이다 (PRD S-01).
+             */
+            'reauth_fresh' => $row['reauth_fresh'] === true,
+            'reauth_at'    => $row['reauth_at'] === null ? null : (string) $row['reauth_at'],
         ];
         return self::$user;
     }
@@ -478,6 +516,14 @@ final class Auth
             // 11단계 — 로그인 응답의 `next` 를 계산하는 값 (PRD F-16, ARCH 4.0)
             'must_change_password' => $row['must_change_password'] === true,
             'mfa_setup_required'   => $row['mfa_setup_required'] === true,
+            /*
+             * 16-1 (PRD F-23) — **로그인은 재인증 창을 열지 않는다.**
+             * SQL_INSERT_SESSION 에 reauth_at 이 없으므로 새 세션 행의 값은 NULL 이고,
+             * 여기서도 거짓으로 고정한다. "관리 영역 첫 진입에 반드시 한 번 묻는다" 는
+             * 사용자 요구(ARCH 4.0 재인증 행)가 이 두 줄로 지켜진다.
+             */
+            'reauth_fresh' => false,
+            'reauth_at'    => null,
         ];
         return self::$user;
     }
@@ -622,6 +668,74 @@ final class Auth
         }
 
         return [true, null, $revoked];
+    }
+
+    /**
+     * 관리 기능 재인증 — sudo 모드 (16-1, PRD F-23 · 8장 `/api/me/reauth` 행, ARCH 4.0).
+     *
+     * 하는 일
+     *   1) **현재 비밀번호**를 다시 확인한다. 2단계 인증 코드는 다시 묻지 않는다 —
+     *      로그인에서 이미 거쳤고(순차 2단계), 관리 영역에서 더 묻는 것은 사용자 결정 밖이다.
+     *   2) 맞으면 **지금 이 세션 행**의 `reauth_at = now()` 를 놓는다(다른 기기 세션은 그대로).
+     *   3) 틀리면 로그인 뒤 창구와 **같은 카운터**로 센다 — 5회면 계정이 잠기고 그 순간
+     *      그 계정의 세션이 전부 끊긴다 (13단계 규칙, SECURITY R-48 · R-59).
+     *   4) 성공·실패 모두 감사 로그에 남는다 (`auth.reauth allow` / `deny bad_credentials`).
+     *
+     * **권한을 만들지 않는다.** 이 함수는 "비밀번호를 다시 확인했다" 는 사실만 기록한다.
+     * 무엇을 할 수 있는지는 여전히 Authz 가 판단하고, 관문 [3-2] 는 인가 **뒤**에 있다 —
+     * Employee 가 재인증해도 `/api/users` 는 `authz.route deny` 다 (PRD T-36).
+     *
+     * 비밀번호는 응답·감사 로그·app.log 어디에도 남지 않는다 (PRD 7.7).
+     *
+     * @param array<string,mixed> $user 현재 로그인한 사용자 (요청 값이 아니다)
+     * @return array{0:bool,1:?string} [성공 여부, 창이 열려 있는 끝 시각(ISO) 또는 null]
+     */
+    public static function reauth(array $user, string $password): array
+    {
+        $db        = Db::instance();
+        $userId    = (int) $user['id'];
+        $sessionId = (string) ($user['session_id'] ?? '');
+
+        $target = [
+            'target_type' => 'user',
+            'target_id'   => $userId,
+            'target_name' => (string) $user['username'],
+        ];
+
+        $row = $db->run(self::SQL_LOAD_BY_ID, [':id' => $userId])->fetch();
+        if (!is_array($row) || !password_verify($password, (string) $row['password_hash'])) {
+            // 기록을 먼저 남긴다 — 세션이 끊긴 뒤에는 actor 를 읽을 수 없다
+            // (Auth::changePassword 와 같은 순서).
+            Audit::deny('auth.reauth', 'bad_credentials', $target);
+            self::countFailureAndRevoke($userId);
+            return [false, null];
+        }
+
+        if ($sessionId === '') {
+            // 세션 없이 여기 닿는 경로는 없다(라우터가 requireLogin 을 먼저 통과시킨다).
+            // 그래도 빈 값으로 UPDATE 를 던지지 않는다 — 0행 갱신을 성공으로 보고할 수는 없다.
+            throw new RuntimeException('재인증할 세션이 없습니다');
+        }
+
+        $updated = $db->run(self::SQL_SET_REAUTH, [
+            ':id'         => $sessionId,
+            ':reauth_min' => self::REAUTH_MINUTES,
+        ])->fetch();
+        if (!is_array($updated)) {
+            throw new RuntimeException('재인증 시각을 기록하지 못했습니다');
+        }
+
+        /*
+         * 맞혔으면 실패 카운터를 0 으로 되돌린다 — 로그인 성공(SQL_CLEAR_FAILED)·비밀번호 변경
+         * 성공(SQL_SET_PASSWORD)과 **같은 규칙**이다. 두 번 잘못 치고 세 번째에 맞힌 사람이
+         * 며칠 뒤 세 번 더 잘못 치면 잠기는 상태를 남기지 않는다. 카운터를 지우려면 **현재
+         * 비밀번호를 맞혀야** 하므로, 쿠키만 훔친 사람에게는 이 경로가 열리지 않는다.
+         */
+        $db->run(self::SQL_CLEAR_FAILED, [':id' => $userId]);
+
+        Audit::allow('auth.reauth', $target + ['detail' => ['window_minutes' => self::REAUTH_MINUTES]]);
+
+        return [true, (string) $updated['reauth_until']];
     }
 
     /** 로그아웃 (PRD F-02): 서버측 세션 행 삭제가 본체이고, 쿠키 삭제는 정리다. */

@@ -37,7 +37,9 @@ require_once __DIR__ . '/lib/cli_bootstrap.php';
  */
 const CLI_ALLOWED_ACTIONS = [
     'backup.run'      => ['allow', 'error'],
-    'backup.restore'  => ['allow'],
+    // 16-2 (SECURITY 8.4-10): `error` 를 더했다. 복구가 중간에 멈추면 그 사실이 남을 곳이
+    // 있어야 한다 — 없던 동안 2026-09-11 의 실패한 복구는 롤백된 `allow` 한 줄로만 남았다.
+    'backup.restore'  => ['allow', 'error'],
     'audit.integrity' => ['allow', 'error'],
     'alert.raised'    => ['allow'],
     'file.purge'      => ['allow', 'error'],
