@@ -10,7 +10,10 @@ declare(strict_types=1);
  * 받는 변수 (호출하는 핸들러가 include 전에 정의한다)
  *   · $user      array   라우터가 넘긴 현재 사용자 (DB 에서 읽은 값. 요청 값이 아니다)
  *   · $pageTitle string  <title> 에 들어갈 화면 이름
- *   · $activeNav string  지금 켜 둘 내비 항목 — files|trash|settings|users|org|audit|wiki
+ *   · $activeNav string  지금 켜 둘 내비 항목 — files|settings|activity|admin
+ *                        (trash·users·org·audit·wiki 는 17-1 에서 내비에서 빠졌지만, 그 화면들이
+ *                         여전히 값을 넘기므로 허용 목록에는 남겨 둔다 — 맞는 항목이 없으면
+ *                         아무 항목도 켜지지 않을 뿐이다)
  *   · $pageKey   string  <body data-page> — app.js 가 어떤 화면인지 고르는 열쇠
  *
  * ★ HTML 에 들어가는 동적 값은 **사용자명·역할·pageTitle·activeNav·pageKey 다섯 개뿐**이고
@@ -18,17 +21,22 @@ declare(strict_types=1);
  *   activeNav·pageKey 는 허용 목록 밖 값이면 빈 문자열로 바꾼다 — 핸들러의 오타가
  *   속성값으로 새어 나가지 않게 하는 자리다.
  *
- * ★ 이 파일에 **역할 비교를 두지 않는다** (PRD S-01, ARCH 13장). 내비 항목은 전부
- *   `hidden` 인 채로 나가고, `/api/me` 의 `can_view_trash`·`can_manage_users`·
- *   `can_view_audit`·`can_view_wiki` 가 참일 때만 app.js 가 연다. 개발자도구로 항목을 되살려도
- *   `/trash`·`/users`·`/audit`·`/wiki` 는 라우터 정책이 다시 막는다 — 표시는 편의, 근거는 라우트 정책이다.
+ * ★ 이 파일에 **역할 비교를 두지 않는다** (PRD S-01, ARCH 13장). 관리 항목은 `hidden` 인 채로
+ *   나가고, `/api/me` 의 `can_admin` 이 참일 때만 app.js 가 연다. 개발자도구로 항목을 되살려도
+ *   `/admin` 은 라우터 정책(`role:Admin`)과 재인증 관문이 다시 막는다 — 표시는 편의,
+ *   근거는 라우트 정책이다.
+ *
+ * ★ 17-1 (PRD F-24, ARCH 5.14): 관리 그룹(계정 관리·조직·권한·감사 로그·휴지통·위키)을
+ *   일반 셸에서 **없앴다**. 대신 Admin 에게만 「관리자 페이지」 한 항목이 보이고, 세부 화면은
+ *   허브(`/admin`)의 카드로만 간다. 기존 경로(`/users`·`/org`·`/audit`·`/trash`·`/wiki`)는
+ *   그대로 살아 있다(문서·위키가 가리킨다) — 없어진 것은 **내비 항목**이지 경로가 아니다.
  *
  * ★ 인라인 <script>·style 속성·on* 이벤트 속성을 쓰지 않는다 (CSP: script-src 'self', style-src 'self').
  *   아이콘은 shell_bottom.php 의 <template> 을 app.js 가 cloneNode 로 붙인다 (문자열 → HTML 변환 0).
  */
 
 /** 내비·본문 키의 허용 목록. 여기 없는 값은 빈 문자열이 된다. */
-$shellKeys = ['files', 'trash', 'settings', 'activity', 'users', 'org', 'audit', 'wiki'];
+$shellKeys = ['files', 'trash', 'settings', 'activity', 'users', 'org', 'audit', 'wiki', 'admin'];
 
 $shellUser   = isset($user) && is_array($user) ? $user : [];
 $shellName   = htmlspecialchars((string) ($shellUser['username'] ?? ''), ENT_QUOTES, 'UTF-8');
@@ -103,11 +111,6 @@ if (!headers_sent()) {
       <a id="nav-files" class="<?= $shellNavClass('files') ?>" href="/">
         <span class="icon" data-icon="files"></span><span>파일</span>
       </a>
-      <!-- 휴지통·계정 관리·조직·권한·감사 로그는 **기본이 hidden** 이다.
-           서버가 /api/me 로 내려 준 can_* 가 참일 때만 app.js 가 연다 (PRD 10장 「공통 셸」). -->
-      <a id="nav-trash" class="<?= $shellNavClass('trash') ?>" href="/trash" hidden>
-        <span class="icon" data-icon="trash"></span><span>휴지통</span>
-      </a>
     </nav>
 
     <p class="nav-title">설정</p>
@@ -123,24 +126,14 @@ if (!headers_sent()) {
       </a>
     </nav>
 
+    <!-- 17-1 관리자 영역 (PRD F-24, ARCH 5.14) — 일반 셸에 남은 관리 항목은 **이 하나뿐**이다.
+         기본은 hidden 이고, `/api/me` 의 can_admin 이 참일 때만 app.js 가 연다.
+         계정 관리·조직·권한·감사 로그·휴지통·위키는 허브(/admin)의 카드로 들어간다. -->
     <div id="nav-admin-group" hidden>
       <p class="nav-title">관리</p>
       <nav class="nav" aria-label="관리">
-        <a id="nav-users" class="<?= $shellNavClass('users') ?>" href="/users" hidden>
-          <span class="icon" data-icon="users"></span><span>계정 관리</span>
-        </a>
-        <!-- 「조직·권한」은 12-3 에서 `can_manage_org` 로 연다. 지금은 언제나 hidden 이다. -->
-        <a id="nav-org" class="<?= $shellNavClass('org') ?>" href="/org" hidden>
-          <span class="icon" data-icon="org"></span><span>조직·권한</span>
-        </a>
-        <a id="nav-audit" class="<?= $shellNavClass('audit') ?>" href="/audit" hidden>
-          <span class="icon" data-icon="log"></span><span>감사 로그</span>
-        </a>
-        <!-- 「위키」는 14단계에서 `can_view_wiki` 로 연다 (F-21, Admin 만 — SECURITY R-56).
-             아이콘은 새 <template> 을 만들지 않고 기존 것(shield)을 재사용한다 —
-             위키의 내용이 곧 "이 서비스를 어떻게 안전하게 만들었나" 이기 때문이다. -->
-        <a id="nav-wiki" class="<?= $shellNavClass('wiki') ?>" href="/wiki" hidden>
-          <span class="icon" data-icon="shield"></span><span>위키</span>
+        <a id="nav-admin" class="<?= $shellNavClass('admin') ?>" href="/admin" hidden>
+          <span class="icon" data-icon="lock"></span><span>관리자 페이지</span>
         </a>
       </nav>
     </div>

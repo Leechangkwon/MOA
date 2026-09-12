@@ -32,6 +32,16 @@ if [ -n "$curl_hits" ]; then
 else
   echo "✔ cURL 사용이 src/Fetch.php 밖에 있음  [S-05 ⑬]"
 fi
+# 권한 매트릭스 쓰기 연결(tbox_perm)은 핸들러 한 파일에서만 허용 (17-2 — PRD F-25 ⑤, ARCH 5.15,
+# SECURITY R-60). cURL 규칙과 같은 방식이다: 이름이 나온 곳을 전부 찾은 뒤 허용 파일만 뺀다.
+# 이 규칙이 지키는 것 — 앱 롤 tbox_app 은 permissions 에 SELECT 만이고, 쓰기 자격이 붙는
+# 코드 경로는 `PATCH /api/admin/permissions` 하나뿐이라는 성질이다.
+perm_hits=$(grep -rnE "${INCLUDE[@]}" "${EXCLUDE[@]}" -- 'Db::perm\(' "$ROOT" 2>/dev/null | grep -v '/src/handlers/admin_permissions_update\.php:' | grep -v '/src/Db\.php:' || true)
+if [ -n "$perm_hits" ]; then
+  echo "✖ Db::perm() 사용이 admin_permissions_update.php 밖에 있음  [F-25 ⑤ · R-60]"; echo "$perm_hits" | sed 's/^/    /'; fail=1
+else
+  echo "✔ Db::perm() 사용이 admin_permissions_update.php 밖에 있음  [F-25 ⑤ · R-60]"
+fi
 check "요청 파라미터의 역할값 사용 (\$_GET/\$_POST['role'])"    "\\\$_(GET|POST|REQUEST|COOKIE)\[['\"](role|is_admin|team_id)['\"]\]" 'S-01'
 check "Authz 밖에서 역할 문자열 직접 비교"                      "\\['role'\\]\s*===?\s*'(Admin|Manager|Employee|Guest)'"        'S-01'
 check "코드 실행 함수 (eval/exec/system/shell_exec/passthru)"   '\b(eval|exec|system|shell_exec|passthru|popen|proc_open)\('   'S-09'

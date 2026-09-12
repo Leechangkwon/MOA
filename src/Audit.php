@@ -99,6 +99,16 @@ final class Audit
          * 키임을 코드에서도 드러내려고 여기 적는다(preview_kind·part 와 같은 이유).
          */
         'share_id', 'issued_by', 'remaining', 'expires_at', 'max_downloads', 'sensitive',
+        /*
+         * 17-2 권한 매트릭스 편집 (PRD F-25, ARCH 5.15 · 7.5 등록부).
+         *   otp_verified — "요청마다 받은 2단계 인증 코드를 **서버가 확인했다**" 는 사실(true)만.
+         *                  코드 6자리도, 비밀도, 스텝 번호도 넣지 않는다. 이름에 `otp` 가 들어가
+         *                  FORBIDDEN_DETAIL_KEYS 부분 일치에 걸리므로 예외로 등록한다
+         *                  (`temp_password_issued` 와 **같은 성격**: 값이 아니라 사실만 남긴다).
+         * `before`·`after`(바뀐 칸의 이전값→새값)·`reason_text`·`rule`(어긴 불변 규칙 글자)은
+         * 이미 등록부에 있고 금지 목록에 걸리지 않아 따로 적지 않는다.
+         */
+        'otp_verified',
     ];
 
     private const RESULT_ALLOW = 'allow';
@@ -330,6 +340,17 @@ final class Audit
         // 문장에도 detail 에도 **패턴 이름과 건수만** 남는다 (검출된 숫자 원문은 금지, PRD S-07).
         'file.upload|deny|sensitive_level_required'     => '{actor} 이(가) 민감정보로 보이는 내용이 든 파일 「{target}」 을(를) {level} 등급으로 올리려 해서 거부했습니다 (검출된 패턴 이름·건수는 상세 기록)',
         'file.level_change|deny|sensitive_level_required' => '{actor} 이(가) 민감정보로 보이는 내용이 든 파일 「{target}」 의 접근 등급을 {level} 등급으로 낮추려 해서 거부했습니다',
+
+        // ── 권한 매트릭스 편집 (17-2 admin_permissions_update — F-25, ARCH 5.15 · 7.4, SECURITY R-60) ──
+        // {target} 은 바뀐 **칸 이름** `역할|등급`(예 `Guest|internal`)이다 — 파일명도 계정명도 아니다.
+        // 허용 행은 **칸 하나에 한 줄**이고, 이전값 → 새값·사유·코드 확인 사실은 detail 에 남는다
+        // (`before`·`after`·`reason_text`·`otp_verified`). 2단계 인증 코드 자체는 어디에도 남지 않는다.
+        // 거부 사유 넷은 ARCH 5.15 의 순서와 같다: 형식 → 코드 → 코드 재사용 → 불변 규칙.
+        'permission.change|allow'                       => '{actor} 이(가) 권한 매트릭스의 {target} 칸을 바꿨습니다 (이전값→새값·사유·코드 확인은 상세 기록)',
+        'permission.change|deny|bad_request'            => '{actor} 이(가) 권한 매트릭스 변경을 허용되지 않는 형식(모르는 항목·사유·코드)으로 요청해서 거부했습니다',
+        'permission.change|deny|bad_code'               => '{actor} 이(가) 권한 매트릭스를 바꾸려 했지만 2단계 인증 코드가 맞지 않아 거부했습니다',
+        'permission.change|deny|code_reused'            => '{actor} 이(가) 권한 매트릭스를 바꾸려 했지만 이미 쓴 2단계 인증 코드라 거부했습니다',
+        'permission.change|deny|invariant'              => '{actor} 이(가) 권한 매트릭스의 바꿀 수 없는 규칙을 어기는 변경을 요청해서 거부했습니다 (어긴 규칙은 상세 기록)',
     ];
 
     /** 자리표시자에 넣을 값이 없을 때 (ARCH 7.4) */

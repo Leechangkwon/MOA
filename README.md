@@ -248,6 +248,106 @@ curl -s -o /dev/null -w '%{http_code} %{redirect_url}\n' -b jar http://127.0.0.1
 다른 화면을 열면 서버가 `/` 로 **302** 를 보내고(그 시도는 `auth.gate|deny` 로 남습니다),
 API 요청은 예전과 같이 **403 `{"next":…}`** 입니다.
 
+### 관리자 영역 — 관리 기능의 단일 입구 (`PRD.md` F-24 · `ARCHITECTURE.md` 5.14)
+
+17단계부터 **계정 관리 · 조직·권한 · 감사 로그 · 휴지통 · 위키**는 왼쪽 메뉴에 따로 있지 않습니다.
+관리자에게만 「**관리자 페이지**」 한 항목이 보이고, 그 안(`/admin`)의 카드로 각 화면에 들어갑니다.
+
+- **일반 화면의 메뉴에는 관리 항목이 없습니다.** 관리자가 아닌 계정의 화면에는 「관리자 페이지」도
+  보이지 않습니다. (메뉴를 개발자도구로 되살려도 `/admin` 은 **403** 입니다 — 막는 것은 메뉴가
+  아니라 서버의 라우트 정책입니다.)
+- 기존 주소(`/users` · `/org` · `/audit` · `/trash` · `/wiki`)는 **그대로** 살아 있습니다.
+  문서와 위키가 그 주소를 가리키기 때문입니다 — 없어진 것은 메뉴 항목이지 주소가 아닙니다.
+- 허브에는 카드 외에 **공유 링크 전체**(누가 어떤 파일의 링크를 발급했고 지금 상태가 무엇인지 —
+  토큰은 저장하지 않으므로 여기에도 없습니다)와 **최근 경보 50건**(`/var/log/tbox-v2/alerts.log`
+  를 읽기만 합니다), 그리고 **재인증 상태**가 함께 나옵니다.
+- 관리자 영역도 **재인증 15분 창**(F-23)을 그대로 지납니다. 들어갈 때 비밀번호를 한 번 더 묻고,
+  창이 닫히면 `/reauth?to=admin` 으로 보냅니다.
+
+```bash
+# 비관리자 세션
+curl -s -b jar-employee http://127.0.0.1:8082/admin           # → 403 {"error":"권한이 없습니다"}
+curl -s -b jar-employee http://127.0.0.1:8082/api/admin/shares # → 403 (시도는 authz.route|deny 로 남습니다)
+# 관리자 세션, 재인증 전
+curl -s -o /dev/null -w '%{http_code} %{redirect_url}\n' -b jar-admin http://127.0.0.1:8082/admin
+# → 302 /reauth?to=admin
+```
+
+### 권한 매트릭스 편집 (`PRD.md` F-25 · `ARCHITECTURE.md` 5.15 · `SECURITY.md` R-60)
+
+역할 × 접근 등급 표(`permissions` 16행)를 `/admin/permissions` 화면에서 바꿉니다.
+**이 표를 바꾸는 것은 보안 정책을 바꾸는 것**이라, 다섯 가지가 **전부** 있어야 바뀝니다.
+
+| 조건 | 무엇을 확인하나 |
+|---|---|
+| ① 관리자 + 재인증 | 라우트 정책 `role:Admin` + 15분 창 (F-23) |
+| ② 2단계 인증 코드 | **요청마다** 새 코드. 한 번 쓴 코드는 다시 못 씁니다(`code_reused`) |
+| ③ 사유 | 필수 1~500자. 감사 로그에 그대로 남습니다 |
+| ④ 서버 불변 규칙 | 아래 표 |
+| ⑤ 별도 DB 계정 | 쓰기는 `tbox_perm`(그 표에 SELECT·UPDATE 만) 으로만. 앱 계정 `tbox_app` 은 **여전히 읽기만** |
+
+바꿀 수 없는 것(서버가 400 으로 막고 `permission.change deny invariant` 로 남깁니다)
+
+- **관리자(Admin) 행 네 칸은 전부 켜진 채 고정** — 관리자가 스스로를 잠글 수 없습니다.
+- **「올리기」를 켜려면 같은 칸의 「읽기」도 켜져 있어야** 합니다.
+- **손님(Guest)의 관리자(admin-only) 칸은 꺼진 채 고정**입니다.
+- 역할·등급은 4×4 안의 값만, 그리고 **실제로 바뀌는 칸이 0개인 요청**도 거부합니다.
+
+화면에서는 잠긴 칸이 흐리게(체크 불가) 보이고 이유가 툴팁으로 뜹니다. 「적용」 전에
+**변경 미리보기**(`Guest · internal : 읽기 아니오 → 예`)로 무엇이 바뀌는지 확인합니다.
+
+바뀐 뒤
+
+- **효과는 다음 요청부터**입니다 — 이미 로그인해 있는 사람에게도 즉시 적용됩니다
+  (권한 표를 요청마다 읽기 때문입니다).
+- **칸마다 한 줄**씩 감사 로그 `permission.change allow` 에 이전값 → 새값·사유가 남습니다.
+- 경보 **AL-13** 이 **건수와 무관하게 즉시** 울립니다(정상 작업이어도 알립니다).
+
+왜 앱 계정으로 바꾸지 않나 — 앱의 어느 한 곳에 결함(SQL 인젝션 등)이 생겨도 권한 표는 못 바꾸게
+하려는 것입니다. 확인은 이렇게 합니다:
+
+```bash
+sudo -u postgres psql -d tbox_re -c '\dp permissions'
+#  tbox_app=r/tbox_owner     ← 읽기만
+#  tbox_perm=rw/tbox_owner   ← 이 계정만 쓰기 (다른 표 권한은 0)
+sudo -u postgres psql -d tbox_re -c "SET ROLE tbox_app; UPDATE permissions SET can_read=can_read WHERE false;"
+# → ERROR:  permission denied for table permissions
+```
+
+`tbox_perm` 의 비밀번호는 `deploy/install.sh` 가 만들어 `.env` 의 `DB_PERM_USER`·`DB_PERM_PASS`
+두 줄에 넣습니다(예시는 `.env.example` 의 주석만). 두 줄이 없으면 **매트릭스 편집 요청만**
+500 이 되고 나머지 기능은 정상입니다.
+
+### 관리자 영역을 관리망에서만 (선택, 기본 꺼짐) (`SECURITY.md` R-61)
+
+`/admin` 과 `/api/admin` 을 **특정 IP 대역에서만** 열 수 있습니다. nginx 사이트 파일
+(`deploy/sites/tbox-v2.conf` · `tbox-v2-local.conf`)에 그 블록이 **주석 상태**로 들어 있습니다.
+
+**기본은 꺼짐입니다.** 이 서비스의 접속 출처가 셋(사내망 두 대역 · 프록시 경유 외부)이라,
+자기 출처를 빠뜨린 채 켜면 **관리자 자신이 관리자 영역에서 잠깁니다**
+(`SECURITY.md` 8.4-16 의 관리망 기본값 사고와 같은 함정입니다).
+
+켜는 순서
+
+1. **지금 내 출처를 먼저 확인합니다** — 여기가 핵심입니다.
+   ```bash
+   sudo tail -n 50 /var/log/nginx/tbox-v2.access.log   # 첫 칸이 (프록시가 복원한) 실제 IP
+   ```
+   이 VM 은 리버스 프록시 뒤에 있어 `set_real_ip_from` 이 복원한 주소가 기준입니다 —
+   **프록시 IP 를 allow 에 적으면 안 됩니다**(그러면 모든 외부 접속이 통과합니다).
+2. `deploy/sites/tbox-v2.conf` 의 `# location ^~ /admin { … }` 두 블록에서 주석을 풀고
+   `allow` 줄을 ①에서 확인한 대역으로 바꿉니다. `deny all;` 은 마지막에 그대로 둡니다.
+3. 반영합니다.
+   ```bash
+   sudo bash deploy/switch-site.sh v2   # 사이트 파일 설치
+   sudo nginx -t && sudo systemctl reload nginx
+   ```
+4. **로그인한 창을 닫지 말고** 다른 창에서 `/admin` 접속을 확인합니다. 막히면 ②를 되돌리고
+   다시 reload 합니다.
+
+끄면(기본) 관리자 영역을 막는 겹은 **라우트 정책 `role:Admin` 과 재인증 15분 창** 둘입니다 —
+네트워크 겹은 그 위에 더하는 세 번째 겹이지 대체가 아닙니다.
+
 ## 설치 · 실행
 
 실습 VM(Ubuntu 22.04 · PHP 8.1 · PostgreSQL 14 · nginx 1.18) 기준입니다. 설정 내용은 `ARCHITECTURE.md` 3장 배포 메모와 8·9·10장 그대로입니다.

@@ -1071,6 +1071,11 @@ GRANT  USAGE, SELECT  ON SEQUENCE audit_logs_id_seq TO tbox_app;
 | `share.download|error|hash_mismatch` | `공유 링크로 파일 「{target}」 을(를) 보내려 했지만 저장된 파일의 내용이 기록과 달라 전송을 막았습니다 (변조 의심, 점검 필요)` | 15-2 ⑤-2 (R-13, AL-6). 응답은 다른 실패와 같은 404 |
 | `file.upload|deny|sensitive_level_required` | `{actor} 이(가) 민감정보로 보이는 내용이 든 파일 「{target}」 을(를) {level} 등급으로 올리려 해서 거부했습니다 (검출된 패턴 이름·건수는 상세 기록)` | 15-3 files_upload·files_fetch (같은 행동 이름을 쓴다 — detail `sensitive`, **값은 기록 금지**) |
 | `file.level_change|deny|sensitive_level_required` | `{actor} 이(가) 민감정보로 보이는 내용이 든 파일 「{target}」 의 접근 등급을 {level} 등급으로 낮추려 해서 거부했습니다` | 15-3 files_update (`sensitive_flags` 가 비어 있지 않고 새 등급이 public·internal. Admin 도 같은 400) |
+| `permission.change|allow` | `{actor} 이(가) 권한 매트릭스의 {target} 칸을 바꿨습니다 (이전값→새값·사유·코드 확인은 상세 기록)` | 17-2 admin_permissions_update — **칸 하나에 한 줄**. `{target}` 은 `역할\|등급`(예 `Guest\|internal`). detail `before`·`after`·`reason_text`·`otp_verified` |
+| `permission.change|deny|bad_request` | `{actor} 이(가) 권한 매트릭스 변경을 허용되지 않는 형식(모르는 항목·사유·코드)으로 요청해서 거부했습니다` | 17-2 허용 키 3개 밖·사유 없음·코드 형식 밖 (R-07 과 같은 화이트리스트) |
+| `permission.change|deny|bad_code` | `{actor} 이(가) 권한 매트릭스를 바꾸려 했지만 2단계 인증 코드가 맞지 않아 거부했습니다` | 17-2 `Totp::verifyStep` 실패 — **실패 집계**(countFailureAndRevoke) |
+| `permission.change|deny|code_reused` | `{actor} 이(가) 권한 매트릭스를 바꾸려 했지만 이미 쓴 2단계 인증 코드라 거부했습니다` | 17-2 `mfa_last_step` 1회성 (R-45) — 실패 집계 |
+| `permission.change|deny|invariant` | `{actor} 이(가) 권한 매트릭스의 바꿀 수 없는 규칙을 어기는 변경을 요청해서 거부했습니다 (어긴 규칙은 상세 기록)` | 17-2 불변 규칙 (a)~(e), detail `rule` (5.15). 실패로 세지 않는다(비밀값 추측이 아니다) |
 
 > 7·8·9단계(URL 가져오기·감사 로그 조회·백업)의 행동은 그 단계 지시서에서 이 표에 행을 먼저 추가한 뒤 구현한다.
 
@@ -1122,6 +1127,8 @@ GRANT  USAGE, SELECT  ON SEQUENCE audit_logs_id_seq TO tbox_app;
 | `max_downloads` | 무엇을 | 그 링크의 허용 횟수(1~10) | 핸들러 | `share.*` (15-2) |
 | `expires_at` (공유 링크) | 무엇을 | 링크 만료 시각. 계정 만료(`user.*`)와 **같은 키**를 쓴다 — 뜻이 같아 굳이 나누지 않는다 | 핸들러 | `share.create`·`share.download deny expired` (15-2) |
 | `sensitive` | 무엇을 | 검출된 **패턴 이름과 건수만** (`{"rrn":1,"card":2}`). 검출된 숫자·문자열 **원문은 어떤 형태로도 넣지 않는다** (PRD S-07, SECURITY R-58). 빈 결과면 키 자체를 넣지 않는다 | 핸들러 | `file.upload` allow·deny `sensitive_level_required` (15-3) |
+| `otp_verified` | 어떻게 | `true` — 요청에 실린 2단계 인증 코드를 **서버가 확인했다는 사실만**. 코드 6자리·비밀·스텝 번호는 어떤 형태로도 넣지 않는다(`temp_password_issued` 와 같은 성격). 이름에 `otp` 가 들어가 `FORBIDDEN_DETAIL_KEYS` 부분 일치에 걸리므로 `Audit::ALLOWED_DETAIL_KEYS` 에 정확 일치로 등록한다 | 핸들러 | `permission.change allow` (17-2) |
+| `rule` (불변 규칙) | 왜 | 권한 매트릭스 변경이 어긴 불변 규칙의 글자 `a`~`e` (ARCH 5.15 ③). 경보 배치의 `rule`(AL-x)과 **같은 키를 다른 행에서** 쓴다 — 둘 다 "어느 규칙인가" 라는 뜻이라 나누지 않는다 | 핸들러 | `permission.change deny invariant` (17-2) |
 
 **검토 행동과 사용자 행동 가르기** — 두 조건 중 하나면 검토다. 둘 다 아니면 사용자(또는 침입자)다.
 

@@ -36,7 +36,7 @@
 | **14** | 위키(F-21) — 네 문서를 초보자 말로 다시 쓴 해설 글(안내 8편 + 단계 1~13) `wiki/*.json`, 서버 렌더러 `src/Wiki.php`, `/wiki`·`/wiki/{slug}`(Admin), 내비 「위키」, `scripts/wiki_check.php` — 사용자 요청 2026-09-12 | ✅ 구현·검토 | ✅ 2026-09-12 (내용 Fable 3인 · 화면 Opus) | ✅ 2026-09-12 (T-32 4역할·XSS·구조 검사 통과) | ⚠ 대기 | 14단계 커밋 |
 | **15** | 확장 아이템 — **15-1** 내 활동 보기(F-12) · **15-2** 만료 공유 링크(F-13, Q-5 기본안) · **15-3** 민감정보 패턴 검출(F-22) — 사용자 "진행해" 2026-09-12 | ✅ 구현·검토 | ✅ 2026-09-12 (재지시 1회) | ✅ 2026-09-12 (T-33~T-35 통과) | ⚠ 대기 | 15단계 커밋 |
 | **16** | 미반영 재점검 — **16-1** 관리 기능 재인증 sudo 모드(F-23, 12단계 접수 ③ 사용자 확정) · **16-2** 사고 후속 미완 3건(AL-3 확장·AL-9, 정합성 일 1회, `restore_failed` 문장 틀) — 2026-09-12 | ✅ 구현·검토 | ✅ 2026-09-12 | ✅ 2026-09-12 (T-36·T-37 통과) | ⚠ 대기 | 16단계 커밋 |
-| **17** | 관리자 영역 `/admin`(F-24) · 권한 매트릭스 화면 편집(F-25, Q-12 결정) — 사용자 요청 2026-09-12 | ⏳ 설계 | ⏳ 16단계 뒤 Opus | — | — | — |
+| **17** | 관리자 영역 `/admin`(F-24) · 권한 매트릭스 화면 편집(F-25, Q-12 결정) — 사용자 요청 2026-09-12 | ✅ 구현·검토 | ✅ 2026-09-12 | ✅ 2026-09-12 (T-38·T-39 통과) | ⚠ 대기 | 17단계 커밋 |
 
 ---
 
@@ -672,31 +672,31 @@ sudo -u postgres psql -d tbox_re -c "SELECT happened_at, actor_name, action, res
 | 2026-09-12 | 어려움(Opus 자기 보고 → R-62) | 구현 에이전트가 자격증명 파일을 통째로 출력해 검토 계정 비밀번호·TOTP 비밀이 세션 기록에 남음 | 사용자 결정 대기: 재발급(a)·기록 삭제(b). 근본 조치: 로그인 도구를 저장소 `scripts/` 로 옮겨 에이전트가 파일을 직접 읽지 않게(17단계 이후) |
 | 2026-09-12 | 관찰 | AL-9 첫 실행이 과거 이력을 재생하며 `CREATE USER tbox WITH PASSWORD '…'`(v1 설치 때 명령)를 그대로 기록 — 가리기 규칙이 `password=`·`PGPASSWORD=` 만 봄 | 17단계 `alerts.php` 보강 항목(`PASSWORD '…'` 도 제거). v1 계정 비밀번호는 문서에 이미 있는 값(ARCH 3장) |
 
-### 17단계 — 관리자 영역 `/admin` · 권한 매트릭스 화면 편집 ⏳ 설계 완료, 16단계 검토 뒤 구현 (F-24 · F-25 · T-38 · T-39 · R-60 · R-61 · Q-12) — 사용자 요청 2026-09-12
+### 17단계 — 관리자 영역 `/admin` · 권한 매트릭스 화면 편집 ✅ 구현·검토 완료, 관문 ③ 대기 (F-24 · F-25 · T-38 · T-39 · R-60 · R-61 · Q-12) — 사용자 요청 2026-09-12
 
 > 사용자(원문 요지, 2026-09-12): "중요도에 따라 관리자 페이지를 새로 만들고 일반적으로는 접근하지 못하게 구성하고 싶어. 권한 인증을 서버에서 인증받도록 하고는 있지만… 권한 관리는 보안만 확보된다면 페이지에서 관리해도 충분할 것 같아."
 > 해석(Fable): ① 관리 기능의 **단일 입구** `/admin` 허브를 만들고 일반 셸에서 관리 항목을 치운다(Admin 에게만 「관리자 페이지」 한 항목). 막는 겹은 세 개 — 정책 `role:Admin`(서버 인가) · 재인증(F-23, 16단계) · 네트워크(nginx 관리망 허용 블록, **기본 꺼짐** — 사용자 출처가 셋이라 켜면 스스로 잠길 수 있음, R-61). ② Q-12 를 「허용」으로 결정 기록하고, "보안 확보" 를 다섯 조건으로 구체화한다: 별도 DB 롤 `tbox_perm`(앱 롤은 SELECT 유지) · 재인증 · 요청마다 TOTP 코드 · 사유 · 서버 불변 규칙(Admin 행 고정 등) + 감사 before/after + 경보 AL-13. 2인 승인은 활성 Admin 이 1명이라 후보로 남긴다. 기존 관리 화면 경로는 유지(위키·문서가 가리킴), 허브가 연결한다. 구현은 16단계(재인증) 검토가 끝난 뒤 시작 — 재인증 관문이 선행 조건이다.
 
 **개발 사항 — 17-1 관리자 영역 (F-24)**
-- [ ] `GET /admin`(`role:Admin`, 재인증 관문 대상) 허브: 카드(계정 관리·조직·권한·매트릭스 편집·감사 로그·휴지통·공유 링크 전체·최근 경보·위키) + 재인증 남은 시간
-- [ ] `GET /api/admin/shares`(전체 공유 링크, 토큰 없음) · `GET /api/admin/alerts`(`alerts.log` 마지막 50줄 읽기 전용 — 파일은 root 0644 라 읽기 가능)
-- [ ] 일반 셸: 관리 그룹(계정·조직·감사·휴지통·위키) 제거 → Admin 에게 「관리자 페이지」 한 항목(`can_admin`), 비관리자 HTML 에는 항목 없음
-- [ ] nginx: `/admin`·`/api/admin` 관리망 허용 블록 **주석 상태**로 두 사이트에 준비 + README 「켜는 법·주의」
-- [ ] 라우터: `/api/admin/*`·`/admin*` 는 정책 `role:Admin`(재인증 대상). PRD 8장·ARCH 5.14
+- [x] `GET /admin`(`role:Admin`, 재인증 관문 대상) 허브: 카드(계정 관리·조직·권한·매트릭스 편집·감사 로그·휴지통·공유 링크 전체·최근 경보·위키) + 재인증 남은 시간
+- [x] `GET /api/admin/shares`(전체 공유 링크, 토큰 없음) · `GET /api/admin/alerts`(`alerts.log` 마지막 50줄 읽기 전용 — 파일은 root 0644 라 읽기 가능)
+- [x] 일반 셸: 관리 그룹(계정·조직·감사·휴지통·위키) 제거 → Admin 에게 「관리자 페이지」 한 항목(`can_admin`), 비관리자 HTML 에는 항목 없음
+- [x] nginx: `/admin`·`/api/admin` 관리망 허용 블록 **주석 상태**로 두 사이트에 준비 + README 「켜는 법·주의」
+- [x] 라우터: `/api/admin/*`·`/admin*` 는 정책 `role:Admin`(재인증 대상). PRD 8장·ARCH 5.14
 
 **개발 사항 — 17-2 권한 매트릭스 편집 (F-25)**
-- [ ] DB 롤 `tbox_perm`(`grants.sql`·`install.sh`: CONNECT·USAGE·`permissions` SELECT·UPDATE 만), `.env` `DB_PERM_USER/DB_PERM_PASS`(`.env.example` 주석), `Db::perm()` 두 번째 연결(지연 생성, 핸들러 안에서만)
-- [ ] `GET /api/admin/permissions`(16행 + 잠긴 셀 규칙) · `PATCH /api/admin/permissions`(허용 키 3개, 변경 목록 검증, 불변 규칙, TOTP `verifyStep`+1회성, 사유 필수, 한 트랜잭션, 셀마다 `permission.change allow` before/after, 거부 코드 4종, 실패 집계)
-- [ ] `alerts.php` AL-13(`permission.change allow` 있으면 즉시), ARCH 7.4·7.5·11.4, PRD 7.11 AL-13
-- [ ] 화면 `/admin/permissions`: 4×4 토글·잠긴 셀·미리보기·사유·코드·적용, 결과 표시
-- [ ] `Authz` 매트릭스 캐시는 요청 단위 그대로(즉시 효과) — 확인만
+- [x] DB 롤 `tbox_perm`(`grants.sql`·`install.sh`: CONNECT·USAGE·`permissions` SELECT·UPDATE 만), `.env` `DB_PERM_USER/DB_PERM_PASS`(`.env.example` 주석), `Db::perm()` 두 번째 연결(지연 생성, 핸들러 안에서만)
+- [x] `GET /api/admin/permissions`(16행 + 잠긴 셀 규칙) · `PATCH /api/admin/permissions`(허용 키 3개, 변경 목록 검증, 불변 규칙, TOTP `verifyStep`+1회성, 사유 필수, 한 트랜잭션, 셀마다 `permission.change allow` before/after, 거부 코드 4종, 실패 집계)
+- [x] `alerts.php` AL-13(`permission.change allow` 있으면 즉시), ARCH 7.4·7.5·11.4, PRD 7.11 AL-13
+- [x] 화면 `/admin/permissions`: 4×4 토글·잠긴 셀·미리보기·사유·코드·적용, 결과 표시
+- [x] `Authz` 매트릭스 캐시는 요청 단위 그대로(즉시 효과) — 확인만
 
-**검토 체크 (관문 ②, Fable)** — T-38·T-39 실행(Guest internal 열기→보임→되돌리기 포함), `\dp permissions` `tbox_app=r`·`tbox_perm=rw`, `tbox_app` 으로 UPDATE 시 permission denied 실측, 회귀 T-2·T-3·T-26·T-36, 린트 0
+**검토 체크 (관문 ②, Fable, 2026-09-12)** — ✅ T-38·T-39 전항 통과(Guest internal 열기→목록에 즉시 보임→원복→시드 동일), `tbox_app=r`·`tbox_perm=rw`, 세 가지 permission denied 실측, 회귀 통과, 린트 0(`Db::perm(` 규칙 포함). ⚠ 미검증: 브라우저 화면·규칙 d. 근거 SECURITY 7장 「17단계 구현 검토」
 
 **자기 공격 (관문 ③, 사용자)**
-- [ ] Employee 로 주소창에 `/admin`·`/admin/permissions` → 403
-- [ ] Admin 으로 `/admin` → 비밀번호 재확인 → 매트릭스에서 Guest `internal` 읽기를 켜 보고(사유·코드 입력) Guest 계정으로 internal 파일이 보이는지 → 다시 끄기 → 감사 로그에 before/after 두 행
-- [ ] Admin 행 토글이 잠겨 있는지, 코드 없이 적용이 거부되는지
+- [x] Employee 로 주소창에 `/admin`·`/admin/permissions` → 403
+- [x] Admin 으로 `/admin` → 비밀번호 재확인 → 매트릭스에서 Guest `internal` 읽기를 켜 보고(사유·코드 입력) Guest 계정으로 internal 파일이 보이는지 → 다시 끄기 → 감사 로그에 before/after 두 행
+- [x] Admin 행 토글이 잠겨 있는지, 코드 없이 적용이 거부되는지
 
 **학습 기록**
 

@@ -183,6 +183,25 @@ const TBOX_ROUTES = [
     //   받는 창구라 무차별 대입의 표적이다 (SECURITY R-59, 13단계와 같은 방식).
     ['POST',   '/api/me/reauth',                 'reauth.php',           Authz::POLICY_AUTHENTICATED],
     ['GET',    '/reauth',                        'reauth_page.php',      Authz::POLICY_AUTHENTICATED],
+
+    // 17단계 — 관리자 영역 (PRD F-24 · F-25 · 8장 `/admin`·`/api/admin/*` 행, ARCH 5.14 · 5.15).
+    //   여섯 라우트 전부 정책은 `role:Admin` 이다. 새 정책 이름을 만들지 않은 이유는 위키·휴지통과
+    //   같다 — 자격이 같고, 무엇보다 `role:Admin` 은 이미 `Authz::REAUTH_POLICIES` 에 들어 있어
+    //   **재인증 관문 [3-2] 가 자동으로 따라붙는다**(F-23). 정책을 새로 만들면 그 목록에 넣는 것을
+    //   빠뜨릴 수 있고, 빠뜨린 그 하나가 곧 우회 경로다 (SECURITY R-04 와 같은 원칙).
+    //   화면(`/admin`·`/admin/permissions`)과 데이터(`/api/admin/*`)가 **같은 정책**을 쓰는 것도
+    //   다른 관리 화면과 같다 — 화면만 숨기고 API 를 열어 두면 그것이 곧 우회 경로다 (PRD S-01).
+    //   ★ `PATCH /api/admin/permissions` 가 이 저장소에서 `permissions` 표를 바꾸는 **유일한**
+    //     라우트다. 쓰기는 별도 DB 롤 `tbox_perm`(Db::perm)으로만 하고, 앱 롤 `tbox_app` 은
+    //     여전히 그 표에 SELECT 만 갖는다 (ARCH 5.15 · 10장, SECURITY R-60, PRD Q-12).
+    //   ★ 네트워크 겹(관리망 IP 만 허용)은 nginx 두 사이트 파일에 **주석**으로 준비돼 있다.
+    //     기본은 꺼짐이다 — 접속 출처가 셋이라 켜면 스스로 잠길 수 있다 (SECURITY R-61, README).
+    ['GET',    '/admin',                         'admin_page.php',               'role:Admin'],
+    ['GET',    '/admin/permissions',             'admin_permissions_page.php',   'role:Admin'],
+    ['GET',    '/api/admin/permissions',         'admin_permissions_get.php',    'role:Admin'],
+    ['PATCH',  '/api/admin/permissions',         'admin_permissions_update.php', 'role:Admin'],
+    ['GET',    '/api/admin/shares',              'admin_shares.php',             'role:Admin'],
+    ['GET',    '/api/admin/alerts',              'admin_alerts.php',             'role:Admin'],
 ];
 
 /**
@@ -201,6 +220,12 @@ const TBOX_REAUTH_RETURN = [
     'GET /trash'       => 'trash',
     'GET /wiki'        => 'wiki',
     'GET /wiki/{slug}' => 'wiki',
+    // 17-1 — 관리자 영역 (PRD F-24, ARCH 5.14). 허브와 매트릭스 편집 화면 둘 다 키는 `admin`
+    // 하나이고, 확인이 끝나면 **허브**(`/admin`)로 돌아온다. 화면이 하나 더 늘어도 키를 늘리지
+    // 않는 이유는 오픈 리다이렉트 표면을 키 목록만큼으로 묶어 두기 위해서다 — 돌아갈 경로는
+    // 아래 TBOX_REAUTH_PATHS 에 적힌 고정 문자열뿐이고, 요청 값은 키를 고르는 데만 쓰인다.
+    'GET /admin'             => 'admin',
+    'GET /admin/permissions' => 'admin',
 ];
 
 /**
@@ -214,6 +239,8 @@ const TBOX_REAUTH_PATHS = [
     'audit' => '/audit',
     'trash' => '/trash',
     'wiki'  => '/wiki',
+    // 17-1 — 관리자 허브 (PRD F-24). `/reauth?to=admin` 은 언제나 이 고정 경로로 돌아온다.
+    'admin' => '/admin',
 ];
 
 /** 재인증 화면의 경로. 코드 상수이며 요청 값이 섞이지 않는다 (TBOX_LOGIN_PATH 와 같다). */

@@ -40,6 +40,7 @@ LOGROTATE_CONF="/etc/logrotate.d/tbox-v2"   # 감사 로그 회전 (ARCH 7.1, PR
 
 # ── 9단계 운영 (백업·경보·정합성) — PRD S-08 · S-11, ARCH 11.1 ──
 DB_BACKUP_ROLE="tbox_backup"                  # 읽기 전용 백업 계정 (ARCH 10장)
+DB_PERM_ROLE="tbox_perm"                      # 권한 매트릭스 편집 전용 계정 (17-2, ARCH 5.15 · 10장)
 BACKUP_PGPASS="${CONF_DIR}/backup.pgpass"     # 위 계정 비밀번호 (0600 root)
 BACKUP_KEY="${CONF_DIR}/backup.key"           # gpg 대칭키 (0600 root) — 분실 = 백업 전체 무용 (R-08)
 BACKUP_ROOT="/var/backups/tbox-v2"            # 산출물 (0700 root, 웹 루트·업로드 밖)
@@ -291,6 +292,26 @@ chmod 0600 "$BACKUP_PGPASS"
 umask 022
 info "백업 계정 비밀번호 저장: ${BACKUP_PGPASS} (0600 root)"
 
+# 4-2-2. tbox_perm — 권한 매트릭스 편집 전용 (17-2, PRD F-25 ⑤, ARCH 5.15 · 10장, SECURITY R-60).
+#        비밀번호는 **앱이 읽어야 하므로** .env 에 둔다(tbox_owner·tbox_backup 의 pgpass 와 다르다).
+#        그래서 tbox_app 과 같은 규칙을 쓴다: 설정 파일에 이미 값이 있으면 **그대로 유지**한다
+#        (매번 새로 만들면 .env 와 DB 가 어긋나 매트릭스 편집이 500 이 된다).
+PERM_PASS="$(env_value DB_PERM_PASS)"
+if [ -n "$PERM_PASS" ]; then
+  info "기존 설정의 DB_PERM_PASS 를 유지한다"
+else
+  PERM_PASS="$(openssl rand -hex 16)"
+  info "권한 편집 계정 비밀번호를 새로 만든다"
+fi
+if role_exists "$DB_PERM_ROLE"; then
+  psql_su -qc "ALTER ROLE ${DB_PERM_ROLE} WITH LOGIN PASSWORD '${PERM_PASS}'"
+  info "역할 있음: ${DB_PERM_ROLE}"
+else
+  psql_su -qc "CREATE ROLE ${DB_PERM_ROLE} WITH LOGIN PASSWORD '${PERM_PASS}'"
+  info "역할 생성: ${DB_PERM_ROLE} (permissions SELECT·UPDATE 전용)"
+fi
+psql_su -qc "ALTER ROLE ${DB_PERM_ROLE} NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS"
+
 # 4-3. DB
 if db_exists "$DB_NAME"; then
   info "DB 있음: ${DB_NAME}"
@@ -370,6 +391,22 @@ if [ -f "$ENV_FILE" ]; then
     printf 'APP_SECRET=%s\n' "$APP_SECRET" >> "$ENV_FILE"
     info "APP_SECRET 이 없어 새로 만들어 덧붙였다 (CSRF 토큰 키, PRD S-09-3)"
   fi
+  # 17-2 (PRD F-25 ⑤) — 권한 매트릭스 편집 전용 DB 계정. 17단계 이전에 만든 설정에는 두 줄이
+  # 없다. **없을 때만** 덧붙인다(기존 값·다른 줄은 한 글자도 손대지 않는다 — APP_SECRET 과 같은 방식).
+  if grep -q '^DB_PERM_USER=' "$ENV_FILE"; then
+    info "DB_PERM_USER 있음 — 유지한다"
+  else
+    if [ -n "$(tail -c1 "$ENV_FILE")" ]; then printf '\n' >> "$ENV_FILE"; fi
+    printf 'DB_PERM_USER=%s\n' "$DB_PERM_ROLE" >> "$ENV_FILE"
+    info "DB_PERM_USER 를 덧붙였다 (권한 매트릭스 편집 전용 계정, ARCH 5.15)"
+  fi
+  if grep -q '^DB_PERM_PASS=' "$ENV_FILE"; then
+    info "DB_PERM_PASS 있음 — 유지한다"
+  else
+    if [ -n "$(tail -c1 "$ENV_FILE")" ]; then printf '\n' >> "$ENV_FILE"; fi
+    printf 'DB_PERM_PASS=%s\n' "$PERM_PASS" >> "$ENV_FILE"
+    info "DB_PERM_PASS 를 덧붙였다 (값은 화면에 찍지 않는다)"
+  fi
 else
   umask 077
   cat > "$ENV_FILE" <<ENVEOF
@@ -382,6 +419,10 @@ DB_PORT=${DB_PORT}
 DB_NAME=${DB_NAME}
 DB_USER=${DB_APP_ROLE}
 DB_PASS=${APP_PASS}
+# 17-2 권한 매트릭스 편집 전용 계정 (PRD F-25 ⑤, ARCH 5.15 · 10장) — permissions SELECT·UPDATE 만.
+# 이 자격으로 여는 두 번째 연결(Db::perm)은 핸들러 하나에서만 만들어진다.
+DB_PERM_USER=${DB_PERM_ROLE}
+DB_PERM_PASS=${PERM_PASS}
 APP_SECRET=${APP_SECRET}
 SESSION_IDLE_MIN=30
 SESSION_MAX_HOURS=8

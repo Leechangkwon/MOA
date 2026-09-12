@@ -80,6 +80,12 @@ Http::json([
     // 다른 can_* 와 똑같은 **화면 편의 값**이다. 항목을 되살려 /wiki 나 /wiki/{slug} 를
     // 직접 불러도 라우터 정책 role:Admin 이 다시 막는다 (PRD S-01, T-32).
     'can_view_wiki'    => Authz::canReadWiki($user),
+    // 17-1 — 일반 셸의 「관리자 페이지」 한 항목을 보일지 여부 (F-24, Admin 만, ARCH 5.14).
+    // 17단계에서 셸의 관리 그룹(계정·조직·감사·휴지통·위키)을 없애고 이 항목 하나로 바꿨다 —
+    // 세부 화면은 허브(`/admin`)의 카드로만 간다. 다른 can_* 와 똑같은 **화면 편의 값**이며,
+    // 항목을 개발자도구로 되살려 /admin 이나 /api/admin/* 를 직접 불러도 라우터 정책
+    // role:Admin 과 재인증 관문이 다시 막는다 (PRD S-01, T-38).
+    'can_admin'        => Authz::canAdmin($user),
     // 10단계 — 내 2단계 인증이 켜져 있나 (R-05). 권한이 아니라 상태이며,
     // 화면이 "켜기" 를 보일지 "끄기" 를 보일지 고르는 데만 쓴다.
     'mfa_enabled'      => ($user['mfa_enabled'] ?? false) === true,

@@ -52,7 +52,10 @@ var REAUTH_PATHS = {
   'org': '/org',
   'audit': '/audit',
   'trash': '/trash',
-  'wiki': '/wiki'
+  'wiki': '/wiki',
+  // 17-1 관리자 허브 (PRD F-24). `/admin`·`/admin/permissions` 둘 다 이 키 하나를 쓰고,
+  // 확인이 끝나면 허브로 돌아온다 (서버 TBOX_REAUTH_RETURN 과 같은 내용).
+  'admin': '/admin'
 };
 
 /** 서버가 내려 준 파일 ID 형태 (UUIDv4). 링크를 만들기 전에 반드시 확인한다. */
@@ -3921,6 +3924,513 @@ function initShares(csrfToken) {
  *   항목을 개발자도구로 되살려도 /trash·/users·/org·/audit 은 라우트 정책이 다시 막고
  *   그 시도가 authz.route|deny 로 감사 로그에 남는다 — 표시는 편의, 근거는 라우트 정책이다.
  */
+/* ─── 17-1 관리자 허브 — `/admin` (PRD F-24 · 10장, ARCH 5.14) ─────────────────
+ *
+ * 관리 기능의 단일 입구다. 카드(계정·조직·권한 매트릭스·감사 로그·휴지통·위키)는 서버 HTML 의
+ * 고정 링크이고, 이 함수가 그리는 것은 **두 목록**(공유 링크 전체·최근 경보)과 재인증 배지다.
+ *
+ * ★ 값은 전부 textContent 로만 넣는다 (PRD S-03) — 파일명·계정명·경보 근거에는 사람이 정한
+ *   문자열이 섞여 있다. ★ 이 화면에 들어왔다는 것 자체가 라우트 정책 role:Admin 과 재인증
+ *   관문 [3-2] 를 통과했다는 뜻이다 — 화면은 아무 것도 판단하지 않는다 (PRD S-01).
+ */
+function initAdmin(csrfToken, me) {
+  var msg = document.getElementById('msg');
+  var reauthBadge = document.getElementById('admin-reauth');
+  var sharesBody = document.getElementById('admin-shares');
+  var sharesEmpty = document.getElementById('admin-shares-empty');
+  var alertsBox = document.getElementById('admin-alerts');
+  var alertsEmpty = document.getElementById('admin-alerts-empty');
+
+  /** 서버가 판정해 내려 준 상태 코드 → 화면 문구 (화면이 시각을 비교해 정하지 않는다) */
+  var SHARE_STATUS = {
+    'active': '살아 있음',
+    'revoked': '회수됨',
+    'expired': '만료됨',
+    'exhausted': '횟수 소진'
+  };
+
+  /* 재인증 창이 지금 열려 있나 — /api/me 의 reauth_fresh **표시용** 값이다.
+     닫혀 있으면 다음 관리 요청에서 서버가 403 {next:"reauth"} 로 막고 모달이 뜬다 (F-23). */
+  if (reauthBadge) {
+    var fresh = me && me.reauth_fresh === true;
+    reauthBadge.className = fresh ? 'badge badge--ok' : 'badge badge--off';
+    setText(reauthBadge, fresh ? '재인증 확인됨 (15분 창)' : '재인증 필요');
+  }
+
+  /** GET — 401 → 로그인, 403+next → 강제 절차/재인증 처리. 그 밖은 {ok,status,data} */
+  function getJson(path) {
+    return fetch(path, { credentials: 'same-origin', cache: 'no-store' }).then(function (response) {
+      if (response.status === 401) {
+        toLogin();
+        return null;
+      }
+      return readJson(response).then(function (data) {
+        if (toGate(response, data)) {
+          return null;
+        }
+        return { ok: response.ok, status: response.status, data: data };
+      });
+    });
+  }
+
+  function statusBadge(status) {
+    var badge = document.createElement('span');
+    badge.className = status === 'active' ? 'badge badge--ok' : 'badge badge--off';
+    setText(badge, Object.prototype.hasOwnProperty.call(SHARE_STATUS, status) ? SHARE_STATUS[status] : status);
+    return badge;
+  }
+
+  function renderShares(links) {
+    if (!sharesBody) {
+      return;
+    }
+    sharesBody.replaceChildren();
+    links.forEach(function (link) {
+      var row = document.createElement('tr');
+
+      var name = document.createElement('td');
+      setText(name, link.file_name);
+      row.appendChild(name);
+
+      var by = document.createElement('td');
+      setText(by, link.issued_by);
+      row.appendChild(by);
+
+      var st = document.createElement('td');
+      st.appendChild(statusBadge(typeof link.status === 'string' ? link.status : ''));
+      row.appendChild(st);
+
+      var count = document.createElement('td');
+      setText(count, String(link.download_count) + ' / ' + String(link.max_downloads));
+      row.appendChild(count);
+
+      var exp = document.createElement('td');
+      setText(exp, link.expires_at);
+      row.appendChild(exp);
+
+      sharesBody.appendChild(row);
+    });
+    if (sharesEmpty) {
+      sharesEmpty.hidden = links.length !== 0;
+    }
+  }
+
+  function renderAlerts(data) {
+    if (!alertsBox) {
+      return;
+    }
+    var alerts = data && Array.isArray(data.alerts) ? data.alerts : [];
+    alertsBox.replaceChildren();
+
+    alerts.forEach(function (alert) {
+      var item = document.createElement('li');
+      item.className = 'alert-item';
+
+      var head = document.createElement('div');
+      head.className = 'alert-item__head';
+      var rule = document.createElement('strong');
+      setText(rule, alert.rule);
+      head.appendChild(rule);
+      var when = document.createElement('span');
+      when.className = 'muted';
+      setText(when, alert.raised_at);
+      head.appendChild(when);
+      item.appendChild(head);
+
+      /* 근거는 배치가 남긴 그대로다. 어떤 키가 오는지는 규칙마다 다르므로 화면이 목록을
+         고정하지 않고, 온 키를 차례로 `이름: 값` 으로 적는다. 값이 객체·배열이면 JSON
+         문자열로 바꿔 **문자로만** 넣는다 (문자열 → HTML 변환 0). */
+      var evidence = alert.evidence && typeof alert.evidence === 'object' ? alert.evidence : {};
+      var body = document.createElement('div');
+      body.className = 'alert-item__body muted';
+      Object.keys(evidence).forEach(function (key) {
+        var value = evidence[key];
+        var text = value === null || typeof value === 'undefined'
+          ? ''
+          : (typeof value === 'object' ? JSON.stringify(value) : String(value));
+        var pair = document.createElement('span');
+        setText(pair, key + ': ' + text);
+        body.appendChild(pair);
+      });
+      item.appendChild(body);
+
+      alertsBox.appendChild(item);
+    });
+
+    if (alertsEmpty) {
+      alertsEmpty.hidden = alerts.length !== 0;
+      // 로그를 **못 읽은** 경우와 "경보 0건" 은 다른 상태다 — 서버가 readable 로 갈라 준다.
+      if (alerts.length === 0) {
+        setText(
+          alertsEmpty,
+          data && data.readable === false
+            ? '경보 로그를 읽지 못했습니다 (파일이 없거나 읽을 수 없습니다).'
+            : '기록된 경보가 없습니다.'
+        );
+      }
+    }
+  }
+
+  function load() {
+    getJson('/api/admin/shares')
+      .then(function (result) {
+        if (result === null) {
+          return null;
+        }
+        if (!result.ok) {
+          setText(msg, errorMessage(result.data));
+          return null;
+        }
+        renderShares(result.data && Array.isArray(result.data.links) ? result.data.links : []);
+        return null;
+      })
+      .catch(function () {
+        setText(msg, GENERIC_ERROR);
+      });
+
+    getJson('/api/admin/alerts')
+      .then(function (result) {
+        if (result === null) {
+          return null;
+        }
+        if (!result.ok) {
+          setText(msg, errorMessage(result.data));
+          return null;
+        }
+        renderAlerts(result.data);
+        return null;
+      })
+      .catch(function () {
+        setText(msg, GENERIC_ERROR);
+      });
+  }
+
+  // 재인증 모달이 닫힌 뒤 다시 읽을 로더를 등록한다 (16-1 과 같은 방식).
+  setReauthRetry(load);
+  load();
+}
+
+/* ─── 17-2 권한 매트릭스 편집 — `/admin/permissions` (PRD F-25, ARCH 5.15) ──────
+ *
+ * 4×4 표의 칸마다 「읽기」·「올리기」 체크상자를 놓고, 바꾼 것을 미리보기로 보여 준 뒤
+ * 사유·2단계 인증 코드와 함께 `PATCH /api/admin/permissions` 로 보낸다.
+ *
+ * ★ 이 화면은 **아무 것도 막지 않는다.** 잠긴 칸의 disabled 를 개발자도구로 풀어도, 코드나
+ *   사유를 비워 보내도 서버가 400 으로 막고 `permission.change deny …` 로 남긴다 (T-39).
+ *   잠긴 칸의 이유 문구도 서버가 내려 준 것(`locked_reason`)을 그대로 쓴다 — 화면이 규칙을
+ *   지어내지 않는다 (PRD S-01).
+ * ★ 실패 문구는 서버가 준 문구만 쓴다. 값은 전부 textContent 로만 넣는다 (PRD S-03).
+ */
+function initAdminPermissions(csrfToken) {
+  var msg = document.getElementById('msg');
+  var tableBody = document.getElementById('perm-table');
+  var rulesBox = document.getElementById('perm-rules');
+  var previewBox = document.getElementById('perm-preview');
+  var previewEmpty = document.getElementById('perm-preview-empty');
+  var form = document.getElementById('perm-form');
+  var reasonInput = document.getElementById('perm-reason');
+  var otpInput = document.getElementById('perm-otp');
+  var submit = document.getElementById('perm-submit');
+  var resetButton = document.getElementById('perm-reset');
+  var formMsg = document.getElementById('perm-msg');
+
+  /** 서버에서 받은 16행(기준값)과, 칸마다 만든 체크상자 두 개 */
+  var state = { rows: [], boxes: Object.create(null) };
+
+  function cellKey(role, level) {
+    return role + '|' + level;
+  }
+
+  /* ── 통신 (initOrg 와 같은 모양) ───────────────────────────── */
+
+  function getJson(path) {
+    return fetch(path, { credentials: 'same-origin', cache: 'no-store' }).then(function (response) {
+      if (response.status === 401) {
+        toLogin();
+        return null;
+      }
+      return readJson(response).then(function (data) {
+        if (toGate(response, data)) {
+          return null;
+        }
+        return { ok: response.ok, status: response.status, data: data };
+      });
+    });
+  }
+
+  function sendJson(method, path, payload) {
+    return fetch(path, {
+      method: method,
+      headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken },
+      body: JSON.stringify(payload),
+      credentials: 'same-origin',
+      cache: 'no-store'
+    }).then(function (response) {
+      if (response.status === 401) {
+        toLogin();
+        return null;
+      }
+      return readJson(response).then(function (data) {
+        if (toGate(response, data)) {
+          return null;
+        }
+        return { ok: response.ok, status: response.status, data: data };
+      });
+    });
+  }
+
+  /* ── 표 그리기 ─────────────────────────────────────────────── */
+
+  /** 체크상자 하나 (잠긴 칸이면 disabled + 서버가 준 이유를 툴팁으로) */
+  function makeToggle(row, flag, label) {
+    var wrap = document.createElement('label');
+    wrap.className = 'perm-toggle';
+
+    var box = document.createElement('input');
+    box.type = 'checkbox';
+    box.checked = row[flag] === true;
+    if (row.locked === true) {
+      box.disabled = true;
+      wrap.className = 'perm-toggle is-locked';
+      if (typeof row.locked_reason === 'string' && row.locked_reason !== '') {
+        wrap.setAttribute('title', row.locked_reason);
+      }
+    }
+    box.addEventListener('change', renderPreview);
+    wrap.appendChild(box);
+
+    var text = document.createElement('span');
+    setText(text, label);
+    wrap.appendChild(text);
+
+    return { wrap: wrap, box: box };
+  }
+
+  function renderTable(rows) {
+    if (!tableBody) {
+      return;
+    }
+    state.rows = rows;
+    state.boxes = Object.create(null);
+    tableBody.replaceChildren();
+
+    // 역할의 차례는 **서버가 보낸 차례** 그대로다 (화면이 역할 순서를 정하지 않는다).
+    var byRole = Object.create(null);
+    var roles = [];
+    rows.forEach(function (row) {
+      if (!row || typeof row.role !== 'string' || typeof row.access_level !== 'string') {
+        return;
+      }
+      if (!Object.prototype.hasOwnProperty.call(byRole, row.role)) {
+        byRole[row.role] = Object.create(null);
+        roles.push(row.role);
+      }
+      byRole[row.role][row.access_level] = row;
+    });
+
+    roles.forEach(function (role) {
+      var tr = document.createElement('tr');
+      var head = document.createElement('td');
+      var name = document.createElement('strong');
+      setText(name, role);
+      head.appendChild(name);
+      tr.appendChild(head);
+
+      MATRIX_LEVELS.forEach(function (level) {
+        var td = document.createElement('td');
+        td.className = 'perm-cell';
+        var row = Object.prototype.hasOwnProperty.call(byRole[role], level) ? byRole[role][level] : null;
+        if (row === null) {
+          setText(td, '—');
+          tr.appendChild(td);
+          return;
+        }
+        if (row.locked === true) {
+          td.className = 'perm-cell is-locked';
+          var lock = makeIcon('lock');
+          td.appendChild(lock);
+        }
+        var read = makeToggle(row, 'can_read', '읽기');
+        var upload = makeToggle(row, 'can_upload', '올리기');
+        td.appendChild(read.wrap);
+        td.appendChild(upload.wrap);
+        state.boxes[cellKey(role, level)] = { read: read.box, upload: upload.box };
+        tr.appendChild(td);
+      });
+
+      tableBody.appendChild(tr);
+    });
+
+    renderPreview();
+  }
+
+  function renderRules(rules) {
+    if (!rulesBox) {
+      return;
+    }
+    rulesBox.replaceChildren();
+    rules.forEach(function (text) {
+      var item = document.createElement('li');
+      setText(item, text);
+      rulesBox.appendChild(item);
+    });
+  }
+
+  /* ── 변경 미리보기 ─────────────────────────────────────────── */
+
+  function yesNo(value) {
+    return value === true ? '예' : '아니오';
+  }
+
+  /** 지금 표에서 바뀐 칸 목록 (서버에 보낼 모양 그대로 + 미리보기 문장) */
+  function changedCells() {
+    var out = [];
+    state.rows.forEach(function (row) {
+      var boxes = state.boxes[cellKey(row.role, row.access_level)];
+      if (!boxes) {
+        return;
+      }
+      var read = boxes.read.checked === true;
+      var upload = boxes.upload.checked === true;
+      if (read === (row.can_read === true) && upload === (row.can_upload === true)) {
+        return;
+      }
+      var parts = [];
+      if (read !== (row.can_read === true)) {
+        parts.push('읽기 ' + yesNo(row.can_read === true) + ' → ' + yesNo(read));
+      }
+      if (upload !== (row.can_upload === true)) {
+        parts.push('올리기 ' + yesNo(row.can_upload === true) + ' → ' + yesNo(upload));
+      }
+      out.push({
+        change: {
+          role: row.role,
+          access_level: row.access_level,
+          can_read: read,
+          can_upload: upload
+        },
+        text: row.role + ' · ' + row.access_level + ' : ' + parts.join(', ')
+      });
+    });
+    return out;
+  }
+
+  function renderPreview() {
+    var cells = changedCells();
+    if (previewBox) {
+      previewBox.replaceChildren();
+      cells.forEach(function (cell) {
+        var item = document.createElement('li');
+        item.className = 'alert-item';
+        setText(item, cell.text);
+        previewBox.appendChild(item);
+      });
+    }
+    if (previewEmpty) {
+      previewEmpty.hidden = cells.length !== 0;
+    }
+    if (submit) {
+      // 바꾼 칸이 없으면 보낼 것이 없다(서버도 규칙 (e) 로 거부한다).
+      submit.disabled = cells.length === 0;
+    }
+  }
+
+  /* ── 읽기 ──────────────────────────────────────────────────── */
+
+  function load() {
+    return getJson('/api/admin/permissions')
+      .then(function (result) {
+        if (result === null) {
+          return null;
+        }
+        if (!result.ok) {
+          setText(msg, errorMessage(result.data));
+          return null;
+        }
+        var data = result.data || {};
+        renderTable(Array.isArray(data.matrix) ? data.matrix : []);
+        renderRules(Array.isArray(data.rules) ? data.rules : []);
+        return null;
+      })
+      .catch(function () {
+        setText(msg, GENERIC_ERROR);
+      });
+  }
+
+  /* ── 적용 ──────────────────────────────────────────────────── */
+
+  if (form) {
+    form.addEventListener('submit', function (event) {
+      event.preventDefault();
+      setText(formMsg, '');
+
+      var cells = changedCells();
+      if (cells.length === 0) {
+        return;
+      }
+      var changes = cells.map(function (cell) {
+        return cell.change;
+      });
+
+      if (submit) {
+        submit.disabled = true;
+      }
+      sendJson('PATCH', '/api/admin/permissions', {
+        changes: changes,
+        reason_text: reasonInput ? reasonInput.value : '',
+        otp: otpInput ? otpInput.value : ''
+      })
+        .then(function (result) {
+          if (result === null) {
+            if (submit) {
+              submit.disabled = false;
+            }
+            return null;
+          }
+          if (!result.ok) {
+            // 실패 문구는 **서버가 준 것만** 쓴다 (사유는 감사 로그에만 갈라져 남는다).
+            setText(formMsg, errorMessage(result.data));
+            if (submit) {
+              submit.disabled = false;
+            }
+            return null;
+          }
+          var data = result.data || {};
+          var changedCount = Array.isArray(data.changed) ? data.changed.length : 0;
+          /* 성공 뒤에는 GET 으로 **다시 읽는다**. PATCH 응답의 16행에는 잠금 표시(locked·이유)가
+             없어서 그대로 그리면 잠긴 칸이 풀린 것처럼 보인다 — 서버는 그래도 막지만, 화면이
+             거짓말을 하면 안 된다 (PRD 10장 "버튼 표시는 권한의 근거가 아님"). */
+          load();
+          if (reasonInput) {
+            reasonInput.value = '';
+          }
+          if (otpInput) {
+            // 코드는 1회성이다 — 남겨 두면 다음 요청에서 code_reused 로 거부된다.
+            otpInput.value = '';
+          }
+          setText(formMsg, String(changedCount) + '개 칸을 바꿨습니다. 효과는 다음 요청부터이며 감사 로그에 남았습니다.');
+          return null;
+        })
+        .catch(function () {
+          setText(formMsg, GENERIC_ERROR);
+          if (submit) {
+            submit.disabled = false;
+          }
+        });
+    });
+  }
+
+  if (resetButton) {
+    resetButton.addEventListener('click', function () {
+      setText(formMsg, '');
+      load();
+    });
+  }
+
+  setReauthRetry(load);
+  load();
+}
+
 function initShell(me, csrfToken) {
   var msg = document.getElementById('msg');
   var sidebar = document.getElementById('sidebar');
@@ -3930,17 +4440,13 @@ function initShell(me, csrfToken) {
   /** 최초 로그인 강제 절차가 남았나 (있으면 다른 화면으로 갈 길을 접어 둔다) */
   var inGate = typeof me.next === 'string' && me.next !== '';
 
-  var canTrash = me.can_view_trash === true;
-  var canUsers = me.can_manage_users === true;
-  var canAudit = me.can_view_audit === true;
-  // 12-3 — 「조직·권한」은 /api/me 의 can_manage_org 가 참일 때만 열린다 (F-19).
-  // 다른 can_* 와 같은 **표시용** 값이다. 항목을 개발자도구로 되살려 /org 나 /api/org/* 를
-  // 직접 불러도 라우트 정책 org.manage 가 막고 authz.route|deny 로 남는다 (PRD S-01, T-27).
-  var canOrg = me.can_manage_org === true;
-  // 14단계 — 「위키」는 /api/me 의 can_view_wiki 가 참일 때만 열린다 (F-21, Admin 만).
-  // 다른 can_* 와 같은 **표시용** 값이다. 항목을 개발자도구로 되살려 /wiki 나
-  // /wiki/{slug} 를 직접 불러도 라우트 정책 role:Admin 이 막는다 (PRD S-01, T-32).
-  var canWiki = me.can_view_wiki === true;
+  /* 17-1 (PRD F-24, ARCH 5.14) — 일반 셸의 관리 항목은 「관리자 페이지」 **하나**다.
+     전에는 계정·조직·감사·휴지통·위키 다섯 항목을 can_* 다섯 개로 각각 열었다. 이제 그
+     화면들은 허브(/admin)의 카드로만 가고, 셸은 can_admin 하나만 본다.
+     다른 can_* 와 같은 **표시용** 값이다 — 항목을 개발자도구로 되살려 /admin 이나
+     /api/admin/* 를 직접 불러도 라우트 정책 role:Admin 과 재인증 관문이 막고
+     authz.route|deny 로 남는다 (PRD S-01, T-38). */
+  var canAdmin = me.can_admin === true;
 
   function showNav(id, open) {
     var el = document.getElementById(id);
@@ -3954,16 +4460,12 @@ function initShell(me, csrfToken) {
   // 15-1 — 「내 활동」은 모든 로그인 사용자에게 열린다(권한 플래그가 없다, PRD F-12).
   // 강제 절차(F-16) 중에는 다른 항목과 함께 닫힌다 — showNav 가 inGate 를 먼저 본다.
   showNav('nav-activity', true);
-  showNav('nav-trash', canTrash);
-  showNav('nav-users', canUsers);
-  showNav('nav-org', canOrg);
-  showNav('nav-audit', canAudit);
-  showNav('nav-wiki', canWiki);
+  showNav('nav-admin', canAdmin);
 
-  // 「관리」 묶음은 그 안에 열린 항목이 하나라도 있을 때만 제목째 보인다.
+  // 「관리」 묶음은 그 안의 항목이 열릴 때만 제목째 보인다.
   var adminGroup = document.getElementById('nav-admin-group');
   if (adminGroup) {
-    adminGroup.hidden = inGate || !(canUsers || canOrg || canAudit || canWiki);
+    adminGroup.hidden = inGate || !canAdmin;
   }
 
   /* 좁은 화면(960px 미만)의 접이식 내비. 넓은 화면에서는 CSS 가 내비를 늘 펼쳐 두므로
@@ -4101,6 +4603,17 @@ function bootPage(page) {
           // 라우트 정책 audit.read 를 통과한 화면이다 (Admin 만).
           if (document.getElementById('audit-body')) {
             initAudit();
+          }
+          return null;
+        }
+        if (page === 'admin') {
+          /* 17단계 — 라우트 정책 role:Admin 과 재인증 관문을 통과한 화면이다 (F-24 · F-25).
+             허브(`/admin`)와 매트릭스 편집(`/admin/permissions`)은 셸 키가 같으므로,
+             **그 화면에만 있는 요소**로 가른다(`/reauth` 화면을 폼으로 가르는 것과 같은 방식). */
+          if (document.getElementById('perm-table')) {
+            initAdminPermissions(csrfToken);
+          } else if (document.getElementById('admin-shares')) {
+            initAdmin(csrfToken, me);
           }
           return null;
         }

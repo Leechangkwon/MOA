@@ -506,6 +506,24 @@ final class Authz
         return self::roleOf($u) === 'Admin';
     }
 
+    /**
+     * PRD F-24 — 관리자 영역(`/admin`·`/admin/permissions`·`/api/admin/*`)은 Admin 만
+     * (17-1, ARCH 5.14, SECURITY R-61).
+     *
+     * 라우트 정책은 새로 만들지 않고 기존 `role:Admin` 을 쓴다 — 자격이 휴지통·위키와 같고,
+     * 그 정책은 이미 `REAUTH_POLICIES` 에 들어 있어 **재인증 관문이 자동으로 따라붙는다**
+     * (16-1, ARCH 4.0). 그래서 KNOWN_POLICIES 도 그대로다.
+     *
+     * 이 함수는 `/api/me` 의 화면 편의 값 `can_admin` 을 만드는 데 쓴다 —
+     * 일반 셸에서 「관리자 페이지」 한 항목을 열지 말지 고르는 값이며 **권한이 아니다**.
+     * 항목을 개발자도구로 되살려 `/admin` 이나 `/api/admin/*` 를 직접 불러도 라우터 정책
+     * `role:Admin` 과 재인증 관문이 다시 막는다 (PRD S-01, T-38).
+     */
+    public static function canAdmin(array $u): bool
+    {
+        return self::roleOf($u) === 'Admin';
+    }
+
     /* ─── 10단계: 계정 관리 (F-10) — 역할에 관한 모든 판단은 여기 모은다 ───────── */
 
     /**

@@ -89,3 +89,36 @@ GRANT SELECT ON ALL SEQUENCES IN SCHEMA public TO tbox_backup;   -- 시퀀스 �
 -- 앞으로 만들 표에 자동으로 권한이 붙지 않게 기본 권한(ALTER DEFAULT PRIVILEGES)은 설정하지 않는다.
 -- 새 표를 만들면 이 파일에 한 줄을 더해 다시 실행한다 — 백업에서 표가 빠지는 것은
 -- 여기서 드러나야 하고, 조용히 권한이 따라붙는 것보다 낫다.
+
+-- ─── tbox_perm (권한 매트릭스 편집 전용) — PRD F-25 ⑤ / ARCH 5.15 · 10장 (17-2, 2026-09-12)
+--
+-- 역할 **생성**과 비밀번호는 deploy/install.sh 가 한다(무작위 → .env 의 DB_PERM_USER/DB_PERM_PASS).
+-- 이 파일은 권한만 다룬다 — 권한이 두 곳에 흩어지면 회수 누락이 생긴다(tbox_backup 과 같은 방식).
+--
+-- 왜 별도 롤인가 (SECURITY R-60 · R-43, PRD Q-12)
+--   화면에서 권한 매트릭스를 고칠 수 있게 하면서도 "앱 런타임 롤은 이 표에 SELECT 만" 이라는
+--   방어(위 tbox_app 의 ★ 줄)를 **그대로 지키기 위해서**다. 쓰기 자격은 이 롤에만 있고,
+--   이 롤로 여는 연결은 핸들러 하나(src/handlers/admin_permissions_update.php 의 Db::perm())
+--   에서만 만들어진다. 다른 핸들러에 SQL 인젝션 결함이 생겨도 그 연결은 tbox_app 이라
+--   권한 표를 바꾸지 못한다.
+--
+--   · permissions 에 SELECT, UPDATE 만 — INSERT·DELETE 는 주지 않는다. 16행은 고정이며
+--     행을 늘리거나 지우는 길 자체를 만들지 않는다 (ARCH 6.2-1).
+--   · 다른 표 권한 0 — 이 자격이 새어도 계정·파일·감사 로그·세션에는 닿지 못한다.
+--   · 시퀀스 권한 없음 (INSERT 가 없으므로 필요 없다).
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'tbox_perm') THEN
+        RAISE EXCEPTION 'tbox_perm 역할이 없다 — deploy/install.sh 가 먼저 만든다 (ARCH 10장)';
+    END IF;
+END
+$$;
+
+GRANT CONNECT ON DATABASE tbox_re TO tbox_perm;
+GRANT USAGE   ON SCHEMA   public  TO tbox_perm;
+
+-- 재실행 시 과거 권한이 남지 않게 먼저 **전부** 회수한다(위 두 롤과 같은 방식).
+REVOKE ALL ON teams, users, permissions, files, audit_logs, sessions, share_links FROM tbox_perm;
+REVOKE ALL ON ALL SEQUENCES IN SCHEMA public FROM tbox_perm;
+
+GRANT SELECT, UPDATE ON permissions TO tbox_perm;   -- ★ 이 한 줄이 전부. INSERT·DELETE 없음

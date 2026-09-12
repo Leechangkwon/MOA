@@ -3,7 +3,7 @@ declare(strict_types=1);
 
 /**
  * scripts/alerts.php — 감사 로그를 5분마다 훑어 경보 규칙을 판정한다 (9단계)
- *   PRD 7.11 S-11-A (AL-1 · AL-2 · AL-5 · AL-7 · AL-10 · AL-12)
+ *   PRD 7.11 S-11-A (AL-1 · AL-2 · AL-5 · AL-7 · AL-10 · AL-12 · AL-13 · 서버 층 AL-3 · AL-9)
  *   ARCHITECTURE 11.1 (5분마다 cron) · 11.4 (경보 구성) · 7.4 `alert.raised|allow` · 7.5 `rule`·`evidence`
  *
  * 사용법
@@ -295,7 +295,17 @@ function al_line_time(string $line): string
  */
 function al_scrub_command(string $cmd): string
 {
+    /* 가리는 형태 두 가지
+     *   ① `PGPASSWORD=…` · `password=…`            (환경변수·인자)
+     *   ② `PASSWORD '…'` · `PASSWORD "…"`          (SQL `CREATE ROLE … PASSWORD '…'`)
+     * ②는 17단계 추가다 — 16단계 AL-9 첫 실행이 과거 이력을 재생하며 v1 설치 명령
+     * `CREATE USER tbox WITH PASSWORD '…'` 를 **그대로** 경보 근거에 남긴 것을 관찰했다
+     * (STAGES 2026-09-12, ARCH 11.4 「AL-13 · AL-2 보강」). 경보는 위험을 알리는 글이지
+     * 비밀번호를 옮겨 적는 글이 아니다 (PRD S-07 민감정보 금지).
+     */
     $clean = (string) preg_replace('/(?:PGPASSWORD|password)=\S+/i', '[제거됨]', $cmd);
+    $clean = (string) preg_replace('/\bPASSWORD\s+\'[^\']*\'/i', 'PASSWORD [제거됨]', $clean);
+    $clean = (string) preg_replace('/\bPASSWORD\s+"[^"]*"/i', 'PASSWORD [제거됨]', $clean);
     $utf8  = iconv('UTF-8', 'UTF-8//IGNORE', $clean);
     $clean = is_string($utf8) ? $utf8 : '';
     if (iconv_strlen($clean, 'UTF-8') > SUDO_CMD_CHARS) {
@@ -360,6 +370,12 @@ if ($want('AL-1')) {
 //     · auth.password_change deny bad_credentials
 //     · auth.mfa_disable    deny  bad_credentials · bad_code · code_reused
 //     · auth.mfa_enroll     deny  bad_code · code_reused
+//     · auth.reauth          deny  bad_credentials   ← 17단계 추가 (ARCH 11.4 「AL-13 · AL-2 보강」)
+//   17단계(2026-09-12)에 `auth.reauth deny bad_credentials` 를 더했다. 16단계에서 생긴
+//   재인증 창구(`POST /api/me/reauth`)도 **세션만 있으면 닿으면서 현재 비밀번호를 받는** 곳이다 —
+//   훔친 쿠키를 쥐 사람에게는 비밀번호를 시험할 창구이고, 그 실패는 이미 계정 잠금 카운터에
+//   들어간다(Auth::countFailureAndRevoke). 세는 곳에서 빠져 있으면 "잠기는데 경보는 조용한"
+//   상태가 다시 생긴다 (SECURITY R-59, 13단계와 같은 이유).
 //   빼는 것: `auth.mfa deny code_required` (순차 2단계 로그인의 정상 1단계다 — 실패가 아니다.
 //   Auth::login 도 이것은 실패 횟수에 세지 않는다, ARCH 4.0), `already_enabled`·`weak_password`·
 //   `same_password` (추측 시도가 아니다).
@@ -381,13 +397,14 @@ if ($want('AL-2')) {
                   OR (action = 'auth.password_change' AND reason = 'bad_credentials')
                   OR (action = 'auth.mfa_disable'     AND reason IN ('bad_credentials','bad_code','code_reused'))
                   OR (action = 'auth.mfa_enroll'      AND reason IN ('bad_code','code_reused'))
+                  OR (action = 'auth.reauth'          AND reason = 'bad_credentials')
                 )
           GROUP BY host(ip)
          HAVING count(*) >= 20 OR count(*) FILTER (WHERE reason = 'locked') > 0"
     )->fetchAll();
     foreach ($rows as $r) {
         $raise('AL-2', (string) $r['src'], [
-            'rule_text'   => '인증 실패(로그인·비밀번호 변경·2단계 인증) 10분 내 20회 이상 또는 계정 잠금 발생',
+            'rule_text'   => '인증 실패(로그인·비밀번호 변경·2단계 인증·재인증) 10분 내 20회 이상 또는 계정 잠금 발생',
             'count'       => (int) $r['n'],
             'locked'      => (int) $r['locked'],
             // 로그인 창구가 아니라 **로그인 뒤** 창구에서 난 실패 수 — 세션 탈취 뒤의 추측과
@@ -521,6 +538,41 @@ if ($want('AL-12')) {
         ]);
     }
     cli_say(sprintf('AL-12 대상 %d명', count($rows)));
+}
+
+// ─────────────────────────────────────────────────────────────
+// AL-13 — 권한 매트릭스 변경 (PRD 7.11 · F-25, 17-2 추가, ARCH 5.15 · 11.4)
+//   "`permission.change allow` 가 **1건이라도** 있으면 즉시" — 건수 임계값이 없다.
+//   다른 규칙은 "정상 사용과 구분되는 양" 을 보지만, 이 규칙은 **행동 자체**가 알릴 일이다:
+//   권한 표 한 칸이 바뀌면 그 순간부터 누가 무엇을 볼 수 있는지가 달라진다(보안 정책 변경).
+//   정상 작업이어도 운영 담당이 알아야 하고, Admin 세션을 훔친 사람이 한 짓이라면 더욱 그렇다.
+//   창은 다른 audit_logs 규칙과 맞춰 5분(배치 주기)이다 — 중복 억제는 $raise 가 한다.
+//   근거에는 **바뀐 칸 목록과 사유**를 담는다(감사 로그 detail 의 before/after·reason_text).
+//   2단계 인증 코드·비밀번호는 감사 로그에 애초에 없으므로 여기에도 없다 (PRD S-07).
+// ─────────────────────────────────────────────────────────────
+if ($want('AL-13')) {
+    $rows = $db->run(
+        "SELECT actor_name, count(*) AS n,
+                array_to_string(array_agg(target_name ORDER BY id), ',') AS cells,
+                max(detail->>'reason_text') AS reason_text,
+                max(happened_at) AS last_at
+           FROM audit_logs
+          WHERE action = 'permission.change' AND result = 'allow'
+            AND happened_at > now() - interval '5 minutes'
+          GROUP BY actor_name"
+    )->fetchAll();
+    foreach ($rows as $r) {
+        $raise('AL-13', (string) ($r['actor_name'] ?? '?'), [
+            'rule_text'   => '권한 매트릭스 변경 — 건수와 무관하게 즉시 알린다',
+            'count'       => (int) $r['n'],
+            // 바뀐 칸 이름 목록 (`역할|등급`). 값 자체는 before/after 로 감사 로그에 있다.
+            'cells'       => (string) $r['cells'],
+            'reason_text' => $r['reason_text'] === null ? '' : (string) $r['reason_text'],
+            'window'      => '5 minutes',
+            'last_at'     => (string) $r['last_at'],
+        ]);
+    }
+    cli_say(sprintf('AL-13 대상 %d명', count($rows)));
 }
 
 // ─────────────────────────────────────────────────────────────

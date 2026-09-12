@@ -1098,3 +1098,61 @@ dialog.reauth-modal {
 dialog.reauth-modal .modal__title { margin-bottom: 6px; }
 dialog.reauth-modal .modal__lead { font-size: 13px; color: var(--muted); margin-bottom: 14px; }
 .modal__actions { display: flex; gap: 8px; }
+
+/* ─── 17-1 관리자 허브 (`/admin`, PRD F-24 · 10장, ARCH 5.14) ───
+ *
+ * 카드 여섯 개와 두 목록(공유 링크 전체·최근 경보)의 최소 표현이다.
+ * 여기 있는 것은 **표현뿐**이다 — 무엇이 보이고 무엇이 되는지는 서버가 정한다 (PRD S-01).
+ */
+.admin-hub {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 12px;
+  margin-bottom: 18px;
+}
+.admin-card {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  padding: 16px 18px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-card);
+  background: var(--surface);
+  color: inherit;
+  text-decoration: none;
+}
+.admin-card:hover { border-color: var(--accent); }
+.admin-card:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.admin-card__icon { display: inline-flex; color: var(--accent); padding-top: 2px; }
+.admin-card__text { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.admin-card__name { font-size: 15px; font-weight: 700; }
+.admin-card__desc { font-size: 12.5px; color: var(--muted); }
+.admin-card--warn .admin-card__icon { color: var(--danger); }
+
+/* 최근 경보 목록 — 한 줄이 규칙 하나(`AL-x`)와 그 근거다. 값은 app.js 가 textContent 로 넣는다. */
+.alert-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.alert-item {
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+.alert-item__head { display: flex; gap: 10px; align-items: baseline; flex-wrap: wrap; }
+.alert-item__body { display: flex; gap: 4px 14px; flex-wrap: wrap; margin-top: 4px; font-size: 12.5px; }
+
+/* ─── 17-2 권한 매트릭스 편집 (`/admin/permissions`, PRD F-25, ARCH 5.15) ───
+ *
+ * 칸마다 「읽기」·「올리기」 체크상자 두 개. 잠긴 칸(관리자 행·손님의 관리자 등급)은 서버가
+ * `locked` 로 알려 주고 app.js 가 disabled + 자물쇠를 붙인다 — **막는 것은 서버**다 (T-39).
+ */
+.perm-edit { display: flex; flex-direction: column; gap: 14px; }
+table.perm-table td { vertical-align: top; }
+.perm-cell { display: flex; flex-direction: column; gap: 4px; align-items: flex-start; }
+.perm-cell.is-locked { color: var(--muted); }
+.perm-cell.is-locked .icon { color: var(--muted); }
+.perm-toggle { display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; cursor: pointer; }
+.perm-toggle.is-locked { cursor: not-allowed; color: var(--muted); }
+.perm-preview { display: flex; flex-direction: column; gap: 8px; }
+.perm-form { display: grid; gap: 12px; max-width: 560px; }
+.perm-form__actions { display: flex; gap: 8px; }
