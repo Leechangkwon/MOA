@@ -195,6 +195,8 @@
 | F-21 | **위키 — 이 서비스가 어떻게 만들어졌나(초보자용)** (사용자 요청 2026-09-12 "홈페이지에 위키를 만들어줘 — PRD·ARCHITECTURE·SECURITY·STAGES 를 단계별로 나누어 상세 내용을 조회, 초보자가 이해할 수 있는 용어 위주") | 화면 `/wiki`(차례) · `/wiki/{slug}`(글 한 편). **원문(md)을 그대로 보여 주지 않는다** — 네 문서를 초보자 말로 다시 쓴 **해설 층**이며, 글마다 「원문 위치」(PRD 절·ARCH 절·SECURITY R-xx·STAGES 단계)를 가리킨다. 구성: ① 안내 글(이 서비스는 무엇인가 · 용어 사전 · 역할과 접근 등급 · 보안 요구사항 S-01~S-11 쉬운 설명 · 남은 위험 R-xx 요약 · 어떻게 검토하나 T-xx · 2026-09-11 사고 요약 · 문서 지도) ② **단계 글 1~13**(각 글은 「왜 필요한가 → 무엇을 만들었나 → 어떻게 확인했나 → 남은 위험 → 직접 해보기 → 원문 위치」 순). 내용은 저장소 `wiki/*.json`(구조화된 본문, HTML 0)에 두고 서버가 이스케이프해 그린다(ARCH 5.10). **열람은 Admin 만**(`role:Admin`) — SECURITY·STAGES 해설에는 남은 위험·서버 계정·사고 경위가 들어 있어 Guest·Employee 에게 보이면 공격 지도가 된다(SECURITY R-56). 넓히려면 라우트 정책 한 줄을 바꾸고 R-56 을 다시 판단한다. 감사 기록은 남기지 않는다(문서 열람은 보안 사건이 아니며, `audit.view` 와 달리 개인정보가 없다) |
 | F-22 | **민감정보 패턴 검출** (15-3 구현 결정 2026-09-12; 확장 아이템 제안 2순위) | 업로드(F-05)와 URL 가져오기(F-14)에서 **같은 자리**(형식 검사 뒤·저장 전)에 한 번 실행. 대상은 미리보기(F-18)가 글자를 뽑을 수 있는 형식(text·table·office)이며 상한도 미리보기 상수를 재사용한다. 패턴: ① 주민등록번호(`6자리-7자리` + 검증 숫자) ② 신용카드 번호(13~19자리 + Luhn) ③ 키워드 목록(`급여`·`연봉`·`주민번호`·`계좌번호`·`여권번호` — 코드 상수). 규칙: 검출되면 `public`·`internal` 로는 올릴 수 없다(400 `sensitive_level_required`, 화면 문구 "민감정보가 보여 team 또는 admin-only 로만 올릴 수 있습니다"). `team`·`admin-only` 는 허용하되 `files.sensitive_flags`(패턴 이름 목록)를 저장하고 목록에 「민감」 배지, 그 뒤 `public`·`internal` 로 **낮추는 변경도 거부**(F-08). 감사 detail 에는 **패턴 이름과 건수만**(값은 절대 기록하지 않음, S-07). **한계(SECURITY R-58)**: 이미지·PDF·암호 zip·이미지로 찍은 문서는 검사하지 못하고, 오탐(우연히 형식이 맞는 숫자)도 있다 — 검출은 보조 장치이고 등급 판단은 올리는 사람의 책임이다 | 필수(15-3) |
 | F-23 | **관리 기능 재인증(sudo 모드)** (12단계 접수 사항 ③ → 사용자 확정 2026-09-12 "계정 기능 사용 전에 비밀번호 치고 들어가기로 했었다") | 관리 영역 — 계정 관리(`user.manage`)·조직·권한(`org.manage`)·감사 로그(`audit.read`)·휴지통·위키(`role:Admin`) — 의 **API 와 화면**은 세션이 있어도 **최근 15분 안에 비밀번호를 다시 확인한 세션**만 쓸 수 있다. 확인은 `POST /api/me/reauth {password}`(현재 비밀번호; 2단계 인증은 로그인에서 이미 거쳤으므로 다시 묻지 않음) → 성공 시 `sessions.reauth_at = now()`. 로그인 직후에도 `reauth_at` 은 비어 있어 **관리 영역에 처음 들어갈 때 반드시 한 번 묻는다**. 만료·미확인 상태의 요청: API 는 403 `{error, next:"reauth"}`(강제 절차 관문과 같은 모양), 화면(HTML)은 302 `/reauth?to=<키>`(키는 `users`·`org`·`audit`·`trash`·`wiki` 허용 목록만 — 되돌아갈 경로를 요청 값으로 받지 않는다). 실패는 로그인 뒤 창구와 같은 카운터(5회 → 잠금·세션 회수, R-48)와 nginx 속도 제한. 감사: `auth.reauth allow/deny(bad_credentials)`, 막힌 요청은 `auth.gate deny reauth_required`. 본인 계정 기능(`/api/me/*`)은 이미 현재 비밀번호(·코드)를 묻고 있어 대상이 아니다 | 필수(16-1) |
+| F-24 | **관리자 영역 `/admin`** (사용자 요청 2026-09-12 "중요도에 따라 관리자 페이지를 새로 만들고 일반적으로는 접근하지 못하게") | 관리 기능의 **단일 입구** 허브 화면 `/admin`(계정 관리·조직·권한·감사 로그·휴지통·위키·**권한 매트릭스 편집(F-25)**·공유 링크 전체 목록·최근 경보). 정책 `role:Admin` + 재인증(F-23). 일반 화면의 내비에는 Admin 에게만 「관리자 페이지」 한 항목이 보이고, 그 안의 세부 항목은 허브에서만 연다(일반 셸의 관리 그룹은 제거). 새 관리 API 는 `/api/admin/*` 접두로 모아 nginx 에서 한 덩어리로 다룬다. **네트워크 겹(선택)**: nginx 에 `/admin`·`/api/admin` 을 관리망 IP 만 허용하는 블록을 **꺼진 상태(주석)** 로 두고 README 에 켜는 법을 적는다 — 사용자 접속 출처가 셋(사내망 두 대역·프록시 경유 외부)이라 기본으로 켜면 스스로 잠길 수 있다. 기존 관리 화면 경로(`/users`·`/org`·`/audit`·`/trash`·`/wiki`)는 그대로 두되 허브에서 연결한다(위키 글의 원문 위치·문서가 그 경로를 가리킨다) | 필수(17-1) |
+| F-25 | **권한 매트릭스 화면 편집** (Q-12 결정 2026-09-12: "보안만 확보된다면 페이지에서 관리해도 충분") | `/admin/permissions` 화면 + `GET/PATCH /api/admin/permissions`. **조건 다섯 가지**가 전부 있어야 바뀐다: ① Admin + 재인증(F-23) ② 요청마다 **2단계 인증 코드**(TOTP, 1회성 R-45) ③ 사유 필수 ④ 서버 불변 규칙 — Admin 행은 전부 참으로 고정(관리자가 스스로를 잠글 수 없음), `can_upload` 이면 `can_read`, 역할·등급은 4×4 안, Guest 의 `admin-only` 는 거짓 고정 ⑤ **별도 DB 롤 `tbox_perm`**(`permissions` SELECT·UPDATE 만)으로만 쓴다 — 앱 런타임 롤 `tbox_app` 은 여전히 SELECT 만이라 다른 핸들러의 결함(SQL 인젝션 등)이 권한 표를 바꾸는 길은 그대로 막혀 있다. 변경은 한 트랜잭션, 셀마다 감사 `permission.change allow`(before/after·사유·코드 검증 사실), 거부는 `permission.change deny`(bad_request·bad_code·code_reused·invariant). 경보 AL-13(매트릭스 변경은 건수와 무관하게 즉시 기록). 효과는 다음 요청부터(매트릭스는 요청마다 읽음). 2인 승인은 활성 Admin 이 1명이라 이번엔 두지 않고 후보로 남긴다(R-43) | 필수(17-2) |
 
 ---
 
@@ -589,6 +591,10 @@
 | GET | `/s/{token}` | 공유 링크로 받기 (F-13). `{token}` 은 `[A-Za-z0-9_-]{43}`. 만료·회수·소진·없음 전부 404 동일 문구. 성공 시 `attachment` | `public` | `share.download` allow/deny(actor 없음, detail 에 발급자·링크 id) |
 | POST | `/api/me/reauth` | 관리 기능 재인증 (F-23). 본문 `{password}`. 성공 200 `{ok, reauth_until}` → 세션의 `reauth_at` 갱신 | 세션 존재 + CSRF (강제 절차 중에는 불필요 — 관리 기능이 없음) | `auth.reauth` allow / deny(bad_credentials → 실패 집계) |
 | GET | `/reauth?to=키` | 재인증 화면(HTML, F-23). `to` 는 `users`·`org`·`audit`·`trash`·`wiki` 허용 목록만, 그 밖은 `/` | `authenticated` | 없음 |
+| GET | `/admin` · `/admin/permissions` | 관리자 허브 · 권한 매트릭스 편집 화면(HTML, F-24·F-25) | `role:Admin` + 재인증 | 없음 |
+| GET | `/api/admin/permissions` | 매트릭스 16행 + 불변 규칙(잠긴 셀) (F-25) | `role:Admin` + 재인증 | 없음 |
+| PATCH | `/api/admin/permissions` | 매트릭스 변경 (F-25). 본문 `{changes:[{role,access_level,can_read,can_upload}], reason_text, otp}` — 조건 ①~⑤ | `role:Admin` + 재인증 + CSRF | `permission.change` allow(셀마다 before/after)/deny |
+| GET | `/api/admin/shares` · `/api/admin/alerts` | 공유 링크 전체 목록(토큰 없음) · 최근 경보(`alerts.log` 마지막 50줄, 값은 기록된 그대로) (F-24) | `role:Admin` + 재인증 | 없음 |
 
 ---
 
@@ -632,6 +638,8 @@
 | 공유 링크 (파일 행 버튼 → 모달, 설정 「내 공유 링크」, F-13) | 만료(1~168시간)·횟수(1~10)·사유 → 만든 뒤 링크 1회 표시 + 복사 ; 목록: 파일명·만료·남은 횟수·상태·「회수」 | 링크는 다시 볼 수 없다는 안내. 고칠 수 있는 파일에만 버튼 |
 | 민감정보 배지 (목록, F-22) | `sensitive_flags` 가 있으면 파일명 옆 「민감」 배지, 업로드 거부 시 등급 안내 문구 | 배지는 표시일 뿐 판단은 서버 |
 | 재인증 (`/reauth`, 관리 화면 모달, F-23) | 비밀번호 한 칸 + 「확인」. 관리 화면(계정·조직·감사·휴지통·위키)에 들어갈 때, 그리고 15분이 지나 API 가 `next:"reauth"` 를 돌려주면 모달로 다시 묻는다 | 막는 것은 서버 관문. 실패 5회면 잠금(로그인 뒤 창구와 같은 규칙) |
+| 관리자 허브 (`/admin`, F-24) | 카드 8개(계정 관리·조직·권한·권한 매트릭스 편집·감사 로그·휴지통·공유 링크 전체·최근 경보·위키) + 재인증 남은 시간 | Admin + 재인증. 일반 셸에는 「관리자 페이지」 한 항목만 |
+| 권한 매트릭스 편집 (`/admin/permissions`, F-25) | 4×4 표(읽기·올리기 토글), 잠긴 셀 표시(Admin 행·Guest admin-only), 변경 미리보기(before → after), 사유·2단계 인증 코드 칸, 「적용」 | 서버가 다시 검증. 바뀐 셀마다 감사 행 |
 
 ---
 
@@ -692,6 +700,8 @@
 | T-35 | 민감정보 검출 (F-22, S-07) | 주민등록번호 형식 문자열이 든 `.txt` 를 `public` 으로 → 400 `sensitive_level_required` + 감사 deny(detail 에 패턴 이름만, 숫자 원문 0건). 같은 파일 `team` → 201 + `sensitive_flags` 저장 + 목록 배지. 그 파일을 `internal` 로 PATCH → 400. 카드 번호(Luhn 통과) `.csv` → 같은 동작. 우연 숫자(Luhn 실패) → 통과. 이미지 파일은 검사하지 않음(한계 명시) |
 | T-36 | 관리 기능 재인증 (F-23, S-01) | Admin 로그인 직후 `GET /api/users` → 403 `next:"reauth"` + `auth.gate deny reauth_required`; `GET /users`(HTML) → 302 `/reauth?to=users`; `/wiki` → 302. `POST /api/me/reauth` 틀린 비밀번호 → 400 + `auth.reauth deny bad_credentials` + `failed_count` +1; 맞으면 200 → 이어서 `GET /api/users` 200, `/wiki` 200. DB `reauth_at` 을 16분 전으로 되돌리면(검토 계정 세션 행만, 데이터 아님) 다시 403. Employee 는 재인증 성공 뒤에도 `/api/users` 403(`authz.route deny`) — 재인증은 권한을 만들지 않는다. `/api/me/password`·`/api/files` 는 재인증 없이 그대로 200 |
 | T-37 | 서버 층 경보 (S-11-A, 8.4-5·6) | `alerts.php` 가 `auth.log` 의 새 출처 SSH 성공을 AL-3 으로, `sudo … COMMAND=` 에 `psql|pg_dump|rm|find …-delete|truncate|dropdb` 가 들어간 실행을 AL-9 로 `alerts.log`+`alert.raised` 에 남긴다(시험은 사본 로그 파일 인자로). 정합성 검사 cron 이 **매일** 02:00 |
+| T-38 | 관리자 영역 접근 (F-24, S-01) | Employee·Manager·Guest 세션 `/admin`·`/admin/permissions`·`/api/admin/*` → 403 + `authz.route deny`; Admin 재인증 전 → API 403 `next:"reauth"`·HTML 302, 재인증 뒤 200. 일반 셸 HTML 에 `/users`·`/org`… 관리 항목 링크가 없고 「관리자 페이지」만(Admin), 비관리자 HTML 에는 그것도 없음. nginx 허용 대역 블록은 주석 상태(`nginx -T` 로 확인) |
+| T-39 | 권한 매트릭스 편집 (F-25, S-01, S-07) | Admin+재인증: 코드 없이 → 400 `deny bad_request`; 틀린 코드 → 400 `deny bad_code` + 실패 집계; 같은 코드 2회 → `code_reused`; Admin 행 변경 시도 → 400 `deny invariant`; `can_upload=true,can_read=false` → 400 invariant; 사유 없음 → 400. 정상: Guest `internal` read 를 true 로 → 200, 감사 `permission.change allow` before/after 1행, AL-13 1건, **곧바로** Guest 세션 `/api/files` 에 internal 파일이 보임 → 되돌리기 200. `\dp permissions`: `tbox_app=r`, `tbox_perm=rw`. `tbox_app` 으로 `UPDATE permissions` 시도 → permission denied |
 
 ### 12.3 애플리케이션 밖 (S-10, S-11)
 
@@ -736,6 +746,7 @@
 | **14** (사용자 요청 2026-09-12) | **위키(F-21)** — 초보자용 해설 글(안내 8편 + 단계 1~13) `wiki/*.json`, 서버 렌더러 `src/Wiki.php`, 화면 `/wiki`·`/wiki/{slug}`(Admin), 내비 「위키」, 구조 검사 `scripts/wiki_check.php` | F-21, S-01, S-03, R-56 | T-32 | F-21 |
 | **15** (확장 아이템, 사용자 "진행해" 2026-09-12) | **15-1** 내 활동 보기(F-12) → **15-2** 만료 공유 링크(F-13, Q-5 기본안) → **15-3** 민감정보 패턴 검출(F-22) | F-12, F-13, F-22, S-01, S-02, S-07 | T-33 · T-34 · T-35 | F-12, F-13, F-22 |
 | **16** (미반영 재점검, 사용자 확정 2026-09-12) | **16-1** 관리 기능 재인증(F-23) · **16-2** 사고 후속 미완 3건 — 서버 층 경보 AL-3 확장·AL-9(8.4-5), 정합성 검사 일 1회(8.4-6), `backup.restore error restore_failed` 문장 틀(8.4-10) | F-23, S-09-4, S-11-A, R-48 | T-36 · T-37 | F-23 |
+| **17** (사용자 요청 2026-09-12) | **17-1** 관리자 영역 `/admin` 허브·일반 셸 관리 항목 제거·nginx 관리망 블록(꺼짐)·공유 링크 전체·최근 경보(F-24) → **17-2** 권한 매트릭스 화면 편집(F-25, Q-12 결정: 별도 DB 롤 `tbox_perm`·재인증·TOTP·사유·불변 규칙·감사 before/after·AL-13) | F-24, F-25, S-01, S-07, R-43 | T-38 · T-39 | F-24, F-25 |
 
 **과제 제출물 대응**
 
@@ -763,4 +774,4 @@
 | Q-11 | PHP 버전 | 1단계 | **결정(2026-09-08): 실습 VM 설치본 PHP 8.1** 유지 (참가자 동일 환경). EOL 위험 수용 → R-21 |
 | Q-8 | 감사 로그 열람 범위 | 8단계 전 | **결정(2026-09-08): Admin 만** → R-01 해소 |
 | Q-9 | 제출용 원격 저장소(`git2.tla.so`) 주소와 브랜치 | 1단계 커밋 후 | **결정(2026-09-12)**: `origin` = `https://git2.tla.so/changkwon/T-Box_Re.git`, 브랜치 `main`. 사용자 지시("push 해줘")로 밀린 49 커밋을 올렸고 이후 단계 커밋마다 push |
-| Q-12 | 권한 매트릭스(`permissions` 16행)를 **화면에서 편집**할 수 있게 할지 | 12-3 뒤 | **미결 — 12단계는 읽기 전용 조회만.** 편집을 허용하면 앱 DB 계정에 `permissions` UPDATE 권한이 필요해져 "권한 상승 불가" 설계(9장·ARCH 6.2-1·SECURITY 1.2)가 약해진다. 허용한다면 별도 DB 롤·2인 승인·감사 `permission.change` 를 함께 설계해야 한다 (SECURITY R-43) |
+| Q-12 | 권한 매트릭스(`permissions` 16행)를 **화면에서 편집**할 수 있게 할지 | 12-3 뒤 | **결정(사용자 2026-09-12): 허용 — "보안만 확보된다면 페이지에서 관리해도 충분"**. 조건은 F-25 ①~⑤(재인증·TOTP·사유·불변 규칙·별도 DB 롤 `tbox_perm`). 앱 런타임 롤 `tbox_app` 은 SELECT 만 유지 — 편집 경로는 핸들러 하나·롤 하나로 좁힌다(SECURITY R-43 갱신, R-60). 2인 승인은 활성 Admin 2명 이상이 되면 재검토 |
