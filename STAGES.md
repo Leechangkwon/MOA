@@ -533,6 +533,7 @@ sudo -u postgres psql -d tbox_re -c "SELECT happened_at, actor_name, action, res
 | 2026-09-12 | 해소 | (12-3 구현 중 Opus 발견) PHP `false` 를 PDO 에 그대로 바인딩하면 PostgreSQL 이 `invalid input syntax for type boolean: ""` 로 거절해 500 | `CAST(:active AS boolean)` + 문자열 `'true'`/`'false'` 로 바인딩(`users_update` 와 같은 방식). 규칙: 불리언은 문자열로 넘기고 SQL 에서 CAST |
 | 2026-09-12 | 관찰 | 12-2·12-3 검토가 남긴 시험 흔적 — 파일 `qa-preview-*` 13개 + `qa-team-inactive.txt`(qa_employee01, 개발팀 team 레벨), 팀 `qa-team-검토2`(id 3, 비활성). qa_employee01 의 팀은 원복(1) | 지우지 않았다(운영 데이터 불가침). 삭제 여부는 사용자 결정 — 파일은 휴지통 경로로, 팀은 비활성 그대로 두는 것을 권고 |
 | 2026-09-12 | 결정 | 단계 커밋마다 `git push` (사용자 지시 "push 해줘" 이후 관행) — CLAUDE.md 6장 문구 갱신 | 12단계 설계·12-1·12-2·12-3 커밋 전부 origin/main 에 반영 |
+| 2026-09-12 | 접수 | 12-2 구현 에이전트 세션에 네 가지 질문이 접수됨(출처는 이 세션에서 직접 확인되지 않음 — 사용자로 추정): ① 미리보기가 브라우저에서 차단 ② 2단계 인증 코드가 갱신된 뒤에도 옛 코드가 통과 ③ 관리 기능 접근 시 비밀번호 재확인 요구 ④ 계정이 왜 이렇게 많은가 | ① 원인 A(전역 프레임 차단 헤더)는 12-2 보정으로 해소, 원인 B(PDF 뷰어 vs sandbox)는 R-41 선택지 A/B/C — 사용자 실측·결정 대기. ② ±1 창(약 90초)은 RFC 권고대로 의도된 것이나 **같은 코드 재사용이 막히지 않는 것은 결함** → R-45 등록, 수정은 사용자 결정 뒤 13단계. ③ 새 요구사항(F-21 후보, GitHub·AWS 의 sudo mode) — 문서 우선 원칙에 따라 **사용자 확정 뒤 설계**. ④ 24개 중 시드 5·검토 qa_ 5·10단계 시험 10(비활성)·11단계 시험 4(**활성, Admin 1 포함**) → R-46, 비활성화는 사용자가 `/users` 에서 |
 
 ---
 
