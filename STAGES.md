@@ -789,6 +789,7 @@ sudo -u postgres psql -d tbox_re -c "SELECT happened_at, actor_name, action, res
 | 2026-09-11 | 결정 | "오케이 진행해" — 문구로 잠근 저장(ⓐ)·4자 묶음 표시(ⓑ) 채택, QR(ⓒ)은 후속 | PRD F-17-2, SECURITY R-40 갱신 → Opus 구현 지시 |
 
 ---
+| 2026-09-13 | "`/chrome` 을 치니 Status: Disabled · Extension: Not detected 로 뜬다 — 이렇게 뜨는 게 맞나?" | 맞다. Claude in Chrome 확장은 **Claude Code 가 실행되는 컴퓨터의 크롬**과 붙는다. 이 세션은 서버(VM, 크롬 없음)에서 돌고 있어 PC 의 크롬을 감지할 수 없다. 서버에서 이카운트 화면을 읽으려면 PC 에서 `claude --chrome` 으로 세션을 열어야 하고, 아니면 화면 캡처(품목등록·거래처등록·발주서 입력·구매 현황)를 붙이는 것이 현실적이다. 확장은 읽기 전용이 아니므로 켜더라도 사이트 권한을 이카운트 도메인에만 준다 |
 
 ## 4. 이 문서를 채우는 규칙 (요약 — 원문은 `CLAUDE.md` 9장)
 
