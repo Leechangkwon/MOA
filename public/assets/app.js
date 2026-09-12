@@ -5745,7 +5745,46 @@ document.addEventListener('DOMContentLoaded', function () {
       });
     return;
   }
+  /*
+   * 18-3 보정 (사용자 관찰 2026-09-13: 「구매관리 › 기초정보」에서 내비의 「구매관리」·
+   * 「관리자」가 사라짐).
+   *
+   * 공통 셸을 쓰지만 셸의 화면 키 목록에 없는 화면(`/purchase/*` 등)은 <body data-page>
+   * 가 비어 있다. 전에는 여기서 그대로 return 해 `initShell` 이 아예 불리지 않았고,
+   * 기본이 hidden 인 `#nav-purchase-group`·`#nav-admin-group`·`#nav-admin` 이 닫힌 채
+   * 남았다. 재인증 화면(`/reauth`)이 「폼이 있는지」로 예외 처리한 것과 같은 방식을
+   * **셸이 있는지**(`#nav-files`)로 일반화한다.
+   *
+   * 이 분기는 셸만 그린다 — 화면 내용은 그 화면의 스크립트(예: purchase.js)가 따로 그린다.
+   * 무엇이 열리는지는 여전히 `/api/me` 의 `can_*` 가 정하고, 항목을 개발자도구로 되살려도
+   * 라우트 정책이 다시 막는다 (PRD S-01).
+   */
   if (typeof page !== 'string' || page === '') {
+    if (!document.getElementById('nav-files')) {
+      return;   // 셸이 없는 화면 — 종전과 같이 아무것도 하지 않는다
+    }
+    fetch('/api/me', { credentials: 'same-origin', cache: 'no-store' })
+      .then(function (response) {
+        if (response.status === 401) {
+          toLogin();
+          return null;
+        }
+        if (!response.ok) {
+          return null;   // 내비는 기본 상태(닫힘) 그대로 — 화면이 권한을 추측하지 않는다
+        }
+        return readJson(response).then(function (me) {
+          if (typeof me.csrf_token !== 'string') {
+            return null;
+          }
+          // 재인증 모달이 어느 화면에서든 열릴 수 있어 토큰을 한 곳에 둔다 (16-1, F-23).
+          reauthCsrf = me.csrf_token;
+          initShell(me, me.csrf_token);
+          return null;
+        });
+      })
+      .catch(function () {
+        // 조용히 둔다 — 셸이 안 열리는 것이 잘못된 항목을 여는 것보다 낫다.
+      });
     return;
   }
   bootPage(page);

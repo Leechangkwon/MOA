@@ -809,6 +809,7 @@ sudo -u postgres psql -d tbox_re -c "SELECT happened_at, actor_name, action, res
 | 2026-09-13 | 접수(Opus 보고) | `bad_header_row` 전용 감사 문장 없음(Audit.php 허용 밖 → `bad_request` + `detail.why`) · 머리행을 바꾸면 매핑 후보는 재추측 안 함 · 업로드 뒤 종류 변경 불가(재업로드) · `pack_den` 은 저장 안 함(판정 재료만) | 전부 수용. 문장 표 행 추가·재추측은 20단계 지시서에 묶음 |
 | 2026-09-13 | 제안(Fable) | 실파일은 거래처 마스터가 비어 8,100행 전부 `vendor_not_found`. 품목 파일에 「구매처명」이 이미 있으므로 **「없는 거래처는 새로 등록」 선택지**(기본 꺼짐, buyer·Admin, 등록 건수는 미리보기에 표시·감사 detail 에 `vendors_created`)를 두면 거래처 파일을 먼저 올리는 절차를 생략할 수 있다 | 사용자 결정 대기 |
 | 2026-09-13 | 결정(사용자) | "각각 등록이 필요한 건들이 있는데, 접근한 페이지에서 필요한 정보에 대한 팝업창을 띄워 등록할 수 있도록 개선한다" | **19단계 재지시 3회차(예정, 2회차 뒤)**: ① 기초정보 폼의 참조 칸(지점→브랜드, 장소→지점, 품목→거래처·분류·브랜드, 인가량→장소·품목) 옆 「+ 새로 등록」 → 같은 폼을 모달로 열어 등록 → 201 뒤 선택 상자 갱신·새 항목 자동 선택 ② 가져오기 미리보기의 `vendor_not_found`·`branch_not_found`·`category_not_found`·`brand_not_found` 행에 「○○ 등록」 단추 → 모달 등록 → 자동 재판정(preview 재요청, 재업로드 없음) ③ 화면 모달은 새 폴더 대화상자와 같은 `<dialog class="modal">`, 서버 API 는 기존 create 그대로(재인증 관문 포함) |
+| 2026-09-13 | 사고 | 구매 화면(`/purchase/*`)에서 내비 「구매관리」·「관리자」가 사라짐 — `<body data-page>` 가 비어 app.js 부트가 `initShell` 을 건너뜀(표시만의 문제, 정책은 그대로) | 18-3 후속: 셸(`#nav-files`)이 있으면 화면 키가 없어도 `/api/me` → `initShell`. `node --check`·린트 통과, `data-page=""` 재현 확인. 20단계에서 구매 핸들러에 `$pageKey='purchase'` 부여 예정 |
 
 
 ## 2-1. 10단계 뒤 일괄 자기 공격 — 진행 순서 (관문 ③, 사용자)
