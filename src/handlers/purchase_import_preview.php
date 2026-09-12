@@ -61,7 +61,10 @@ $reject = static function (string $reason, int $status, string $message, array $
 /** 표에 등록된 사유만 통과시키고, 나머지는 `bad_request` 로 돌린다 (위 ★ 주석) */
 $knownReason = static function (string $why): string {
     return in_array($why, ['bad_kind', 'bad_mapping', 'mapping_incomplete',
-                           'too_many_rows', 'parse_failed'], true) ? $why : 'bad_request';
+                           'too_many_rows', 'parse_failed',
+                           // 2차 보정에서 ARCH 7.4 문장 표에 등록한 셋
+                           'bad_header_row', 'default_branch_required', 'default_brand_required'],
+                     true) ? $why : 'bad_request';
 };
 
 $file = Importer::findFile($params[0] ?? '');
@@ -69,8 +72,20 @@ if ($file === null) {
     Http::error(404, Http::MSG_NOT_FOUND);
 }
 
+/**
+ * 화면이 보낸 「기본 지점」·「기본 브랜드」를 **양의 정수 id** 로만 좁힌다 (2차 보정).
+ * 형식이 아니면 0(=없음)이다 — 400 을 내지 않는 이유는, 없으면 judge() 가
+ * `default_branch_required` 로 한 번에 말해 주기 때문이다(사유가 한 곳에 모인다).
+ */
+function tbox_import_ref(mixed $raw): int
+{
+    $text = is_int($raw) ? (string) $raw : (is_string($raw) ? trim($raw) : '');
+    return preg_match('/^[1-9][0-9]{0,8}$/', $text) === 1 ? (int) $text : 0;
+}
+
 $body = Http::jsonBody();
-if ($body === [] || array_diff(array_keys($body), ['kind', 'mapping', 'header_row']) !== []) {
+if ($body === [] || array_diff(array_keys($body), ['kind', 'mapping', 'header_row',
+                                          'default_branch', 'default_brand', 'derive']) !== []) {
     $reject('bad_request', 400, Http::MSG_BAD_REQUEST);
 }
 
@@ -105,22 +120,59 @@ if ($sheet['truncated']) {
 try {
     // 머리행 — 요청이 정한 값이 우선이고, 없으면 서버가 감지한다. 0~19 밖은 예외(400).
     $headerRow = Importer::headerRowFrom($body['header_row'] ?? null, $kind, $sheet['rows']);
-    $resolved  = Importer::resolve($kind, $sheet['rows'][$headerRow] ?? [], $mapping);
-    $judged    = Importer::judge($kind, $sheet['rows'], $resolved, $headerRow);
+    /* 파생 모드에서는 창고 매핑에 지점에 없는 칸(「구분」·「사용」)이 섞여 온다 — 같은 화면에서
+     * 단추 하나를 누른 것이므로 매핑을 다시 고르게 하지 않고 지점에 있는 칸만 추린다 (2차 보정). */
+    $useMapping = (($body['derive'] ?? '') === Importer::DERIVE_LOCATION_NAME)
+        ? Importer::mappingForDerive($mapping)
+        : $mapping;
+    $resolved  = Importer::resolve($kind, $sheet['rows'][$headerRow] ?? [], $useMapping);
+    /* 2차 보정 — 화면이 정한 기본값들. **값이 아니라 id 이고 전부 정수로 좁힌다.**
+     * 이 셋이 판정을 바꾸지만 권한을 바꾸지는 않는다: 기초정보 쓰기 자격은 이미
+     * `purchase.master.write`(buyer·Admin, 전 지점) 이고, 그 둘에게는 지점 범위가 없다. */
+    $judged    = Importer::judge($kind, $sheet['rows'], $resolved, $headerRow, [
+        'default_branch' => tbox_import_ref($body['default_branch'] ?? null),
+        'default_brand'  => tbox_import_ref($body['default_brand'] ?? null),
+        'derive'         => is_string($body['derive'] ?? null) ? (string) $body['derive'] : '',
+    ]);
 } catch (RuntimeException $e) {
     $why = $e->getMessage();
     $reject($knownReason($why), 400, Http::MSG_BAD_REQUEST, ['why' => $why]);
     exit;
 }
 
+$db = Db::instance();
+
+/* 2차 보정 — 미리보기 표에 **어느 지점으로 갈지**를 보여 준다.
+ * 창고 파일은 지점이 열·창고명·기본값 셋 중 하나에서 오므로, 저장하기 전에 사람이
+ * "이 창고가 저 지점으로 들어가는구나" 를 눈으로 확인할 수 있어야 한다.
+ * 지점 이름 표는 여기서 한 번만 읽는다(행마다 조회하지 않는다).
+ */
+$sqlBranchNames = <<<'SQL'
+    SELECT id, name FROM p_branches
+    SQL;
+$branchNames = [];
+foreach ($db->run($sqlBranchNames)->fetchAll() as $b) {
+    $branchNames[(int) $b['id']] = (string) $b['name'];
+}
+
 // 응답용으로 줄인다 — `values` 는 서버 내부 값이라 내려 주지 않는다(화면은 원본 칸만 본다).
-$slim = static function (array $row): array {
-    return [
+$slim = static function (array $row) use ($branchNames): array {
+    $out = [
         'row_no' => (int) $row['row_no'],
         'status' => (string) $row['status'],
         'reason' => $row['reason'] === null ? null : (string) $row['reason'],
         'data'   => is_array($row['data'] ?? null) ? $row['data'] : [],
     ];
+    // 지점이 정해진 행이면 **어느 지점인지와 무엇을 보고 정했는지**를 함께 준다.
+    $branchId = $row['values']['branch_id'] ?? null;
+    if ($branchId !== null) {
+        $out['branch_id']   = (int) $branchId;
+        $out['branch_name'] = $branchNames[(int) $branchId] ?? null;
+    }
+    if (isset($row['branch_by']) && $row['branch_by'] !== '') {
+        $out['branch_by'] = (string) $row['branch_by'];   // column | name | default
+    }
+    return $out;
 };
 
 $rows    = [];

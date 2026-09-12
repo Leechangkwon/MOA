@@ -46,6 +46,11 @@ $id = (int) $idRaw;
 
 $body = Http::jsonBody();
 
+/* 거래처 이름 겹침 확인 — 만들기와 **같은 규칙**이다 (2차 보정 2026-09-13).
+ * 이름을 바꾸다 다른 거래처와 같아지는 경우도 사람이 한 번 확인해야 한다. */
+$allowDuplicateName = ($body['allow_duplicate_name'] ?? null) === true;
+unset($body['allow_duplicate_name']);
+
 $auditTarget = [
     'target_type' => 'purchase_master',
     'target_id'   => $id,
@@ -119,6 +124,18 @@ if (array_key_exists('parent_id', $changes)) {
         $reject('bad_request', 400, Http::MSG_BAD_REQUEST);   // 자기 자신이 부모일 수 없다
     }
     $mustExist('category', $changes['parent_id']);
+}
+
+/* ─── [4-1] 거래처 이름 겹침 (2차 보정) — **자기 자신은 빼고** 센다 ─── */
+if ($kind === 'vendors' && !$allowDuplicateName && array_key_exists('name', $changes)) {
+    $sqlSameName = <<<'SQL'
+        SELECT 1 AS ok FROM p_vendors
+         WHERE lower(name) = lower(:name) AND id <> CAST(:id AS bigint)
+         LIMIT 1
+        SQL;
+    if (is_array($db->run($sqlSameName, [':name' => (string) $changes['name'], ':id' => $id])->fetch())) {
+        $reject('conflict', 409, Http::MSG_CONFLICT);
+    }
 }
 
 // ─── [5] 트랜잭션: UPDATE → 감사 → COMMIT ───

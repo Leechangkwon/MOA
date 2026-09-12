@@ -435,7 +435,12 @@
     branch_not_found: '지점 이름을 찾을 수 없습니다',
     name_differs: '품목명이 등록된 이름과 다릅니다',
     // 1차 보정 — 이카운트의 「당수량(분자)/(분모)」. 분모가 1 이 아니면 사람이 봐야 한다.
-    pack_den_not_one: '포장 수량의 분모가 1 이 아닙니다 — 낱개 수를 확인해 주세요'
+    pack_den_not_one: '포장 수량의 분모가 1 이 아닙니다 — 낱개 수를 확인해 주세요',
+    // 2차 보정 2026-09-13 — 실제 이카운트 거래처·창고 파일에서 나온 확인거리들
+    duplicate_name_in_file: '같은 이름이 이 파일에 이미 있습니다 (코드가 다르면 「승격」해 따로 등록하세요)',
+    name_exists: '같은 이름의 거래처가 이미 등록돼 있습니다 (다른 사업자면 「승격」해 따로 등록하세요)',
+    branch_ambiguous: '창고명에 여러 지점 이름이 들어 있어 어느 지점인지 정할 수 없습니다',
+    brand_not_found: '브랜드를 찾을 수 없습니다 — 「기본 브랜드」를 고르거나 브랜드를 먼저 등록하세요'
   };
 
   function initImport() {
@@ -446,7 +451,9 @@
       headerRow: 0,        // 지금 고른 줄 (0기준)
       detected: {},        // 종류별 서버 감지 결과
       headRows: [],        // 앞 20행 원문 — 재업로드 없이 다시 그리는 재료
-      guess: {}            // 종류별 매핑 후보 (서버가 준 것)
+      guess: {},           // 종류별 매핑 후보 (서버가 준 것)
+      // 2차 보정 — 지점 열이 없는 창고 파일·브랜드 열이 없는 지점 파일을 위한 기본값
+      branchCount: 0, brandCount: 0, derive: ''
     };
 
     function step(current) {
@@ -480,7 +487,8 @@
         targets.forEach(function (target) {
           var option = document.createElement('option');
           option.value = target;
-          setText(option, target);
+          // 2차 보정 — 종류에 맞는 사람 말로 보여 준다(`code` 가 아니라 「창고코드」).
+          setText(option, labelOf(target));
           if (guess && guess[column] === target) { option.selected = true; }
           select.appendChild(option);
         });
@@ -526,6 +534,8 @@
       });
     }
 
+    fillDefaults();   // 2차 보정 — 지점·브랜드 목록을 미리 받아 둔다
+
     var headerSelect = $('p-header-row');
     if (headerSelect) {
       headerSelect.addEventListener('change', function () {
@@ -536,6 +546,78 @@
         applyHeaderRow(row, null);
         say('');
       });
+    }
+
+    /**
+     * 「기본 지점」·「기본 브랜드」 셀렉트를 채운다 (2차 보정 2026-09-13).
+     *
+     * 목록은 서버에서 받는다 — 화면이 고정 목록을 들고 있으면 지점이 늘 때마다 화면을
+     * 고쳐야 한다. 값은 **id 뿐**이고, 그 id 로 무엇을 할 수 있는지는 서버가 다시 판단한다.
+     */
+    function fillDefaults() {
+      [['/api/purchase/branches', 'p-default-branch'],
+       ['/api/purchase/brands', 'p-default-brand']].forEach(function (pair) {
+        var select = $(pair[1]);
+        if (!select) { return; }
+        request('GET', pair[0] + '?page=1').then(function (result) {
+          if (!result || !result.ok) { return; }
+          var items = Array.isArray(result.data.items) ? result.data.items : [];
+          items.forEach(function (row) {
+            var option = document.createElement('option');
+            option.value = String(row.id);
+            setText(option, row.name);
+            select.appendChild(option);
+          });
+          if (pair[1] === 'p-default-branch') { state.branchCount = items.length; }
+          if (pair[1] === 'p-default-brand') { state.brandCount = items.length; }
+          showDefaults();
+        }).catch(function () { /* 목록을 못 받아도 나머지 화면은 동작한다 */ });
+      });
+    }
+
+    /** 종류에 따라 어떤 기본값 칸을 보일지 정하고, 없으면 무엇을 먼저 하라고 알린다. */
+    function showDefaults() {
+      var box = $('p-defaults');
+      if (!box) { return; }
+      var needBranch = state.kind === 'locations';
+      var needBrand  = state.kind === 'branches';
+      var derive     = state.kind === 'branches' || state.kind === 'locations';
+
+      box.hidden = !(needBranch || needBrand || derive);
+      var bf = $('p-default-branch-field');
+      if (bf) { bf.hidden = !needBranch; }
+      var rf = $('p-default-brand-field');
+      if (rf) { rf.hidden = !needBrand; }
+      var db = $('p-derive-branches');
+      // 지점 뽑기 단추는 **창고 파일을 올렸을 때만** 뜻이 있다(창고명에서 뽑는다).
+      if (db) { db.hidden = !(state.kind === 'locations'); }
+
+      var note = $('p-defaults-note');
+      if (!note) { return; }
+      if (needBranch && state.branchCount === 0) {
+        setText(note, '등록된 지점이 없습니다 — 「창고명에서 지점 이름 뽑기」로 먼저 만들거나,'
+                    + ' 기초정보 화면의 「지점」 탭에서 직접 등록하세요.');
+      } else if (needBrand && state.brandCount === 0) {
+        setText(note, '등록된 브랜드가 없습니다 — 기초정보 화면의 「브랜드」 탭에서 먼저 등록하세요.');
+      } else {
+        setText(note, '');
+      }
+    }
+
+    /** 미리보기·확정에 함께 보내는 값 한 벌 (기본 지점·브랜드·파생 모드) */
+    function importBody(extra) {
+      var body = {
+        kind: state.derive === 'location_name' ? 'branches' : state.kind,
+        mapping: currentMapping(),
+        header_row: state.headerRow
+      };
+      var branch = $('p-default-branch');
+      if (branch && branch.value !== '') { body.default_branch = branch.value; }
+      var brand = $('p-default-brand');
+      if (brand && brand.value !== '') { body.default_brand = brand.value; }
+      if (state.derive !== '') { body.derive = state.derive; }
+      Object.keys(extra || {}).forEach(function (k) { body[k] = extra[k]; });
+      return body;
     }
 
     function currentMapping() {
@@ -606,8 +688,10 @@
             });
 
             state.headerRow = picked;
+            state.derive = '';
             fillHeaderSelect();
             applyHeaderRow(picked, state.guess[state.kind] || {});
+            showDefaults();          // 2차 보정 — 종류에 맞는 기본값 칸을 연다
             $('p-map-panel').hidden = false;
             step(2);
             say('');
@@ -634,63 +718,138 @@
       return need.filter(function (target) { return have[target] !== true; });
     }
 
-    /** 필수 칸 이름의 사람 말 (없으면 원래 이름 그대로) */
+    /**
+     * 우리 칸 이름의 사람 말 — **종류마다 다르다** (2차 보정 2026-09-13).
+     *
+     * 전에는 표가 하나뿐이라, 창고를 가져오는데 「품목명이 비어 있습니다」 라는 안내가 떴다
+     * (사용자 혼란 실측). `code`·`name` 은 종류마다 뜻이 완전히 다르므로 표를 갈라 둔다.
+     */
     var TARGET_LABEL = {
-      code: '품목코드', name: '품목명', vendor: '구매처(거래처)',
-      branch: '지점', unit: '단위'
+      items:     { code: '품목코드', name: '품목명', vendor: '구매처(거래처)', unit: '단위',
+                   pack_qty: '포장 낱개 수', pack_den: '당수량(분모)', price_in: '입고단가',
+                   cat1: '대분류', cat2: '중분류', cat3: '소분류', spec: '규격', barcode: '바코드' },
+      vendors:   { code: '거래처코드', name: '거래처명', biz_no: '사업자번호',
+                   ceo_name: '대표자명', tel: '전화', active: '사용구분' },
+      locations: { code: '창고코드', name: '창고명', branch: '지점', kind: '구분(용도)',
+                   legacy_name: '이전 이름', active: '사용' },
+      branches:  { name: '지점명', brand: '브랜드', code: '지점코드', active: '사용' }
     };
+
+    /** 지금 종류의 칸 이름 → 사람 말 (표에 없으면 원래 이름 그대로) */
+    function labelOf(target) {
+      var table = TARGET_LABEL[state.kind] || {};
+      return table[target] || target;
+    }
+
+    /** 어느 규칙으로 지점이 정해졌나 — 미리보기 표의 「지점」 칸에 덧붙이는 꼬리표 */
+    var BRANCH_BY_LABEL = {
+      column: '파일의 지점 열',
+      name:   '창고명에서 찾음',
+      default: '기본 지점'
+    };
+
+    /**
+     * 미리보기 결과를 그린다 (2차 보정에서 함수로 뺐다 — 「지점 뽑기」도 같은 표를 쓴다).
+     * 모든 글자는 `textContent` 로만 들어간다.
+     */
+    function renderPreview(data, note) {
+      state.judged = data;
+
+      var counts = data.counts || {};
+      var box = $('p-preview-counts');
+      clear(box);
+      [['insert', '새로 등록'], ['update', '기존 갱신'],
+       ['review', '확인 필요'], ['error', '오류']].forEach(function (pair) {
+        box.appendChild(el('span', 'p-badge p-badge--' + pair[0],
+                           pair[1] + ' ' + String(counts[pair[0]] || 0)));
+      });
+
+      var tbody = $('p-preview-body');
+      clear(tbody);
+      (data.rows || []).forEach(function (row) {
+        var tr = document.createElement('tr');
+        tr.appendChild(el('td', null, row.row_no));
+
+        var statusCell = document.createElement('td');
+        statusCell.appendChild(el('span', 'p-badge p-badge--' + row.status,
+                                  STATUS_LABEL[row.status] || row.status));
+        tr.appendChild(statusCell);
+
+        // 2차 보정 — 어느 지점으로 가는지와 **무엇을 보고 정했는지**를 함께 보여 준다.
+        var branchText = '—';
+        if (row.branch_name) {
+          branchText = row.branch_name
+            + (row.branch_by ? ' (' + (BRANCH_BY_LABEL[row.branch_by] || row.branch_by) + ')' : '');
+        }
+        tr.appendChild(el('td', 'muted', branchText));
+
+        tr.appendChild(el('td', 'muted', row.reason ? (REASON_LABEL[row.reason] || row.reason) : '—'));
+
+        var values = [];
+        Object.keys(row.data || {}).forEach(function (key) {
+          if (row.data[key] !== '' && key !== 'derived_from') {
+            values.push(labelOf(key) + '=' + row.data[key]);
+          }
+        });
+        tr.appendChild(el('td', 'p-cell-wide', values.join(' · ')));
+        tbody.appendChild(tr);
+      });
+
+      $('p-preview-panel').hidden = false;
+      step(3);
+      say(note || '');
+    }
 
     var previewButton = $('p-map-preview');
     if (previewButton) {
       previewButton.addEventListener('click', function () {
+        state.derive = '';   // 일반 미리보기는 파생 모드가 아니다
         var missing = missingRequired();
         if (missing.length > 0) {
-          say('필수 칸 ' + missing.map(function (t) { return '「' + (TARGET_LABEL[t] || t) + '」'; }).join(' · ')
+          say('필수 칸 ' + missing.map(function (t) { return '「' + labelOf(t) + '」'; }).join(' · ')
               + ' 이(가) 비어 있습니다. 오른쪽 「우리 칸」 에서 골라 주세요'
               + ' (열 이름이 안 보이면 위의 「머리행」 을 바꿔 보세요).');
           return;
         }
         say('판정하는 중…');
-        request('POST', '/api/purchase/import/' + state.importId + '/preview',
-                { kind: state.kind, mapping: currentMapping(), header_row: state.headerRow })
+        request('POST', '/api/purchase/import/' + state.importId + '/preview', importBody())
           .then(function (result) {
             if (!result) { return; }
             if (!result.ok) { say(errorMessage(result.data)); return; }
-            state.judged = result.data;
-
-            var counts = result.data.counts || {};
-            var box = $('p-preview-counts');
-            clear(box);
-            [['insert', '새로 등록'], ['update', '기존 갱신'],
-             ['review', '확인 필요'], ['error', '오류']].forEach(function (pair) {
-              var badge = el('span', 'p-badge p-badge--' + pair[0],
-                             pair[1] + ' ' + String(counts[pair[0]] || 0));
-              box.appendChild(badge);
-            });
-
-            var tbody = $('p-preview-body');
-            clear(tbody);
-            (result.data.rows || []).forEach(function (row) {
-              var tr = document.createElement('tr');
-              tr.appendChild(el('td', null, row.row_no));
-              var statusCell = document.createElement('td');
-              statusCell.appendChild(el('span', 'p-badge p-badge--' + row.status,
-                                        STATUS_LABEL[row.status] || row.status));
-              tr.appendChild(statusCell);
-              tr.appendChild(el('td', 'muted', row.reason ? (REASON_LABEL[row.reason] || row.reason) : '—'));
-              var values = [];
-              Object.keys(row.data || {}).forEach(function (key) {
-                if (row.data[key] !== '') { values.push(key + '=' + row.data[key]); }
-              });
-              tr.appendChild(el('td', 'p-cell-wide', values.join(' · ')));
-              tbody.appendChild(tr);
-            });
-
-            $('p-preview-panel').hidden = false;
-            step(3);
-            say('');
+            renderPreview(result.data, '');
           })
           .catch(function () { say(GENERIC_ERROR); });
+      });
+    }
+
+    /* 「창고명에서 지점 이름 뽑기」 (2차 보정, 지시 4).
+     *
+     * 새 라우트를 만들지 않는다 — 같은 미리보기 창구에 `kind=branches`·`derive=location_name`
+     * 을 보내면 서버가 창고명에서 지점 이름을 뽑아 **중복을 뺀 목록**으로 판정해 준다.
+     * 사람이 그 목록을 보고 확정하면 지점이 생기고, 그 다음에 창고를 가져오면 된다.
+     * 판정·확정 경로는 기존 그대로라 트랜잭션·감사도 똑같다.
+     */
+    var deriveButton = $('p-derive-branches');
+    if (deriveButton) {
+      deriveButton.addEventListener('click', function () {
+        var mapping = currentMapping();
+        var hasName = false;
+        Object.keys(mapping).forEach(function (c) { if (mapping[c] === 'name') { hasName = true; } });
+        if (!hasName) {
+          say('먼저 「창고명」 열을 오른쪽에서 「창고명」 으로 골라 주세요 — 그 이름에서 지점을 뽑습니다.');
+          return;
+        }
+        state.derive = 'location_name';
+        say('창고명에서 지점 이름을 뽑는 중…');
+        request('POST', '/api/purchase/import/' + state.importId + '/preview', importBody())
+          .then(function (result) {
+            if (!result) { state.derive = ''; return; }
+            if (!result.ok) { state.derive = ''; say(errorMessage(result.data)); return; }
+            renderPreview(result.data,
+              '창고명에서 뽑은 지점 ' + String(result.data.total) + '개입니다. '
+              + '확정을 누르면 지점으로 등록되고, 그 뒤에 창고를 다시 가져오면 됩니다.');
+          })
+          .catch(function () { state.derive = ''; say(GENERIC_ERROR); });
       });
     }
 
@@ -716,8 +875,7 @@
       commitButton.addEventListener('click', function () {
         if (!window.confirm('오류 행을 뺀 나머지를 저장합니다. 계속할까요?')) { return; }
         say('확정하는 중…');
-        request('POST', '/api/purchase/import/' + state.importId + '/commit',
-                { kind: state.kind, mapping: currentMapping(), header_row: state.headerRow })
+        request('POST', '/api/purchase/import/' + state.importId + '/commit', importBody())
           .then(function (result) {
             if (!result) { return; }
             if (!result.ok) { say(errorMessage(result.data)); return; }

@@ -44,6 +44,23 @@ if ($kind === null) {
 
 $body = Http::jsonBody();
 
+/* ─── 거래처 이름 겹침 확인 (19단계 2차 보정 2026-09-13) ───
+ *
+ * `p_vendors` 의 이름 유일 제약을 없앴다(같은 상호로 사업자를 나눈 거래처가 실제로 있다 —
+ * db/migrations/2026-09-13_purchase_vendor_identity.sql). DB 가 더는 막지 않으므로,
+ * **화면에서 손으로 만들 때는 앱이 막는다**: 같은 이름이 있으면 409 로 되돌리고,
+ * 사람이 「그래도 등록」을 누르면 `allow_duplicate_name: true` 로 다시 보내 통과한다.
+ *
+ * 왜 그냥 통과시키지 않나: 손으로 만드는 거래처의 이름 겹침은 **오타이거나 이미 만든 것을
+ * 모르는 경우**가 대부분이다. 가져오기(수백 행)는 「확인 필요」로 모아 보여 주는 편이 낫고,
+ * 한 건짜리 수동 등록은 그 자리에서 되묻는 편이 낫다.
+ *
+ * 이 키는 `Master::createKeys` 의 허용 목록에 없다(그 파일은 이번 보정의 범위 밖이며,
+ * 무엇보다 **컬럼이 아니라 확인 절차**다). 그래서 허용 키 검사 **전에** 떼어 낸다.
+ */
+$allowDuplicateName = ($body['allow_duplicate_name'] ?? null) === true;
+unset($body['allow_duplicate_name']);
+
 /** 거부 기록 후 끝낸다. 사유는 로그에만, 사용자에게는 동일 문구만. */
 $reject = static function (string $reason, int $status, string $message) use ($kind): void {
     Audit::deny('purchase.master.create', $reason, [
@@ -116,6 +133,20 @@ switch ($kind) {
         break;
     default:
         break;   // brands · vendors 는 참조가 없다
+}
+
+/* ─── [4-1] 거래처 이름 겹침 (2차 보정) ───
+ * 코드는 여전히 DB 가 유일하게 지킨다(`p_vendors_code_uidx`) — 여기서 보는 것은 **이름**뿐이다.
+ * 중단된 거래처도 함께 센다: 이름이 겹치는 줄 알고 만드는 것과, 중단된 것을 모르고 다시
+ * 만드는 것은 사람에게 같은 확인거리다.
+ */
+if ($kind === 'vendors' && !$allowDuplicateName) {
+    $sqlSameName = <<<'SQL'
+        SELECT 1 AS ok FROM p_vendors WHERE lower(name) = lower(:name) LIMIT 1
+        SQL;
+    if (is_array($db->run($sqlSameName, [':name' => (string) ($values['name'] ?? '')])->fetch())) {
+        $reject('conflict', 409, Http::MSG_CONFLICT);
+    }
 }
 
 // ─── [5] 트랜잭션: INSERT → 감사 → COMMIT (기록이 실패하면 행도 남지 않는다, PRD S-07) ───

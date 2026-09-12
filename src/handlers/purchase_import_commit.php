@@ -64,11 +64,26 @@ $reject = static function (string $reason, int $status, string $message, array $
 /** 표에 등록된 사유만 통과시키고, 나머지는 `bad_request` 로 돌린다 (위 ★ 주석) */
 $knownReason = static function (string $why): string {
     return in_array($why, ['bad_kind', 'bad_mapping', 'mapping_incomplete',
-                           'too_many_rows', 'parse_failed'], true) ? $why : 'bad_request';
+                           'too_many_rows', 'parse_failed',
+                           // 2차 보정에서 ARCH 7.4 문장 표에 등록한 셋
+                           'bad_header_row', 'default_branch_required', 'default_brand_required'],
+                     true) ? $why : 'bad_request';
 };
 
+/**
+ * 화면이 보낸 「기본 지점」·「기본 브랜드」를 **양의 정수 id** 로만 좁힌다 (2차 보정).
+ * 형식이 아니면 0(=없음)이다 — 400 을 내지 않는 이유는, 없으면 judge() 가
+ * `default_branch_required` 로 한 번에 말해 주기 때문이다(사유가 한 곳에 모인다).
+ */
+function tbox_import_ref(mixed $raw): int
+{
+    $text = is_int($raw) ? (string) $raw : (is_string($raw) ? trim($raw) : '');
+    return preg_match('/^[1-9][0-9]{0,8}$/', $text) === 1 ? (int) $text : 0;
+}
+
 $body = Http::jsonBody();
-if ($body === [] || array_diff(array_keys($body), ['kind', 'mapping', 'promote', 'header_row']) !== []) {
+if ($body === [] || array_diff(array_keys($body), ['kind', 'mapping', 'promote', 'header_row',
+                                          'default_branch', 'default_brand', 'derive']) !== []) {
     $reject('bad_request', 400, Http::MSG_BAD_REQUEST);
 }
 
@@ -115,8 +130,20 @@ try {
     // 중간 판정을 표에 저장하지 않는다. 머리행이 어긋나면 판정도 어긋나므로 화면은
     // 미리보기에 쓴 값을 그대로 보낸다.
     $headerRow = Importer::headerRowFrom($body['header_row'] ?? null, $kind, $sheet['rows']);
-    $resolved  = Importer::resolve($kind, $sheet['rows'][$headerRow] ?? [], $mapping);
-    $judged    = Importer::judge($kind, $sheet['rows'], $resolved, $headerRow);
+    /* 파생 모드에서는 창고 매핑에 지점에 없는 칸(「구분」·「사용」)이 섞여 온다 — 같은 화면에서
+     * 단추 하나를 누른 것이므로 매핑을 다시 고르게 하지 않고 지점에 있는 칸만 추린다 (2차 보정). */
+    $useMapping = (($body['derive'] ?? '') === Importer::DERIVE_LOCATION_NAME)
+        ? Importer::mappingForDerive($mapping)
+        : $mapping;
+    $resolved  = Importer::resolve($kind, $sheet['rows'][$headerRow] ?? [], $useMapping);
+    /* 2차 보정 — 화면이 정한 기본값들. **값이 아니라 id 이고 전부 정수로 좁힌다.**
+     * 이 셋이 판정을 바꾸지만 권한을 바꾸지는 않는다: 기초정보 쓰기 자격은 이미
+     * `purchase.master.write`(buyer·Admin, 전 지점) 이고, 그 둘에게는 지점 범위가 없다. */
+    $judged    = Importer::judge($kind, $sheet['rows'], $resolved, $headerRow, [
+        'default_branch' => tbox_import_ref($body['default_branch'] ?? null),
+        'default_brand'  => tbox_import_ref($body['default_brand'] ?? null),
+        'derive'         => is_string($body['derive'] ?? null) ? (string) $body['derive'] : '',
+    ]);
 } catch (RuntimeException $e) {
     $why = $e->getMessage();
     $reject($knownReason($why), 400, Http::MSG_BAD_REQUEST, ['why' => $why]);
@@ -147,7 +174,17 @@ try {
     // 23505 = unique_violation — 같은 (거래처, 코드)가 파일 안에 또 있거나, 판정과 확정 사이에
     // 다른 요청이 같은 행을 먼저 넣었다. 전부 롤백됐으므로 기초정보는 확정 전 상태 그대로다.
     if ($e->getCode() === '23505') {
-        $reject('conflict', 409, Http::MSG_CONFLICT);
+        /* 2차 보정 — **여기 오지 않는 것이 목표다.** 겹치는 행은 판정 단계에서 「확인 필요」로
+         * 걸러지므로(Importer::judgeVendor 의 name_exists·duplicate_name_in_file), 확정에서
+         * 유일 제약에 부딪히는 것은 "판정과 확정 사이에 다른 요청이 같은 값을 넣었다" 뿐이다.
+         *
+         * 응답은 고정 문구 409 그대로다(어느 행·어느 값인지 응답에 담지 않는다 — PRD S-09-5).
+         * 대신 **어느 제약이 막았는지** 를 감사 detail 에 남긴다 — 이름은 규칙 이름이지 값이
+         * 아니라 비밀이 없고, 이것이 없으면 2026-09-13 처럼 "409 인데 왜인지 모른다" 가 된다. */
+        $info       = $e->errorInfo[2] ?? '';
+        $constraint = preg_match('/"([a-z0-9_]+)"/i', is_string($info) ? $info : '', $m) === 1
+            ? $m[1] : 'unknown';
+        $reject('conflict', 409, Http::MSG_CONFLICT, ['constraint' => $constraint]);
     }
     if ($e->getCode() === '23503') {
         $reject('bad_reference', 400, Http::MSG_BAD_REQUEST);

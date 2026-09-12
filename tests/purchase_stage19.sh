@@ -618,6 +618,210 @@ R=$(call qa_admin01 POST /api/purchase/import/mappings "$TOK_ADMIN" \
 echo "  HTTP $(code_of "$R")  $(body_of "$R")"
 expect "매핑 header_row=25 → 400" 400 "$(code_of "$R")"
 
+sub "⑫ 이카운트형 거래처 파일 — 같은 이름·다른 코드 (2차 보정 2026-09-13)"
+# 실제 ESA001M(184행)에서 확정이 23505 → 409 로 통째로 롤백되던 모양을 그대로 줄여 만든다:
+#   같은 이름·다른 코드 2쌍 · 이름 빈 행 1 · 사용구분 NO 1.
+export VENDOR_XLSX="$WORK/vendors.xlsx"
+php -d error_reporting=E_ALL -r '
+$header = ["거래처코드","거래처그룹1명","거래처명","대표자명","전화","모바일","검색창내용","사용구분","이체정보"];
+$rows = [["회사명 : 주식회사 플란랩스"], $header];
+for ($i = 1; $i <= 6; $i++) {
+    $rows[] = ["V1".str_pad((string)$i, 4, "0", STR_PAD_LEFT), "그룹", "VEND ".$i, "대표".$i,
+               "02-000-000".$i, "010-0000-000".$i, "", "YES", "등록"];
+}
+// 같은 이름·다른 코드 2쌍 (VEND 1 · VEND 2 를 다시)
+$rows[] = ["V29001", "그룹", "VEND 1", "대표A", "02-111-1111", "", "", "YES", "등록"];
+$rows[] = ["V29002", "그룹", "VEND 2", "대표B", "02-222-2222", "", "", "YES", "등록"];
+// 이름 빈 행 1
+$rows[] = ["V29003", "그룹", "", "대표C", "02-333-3333", "", "", "YES", "등록"];
+// 사용구분 NO 1
+$rows[] = ["V29004", "그룹", "VEND STOPPED", "대표D", "02-444-4444", "", "", "NO", "등록"];
+
+$esc = static fn (string $v): string => htmlspecialchars($v, ENT_QUOTES | ENT_XML1, "UTF-8");
+$sheet = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>"
+       . "<worksheet xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\"><sheetData>";
+foreach ($rows as $r => $row) {
+    $sheet .= "<row r=\"".($r+1)."\">";
+    foreach ($row as $c => $cell) {
+        $sheet .= "<c r=\"".chr(65+$c).($r+1)."\" t=\"inlineStr\"><is><t>".$esc((string)$cell)."</t></is></c>";
+    }
+    $sheet .= "</row>";
+}
+$sheet .= "</sheetData></worksheet>";
+$ct = "<?xml version=\"1.0\" encoding=\"UTF-8\"?><Types xmlns=\"http://schemas.openxmlformats.org/package/2006/content-types\">"
+    . "<Default Extension=\"rels\" ContentType=\"application/vnd.openxmlformats-package.relationships+xml\"/>"
+    . "<Default Extension=\"xml\" ContentType=\"application/xml\"/>"
+    . "<Override PartName=\"/xl/workbook.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml\"/>"
+    . "<Override PartName=\"/xl/worksheets/sheet1.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml\"/></Types>";
+$rels = "<?xml version=\"1.0\" encoding=\"UTF-8\"?><Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\">"
+      . "<Relationship Id=\"rId1\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument\" Target=\"xl/workbook.xml\"/></Relationships>";
+$wb = "<?xml version=\"1.0\" encoding=\"UTF-8\"?><workbook xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\""
+    . " xmlns:r=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships\">"
+    . "<sheets><sheet name=\"Sheet1\" sheetId=\"1\" r:id=\"rId1\"/></sheets></workbook>";
+$wbRels = "<?xml version=\"1.0\" encoding=\"UTF-8\"?><Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\">"
+        . "<Relationship Id=\"rId1\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet\" Target=\"worksheets/sheet1.xml\"/></Relationships>";
+$path = getenv("VENDOR_XLSX");
+@unlink($path);
+$zip = new ZipArchive(); $zip->open($path, ZipArchive::CREATE);
+$zip->addFromString("[Content_Types].xml", $ct);
+$zip->addFromString("_rels/.rels", $rels);
+$zip->addFromString("xl/workbook.xml", $wb);
+$zip->addFromString("xl/_rels/workbook.xml.rels", $wbRels);
+$zip->addFromString("xl/worksheets/sheet1.xml", $sheet);
+$zip->close();
+echo "  만든 파일: ", filesize($path), " 바이트 (거래처 10행: 정상 6 · 같은 이름 2 · 빈 이름 1 · 사용구분 NO 1)\n";
+'
+
+R=$(curl -s -w '\n%{http_code}' -b "$JAR_DIR/qa_admin01.jar" -A "$UA" \
+    -H "X-CSRF-Token: $TOK_ADMIN" -F "file=@$WORK/vendors.xlsx" "$BASE/api/purchase/import")
+expect "거래처 파일 업로드 201" 201 "$(code_of "$R")"
+VEND_ID=$(body_of "$R" | sed -n 's/.*"import_id":"\([0-9a-f-]*\)".*/\1/p')
+echo "  자동 감지 머리행: $(body_of "$R" | grep -o '"header_row":[0-9]*' | head -1 | cut -d: -f2)"
+expect "거래처 머리행 자동 감지 1" 1 "$(body_of "$R" | grep -o '"header_row":[0-9]*' | head -1 | cut -d: -f2)"
+expect "대표자명→ceo_name 후보" 1 "$(body_of "$R" | grep -c '"대표자명":"ceo_name"')"
+expect "사용구분→active 후보" 1 "$(body_of "$R" | grep -c '"사용구분":"active"')"
+
+VMAP='{"거래처코드":"code","거래처명":"name","대표자명":"ceo_name","전화":"tel","모바일":"tel","사용구분":"active","거래처그룹1명":"skip","검색창내용":"skip","이체정보":"skip"}'
+R=$(call qa_admin01 POST "/api/purchase/import/$VEND_ID/preview" "$TOK_ADMIN" \
+    "{\"kind\":\"vendors\",\"mapping\":$VMAP,\"header_row\":1}")
+echo "  HTTP $(code_of "$R")  counts: $(body_of "$R" | sed -n 's/.*"counts":{\([^}]*\)}.*/\1/p')"
+expect "미리보기 200" 200 "$(code_of "$R")"
+expect "insert 7 (정상 6 + 사용구분 NO 1)" 7 "$(body_of "$R" | sed -n 's/.*"insert":\([0-9]*\).*/\1/p')"
+expect "review 2 (같은 이름·다른 코드)" 2 "$(body_of "$R" | sed -n 's/.*"review":\([0-9]*\).*/\1/p')"
+expect "error 1 (이름 빈 행)" 1 "$(body_of "$R" | sed -n 's/.*"error":\([0-9]*\).*/\1/p')"
+expect "사유 duplicate_name_in_file" 1 "$(body_of "$R" | grep -c 'duplicate_name_in_file')"
+
+sub "⑫-a 확정 — **409 가 나지 않는다**(겹치는 행은 판정에서 미리 걸렀다)"
+VB=$(psqlq "SELECT count(*) FROM p_vendors;")
+R=$(call qa_admin01 POST "/api/purchase/import/$VEND_ID/commit" "$TOK_ADMIN" \
+    "{\"kind\":\"vendors\",\"mapping\":$VMAP,\"header_row\":1}")
+echo "  HTTP $(code_of "$R")  $(body_of "$R")"
+expect "확정 200 (409 아님)" 200 "$(code_of "$R")"
+expect "inserted 7" 7 "$(body_of "$R" | sed -n 's/.*"inserted":\([0-9]*\).*/\1/p')"
+expect "표에 7행만 늘었다" 7 "$(($(psqlq "SELECT count(*) FROM p_vendors;") - VB))"
+expect "확인 필요 행(V29001·V29002)은 저장 안 됨" 0 "$(psqlq "SELECT count(*) FROM p_vendors WHERE code IN ('V29001','V29002');")"
+expect "빈 이름 행(V29003) 저장 안 됨" 0 "$(psqlq "SELECT count(*) FROM p_vendors WHERE code='V29003';")"
+expect "사용구분 NO → is_active=false" 1 "$(psqlq "SELECT count(*) FROM p_vendors WHERE code='V29004' AND NOT is_active;")"
+expect "대표자명·전화가 들어갔다" 1 "$(psqlq "SELECT count(*) FROM p_vendors WHERE code='V10001' AND ceo_name='대표1' AND tel='02-000-0001';")"
+expect "모바일이 아니라 전화가 남았다" 0 "$(psqlq "SELECT count(*) FROM p_vendors WHERE tel LIKE '010-%';")"
+expect "확정 감사에 conflict 없음" 0 "$(psqlq "SELECT count(*) FROM audit_logs WHERE action='purchase.import.commit' AND reason='conflict' AND happened_at > now() - interval '2 minutes';")"
+
+sub "⑫-b 「확인 필요」를 승격하면 **새로 등록**된다 (promote_to = insert)"
+R=$(call qa_admin01 POST "/api/purchase/import/$VEND_ID/commit" "$TOK_ADMIN" \
+    "{\"kind\":\"vendors\",\"mapping\":$VMAP,\"header_row\":1,\"promote\":[9,10]}")
+echo "  HTTP $(code_of "$R")  $(body_of "$R")"
+expect "승격 확정 200" 200 "$(code_of "$R")"
+expect "같은 이름·다른 코드가 따로 등록됐다" 2 "$(psqlq "SELECT count(*) FROM p_vendors WHERE code IN ('V29001','V29002');")"
+expect "같은 이름이 두 건 공존한다" 2 "$(psqlq "SELECT count(*) FROM p_vendors WHERE name='VEND 1';")"
+
+sub "⑬ 창고 파일 — 지점 열이 없다 (2차 보정)"
+export WH_XLSX="$WORK/warehouse.xlsx"
+php -d error_reporting=E_ALL -r '
+$header = ["창고코드","창고명","구분","생산공정명","외주거래처명","사용","추가사업장명"];
+$rows = [["회사명 : 주식회사 플란랩스"], $header];
+// 창고명에 지점 이름이 든 것 2 · 안 든 것 2 · 사용 No 1
+$rows[] = ["00001","플란치과_부평점","창고","","","Yes","주식회사 플란랩스"];
+$rows[] = ["00002","플란치과_일산점","창고","","","Yes","주식회사 플란랩스"];
+$rows[] = ["00003","라미트치과","창고","","","Yes","주식회사 플란랩스"];
+$rows[] = ["00004","중앙창고","기타","","","Yes","주식회사 플란랩스"];
+$rows[] = ["00005","폐기창고","창고","","","No","주식회사 플란랩스"];
+$esc = static fn (string $v): string => htmlspecialchars($v, ENT_QUOTES | ENT_XML1, "UTF-8");
+$sheet = "<?xml version=\"1.0\" encoding=\"UTF-8\"?><worksheet xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\"><sheetData>";
+foreach ($rows as $r => $row) {
+    $sheet .= "<row r=\"".($r+1)."\">";
+    foreach ($row as $c => $cell) { $sheet .= "<c r=\"".chr(65+$c).($r+1)."\" t=\"inlineStr\"><is><t>".$esc((string)$cell)."</t></is></c>"; }
+    $sheet .= "</row>";
+}
+$sheet .= "</sheetData></worksheet>";
+$ct = "<?xml version=\"1.0\" encoding=\"UTF-8\"?><Types xmlns=\"http://schemas.openxmlformats.org/package/2006/content-types\">"
+    . "<Default Extension=\"rels\" ContentType=\"application/vnd.openxmlformats-package.relationships+xml\"/>"
+    . "<Default Extension=\"xml\" ContentType=\"application/xml\"/>"
+    . "<Override PartName=\"/xl/workbook.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml\"/>"
+    . "<Override PartName=\"/xl/worksheets/sheet1.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml\"/></Types>";
+$rels = "<?xml version=\"1.0\" encoding=\"UTF-8\"?><Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\">"
+      . "<Relationship Id=\"rId1\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument\" Target=\"xl/workbook.xml\"/></Relationships>";
+$wb = "<?xml version=\"1.0\" encoding=\"UTF-8\"?><workbook xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\" xmlns:r=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships\"><sheets><sheet name=\"Sheet1\" sheetId=\"1\" r:id=\"rId1\"/></sheets></workbook>";
+$wbRels = "<?xml version=\"1.0\" encoding=\"UTF-8\"?><Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\"><Relationship Id=\"rId1\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet\" Target=\"worksheets/sheet1.xml\"/></Relationships>";
+$path = getenv("WH_XLSX"); @unlink($path);
+$zip = new ZipArchive(); $zip->open($path, ZipArchive::CREATE);
+$zip->addFromString("[Content_Types].xml", $ct); $zip->addFromString("_rels/.rels", $rels);
+$zip->addFromString("xl/workbook.xml", $wb); $zip->addFromString("xl/_rels/workbook.xml.rels", $wbRels);
+$zip->addFromString("xl/worksheets/sheet1.xml", $sheet); $zip->close();
+echo "  만든 파일: ", filesize($path), " 바이트 (창고 5행, 지점 열 없음)\n";
+'
+
+R=$(curl -s -w '\n%{http_code}' -b "$JAR_DIR/qa_admin01.jar" -A "$UA" \
+    -H "X-CSRF-Token: $TOK_ADMIN" -F "file=@$WORK/warehouse.xlsx" "$BASE/api/purchase/import")
+expect "창고 파일 업로드 201" 201 "$(code_of "$R")"
+WH_ID=$(body_of "$R" | sed -n 's/.*"import_id":"\([0-9a-f-]*\)".*/\1/p')
+expect "창고명→name 후보(동의어 보강)" 1 "$(body_of "$R" | grep -c '"창고명":"name"')"
+expect "창고코드→code 후보" 1 "$(body_of "$R" | grep -c '"창고코드":"code"')"
+
+WMAP='{"창고코드":"code","창고명":"name","구분":"kind","사용":"active","생산공정명":"skip","외주거래처명":"skip","추가사업장명":"skip"}'
+
+sub "⑬-a 기본 지점을 안 고르면 400 (행마다 오류를 내지 않고 한 번에 말한다)"
+R=$(call qa_admin01 POST "/api/purchase/import/$WH_ID/preview" "$TOK_ADMIN" \
+    "{\"kind\":\"locations\",\"mapping\":$WMAP,\"header_row\":1}")
+echo "  HTTP $(code_of "$R")  $(body_of "$R")"
+expect "기본 지점 없음 → 400" 400 "$(code_of "$R")"
+psqlq "SELECT '  감사: '||action||' '||result||' '||coalesce(reason,'-') FROM audit_logs
+        WHERE action='purchase.import.preview' ORDER BY id DESC LIMIT 1;"
+
+sub "⑬-b 기본 지점을 고르면 판정된다 — 창고명에 지점 이름이 있으면 **그 지점**으로"
+R=$(call qa_admin01 POST "/api/purchase/import/$WH_ID/preview" "$TOK_ADMIN" \
+    "{\"kind\":\"locations\",\"mapping\":$WMAP,\"header_row\":1,\"default_branch\":$BR_A}")
+echo "  HTTP $(code_of "$R")  counts: $(body_of "$R" | sed -n 's/.*"counts":{\([^}]*\)}.*/\1/p')"
+echo "  본문(앞 520자): $(body_of "$R" | head -c 520)"
+expect "미리보기 200" 200 "$(code_of "$R")"
+expect "insert 5" 5 "$(body_of "$R" | sed -n 's/.*"insert":\([0-9]*\).*/\1/p')"
+expect "창고명에서 찾은 지점(branch_by=name)이 있다" 1 "$(body_of "$R" | grep -c '"branch_by":"name"')"
+expect "기본 지점으로 간 행(branch_by=default)도 있다" 1 "$(body_of "$R" | grep -c '"branch_by":"default"')"
+
+R=$(call qa_admin01 POST "/api/purchase/import/$WH_ID/commit" "$TOK_ADMIN" \
+    "{\"kind\":\"locations\",\"mapping\":$WMAP,\"header_row\":1,\"default_branch\":$BR_A}")
+echo "  확정 HTTP $(code_of "$R")  $(body_of "$R")"
+expect "창고 확정 200" 200 "$(code_of "$R")"
+expect "「플란치과_일산점」은 일산점으로 갔다" 1 "$(psqlq "SELECT count(*) FROM p_locations WHERE name='플란치과_일산점' AND branch_id=$BR_B;")"
+expect "「플란치과_부평점」은 부평점으로 갔다" 1 "$(psqlq "SELECT count(*) FROM p_locations WHERE name='플란치과_부평점' AND branch_id=$BR_A;")"
+expect "지점 이름이 없는 「중앙창고」는 기본 지점으로" 1 "$(psqlq "SELECT count(*) FROM p_locations WHERE name='중앙창고' AND branch_id=$BR_A;")"
+expect "구분 「기타」 → other" 1 "$(psqlq "SELECT count(*) FROM p_locations WHERE name='중앙창고' AND kind='other';")"
+expect "사용 No → is_active=false" 1 "$(psqlq "SELECT count(*) FROM p_locations WHERE name='폐기창고' AND NOT is_active;")"
+
+sub "⑭ 창고명에서 지점 파생 등록 (kind=branches · derive=location_name)"
+BB=$(psqlq "SELECT count(*) FROM p_branches;")
+R=$(call qa_admin01 POST "/api/purchase/import/$WH_ID/preview" "$TOK_ADMIN" \
+    "{\"kind\":\"branches\",\"mapping\":$WMAP,\"header_row\":1,\"derive\":\"location_name\",\"default_brand\":$BRAND}")
+echo "  HTTP $(code_of "$R")  counts: $(body_of "$R" | sed -n 's/.*"counts":{\([^}]*\)}.*/\1/p')"
+echo "  본문(앞 400자): $(body_of "$R" | head -c 400)"
+expect "파생 미리보기 200" 200 "$(code_of "$R")"
+# 창고 5개에서 뽑히는 서로 다른 이름: 부평점·일산점·라미트치과·중앙창고·폐기창고 = 5
+expect "중복을 뺀 지점 후보 5" 5 "$(body_of "$R" | sed -n 's/.*"total":\([0-9]*\).*/\1/p')"
+expect "이미 있는 지점 2개는 갱신(=건너뜀)" 2 "$(body_of "$R" | sed -n 's/.*"update":\([0-9]*\).*/\1/p')"
+expect "새 지점 3개" 3 "$(body_of "$R" | sed -n 's/.*"insert":\([0-9]*\).*/\1/p')"
+
+R=$(call qa_admin01 POST "/api/purchase/import/$WH_ID/commit" "$TOK_ADMIN" \
+    "{\"kind\":\"branches\",\"mapping\":$WMAP,\"header_row\":1,\"derive\":\"location_name\",\"default_brand\":$BRAND}")
+echo "  확정 HTTP $(code_of "$R")  $(body_of "$R")"
+expect "파생 확정 200" 200 "$(code_of "$R")"
+expect "지점이 3개 늘었다" 3 "$(($(psqlq "SELECT count(*) FROM p_branches;") - BB))"
+expect "「라미트치과」가 지점으로 생겼다" 1 "$(psqlq "SELECT count(*) FROM p_branches WHERE name='라미트치과';")"
+expect "이미 있던 부평점은 그대로 1건" 1 "$(psqlq "SELECT count(*) FROM p_branches WHERE name='부평점';")"
+
+sub "⑭-a 브랜드 열도 기본 브랜드도 없으면 400"
+R=$(call qa_admin01 POST "/api/purchase/import/$WH_ID/preview" "$TOK_ADMIN" \
+    "{\"kind\":\"branches\",\"mapping\":$WMAP,\"header_row\":1,\"derive\":\"location_name\"}")
+echo "  HTTP $(code_of "$R")  $(body_of "$R")"
+expect "기본 브랜드 없음 → 400" 400 "$(code_of "$R")"
+
+sub "⑮ 수동 거래처 등록 — 같은 이름은 409, 확인하면 통과 (2차 보정)"
+R=$(call qa_admin01 POST /api/purchase/vendors "$TOK_ADMIN" '{"name":"VEND 1","code":"V90001"}')
+echo "  같은 이름 → HTTP $(code_of "$R")  $(body_of "$R")"
+expect "같은 이름 409" 409 "$(code_of "$R")"
+R=$(call qa_admin01 POST /api/purchase/vendors "$TOK_ADMIN" '{"name":"VEND 1","code":"V90001","allow_duplicate_name":true}')
+echo "  그래도 등록 → HTTP $(code_of "$R")  $(body_of "$R")"
+expect "allow_duplicate_name → 201" 201 "$(code_of "$R")"
+expect "같은 코드는 여전히 409" 409 "$(code_of "$(call qa_admin01 POST /api/purchase/vendors "$TOK_ADMIN" '{"name":"다른이름","code":"V90001","allow_duplicate_name":true}')")"
+
 sub "⑩ 업로드 원본이 「구매/가져오기」 폴더(admin-only)에 있나"
 psqlq "SELECT '  '||f.original_name||' | '||f.access_level||' | 폴더='||fo.name||' | sha256='||left(f.sha256,16)||'…'
          FROM files f JOIN folders fo ON fo.id = f.folder_id

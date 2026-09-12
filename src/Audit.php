@@ -124,6 +124,15 @@ final class Audit
          */
         'kind', 'target_id', 'file_id', 'sha256', 'rows', 'inserted', 'updated',
         'branch_id', 'mapping', 'branches',
+        /*
+         * 19단계 보정 (2026-09-13).
+         *   header_row — 어느 줄을 머리행으로 보고 판정했나 (같은 파일을 다시 볼 때의 근거)
+         *   why        — 문장 표에 아직 없는 세부 사유를 남기는 자리 (보정 1)
+         *   constraint — 확정이 DB 제약에 부딪혔을 때 **그 제약 이름**. 값이 아니라 규칙 이름이라
+         *                비밀이 없고, "어느 규칙이 막았나" 를 로그만으로 알 수 있게 한다 (보정 2)
+         *   derive     — 창고명에서 지점을 뽑아 등록했나 (`location_name`)
+         */
+        'header_row', 'why', 'constraint', 'derive',
     ];
 
     private const RESULT_ALLOW = 'allow';
@@ -482,6 +491,19 @@ final class Audit
         'purchase.import.commit|deny|truncated'         => '{actor} 이(가) 상한에서 끊긴 파일 「{target}」 로 구매 가져오기 확정을 요청해서 거부했습니다 (반쯤 들어간 기초정보를 만들지 않습니다)',
         'purchase.import.commit|deny|conflict'          => '{actor} 이(가) 확정한 구매 가져오기에 이미 있는 거래처·코드가 있어 **전부 되돌렸습니다**',
         'purchase.import.commit|deny|bad_reference'     => '{actor} 이(가) 확정한 구매 가져오기가 없는 기초정보를 가리켜 **전부 되돌렸습니다**',
+
+        // 19단계 보정(2026-09-13) — 실제 이카운트 파일에서 드러난 세 가지 거부 사유.
+        //   bad_header_row          머리행 번호가 0~19 밖이다 (보정 1)
+        //   default_branch_required 창고 파일에 지점 열이 없는데 「기본 지점」도 고르지 않았다 (보정 2)
+        //   default_brand_required  지점 파일에 브랜드 열이 없는데 「기본 브랜드」도 고르지 않았다 (보정 2)
+        // 행마다 오류를 내지 않고 **한 번에** 말하는 사유들이라, 문장도 "무엇을 고르면 되는지" 를 담는다.
+        'purchase.import.preview|deny|bad_header_row'          => '{actor} 이(가) 있을 수 없는 머리행 번호로 구매 가져오기 미리보기를 요청해서 거부했습니다 (앞 20줄 안에서만 고를 수 있습니다)',
+        'purchase.import.preview|deny|default_branch_required' => '{actor} 이(가) 지점 열도 「기본 지점」도 없이 창고 가져오기 미리보기를 요청해서 거부했습니다 (어느 지점의 창고인지 알 수 없습니다)',
+        'purchase.import.preview|deny|default_brand_required'  => '{actor} 이(가) 브랜드 열도 「기본 브랜드」도 없이 지점 가져오기 미리보기를 요청해서 거부했습니다',
+        'purchase.import.commit|deny|bad_header_row'           => '{actor} 이(가) 있을 수 없는 머리행 번호로 구매 가져오기 확정을 요청해서 거부했습니다',
+        'purchase.import.commit|deny|default_branch_required'  => '{actor} 이(가) 지점 열도 「기본 지점」도 없이 창고 가져오기 확정을 요청해서 거부했습니다',
+        'purchase.import.commit|deny|default_brand_required'   => '{actor} 이(가) 브랜드 열도 「기본 브랜드」도 없이 지점 가져오기 확정을 요청해서 거부했습니다',
+        'purchase.master.update|deny|bad_header_row'           => '{actor} 이(가) 있을 수 없는 머리행 번호가 든 엑셀 열 매핑을 저장하려 해서 거부했습니다',
     ];
 
     /** 자리표시자에 넣을 값이 없을 때 (ARCH 7.4) */

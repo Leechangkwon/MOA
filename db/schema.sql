@@ -285,6 +285,9 @@ CREATE TABLE p_branches (
     id                    BIGSERIAL   PRIMARY KEY,
     brand_id              BIGINT      NOT NULL REFERENCES p_brands(id),
     name                  TEXT        NOT NULL,
+    -- 이카운트 창고/사업장 코드 (선택값, 유일 제약 없음 — 지점은 수가 적고 사람이 만든다).
+    -- 19단계 2차 보정 2026-09-13: 창고 파일에서 지점을 파생 등록할 때 함께 담는다.
+    code                  TEXT,
     warehouse_location_id BIGINT,     -- FK 는 p_locations 뒤에 붙인다 (서로 참조)
     central_location_id   BIGINT,
     is_active             BOOLEAN     NOT NULL DEFAULT true,
@@ -325,18 +328,31 @@ ALTER TABLE users ADD CONSTRAINT users_branch_id_fkey
 CREATE INDEX users_purchase_role_idx ON users (purchase_role) WHERE purchase_role IS NOT NULL;
 
 -- 거래처 — 지점 무관 마스터다(전 지점이 같은 거래처를 쓴다)
+--
+-- ★ 거래처의 **정체는 이름이 아니라 코드**다 (19단계 2차 보정 2026-09-13).
+--   실제 이카운트 거래처 파일에는 이름이 같고 코드가 다른 거래처가 있다(같은 상호로 사업자를
+--   나눈 경우). 이름에 유일 제약을 걸면 그런 행 때문에 184행짜리 가져오기가 통째로 롤백된다.
+--   그래서 `code` 만 유일하고, 같은 이름은 **앱이 「확인 필요」로 걸러** 사람이 판단한다
+--   (Importer::judgeVendor · 화면 수동 등록의 409 + 「그래도 등록」).
+--   (기존 DB 는 db/migrations/2026-09-13_purchase_vendor_identity.sql 로 같은 모양이 된다.)
+--
+--   ceo_name · tel — 이카운트 「대표자명」·「전화」. **회사 정보**이며 담당자 개인 연락처가
+--   아니다(SECURITY R-69 저장 최소화).
 CREATE TABLE p_vendors (
     id         BIGSERIAL   PRIMARY KEY,
     code       TEXT,
     name       TEXT        NOT NULL,
     biz_no     TEXT,
+    ceo_name   TEXT,
+    tel        TEXT,
     is_active  BOOLEAN     NOT NULL DEFAULT true,
     created_by BIGINT      NOT NULL REFERENCES users(id),
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     CONSTRAINT p_vendors_name_len CHECK (length(name) BETWEEN 1 AND 120)
 );
-CREATE UNIQUE INDEX p_vendors_name_uidx ON p_vendors (lower(name));
+-- 이름은 **유일하지 않다**(위 ★). 조회 경로(가져오기의 이름 대조)를 위해 인덱스만 둔다.
+CREATE INDEX        p_vendors_name_idx  ON p_vendors (lower(name));
 CREATE UNIQUE INDEX p_vendors_code_uidx ON p_vendors (code) WHERE code IS NOT NULL;
 
 -- 분류 대 → 중 → 소 (3단). 지점 무관 마스터.

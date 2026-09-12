@@ -27,6 +27,12 @@ require __DIR__ . '/shell_top.php';
     </header>
 
   <p class="notice">
+    <strong>권장 순서는 브랜드 → 지점 → 창고 → 거래처 → 품목</strong>입니다. 앞의 것이 없으면
+    뒤의 것이 가리킬 곳이 없어 「거래처를 찾을 수 없습니다」 같은 오류가 됩니다.
+    이카운트 창고 파일에는 지점 열이 없으므로, <strong>창고명에서 지점 이름을 뽑아</strong>
+    지점을 먼저 만들 수 있습니다(2단계의 「창고명에서 지점 이름 뽑기」).
+  </p>
+  <p class="notice">
     엑셀의 <strong>첫 줄이 곧 열 이름이 아닐 수도 있습니다</strong> — 이카운트 내보내기처럼
     맨 위에 「회사명 : …」 같은 제목 줄이 붙은 파일이 많습니다. 서버가 앞 20줄을 보고
     <strong>열 이름이 적힌 줄을 스스로 고르고</strong>, 2단계의 「머리행」 칸에서 바꿀 수 있습니다.
@@ -52,9 +58,12 @@ require __DIR__ . '/shell_top.php';
       <label class="field">
         <span class="field__label">가져올 종류</span>
         <select id="p-import-kind">
-          <option value="items">품목</option>
+          <!-- 권장 순서: 브랜드 → 지점 → 창고(장소) → 거래처 → 품목.
+               앞의 것이 없으면 뒤의 것이 가리킬 곳이 없어 오류가 됩니다. -->
+          <option value="branches">지점</option>
+          <option value="locations">창고 · 장소</option>
           <option value="vendors">거래처</option>
-          <option value="locations">장소</option>
+          <option value="items" selected>품목</option>
         </select>
       </label>
       <label class="field">
@@ -84,6 +93,24 @@ require __DIR__ . '/shell_top.php';
       </div>
     </div>
     <p id="p-header-note" class="muted"></p>
+
+    <!-- 2차 보정 2026-09-13 — 이카운트 창고 파일에는 **지점 열이 없고**, 지점 파일에는
+         브랜드 열이 없다. 그 둘을 화면에서 정한다. 파일에 해당 열이 매핑돼 있으면
+         파일 쪽이 이긴다(서버의 판정 규칙 ①). -->
+    <div id="p-defaults" class="panel__tools" hidden>
+      <label class="field field--inline" id="p-default-branch-field" hidden>
+        <span class="field__label">기본 지점 (창고에 지점 열이 없을 때)</span>
+        <select id="p-default-branch"><option value="">— 고르세요 —</option></select>
+      </label>
+      <label class="field field--inline" id="p-default-brand-field" hidden>
+        <span class="field__label">기본 브랜드</span>
+        <select id="p-default-brand"><option value="">— 고르세요 —</option></select>
+      </label>
+      <button id="p-derive-branches" class="btn btn--quiet" type="button" hidden>
+        창고명에서 지점 이름 뽑기
+      </button>
+    </div>
+    <p id="p-defaults-note" class="muted"></p>
     <div class="table-wrap">
       <table class="files">
         <thead>
@@ -117,6 +144,8 @@ require __DIR__ . '/shell_top.php';
           <tr>
             <th scope="col">행</th>
             <th scope="col">판정</th>
+            <!-- 2차 보정 — 창고가 **어느 지점으로** 들어가는지, 무엇을 보고 정했는지 -->
+            <th scope="col">지점</th>
             <th scope="col">사유</th>
             <th scope="col">내용</th>
           </tr>

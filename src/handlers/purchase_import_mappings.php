@@ -125,8 +125,11 @@ if ($body === [] || array_diff(array_keys($body), ['kind', 'name', 'mapping', 'h
     $reject('bad_request', 400, Http::MSG_BAD_REQUEST);
 }
 
+/* 저장할 수 있는 종류는 `items|vendors|locations` 셋뿐이다 (p_import_mappings.kind CHECK).
+ * `branches` 는 창고 파일에서 지점을 뽑아 **한 번 쓰고 마는** 흐름이라 저장할 매핑이 없다 —
+ * 표의 CHECK 를 넓히는 대신 저장 창구가 막는다 (2차 보정). */
 $kind = $body['kind'] ?? '';
-if (!is_string($kind) || !in_array($kind, Importer::KINDS, true)) {
+if (!is_string($kind) || !in_array($kind, Importer::SAVABLE_KINDS, true)) {
     $reject('bad_kind', 400, Http::MSG_BAD_REQUEST);
 }
 
@@ -177,9 +180,9 @@ if (array_key_exists('header_row', $body) && $body['header_row'] !== null && $bo
     try {
         $headerRow = Importer::headerRowFrom($body['header_row'], $kind, []);
     } catch (RuntimeException $e) {
-        // `bad_header_row` 는 ARCH 7.4 문장 표에 없다 → 등록된 `bad_request` 로 남긴다
-        // (없는 조합을 기록하면 기록이 실패해 요청이 500 이 된다).
-        $reject('bad_request', 400, Http::MSG_BAD_REQUEST);
+        // 2차 보정에서 `purchase.master.update|deny|bad_header_row` 를 ARCH 7.4 문장 표에
+        // 등록했으므로 이제 **구체적인 사유 그대로** 남길 수 있다.
+        $reject('bad_header_row', 400, Http::MSG_BAD_REQUEST);
         exit;
     }
 }
