@@ -858,6 +858,32 @@ table.matrix td.matrix__cell .icon { display: inline-flex; color: var(--ok-fg); 
 dialog.modal--form { width: min(520px, calc(100vw - 32px)); }
 dialog.modal--form .modal__body { display: grid; gap: 14px; background: var(--surface); }
 
+/* ─── 18-3 올리기·가져오기 대화상자 ──────────────────────────────────────
+ * 폼 모달을 **세로 flex** 로 만들어 머리·바닥을 고정하고 본문만 스크롤시킨다.
+ * (dialog 기본은 display:block 이라 본문의 overflow:auto 가 높이를 못 받는다 —
+ *  키가 큰 올리기 폼에서 「닫기」 단추가 잘려 보이는 것을 막는다.)
+ * `[open]` 을 붙이는 이유: 붙이지 않으면 닫힌 <dialog> 까지 화면에 나온다.
+ */
+dialog.modal--stack[open] { display: flex; flex-direction: column; }
+dialog.modal--stack .modal__head,
+dialog.modal--stack .modal__foot { flex: 0 0 auto; }
+dialog.modal--stack .modal__body { flex: 1 1 auto; min-height: 0; }
+/* 격자 칸이 제 내용만큼 벌어져 대화상자를 넓히지 못하게 한다(표는 .table-wrap 이 가로 스크롤). */
+dialog.modal--stack .modal__body > * { min-width: 0; }
+dialog.modal--stack .modal__foot .msg { margin-right: auto; }
+
+/* 올리기는 안내 문구와 파일별 진행 표까지 담아 조금 넓다. 폭은 언제나
+   calc(100vw - 32px) 이하라 폰 너비(~400px)에서도 가로 스크롤이 생기지 않는다. */
+dialog.modal--upload { width: min(660px, calc(100vw - 32px)); }
+dialog.modal--upload .upload-status { font-size: 13.5px; }
+
+/* 좁은 화면 — 대화상자 좌우 여백을 줄여 입력 칸이 눌리지 않게 한다 */
+@media (max-width: 520px) {
+  dialog.modal--stack .modal__head { padding: 14px 16px; gap: 10px; }
+  dialog.modal--stack .modal__body { padding: 16px; }
+  dialog.modal--stack .modal__foot { padding: 12px 16px; flex-wrap: wrap; }
+}
+
 /* ─── 위키 (14단계, F-21) — 차례와 글 한 편 ────────────────────────
  *
  * 서버(src/Wiki.php)가 `wiki/*.json` 을 이스케이프해 그린 마크업의 표현만 담는다.

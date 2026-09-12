@@ -843,10 +843,19 @@ function initFiles(csrfToken, uploadLevels, canFetch, myTeamId) {
   var teamField = document.getElementById('upload-team-field');
   var teamSelect = document.getElementById('upload-team');
   var uploadSubmit = document.getElementById('upload-submit');
-  var uploadPanel = document.getElementById('upload-panel');
   var uploadToggle = document.getElementById('upload-toggle');
   var fetchToggle = document.getElementById('fetch-toggle');
-  var fetchPanel = document.getElementById('fetch-panel');
+  // 18-3 — 올리기·가져오기는 새 폴더와 같은 <dialog class="modal"> 다.
+  var uploadDialog = document.getElementById('upload-dialog');
+  var uploadDialogClose = document.getElementById('upload-dialog-close');
+  var uploadDialogX = document.getElementById('upload-dialog-x');
+  var uploadMsg = document.getElementById('upload-msg');
+  var uploadWhere = document.getElementById('upload-where');
+  var fetchDialog = document.getElementById('fetch-dialog');
+  var fetchDialogClose = document.getElementById('fetch-dialog-close');
+  var fetchDialogX = document.getElementById('fetch-dialog-x');
+  var fetchMsg = document.getElementById('fetch-msg');
+  var fetchWhere = document.getElementById('fetch-where');
   var fetchForm = document.getElementById('fetch-form');
   var fetchUrl = document.getElementById('fetch-url');
   var fetchDesc = document.getElementById('fetch-description');
@@ -854,8 +863,6 @@ function initFiles(csrfToken, uploadLevels, canFetch, myTeamId) {
   var fetchTeamField = document.getElementById('fetch-team-field');
   var fetchTeam = document.getElementById('fetch-team');
   var fetchSubmit = document.getElementById('fetch-submit');
-  var uploadFolder = document.getElementById('upload-folder');
-  var fetchFolder = document.getElementById('fetch-folder');
   var uploadDrop = document.getElementById('upload-drop');
   var uploadPicked = document.getElementById('upload-picked');
   var uploadProgress = document.getElementById('upload-progress');
@@ -1653,16 +1660,23 @@ function initFiles(csrfToken, uploadLevels, canFetch, myTeamId) {
     if (filesFolderHead) {
       filesFolderHead.hidden = !searching;
     }
-    // 18-1 — 지금 연 폴더와 경로는 **서버가 준 값**이다. 화면이 계산하지 않는다.
-    if (data && data.folder && typeof data.folder === 'object') {
-      state.folderInfo = data.folder;
-      state.crumbs = Array.isArray(data.folder.breadcrumb) ? data.folder.breadcrumb : [];
-    } else {
-      state.folderInfo = null;
-      state.crumbs = [];
+    /* 18-1 — 지금 연 폴더와 경로는 **서버가 준 값**이다. 화면이 계산하지 않는다.
+       18-3 — 다만 전역 검색(scope === 'all')은 폴더를 가리지 않은 응답이라 `folder` 가
+       언제나 루트다. 그것으로 덮어쓰면 열어 둔 폴더(state.folder)와 「올릴 위치」 글자가
+       어긋나므로(= 화면이 거짓말을 하므로) 검색 응답에서는 경로를 그대로 둔다. */
+    if (!searching) {
+      if (data && data.folder && typeof data.folder === 'object') {
+        state.folderInfo = data.folder;
+        state.crumbs = Array.isArray(data.folder.breadcrumb) ? data.folder.breadcrumb : [];
+      } else {
+        state.folderInfo = null;
+        state.crumbs = [];
+      }
     }
     renderCrumbs();
     syncFolderActions();
+    // 18-3 — 폴더를 옮기면 대화상자가 열려 있어도 「올릴 위치」와 등급 선택지가 따라간다.
+    syncUploadWhere();
     state.total = typeof data.total === 'number' ? data.total : 0;
     state.perPage = typeof data.per_page === 'number' && data.per_page > 0 ? data.per_page : 20;
     state.page = typeof data.page === 'number' && data.page > 0 ? data.page : 1;
@@ -1793,6 +1807,13 @@ function initFiles(csrfToken, uploadLevels, canFetch, myTeamId) {
       : null;
   }
 
+  /** 지금 열어 둔 폴더의 팀(루트·팀 폴더가 아니면 null) — 서버가 준 값 그대로다. */
+  function currentFolderTeamId() {
+    return state.folderInfo && typeof state.folderInfo.team_id === 'number'
+      ? state.folderInfo.team_id
+      : null;
+  }
+
   /** 한 층 아래 폴더 목록을 받아 그린다. */
   function loadTree() {
     setText(folderMsg, '');
@@ -1814,7 +1835,6 @@ function initFiles(csrfToken, uploadLevels, canFetch, myTeamId) {
           }
           state.children = data && Array.isArray(data.folders) ? data.folders : [];
           renderTree();
-          fillFolderPickers();
           return null;
         });
       })
@@ -1873,59 +1893,43 @@ function initFiles(csrfToken, uploadLevels, canFetch, myTeamId) {
     loadTree();
   }
 
-  /* ─── 업로드·가져오기 패널의 「폴더」 선택지 ─────────────────────────────
-   * 지금 경로(루트 → 현재)와 **바로 아래 폴더들**만 담는다. 기본값은 지금 열어 둔 폴더다.
-   * 등급 기본값도 그 폴더 것을 물려받는다 (ARCH 5.16 「구글 드라이브와 비교」).
-   * 여기 없는 폴더 번호를 손으로 보내도 서버가 읽기 판정·불변 규칙 ①로 다시 막는다.
+  /* ─── 올릴 위치 = 지금 열어 둔 폴더 (18-3, 사용자 요청 2026-09-13) ──────────
+   * 고르는 자리를 없앴다. 대화상자는 **지금 연 폴더**에만 올리고, 경로 글자는 서버가
+   * `GET /api/files` 로 내려 준 `folder.breadcrumb` 의 이름을 이어 만든다(textContent).
+   * 등급 선택지는 종전처럼 서버가 준 `upload_levels` ∩ (그 폴더 등급 이상)이다 —
+   * 화면이 권한을 판단하지 않는다. 폴더 번호를 손으로 바꿔 보내도 서버가 읽기 판정과
+   * 불변 규칙 ①(`Authz::fitsUnderFolder`)로 다시 막는다 (PRD S-01, ARCH 5.16).
    */
-  var folderIndex = {};
 
-  function fillFolderPickers() {
-    folderIndex = {};
-    var options = [{ id: 0, name: '루트 (폴더 없음)', access_level: null, team_id: null }];
-    state.crumbs.forEach(function (step) {
-      options.push({
-        id: step.id,
-        name: step.name,
-        access_level: step.access_level,
-        team_id: null
-      });
-    });
-    state.children.forEach(function (folder) {
-      options.push(folder);
-    });
+  /** 지금 연 폴더의 경로 글자 — 루트면 「루트」, 아니면 「A › B」 (크럼과 같은 글자) */
+  function folderPathText() {
+    if (state.crumbs.length === 0) {
+      return '루트';
+    }
+    return state.crumbs.map(function (step) {
+      return step.name;
+    }).join(' \u203a ');
+  }
 
-    [uploadFolder, fetchFolder].forEach(function (select) {
-      if (!select) {
-        return;
-      }
-      select.replaceChildren();
-      options.forEach(function (opt) {
-        folderIndex[String(opt.id)] = opt;
-        var option = document.createElement('option');
-        option.value = String(opt.id);
-        setText(option, opt.name);
-        if (opt.id === state.folder) {
-          option.selected = true;
-        }
-        select.appendChild(option);
-      });
-    });
-
+  /** 두 대화상자의 「올릴 위치」 글자와 등급 선택지를 지금 폴더 기준으로 다시 그린다. */
+  function syncUploadWhere() {
+    var path = folderPathText();
+    setText(uploadWhere, '올릴 위치: ' + path);
+    setText(fetchWhere, '가져올 위치: ' + path);
     syncUploadLevels();
     syncFetchLevels();
   }
 
-  /** 고른 폴더의 등급을 최소값·기본값으로 삼아 업로드 등급 선택지를 다시 만든다. */
+  /** 지금 연 폴더의 등급을 최소값·기본값으로 삼아 업로드 등급 선택지를 다시 만든다. */
   function syncUploadLevels() {
     if (!levelSelect) {
       return;
     }
-    var picked = uploadFolder ? folderIndex[uploadFolder.value] : null;
-    var floor = picked && typeof picked.access_level === 'string' ? picked.access_level : null;
+    var floor = currentFolderLevel();
+    var folderTeam = currentFolderTeamId();
     fillLevelOptionsUnder(levelSelect, uploadLevels, floor, floor);
-    if (picked && typeof picked.team_id === 'number' && teamSelect) {
-      teamSelect.value = String(picked.team_id);
+    if (folderTeam !== null && teamSelect) {
+      teamSelect.value = String(folderTeam);
     }
     syncTeamField();
   }
@@ -1934,11 +1938,11 @@ function initFiles(csrfToken, uploadLevels, canFetch, myTeamId) {
     if (!fetchLevel) {
       return;
     }
-    var picked = fetchFolder ? folderIndex[fetchFolder.value] : null;
-    var floor = picked && typeof picked.access_level === 'string' ? picked.access_level : null;
+    var floor = currentFolderLevel();
+    var folderTeam = currentFolderTeamId();
     fillLevelOptionsUnder(fetchLevel, uploadLevels, floor, floor);
-    if (picked && typeof picked.team_id === 'number' && fetchTeam) {
-      fetchTeam.value = String(picked.team_id);
+    if (folderTeam !== null && fetchTeam) {
+      fetchTeam.value = String(folderTeam);
     }
     syncFetchTeamField();
   }
@@ -2318,7 +2322,7 @@ function initFiles(csrfToken, uploadLevels, canFetch, myTeamId) {
    */
   function fetchByUrl(event) {
     event.preventDefault();
-    setText(msg, '');
+    setText(fetchMsg, '');
 
     if (!fetchUrl || fetchUrl.value === '') {
       return;
@@ -2328,11 +2332,16 @@ function initFiles(csrfToken, uploadLevels, canFetch, myTeamId) {
     payload.access_level = fetchLevel ? fetchLevel.value : '';
     if (payload.access_level === '') {
       // 서버도 400 으로 막지만, 무엇을 빠뜨렸는지 바로 알려 준다 (사용자 피드백 ②).
-      setText(msg, LEVEL_PLACEHOLDER);
+      setText(fetchMsg, LEVEL_PLACEHOLDER);
       return;
     }
     if (payload.access_level === 'team' && fetchTeam) {
       payload.team_id = fetchTeam.value;
+    }
+    // 18-3 — 저장 위치는 **지금 연 폴더**다(루트면 보내지 않는다). 허용 여부는 서버가
+    // 폴더 읽기 판정 + 불변 규칙 ①로 다시 정한다 (ARCH 5.16, files_fetch.php).
+    if (state.folder !== 0) {
+      payload.folder_id = state.folder;
     }
 
     fetchSubmit.disabled = true;
@@ -2351,17 +2360,18 @@ function initFiles(csrfToken, uploadLevels, canFetch, myTeamId) {
         return readJson(response).then(function (data) {
           if (response.status === 201) {
             fetchForm.reset();
-            syncFetchTeamField();
+            closeDialog(fetchDialog);
             state.page = 1;
             loadFiles();
+            loadTree();
             return null;
           }
-          setText(msg, errorMessage(data));
+          setText(fetchMsg, errorMessage(data));
           return null;
         });
       })
       .catch(function () {
-        setText(msg, GENERIC_ERROR);
+        setText(fetchMsg, GENERIC_ERROR);
       })
       .then(function () {
         fetchSubmit.disabled = false;
@@ -2447,7 +2457,7 @@ function initFiles(csrfToken, uploadLevels, canFetch, myTeamId) {
 
   function upload(event) {
     event.preventDefault();
-    setText(msg, '');
+    setText(uploadMsg, '');
 
     if (picked.length === 0) {
       // 서버도 400 으로 막지만, 굳이 빈 요청을 보내지 않는다.
@@ -2455,15 +2465,17 @@ function initFiles(csrfToken, uploadLevels, canFetch, myTeamId) {
     }
     if (!levelSelect || levelSelect.value === '') {
       // 접근 레벨을 고르지 않은 채로는 보내지 않는다. 서버도 400 으로 막는다.
-      setText(msg, LEVEL_PLACEHOLDER);
+      setText(uploadMsg, LEVEL_PLACEHOLDER);
       return;
     }
 
+    /* 18-3 — 올릴 위치는 **지금 연 폴더**다(0 = 루트면 folder_id 를 보내지 않는다).
+       화면에 고르는 자리가 없으므로 「루트로 올라가 버리는」 일이 생기지 않는다. */
     var common = {
       description: descInput ? descInput.value : '',
       level: levelSelect.value,
       teamId: teamSelect ? teamSelect.value : '',
-      folderId: uploadFolder ? uploadFolder.value : '0'
+      folderId: String(state.folder)
     };
 
     var queue = picked.slice();
@@ -2476,6 +2488,9 @@ function initFiles(csrfToken, uploadLevels, canFetch, myTeamId) {
     });
 
     uploadSubmit.disabled = true;
+    // 18-3 — 올리는 동안에는 대화상자를 닫지 않는다(진행 표가 사라지면 무엇이 거부됐는지
+    // 알 수 없다). 닫기 단추 비활성 + ESC·바깥 누르기 무시.
+    setUploadBusy(true);
 
     /* 순차 전송 — 한 번에 하나. 다음 요청은 앞 요청의 응답을 받은 뒤에 시작한다. */
     var index = 0;
@@ -2483,7 +2498,9 @@ function initFiles(csrfToken, uploadLevels, canFetch, myTeamId) {
 
     function finish() {
       uploadSubmit.disabled = false;
+      setUploadBusy(false);
       state.page = 1;
+      // 완료 뒤 목록·트리 새로 고침은 **지금 폴더 기준**이다 (state.folder 를 바꾸지 않는다).
       loadFiles();
       loadTree();
     }
@@ -2515,7 +2532,7 @@ function initFiles(csrfToken, uploadLevels, canFetch, myTeamId) {
             for (k = index; k < queue.length; k++) {
               setters[k]('중단', 'is-deny');
             }
-            setText(msg, errorMessage(result.data));
+            setText(uploadMsg, errorMessage(result.data));
           } else {
             // 400 계열 — 이 파일만 거부하고 다음으로 계속한다.
             setters[i](errorMessage(result.data), 'is-deny');
@@ -2596,12 +2613,6 @@ function initFiles(csrfToken, uploadLevels, canFetch, myTeamId) {
   }
 
   // ─── 18-1 폴더 단추 (F-26) ─────────────────────────────────────
-  if (uploadFolder) {
-    uploadFolder.addEventListener('change', syncUploadLevels);
-  }
-  if (fetchFolder) {
-    fetchFolder.addEventListener('change', syncFetchLevels);
-  }
   if (folderNewBtn) {
     folderNewBtn.addEventListener('click', function () {
       openFolderDialog('create');
@@ -2650,46 +2661,108 @@ function initFiles(csrfToken, uploadLevels, canFetch, myTeamId) {
     });
   }
 
-  /**
-   * 머리 단추로 접었다 펴는 패널 (12단계 — 한 화면에 폼이 늘 펼쳐져 있지 않게).
-   * 여는 것은 표현일 뿐이고, 무엇을 보낼 수 있는지는 서버가 다시 판단한다 (PRD S-01).
+  /* ─── 18-3 올리기·가져오기 대화상자 열고 닫기 ─────────────────────────────
+   * 새 폴더 모달과 같은 방식이다: showModal() 로 열고, ESC·「닫기」·바깥(배경) 누르기로
+   * 닫는다. 여는 것은 표현일 뿐이고, 무엇을 보낼 수 있는지는 서버가 다시 판단한다 (PRD S-01).
    */
-  function bindPanelToggle(toggle, panel) {
-    if (!toggle || !panel) {
+
+  function closeDialog(dialog) {
+    if (dialog && dialog.open) {
+      dialog.close();
+    }
+  }
+
+  /** 올리는 중인가 — 참이면 대화상자를 닫지 않는다. */
+  var uploadBusy = false;
+
+  function setUploadBusy(busy) {
+    uploadBusy = busy;
+    if (uploadDialogClose) {
+      uploadDialogClose.disabled = busy;
+    }
+    if (uploadDialogX) {
+      uploadDialogX.disabled = busy;
+    }
+  }
+
+  function uploadIsBusy() {
+    return uploadBusy;
+  }
+
+  /**
+   * 닫기 규칙을 한 대화상자에 건다.
+   *   · 단추(닫기·X) 누름  · 배경(backdrop) 누름  · ESC(<dialog> 의 cancel)
+   * `guard()` 가 참이면 셋 다 무시한다.
+   */
+  function bindDialogDismiss(dialog, buttons, guard) {
+    if (!dialog) {
       return;
     }
-    toggle.addEventListener('click', function () {
-      var open = panel.hidden === true;
-      panel.hidden = !open;
-      toggle.setAttribute('aria-expanded', open ? 'true' : 'false');
+    function tryClose() {
+      if (guard && guard()) {
+        return;
+      }
+      closeDialog(dialog);
+    }
+    buttons.forEach(function (button) {
+      if (button) {
+        button.addEventListener('click', tryClose);
+      }
+    });
+    // 배경을 누르면 이벤트 대상이 <dialog> 자신이다(안쪽 칸은 자식이 받는다).
+    dialog.addEventListener('click', function (event) {
+      if (event.target === dialog) {
+        tryClose();
+      }
+    });
+    dialog.addEventListener('cancel', function (event) {
+      if (guard && guard()) {
+        event.preventDefault();
+      }
     });
   }
 
-  // 업로드 레벨 선택지는 서버가 준 목록으로만 만든다. 하나도 없으면(Guest) 올리기 단추·패널을
+  function openUploadDialog() {
+    if (!uploadDialog) {
+      return;
+    }
+    setText(uploadMsg, '');
+    // 열 때마다 「올릴 위치」와 등급 선택지를 지금 폴더 기준으로 새로 그린다 (18-3 ②③).
+    syncUploadWhere();
+    uploadDialog.showModal();
+  }
+
+  function openFetchDialog() {
+    if (!fetchDialog) {
+      return;
+    }
+    setText(fetchMsg, '');
+    syncUploadWhere();
+    fetchDialog.showModal();
+  }
+
+  bindDialogDismiss(uploadDialog, [uploadDialogClose, uploadDialogX], uploadIsBusy);
+  bindDialogDismiss(fetchDialog, [fetchDialogClose, fetchDialogX], null);
+
+  // 업로드 레벨 선택지는 서버가 준 목록으로만 만든다. 하나도 없으면(Guest) 올리기 단추를
   // 감춘다. 감추는 것은 편의일 뿐이다 — 그래도 POST /api/files 는 서버가 다시 막는다 (PRD S-01).
   var hasTeam = myTeamId !== null && myTeamId !== undefined && String(myTeamId) !== '';
   var canUpload = fillLevelOptions(levelSelect, uploadLevels, hasTeam) > 0;
   if (uploadToggle) {
     uploadToggle.hidden = !canUpload;
-  }
-  if (uploadPanel) {
-    uploadPanel.hidden = true;
-  }
-  if (canUpload) {
-    bindPanelToggle(uploadToggle, uploadPanel);
+    if (canUpload) {
+      uploadToggle.addEventListener('click', openUploadDialog);
+    }
   }
 
-  // "URL 로 가져오기" 단추·패널은 서버가 can_fetch === true 를 준 경우에만 연다
+  // "URL 로 가져오기" 단추는 서버가 can_fetch === true 를 준 경우에만 연다
   // (F-14, Manager 이상). 레벨 선택지는 업로드와 같은 목록(서버가 정한 upload_levels)을 쓴다.
   var canFetchUrl = canFetch === true && fillLevelOptions(fetchLevel, uploadLevels, hasTeam) > 0;
   if (fetchToggle) {
     fetchToggle.hidden = !canFetchUrl;
-  }
-  if (fetchPanel) {
-    fetchPanel.hidden = true;
-  }
-  if (canFetchUrl) {
-    bindPanelToggle(fetchToggle, fetchPanel);
+    if (canFetchUrl) {
+      fetchToggle.addEventListener('click', openFetchDialog);
+    }
   }
 
   // 「새 폴더」는 올릴 수 있는 등급이 하나라도 있는 사람에게만 보인다(Guest 는 라우터에서 끝).
@@ -3266,6 +3339,19 @@ function initTrash(csrfToken, onRestored) {
  * ★ 역할 변경·활성 변경에는 **사유가 필수**다. 사유가 비면 보내지 않고(그래도 서버가 400),
  *   사유 원문은 서버 감사 로그 detail.reason_text 에만 남는다.
  */
+/**
+ * 19단계 구매 모듈 역할의 사람 말 (PRD F-28, docs/purchase/02-prd-draft.md 1장).
+ * 사용자 Q-18 확정(2026-09-13)으로 `viewer` 의 뜻이 「경영진 읽기 전용」에서
+ * **「검토 — 전 지점 읽기, 발주서 검토·송부」** 로 바뀌었다. 라벨은 이 표 한 곳에만 둔다.
+ * ★ 여기 있는 것은 **표시 문구**뿐이다 — 무엇을 할 수 있는지는 서버 Authz 가 정한다.
+ */
+var PURCHASE_ROLE_LABEL = {
+  requester: '요청(requester)',
+  buyer: '구매(buyer)',
+  stock: '재고(stock)',
+  viewer: '검토(viewer)'
+};
+
 function initUsers(csrfToken) {
   var msg = document.getElementById('msg');
   var body = document.getElementById('users-body');
@@ -3280,6 +3366,10 @@ function initUsers(csrfToken) {
   var fTeam = document.getElementById('u-team');
   var fExpires = document.getElementById('u-expires');
   var fReason = document.getElementById('u-reason');
+  // 19단계 (PRD F-28, ARCH 5.18 「권한 두 축」) — 구매 모듈의 지점·모듈 역할.
+  // 둘 다 **선택**이고, 서버(Authz)가 값을 다시 검사한다 (PRD S-01).
+  var fBranch = document.getElementById('u-branch');
+  var fPurchaseRole = document.getElementById('u-purchase-role');
   var fSubmit = document.getElementById('u-submit');
 
   var state = { page: 1, total: 0, perPage: 50 };
@@ -3461,6 +3551,25 @@ function initUsers(csrfToken) {
       if (expires !== null && expires !== '') {
         payload.expires_at = expires;
       }
+      /* 19단계 — 구매 모듈의 두 축 (PRD F-28). 취소(null)면 바꾸지 않고, 빈 문자열이면
+         "없음" 으로 바꾼다. 값의 유효성·지점 존재는 서버가 다시 본다 (PRD S-01). */
+      var currentBranch = item.branch_id === null || item.branch_id === undefined
+        ? '' : String(item.branch_id);
+      var branch = window.prompt('구매 모듈 지점 번호 (비우면 지점 없음)', currentBranch);
+      if (branch !== null && branch !== currentBranch) {
+        payload.branch_id = branch === '' ? null : branch;
+      }
+      var currentPurchase = item.purchase_role === null || item.purchase_role === undefined
+        ? '' : String(item.purchase_role);
+      var purchaseRole = window.prompt(
+        '구매 모듈 역할 (requester / buyer / stock / viewer · 비우면 사용 안 함)\n'
+        + 'requester 요청 — 자기 지점만 / buyer 구매 — 전 지점·기초정보 편집 /\n'
+        + 'stock 재고 — 자기 지점 이동·실사 / viewer 검토 — 전 지점 읽기·발주서 송부',
+        currentPurchase
+      );
+      if (purchaseRole !== null && purchaseRole !== currentPurchase) {
+        payload.purchase_role = purchaseRole === '' ? null : purchaseRole;
+      }
       if (Object.keys(payload).length === 0) {
         return;
       }
@@ -3571,6 +3680,9 @@ function initUsers(csrfToken) {
       addCell(row, item.is_active === true ? '활성' : '비활성');
       addCell(row, item.expires_at === null ? '—' : item.expires_at + (item.is_expired === true ? ' (만료)' : ''));
       addCell(row, item.mfa_enabled === true ? '켜짐' : '꺼짐');
+      // 19단계 — 지점·모듈 역할 (F-28). 서버가 준 표시용 값이며 권한이 아니다.
+      addCell(row, item.branch_name);
+      addCell(row, PURCHASE_ROLE_LABEL[item.purchase_role] || null);
       addCell(row, item.created_at);
       addActions(row, item);
       body.appendChild(row);
@@ -3646,6 +3758,36 @@ function initUsers(csrfToken) {
       });
   }
 
+  /* 19단계 — 지점 목록을 `/api/purchase/branches` 에서 받아 셀렉트를 채운다 (팀 목록과 같은 방식).
+     화면이 고정 목록을 들고 있으면 지점이 늘 때마다 화면을 고쳐야 하고, 언젠가 어긋난다.
+     Admin 은 이 API 에 닿을 수 있다(purchase.read 는 Admin 에게 언제나 참). 못 받아도
+     나머지 화면은 그대로 동작한다 — 지점은 선택 칸이다. */
+  function loadBranches() {
+    if (!fBranch) {
+      return;
+    }
+    fetch('/api/purchase/branches', { credentials: 'same-origin', cache: 'no-store' })
+      .then(function (response) {
+        if (!response.ok) {
+          return null;
+        }
+        return readJson(response).then(function (data) {
+          var branches = data && Array.isArray(data.items) ? data.items : [];
+          branches.forEach(function (branch) {
+            var option = document.createElement('option');
+            option.value = String(branch.id);
+            setText(option, branch.name);
+            fBranch.appendChild(option);
+          });
+          return null;
+        });
+      })
+      .catch(function () {
+        // 지점 목록을 못 받아도 나머지 화면은 동작한다.
+      });
+  }
+  loadBranches();
+
   if (form) {
     form.addEventListener('submit', function (event) {
       event.preventDefault();
@@ -3661,6 +3803,13 @@ function initUsers(csrfToken) {
       }
       if (fExpires && fExpires.value !== '') {
         payload.expires_at = fExpires.value;
+      }
+      // 19단계 — 비운 칸은 아예 보내지 않는다(서버의 허용 키 검사는 "있는 키" 만 본다).
+      if (fBranch && fBranch.value !== '') {
+        payload.branch_id = fBranch.value;
+      }
+      if (fPurchaseRole && fPurchaseRole.value !== '') {
+        payload.purchase_role = fPurchaseRole.value;
       }
       fSubmit.disabled = true;
       var newName = String(payload.username);
@@ -5377,6 +5526,17 @@ function initShell(me, csrfToken) {
   var adminGroup = document.getElementById('nav-admin-group');
   if (adminGroup) {
     adminGroup.hidden = inGate || !canAdmin;
+  }
+
+  /* 19단계 (PRD F-28, ARCH 5.18) — 「구매관리」 묶음. can_admin 과 **똑같은 성격**의
+     표시용 값이다: 서버가 `/api/me` 에 준 can_purchase 하나만 보고, 항목을 되살려
+     /purchase/* 를 직접 불러도 라우트 정책 purchase.read 가 다시 막는다 (PRD S-01, T-42).
+     역할·purchase_role 문자열을 화면에서 비교하지 않는다 (ARCH 4.1). */
+  var canPurchase = me.can_purchase === true;
+  showNav('nav-purchase', canPurchase);
+  var purchaseGroup = document.getElementById('nav-purchase-group');
+  if (purchaseGroup) {
+    purchaseGroup.hidden = inGate || !canPurchase;
   }
 
   /* 좁은 화면(960px 미만)의 접이식 내비. 넓은 화면에서는 CSS 가 내비를 늘 펼쳐 두므로

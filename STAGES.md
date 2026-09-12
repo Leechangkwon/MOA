@@ -736,7 +736,19 @@ sudo -u postgres psql -d tbox_re -c "SELECT happened_at, actor_name, action, res
 - [x] app.js: `multiple`·끌어 놓기, 공통 값, 순차 전송(동시 1), 파일별 상태 표, 401/403 시 중단, 상한 50
 - [x] 서버 변경 0 확인(`max_file_uploads=1` 유지), README
 
-**검토 체크 (관문 ②, Fable, 2026-09-13)** — ✅ T-40 전항(7경로 parent_narrower·트리 비노출·403·children_exceed·cascade·규칙 f) · T-41(두 파일 400·순차 5행) · 회귀 · 린트 0 · `tbox_app=arwd`. ⚠ 미검증: 브라우저 화면. 재지시 1회(재지시 1회: team 일치는 자식이 team 일 때만(team 폴더 안 admin-only 허용 실측 201), `q` 있고 `folder` 없으면 전역 검색+`folder_path`(Employee 전역 검색에 admin-only 0건 실측), `file.update|allow` 문장 일반화). 근거 SECURITY 7장 「18단계 구현 검토」
+**개발 사항 — 18-3 올리기를 대화상자로 · 올릴 위치 = 지금 연 폴더 (사용자 요청 2026-09-13)**
+
+> 사용자(원문 요지, 2026-09-13, 「이카운트 양식」 폴더 안에서): "폴더 선택이 「루트 (폴더 없음)」으로 선택돼 있었다. 업로드는 접속한 경로의 폴더에만 하면 된다. 올리기 패널이 상단에 펼쳐져 화면이 지저분하니 버튼으로 열어 올리도록 바꾸자." (지시서 `docs/18-3-upload-dialog-directive.md`)
+
+- [x] `home.php`: 펼침 패널 `#upload-panel`·`#fetch-panel` 제거 → 새 폴더와 같은 `<dialog class="modal">` 둘(`#upload-dialog`·`#fetch-dialog`). 머리에는 단추 둘만
+- [x] 폴더 `<select>`(`#upload-folder`·`#fetch-folder`) 제거 → 읽기 전용 글자 `#upload-where`·`#fetch-where`(서버가 준 `folder.breadcrumb` 를 「 › 」로 이어 textContent)
+- [x] `app.js`: 업로드 `folder_id` = `state.folder` 하나뿐(0 = 루트면 미전송), `syncUploadLevels`/`syncFetchLevels` 의 기준을 `state.folderInfo`(등급·팀)로, `folderIndex`·`fillFolderPickers` 삭제
+- [x] `app.js`: ESC·닫기·바깥 누르기로 닫힘(`bindDialogDismiss`), **올리는 중에는 닫지 않음**(닫기 비활성 + `cancel` 취소), 오류 문구를 대화상자 안(`#upload-msg`·`#fetch-msg`)으로
+- [x] 곁가지 둘 — ① `POST /api/files/fetch` 가 폴더를 전혀 보내지 않던 것(18-1 누락)을 지금 폴더로 보내도록 ② 전역 검색 응답(`scope === 'all'`)이 크럼을 루트로 덮어써 「올릴 위치」가 실제 대상과 어긋나던 것을 덮어쓰지 않도록
+- [x] `app.css`: `modal--stack`(세로 flex — 본문만 스크롤, 닫기 단추 안 잘림) · `modal--upload` 폭 `min(660px, calc(100vw - 32px))` · 520px 이하 여백 축소 → 폰 너비에서 가로 스크롤 없음
+- [x] 서버 핸들러·`Authz`·라우트 변경 0 (계약 그대로 — `folder_id` 는 이미 `files_upload`·`files_fetch` 가 받던 필드)
+
+**검토 체크 (관문 ②, Fable, 2026-09-13) — 통과, 커밋 18-3** — ✅ T-40 전항(7경로 parent_narrower·트리 비노출·403·children_exceed·cascade·규칙 f) · T-41(두 파일 400·순차 5행) · 회귀 · 린트 0 · `tbox_app=arwd`. ⚠ 미검증: 브라우저 화면. **18-3 은 검토 대기**(Opus 자체 시험: `php -l`·`node --check` 통과, 세 파일 린트 0, qa_manager01 로 T-40·T-41 계약 회귀 재실행 — 브라우저 화면은 미검증). 재지시 1회(재지시 1회: team 일치는 자식이 team 일 때만(team 폴더 안 admin-only 허용 실측 201), `q` 있고 `folder` 없으면 전역 검색+`folder_path`(Employee 전역 검색에 admin-only 0건 실측), `file.update|allow` 문장 일반화). 근거 SECURITY 7장 「18단계 구현 검토」
 
 **자기 공격 (관문 ③, 사용자)**
 - [x] Employee 로 폴더를 만들고 Admin 이 admin-only 파일을 그 폴더로 옮긴 뒤 Employee 로 그 폴더를 열어 **빈 폴더**로 보이는지
@@ -753,6 +765,7 @@ sudo -u postgres psql -d tbox_re -c "SELECT happened_at, actor_name, action, res
 | 2026-09-13 | 확정 | "맞아, 그대로 진행해" — 폴더 권한 해석 확정(폴더 = 들어올 최소 자격, 파일은 그 위에 한 번 더 좁힘, 파일은 폴더보다 넓을 수 없음, 기본값 상속·cascade) | 18-1 구현 계속(Opus 통지 2건 반영 중) |
 | 2026-09-13 | 해소(검토 중 결정) | Opus 미결 3건 — ① team 폴더 안 admin-only 불가는 의도 아님 → 팀 일치는 자식이 team 일 때만 ② 검색이 폴더 안에서만 → `q` 있고 `folder` 없으면 전역+`folder_path` ③ 폴더 이동도 「설명을 수정했습니다」로 남음 → 문장 틀 일반화 | 재지시 1회로 반영. 휴지통 파일이 참조하는 폴더 삭제 규칙은 Q-16 |
 | 2026-09-13 | 관찰(사용자 실사용) | 사용자가 커밋 전 작업 트리 상태에서 폴더 「이카운트 / 이카운트 캡쳐」(admin-only)를 만들고 캡처 15장을 **일괄 업로드**로 올림(03:21, 15행 순차) — 관문 ③ 일부에 해당 | Fable 실측: Employee 에게 그 폴더는 트리에 없음, `?folder=` 403, 전역 검색 `.png` 0건. 관문 ③ 나머지(거부 문구·Guest 403·5개 중 1개 거부 표)는 사용자 확인 대기 |
+| 2026-09-13 | 요청(사용자 실사용) | "폴더 선택이 「루트 (폴더 없음)」으로 선택돼 있었다 · 업로드는 접속한 경로의 폴더에만 · 올리기 패널이 상단에 펼쳐져 지저분하니 버튼으로 열자" | 18-3 착수. 고르는 자리를 없애고 **지금 연 폴더**로 고정(화면에는 서버가 준 크럼만 글자로), 패널 → `<dialog class="modal">`. 곁가지로 「URL 로 가져오기」가 폴더를 아예 안 보내던 18-1 누락과, 전역 검색 응답이 크럼을 루트로 덮어쓰던 문제도 고침. 근거 `docs/18-3-upload-dialog-directive.md`, ARCH 5.16·5.17 |
 | 2026-09-13 | 사건(운영) | **루트 디스크 100%**(12G 중 여유 0) — 이 세션의 명령 출력이 잘리고 `pwd: write error`. 09-12 「디스크 96%」 관찰이 현실화 | Fable 조치(전부 사용자 홈·시스템 캐시, 운영 데이터 무변경): 에이전트 세션 기록 파일 삭제(R-62 의 노출 기록도 함께 사라짐), `apt-get clean`, `journalctl --vacuum-size=100M`, 옛 Claude Code 버전 3개(≈650MB), 비활성 snap 리비전 3개 → 여유 545MB(95%). 남은 큰 항목: `~/.vscode-server/cli/servers` 두 버전(654M+703M, 둘 다 실행 중이라 미삭제), 확장 658M, `/var/lib/snapd` 609M, 백업 229M. **사용자 결정**: 옛 VS Code 서버 종료 후 삭제, 백업 보존 주기, 디스크 증설. 근본 원인은 12G 루트에 개발 도구·백업·DB·저장소가 함께 있는 것 |
 
 ### 19단계 — 구매·재고 모듈 골격 · 기초정보 · 엑셀 가져오기 · 품목 찾기 API ✅ 구현·검토 완료, 관문 ③ 대기 (F-28 · F-29 · T-42~T-44 · R-65~R-70) — 확정 2026-09-13
@@ -789,6 +802,9 @@ sudo -u postgres psql -d tbox_re -c "SELECT happened_at, actor_name, action, res
 | 2026-09-13 | 접수(Opus 보고) | 표 DROP 이 자동 모드 분류기에 막힘 → 운영 DB 에는 `ALTER TABLE p_brands ADD COLUMN IF NOT EXISTS` 5칸, 마이그레이션·schema.sql 은 CREATE 안에 포함(컬럼 순서만 다름) | 수용. 새 설치는 마이그레이션 그대로 |
 | 2026-09-13 | 접수(Opus 보고) | 지시서 경로 오류 2건(`src/views/users.php` → `users_page.php`, `deploy/postgresql/grants.sql` → `db/grants.sql`) · node 없음(JS 미검증) · `/purchase/import` 재인증 뒤 홈으로 복귀 · `p_item_branches` DELETE 없음 → 사용 지점 빼기 불가(20단계 설계 확인) · 19단계 경보 후보(대량 import·대량 중단) 미등록 | 경로 오류는 Fable 지시서 실수. 사용 지점 빼기는 20단계에서 `is_active` 컬럼 추가로(원장 영향 없음). 경보는 AL-14~17 과 함께 20~22단계 |
 | 2026-09-13 | 정리 | 시험이 남긴 xlsx 14건(구매/가져오기 폴더, #210~#251)은 Fable 이 qa_admin01 로 휴지통 처리 — sha256 증거는 감사 로그에 남음 | 30일 뒤 자동 삭제 |
+| 2026-09-13 | 정리 | 18-3 회귀가 남긴 폴더 `qa-18-3`(#27)·`qa-18-3-sub`(#28)와 파일 9건 — 파일은 Fable 이 qa_admin01 로 휴지통 처리. **폴더 둘은 남음**(휴지통 파일이 있으면 폴더 삭제 400 — Q-16 미결이라 30일 뒤 purge 후 삭제) | Q-16 결정 뒤 |
+| 2026-09-13 | 발견(18-3 Opus) | 「URL 로 가져오기」 화면이 18-1 부터 `folder_id` 를 보내지 않았다 — 폴더를 골라도 항상 루트로 저장됨. 서버는 값을 읽고 검사(parent_narrower)하고 있었으므로 권한 문제는 아니고 **화면 누락** | 18-3 에서 수정. 18단계 검토가 curl 로 서버 계약만 보고 화면 payload 를 안 본 틈 — 화면 변경 검토 때는 payload 필드 대조를 체크에 넣는다 |
+| 2026-09-13 | 도구 | 이 VM 에 node 가 PATH 에 없지만 VS Code 서버 내장 `~/.vscode-server/cli/servers/*/server/node`(v24) 로 `node --check` 가능 — 19단계 「JS 미검증」도 이것으로 app.js·purchase.js 문법 통과 확인 | 앞으로 JS 변경 검토 기본 절차 |
 
 
 ## 2-1. 10단계 뒤 일괄 자기 공격 — 진행 순서 (관문 ③, 사용자)

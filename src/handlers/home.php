@@ -39,12 +39,14 @@ require __DIR__ . '/../views/shell_top.php';
         <p class="page-head__sub">내가 볼 수 있는 파일만 표시됩니다. 권한은 서버가 매 요청 확인합니다.</p>
       </div>
       <div class="page-head__actions">
-        <!-- 「URL 로 가져오기」는 기본 hidden 이고, /api/me 의 can_fetch 가 참일 때만 app.js 가 연다.
+        <!-- 18-3 — 머리에는 단추 둘만 둔다. 폼은 아래 <dialog class="modal"> 로 열린다
+             (펼침 패널이 늘 화면을 차지하지 않게 — 사용자 요청 2026-09-13).
+             「URL 로 가져오기」는 기본 hidden 이고, /api/me 의 can_fetch 가 참일 때만 app.js 가 연다.
              단추를 되살려도 POST /api/files/fetch 는 라우터 정책 file.fetch 가 다시 막는다. -->
-        <button id="fetch-toggle" class="btn btn--quiet" type="button" aria-expanded="false" aria-controls="fetch-panel" hidden>
+        <button id="fetch-toggle" class="btn btn--quiet" type="button" aria-haspopup="dialog" aria-controls="fetch-dialog" hidden>
           <span class="icon" data-icon="link"></span>URL 로 가져오기
         </button>
-        <button id="upload-toggle" class="btn" type="button" aria-expanded="false" aria-controls="upload-panel">
+        <button id="upload-toggle" class="btn" type="button" aria-haspopup="dialog" aria-controls="upload-dialog">
           <span class="icon" data-icon="upload"></span>파일 올리기
         </button>
       </div>
@@ -84,109 +86,6 @@ require __DIR__ . '/../views/shell_top.php';
       </div>
 
       <p><button id="forced-logout" class="btn btn--quiet btn--small" type="button">로그아웃</button></p>
-    </section>
-
-    <!-- 올리기 패널 — 머리 단추로 접었다 편다(기본은 접힘). 허용 형식·용량 안내가 여기 들어간다. -->
-    <section class="panel" id="upload-panel" hidden>
-      <div class="panel__head">
-        <h2 class="panel__title">파일 올리기</h2>
-        <p class="panel__sub">
-          허용 형식 <code>pdf docx xlsx pptx hwp hwpx txt csv md png jpg jpeg gif zip</code> ·
-          한 파일 최대 100MB · 한 사람이 하루에 올릴 수 있는 총량 2GB
-        </p>
-        <!-- 15-3 민감정보 검출 안내 (PRD F-22 「한계」, SECURITY R-58).
-             검출은 **보조 장치**라는 것과 책임이 올리는 사람에게 있다는 것을 같은 자리에서 알린다. -->
-        <p class="panel__sub">
-          올리기 전에 <strong>민감정보(주민등록번호·카드번호·급여 등)를 자동으로 한 번 살펴봅니다</strong> —
-          보이면 <code>team</code>·<code>admin-only</code> 로만 올릴 수 있습니다.
-          다만 <strong>이미지·PDF·암호가 걸린 zip·스캔한 문서는 검사하지 못하고</strong>
-          우연히 형식이 맞는 숫자를 잘못 짚기도 합니다. 이 검사는 도움장치일 뿐이며
-          <strong>접근 등급을 고르는 책임은 올리는 사람에게 있습니다.</strong>
-        </p>
-      </div>
-      <form id="upload-form" class="form form--grid" autocomplete="off">
-        <!-- 18-2 일괄 업로드 (F-27, ARCH 5.17) — 여러 개를 고르거나 끌어 놓는다.
-             **서버 계약은 그대로**다: 파일 하나 = 요청 하나이고, app.js 가 순서대로 보낸다. -->
-        <div class="field field--full">
-          <span class="field__label">파일 (여러 개 선택 가능 · 한 번에 최대 50개)</span>
-          <div id="upload-drop" class="dropzone">
-            <p class="dropzone__text">여기에 파일을 끌어 놓거나 아래에서 고르세요</p>
-            <input id="upload-file" type="file" multiple required>
-          </div>
-          <p id="upload-picked" class="muted"></p>
-        </div>
-        <label class="field">
-          <span class="field__label">폴더</span>
-          <!-- 선택지는 app.js 가 서버에서 받은 폴더로만 채운다. 기본값은 지금 열어 둔 폴더다
-               (구글 드라이브처럼 등급도 그 폴더 것을 물려받는다 — ARCH 5.16 「구글 드라이브와 비교」).
-               어디에 올릴 수 있는지는 서버가 매 요청 다시 판단한다 (PRD S-01). -->
-          <select id="upload-folder"></select>
-        </label>
-        <label class="field">
-          <span class="field__label">설명 (선택, 500자 이내 · 고른 파일 전부에 같은 설명)</span>
-          <input id="upload-description" type="text" maxlength="500">
-        </label>
-        <label class="field">
-          <span class="field__label">접근 레벨 (필수)</span>
-          <!-- 선택지는 /api/me 의 upload_levels 로 app.js 가 채운다 (서버가 정한다).
-               맨 앞의 "접근 레벨을 선택하세요" 자리표시(value="" disabled)도 app.js 가 넣는다 —
-               고르지 않고 올리는 일을 막기 위해서다.
-               18-1: 폴더를 고르면 그 폴더보다 넓은 등급은 목록에서 빠진다(서버가 400 으로 막는 것을
-               화면이 미리 알려 주는 편의일 뿐이다). -->
-          <select id="upload-level" required></select>
-        </label>
-        <label class="field" id="upload-team-field" hidden>
-          <span class="field__label">팀</span>
-          <select id="upload-team"></select>
-        </label>
-        <button id="upload-submit" class="btn" type="submit">올리기</button>
-      </form>
-
-      <!-- 파일별 진행 표 (F-27). 행은 app.js 가 createElement + textContent 로만 만든다.
-           거부 사유는 **서버가 준 문구 그대로** 넣는다 — 브라우저가 사유를 추측하지 않는다. -->
-      <div id="upload-progress" class="table-wrap" hidden>
-        <table class="files upload-status">
-          <thead>
-            <tr>
-              <th scope="col">파일</th>
-              <th scope="col">크기</th>
-              <th scope="col">상태</th>
-            </tr>
-          </thead>
-          <tbody id="upload-status-body"></tbody>
-        </table>
-      </div>
-    </section>
-
-    <section class="panel" id="fetch-panel" hidden>
-      <div class="panel__head">
-        <h2 class="panel__title">URL 로 가져오기</h2>
-        <p class="panel__sub">허용된 사이트의 https 주소만 받습니다. 주소가 가리키는 곳은 서버가 다시 확인합니다.</p>
-      </div>
-      <form id="fetch-form" class="form form--grid" autocomplete="off">
-        <label class="field">
-          <span class="field__label">주소 (https 만 · 허용된 사이트만)</span>
-          <input id="fetch-url" type="url" maxlength="2048" required>
-        </label>
-        <label class="field">
-          <span class="field__label">폴더</span>
-          <select id="fetch-folder"></select>
-        </label>
-        <label class="field">
-          <span class="field__label">설명 (선택, 500자 이내)</span>
-          <input id="fetch-description" type="text" maxlength="500">
-        </label>
-        <label class="field">
-          <span class="field__label">접근 레벨 (필수)</span>
-          <!-- 업로드 폼과 같다 — 선택지·자리표시·기본값을 전부 app.js 가 서버 값으로 만든다 -->
-          <select id="fetch-level" required></select>
-        </label>
-        <label class="field" id="fetch-team-field" hidden>
-          <span class="field__label">팀</span>
-          <select id="fetch-team"></select>
-        </label>
-        <button id="fetch-submit" class="btn" type="submit">가져오기</button>
-      </form>
     </section>
 
     <!-- ─── 폴더 (18-1 — PRD F-26, ARCH 5.16) ────────────────────────────────
@@ -261,6 +160,134 @@ require __DIR__ . '/../views/shell_top.php';
     <p class="muted">내가 볼 수 있는 파일만 · 다운로드는 항상 파일로 저장 · 모든 행동은 감사 로그</p>
       </div>
     </div>
+
+    <!-- ─── 파일 올리기 대화상자 (18-3 — PRD F-26·F-27, ARCH 5.16·5.17) ──────
+         **올릴 위치는 고르지 않는다.** 지금 열어 둔 폴더에 올라가고, 그 경로는 서버가
+         `GET /api/files` 로 내려 준 `folder.breadcrumb` 를 app.js 가 textContent 로 적는다.
+         서버 계약은 그대로다 — 파일 하나 = 요청 하나(`POST /api/files`)이고, 어디에 올릴 수
+         있는지는 서버가 매 요청 다시 판단한다 (PRD S-01, ARCH 5.16 불변 규칙 ①). -->
+    <dialog id="upload-dialog" class="modal modal--form modal--stack modal--upload" aria-labelledby="upload-dialog-title">
+      <div class="modal__head">
+        <span class="preview__mark"><span class="icon" data-icon="upload"></span></span>
+        <div class="preview__headtext">
+          <h2 class="modal__title" id="upload-dialog-title">파일 올리기</h2>
+          <!-- 「올릴 위치: …」 — app.js 가 서버가 준 경로로만 채운다(읽기 전용 글자). -->
+          <div class="modal__meta"><span id="upload-where"></span></div>
+        </div>
+        <button id="upload-dialog-x" class="btn btn--icon" type="button" title="닫기" aria-label="닫기">
+          <span class="icon" data-icon="x"></span>
+        </button>
+      </div>
+      <div class="modal__body">
+        <p class="panel__sub">
+          허용 형식 <code>pdf docx xlsx pptx hwp hwpx txt csv md png jpg jpeg gif zip</code> ·
+          한 파일 최대 100MB · 한 사람이 하루에 올릴 수 있는 총량 2GB
+        </p>
+        <!-- 15-3 민감정보 검출 안내 (PRD F-22 「한계」, SECURITY R-58).
+             검출은 **보조 장치**라는 것과 책임이 올리는 사람에게 있다는 것을 같은 자리에서 알린다. -->
+        <p class="panel__sub">
+          올리기 전에 <strong>민감정보(주민등록번호·카드번호·급여 등)를 자동으로 한 번 살펴봅니다</strong> —
+          보이면 <code>team</code>·<code>admin-only</code> 로만 올릴 수 있습니다.
+          다만 <strong>이미지·PDF·암호가 걸린 zip·스캔한 문서는 검사하지 못하고</strong>
+          우연히 형식이 맞는 숫자를 잘못 짚기도 합니다. 이 검사는 도움장치일 뿐이며
+          <strong>접근 등급을 고르는 책임은 올리는 사람에게 있습니다.</strong>
+        </p>
+        <form id="upload-form" class="form form--grid" autocomplete="off">
+          <!-- 18-2 일괄 업로드 (F-27, ARCH 5.17) — 여러 개를 고르거나 끌어 놓는다.
+               **서버 계약은 그대로**다: 파일 하나 = 요청 하나이고, app.js 가 순서대로 보낸다. -->
+          <div class="field field--full">
+            <span class="field__label">파일 (여러 개 선택 가능 · 한 번에 최대 50개)</span>
+            <div id="upload-drop" class="dropzone">
+              <p class="dropzone__text">여기에 파일을 끌어 놓거나 아래에서 고르세요</p>
+              <input id="upload-file" type="file" multiple required>
+            </div>
+            <p id="upload-picked" class="muted"></p>
+          </div>
+          <label class="field field--full">
+            <span class="field__label">설명 (선택, 500자 이내 · 고른 파일 전부에 같은 설명)</span>
+            <input id="upload-description" type="text" maxlength="500">
+          </label>
+          <label class="field">
+            <span class="field__label">접근 레벨 (필수)</span>
+            <!-- 선택지는 /api/me 의 upload_levels 로 app.js 가 채운다 (서버가 정한다).
+                 맨 앞의 "접근 레벨을 선택하세요" 자리표시(value="" disabled)도 app.js 가 넣는다 —
+                 고르지 않고 올리는 일을 막기 위해서다.
+                 18-1: **지금 연 폴더**보다 넓은 등급은 목록에서 빠지고 기본값도 그 폴더 등급이다
+                 (서버가 400 으로 막는 것을 화면이 미리 알려 주는 편의일 뿐이다). -->
+            <select id="upload-level" required></select>
+          </label>
+          <label class="field" id="upload-team-field" hidden>
+            <span class="field__label">팀</span>
+            <select id="upload-team"></select>
+          </label>
+          <button id="upload-submit" class="btn" type="submit">올리기</button>
+        </form>
+
+        <!-- 파일별 진행 표 (F-27). 행은 app.js 가 createElement + textContent 로만 만든다.
+             거부 사유는 **서버가 준 문구 그대로** 넣는다 — 브라우저가 사유를 추측하지 않는다. -->
+        <div id="upload-progress" class="table-wrap" hidden>
+          <table class="files upload-status">
+            <thead>
+              <tr>
+                <th scope="col">파일</th>
+                <th scope="col">크기</th>
+                <th scope="col">상태</th>
+              </tr>
+            </thead>
+            <tbody id="upload-status-body"></tbody>
+          </table>
+        </div>
+      </div>
+      <div class="modal__foot">
+        <p id="upload-msg" class="msg" role="alert" aria-live="polite"></p>
+        <!-- 올리는 중에는 app.js 가 이 단추를 비활성으로 두고 ESC·바깥 누르기도 막는다
+             (진행 표가 사라지면 무엇이 거부됐는지 알 수 없다). -->
+        <button id="upload-dialog-close" class="btn btn--quiet" type="button">닫기</button>
+      </div>
+    </dialog>
+
+    <!-- ─── URL 로 가져오기 대화상자 (18-3 — PRD F-14) ────────────────────────
+         올리기와 같다: 저장 위치는 지금 열어 둔 폴더이고, 화면은 고르지 않는다.
+         주소가 가리키는 곳이 허용된 사이트인지는 서버(src/Fetch.php)가 다시 확인한다. -->
+    <dialog id="fetch-dialog" class="modal modal--form modal--stack" aria-labelledby="fetch-dialog-title">
+      <div class="modal__head">
+        <span class="preview__mark"><span class="icon" data-icon="link"></span></span>
+        <div class="preview__headtext">
+          <h2 class="modal__title" id="fetch-dialog-title">URL 로 가져오기</h2>
+          <div class="modal__meta"><span id="fetch-where"></span></div>
+        </div>
+        <button id="fetch-dialog-x" class="btn btn--icon" type="button" title="닫기" aria-label="닫기">
+          <span class="icon" data-icon="x"></span>
+        </button>
+      </div>
+      <div class="modal__body">
+        <p class="panel__sub">허용된 사이트의 https 주소만 받습니다. 주소가 가리키는 곳은 서버가 다시 확인합니다.</p>
+        <form id="fetch-form" class="form form--grid" autocomplete="off">
+          <label class="field field--full">
+            <span class="field__label">주소 (https 만 · 허용된 사이트만)</span>
+            <input id="fetch-url" type="url" maxlength="2048" required>
+          </label>
+          <label class="field field--full">
+            <span class="field__label">설명 (선택, 500자 이내)</span>
+            <input id="fetch-description" type="text" maxlength="500">
+          </label>
+          <label class="field">
+            <span class="field__label">접근 레벨 (필수)</span>
+            <!-- 업로드 폼과 같다 — 선택지·자리표시·기본값을 전부 app.js 가 서버 값으로 만든다 -->
+            <select id="fetch-level" required></select>
+          </label>
+          <label class="field" id="fetch-team-field" hidden>
+            <span class="field__label">팀</span>
+            <select id="fetch-team"></select>
+          </label>
+          <button id="fetch-submit" class="btn" type="submit">가져오기</button>
+        </form>
+      </div>
+      <div class="modal__foot">
+        <p id="fetch-msg" class="msg" role="alert" aria-live="polite"></p>
+        <button id="fetch-dialog-close" class="btn btn--quiet" type="button">닫기</button>
+      </div>
+    </dialog>
 
     <!-- ─── 새 폴더 / 등급 변경 모달 (18-1) ─────────────────────────────────
          등급 선택지는 app.js 가 **서버가 준 upload_levels** 와 **부모 폴더의 등급**으로만
