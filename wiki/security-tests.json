@@ -1,0 +1,468 @@
+{
+  "slug": "security-tests",
+  "title": "보안 테스트 — 무엇을 어떻게 확인했나",
+  "summary": "검토 항목 × 차수 체크리스트. 줄을 누르면 그 항목을 어떤 명령으로 확인했고 결과가 무엇이었는지 펼쳐진다",
+  "group": "guide",
+  "stage": null,
+  "updated": "2026-09-13",
+  "sections": [
+    {
+      "id": "how-to-read",
+      "heading": "이 표를 읽는 법",
+      "blocks": [
+        {
+          "type": "p",
+          "text": "왼쪽은 「검토 항목」(어떤 공격을 확인했나), 오른쪽 칸들은 「차수」(언제 확인했나)다. 줄을 누르면 그 항목을 어떤 명령으로 어떻게 확인했고 응답이 무엇이었는지 펼쳐진다."
+        },
+        {
+          "type": "table",
+          "header": [
+            "기호",
+            "뜻"
+          ],
+          "rows": [
+            [
+              "✓",
+              "문제 없음 — 실행해서 확인했다"
+            ],
+            [
+              "!",
+              "문제가 남아 있다 — 해소되지 않았다"
+            ],
+            [
+              "?",
+              "미검증 — 아직 실행하지 않았다. 「안전하다는 뜻이 아니다」"
+            ],
+            [
+              "–",
+              "해당 없음 — 그 차수에 따로 실행한 기록이 없다"
+            ]
+          ]
+        },
+        {
+          "type": "callout",
+          "kind": "check",
+          "title": "증거의 출처",
+          "text": "1~4차의 표시는 `SECURITY.md` 7장 검토 이력과 PRD 12장 `T-xx` 에서 왔다. 5차(자가공격, 2026-09-13)는 이 글에 적힌 명령을 그 자리에서 실행한 결과다. 「코드를 읽어보니 안전할 것 같다」는 증거가 아니다 — 증거는 명령과 응답 원문이다."
+        },
+        {
+          "type": "callout",
+          "kind": "risk",
+          "title": "이 글은 관리자만 본다",
+          "text": "위키 전체가 `role:Admin` + 재인증(F-23) 뒤에 있다. 이 글에는 어떤 공격이 어디까지 막히는지와 「아직 막히지 않은 것」이 함께 적혀 있어, 그대로 열면 공격 지도가 되기 때문이다 (`SECURITY.md` R-56)."
+        },
+        {
+          "type": "callout",
+          "kind": "risk",
+          "title": "AI 자가공격은 사용자의 자기 공격(관문 ③)을 대신하지 않는다",
+          "text": "5차는 에이전트가 `curl`·`psql` 로 실행한 결과이며 「참고 자료」다. 관문 ③은 사용자가 브라우저로 직접 해 보는 단계이고, 화면에서만 드러나는 것(눌러지는 단추, 보이면 안 되는 메뉴, 저장형 XSS 가 실제로 글자로 보이는지)은 그때 확인된다. 이 표에 ✓ 가 있어도 관문 ③이 끝난 것은 아니다."
+        }
+      ]
+    },
+    {
+      "id": "checklist",
+      "heading": "검토 항목 × 차수 체크리스트",
+      "blocks": [
+        {
+          "type": "checklist",
+          "rounds": [
+            "1차 4~9단계",
+            "2차 10~13단계",
+            "3차 14~16단계",
+            "4차 17단계",
+            "5차 자가공격"
+          ],
+          "items": [
+            {
+              "label": "접근 통제 · IDOR — 권한 없는 자료를 주소로 직접 노리기",
+              "marks": [
+                "ok",
+                "na",
+                "na",
+                "ok",
+                "ok"
+              ],
+              "how": [
+                "Guest·Employee 세션으로 자기 등급 밖 파일을 목록·다운로드·미리보기로 요청한다.",
+                "확인할 것 두 가지: ① 목록 응답에 그 파일이 「아예 없다」(숨김이 아니라 SQL WHERE 로 걸러짐) ② UUID 를 직접 쳐도 403.",
+                "근거 시험: PRD 12장 `T-1`·`T-2`·`T-3`(4단계), `T-38`(17단계). 5차는 아래 명령으로 직접 실행했다."
+              ],
+              "code": "curl -b jar-guest 'http://127.0.0.1:8082/api/files'\n  -> total=1, 등급: ['public']          (internal·team·admin-only 없음)\ncurl -b jar-employee 'http://127.0.0.1:8082/api/files'\n  -> total=2, 등급: ['internal','public']  (admin-only 없음)\n\ncurl -b jar-guest '.../api/files/454e8009-2f19-4bcd-a6ce-a74dd58fd340/download'\n  -> 403 {\"error\":\"권한이 없습니다\"}\ncurl -b jar-guest '.../api/files/{internal-uuid}/preview'\n  -> 403 {\"error\":\"권한이 없습니다\"}"
+            },
+            {
+              "label": "무단 관리 라우트 — 낮은 역할이 관리 API·화면을 직접 호출",
+              "marks": [
+                "ok",
+                "ok",
+                "ok",
+                "ok",
+                "ok"
+              ],
+              "how": [
+                "Employee·Guest·Manager 세션으로 관리 창구를 전부 호출한다. 화면(HTML)과 데이터(API)가 「같은 정책」을 쓰는지가 핵심이다.",
+                "막힌 시도는 감사 로그에 `authz.route deny role_not_permitted` 로 남아야 한다.",
+                "근거 시험: `T-13`(8단계) · `T-22`·`T-26`(10·12단계) · `T-27`(12-3) · `T-32`(14단계) · `T-38`(17단계)."
+              ],
+              "code": "# Employee 세션\n/api/users          -> 403      /api/audit             -> 403\n/api/org/teams      -> 403      /api/admin/permissions -> 403\n/api/admin/shares   -> 403      /api/files/trash       -> 403\n# Guest 세션 (화면)\n/admin -> 403        /users -> 403\n# Manager 세션 (Admin 전용)\n/api/users -> 403\n\n# 감사 로그\nSELECT actor_name, target_name, reason, detail->>'policy' FROM audit_logs\n WHERE action='authz.route' ORDER BY id DESC;\n  qa_employee01 | PATCH /api/admin/permissions | role_not_permitted | role:Admin"
+            },
+            {
+              "label": "SQL 인젝션 — 검색어·정렬 파라미터로 SQL 을 바꾸기",
+              "marks": [
+                "ok",
+                "na",
+                "na",
+                "na",
+                "ok"
+              ],
+              "how": [
+                "검색어에 `' OR '1'='1`·`DROP TABLE`·`UNION SELECT` 를 넣고, 정렬 파라미터에도 SQL 조각을 넣는다.",
+                "확인할 것: ① 페이로드가 「글자 그대로 검색」되어 0건 ② 오류 문구·전체 행 노출 없음 ③ 표가 그대로 살아 있음.",
+                "값은 언제나 바인딩으로 넘어가고, 정렬처럼 바인딩할 수 없는 자리는 허용 목록으로만 받는다. 근거 시험: `T-5`(5단계)."
+              ],
+              "code": "q=' OR '1'='1                    -> 200, total=0\nq='; DROP TABLE files;--         -> 200, total=0\nq=%' UNION SELECT * FROM users-- -> 200, total=0\nsort=(case when 1=1 then name end) -> 200, total=2   (허용목록 밖이라 무시)\n\nSELECT count(*) FROM files;  -> 148   (DROP 시도 뒤에도 표 그대로)"
+            },
+            {
+              "label": "XSS — 저장된 글자가 다른 사람 브라우저에서 코드가 되기",
+              "marks": [
+                "ok",
+                "na",
+                "na",
+                "na",
+                "ok"
+              ],
+              "how": [
+                "파일 설명·이름에 `<script>`·`<img onerror=…>` 를 넣고, 그 값이 화면에서 「코드가 아니라 글자」로 나오는지 본다.",
+                "이 앱의 방어는 세 겹이다: 화면은 값을 `textContent` 로만 넣고(`innerHTML` 0건), 목록은 JSON 으로 내려오며, 페이지 CSP 가 인라인 스크립트를 막는다.",
+                "근거 시험: `T-4`(5단계). 5차에서는 남의 파일에 주입을 시도해 권한 게이트가 먼저 막는 것과 세 겹 구조를 확인했다."
+              ],
+              "code": "PATCH /api/files/{남의파일} {\"description\":\"<script>alert(document.cookie)</script>\"}\n  -> 403  (소유자가 아니라 권한 게이트가 먼저 막음)\n\ngrep -c 'innerHTML|outerHTML|document.write' public/assets/app.js   -> 0\nGET /api/files  Content-Type: application/json; charset=utf-8\nCSP: default-src 'self'; script-src 'self'; style-src 'self'; …"
+            },
+            {
+              "label": "저장형 XSS 실물 업로드 (악성 파일명으로 올려 화면 확인)",
+              "marks": [
+                "ok",
+                "na",
+                "na",
+                "na",
+                "na"
+              ],
+              "how": [
+                "「미검증 항목이다.」 검토 계정으로 `<img src=x onerror=…>.txt` 같은 이름의 파일을 실제로 올려, 목록 화면에서 글자로 보이는지 눈으로 확인해야 한다.",
+                "5차 시도에서 시험 환경(에이전트 샌드박스)이 `curl` 멀티파트 업로드를 차단해 실행하지 못했다 — 「앱의 문제가 아니다」.",
+                "관문 ③(사용자 브라우저)에서 확인할 것: 파일명이 그대로 글자로 보이고 경고창이 뜨지 않아야 한다.",
+                "Fable 실측(2026-09-12 전면 점검·5단계 T-4): 파일명 `<img src=x onerror=alert(1)>.txt` 업로드 201, 설명에 `<script>alert(2)</script>` PATCH 200 → DB 원문 저장, JSON 이스케이프, 서버 HTML 에 원문 0건, 화면은 `textContent` 만. 5차(자가공격 세션)는 그 세션의 curl 제한으로 미실행이라 `–`."
+              ],
+              "code": "curl -F 'file=@x.txt;filename=<img src=x onerror=alert(1)>.txt' … /api/files\n  -> curl: (26) Failed to open/read local data  /  HTTP 000\n  (요청이 서버에 닿지 못함 = 시험 환경 제약)\nupload filename='<img src=x onerror=alert(1)>.txt' -> 201\nPATCH description='<img src=x onerror=alert(1)>\"><script>alert(2)</script>' -> 200\ngrep -c '<script>alert' /(HTML) -> 0   (JSON 응답에는 이스케이프된 문자열만)"
+            },
+            {
+              "label": "CSRF — 다른 사이트가 내 세션으로 요청을 보내기",
+              "marks": [
+                "ok",
+                "na",
+                "na",
+                "ok",
+                "ok"
+              ],
+              "how": [
+                "로그인한 세션 쿠키는 그대로 두고 「CSRF 토큰만 빼거나 틀리게」 해서 상태 변경 요청을 보낸다.",
+                "로그인 창구가 폼 인코딩을 거부하는지도 함께 본다(크로스사이트 폼 전송 차단).",
+                "근거 시험: `T-14`(5단계), `T-39`(17단계, 관리자 PATCH)."
+              ],
+              "code": "curl -b jar -X PATCH -d '{\"description\":\"csrf\"}' /api/files/{id}\n  -> 403\ncurl -b jar -X POST -H 'X-CSRF-Token: wrong' /api/logout\n  -> 403\ncurl -X POST -H 'Content-Type: application/x-www-form-urlencoded' … /api/login\n  -> 400\n\n# 관리자 세션에서 토큰만 빼고 권한 매트릭스 변경\nPATCH /api/admin/permissions (토큰 없음)\n  -> 403 + 감사 로그 csrf deny token_mismatch"
+            },
+            {
+              "label": "SSRF — 서버를 시켜 내부망·클라우드 메타데이터를 찌르기",
+              "marks": [
+                "ok",
+                "na",
+                "na",
+                "na",
+                "ok"
+              ],
+              "how": [
+                "`file.fetch` 를 쓸 수 있는 역할(Manager)로 내부 주소를 넣어 본다. 방어가 네 겹인지 계층별로 확인한다.",
+                "① 스킴(HTTPS 전용) ② 호스트 허용목록(비어 있으면 전부 거부) ③ 사설 IP ④ 속도 제한. 역할이 없으면 라우트에서 먼저 막힌다.",
+                "감사 로그에 「호스트만」 남고 URL 경로는 남지 않아야 한다 — 로그가 내부망 지도가 되면 안 되기 때문이다. 근거 시험: `T-6`(7단계)."
+              ],
+              "code": "# ① 스킴\nhttp://169.254.169.254/…  file:///etc/passwd  gopher://127.0.0.1:6379/\n  -> 400, 감사 deny scheme\n# ② 호스트 허용목록 (.env FETCH_ALLOWED_HOSTS 비어 있음)\nhttps://169.254.169.254/latest/meta-data/\n  -> 400, 감사 deny host_not_allowed (detail.source_host=169.254.169.254)\n# ③ 속도 제한\nhttps://example.com/  https://metadata.google.internal/\n  -> 429, 감사 deny rate_limited\n# ④ 역할\nEmployee 가 fetch -> 403\n\n# 로그에 URL 경로가 샜나\nSELECT count(*) … detail::text LIKE '%meta-data%'  -> 0"
+            },
+            {
+              "label": "정보 노출 · 계정 열거 — 설정 파일·오류·응답 차이로 정보 얻기",
+              "marks": [
+                "ok",
+                "na",
+                "na",
+                "na",
+                "ok"
+              ],
+              "how": [
+                "`.env`·`.git`·소스 파일을 URL 로 직접 요청하고, 없는 아이디와 있는 아이디(틀린 비밀번호)의 응답이 「같은지」 본다.",
+                "403 이 아니라 「404」 인 것이 중요하다 — 403 은 「있지만 막혔다」는 정보다.",
+                "서버 헤더에 버전·`X-Powered-By` 가 없어야 한다."
+              ],
+              "code": "GET /.env -> 404   /.git/config -> 404   /src/Db.php -> 404   /../.env -> 404\nGET /index.php%00.txt -> 400\n\n없는 아이디        -> 401 {\"error\":\"아이디 또는 비밀번호가 올바르지 않습니다\"}\n있는 아이디(틀린 비번) -> 401 {\"error\":\"아이디 또는 비밀번호가 올바르지 않습니다\"}\n\nServer: nginx        (버전 숫자 없음)\nX-Powered-By:        (없음)"
+            },
+            {
+              "label": "경로 조작(Path Traversal) — `../` 로 저장소 밖 파일 읽기",
+              "marks": [
+                "ok",
+                "na",
+                "na",
+                "na",
+                "ok"
+              ],
+              "how": [
+                "내부 저장 경로와 위키 글 이름에 `../`·URL 인코딩을 섞어 넣는다.",
+                "업로드 파일은 웹 루트 밖에 「서버가 지은 무작위 이름」으로 저장된다 — 사용자 입력이 경로에 한 글자도 들어가지 않는다.",
+                "근거 시험: `T-10`(6단계)."
+              ],
+              "code": "/protected/../../etc/passwd -> 404   /storage/ -> 404\n/var/lib/tbox-v2/storage/   -> 404\n/wiki/../../../etc/passwd   -> 404\n/wiki/..%2f..%2fetc%2fpasswd -> 400\n/wiki/ZZZ                    -> 404   (slug 정규식 밖)"
+            },
+            {
+              "label": "파일 업로드 — 웹셸·위장 파일·이중 확장자",
+              "marks": [
+                "ok",
+                "na",
+                "na",
+                "na",
+                "na"
+              ],
+              "how": [
+                "`.php` 웹셸, 이름만 `.pdf` 인 위장 파일, `x.php.txt` 같은 이중 확장자를 올려 본다.",
+                "막는 겹: 확장자 허용목록 + 내용으로 실제 형식 판별 + 「웹서버가 `index.php` 하나만 실행」(다른 `.php` 요청은 404).",
+                "근거 시험: `T-7`·`T-8`(6단계). 5차에서는 시험 환경이 멀티파트 업로드를 막아 실행하지 못했다(위 「저장형 XSS 실물 업로드」와 같은 이유)."
+              ],
+              "code": "# 6단계 기록 (SECURITY.md 7장)\nshell.php        업로드 -> 거부 (ext_not_allowed)\nx.pdf(내용 PHP) 업로드 -> 거부 (mime_mismatch)\n/uploads/shell.php 직접 실행 -> 404   (location ~ \\.php$ { return 404; })"
+            },
+            {
+              "label": "인증 · 세션 — 쿠키 위조·세션 고정·만료",
+              "marks": [
+                "na",
+                "ok",
+                "na",
+                "na",
+                "ok"
+              ],
+              "how": [
+                "쿠키 없이/가짜 쿠키로 API 를 부르고, 로그인 쿠키의 속성과 만료 동작을 본다.",
+                "DB 에는 쿠키의 「해시만」 저장되므로 DB 가 새도 세션을 위조할 수 없다. 로그인 성공 시 세션을 새로 발급해 세션 고정을 막는다.",
+                "근거 시험: `T-30`·`T-31`(13단계)."
+              ],
+              "code": "쿠키 없이 /api/files -> 401   /api/me -> 401   화면 /users -> 302 /login\n가짜 쿠키(무작위 64자) /api/me -> 401\n\nSet-Cookie: tbox_session=<값>; path=/; secure; HttpOnly; SameSite=Lax\n\n# 유휴 30분 만료 (5차 시험 중 실제로 발생)\nlast_seen_at 23:20:41 → 23:51 요청 시 302 /login"
+            },
+            {
+              "label": "무차별 대입 — 계정 잠금과 IP 속도 제한",
+              "marks": [
+                "na",
+                "ok",
+                "na",
+                "na",
+                "ok"
+              ],
+              "how": [
+                "로그인 창구에 짧은 시간에 많은 요청을 보낸다. 계정을 잠그지 않도록 「없는 아이디」로 시험한다.",
+                "두 겹이다: 앱 층 계정 잠금(5회 → 10분, 잠기면 그 계정 세션 전부 끊김)과 nginx IP 속도 제한(30r/m, burst 10 → 429).",
+                "근거 시험: 13단계(`R-48`·`R-49`), 16단계 재인증 창구(`R-59`)."
+              ],
+              "code": "# 병렬 25회 (없는 아이디라 실제 계정 잠금 없음)\n9 × 401    16 × 429\n\n# 앱 층 잠금은 17단계 T-39 에서 확인\n틀린 코드 1회 -> failed_count=1,  코드 재사용 1회 -> failed_count=2\n정상 로그인 -> failed_count=0 (복귀)"
+            },
+            {
+              "label": "2단계 인증(TOTP) — 코드 가로채기·재사용",
+              "marks": [
+                "na",
+                "ok",
+                "na",
+                "ok",
+                "na"
+              ],
+              "how": [
+                "맞는 코드라도 「한 번 쓰면 다시 못 쓰게」 되어 있는지 본다(RFC 6238 §5.2).",
+                "서버는 코드 6자리를 저장하지 않고, 마지막으로 성공한 스텝 번호(`users.mfa_last_step`)만 남긴다.",
+                "근거 시험: `T-31`(13단계), `T-39`(17단계 — 매트릭스 편집은 요청마다 새 코드를 요구한다)."
+              ],
+              "code": "# 17단계 T-39\n같은 코드로 두 번째 요청 -> 400, 감사 permission.change deny code_reused\n틀린 코드              -> 400, 감사 permission.change deny bad_code (+실패 집계)"
+            },
+            {
+              "label": "권한 상승 — 앱이 권한 표·스키마·계정을 바꿀 수 있나 (DB 계정 경계)",
+              "marks": [
+                "ok",
+                "na",
+                "ok",
+                "ok",
+                "ok"
+              ],
+              "how": [
+                "앱 계정을 탈취했다고 가정하고 「DB 계정 경계」를 직접 시험한다(`SET ROLE`).",
+                "핵심 질문: 앱이 권한 표를 바꿀 수 있으면, 다른 결함 하나가 곧 관리자 권한 획득이 된다.",
+                "17단계에서 화면 편집을 열면서도 그 성질을 지켰다 — 쓰기는 별도 계정 `tbox_perm`(그 표만, 다른 표 권한 0)으로 창구 하나에서만. 근거: `R-43`·`R-60`, `T-39`."
+              ],
+              "code": "SET ROLE tbox_app;  UPDATE permissions …   -> ERROR: permission denied for table permissions\nSET ROLE tbox_app;  CREATE TABLE hax(i int); -> ERROR: permission denied for schema public\nSET ROLE tbox_perm; SELECT count(*) FROM users -> ERROR: permission denied for table users\n   (files·audit_logs·sessions·teams·share_links 전부 denied,\n    permissions 에 INSERT·DELETE 도 denied)\n\n\\dp permissions\n  tbox_app=r/tbox_owner      (읽기만)\n  tbox_perm=rw/tbox_owner    (이 표만)"
+            },
+            {
+              "label": "감사 로그 무결성 — 흔적 지우기",
+              "marks": [
+                "ok",
+                "na",
+                "na",
+                "na",
+                "ok"
+              ],
+              "how": [
+                "앱 계정으로 감사 로그를 지우거나 고칠 수 있는지 본다. 실력 있는 공격자가 마지막에 하는 일이 흔적 지우기다.",
+                "앱 계정에는 `audit_logs` 에 「INSERT 만」 있다(UPDATE·DELETE 권한 자체가 없다). 기록은 DB·파일 두 곳에 남고 날짜별 해시 체인이 걸린다.",
+                "근거: `R-11`, 9단계 백업·체인."
+              ],
+              "code": "SET ROLE tbox_app; DELETE FROM audit_logs …  -> ERROR: permission denied for table audit_logs\nSET ROLE tbox_app; UPDATE audit_logs …        -> ERROR: permission denied for table audit_logs"
+            },
+            {
+              "label": "관리 기능 재인증 (sudo 모드, F-23)",
+              "marks": [
+                "na",
+                "na",
+                "ok",
+                "ok",
+                "ok"
+              ],
+              "how": [
+                "로그인만으로 관리 화면이 열리는지 본다. 열리면 안 된다 — 15분 안에 비밀번호를 「다시」 확인한 세션만 쓸 수 있다.",
+                "재인증은 권한을 만들지 않는다: Employee 가 비밀번호를 맞혀도 `/users` 는 그대로 403 이다(관문 순서가 인가 → 재인증).",
+                "근거 시험: `T-36`(16단계), `T-38`(17단계)."
+              ],
+              "code": "# 로그인 직후 (재인증 전)\nGET /api/admin/alerts -> 403 {\"error\":\"관리 기능을 쓰려면 비밀번호를 다시 확인해야 합니다\",\"next\":\"reauth\"}\nGET /admin (화면)     -> 302 /reauth?to=admin\n# POST /api/me/reauth {password} -> 200\nGET /admin -> 200    /api/admin/* -> 200"
+            },
+            {
+              "label": "관리자 영역 (F-24) — 단일 입구와 세 겹",
+              "marks": [
+                "na",
+                "na",
+                "na",
+                "ok",
+                "ok"
+              ],
+              "how": [
+                "비관리자가 `/admin`·`/api/admin/*` 에 닿는지, 일반 화면 메뉴에 관리 항목이 남아 있는지 본다.",
+                "막는 겹 셋: 라우트 정책 `role:Admin` · 재인증 15분 창 · (선택) nginx 관리망 IP 제한(기본 꺼짐, `R-61`).",
+                "근거 시험: `T-38`(17단계)."
+              ],
+              "code": "Employee/Guest -> /admin · /admin/permissions · /api/admin/* 전부 403\n일반 셸 HTML 의 내비 링크: nav-files · nav-settings · nav-activity · nav-admin(hidden)\n  (/users · /org · /audit · /trash · /wiki 항목 0)\n/api/me  Employee: can_admin=false   Admin: can_admin=true\n\nnginx -T | grep 'location ^~ /admin'\n  613:    # location ^~ /admin {     ← 주석(꺼짐)\n  940:    # location ^~ /admin {"
+            },
+            {
+              "label": "권한 매트릭스 편집 (F-25) — 다섯 조건과 불변 규칙",
+              "marks": [
+                "na",
+                "na",
+                "na",
+                "ok",
+                "ok"
+              ],
+              "how": [
+                "관리자+재인증 세션으로 「거부되어야 하는 모든 요청」을 보내 본다: 코드 없음·사유 없음·틀린 코드·재사용 코드·관리자 행 변경·모순된 값·변화 없음.",
+                "정상 변경은 「즉시」 효과가 나야 하고(살아 있는 Guest 세션에서 확인), 칸마다 감사 기록과 즉시 경보(AL-13)가 남아야 한다.",
+                "시험 뒤에는 반드시 원복하고 16행이 시드와 같은지 확인한다. 근거 시험: `T-39`(17단계)."
+              ],
+              "code": "코드 없음 / 사유 없음 / 사유 공백 / 모르는 키 / 빈 배열 -> 400 deny bad_request\n틀린 코드 000000                        -> 400 deny bad_code   (+실패 집계)\n같은 코드 재사용                        -> 400 deny code_reused\nAdmin 행 변경                           -> 400 deny invariant (rule=a)\ncan_upload=true & can_read=false        -> 400 deny invariant (rule=b)\n바뀌는 칸 0개                            -> 400 deny invariant (rule=e)\n\n정상: Guest|internal can_read=true -> 200\n  같은 Guest 세션 /api/files  total 1 -> 2  (internal 파일 즉시 보임)\n원복 -> 200,  Guest 다시 total 1\nAL-13 경보가 cron(5분)에서 실제 발동 — alerts.log + audit alert.raised\n최종 permissions 16행 = 시드와 동일"
+            },
+            {
+              "label": "자기 역할 강등 차단 — 관리자가 스스로를 잠그기",
+              "marks": [
+                "na",
+                "ok",
+                "na",
+                "na",
+                "ok"
+              ],
+              "how": [
+                "관리자가 자기 계정의 역할을 낮춰 보려 한다. 되면 되돌릴 방법이 없어(관리 창구가 닫혀) 사람이 DB 를 직접 고쳐야 한다.",
+                "`Authz::decideUserChange` 가 `self_change` 로 통째로 막는다. 마지막 활성 관리자를 낮추는 것도 `last_admin` 으로 막는다.",
+                "권한 매트릭스의 불변 규칙 (a)「관리자 행 고정」과 같은 취지다."
+              ],
+              "code": "PATCH /api/users/{내 id} {\"role\":\"Manager\",…}\n  -> 400, 감사 user.role_change deny self_change\nSELECT role FROM users WHERE username='qa_admin01';  -> Admin  (그대로)"
+            },
+            {
+              "label": "백업 · 복구 (S-08)",
+              "marks": [
+                "ok",
+                "na",
+                "na",
+                "na",
+                "na"
+              ],
+              "how": [
+                "백업을 만들고, 파일을 지운 뒤 복구해 정합성 검사가 통과하는지 본다.",
+                "백업은 암호화(gpg)해 저장하고 sha256 을 함께 남긴다. 백업 계정은 「읽기 전용」이다 — 백업 키가 새도 데이터 조작은 안 된다.",
+                "근거: 9단계 검토(`SECURITY.md` 7장), `scripts/backup_db.sh`·`restore.sh`·`consistency_check.php`."
+              ]
+            },
+            {
+              "label": "서버 기준선 — SSH · sudo · 방화벽 (앱 밖)",
+              "marks": [
+                "open",
+                "open",
+                "open",
+                "open",
+                "open"
+              ],
+              "how": [
+                "「여기가 지금 남아 있는 문제다.」 앱이 아니라 서버 설정 층이다.",
+                "`R-22` SSH 비밀번호 로그인이 열려 있다 — 2026-09-11 침해의 실제 입구였다. `eric` 계정의 비밀번호 없는 sudo 도 남아 있다.",
+                "`R-11` root 는 DB·파일·로그를 직접 지울 수 있다(그날 앱 감사 로그에는 한 줄도 남지 않았다). `R-51` TOTP 비밀이 DB 평문이다.",
+                "다음 우선순위: SSH 키 전환 + 비밀번호 로그인 차단 → `eric` sudo 정리. 코드가 아니라 인프라 작업이다."
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "rerun",
+      "heading": "직접 다시 해보기",
+      "blocks": [
+        {
+          "type": "callout",
+          "kind": "try",
+          "title": "준비",
+          "text": "검토 계정(`qa_*`)으로만, 요청마다 표식 `-A \"tbox-review/날짜\"` 를 붙인다. 시드 계정(`admin01` 등)은 사용자의 자기 공격 전용이라 AI 검토는 쓰지 않는다 — 감사 로그에서 누구의 행동인지 갈라져야 하기 때문이다."
+        },
+        {
+          "type": "steps",
+          "items": [
+            "비밀번호는 `sudo cat /etc/tbox-v2/seed-accounts.txt` 로 본다(0600 root).",
+            "로그인해서 쿠키를 받는다: `curl -c jar -H 'Content-Type: application/json' -d '{\"username\":\"qa_guest01\",\"password\":\"…\",\"otp\":\"…\"}' http://127.0.0.1:8082/api/login`",
+            "위 체크리스트에서 항목 하나를 펼쳐 거기 적힌 명령을 그대로 보낸다.",
+            "응답 상태 코드와 본문을 「원문 그대로」 적는다. 기대와 다르면 그 자리에서 멈추고 기록한다.",
+            "DB 쪽 확인은 `sudo -u postgres psql -d tbox_re -c '…'` 로 한다(감사 로그 행·권한 `\\dp`).",
+            "끝나면 바꾼 것을 되돌리고, 실패 카운터가 0 인지 확인한다: `SELECT username, failed_count FROM users WHERE username LIKE 'qa\\_%';`"
+          ]
+        },
+        {
+          "type": "callout",
+          "kind": "risk",
+          "title": "하지 말 것",
+          "text": "권한 매트릭스를 「시험 삼아」 바꾸는 것은 시험이 아니라 「실제 정책 변경」이다. 바꾼 순간 모든 해당 역할 사용자에게 적용되고 경보 AL-13 이 울린다. 꼭 필요하면 한 칸만, 확인 즉시 원복하고 16행이 시드와 같은지 확인한다."
+        },
+        {
+          "type": "refs",
+          "items": [
+            {
+              "doc": "SECURITY",
+              "where": "4장 검토 절차 · 7장 검토 이력"
+            },
+            {
+              "doc": "PRD",
+              "where": "12장 수락 기준 T-1~T-39"
+            },
+            {
+              "doc": "CLAUDE",
+              "where": "3장 구현 후 보안 검토 규칙"
+            }
+          ]
+        },
+        {
+          "type": "link",
+          "slug": "guide-review",
+          "label": "관련 글: 어떻게 검토하나"
+        }
+      ]
+    }
+  ]
+}

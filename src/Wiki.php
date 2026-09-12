@@ -48,7 +48,32 @@ final class Wiki
     public const STAGE_MAX = 13;
 
     /** 본문 블록의 전체 목록. 여기 없는 type 은 예외다 (ARCH 5.10) */
-    public const BLOCK_TYPES = ['p', 'list', 'steps', 'table', 'code', 'callout', 'terms', 'refs', 'link'];
+    public const BLOCK_TYPES = ['p', 'list', 'steps', 'table', 'code', 'callout', 'terms', 'refs', 'link', 'checklist'];
+
+    /**
+     * `checklist` 블록의 칸 값 — **네 가지뿐**이다 (2026-09-13, 보안 시험 기록용).
+     *
+     * 키는 글(JSON)이 적고, 화면에 나가는 기호·문구·색은 **코드가 정한다**. 글이 문구를 지어내면
+     * 「문제 없음」 같은 판정 표시가 글쓴이 마음대로가 되기 때문이다(감사 요약 문장을 Audit 상수
+     * 표 하나에만 두는 것과 같은 이유, ARCH 7.4).
+     *
+     *   ok    실행해서 문제 없음을 확인 (증거는 같은 줄의 `how`·`code` 에)
+     *   open  문제가 남아 있음 — 위험이 해소되지 않음
+     *   todo  아직 실행하지 않음 (미검증. **안전하다는 뜻이 아니다**)
+     *   na    그 차수의 범위 밖 (그 차수에 따로 실행한 기록이 없음)
+     *
+     * @var array<string,array{0:string,1:string}>  값 => [기호, 툴팁 문구]
+     */
+    public const CHECK_MARKS = [
+        'ok'   => ['✓', '문제 없음 — 실행해서 확인'],
+        'open' => ['!', '문제 남음 — 해소되지 않음'],
+        'todo' => ['?', '미검증 — 아직 실행하지 않음'],
+        'na'   => ['–', '해당 없음 — 그 차수에 실행 기록 없음'],
+    ];
+
+    /** 한 체크리스트가 담을 수 있는 차수(열)·항목(행)의 상한 */
+    public const CHECK_MAX_ROUNDS = 8;
+    public const CHECK_MAX_ITEMS  = 60;
 
     /** 말풍선 종류 6가지. 접두 글자(왜·어떻게·확인·위험·해보기·용어)는 app.css 가 붙인다 */
     public const CALLOUT_KINDS = ['why', 'how', 'check', 'risk', 'try', 'term'];
@@ -438,6 +463,65 @@ final class Wiki
                     }
                     if (array_key_exists('what', $item) && !is_string($item['what'])) {
                         $p[] = $one . '.what: 문자열이어야 한다';
+                    }
+                }
+                break;
+
+            case 'checklist':
+                /* 보안 시험 기록용 표 (2026-09-13). 행 = 검토 항목, 열 = 차수, 칸 = CHECK_MARKS.
+                 * 모르는 값·개수 불일치는 **조용히 넘기지 않는다** — 판정 표가 반쪽이면
+                 * 「문제 없음」 표시가 근거 없이 서 있게 되기 때문이다 (ARCH 5.10 원칙 ②). */
+                $rounds = $block['rounds'] ?? null;
+                if (!is_array($rounds) || !array_is_list($rounds) || $rounds === []
+                    || count($rounds) > self::CHECK_MAX_ROUNDS
+                ) {
+                    $p[] = $at . '.rounds: 1~' . self::CHECK_MAX_ROUNDS . '개의 배열이어야 한다';
+                    break;
+                }
+                foreach ($rounds as $k => $round) {
+                    if (!self::isFilledString($round)) {
+                        $p[] = $at . '.rounds[' . $k . ']: 비어 있지 않은 문자열이어야 한다';
+                    }
+                }
+                $items = $block['items'] ?? null;
+                if (!is_array($items) || !array_is_list($items) || $items === []
+                    || count($items) > self::CHECK_MAX_ITEMS
+                ) {
+                    $p[] = $at . '.items: 1~' . self::CHECK_MAX_ITEMS . '개의 배열이어야 한다';
+                    break;
+                }
+                foreach ($items as $i => $item) {
+                    $iat = $at . '.items[' . $i . ']';
+                    if (!is_array($item)) {
+                        $p[] = $iat . ': 객체여야 한다';
+                        continue;
+                    }
+                    if (!self::isFilledString($item['label'] ?? null)) {
+                        $p[] = $iat . '.label: 비어 있지 않은 문자열이어야 한다';
+                    }
+                    $marks = $item['marks'] ?? null;
+                    if (!is_array($marks) || !array_is_list($marks) || count($marks) !== count($rounds)) {
+                        $p[] = $iat . '.marks: 차수(' . count($rounds) . ')와 같은 개수의 배열이어야 한다';
+                    } else {
+                        foreach ($marks as $m => $mark) {
+                            if (!is_string($mark) || !array_key_exists($mark, self::CHECK_MARKS)) {
+                                $p[] = $iat . '.marks[' . $m . ']: '
+                                    . implode('·', array_keys(self::CHECK_MARKS)) . ' 중 하나여야 한다';
+                            }
+                        }
+                    }
+                    $how = $item['how'] ?? null;
+                    if (!is_array($how) || !array_is_list($how) || $how === []) {
+                        $p[] = $iat . '.how: 비어 있지 않은 배열이어야 한다 (어떻게 검토했나)';
+                    } else {
+                        foreach ($how as $h => $line) {
+                            if (!self::isFilledString($line)) {
+                                $p[] = $iat . '.how[' . $h . ']: 비어 있지 않은 문자열이어야 한다';
+                            }
+                        }
+                    }
+                    if (array_key_exists('code', $item) && !self::isFilledString($item['code'])) {
+                        $p[] = $iat . '.code: (선택) 비어 있지 않은 문자열이어야 한다';
                     }
                 }
                 break;
@@ -852,6 +936,59 @@ final class Wiki
                         . '<td>' . self::inline((string) ($item['what'] ?? '')) . '</td></tr>';
                 }
                 $h[] = '</tbody></table></div>';
+                return implode('', $h);
+
+            case 'checklist':
+                /* 행 = 검토 항목, 열 = 차수. 한 줄이 <details> 라 **누르면 펼쳐져** 그 항목을
+                 * 어떤 명령으로 어떻게 확인했는지가 나온다. 자바스크립트를 쓰지 않는다 —
+                 * 브라우저 기본 기능이라 CSP(script-src 'self')와도 무관하고, 스크립트가
+                 * 막혀도 내용이 사라지지 않는다.
+                 * 기호·툴팁 문구는 CHECK_MARKS(코드 상수)에서만 나온다. 글은 키만 고른다. */
+                $rounds = self::stringList($block['rounds'] ?? null);
+                /* 차수 개수는 **클래스 이름**으로 내보낸다. 인라인 style 속성은 CSP(style-src 'self')가
+                 * 막으므로 쓸 수 없고, 개수는 1~CHECK_MAX_ROUNDS 로 이미 좁혀져 있다. */
+                $count = max(1, min(self::CHECK_MAX_ROUNDS, count($rounds)));
+                $h = ['<div class="wiki-check wiki-check--' . $count . '">'];
+
+                // 머리줄 — 어떤 차수가 있는지 (표의 열 이름)
+                $h[] = '<p class="wiki-check__head"><span class="wiki-check__head-label">검토 항목</span>';
+                foreach ($rounds as $round) {
+                    $h[] = '<span class="wiki-check__head-round">' . self::esc($round) . '</span>';
+                }
+                $h[] = '</p>';
+
+                foreach (is_array($block['items'] ?? null) ? $block['items'] : [] as $item) {
+                    if (!is_array($item)) {
+                        continue;
+                    }
+                    $marks = self::stringList($item['marks'] ?? null);
+                    $h[]   = '<details class="wiki-check__item">';
+                    $h[]   = '<summary class="wiki-check__row">';
+                    $h[]   = '<span class="wiki-check__label">'
+                        . self::esc((string) ($item['label'] ?? '')) . '</span>';
+                    foreach ($rounds as $i => $round) {
+                        $key  = $marks[$i] ?? 'na';
+                        $mark = self::CHECK_MARKS[$key] ?? self::CHECK_MARKS['na'];
+                        // title 은 esc 를 거친 코드 상수 문구 + 차수 이름이다 (글의 자유 문자열이 아니다).
+                        $h[] = '<span class="wiki-check__mark wiki-check__mark--' . self::esc($key)
+                            . '" title="' . self::esc($round . ': ' . $mark[1]) . '">'
+                            . self::esc($mark[0]) . '</span>';
+                    }
+                    $h[] = '</summary>';
+                    $h[] = '<div class="wiki-check__body">';
+                    $h[] = '<ul class="wiki-check__how">';
+                    foreach (self::stringList($item['how'] ?? null) as $line) {
+                        $h[] = '<li>' . self::inline($line) . '</li>';
+                    }
+                    $h[] = '</ul>';
+                    if (isset($item['code']) && is_string($item['code']) && $item['code'] !== '') {
+                        // 명령·응답 원문. 코드 안에서는 백틱도 글자다 — esc() 만 쓴다(code 블록과 같다).
+                        $h[] = '<pre class="wiki-code"><code>' . self::esc($item['code']) . '</code></pre>';
+                    }
+                    $h[] = '</div></details>';
+                }
+
+                $h[] = '</div>';
                 return implode('', $h);
 
             case 'link':

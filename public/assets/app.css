@@ -1156,3 +1156,93 @@ table.perm-table td { vertical-align: top; }
 .perm-preview { display: flex; flex-direction: column; gap: 8px; }
 .perm-form { display: grid; gap: 12px; max-width: 560px; }
 .perm-form__actions { display: flex; gap: 8px; }
+
+/* ─── 보안 테스트 체크리스트 (위키 `checklist` 블록, 2026-09-13) ───
+ *
+ * 행 = 검토 항목, 열 = 차수. 한 줄이 <details> 라 **누르면 펼쳐진다** — 자바스크립트 없이
+ * 브라우저 기본 기능만 쓴다(CSP 와 무관하고, 스크립트가 막혀도 내용이 사라지지 않는다).
+ * 기호·툴팁 문구는 Wiki::CHECK_MARKS(코드 상수)가 정한다 — 여기 CSS 는 색과 자리만 맡는다.
+ */
+.wiki-check { display: flex; flex-direction: column; gap: 6px; margin: 14px 0; }
+
+.wiki-check__head,
+.wiki-check__row {
+  display: grid;
+  align-items: center;
+  gap: 6px;
+}
+/* 차수 개수만큼 열을 연다. 개수는 서버가 클래스(wiki-check--N)로 알려 준다 —
+   인라인 style 은 CSP(style-src 'self')가 막으므로 쓰지 않는다. */
+.wiki-check--1 .wiki-check__head, .wiki-check--1 .wiki-check__row { grid-template-columns: minmax(0,1fr) repeat(1, 64px); }
+.wiki-check--2 .wiki-check__head, .wiki-check--2 .wiki-check__row { grid-template-columns: minmax(0,1fr) repeat(2, 64px); }
+.wiki-check--3 .wiki-check__head, .wiki-check--3 .wiki-check__row { grid-template-columns: minmax(0,1fr) repeat(3, 64px); }
+.wiki-check--4 .wiki-check__head, .wiki-check--4 .wiki-check__row { grid-template-columns: minmax(0,1fr) repeat(4, 64px); }
+.wiki-check--5 .wiki-check__head, .wiki-check--5 .wiki-check__row { grid-template-columns: minmax(0,1fr) repeat(5, 64px); }
+.wiki-check--6 .wiki-check__head, .wiki-check--6 .wiki-check__row { grid-template-columns: minmax(0,1fr) repeat(6, 64px); }
+.wiki-check--7 .wiki-check__head, .wiki-check--7 .wiki-check__row { grid-template-columns: minmax(0,1fr) repeat(7, 64px); }
+.wiki-check--8 .wiki-check__head, .wiki-check--8 .wiki-check__row { grid-template-columns: minmax(0,1fr) repeat(8, 64px); }
+.wiki-check__head {
+  font-size: 11.5px;
+  color: var(--muted);
+  padding: 0 12px 2px;
+  margin: 0;
+}
+.wiki-check__head-round { text-align: center; overflow-wrap: anywhere; line-height: 1.25; }
+
+.wiki-check__item {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--surface);
+  overflow: hidden;
+}
+.wiki-check__item[open] { border-color: var(--accent-line); }
+.wiki-check__row {
+  cursor: pointer;
+  padding: 10px 12px;
+  list-style: none;
+  font-size: 13px;
+}
+.wiki-check__row::-webkit-details-marker { display: none; }
+.wiki-check__item:hover .wiki-check__row { background: var(--surface-2); }
+.wiki-check__row:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.wiki-check__label { font-weight: 600; overflow-wrap: anywhere; }
+
+/* 칸 하나 — 기호는 코드 상수, 색만 여기서 준다 */
+.wiki-check__mark {
+  justify-self: center;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px; height: 26px;
+  border-radius: var(--r-pill);
+  font-size: 13px; font-weight: 700;
+}
+.wiki-check__mark--ok   { background: var(--ok-bg);     color: var(--ok-fg); }
+.wiki-check__mark--open { background: var(--danger-soft); color: var(--danger); }
+.wiki-check__mark--todo { background: var(--warn-bg);   color: var(--warn-fg); }
+.wiki-check__mark--na   { background: var(--surface-2); color: var(--muted-2); }
+
+.wiki-check__body {
+  padding: 4px 14px 14px;
+  border-top: 1px solid var(--line);
+  font-size: 13px;
+}
+.wiki-check__how { margin: 10px 0; padding-left: 18px; display: flex; flex-direction: column; gap: 6px; }
+.wiki-check__body .wiki-code { margin: 0; }
+
+/* 좁은 화면 — 차수 칸을 줄이고 항목 이름을 한 줄 위로 올린다 */
+@media (max-width: 720px) {
+  /* 좁은 화면에서는 격자를 버리고 한 줄로 흐르게 둔다 (머리줄은 감춘다 —
+     칸마다 title 툴팁에 차수 이름이 들어 있다). */
+  .wiki-check__head { display: none; }
+  .wiki-check__row,
+  .wiki-check--1 .wiki-check__row, .wiki-check--2 .wiki-check__row,
+  .wiki-check--3 .wiki-check__row, .wiki-check--4 .wiki-check__row,
+  .wiki-check--5 .wiki-check__row, .wiki-check--6 .wiki-check__row,
+  .wiki-check--7 .wiki-check__row, .wiki-check--8 .wiki-check__row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+  .wiki-check__label { flex: 1 1 100%; }
+}
