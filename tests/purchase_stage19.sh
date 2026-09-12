@@ -96,23 +96,115 @@ call() {
 code_of() { printf '%s' "$1" | tail -1; }
 body_of() { printf '%s' "$1" | sed '$d'; }
 
+# ─────────────────────────────────────────────────────────────
+# 표 인구조사 (2026-09-13 사고 뒤 추가, 코디네이터 지시 2)
+#
+# 시험 **시작 전**과 **끝난 뒤**에 각 표의 전체 행 수와 **qa 가 아닌 created_by 행 수**를 찍는다.
+# 끝난 뒤의 「비-qa」 수가 시작 때와 같아야 한다 — 다르면 시험이 남의 자료를 건드린 것이고,
+# 그것은 보고에 반드시 드러나야 한다.
+# ─────────────────────────────────────────────────────────────
+QA_IDS=""
+CENSUS_BEFORE=""
+
+qa_ids_of() {
+  psqlq "SELECT coalesce(string_agg(id::text, ','), '0') FROM users WHERE username LIKE 'qa\_%';"
+}
+
+# $1 = 'before' | 'after'  → 표준출력에 표를 찍고, 비-qa 합계를 돌려준다
+census() {
+  local when="$1"
+  printf '  %-18s %8s %10s\n' "표" "전체" "비-qa"
+  local t total nonqa sum=0
+  for t in p_brands p_branches p_locations p_vendors p_categories p_items p_par_levels p_import_mappings; do
+    total=$(psqlq "SELECT count(*) FROM $t;")
+    nonqa=$(psqlq "SELECT count(*) FROM $t WHERE created_by NOT IN ($QA_IDS);")
+    printf '  %-18s %8s %10s\n' "$t" "$total" "$nonqa"
+    sum=$((sum + nonqa))
+  done
+  printf '  %-18s %8s %10s   ← 사용자(비-qa)가 만든 행 합계 (%s)\n' "합계" "-" "$sum" "$when"
+  printf '%s' "$sum"
+}
+
 cleanup() {
-  hr "정리 — 시험이 만든 것을 되돌린다"
+  hr "정리 — **시험이 만든 것만** 되돌린다"
+
+  # ─────────────────────────────────────────────────────────────
+  # ★ 2026-09-13 사고 뒤 다시 씀 (반드시 읽을 것)
+  #
+  # 전에는 `DELETE FROM p_vendors;` 처럼 **표를 통째로** 비웠다. 그때는 p_* 가 시험 전용
+  # 빈 표였지만, 사용자가 같은 DB 에서 실제 이카운트 자료를 가져오기 시작하자
+  # 이 정리가 **사용자의 거래처 180건·창고·매핑을 지웠다**(08:19~08:22 작업분).
+  #
+  # 그래서 이제 **`created_by` 가 검토 계정(qa_)인 행만** 지운다. 사용자가 만든 행은
+  # 같은 표에 있어도 건드리지 않는다 — 시험은 자기가 만든 것만 치운다
+  # (CLAUDE.md 4장 "운영 데이터에 손대지 않는다").
+  #
+  # p_item_branches 에는 created_by 가 없다 → 품목을 따라간다.
+  # ─────────────────────────────────────────────────────────────
+  local qa_ids
+  qa_ids=$(psqlq "SELECT string_agg(id::text, ',') FROM users WHERE username LIKE 'qa\_%';")
+  if [ -z "$qa_ids" ]; then
+    echo "  ! 검토 계정을 찾지 못해 정리를 건너뜁니다 (아무것도 지우지 않았습니다)"
+    rm -rf "$JAR_DIR"
+    return
+  fi
+  echo "  검토 계정 id: $qa_ids — 이 계정이 만든 행만 지웁니다"
+
+  # 지우기 전에 **남의 행이 몇 개인지** 세어 보고한다(지우지 않는다는 증거).
+  psqlq "SELECT '  사용자(비-qa)가 만든 행: p_vendors='||
+           (SELECT count(*) FROM p_vendors   WHERE created_by NOT IN ($qa_ids))||
+         ' p_locations='||(SELECT count(*) FROM p_locations WHERE created_by NOT IN ($qa_ids))||
+         ' p_branches='||(SELECT count(*) FROM p_branches  WHERE created_by NOT IN ($qa_ids))||
+         ' p_items='||(SELECT count(*) FROM p_items        WHERE created_by NOT IN ($qa_ids))||
+         ' — 이 행들은 그대로 둡니다';"
+
   # 계정 두 축 원복 (계정 행 자체는 건드리지 않는다)
   psqlc "UPDATE users SET branch_id = NULL, purchase_role = NULL
           WHERE username IN ('qa_employee01','qa_employee02','qa_manager01');" \
     && echo "  qa 계정 branch_id·purchase_role 원복"
-  # 시험 데이터 삭제 — 앱 계정에는 DELETE 권한이 없으므로 postgres 로 한다
-  psqlc "DELETE FROM p_par_levels;  DELETE FROM p_item_branches; DELETE FROM p_items;
-         DELETE FROM p_import_mappings; DELETE FROM p_categories WHERE parent_id IS NOT NULL;
-         DELETE FROM p_categories; DELETE FROM p_vendors;
-         UPDATE p_branches SET warehouse_location_id = NULL, central_location_id = NULL;
-         DELETE FROM p_locations; DELETE FROM p_branches; DELETE FROM p_brands;" \
-    && echo "  기초정보 시험 데이터 삭제"
-  psqlq "SELECT 'p_items='||count(*) FROM p_items;"
+
+  # 참조가 있는 것부터 지운다. 전부 `created_by IN (검토 계정)` 으로 좁혀져 있다.
+  # (앱 계정에는 p_* DELETE 권한이 없다 — 그래서 postgres 로 한다. 그 자체가 설계다.)
+  psqlc "DELETE FROM p_par_levels    WHERE created_by IN ($qa_ids);
+         DELETE FROM p_item_branches WHERE item_id IN (SELECT id FROM p_items WHERE created_by IN ($qa_ids));
+         DELETE FROM p_items         WHERE created_by IN ($qa_ids);
+         DELETE FROM p_import_mappings WHERE created_by IN ($qa_ids);
+         DELETE FROM p_categories    WHERE created_by IN ($qa_ids) AND parent_id IS NOT NULL;
+         DELETE FROM p_categories    WHERE created_by IN ($qa_ids);
+         DELETE FROM p_vendors       WHERE created_by IN ($qa_ids);
+         UPDATE p_branches SET warehouse_location_id = NULL, central_location_id = NULL
+          WHERE created_by IN ($qa_ids);
+         DELETE FROM p_locations     WHERE created_by IN ($qa_ids);
+         DELETE FROM p_branches      WHERE created_by IN ($qa_ids);
+         DELETE FROM p_brands        WHERE created_by IN ($qa_ids);" \
+    && echo "  검토 계정이 만든 시험 데이터 삭제"
+
+  psqlq "SELECT '  남은 검토 계정 행: p_items='||(SELECT count(*) FROM p_items WHERE created_by IN ($qa_ids))||
+         ' p_vendors='||(SELECT count(*) FROM p_vendors WHERE created_by IN ($qa_ids));"
+
+  sub "정리 뒤 인구조사 — 사용자 자료가 그대로인가"
+  local after
+  after=$(census after)
+  echo
+  if [ "$after" = "$CENSUS_BEFORE" ]; then
+    printf '  ✔ 사용자(비-qa) 행 수가 시작 때와 같습니다 (%s → %s) — 남의 자료를 건드리지 않았습니다\n' \
+      "$CENSUS_BEFORE" "$after"
+  else
+    printf '  ✖ 사용자(비-qa) 행 수가 달라졌습니다 (%s → %s) — **즉시 보고해야 합니다**\n' \
+      "$CENSUS_BEFORE" "$after"
+    FAIL=$((FAIL+1))
+  fi
   rm -rf "$JAR_DIR"
 }
+
 trap cleanup EXIT
+
+hr "0-0. 시작 전 인구조사 — 사용자 자료가 얼마나 있나 (2026-09-13 사고 뒤 필수)"
+QA_IDS=$(qa_ids_of)
+echo "  검토 계정 id: $QA_IDS"
+CENSUS_BEFORE=$(census before)
+echo
+echo "  ★ 이 시험의 정리는 위 「비-qa」 행을 **한 줄도 지우지 않습니다** (created_by 필터)."
 
 hr "0. 준비 — 검토 계정 로그인"
 TOK_ADMIN=$(login qa_admin01)     || exit 1
@@ -703,7 +795,9 @@ expect "확인 필요 행(V29001·V29002)은 저장 안 됨" 0 "$(psqlq "SELECT 
 expect "빈 이름 행(V29003) 저장 안 됨" 0 "$(psqlq "SELECT count(*) FROM p_vendors WHERE code='V29003';")"
 expect "사용구분 NO → is_active=false" 1 "$(psqlq "SELECT count(*) FROM p_vendors WHERE code='V29004' AND NOT is_active;")"
 expect "대표자명·전화가 들어갔다" 1 "$(psqlq "SELECT count(*) FROM p_vendors WHERE code='V10001' AND ceo_name='대표1' AND tel='02-000-0001';")"
-expect "모바일이 아니라 전화가 남았다" 0 "$(psqlq "SELECT count(*) FROM p_vendors WHERE tel LIKE '010-%';")"
+# ★ 표 전체를 세지 않는다 — 사용자의 실제 거래처는 「전화」 칸에 휴대폰 번호가 들어 있는
+#   경우가 흔하다(실측). **이 시험이 만든 거래처(V1xxxx)** 만 본다.
+expect "모바일이 아니라 전화가 남았다" 0 "$(psqlq "SELECT count(*) FROM p_vendors WHERE code LIKE 'V1%' AND tel LIKE '010-%';")"
 expect "확정 감사에 conflict 없음" 0 "$(psqlq "SELECT count(*) FROM audit_logs WHERE action='purchase.import.commit' AND reason='conflict' AND happened_at > now() - interval '2 minutes';")"
 
 sub "⑫-b 「확인 필요」를 승격하면 **새로 등록**된다 (promote_to = insert)"
@@ -821,6 +915,157 @@ R=$(call qa_admin01 POST /api/purchase/vendors "$TOK_ADMIN" '{"name":"VEND 1","c
 echo "  그래도 등록 → HTTP $(code_of "$R")  $(body_of "$R")"
 expect "allow_duplicate_name → 201" 201 "$(code_of "$R")"
 expect "같은 코드는 여전히 409" 409 "$(code_of "$(call qa_admin01 POST /api/purchase/vendors "$TOK_ADMIN" '{"name":"다른이름","code":"V90001","allow_duplicate_name":true}')")"
+
+sub "⑯ 없는 거래처를 등록하면 **재판정만으로** 오류가 등록으로 바뀐다 (3차 보정)"
+# 화면은 이 흐름을 팝업으로 한다: 오류 행 옆 「거래처 등록」 → 201 → 같은 import_id 로 preview 재요청.
+# 여기서는 **서버 흐름**만 본다(재판정은 재업로드가 아니라 같은 창구를 다시 부르는 것이다).
+export MISS_XLSX="$WORK/missvendor.xlsx"
+php -d error_reporting=E_ALL -r '
+$header = ["품목코드","품목명","구매처명","단위"];
+$rows = [["회사명 : 시험"], $header];
+for ($i = 1; $i <= 4; $i++) { $rows[] = ["M".str_pad((string)$i,5,"0",STR_PAD_LEFT), "MISS ITEM ".$i, "새거래처A", "EA"]; }
+$rows[] = ["M90001", "MISS ITEM 9", "또다른거래처B", "EA"];
+$esc = static fn (string $v): string => htmlspecialchars($v, ENT_QUOTES | ENT_XML1, "UTF-8");
+$sheet = "<?xml version=\"1.0\" encoding=\"UTF-8\"?><worksheet xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\"><sheetData>";
+foreach ($rows as $r => $row) { $sheet .= "<row r=\"".($r+1)."\">";
+  foreach ($row as $c => $cell) { $sheet .= "<c r=\"".chr(65+$c).($r+1)."\" t=\"inlineStr\"><is><t>".$esc((string)$cell)."</t></is></c>"; }
+  $sheet .= "</row>"; }
+$sheet .= "</sheetData></worksheet>";
+$ct = "<?xml version=\"1.0\" encoding=\"UTF-8\"?><Types xmlns=\"http://schemas.openxmlformats.org/package/2006/content-types\">"
+    . "<Default Extension=\"rels\" ContentType=\"application/vnd.openxmlformats-package.relationships+xml\"/>"
+    . "<Default Extension=\"xml\" ContentType=\"application/xml\"/>"
+    . "<Override PartName=\"/xl/workbook.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml\"/>"
+    . "<Override PartName=\"/xl/worksheets/sheet1.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml\"/></Types>";
+$rels = "<?xml version=\"1.0\" encoding=\"UTF-8\"?><Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\">"
+      . "<Relationship Id=\"rId1\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument\" Target=\"xl/workbook.xml\"/></Relationships>";
+$wb = "<?xml version=\"1.0\" encoding=\"UTF-8\"?><workbook xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\" xmlns:r=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships\"><sheets><sheet name=\"Sheet1\" sheetId=\"1\" r:id=\"rId1\"/></sheets></workbook>";
+$wbRels = "<?xml version=\"1.0\" encoding=\"UTF-8\"?><Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\"><Relationship Id=\"rId1\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet\" Target=\"worksheets/sheet1.xml\"/></Relationships>";
+$path = getenv("MISS_XLSX"); @unlink($path);
+$zip = new ZipArchive(); $zip->open($path, ZipArchive::CREATE);
+$zip->addFromString("[Content_Types].xml", $ct); $zip->addFromString("_rels/.rels", $rels);
+$zip->addFromString("xl/workbook.xml", $wb); $zip->addFromString("xl/_rels/workbook.xml.rels", $wbRels);
+$zip->addFromString("xl/worksheets/sheet1.xml", $sheet); $zip->close();
+echo "  만든 파일: ", filesize($path), " 바이트 (없는 거래처 2가지 · 5행)\n";
+'
+
+R=$(curl -s -w '\n%{http_code}' -b "$JAR_DIR/qa_admin01.jar" -A "$UA" \
+    -H "X-CSRF-Token: $TOK_ADMIN" -F "file=@$WORK/missvendor.xlsx" "$BASE/api/purchase/import")
+expect "업로드 201" 201 "$(code_of "$R")"
+MISS_ID=$(body_of "$R" | sed -n 's/.*"import_id":"\([0-9a-f-]*\)".*/\1/p')
+MMAP='{"품목코드":"code","품목명":"name","구매처명":"vendor","단위":"unit"}'
+
+R=$(call qa_admin01 POST "/api/purchase/import/$MISS_ID/preview" "$TOK_ADMIN" \
+    "{\"kind\":\"items\",\"mapping\":$MMAP,\"header_row\":1}")
+echo "  1차 판정 counts: $(body_of "$R" | sed -n 's/.*"counts":{\([^}]*\)}.*/\1/p')"
+echo "  missing: $(body_of "$R" | sed -n 's/.*"missing":\(\[.*\]\).*/\1/p' | head -c 320)"
+expect "1차 미리보기 200" 200 "$(code_of "$R")"
+expect "1차 error 5" 5 "$(body_of "$R" | sed -n 's/.*"error":\([0-9]*\).*/\1/p')"
+# `"kind":"vendors"` 는 행마다(missing)·묶음마다 나온다 → **묶음에만 있는** first_row 로 센다.
+expect "없는 값이 **2가지**로 묶인다" 2 "$(body_of "$R" | grep -o '"first_row":[0-9]*' | wc -l)"
+expect "「새거래처A」 4행으로 묶임" 1 "$(body_of "$R" | grep -c '"value":"새거래처A","reason":"vendor_not_found","rows":4')"
+
+sub "⑯-a 팝업이 부르는 것과 **같은 창구**로 거래처를 만든다"
+R=$(call qa_admin01 POST /api/purchase/vendors "$TOK_ADMIN" '{"name":"새거래처A"}')
+expect "거래처 등록 201" 201 "$(code_of "$R")"
+
+sub "⑯-b 재업로드 없이 같은 import_id 로 다시 판정하면 4행이 풀린다"
+R=$(call qa_admin01 POST "/api/purchase/import/$MISS_ID/preview" "$TOK_ADMIN" \
+    "{\"kind\":\"items\",\"mapping\":$MMAP,\"header_row\":1}")
+echo "  2차 판정 counts: $(body_of "$R" | sed -n 's/.*"counts":{\([^}]*\)}.*/\1/p')"
+expect "2차 insert 4" 4 "$(body_of "$R" | sed -n 's/.*"insert":\([0-9]*\).*/\1/p')"
+expect "2차 error 1 (남은 거래처 하나)" 1 "$(body_of "$R" | sed -n 's/.*"error":\([0-9]*\).*/\1/p')"
+expect "남은 없는 값은 1가지" 1 "$(body_of "$R" | grep -o '"first_row":[0-9]*' | wc -l)"
+
+sub "⑯-c exclude_rows — 체크를 끈 행은 저장되지 않는다"
+IB=$(psqlq "SELECT count(*) FROM p_items;")
+# `audit_logs` 는 추가 전용이라 **지난 실행의 행이 그대로 남는다** — 시각 창으로 세면
+# 조금 전 실행분까지 잡힌다(2026-09-13 실측). 그래서 여기서도 **증가분**을 본다.
+EXC_BEFORE=$(psqlq "SELECT count(*) FROM audit_logs
+        WHERE action='purchase.import.commit' AND result='allow' AND detail->>'excluded' = '2';")
+R=$(call qa_admin01 POST "/api/purchase/import/$MISS_ID/commit" "$TOK_ADMIN" \
+    "{\"kind\":\"items\",\"mapping\":$MMAP,\"header_row\":1,\"exclude_rows\":[3,4]}")
+echo "  HTTP $(code_of "$R")  $(body_of "$R")"
+expect "확정 200" 200 "$(code_of "$R")"
+expect "inserted 2 (4행 중 2행을 뺐다)" 2 "$(body_of "$R" | sed -n 's/.*"inserted":\([0-9]*\).*/\1/p')"
+expect "excluded 2" 2 "$(body_of "$R" | sed -n 's/.*"excluded":\([0-9]*\).*/\1/p')"
+expect "표에 2행만 늘었다" 2 "$(($(psqlq "SELECT count(*) FROM p_items;") - IB))"
+expect "뺀 행(M00001·M00002)은 저장 안 됨" 0 "$(psqlq "SELECT count(*) FROM p_items WHERE code IN ('M00001','M00002');")"
+psqlq "SELECT '  감사 detail: '||detail::text FROM audit_logs
+        WHERE action='purchase.import.commit' AND result='allow' ORDER BY id DESC LIMIT 1;"
+EXC_AFTER=$(psqlq "SELECT count(*) FROM audit_logs
+        WHERE action='purchase.import.commit' AND result='allow' AND detail->>'excluded' = '2';")
+expect "감사에 excluded=2 가 한 줄 늘었다" 1 "$((EXC_AFTER - EXC_BEFORE))"
+
+sub "⑯-d exclude_rows 형식 검사 — 문자열·1000개 초과는 400"
+R=$(call qa_admin01 POST "/api/purchase/import/$MISS_ID/commit" "$TOK_ADMIN" \
+    "{\"kind\":\"items\",\"mapping\":$MMAP,\"header_row\":1,\"exclude_rows\":[\"abc\"]}")
+echo "  문자열 → HTTP $(code_of "$R")  $(body_of "$R")"
+expect "문자열 exclude_rows → 400" 400 "$(code_of "$R")"
+R=$(call qa_admin01 POST "/api/purchase/import/$MISS_ID/commit" "$TOK_ADMIN" \
+    "{\"kind\":\"items\",\"mapping\":$MMAP,\"header_row\":1,\"exclude_rows\":\"3\"}")
+expect "배열이 아닌 exclude_rows → 400" 400 "$(code_of "$R")"
+BIG=$(python3 -c "print('[' + ','.join(str(i) for i in range(1, 1002)) + ']')")
+R=$(call qa_admin01 POST "/api/purchase/import/$MISS_ID/commit" "$TOK_ADMIN" \
+    "{\"kind\":\"items\",\"mapping\":$MMAP,\"header_row\":1,\"exclude_rows\":$BIG}")
+expect "1000개 초과 → 400" 400 "$(code_of "$R")"
+
+sub "⑰ 같은 이름 거래처가 여럿이면 「확인 필요」 (SECURITY R-72)"
+# ⑫-b 에서 「VEND 1」 이 두 건 공존한다 — 그 이름으로 품목을 가져오면 어느 쪽인지 알 수 없다.
+# 앞선 시험(⑫-b 승격·⑮ 수동 등록)이 몇 건을 남겼는지에 기대지 않는다 — **지금 세어** 쓴다.
+VEND1_N=$(psqlq "SELECT count(*) FROM p_vendors WHERE name='VEND 1';")
+echo "  같은 이름 「VEND 1」 거래처: ${VEND1_N}건"
+expect "준비: 같은 이름 거래처가 2건 이상" yes "$([ "$VEND1_N" -ge 2 ] && echo yes || echo no)"
+export AMB_XLSX="$WORK/ambiguous.xlsx"
+php -d error_reporting=E_ALL -r '
+$header = ["품목코드","품목명","구매처명","거래처코드","단위"];
+$rows = [["회사명 : 시험"], $header];
+$rows[] = ["A00001","AMB ITEM 1","VEND 1","","EA"];
+$rows[] = ["A00002","AMB ITEM 2","VEND 1","","EA"];
+$rows[] = ["A00003","AMB ITEM 3","VEND 1","V29001","EA"];
+$esc = static fn (string $v): string => htmlspecialchars($v, ENT_QUOTES | ENT_XML1, "UTF-8");
+$sheet = "<?xml version=\"1.0\" encoding=\"UTF-8\"?><worksheet xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\"><sheetData>";
+foreach ($rows as $r => $row) { $sheet .= "<row r=\"".($r+1)."\">";
+  foreach ($row as $c => $cell) { $sheet .= "<c r=\"".chr(65+$c).($r+1)."\" t=\"inlineStr\"><is><t>".$esc((string)$cell)."</t></is></c>"; }
+  $sheet .= "</row>"; }
+$sheet .= "</sheetData></worksheet>";
+$ct = "<?xml version=\"1.0\" encoding=\"UTF-8\"?><Types xmlns=\"http://schemas.openxmlformats.org/package/2006/content-types\">"
+    . "<Default Extension=\"rels\" ContentType=\"application/vnd.openxmlformats-package.relationships+xml\"/>"
+    . "<Default Extension=\"xml\" ContentType=\"application/xml\"/>"
+    . "<Override PartName=\"/xl/workbook.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml\"/>"
+    . "<Override PartName=\"/xl/worksheets/sheet1.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml\"/></Types>";
+$rels = "<?xml version=\"1.0\" encoding=\"UTF-8\"?><Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\">"
+      . "<Relationship Id=\"rId1\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument\" Target=\"xl/workbook.xml\"/></Relationships>";
+$wb = "<?xml version=\"1.0\" encoding=\"UTF-8\"?><workbook xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\" xmlns:r=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships\"><sheets><sheet name=\"Sheet1\" sheetId=\"1\" r:id=\"rId1\"/></sheets></workbook>";
+$wbRels = "<?xml version=\"1.0\" encoding=\"UTF-8\"?><Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\"><Relationship Id=\"rId1\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet\" Target=\"worksheets/sheet1.xml\"/></Relationships>";
+$path = getenv("AMB_XLSX"); @unlink($path);
+$zip = new ZipArchive(); $zip->open($path, ZipArchive::CREATE);
+$zip->addFromString("[Content_Types].xml", $ct); $zip->addFromString("_rels/.rels", $rels);
+$zip->addFromString("xl/workbook.xml", $wb); $zip->addFromString("xl/_rels/workbook.xml.rels", $wbRels);
+$zip->addFromString("xl/worksheets/sheet1.xml", $sheet); $zip->close();
+echo "  만든 파일: ", filesize($path), " 바이트 (같은 이름 거래처 3행 · 그중 1행은 코드 있음)\n";
+'
+R=$(curl -s -w '\n%{http_code}' -b "$JAR_DIR/qa_admin01.jar" -A "$UA" \
+    -H "X-CSRF-Token: $TOK_ADMIN" -F "file=@$WORK/ambiguous.xlsx" "$BASE/api/purchase/import")
+AMB_ID=$(body_of "$R" | sed -n 's/.*"import_id":"\([0-9a-f-]*\)".*/\1/p')
+expect "업로드 201" 201 "$(code_of "$R")"
+
+sub "⑰-a 코드 열을 안 매핑하면 3행 모두 「확인 필요」"
+AMAP1='{"품목코드":"code","품목명":"name","구매처명":"vendor","단위":"unit","거래처코드":"skip"}'
+R=$(call qa_admin01 POST "/api/purchase/import/$AMB_ID/preview" "$TOK_ADMIN" \
+    "{\"kind\":\"items\",\"mapping\":$AMAP1,\"header_row\":1}")
+echo "  counts: $(body_of "$R" | sed -n 's/.*"counts":{\([^}]*\)}.*/\1/p')"
+echo "  본문(앞 360자): $(body_of "$R" | head -c 360)"
+expect "review 3" 3 "$(body_of "$R" | sed -n 's/.*"review":\([0-9]*\).*/\1/p')"
+expect "사유 vendor_ambiguous" 1 "$(body_of "$R" | grep -c 'vendor_ambiguous')"
+expect "같은 이름 개수를 함께 준다" 1 "$(body_of "$R" | grep -c "\"vendor_count\":$VEND1_N")"
+
+sub "⑰-b 거래처 코드 열을 매핑하면 그 행은 정상 등록으로 풀린다"
+AMAP2='{"품목코드":"code","품목명":"name","구매처명":"vendor","단위":"unit","거래처코드":"vendor_code"}'
+R=$(call qa_admin01 POST "/api/purchase/import/$AMB_ID/preview" "$TOK_ADMIN" \
+    "{\"kind\":\"items\",\"mapping\":$AMAP2,\"header_row\":1}")
+echo "  counts: $(body_of "$R" | sed -n 's/.*"counts":{\([^}]*\)}.*/\1/p')"
+expect "코드가 있는 1행은 insert" 1 "$(body_of "$R" | sed -n 's/.*"insert":\([0-9]*\).*/\1/p')"
+expect "코드가 없는 2행은 여전히 확인 필요" 2 "$(body_of "$R" | sed -n 's/.*"review":\([0-9]*\).*/\1/p')"
 
 sub "⑩ 업로드 원본이 「구매/가져오기」 폴더(admin-only)에 있나"
 psqlq "SELECT '  '||f.original_name||' | '||f.access_level||' | 폴더='||fo.name||' | sha256='||left(f.sha256,16)||'…'

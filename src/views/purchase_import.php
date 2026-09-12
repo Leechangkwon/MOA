@@ -101,10 +101,13 @@ require __DIR__ . '/shell_top.php';
       <label class="field field--inline" id="p-default-branch-field" hidden>
         <span class="field__label">기본 지점 (창고에 지점 열이 없을 때)</span>
         <select id="p-default-branch"><option value="">— 고르세요 —</option></select>
+        <!-- 3차 보정 — 지점이 없으면 여기서 바로 만든다(기초정보 화면으로 건너가지 않는다) -->
+        <button id="p-add-branch" class="btn btn--quiet btn--small" type="button">+ 새로 등록</button>
       </label>
       <label class="field field--inline" id="p-default-brand-field" hidden>
         <span class="field__label">기본 브랜드</span>
         <select id="p-default-brand"><option value="">— 고르세요 —</option></select>
+        <button id="p-add-brand" class="btn btn--quiet btn--small" type="button">+ 새로 등록</button>
       </label>
       <button id="p-derive-branches" class="btn btn--quiet" type="button" hidden>
         창고명에서 지점 이름 뽑기
@@ -138,10 +141,18 @@ require __DIR__ . '/shell_top.php';
       <h2 class="panel__title">3 미리보기</h2>
       <div class="panel__tools" id="p-preview-counts"></div>
     </div>
+
+    <!-- 3차 보정 2026-09-13 (사용자 결정 「접근한 페이지에서 팝업으로 등록」) —
+         등록되지 않은 값 때문에 막힌 행들을 **값 기준으로 묶어** 보여 주고, 그 자리에서
+         거래처·지점·분류·브랜드를 만들 수 있게 한다. 만들면 **자동으로 다시 판정**한다
+         (파일을 다시 올리지 않는다). 서버 등록 창구는 기초정보와 같은 것을 쓴다. -->
+    <div class="notice" id="p-missing" hidden></div>
     <div class="table-wrap">
       <table class="files">
         <thead>
           <tr>
+            <!-- 3차 보정 — 행마다 「저장할까」 체크. 기본은 전체 켜짐이고, 끄면 그 행만 빠집니다. -->
+            <th scope="col"><span class="sr-only">저장</span>저장</th>
             <th scope="col">행</th>
             <th scope="col">판정</th>
             <!-- 2차 보정 — 창고가 **어느 지점으로** 들어가는지, 무엇을 보고 정했는지 -->
@@ -154,6 +165,7 @@ require __DIR__ . '/shell_top.php';
       </table>
     </div>
     <div class="panel__foot">
+      <span id="p-excluded-note" class="muted"></span>
       <button id="p-errors-download" class="btn btn--quiet" type="button">오류 목록 내려받기</button>
       <button id="p-commit" class="btn" type="button">확정</button>
     </div>

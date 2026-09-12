@@ -121,42 +121,385 @@
   };
 
   /** 만들기 폼의 칸 정의 — [키, 라벨, 형식, 필수] */
+  /**
+   * 종류별 등록 폼의 칸 (3차 보정 2026-09-13 — 「id 를 숫자로 적기」 를 없앴다).
+   *
+   * 전에는 `brand_id` 같은 참조를 **숫자 입력칸**으로 두었다. 사람이 브랜드 번호를 외우고
+   * 있을 리 없으니 화면을 오가며 번호를 찾아 적어야 했다. 이제 참조 칸은 `ref` 이고,
+   * 화면이 그 종류의 목록을 서버에서 받아 셀렉트로 만들고 **옆에 「+ 새로 등록」** 을 세운다
+   * (사용자 결정 2026-09-13 「접근한 페이지에서 필요한 정보에 대한 팝업창을 띄워 등록」).
+   *
+   * 칸 하나: { key, label, type, required }
+   *   type `text` · `number` · `date`
+   *        `choice`  — options: [[값, 보이는 말], …]
+   *        `ref`     — ref: 참조할 종류. 셀렉트 + 「+ 새로 등록」
+   *        `item`    — 품목 하나 고르기. 품목은 1.35만 건이라 셀렉트가 아니라 **검색**이다
+   *                    (발주요청의 「품목 찾기」 와 **같은 API** `/api/purchase/items`).
+   */
   var KIND_FIELDS = {
     'brands': [
-      ['name', '브랜드 이름', 'text', true],
-      ['ceo_name', '대표자', 'text', false],
-      ['biz_no', '사업자번호', 'text', false],
-      ['tel', '전화', 'text', false],
-      ['address', '주소', 'text', false]
+      { key: 'name', label: '브랜드 이름', type: 'text', required: true },
+      { key: 'ceo_name', label: '대표자', type: 'text' },
+      { key: 'biz_no', label: '사업자번호', type: 'text' },
+      { key: 'tel', label: '전화', type: 'text' },
+      { key: 'address', label: '주소', type: 'text' }
     ],
     'branches': [
-      ['brand_id', '브랜드 id', 'number', true],
-      ['name', '지점 이름', 'text', true]
+      { key: 'brand_id', label: '브랜드', type: 'ref', ref: 'brands', required: true },
+      { key: 'name', label: '지점 이름', type: 'text', required: true }
     ],
     'locations': [
-      ['branch_id', '지점 id', 'number', true],
-      ['kind', '용도 (warehouse·central·or·other)', 'text', true],
-      ['name', '장소 이름', 'text', true],
-      ['code', '코드', 'text', false],
-      ['legacy_name', '이전 이름', 'text', false]
+      { key: 'branch_id', label: '지점', type: 'ref', ref: 'branches', required: true },
+      { key: 'kind', label: '용도', type: 'choice', required: true, options: [
+        ['warehouse', '창고'], ['central', '중앙장'], ['or', '수술방'], ['other', '기타']
+      ] },
+      { key: 'name', label: '장소 이름', type: 'text', required: true },
+      { key: 'code', label: '코드', type: 'text' },
+      { key: 'legacy_name', label: '이전 이름', type: 'text' }
     ],
     'vendors': [
-      ['name', '거래처 이름', 'text', true],
-      ['code', '거래처 코드', 'text', false],
-      ['biz_no', '사업자번호', 'text', false]
+      { key: 'name', label: '거래처 이름', type: 'text', required: true },
+      { key: 'code', label: '거래처 코드', type: 'text' },
+      { key: 'biz_no', label: '사업자번호', type: 'text' },
+      { key: 'ceo_name', label: '대표자명', type: 'text' },
+      { key: 'tel', label: '전화', type: 'text' }
     ],
     'categories': [
-      ['name', '분류 이름', 'text', true],
-      ['level', '단계 (1·2·3)', 'number', true],
-      ['parent_id', '상위 분류 id (1단계는 비움)', 'number', false]
+      { key: 'name', label: '분류 이름', type: 'text', required: true },
+      { key: 'level', label: '단계', type: 'choice', required: true, options: [
+        ['1', '1단계 (대분류)'], ['2', '2단계 (중분류)'], ['3', '3단계 (소분류)']
+      ] },
+      { key: 'parent_id', label: '상위 분류 (1단계는 비움)', type: 'ref', ref: 'categories' }
     ],
     'par-levels': [
-      ['location_id', '장소 id', 'number', true],
-      ['item_id', '품목 id', 'number', true],
-      ['qty', '인가량', 'number', true],
-      ['effective_from', '적용 시작 (YYYY-MM-DD)', 'text', false]
+      { key: 'location_id', label: '장소', type: 'ref', ref: 'locations', required: true },
+      { key: 'item_id', label: '품목', type: 'item', required: true },
+      { key: 'qty', label: '인가량', type: 'number', required: true },
+      { key: 'effective_from', label: '적용 시작 (YYYY-MM-DD)', type: 'date' }
+    ],
+    // 품목 등록은 `/api/purchase/items` 로 간다 (기초정보 6종과 경로가 다르다 — 아래 postFor).
+    'items': [
+      { key: 'vendor_id', label: '기본 거래처', type: 'ref', ref: 'vendors', required: true },
+      { key: 'code', label: '품목코드 (거래처 코드 그대로)', type: 'text', required: true },
+      { key: 'name', label: '품목명', type: 'text', required: true },
+      { key: 'spec', label: '규격', type: 'text' },
+      { key: 'unit', label: '단위', type: 'text' },
+      { key: 'pack_qty', label: '포장 낱개 수', type: 'number' },
+      { key: 'brand_id', label: '브랜드', type: 'ref', ref: 'brands' },
+      { key: 'cat1_id', label: '대분류', type: 'ref', ref: 'categories' },
+      { key: 'cat2_id', label: '중분류', type: 'ref', ref: 'categories' },
+      { key: 'cat3_id', label: '소분류', type: 'ref', ref: 'categories' },
+      { key: 'price_in', label: '입고단가 (VAT 별도)', type: 'text' },
+      { key: 'barcode', label: '바코드', type: 'text' }
     ]
   };
+
+  /** 종류 → 등록 API 경로. 품목만 `/items` 이고 나머지는 기초정보 6종 경로다. */
+  function postFor(kind) {
+    return '/api/purchase/' + kind;
+  }
+
+  /** 종류 → 모달 제목에 쓸 이름 */
+  var KIND_NOUN = {
+    brands: '브랜드', branches: '지점', locations: '장소(창고)',
+    vendors: '거래처', categories: '분류', 'par-levels': '인가량', items: '품목'
+  };
+
+  /* ══════════════════════════════════════════════════════
+   * 「+ 새로 등록」 팝업 — 세 화면이 함께 쓴다 (3차 보정 2026-09-13)
+   *
+   * 사용자 결정: "각각 등록이 필요한 건들이 있는데, **접근한 페이지에서** 필요한 정보에 대한
+   * 팝업창을 띄워 등록할 수 있도록 개선한다."
+   *
+   * 지키는 것
+   *   · **새 창구를 만들지 않는다.** 기존 `POST /api/purchase/{종류}` 를 그대로 부른다 —
+   *     같은 권한(`purchase.master.write`)·같은 재인증 관문·같은 감사 기록을 지난다.
+   *     팝업은 **화면 편의**일 뿐 권한 경로가 아니다 (PRD S-01).
+   *   · 파일 올리기의 새 폴더 대화상자와 **같은 `<dialog class="modal">`**. ESC·바깥 누르기·
+   *     닫기 단추로 닫히고, 열려 있는 동안 뒤 화면은 조작되지 않는다(브라우저가 막는다).
+   *   · 문서에 글자를 넣는 길은 `textContent` 하나뿐이다.
+   *   · 모달 안에서 또 참조가 필요하면(품목 모달 안의 거래처) **한 겹 더** 열 수 있다.
+   *     겹은 2까지다 — 그보다 깊어지면 사람이 자기가 무엇을 만들던 중인지 잃는다.
+   * ══════════════════════════════════════════════════════ */
+
+  /** 지금 열려 있는 모달의 겹 수 (0 = 없음). 2 를 넘기지 않는다. */
+  var modalDepth = 0;
+  var MODAL_MAX_DEPTH = 2;
+
+  /** 참조 셀렉트를 채울 목록을 받아 둔다 — 같은 종류를 여러 번 그릴 때 다시 부르지 않는다 */
+  var refCache = {};
+
+  /** 참조 목록을 비운다 (등록이 성공해 목록이 바뀌었을 때) */
+  function clearRefCache(kind) {
+    if (kind) { delete refCache[kind]; } else { refCache = {}; }
+  }
+
+  /**
+   * 참조 목록을 받는다 (`/api/purchase/{종류}`). 실패해도 화면은 살아 있어야 하므로
+   * 빈 목록으로 이어 간다 — 사람이 「+ 새로 등록」 으로 만들면 된다.
+   */
+  function loadRef(kind) {
+    if (refCache[kind]) { return Promise.resolve(refCache[kind]); }
+    return request('GET', '/api/purchase/' + kind + '?page=1').then(function (result) {
+      var items = (result && result.ok && Array.isArray(result.data.items)) ? result.data.items : [];
+      refCache[kind] = items;
+      return items;
+    }).catch(function () { return []; });
+  }
+
+  /** 참조 항목 하나를 사람이 읽을 한 줄로 (분류는 단계가, 장소는 지점이 함께 보여야 고를 수 있다) */
+  function refLabel(kind, row) {
+    if (kind === 'categories') {
+      return String(row.level) + '단계 · ' + row.name + (row.parent_name ? ' (상위: ' + row.parent_name + ')' : '');
+    }
+    if (kind === 'locations') {
+      return row.name + (row.branch_name ? ' (' + row.branch_name + ')' : '');
+    }
+    if (kind === 'branches') {
+      return row.name + (row.brand_name ? ' (' + row.brand_name + ')' : '');
+    }
+    if (kind === 'vendors') {
+      return row.name + (row.code ? ' [' + row.code + ']' : '');
+    }
+    return row.name;
+  }
+
+  /** 셀렉트를 목록으로 채운다. `selected` 가 있으면 그것을 고른다. */
+  function fillRefSelect(select, kind, items, selected) {
+    clear(select);
+    var blank = document.createElement('option');
+    blank.value = '';
+    setText(blank, '— 고르세요 —');
+    select.appendChild(blank);
+    items.forEach(function (row) {
+      var option = document.createElement('option');
+      option.value = String(row.id);
+      setText(option, refLabel(kind, row));
+      if (selected !== undefined && selected !== null && String(row.id) === String(selected)) {
+        option.selected = true;
+      }
+      select.appendChild(option);
+    });
+  }
+
+  /**
+   * 칸 하나를 그린다. 참조 칸이면 셀렉트 + 「+ 새로 등록」 단추까지.
+   *
+   * @param spec   위 KIND_FIELDS 의 한 칸
+   * @param value  미리 채울 값 (가져오기 오류 행에서 넘어온 이름 등)
+   * @returns {label, read} — read() 가 지금 값을 돌려준다
+   */
+  function buildField(spec, value) {
+    var label = el('label', 'field');
+    label.appendChild(el('span', 'field__label', spec.label + (spec.required ? ' *' : '')));
+
+    if (spec.type === 'ref') {
+      var row = el('div', 'field__row');
+      var select = document.createElement('select');
+      select.setAttribute('data-key', spec.key);
+      row.appendChild(select);
+
+      loadRef(spec.ref).then(function (items) { fillRefSelect(select, spec.ref, items, value); });
+
+      var add = el('button', 'btn btn--quiet btn--small', '+ 새로 등록');
+      add.type = 'button';
+      add.addEventListener('click', function () {
+        openRegisterModal(spec.ref, {}, function (created) {
+          // 등록에 성공하면 목록을 다시 받아 **방금 만든 것이 골라진 채로** 돌아온다.
+          clearRefCache(spec.ref);
+          loadRef(spec.ref).then(function (items) {
+            fillRefSelect(select, spec.ref, items, created && created.id);
+          });
+        });
+      });
+      row.appendChild(add);
+      label.appendChild(row);
+      return { label: label, read: function () { return select.value; } };
+    }
+
+    if (spec.type === 'item') {
+      // 품목은 1.35만 건이라 셀렉트에 담지 않는다 — 발주요청의 「품목 찾기」 와 같은 API 로 찾는다.
+      var box = el('div', 'field__row');
+      var search = document.createElement('input');
+      search.type = 'search';
+      search.placeholder = '품목코드·품목명으로 찾기';
+      box.appendChild(search);
+      var picked = document.createElement('select');
+      picked.setAttribute('data-key', spec.key);
+      box.appendChild(picked);
+      var find = el('button', 'btn btn--quiet btn--small', '찾기');
+      find.type = 'button';
+      function runSearch() {
+        request('GET', '/api/purchase/items?page=1&q=' + encodeURIComponent(search.value))
+          .then(function (result) {
+            if (!result || !result.ok) { return; }
+            var items = Array.isArray(result.data.items) ? result.data.items : [];
+            clear(picked);
+            var blank = document.createElement('option');
+            blank.value = '';
+            setText(blank, items.length === 0 ? '— 찾은 품목 없음 —' : '— 고르세요 (' + String(result.data.total) + '건 중 20건) —');
+            picked.appendChild(blank);
+            items.forEach(function (it) {
+              var option = document.createElement('option');
+              option.value = String(it.id);
+              setText(option, it.code + ' · ' + it.name);
+              picked.appendChild(option);
+            });
+          }).catch(function () { /* 못 찾아도 화면은 살아 있다 */ });
+      }
+      find.addEventListener('click', runSearch);
+      search.addEventListener('change', runSearch);
+      box.appendChild(find);
+      label.appendChild(box);
+      return { label: label, read: function () { return picked.value; } };
+    }
+
+    if (spec.type === 'choice') {
+      var sel = document.createElement('select');
+      sel.setAttribute('data-key', spec.key);
+      (spec.options || []).forEach(function (pair) {
+        var option = document.createElement('option');
+        option.value = pair[0];
+        setText(option, pair[1]);
+        if (value !== undefined && String(value) === pair[0]) { option.selected = true; }
+        sel.appendChild(option);
+      });
+      label.appendChild(sel);
+      return { label: label, read: function () { return sel.value; } };
+    }
+
+    var input = document.createElement('input');
+    input.type = spec.type === 'number' ? 'number' : (spec.type === 'date' ? 'date' : 'text');
+    input.setAttribute('data-key', spec.key);
+    input.maxLength = 200;
+    if (value !== undefined && value !== null) { input.value = String(value); }
+    if (spec.required) { input.required = true; }
+    label.appendChild(input);
+    return { label: label, read: function () { return input.value.trim(); } };
+  }
+
+  /**
+   * 등록 팝업을 연다.
+   *
+   * @param kind    등록할 종류 (brands·branches·locations·vendors·categories·par-levels·items)
+   * @param prefill {키: 값} 미리 채울 값 (가져오기 오류 행의 이름 등)
+   * @param onDone  201 뒤에 부를 함수 — 서버가 준 본문을 받는다
+   */
+  function openRegisterModal(kind, prefill, onDone) {
+    if (!KIND_FIELDS[kind]) { return; }
+    if (typeof window.HTMLDialogElement !== 'function'
+        || typeof document.createElement('dialog').showModal !== 'function') {
+      // <dialog> 를 못 쓰는 브라우저 — 기초정보 화면으로 보낸다(같은 서버 창구를 지난다).
+      say('이 브라우저는 팝업 등록을 지원하지 않습니다. 기초정보 화면에서 등록해 주세요.');
+      return;
+    }
+    if (modalDepth >= MODAL_MAX_DEPTH) {
+      say('먼저 열린 등록 창을 끝낸 뒤에 다시 눌러 주세요.');
+      return;
+    }
+    modalDepth++;
+
+    var dialog = document.createElement('dialog');
+    dialog.className = 'modal modal--form';
+
+    var head = el('div', 'modal__head');
+    head.appendChild(el('h2', 'modal__title', KIND_NOUN[kind] + ' 새로 등록'));
+    var closeX = el('button', 'btn btn--icon', '✕');
+    closeX.type = 'button';
+    closeX.title = '닫기';
+    closeX.setAttribute('aria-label', '닫기');
+    head.appendChild(closeX);
+    dialog.appendChild(head);
+
+    var body = el('div', 'modal__body');
+    var readers = [];
+    KIND_FIELDS[kind].forEach(function (spec) {
+      var built = buildField(spec, (prefill || {})[spec.key]);
+      readers.push({ key: spec.key, read: built.read, required: spec.required === true, spec: spec });
+      body.appendChild(built.label);
+    });
+    dialog.appendChild(body);
+
+    var foot = el('div', 'modal__foot');
+    var msg = el('p', 'msg', '');
+    msg.setAttribute('role', 'alert');
+    foot.appendChild(msg);
+    var cancel = el('button', 'btn btn--quiet', '취소');
+    cancel.type = 'button';
+    foot.appendChild(cancel);
+    var submit = el('button', 'btn', '등록');
+    submit.type = 'button';
+    foot.appendChild(submit);
+    dialog.appendChild(foot);
+
+    document.body.appendChild(dialog);
+
+    function done() {
+      modalDepth = Math.max(0, modalDepth - 1);
+      if (dialog.open) { dialog.close(); }
+      if (dialog.parentNode) { dialog.parentNode.removeChild(dialog); }
+    }
+    closeX.addEventListener('click', done);
+    cancel.addEventListener('click', done);
+    dialog.addEventListener('cancel', function () { done(); });
+    // 배경(backdrop) 누르기 — 새 폴더 모달과 같은 방식이다.
+    dialog.addEventListener('click', function (event) {
+      if (event.target === dialog) { done(); }
+    });
+
+    function send(allowDuplicateName) {
+      var payload = {};
+      var missing = [];
+      readers.forEach(function (r) {
+        var v = r.read();
+        if (v === '' || v === null || v === undefined) {
+          if (r.required) { missing.push(r.spec.label); }
+          return;
+        }
+        payload[r.key] = v;
+      });
+      if (missing.length > 0) {
+        setText(msg, '필수 칸 ' + missing.map(function (m) { return '「' + m + '」'; }).join(' · ') + ' 을(를) 채워 주세요.');
+        return;
+      }
+      if (allowDuplicateName) { payload.allow_duplicate_name = true; }
+
+      submit.disabled = true;
+      setText(msg, '등록하는 중…');
+      request('POST', postFor(kind), payload)
+        .then(function (result) {
+          submit.disabled = false;
+          if (!result) { done(); return; }   // 401·재인증 403 은 request 가 화면을 옮겼다
+          if (result.status === 201) {
+            clearRefCache(kind);
+            done();
+            if (typeof onDone === 'function') { onDone(result.data); }
+            return;
+          }
+          if (result.status === 409 && kind === 'vendors' && !allowDuplicateName) {
+            /* 2차 보정에서 거래처 이름의 유일 제약을 없앴다 — 같은 이름은 **되묻고** 통과시킨다.
+               (같은 **코드** 는 여전히 DB 가 막으므로 이 단추로도 통과하지 않는다.) */
+            setText(msg, '같은 이름의 거래처가 이미 있습니다.');
+            var force = el('button', 'btn btn--quiet btn--small', '그래도 등록');
+            force.type = 'button';
+            force.addEventListener('click', function () {
+              if (force.parentNode) { force.parentNode.removeChild(force); }
+              send(true);
+            });
+            foot.insertBefore(force, cancel);
+            return;
+          }
+          setText(msg, errorMessage(result.data));
+        })
+        .catch(function () {
+          submit.disabled = false;
+          setText(msg, GENERIC_ERROR);
+        });
+    }
+
+    submit.addEventListener('click', function () { send(false); });
+    dialog.showModal();
+  }
 
   /** 장소 용도의 사람 말 (시안 ⑭) */
   var LOCATION_KIND_LABEL = {
@@ -240,6 +583,11 @@
       if (empty) { empty.hidden = items.length !== 0; }
     }
 
+    /* 만들기 폼 — 3차 보정에서 **모달과 같은 칸 만들기 코드**(buildField)를 쓴다.
+       참조 칸은 셀렉트 + 「+ 새로 등록」 이라, 여기서도 브랜드를 만들다 말고 화면을
+       떠날 필요가 없다. 폼이 두 벌이면 언젠가 한쪽만 고쳐진다. */
+    var createReaders = [];
+
     function renderCreateForm() {
       var panel = $('p-create-panel');
       var fields = $('p-create-fields');
@@ -247,17 +595,11 @@
       panel.hidden = !state.canEdit;
       setText($('p-create-title'), KIND_TITLE[state.kind] + ' 새로 만들기');
       clear(fields);
+      createReaders = [];
       (KIND_FIELDS[state.kind] || []).forEach(function (spec) {
-        var label = el('label', 'field');
-        label.appendChild(el('span', 'field__label', spec[1] + (spec[3] ? ' *' : '')));
-        var input = document.createElement('input');
-        input.type = spec[2] === 'number' ? 'number' : 'text';
-        input.id = 'p-new-' + spec[0];
-        input.setAttribute('data-key', spec[0]);
-        input.maxLength = 200;
-        if (spec[3]) { input.required = true; }
-        label.appendChild(input);
-        fields.appendChild(label);
+        var built = buildField(spec, undefined);
+        createReaders.push({ key: spec.key, read: built.read, required: spec.required === true, spec: spec });
+        fields.appendChild(built.label);
       });
     }
 
@@ -323,27 +665,53 @@
       });
     }
 
+    /** 만들기 요청 — 거래처의 409 는 모달과 **같은 방식**으로 되묻는다 (2차 보정 규칙). */
+    function submitCreate(payload, allowDuplicateName) {
+      var body = {};
+      Object.keys(payload).forEach(function (k) { body[k] = payload[k]; });
+      if (allowDuplicateName) { body.allow_duplicate_name = true; }
+      request('POST', '/api/purchase/' + state.kind, body)
+        .then(function (result) {
+          if (!result) { return; }
+          if (result.status === 201) {
+            var form2 = $('p-create-form');
+            if (form2) { form2.reset(); }
+            clearRefCache(state.kind);
+            say('만들었습니다.');
+            renderCreateForm();
+            load();
+            return;
+          }
+          if (result.status === 409 && state.kind === 'vendors' && !allowDuplicateName
+              && window.confirm('같은 이름의 거래처가 이미 있습니다. 그래도 등록할까요?')) {
+            submitCreate(payload, true);
+            return;
+          }
+          say(errorMessage(result.data));
+        })
+        .catch(function () { say(GENERIC_ERROR); });
+    }
+
     var form = $('p-create-form');
     if (form) {
       form.addEventListener('submit', function (event) {
         event.preventDefault();
         var payload = {};
-        var inputs = $('p-create-fields').querySelectorAll('input[data-key]');
-        for (var i = 0; i < inputs.length; i++) {
-          var key = inputs[i].getAttribute('data-key');
-          var value = inputs[i].value.trim();
-          if (value !== '') { payload[key] = value; }
+        var missing = [];
+        createReaders.forEach(function (r) {
+          var v = r.read();
+          if (v === '' || v === null || v === undefined) {
+            if (r.required) { missing.push(r.spec.label); }
+            return;
+          }
+          payload[r.key] = v;
+        });
+        if (missing.length > 0) {
+          say('필수 칸 ' + missing.map(function (m) { return '「' + m + '」'; }).join(' · ') + ' 을(를) 채워 주세요.');
+          return;
         }
         say('');
-        request('POST', '/api/purchase/' + state.kind, payload)
-          .then(function (result) {
-            if (!result) { return; }
-            if (!result.ok) { say(errorMessage(result.data)); return; }
-            form.reset();
-            say('만들었습니다.');
-            load();
-          })
-          .catch(function () { say(GENERIC_ERROR); });
+        submitCreate(payload, false);
       });
     }
 
@@ -440,7 +808,10 @@
     duplicate_name_in_file: '같은 이름이 이 파일에 이미 있습니다 (코드가 다르면 「승격」해 따로 등록하세요)',
     name_exists: '같은 이름의 거래처가 이미 등록돼 있습니다 (다른 사업자면 「승격」해 따로 등록하세요)',
     branch_ambiguous: '창고명에 여러 지점 이름이 들어 있어 어느 지점인지 정할 수 없습니다',
-    brand_not_found: '브랜드를 찾을 수 없습니다 — 「기본 브랜드」를 고르거나 브랜드를 먼저 등록하세요'
+    brand_not_found: '브랜드를 찾을 수 없습니다 — 「기본 브랜드」를 고르거나 브랜드를 먼저 등록하세요',
+    // 3차 보정 (SECURITY R-72) — 같은 이름의 거래처가 여럿이라 어느 쪽인지 못 정한다.
+    vendor_ambiguous: '같은 이름의 거래처가 여럿입니다 — 거래처 코드 열을 함께 매핑하거나,'
+                    + ' 승격하면 첫 거래처로 붙습니다'
   };
 
   function initImport() {
@@ -453,7 +824,9 @@
       headRows: [],        // 앞 20행 원문 — 재업로드 없이 다시 그리는 재료
       guess: {},           // 종류별 매핑 후보 (서버가 준 것)
       // 2차 보정 — 지점 열이 없는 창고 파일·브랜드 열이 없는 지점 파일을 위한 기본값
-      branchCount: 0, brandCount: 0, derive: ''
+      branchCount: 0, brandCount: 0, derive: '',
+      // 3차 보정 — 체크를 끈 행 번호 모음 (확정에서 exclude_rows 로 나간다)
+      excluded: {}
     };
 
     function step(current) {
@@ -535,6 +908,41 @@
     }
 
     fillDefaults();   // 2차 보정 — 지점·브랜드 목록을 미리 받아 둔다
+
+    /* 3차 보정 — 「기본 지점」·「기본 브랜드」 옆의 「+ 새로 등록」.
+       지점이 0건이라 창고를 한 건도 못 넣던 막다른 길을 **이 화면에서** 푼다. */
+    [['p-add-branch', 'branches', 'p-default-branch'],
+     ['p-add-brand', 'brands', 'p-default-brand']].forEach(function (trio) {
+      var button = $(trio[0]);
+      if (!button) { return; }
+      button.addEventListener('click', function () {
+        openRegisterModal(trio[1], {}, function (created) {
+          var select = $(trio[2]);
+          if (!select) { return; }
+          // 목록을 다시 받아 **방금 만든 것이 골라진 채로** 돌아온다.
+          request('GET', '/api/purchase/' + trio[1] + '?page=1').then(function (result) {
+            if (!result || !result.ok) { return; }
+            var items = Array.isArray(result.data.items) ? result.data.items : [];
+            clear(select);
+            var blank = document.createElement('option');
+            blank.value = '';
+            setText(blank, '— 고르세요 —');
+            select.appendChild(blank);
+            items.forEach(function (row) {
+              var option = document.createElement('option');
+              option.value = String(row.id);
+              setText(option, refLabel(trio[1], row));
+              if (created && String(row.id) === String(created.id)) { option.selected = true; }
+              select.appendChild(option);
+            });
+            if (trio[1] === 'branches') { state.branchCount = items.length; }
+            if (trio[1] === 'brands') { state.brandCount = items.length; }
+            showDefaults();
+            say('등록했습니다 — 이제 미리보기를 눌러 주세요.');
+          }).catch(function () { /* 목록을 못 받아도 화면은 살아 있다 */ });
+        });
+      });
+    });
 
     var headerSelect = $('p-header-row');
     if (headerSelect) {
@@ -749,11 +1157,68 @@
     };
 
     /**
+     * 다시 판정한다 — **재업로드 없이** 같은 import_id·같은 매핑·같은 옵션으로 다시 묻는다
+     * (3차 보정). 팝업으로 거래처·지점·분류를 만든 직후에 부른다: 방금 만든 것이 반영돼
+     * 「거래처를 찾을 수 없습니다」 3,000행이 한 번에 「등록」으로 바뀐다.
+     */
+    function rejudge(note) {
+      say('다시 판정하는 중…');
+      request('POST', '/api/purchase/import/' + state.importId + '/preview', importBody())
+        .then(function (result) {
+          if (!result) { return; }
+          if (!result.ok) { say(errorMessage(result.data)); return; }
+          renderPreview(result.data, note || '');
+        })
+        .catch(function () { say(GENERIC_ERROR); });
+    }
+
+    /**
+     * 「이것만 등록하면 N행이 풀린다」 줄 (3차 보정).
+     * 서버가 값 기준으로 묶어 준 `missing` 목록을 그대로 쓴다 — 같은 거래처 이름으로 막힌
+     * 행이 3,000개여도 단추는 **하나**다.
+     */
+    function renderMissing(data) {
+      var box = $('p-missing');
+      if (!box) { return; }
+      clear(box);
+      var list = Array.isArray(data.missing) ? data.missing : [];
+      box.hidden = list.length === 0;
+      if (list.length === 0) { return; }
+
+      box.appendChild(el('p', 'notice__title',
+        '등록되지 않은 값 ' + String(list.length) + '가지 때문에 막힌 행이 있습니다 — 여기서 바로 등록할 수 있습니다.'));
+
+      list.forEach(function (miss) {
+        var line = el('div', 'p-missing__row');
+        line.appendChild(el('span', 'p-badge p-badge--error', KIND_NOUN[miss.kind] || miss.kind));
+        line.appendChild(el('span', 'p-missing__value', miss.value));
+        line.appendChild(el('span', 'muted', '이 값 ' + String(miss.rows) + '행'));
+
+        var add = el('button', 'btn btn--quiet btn--small', (KIND_NOUN[miss.kind] || miss.kind) + ' 등록');
+        add.type = 'button';
+        add.addEventListener('click', function () {
+          // 파일에 적힌 이름을 **그대로 채워** 연다 — 사람이 다시 타이핑하지 않는다.
+          var prefill = { name: miss.value };
+          if (miss.kind === 'categories') {
+            if (miss.level) { prefill.level = String(miss.level); }
+            if (miss.parent_id) { prefill.parent_id = String(miss.parent_id); }
+          }
+          openRegisterModal(miss.kind, prefill, function () {
+            rejudge('「' + miss.value + '」 을(를) 등록했습니다 — 다시 판정했습니다.');
+          });
+        });
+        line.appendChild(add);
+        box.appendChild(line);
+      });
+    }
+
+    /**
      * 미리보기 결과를 그린다 (2차 보정에서 함수로 뺐다 — 「지점 뽑기」도 같은 표를 쓴다).
      * 모든 글자는 `textContent` 로만 들어간다.
      */
     function renderPreview(data, note) {
       state.judged = data;
+      state.excluded = {};   // 3차 보정 — 판정이 바뀌면 뺀 행 기억도 비운다
 
       var counts = data.counts || {};
       var box = $('p-preview-counts');
@@ -764,10 +1229,30 @@
                            pair[1] + ' ' + String(counts[pair[0]] || 0)));
       });
 
+      renderMissing(data);
+
       var tbody = $('p-preview-body');
       clear(tbody);
       (data.rows || []).forEach(function (row) {
         var tr = document.createElement('tr');
+
+        /* 행 체크박스 — **기본은 전체 선택**이다 (3차 보정).
+           끄면 그 행만 저장에서 빠진다(`exclude_rows`). 창고명에서 뽑은 지점 후보 중
+           「임시」·「상담실」 처럼 지점이 아닌 것을 빼는 것이 첫 용도다.
+           판정을 바꾸는 것이 아니라 **쓰기만 건너뛴다** — 미리보기와 확정의 판정이 같아야 한다. */
+        var pickCell = document.createElement('td');
+        var pick = document.createElement('input');
+        pick.type = 'checkbox';
+        pick.checked = true;
+        pick.setAttribute('aria-label', String(row.row_no) + '행 저장');
+        pick.addEventListener('change', function () {
+          if (pick.checked) { delete state.excluded[row.row_no]; }
+          else { state.excluded[row.row_no] = true; }
+          updateExcludedNote();
+        });
+        pickCell.appendChild(pick);
+        tr.appendChild(pickCell);
+
         tr.appendChild(el('td', null, row.row_no));
 
         var statusCell = document.createElement('td');
@@ -783,7 +1268,13 @@
         }
         tr.appendChild(el('td', 'muted', branchText));
 
-        tr.appendChild(el('td', 'muted', row.reason ? (REASON_LABEL[row.reason] || row.reason) : '—'));
+        var reasonCell = el('td', 'muted', row.reason ? (REASON_LABEL[row.reason] || row.reason) : '—');
+        // 같은 이름의 거래처가 여럿이면 **몇 개인지**까지 말해 준다 (R-72).
+        if (row.vendor_count) {
+          setText(reasonCell, (REASON_LABEL[row.reason] || row.reason)
+            + ' (같은 이름 ' + String(row.vendor_count) + '개)');
+        }
+        tr.appendChild(reasonCell);
 
         var values = [];
         Object.keys(row.data || {}).forEach(function (key) {
@@ -795,9 +1286,18 @@
         tbody.appendChild(tr);
       });
 
+      updateExcludedNote();
       $('p-preview-panel').hidden = false;
       step(3);
       say(note || '');
+    }
+
+    /** 「N행을 빼고 저장합니다」 안내 — 체크를 끌 때마다 다시 쓴다 */
+    function updateExcludedNote() {
+      var note = $('p-excluded-note');
+      if (!note) { return; }
+      var n = Object.keys(state.excluded || {}).length;
+      setText(note, n === 0 ? '' : '체크를 끈 ' + String(n) + '행은 저장하지 않습니다.');
     }
 
     var previewButton = $('p-map-preview');
@@ -875,13 +1375,15 @@
       commitButton.addEventListener('click', function () {
         if (!window.confirm('오류 행을 뺀 나머지를 저장합니다. 계속할까요?')) { return; }
         say('확정하는 중…');
-        request('POST', '/api/purchase/import/' + state.importId + '/commit', importBody())
+        request('POST', '/api/purchase/import/' + state.importId + '/commit',
+                importBody({ exclude_rows: Object.keys(state.excluded || {}).map(Number) }))
           .then(function (result) {
             if (!result) { return; }
             if (!result.ok) { say(errorMessage(result.data)); return; }
             setText($('p-result'),
               '전체 ' + String(result.data.rows) + '행 중 새로 등록 ' + String(result.data.inserted)
-              + ' · 갱신 ' + String(result.data.updated) + ' · 건너뜀 ' + String(result.data.skipped));
+              + ' · 갱신 ' + String(result.data.updated) + ' · 건너뜀 ' + String(result.data.skipped)
+              + (result.data.excluded ? ' (그중 직접 뺀 행 ' + String(result.data.excluded) + ')' : ''));
             $('p-result-panel').hidden = false;
             step(4);
             say('');

@@ -184,3 +184,58 @@
   max-width: 320px;
   text-overflow: ellipsis;
 }
+
+/* ─── 「+ 새로 등록」 팝업과 없는 값 목록 (19단계 3차 보정 2026-09-13) ─────
+ *
+ * 사용자 결정: "접근한 페이지에서 필요한 정보에 대한 팝업창을 띄워 등록할 수 있도록".
+ * 팝업 자체(`dialog.modal`·`.modal__head/body/foot`)는 **app.css 의 것을 그대로** 쓴다 —
+ * 파일 올리기의 새 폴더 대화상자와 같은 모양이어야 사람이 다시 배우지 않는다.
+ * 여기에는 모듈에만 있는 조각(참조 칸의 한 줄 배치·없는 값 목록)만 둔다.
+ */
+
+/* 참조 칸 — 셀렉트와 「+ 새로 등록」 을 한 줄에. 좁으면 단추가 아래로 내려간다. */
+.field__row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.field__row > select,
+.field__row > input {
+  flex: 1 1 160px;
+  min-width: 0;
+}
+
+/* 「이것만 등록하면 N행이 풀린다」 목록 */
+#p-missing { display: grid; gap: 8px; }
+
+.p-missing__row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+/* 파일에 적힌 값 — 길어도 줄을 밀지 않게 */
+.p-missing__value {
+  font-weight: 600;
+  overflow-wrap: anywhere;
+  max-width: 420px;
+}
+
+/* 미리보기 표의 저장 체크 칸은 좁게 */
+#p-preview-body td:first-child,
+#p-preview-panel thead th:first-child { width: 44px; text-align: center; }
+
+/* 화면에는 안 보이고 읽어 주는 글자만 (표 머리의 중복 안내) */
+.sr-only {
+  position: absolute;
+  width: 1px; height: 1px;
+  margin: -1px; padding: 0; border: 0;
+  clip: rect(0 0 0 0);
+  clip-path: inset(50%);
+  overflow: hidden;
+  white-space: nowrap;
+}

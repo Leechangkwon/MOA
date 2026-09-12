@@ -60,7 +60,11 @@ final class Importer
      */
     public const TARGETS = [
         'items' => [
-            'code', 'name', 'vendor', 'brand', 'spec', 'unit', 'pack_qty',
+            'code', 'name', 'vendor',
+            // 3차 보정 — 같은 이름의 거래처가 여럿일 때 **어느 거래처인지 못 정하는** 문제의
+            // 해법(SECURITY R-72). 파일에 거래처 코드 열이 있으면 이 칸에 이어 주면 된다.
+            'vendor_code',
+            'brand', 'spec', 'unit', 'pack_qty',
             // 이카운트는 포장 수량을 **분자/분모 두 칸**으로 내보낸다(「당수량(분자)」·「당수량(분모)」).
             // 분모가 1 이면 분자가 곧 낱개 수이고, 1 이 아니면 사람이 확인해야 한다(아래 judgeItem).
             'pack_den',
@@ -298,6 +302,8 @@ final class Importer
             // 이카운트 품목 내보내기의 실제 열 이름 (1차 보정 2026-09-13, files #252 실측).
             // 포장 낱개 수가 분자/분모 두 칸으로 나뉘어 있다 — 분모는 아래 judgeItem 이 본다.
             '당수량(분자)' => 'pack_qty', '당수량(분모)' => 'pack_den',
+            // 3차 보정 — 품목 파일에 거래처 코드가 함께 있으면 이름 대신 코드로 붙인다.
+            '구매처코드' => 'vendor_code', '거래처코드' => 'vendor_code',
         ],
         'vendors' => [
             '거래처코드' => 'code', '거래처명' => 'name', '구매처명' => 'name', '사업자번호' => 'biz_no',
@@ -544,16 +550,32 @@ final class Importer
      * 트랜잭션은 호출자(핸들러)가 연다 — 감사 기록까지 같은 트랜잭션에 묶기 위해서다.
      *
      * @param list<array<string,mixed>> $judged  judge() 의 rows
-     * @param list<int>                 $promote review → update 로 승격할 row_no 목록
-     * @return array{inserted:int, updated:int, skipped:int}
+     * @param list<int>                 $promote review → 원래 하려던 일로 승격할 row_no 목록
+     * @param list<int>                 $exclude **저장하지 않을** row_no 목록 (3차 보정).
+     *        화면의 행 체크박스를 끈 행들이다 — 창고명에서 뽑은 지점 후보 중 「임시」·「상담실」
+     *        처럼 지점이 아닌 것을 빼는 용도가 첫 번째다. 판정을 바꾸지 않고 **쓰기만 건너뛴다**
+     *        (미리보기에서 본 판정과 확정의 판정이 어긋나지 않게).
+     * @return array{inserted:int, updated:int, skipped:int, excluded:int}
      */
-    public static function commit(string $kind, array $judged, array $promote, int $actorId): array
+    public static function commit(string $kind, array $judged, array $promote, int $actorId, array $exclude = []): array
     {
         $inserted = 0;
         $updated  = 0;
         $skipped  = 0;
+        $excluded = 0;
+
+        // row_no 로 빠르게 찾도록 뒤집어 둔다(행 수천 개 × 제외 목록 수백 개면 중첩 비교가 느리다)
+        $excludeSet = [];
+        foreach ($exclude as $no) {
+            $excludeSet[(int) $no] = true;
+        }
 
         foreach ($judged as $row) {
+            if (isset($excludeSet[(int) $row['row_no']])) {
+                $excluded++;
+                $skipped++;
+                continue;
+            }
             $status = (string) $row['status'];
             if ($status === self::STATUS_REVIEW && in_array((int) $row['row_no'], $promote, true)) {
                 /* 「확인 필요」를 승격하면 **그 행이 원래 하려던 일**을 한다 (2차 보정).
@@ -583,7 +605,8 @@ final class Importer
             $updated++;
         }
 
-        return ['inserted' => $inserted, 'updated' => $updated, 'skipped' => $skipped];
+        return ['inserted' => $inserted, 'updated' => $updated,
+                'skipped' => $skipped, 'excluded' => $excluded];
     }
 
     /* ───────────────────────── 내부 ───────────────────────── */
@@ -619,12 +642,20 @@ final class Importer
         if ($kind === 'items' || $kind === 'vendors') {
             $out['vendor_by_code'] = [];
             $out['vendor_by_name'] = [];
+            // 3차 보정 (R-72) — 같은 이름의 거래처가 **몇 개**인지. 이름으로만 붙이는 행은
+            // 이 값이 2 이상이면 「확인 필요」다(어느 거래처인지 파일이 말해 주지 않는다).
+            $out['vendor_name_count'] = [];
             foreach ($db->run(self::SQL_VENDORS)->fetchAll() as $row) {
-                $id = (int) $row['id'];
+                $id   = (int) $row['id'];
+                $name = strtolower((string) $row['name']);
                 if ($row['code'] !== null && $row['code'] !== '') {
                     $out['vendor_by_code'][strtolower((string) $row['code'])] = $id;
                 }
-                $out['vendor_by_name'][strtolower((string) $row['name'])] = $id;
+                // 이름이 겹치면 **첫 거래처**가 남는다 — 승격했을 때 붙는 곳과 같게 한다.
+                if (!array_key_exists($name, $out['vendor_by_name'])) {
+                    $out['vendor_by_name'][$name] = $id;
+                }
+                $out['vendor_name_count'][$name] = ($out['vendor_name_count'][$name] ?? 0) + 1;
             }
         }
 
@@ -729,12 +760,34 @@ final class Importer
             return self::fail('required_missing', $d);
         }
 
-        $vendorText = $d['vendor'] ?? '';
-        $vendorId   = $lookup['vendor_by_code'][strtolower($vendorText)]
-                   ?? $lookup['vendor_by_name'][strtolower($vendorText)]
-                   ?? null;
-        if ($vendorId === null) {
-            return self::fail('vendor_not_found', $d);
+        /* ─── 거래처 붙이기 (3차 보정 2026-09-13, SECURITY R-72) ───
+         *
+         * 2차 보정에서 거래처 이름의 유일 제약을 없앴다(같은 상호로 사업자를 나눈 거래처가
+         * 실제로 있다). 그 결과 **이름만으로는 어느 거래처인지 정할 수 없는** 행이 생긴다.
+         *   · 파일에 거래처 **코드** 열이 있으면 그것으로 정한다 — 모호할 일이 없다.
+         *   · 코드가 없으면 이름으로 찾되, 같은 이름이 **둘 이상**이면 「확인 필요」로 세운다.
+         *     조용히 첫 거래처에 붙이면 품목 수천 건이 엉뚱한 거래처로 묶이고, 그 오류는
+         *     발주서를 내보내기 전까지 드러나지 않는다.
+         */
+        $vendorCodeText = trim($d['vendor_code'] ?? '');
+        $vendorText     = $d['vendor'] ?? '';
+        $vendorAmbiguous = 0;
+
+        if ($vendorCodeText !== '') {
+            $vendorId = $lookup['vendor_by_code'][strtolower($vendorCodeText)] ?? null;
+            if ($vendorId === null) {
+                return self::fail('vendor_not_found', $d, ['kind' => 'vendors', 'value' => $vendorText]);
+            }
+        } else {
+            $byCode = $lookup['vendor_by_code'][strtolower($vendorText)] ?? null;
+            $byName = $lookup['vendor_by_name'][strtolower($vendorText)] ?? null;
+            $vendorId = $byCode ?? $byName;
+            if ($vendorId === null) {
+                return self::fail('vendor_not_found', $d, ['kind' => 'vendors', 'value' => $vendorText]);
+            }
+            if ($byCode === null) {
+                $vendorAmbiguous = (int) ($lookup['vendor_name_count'][strtolower($vendorText)] ?? 1);
+            }
         }
 
         $unit = $d['unit'] ?? '';
@@ -753,7 +806,14 @@ final class Importer
             $key = (string) $level . '|' . (string) $parent . '|' . strtolower($label);
             $id  = $lookup['category'][$key] ?? null;
             if ($id === null) {
-                return self::fail('category_not_found', $d);
+                // 3차 보정 — **몇 단계의 어떤 이름**이 없었는지 알려 준다. 화면이 그 값으로
+                // 분류 등록 모달을 채운다(부모까지 함께 넘겨 같은 자리에 만들게 한다).
+                return self::fail('category_not_found', $d, [
+                    'kind'      => 'categories',
+                    'value'     => $label,
+                    'level'     => $level,
+                    'parent_id' => $parent > 0 ? $parent : null,
+                ]);
             }
             $catIds[$level - 1] = $id;
             $parent = $id;
@@ -807,16 +867,29 @@ final class Importer
         }
         $seen[$key] = true;
 
+        /* 확인거리 우선순위 (3차 보정): 거래처가 모호한 것이 포장 수량보다 급하다 —
+         * 포장 수량이 틀리면 수량이 어긋나지만, 거래처가 틀리면 **다른 회사에 발주**한다. */
+        $flagReason = null;
+        if ($vendorAmbiguous > 1) {
+            $flagReason = 'vendor_ambiguous';
+        } elseif ($packDenFlag) {
+            $flagReason = 'pack_den_not_one';
+        }
+
         $current = $lookup['item'][$key] ?? null;
         if ($current === null) {
-            return [
-                'status' => $packDenFlag ? self::STATUS_REVIEW : self::STATUS_INSERT,
-                'reason' => $packDenFlag ? 'pack_den_not_one' : null,
+            $row = [
+                'status' => $flagReason !== null ? self::STATUS_REVIEW : self::STATUS_INSERT,
+                'reason' => $flagReason,
                 'data'   => $d,
                 'values' => $values,
                 // 승격하면 **새로 등록**한다 — 대상 행이 없으므로 update 할 곳이 없다 (2차 보정).
                 'promote_to' => self::STATUS_INSERT,
             ];
+            if ($vendorAmbiguous > 1) {
+                $row['vendor_count'] = $vendorAmbiguous;   // 화면이 「같은 이름 N개」 로 보여 준다
+            }
+            return $row;
         }
 
         $diff = self::diff($current, $values);
@@ -824,12 +897,12 @@ final class Importer
         // 자동으로 덮어쓰면 기존 이름이 조용히 사라진다 (시안 ⑯ 19행).
         $status = (array_keys($diff) === ['name']) ? self::STATUS_REVIEW : self::STATUS_UPDATE;
         $reason = $status === self::STATUS_REVIEW ? 'name_differs' : null;
-        if ($packDenFlag) {
+        if ($flagReason !== null) {
             $status = self::STATUS_REVIEW;
-            $reason = 'pack_den_not_one';   // 포장 수량이 더 급한 확인거리다
+            $reason = $flagReason;   // 거래처 모호 > 포장 수량 > 이름 다름
         }
 
-        return [
+        $row = [
             'status'    => $status,
             'reason'    => $reason,
             'data'      => $d,
@@ -838,6 +911,10 @@ final class Importer
             'target_id' => (int) $current['id'],
             'promote_to' => self::STATUS_UPDATE,
         ];
+        if ($vendorAmbiguous > 1) {
+            $row['vendor_count'] = $vendorAmbiguous;
+        }
+        return $row;
     }
 
     /**
@@ -991,7 +1068,7 @@ final class Importer
         if ($fromColumn !== '') {
             $branchId = $lookup['branch'][strtolower($fromColumn)] ?? null;
             if ($branchId === null) {
-                return self::fail('branch_not_found', $d);
+                return self::fail('branch_not_found', $d, ['kind' => 'branches', 'value' => $fromColumn]);
             }
             $branchBy = 'column';
         }
@@ -1098,7 +1175,7 @@ final class Importer
         if ($fromBrand !== '') {
             $brandId = $lookup['brand'][strtolower($fromBrand)] ?? null;
             if ($brandId === null) {
-                return self::fail('brand_not_found', $d);
+                return self::fail('brand_not_found', $d, ['kind' => 'brands', 'value' => $fromBrand]);
             }
         }
         if ($brandId === null && $defaultBrand > 0) {
@@ -1178,10 +1255,27 @@ final class Importer
         return in_array($clean, self::ACTIVE_TRUE, true);
     }
 
-    /** @return array<string,mixed> */
-    private static function fail(string $reason, array $data): array
+    /**
+     * 오류 행 하나.
+     *
+     * ★ 3차 보정 2026-09-13 — `$missing` 에 **무엇이 없어서 막혔는지**를 함께 담는다
+     *   (`{kind, value, …}`). 화면은 이것을 보고 그 행 옆에 「거래처 등록」 단추를 세우고,
+     *   누르면 그 이름이 채워진 등록 모달을 연다. 사용자가 파일을 닫고 기초정보 화면으로
+     *   건너가 이름을 다시 타이핑할 필요가 없다(사용자 결정 2026-09-13 「접근한 페이지에서
+     *   필요한 정보에 대한 팝업창을 띄워 등록」).
+     *
+     *   값은 **파일에 적힌 글자 그대로**이고, 화면은 그것을 `textContent` 로만 넣는다.
+     *
+     * @param array<string,mixed> $missing {kind: 등록할 종류, value: 파일에 적힌 이름, …}
+     * @return array<string,mixed>
+     */
+    private static function fail(string $reason, array $data, array $missing = []): array
     {
-        return ['status' => self::STATUS_ERROR, 'reason' => $reason, 'data' => $data];
+        $out = ['status' => self::STATUS_ERROR, 'reason' => $reason, 'data' => $data];
+        if ($missing !== []) {
+            $out['missing'] = $missing;
+        }
+        return $out;
     }
 
     /**

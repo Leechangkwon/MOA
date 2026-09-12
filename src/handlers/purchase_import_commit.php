@@ -13,6 +13,11 @@ declare(strict_types=1);
  *   header_row  (선택) 머리행의 위치 0~19 — **미리보기에 쓴 값과 같아야** 같은 결과가 나온다.
  *               생략하면 서버가 다시 감지한다 (1차 보정 2026-09-13).
  *   promote     (선택) 「확인 필요」 행 중 **갱신으로 올릴** 행 번호 목록 (시안 ⑯ 마지막 줄)
+ *   exclude_rows(선택) **저장하지 않을** 행 번호 목록 (3차 보정 2026-09-13, 최대 1,000개).
+ *               화면의 행 체크박스를 끈 행들이다 — 창고명에서 뽑은 지점 후보 중
+ *               「임시」·「상담실」 처럼 지점이 아닌 것을 빼는 용도가 첫 번째다.
+ *               **판정을 바꾸지 않고 쓰기만 건너뛴다** — 미리보기에서 본 판정과
+ *               확정의 판정이 어긋나면 그 자체가 사고다.
  *
  * ★ **한 트랜잭션**이다 (R-67). 행 하나가 실패하면 앞서 넣은 행까지 전부 되돌아간다 —
  *   1.3만 행 중 7천 행만 들어간 상태가 남지 않는다. 오류 행은 애초에 저장하지 않는다.
@@ -83,7 +88,8 @@ function tbox_import_ref(mixed $raw): int
 
 $body = Http::jsonBody();
 if ($body === [] || array_diff(array_keys($body), ['kind', 'mapping', 'promote', 'header_row',
-                                          'default_branch', 'default_brand', 'derive']) !== []) {
+                                          'default_branch', 'default_brand', 'derive',
+                                          'exclude_rows']) !== []) {
     $reject('bad_request', 400, Http::MSG_BAD_REQUEST);
 }
 
@@ -108,6 +114,25 @@ if (array_key_exists('promote', $body)) {
             $reject('bad_request', 400, Http::MSG_BAD_REQUEST);
         }
         $promote[] = (int) $text;
+    }
+}
+
+/* 제외 행 — 정수 목록만, 최대 1,000개 (3차 보정).
+ * 상한을 두는 이유: 목록 길이에 비례해 요청 본문과 비교 비용이 늘고, 1,000개를 넘겨 빼야 할
+ * 정도면 **파일이나 매핑이 잘못된 것**이라 사람이 다시 봐야 한다. 형식이 아니면 400 이다
+ * (승격 목록 `promote` 와 같은 규칙).
+ */
+$excludeRows = [];
+if (array_key_exists('exclude_rows', $body)) {
+    if (!is_array($body['exclude_rows']) || count($body['exclude_rows']) > 1000) {
+        $reject('bad_request', 400, Http::MSG_BAD_REQUEST);
+    }
+    foreach ($body['exclude_rows'] as $raw) {
+        $text = is_int($raw) ? (string) $raw : (is_string($raw) ? $raw : '');
+        if (preg_match('/^[0-9]{1,7}$/', $text) !== 1) {
+            $reject('bad_request', 400, Http::MSG_BAD_REQUEST);
+        }
+        $excludeRows[] = (int) $text;
     }
 }
 
@@ -155,7 +180,7 @@ $db = Db::instance();
 // ─── 확정: 한 트랜잭션 (쓰기 + 감사 한 줄) ───
 $db->begin();
 try {
-    $result = Importer::commit($kind, $judged['rows'], $promote, (int) $user['id']);
+    $result = Importer::commit($kind, $judged['rows'], $promote, (int) $user['id'], $excludeRows);
 
     Audit::allow('purchase.import.commit', $auditTarget + [
         'detail' => [
@@ -166,6 +191,8 @@ try {
             'header_row' => $headerRow,
             'inserted'   => $result['inserted'],
             'updated'    => $result['updated'],
+            // 3차 보정 — 사람이 **일부러 뺀** 행 수. "왜 90행 중 88행만 들어갔나" 의 답이다.
+            'excluded'   => $result['excluded'],
         ],
     ]);
     $db->commit();
@@ -204,4 +231,5 @@ Http::json([
     'inserted'  => $result['inserted'],
     'updated'   => $result['updated'],
     'skipped'   => $result['skipped'],
+    'excluded'  => $result['excluded'],
 ]);

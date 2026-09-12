@@ -172,6 +172,15 @@ $slim = static function (array $row) use ($branchNames): array {
     if (isset($row['branch_by']) && $row['branch_by'] !== '') {
         $out['branch_by'] = (string) $row['branch_by'];   // column | name | default
     }
+    /* 3차 보정 — **무엇이 없어서 막혔나**. 화면이 그 행 옆에 「거래처 등록」 단추를 세우고,
+     * 누르면 이 값이 채워진 등록 모달을 연다 (사용자 결정 2026-09-13 「접근한 페이지에서
+     * 필요한 정보에 대한 팝업창을 띄워 등록」). 값은 **파일에 적힌 글자 그대로**다. */
+    if (isset($row['missing']) && is_array($row['missing'])) {
+        $out['missing'] = $row['missing'];
+    }
+    if (isset($row['vendor_count'])) {
+        $out['vendor_count'] = (int) $row['vendor_count'];   // 같은 이름의 거래처 수 (R-72)
+    }
     return $out;
 };
 
@@ -187,6 +196,50 @@ foreach ($judged['rows'] as $row) {
     }
 }
 
+/* ─── 「없어서 막힌 것」 을 값 기준으로 묶는다 (3차 보정) ───
+ *
+ * 같은 거래처 이름 때문에 막힌 행이 3,000개여도 사람이 등록할 것은 **거래처 하나**다.
+ * 그래서 행 목록과 별개로 `{종류, 값, 몇 행}` 묶음을 만들어 준다 — 화면은 이 목록으로
+ * 「○○ 등록 (이 값 3,000행)」 단추를 **한 번만** 세운다.
+ *
+ * 세는 범위는 **응답에 실리는 앞 200행이 아니라 판정한 전체 행**이다. 200행만 세면
+ * 「이 값 12행」 이라고 써 놓고 확정하면 3,000행이 살아나는 거짓말이 된다.
+ */
+$missing = [];
+foreach ($judged['rows'] as $row) {
+    if (!isset($row['missing']) || !is_array($row['missing'])) {
+        continue;
+    }
+    $kindOf = (string) ($row['missing']['kind'] ?? '');
+    $value  = (string) ($row['missing']['value'] ?? '');
+    if ($kindOf === '' || $value === '') {
+        continue;   // 값이 비어 있으면 등록 모달을 채울 것이 없다(사람이 파일을 고쳐야 한다)
+    }
+    $key = $kindOf . "\n" . $value;
+    if (!isset($missing[$key])) {
+        $missing[$key] = [
+            'kind'      => $kindOf,
+            'value'     => $value,
+            'reason'    => (string) ($row['reason'] ?? ''),
+            'rows'      => 0,
+            'first_row' => (int) $row['row_no'],
+        ];
+        // 분류는 **몇 단계의 어느 부모 밑**인지까지 있어야 같은 자리에 만들 수 있다.
+        if (isset($row['missing']['level'])) {
+            $missing[$key]['level'] = (int) $row['missing']['level'];
+        }
+        if (isset($row['missing']['parent_id'])) {
+            $missing[$key]['parent_id'] = $row['missing']['parent_id'] === null
+                ? null : (int) $row['missing']['parent_id'];
+        }
+    }
+    $missing[$key]['rows']++;
+}
+// 많이 막은 것부터 — 사람이 하나만 등록해도 가장 많이 풀리는 순서다.
+$missingList = array_values($missing);
+usort($missingList, static fn (array $a, array $b): int => $b['rows'] <=> $a['rows']);
+$missingList = array_slice($missingList, 0, 200);
+
 Http::json([
     'import_id'  => (string) $file['public_id'],
     'kind'       => $kind,
@@ -197,4 +250,6 @@ Http::json([
     'counts'    => $judged['counts'],
     'rows'      => $rows,
     'attention' => $attention,
+    // 3차 보정 — 「이것만 등록하면 N행이 풀린다」 목록
+    'missing'   => $missingList,
 ]);
