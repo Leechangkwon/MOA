@@ -665,6 +665,10 @@
 | T-25 | 미리보기 출력 안전 (F-18, S-03) | `<img src=x onerror=alert(1)>` 를 담은 `.txt`·`.csv`·`.md` 를 올려 미리보기 → 글자 그대로, 알림 없음. `/preview/raw` 응답 헤더에 `Content-Security-Policy: sandbox`·`nosniff` 존재. `.txt` 로 `/preview/raw` → 400 |
 | T-26 | 화면 분리 뒤에도 권한은 서버 (F-20, S-01) | Employee 세션으로 `/trash`·`/users`·`/org`·`/audit` → 403, `/settings` → 200. 강제 절차 중 `/settings` → 302 `/` |
 | T-27 | 조직 관리 (F-19, S-07) | Manager 로 `POST /api/org/teams` → 403 + 감사. Admin: 사유 없이 → 400, 중복 이름 → 409, 구성원 있는 팀 비활성화 → 400 `team_has_members`, 비활성 팀으로 업로드·배정 → 400 `team_inactive`, 변경마다 `team.update` before/after 기록 |
+| T-28 | 감사 기록은 다국어 긴 이름에도 남는다 (S-07, R-47) | 한글 170자 이름의 `.php` 업로드 → 400 + `file.upload deny ext_not_allowed` 행 존재. 같은 이름 `.txt` → 201 + `file.upload allow` 행. 500 은 0건 |
+| T-29 | 해시 체인 검산 (R-11, R-50) | 회전 다음 날 `audit_chain.php --verify` → 통과(오늘 열린 날은 검산 제외 표기). 어제 회전 파일의 한 줄을 바꾼 사본으로 검산 → 실패 + AL-6 |
+| T-30 | 로그인 뒤 검증도 잠긴다 (S-09-4, R-48) | 세션으로 `POST /api/me/password` 틀린 현재 비밀번호 5회 → 이후 로그인 423, `auth.password_change deny` 5행. `mfa/disable` 비밀번호 오류·코드 오류 응답 문구 동일 |
+| T-31 | TOTP 코드 1회성 (R-45) | 같은 코드로 로그인 2회 → 두 번째 401 + `auth.mfa deny code_reused`. 잠금 만료 10분 뒤 실패 1회 → 잠기지 않음(R-49) |
 
 ### 12.3 애플리케이션 밖 (S-10, S-11)
 
@@ -705,6 +709,7 @@
 | 10 (여유 시) | 계정 관리, 휴지통 복구, Guest 만료, MFA | F-10, F-11, R-05, R-12 | 비활성화 즉시 다른 기기 세션 401 (T-22) | F-10, F-11 |
 | 11 | 최초 로그인 강제 절차 (임시 비밀번호·비밀번호 변경 강제·2단계 인증 필수) | F-16, F-17 | 절차 중 `/api/files` 403, 임시 비밀번호 1회 표시 | F-16 |
 | **12** (사용자 요청 2026-09-12) | **12-1** 공통 셸·기능별 화면 분리·디자인(F-20) → **12-2** 미리보기(F-18) → **12-3** 조직·권한 관리(F-19). 셋을 차례로 구현·검토·커밋 | F-18, F-19, F-20, S-01, S-03, S-07 | 내비 `hidden` 을 되살려 `/org`·`/trash` 열기 → 403(Employee). 남의 팀 team 파일 `/preview`·`/preview/raw` → 403. PDF 미리보기 iframe 안에서 스크립트가 도는지(`sandbox` 확인). csv 에 `<img onerror>` 넣어 표에 글자 그대로. 비활성 팀으로 업로드 → 400. Manager 로 `POST /api/org/teams` → 403 + 감사 기록 | T-24 ~ T-27 |
+| **13** (전면 점검 후속, 사용자 결정 2026-09-12) | 감사 기록기 문자 단위 자르기(R-47) · 해시 체인 어제 봉인·재봉인(R-50) · 로그인 뒤 비밀번호·OTP 검증에 실패 집계·잠금·문구 통일(R-48) · 잠금 만료 시 카운터 재시작(R-49) · TOTP 코드 1회성(R-45) | S-07, S-09-4, R-45, R-47~R-50 | 한글 170자 이름 업로드 거부·허용 모두 감사 행 존재(T-28) · `audit_chain.php --verify` 통과(T-29) · `/api/me/password` 틀린 비밀번호 5회 → 423(T-30) · 같은 TOTP 코드 2회째 401(T-31) | — |
 
 **과제 제출물 대응**
 
