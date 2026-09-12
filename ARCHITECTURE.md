@@ -694,6 +694,24 @@ Admin 전용. 정책 `org.manage`(`Authz::canManageOrg` = Admin) 를 `KNOWN_POLI
 
 ---
 
+### 5.16 폴더 — `GET/POST /api/folders` · `PATCH/DELETE /api/folders/{num}` (PRD F-26 · 18-1, 2026-09-13)
+
+**원칙 두 가지.** ① 폴더는 **DB 의 분류**다 — 저장 경로(6.3, 무작위 이름 2단 디렉터리)는 한 글자도 바뀌지 않으므로 경로 조작 표면이 늘지 않는다. ② 폴더는 **권한을 갖지 않는다** — 파일 읽기 판정은 지금처럼 `Authz::decideRead`·`visibleFilesWhere`(파일 등급·팀)만 본다. 폴더 안 목록 SQL 은 `… WHERE <visibleFilesWhere> AND f.folder_id IS NOT DISTINCT FROM :folder`. 그래서 "admin-only 파일이 든 폴더" 를 Employee 가 열면 **빈 폴더로 보인다**(total 도 0). 폴더 이름은 모두에게 보이는 메타데이터다(SECURITY R-63 — 이름에 민감한 말을 넣지 않도록 화면 안내).
+
+**표 `folders`** (6.2-4): `id BIGSERIAL`, `parent_id BIGINT NULL → folders(id)`, `name TEXT CHECK(1~50자)`, `depth INT CHECK(1..5)`, `created_by → users`, `team_id NULL → teams`(만든 사람의 팀 — Manager 관리 범위), `created_at`, `updated_at`, `UNIQUE(parent_id, name)`(루트는 `parent_id IS NULL` 라 부분 인덱스 `UNIQUE(name) WHERE parent_id IS NULL` 로). `files.folder_id BIGINT NULL → folders(id) ON DELETE RESTRICT` — 파일이 참조하는 폴더는 DB 가 삭제를 막는다(앱 검사의 마지막 그물).
+
+**권한 판정(`Authz`).** 만들기는 라우트 `file.upload`(Guest 는 여기서 끝). 이름 변경·이동·삭제는 `Authz::decideFolderChange(actor, folder)`: Admin `admin_all` · Manager 는 만든 사람이 본인(`owner`) 또는 폴더 `team_id` = 자기 팀(`team_scope`) · Employee 는 본인(`owner`) · 그 밖 `not_owner`/`role_not_permitted` — 파일의 `decideOwnership` 과 같은 표. 파일을 폴더로 옮기는 것은 파일 쪽 권한(`decideRead → decideEdit`)만 본다(5.7 PATCH 허용 키에 `folder_id` 추가, `folder_id` 는 존재하는 폴더 또는 `null`).
+
+**검사 순서(POST/PATCH).** 허용 키 → 이름 규칙(1~50자, 제어문자·`/`·`\\` 금지, 앞뒤 공백 제거, UTF-8) → 부모 존재·깊이(`parent.depth + 1 ≤ 5`) → 중복(409 `MSG_CONFLICT`) → 이동이면 **자기 자신·자손 아래 금지**(재귀 CTE 로 조상 확인) → 저장 → 감사 `folder.create|update|delete allow`(detail `before/after`·`parent_id`·`depth`). 삭제는 살아 있는 파일 0(`deleted_at IS NULL AND purged_at IS NULL`)·하위 폴더 0 일 때만 `DELETE`(400 `folder_not_empty`). 휴지통의 파일이 참조하는 폴더는 지울 수 없다(FK) — 화면은 "휴지통에 이 폴더의 파일이 있습니다" 로 안내.
+
+**화면.** 파일 화면 좌측(내비 아래)에 폴더 트리, 상단 breadcrumb, 「새 폴더」「이름 변경」「삭제」, 파일 행 「이동」(폴더 선택 모달). 업로드·URL 가져오기 패널에 「폴더」 선택(기본 = 현재 폴더). 전부 `textContent`. 트리는 `GET /api/folders?parent=` 로 한 층씩 받는다(전체를 한 번에 내리지 않음 — 깊이 5·개수 제한 없음 대비).
+
+### 5.17 일괄 업로드 — 화면 순차 요청 (PRD F-27 · 18-2, 2026-09-13)
+
+**서버는 바뀌지 않는다.** `POST /api/files` 는 지금처럼 **요청당 파일 1개**(php-fpm `max_file_uploads=1`, `Upload::validate`)이며, 파일마다 확장자·MIME·크기·일일 총량·민감정보 검출·감사 행이 그대로다. 화면(app.js)이 `<input multiple>`·끌어 놓기로 받은 파일 목록을 **한 번에 하나씩 순서대로** 보낸다(동시 1) — 한 사용자가 워커 5개를 점유하지 못하게 하고, 일일 총량 검사가 파일 순서대로 누적되게 한다. 파일별 상태(대기·올리는 중·완료·거부 사유 문구)를 표로 그린다. 하나가 400 이어도 다음 파일로 계속하고, 401/403(세션·권한)이면 멈춘다. 선택 상한 50개(화면 상수), 공통 값은 등급·팀·폴더·설명(선택). 서버 쪽 유일한 변경은 없음 — 그래서 18-2 의 검토(T-41)는 "요청이 파일 수만큼 순서대로 남는가" 와 "한 요청에 두 파일이면 400 인가" 다.
+
+---
+
 ## 6. 저장 위치 — 파일 정보 vs 실제 파일
 
 ### 6.1 두 곳에 나눠 저장하는 이유
@@ -776,6 +794,20 @@ INSERT INTO permissions VALUES
 | `created_at TIMESTAMPTZ NOT NULL DEFAULT now()` | |
 
 앱 계정 권한: `SELECT, INSERT, UPDATE` (DELETE 없음). `files` 에는 `sensitive_flags TEXT[] NOT NULL DEFAULT '{}'`(15-3, PRD F-22) 가 추가된다 — 값은 패턴 이름(`rrn`·`card`·`keyword`)만.
+
+
+### 6.2-4 `folders` 테이블 — 논리 분류 (18-1, PRD F-26, ARCH 5.16)
+
+| 컬럼 | 뜻 |
+|---|---|
+| `id BIGSERIAL` | `{num}` |
+| `parent_id BIGINT NULL → folders.id ON DELETE RESTRICT` | NULL = 루트 바로 아래 |
+| `name TEXT NOT NULL CHECK (length(name) BETWEEN 1 AND 50)` | 같은 부모 안 중복 금지(`UNIQUE(parent_id, name)` + 루트용 부분 UNIQUE) |
+| `depth INT NOT NULL CHECK (depth BETWEEN 1 AND 5)` | 부모 depth + 1 |
+| `created_by BIGINT NOT NULL → users.id`, `team_id BIGINT NULL → teams.id` | 관리 범위 판정(5.16) |
+| `created_at`, `updated_at TIMESTAMPTZ NOT NULL DEFAULT now()` | |
+
+`files.folder_id BIGINT NULL REFERENCES folders(id) ON DELETE RESTRICT`. 앱 계정 권한: `folders` SELECT·INSERT·UPDATE·DELETE(빈 폴더 삭제 — 파일이 참조하면 FK 가 막는다). 저장 경로(6.3)와 무관하다.
 
 
 ### 6.2-2 `sessions` 테이블 — DB 세션

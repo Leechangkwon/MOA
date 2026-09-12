@@ -197,6 +197,8 @@
 | F-23 | **관리 기능 재인증(sudo 모드)** (12단계 접수 사항 ③ → 사용자 확정 2026-09-12 "계정 기능 사용 전에 비밀번호 치고 들어가기로 했었다") | 관리 영역 — 계정 관리(`user.manage`)·조직·권한(`org.manage`)·감사 로그(`audit.read`)·휴지통·위키(`role:Admin`) — 의 **API 와 화면**은 세션이 있어도 **최근 15분 안에 비밀번호를 다시 확인한 세션**만 쓸 수 있다. 확인은 `POST /api/me/reauth {password}`(현재 비밀번호; 2단계 인증은 로그인에서 이미 거쳤으므로 다시 묻지 않음) → 성공 시 `sessions.reauth_at = now()`. 로그인 직후에도 `reauth_at` 은 비어 있어 **관리 영역에 처음 들어갈 때 반드시 한 번 묻는다**. 만료·미확인 상태의 요청: API 는 403 `{error, next:"reauth"}`(강제 절차 관문과 같은 모양), 화면(HTML)은 302 `/reauth?to=<키>`(키는 `users`·`org`·`audit`·`trash`·`wiki` 허용 목록만 — 되돌아갈 경로를 요청 값으로 받지 않는다). 실패는 로그인 뒤 창구와 같은 카운터(5회 → 잠금·세션 회수, R-48)와 nginx 속도 제한. 감사: `auth.reauth allow/deny(bad_credentials)`, 막힌 요청은 `auth.gate deny reauth_required`. 본인 계정 기능(`/api/me/*`)은 이미 현재 비밀번호(·코드)를 묻고 있어 대상이 아니다 | 필수(16-1) |
 | F-24 | **관리자 영역 `/admin`** (사용자 요청 2026-09-12 "중요도에 따라 관리자 페이지를 새로 만들고 일반적으로는 접근하지 못하게") | 관리 기능의 **단일 입구** 허브 화면 `/admin`(계정 관리·조직·권한·감사 로그·휴지통·위키·**권한 매트릭스 편집(F-25)**·공유 링크 전체 목록·최근 경보). 정책 `role:Admin` + 재인증(F-23). 일반 화면의 내비에는 「관리자 페이지」 한 항목만 있고(기본 `hidden`, `/api/me` 의 `can_admin` 이 참일 때만 화면이 연다 — 12단계 셸과 같은 방식, 막는 것은 라우트 정책), 그 안의 세부 항목은 허브에서만 연다(일반 셸의 관리 그룹은 제거). 새 관리 API 는 `/api/admin/*` 접두로 모아 nginx 에서 한 덩어리로 다룬다. **네트워크 겹(선택)**: nginx 에 `/admin`·`/api/admin` 을 관리망 IP 만 허용하는 블록을 **꺼진 상태(주석)** 로 두고 README 에 켜는 법을 적는다 — 사용자 접속 출처가 셋(사내망 두 대역·프록시 경유 외부)이라 기본으로 켜면 스스로 잠길 수 있다. 기존 관리 화면 경로(`/users`·`/org`·`/audit`·`/trash`·`/wiki`)는 그대로 두되 허브에서 연결한다(위키 글의 원문 위치·문서가 그 경로를 가리킨다) | 필수(17-1) |
 | F-25 | **권한 매트릭스 화면 편집** (Q-12 결정 2026-09-12: "보안만 확보된다면 페이지에서 관리해도 충분") | `/admin/permissions` 화면 + `GET/PATCH /api/admin/permissions`. **조건 다섯 가지**가 전부 있어야 바뀐다: ① Admin + 재인증(F-23) ② 요청마다 **2단계 인증 코드**(TOTP, 1회성 R-45) ③ 사유 필수 ④ 서버 불변 규칙 — Admin 행은 전부 참으로 고정(관리자가 스스로를 잠글 수 없음), `can_upload` 이면 `can_read`, 역할·등급은 4×4 안, Guest 의 `admin-only` 는 거짓 고정 ⑤ **별도 DB 롤 `tbox_perm`**(`permissions` SELECT·UPDATE 만)으로만 쓴다 — 앱 런타임 롤 `tbox_app` 은 여전히 SELECT 만이라 다른 핸들러의 결함(SQL 인젝션 등)이 권한 표를 바꾸는 길은 그대로 막혀 있다. 변경은 한 트랜잭션, 셀마다 감사 `permission.change allow`(before/after·사유·코드 검증 사실), 거부는 `permission.change deny`(bad_request·bad_code·code_reused·invariant). 경보 AL-13(매트릭스 변경은 건수와 무관하게 즉시 기록). 효과는 다음 요청부터(매트릭스는 요청마다 읽음). 2인 승인은 활성 Admin 이 1명이라 이번엔 두지 않고 후보로 남긴다(R-43) | 필수(17-2) |
+| F-26 | **폴더(분류)** (사용자 결정 2026-09-13 "구분을 위해 폴더 기능을 먼저") | 파일을 담는 **논리 분류 트리** `folders`(자기참조, 깊이 최대 5, 이름 1~50자·같은 부모 안 중복 금지). **저장 경로는 그대로**(무작위 이름) — 폴더는 DB 의 분류일 뿐이라 경로 조작 표면이 늘지 않는다. **권한은 파일 등급 그대로**(폴더에 등급을 두지 않는다, 1차 결정): 폴더 트리는 로그인한 사람 모두에게 보이고, 폴더 안 목록은 기존 `visibleFilesWhere` 로 걸러진다 → 폴더 이름은 **메타데이터**라 민감한 말을 넣지 않도록 화면 안내(SECURITY R-63). 만들기: Employee 이상(Guest 불가). 이름 변경·이동·삭제: 만든 사람 또는 Manager(자기 팀이 만든 것)·Admin(`Authz::decideFolderChange`, 사유 선택). 삭제는 **살아 있는 파일이 0개일 때만**(하위 폴더도 0). 파일 이동은 그 파일을 고칠 수 있는 사람(`decideEdit`), `PATCH /api/files/{id} {folder_id}`. 업로드·URL 가져오기에 `folder_id` 선택. 목록 `GET /api/files?folder=<id>`(루트는 `folder=0`), 응답에 `folder_id`·`breadcrumb`. 감사 `folder.create|update|delete allow/deny`, 파일 이동은 기존 `file.update`(detail `folder_before/after`) | 필수(18-1) |
+| F-27 | **일괄 업로드** (사용자 결정 2026-09-13 "일괄 업로드 기능") | 화면에서 **여러 파일을 한 번에 선택(또는 끌어 놓기)** 해 같은 등급·팀·폴더로 올린다. **서버 계약은 바꾸지 않는다** — 파일 하나 = 요청 하나(`POST /api/files`)를 화면(app.js)이 **순서대로** 보내고 파일마다 결과(201 / 400 사유)를 목록으로 보여 준다. 그래서 파일마다 기존 검사(확장자·MIME·크기·일일 총량·민감정보 검출 F-22)와 감사 행이 그대로 남고, 하나가 거부돼도 나머지는 계속된다. 동시 요청 수는 1(순차) — 서버 `pm.max_children=5` 를 한 사용자가 점유하지 않게. 선택 상한 50개/회(화면), 총 크기는 일일 총량(2GB)이 그대로 상한. 설명은 비우거나 공통 문구 하나. `max_file_uploads=1`(요청당 1개)은 유지 | 필수(18-2) |
 
 ---
 
@@ -596,6 +598,10 @@
 | GET | `/api/admin/permissions` | 매트릭스 16행 + 불변 규칙(잠긴 셀) (F-25) | `role:Admin` + 재인증 | 없음 |
 | PATCH | `/api/admin/permissions` | 매트릭스 변경 (F-25). 본문 `{changes:[{role,access_level,can_read,can_upload}], reason_text, otp}` — 조건 ①~⑤ | `role:Admin` + 재인증 + CSRF | `permission.change` allow(셀마다 before/after)/deny |
 | GET | `/api/admin/shares` · `/api/admin/alerts` | 공유 링크 전체 목록(토큰 없음) · 최근 경보(`alerts.log` 마지막 50줄, 값은 기록된 그대로) (F-24) | `role:Admin` + 재인증 | 없음 |
+| GET | `/api/folders?parent=<id>` | 폴더 트리(자식 목록 + breadcrumb) (F-26). 트리는 로그인한 모두에게 | `authenticated` | 없음 |
+| POST | `/api/folders` | 폴더 만들기 `{name, parent_id?}` (F-26). 깊이 5·이름 규칙·중복 검사 | `file.upload`(Guest 제외) | `folder.create` allow/deny |
+| PATCH | `/api/folders/{num}` | 이름 변경·이동 `{name?, parent_id?, reason_text?}` (F-26). 자기 자신·자손 아래로 이동 금지 | `file.update` → 핸들러 `decideFolderChange` | `folder.update` allow/deny |
+| DELETE | `/api/folders/{num}` | 빈 폴더 삭제(살아 있는 파일 0·하위 0) (F-26). 행 삭제(파일이 참조하지 않음이 확인된 뒤) | `file.delete` → `decideFolderChange` | `folder.delete` allow/deny |
 
 ---
 
@@ -606,10 +612,11 @@
 | `users` | `id, username, password_hash, role, team_id, is_active, failed_count, locked_until, created_at` | 비밀번호는 해시만. 역할은 4종 제한 |
 | `teams` | `id, name` | Manager·Employee가 소속. `team` 레벨 판정에 필요 |
 | `permissions` | `role, access_level, can_read, can_upload` | 5.1·5.2 매트릭스를 **데이터**로 보관(16행). 앱 계정은 SELECT만 — 화면·API로 수정 불가(권한 상승 방지). 소유자·팀 규칙(5.3)은 코드(`Authz`) |
-| `files` | `id, original_name, stored_name, mime, ext, size_bytes, sha256, description, access_level, team_id, uploaded_by, created_at, deleted_at, scan_status, sensitive_flags(text[], F-22)` | 실제 파일은 DB에 넣지 않고 경로만 보관. `deleted_at`으로 논리 삭제 |
+| `files` | `id, original_name, stored_name, mime, ext, size_bytes, sha256, description, access_level, team_id, uploaded_by, created_at, deleted_at, scan_status, sensitive_flags(text[], F-22), folder_id(→folders NULL=루트, F-26)` | 실제 파일은 DB에 넣지 않고 경로만 보관. `deleted_at`으로 논리 삭제 |
 | `audit_logs` | 7.7의 항목 전체 | Append-only |
 | `sessions` | `id(토큰 해시), user_id, created_at, last_seen_at, expires_at, ip, user_agent` | **DB 세션** (PHP 파일 세션 미사용). 쿠키에는 무작위 토큰만, DB에는 그 SHA-256. 비활성화·비밀번호 변경 시 해당 사용자 행 전체 삭제 → 모든 기기 즉시 로그아웃 (R-10) |
 | `share_links` | `id, token_hash(char64), file_id, created_by, expires_at, max_downloads, download_count, revoked_at, revoked_by, reason_text, created_at` | F-13. 토큰 원문은 저장하지 않는다. 앱 계정은 SELECT·INSERT·UPDATE 만(회수·횟수는 UPDATE, 행 삭제 없음 — 감사 추적) |
+| `folders` | `id, parent_id(→folders, NULL=루트), name, depth(1~5), created_by, team_id(만든 사람의 팀, 관리 범위용), created_at, updated_at` | F-26. `UNIQUE(parent_id, name)`, `CHECK(depth BETWEEN 1 AND 5)`. 앱 계정 SELECT·INSERT·UPDATE·**DELETE**(빈 폴더만 지우고, 파일이 참조하면 FK 가 막는다) |
 
 **제약 조건**
 - `files.access_level` 은 `public|internal|team|admin-only` 중 하나 (DB CHECK 제약)
@@ -641,6 +648,8 @@
 | 재인증 (`/reauth`, 관리 화면 모달, F-23) | 비밀번호 한 칸 + 「확인」. 관리 화면(계정·조직·감사·휴지통·위키)에 들어갈 때, 그리고 15분이 지나 API 가 `next:"reauth"` 를 돌려주면 모달로 다시 묻는다 | 막는 것은 서버 관문. 실패 5회면 잠금(로그인 뒤 창구와 같은 규칙) |
 | 관리자 허브 (`/admin`, F-24) | 카드 8개(계정 관리·조직·권한·권한 매트릭스 편집·감사 로그·휴지통·공유 링크 전체·최근 경보·위키) + 재인증 남은 시간 | Admin + 재인증. 일반 셸에는 「관리자 페이지」 한 항목만 |
 | 권한 매트릭스 편집 (`/admin/permissions`, F-25) | 4×4 표(읽기·올리기 토글), 잠긴 셀 표시(Admin 행·Guest admin-only), 변경 미리보기(before → after), 사유·2단계 인증 코드 칸, 「적용」 | 서버가 다시 검증. 바뀐 셀마다 감사 행 |
+| 폴더 (파일 화면 좌측 트리 + 경로 표시, F-26) | 트리(루트·하위), 현재 폴더 경로(breadcrumb), 「새 폴더」「이름 변경」「삭제(비었을 때)」, 파일 행 「이동」 | 트리는 모두에게, 내용은 권한대로. 폴더 이름에 민감한 말을 넣지 않도록 한 줄 안내 |
+| 일괄 업로드 (올리기 패널, F-27) | 파일 여러 개 선택·끌어 놓기 → 공통 등급·팀·폴더 → 파일별 진행 표(대기·올리는 중·완료·거부 사유) | 파일마다 요청 하나. 거부된 파일은 사유를 그대로 보여 주고 나머지는 계속 |
 
 ---
 
@@ -703,6 +712,8 @@
 | T-37 | 서버 층 경보 (S-11-A, 8.4-5·6) | `alerts.php` 가 `auth.log` 의 새 출처 SSH 성공을 AL-3 으로, `sudo … COMMAND=` 에 `psql|pg_dump|rm|find …-delete|truncate|dropdb` 가 들어간 실행을 AL-9 로 `alerts.log`+`alert.raised` 에 남긴다(시험은 사본 로그 파일 인자로). 정합성 검사 cron 이 **매일** 02:00 |
 | T-38 | 관리자 영역 접근 (F-24, S-01) | Employee·Manager·Guest 세션 `/admin`·`/admin/permissions`·`/api/admin/*` → 403 + `authz.route deny`; Admin 재인증 전 → API 403 `next:"reauth"`·HTML 302, 재인증 뒤 200. 일반 셸 HTML 에 `/users`·`/org`… 관리 항목 링크가 없고 「관리자 페이지」만(Admin), 비관리자 HTML 에는 그것도 없음. nginx 허용 대역 블록은 주석 상태(`nginx -T` 로 확인) |
 | T-39 | 권한 매트릭스 편집 (F-25, S-01, S-07) | Admin+재인증: 코드 없이 → 400 `deny bad_request`; 틀린 코드 → 400 `deny bad_code` + 실패 집계; 같은 코드 2회 → `code_reused`; Admin 행 변경 시도 → 400 `deny invariant`; `can_upload=true,can_read=false` → 400 invariant; 사유 없음 → 400. 정상: Guest `internal` read 를 true 로 → 200, 감사 `permission.change allow` before/after 1행, AL-13 1건, **곧바로** Guest 세션 `/api/files` 에 internal 파일이 보임 → 되돌리기 200. `\dp permissions`: `tbox_app=r`, `tbox_perm=rw`. `tbox_app` 으로 `UPDATE permissions` 시도 → permission denied |
+| T-40 | 폴더 (F-26, S-01, S-02, S-03) | Guest `POST /api/folders` → 403. Employee 가 폴더 A 생성 201, 깊이 6번째 → 400, 같은 부모 안 같은 이름 → 409, 이름에 `<script>` → 저장은 되되 목록·화면에 글자 그대로. Employee 가 admin-only 파일을 A 로 이동 → 403(`decideEdit` 먼저). Admin 이 admin-only 파일을 A 로 이동 → 200; Employee 가 `GET /api/files?folder=A` → 그 파일 **없음**(total 도 제외). 파일 있는 A 삭제 → 400 `folder_not_empty`; 남의 폴더 이름 변경(Employee) → 403; A 를 A 의 자손으로 이동 → 400. 감사 `folder.*` 행 |
+| T-41 | 일괄 업로드 (F-27, S-06, S-07) | 화면에서 5개 선택(그중 `.php` 1개·주민번호 든 `.txt` 1개를 `public` 로) → 요청 5개가 **순서대로** 감사 로그에 `file.upload` 5행(allow 3·deny 2: `ext_not_allowed`·`sensitive_level_required`), 화면 표에 파일별 결과. 서버 계약 불변: `POST /api/files` 에 파일 2개를 한 요청으로 보내면 400(요청당 1개) |
 
 ### 12.3 애플리케이션 밖 (S-10, S-11)
 
@@ -748,6 +759,7 @@
 | **15** (확장 아이템, 사용자 "진행해" 2026-09-12) | **15-1** 내 활동 보기(F-12) → **15-2** 만료 공유 링크(F-13, Q-5 기본안) → **15-3** 민감정보 패턴 검출(F-22) | F-12, F-13, F-22, S-01, S-02, S-07 | T-33 · T-34 · T-35 | F-12, F-13, F-22 |
 | **16** (미반영 재점검, 사용자 확정 2026-09-12) | **16-1** 관리 기능 재인증(F-23) · **16-2** 사고 후속 미완 3건 — 서버 층 경보 AL-3 확장·AL-9(8.4-5), 정합성 검사 일 1회(8.4-6), `backup.restore error restore_failed` 문장 틀(8.4-10) | F-23, S-09-4, S-11-A, R-48 | T-36 · T-37 | F-23 |
 | **17** (사용자 요청 2026-09-12) | **17-1** 관리자 영역 `/admin` 허브·일반 셸 관리 항목 제거·nginx 관리망 블록(꺼짐)·공유 링크 전체·최근 경보(F-24) → **17-2** 권한 매트릭스 화면 편집(F-25, Q-12 결정: 별도 DB 롤 `tbox_perm`·재인증·TOTP·사유·불변 규칙·감사 before/after·AL-13) | F-24, F-25, S-01, S-07, R-43 | T-38 · T-39 | F-24, F-25 |
+| **18** (사용자 결정 2026-09-13 "일괄 업로드와 폴더를 먼저") | **18-1** 폴더(F-26) → **18-2** 일괄 업로드(F-27, 서버 계약 불변·화면 순차 요청) | F-26, F-27, S-01, S-02, S-06, R-63, R-64 | T-40 · T-41 | F-26, F-27 |
 
 **과제 제출물 대응**
 
