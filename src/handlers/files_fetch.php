@@ -20,6 +20,7 @@ declare(strict_types=1);
  *   [4] URL 검사 — Fetch::check (S-05 ①②③④⑤)
  *   [5] 내려받기 — Fetch::download (S-05 ⑥⑦⑧), 임시파일은 어떤 경로로 끝나도 지운다
  *   [6] 파일 검증 — Upload::validatePath + 일일 총량 (S-05 ⑨)
+ *   [6-2] 민감정보 검출 — 업로드(5.2)와 **같은 함수**를 같은 자리에서 (15-3, F-22, ARCH 5.13)
  *   [7] 저장 — files_upload.php [5] 와 같은 트랜잭션 (INSERT → putLocal → Audit → COMMIT)
  *
  * 실패 응답은 **언제나 {"error":"가져올 수 없습니다"} 하나**이고 상태 코드만 400/403/429 로 갈린다
@@ -208,16 +209,53 @@ try {
     return;
 }
 
+/* ─── [6-2] 민감정보 패턴 검출 (15-3, PRD F-22, ARCH 5.13, SECURITY R-58) ───
+ *
+ * 업로드(files_upload.php [4-3])와 **같은 함수를 같은 자리에서** 부른다 — 검사 뒤·저장 전.
+ * URL 로 가져오는 길이 "검사를 건너뛰는 두 번째 입구" 가 되지 않게 하려는 것이며,
+ * Upload::validatePath 를 재사용하는 것과 같은 이유다 (PRD S-05 ⑨).
+ *
+ * 돌려받는 것은 패턴 이름과 건수뿐이고, 검출된 값은 어디에도 남지 않는다 (PRD S-07).
+ */
+require_once __DIR__ . '/../Sensitive.php';
+
+$sensitive      = Sensitive::scan($tmpPath, $checkedFile['ext']);
+$sensitiveFlags = array_keys($sensitive);
+
+if ($sensitive !== [] && in_array($level, ['public', 'internal'], true)) {
+    $cleanTmp();
+    Audit::deny('file.upload', 'sensitive_level_required', [
+        'target_type'  => 'file',
+        'target_name'  => $original,
+        'access_level' => $level,
+        'detail'       => [
+            'sensitive'   => $sensitive,
+            'target_team' => $teamId,
+            'source_host' => $sourceHost,
+        ],
+    ]);
+    /*
+     * ★ 행동 이름은 `file.fetch` 가 아니라 **`file.upload`** 다 (ARCH 5.13, 7.4 표의 행).
+     *   거부의 이유가 "가져오기" 가 아니라 "이 내용을 이 등급으로 **올리는 것**" 이어서,
+     *   두 입구의 같은 거부가 감사 로그에서 한 이름으로 모여야 조사하기 쉽기 때문이다.
+     * ★ 응답도 MSG_FETCH_FAILED 가 아니라 민감정보 문구다 — 다른 가져오기 실패와 달리
+     *   이 거부는 **요청자가 고쳐서 다시 할 수 있는 일**(등급을 올려 다시 요청)이고,
+     *   외부 주소·내부 상태를 한 글자도 알려 주지 않는다.
+     */
+    Http::error(400, Http::MSG_SENSITIVE_LEVEL_REQUIRED);
+}
+
 // ─── [7] 저장 — files_upload.php [5] 와 같은 트랜잭션 ──────────
 $storedName = Storage::newStoredName($checkedFile['ext']);
 
 $sqlInsert = <<<'SQL'
     INSERT INTO files
         (original_name, stored_name, ext, mime, size_bytes, sha256,
-         description, access_level, team_id, uploaded_by)
+         description, access_level, team_id, uploaded_by, sensitive_flags)
     VALUES
         (:original_name, :stored_name, :ext, :mime, :size_bytes, :sha256,
-         :description, :access_level, :team_id, :uploaded_by)
+         :description, :access_level, :team_id, :uploaded_by,
+         CAST(:flags AS text[]))
     RETURNING id, public_id
     SQL;
 
@@ -236,6 +274,7 @@ try {
         ':access_level'  => $level,
         ':team_id'       => $teamId,
         ':uploaded_by'   => (int) $user['id'],
+        ':flags'         => '{' . implode(',', $sensitiveFlags) . '}',
     ])->fetch();
 
     if (!is_array($row)) {
@@ -261,7 +300,7 @@ try {
             // 출처는 host 와 IP 만 — URL 전체는 남기지 않는다 (ARCH 7.5 source_host)
             'source_host' => $sourceHost,
             'source_ip'   => $sourceIp,
-        ],
+        ] + ($sensitive === [] ? [] : ['sensitive' => $sensitive]),
     ]);
 
     $db->commit();

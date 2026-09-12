@@ -52,6 +52,11 @@ $allowedActions = [
     // `auth.gate` 는 "절차를 마치지 않은 계정이 다른 기능을 두드린 횟수" 라서
     // 조회 화면에서 골라 볼 수 있어야 한다(정상적으로도 몇 건씩 생긴다).
     'auth.gate', 'user.password_reset', 'user.mfa_reset',
+    // 15-2 만료 공유 링크 (F-13, ARCH 5.12 · 7.4 share.* 행).
+    // `share.download` 는 **actor_* 가 비어 있는 행**이다(받는 쪽에 로그인한 사람이 없다) —
+    // 9단계 배치 행과 같은 이유로 「누가」 필터로는 찾을 수 없고 여기(어떻게)로 골라야 보인다.
+    // 발급자는 detail.issued_by 에 있다.
+    'share.create', 'share.revoke', 'share.download',
 ];
 
 /** 접근 등급 허용 목록 (PRD 4장) */

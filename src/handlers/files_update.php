@@ -15,6 +15,10 @@ declare(strict_types=1);
  *       → decideEdit(소유자·팀 규칙, PRD 5.3)
  *   [권한 ✔ 3] 등급 하향으로 노출 범위를 넓히는 변경 — decideLevelChange
  *       (낮추는 변경은 Admin 만: PRD 4장·5.3, SECURITY R-20. 새 등급·팀 지정 자격은 업로드와 같다)
+ *   [4-3] **민감정보가 든 파일을 public·internal 로 낮추는 변경** (15-3, PRD F-22, ARCH 5.13).
+ *       판단 근거는 DB 의 `files.sensitive_flags` 뿐이다 — 파일을 다시 읽지 않는다.
+ *       Admin 이라도 막힌다: 여기서 막는 것은 "누가" 가 아니라 **"무엇을 어디까지 넓히나"** 이고,
+ *       그래서 decideLevelChange(역할 판정) 를 통과한 **뒤에** 본다.
  *
  * 그 밖에 지키는 것
  *   · CSRF: 라우터 [3] 의 Http::requireCsrf() 가 X-CSRF-Token 헤더를 검사한다 (PRD S-09-3)
@@ -62,7 +66,8 @@ $sqlFind = <<<'SQL'
            f.uploaded_by,
            f.description,
            f.sha256,
-           f.size_bytes
+           f.size_bytes,
+           cardinality(f.sensitive_flags) > 0 AS has_sensitive
       FROM files f
      WHERE f.public_id = CAST(:pid AS uuid)
        AND f.deleted_at IS NULL
@@ -220,6 +225,39 @@ if ($levelChanged) {
         ]);
         Http::error(403, Http::MSG_FORBIDDEN);
     }
+}
+
+/* ─── [4-3] 민감정보가 든 파일의 등급 하향 거부 (15-3, PRD F-22, ARCH 5.13) ───
+ *
+ * `sensitive_flags` 가 비어 있지 않은 파일은 `public`·`internal` 로 바꿀 수 없다.
+ * 업로드 때 그 등급으로 올리지 못하게 막았으니(files_upload [4-3]), 올린 뒤에 등급을
+ * 낮춰 같은 결과를 만드는 길도 함께 막아야 규칙이 성립한다 (F-08 과 F-22 의 접점).
+ *
+ * 자리: decideLevelChange(역할·하향 판정) **뒤**다. 권한이 없는 사람에게는 권한 문제로,
+ * 권한이 있는 사람에게는 내용 문제로 답하는 것이 조사할 때 덜 헷갈린다.
+ *
+ * 응답은 400(형식·내용 문제)이고 403(권한 문제)이 아니다 — Admin 도 같은 400 을 받는다.
+ * 검출된 값은 어디에도 나오지 않는다: 기록도 응답도 "민감정보가 있다" 는 사실까지다.
+ */
+if ($levelChanged
+    && in_array($newLevel, ['public', 'internal'], true)
+    && ($file['has_sensitive'] ?? false) === true
+) {
+    Audit::deny('file.level_change', 'sensitive_level_required', [
+        'target_type'  => 'file',
+        'target_id'    => $fileId,
+        'target_name'  => $currentName,
+        'access_level' => $newLevel,      // 문장 틀의 {level} = 바꾸려던 등급
+        'detail'       => [
+            'before'      => $before,
+            'after'       => $after,
+            'owner_id'    => (int) $file['uploaded_by'],
+            'target_team' => $newTeamId,
+            'sha256'      => (string) $file['sha256'],
+            'size_bytes'  => (int) $file['size_bytes'],
+        ],
+    ]);
+    Http::error(400, Http::MSG_SENSITIVE_LEVEL_REQUIRED);
 }
 
 // ─── [5] 고정 SQL 조각 중 하나 + 바인딩 ────────────────────────

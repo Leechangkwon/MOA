@@ -77,6 +77,19 @@ final class Audit
          * 어느 값도 비밀이 아니다 — 파일 내용이 아니라 그 요약(해시·개수)이다.
          */
         'chain_hash', 'resealed_from_hash', 'resealed_from_lines', 'resealed_from_bytes',
+        /*
+         * 15단계 (PRD F-13 · F-22, ARCH 7.5 등록부).
+         *   share_id      — 공유 링크 행의 id. 링크 원문도 그 해시도 아니다(그 둘은 어디에도 남지 않는다)
+         *   issued_by     — 링크를 만든 사람의 계정명. 받는 쪽에는 actor 가 없으므로 "누가 열어 줬나" 가 여기 남는다
+         *   remaining     — 이번 다운로드 뒤 남은 횟수 (정수)
+         *   expires_at    — 만료 시각 (계정 만료와 같은 키를 공유 링크에서도 쓴다)
+         *   max_downloads — 허용 횟수 (정수)
+         *   sensitive     — 검출된 **패턴 이름과 건수만** (`{"rrn":1}`). 검출된 숫자·문자열
+         *                   원문은 어떤 형태로도 들어가지 않는다 (PRD S-07, SECURITY R-58)
+         * 여섯 키 모두 오늘의 FORBIDDEN_DETAIL_KEYS 부분 일치에는 걸리지 않지만, 등록부에 있는
+         * 키임을 코드에서도 드러내려고 여기 적는다(preview_kind·part 와 같은 이유).
+         */
+        'share_id', 'issued_by', 'remaining', 'expires_at', 'max_downloads', 'sensitive',
     ];
 
     private const RESULT_ALLOW = 'allow';
@@ -269,6 +282,32 @@ final class Audit
         'team.update|deny|not_found'                    => '{actor} 이(가) 없는 팀을 바꾸려 해서 거부했습니다',
         'team.update|deny|team_has_members'             => '{actor} 이(가) 구성원이 남아 있는 팀 「{target}」 을(를) 비활성화하려 해서 거부했습니다 (먼저 재배정)',
         'team.update|deny|already_exists'               => '{actor} 이(가) 팀 「{target}」 의 이름을 이미 있는 이름으로 바꾸려 해서 거부했습니다',
+
+        // ── 공유 링크 (15-2 share_* — F-13, ARCH 5.12 · 7.4) ──
+        // 토큰 원문·그 해시는 어느 문장에도, 어느 detail 에도 들어가지 않는다.
+        // 받는 쪽(share.download)에는 **로그인한 사람이 없다** — 그래서 문장에 {actor} 를 쓰지
+        // 않고, "누가 열어 줬나" 는 detail.issued_by(발급자)·detail.share_id 로 남는다.
+        'share.create|allow'                            => '{actor} 이(가) 파일 「{target}」 의 공유 링크를 만들었습니다 (만료·횟수·사유는 상세 기록)',
+        'share.create|deny|role_not_permitted'          => '{actor} 이(가) 파일 「{target}」 의 공유 링크를 만들려 했지만 볼 권한조차 없어 막았습니다',
+        'share.create|deny|team_mismatch'               => '{actor} 이(가) 다른 팀의 파일 「{target}」 의 공유 링크를 만들려 해서 막았습니다',
+        'share.create|deny|not_owner'                   => '{actor} 이(가) 다른 사람이 올린 파일 「{target}」 의 공유 링크를 만들려 해서 막았습니다',
+        'share.create|deny|bad_request'                 => '{actor} 이(가) 공유 링크 만들기를 허용되지 않는 형식(모르는 항목·만료·횟수·사유)으로 요청해서 거부했습니다',
+        'share.revoke|allow'                            => '{actor} 이(가) 파일 「{target}」 의 공유 링크를 회수했습니다 (이후 그 링크로는 받을 수 없습니다)',
+        'share.revoke|deny|not_owner'                   => '{actor} 이(가) 자기가 만들지 않은 공유 링크를 회수하려 해서 막았습니다',
+        'share.revoke|deny|bad_request'                 => '{actor} 이(가) 이미 회수된 공유 링크를 다시 회수하려 해서 거부했습니다',
+        'share.download|allow'                          => '공유 링크로 파일 「{target}」 을(를) 내려받았습니다 (발급자·링크 id·남은 횟수는 상세 기록)',
+        'share.download|deny|not_found'                 => '없는 공유 링크로 파일을 받으려는 요청이 있어 막았습니다',
+        'share.download|deny|revoked'                   => '회수된 공유 링크로 파일 「{target}」 을(를) 받으려 해서 막았습니다',
+        'share.download|deny|expired'                   => '만료된 공유 링크로 파일 「{target}」 을(를) 받으려 해서 막았습니다',
+        'share.download|deny|exhausted'                 => '허용 횟수를 다 쓴 공유 링크로 파일 「{target}」 을(를) 받으려 해서 막았습니다',
+        'share.download|deny|file_gone'                 => '이미 삭제된 파일 「{target}」 을(를) 가리키는 공유 링크로 받으려 해서 막았습니다',
+        'share.download|error|file_missing'             => '공유 링크로 파일 「{target}」 을(를) 보내려 했지만 저장소에 실제 파일이 없습니다 (점검 필요)',
+        'share.download|error|hash_mismatch'            => '공유 링크로 파일 「{target}」 을(를) 보내려 했지만 저장된 파일의 내용이 기록과 달라 전송을 막았습니다 (변조 의심, 점검 필요)',
+
+        // ── 민감정보 패턴 검출 (15-3 — F-22, ARCH 5.13 · 7.4, SECURITY R-58) ──
+        // 문장에도 detail 에도 **패턴 이름과 건수만** 남는다 (검출된 숫자 원문은 금지, PRD S-07).
+        'file.upload|deny|sensitive_level_required'     => '{actor} 이(가) 민감정보로 보이는 내용이 든 파일 「{target}」 을(를) {level} 등급으로 올리려 해서 거부했습니다 (검출된 패턴 이름·건수는 상세 기록)',
+        'file.level_change|deny|sensitive_level_required' => '{actor} 이(가) 민감정보로 보이는 내용이 든 파일 「{target}」 의 접근 등급을 {level} 등급으로 낮추려 해서 거부했습니다',
     ];
 
     /** 자리표시자에 넣을 값이 없을 때 (ARCH 7.4) */

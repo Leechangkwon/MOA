@@ -116,6 +116,11 @@ require __DIR__ . '/../views/shell_top.php';
           <option value="auth.gate">auth.gate</option>
           <option value="user.password_reset">user.password_reset</option>
           <option value="user.mfa_reset">user.mfa_reset</option>
+          <!-- 15-2 공유 링크 (F-13). share.download 는 actor_* 가 비어 있어
+               「누가」로는 찾을 수 없고 여기(어떻게)로 골라야 보인다 — 발급자는 상세의 issued_by. -->
+          <option value="share.create">share.create</option>
+          <option value="share.revoke">share.revoke</option>
+          <option value="share.download">share.download</option>
         </select>
       </label>
       <label class="field">

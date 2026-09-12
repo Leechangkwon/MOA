@@ -85,6 +85,37 @@ require __DIR__ . '/../views/shell_top.php';
         </form>
       </section>
 
+      <!-- 내 공유 링크 (15-2 — PRD F-13 「설정 화면 목록·회수」, ARCH 5.12).
+           목록은 /api/me/shares 가 내려 주고 **내가 만든 것만** 나온다(서버가 세션으로 고정).
+           토큰도 그 해시도 응답에 없다 — 만들 때 한 번 보여 준 주소를 여기서 다시 볼 수 없다.
+           모든 값은 app.js 가 textContent 로 넣는다 (PRD S-03). -->
+      <section class="panel span-all">
+        <div class="panel__head">
+          <h2 class="panel__title">내 공유 링크</h2>
+          <p class="panel__sub">
+            내가 만든 링크만 보입니다. <strong>주소는 다시 볼 수 없고</strong>, 필요 없어지면 회수하세요 —
+            회수하면 그 주소로는 더 이상 받을 수 없습니다.
+          </p>
+        </div>
+        <div class="table-wrap">
+          <table class="files">
+            <thead>
+              <tr>
+                <th scope="col">파일</th>
+                <th scope="col">만료</th>
+                <th scope="col">받은 횟수</th>
+                <th scope="col">상태</th>
+                <th scope="col">만든 시각</th>
+                <th scope="col">사유</th>
+                <th scope="col">작업</th>
+              </tr>
+            </thead>
+            <tbody id="shares-body"></tbody>
+          </table>
+        </div>
+        <p id="shares-empty" class="muted" hidden>만든 공유 링크가 없습니다.</p>
+      </section>
+
       <!-- 2단계 인증 (PRD F-16 ③ "모든 역할에 필수", SECURITY R-05).
            QR 라이브러리를 넣지 않으므로 비밀과 otpauth 주소를 **글자 그대로** 보여 주고
            사용자가 인증 앱에 손으로 옮겨 적는다. 화면에 나오는 값은 전부 app.js 가

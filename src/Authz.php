@@ -559,6 +559,38 @@ final class Authz
         return [true, self::CODE_ADMIN_ALL];
     }
 
+    /**
+     * PRD F-13 — 공유 링크를 **회수**할 수 있나 + 근거 코드 (15-2, ARCH 5.12 「회수·목록」).
+     *
+     * 규칙은 한 줄이다: **만든 사람 또는 Admin**, 그 밖은 `not_owner`.
+     *
+     * 왜 여기 있나 — "만든 사람 = 나인가" 는 소유자 판단이고, 소유자·역할 판단은 이 파일
+     * 한 곳에만 둔다 (ARCH 4.1, PRD S-01). 핸들러가 `$link['created_by'] === $user['id']` 를
+     * 직접 비교하면 그 순간 권한 판단이 핸들러로 흩어진다 — 파일 삭제·수정(decideOwnership)과
+     * 같은 이유로 막는다.
+     *
+     * 파일의 소유자·팀 규칙(decideEdit)을 재사용하지 않는 이유: 회수의 대상은 **링크**이지
+     * 파일이 아니다. 링크를 만든 뒤 그 파일이 남에게 넘어가도 링크를 거둘 사람은 발급자와
+     * Admin 이며, 반대로 파일을 고칠 수 있게 된 사람이 남이 만든 링크까지 거둘 이유는 없다.
+     *
+     * 허용 코드는 기존 것을 그대로 쓴다 — `admin_all`(Admin) · `owner`(만든 사람).
+     * 새 코드를 만들지 않으므로 7.4 사유 등록부·7.5 granted_by 표가 그대로 성립한다.
+     *
+     * @param array<string,mixed> $actor 요청을 보낸 사용자 (세션에서 읽은 값)
+     * @param array<string,mixed> $link  share_links 행 (created_by 필수)
+     * @return array{0:bool,1:string} [허용 여부, 코드]
+     */
+    public static function decideShareRevoke(array $actor, array $link): array
+    {
+        if (self::roleOf($actor) === 'Admin') {
+            return [true, self::CODE_ADMIN_ALL];
+        }
+        if ((int) $link['created_by'] === (int) $actor['id']) {
+            return [true, self::CODE_OWNER];
+        }
+        return [false, self::CODE_NOT_OWNER];
+    }
+
     /** 업로드 자체가 가능한 역할인가 (Guest 는 불가 — PRD 5.2) */
     public static function canUploadAtAll(array $u): bool
     {

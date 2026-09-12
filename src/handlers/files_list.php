@@ -49,6 +49,9 @@ $sqlList = <<<'SQL'
            f.description,
            f.access_level,
            f.ext,
+           -- 15-3 (F-22) — 「민감」 배지용 **불리언 하나**. 패턴 이름은 목록에 내리지 않는다
+           -- (어떤 패턴이 몇 건 걸렸는지는 감사 로그에만 남는다, ARCH 5.13).
+           cardinality(f.sensitive_flags) > 0 AS sensitive,
            f.team_id,
            f.uploaded_by,
            t.name       AS team_name,
@@ -136,6 +139,9 @@ foreach ($rows as $row) {
         // 판정한 갈래다(Preview::kindFor). 화면은 확장자를 보지 않는다(ARCH 5.8).
         // 값이 'none' 이어도 미리보기는 열 수 있고, 정보 카드만 나온다.
         'preview_kind' => Preview::kindFor((string) $row['ext']),
+        // 15-3 (F-22): 민감정보 패턴이 걸린 파일인가 — 화면의 「민감」 배지에만 쓰는 표시용
+        // 값이다. 배지가 보이든 안 보이든 등급 규칙은 서버가 판단한다 (PRD 10장).
+        'sensitive'    => $row['sensitive'] === true,
     ];
 }
 

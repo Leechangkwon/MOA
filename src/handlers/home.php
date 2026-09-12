@@ -94,6 +94,15 @@ require __DIR__ . '/../views/shell_top.php';
           허용 형식 <code>pdf docx xlsx pptx hwp hwpx txt csv md png jpg jpeg gif zip</code> ·
           한 파일 최대 100MB · 한 사람이 하루에 올릴 수 있는 총량 2GB
         </p>
+        <!-- 15-3 민감정보 검출 안내 (PRD F-22 「한계」, SECURITY R-58).
+             검출은 **보조 장치**라는 것과 책임이 올리는 사람에게 있다는 것을 같은 자리에서 알린다. -->
+        <p class="panel__sub">
+          올리기 전에 <strong>민감정보(주민등록번호·카드번호·급여 등)를 자동으로 한 번 살펴봅니다</strong> —
+          보이면 <code>team</code>·<code>admin-only</code> 로만 올릴 수 있습니다.
+          다만 <strong>이미지·PDF·암호가 걸린 zip·스캔한 문서는 검사하지 못하고</strong>
+          우연히 형식이 맞는 숫자를 잘못 짚기도 합니다. 이 검사는 도움장치일 뿐이며
+          <strong>접근 등급을 고르는 책임은 올리는 사람에게 있습니다.</strong>
+        </p>
       </div>
       <form id="upload-form" class="form form--grid" autocomplete="off">
         <label class="field">
@@ -189,6 +198,59 @@ require __DIR__ . '/../views/shell_top.php';
     </section>
 
     <p class="muted">내가 볼 수 있는 파일만 · 다운로드는 항상 파일로 저장 · 모든 행동은 감사 로그</p>
+
+    <!-- ─── 공유 링크 모달 (15-2 — PRD F-13, ARCH 5.12) ─────────────────────
+         **여기에도 값이 하나도 적혀 있지 않다.** 파일명·만들어진 주소는 app.js 가
+         서버 응답에서 받아 textContent 로만 넣는다 (PRD S-03).
+
+         만들어진 주소는 **이 화면에 한 번만** 나타난다 — 서버는 토큰의 sha256 만 갖고 있어
+         다시 보여 줄 수 없다(ARCH 5.12). 그래서 안내 문구를 결과 상자에 붙박이로 둔다. -->
+    <dialog id="share-dialog" class="modal" aria-labelledby="share-title">
+      <div class="modal__head">
+        <span class="preview__mark"><span class="icon" data-icon="link"></span></span>
+        <div class="preview__headtext">
+          <h2 class="modal__title" id="share-title">공유 링크 만들기</h2>
+          <div class="modal__meta"><span id="share-file"></span></div>
+        </div>
+        <button id="share-close-x" class="btn btn--icon" type="button" title="닫기" aria-label="닫기">
+          <span class="icon" data-icon="x"></span>
+        </button>
+      </div>
+
+      <div class="modal__body">
+        <p class="muted">
+          로그인하지 않은 사람도 이 주소만 있으면 파일을 받습니다(사내망 안에서만).
+          꼭 필요한 만큼만 열어 주고, 다 쓰면 「내 계정」의 「내 공유 링크」에서 회수하세요.
+        </p>
+        <form id="share-form" class="form form--grid" autocomplete="off">
+          <label class="field">
+            <span class="field__label">유효 시간 (1~168시간, 기본 24)</span>
+            <input id="share-hours" type="number" min="1" max="168" step="1" value="24" required>
+          </label>
+          <label class="field">
+            <span class="field__label">받을 수 있는 횟수 (1~10, 기본 1)</span>
+            <input id="share-max" type="number" min="1" max="10" step="1" value="1" required>
+          </label>
+          <label class="field field--full">
+            <span class="field__label">사유 (선택, 500자 이내)</span>
+            <input id="share-reason" type="text" maxlength="500" placeholder="누구에게 왜 보내나">
+          </label>
+          <button id="share-submit" class="btn" type="submit">링크 만들기</button>
+        </form>
+
+        <div id="share-result" class="notice" hidden>
+          <p><strong>이 주소는 지금 한 번만 보입니다 — 창을 닫으면 다시 볼 수 없습니다.</strong></p>
+          <p class="mono" id="share-url"></p>
+          <p id="share-meta" class="muted"></p>
+          <button id="share-copy" class="btn btn--quiet btn--small" type="button">복사</button>
+        </div>
+      </div>
+
+      <div class="modal__foot">
+        <p id="share-msg" class="msg"></p>
+        <button id="share-close" class="btn" type="button">닫기</button>
+      </div>
+    </dialog>
 
     <!-- ─── 미리보기 모달 (PRD F-18, ARCH 5.8) ──────────────────────────────
          **여기에는 값이 하나도 적혀 있지 않다.** 파일명·크기·등급·팀·올린 사람·시각·형식·

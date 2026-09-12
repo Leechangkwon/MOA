@@ -148,6 +148,27 @@ const TBOX_ROUTES = [
     //   감사 기록은 남기지 않는다 (PRD F-21) — 문서 열람은 보안 사건이 아니다.
     ['GET',    '/wiki',                          'wiki_index.php',       'role:Admin'],
     ['GET',    '/wiki/{slug}',                   'wiki_page.php',        'role:Admin'],
+
+    // 15-1 — 내 활동 (PRD F-12 · 8장 `/activity` 행, ARCH 5.11).
+    //   정책은 `authenticated` 다. "누구의 활동인가" 는 권한이 아니라 **대상**의 문제이고,
+    //   대상은 핸들러의 SQL 이 세션 본인으로 고정한다(요청에서 받지 않는다 — PRD S-02).
+    //   화면(`/activity`)과 데이터(`/api/me/activity`)가 같은 정책을 쓰는 것은 다른 화면과 같다.
+    ['GET',    '/activity',                      'activity_page.php',    Authz::POLICY_AUTHENTICATED],
+    ['GET',    '/api/me/activity',               'activity_list.php',    Authz::POLICY_AUTHENTICATED],
+
+    // 15-2 — 만료 공유 링크 (PRD F-13 · Q-5 기본안 · 8장 4행, ARCH 5.12).
+    //   POST …/share  : 정책은 수정과 **같은** file.update 다 — 링크를 만들 수 있는 사람은
+    //                   그 파일을 고칠 수 있는 사람이기 때문이다(Guest 는 여기서 끝난다).
+    //                   특정 파일에 대한 판단은 핸들러가 decideRead → decideEdit 로 다시 한다.
+    //   GET  /api/me/shares · DELETE /api/shares/{num} : 내가 만든 링크 목록·회수.
+    //                   회수 자격(만든 사람 또는 Admin)은 Authz::decideShareRevoke 가 판단한다.
+    //   GET  /s/{token}: **public** 이다 — 로그인·CSRF·강제 절차 관문을 지나지 않는 두 번째
+    //                   라우트이며(첫째는 /api/login), 자격은 토큰 자체가 대신한다.
+    //                   `{token}` 은 base64url 43자만 받는다(그 밖은 라우터 404).
+    ['POST',   '/api/files/{id}/share',          'share_create.php',     'file.update'],
+    ['GET',    '/api/me/shares',                 'shares_list.php',      Authz::POLICY_AUTHENTICATED],
+    ['DELETE', '/api/shares/{num}',              'share_revoke.php',     Authz::POLICY_AUTHENTICATED],
+    ['GET',    '/s/{token}',                     'share_download.php',   Authz::POLICY_PUBLIC],
 ];
 
 /**
@@ -189,6 +210,11 @@ const TBOX_PATH_PATTERNS = [
     // 통과하지 못한다 — `/wiki/../x` 나 `/wiki/ZZ` 는 라우트에 맞지 않아 404 다.
     // Wiki::pathFor() 가 같은 정규식을 다시 보고 realpath 로 wiki/ 안인지 확인한다.
     '{slug}' => '[a-z0-9][a-z0-9-]{0,39}',
+    // 15-2 — 공유 링크 토큰 (F-13, ARCH 5.12). random_bytes(32) 를 base64url 로 옮긴 43자다.
+    // 패딩(`=`)은 떼고 만들므로 여기에도 없다. 길이·문자가 한 글자라도 다르면 라우트에 맞지
+    // 않아 **404** 이고, 맞더라도 DB 에는 sha256 만 있어 대조에 실패하면 역시 404 다.
+    // nginx 의 `location ~ "^/s/[A-Za-z0-9_-]{43}$"` 속도 제한과 **같은 정규식**이다.
+    '{token}' => '[A-Za-z0-9_-]{43}',
 ];
 
 /** 미로그인 화면 요청을 보내는 곳. 코드 상수이며 요청 값이 섞이지 않는다 (ARCH 4.0). */

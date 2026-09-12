@@ -52,6 +52,16 @@ final class Http
     public const MSG_PASSWORD_CHANGE_REQUIRED = '비밀번호를 먼저 변경해야 합니다';
     public const MSG_MFA_SETUP_REQUIRED       = '2단계 인증을 먼저 설정해야 합니다';
 
+    /**
+     * 민감정보 검출 문구 (15-3, PRD F-22, ARCH 5.13, SECURITY R-58).
+     *
+     * 이 문구도 "무엇이 막았는지" 를 알려 준다 — 막힌 사람이 **그 파일을 올리는 본인**이고,
+     * 이유를 모르면 어떤 등급으로 다시 올려야 하는지 알 수 없기 때문이다. 대상·다른 사람에
+     * 대한 정보는 한 글자도 담지 않고, **검출된 값(숫자 원문)도 담지 않는다** — 응답에도
+     * 감사 로그에도 나가는 것은 패턴 이름과 건수뿐이다 (PRD S-07).
+     */
+    public const MSG_SENSITIVE_LEVEL_REQUIRED = '민감정보가 보여 team 또는 admin-only 로만 올릴 수 있습니다';
+
     /** JSON 본문 상한 — 로그인·삭제 같은 작은 요청만 JSON 으로 받는다 */
     private const MAX_JSON_BYTES = 65536;
 

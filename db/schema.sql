@@ -109,6 +109,11 @@ CREATE TABLE files (
     -- 행은 남긴다 — 감사 로그가 target_id 로 이 행을 가리키고 있고, stored_name 이 있어야
     -- 저장소에 남은 고아 파일을 나중에 대조할 수 있다 (scripts/consistency_check.php).
     purged_at     TIMESTAMPTZ,
+    -- 15-3 (F-22, ARCH 5.13) — 업로드·URL 가져오기 때 검출된 **패턴 이름만** (`rrn`·`card`·`keyword`).
+    -- 검출된 숫자·문자열 원문은 어떤 형태로도 들어가지 않는다 (PRD S-07, SECURITY R-58).
+    -- 비어 있지 않으면 `public`·`internal` 로 올리거나 낮출 수 없다.
+    -- (기존 DB 는 db/migrations/2026-09-12_files_sensitive_flags.sql 로 같은 모양이 된다.)
+    sensitive_flags TEXT[]    NOT NULL DEFAULT '{}',
     -- team 레벨이면 team_id 필수 (PRD 4장 규칙을 DB가 강제)
     CONSTRAINT team_requires_team_id
         CHECK (access_level <> 'team' OR team_id IS NOT NULL)
@@ -159,3 +164,31 @@ CREATE TABLE sessions (
     user_agent   TEXT
 );
 CREATE INDEX sessions_user_idx ON sessions (user_id);
+
+-- ─────────────────────────────────────────────────────────────
+-- share_links — 만료되는 공유 링크 (15-2, PRD F-13, ARCH 5.12 · 6.2-3)
+--   토큰(32바이트 난수의 base64url 43자)의 **sha256 만** 저장한다 — 원문은 만들 때
+--   응답에 한 번 나가고 서버 어디에도 남지 않는다(sessions 와 같은 방식).
+--   회수·횟수는 UPDATE 로만 바뀌고 행은 지우지 않는다 → 앱 계정에 DELETE 권한이 없다.
+--   만료 7일·횟수 10회 상한은 앱이 먼저 보지만 DB 도 CHECK 로 마지막 그물을 둔다.
+--   (기존 DB 는 db/migrations/2026-09-12_share_links.sql 로 같은 모양이 된다.)
+-- ─────────────────────────────────────────────────────────────
+CREATE TABLE share_links (
+    id             BIGSERIAL   PRIMARY KEY,
+    token_hash     CHAR(64)    NOT NULL UNIQUE,           -- 토큰의 sha256. 원문은 저장하지 않음
+    file_id        BIGINT      NOT NULL REFERENCES files(id),
+    created_by     BIGINT      NOT NULL REFERENCES users(id),
+    expires_at     TIMESTAMPTZ NOT NULL,
+    max_downloads  INT         NOT NULL CHECK (max_downloads BETWEEN 1 AND 10),
+    download_count INT         NOT NULL DEFAULT 0 CHECK (download_count >= 0),
+    revoked_at     TIMESTAMPTZ,
+    revoked_by     BIGINT      REFERENCES users(id),
+    reason_text    TEXT        CHECK (reason_text IS NULL OR length(reason_text) <= 500),
+    created_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
+    CONSTRAINT share_links_expiry_max CHECK (expires_at <= created_at + interval '7 days'),
+    CONSTRAINT share_links_expiry_min CHECK (expires_at > created_at),
+    CONSTRAINT share_links_count_max  CHECK (download_count <= max_downloads)
+);
+-- token_hash 의 UNIQUE 제약이 조회용 인덱스를 겸한다 (`WHERE token_hash = …` 가 유일한 조회 경로)
+CREATE INDEX share_links_created_by_idx ON share_links (created_by);
+CREATE INDEX share_links_file_idx       ON share_links (file_id);

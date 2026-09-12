@@ -1025,6 +1025,25 @@ GRANT  USAGE, SELECT  ON SEQUENCE audit_logs_id_seq TO tbox_app;
 | `team.update|deny|team_has_members` | `{actor} 이(가) 구성원이 남아 있는 팀 「{target}」 을(를) 비활성화하려 해서 거부했습니다 (먼저 재배정)` | 12-3 |
 | `team.update|deny|already_exists` | `{actor} 이(가) 팀 「{target}」 의 이름을 이미 있는 이름으로 바꾸려 해서 거부했습니다` | 12-3 |
 
+| `share.create|allow` | `{actor} 이(가) 파일 「{target}」 의 공유 링크를 만들었습니다 (만료·횟수·사유는 상세 기록)` | 15-2 share_create (detail `share_id`·`expires_at`·`max_downloads`·`reason_text`. **토큰·해시는 기록하지 않는다**) |
+| `share.create|deny|role_not_permitted` | `{actor} 이(가) 파일 「{target}」 의 공유 링크를 만들려 했지만 볼 권한조차 없어 막았습니다` | 15-2 decideRead 실패 |
+| `share.create|deny|team_mismatch` | `{actor} 이(가) 다른 팀의 파일 「{target}」 의 공유 링크를 만들려 해서 막았습니다` | 15-2 decideRead·decideEdit |
+| `share.create|deny|not_owner` | `{actor} 이(가) 다른 사람이 올린 파일 「{target}」 의 공유 링크를 만들려 해서 막았습니다` | 15-2 decideEdit |
+| `share.create|deny|bad_request` | `{actor} 이(가) 공유 링크 만들기를 허용되지 않는 형식(모르는 항목·만료·횟수·사유)으로 요청해서 거부했습니다` | 15-2 허용 키 3개 밖·범위 밖 (R-07 과 같은 화이트리스트) |
+| `share.revoke|allow` | `{actor} 이(가) 파일 「{target}」 의 공유 링크를 회수했습니다 (이후 그 링크로는 받을 수 없습니다)` | 15-2 share_revoke (`decideShareRevoke`) |
+| `share.revoke|deny|not_owner` | `{actor} 이(가) 자기가 만들지 않은 공유 링크를 회수하려 해서 막았습니다` | 15-2 decideShareRevoke |
+| `share.revoke|deny|bad_request` | `{actor} 이(가) 이미 회수된 공유 링크를 다시 회수하려 해서 거부했습니다` | 15-2 (행은 지우지 않으므로 두 번째 회수는 400) |
+| `share.download|allow` | `공유 링크로 파일 「{target}」 을(를) 내려받았습니다 (발급자·링크 id·남은 횟수는 상세 기록)` | 15-2 share_download — **actor 없음**(로그인 전 문장 틀). detail `share_id`·`issued_by`·`remaining` |
+| `share.download|deny|not_found` | `없는 공유 링크로 파일을 받으려는 요청이 있어 막았습니다` | 15-2 (target = system. **시도된 토큰은 기록하지 않는다**) |
+| `share.download|deny|revoked` | `회수된 공유 링크로 파일 「{target}」 을(를) 받으려 해서 막았습니다` | 15-2 ② |
+| `share.download|deny|expired` | `만료된 공유 링크로 파일 「{target}」 을(를) 받으려 해서 막았습니다` | 15-2 ③ |
+| `share.download|deny|exhausted` | `허용 횟수를 다 쓴 공유 링크로 파일 「{target}」 을(를) 받으려 해서 막았습니다` | 15-2 ④ · ⑥ 조건부 UPDATE 가 0행일 때 |
+| `share.download|deny|file_gone` | `이미 삭제된 파일 「{target}」 을(를) 가리키는 공유 링크로 받으려 해서 막았습니다` | 15-2 ⑤ (`deleted_at`·`purged_at`) |
+| `share.download|error|file_missing` | `공유 링크로 파일 「{target}」 을(를) 보내려 했지만 저장소에 실제 파일이 없습니다 (점검 필요)` | 15-2 ⑤-2 (다운로드의 같은 행과 짝) |
+| `share.download|error|hash_mismatch` | `공유 링크로 파일 「{target}」 을(를) 보내려 했지만 저장된 파일의 내용이 기록과 달라 전송을 막았습니다 (변조 의심, 점검 필요)` | 15-2 ⑤-2 (R-13, AL-6). 응답은 다른 실패와 같은 404 |
+| `file.upload|deny|sensitive_level_required` | `{actor} 이(가) 민감정보로 보이는 내용이 든 파일 「{target}」 을(를) {level} 등급으로 올리려 해서 거부했습니다 (검출된 패턴 이름·건수는 상세 기록)` | 15-3 files_upload·files_fetch (같은 행동 이름을 쓴다 — detail `sensitive`, **값은 기록 금지**) |
+| `file.level_change|deny|sensitive_level_required` | `{actor} 이(가) 민감정보로 보이는 내용이 든 파일 「{target}」 의 접근 등급을 {level} 등급으로 낮추려 해서 거부했습니다` | 15-3 files_update (`sensitive_flags` 가 비어 있지 않고 새 등급이 public·internal. Admin 도 같은 400) |
+
 > 7·8·9단계(URL 가져오기·감사 로그 조회·백업)의 행동은 그 단계 지시서에서 이 표에 행을 먼저 추가한 뒤 구현한다.
 
 **기존 DB 반영**: `deploy/install.sh` 는 표가 이미 있으면 `schema.sql` 을 건너뛴다. 따라서 컬럼 추가는 `db/migrations/2026-09-10_audit_summary.sql` 로 하고, 소유자 계정으로 한 번 실행한다(기존 행은 같은 문장 표로 채운 뒤 `NOT NULL` 을 건다). 실행: `sudo -u postgres psql -d tbox_re -v ON_ERROR_STOP=1 -f db/migrations/2026-09-10_audit_summary.sql`. 새로 설치하는 DB 는 `schema.sql` 에 컬럼이 이미 들어 있으므로 마이그레이션이 필요 없다.
@@ -1067,6 +1086,12 @@ GRANT  USAGE, SELECT  ON SEQUENCE audit_logs_id_seq TO tbox_app;
 | `target_team` | 무엇을 | 파일의 `team_id` (team 레벨이 아니면 null) — `actor_team` 과 나란히 놓으면 `same_team`·`team_mismatch` 판정을 로그만으로 재검산할 수 있다 | 핸들러 | `file.download`·`file.delete`·`file.upload` |
 | `ext` · `mime` | 무엇을 | 저장 확장자와 finfo 로 판별한 실제 MIME (DB `files.ext`·`files.mime` 과 같은 값) — 파일명이 아니라 내용 종류를 남긴다 (R-16) | 핸들러 | `file.upload`(allow) |
 | `moved` | 어떻게 | 업로드 실패 시 임시파일이 이미 저장소로 옮겨진 뒤였는지(true/false) — 고아 파일 정리 여부를 로그로 확인 | 핸들러 | `file.upload`(error) |
+| `share_id` | 무엇을 | 공유 링크 행의 id (`share_links.id`). **링크 원문도 그 해시도 남기지 않는다** — 남는 것은 "어떤 링크였나" 뿐이고, 그 값으로는 링크를 되살릴 수 없다 | 핸들러 | `share.create`·`share.revoke`·`share.download` (15-2) |
+| `issued_by` | 누가 | 링크를 **만든 사람**의 계정명. 받는 쪽(`share.download`)에는 로그인한 사람이 없어 `actor_name` 이 비므로, "누가 열어 줬나" 는 이 칸이 답한다 | 핸들러 | `share.download` (15-2) |
+| `remaining` | 무엇을 | 이번 다운로드 뒤 **남은 횟수**(정수). 회수 행에는 0 | 핸들러 | `share.download`·`share.revoke` (15-2) |
+| `max_downloads` | 무엇을 | 그 링크의 허용 횟수(1~10) | 핸들러 | `share.*` (15-2) |
+| `expires_at` (공유 링크) | 무엇을 | 링크 만료 시각. 계정 만료(`user.*`)와 **같은 키**를 쓴다 — 뜻이 같아 굳이 나누지 않는다 | 핸들러 | `share.create`·`share.download deny expired` (15-2) |
+| `sensitive` | 무엇을 | 검출된 **패턴 이름과 건수만** (`{"rrn":1,"card":2}`). 검출된 숫자·문자열 **원문은 어떤 형태로도 넣지 않는다** (PRD S-07, SECURITY R-58). 빈 결과면 키 자체를 넣지 않는다 | 핸들러 | `file.upload` allow·deny `sensitive_level_required` (15-3) |
 
 **검토 행동과 사용자 행동 가르기** — 두 조건 중 하나면 검토다. 둘 다 아니면 사용자(또는 침입자)다.
 

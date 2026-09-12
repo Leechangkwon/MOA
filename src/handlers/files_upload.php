@@ -9,7 +9,11 @@ declare(strict_types=1);
  *   화면의 <select> 를 조작해 admin-only 나 남의 팀을 보내도 여기서 403 + 감사 로그 deny 다.
  *   Guest 는 라우터의 `file.upload` 정책에서 이미 끝난다(authz.route deny).
  *
- * 요구사항: PRD F-05, S-01, 7.6(S-06), 8장 API 표, ARCH 5.2
+ * ★ 15-3: 형식 검사(Upload::validate)와 일일 총량 **뒤**, 저장 트랜잭션 **앞**에
+ *   `Sensitive::scan()` 을 한 번 부른다 (PRD F-22, ARCH 5.13). URL 가져오기(files_fetch)도
+ *   **같은 함수**를 같은 자리에서 부르므로 한쪽 입구만 검사가 빠지는 일이 없다.
+ *
+ * 요구사항: PRD F-05 · F-22, S-01, 7.6(S-06), 8장 API 표, ARCH 5.2 · 5.13
  *
  * 그 밖에 지키는 것
  *   · CSRF: 라우터 [3] 의 Http::requireCsrf() 가 X-CSRF-Token 헤더를 검사한다 (PRD S-09-3)
@@ -145,16 +149,53 @@ try {
     return;
 }
 
-$storedName = Storage::newStoredName($checked['ext']);
-$tmpPath    = (string) $uploaded['tmp_name'];
+$tmpPath = (string) $uploaded['tmp_name'];
 
+/* ─── [4-3] 민감정보 패턴 검출 (15-3, PRD F-22, ARCH 5.13, SECURITY R-58) ───
+ *
+ * 자리: 형식 검사·일일 총량을 통과한 **직후**, 저장 트랜잭션 **전**. 검사 대상은 미리보기가
+ * 글자를 뽑을 수 있는 형식(text·table·office)뿐이고, 그 밖(이미지·PDF·zip)은 검사하지 못한다
+ * — 한계는 R-58 로 문서에 남기고 화면에도 안내한다.
+ *
+ * 결과는 **패턴 이름과 건수**만이다(`['rrn'=>1]`). 검출된 숫자·문자열 원문은 돌려받지도,
+ * 기록하지도, 응답에 담지도 않는다 (PRD S-07).
+ *
+ * 검출됐는데 등급이 public·internal 이면 저장하지 않는다. team·admin-only 면 저장하되
+ * files.sensitive_flags 에 **이름만** 남겨 목록의 「민감」 배지와 등급 하향 거부에 쓴다.
+ */
+require_once __DIR__ . '/../Sensitive.php';
+
+$sensitive      = Sensitive::scan($tmpPath, $checked['ext']);
+$sensitiveFlags = array_keys($sensitive);
+
+if ($sensitive !== [] && in_array($level, ['public', 'internal'], true)) {
+    // 임시 파일은 PHP 가 요청 끝에 지우지만, 저장하지 않기로 정한 순간 바로 치운다.
+    if (is_uploaded_file($tmpPath)) {
+        @unlink($tmpPath);
+    }
+    Audit::deny('file.upload', 'sensitive_level_required', [
+        'target_type'  => 'file',
+        'target_name'  => $original,
+        'access_level' => $level,
+        'detail'       => ['sensitive' => $sensitive, 'target_team' => $teamId],
+    ]);
+    // 이 400 만 예외적으로 "무엇이 막았는지" 를 알려 준다 — 막힌 사람이 올리는 본인이고,
+    // 이유를 모르면 어떤 등급으로 다시 올려야 하는지 알 수 없기 때문이다 (Http 상수 주석).
+    Http::error(400, Http::MSG_SENSITIVE_LEVEL_REQUIRED);
+}
+
+$storedName = Storage::newStoredName($checked['ext']);
+
+// sensitive_flags 는 **패턴 이름 배열**이다(`{rrn,card}`). 값은 Sensitive 가 돌려준 고정
+// 식별자뿐이고 사용자 입력이 섞이지 않지만, 그래도 텍스트 배열 리터럴을 바인딩해 CAST 한다.
 $sqlInsert = <<<'SQL'
     INSERT INTO files
         (original_name, stored_name, ext, mime, size_bytes, sha256,
-         description, access_level, team_id, uploaded_by)
+         description, access_level, team_id, uploaded_by, sensitive_flags)
     VALUES
         (:original_name, :stored_name, :ext, :mime, :size_bytes, :sha256,
-         :description, :access_level, :team_id, :uploaded_by)
+         :description, :access_level, :team_id, :uploaded_by,
+         CAST(:flags AS text[]))
     RETURNING id, public_id
     SQL;
 
@@ -174,6 +215,7 @@ try {
         ':access_level'  => $level,
         ':team_id'       => $teamId,
         ':uploaded_by'   => (int) $user['id'],
+        ':flags'         => '{' . implode(',', $sensitiveFlags) . '}',
     ])->fetch();
 
     if (!is_array($row)) {
@@ -197,7 +239,7 @@ try {
             'sha256'      => $checked['sha256'],
             'owner_id'    => (int) $user['id'],
             'target_team' => $teamId,
-        ],
+        ] + ($sensitive === [] ? [] : ['sensitive' => $sensitive]),
     ]);
 
     $db->commit();

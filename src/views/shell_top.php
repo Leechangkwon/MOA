@@ -28,7 +28,7 @@ declare(strict_types=1);
  */
 
 /** 내비·본문 키의 허용 목록. 여기 없는 값은 빈 문자열이 된다. */
-$shellKeys = ['files', 'trash', 'settings', 'users', 'org', 'audit', 'wiki'];
+$shellKeys = ['files', 'trash', 'settings', 'activity', 'users', 'org', 'audit', 'wiki'];
 
 $shellUser   = isset($user) && is_array($user) ? $user : [];
 $shellName   = htmlspecialchars((string) ($shellUser['username'] ?? ''), ENT_QUOTES, 'UTF-8');
@@ -114,6 +114,12 @@ if (!headers_sent()) {
     <nav class="nav" aria-label="설정">
       <a id="nav-settings" class="<?= $shellNavClass('settings') ?>" href="/settings">
         <span class="icon" data-icon="settings"></span><span>내 계정</span>
+      </a>
+      <!-- 「내 활동」은 15-1 에서 더한 항목이며 **모든 로그인 사용자에게 보인다** (PRD F-12).
+           can_* 플래그로 여닫지 않는다 — 자기 이력은 역할과 무관하게 누구나 볼 수 있고,
+           보이는 내용은 서버가 세션 본인으로 고정하기 때문이다 (ARCH 5.11). -->
+      <a id="nav-activity" class="<?= $shellNavClass('activity') ?>" href="/activity">
+        <span class="icon" data-icon="log"></span><span>내 활동</span>
       </a>
     </nav>
 

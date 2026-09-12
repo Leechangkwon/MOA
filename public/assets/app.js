@@ -219,6 +219,30 @@ function makeLevelBadge(level) {
   return badge;
 }
 
+/**
+ * 표의 「이름」 칸 — 파일명 + (있으면) 「민감」 배지 (15-3, PRD F-22 · 10장).
+ *
+ * 배지를 붙일지는 서버가 준 `sensitive` 불리언 **하나만** 본다. 화면이 파일명·확장자를 보고
+ * 스스로 판단하지 않는다. 배지는 표시일 뿐이고 등급 규칙은 서버가 막는다 (PRD 10장).
+ * 파일명은 언제나 textContent 로 넣는다.
+ */
+function addNameCell(row, name, sensitive) {
+  var td = document.createElement('td');
+  var text = document.createElement('span');
+  setText(text, name);
+  td.appendChild(text);
+  if (sensitive === true) {
+    var badge = document.createElement('span');
+    badge.className = 'badge badge--sensitive';
+    badge.setAttribute('title', '민감정보 패턴이 검출된 파일입니다 (검사는 보조 장치이며 오탐·미검출이 있습니다)');
+    setText(badge, '민감');
+    td.appendChild(document.createTextNode(' '));
+    td.appendChild(badge);
+  }
+  row.appendChild(td);
+  return td;
+}
+
 /** 표의 「레벨」 칸 — 배지 span 하나. 원래 값은 title 에 남겨 둔다(감사·문의용). */
 function addLevelCell(row, level) {
   var td = document.createElement('td');
@@ -955,6 +979,179 @@ function initFiles(csrfToken, uploadLevels, canFetch, myTeamId) {
     previewCloseX.addEventListener('click', closePreview);
   }
 
+  /* ─── 공유 링크 모달 (15-2 — PRD F-13, ARCH 5.12) ──────────────────────
+   *
+   * 규칙
+   *   · 만들어진 주소는 **한 번만** 보인다. 서버는 토큰의 sha256 만 갖고 있어 다시 줄 수 없다 —
+   *     그래서 닫으면 지우고, 「내 공유 링크」 목록에도 주소가 없다.
+   *   · 화면은 값을 판단하지 않는다. 사용자가 적은 시간·횟수를 그대로 보내고, 범위를 벗어나면
+   *     서버가 400 으로 막는다(그 문구를 그대로 보여 준다) — 화면에 규칙을 복사하지 않는다.
+   *   · 주소도 사유도 전부 textContent 로 넣는다 (PRD S-03).
+   */
+  var shareDialog = document.getElementById('share-dialog');
+  var shareForm = document.getElementById('share-form');
+  var shareFileName = document.getElementById('share-file');
+  var shareHours = document.getElementById('share-hours');
+  var shareMax = document.getElementById('share-max');
+  var shareReason = document.getElementById('share-reason');
+  var shareSubmit = document.getElementById('share-submit');
+  var shareResult = document.getElementById('share-result');
+  var shareUrlText = document.getElementById('share-url');
+  var shareMeta = document.getElementById('share-meta');
+  var shareCopy = document.getElementById('share-copy');
+  var shareMsg = document.getElementById('share-msg');
+  var shareClose = document.getElementById('share-close');
+  var shareCloseX = document.getElementById('share-close-x');
+
+  /** 지금 모달이 다루는 파일 id (서버가 준 UUID). 요청을 보낼 때 형태를 한 번 더 본다. */
+  var shareTargetId = null;
+
+  function resetShareResult() {
+    if (shareResult) {
+      shareResult.hidden = true;
+    }
+    setText(shareUrlText, '');
+    setText(shareMeta, '');
+  }
+
+  function openShare(file) {
+    if (!shareDialog || !UUID_RE.test(file.id)) {
+      setText(msg, GENERIC_ERROR);
+      return;
+    }
+    shareTargetId = file.id;
+    setText(shareFileName, file.name);
+    setText(shareMsg, '');
+    resetShareResult();
+    if (shareForm) {
+      shareForm.hidden = false;
+    }
+    if (shareHours) {
+      shareHours.value = '24';
+    }
+    if (shareMax) {
+      shareMax.value = '1';
+    }
+    if (shareReason) {
+      shareReason.value = '';
+    }
+    if (shareSubmit) {
+      shareSubmit.disabled = false;
+    }
+    shareDialog.showModal();
+  }
+
+  function closeShare() {
+    if (shareDialog && shareDialog.open) {
+      shareDialog.close();
+    }
+  }
+
+  if (shareDialog) {
+    // close 는 Esc 로도 일어난다 — 어느 경로든 주소를 화면에서 지운다.
+    shareDialog.addEventListener('close', function () {
+      shareTargetId = null;
+      resetShareResult();
+      setText(shareMsg, '');
+    });
+  }
+  if (shareClose) {
+    shareClose.addEventListener('click', closeShare);
+  }
+  if (shareCloseX) {
+    shareCloseX.addEventListener('click', closeShare);
+  }
+
+  if (shareForm) {
+    shareForm.addEventListener('submit', function (event) {
+      event.preventDefault();
+      if (shareTargetId === null || !UUID_RE.test(shareTargetId)) {
+        setText(shareMsg, GENERIC_ERROR);
+        return;
+      }
+
+      /* 허용 키는 서버와 같은 셋뿐이다. 사유가 비어 있으면 키 자체를 보내지 않는다 —
+         서버는 모르는 키가 하나라도 있으면 400 이므로 화면도 같은 형태만 만든다. */
+      var payload = {
+        expires_hours: shareHours && shareHours.value !== '' ? shareHours.value : '24',
+        max_downloads: shareMax && shareMax.value !== '' ? shareMax.value : '1'
+      };
+      if (shareReason && typeof shareReason.value === 'string' && shareReason.value !== '') {
+        payload.reason_text = shareReason.value;
+      }
+
+      setText(shareMsg, '');
+      if (shareSubmit) {
+        shareSubmit.disabled = true;
+      }
+
+      fetch('/api/files/' + shareTargetId + '/share', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken },
+        body: JSON.stringify(payload),
+        credentials: 'same-origin',
+        cache: 'no-store'
+      })
+        .then(function (response) {
+          if (response.status === 401) {
+            toLogin();
+            return null;
+          }
+          return readJson(response).then(function (data) {
+            if (response.status !== 201) {
+              // 403·400 문구는 서버가 준 것만 쓴다 (사유를 브라우저가 추측하지 않는다).
+              setText(shareMsg, errorMessage(data));
+              if (shareSubmit) {
+                shareSubmit.disabled = false;
+              }
+              return null;
+            }
+            // 주소는 여기서 한 번만 보인다. 폼은 접어 두어 실수로 또 만들지 않게 한다.
+            if (shareForm) {
+              shareForm.hidden = true;
+            }
+            if (shareResult) {
+              shareResult.hidden = false;
+            }
+            setText(shareUrlText, typeof data.url === 'string' ? data.url : '');
+            setText(
+              shareMeta,
+              '만료 ' + (typeof data.expires_at === 'string' ? data.expires_at : '—') +
+                ' · 최대 ' + (typeof data.max_downloads === 'number' ? data.max_downloads : '—') + '회'
+            );
+            return null;
+          });
+        })
+        .catch(function () {
+          setText(shareMsg, GENERIC_ERROR);
+          if (shareSubmit) {
+            shareSubmit.disabled = false;
+          }
+        });
+    });
+  }
+
+  if (shareCopy) {
+    shareCopy.addEventListener('click', function () {
+      var text = shareUrlText ? shareUrlText.textContent : '';
+      if (typeof text !== 'string' || text === '') {
+        return;
+      }
+      if (navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
+        navigator.clipboard.writeText(text).then(
+          function () {
+            setText(shareMsg, '주소를 복사했습니다.');
+          },
+          function () {
+            setText(shareMsg, '복사하지 못했습니다. 주소를 직접 선택해 복사하세요.');
+          }
+        );
+        return;
+      }
+      setText(shareMsg, '이 브라우저에서는 복사 단추를 쓸 수 없습니다. 주소를 직접 선택해 복사하세요.');
+    });
+  }
+
   /*
    * 작업 칸 — 12단계부터 **아이콘 단추**다. 뜻은 title·aria-label 의 한글이 전한다.
    * 무엇을 만들지는 여전히 서버가 행마다 내려 준 can_delete·can_edit 만 본다 —
@@ -993,6 +1190,15 @@ function initFiles(csrfToken, uploadLevels, canFetch, myTeamId) {
           editFile(file);
         });
         td.appendChild(editButton);
+
+        /* 15-2 — 「공유 링크」도 **같은 can_edit** 로 갈린다: 링크를 만들 수 있는 사람은
+           그 파일을 고칠 수 있는 사람이다 (PRD F-13). 화면이 역할·소유자를 따지지 않는다.
+           단추가 보이지 않아도, 콘솔에서 직접 POST 해도 서버가 다시 판단한다 (PRD S-01). */
+        var shareButton = makeIconButton('link', '공유 링크 만들기');
+        shareButton.addEventListener('click', function () {
+          openShare(file);
+        });
+        td.appendChild(shareButton);
       }
 
       // 삭제 버튼도 서버가 그 행에 대해 can_delete 를 참으로 준 경우에만 만든다.
@@ -1018,7 +1224,8 @@ function initFiles(csrfToken, uploadLevels, canFetch, myTeamId) {
 
     files.forEach(function (file) {
       var row = document.createElement('tr');
-      addCell(row, file.name);
+      // 15-3 — 「민감」 배지는 서버가 준 sensitive 불리언만 보고 붙인다 (PRD F-22).
+      addNameCell(row, file.name, file.sensitive === true);
       addCell(row, formatSize(file.size_bytes));
       addLevelCell(row, file.access_level);
       addCell(row, file.team_name === null || file.team_name === undefined ? '—' : file.team_name);
@@ -3173,11 +3380,248 @@ function initForcedGate(csrfToken, firstStep, mfaEnabled) {
  * 팀 이름만 /api/me 의 team_name 을 textContent 로 넣는다. 화면이 team_id 로 팀 이름을
  * 스스로 찾지 않는다 — 무엇을 보여 줄지는 서버가 정한다 (PRD S-01).
  */
+/* ─── 내 활동 (15-1 — PRD F-12, ARCH 5.11) ────────────────────────
+ *
+ * 요청에 싣는 값은 `page` **하나**뿐이다. "누구의 활동인가" 를 화면이 정하지 않는다 —
+ * 서버가 세션에서 본인을 읽어 조건절에 넣는다 (PRD S-02). 주소에 `?user_id=` 같은 값을
+ * 붙여도 서버가 읽지 않으므로 결과가 달라지지 않는다 (T-33).
+ *
+ * 표의 값은 전부 textContent 로만 넣는다. `summary` 에는 파일명이 섞여 들어가므로
+ * 다른 사용자 입력과 똑같이 다룬다 (PRD S-03, ARCH 7.4).
+ */
+function initActivity() {
+  var msg = document.getElementById('msg');
+  var body = document.getElementById('activity-body');
+  var empty = document.getElementById('activity-empty');
+  var pageInfo = document.getElementById('page-info');
+  var prev = document.getElementById('page-prev');
+  var next = document.getElementById('page-next');
+
+  var state = { page: 1, total: 0, perPage: 20 };
+
+  function clearRows() {
+    while (body.firstChild) {
+      body.removeChild(body.firstChild);
+    }
+  }
+
+  function addCell(row, value) {
+    var td = document.createElement('td');
+    setText(td, value === null || value === undefined || value === '' ? '—' : value);
+    row.appendChild(td);
+    return td;
+  }
+
+  function render(data) {
+    clearRows();
+    var rows = data && Array.isArray(data.rows) ? data.rows : [];
+    state.total = typeof data.total === 'number' ? data.total : 0;
+    state.perPage = typeof data.per_page === 'number' && data.per_page > 0 ? data.per_page : 20;
+    state.page = typeof data.page === 'number' && data.page > 0 ? data.page : 1;
+
+    rows.forEach(function (item) {
+      var row = document.createElement('tr');
+      addCell(row, item.happened_at);
+      addCell(row, item.summary);
+      addCell(row, item.result);
+      body.appendChild(row);
+    });
+
+    if (empty) {
+      empty.hidden = rows.length !== 0;
+    }
+
+    var lastPage = state.total === 0 ? 1 : Math.ceil(state.total / state.perPage);
+    setText(pageInfo, state.page + ' / ' + lastPage + ' 페이지 · 전체 ' + state.total + '건');
+    if (prev) {
+      prev.disabled = state.page <= 1;
+    }
+    if (next) {
+      next.disabled = state.page >= lastPage;
+    }
+  }
+
+  function load() {
+    fetch('/api/me/activity?page=' + encodeURIComponent(String(state.page)), {
+      credentials: 'same-origin',
+      cache: 'no-store'
+    })
+      .then(function (response) {
+        if (response.status === 401) {
+          toLogin();
+          return null;
+        }
+        return readJson(response).then(function (data) {
+          if (!response.ok) {
+            setText(msg, errorMessage(data));
+            return null;
+          }
+          setText(msg, '');
+          render(data);
+          return null;
+        });
+      })
+      .catch(function () {
+        setText(msg, GENERIC_ERROR);
+      });
+  }
+
+  if (prev) {
+    prev.addEventListener('click', function () {
+      if (state.page > 1) {
+        state.page -= 1;
+        load();
+      }
+    });
+  }
+  if (next) {
+    next.addEventListener('click', function () {
+      state.page += 1;
+      load();
+    });
+  }
+
+  load();
+}
+
 function initSettings(me) {
   var team = document.getElementById('me-team');
   if (team) {
     setText(team, typeof me.team_name === 'string' && me.team_name !== '' ? me.team_name : '—');
   }
+}
+
+/* ─── 내 공유 링크 (15-2 — PRD F-13, ARCH 5.12 「회수·목록」) ──────────
+ *
+ * 목록은 /api/me/shares 가 내려 주고 **내가 만든 것만** 나온다 — 화면이 "누구의" 를 고르지
+ * 않는다 (PRD S-02). 응답에 토큰도 그 해시도 없다: 만들 때 한 번 보여 준 주소는 여기서
+ * 다시 볼 수 없고, 이 화면이 할 수 있는 일은 **회수**뿐이다.
+ *
+ * 회수 자격(만든 사람 또는 Admin)은 서버 Authz::decideShareRevoke 가 판단한다. 여기서 회수
+ * 단추를 그리는 기준은 "아직 살아 있는 링크인가" 라는 **상태**일 뿐 권한이 아니다.
+ */
+function initShares(csrfToken) {
+  var msg = document.getElementById('msg');
+  var body = document.getElementById('shares-body');
+  var empty = document.getElementById('shares-empty');
+
+  if (!body) {
+    return;
+  }
+
+  function clearRows() {
+    while (body.firstChild) {
+      body.removeChild(body.firstChild);
+    }
+  }
+
+  function addCell(row, value) {
+    var td = document.createElement('td');
+    setText(td, value === null || value === undefined || value === '' ? '—' : value);
+    row.appendChild(td);
+    return td;
+  }
+
+  /** 상태 칸 — 회수됨 / 만료됨 / 다 씀 / 쓸 수 있음. 서버가 준 값만 조합한다. */
+  function stateOf(link) {
+    if (link.revoked_at !== null && link.revoked_at !== undefined) {
+      return '회수됨';
+    }
+    if (link.is_expired === true) {
+      return '만료됨';
+    }
+    if (link.download_count >= link.max_downloads) {
+      return '다 씀';
+    }
+    return '쓸 수 있음';
+  }
+
+  function revoke(id) {
+    if (typeof id !== 'number' || !isFinite(id) || id <= 0) {
+      setText(msg, GENERIC_ERROR);
+      return;
+    }
+    setText(msg, '');
+    fetch('/api/shares/' + encodeURIComponent(String(id)), {
+      method: 'DELETE',
+      headers: { 'X-CSRF-Token': csrfToken },
+      credentials: 'same-origin',
+      cache: 'no-store'
+    })
+      .then(function (response) {
+        if (response.status === 401) {
+          toLogin();
+          return null;
+        }
+        if (response.status === 200) {
+          load();
+          return null;
+        }
+        return readJson(response).then(function (data) {
+          setText(msg, errorMessage(data));
+          return null;
+        });
+      })
+      .catch(function () {
+        setText(msg, GENERIC_ERROR);
+      });
+  }
+
+  function render(data) {
+    clearRows();
+    var links = data && Array.isArray(data.links) ? data.links : [];
+
+    links.forEach(function (link) {
+      var row = document.createElement('tr');
+      addCell(row, link.file_name);
+      addCell(row, link.expires_at);
+      addCell(row, link.download_count + ' / ' + link.max_downloads);
+      addCell(row, stateOf(link));
+      addCell(row, link.created_at);
+      addCell(row, link.reason_text);
+
+      var actions = document.createElement('td');
+      actions.className = 'actions';
+      // 이미 회수된 링크에는 단추를 만들지 않는다(서버도 400 으로 막는다 — 표시는 편의).
+      if (link.revoked_at === null || link.revoked_at === undefined) {
+        var button = makeIconButton('x', '회수');
+        button.addEventListener('click', function () {
+          revoke(link.id);
+        });
+        actions.appendChild(button);
+      }
+      row.appendChild(actions);
+
+      body.appendChild(row);
+    });
+
+    if (empty) {
+      empty.hidden = links.length !== 0;
+    }
+  }
+
+  function load() {
+    fetch('/api/me/shares', { credentials: 'same-origin', cache: 'no-store' })
+      .then(function (response) {
+        if (response.status === 401) {
+          toLogin();
+          return null;
+        }
+        return readJson(response).then(function (data) {
+          if (!response.ok) {
+            setText(msg, errorMessage(data));
+            return null;
+          }
+          render(data);
+          return null;
+        });
+      })
+      .catch(function () {
+        setText(msg, GENERIC_ERROR);
+      });
+  }
+
+  load();
 }
 
 /* ─── 공통 셸 (12단계 F-20 — PRD 10장 「공통 셸」) ─────────────────
@@ -3219,6 +3663,9 @@ function initShell(me, csrfToken) {
 
   showNav('nav-files', true);
   showNav('nav-settings', true);
+  // 15-1 — 「내 활동」은 모든 로그인 사용자에게 열린다(권한 플래그가 없다, PRD F-12).
+  // 강제 절차(F-16) 중에는 다른 항목과 함께 닫힌다 — showNav 가 inGate 를 먼저 본다.
+  showNav('nav-activity', true);
   showNav('nav-trash', canTrash);
   showNav('nav-users', canUsers);
   showNav('nav-org', canOrg);
@@ -3341,6 +3788,8 @@ function bootPage(page) {
           if (document.getElementById('password-form')) {
             initAccount(csrfToken, me.mfa_enabled === true);
           }
+          // 15-2 — 「내 공유 링크」. 로그인한 사람이면 누구나 자기 링크를 본다 (PRD F-13).
+          initShares(csrfToken);
           return null;
         }
         if (page === 'users') {
@@ -3361,6 +3810,14 @@ function bootPage(page) {
           // 라우트 정책 audit.read 를 통과한 화면이다 (Admin 만).
           if (document.getElementById('audit-body')) {
             initAudit();
+          }
+          return null;
+        }
+        if (page === 'activity') {
+          // 15-1 — 로그인한 사람이면 누구나 들어오는 화면이다. 보이는 내용은 서버가
+          // 세션 본인으로 고정한다 (PRD F-12, ARCH 5.11).
+          if (document.getElementById('activity-body')) {
+            initActivity();
           }
           return null;
         }

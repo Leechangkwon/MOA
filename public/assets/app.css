@@ -1075,3 +1075,8 @@ dialog.modal--form .modal__body { display: grid; gap: 14px; background: var(--su
   /* 넓은 화면에서는 내비가 늘 열려 있다 — 좁은 화면의 hidden 토글을 무시한다 */
   .sidebar[hidden] { display: flex !important; }
 }
+
+/* 「민감」 배지 (15-3 — PRD F-22 · 10장, SECURITY R-58).
+   레벨 배지(.badge--public 등)와 같은 모양을 쓰되 색만 경고 계열로 둔다.
+   배지는 **표시일 뿐**이고 등급 규칙은 서버가 막는다 (PRD 10장 "버튼 표시는 권한의 근거가 아님"). */
+.badge--sensitive { background: var(--danger-soft); color: var(--danger); }
