@@ -1,0 +1,223 @@
+{
+  "slug": "stage-12",
+  "title": "12단계 — 화면 재구성·미리보기·조직 관리",
+  "summary": "공통 셸과 기능별 화면(12-1), 파일 미리보기(12-2), 조직·권한 관리(12-3)를 차례로 만들었고, 화면이 바뀌어도 막는 것은 여전히 서버다.",
+  "group": "stage",
+  "stage": 12,
+  "updated": "2026-09-12",
+  "sections": [
+    {
+      "id": "why",
+      "heading": "왜 필요한가",
+      "blocks": [
+        {
+          "type": "p",
+          "text": "한 페이지에 모든 기능이 쌓여 있어 사용자가 「파일은 파일로, 계정은 설정으로」 나누자고 했다(F-20). 미리보기(F-18)와 조직 권한 관리(F-19)도 함께 요청했다."
+        },
+        {
+          "type": "p",
+          "text": "화면이 늘면 공격면도 늘어난다. 그래서 세 묶음을 따로 구현하고 따로 검토했다."
+        },
+        {
+          "type": "terms",
+          "items": [
+            {
+              "term": "공격면",
+              "easy": "공격자가 요청을 보낼 수 있는 모든 입구의 합. 화면·API 가 하나 늘면 그만큼 넓어진다"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "what",
+      "heading": "무엇을 만들었나",
+      "blocks": [
+        {
+          "type": "p",
+          "text": "12-1: 좌측 내비 셸과 `/`, `/trash`(Admin), `/settings`, `/users`, `/audit` 로 나눴다. 내비 항목은 기본 `hidden` 이고 `/api/me` 의 `can_*` 값으로만 열린다. 표시는 편의, 막는 것은 라우트 정책이다(S-01)."
+        },
+        {
+          "type": "p",
+          "text": "12-2: `GET /api/files/{id}/preview`(JSON) 와 `/preview/raw`(이미지·PDF 원본). 권한은 다운로드와 한 글자도 다르지 않다 — 같은 `Authz::decideRead`, 같은 403 문구. 형식은 요청값이 아니라 DB 의 확장자로 정한다."
+        },
+        {
+          "type": "p",
+          "text": "갈래: 이미지·PDF 는 원본 전송, txt·md·csv 는 앞부분 발췌, zip 은 항목 이름만(풀지 않음), docx 등은 텍스트 발췌(XML 파서 미사용)."
+        },
+        {
+          "type": "callout",
+          "kind": "risk",
+          "title": "inline 의 위험과 sandbox (R-41)",
+          "text": "미리보기는 inline(브라우저 안에서 바로 열기) 이라 「항상 첨부」 원칙의 예외다. PDF 는 스크립트와 폼을 품을 수 있다. 그래서 원본 응답에 `Content-Security-Policy: sandbox` 와 `nosniff` 를 붙이고, 화면은 토큰 없는 `iframe sandbox` 로만 끼운다. 문서가 불투명 출처로 다뤄져 t-box 쿠키·화면에 닿을 수 없다. 나머지 형식은 JSON 을 `textContent` 로만 그린다."
+        },
+        {
+          "type": "p",
+          "text": "12-3 `/org`: 팀 생성·이름 변경·비활성화(삭제 대신, 활성 구성원 0명일 때만), 구성원 배정은 기존 `PATCH /api/users/{uid}` 를 그대로 쓴다. 비활성 팀에는 새 배정·업로드가 400 이다."
+        },
+        {
+          "type": "p",
+          "text": "권한 매트릭스 16행은 읽기 전용이다. 앱 DB 계정이 `permissions` 표에 SELECT 만 갖는 것이 권한 상승 방어의 핵심이라(R-43), 편집은 사용자 결정 Q-12 전에는 넣지 않는다."
+        }
+      ]
+    },
+    {
+      "id": "check",
+      "heading": "어떻게 확인했나",
+      "blocks": [
+        {
+          "type": "p",
+          "text": "2026-09-12 묶음마다 Fable 실행 검토 통과(SECURITY 7장 「12-1」·「12-2」·「12-3 구현 검토」)."
+        },
+        {
+          "type": "list",
+          "items": [
+            "12-1 T-26: Employee `/`·`/settings` 200, `/trash`·`/users`·`/audit` 403. Admin 전부 200. 쿠키 없음 302 `/login`. 서버 HTML 은 역할 무관 내비 전부 `hidden`. T-14 회귀 없음.",
+            "12-2 T-25: 스크립트 흉내 문자열이 든 txt·csv·md·docx·xlsx 가 JSON 에 문자열 그대로. 원본 헤더 `sandbox`·`nosniff`·`inline`·`no-store`, txt 원본 요청 400. T-24: 다른 팀·Guest·admin-only 403(다운로드와 동일 문구) + `file.preview deny`.",
+            "12-2 결함 1건(재지시 1회): 전역 nginx 헤더 `X-Frame-Options DENY` 가 원본 응답에도 실려 모달 iframe 이 막힐 상태 → 원본 경로만 분리해 `SAMEORIGIN` 으로 보정.",
+            "12-3 T-27: Manager `POST /api/org/teams` 403 + `authz.route deny`. 사유 없음 400, 중복 409, 구성원 있는 팀 비활성화 400 `team_has_members`, 비활성 팀 배정·업로드 400 `team_inactive`."
+          ]
+        },
+        {
+          "type": "callout",
+          "kind": "check",
+          "title": "미검증",
+          "text": "브라우저 렌더·모달 동작, sandbox iframe 안에서 PDF 가 실제로 그려지는지, `/org` 화면 동작 — 관문 ③에서 확인한다."
+        }
+      ]
+    },
+    {
+      "id": "risk",
+      "heading": "남은 위험",
+      "blocks": [
+        {
+          "type": "table",
+          "header": [
+            "위험",
+            "상태",
+            "내용"
+          ],
+          "rows": [
+            [
+              "R-41 미리보기 inline 예외",
+              "◐ 높음",
+              "sandbox 적용. PDF 뷰어가 sandbox 안에서 안 그려질 수 있음 — 사용자 실측 뒤 결정"
+            ],
+            [
+              "R-42 파서 자원 소모",
+              "◐",
+              "읽기 상한 고정, zip 은 목록만, XML 파서 없음"
+            ],
+            [
+              "R-43 매트릭스 편집 유혹",
+              "✅",
+              "읽기 전용, `permissions` SELECT-only 불변, 편집은 Q-12"
+            ],
+            [
+              "R-44 팀 변경이 접근 범위를 바꿈",
+              "✅",
+              "배정은 기존 API 재사용, 비활성화는 구성원 0명일 때만"
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "id": "try",
+      "heading": "직접 해보기",
+      "blocks": [
+        {
+          "type": "steps",
+          "items": [
+            "employee01 로 개발자도구에서 내비의 `hidden` 을 지워 「휴지통」「조직·권한」「감사 로그」를 누른다 → 전부 403, 감사 로그에 deny.",
+            "employee01 로 다른 팀 team 파일의 `/api/files/{id}/preview` 를 주소창에 → 403.",
+            "스크립트 흉내 한 줄을 넣은 `.txt`·`.csv`·`.md` 를 올려 미리보기 → 글자 그대로, 알림 없음.",
+            "PDF 미리보기가 모달에서 보이는지, 안 보이면 「새 탭에서 열기」로 열리는지 — 결과를 학습 기록에(R-41 실측).",
+            "admin01 로 팀 만들기(사유 없이 → 거부) → 구성원 있는 채 비활성화(거부) → 재배정 뒤 비활성화 → 그 팀으로 업로드(거부) → 감사 로그 `team.update` 이전값→새값.",
+            "manager01 로 팀 생성 API 를 직접 부른다 → 403, 감사 로그에 남는지."
+          ]
+        },
+        {
+          "type": "p",
+          "text": "쿠키와 CSRF 토큰은 브라우저 개발자도구에서 복사하고, `BASE` 는 서비스 주소다."
+        },
+        {
+          "type": "code",
+          "text": "curl -sk -b \"tbox_session=$COOKIE\" -H \"X-CSRF-Token: $TOKEN\" \\\n  -H 'Content-Type: application/json' \\\n  -d '{\"name\":\"시험팀\",\"reason_text\":\"권한 시험\"}' \"$BASE/api/org/teams\""
+        },
+        {
+          "type": "callout",
+          "kind": "try",
+          "title": "시험 흔적",
+          "text": "검토가 남긴 시험 파일과 비활성 팀은 지우지 않았다(운영 데이터 불가침). 삭제는 사용자 결정이다."
+        }
+      ]
+    },
+    {
+      "id": "refs",
+      "heading": "원문 위치",
+      "blocks": [
+        {
+          "type": "refs",
+          "items": [
+            {
+              "doc": "PRD",
+              "where": "6장 F-18·F-19·F-20",
+              "what": "미리보기, 조직·권한 관리, 화면 분리"
+            },
+            {
+              "doc": "PRD",
+              "where": "5.4 · 10장",
+              "what": "관리 기능 매트릭스, 화면 요구사항"
+            },
+            {
+              "doc": "PRD",
+              "where": "12.2 T-24~T-27 · 14장 Q-12",
+              "what": "수락 기준, 매트릭스 편집 여부 미결"
+            },
+            {
+              "doc": "ARCH",
+              "where": "5.8",
+              "what": "미리보기 순서·갈래와 상한·원본 응답 헤더"
+            },
+            {
+              "doc": "ARCH",
+              "where": "5.9 · 6.2-1",
+              "what": "조직·권한 API, `permissions` 는 앱 계정 SELECT 만"
+            },
+            {
+              "doc": "SECURITY",
+              "where": "7장 「12-1 구현 검토」·「12-2 구현 검토」·「12-3 구현 검토」",
+              "what": "T-24~T-27 실측, 12-2 결함과 보정"
+            },
+            {
+              "doc": "SECURITY",
+              "where": "6.3 R-41·R-42·R-43·R-44",
+              "what": "현재 상태"
+            },
+            {
+              "doc": "STAGES",
+              "where": "2장 12단계",
+              "what": "사용자 요구 요지, 12-1/12-2/12-3 개발 사항, 학습 기록"
+            },
+            {
+              "doc": "README",
+              "where": "「화면」 · 「미리보기」 · 「조직·권한」",
+              "what": "화면 구성과 사용법"
+            }
+          ]
+        },
+        {
+          "type": "link",
+          "slug": "stage-11",
+          "label": "이전 단계 — 11단계 최초 로그인 강제 절차"
+        },
+        {
+          "type": "link",
+          "slug": "stage-13",
+          "label": "다음 단계 — 13단계 전면 점검 후속 보정"
+        }
+      ]
+    }
+  ]
+}

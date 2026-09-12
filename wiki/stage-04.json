@@ -1,0 +1,357 @@
+{
+  "slug": "stage-04",
+  "title": "4단계 — 서버가 권한을 판단한다",
+  "summary": "권한 판단을 `Authz` 한 파일에 모으고, 목록은 SQL WHERE 로 걸러 응답에 없게 하고, 거부는 같은 문구의 403 으로 통일했다. 허용에도 근거 코드를 남긴다.",
+  "group": "stage",
+  "stage": 4,
+  "updated": "2026-09-12",
+  "sections": [
+    {
+      "id": "why",
+      "heading": "왜 필요한가",
+      "blocks": [
+        {
+          "type": "p",
+          "text": "3단계에서 캡처한 뚫림이 여기서 막힌다. 실습용 t-box 의 ① 프론트 권한 우회 ② 권한 없는 데이터 노출 ③ ID 만 알면 받는 다운로드가 대상이다."
+        },
+        {
+          "type": "p",
+          "text": "화면의 버튼은 권한의 근거가 아니다. 삭제 버튼을 숨겨도 콘솔에서 `fetch` 로 요청을 보낼 수 있고, 목록을 화면에서 걸러도 Network 탭에는 원문이 다 보인다."
+        },
+        {
+          "type": "p",
+          "text": "그래서 판단은 서버가 하고, 걸러내기는 SQL 에서 한다. 응답에 없는 것은 어떤 도구로도 볼 수 없다(PRD S-02)."
+        },
+        {
+          "type": "callout",
+          "kind": "why",
+          "title": "인가(Authorization)란",
+          "text": "「너 이거 해도 돼?」를 확인하는 일이다. 누구인지(인증)는 2단계가 알려 주고, 해도 되는지는 이 단계의 `Authz` 가 답한다."
+        },
+        {
+          "type": "terms",
+          "items": [
+            {
+              "term": "인가",
+              "easy": "역할과 접근 등급으로 허용·차단을 정하는 판단. 서버 한 곳에서만 한다"
+            },
+            {
+              "term": "IDOR",
+              "easy": "남의 자원 ID 를 주소에 넣어 직접 여는 공격. ID 를 알아도 권한이 없으면 403 이어야 한다"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "what",
+      "heading": "무엇을 만들었나",
+      "blocks": [
+        {
+          "type": "p",
+          "text": "`src/Authz.php` 가 권한 판단의 유일한 자리다. `decideRead`·`decideUploadAs`·`decideDelete` 가 허용 여부와 함께 「왜」를 뜻하는 근거 코드를 돌려준다."
+        },
+        {
+          "type": "table",
+          "header": [
+            "결과",
+            "코드",
+            "뜻"
+          ],
+          "rows": [
+            [
+              "허용",
+              "`matrix`",
+              "역할 × 등급 표(`permissions`)가 허용"
+            ],
+            [
+              "허용",
+              "`same_team` · `all_teams`",
+              "team 등급에서 같은 팀 · 모든 팀을 보는 Admin"
+            ],
+            [
+              "허용",
+              "`owner` · `team_scope` · `admin_all`",
+              "삭제: 본인 파일 · Manager 의 자기 팀 · Admin 은 전부"
+            ],
+            [
+              "거부",
+              "`role_not_permitted`",
+              "표가 거부(Employee 의 admin-only 등)"
+            ],
+            [
+              "거부",
+              "`team_mismatch` · `not_owner`",
+              "다른 팀 · 남이 올린 파일"
+            ]
+          ]
+        },
+        {
+          "type": "p",
+          "text": "라우트 정책은 `file.read`·`file.upload`·`file.delete` 로 바뀌었다. Guest 의 업로드·삭제는 핸들러에 닿기 전 라우터에서 403 이 된다."
+        },
+        {
+          "type": "p",
+          "text": "목록은 `Authz::visibleFilesWhere` 가 만든 조건을 SQL WHERE 에 붙인다. 권한 없는 행은 응답에 존재하지 않고, 건수 `total` 도 같은 조건으로 센다."
+        },
+        {
+          "type": "p",
+          "text": "다운로드는 파일 행을 읽은 직후, 저장소에 닿기 전에 `decideRead` 를 거친다. 실패는 `403 {\"error\":\"권한이 없습니다\"}` 하나이며 파일명·등급은 담지 않는다."
+        },
+        {
+          "type": "p",
+          "text": "삭제는 `decideRead` 다음 `decideDelete` 두 단계다. 읽을 수 없는 파일은 삭제 시도도 같은 403 이라 존재 정보가 새지 않는다."
+        },
+        {
+          "type": "list",
+          "items": [
+            "감사 로그에 `granted_by`(허용 근거)·`route`(라우트 패턴)·`login_ref`(로그인 회차)·`actor_team` 을 채움",
+            "화면 편의 값 `can_delete`(목록 행)·`upload_levels`(`/api/me`) — 버튼과 선택지는 서버 값으로만 그리고, 요청은 서버가 다시 검사",
+            "검토 계정 `qa_*` 5개 추가, `audit.log` 에 추가 전용 속성(`chattr +a`)과 logrotate"
+          ]
+        },
+        {
+          "type": "terms",
+          "items": [
+            {
+              "term": "SQL WHERE",
+              "easy": "DB 에서 꺼낼 행을 고르는 조건문. 여기서 거르면 응답에 아예 나오지 않는다"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "check",
+      "heading": "어떻게 확인했나",
+      "blocks": [
+        {
+          "type": "p",
+          "text": "SECURITY 7장 2026-09-10 「4단계 구현 검토」 행이다. 검토 계정 `qa_*` 와 검토 표식 User-Agent 로 60여 건을 실행해 통과했다."
+        },
+        {
+          "type": "table",
+          "header": [
+            "T-xx",
+            "결과",
+            "판정"
+          ],
+          "rows": [
+            [
+              "T-2 목록",
+              "`qa_employee01` 응답에 `admin-only` 문자열 0·`team_id:2` 0·비교용 4건 0건, `total` = 행 수, `q=secret` 0건. `qa_guest01` 은 public 만, `qa_admin01` 은 8건 전부",
+              "통과"
+            ],
+            [
+              "T-3 다운로드",
+              "`qa_employee01` 이 admin-only·team2 → `403 {\"error\":\"권한이 없습니다\"}`, 파일 정보 0 + deny `role_not_permitted`/`team_mismatch`. public → 200 첨부 헤더",
+              "통과"
+            ],
+            [
+              "T-1 삭제",
+              "남의 파일 403(`role_not_permitted`/`team_mismatch`/`not_owner`), 본인 200 `owner`. `qa_manager01` 자기 팀 200 `team_scope`·남의 public 403. `qa_guest01` 403(`authz.route`). `qa_admin01` 200 `admin_all`",
+              "통과"
+            ],
+            [
+              "업로드 권한",
+              "Guest 403(`authz.route`), Employee admin-only 403·team2 403·team1 201 `same_team`·public 201 `matrix`, Admin team2 201 `all_teams`",
+              "통과"
+            ],
+            [
+              "감사 로그",
+              "qa 행 전부 `route`·`login_ref` 12자·`actor_team` 존재, 허용 행 `granted_by` 누락 0, 비밀값 0건, 403 본문 전부 동일 문구",
+              "통과"
+            ],
+            [
+              "`audit.log` 보호",
+              "추가 전용 속성 뒤에도 기록 계속, `tbox-php` 로 덮어쓰기·삭제 → `Operation not permitted`, `logrotate -d` 오류 0",
+              "통과"
+            ],
+            [
+              "브라우저 화면(선택지·버튼)",
+              "서버 응답만 확인 → 관문 ③",
+              "미검증"
+            ],
+            [
+              "logrotate 실제 회전",
+              "살아 있는 증거 파일을 자르므로 미실행",
+              "미검증"
+            ]
+          ]
+        },
+        {
+          "type": "p",
+          "text": "회귀(미로그인 401·CSRF 403·없는 UUID 404·`sort` 주입 → 기본 정렬)는 그대로였다. 관찰 하나가 R-36 으로 등록되어 5단계에서 고쳤다."
+        },
+        {
+          "type": "callout",
+          "kind": "check",
+          "title": "관문 ③은 아직",
+          "text": "사용자 자기 공격은 2026-09-11 「10단계까지 한번에」 결정으로 일괄 수행 대기다. 통과 판정은 AI 실측 기준이며, 사용자 눈 확인은 남아 있다."
+        }
+      ]
+    },
+    {
+      "id": "risk",
+      "heading": "남은 위험",
+      "blocks": [
+        {
+          "type": "table",
+          "header": [
+            "ID",
+            "위험",
+            "현재 상태"
+          ],
+          "rows": [
+            [
+              "R-04",
+              "권한 정책 누락",
+              "✅ 유지. 4단계 정책 전환 뒤에도 정책 없는 라우트는 부팅 실패"
+            ],
+            [
+              "R-35",
+              "3단계 뚫린 상태의 공개 노출",
+              "◐ → 4단계 검토 통과. 관문 ③·커밋 뒤 ✅ 로 바꾸기로 함"
+            ],
+            [
+              "R-11",
+              "감사 로그 무결성(DB 관리자·root 는 지울 수 있음)",
+              "◐ 4단계: DB `ar`·파일 `chattr +a`·logrotate ✅. 원격 전송 ❌ — root 침해에는 여전히 무력"
+            ],
+            [
+              "R-36",
+              "거부 기록에 실제 UUID 경로",
+              "✅ 5단계 해소"
+            ]
+          ]
+        },
+        {
+          "type": "callout",
+          "kind": "risk",
+          "title": "403 이 알려 주는 것",
+          "text": "Q-6 결정으로 권한 없음은 404 가 아닌 403 이다. 「그 파일이 있다」는 사실은 드러난다. 그러나 ID 가 UUID 라 열거가 어렵고 본문에 정보가 없어 실질 위험은 낮다(SECURITY 1.3)."
+        }
+      ]
+    },
+    {
+      "id": "try",
+      "heading": "직접 해보기",
+      "blocks": [
+        {
+          "type": "p",
+          "text": "3단계 캡처와 같은 화면을 `employee01` 로 다시 찍는다. 파일 UUID 는 3단계 때 받아 둔 admin-only 파일의 것이다."
+        },
+        {
+          "type": "steps",
+          "items": [
+            "T-2: 로그인 뒤 목록에 남의 admin-only·영업팀 파일이 보이지 않는지 본다. F12 → Network → `/api/files` 응답 원문에 `admin-only` 글자가 한 글자도 없어야 한다.",
+            "T-3: 그 파일의 다운로드 주소를 curl 로 직접 부른다. 403 과 `{\"error\":\"권한이 없습니다\"}` 만 와야 한다.",
+            "T-1: F12 → Console 에서 토큰을 붙여 DELETE 를 보낸다. 403 이어야 한다. 삭제 버튼을 Elements 에서 되살려 눌러도 같다.",
+            "감사 로그 마지막 5줄에 위 시도가 `deny` 와 한국어 문장으로 남았는지 본다. `actor_name` 은 본인, `qa_` 행은 AI 검토다."
+          ]
+        },
+        {
+          "type": "code",
+          "text": "BASE=서비스주소   # 로컬 창구 주소 또는 공개 도메인을 넣는다\ncurl -s -i -b /tmp/emp.jar \"$BASE/api/files/<파일UUID>/download\"   # 403\n# 브라우저 Console (토큰은 /api/me 의 csrf_token)\nfetch('/api/files/<파일UUID>',{method:'DELETE',\n  headers:{'X-CSRF-Token':'<csrf_token>'}}).then(r=>r.status)   // 403\nsudo tail -n 5 /var/log/tbox-v2/audit.log"
+        },
+        {
+          "type": "callout",
+          "kind": "try",
+          "title": "비교 저장",
+          "text": "3단계 캡처와 나란히 놓고 「뚫림 → 막힘」을 저장한다. 이것이 과제의 보안 자체점검 증거다."
+        }
+      ]
+    },
+    {
+      "id": "refs",
+      "heading": "원문 위치",
+      "blocks": [
+        {
+          "type": "refs",
+          "items": [
+            {
+              "doc": "PRD",
+              "where": "7.1 S-01",
+              "what": "권한 확인은 반드시 서버에서 — 금지 사항과 실패 응답 401/403/404"
+            },
+            {
+              "doc": "PRD",
+              "where": "7.2 S-02",
+              "what": "권한 없는 파일은 응답에 아예 포함하지 않기 — SQL WHERE, `total`"
+            },
+            {
+              "doc": "PRD",
+              "where": "5장",
+              "what": "권한 매트릭스 5.1~5.3 — 이 표가 정답지"
+            },
+            {
+              "doc": "PRD",
+              "where": "12.1 T-1 · T-2 · T-3",
+              "what": "재현 시도 테스트의 방법과 기대 결과"
+            },
+            {
+              "doc": "PRD",
+              "where": "13장 4단계 행",
+              "what": "만드는 것과 직접 해볼 공격"
+            },
+            {
+              "doc": "ARCH",
+              "where": "4.1",
+              "what": "`Authz.php` — 판정 함수와 근거 코드 표"
+            },
+            {
+              "doc": "ARCH",
+              "where": "5.1 · 5.3 · 5.4 · 5.5",
+              "what": "목록·다운로드·삭제 흐름의 권한 검사 위치와 비교표"
+            },
+            {
+              "doc": "ARCH",
+              "where": "7.5",
+              "what": "`detail` 표준 키 — `granted_by`·`route`·`login_ref`"
+            },
+            {
+              "doc": "SECURITY",
+              "where": "1.2 · 1.3",
+              "what": "프론트 권한 우회·권한 없는 데이터 노출이 왜 막히나"
+            },
+            {
+              "doc": "SECURITY",
+              "where": "2장 R-04 · R-11",
+              "what": "정책 누락, 감사 로그 무결성의 현재 상태"
+            },
+            {
+              "doc": "SECURITY",
+              "where": "6.3 R-35 · R-36",
+              "what": "3단계 노출, 거부 기록 경로의 현재 상태"
+            },
+            {
+              "doc": "SECURITY",
+              "where": "7장 2026-09-10 「4단계 구현 검토」",
+              "what": "T-1·T-2·T-3 실측 원문"
+            },
+            {
+              "doc": "STAGES",
+              "where": "2장 4단계",
+              "what": "개발 사항·검토 체크·자기 공격 절차·학습 기록"
+            },
+            {
+              "doc": "README",
+              "where": "★ 내 행동과 AI 검토 행동 가르기",
+              "what": "감사 로그에서 `qa_` 행을 가르는 법"
+            }
+          ]
+        },
+        {
+          "type": "link",
+          "slug": "stage-03",
+          "label": "이전 단계 — 기본 기능(권한 검사 없음)"
+        },
+        {
+          "type": "link",
+          "slug": "stage-05",
+          "label": "다음 단계 — 입력·출력 안전"
+        }
+      ]
+    }
+  ]
+}

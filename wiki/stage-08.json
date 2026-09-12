@@ -1,0 +1,251 @@
+{
+  "slug": "stage-08",
+  "title": "8단계 — 감사 로그 조회 화면",
+  "summary": "감사 로그를 Admin 만 조회하는 화면을 만들고, 조회한 사실도 기록하며, 기록은 지울 수 없게 두 겹으로 지켰다.",
+  "group": "stage",
+  "stage": 8,
+  "updated": "2026-09-12",
+  "sections": [
+    {
+      "id": "why",
+      "heading": "왜 필요한가",
+      "blocks": [
+        {
+          "type": "p",
+          "text": "4~7단계에서 앱은 잘못된 요청을 막는 법을 배웠다. 그런데 막힌 시도가 어디에 쌓이는지 볼 화면이 없었다."
+        },
+        {
+          "type": "p",
+          "text": "열람은 Admin 전용이다(F-09, Q-8). 로그에는 파일 이름과 접속 위치가 있어 Manager 가 보면 다른 팀 정보가 샌다(R-01)."
+        },
+        {
+          "type": "terms",
+          "items": [
+            {
+              "term": "감사 로그",
+              "easy": "누가·언제·어디서·무엇을·어떻게·왜 했는지 한 줄씩 남기는 기록장. 지우거나 고칠 수 없어야 증거가 된다"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "what",
+      "heading": "무엇을 만들었나",
+      "blocks": [
+        {
+          "type": "p",
+          "text": "`GET /api/audit` 와 화면 `/audit` 를 만들었다. 정책은 `audit.read` 로 Admin 만 통과하고, 다른 역할의 시도는 403 + `authz.route` 기록이다."
+        },
+        {
+          "type": "p",
+          "text": "기록은 육하원칙 여섯 칸으로 찾는다. 값은 전부 바인딩하고 형식 밖 값은 무시한다."
+        },
+        {
+          "type": "table",
+          "header": [
+            "육하원칙",
+            "필터",
+            "무엇을 넣나"
+          ],
+          "rows": [
+            [
+              "누가",
+              "`actor`",
+              "계정 이름 또는 `login_ref`"
+            ],
+            [
+              "언제",
+              "`from`·`to`",
+              "날짜 범위"
+            ],
+            [
+              "어디서",
+              "`ip`",
+              "접속 주소"
+            ],
+            [
+              "무엇을",
+              "`target`·`level`",
+              "파일 이름 일부, 접근 등급"
+            ],
+            [
+              "어떻게",
+              "`action`",
+              "행동 이름(허용 목록)"
+            ],
+            [
+              "왜",
+              "`result`·`reason`·`granted_by`",
+              "허용/거부, 사유, 허용 근거"
+            ]
+          ]
+        },
+        {
+          "type": "p",
+          "text": "「요약」열 `summary` 는 기록 시점에 문장 틀로 만든 한국어 한 문장이다. 조회 자체도 기록한다 — 핸들러 첫 줄에서 `audit.view` 와 건 필터를 남긴다."
+        },
+        {
+          "type": "callout",
+          "kind": "how",
+          "title": "지울 수 없게 만든 두 겹",
+          "text": "DB 쪽은 앱 계정 `tbox_app` 에 `audit_logs` 의 SELECT·INSERT 만 준다. 파일 쪽은 `audit.log` 에 `chattr +a`(덧붙이기만 허용하는 속성) 를 걸었다. 해제는 root 만 할 수 있다."
+        },
+        {
+          "type": "p",
+          "text": "결정: 없는 주소(404)·잘못된 방식(405)은 기록하지 않는다. 경로 스캔은 nginx 접근 로그에 90일 남는다."
+        }
+      ]
+    },
+    {
+      "id": "check",
+      "heading": "어떻게 확인했나",
+      "blocks": [
+        {
+          "type": "p",
+          "text": "2026-09-11 Fable 검토 통과(SECURITY 7장 「8단계 구현 검토」)."
+        },
+        {
+          "type": "list",
+          "items": [
+            "T-13: qa_manager01·qa_employee01·qa_guest01 로 `GET /api/audit` → 403 동일 문구 + `authz.route deny role_not_permitted` 3건. 미로그인 401. 화면 `/audit` Employee 403·미로그인 302.",
+            "T-12: qa_admin01 이 `result=deny` 조회 → 200, 4~7단계 거부 행동 10종 전부 존재. 조회마다 `audit.view allow` + `detail.filters` 행.",
+            "필터 10종 각 200. 잘못된 값 9종(`action=x;DROP`·`from=2026-13-99`·`ip=abc` 등) 전부 200, 오류 문구 0.",
+            "XSS: 시험용 파일명이 JSON 문자열로만, `/audit` HTML 에 0회. 린트 0건."
+          ]
+        },
+        {
+          "type": "callout",
+          "kind": "check",
+          "title": "미검증",
+          "text": "브라우저에서 표와 펼침 상세가 제대로 그려지는지는 관문 ③(사용자 자기 공격)에서 본다."
+        }
+      ]
+    },
+    {
+      "id": "risk",
+      "heading": "남은 위험",
+      "blocks": [
+        {
+          "type": "table",
+          "header": [
+            "위험",
+            "상태",
+            "내용"
+          ],
+          "rows": [
+            [
+              "R-01 감사 로그 경유 정보 누출",
+              "✅ 해소",
+              "Manager 열람 자체를 없앴다(Q-8)"
+            ],
+            [
+              "R-11 감사 로그 무결성",
+              "◐",
+              "DB 추가 전용·파일 `+a`·해시 체인은 됨. 원격 전송 없음. root 침해에는 무력"
+            ]
+          ]
+        },
+        {
+          "type": "p",
+          "text": "관찰: 로그인 실패 행은 세션이 생기기 전이라 「누가」로 못 찾는다. 계정이 `target` 에 있으니 「무엇을」로 찾는다."
+        }
+      ]
+    },
+    {
+      "id": "try",
+      "heading": "직접 해보기",
+      "blocks": [
+        {
+          "type": "steps",
+          "items": [
+            "employee01 로 로그인해 주소창에 `/api/audit` → 403 과 아래 문구. `/audit` 도 같다.",
+            "admin01 로 「감사 로그」 → 「결과 = deny」 → 방금 시도가 맨 위에 `authz.route … GET /api/audit` 로 보인다. 4~7단계에서 한 공격도 전부 deny 인지 본다.",
+            "「누가 = employee01」로 좁혀 요약이 한국어 문장인지, 시험용 스크립트 문자열 파일명도 글자 그대로인지 본다.",
+            "서버에서 내가 로그를 본 기록(`audit.view`)이 남았는지 본다."
+          ]
+        },
+        {
+          "type": "code",
+          "text": "{\"error\":\"권한이 없습니다\"}"
+        },
+        {
+          "type": "code",
+          "text": "sudo tail -n 3 /var/log/tbox-v2/audit.log"
+        },
+        {
+          "type": "callout",
+          "kind": "try",
+          "title": "비밀번호는 어디에",
+          "text": "시드 계정 비밀번호는 root 만 읽는 서버 파일에 있다."
+        }
+      ]
+    },
+    {
+      "id": "refs",
+      "heading": "원문 위치",
+      "blocks": [
+        {
+          "type": "refs",
+          "items": [
+            {
+              "doc": "PRD",
+              "where": "7.7 S-07",
+              "what": "기록해야 하는 행동, 조회 화면 필터, 파일 사본 보호"
+            },
+            {
+              "doc": "PRD",
+              "where": "6장 F-09 · 14장 Q-8",
+              "what": "Admin 전용 화면, 열람 범위 결정"
+            },
+            {
+              "doc": "PRD",
+              "where": "12.2 T-12·T-13",
+              "what": "육하원칙 6항목, Employee 호출은 403 + 기록"
+            },
+            {
+              "doc": "ARCH",
+              "where": "7.6",
+              "what": "조회 API 설계 — 정책·필터·조회 기록"
+            },
+            {
+              "doc": "ARCH",
+              "where": "7.1·7.2 · 7.4",
+              "what": "두 곳 동시 기록과 추가 전용, 요약 문장 표"
+            },
+            {
+              "doc": "SECURITY",
+              "where": "7장 「8단계 구현 검토」",
+              "what": "T-12·T-13 실측 값, 404·405 미기록 결정"
+            },
+            {
+              "doc": "SECURITY",
+              "where": "2장 R-01·R-11",
+              "what": "현재 상태"
+            },
+            {
+              "doc": "STAGES",
+              "where": "2장 8단계",
+              "what": "개발 사항·검토 체크·자기 공격·학습 기록"
+            },
+            {
+              "doc": "README",
+              "where": "「감사 로그 보는 법」",
+              "what": "6필터 요령, 로그인 실패 찾는 법, 두 겹 보호"
+            }
+          ]
+        },
+        {
+          "type": "link",
+          "slug": "stage-07",
+          "label": "이전 단계 — 7단계 SSRF 방어"
+        },
+        {
+          "type": "link",
+          "slug": "stage-09",
+          "label": "다음 단계 — 9단계 운영"
+        }
+      ]
+    }
+  ]
+}

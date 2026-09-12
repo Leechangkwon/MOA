@@ -135,6 +135,19 @@ const TBOX_ROUTES = [
     ['PATCH',  '/api/org/teams/{num}',           'org_team_update.php',  'org.manage'],
     ['GET',    '/api/org/teams/{num}/members',   'org_team_members.php', 'org.manage'],
     ['GET',    '/api/org/permissions',           'org_permissions.php',  'org.manage'],
+
+    // 14단계 — 위키 (PRD F-21 · 8장 `/wiki` 행 · 10장 「위키」, ARCH 5.10, SECURITY R-56).
+    //   두 경로 모두 `role:Admin` 이다. 왜 Admin 만인가 — 위키는 네 문서를 초보자 말로 다시 쓴
+    //   해설이고, 그 안에는 남은 위험(R-xx)·서버 설정·사고 경위가 풀려 있다. Guest(협력사)·
+    //   Employee 가 읽으면 그것이 곧 공격 지도다 (SECURITY R-56). 범위를 넓히려면 이 두 줄과
+    //   함께 R-56 을 다시 판단한다(예: 안내 글만 authenticated 로 가르기).
+    //   새 정책 이름을 만들지 않고 휴지통과 같은 `role:Admin` 을 쓴다 — 위키에는 "관리하는
+    //   행위" 가 없어 감사 로그에서 갈라 볼 이유가 없다(조직 관리의 `org.manage` 와 반대 경우).
+    //   `{slug}` 는 글 이름이며 파일 이름이 되는 값이다. 자리표시자 정규식이 1차 관문이고,
+    //   Wiki::pathFor() 가 같은 정규식 + realpath 로 한 번 더 본다 (ARCH 5.10).
+    //   감사 기록은 남기지 않는다 (PRD F-21) — 문서 열람은 보안 사건이 아니다.
+    ['GET',    '/wiki',                          'wiki_index.php',       'role:Admin'],
+    ['GET',    '/wiki/{slug}',                   'wiki_page.php',        'role:Admin'],
 ];
 
 /**
@@ -171,6 +184,11 @@ const TBOX_HANDLER_DIR = __DIR__ . '/../src/handlers/';
 const TBOX_PATH_PATTERNS = [
     '{id}'  => '[0-9a-f-]{36}',
     '{num}' => '[0-9]{1,9}',
+    // 14단계 — 위키 글 이름 (F-21, ARCH 5.10). 소문자·숫자·붙임표 40자까지이고 첫 글자는
+    // 붙임표가 아니다. 이 값은 파일 이름이 되므로 `.`·`/`·대문자·%인코딩이 한 글자도
+    // 통과하지 못한다 — `/wiki/../x` 나 `/wiki/ZZ` 는 라우트에 맞지 않아 404 다.
+    // Wiki::pathFor() 가 같은 정규식을 다시 보고 realpath 로 wiki/ 안인지 확인한다.
+    '{slug}' => '[a-z0-9][a-z0-9-]{0,39}',
 ];
 
 /** 미로그인 화면 요청을 보내는 곳. 코드 상수이며 요청 값이 섞이지 않는다 (ARCH 4.0). */

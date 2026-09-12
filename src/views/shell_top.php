@@ -10,7 +10,7 @@ declare(strict_types=1);
  * 받는 변수 (호출하는 핸들러가 include 전에 정의한다)
  *   · $user      array   라우터가 넘긴 현재 사용자 (DB 에서 읽은 값. 요청 값이 아니다)
  *   · $pageTitle string  <title> 에 들어갈 화면 이름
- *   · $activeNav string  지금 켜 둘 내비 항목 — files|trash|settings|users|org|audit
+ *   · $activeNav string  지금 켜 둘 내비 항목 — files|trash|settings|users|org|audit|wiki
  *   · $pageKey   string  <body data-page> — app.js 가 어떤 화면인지 고르는 열쇠
  *
  * ★ HTML 에 들어가는 동적 값은 **사용자명·역할·pageTitle·activeNav·pageKey 다섯 개뿐**이고
@@ -20,15 +20,15 @@ declare(strict_types=1);
  *
  * ★ 이 파일에 **역할 비교를 두지 않는다** (PRD S-01, ARCH 13장). 내비 항목은 전부
  *   `hidden` 인 채로 나가고, `/api/me` 의 `can_view_trash`·`can_manage_users`·
- *   `can_view_audit` 이 참일 때만 app.js 가 연다. 개발자도구로 항목을 되살려도
- *   `/trash`·`/users`·`/audit` 은 라우터 정책이 다시 막는다 — 표시는 편의, 근거는 라우트 정책이다.
+ *   `can_view_audit`·`can_view_wiki` 가 참일 때만 app.js 가 연다. 개발자도구로 항목을 되살려도
+ *   `/trash`·`/users`·`/audit`·`/wiki` 는 라우터 정책이 다시 막는다 — 표시는 편의, 근거는 라우트 정책이다.
  *
  * ★ 인라인 <script>·style 속성·on* 이벤트 속성을 쓰지 않는다 (CSP: script-src 'self', style-src 'self').
  *   아이콘은 shell_bottom.php 의 <template> 을 app.js 가 cloneNode 로 붙인다 (문자열 → HTML 변환 0).
  */
 
 /** 내비·본문 키의 허용 목록. 여기 없는 값은 빈 문자열이 된다. */
-$shellKeys = ['files', 'trash', 'settings', 'users', 'org', 'audit'];
+$shellKeys = ['files', 'trash', 'settings', 'users', 'org', 'audit', 'wiki'];
 
 $shellUser   = isset($user) && is_array($user) ? $user : [];
 $shellName   = htmlspecialchars((string) ($shellUser['username'] ?? ''), ENT_QUOTES, 'UTF-8');
@@ -129,6 +129,12 @@ if (!headers_sent()) {
         </a>
         <a id="nav-audit" class="<?= $shellNavClass('audit') ?>" href="/audit" hidden>
           <span class="icon" data-icon="log"></span><span>감사 로그</span>
+        </a>
+        <!-- 「위키」는 14단계에서 `can_view_wiki` 로 연다 (F-21, Admin 만 — SECURITY R-56).
+             아이콘은 새 <template> 을 만들지 않고 기존 것(shield)을 재사용한다 —
+             위키의 내용이 곧 "이 서비스를 어떻게 안전하게 만들었나" 이기 때문이다. -->
+        <a id="nav-wiki" class="<?= $shellNavClass('wiki') ?>" href="/wiki" hidden>
+          <span class="icon" data-icon="shield"></span><span>위키</span>
         </a>
       </nav>
     </div>

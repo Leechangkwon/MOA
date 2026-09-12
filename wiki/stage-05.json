@@ -1,0 +1,325 @@
+{
+  "slug": "stage-05",
+  "title": "5단계 — 들어온 값은 글자로만, 바뀌는 칸은 정해진 것만",
+  "summary": "출력 이스케이프·`textContent`·CSP 로 XSS 를, 값 바인딩과 정렬 허용 목록으로 SQL 인젝션을 막았다. 설명·등급 변경 PATCH 는 허용 필드 세 개만 받고 등급 하향은 Admin 만 할 수 있다.",
+  "group": "stage",
+  "stage": 5,
+  "updated": "2026-09-12",
+  "sections": [
+    {
+      "id": "why",
+      "heading": "왜 필요한가",
+      "blocks": [
+        {
+          "type": "p",
+          "text": "실습용 t-box 의 ③ XSS 는 설명란 값을 `tr.innerHTML` 로 그려서 났다. 남이 넣은 `<img onerror>` 가 내 브라우저에서 스크립트로 돌았다."
+        },
+        {
+          "type": "p",
+          "text": "④ SQL 인젝션은 검색어를 `LIKE '%$q%'` 문자열에 이어 붙여서 났다. 오류 문구까지 화면에 나와 DB 구조를 알려 주었다."
+        },
+        {
+          "type": "p",
+          "text": "새 기능도 새 위험을 만든다. 설명·등급을 고치는 PATCH 가 요청 JSON 을 그대로 UPDATE 하면 어떻게 되나. `uploaded_by` 나 `sha256` 까지 바뀔 수 있다(R-07 대량 할당)."
+        },
+        {
+          "type": "callout",
+          "kind": "why",
+          "title": "입력 검증만으로는 안 된다",
+          "text": "길이 제한은 도움이 되지만 XSS 를 막는 핵심은 출력이다. 저장은 되더라도 화면에 나갈 때 글자로만 보이게 하면 실행되지 않는다(PRD S-03)."
+        },
+        {
+          "type": "terms",
+          "items": [
+            {
+              "term": "XSS",
+              "easy": "남의 브라우저에서 내 스크립트를 실행시키는 공격. 파일명·설명란으로 들어온다"
+            },
+            {
+              "term": "이스케이프",
+              "easy": "입력값을 글자로만 보이게 바꾸는 것. `<` 는 `&lt;` 가 된다"
+            },
+            {
+              "term": "값 바인딩",
+              "easy": "SQL 문장과 값을 따로 보내는 방식. 값 안의 따옴표가 명령이 되지 못한다"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "what",
+      "heading": "무엇을 만들었나",
+      "blocks": [
+        {
+          "type": "p",
+          "text": "출력 이스케이프를 전수 점검했다. 서버 HTML 의 동적 값 두 곳(`username`·`role`)은 `htmlspecialchars` 를 거친다. `app.js` 는 `textContent` 와 UUID 검사 뒤 href 만 쓴다. 고칠 곳은 0건이었다."
+        },
+        {
+          "type": "p",
+          "text": "CSP(콘텐츠 보안 정책 — 브라우저에 「이 출처의 스크립트만 실행하라」고 알리는 헤더)는 인라인 스크립트를 금지한다. 어딘가 `innerHTML` 이 남아도 두 번째 벽이 된다."
+        },
+        {
+          "type": "list",
+          "items": [
+            "SQL 25개 전부 고정 문자열 + 바인딩, `ORDER BY` 는 허용 목록, `LIMIT/OFFSET` 은 정수 바인딩, `PDO::query/exec` 0",
+            "CSRF: 상태를 바꾸는 라우트 4개(logout·upload·PATCH·DELETE)를 라우터에서 검사. 로그인은 JSON 전용 + SameSite",
+            "오류 은닉: 서버 오류 본문은 `{\"error\":\"서버 오류\"}` 하나, 상세는 `app.log` 에만",
+            "R-36: `csrf`·`auth.required` 거부 기록의 대상을 실제 UUID 경로에서 라우트 패턴으로"
+          ]
+        },
+        {
+          "type": "p",
+          "text": "`PATCH /api/files/{id}` 는 허용 필드 `description`·`access_level`·`team_id` 만 받는다. 모르는 키가 하나라도 있으면 400 이고, UPDATE 문장은 고정 조각 세 개다."
+        },
+        {
+          "type": "p",
+          "text": "권한은 `decideRead` → `decideEdit` → `decideLevelChange` 세 단계다. 등급을 낮추는 변경(`admin-only`→`team`→`internal`→`public` 방향)은 Admin 만 할 수 있다. 변경 전후 값 `before/after` 를 감사 기록에 남긴다."
+        },
+        {
+          "type": "callout",
+          "kind": "how",
+          "title": "화면의 수정 버튼",
+          "text": "목록 행의 `can_edit` 가 참일 때만 버튼을 만든다. 버튼은 편의이고, PATCH 요청은 서버가 위 순서로 다시 판단한다."
+        },
+        {
+          "type": "terms",
+          "items": [
+            {
+              "term": "대량 할당",
+              "easy": "요청에 온 키를 그대로 DB 칸에 넣는 실수. 허용 필드를 정해 두어 막는다"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "check",
+      "heading": "어떻게 확인했나",
+      "blocks": [
+        {
+          "type": "p",
+          "text": "SECURITY 7장 2026-09-11 「5단계 구현 검토」 행이다. 검토 계정 `qa_*` 로 실행해 통과했다."
+        },
+        {
+          "type": "table",
+          "header": [
+            "T-xx",
+            "결과",
+            "판정"
+          ],
+          "rows": [
+            [
+              "T-4 XSS",
+              "설명 `<img onerror>`·`<svg onload>`(PATCH)·파일명 `\"><script>` → JSON 문자열로만, 홈 HTML 에 0회, 다운로드는 `octet-stream`+`attachment`+`nosniff`",
+              "통과"
+            ],
+            [
+              "T-5 SQL 인젝션",
+              "`' OR '1'='1`·UNION·`;DROP`·`sort/dir/page` 주입 → 200 + 0건/기본값, 오류 문구 0. PATCH 설명의 SQL 조각은 글자 그대로 저장, 등급 주입 400",
+              "통과"
+            ],
+            [
+              "T-14 CSRF",
+              "토큰 없이 PATCH/DELETE/POST → 403, 거부 기록 대상이 `PATCH /api/files/{id}` 패턴(R-36 해소)",
+              "통과"
+            ],
+            [
+              "PATCH 권한 22종",
+              "본인 설명 200 `owner`, 상향 200 `matrix`, 하향 403 `downgrade_not_permitted`, Admin 하향 200 + before/after, Guest 403 `authz.route`, 모르는 키·빈 본문 400 `bad_request`, `uploaded_by`·`sha256`·`stored_name` 불변",
+              "통과"
+            ],
+            [
+              "오류 은닉",
+              "저장 파일을 잠시 옮겨 500 유도 → 본문 `{\"error\":\"서버 오류\"}` 만",
+              "통과"
+            ],
+            [
+              "전수 점검",
+              "`<?=` 2곳 모두 `htmlspecialchars`, SQL 25개 바인딩, 상태 변경 라우트 4개 전부 `requireCsrf`, 린트 0건",
+              "통과"
+            ],
+            [
+              "브라우저 수정 버튼(prompt 흐름)",
+              "관문 ③",
+              "미검증"
+            ],
+            [
+              "`bad_encoding` 사유",
+              "JSON 경로에서 도달 불가(심층 방어로만 존재)",
+              "미검증"
+            ]
+          ]
+        },
+        {
+          "type": "callout",
+          "kind": "check",
+          "title": "검토 스크립트의 실패",
+          "text": "1회차 검토 스크립트가 따옴표 든 파일명을 로컬 경로로 써서 PATCH 시험이 빈 ID 로 나가 405 가 났다. 앱이 아니라 스크립트 문제였고, 수정 뒤 재실행했다. curl 은 `-F \"file=@경로;filename=표시이름\"` 과 `--form-string` 을 써야 한다."
+        }
+      ]
+    },
+    {
+      "id": "risk",
+      "heading": "남은 위험",
+      "blocks": [
+        {
+          "type": "table",
+          "header": [
+            "ID",
+            "위험",
+            "현재 상태"
+          ],
+          "rows": [
+            [
+              "R-07",
+              "PATCH 대량 할당",
+              "✅ 구현·실측. 허용 키 3개 외 400, UPDATE 고정 조각 3개, 불변 컬럼 실측"
+            ],
+            [
+              "R-36",
+              "거부 기록에 실제 UUID 경로",
+              "✅ 해소. `target_name` 을 라우트 패턴으로"
+            ],
+            [
+              "R-20",
+              "등급 하향·대량 삭제의 단독 실행",
+              "◐ 하향은 Admin 만 + `before/after` 기록. 확인 단계(사유 입력)는 10단계 `reason_text`. 대량 삭제 API 없음"
+            ]
+          ]
+        },
+        {
+          "type": "callout",
+          "kind": "risk",
+          "title": "SECURITY 1.4 의 남은 약점",
+          "text": "감사 로그 화면의 `user_agent`·`target_name`·`reason` 은 공격자가 만들 수 있는 값이다. 8단계 화면도 같은 `textContent` 규칙을 따라야 한다."
+        }
+      ]
+    },
+    {
+      "id": "try",
+      "heading": "직접 해보기",
+      "blocks": [
+        {
+          "type": "p",
+          "text": "STAGES 5단계 「자기 공격 체크」를 `employee01` 로 따라 한다."
+        },
+        {
+          "type": "steps",
+          "items": [
+            "T-4: 업로드 설명란에 `<img src=x onerror=alert(1)>` 를 넣어 올린다. 목록에 글자 그대로 보이고 알림창이 뜨지 않아야 한다. Network 응답에서 그 문자열은 JSON 문자열 안에 있다.",
+            "T-5: 검색창에 `' OR '1'='1` 을 넣는다. 0건, 오류 문구 없음. 주소창에서 `sort` 값에 `id;DROP TABLE files` 를 넣어도 기본 정렬 목록이 나온다.",
+            "T-14: F12 → Console 에서 토큰 없이 본인 파일에 DELETE 를 보낸다. 403 이어야 한다.",
+            "F-08: 본인 파일의 수정 버튼으로 등급을 `internal` 로 올린다(성공). 다시 `public` 으로 내린다 → 「권한이 없습니다」. 감사 로그에 `downgrade_not_permitted` 가 남는다."
+          ]
+        },
+        {
+          "type": "code",
+          "text": "BASE=서비스주소   # 로컬 창구 주소 또는 공개 도메인을 넣는다\ncurl -s -i -b /tmp/emp.jar \"$BASE/api/files?q=%27%20OR%20%271%27%3D%271\"      # 200, 0건\ncurl -s -i -b /tmp/emp.jar \"$BASE/api/files?sort=id;DROP%20TABLE%20files\"    # 200, 기본 정렬\n# Console\nfetch('/api/files/<본인파일UUID>',{method:'DELETE'}).then(r=>r.status)   // 403\nsudo tail -n 3 /var/log/tbox-v2/audit.log"
+        },
+        {
+          "type": "callout",
+          "kind": "try",
+          "title": "curl 로 설명란에 `<` 를 넣을 때",
+          "text": "`-F 'description=<…'` 은 `<` 를 파일 읽기로 해석한다. `--form-string` 을 써야 글자 그대로 보낸다(5단계 학습 기록)."
+        }
+      ]
+    },
+    {
+      "id": "refs",
+      "heading": "원문 위치",
+      "blocks": [
+        {
+          "type": "refs",
+          "items": [
+            {
+              "doc": "PRD",
+              "where": "7.3 S-03",
+              "what": "XSS 방어 — 출력 이스케이프, CSP, 다운로드 응답, 검증 방법"
+            },
+            {
+              "doc": "PRD",
+              "where": "7.4 S-04",
+              "what": "SQL 인젝션 방어 — 바인딩, 정렬 허용 목록, 오류 은닉"
+            },
+            {
+              "doc": "PRD",
+              "where": "7.9 S-09-3 · S-09-7",
+              "what": "CSRF 토큰 필수, 오류 표시 금지"
+            },
+            {
+              "doc": "PRD",
+              "where": "4장 · 5.3",
+              "what": "등급을 낮추는 변경은 Admin 만"
+            },
+            {
+              "doc": "PRD",
+              "where": "6장 F-08 · 8장 PATCH 행",
+              "what": "접근 등급 변경 기능과 허용 필드 3개"
+            },
+            {
+              "doc": "PRD",
+              "where": "12.1 T-4 · T-5, 12.2 T-14",
+              "what": "테스트 방법과 기대 결과"
+            },
+            {
+              "doc": "ARCH",
+              "where": "4장",
+              "what": "공통 관문 [2] CSRF, [7] HTML 은 전부 이스케이프"
+            },
+            {
+              "doc": "ARCH",
+              "where": "4.1",
+              "what": "`decideEdit`·`decideLevelChange`·`downgrade_not_permitted`"
+            },
+            {
+              "doc": "ARCH",
+              "where": "5.7",
+              "what": "PATCH 흐름 — 필드 화이트리스트와 세 단계 권한"
+            },
+            {
+              "doc": "ARCH",
+              "where": "8장",
+              "what": "CSP 등 보안 헤더 설정"
+            },
+            {
+              "doc": "SECURITY",
+              "where": "1.4 · 1.5",
+              "what": "XSS·SQL 인젝션이 왜 막히나, 남은 약점"
+            },
+            {
+              "doc": "SECURITY",
+              "where": "2장 R-07 · R-20",
+              "what": "대량 할당, 등급 하향 단독 실행의 현재 상태"
+            },
+            {
+              "doc": "SECURITY",
+              "where": "6.3 R-36",
+              "what": "거부 기록 경로의 해소"
+            },
+            {
+              "doc": "SECURITY",
+              "where": "7장 2026-09-11 「5단계 구현 검토」",
+              "what": "T-4·T-5·T-14 와 PATCH 22종 실측 원문"
+            },
+            {
+              "doc": "STAGES",
+              "where": "2장 5단계",
+              "what": "개발 사항·검토 체크·자기 공격·학습 기록(curl 인용 문제)"
+            }
+          ]
+        },
+        {
+          "type": "link",
+          "slug": "stage-04",
+          "label": "이전 단계 — 서버 인가"
+        },
+        {
+          "type": "link",
+          "slug": "stage-06",
+          "label": "다음 단계 — 업로드 하드닝"
+        }
+      ]
+    }
+  ]
+}

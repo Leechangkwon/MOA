@@ -76,6 +76,10 @@ Http::json([
     // 다른 can_* 와 똑같은 **화면 편의 값**이며, 항목을 되살려 /org 나 /api/org/* 를 직접
     // 불러도 라우터 정책 org.manage 가 다시 막는다 (PRD S-01, T-27).
     'can_manage_org'   => Authz::canManageOrg($user),
+    // 14단계 — 좌측 내비의 「위키」 항목을 보일지 여부 (F-21, Admin 만, SECURITY R-56).
+    // 다른 can_* 와 똑같은 **화면 편의 값**이다. 항목을 되살려 /wiki 나 /wiki/{slug} 를
+    // 직접 불러도 라우터 정책 role:Admin 이 다시 막는다 (PRD S-01, T-32).
+    'can_view_wiki'    => Authz::canReadWiki($user),
     // 10단계 — 내 2단계 인증이 켜져 있나 (R-05). 권한이 아니라 상태이며,
     // 화면이 "켜기" 를 보일지 "끄기" 를 보일지 고르는 데만 쓴다.
     'mfa_enabled'      => ($user['mfa_enabled'] ?? false) === true,

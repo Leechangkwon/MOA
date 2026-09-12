@@ -462,6 +462,23 @@ final class Authz
         return self::roleOf($u) === 'Admin';
     }
 
+    /**
+     * PRD F-21 — 위키(`/wiki`·`/wiki/{slug}`) 열람은 Admin 만 (14단계, SECURITY R-56).
+     *
+     * 왜 Admin 만인가: 위키의 SECURITY·STAGES 해설에는 남은 위험(R-xx)·서버 설정·사고 경위가
+     * 초보자도 읽을 수 있게 풀려 있다. Guest(협력사)·Employee 가 읽으면 그것이 곧 공격 지도다
+     * (SECURITY R-56). 범위를 넓히려면 라우트 정책과 함께 R-56 을 다시 판단한다.
+     *
+     * 라우트 정책은 새로 만들지 않고 기존 `role:Admin` 을 쓴다 — 자격이 휴지통·계정 관리와
+     * 같고, 위키에는 "관리하는 행위" 가 없어서 감사 로그에서 갈라 볼 이유가 없기 때문이다
+     * (조직 관리에 `org.manage` 를 따로 둔 것과 반대 경우다). 그래서 KNOWN_POLICIES 도
+     * 그대로다. 이 함수는 `/api/me` 의 화면 편의 값 `can_view_wiki` 를 만드는 데 쓴다.
+     */
+    public static function canReadWiki(array $u): bool
+    {
+        return self::roleOf($u) === 'Admin';
+    }
+
     /* ─── 10단계: 계정 관리 (F-10) — 역할에 관한 모든 판단은 여기 모은다 ───────── */
 
     /**

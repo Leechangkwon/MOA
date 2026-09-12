@@ -3205,6 +3205,10 @@ function initShell(me, csrfToken) {
   // 다른 can_* 와 같은 **표시용** 값이다. 항목을 개발자도구로 되살려 /org 나 /api/org/* 를
   // 직접 불러도 라우트 정책 org.manage 가 막고 authz.route|deny 로 남는다 (PRD S-01, T-27).
   var canOrg = me.can_manage_org === true;
+  // 14단계 — 「위키」는 /api/me 의 can_view_wiki 가 참일 때만 열린다 (F-21, Admin 만).
+  // 다른 can_* 와 같은 **표시용** 값이다. 항목을 개발자도구로 되살려 /wiki 나
+  // /wiki/{slug} 를 직접 불러도 라우트 정책 role:Admin 이 막는다 (PRD S-01, T-32).
+  var canWiki = me.can_view_wiki === true;
 
   function showNav(id, open) {
     var el = document.getElementById(id);
@@ -3219,11 +3223,12 @@ function initShell(me, csrfToken) {
   showNav('nav-users', canUsers);
   showNav('nav-org', canOrg);
   showNav('nav-audit', canAudit);
+  showNav('nav-wiki', canWiki);
 
   // 「관리」 묶음은 그 안에 열린 항목이 하나라도 있을 때만 제목째 보인다.
   var adminGroup = document.getElementById('nav-admin-group');
   if (adminGroup) {
-    adminGroup.hidden = inGate || !(canUsers || canOrg || canAudit);
+    adminGroup.hidden = inGate || !(canUsers || canOrg || canAudit || canWiki);
   }
 
   /* 좁은 화면(960px 미만)의 접이식 내비. 넓은 화면에서는 CSS 가 내비를 늘 펼쳐 두므로

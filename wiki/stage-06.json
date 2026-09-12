@@ -1,0 +1,322 @@
+{
+  "slug": "stage-06",
+  "title": "6단계 — 업로드 하드닝, 이름이 아니라 내용을 본다",
+  "summary": "확장자와 실제 내용(MIME)의 짝을 맞추고, 이중 확장자를 거부하고, 저장 이름은 UUID 로 웹 루트 밖에 둔다. 다운로드 전에는 sha256 을 대조하고, 저장소를 옛 취약판이 읽지 못하게 그룹을 회수했다.",
+  "group": "stage",
+  "stage": 6,
+  "updated": "2026-09-12",
+  "sections": [
+    {
+      "id": "why",
+      "heading": "왜 필요한가",
+      "blocks": [
+        {
+          "type": "p",
+          "text": "파일 공유 서비스의 가장 오래된 공격은 웹셸(서버에서 명령을 실행하게 만드는 업로드 스크립트)이다. 실습용 t-box 는 `uploads/` 가 웹 루트 안이었고 검사가 없었다."
+        },
+        {
+          "type": "p",
+          "text": "이름만 보면 속는다. `shell.php` 를 `doc.pdf` 로 바꿔 올리면 확장자 검사는 통과한다. 그래서 실제 내용을 읽어 짝이 맞는지 본다."
+        },
+        {
+          "type": "p",
+          "text": "서버가 침해되면 저장된 파일을 악성 문서로 바꿔칠 수 있다. 다운로드 전 해시 대조가 없으면 알아채지 못한다(R-13)."
+        },
+        {
+          "type": "callout",
+          "kind": "why",
+          "title": "같은 VM 의 옛 취약판",
+          "text": "옛 t-box 가 `www-data` 계정으로 같은 서버에서 돈다. 새 저장소의 그룹이 `www-data` 이면 옛 사이트의 웹셸이 새 파일을 읽을 수 있다(R-34)."
+        },
+        {
+          "type": "terms",
+          "items": [
+            {
+              "term": "웹셸",
+              "easy": "업로드된 뒤 서버에서 명령을 실행하게 만드는 스크립트 파일"
+            },
+            {
+              "term": "MIME",
+              "easy": "파일의 실제 종류를 나타내는 이름표. 확장자가 아니라 내용을 읽어 판별한다"
+            },
+            {
+              "term": "sha256",
+              "easy": "파일 내용으로 만든 고정 길이 지문. 한 바이트만 바뀌어도 값이 달라진다"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "what",
+      "heading": "무엇을 만들었나",
+      "blocks": [
+        {
+          "type": "list",
+          "items": [
+            "확장자 화이트리스트 14종(PRD 7.6). 없는 확장자·목록 밖 → `ext_not_allowed`",
+            "`finfo` 로 읽은 실제 MIME 과 확장자의 짝 표. 어긋나면 `mime_mismatch`. `application/octet-stream` 은 어디에도 허용하지 않음",
+            "이중 확장자(`shell.php.txt`, `.htaccess.txt`) → `double_extension`. 제어문자로 조각을 쪼개는 우회도 방어",
+            "정확히 100MB 는 통과, 1바이트 초과는 PHP 가 거부, 101MB 는 nginx 413(`client_max_body_size 101m`)",
+            "사용자별 24시간 2GB(`quota_exceeded`, 삭제 파일 포함)"
+          ]
+        },
+        {
+          "type": "p",
+          "text": "저장 이름은 서버가 만든 UUID 와 안전한 확장자다. 경로는 `storage/ab/cd/UUID.ext` 로 웹 루트 밖이고 권한은 0640 이다. 사용자 파일명은 DB 에만 남는다."
+        },
+        {
+          "type": "p",
+          "text": "다운로드 전에는 저장 파일의 sha256 을 DB 값과 대조한다. 어긋나면 전송하지 않고 500 과 `hash_mismatch` 기록만 남긴다(R-13)."
+        },
+        {
+          "type": "p",
+          "text": "다운로드는 PHP `readfile()` 로 확정했다. nginx 가 저장소를 읽을 필요가 없어졌다. 그래서 `/var/lib/tbox-v2` 와 `storage` 의 그룹을 `www-data` 에서 `tbox-php` 로 회수했다(R-34 해소)."
+        },
+        {
+          "type": "callout",
+          "kind": "how",
+          "title": "악성코드 검사는 범위 밖",
+          "text": "ClamAV 는 Q-3 결정(2026-09-11)으로 과제 범위에 넣지 않았다. `scan_status` 자리만 남겼다."
+        },
+        {
+          "type": "terms",
+          "items": [
+            {
+              "term": "화이트리스트",
+              "easy": "「이것만 허용」 목록. 막을 것을 다 알 수 없으니 허용할 것만 적는다"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "check",
+      "heading": "어떻게 확인했나",
+      "blocks": [
+        {
+          "type": "p",
+          "text": "SECURITY 7장 2026-09-11 「6단계 구현 검토」 행이다. 검토 계정 `qa_*` 로 실행해 통과했다."
+        },
+        {
+          "type": "table",
+          "header": [
+            "T-xx",
+            "결과",
+            "판정"
+          ],
+          "rows": [
+            [
+              "T-7 `.php`",
+              "`shell.php` → 400 `ext_not_allowed`, 저장소 파일 수 불변",
+              "통과"
+            ],
+            [
+              "T-8 위장",
+              "PHP 내용의 `doc.pdf`·텍스트 내용의 `img.png` → 400 `mime_mismatch`, `evil.html` → 400",
+              "통과"
+            ],
+            [
+              "이중 확장자",
+              "`shell.php.txt`·`.htaccess.txt` → 400 `double_extension`, `a.pdf.php` 400, `report.final.txt` 201",
+              "통과"
+            ],
+            [
+              "T-9 크기",
+              "정확히 100MB(줄바꿈 있는 텍스트) 201, +1바이트 400 `too_large`, 101MB nginx 413. `nginx -T` 에 `client_max_body_size 101m`",
+              "통과"
+            ],
+            [
+              "T-10 직접 접근",
+              "`/protected/…`·`/storage/…`·절대경로 → 404",
+              "통과"
+            ],
+            [
+              "T-11 경로 조작",
+              "`../../etc/passwd.txt` → `passwd.txt` + UUID 저장",
+              "통과"
+            ],
+            [
+              "sha256 대조",
+              "저장 파일 1바이트 변조 → 500 `{\"error\":\"서버 오류\"}` + `file.download error hash_mismatch`(allow 없음), 원복 → 200",
+              "통과"
+            ],
+            [
+              "R-34 그룹 회수",
+              "`/var/lib/tbox-v2`·`storage` 그룹 `tbox-php`, `sudo -u www-data cat` → Permission denied",
+              "통과"
+            ],
+            [
+              "일일 총량",
+              "DB 크기를 부풀려 합계 > 2GB → 1KB 업로드 400 `quota_exceeded`, 원복 뒤 DB·파일 크기 전수 대조 불일치 0",
+              "통과"
+            ],
+            [
+              "진짜 HWP 5.x 파일",
+              "표본 없음(스텁만)",
+              "미검증"
+            ],
+            [
+              "브라우저 업로드 폼",
+              "관문 ③",
+              "미검증"
+            ]
+          ]
+        },
+        {
+          "type": "callout",
+          "kind": "check",
+          "title": "`/dev/zero` 로 만든 100MB 가 거부된 이유",
+          "text": "내용이 NUL 바이트라 `finfo` 가 `application/octet-stream` 으로 판별했다. `txt` 짝 표에 없어 `mime_mismatch` 였다. 크기가 아니라 내용 검사에 걸린 것이다. 위장 파일 검사가 의도대로 동작한 사례다."
+        }
+      ]
+    },
+    {
+      "id": "risk",
+      "heading": "남은 위험",
+      "blocks": [
+        {
+          "type": "table",
+          "header": [
+            "ID",
+            "위험",
+            "현재 상태"
+          ],
+          "rows": [
+            [
+              "R-13",
+              "파일 무결성 검증이 「선택」",
+              "✅ 구현·실측. 다운로드 전 sha256 대조 필수, 변조 시 500 + `hash_mismatch`"
+            ],
+            [
+              "R-34",
+              "옛 취약판(`www-data`)과 새 저장소 교차 노출",
+              "✅ 해소. `readfile` 확정 + 그룹 `tbox-php` 회수, `www-data` 읽기 거부 실측"
+            ],
+            [
+              "R-02",
+              "악성 파일 유통(매크로 docx, zip 속 exe)",
+              "◐ 높음. 확장자·MIME 짝으로 실행 파일·HTML 은 막지만 문서 안은 검사하지 않음. `hwp` 칸의 `application/cdfv2` 허용으로 구형 OLE 문서를 `.hwp` 로 위장 가능. ClamAV 는 Q-3 범위 밖"
+            ]
+          ]
+        },
+        {
+          "type": "callout",
+          "kind": "risk",
+          "title": "서버는 무사해도",
+          "text": "R-02 는 서버가 아니라 파일을 내려받은 직원 PC 가 감염되는 위험이다. 이 단계의 검사는 서버를 지키는 것이고, 문서 안의 매크로는 별도 검사가 있어야 한다."
+        }
+      ]
+    },
+    {
+      "id": "try",
+      "heading": "직접 해보기",
+      "blocks": [
+        {
+          "type": "p",
+          "text": "STAGES 6단계 「자기 공격 체크」를 `employee01` 로 따라 한다."
+        },
+        {
+          "type": "steps",
+          "items": [
+            "T-7: 메모장에 `<?php echo 1;` 을 적어 `shell.php` 로 저장하고 올린다 → 「잘못된 요청입니다」.",
+            "T-8: 같은 파일의 이름만 `doc.pdf` 로 바꿔 올린다 → 거부. 감사 로그 마지막 2줄에 `mime_mismatch` 문장이 있다.",
+            "이중 확장자 `x.php.txt` 를 올린다 → 거부.",
+            "T-10: 정상 파일을 하나 올린 뒤 DB 에서 저장 이름을 보고, `/protected/앞2글자/다음2글자/저장이름` 주소로 연다 → 404."
+          ]
+        },
+        {
+          "type": "code",
+          "text": "BASE=서비스주소   # 로컬 창구 주소 또는 공개 도메인을 넣는다\nprintf '<?php echo 1;' > /tmp/shell.php\ncurl -s -i -b /tmp/emp.jar -H \"X-CSRF-Token: <csrf_token>\" \\\n  -F 'file=@/tmp/shell.php' -F 'access_level=internal' \"$BASE/api/files\"          # 400\ncurl -s -i -b /tmp/emp.jar -H \"X-CSRF-Token: <csrf_token>\" \\\n  -F 'file=@/tmp/shell.php;filename=doc.pdf' -F 'access_level=internal' \"$BASE/api/files\"   # 400\nsudo tail -n 2 /var/log/tbox-v2/audit.log\nsudo -u postgres psql -d tbox_re -c \"select stored_name from files order by id desc limit 1\""
+        },
+        {
+          "type": "callout",
+          "kind": "try",
+          "title": "100MB 시험 파일은 텍스트로",
+          "text": "NUL 로 채운 파일은 내용 검사에서 거부된다. 줄바꿈이 있는 텍스트로 만들어야 `text/plain` 이 되어 크기 경계를 시험할 수 있다."
+        }
+      ]
+    },
+    {
+      "id": "refs",
+      "heading": "원문 위치",
+      "blocks": [
+        {
+          "type": "refs",
+          "items": [
+            {
+              "doc": "PRD",
+              "where": "7.6 S-06",
+              "what": "크기·형식 제한 — 허용 확장자 14종, MIME 일치, 이중 확장자, 저장 위치, 무결성"
+            },
+            {
+              "doc": "PRD",
+              "where": "12.2 T-7 · T-8 · T-9 · T-10 · T-11",
+              "what": "테스트와 기대 결과"
+            },
+            {
+              "doc": "PRD",
+              "where": "13장 6단계 행",
+              "what": "만드는 것과 직접 해볼 공격"
+            },
+            {
+              "doc": "PRD",
+              "where": "14장 Q-3",
+              "what": "ClamAV 를 과제 범위에서 빼기로 한 결정"
+            },
+            {
+              "doc": "ARCH",
+              "where": "5.2",
+              "what": "업로드 흐름 — `Upload::validate` 와 트랜잭션"
+            },
+            {
+              "doc": "ARCH",
+              "where": "5.3",
+              "what": "다운로드 흐름 [6] sha256 재계산, [8] 첨부 헤더, `readfile()` 확정"
+            },
+            {
+              "doc": "ARCH",
+              "where": "6.3",
+              "what": "실제 파일의 위치와 이름 — UUID, 0640, 그룹 `tbox-php`"
+            },
+            {
+              "doc": "ARCH",
+              "where": "8장",
+              "what": "`client_max_body_size 101m` 과 100MB 경계 결정"
+            },
+            {
+              "doc": "SECURITY",
+              "where": "2장 R-02 · R-13",
+              "what": "악성 파일 유통, 무결성 검증의 현재 상태"
+            },
+            {
+              "doc": "SECURITY",
+              "where": "6.3 R-34",
+              "what": "옛 취약판과 저장소 교차 노출의 해소"
+            },
+            {
+              "doc": "SECURITY",
+              "where": "7장 2026-09-11 「6단계 구현 검토」",
+              "what": "T-7~T-11·sha256·그룹 회수·일일 총량 실측 원문"
+            },
+            {
+              "doc": "STAGES",
+              "where": "2장 6단계",
+              "what": "개발 사항·검토 체크·자기 공격·학습 기록(`/dev/zero`, 100MB 경계, HWP MIME)"
+            }
+          ]
+        },
+        {
+          "type": "link",
+          "slug": "stage-05",
+          "label": "이전 단계 — 입력·출력 안전"
+        },
+        {
+          "type": "link",
+          "slug": "stage-07",
+          "label": "다음 단계 — SSRF 방어"
+        }
+      ]
+    }
+  ]
+}

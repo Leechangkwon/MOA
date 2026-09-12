@@ -1,0 +1,269 @@
+{
+  "slug": "stage-09",
+  "title": "9단계 — 운영(백업·복구·감시)",
+  "summary": "백업을 암호화해 자동으로 남기고 복구 리허설로 실제로 되살렸으며, 정합성 검사·경보·서버 기준선 점검·해시 체인을 붙였다.",
+  "group": "stage",
+  "stage": 9,
+  "updated": "2026-09-12",
+  "sections": [
+    {
+      "id": "why",
+      "heading": "왜 필요한가",
+      "blocks": [
+        {
+          "type": "p",
+          "text": "앱을 잘 막아도 서버가 통째로 지워지면 끝이다. PRD 는 백업·복구(S-08), 앱 밖 보안(S-10), 계속 보는 규칙(S-11) 을 요구한다."
+        },
+        {
+          "type": "p",
+          "text": "백업은 「있다」가 아니라 「되살려 봤다」여야 한다. 그래서 복구 리허설(T-15)이 통과 기준이다."
+        },
+        {
+          "type": "terms",
+          "items": [
+            {
+              "term": "정합성 검사",
+              "easy": "DB 에 적힌 파일 정보와 디스크의 실제 파일이 맞는지(있는지·sha256 이 같은지) 대조하는 일"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "what",
+      "heading": "무엇을 만들었나",
+      "blocks": [
+        {
+          "type": "p",
+          "text": "cron(정해진 시각에 명령을 자동 실행하는 리눅스 기능) 일정 7줄을 `/etc/cron.d/tbox-v2` 에 두고 root 가 실행한다."
+        },
+        {
+          "type": "table",
+          "header": [
+            "시각",
+            "스크립트",
+            "하는 일"
+          ],
+          "rows": [
+            [
+              "03:00",
+              "`backup_db.sh`",
+              "DB 덤프를 `gpg` 암호화, 평문 미저장"
+            ],
+            [
+              "03:30",
+              "`backup_files.sh`",
+              "저장소 `tar`+`gpg`, `rsync` 미러"
+            ],
+            [
+              "04:00",
+              "`purge_trash.php`",
+              "30일 지난 휴지통 파일 삭제"
+            ],
+            [
+              "04:30",
+              "`verify_backup.sh`",
+              "sha256·복호화 시험"
+            ],
+            [
+              "00:05",
+              "`audit_chain.php`",
+              "감사 로그 일별 해시 체인"
+            ],
+            [
+              "매 5분",
+              "`alerts.php`",
+              "경보 AL-x 판정"
+            ],
+            [
+              "매주 일",
+              "`consistency_check.php`",
+              "누락·고아·sha256 불일치 → AL-6"
+            ]
+          ]
+        },
+        {
+          "type": "p",
+          "text": "백업 키 `/etc/tbox-v2/backup.key` 는 root 만 읽는다. 잃으면 백업 전체가 쓸모없으니 사본을 서버 밖에 둔다(R-08)."
+        },
+        {
+          "type": "p",
+          "text": "복구는 `restore.sh` 가 ARCH 11.2 순서대로 한다. 운영 DB 를 덮으려면 `--yes-production` 이 필수고 리허설은 별도 DB 에서 한다."
+        },
+        {
+          "type": "p",
+          "text": "해시 체인은 하루치 sha256 을 전날 값과 엮어 한 줄만 바뀌어도 검산이 실패한다(R-11). `check_baseline.sh` 는 서버 기준선을 읽기만 하며 점검하고, `hardening.sh` 는 기본이 출력만이다."
+        },
+        {
+          "type": "callout",
+          "kind": "why",
+          "title": "원격 로그·WAL·방화벽은 왜 미적용인가",
+          "text": "원격 로그 서버와 원격 백업 저장소가 없다(Q-4 미결). WAL 아카이브(DB 변경분을 15분마다 보내는 방식)도 보낼 곳이 없어 예시 설정만 두었고, 실제 복구 시점은 하루 1회다. 방화벽·SSH 강화는 원격 접속 중 잘못 걸면 접속이 끊겨, 사용자가 콘솔에서 직접 `--apply` 하도록 남겼다."
+        }
+      ]
+    },
+    {
+      "id": "check",
+      "heading": "어떻게 확인했나",
+      "blocks": [
+        {
+          "type": "p",
+          "text": "2026-09-11 Fable 검토 통과(SECURITY 7장 「9단계 구현 검토」)."
+        },
+        {
+          "type": "list",
+          "items": [
+            "T-15: 백업 → `verify_backup` 통과. 파일 바이트 삭제 → `consistency_check --strict` exit 2 + `alert.raised AL-6`. `restore.sh --files` → sha256 원본=복구=DB, strict exit 0, 다운로드 200. DB 는 별도 DB 리허설 표 6·행 수 일치. 소요 5분 21초·13초.",
+            "해시 체인: `--verify` 통과, 변조 시 실패 + AL-6. `audit_cli.php` 로 `auth.login allow` 위조 → exit 3.",
+            "T-20: AL-1 발동 + 30분 중복 억제. AL-2(잠금 423 + nginx 429)·AL-5·AL-8·AL-10 실측.",
+            "T-17~T-19: OK 15 · 주의 6(SSH 비밀번호 로그인 허용·root 로그인·MaxAuthTries 6·chrony 없음·PHP EOL·postgres 셸) · 미적용 6(ufw·fail2ban·원격 로그·WAL)."
+          ]
+        },
+        {
+          "type": "callout",
+          "kind": "check",
+          "title": "미검증",
+          "text": "hardening 적용 후 상태, logrotate 회전 뒤 체인, `--stop-service` 복구, 알림 채널(메일·메신저 없음)."
+        }
+      ]
+    },
+    {
+      "id": "risk",
+      "heading": "남은 위험",
+      "blocks": [
+        {
+          "type": "table",
+          "header": [
+            "위험",
+            "상태",
+            "내용"
+          ],
+          "rows": [
+            [
+              "R-08 백업 키 관리",
+              "◐",
+              "키 0600 root, 사본 보관 안내. 회전·2인 보관은 운영 몫"
+            ],
+            [
+              "R-11 감사 로그 무결성",
+              "◐",
+              "해시 체인 됨, 원격 전송 없음. 체인 설계 결함은 13단계에서 수정(R-50)"
+            ],
+            [
+              "R-22 서버 인바운드·SSH 무방비",
+              "◐",
+              "스크립트는 있으나 미적용. 사용자 결정(2026-09-12)으로 위험 수용"
+            ]
+          ]
+        },
+        {
+          "type": "callout",
+          "kind": "risk",
+          "title": "2026-09-11 사고와 이 단계",
+          "text": "미적용으로 남긴 SSH 비밀번호 로그인이 그대로 입구가 되어, 다음 날 앱 밖에서 DB 와 파일이 통째로 지워졌다. 앱 결함이 아니라 서버 기준선 문제였고, 이 단계의 백업이 실제로 작동해 되살렸다(SECURITY 8장)."
+        }
+      ]
+    },
+    {
+      "id": "try",
+      "heading": "직접 해보기",
+      "blocks": [
+        {
+          "type": "steps",
+          "items": [
+            "서버 콘솔에서 백업 두 가지를 돌려 `.gpg`·`.sha256` 이 생기는지, 검증이 통과하는지 본다.",
+            "파일 하나를 올린 뒤 저장 파일을 `sudo rm` 으로 지우고 정합성 검사 → 「불일치 1건」 + AL-6 → 최신 파일 백업으로 복구 → 다시 검사 → 불일치 0.",
+            "기준선 점검을 읽고 「주의」가 왜 남았는지 이해한다.",
+            "employee01 로 admin-only 다운로드 6회(403) → 5분 안에 `alerts.log` 에 AL-1.",
+            "cron 7줄을 확인하고 백업 키 사본을 다른 곳에 보관한다(R-08)."
+          ]
+        },
+        {
+          "type": "code",
+          "text": "sudo bash scripts/backup_db.sh && sudo bash scripts/backup_files.sh\nsudo bash scripts/verify_backup.sh\nsudo php scripts/consistency_check.php\nsudo bash scripts/restore.sh --files FILE_BACKUP_NAME"
+        },
+        {
+          "type": "code",
+          "text": "sudo bash scripts/check_baseline.sh\nsudo tail -n 2 /var/log/tbox-v2/alerts.log\nsudo cat /etc/cron.d/tbox-v2"
+        },
+        {
+          "type": "callout",
+          "kind": "try",
+          "title": "복구 명령이 거부되면",
+          "text": "`restore.sh` 는 경로가 아니라 산출물 폴더 안의 파일 이름만 받는다(경로 조작 방지)."
+        }
+      ]
+    },
+    {
+      "id": "refs",
+      "heading": "원문 위치",
+      "blocks": [
+        {
+          "type": "refs",
+          "items": [
+            {
+              "doc": "PRD",
+              "where": "7.8 S-08",
+              "what": "RPO·RTO·보관 정책·복구 체크리스트"
+            },
+            {
+              "doc": "PRD",
+              "where": "7.10 S-10 · 7.11 S-11",
+              "what": "서버 기준선·공급망·운영 보안, 경보 규칙 AL-1~AL-12"
+            },
+            {
+              "doc": "PRD",
+              "where": "12.2 T-15 · 12.3 T-17~T-20",
+              "what": "복구 리허설, 서버 기준선, AL-1 도착"
+            },
+            {
+              "doc": "ARCH",
+              "where": "11.1·11.2",
+              "what": "cron 일정 7줄과 도구 대체, 복구 순서 8단계"
+            },
+            {
+              "doc": "ARCH",
+              "where": "11.3·11.4",
+              "what": "서버 기준선 표, 감시와 경보 구조"
+            },
+            {
+              "doc": "ARCH",
+              "where": "7.1",
+              "what": "파일 사본을 추가만 되게 — `+a`·logrotate·해시 체인"
+            },
+            {
+              "doc": "SECURITY",
+              "where": "7장 「9단계 구현 검토」",
+              "what": "T-15·T-17~T-20 실측 값, 미검증 목록"
+            },
+            {
+              "doc": "SECURITY",
+              "where": "2장 R-08·R-11 · 6.3 R-22 · 8장",
+              "what": "현재 상태, 2026-09-11 사고 기록"
+            },
+            {
+              "doc": "STAGES",
+              "where": "2장 9단계",
+              "what": "개발 사항·검토 체크·자기 공격·학습 기록"
+            },
+            {
+              "doc": "README",
+              "where": "「운영 — 백업 · 복구 · 감시」",
+              "what": "자동 일정, 백업 키 관리, 복구 절차, 기준선 점검"
+            }
+          ]
+        },
+        {
+          "type": "link",
+          "slug": "stage-08",
+          "label": "이전 단계 — 8단계 감사 로그 조회 화면"
+        },
+        {
+          "type": "link",
+          "slug": "stage-10",
+          "label": "다음 단계 — 10단계 계정 관리·휴지통 복구·2단계 인증"
+        }
+      ]
+    }
+  ]
+}

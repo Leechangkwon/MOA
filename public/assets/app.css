@@ -858,6 +858,180 @@ table.matrix td.matrix__cell .icon { display: inline-flex; color: var(--ok-fg); 
 dialog.modal--form { width: min(520px, calc(100vw - 32px)); }
 dialog.modal--form .modal__body { display: grid; gap: 14px; background: var(--surface); }
 
+/* ─── 위키 (14단계, F-21) — 차례와 글 한 편 ────────────────────────
+ *
+ * 서버(src/Wiki.php)가 `wiki/*.json` 을 이스케이프해 그린 마크업의 표현만 담는다.
+ * 글에서 온 문자열은 전부 htmlspecialchars 를 거친 뒤 여기 클래스로만 꾸며진다 (PRD S-03).
+ * 말풍선의 접두 글자(왜·어떻게·확인·위험·해보기·용어)도 HTML 이 아니라 이 파일이 붙인다 —
+ * 글 내용과 화면 장식이 섞이지 않게 하기 위해서다.
+ */
+.wiki-group { margin-bottom: 18px; }
+
+/* 안내 글 — 한 줄에 제목 + 한 줄 요약 */
+.wiki-guides { display: flex; flex-direction: column; gap: 2px; margin: 0; padding: 0; list-style: none; }
+.wiki-guide {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 10px;
+  padding: 10px 4px;
+  border-bottom: 1px solid var(--line);
+}
+.wiki-guide:last-child { border-bottom: 0; }
+.wiki-guide__title { font-size: 14.5px; font-weight: 600; overflow-wrap: anywhere; }
+.wiki-guide__title--soon { color: var(--muted-2); font-weight: 500; }
+.wiki-guide__sub { flex: 1 1 16rem; min-width: 0; color: var(--muted); font-size: 13.5px; }
+.wiki-guide__date { flex-shrink: 0; }
+
+/* 단계 카드 1~13 */
+.wiki-cards { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.wiki-card {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 14px 16px;
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-radius: var(--r-card);
+  color: inherit;
+}
+.wiki-card:hover { border-color: var(--accent); color: inherit; }
+.wiki-card--soon { background: var(--bg); border-style: dashed; }
+.wiki-card__num {
+  flex-shrink: 0;
+  width: 30px;
+  height: 30px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--accent-soft);
+  border: 1px solid var(--accent-line);
+  border-radius: var(--r-pill);
+  color: var(--accent);
+  font-size: 13px;
+  font-weight: 700;
+}
+.wiki-card--soon .wiki-card__num { background: #eef0f3; border-color: var(--line); color: var(--muted-2); }
+.wiki-card__body { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.wiki-card__title { font-size: 14.5px; font-weight: 700; overflow-wrap: anywhere; }
+.wiki-card__sub { color: var(--muted); font-size: 13px; }
+.wiki-card__date { color: var(--muted-2); font-size: 12px; }
+
+/* ─── 글 한 편 ─────────────────────────────────────────────────── */
+.wiki-article { max-width: 54rem; }
+.wiki-head { display: flex; flex-direction: column; gap: 6px; margin-bottom: 18px; }
+.wiki-crumb { margin: 0; font-size: 13px; }
+.wiki-title { font-size: 24px; font-weight: 700; letter-spacing: -.015em; overflow-wrap: anywhere; }
+.wiki-summary { margin: 0; color: var(--muted); font-size: 15px; }
+.wiki-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 2px 0 0; }
+
+/* 이 글의 차례 — 절 앵커(#wiki-…) 목록 */
+.wiki-toc {
+  padding: 14px 18px;
+  margin-bottom: 20px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--r-card);
+}
+.wiki-toc__title { margin: 0 0 6px; font-size: 12.5px; font-weight: 700; color: var(--muted); letter-spacing: .02em; }
+.wiki-toc__list { margin: 0; padding-left: 1.2rem; font-size: 14px; }
+.wiki-toc__list li { margin: 2px 0; }
+
+.wiki-section {
+  padding: 18px 20px;
+  margin-bottom: 14px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--r-card);
+  scroll-margin-top: 12px;
+}
+.wiki-h2 { margin-bottom: 10px; font-size: 17px; font-weight: 700; overflow-wrap: anywhere; }
+.wiki-p { margin: 0 0 10px; font-size: 14.5px; line-height: 1.75; overflow-wrap: anywhere; }
+.wiki-section > :last-child { margin-bottom: 0; }
+.wiki-list, .wiki-steps { margin: 0 0 10px; padding-left: 1.35rem; font-size: 14.5px; line-height: 1.7; }
+.wiki-list li, .wiki-steps li { margin: 3px 0; overflow-wrap: anywhere; }
+.wiki-table { font-size: 13.5px; }
+.wiki-table td { overflow-wrap: anywhere; }
+.wiki-refs td:first-child { white-space: nowrap; }
+.wiki-code {
+  margin: 0 0 10px;
+  padding: 12px 14px;
+  overflow-x: auto;
+  background: var(--brand-navy);
+  border-radius: var(--r-ctl);
+  color: #e6ecf7;
+  font-family: var(--mono);
+  font-size: 12.5px;
+  line-height: 1.6;
+}
+.wiki-code code { padding: 0; background: none; border: 0; color: inherit; font-size: inherit; }
+
+/* 용어 풀이 */
+.wiki-terms { margin: 0 0 10px; font-size: 14.5px; }
+.wiki-terms dt { margin-top: 8px; font-weight: 700; }
+.wiki-terms dt:first-child { margin-top: 0; }
+.wiki-terms dd { margin: 2px 0 0; color: var(--muted); overflow-wrap: anywhere; }
+
+/* 말풍선 여섯 가지. 접두 글자는 여기서 붙인다(HTML 에는 글 내용만 있다) */
+.wiki-callout {
+  display: block;
+  padding: 12px 14px;
+  margin: 0 0 10px;
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--muted-2);
+  border-radius: var(--r-ctl);
+}
+.wiki-callout__title { margin: 0; font-size: 13.5px; font-weight: 700; overflow-wrap: anywhere; }
+/* 접두 딱지의 글자(content)는 아래 종류별 규칙이 정한다 — 종류 클래스가 없으면 딱지도 없다 */
+.wiki-callout__title::before {
+  display: inline-block;
+  margin-right: 6px;
+  padding: 1px 7px;
+  border-radius: var(--r-pill);
+  font-size: 11.5px;
+  font-weight: 700;
+  vertical-align: 1px;
+}
+.wiki-callout__text { margin: 4px 0 0; font-size: 14px; line-height: 1.7; overflow-wrap: anywhere; }
+
+.wiki-callout--why { border-left-color: var(--accent); }
+.wiki-callout--why .wiki-callout__title::before { content: "왜"; background: var(--accent-soft); color: var(--accent); }
+.wiki-callout--how { border-left-color: #5b3fbf; }
+.wiki-callout--how .wiki-callout__title::before { content: "어떻게"; background: #efeafc; color: #5b3fbf; }
+.wiki-callout--check { border-left-color: var(--ok-fg); }
+.wiki-callout--check .wiki-callout__title::before { content: "확인"; background: var(--ok-bg); color: var(--ok-fg); }
+.wiki-callout--risk { border-left-color: var(--danger); }
+.wiki-callout--risk .wiki-callout__title::before { content: "위험"; background: var(--danger-soft); color: var(--danger); }
+.wiki-callout--try { border-left-color: var(--warn-fg); }
+.wiki-callout--try .wiki-callout__title::before { content: "해보기"; background: var(--warn-bg); color: var(--warn-fg); }
+.wiki-callout--term { border-left-color: var(--muted); }
+.wiki-callout--term .wiki-callout__title::before { content: "용어"; background: #eef0f3; color: var(--muted); }
+
+/* 다른 글로 가는 줄. 차례에 없는 글은 링크가 되지 않고 글자만 남는다 (Wiki::renderBlock) */
+.wiki-link { margin: 0 0 10px; font-size: 14.5px; font-weight: 600; }
+.wiki-link--plain { color: var(--muted-2); font-weight: 500; }
+
+/* 이전 / 다음 */
+.wiki-nav { display: flex; gap: 10px; margin-top: 18px; }
+.wiki-nav__item {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1 1 0;
+  min-width: 0;
+  padding: 12px 14px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--r-card);
+  color: inherit;
+}
+.wiki-nav__item:hover { border-color: var(--accent); color: inherit; }
+.wiki-nav__item--next { text-align: right; }
+.wiki-nav__gap { flex: 1 1 0; }
+.wiki-nav__dir { color: var(--muted); font-size: 12px; }
+.wiki-nav__title { font-size: 14px; font-weight: 600; overflow-wrap: anywhere; }
+
 @media (max-width: 1199.98px) {
   .org-layout { grid-template-columns: minmax(0, 1fr); }
 }
@@ -884,6 +1058,11 @@ dialog.modal--form .modal__body { display: grid; gap: 14px; background: var(--su
   .login__points { display: none; }
   /* 매트릭스 두 표는 좁은 화면에서 위아래로 쌓는다 (12-3) */
   .matrix-grid { grid-template-columns: minmax(0, 1fr); }
+  /* 위키 단계 카드·이전다음도 좁은 화면에서는 한 줄씩 쌓는다 (14단계) */
+  .wiki-cards { grid-template-columns: minmax(0, 1fr); }
+  .wiki-nav { flex-direction: column; }
+  .wiki-nav__item--next { text-align: left; }
+  .wiki-nav__gap { display: none; }
 }
 
 @media (min-width: 960px) {

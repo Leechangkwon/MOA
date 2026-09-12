@@ -1,0 +1,364 @@
+{
+  "slug": "stage-01",
+  "title": "1단계 — 뼈대와 DB, 정책 없는 길은 열리지 않게",
+  "summary": "웹에 보이는 폴더를 `public/` 하나로 좁히고, 정책이 없는 라우트는 부팅 단계에서 실패하게 만들고, 권한 표를 DB 에 데이터로 두었다.",
+  "group": "stage",
+  "stage": 1,
+  "updated": "2026-09-12",
+  "sections": [
+    {
+      "id": "why",
+      "heading": "왜 필요한가",
+      "blocks": [
+        {
+          "type": "p",
+          "text": "실습용 t-box 는 `switch_role.php` 주소 하나로 역할을 바꿀 수 있었다. 다른 `.php` 파일을 직접 불러 검사를 건너뛸 수도 있었다."
+        },
+        {
+          "type": "p",
+          "text": "DB 계정과 비밀번호가 `db.php` 코드 안에 그대로 적혀 있었다. 업로드 폴더도 웹 루트(웹 서버가 URL 로 내어 주는 폴더) 안에 있었다."
+        },
+        {
+          "type": "p",
+          "text": "보안 검사는 사람이 한 번만 빠뜨려도 무효가 된다. 그래서 1단계는 기능이 아니라 검사를 빠뜨릴 수 없는 구조를 먼저 세운다."
+        },
+        {
+          "type": "callout",
+          "kind": "why",
+          "title": "R-04 가 말하는 위험",
+          "text": "핸들러(요청을 실제로 처리하는 파일) 하나가 권한 검사를 안 부르면 S-01 전체가 무효다. 그래서 라우트마다 정책을 필수로 두고, 없으면 앱이 아예 켜지지 않게 했다."
+        },
+        {
+          "type": "terms",
+          "items": [
+            {
+              "term": "웹 루트",
+              "easy": "웹 서버가 URL 로 바깥에 내어 주는 폴더. 여기 없는 파일은 주소로 열 수 없다"
+            },
+            {
+              "term": "라우트",
+              "easy": "요청 경로와 메서드를 처리 파일에 이어 주는 표의 한 줄"
+            },
+            {
+              "term": "정책",
+              "easy": "그 라우트에 들어오려면 어떤 권한이 필요한지 적은 이름표"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "what",
+      "heading": "무엇을 만들었나",
+      "blocks": [
+        {
+          "type": "p",
+          "text": "모든 요청은 `public/index.php` 한 곳으로 들어온다. 라우트 표의 줄마다 정책 이름이 있어야 하고, 정책이 없거나 핸들러 파일이 없으면 부팅 실패로 모든 요청이 500 이 된다."
+        },
+        {
+          "type": "p",
+          "text": "nginx 의 루트는 `public/` 만이다. `src/`·`db/`·`.env` 는 주소로 닿지 않고, PHP 실행도 `index.php` 하나만 허용한다."
+        },
+        {
+          "type": "p",
+          "text": "설정과 비밀값은 저장소 루트의 `.env` 에 두고 `.gitignore` 로 Git 에서 뺐다. Git 에는 키 이름만 적은 `.env.example` 만 들어간다."
+        },
+        {
+          "type": "p",
+          "text": "DB 는 `teams`·`users`·`permissions`·`files`·`audit_logs`·`sessions` 여섯 표다. 역할과 접근 등급의 권한 표 16행은 `permissions` 에 데이터로 넣었다."
+        },
+        {
+          "type": "p",
+          "text": "앱이 쓰는 DB 계정 `tbox_app` 은 `permissions` 를 읽기만 하고 `audit_logs` 는 읽기와 추가만 할 수 있다. 권한 표를 앱이 고칠 수 없으니 화면이나 API 로 권한을 올리는 길이 없다."
+        },
+        {
+          "type": "table",
+          "header": [
+            "무엇",
+            "어디",
+            "막는 것"
+          ],
+          "rows": [
+            [
+              "정책 필수 라우터",
+              "`public/index.php`",
+              "검사를 빠뜨린 라우트가 조용히 열리는 일(R-04)"
+            ],
+            [
+              "웹 루트 축소",
+              "nginx `root` = `public/`",
+              "소스·설정·SQL 파일 노출"
+            ],
+            [
+              "`.env` 분리",
+              "저장소 루트, 0640, `.gitignore`",
+              "비밀값이 Git 과 URL 로 새는 일"
+            ],
+            [
+              "권한 표 16행",
+              "DB `permissions`, 앱은 SELECT 만",
+              "앱 경로로 권한 표를 바꾸는 권한 상승"
+            ],
+            [
+              "php-fpm 전용 풀 `tbox`",
+              "계정 `tbox-php`, `allow_url_fopen=Off`, `open_basedir`",
+              "코드 실수가 서버 전체로 번지는 일"
+            ]
+          ]
+        },
+        {
+          "type": "p",
+          "text": "저장소는 옛 취약 사이트의 웹 루트 밖인 `/var/www/tbox-v2` 로 옮겼다. 옛 사이트를 거쳐 새 소스나 `.env` 에 닿는 주소 자체가 사라졌다(R-29)."
+        },
+        {
+          "type": "terms",
+          "items": [
+            {
+              "term": "최소 권한",
+              "easy": "일에 꼭 필요한 만큼만 권한을 준다는 원칙. DB 계정에도 똑같이 적용한다"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "check",
+      "heading": "어떻게 확인했나",
+      "blocks": [
+        {
+          "type": "p",
+          "text": "SECURITY 7장 2026-09-09 「1단계 구현 검토」 행의 실측 결과다. 판정은 통과·실패·미검증 세 가지로만 적는다."
+        },
+        {
+          "type": "table",
+          "header": [
+            "항목",
+            "결과",
+            "판정"
+          ],
+          "rows": [
+            [
+              "`/.env` `/src/Db.php` `/db/schema.sql` `/foo.php` `/protected/x` `/.git/config` `/PRD.md`",
+              "전부 404. 옛 사이트 경유 `/T-Box_Re/*` 도 404",
+              "통과"
+            ],
+            [
+              "`/api/health`",
+              "200. 없는 경로·메서드는 404/405 JSON, 보안 헤더 4개(CSP·nosniff·DENY·no-referrer)",
+              "통과"
+            ],
+            [
+              "DB `\\dt`",
+              "6 표. `tbox_app` 권한은 permissions S · audit_logs SI 등 최소, 스키마 CREATE 는 `permission denied for schema public`",
+              "통과"
+            ],
+            [
+              "정책 미등록 라우트",
+              "전 요청 500 (CLI 재현 + `app.log` 에 사유)",
+              "통과"
+            ],
+            [
+              "린트·`.env`",
+              "금지 패턴 0건, `.env` Git 미추적",
+              "통과"
+            ],
+            [
+              "401/403 과 `Audit::deny` 실제 경로, CSRF 토큰 비교",
+              "라우트가 아직 없어 실행 못 함 → 2단계에서",
+              "미검증"
+            ],
+            [
+              "서버 기준선 T-17~T-19",
+              "이 단계에서 실행하지 않음",
+              "미검증"
+            ]
+          ]
+        },
+        {
+          "type": "p",
+          "text": "첫 회차에는 실패가 있었다. 앱 계정에 스키마 CREATE 와 PUBLIC CONNECT 가 남아 있어 재지시로 회수한 뒤 통과했다."
+        },
+        {
+          "type": "p",
+          "text": "보완 검토(80 포트 공개 전환)에서는 도메인 경유 `/api/health` 200 과 HSTS 헤더, `http` 요청의 301 을 확인했다."
+        },
+        {
+          "type": "callout",
+          "kind": "check",
+          "title": "사용자 자기 공격(관문 ③) 2026-09-09",
+          "text": "공개 도메인에서 `/.env`·`/src/Db.php`·`/db/schema.sql`·`/T-Box_Re/src/Db.php` 가 전부 404, `/api/health` 는 `{\"ok\":true}`, `psql \\dt` 는 6 rows. 통과 뒤 커밋 `5c0608c`."
+        }
+      ]
+    },
+    {
+      "id": "risk",
+      "heading": "남은 위험",
+      "blocks": [
+        {
+          "type": "p",
+          "text": "SECURITY 2장·6.3 표에 적힌 현재 상태 그대로다. ✅ 는 해소, ◐ 는 부분 반영 또는 위험 수용이다."
+        },
+        {
+          "type": "table",
+          "header": [
+            "ID",
+            "위험",
+            "현재 상태"
+          ],
+          "rows": [
+            [
+              "R-04",
+              "권한 정책 누락(핸들러가 Authz 를 안 부름)",
+              "✅ 구현·확인. 모르는 정책·없는 핸들러 → 전 요청 500"
+            ],
+            [
+              "R-29",
+              "새 저장소가 옛 취약 사이트의 웹 루트 안에 있었음",
+              "✅ 해소. 저장소를 옛 웹 루트 밖으로 이동"
+            ],
+            [
+              "R-28",
+              "실습 VM 에서 HSTS·리다이렉트 생략",
+              "✅ 해소. 강사 프록시가 TLS 종단, HSTS 헤더 실측"
+            ],
+            [
+              "R-21",
+              "보안 지원이 끝난 PHP 8.1·PostgreSQL 14 사용",
+              "◐ 위험 수용(Q-11). 운영 전환 시 업그레이드 조건"
+            ],
+            [
+              "R-30",
+              "프록시에서 VM 까지 안쪽 구간이 평문 HTTP",
+              "◐ 위험 수용(사내망). 운영 전환 시 VM 이 직접 443"
+            ]
+          ]
+        },
+        {
+          "type": "callout",
+          "kind": "risk",
+          "title": "지금도 남아 있는 것",
+          "text": "R-21 과 R-30 은 이 VM 의 조건 때문에 받아들인 위험이다. 코드로 없앤 것이 아니라 알고 두는 것이므로, 운영으로 옮길 때 다시 판단해야 한다."
+        }
+      ]
+    },
+    {
+      "id": "try",
+      "heading": "직접 해보기",
+      "blocks": [
+        {
+          "type": "p",
+          "text": "STAGES 1단계 「자기 공격 체크」를 초보자 절차로 옮겼다. 첫 줄의 주소는 본인 환경에 맞게 넣는다."
+        },
+        {
+          "type": "steps",
+          "items": [
+            "숨겨야 할 파일 세 개를 주소로 열어 본다. 상태 코드가 전부 404 면 정상이다.",
+            "건강 확인 경로를 열어 본다. 200 과 `{\"ok\":true}` 가 나와야 한다.",
+            "서버에 접속해 DB 표가 여섯 개인지 본다."
+          ]
+        },
+        {
+          "type": "code",
+          "text": "BASE=서비스주소   # 로컬 창구 주소 또는 공개 도메인을 넣는다\nfor u in /.env /src/Db.php /db/schema.sql; do\n  curl -s -o /dev/null -w \"$u %{http_code}\\n\" \"$BASE$u\"\ndone\ncurl -s -i \"$BASE/api/health\"\nsudo -u postgres psql -d tbox_re -c '\\dt'"
+        },
+        {
+          "type": "callout",
+          "kind": "try",
+          "title": "무엇을 보면 되나",
+          "text": "404 는 「없는 것처럼 보인다」는 뜻이다. 403 이 아니라 404 를 고른 이유는 파일이 있다는 사실조차 알려 주지 않기 위해서다(nginx 숨김 파일 규칙)."
+        }
+      ]
+    },
+    {
+      "id": "refs",
+      "heading": "원문 위치",
+      "blocks": [
+        {
+          "type": "refs",
+          "items": [
+            {
+              "doc": "PRD",
+              "where": "13장 1단계 행",
+              "what": "만드는 것·직접 해볼 공격·통과 기준(`psql \\dt` 6개, `.env` 미커밋, URL 차단)"
+            },
+            {
+              "doc": "PRD",
+              "where": "7.9 S-09-6",
+              "what": "비밀 정보는 `.env` 로 분리, Git 에는 `.env.example` 만"
+            },
+            {
+              "doc": "PRD",
+              "where": "9장",
+              "what": "여섯 표의 주요 컬럼과 `permissions` 를 데이터로 두는 이유"
+            },
+            {
+              "doc": "ARCH",
+              "where": "3장",
+              "what": "무엇이 URL 로 보이고 무엇이 안 보이나, 저장소 이동 메모"
+            },
+            {
+              "doc": "ARCH",
+              "where": "4장",
+              "what": "모든 요청이 거치는 공통 관문과 정책 필수 라우터"
+            },
+            {
+              "doc": "ARCH",
+              "where": "6.2-1",
+              "what": "`permissions` 표 16행과 앱 계정 SELECT 만 규칙"
+            },
+            {
+              "doc": "ARCH",
+              "where": "8장",
+              "what": "nginx 설정 — `root`, 단일 입구, `.php` 404, 숨김 파일 404"
+            },
+            {
+              "doc": "ARCH",
+              "where": "9장",
+              "what": "php-fpm 풀 `tbox` — `allow_url_fopen=Off`, `open_basedir`, `disable_functions`"
+            },
+            {
+              "doc": "ARCH",
+              "where": "10장",
+              "what": "DB 계정 권한 표(최소 권한)"
+            },
+            {
+              "doc": "SECURITY",
+              "where": "1.2",
+              "what": "프론트 권한 우회가 왜 막히나 — 정책 필수 보완(③)"
+            },
+            {
+              "doc": "SECURITY",
+              "where": "2장 R-04",
+              "what": "권한 정책 누락 위험과 현재 상태"
+            },
+            {
+              "doc": "SECURITY",
+              "where": "6.3 R-21 · R-28 · R-29 · R-30",
+              "what": "이 단계와 관련된 나머지 위험의 현재 상태"
+            },
+            {
+              "doc": "SECURITY",
+              "where": "7장 2026-09-09 「1단계 구현 검토」·「1단계 보완 검토」·「1단계 자기 공격」",
+              "what": "실측 원문"
+            },
+            {
+              "doc": "STAGES",
+              "where": "2장 1단계",
+              "what": "개발 사항·검토 체크·자기 공격·학습 기록"
+            },
+            {
+              "doc": "README",
+              "where": "설치 · 실행",
+              "what": "저장소를 옮기면 설치 스크립트를 다시 돌려야 하는 이유"
+            }
+          ]
+        },
+        {
+          "type": "link",
+          "slug": "stage-02",
+          "label": "다음 단계 — 인증·세션"
+        }
+      ]
+    }
+  ]
+}
