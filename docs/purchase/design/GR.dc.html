@@ -1,0 +1,95 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <style>
+    body { margin: 0; background: #f4f6f9; color: #1c1f24; font-family: system-ui, -apple-system, "Apple SD Gothic Neo", "Malgun Gothic", "Noto Sans KR", sans-serif; font-size: 15px; line-height: 1.55; -webkit-font-smoothing: antialiased; }
+    a { color: #1d5fbf; text-decoration: none; } a:hover { color: #174b98; }
+    * { box-sizing: border-box; }
+    table { border-collapse: collapse; width: 100%; font-size: 14px; }
+    th { padding: 10px 14px; text-align: left; font-size: 12.5px; font-weight: 600; letter-spacing: .02em; color: #5b6472; background: #fafbfc; border-bottom: 1px solid #dfe4ea; white-space: nowrap; }
+    td { padding: 12px 14px; text-align: left; border-bottom: 1px solid #dfe4ea; vertical-align: middle; }
+    tr:last-child td { border-bottom: 0; }
+    .num { text-align: right; font-variant-numeric: tabular-nums; }
+    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 13px; }
+    .muted { color: #5b6472; } .muted2 { color: #8b95a3; }
+    .badge { display: inline-flex; align-items: center; gap: 4px; height: 22px; padding: 0 9px; border-radius: 999px; font-size: 12px; font-weight: 600; white-space: nowrap; background: #eef0f3; color: #6b7482; }
+    .b-ok { background: #e6f4ea; color: #1e7a3c; } .b-warn { background: #fff8ec; color: #7a4a06; } .b-danger { background: #fdf1f1; color: #a3221f; } .b-accent { background: #e8f0fb; color: #1d5fbf; } .b-team { background: #efeafc; color: #5b3fbf; }
+    .btn { display: inline-flex; align-items: center; justify-content: center; gap: 7px; height: 36px; padding: 0 14px; border: 1px solid #1d5fbf; border-radius: 8px; background: #1d5fbf; color: #fff; font: inherit; font-size: 14px; font-weight: 600; white-space: nowrap; }
+    .btn-quiet { background: #fff; color: #1c1f24; border-color: #dfe4ea; }
+    .btn-danger { background: #fff; color: #a3221f; border-color: #f0c7c7; }
+    .input { display: flex; align-items: center; height: 40px; padding: 0 12px; border: 1px solid #dfe4ea; border-radius: 8px; background: #fff; color: #1c1f24; font-size: 14.5px; min-width: 0; }
+    .ph { color: #8b95a3; }
+    .label { font-size: 13px; font-weight: 600; color: #5b6472; margin-bottom: 6px; }
+    .card { background: #fff; border: 1px solid #dfe4ea; border-radius: 12px; }
+    .tabs { display: flex; gap: 4px; border-bottom: 1px solid #dfe4ea; }
+    .tab { padding: 10px 16px; font-size: 14.5px; font-weight: 600; color: #5b6472; border-bottom: 2px solid transparent; margin-bottom: -1px; }
+    .tab.on { color: #1d5fbf; border-bottom-color: #1d5fbf; }
+    .chip { display: inline-flex; align-items: center; height: 30px; padding: 0 12px; border-radius: 999px; border: 1px solid #dfe4ea; background: #fff; font-size: 13.5px; font-weight: 600; color: #5b6472; }
+    .chip.on { background: #e8f0fb; color: #1d5fbf; border-color: #cfdff6; }
+    .cell-in { display: flex; align-items: center; height: 34px; padding: 0 10px; border: 1px solid #dfe4ea; border-radius: 6px; background: #fff; font-size: 14px; }
+    .cell-in.focus { border-color: #1d5fbf; box-shadow: 0 0 0 3px #e8f0fb; }
+    .kbd { display: inline-block; padding: 0 6px; border: 1px solid #dfe4ea; border-bottom-width: 2px; border-radius: 5px; background: #fff; font-size: 12px; font-family: ui-monospace, Menlo, monospace; color: #5b6472; }
+  </style>
+</helmet>
+<div style="display: flex; width: 1440px; min-height: 900px; background: #f4f6f9;">
+  <aside style="display: flex; flex-direction: column; width: 232px; flex-shrink: 0; padding: 20px 12px 16px; background: #fff; border-right: 1px solid #dfe4ea;">
+    <div style="display: flex; align-items: center; gap: 10px; padding: 0 8px 18px;">
+      <span style="display: inline-flex; align-items: center; justify-content: center; width: 32px; height: 32px; border-radius: 9px; background: #14213d; color: #fff;"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z"></path></svg></span>
+      <span style="display: flex; flex-direction: column; line-height: 1.2;"><span style="font-weight: 700; font-size: 15px;">t-box</span><span style="font-size: 12px; color: #5b6472;">사내 파일 공유 · 구매</span></span>
+    </div>
+    <nav style="display: flex; flex-direction: column; gap: 2px;">
+      <a href="#" style="display: flex; align-items: center; gap: 10px; height: 40px; padding: 0 12px; border-radius: 8px; color: #5b6472; font-size: 14.5px; font-weight: 500;"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h5l2 2h9v10H4z"></path></svg>파일</a>
+      <a href="#" style="display: flex; align-items: center; gap: 10px; height: 40px; padding: 0 12px; border-radius: 8px; color: #5b6472; font-size: 14.5px; font-weight: 500;"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"></circle><path d="M12 7v5l3 2"></path></svg>내 활동</a>
+      <div style="padding: 14px 12px 6px; font-size: 11.5px; font-weight: 700; letter-spacing: .06em; color: #8b95a3;">구매관리</div>
+      <a href="#" style="display: flex; align-items: center; gap: 10px; height: 40px; padding: 0 12px; border-radius: 8px; color: #5b6472; font-size: 14.5px; font-weight: 500;"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6h16M4 12h16M4 18h10"></path></svg>기초정보</a>
+      <a href="#" style="display: flex; align-items: center; gap: 10px; height: 40px; padding: 0 12px; border-radius: 8px; color: #1d5fbf; background: #e8f0fb; font-size: 14.5px; font-weight: 600;"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3h9l4 4v14H6z"></path><path d="M9 12h6M9 16h6"></path></svg>전표</a>
+      <a href="#" style="display: flex; align-items: center; gap: 10px; height: 40px; padding: 0 12px; border-radius: 8px; color: #5b6472; font-size: 14.5px; font-weight: 500;"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19V5M4 19h16M8 15v-4M12 15V8M16 15v-2"></path></svg>현황</a>
+      <div style="padding: 14px 12px 6px; font-size: 11.5px; font-weight: 700; letter-spacing: .06em; color: #8b95a3;">계정</div>
+      <a href="#" style="display: flex; align-items: center; gap: 10px; height: 40px; padding: 0 12px; border-radius: 8px; color: #5b6472; font-size: 14.5px; font-weight: 500;"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M12 2v3M12 19v3M2 12h3M19 12h3"></path></svg>설정</a>
+      <a href="#" style="display: flex; align-items: center; gap: 10px; height: 40px; padding: 0 12px; border-radius: 8px; color: #5b6472; font-size: 14.5px; font-weight: 500;"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z"></path></svg>관리자 페이지</a>
+    </nav>
+    <div style="margin-top: auto; display: flex; align-items: center; gap: 10px; padding: 10px 8px 0; border-top: 1px solid #dfe4ea;">
+      <span style="display: inline-flex; align-items: center; justify-content: center; width: 32px; height: 32px; border-radius: 999px; background: #e8f0fb; color: #1d5fbf; font-weight: 700; font-size: 13px;">이</span>
+      <span style="display: flex; flex-direction: column; line-height: 1.25;"><span style="font-size: 14px; font-weight: 600;">이재순</span><span style="font-size: 12px; color: #5b6472;">Employee · 부평점</span></span>
+    </div>
+  </aside>
+  <main style="flex: 1; min-width: 0; padding: 28px 32px 40px; display: flex; flex-direction: column; gap: 18px;">
+    <div style="display: flex; align-items: flex-start; justify-content: space-between; gap: 16px;">
+      <div style="display: flex; flex-direction: column; gap: 4px;"><div style="font-size: 13px; color: #8b95a3;">구매관리 › 구매(입고) › 입력</div><h1 style="font-size: 22px; font-weight: 700;">구매(입고) 입력 <span class="mono muted" style="font-size: 15px; font-weight: 500;">GR-20260913-1 (임시)</span></h1><p style="margin: 0; color: #5b6472; font-size: 14px;">물건이 도착하면 발주서를 불러와 실제 온 수량만 적습니다. 저장 시 입고 장소 재고가 늘고, 발주서의 미입고가 줄어듭니다.</p></div>
+      <div style="display: flex; gap: 8px;"><span class="btn btn-quiet">발주서 불러오기</span><span class="btn btn-quiet">거래명세서 파일 첨부</span><span class="btn btn-quiet">바코드 입력</span></div>
+    </div>
+    <div class="tabs"><span class="tab on">입력</span><span class="tab">전표</span><span class="tab">현황</span></div>
+    <section class="card" style="padding: 20px 24px; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px 18px;">
+      <div><div class="label">입고일</div><div class="input">2026-09-13</div></div>
+      <div><div class="label">거래처</div><div class="input">더존덴탈</div></div>
+      <div><div class="label">입고 장소</div><div class="input">부평점 · B1F 의약품창고</div></div>
+      <div><div class="label">담당자</div><div class="input">이창권 팀장</div></div>
+      <div style="grid-column: span 2;"><div class="label">거래명세서 번호 · 파일</div><div class="input">DZ-2026-0913-118 <span class="badge b-accent" style="margin-left: 8px;">명세서.pdf 첨부됨</span></div></div>
+      <div style="grid-column: span 2;"><div class="label">비고</div><div class="input ph">파손·수량 차이 등</div></div>
+    </section>
+    <section class="card" style="overflow: hidden;">
+      <table>
+        <thead><tr><th style="width: 36px;">#</th><th>품목</th><th style="width: 170px;">출처 발주서</th><th class="num" style="width: 80px;">발주</th><th class="num" style="width: 80px;">기입고</th><th class="num" style="width: 110px;">이번 입고</th><th class="num" style="width: 80px;">남는 미입고</th><th class="num" style="width: 100px;">단가</th><th style="width: 130px;">로트 · 유효기간</th><th style="width: 90px;">차이</th></tr></thead>
+        <tbody>
+          <tr><td class="muted2">1</td><td><b>COTTON CUTT #4*4 절단솜</b> <span class="muted">D153516</span></td><td><span class="mono" style="font-size: 12.5px;">PO-20260911-16</span><div class="muted" style="font-size: 12px;">← PR-20260911-3 이재순</div></td><td class="num">5</td><td class="num">0</td><td class="num"><div class="cell-in" style="justify-content: flex-end; width: 80px; margin-left: auto;">5</div></td><td class="num"><span class="badge b-ok">0</span></td><td class="num mono">5,850</td><td class="muted2" style="font-size: 12.5px;">—</td><td></td></tr>
+          <tr><td class="muted2">2</td><td><b>DSO GAUZE 2*2inch</b> <span class="muted">D271194</span></td><td><span class="mono" style="font-size: 12.5px;">PO-20260911-16</span><div class="muted" style="font-size: 12px;">← PR-20260911-3 이재순</div></td><td class="num">5</td><td class="num">0</td><td class="num"><div class="cell-in focus" style="justify-content: flex-end; width: 80px; margin-left: auto;">3</div></td><td class="num"><span class="badge b-warn">2</span></td><td class="num mono">23,750</td><td><div class="cell-in" style="font-size: 12.5px;">L2609A · 2028-06</div></td><td><span class="badge b-warn">부분</span></td></tr>
+          <tr><td class="muted2">3</td><td><b>KIMS 멸균소독 파우치 롤 75mm</b> <span class="muted">D268803</span></td><td><span class="mono" style="font-size: 12.5px;">PO-20260911-16</span><div class="muted" style="font-size: 12px;">← PR-20260911-1 이재순</div></td><td class="num">10</td><td class="num">0</td><td class="num"><div class="cell-in" style="justify-content: flex-end; width: 80px; margin-left: auto;">10</div></td><td class="num"><span class="badge b-ok">0</span></td><td class="num mono">18,500</td><td class="muted2" style="font-size: 12.5px;">—</td><td></td></tr>
+          <tr><td class="muted2">4</td><td><b>MANI DIAMOND POINT EX-21</b> <span class="muted">D200545</span></td><td><span class="mono" style="font-size: 12.5px;">PO-20260911-16</span><div class="muted" style="font-size: 12px;">← PR-20260911-4 김희라</div></td><td class="num">15</td><td class="num">0</td><td class="num"><div class="cell-in" style="justify-content: flex-end; width: 80px; margin-left: auto;">0</div></td><td class="num"><span class="badge b-danger">15</span></td><td class="num mono">1,904</td><td class="muted2" style="font-size: 12.5px;">—</td><td><span class="badge b-danger">미도착</span></td></tr>
+        </tbody>
+      </table>
+      <div style="display: flex; align-items: center; justify-content: space-between; padding: 14px 16px; border-top: 1px solid #dfe4ea; background: #fafbfc;">
+        <span class="muted" style="font-size: 13.5px;">이번 입고 18 낱개 · 남는 미입고 17 → 발주서는 「진행중」 유지, 미입고 현황에 남음 · 0인 줄은 입고 전표에 들어가지 않습니다</span>
+        <div style="display: flex; gap: 8px;"><span class="btn btn-quiet">임시 저장</span><span class="btn">입고 확정</span></div>
+      </div>
+    </section>
+  </main>
+</div>
+</x-dc>
+</body>
+</html>

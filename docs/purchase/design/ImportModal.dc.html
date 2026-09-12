@@ -73,18 +73,20 @@
           <div class="input" style="height: 34px; width: 210px;">09-07 ~ 09-13</div>
           <div class="input" style="height: 34px; width: 150px;">미발주만 <span class="muted2" style="margin-left: auto;">▾</span></div>
           <div class="input" style="height: 34px; width: 150px;">부평점 <span class="muted2" style="margin-left: auto;">▾</span></div>
-          <span class="muted" style="margin-left: 10px; font-size: 13.5px;">묶는 기준</span>
-          <span class="chip on">거래처별</span><span class="chip">장소별</span><span class="chip">담당자별</span><span class="chip">품목별</span>
+          <span class="muted" style="margin-left: 10px; font-size: 13.5px;">묶는 기준 <span class="muted2">(여러 개 · 누른 순서가 트리 순서)</span></span>
+          <span class="chip on">① 거래처</span><span class="chip on">② 창고(장소)</span><span class="chip on">③ 담당자</span><span class="chip">품목</span><span class="chip">지점</span>
         </div>
         <div style="display: grid; grid-template-columns: 300px minmax(0, 1fr); min-height: 420px;">
           <div style="border-right: 1px solid #dfe4ea; padding: 10px; display: flex; flex-direction: column; gap: 2px; font-size: 14px;">
             <div style="display: flex; align-items: center; justify-content: space-between; padding: 8px 10px; border-radius: 8px; background: #e8f0fb; color: #1d5fbf; font-weight: 600;"><span>▾ 더존덴탈</span><span class="badge b-accent">12건</span></div>
-            <div style="display: flex; align-items: center; justify-content: space-between; padding: 7px 10px 7px 26px; border-radius: 8px;"><span>▾ 2F 공급실</span><span class="muted2">8</span></div>
-            <div style="display: flex; align-items: center; justify-content: space-between; padding: 7px 10px 7px 26px; border-radius: 8px;"><span>▸ 4층</span><span class="muted2">4</span></div>
+            <div style="display: flex; align-items: center; justify-content: space-between; padding: 7px 10px 7px 24px; border-radius: 8px;"><span>▾ 부평점 2F 공급실</span><span class="muted2">8</span></div>
+            <div style="display: flex; align-items: center; justify-content: space-between; padding: 6px 10px 6px 40px; border-radius: 8px; background: #f4f6f9;"><span>▸ 이재순 선생님</span><span class="muted2">6</span></div>
+            <div style="display: flex; align-items: center; justify-content: space-between; padding: 6px 10px 6px 40px; border-radius: 8px;"><span>▸ 김희라 선생님</span><span class="muted2">2</span></div>
+            <div style="display: flex; align-items: center; justify-content: space-between; padding: 7px 10px 7px 24px; border-radius: 8px;"><span>▸ 부평점 4층</span><span class="muted2">4</span></div>
             <div style="display: flex; align-items: center; justify-content: space-between; padding: 8px 10px; border-radius: 8px;"><span>▸ (주)메가젠임플란트</span><span class="badge">7건</span></div>
             <div style="display: flex; align-items: center; justify-content: space-between; padding: 8px 10px; border-radius: 8px;"><span>▸ 주식회사 메타약품</span><span class="badge">5건</span></div>
             <div style="display: flex; align-items: center; justify-content: space-between; padding: 8px 10px; border-radius: 8px; color: #7a4a06;"><span>▸ 거래처 미지정</span><span class="badge b-warn">3건</span></div>
-            <div class="muted2" style="margin-top: auto; padding: 10px; font-size: 12.5px; line-height: 1.5;">미지정은 품목의 기본 거래처가 없어 묶이지 않은 요청입니다. 여기서 거래처를 정하면 다음부터 자동으로 묶입니다.</div>
+            <div class="muted2" style="margin-top: auto; padding: 10px; font-size: 12.5px; line-height: 1.5;">기준 순서를 바꾸면 트리가 바로 다시 묶입니다. 어느 층을 골라도 그 아래 요청 줄이 오른쪽에 모입니다.</div>
           </div>
           <div style="display: flex; flex-direction: column;">
             <table>
@@ -97,7 +99,7 @@
               </tbody>
             </table>
             <div style="margin-top: auto; display: flex; align-items: center; justify-content: space-between; padding: 14px 16px; border-top: 1px solid #dfe4ea; background: #fafbfc;">
-              <span class="muted" style="font-size: 13.5px;">선택 3건 · 담을 수량 20 · 부분 담기 가능(잔량은 요청서에 남습니다)</span>
+              <span class="muted" style="font-size: 13.5px;">선택 3건 · 담을 수량 20 · 부분 담기 가능(잔량은 요청서에 남음) · 담긴 줄은 <b>PR 번호 → 이 PO 번호</b>로 연결</span>
               <div style="display: flex; gap: 8px;"><span class="btn btn-quiet">닫기</span><span class="btn">발주서에 담기</span></div>
             </div>
           </div>
