@@ -721,6 +721,27 @@ Admin 전용. 정책 `org.manage`(`Authz::canManageOrg` = Admin) 를 `KNOWN_POLI
 
 ---
 
+### 5.18 구매·재고 모듈 — `/purchase/*` · `/api/purchase/*` (PRD F-28~F-36 · 19~23단계, 확정 2026-09-13)
+
+상세 설계는 `docs/purchase/03-architecture-draft.md`(확정본)에 있다. 여기에는 **본체와 맞닿는 규칙**만 적는다.
+
+| 항목 | 규칙 |
+|---|---|
+| 경계 | 라우트 `/purchase/*`(화면)·`/api/purchase/*`(API), 정책 접두 `purchase.*`, 표 접두 `p_`, 코드 `src/purchase/`·`handlers/purchase_*.php`·`assets/purchase.js|css`. 본체 파일 변경은 라우트 표·`Authz`(모듈 판정 함수)·`Audit`(문장 틀)·`me.php`·셸 내비(「구매관리」 그룹)·`users`(`branch_id`·`purchase_role`)로 한정 |
+| 권한 두 축 | `users.purchase_role`(requester·buyer·stock·viewer·NULL) × `users.branch_id`. 판정은 `Authz::purchaseAuthorize(policy, user)`(라우트)와 `Authz::purchaseScopeWhere(user, alias)`(모든 조회 SQL — requester·stock 은 `alias.branch_id = :my_branch`, 그 밖은 조건 없음) **한 곳**. 핸들러의 SELECT 에 `purchaseScopeWhere` 호출이 없으면 `security_lint.sh` 가 반려 |
+| 정책 | `purchase.read` · `purchase.request.write` · `purchase.buy.write` · `purchase.stock.write` · `purchase.master.write`(**재인증 대상**, `REAUTH_POLICIES` 추가) · `purchase.close`(재인증 + TOTP) · Admin 은 전부 |
+| 원장 | `p_stock_moves` 는 append-only — 앱 계정 INSERT·SELECT 만(`grants.sql`). 현재고 = `SUM(qty_delta)`(뷰 `p_stock_balance`). 취소·정정 = 반대 부호 행 + `reverses_move_id` |
+| 연결 | `p_doc_lines.src_line_id` 하나로 요청→발주→입고. 미발주·미입고는 계산값(재귀 CTE). 담기·입고 확정은 `FOR UPDATE` 뒤 잔량 초과 거부 |
+| 음수 재고 | 이동·사용 확정 트랜잭션에서 잠금 뒤 합 재계산, 0 미만이면 400 |
+| 채번 | `p_doc_seq(doc_type, date, last)` 잠금 증가 → `PR|PO|GR|MV|IS|ADJ-YYYYMMDD-N`, UNIQUE |
+| 마감 | `p_docs.closed_month` 가 있으면 수정·취소는 `purchase.close` + 사유 + 감사 |
+| 재고관리 안 하는 품목 | 입고 확정 시 `+`·`−` 두 행(순변화 0), 사용 통계에는 포함 |
+| 가져오기 | t-box `Upload::validate` → `Preview::table`(xlsx·csv) → 매핑(`p_import_mappings`) → 행별 판정 → 한 트랜잭션. 파일은 `files`(폴더 `구매/가져오기`), 감사 detail 에 sha256·행 수 |
+| 감사·경보 | 문장 틀 `purchase.request|order|receipt|move|use|count|master|import|recon|close … allow/deny/error`(7.4), detail 키 `doc_no`·`doc_type`·`branch_id`·`lines`·`amount`·`src_doc_no`·`before/after`(7.5). 경보 후보 AL-14 마감 뒤 수정 · AL-15 미입고 30일 · AL-16 단가 급변 · AL-17 대량 취소 |
+| 화면 | 시안 16장(`docs/purchase/design/`)이 기준. t-box 셸·토큰, `textContent` 만, 서버 계산 값만 표시 |
+
+---
+
 ## 6. 저장 위치 — 파일 정보 vs 실제 파일
 
 ### 6.1 두 곳에 나눠 저장하는 이유
@@ -1368,6 +1389,7 @@ php_admin_value[disable_functions]   = fsockopen,pfsockopen,stream_socket_client
 | `tbox_app` | PHP 앱 런타임 | `users teams files`: SELECT/INSERT/UPDATE · `sessions`: SELECT/INSERT/UPDATE/DELETE · `permissions`: **SELECT 만** · `audit_logs`: SELECT/INSERT 만 · DROP 없음 |
 | `tbox_backup` | 백업 스크립트 | 전체 SELECT (읽기 전용) |
 | `tbox_perm` | 권한 매트릭스 편집 핸들러 **하나**(`admin_permissions_update.php`, 17단계 F-25) | `permissions`: SELECT/UPDATE 만 · 다른 표 0 · INSERT/DELETE 없음(16행 고정). `.env` `DB_PERM_USER/PASS`, `Db::perm()` 지연 연결 |
+| `tbox_app` (구매 모듈 표) | `p_*` 표(19단계~) | `p_stock_moves`: **INSERT·SELECT 만** · 그 밖 `p_*`: SELECT·INSERT·UPDATE(DELETE 없음 — 중단은 `is_active`) · 시퀀스 USAGE |
 
 > 파일 삭제가 논리 삭제(UPDATE)이므로 앱 계정에 `DELETE` 권한 자체가 필요 없다. 30일 실제 정리는 `tbox_owner` 권한의 배치 스크립트가 수행한다.
 

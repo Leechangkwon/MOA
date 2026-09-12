@@ -199,6 +199,16 @@
 | F-25 | **권한 매트릭스 화면 편집** (Q-12 결정 2026-09-12: "보안만 확보된다면 페이지에서 관리해도 충분") | `/admin/permissions` 화면 + `GET/PATCH /api/admin/permissions`. **조건 다섯 가지**가 전부 있어야 바뀐다: ① Admin + 재인증(F-23) ② 요청마다 **2단계 인증 코드**(TOTP, 1회성 R-45) ③ 사유 필수 ④ 서버 불변 규칙 — Admin 행은 전부 참으로 고정(관리자가 스스로를 잠글 수 없음), `can_upload` 이면 `can_read`, 역할·등급은 4×4 안, Guest 의 `admin-only` 는 거짓 고정 ⑤ **별도 DB 롤 `tbox_perm`**(`permissions` SELECT·UPDATE 만)으로만 쓴다 — 앱 런타임 롤 `tbox_app` 은 여전히 SELECT 만이라 다른 핸들러의 결함(SQL 인젝션 등)이 권한 표를 바꾸는 길은 그대로 막혀 있다. 변경은 한 트랜잭션, 셀마다 감사 `permission.change allow`(before/after·사유·코드 검증 사실), 거부는 `permission.change deny`(bad_request·bad_code·code_reused·invariant). 경보 AL-13(매트릭스 변경은 건수와 무관하게 즉시 기록). 효과는 다음 요청부터(매트릭스는 요청마다 읽음). 2인 승인은 활성 Admin 이 1명이라 이번엔 두지 않고 후보로 남긴다(R-43) | 필수(17-2) |
 | F-26 | **폴더(분류 + 권한)** (사용자 결정 2026-09-13 "폴더 기능을 먼저" · **"폴더 자체도 권한을 두도록 — 폴더에 접근해도 권한이 없으면 파일을 못 보는 형태"**) | 파일을 담는 트리 `folders`(자기참조, 깊이 최대 5, 이름 1~50자, 같은 부모 안 중복 금지). **저장 경로는 그대로**(무작위 이름). **폴더도 파일과 같은 등급 체계**를 갖는다: `access_level`(4종) + `team_id`(team 이면 필수). 읽기 판정은 파일과 **같은 함수·같은 매트릭스**(5.1 표, `Authz::decideRead`)이고, 못 읽는 폴더는 **트리에도 나오지 않는다**(S-02 — 숨김이 아니라 응답에 없음). **두 겹 규칙**: 파일은 자기 등급으로도, 폴더 등급으로도 막힌다 — 이를 판정마다 두 번 검사하지 않고 **쓰기 시점의 불변 규칙**으로 보장한다: ① 하위 폴더·파일의 등급은 부모 폴더보다 **넓을 수 없다**(`LEVEL_RANK` 가 부모 이상; 부모가 `team` 이면 같은 팀) ② 폴더 등급을 **좁히는** 변경은 하위 전부가 새 규칙을 만족할 때만(아니면 400 `children_exceed`) — 또는 `cascade:true` 로 하위 폴더·파일도 함께 좁힘(구글 드라이브의 「하위에도 적용」, 항목마다 감사, 고칠 수 없는 항목이 있으면 전체 거부) ③ 폴더 등급을 **넓히는** 변경은 Admin 만(파일 R-20 과 같은 규칙). 매트릭스가 등급 순서에 대해 단조(읽을 수 있는 등급이 넓은 쪽부터 연속)이므로 ①이 지켜지면 "파일이 보이면 그 폴더도 보인다" 가 성립해 목록 SQL 은 지금의 `visibleFilesWhere` 그대로다. 만들기: 그 등급·팀으로 올릴 수 있는 사람(`decideUploadAs`, Guest 불가). 이름 변경·이동·삭제·등급 변경: 만든 사람 또는 Manager(자기 팀 폴더)·Admin(`decideFolderChange`). 이동은 새 부모에서도 ①을 만족해야 한다. 삭제는 살아 있는 파일 0·하위 0. 파일 이동(`PATCH /api/files/{id} {folder_id}`)은 파일 `decideEdit` + 대상 폴더 읽기 가능 + ①. 목록 `GET /api/files?folder=<id>`(못 읽는 폴더면 403 동일 문구), 트리 `GET /api/folders?parent=`(읽을 수 있는 자식만·`file_count` 는 호출자 기준). 감사 `folder.create|update|level_change|delete`, 거부 사유 `role_not_permitted|team_mismatch|parent_narrower|children_exceed|downgrade_not_permitted|cycle|folder_not_empty|conflict|depth_exceeded` | 필수(18-1) |
 | F-27 | **일괄 업로드** (사용자 결정 2026-09-13 "일괄 업로드 기능") | 화면에서 **여러 파일을 한 번에 선택(또는 끌어 놓기)** 해 같은 등급·팀·폴더로 올린다. **서버 계약은 바꾸지 않는다** — 파일 하나 = 요청 하나(`POST /api/files`)를 화면(app.js)이 **순서대로** 보내고 파일마다 결과(201 / 400 사유)를 목록으로 보여 준다. 그래서 파일마다 기존 검사(확장자·MIME·크기·일일 총량·민감정보 검출 F-22)와 감사 행이 그대로 남고, 하나가 거부돼도 나머지는 계속된다. 동시 요청 수는 1(순차) — 서버 `pm.max_children=5` 를 한 사용자가 점유하지 않게. 선택 상한 50개/회(화면), 총 크기는 일일 총량(2GB)이 그대로 상한. 설명은 비우거나 공통 문구 하나. `max_file_uploads=1`(요청당 1개)은 유지 | 필수(18-2) |
+| **F-28 ~ F-36** | **구매·재고 모듈** (사용자 요청 2026-09-12 → 시안 검토·**확정 2026-09-13**) — 상세는 `docs/purchase/02-prd-draft.md`(확정본), 구조 파악 `01-ecount-structure.md`, 시안 `design/`(캔버스 16장) | 이카운트 **앞단**(대체 아님): 요청 취합 → 발주 → 입고 → 이동·사용·실사 → 재고·현황 → 월 대사. 같은 저장소의 독립 모듈(`/purchase/*`·`/api/purchase/*`, 표 `p_*`). 모듈 역할 requester·buyer·stock·viewer × **지점 격리**(SQL WHERE). | 필수(19~23단계) |
+| F-28 | 기초정보 — 브랜드·지점·장소(지점×용도, 창고/중앙장 역할)·거래처·품목(거래처 코드 그대로, 대/중/소, 포장 낱개 수, 재고관리 여부, 안전재고·조달기간·최소구매단위, 사용 지점)·지점별 인가량 | 시안 ⑭⑮. 삭제 대신 중단, 변경은 before/after 감사 | 19 |
+| F-29 | 엑셀 가져오기·내려받기 — 기초정보 3종·발주요청 일괄·거래처 명세서. 열 매핑 저장, 행별 판정(등록·갱신·확인·오류), 한 트랜잭션 확정 | 시안 ⑯. t-box 업로드 검사·표 추출 재사용 | 19 |
+| F-30 | 발주요청 — 입력(품목 찾기 모달: 품목 API 조건 검색·다중 선택·수량 미리 입력 R1)·전표·현황. 재고 불변. 상태 미확인→진행중→일부 발주→완료 | 시안 ①② | 20 |
+| F-31 | 추천 · 내 발주 리스트 — 담당자별 90일 빈도 추천, 이름 붙인 개인 리스트(기본 수량·순서·지점 공유), 요청·발주서 공통 「전체 담기」 (R2) | 시안 ③ | 20 |
+| F-32 | 발주요청 불러오기 → 발주서 — 미발주 잔량만, 묶는 기준 **다중 선택·순서 = 트리 층**(R3), 부분 담기, 미지정 거래처 즉석 지정, 줄마다 출처 PR 번호(R4), PDF·「보냄」 표시 | 시안 ④⑤ | 20 |
+| F-33 | 입고(구매)·이동·사용·실사 — 발주서 불러오기·부분 입고·로트, 이동은 중앙장 부족분 자동 채우기, 사용은 수술방 차감, 실사는 차이만 ±. 재고 원장 append-only, 음수 재고 금지 | 시안 ⑥⑦ | 21 |
+| F-34 | 현황 — 장소별 재고(현재고·인가량·과부족·미입고·주평균·발주 제안), 수불부, **미입고 현황**(R6: 발주서 보냈으나 입고 없음, 거래처별·납기 지남·독촉), **사이클 추적**(R4: 요청 줄 = 한 행에 PR/PO/GR 번호·누가·언제·미발주·미입고), 주간 사용량(대/중/소×지점) | 시안 ⑨⑩⑪⑫ | 21·22 |
+| F-35 | 거래처 월 대사 — 우리 입고 vs 명세서(엑셀·PDF 텍스트), 차이 4종 자동 분류, 월 마감(잠금, 수정은 사유+감사). 기공 명세서는 재고관리 안 하는 품목으로 입고=사용 자동 전표 | 시안 ⑬ | 22 |
+| F-36 | 발주 제안·부족 알림 — ⌈(인가+안전−현재고−미입고+조달기간 예상)÷최소단위⌉×최소단위, 제안값·수정 가능, 미입고 30일 경보 | 시안 ⑩ | 23 |
 
 ---
 
@@ -599,6 +609,7 @@
 | PATCH | `/api/admin/permissions` | 매트릭스 변경 (F-25). 본문 `{changes:[{role,access_level,can_read,can_upload}], reason_text, otp}` — 조건 ①~⑤ | `role:Admin` + 재인증 + CSRF | `permission.change` allow(셀마다 before/after)/deny |
 | GET | `/api/admin/shares` · `/api/admin/alerts` | 공유 링크 전체 목록(토큰 없음) · 최근 경보(`alerts.log` 마지막 50줄, 값은 기록된 그대로) (F-24) | `role:Admin` + 재인증 | 없음 |
 | GET | `/api/folders?parent=<id>` | 폴더 트리 — **읽을 수 있는 자식만** + breadcrumb (F-26). 부모 자체를 못 읽으면 403 동일 문구 | `file.read` → 핸들러 `decideRead(folder)` | `folder.read` deny 만(허용은 기록하지 않음 — 목록과 같은 취급) |
+| (모듈) | `/purchase/*` 화면 · `/api/purchase/*` API | 구매·재고 모듈(F-28~F-36). 정책 접두 `purchase.*`(`purchase.read`·`purchase.request.write`·`purchase.buy.write`·`purchase.stock.write`·`purchase.master.write`(재인증)·`purchase.close`(재인증+TOTP)). 라우트별 목록은 ARCH 5.18 | 모듈 역할 × 지점 격리 | `purchase.*` |
 | POST | `/api/folders` | 폴더 만들기 `{name, parent_id?, access_level, team_id?}` (F-26). 깊이 5·이름 규칙·중복·`decideUploadAs`·부모보다 넓지 않음(①) | `file.upload`(Guest 제외) | `folder.create` allow/deny |
 | PATCH | `/api/folders/{num}` | 이름 변경·이동·등급 변경 `{name?, parent_id?, access_level?, team_id?, cascade?, reason_text?}` (F-26). 자손 아래 이동 금지, 이동·등급 변경은 불변 규칙 ①②③ | `file.update` → 핸들러 `decideFolderChange`(+ 등급은 `decideLevelChange` 규칙) | `folder.update`·`folder.level_change` allow/deny |
 | DELETE | `/api/folders/{num}` | 빈 폴더 삭제(살아 있는 파일 0·하위 0) (F-26). 행 삭제(파일이 참조하지 않음이 확인된 뒤) | `file.delete` → `decideFolderChange` | `folder.delete` allow/deny |
@@ -617,6 +628,7 @@
 | `sessions` | `id(토큰 해시), user_id, created_at, last_seen_at, expires_at, ip, user_agent` | **DB 세션** (PHP 파일 세션 미사용). 쿠키에는 무작위 토큰만, DB에는 그 SHA-256. 비활성화·비밀번호 변경 시 해당 사용자 행 전체 삭제 → 모든 기기 즉시 로그아웃 (R-10) |
 | `share_links` | `id, token_hash(char64), file_id, created_by, expires_at, max_downloads, download_count, revoked_at, revoked_by, reason_text, created_at` | F-13. 토큰 원문은 저장하지 않는다. 앱 계정은 SELECT·INSERT·UPDATE 만(회수·횟수는 UPDATE, 행 삭제 없음 — 감사 추적) |
 | `folders` | `id, parent_id(→folders, NULL=루트), name, depth(1~5), access_level(4종, 파일과 같은 CHECK), team_id(team 이면 NOT NULL — 파일과 같은 CHECK), created_by, created_at, updated_at` | F-26. `UNIQUE(parent_id, name)`, `CHECK(depth BETWEEN 1 AND 5)`, 등급·팀 CHECK 는 `files` 와 동일. 앱 계정 SELECT·INSERT·UPDATE·**DELETE**(빈 폴더만, 파일이 참조하면 FK 가 막는다). 불변 규칙 ①(하위 ≥ 부모)은 앱이 지킨다 |
+| `p_*` (구매·재고) | `p_brands` `p_branches` `p_locations` `p_vendors` `p_categories` `p_items` `p_item_branches` `p_par_levels` `p_docs` `p_doc_lines(src_line_id)` `p_stock_moves`(append-only) `p_lists` `p_list_items` `p_recon_*` `p_import_mappings` `p_doc_seq` + `users.branch_id`·`users.purchase_role` | F-28~F-36. 앱 계정: `p_stock_moves` INSERT·SELECT 만, 나머지 SELECT·INSERT·UPDATE(삭제 없음). 상세 ARCH 5.18·`docs/purchase/03-architecture-draft.md` |
 
 **제약 조건**
 - `files.access_level` 은 `public|internal|team|admin-only` 중 하나 (DB CHECK 제약)
@@ -650,6 +662,7 @@
 | 권한 매트릭스 편집 (`/admin/permissions`, F-25) | 4×4 표(읽기·올리기 토글), 잠긴 셀 표시(Admin 행·Guest admin-only), 변경 미리보기(before → after), 사유·2단계 인증 코드 칸, 「적용」 | 서버가 다시 검증. 바뀐 셀마다 감사 행 |
 | 폴더 (파일 화면 좌측 트리 + 경로 표시, F-26) | 트리(읽을 수 있는 폴더만)·등급 배지, breadcrumb, 「새 폴더」(이름·등급·팀 — 선택지는 부모 등급 이상만)「이름 변경」「등급 변경」「삭제(비었을 때)」, 파일 행 「이동」(대상 폴더 등급 이상인 파일만 허용, 아니면 사유 표시) | 트리도 내용도 권한대로(응답에 없음). 서버가 다시 검사 |
 | 일괄 업로드 (올리기 패널, F-27) | 파일 여러 개 선택·끌어 놓기 → 공통 등급·팀·폴더 → 파일별 진행 표(대기·올리는 중·완료·거부 사유) | 파일마다 요청 하나. 거부된 파일은 사유를 그대로 보여 주고 나머지는 계속 |
+| 구매·재고 (`/purchase/*`, F-28~F-36) | 공통 골격 「입력 · 전표 · 현황」 3탭. 시안 16장(`docs/purchase/design/`): 발주요청 입력·품목 찾기·추천/내 리스트·불러오기·발주서·입고·이동/사용/실사·전표·사이클·장소별 재고·미입고·주간 사용량·월 대사·장소·품목·엑셀 가져오기 | t-box 셸 안, 토큰 재사용, `textContent` 만. 지점 격리는 서버 |
 
 ---
 
@@ -714,6 +727,11 @@
 | T-39 | 권한 매트릭스 편집 (F-25, S-01, S-07) | Admin+재인증: 코드 없이 → 400 `deny bad_request`; 틀린 코드 → 400 `deny bad_code` + 실패 집계; 같은 코드 2회 → `code_reused`; Admin 행 변경 시도 → 400 `deny invariant`; `can_upload=true,can_read=false` → 400 invariant; 사유 없음 → 400. 정상: Guest `internal` read 를 true 로 → 200, 감사 `permission.change allow` before/after 1행, AL-13 1건, **곧바로** Guest 세션 `/api/files` 에 internal 파일이 보임 → 되돌리기 200. `\dp permissions`: `tbox_app=r`, `tbox_perm=rw`. `tbox_app` 으로 `UPDATE permissions` 시도 → permission denied |
 | T-40 | 폴더 (F-26, S-01, S-02, S-03) | Guest `POST /api/folders` → 403. Employee(개발팀)가 `internal` 폴더 A 생성 201, 같은 부모 같은 이름 409, 깊이 6번째 400, 이름에 `<script>` → 목록·화면 글자 그대로. **권한**: Admin 이 `admin-only` 폴더 S 생성 → Employee 트리에 S **없음**, `GET /api/files?folder=S` → 403 동일 문구, `GET /api/folders?parent=S` → 403; Admin 이 S 안에 `public` 파일 업로드 시도 → 400 `parent_narrower`(폴더보다 넓은 파일 불가); S 안 `admin-only` 파일은 Employee 검색(`?q=`)에도 없음. Employee 가 A 를 `public` 으로 넓히기 → 403 `downgrade_not_permitted`; Admin 이 A 를 `admin-only` 로 좁히기(안에 internal 파일 있음) → 400 `children_exceed`; 파일을 옮겨 낸 뒤 → 200. Employee(영업팀)가 개발팀 `team` 폴더 → 트리 없음·403. 파일 있는 폴더 삭제 400 `folder_not_empty`; 남의 폴더 이름 변경 403; 자손으로 이동 400 `cycle`. 감사 `folder.*` |
 | T-41 | 일괄 업로드 (F-27, S-06, S-07) | 화면에서 5개 선택(그중 `.php` 1개·주민번호 든 `.txt` 1개를 `public` 로) → 요청 5개가 **순서대로** 감사 로그에 `file.upload` 5행(allow 3·deny 2: `ext_not_allowed`·`sensitive_level_required`), 화면 표에 파일별 결과. 서버 계약 불변: `POST /api/files` 에 파일 2개를 한 요청으로 보내면 400(요청당 1개) |
+| T-42 | 지점 격리·모듈 역할 (F-28, S-01, S-02) | requester(부평점) 세션으로 `/api/purchase/locations`·`items?branch_used`·전표 목록 → 다른 지점 행 0건, `?branch=다른지점` 무시; buyer 는 전 지점; 모듈 역할 없는 Employee → 403 `authz.route deny`; Guest 403. 기초정보 편집은 재인증 전 403 `next:reauth` |
+| T-43 | 품목 찾기 API (F-30 R1) | `GET /api/purchase/items?q=gauze&cat1=…&vendor=…&page=2` → 20건·`total`, 정렬 허용 목록 밖 무시, 1.35만 건 적재 뒤 응답 200ms 이내(실측 시각), SQLi 페이로드 200 정상 |
+| T-44 | 엑셀 가져오기 (F-29, S-06, S-07) | 품목 xlsx 100행(정상 90·중복 코드 5·거래처 없음 5) 업로드 → 미리보기 판정 90 등록/5 오류/5 오류, 확정 → 90행만 저장·감사 `purchase.import allow` detail 행 수·sha256, 오류 목록 내려받기; 매핑 저장 뒤 같은 양식 재업로드 시 2단계로; `.xlsm`·매크로 → 기존 업로드 검사 400 |
+| T-45 | 요청·불러오기·발주서 연결 (F-30~F-32, R3·R4) | 요청 2건(요청자 둘) → 불러오기 `group=vendor,location,manager` 잔량만 → 부분 담기(5 중 3) → 발주서 줄 `src_line_id` = 요청 줄, 요청 잔량 2, 같은 줄 다시 담기 4 → 400 잔량 초과; 동시 요청 2개로 잔량 경쟁 → 한쪽 400 |
+| T-46 | 원장·잔량·미입고 (F-33·F-34) | 입고 3/5 → `p_stock_moves` +3, 현재고 = SUM, 미입고 2, 미입고 현황에 등장; 이동으로 음수 되는 수량 → 400; 실사 차이 ± 행; 취소는 반대 부호 행(원본 참조), `tbox_app` 으로 `UPDATE p_stock_moves` → permission denied |
 
 ### 12.3 애플리케이션 밖 (S-10, S-11)
 
@@ -760,6 +778,11 @@
 | **16** (미반영 재점검, 사용자 확정 2026-09-12) | **16-1** 관리 기능 재인증(F-23) · **16-2** 사고 후속 미완 3건 — 서버 층 경보 AL-3 확장·AL-9(8.4-5), 정합성 검사 일 1회(8.4-6), `backup.restore error restore_failed` 문장 틀(8.4-10) | F-23, S-09-4, S-11-A, R-48 | T-36 · T-37 | F-23 |
 | **17** (사용자 요청 2026-09-12) | **17-1** 관리자 영역 `/admin` 허브·일반 셸 관리 항목 제거·nginx 관리망 블록(꺼짐)·공유 링크 전체·최근 경보(F-24) → **17-2** 권한 매트릭스 화면 편집(F-25, Q-12 결정: 별도 DB 롤 `tbox_perm`·재인증·TOTP·사유·불변 규칙·감사 before/after·AL-13) | F-24, F-25, S-01, S-07, R-43 | T-38 · T-39 | F-24, F-25 |
 | **18** (사용자 결정 2026-09-13 "일괄 업로드와 폴더를 먼저") | **18-1** 폴더(F-26) → **18-2** 일괄 업로드(F-27, 서버 계약 불변·화면 순차 요청) | F-26, F-27, S-01, S-02, S-06, R-63, R-64 | T-40 · T-41 | F-26, F-27 |
+| **19** (구매·재고 확정 2026-09-13) | 모듈 골격(`/purchase`, 정책 `purchase.*`, `users.branch_id`·`purchase_role`) + 기초정보 F-28 + 엑셀 가져오기 F-29 + 품목 찾기 API | F-28, F-29, F-30(API), S-01, S-02 | T-42 · T-43 · T-44 | F-28, F-29 |
+| **20** | 발주요청 F-30 · 추천/내 리스트 F-31 · 불러오기→발주서 F-32(PDF·보냄) | F-30~F-32 | T-45 | F-30~F-32 |
+| **21** | 입고·이동·사용·실사 F-33 · 재고 원장 · 장소별 재고현황·수불부·미입고·사이클 F-34(일부) | F-33, F-34 | T-46 | F-33 |
+| **22** | 주간 사용량 · 월 대사 · 기공 명세서 자동 전표 F-35 | F-34, F-35 | T-47(예정) | F-35 |
+| **23** | 발주 제안·부족 알림 F-36 · 경보 AL-14~17 | F-36, S-11-A | T-48(예정) | F-36 |
 
 **과제 제출물 대응**
 
@@ -792,3 +815,5 @@
 | Q-14 | 「Guest 로 보기(view-as)」 모드 — 내리기 전용·쓰기 금지·`Authz::effectiveRole()` 한 곳·감사 actor 진짜 계정 | 17단계 뒤 | **미결** — 지금은 시크릿 창으로 대체 |
 | Q-15 | 파일 버전 관리(재업로드 = 새 버전) — 비목표 NG-3 재결정 필요, 보관 개수·기간 정책 | 18단계 뒤 | 미결 |
 | Q-16 | 폴더 삭제 시 **휴지통에 있는 파일**이 그 폴더를 참조하면 어떻게 하나(현재: 30일 정리 전까지 삭제 불가 `folder_not_empty`; 대안: 삭제 시 휴지통 파일의 `folder_id` 를 루트로 옮김, 또는 드라이브처럼 폴더를 휴지통에 넣기) · 폴더 권한을 넓힐 때 하위 통지 | 18단계 뒤 | 미결 — 18단계 검토에서 시험 폴더 2개가 이 이유로 남음 |
+| Q-17 | 구매 모듈 가정 A1~A5(앞단·같은 저장소 모듈·지점 마스터·엑셀 가져오기·부가세 별도) | 19단계 전 | **확정(사용자 2026-09-13 "확정")** |
+| Q-18 | 요청자가 발주요청을 **수정할 수 있는 시점**(구매팀이 담기 전까지?) · 발주서 PDF 양식(로고·직인) · 실사 주기 · viewer(경영진) 필요 여부 · 이카운트 엑셀 양식 제공 | 20단계 전 | 미결 — 19단계 진행 중 확인 |
