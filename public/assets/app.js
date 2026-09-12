@@ -55,7 +55,11 @@ var REAUTH_PATHS = {
   'wiki': '/wiki',
   // 17-1 관리자 허브 (PRD F-24). `/admin`·`/admin/permissions` 둘 다 이 키 하나를 쓰고,
   // 확인이 끝나면 허브로 돌아온다 (서버 TBOX_REAUTH_RETURN 과 같은 내용).
-  'admin': '/admin'
+  'admin': '/admin',
+  // 19단계 4차 보정 2026-09-13 — 구매 기초정보·엑셀 가져오기 (서버 TBOX_REAUTH_PATHS 와 같은 내용).
+  // 이 두 줄이 없어서 기초정보에서 재인증하면 홈으로 떨어졌다(사용자 관찰).
+  'purchasemasters': '/purchase/masters',
+  'purchaseimport': '/purchase/import'
 };
 
 /** 서버가 내려 준 파일 ID 형태 (UUIDv4). 링크를 만들기 전에 반드시 확인한다. */

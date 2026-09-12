@@ -306,6 +306,14 @@ const TBOX_REAUTH_RETURN = [
     // 아래 TBOX_REAUTH_PATHS 에 적힌 고정 문자열뿐이고, 요청 값은 키를 고르는 데만 쓰인다.
     'GET /admin'             => 'admin',
     'GET /admin/permissions' => 'admin',
+    /*
+     * 19단계 4차 보정 — 화면 요청이 재인증 관문에 걸렸을 때 **돌아올 곳**.
+     * 지금 재인증 대상인 구매 화면은 `/purchase/import` 하나다(정책 `purchase.master.write`).
+     * `/purchase/masters` 는 정책이 `purchase.read` 라 관문에 걸리지 않지만, 그 화면의
+     * **API 호출**(기초정보 저장)이 403 `next:reauth` 를 받으면 purchase.js 가 같은 키로
+     * `/reauth?to=purchase_masters` 를 부른다 — 그래서 위 표에는 두 키가 다 있어야 한다.
+     */
+    'GET /purchase/import'   => 'purchaseimport',
 ];
 
 /**
@@ -321,6 +329,28 @@ const TBOX_REAUTH_PATHS = [
     'wiki'  => '/wiki',
     // 17-1 — 관리자 허브 (PRD F-24). `/reauth?to=admin` 은 언제나 이 고정 경로로 돌아온다.
     'admin' => '/admin',
+    /*
+     * 19단계 4차 보정 2026-09-13 — 구매 기초정보·엑셀 가져오기 (PRD F-28 · F-29).
+     *
+     * 이 두 줄이 없어서, 기초정보를 고치려다 재인증을 하면 **홈으로 떨어졌다**(사용자 관찰).
+     * 값은 다른 키와 똑같이 **코드에 적힌 고정 문자열**이고, 요청 값은 "표에 이 키가 있나" 를
+     * 묻는 데만 쓰인다 — 오픈 리다이렉트가 생길 자리가 없다(reauth_page.php 의 키 대조).
+     *
+     * 품목 상세(`/purchase/items/{num}`)에는 키를 두지 않는다: 그 라우트의 정책은
+     * `purchase.read` 라 **재인증 관문에 걸리지 않는다**(REAUTH_POLICIES 에 없다).
+     * 돌아갈 일이 없는 화면에 키를 만들면 오픈 리다이렉트 표면만 넓어진다.
+     *
+     * 기초정보의 **어느 탭**이었는지는 이 표에 넣지 않는다 — `?tab=` 을 고정 값에 섞으면
+     * 표가 경로 조합만큼 늘어난다. 탭은 화면(purchase.js)이 sessionStorage 로 되살린다.
+     *
+     * ★ 키에 밑줄이 없는 이유: `Http::redirect` 가 Location 헤더에 허용하는 꼬리표는
+     *   `?to=` + **영문 소문자 1~16자**뿐이다(`&`·`=`·`%`·숫자·슬래시가 들어갈 자리가 없다).
+     *   `purchase_masters` 로 두면 그 검사에 걸려 500 이 난다(4차 보정에서 실측).
+     *   읽기 좋으라고 그 정규식을 넓히지 않았다 — 오픈 리다이렉트를 막는 마지막 그물이라
+     *   넓히는 것은 따로 검토할 일이다(SECURITY 4장). 키 이름을 규칙에 맞췄다.
+     */
+    'purchasemasters' => '/purchase/masters',
+    'purchaseimport'  => '/purchase/import',
 ];
 
 /** 재인증 화면의 경로. 코드 상수이며 요청 값이 섞이지 않는다 (TBOX_LOGIN_PATH 와 같다). */

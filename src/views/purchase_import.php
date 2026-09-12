@@ -27,6 +27,12 @@ require __DIR__ . '/shell_top.php';
     </header>
 
   <p class="notice">
+    <strong>창고 파일 하나로 브랜드·지점·창고를 한 번에</strong> 넣을 수 있습니다 —
+    창고명이 「플란치과_강남점」처럼 <code>브랜드_지점</code> 꼴이면 2단계의 체크 둘을 켜 두세요.
+    여러 지점의 창고가 섞여 있어도 <strong>각자의 지점으로</strong> 들어갑니다.
+    「기본 지점」은 <strong>지점을 알아낼 수 없는 창고</strong>(예 「중앙창고」)에만 쓰입니다.
+  </p>
+  <p class="notice">
     <strong>권장 순서는 브랜드 → 지점 → 창고 → 거래처 → 품목</strong>입니다. 앞의 것이 없으면
     뒤의 것이 가리킬 곳이 없어 「거래처를 찾을 수 없습니다」 같은 오류가 됩니다.
     이카운트 창고 파일에는 지점 열이 없으므로, <strong>창고명에서 지점 이름을 뽑아</strong>
@@ -46,14 +52,25 @@ require __DIR__ . '/shell_top.php';
   </p>
 
   <ol class="p-steps">
-    <li class="p-step is-on" id="p-step-1">1 파일</li>
+    <li class="p-step is-on" id="p-step-1">1 올리기</li>
     <li class="p-step" id="p-step-2">2 열 맞추기</li>
     <li class="p-step" id="p-step-3">3 미리보기</li>
-    <li class="p-step" id="p-step-4">4 확정</li>
+    <li class="p-step" id="p-step-4">4 결과</li>
   </ol>
 
-  <section class="panel">
-    <div class="panel__head"><h2 class="panel__title">1 파일</h2></div>
+  <!-- 6차 보정 2026-09-13 (사용자 결정 「순차적으로 진행하도록 페이지네이션」) —
+       한 번에 **한 단계 패널만** 보인다. 끝난 단계는 한 줄 요약 + 「수정」 으로 접힌다. -->
+  <div class="p-done" id="p-done-1" hidden>
+    <span class="p-done__text" id="p-done-1-text"></span>
+    <button class="btn btn--quiet btn--small" type="button" id="p-back-1">수정</button>
+  </div>
+  <div class="p-done" id="p-done-2" hidden>
+    <span class="p-done__text" id="p-done-2-text"></span>
+    <button class="btn btn--quiet btn--small" type="button" id="p-back-2">수정</button>
+  </div>
+
+  <section class="panel" id="p-file-panel">
+    <div class="panel__head"><h2 class="panel__title">1 올리기</h2></div>
     <form id="p-import-form" class="form form--grid" autocomplete="off">
       <label class="field">
         <span class="field__label">가져올 종류</span>
@@ -110,8 +127,22 @@ require __DIR__ . '/shell_top.php';
         <button id="p-add-brand" class="btn btn--quiet btn--small" type="button">+ 새로 등록</button>
       </label>
       <button id="p-derive-branches" class="btn btn--quiet" type="button" hidden>
-        창고명에서 지점 이름 뽑기
+        창고명에서 지점 이름만 뽑기
       </button>
+    </div>
+    <!-- 5차 보정 2026-09-13 (사용자 결정 「창고명을 다수 올리는 건 여러 지점이 한 번에
+         올라가는 것이다 — 브랜드도 지점도 생성이 필요하다」).
+         창고 가져오기 **한 흐름**에서 없는 브랜드·지점을 함께 만든다. 무엇이 생기는지는
+         미리보기의 「새로 만들 …」 요약에서 확인한 뒤 확정한다. -->
+    <div id="p-create-missing" class="panel__tools" hidden>
+      <label class="check">
+        <input id="p-create-branches" type="checkbox">
+        <span>창고명에서 <strong>지점</strong>도 함께 만들기 (「플란치과_강남점」 → 지점 「강남점」)</span>
+      </label>
+      <label class="check">
+        <input id="p-create-brands" type="checkbox">
+        <span><strong>브랜드</strong>도 함께 만들기 (앞 조각 「플란치과」)</span>
+      </label>
     </div>
     <p id="p-defaults-note" class="muted"></p>
     <div class="table-wrap">
@@ -137,16 +168,45 @@ require __DIR__ . '/shell_top.php';
   </section>
 
   <section class="panel" id="p-preview-panel" hidden>
+    <!-- 6차 보정 — **상단 고정 도구줄**. 표가 아무리 길어도 요약과 「확정」 이 늘 눈에 있다
+         (사용자 관찰 「확정은 맨 아래에 나온다」). 폰 폭에서는 두 줄로 접힌다. -->
+    <div class="p-toolbar" id="p-toolbar">
+      <div class="panel__tools" id="p-preview-counts"></div>
+      <div class="p-toolbar__actions">
+        <button id="p-promote-all" class="btn btn--quiet btn--small" type="button" hidden>확인 필요 모두 승격</button>
+        <button id="p-errors-download" class="btn btn--quiet btn--small" type="button" hidden>오류 행 내려받기</button>
+        <button id="p-commit" class="btn" type="button">확정</button>
+      </div>
+    </div>
+
     <div class="panel__head">
       <h2 class="panel__title">3 미리보기</h2>
-      <div class="panel__tools" id="p-preview-counts"></div>
     </div>
 
     <!-- 3차 보정 2026-09-13 (사용자 결정 「접근한 페이지에서 팝업으로 등록」) —
          등록되지 않은 값 때문에 막힌 행들을 **값 기준으로 묶어** 보여 주고, 그 자리에서
          거래처·지점·분류·브랜드를 만들 수 있게 한다. 만들면 **자동으로 다시 판정**한다
          (파일을 다시 올리지 않는다). 서버 등록 창구는 기초정보와 같은 것을 쓴다. -->
-    <div class="notice" id="p-missing" hidden></div>
+    <details class="notice" id="p-missing-box" hidden>
+      <summary id="p-missing-summary">등록되지 않은 값</summary>
+      <div id="p-missing"></div>
+    </details>
+
+    <!-- 5차 보정 — 이번 확정으로 **새로 생길** 브랜드·지점. 이름 목록을 펼쳐 볼 수 있다. -->
+    <details class="notice" id="p-tocreate-box" hidden>
+      <summary id="p-tocreate-summary">새로 만들 브랜드·지점</summary>
+      <div id="p-tocreate"></div>
+    </details>
+    <!-- 6차 보정 — 상태 필터·검색. 거르기는 **서버가** 한다(50행만 들고 거르면 「오류만 보기」가
+         그 50행 안에서만 동작해 사람을 속인다). -->
+    <div class="p-filters">
+      <div class="p-chipbar" id="p-filter-chips"></div>
+      <label class="field field--inline">
+        <span class="field__label">찾기</span>
+        <input id="p-row-q" type="search" maxlength="100" placeholder="코드·이름 일부">
+      </label>
+    </div>
+
     <div class="table-wrap">
       <table class="files">
         <thead>
@@ -155,7 +215,9 @@ require __DIR__ . '/shell_top.php';
             <th scope="col"><span class="sr-only">저장</span>저장</th>
             <th scope="col">행</th>
             <th scope="col">판정</th>
-            <!-- 2차 보정 — 창고가 **어느 지점으로** 들어가는지, 무엇을 보고 정했는지 -->
+            <!-- 2차 보정 — 창고가 **어느 지점으로** 들어가는지, 무엇을 보고 정했는지
+                 5차 보정 — 새로 만들 브랜드·지점이면 그 사실도 함께 -->
+            <th scope="col">브랜드</th>
             <th scope="col">지점</th>
             <th scope="col">사유</th>
             <th scope="col">내용</th>
@@ -164,15 +226,18 @@ require __DIR__ . '/shell_top.php';
         <tbody id="p-preview-body"></tbody>
       </table>
     </div>
-    <div class="panel__foot">
-      <span id="p-excluded-note" class="muted"></span>
-      <button id="p-errors-download" class="btn btn--quiet" type="button">오류 목록 내려받기</button>
-      <button id="p-commit" class="btn" type="button">확정</button>
+    <div class="table-foot">
+      <span id="p-row-info" class="muted"></span>
+      <div class="pager">
+        <button id="p-row-prev" class="btn btn--quiet btn--small" type="button">‹ 이전</button>
+        <button id="p-row-next" class="btn btn--quiet btn--small" type="button">다음 ›</button>
+      </div>
     </div>
+    <p id="p-excluded-note" class="muted"></p>
   </section>
 
   <section class="panel" id="p-result-panel" hidden>
-    <div class="panel__head"><h2 class="panel__title">4 확정 결과</h2></div>
+    <div class="panel__head"><h2 class="panel__title">4 결과</h2></div>
     <p id="p-result" class="muted"></p>
   </section>
 

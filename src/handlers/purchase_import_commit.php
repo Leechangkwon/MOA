@@ -89,6 +89,8 @@ function tbox_import_ref(mixed $raw): int
 $body = Http::jsonBody();
 if ($body === [] || array_diff(array_keys($body), ['kind', 'mapping', 'promote', 'header_row',
                                           'default_branch', 'default_brand', 'derive',
+                                          // 5차 보정 — 없는 브랜드·지점을 함께 만들까
+                                          'create_brands', 'create_branches',
                                           'exclude_rows']) !== []) {
     $reject('bad_request', 400, Http::MSG_BAD_REQUEST);
 }
@@ -168,6 +170,12 @@ try {
         'default_branch' => tbox_import_ref($body['default_branch'] ?? null),
         'default_brand'  => tbox_import_ref($body['default_brand'] ?? null),
         'derive'         => is_string($body['derive'] ?? null) ? (string) $body['derive'] : '',
+        /* 5차 보정 — 화면의 체크박스 둘. **true 일 때만** 참이다(문자열 "false" 를 참으로
+         * 읽지 않는다). 이 둘이 판정을 바꾸지만 권한을 바꾸지는 않는다 — 브랜드·지점을
+         * 만드는 자격은 이미 `purchase.master.write`(buyer·Admin) 이고, 그 창구로 손수
+         * 만드는 것과 **같은 표·같은 제약**에 들어간다. */
+        'create_brands'   => ($body['create_brands'] ?? null) === true,
+        'create_branches' => ($body['create_branches'] ?? null) === true,
     ]);
 } catch (RuntimeException $e) {
     $why = $e->getMessage();
@@ -193,6 +201,12 @@ try {
             'updated'    => $result['updated'],
             // 3차 보정 — 사람이 **일부러 뺀** 행 수. "왜 90행 중 88행만 들어갔나" 의 답이다.
             'excluded'   => $result['excluded'],
+            /* 5차 보정 — 창고 가져오기가 **덤으로 만든** 브랜드·지점 수.
+             * 기초정보가 언제 어떻게 늘었는지를 이 한 줄로 되짚을 수 있어야 한다
+             * (브랜드·지점은 손으로 만들 때 건건이 감사에 남는 값이다). */
+            'brands_created'     => $result['brands_created'],
+            'branches_created'   => $result['branches_created'],
+            'locations_inserted' => $kind === 'locations' ? $result['inserted'] : 0,
         ],
     ]);
     $db->commit();
@@ -232,4 +246,6 @@ Http::json([
     'updated'   => $result['updated'],
     'skipped'   => $result['skipped'],
     'excluded'  => $result['excluded'],
+    'brands_created'   => $result['brands_created'],
+    'branches_created' => $result['branches_created'],
 ]);

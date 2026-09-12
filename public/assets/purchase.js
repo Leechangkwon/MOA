@@ -59,6 +59,23 @@
     }).catch(function () { return {}; });
   }
 
+  /**
+   * 재인증을 마친 뒤 **돌아올 화면의 키** (4차 보정 2026-09-13).
+   *
+   * 전에는 `/reauth` 로만 보내서, 기초정보를 고치려다 비밀번호를 다시 넣으면 **홈으로
+   * 떨어졌다**(사용자 관찰). 키는 서버의 `TBOX_REAUTH_PATHS`·app.js 의 `REAUTH_PATHS` 에
+   * 있는 **고정 문자열**이고, 주소는 그 표가 만든다 — 여기서 경로를 조립하지 않는다
+   * (오픈 리다이렉트가 생길 자리가 없다, PRD F-23).
+   *
+   * 지금 어느 화면인지는 **그 화면에만 있는 요소**로 가른다(app.js 가 `/reauth` 화면을
+   * 폼으로 가르는 것과 같은 방식).
+   */
+  function reauthKey() {
+    if ($('p-import-form')) { return 'purchaseimport'; }
+    if ($('p-tabs')) { return 'purchasemasters'; }
+    return '';   // 품목 상세 등 — 재인증 대상이 아니라 여기 올 일이 없다
+  }
+
   /** 401 → 로그인, 403 + next → 강제 절차·재인증 화면. 처리했으면 true */
   function handleGate(response, data) {
     if (response.status === 401) {
@@ -66,7 +83,9 @@
       return true;
     }
     if (response.status === 403 && data && data.next === 'reauth') {
-      window.location.href = '/reauth';
+      var key = reauthKey();
+      // 키가 없으면 꼬리표 없이 보낸다 — 그러면 확인 뒤 홈으로 간다(서버와 같은 규칙).
+      window.location.href = key === '' ? '/reauth' : '/reauth?to=' + key;
       return true;
     }
     if (response.status === 403 && data
@@ -506,6 +525,30 @@
     warehouse: '창고', central: '중앙장', or: '수술방', other: '기타'
   };
 
+  /**
+   * 마지막으로 보던 기초정보 탭을 기억한다 (4차 보정).
+   *
+   * 재인증을 마치고 `/purchase/masters` 로 돌아오면 **보던 탭**이 다시 열려야 한다.
+   * 탭 이름을 `?tab=` 으로 주소에 실어 고정 표에 넣으면 표가 조합만큼 늘어나므로,
+   * 주소는 건드리지 않고 이 브라우저에만 남긴다.
+   *
+   * 읽을 때 **허용 목록(KIND_COLUMNS)을 다시 본다** — sessionStorage 는 사용자가 고칠 수
+   * 있는 저장소이고, 거기서 온 문자열이 그대로 API 경로가 되면 안 된다.
+   * 저장소를 못 쓰는 브라우저(사생활 보호 창)에서도 화면은 그대로 동작해야 하므로
+   * 읽기·쓰기를 모두 try 로 감싼다.
+   */
+  var TAB_MEMORY_KEY = 'tbox.purchase.tab';
+
+  function rememberTab(kind) {
+    try { window.sessionStorage.setItem(TAB_MEMORY_KEY, kind); } catch (e) { /* 무시 */ }
+  }
+
+  function rememberedTab() {
+    var saved = null;
+    try { saved = window.sessionStorage.getItem(TAB_MEMORY_KEY); } catch (e) { saved = null; }
+    return (typeof saved === 'string' && KIND_COLUMNS[saved]) ? saved : null;
+  }
+
   function initMasters() {
     var tabs = $('p-tabs');
     var head = $('p-head');
@@ -634,6 +677,7 @@
         if (!kind || !KIND_COLUMNS[kind]) { return; }
         state.kind = kind;
         state.page = 1;
+        rememberTab(kind);
         var buttons = tabs.querySelectorAll('.p-tab');
         for (var i = 0; i < buttons.length; i++) {
           buttons[i].className = buttons[i] === target ? 'p-tab is-on' : 'p-tab';
@@ -642,6 +686,18 @@
         say('');
         load();
       });
+
+      /* 재인증을 마치고 돌아왔을 때 **보던 탭**을 다시 연다 (4차 보정).
+         값은 위 rememberedTab() 이 허용 목록으로 한 번 거른 것이다. */
+      var back = rememberedTab();
+      if (back && back !== state.kind) {
+        state.kind = back;
+        var all = tabs.querySelectorAll('.p-tab');
+        for (var j = 0; j < all.length; j++) {
+          all[j].className = all[j].getAttribute('data-kind') === back ? 'p-tab is-on' : 'p-tab';
+        }
+        setText($('p-list-title'), KIND_TITLE[back]);
+      }
     }
 
     var searchBox = $('p-q');
@@ -811,7 +867,10 @@
     brand_not_found: '브랜드를 찾을 수 없습니다 — 「기본 브랜드」를 고르거나 브랜드를 먼저 등록하세요',
     // 3차 보정 (SECURITY R-72) — 같은 이름의 거래처가 여럿이라 어느 쪽인지 못 정한다.
     vendor_ambiguous: '같은 이름의 거래처가 여럿입니다 — 거래처 코드 열을 함께 매핑하거나,'
-                    + ' 승격하면 첫 거래처로 붙습니다'
+                    + ' 승격하면 첫 거래처로 붙습니다',
+    // 5차 보정 — 창고명으로 지점을 알아낼 수 없다(「중앙창고」처럼 조각이 하나거나 어미가 없다).
+    branch_unresolved: '창고명으로 지점을 알아낼 수 없습니다 — 「기본 지점」 을 고르거나'
+                     + ' 지점 열을 매핑해 주세요'
   };
 
   function initImport() {
@@ -821,20 +880,61 @@
       // 1차 보정 2026-09-13 — 머리행은 서버가 고르고 사람이 바꾼다.
       headerRow: 0,        // 지금 고른 줄 (0기준)
       detected: {},        // 종류별 서버 감지 결과
+      step: 1, fileName: '', fileRows: 0,
       headRows: [],        // 앞 20행 원문 — 재업로드 없이 다시 그리는 재료
       guess: {},           // 종류별 매핑 후보 (서버가 준 것)
       // 2차 보정 — 지점 열이 없는 창고 파일·브랜드 열이 없는 지점 파일을 위한 기본값
       branchCount: 0, brandCount: 0, derive: '',
       // 3차 보정 — 체크를 끈 행 번호 모음 (확정에서 exclude_rows 로 나간다)
-      excluded: {}
+      excluded: {},
+      // 6차 보정 — 행 목록의 쪽·필터 (판정은 전체 행, 보이는 것만 자른다)
+      rowPage: 1, rowStatus: '', rowQuery: '', lastPreview: null
     };
 
+    /**
+     * 지금 어느 걸음인가 — **한 단계 패널만** 보인다 (6차 보정 2026-09-13, 사용자 결정).
+     *
+     * 전에는 네 패널이 모두 쌓여서, 8,100행짜리 표 아래에 확정 단추가 묻혔다.
+     * 끝난 단계는 한 줄 요약(`p-done-N`) + 「수정」 으로 접고, 지금 단계만 펼친다.
+     */
     function step(current) {
+      state.step = current;
       [1, 2, 3, 4].forEach(function (n) {
         var node = $('p-step-' + String(n));
-        if (node) { node.className = n <= current ? 'p-step is-on' : 'p-step'; }
+        if (node) { node.className = n === current ? 'p-step is-on' : (n < current ? 'p-step is-done' : 'p-step'); }
       });
+
+      var panels = { 1: 'p-file-panel', 2: 'p-map-panel', 3: 'p-preview-panel', 4: 'p-result-panel' };
+      Object.keys(panels).forEach(function (n) {
+        var node = $(panels[n]);
+        if (node) { node.hidden = Number(n) !== current; }
+      });
+
+      // 끝난 단계의 한 줄 요약
+      [1, 2].forEach(function (n) {
+        var done = $('p-done-' + String(n));
+        if (done) { done.hidden = current <= n; }
+      });
+      var d1 = $('p-done-1-text');
+      if (d1) {
+        setText(d1, state.fileName
+          ? '파일: ' + state.fileName + ' · ' + String(state.fileRows) + '행 · 종류: ' + (KIND_NOUN[state.kind] || state.kind)
+          : '');
+      }
+      var d2 = $('p-done-2-text');
+      if (d2) {
+        var mapped = Object.keys(currentMapping()).length;
+        setText(d2, '머리행 ' + String(state.headerRow + 1) + '행 · 이어진 칸 ' + String(mapped) + '개');
+      }
     }
+
+    // 「수정」 — 앞 단계로 돌아간다. 2단계로 돌아갔다 다시 오면 **재판정**된다.
+    [['p-back-1', 1], ['p-back-2', 2]].forEach(function (pair) {
+      var button = $(pair[0]);
+      if (button) {
+        button.addEventListener('click', function () { say(''); step(pair[1]); });
+      }
+    });
 
     function renderMapping(guess) {
       var tbody = $('p-map-body');
@@ -908,6 +1008,12 @@
     }
 
     fillDefaults();   // 2차 보정 — 지점·브랜드 목록을 미리 받아 둔다
+
+    // 5차 보정 — 「함께 만들기」 를 켜고 끄면 필요한 기본값 칸·안내가 달라진다.
+    ['p-create-branches', 'p-create-brands'].forEach(function (id) {
+      var box = $(id);
+      if (box) { box.addEventListener('change', function () { showDefaults(); say(''); }); }
+    });
 
     /* 3차 보정 — 「기본 지점」·「기본 브랜드」 옆의 「+ 새로 등록」.
        지점이 0건이라 창고를 한 건도 못 넣던 막다른 길을 **이 화면에서** 푼다. */
@@ -988,8 +1094,15 @@
       var box = $('p-defaults');
       if (!box) { return; }
       var needBranch = state.kind === 'locations';
-      var needBrand  = state.kind === 'branches';
+      // 5차 보정 — 창고에서 지점을 만들 때도 브랜드가 필요하다.
+      var makeBranches = $('p-create-branches');
+      var needBrand  = state.kind === 'branches'
+                    || (state.kind === 'locations' && makeBranches && makeBranches.checked);
       var derive     = state.kind === 'branches' || state.kind === 'locations';
+
+      // 창고 종류일 때만 「함께 만들기」 체크 둘을 보여 준다.
+      var createBox = $('p-create-missing');
+      if (createBox) { createBox.hidden = state.kind !== 'locations'; }
 
       box.hidden = !(needBranch || needBrand || derive);
       var bf = $('p-default-branch-field');
@@ -1000,13 +1113,25 @@
       // 지점 뽑기 단추는 **창고 파일을 올렸을 때만** 뜻이 있다(창고명에서 뽑는다).
       if (db) { db.hidden = !(state.kind === 'locations'); }
 
+      /* 목록이 0건이면 **셀렉트를 감추고 안내를 바로 보여 준다** (4차 보정).
+         고를 것이 없는 셀렉트를 띄워 두면 "왜 안 되지" 로 시간을 쓴다. */
+      var branchEmpty = needBranch && state.branchCount === 0;
+      var brandEmpty  = needBrand && state.brandCount === 0;
+      var branchSelect = $('p-default-branch');
+      if (branchSelect) { branchSelect.hidden = branchEmpty; }
+      var brandSelect = $('p-default-brand');
+      if (brandSelect) { brandSelect.hidden = brandEmpty; }
+
       var note = $('p-defaults-note');
       if (!note) { return; }
-      if (needBranch && state.branchCount === 0) {
-        setText(note, '등록된 지점이 없습니다 — 「창고명에서 지점 이름 뽑기」로 먼저 만들거나,'
-                    + ' 기초정보 화면의 「지점」 탭에서 직접 등록하세요.');
-      } else if (needBrand && state.brandCount === 0) {
-        setText(note, '등록된 브랜드가 없습니다 — 기초정보 화면의 「브랜드」 탭에서 먼저 등록하세요.');
+      if (branchEmpty) {
+        setText(note, '등록된 지점이 없습니다 — 옆의 「+ 새로 등록」 으로 만들거나,'
+                    + ' 「창고명에서 지점 이름 뽑기」 로 창고명에서 한 번에 만들 수 있습니다.');
+      } else if (brandEmpty) {
+        setText(note, '등록된 브랜드가 없습니다 — 옆의 「+ 새로 등록」 으로 먼저 만들어 주세요.');
+      } else if (needBranch) {
+        setText(note, '「기본 지점」 은 **창고명으로 지점을 알아낼 수 없는 행**에만 쓰입니다'
+                    + ' (예 「중앙창고」). 「플란치과_강남점」 처럼 생긴 이름은 각자의 지점으로 갑니다.');
       } else {
         setText(note, '');
       }
@@ -1024,6 +1149,15 @@
       var brand = $('p-default-brand');
       if (brand && brand.value !== '') { body.default_brand = brand.value; }
       if (state.derive !== '') { body.derive = state.derive; }
+      // 5차 보정 — 창고 가져오기 한 흐름에서 브랜드·지점을 함께 만들까
+      var cb = $('p-create-branches');
+      var cr = $('p-create-brands');
+      if (cb && cb.checked) { body.create_branches = true; }
+      if (cr && cr.checked) { body.create_brands = true; }
+      // 6차 보정 — 보이는 목록의 쪽·필터 (판정 범위가 아니라 **표시 범위**다)
+      body.page = state.rowPage;
+      if (state.rowStatus !== '') { body.status = state.rowStatus; }
+      if (state.rowQuery !== '') { body.q = state.rowQuery; }
       Object.keys(extra || {}).forEach(function (k) { body[k] = extra[k]; });
       return body;
     }
@@ -1100,7 +1234,8 @@
             fillHeaderSelect();
             applyHeaderRow(picked, state.guess[state.kind] || {});
             showDefaults();          // 2차 보정 — 종류에 맞는 기본값 칸을 연다
-            $('p-map-panel').hidden = false;
+            state.fileName = result.data.file_name || '';
+            state.fileRows = result.data.rows || 0;
             step(2);
             say('');
           })
@@ -1149,13 +1284,6 @@
       return table[target] || target;
     }
 
-    /** 어느 규칙으로 지점이 정해졌나 — 미리보기 표의 「지점」 칸에 덧붙이는 꼬리표 */
-    var BRANCH_BY_LABEL = {
-      column: '파일의 지점 열',
-      name:   '창고명에서 찾음',
-      default: '기본 지점'
-    };
-
     /**
      * 다시 판정한다 — **재업로드 없이** 같은 import_id·같은 매핑·같은 옵션으로 다시 묻는다
      * (3차 보정). 팝업으로 거래처·지점·분류를 만든 직후에 부른다: 방금 만든 것이 반영돼
@@ -1179,14 +1307,17 @@
      */
     function renderMissing(data) {
       var box = $('p-missing');
+      var shell = $('p-missing-box');
       if (!box) { return; }
       clear(box);
       var list = Array.isArray(data.missing) ? data.missing : [];
-      box.hidden = list.length === 0;
+      // 6차 보정 — 기본은 **접혀 있고 건수만** 보인다(도구줄 아래가 길어지지 않게).
+      if (shell) {
+        shell.hidden = list.length === 0;
+        setText($('p-missing-summary'),
+          '등록되지 않은 값 ' + String(list.length) + '가지 — 여기서 바로 등록 (펼치기)');
+      }
       if (list.length === 0) { return; }
-
-      box.appendChild(el('p', 'notice__title',
-        '등록되지 않은 값 ' + String(list.length) + '가지 때문에 막힌 행이 있습니다 — 여기서 바로 등록할 수 있습니다.'));
 
       list.forEach(function (miss) {
         var line = el('div', 'p-missing__row');
@@ -1212,24 +1343,99 @@
       });
     }
 
+    /** 무엇을 보고 지점·브랜드를 정했나 — 표의 배지 문구 */
+    var BY_LABEL = {
+      column:   '파일의 열',
+      name:     '이름에서 찾음',
+      name_new: '새로 만듦',
+      default:  '기본값'
+    };
+
+    /**
+     * 「이번 확정으로 **새로 생길** 브랜드·지점」 요약 (5차 보정 2026-09-13).
+     *
+     * 사용자 결정대로 창고 파일 하나가 브랜드·지점까지 만든다 — 그러면 **무엇이 생기는지**를
+     * 누르기 전에 보여 줘야 한다. 이름 목록은 접어 두고(`<details>`) 개수만 먼저 보인다.
+     */
+    function renderToCreate(data) {
+      var box = $('p-tocreate');
+      var shell = $('p-tocreate-box');
+      if (!box) { return; }
+      clear(box);
+      var plan = data.to_create || {};
+      var brands = Array.isArray(plan.brands) ? plan.brands : [];
+      var branches = Array.isArray(plan.branches) ? plan.branches : [];
+      var none = brands.length === 0 && branches.length === 0;
+      if (shell) {
+        shell.hidden = none;
+        setText($('p-tocreate-summary'),
+          '확정하면 브랜드 ' + String(brands.length) + '개 · 지점 ' + String(branches.length)
+          + '개가 함께 만들어집니다 (펼치기)');
+      }
+      if (none) { return; }
+
+      box.appendChild(el('p', 'muted',
+        '창고보다 먼저, 같은 트랜잭션 안에서 만들어집니다 — 한 줄이라도 실패하면 함께 되돌아갑니다.'));
+
+      if (brands.length > 0) {
+        var bd = document.createElement('details');
+        bd.appendChild(el('summary', null, '새로 만들 브랜드 ' + String(brands.length) + '개 보기'));
+        var bul = el('ul', 'p-chips');
+        brands.forEach(function (n) { bul.appendChild(el('li', null, n)); });
+        bd.appendChild(bul);
+        box.appendChild(bd);
+      }
+      if (branches.length > 0) {
+        var rd = document.createElement('details');
+        rd.appendChild(el('summary', null, '새로 만들 지점 ' + String(branches.length) + '개 보기'));
+        var rul = el('ul', 'p-chips');
+        branches.forEach(function (b) {
+          rul.appendChild(el('li', null, b.name + (b.brand ? ' (' + b.brand + ')' : '')));
+        });
+        rd.appendChild(rul);
+        box.appendChild(rd);
+      }
+    }
+
     /**
      * 미리보기 결과를 그린다 (2차 보정에서 함수로 뺐다 — 「지점 뽑기」도 같은 표를 쓴다).
      * 모든 글자는 `textContent` 로만 들어간다.
      */
-    function renderPreview(data, note) {
+    function renderPreview(data, note, keepExcluded) {
       state.judged = data;
-      state.excluded = {};   // 3차 보정 — 판정이 바뀌면 뺀 행 기억도 비운다
+      state.lastPreview = data;
+      /* 3차 보정 — 판정이 **새로** 되면 뺀 행 기억도 비운다.
+         6차 보정 — 쪽을 넘기거나 필터를 바꾼 것뿐이면 **유지한다**(사용자 결정:
+         "체크 상태는 페이지를 넘겨도 유지"). 그래서 그 경우만 keepExcluded 로 부른다. */
+      if (keepExcluded !== true) { state.excluded = {}; }
 
       var counts = data.counts || {};
       var box = $('p-preview-counts');
       clear(box);
-      [['insert', '새로 등록'], ['update', '기존 갱신'],
+      [['insert', '등록'], ['update', '갱신'],
        ['review', '확인 필요'], ['error', '오류']].forEach(function (pair) {
         box.appendChild(el('span', 'p-badge p-badge--' + pair[0],
                            pair[1] + ' ' + String(counts[pair[0]] || 0)));
       });
+      var excludedCount = Object.keys(state.excluded || {}).length;
+      if (excludedCount > 0) {
+        box.appendChild(el('span', 'p-badge p-badge--off', '제외 ' + String(excludedCount)));
+      }
+
+      /* 6차 보정 — 도구줄의 단추들. 「확정」 에 **저장될 행 수**를 적어 두면, 오류가 남아
+         있어도 무엇이 들어가는지 알고 누를 수 있다(사용자 결정 「전부 스크롤하지 않아도 확정」). */
+      var willSave = Math.max(0, (counts.insert || 0) + (counts.update || 0) - excludedCount);
+      var commitButton = $('p-commit');
+      if (commitButton) { setText(commitButton, '확정 (' + String(willSave) + '행)'); }
+      var promoteAll = $('p-promote-all');
+      if (promoteAll) { promoteAll.hidden = (counts.review || 0) === 0; }
+      var dl = $('p-errors-download');
+      if (dl) { dl.hidden = ((counts.error || 0) + (counts.review || 0)) === 0; }
 
       renderMissing(data);
+      renderToCreate(data);
+      renderFilters(data);
+      renderPager(data);
 
       var tbody = $('p-preview-body');
       clear(tbody);
@@ -1243,7 +1449,8 @@
         var pickCell = document.createElement('td');
         var pick = document.createElement('input');
         pick.type = 'checkbox';
-        pick.checked = true;
+        // 6차 보정 — 쪽을 넘겼다 돌아와도 **끈 상태가 남아 있어야** 한다.
+        pick.checked = !state.excluded[row.row_no];
         pick.setAttribute('aria-label', String(row.row_no) + '행 저장');
         pick.addEventListener('change', function () {
           if (pick.checked) { delete state.excluded[row.row_no]; }
@@ -1260,13 +1467,34 @@
                                   STATUS_LABEL[row.status] || row.status));
         tr.appendChild(statusCell);
 
-        // 2차 보정 — 어느 지점으로 가는지와 **무엇을 보고 정했는지**를 함께 보여 준다.
-        var branchText = '—';
-        if (row.branch_name) {
-          branchText = row.branch_name
-            + (row.branch_by ? ' (' + (BRANCH_BY_LABEL[row.branch_by] || row.branch_by) + ')' : '');
+        /* 5차 보정 — 브랜드 칸. 새로 만들 브랜드면 이름과 「새로 만듦」 을 함께 보여 준다.
+           (브랜드는 기존 것을 쓰면 지점 아래에 숨으므로 이름을 따로 내지 않는다.) */
+        var brandCell = document.createElement('td');
+        if (row.brand_name_new) {
+          brandCell.appendChild(el('span', 'p-badge p-badge--insert', '새로 만듦'));
+          brandCell.appendChild(el('span', 'p-missing__value', ' ' + row.brand_name_new));
+        } else {
+          setText(brandCell, row.brand_by ? (BY_LABEL[row.brand_by] || row.brand_by) : '—');
+          brandCell.className = 'muted';
         }
-        tr.appendChild(el('td', 'muted', branchText));
+        tr.appendChild(brandCell);
+
+        // 2차 보정 — 어느 지점으로 가는지와 **무엇을 보고 정했는지**를 함께 보여 준다.
+        // 5차 보정 — 아직 없는 지점이면 그 이름과 「새로 만듦」 을 보여 준다.
+        var branchCell = document.createElement('td');
+        if (row.branch_name_new) {
+          branchCell.appendChild(el('span', 'p-badge p-badge--insert', '새로 만듦'));
+          branchCell.appendChild(el('span', 'p-missing__value', ' ' + row.branch_name_new));
+        } else {
+          var branchText = '—';
+          if (row.branch_name) {
+            branchText = row.branch_name
+              + (row.branch_by ? ' (' + (BY_LABEL[row.branch_by] || row.branch_by) + ')' : '');
+          }
+          setText(branchCell, branchText);
+          branchCell.className = 'muted';
+        }
+        tr.appendChild(branchCell);
 
         var reasonCell = el('td', 'muted', row.reason ? (REASON_LABEL[row.reason] || row.reason) : '—');
         // 같은 이름의 거래처가 여럿이면 **몇 개인지**까지 말해 준다 (R-72).
@@ -1287,9 +1515,64 @@
       });
 
       updateExcludedNote();
-      $('p-preview-panel').hidden = false;
       step(3);
       say(note || '');
+    }
+
+    /**
+     * 상태 필터 칩 (6차 보정). 누르면 **서버에 다시 물어** 그 상태의 행만 받는다 —
+     * 화면이 50행만 들고 거르면 「오류만 보기」가 그 50행 안에서만 동작해 사람을 속인다.
+     */
+    function renderFilters(data) {
+      var bar = $('p-filter-chips');
+      if (!bar) { return; }
+      clear(bar);
+      var counts = data.counts || {};
+      var chips = [
+        ['', '전체', (counts.insert || 0) + (counts.update || 0) + (counts.review || 0) + (counts.error || 0)],
+        ['insert', '등록', counts.insert || 0],
+        ['update', '갱신', counts.update || 0],
+        ['review', '확인 필요', counts.review || 0],
+        ['error', '오류', counts.error || 0]
+      ];
+      chips.forEach(function (chip) {
+        var button = el('button', state.rowStatus === chip[0] ? 'chip is-on' : 'chip',
+                        chip[1] + ' ' + String(chip[2]));
+        button.type = 'button';
+        button.addEventListener('click', function () {
+          state.rowStatus = chip[0];
+          state.rowPage = 1;
+          reloadRows();
+        });
+        bar.appendChild(button);
+      });
+    }
+
+    /** ‹ 1 / N › — 쪽 이동 (6차 보정) */
+    function renderPager(data) {
+      var info = $('p-row-info');
+      var page = data.row_page || 1;
+      var pages = data.row_pages || 1;
+      if (info) {
+        setText(info, String(page) + ' / ' + String(pages) + ' 쪽 · 이 조건의 행 '
+                    + String(data.row_total || 0) + '개 (전체 ' + String(data.total || 0) + '행)');
+      }
+      var prev = $('p-row-prev');
+      if (prev) { prev.disabled = page <= 1; }
+      var next = $('p-row-next');
+      if (next) { next.disabled = page >= pages; }
+    }
+
+    /** 같은 판정을 **다시 물어** 지금 쪽·필터에 맞는 50행을 받는다 (판정은 서버가 다시 한다) */
+    function reloadRows() {
+      say('불러오는 중…');
+      request('POST', '/api/purchase/import/' + state.importId + '/preview', importBody())
+        .then(function (result) {
+          if (!result) { return; }
+          if (!result.ok) { say(errorMessage(result.data)); return; }
+          renderPreview(result.data, '', true);
+        })
+        .catch(function () { say(GENERIC_ERROR); });
     }
 
     /** 「N행을 빼고 저장합니다」 안내 — 체크를 끌 때마다 다시 쓴다 */
@@ -1300,10 +1583,70 @@
       setText(note, n === 0 ? '' : '체크를 끈 ' + String(n) + '행은 저장하지 않습니다.');
     }
 
+    /**
+     * 지점·브랜드가 정해졌는지 **보내기 전에** 본다 (4차 보정 2026-09-13).
+     *
+     * 전에는 그대로 보내서 서버가 `default_branch_required` 400 을 돌려주었고, 화면에는
+     * 「잘못된 요청입니다」만 떴다 — 창고 파일에 지점 열이 없다는 것도, 어디서 고르는지도
+     * 알 수 없었다(사용자 관찰). 서버의 400 문구는 그대로 둔다(사유를 응답에 싣지 않는
+     * 규칙은 그대로다 — PRD S-09-5). 여기서 막는 것은 **편의**일 뿐이고, 보내면 서버가
+     * 여전히 막는다.
+     *
+     * @param forDerive 파생 모드(지점 뽑기)인가 — 그때 필요한 것은 브랜드다
+     * @return 안내 문구 (빈 문자열이면 보내도 된다)
+     */
+    function defaultsProblem(forDerive) {
+      if (forDerive) {
+        var brand = $('p-default-brand');
+        if (!brand || brand.value === '') {
+          return state.brandCount === 0
+            ? '등록된 브랜드가 없습니다 — 옆의 「+ 새로 등록」 으로 브랜드를 먼저 만들어 주세요.'
+            : '「기본 브랜드」 를 골라 주세요 — 뽑은 지점들이 그 브랜드 아래에 만들어집니다.';
+        }
+        return '';
+      }
+      if (state.kind !== 'locations') { return ''; }
+
+      // 파일에 지점 열이 매핑돼 있으면 화면의 기본값은 필요 없다(서버의 판정 규칙 ①).
+      var mapping = currentMapping();
+      var hasBranchColumn = false;
+      Object.keys(mapping).forEach(function (c) { if (mapping[c] === 'branch') { hasBranchColumn = true; } });
+      if (hasBranchColumn) { return ''; }
+
+      // 5차 보정 — 「지점도 함께 만들기」 가 켜져 있으면 기본 지점 없이도 간다
+      // (창고명에서 지점을 뽑아 **행마다 다른 지점**으로 만든다).
+      var makeBranches = $('p-create-branches');
+      if (makeBranches && makeBranches.checked) {
+        var brandSel = $('p-default-brand');
+        var makeBrands = $('p-create-brands');
+        var haveBrand = (brandSel && brandSel.value !== '') || (makeBrands && makeBrands.checked);
+        if (!haveBrand) {
+          return state.brandCount === 0
+            ? '새로 만들 지점을 어느 브랜드에 붙일지 알 수 없습니다 —'
+              + ' 「브랜드도 함께 만들기」 를 켜거나, 옆의 「+ 새로 등록」 으로 브랜드를 먼저 만들어 주세요.'
+            : '새로 만들 지점을 어느 브랜드에 붙일지 골라 주세요 —'
+              + ' 「기본 브랜드」 를 고르거나 「브랜드도 함께 만들기」 를 켜면 됩니다.';
+        }
+        return '';
+      }
+
+      var branch = $('p-default-branch');
+      if (!branch || branch.value === '') {
+        return state.branchCount === 0
+          ? '등록된 지점이 없습니다 — 위의 「창고명에서 지점도 함께 만들기」 를 켜면'
+            + ' 창고명에서 지점을 만들면서 한 번에 넣을 수 있습니다.'
+          : '「기본 지점」 을 고르거나, 「창고명에서 지점도 함께 만들기」 를 켜 주세요'
+            + ' (창고명이 「브랜드_지점」 꼴이면 각자의 지점으로 들어갑니다).';
+      }
+      return '';
+    }
+
     var previewButton = $('p-map-preview');
     if (previewButton) {
       previewButton.addEventListener('click', function () {
         state.derive = '';   // 일반 미리보기는 파생 모드가 아니다
+        var problem = defaultsProblem(false);
+        if (problem !== '') { say(problem); return; }
         var missing = missingRequired();
         if (missing.length > 0) {
           say('필수 칸 ' + missing.map(function (t) { return '「' + labelOf(t) + '」'; }).join(' · ')
@@ -1339,6 +1682,8 @@
           say('먼저 「창고명」 열을 오른쪽에서 「창고명」 으로 골라 주세요 — 그 이름에서 지점을 뽑습니다.');
           return;
         }
+        var brandProblem = defaultsProblem(true);
+        if (brandProblem !== '') { say(brandProblem); return; }
         state.derive = 'location_name';
         say('창고명에서 지점 이름을 뽑는 중…');
         request('POST', '/api/purchase/import/' + state.importId + '/preview', importBody())
@@ -1350,6 +1695,40 @@
               + '확정을 누르면 지점으로 등록되고, 그 뒤에 창고를 다시 가져오면 됩니다.');
           })
           .catch(function () { state.derive = ''; say(GENERIC_ERROR); });
+      });
+    }
+
+    /* 6차 보정 — 쪽 이동·검색·「확인 필요 모두 승격」. 전부 **서버에 다시 물어** 그린다. */
+    var rowPrev = $('p-row-prev');
+    if (rowPrev) {
+      rowPrev.addEventListener('click', function () {
+        if (state.rowPage > 1) { state.rowPage -= 1; reloadRows(); }
+      });
+    }
+    var rowNext = $('p-row-next');
+    if (rowNext) {
+      rowNext.addEventListener('click', function () { state.rowPage += 1; reloadRows(); });
+    }
+    var rowQ = $('p-row-q');
+    if (rowQ) {
+      rowQ.addEventListener('change', function () {
+        state.rowQuery = rowQ.value;
+        state.rowPage = 1;
+        reloadRows();
+      });
+    }
+    var promoteAllButton = $('p-promote-all');
+    if (promoteAllButton) {
+      promoteAllButton.addEventListener('click', function () {
+        /* 「확인 필요」 를 전부 승격한다. 승격 목록은 **확정 요청에만** 실린다 —
+           판정을 바꾸는 것이 아니라 "이 행들은 사람이 봤다" 는 표시다. */
+        var all = (state.lastPreview && Array.isArray(state.lastPreview.attention))
+          ? state.lastPreview.attention : [];
+        var picked = [];
+        all.forEach(function (r) { if (r.status === 'review') { picked.push(r.row_no); } });
+        if (picked.length === 0) { say('승격할 「확인 필요」 행이 없습니다.'); return; }
+        state.promote = picked;
+        say('「확인 필요」 ' + String(picked.length) + '행을 승격 대상으로 두었습니다 — 확정을 누르면 함께 저장됩니다.');
       });
     }
 
@@ -1373,22 +1752,43 @@
     var commitButton = $('p-commit');
     if (commitButton) {
       commitButton.addEventListener('click', function () {
+        var commitProblem = defaultsProblem(state.derive === 'location_name');
+        if (commitProblem !== '') { say(commitProblem); return; }
         if (!window.confirm('오류 행을 뺀 나머지를 저장합니다. 계속할까요?')) { return; }
         say('확정하는 중…');
-        request('POST', '/api/purchase/import/' + state.importId + '/commit',
-                importBody({ exclude_rows: Object.keys(state.excluded || {}).map(Number) }))
+        var commitExtra = { exclude_rows: Object.keys(state.excluded || {}).map(Number) };
+        if (Array.isArray(state.promote) && state.promote.length > 0) {
+          commitExtra.promote = state.promote;
+        }
+        // 확정 요청에는 **쪽·필터를 싣지 않는다** — 저장은 언제나 전체 행이 대상이다.
+        commitExtra.page = 1;
+        commitExtra.status = '';
+        commitExtra.q = '';
+        var commitBody = importBody(commitExtra);
+        delete commitBody.status;
+        delete commitBody.q;
+        var commitBtn = $('p-commit');
+        if (commitBtn) { commitBtn.disabled = true; setText(commitBtn, '확정하는 중…'); }
+        request('POST', '/api/purchase/import/' + state.importId + '/commit', commitBody)
           .then(function (result) {
+            if (commitBtn) { commitBtn.disabled = false; setText(commitBtn, '확정'); }
             if (!result) { return; }
             if (!result.ok) { say(errorMessage(result.data)); return; }
             setText($('p-result'),
               '전체 ' + String(result.data.rows) + '행 중 새로 등록 ' + String(result.data.inserted)
               + ' · 갱신 ' + String(result.data.updated) + ' · 건너뜀 ' + String(result.data.skipped)
-              + (result.data.excluded ? ' (그중 직접 뺀 행 ' + String(result.data.excluded) + ')' : ''));
-            $('p-result-panel').hidden = false;
+              + (result.data.excluded ? ' (그중 직접 뺀 행 ' + String(result.data.excluded) + ')' : '')
+              + (result.data.brands_created || result.data.branches_created
+                  ? ' · 함께 만든 브랜드 ' + String(result.data.brands_created || 0)
+                    + ' · 지점 ' + String(result.data.branches_created || 0)
+                  : ''));
             step(4);
             say('');
           })
-          .catch(function () { say(GENERIC_ERROR); });
+          .catch(function () {
+            if (commitBtn) { commitBtn.disabled = false; setText(commitBtn, '확정'); }
+            say(GENERIC_ERROR);
+          });
       });
     }
 

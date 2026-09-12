@@ -133,6 +133,16 @@ final class Audit
          *   derive     — 창고명에서 지점을 뽑아 등록했나 (`location_name`)
          */
         'header_row', 'why', 'constraint', 'derive',
+        /*
+         * 19단계 5차 보정 (2026-09-13, 사용자 결정 「여러 지점이 한 번에 올라간다」).
+         *   brands_created · branches_created — 창고 가져오기 한 번이 **덤으로 만든** 기초정보 수.
+         *     브랜드·지점은 손으로 만들 때 건건이 감사에 남는 값이라, 가져오기로 한꺼번에
+         *     생길 때도 "언제 몇 개가 늘었나" 가 남아야 한다.
+         *   locations_inserted — 그 확정으로 들어간 창고 수(`inserted` 와 같은 값이지만,
+         *     종류가 섞여도 로그만 보고 갈라 읽을 수 있게 이름을 붙여 남긴다).
+         * 셋 다 **수치**이고 이름·내용이 아니다.
+         */
+        'brands_created', 'branches_created', 'locations_inserted',
     ];
 
     private const RESULT_ALLOW = 'allow';

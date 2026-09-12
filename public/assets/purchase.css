@@ -239,3 +239,80 @@
   overflow: hidden;
   white-space: nowrap;
 }
+
+/* ─── 가져오기 화면을 「한 걸음씩」 으로 (19단계 6차 보정 2026-09-13) ────────
+ *
+ * 사용자 관찰: "엑셀을 올리면 하단에 정보가 굉장히 길게 나오고 **확정은 맨 아래에** 나온다."
+ * 그래서 ① 한 번에 한 단계 패널만 보이고 ② 요약·확정은 **카드 위에 붙박이**로 둔다.
+ */
+
+/* 끝난 단계의 한 줄 요약 + 「수정」 */
+.p-done {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  margin: 0 0 12px;
+  padding: 8px 14px;
+  border: 1px solid var(--line, #dfe4ea);
+  border-radius: 8px;
+  background: var(--surface-2, #fafbfc);
+  font-size: 13.5px;
+}
+
+.p-done__text { flex: 1 1 auto; color: var(--muted, #5b6472); overflow-wrap: anywhere; }
+
+/* 끝난 걸음은 흐리게 (지금 걸음만 진하다) */
+.p-step.is-done { opacity: .65; }
+
+/* 상단 고정 도구줄 — 표가 아무리 길어도 요약과 「확정」 이 눈에 남는다.
+   카드 안에서만 붙박이라 화면 맨 위 내비를 가리지 않는다. */
+.p-toolbar {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--line, #dfe4ea);
+  background: var(--card, #fff);
+  border-radius: 12px 12px 0 0;
+}
+
+.p-toolbar .panel__tools { flex: 1 1 auto; gap: 6px; }
+
+.p-toolbar__actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+}
+
+/* 상태 필터 칩 + 찾기 */
+.p-filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  margin: 12px 0;
+}
+
+.p-chipbar { display: flex; flex-wrap: wrap; gap: 6px; }
+
+/* 접힘 상자(없는 값 · 새로 만들 것) — 기본은 건수만 */
+#p-missing-box summary,
+#p-tocreate-box summary { cursor: pointer; font-weight: 600; }
+#p-missing-box[open] summary,
+#p-tocreate-box[open] summary { margin-bottom: 10px; }
+
+/* 폰 폭(400px) — 도구줄이 두 줄로 접히고, 확정 단추는 한 줄을 다 쓴다 */
+@media (max-width: 560px) {
+  .p-toolbar { padding: 10px; gap: 8px; }
+  .p-toolbar__actions { margin-left: 0; width: 100%; }
+  .p-toolbar__actions #p-commit { flex: 1 1 100%; }
+  .p-filters { gap: 8px; }
+  .p-done { padding: 8px 10px; }
+}

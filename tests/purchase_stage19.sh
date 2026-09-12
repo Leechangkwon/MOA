@@ -110,7 +110,9 @@ qa_ids_of() {
   psqlq "SELECT coalesce(string_agg(id::text, ','), '0') FROM users WHERE username LIKE 'qa\_%';"
 }
 
-# $1 = 'before' | 'after'  → 표준출력에 표를 찍고, 비-qa 합계를 돌려준다
+# $1 = 'before' | 'after'  → 표를 **화면에 찍고**, 비-qa 합계는 전역 CENSUS_SUM 에 담는다.
+# (합계를 표준출력으로 돌려주면 표까지 함께 잡혀 비교가 깨진다 — 2026-09-13 실측)
+CENSUS_SUM=0
 census() {
   local when="$1"
   printf '  %-18s %8s %10s\n' "표" "전체" "비-qa"
@@ -122,7 +124,7 @@ census() {
     sum=$((sum + nonqa))
   done
   printf '  %-18s %8s %10s   ← 사용자(비-qa)가 만든 행 합계 (%s)\n' "합계" "-" "$sum" "$when"
-  printf '%s' "$sum"
+  CENSUS_SUM="$sum"
 }
 
 cleanup() {
@@ -183,8 +185,8 @@ cleanup() {
          ' p_vendors='||(SELECT count(*) FROM p_vendors WHERE created_by IN ($qa_ids));"
 
   sub "정리 뒤 인구조사 — 사용자 자료가 그대로인가"
-  local after
-  after=$(census after)
+  census after
+  local after="$CENSUS_SUM"
   echo
   if [ "$after" = "$CENSUS_BEFORE" ]; then
     printf '  ✔ 사용자(비-qa) 행 수가 시작 때와 같습니다 (%s → %s) — 남의 자료를 건드리지 않았습니다\n' \
@@ -202,7 +204,8 @@ trap cleanup EXIT
 hr "0-0. 시작 전 인구조사 — 사용자 자료가 얼마나 있나 (2026-09-13 사고 뒤 필수)"
 QA_IDS=$(qa_ids_of)
 echo "  검토 계정 id: $QA_IDS"
-CENSUS_BEFORE=$(census before)
+census before
+CENSUS_BEFORE="$CENSUS_SUM"
 echo
 echo "  ★ 이 시험의 정리는 위 「비-qa」 행을 **한 줄도 지우지 않습니다** (created_by 필터)."
 
@@ -1066,6 +1069,60 @@ R=$(call qa_admin01 POST "/api/purchase/import/$AMB_ID/preview" "$TOK_ADMIN" \
 echo "  counts: $(body_of "$R" | sed -n 's/.*"counts":{\([^}]*\)}.*/\1/p')"
 expect "코드가 있는 1행은 insert" 1 "$(body_of "$R" | sed -n 's/.*"insert":\([0-9]*\).*/\1/p')"
 expect "코드가 없는 2행은 여전히 확인 필요" 2 "$(body_of "$R" | sed -n 's/.*"review":\([0-9]*\).*/\1/p')"
+
+# ─── JSON 문자열 하나를 안전하게 감싼다 (따옴표·역슬래시만 이스케이프) ───
+json_str() { printf '"%s"' "$(printf '%s' "$1" | sed 's/\\/\\\\/g; s/"/\\"/g')"; }
+
+sub "⑱ 미리보기 행 목록의 쪽·필터·찾기 (6차 보정 2026-09-13)"
+# ※ 앞의 ⑯ 파일(missvendor.xlsx, 5행)을 그대로 쓴다 — 더미를 새로 만들지 않는다.
+if [ -n "${MISS_ID:-}" ]; then
+  R=$(call qa_admin01 POST "/api/purchase/import/$MISS_ID/preview" "$TOK_ADMIN" \
+      "{\"kind\":\"items\",\"mapping\":$MMAP,\"header_row\":1}")
+  echo "  기본 row_page=$(body_of "$R" | grep -o '"row_page":[0-9]*' | head -1 | cut -d: -f2)"
+  expect "한 쪽 50행 고정" 50 "$(body_of "$R" | grep -o '"row_per_page":[0-9]*' | head -1 | cut -d: -f2)"
+  expect "row_total 이 내려온다" 1 "$(body_of "$R" | grep -c '"row_total":')"
+  expect "total 은 여전히 전체 기준" 5 "$(body_of "$R" | sed -n 's/.*"total":\([0-9]*\).*/\1/p')"
+
+  sub "⑱-a page 는 400 이 아니라 **좁힌다** (화면만 깨지고 막아지는 것이 없다 — ARCH 5.1 [2])"
+  for BAD in 0 -3 abc 999999999; do
+    R=$(call qa_admin01 POST "/api/purchase/import/$MISS_ID/preview" "$TOK_ADMIN" \
+        "{\"kind\":\"items\",\"mapping\":$MMAP,\"header_row\":1,\"page\":$(json_str "$BAD")}")
+    P=$(body_of "$R" | grep -o '"row_page":[0-9]*' | head -1 | cut -d: -f2)
+    printf "  page=%-12s → HTTP %s · row_page=%s\n" "$BAD" "$(code_of "$R")" "$P"
+    expect "page=$BAD → 200" 200 "$(code_of "$R")"
+    expect "page=$BAD → 쪽 수 안으로" 1 "$P"
+  done
+
+  sub "⑱-b 상태 필터 — 거르기는 **서버가** 한다(50행 안에서만 거르면 사람을 속인다)"
+  R=$(call qa_admin01 POST "/api/purchase/import/$MISS_ID/preview" "$TOK_ADMIN" \
+      "{\"kind\":\"items\",\"mapping\":$MMAP,\"header_row\":1,\"status\":\"error\"}")
+  echo "  status=error → row_total=$(body_of "$R" | grep -o '"row_total":[0-9]*' | head -1 | cut -d: -f2)"
+  expect "status=error 200" 200 "$(code_of "$R")"
+  expect "counts 는 그대로 전체(error 5)" 1 "$(body_of "$R" | grep -c '"error":5')"
+  R=$(call qa_admin01 POST "/api/purchase/import/$MISS_ID/preview" "$TOK_ADMIN" \
+      "{\"kind\":\"items\",\"mapping\":$MMAP,\"header_row\":1,\"status\":\"insert\"}")
+  expect "등록 행이 없으면 row_total 0" 0 "$(body_of "$R" | grep -o '"row_total":[0-9]*' | head -1 | cut -d: -f2)"
+  R=$(call qa_admin01 POST "/api/purchase/import/$MISS_ID/preview" "$TOK_ADMIN" \
+      "{\"kind\":\"items\",\"mapping\":$MMAP,\"header_row\":1,\"status\":\"엉뚱한값\"}")
+  expect "모르는 status 는 전체로 (400 아님)" 200 "$(code_of "$R")"
+
+  sub "⑱-c 찾기(q) — 판정 결과에서만 찾는다. SQL 에 닿지 않는다"
+  R=$(call qa_admin01 POST "/api/purchase/import/$MISS_ID/preview" "$TOK_ADMIN" \
+      "{\"kind\":\"items\",\"mapping\":$MMAP,\"header_row\":1,\"q\":\"MISS ITEM 1\"}")
+  echo "  q='MISS ITEM 1' → row_total=$(body_of "$R" | grep -o '"row_total":[0-9]*' | head -1 | cut -d: -f2)"
+  expect "찾기 200" 200 "$(code_of "$R")"
+  expect "q 가 응답에 되돌아온다" 1 "$(body_of "$R" | grep -c '"row_q":"MISS ITEM 1"')"
+  ITEMS_NOW=$(psqlq "SELECT count(*) FROM p_items;")
+  for BADQ in "' OR '1'='1" "%" "'; DROP TABLE p_items; --" "_" "\\"; do
+    R=$(call qa_admin01 POST "/api/purchase/import/$MISS_ID/preview" "$TOK_ADMIN" \
+        "{\"kind\":\"items\",\"mapping\":$MMAP,\"header_row\":1,\"q\":$(json_str "$BADQ")}")
+    printf "  q=[%s] → HTTP %s\n" "$BADQ" "$(code_of "$R")"
+    expect "SQLi 모양의 찾기도 200" 200 "$(code_of "$R")"
+  done
+  expect "찾기 뒤에도 품목 표 그대로" "$ITEMS_NOW" "$(psqlq "SELECT count(*) FROM p_items;")"
+else
+  echo "  (⑯ 이 먼저 돌지 않아 건너뜀)"
+fi
 
 sub "⑩ 업로드 원본이 「구매/가져오기」 폴더(admin-only)에 있나"
 psqlq "SELECT '  '||f.original_name||' | '||f.access_level||' | 폴더='||fo.name||' | sha256='||left(f.sha256,16)||'…'

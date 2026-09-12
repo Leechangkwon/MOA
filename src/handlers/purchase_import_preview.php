@@ -85,7 +85,11 @@ function tbox_import_ref(mixed $raw): int
 
 $body = Http::jsonBody();
 if ($body === [] || array_diff(array_keys($body), ['kind', 'mapping', 'header_row',
-                                          'default_branch', 'default_brand', 'derive']) !== []) {
+                                          'default_branch', 'default_brand', 'derive',
+                                          // 5차 보정 — 없는 브랜드·지점을 함께 만들까
+                                          'create_brands', 'create_branches',
+                                          // 6차 보정 — 행 목록 페이지·필터 (판정은 전체 행 그대로)
+                                          'page', 'q', 'status']) !== []) {
     $reject('bad_request', 400, Http::MSG_BAD_REQUEST);
 }
 
@@ -133,6 +137,12 @@ try {
         'default_branch' => tbox_import_ref($body['default_branch'] ?? null),
         'default_brand'  => tbox_import_ref($body['default_brand'] ?? null),
         'derive'         => is_string($body['derive'] ?? null) ? (string) $body['derive'] : '',
+        /* 5차 보정 — 화면의 체크박스 둘. **true 일 때만** 참이다(문자열 "false" 를 참으로
+         * 읽지 않는다). 이 둘이 판정을 바꾸지만 권한을 바꾸지는 않는다 — 브랜드·지점을
+         * 만드는 자격은 이미 `purchase.master.write`(buyer·Admin) 이고, 그 창구로 손수
+         * 만드는 것과 **같은 표·같은 제약**에 들어간다. */
+        'create_brands'   => ($body['create_brands'] ?? null) === true,
+        'create_branches' => ($body['create_branches'] ?? null) === true,
     ]);
 } catch (RuntimeException $e) {
     $why = $e->getMessage();
@@ -184,16 +194,76 @@ $slim = static function (array $row) use ($branchNames): array {
     return $out;
 };
 
-$rows    = [];
-$attention = [];
-foreach ($judged['rows'] as $row) {
-    if (count($rows) < Importer::PREVIEW_ROWS) {
-        $rows[] = $slim($row);
+/* ─── 행 목록은 **50행씩** 내려 준다 (6차 보정 2026-09-13, 사용자 결정) ───
+ *
+ * 사용자 관찰: "엑셀을 올리면 하단에 정보가 굉장히 길게 나오고 확정은 맨 아래에 나온다."
+ * 8,100행짜리 파일의 앞 200행을 한 번에 그리면 화면이 끝없이 길어지고, 확정 단추가
+ * 스크롤 저 아래로 밀린다. **판정은 전과 똑같이 전체 행에 대해** 하고(그래야 `counts`·
+ * `missing`·`to_create` 가 진실이다), 화면에 보내는 목록만 한 쪽씩 자른다.
+ *
+ * 거르기도 **서버에서** 한다 — 화면이 50행만 들고 거르면 「오류만 보기」가 그 50행 안에서만
+ * 동작해 사람을 속인다.
+ *   status  등록·갱신·확인 필요·오류 중 하나 (그 밖은 전체)
+ *   q       코드·이름 **부분 일치**. 값은 행의 원본 칸에서만 찾고 SQL 에 닿지 않는다
+ *           (판정 결과는 이미 메모리에 있다 — 여기서 DB 를 다시 묻지 않는다).
+ */
+$pageRaw  = $body['page'] ?? 1;
+$pageText = is_int($pageRaw) ? (string) $pageRaw : (is_string($pageRaw) ? trim($pageRaw) : '');
+$rowPage  = preg_match('/^[1-9][0-9]{0,5}$/', $pageText) === 1 ? (int) $pageText : 1;
+
+$statusRaw = $body['status'] ?? '';
+$rowStatus = is_string($statusRaw) && in_array($statusRaw, [
+    Importer::STATUS_INSERT, Importer::STATUS_UPDATE,
+    Importer::STATUS_REVIEW, Importer::STATUS_ERROR,
+], true) ? $statusRaw : '';
+
+$rowQuery = '';
+if (isset($body['q']) && is_string($body['q']) && preg_match('//u', $body['q']) === 1) {
+    $rowQuery = trim((string) $body['q']);
+    if (iconv_strlen($rowQuery, 'UTF-8') > 100) {
+        $cut      = iconv_substr($rowQuery, 0, 100, 'UTF-8');
+        $rowQuery = is_string($cut) ? $cut : '';
     }
+}
+$rowQueryLower = strtolower($rowQuery);
+
+$attention = [];
+$matched   = [];
+foreach ($judged['rows'] as $row) {
     if (($row['status'] === Importer::STATUS_ERROR || $row['status'] === Importer::STATUS_REVIEW)
         && count($attention) < Importer::PREVIEW_ROWS) {
         $attention[] = $slim($row);
     }
+
+    if ($rowStatus !== '' && $row['status'] !== $rowStatus) {
+        continue;
+    }
+    if ($rowQueryLower !== '') {
+        $hit = false;
+        foreach (($row['data'] ?? []) as $cell) {
+            if (is_string($cell) && $cell !== ''
+                && strpos(strtolower($cell), $rowQueryLower) !== false) {
+                $hit = true;
+                break;
+            }
+        }
+        if (!$hit) {
+            continue;
+        }
+    }
+    $matched[] = $row;
+}
+
+$rowTotal  = count($matched);
+$perPage   = Importer::PREVIEW_PAGE;
+$pageCount = $rowTotal === 0 ? 1 : (int) ceil($rowTotal / $perPage);
+if ($rowPage > $pageCount) {
+    $rowPage = $pageCount;   // 필터를 좁혀 쪽 수가 줄면 마지막 쪽을 보여 준다(빈 표가 아니라)
+}
+
+$rows = [];
+foreach (array_slice($matched, ($rowPage - 1) * $perPage, $perPage) as $row) {
+    $rows[] = $slim($row);
 }
 
 /* ─── 「없어서 막힌 것」 을 값 기준으로 묶는다 (3차 보정) ───
@@ -249,7 +319,17 @@ Http::json([
     'truncated' => $sheet['truncated'],
     'counts'    => $judged['counts'],
     'rows'      => $rows,
+    // 6차 보정 — 이 목록이 **몇 쪽 중 몇 쪽인지**. counts·missing·to_create 는 전체 기준이다.
+    'row_page'    => $rowPage,
+    'row_per_page'=> $perPage,
+    'row_total'   => $rowTotal,
+    'row_pages'   => $pageCount,
+    'row_status'  => $rowStatus,
+    'row_q'       => $rowQuery,
     'attention' => $attention,
     // 3차 보정 — 「이것만 등록하면 N행이 풀린다」 목록
     'missing'   => $missingList,
+    /* 5차 보정 — 이번 확정으로 **새로 생길** 브랜드·지점. 화면이 확정 전에
+     * 「새로 만들 브랜드 3 · 지점 5」 로 보여 준다 — 무엇이 생기는지 모르고 누르는 일이 없게. */
+    'to_create' => $judged['to_create'] ?? ['brands' => [], 'branches' => []],
 ]);

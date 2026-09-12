@@ -106,6 +106,12 @@ final class Importer
     public const PREVIEW_ROWS = 200;
 
     /**
+     * 행 목록 한 쪽의 크기 (6차 보정 2026-09-13, 사용자 결정).
+     * 8,100행을 한 화면에 쏟으면 확정 단추가 스크롤 저 아래로 밀린다 — 한 쪽씩 넘겨 본다.
+     */
+    public const PREVIEW_PAGE = 50;
+
+    /**
      * 머리행을 찾을 때 훑는 **앞부분 행 수** (1차 보정 2026-09-13).
      *
      * 왜 필요한가 — 이카운트 품목 내보내기(ESA009M.xlsx)의 0행은 제목 한 칸
@@ -480,6 +486,10 @@ final class Importer
         $derive        = isset($options['derive']) && is_string($options['derive']) ? $options['derive'] : '';
         $defaultBranch = isset($options['default_branch']) ? (int) $options['default_branch'] : 0;
         $defaultBrand  = isset($options['default_brand']) ? (int) $options['default_brand'] : 0;
+        /* 5차 보정 — 창고 가져오기 **한 흐름**에서 없는 브랜드·지점을 함께 만든다.
+         * 화면의 체크박스 둘이며, 켜져 있으면 판정이 「만들 계획」을 세운다(아직 쓰지 않는다). */
+        $createBrands   = isset($options['create_brands']) && $options['create_brands'] === true;
+        $createBranches = isset($options['create_branches']) && $options['create_branches'] === true;
 
         /* ─── 지점·브랜드가 어디서 오는지 먼저 확인한다 (2차 보정) ───
          *
@@ -487,8 +497,12 @@ final class Importer
          * "지점을 모르겠다" 를 98번 적어 보여 주는 것은 사람에게 쓸모가 없다. 한 번에
          * "기본 지점을 고르세요" 라고 말하는 편이 낫다(매핑이 모자랄 때와 같은 판단).
          */
+        /* 5차 보정 — 「지점 만들기」 가 켜져 있으면 기본 지점이 없어도 된다.
+         * 창고명에서 지점을 뽑아 **행마다 다른 지점**으로 만들 수 있기 때문이다
+         * (그것이 "여러 지점의 창고를 한 지점으로밖에 못 넣는다" 는 문제의 해답이다).
+         * 판별이 안 되는 행만 기본 지점을 쓰고, 그것도 없으면 그 행이 「확인 필요」다. */
         if ($kind === 'locations'
-            && !array_key_exists('branch', $resolved) && $defaultBranch <= 0) {
+            && !array_key_exists('branch', $resolved) && $defaultBranch <= 0 && !$createBranches) {
             throw new RuntimeException('default_branch_required');
         }
         if ($kind === 'branches'
@@ -532,7 +546,11 @@ final class Importer
             $judged = match ($kind) {
                 'items'     => self::judgeItem($data, $lookup, $seen),
                 'vendors'   => self::judgeVendor($data, $lookup, $seen),
-                'locations' => self::judgeLocation($data, $lookup, $seen, $defaultBranch),
+                'locations' => self::judgeLocation($data, $lookup, $seen, $defaultBranch, [
+                    'create_brands'   => $createBrands,
+                    'create_branches' => $createBranches,
+                    'default_brand'   => $defaultBrand,
+                ]),
                 'branches'  => self::judgeBranch($data, $lookup, $seen, $defaultBrand),
                 default     => ['status' => self::STATUS_ERROR, 'reason' => 'bad_kind', 'data' => $data],
             };
@@ -542,7 +560,38 @@ final class Importer
             $out[] = $judged;
         }
 
-        return ['counts' => $counts, 'rows' => $out, 'total' => count($prepared)];
+        /* 「이번 확정으로 **새로 생길 것**」 요약 (5차 보정).
+         * 화면이 확정 전에 「새로 만들 브랜드 3 · 지점 5」 로 보여 준다 — 사람이 무엇이
+         * 생기는지 모르고 누르는 일이 없게. 이름은 소문자 기준으로 한 번만 센다. */
+        $toCreate = ['brands' => [], 'branches' => []];
+        foreach ($out as $row) {
+            $plan = $row['plan'] ?? null;
+            if (!is_array($plan)) {
+                continue;
+            }
+            if (!empty($plan['brand_name'])) {
+                $toCreate['brands'][strtolower((string) $plan['brand_name'])] = (string) $plan['brand_name'];
+            }
+            if (!empty($plan['branch_name'])) {
+                $key = strtolower((string) $plan['branch_name']);
+                if (!isset($toCreate['branches'][$key])) {
+                    $toCreate['branches'][$key] = [
+                        'name'  => (string) $plan['branch_name'],
+                        'brand' => $plan['brand_name'] ?? null,
+                    ];
+                }
+            }
+        }
+
+        return [
+            'counts'    => $counts,
+            'rows'      => $out,
+            'total'     => count($prepared),
+            'to_create' => [
+                'brands'   => array_values($toCreate['brands']),
+                'branches' => array_values($toCreate['branches']),
+            ],
+        ];
     }
 
     /**
@@ -570,6 +619,76 @@ final class Importer
             $excludeSet[(int) $no] = true;
         }
 
+        /* ─── 5차 보정 — 브랜드 → 지점 → 창고 **순서로** 만든다 ───
+         *
+         * 사용자 관찰: "여러 지점의 창고를 한 지점으로밖에 등록하지 못한다."
+         * 창고 한 번 가져오기로 **브랜드와 지점까지** 생기게 한다. 순서가 중요하다 —
+         * 지점은 브랜드를 가리키고 창고는 지점을 가리키므로, 앞의 것이 먼저 있어야 한다.
+         *
+         * 이 전부가 **호출자가 연 한 트랜잭션 안**이다: 창고 한 줄이 실패하면 방금 만든
+         * 브랜드·지점까지 함께 되돌아간다. "지점만 생기고 창고는 안 들어온" 반쪽 상태를
+         * 만들지 않는다(F-29 의 한 트랜잭션 약속).
+         *
+         * 제외된 행(`exclude_rows`)의 계획은 **세우지 않는다** — 사람이 빼기로 한 창고
+         * 때문에 지점이 생기면 안 된다.
+         */
+        $newBrandIds  = [];   // 소문자 이름 → 방금 만든 브랜드 id
+        $newBranchIds = [];   // 소문자 이름 → 방금 만든 지점 id
+        $brandsCreated   = 0;
+        $branchesCreated = 0;
+
+        if ($kind === 'locations') {
+            $plans = [];
+            foreach ($judged as $row) {
+                if (isset($excludeSet[(int) $row['row_no']])) {
+                    continue;
+                }
+                $st = (string) $row['status'];
+                if ($st === self::STATUS_ERROR || $st === self::STATUS_REVIEW) {
+                    continue;   // 오류·확인 필요 행은 저장하지 않으므로 계획도 세우지 않는다
+                }
+                if (isset($row['plan']) && is_array($row['plan'])) {
+                    $plans[] = $row['plan'];
+                }
+            }
+
+            // ① 브랜드 — 같은 이름은 한 번만
+            foreach ($plans as $plan) {
+                $brandName = $plan['brand_name'] ?? null;
+                if ($brandName === null) {
+                    continue;
+                }
+                $key = strtolower((string) $brandName);
+                if (isset($newBrandIds[$key])) {
+                    continue;
+                }
+                $newBrandIds[$key] = self::insertBrand((string) $brandName, $actorId);
+                $brandsCreated++;
+            }
+
+            // ② 지점 — 브랜드는 위에서 만든 것 또는 이미 있던 것
+            foreach ($plans as $plan) {
+                $branchName = $plan['branch_name'] ?? null;
+                if ($branchName === null) {
+                    continue;
+                }
+                $key = strtolower((string) $branchName);
+                if (isset($newBranchIds[$key])) {
+                    continue;
+                }
+                $brandId = $plan['brand_id'] ?? null;
+                if ($brandId === null && !empty($plan['brand_name'])) {
+                    $brandId = $newBrandIds[strtolower((string) $plan['brand_name'])] ?? null;
+                }
+                if ($brandId === null) {
+                    // 판정이 막았어야 하는 상태다 — 여기까지 왔으면 전부 되돌린다.
+                    throw new RuntimeException('default_brand_required');
+                }
+                $newBranchIds[$key] = self::insertBranchRow((string) $branchName, (int) $brandId, $actorId);
+                $branchesCreated++;
+            }
+        }
+
         foreach ($judged as $row) {
             if (isset($excludeSet[(int) $row['row_no']])) {
                 $excluded++;
@@ -590,6 +709,20 @@ final class Importer
             }
 
             $values = is_array($row['values'] ?? null) ? $row['values'] : [];
+
+            /* 새로 만든 지점을 가리키는 창고 행이면 여기서 id 를 채운다 (5차 보정).
+             * 판정 때는 아직 지점이 없어 `branch_id` 가 null 이었다. */
+            if ($kind === 'locations' && ($values['branch_id'] ?? null) === null) {
+                $planName = $row['plan']['branch_name'] ?? null;
+                $filled   = $planName === null ? null : ($newBranchIds[strtolower((string) $planName)] ?? null);
+                if ($filled === null) {
+                    // 지점을 못 찾으면 저장하지 않는다 — 지점 없는 창고를 만들지 않는다.
+                    $skipped++;
+                    continue;
+                }
+                $values['branch_id'] = $filled;
+            }
+
             if ($status === self::STATUS_INSERT) {
                 self::insertRow($kind, $values, $actorId);
                 $inserted++;
@@ -606,7 +739,9 @@ final class Importer
         }
 
         return ['inserted' => $inserted, 'updated' => $updated,
-                'skipped' => $skipped, 'excluded' => $excluded];
+                'skipped' => $skipped, 'excluded' => $excluded,
+                // 5차 보정 — 창고 가져오기가 **덤으로 만든** 것들
+                'brands_created' => $brandsCreated, 'branches_created' => $branchesCreated];
     }
 
     /* ───────────────────────── 내부 ───────────────────────── */
@@ -1053,15 +1188,26 @@ final class Importer
      * @param int                               $defaultBranch 화면의 「기본 지점」 (0 = 없음)
      * @return array<string,mixed>
      */
-    private static function judgeLocation(array $d, array $lookup, array &$seen, int $defaultBranch = 0): array
-    {
+    private static function judgeLocation(
+        array $d,
+        array $lookup,
+        array &$seen,
+        int $defaultBranch = 0,
+        array $opts = []
+    ): array {
         $name = $d['name'] ?? '';
         if ($name === '') {
             return self::fail('required_missing', $d);
         }
 
+        $createBrands   = ($opts['create_brands'] ?? false) === true;
+        $createBranches = ($opts['create_branches'] ?? false) === true;
+        $defaultBrand   = (int) ($opts['default_brand'] ?? 0);
+
         $branchId = null;
         $branchBy = '';
+        $brandBy  = '';
+        $plan     = null;   // 「이 행 때문에 새로 만들 것」 (브랜드·지점)
 
         // ① 파일의 지점 열
         $fromColumn = trim($d['branch'] ?? '');
@@ -1073,36 +1219,72 @@ final class Importer
             $branchBy = 'column';
         }
 
-        // ② 창고명 안에 지점 이름이 들어 있나
+        /* ② 창고명을 브랜드 + 지점으로 갈라 본다 (5차 보정).
+         *
+         * 전에는 "창고명 안에 **이미 있는** 지점 이름이 들어 있나" 만 봤다. 그래서 지점이
+         * 하나도 없는 상태에서 여러 지점의 창고를 올리면 **전부 기본 지점 하나로** 들어갔다
+         * (사용자 관찰). 이제는 이름을 갈라 **없는 지점을 만들 계획**까지 세운다.
+         */
+        $parsed = ['brand' => null, 'branch' => null];
         if ($branchId === null) {
-            $hits = [];
-            foreach ($lookup['branch'] as $branchName => $id) {
-                if ($branchName !== '' && strpos(strtolower($name), $branchName) !== false) {
-                    $hits[$id] = true;
+            $parsed = self::parseLocationName($name, $lookup['branch']);
+
+            // ②-1 뽑은 지점 이름이 이미 있으면 그것을 쓴다 (새로 만들지 않는다)
+            if ($parsed['branch'] !== null) {
+                $existing = $lookup['branch'][strtolower($parsed['branch'])] ?? null;
+                if ($existing !== null) {
+                    $branchId = $existing;
+                    $branchBy = 'name';
                 }
             }
-            if (count($hits) > 1) {
-                // 「강남점」과 「강남점2호」가 둘 다 이름에 들어맞는 경우 — 사람이 고른다.
-                $out = self::fail('branch_ambiguous', $d);
-                $out['status']     = self::STATUS_REVIEW;
-                $out['reason']     = 'branch_ambiguous';
-                $out['promote_to'] = self::STATUS_INSERT;
-                return $out;
-            }
-            if (count($hits) === 1) {
-                $branchId = (int) array_keys($hits)[0];
-                $branchBy = 'name';
+
+            // ②-2 없고, 「지점 만들기」 가 켜져 있으면 만들 계획을 세운다
+            if ($branchId === null && $parsed['branch'] !== null && $createBranches) {
+                $brandId   = null;
+                $brandName = null;
+
+                if ($parsed['brand'] !== null) {
+                    $brandId = $lookup['brand'][strtolower($parsed['brand'])] ?? null;
+                    if ($brandId !== null) {
+                        $brandBy = 'name';
+                    } elseif ($createBrands) {
+                        $brandName = $parsed['brand'];   // 브랜드도 함께 만든다
+                        $brandBy   = 'name_new';
+                    }
+                }
+                if ($brandId === null && $brandName === null && $defaultBrand > 0) {
+                    $brandId = $defaultBrand;
+                    $brandBy = 'default';
+                }
+                if ($brandId === null && $brandName === null) {
+                    /* 새 지점을 만들어야 하는데 붙일 브랜드가 없다. 행마다 오류를 내지 않고
+                     * **한 번에** 말한다 — 「기본 브랜드」를 고르거나 「브랜드도 만들기」를 켜면 된다. */
+                    throw new RuntimeException('default_brand_required');
+                }
+
+                $plan = [
+                    'branch_name' => $parsed['branch'],
+                    'brand_name'  => $brandName,   // null 이면 이미 있는 브랜드를 쓴다
+                    'brand_id'    => $brandId,
+                ];
+                $branchBy = 'name_new';
             }
         }
 
-        // ③ 화면의 기본 지점
-        if ($branchId === null && $defaultBranch > 0) {
+        // ③ 화면의 기본 지점 — **판별이 안 된 행 전용**이다
+        if ($branchId === null && $plan === null && $defaultBranch > 0) {
             $branchId = $defaultBranch;
             $branchBy = 'default';
         }
-        if ($branchId === null) {
-            // judge() 가 앞에서 막으므로 보통 여기 오지 않는다 — 마지막 그물이다.
-            return self::fail('branch_not_found', $d);
+
+        // ④ 그래도 모르면 사람이 정해야 한다 (5차 보정 — 오류가 아니라 「확인 필요」다)
+        if ($branchId === null && $plan === null) {
+            $out = self::fail('branch_unresolved', $d);
+            $out['status']     = self::STATUS_REVIEW;
+            $out['reason']     = 'branch_unresolved';
+            $out['promote_to'] = self::STATUS_INSERT;
+            $out['branch_by']  = '';
+            return $out;
         }
 
         $kindRaw = strtolower($d['kind'] ?? '');
@@ -1111,7 +1293,7 @@ final class Importer
             : self::LOCATION_KIND_ALIAS[$kindRaw] ?? 'other';
 
         $values = [
-            'branch_id'   => $branchId,
+            'branch_id'   => $branchId,   // 새로 만들 지점이면 null — 확정에서 채운다
             'kind'        => $kind,
             'name'        => self::cut($name, 80),
             'code'        => self::orNull($d['code'] ?? ''),
@@ -1119,27 +1301,42 @@ final class Importer
             'is_active'   => self::activeOr($d['active'] ?? '', true),
         ];
 
-        $key = (string) $branchId . '|' . strtolower($name);
+        /* 파일 안 중복 검사 — 새로 만들 지점은 아직 id 가 없으므로 **이름**으로 센다. */
+        $key = ($branchId !== null ? (string) $branchId : 'new:' . strtolower((string) ($plan['branch_name'] ?? '')))
+             . '|' . strtolower($name);
         if (isset($seen[$key])) {
             return self::fail('duplicate_in_file', $d);
         }
         $seen[$key] = true;
 
-        $current = $lookup['location'][$key] ?? null;
-        if ($current === null) {
-            return ['status' => self::STATUS_INSERT, 'reason' => null, 'data' => $d,
-                    'values' => $values, 'branch_by' => $branchBy, 'promote_to' => self::STATUS_INSERT];
-        }
-        return [
-            'status'    => self::STATUS_UPDATE,
-            'reason'    => null,
-            'data'      => $d,
-            'values'    => $values,
-            'diff'      => self::diff($current, $values),
-            'target_id' => (int) $current['id'],
-            'branch_by' => $branchBy,
-            'promote_to' => self::STATUS_UPDATE,
+        $current = $branchId === null
+            ? null
+            : ($lookup['location'][(string) $branchId . '|' . strtolower($name)] ?? null);
+
+        $row = [
+            'status'     => self::STATUS_INSERT,
+            'reason'     => null,
+            'data'       => $d,
+            'values'     => $values,
+            'branch_by'  => $branchBy,
+            'promote_to' => self::STATUS_INSERT,
         ];
+        if ($brandBy !== '') {
+            $row['brand_by'] = $brandBy;
+        }
+        if ($plan !== null) {
+            $row['plan'] = $plan;
+            // 화면이 「새로 만들 지점」 을 이름으로 보여 줄 수 있게 함께 준다.
+            $row['branch_name_new'] = $plan['branch_name'];
+            $row['brand_name_new']  = $plan['brand_name'];
+        }
+        if ($current !== null) {
+            $row['status']     = self::STATUS_UPDATE;
+            $row['diff']       = self::diff($current, $values);
+            $row['target_id']  = (int) $current['id'];
+            $row['promote_to'] = self::STATUS_UPDATE;
+        }
+        return $row;
     }
 
     /**
@@ -1215,6 +1412,119 @@ final class Importer
             'promote_to' => self::STATUS_UPDATE,
         ];
     }
+
+    /**
+     * 지점 이름으로 인정하는 **어미** (5차 보정 2026-09-13).
+     * 「강남점」·「○○의원」·「○○치과」·「○○병원」 처럼 **가게 이름으로 끝나는** 조각만
+     * 지점으로 본다. 「임시」·「폐기」 같은 조각은 지점이 아니다 — 그런 행은 사람이 정한다.
+     * @var list<string>
+     */
+    private const BRANCH_SUFFIX = ['점', '의원', '치과', '병원', '센터', '원'];
+
+    /**
+     * 창고명을 **브랜드 + 지점 + 장소 상세**로 가른다 (7차 보정 2026-09-13, 실파일 재측정).
+     *
+     * 5차 보정은 "마지막 조각 = 지점" 으로 봤다. 실제 이카운트 창고명 98개를 세어 보니
+     * **86개가 세 조각 이상**이었다(`플란치과_강남점_15층 공용부` ·
+     * `플란치과_부평점_B1F_의약품창고`). 마지막 조각(`15층 공용부`·`의약품창고`)은 지점이
+     * 아니라 **장소 상세**여서, 93행이 「판별 불가」로 떨어졌다.
+     *
+     * 고친 규칙 — `_` 로만 나눈다(조각 안의 공백은 그대로 둔다: `13층 중앙공급실(구매팀)`).
+     *   · 1조각        → 브랜드도 지점도 없다 (`상담실`·`중앙창고`·`라미트치과`).
+     *   · 첫 조각      → **브랜드 후보**.
+     *   · 2번째 조각부터 차례로 보아, **지점 어미로 끝나거나 이미 있는 지점 이름과 같은
+     *     첫 조각** → 지점. 그 **뒤의 나머지 조각을 `_` 로 다시 이어** 장소 상세.
+     *   · 지점 조각을 못 찾으면 판별 불가(화면의 「기본 지점」 으로 간다).
+     *
+     * **추측이다.** 결과는 미리보기에 브랜드·지점·상세로 나오고 사람이 확인한 뒤 저장된다.
+     *
+     * @param array<string,int> $branchNames 이미 있는 지점 (소문자 이름 → id)
+     * @return array{brand:?string, branch:?string, detail:?string}
+     */
+    public static function parseLocationName(string $name, array $branchNames = []): array
+    {
+        $parts = preg_split('/_+/u', trim($name));
+        $parts = is_array($parts) ? array_values(array_filter($parts, static fn ($v) => trim($v) !== '')) : [];
+        if (count($parts) < 2) {
+            return ['brand' => null, 'branch' => null, 'detail' => null];
+        }
+
+        $brand = self::cut(trim($parts[0]), 60);
+
+        for ($i = 1; $i < count($parts); $i++) {
+            $piece = trim($parts[$i]);
+            if (!self::looksLikeBranch($piece, $branchNames)) {
+                continue;
+            }
+            $rest = array_slice($parts, $i + 1);
+            return [
+                'brand'  => $brand,
+                'branch' => self::cut($piece, 60),
+                // 남은 조각은 **원래 구분자로 다시 이어** 보여 준다 (`B1F_의약품창고`).
+                'detail' => $rest === [] ? null : self::cut(implode('_', $rest), 200),
+            ];
+        }
+
+        // 지점 조각이 없다 — 브랜드만 알 수 있고 지점은 사람이 정한다.
+        return ['brand' => $brand, 'branch' => null, 'detail' => self::cut(implode('_', array_slice($parts, 1)), 200)];
+    }
+
+    /** 이 조각이 지점 이름처럼 보이나 — 어미로 끝나거나 **이미 있는 지점**과 같으면 참 */
+    private static function looksLikeBranch(string $piece, array $branchNames): bool
+    {
+        if ($piece === '') {
+            return false;
+        }
+        if (isset($branchNames[strtolower($piece)])) {
+            return true;
+        }
+        foreach (self::BRANCH_SUFFIX as $suffix) {
+            if (preg_match('/' . $suffix . '$/u', $piece) === 1) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * 장소 상세로 **용도(kind)를 짐작한다** (7차 보정).
+     *
+     * 이카운트의 「구분」 열은 거의 전부 「창고」로만 와서(실측), 그 값만 보면 수술방도
+     * 중앙공급실도 전부 `warehouse` 가 된다. 상세 이름이 더 많은 것을 말해 준다.
+     * **구분 열이 창고가 아닌 다른 종류를 명시하면 그 열이 이긴다**(judgeLocation 참조) —
+     * 사람이 적은 값이 추측보다 앞선다.
+     *
+     * @return ?string 짐작한 용도 (모르겠으면 null)
+     */
+    public static function inferLocationKind(?string $detail): ?string
+    {
+        $text = strtolower(trim((string) $detail));
+        if ($text === '') {
+            return null;
+        }
+        foreach (self::KIND_HINTS as $hint => $kind) {
+            if (strpos($text, $hint) !== false) {
+                return $kind;
+            }
+        }
+        return null;
+    }
+
+    /**
+     * 상세 이름의 **조각 → 용도**. 위에서부터 먼저 맞는 것을 쓴다(수술방이 창고보다 앞이다 —
+     * 「수술방 창고」 는 수술방으로 보는 편이 재고 흐름에 맞는다).
+     * @var array<string,string>
+     */
+    private const KIND_HINTS = [
+        '수술방' => 'or',
+        '진료'   => 'or',
+        '중앙공급' => 'central',
+        '구매팀' => 'central',
+        '공급실' => 'warehouse',
+        '의약품' => 'warehouse',
+        '소모품' => 'warehouse',
+        '창고'   => 'warehouse',
+    ];
 
     /**
      * 창고명에서 **지점 이름**을 뽑는다 (지시 4).
@@ -1439,6 +1749,40 @@ final class Importer
         INSERT INTO p_branches (brand_id, name, code, is_active, created_by)
         VALUES (CAST(:brand_id AS bigint), :name, :code, CAST(:is_active AS boolean), :created_by)
         SQL;
+
+    private const SQL_INSERT_BRAND_ROW = <<<'SQL'
+        INSERT INTO p_brands (name, created_by) VALUES (:name, :created_by) RETURNING id
+        SQL;
+
+    private const SQL_INSERT_BRANCH_ROW = <<<'SQL'
+        INSERT INTO p_branches (brand_id, name, created_by)
+        VALUES (CAST(:brand_id AS bigint), :name, :created_by)
+        RETURNING id
+        SQL;
+
+    /** 창고 가져오기가 덤으로 만드는 브랜드 하나 (5차 보정). 같은 트랜잭션 안이다. */
+    private static function insertBrand(string $name, int $actorId): int
+    {
+        $row = Db::instance()->run(self::SQL_INSERT_BRAND_ROW, [
+            ':name' => self::cut($name, 60), ':created_by' => $actorId,
+        ])->fetch();
+        if (!is_array($row)) {
+            throw new RuntimeException('insert_failed');
+        }
+        return (int) $row['id'];
+    }
+
+    /** 창고 가져오기가 덤으로 만드는 지점 하나 (5차 보정). 브랜드가 먼저 있어야 한다. */
+    private static function insertBranchRow(string $name, int $brandId, int $actorId): int
+    {
+        $row = Db::instance()->run(self::SQL_INSERT_BRANCH_ROW, [
+            ':brand_id' => $brandId, ':name' => self::cut($name, 60), ':created_by' => $actorId,
+        ])->fetch();
+        if (!is_array($row)) {
+            throw new RuntimeException('insert_failed');
+        }
+        return (int) $row['id'];
+    }
 
     /** @param array<string,mixed> $v */
     private static function insertRow(string $kind, array $v, int $actorId): void
