@@ -640,6 +640,34 @@ Admin 전용. 정책 `org.manage`(`Authz::canManageOrg` = Admin) 를 `KNOWN_POLI
 
 ---
 
+### 5.11 내 활동 — `GET /activity` · `GET /api/me/activity` (PRD F-12 · 15-1, 2026-09-12)
+
+감사 로그(7장)를 **본인 행만** 잘라 보여 주는 화면이다. 정책은 `authenticated`. 핸들러는 요청에서 대상을 받지 않는다 — SQL 의 `WHERE actor_id = :me` 에 `Auth::currentUser()['id']` 를 넣고, `action` 은 PRD F-12 의 고정 목록(`IN (...)` 상수)으로 좁힌다. 돌려주는 칸은 `happened_at`·`action`·`result`·`reason`·`summary`·`target_name` 만 — `ip`·`user_agent`·`detail` 은 SELECT 자체에 넣지 않는다(응답에 없으면 새지 않는다, S-02 의 같은 원리). 20건 페이지(`Http::queryInt`). 이 조회는 감사에 남기지 않는다(PRD F-12). 셸 내비 「내 활동」은 모든 로그인 사용자에게 보인다.
+
+### 5.12 공유 링크 — `POST /api/files/{id}/share` · `GET /s/{token}` (PRD F-13 · Q-5 기본안 · 15-2, 2026-09-12)
+
+**만들기.** 라우트 정책 `file.update`(Guest 는 여기서 끝) → 핸들러가 파일 행을 읽어 `Authz::decideRead` → `Authz::decideEdit`(5.3 규칙: Admin 전부 · Manager 본인·자기 팀 · Employee 본인) 를 순서대로 통과해야 한다. 본문은 허용 키 3개(`expires_hours` 1~168 기본 24, `max_downloads` 1~10 기본 1, `reason_text` 선택 500자)만, 그 밖의 키는 400(R-07 과 같은 화이트리스트). 토큰은 `random_bytes(32)` 를 base64url 로(43자), DB `share_links.token_hash` 에는 `hash('sha256', 토큰)` 만 넣는다(세션 6.2-2 와 같은 방식). 응답 `{id, url, expires_at, max_downloads}` 의 `url` 은 `APP_URL . '/s/' . 토큰` 이며 **이 응답에만** 존재한다. 감사 `share.create allow`(target 파일, detail `share_id`·`expires_at`·`max_downloads`·`reason_text`; 토큰·해시는 기록하지 않는다).
+
+**받기.** `GET /s/{token}` 은 정책 `public` 이다 — 로그인 검사·CSRF·강제 절차 관문을 지나지 않는다(로그인 API 와 함께 public 인 둘째 라우트). `{token}` 자리표시자는 `[A-Za-z0-9_-]{43}` 이고 그 밖은 라우터 404. 핸들러 순서 ① `hash('sha256', 토큰)` 으로 행 조회 ② `revoked_at IS NULL` ③ `expires_at > now()` ④ `download_count < max_downloads` ⑤ 파일 행 `deleted_at IS NULL`·`purged_at IS NULL` ⑥ **한 트랜잭션**에서 `UPDATE … SET download_count = download_count + 1 WHERE id = :id AND download_count < max_downloads` 가 1행이어야 진행(동시 요청으로 횟수를 넘기지 못하게) ⑦ `Storage::stream`(sha256 대조 포함, 5.3 [6]) — 다운로드와 같은 코드 경로, 항상 `attachment`. ②~⑤ 어느 단계에서 막혀도 응답은 **404 `찾을 수 없습니다`** 하나이고, 사유는 감사에만(`share.download deny not_found|revoked|expired|exhausted|file_gone`). 성공은 `share.download allow` — actor 는 없고(로그인 전 문장 틀) detail 에 `share_id`·`issued_by`(발급자 id·이름)·`remaining`. 접근 등급 판정(`decideRead`)은 **하지 않는다** — 링크는 발급자의 권한을 빌려 주는 것이며 그 판단은 만들 때 끝났다. 대신 파일 등급이 `admin-only` 인 링크는 Admin 만 만들 수 있다(decideEdit 가 그렇게 귀결된다).
+
+**회수·목록.** `DELETE /api/shares/{num}`(`authenticated`) — `Authz::decideShareRevoke(actor, link)`: 만든 사람 또는 Admin, 그 밖은 `not_owner`. UPDATE `revoked_at = now(), revoked_by = :me`(행 삭제 없음). `GET /api/me/shares` 는 내가 만든 링크(토큰·해시 제외) 목록. 앱 DB 계정은 `share_links` 에 SELECT·INSERT·UPDATE 만(10장, `db/grants.sql`).
+
+**속도 제한.** nginx `location ~ "^/s/[A-Za-z0-9_-]{43}$"` 에 별도 존 `tbox_share`(`limit_req_zone $binary_remote_addr zone=tbox_share:1m rate=60r/m`, burst 10, 429) — 토큰 열거를 IP 단위로 늦춘다(43자 무작위라 열거 자체는 비현실적이지만 한 겹 더).
+
+**위험과 경계(SECURITY R-57).** 링크 원문을 받은 사람은 누구나(사내망 안에서) 받을 수 있다 — 메신저 전달 경로가 곧 공격면이다. 그래서 기본 1회·24시간, 회수, 전부 감사. 사내망 밖 공개는 NG-4 그대로(네트워크가 막는다). 외부 전달 정책은 PRD Q-5 사용자 확정 대기.
+
+### 5.13 민감정보 패턴 검출 — 업로드·URL 가져오기 공통 (PRD F-22 · 15-3, 2026-09-12)
+
+**어디서.** `src/Sensitive.php` 한 파일. 업로드(5.2)와 URL 가져오기(5.6) 모두 `Upload::validate/validatePath` 가 끝난 **직후, 저장 트랜잭션 전**에 `Sensitive::scan(임시 경로, ext)` 를 한 번 부른다 — 두 핸들러가 같은 함수를 부르므로 한쪽만 빠지는 일이 없다. 등급 변경(5.7)은 DB 의 `files.sensitive_flags` 만 본다(다시 읽지 않는다).
+
+**무엇을.** `Preview::kindFor(ext)` 가 `text`·`table`·`office` 인 것만 — `Preview::text/table/office` 가 뽑은 글자(상한은 Preview 상수 그대로: 1MiB·200×50·8MiB 멤버·20,000자 발췌)를 대상으로 ① 주민등록번호: `\d{6}-?\d{7}` 후보 → 뒷자리 첫 숫자 1~4·검증 숫자 계산 통과만 ② 카드 번호: 13~19자리(공백·붙임표 허용) → Luhn 통과만 ③ 키워드: `Sensitive::KEYWORDS` 상수(`급여`·`연봉`·`주민번호`·`계좌번호`·`여권번호`). 결과는 `['rrn' => 건수, 'card' => 건수, 'keyword' => 건수]` 중 0 이 아닌 것 — **값(숫자 원문)은 어디에도 돌려주지 않는다**. `image`·`pdf`·`archive`·`none` 은 검사하지 않고 `[]`(한계, R-58). 추출 실패(`parse_failed`)도 `[]` 로 두고 업로드를 막지 않는다 — 검출은 보조이고 업로드 가용성을 해치지 않는다.
+
+**규칙.** 결과가 비어 있지 않고 요청 등급이 `public`·`internal` 이면 `Http::error(400, MSG_SENSITIVE_LEVEL_REQUIRED)` + 감사 `file.upload deny sensitive_level_required`(detail `sensitive` = 패턴 이름 목록·건수). `team`·`admin-only` 면 저장하되 `files.sensitive_flags`(`text[]`, 패턴 이름만)를 같은 INSERT 에 넣고 `file.upload allow` detail 에 `sensitive` 를 함께 남긴다. 5.7 등급 변경에서 새 등급이 `public`·`internal` 이고 `sensitive_flags` 가 비어 있지 않으면 `decideLevelChange` 뒤에 400 `sensitive_level_required`(`file.level_change deny`). 목록(5.1)은 `sensitive` 불리언만 내려 배지를 그린다(패턴 이름은 목록에 내리지 않는다).
+
+**한계를 문서에 남긴다(R-58).** 이미지·PDF·암호 zip·스캔 문서는 검사하지 못하고, 오탐(우연히 검증 숫자가 맞는 숫자열)도 있다. 그래서 「민감」 배지는 참고이고, 등급 판단의 책임은 올리는 사람에게 있다는 문구를 업로드 화면에 둔다.
+
+---
+
 ## 6. 저장 위치 — 파일 정보 vs 실제 파일
 
 ### 6.1 두 곳에 나눠 저장하는 이유
@@ -704,6 +732,24 @@ INSERT INTO permissions VALUES
 | `team` 의 `can_read=true` 는 "같은 팀일 때" 라는 뜻 | 팀 일치 여부는 `Authz::canRead` 가 `users.team_id` 와 비교 |
 
 > **`teams` 표 (12-3, 2026-09-12)** — `id, name(UNIQUE, 1~50자), is_active, created_at, updated_at`. 팀은 지우지 않고 `is_active=false` 로 내린다(5.9). `permissions` 는 12-3 뒤에도 **앱 계정 SELECT 만** — 조직·권한 화면의 매트릭스는 읽기 전용이다(PRD Q-12).
+
+### 6.2-3 `share_links` 테이블 — 공유 링크 (15-2, PRD F-13, ARCH 5.12)
+
+| 컬럼 | 뜻 |
+|---|---|
+| `id BIGSERIAL` | 회수·목록에 쓰는 순차 id(`{num}`) |
+| `token_hash CHAR(64) UNIQUE` | 토큰의 sha256. **원문은 저장하지 않는다** |
+| `file_id BIGINT → files.id` | 어느 파일 |
+| `created_by BIGINT → users.id` | 발급자. 받을 때 감사 detail 의 `issued_by` |
+| `expires_at TIMESTAMPTZ NOT NULL` | 만료. `CHECK (expires_at <= created_at + interval '7 days')` |
+| `max_downloads INT NOT NULL` | 1~10 (`CHECK`) |
+| `download_count INT NOT NULL DEFAULT 0` | 받을 때마다 +1 (트랜잭션 안 조건부 UPDATE) |
+| `revoked_at TIMESTAMPTZ`, `revoked_by BIGINT` | 회수. 행은 지우지 않는다 |
+| `reason_text TEXT` | 선택 사유(≤500자) |
+| `created_at TIMESTAMPTZ NOT NULL DEFAULT now()` | |
+
+앱 계정 권한: `SELECT, INSERT, UPDATE` (DELETE 없음). `files` 에는 `sensitive_flags TEXT[] NOT NULL DEFAULT '{}'`(15-3, PRD F-22) 가 추가된다 — 값은 패턴 이름(`rrn`·`card`·`keyword`)만.
+
 
 ### 6.2-2 `sessions` 테이블 — DB 세션
 

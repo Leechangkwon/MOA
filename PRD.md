@@ -183,8 +183,8 @@
 | F-09 | 감사 로그 조회 | **Admin 전용** 화면. 기간·사용자·행동 필터 | 필수 |
 | F-10 | 계정 관리 | Admin이 계정 생성·비활성화·역할 변경 | 필수 |
 | F-11 | 삭제 파일 복구 | Admin이 휴지통에서 되살림 | 필수 |
-| F-12 | 내 활동 보기 | 본인 다운로드·업로드 이력 | 선택 |
-| F-13 | 만료되는 공유 링크 | 서명된 1회용 링크 (기간 만료) | 선택 |
+| F-12 | **내 활동 보기** (15-1 구현 결정 2026-09-12, 사용자 "진행해") | 화면 `/activity` + `GET /api/me/activity?page=`. **본인 행만**: SQL 이 `actor_id = 세션 본인` 을 고정하고 요청 값으로 대상을 받지 않는다. 보이는 행: `file.upload`·`file.download`·`file.preview`·`file.update`·`file.delete`·`file.restore`·`file.fetch`·`share.create`·`share.revoke`·`auth.login`·`auth.logout`·`auth.password_change`·`auth.mfa_enroll`·`auth.mfa_disable`. 보이는 칸: 시각·`summary`·결과. IP·User-Agent 는 본인 것이라도 보이지 않는다(최소 노출). 20건 페이지. 조회 자체는 기록하지 않는다(자기 이력 열람은 보안 사건이 아님) | 필수(15-1) |
+| F-13 | **만료되는 공유 링크** (15-2 구현 결정 2026-09-12; Q-5 기본안) | 파일 하나를 **로그인 없이** 토큰만으로 받는 링크 `GET /s/{token}`. **만들 수 있는 사람** = 그 파일을 고칠 수 있는 사람(5.3 규칙 = `Authz::decideEdit`: Admin 전부, Manager 본인·자기 팀, Employee 본인 파일, Guest 불가). 만료 기본 24시간·최대 7일, 다운로드 횟수 기본 1·최대 10, 사유 선택. 토큰은 32바이트 무작위(base64url 43자)이고 **DB 에는 sha256 만** 저장(세션과 같은 방식) — 링크 원문은 만들 때 한 번만 응답에 보이고 다시 볼 수 없다. 회수(revoke)는 만든 사람 또는 Admin. 받을 때 만료·회수·횟수를 확인한 뒤 sha256 대조·`attachment` 전송(F-06 과 같은 코드 경로), 실패(없음·만료·회수·소진)는 **전부 404 동일 문구**. 감사: `share.create`·`share.revoke`·`share.download allow/deny`(actor 는 없고 발급자·링크 id 를 detail 에). nginx 속도 제한 `/s/`. 화면: 파일 행 「공유 링크」 → 만료·횟수 선택 → 링크 1회 표시(복사 버튼) ; 설정 화면 「내 공유 링크」 목록·회수. **Q-5 기본안**: 사내망 밖 공개는 여전히 비목표(NG-4) — 링크는 사내망·VPN 안에서만 열린다. 외부 전달 정책은 사용자 확정 대기 | 필수(15-2) |
 | F-14 | URL로 파일 가져오기 | 허용된 외부 사이트(https)의 파일을 서버가 받아 업로드와 동일하게 저장. **S-05 13개 조건 필수**, Manager 이상 | 필수 (7단계) |
 | F-16 | **최초 로그인 강제 절차** (사용자 결정 2026-09-11) | ① Admin 이 만드는 계정은 **서버가 임시 비밀번호를 생성**해 생성 응답에 딱 한 번 돌려준다(Admin 이 비밀번호를 정하지 않는다). ② 임시 비밀번호로 처음 로그인하면 **비밀번호 변경**을 먼저 요구하고, 그 뒤 **2단계 인증(TOTP) 등록**을 요구한다. 둘을 마치기 전에는 다른 기능을 쓸 수 없다(서버가 403 으로 막고, 화면은 그 절차만 보여 준다). ③ 2단계 인증은 **모든 역할에 필수**다 — 끄면 다음 요청부터 다시 등록을 요구한다. ④ **패치 시점의 기존 활성 계정도 다음 로그인이 "최초 로그인"** 으로 취급된다(데이터 삭제·재생성 없음). ⑤ Admin 은 임시 비밀번호 재발급·2단계 인증 초기화를 할 수 있다(사유 필수, 자기 자신 금지, 대상 세션 전부 종료) | 필수 (11단계) |
 | F-17 | **오프라인 2단계 코드 생성기** (사용자 결정 2026-09-11 "우리가 만들자") | 스마트폰 인증 앱 대신 쓸 수 있는 **HTML 파일 하나**(`public/assets/totp-generator.html`). 브라우저에서 파일로 열어 비밀 키(base32) 또는 `otpauth://` 주소를 붙이면 RFC 6238 TOTP 6자리와 남은 초를 보여 준다. **네트워크 요청 0, 외부 스크립트 0**, 비밀 키는 기본으로 메모리에만(선택 시 그 브라우저에만 저장, 지우기 버튼). 공개 시험값(RFC 6238 부록 B)으로 자체 점검하는 버튼 포함. 로그인 서버가 아니라 **사용자 PC 에 두는 것**이 전제 — 같은 PC 에 두면 두 번째 겹이 "그 PC" 로 약해진다는 안내를 파일 안에 적는다(SECURITY R-40) | 선택 (11단계 부록) |
@@ -193,6 +193,7 @@
 | F-19 | **조직·권한 관리** (사용자 요청 2026-09-12 "조직 권한 관리 기능도 추가") | Admin 전용 화면 `/org`. ① **팀 관리**: 팀 생성·이름 변경·비활성화(삭제 대신 — 파일·감사 기록이 참조하므로 행을 지우지 않는다), 비활성 팀에는 새 배정·새 업로드 불가. 비활성화는 **활성 구성원이 0명일 때만**(먼저 재배정). ② **구성원 배정**: 팀별 구성원(아이디·역할·활성) 표시, 배정·해제는 기존 `PATCH /api/users/{uid}` 의 `team_id` 변경을 그대로 쓴다(사유 필수). ③ **권한 매트릭스 조회**: 5.1·5.2 의 16행을 `permissions` 표에서 읽어 **읽기 전용**으로 보여 준다. 편집 기능은 넣지 않는다 — `permissions` 는 앱 계정이 SELECT 만 갖는 것이 권한 상승 방어의 핵심(9장, ARCH 6.2-1)이라 사용자 결정(Q-12) 전에는 바꾸지 않는다. 모든 변경은 사유 필수 + `team.create`·`team.update` 감사 기록(before/after) | 필수 (12단계) |
 | F-20 | **기능별 화면 분리 + 디자인 개선** (사용자 요청 2026-09-12 "현재는 1페이지에 모든 기능이 다 나오고 있는데, 파일 관련이면 파일로, 계정 관련이면 환경 설정으로") | 한 페이지에 쌓여 있던 기능을 **공통 셸(좌측 내비) + 기능별 페이지**로 나눈다: 파일(`/`)·휴지통(`/trash`)·설정—내 계정(`/settings`)·관리—계정(`/users`)·조직·권한(`/org`)·감사 로그(`/audit`). 내비 항목은 서버 `/api/me` 의 `can_*` 플래그로만 열리고, 각 페이지·API 는 라우트 정책이 다시 막는다(S-01 — 내비를 되살려도 403). 디자인은 Claude Design 캔버스(STAGES 12단계)에서 정한 토큰·레이아웃을 `app.css` 하나로 구현, **외부 폰트·CDN 없음**(CSP `self`). 최초 로그인 강제 절차(F-16)는 파일 화면(`/`)에만 있고, 절차 중 다른 화면은 `/` 로 돌려보낸다 | 필수 (12단계) |
 | F-21 | **위키 — 이 서비스가 어떻게 만들어졌나(초보자용)** (사용자 요청 2026-09-12 "홈페이지에 위키를 만들어줘 — PRD·ARCHITECTURE·SECURITY·STAGES 를 단계별로 나누어 상세 내용을 조회, 초보자가 이해할 수 있는 용어 위주") | 화면 `/wiki`(차례) · `/wiki/{slug}`(글 한 편). **원문(md)을 그대로 보여 주지 않는다** — 네 문서를 초보자 말로 다시 쓴 **해설 층**이며, 글마다 「원문 위치」(PRD 절·ARCH 절·SECURITY R-xx·STAGES 단계)를 가리킨다. 구성: ① 안내 글(이 서비스는 무엇인가 · 용어 사전 · 역할과 접근 등급 · 보안 요구사항 S-01~S-11 쉬운 설명 · 남은 위험 R-xx 요약 · 어떻게 검토하나 T-xx · 2026-09-11 사고 요약 · 문서 지도) ② **단계 글 1~13**(각 글은 「왜 필요한가 → 무엇을 만들었나 → 어떻게 확인했나 → 남은 위험 → 직접 해보기 → 원문 위치」 순). 내용은 저장소 `wiki/*.json`(구조화된 본문, HTML 0)에 두고 서버가 이스케이프해 그린다(ARCH 5.10). **열람은 Admin 만**(`role:Admin`) — SECURITY·STAGES 해설에는 남은 위험·서버 계정·사고 경위가 들어 있어 Guest·Employee 에게 보이면 공격 지도가 된다(SECURITY R-56). 넓히려면 라우트 정책 한 줄을 바꾸고 R-56 을 다시 판단한다. 감사 기록은 남기지 않는다(문서 열람은 보안 사건이 아니며, `audit.view` 와 달리 개인정보가 없다) |
+| F-22 | **민감정보 패턴 검출** (15-3 구현 결정 2026-09-12; 확장 아이템 제안 2순위) | 업로드(F-05)와 URL 가져오기(F-14)에서 **같은 자리**(형식 검사 뒤·저장 전)에 한 번 실행. 대상은 미리보기(F-18)가 글자를 뽑을 수 있는 형식(text·table·office)이며 상한도 미리보기 상수를 재사용한다. 패턴: ① 주민등록번호(`6자리-7자리` + 검증 숫자) ② 신용카드 번호(13~19자리 + Luhn) ③ 키워드 목록(`급여`·`연봉`·`주민번호`·`계좌번호`·`여권번호` — 코드 상수). 규칙: 검출되면 `public`·`internal` 로는 올릴 수 없다(400 `sensitive_level_required`, 화면 문구 "민감정보가 보여 team 또는 admin-only 로만 올릴 수 있습니다"). `team`·`admin-only` 는 허용하되 `files.sensitive_flags`(패턴 이름 목록)를 저장하고 목록에 「민감」 배지, 그 뒤 `public`·`internal` 로 **낮추는 변경도 거부**(F-08). 감사 detail 에는 **패턴 이름과 건수만**(값은 절대 기록하지 않음, S-07). **한계(SECURITY R-58)**: 이미지·PDF·암호 zip·이미지로 찍은 문서는 검사하지 못하고, 오탐(우연히 형식이 맞는 숫자)도 있다 — 검출은 보조 장치이고 등급 판단은 올리는 사람의 책임이다 | 필수(15-3) |
 
 ---
 
@@ -580,6 +581,11 @@
 | GET | `/api/teams` | (기존) 배정·업로드 선택지용 팀 목록 — **활성 팀만** (12단계부터) | 세션 존재 | 401 |
 | GET | `/`·`/trash`·`/settings`·`/users`·`/org`·`/audit` | 화면(HTML). 정책은 각각 `authenticated`·`role:Admin`·`authenticated`·`user.manage`·`org.manage`·`audit.read`. 강제 절차(F-16) 중 `/` 외 화면 요청은 **302 → `/`** (API 는 기존대로 403+next) | 라우트 정책 | 302 / 401 / 403 |
 | GET | `/wiki` · `/wiki/{slug}` | 위키 차례 · 글 한 편(HTML, F-21). `{slug}` 는 `[a-z0-9][a-z0-9-]{0,39}`(첫 글자는 영문 소문자·숫자). 없는 글은 404 동일 문구 | `role:Admin` | 없음(글 본문은 저장소 파일, 요청 값은 slug 하나) |
+| GET | `/activity` · `/api/me/activity?page=` | 내 활동 화면 · 본인 감사 행 20건씩 (F-12). 대상은 언제나 세션 본인 | `authenticated` | 없음(조회) |
+| POST | `/api/files/{id}/share` | 공유 링크 만들기 (F-13). 본문 `{expires_hours(1~168, 기본 24), max_downloads(1~10, 기본 1), reason_text?}`. 응답 `{id, url, expires_at, max_downloads}` — `url` 은 이 응답에만 | `file.update` → 핸들러 `decideRead`·`decideEdit` | `share.create` allow/deny |
+| GET | `/api/me/shares` | 내가 만든 공유 링크 목록(회수·만료 포함, 토큰 없음) (F-13) | `authenticated` | 없음 |
+| DELETE | `/api/shares/{num}` | 공유 링크 회수 (F-13). 만든 사람 또는 Admin(`Authz::decideShareRevoke`) | `authenticated` | `share.revoke` allow/deny |
+| GET | `/s/{token}` | 공유 링크로 받기 (F-13). `{token}` 은 `[A-Za-z0-9_-]{43}`. 만료·회수·소진·없음 전부 404 동일 문구. 성공 시 `attachment` | `public` | `share.download` allow/deny(actor 없음, detail 에 발급자·링크 id) |
 
 ---
 
@@ -590,9 +596,10 @@
 | `users` | `id, username, password_hash, role, team_id, is_active, failed_count, locked_until, created_at` | 비밀번호는 해시만. 역할은 4종 제한 |
 | `teams` | `id, name` | Manager·Employee가 소속. `team` 레벨 판정에 필요 |
 | `permissions` | `role, access_level, can_read, can_upload` | 5.1·5.2 매트릭스를 **데이터**로 보관(16행). 앱 계정은 SELECT만 — 화면·API로 수정 불가(권한 상승 방지). 소유자·팀 규칙(5.3)은 코드(`Authz`) |
-| `files` | `id, original_name, stored_name, mime, ext, size_bytes, sha256, description, access_level, team_id, uploaded_by, created_at, deleted_at, scan_status` | 실제 파일은 DB에 넣지 않고 경로만 보관. `deleted_at`으로 논리 삭제 |
+| `files` | `id, original_name, stored_name, mime, ext, size_bytes, sha256, description, access_level, team_id, uploaded_by, created_at, deleted_at, scan_status, sensitive_flags(text[], F-22)` | 실제 파일은 DB에 넣지 않고 경로만 보관. `deleted_at`으로 논리 삭제 |
 | `audit_logs` | 7.7의 항목 전체 | Append-only |
 | `sessions` | `id(토큰 해시), user_id, created_at, last_seen_at, expires_at, ip, user_agent` | **DB 세션** (PHP 파일 세션 미사용). 쿠키에는 무작위 토큰만, DB에는 그 SHA-256. 비활성화·비밀번호 변경 시 해당 사용자 행 전체 삭제 → 모든 기기 즉시 로그아웃 (R-10) |
+| `share_links` | `id, token_hash(char64), file_id, created_by, expires_at, max_downloads, download_count, revoked_at, revoked_by, reason_text, created_at` | F-13. 토큰 원문은 저장하지 않는다. 앱 계정은 SELECT·INSERT·UPDATE 만(회수·횟수는 UPDATE, 행 삭제 없음 — 감사 추적) |
 
 **제약 조건**
 - `files.access_level` 은 `public|internal|team|admin-only` 중 하나 (DB CHECK 제약)
@@ -618,6 +625,9 @@
 | 설정 — 내 계정 (`/settings`) | 내 정보(아이디·역할·팀) · 비밀번호 변경 · 2단계 인증(켜기/끄기·생성기 안내) | 대상은 언제나 세션의 본인 |
 | 조직·권한 (`/org`, F-19) | 팀 카드(이름·활성·구성원 수·파일 수) · 팀 생성/이름 변경/비활성화(사유 필수) · 팀 구성원 표 + 배정(계정 선택·사유) · 권한 매트릭스 표(읽기 전용, "편집 불가 — 이유" 안내) | Admin 만 (`org.manage`). 매트릭스 편집 UI 없음 |
 | 위키 (`/wiki`, F-21) | 차례: 안내 글 목록 + **단계 카드 1~13**(단계 번호·제목·한 줄 요약·상태) → 글: 제목·요약·차례(절 목록)·절마다 본문 블록(문단·목록·번호 목록·표·코드·말풍선[왜/어떻게/확인/위험/해보기/용어]·원문 위치) · 이전/다음 단계 이동 | Admin 만. 본문은 `wiki/*.json` 을 서버가 이스케이프해 그림(HTML·URL 삽입 없음, S-03). 말은 초보자 기준: 새 용어는 처음에 괄호 풀이, 영어 약어는 한글 뜻 병기 |
+| 내 활동 (`/activity`, F-12) | 본인 행동 표(시각·요약·결과) + 페이지 이동 | 본인 것만. IP·기기 정보는 보이지 않음 |
+| 공유 링크 (파일 행 버튼 → 모달, 설정 「내 공유 링크」, F-13) | 만료(1~168시간)·횟수(1~10)·사유 → 만든 뒤 링크 1회 표시 + 복사 ; 목록: 파일명·만료·남은 횟수·상태·「회수」 | 링크는 다시 볼 수 없다는 안내. 고칠 수 있는 파일에만 버튼 |
+| 민감정보 배지 (목록, F-22) | `sensitive_flags` 가 있으면 파일명 옆 「민감」 배지, 업로드 거부 시 등급 안내 문구 | 배지는 표시일 뿐 판단은 서버 |
 
 ---
 
@@ -673,6 +683,9 @@
 | T-30 | 로그인 뒤 검증도 잠긴다 (S-09-4, R-48) | 세션으로 `POST /api/me/password` 틀린 현재 비밀번호 5회 → 이후 로그인 423, `auth.password_change deny` 5행. `mfa/disable` 비밀번호 오류·코드 오류 응답 문구 동일 |
 | T-31 | TOTP 코드 1회성 (R-45) | 같은 코드로 로그인 2회 → 두 번째 401 + `auth.mfa deny code_reused`. 잠금 만료 10분 뒤 실패 1회 → 잠기지 않음(R-49) |
 | T-32 | 위키 권한·출력 안전 (F-21, S-01, S-03) | Employee·Manager·Guest 세션으로 `/wiki`·`/wiki/1단계-slug` → 403 + `authz.route deny`. Admin → 200. 없는 slug·`/wiki/../x`·대문자 slug → 404. 시험용 JSON 에 `<script>alert(1)</script>`·`"onload=` 를 넣어 그리면 **글자 그대로**(이스케이프) 보이고 알림 없음. `scripts/wiki_check.php` 가 전 글 구조 검사 통과 |
+| T-33 | 내 활동은 본인만 (F-12, S-02) | Employee A 세션으로 `/api/me/activity` → A 의 행만(다른 계정 이름 0건), `?actor=`·`?user_id=` 같은 파라미터는 무시. 응답에 `ip`·`user_agent` 키 없음. 미로그인 401 |
+| T-34 | 공유 링크 (F-13, S-01) | Employee 가 남의 파일에 `POST …/share` → 403 + `share.create deny`; 본인 파일 → 201 + `url`. 쿠키 없이 `GET /s/{token}` → 200 attachment + `share.download allow`(actor 없음). 같은 토큰 2회째(횟수 1) → 404 + `deny exhausted`. 회수 뒤 → 404 `deny revoked`. 만료 지난 링크(DB 시각 조작) → 404 `deny expired`. 틀린 토큰 → 404 동일 문구. `expires_hours=999`·`max_downloads=0` → 400. DB `share_links` 에 토큰 원문 없음(`token_hash` 64자만). `/s/` 12회 연타 → 429 |
+| T-35 | 민감정보 검출 (F-22, S-07) | 주민등록번호 형식 문자열이 든 `.txt` 를 `public` 으로 → 400 `sensitive_level_required` + 감사 deny(detail 에 패턴 이름만, 숫자 원문 0건). 같은 파일 `team` → 201 + `sensitive_flags` 저장 + 목록 배지. 그 파일을 `internal` 로 PATCH → 400. 카드 번호(Luhn 통과) `.csv` → 같은 동작. 우연 숫자(Luhn 실패) → 통과. 이미지 파일은 검사하지 않음(한계 명시) |
 
 ### 12.3 애플리케이션 밖 (S-10, S-11)
 
@@ -715,6 +728,7 @@
 | **12** (사용자 요청 2026-09-12) | **12-1** 공통 셸·기능별 화면 분리·디자인(F-20) → **12-2** 미리보기(F-18) → **12-3** 조직·권한 관리(F-19). 셋을 차례로 구현·검토·커밋 | F-18, F-19, F-20, S-01, S-03, S-07 | 내비 `hidden` 을 되살려 `/org`·`/trash` 열기 → 403(Employee). 남의 팀 team 파일 `/preview`·`/preview/raw` → 403. PDF 미리보기 iframe 안에서 스크립트가 도는지(`sandbox` 확인). csv 에 `<img onerror>` 넣어 표에 글자 그대로. 비활성 팀으로 업로드 → 400. Manager 로 `POST /api/org/teams` → 403 + 감사 기록 | T-24 ~ T-27 |
 | **13** (전면 점검 후속, 사용자 결정 2026-09-12) | 감사 기록기 문자 단위 자르기(R-47) · 해시 체인 어제 봉인·재봉인(R-50) · 로그인 뒤 비밀번호·OTP 검증에 실패 집계·잠금·문구 통일(R-48) · 잠금 만료 시 카운터 재시작(R-49) · TOTP 코드 1회성(R-45) | S-07, S-09-4, R-45, R-47~R-50 | 한글 170자 이름 업로드 거부·허용 모두 감사 행 존재(T-28) · `audit_chain.php --verify` 통과(T-29) · `/api/me/password` 틀린 비밀번호 5회 → 423(T-30) · 같은 TOTP 코드 2회째 401(T-31) | — |
 | **14** (사용자 요청 2026-09-12) | **위키(F-21)** — 초보자용 해설 글(안내 8편 + 단계 1~13) `wiki/*.json`, 서버 렌더러 `src/Wiki.php`, 화면 `/wiki`·`/wiki/{slug}`(Admin), 내비 「위키」, 구조 검사 `scripts/wiki_check.php` | F-21, S-01, S-03, R-56 | T-32 | F-21 |
+| **15** (확장 아이템, 사용자 "진행해" 2026-09-12) | **15-1** 내 활동 보기(F-12) → **15-2** 만료 공유 링크(F-13, Q-5 기본안) → **15-3** 민감정보 패턴 검출(F-22) | F-12, F-13, F-22, S-01, S-02, S-07 | T-33 · T-34 · T-35 | F-12, F-13, F-22 |
 
 **과제 제출물 대응**
 
@@ -735,7 +749,7 @@
 | Q-2 | 사내 SSO(LDAP·SAML)와 연동할지, 자체 계정으로 갈지 | 1단계 | 과제 범위에서는 **자체 계정**으로 진행 |
 | Q-3 | 악성코드 스캔(ClamAV)을 MVP에 포함할지 | 6단계 | **결정(2026-09-11): 과제 범위에서는 미포함.** 사유: 실습 VM 에 ClamAV 미설치·디스크 89% 사용·새 패키지는 S-10-C 심사 대상. `files.scan_status` 컬럼과 다운로드 시 `pending/infected` 차단 자리(ARCH 5.3 [4])는 유지해 운영 전환 시 스캐너만 붙이면 되게 한다. R-02 는 ◐ 유지 |
 | Q-4 | 원격 백업 저장소를 어디로 할지(사내 NAS / 클라우드) | 9단계 | 미결 |
-| Q-5 | 만료 공유 링크(F-13)의 대외 공유 정책 | 10단계 | 미결 |
+| Q-5 | 만료 공유 링크(F-13)의 대외 공유 정책 | 10단계 | **기본안 적용(Fable 2026-09-12, 사용자 "진행해" 로 15단계 착수)**: 링크는 사내망·VPN 안에서만 열린다(NG-4 유지), 로그인 없이 토큰만, 만료 최대 7일·횟수 최대 10, 만든 사람=고칠 수 있는 사람, 회수 가능, 전부 감사. **외부(인터넷) 전달 허용 여부·최대 기간 조정은 사용자 확정 대기** |
 | Q-6 | 권한 없음 응답 코드 | 4단계 전 | **결정(2026-09-08): 403 통일**, 동일 문구, UUID 외부 ID |
 | Q-7 | SSRF 대상 기능 | 7단계 전 | **결정(2026-09-08): 만든다** (F-14). S-05 13개 조건 필수 |
 | Q-10 | F-14 허용 도메인 초기 목록 | 7단계 전 | **결정(2026-09-08): 비움(전부 거부)**. 필요 시 정적 파일 호스트만 추가. Google Drive 류는 리다이렉트 때문에 비호환. F-14 권한은 **Manager 이상** 확정 |
