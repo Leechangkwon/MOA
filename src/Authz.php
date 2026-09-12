@@ -84,6 +84,11 @@ final class Authz
     public const CODE_NOT_OWNER          = 'not_owner';
     /** 5단계 — 등급을 낮추는 변경은 Admin 만 (PRD 4장·5.3, ARCH 4.1 표) */
     public const CODE_DOWNGRADE_NOT_PERMITTED = 'downgrade_not_permitted';
+    /**
+     * 18-1 — 폴더 불변 규칙 ①: 하위(파일·폴더)의 등급이 부모 폴더보다 **넓다**
+     * (PRD F-26, ARCH 5.16). `fitsUnderFolder` 가 돌려주는 유일한 거부 코드다.
+     */
+    public const CODE_PARENT_NARROWER = 'parent_narrower';
     /** 10단계 — 계정 관리(F-10) 거부 코드 (ARCH 7.4 `user.*|deny|…` 행) */
     public const CODE_SELF_CHANGE = 'self_change';   // 자기 역할 변경·자기 비활성화
     public const CODE_LAST_ADMIN  = 'last_admin';    // 마지막 활성 Admin 을 낮추거나 끄기
@@ -191,6 +196,35 @@ final class Authz
      */
     public static function visibleFilesWhere(array $u): array
     {
+        return self::visibleWhere($u, 'f');
+    }
+
+    /**
+     * 18-1 — 같은 조건을 **다른 표에도** 붙이기 위해 별칭을 받는 일반형 (PRD F-26, ARCH 5.16).
+     *
+     * 폴더도 파일과 같은 등급 체계를 갖게 되면서(사용자 결정 2026-09-13) 트리 조회
+     * (`folders_list.php`)도 똑같은 조건을 `folders d` 에 붙여야 한다. 조건 문자열을 그쪽에
+     * 복사해 두면 언젠가 한쪽만 고쳐져 어긋난다 — 그래서 **판정 조건은 이 함수 하나**이고
+     * `visibleFilesWhere` 는 별칭 `f` 를 넣어 이것을 부르는 얇은 껍데기다(기존 호출부 무변경).
+     *
+     * 별칭은 **SQL 식별자 자리**라 바인딩할 수 없다. 그래서 코드에 적힌 허용 목록
+     * (`f` = files · `d` = folders) 밖의 값은 예외로 끝낸다 — 요청 값이 이 자리에 닿는 경로는
+     * 어디에도 없지만(부르는 쪽이 리터럴을 넘긴다), 허용 목록 없이 이어 붙이기 시작하면
+     * 언젠가 값이 섞인다 (PRD S-04, ARCH 5.1 [3] ORDER BY 와 같은 원칙).
+     *
+     * @param array<string,mixed> $u
+     * @param string              $alias 코드에 적힌 리터럴만 (`f` 또는 `d`)
+     * @return array{0:string,1:array<string,mixed>}
+     */
+    public static function visibleWhere(array $u, string $alias): array
+    {
+        if (!in_array($alias, ['f', 'd'], true)) {
+            throw new RuntimeException('허용되지 않는 테이블 별칭입니다');
+        }
+        // `folders` 에는 논리 삭제가 없다 — 빈 폴더는 실제로 지운다(ARCH 5.16 "삭제").
+        // 조건의 모양을 하나로 유지하려고 그쪽에는 언제나 참인 조각을 둔다.
+        $alive = $alias === 'f' ? $alias . '.deleted_at IS NULL' : 'TRUE';
+
         $role   = (string) $u['role'];
         $teamId = $u['team_id'] === null ? null : (int) $u['team_id'];
         $levels = self::readableLevels($role);
@@ -207,23 +241,23 @@ final class Authz
                 $ph[]        = $name;
                 $params[$name] = $lvl;
             }
-            $clauses[] = 'f.access_level IN (' . implode(', ', $ph) . ')';
+            $clauses[] = $alias . '.access_level IN (' . implode(', ', $ph) . ')';
         }
 
         if (in_array('team', $levels, true)) {
             if (self::seesAllTeams($role)) {
-                $clauses[] = "f.access_level = 'team'";
+                $clauses[] = $alias . ".access_level = 'team'";
             } elseif ($teamId !== null) {
-                $clauses[]        = "(f.access_level = 'team' AND f.team_id = :own_team)";
+                $clauses[]        = '(' . $alias . ".access_level = 'team' AND " . $alias . '.team_id = :own_team)';
                 $params[':own_team'] = $teamId;
             }
         }
 
         if ($clauses === []) {
             // 볼 수 있는 것이 하나도 없는 경우에도 삭제 조건을 함께 둔다(형태를 하나로 유지).
-            return ['(f.deleted_at IS NULL AND FALSE)', []];
+            return ['(' . $alive . ' AND FALSE)', []];
         }
-        return ['(f.deleted_at IS NULL AND (' . implode(' OR ', $clauses) . '))', $params];
+        return ['(' . $alive . ' AND (' . implode(' OR ', $clauses) . '))', $params];
     }
 
     /**
@@ -634,6 +668,93 @@ final class Authz
             return [true, self::CODE_OWNER];
         }
         return [false, self::CODE_NOT_OWNER];
+    }
+
+    /**
+     * 18-1 폴더 이름 변경·이동·삭제 (PRD F-26, ARCH 5.16 "권한 판정", 4.1 표).
+     *
+     * 규칙과 코드는 **파일의 소유자·팀 규칙(decideOwnership)과 한 글자도 다르지 않다**:
+     *   Admin    모두                      `admin_all`
+     *   Manager  본인이 만든 폴더          `owner`
+     *            폴더 team_id = 자기 팀    `team_scope`
+     *            남의 팀 폴더              `team_mismatch`  / 팀 없는 남의 폴더 `not_owner`
+     *   Employee 본인이 만든 폴더          `owner`  / 그 밖 `not_owner`
+     *   Guest                              `role_not_permitted`
+     *
+     * 구현을 복사하지 않고 decideOwnership 을 **그대로 부른다** — 두 규칙이 같아야 하는데
+     * 코드가 두 벌이면 언젠가 한쪽만 고쳐져 어긋난다(decideDelete·decideEdit 과 같은 이유).
+     * 그래서 폴더 행의 `created_by`·`team_id` 를 파일 행이 쓰는 이름으로 옮겨 넘긴다.
+     * 새 판정 코드를 만들지 않으므로 7.4 사유 등록부·7.5 granted_by 표가 그대로 성립한다.
+     *
+     * 이 함수는 **"이 폴더를 고칠 자격이 있나"** 만 판단한다. 읽을 수 있나는 파일과 같은
+     * `decideRead`(폴더 행에도 access_level·team_id 가 있다)가, 등급을 바꿀 수 있나는 파일과
+     * 같은 `decideLevelChange` 가, 무엇을 안에 둘 수 있나는 `fitsUnderFolder` 가 본다 —
+     * 넷 다 판정이 한 곳에 모여 있고 폴더라고 해서 다른 표를 쓰지 않는다 (ARCH 5.16).
+     *
+     * @param array<string,mixed> $actor  요청을 보낸 사용자 (세션에서 읽은 값)
+     * @param array<string,mixed> $folder folders 행 (created_by 필수, team_id 는 NULL 가능)
+     * @return array{0:bool,1:string} [허용 여부, 코드]
+     */
+    public static function decideFolderChange(array $actor, array $folder): array
+    {
+        return self::decideOwnership($actor, [
+            'uploaded_by' => $folder['created_by'],
+            'team_id'     => $folder['team_id'] ?? null,
+        ]);
+    }
+
+    /**
+     * 18-1 불변 규칙 ① — "하위는 부모 폴더보다 넓을 수 없다" (PRD F-26, ARCH 5.16).
+     *
+     * **무엇을 보장하나.** 사용자 결정은 "폴더에 접근해도 권한이 없으면 파일을 못 본다" 였다.
+     * 그 두 겹(폴더 등급 + 파일 등급)을 **판정마다 두 번 검사하지 않고** 쓰기 시점에 한 번
+     * 강제한다: 폴더 안에 들어가는 것(파일이든 하위 폴더든)의 등급이 폴더보다 넓지 않으면,
+     * 매트릭스가 등급 순서에 대해 단조인 한 **"안의 것이 보이면 그 폴더도 보인다"** 가
+     * 성립한다. 그래서 목록·검색 SQL 은 지금의 `visibleFilesWhere`(파일 조건만) 그대로다.
+     * (단조성 자체는 F-25 불변 규칙 (f) 가 지킨다 — 매트릭스를 편집해도 깨지지 않는다.)
+     *
+     * **규칙 두 줄.**
+     *   ㉠ `LEVEL_RANK[하위 등급] >= LEVEL_RANK[폴더 등급]` — 좁거나 같아야 한다.
+     *   ㉡ 폴더가 `team` 이고 **하위도 `team` 이면** 두 `team_id` 가 같아야 한다.
+     *      (`team` 은 "같은 팀이면" 이라는 전제가 붙은 등급이라, 팀이 다르면 rank 가 같아도
+     *       서로 못 보는 사이다 — 그 경우는 rank 비교만으로 걸러지지 않는다.)
+     *      하위가 `admin-only` 면 팀을 보지 않는다: `admin-only` 는 `team` 보다 **좁고**,
+     *      그것을 읽을 수 있는 역할(Admin)은 어느 팀의 `team` 폴더든 읽을 수 있어
+     *      "안의 것이 보이면 그 폴더도 보인다" 가 그대로 성립하기 때문이다
+     *      (2026-09-13 검토 결정 — 그전에는 팀 없는 `admin-only` 를 `team` 폴더에 둘 수 없었다).
+     *
+     * **부르는 곳은 7경로**다 (ARCH 5.16, SECURITY R-63): 업로드 · URL 가져오기 · 파일 이동 ·
+     * 파일 등급 변경 · 폴더 생성 · 폴더 이동 · 폴더 등급 변경. 한 경로라도 빠지면 규칙이
+     * 무너지므로 판정은 이 함수 하나에만 둔다.
+     *
+     * 허용일 때 돌려주는 코드는 **빈 문자열**이다 — 이 함수는 "누가 해도 되나"(인가)가 아니라
+     * "무엇이 어디에 들어갈 수 있나"(제약)를 보는 것이라 `granted_by` 에 적을 근거가 없다.
+     * 부르는 쪽은 거부일 때의 코드(`parent_narrower`)만 기록에 쓴다.
+     *
+     * @param string              $level   하위의 접근 등급 (4종 중 하나. 그 밖은 거부)
+     * @param int|null            $teamId  하위의 team_id (team 등급이 아니면 null)
+     * @param array<string,mixed> $folder  folders 행 (access_level·team_id 필수)
+     * @return array{0:bool,1:string} [들어갈 수 있나, 거부 코드]
+     */
+    public static function fitsUnderFolder(string $level, ?int $teamId, array $folder): array
+    {
+        $folderLevel = (string) $folder['access_level'];
+        $folderTeam  = $folder['team_id'] === null ? null : (int) $folder['team_id'];
+
+        if (!isset(self::LEVEL_RANK[$level], self::LEVEL_RANK[$folderLevel])) {
+            // 알 수 없는 등급 문자열 — 기본 거부. (부르는 쪽이 이미 4종으로 좁히지만 다시 본다)
+            return [false, self::CODE_PARENT_NARROWER];
+        }
+        if (self::LEVEL_RANK[$level] < self::LEVEL_RANK[$folderLevel]) {
+            return [false, self::CODE_PARENT_NARROWER];
+        }
+        // 팀 일치는 **둘 다 `team` 일 때만** 본다 (위 ㉡). 하위가 `admin-only` 면 rank 로 충분하다.
+        if ($folderLevel === 'team' && $level === 'team'
+            && ($teamId === null || $teamId !== $folderTeam)
+        ) {
+            return [false, self::CODE_PARENT_NARROWER];
+        }
+        return [true, ''];
     }
 
     /** 업로드 자체가 가능한 역할인가 (Guest 는 불가 — PRD 5.2) */

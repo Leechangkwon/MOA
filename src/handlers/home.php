@@ -105,19 +105,34 @@ require __DIR__ . '/../views/shell_top.php';
         </p>
       </div>
       <form id="upload-form" class="form form--grid" autocomplete="off">
+        <!-- 18-2 일괄 업로드 (F-27, ARCH 5.17) — 여러 개를 고르거나 끌어 놓는다.
+             **서버 계약은 그대로**다: 파일 하나 = 요청 하나이고, app.js 가 순서대로 보낸다. -->
+        <div class="field field--full">
+          <span class="field__label">파일 (여러 개 선택 가능 · 한 번에 최대 50개)</span>
+          <div id="upload-drop" class="dropzone">
+            <p class="dropzone__text">여기에 파일을 끌어 놓거나 아래에서 고르세요</p>
+            <input id="upload-file" type="file" multiple required>
+          </div>
+          <p id="upload-picked" class="muted"></p>
+        </div>
         <label class="field">
-          <span class="field__label">파일</span>
-          <input id="upload-file" type="file" required>
+          <span class="field__label">폴더</span>
+          <!-- 선택지는 app.js 가 서버에서 받은 폴더로만 채운다. 기본값은 지금 열어 둔 폴더다
+               (구글 드라이브처럼 등급도 그 폴더 것을 물려받는다 — ARCH 5.16 「구글 드라이브와 비교」).
+               어디에 올릴 수 있는지는 서버가 매 요청 다시 판단한다 (PRD S-01). -->
+          <select id="upload-folder"></select>
         </label>
         <label class="field">
-          <span class="field__label">설명 (선택, 500자 이내)</span>
+          <span class="field__label">설명 (선택, 500자 이내 · 고른 파일 전부에 같은 설명)</span>
           <input id="upload-description" type="text" maxlength="500">
         </label>
         <label class="field">
           <span class="field__label">접근 레벨 (필수)</span>
           <!-- 선택지는 /api/me 의 upload_levels 로 app.js 가 채운다 (서버가 정한다).
                맨 앞의 "접근 레벨을 선택하세요" 자리표시(value="" disabled)도 app.js 가 넣는다 —
-               고르지 않고 올리는 일을 막기 위해서다. -->
+               고르지 않고 올리는 일을 막기 위해서다.
+               18-1: 폴더를 고르면 그 폴더보다 넓은 등급은 목록에서 빠진다(서버가 400 으로 막는 것을
+               화면이 미리 알려 주는 편의일 뿐이다). -->
           <select id="upload-level" required></select>
         </label>
         <label class="field" id="upload-team-field" hidden>
@@ -126,6 +141,21 @@ require __DIR__ . '/../views/shell_top.php';
         </label>
         <button id="upload-submit" class="btn" type="submit">올리기</button>
       </form>
+
+      <!-- 파일별 진행 표 (F-27). 행은 app.js 가 createElement + textContent 로만 만든다.
+           거부 사유는 **서버가 준 문구 그대로** 넣는다 — 브라우저가 사유를 추측하지 않는다. -->
+      <div id="upload-progress" class="table-wrap" hidden>
+        <table class="files upload-status">
+          <thead>
+            <tr>
+              <th scope="col">파일</th>
+              <th scope="col">크기</th>
+              <th scope="col">상태</th>
+            </tr>
+          </thead>
+          <tbody id="upload-status-body"></tbody>
+        </table>
+      </div>
     </section>
 
     <section class="panel" id="fetch-panel" hidden>
@@ -137,6 +167,10 @@ require __DIR__ . '/../views/shell_top.php';
         <label class="field">
           <span class="field__label">주소 (https 만 · 허용된 사이트만)</span>
           <input id="fetch-url" type="url" maxlength="2048" required>
+        </label>
+        <label class="field">
+          <span class="field__label">폴더</span>
+          <select id="fetch-folder"></select>
         </label>
         <label class="field">
           <span class="field__label">설명 (선택, 500자 이내)</span>
@@ -155,6 +189,30 @@ require __DIR__ . '/../views/shell_top.php';
       </form>
     </section>
 
+    <!-- ─── 폴더 (18-1 — PRD F-26, ARCH 5.16) ────────────────────────────────
+         좌측은 **읽을 수 있는 폴더만** 담긴 트리다. 못 읽는 폴더는 감춰진 것이 아니라
+         서버 응답에 아예 없다 (PRD S-02). 이름·등급 배지는 전부 textContent 로 들어간다.
+         트리는 `GET /api/folders?parent=` 로 **한 층씩** 받는다. -->
+    <div class="workspace">
+      <aside class="foldertree" id="folder-pane" aria-label="폴더">
+        <div class="foldertree__head">
+          <h2 class="foldertree__title">폴더</h2>
+          <button id="folder-new" class="btn btn--quiet btn--small" type="button" hidden>새 폴더</button>
+        </div>
+        <!-- 폴더 이름은 **읽을 수 있는 사람 모두**에게 보이는 메타데이터다 (SECURITY R-63). -->
+        <p class="foldertree__note">폴더 이름에는 민감한 말(사람 이름·금액·사건명)을 넣지 마세요. 이름은 그 폴더를 볼 수 있는 사람 모두에게 보입니다.</p>
+        <nav class="crumbs" id="folder-crumbs" aria-label="폴더 경로"></nav>
+        <ul class="foldertree__list" id="folder-list"></ul>
+        <p id="folder-empty" class="muted" hidden>하위 폴더가 없습니다.</p>
+        <div class="foldertree__actions" id="folder-actions" hidden>
+          <button id="folder-rename" class="btn btn--quiet btn--small" type="button">이름 변경</button>
+          <button id="folder-level" class="btn btn--quiet btn--small" type="button">등급 변경</button>
+          <button id="folder-delete" class="btn btn--quiet btn--small" type="button">삭제</button>
+        </div>
+        <p id="folder-msg" class="msg"></p>
+      </aside>
+
+      <div class="workspace__main">
     <form id="search-form" class="toolbar" autocomplete="off">
       <input id="search-q" type="search" maxlength="200" placeholder="파일명 · 설명 검색">
       <select id="search-sort" aria-label="정렬 기준">
@@ -178,6 +236,9 @@ require __DIR__ . '/../views/shell_top.php';
               <th scope="col">크기</th>
               <th scope="col">레벨</th>
               <th scope="col">팀</th>
+              <!-- 18-1 — 검색 결과일 때만 보이는 「폴더」 경로 열. 값은 서버가 준
+                   folder_path 를 app.js 가 textContent 로 넣는다 (PRD S-03). -->
+              <th scope="col" id="files-folder-head" hidden>폴더</th>
               <th scope="col">올린 사람</th>
               <th scope="col">올린 시각</th>
               <th scope="col">설명</th>
@@ -198,6 +259,83 @@ require __DIR__ . '/../views/shell_top.php';
     </section>
 
     <p class="muted">내가 볼 수 있는 파일만 · 다운로드는 항상 파일로 저장 · 모든 행동은 감사 로그</p>
+      </div>
+    </div>
+
+    <!-- ─── 새 폴더 / 등급 변경 모달 (18-1) ─────────────────────────────────
+         등급 선택지는 app.js 가 **서버가 준 upload_levels** 와 **부모 폴더의 등급**으로만
+         채운다 — 화면이 등급 목록을 알고 있으면 그것이 곧 화면에 심은 권한 판단이다.
+         무엇을 만들 수 있는지는 서버가 매 요청 다시 판단한다 (PRD S-01). -->
+    <dialog id="folder-dialog" class="modal" aria-labelledby="folder-dialog-title">
+      <div class="modal__head">
+        <span class="preview__mark"><span class="icon" data-icon="files"></span></span>
+        <div class="preview__headtext">
+          <h2 class="modal__title" id="folder-dialog-title">새 폴더</h2>
+          <div class="modal__meta"><span id="folder-dialog-where"></span></div>
+        </div>
+        <button id="folder-dialog-x" class="btn btn--icon" type="button" title="닫기" aria-label="닫기">
+          <span class="icon" data-icon="x"></span>
+        </button>
+      </div>
+      <div class="modal__body">
+        <form id="folder-form" class="form form--grid" autocomplete="off">
+          <label class="field field--full" id="folder-name-field">
+            <span class="field__label">이름 (1~50자 · <code>/</code> <code>\</code> 는 쓸 수 없습니다)</span>
+            <input id="folder-name" type="text" maxlength="50">
+          </label>
+          <label class="field">
+            <span class="field__label">접근 등급</span>
+            <select id="folder-level-select" required></select>
+          </label>
+          <label class="field" id="folder-team-field" hidden>
+            <span class="field__label">팀</span>
+            <select id="folder-team"></select>
+          </label>
+          <label class="field field--full" id="folder-cascade-field" hidden>
+            <span class="field__label">
+              <input id="folder-cascade" type="checkbox">
+              하위 폴더·파일에도 이 등급을 적용합니다 (더 넓은 것만 함께 좁힙니다)
+            </span>
+          </label>
+          <label class="field field--full" id="folder-reason-field" hidden>
+            <span class="field__label">사유 (선택, 500자 이내)</span>
+            <input id="folder-reason" type="text" maxlength="500">
+          </label>
+          <button id="folder-submit" class="btn" type="submit">만들기</button>
+        </form>
+      </div>
+      <div class="modal__foot">
+        <p id="folder-dialog-msg" class="msg"></p>
+        <button id="folder-dialog-close" class="btn" type="button">닫기</button>
+      </div>
+    </dialog>
+
+    <!-- ─── 파일 이동 모달 (18-1) ───────────────────────────────────────────
+         **읽을 수 있는 폴더만** 나온다(서버 응답에 그것만 있다). 고른 폴더로 옮길 수 있는지는
+         서버가 다시 판단하고(파일 `decideEdit` + 폴더 읽기 + 불변 규칙 ①), 거부 문구는
+         서버가 준 것을 그대로 보여 준다 — 화면이 사유를 추측하지 않는다. -->
+    <dialog id="move-dialog" class="modal" aria-labelledby="move-title">
+      <div class="modal__head">
+        <span class="preview__mark"><span class="icon" data-icon="files"></span></span>
+        <div class="preview__headtext">
+          <h2 class="modal__title" id="move-title">폴더로 이동</h2>
+          <div class="modal__meta"><span id="move-file"></span></div>
+        </div>
+        <button id="move-x" class="btn btn--icon" type="button" title="닫기" aria-label="닫기">
+          <span class="icon" data-icon="x"></span>
+        </button>
+      </div>
+      <div class="modal__body">
+        <nav class="crumbs" id="move-crumbs" aria-label="폴더 경로"></nav>
+        <ul class="foldertree__list" id="move-list"></ul>
+        <p id="move-empty" class="muted" hidden>하위 폴더가 없습니다.</p>
+      </div>
+      <div class="modal__foot">
+        <p id="move-msg" class="msg"></p>
+        <button id="move-here" class="btn" type="button">여기로 이동</button>
+        <button id="move-close" class="btn btn--quiet" type="button">닫기</button>
+      </div>
+    </dialog>
 
     <!-- ─── 공유 링크 모달 (15-2 — PRD F-13, ARCH 5.12) ─────────────────────
          **여기에도 값이 하나도 적혀 있지 않다.** 파일명·만들어진 주소는 app.js 가

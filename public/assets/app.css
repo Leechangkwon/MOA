@@ -1246,3 +1246,92 @@ table.perm-table td { vertical-align: top; }
   }
   .wiki-check__label { flex: 1 1 100%; }
 }
+
+/* ─── 폴더 트리 · 경로 (18-1 — PRD F-26 · 10장 「폴더」) ──────────────── */
+/* 파일 화면을 좌측 트리 + 본문 두 칸으로 나눈다. 좁은 화면에서는 한 칸으로 접힌다. */
+.workspace {
+  display: grid;
+  grid-template-columns: 260px minmax(0, 1fr);
+  gap: 16px;
+  align-items: start;
+}
+.workspace__main { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+
+.foldertree {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--surface);
+  min-width: 0;
+}
+.foldertree__head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.foldertree__title { font-size: 15px; font-weight: 700; }
+/* 폴더 이름은 읽을 수 있는 사람 모두에게 보이는 메타데이터다 (SECURITY R-63) */
+.foldertree__note { margin: 0; font-size: 11.5px; line-height: 1.5; color: var(--muted); }
+.foldertree__list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
+.foldertree__item {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  width: 100%;
+  padding: 7px 9px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: transparent;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.foldertree__item:hover { background: #f0f3f7; border-color: var(--line); }
+.foldertree__item--up { color: var(--muted); font-size: 13px; }
+.foldertree__name { font-size: 13.5px; font-weight: 600; overflow-wrap: anywhere; }
+.foldertree__meta { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.foldertree__team,
+.foldertree__count { font-size: 11.5px; color: var(--muted); }
+.foldertree__actions { display: flex; flex-wrap: wrap; gap: 6px; }
+
+.crumbs { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; }
+.crumbs__item {
+  padding: 2px 6px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  font: inherit;
+  font-size: 12.5px;
+  color: var(--accent);
+  cursor: pointer;
+  overflow-wrap: anywhere;
+}
+.crumbs__item:hover { background: var(--accent-soft); }
+.crumbs__item.is-current { color: var(--fg); font-weight: 600; cursor: default; }
+.crumbs__sep { color: var(--muted); font-size: 12px; }
+
+/* ─── 일괄 업로드 (18-2 — PRD F-27 · 10장 「일괄 업로드」) ────────────── */
+.dropzone {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 18px 14px;
+  border: 2px dashed var(--line);
+  border-radius: 12px;
+  background: var(--surface-2);
+  text-align: center;
+}
+.dropzone.is-over { border-color: var(--accent); background: var(--accent-soft); }
+.dropzone__text { margin: 0; font-size: 13px; color: var(--muted); }
+
+/* 파일별 진행 표 — 상태 글자는 서버가 준 문구 그대로 들어간다 (textContent) */
+.upload-status td { vertical-align: top; }
+.upload-status__state { font-size: 13px; overflow-wrap: anywhere; }
+.upload-status__state.is-busy { color: var(--accent); }
+.upload-status__state.is-ok { color: var(--ok-fg); font-weight: 600; }
+.upload-status__state.is-deny { color: var(--danger); }
+
+@media (max-width: 900px) {
+  .workspace { grid-template-columns: minmax(0, 1fr); }
+}

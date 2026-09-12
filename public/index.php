@@ -202,6 +202,22 @@ const TBOX_ROUTES = [
     ['PATCH',  '/api/admin/permissions',         'admin_permissions_update.php', 'role:Admin'],
     ['GET',    '/api/admin/shares',              'admin_shares.php',             'role:Admin'],
     ['GET',    '/api/admin/alerts',              'admin_alerts.php',             'role:Admin'],
+
+    // 18-1 — 폴더 (PRD F-26 · 8장 `/api/folders` 4행, ARCH 5.16).
+    //   폴더도 **파일과 같은 등급 체계**를 갖는다(사용자 결정 2026-09-13 「폴더 자체도 권한」).
+    //   그래서 정책도 파일의 같은 행동과 **같은 것**을 쓴다 — 새 정책 이름을 만들지 않는다:
+    //     file.read   : 트리 조회. 라우터는 "읽는 종류의 행동인가" 까지만 보고, 그 폴더를
+    //                   읽을 수 있는지는 핸들러가 Authz::decideRead 로 다시 판단한다
+    //                   (자식 목록은 SQL WHERE 가 거른다 — PRD S-02, 목록과 같은 구조)
+    //     file.upload : 폴더 만들기. Guest 는 여기서 끝난다(authz.route deny). 그 등급·팀을
+    //                   지정할 자격은 핸들러가 decideUploadAs 로 다시 본다(업로드와 같은 표)
+    //     file.update : 이름 변경·이동·등급 변경 → 핸들러 decideFolderChange(+ decideLevelChange)
+    //     file.delete : 빈 폴더 삭제 → 핸들러 decideFolderChange
+    //   `{num}` 은 순차 정수인 folders.id 다 (teams.id·users.id 와 같은 형태).
+    ['GET',    '/api/folders',                   'folders_list.php',             'file.read'],
+    ['POST',   '/api/folders',                   'folders_create.php',           'file.upload'],
+    ['PATCH',  '/api/folders/{num}',             'folders_update.php',           'file.update'],
+    ['DELETE', '/api/folders/{num}',             'folders_delete.php',           'file.delete'],
 ];
 
 /**

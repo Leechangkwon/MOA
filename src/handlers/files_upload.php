@@ -114,6 +114,38 @@ if ($level === 'team') {
     $teamId = (int) $teamRow['id'];
 }
 
+/* ─── [3-3] 폴더 (18-1, PRD F-26, ARCH 5.16 "파일 쪽 변경") ───
+ *
+ * `folder_id` 는 **선택**이다 — 비어 있으면 루트에 올린다. 값이 있으면 폴더가 실제로 있고
+ * **읽을 수 있어야** 한다(못 읽는 폴더 안으로 파일을 밀어 넣는 길을 만들지 않는다).
+ * 없는 폴더와 못 읽는 폴더는 **같은 400 동일 문구**이고 사유(`bad_folder`)는 로그에만 남는다.
+ *
+ * 불변 규칙 ①(파일은 폴더보다 넓을 수 없다)은 등급 판정 바로 뒤 [3-4] 에서 본다.
+ * 이 검사들은 파일을 읽기 **전**에 끝난다 — 거부될 업로드의 바이트를 검사·저장하지 않는다.
+ */
+$folderId  = null;
+$folderRow = null;
+$folderRaw = $formText('folder_id');
+if ($folderRaw !== '') {
+    if (preg_match('/^[1-9][0-9]{0,8}$/', $folderRaw) !== 1) {
+        $rejectBadRequest('bad_folder', $original, $level);
+    }
+    $sqlFolder = <<<'SQL'
+        SELECT id, name, access_level, team_id
+          FROM folders
+         WHERE id = CAST(:id AS bigint)
+        SQL;
+    $folderRow = Db::instance()->run($sqlFolder, [':id' => (int) $folderRaw])->fetch();
+    if (!is_array($folderRow)) {
+        $rejectBadRequest('bad_folder', $original, $level);
+    }
+    // 폴더도 파일과 **같은 함수**로 읽기 판정한다 (폴더도 등급을 갖는다, F-26).
+    if (!Authz::decideRead($user, $folderRow)[0]) {
+        $rejectBadRequest('bad_folder', $original, $level);
+    }
+    $folderId = (int) $folderRow['id'];
+}
+
 // ─── [3-2] 권한 ✔ A — 이 레벨(+팀)로 올릴 수 있나 (검증·저장 전, ARCH 5.2) ───
 // 판정 코드는 Authz 가 돌려준 것을 그대로 기록한다 (ARCH 4.1).
 [$mayUpload, $uploadCode] = Authz::decideUploadAs($user, $level, $teamId);
@@ -126,6 +158,24 @@ if (!$mayUpload) {
         'detail'       => ['target_team' => $teamId],
     ]);
     Http::error(403, Http::MSG_FORBIDDEN);
+}
+
+/* ─── [3-4] 불변 규칙 ① — 파일은 폴더보다 넓을 수 없다 (ARCH 5.16) ───
+ * 판정은 Authz::fitsUnderFolder 한 곳이고, 업로드·가져오기·이동·등급 변경·폴더 생성·이동·
+ * 등급 변경 **일곱 경로**가 전부 이 함수를 지난다. 400 이고 Admin 도 같은 400 이다 —
+ * 막는 것은 "누가" 가 아니라 "무엇이 어디에 들어갈 수 있나" 이기 때문이다.
+ */
+if ($folderRow !== null) {
+    [$fits, $fitCode] = Authz::fitsUnderFolder($level, $teamId, $folderRow);
+    if (!$fits) {
+        Audit::deny('file.upload', $fitCode, [
+            'target_type'  => 'file',
+            'target_name'  => $original,
+            'access_level' => $level,
+            'detail'       => ['folder_id' => $folderId, 'target_team' => $teamId],
+        ]);
+        Http::error(400, Http::MSG_BAD_REQUEST);
+    }
 }
 
 // ─── [4] 업로드 검증 (크기·확장자 화이트리스트·이중 확장자·MIME 짝·해시) ───
@@ -191,11 +241,11 @@ $storedName = Storage::newStoredName($checked['ext']);
 $sqlInsert = <<<'SQL'
     INSERT INTO files
         (original_name, stored_name, ext, mime, size_bytes, sha256,
-         description, access_level, team_id, uploaded_by, sensitive_flags)
+         description, access_level, team_id, uploaded_by, sensitive_flags, folder_id)
     VALUES
         (:original_name, :stored_name, :ext, :mime, :size_bytes, :sha256,
          :description, :access_level, :team_id, :uploaded_by,
-         CAST(:flags AS text[]))
+         CAST(:flags AS text[]), CAST(:folder_id AS bigint))
     RETURNING id, public_id
     SQL;
 
@@ -216,6 +266,7 @@ try {
         ':team_id'       => $teamId,
         ':uploaded_by'   => (int) $user['id'],
         ':flags'         => '{' . implode(',', $sensitiveFlags) . '}',
+        ':folder_id'     => $folderId,
     ])->fetch();
 
     if (!is_array($row)) {
@@ -239,6 +290,8 @@ try {
             'sha256'      => $checked['sha256'],
             'owner_id'    => (int) $user['id'],
             'target_team' => $teamId,
+            // 18-1 (F-26) — 어느 폴더에 올렸나. null 이면 루트다 (ARCH 7.5).
+            'folder_id'   => $folderId,
         ] + ($sensitive === [] ? [] : ['sensitive' => $sensitive]),
     ]);
 

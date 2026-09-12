@@ -86,6 +86,40 @@ CREATE TABLE permissions (
 );
 
 -- ─────────────────────────────────────────────────────────────
+-- folders — 파일을 담는 **권한 있는** 분류 트리 (18-1, PRD F-26, ARCH 5.16 · 6.2-4)
+--   폴더는 DB 의 분류다 — 저장 경로(6.3)는 한 글자도 바뀌지 않는다.
+--   폴더도 **파일과 같은 등급 체계**(access_level 4종 + team_id)를 갖는다
+--   (사용자 결정 2026-09-13 「폴더 자체도 권한을 두도록」). 읽기 판정은 파일과 같은 함수
+--   Authz::decideRead 이고, 못 읽는 폴더는 트리 응답에 아예 없다 (PRD S-02).
+--   불변 규칙 ①(하위 등급 ≥ 부모 등급)은 한 행만 보고 판정할 수 없어 CHECK 로 쓸 수 없다 →
+--   쓰기 경로 7개가 전부 Authz::fitsUnderFolder 를 지나는 것으로 앱이 지킨다 (ARCH 5.16).
+--   (기존 DB 는 db/migrations/2026-09-13_folders.sql 로 같은 모양이 된다.)
+-- ─────────────────────────────────────────────────────────────
+CREATE TABLE folders (
+    id           BIGSERIAL   PRIMARY KEY,
+    parent_id    BIGINT      REFERENCES folders(id) ON DELETE RESTRICT,   -- NULL = 루트 바로 아래
+    name         TEXT        NOT NULL,
+    depth        INT         NOT NULL,                  -- 부모 depth + 1
+    access_level TEXT        NOT NULL CHECK (access_level IN ('public','internal','team','admin-only')),
+    team_id      BIGINT      REFERENCES teams(id),
+    created_by   BIGINT      NOT NULL REFERENCES users(id),   -- 관리 범위 판정 (decideFolderChange)
+    created_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
+    CONSTRAINT folders_name_len        CHECK (length(name) BETWEEN 1 AND 50),
+    CONSTRAINT folders_depth_range     CHECK (depth BETWEEN 1 AND 5),
+    CONSTRAINT folders_not_self_parent CHECK (parent_id IS NULL OR parent_id <> id),
+    -- team 등급이면 team_id 필수 (files 의 team_requires_team_id 와 같은 규칙)
+    CONSTRAINT folders_team_requires_team_id
+        CHECK (access_level <> 'team' OR team_id IS NOT NULL)
+);
+-- 같은 부모 안 이름 중복 금지. 루트는 parent_id 가 NULL 이라 하나의 UNIQUE(parent_id, name)
+-- 로는 막지 못한다(NULL 은 서로 같지 않다) → 부분 UNIQUE 인덱스 둘로 나눈다.
+CREATE UNIQUE INDEX folders_parent_name_uidx ON folders (parent_id, name) WHERE parent_id IS NOT NULL;
+CREATE UNIQUE INDEX folders_root_name_uidx   ON folders (name)            WHERE parent_id IS NULL;
+CREATE INDEX        folders_parent_idx       ON folders (parent_id);
+CREATE INDEX        folders_visible_idx      ON folders (access_level, team_id);
+
+-- ─────────────────────────────────────────────────────────────
 -- files — 파일 "정보"만. 실제 바이트는 /var/lib/tbox/storage (ARCH 6.1 · 6.3)
 -- ─────────────────────────────────────────────────────────────
 CREATE TABLE files (
@@ -114,6 +148,10 @@ CREATE TABLE files (
     -- 비어 있지 않으면 `public`·`internal` 로 올리거나 낮출 수 없다.
     -- (기존 DB 는 db/migrations/2026-09-12_files_sensitive_flags.sql 로 같은 모양이 된다.)
     sensitive_flags TEXT[]    NOT NULL DEFAULT '{}',
+    -- 18-1 (F-26, ARCH 5.16 · 6.2-4) — 이 파일이 든 폴더. NULL 이면 루트.
+    -- ON DELETE RESTRICT: 파일이 참조하는 폴더는 DB 가 삭제를 막는다(앱 검사의 마지막 그물).
+    -- (기존 DB 는 db/migrations/2026-09-13_folders.sql 로 같은 모양이 된다.)
+    folder_id     BIGINT      REFERENCES folders(id) ON DELETE RESTRICT,
     -- team 레벨이면 team_id 필수 (PRD 4장 규칙을 DB가 강제)
     CONSTRAINT team_requires_team_id
         CHECK (access_level <> 'team' OR team_id IS NOT NULL)
@@ -122,6 +160,8 @@ CREATE INDEX files_visible_idx ON files (access_level, team_id) WHERE deleted_at
 CREATE INDEX files_name_idx    ON files (lower(original_name)) WHERE deleted_at IS NULL;
 -- 휴지통 정리 배치(scripts/purge_trash.php)가 훑는 행만 담는 부분 인덱스 (9단계)
 CREATE INDEX files_purge_idx   ON files (deleted_at) WHERE deleted_at IS NOT NULL AND purged_at IS NULL;
+-- 18-1 (F-26) — 폴더 안 목록(`GET /api/files?folder=`)과 폴더 삭제 전 "파일이 있나" 조회용
+CREATE INDEX files_folder_idx  ON files (folder_id) WHERE deleted_at IS NULL;
 
 -- ─────────────────────────────────────────────────────────────
 -- audit_logs — Append-only (ARCH 7.2, PRD S-07)

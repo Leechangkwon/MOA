@@ -34,6 +34,69 @@ $q    = Http::queryText('q', 200);
 $sort = Http::queryChoice('sort', ['name', 'created_at', 'size'], 'created_at');
 $dir  = Http::queryChoice('dir', ['asc', 'desc'], 'desc');
 $page = Http::queryInt('page', 1, 1, 100000);
+// 18-1 (F-26) — 어느 폴더를 열었나. **0 = 루트**(`folder_id IS NULL`)이고 기본값도 0 이다.
+// 형태가 아니거나 범위를 벗어나면 0 으로 좁힌다 — 거부하지 않는다 (ARCH 5.1 [2]).
+$folder = Http::queryInt('folder', 0, 0, 999999999);
+
+/* ─── 검색의 범위 (18-1 검토 결정 2026-09-13) ───────────────────────────
+ * 폴더가 생기면서 목록의 기본값이 "루트만" 이 되었는데, 그러면 **검색이 지금 연 폴더 안으로
+ * 갇힌다**. 파일을 찾으려면 폴더를 하나씩 열어 봐야 하므로 찾기 기능이 아니다.
+ *
+ * 그래서 규칙을 셋으로 나눈다:
+ *   q 있음 · folder 파라미터 **없음**  → **전역 검색** (폴더 필터를 붙이지 않는다)
+ *   q 있음 · folder 파라미터 있음      → 그 폴더 안에서만
+ *   q 없음                              → 지금처럼 folder(기본 0 = 루트) 안에서만
+ *
+ * 전역 검색이라도 **보이는 것은 하나도 늘지 않는다**: 조건은 여전히 `visibleFilesWhere`
+ * 하나뿐이고, 불변 규칙 ①(하위 등급 ≥ 부모 등급)이 "파일이 보이면 그 폴더도 보인다" 를
+ * 보장하므로 못 읽는 폴더의 파일이 검색에 뜨는 일은 없다 (ARCH 5.16, PRD S-02).
+ *
+ * `folder` 를 **보냈는지**를 봐야 하므로 여기서만 원본 배열을 확인한다. 값은 위 queryInt 가
+ * 이미 정수로 좁혔고, 이 확인은 값이 아니라 **키의 유무**만 본다.
+ */
+$folderGiven  = array_key_exists('folder', $_GET);
+$globalSearch = $q !== '' && !$folderGiven;
+
+/* ─── [권한 ✔ 폴더] 연 폴더 자체를 읽을 수 있나 (18-1, PRD F-26, ARCH 5.16) ───
+ *
+ * 폴더도 파일과 같은 등급 체계를 갖는다(사용자 결정 2026-09-13). 못 읽는 폴더의 목록은
+ * **비어 보이는 것이 아니라 403 동일 문구**다 — 빈 폴더와 구별되지 않으면 "여기에 내가
+ * 못 보는 것이 있다" 를 세어 볼 수 있기 때문이다. 판정은 파일과 **같은 함수**다.
+ *
+ * 없는 폴더도 같은 403 이다: 폴더 id 는 순차 정수라 404/403 이 갈리면 그 자체가
+ * "몇 번까지 폴더가 있나" 를 알려 주는 신호가 된다 (PRD S-09-5). 사유는 로그에만 남는다.
+ *
+ * 폴더를 읽을 수 있다고 해서 안의 파일이 다 보이는 것은 아니다 — 아래 목록 SQL 의
+ * `visibleFilesWhere` 가 파일 등급으로 한 번 더 좁힌다(두 겹, PRD F-26).
+ */
+$sqlFolderRow = <<<'SQL'
+    SELECT id, parent_id, name, depth, access_level, team_id
+      FROM folders
+     WHERE id = CAST(:id AS bigint)
+    SQL;
+
+$folderRow = null;
+if ($folder !== 0 && !$globalSearch) {
+    $folderRow = Db::instance()->run($sqlFolderRow, [':id' => $folder])->fetch();
+    if (!is_array($folderRow)) {
+        Audit::deny('folder.read', 'not_found', ['target_type' => 'folder']);
+        Http::error(403, Http::MSG_FORBIDDEN);
+    }
+    [$mayReadFolder, $folderCode] = Authz::decideRead($user, $folderRow);
+    if (!$mayReadFolder) {
+        Audit::deny('folder.read', $folderCode, [
+            'target_type'  => 'folder',
+            'target_id'    => (int) $folderRow['id'],
+            'target_name'  => (string) $folderRow['name'],
+            'access_level' => (string) $folderRow['access_level'],
+            'detail'       => [
+                'folder_id'   => (int) $folderRow['id'],
+                'target_team' => $folderRow['team_id'] === null ? null : (int) $folderRow['team_id'],
+            ],
+        ]);
+        Http::error(403, Http::MSG_FORBIDDEN);
+    }
+}
 
 // ─── 권한 조건 (PRD S-02) ───
 // 목록·건수 두 SQL 의 WHERE 첫 조건으로 그대로 들어간다. 값은 바인딩으로만 붙는다.
@@ -53,6 +116,7 @@ $sqlList = <<<'SQL'
            -- (어떤 패턴이 몇 건 걸렸는지는 감사 로그에만 남는다, ARCH 5.13).
            cardinality(f.sensitive_flags) > 0 AS sensitive,
            f.team_id,
+           f.folder_id,
            f.uploaded_by,
            t.name       AS team_name,
            u.username   AS uploader,
@@ -78,6 +142,13 @@ $sqlSearch = <<<'SQL'
             OR f.description ILIKE :q_desc ESCAPE '#')
     SQL;
 
+// 18-1 (F-26) — 폴더 필터. `IS NOT DISTINCT FROM` 은 NULL(루트)과 정수를 한 조건으로 다룬다
+// (`= NULL` 은 언제나 UNKNOWN 이라 루트를 고를 수 없다). 목록과 건수에 **똑같이** 붙는다.
+$sqlFolder = <<<'SQL'
+
+       AND f.folder_id IS NOT DISTINCT FROM CAST(:folder AS bigint)
+    SQL;
+
 // ORDER BY 는 바인딩할 수 없다 → 허용 목록의 키로만 고정 조각을 고른다 (PRD S-04).
 // 두 번째 정렬 키(f.id)를 붙여 같은 값이 여러 개일 때 페이지 사이에서 순서가 흔들리지 않게 한다.
 $orderSql = [
@@ -91,13 +162,17 @@ $orderSql = [
 $sqlTail = ' LIMIT :lim OFFSET :off';
 
 // ─── 조건·바인딩 조립 ───
-$filter = '';
+// 전역 검색이면 폴더 조각을 붙이지 않는다(위 규칙). 그 밖에는 목록·건수에 똑같이 붙는다.
+$filter = $globalSearch ? '' : $sqlFolder;
 // 권한 바인딩(:lvl0.. · :own_team)과 검색·페이지 바인딩(:q_name · :q_desc · :lim · :off)은
 // 이름이 겹치지 않는다 — 겹치면 한쪽이 덮여 조건이 조용히 바뀐다.
 $bind   = $visibleBind;
+if (!$globalSearch) {
+    $bind[':folder'] = $folder === 0 ? null : $folder;
+}
 if ($q !== '') {
     $pattern           = '%' . str_replace(['#', '%', '_'], ['##', '#%', '#_'], $q) . '%';
-    $filter            = $sqlSearch;
+    $filter            = $filter . $sqlSearch;
     $bind[':q_name']   = $pattern;
     $bind[':q_desc']   = $pattern;
 }
@@ -117,6 +192,47 @@ $rows = $db->run(
     $listBind
 )->fetchAll();
 
+/* ─── 행마다 「어느 폴더에 있나」 를 사람이 읽을 수 있는 경로로 (18-1 검토 결정) ───
+ *
+ * 전역 검색에서는 결과가 여러 폴더에 흩어져 있으므로 `folder_id` 숫자만으로는 쓸모가 없다.
+ * 루트부터 이어 붙인 이름(`A / B / C`)을 함께 내려 준다.
+ *
+ * 못 읽는 폴더의 경로가 새어 나갈 걱정은 없다 — 여기 온 행은 이미 `visibleFilesWhere` 를
+ * 통과한 파일이고, 불변 규칙 ①이 "그 파일이 보이면 그 폴더도 보인다" 를 보장한다 (ARCH 5.16).
+ * 경로는 **표시용**이며 권한 판단에 쓰이지 않는다. 화면은 이 값을 textContent 로만 그린다.
+ *
+ * 한 문장으로 모든 폴더의 경로를 만든다(깊이는 최대 5, 폴더 수가 적다). 폴더가 하나도
+ * 걸리지 않은 목록에서는 아예 묻지 않는다.
+ */
+$sqlFolderPaths = <<<'SQL'
+    WITH RECURSIVE tree AS (
+        SELECT d.id, d.name AS path, 1 AS hops
+          FROM folders d
+         WHERE d.parent_id IS NULL
+        UNION ALL
+        SELECT c.id, tree.path || ' / ' || c.name, tree.hops + 1
+          FROM folders c
+          JOIN tree ON c.parent_id = tree.id
+         WHERE tree.hops < 10
+    )
+    SELECT tree.id, tree.path FROM tree
+    SQL;
+
+$needPaths = false;
+foreach ($rows as $row) {
+    if ($row['folder_id'] !== null) {
+        $needPaths = true;
+        break;
+    }
+}
+
+$folderPaths = [];
+if ($needPaths) {
+    foreach ($db->run($sqlFolderPaths)->fetchAll() as $pathRow) {
+        $folderPaths[(int) $pathRow['id']] = (string) $pathRow['path'];
+    }
+}
+
 $files = [];
 foreach ($rows as $row) {
     // 여기 온 행은 위 조건절을 통과했으므로 이미 읽기 가능하다(decideDelete 의 전제).
@@ -129,6 +245,12 @@ foreach ($rows as $row) {
         'access_level' => (string) $row['access_level'],
         'team_id'     => $row['team_id'] === null ? null : (int) $row['team_id'],
         'team_name'   => $row['team_name'] === null ? null : (string) $row['team_name'],
+        // 18-1 (F-26) — 이 파일이 든 폴더. null 이면 루트다.
+        'folder_id'   => $row['folder_id'] === null ? null : (int) $row['folder_id'],
+        // 사람이 읽는 경로(`A / B`). 루트면 null. 표시용이며 권한 판단에 쓰이지 않는다.
+        'folder_path' => $row['folder_id'] === null
+            ? null
+            : ($folderPaths[(int) $row['folder_id']] ?? null),
         'uploaded_by' => (string) $row['uploader'],
         'created_at'  => (string) $row['created_at'],
         'can_delete'  => Authz::decideDelete($user, $row)[0],
@@ -145,9 +267,52 @@ foreach ($rows as $row) {
     ];
 }
 
+/* ─── breadcrumb (루트 → 지금 연 폴더) ─────────────────────────
+ * 조상들은 따로 권한을 보지 않는다: 불변 규칙 ①(하위 등급 ≥ 부모 등급)이 지켜지는 한
+ * **읽을 수 있는 폴더의 조상은 언제나 읽을 수 있다** (ARCH 5.16, F-25 불변 규칙 (f)).
+ * hops 상한은 데이터가 어떤 이유로든 순환할 때 무한 재귀를 막는 안전장치다(깊이는 최대 5).
+ */
+$sqlBreadcrumb = <<<'SQL'
+    WITH RECURSIVE up AS (
+        SELECT b.id, b.parent_id, b.name, b.depth, b.access_level, 1 AS hops
+          FROM folders b
+         WHERE b.id = CAST(:id AS bigint)
+        UNION ALL
+        SELECT p.id, p.parent_id, p.name, p.depth, p.access_level, up.hops + 1
+          FROM folders p
+          JOIN up ON p.id = up.parent_id
+         WHERE up.hops < 10
+    )
+    SELECT up.id, up.name, up.access_level FROM up ORDER BY up.depth ASC
+    SQL;
+
+$breadcrumb = [];
+if ($folder !== 0) {
+    foreach ($db->run($sqlBreadcrumb, [':id' => $folder])->fetchAll() as $step) {
+        $breadcrumb[] = [
+            'id'           => (int) $step['id'],
+            'name'         => (string) $step['name'],
+            'access_level' => (string) $step['access_level'],
+        ];
+    }
+}
+
 Http::json([
     'files'    => $files,
     'total'    => $total,
     'page'     => $page,
     'per_page' => $perPage,
+    // 18-1 검토 결정 — 이번 응답이 **폴더를 가리지 않은 전역 검색**인가. 화면은 이 값이
+    // 참일 때만 「폴더」 경로 열을 보여 준다(표시용이며 권한과 무관하다).
+    'scope'    => $globalSearch ? 'all' : 'folder',
+    // 18-1 (F-26) — 지금 연 폴더. 루트는 id 0 · 이름 없음 · breadcrumb 빈 배열이다.
+    'folder'   => [
+        'id'           => $folder,
+        'name'         => $folderRow === null ? null : (string) $folderRow['name'],
+        'access_level' => $folderRow === null ? null : (string) $folderRow['access_level'],
+        'team_id'      => $folderRow === null || $folderRow['team_id'] === null
+            ? null
+            : (int) $folderRow['team_id'],
+        'breadcrumb'   => $breadcrumb,
+    ],
 ]);

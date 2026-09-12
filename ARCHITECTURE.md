@@ -699,7 +699,7 @@ Admin 전용. 정책 `org.manage`(`Authz::canManageOrg` = Admin) 를 `KNOWN_POLI
 **원칙.** ① 폴더는 **DB 의 분류**다 — 저장 경로(6.3)는 바뀌지 않는다. ② 폴더는 **파일과 같은 등급 체계**(`access_level` 4종 + `team_id`)를 갖고, 읽기 판정은 **같은 함수** `Authz::decideRead(user, row)` 다(행에 `access_level`·`team_id` 만 있으면 파일이든 폴더든 같은 코드). 못 읽는 폴더는 트리 응답에 없고(S-02), 그 폴더의 목록·자식 요청은 403 동일 문구다.
 
 **두 겹을 한 번의 검사로 — 불변 규칙.** "폴더에 접근해도 권한이 없으면 파일을 못 본다" 를 판정마다 폴더·파일을 두 번 검사하는 대신 **쓰기 시점**에 보장한다.
-- ① **하위는 부모보다 넓을 수 없다**: 폴더 안 파일·하위 폴더의 `LEVEL_RANK[level] ≥ LEVEL_RANK[parent.level]`, 부모가 `team` 이면 `team_id` 가 같아야 한다(`Authz::fitsUnderFolder(childLevel, childTeam, folder)`). 업로드·URL 가져오기·파일 이동·파일 등급 변경·폴더 생성·폴더 이동·폴더 등급 변경 **전부** 이 함수를 지난다(거부 `parent_narrower`).
+- ① **하위는 부모보다 넓을 수 없다**: 폴더 안 파일·하위 폴더의 `LEVEL_RANK[level] ≥ LEVEL_RANK[parent.level]`, 부모가 `team` **이고 하위도 `team` 이면** `team_id` 가 같아야 한다(`Authz::fitsUnderFolder(childLevel, childTeam, folder)`) — 하위가 `admin-only` 면 팀을 보지 않는다(더 좁고, 그것을 읽는 Admin 은 어느 팀 폴더든 읽으므로 단조성이 유지된다, 18-1 검토 결정 2026-09-13). 업로드·URL 가져오기·파일 이동·파일 등급 변경·폴더 생성·폴더 이동·폴더 등급 변경 **전부** 이 함수를 지난다(거부 `parent_narrower`).
 - ② 폴더 등급을 **좁히면**(rank 증가) 하위 폴더·살아 있는 파일 전부가 새 등급에 대해 ①을 만족해야 한다(재귀 CTE 로 검사, 위반 시 400 `children_exceed`, detail 에 위반 개수만).
 - ③ 폴더 등급을 **넓히면**(rank 감소) Admin 만(`decideLevelChange` 와 같은 `downgrade_not_permitted`). 넓혀도 하위는 자기 등급을 유지하므로 ①은 깨지지 않는다.
 - **구글 드라이브와 비교(사용자 지시 「구글드라이브의 권한 구조를 생각하면 된다」)**: 같은 점 — 권한을 **폴더에 걸고**, 그 아래로 내려가며 적용되고, 새로 올리는 파일은 폴더의 등급을 **기본값**으로 물려받는다(화면 기본 선택 = 폴더 등급; 서버는 여전히 명시값을 요구하고 ①로 검사). 다른 점 — 드라이브는 폴더 접근자가 안의 것을 모두 보지만, 여기서는 사용자 결정대로 **파일은 폴더보다 더 좁을 수 있다**(폴더에 들어와도 파일 등급이 없으면 못 본다). 즉 폴더 권한은 「안으로 들어올 수 있는 최소 자격」이고 파일 권한은 그 위에 한 번 더 좁힌다. ② 의 「좁히기」에는 드라이브의 「하위에도 적용」과 같은 선택지 `cascade:true` 를 둔다 — 하위 폴더·파일의 등급을 새 등급으로 **함께 좁힌다**(한 트랜잭션, 항목마다 `file.level_change`·`folder.level_change` 감사; 행위자가 고칠 수 없는 항목이 하나라도 있으면 전체 거부 `not_owner`). `cascade` 없이 위반이 있으면 지금처럼 `children_exceed`.
@@ -1067,7 +1067,7 @@ GRANT  USAGE, SELECT  ON SEQUENCE audit_logs_id_seq TO tbox_app;
 | `file.delete|deny|role_not_permitted` | `{actor} 이(가) {level} 등급 파일 「{target}」 을(를) 삭제하려 했지만 볼 권한조차 없어 막았습니다` | 4단계 canRead 실패 |
 | `file.delete|deny|not_owner` | `{actor} 이(가) 다른 사람이 올린 파일 「{target}」 을(를) 삭제하려 해서 막았습니다` | 4단계 canDelete |
 | `file.delete|deny|team_mismatch` | `{actor} 이(가) 다른 팀의 파일 「{target}」 을(를) 삭제하려 해서 막았습니다` | 4단계 canDelete(Manager) |
-| `file.update|allow` | `{actor} 이(가) 파일 「{target}」 의 설명을 수정했습니다` | 5단계 files_update (설명만 바뀜) |
+| `file.update|allow` | `{actor} 이(가) 파일 「{target}」 을(를) 수정했습니다 (바뀐 항목은 상세 기록: description·access_level·team_id·folder_id)` | 5단계 files_update (설명만 바뀜) |
 | `file.update|deny|role_not_permitted` | `{actor} 이(가) 파일 「{target}」 을(를) 수정하려 했지만 볼 권한조차 없어 막았습니다` | 5단계 decideRead 실패 |
 | `file.update|deny|not_owner` | `{actor} 이(가) 다른 사람이 올린 파일 「{target}」 을(를) 수정하려 해서 막았습니다` | 5단계 decideEdit |
 | `file.update|deny|team_mismatch` | `{actor} 이(가) 다른 팀의 파일 「{target}」 을(를) 수정하려 해서 막았습니다` | 5단계 decideEdit |
@@ -1121,6 +1121,46 @@ GRANT  USAGE, SELECT  ON SEQUENCE audit_logs_id_seq TO tbox_app;
 | `permission.change|deny|bad_code` | `{actor} 이(가) 권한 매트릭스를 바꾸려 했지만 2단계 인증 코드가 맞지 않아 거부했습니다` | 17-2 `Totp::verifyStep` 실패 — **실패 집계**(countFailureAndRevoke) |
 | `permission.change|deny|code_reused` | `{actor} 이(가) 권한 매트릭스를 바꾸려 했지만 이미 쓴 2단계 인증 코드라 거부했습니다` | 17-2 `mfa_last_step` 1회성 (R-45) — 실패 집계 |
 | `permission.change|deny|invariant` | `{actor} 이(가) 권한 매트릭스의 바꿀 수 없는 규칙을 어기는 변경을 요청해서 거부했습니다 (어긴 규칙은 상세 기록)` | 17-2 불변 규칙 (a)~(e), detail `rule` (5.15). 실패로 세지 않는다(비밀값 추측이 아니다) |
+| `folder.read|deny|role_not_permitted` | `{actor} 이(가) 볼 권한이 없는 {level} 등급 폴더를 열어 보려 해서 막았습니다` | 18-1 folders_list · files_list (허용은 기록하지 않는다 — 목록과 같은 취급) |
+| `folder.read|deny|team_mismatch` | `{actor} 이(가) 다른 팀의 폴더를 열어 보려 해서 막았습니다` | 18-1 |
+| `folder.read|deny|not_found` | `{actor} 이(가) 없는 폴더를 열어 보려 해서 막았습니다` | 18-1 (없는 폴더도 응답은 403 동일 문구 — id 열거 방지) |
+| `folder.create|allow` | `{actor} 이(가) 폴더 「{target}」 을(를) {level} 등급으로 만들었습니다 (부모·깊이는 상세 기록)` | 18-1 folders_create |
+| `folder.create|deny|bad_request` | `{actor} 이(가) 폴더 만들기를 허용되지 않는 형식(모르는 항목·이름 규칙·등급·팀·없는 부모)으로 요청해서 거부했습니다` | 18-1 |
+| `folder.create|deny|conflict` | `{actor} 이(가) 같은 위치에 이미 있는 이름 「{target}」 으로 폴더를 만들려 해서 거부했습니다` | 18-1 (409) |
+| `folder.create|deny|depth_exceeded` | `{actor} 이(가) 폴더 「{target}」 을(를) 최대 깊이(5단계)보다 깊은 곳에 만들려 해서 거부했습니다` | 18-1 |
+| `folder.create|deny|role_not_permitted` | `{actor} 이(가) 폴더 「{target}」 을(를) {level} 등급으로 만들려 했지만 그 등급을 지정할 권한이 없어 막았습니다` | 18-1 `decideUploadAs` 재사용 |
+| `folder.create|deny|team_mismatch` | `{actor} 이(가) 폴더 「{target}」 을(를) 자기 팀이 아닌 팀의 team 등급으로 만들려 해서 막았습니다` | 18-1 `decideUploadAs` 재사용 |
+| `folder.create|deny|parent_narrower` | `{actor} 이(가) 폴더 「{target}」 을(를) 부모 폴더보다 넓은 {level} 등급으로 만들려 해서 거부했습니다` | 18-1 불변 규칙 ① (`fitsUnderFolder`) |
+| `folder.update|allow` | `{actor} 이(가) 폴더 「{target}」 의 이름 또는 위치를 바꿨습니다 (이전값→새값·사유는 상세 기록)` | 18-1 folders_update |
+| `folder.update|deny|not_found` | `{actor} 이(가) 없는 폴더를 바꾸려 해서 거부했습니다` | 18-1 (403 동일 문구) |
+| `folder.update|deny|bad_request` | `{actor} 이(가) 폴더 「{target}」 변경을 허용되지 않는 형식(모르는 항목·이름 규칙·없는 부모·바뀌는 값 없음)으로 요청해서 거부했습니다` | 18-1 |
+| `folder.update|deny|conflict` | `{actor} 이(가) 폴더 「{target}」 의 이름을 같은 위치에 이미 있는 이름으로 바꾸려 해서 거부했습니다` | 18-1 (409) |
+| `folder.update|deny|cycle` | `{actor} 이(가) 폴더 「{target}」 을(를) 자기 자신 또는 자기 하위 폴더 아래로 옮기려 해서 거부했습니다` | 18-1 재귀 CTE |
+| `folder.update|deny|depth_exceeded` | `{actor} 이(가) 폴더 「{target}」 을(를) 옮기면 하위 폴더가 최대 깊이(5단계)를 넘게 되어 거부했습니다` | 18-1 하위 포함 깊이 재계산 |
+| `folder.update|deny|parent_narrower` | `{actor} 이(가) 폴더 「{target}」 을(를) 자기보다 좁은 등급의 폴더 아래로 옮기려 해서 거부했습니다` | 18-1 불변 규칙 ① |
+| `folder.update|deny|not_owner` | `{actor} 이(가) 다른 사람이 만든 폴더 「{target}」 을(를) 바꾸려 해서 막았습니다` | 18-1 `decideFolderChange` |
+| `folder.update|deny|team_mismatch` | `{actor} 이(가) 다른 팀의 폴더 「{target}」 을(를) 바꾸려 해서 막았습니다` | 18-1 `decideFolderChange` |
+| `folder.update|deny|role_not_permitted` | `{actor} 이(가) 폴더 「{target}」 을(를) 바꾸려 했지만 볼 권한조차 없어 막았습니다` | 18-1 `decideRead` 먼저 |
+| `folder.level_change|allow` | `{actor} 이(가) 폴더 「{target}」 의 접근 등급을 {level} 등급으로 바꿨습니다 (이전 등급·하위 적용 여부는 상세 기록)` | 18-1 (cascade 는 `detail.cascade`·`cascaded`) |
+| `folder.level_change|deny|downgrade_not_permitted` | `{actor} 이(가) 폴더 「{target}」 의 접근 등급을 {level} 등급으로 넓히려 했지만 등급을 넓히는 것은 관리자만 할 수 있어 막았습니다` | 18-1 ③ `decideLevelChange` 재사용 |
+| `folder.level_change|deny|role_not_permitted` | `{actor} 이(가) 폴더 「{target}」 의 접근 등급을 {level} 등급으로 바꾸려 했지만 그 등급을 지정할 권한이 없어 막았습니다` | 18-1 |
+| `folder.level_change|deny|team_mismatch` | `{actor} 이(가) 폴더 「{target}」 을(를) 자기 팀이 아닌 팀의 team 등급으로 바꾸려 해서 막았습니다` | 18-1 |
+| `folder.level_change|deny|parent_narrower` | `{actor} 이(가) 폴더 「{target}」 의 등급을 부모 폴더보다 넓은 {level} 등급으로 바꾸려 해서 거부했습니다` | 18-1 불변 규칙 ① |
+| `folder.level_change|deny|children_exceed` | `{actor} 이(가) 폴더 「{target}」 을(를) {level} 등급으로 좁히려 했지만 그보다 넓은 하위 폴더·파일이 남아 있어 거부했습니다 (개수는 상세 기록)` | 18-1 불변 규칙 ② (`detail.violations` 는 개수만) |
+| `folder.level_change|deny|not_owner` | `{actor} 이(가) 폴더 「{target}」 의 등급을 하위까지 함께 좁히려 했지만 자기가 고칠 수 없는 항목이 있어 전부 되돌렸습니다 (개수는 상세 기록)` | 18-1 `cascade:true` 전체 롤백 |
+| `folder.delete|allow` | `{actor} 이(가) 빈 폴더 「{target}」 을(를) 지웠습니다 (부모·깊이는 상세 기록)` | 18-1 folders_delete |
+| `folder.delete|deny|not_found` | `{actor} 이(가) 없는 폴더를 지우려 해서 거부했습니다` | 18-1 (403 동일 문구) |
+| `folder.delete|deny|folder_not_empty` | `{actor} 이(가) 파일 또는 하위 폴더가 남아 있는 폴더 「{target}」 을(를) 지우려 해서 거부했습니다 (휴지통의 파일도 포함)` | 18-1 (400, FK 가 마지막 그물) |
+| `folder.delete|deny|not_owner` | `{actor} 이(가) 다른 사람이 만든 폴더 「{target}」 을(를) 지우려 해서 막았습니다` | 18-1 |
+| `folder.delete|deny|team_mismatch` | `{actor} 이(가) 다른 팀의 폴더 「{target}」 을(를) 지우려 해서 막았습니다` | 18-1 |
+| `folder.delete|deny|role_not_permitted` | `{actor} 이(가) 폴더 「{target}」 을(를) 지우려 했지만 볼 권한조차 없어 막았습니다` | 18-1 |
+| `file.upload|deny|bad_folder` | `{actor} 이(가) 파일 「{target}」 을(를) 없는 폴더 또는 볼 수 없는 폴더에 올리려 해서 거부했습니다` | 18-1 files_upload |
+| `file.upload|deny|parent_narrower` | `{actor} 이(가) 파일 「{target}」 을(를) 폴더보다 넓은 {level} 등급으로 올리려 해서 거부했습니다` | 18-1 불변 규칙 ① |
+| `file.fetch|deny|bad_folder` | `{actor} 이(가) 가져온 파일을 없는 폴더 또는 볼 수 없는 폴더에 저장하려 해서 거부했습니다` | 18-1 files_fetch (응답은 기존 fetch 문구 하나) |
+| `file.fetch|deny|parent_narrower` | `{actor} 이(가) 가져온 파일을 폴더보다 넓은 {level} 등급으로 저장하려 해서 거부했습니다` | 18-1 |
+| `file.update|deny|bad_folder` | `{actor} 이(가) 파일 「{target}」 을(를) 없는 폴더 또는 볼 수 없는 폴더로 옮기려 해서 거부했습니다` | 18-1 files_update |
+| `file.update|deny|parent_narrower` | `{actor} 이(가) 파일 「{target}」 을(를) 자기보다 좁은 등급의 폴더로 옮기려 해서 거부했습니다` | 18-1 |
+| `file.level_change|deny|parent_narrower` | `{actor} 이(가) 파일 「{target}」 의 접근 등급을 그 파일이 든 폴더보다 넓은 {level} 등급으로 바꾸려 해서 거부했습니다` | 18-1 |
 
 > 7·8·9단계(URL 가져오기·감사 로그 조회·백업)의 행동은 그 단계 지시서에서 이 표에 행을 먼저 추가한 뒤 구현한다.
 
@@ -1174,6 +1214,13 @@ GRANT  USAGE, SELECT  ON SEQUENCE audit_logs_id_seq TO tbox_app;
 | `sensitive` | 무엇을 | 검출된 **패턴 이름과 건수만** (`{"rrn":1,"card":2}`). 검출된 숫자·문자열 **원문은 어떤 형태로도 넣지 않는다** (PRD S-07, SECURITY R-58). 빈 결과면 키 자체를 넣지 않는다 | 핸들러 | `file.upload` allow·deny `sensitive_level_required` (15-3) |
 | `otp_verified` | 어떻게 | `true` — 요청에 실린 2단계 인증 코드를 **서버가 확인했다는 사실만**. 코드 6자리·비밀·스텝 번호는 어떤 형태로도 넣지 않는다(`temp_password_issued` 와 같은 성격). 이름에 `otp` 가 들어가 `FORBIDDEN_DETAIL_KEYS` 부분 일치에 걸리므로 `Audit::ALLOWED_DETAIL_KEYS` 에 정확 일치로 등록한다 | 핸들러 | `permission.change allow` (17-2) |
 | `rule` (불변 규칙) | 왜 | 권한 매트릭스 변경이 어긴 불변 규칙의 글자 `a`~`e` (ARCH 5.15 ③). 경보 배치의 `rule`(AL-x)과 **같은 키를 다른 행에서** 쓴다 — 둘 다 "어느 규칙인가" 라는 뜻이라 나누지 않는다 | 핸들러 | `permission.change deny invariant` (17-2) |
+| `folder_id` | 무엇을 | 폴더 행의 id (`folders.id`). 파일 쪽 행에서는 **그 파일이 든 폴더**의 id (null = 루트) | 핸들러 | `folder.*` · `file.upload`(allow) (18-1) |
+| `parent_id` | 어디에 | 폴더의 부모 id (null = 루트). 만들 때·옮길 때의 **새 위치**다 | 핸들러 | `folder.create`·`folder.update` (18-1) |
+| `depth` | 무엇을 | 폴더의 깊이 1~5 (부모 depth + 1) | 핸들러 | `folder.*` (18-1) |
+| `folder_before` · `folder_after` | 어떻게 | 폴더가 바뀐 **이전값 → 새값**. 폴더 행에서는 바뀐 칸만 담은 객체 두 개(`name`·`parent_id`·`depth`·`access_level`·`team_id`), **파일 행에서는 옮기기 전후의 폴더 id**(정수 또는 null) | 핸들러 | `folder.update`·`folder.level_change` · `file.update`·`file.level_change`(파일 이동, 18-1) |
+| `cascade` · `cascaded` | 어떻게 | 「하위에도 적용」을 썼나(`true`)와 **함께 바뀐 항목 수**(정수). 항목 하나하나는 자기 행(`file.level_change`·`folder.level_change`)으로 따로 남는다 | 핸들러 | `folder.level_change` (18-1) |
+| `cascade_from` | 왜 | 이 항목이 **어느 폴더의** 「하위에도 적용」으로 바뀌었나 — 그 폴더의 id. 값 하나로 한 번의 일괄 변경을 묶어 볼 수 있다 | 핸들러 | `file.level_change`·`folder.level_change`(cascade 로 바뀐 행, 18-1) |
+| `violations` | 왜 | 불변 규칙 ①을 어긴 하위 항목의 **개수만**. 어떤 파일·폴더인지는 넣지 않는다 — 요청한 사람이 못 보는 항목일 수 있다 (SECURITY R-63) | 핸들러 | `folder.level_change deny children_exceed`·`not_owner` (18-1) |
 
 **검토 행동과 사용자 행동 가르기** — 두 조건 중 하나면 검토다. 둘 다 아니면 사용자(또는 침입자)다.
 

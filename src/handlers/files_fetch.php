@@ -57,7 +57,7 @@ $rejectFetch = static function (
 };
 
 // ─── [1] 본문 — 허용 키만 (대량 할당 방지, SECURITY R-07) ──────
-$allowedFields = ['url', 'description', 'access_level', 'team_id'];
+$allowedFields = ['url', 'description', 'access_level', 'team_id', 'folder_id'];
 
 $body = Http::jsonBody();
 if ($body === [] || array_diff(array_keys($body), $allowedFields) !== []) {
@@ -123,6 +123,41 @@ if ($level === 'team') {
         $rejectFetch(400, 'bad_request', null, $level);
     }
     $teamId = (int) $teamRow['id'];
+}
+
+/* ─── [3-2] 폴더 (18-1, PRD F-26, ARCH 5.16 "파일 쪽 변경") ───
+ *
+ * 업로드(files_upload [3-3][3-4])와 **같은 규칙·같은 함수**다: 폴더가 있고, 읽을 수 있고,
+ * 가져온 파일이 그 폴더보다 넓지 않아야 한다. 한쪽 입구만 검사가 빠지는 일이 없도록
+ * 두 핸들러가 같은 자리에서 같은 Authz 함수를 부른다 (ARCH 5.6 [8] 과 같은 원칙).
+ * 실패 응답은 다른 fetch 실패와 똑같은 문구 하나뿐이고 사유는 감사 로그에만 남는다 (S-05 ⑩).
+ */
+$sqlFolder = <<<'SQL'
+    SELECT id, name, access_level, team_id
+      FROM folders
+     WHERE id = CAST(:id AS bigint)
+    SQL;
+
+$folderId  = null;
+$folderRow = null;
+if (array_key_exists('folder_id', $body) && $body['folder_id'] !== null) {
+    $rawFolder  = $body['folder_id'];
+    $folderText = is_int($rawFolder) ? (string) $rawFolder : (is_string($rawFolder) ? $rawFolder : '');
+    if (preg_match('/^[1-9][0-9]{0,8}$/', $folderText) !== 1) {
+        $rejectFetch(400, 'bad_folder', null, $level);
+    }
+    $folderRow = Db::instance()->run($sqlFolder, [':id' => (int) $folderText])->fetch();
+    if (!is_array($folderRow)) {
+        $rejectFetch(400, 'bad_folder', null, $level);
+    }
+    if (!Authz::decideRead($user, $folderRow)[0]) {
+        $rejectFetch(400, 'bad_folder', null, $level);
+    }
+    [$fits, $fitCode] = Authz::fitsUnderFolder($level, $teamId, $folderRow);
+    if (!$fits) {
+        $rejectFetch(400, $fitCode, null, $level, ['folder_id' => (int) $folderRow['id']]);
+    }
+    $folderId = (int) $folderRow['id'];
 }
 
 // ─── [3-2] 권한 ✔ — 이 등급(+팀)으로 올릴 수 있나 (업로드와 같은 판정) ───
@@ -251,11 +286,11 @@ $storedName = Storage::newStoredName($checkedFile['ext']);
 $sqlInsert = <<<'SQL'
     INSERT INTO files
         (original_name, stored_name, ext, mime, size_bytes, sha256,
-         description, access_level, team_id, uploaded_by, sensitive_flags)
+         description, access_level, team_id, uploaded_by, sensitive_flags, folder_id)
     VALUES
         (:original_name, :stored_name, :ext, :mime, :size_bytes, :sha256,
          :description, :access_level, :team_id, :uploaded_by,
-         CAST(:flags AS text[]))
+         CAST(:flags AS text[]), CAST(:folder_id AS bigint))
     RETURNING id, public_id
     SQL;
 
@@ -275,6 +310,7 @@ try {
         ':team_id'       => $teamId,
         ':uploaded_by'   => (int) $user['id'],
         ':flags'         => '{' . implode(',', $sensitiveFlags) . '}',
+        ':folder_id'     => $folderId,
     ])->fetch();
 
     if (!is_array($row)) {

@@ -196,7 +196,7 @@ final class Audit
         'file.delete|deny|team_mismatch'          => '{actor} 이(가) 다른 팀의 파일 「{target}」 을(를) 삭제하려 해서 막았습니다',
 
         // ── 수정 · 레벨 변경 (files_update — 5단계, ARCH 7.4) ──
-        'file.update|allow'                       => '{actor} 이(가) 파일 「{target}」 의 설명을 수정했습니다',
+        'file.update|allow'                       => '{actor} 이(가) 파일 「{target}」 을(를) 수정했습니다 (바뀐 항목은 상세 기록: description·access_level·team_id·folder_id)',
         'file.update|deny|role_not_permitted'     => '{actor} 이(가) 파일 「{target}」 을(를) 수정하려 했지만 볼 권한조차 없어 막았습니다',
         'file.update|deny|not_owner'              => '{actor} 이(가) 다른 사람이 올린 파일 「{target}」 을(를) 수정하려 해서 막았습니다',
         'file.update|deny|team_mismatch'          => '{actor} 이(가) 다른 팀의 파일 「{target}」 을(를) 수정하려 해서 막았습니다',
@@ -351,6 +351,67 @@ final class Audit
         'permission.change|deny|bad_code'               => '{actor} 이(가) 권한 매트릭스를 바꾸려 했지만 2단계 인증 코드가 맞지 않아 거부했습니다',
         'permission.change|deny|code_reused'            => '{actor} 이(가) 권한 매트릭스를 바꾸려 했지만 이미 쓴 2단계 인증 코드라 거부했습니다',
         'permission.change|deny|invariant'              => '{actor} 이(가) 권한 매트릭스의 바꿀 수 없는 규칙을 어기는 변경을 요청해서 거부했습니다 (어긴 규칙은 상세 기록)',
+
+        // ── 폴더 (18-1 folders_* — F-26, ARCH 5.16 · 7.4) ──
+        // {target} 은 **폴더 이름**이다 — 사용자가 정한 자유 텍스트이며(파일명과 같은 성격),
+        // 조회 화면은 다른 입력과 똑같이 textContent 로 그린다 (ARCH 7.4 마지막 규칙).
+        // {level} 은 폴더의 접근 등급이다 — 폴더도 파일과 같은 등급 체계를 갖는다(F-26).
+        // 폴더 id·부모 id·깊이·이전값→새값은 detail(folder_id·parent_id·depth·
+        // folder_before·folder_after)에만 남는다.
+        //
+        // `folder.read` 는 **거부만** 남긴다 — 트리·목록 조회는 양이 많아 허용을 남기지 않는
+        // 기존 원칙 그대로이고(ARCH 5.1), 못 읽는 폴더를 열어 보려 한 시도는 남긴다.
+        'folder.read|deny|role_not_permitted'           => '{actor} 이(가) 볼 권한이 없는 {level} 등급 폴더를 열어 보려 해서 막았습니다',
+        'folder.read|deny|team_mismatch'                => '{actor} 이(가) 다른 팀의 폴더를 열어 보려 해서 막았습니다',
+        'folder.read|deny|not_found'                    => '{actor} 이(가) 없는 폴더를 열어 보려 해서 막았습니다',
+
+        'folder.create|allow'                           => '{actor} 이(가) 폴더 「{target}」 을(를) {level} 등급으로 만들었습니다 (부모·깊이는 상세 기록)',
+        'folder.create|deny|bad_request'                => '{actor} 이(가) 폴더 만들기를 허용되지 않는 형식(모르는 항목·이름 규칙·등급·팀·없는 부모)으로 요청해서 거부했습니다',
+        'folder.create|deny|conflict'                   => '{actor} 이(가) 같은 위치에 이미 있는 이름 「{target}」 으로 폴더를 만들려 해서 거부했습니다',
+        'folder.create|deny|depth_exceeded'             => '{actor} 이(가) 폴더 「{target}」 을(를) 최대 깊이(5단계)보다 깊은 곳에 만들려 해서 거부했습니다',
+        'folder.create|deny|role_not_permitted'         => '{actor} 이(가) 폴더 「{target}」 을(를) {level} 등급으로 만들려 했지만 그 등급을 지정할 권한이 없어 막았습니다',
+        'folder.create|deny|team_mismatch'              => '{actor} 이(가) 폴더 「{target}」 을(를) 자기 팀이 아닌 팀의 team 등급으로 만들려 해서 막았습니다',
+        'folder.create|deny|parent_narrower'            => '{actor} 이(가) 폴더 「{target}」 을(를) 부모 폴더보다 넓은 {level} 등급으로 만들려 해서 거부했습니다',
+
+        'folder.update|allow'                           => '{actor} 이(가) 폴더 「{target}」 의 이름 또는 위치를 바꿨습니다 (이전값→새값·사유는 상세 기록)',
+        'folder.update|deny|not_found'                  => '{actor} 이(가) 없는 폴더를 바꾸려 해서 거부했습니다',
+        'folder.update|deny|bad_request'                => '{actor} 이(가) 폴더 「{target}」 변경을 허용되지 않는 형식(모르는 항목·이름 규칙·없는 부모·바뀌는 값 없음)으로 요청해서 거부했습니다',
+        'folder.update|deny|conflict'                   => '{actor} 이(가) 폴더 「{target}」 의 이름을 같은 위치에 이미 있는 이름으로 바꾸려 해서 거부했습니다',
+        'folder.update|deny|cycle'                      => '{actor} 이(가) 폴더 「{target}」 을(를) 자기 자신 또는 자기 하위 폴더 아래로 옮기려 해서 거부했습니다',
+        'folder.update|deny|depth_exceeded'             => '{actor} 이(가) 폴더 「{target}」 을(를) 옮기면 하위 폴더가 최대 깊이(5단계)를 넘게 되어 거부했습니다',
+        'folder.update|deny|parent_narrower'            => '{actor} 이(가) 폴더 「{target}」 을(를) 자기보다 좁은 등급의 폴더 아래로 옮기려 해서 거부했습니다',
+        'folder.update|deny|not_owner'                  => '{actor} 이(가) 다른 사람이 만든 폴더 「{target}」 을(를) 바꾸려 해서 막았습니다',
+        'folder.update|deny|team_mismatch'              => '{actor} 이(가) 다른 팀의 폴더 「{target}」 을(를) 바꾸려 해서 막았습니다',
+        'folder.update|deny|role_not_permitted'         => '{actor} 이(가) 폴더 「{target}」 을(를) 바꾸려 했지만 볼 권한조차 없어 막았습니다',
+
+        // 등급 변경은 따로 남긴다 — 파일의 file.update / file.level_change 와 같은 가름이다.
+        // 「하위에도 적용」(cascade)으로 함께 바뀐 항목은 항목마다 자기 행(file.level_change ·
+        // folder.level_change)을 남기고 detail.cascade_from 에 시작한 폴더 id 를 적는다.
+        'folder.level_change|allow'                     => '{actor} 이(가) 폴더 「{target}」 의 접근 등급을 {level} 등급으로 바꿨습니다 (이전 등급·하위 적용 여부는 상세 기록)',
+        'folder.level_change|deny|downgrade_not_permitted' => '{actor} 이(가) 폴더 「{target}」 의 접근 등급을 {level} 등급으로 넓히려 했지만 등급을 넓히는 것은 관리자만 할 수 있어 막았습니다',
+        'folder.level_change|deny|role_not_permitted'   => '{actor} 이(가) 폴더 「{target}」 의 접근 등급을 {level} 등급으로 바꾸려 했지만 그 등급을 지정할 권한이 없어 막았습니다',
+        'folder.level_change|deny|team_mismatch'        => '{actor} 이(가) 폴더 「{target}」 을(를) 자기 팀이 아닌 팀의 team 등급으로 바꾸려 해서 막았습니다',
+        'folder.level_change|deny|parent_narrower'      => '{actor} 이(가) 폴더 「{target}」 의 등급을 부모 폴더보다 넓은 {level} 등급으로 바꾸려 해서 거부했습니다',
+        'folder.level_change|deny|children_exceed'      => '{actor} 이(가) 폴더 「{target}」 을(를) {level} 등급으로 좁히려 했지만 그보다 넓은 하위 폴더·파일이 남아 있어 거부했습니다 (개수는 상세 기록)',
+        'folder.level_change|deny|not_owner'            => '{actor} 이(가) 폴더 「{target}」 의 등급을 하위까지 함께 좁히려 했지만 자기가 고칠 수 없는 항목이 있어 전부 되돌렸습니다 (개수는 상세 기록)',
+
+        'folder.delete|allow'                           => '{actor} 이(가) 빈 폴더 「{target}」 을(를) 지웠습니다 (부모·깊이는 상세 기록)',
+        'folder.delete|deny|not_found'                  => '{actor} 이(가) 없는 폴더를 지우려 해서 거부했습니다',
+        'folder.delete|deny|folder_not_empty'           => '{actor} 이(가) 파일 또는 하위 폴더가 남아 있는 폴더 「{target}」 을(를) 지우려 해서 거부했습니다 (휴지통의 파일도 포함)',
+        'folder.delete|deny|not_owner'                  => '{actor} 이(가) 다른 사람이 만든 폴더 「{target}」 을(를) 지우려 해서 막았습니다',
+        'folder.delete|deny|team_mismatch'              => '{actor} 이(가) 다른 팀의 폴더 「{target}」 을(를) 지우려 해서 막았습니다',
+        'folder.delete|deny|role_not_permitted'         => '{actor} 이(가) 폴더 「{target}」 을(를) 지우려 했지만 볼 권한조차 없어 막았습니다',
+
+        // 18-1 — 파일 쪽에 늘어난 거부 사유 (F-26 불변 규칙 ①).
+        // 파일을 폴더로 옮기는 것 자체는 기존 file.update allow 로 남는다
+        // (detail.folder_before / folder_after) — 새 action 을 만들지 않는다.
+        'file.upload|deny|bad_folder'                   => '{actor} 이(가) 파일 「{target}」 을(를) 없는 폴더 또는 볼 수 없는 폴더에 올리려 해서 거부했습니다',
+        'file.upload|deny|parent_narrower'              => '{actor} 이(가) 파일 「{target}」 을(를) 폴더보다 넓은 {level} 등급으로 올리려 해서 거부했습니다',
+        'file.fetch|deny|bad_folder'                    => '{actor} 이(가) 가져온 파일을 없는 폴더 또는 볼 수 없는 폴더에 저장하려 해서 거부했습니다',
+        'file.fetch|deny|parent_narrower'               => '{actor} 이(가) 가져온 파일을 폴더보다 넓은 {level} 등급으로 저장하려 해서 거부했습니다',
+        'file.update|deny|bad_folder'                   => '{actor} 이(가) 파일 「{target}」 을(를) 없는 폴더 또는 볼 수 없는 폴더로 옮기려 해서 거부했습니다',
+        'file.update|deny|parent_narrower'              => '{actor} 이(가) 파일 「{target}」 을(를) 자기보다 좁은 등급의 폴더로 옮기려 해서 거부했습니다',
+        'file.level_change|deny|parent_narrower'        => '{actor} 이(가) 파일 「{target}」 의 접근 등급을 그 파일이 든 폴더보다 넓은 {level} 등급으로 바꾸려 해서 거부했습니다',
     ];
 
     /** 자리표시자에 넣을 값이 없을 때 (ARCH 7.4) */

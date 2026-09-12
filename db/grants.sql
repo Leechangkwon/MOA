@@ -37,7 +37,7 @@ REVOKE CONNECT ON DATABASE tbox_re FROM PUBLIC;
 GRANT  CONNECT ON DATABASE tbox_re TO tbox_app, tbox_owner;
 
 -- ─── 먼저 전부 회수한다(재실행 시 과거 권한이 남지 않게) ───
-REVOKE ALL ON teams, users, permissions, files, audit_logs, sessions, share_links FROM tbox_app;
+REVOKE ALL ON teams, users, permissions, files, audit_logs, sessions, share_links, folders FROM tbox_app;
 
 -- ─── 표별 권한 ───
 GRANT SELECT, INSERT, UPDATE                 ON users     TO tbox_app;
@@ -49,6 +49,10 @@ GRANT SELECT, INSERT                         ON audit_logs  TO tbox_app; -- ★ 
 -- 15-2 공유 링크 (F-13, ARCH 5.12 · 6.2-3). 회수도 UPDATE(revoked_at) 이므로 DELETE 가 필요 없다 —
 -- 행이 남아야 "어떤 링크로 새어 나갔나" 를 감사 로그의 detail.share_id 로 되짚을 수 있다.
 GRANT SELECT, INSERT, UPDATE                 ON share_links TO tbox_app; -- ★ DELETE 없음
+-- 18-1 폴더 (F-26, ARCH 5.16 · 6.2-4). **DELETE 가 있는 두 번째 표**다(첫째는 sessions) —
+-- 빈 폴더는 논리 삭제가 아니라 실제로 지운다. 지워도 잃을 기록이 없고(파일은 files 에 그대로),
+-- 지운 사실은 감사 로그 folder.delete 에 남는다. 파일이 참조하는 폴더는 FK(ON DELETE RESTRICT)가 막는다.
+GRANT SELECT, INSERT, UPDATE, DELETE         ON folders   TO tbox_app;
 
 -- ─── 시퀀스 (INSERT 하는 표의 id 발급에 필요) ───
 GRANT USAGE, SELECT ON SEQUENCE users_id_seq      TO tbox_app;
@@ -56,6 +60,7 @@ GRANT USAGE, SELECT ON SEQUENCE teams_id_seq      TO tbox_app;
 GRANT USAGE, SELECT ON SEQUENCE files_id_seq      TO tbox_app;
 GRANT USAGE, SELECT ON SEQUENCE audit_logs_id_seq TO tbox_app;
 GRANT USAGE, SELECT ON SEQUENCE share_links_id_seq TO tbox_app;
+GRANT USAGE, SELECT ON SEQUENCE folders_id_seq     TO tbox_app;
 -- sessions.id 는 CHAR(64) 해시이므로 시퀀스가 없다. permissions 도 시퀀스가 없다.
 
 -- ─── 앞으로 만들 표에 자동으로 권한이 새지 않게 한다 ───
@@ -81,7 +86,7 @@ GRANT CONNECT ON DATABASE tbox_re TO tbox_backup;
 GRANT USAGE   ON SCHEMA   public  TO tbox_backup;
 
 -- 재실행 시 과거 권한이 남지 않게 먼저 전부 회수한다(위 tbox_app 과 같은 방식).
-REVOKE ALL ON teams, users, permissions, files, audit_logs, sessions, share_links FROM tbox_backup;
+REVOKE ALL ON teams, users, permissions, files, audit_logs, sessions, share_links, folders FROM tbox_backup;
 
 GRANT SELECT ON ALL TABLES    IN SCHEMA public TO tbox_backup;   -- ★ SELECT 만
 GRANT SELECT ON ALL SEQUENCES IN SCHEMA public TO tbox_backup;   -- 시퀀스 현재값 (pg_dump)
@@ -118,7 +123,7 @@ GRANT CONNECT ON DATABASE tbox_re TO tbox_perm;
 GRANT USAGE   ON SCHEMA   public  TO tbox_perm;
 
 -- 재실행 시 과거 권한이 남지 않게 먼저 **전부** 회수한다(위 두 롤과 같은 방식).
-REVOKE ALL ON teams, users, permissions, files, audit_logs, sessions, share_links FROM tbox_perm;
+REVOKE ALL ON teams, users, permissions, files, audit_logs, sessions, share_links, folders FROM tbox_perm;
 REVOKE ALL ON ALL SEQUENCES IN SCHEMA public FROM tbox_perm;
 
 GRANT SELECT, UPDATE ON permissions TO tbox_perm;   -- ★ 이 한 줄이 전부. INSERT·DELETE 없음

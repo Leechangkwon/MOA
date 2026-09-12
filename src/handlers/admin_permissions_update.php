@@ -231,6 +231,49 @@ if (count($current) !== 16) {
     throw new RuntimeException('권한 표가 16행이 아닙니다');
 }
 
+/* ─── (f) 읽기 등급의 **단조성** (18-1 추가 — PRD F-26, ARCH 5.16, SECURITY R-63) ──────
+ *
+ * 역할마다 `can_read` 는 등급 순서(`public` → `internal` → `team` → `admin-only`)로
+ * **앞에서부터 연속**이어야 한다. 켜짐이 한 번 끊긴 뒤에 다시 켜져 있으면(예: `internal` 은
+ * 꺼졌는데 `team` 은 켜짐) 위반이다.
+ *
+ * 왜 이 규칙이 필요한가 — 폴더 권한(F-26) 때문이다. 폴더와 파일이 모두 등급을 갖게 되면서
+ * "폴더에 들어올 수 있는 사람만 그 안의 파일을 본다" 를 **쓰기 시점의 불변 규칙 ①**
+ * (하위 등급 ≥ 부모 등급, `Authz::fitsUnderFolder`)로 보장하기로 했다. 그 보장이 성립하려면
+ * "더 좁은 등급을 읽을 수 있는 사람은 더 넓은 등급도 읽을 수 있다" 가 참이어야 한다.
+ * 이 표를 화면에서 편집할 수 있으므로(F-25), 편집으로 그 전제가 깨지면 목록 SQL 이 파일
+ * 조건만 보는 지금 구조에서 **폴더는 못 보는데 그 안 파일은 보이는** 틈이 생긴다.
+ * 그래서 전제 자체를 이 창구에서 지킨다 — 검사는 **바뀐 칸이 아니라 바뀐 뒤의 16행 전체**로 한다
+ * (칸 하나만 봐서는 이웃 칸과의 연속성을 알 수 없다).
+ *
+ * 등급 순서는 `Authz::LEVEL_RANK` 의 선언 순서 그대로다 — 순서를 이 파일에 복사하지 않는다.
+ */
+$effective = $current;
+foreach ($wanted as $key => $cell) {
+    $effective[$key] = ['read' => $cell['read'], 'upload' => $cell['upload']];
+}
+
+$readByRole = [];
+foreach ($effective as $key => $flags) {
+    $parts = explode('|', $key, 2);
+    if (count($parts) !== 2) {
+        continue;
+    }
+    $readByRole[$parts[0]][$parts[1]] = $flags['read'];
+}
+foreach ($readByRole as $levelsOfRole) {
+    $gapSeen = false;
+    foreach (array_keys(Authz::LEVEL_RANK) as $levelName) {
+        $on = $levelsOfRole[$levelName] ?? false;
+        if ($on && $gapSeen) {
+            $reject('invariant', false, ['rule' => 'f']);
+        }
+        if (!$on) {
+            $gapSeen = true;
+        }
+    }
+}
+
 /** 실제로 값이 바뀌는 칸만 고른다 (e). @var list<array<string,mixed>> $changed */
 $changed = [];
 foreach ($wanted as $key => $cell) {

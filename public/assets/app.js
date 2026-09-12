@@ -729,6 +729,102 @@ function initLogin(form) {
  *   레벨 기본값(team)과 팀 <select> 기본 선택에만 쓰는 **화면 편의 값**이다.
  *   다른 팀을 골라 보내는 것을 화면에서 막지 않는다 — 서버가 403 으로 막고 감사 로그에 남긴다.
  */
+/**
+ * 등급의 "노출 범위" 순서 — 서버 `Authz::LEVEL_RANK` 와 **같은 값**이다 (PRD 4장).
+ *
+ * ★ 이 표는 **권한 판단이 아니다.** 화면이 선택지를 미리 줄여 주는 편의일 뿐이고,
+ *   무엇을 올릴 수 있고 어떤 폴더에 넣을 수 있는지는 서버가 매 요청 다시 판단한다
+ *   (`Authz::decideUploadAs` · `Authz::fitsUnderFolder`, PRD S-01).
+ *   화면이 이 표를 무시하고 아무 값이나 보내도 서버가 403/400 으로 막는다.
+ */
+var LEVEL_RANK = { 'public': 0, 'internal': 1, 'team': 2, 'admin-only': 3 };
+
+/** 한 번에 고를 수 있는 파일 개수 (F-27 화면 상수, ARCH 5.17) */
+var BULK_MAX = 50;
+
+/**
+ * 접근 등급 <select> 를 **폴더 등급 이상**으로만 채운다 (18-1, PRD F-26 불변 규칙 ①).
+ *
+ * `minLevel` 이 null 이면(루트) 제한이 없다. `preferLevel` 이 목록에 있으면 그것을 기본값으로
+ * 고른다 — 구글 드라이브처럼 "폴더의 등급을 물려받는" 기본값이다 (ARCH 5.16 「구글 드라이브와 비교」).
+ * 서버는 여전히 **명시값**을 요구하므로, 고를 것이 하나도 없으면 자리표시만 남는다.
+ *
+ * 만들어진 실제 등급 개수를 돌려준다.
+ */
+function fillLevelOptionsUnder(select, levels, minLevel, preferLevel) {
+  var made = 0;
+  if (!select) {
+    return 0;
+  }
+  while (select.firstChild) {
+    select.removeChild(select.firstChild);
+  }
+  if (!Array.isArray(levels)) {
+    return 0;
+  }
+  var floor = typeof minLevel === 'string' && Object.prototype.hasOwnProperty.call(LEVEL_RANK, minLevel)
+    ? LEVEL_RANK[minLevel]
+    : 0;
+
+  var placeholder = document.createElement('option');
+  placeholder.value = '';
+  placeholder.disabled = true;
+  setText(placeholder, LEVEL_PLACEHOLDER);
+  select.appendChild(placeholder);
+
+  var wanted = '';
+  levels.forEach(function (level) {
+    if (typeof level !== 'string' || !Object.prototype.hasOwnProperty.call(LEVEL_LABELS, level)) {
+      return;
+    }
+    if (LEVEL_RANK[level] < floor) {
+      return;   // 폴더보다 넓은 등급은 서버가 400 parent_narrower 로 막는다
+    }
+    var option = document.createElement('option');
+    option.value = level;
+    setText(option, LEVEL_LABELS[level]);
+    select.appendChild(option);
+    made += 1;
+    if (level === preferLevel) {
+      wanted = level;
+    }
+  });
+
+  if (made === 0) {
+    select.value = '';
+    return 0;
+  }
+  if (wanted !== '') {
+    select.value = wanted;
+  } else {
+    placeholder.selected = true;
+    select.value = '';
+  }
+  return made;
+}
+
+/** 폴더 한 줄의 「등급」 배지 + 개수 꼬리표. 전부 textContent 다 (PRD S-03). */
+function folderMeta(folder) {
+  var meta = document.createElement('span');
+  meta.className = 'foldertree__meta';
+  var badge = makeLevelBadge(folder.access_level);
+  if (badge) {
+    meta.appendChild(badge);
+  }
+  if (folder.team_name !== null && folder.team_name !== undefined && folder.team_name !== '') {
+    var team = document.createElement('span');
+    team.className = 'foldertree__team';
+    setText(team, folder.team_name);
+    meta.appendChild(team);
+  }
+  var counts = document.createElement('span');
+  counts.className = 'foldertree__count';
+  setText(counts, '파일 ' + (typeof folder.file_count === 'number' ? folder.file_count : 0)
+    + ' · 하위 ' + (typeof folder.child_count === 'number' ? folder.child_count : 0));
+  meta.appendChild(counts);
+  return meta;
+}
+
 function initFiles(csrfToken, uploadLevels, canFetch, myTeamId) {
   var msg = document.getElementById('msg');
   var body = document.getElementById('files-body');
@@ -758,8 +854,63 @@ function initFiles(csrfToken, uploadLevels, canFetch, myTeamId) {
   var fetchTeamField = document.getElementById('fetch-team-field');
   var fetchTeam = document.getElementById('fetch-team');
   var fetchSubmit = document.getElementById('fetch-submit');
+  var uploadFolder = document.getElementById('upload-folder');
+  var fetchFolder = document.getElementById('fetch-folder');
+  var uploadDrop = document.getElementById('upload-drop');
+  var uploadPicked = document.getElementById('upload-picked');
+  var uploadProgress = document.getElementById('upload-progress');
+  var uploadStatusBody = document.getElementById('upload-status-body');
 
-  var state = { q: '', sort: 'created_at', dir: 'desc', page: 1, total: 0, perPage: 20 };
+  // 18-1 폴더 (PRD F-26, ARCH 5.16)
+  var filesFolderHead = document.getElementById('files-folder-head');
+  var folderMsg = document.getElementById('folder-msg');
+  var folderCrumbs = document.getElementById('folder-crumbs');
+  var folderList = document.getElementById('folder-list');
+  var folderEmpty = document.getElementById('folder-empty');
+  var folderActions = document.getElementById('folder-actions');
+  var folderNewBtn = document.getElementById('folder-new');
+  var folderRenameBtn = document.getElementById('folder-rename');
+  var folderLevelBtn = document.getElementById('folder-level');
+  var folderDeleteBtn = document.getElementById('folder-delete');
+  var folderDialog = document.getElementById('folder-dialog');
+  var folderDialogTitle = document.getElementById('folder-dialog-title');
+  var folderDialogWhere = document.getElementById('folder-dialog-where');
+  var folderDialogMsg = document.getElementById('folder-dialog-msg');
+  var folderForm = document.getElementById('folder-form');
+  var folderNameField = document.getElementById('folder-name-field');
+  var folderNameInput = document.getElementById('folder-name');
+  var folderLevelSelect = document.getElementById('folder-level-select');
+  var folderTeamField = document.getElementById('folder-team-field');
+  var folderTeamSelect = document.getElementById('folder-team');
+  var folderCascadeField = document.getElementById('folder-cascade-field');
+  var folderCascade = document.getElementById('folder-cascade');
+  var folderReasonField = document.getElementById('folder-reason-field');
+  var folderReason = document.getElementById('folder-reason');
+  var folderSubmit = document.getElementById('folder-submit');
+  var folderDialogClose = document.getElementById('folder-dialog-close');
+  var folderDialogX = document.getElementById('folder-dialog-x');
+
+  var moveDialog = document.getElementById('move-dialog');
+  var moveFileLabel = document.getElementById('move-file');
+  var moveCrumbs = document.getElementById('move-crumbs');
+  var moveList = document.getElementById('move-list');
+  var moveEmpty = document.getElementById('move-empty');
+  var moveMsg = document.getElementById('move-msg');
+  var moveHere = document.getElementById('move-here');
+  var moveClose = document.getElementById('move-close');
+  var moveX = document.getElementById('move-x');
+
+  /* state.folder 는 **지금 열어 둔 폴더**(0 = 루트)이고, folderInfo·crumbs 는 서버가
+     `GET /api/files` 응답의 `folder` 로 내려 준 값 그대로다 — 화면이 지어내지 않는다. */
+  var state = {
+    q: '', sort: 'created_at', dir: 'desc', page: 1, total: 0, perPage: 20,
+    folder: 0, folderInfo: null, crumbs: [], children: []
+  };
+
+  /** 폴더 모달의 모드 — 'create' · 'rename' · 'level' */
+  var folderMode = 'create';
+  /** 파일 이동 모달이 지금 펼쳐 보고 있는 폴더(0 = 루트)와 옮길 파일 */
+  var movePick = { folder: 0, crumbs: [], file: null };
 
   /** 상태 변경 요청 공통 헤더 (PRD S-09-3) */
   function csrfHeaders() {
@@ -1468,6 +1619,15 @@ function initFiles(csrfToken, uploadLevels, canFetch, myTeamId) {
           openShare(file);
         });
         td.appendChild(shareButton);
+
+        /* 18-1 — 「폴더로 이동」도 **같은 can_edit** 로 갈린다 (PRD F-26: 파일을 옮기는 것은
+           그 파일을 고칠 수 있는 사람). 단추가 보이든 안 보이든 서버가 다시 판단하고,
+           대상 폴더를 읽을 수 있는지·불변 규칙 ①까지 서버가 본다. */
+        var moveButton = makeIconButton('files', '폴더로 이동');
+        moveButton.addEventListener('click', function () {
+          openMove(file);
+        });
+        td.appendChild(moveButton);
       }
 
       // 삭제 버튼도 서버가 그 행에 대해 can_delete 를 참으로 준 경우에만 만든다.
@@ -1487,6 +1647,22 @@ function initFiles(csrfToken, uploadLevels, canFetch, myTeamId) {
   function renderFiles(data) {
     clearRows();
     var files = data && Array.isArray(data.files) ? data.files : [];
+    /* 18-1 — 이번 응답이 전역 검색인가는 **서버가 준 scope** 로만 판단한다.
+       참이면 결과가 여러 폴더에 흩어져 있으므로 「폴더」 경로 열을 보여 준다. */
+    var searching = !!(data && data.scope === 'all');
+    if (filesFolderHead) {
+      filesFolderHead.hidden = !searching;
+    }
+    // 18-1 — 지금 연 폴더와 경로는 **서버가 준 값**이다. 화면이 계산하지 않는다.
+    if (data && data.folder && typeof data.folder === 'object') {
+      state.folderInfo = data.folder;
+      state.crumbs = Array.isArray(data.folder.breadcrumb) ? data.folder.breadcrumb : [];
+    } else {
+      state.folderInfo = null;
+      state.crumbs = [];
+    }
+    renderCrumbs();
+    syncFolderActions();
     state.total = typeof data.total === 'number' ? data.total : 0;
     state.perPage = typeof data.per_page === 'number' && data.per_page > 0 ? data.per_page : 20;
     state.page = typeof data.page === 'number' && data.page > 0 ? data.page : 1;
@@ -1498,6 +1674,12 @@ function initFiles(csrfToken, uploadLevels, canFetch, myTeamId) {
       addCell(row, formatSize(file.size_bytes));
       addLevelCell(row, file.access_level);
       addCell(row, file.team_name === null || file.team_name === undefined ? '—' : file.team_name);
+      if (searching) {
+        // 서버가 준 folder_path 그대로. 루트면 「—」 (경로는 표시용이며 권한과 무관하다).
+        addCell(row, typeof file.folder_path === 'string' && file.folder_path !== ''
+          ? file.folder_path
+          : '—');
+      }
       addCell(row, file.uploaded_by);
       addCell(row, file.created_at);
       addCell(row, file.description);
@@ -1526,6 +1708,14 @@ function initFiles(csrfToken, uploadLevels, canFetch, myTeamId) {
       '&dir=' + encodeURIComponent(state.dir) +
       '&page=' + encodeURIComponent(String(state.page));
 
+    /* 18-1 — 검색어가 있으면 `folder` 를 **아예 보내지 않는다** → 서버가 폴더를 가리지 않는
+       전역 검색으로 답한다(폴더 안에 갇힌 검색은 찾기 기능이 아니다). 검색어가 없으면
+       지금 연 폴더(0 = 루트)를 보낸다. 보이는 범위는 어느 쪽이든 서버의 visibleFilesWhere
+       하나가 정하고, 화면은 그 결과만 그린다 (PRD S-02). */
+    if (state.q === '') {
+      query += '&folder=' + encodeURIComponent(String(state.folder));
+    }
+
     fetch('/api/files' + query, { credentials: 'same-origin', cache: 'no-store' })
       .then(function (response) {
         if (response.status === 401) {
@@ -1546,6 +1736,530 @@ function initFiles(csrfToken, uploadLevels, canFetch, myTeamId) {
       });
   }
 
+  /* ─── 폴더 트리 (18-1 — PRD F-26, ARCH 5.16) ─────────────────────────────
+   *
+   * 규칙
+   *   · 트리는 `GET /api/folders?parent=` 로 **한 층씩** 받는다(전체를 한 번에 내리지 않는다).
+   *   · 응답에 있는 폴더가 곧 **읽을 수 있는 폴더**다 — 화면이 걸러 내지 않는다 (PRD S-02).
+   *   · 이름·등급·개수는 전부 textContent 다. 문자열을 HTML 로 바꾸는 API 는 없다 (PRD S-03).
+   *   · 단추를 보일지는 서버가 준 값으로만 정하고, 실제 허용은 서버가 다시 판단한다 (PRD S-01).
+   */
+
+  /** 경로 표시(breadcrumb). 서버가 준 `folder.breadcrumb` 만 그린다. */
+  function renderCrumbs() {
+    if (!folderCrumbs) {
+      return;
+    }
+    folderCrumbs.replaceChildren();
+
+    var root = document.createElement('button');
+    root.type = 'button';
+    root.className = 'crumbs__item';
+    setText(root, '루트');
+    root.addEventListener('click', function () {
+      goToFolder(0);
+    });
+    folderCrumbs.appendChild(root);
+
+    state.crumbs.forEach(function (step, index) {
+      var sep = document.createElement('span');
+      sep.className = 'crumbs__sep';
+      setText(sep, '›');
+      folderCrumbs.appendChild(sep);
+
+      var last = index === state.crumbs.length - 1;
+      var item = document.createElement('button');
+      item.type = 'button';
+      item.className = last ? 'crumbs__item is-current' : 'crumbs__item';
+      setText(item, step.name);
+      item.addEventListener('click', function () {
+        goToFolder(step.id);
+      });
+      folderCrumbs.appendChild(item);
+    });
+  }
+
+  /** 지금 폴더에 쓸 수 있는 단추를 보일지 — 루트에는 이름 변경·등급 변경·삭제가 없다. */
+  function syncFolderActions() {
+    if (folderActions) {
+      folderActions.hidden = state.folder === 0;
+    }
+  }
+
+  /** 지금 열어 둔 폴더의 등급(루트면 null) — 새 폴더·업로드 기본값에 쓴다. */
+  function currentFolderLevel() {
+    return state.folderInfo && typeof state.folderInfo.access_level === 'string'
+      ? state.folderInfo.access_level
+      : null;
+  }
+
+  /** 한 층 아래 폴더 목록을 받아 그린다. */
+  function loadTree() {
+    setText(folderMsg, '');
+    fetch('/api/folders?parent=' + encodeURIComponent(String(state.folder)), {
+      credentials: 'same-origin',
+      cache: 'no-store'
+    })
+      .then(function (response) {
+        if (response.status === 401) {
+          toLogin();
+          return null;
+        }
+        return readJson(response).then(function (data) {
+          if (!response.ok) {
+            state.children = [];
+            renderTree();
+            setText(folderMsg, errorMessage(data));
+            return null;
+          }
+          state.children = data && Array.isArray(data.folders) ? data.folders : [];
+          renderTree();
+          fillFolderPickers();
+          return null;
+        });
+      })
+      .catch(function () {
+        setText(folderMsg, GENERIC_ERROR);
+      });
+  }
+
+  function renderTree() {
+    if (!folderList) {
+      return;
+    }
+    folderList.replaceChildren();
+
+    if (state.folder !== 0) {
+      var upItem = document.createElement('li');
+      var up = document.createElement('button');
+      up.type = 'button';
+      up.className = 'foldertree__item foldertree__item--up';
+      setText(up, '.. 상위 폴더로');
+      var parentId = state.crumbs.length >= 2 ? state.crumbs[state.crumbs.length - 2].id : 0;
+      up.addEventListener('click', function () {
+        goToFolder(parentId);
+      });
+      upItem.appendChild(up);
+      folderList.appendChild(upItem);
+    }
+
+    state.children.forEach(function (folder) {
+      var li = document.createElement('li');
+      var button = document.createElement('button');
+      button.type = 'button';
+      button.className = 'foldertree__item';
+      var name = document.createElement('span');
+      name.className = 'foldertree__name';
+      setText(name, folder.name);
+      button.appendChild(name);
+      button.appendChild(folderMeta(folder));
+      button.addEventListener('click', function () {
+        goToFolder(folder.id);
+      });
+      li.appendChild(button);
+      folderList.appendChild(li);
+    });
+
+    if (folderEmpty) {
+      folderEmpty.hidden = state.children.length !== 0;
+    }
+  }
+
+  function goToFolder(id) {
+    state.folder = typeof id === 'number' && id >= 0 ? id : 0;
+    state.page = 1;
+    setText(msg, '');
+    loadFiles();
+    loadTree();
+  }
+
+  /* ─── 업로드·가져오기 패널의 「폴더」 선택지 ─────────────────────────────
+   * 지금 경로(루트 → 현재)와 **바로 아래 폴더들**만 담는다. 기본값은 지금 열어 둔 폴더다.
+   * 등급 기본값도 그 폴더 것을 물려받는다 (ARCH 5.16 「구글 드라이브와 비교」).
+   * 여기 없는 폴더 번호를 손으로 보내도 서버가 읽기 판정·불변 규칙 ①로 다시 막는다.
+   */
+  var folderIndex = {};
+
+  function fillFolderPickers() {
+    folderIndex = {};
+    var options = [{ id: 0, name: '루트 (폴더 없음)', access_level: null, team_id: null }];
+    state.crumbs.forEach(function (step) {
+      options.push({
+        id: step.id,
+        name: step.name,
+        access_level: step.access_level,
+        team_id: null
+      });
+    });
+    state.children.forEach(function (folder) {
+      options.push(folder);
+    });
+
+    [uploadFolder, fetchFolder].forEach(function (select) {
+      if (!select) {
+        return;
+      }
+      select.replaceChildren();
+      options.forEach(function (opt) {
+        folderIndex[String(opt.id)] = opt;
+        var option = document.createElement('option');
+        option.value = String(opt.id);
+        setText(option, opt.name);
+        if (opt.id === state.folder) {
+          option.selected = true;
+        }
+        select.appendChild(option);
+      });
+    });
+
+    syncUploadLevels();
+    syncFetchLevels();
+  }
+
+  /** 고른 폴더의 등급을 최소값·기본값으로 삼아 업로드 등급 선택지를 다시 만든다. */
+  function syncUploadLevels() {
+    if (!levelSelect) {
+      return;
+    }
+    var picked = uploadFolder ? folderIndex[uploadFolder.value] : null;
+    var floor = picked && typeof picked.access_level === 'string' ? picked.access_level : null;
+    fillLevelOptionsUnder(levelSelect, uploadLevels, floor, floor);
+    if (picked && typeof picked.team_id === 'number' && teamSelect) {
+      teamSelect.value = String(picked.team_id);
+    }
+    syncTeamField();
+  }
+
+  function syncFetchLevels() {
+    if (!fetchLevel) {
+      return;
+    }
+    var picked = fetchFolder ? folderIndex[fetchFolder.value] : null;
+    var floor = picked && typeof picked.access_level === 'string' ? picked.access_level : null;
+    fillLevelOptionsUnder(fetchLevel, uploadLevels, floor, floor);
+    if (picked && typeof picked.team_id === 'number' && fetchTeam) {
+      fetchTeam.value = String(picked.team_id);
+    }
+    syncFetchTeamField();
+  }
+
+  /* ─── 폴더 모달 — 새 폴더 · 이름 변경 · 등급 변경 ───────────────────── */
+
+  function openFolderDialog(mode) {
+    folderMode = mode;
+    if (!folderDialog) {
+      return;
+    }
+    setText(folderDialogMsg, '');
+    if (folderCascade) {
+      folderCascade.checked = false;
+    }
+    if (folderReason) {
+      folderReason.value = '';
+    }
+
+    var here = state.folderInfo && state.folderInfo.name ? state.folderInfo.name : '루트';
+    var levelField = folderLevelSelect ? folderLevelSelect.parentElement : null;
+
+    if (mode === 'create') {
+      setText(folderDialogTitle, '새 폴더');
+      setText(folderDialogWhere, '만들 위치: ' + here);
+      setText(folderSubmit, '만들기');
+      if (folderNameField) { folderNameField.hidden = false; }
+      if (folderNameInput) { folderNameInput.value = ''; }
+      if (levelField) { levelField.hidden = false; }
+      fillLevelOptionsUnder(folderLevelSelect, uploadLevels, currentFolderLevel(), currentFolderLevel());
+      if (folderCascadeField) { folderCascadeField.hidden = true; }
+      if (folderReasonField) { folderReasonField.hidden = true; }
+    } else if (mode === 'rename') {
+      setText(folderDialogTitle, '이름 변경');
+      setText(folderDialogWhere, here);
+      setText(folderSubmit, '저장');
+      if (folderNameField) { folderNameField.hidden = false; }
+      if (folderNameInput) { folderNameInput.value = here === '루트' ? '' : here; }
+      if (levelField) { levelField.hidden = true; }
+      if (folderCascadeField) { folderCascadeField.hidden = true; }
+      if (folderReasonField) { folderReasonField.hidden = false; }
+    } else {
+      setText(folderDialogTitle, '등급 변경');
+      setText(folderDialogWhere, here);
+      setText(folderSubmit, '저장');
+      if (folderNameField) { folderNameField.hidden = true; }
+      if (levelField) { levelField.hidden = false; }
+      // 부모 폴더보다 넓게는 못 바꾼다(불변 규칙 ①) — 선택지를 미리 줄여 준다.
+      var parentLevel = state.crumbs.length >= 2
+        ? state.crumbs[state.crumbs.length - 2].access_level
+        : null;
+      fillLevelOptionsUnder(folderLevelSelect, uploadLevels, parentLevel, currentFolderLevel());
+      if (folderCascadeField) { folderCascadeField.hidden = false; }
+      if (folderReasonField) { folderReasonField.hidden = false; }
+    }
+    syncFolderTeamField();
+    folderDialog.showModal();
+  }
+
+  function closeFolderDialog() {
+    if (folderDialog && folderDialog.open) {
+      folderDialog.close();
+    }
+  }
+
+  function syncFolderTeamField() {
+    if (folderTeamField && folderLevelSelect) {
+      folderTeamField.hidden = folderLevelSelect.value !== 'team';
+    }
+  }
+
+  function submitFolderDialog(event) {
+    event.preventDefault();
+    setText(folderDialogMsg, '');
+
+    var payload = {};
+    var method = 'PATCH';
+    var path = '/api/folders/' + encodeURIComponent(String(state.folder));
+
+    if (folderMode === 'create') {
+      method = 'POST';
+      path = '/api/folders';
+      payload.name = folderNameInput ? folderNameInput.value : '';
+      payload.access_level = folderLevelSelect ? folderLevelSelect.value : '';
+      if (payload.access_level === '') {
+        setText(folderDialogMsg, LEVEL_PLACEHOLDER);
+        return;
+      }
+      if (payload.access_level === 'team' && folderTeamSelect) {
+        payload.team_id = folderTeamSelect.value;
+      }
+      if (state.folder !== 0) {
+        payload.parent_id = state.folder;
+      }
+    } else if (folderMode === 'rename') {
+      payload.name = folderNameInput ? folderNameInput.value : '';
+      if (folderReason && folderReason.value !== '') {
+        payload.reason_text = folderReason.value;
+      }
+    } else {
+      payload.access_level = folderLevelSelect ? folderLevelSelect.value : '';
+      if (payload.access_level === '') {
+        setText(folderDialogMsg, LEVEL_PLACEHOLDER);
+        return;
+      }
+      if (payload.access_level === 'team' && folderTeamSelect) {
+        payload.team_id = folderTeamSelect.value;
+      }
+      if (folderCascade && folderCascade.checked) {
+        payload.cascade = true;
+      }
+      if (folderReason && folderReason.value !== '') {
+        payload.reason_text = folderReason.value;
+      }
+    }
+
+    if (folderSubmit) {
+      folderSubmit.disabled = true;
+    }
+    fetch(path, {
+      method: method,
+      headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken },
+      body: JSON.stringify(payload),
+      credentials: 'same-origin',
+      cache: 'no-store'
+    })
+      .then(function (response) {
+        if (response.status === 401) {
+          toLogin();
+          return null;
+        }
+        return readJson(response).then(function (data) {
+          if (response.status === 200 || response.status === 201) {
+            closeFolderDialog();
+            loadFiles();
+            loadTree();
+            return null;
+          }
+          // 거부 문구는 **서버가 준 것만** 쓴다 (사유를 브라우저가 추측하지 않는다).
+          setText(folderDialogMsg, errorMessage(data));
+          return null;
+        });
+      })
+      .catch(function () {
+        setText(folderDialogMsg, GENERIC_ERROR);
+      })
+      .then(function () {
+        if (folderSubmit) {
+          folderSubmit.disabled = false;
+        }
+      });
+  }
+
+  function deleteFolder() {
+    if (state.folder === 0) {
+      return;
+    }
+    var here = state.folderInfo && state.folderInfo.name ? state.folderInfo.name : '';
+    if (!window.confirm('폴더 「' + here + '」 을(를) 지웁니다. 안에 파일·하위 폴더가 없어야 지워집니다.')) {
+      return;
+    }
+    var parentId = state.crumbs.length >= 2 ? state.crumbs[state.crumbs.length - 2].id : 0;
+    setText(folderMsg, '');
+    fetch('/api/folders/' + encodeURIComponent(String(state.folder)), {
+      method: 'DELETE',
+      headers: csrfHeaders(),
+      credentials: 'same-origin',
+      cache: 'no-store'
+    })
+      .then(function (response) {
+        if (response.status === 401) {
+          toLogin();
+          return null;
+        }
+        if (response.status === 200) {
+          goToFolder(parentId);
+          return null;
+        }
+        return readJson(response).then(function (data) {
+          setText(folderMsg, errorMessage(data));
+          return null;
+        });
+      })
+      .catch(function () {
+        setText(folderMsg, GENERIC_ERROR);
+      });
+  }
+
+  /* ─── 파일 이동 모달 ─────────────────────────────────────────────────
+   * 폴더를 한 층씩 펼쳐 보고 「여기로 이동」을 누른다. 보이는 폴더는 서버가 내려 준
+   * **읽을 수 있는 폴더**뿐이고, 옮길 수 있는지는 서버가 다시 판단한다 (PRD S-01).
+   */
+  function openMove(file) {
+    if (!moveDialog || !UUID_RE.test(file.id)) {
+      return;
+    }
+    movePick.file = file;
+    movePick.folder = state.folder;
+    movePick.crumbs = state.crumbs.slice();
+    setText(moveMsg, '');
+    setText(moveFileLabel, file.name);
+    loadMoveTree();
+    moveDialog.showModal();
+  }
+
+  function loadMoveTree() {
+    fetch('/api/folders?parent=' + encodeURIComponent(String(movePick.folder)), {
+      credentials: 'same-origin',
+      cache: 'no-store'
+    })
+      .then(function (response) {
+        if (response.status === 401) {
+          toLogin();
+          return null;
+        }
+        return readJson(response).then(function (data) {
+          if (!response.ok) {
+            setText(moveMsg, errorMessage(data));
+            return null;
+          }
+          movePick.crumbs = data && data.folder && Array.isArray(data.folder.breadcrumb)
+            ? data.folder.breadcrumb
+            : [];
+          renderMoveTree(data && Array.isArray(data.folders) ? data.folders : []);
+          return null;
+        });
+      })
+      .catch(function () {
+        setText(moveMsg, GENERIC_ERROR);
+      });
+  }
+
+  function renderMoveTree(children) {
+    if (!moveCrumbs || !moveList) {
+      return;
+    }
+    moveCrumbs.replaceChildren();
+    var root = document.createElement('button');
+    root.type = 'button';
+    root.className = 'crumbs__item';
+    setText(root, '루트');
+    root.addEventListener('click', function () {
+      movePick.folder = 0;
+      loadMoveTree();
+    });
+    moveCrumbs.appendChild(root);
+    movePick.crumbs.forEach(function (step, index) {
+      var sep = document.createElement('span');
+      sep.className = 'crumbs__sep';
+      setText(sep, '›');
+      moveCrumbs.appendChild(sep);
+      var item = document.createElement('button');
+      item.type = 'button';
+      item.className = index === movePick.crumbs.length - 1 ? 'crumbs__item is-current' : 'crumbs__item';
+      setText(item, step.name);
+      item.addEventListener('click', function () {
+        movePick.folder = step.id;
+        loadMoveTree();
+      });
+      moveCrumbs.appendChild(item);
+    });
+
+    moveList.replaceChildren();
+    children.forEach(function (folder) {
+      var li = document.createElement('li');
+      var button = document.createElement('button');
+      button.type = 'button';
+      button.className = 'foldertree__item';
+      var name = document.createElement('span');
+      name.className = 'foldertree__name';
+      setText(name, folder.name);
+      button.appendChild(name);
+      button.appendChild(folderMeta(folder));
+      button.addEventListener('click', function () {
+        movePick.folder = folder.id;
+        loadMoveTree();
+      });
+      li.appendChild(button);
+      moveList.appendChild(li);
+    });
+    if (moveEmpty) {
+      moveEmpty.hidden = children.length !== 0;
+    }
+  }
+
+  function doMove() {
+    if (!movePick.file) {
+      return;
+    }
+    setText(moveMsg, '');
+    var body = { folder_id: movePick.folder === 0 ? null : movePick.folder };
+    fetch('/api/files/' + movePick.file.id, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken },
+      body: JSON.stringify(body),
+      credentials: 'same-origin',
+      cache: 'no-store'
+    })
+      .then(function (response) {
+        if (response.status === 401) {
+          toLogin();
+          return null;
+        }
+        if (response.status === 200) {
+          if (moveDialog.open) {
+            moveDialog.close();
+          }
+          loadFiles();
+          loadTree();
+          return null;
+        }
+        return readJson(response).then(function (data) {
+          // 서버가 준 거부 문구를 그대로 보여 준다 (사유를 화면이 추측하지 않는다).
+          setText(moveMsg, errorMessage(data));
+          return null;
+        });
+      })
+      .catch(function () {
+        setText(moveMsg, GENERIC_ERROR);
+      });
+  }
   function loadTeams() {
     fetch('/api/teams', { credentials: 'same-origin', cache: 'no-store' })
       .then(function (response) {
@@ -1561,7 +2275,8 @@ function initFiles(csrfToken, uploadLevels, canFetch, myTeamId) {
           var mine = myTeamId === null || myTeamId === undefined ? '' : String(myTeamId);
           teams.forEach(function (team) {
             // 같은 목록을 업로드 폼과 가져오기 폼 두 곳의 <select> 에 만든다.
-            [teamSelect, fetchTeam].forEach(function (select) {
+            // 18-1 — 폴더 모달의 팀 선택지도 같은 목록으로 채운다.
+            [teamSelect, fetchTeam, folderTeamSelect].forEach(function (select) {
               if (!select) {
                 return;
               }
@@ -1653,60 +2368,168 @@ function initFiles(csrfToken, uploadLevels, canFetch, myTeamId) {
       });
   }
 
-  function upload(event) {
-    event.preventDefault();
-    setText(msg, '');
+  /* ─── 일괄 업로드 (18-2 — PRD F-27, ARCH 5.17) ─────────────────────────
+   *
+   * **서버 계약은 바뀌지 않는다.** `POST /api/files` 는 여전히 요청당 파일 1개이고
+   * (php-fpm `max_file_uploads=1`), 화면이 고른 목록을 **한 번에 하나씩 순서대로** 보낸다.
+   *   · 동시 1 — 한 사용자가 워커 5개를 점유하지 못하게 하고, 일일 총량(2GB) 검사가
+   *     파일 순서대로 누적되게 한다 (SECURITY R-64).
+   *   · 400(형식·확장자·민감정보 등)이면 **그 파일만** 거부로 적고 다음 파일로 계속한다.
+   *   · 401·403(세션·권한)이면 **멈춘다** — 세션이 끊겼거나 등급 자체가 막힌 것이라
+   *     나머지를 계속 보내 봐야 같은 결과이고 감사 로그만 늘린다.
+   *   · 파일마다 확장자·MIME·크기·총량·민감정보 검사와 감사 행이 그대로 남는다.
+   */
 
-    if (!fileInput.files || fileInput.files.length !== 1) {
-      // 서버도 400 으로 막지만, 굳이 빈 요청을 보내지 않는다.
-      return;
-    }
-    if (!levelSelect || levelSelect.value === '') {
-      // 접근 레벨을 고르지 않은 채로는 보내지 않는다. 서버도 400 으로 막는다 (사용자 피드백 ②).
-      setText(msg, LEVEL_PLACEHOLDER);
-      return;
-    }
+  /** 이번에 고른 파일들 (input 과 끌어 놓기가 같은 배열을 채운다) */
+  var picked = [];
 
+  function setPicked(list) {
+    picked = [];
+    var i;
+    for (i = 0; i < list.length && picked.length < BULK_MAX; i++) {
+      picked.push(list[i]);
+    }
+    var note = picked.length === 0
+      ? ''
+      : picked.length + '개 선택됨';
+    if (list.length > BULK_MAX) {
+      note = BULK_MAX + '개까지만 한 번에 올릴 수 있습니다 (고른 ' + list.length + '개 중 앞 '
+        + BULK_MAX + '개만 보냅니다)';
+    }
+    setText(uploadPicked, note);
+  }
+
+  /** 진행 표에 파일 한 줄을 만들고, 상태 칸을 바꿀 수 있는 함수를 돌려준다. */
+  function addStatusRow(file) {
+    var row = document.createElement('tr');
+    var nameCell = document.createElement('td');
+    setText(nameCell, file.name);
+    row.appendChild(nameCell);
+    var sizeCell = document.createElement('td');
+    setText(sizeCell, formatSize(file.size));
+    row.appendChild(sizeCell);
+    var stateCell = document.createElement('td');
+    setText(stateCell, '대기');
+    row.appendChild(stateCell);
+    uploadStatusBody.appendChild(row);
+    return function (text, cls) {
+      // 문구는 **서버가 준 것 또는 고정 문구**뿐이고 언제나 textContent 다 (PRD S-03).
+      setText(stateCell, text);
+      stateCell.className = cls ? 'upload-status__state ' + cls : 'upload-status__state';
+    };
+  }
+
+  /** 파일 하나를 보낸다 — 기존 단일 업로드와 **완전히 같은 요청**이다. */
+  function uploadOne(file, common) {
     var form = new FormData();
-    form.append('file', fileInput.files[0]);
-    form.append('description', descInput.value);
-    form.append('access_level', levelSelect.value);
-    if (levelSelect.value === 'team') {
-      form.append('team_id', teamSelect.value);
+    form.append('file', file);
+    form.append('description', common.description);
+    form.append('access_level', common.level);
+    if (common.level === 'team') {
+      form.append('team_id', common.teamId);
     }
-
-    uploadSubmit.disabled = true;
+    if (common.folderId !== '' && common.folderId !== '0') {
+      form.append('folder_id', common.folderId);
+    }
     // headers 에 Content-Type 을 넣지 않는다 — 브라우저가 boundary 를 붙여야 한다.
-    fetch('/api/files', {
+    return fetch('/api/files', {
       method: 'POST',
       headers: csrfHeaders(),
       body: form,
       credentials: 'same-origin',
       cache: 'no-store'
-    })
-      .then(function (response) {
-        if (response.status === 401) {
-          toLogin();
-          return null;
-        }
-        return readJson(response).then(function (data) {
-          if (response.status === 201) {
-            uploadForm.reset();
-            syncTeamField();
-            state.page = 1;
-            loadFiles();
-            return null;
-          }
-          setText(msg, errorMessage(data));
-          return null;
-        });
-      })
-      .catch(function () {
-        setText(msg, GENERIC_ERROR);
-      })
-      .then(function () {
-        uploadSubmit.disabled = false;
+    }).then(function (response) {
+      return readJson(response).then(function (data) {
+        return { status: response.status, data: data };
       });
+    });
+  }
+
+  function upload(event) {
+    event.preventDefault();
+    setText(msg, '');
+
+    if (picked.length === 0) {
+      // 서버도 400 으로 막지만, 굳이 빈 요청을 보내지 않는다.
+      return;
+    }
+    if (!levelSelect || levelSelect.value === '') {
+      // 접근 레벨을 고르지 않은 채로는 보내지 않는다. 서버도 400 으로 막는다.
+      setText(msg, LEVEL_PLACEHOLDER);
+      return;
+    }
+
+    var common = {
+      description: descInput ? descInput.value : '',
+      level: levelSelect.value,
+      teamId: teamSelect ? teamSelect.value : '',
+      folderId: uploadFolder ? uploadFolder.value : '0'
+    };
+
+    var queue = picked.slice();
+    uploadStatusBody.replaceChildren();
+    if (uploadProgress) {
+      uploadProgress.hidden = false;
+    }
+    var setters = queue.map(function (file) {
+      return addStatusRow(file);
+    });
+
+    uploadSubmit.disabled = true;
+
+    /* 순차 전송 — 한 번에 하나. 다음 요청은 앞 요청의 응답을 받은 뒤에 시작한다. */
+    var index = 0;
+    var stopped = false;
+
+    function finish() {
+      uploadSubmit.disabled = false;
+      state.page = 1;
+      loadFiles();
+      loadTree();
+    }
+
+    function step() {
+      if (stopped || index >= queue.length) {
+        finish();
+        return;
+      }
+      var i = index;
+      index += 1;
+      setters[i]('올리는 중…', 'is-busy');
+
+      uploadOne(queue[i], common)
+        .then(function (result) {
+          if (result.status === 401) {
+            setters[i]('중단 — 로그인이 필요합니다', 'is-deny');
+            stopped = true;
+            toLogin();
+            return;
+          }
+          if (result.status === 201) {
+            setters[i]('완료', 'is-ok');
+          } else if (result.status === 403) {
+            // 권한 문제는 나머지 파일도 같은 결과다 → 멈춘다 (ARCH 5.17).
+            setters[i](errorMessage(result.data), 'is-deny');
+            stopped = true;
+            var k;
+            for (k = index; k < queue.length; k++) {
+              setters[k]('중단', 'is-deny');
+            }
+            setText(msg, errorMessage(result.data));
+          } else {
+            // 400 계열 — 이 파일만 거부하고 다음으로 계속한다.
+            setters[i](errorMessage(result.data), 'is-deny');
+          }
+        })
+        .catch(function () {
+          setters[i](GENERIC_ERROR, 'is-deny');
+        })
+        .then(function () {
+          step();
+        });
+    }
+
+    step();
   }
 
   if (searchForm) {
@@ -1744,6 +2567,87 @@ function initFiles(csrfToken, uploadLevels, canFetch, myTeamId) {
   }
   if (fetchForm) {
     fetchForm.addEventListener('submit', fetchByUrl);
+  }
+
+  // ─── 18-2 파일 선택·끌어 놓기 (F-27) ───────────────────────────
+  if (fileInput) {
+    fileInput.addEventListener('change', function () {
+      setPicked(fileInput.files ? fileInput.files : []);
+    });
+  }
+  if (uploadDrop) {
+    ['dragenter', 'dragover'].forEach(function (name) {
+      uploadDrop.addEventListener(name, function (event) {
+        event.preventDefault();
+        uploadDrop.classList.add('is-over');
+      });
+    });
+    ['dragleave', 'drop'].forEach(function (name) {
+      uploadDrop.addEventListener(name, function (event) {
+        event.preventDefault();
+        uploadDrop.classList.remove('is-over');
+      });
+    });
+    uploadDrop.addEventListener('drop', function (event) {
+      if (event.dataTransfer && event.dataTransfer.files) {
+        setPicked(event.dataTransfer.files);
+      }
+    });
+  }
+
+  // ─── 18-1 폴더 단추 (F-26) ─────────────────────────────────────
+  if (uploadFolder) {
+    uploadFolder.addEventListener('change', syncUploadLevels);
+  }
+  if (fetchFolder) {
+    fetchFolder.addEventListener('change', syncFetchLevels);
+  }
+  if (folderNewBtn) {
+    folderNewBtn.addEventListener('click', function () {
+      openFolderDialog('create');
+    });
+  }
+  if (folderRenameBtn) {
+    folderRenameBtn.addEventListener('click', function () {
+      openFolderDialog('rename');
+    });
+  }
+  if (folderLevelBtn) {
+    folderLevelBtn.addEventListener('click', function () {
+      openFolderDialog('level');
+    });
+  }
+  if (folderDeleteBtn) {
+    folderDeleteBtn.addEventListener('click', deleteFolder);
+  }
+  if (folderLevelSelect) {
+    folderLevelSelect.addEventListener('change', syncFolderTeamField);
+  }
+  if (folderForm) {
+    folderForm.addEventListener('submit', submitFolderDialog);
+  }
+  if (folderDialogClose) {
+    folderDialogClose.addEventListener('click', closeFolderDialog);
+  }
+  if (folderDialogX) {
+    folderDialogX.addEventListener('click', closeFolderDialog);
+  }
+  if (moveHere) {
+    moveHere.addEventListener('click', doMove);
+  }
+  if (moveClose) {
+    moveClose.addEventListener('click', function () {
+      if (moveDialog && moveDialog.open) {
+        moveDialog.close();
+      }
+    });
+  }
+  if (moveX) {
+    moveX.addEventListener('click', function () {
+      if (moveDialog && moveDialog.open) {
+        moveDialog.close();
+      }
+    });
   }
 
   /**
@@ -1788,10 +2692,17 @@ function initFiles(csrfToken, uploadLevels, canFetch, myTeamId) {
     bindPanelToggle(fetchToggle, fetchPanel);
   }
 
+  // 「새 폴더」는 올릴 수 있는 등급이 하나라도 있는 사람에게만 보인다(Guest 는 라우터에서 끝).
+  // 감추는 것은 편의일 뿐이다 — POST /api/folders 는 서버가 다시 막는다 (PRD S-01).
+  if (folderNewBtn) {
+    folderNewBtn.hidden = !canUpload;
+  }
+
   syncTeamField();
   syncFetchTeamField();
   loadTeams();
   loadFiles();
+  loadTree();
 }
 
 /* ─── 감사 로그 화면 (8단계 — GET /audit + GET /api/audit) ────────
