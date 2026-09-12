@@ -44,11 +44,16 @@ $formText = static function (string $key): string {
 
 /** 검증 실패 — 사유는 감사 로그에만, 사용자에게는 동일한 400 문구만 (PRD S-09-5) */
 $rejectBadRequest = static function (string $reason, ?string $name, ?string $level): void {
-    Audit::deny('file.upload', $reason, [
+    $entry = [
         'target_type'  => 'file',
         'target_name'  => $name,
         'access_level' => $level,
-    ]);
+    ];
+    // MIME 짝 불일치는 "무엇으로 감지됐나" 가 없으면 진단할 수 없다 (2026-09-13 이카운트 xlsx 거부 사례, R-71).
+    if ($reason === 'mime_mismatch' && Upload::$lastDetectedMime !== null) {
+        $entry['detail'] = ['mime' => Upload::$lastDetectedMime];
+    }
+    Audit::deny('file.upload', $reason, $entry);
     Http::error(400, Http::MSG_BAD_REQUEST);
 };
 

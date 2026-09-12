@@ -285,6 +285,7 @@
 | — | R-68 | **추천·내 리스트가 남의 주문을 드러냄** — 담당자별 빈도를 잘못 집계하면 다른 지점·다른 사람의 주문 패턴이 보인다 | 낮음 | ◐ 설계: 추천은 `manager_id = 본인` 또는 `branch_id = 내 지점`(공유 선택) 범위만, 리스트는 소유자 또는 지점 공유 | 20단계 검토 |
 | — | R-69 | **명세서·가져오기 파일의 개인정보** — 거래처 명세서에 담당자 연락처·계좌가 들어올 수 있다 | 낮음 | ◐ 설계: 파일은 `admin-only`/buyer 폴더에만, 대사에 필요한 열(품목·수량·단가·금액)만 추출·저장, 원본은 F-22 검출 대상 | 22단계 |
 | — | R-70 | **모듈 역할이 본체 4역할과 겹쳐 판단이 두 곳으로 갈릴 위험** | 중간 | ◐ 설계: 모듈 판정도 `Authz` 안 두 함수로만, 라우트 정책은 `KNOWN_POLICIES` 에 등록(누락 = 부팅 실패 R-04 그대로), 재인증 대상 정책은 `REAUTH_POLICIES` 에 | 19단계 검토 |
+| — | R-71 | **OOXML 판정이 finfo 첫 항목에 의존** — `finfo` 는 zip 의 첫 항목이 `[Content_Types].xml` 일 때만 OOXML 로 보고, 아니면 `application/zip`·`application/octet-stream` 을 돌려준다. 이카운트 xlsx 7종이 진짜 zip(머리 `50 4B 03 04`)인데 octet-stream 으로 나와 전부 거부됐다(2026-09-13 사용자 실사용). 반대로 종전 짝 표는 docx·xlsx·pptx 에 `application/zip` 을 통과시켜 **아무 zip 이나 .xlsx 로 위장**할 수 있었다. 또 `mime_mismatch` 거부에 감지값이 없어 진단이 불가능했다 | 중간 | ✅ **2026-09-13 반영**: `Upload::ooxmlMime` — finfo 가 zip/octet-stream 이면 zip 중앙 디렉터리 이름만 읽어(내용 안 풂, 항목 2~10000) `[Content_Types].xml` + 형식별 필수 항목(`xl/workbook.xml`·`word/document.xml`·`ppt/presentation.xml`)이 있을 때만 정식 MIME. 짝 표에서 `application/zip` 제거(hwpx 는 그대로). 거부 detail 에 `mime`(감지값 + 앞 8바이트 hex). 합성 5건 실측: 이카운트형·정상형 통과, 일반 zip·docx 위장·HTML 위장 거부 | 사용자 재업로드로 확정 |
 
 ### 6.4 2차 검토 후에도 남는 한계 — 솔직하게
 

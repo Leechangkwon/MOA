@@ -67,15 +67,12 @@ final class Upload
         'pdf'  => ['application/pdf'],
         'docx' => [
             'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-            'application/zip',
         ],
         'xlsx' => [
             'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-            'application/zip',
         ],
         'pptx' => [
             'application/vnd.openxmlformats-officedocument.presentationml.presentation',
-            'application/zip',
         ],
         'hwp'  => [
             'application/x-hwp',
@@ -240,6 +237,39 @@ final class Upload
      * finfo 자체가 실패하거나 형태가 이상하면 octet-stream 으로 보고, 그 값은 어느 칸에도
      * 없으므로 역시 거부된다(닫힌 방향으로 실패한다).
      */
+    /** OOXML 확장자별 (반드시 있어야 하는 zip 항목 2개, 정식 MIME). 중앙 디렉터리의 이름만 본다. */
+    private const OOXML_MARKERS = [
+        'xlsx' => [['[Content_Types].xml', 'xl/workbook.xml'],       'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'],
+        'docx' => [['[Content_Types].xml', 'word/document.xml'],     'application/vnd.openxmlformats-officedocument.wordprocessingml.document'],
+        'pptx' => [['[Content_Types].xml', 'ppt/presentation.xml'],  'application/vnd.openxmlformats-officedocument.presentationml.presentation'],
+    ];
+
+    /** zip 중앙 디렉터리에 OOXML 필수 항목이 다 있으면 정식 MIME, 아니면 null. 항목 내용은 읽지 않는다. */
+    private static function ooxmlMime(string $tmpPath, string $ext): ?string
+    {
+        [$needles, $mime] = self::OOXML_MARKERS[$ext];
+        $zip = new ZipArchive();
+        if ($zip->open($tmpPath, ZipArchive::RDONLY) !== true) {
+            return null;
+        }
+        try {
+            if ($zip->numFiles < 2 || $zip->numFiles > 10000) {
+                return null;   // 항목 수가 비정상이면 OOXML 로 보지 않는다
+            }
+            foreach ($needles as $name) {
+                if ($zip->locateName($name) === false) {
+                    return null;
+                }
+            }
+            return $mime;
+        } finally {
+            $zip->close();
+        }
+    }
+
+    /** 마지막 checkMime 이 거부하며 감지한 MIME (진단용, 요청 하나 안에서만 의미 있음) */
+    public static ?string $lastDetectedMime = null;
+
     public static function checkMime(string $tmpPath, string $ext): string
     {
         $allowed = self::MIME_BY_EXT[$ext] ?? null;
@@ -259,7 +289,21 @@ final class Upload
             }
         }
 
+        // OOXML(docx·xlsx·pptx) 은 finfo 가 첫 zip 항목만 보고 판정한다. 이카운트처럼 첫 항목이
+        // [Content_Types].xml 이 아닌 파일은 application/zip 또는 octet-stream 으로 나온다(2026-09-13 실측:
+        // 머리 50 4B 03 04 = 진짜 zip 인데 octet-stream). 그런 경우 zip **중앙 디렉터리만** 읽어
+        // OOXML 필수 항목 두 개가 있는지 확인하고, 있으면 정식 OOXML MIME 으로 본다. 내용은 풀지 않는다(R-42).
+        // 이 검사는 종전의 "application/zip 이면 통과" 보다 엄격하다 — 이제 zip 이어도 구조가 맞아야 한다.
+        if (isset(self::OOXML_MARKERS[$ext]) && ($mime === self::DEFAULT_MIME || $mime === 'application/zip')) {
+            $mime = self::ooxmlMime($tmpPath, $ext) ?? $mime;
+        }
+
         if (!in_array($mime, $allowed, true)) {
+            // 감지된 실제 형식을 남겨 핸들러가 deny detail 에 적게 한다 (R-71: 사유 없는 거부는 진단 불가).
+            // 값은 finfo 가 돌려준 MIME 문자열(형태 검사 통과분) 또는 octet-stream 이라 비밀이 없다.
+            // 앞 8바이트 16진수도 함께 — finfo 가 octet-stream 이라고만 할 때 형식을 가려내는 유일한 단서다.
+            $head = @file_get_contents($tmpPath, false, null, 0, 8);
+            self::$lastDetectedMime = $mime . ' head=' . (is_string($head) ? strtoupper(bin2hex($head)) : '?');
             throw new RuntimeException('mime_mismatch');
         }
         return $mime;

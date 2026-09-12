@@ -761,12 +761,12 @@ sudo -u postgres psql -d tbox_re -c "SELECT happened_at, actor_name, action, res
 > 해석(Fable): 19단계는 **데이터가 들어올 자리**를 만드는 단계 — 모듈 역할·지점 컬럼, 기초정보 6종 화면·API, 엑셀 가져오기 파이프라인, 품목 찾기 API(20단계 요청 입력의 재료). 전표는 20단계부터.
 
 **개발 사항**
-- [ ] 마이그레이션 `p_brands`·`p_branches`·`p_locations`·`p_vendors`·`p_categories`·`p_items`·`p_item_branches`·`p_par_levels`·`p_import_mappings` + `users.branch_id`·`users.purchase_role`, `grants.sql`(DELETE 없음), `schema.sql`
-- [ ] `Authz::purchaseAuthorize`·`purchaseScopeWhere`·`KNOWN_POLICIES` 6개·`REAUTH_POLICIES` 에 `purchase.master.write`·`purchase.close`, 린트 규칙(모듈 핸들러 SELECT 에 `purchaseScopeWhere`)
-- [ ] 계정 관리(`/api/users`)에 `branch_id`·`purchase_role` 허용 키 + 화면 두 칸(Admin), `me.php` 에 두 값·`can_purchase`
-- [ ] API: 브랜드·지점·장소·거래처·분류·품목·인가량 CRUD(중단 방식) + `GET /api/purchase/items` 검색(조건 바인딩·20건·total·정렬 허용 목록) + 매핑 CRUD + 가져오기(업로드→추출→매핑→미리보기→확정)
-- [ ] 화면: 「구매관리」 내비 그룹(모듈 역할 있는 사용자만 표시), `/purchase/masters`(탭 6개, 시안 ⑭), `/purchase/items/{id}`(시안 ⑮), `/purchase/import`(시안 ⑯)
-- [ ] 감사 문장 틀 `purchase.master.*`·`purchase.import.*`, README 「구매·재고 모듈」 절
+- [x] 마이그레이션 `p_brands`·`p_branches`·`p_locations`·`p_vendors`·`p_categories`·`p_items`·`p_item_branches`·`p_par_levels`·`p_import_mappings` + `users.branch_id`·`users.purchase_role`, `grants.sql`(DELETE 없음), `schema.sql`
+- [x] `Authz::purchaseAuthorize`·`purchaseScopeWhere`·`KNOWN_POLICIES` 6개·`REAUTH_POLICIES` 에 `purchase.master.write`·`purchase.close`, 린트 규칙(모듈 핸들러 SELECT 에 `purchaseScopeWhere`)
+- [x] 계정 관리(`/api/users`)에 `branch_id`·`purchase_role` 허용 키 + 화면 두 칸(Admin), `me.php` 에 두 값·`can_purchase`
+- [x] API: 브랜드·지점·장소·거래처·분류·품목·인가량 CRUD(중단 방식) + `GET /api/purchase/items` 검색(조건 바인딩·20건·total·정렬 허용 목록) + 매핑 CRUD + 가져오기(업로드→추출→매핑→미리보기→확정)
+- [x] 화면: 「구매관리」 내비 그룹(모듈 역할 있는 사용자만 표시), `/purchase/masters`(탭 6개, 시안 ⑭), `/purchase/items/{id}`(시안 ⑮), `/purchase/import`(시안 ⑯)
+- [x] 감사 문장 틀 `purchase.master.*`·`purchase.import.*`, README 「구매·재고 모듈」 절
 
 **검토 체크 (관문 ②, Fable)** — T-42(두 지점 requester·buyer·역할 없음·Guest·재인증), T-43(검색 조건·성능·SQLi), T-44(가져오기 판정·트랜잭션·매핑 재사용·매크로 파일), 회귀 T-1·T-26·T-36, 린트 0(새 규칙 포함), `\dp p_*`
 
@@ -782,6 +782,8 @@ sudo -u postgres psql -d tbox_re -c "SELECT happened_at, actor_name, action, res
 | 2026-09-13 | 결정 | Q-18 확정 — 요청 수정은 미확인 상태만·담기면 잠김·발주서 뒤 추가는 새 전표 / PDF 양식 = 이카운트 발주서 캡처(files #188), 머리 정보 자동 채움+수정 / 실사 일·주·월 / viewer = 검토·송부 / 이카운트 엑셀 양식 업로드 예정 | PRD Q-18·F-30·F-32·F-33, ARCH 5.18 네 행. 20단계 지시서 반영 |
 | 2026-09-13 | 결정 | 백업 보존 45일 상한 (일 7·주 6·월 1) | `backup_db.sh` KEEP_*, cron 주석, PRD 7.8. 다음 03:00 실행부터 적용 |
 | 2026-09-13 | 결정 | R-61 위험 수용(관리망 IP 겹 켜지 않음) · R-62 qa_ 자격증명은 19단계 검토 뒤 교체 | SECURITY R-61·R-62 |
+| 2026-09-13 | 사고 | 이카운트 엑셀 양식 7종 업로드 거부("잘못된 요청") — finfo 가 진짜 xlsx 를 octet-stream 으로 판정 | R-71. 거부 detail 에 감지 MIME + 앞 8바이트 기록 → 두 번 재업로드로 원인 확정 → OOXML 구조 검사(`Upload::ooxmlMime`)로 교체하며 `application/zip` 통과도 제거(더 엄격). 중복 저장된 양식 파일 28건은 검토 계정으로 휴지통 처리 |
+| 2026-09-13 | 사고 | **Fable 의 `sed` 줄 삭제 실수로 Upload.php 파스 오류 — 05:18:23~05:18:31(8초) 전 요청 실패(app.log 5건)** | 작업 트리 = 서비스라 편집 즉시 배포됨(11단계 학습 기록과 같은 함정). 곧바로 복구·`php -l` 확인. 재발 방지: 여러 줄 삭제는 `sed -i Nd` 연쇄 대신 문자열 치환으로만, 고친 뒤 `php -l` 을 같은 명령에 붙인다. 근본 해결은 별도 체크아웃 + `switch-site.sh`(미결) |
 
 
 ## 2-1. 10단계 뒤 일괄 자기 공격 — 진행 순서 (관문 ③, 사용자)
