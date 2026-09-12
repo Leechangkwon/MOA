@@ -37,7 +37,11 @@ declare(strict_types=1);
  */
 
 /** 허용 키 — 여기 없는 키가 오면 요청 전체를 거부한다 (SECURITY R-07 과 같은 원칙) */
-$allowedFields = ['username', 'role', 'team_id', 'expires_at', 'reason_text'];
+// 19단계 (F-28) — 구매 모듈의 두 축을 계정 생성에서 함께 정할 수 있다.
+// 값 검사는 Authz::isAssignablePurchaseRole 과 아래 지점 존재 확인이 한다 —
+// **요청이 보낸 문자열을 그대로 컬럼에 넣지 않는다** (role 과 같은 규칙, PRD S-01).
+$allowedFields = ['username', 'role', 'team_id', 'expires_at', 'reason_text',
+                  'branch_id', 'purchase_role'];
 
 $body = Http::jsonBody();
 
@@ -157,11 +161,45 @@ if (!is_string($hash)) {
     throw new RuntimeException('비밀번호 해시를 만들 수 없습니다');
 }
 
+/* ─── 19단계 — 지점·모듈 역할 (PRD F-28, ARCH 5.18 「권한 두 축」) ───
+ *
+ * 둘 다 **선택**이다(없으면 NULL = 구매 모듈을 쓰지 않는 계정).
+ *   purchase_role  Authz 의 허용 목록에 정확히 있는 값만. 판정 함수와 같은 파일에 있는
+ *                  목록을 쓰므로 표·코드·화면이 어긋날 자리가 없다.
+ *   branch_id      **활성 지점**만. 없는 지점을 가리키는 계정은 만들지 않는다(팀과 같은 규칙).
+ *                  FK 가 마지막 그물이지만 앱이 먼저 보아야 사유가 로그에 남는다.
+ */
+$purchaseRole = null;
+if (array_key_exists('purchase_role', $body) && $body['purchase_role'] !== null && $body['purchase_role'] !== '') {
+    if (!is_string($body['purchase_role']) || !Authz::isAssignablePurchaseRole($body['purchase_role'])) {
+        $rejectBadRequest($body);
+    }
+    $purchaseRole = (string) $body['purchase_role'];
+}
+
+$branchId = null;
+if (array_key_exists('branch_id', $body) && $body['branch_id'] !== null && $body['branch_id'] !== '') {
+    $raw  = $body['branch_id'];
+    $text = is_int($raw) ? (string) $raw : (is_string($raw) ? $raw : '');
+    if (preg_match('/^[1-9][0-9]{0,8}$/', $text) !== 1) {
+        $rejectBadRequest($body);
+    }
+    $sqlBranch = <<<'SQL'
+        SELECT 1 AS ok FROM p_branches WHERE id = CAST(:id AS bigint) AND is_active
+        SQL;
+    if (!is_array($db->run($sqlBranch, [':id' => (int) $text])->fetch())) {
+        $rejectBadRequest($body);
+    }
+    $branchId = (int) $text;
+}
+
 $sqlInsert = <<<'SQL'
     INSERT INTO users (username, password_hash, role, team_id, expires_at,
-                       must_change_password, mfa_setup_required)
+                       must_change_password, mfa_setup_required,
+                       branch_id, purchase_role)
     VALUES (:username, :hash, :role, :team_id, CAST(:expires AS timestamptz),
-            true, true)
+            true, true,
+            CAST(:branch_id AS bigint), :purchase_role)
     RETURNING id
     SQL;
 
@@ -173,6 +211,8 @@ try {
         ':role'     => $role,
         ':team_id'  => $teamId,
         ':expires'  => $expiresAt,
+        ':branch_id'     => $branchId,
+        ':purchase_role' => $purchaseRole,
     ])->fetch();
     if (!is_array($row)) {
         throw new RuntimeException('계정을 만들지 못했습니다');
@@ -192,6 +232,9 @@ try {
             'reason_text'   => $reason,
             // 값이 아니라 **사실**만 (ARCH 7.5 temp_password_issued, SECURITY R-39)
             'temp_password_issued' => true,
+            // 19단계 (F-28) — 어느 지점의 어떤 모듈 역할로 만들었나
+            'branch_id'     => $branchId,
+            'purchase_role' => $purchaseRole,
         ],
     ]);
     $db->commit();

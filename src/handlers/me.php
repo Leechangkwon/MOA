@@ -102,4 +102,22 @@ Http::json([
     // 띄울지 고르는 데만 쓴다. 값이 무엇이든 막는 것은 라우터 관문 [3-2] 이고,
     // 이 값을 true 로 고쳐 보내도 서버는 요청마다 DB(sessions.reauth_at)를 다시 본다 (PRD S-01).
     'reauth_fresh'         => ($user['reauth_fresh'] ?? false) === true,
+    /*
+     * 19단계 — 구매·재고 모듈 (PRD F-28, ARCH 5.18 「권한 두 축」).
+     *
+     *   branch_id     내 지점 (없으면 null — 구매팀·경영진). **표시용**이다.
+     *   purchase_role 내 모듈 역할 (없으면 null). 역시 표시용이다.
+     *   can_purchase  「구매관리」 내비를 보일지 — 다른 can_* 와 **똑같은 화면 편의 값**이다.
+     *   can_purchase_master 「새로 만들기」·「엑셀 가져오기」 를 보일지.
+     *
+     * ★ 이 네 값은 권한이 **아니다**. 화면이 branch_id 를 고쳐 보내도 서버는 목록마다
+     *   `Authz::purchaseScopeWhere` 가 DB 의 `users.branch_id` 로 다시 조건을 만들고,
+     *   can_* 를 true 로 바꿔도 라우트 정책 `purchase.*` 가 다시 막는다 (PRD S-01, T-42).
+     * ★ 판정 함수는 Authz 안에 있다 — 이 파일에서 purchase_role 문자열을 비교하지 않는다
+     *   (ARCH 4.1, scripts/security_lint.sh 새 규칙 (b)).
+     */
+    'branch_id'           => Authz::purchaseProfile($user)['branch_id'],
+    'purchase_role'       => Authz::purchaseProfile($user)['purchase_role'],
+    'can_purchase'        => Authz::canUsePurchase($user),
+    'can_purchase_master' => Authz::canEditPurchaseMaster($user),
 ]);

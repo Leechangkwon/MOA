@@ -66,6 +66,15 @@ CREATE TABLE users (
     must_change_password BOOLEAN NOT NULL DEFAULT false,
     mfa_setup_required   BOOLEAN NOT NULL DEFAULT false,
     password_changed_at  TIMESTAMPTZ,
+    -- 19단계 구매·재고 모듈의 **권한 두 축** (PRD F-28, ARCH 5.18 「권한 두 축」).
+    --   branch_id     — 지점 격리의 기준. NULL 허용(구매팀·경영진은 지점이 없다).
+    --                   FK 는 p_branches 를 만든 **뒤**에 붙인다(아래 ALTER) — 두 표가 서로를 참조한다.
+    --   purchase_role — 모듈 역할 requester·buyer·stock·viewer. NULL 이면 /purchase/* 전부 403
+    --                   (Admin 제외). 값 목록은 Authz::purchaseAuthorize 의 판정과 같다 (ARCH 4.1).
+    -- (기존 DB 는 db/migrations/2026-09-13_purchase_masters.sql 로 같은 모양이 된다.)
+    branch_id     BIGINT,
+    purchase_role TEXT CHECK (purchase_role IS NULL
+                              OR purchase_role IN ('requester','buyer','stock','viewer')),
     -- Guest 는 만료일 필수 (PRD 3장 Guest 생명주기, SECURITY R-12).
     -- 앱 코드가 한 군데라도 검사를 빠뜨려도 만료 없는 Guest 행은 존재할 수 없다.
     CONSTRAINT guest_requires_expires_at
@@ -238,3 +247,187 @@ CREATE TABLE share_links (
 -- token_hash 의 UNIQUE 제약이 조회용 인덱스를 겸한다 (`WHERE token_hash = …` 가 유일한 조회 경로)
 CREATE INDEX share_links_created_by_idx ON share_links (created_by);
 CREATE INDEX share_links_file_idx       ON share_links (file_id);
+
+-- ═════════════════════════════════════════════════════════════
+-- 구매·재고 모듈 기초정보 (19단계 — PRD F-28 · F-29, ARCH 5.18,
+--   docs/purchase/03-architecture-draft.md 3장)
+--
+-- 표 접두는 전부 `p_` 다 — 본체 표와 이름이 섞이지 않는다 (ARCH 5.18 「경계」).
+-- **삭제가 없다**: 그만 쓰는 것은 `is_active = false` 이고, 앱 계정에는 이 표들에
+-- DELETE 권한 자체가 없다 (db/grants.sql).
+-- 전표·재고 표(p_docs · p_doc_lines · p_stock_moves · p_doc_seq)는 20·21단계다 — 여기 없다.
+-- (기존 DB 는 db/migrations/2026-09-13_purchase_masters.sql 로 같은 모양이 된다.)
+-- ═════════════════════════════════════════════════════════════
+
+CREATE TABLE p_brands (
+    id         BIGSERIAL   PRIMARY KEY,
+    name       TEXT        NOT NULL,
+    -- 회사 정보 (사용자 Q-18 확정 2026-09-13, ARCH 5.18) — **발주서 PDF 머리 정보의 출처**다.
+    -- 20단계의 발주서 PDF 가 이 다섯 칸을 읽는다. 19단계에서는 저장·표시만 한다.
+    --   logo_file_id  files 의 이미지 한 건(회사 로고). NULL 이면 로고 없이 낸다
+    --   biz_no · ceo_name · address · tel  — **회사** 정보이며 개인정보가 아니다.
+    --   그래서 변경 이력(감사 detail.before/after)에 값이 그대로 남아도 된다.
+    -- 엑셀 가져오기 대상이 아니다(화면에서만 고친다) — 회사 정보는 대량 갱신할 값이 아니다.
+    logo_file_id BIGINT     REFERENCES files(id),
+    biz_no     TEXT,
+    ceo_name   TEXT,
+    address    TEXT,
+    tel        TEXT,
+    is_active  BOOLEAN     NOT NULL DEFAULT true,
+    created_by BIGINT      NOT NULL REFERENCES users(id),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    CONSTRAINT p_brands_name_len CHECK (length(name) BETWEEN 1 AND 60)
+);
+CREATE UNIQUE INDEX p_brands_name_uidx ON p_brands (lower(name));
+
+CREATE TABLE p_branches (
+    id                    BIGSERIAL   PRIMARY KEY,
+    brand_id              BIGINT      NOT NULL REFERENCES p_brands(id),
+    name                  TEXT        NOT NULL,
+    warehouse_location_id BIGINT,     -- FK 는 p_locations 뒤에 붙인다 (서로 참조)
+    central_location_id   BIGINT,
+    is_active             BOOLEAN     NOT NULL DEFAULT true,
+    created_by            BIGINT      NOT NULL REFERENCES users(id),
+    created_at            TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at            TIMESTAMPTZ NOT NULL DEFAULT now(),
+    CONSTRAINT p_branches_name_len CHECK (length(name) BETWEEN 1 AND 60)
+);
+CREATE UNIQUE INDEX p_branches_brand_name_uidx ON p_branches (brand_id, lower(name));
+CREATE INDEX p_branches_brand_idx ON p_branches (brand_id);
+
+-- 장소 = 지점 × 용도. legacy_name 에 이카운트 원본 이름을 보존한다 (시안 ⑭).
+CREATE TABLE p_locations (
+    id          BIGSERIAL   PRIMARY KEY,
+    branch_id   BIGINT      NOT NULL REFERENCES p_branches(id),
+    kind        TEXT        NOT NULL CHECK (kind IN ('warehouse','central','or','other')),
+    name        TEXT        NOT NULL,
+    code        TEXT,
+    legacy_name TEXT,
+    is_active   BOOLEAN     NOT NULL DEFAULT true,
+    created_by  BIGINT      NOT NULL REFERENCES users(id),
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+    CONSTRAINT p_locations_name_len CHECK (length(name) BETWEEN 1 AND 80)
+);
+-- ★ 지점 격리(SECURITY R-65)가 훑는 인덱스 — Authz::purchaseScopeWhere 의 조건이 여기 닿는다
+CREATE INDEX p_locations_branch_idx ON p_locations (branch_id);
+CREATE UNIQUE INDEX p_locations_branch_name_uidx ON p_locations (branch_id, lower(name));
+
+ALTER TABLE p_branches ADD CONSTRAINT p_branches_warehouse_fkey
+    FOREIGN KEY (warehouse_location_id) REFERENCES p_locations(id);
+ALTER TABLE p_branches ADD CONSTRAINT p_branches_central_fkey
+    FOREIGN KEY (central_location_id) REFERENCES p_locations(id);
+
+-- users.branch_id 의 FK (users 를 먼저 만들었으므로 여기서 붙인다)
+ALTER TABLE users ADD CONSTRAINT users_branch_id_fkey
+    FOREIGN KEY (branch_id) REFERENCES p_branches(id);
+CREATE INDEX users_purchase_role_idx ON users (purchase_role) WHERE purchase_role IS NOT NULL;
+
+-- 거래처 — 지점 무관 마스터다(전 지점이 같은 거래처를 쓴다)
+CREATE TABLE p_vendors (
+    id         BIGSERIAL   PRIMARY KEY,
+    code       TEXT,
+    name       TEXT        NOT NULL,
+    biz_no     TEXT,
+    is_active  BOOLEAN     NOT NULL DEFAULT true,
+    created_by BIGINT      NOT NULL REFERENCES users(id),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    CONSTRAINT p_vendors_name_len CHECK (length(name) BETWEEN 1 AND 120)
+);
+CREATE UNIQUE INDEX p_vendors_name_uidx ON p_vendors (lower(name));
+CREATE UNIQUE INDEX p_vendors_code_uidx ON p_vendors (code) WHERE code IS NOT NULL;
+
+-- 분류 대 → 중 → 소 (3단). 지점 무관 마스터.
+CREATE TABLE p_categories (
+    id         BIGSERIAL   PRIMARY KEY,
+    parent_id  BIGINT      REFERENCES p_categories(id),
+    name       TEXT        NOT NULL,
+    level      INT         NOT NULL CHECK (level BETWEEN 1 AND 3),
+    is_active  BOOLEAN     NOT NULL DEFAULT true,
+    created_by BIGINT      NOT NULL REFERENCES users(id),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    CONSTRAINT p_categories_name_len        CHECK (length(name) BETWEEN 1 AND 80),
+    CONSTRAINT p_categories_not_self_parent CHECK (parent_id IS NULL OR parent_id <> id),
+    CONSTRAINT p_categories_level_parent
+        CHECK ((level = 1 AND parent_id IS NULL) OR (level > 1 AND parent_id IS NOT NULL))
+);
+CREATE UNIQUE INDEX p_categories_parent_name_uidx
+    ON p_categories (parent_id, lower(name)) WHERE parent_id IS NOT NULL;
+CREATE UNIQUE INDEX p_categories_root_name_uidx
+    ON p_categories (lower(name)) WHERE parent_id IS NULL;
+
+-- 품목 — code 는 거래처 카탈로그 번호 그대로, 거래처 안에서만 유일하다.
+-- price_in 은 VAT **별도** 공급가액 기준 (docs/purchase/02-prd-draft.md 가정 A5).
+CREATE TABLE p_items (
+    id            BIGSERIAL   PRIMARY KEY,
+    brand_id      BIGINT      REFERENCES p_brands(id),
+    vendor_id     BIGINT      NOT NULL REFERENCES p_vendors(id),
+    code          TEXT        NOT NULL,
+    name          TEXT        NOT NULL,
+    spec          TEXT,
+    unit          TEXT,
+    pack_qty      INT         NOT NULL DEFAULT 1 CHECK (pack_qty >= 1),
+    cat1_id       BIGINT      REFERENCES p_categories(id),
+    cat2_id       BIGINT      REFERENCES p_categories(id),
+    cat3_id       BIGINT      REFERENCES p_categories(id),
+    stock_managed BOOLEAN     NOT NULL DEFAULT true,
+    safety_qty    INT         NOT NULL DEFAULT 0 CHECK (safety_qty >= 0),
+    lead_days     INT         NOT NULL DEFAULT 0 CHECK (lead_days >= 0),
+    min_order_qty INT         NOT NULL DEFAULT 1 CHECK (min_order_qty >= 1),
+    price_in      NUMERIC(14,2) CHECK (price_in IS NULL OR price_in >= 0),
+    barcode       TEXT,
+    is_active     BOOLEAN     NOT NULL DEFAULT true,
+    created_by    BIGINT      NOT NULL REFERENCES users(id),
+    created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
+    CONSTRAINT p_items_code_len CHECK (length(code) BETWEEN 1 AND 60),
+    CONSTRAINT p_items_name_len CHECK (length(name) BETWEEN 1 AND 200)
+);
+CREATE UNIQUE INDEX p_items_vendor_code_uidx ON p_items (vendor_id, code);
+-- 품목 찾기 API(PRD T-43, 1.35만 행에서 200ms)가 훑는 인덱스들
+CREATE INDEX p_items_code_idx    ON p_items (code);
+CREATE INDEX p_items_name_idx    ON p_items (lower(name));
+CREATE INDEX p_items_cat_idx     ON p_items (cat1_id, cat2_id, cat3_id);
+CREATE INDEX p_items_vendor_idx  ON p_items (vendor_id);
+CREATE INDEX p_items_barcode_idx ON p_items (barcode) WHERE barcode IS NOT NULL;
+
+-- 품목 × 사용 지점 (비우면 브랜드 전체). ★ 품목 검색의 지점 격리가 지나는 표.
+CREATE TABLE p_item_branches (
+    item_id   BIGINT NOT NULL REFERENCES p_items(id),
+    branch_id BIGINT NOT NULL REFERENCES p_branches(id),
+    PRIMARY KEY (item_id, branch_id)
+);
+CREATE INDEX p_item_branches_branch_idx ON p_item_branches (branch_id);
+
+-- 장소별 인가량. effective_from 이 있어 "언제부터의 인가량인가" 가 남는다.
+CREATE TABLE p_par_levels (
+    id             BIGSERIAL   PRIMARY KEY,
+    location_id    BIGINT      NOT NULL REFERENCES p_locations(id),
+    item_id        BIGINT      NOT NULL REFERENCES p_items(id),
+    qty            INT         NOT NULL CHECK (qty >= 0),
+    effective_from DATE        NOT NULL DEFAULT CURRENT_DATE,
+    is_active      BOOLEAN     NOT NULL DEFAULT true,
+    created_by     BIGINT      NOT NULL REFERENCES users(id),
+    created_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at     TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE UNIQUE INDEX p_par_levels_uidx ON p_par_levels (location_id, item_id, effective_from);
+CREATE INDEX p_par_levels_item_idx ON p_par_levels (item_id);
+
+-- 엑셀 가져오기 열 매핑 (F-29). mapping_json 은 {엑셀 열 → 우리 칸} 한 겹 객체이며
+-- 파일 내용은 들어가지 않는다.
+CREATE TABLE p_import_mappings (
+    id           BIGSERIAL   PRIMARY KEY,
+    kind         TEXT        NOT NULL CHECK (kind IN ('items','vendors','locations')),
+    name         TEXT        NOT NULL,
+    mapping_json JSONB       NOT NULL,
+    is_active    BOOLEAN     NOT NULL DEFAULT true,
+    created_by   BIGINT      NOT NULL REFERENCES users(id),
+    created_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
+    CONSTRAINT p_import_mappings_name_len CHECK (length(name) BETWEEN 1 AND 80)
+);
+CREATE UNIQUE INDEX p_import_mappings_kind_name_uidx ON p_import_mappings (kind, lower(name));

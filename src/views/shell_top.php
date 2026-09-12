@@ -36,7 +36,9 @@ declare(strict_types=1);
  */
 
 /** 내비·본문 키의 허용 목록. 여기 없는 값은 빈 문자열이 된다. */
-$shellKeys = ['files', 'trash', 'settings', 'activity', 'users', 'org', 'audit', 'wiki', 'admin'];
+$shellKeys = ['files', 'trash', 'settings', 'activity', 'users', 'org', 'audit', 'wiki', 'admin',
+              // 19단계 구매·재고 모듈 (PRD F-28, ARCH 5.18)
+              'purchase'];
 
 $shellUser   = isset($user) && is_array($user) ? $user : [];
 $shellName   = htmlspecialchars((string) ($shellUser['username'] ?? ''), ENT_QUOTES, 'UTF-8');
@@ -125,6 +127,19 @@ if (!headers_sent()) {
         <span class="icon" data-icon="log"></span><span>내 활동</span>
       </a>
     </nav>
+
+    <!-- 19단계 구매·재고 모듈 (PRD F-28, ARCH 5.18) — 기본은 hidden 이고
+         `/api/me` 의 can_purchase 가 참일 때만 app.js 가 연다. **이 파일에는 역할 비교가 없다.**
+         항목을 개발자도구로 되살려 /purchase 나 /api/purchase/* 를 직접 불러도 라우트 정책
+         purchase.read 가 다시 막는다 — 표시는 편의, 근거는 라우트 정책이다 (PRD S-01, T-42). -->
+    <div id="nav-purchase-group" hidden>
+      <p class="nav-title">구매관리</p>
+      <nav class="nav" aria-label="구매관리">
+        <a id="nav-purchase" class="<?= $shellNavClass('purchase') ?>" href="/purchase/masters">
+          <span class="icon" data-icon="files"></span><span>기초정보</span>
+        </a>
+      </nav>
+    </div>
 
     <!-- 17-1 관리자 영역 (PRD F-24, ARCH 5.14) — 일반 셸에 남은 관리 항목은 **이 하나뿐**이다.
          기본은 hidden 이고, `/api/me` 의 can_admin 이 참일 때만 app.js 가 연다.

@@ -54,6 +54,24 @@ GRANT SELECT, INSERT, UPDATE                 ON share_links TO tbox_app; -- ★ 
 -- 지운 사실은 감사 로그 folder.delete 에 남는다. 파일이 참조하는 폴더는 FK(ON DELETE RESTRICT)가 막는다.
 GRANT SELECT, INSERT, UPDATE, DELETE         ON folders   TO tbox_app;
 
+-- 19단계 구매·재고 모듈 기초정보 (F-28 · F-29, ARCH 5.18 · 10장 마지막 행).
+-- ★ **DELETE 가 한 줄도 없다** — 기초정보를 그만 쓰는 것은 `is_active = false` 다.
+--   앱 계정에 지우는 자격 자체가 없으므로, 핸들러에 결함이 생겨도 전표가 참조하는
+--   기초정보가 사라져 추적이 끊기는 경로가 만들어지지 않는다 (audit_logs 와 같은 원칙).
+-- ★ 전표·재고 표(p_docs · p_doc_lines · p_stock_moves)는 20·21단계에 생긴다. 그때
+--   `p_stock_moves` 만 INSERT·SELECT 로 갈라 준다(원장 불변, SECURITY R-66).
+REVOKE ALL ON p_brands, p_branches, p_locations, p_vendors, p_categories,
+              p_items, p_item_branches, p_par_levels, p_import_mappings FROM tbox_app;
+GRANT SELECT, INSERT, UPDATE ON p_brands          TO tbox_app;
+GRANT SELECT, INSERT, UPDATE ON p_branches        TO tbox_app;
+GRANT SELECT, INSERT, UPDATE ON p_locations       TO tbox_app;
+GRANT SELECT, INSERT, UPDATE ON p_vendors         TO tbox_app;
+GRANT SELECT, INSERT, UPDATE ON p_categories      TO tbox_app;
+GRANT SELECT, INSERT, UPDATE ON p_items           TO tbox_app;
+GRANT SELECT, INSERT, UPDATE ON p_item_branches   TO tbox_app;
+GRANT SELECT, INSERT, UPDATE ON p_par_levels      TO tbox_app;
+GRANT SELECT, INSERT, UPDATE ON p_import_mappings TO tbox_app;
+
 -- ─── 시퀀스 (INSERT 하는 표의 id 발급에 필요) ───
 GRANT USAGE, SELECT ON SEQUENCE users_id_seq      TO tbox_app;
 GRANT USAGE, SELECT ON SEQUENCE teams_id_seq      TO tbox_app;
@@ -61,6 +79,15 @@ GRANT USAGE, SELECT ON SEQUENCE files_id_seq      TO tbox_app;
 GRANT USAGE, SELECT ON SEQUENCE audit_logs_id_seq TO tbox_app;
 GRANT USAGE, SELECT ON SEQUENCE share_links_id_seq TO tbox_app;
 GRANT USAGE, SELECT ON SEQUENCE folders_id_seq     TO tbox_app;
+-- 19단계 p_* 시퀀스. p_item_branches 는 (item_id, branch_id) 복합 PK 라 시퀀스가 없다.
+GRANT USAGE, SELECT ON SEQUENCE p_brands_id_seq          TO tbox_app;
+GRANT USAGE, SELECT ON SEQUENCE p_branches_id_seq        TO tbox_app;
+GRANT USAGE, SELECT ON SEQUENCE p_locations_id_seq       TO tbox_app;
+GRANT USAGE, SELECT ON SEQUENCE p_vendors_id_seq         TO tbox_app;
+GRANT USAGE, SELECT ON SEQUENCE p_categories_id_seq      TO tbox_app;
+GRANT USAGE, SELECT ON SEQUENCE p_items_id_seq           TO tbox_app;
+GRANT USAGE, SELECT ON SEQUENCE p_par_levels_id_seq      TO tbox_app;
+GRANT USAGE, SELECT ON SEQUENCE p_import_mappings_id_seq TO tbox_app;
 -- sessions.id 는 CHAR(64) 해시이므로 시퀀스가 없다. permissions 도 시퀀스가 없다.
 
 -- ─── 앞으로 만들 표에 자동으로 권한이 새지 않게 한다 ───
@@ -86,7 +113,9 @@ GRANT CONNECT ON DATABASE tbox_re TO tbox_backup;
 GRANT USAGE   ON SCHEMA   public  TO tbox_backup;
 
 -- 재실행 시 과거 권한이 남지 않게 먼저 전부 회수한다(위 tbox_app 과 같은 방식).
-REVOKE ALL ON teams, users, permissions, files, audit_logs, sessions, share_links, folders FROM tbox_backup;
+REVOKE ALL ON teams, users, permissions, files, audit_logs, sessions, share_links, folders,
+              p_brands, p_branches, p_locations, p_vendors, p_categories,
+              p_items, p_item_branches, p_par_levels, p_import_mappings FROM tbox_backup;
 
 GRANT SELECT ON ALL TABLES    IN SCHEMA public TO tbox_backup;   -- ★ SELECT 만
 GRANT SELECT ON ALL SEQUENCES IN SCHEMA public TO tbox_backup;   -- 시퀀스 현재값 (pg_dump)
@@ -123,7 +152,10 @@ GRANT CONNECT ON DATABASE tbox_re TO tbox_perm;
 GRANT USAGE   ON SCHEMA   public  TO tbox_perm;
 
 -- 재실행 시 과거 권한이 남지 않게 먼저 **전부** 회수한다(위 두 롤과 같은 방식).
-REVOKE ALL ON teams, users, permissions, files, audit_logs, sessions, share_links, folders FROM tbox_perm;
+-- 19단계: 구매 모듈 표에도 이 롤은 **아무 권한이 없다** (SECURITY R-60).
+REVOKE ALL ON teams, users, permissions, files, audit_logs, sessions, share_links, folders,
+              p_brands, p_branches, p_locations, p_vendors, p_categories,
+              p_items, p_item_branches, p_par_levels, p_import_mappings FROM tbox_perm;
 REVOKE ALL ON ALL SEQUENCES IN SCHEMA public FROM tbox_perm;
 
 GRANT SELECT, UPDATE ON permissions TO tbox_perm;   -- ★ 이 한 줄이 전부. INSERT·DELETE 없음

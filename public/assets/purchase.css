@@ -1,0 +1,165 @@
+/* public/assets/purchase.css — 구매·재고 모듈 화면 (19단계, PRD F-28·F-29, 시안 ⑭⑮⑯)
+ *
+ * t-box 공통 셸(app.css)의 토큰·컴포넌트를 그대로 쓰고, 이 파일에는 **모듈에만 있는 조각**
+ * (탭·걸음 표시·판정 배지·사실 목록)만 둔다. app.css 를 고치지 않는다 — 모듈 때문에
+ * 본체 화면이 흔들리면 안 된다 (ARCH 5.18 「경계」).
+ *
+ * 색·간격은 app.css 의 CSS 변수를 먼저 쓰고, 없을 때만 시안(docs/purchase/design/)의 값을
+ * 대체값으로 둔다. 그래서 본체 토큰이 바뀌면 이 화면도 함께 따라간다.
+ */
+
+/* ─── 기초정보 탭 (시안 ⑭) ─────────────────────────────── */
+.p-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin: 0 0 16px;
+  border-bottom: 1px solid var(--line, #dfe4ea);
+}
+
+.p-tab {
+  padding: 10px 16px;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+  background: none;
+  color: var(--muted, #5b6472);
+  font: inherit;
+  font-size: 14.5px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.p-tab:hover { color: var(--text, #1c1f24); }
+
+.p-tab.is-on {
+  color: var(--accent, #1d5fbf);
+  border-bottom-color: var(--accent, #1d5fbf);
+}
+
+/* ─── 가져오기 걸음 표시 (시안 ⑯) ───────────────────────── */
+.p-steps {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 0 0 16px;
+  padding: 0;
+  list-style: none;
+}
+
+.p-step {
+  padding: 6px 12px;
+  border: 1px solid var(--line, #dfe4ea);
+  border-radius: 999px;
+  background: var(--card, #fff);
+  color: var(--muted, #5b6472);
+  font-size: 13.5px;
+  font-weight: 600;
+}
+
+.p-step.is-on {
+  border-color: var(--accent, #1d5fbf);
+  background: var(--accent-soft, #e8f0fb);
+  color: var(--accent, #1d5fbf);
+}
+
+/* ─── 행 판정 배지 (등록 · 갱신 · 확인 · 오류) ─────────────── */
+.p-badge {
+  display: inline-flex;
+  align-items: center;
+  height: 22px;
+  padding: 0 9px;
+  border-radius: 999px;
+  background: var(--chip, #eef0f3);
+  color: var(--muted, #6b7482);
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.p-badge--insert { background: #e8f0fb; color: #1d5fbf; }
+.p-badge--update { background: #e6f4ea; color: #1e7a3c; }
+.p-badge--review { background: #fff8ec; color: #7a4a06; }
+.p-badge--error  { background: #fdf1f1; color: #a3221f; }
+.p-badge--off    { background: #eef0f3; color: #6b7482; }
+
+/* ─── 품목 상세의 「사실」 목록 (시안 ⑮) ───────────────────── */
+.p-facts {
+  display: grid;
+  grid-template-columns: minmax(120px, max-content) 1fr;
+  gap: 8px 16px;
+  margin: 0;
+}
+
+.p-facts dt {
+  color: var(--muted, #5b6472);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.p-facts dd { margin: 0; }
+
+/* 좁은 화면에서는 한 줄에 하나씩 */
+@media (max-width: 560px) {
+  .p-facts { grid-template-columns: 1fr; gap: 2px 0; }
+  .p-facts dd { margin-bottom: 10px; }
+}
+
+/* ─── 사용 지점 칩 목록 ─────────────────────────────────── */
+.p-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.p-chips li {
+  padding: 4px 12px;
+  border: 1px solid var(--line, #dfe4ea);
+  border-radius: 999px;
+  font-size: 13.5px;
+}
+
+/* ─── 폼·패널 보조 ─────────────────────────────────────── */
+.form__fields {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 12px;
+  width: 100%;
+}
+
+.panel__tools {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+}
+
+.panel__foot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 12px;
+  margin-top: 12px;
+}
+
+.field--inline {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.field--inline .field__label { margin: 0; white-space: nowrap; }
+
+.check {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13.5px;
+  color: var(--muted, #5b6472);
+}
+
+/* 표 안의 긴 값이 화면을 밀지 않게 — 가로 스크롤은 .table-wrap 이 맡는다 */
+.p-cell-wide { max-width: 380px; }

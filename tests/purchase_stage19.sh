@@ -1,0 +1,526 @@
+#!/usr/bin/env bash
+# tests/purchase_stage19.sh — 19단계 수락 기준 실행 (PRD 12.2 T-42 · T-43 · T-44 + 회귀 T-1 · T-26 · T-36)
+#
+# 규칙 (CLAUDE.md 3장)
+#   · **검토 계정(qa_ 접두)만** 쓴다. 시드 계정(admin01 …)은 사용자의 자기 공격 전용이다.
+#   · 모든 요청에 `-A "tbox-review/<날짜>"` 를 붙인다 — 감사 로그에서 사람의 행동과 갈라 보려는 것.
+#   · 비밀번호·TOTP 비밀은 **필요한 필드만 awk 로** 뽑는다. 파일을 통째로 출력(cat)하지 않고,
+#     값은 변수에만 담아 화면·로그 어디에도 찍지 않는다 (SECURITY R-62).
+#
+# 준비물: sudo(로 /etc/tbox-v2 읽기 · psql 실행), php(TOTP 계산·xlsx 생성), curl, jq 없이 동작
+#
+# 시험이 만든 것은 **끝에서 되돌린다**:
+#   · qa 계정 두 개의 branch_id·purchase_role → NULL 로 원복
+#   · T-43 더미 품목 13,500행 삭제 (디스크 여유가 적다 — 지시서)
+#   · T-44 가 만든 기초정보·가져오기 행 삭제
+#   되돌리기는 `postgres` 슈퍼유저로 한다 — 앱 계정에는 p_* DELETE 권한이 **없다**(그것이 설계다).
+#
+# 사용: sudo -v && bash tests/purchase_stage19.sh
+set -u
+
+BASE="http://127.0.0.1:8082"
+UA="tbox-review/$(date +%F)"
+DB="tbox_re"
+JAR_DIR="$(mktemp -d)"
+PASS=0
+FAIL=0
+
+psqlq() { sudo -n -u postgres psql -d "$DB" -t -A -c "$1"; }
+psqlc() { sudo -n -u postgres psql -d "$DB" -v ON_ERROR_STOP=1 -q -c "$1"; }
+
+hr()  { printf '\n════════════════════════════════════════════════════════════\n%s\n════════════════════════════════════════════════════════════\n' "$1"; }
+sub() { printf '\n── %s\n' "$1"; }
+
+# $1 설명  $2 기대  $3 실제
+expect() {
+  if [ "$2" = "$3" ]; then
+    printf '  ✔ %s  (기대=%s 실제=%s)\n' "$1" "$2" "$3"; PASS=$((PASS+1))
+  else
+    printf '  ✖ %s  (기대=%s 실제=%s)\n' "$1" "$2" "$3"; FAIL=$((FAIL+1))
+  fi
+}
+
+# ── 로그인 ────────────────────────────────────────────────────
+# $1 계정명 → $JAR_DIR/$1.jar 에 세션 쿠키, 표준출력에 CSRF 토큰
+login() {
+  local who="$1" jar="$JAR_DIR/$1.jar" pw sec raw code left out try
+  pw=$(sudo -n awk -v u="$who" '$1==u{print $3}' /etc/tbox-v2/seed-accounts.txt)
+  sec=$(sudo -n awk -v u="$who" '$1==u{print $2}' /etc/tbox-v2/qa-totp.txt)
+
+  # TOTP 코드는 **1회성**이다 (SECURITY R-45 — users.mfa_last_step 이하의 스텝은 거부).
+  # 같은 계정으로 30초 안에 두 번 로그인하면 같은 6자리가 나와 거부되는 것이 **정상**이다.
+  # 그래서 실패하면 다음 30초 창을 기다렸다가 한 번 더 시도한다(코드가 아니라 시험의 문제다).
+  for try in 1 2 3; do
+    # `| head -1` 로 자르면 도구 쪽에 SIGPIPE 가 가서 PHP Notice 가 뜬다 → 전부 받고 첫 줄만 쓴다
+    raw=$(php "$(dirname "$0")/../scripts/totp_code.php" "$sec")
+    code=${raw%%$'\n'*}
+    out=$(curl -s -c "$jar" -A "$UA" -H 'Content-Type: application/json' \
+          -d "{\"username\":\"$who\",\"password\":\"$pw\",\"otp\":\"$code\"}" "$BASE/api/login")
+    case "$out" in
+      *'"ok":true'*)
+        curl -s -b "$jar" -A "$UA" "$BASE/api/me" \
+          | sed -n 's/.*"csrf_token":"\([0-9a-f]*\)".*/\1/p'
+        return 0 ;;
+    esac
+    left=$(printf '%s' "$raw" | sed -n 's/^남은 시간: \([0-9]*\)초.*/\1/p')
+    [ -n "$left" ] || left=31
+    printf '  · %s 코드 재사용으로 거부됨 — 다음 창까지 %s초 기다림 (R-45 가 의도대로 막은 것)\n' "$who" "$left" >&2
+    sleep $((left + 1))
+  done
+  printf '  ! %s 로그인 실패: %s\n' "$who" "$out" >&2
+  return 1
+}
+
+# 재인증 (기초정보 편집·가져오기는 15분 창이 필요하다 — F-23)
+reauth() {
+  local who="$1" token="$2" pw
+  pw=$(sudo -n awk -v u="$who" '$1==u{print $3}' /etc/tbox-v2/seed-accounts.txt)
+  curl -s -o /dev/null -w '%{http_code}' -b "$JAR_DIR/$who.jar" -A "$UA" \
+    -H 'Content-Type: application/json' -H "X-CSRF-Token: $token" \
+    -d "{\"password\":\"$pw\"}" "$BASE/api/me/reauth"
+}
+
+# $1 계정 $2 메서드 $3 경로 $4 토큰 $5 본문(선택) → "HTTP코드<TAB>본문"
+call() {
+  local who="$1" method="$2" path="$3" token="$4" body="${5-}"
+  if [ -n "$body" ]; then
+    curl -s -w '\n%{http_code}' -X "$method" -b "$JAR_DIR/$who.jar" -A "$UA" \
+      -H 'Content-Type: application/json' -H "X-CSRF-Token: $token" \
+      -d "$body" "$BASE$path"
+  else
+    curl -s -w '\n%{http_code}' -X "$method" -b "$JAR_DIR/$who.jar" -A "$UA" \
+      -H "X-CSRF-Token: $token" "$BASE$path"
+  fi
+}
+
+code_of() { printf '%s' "$1" | tail -1; }
+body_of() { printf '%s' "$1" | sed '$d'; }
+
+cleanup() {
+  hr "정리 — 시험이 만든 것을 되돌린다"
+  # 계정 두 축 원복 (계정 행 자체는 건드리지 않는다)
+  psqlc "UPDATE users SET branch_id = NULL, purchase_role = NULL
+          WHERE username IN ('qa_employee01','qa_employee02','qa_manager01');" \
+    && echo "  qa 계정 branch_id·purchase_role 원복"
+  # 시험 데이터 삭제 — 앱 계정에는 DELETE 권한이 없으므로 postgres 로 한다
+  psqlc "DELETE FROM p_par_levels;  DELETE FROM p_item_branches; DELETE FROM p_items;
+         DELETE FROM p_import_mappings; DELETE FROM p_categories WHERE parent_id IS NOT NULL;
+         DELETE FROM p_categories; DELETE FROM p_vendors;
+         UPDATE p_branches SET warehouse_location_id = NULL, central_location_id = NULL;
+         DELETE FROM p_locations; DELETE FROM p_branches; DELETE FROM p_brands;" \
+    && echo "  기초정보 시험 데이터 삭제"
+  psqlq "SELECT 'p_items='||count(*) FROM p_items;"
+  rm -rf "$JAR_DIR"
+}
+trap cleanup EXIT
+
+hr "0. 준비 — 검토 계정 로그인"
+TOK_ADMIN=$(login qa_admin01)     || exit 1
+TOK_EMP1=$(login qa_employee01)   || exit 1
+TOK_EMP2=$(login qa_employee02)   || exit 1
+TOK_GUEST=$(login qa_guest01)     || exit 1
+TOK_MGR=$(login qa_manager01)     || exit 1
+echo "  로그인 5계정 완료 (토큰 길이: ${#TOK_ADMIN})"
+
+echo "  재인증(기초정보 편집 창 열기): qa_admin01 → $(reauth qa_admin01 "$TOK_ADMIN")"
+
+hr "1. 기초정보 씨앗 — 브랜드·지점·장소·거래처·분류 (qa_admin01)"
+
+new_id() { printf '%s' "$1" | sed -n 's/.*"id":\([0-9]*\).*/\1/p'; }
+
+R=$(call qa_admin01 POST /api/purchase/brands "$TOK_ADMIN" '{"name":"치과"}')
+BRAND=$(new_id "$(body_of "$R")"); expect "브랜드 생성" 201 "$(code_of "$R")"
+
+R=$(call qa_admin01 POST /api/purchase/branches "$TOK_ADMIN" "{\"brand_id\":$BRAND,\"name\":\"부평점\"}")
+BR_A=$(new_id "$(body_of "$R")"); expect "지점A(부평점) 생성" 201 "$(code_of "$R")"
+R=$(call qa_admin01 POST /api/purchase/branches "$TOK_ADMIN" "{\"brand_id\":$BRAND,\"name\":\"일산점\"}")
+BR_B=$(new_id "$(body_of "$R")"); expect "지점B(일산점) 생성" 201 "$(code_of "$R")"
+
+R=$(call qa_admin01 POST /api/purchase/locations "$TOK_ADMIN" "{\"branch_id\":$BR_A,\"kind\":\"warehouse\",\"name\":\"B1F 의약품창고\",\"code\":\"00011\"}")
+LOC_A=$(new_id "$(body_of "$R")"); expect "부평점 장소 생성" 201 "$(code_of "$R")"
+R=$(call qa_admin01 POST /api/purchase/locations "$TOK_ADMIN" "{\"branch_id\":$BR_B,\"kind\":\"central\",\"name\":\"2F 공급실\",\"code\":\"00038\"}")
+LOC_B=$(new_id "$(body_of "$R")"); expect "일산점 장소 생성" 201 "$(code_of "$R")"
+
+R=$(call qa_admin01 POST /api/purchase/vendors "$TOK_ADMIN" '{"name":"더존덴탈","code":"V001"}')
+VEND=$(new_id "$(body_of "$R")"); expect "거래처 생성" 201 "$(code_of "$R")"
+
+R=$(call qa_admin01 POST /api/purchase/categories "$TOK_ADMIN" '{"name":"소모품","level":1}')
+CAT1=$(new_id "$(body_of "$R")"); expect "분류1 생성" 201 "$(code_of "$R")"
+R=$(call qa_admin01 POST /api/purchase/categories "$TOK_ADMIN" "{\"name\":\"거즈\",\"level\":2,\"parent_id\":$CAT1}")
+CAT2=$(new_id "$(body_of "$R")"); expect "분류2 생성" 201 "$(code_of "$R")"
+
+# 품목 3건: A지점 전용 · B지점 전용 · 지점 지정 없음(브랜드 전체)
+R=$(call qa_admin01 POST /api/purchase/items "$TOK_ADMIN" \
+  "{\"vendor_id\":$VEND,\"code\":\"A-0001\",\"name\":\"A gauze 2x2\",\"unit\":\"EA\",\"branches\":[$BR_A],\"cat1_id\":$CAT1,\"cat2_id\":$CAT2}")
+ITEM_A=$(new_id "$(body_of "$R")"); expect "품목A(부평점 전용) 생성" 201 "$(code_of "$R")"
+R=$(call qa_admin01 POST /api/purchase/items "$TOK_ADMIN" \
+  "{\"vendor_id\":$VEND,\"code\":\"B-0001\",\"name\":\"B gauze 3x3\",\"unit\":\"EA\",\"branches\":[$BR_B]}")
+ITEM_B=$(new_id "$(body_of "$R")"); expect "품목B(일산점 전용) 생성" 201 "$(code_of "$R")"
+R=$(call qa_admin01 POST /api/purchase/items "$TOK_ADMIN" \
+  "{\"vendor_id\":$VEND,\"code\":\"ALL-0001\",\"name\":\"ALL cotton\",\"unit\":\"EA\"}")
+ITEM_ALL=$(new_id "$(body_of "$R")"); expect "품목ALL(지점 무관) 생성" 201 "$(code_of "$R")"
+
+R=$(call qa_admin01 POST /api/purchase/par-levels "$TOK_ADMIN" "{\"location_id\":$LOC_A,\"item_id\":$ITEM_A,\"qty\":380}")
+expect "부평점 인가량 생성" 201 "$(code_of "$R")"
+R=$(call qa_admin01 POST /api/purchase/par-levels "$TOK_ADMIN" "{\"location_id\":$LOC_B,\"item_id\":$ITEM_B,\"qty\":190}")
+expect "일산점 인가량 생성" 201 "$(code_of "$R")"
+
+sub "검토용 모듈 역할·지점 심기 (psql, 끝에서 원복)"
+psqlc "UPDATE users SET branch_id = $BR_A, purchase_role = 'requester' WHERE username = 'qa_employee01';"
+psqlc "UPDATE users SET branch_id = $BR_B, purchase_role = 'stock'     WHERE username = 'qa_employee02';"
+psqlc "UPDATE users SET branch_id = NULL,  purchase_role = 'buyer'     WHERE username = 'qa_manager01';"
+psqlq "SELECT username||' branch='||coalesce(branch_id::text,'-')||' role='||coalesce(purchase_role,'-')
+         FROM users WHERE username LIKE 'qa%' ORDER BY id;"
+
+hr "T-42  지점 격리 · 모듈 역할 (PRD 12.2 T-42, F-28, S-01, S-02, SECURITY R-65 · R-70)"
+
+sub "① requester(부평점, qa_employee01) 의 장소 목록 — 다른 지점 0건"
+R=$(call qa_employee01 GET /api/purchase/locations "$TOK_EMP1")
+echo "  HTTP $(code_of "$R")"; echo "  $(body_of "$R")"
+expect "장소 목록 200" 200 "$(code_of "$R")"
+expect "다른 지점(일산점) 장소 0건" 0 "$(body_of "$R" | grep -c '2F 공급실')"
+expect "내 지점(부평점) 장소 보임" 1 "$(body_of "$R" | grep -c 'B1F 의약품창고')"
+expect "total 은 1" 1 "$(body_of "$R" | sed -n 's/.*"total":\([0-9]*\).*/\1/p')"
+
+sub "② requester 가 ?branch= 로 다른 지점을 요구해도 무시된다"
+R=$(call qa_employee01 GET "/api/purchase/locations?branch=$BR_B" "$TOK_EMP1")
+echo "  HTTP $(code_of "$R")"; echo "  $(body_of "$R")"
+expect "?branch=다른지점 → 여전히 다른 지점 0건" 0 "$(body_of "$R" | grep -c '2F 공급실')"
+
+sub "③ requester 의 품목 검색 — 다른 지점 전용 품목은 목록에도 total 에도 없다"
+R=$(call qa_employee01 GET "/api/purchase/items" "$TOK_EMP1")
+echo "  HTTP $(code_of "$R")"; echo "  $(body_of "$R")"
+expect "품목 검색 200" 200 "$(code_of "$R")"
+expect "일산점 전용 품목 0건" 0 "$(body_of "$R" | grep -c 'B gauze 3x3')"
+expect "부평점 품목 보임" 1 "$(body_of "$R" | grep -c 'A gauze 2x2')"
+expect "지점 무관 품목 보임" 1 "$(body_of "$R" | grep -c 'ALL cotton')"
+
+sub "④ requester 가 ?branch_used=다른지점 → 0건"
+R=$(call qa_employee01 GET "/api/purchase/items?branch_used=$BR_B" "$TOK_EMP1")
+echo "  HTTP $(code_of "$R")"; echo "  $(body_of "$R")"
+expect "branch_used=다른지점 total 0" 0 "$(body_of "$R" | sed -n 's/.*"total":\([0-9]*\).*/\1/p')"
+
+sub "⑤ requester 가 다른 지점 전용 품목 상세를 직접 요청 → 404"
+R=$(call qa_employee01 GET "/api/purchase/items/$ITEM_B" "$TOK_EMP1")
+echo "  HTTP $(code_of "$R")"; echo "  $(body_of "$R")"
+expect "다른 지점 품목 상세 404" 404 "$(code_of "$R")"
+R=$(call qa_employee01 GET "/api/purchase/items/$ITEM_A" "$TOK_EMP1")
+expect "내 지점 품목 상세 200" 200 "$(code_of "$R")"
+echo "  $(body_of "$R")"
+
+sub "⑥ stock(일산점, qa_employee02) 은 반대로 보인다"
+R=$(call qa_employee02 GET /api/purchase/locations "$TOK_EMP2")
+echo "  HTTP $(code_of "$R")"; echo "  $(body_of "$R")"
+expect "일산점 장소 보임" 1 "$(body_of "$R" | grep -c '2F 공급실')"
+expect "부평점 장소 0건" 0 "$(body_of "$R" | grep -c 'B1F 의약품창고')"
+
+sub "⑦ buyer(qa_manager01, 지점 없음) 는 전 지점"
+R=$(call qa_manager01 GET /api/purchase/locations "$TOK_MGR")
+echo "  HTTP $(code_of "$R")"; echo "  $(body_of "$R")"
+expect "buyer 는 두 지점 모두" 2 "$(body_of "$R" | sed -n 's/.*"total":\([0-9]*\).*/\1/p')"
+
+sub "⑧ 모듈 역할 없는 Employee → 403 (감사 authz.route deny)"
+psqlc "UPDATE users SET purchase_role = NULL, branch_id = NULL WHERE username = 'qa_employee01';"
+R=$(call qa_employee01 GET /api/purchase/locations "$TOK_EMP1")
+echo "  HTTP $(code_of "$R")"; echo "  $(body_of "$R")"
+expect "모듈 역할 없음 → 403" 403 "$(code_of "$R")"
+R=$(call qa_employee01 GET /purchase/masters "$TOK_EMP1")
+expect "화면도 403" 403 "$(code_of "$R")"
+psqlc "UPDATE users SET purchase_role = 'requester', branch_id = $BR_A WHERE username = 'qa_employee01';"
+
+sub "⑨ Guest → 403"
+R=$(call qa_guest01 GET /api/purchase/locations "$TOK_GUEST")
+echo "  HTTP $(code_of "$R")"; echo "  $(body_of "$R")"
+expect "Guest → 403" 403 "$(code_of "$R")"
+
+sub "⑩ 기초정보 편집은 재인증 전 403 next:reauth"
+TOK_MGR2=$(login qa_manager01)   # 재인증 창이 없는 새 세션
+R=$(call qa_manager01 POST /api/purchase/brands "$TOK_MGR2" '{"name":"재인증시험"}')
+echo "  HTTP $(code_of "$R")"; echo "  $(body_of "$R")"
+expect "재인증 전 기초정보 생성 403" 403 "$(code_of "$R")"
+expect "next:reauth 표시" 1 "$(body_of "$R" | grep -c '"next":"reauth"')"
+echo "  재인증: $(reauth qa_manager01 "$TOK_MGR2")"
+R=$(call qa_manager01 POST /api/purchase/brands "$TOK_MGR2" '{"name":"재인증시험"}')
+echo "  재인증 뒤 HTTP $(code_of "$R"): $(body_of "$R")"
+expect "재인증 뒤 201" 201 "$(code_of "$R")"
+
+sub "⑪ requester 는 재인증해도 기초정보를 못 고친다 (재인증은 권한을 만들지 않는다)"
+echo "  재인증: $(reauth qa_employee01 "$TOK_EMP1")"
+R=$(call qa_employee01 POST /api/purchase/brands "$TOK_EMP1" '{"name":"권한없음시험"}')
+echo "  HTTP $(code_of "$R")"; echo "  $(body_of "$R")"
+expect "requester 기초정보 생성 403" 403 "$(code_of "$R")"
+expect "next:reauth 아님(권한 거부)" 0 "$(body_of "$R" | grep -c '"next"')"
+
+sub "⑫ 감사 로그 — authz.route deny 가 남았나"
+psqlq "SELECT actor_name||' | '||action||' | '||result||' | '||coalesce(reason,'-')||' | '||coalesce(target_name,'-')
+         FROM audit_logs
+        WHERE action IN ('authz.route','auth.gate') AND result='deny'
+          AND target_name LIKE '%purchase%' AND happened_at > now() - interval '10 minutes'
+        ORDER BY id DESC LIMIT 6;"
+
+hr "T-43  품목 찾기 API — 1.35만 건 성능·정렬 허용 목록·SQLi (PRD 12.2 T-43, F-30 R1)"
+
+sub "더미 13,500행 적재 (postgres, 시험 뒤 삭제)"
+ADMIN_UID=$(psqlq "SELECT id FROM users WHERE username='qa_admin01';")
+psqlc "INSERT INTO p_items (vendor_id, code, name, spec, unit, pack_qty, cat1_id, cat2_id,
+                            stock_managed, price_in, barcode, created_by)
+       SELECT $VEND, 'D'||lpad(g::text,6,'0'),
+              CASE WHEN g % 7 = 0 THEN 'DSO GAUZE '||g||' 2x2inch'
+                   ELSE 'ITEM '||g||' cotton roll' END,
+              g||'mm', 'EA', 1, $CAT1, $CAT2, true, 1000 + g, '880'||lpad(g::text,10,'0'), $ADMIN_UID
+         FROM generate_series(1, 13500) g;"
+psqlc "ANALYZE p_items;"
+psqlq "SELECT 'p_items 총 '||count(*)||'행' FROM p_items;"
+
+sub "응답 시간 실측 (buyer 세션, 서버 처리 시간 = curl time_total)"
+for Q in "gauze" "cotton" "D0135" ""; do
+  T=$(curl -s -o /dev/null -w '%{time_total} %{http_code}' -b "$JAR_DIR/qa_manager01.jar" -A "$UA" \
+      "$BASE/api/purchase/items?q=$Q&page=2")
+  echo "  q='$Q'  time_total=$(printf '%s' "$T" | cut -d' ' -f1)s  HTTP $(printf '%s' "$T" | cut -d' ' -f2)"
+done
+
+R=$(call qa_manager01 GET "/api/purchase/items?q=gauze&page=2" "$TOK_MGR")
+echo "  본문(앞 400자): $(body_of "$R" | head -c 400)"
+expect "q=gauze&page=2 → 200" 200 "$(code_of "$R")"
+expect "한 쪽 20건 고정" 20 "$(body_of "$R" | grep -o '"code":' | wc -l)"
+expect "page 반영" 2 "$(body_of "$R" | sed -n 's/.*"page":\([0-9]*\).*/\1/p')"
+echo "  total=$(body_of "$R" | sed -n 's/.*"total":\([0-9]*\).*/\1/p')"
+
+sub "정렬 — 허용 목록 밖 값은 무시되고 기본값(name)이 된다"
+R=$(call qa_manager01 GET "/api/purchase/items?sort=price_in;DROP%20TABLE%20p_items&page=1" "$TOK_MGR")
+echo "  HTTP $(code_of "$R")  sort=$(body_of "$R" | sed -n 's/.*"sort":"\([a-z_]*\)".*/\1/p')"
+expect "허용 목록 밖 정렬 → 200" 200 "$(code_of "$R")"
+expect "허용 목록 밖 정렬 → 기본값 name" name "$(body_of "$R" | sed -n 's/.*"sort":"\([a-z_]*\)".*/\1/p')"
+expect "표는 그대로 있다" 13503 "$(psqlq "SELECT count(*) FROM p_items;")"
+
+sub "SQLi 페이로드 — 200 정상 응답, 값은 글자로만 다뤄진다"
+for P in "' OR '1'='1" "'; DROP TABLE p_items; --" "%25" "_" "100%25' UNION SELECT NULL--"; do
+  R=$(curl -s -w '\n%{http_code}' -b "$JAR_DIR/qa_manager01.jar" -A "$UA" \
+      --get --data-urlencode "q=$P" "$BASE/api/purchase/items")
+  echo "  q=[$P] → HTTP $(code_of "$R")  total=$(body_of "$R" | sed -n 's/.*"total":\([0-9]*\).*/\1/p')"
+  expect "SQLi 페이로드 200" 200 "$(code_of "$R")"
+done
+expect "SQLi 뒤에도 표 그대로" 13503 "$(psqlq "SELECT count(*) FROM p_items;")"
+
+sub "page 는 1~500 정수로만 (밖의 값은 기본값 1)"
+R=$(call qa_manager01 GET "/api/purchase/items?page=99999" "$TOK_MGR")
+expect "page=99999 → 1" 1 "$(body_of "$R" | sed -n 's/.*"page":\([0-9]*\).*/\1/p')"
+R=$(call qa_manager01 GET "/api/purchase/items?page=abc" "$TOK_MGR")
+expect "page=abc → 1" 1 "$(body_of "$R" | sed -n 's/.*"page":\([0-9]*\).*/\1/p')"
+
+hr "T-44  엑셀 가져오기 (PRD 12.2 T-44, F-29, S-06, S-07, SECURITY R-67)"
+
+WORK="$JAR_DIR/xlsx"
+mkdir -p "$WORK"
+
+sub "시험용 xlsx 100행 만들기 (정상 90 · 중복 코드 5 · 거래처 없음 5)"
+php -d error_reporting=E_ALL <<PHPGEN
+<?php
+// 최소 구성의 xlsx 를 ZipArchive 로 만든다 — 시험 자료이며 앱 코드가 아니다.
+\$rows = [['품목코드','품목명','구매처명','규격','단위','입고단가']];
+for (\$i = 1; \$i <= 90; \$i++) {
+    \$rows[] = ['X'.str_pad((string)\$i, 5, '0', STR_PAD_LEFT), 'IMPORT ITEM '.\$i, '더존덴탈', \$i.'mm', 'EA', (string)(1000+\$i)];
+}
+// 중복 코드 5 — 앞의 X00001..X00005 와 같은 (거래처, 코드)
+for (\$i = 1; \$i <= 5; \$i++) {
+    \$rows[] = ['X'.str_pad((string)\$i, 5, '0', STR_PAD_LEFT), 'DUPLICATE '.\$i, '더존덴탈', '1mm', 'EA', '999'];
+}
+// 거래처 없음 5
+for (\$i = 1; \$i <= 5; \$i++) {
+    \$rows[] = ['Z'.str_pad((string)\$i, 5, '0', STR_PAD_LEFT), 'NOVENDOR '.\$i, '없는거래처', '1mm', 'EA', '999'];
+}
+
+\$esc = static fn (string \$v): string => htmlspecialchars(\$v, ENT_QUOTES | ENT_XML1, 'UTF-8');
+\$sheet = '<?xml version="1.0" encoding="UTF-8"?>'
+       . '<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetData>';
+foreach (\$rows as \$r => \$row) {
+    \$sheet .= '<row r="'.(\$r+1).'">';
+    foreach (\$row as \$c => \$cell) {
+        \$col = chr(65 + \$c);
+        \$sheet .= '<c r="'.\$col.(\$r+1).'" t="inlineStr"><is><t>'.\$esc((string)\$cell).'</t></is></c>';
+    }
+    \$sheet .= '</row>';
+}
+\$sheet .= '</sheetData></worksheet>';
+
+\$ct = '<?xml version="1.0" encoding="UTF-8"?>'
+    . '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">'
+    . '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>'
+    . '<Default Extension="xml" ContentType="application/xml"/>'
+    . '<Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>'
+    . '<Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>'
+    . '</Types>';
+\$rels = '<?xml version="1.0" encoding="UTF-8"?>'
+      . '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
+      . '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/>'
+      . '</Relationships>';
+\$wb = '<?xml version="1.0" encoding="UTF-8"?>'
+    . '<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"'
+    . ' xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">'
+    . '<sheets><sheet name="Sheet1" sheetId="1" r:id="rId1"/></sheets></workbook>';
+\$wbRels = '<?xml version="1.0" encoding="UTF-8"?>'
+        . '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
+        . '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/>'
+        . '</Relationships>';
+
+\$path = '$WORK/items.xlsx';
+@unlink(\$path);
+\$zip = new ZipArchive();
+\$zip->open(\$path, ZipArchive::CREATE);
+\$zip->addFromString('[Content_Types].xml', \$ct);
+\$zip->addFromString('_rels/.rels', \$rels);
+\$zip->addFromString('xl/workbook.xml', \$wb);
+\$zip->addFromString('xl/_rels/workbook.xml.rels', \$wbRels);
+\$zip->addFromString('xl/worksheets/sheet1.xml', \$sheet);
+\$zip->close();
+
+// 매크로 문서 흉내 — 확장자만 .xlsm 인 같은 zip
+copy(\$path, '$WORK/macro.xlsm');
+echo '  만든 파일: ', filesize(\$path), " 바이트 (100행 + 머리행)\n";
+PHPGEN
+
+sub "① .xlsm 은 업로드 검사에서 거부된다 (확장자 화이트리스트 — 가져오기가 규칙을 완화하지 않는다)"
+R=$(curl -s -w '\n%{http_code}' -b "$JAR_DIR/qa_admin01.jar" -A "$UA" \
+    -H "X-CSRF-Token: $TOK_ADMIN" -F "file=@$WORK/macro.xlsm" "$BASE/api/purchase/import")
+echo "  HTTP $(code_of "$R")  $(body_of "$R")"
+expect ".xlsm 업로드 400" 400 "$(code_of "$R")"
+psqlq "SELECT '  감사: '||action||' '||result||' '||coalesce(reason,'-')||' '||coalesce(target_name,'-')
+         FROM audit_logs WHERE action='purchase.import.upload' AND result='deny'
+        ORDER BY id DESC LIMIT 1;"
+
+sub "② xlsx 업로드 → 머리행·표본·매핑 후보"
+R=$(curl -s -w '\n%{http_code}' -b "$JAR_DIR/qa_admin01.jar" -A "$UA" \
+    -H "X-CSRF-Token: $TOK_ADMIN" -F "file=@$WORK/items.xlsx" "$BASE/api/purchase/import")
+echo "  HTTP $(code_of "$R")"
+echo "  $(body_of "$R" | head -c 700)"
+expect "xlsx 업로드 201" 201 "$(code_of "$R")"
+IMPORT_ID=$(body_of "$R" | sed -n 's/.*"import_id":"\([0-9a-f-]*\)".*/\1/p')
+echo "  import_id=$IMPORT_ID"
+expect "행 수 100" 100 "$(body_of "$R" | sed -n 's/.*"rows":\([0-9]*\).*/\1/p')"
+
+sub "③ 미리보기 — 행별 판정 (등록 90 · 오류 10)"
+MAPPING='{"품목코드":"code","품목명":"name","구매처명":"vendor","규격":"spec","단위":"unit","입고단가":"price_in"}'
+R=$(call qa_admin01 POST "/api/purchase/import/$IMPORT_ID/preview" "$TOK_ADMIN" \
+    "{\"kind\":\"items\",\"mapping\":$MAPPING}")
+echo "  HTTP $(code_of "$R")"
+echo "  counts: $(body_of "$R" | sed -n 's/.*"counts":{\([^}]*\)}.*/\1/p')"
+echo "  본문(앞 700자): $(body_of "$R" | head -c 700)"
+expect "미리보기 200" 200 "$(code_of "$R")"
+expect "insert 90" 90 "$(body_of "$R" | sed -n 's/.*"insert":\([0-9]*\).*/\1/p')"
+expect "error 10 (중복 5 + 거래처 없음 5)" 10 "$(body_of "$R" | sed -n 's/.*"error":\([0-9]*\).*/\1/p')"
+expect "미리보기는 아무것도 저장하지 않는다" 13503 "$(psqlq "SELECT count(*) FROM p_items;")"
+
+sub "④ 확정 — 한 트랜잭션, 오류 행은 저장하지 않는다"
+# `audit_logs` 는 **추가 전용**이라 지난 실행의 행이 그대로 남는다(그것이 설계다).
+# 그래서 "표에 몇 줄인가" 가 아니라 **이번 확정으로 몇 줄이 늘었나** 를 본다.
+COMMIT_BEFORE=$(psqlq "SELECT count(*) FROM audit_logs WHERE action='purchase.import.commit' AND result='allow';")
+R=$(call qa_admin01 POST "/api/purchase/import/$IMPORT_ID/commit" "$TOK_ADMIN" \
+    "{\"kind\":\"items\",\"mapping\":$MAPPING}")
+echo "  HTTP $(code_of "$R")"; echo "  $(body_of "$R")"
+expect "확정 200" 200 "$(code_of "$R")"
+expect "inserted 90" 90 "$(body_of "$R" | sed -n 's/.*"inserted":\([0-9]*\).*/\1/p')"
+expect "표에 90행만 늘었다" 13593 "$(psqlq "SELECT count(*) FROM p_items;")"
+expect "오류 행(Z 코드) 0건" 0 "$(psqlq "SELECT count(*) FROM p_items WHERE code LIKE 'Z%';")"
+
+sub "⑤ 감사 — 확정 1건에 한 줄 (detail 에 rows·inserted·updated·file_id·sha256)"
+psqlq "SELECT summary FROM audit_logs WHERE action='purchase.import.commit' ORDER BY id DESC LIMIT 1;"
+psqlq "SELECT detail::text FROM audit_logs WHERE action='purchase.import.commit' ORDER BY id DESC LIMIT 1;"
+# `audit_logs` 는 추가 전용이라 지난 실행의 행이 그대로 남는다 — **이번 실행분만** 센다.
+# 보는 것은 "확정 1번에 한 줄" 이지 "표에 한 줄" 이 아니다 (지시서 보충 8).
+COMMIT_AFTER=$(psqlq "SELECT count(*) FROM audit_logs WHERE action='purchase.import.commit' AND result='allow';")
+expect "확정 1번 = 감사 한 줄 (90행을 넣어도 한 줄)" 1 "$((COMMIT_AFTER - COMMIT_BEFORE))"
+expect "확정 감사에 행 내용은 없다(요약 수치만)" 0 "$(psqlq "SELECT count(*) FROM audit_logs
+        WHERE action='purchase.import.commit' AND detail::text LIKE '%IMPORT ITEM%';")"
+
+sub "⑥ 매핑 저장 → 같은 양식 재업로드 시 저장된 매핑이 내려온다"
+R=$(call qa_admin01 POST /api/purchase/import/mappings "$TOK_ADMIN" \
+    "{\"kind\":\"items\",\"name\":\"이카운트 품목 v1\",\"mapping\":$MAPPING}")
+echo "  HTTP $(code_of "$R")  $(body_of "$R" | head -c 200)"
+expect "매핑 저장 201" 201 "$(code_of "$R")"
+R=$(curl -s -w '\n%{http_code}' -b "$JAR_DIR/qa_admin01.jar" -A "$UA" \
+    -H "X-CSRF-Token: $TOK_ADMIN" -F "file=@$WORK/items.xlsx" "$BASE/api/purchase/import")
+expect "재업로드 201" 201 "$(code_of "$R")"
+expect "저장된 매핑이 응답에 있다" 1 "$(body_of "$R" | grep -c '이카운트 품목 v1')"
+IMPORT_ID2=$(body_of "$R" | sed -n 's/.*"import_id":"\([0-9a-f-]*\)".*/\1/p')
+
+sub "⑦ 두 번째 확정 — 같은 파일이므로 전부 「갱신 대상이지만 바뀐 것 없음」 = 건너뜀"
+R=$(call qa_admin01 POST "/api/purchase/import/$IMPORT_ID2/preview" "$TOK_ADMIN" \
+    "{\"kind\":\"items\",\"mapping\":$MAPPING}")
+echo "  counts: $(body_of "$R" | sed -n 's/.*"counts":{\([^}]*\)}.*/\1/p')"
+R=$(call qa_admin01 POST "/api/purchase/import/$IMPORT_ID2/commit" "$TOK_ADMIN" \
+    "{\"kind\":\"items\",\"mapping\":$MAPPING}")
+echo "  HTTP $(code_of "$R")  $(body_of "$R")"
+expect "두 번째 확정도 행이 늘지 않는다" 13593 "$(psqlq "SELECT count(*) FROM p_items;")"
+
+sub "⑧ 매핑이 부족하면 미리보기 자체가 400"
+R=$(call qa_admin01 POST "/api/purchase/import/$IMPORT_ID/preview" "$TOK_ADMIN" \
+    '{"kind":"items","mapping":{"품목코드":"code"}}')
+echo "  HTTP $(code_of "$R")  $(body_of "$R")"
+expect "필수 칸 빠진 매핑 400" 400 "$(code_of "$R")"
+
+sub "⑨ 다른 사람의 admin-only 파일을 import_id 로 넘겨도 404 (보관 폴더 밖은 받지 않는다)"
+OTHER=$(psqlq "SELECT public_id FROM files
+                WHERE deleted_at IS NULL
+                  AND folder_id IS DISTINCT FROM (SELECT id FROM folders WHERE name='가져오기')
+                ORDER BY id DESC LIMIT 1;")
+if [ -n "$OTHER" ]; then
+  R=$(call qa_admin01 POST "/api/purchase/import/$OTHER/preview" "$TOK_ADMIN" \
+      "{\"kind\":\"items\",\"mapping\":$MAPPING}")
+  echo "  대상 public_id=$OTHER → HTTP $(code_of "$R")  $(body_of "$R")"
+  expect "보관 폴더 밖 파일 404" 404 "$(code_of "$R")"
+else
+  echo "  (비교할 다른 파일이 없어 건너뜀)"
+fi
+
+sub "⑩ 업로드 원본이 「구매/가져오기」 폴더(admin-only)에 있나"
+psqlq "SELECT '  '||f.original_name||' | '||f.access_level||' | 폴더='||fo.name||' | sha256='||left(f.sha256,16)||'…'
+         FROM files f JOIN folders fo ON fo.id = f.folder_id
+        WHERE fo.name = '가져오기' ORDER BY f.id DESC LIMIT 3;"
+
+hr "회귀 — T-1(파일 삭제 권한) · T-26(계정 관리) · T-36(재인증은 권한을 만들지 않는다)"
+
+sub "T-1 — Guest 의 파일 삭제는 라우터에서 끝난다 / Admin 은 목록을 본다"
+R=$(call qa_guest01 GET "/api/files?page=1" "$TOK_GUEST")
+expect "Guest 파일 목록 200" 200 "$(code_of "$R")"
+expect "Guest 목록에 admin-only 0건" 0 "$(body_of "$R" | grep -c 'admin-only')"
+ANY=$(psqlq "SELECT public_id FROM files WHERE deleted_at IS NULL ORDER BY id DESC LIMIT 1;")
+R=$(call qa_guest01 DELETE "/api/files/$ANY" "$TOK_GUEST")
+echo "  Guest DELETE → HTTP $(code_of "$R")  $(body_of "$R")"
+expect "Guest 파일 삭제 403" 403 "$(code_of "$R")"
+R=$(call qa_admin01 GET "/api/files?page=1" "$TOK_ADMIN")
+expect "Admin 파일 목록 200" 200 "$(code_of "$R")"
+
+sub "T-26 — 계정 관리: 목록에 지점·모듈 역할이 함께 나오고, 비Admin 은 403"
+R=$(call qa_admin01 GET "/api/users" "$TOK_ADMIN")
+echo "  HTTP $(code_of "$R")  본문(앞 400자): $(body_of "$R" | head -c 400)"
+expect "Admin 계정 목록 200" 200 "$(code_of "$R")"
+expect "purchase_role 칸이 있다" 1 "$(body_of "$R" | grep -c '"purchase_role"')"
+expect "branch_id 칸이 있다" 1 "$(body_of "$R" | grep -c '"branch_id"')"
+R=$(call qa_employee01 GET "/api/users" "$TOK_EMP1")
+echo "  Employee → HTTP $(code_of "$R")  $(body_of "$R")"
+expect "Employee 계정 목록 403" 403 "$(code_of "$R")"
+
+sub "T-26b — Admin 이 지점·모듈 역할을 바꾸면 before/after 가 감사에 남는다"
+UID2=$(psqlq "SELECT id FROM users WHERE username='qa_employee02';")
+R=$(call qa_admin01 PATCH "/api/users/$UID2" "$TOK_ADMIN" \
+    "{\"branch_id\":$BR_A,\"purchase_role\":\"requester\",\"reason_text\":\"19단계 T-42 검토\"}")
+echo "  HTTP $(code_of "$R")  $(body_of "$R")"
+expect "지점·모듈 역할 변경 200" 200 "$(code_of "$R")"
+psqlq "SELECT detail::text FROM audit_logs WHERE action IN ('user.role_change')
+        AND target_name='qa_employee02' ORDER BY id DESC LIMIT 1;"
+
+sub "T-36 — 재인증은 권한을 만들지 않는다 (Employee 는 재인증해도 /api/users 403)"
+echo "  재인증: $(reauth qa_employee01 "$TOK_EMP1")"
+R=$(call qa_employee01 GET "/api/users" "$TOK_EMP1")
+echo "  HTTP $(code_of "$R")  $(body_of "$R")"
+expect "재인증 뒤에도 Employee 403" 403 "$(code_of "$R")"
+expect "권한 거부라 next 없음" 0 "$(body_of "$R" | grep -c '"next"')"
+
+sub "T-36b — 본인 계정 창구는 재인증 대상이 아니다 (/api/me 200)"
+R=$(call qa_employee01 GET "/api/me" "$TOK_EMP1")
+expect "/api/me 200" 200 "$(code_of "$R")"
+echo "  can_purchase=$(body_of "$R" | sed -n 's/.*"can_purchase":\(true\|false\).*/\1/p')"
+
+hr "결과"
+printf '  통과 %d · 실패 %d\n' "$PASS" "$FAIL"
+[ "$FAIL" -eq 0 ] || exit 1

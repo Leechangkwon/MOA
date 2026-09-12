@@ -28,7 +28,11 @@ declare(strict_types=1);
  * @var list<string>        $params $params[0] = users.id (정수 문자열)
  */
 
-$allowedFields = ['role', 'team_id', 'is_active', 'expires_at', 'reason_text'];
+// 19단계 (F-28) — 구매 모듈의 두 축. 둘 다 Admin 만 바꿀 수 있다(라우트 정책 user.manage)
+// 그리고 self_change·last_admin 판정은 **기존 decideUserChange 를 그대로 지난다** —
+// 모듈 칸 때문에 계정 관리의 금지 두 가지가 헐거워지지 않는다.
+$allowedFields = ['role', 'team_id', 'is_active', 'expires_at', 'reason_text',
+                  'branch_id', 'purchase_role'];
 
 $uidRaw = $params[0] ?? '';
 if (!is_string($uidRaw) || preg_match('/^[0-9]{1,9}$/', $uidRaw) !== 1) {
@@ -42,7 +46,7 @@ $db = Db::instance();
 
 // ─── [0] 대상 계정을 먼저 읽는다 (없으면 404 동일 문구) ──────────
 $sqlFind = <<<'SQL'
-    SELECT id, username, role, team_id, is_active, expires_at
+    SELECT id, username, role, team_id, is_active, expires_at, branch_id, purchase_role
       FROM users
      WHERE id = :id
     SQL;
@@ -58,6 +62,9 @@ $current = [
     'team_id'    => $target['team_id'] === null ? null : (int) $target['team_id'],
     'is_active'  => $target['is_active'] === true,
     'expires_at' => $target['expires_at'] === null ? null : (string) $target['expires_at'],
+    // 19단계 (F-28) — 현재의 지점·모듈 역할. before 스냅샷에 그대로 들어간다.
+    'branch_id'     => $target['branch_id'] === null ? null : (int) $target['branch_id'],
+    'purchase_role' => $target['purchase_role'] === null ? null : (string) $target['purchase_role'],
 ];
 
 /**
@@ -163,6 +170,48 @@ if (array_key_exists('expires_at', $body)) {
     $expiresChanged = true;
 }
 
+/* ─── 19단계 — 지점·모듈 역할 (PRD F-28, ARCH 5.18) ───
+ *
+ * 값 검사는 Authz 의 허용 목록(`isAssignablePurchaseRole`)과 **활성 지점 확인**이 한다.
+ * 요청이 보낸 문자열을 그대로 컬럼에 넣지 않는다 (role 과 같은 규칙, PRD S-01).
+ * 빈 값·null 은 "모듈을 쓰지 않는 계정" 이며 유효한 상태다.
+ */
+$newPurchaseRole = $current['purchase_role'];
+if (array_key_exists('purchase_role', $body)) {
+    $raw = $body['purchase_role'];
+    if ($raw === null || $raw === '') {
+        $newPurchaseRole = null;
+    } elseif (is_string($raw) && Authz::isAssignablePurchaseRole($raw)) {
+        $newPurchaseRole = $raw;
+    } else {
+        $reject($denyAction, 'bad_request');
+    }
+}
+
+$newBranch = $current['branch_id'];
+if (array_key_exists('branch_id', $body)) {
+    $raw = $body['branch_id'];
+    if ($raw === null || $raw === '') {
+        $newBranch = null;
+    } else {
+        $text = is_int($raw) ? (string) $raw : (is_string($raw) ? $raw : '');
+        if (preg_match('/^[1-9][0-9]{0,8}$/', $text) !== 1) {
+            $reject($denyAction, 'bad_request');
+        }
+        $newBranch = (int) $text;
+    }
+}
+
+// 지점이 실제로 있고 사용 중인가 (팀과 같은 규칙: 이미 그 지점인 사람은 다시 검사하지 않는다)
+if ($newBranch !== null && $newBranch !== $current['branch_id']) {
+    $sqlBranch = <<<'SQL'
+        SELECT 1 AS ok FROM p_branches WHERE id = CAST(:id AS bigint) AND is_active
+        SQL;
+    if (!is_array($db->run($sqlBranch, [':id' => $newBranch])->fetch())) {
+        $reject($denyAction, 'bad_request');
+    }
+}
+
 // 역할이 정하는 규칙 (판단은 Authz 안에서) — Guest 는 팀 없음 · 만료일 필수
 if ($newTeam !== null && !Authz::allowsTeam($newRole)) {
     $reject($denyAction, 'bad_request');
@@ -189,9 +238,12 @@ if ($newTeam !== null && $newTeam !== $current['team_id']) {
 $roleChanged = $newRole !== $current['role'];
 $teamChanged = $newTeam !== $current['team_id'];
 $activeChanged = $newActive !== $current['is_active'];
+$branchChanged = $newBranch !== $current['branch_id'];
+$purchaseRoleChanged = $newPurchaseRole !== $current['purchase_role'];
 // 만료일은 문자열 형식이 DB 출력과 달라 단순 비교가 통하지 않는다 —
 // "요청에 expires_at 이 있었나" 로만 변경 여부를 본다.
-if (!$roleChanged && !$teamChanged && !$activeChanged && !$expiresChanged) {
+if (!$roleChanged && !$teamChanged && !$activeChanged && !$expiresChanged
+    && !$branchChanged && !$purchaseRoleChanged) {
     $reject($denyAction, 'bad_request');
 }
 
@@ -223,6 +275,8 @@ $sqlUpdate = <<<'SQL'
            team_id    = :team_id,
            is_active  = CAST(:is_active AS boolean),
            expires_at = CAST(:expires_at AS timestamptz),
+           branch_id     = CAST(:branch_id AS bigint),
+           purchase_role = :purchase_role,
            updated_at = now()
      WHERE id = :id
     SQL;
@@ -246,10 +300,19 @@ try {
         ':team_id'    => $newTeam,
         ':is_active'  => $newActive ? 'true' : 'false',
         ':expires_at' => $newExpires,
+        ':branch_id'     => $newBranch,
+        ':purchase_role' => $newPurchaseRole,
         ':id'         => $uid,
     ]);
 
-    // 권한이 바뀌었거나 계정을 껐으면 그 사용자의 세션을 전부 끊는다 (SECURITY R-10, T-22).
+    /* 권한이 바뀌었거나 계정을 껐으면 그 사용자의 세션을 전부 끊는다 (SECURITY R-10, T-22).
+     *
+     * 19단계 판단 — **지점·모듈 역할이 바뀌어도 세션을 끊지 않는다.** 본체 역할·팀과 달리
+     * 이 두 값은 세션 조회에 실려 있지 않고, `Authz::purchaseFields` 가 **요청마다 DB 에서
+     * 다시 읽는다**. 그래서 값을 바꾼 그 순간부터 낡은 세션에도 새 범위가 적용된다 —
+     * "권한을 거뒀는데 그 기기에서는 그대로" 가 생길 자리가 없다. 세션을 끊으면 지점을
+     * 옮기는 흔한 인사 이동마다 그 사람이 로그아웃되는 불편만 남는다.
+     */
     $revoked = 0;
     if ($roleChanged || $teamChanged || ($activeChanged && !$newActive)) {
         $revoked = Auth::revokeAllSessions($uid);
@@ -263,6 +326,8 @@ try {
                 'team_id'    => $newTeam,
                 'is_active'  => $newActive,
                 'expires_at' => $newExpires,
+                'branch_id'     => $newBranch,
+                'purchase_role' => $newPurchaseRole,
             ],
             'target_role'      => $newRole,
             'target_active'    => $newActive,
@@ -284,5 +349,7 @@ Http::json([
     'team_id'          => $newTeam,
     'is_active'        => $newActive,
     'expires_at'       => $newExpires,
+    'branch_id'        => $newBranch,
+    'purchase_role'    => $newPurchaseRole,
     'sessions_revoked' => $revoked,
 ]);

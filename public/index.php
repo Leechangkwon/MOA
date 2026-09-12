@@ -218,6 +218,70 @@ const TBOX_ROUTES = [
     ['POST',   '/api/folders',                   'folders_create.php',           'file.upload'],
     ['PATCH',  '/api/folders/{num}',             'folders_update.php',           'file.update'],
     ['DELETE', '/api/folders/{num}',             'folders_delete.php',           'file.delete'],
+
+    /* ── 19단계 — 구매·재고 모듈 (PRD F-28 · F-29 · F-30(API), ARCH 5.18, SECURITY R-65 · R-70) ──
+     *
+     * 경계가 이름으로 드러난다: 화면 `/purchase/*` · API `/api/purchase/*` · 정책 접두 `purchase.*`.
+     * 정책 여섯 개는 전부 `Authz::KNOWN_POLICIES` 에 있고(없으면 부팅 실패 — R-04),
+     * `Authz::authorize()` 가 접두를 보고 `purchaseAuthorize()` 로 **통째로 위임**한다.
+     * 지점 격리는 라우터가 아니라 각 핸들러의 SQL(`Authz::purchaseScopeWhere`)이 한다 —
+     * 라우트 정책은 "이 종류의 행위를 할 수 있나" 까지만 본다(파일 라우트와 같은 구조).
+     *
+     *   purchase.read         모듈 역할이 있는 사람 전부 — 목록·상세·품목 찾기
+     *   purchase.master.write buyer·Admin 만. **`REAUTH_POLICIES` 에 있어 재인증 관문 [3-2] 가
+     *                         자동으로 따라붙는다** (F-23) — 기초정보 편집·엑셀 가져오기가 그렇다.
+     *
+     * ★ 화면과 데이터가 **같은 정책**을 쓴다 — 화면만 숨기고 API 를 열어 두면 그것이 곧
+     *   우회 경로다 (PRD S-01, 계정 관리·감사 로그와 같은 원칙).
+     * ★ 삭제(DELETE) 라우트가 기초정보에 **하나도 없다**. 그만 쓰는 것은 `PATCH {is_active:false}`
+     *   이고, 앱 DB 계정에는 `p_*` 에 DELETE 권한 자체가 없다 (db/grants.sql).
+     * ★ 전표(`/api/purchase/requests`·`orders`·`receipts` …)는 20단계다 — 여기 없다.
+     *
+     * `{num}` 은 순차 정수(p_items.id 등)이고, 가져오기의 `{id}` 는 `files.public_id`(UUID)다 —
+     * 가져오기가 다루는 것은 **업로드한 파일**이라 파일의 외부 ID 를 그대로 쓴다.
+     */
+    ['GET',    '/purchase',                      'purchase_page.php',            'purchase.read'],
+    ['GET',    '/purchase/masters',              'purchase_masters_page.php',    'purchase.read'],
+    ['GET',    '/purchase/import',               'purchase_import_page.php',     'purchase.master.write'],
+    ['GET',    '/purchase/items/{num}',          'purchase_item_page.php',       'purchase.read'],
+
+    // 기초정보 6종 — 읽기는 purchase.read, 쓰기는 purchase.master.write(재인증).
+    // 핸들러 하나가 여섯 종류를 다루지만 **정책은 라우트마다 명시**한다(표만 보고 알 수 있게).
+    ['GET',    '/api/purchase/brands',           'purchase_masters_list.php',    'purchase.read'],
+    ['POST',   '/api/purchase/brands',           'purchase_masters_create.php',  'purchase.master.write'],
+    ['PATCH',  '/api/purchase/brands/{num}',     'purchase_masters_update.php',  'purchase.master.write'],
+    ['GET',    '/api/purchase/branches',         'purchase_masters_list.php',    'purchase.read'],
+    ['POST',   '/api/purchase/branches',         'purchase_masters_create.php',  'purchase.master.write'],
+    ['PATCH',  '/api/purchase/branches/{num}',   'purchase_masters_update.php',  'purchase.master.write'],
+    ['GET',    '/api/purchase/locations',        'purchase_masters_list.php',    'purchase.read'],
+    ['POST',   '/api/purchase/locations',        'purchase_masters_create.php',  'purchase.master.write'],
+    ['PATCH',  '/api/purchase/locations/{num}',  'purchase_masters_update.php',  'purchase.master.write'],
+    ['GET',    '/api/purchase/vendors',          'purchase_masters_list.php',    'purchase.read'],
+    ['POST',   '/api/purchase/vendors',          'purchase_masters_create.php',  'purchase.master.write'],
+    ['PATCH',  '/api/purchase/vendors/{num}',    'purchase_masters_update.php',  'purchase.master.write'],
+    ['GET',    '/api/purchase/categories',       'purchase_masters_list.php',    'purchase.read'],
+    ['POST',   '/api/purchase/categories',       'purchase_masters_create.php',  'purchase.master.write'],
+    ['PATCH',  '/api/purchase/categories/{num}', 'purchase_masters_update.php',  'purchase.master.write'],
+    ['GET',    '/api/purchase/par-levels',       'purchase_masters_list.php',    'purchase.read'],
+    ['POST',   '/api/purchase/par-levels',       'purchase_masters_create.php',  'purchase.master.write'],
+    ['PATCH',  '/api/purchase/par-levels/{num}', 'purchase_masters_update.php',  'purchase.master.write'],
+
+    // 품목 찾기 API (F-30 R1, T-43) 와 품목 등록·수정.
+    // `/api/purchase/items` 는 `{num}` 과 형태가 달라 충돌하지 않지만, 의도를 드러내려고 위에 둔다.
+    ['GET',    '/api/purchase/items',            'purchase_items_search.php',    'purchase.read'],
+    ['POST',   '/api/purchase/items',            'purchase_items_create.php',    'purchase.master.write'],
+    ['GET',    '/api/purchase/items/{num}',      'purchase_item_get.php',        'purchase.read'],
+    ['PATCH',  '/api/purchase/items/{num}',      'purchase_items_update.php',    'purchase.master.write'],
+
+    // 엑셀 가져오기 (F-29, T-44). 네 라우트 모두 purchase.master.write(재인증)다 —
+    // 1.35만 행을 한 번에 바꿀 수 있는 경로라 훔친 세션만으로 닿으면 안 된다 (R-67).
+    // `/import/mappings` 는 `{id}`(UUID 36자)와 형태가 달라 `/import/{id}/…` 와 충돌하지 않는다.
+    ['POST',   '/api/purchase/import',                  'purchase_import_upload.php',   'purchase.master.write'],
+    ['GET',    '/api/purchase/import/mappings',         'purchase_import_mappings.php', 'purchase.master.write'],
+    ['POST',   '/api/purchase/import/mappings',         'purchase_import_mappings.php', 'purchase.master.write'],
+    ['DELETE', '/api/purchase/import/mappings',         'purchase_import_mappings.php', 'purchase.master.write'],
+    ['POST',   '/api/purchase/import/{id}/preview',     'purchase_import_preview.php',  'purchase.master.write'],
+    ['POST',   '/api/purchase/import/{id}/commit',      'purchase_import_commit.php',   'purchase.master.write'],
 ];
 
 /**

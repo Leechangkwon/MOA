@@ -109,6 +109,21 @@ final class Audit
          * 이미 등록부에 있고 금지 목록에 걸리지 않아 따로 적지 않는다.
          */
         'otp_verified',
+        /*
+         * 19단계 구매·재고 모듈 (PRD F-28 · F-29, ARCH 5.18 · 7.5 등록부).
+         *   kind      — 기초정보 종류 또는 가져오기 종류 (`locations`·`items` …)
+         *   target_id — 만든·고친 행의 id (target_id 칼럼과 같은 값을 detail 에도 남긴다)
+         *   file_id   — 가져오기 원본 `files.id`
+         *   sha256    — 그 파일의 해시. 이름에 `hash` 가 들어가지 않아 부분 일치에 걸리지 않지만,
+         *               등록부에 있는 키임을 코드에서도 드러내려고 적는다(chain_hash 와 같은 성격)
+         *   rows · inserted · updated — 확정 1건의 요약 **수치**. 행 내용은 남기지 않는다
+         *   branch_id — 어느 지점의 기초정보인가 (지점 격리를 되짚는 값)
+         *   mapping · branches — 엑셀 열 이름 목록 / 품목에 이어 붙인 지점 id 목록.
+         *               둘 다 **이름·번호 목록**이고 파일 내용이 아니다.
+         * `before`·`after` 는 이미 등록부에 있고 금지 목록에 걸리지 않아 따로 적지 않는다.
+         */
+        'kind', 'target_id', 'file_id', 'sha256', 'rows', 'inserted', 'updated',
+        'branch_id', 'mapping', 'branches',
     ];
 
     private const RESULT_ALLOW = 'allow';
@@ -412,6 +427,61 @@ final class Audit
         'file.update|deny|bad_folder'                   => '{actor} 이(가) 파일 「{target}」 을(를) 없는 폴더 또는 볼 수 없는 폴더로 옮기려 해서 거부했습니다',
         'file.update|deny|parent_narrower'              => '{actor} 이(가) 파일 「{target}」 을(를) 자기보다 좁은 등급의 폴더로 옮기려 해서 거부했습니다',
         'file.level_change|deny|parent_narrower'        => '{actor} 이(가) 파일 「{target}」 의 접근 등급을 그 파일이 든 폴더보다 넓은 {level} 등급으로 바꾸려 해서 거부했습니다',
+
+        // ── 19단계 구매·재고 모듈 (PRD F-28 · F-29, ARCH 5.18 「감사·경보」, SECURITY R-65 · R-67) ──
+        //
+        // {target} 에는 `종류:이름`(예: `locations:B1F 의약품창고`) 또는 가져오기 파일 이름이 들어간다.
+        // 품목 찾기(`/api/purchase/items`)는 **조회라서 기록하지 않는다** — 1.35만 건을 훑는 검색을
+        // 행마다 남기면 감사 로그가 검색 기록이 되고, 정작 중요한 변경이 그 속에 묻힌다
+        // (파일 목록·폴더 트리를 기록하지 않는 것과 같은 판단, ARCH 5.1 마지막 줄).
+        // 가져오기 확정도 **한 줄**이다: 1.3만 행을 행마다 남기면 그 자체가 로그를 밀어내는 공격이 된다.
+        'purchase.master.create|allow'                  => '{actor} 이(가) 구매 기초정보 「{target}」 을(를) 새로 만들었습니다',
+        'purchase.master.create|deny|bad_request'       => '{actor} 이(가) 구매 기초정보를 만들려 했지만 보낸 값의 형식이 잘못되어 거부했습니다',
+        'purchase.master.create|deny|bad_reference'     => '{actor} 이(가) 없는(또는 중단된) 브랜드·지점·장소·품목을 가리키는 구매 기초정보를 만들려 해서 거부했습니다',
+        'purchase.master.create|deny|conflict'          => '{actor} 이(가) 이미 있는 이름·코드로 구매 기초정보를 만들려 해서 거부했습니다',
+        'purchase.master.update|allow'                  => '{actor} 이(가) 구매 기초정보 「{target}」 을(를) 고쳤습니다 (바뀐 값은 상세 기록의 before/after)',
+        'purchase.master.update|deny|bad_request'       => '{actor} 이(가) 구매 기초정보 「{target}」 을(를) 고치려 했지만 보낸 값의 형식이 잘못되어 거부했습니다',
+        'purchase.master.update|deny|bad_reference'     => '{actor} 이(가) 구매 기초정보 「{target}」 을(를) 없는(또는 중단된) 값에 이어 붙이려 해서 거부했습니다',
+        'purchase.master.update|deny|conflict'          => '{actor} 이(가) 구매 기초정보 「{target}」 을(를) 이미 있는 이름·코드로 바꾸려 해서 거부했습니다',
+        'purchase.master.update|deny|no_change'         => '{actor} 이(가) 구매 기초정보 「{target}」 에 바뀌는 값 없이 수정을 요청해서 거부했습니다',
+        'purchase.master.update|deny|bad_kind'          => '{actor} 이(가) 알 수 없는 종류의 구매 기초정보를 고치려 해서 거부했습니다',
+        'purchase.master.update|deny|bad_mapping'       => '{actor} 이(가) 형식에 맞지 않는 엑셀 열 매핑을 저장하려 해서 거부했습니다',
+        'purchase.master.deactivate|allow'              => '{actor} 이(가) 구매 기초정보 「{target}」 을(를) 중단했습니다 (삭제가 아니라 중단이며 지난 전표에는 그대로 남습니다)',
+        'purchase.master.deactivate|deny|bad_request'   => '{actor} 이(가) 구매 기초정보 「{target}」 을(를) 중단하려 했지만 보낸 값의 형식이 잘못되어 거부했습니다',
+
+        'purchase.import.upload|allow'                  => '{actor} 이(가) 구매 기초정보 가져오기 파일 「{target}」 을(를) 올렸습니다 (관리자 전용 폴더 「구매/가져오기」)',
+        'purchase.import.upload|deny|no_file'           => '{actor} 이(가) 파일 없이 구매 가져오기를 요청해서 거부했습니다',
+        'purchase.import.upload|deny|empty_file'        => '{actor} 이(가) 0바이트 파일 「{target}」 로 구매 가져오기를 요청해서 거부했습니다',
+        'purchase.import.upload|deny|too_large'         => '{actor} 이(가) 100MB 를 넘는 파일 「{target}」 로 구매 가져오기를 요청해서 거부했습니다',
+        'purchase.import.upload|deny|upload_error'      => '{actor} 이(가) 보낸 구매 가져오기 업로드의 형식이 잘못되어 거부했습니다',
+        'purchase.import.upload|deny|not_uploaded_file' => '{actor} 이(가) 보낸 구매 가져오기 업로드가 정상적인 HTTP 업로드가 아니어서 거부했습니다',
+        'purchase.import.upload|deny|size_unreadable'   => '{actor} 이(가) 올린 파일 「{target}」 의 크기를 읽을 수 없어 구매 가져오기를 거부했습니다',
+        'purchase.import.upload|deny|hash_failed'       => '{actor} 이(가) 올린 파일 「{target}」 의 무결성 값을 계산할 수 없어 구매 가져오기를 거부했습니다',
+        'purchase.import.upload|deny|ext_not_allowed'   => '{actor} 이(가) 가져오기가 읽을 수 없는 종류의 파일 「{target}」 을(를) 올려 거부했습니다 (xlsx·csv 만 — xlsm·xls·매크로 문서는 받지 않습니다)',
+        'purchase.import.upload|deny|mime_mismatch'     => '{actor} 이(가) 올린 파일 「{target}」 의 실제 내용이 확장자와 달라(위장 파일 의심) 구매 가져오기를 거부했습니다',
+        'purchase.import.upload|deny|double_extension'  => '{actor} 이(가) 이중 확장자 파일 「{target}」 로 구매 가져오기를 요청해서 거부했습니다 (실행 파일 위장 의심)',
+        'purchase.import.upload|deny|bad_encoding'      => '{actor} 이(가) 올린 구매 가져오기 파일의 이름이 올바른 문자(UTF-8)가 아니어서 거부했습니다',
+        'purchase.import.upload|deny|quota_exceeded'    => '{actor} 이(가) 구매 가져오기 파일을 올리려 했지만 하루 업로드 한도(2GB)를 넘어 거부했습니다',
+        'purchase.import.upload|error|parse_failed'     => '{actor} 이(가) 올린 구매 가져오기 파일 「{target}」 에서 표를 읽어 내지 못했습니다 (손상 또는 지원 범위 밖)',
+
+        'purchase.import.preview|deny|bad_request'      => '{actor} 이(가) 구매 가져오기 미리보기를 잘못된 형식으로 요청해서 거부했습니다',
+        'purchase.import.preview|deny|bad_kind'         => '{actor} 이(가) 알 수 없는 종류로 구매 가져오기 미리보기를 요청해서 거부했습니다',
+        'purchase.import.preview|deny|bad_mapping'      => '{actor} 이(가) 파일의 열과 맞지 않는 매핑으로 구매 가져오기 미리보기를 요청해서 거부했습니다',
+        'purchase.import.preview|deny|mapping_incomplete' => '{actor} 이(가) 필수 칸이 빠진 매핑으로 구매 가져오기 미리보기를 요청해서 거부했습니다',
+        'purchase.import.preview|deny|too_many_rows'    => '{actor} 이(가) 상한을 넘는 행 수의 파일로 구매 가져오기 미리보기를 요청해서 거부했습니다',
+        'purchase.import.preview|deny|parse_failed'     => '{actor} 이(가) 읽을 수 없는 파일로 구매 가져오기 미리보기를 요청해서 거부했습니다',
+        'purchase.import.preview|error|truncated'       => '{actor} 이(가) 미리보기한 구매 가져오기 파일 「{target}」 이(가) 상한에서 끊겼습니다 (확정은 막힙니다)',
+
+        'purchase.import.commit|allow'                  => '{actor} 이(가) 구매 기초정보 가져오기를 확정했습니다 (파일 「{target}」 · 행 수·등록·갱신 건수는 상세 기록)',
+        'purchase.import.commit|deny|bad_request'       => '{actor} 이(가) 구매 가져오기 확정을 잘못된 형식으로 요청해서 거부했습니다',
+        'purchase.import.commit|deny|bad_kind'          => '{actor} 이(가) 알 수 없는 종류로 구매 가져오기 확정을 요청해서 거부했습니다',
+        'purchase.import.commit|deny|bad_mapping'       => '{actor} 이(가) 파일의 열과 맞지 않는 매핑으로 구매 가져오기 확정을 요청해서 거부했습니다',
+        'purchase.import.commit|deny|mapping_incomplete' => '{actor} 이(가) 필수 칸이 빠진 매핑으로 구매 가져오기 확정을 요청해서 거부했습니다',
+        'purchase.import.commit|deny|too_many_rows'     => '{actor} 이(가) 상한을 넘는 행 수의 파일로 구매 가져오기 확정을 요청해서 거부했습니다',
+        'purchase.import.commit|deny|parse_failed'      => '{actor} 이(가) 읽을 수 없는 파일로 구매 가져오기 확정을 요청해서 거부했습니다',
+        'purchase.import.commit|deny|truncated'         => '{actor} 이(가) 상한에서 끊긴 파일 「{target}」 로 구매 가져오기 확정을 요청해서 거부했습니다 (반쯤 들어간 기초정보를 만들지 않습니다)',
+        'purchase.import.commit|deny|conflict'          => '{actor} 이(가) 확정한 구매 가져오기에 이미 있는 거래처·코드가 있어 **전부 되돌렸습니다**',
+        'purchase.import.commit|deny|bad_reference'     => '{actor} 이(가) 확정한 구매 가져오기가 없는 기초정보를 가리켜 **전부 되돌렸습니다**',
     ];
 
     /** 자리표시자에 넣을 값이 없을 때 (ARCH 7.4) */

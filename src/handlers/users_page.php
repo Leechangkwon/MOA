@@ -54,6 +54,13 @@ require __DIR__ . '/../views/shell_top.php';
     계정을 지우는 기능은 없습니다 — 파일·감사 로그가 계정을 가리키고 있어,
     지우면 추적이 끊어집니다. 그만 쓸 계정은 <strong>비활성화</strong>합니다.
   </p>
+  <p class="notice">
+    <strong>구매 모듈</strong>(19단계~)은 t-box 4역할 <em>위에</em> 얹힌 두 축으로 움직입니다 —
+    <strong>모듈 역할</strong>(요청·구매·재고·검토)과 <strong>지점</strong>입니다.
+    요청(requester)·재고(stock)는 <strong>자기 지점 밖의 자료를 목록에서 보지 못합니다</strong>(서버가 거릅니다).
+    구매(buyer)·검토(viewer)는 전 지점이고, 기초정보 편집·엑셀 가져오기는 구매(buyer)와 관리자만 할 수 있으며
+    <strong>비밀번호 재확인</strong>이 필요합니다. 모듈 역할을 비워 두면 그 계정은 <code>/purchase</code> 전체가 403 입니다.
+  </p>
 
   <section class="panel">
     <div class="panel__head"><h2 class="panel__title">계정 만들기</h2></div>
@@ -82,6 +89,25 @@ require __DIR__ . '/../views/shell_top.php';
         <span class="field__label">만료일 (Guest 는 필수)</span>
         <input id="u-expires" type="date">
       </label>
+      <!-- 19단계 구매·재고 모듈의 두 축 (PRD F-28, ARCH 5.18 「권한 두 축」).
+           둘 다 **선택**이다 — 비워 두면 그 계정은 구매 모듈을 쓰지 않는다.
+           지점 목록은 app.js 가 `/api/purchase/branches` 에서 받아 채운다(고정 목록을 화면에
+           두지 않는다). 값이 무엇이든 서버가 다시 검사하고, 지점 격리는 요청마다
+           Authz::purchaseScopeWhere 가 DB 의 users.branch_id 로 만든다 (PRD S-01). -->
+      <label class="field">
+        <span class="field__label">지점 (구매 모듈 · 비우면 없음)</span>
+        <select id="u-branch"><option value="">— 지점 없음 —</option></select>
+      </label>
+      <label class="field">
+        <span class="field__label">구매 모듈 역할 (비우면 사용 안 함)</span>
+        <select id="u-purchase-role">
+          <option value="">— 사용 안 함 —</option>
+          <option value="requester">요청(requester) — 자기 지점 발주요청·사용 입력</option>
+          <option value="buyer">구매(buyer) — 전 지점 발주·입고·기초정보 편집</option>
+          <option value="stock">재고(stock) — 자기 지점 이동·실사 입력</option>
+          <option value="viewer">검토(viewer) — 전 지점 읽기, 발주서 검토·송부</option>
+        </select>
+      </label>
       <label class="field">
         <span class="field__label">사유 (필수 · 500자)</span>
         <input id="u-reason" type="text" maxlength="500" required>
@@ -103,6 +129,8 @@ require __DIR__ . '/../views/shell_top.php';
             <th scope="col">활성</th>
             <th scope="col">만료</th>
             <th scope="col">2단계</th>
+            <th scope="col">지점</th>
+            <th scope="col">구매 역할</th>
             <th scope="col">만든 시각</th>
             <th scope="col">작업</th>
           </tr>

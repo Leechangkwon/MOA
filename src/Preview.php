@@ -301,8 +301,13 @@ final class Preview
      * 치환문자(U+FFFD)로 바꾼다.
      *
      * @return array{0:string, 1:string} [문자열, encoding]
+     *
+     * ★ 19단계(F-29)에서 `private` → `public` 으로만 바꿨다. 로직은 한 글자도 바뀌지 않았다.
+     *   엑셀 가져오기(`src/purchase/Sheet.php`)가 csv 를 같은 방식으로 읽어야 하는데,
+     *   같은 코드를 그쪽에 **복사해 두면 언젠가 한쪽만 고쳐진다** — 인코딩 판정이 두 벌이 되는
+     *   순간 "미리보기에는 제대로 보이는데 가져오기는 깨지는" 상태가 생긴다.
      */
-    private static function toUtf8(string $raw): array
+    public static function toUtf8(string $raw): array
     {
         if ($raw === '') {
             return ['', 'UTF-8'];
@@ -331,8 +336,10 @@ final class Preview
     /**
      * 제어문자(NUL 등)를 치환문자로 바꾼다. 탭·개행·복귀는 남긴다.
      * UTF-8 의 여러 바이트 문자는 모든 바이트가 0x80 이상이라 바이트 단위 치환이 안전하다.
+     *
+     * ★ 19단계(F-29)에서 `private` → `public` 으로만 바꿨다(toUtf8 과 같은 이유). 로직 무변경.
      */
-    private static function scrubControls(string $value): string
+    public static function scrubControls(string $value): string
     {
         $out = preg_replace('/[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]/', "\u{FFFD}", $value);
         return is_string($out) ? $out : '';
@@ -383,8 +390,14 @@ final class Preview
         return $safe;
     }
 
-    /** RDONLY 로만 연다. 실패는 예외 → 핸들러가 `error parse_failed` 로 남긴다 */
-    private static function openZip(string $path): ZipArchive
+    /**
+     * RDONLY 로만 연다. 실패는 예외 → 핸들러가 `error parse_failed` 로 남긴다.
+     *
+     * ★ 19단계(F-29)에서 `private` → `public` 으로만 바꿨다. 로직 무변경.
+     *   xlsx 가져오기도 **같은 방식으로만** zip 을 열어야 한다 — RDONLY, extractTo 없음,
+     *   중앙 디렉터리 → 멤버 크기 확인 → 상한 안에서만 읽기(머리말 규칙 3).
+     */
+    public static function openZip(string $path): ZipArchive
     {
         if (!class_exists('ZipArchive')) {
             throw new RuntimeException('zip 확장이 없습니다');
