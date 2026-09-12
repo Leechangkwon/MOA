@@ -136,25 +136,55 @@ if ($want('AL-1')) {
 //   "로그인 실패 IP 단위 10분 내 20회 또는 계정 잠금 발생"
 //   로그인 행은 세션 전이라 actor_* 가 비어 있다 — 대상 계정은 target_name 이다 (ARCH 7.3).
 //   그래서 묶는 기준은 ip 다.
+//
+// ★ 13단계(2026-09-12, SECURITY R-45 · R-48)에서 집계 대상을 넓혔다.
+//   전에는 `action = 'auth.login'` 만 셌다. 그런데 같은 "비밀번호·코드 추측" 은 **로그인 뒤**
+//   창구에서도 일어난다 — 세션 쿠키를 훔친 사람은 `/api/me/password` 로 현재 비밀번호를,
+//   `/api/me/mfa/disable` 로 비밀번호와 OTP 를 시험할 수 있다(R-48 실측). 13단계에서 이 실패들도
+//   계정 잠금 카운터에 들어갔으므로, 경보도 같은 신호로 봐야 한다. 그러지 않으면 잠금은 걸리는데
+//   **경보는 조용한** 상태가 된다.
+//   포함하는 조합 (거부 사유는 전부 ARCH 7.4 등록부의 값이다)
+//     · auth.login          deny  전부 (bad_credentials · locked · inactive — 기존 그대로)
+//     · auth.mfa            deny  bad_code · code_reused
+//     · auth.password_change deny bad_credentials
+//     · auth.mfa_disable    deny  bad_credentials · bad_code · code_reused
+//     · auth.mfa_enroll     deny  bad_code · code_reused
+//   빼는 것: `auth.mfa deny code_required` (순차 2단계 로그인의 정상 1단계다 — 실패가 아니다.
+//   Auth::login 도 이것은 실패 횟수에 세지 않는다, ARCH 4.0), `already_enabled`·`weak_password`·
+//   `same_password` (추측 시도가 아니다).
+//   임계값·창은 그대로다: 10분 20회 이상, 또는 그 창에 계정 잠금(`reason = 'locked'`)이 한 번이라도.
 // ─────────────────────────────────────────────────────────────
 if ($want('AL-2')) {
     $rows = $db->run(
         "SELECT host(ip) AS src, count(*) AS n,
                 count(*) FILTER (WHERE reason = 'locked') AS locked,
+                count(*) FILTER (WHERE action <> 'auth.login') AS after_login,
+                array_to_string(array_agg(DISTINCT action ORDER BY action), ',') AS actions,
                 max(happened_at) AS last_at
            FROM audit_logs
-          WHERE action = 'auth.login' AND result = 'deny' AND ip IS NOT NULL
+          WHERE result = 'deny' AND ip IS NOT NULL
             AND happened_at > now() - interval '10 minutes'
+            AND (
+                     action = 'auth.login'
+                  OR (action = 'auth.mfa'             AND reason IN ('bad_code','code_reused'))
+                  OR (action = 'auth.password_change' AND reason = 'bad_credentials')
+                  OR (action = 'auth.mfa_disable'     AND reason IN ('bad_credentials','bad_code','code_reused'))
+                  OR (action = 'auth.mfa_enroll'      AND reason IN ('bad_code','code_reused'))
+                )
           GROUP BY host(ip)
          HAVING count(*) >= 20 OR count(*) FILTER (WHERE reason = 'locked') > 0"
     )->fetchAll();
     foreach ($rows as $r) {
         $raise('AL-2', (string) $r['src'], [
-            'rule_text' => '로그인 실패 10분 내 20회 이상 또는 계정 잠금 발생',
-            'count'     => (int) $r['n'],
-            'locked'    => (int) $r['locked'],
-            'window'    => '10 minutes',
-            'last_at'   => (string) $r['last_at'],
+            'rule_text'   => '인증 실패(로그인·비밀번호 변경·2단계 인증) 10분 내 20회 이상 또는 계정 잠금 발생',
+            'count'       => (int) $r['n'],
+            'locked'      => (int) $r['locked'],
+            // 로그인 창구가 아니라 **로그인 뒤** 창구에서 난 실패 수 — 세션 탈취 뒤의 추측과
+            // 바깥에서의 무차별 대입을 한눈에 가른다 (R-48)
+            'after_login' => (int) $r['after_login'],
+            'actions'     => (string) $r['actions'],
+            'window'      => '10 minutes',
+            'last_at'     => (string) $r['last_at'],
         ]);
     }
     cli_say(sprintf('AL-2 대상 %d개 IP', count($rows)));

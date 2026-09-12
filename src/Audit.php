@@ -66,6 +66,17 @@ final class Audit
          * 코드에서도 드러내려고 여기 적는다. **파일 내용은 어느 쪽에도 들어가지 않는다**.
          */
         'preview_kind', 'part',
+        /*
+         * 9단계 해시 체인 + 13단계 재봉인 (ARCH 7.1 · 7.5, SECURITY R-11 · R-50).
+         *   chain_hash          — 그날 감사 로그 파일의 sha256. 이름에 `hash` 가 들어가 부분 일치에
+         *                         걸려 2026-09-12 까지 `[제거됨]` 으로 남고 있었다(실측: 09-12 00:05 행).
+         *                         공개 값이어야 의미가 있는 무결성 증거이므로 예외로 등록한다.
+         *   resealed_from_hash  — `--reseal` 이 덮어쓰기 **전**의 해시·줄수·바이트수.
+         *   resealed_from_lines   재봉인은 "체인을 사람이 고친" 사건이므로, 무엇이 무엇으로 바뀌었는지가
+         *   resealed_from_bytes   감사 로그에 남아야 나중에 그 판단을 되짚을 수 있다.
+         * 어느 값도 비밀이 아니다 — 파일 내용이 아니라 그 요약(해시·개수)이다.
+         */
+        'chain_hash', 'resealed_from_hash', 'resealed_from_lines', 'resealed_from_bytes',
     ];
 
     private const RESULT_ALLOW = 'allow';
@@ -227,6 +238,13 @@ final class Audit
         'auth.mfa|deny|bad_code'                        => '{target} 계정으로 로그인하면서 2단계 인증 코드를 틀렸습니다',
         'auth.mfa|deny|code_required'                   => '{target} 계정은 2단계 인증이 켜져 있는데 코드 없이 로그인을 시도해 막았습니다',
 
+        // ── 2단계 인증 코드 1회성 (13단계 — SECURITY R-45, PRD T-31, ARCH 4.0 · 7.4) ──
+        // RFC 6238 §5.2 "한 번 쓴 OTP 는 거부". 맞은 코드라도 `users.mfa_last_step` 이하의
+        // 스텝이면 **이미 쓴 코드**이므로 막는다 — 어깨너머로 본 코드의 수명을 90초에서 0 으로 줄인다.
+        'auth.mfa|deny|code_reused'                     => '{target} 계정으로 로그인하면서 이미 한 번 쓴 2단계 인증 코드를 다시 냈습니다',
+        'auth.mfa_disable|deny|code_reused'             => '{actor} 이(가) 2단계 인증을 끄려 했지만 이미 한 번 쓴 인증 코드를 다시 냈습니다',
+        'auth.mfa_enroll|deny|code_reused'              => '{actor} 이(가) 2단계 인증을 켜려 했지만 이미 한 번 쓴 확인 코드를 다시 냈습니다',
+
         // ── 최초 로그인 강제 절차 (11단계 — PRD F-16, ARCH 4.0, SECURITY R-05 · R-33 · R-39) ──
         // 관문(auth.gate)은 라우터 한 곳에서만 기록한다. 막힌 사람이 곧 대상이므로 {target} 을 쓴다.
         // 임시 비밀번호 값은 어느 문장에도 들어가지 않는다 — detail 에도 사실(true)만 남는다.
@@ -259,6 +277,41 @@ final class Audit
 
     /** 요약 문장 최대 길이 (ARCH 7.4 "문장 길이는 1,000자에서 자른다") */
     private const SUMMARY_MAX_CHARS = 1000;
+
+    /**
+     * 값 하나의 최대 길이 — target_name·access_level·user_agent·detail 문자열
+     * (ARCH 7.5 "문자열은 500자에서 잘린다").
+     *
+     * ★ 단위는 **글자 수**다 (13단계, SECURITY R-47, PRD T-28).
+     *   2026-09-12 전면 점검 이전에는 `substr(…, 0, 500)` 으로 **바이트**를 잘랐다.
+     *   한글은 한 자가 3바이트라 167자를 넘으면 글자 중간에서 잘리고, 그렇게 만들어진
+     *   깨진 UTF-8 이 뒤의 `iconv_strlen()` 에 닿아 경고 → 예외 → 500 이 되었다.
+     *   감사 기록이 실패하면 요청도 실패하므로(ARCH 4.0 [6]) **거부가 기록 없이 사라진다** —
+     *   공격자는 긴 다국어 이름만 붙이면 시도를 남기지 않을 수 있었다(PRD S-07 위반).
+     *   그래서 자르기는 UTF-8 경계(`iconv_substr`)로 하고, 들어온 값이 애초에 잘못된
+     *   UTF-8 이어도 기록이 **실패하지 않게** 대체 문자로 바꾼 뒤 자른다.
+     */
+    private const VALUE_MAX_CHARS = 500;
+
+    /** 잘못된 바이트를 대신할 글자 — U+FFFD REPLACEMENT CHARACTER */
+    private const UTF8_REPLACEMENT = "\u{FFFD}";
+
+    /**
+     * 올바른 UTF-8 한 글자를 그대로 두고(`(*SKIP)(*FAIL)`), 그 밖의 바이트 한 개만 잡는 규칙.
+     * mbstring 확장이 이 서버에 없으므로(php -m: iconv 만 있다) 표준 확장 없이 PCRE 로 처리한다.
+     * 대안인 `iconv('UTF-8','UTF-8//IGNORE',…)` 는 구현에 따라 경고를 내고 false 를 돌려주는데,
+     * bootstrap 이 경고를 예외로 바꾸므로(= 기록 실패) 이 경로에서는 쓸 수 없다.
+     */
+    private const UTF8_VALID_RE = '/(?:
+          [\x00-\x7F]
+        | [\xC2-\xDF][\x80-\xBF]
+        | \xE0[\xA0-\xBF][\x80-\xBF]
+        | [\xE1-\xEC\xEE\xEF][\x80-\xBF]{2}
+        | \xED[\x80-\x9F][\x80-\xBF]
+        | \xF0[\x90-\xBF][\x80-\xBF]{2}
+        | [\xF1-\xF3][\x80-\xBF]{3}
+        | \xF4[\x80-\x8F][\x80-\xBF]{2}
+        )(*SKIP)(*FAIL)|./sx';
 
     private const SQL_INSERT = <<<'SQL'
         INSERT INTO audit_logs
@@ -307,9 +360,15 @@ final class Audit
         $detail = array_merge($detail, self::autoDetail($user));
         $detail = $detail === [] ? null : $detail;
 
+        // JSON_INVALID_UTF8_SUBSTITUTE — scrub()/cut() 이 이미 씻지만, 마지막 그물을 한 겹 더 둔다.
+        // 이 플래그가 없으면 깨진 바이트 하나에 json_encode 가 false 를 돌려주고 기록이 통째로
+        // 실패한다(= 기록 없는 거부, SECURITY R-47). 남는 값은 U+FFFD 로 바뀐 문자열이다.
         $detailJson = $detail === null || $detail === []
             ? null
-            : json_encode($detail, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+            : json_encode(
+                $detail,
+                JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_INVALID_UTF8_SUBSTITUTE
+            );
         if ($detailJson === false) {
             throw new RuntimeException('감사 로그 detail 을 직렬화할 수 없습니다');
         }
@@ -328,7 +387,10 @@ final class Audit
             'result'       => $result,
             'reason'       => $reason,
             'ip'           => Http::clientIp(),
-            'user_agent'   => Http::userAgent(),
+            // User-Agent 는 공격자가 마음대로 정하는 값이다. Http::userAgent() 는 바이트로 자르므로
+            // 깨진 UTF-8 이 그대로 올 수 있고, 그 값이 DB(UTF8 인코딩)에 닿으면 INSERT 가 거부되어
+            // 기록이 통째로 사라진다 — 여기서 한 번 더 씻는다 (SECURITY R-47 과 같은 이유).
+            'user_agent'   => self::cutNullable(Http::userAgent(), self::VALUE_MAX_CHARS),
         ];
 
         // 요약 문장을 두 저장소보다 **먼저** 만든다 (ARCH 7.4).
@@ -409,11 +471,9 @@ final class Audit
             '{level}'  => $row['access_level'] === null ? self::VALUE_UNKNOWN   : (string) $row['access_level'],
         ]);
 
-        if (iconv_strlen($text, 'UTF-8') > self::SUMMARY_MAX_CHARS) {
-            $text = (string) iconv_substr($text, 0, self::SUMMARY_MAX_CHARS, 'UTF-8');
-        }
-
-        return $text;
+        // 문장 길이는 1,000자에서 자른다 (ARCH 7.4). 자르기는 글자 단위이며, 값이 어떤 바이트열이든
+        // 여기서 예외가 나지 않는다 — 문장을 만들다 실패하면 기록 자체가 사라지기 때문이다 (R-47).
+        return self::cut($text, self::SUMMARY_MAX_CHARS);
     }
 
     /** @param array<string,mixed> $row */
@@ -456,7 +516,11 @@ final class Audit
             $row['detail'] = $detail;
         }
         $row['summary'] = $summary;
-        $line = json_encode($row, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+        // 파일 사본도 같은 이유로 JSON_INVALID_UTF8_SUBSTITUTE 를 쓴다 (SECURITY R-47).
+        $line = json_encode(
+            $row,
+            JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_INVALID_UTF8_SUBSTITUTE
+        );
         if ($line === false) {
             throw new RuntimeException('감사 로그를 직렬화할 수 없습니다');
         }
@@ -507,7 +571,7 @@ final class Audit
                 continue;
             }
             if (is_scalar($v) || $v === null) {
-                $out[$key] = is_string($v) ? substr($v, 0, 500) : $v;
+                $out[$key] = is_string($v) ? self::cut($v, self::VALUE_MAX_CHARS) : $v;
                 continue;
             }
             $out[$key] = '[기록 불가]';
@@ -536,7 +600,40 @@ final class Audit
         if ($v === null) {
             return null;
         }
-        return substr((string) $v, 0, 500);
+        return self::cut((string) $v, self::VALUE_MAX_CHARS);
+    }
+
+    /**
+     * 문자열 값을 **글자 수**로 자른다 (13단계, SECURITY R-47, PRD T-28).
+     *
+     * 이 함수는 **어떤 입력에도 예외를 던지지 않는다**. 감사 기록이 실패하면 그 요청도 실패하고
+     * (ARCH 4.0 [6] "기록 실패 → 처리도 롤백"), 그 순간 "기록 없는 거부" 가 만들어진다 —
+     * 파일명·사유는 사용자가 정하는 자유 텍스트이므로 여기서 막지 못하면 감사 로그 자체를
+     * 지울 수 있는 통로가 된다 (PRD S-07 "모든 거부를 기록한다").
+     *
+     * 순서
+     *   ① 올바른 UTF-8 이 아니면 잘못된 바이트만 U+FFFD 로 바꾼다(내용은 최대한 남긴다).
+     *   ② 그래도 올바르지 않으면 값을 통째로 표식 문자열로 바꾼다 (기록은 남는다).
+     *   ③ 글자 수가 넘치면 UTF-8 경계에서 자른다 — 글자 중간을 자르지 않는다.
+     */
+    private static function cut(string $v, int $maxChars): string
+    {
+        if (preg_match('//u', $v) !== 1) {
+            $v = (string) preg_replace(self::UTF8_VALID_RE, self::UTF8_REPLACEMENT, $v);
+            if (preg_match('//u', $v) !== 1) {
+                $v = '[기록 불가: 문자 인코딩 오류]';
+            }
+        }
+        if (iconv_strlen($v, 'UTF-8') > $maxChars) {
+            $v = (string) iconv_substr($v, 0, $maxChars, 'UTF-8');
+        }
+        return $v;
+    }
+
+    /** cut() 의 null 허용판 — user_agent 처럼 없을 수 있는 값에 쓴다 */
+    private static function cutNullable(?string $v, int $maxChars): ?string
+    {
+        return $v === null ? null : self::cut($v, $maxChars);
     }
 
     /** @param array<string,mixed> $ctx */

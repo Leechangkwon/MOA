@@ -168,7 +168,9 @@
 | 세션 쿠키 | `tbox_session=<64자 hex>`; `HttpOnly; Secure; SameSite=Lax; Path=/`; **Max-Age 없음**(브라우저 세션 쿠키). 유효성은 언제나 DB 가 판단(유휴 30분·절대 8시간, `.env`) | 쿠키 만료를 늘려도 서버가 거부 |
 | 세션 재발급 | 로그인 성공 시 기존 쿠키의 세션 행 삭제 → `random_bytes(32)` 새 토큰 → DB 에는 SHA-256 만 | 세션 고정 공격 차단 (S-09-2) |
 | 만료 정리 | 로그인 때 `DELETE FROM sessions WHERE expires_at < now() OR last_seen_at < now() - 유휴` | 배치 없이 자연 정리 |
-| 잠금 | `users.failed_count` 5회 → `locked_until = now()+10분`, 그동안 423 `{"error":"로그인 시도가 너무 많습니다. 잠시 후 다시 시도하세요"}`. 성공 시 0 으로 | F-01, S-09-4 |
+| 잠금 | `users.failed_count` 5회 → `locked_until = now()+10분`, 그동안 423 `{"error":"로그인 시도가 너무 많습니다. 잠시 후 다시 시도하세요"}`. 성공 시 0 으로. **잠금이 만료된 뒤의 첫 실패는 카운터를 1 부터 다시 센다**(13단계, R-49 — `SQL_COUNT_FAILED` 의 `CASE WHEN locked_until IS NOT NULL AND locked_until < now() THEN 1 ELSE failed_count + 1 END`, 그때 `locked_until` 도 NULL 로 치운다). 전에는 10분이 지나 잠금이 풀려도 카운터 5 가 남아 **실패 한 번이 곧바로 다시 10분 잠금**이었다 — 아이디만 아는 사람이 10분에 요청 하나로 남의 계정을 영구 잠금 상태에 둘 수 있었다(R-06 의 악화 형태, 2026-09-12 실측). Admin 의 임시 비밀번호 재발급(`POST /api/users/{uid}/password/reset`)도 같은 UPDATE 문장에서 `failed_count = 0, locked_until = NULL` 을 넣는다 — 재발급은 "이 계정을 다시 쓸 수 있게 한다" 는 뜻이다 | F-01, S-09-4, R-49 |
+| **로그인 뒤 창구의 실패도 같은 카운터** (13단계, 사용자 결정 2026-09-12) | `POST /api/me/password`·`/api/me/mfa/confirm`·`/api/me/mfa/disable` 은 세션만 있으면 닿으면서 **비밀번호·OTP 를 다시 묻는다**. 이 세 곳의 실패(현재 비밀번호 오류·코드 오류·코드 재사용)를 `Auth::countFailure` 로 로그인과 **같은 카운터**에 센다. 5회면 잠기고, 잠기는 순간 `Auth::revokeAllSessions` 로 그 계정의 세션을 전부 끊는다 — 다음 요청은 401 이고 훔친 쿠키도 함께 죽는다. 실패 응답 문구는 셋 다 `MSG_BAD_REQUEST` **하나**다(사유는 감사 `reason` 에만: `bad_credentials`·`bad_code`·`code_reused`·`weak_password`·`same_password`). 전에는 비밀번호 오류만 `MSG_LOGIN_FAILED` 로 갈라져 "비밀번호는 맞혔다" 를 응답만으로 알 수 있는 오라클이었다. nginx `limit_req zone=tbox_login`(30r/m, burst 10, 429) 을 네 경로(끝 슬래시 변형 포함)에 `/api/login` 과 같은 방식으로 붙인다 | S-09-4, S-09-8, R-48 |
+| **2단계 인증 코드는 1회성** (13단계, 사용자 결정 2026-09-12) | `users.mfa_last_step BIGINT` — 마지막으로 성공시킨 TOTP 스텝(= 유닉스 시각 ÷ 30). `Totp::verifyStep()` 이 맞은 스텝을 돌려주고, 그 값이 `mfa_last_step` **이하**면 코드가 맞아도 거부한다(RFC 6238 §5.2 "한 번 쓴 OTP 는 거부"). 검사하는 곳은 로그인(`Auth::login` → `auth.mfa deny code_reused`)·확정(`mfa_confirm` → `auth.mfa_enroll deny code_reused`)·해제(`mfa_disable` → `auth.mfa_disable deny code_reused`) 셋이고, **재사용도 실패로 센다**. 성공하면 그 스텝으로 갱신한다(`GREATEST` 로 뒤로 가지 않게). ±1 창(약 90초)은 그대로 둔다 — 좁히면 시계가 어긋난 휴대폰이 못 들어온다. 코드 6자리는 저장하지 않는다(그것은 인증 값 저장이다) — 시각에서 나오는 단조 증가 정수만 남긴다. 해제 성공 시에는 비밀을 지우므로 `mfa_last_step` 도 NULL 로 되돌린다 | R-45, T-31 |
 | 실패 응답 | 아이디 없음·비밀번호 틀림·비활성 계정 모두 401 동일 문구. 아이디 없음일 때도 더미 해시로 `password_verify` 실행 | 계정 존재 여부·응답 시간 차이 최소화 (PRD 10장) |
 | IP 속도 제한 | nginx `limit_req_zone $binary_remote_addr zone=tbox_login:1m rate=30r/m; burst=10 nodelay` → `POST /api/login` 만, 초과 429 | 계정 잠금(R-06 DoS)과 무차별 대입을 함께 완화. 30r/m 은 "6회 시도 → 잠금" 실습이 429 에 먼저 걸리지 않게 잡은 값 (S-09-8) |
 | CSRF 토큰 | `hash_hmac('sha256', 'csrf:'.세션해시, APP_SECRET)` — **저장하지 않고 세션마다 계산**. 클라이언트는 `GET /api/me` 로 받아 `X-CSRF-Token` 헤더로 보냄. `Http::requireCsrf` 가 `hash_equals` 비교, 불일치·누락 403 | 스키마 변경 없이 세션에 결속. `APP_SECRET` 은 `.env`(install.sh 가 생성) |
@@ -735,7 +737,17 @@ DB 가 유출돼도 해시만 있으므로 세션을 위조할 수 없다.
 | 앱이 지우거나 고칠 수 없게 | `chattr +a /var/log/tbox-v2/audit.log` — 파일 소유자(`tbox-php`)여도 덧붙이기만 된다. 해제는 root 만 | `deploy/install.sh` (파일 생성 직후) | `lsattr` 에 `a` |
 | 커지지 않게 | `logrotate`: `daily`, `rotate 365`, `compress`, `delaycompress`, `dateext`, `missingok`, `notifempty`, `create 0640 tbox-php adm`, `prerotate` 에서 `chattr -a`, `postrotate` 에서 새 파일에 `chattr +a` | `deploy/logrotate.d/tbox-v2` → `/etc/logrotate.d/tbox-v2` (install.sh 가 복사) | `logrotate -d /etc/logrotate.d/tbox-v2` 오류 0 |
 | 서버가 털려도 남게 | rsyslog(omfile 감시 → TLS 전송) 로 원격 로그 서버에 실시간 사본 | 9단계 (ARCH 11.4) | 원격에서 줄 수 대조 |
-| 지워졌는지 알 수 있게 | 일별 마지막 줄 sha256 을 다음 날 첫 줄에 기록(해시 체인) | 9단계 `scripts/audit_chain.php` | 체인 검증 스크립트 |
+| 지워졌는지 알 수 있게 | 일별 sha256 을 직전 날의 값과 엮어 따로 기록(해시 체인) | 9단계 `scripts/audit_chain.php` | 체인 검증 스크립트 |
+
+**체인을 언제 봉인하나 — 봉인 시점 (13단계 보정 2026-09-12, SECURITY R-50, PRD T-29)**
+
+| 무엇 | 규칙 |
+|---|---|
+| cron 00:05 | `audit_chain.php --yesterday` — **어제** 회전 파일(`audit.log-YYYYMMDD`)을 봉인한다. 인자가 없어도 어제다 |
+| 왜 오늘이 아닌가 | logrotate 가 00:00 에 회전하므로 00:05 의 "오늘 파일" 은 방금 만들어진 **빈 파일**이다. 전에는 그 0줄짜리 해시(`e3b0c4…`)가 체인에 적히고 **어제는 영영 봉인되지 않았다**. 오늘 파일은 하루 종일 자라니 다음 `--verify` 는 반드시 실패했고, 매일 나는 AL-6 헛경보가 진짜 변조를 덮었다(2026-09-12 실측: 09-11·09-12 두 날 `hash_changed` — 변조가 아니라 설계 결함. 09-11 기록 807줄의 해시가 회전 파일 앞 807줄과 정확히 일치) |
+| `--verify` 와 열린 날 | 체인에 **오늘** 날짜 항목이 있으면 해시를 비교하지 않고 「열린 날 — 검산 제외」로 표기한다. **실패로 세지 않으며** 검산 건수(`detail.checked`)에서도 뺀다. 연결(`prev`)은 그대로 확인한다 |
+| 닫힌 날이 달라지면 | 지금처럼 `audit.integrity error mismatch` + **AL-6**. 체인은 고치지 않는다 — 그것이 변조 신호다 |
+| 잘못 적힌 항목 바로잡기 | 일회성 `--reseal YYYY-MM-DD`(사람이 그 날 파일을 확인한 뒤 부른다). 옛 해시·줄수·바이트수를 `audit.integrity allow` 의 `detail.resealed_from_hash`·`resealed_from_lines`·`resealed_from_bytes` 에 남기고 항목을 갱신한 뒤 **뒤따르는 항목의 `prev` 를 다시 잇는다**(`detail.relinked` = 다시 이은 개수). 감사 로그에 "무엇이 무엇으로 바뀌었나" 가 없으면 재봉인은 증거 조작과 구분되지 않는다. 오늘·미래 날짜에는 쓸 수 없다 |
 
 > DB 쪽은 `db/grants.sql`(아래) 로 이미 추가 전용이다 — 2026-09-10 실측 `\dp audit_logs` → `tbox_app=ar`. 파일 쪽 두 줄(속성·회전)이 없었던 것을 같은 날 발견해 4단계 운영 보강으로 넣는다.
 
@@ -890,6 +902,9 @@ GRANT  USAGE, SELECT  ON SEQUENCE audit_logs_id_seq TO tbox_app;
 | `auth.mfa_disable|allow` | `{actor} 이(가) 2단계 인증(TOTP)을 껐습니다` | 10단계 |
 | `auth.mfa|deny|bad_code` | `{target} 계정으로 로그인하면서 2단계 인증 코드를 틀렸습니다` | 10단계 Auth::login |
 | `auth.mfa|deny|code_required` | `{target} 계정은 2단계 인증이 켜져 있는데 코드 없이 로그인을 시도해 막았습니다` | 10단계 Auth::login |
+| `auth.mfa|deny|code_reused` | `{target} 계정으로 로그인하면서 이미 한 번 쓴 2단계 인증 코드를 다시 냈습니다` | 13단계 Auth::login (R-45) |
+| `auth.mfa_disable|deny|code_reused` | `{actor} 이(가) 2단계 인증을 끄려 했지만 이미 한 번 쓴 인증 코드를 다시 냈습니다` | 13단계 mfa_disable (R-45) |
+| `auth.mfa_enroll|deny|code_reused` | `{actor} 이(가) 2단계 인증을 켜려 했지만 이미 한 번 쓴 확인 코드를 다시 냈습니다` | 13단계 mfa_confirm (R-45) |
 | `authz.route|deny|role_not_permitted` (재사용) | — | 8·10단계 Employee 의 `/api/audit`·`/api/users` 호출 (T-13) |
 | `file.download|error|hash_mismatch` | `{actor} 이(가) 파일 「{target}」 을(를) 내려받으려 했지만 저장된 파일의 내용이 기록과 달라 전송을 막았습니다 (변조 의심, 점검 필요)` | 6단계 files_download (R-13 sha256 대조 필수, AL-6) |
 | `file.download|allow` | `{actor} 이(가) {level} 등급 파일 「{target}」 을(를) 내려받았습니다` | files_download |
@@ -962,7 +977,8 @@ GRANT  USAGE, SELECT  ON SEQUENCE audit_logs_id_seq TO tbox_app;
 | `artifact` · `checksum` · `bytes` | 무엇을 | 백업 산출물 파일명·sha256·크기 | 배치 | `backup.run`·`backup.restore` (9단계) |
 | `checked` · `mismatches` | 왜 | 정합성 검사 건수와 불일치 목록(`stored_name`·종류, 최대 50건) | 배치 | `audit.integrity` (9단계) |
 | `rule` · `evidence` | 왜 | 경보 규칙 번호와 근거(대상 계정·건수·기간) | 배치 | `alert.raised` (9단계) |
-| `chain_prev` · `chain_hash` | 무엇을 | 감사 로그 파일 해시 체인: 직전 일자 마지막 해시 · 오늘 파일 sha256 (R-11) | 배치 | `audit.integrity` (9단계) |
+| `chain_prev` · `chain_hash` | 무엇을 | 감사 로그 파일 해시 체인: 직전 일자 마지막 해시 · 봉인한 날 파일의 sha256 (R-11). `chain_hash` 는 이름에 `hash` 가 들어가 `FORBIDDEN_DETAIL_KEYS` 부분 일치에 걸려 2026-09-12 까지 `[제거됨]` 으로 남고 있었다(실측) — 공개돼야 의미가 있는 무결성 증거이므로 `Audit::ALLOWED_DETAIL_KEYS` 에 정확 일치로 등록한다(13단계) | 배치 | `audit.integrity` (9단계) |
+| `resealed_from_hash` · `resealed_from_lines` · `resealed_from_bytes` · `relinked` | 왜·어떻게 | `--reseal` 이 덮어쓰기 **전**의 해시·줄수·바이트수와, 다시 이은 뒤따르는 항목의 개수. 재봉인은 "사람이 체인을 고친" 사건이므로 무엇이 무엇으로 바뀌었는지가 남아야 한다 (R-50). `resealed_from_hash` 도 `hash` 부분 일치 예외로 등록 | 배치 | `audit.integrity allow` (13단계) |
 | `target_role` · `target_active` | 무엇을 | 대상 계정의 역할·활성 여부(변경 후 값) | 핸들러 | `user.*` (10단계) |
 | `sessions_revoked` | 어떻게 | 끊은 세션 수 (R-10 전 기기 로그아웃). **`FORBIDDEN_DETAIL_KEYS` 의 `session` 부분 일치 예외** — `Audit::ALLOWED_DETAIL_KEYS` 에 정확 일치로 등록(값은 정수 개수, 토큰이 아니다) | 핸들러 | `auth.password_change`·`user.deactivate`·`user.role_change` (10단계) |
 | `expires_at` | 무엇을 | 계정 만료일(Guest 필수). 생성·변경 행에 값 그대로 | 핸들러 | `user.create`·`user.expiry_change`·`user.role_change` (10단계) |
@@ -1212,7 +1228,19 @@ php_admin_value[disable_functions]   = fsockopen,pfsockopen,stream_socket_client
 | 경보 | Loki ruler / Grafana alert / `cron` + SQL 쿼리 스크립트 | 규모가 작으면 `scripts/alerts.php` 가 5분마다 `audit_logs` 를 SQL 로 훑어 조건 충족 시 알림을 보내도 충분 |
 | "로그 끊김" 감시 | 원격 서버 쪽에서 30분 무수신 시 경보 (AL-7) | 앱 서버가 침해되면 앱 서버의 경보는 믿을 수 없으므로 **밖에서** 감시 |
 
-경보 규칙 AL-1 ~ AL-11 의 조건은 PRD 7.11 표를 그대로 쓴다 (AL-10 계정 공유 의심·AL-11 admin-only 다운로드 요약은 2026-09-10 추가). 예: AL-1 을 SQL 로 쓰면
+경보 규칙 AL-1 ~ AL-11 의 조건은 PRD 7.11 표를 그대로 쓴다 (AL-10 계정 공유 의심·AL-11 admin-only 다운로드 요약은 2026-09-10 추가).
+
+**AL-2 집계 대상 (13단계 보정 2026-09-12 — SECURITY R-45 · R-48)**
+
+| 항목 | 내용 |
+|---|---|
+| 조건 | IP 단위 **10분 내 인증 실패 20회 이상**, 또는 그 창에 **계정 잠금(`auth.login deny locked`)이 한 번이라도** — 임계값·창은 그대로다 |
+| 세는 행 | `auth.login deny` 전부 · `auth.mfa deny bad_code`·`code_reused` · `auth.password_change deny bad_credentials` · `auth.mfa_disable deny bad_credentials`·`bad_code`·`code_reused` · `auth.mfa_enroll deny bad_code`·`code_reused` |
+| 왜 넓혔나 | 전에는 `action = 'auth.login'` 만 셌다. 같은 "비밀번호·코드 추측" 이 **로그인 뒤** 창구(`/api/me/password`·`/api/me/mfa/*`)에서도 일어나고(R-48 실측), 13단계에서 그 실패가 계정 잠금 카운터에 들어갔다 — 잠금은 걸리는데 경보만 조용한 상태를 없앤다 |
+| 세지 않는 행 | `auth.mfa deny code_required`(순차 2단계 로그인의 정상 1단계. `Auth::login` 도 실패로 세지 않는다 — 4.0) · `already_enabled` · `weak_password` · `same_password` |
+| 근거 값 | `evidence.count`·`locked`·`after_login`(로그인 창구가 아닌 곳에서 난 실패 수 — 세션 탈취 뒤의 추측과 바깥의 무차별 대입을 가른다)·`actions`·`window`·`last_at` |
+
+예: AL-1 을 SQL 로 쓰면
 
 ```sql
 SELECT actor_id, count(*) FROM audit_logs

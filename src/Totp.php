@@ -78,11 +78,34 @@ final class Totp
      */
     public static function verify(string $secret, string $code, int $window = 1, ?int $time = null): bool
     {
+        return self::verifyStep($secret, $code, $window, $time) !== null;
+    }
+
+    /**
+     * 코드가 맞으면 **맞은 스텝 번호**(= 유닉스 시각 ÷ 30 의 몫)를, 틀리면 null 을 돌려준다
+     * (13단계 — SECURITY R-45, PRD T-31).
+     *
+     * 왜 스텝을 돌려주나
+     *   `verify()` 는 "맞다/틀리다" 만 알려 주므로, 같은 코드를 90초(±1 창) 안에 몇 번이든
+     *   다시 쓸 수 있었다(2026-09-12 실측: 같은 코드로 연속 2회 로그인 200). RFC 6238 §5.2 는
+     *   "한 번 쓴 OTP 는 거부" 를 요구한다. 거부하려면 **무엇을 썼는지**를 기억해야 하고,
+     *   코드 6자리를 저장하는 것은 비밀을 저장하는 것과 같으므로 대신 **스텝 번호**를 남긴다
+     *   (`users.mfa_last_step`). 스텝은 시각에서 나오는 단조 증가 정수라 되돌릴 수 없고,
+     *   그 값만으로는 코드를 만들 수 없다(비밀이 있어야 한다).
+     *
+     * 비교는 `verify()` 와 같은 이유로 `hash_equals` 이고, 맞은 뒤에도 후보를 **전부** 돌린다 —
+     * 몇 번째에서 맞았는지가 응답 시간으로 드러나지 않게 한다.
+     * 창 안에 맞는 스텝은 하나뿐이다(코드 6자리가 같은 창에서 겹칠 확률은 무시한다).
+     * 여러 개가 맞으면 **가장 큰 스텝**을 돌려준다 — 재사용 판정을 느슨한 쪽이 아니라
+     * 엄격한 쪽(더 높은 기준선)으로 남기기 위해서다.
+     */
+    public static function verifyStep(string $secret, string $code, int $window = 1, ?int $time = null): ?int
+    {
         if (preg_match(self::CODE_RE, $code) !== 1) {
-            return false;
+            return null;
         }
         if (preg_match(self::SECRET_RE, $secret) !== 1) {
-            return false;
+            return null;
         }
         if ($window < 0 || $window > 10) {
             $window = 1;
@@ -90,17 +113,17 @@ final class Totp
 
         $key = self::base32Decode($secret);
         if ($key === '') {
-            return false;
+            return null;
         }
 
-        $now = intdiv($time ?? time(), self::PERIOD);
-        $ok  = false;
+        $now  = intdiv($time ?? time(), self::PERIOD);
+        $step = null;
         for ($i = -$window; $i <= $window; $i++) {
             if (hash_equals(self::hotp($key, $now + $i), $code)) {
-                $ok = true;
+                $step = $now + $i;
             }
         }
-        return $ok;
+        return $step;
     }
 
     /**

@@ -34,8 +34,12 @@ SHELL=/bin/bash
 0    4   *   *  *     root  php  /var/www/tbox-v2/scripts/purge_trash.php
 # 04:30  백업 검증 (sha256sum -c + gpg 복호화 시험). 2회 연속 실패 → AL-8
 30   4   *   *  *     root  bash /var/www/tbox-v2/scripts/verify_backup.sh
-# 00:05  감사 로그 해시 체인 (전날 파일이 회전됐으면 그것까지 이어 적는다)
-5    0   *   *  *     root  php  /var/www/tbox-v2/scripts/audit_chain.php
+# 00:05  감사 로그 해시 체인 — **어제**(logrotate 가 00:00 에 회전시킨 파일)를 봉인한다.
+#         인자가 없으면 어제다(= --yesterday). 오늘 파일은 하루 종일 자라므로 적지 않는다.
+#         2026-09-12 이전에는 인자 없이 **오늘**을 적어, 회전 직후의 빈 파일(0줄)이 봉인되고
+#         어제는 영영 봉인되지 않았다 → --verify 가 매일 실패하고 AL-6 헛경보 (SECURITY R-50).
+#         잘못 적힌 지난 항목은 사람이 `--reseal YYYY-MM-DD` 로 한 번만 바로잡는다.
+5    0   *   *  *     root  php  /var/www/tbox-v2/scripts/audit_chain.php --yesterday
 # 매주 일 02:00  DB ↔ 저장소 정합성 검사. 불일치 → AL-6
 0    2   *   *  0     root  php  /var/www/tbox-v2/scripts/consistency_check.php --quiet
 # 5분마다  경보 판정 (AL-1·AL-2·AL-5·AL-7·AL-10·AL-12)

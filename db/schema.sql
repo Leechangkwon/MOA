@@ -52,6 +52,11 @@ CREATE TABLE users (
     expires_at    TIMESTAMPTZ,
     mfa_secret    TEXT,
     mfa_enabled   BOOLEAN     NOT NULL DEFAULT false,
+    -- 2단계 인증 코드 1회성 (13단계, SECURITY R-45, RFC 6238 §5.2).
+    --   마지막으로 성공시킨 TOTP 스텝 번호(= 유닉스 시각 ÷ 30). 한 번도 안 썼으면 NULL.
+    --   이 값 **이하**의 스텝은 코드가 맞아도 "이미 쓴 코드" 로 거부한다 — ±1 창(90초) 안에서
+    --   같은 6자리로 여러 번 로그인하던 것을 막는다. 코드 자체는 저장하지 않는다(PRD 7.7).
+    mfa_last_step BIGINT,
     updated_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
     -- 최초 로그인 강제 절차 (11단계, PRD F-16, ARCH 4.0).
     --   must_change_password — 임시 비밀번호 상태. true 인 동안 라우터 관문이 비밀번호 변경 외 모든 요청을 막는다

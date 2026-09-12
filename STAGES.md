@@ -32,7 +32,7 @@
 | 10 | 계정 관리(F-10)·휴지통 복구(F-11)·Guest 만료(R-12)·비밀번호 변경·2단계 인증 TOTP(R-05) | ✅ | ✅ 2026-09-11 | ✅ 2026-09-11 (T-22 통과, 재지시 1회) | ⚠ 일괄 수행 대기 | 10단계 커밋 (2026-09-11) |
 | 11 | 최초 로그인 강제 절차 — 임시 비밀번호·최초 로그인 비밀번호 변경 강제·2단계 인증 필수(F-16, 사용자 결정 2026-09-11) | ✅ | ✅ 2026-09-11 | ✅ 2026-09-11 (관문 우회 10종 403, 검토 계정 5개 이행 완료) | ⚠ 대기 — 시드 계정 첫 로그인 | 11단계 커밋 |
 | **12** | **12-1** 공통 셸·기능별 화면 분리·디자인(F-20) · **12-2** 미리보기(F-18) · **12-3** 조직·권한 관리(F-19) — 사용자 요청 2026-09-12 | ✅ 구현·검토 | ✅ 2026-09-12 | ✅ 2026-09-12 (12-2 재지시 1회) | ⚠ 사용자 확인 대기 (브라우저 화면·PDF 미리보기·조직 화면) | `3f4281b` · `506d6de` · 12-3 커밋 |
-| **13** | 전면 점검 후속 보정 — 감사 기록 UTF-8(R-47)·해시 체인 봉인(R-50)·로그인 뒤 잠금(R-48)·잠금 카운터(R-49)·TOTP 1회성(R-45) — 사용자 결정 2026-09-12 | ⏳ | ⏳ Opus | — | — | — |
+| **13** | 전면 점검 후속 보정 — 감사 기록 UTF-8(R-47)·해시 체인 봉인(R-50)·로그인 뒤 잠금(R-48)·잠금 카운터(R-49)·TOTP 1회성(R-45) — 사용자 결정 2026-09-12 | ✅ 구현·검토 | ✅ 2026-09-12 (재지시 2회) | ✅ 2026-09-12 (T-28~T-31 통과, R-50 자리표시 교체는 09-13 확인) | ⚠ 대기 | 13단계 커밋 |
 
 ---
 
@@ -545,20 +545,20 @@ sudo -u postgres psql -d tbox_re -c "SELECT happened_at, actor_name, action, res
 
 ---
 
-### 13단계 — 전면 점검 후속 보정: 감사 기록 UTF-8 · 해시 체인 · 로그인 뒤 잠금 · TOTP 1회성 ⏳ 구현 중 (R-45, R-47~R-50 · T-28~T-31) — 사용자 결정 2026-09-12
+### 13단계 — 전면 점검 후속 보정: 감사 기록 UTF-8 · 해시 체인 · 로그인 뒤 잠금 · TOTP 1회성 ✅ 구현·검토 완료, 관문 ③ 대기 (R-45, R-47~R-50 · T-28~T-31) — 사용자 결정 2026-09-12
 
 > 사용자 결정(원문 요지, 2026-09-12): "강사에게 부탁할 수 없으므로 나에게만 비밀번호를 묻는 것은 불필요한 조치임. 비밀번호 변경으로 임시조치 되었다. 이를 제외한 나머지 보안 권고사항 진행하자."
 > 해석(Fable): R-53(sudo NOPASSWD)·R-22/R-37(SSH 강화, 강사 계정 연동)은 **위험 수용**으로 기록하고(SECURITY 6.3), 앱·스크립트 쪽 실패 항목 R-47·R-50·R-48·R-49 와 이미 결정 대기였던 R-45 를 13단계로 묶어 Opus 에 위임한다. R-51(TOTP 비밀 봉인)·R-52(Admin 2인)·R-54(`/api/` 속도 제한)·R-55(zip 상한)는 설계 결정이 필요해 이번 범위 밖(다음 결정).
 
 **개발 사항**
-- [ ] R-47 `src/Audit.php`: `scrub()`·`str()` 의 `substr(…,500)` 을 문자 단위(UTF-8 경계)로. 잘못된 UTF-8 은 `JSON_INVALID_UTF8_SUBSTITUTE` 로 대체해 **기록이 실패하지 않게**. 회귀 T-28
-- [ ] R-50 `scripts/audit_chain.php`·`deploy/cron.d/tbox-v2`: cron 은 **어제**(`--date` 어제) 회전 파일을 봉인. `--verify` 는 오늘(열린 날) 항목을 "열린 날 — 검산 제외" 로 표기. 일회성 `--reseal <날짜>` 옵션(옛 해시를 `audit.integrity allow` detail 에 남기고 갱신). 회귀 T-29
-- [ ] R-48 `src/Auth.php`·`handlers/password_change.php`·`mfa_disable.php`·`mfa_confirm.php`: 현재 비밀번호·OTP 실패에 `countFailure`(5회 → 잠금, 잠기면 세션도 회수), 실패 문구를 `MSG_BAD_REQUEST` 하나로 통일(감사 사유는 그대로 갈림). `deploy/sites/tbox-v2*.conf`: `/api/me/password`·`/api/me/mfa/*` 에 `tbox_login` 존 `limit_req`. 회귀 T-30
-- [ ] R-49 `src/Auth.php` `SQL_COUNT_FAILED`: `locked_until` 이 지났으면 카운터를 1 부터 다시. `users_password_reset.php`: 임시 비밀번호 발급 시 `failed_count=0`·`locked_until=NULL`. 회귀 T-31 후반
-- [ ] R-45 `db/migrations/2026-09-12_users_mfa_last_step.sql`(+`schema.sql`): `users.mfa_last_step BIGINT`. `Totp::verify` 가 맞은 스텝을 돌려주고, 로그인·confirm·disable 에서 `<= mfa_last_step` 이면 거부(`auth.mfa deny code_reused` 문장 틀 추가), 성공 시 갱신. 회귀 T-31
-- [ ] ARCH 4.0(잠금·TOTP 1회성)·7.1(체인 봉인 시점)·7.4 문장 틀, README 운영 절(체인 재봉인) 갱신
+- [x] R-47 `src/Audit.php`: `scrub()`·`str()` 의 `substr(…,500)` 을 문자 단위(UTF-8 경계)로. 잘못된 UTF-8 은 `JSON_INVALID_UTF8_SUBSTITUTE` 로 대체해 **기록이 실패하지 않게**. 회귀 T-28
+- [x] R-50 `scripts/audit_chain.php`·`deploy/cron.d/tbox-v2`: cron 은 **어제**(`--date` 어제) 회전 파일을 봉인. `--verify` 는 오늘(열린 날) 항목을 "열린 날 — 검산 제외" 로 표기. 일회성 `--reseal <날짜>` 옵션(옛 해시를 `audit.integrity allow` detail 에 남기고 갱신). 회귀 T-29
+- [x] R-48 `src/Auth.php`·`handlers/password_change.php`·`mfa_disable.php`·`mfa_confirm.php`: 현재 비밀번호·OTP 실패에 `countFailure`(5회 → 잠금, 잠기면 세션도 회수), 실패 문구를 `MSG_BAD_REQUEST` 하나로 통일(감사 사유는 그대로 갈림). `deploy/sites/tbox-v2*.conf`: `/api/me/password`·`/api/me/mfa/*` 에 `tbox_login` 존 `limit_req`. 회귀 T-30
+- [x] R-49 `src/Auth.php` `SQL_COUNT_FAILED`: `locked_until` 이 지났으면 카운터를 1 부터 다시. `users_password_reset.php`: 임시 비밀번호 발급 시 `failed_count=0`·`locked_until=NULL`. 회귀 T-31 후반
+- [x] R-45 `db/migrations/2026-09-12_users_mfa_last_step.sql`(+`schema.sql`): `users.mfa_last_step BIGINT`. `Totp::verify` 가 맞은 스텝을 돌려주고, 로그인·confirm·disable 에서 `<= mfa_last_step` 이면 거부(`auth.mfa deny code_reused` 문장 틀 추가), 성공 시 갱신. 회귀 T-31
+- [x] ARCH 4.0(잠금·TOTP 1회성)·7.1(체인 봉인 시점)·7.4 문장 틀, README 운영 절(체인 재봉인) 갱신
 
-**검토 체크 (관문 ②, Fable)** — T-28·T-29·T-30·T-31 실행, 린트 0건, `\dp` 불변, 재봉인 뒤 `--verify` 통과, 기존 T-1·T-14·T-22 회귀
+**검토 체크 (관문 ②, Fable, 2026-09-12)** — ✅ 통과: T-28(400+deny 행 / 201+allow 행 / bad_encoding 행, 500 0건) · T-29(`--reseal 09-11` → `--verify` 통과, `--date 오늘` 거부) · T-30(5회 잠금·세션 회수·423, 문구 통일, 429) · T-31(2회째 401 `code_reused`) · R-49 잠금 만료(15:14:17) 뒤 카운터 5 상태에서 틀린 비밀번호 1회 → 401 `bad_credentials`, `failed_count` 1·`locked_until` NULL(재잠금 없음), 곧바로 정상 로그인 200 → 0 · 회귀 T-1·T-3·T-14 403 · 린트 0 · `\dp` 불변. ⚠ 미검증: 09-12 자리표시 자동 교체(09-13 cron 뒤 확인) · AL-2 발동 · `mfa_confirm` 실측 · `password_change` 성공 경로. 재지시 2회(체인 자리표시·AL-2·주석 / 오늘 봉인 가드). 근거 SECURITY 7장 「13단계 구현 검토」
 
 **자기 공격 (관문 ③, 사용자)**
 - [ ] 한글 170자 이름 파일 업로드 → 201, 목록·감사 로그에 보임
@@ -570,6 +570,8 @@ sudo -u postgres psql -d tbox_re -c "SELECT happened_at, actor_name, action, res
 | 날짜 | 구분 | 내용 | 해소·근거 |
 |---|---|---|---|
 | 2026-09-12 | 결정 | "강사에게 부탁할 수 없으므로 나에게만 비밀번호를 묻는 것은 불필요. 비밀번호 변경으로 임시조치. 나머지 권고사항 진행" | R-22·R-37·R-53 위험 수용으로 기록(SECURITY 6.3), R-45·R-47~R-50 을 13단계로 위임. PRD 13장 13행 · 12.2 T-28~T-31 |
+| 2026-09-12 | 해소(검토 중 발견) | 검토자 실수 2건 — `mfa/disable` 필드명을 `password` 로 보내 400(실제는 `current_password`), 1바이트 `.txt` 가 `mime_mismatch`(finfo 가 text/plain 으로 보지 않음) — 둘 다 결함 아님 | 재시험으로 확인: 올바른 필드·실제 텍스트로 각각 카운터 +1·201. 실수도 기록해 두는 이유는 다음 검토자가 같은 함정을 피하게 하기 위해서(CLAUDE.md 9장) |
+| 2026-09-12 | 결정(Fable, 검토 중) | 체인 스크립트에 `--date 오늘` 봉인 거부 가드를 추가 지시 — 사람이 오늘을 봉인하면 내일 AL-6 헛경보가 재발하는 함정 | 재지시 2회분, README 「오늘은 봉인할 수 없습니다」 |
 
 ## 2-1. 10단계 뒤 일괄 자기 공격 — 진행 순서 (관문 ③, 사용자)
 

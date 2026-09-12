@@ -558,9 +558,9 @@ curl -s -b jar -X POST https://changkwon.mso.so/api/logout                      
 | 03:30 | `scripts/backup_files.sh` | `tar -cz \| gpg` 전체 사본 + `rsync -a --delete` 로컬 미러. 보관 7 | `backup.run` |
 | 04:00 | `scripts/purge_trash.php` | 30일 지난 휴지통 파일의 **바이트만** 삭제, `files.purged_at` 기록(행은 남김) | `file.purge allow\|error` |
 | 04:30 | `scripts/verify_backup.sh` | 최신 산출물 `sha256sum -c` + gpg 복호화 시험(`pg_restore -l`·`tar -tz` 목록만) | `audit.integrity`, 2회 연속 실패 → `alert.raised AL-8` |
-| 00:05 | `scripts/audit_chain.php` | `audit.log` 일별 sha256 해시 체인 | `audit.integrity` (`chain_prev`·`chain_hash`) |
+| 00:05 | `scripts/audit_chain.php --yesterday` | **어제** 회전 파일(`audit.log-YYYYMMDD`)의 sha256 을 체인에 봉인 (오늘 파일은 아직 자라므로 적지 않습니다) | `audit.integrity` (`chain_prev`·`chain_hash`) |
 | 일 02:00 | `scripts/consistency_check.php` | DB ↔ 저장소 정합성(누락·고아·sha256) | `audit.integrity`, 불일치 → `alert.raised AL-6` |
-| 5분마다 | `scripts/alerts.php` | 경보 규칙 AL-1·AL-2·AL-5·AL-7·AL-10·AL-12 판정 | `/var/log/tbox-v2/alerts.log` + `alert.raised` |
+| 5분마다 | `scripts/alerts.php` | 경보 규칙 AL-1·AL-2·AL-5·AL-7·AL-10·AL-12 판정 (AL-2 는 로그인뿐 아니라 **로그인 뒤** 인증 실패 — `/api/me/password`·`/api/me/mfa/*` — 도 함께 셉니다, `ARCHITECTURE.md` 11.4) | `/var/log/tbox-v2/alerts.log` + `alert.raised` |
 
 ```bash
 cat /etc/cron.d/tbox-v2                 # 일정 확인 (cron.d 는 6번째 칸이 실행 계정이다)
@@ -796,6 +796,44 @@ sudo tail -5 /var/log/tbox-v2/alerts.log     # 경보
 | DB `audit_logs` | 앱 계정에 `SELECT, INSERT` 만 (`UPDATE`·`DELETE`·`TRUNCATE` 없음) | `sudo -u postgres psql -d tbox_re -c '\dp audit_logs'` → `tbox_app=ar` |
 | 파일 `audit.log` | `chattr +a` (추가만 가능, 해제는 root) + logrotate 365일 | `sudo lsattr /var/log/tbox-v2/audit.log` → `a` |
 | 지워졌는지 알기 | 일별 sha256 해시 체인 | `sudo php scripts/audit_chain.php --verify` |
+
+#### 해시 체인 — 봉인 시점과 재봉인 (2026-09-12, `SECURITY.md` R-50)
+
+cron 은 00:05 에 **어제** 회전 파일을 봉인합니다. `--verify` 는 체인에 **오늘** 날짜 항목이 있으면
+「열린 날 — 검산 제외」로 표기하고 실패로 세지 않습니다(오늘 파일은 하루 종일 자라므로 해시가
+확정값이 아닙니다).
+
+**오늘은 봉인할 수 없습니다** — `sudo php scripts/audit_chain.php --date $(date +%F)` 는
+`[사용법 오류] 오늘(열린 날)과 미래 날짜는 봉인하지 않는다 — 어제 이전만` 을 내고 끝냅니다
+(체인 파일·감사 기록을 건드리기 전입니다). 오늘 값을 적어 두면 내일의 `--yesterday` 가 그 날을
+만나 해시가 달라 AL-6 헛경보를 냅니다. 오늘 상태가 궁금하면 `--verify` 를 쓰세요.
+
+2026-09-12 이전에는 인자 없이 **오늘**을 적어, 00:00 회전 직후의 빈 파일(0줄)이 봉인되고 어제는
+봉인되지 않았습니다. 그래서 `--verify` 가 매일 실패하고 AL-6 헛경보가 났습니다 — 변조가 아니라
+설계 결함이었습니다. 그때 잘못 적힌 항목은 **사람이 한 번** 바로잡습니다.
+
+```bash
+sudo php scripts/audit_chain.php --verify              # 지금 상태 보기 (열린 날은 제외 표기)
+sudo php scripts/audit_chain.php --reseal 2026-09-11   # 닫힌 날 하나를 다시 봉인 (일회성)
+sudo php scripts/audit_chain.php --verify              # 다시 검산해 통과를 확인
+```
+
+`--reseal` 은 다음을 함께 합니다.
+
+| 무엇 | 어떻게 |
+|---|---|
+| 옛 값 보존 | 덮어쓰기 **전**의 해시·줄수·바이트수를 `audit.integrity allow` 의 `detail.resealed_from_hash`·`resealed_from_lines`·`resealed_from_bytes` 에 남깁니다. 이 기록이 없으면 재봉인은 증거 조작과 구분되지 않습니다 |
+| 연결 복구 | 그 항목의 해시를 갱신하고 **뒤따르는 항목의 `prev` 를 다시 잇습니다**(`detail.relinked` = 다시 이은 개수) |
+| 범위 제한 | 날짜 하나만 받고, 오늘·미래에는 쓸 수 없습니다. `--reseal` **없이** 닫힌 날이 달라지면 지금처럼 AL-6 경보를 남기고 체인을 고치지 않습니다 — 그것이 변조 신호입니다 |
+
+**빈 자리표시 항목은 cron 이 스스로 메웁니다** — 옛 결함이 남긴 `<날짜> e3b0c4… <prev> 0 0`
+(0줄 0바이트 = 빈 파일의 해시) 줄은 "그 날의 확정 해시" 가 아니라 **한 번도 봉인되지 않은 자리표시**
+입니다. 그 날짜를 봉인할 차례가 오면 cron 이 AL-6 없이 처음 봉인하듯 갈아 끼우고, 감사 로그
+(`audit.integrity allow`)의 `detail` 에 `placeholder: true` 와 옛 값(`resealed_from_hash`·
+`resealed_from_lines`·`resealed_from_bytes`)을 남깁니다. 그래서 `--reseal` 을 손으로 돌릴 필요가
+있는 것은 **자리표시가 아닌** 닫힌 날(실제 값이 적혀 있는데 달라진 날)뿐입니다.
+
+체인 파일 `/var/lib/tbox-v2/audit-chain.txt` 는 `0600 root` 라 `sudo` 로만 다룹니다.
 
 ### 개인정보 취급 (`PRD.md` S-07 "개인정보 취급")
 

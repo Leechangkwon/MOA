@@ -27,7 +27,13 @@ declare(strict_types=1);
  *
  * 왜 현재 비밀번호 오류가 401 이 아니라 400 인가: 이 요청은 이미 인증을 통과했다.
  * 401 로 답하면 화면(app.js)이 "세션이 끊겼다" 로 보고 로그인 화면으로 보내 버린다.
- * 실패 문구는 로그인 실패와 **같은 문장**을 재사용한다 (새 문구를 만들지 않는다).
+ *
+ * 13단계 (SECURITY R-48, PRD T-30) — 실패 응답은 사유가 무엇이든 `MSG_BAD_REQUEST` **하나**다.
+ * 전에는 현재 비밀번호 오류만 `MSG_LOGIN_FAILED` 로 갈라져, 응답 문구만 보고 "현재 비밀번호를
+ * 맞혔는지" 를 알 수 있는 오라클이 되었다(`/api/me/mfa/disable` 도 같았다). 사유는 감사 로그의
+ * `reason`(bad_credentials·weak_password·same_password)에만 남는다 — 로그를 볼 수 있는 사람은
+ * Admin 뿐이고, 요청을 보낸 사람은 어느 쪽이 틀렸는지 알 수 없다.
+ * 현재 비밀번호를 틀리면 `Auth::countFailure` 가 실패로 세고 5회에 계정이 잠긴다(세션도 회수).
  *
  * 비밀번호는 옛것도 새것도 응답·감사 로그·app.log 어디에도 남지 않는다 (PRD 7.7 민감정보 금지).
  *
@@ -60,7 +66,10 @@ if (!is_string($current) || !is_string($new)
 unset($current, $new, $body);   // 평문을 이 뒤 코드로 흘려보내지 않는다
 
 if (!$ok) {
-    Http::error(400, $reason === 'bad_credentials' ? Http::MSG_LOGIN_FAILED : Http::MSG_BAD_REQUEST);
+    // 문구 통일 (13단계, SECURITY R-48). 실패 집계·잠금·세션 회수는 Auth::changePassword 안에서
+    // 이미 끝났다 — 규칙을 핸들러로 흘리지 않는다.
+    unset($reason);
+    Http::error(400, Http::MSG_BAD_REQUEST);
 }
 
 Http::json(['ok' => true, 'sessions_revoked' => $revoked]);

@@ -116,7 +116,7 @@ final class Auth
     private const SQL_LOAD_USER = <<<'SQL'
         SELECT id, username, password_hash, role, team_id, is_active,
                failed_count, locked_until,
-               mfa_enabled, mfa_secret,
+               mfa_enabled, mfa_secret, mfa_last_step,
                must_change_password, mfa_setup_required,
                (locked_until IS NOT NULL AND locked_until > now()) AS is_locked,
                (expires_at IS NOT NULL AND expires_at < now())     AS is_expired
@@ -156,15 +156,43 @@ final class Auth
     /**
      * 실패 1회 기록. 한 문장으로 처리해 "읽고 나서 쓰는" 사이에 끼어드는 동시 요청이
      * 카운트를 건너뛰지 못하게 한다 (값은 전부 바인딩).
+     *
+     * ★ 잠금이 **이미 풀린** 계정은 카운터를 1 부터 다시 센다 (13단계, SECURITY R-49).
+     *   전에는 `failed_count + 1` 만 했기 때문에, 10분이 지나 잠금이 풀려도 카운터 5 가 그대로
+     *   남아 **다음 실패 한 번**이 곧바로 다시 10분 잠금이었다(2026-09-12 실측: `t10_lock`
+     *   failed_count 5 · locked_until 만료 그대로). 아이디만 아는 사람이 10분에 요청 하나로
+     *   남의 계정(Admin 포함)을 영구 잠금 상태에 둘 수 있는 서비스 거부였다(R-06 의 악화 형태).
+     *   `locked_until < now()` 는 NULL 이면 NULL(=거짓 취급)이라 잠긴 적 없는 계정은 그대로
+     *   `failed_count + 1` 로 간다. 카운터를 되돌릴 때 `locked_until` 도 NULL 로 치워
+     *   "만료된 잠금 시각" 이 표에 남지 않게 한다.
+     *
+     * RETURNING 으로 **갱신된 뒤**의 잠금 여부를 돌려준다 — 호출자가 다시 SELECT 하지 않고
+     * "이번 실패로 잠겼나" 를 알 수 있다(잠겼으면 세션 회수, SECURITY R-48).
      */
     private const SQL_COUNT_FAILED = <<<'SQL'
         UPDATE users
-           SET failed_count = failed_count + 1,
+           SET failed_count = CASE
+                   WHEN locked_until IS NOT NULL AND locked_until < now() THEN 1
+                   ELSE failed_count + 1
+               END,
                locked_until = CASE
+                   WHEN locked_until IS NOT NULL AND locked_until < now() THEN NULL
                    WHEN failed_count + 1 >= CAST(:max_failed AS integer)
                         THEN now() + make_interval(mins => CAST(:lock_min AS integer))
                    ELSE locked_until
                END
+         WHERE id = :id
+        RETURNING (locked_until IS NOT NULL AND locked_until > now()) AS is_locked
+        SQL;
+
+    /**
+     * 2단계 인증 코드의 **마지막으로 쓴 스텝**을 올린다 (13단계, SECURITY R-45, PRD T-31).
+     * 뒤로 가지 않게 GREATEST 로 덮어쓴다 — 동시에 들어온 두 요청 중 늦은 쪽이 기준선을
+     * 낮추면 그 틈으로 같은 코드가 한 번 더 통과한다.
+     */
+    private const SQL_SET_MFA_STEP = <<<'SQL'
+        UPDATE users
+           SET mfa_last_step = GREATEST(COALESCE(mfa_last_step, 0), CAST(:step AS bigint))
          WHERE id = :id
         SQL;
 
@@ -365,6 +393,7 @@ final class Auth
         //      · 코드가 틀렸다     → 401 동일 문구 + **실패 횟수 증가**(5회 잠금).
         //        비밀번호를 알아낸 공격자가 6자리를 무제한 시험하지 못하게 막는 것은 이쪽이다.
         //    두 경우 모두 감사 로그에 사유(code_required·bad_code)가 남는다.
+        $mfaStep = null;   // 이번 로그인에서 실제로 쓴 TOTP 스텝 (R-45). 세션 발급과 같은 트랜잭션에서 기록한다
         if ($row['mfa_enabled'] === true) {
             $secret = is_string($row['mfa_secret']) ? $row['mfa_secret'] : '';
             $code   = is_string($otp) ? trim($otp) : '';
@@ -373,11 +402,29 @@ final class Auth
                 self::denyMfa($name, (int) $row['id'], 'code_required');
                 throw new AuthMfaRequiredException('2단계 인증 코드가 필요합니다');
             }
-            if ($secret === '' || !Totp::verify($secret, $code)) {
+
+            $step = $secret === '' ? null : Totp::verifyStep($secret, $code);
+            if ($step === null) {
                 self::countFailure((int) $row['id']);
                 self::denyMfa($name, (int) $row['id'], 'bad_code');
                 return null;
             }
+
+            /*
+             * 맞았지만 **이미 쓴 코드** 인가 (13단계 — SECURITY R-45, RFC 6238 §5.2, PRD T-31).
+             * ±1 창(약 90초) 안에서는 같은 6자리가 여러 번 통과했다(2026-09-12 실측: 연속 2회 200).
+             * 어깨너머로 코드를 본 사람에게 그 90초가 그대로 기회였다. 성공한 스텝을
+             * `users.mfa_last_step` 에 남기고, 그 이하 스텝은 맞아도 거부한다.
+             * 창(±1)은 그대로 둔다 — 좁히면 시계가 조금 어긋난 휴대폰이 못 들어온다.
+             * 재사용도 **실패로 센다**: 맞은 코드를 반복해 던지는 것은 정상 사용이 아니다.
+             */
+            $lastStep = $row['mfa_last_step'] === null ? null : (int) $row['mfa_last_step'];
+            if (self::isMfaStepUsed($lastStep, $step)) {
+                self::countFailure((int) $row['id']);
+                self::denyMfa($name, (int) $row['id'], 'code_reused');
+                return null;
+            }
+            $mfaStep = $step;
         }
 
         // 8) 성공 — 세션 재발급 (ARCH 4.0)
@@ -389,6 +436,11 @@ final class Auth
         $db->begin();
         try {
             $db->run(self::SQL_CLEAR_FAILED, [':id' => $userId]);
+            // 쓴 코드의 스텝을 기준선으로 올린다 — 같은 트랜잭션이라 "세션은 났는데 기준선은
+            // 안 올라간" 틈이 생기지 않는다 (SECURITY R-45).
+            if ($mfaStep !== null) {
+                self::markMfaStep($userId, $mfaStep);
+            }
             if ($oldId !== null) {
                 // 로그인 전에 들고 온 쿠키의 세션은 버린다 — 공격자가 미리 심어 둔 값이 살아남지 않는다
                 $db->run(self::SQL_DROP_SESSION, [':id' => $oldId]);
@@ -503,6 +555,14 @@ final class Auth
         $row = $db->run(self::SQL_LOAD_BY_ID, [':id' => $userId])->fetch();
         if (!is_array($row) || !password_verify($current, (string) $row['password_hash'])) {
             Audit::deny('auth.password_change', 'bad_credentials', $target);
+            /*
+             * 13단계 (SECURITY R-48, PRD T-30) — 로그인 뒤 창구도 **같은 카운터**로 센다.
+             * 여기에 집계가 없던 동안, 세션 쿠키를 훔친 사람은 현재 비밀번호를 무제한으로
+             * 추측할 수 있었다(2026-09-12 실측: 3회 시도 → 400 ×3, failed_count 0 유지).
+             * 5회에 잠기고, 잠기는 순간 그 계정의 세션이 전부 끊긴다 — 훔친 쿠키도 함께 죽는다.
+             * 기록(Audit::deny)을 먼저 하는 이유: 세션을 끊은 뒤에는 actor 를 읽을 수 없다.
+             */
+            self::countFailureAndRevoke($userId);
             return [false, 'bad_credentials', 0];
         }
 
@@ -627,16 +687,67 @@ final class Auth
     }
 
     /**
-     * 로그인 실패 1회 기록 (PRD S-09-4 "실패 5회 10분 잠금").
+     * 인증 실패 1회 기록 (PRD S-09-4 "실패 5회 10분 잠금").
      * 비밀번호 오류와 2단계 인증 오류가 **같은 카운터**를 쓴다 — 비밀번호를 알아낸 공격자가
      * 코드 6자리를 무제한 시험하지 못하게 하는 것이 목적이다.
+     *
+     * 13단계(SECURITY R-48)에서 **public** 이 되었다. 로그인(`/api/login`)만이 아니라
+     * **로그인 뒤** 비밀번호·코드를 다시 묻는 창구(`/api/me/password`·`/api/me/mfa/confirm`·
+     * `/api/me/mfa/disable`)도 같은 카운터를 써야 하기 때문이다. 그 창구들은 세션만 있으면
+     * 닿을 수 있어서, 세션을 훔친 사람이 비밀번호와 OTP 를 무제한으로 시험할 수 있었다
+     * (2026-09-12 실측: 틀린 현재 비밀번호 3회 → 400 ×3, `failed_count` 0 유지).
+     *
+     * @return bool 이번 실패로 **계정이 잠겼나**. 잠겼으면 호출자가 revokeAllSessions() 로
+     *              그 계정의 세션을 회수한다 — 잠긴 계정의 창이 계속 열려 있으면 잠금이
+     *              "다음 로그인부터" 가 되어 이미 들어와 있는 공격자를 막지 못한다.
      */
-    private static function countFailure(int $userId): void
+    public static function countFailure(int $userId): bool
     {
-        Db::instance()->run(self::SQL_COUNT_FAILED, [
+        $row = Db::instance()->run(self::SQL_COUNT_FAILED, [
             ':id'         => $userId,
             ':max_failed' => self::MAX_FAILED,
             ':lock_min'   => self::LOCK_MINUTES,
-        ]);
+        ])->fetch();
+
+        return is_array($row) && $row['is_locked'] === true;
+    }
+
+    /**
+     * 실패 1회를 세고, 그 실패로 잠겼으면 **그 계정의 모든 세션을 끊는다**
+     * (13단계 — SECURITY R-48, PRD T-30).
+     *
+     * 로그인 뒤 창구(비밀번호 변경·2단계 인증 확정/해제)의 실패는 이 함수로 센다.
+     * 잠긴 순간 세션이 사라지므로 다음 요청은 401 이 되고, 다시 들어오려면 10분을 기다려야 한다.
+     * 자기 세션도 함께 끊긴다 — 본인이 비밀번호를 5번 틀린 경우도 같은 취급이다(예외를 두면
+     * 그 예외가 곧 공격 경로다).
+     *
+     * @return bool 잠겼나
+     */
+    public static function countFailureAndRevoke(int $userId): bool
+    {
+        $locked = self::countFailure($userId);
+        if ($locked) {
+            self::revokeAllSessions($userId);
+        }
+        return $locked;
+    }
+
+    /**
+     * 2단계 인증 코드의 재사용을 막는 기준선을 올린다 (13단계, SECURITY R-45).
+     * 성공한 검증 뒤에만 부른다 — 실패한 코드는 기준선을 올리지 않는다.
+     */
+    public static function markMfaStep(int $userId, int $step): void
+    {
+        Db::instance()->run(self::SQL_SET_MFA_STEP, [':id' => $userId, ':step' => $step]);
+    }
+
+    /**
+     * 이 스텝의 코드를 **이미 썼나** (13단계, SECURITY R-45, RFC 6238 §5.2).
+     *
+     * @param int|null $lastStep users.mfa_last_step (한 번도 쓴 적이 없으면 null)
+     */
+    public static function isMfaStepUsed(?int $lastStep, int $step): bool
+    {
+        return $lastStep !== null && $step <= $lastStep;
     }
 }

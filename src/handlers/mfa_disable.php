@@ -16,8 +16,16 @@ declare(strict_types=1);
  * 남겨 둘 이유가 없다(다시 켤 때는 새 비밀을 만든다).
  *
  * 비밀번호·코드·비밀은 응답·감사 로그·app.log 어디에도 남지 않는다 —
- * 남는 것은 **사유 코드**뿐이다 (ARCH 7.4 `auth.mfa_disable|deny|bad_credentials`·`bad_code`).
+ * 남는 것은 **사유 코드**뿐이다 (ARCH 7.4 `auth.mfa_disable|deny|bad_credentials`·`bad_code`·`code_reused`).
  * 2단계 인증을 끄려는 시도는 공격자가 가장 먼저 하는 일이므로, 실패도 반드시 기록한다.
+ *
+ * 13단계 (SECURITY R-48 · R-45, PRD T-30 · T-31)
+ *   · 실패 응답 문구는 사유가 무엇이든 `MSG_BAD_REQUEST` **하나**다. 전에는 비밀번호 오류만
+ *     `MSG_LOGIN_FAILED` 로 갈라져, 응답만 보고 "비밀번호는 맞혔다" 를 알 수 있었다(오라클).
+ *   · 비밀번호 오류·코드 오류·코드 재사용은 전부 `Auth::countFailureAndRevoke` 로 **실패 1회**를
+ *     센다. 5회면 계정이 잠기고 그 계정의 세션이 전부 끊긴다 — 훔친 세션 쿠키도 함께 죽는다.
+ *   · 맞은 코드라도 `users.mfa_last_step` 이하의 스텝이면 **이미 쓴 코드**라 거부한다
+ *     (RFC 6238 §5.2). 끄기에 성공하면 비밀을 지우므로 기준선도 NULL 로 되돌린다.
  *
  * @var array<string,mixed> $user   라우터가 넘긴 현재 사용자 (대상은 언제나 본인)
  * @var list<string>        $params 경로 변수 없음
@@ -51,7 +59,7 @@ $auditTarget = [
 ];
 
 $sqlState = <<<'SQL'
-    SELECT password_hash, mfa_enabled, mfa_secret FROM users WHERE id = :id
+    SELECT password_hash, mfa_enabled, mfa_secret, mfa_last_step FROM users WHERE id = :id
     SQL;
 
 $row = $db->run($sqlState, [':id' => $userId])->fetch();
@@ -61,13 +69,28 @@ if (!is_array($row) || $row['mfa_enabled'] !== true || !is_string($row['mfa_secr
     Http::error(400, Http::MSG_BAD_REQUEST);
 }
 
-if (!password_verify($password, (string) $row['password_hash'])) {
-    Audit::deny('auth.mfa_disable', 'bad_credentials', $auditTarget);
-    Http::error(400, Http::MSG_LOGIN_FAILED);
-}
-if (!Totp::verify((string) $row['mfa_secret'], $otp)) {
-    Audit::deny('auth.mfa_disable', 'bad_code', $auditTarget);
+/**
+ * 실패 한 건 — 기록하고(사유는 갈라 둔다), 실패로 세고, 같은 문구로 끝낸다 (13단계 R-48).
+ * 기록을 먼저 하는 이유: 잠금으로 세션이 끊기면 감사 로그의 actor 를 읽을 수 없다.
+ */
+$reject = static function (string $reason) use ($auditTarget, $userId): void {
+    Audit::deny('auth.mfa_disable', $reason, $auditTarget);
+    Auth::countFailureAndRevoke($userId);
     Http::error(400, Http::MSG_BAD_REQUEST);
+};
+
+if (!password_verify($password, (string) $row['password_hash'])) {
+    $reject('bad_credentials');
+}
+
+$step = Totp::verifyStep((string) $row['mfa_secret'], $otp);
+if ($step === null) {
+    $reject('bad_code');
+}
+// 맞았지만 이미 쓴 코드인가 (SECURITY R-45, RFC 6238 §5.2)
+$lastStep = $row['mfa_last_step'] === null ? null : (int) $row['mfa_last_step'];
+if (Auth::isMfaStepUsed($lastStep, (int) $step)) {
+    $reject('code_reused');
 }
 unset($password, $otp, $body);
 
@@ -79,6 +102,9 @@ $sqlDisable = <<<'SQL'
            -- 끄는 것 자체는 허용하되(비밀을 갈아 끼우는 유일한 길이다),
            -- 다음 요청부터 관문이 다시 등록을 요구한다. 같은 UPDATE 문장에서 켠다.
            mfa_setup_required = true,
+           -- 13단계 (SECURITY R-45): 비밀을 지우므로 "마지막으로 쓴 스텝" 기준선도 함께 치운다.
+           -- 다시 켤 때는 새 비밀이라 옛 스텝이 기준선으로 남아 있을 이유가 없다.
+           mfa_last_step      = NULL,
            updated_at         = now()
      WHERE id = :id
     SQL;

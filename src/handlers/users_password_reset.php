@@ -94,6 +94,12 @@ $sqlReset = <<<'SQL'
     UPDATE users
        SET password_hash        = :hash,
            must_change_password = true,
+           -- 13단계 (SECURITY R-49): 잠금과 실패 카운터를 **같은 문장**에서 함께 치운다.
+           -- 전에는 임시 비밀번호를 새로 받아도 `failed_count`·`locked_until` 이 그대로 남아,
+           -- 잠긴 계정은 재발급을 받고도 10분을 더 기다려야 했고 잠금이 이어졌다.
+           -- 재발급은 "이 계정을 다시 쓸 수 있게 한다" 는 뜻이므로 잠금도 함께 풀린다.
+           failed_count         = 0,
+           locked_until         = NULL,
            updated_at           = now()
      WHERE id = :id
     SQL;
