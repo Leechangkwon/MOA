@@ -9,7 +9,10 @@ declare(strict_types=1);
  * ★ 19단계 열 매핑 저장 (PRD F-29 「같은 양식은 매핑을 기억해 다음부터 두 단계로」, 시안 ⑯).
  *
  *   GET     저장된 매핑 목록 (종류·이름·매핑)
- *   POST    {kind, name, mapping} 저장. 같은 (종류, 이름)이면 **덮어쓴다**
+ *   POST    {kind, name, mapping, header_row} 저장. 같은 (종류, 이름)이면 **덮어쓴다**.
+ *           `header_row`(0~19, 기본 0)를 함께 저장하는 이유: 이카운트처럼 0행이 제목이고
+ *           1행이 진짜 머리행인 양식은, 매핑만 복원하고 머리행을 잊으면 매번 다시 골라야 한다
+ *           — F-29 의 「같은 양식은 두 걸음으로 끝난다」 가 성립하지 않는다 (1차 보정 2026-09-13).
  *   DELETE  {id} — **행을 지우지 않는다.** `is_active = false` 로 내린다
  *           (p_* 에 DELETE 권한이 없다 — db/grants.sql). 라우트 이름이 DELETE 인 것은
  *           사람에게 "그만 쓴다" 를 뜻하고, 저장소에서는 중단이다(계정·팀과 같은 규칙).
@@ -42,7 +45,7 @@ $db = Db::instance();
 // ─── GET — 목록 ───
 if ($method === 'GET') {
     $sqlList = <<<'SQL'
-        SELECT id, kind, name, mapping_json, created_at
+        SELECT id, kind, name, mapping_json, header_row, created_at
           FROM p_import_mappings
          WHERE is_active
          ORDER BY kind ASC, name ASC
@@ -57,6 +60,7 @@ if ($method === 'GET') {
             'kind'       => (string) $row['kind'],
             'name'       => (string) $row['name'],
             'mapping'    => is_array($decoded) ? $decoded : [],
+            'header_row' => (int) $row['header_row'],
             'created_at' => (string) $row['created_at'],
         ];
     }
@@ -117,7 +121,7 @@ if ($method === 'DELETE') {
 }
 
 // ─── POST — 저장(같은 종류·이름이면 덮어쓴다) ───
-if ($body === [] || array_diff(array_keys($body), ['kind', 'name', 'mapping']) !== []) {
+if ($body === [] || array_diff(array_keys($body), ['kind', 'name', 'mapping', 'header_row']) !== []) {
     $reject('bad_request', 400, Http::MSG_BAD_REQUEST);
 }
 
@@ -165,13 +169,29 @@ if ($json === false) {
     $reject('bad_mapping', 400, Http::MSG_BAD_REQUEST);
 }
 
+/* 머리행 위치 — 0~19 정수만. 형식이 틀리면 400 이다(미리보기와 **같은 좁히기 함수**를 쓴다).
+ * 여기서는 파일이 없으므로 감지로 되돌아갈 수 없다 → 값이 없으면 0(첫 행)으로 둔다.
+ * DB 에도 같은 범위의 CHECK 가 있다(마지막 그물). */
+$headerRow = 0;
+if (array_key_exists('header_row', $body) && $body['header_row'] !== null && $body['header_row'] !== '') {
+    try {
+        $headerRow = Importer::headerRowFrom($body['header_row'], $kind, []);
+    } catch (RuntimeException $e) {
+        // `bad_header_row` 는 ARCH 7.4 문장 표에 없다 → 등록된 `bad_request` 로 남긴다
+        // (없는 조합을 기록하면 기록이 실패해 요청이 500 이 된다).
+        $reject('bad_request', 400, Http::MSG_BAD_REQUEST);
+        exit;
+    }
+}
+
 // 같은 (종류, 이름)이면 덮어쓴다 — 사람이 「매핑 저장」 을 두 번 누르는 것이 정상 흐름이다.
 // UNIQUE 인덱스가 lower(name) 이므로 ON CONFLICT 도 같은 식(expression)을 가리켜야 한다.
 $sqlSave = <<<'SQL'
-    INSERT INTO p_import_mappings (kind, name, mapping_json, created_by)
-    VALUES (:kind, :name, CAST(:mapping AS jsonb), :created_by)
+    INSERT INTO p_import_mappings (kind, name, mapping_json, header_row, created_by)
+    VALUES (:kind, :name, CAST(:mapping AS jsonb), CAST(:header_row AS smallint), :created_by)
     ON CONFLICT (kind, lower(name))
     DO UPDATE SET mapping_json = EXCLUDED.mapping_json,
+                  header_row   = EXCLUDED.header_row,
                   is_active    = true,
                   updated_at   = now()
     RETURNING id
@@ -183,6 +203,7 @@ try {
         ':kind'       => $kind,
         ':name'       => $name,
         ':mapping'    => $json,
+        ':header_row' => $headerRow,
         ':created_by' => (int) $user['id'],
     ])->fetch();
     if (!is_array($row)) {
@@ -198,7 +219,7 @@ try {
             'kind'      => 'import_mappings',
             'target_id' => $id,
             // 매핑은 열 이름 목록일 뿐 파일 내용이 아니다 — 그대로 남겨도 된다.
-            'after'     => ['name' => $name, 'mapping' => $mapping],
+            'after'     => ['name' => $name, 'mapping' => $mapping, 'header_row' => $headerRow],
         ],
     ]);
     $db->commit();
@@ -207,4 +228,10 @@ try {
     throw $e;
 }
 
-Http::json(['id' => $id, 'kind' => $kind, 'name' => $name, 'mapping' => $mapping], 201);
+Http::json([
+    'id'         => $id,
+    'kind'       => $kind,
+    'name'       => $name,
+    'mapping'    => $mapping,
+    'header_row' => $headerRow,
+], 201);

@@ -424,6 +424,11 @@ CREATE TABLE p_import_mappings (
     kind         TEXT        NOT NULL CHECK (kind IN ('items','vendors','locations')),
     name         TEXT        NOT NULL,
     mapping_json JSONB       NOT NULL,
+    -- 머리행이 몇 번째 행인가 (0기준). 이카운트 내보내기처럼 0행이 제목 한 칸이고 1행이
+    -- 진짜 머리행인 파일이 있다 — 매핑만 저장하고 이 값을 빼면 같은 양식을 다시 올릴 때마다
+    -- 머리행을 또 골라야 한다 (19단계 1차 보정 2026-09-13, db/migrations/…_import_header.sql).
+    -- 범위는 앱의 Importer::HEAD_ROWS(앞 20행을 훑는다)와 같다.
+    header_row   SMALLINT    NOT NULL DEFAULT 0 CHECK (header_row BETWEEN 0 AND 19),
     is_active    BOOLEAN     NOT NULL DEFAULT true,
     created_by   BIGINT      NOT NULL REFERENCES users(id),
     created_at   TIMESTAMPTZ NOT NULL DEFAULT now(),

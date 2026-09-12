@@ -163,3 +163,24 @@
 
 /* 표 안의 긴 값이 화면을 밀지 않게 — 가로 스크롤은 .table-wrap 이 맡는다 */
 .p-cell-wide { max-width: 380px; }
+
+/* ─── 가져오기 머리행 안내 (19단계 1차 보정 2026-09-13) ───────
+ * 「2행을 머리행으로 봅니다 — 서버가 자동으로 고른 줄입니다」 한 줄.
+ * 열 맞추기 표 바로 위에 붙어, 사람이 표를 읽기 전에 전제를 먼저 알게 한다.
+ */
+#p-header-note {
+  margin: 0 0 12px;
+  padding: 8px 12px;
+  border-left: 3px solid var(--accent, #1d5fbf);
+  background: var(--accent-soft, #e8f0fb);
+  border-radius: 0 6px 6px 0;
+  font-size: 13.5px;
+}
+
+#p-header-note:empty { display: none; }
+
+/* 머리행 셀렉트는 각 줄의 첫 세 칸을 보여 주므로 길어진다 — 잘라서 줄바꿈을 막는다 */
+#p-header-row {
+  max-width: 320px;
+  text-overflow: ellipsis;
+}

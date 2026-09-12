@@ -41,6 +41,9 @@ final class Importer
     public const TARGETS = [
         'items' => [
             'code', 'name', 'vendor', 'brand', 'spec', 'unit', 'pack_qty',
+            // 이카운트는 포장 수량을 **분자/분모 두 칸**으로 내보낸다(「당수량(분자)」·「당수량(분모)」).
+            // 분모가 1 이면 분자가 곧 낱개 수이고, 1 이 아니면 사람이 확인해야 한다(아래 judgeItem).
+            'pack_den',
             'cat1', 'cat2', 'cat3', 'price_in', 'barcode',
             'stock_managed', 'safety_qty', 'lead_days', 'min_order_qty', 'branches',
         ],
@@ -68,6 +71,26 @@ final class Importer
 
     /** 미리보기 응답에 실어 보내는 최대 행 수 (전체 개수는 counts 로 따로 알린다) */
     public const PREVIEW_ROWS = 200;
+
+    /**
+     * 머리행을 찾을 때 훑는 **앞부분 행 수** (1차 보정 2026-09-13).
+     *
+     * 왜 필요한가 — 이카운트 품목 내보내기(ESA009M.xlsx)의 0행은 제목 한 칸
+     * (`회사명 : …`)이고 **진짜 머리행은 1행**이다. 0행을 머리행으로 잡으면 열 목록이
+     * 한 칸뿐이라 사람이 매핑을 채울 수 없고, 그 상태로 미리보기를 누르면
+     * `mapping_incomplete` 400 만 돌아온다(2026-09-13 05:37 실측 사고).
+     *
+     * 20행으로 잡은 이유: 회계·ERP 내보내기의 머리말은 보통 1~5행이고, 20행을 넘겨
+     * 찾는 것은 "이 파일은 표가 아니다" 라는 뜻이라 사람이 봐야 한다.
+     */
+    public const HEAD_ROWS = 20;
+
+    /** 화면에 미리 보여 줄 앞부분의 최대 열 수 (Sheet 의 상한과 같다) */
+    public const HEAD_COLS = Sheet::SHEET_COLS;
+
+    /** 머리행으로 인정하는 최소 조건 (아래 detectHeaderRow 의 두 관문) */
+    private const HEAD_MIN_HITS  = 2;   // 종류별 동의어에 맞는 칸이 이만큼은 있어야 한다
+    private const HEAD_MIN_CELLS = 3;   // 동의어가 안 맞을 때의 대안 — 채워진 칸 수
 
     /** 가져오기 원본을 보관하는 폴더 — 이름은 **코드 상수**이며 요청 값이 섞이지 않는다 */
     public const FOLDER_PARENT = '구매';
@@ -190,6 +213,9 @@ final class Importer
                 $out[$key] = $lower;
             } elseif (isset($alias[$key])) {
                 $out[$key] = $alias[$key];
+            } elseif (in_array($key, self::SKIP_ALIASES, true)) {
+                // 우리 칸이 없는 열이라는 것을 **명시**한다 (빠뜨린 것과 구별된다).
+                $out[$key] = 'skip';
             }
         }
         return $out;
@@ -208,6 +234,9 @@ final class Importer
             '중분류' => 'cat2', '소분류' => 'cat3', '입고단가' => 'price_in', '바코드' => 'barcode',
             '포장수량' => 'pack_qty', '안전재고' => 'safety_qty', '조달기간' => 'lead_days',
             '최소구매단위' => 'min_order_qty', '브랜드' => 'brand', '사용지점' => 'branches',
+            // 이카운트 품목 내보내기의 실제 열 이름 (1차 보정 2026-09-13, files #252 실측).
+            // 포장 낱개 수가 분자/분모 두 칸으로 나뉘어 있다 — 분모는 아래 judgeItem 이 본다.
+            '당수량(분자)' => 'pack_qty', '당수량(분모)' => 'pack_den',
         ],
         'vendors' => [
             '거래처코드' => 'code', '거래처명' => 'name', '구매처명' => 'name', '사업자번호' => 'biz_no',
@@ -219,15 +248,139 @@ final class Importer
     ];
 
     /**
+     * **건너뜀이 기본값**인 열 이름 (1차 보정 2026-09-13).
+     *
+     * 우리 칸에 대응이 없는 열은 어차피 매핑에서 빠지지만, 이 목록의 이름은 화면에
+     * `건너뜀` 으로 **명시해 둔다** — 사람이 "이 열은 왜 비어 있지" 하고 다시 보지 않게.
+     * 종류와 무관하게 같은 뜻이라 한 목록에 모은다.
+     *
+     * @var list<string>
+     */
+    private const SKIP_ALIASES = ['최초작성자', '회사명', '최종수정자', '비고', '이미지'];
+
+    /**
+     * **머리행이 몇 번째 행인가** 를 서버가 정한다 (1차 보정 2026-09-13).
+     *
+     * 실제 이카운트 파일(ESA009M.xlsx, 8,102행)의 모양:
+     *   0행  ["회사명 : 주식회사 …"]                      ← 제목 한 칸
+     *   1행  ["구매처명","대분류",…,"품목코드","품목명",…]  ← **진짜 머리행**
+     *   2행~ 데이터
+     * 0행을 머리행으로 잡으면 열이 하나뿐이라 매핑을 채울 수 없다. 그래서 **앞 20행을
+     * 훑어** 머리행처럼 보이는 행을 고른다.
+     *
+     * 고르는 규칙 (순서대로)
+     *   ① 종류별 동의어(ALIASES·TARGETS)에 맞는 칸이 **2개 이상**인 행 중,
+     *      비어 있지 않은 칸이 **가장 많은** 행. 같으면 **앞의 행**(머리말이 아래로 갈수록
+     *      데이터에 가까워지므로, 같은 점수면 위쪽이 머리행일 가능성이 높다).
+     *   ② 그런 행이 없으면 — 비어 있지 않은 칸이 **3개 이상**인 **첫** 행.
+     *   ③ 그것도 없으면 0 (판단을 포기하고 사람에게 넘긴다. 화면이 셀렉트로 고치게 한다).
+     *
+     * **추측일 뿐이다.** 최종 결정권은 사람에게 있고(화면의 「머리행」 셀렉트), 미리보기·확정은
+     * 요청이 보낸 `header_row` 를 그대로 쓴다. 서버가 다시 감지하는 것은 값이 없을 때뿐이다.
+     *
+     * @param list<list<string>> $rows Sheet::rows 의 결과
+     */
+    public static function detectHeaderRow(string $kind, array $rows): int
+    {
+        if (!in_array($kind, self::KINDS, true) || $rows === []) {
+            return 0;
+        }
+
+        $bestRow   = -1;
+        $bestCells = -1;
+        $fallback  = -1;
+
+        $limit = min(count($rows), self::HEAD_ROWS);
+        for ($i = 0; $i < $limit; $i++) {
+            $row = is_array($rows[$i]) ? $rows[$i] : [];
+
+            $cells = 0;
+            foreach ($row as $cell) {
+                if (trim((string) $cell) !== '') {
+                    $cells++;
+                }
+            }
+            if ($cells === 0) {
+                continue;
+            }
+
+            // ① 이 행을 머리행으로 봤을 때 우리 칸에 이어지는 열이 몇 개인가
+            $hits = count(self::guessMapping($kind, $row));
+            if ($hits >= self::HEAD_MIN_HITS && $cells > $bestCells) {
+                $bestRow   = $i;
+                $bestCells = $cells;
+            }
+
+            // ② 대안 — 채워진 칸이 어느 정도 있는 첫 행
+            if ($fallback < 0 && $cells >= self::HEAD_MIN_CELLS) {
+                $fallback = $i;
+            }
+        }
+
+        if ($bestRow >= 0) {
+            return $bestRow;
+        }
+        return $fallback >= 0 ? $fallback : 0;
+    }
+
+    /**
+     * 요청이 보낸 머리행 번호를 좁힌다 — 0~19 정수만. 그 밖(음수·20 이상·숫자 아님)은 예외.
+     * 없으면(null) 서버가 다시 감지한다 — 화면이 값을 안 보내도 동작이 달라지지 않게.
+     *
+     * @param list<list<string>> $rows
+     */
+    public static function headerRowFrom(mixed $raw, string $kind, array $rows): int
+    {
+        if ($raw === null) {
+            return self::detectHeaderRow($kind, $rows);
+        }
+        $text = is_int($raw) ? (string) $raw : (is_string($raw) ? trim($raw) : '');
+        if (preg_match('/^[0-9]{1,2}$/', $text) !== 1) {
+            throw new RuntimeException('bad_header_row');
+        }
+        $value = (int) $text;
+        if ($value < 0 || $value >= self::HEAD_ROWS) {
+            throw new RuntimeException('bad_header_row');
+        }
+        return $value;
+    }
+
+    /**
+     * 화면이 **재업로드 없이** 머리행을 바꿔 볼 수 있게, 앞 20행 × 60열을 그대로 돌려준다.
+     * 값은 이미 `Sheet` 가 UTF-8 로 씻어 500자로 자른 문자열이고, 화면은 `textContent` 로만 넣는다.
+     *
+     * @param list<list<string>> $rows
+     * @return list<list<string>>
+     */
+    public static function headRows(array $rows): array
+    {
+        $out   = [];
+        $limit = min(count($rows), self::HEAD_ROWS);
+        for ($i = 0; $i < $limit; $i++) {
+            $row  = is_array($rows[$i]) ? $rows[$i] : [];
+            $cut  = array_slice($row, 0, self::HEAD_COLS);
+            $line = [];
+            foreach ($cut as $cell) {
+                $line[] = (string) $cell;
+            }
+            $out[] = $line;
+        }
+        return $out;
+    }
+
+    /**
      * 행마다 판정한다 — DB 를 **읽기만** 한다. 아무것도 쓰지 않는다.
      *
-     * @param list<list<string>>  $rows     Sheet::rows 의 결과 (rows[0] 은 머리행)
-     * @param array<string,int>   $resolved resolve() 의 결과
+     * @param list<list<string>>  $rows      Sheet::rows 의 결과 (전체 행)
+     * @param array<string,int>   $resolved  resolve() 의 결과
+     * @param int                 $headerRow 머리행의 위치(0기준). 그 **다음 행부터** 데이터다
      * @return array{counts:array<string,int>, rows:list<array<string,mixed>>, total:int}
      */
-    public static function judge(string $kind, array $rows, array $resolved): array
+    public static function judge(string $kind, array $rows, array $resolved, int $headerRow = 0): array
     {
-        $body = array_slice($rows, 1);   // 머리행 제외
+        // 머리행 **위**의 제목 줄(이카운트의 `회사명 : …`)도 함께 건너뛴다 — 데이터는
+        // 머리행 다음부터다. 그래서 자르는 자리는 1 이 아니라 `머리행 + 1` 이다.
+        $body = array_slice($rows, $headerRow + 1);
         if (count($body) > self::MAX_ROWS) {
             throw new RuntimeException('too_many_rows');
         }
@@ -239,7 +392,8 @@ final class Importer
         $out    = [];
 
         foreach ($body as $offset => $row) {
-            $rowNo = $offset + 2;   // 엑셀에서 보이는 줄 번호 (1 = 머리행)
+            // 엑셀에서 **사람이 보는** 줄 번호 (1부터). 머리행이 1행이면 데이터는 3행부터다.
+            $rowNo = $offset + $headerRow + 2;
             $data  = self::pick($row, $resolved);
 
             $judged = match ($kind) {
@@ -475,6 +629,29 @@ final class Importer
             'brand_id'      => $lookup['brand'][strtolower($d['brand'] ?? '')] ?? null,
         ];
 
+        /* ─── 포장 낱개 수의 분자/분모 (1차 보정 2026-09-13, 이카운트 실측) ───
+         *
+         * 이카운트는 「당수량(분자)」·「당수량(분모)」 두 칸으로 내보낸다.
+         *   분모 = 1  →  분자가 곧 낱개 수다. 그대로 쓴다(아무 일도 일어나지 않는다).
+         *   분모 ≠ 1  →  **사람이 확인해야 한다.** 분자가 분모로 나누어떨어지면 그 몫을
+         *                 `pack_qty` 로 **제안**하고, 아니면 분자를 그대로 두되
+         *                 어느 쪽이든 판정을 `review` 로 내린다.
+         *
+         * 왜 자동으로 확정하지 않나: 포장 낱개 수는 발주 수량·재고 계산의 분모다. 여기를
+         * 잘못 넣으면 "2000낱개를 주문했는데 1봉이 왔다" 가 되고, 그 오류는 재고를 맞춰 보기
+         * 전에는 드러나지 않는다. 값이 흔들리는 행은 **사람 눈을 한 번 거치게** 한다.
+         */
+        $packDenRaw  = trim((string) ($d['pack_den'] ?? ''));
+        $packDenFlag = false;
+        if ($packDenRaw !== '' && $packDenRaw !== '1') {
+            $den = self::intOr($packDenRaw, 0, 1, 9999999);
+            $num = self::intOr($d['pack_qty'] ?? '', 0, 1, 9999999);
+            if ($den > 1 && $num > 0 && $num % $den === 0) {
+                $values['pack_qty'] = intdiv($num, $den);
+            }
+            $packDenFlag = true;
+        }
+
         $key = (string) $vendorId . '|' . strtolower($code);
         if (isset($seen[$key])) {
             return self::fail('duplicate_in_file', $d);
@@ -483,17 +660,27 @@ final class Importer
 
         $current = $lookup['item'][$key] ?? null;
         if ($current === null) {
-            return ['status' => self::STATUS_INSERT, 'reason' => null, 'data' => $d, 'values' => $values];
+            return [
+                'status' => $packDenFlag ? self::STATUS_REVIEW : self::STATUS_INSERT,
+                'reason' => $packDenFlag ? 'pack_den_not_one' : null,
+                'data'   => $d,
+                'values' => $values,
+            ];
         }
 
         $diff = self::diff($current, $values);
         // 이름만 다르면 「확인 필요」 — 원본에 이름이 빠졌거나 표기가 흔들린 경우가 많아
         // 자동으로 덮어쓰면 기존 이름이 조용히 사라진다 (시안 ⑯ 19행).
         $status = (array_keys($diff) === ['name']) ? self::STATUS_REVIEW : self::STATUS_UPDATE;
+        $reason = $status === self::STATUS_REVIEW ? 'name_differs' : null;
+        if ($packDenFlag) {
+            $status = self::STATUS_REVIEW;
+            $reason = 'pack_den_not_one';   // 포장 수량이 더 급한 확인거리다
+        }
 
         return [
             'status'    => $status,
-            'reason'    => $status === self::STATUS_REVIEW ? 'name_differs' : null,
+            'reason'    => $reason,
             'data'      => $d,
             'values'    => $values,
             'diff'      => $diff,

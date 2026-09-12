@@ -27,6 +27,12 @@ require __DIR__ . '/shell_top.php';
     </header>
 
   <p class="notice">
+    엑셀의 <strong>첫 줄이 곧 열 이름이 아닐 수도 있습니다</strong> — 이카운트 내보내기처럼
+    맨 위에 「회사명 : …」 같은 제목 줄이 붙은 파일이 많습니다. 서버가 앞 20줄을 보고
+    <strong>열 이름이 적힌 줄을 스스로 고르고</strong>, 2단계의 「머리행」 칸에서 바꿀 수 있습니다.
+    바꾸면 열 목록과 표본이 바로 다시 그려집니다(파일을 다시 올릴 필요가 없습니다).
+  </p>
+  <p class="notice">
     확정은 <strong>한 트랜잭션</strong>입니다 — 한 행이라도 저장에 실패하면 앞서 넣은 행까지 전부
     되돌아갑니다. <strong>오류 행은 저장하지 않습니다.</strong> 올린 원본 파일은
     <strong>「구매 / 가져오기」 폴더(관리자 전용)</strong>에 남고, 확정 기록에 파일의 sha256 과 행 수가 붙습니다.
@@ -64,12 +70,20 @@ require __DIR__ . '/shell_top.php';
     <div class="panel__head">
       <h2 class="panel__title">2 열 맞추기 (엑셀 열 → 우리 칸)</h2>
       <div class="panel__tools">
+        <!-- 머리행 고르기 (1차 보정 2026-09-13) — 이카운트 내보내기처럼 첫 줄이 제목인
+             파일이 있다. 서버가 앞 20행을 보고 한 줄을 고르고, 사람이 바꿀 수 있다.
+             바꾸면 **재업로드 없이** 열 목록·표본을 다시 그린다(head_rows 로). -->
+        <label class="field field--inline">
+          <span class="field__label">머리행 (열 이름이 적힌 줄)</span>
+          <select id="p-header-row"></select>
+        </label>
         <label class="field field--inline">
           <span class="field__label">저장된 매핑</span>
           <select id="p-map-saved"></select>
         </label>
       </div>
     </div>
+    <p id="p-header-note" class="muted"></p>
     <div class="table-wrap">
       <table class="files">
         <thead>

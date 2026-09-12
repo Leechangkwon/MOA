@@ -230,13 +230,31 @@ try {
     exit;
 }
 
-$header = $sheet['rows'][0] ?? [];
-$sample = array_slice($sheet['rows'], 1, 5);
+/* ─── 머리행은 **서버가 감지한다** (1차 보정 2026-09-13) ───
+ *
+ * 19단계 본 판은 `rows[0]` 을 머리행으로 못박았다. 이카운트 품목 내보내기는 0행이 제목
+ * 한 칸(`회사명 : …`)이고 진짜 머리행이 1행이라, 열 목록이 한 칸뿐이었고 사람이 매핑을
+ * 채울 수 없었다 → 미리보기가 `mapping_incomplete` 400 (2026-09-13 05:37 실측).
+ *
+ * 감지는 **종류마다 다르다**(동의어 표가 다르므로). 화면이 종류를 바꿔도 재업로드 없이
+ * 고쳐 볼 수 있게, 종류별 감지 결과와 앞 20행 원문(`head_rows`)을 함께 내려 준다.
+ * `columns`·`sample` 은 **화면이 처음 고를 종류(items)의 감지 결과** 기준이다 —
+ * 화면이 종류를 바꾸면 head_rows 로 다시 그린다.
+ */
+$headerRows = [];
+foreach (Importer::KINDS as $k) {
+    $headerRows[$k] = Importer::detectHeaderRow($k, $sheet['rows']);
+}
+$headRows  = Importer::headRows($sheet['rows']);
+$headerRow = $headerRows[Importer::KINDS[0]];
+
+$header = $sheet['rows'][$headerRow] ?? [];
+$sample = array_slice($sheet['rows'], $headerRow + 1, 5);
 
 // ─── [8] 저장된 매핑 — 같은 양식을 다시 올리면 2단계로 끝난다 (F-29) ───
 // lint:no-branch-scope p_import_mappings 는 지점 무관 마스터다 (브랜드·거래처·분류와 같다).
 $sqlMappings = <<<'SQL'
-    SELECT id, kind, name, mapping_json
+    SELECT id, kind, name, mapping_json, header_row
       FROM p_import_mappings
      WHERE is_active
      ORDER BY kind ASC, name ASC
@@ -251,21 +269,30 @@ foreach ($db->run($sqlMappings)->fetchAll() as $m) {
         'kind'    => (string) $m['kind'],
         'name'    => (string) $m['name'],
         'mapping' => is_array($decoded) ? $decoded : [],
+        // 저장된 매핑은 **머리행 위치도 함께** 기억한다 — 그래야 같은 양식이 두 걸음으로 끝난다
+        'header_row' => (int) $m['header_row'],
     ];
 }
 
 // 머리행을 보고 만든 **후보** 매핑(종류별). 서버는 이 값을 판정에 쓰지 않는다.
+// 종류마다 머리행 감지 결과가 다를 수 있으므로 **각자의 머리행**으로 추측한다.
 $guess = [];
 foreach (Importer::KINDS as $kind) {
-    $guess[$kind] = Importer::guessMapping($kind, $header);
+    $guess[$kind] = Importer::guessMapping($kind, $sheet['rows'][$headerRows[$kind]] ?? []);
 }
 
 Http::json([
     'import_id' => $publicId,
     'file_name' => $original,
     'sha256'    => $checked['sha256'],
-    'rows'      => max(0, count($sheet['rows']) - 1),
+    // 데이터 행 수 — 머리행과 그 위의 제목 줄을 뺀 수다
+    'rows'      => max(0, count($sheet['rows']) - $headerRow - 1),
     'truncated' => $sheet['truncated'],
+    // 감지한 머리행(0기준). 화면이 셀렉트의 기본값으로 쓰고, 사람이 바꿀 수 있다.
+    'header_row'  => $headerRow,
+    'header_rows' => $headerRows,
+    // 앞 20행 원문 — 화면이 **재업로드 없이** 머리행을 바꿔 볼 재료 (textContent 로만 그린다)
+    'head_rows'   => $headRows,
     'columns'   => $header,
     'sample'    => $sample,
     'mapping'   => $guess,

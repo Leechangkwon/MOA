@@ -8,8 +8,11 @@ declare(strict_types=1);
  * ★ 19단계 엑셀 가져오기 **3단계: 미리보기** (PRD F-29 · T-44, 시안 ⑯, SECURITY R-67).
  *
  * 받는 값 (JSON, 허용 키 밖이면 400)
- *   kind    items | vendors | locations
- *   mapping {엑셀 열 이름 → 우리 칸 이름}   ("" 또는 "skip" 은 건너뜀)
+ *   kind        items | vendors | locations
+ *   mapping     {엑셀 열 이름 → 우리 칸 이름}   ("" 또는 "skip" 은 건너뜀)
+ *   header_row  (선택) 머리행의 위치 0~19. **그 다음 행부터 데이터**다.
+ *               생략하면 서버가 `Importer::detectHeaderRow` 로 다시 감지한다 —
+ *               화면이 값을 안 보내도 동작이 달라지지 않게 (1차 보정 2026-09-13).
  *
  * 돌려주는 값
  *   counts  {insert, update, review, error}  — **전체** 행 기준
@@ -36,9 +39,29 @@ require_once __DIR__ . '/../purchase/Sheet.php';
 require_once __DIR__ . '/../purchase/Master.php';
 require_once __DIR__ . '/../purchase/Importer.php';
 
-$reject = static function (string $reason, int $status, string $message): void {
-    Audit::deny('purchase.import.preview', $reason, ['target_type' => 'file']);
+/**
+ * 거부 기록 후 끝낸다.
+ *
+ * ★ 사유 코드는 **ARCH 7.4 문장 표에 등록된 것만** 쓸 수 있다 — 없는 조합을 기록하면
+ *   기록 자체가 실패하고 요청이 500 이 된다(그것이 설계다: 새 사유를 만든 사람이 표를
+ *   빠뜨리면 첫 요청에서 드러난다). 1차 보정에서 더한 `bad_header_row` 는 아직 표에 없으므로
+ *   **등록된 `bad_request` 로 남기고 구체적인 사유는 `detail.why` 에 적는다** —
+ *   진단은 되고 문장 표는 깨지지 않는다. (표에 행을 더하려면 src/Audit.php 를 고쳐야 하는데,
+ *   1차 보정의 허용 파일이 아니다.)
+ */
+$reject = static function (string $reason, int $status, string $message, array $detail = []): void {
+    $entry = ['target_type' => 'file'];
+    if ($detail !== []) {
+        $entry['detail'] = $detail;
+    }
+    Audit::deny('purchase.import.preview', $reason, $entry);
     Http::error($status, $message);
+};
+
+/** 표에 등록된 사유만 통과시키고, 나머지는 `bad_request` 로 돌린다 (위 ★ 주석) */
+$knownReason = static function (string $why): string {
+    return in_array($why, ['bad_kind', 'bad_mapping', 'mapping_incomplete',
+                           'too_many_rows', 'parse_failed'], true) ? $why : 'bad_request';
 };
 
 $file = Importer::findFile($params[0] ?? '');
@@ -47,7 +70,7 @@ if ($file === null) {
 }
 
 $body = Http::jsonBody();
-if ($body === [] || array_diff(array_keys($body), ['kind', 'mapping']) !== []) {
+if ($body === [] || array_diff(array_keys($body), ['kind', 'mapping', 'header_row']) !== []) {
     $reject('bad_request', 400, Http::MSG_BAD_REQUEST);
 }
 
@@ -80,10 +103,13 @@ if ($sheet['truncated']) {
 }
 
 try {
-    $resolved = Importer::resolve($kind, $sheet['rows'][0] ?? [], $mapping);
-    $judged   = Importer::judge($kind, $sheet['rows'], $resolved);
+    // 머리행 — 요청이 정한 값이 우선이고, 없으면 서버가 감지한다. 0~19 밖은 예외(400).
+    $headerRow = Importer::headerRowFrom($body['header_row'] ?? null, $kind, $sheet['rows']);
+    $resolved  = Importer::resolve($kind, $sheet['rows'][$headerRow] ?? [], $mapping);
+    $judged    = Importer::judge($kind, $sheet['rows'], $resolved, $headerRow);
 } catch (RuntimeException $e) {
-    $reject($e->getMessage(), 400, Http::MSG_BAD_REQUEST);
+    $why = $e->getMessage();
+    $reject($knownReason($why), 400, Http::MSG_BAD_REQUEST, ['why' => $why]);
     exit;
 }
 
@@ -110,9 +136,11 @@ foreach ($judged['rows'] as $row) {
 }
 
 Http::json([
-    'import_id' => (string) $file['public_id'],
-    'kind'      => $kind,
-    'total'     => $judged['total'],
+    'import_id'  => (string) $file['public_id'],
+    'kind'       => $kind,
+    // 어느 행을 머리행으로 보고 판정했나 — 화면이 「2행을 머리행으로 봤습니다」 를 보여 준다
+    'header_row' => $headerRow,
+    'total'      => $judged['total'],
     'truncated' => $sheet['truncated'],
     'counts'    => $judged['counts'],
     'rows'      => $rows,

@@ -312,6 +312,7 @@ hr "T-44  엑셀 가져오기 (PRD 12.2 T-44, F-29, S-06, S-07, SECURITY R-67)"
 
 WORK="$JAR_DIR/xlsx"
 mkdir -p "$WORK"
+export ECOUNT_XLSX="$WORK/ecount.xlsx"
 
 sub "시험용 xlsx 100행 만들기 (정상 90 · 중복 코드 5 · 거래처 없음 5)"
 php -d error_reporting=E_ALL <<PHPGEN
@@ -471,6 +472,151 @@ if [ -n "$OTHER" ]; then
 else
   echo "  (비교할 다른 파일이 없어 건너뜀)"
 fi
+
+sub "⑪ 이카운트형 파일 — 제목 1행 + 머리행 2행 + 데이터 (1차 보정 2026-09-13)"
+# 실제 이카운트 품목 내보내기(ESA009M.xlsx)의 모양을 그대로 흉내낸다:
+#   0행 제목 한 칸 · 1행 진짜 머리행 · 2행~ 데이터.
+# 보정 전에는 rows[0] 을 머리행으로 못박아 열이 한 칸뿐이었고 preview 가 400 이었다.
+php -d error_reporting=E_ALL <<'PHPGEN2'
+<?php
+$header = ['구매처명','대분류','중분류','소분류','품목코드','품목명','규격','단위',
+           '입고단가','당수량(분자)','당수량(분모)','최초작성자'];
+$rows = [['회사명 : 주식회사 플란랩스'], $header];
+for ($i = 1; $i <= 30; $i++) {
+    // 분모 1 = 그대로 등록. 마지막 5행만 분모 2 로 두어 review 로 갈리는지 본다.
+    $den = ($i > 25) ? '2' : '1';
+    $rows[] = ['더존덴탈', '소모품', '거즈', '', 'E'.str_pad((string)$i, 5, '0', STR_PAD_LEFT),
+               'ECOUNT ITEM '.$i, $i.'mm', 'EA', (string)(2000+$i), '10', $den, '홍길동'];
+}
+
+$esc = static fn (string $v): string => htmlspecialchars($v, ENT_QUOTES | ENT_XML1, 'UTF-8');
+$sheet = '<?xml version="1.0" encoding="UTF-8"?>'
+       . '<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetData>';
+foreach ($rows as $r => $row) {
+    $sheet .= '<row r="'.($r+1).'">';
+    foreach ($row as $c => $cell) {
+        $col = chr(65 + $c);
+        $sheet .= '<c r="'.$col.($r+1).'" t="inlineStr"><is><t>'.$esc((string)$cell).'</t></is></c>';
+    }
+    $sheet .= '</row>';
+}
+$sheet .= '</sheetData></worksheet>';
+
+$ct = '<?xml version="1.0" encoding="UTF-8"?>'
+    . '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">'
+    . '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>'
+    . '<Default Extension="xml" ContentType="application/xml"/>'
+    . '<Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>'
+    . '<Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>'
+    . '</Types>';
+$rels = '<?xml version="1.0" encoding="UTF-8"?>'
+      . '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
+      . '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/>'
+      . '</Relationships>';
+$wb = '<?xml version="1.0" encoding="UTF-8"?>'
+    . '<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"'
+    . ' xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">'
+    . '<sheets><sheet name="Sheet1" sheetId="1" r:id="rId1"/></sheets></workbook>';
+$wbRels = '<?xml version="1.0" encoding="UTF-8"?>'
+        . '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
+        . '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/>'
+        . '</Relationships>';
+
+$path = getenv('ECOUNT_XLSX');
+@unlink($path);
+$zip = new ZipArchive();
+$zip->open($path, ZipArchive::CREATE);
+$zip->addFromString('[Content_Types].xml', $ct);
+$zip->addFromString('_rels/.rels', $rels);
+$zip->addFromString('xl/workbook.xml', $wb);
+$zip->addFromString('xl/_rels/workbook.xml.rels', $wbRels);
+$zip->addFromString('xl/worksheets/sheet1.xml', $sheet);
+$zip->close();
+echo '  만든 파일: ', filesize($path), " 바이트 (제목 1행 + 머리행 1행 + 데이터 30행)\n";
+PHPGEN2
+
+R=$(curl -s -w '\n%{http_code}' -b "$JAR_DIR/qa_admin01.jar" -A "$UA" \
+    -H "X-CSRF-Token: $TOK_ADMIN" -F "file=@$WORK/ecount.xlsx" "$BASE/api/purchase/import")
+echo "  HTTP $(code_of "$R")"
+echo "  $(body_of "$R" | head -c 520)"
+expect "이카운트형 업로드 201" 201 "$(code_of "$R")"
+ECOUNT_ID=$(body_of "$R" | sed -n 's/.*"import_id":"\([0-9a-f-]*\)".*/\1/p')
+
+sub "⑪-a 머리행 자동 감지 = 1 (0행은 제목 한 칸)"
+# 응답에는 `header_row` 가 여러 번 나온다(맨 앞의 감지 결과 + 저장된 매핑마다 하나).
+# sed 의 `.*` 는 **가장 뒤**를 잡아 저장된 매핑의 0 을 읽는다 → grep -o 로 **첫 번째**만 본다.
+expect "header_row 자동 감지 1" 1 "$(body_of "$R" | grep -o '"header_row":[0-9]*' | head -1 | cut -d: -f2)"
+expect "데이터 행 수 30 (제목·머리행 제외)" 30 "$(body_of "$R" | sed -n 's/.*"rows":\([0-9]*\).*/\1/p')"
+expect "head_rows 가 내려온다" 1 "$(body_of "$R" | grep -c '"head_rows"')"
+expect "매핑 후보에 품목코드→code" 1 "$(body_of "$R" | grep -c '"품목코드":"code"')"
+expect "매핑 후보에 품목명→name" 1 "$(body_of "$R" | grep -c '"품목명":"name"')"
+expect "매핑 후보에 구매처명→vendor" 1 "$(body_of "$R" | grep -c '"구매처명":"vendor"')"
+expect "당수량(분자)→pack_qty" 1 "$(body_of "$R" | grep -c 'pack_qty')"
+expect "최초작성자는 건너뜀 기본값" 1 "$(body_of "$R" | grep -c '"최초작성자":"skip"')"
+
+EMAP='{"구매처명":"vendor","대분류":"cat1","중분류":"cat2","품목코드":"code","품목명":"name","규격":"spec","단위":"unit","입고단가":"price_in","당수량(분자)":"pack_qty","당수량(분모)":"pack_den","최초작성자":"skip"}'
+
+sub "⑪-b header_row 를 0 으로 **잘못** 보내면 그 줄엔 열 이름이 없다 → 400"
+R=$(call qa_admin01 POST "/api/purchase/import/$ECOUNT_ID/preview" "$TOK_ADMIN" \
+    "{\"kind\":\"items\",\"mapping\":$EMAP,\"header_row\":0}")
+echo "  HTTP $(code_of "$R")  $(body_of "$R")"
+expect "머리행 0 → 400 (열 이름이 없다)" 400 "$(code_of "$R")"
+
+sub "⑪-c header_row=1 로 보내면 정상 판정 (분모 1 은 등록, 분모 2 는 확인 필요)"
+R=$(call qa_admin01 POST "/api/purchase/import/$ECOUNT_ID/preview" "$TOK_ADMIN" \
+    "{\"kind\":\"items\",\"mapping\":$EMAP,\"header_row\":1}")
+echo "  HTTP $(code_of "$R")"
+echo "  counts: $(body_of "$R" | sed -n 's/.*"counts":{\([^}]*\)}.*/\1/p')"
+echo "  본문(앞 460자): $(body_of "$R" | head -c 460)"
+expect "미리보기 200" 200 "$(code_of "$R")"
+expect "insert 25 (분모 1)" 25 "$(body_of "$R" | sed -n 's/.*"insert":\([0-9]*\).*/\1/p')"
+expect "review 5 (분모 2 — 사람 확인)" 5 "$(body_of "$R" | sed -n 's/.*"review":\([0-9]*\).*/\1/p')"
+expect "error 0" 0 "$(body_of "$R" | sed -n 's/.*"error":\([0-9]*\).*/\1/p')"
+expect "응답이 머리행을 알려 준다" 1 "$(body_of "$R" | grep -o '"header_row":[0-9]*' | head -1 | cut -d: -f2)"
+expect "사유 pack_den_not_one" 1 "$(body_of "$R" | grep -c 'pack_den_not_one')"
+expect "행 번호는 3행부터 (제목·머리행 다음)" 1 "$(body_of "$R" | grep -c '"row_no":3')"
+
+sub "⑪-d header_row 를 생략해도 서버가 다시 감지해 같은 결과"
+R=$(call qa_admin01 POST "/api/purchase/import/$ECOUNT_ID/preview" "$TOK_ADMIN" \
+    "{\"kind\":\"items\",\"mapping\":$EMAP}")
+echo "  counts: $(body_of "$R" | sed -n 's/.*"counts":{\([^}]*\)}.*/\1/p')"
+expect "생략 시에도 insert 25" 25 "$(body_of "$R" | sed -n 's/.*"insert":\([0-9]*\).*/\1/p')"
+
+sub "⑪-e 범위 밖 header_row 는 400 (0~19 만)"
+for BAD in 20 99 -1 abc; do
+  R=$(call qa_admin01 POST "/api/purchase/import/$ECOUNT_ID/preview" "$TOK_ADMIN" \
+      "{\"kind\":\"items\",\"mapping\":$EMAP,\"header_row\":\"$BAD\"}")
+  expect "header_row=$BAD → 400" 400 "$(code_of "$R")"
+done
+
+sub "⑪-f 확정 — 분모 1 인 25행만 저장되고 확인 필요 5행은 건너뛴다"
+ITEMS_BEFORE=$(psqlq "SELECT count(*) FROM p_items;")
+R=$(call qa_admin01 POST "/api/purchase/import/$ECOUNT_ID/commit" "$TOK_ADMIN" \
+    "{\"kind\":\"items\",\"mapping\":$EMAP,\"header_row\":1}")
+echo "  HTTP $(code_of "$R")  $(body_of "$R")"
+expect "확정 200" 200 "$(code_of "$R")"
+expect "inserted 25" 25 "$(body_of "$R" | sed -n 's/.*"inserted":\([0-9]*\).*/\1/p')"
+expect "표에 25행만 늘었다" 25 "$(($(psqlq "SELECT count(*) FROM p_items;") - ITEMS_BEFORE))"
+expect "분모 2 행(E00026~)은 저장되지 않았다" 0 "$(psqlq "SELECT count(*) FROM p_items WHERE code IN ('E00026','E00027','E00028','E00029','E00030');")"
+expect "분자 10 ÷ 분모 1 = 낱개 10" 25 "$(psqlq "SELECT count(*) FROM p_items WHERE code LIKE 'E%' AND pack_qty = 10;")"
+
+sub "⑪-g 매핑에 머리행까지 저장되고, 다시 올리면 그대로 돌아온다"
+R=$(call qa_admin01 POST /api/purchase/import/mappings "$TOK_ADMIN" \
+    "{\"kind\":\"items\",\"name\":\"이카운트 ESA009M\",\"mapping\":$EMAP,\"header_row\":1}")
+echo "  HTTP $(code_of "$R")  $(body_of "$R" | head -c 200)"
+expect "매핑+머리행 저장 201" 201 "$(code_of "$R")"
+expect "저장 응답의 header_row=1" 1 "$(body_of "$R" | grep -o '"header_row":[0-9]*' | head -1 | cut -d: -f2)"
+R=$(call qa_admin01 GET /api/purchase/import/mappings "$TOK_ADMIN")
+expect "목록에 머리행이 함께 있다" 1 "$(body_of "$R" | grep -c '이카운트 ESA009M')"
+R=$(curl -s -w '\n%{http_code}' -b "$JAR_DIR/qa_admin01.jar" -A "$UA" \
+    -H "X-CSRF-Token: $TOK_ADMIN" -F "file=@$WORK/ecount.xlsx" "$BASE/api/purchase/import")
+expect "재업로드 시 저장된 매핑이 머리행과 함께 내려온다" 1 "$(body_of "$R" | grep -c '이카운트 ESA009M')"
+
+sub "⑪-h 매핑 저장에도 범위 밖 머리행은 400"
+R=$(call qa_admin01 POST /api/purchase/import/mappings "$TOK_ADMIN" \
+    "{\"kind\":\"items\",\"name\":\"범위밖\",\"mapping\":$EMAP,\"header_row\":25}")
+echo "  HTTP $(code_of "$R")  $(body_of "$R")"
+expect "매핑 header_row=25 → 400" 400 "$(code_of "$R")"
 
 sub "⑩ 업로드 원본이 「구매/가져오기」 폴더(admin-only)에 있나"
 psqlq "SELECT '  '||f.original_name||' | '||f.access_level||' | 폴더='||fo.name||' | sha256='||left(f.sha256,16)||'…'

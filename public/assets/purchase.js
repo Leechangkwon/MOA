@@ -433,11 +433,21 @@
     category_not_found: '분류 이름이 등록된 분류와 다릅니다',
     duplicate_in_file: '같은 거래처·코드가 이 파일 안에 또 있습니다',
     branch_not_found: '지점 이름을 찾을 수 없습니다',
-    name_differs: '품목명이 등록된 이름과 다릅니다'
+    name_differs: '품목명이 등록된 이름과 다릅니다',
+    // 1차 보정 — 이카운트의 「당수량(분자)/(분모)」. 분모가 1 이 아니면 사람이 봐야 한다.
+    pack_den_not_one: '포장 수량의 분모가 1 이 아닙니다 — 낱개 수를 확인해 주세요'
   };
 
   function initImport() {
-    var state = { importId: '', kind: 'items', columns: [], sample: [], targets: {}, judged: null };
+    var state = {
+      importId: '', kind: 'items', columns: [], sample: [], targets: {}, required: {},
+      judged: null,
+      // 1차 보정 2026-09-13 — 머리행은 서버가 고르고 사람이 바꾼다.
+      headerRow: 0,        // 지금 고른 줄 (0기준)
+      detected: {},        // 종류별 서버 감지 결과
+      headRows: [],        // 앞 20행 원문 — 재업로드 없이 다시 그리는 재료
+      guess: {}            // 종류별 매핑 후보 (서버가 준 것)
+    };
 
     function step(current) {
       [1, 2, 3, 4].forEach(function (n) {
@@ -481,6 +491,53 @@
       });
     }
 
+    /**
+     * 지금 고른 머리행으로 **열 목록과 표본을 다시 만든다** (파일을 다시 올리지 않는다).
+     * 재료는 업로드 응답의 `head_rows`(앞 20행 원문)뿐이고, 서버에 다시 묻지 않는다.
+     */
+    function applyHeaderRow(row, guess) {
+      state.headerRow = row;
+      state.columns = state.headRows[row] ? state.headRows[row].slice() : [];
+      state.sample = state.headRows.slice(row + 1, row + 6);
+
+      var note = $('p-header-note');
+      if (note) {
+        var auto = state.detected[state.kind];
+        setText(note,
+          String(row + 1) + '행을 머리행(열 이름이 적힌 줄)으로 봅니다'
+          + (auto === row ? ' — 서버가 자동으로 고른 줄입니다.' : ' — 직접 고른 줄입니다.')
+          + ' 데이터는 ' + String(row + 2) + '행부터입니다.');
+      }
+      renderMapping(guess || state.guess[state.kind] || {});
+    }
+
+    /** 머리행 셀렉트를 채운다 — 각 줄의 첫 세 칸을 보여 줘 고르기 쉽게 한다. */
+    function fillHeaderSelect() {
+      var select = $('p-header-row');
+      if (!select) { return; }
+      clear(select);
+      state.headRows.forEach(function (row, index) {
+        var peek = row.filter(function (v) { return v !== ''; }).slice(0, 3).join(' | ');
+        var option = document.createElement('option');
+        option.value = String(index);
+        setText(option, String(index + 1) + '행: ' + (peek === '' ? '(빈 줄)' : peek));
+        if (index === state.headerRow) { option.selected = true; }
+        select.appendChild(option);
+      });
+    }
+
+    var headerSelect = $('p-header-row');
+    if (headerSelect) {
+      headerSelect.addEventListener('change', function () {
+        var row = Number(headerSelect.value);
+        if (!isFinite(row) || row < 0 || row >= state.headRows.length) { return; }
+        // 줄을 바꾸면 매핑 후보도 그 줄 기준으로 다시 추측할 수 없다(서버가 준 것은 감지된
+        // 줄 기준이다) — 그래서 열 이름이 같을 때만 이어진다. 나머지는 사람이 고른다.
+        applyHeaderRow(row, null);
+        say('');
+      });
+    }
+
     function currentMapping() {
       var mapping = {};
       var selects = $('p-map-body').querySelectorAll('select[data-column]');
@@ -509,9 +566,14 @@
             if (!result) { return; }
             if (!result.ok) { say(errorMessage(result.data)); return; }
             state.importId = result.data.import_id;
-            state.columns = Array.isArray(result.data.columns) ? result.data.columns : [];
-            state.sample = Array.isArray(result.data.sample) ? result.data.sample : [];
             state.targets = result.data.targets || {};
+            state.required = result.data.required || {};
+            state.guess = result.data.mapping || {};
+            // 1차 보정 — 앞 20행 원문과 종류별 감지 결과를 함께 받는다.
+            state.headRows = Array.isArray(result.data.head_rows) ? result.data.head_rows : [];
+            state.detected = result.data.header_rows || {};
+            var picked = typeof result.data.header_row === 'number' ? result.data.header_row : 0;
+            if (typeof state.detected[state.kind] === 'number') { picked = state.detected[state.kind]; }
             setText($('p-import-info'),
               dash(result.data.file_name) + ' · ' + String(result.data.rows) + '행'
               + (result.data.truncated ? ' · 상한에서 끊겼습니다(확정 불가)' : ''));
@@ -530,11 +592,22 @@
               savedSelect.appendChild(option);
             });
             savedSelect.addEventListener('change', function () {
-              var picked = (result.data.saved || [])[Number(savedSelect.value)];
-              renderMapping(picked ? picked.mapping : ((result.data.mapping || {})[state.kind] || {}));
+              var chosen = (result.data.saved || [])[Number(savedSelect.value)];
+              if (!chosen) {
+                applyHeaderRow(state.detected[state.kind] || 0, state.guess[state.kind] || {});
+                return;
+              }
+              // 저장된 매핑은 **머리행 위치도 함께** 기억한다 — 같은 양식이 두 걸음으로 끝난다.
+              var row = typeof chosen.header_row === 'number' ? chosen.header_row : 0;
+              if (row < 0 || row >= state.headRows.length) { row = 0; }
+              var sel = $('p-header-row');
+              if (sel) { sel.value = String(row); }
+              applyHeaderRow(row, chosen.mapping);
             });
 
-            renderMapping((result.data.mapping || {})[state.kind] || {});
+            state.headerRow = picked;
+            fillHeaderSelect();
+            applyHeaderRow(picked, state.guess[state.kind] || {});
             $('p-map-panel').hidden = false;
             step(2);
             say('');
@@ -543,12 +616,43 @@
       });
     }
 
+    /**
+     * 미리보기를 누르기 전에 **필수 칸이 채워졌는지** 화면이 먼저 본다 (1차 보정 2026-09-13).
+     *
+     * 전에는 그대로 보내서 서버가 `mapping_incomplete` 400 을 돌려주었고, 화면에는
+     * 「잘못된 요청입니다」만 떠서 **무엇이 빠졌는지 알 수 없었다**(2026-09-13 05:37 사고).
+     * 서버의 400 문구는 그대로 둔다 — 사유를 응답에 싣지 않는 규칙(PRD S-09-5)은 그대로이고,
+     * 여기서 막는 것은 편의일 뿐이다(보내면 서버가 여전히 막는다).
+     *
+     * @return list<string> 비어 있는 필수 칸 이름들
+     */
+    function missingRequired() {
+      var need = state.required[state.kind] || [];
+      var mapping = currentMapping();
+      var have = {};
+      Object.keys(mapping).forEach(function (column) { have[mapping[column]] = true; });
+      return need.filter(function (target) { return have[target] !== true; });
+    }
+
+    /** 필수 칸 이름의 사람 말 (없으면 원래 이름 그대로) */
+    var TARGET_LABEL = {
+      code: '품목코드', name: '품목명', vendor: '구매처(거래처)',
+      branch: '지점', unit: '단위'
+    };
+
     var previewButton = $('p-map-preview');
     if (previewButton) {
       previewButton.addEventListener('click', function () {
+        var missing = missingRequired();
+        if (missing.length > 0) {
+          say('필수 칸 ' + missing.map(function (t) { return '「' + (TARGET_LABEL[t] || t) + '」'; }).join(' · ')
+              + ' 이(가) 비어 있습니다. 오른쪽 「우리 칸」 에서 골라 주세요'
+              + ' (열 이름이 안 보이면 위의 「머리행」 을 바꿔 보세요).');
+          return;
+        }
         say('판정하는 중…');
         request('POST', '/api/purchase/import/' + state.importId + '/preview',
-                { kind: state.kind, mapping: currentMapping() })
+                { kind: state.kind, mapping: currentMapping(), header_row: state.headerRow })
           .then(function (result) {
             if (!result) { return; }
             if (!result.ok) { say(errorMessage(result.data)); return; }
@@ -597,7 +701,8 @@
         if (name === '') { say('매핑 이름을 적어 주세요.'); return; }
         say('');
         request('POST', '/api/purchase/import/mappings',
-                { kind: state.kind, name: name, mapping: currentMapping() })
+                { kind: state.kind, name: name, mapping: currentMapping(),
+                  header_row: state.headerRow })
           .then(function (result) {
             if (!result) { return; }
             say(result.ok ? '매핑을 저장했습니다.' : errorMessage(result.data));
@@ -612,7 +717,7 @@
         if (!window.confirm('오류 행을 뺀 나머지를 저장합니다. 계속할까요?')) { return; }
         say('확정하는 중…');
         request('POST', '/api/purchase/import/' + state.importId + '/commit',
-                { kind: state.kind, mapping: currentMapping() })
+                { kind: state.kind, mapping: currentMapping(), header_row: state.headerRow })
           .then(function (result) {
             if (!result) { return; }
             if (!result.ok) { say(errorMessage(result.data)); return; }
