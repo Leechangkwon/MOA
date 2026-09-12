@@ -724,7 +724,8 @@ sudo -u postgres psql -d tbox_re -c "SELECT happened_at, actor_name, action, res
 > 해석(Fable): 구매·재고 기획보다 **파일 공유의 기본 사용성** 둘을 먼저 — ① 폴더는 DB 분류만(저장 경로·권한 판정 불변, 폴더 권한은 Q-16 후보) ② 일괄 업로드는 **서버 계약을 바꾸지 않고** 화면이 파일마다 요청을 순차로 보내는 방식(검사·감사·총량이 파일 단위로 그대로). 구매·재고 건은 저장소·범위 결정 대기 그대로.
 
 **개발 사항 — 18-1 폴더 (F-26)**
-- [ ] 마이그레이션 `folders` + `files.folder_id`(FK RESTRICT), `grants.sql`(folders arwd), `schema.sql`
+- [ ] 마이그레이션 `folders`(**`access_level`·`team_id` 포함**, 파일과 같은 CHECK) + `files.folder_id`(FK RESTRICT), `grants.sql`(folders arwd), `schema.sql`
+- [ ] `Authz`: `visibleWhere(user, alias)` 일반화(파일·폴더 공용), `fitsUnderFolder(level, team, folder)`, `decideFolderChange`; 7경로(업로드·가져오기·파일 이동·파일 등급 변경·폴더 생성·이동·등급 변경)에서 불변 규칙 ①②③; F-25 `admin_permissions_update.php` 에 불변 규칙 (f) 단조성
 - [ ] `Authz::decideFolderChange`(파일 `decideOwnership` 과 같은 표), `files_update.php` 허용 키 `folder_id`, `files_list.php` `?folder=`·`folder_id`·`breadcrumb`, 업로드·fetch `folder_id`
 - [ ] 핸들러 `folders_list`·`folders_create`·`folders_update`·`folders_delete`, 라우트 4개, 감사 문장 틀 `folder.*`
 - [ ] 화면: 트리·breadcrumb·새 폴더·이름 변경·삭제·파일 이동 모달·업로드 패널 폴더 선택, 민감 이름 금지 안내
@@ -745,6 +746,7 @@ sudo -u postgres psql -d tbox_re -c "SELECT happened_at, actor_name, action, res
 | 날짜 | 구분 | 내용 | 해소·근거 |
 |---|---|---|---|
 | 2026-09-13 | 결정 | "일괄 업로드와 폴더를 먼저" · "캡처를 t-box 에 올려도 됐을 듯" | 18단계 착수. 캡처는 이번엔 서버 홈 폴더로 받았지만(`~/ecount-shots`, 본인만 읽기) 다음부터는 t-box 에 `admin-only` 로 올리면 감사·권한·백업이 따라온다 — 폴더 기능이 그 용도에도 맞음 |
+| 2026-09-13 | 결정 | "설계에 폴더 자체도 권한을 두도록 해 — 폴더에 접근해도 권한이 없으면 파일을 못 보는 형태" | 폴더에 파일과 같은 등급·팀을 둔다. 두 겹(폴더·파일)을 판정마다 두 번 검사하지 않고 **쓰기 시점 불변 규칙**(하위 ≥ 부모 등급, 좁히기는 하위 검사, 넓히기는 Admin)으로 "파일이 보이면 폴더도 보인다" 를 보장 → 읽기 SQL 불변. 매트릭스 편집이 이 전제를 깨지 않게 F-25 규칙 (f) 추가. PRD F-26·T-40·9장, ARCH 5.16·6.2-4, SECURITY R-63 갱신. Opus 에 설계 변경 통지 |
 
 
 ## 2-1. 10단계 뒤 일괄 자기 공격 — 진행 순서 (관문 ③, 사용자)

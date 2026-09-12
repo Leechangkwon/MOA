@@ -694,17 +694,25 @@ Admin 전용. 정책 `org.manage`(`Authz::canManageOrg` = Admin) 를 `KNOWN_POLI
 
 ---
 
-### 5.16 폴더 — `GET/POST /api/folders` · `PATCH/DELETE /api/folders/{num}` (PRD F-26 · 18-1, 2026-09-13)
+### 5.16 폴더 — `GET/POST /api/folders` · `PATCH/DELETE /api/folders/{num}` (PRD F-26 · 18-1, 2026-09-13, 사용자 결정 「폴더 자체도 권한」)
 
-**원칙 두 가지.** ① 폴더는 **DB 의 분류**다 — 저장 경로(6.3, 무작위 이름 2단 디렉터리)는 한 글자도 바뀌지 않으므로 경로 조작 표면이 늘지 않는다. ② 폴더는 **권한을 갖지 않는다** — 파일 읽기 판정은 지금처럼 `Authz::decideRead`·`visibleFilesWhere`(파일 등급·팀)만 본다. 폴더 안 목록 SQL 은 `… WHERE <visibleFilesWhere> AND f.folder_id IS NOT DISTINCT FROM :folder`. 그래서 "admin-only 파일이 든 폴더" 를 Employee 가 열면 **빈 폴더로 보인다**(total 도 0). 폴더 이름은 모두에게 보이는 메타데이터다(SECURITY R-63 — 이름에 민감한 말을 넣지 않도록 화면 안내).
+**원칙.** ① 폴더는 **DB 의 분류**다 — 저장 경로(6.3)는 바뀌지 않는다. ② 폴더는 **파일과 같은 등급 체계**(`access_level` 4종 + `team_id`)를 갖고, 읽기 판정은 **같은 함수** `Authz::decideRead(user, row)` 다(행에 `access_level`·`team_id` 만 있으면 파일이든 폴더든 같은 코드). 못 읽는 폴더는 트리 응답에 없고(S-02), 그 폴더의 목록·자식 요청은 403 동일 문구다.
 
-**표 `folders`** (6.2-4): `id BIGSERIAL`, `parent_id BIGINT NULL → folders(id)`, `name TEXT CHECK(1~50자)`, `depth INT CHECK(1..5)`, `created_by → users`, `team_id NULL → teams`(만든 사람의 팀 — Manager 관리 범위), `created_at`, `updated_at`, `UNIQUE(parent_id, name)`(루트는 `parent_id IS NULL` 라 부분 인덱스 `UNIQUE(name) WHERE parent_id IS NULL` 로). `files.folder_id BIGINT NULL → folders(id) ON DELETE RESTRICT` — 파일이 참조하는 폴더는 DB 가 삭제를 막는다(앱 검사의 마지막 그물).
+**두 겹을 한 번의 검사로 — 불변 규칙.** "폴더에 접근해도 권한이 없으면 파일을 못 본다" 를 판정마다 폴더·파일을 두 번 검사하는 대신 **쓰기 시점**에 보장한다.
+- ① **하위는 부모보다 넓을 수 없다**: 폴더 안 파일·하위 폴더의 `LEVEL_RANK[level] ≥ LEVEL_RANK[parent.level]`, 부모가 `team` 이면 `team_id` 가 같아야 한다(`Authz::fitsUnderFolder(childLevel, childTeam, folder)`). 업로드·URL 가져오기·파일 이동·파일 등급 변경·폴더 생성·폴더 이동·폴더 등급 변경 **전부** 이 함수를 지난다(거부 `parent_narrower`).
+- ② 폴더 등급을 **좁히면**(rank 증가) 하위 폴더·살아 있는 파일 전부가 새 등급에 대해 ①을 만족해야 한다(재귀 CTE 로 검사, 위반 시 400 `children_exceed`, detail 에 위반 개수만).
+- ③ 폴더 등급을 **넓히면**(rank 감소) Admin 만(`decideLevelChange` 와 같은 `downgrade_not_permitted`). 넓혀도 하위는 자기 등급을 유지하므로 ①은 깨지지 않는다.
+매트릭스(6.2-1)는 등급 순서에 대해 **단조**다 — 어떤 역할이 읽을 수 있는 등급 집합은 넓은 쪽부터 연속(Guest {public}, Employee·Manager {public, internal, team(같은 팀)}, Admin 전부). 그래서 ①이 지켜지면 **"파일이 보이면 그 폴더도 보인다"** 가 성립하고, 목록·검색 SQL 은 지금의 `visibleFilesWhere`(파일 조건만) 그대로다. F-25 로 매트릭스를 편집할 때 이 단조성이 깨질 수 있으므로(예: Guest 에 `team` 만 열기) **F-25 불변 규칙 (f)** 를 추가한다: 역할마다 `can_read` 는 rank 순서로 앞에서부터 연속이어야 한다(위반 시 `invariant rule=f`).
 
-**권한 판정(`Authz`).** 만들기는 라우트 `file.upload`(Guest 는 여기서 끝). 이름 변경·이동·삭제는 `Authz::decideFolderChange(actor, folder)`: Admin `admin_all` · Manager 는 만든 사람이 본인(`owner`) 또는 폴더 `team_id` = 자기 팀(`team_scope`) · Employee 는 본인(`owner`) · 그 밖 `not_owner`/`role_not_permitted` — 파일의 `decideOwnership` 과 같은 표. 파일을 폴더로 옮기는 것은 파일 쪽 권한(`decideRead → decideEdit`)만 본다(5.7 PATCH 허용 키에 `folder_id` 추가, `folder_id` 는 존재하는 폴더 또는 `null`).
+**표 `folders`** (6.2-4): `id`, `parent_id NULL → folders ON DELETE RESTRICT`, `name`, `depth 1..5`, `access_level`(파일과 같은 CHECK), `team_id NULL → teams`(team 이면 NOT NULL — 파일과 같은 CHECK), `created_by`, `created_at`, `updated_at`, `UNIQUE(parent_id, name)` + 루트용 부분 UNIQUE. `files.folder_id NULL → folders ON DELETE RESTRICT`.
 
-**검사 순서(POST/PATCH).** 허용 키 → 이름 규칙(1~50자, 제어문자·`/`·`\\` 금지, 앞뒤 공백 제거, UTF-8) → 부모 존재·깊이(`parent.depth + 1 ≤ 5`) → 중복(409 `MSG_CONFLICT`) → 이동이면 **자기 자신·자손 아래 금지**(재귀 CTE 로 조상 확인) → 저장 → 감사 `folder.create|update|delete allow`(detail `before/after`·`parent_id`·`depth`). 삭제는 살아 있는 파일 0(`deleted_at IS NULL AND purged_at IS NULL`)·하위 폴더 0 일 때만 `DELETE`(400 `folder_not_empty`). 휴지통의 파일이 참조하는 폴더는 지울 수 없다(FK) — 화면은 "휴지통에 이 폴더의 파일이 있습니다" 로 안내.
+**권한 판정(`Authz`).** 트리·목록: 라우트 `file.read` → 핸들러가 부모 폴더 행을 읽어 `decideRead`(실패 403 + `folder.read deny`), 자식은 `visibleFoldersWhere(user)`(= `visibleFilesWhere` 와 같은 조건을 별칭 `d` 로 — 한 함수 `visibleWhere(user, alias)` 로 일반화하고 파일 쪽은 그것을 부른다) 로 SQL 에서 거른다. 만들기: 라우트 `file.upload` → `decideUploadAs(user, level, team)`(파일과 같은 자격) → 부모가 있으면 `decideRead(parent)` + `fitsUnderFolder`. 이름 변경·이동·등급 변경·삭제: `decideFolderChange(actor, folder)` — Admin `admin_all` · Manager 본인 `owner` / 폴더 `team_id` = 자기 팀 `team_scope` / 그 밖 `team_mismatch`·`not_owner` · Employee 본인 `owner` / `not_owner` · Guest `role_not_permitted`. 등급 변경은 그 뒤 ②③. 이동은 새 부모 `decideRead` + `fitsUnderFolder` + 자기 자신·자손 금지(`cycle`) + 하위 깊이 재계산(`depth_exceeded`).
 
-**화면.** 파일 화면 좌측(내비 아래)에 폴더 트리, 상단 breadcrumb, 「새 폴더」「이름 변경」「삭제」, 파일 행 「이동」(폴더 선택 모달). 업로드·URL 가져오기 패널에 「폴더」 선택(기본 = 현재 폴더). 전부 `textContent`. 트리는 `GET /api/folders?parent=` 로 한 층씩 받는다(전체를 한 번에 내리지 않음 — 깊이 5·개수 제한 없음 대비).
+**파일 쪽 변경(5.2·5.6·5.7).** 업로드·가져오기 본문에 `folder_id`(선택) — 폴더 `decideRead` + `fitsUnderFolder(level, team, folder)` 를 등급 검사 바로 뒤에서. `PATCH /api/files/{id}` 허용 키에 `folder_id`(이동: 대상 폴더 `decideRead` + ①) ; 파일 등급 변경(`access_level`)도 폴더 안에 있으면 ① 검사(폴더보다 넓게 못 바꿈, `parent_narrower`).
+
+**삭제.** 살아 있는 파일 0(`purged_at IS NULL` 포함 — 휴지통 파일도 참조) · 하위 폴더 0 → DELETE, 아니면 400 `folder_not_empty`.
+
+**화면.** 트리는 읽을 수 있는 폴더만(등급 배지), 「새 폴더」 등급 선택지는 `upload_levels` ∩ (부모 등급 이상), 파일 이동 모달은 대상 폴더 등급 이상인 파일만 허용(서버가 다시 검사). 전부 `textContent`.
 
 ### 5.17 일괄 업로드 — 화면 순차 요청 (PRD F-27 · 18-2, 2026-09-13)
 
@@ -804,7 +812,8 @@ INSERT INTO permissions VALUES
 | `parent_id BIGINT NULL → folders.id ON DELETE RESTRICT` | NULL = 루트 바로 아래 |
 | `name TEXT NOT NULL CHECK (length(name) BETWEEN 1 AND 50)` | 같은 부모 안 중복 금지(`UNIQUE(parent_id, name)` + 루트용 부분 UNIQUE) |
 | `depth INT NOT NULL CHECK (depth BETWEEN 1 AND 5)` | 부모 depth + 1 |
-| `created_by BIGINT NOT NULL → users.id`, `team_id BIGINT NULL → teams.id` | 관리 범위 판정(5.16) |
+| `access_level TEXT NOT NULL CHECK (IN 4종)`, `team_id BIGINT NULL → teams.id`, `CHECK (access_level <> 'team' OR team_id IS NOT NULL)` | 폴더의 등급·팀 — 파일과 같은 제약(5.16 불변 규칙 ①은 앱이 지킨다) |
+| `created_by BIGINT NOT NULL → users.id` | 관리 범위 판정(5.16 `decideFolderChange`) |
 | `created_at`, `updated_at TIMESTAMPTZ NOT NULL DEFAULT now()` | |
 
 `files.folder_id BIGINT NULL REFERENCES folders(id) ON DELETE RESTRICT`. 앱 계정 권한: `folders` SELECT·INSERT·UPDATE·DELETE(빈 폴더 삭제 — 파일이 참조하면 FK 가 막는다). 저장 경로(6.3)와 무관하다.
