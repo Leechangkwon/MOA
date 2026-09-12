@@ -194,6 +194,7 @@
 | F-20 | **기능별 화면 분리 + 디자인 개선** (사용자 요청 2026-09-12 "현재는 1페이지에 모든 기능이 다 나오고 있는데, 파일 관련이면 파일로, 계정 관련이면 환경 설정으로") | 한 페이지에 쌓여 있던 기능을 **공통 셸(좌측 내비) + 기능별 페이지**로 나눈다: 파일(`/`)·휴지통(`/trash`)·설정—내 계정(`/settings`)·관리—계정(`/users`)·조직·권한(`/org`)·감사 로그(`/audit`). 내비 항목은 서버 `/api/me` 의 `can_*` 플래그로만 열리고, 각 페이지·API 는 라우트 정책이 다시 막는다(S-01 — 내비를 되살려도 403). 디자인은 Claude Design 캔버스(STAGES 12단계)에서 정한 토큰·레이아웃을 `app.css` 하나로 구현, **외부 폰트·CDN 없음**(CSP `self`). 최초 로그인 강제 절차(F-16)는 파일 화면(`/`)에만 있고, 절차 중 다른 화면은 `/` 로 돌려보낸다 | 필수 (12단계) |
 | F-21 | **위키 — 이 서비스가 어떻게 만들어졌나(초보자용)** (사용자 요청 2026-09-12 "홈페이지에 위키를 만들어줘 — PRD·ARCHITECTURE·SECURITY·STAGES 를 단계별로 나누어 상세 내용을 조회, 초보자가 이해할 수 있는 용어 위주") | 화면 `/wiki`(차례) · `/wiki/{slug}`(글 한 편). **원문(md)을 그대로 보여 주지 않는다** — 네 문서를 초보자 말로 다시 쓴 **해설 층**이며, 글마다 「원문 위치」(PRD 절·ARCH 절·SECURITY R-xx·STAGES 단계)를 가리킨다. 구성: ① 안내 글(이 서비스는 무엇인가 · 용어 사전 · 역할과 접근 등급 · 보안 요구사항 S-01~S-11 쉬운 설명 · 남은 위험 R-xx 요약 · 어떻게 검토하나 T-xx · 2026-09-11 사고 요약 · 문서 지도) ② **단계 글 1~13**(각 글은 「왜 필요한가 → 무엇을 만들었나 → 어떻게 확인했나 → 남은 위험 → 직접 해보기 → 원문 위치」 순). 내용은 저장소 `wiki/*.json`(구조화된 본문, HTML 0)에 두고 서버가 이스케이프해 그린다(ARCH 5.10). **열람은 Admin 만**(`role:Admin`) — SECURITY·STAGES 해설에는 남은 위험·서버 계정·사고 경위가 들어 있어 Guest·Employee 에게 보이면 공격 지도가 된다(SECURITY R-56). 넓히려면 라우트 정책 한 줄을 바꾸고 R-56 을 다시 판단한다. 감사 기록은 남기지 않는다(문서 열람은 보안 사건이 아니며, `audit.view` 와 달리 개인정보가 없다) |
 | F-22 | **민감정보 패턴 검출** (15-3 구현 결정 2026-09-12; 확장 아이템 제안 2순위) | 업로드(F-05)와 URL 가져오기(F-14)에서 **같은 자리**(형식 검사 뒤·저장 전)에 한 번 실행. 대상은 미리보기(F-18)가 글자를 뽑을 수 있는 형식(text·table·office)이며 상한도 미리보기 상수를 재사용한다. 패턴: ① 주민등록번호(`6자리-7자리` + 검증 숫자) ② 신용카드 번호(13~19자리 + Luhn) ③ 키워드 목록(`급여`·`연봉`·`주민번호`·`계좌번호`·`여권번호` — 코드 상수). 규칙: 검출되면 `public`·`internal` 로는 올릴 수 없다(400 `sensitive_level_required`, 화면 문구 "민감정보가 보여 team 또는 admin-only 로만 올릴 수 있습니다"). `team`·`admin-only` 는 허용하되 `files.sensitive_flags`(패턴 이름 목록)를 저장하고 목록에 「민감」 배지, 그 뒤 `public`·`internal` 로 **낮추는 변경도 거부**(F-08). 감사 detail 에는 **패턴 이름과 건수만**(값은 절대 기록하지 않음, S-07). **한계(SECURITY R-58)**: 이미지·PDF·암호 zip·이미지로 찍은 문서는 검사하지 못하고, 오탐(우연히 형식이 맞는 숫자)도 있다 — 검출은 보조 장치이고 등급 판단은 올리는 사람의 책임이다 | 필수(15-3) |
+| F-23 | **관리 기능 재인증(sudo 모드)** (12단계 접수 사항 ③ → 사용자 확정 2026-09-12 "계정 기능 사용 전에 비밀번호 치고 들어가기로 했었다") | 관리 영역 — 계정 관리(`user.manage`)·조직·권한(`org.manage`)·감사 로그(`audit.read`)·휴지통·위키(`role:Admin`) — 의 **API 와 화면**은 세션이 있어도 **최근 15분 안에 비밀번호를 다시 확인한 세션**만 쓸 수 있다. 확인은 `POST /api/me/reauth {password}`(현재 비밀번호; 2단계 인증은 로그인에서 이미 거쳤으므로 다시 묻지 않음) → 성공 시 `sessions.reauth_at = now()`. 로그인 직후에도 `reauth_at` 은 비어 있어 **관리 영역에 처음 들어갈 때 반드시 한 번 묻는다**. 만료·미확인 상태의 요청: API 는 403 `{error, next:"reauth"}`(강제 절차 관문과 같은 모양), 화면(HTML)은 302 `/reauth?to=<키>`(키는 `users`·`org`·`audit`·`trash`·`wiki` 허용 목록만 — 되돌아갈 경로를 요청 값으로 받지 않는다). 실패는 로그인 뒤 창구와 같은 카운터(5회 → 잠금·세션 회수, R-48)와 nginx 속도 제한. 감사: `auth.reauth allow/deny(bad_credentials)`, 막힌 요청은 `auth.gate deny reauth_required`. 본인 계정 기능(`/api/me/*`)은 이미 현재 비밀번호(·코드)를 묻고 있어 대상이 아니다 | 필수(16-1) |
 
 ---
 
@@ -586,6 +587,8 @@
 | GET | `/api/me/shares` | 내가 만든 공유 링크 목록(회수·만료 포함, 토큰 없음) (F-13) | `authenticated` | 없음 |
 | DELETE | `/api/shares/{num}` | 공유 링크 회수 (F-13). 만든 사람 또는 Admin(`Authz::decideShareRevoke`) | `authenticated` | `share.revoke` allow/deny |
 | GET | `/s/{token}` | 공유 링크로 받기 (F-13). `{token}` 은 `[A-Za-z0-9_-]{43}`. 만료·회수·소진·없음 전부 404 동일 문구. 성공 시 `attachment` | `public` | `share.download` allow/deny(actor 없음, detail 에 발급자·링크 id) |
+| POST | `/api/me/reauth` | 관리 기능 재인증 (F-23). 본문 `{password}`. 성공 200 `{ok, reauth_until}` → 세션의 `reauth_at` 갱신 | 세션 존재 + CSRF (강제 절차 중에는 불필요 — 관리 기능이 없음) | `auth.reauth` allow / deny(bad_credentials → 실패 집계) |
+| GET | `/reauth?to=키` | 재인증 화면(HTML, F-23). `to` 는 `users`·`org`·`audit`·`trash`·`wiki` 허용 목록만, 그 밖은 `/` | `authenticated` | 없음 |
 
 ---
 
@@ -628,6 +631,7 @@
 | 내 활동 (`/activity`, F-12) | 본인 행동 표(시각·요약·결과) + 페이지 이동 | 본인 것만. IP·기기 정보는 보이지 않음 |
 | 공유 링크 (파일 행 버튼 → 모달, 설정 「내 공유 링크」, F-13) | 만료(1~168시간)·횟수(1~10)·사유 → 만든 뒤 링크 1회 표시 + 복사 ; 목록: 파일명·만료·남은 횟수·상태·「회수」 | 링크는 다시 볼 수 없다는 안내. 고칠 수 있는 파일에만 버튼 |
 | 민감정보 배지 (목록, F-22) | `sensitive_flags` 가 있으면 파일명 옆 「민감」 배지, 업로드 거부 시 등급 안내 문구 | 배지는 표시일 뿐 판단은 서버 |
+| 재인증 (`/reauth`, 관리 화면 모달, F-23) | 비밀번호 한 칸 + 「확인」. 관리 화면(계정·조직·감사·휴지통·위키)에 들어갈 때, 그리고 15분이 지나 API 가 `next:"reauth"` 를 돌려주면 모달로 다시 묻는다 | 막는 것은 서버 관문. 실패 5회면 잠금(로그인 뒤 창구와 같은 규칙) |
 
 ---
 
@@ -686,6 +690,8 @@
 | T-33 | 내 활동은 본인만 (F-12, S-02) | Employee A 세션으로 `/api/me/activity` → A 의 행만(다른 계정 이름 0건), `?actor=`·`?user_id=` 같은 파라미터는 무시. 응답에 `ip`·`user_agent` 키 없음. 미로그인 401 |
 | T-34 | 공유 링크 (F-13, S-01) | Employee 가 남의 파일에 `POST …/share` → 403 + `share.create deny`; 본인 파일 → 201 + `url`. 쿠키 없이 `GET /s/{token}` → 200 attachment + `share.download allow`(actor 없음). 같은 토큰 2회째(횟수 1) → 404 + `deny exhausted`. 회수 뒤 → 404 `deny revoked`. 만료 지난 링크(DB 시각 조작) → 404 `deny expired`. 틀린 토큰 → 404 동일 문구. `expires_hours=999`·`max_downloads=0` → 400. DB `share_links` 에 토큰 원문 없음(`token_hash` 64자만). `/s/` 12회 연타 → 429 |
 | T-35 | 민감정보 검출 (F-22, S-07) | 주민등록번호 형식 문자열이 든 `.txt` 를 `public` 으로 → 400 `sensitive_level_required` + 감사 deny(detail 에 패턴 이름만, 숫자 원문 0건). 같은 파일 `team` → 201 + `sensitive_flags` 저장 + 목록 배지. 그 파일을 `internal` 로 PATCH → 400. 카드 번호(Luhn 통과) `.csv` → 같은 동작. 우연 숫자(Luhn 실패) → 통과. 이미지 파일은 검사하지 않음(한계 명시) |
+| T-36 | 관리 기능 재인증 (F-23, S-01) | Admin 로그인 직후 `GET /api/users` → 403 `next:"reauth"` + `auth.gate deny reauth_required`; `GET /users`(HTML) → 302 `/reauth?to=users`; `/wiki` → 302. `POST /api/me/reauth` 틀린 비밀번호 → 400 + `auth.reauth deny bad_credentials` + `failed_count` +1; 맞으면 200 → 이어서 `GET /api/users` 200, `/wiki` 200. DB `reauth_at` 을 16분 전으로 되돌리면(검토 계정 세션 행만, 데이터 아님) 다시 403. Employee 는 재인증 성공 뒤에도 `/api/users` 403(`authz.route deny`) — 재인증은 권한을 만들지 않는다. `/api/me/password`·`/api/files` 는 재인증 없이 그대로 200 |
+| T-37 | 서버 층 경보 (S-11-A, 8.4-5·6) | `alerts.php` 가 `auth.log` 의 새 출처 SSH 성공을 AL-3 으로, `sudo … COMMAND=` 에 `psql|pg_dump|rm|find …-delete|truncate|dropdb` 가 들어간 실행을 AL-9 로 `alerts.log`+`alert.raised` 에 남긴다(시험은 사본 로그 파일 인자로). 정합성 검사 cron 이 **매일** 02:00 |
 
 ### 12.3 애플리케이션 밖 (S-10, S-11)
 
@@ -729,6 +735,7 @@
 | **13** (전면 점검 후속, 사용자 결정 2026-09-12) | 감사 기록기 문자 단위 자르기(R-47) · 해시 체인 어제 봉인·재봉인(R-50) · 로그인 뒤 비밀번호·OTP 검증에 실패 집계·잠금·문구 통일(R-48) · 잠금 만료 시 카운터 재시작(R-49) · TOTP 코드 1회성(R-45) | S-07, S-09-4, R-45, R-47~R-50 | 한글 170자 이름 업로드 거부·허용 모두 감사 행 존재(T-28) · `audit_chain.php --verify` 통과(T-29) · `/api/me/password` 틀린 비밀번호 5회 → 423(T-30) · 같은 TOTP 코드 2회째 401(T-31) | — |
 | **14** (사용자 요청 2026-09-12) | **위키(F-21)** — 초보자용 해설 글(안내 8편 + 단계 1~13) `wiki/*.json`, 서버 렌더러 `src/Wiki.php`, 화면 `/wiki`·`/wiki/{slug}`(Admin), 내비 「위키」, 구조 검사 `scripts/wiki_check.php` | F-21, S-01, S-03, R-56 | T-32 | F-21 |
 | **15** (확장 아이템, 사용자 "진행해" 2026-09-12) | **15-1** 내 활동 보기(F-12) → **15-2** 만료 공유 링크(F-13, Q-5 기본안) → **15-3** 민감정보 패턴 검출(F-22) | F-12, F-13, F-22, S-01, S-02, S-07 | T-33 · T-34 · T-35 | F-12, F-13, F-22 |
+| **16** (미반영 재점검, 사용자 확정 2026-09-12) | **16-1** 관리 기능 재인증(F-23) · **16-2** 사고 후속 미완 3건 — 서버 층 경보 AL-3 확장·AL-9(8.4-5), 정합성 검사 일 1회(8.4-6), `backup.restore error restore_failed` 문장 틀(8.4-10) | F-23, S-09-4, S-11-A, R-48 | T-36 · T-37 | F-23 |
 
 **과제 제출물 대응**
 
