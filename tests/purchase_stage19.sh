@@ -1124,6 +1124,79 @@ else
   echo "  (⑯ 이 먼저 돌지 않아 건너뜀)"
 fi
 
+sub "⑲ 이카운트형 창고명 3조각 — 브랜드_지점_장소상세 (7차 보정 2026-09-13)"
+# 실파일 #285 의 조각 패턴을 그대로 줄여 만든다: 98개 중 86개가 **세 조각 이상**이다.
+# 5차 판(마지막 조각 = 지점)은 이런 이름을 전부 「판별 불가」로 만들었다.
+export WH3_XLSX="$WORK/warehouse3.xlsx"
+php -d error_reporting=E_ALL -r '
+$header = ["창고코드","창고명","구분","사용"];
+$rows = [["회사명 : 주식회사 플란랩스"], $header];
+$rows[] = ["10001","플란치과_강남점_15층 공용부","창고","Yes"];
+$rows[] = ["10002","플란치과_부평점_B1F_의약품창고","창고","Yes"];
+$rows[] = ["10003","플란치과_검단점_6F_공급실","창고","Yes"];
+$rows[] = ["10004","플란치과_부산점_13층 중앙공급실(구매팀)","창고","Yes"];
+$rows[] = ["10005","플란치과_강남점_3F 수술방","창고","Yes"];
+$rows[] = ["10006","플란치과_동탄점","창고","Yes"];
+$rows[] = ["10007","중앙창고","창고","Yes"];
+$esc = static fn (string $v): string => htmlspecialchars($v, ENT_QUOTES | ENT_XML1, "UTF-8");
+$sheet = "<?xml version=\"1.0\" encoding=\"UTF-8\"?><worksheet xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\"><sheetData>";
+foreach ($rows as $r => $row) { $sheet .= "<row r=\"".($r+1)."\">";
+  foreach ($row as $c => $cell) { $sheet .= "<c r=\"".chr(65+$c).($r+1)."\" t=\"inlineStr\"><is><t>".$esc((string)$cell)."</t></is></c>"; }
+  $sheet .= "</row>"; }
+$sheet .= "</sheetData></worksheet>";
+$ct = "<?xml version=\"1.0\" encoding=\"UTF-8\"?><Types xmlns=\"http://schemas.openxmlformats.org/package/2006/content-types\">"
+    . "<Default Extension=\"rels\" ContentType=\"application/vnd.openxmlformats-package.relationships+xml\"/>"
+    . "<Default Extension=\"xml\" ContentType=\"application/xml\"/>"
+    . "<Override PartName=\"/xl/workbook.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml\"/>"
+    . "<Override PartName=\"/xl/worksheets/sheet1.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml\"/></Types>";
+$rels = "<?xml version=\"1.0\" encoding=\"UTF-8\"?><Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\">"
+      . "<Relationship Id=\"rId1\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument\" Target=\"xl/workbook.xml\"/></Relationships>";
+$wb = "<?xml version=\"1.0\" encoding=\"UTF-8\"?><workbook xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\" xmlns:r=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships\"><sheets><sheet name=\"Sheet1\" sheetId=\"1\" r:id=\"rId1\"/></sheets></workbook>";
+$wbRels = "<?xml version=\"1.0\" encoding=\"UTF-8\"?><Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\"><Relationship Id=\"rId1\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet\" Target=\"worksheets/sheet1.xml\"/></Relationships>";
+$path = getenv("WH3_XLSX"); @unlink($path);
+$zip = new ZipArchive(); $zip->open($path, ZipArchive::CREATE);
+$zip->addFromString("[Content_Types].xml", $ct); $zip->addFromString("_rels/.rels", $rels);
+$zip->addFromString("xl/workbook.xml", $wb); $zip->addFromString("xl/_rels/workbook.xml.rels", $wbRels);
+$zip->addFromString("xl/worksheets/sheet1.xml", $sheet); $zip->close();
+echo "  만든 파일: ", filesize($path), " 바이트 (창고 7행: 3조각 5 · 2조각 1 · 1조각 1)\n";
+'
+
+R=$(curl -s -w '\n%{http_code}' -b "$JAR_DIR/qa_admin01.jar" -A "$UA" \
+    -H "X-CSRF-Token: $TOK_ADMIN" -F "file=@$WORK/warehouse3.xlsx" "$BASE/api/purchase/import")
+expect "3조각 창고 파일 업로드 201" 201 "$(code_of "$R")"
+WH3_ID=$(body_of "$R" | sed -n 's/.*"import_id":"\([0-9a-f-]*\)".*/\1/p')
+W3MAP='{"창고코드":"code","창고명":"name","구분":"kind","사용":"active"}'
+
+sub "⑲-a 브랜드·지점을 함께 만들면 3조각 이름이 각자의 지점으로 간다"
+R=$(call qa_admin01 POST "/api/purchase/import/$WH3_ID/preview" "$TOK_ADMIN" \
+    "{\"kind\":\"locations\",\"mapping\":$W3MAP,\"header_row\":1,\"create_brands\":true,\"create_branches\":true}")
+echo "  counts: $(body_of "$R" | sed -n 's/.*"counts":{\([^}]*\)}.*/\1/p')"
+echo "  본문(앞 560자): $(body_of "$R" | head -c 560)"
+expect "미리보기 200" 200 "$(code_of "$R")"
+# 3조각 5 + 2조각 1 = 6행이 지점을 얻는다. 1조각(중앙창고) 1행은 판별 불가 → 확인 필요.
+expect "insert 6" 6 "$(body_of "$R" | sed -n 's/.*"insert":\([0-9]*\).*/\1/p')"
+expect "review 1 (중앙창고 — 판별 불가)" 1 "$(body_of "$R" | sed -n 's/.*"review":\([0-9]*\).*/\1/p')"
+expect "사유 branch_unresolved" 1 "$(body_of "$R" | grep -c 'branch_unresolved')"
+expect "새로 만들 브랜드 1개 (플란치과)" 1 "$(body_of "$R" | grep -c '"brands":\["플란치과"\]')"
+expect "새로 만들 지점에 강남점" 1 "$(body_of "$R" | grep -c '"name":"강남점"')"
+expect "새로 만들 지점에 검단점" 1 "$(body_of "$R" | grep -c '"name":"검단점"')"
+expect "장소 상세(detail)가 응답에 있다" 1 "$(body_of "$R" | grep -c '"detail":"B1F_의약품창고"')"
+
+sub "⑲-b 자리 이름으로 용도를 짐작한다 (구분 열이 전부 「창고」라도)"
+expect "수술방 → or" 1 "$(body_of "$R" | grep -c '3F 수술방')"
+R2=$(call qa_admin01 POST "/api/purchase/import/$WH3_ID/commit" "$TOK_ADMIN" \
+    "{\"kind\":\"locations\",\"mapping\":$W3MAP,\"header_row\":1,\"create_brands\":true,\"create_branches\":true}")
+echo "  확정 HTTP $(code_of "$R2")  $(body_of "$R2")"
+expect "확정 200" 200 "$(code_of "$R2")"
+expect "브랜드 1개가 함께 생겼다" 1 "$(body_of "$R2" | sed -n 's/.*"brands_created":\([0-9]*\).*/\1/p')"
+expect "지점 5개가 함께 생겼다" 5 "$(body_of "$R2" | sed -n 's/.*"branches_created":\([0-9]*\).*/\1/p')"
+expect "수술방 자리는 kind=or" 1 "$(psqlq "SELECT count(*) FROM p_locations WHERE name='플란치과_강남점_3F 수술방' AND kind='or';")"
+expect "중앙공급실(구매팀)은 kind=central" 1 "$(psqlq "SELECT count(*) FROM p_locations WHERE name LIKE '%중앙공급실(구매팀)' AND kind='central';")"
+expect "의약품창고는 kind=warehouse" 1 "$(psqlq "SELECT count(*) FROM p_locations WHERE name='플란치과_부평점_B1F_의약품창고' AND kind='warehouse';")"
+expect "창고 이름은 **원문 그대로** 저장된다" 1 "$(psqlq "SELECT count(*) FROM p_locations WHERE name='플란치과_검단점_6F_공급실';")"
+expect "legacy_name 에도 같은 원문" 1 "$(psqlq "SELECT count(*) FROM p_locations WHERE name='플란치과_검단점_6F_공급실' AND legacy_name='플란치과_검단점_6F_공급실';")"
+expect "강남점 창고 2개가 같은 지점으로" 2 "$(psqlq "SELECT count(*) FROM p_locations l JOIN p_branches b ON b.id=l.branch_id WHERE b.name='강남점';")"
+
 sub "⑩ 업로드 원본이 「구매/가져오기」 폴더(admin-only)에 있나"
 psqlq "SELECT '  '||f.original_name||' | '||f.access_level||' | 폴더='||fo.name||' | sha256='||left(f.sha256,16)||'…'
          FROM files f JOIN folders fo ON fo.id = f.folder_id

@@ -188,6 +188,11 @@ $slim = static function (array $row) use ($branchNames): array {
     if (isset($row['missing']) && is_array($row['missing'])) {
         $out['missing'] = $row['missing'];
     }
+    /* 7차 보정 — 창고명에서 갈라 낸 **장소 상세**(`B1F_의약품창고`). 표시용이며 저장되지 않는다
+     * (창고 이름은 파일 원문 그대로 들어간다 — 이카운트 화면과 나란히 놓고 볼 수 있게). */
+    if (isset($row['detail'])) {
+        $out['detail'] = (string) $row['detail'];
+    }
     if (isset($row['vendor_count'])) {
         $out['vendor_count'] = (int) $row['vendor_count'];   // 같은 이름의 거래처 수 (R-72)
     }

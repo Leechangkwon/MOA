@@ -1505,6 +1505,9 @@
         tr.appendChild(reasonCell);
 
         var values = [];
+        /* 7차 보정 — 창고명에서 갈라 낸 **장소 상세**를 맨 앞에 보여 준다.
+           「플란치과_부평점_B1F_의약품창고」 가 어느 지점의 **어느 자리**인지 한눈에 보이게. */
+        if (row.detail) { values.push('자리=' + row.detail); }
         Object.keys(row.data || {}).forEach(function (key) {
           if (row.data[key] !== '' && key !== 'derived_from') {
             values.push(labelOf(key) + '=' + row.data[key]);

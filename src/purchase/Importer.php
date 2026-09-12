@@ -1225,7 +1225,7 @@ final class Importer
          * 하나도 없는 상태에서 여러 지점의 창고를 올리면 **전부 기본 지점 하나로** 들어갔다
          * (사용자 관찰). 이제는 이름을 갈라 **없는 지점을 만들 계획**까지 세운다.
          */
-        $parsed = ['brand' => null, 'branch' => null];
+        $parsed = ['brand' => null, 'branch' => null, 'detail' => null];
         if ($branchId === null) {
             $parsed = self::parseLocationName($name, $lookup['branch']);
 
@@ -1287,17 +1287,38 @@ final class Importer
             return $out;
         }
 
-        $kindRaw = strtolower($d['kind'] ?? '');
-        $kind    = in_array($kindRaw, Master::LOCATION_KINDS, true)
+        /* ─── 용도(kind) — 열이 먼저, 상세가 보조 (7차 보정) ───
+         *
+         * 이카운트 「구분」 열은 거의 전부 「창고」로만 온다(실측). 그 값만 믿으면 수술방도
+         * 중앙공급실도 전부 창고가 된다. 그래서 **열이 창고가 아닌 다른 종류를 명시하면
+         * 그 열이 이기고**, 창고이거나 비었으면 장소 상세로 짐작한다.
+         * 사람이 적은 값이 추측보다 앞선다 — 추측은 빈자리를 메울 뿐이다.
+         */
+        $kindRaw    = strtolower($d['kind'] ?? '');
+        $fromColumn = in_array($kindRaw, Master::LOCATION_KINDS, true)
             ? $kindRaw
-            : self::LOCATION_KIND_ALIAS[$kindRaw] ?? 'other';
+            : (self::LOCATION_KIND_ALIAS[$kindRaw] ?? null);
+        $fromDetail = self::inferLocationKind($parsed['detail'] ?? null);
+
+        if ($fromColumn !== null && $fromColumn !== 'warehouse') {
+            $kind = $fromColumn;              // 열이 「중앙장」·「수술방」·「기타」 라고 말했다
+        } elseif ($fromDetail !== null) {
+            $kind = $fromDetail;              // 열은 「창고」(또는 없음) — 상세가 더 말해 준다
+        } else {
+            $kind = $fromColumn ?? 'other';
+        }
 
         $values = [
             'branch_id'   => $branchId,   // 새로 만들 지점이면 null — 확정에서 채운다
             'kind'        => $kind,
+            /* 창고 이름은 **파일의 원문 그대로** 둔다 (7차 보정, 사용자 결정).
+             * 사용자가 이카운트 화면에서 보는 이름과 같아야 월 대사 때 눈으로 맞출 수 있다 —
+             * 「플란치과_부평점_B1F_의약품창고」 를 「B1F_의약품창고」 로 줄여 두면
+             * 두 화면을 나란히 놓고 볼 수 없다. 지점은 `branch_id` 가 따로 가리킨다. */
             'name'        => self::cut($name, 80),
             'code'        => self::orNull($d['code'] ?? ''),
-            'legacy_name' => self::orNull($d['legacy_name'] ?? ''),
+            // 이전 이름 열이 없으면 **원문**을 그대로 남긴다 (이름이 80자에서 잘려도 원본이 남게).
+            'legacy_name' => self::orNull($d['legacy_name'] ?? '') ?? self::cut($name, 200),
             'is_active'   => self::activeOr($d['active'] ?? '', true),
         ];
 
@@ -1323,6 +1344,11 @@ final class Importer
         ];
         if ($brandBy !== '') {
             $row['brand_by'] = $brandBy;
+        }
+        /* 7차 보정 — **표시용** 장소 상세(`B1F_의약품창고`). 컬럼을 늘리지 않고 응답에만 싣는다.
+         * 화면이 「이 창고가 지점의 어느 자리인가」 를 한눈에 보여 주는 데 쓴다. */
+        if (!empty($parsed['detail'])) {
+            $row['detail'] = (string) $parsed['detail'];
         }
         if ($plan !== null) {
             $row['plan'] = $plan;
