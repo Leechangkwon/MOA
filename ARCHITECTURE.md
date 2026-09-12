@@ -125,6 +125,7 @@
 > - HTTPS(S-09-1)는 프록시가 담당한다. VM 의 nginx 는 TLS 를 하지 않는다(자체 서명 인증서 불필요). 프록시→VM 구간은 사내망 평문 → SECURITY R-30.
 > - 실제 접속 IP: `set_real_ip_from 192.168.104.100` + `real_ip_header X-Forwarded-For` — **프록시 IP 가 보낸 헤더만** 신뢰. 다른 곳에서 온 위조 헤더는 무시된다. 프록시가 헤더를 보내는지는 전환 후 실측(로그 형식에 `$http_x_forwarded_for` 포함).
 > - **v2 의 저장소 밖 디렉터리는 `-v2` 접미사로 v1 과 분리한다** (2026-09-09, 방향 A): 설정·비밀 `/etc/tbox-v2` (owner.pgpass·seed-accounts.txt), 업로드 `/var/lib/tbox-v2/storage`·세션 `/var/lib/tbox-v2/sessions`, 로그 `/var/log/tbox-v2` (audit.log·app.log). v1 은 이 폴더들을 쓰지 않는다. **아래 6·8·9·11장의 `/var/lib/tbox`·`/var/log/tbox`·`/etc/tbox` 는 설계 참조 경로이며, 이 VM 의 실제 배포 경로는 위 `-v2` 판이다** (실배포 값은 `deploy/*` 파일이 정본).
+> - `wiki/`(저장소 루트, 14단계 F-21)는 위키 글 `*.json` 이 있는 곳이다. `public/` 밖이라 URL 로 직접 열 수 없고, 서버(`src/Wiki.php`)가 읽어 이스케이프해 그린다 (5.10).
 > - v2 저장소는 `/var/www/tbox-v2` — v1 웹 루트(`/var/www/html`) 밖이다. 그래서 v1 경유로 v2 의 소스·`.env`·SQL 에 닿는 URL 이 애초에 없다 (SECURITY R-29 해소, 2026-09-09 이동). 실제 설정은 `.env` (저장소 루트, `public/` 밖, `changkwon:tbox-php` 0640 — php-fpm 계정이 그룹으로 읽음). `.gitignore` 로 Git 에서 제외한다. (운영 전환 시 `/etc/tbox/tbox.env` 로 이전 검토 — S-09-6)
 
 | 왜 이렇게 나누나 | 막히는 공격 |
@@ -606,6 +607,38 @@ Admin 전용. 정책 `org.manage`(`Authz::canManageOrg` = Admin) 를 `KNOWN_POLI
 - 비활성 팀의 효과(코드 위치): `GET /api/teams` 는 활성만 돌려준다(선택지). `users_update`·`users_create` 의 `team_id` 가 비활성 팀이면 400 `team_inactive`. `files_upload`·`files_fetch`·`files_update` 에서 팀 존재를 확인하는 자리에서 **활성**도 확인 → 400 `team_inactive`. 이미 그 팀에 있는 파일·계정은 그대로다(읽기 판정은 `team_id` 일치만 본다 — 4.1 불변).
 - 구성원 배정은 새 API 를 만들지 않는다. `/org` 화면이 기존 `PATCH /api/users/{uid}` `{team_id, reason_text}` 를 부른다 — 한 규칙(자기 자신 금지·마지막 Admin 보호·세션 종료 T-22)이 두 곳에 갈라지지 않게.
 - 감사 문장(7.4)에 `team.create|allow`·`team.create|deny|bad_request`·`team.create|deny|already_exists`·`team.update|allow`·`team.update|deny|bad_request`·`team.update|deny|not_found`·`team.update|deny|team_has_members`·`team.update|deny|already_exists` 를 더한다. `target_type=team`, `target_name` 은 팀 이름.
+
+### 5.10 위키 — `GET /wiki` · `/wiki/{slug}` (PRD F-21, 10장 「위키」, S-03 · 14단계, 2026-09-12)
+
+**무엇인가.** 네 문서(PRD·ARCHITECTURE·SECURITY·STAGES)를 초보자 말로 다시 쓴 **해설 글**을 앱 안에서 보여 주는 화면이다. 원문 md 를 파싱해 보여 주지 않는다 — 마크다운 파서(HTML 통과 위험, 의존성 0 원칙 S-10-C)를 만들지 않기 위해서고, 원문은 기술 문서라 그대로는 초보자용이 아니기 때문이다.
+
+**어디에 두나.** 저장소 루트 `wiki/`(웹 루트 `public/` 밖 — URL 로 직접 닿지 않는다). `wiki/index.json`(차례) + `wiki/<slug>.json`(글 한 편). `slug` 는 `^[a-z0-9][a-z0-9-]{0,39}$`. 라우터 자리표시자 `{slug}` 를 같은 정규식으로 `TBOX_PATH_PATTERNS` 에 추가한다 — 그 밖의 문자는 라우트 매칭에서 404 다. 파일 경로는 `wiki/` + 검증된 slug + `.json` 만으로 만든다(사용자 입력이 경로에 들어가는 유일한 자리이므로 정규식 통과 뒤 `realpath` 가 `wiki/` 안인지 한 번 더 본다 — 5.3 [5] 와 같은 방식).
+
+**글 구조 (`wiki/<slug>.json`)** — 본문에는 HTML 도 URL 도 없다. 서버(`src/Wiki.php`)가 모든 문자열을 `htmlspecialchars(ENT_QUOTES)` 로 그리고, 인라인 표기는 **백틱 한 가지**(`` `코드` `` → `<code>`)만 인정한다(이스케이프 **뒤**에 백틱을 나눈다).
+
+```json
+{ "slug": "stage-04", "title": "4단계 — 서버가 권한을 판단한다", "summary": "한 줄 요약",
+  "group": "stage",  "stage": 4,  "updated": "2026-09-12",
+  "sections": [ { "id": "why", "heading": "왜 필요한가", "blocks": [
+      { "type": "p",       "text": "문단. `코드`는 백틱." },
+      { "type": "list",    "items": ["항목", "항목"] },
+      { "type": "steps",   "items": ["1번째", "2번째"] },
+      { "type": "table",   "header": ["열", "열"], "rows": [["값", "값"]] },
+      { "type": "code",    "text": "curl -s ..." },
+      { "type": "callout", "kind": "why|how|check|risk|try|term", "title": "제목", "text": "본문" },
+      { "type": "terms",   "items": [ { "term": "인가", "easy": "쉬운 풀이" } ] },
+      { "type": "refs",    "items": [ { "doc": "PRD", "where": "7.1 S-01", "what": "무엇이 적혀 있나" } ] },
+      { "type": "link",    "slug": "stage-05", "label": "다음 단계" } ] } ] }
+```
+`group` 은 `guide`(안내) 또는 `stage`(단계, `stage` 1~13). `refs.doc` 은 `PRD`·`ARCH`·`SECURITY`·STAGES`·`README`·`CLAUDE` 여섯 값만. `link.slug` 는 차례에 있는 slug 만 그린다(없으면 글자만). 모르는 `type`·빠진 필드·범위 밖 값은 **그 글 전체를 500** 으로 끝낸다(조용히 건너뛰면 검토에서 놓친다) — 그래서 커밋 전에 `scripts/wiki_check.php`(CLI, 전 글 구조 검사)를 돌린다.
+
+**요청 순서 (4장 공통 관문 그대로).** 라우트 정책은 두 경로 모두 `role:Admin` (PRD F-21, SECURITY R-56). `Auth::requireLogin` → CSRF(GET 이라 해당 없음) → 강제 절차 관문 → `Authz::authorize('role:Admin')` → 핸들러. `/api/me` 는 `can_view_wiki`(`Authz::canReadWiki`, Admin) 를 내려 주고 셸의 「위키」 항목은 그 값이 참일 때만 열린다 — 다른 `can_*` 와 같은 **화면 편의 값**이며 막는 것은 라우트 정책이다. 감사 기록은 남기지 않는다(PRD F-21).
+
+**화면.** `/wiki` 차례: 안내 글 목록 + 단계 카드 1~13(번호·제목·요약·`updated`). `/wiki/{slug}`: 제목·요약·절 차례(`id` 앵커)·본문·이전/다음 단계 링크(차례 순). 공통 셸(`src/views/shell_*.php`) 안에 그리며, 새 JS 는 필요 없다(서버 렌더). CSS 는 `app.css` 토큰을 쓴다.
+
+**말의 기준(내용 작성 규칙, PRD F-21).** ① 새 용어는 처음 나올 때 괄호로 풀이하고 `terms` 블록에도 넣는다 ② 영어 약어는 한글 뜻을 함께(예: CSRF — 남의 이름으로 요청 보내기) ③ 한 문장에 새 개념 하나 ④ 단계 글의 절 순서는 「왜 필요한가 → 무엇을 만들었나 → 어떻게 확인했나 → 남은 위험 → 직접 해보기 → 원문 위치」 ⑤ 사실은 원문에 있는 것만, 검토 결과는 SECURITY 7장 실측 값만 쓴다(추정 금지) ⑥ 비밀값(비밀번호·키·IP·계정 비밀)은 넣지 않는다.
+
+---
 
 ## 6. 저장 위치 — 파일 정보 vs 실제 파일
 
