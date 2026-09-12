@@ -755,7 +755,7 @@ INSERT INTO permissions VALUES
 | **17단계(Q-12 결정 2026-09-12)**: 화면 편집은 허용하되 **별도 롤 `tbox_perm`**(`permissions` SELECT·UPDATE 만)으로 한 핸들러에서만, 재인증·TOTP·사유·불변 규칙·감사 before/after·AL-13 과 함께 (5.15) | 앱 롤 `tbox_app` 은 SELECT 유지 — 다른 결함이 표를 못 바꾸는 성질은 그대로 |
 | `team` 의 `can_read=true` 는 "같은 팀일 때" 라는 뜻 | 팀 일치 여부는 `Authz::canRead` 가 `users.team_id` 와 비교 |
 
-> **`teams` 표 (12-3, 2026-09-12)** — `id, name(UNIQUE, 1~50자), is_active, created_at, updated_at`. 팀은 지우지 않고 `is_active=false` 로 내린다(5.9). `permissions` 는 12-3 뒤에도 **앱 계정 SELECT 만** — 조직·권한 화면의 매트릭스는 읽기 전용이다(PRD Q-12).
+> **`teams` 표 (12-3, 2026-09-12)** — `id, name(UNIQUE, 1~50자), is_active, created_at, updated_at`. 팀은 지우지 않고 `is_active=false` 로 내린다(5.9). `permissions` 는 12-3 뒤에도 **앱 계정 SELECT 만** — 조직·권한 화면의 매트릭스는 읽기 전용이다(편집은 17단계 `/admin/permissions` 에서만 — 5.15)(PRD Q-12).
 
 ### 6.2-3 `share_links` 테이블 — 공유 링크 (15-2, PRD F-13, ARCH 5.12)
 

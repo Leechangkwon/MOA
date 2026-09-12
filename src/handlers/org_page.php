@@ -166,9 +166,12 @@ require __DIR__ . '/../views/shell_top.php';
         <ul id="org-matrix-rules" class="notice__list muted"></ul>
 
         <p class="warn">
-          * 팀 레벨은 <strong>같은 팀</strong>일 때만 (Admin 은 모든 팀). 이 표는 화면에서
-          편집할 수 없습니다 — 앱의 DB 계정이 이 표에 <strong>읽기 권한만</strong> 갖는 것이
-          권한 상승을 막는 핵심 방어이기 때문입니다.
+          * 팀 레벨은 <strong>같은 팀</strong>일 때만 (Admin 은 모든 팀). 이 화면에서는
+          <strong>보기만</strong> 합니다 — 바꾸려면
+          <a href="/admin/permissions">관리자 페이지 → 권한 매트릭스 편집</a>에서 사유와
+          2단계 인증 코드를 입력해야 합니다(17단계 F-25). 앱의 DB 계정은 이 표에 여전히
+          <strong>읽기 권한만</strong> 갖고, 쓰기는 별도 DB 계정으로 창구 하나에서만 이뤄집니다 —
+          그것이 권한 상승을 막는 핵심 방어입니다.
         </p>
       </div>
     </section>
