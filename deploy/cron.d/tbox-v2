@@ -26,7 +26,7 @@ SHELL=/bin/bash
 
 # 분  시  일  월 요일  계정  명령
 #
-# 03:00  DB 전체 백업 (pg_dump -Fc | gpg AES256, 보관 일 7·주 4·월 6)
+# 03:00  DB 전체 백업 (pg_dump -Fc | gpg AES256, 보관 일 7·주 6·월 1 = 45일 이내)
 0    3   *   *  *     root  bash /var/www/tbox-v2/scripts/backup_db.sh
 # 03:30  업로드 파일 백업 (tar|gpg 전체 + rsync 로컬 미러)
 30   3   *   *  *     root  bash /var/www/tbox-v2/scripts/backup_files.sh

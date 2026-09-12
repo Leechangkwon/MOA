@@ -736,6 +736,10 @@ Admin 전용. 정책 `org.manage`(`Authz::canManageOrg` = Admin) 를 `KNOWN_POLI
 | 채번 | `p_doc_seq(doc_type, date, last)` 잠금 증가 → `PR|PO|GR|MV|IS|ADJ-YYYYMMDD-N`, UNIQUE |
 | 마감 | `p_docs.closed_month` 가 있으면 수정·취소는 `purchase.close` + 사유 + 감사 |
 | 재고관리 안 하는 품목 | 입고 확정 시 `+`·`−` 두 행(순변화 0), 사용 통계에는 포함 |
+| 요청 수정 창 (Q-18①) | `p_doc_lines.locked_at` — 구매실이 그 줄을 발주서에 담는 순간(FOR UPDATE 안에서) 기록. 요청자 PATCH 는 `status='unconfirmed' AND locked_at IS NULL` 인 줄만. 요청 전표가 **하나라도 담긴 뒤** 요청자가 추가하는 줄은 같은 전표에 붙이지 않고 **새 PR 전표**(`p_docs.split_from_id` 로 출처 표시)를 만들어 붙인다 — 발주서 생성 중 병목·누락 방지 |
+| 발주서 PDF (Q-18②) | 양식은 `files` #188(이카운트 발주서 캡처). 머리 정보(일련번호·수신·참조·TEL·납품창고·납기일자·회사 정보·담당/연락처)는 `p_docs`·`p_branches`·`p_vendors`·`users` 에서 서버가 채워 `p_docs.header_json` 에 저장, 발행 전 buyer 가 수정 가능(수정도 before/after 감사). 금액은 공급가액·부가세·합계(VAT 포함) 셋을 서버가 계산. 로고·회사 정보는 `p_brands` 열(19단계 표에 `logo_file_id`·`biz_no`·`ceo_name`·`address`·`tel` 포함) |
+| 송부 전 검토 (Q-18④) | viewer 는 전 지점 읽기 + `purchase.send`(발주서 미리보기 → 「보냄」). buyer 도 `purchase.send` 가능. 「보냄」은 `p_docs.sent_at`·`sent_by`, 한 번만(재송부는 사유 + 감사) |
+| 실사 주기 (Q-18③) | `p_docs.count_cycle`(`daily`·`weekly`·`monthly`, 실사 전표만 NOT NULL). 일: 불출·부족재고 구매용, 주·월: 창고 정합성. 현황은 주기별 차이 합계 추세 |
 | 가져오기 | t-box `Upload::validate` → `Preview::table`(xlsx·csv) → 매핑(`p_import_mappings`) → 행별 판정 → 한 트랜잭션. 파일은 `files`(폴더 `구매/가져오기`), 감사 detail 에 sha256·행 수 |
 | 감사·경보 | 문장 틀 `purchase.request|order|receipt|move|use|count|master|import|recon|close … allow/deny/error`(7.4), detail 키 `doc_no`·`doc_type`·`branch_id`·`lines`·`amount`·`src_doc_no`·`before/after`(7.5). 경보 후보 AL-14 마감 뒤 수정 · AL-15 미입고 30일 · AL-16 단가 급변 · AL-17 대량 취소 |
 | 화면 | 시안 16장(`docs/purchase/design/`)이 기준. t-box 셸·토큰, `textContent` 만, 서버 계산 값만 표시 |

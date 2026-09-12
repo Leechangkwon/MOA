@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # scripts/backup_db.sh — PostgreSQL 전체 백업 (9단계)
-#   PRD 7.8 S-08 (매일 03:00, 암호화, 체크섬, 보관 일 7·주 4·월 6)
+#   PRD 7.8 S-08 (매일 03:00, 암호화, 체크섬, 보관 일 7·주 6·월 1 — 총 45일 이내, 사용자 결정 2026-09-13)
 #   ARCHITECTURE 11.1 표 03:00 행
 #
 # 사용법:  sudo bash scripts/backup_db.sh [--keep-daily 7]
@@ -34,8 +34,8 @@ DB_PORT="5432"
 DB_ROLE="tbox_backup"
 
 KEEP_DAILY=7      # PRD S-08 보관 정책: 일 7
-KEEP_WEEKLY=4     #                      주 4
-KEEP_MONTHLY=6    #                      월 6
+KEEP_WEEKLY=6     #                      주 6  (45일 상한 — 사용자 결정 2026-09-13)
+KEEP_MONTHLY=1    #                      월 1  (매월 1일 사본 하나만 — 최장 31일)
 
 if [ "${1:-}" = "--keep-daily" ] && [ -n "${2:-}" ]; then
   case "$2" in
@@ -123,7 +123,7 @@ say "크기:   ${BYTES} 바이트"
 say "sha256: ${SUM}"
 
 # ── 보관 정책 ──────────────────────────────────────────────────
-# 일 7개 유지. 일요일이면 weekly/ 로, 매월 1일이면 monthly/ 로 사본을 남기고 각각 4·6개 유지.
+# 일 7개 유지. 일요일이면 weekly/ 로, 매월 1일이면 monthly/ 로 사본을 남기고 각각 6·1개 유지 (어떤 백업도 45일을 넘겨 남지 않는다).
 # (restic 의 forget --keep-daily/weekly/monthly 를 셸로 흉내 낸 것이다 — restic 은 이 VM 에 없다.)
 prune() {  # prune <디렉터리> <남길 개수> <glob>
   local dir="$1" keep="$2" pattern="$3" f n=0
