@@ -669,6 +669,28 @@ Admin 전용. 정책 `org.manage`(`Authz::canManageOrg` = Admin) 를 `KNOWN_POLI
 
 ---
 
+### 5.14 관리자 영역 — `GET /admin` · `/api/admin/*` (PRD F-24 · 17-1, 2026-09-12)
+
+**무엇인가.** 관리 기능의 **단일 입구** 허브다. 화면 `/admin`(카드: 계정 관리 `/users` · 조직·권한 `/org` · **권한 매트릭스 편집 `/admin/permissions`** · 감사 로그 `/audit` · 휴지통 `/trash` · 공유 링크 전체 · 최근 경보 · 위키 `/wiki`, 재인증 남은 시간)과 API `GET /api/admin/shares`(전체 링크, 토큰·해시 없음) · `GET /api/admin/alerts`(`alerts.log` 마지막 50줄 — root 0644 파일을 읽기만, JSON 줄을 그대로 돌려주되 `evidence.command` 는 200자). 정책은 전부 `role:Admin` 이며 `Authz::REAUTH_POLICIES` 에 들어 **재인증(4.0) 관문을 지난 세션만** 쓴다.
+
+**세 겹.** ① 서버 인가 `role:Admin`(비관리자는 `authz.route deny` 403, 화면도 403) ② 재인증 15분 창(F-23) ③ 네트워크 — nginx 두 사이트 파일에 `location ^~ /admin` · `location ^~ /api/admin` 블록을 **주석으로 준비**해 두고(`allow <관리망>; deny all;` + 기존 fastcgi 지시), README 에 켜는 법과 **함정**(현재 접속 출처 확인 → 허용 대역에 자기 출처가 없으면 잠김, hardening.sh 8.4-16 과 같은 실수)을 적는다. 기본은 꺼짐(SECURITY R-61).
+
+**일반 셸.** `shell_top.php` 의 관리 그룹(계정·조직·감사·휴지통·위키)을 없애고 Admin 에게만 「관리자 페이지」(`/admin`) 한 항목을 `can_admin`(`/api/me`, = `Authz::canReadWiki` 와 같은 Admin 판정 함수 `canAdmin`)로 연다. 비관리자 HTML 에는 항목 자체가 없다(기본 `hidden` 은 지금처럼 — 막는 것은 정책). 기존 관리 화면 경로는 그대로 두되 허브에서만 연결한다 — 위키·문서가 그 경로를 가리키고, 이미 재인증 대상이다.
+
+### 5.15 권한 매트릭스 편집 — `GET/PATCH /api/admin/permissions` (PRD F-25 · Q-12 결정 · 17-2, 2026-09-12)
+
+**결정 배경.** 6.2-1 의 "앱 계정은 SELECT 만" 은 권한 상승 경로 차단의 핵심이었다. 사용자 결정(Q-12, "보안만 확보된다면 페이지에서")으로 편집을 허용하되 **그 핵심은 유지**한다 — 런타임 롤 `tbox_app` 은 여전히 SELECT 만이고, 쓰기는 **별도 롤 `tbox_perm`** 으로 **한 핸들러**에서만 한다. 다른 핸들러의 SQL 인젝션·결함으로는 여전히 표를 바꿀 수 없다(SECURITY R-60).
+
+**DB 롤 `tbox_perm`** (10장): `CONNECT`, `USAGE ON SCHEMA public`, `permissions` 에 `SELECT, UPDATE` 만. 다른 표 권한 0(INSERT·DELETE 도 없음 — 16행은 고정, 행을 늘리거나 지울 수 없다). 비밀번호는 `install.sh` 가 만들어 `.env` `DB_PERM_USER`·`DB_PERM_PASS` 로(예시는 `.env.example` 주석만). `Db::perm()` 은 이 자격으로 **두 번째 PDO 연결**을 지연 생성하며, `handlers/admin_permissions_update.php` 만 부른다(린트: `Db::perm(` 가 그 파일 밖에 나오면 반려 — `security_lint.sh` 에 규칙 추가).
+
+**요청 순서(`PATCH /api/admin/permissions`).** 라우터: `role:Admin` → 재인증 관문(4.0) → CSRF → 핸들러 ① 허용 키 `changes`(배열 1~16, 각 `{role, access_level, can_read, can_upload}` bool)·`reason_text`(필수 1~500자)·`otp`(6자리) 밖은 400 ② TOTP — `Totp::verifyStep(users.mfa_secret, otp)` + `mfa_last_step` 1회성(13단계 규칙, 실패는 `countFailureAndRevoke`) → 거부 `permission.change deny bad_code|code_reused` ③ 현재 16행을 `tbox_app` 으로 읽어 변경 후보 표를 만들고 **불변 규칙** 검사 → 위반은 `deny invariant`(detail 에 어느 규칙): (a) `role='Admin'` 행은 네 셀 전부 `true` 고정 (b) `can_upload=true ⇒ can_read=true` (c) `role='Guest' AND access_level='admin-only'` 는 둘 다 `false` 고정 (d) 역할·등급은 4×4 밖 거부 (e) 값이 실제로 바뀌는 셀이 0개면 400 ④ `Db::perm()` 트랜잭션에서 바뀌는 셀마다 `UPDATE permissions SET can_read=:r, can_upload=:u WHERE role=:role AND access_level=:lvl`(rowCount 1 확인) ⑤ 셀마다 `Audit::allow('permission.change', target_type=system, target_name="{role}|{level}", detail before/after·reason_text·`otp_verified:true`)` — 감사 INSERT 는 `tbox_app` 연결(별도 트랜잭션; 감사 실패 시 perm 트랜잭션도 롤백하도록 순서: perm 트랜잭션 안에서 UPDATE → 감사 기록(자동 커밋) → perm COMMIT; 감사가 예외를 내면 perm ROLLBACK) ⑥ 응답 `{ok, changed:[…], matrix:16행}`. **효과는 다음 요청부터**(4.1 매트릭스는 요청마다 읽음 — 살아 있는 세션도 즉시 영향).
+
+**`GET /api/admin/permissions`** 는 16행 + `locked` 표시(규칙 a·c 셀)를 준다. 화면 `/admin/permissions` 는 4×4 토글 표, 잠긴 셀 비활성, 변경 미리보기(before → after 목록), 사유·코드 칸, 「적용」. 실패 문구는 서버 문구 그대로.
+
+**경보 AL-13.** `alerts.php` 가 5분 창의 `permission.change allow` 를 세어 1건 이상이면 `AL-13|actor`(evidence: 바뀐 셀·사유·행위자) — 정상 작업이어도 알린다(PRD 7.11). 같이 보강: AL-2 세는 행에 `auth.reauth deny bad_credentials` 추가(16단계 창구), AL-9 명령 가리기에 `PASSWORD\s+'[^']*'`·`PASSWORD\s+"[^"]*"` 추가.
+
+---
+
 ## 6. 저장 위치 — 파일 정보 vs 실제 파일
 
 ### 6.1 두 곳에 나눠 저장하는 이유
@@ -730,6 +752,7 @@ INSERT INTO permissions VALUES
 |---|---|
 | 앱 계정(`tbox_app`)은 이 표에 **SELECT 만** | 화면·API 어디서도 권한 표를 바꿀 수 없어야 한다 (바꿀 수 있으면 그게 곧 권한 상승 경로) |
 | 변경은 마이그레이션 파일 + 코드 리뷰 + `SECURITY.md` 이력 | 권한 표 변경은 곧 보안 정책 변경 |
+| **17단계(Q-12 결정 2026-09-12)**: 화면 편집은 허용하되 **별도 롤 `tbox_perm`**(`permissions` SELECT·UPDATE 만)으로 한 핸들러에서만, 재인증·TOTP·사유·불변 규칙·감사 before/after·AL-13 과 함께 (5.15) | 앱 롤 `tbox_app` 은 SELECT 유지 — 다른 결함이 표를 못 바꾸는 성질은 그대로 |
 | `team` 의 `can_read=true` 는 "같은 팀일 때" 라는 뜻 | 팀 일치 여부는 `Authz::canRead` 가 `users.team_id` 와 비교 |
 
 > **`teams` 표 (12-3, 2026-09-12)** — `id, name(UNIQUE, 1~50자), is_active, created_at, updated_at`. 팀은 지우지 않고 `is_active=false` 로 내린다(5.9). `permissions` 는 12-3 뒤에도 **앱 계정 SELECT 만** — 조직·권한 화면의 매트릭스는 읽기 전용이다(PRD Q-12).
@@ -1245,6 +1268,7 @@ php_admin_value[disable_functions]   = fsockopen,pfsockopen,stream_socket_client
 | `tbox_owner` | 스키마 생성·마이그레이션 (배포 시에만) | 테이블 소유 |
 | `tbox_app` | PHP 앱 런타임 | `users teams files`: SELECT/INSERT/UPDATE · `sessions`: SELECT/INSERT/UPDATE/DELETE · `permissions`: **SELECT 만** · `audit_logs`: SELECT/INSERT 만 · DROP 없음 |
 | `tbox_backup` | 백업 스크립트 | 전체 SELECT (읽기 전용) |
+| `tbox_perm` | 권한 매트릭스 편집 핸들러 **하나**(`admin_permissions_update.php`, 17단계 F-25) | `permissions`: SELECT/UPDATE 만 · 다른 표 0 · INSERT/DELETE 없음(16행 고정). `.env` `DB_PERM_USER/PASS`, `Db::perm()` 지연 연결 |
 
 > 파일 삭제가 논리 삭제(UPDATE)이므로 앱 계정에 `DELETE` 권한 자체가 필요 없다. 30일 실제 정리는 `tbox_owner` 권한의 배치 스크립트가 수행한다.
 
@@ -1344,6 +1368,8 @@ php_admin_value[disable_functions]   = fsockopen,pfsockopen,stream_socket_client
 **AL-2 집계 대상 (13단계 보정 2026-09-12 — SECURITY R-45 · R-48)**
 
 **서버 층 경보 — AL-3 확장·AL-9 (16단계 2026-09-12, SECURITY 8.4-5)**: `alerts.php`(root, 5분)가 `audit_logs` 외에 `/var/log/auth.log`(와 `.1`)도 읽는다. ① AL-3: `sshd … Accepted (publickey|password) for <계정> from <IP>` 중 **최근 30일 안에 본 적 없는 IP** → `AL-3|계정@IP`(상태 파일에 IP 별 첫 관측 시각을 기억) ② AL-9: `sudo: <계정> : … COMMAND=<명령>` 의 명령이 `psql|pg_dump|pg_restore|dropdb|rm |find .* -delete|truncate|chattr -a` 에 걸리면 `AL-9|계정`(명령은 앞 200자만, 인자 속 비밀값이 있을 수 있어 `password=`·`PGPASSWORD` 조각은 지운다). 파일 위치·읽기 오프셋은 상태 파일에 두고 회전(`auth.log.1`)을 따라간다. 시험은 `--auth-log <사본 경로>` 인자로. 정합성 검사(`consistency_check.php`)는 주 1회 → **매일 02:00**(8.4-6).
+
+**AL-13 · AL-2 보강 (17단계 2026-09-12)**: AL-13 = 5분 창에 `permission.change allow` 1건 이상 → 즉시(`AL-13|행위자`). AL-2 세는 행에 `auth.reauth deny bad_credentials`(16단계 재인증 창구)를 추가. AL-9 명령 가리기에 SQL `PASSWORD '…'` 형태 추가(첫 실행이 v1 설치 명령을 그대로 재생한 관찰).
 
 | 항목 | 내용 |
 |---|---|
