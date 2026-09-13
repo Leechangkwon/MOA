@@ -17,7 +17,7 @@ require __DIR__ . '/shell_top.php';
     <header class="page-head">
       <div class="page-head__text">
         <h1 class="page-head__title">구매관리 › 전표</h1>
-        <p class="page-head__sub">요청 → 발주. 한 줄을 누르면 앞뒤로 연결된 전표가 함께 보입니다. (입고·이동은 21단계)</p>
+        <p class="page-head__sub">요청 → 발주 → 입고. 한 줄을 누르면 앞뒤로 연결된 전표가 함께 보입니다. (이동·사용·실사는 전표 목록에서)</p>
       </div>
       <div class="page-head__actions">
         <a class="btn btn--quiet" href="/purchase/pr">발주요청</a>
@@ -106,7 +106,8 @@ require __DIR__ . '/shell_top.php';
       </table>
     </div>
     <p id="cycle-info" class="muted"></p>
-    <p class="muted">입고·미입고 칸은 <strong>21단계</strong>에 채워집니다 — 값을 지어내지 않습니다.</p>
+    <p class="muted">「입고」·「미입고」는 <strong>재고 원장의 합</strong>입니다(21단계부터) — 화면이 계산하지 않고
+      서버가 준 값을 그대로 적습니다. 보낸 발주서인데 아직 안 온 것이 있으면 「미입고」 배지가 섭니다.</p>
   </section>
 
 <script src="/assets/purchase_docs.js?v=<?= (int) filemtime(__DIR__ . '/../../public/assets/purchase_docs.js') ?>"></script>

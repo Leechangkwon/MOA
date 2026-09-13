@@ -125,6 +125,7 @@ foreach ($rows as $row) {
         'line_status'   => (string) $row['status'],
         'locked_at'     => $row['locked_at'] === null ? null : (string) $row['locked_at'],
         'orders'        => [],
+        'receipts'      => [],   // 21단계 — 입고(GR) 전표는 발주서와 따로 담는다(화면 「발주서」 칸에 GR 번호가 섞이지 않게)
         /*
          * 21단계에 채워지는 칸 (PRD F-34 R4).
          *   received_qty  이 요청 줄에서 나온 **입고(GR) 줄 수량의 합**(취소 제외)
@@ -180,7 +181,9 @@ if ($byLine !== []) {
         if ((string) $child['doc_type'] === 'gr') {
             $received[$root] = ($received[$root] ?? 0) + Doc::milli((string) $child['qty']);
         }
-        $out[$root]['orders'][] = [
+        // 전표 종류로 담는 칸을 가른다 — gr 은 receipts, 그 밖(po)은 orders.
+        $bucket = (string) $child['doc_type'] === 'gr' ? 'receipts' : 'orders';
+        $out[$root][$bucket][] = [
             'depth'        => (int) $child['depth'],
             'doc_id'       => (int) $child['doc_id'],
             'doc_no'       => (string) $child['doc_no'],

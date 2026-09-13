@@ -195,7 +195,7 @@ require __DIR__ . '/shell_top.php';
         <tbody id="pr-cycle-body"></tbody>
       </table>
     </div>
-    <p class="muted">입고 칸은 <strong>21단계</strong>에 채워집니다 — 지금은 자리만 있습니다.</p>
+    <p class="muted">입고·미입고 칸은 재고 원장의 합입니다(21단계부터). 보낸 발주서인데 아직 오지 않은 줄에는 「미입고」 배지가 섭니다.</p>
   </section>
 
   <!-- ── 품목 찾기 모달 (시안 ② ItemPicker) ─────────────────── -->

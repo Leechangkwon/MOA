@@ -171,6 +171,32 @@
     return el('span', STATUS_CLASS[status] || 'p-badge', STATUS_LABEL[status] || status);
   }
 
+  /** 수량 문자열을 숫자로. 값이 없거나(21단계 전) 숫자가 아니면 0 — 배지 판정에만 쓴다. */
+  function qtyNumber(value) {
+    if (value === null || value === undefined || value === '') { return 0; }
+    var n = Number(value);
+    return isNaN(n) ? 0 : n;
+  }
+
+  /**
+   * 사이클 한 줄에 **「아직 안 온 것」 배지**를 세운다 (21단계 `received_qty`·`not_received`).
+   *
+   * 조건 둘을 **함께** 본다: 미입고가 남아 있고, 그 요청에서 나온 발주서 중 **보낸 것**이 있다.
+   * 아직 보내지 않은 발주서의 미입고는 거래처 탓이 아니라 우리가 아직 안 보낸 것이므로,
+   * 그것까지 빨갛게 세우면 배지가 「늘 켜져 있는 불」이 되어 아무도 보지 않게 된다.
+   *
+   * 판정에 쓰는 값은 전부 **서버가 준 것**이고, 글자는 `textContent` 로만 들어간다.
+   */
+  function markLate(td, row) {
+    if (!td || qtyNumber(row.not_received) <= 0) { return td; }
+    var sent = (row.orders || []).some(function (order) {
+      return order.doc_type === 'po' && order.sent_at;
+    });
+    if (!sent) { return td; }
+    td.appendChild(el('span', 'p-badge p-badge--warn', '미입고'));
+    return td;
+  }
+
   /** 기초정보 셀렉트에 쓸 목록 — 서버가 이미 지점으로 좁혀 준다 */
   function loadMaster(kind) {
     return request('GET', '/api/purchase/' + kind).then(function (res) {
@@ -655,7 +681,9 @@
           cell(tr, orders === '' ? '—' : orders);
           cell(tr, qtyText(row.ordered_qty), 'p-num');
           cell(tr, qtyText(row.not_ordered), 'p-num');
-          cell(tr, '—');
+          // 21단계 입고 — 이 탭에는 「미입고」 칸이 따로 없으므로 받은 수량을 적고,
+          // 아직 안 온 것이 있으면 같은 칸에 배지를 세운다.
+          markLate(cell(tr, qtyText(row.received_qty), 'p-num'), row);
           var st = el('td');
           st.appendChild(statusBadge(row.pr_status));
           tr.appendChild(st);
@@ -1120,8 +1148,11 @@
           cell(tr, orders === '' ? '—' : orders);
           cell(tr, qtyText(row.ordered_qty), 'p-num');
           cell(tr, qtyText(row.not_ordered), 'p-num');
-          cell(tr, '—');
-          cell(tr, '—', 'p-num');
+          // 21단계부터 서버가 원장 합으로 채우는 두 칸 (PRD F-34 R4).
+          // 20단계에는 없던 값이라 `qtyText` 가 null·빈 값을 「—」로 되돌린다 —
+          // 화면이 0 을 지어내지 않는다.
+          cell(tr, qtyText(row.received_qty), 'p-num');
+          markLate(cell(tr, qtyText(row.not_received), 'p-num'), row);
           var st = el('td');
           st.appendChild(statusBadge(row.pr_status));
           tr.appendChild(st);

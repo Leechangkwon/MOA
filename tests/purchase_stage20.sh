@@ -514,6 +514,17 @@ echo "  HTTP $(code_of "$R")"; echo "  $(body_of "$R")" | head -c 700; echo
 expect "사이클 200" 200 "$(code_of "$R")"
 expect "요청 줄에 발주서 번호가 붙어 있다" 1 "$(body_of "$R" | grep -c "$PO1_NO")"
 expect "입고 칸은 원장 합(21단계부터 값, 입고 전이면 0.000)" 1 "$(body_of "$R" | grep -c '"received_qty":"0.000"')"
+# 화면이 「—」를 하드코딩하지 않고 **서버 값**을 그리는지 — API 계약(두 칸이 언제나 온다)과
+# 화면 코드(하드코딩 제거) 양쪽을 함께 본다 (Fable 소규모 지시 2026-09-13).
+# 이 시점의 요청 줄 A 는 동시성 시험까지 합쳐 **5 가 전부 발주**됐고 입고는 아직 0 이다
+# → 미입고 = 발주(5.000) − 입고(0) = 5.000. 값이 null 이면 화면이 「—」를 그리게 되므로
+#   "키가 있다" 가 아니라 **숫자가 왔다** 를 본다.
+expect "미입고 칸도 서버가 채운다(발주 5, 입고 0 → 5.000)" 1 "$(body_of "$R" | grep -c '"not_received":"5.000"')"
+expect "미입고 칸이 null 로 오지 않는다" 0 "$(body_of "$R" | grep -c '"not_received":null')"
+expect "사이클 화면 JS 에 하드코딩 「—」 0건" 0 \
+  "$(grep -c "cell(tr, '—')" "$(dirname "$0")/../public/assets/purchase_docs.js")"
+expect "전표 화면에 「21단계에 채워집니다」 안내 0건" 0 \
+  "$(grep -c '21단계</strong>에 채워집니다' "$(dirname "$0")/../src/views/purchase_docs.php")"
 
 hr "T-45 ⑫ 인쇄 화면 — 머리·표·금액이 서버 값으로만 (Q-18②)"
 
