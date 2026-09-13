@@ -22,7 +22,6 @@ final class StockError extends RuntimeException
  *   그래서 들어가기 전에 막는 것이 유일한 방어다 (SECURITY R-66).
  *
  * 여기 모으는 것
- *   채번        `GR|MV|IS|ADJ-YYYYMMDD-N` — 20단계 `p_doc_seq` 행을 잠그고 1 올린다
  *   원장 기록   장소 행 잠금 → 합 재계산 → 음수면 거부 → INSERT
  *   취소        원본 행마다 **반대 부호 행 + `reverses_move_id`** (삭제가 아니다)
  *   재고관리 안 하는 품목  입고 확정 시 `+`·`−` 두 행(순변화 0) — 사용 통계에는 잡힌다
@@ -33,10 +32,13 @@ final class StockError extends RuntimeException
  * ★ SQL 은 전부 고정 문자열이고 값은 바인딩뿐이다 (PRD S-04). 개수가 변하는 IN 절은
  *   **자리표시자 이름**(`:m0`, `:m1` …)만 이어 붙인다 — 값은 한 글자도 붙지 않는다.
  *
- * ※ 20단계 `Doc.php` 를 고치지 않는 이유: 그 파일은 이번 지시서의 「수정 파일」 밖이다.
- *   그래서 채번·전표 INSERT 처럼 **칸이 늘어난** 것만 여기서 다시 쓰고, 바뀌지 않은 규칙
- *   (수량 비교 `Doc::milli`, 잔량 조각 `Doc::SQL_TAKEN`, 줄 잠금 `Doc::lockLines`,
- *   금액 계산 `Doc::lineAmount`, 참조 확인)은 **그대로 부른다**.
+ * ※ 22단계 채번 통합 (지시서 07) — 채번(`GR|MV|IS|ADJ-YYYYMMDD-N`)과 전표 머리·줄 INSERT 는
+ *   이제 `Doc.php` 한 곳에 있다. 21단계에는 그 문장들이 이 파일에도 적혀 있었는데, 당시
+ *   지시서가 `Doc.php` 를 「수정 파일」에 넣지 않아 **칸이 늘어난 것만 다시 쓴** 결과였다
+ *   (STAGES 21단계 접수 기록 「Doc.php 못 고쳐 채번 SQL 이 Stock.php 에도」).
+ *   지금 이 파일에 남은 `nextDocNo`·`insertDoc`·`insertLine` 은 이름만 지키는 껍데기이고,
+ *   나머지(수량 비교 `Doc::milli`, 잔량 조각 `Doc::SQL_TAKEN`, 줄 잠금 `Doc::lockLines`,
+ *   금액 계산 `Doc::lineAmount`, 참조 확인)는 21단계와 똑같이 그대로 부른다.
  */
 final class Stock
 {
@@ -46,13 +48,10 @@ final class Stock
     public const TYPE_IS  = 'is';    // 사용(출고)
     public const TYPE_ADJ = 'adj';   // 실사
 
-    /** 번호 접두 (ARCH 5.18 「채번」). 코드에 적힌 고정 문자열만 쓴다. */
-    private const PREFIX = [
-        self::TYPE_GR  => 'GR',
-        self::TYPE_MV  => 'MV',
-        self::TYPE_IS  => 'IS',
-        self::TYPE_ADJ => 'ADJ',
-    ];
+    /*
+     * 번호 접두 표는 **여기 없다** — 22단계 채번 통합으로 `Doc::PREFIX` 한 곳으로 옮겼다.
+     * 위 네 상수의 값은 `Doc::TYPE_GR` … 와 **같은 문자열**이라 그대로 넘길 수 있다.
+     */
 
     /** 실사 주기 3종 (Q-18③ · 마이그레이션 p_docs_count_cycle_check 와 같은 값) */
     public const CYCLES = ['daily', 'weekly', 'monthly'];
@@ -64,121 +63,65 @@ final class Stock
     public const MAX_SNAPSHOT = 300;
 
     /* ══════════════════════════════════════════════════════════
-     * 채번 — 20단계와 **같은 표**(p_doc_seq)를 쓴다
+     * 채번·전표 쓰기 — 22단계에 **Doc.php 한 곳으로 합쳤다**
+     *
+     * 21단계에는 이 파일에 `p_doc_seq` 증가 문장과 `p_docs`·`p_doc_lines` INSERT 문장이
+     * 다시 적혀 있었다(당시 지시서가 `Doc.php` 를 「수정 파일」에 넣지 않았기 때문이다 —
+     * STAGES 21단계 접수 기록). 같은 규칙이 두 파일에 있으면 한쪽만 고쳐지는 날이 오므로,
+     * 22단계 지시서에 따라 문장을 `Doc.php` 로 옮기고 여기는 **얇은 껍데기**만 남긴다.
+     * 핸들러가 부르는 이름(`Stock::nextDocNo`·`insertDoc`·`insertLine`)과 인자 모양은
+     * 그대로다 — 동작이 바뀌지 않았음을 tests/purchase_stage21.sh 로 확인한다.
      * ══════════════════════════════════════════════════════════ */
 
-    private const SQL_SEQ_BUMP = <<<'SQL'
-        INSERT INTO p_doc_seq (doc_type, seq_date, last_no)
-        VALUES (:t, CURRENT_DATE, 1)
-        ON CONFLICT (doc_type, seq_date)
-        DO UPDATE SET last_no = p_doc_seq.last_no + 1
-        RETURNING last_no, to_char(seq_date, 'YYYYMMDD') AS ymd
-        SQL;
-
     /**
-     * 다음 전표 번호 — `GR-20260914-1`.
-     *
-     * **트랜잭션 안에서만** 부른다. `ON CONFLICT … DO UPDATE` 가 부딪힌 행에 행 잠금을 걸고
-     * 증가시키므로 같은 날 두 요청이 동시에 들어와도 번호가 겹치지 않는다. 마지막 그물은
-     * `p_docs_doc_no_uidx` 다 (20단계에서 만든 UNIQUE).
+     * 다음 전표 번호 — `GR-20260914-1`. 문장은 `Doc::nextDocNo` 하나다.
+     * **트랜잭션 안에서만** 부른다(행 잠금으로 번호가 겹치지 않는다).
      */
     public static function nextDocNo(Db $db, string $docType): string
     {
-        if (!isset(self::PREFIX[$docType])) {
-            throw new RuntimeException('알 수 없는 전표 종류입니다');
-        }
-        $row = $db->run(self::SQL_SEQ_BUMP, [':t' => $docType])->fetch();
-        if (!is_array($row)) {
-            throw new RuntimeException('전표 번호를 발급하지 못했습니다');
-        }
-        return self::PREFIX[$docType] . '-' . (string) $row['ymd'] . '-' . (string) $row['last_no'];
+        return Doc::nextDocNo($db, $docType);
     }
 
     /* ══════════════════════════════════════════════════════════
      * 전표 머리·줄 — 21단계에서 늘어난 칸까지 넣는다
      * ══════════════════════════════════════════════════════════ */
 
-    private const SQL_INSERT_DOC = <<<'SQL'
-        INSERT INTO p_docs
-            (doc_type, doc_no, doc_date, branch_id, vendor_id,
-             from_location_id, to_location_id, manager_id, status, memo,
-             count_cycle, created_by)
-        VALUES
-            (:doc_type, :doc_no, CAST(:doc_date AS date), CAST(:branch AS bigint),
-             CAST(:vendor AS bigint), CAST(:from_loc AS bigint), CAST(:to_loc AS bigint),
-             CAST(:manager AS bigint), :status, :memo, :cycle, CAST(:by AS bigint))
-        RETURNING id
-        SQL;
-
     /**
-     * 재고 전표 머리 한 건. 값은 전부 바인딩이고, `doc_no` 는 `nextDocNo()` 가 만든 것만 온다.
+     * 재고 전표 머리 한 건 — 문장은 `Doc::insertDoc` 하나다 (22단계 채번 통합).
+     * 21단계 칸(`from_location_id`·`count_cycle`)도 그 문장이 함께 받는다.
      *
      * @param array<string,mixed> $f
      */
     public static function insertDoc(Db $db, array $f): int
     {
-        $row = $db->run(self::SQL_INSERT_DOC, [
-            ':doc_type' => (string) $f['doc_type'],
-            ':doc_no'   => (string) $f['doc_no'],
-            ':doc_date' => (string) $f['doc_date'],
-            ':branch'   => (int) $f['branch_id'],
-            ':vendor'   => $f['vendor_id'] ?? null,
-            ':from_loc' => $f['from_location_id'] ?? null,
-            ':to_loc'   => $f['to_location_id'] ?? null,
-            ':manager'  => (int) $f['manager_id'],
-            ':status'   => (string) $f['status'],
-            ':memo'     => $f['memo'] ?? null,
-            ':cycle'    => $f['count_cycle'] ?? null,
-            ':by'       => (int) $f['created_by'],
-        ])->fetch();
-        if (!is_array($row)) {
-            throw new RuntimeException('전표를 만들지 못했습니다');
-        }
-        return (int) $row['id'];
+        return Doc::insertDoc($db, $f);
     }
 
-    private const SQL_INSERT_LINE = <<<'SQL'
-        INSERT INTO p_doc_lines
-            (doc_id, line_no, item_id, qty, unit_price, amount, remark, src_line_id,
-             status, lot_no, expiry_date, counted_qty)
-        VALUES
-            (CAST(:doc AS bigint), CAST(:no AS int), CAST(:item AS bigint),
-             CAST(:qty AS numeric), CAST(:price AS numeric), CAST(:amount AS numeric),
-             :remark, CAST(:src AS bigint), :status, :lot, CAST(:exp AS date),
-             CAST(:counted AS numeric))
-        RETURNING id
-        SQL;
-
     /**
-     * 재고 전표 줄 한 개.
+     * 재고 전표 줄 한 개 — 문장은 `Doc::insertLine` 하나다 (22단계 채번 통합).
      *
      * ★ `unit_price`·`amount` 는 **호출자가 DB 에서 가져온 값**이다(출처 발주서 줄의 단가,
      *   없으면 `p_items.price_in`). 요청 본문의 금액은 어느 경로로도 여기 오지 않는다
-     *   (SECURITY R-66, 린트 규칙 (d)).
+     *   (SECURITY R-66, 린트 규칙 (d)). 금액은 `Doc::lineAmount` 가 계산한다.
      *
      * @param array<string,mixed> $f
      */
     public static function insertLine(Db $db, int $docId, int $lineNo, array $f): int
     {
-        $qty = (string) $f['qty'];
-        $row = $db->run(self::SQL_INSERT_LINE, [
-            ':doc'     => $docId,
-            ':no'      => $lineNo,
-            ':item'    => (int) $f['item_id'],
-            ':qty'     => $qty,
-            ':price'   => $f['unit_price'] ?? null,
-            ':amount'  => Doc::lineAmount($qty, $f['unit_price'] ?? null),
-            ':remark'  => $f['remark'] ?? null,
-            ':src'     => $f['src_line_id'] ?? null,
-            ':status'  => (string) ($f['status'] ?? Doc::LINE_DONE),
-            ':lot'     => $f['lot_no'] ?? null,
-            ':exp'     => $f['expiry_date'] ?? null,
-            ':counted' => $f['counted_qty'] ?? null,
-        ])->fetch();
-        if (!is_array($row)) {
-            throw new RuntimeException('전표 줄을 만들지 못했습니다');
-        }
-        return (int) $row['id'];
+        return Doc::insertLine(
+            $db,
+            $docId,
+            $lineNo,
+            (int) $f['item_id'],
+            (string) $f['qty'],
+            $f['unit_price'] ?? null,
+            $f['remark'] ?? null,
+            $f['src_line_id'] ?? null,
+            (string) ($f['status'] ?? Doc::LINE_DONE),
+            $f['lot_no'] ?? null,
+            $f['expiry_date'] ?? null,
+            $f['counted_qty'] ?? null
+        );
     }
 
     /* ══════════════════════════════════════════════════════════
@@ -516,6 +459,7 @@ final class Stock
 
     private const SQL_DOC_ONE = <<<'SQL'
         SELECT d.id, d.doc_no, d.doc_type, d.status, d.branch_id, d.closed_month,
+               CAST(d.doc_date AS text) AS doc_date,
                d.from_location_id, d.to_location_id, d.count_cycle
           FROM p_docs d
          WHERE d.id = CAST(:id AS bigint) AND d.doc_type = :type AND

@@ -59,7 +59,12 @@ var REAUTH_PATHS = {
   // 19단계 4차 보정 2026-09-13 — 구매 기초정보·엑셀 가져오기 (서버 TBOX_REAUTH_PATHS 와 같은 내용).
   // 이 두 줄이 없어서 기초정보에서 재인증하면 홈으로 떨어졌다(사용자 관찰).
   'purchasemasters': '/purchase/masters',
-  'purchaseimport': '/purchase/import'
+  'purchaseimport': '/purchase/import',
+  // 22단계 — 월 마감(`purchase.close`)은 재인증 대상이라 대사 화면의 마감 단추가
+  // 403 next:reauth 를 받을 수 있다. 확인 뒤 그 화면으로 돌아온다.
+  // 마감은 대사 화면 안의 탭이라 두 키가 같은 경로다 (서버 TBOX_REAUTH_PATHS 와 같은 내용).
+  'purchaserecon': '/purchase/recon',
+  'purchaseclose': '/purchase/recon'
 };
 
 /** 서버가 내려 준 파일 ID 형태 (UUIDv4). 링크를 만들기 전에 반드시 확인한다. */
@@ -5543,14 +5548,20 @@ function initShell(me, csrfToken) {
   ['nav-purchase-pr', 'nav-purchase-po',
    // 21단계 — 입고·이동/실사·재고현황도 같은 값 하나로 함께 연다 (PRD F-34~F-36).
    'nav-purchase-receipt', 'nav-purchase-move', 'nav-purchase-stock',
+   // 22단계 — 주간 사용량도 같다(월 대사·마감은 아래에서 can_purchase_master 로).
+   'nav-purchase-usage',
    'nav-purchase-docs', 'nav-purchase'].forEach(function (id) {
     showNav(id, canPurchase);
   });
   /* 「가져오기」만 예외 — 라우트 정책이 purchase.master.write 라 읽기 전용 사용자에게는
      열어도 403 이다. 서버가 can_purchase_master 를 주면 그 값으로, 주지 않으면(옛 응답)
      can_purchase 로 연다. 화면이 역할에서 값을 지어내지 않는다 (PRD S-01). */
-  showNav('nav-purchase-import',
-    typeof me.can_purchase_master === 'boolean' ? me.can_purchase_master : canPurchase);
+  var canPurchaseMaster = typeof me.can_purchase_master === 'boolean'
+    ? me.can_purchase_master
+    : canPurchase;
+  showNav('nav-purchase-import', canPurchaseMaster);
+  // 22단계 「월 대사·마감」도 같은 규칙이다 (마감은 기초정보를 고칠 수 있는 사람의 일).
+  showNav('nav-purchase-recon', canPurchaseMaster);
   var purchaseGroup = document.getElementById('nav-purchase-group');
   if (purchaseGroup) {
     purchaseGroup.hidden = inGate || !canPurchase;

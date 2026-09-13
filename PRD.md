@@ -609,7 +609,7 @@
 | PATCH | `/api/admin/permissions` | 매트릭스 변경 (F-25). 본문 `{changes:[{role,access_level,can_read,can_upload}], reason_text, otp}` — 조건 ①~⑤ | `role:Admin` + 재인증 + CSRF | `permission.change` allow(셀마다 before/after)/deny |
 | GET | `/api/admin/shares` · `/api/admin/alerts` | 공유 링크 전체 목록(토큰 없음) · 최근 경보(`alerts.log` 마지막 50줄, 값은 기록된 그대로) (F-24) | `role:Admin` + 재인증 | 없음 |
 | GET | `/api/folders?parent=<id>` | 폴더 트리 — **읽을 수 있는 자식만** + breadcrumb (F-26). 부모 자체를 못 읽으면 403 동일 문구 | `file.read` → 핸들러 `decideRead(folder)` | `folder.read` deny 만(허용은 기록하지 않음 — 목록과 같은 취급) |
-| (모듈) | `/purchase/*` 화면 · `/api/purchase/*` API | 구매·재고 모듈(F-28~F-36). 정책 접두 `purchase.*`(`purchase.read`·`purchase.request.write`·`purchase.buy.write`·`purchase.stock.write`·`purchase.master.write`(재인증)·`purchase.close`(재인증+TOTP)). 라우트별 목록은 ARCH 5.18 | 모듈 역할 × 지점 격리 | `purchase.*` |
+| (모듈) | `/purchase/*` 화면 · `/api/purchase/*` API | 구매·재고 모듈(F-28~F-36). 정책 접두 `purchase.*`(`purchase.read`·`purchase.request.write`·`purchase.buy.write`·`purchase.stock.write`·`purchase.master.write`(재인증)·`purchase.close`(재인증 — 비밀번호 재확인, F-23 규칙 그대로. 2단계 인증 코드는 다시 묻지 않는다 — 22단계 결정 2026-09-13)). 라우트별 목록은 ARCH 5.18 | 모듈 역할 × 지점 격리 | `purchase.*` |
 | POST | `/api/folders` | 폴더 만들기 `{name, parent_id?, access_level, team_id?}` (F-26). 깊이 5·이름 규칙·중복·`decideUploadAs`·부모보다 넓지 않음(①) | `file.upload`(Guest 제외) | `folder.create` allow/deny |
 | PATCH | `/api/folders/{num}` | 이름 변경·이동·등급 변경 `{name?, parent_id?, access_level?, team_id?, cascade?, reason_text?}` (F-26). 자손 아래 이동 금지, 이동·등급 변경은 불변 규칙 ①②③ | `file.update` → 핸들러 `decideFolderChange`(+ 등급은 `decideLevelChange` 규칙) | `folder.update`·`folder.level_change` allow/deny |
 | DELETE | `/api/folders/{num}` | 빈 폴더 삭제(살아 있는 파일 0·하위 0) (F-26). 행 삭제(파일이 참조하지 않음이 확인된 뒤) | `file.delete` → `decideFolderChange` | `folder.delete` allow/deny |
@@ -732,6 +732,7 @@
 | T-44 | 엑셀 가져오기 (F-29, S-06, S-07) | 품목 xlsx 100행(정상 90·중복 코드 5·거래처 없음 5) 업로드 → 미리보기 판정 90 등록/5 오류/5 오류, 확정 → 90행만 저장·감사 `purchase.import allow` detail 행 수·sha256, 오류 목록 내려받기; 매핑 저장 뒤 같은 양식 재업로드 시 2단계로; `.xlsm`·매크로 → 기존 업로드 검사 400 |
 | T-45 | 요청·불러오기·발주서 연결 (F-30~F-32, R3·R4) | 요청 2건(요청자 둘) → 불러오기 `group=vendor,location,manager` 잔량만 → 부분 담기(5 중 3) → 발주서 줄 `src_line_id` = 요청 줄, 요청 잔량 2, 같은 줄 다시 담기 4 → 400 잔량 초과; 동시 요청 2개로 잔량 경쟁 → 한쪽 400 |
 | T-46 | 원장·잔량·미입고 (F-33·F-34) | 입고 3/5 → `p_stock_moves` +3, 현재고 = SUM, 미입고 2, 미입고 현황에 등장; 이동으로 음수 되는 수량 → 400; 실사 차이 ± 행; 취소는 반대 부호 행(원본 참조), `tbox_app` 으로 `UPDATE p_stock_moves` → permission denied |
+| T-47 | 주간 사용량 · 월 대사 · 월 마감 · 기공 명세서 (F-34·F-35, S-01·S-02·S-04, R-65·R-66·R-69) | **(a)** 사용(IS) 3건 + 재고관리 안 하는 품목의 입고 1건 → `GET /api/purchase/usage/weekly` 의 대분류 × 지점 × ISO 주 표 합 = 원장이 세는 사용량, requester 는 **자기 지점 열만**(다른 지점 칸 0건) · **(b)** 명세서 xlsx 5행(일치 2·수량 차이 1·단가 차이 1·우리에게 없음 1) + 우리 입고에만 있는 1 → `diff_type` 5종 분포 정확, 합계·차액, 확정은 한 트랜잭션이며 **두 번째 확정은 400**(되돌릴 권한이 없다), 매핑에 연락처 열을 적으면 400 `bad_mapping` 이고 `p_recon_lines` 에 그런 컬럼이 **없다**(R-69), 원본은 `admin-only` 폴더 「구매/명세서/거래처/월」 · **(c)** 그 달에 미확정 전표가 있으면 400 `open_docs_exist`, 치우고 마감하면 201 + `p_docs.closed_month`, 재마감 409, 마감된 달의 전표 취소는 400 `month_closed`(사유가 있어도 `purchase.close` 가 없으면 400), buyer 가 사유를 적으면 200 + 감사 `detail.after_close = true` + AL-14·AL-16 dry-run, **재인증 전 마감은 403 `next:reauth`** · **(d)** 기공 명세서 → 입고 전표 + 원장 `+`·`−` 두 행(순변화 0), 재고관리 품목이 섞이면 400 `stock_managed_item` · **(e)** 회귀 `tests/purchase_stage21.sh`(채번 통합 뒤)·`stage20.sh` 통과, 린트 0건, `\dp` 새 표 셋 `tbox_app=arw`(DELETE 없음)·원장 `ar` 유지 |
 
 ### 12.3 애플리케이션 밖 (S-10, S-11)
 
@@ -781,7 +782,7 @@
 | **19** (구매·재고 확정 2026-09-13) | 모듈 골격(`/purchase`, 정책 `purchase.*`, `users.branch_id`·`purchase_role`) + 기초정보 F-28 + 엑셀 가져오기 F-29 + 품목 찾기 API | F-28, F-29, F-30(API), S-01, S-02 | T-42 · T-43 · T-44 | F-28, F-29 |
 | **20** | 발주요청 F-30 · 추천/내 리스트 F-31 · 불러오기→발주서 F-32(PDF·보냄) | F-30~F-32 | T-45 | F-30~F-32 |
 | **21** | 입고·이동·사용·실사 F-33 · 재고 원장 · 장소별 재고현황·수불부·미입고·사이클 F-34(일부) | F-33, F-34 | T-46 | F-33 |
-| **22** | 주간 사용량 · 월 대사 · 기공 명세서 자동 전표 F-35 | F-34, F-35 | T-47(예정) | F-35 |
+| **22** | 주간 사용량 · 월 대사 · 월 마감 · 기공 명세서 자동 전표 F-35 · 채번 통합(Doc.php 한 곳) | F-34, F-35 | T-47 | F-35 |
 | **23** | 발주 제안·부족 알림 F-36 · 경보 AL-14~17 | F-36, S-11-A | T-48(예정) | F-36 |
 
 **과제 제출물 대응**

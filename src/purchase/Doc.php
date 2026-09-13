@@ -23,11 +23,25 @@ final class Doc
     /* ── 전표 종류 ─────────────────────────────────────────── */
     public const TYPE_PR = 'pr';
     public const TYPE_PO = 'po';
+    /*
+     * 22단계 채번 통합 — 21단계 재고 전표 넷도 여기로 들어온다 (지시서 07 「채번 통합」).
+     * 21단계에는 `Stock.php` 가 같은 표(`p_doc_seq`)를 두 번째 코드로 증가시키고 있었다.
+     * 같은 규칙이 두 파일에 적히면 한쪽만 고쳐지는 날이 온다 — 값은 `Stock::TYPE_*` 가
+     * 그대로 쓰이도록 남기고(핸들러는 한 글자도 바뀌지 않는다), **문장은 여기 하나**다.
+     */
+    public const TYPE_GR  = 'gr';
+    public const TYPE_MV  = 'mv';
+    public const TYPE_IS  = 'is';
+    public const TYPE_ADJ = 'adj';
 
     /** 번호 접두 (ARCH 5.18 「채번」). 코드에 적힌 고정 문자열만 쓴다. */
     private const PREFIX = [
-        self::TYPE_PR => 'PR',
-        self::TYPE_PO => 'PO',
+        self::TYPE_PR  => 'PR',
+        self::TYPE_PO  => 'PO',
+        self::TYPE_GR  => 'GR',
+        self::TYPE_MV  => 'MV',
+        self::TYPE_IS  => 'IS',
+        self::TYPE_ADJ => 'ADJ',
     ];
 
     /* ── 전표 상태 (PRD F-30 「미확인→진행중→일부 발주→완료」) ── */
@@ -413,14 +427,22 @@ final class Doc
      * 쓰기 — 전표·줄 만들기 (언제나 트랜잭션 안에서 부른다)
      * ══════════════════════════════════════════════════════════ */
 
+    /*
+     * 22단계 채번 통합 — 21단계에서 늘어난 칸(from_location_id·count_cycle,
+     * lot_no·expiry_date·counted_qty)을 **이 문장 하나**가 함께 받는다.
+     * 값이 없는 전표 종류는 null 이 들어가고, 그것은 21단계 `Stock.php` 의 두 번째 문장이
+     * 하던 것과 똑같다 — 동작은 바뀌지 않고 문장이 하나로 줄었을 뿐이다.
+     */
     private const SQL_INSERT_DOC = <<<'SQL'
         INSERT INTO p_docs
-            (doc_type, doc_no, doc_date, branch_id, vendor_id, to_location_id,
-             manager_id, status, memo, split_from_id, created_by)
+            (doc_type, doc_no, doc_date, branch_id, vendor_id,
+             from_location_id, to_location_id, manager_id, status, memo,
+             count_cycle, split_from_id, created_by)
         VALUES
             (:doc_type, :doc_no, CAST(:doc_date AS date), CAST(:branch AS bigint),
-             CAST(:vendor AS bigint), CAST(:loc AS bigint), CAST(:manager AS bigint),
-             :status, :memo, CAST(:split AS bigint), CAST(:by AS bigint))
+             CAST(:vendor AS bigint), CAST(:from_loc AS bigint), CAST(:loc AS bigint),
+             CAST(:manager AS bigint), :status, :memo, :cycle,
+             CAST(:split AS bigint), CAST(:by AS bigint))
         RETURNING id
         SQL;
 
@@ -437,10 +459,12 @@ final class Doc
             ':doc_date' => (string) $f['doc_date'],
             ':branch'   => (int) $f['branch_id'],
             ':vendor'   => $f['vendor_id'] ?? null,
+            ':from_loc' => $f['from_location_id'] ?? null,
             ':loc'      => $f['to_location_id'] ?? null,
             ':manager'  => (int) $f['manager_id'],
             ':status'   => (string) $f['status'],
             ':memo'     => $f['memo'] ?? null,
+            ':cycle'    => $f['count_cycle'] ?? null,
             ':split'    => $f['split_from_id'] ?? null,
             ':by'       => (int) $f['created_by'],
         ])->fetch();
@@ -452,19 +476,25 @@ final class Doc
 
     private const SQL_INSERT_LINE = <<<'SQL'
         INSERT INTO p_doc_lines
-            (doc_id, line_no, item_id, qty, unit_price, amount, remark, src_line_id, status)
+            (doc_id, line_no, item_id, qty, unit_price, amount, remark, src_line_id,
+             status, lot_no, expiry_date, counted_qty)
         VALUES
             (CAST(:doc AS bigint), CAST(:no AS int), CAST(:item AS bigint),
              CAST(:qty AS numeric), CAST(:price AS numeric), CAST(:amount AS numeric),
-             :remark, CAST(:src AS bigint), :status)
+             :remark, CAST(:src AS bigint), :status, :lot, CAST(:exp AS date),
+             CAST(:counted AS numeric))
         RETURNING id
         SQL;
 
     /**
      * 전표 줄 한 개.
      *
-     * ★ `unit_price`·`amount` 는 **호출자가 `p_items.price_in` 에서 가져온 값**이다.
-     *   요청 본문의 금액은 어느 경로로도 여기 오지 않는다 (SECURITY R-66, 완료 기준).
+     * ★ `unit_price`·`amount` 는 **호출자가 `p_items.price_in`(또는 출처 발주서 줄의 단가)
+     *   에서 가져온 값**이다. 요청 본문의 금액은 어느 경로로도 여기 오지 않는다
+     *   (SECURITY R-66, 완료 기준).
+     *
+     * 뒤의 세 인자(22단계 채번 통합)는 21단계 재고 줄의 칸이다 — 로트·유효기간(입고)과
+     * 「센 수량」(실사). 20단계 호출자는 적지 않으므로 기본값 null 로 들어간다.
      */
     public static function insertLine(
         Db $db,
@@ -475,18 +505,24 @@ final class Doc
         ?string $unitPrice,
         ?string $remark,
         ?int $srcLineId,
-        string $status = self::LINE_UNCONFIRMED
+        string $status = self::LINE_UNCONFIRMED,
+        ?string $lotNo = null,
+        ?string $expiryDate = null,
+        ?string $countedQty = null
     ): int {
         $row = $db->run(self::SQL_INSERT_LINE, [
-            ':doc'    => $docId,
-            ':no'     => $lineNo,
-            ':item'   => $itemId,
-            ':qty'    => $qty,
-            ':price'  => $unitPrice,
-            ':amount' => self::lineAmount($qty, $unitPrice),
-            ':remark' => $remark,
-            ':src'    => $srcLineId,
-            ':status' => $status,
+            ':doc'     => $docId,
+            ':no'      => $lineNo,
+            ':item'    => $itemId,
+            ':qty'     => $qty,
+            ':price'   => $unitPrice,
+            ':amount'  => self::lineAmount($qty, $unitPrice),
+            ':remark'  => $remark,
+            ':src'     => $srcLineId,
+            ':status'  => $status,
+            ':lot'     => $lotNo,
+            ':exp'     => $expiryDate,
+            ':counted' => $countedQty,
         ])->fetch();
         if (!is_array($row)) {
             throw new RuntimeException('전표 줄을 만들지 못했습니다');
@@ -784,5 +820,77 @@ final class Doc
             }
         }
         return $out;
+    }
+
+    /* ══════════════════════════════════════════════════════════
+     * 월 마감 — 22단계 (PRD F-35 · Q-18, ARCH 5.18 「마감」)
+     * ══════════════════════════════════════════════════════════ */
+
+    /** 마감 검사 결과 — 마감되지 않은 달 */
+    public const CLOSE_OPEN = 'open';
+    /** 마감 검사 결과 — 막아야 한다 (핸들러는 400 `month_closed`) */
+    public const CLOSE_BLOCKED = 'blocked';
+    /** 마감 검사 결과 — `purchase.close` 보유자가 사유를 적었다 (감사 detail.after_close) */
+    public const CLOSE_AFTER = 'after_close';
+
+    private const SQL_MONTH_CLOSED = <<<'SQL'
+        SELECT 1
+          FROM p_month_close
+         WHERE month = CAST(:m AS char(7))
+           AND (branch_id IS NULL OR branch_id = CAST(:b AS bigint))
+         LIMIT 1
+        SQL;
+
+    /**
+     * 이 지점·이 달이 마감됐나 — **전사 마감(`branch_id IS NULL`)이 있으면 지점 것도 잠긴다**
+     * (지시서 보충 3). 값은 전부 바인딩이다.
+     */
+    public static function monthClosed(Db $db, ?int $branchId, string $month): bool
+    {
+        return is_array($db->run(self::SQL_MONTH_CLOSED, [
+            ':m' => $month,
+            ':b' => $branchId,
+        ])->fetch());
+    }
+
+    /**
+     * 마감된 달의 전표를 고치거나 취소하려는 요청을 **한 줄로** 판정한다
+     * (ARCH 5.18 「마감」: "수정·취소는 `purchase.close` + 사유 + 감사").
+     *
+     *   open         마감되지 않았다 — 평소대로 진행
+     *   blocked      마감됐고 자격 또는 사유가 없다 — 핸들러가 400 `month_closed`
+     *   after_close  마감됐지만 `purchase.close` 보유자가 사유를 적었다 — 진행하되
+     *                감사 detail 에 `after_close = true` 를 남긴다(경보 AL-14 가 본다)
+     *
+     * ★ 역할 판정은 여기서 하지 않는다 — `Authz::purchaseAuthorize` 를 부를 뿐이다
+     *   (ARCH 4.1 "판단은 Authz 한 곳"). 이 함수가 더하는 것은 "마감됐나 + 사유가 있나" 다.
+     *
+     * `closedMonth` 는 전표의 `p_docs.closed_month`(마감 때 채워지는 표식)다. 그 칸이 차 있으면
+     * `doc_date` 를 보지 않고도 마감된 전표임을 안다 — 마감 뒤에 `doc_date` 만 바꿔 빠져나가는
+     * 길을 막는다. 둘 중 **하나라도** 마감이면 마감으로 본다.
+     *
+     * @param array<string,mixed> $user 라우터가 넘긴 현재 사용자 (요청 값이 아니다)
+     */
+    public static function closeGuard(
+        Db $db,
+        array $user,
+        ?int $branchId,
+        ?string $docDate,
+        ?string $closedMonth,
+        ?string $reasonText
+    ): string {
+        $closed = is_string($closedMonth) && $closedMonth !== '';
+        if (!$closed && is_string($docDate) && strlen($docDate) >= 7) {
+            $closed = self::monthClosed($db, $branchId, substr($docDate, 0, 7));
+        }
+        if (!$closed) {
+            return self::CLOSE_OPEN;
+        }
+        if (!is_string($reasonText) || trim($reasonText) === '') {
+            return self::CLOSE_BLOCKED;
+        }
+        return Authz::purchaseAuthorize('purchase.close', $user)
+            ? self::CLOSE_AFTER
+            : self::CLOSE_BLOCKED;
     }
 }

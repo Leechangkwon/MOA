@@ -60,7 +60,8 @@ $reason = ($reason === '' ? null : $reason);
 $scope = Authz::purchaseScopeWhere($user, 'd');
 
 $sqlDoc = <<<'SQL'
-    SELECT d.id, d.doc_no, d.status, d.branch_id, d.closed_month, d.sent_at
+    SELECT d.id, d.doc_no, d.status, d.branch_id, d.closed_month, d.sent_at,
+           CAST(d.doc_date AS text) AS doc_date
       FROM p_docs d
      WHERE d.id = CAST(:id AS bigint) AND d.doc_type = :type AND
     SQL;
@@ -77,8 +78,20 @@ $docNoForLog = (string) $doc['doc_no'];
 if ((string) $doc['status'] === Doc::ST_VOID) {
     $reject('status_invalid');
 }
-if ($doc['closed_month'] !== null) {
-    $reject('status_invalid');
+// ─── 22단계 마감 검사 (ARCH 5.18 「마감」, PRD F-35) ───────────
+// 마감된 달의 전표는 `purchase.close` 를 가진 사람이 **사유를 적어야** 지날 수 있다.
+// 판정은 `Doc::closeGuard` 한 곳이고(역할은 그 안에서 Authz 가 본다), 지나간 요청은
+// 감사 detail 에 `after_close` 로 남아 경보 AL-14 가 본다.
+$closeState = Doc::closeGuard(
+    $db,
+    $user,
+    (int) $doc['branch_id'],
+    isset($doc['doc_date']) ? (string) $doc['doc_date'] : null,
+    $doc['closed_month'],
+    $reason
+);
+if ($closeState === Doc::CLOSE_BLOCKED) {
+    $reject('month_closed');
 }
 $afterSent = $doc['sent_at'] !== null;
 if ($afterSent && $reason === null) {
@@ -146,6 +159,7 @@ try {
             'lines'       => count($own),
             'after_sent'  => $afterSent,
             'reason_text' => $reason,
+            'after_close' => $closeState === Doc::CLOSE_AFTER,
         ],
     ]);
     $db->commit();

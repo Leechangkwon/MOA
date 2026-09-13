@@ -45,7 +45,9 @@ $shellKeys = ['files', 'trash', 'settings', 'activity', 'users', 'org', 'audit',
                  목록에 없는 값은 빈 문자열이 되어 아무 항목도 켜지지 않는다. */
               'purchase-pr', 'purchase-po', 'purchase-docs', 'purchase-import',
               // 21단계 입고·이동/실사·재고현황
-              'purchase-receipt', 'purchase-move', 'purchase-stock'];
+              'purchase-receipt', 'purchase-move', 'purchase-stock',
+              // 22단계 주간 사용량·월 대사/마감
+              'purchase-usage', 'purchase-recon'];
 
 $shellUser   = isset($user) && is_array($user) ? $user : [];
 $shellName   = htmlspecialchars((string) ($shellUser['username'] ?? ''), ENT_QUOTES, 'UTF-8');
@@ -161,6 +163,14 @@ if (!headers_sent()) {
         </a>
         <a id="nav-purchase-stock" class="<?= $shellNavClass('purchase-stock') ?>" href="/purchase/stock" hidden>
           <span class="icon" data-icon="eye"></span><span>재고현황</span>
+        </a>
+        <!-- 22단계 주간 사용량·월 대사/마감. 「월 대사·마감」은 「가져오기」와 같은 규칙으로
+             can_purchase_master 가 있으면 그 값으로 연다 — 표시는 편의이고 허용은 서버가 정한다. -->
+        <a id="nav-purchase-usage" class="<?= $shellNavClass('purchase-usage') ?>" href="/purchase/usage" hidden>
+          <span class="icon" data-icon="org"></span><span>주간 사용량</span>
+        </a>
+        <a id="nav-purchase-recon" class="<?= $shellNavClass('purchase-recon') ?>" href="/purchase/recon" hidden>
+          <span class="icon" data-icon="lock"></span><span>월 대사·마감</span>
         </a>
         <a id="nav-purchase-docs" class="<?= $shellNavClass('purchase-docs') ?>" href="/purchase/docs" hidden>
           <span class="icon" data-icon="log"></span><span>전표</span>

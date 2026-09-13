@@ -646,3 +646,75 @@ SELECT l.id           AS po_line_id,
    AND l.status  <> 'void'
    AND d.sent_at IS NOT NULL
    AND l.qty - COALESCE(g.received, 0) > 0;
+
+-- ═════════════════════════════════════════════════════════════
+-- 22단계 — 거래처 월 대사 · 월 마감 (PRD F-35, ARCH 5.18 「마감」, SECURITY R-69)
+--
+-- ★ R-69 — 명세서에서 가져오는 값은 아래 p_recon_lines 의 **품목·수량·단가·금액**이 전부다.
+--   담당자 연락처·계좌번호를 담을 컬럼이 아예 없다. 원본 파일은 files 의 admin-only 폴더
+--   「구매/명세서/거래처/월」에만 남는다.
+-- ★ 앱 계정에 **DELETE 가 없다**(db/grants.sql). 대사를 다시 하려면 명세서를 다시 올리고,
+--   마감을 되돌리는 길은 코드에도 권한에도 없다.
+-- (기존 DB 는 db/migrations/2026-09-14_purchase_recon.sql 로 같은 모양이 된다.)
+-- ═════════════════════════════════════════════════════════════
+
+-- 거래처가 보내온 명세서 한 장 (엑셀·CSV·PDF 텍스트)
+CREATE TABLE p_recon_statements (
+    id           BIGSERIAL   PRIMARY KEY,
+    vendor_id    BIGINT      NOT NULL REFERENCES p_vendors(id),
+    month        CHAR(7)     NOT NULL,                  -- 'YYYY-MM'
+    file_id      BIGINT      NOT NULL REFERENCES files(id),
+    mapping_json JSONB,                                 -- 확정에 쓴 열 매핑 (다음 달 재사용)
+    total_amount NUMERIC(16,2),                         -- **명세서 쪽** 합계 (파일에 적힌 값)
+    status       TEXT        NOT NULL DEFAULT 'open',
+    created_by   BIGINT      NOT NULL REFERENCES users(id),
+    created_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
+    CONSTRAINT p_recon_statements_month_fmt    CHECK (month ~ '^[0-9]{4}-[0-9]{2}$'),
+    CONSTRAINT p_recon_statements_status_check CHECK (status IN ('open','closed')),
+    CONSTRAINT p_recon_statements_total_check  CHECK (total_amount IS NULL OR total_amount >= 0),
+    CONSTRAINT p_recon_statements_uniq         UNIQUE (vendor_id, month, file_id)
+);
+CREATE INDEX p_recon_statements_month_idx ON p_recon_statements (month, vendor_id);
+
+-- 명세서 줄 ↔ 우리 입고 줄. diff_type 이 판정이다 (none·qty·price·missing_ours·missing_theirs)
+CREATE TABLE p_recon_lines (
+    id              BIGSERIAL   PRIMARY KEY,
+    statement_id    BIGINT      NOT NULL REFERENCES p_recon_statements(id),
+    row_no          INT         NOT NULL CHECK (row_no >= 1),
+    item_code       TEXT,
+    item_name       TEXT        NOT NULL,
+    qty             NUMERIC(14,3) NOT NULL,
+    unit_price      NUMERIC(14,2),
+    amount          NUMERIC(16,2),
+    matched_line_id BIGINT      REFERENCES p_doc_lines(id),
+    diff_type       TEXT,
+    note            TEXT,
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+    CONSTRAINT p_recon_lines_code_len CHECK (item_code IS NULL OR length(item_code) BETWEEN 1 AND 60),
+    CONSTRAINT p_recon_lines_name_len CHECK (length(item_name) BETWEEN 1 AND 200),
+    CONSTRAINT p_recon_lines_note_len CHECK (note IS NULL OR length(note) <= 200),
+    CONSTRAINT p_recon_lines_diff_check
+        CHECK (diff_type IS NULL
+               OR diff_type IN ('none','qty','price','missing_ours','missing_theirs')),
+    CONSTRAINT p_recon_lines_row_uniq UNIQUE (statement_id, row_no)
+);
+CREATE INDEX p_recon_lines_stmt_idx    ON p_recon_lines (statement_id);
+CREATE INDEX p_recon_lines_matched_idx ON p_recon_lines (matched_line_id);
+
+-- 월 마감. branch_id IS NULL = 전사 마감(있으면 지점 것도 잠긴다 — 판정은 Doc::closeGuard)
+CREATE TABLE p_month_close (
+    id          BIGSERIAL   PRIMARY KEY,
+    branch_id   BIGINT      REFERENCES p_branches(id),
+    month       CHAR(7)     NOT NULL,
+    closed_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
+    closed_by   BIGINT      NOT NULL REFERENCES users(id),
+    reason_text TEXT,
+    CONSTRAINT p_month_close_month_fmt  CHECK (month ~ '^[0-9]{4}-[0-9]{2}$'),
+    CONSTRAINT p_month_close_reason_len CHECK (reason_text IS NULL OR length(reason_text) <= 300),
+    CONSTRAINT p_month_close_uniq       UNIQUE (branch_id, month)
+);
+-- 전사 마감은 UNIQUE 가 NULL 을 같은 값으로 보지 않으므로 부분 인덱스로 한 달에 하나만.
+CREATE UNIQUE INDEX p_month_close_all_uidx ON p_month_close (month) WHERE branch_id IS NULL;
+CREATE INDEX p_month_close_month_idx ON p_month_close (month);

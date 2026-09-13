@@ -370,6 +370,35 @@ const TBOX_ROUTES = [
     ['GET',    '/api/purchase/stock',            'purchase_stock_status.php',    'purchase.read'],
     ['GET',    '/api/purchase/ledger',           'purchase_stock_ledger.php',    'purchase.read'],
     ['GET',    '/api/purchase/backorder',        'purchase_backorder.php',       'purchase.read'],
+
+    /*
+     * 22단계 — 주간 사용량 · 거래처 월 대사 · 월 마감 · 기공 명세서
+     * (PRD F-34 · F-35, ARCH 5.18 「마감」, docs/purchase/07-stage22-directive.md).
+     *
+     * 정책
+     *   purchase.read       주간 사용량·대사 목록·상세·마감 목록·화면 — 모듈 역할이 있는 사람
+     *                       (보이는 범위는 언제나 SQL WHERE 의 purchaseScopeWhere 가 정한다)
+     *   purchase.buy.write  명세서 올리기·대조·확정·기공 명세서 전표 — buyer·Admin
+     *   purchase.close      **월 마감** — buyer·Admin 이고 `REAUTH_POLICIES` 에 있어
+     *                       재인증 관문 [3-2] 가 자동으로 붙는다(창이 닫혀 있으면 403 next:reauth)
+     *
+     * 경로 충돌: `{num}` 은 `[0-9]{1,9}` 라 `/api/purchase/usage/weekly` 와 형태가 다르다.
+     */
+    ['GET',    '/purchase/usage',                'purchase_weekly_page.php',     'purchase.read'],
+    ['GET',    '/purchase/recon',                'purchase_recon_page.php',      'purchase.read'],
+
+    ['GET',    '/api/purchase/usage/weekly',     'purchase_weekly.php',          'purchase.read'],
+
+    ['GET',    '/api/purchase/recon',            'purchase_recon_list.php',      'purchase.read'],
+    ['POST',   '/api/purchase/recon',            'purchase_recon_upload.php',    'purchase.buy.write'],
+    ['GET',    '/api/purchase/recon/{num}',      'purchase_recon_get.php',       'purchase.read'],
+    ['POST',   '/api/purchase/recon/{num}/preview', 'purchase_recon_preview.php', 'purchase.buy.write'],
+    ['POST',   '/api/purchase/recon/{num}/commit',  'purchase_recon_commit.php',  'purchase.buy.write'],
+
+    ['GET',    '/api/purchase/close',            'purchase_close_list.php',      'purchase.read'],
+    ['POST',   '/api/purchase/close',            'purchase_close_create.php',    'purchase.close'],
+
+    ['POST',   '/api/purchase/lab',              'purchase_lab_create.php',      'purchase.buy.write'],
 ];
 
 /**
@@ -457,7 +486,21 @@ const TBOX_REAUTH_PATHS = [
      *   ② 이 표에는 **쌍둥이**가 있다: `public/assets/app.js` 의 같은 내용 맵이 실제 이동을 한다.
      *      app.js 는 이번 지시서의 「수정 파일」 밖이라 여기만 늘리면 두 표가 어긋난다.
      *   22단계에서 월 마감(`purchase.close`)이 이 화면에 붙는 날, **두 표를 함께** 고친다.
+     *
+     * ★ 22단계 — 그날이 왔다. 대사 화면(`/purchase/recon`)의 **월 마감** 단추가 부르는
+     *   `POST /api/purchase/close` 는 정책이 `purchase.close` 이고 그것은 `REAUTH_POLICIES`
+     *   에 있다. 창이 닫혀 있으면 그 API 가 403 `next:reauth` 를 돌려주고, 화면(purchase_recon.js)
+     *   이 `/reauth?to=purchaserecon` 으로 간다 — 그래서 아래 두 키를 **여기와 app.js 에 함께**
+     *   넣는다(두 표가 어긋나면 확인 뒤 홈으로 떨어진다 — 19단계 4차 보정의 사고).
+     *   두 키가 같은 경로인 이유: 마감은 **대사 화면 안의 탭**이라 돌아갈 곳이 한 곳뿐이다.
+     *   경로 문자열은 다른 키와 똑같이 코드에 적힌 고정 값이고, 요청 값은 "표에 이 키가 있나" 를
+     *   묻는 데만 쓰인다. 키에 밑줄·숫자가 없는 것은 `Http::redirect` 의 꼬리표 규칙 때문이다.
+     *
+     * ★ 주간 사용량 화면(`/purchase/usage`)의 키는 두지 않았다 — 그 화면의 라우트도 API 도
+     *   `purchase.read` 라 재인증 관문에 걸릴 자리가 없다(21단계와 같은 판단).
      */
+    'purchaserecon'   => '/purchase/recon',
+    'purchaseclose'   => '/purchase/recon',
 ];
 
 /** 재인증 화면의 경로. 코드 상수이며 요청 값이 섞이지 않는다 (TBOX_LOGIN_PATH 와 같다). */

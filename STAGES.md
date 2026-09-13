@@ -41,7 +41,9 @@
 | **19** | 구매·재고 모듈 골격 + 기초정보(F-28) + 엑셀 가져오기(F-29) + 품목 찾기 API — 확정 2026-09-13 | ✅ 구현·검토 | ✅ 2026-09-13 (Opus, 재지시 0회) | ✅ 2026-09-13 (T-42·T-43·T-44 81/81, 회귀 T-1·T-26·T-36) | ⚠ 대기 | 19단계 커밋 |
 | **20** | 발주요청(PR)·추천/내 리스트·불러오기→발주서(PO)·인쇄·검토·보냄 — 지시서 docs/purchase/05 | ✅ 구현·검토 | ✅ 2026-09-13 (Opus, 재지시 0회) | ✅ 2026-09-13 (T-45 90/90, 동시성 201/400, 회귀 T-42·T-43·T-1·T-26·T-36) | ⚠ 대기 | 20단계 커밋 |
 | **21** | 입고(GR)·이동(MV)·사용(IS)·실사(ADJ)·**재고 원장**(append-only)·장소별 재고·수불부·미입고·사이클 완성 — 지시서 docs/purchase/06 | ✅ 구현·검토 | ✅ 2026-09-13 (Opus, 재지시 0회) | ✅ 2026-09-13 (T-46 105/105, 동시 이동 400/201, `UPDATE p_stock_moves` permission denied, 회귀 T-45 90/90) | ⚠ 대기 | 21단계 커밋 ecd2413 |
-| 22~23 | 주간 사용량·월 대사·기공 명세서(22) / 발주 제안·미입고 경보(23) | 대기 | | | | |
+| **22** | 주간 사용량·거래처 월 대사·**월 마감**·기공 명세서 자동 전표·**채번 통합**(Doc.php 한 곳) — 지시서 docs/purchase/07 | ✅ 구현 | ✅ 2026-09-13 (Opus, 재지시 0회) | ⚠ 미실시 | ⚠ 대기 | 미커밋 |
+| **22** | 주간 사용량·거래처 월 대사(차이 5종)·월 마감(재인증)·기공 명세서 자동 전표·채번 통합(Doc.php) — 지시서 docs/purchase/07 | ✅ 구현·검토 | ✅ 2026-09-13 (Opus, 재지시 0회) | ✅ 2026-09-13 (T-47 72/72, 마감 403/400/201 실측, 회귀 T-45 90/90·T-46 105/105, 채번 통합 전후 동일) | ⚠ 대기 | 22단계 커밋 |
+| 23 | 발주 제안·부족 알림·경보 AL-14~17·린트 예외 줄 단위·사용 지점 빼기 — 지시서 docs/purchase/08 | 대기 | | | | |
 
 ---
 
@@ -829,6 +831,8 @@ sudo -u postgres psql -d tbox_re -c "SELECT happened_at, actor_name, action, res
 | 2026-09-13 | 접수(21단계 Opus 보고) | 입고 정책 stock.write(buyer 포함) · Doc.php 못 고쳐 채번 SQL 이 Stock.php 에도 · p_doc_lines qty CHECK 를 실사 줄만 0 허용 · 사이클 화면 입고 칸 「—」 하드코딩(purchase_docs.js 범위 밖) · 재인증 키 미추가(대상 아님) · ARCH 7.4 표에 purchase.* 행 없음(19·20단계 선례) | 전부 수용. 채번 통합·ARCH 7.4 표 보강은 22단계 지시서에, 사이클 칸은 20단계 에이전트 |
 | 2026-09-13 | 보정 | 내비 「구매관리」 그룹 8개 링크(발주요청·발주서·입고·이동·실사·재고현황·전표·기초정보·가져오기) 순서 정리, 21단계 세 화면 활성 표시 | 18-3 에이전트, qa_admin01 로 3화면 is-active 확인. 커밋 |
 | 2026-09-13 | 보정 | 사이클 화면 입고·미입고 칸을 API 값으로(하드코딩 「—」 제거, 보낸 발주서의 미입고 배지), 요청 화면 낡은 안내 문장 교체(Fable), 사이클 API 의 `orders` 에 GR 번호가 섞이던 것을 `receipts` 로 분리(Fable) | 20단계 에이전트 + Fable. `node --check`·`php -l`·린트, 20단계 시험 90/90(에이전트 실행). 커밋 |
+| 2026-09-13 | 접수(22단계 Opus 보고) | purchase.close 가 ARCH 「재인증+TOTP」와 달리 비밀번호 재인증만(본체 F-23 규칙) · PDF 명세서는 글자 있는 PDF 만(스캔은 빈 표 안내) · pr_void 마감 검사 누락(범위 밖) · 요청 수정엔 사유 칸 없어 마감 달은 항상 400 · 새 화면 내비 없음 | 결정: TOTP 는 묻지 않음(문서 정정), pr_void 한 줄·내비는 소규모 보충, 요청 수정 사유 칸은 필요 시 23단계 뒤 |
+| 2026-09-13 | 보정 | 내비 「구매관리」 10개 링크(주간 사용량·월 대사·마감 추가, 월 대사·마감·가져오기는 `can_purchase_master`), pr_void 마감 검사 한 줄, ARCH 5.18·PRD 8장 「purchase.close = 재인증(비밀번호)」 정정 | 18-3·22단계 에이전트. 정적 검사·린트 통과, qa_admin01 로 두 화면 is-active 확인. 22단계와 함께 커밋 |
 
 
 ### 20단계 — 발주요청 · 추천/내 리스트 · 불러오기→발주서 · 인쇄·검토·보냄 (F-30 · F-31 · F-32 · T-45 · Q-18①②④) — 구현 2026-09-13
@@ -929,6 +933,70 @@ sudo -u postgres psql -d tbox_re -c "SELECT happened_at, actor_name, action, res
 | 2026-09-13 | 접수(Opus 보고) | `tests/purchase_stage20.sh` 의 「입고 칸은 값을 지어내지 않는다(null)」 검사 1건이 이제 실패한다 — 21단계가 그 칸을 채웠기 때문이다(의도된 변화). 그 파일은 지시서의 「수정 파일」 밖이라 고치지 않았다 | Fable 판단 필요: 그 한 줄을 `"received_qty":"0.000"` 확인으로 바꾸면 90/90 이 된다 |
 | 2026-09-13 | 접수(Opus 보고) | 새 화면 셋의 내비 항목이 **없다** — `src/views/shell_top.php` 가 지시서 밖이다. `$activeNav` 로 넘기는 `purchase-stock` 등은 그 파일의 허용 목록에 없어 **아무 항목도 켜지지 않을 뿐** 오류는 아니다. 지금은 각 화면 머리의 단추로만 오간다 | 20단계에서도 같은 이유로 사후 수용됐다(내비는 별도 소규모 작업) |
 | 2026-09-13 | 접수(Opus 보고) | `TBOX_REAUTH_PATHS` 에 새 화면 키를 **일부러 넣지 않았다**. 그 표에는 쌍둥이(`public/assets/app.js`)가 있는데 app.js 가 지시서 밖이라, 한쪽만 늘리면 두 표가 어긋난다. 세 화면 모두 재인증 관문에 걸리지 않아 지금은 필요도 없다 | 22단계 월 마감이 붙는 날 두 표를 함께 고친다 |
+
+### 22단계 — 주간 사용량 · 거래처 월 대사 · 월 마감 · 기공 명세서 자동 전표 · 채번 통합 (F-34 · F-35 · T-47 · Q-18) — 구현 2026-09-13
+
+> 지시서: `docs/purchase/07-stage22-directive.md`. 근거: PRD F-34 · F-35 · T-47, ARCH 5.18
+> (마감·가져오기·감사) · 7.4 · 7.5, SECURITY R-65 · R-66 · R-69 · R-73, 시안 Weekly · Recon.
+> **이 단계의 한 문장**: 우리 장부와 거래처 명세서를 **줄마다 견주고**, 견주기가 끝난 달은
+> **잠근다** — 그 뒤의 수정은 자격과 사유가 있어야 하고 흔적이 남는다.
+
+**개발 사항**
+- [x] 마이그레이션 `2026-09-14_purchase_recon.sql` — `p_recon_statements`(거래처·월·파일·매핑·명세서 합계·
+      `UNIQUE(vendor_id, month, file_id)`) · `p_recon_lines`(품목·수량·단가·금액·`matched_line_id`·`diff_type` 5종) ·
+      `p_month_close`(지점 NULL = 전사, `UNIQUE(branch_id, month)` + 전사용 부분 UNIQUE).
+      GRANT **`tbox_app` = SELECT·INSERT·UPDATE (DELETE 없음)**. `db/grants.sql`·`db/schema.sql` 동기화
+- [x] `src/purchase/Recon.php` — 파일 → 표(xlsx·csv 는 `Sheet::rows`, pdf 는 `Preview::text` 의 **글자만**) ·
+      열 매핑 허용 목록 5개(R-69) · 대조(코드 → 이름 정규화, 여러 줄이면 수량 합 + 「n줄 합」) ·
+      차이 5종 분류 · 합계
+- [x] `src/purchase/Usage.php` — 주간 사용량(IS 원장 음수 행 + 재고관리 안 하는 품목의 GR 양수 행)을
+      대/중/소 × 지점 × ISO 주로 집계(SQL 한 번, `purchaseScopeWhere`, 26주 · 500행 상한)
+- [x] API: `GET /api/purchase/usage/weekly` · `GET|POST /api/purchase/recon` ·
+      `GET /api/purchase/recon/{num}` · `POST …/{num}/preview` · `POST …/{num}/commit` ·
+      `GET|POST /api/purchase/close` · `POST /api/purchase/lab`
+- [x] 화면: `/purchase/usage`(시안 Weekly) · `/purchase/recon`(시안 Recon, 3탭: 대사·마감·기공 명세서) —
+      `purchase_recon.js`·`purchase_recon.css` **별도 파일**(다른 JS 를 고치지 않는다)
+- [x] **채번 통합** — `Doc.php` 의 접두 표에 `gr|mv|is|adj` 추가, `insertDoc`/`insertLine` 이 21단계 칸까지 받음.
+      `Stock.php` 의 자체 채번·전표 INSERT 문장 삭제 → `Doc::` 호출 껍데기만 남김.
+      **동작 무변경**: `tests/purchase_stage21.sh` 통합 전 105 ✔ · 0 ✖ → 통합 뒤 105 ✔ · 0 ✖
+- [x] **마감 검사** `Doc::closeGuard` 한 곳 + **여덟 창구** 호출(pr_update · pr_void · po_update ·
+      po_void · gr_void · mv_void · is_void · adj_void) — 400 `month_closed`, 자격+사유면 통과 +
+      `detail.after_close` (보충 1, 2026-09-13)
+- [x] `public/index.php` 라우트 11개(정책 명시) + 재인증 복귀 키 `purchaserecon`·`purchaseclose`,
+      `public/assets/app.js` 쌍둥이 표에 **같은 두 키**(21단계 접수 사항 해소)
+- [x] `Audit` — 문장 틀 `purchase.recon.{upload,preview,commit}` · `purchase.close.create` ·
+      `purchase.lab.create` · 일곱 창구의 `month_closed` 거부 (모두 행 추가만, 삭제 0줄)
+- [x] `scripts/alerts.php` — **AL-16** 「단가 급변」(대사에서 ±20% 이상) 신설, **AL-14** 를
+      「마감 뒤 수정」까지 넓힘(`detail.after_close`)
+- [x] `ARCHITECTURE.md` 7.4 에 `purchase.*` **요약 표**(19~22단계 몫 한 번에) · 7.5 에 detail 키 10개 등록
+- [x] `PRD.md` 12.2 에 **T-47** 등록, 13장 로드맵 22단계 행 갱신
+- [x] `tests/purchase_stage22.sh` — T-47 (a)~(e), **R-73 안전 규칙 3종 그대로** + 픽스처 `S22-` 접두
+- [x] README 「구매·재고 모듈」 절에 22단계 4소절 추가
+- [ ] `Authz` 는 **고치지 않았다** — 정책 `purchase.close` 와 별칭 `b`·`d`·`l` 이 이미 있어 더할 것이 없었다
+
+**검토 체크 (관문 ②, Fable) — 미실시**
+
+**자기 공격 (관문 ③, 사용자)**
+- [ ] 거래처 명세서를 올려 열을 맞추고 확정해 본다 — 차이 4종이 제대로 갈리는지
+- [ ] 매핑에서 「담당자 연락처」 같은 열을 억지로 보내 본다 (400 이어야 하고, DB 에 그 칸이 없어야 한다)
+- [ ] 그 달 요청·발주를 확정하지 않은 채 마감해 본다 (400 `open_docs_exist`)
+- [ ] 재인증 없이 마감 단추를 눌러 본다 (403 → 비밀번호 재확인 → **대사 화면으로 복귀**)
+- [ ] 마감한 달의 입고를 취소해 본다 — 사유 없이(400), 사유를 적고(권한이 있으면 200 + 기록)
+- [ ] 기공 명세서 탭에 **재고관리 하는 품목**을 담아 저장해 본다 (400 `stock_managed_item`)
+- [ ] 요청자(requester) 계정으로 주간 사용량을 열어 다른 지점 열이 보이는지 본다 (0건이어야 한다)
+- [ ] `psql` 로 `SET ROLE tbox_app; DELETE FROM p_month_close …` 를 해 본다 (permission denied)
+
+**학습 기록**
+
+| 날짜 | 구분 | 내용 | 해소·근거 |
+|---|---|---|---|
+| 2026-09-13 | 접수(22단계 Opus 보고) | **ARCH 5.18 과 코드가 다르다** — 5.18 은 `purchase.close` 를 「재인증 **+ TOTP**」로 적었지만, 본체 재인증 창구 `POST /api/me/reauth` 는 **비밀번호만** 다시 묻는다(`src/handlers/reauth.php`: "2단계 인증 코드는 다시 묻지 않는다 — PRD F-23") | **결정(Fable 2026-09-13): 문서를 고친다.** F-23 의 「2단계 코드는 다시 묻지 않는다」 원칙을 유지하고 ARCH 5.18 · PRD 8장의 문구를 「재인증 — 비밀번호 재확인」으로 바꿨다. 관문은 실제로 붙는다(T-47 (c) 실측 403 `next:reauth`) |
+| 2026-09-13 | 접수(22단계 Opus 보고) | **PDF 명세서는 「글자가 있는 PDF」만** 읽는다. 새 라이브러리를 넣지 않는다는 규칙 때문에 `Preview::text` 가 뽑아 주는 텍스트만 보고, 공백 2칸·탭을 칸 구분으로 삼아 표를 흉내 낸다. 스캔 이미지 PDF 는 **빈 표**가 되고 응답에 `text_empty: true` 로 알린다 | docs/purchase/03 「이미지 PDF 는 Preview 가 글자를 못 뽑으면 review 로 사람 입력」과 같은 판단. 지금은 「엑셀로 다시 올려 주세요」로 안내한다 |
+| 2026-09-13 | 접수(22단계 Opus 보고) | **대사 확정은 한 번뿐이다.** 앱 계정에 `p_recon_lines` DELETE 권한이 없어 줄을 지우고 다시 만들 수 없다. 다시 하려면 명세서를 **새로 올린다**(파일마다 한 장) | `UNIQUE(vendor_id, month, file_id)` 가 그 모양을 강제한다. 두 번째 확정은 400 `already_committed` |
+| 2026-09-13 | 접수(22단계 Opus 보고) | `purchase_pr_update.php` 에는 **사유 칸이 없다**(허용 키 6개). 그래서 마감된 달의 요청 수정은 `purchase.close` 를 가졌더라도 언제나 400 `month_closed` 다 — 사유 칸을 새로 여는 것은 20단계 계약을 바꾸는 일이라 하지 않았다 | 고치려면 요청 수정에도 `reason_text` 를 여는 별도 결정이 필요. 발주서 수정·취소에는 사유 칸이 이미 있다 |
+| 2026-09-13 | 접수(22단계 Opus 보고) → **해소(보충 1)** | `purchase_pr_void.php`(요청 취소)는 지시서의 「수정 파일」 목록에 없어 마감 검사를 넣지 않았고, 사유 코드만 `status_invalid` 로 달랐다 | Fable 보충 지시로 같은 `Doc::closeGuard` 호출과 감사 `after_close` 를 넣어 **여덟 창구가 같은 낱말**(`month_closed`)을 쓴다. `Audit` 에 `purchase.request.void|deny|month_closed` 문장 틀 한 줄 추가 |
+| 2026-09-13 | 접수(22단계 Opus 보고) | 새 화면 둘(`/purchase/usage`·`/purchase/recon`)의 **내비 항목이 없다** — `src/views/shell_top.php` 가 지시서 밖이다(20·21단계와 같은 사정). 화면 머리의 단추로만 오간다 | 내비는 별도 소규모 작업으로 |
+| 2026-09-13 | 접수(22단계 Opus 보고) | 재인증 복귀 키를 **둘 다 같은 경로**(`/purchase/recon`)로 넣었다 — 마감은 대사 화면 안의 탭이라 돌아갈 곳이 한 곳뿐이다. 주간 사용량 화면에는 키를 두지 않았다(그 화면의 라우트도 API 도 `purchase.read` 라 관문에 걸릴 자리가 없다) | 21단계가 남긴 「두 표를 함께 고친다」 항목 해소 — `public/index.php` 와 `public/assets/app.js` 에 같은 두 키 |
 
 ## 2-1. 10단계 뒤 일괄 자기 공격 — 진행 순서 (관문 ③, 사용자)
 

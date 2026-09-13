@@ -120,6 +120,17 @@ GRANT SELECT         ON p_stock_balance   TO tbox_app;   -- 현재고 = SUM(qty_
 GRANT SELECT         ON p_backorder       TO tbox_app;   -- 미입고 = 발주 − 입고
 GRANT USAGE, SELECT ON SEQUENCE p_stock_moves_id_seq TO tbox_app;
 
+-- 22단계 거래처 월 대사 · 월 마감 (F-35, ARCH 5.18 「마감」, SECURITY R-69).
+--
+-- 셋 다 SELECT·INSERT·UPDATE 이고 **DELETE 는 없다** — 대사 결과를 다시 만들려면 명세서를
+-- 다시 올리고(파일마다 한 장), 마감을 되돌리는 길은 코드에도 권한에도 없다.
+-- 명세서에서 가져온 값은 `p_recon_lines` 의 품목·수량·단가·금액 컬럼이 전부다 (R-69).
+REVOKE ALL ON p_recon_statements, p_recon_lines, p_month_close FROM tbox_app;
+GRANT SELECT, INSERT, UPDATE ON p_recon_statements, p_recon_lines, p_month_close TO tbox_app;
+GRANT USAGE, SELECT ON SEQUENCE p_recon_statements_id_seq TO tbox_app;
+GRANT USAGE, SELECT ON SEQUENCE p_recon_lines_id_seq      TO tbox_app;
+GRANT USAGE, SELECT ON SEQUENCE p_month_close_id_seq      TO tbox_app;
+
 -- ─── 앞으로 만들 표에 자동으로 권한이 새지 않게 한다 ───
 -- (기본 권한을 설정하지 않는다 = 새 표는 명시적으로 GRANT 해야 앱이 쓸 수 있다)
 
@@ -147,7 +158,8 @@ REVOKE ALL ON teams, users, permissions, files, audit_logs, sessions, share_link
               p_brands, p_branches, p_locations, p_vendors, p_categories,
               p_items, p_item_branches, p_par_levels, p_import_mappings,
               p_docs, p_doc_lines, p_doc_seq, p_lists, p_list_items, p_line_chain,
-              p_stock_moves, p_stock_balance, p_backorder FROM tbox_backup;
+              p_stock_moves, p_stock_balance, p_backorder,
+              p_recon_statements, p_recon_lines, p_month_close FROM tbox_backup;
 
 GRANT SELECT ON ALL TABLES    IN SCHEMA public TO tbox_backup;   -- ★ SELECT 만
 GRANT SELECT ON ALL SEQUENCES IN SCHEMA public TO tbox_backup;   -- 시퀀스 현재값 (pg_dump)
@@ -189,7 +201,8 @@ REVOKE ALL ON teams, users, permissions, files, audit_logs, sessions, share_link
               p_brands, p_branches, p_locations, p_vendors, p_categories,
               p_items, p_item_branches, p_par_levels, p_import_mappings,
               p_docs, p_doc_lines, p_doc_seq, p_lists, p_list_items, p_line_chain,
-              p_stock_moves, p_stock_balance, p_backorder FROM tbox_perm;
+              p_stock_moves, p_stock_balance, p_backorder,
+              p_recon_statements, p_recon_lines, p_month_close FROM tbox_perm;
 REVOKE ALL ON ALL SEQUENCES IN SCHEMA public FROM tbox_perm;
 
 GRANT SELECT, UPDATE ON permissions TO tbox_perm;   -- ★ 이 한 줄이 전부. INSERT·DELETE 없음

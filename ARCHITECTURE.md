@@ -729,7 +729,7 @@ Admin 전용. 정책 `org.manage`(`Authz::canManageOrg` = Admin) 를 `KNOWN_POLI
 |---|---|
 | 경계 | 라우트 `/purchase/*`(화면)·`/api/purchase/*`(API), 정책 접두 `purchase.*`, 표 접두 `p_`, 코드 `src/purchase/`·`handlers/purchase_*.php`·`assets/purchase.js|css`. 본체 파일 변경은 라우트 표·`Authz`(모듈 판정 함수)·`Audit`(문장 틀)·`me.php`·셸 내비(「구매관리」 그룹)·`users`(`branch_id`·`purchase_role`)로 한정 |
 | 권한 두 축 | `users.purchase_role`(requester·buyer·stock·viewer·NULL) × `users.branch_id`. 판정은 `Authz::purchaseAuthorize(policy, user)`(라우트)와 `Authz::purchaseScopeWhere(user, alias)`(모든 조회 SQL — requester·stock 은 `alias.branch_id = :my_branch`, 그 밖은 조건 없음) **한 곳**. 핸들러의 SELECT 에 `purchaseScopeWhere` 호출이 없으면 `security_lint.sh` 가 반려 |
-| 정책 | `purchase.read` · `purchase.request.write` · `purchase.buy.write` · `purchase.stock.write` · `purchase.master.write`(**재인증 대상**, `REAUTH_POLICIES` 추가) · `purchase.close`(재인증 + TOTP) · Admin 은 전부 |
+| 정책 | `purchase.read` · `purchase.request.write` · `purchase.buy.write` · `purchase.stock.write` · `purchase.master.write`(**재인증 대상**, `REAUTH_POLICIES` 추가) · `purchase.close`(재인증 — **비밀번호 재확인**, F-23 규칙 그대로. 2단계 인증 코드는 다시 묻지 않는다 — 22단계 결정 2026-09-13) · Admin 은 전부 |
 | 원장 | `p_stock_moves` 는 append-only — 앱 계정 INSERT·SELECT 만(`grants.sql`). 현재고 = `SUM(qty_delta)`(뷰 `p_stock_balance`). 취소·정정 = 반대 부호 행 + `reverses_move_id` |
 | 연결 | `p_doc_lines.src_line_id` 하나로 요청→발주→입고. 미발주·미입고는 계산값(재귀 CTE). 담기·입고 확정은 `FOR UPDATE` 뒤 잔량 초과 거부 |
 | 음수 재고 | 이동·사용 확정 트랜잭션에서 잠금 뒤 합 재계산, 0 미만이면 400 |
@@ -1187,6 +1187,25 @@ GRANT  USAGE, SELECT  ON SEQUENCE audit_logs_id_seq TO tbox_app;
 | `file.update|deny|parent_narrower` | `{actor} 이(가) 파일 「{target}」 을(를) 자기보다 좁은 등급의 폴더로 옮기려 해서 거부했습니다` | 18-1 |
 | `file.level_change|deny|parent_narrower` | `{actor} 이(가) 파일 「{target}」 의 접근 등급을 그 파일이 든 폴더보다 넓은 {level} 등급으로 바꾸려 해서 거부했습니다` | 18-1 |
 
+**구매·재고 모듈 `purchase.*` — 19~22단계 요약** (2026-09-14 추가. 문장 전문은 `src/Audit.php` 의 표 하나이고, 여기에는 **어떤 행이 있는지**만 적는다. 행이 100줄을 넘어 이 표에 그대로 옮기면 읽기 어렵다 — 새 행동을 더할 때는 `Audit.php` 의 표를 고치고 아래 요약에 한 줄을 보탠다.)
+
+| `action` 묶음 | `result` | `reason` (사유 코드 등록부) | 단계 |
+|---|---|---|---|
+| `purchase.master.create|update|deactivate` | allow · deny | `bad_request` · `bad_reference` · `conflict` · `no_change` · `bad_kind` · `bad_mapping` · `bad_header_row` | 19 |
+| `purchase.import.upload|preview|commit` | allow · deny · error | 업로드 검사 코드 그대로(`ext_not_allowed` · `mime_mismatch` · `double_extension` · `too_large` · `quota_exceeded` …) + `mapping_incomplete` · `too_many_rows` · `truncated` · `parse_failed` · `default_branch_required` · `default_brand_required` | 19 |
+| `purchase.request.create|update|void` | allow · deny | `bad_request` · `bad_reference` · `not_in_scope` · `branch_required` · `line_locked` · `status_invalid` · `no_change` · `conflict` · **`month_closed`** | 20 · 22 |
+| `purchase.order.create|update|send|void` | allow · deny | `remaining_exceeded` · `mixed_vendor` · `not_in_scope` · `status_invalid` · `reason_required` · `already_sent` · `no_change` · `conflict` · **`month_closed`** | 20 · 22 |
+| `purchase.list.create|update|delete` | allow · deny | `bad_request` · `bad_reference` · `branch_required` | 20 |
+| `purchase.receipt|move|use|count.create` | allow · deny | `bad_request` · `bad_reference` · `not_in_scope` · `status_invalid` · `remaining_exceeded` · `negative_stock` · `not_stock_managed` · `stale_snapshot` · `conflict` | 21 |
+| `purchase.receipt|move|use|count.void` | allow · deny | `bad_request` · `status_invalid` · `negative_stock` · **`month_closed`** | 21 · 22 |
+| `purchase.recon.upload` | allow · deny · error | 업로드 검사 코드 그대로 + `no_file` · `bad_request` · `bad_reference` · `parse_failed` | 22 |
+| `purchase.recon.preview|commit` | allow · deny | `bad_request` · `bad_mapping` · `bad_header_row` · `parse_failed` · `truncated` · `no_rows` · `already_committed` · `bad_reference` | 22 |
+| `purchase.close.create` | allow · deny | `bad_request` · `not_in_scope` · **`open_docs_exist`** · `conflict` · `bad_reference` | 22 |
+| `purchase.lab.create` | allow · deny | `bad_request` · `bad_reference` · `not_in_scope` · **`stock_managed_item`** · `month_closed` · `negative_stock` · `conflict` | 22 |
+
+> `month_closed` 는 **여덟 창구가 같은 낱말**을 쓴다(요청 수정·요청 취소·발주서 수정/취소·입고/이동/사용/실사 취소). 판정은 `Doc::closeGuard` 한 곳이고, 사유를 적은 `purchase.close` 보유자가 지나간 요청은 allow 행의 `detail.after_close = true` 로 남아 경보 AL-14 가 본다.
+
+
 > 7·8·9단계(URL 가져오기·감사 로그 조회·백업)의 행동은 그 단계 지시서에서 이 표에 행을 먼저 추가한 뒤 구현한다.
 
 **기존 DB 반영**: `deploy/install.sh` 는 표가 이미 있으면 `schema.sql` 을 건너뛴다. 따라서 컬럼 추가는 `db/migrations/2026-09-10_audit_summary.sql` 로 하고, 소유자 계정으로 한 번 실행한다(기존 행은 같은 문장 표로 채운 뒤 `NOT NULL` 을 건다). 실행: `sudo -u postgres psql -d tbox_re -v ON_ERROR_STOP=1 -f db/migrations/2026-09-10_audit_summary.sql`. 새로 설치하는 DB 는 `schema.sql` 에 컬럼이 이미 들어 있으므로 마이그레이션이 필요 없다.
@@ -1246,6 +1265,16 @@ GRANT  USAGE, SELECT  ON SEQUENCE audit_logs_id_seq TO tbox_app;
 | `cascade` · `cascaded` | 어떻게 | 「하위에도 적용」을 썼나(`true`)와 **함께 바뀐 항목 수**(정수). 항목 하나하나는 자기 행(`file.level_change`·`folder.level_change`)으로 따로 남는다 | 핸들러 | `folder.level_change` (18-1) |
 | `cascade_from` | 왜 | 이 항목이 **어느 폴더의** 「하위에도 적용」으로 바뀌었나 — 그 폴더의 id. 값 하나로 한 번의 일괄 변경을 묶어 볼 수 있다 | 핸들러 | `file.level_change`·`folder.level_change`(cascade 로 바뀐 행, 18-1) |
 | `violations` | 왜 | 불변 규칙 ①을 어긴 하위 항목의 **개수만**. 어떤 파일·폴더인지는 넣지 않는다 — 요청한 사람이 못 보는 항목일 수 있다 (SECURITY R-63) | 핸들러 | `folder.level_change deny children_exceed`·`not_owner` (18-1) |
+| `doc_no` · `doc_type` · `src_doc_no` | 무엇을 | 전표 번호(`PR-20260914-1` …)·종류(`pr`·`po`·`gr`·`mv`·`is`·`adj`)·출처 전표 번호. 전표 id 가 아니라 **사람이 읽는 번호**를 남긴다 | 핸들러 | `purchase.request|order|receipt|move|use|count|lab.*` (20~22) |
+| `branch_id` · `location_id` | 어디서 | 전표의 지점·장소 id. `actor_team` 과 나란히 놓으면 지점 격리 판정을 로그만으로 재검산할 수 있다 | 핸들러 | 구매 모듈의 쓰기 행 전부 (19~22) |
+| `lines` · `moves` · `amount` | 무엇을 | 줄 수(정수) · 원장에 들어간 행 수(정수) · **서버가 계산한** 금액 합. 마감 행에서 `lines` 는 잠근 전표 수다 | 핸들러 | `purchase.*.create`·`void`·`purchase.close.create` (20~22) |
+| `month` | 언제의 | `YYYY-MM`. 마감한 달, 명세서의 달, 기공 명세서 전표가 속한 달 | 핸들러 | `purchase.close.create`·`purchase.recon.*`·`purchase.lab.create` (22) |
+| `vendor_id` | 누구와 | 거래처 id. 이름이 아니라 id 다(같은 이름 거래처가 여럿일 수 있다 — SECURITY R-72) | 핸들러 | `purchase.recon.*`·`purchase.lab.create` (22) |
+| `statement_id` | 무엇을 | 명세서 행(`p_recon_statements.id`). 파일 자체는 `file_id`·`sha256` 로 따로 남는다 | 핸들러 | `purchase.recon.*`·`purchase.lab.create` (22) |
+| `diff_counts` | 왜 | 대사 판정의 **건수 분포**(`{"none":2,"qty":1,…}`). 어떤 품목인지·금액이 얼마인지는 넣지 않는다 — 그것은 `p_recon_lines` 에 있다 | 핸들러 | `purchase.recon.preview|commit` (22) |
+| `after_close` | 어떻게 | `true`/`false` — **월 마감된 달**의 전표를 고치거나 취소했는가. `after_sent`(보낸 뒤 수정)와 같은 성격이고, 둘 다 경보 AL-14 가 본다 | 핸들러 | `purchase.request.update`·`purchase.order.update|void`·`purchase.receipt|move|use|count.void` (22) |
+| `after_sent` | 어떻게 | `true`/`false` — 거래처에 **보낸 뒤**의 발주서 수정·취소인가 | 핸들러 | `purchase.order.update|void` (20) |
+| `relinked` | 어떻게 | 기공 명세서 전표가 대사표에서 **다시 맞춘 줄 수**(정수) | 핸들러 | `purchase.lab.create` (22) |
 
 **검토 행동과 사용자 행동 가르기** — 두 조건 중 하나면 검토다. 둘 다 아니면 사용자(또는 침입자)다.
 

@@ -665,6 +665,74 @@ final class Audit
         'purchase.count.void|deny|bad_request'          => '{actor} 이(가) 실사 취소를 잘못된 형식으로 요청해서 거부했습니다',
         'purchase.count.void|deny|status_invalid'       => '{actor} 이(가) 이미 취소되었거나 마감된 실사 「{target}」 을(를) 취소하려 해서 거부했습니다',
         'purchase.count.void|deny|negative_stock'       => '{actor} 이(가) 실사 「{target}」 을(를) 취소하려 했지만 재고가 음수가 되므로 막았습니다',
+
+        // ── 22단계 거래처 월 대사 · 월 마감 · 기공 명세서 (PRD F-35, ARCH 5.18 「마감」, SECURITY R-69) ──
+        //
+        // 마감된 달의 전표를 고치거나 취소하려는 시도는 **여덟 창구가 같은 사유 코드**
+        // (`month_closed`)를 쓴다 — 같은 뜻에는 같은 낱말을 쓴다는 21단계 규칙 그대로다.
+        // 지나간 요청(사유를 적은 purchase.close 보유자)은 allow 행의 detail.after_close 에 남는다.
+        'purchase.request.update|deny|month_closed'     => '{actor} 이(가) **마감된 달**의 발주요청 「{target}」 을(를) 고치려 해서 막았습니다 (마감을 연 사람이 사유를 남겨야 합니다)',
+        'purchase.request.void|deny|month_closed'       => '{actor} 이(가) **마감된 달**의 발주요청 「{target}」 을(를) 사유 없이(또는 자격 없이) 취소하려 해서 막았습니다',
+        'purchase.order.update|deny|month_closed'       => '{actor} 이(가) **마감된 달**의 발주서 「{target}」 을(를) 사유 없이(또는 자격 없이) 고치려 해서 막았습니다',
+        'purchase.order.void|deny|month_closed'         => '{actor} 이(가) **마감된 달**의 발주서 「{target}」 을(를) 사유 없이(또는 자격 없이) 취소하려 해서 막았습니다',
+        'purchase.receipt.void|deny|month_closed'       => '{actor} 이(가) **마감된 달**의 입고 「{target}」 을(를) 사유 없이(또는 자격 없이) 취소하려 해서 막았습니다',
+        'purchase.move.void|deny|month_closed'          => '{actor} 이(가) **마감된 달**의 이동 「{target}」 을(를) 사유 없이(또는 자격 없이) 취소하려 해서 막았습니다',
+        'purchase.use.void|deny|month_closed'           => '{actor} 이(가) **마감된 달**의 사용 「{target}」 을(를) 사유 없이(또는 자격 없이) 취소하려 해서 막았습니다',
+        'purchase.count.void|deny|month_closed'         => '{actor} 이(가) **마감된 달**의 실사 「{target}」 을(를) 사유 없이(또는 자격 없이) 취소하려 해서 막았습니다',
+
+        // 명세서 올리기 — 거부 사유는 19단계 가져오기(purchase.import.upload)와 **같은 낱말**이다.
+        'purchase.recon.upload|allow'                   => '{actor} 이(가) 거래처 명세서 「{target}」 을(를) 올렸습니다 (관리자 전용 폴더 「구매/명세서/거래처/월」 · 거래처·월은 상세 기록)',
+        'purchase.recon.upload|deny|no_file'            => '{actor} 이(가) 파일 없이 거래처 명세서 등록을 요청해서 거부했습니다',
+        'purchase.recon.upload|deny|bad_request'        => '{actor} 이(가) 거래처 명세서를 올리려 했지만 거래처·월의 형식이 잘못되어 거부했습니다',
+        'purchase.recon.upload|deny|bad_reference'      => '{actor} 이(가) 없는(또는 중단된) 거래처의 명세서를 올리려 해서 거부했습니다',
+        'purchase.recon.upload|deny|bad_encoding'       => '{actor} 이(가) 올린 명세서 파일의 이름이 올바른 문자(UTF-8)가 아니어서 거부했습니다',
+        'purchase.recon.upload|deny|ext_not_allowed'    => '{actor} 이(가) 대사가 읽을 수 없는 종류의 파일 「{target}」 을(를) 명세서로 올려 거부했습니다 (xlsx·csv·pdf 만)',
+        'purchase.recon.upload|deny|mime_mismatch'      => '{actor} 이(가) 올린 명세서 「{target}」 의 실제 내용이 확장자와 달라(위장 파일 의심) 거부했습니다',
+        'purchase.recon.upload|deny|double_extension'   => '{actor} 이(가) 이중 확장자 파일 「{target}」 을(를) 명세서로 올려 거부했습니다 (실행 파일 위장 의심)',
+        'purchase.recon.upload|deny|empty_file'         => '{actor} 이(가) 0바이트 파일 「{target}」 을(를) 명세서로 올려 거부했습니다',
+        'purchase.recon.upload|deny|too_large'          => '{actor} 이(가) 100MB 를 넘는 파일 「{target}」 을(를) 명세서로 올려 거부했습니다',
+        'purchase.recon.upload|deny|upload_error'       => '{actor} 이(가) 보낸 명세서 업로드의 형식이 잘못되어 거부했습니다',
+        'purchase.recon.upload|deny|not_uploaded_file'  => '{actor} 이(가) 보낸 명세서 업로드가 정상적인 HTTP 업로드가 아니어서 거부했습니다',
+        'purchase.recon.upload|deny|size_unreadable'    => '{actor} 이(가) 올린 명세서 「{target}」 의 크기를 읽을 수 없어 거부했습니다',
+        'purchase.recon.upload|deny|hash_failed'        => '{actor} 이(가) 올린 명세서 「{target}」 의 무결성 값을 계산할 수 없어 거부했습니다',
+        'purchase.recon.upload|deny|quota_exceeded'     => '{actor} 이(가) 명세서를 올리려 했지만 하루 업로드 한도(2GB)를 넘어 거부했습니다',
+        'purchase.recon.upload|error|parse_failed'      => '{actor} 이(가) 올린 명세서 「{target}」 에서 표를 읽어 내지 못했습니다 (손상 · 글자가 없는 PDF · 지원 범위 밖)',
+
+        // 대조 미리보기 — 아무것도 저장하지 않는 단계다(열 매핑을 바꿔 가며 본다)
+        'purchase.recon.preview|allow'                  => '{actor} 이(가) 거래처 명세서 「{target}」 을(를) 우리 입고와 맞춰 봤습니다 (차이 건수는 상세 기록)',
+        'purchase.recon.preview|deny|bad_request'       => '{actor} 이(가) 명세서 대조를 잘못된 형식으로 요청해서 거부했습니다',
+        'purchase.recon.preview|deny|bad_mapping'       => '{actor} 이(가) 허용되지 않은 열(또는 필수 열이 빠진 매핑)으로 명세서 대조를 요청해서 거부했습니다 (품목·수량·단가·금액 열만 읽습니다)',
+        'purchase.recon.preview|deny|bad_header_row'    => '{actor} 이(가) 있을 수 없는 머리행 번호로 명세서 대조를 요청해서 거부했습니다 (앞 20줄 안에서만 고를 수 있습니다)',
+        'purchase.recon.preview|deny|parse_failed'      => '{actor} 이(가) 읽을 수 없는 명세서로 대조를 요청해서 거부했습니다',
+
+        // 대사 확정 — 한 트랜잭션, 한 번만
+        'purchase.recon.commit|allow'                   => '{actor} 이(가) 거래처 명세서 「{target}」 의 대사 결과를 확정했습니다 (줄 수·차이 건수·명세서 합계는 상세 기록)',
+        'purchase.recon.commit|deny|bad_request'        => '{actor} 이(가) 대사 확정을 잘못된 형식으로 요청해서 거부했습니다',
+        'purchase.recon.commit|deny|bad_mapping'        => '{actor} 이(가) 허용되지 않은 열(또는 필수 열이 빠진 매핑)로 대사 확정을 요청해서 거부했습니다',
+        'purchase.recon.commit|deny|bad_header_row'     => '{actor} 이(가) 있을 수 없는 머리행 번호로 대사 확정을 요청해서 거부했습니다',
+        'purchase.recon.commit|deny|parse_failed'       => '{actor} 이(가) 읽을 수 없는 명세서로 대사 확정을 요청해서 거부했습니다',
+        'purchase.recon.commit|deny|truncated'          => '{actor} 이(가) 상한에서 끊긴 명세서로 대사 확정을 요청해서 거부했습니다 (반쯤 읽은 표로 차이를 세지 않습니다)',
+        'purchase.recon.commit|deny|no_rows'            => '{actor} 이(가) 읽어 낸 줄이 하나도 없는 명세서로 대사 확정을 요청해서 거부했습니다 (빈 대사표를 만들지 않습니다)',
+        'purchase.recon.commit|deny|already_committed'  => '{actor} 이(가) 이미 확정된 명세서를 다시 확정하려 해서 거부했습니다 (다시 하려면 명세서를 새로 올립니다)',
+        'purchase.recon.commit|deny|bad_reference'      => '{actor} 이(가) 없는 전표 줄을 가리키는 대사 결과를 확정하려 해서 **전부 되돌렸습니다**',
+
+        // 월 마감 — 재인증 관문을 지난 뒤의 행동이다 (ARCH 4.0 「sudo 모드」)
+        'purchase.close.create|allow'                   => '{actor} 이(가) {target} 의 구매·재고 전표를 **월 마감**했습니다 (지점·잠근 전표 수·사유는 상세 기록)',
+        'purchase.close.create|deny|bad_request'        => '{actor} 이(가) 월 마감을 잘못된 형식으로 요청해서 거부했습니다',
+        'purchase.close.create|deny|not_in_scope'       => '{actor} 이(가) 자기 범위 밖의 지점을 마감하려 해서 막았습니다',
+        'purchase.close.create|deny|open_docs_exist'    => '{actor} 이(가) {target} 을(를) 마감하려 했지만 **아직 확정되지 않은 전표**가 남아 있어 거부했습니다 (진행 중인 요청·발주가 잠기지 않게)',
+        'purchase.close.create|deny|conflict'           => '{actor} 이(가) 이미 마감된 달을 다시 마감하려 해서 거부했습니다',
+        'purchase.close.create|deny|bad_reference'      => '{actor} 이(가) 없는 지점으로 월 마감을 요청해서 거부했습니다',
+
+        // 기공 명세서 → 입고 전표 (재고관리 안 하는 품목만, 원장에는 +·− 두 행)
+        'purchase.lab.create|allow'                     => '{actor} 이(가) 기공 명세서로 입고 전표 「{target}」 을(를) 만들었습니다 (거래처·줄 수·금액·연결한 명세서는 상세 기록)',
+        'purchase.lab.create|deny|bad_request'          => '{actor} 이(가) 기공 명세서 전표를 만들려 했지만 보낸 값의 형식이 잘못되어 거부했습니다',
+        'purchase.lab.create|deny|bad_reference'        => '{actor} 이(가) 없는(또는 중단된) 거래처·장소·품목·명세서로 기공 명세서 전표를 만들려 해서 거부했습니다',
+        'purchase.lab.create|deny|not_in_scope'         => '{actor} 이(가) 자기 범위 밖의 장소로 기공 명세서 전표를 만들려 해서 막았습니다',
+        'purchase.lab.create|deny|stock_managed_item'   => '{actor} 이(가) **재고를 관리하는 품목**을 기공 명세서에 담으려 해서 거부했습니다 (기공은 재고관리 안 하는 품목만입니다)',
+        'purchase.lab.create|deny|month_closed'         => '{actor} 이(가) **마감된 달**에 기공 명세서 전표를 만들려 해서 거부했습니다',
+        'purchase.lab.create|deny|negative_stock'       => '{actor} 이(가) 확정하면 재고가 음수가 되는 기공 명세서 전표를 넣으려 해서 거부했습니다',
+        'purchase.lab.create|deny|conflict'             => '{actor} 이(가) 만든 기공 명세서 전표의 번호가 이미 있어 거부했습니다',
     ];
 
     /** 자리표시자에 넣을 값이 없을 때 (ARCH 7.4) */

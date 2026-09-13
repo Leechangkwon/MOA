@@ -465,20 +465,32 @@ if ($want('AL-5')) {
 //   AL-5(접근 등급 하향)와 같은 모양이며, 이 파일에 새 골격을 만들지 않는다.
 // ─────────────────────────────────────────────────────────────
 if ($want('AL-14')) {
+    /*
+     * 22단계 — 「**마감 뒤** 수정·취소」도 같은 규칙으로 본다 (ARCH 5.18 「감사·경보」의
+     * AL-14 정의가 원래 그것이다). 근거 값은 핸들러가 남기는 `detail.after_close = true` 이고,
+     * 그 행은 `purchase.close` 를 가진 사람이 **사유를 적어** 지나간 요청이다
+     * (Doc::closeGuard). 막지 않고 드러내는 것이 이 규칙의 뜻이다.
+     */
     $rows = $db->run(
         "SELECT id, actor_name, action, target_name,
                 detail->>'doc_no'      AS doc_no,
                 detail->>'reason_text' AS reason_text,
+                detail->>'after_close' AS after_close,
                 happened_at
            FROM audit_logs
-          WHERE action IN ('purchase.order.update', 'purchase.order.void')
+          WHERE action IN ('purchase.order.update', 'purchase.order.void',
+                           'purchase.request.update',
+                           'purchase.receipt.void', 'purchase.move.void',
+                           'purchase.use.void', 'purchase.count.void')
             AND result = 'allow'
-            AND detail->>'after_sent' = 'true'
+            AND (detail->>'after_sent' = 'true' OR detail->>'after_close' = 'true')
             AND happened_at > now() - interval '10 minutes'"
     )->fetchAll();
     foreach ($rows as $r) {
         $raise('AL-14', 'audit_log#' . (string) $r['id'], [
-            'rule_text' => '거래처에 보낸 뒤 발주서를 고치거나 취소했다',
+            'rule_text' => ((string) ($r['after_close'] ?? '')) === 'true'
+                ? '**월 마감된 달**의 전표를 고치거나 취소했다'
+                : '거래처에 보낸 뒤 발주서를 고치거나 취소했다',
             'actor'     => (string) $r['actor_name'],
             'action'    => (string) $r['action'],
             'doc_no'    => (string) $r['doc_no'],
@@ -528,6 +540,52 @@ if ($want('AL-15')) {
         ]);
     }
     cli_say(sprintf('AL-15 대상 %d건', count($rows)));
+}
+
+// ─────────────────────────────────────────────────────────────
+// AL-16 — 단가 급변 (22단계, PRD F-35, ARCH 5.18 「감사·경보」)
+//
+//   확정된 **월 대사**에서 「단가 차이」로 판정된 줄 가운데, 우리 단가 대비 명세서 단가가
+//   ±20% 이상 벌어진 것을 올린다. 오타 한 자리(23,750 → 237,500)와 말없는 인상이 여기서
+//   드러난다. 근거는 감사 로그가 아니라 **표 `p_recon_lines`** 다 — 판정 결과 자체가 증거다
+//   (AL-15 가 뷰 `p_backorder` 를 보는 것과 같은 성격).
+//
+//   ★ 임계값(20%)과 경보 통로는 **23단계에서 정한다**(지시서: 규칙 골격만).
+//     지점 격리는 이 배치에 없다 — CLI 는 운영자(root)가 돌리고 경보는 구매실이 받는다
+//     (AL-15 와 같은 판단).
+//
+//   우리 단가는 `p_doc_lines.unit_price`(입고 확정 때 서버가 DB 에서 읽어 넣은 값)이고,
+//   명세서 단가는 파일에서 온 값이다. 둘을 견주는 것이 대사이므로 여기서도 그대로 견준다.
+// ─────────────────────────────────────────────────────────────
+if ($want('AL-16')) {
+    $rows = $db->run(
+        "SELECT r.id, r.item_code, r.item_name,
+                CAST(r.unit_price AS text) AS their_price,
+                CAST(l.unit_price AS text) AS our_price,
+                s.month, v.name AS vendor_name
+           FROM p_recon_lines      r
+           JOIN p_recon_statements s ON s.id = r.statement_id
+           JOIN p_vendors          v ON v.id = s.vendor_id
+           JOIN p_doc_lines        l ON l.id = r.matched_line_id
+          WHERE r.diff_type = 'price'
+            AND r.unit_price IS NOT NULL
+            AND l.unit_price IS NOT NULL
+            AND l.unit_price > 0
+            AND abs(r.unit_price - l.unit_price) / l.unit_price >= 0.20
+          ORDER BY r.id DESC
+          LIMIT 200"
+    )->fetchAll();
+    foreach ($rows as $r) {
+        $raise('AL-16', 'purchase_recon_line#' . (string) $r['id'], [
+            'rule_text' => '월 대사에서 거래처 단가가 우리 단가보다 20% 이상 벌어졌다',
+            'vendor'    => (string) ($r['vendor_name'] ?? '?'),
+            'month'     => (string) $r['month'],
+            'item'      => (string) ($r['item_code'] ?? '') . ' ' . (string) $r['item_name'],
+            'our_price'   => (string) $r['our_price'],
+            'their_price' => (string) $r['their_price'],
+        ]);
+    }
+    cli_say(sprintf('AL-16 대상 %d건', count($rows)));
 }
 
 // ─────────────────────────────────────────────────────────────

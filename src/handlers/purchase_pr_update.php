@@ -83,9 +83,15 @@ $docNoForLog = (string) $doc['doc_no'];
 if ((string) $doc['status'] === Doc::ST_VOID) {
     $reject('status_invalid');
 }
-if ($doc['closed_month'] !== null) {
-    // 마감된 달의 전표는 `purchase.close` 를 가진 사람만 손댈 수 있다 (ARCH 5.18 「마감」, 22단계).
-    $reject('status_invalid');
+// ─── 22단계 마감 검사 (ARCH 5.18 「마감」, PRD F-35) ───────────
+// 이 창구에는 **사유 칸이 없다**(요청 수정의 허용 키는 TBOX_PR_PATCH_KEYS 여섯뿐이다).
+// 사유가 없으면 `closeGuard` 는 자격과 무관하게 blocked 이므로, 마감된 달의 요청은
+// 언제나 400 `month_closed` 다 — 고치려면 마감을 연 사람이 사유를 남기는 다른 창구
+// (발주서 수정·취소)로 가야 한다. 22단계에서 사유 칸을 새로 열지 않았다.
+if (Doc::closeGuard($db, $user, (int) $doc['branch_id'], (string) $doc['doc_date'], $doc['closed_month'], null)
+    !== Doc::CLOSE_OPEN
+) {
+    $reject('month_closed');
 }
 
 // ─── 값 좁히기 ───────────────────────────────────────────────
