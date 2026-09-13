@@ -161,6 +161,20 @@ final class Audit
          */
         'doc_no', 'doc_type', 'src_doc_no', 'lines', 'added', 'split_to',
         'amount', 'sent_to', 'resent', 'after_sent', 'shared',
+        /*
+         * 21단계 재고 원장 (PRD F-33 · F-34, ARCH 5.18 · 7.5 등록부).
+         *   lot_no           입고 줄의 로트 번호(여럿이면 쉼표로 이은 목록). 포장에 찍혀 나오는
+         *                    값이고 비밀이 아니다 — 회수·유효기간 추적을 로그만으로 되짚게 한다
+         *   count_cycle      실사 주기 `daily`·`weekly`·`monthly` (Q-18③)
+         *   qty_delta        그 전표가 원장에 넣은 변화의 **크기**(취소는 되돌린 절대합,
+         *                    실사는 `+합/-합`). 품목별 내용은 전표에 있고 여기엔 수치만 남긴다
+         *   moves            그 요청 1건이 원장에 넣은 **행 수**(수치)
+         *   location_id      어느 장소인가 — 입고·실사의 대상 장소
+         *   from_location_id · to_location_id  이동의 두 장소. 사용·실사는 from 만 쓴다
+         * 셋 다 id·수치·코드이고 사람이 적은 자유 문자열이 아니다(사유는 `reason_text`).
+         */
+        'lot_no', 'count_cycle', 'qty_delta', 'moves',
+        'location_id', 'from_location_id', 'to_location_id',
     ];
 
     private const RESULT_ALLOW = 'allow';
@@ -598,6 +612,59 @@ final class Audit
         'purchase.list.update|deny|bad_reference'       => '{actor} 이(가) 볼 수 없는(또는 중단된) 품목을 발주 리스트에 담으려 해서 거부했습니다',
         'purchase.list.update|deny|branch_required'     => '{actor} 이(가) 지점이 정해지지 않은 채 발주 리스트를 지점과 공유하려 해서 거부했습니다',
         'purchase.list.delete|allow'                    => '{actor} 이(가) 발주 리스트 「{target}」 을(를) 닫았습니다 (지운 것이 아니라 중단이며 담겼던 품목은 남습니다)',
+
+        // ── 21단계 재고 (PRD F-33 · F-34, ARCH 5.18 「원장」·7.4, SECURITY R-66) ──
+        // 네 행동(입고·이동·사용·실사)이 **같은 사유 코드 묶음**을 쓴다. 사유가 종류마다 달라지면
+        // 로그를 읽는 사람이 네 표를 외워야 한다 — 같은 뜻에는 같은 낱말을 쓴다.
+        'purchase.receipt.create|allow'                 => '{actor} 이(가) 입고 「{target}」 을(를) 확정했습니다 (장소·줄 수·원장 행 수·로트는 상세 기록)',
+        'purchase.receipt.create|deny|bad_request'      => '{actor} 이(가) 입고를 확정하려 했지만 보낸 값의 형식이 잘못되어 거부했습니다',
+        'purchase.receipt.create|deny|bad_reference'    => '{actor} 이(가) 없는(또는 중단된) 장소·품목·담당자로 입고를 확정하려 해서 거부했습니다',
+        'purchase.receipt.create|deny|not_in_scope'     => '{actor} 이(가) 자기 범위 밖의 발주서 줄을 입고하려 해서 막았습니다',
+        'purchase.receipt.create|deny|status_invalid'   => '{actor} 이(가) 아직 보내지 않았거나 취소·마감된 발주서를 입고하려 해서 거부했습니다',
+        'purchase.receipt.create|deny|remaining_exceeded' => '{actor} 이(가) 발주서의 **미입고 잔량보다 많은 수량**을 입고하려 해서 거부했습니다',
+        'purchase.receipt.create|deny|negative_stock'   => '{actor} 이(가) 확정하면 재고가 음수가 되는 입고를 넣으려 해서 거부했습니다',
+        'purchase.receipt.create|deny|conflict'         => '{actor} 이(가) 만든 입고 전표의 번호가 이미 있어 거부했습니다',
+        'purchase.receipt.void|allow'                   => '{actor} 이(가) 입고 「{target}」 을(를) 취소했습니다 (원장에 반대 부호 행이 들어가고 미입고가 되돌아갑니다 · 사유는 상세 기록)',
+        'purchase.receipt.void|deny|bad_request'        => '{actor} 이(가) 입고 취소를 잘못된 형식으로 요청해서 거부했습니다',
+        'purchase.receipt.void|deny|status_invalid'     => '{actor} 이(가) 이미 취소되었거나 마감된 입고 「{target}」 을(를) 취소하려 해서 거부했습니다',
+        'purchase.receipt.void|deny|negative_stock'     => '{actor} 이(가) 입고 「{target}」 을(를) 취소하려 했지만 그 물건이 이미 나가 재고가 음수가 되므로 막았습니다 (실사로 맞추세요)',
+
+        'purchase.move.create|allow'                    => '{actor} 이(가) 이동 「{target}」 을(를) 확정했습니다 (두 장소·줄 수·원장 행 수는 상세 기록)',
+        'purchase.move.create|deny|bad_request'         => '{actor} 이(가) 이동을 확정하려 했지만 보낸 값의 형식이 잘못되어 거부했습니다',
+        'purchase.move.create|deny|bad_reference'       => '{actor} 이(가) 없는(또는 중단된) 장소·품목·담당자로 이동을 확정하려 해서 거부했습니다',
+        'purchase.move.create|deny|not_in_scope'        => '{actor} 이(가) 자기 범위 밖의 장소로(또는 장소에서) 재고를 옮기려 해서 막았습니다',
+        'purchase.move.create|deny|not_stock_managed'   => '{actor} 이(가) 재고를 관리하지 않는 품목을 옮기려 해서 거부했습니다 (옮길 재고가 없습니다)',
+        'purchase.move.create|deny|negative_stock'      => '{actor} 이(가) 보내는 장소의 재고보다 많은 수량을 옮기려 해서 거부했습니다 (재고는 음수가 될 수 없습니다)',
+        'purchase.move.create|deny|conflict'            => '{actor} 이(가) 만든 이동 전표의 번호가 이미 있어 거부했습니다',
+        'purchase.move.void|allow'                      => '{actor} 이(가) 이동 「{target}」 을(를) 취소했습니다 (원장에 반대 부호 행이 들어갑니다 · 사유는 상세 기록)',
+        'purchase.move.void|deny|bad_request'           => '{actor} 이(가) 이동 취소를 잘못된 형식으로 요청해서 거부했습니다',
+        'purchase.move.void|deny|status_invalid'        => '{actor} 이(가) 이미 취소되었거나 마감된 이동 「{target}」 을(를) 취소하려 해서 거부했습니다',
+        'purchase.move.void|deny|negative_stock'        => '{actor} 이(가) 이동 「{target}」 을(를) 취소하려 했지만 받은 장소의 물건이 이미 나가 재고가 음수가 되므로 막았습니다',
+
+        'purchase.use.create|allow'                     => '{actor} 이(가) 사용 「{target}」 을(를) 확정했습니다 (장소·줄 수·원장 행 수는 상세 기록)',
+        'purchase.use.create|deny|bad_request'          => '{actor} 이(가) 사용을 확정하려 했지만 보낸 값의 형식이 잘못되어 거부했습니다',
+        'purchase.use.create|deny|bad_reference'        => '{actor} 이(가) 없는(또는 중단된) 장소·품목·담당자로 사용을 확정하려 해서 거부했습니다',
+        'purchase.use.create|deny|not_in_scope'         => '{actor} 이(가) 자기 범위 밖의 장소에서 재고를 빼려 해서 막았습니다',
+        'purchase.use.create|deny|not_stock_managed'    => '{actor} 이(가) 재고를 관리하지 않는 품목을 사용으로 빼려 해서 거부했습니다',
+        'purchase.use.create|deny|negative_stock'       => '{actor} 이(가) 그 장소의 재고보다 많은 수량을 사용으로 빼려 해서 거부했습니다',
+        'purchase.use.create|deny|conflict'             => '{actor} 이(가) 만든 사용 전표의 번호가 이미 있어 거부했습니다',
+        'purchase.use.void|allow'                       => '{actor} 이(가) 사용 「{target}」 을(를) 취소했습니다 (원장에 반대 부호 행이 들어갑니다 · 사유는 상세 기록)',
+        'purchase.use.void|deny|bad_request'            => '{actor} 이(가) 사용 취소를 잘못된 형식으로 요청해서 거부했습니다',
+        'purchase.use.void|deny|status_invalid'         => '{actor} 이(가) 이미 취소되었거나 마감된 사용 「{target}」 을(를) 취소하려 해서 거부했습니다',
+        'purchase.use.void|deny|negative_stock'         => '{actor} 이(가) 사용 「{target}」 을(를) 취소하려 했지만 재고가 음수가 되므로 막았습니다',
+
+        'purchase.count.create|allow'                   => '{actor} 이(가) 실사 「{target}」 을(를) 확정했습니다 (장소·주기·차이 크기·원장 행 수는 상세 기록)',
+        'purchase.count.create|deny|bad_request'        => '{actor} 이(가) 실사를 확정하려 했지만 보낸 값의 형식이 잘못되어 거부했습니다',
+        'purchase.count.create|deny|bad_reference'      => '{actor} 이(가) 없는(또는 중단된) 장소·품목·담당자로 실사를 확정하려 해서 거부했습니다',
+        'purchase.count.create|deny|not_in_scope'       => '{actor} 이(가) 자기 범위 밖의 장소를 실사하려 해서 막았습니다',
+        'purchase.count.create|deny|not_stock_managed'  => '{actor} 이(가) 재고를 관리하지 않는 품목을 실사에 넣으려 해서 거부했습니다',
+        'purchase.count.create|deny|stale_snapshot'     => '{actor} 이(가) 실사를 확정하려 했지만 장부를 불러온 뒤 다른 전표가 재고를 바꿔 거부했습니다 (다시 불러와 세어야 합니다)',
+        'purchase.count.create|deny|negative_stock'     => '{actor} 이(가) 확정하면 재고가 음수가 되는 실사를 넣으려 해서 거부했습니다',
+        'purchase.count.create|deny|conflict'           => '{actor} 이(가) 만든 실사 전표의 번호가 이미 있어 거부했습니다',
+        'purchase.count.void|allow'                     => '{actor} 이(가) 실사 「{target}」 을(를) 취소했습니다 (원장에 반대 부호 행이 들어갑니다 · 사유는 상세 기록)',
+        'purchase.count.void|deny|bad_request'          => '{actor} 이(가) 실사 취소를 잘못된 형식으로 요청해서 거부했습니다',
+        'purchase.count.void|deny|status_invalid'       => '{actor} 이(가) 이미 취소되었거나 마감된 실사 「{target}」 을(를) 취소하려 해서 거부했습니다',
+        'purchase.count.void|deny|negative_stock'       => '{actor} 이(가) 실사 「{target}」 을(를) 취소하려 했지만 재고가 음수가 되므로 막았습니다',
     ];
 
     /** 자리표시자에 넣을 값이 없을 때 (ARCH 7.4) */

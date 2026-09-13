@@ -492,6 +492,45 @@ if ($want('AL-14')) {
 }
 
 // ─────────────────────────────────────────────────────────────
+// AL-15 — 미입고 30일 (21단계, PRD F-34 R6, ARCH 5.18 「감사·경보」)
+//
+//   보낸 발주서인데 **한 달이 지나도록 물건이 오지 않은 줄**을 올린다. 다른 규칙과 달리
+//   근거가 감사 로그가 아니라 **뷰 `p_backorder`** 다 — "일어난 사건" 이 아니라 "일어나지
+//   않은 일" 을 보는 규칙이기 때문이다(로그에는 아무것도 남지 않는다).
+//
+//   ★ 임계값(30일)과 경보 통로는 **23단계에서 정한다**(지시서: 규칙 골격만). 지금은 기본
+//     30일로 두고, 화면(미입고 현황)의 `?days=` 와 같은 뜻이다. 지점 격리는 이 배치에
+//     없다 — CLI 는 사람이 아니라 운영자(root)가 돌리고, 경보는 구매실이 받는다.
+//
+//   같은 줄이 매일 걸리므로 중복 억제는 $raise 가 한다(다른 규칙과 같다).
+// ─────────────────────────────────────────────────────────────
+if ($want('AL-15')) {
+    $rows = $db->run(
+        "SELECT bo.po_line_id, bo.po_doc_no, bo.branch_id,
+                (date_part('day', now() - bo.sent_at))::int AS days_elapsed,
+                CAST(bo.remaining_qty AS text) AS remaining_qty,
+                v.name AS vendor_name, i.name AS item_name, i.code AS item_code
+           FROM p_backorder bo
+           LEFT JOIN p_vendors v ON v.id = bo.vendor_id
+           JOIN p_items        i ON i.id = bo.item_id
+          WHERE bo.sent_at < now() - interval '30 days'
+          ORDER BY bo.sent_at ASC
+          LIMIT 200"
+    )->fetchAll();
+    foreach ($rows as $r) {
+        $raise('AL-15', 'purchase_po_line#' . (string) $r['po_line_id'], [
+            'rule_text' => '발주서를 보낸 지 30일이 지났는데 입고가 없다 (미입고)',
+            'doc_no'    => (string) $r['po_doc_no'],
+            'vendor'    => (string) ($r['vendor_name'] ?? '?'),
+            'item'      => (string) $r['item_code'] . ' ' . (string) $r['item_name'],
+            'remaining' => (string) $r['remaining_qty'],
+            'days'      => (string) $r['days_elapsed'],
+        ]);
+    }
+    cli_say(sprintf('AL-15 대상 %d건', count($rows)));
+}
+
+// ─────────────────────────────────────────────────────────────
 // AL-7 — 감사 로그가 끊겼다 (PRD 7.11 "업무시간에 30분간 0건")
 //   로그가 끊긴 것 자체가 침해 신호다. 다만 **이 서버 안에서 하는 판정은 약한 판정**이다 —
 //   서버가 통째로 털리면 이 배치도 돌지 않는다. 진짜 감시는 원격 로그 서버 쪽에서 해야 한다

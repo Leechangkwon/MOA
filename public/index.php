@@ -326,6 +326,50 @@ const TBOX_ROUTES = [
 
     ['GET',    '/api/purchase/recommend',        'purchase_recommend.php',       'purchase.read'],
     ['GET',    '/api/purchase/cycle',            'purchase_cycle.php',           'purchase.read'],
+
+    /*
+     * 21단계 — 입고(GR)·이동(MV)·사용(IS)·실사(ADJ)·재고 현황·수불부·미입고
+     * (PRD F-33 · F-34, ARCH 5.18 「원장」, `docs/purchase/06-stage21-directive.md`).
+     *
+     * 정책이 둘로 갈린다:
+     *   purchase.read        현황·수불부·미입고·화면 — 모듈 역할이 있는 사람 전부(범위는 지점)
+     *   purchase.stock.write 재고를 **움직이는** 모든 라우트 — stock·buyer·Admin
+     *
+     * ★ 입고(GR)도 `purchase.stock.write` 다. ARCH 5.18 은 입고를 「발주서·입고 = buy.write」
+     *   로 적었지만, 물건을 받아 세는 사람은 창고(stock)다(시안 ⑥ 의 화면 주인공도 지점
+     *   담당자다). `purchase.stock.write` 는 stock **과 buyer** 를 함께 허용하므로
+     *   「buyer 도 입고할 수 있다」 는 그대로 지켜지고, 창고 담당이 더해질 뿐이다.
+     *   requester·viewer 는 어느 쪽으로도 재고를 못 움직인다 (완료 기준 T-46).
+     *
+     * ★ 취소는 종류마다 라우트가 따로다(`/gr/{num}/void` …). 한 경로로 합치지 않는 이유는
+     *   감사 문장(`purchase.receipt|move|use|count.void`)과 되돌릴 부수 효과(입고 취소만
+     *   발주서 잔량을 되돌린다)가 종류마다 다르기 때문이다.
+     *
+     * 경로 충돌: `{num}` 은 `[0-9]{1,9}` 라 `/api/purchase/gr/load`·`/mv/suggest`·`/adj/start`
+     * 와 형태가 다르다. 그래도 의도를 드러내려고 글자 경로를 `{num}` 계열보다 위에 둔다.
+     */
+    ['GET',    '/purchase/stock',                'purchase_stock_page.php',      'purchase.read'],
+    ['GET',    '/purchase/receipt',              'purchase_receipt_page.php',    'purchase.read'],
+    ['GET',    '/purchase/move',                 'purchase_move_page.php',       'purchase.read'],
+
+    ['GET',    '/api/purchase/gr/load',          'purchase_gr_load.php',         'purchase.stock.write'],
+    ['POST',   '/api/purchase/gr',               'purchase_gr_create.php',       'purchase.stock.write'],
+    ['POST',   '/api/purchase/gr/{num}/void',    'purchase_gr_void.php',         'purchase.stock.write'],
+
+    ['GET',    '/api/purchase/mv/suggest',       'purchase_mv_suggest.php',      'purchase.stock.write'],
+    ['POST',   '/api/purchase/mv',               'purchase_mv_create.php',       'purchase.stock.write'],
+    ['POST',   '/api/purchase/mv/{num}/void',    'purchase_mv_void.php',         'purchase.stock.write'],
+
+    ['POST',   '/api/purchase/is',               'purchase_is_create.php',       'purchase.stock.write'],
+    ['POST',   '/api/purchase/is/{num}/void',    'purchase_is_void.php',         'purchase.stock.write'],
+
+    ['GET',    '/api/purchase/adj/start',        'purchase_adj_start.php',       'purchase.stock.write'],
+    ['POST',   '/api/purchase/adj',              'purchase_adj_create.php',      'purchase.stock.write'],
+    ['POST',   '/api/purchase/adj/{num}/void',   'purchase_adj_void.php',        'purchase.stock.write'],
+
+    ['GET',    '/api/purchase/stock',            'purchase_stock_status.php',    'purchase.read'],
+    ['GET',    '/api/purchase/ledger',           'purchase_stock_ledger.php',    'purchase.read'],
+    ['GET',    '/api/purchase/backorder',        'purchase_backorder.php',       'purchase.read'],
 ];
 
 /**
@@ -406,6 +450,14 @@ const TBOX_REAUTH_PATHS = [
     'purchasepr'      => '/purchase/pr',
     'purchasepo'      => '/purchase/po',
     'purchasedocs'    => '/purchase/docs',
+    /*
+     * ★ 21단계 재고 화면(`/purchase/stock`·`/receipt`·`/move`)의 키는 **일부러 두지 않았다**.
+     *   ① 그 셋의 라우트 정책은 `purchase.read` 라 재인증 관문(`REAUTH_POLICIES`)에 걸리지 않고,
+     *      그 화면의 API 도 `purchase.stock.write` 로 관문 밖이다 — 지금은 돌아올 일이 없다.
+     *   ② 이 표에는 **쌍둥이**가 있다: `public/assets/app.js` 의 같은 내용 맵이 실제 이동을 한다.
+     *      app.js 는 이번 지시서의 「수정 파일」 밖이라 여기만 늘리면 두 표가 어긋난다.
+     *   22단계에서 월 마감(`purchase.close`)이 이 화면에 붙는 날, **두 표를 함께** 고친다.
+     */
 ];
 
 /** 재인증 화면의 경로. 코드 상수이며 요청 값이 섞이지 않는다 (TBOX_LOGIN_PATH 와 같다). */

@@ -109,6 +109,53 @@ else
   echo "✔ 전표 핸들러가 단가·금액을 요청 본문에서 받음  [S-01 · R-66]"
 fi
 
+# (e) 21단계 — **재고 원장은 `src/purchase/Stock.php` 한 곳에서만 INSERT 된다**
+#     (PRD F-33, ARCH 5.18 「원장」, SECURITY R-66).
+#     입고·이동·사용·실사 핸들러에 `INSERT INTO p_stock_moves` 가 나타나면 반려한다.
+#     막으려는 것: 음수 재고 검사(장소 FOR UPDATE → 합 재계산)와 취소 행 짝맞춤을
+#     지나지 않는 원장 쓰기 경로가 생기는 것. 앱 계정에는 그 표의 UPDATE·DELETE 권한이
+#     아예 없으므로 **잘못 적힌 행은 지울 수도 없다** — 들어가기 전에 막는 것이 유일한 방어다.
+#     같은 이유로 `Stock.php` 밖의 어떤 PHP 도 이 문장을 쓰면 안 된다(cURL 규칙과 같은 방식).
+ledger_hits=$(grep -rnE "${INCLUDE[@]}" "${EXCLUDE[@]}" -- 'INSERT[[:space:]]+INTO[[:space:]]+p_stock_moves' "$ROOT" 2>/dev/null | grep -v '/src/purchase/Stock\.php:' || true)
+if [ -n "$ledger_hits" ]; then
+  echo "✖ p_stock_moves INSERT 가 src/purchase/Stock.php 밖에 있음  [F-33 · R-66]"; echo "$ledger_hits" | sed 's/^/    /'; fail=1
+else
+  echo "✔ p_stock_moves INSERT 가 src/purchase/Stock.php 밖에 있음  [F-33 · R-66]"
+fi
+
+# (e-2) 21단계 재고 핸들러도 **예외 표식을 쓸 수 없다** — (c) 와 같은 규칙을 넓힌 것이다.
+#     재고는 지점 격리의 핵심이므로 purchase_gr_* · mv_* · is_* · adj_* · stock_* · backorder 는
+#     `lint:no-branch-scope` 없이 반드시 `Authz::purchaseScopeWhere` 를 부른다.
+#     SQL 이 없는 화면 틀(`*_page.php` 중 `FROM p_` 가 없는 것)은 대상이 아니다.
+stock_hits=""
+for f in "$ROOT"/src/handlers/purchase_gr_*.php "$ROOT"/src/handlers/purchase_mv_*.php \
+         "$ROOT"/src/handlers/purchase_is_*.php "$ROOT"/src/handlers/purchase_adj_*.php \
+         "$ROOT"/src/handlers/purchase_stock_*.php "$ROOT"/src/handlers/purchase_backorder.php; do
+  [ -f "$f" ] || continue
+  if grep -q 'lint:no-branch-scope' "$f"; then
+    stock_hits="${stock_hits}${f}: 재고 핸들러에는 lint:no-branch-scope 예외를 쓸 수 없음"$'\n'
+    continue
+  fi
+  grep -q 'purchaseScopeWhere(' "$f" && continue
+  grep -q 'FROM p_' "$f" || continue        # SQL 이 없는 화면 틀은 대상이 아니다
+  stock_hits="${stock_hits}${f}: 재고 핸들러인데 purchaseScopeWhere() 호출이 없음"$'\n'
+done
+if [ -n "$stock_hits" ]; then
+  echo "✖ 구매 재고 핸들러의 지점 격리 (예외 없음)  [S-01 · R-65]"; printf '%s' "$stock_hits" | sed 's/^/    /'; fail=1
+else
+  echo "✔ 구매 재고 핸들러의 지점 격리 (예외 없음)  [S-01 · R-65]"
+fi
+
+# (e-3) 재고 전표 핸들러도 단가·금액을 **요청 본문에서 받지 않는다** ((d) 를 넓힌 것).
+price_hits2=$(grep -rn --include='purchase_gr_*.php' --include='purchase_mv_*.php' \
+  --include='purchase_is_*.php' --include='purchase_adj_*.php' \
+  -E "^const TBOX_[A-Z_]*KEYS?[A-Z_]* *=.*'(unit_price|amount)'" "$ROOT/src/handlers" 2>/dev/null || true)
+if [ -n "$price_hits2" ]; then
+  echo "✖ 재고 전표 핸들러가 단가·금액을 요청 본문에서 받음  [S-01 · R-66]"; echo "$price_hits2" | sed 's/^/    /'; fail=1
+else
+  echo "✔ 재고 전표 핸들러가 단가·금액을 요청 본문에서 받음  [S-01 · R-66]"
+fi
+
 # (b) 모듈 역할 판단이 Authz 밖으로 새는 것 — `purchase_role` **문자열 비교**가
 #     src/Authz.php 밖에 있으면 반려한다 (S-01 / R-70). 본체의 "역할 문자열 직접 비교" 규칙과
 #     같은 방식이다: 컬럼 이름을 적는 것(SQL·허용 키 목록)은 괜찮고, 그 **값을 견주는 것**이

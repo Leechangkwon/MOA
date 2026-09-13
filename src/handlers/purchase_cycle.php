@@ -125,9 +125,16 @@ foreach ($rows as $row) {
         'line_status'   => (string) $row['status'],
         'locked_at'     => $row['locked_at'] === null ? null : (string) $row['locked_at'],
         'orders'        => [],
-        // 21단계 입고가 붙을 자리. 값을 지어내지 않는다 — 아직 원장이 없다.
-        'received_qty'  => null,
-        'not_received'  => null,
+        /*
+         * 21단계에 채워지는 칸 (PRD F-34 R4).
+         *   received_qty  이 요청 줄에서 나온 **입고(GR) 줄 수량의 합**(취소 제외)
+         *   not_received  발주된 수량 − 입고된 수량 = 아직 오지 않은 것
+         * 아래 자식 사슬(`p_line_chain`)을 훑으며 `doc_type='gr'` 인 손자 줄을 더한다.
+         * 발주가 하나도 없으면 두 값은 **0 이 아니라 그대로 계산된 0** 이다 — 20단계의
+         * `null`(= 아직 기능이 없다) 과 뜻이 다르다.
+         */
+        'received_qty'  => '0.000',
+        'not_received'  => '0.000',
     ];
     $byLine[] = $lineId;
 }
@@ -162,10 +169,16 @@ if ($byLine !== []) {
         $cBind
     )->fetchAll();
 
+    $received = [];
     foreach ($children as $child) {
         $root = (int) $child['root_id'];
         if (!isset($out[$root])) {
             continue;
+        }
+        // 21단계 — 입고(GR) 줄은 「받은 것」으로 따로 더한다. 사슬의 깊이가 아니라
+        // **전표 종류**로 가른다(발주서를 거치지 않는 입고가 생겨도 같은 칸에 들어가게).
+        if ((string) $child['doc_type'] === 'gr') {
+            $received[$root] = ($received[$root] ?? 0) + Doc::milli((string) $child['qty']);
         }
         $out[$root]['orders'][] = [
             'depth'        => (int) $child['depth'],
@@ -178,6 +191,15 @@ if ($byLine !== []) {
             'manager_name' => $child['manager_name'] === null ? null : (string) $child['manager_name'],
             'qty'          => (string) $child['qty'],
         ];
+    }
+
+    // 발주된 수량(`ordered_qty`) 가운데 아직 오지 않은 것 = 미입고.
+    foreach ($out as $lineId => $row) {
+        $got = $received[$lineId] ?? 0;
+        $out[$lineId]['received_qty'] = Doc::qtyText($got);
+        $out[$lineId]['not_received'] = Doc::qtyText(
+            max(0, Doc::milli((string) $row['ordered_qty']) - $got)
+        );
     }
 }
 

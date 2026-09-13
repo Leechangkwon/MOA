@@ -513,7 +513,7 @@ R=$(call qa_employee01 GET "/api/purchase/cycle?pr=$PR1" "$TOK_EMP1")
 echo "  HTTP $(code_of "$R")"; echo "  $(body_of "$R")" | head -c 700; echo
 expect "사이클 200" 200 "$(code_of "$R")"
 expect "요청 줄에 발주서 번호가 붙어 있다" 1 "$(body_of "$R" | grep -c "$PO1_NO")"
-expect "입고 칸은 값을 지어내지 않는다(null)" 1 "$(body_of "$R" | grep -c '"received_qty":null')"
+expect "입고 칸은 원장 합(21단계부터 값, 입고 전이면 0.000)" 1 "$(body_of "$R" | grep -c '"received_qty":"0.000"')"
 
 hr "T-45 ⑫ 인쇄 화면 — 머리·표·금액이 서버 값으로만 (Q-18②)"
 

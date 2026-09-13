@@ -255,9 +255,10 @@ CREATE INDEX share_links_file_idx       ON share_links (file_id);
 -- 표 접두는 전부 `p_` 다 — 본체 표와 이름이 섞이지 않는다 (ARCH 5.18 「경계」).
 -- **삭제가 없다**: 그만 쓰는 것은 `is_active = false` 이고, 앱 계정에는 이 표들에
 -- DELETE 권한 자체가 없다 (db/grants.sql).
--- 재고 원장 표(p_stock_moves)는 21단계다 — 여기 없다. 전표(p_docs · p_doc_lines · p_doc_seq)와
--- 내 발주 리스트(p_lists · p_list_items)는 20단계에 이 파일 끝에 붙었다.
--- (기존 DB 는 db/migrations/2026-09-13_purchase_masters.sql · 2026-09-14_purchase_docs.sql 로 같은 모양이 된다.)
+-- 전표(p_docs · p_doc_lines · p_doc_seq)와 내 발주 리스트(p_lists · p_list_items)는 20단계,
+-- 재고 원장(p_stock_moves)과 뷰 둘(p_stock_balance · p_backorder)은 21단계에 이 파일 끝에 붙었다.
+-- (기존 DB 는 db/migrations/2026-09-13_purchase_masters.sql · 2026-09-14_purchase_docs.sql ·
+--  2026-09-14_purchase_stock.sql 로 같은 모양이 된다.)
 -- ═════════════════════════════════════════════════════════════
 
 CREATE TABLE p_brands (
@@ -467,11 +468,12 @@ CREATE UNIQUE INDEX p_import_mappings_kind_name_uidx ON p_import_mappings (kind,
 
 CREATE TABLE p_docs (
     id             BIGSERIAL   PRIMARY KEY,
-    doc_type       TEXT        NOT NULL CHECK (doc_type IN ('pr','po')),
+    doc_type       TEXT        NOT NULL CHECK (doc_type IN ('pr','po','gr','mv','is','adj')),
     doc_no         TEXT        NOT NULL,
     doc_date       DATE        NOT NULL DEFAULT CURRENT_DATE,
     branch_id      BIGINT      NOT NULL REFERENCES p_branches(id),
     vendor_id      BIGINT      REFERENCES p_vendors(id),
+    from_location_id BIGINT    REFERENCES p_locations(id),  -- 21단계 이동·사용·실사의 보내는 장소
     to_location_id BIGINT      REFERENCES p_locations(id),
     manager_id     BIGINT      NOT NULL REFERENCES users(id),
     status         TEXT        NOT NULL DEFAULT 'unconfirmed'
@@ -481,25 +483,30 @@ CREATE TABLE p_docs (
     split_from_id  BIGINT      REFERENCES p_docs(id),   -- 요청 분리 출처 (Q-18①)
     sent_at        TIMESTAMPTZ,                -- 「보냄」 (Q-18④) — 한 번만
     sent_by        BIGINT      REFERENCES users(id),
+    count_cycle    TEXT,                       -- 21단계 실사 주기 daily|weekly|monthly (Q-18③)
     closed_month   TEXT,                       -- 월 마감 (22단계)
     created_by     BIGINT      NOT NULL REFERENCES users(id),
     created_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
     CONSTRAINT p_docs_memo_len  CHECK (memo IS NULL OR length(memo) <= 500),
-    CONSTRAINT p_docs_month_fmt CHECK (closed_month IS NULL OR closed_month ~ '^[0-9]{4}-[0-9]{2}$')
+    CONSTRAINT p_docs_month_fmt CHECK (closed_month IS NULL OR closed_month ~ '^[0-9]{4}-[0-9]{2}$'),
+    CONSTRAINT p_docs_count_cycle_check
+        CHECK (count_cycle IS NULL OR count_cycle IN ('daily','weekly','monthly'))
 );
 CREATE UNIQUE INDEX p_docs_doc_no_uidx ON p_docs (doc_no);
 CREATE INDEX p_docs_branch_type_status_idx ON p_docs (branch_id, doc_type, status);
 CREATE INDEX p_docs_manager_idx ON p_docs (manager_id);
 CREATE INDEX p_docs_vendor_idx  ON p_docs (vendor_id);
 CREATE INDEX p_docs_date_idx    ON p_docs (doc_date);
+CREATE INDEX p_docs_from_loc_idx ON p_docs (from_location_id);   -- 21단계
+CREATE INDEX p_docs_to_loc_idx   ON p_docs (to_location_id);     -- 21단계
 
 CREATE TABLE p_doc_lines (
     id          BIGSERIAL   PRIMARY KEY,
     doc_id      BIGINT      NOT NULL REFERENCES p_docs(id),
     line_no     INT         NOT NULL CHECK (line_no >= 1),
     item_id     BIGINT      NOT NULL REFERENCES p_items(id),
-    qty         NUMERIC(14,3) NOT NULL CHECK (qty > 0),
+    qty         NUMERIC(14,3) NOT NULL,     -- 21단계: 실사 줄의 「장부 스냅샷」은 0 일 수 있다
     unit_price  NUMERIC(14,2) CHECK (unit_price IS NULL OR unit_price >= 0),  -- 서버가 p_items 에서
     amount      NUMERIC(16,2) CHECK (amount IS NULL OR amount >= 0),          -- 서버 계산 (R-66)
     remark      TEXT,
@@ -507,10 +514,18 @@ CREATE TABLE p_doc_lines (
     locked_at   TIMESTAMPTZ,                              -- 담긴 시각 (Q-18① 수정 창)
     status      TEXT        NOT NULL DEFAULT 'unconfirmed'
                 CHECK (status IN ('unconfirmed','ordered','done','void')),
+    lot_no      TEXT,                                     -- 21단계 입고 줄의 로트
+    expiry_date DATE,                                     -- 21단계 입고 줄의 유효기간
+    counted_qty NUMERIC(14,3),                            -- 21단계 실사 줄의 실제 센 수량
     created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
     CONSTRAINT p_doc_lines_remark_len CHECK (remark IS NULL OR length(remark) <= 200),
-    CONSTRAINT p_doc_lines_doc_line_uniq UNIQUE (doc_id, line_no)
+    CONSTRAINT p_doc_lines_doc_line_uniq UNIQUE (doc_id, line_no),
+    -- 21단계: 수량은 0 이상이고, **0 은 실사 줄(counted_qty 가 있는 줄)에만** 허용된다.
+    CONSTRAINT p_doc_lines_qty_nonneg   CHECK (qty >= 0),
+    CONSTRAINT p_doc_lines_qty_positive CHECK (qty > 0 OR counted_qty IS NOT NULL),
+    CONSTRAINT p_doc_lines_lot_len      CHECK (lot_no IS NULL OR length(lot_no) BETWEEN 1 AND 60),
+    CONSTRAINT p_doc_lines_counted_check CHECK (counted_qty IS NULL OR counted_qty >= 0)
 );
 CREATE INDEX p_doc_lines_doc_idx  ON p_doc_lines (doc_id);
 CREATE INDEX p_doc_lines_src_idx  ON p_doc_lines (src_line_id);
@@ -518,7 +533,7 @@ CREATE INDEX p_doc_lines_item_idx ON p_doc_lines (item_id);
 
 -- 채번 — 하루·종류마다 한 행. Doc::nextDocNo() 가 이 행을 잠그고 1 올린다.
 CREATE TABLE p_doc_seq (
-    doc_type TEXT NOT NULL CHECK (doc_type IN ('pr','po')),
+    doc_type TEXT NOT NULL CHECK (doc_type IN ('pr','po','gr','mv','is','adj')),
     seq_date DATE NOT NULL,
     last_no  INT  NOT NULL DEFAULT 0 CHECK (last_no >= 0),
     PRIMARY KEY (doc_type, seq_date)
@@ -562,3 +577,72 @@ WITH RECURSIVE chain AS (
       JOIN chain c ON l.src_line_id = c.id
 )
 SELECT root_id, id AS line_id, src_line_id, doc_id, depth FROM chain;
+
+-- ═════════════════════════════════════════════════════════════
+-- 재고 원장 (21단계 — PRD F-33 입고·이동·사용·실사 · F-34 현황,
+--   ARCH 5.18 「원장」·「음수 재고」, SECURITY R-66)
+--
+-- ★ **추가만 하는 표**다. 앱 계정에는 INSERT·SELECT 뿐이고 UPDATE·DELETE 가 없다
+--   (db/grants.sql). 취소·정정은 반대 부호 행 + reverses_move_id 다.
+-- ★ 현재고는 컬럼이 아니라 **합**이다 — 뷰 p_stock_balance.
+-- ★ 원장에 INSERT 하는 코드는 src/purchase/Stock.php 하나뿐이고,
+--   scripts/security_lint.sh 규칙 (e) 가 그것을 강제한다.
+-- (기존 DB 는 db/migrations/2026-09-14_purchase_stock.sql 로 같은 모양이 된다.)
+-- ═════════════════════════════════════════════════════════════
+
+CREATE TABLE p_stock_moves (
+    id               BIGSERIAL   PRIMARY KEY,
+    doc_line_id      BIGINT      NOT NULL REFERENCES p_doc_lines(id),   -- 근거 없는 변화는 없다
+    location_id      BIGINT      NOT NULL REFERENCES p_locations(id),
+    item_id          BIGINT      NOT NULL REFERENCES p_items(id),
+    qty_delta        NUMERIC(14,3) NOT NULL CHECK (qty_delta <> 0),     -- + 들어옴 / − 나감
+    moved_at         TIMESTAMPTZ NOT NULL DEFAULT now(),
+    reverses_move_id BIGINT      REFERENCES p_stock_moves(id),          -- 되돌린 원본 행
+    created_by       BIGINT      NOT NULL REFERENCES users(id)
+);
+CREATE INDEX p_stock_moves_loc_item_idx  ON p_stock_moves (location_id, item_id);
+CREATE INDEX p_stock_moves_line_idx      ON p_stock_moves (doc_line_id);
+CREATE INDEX p_stock_moves_item_time_idx ON p_stock_moves (item_id, moved_at);
+-- 같은 행을 두 번 되돌리지 못하게 (앱도 막지만 DB 가 마지막으로 막는다)
+CREATE UNIQUE INDEX p_stock_moves_reverse_uidx
+    ON p_stock_moves (reverses_move_id) WHERE reverses_move_id IS NOT NULL;
+
+-- 현재고 = 원장의 합 (ARCH 5.18 불변 규칙 2)
+CREATE OR REPLACE VIEW p_stock_balance AS
+SELECT location_id, item_id, sum(qty_delta) AS qty
+  FROM p_stock_moves
+ GROUP BY location_id, item_id;
+
+-- 미입고 = 「보낸」 발주서 줄 − 그 줄을 출처로 하는 입고 줄 (PRD F-34 R6).
+-- 권한 조건은 없다: 이 뷰를 쓰는 SQL 이 p_docs 를 조인해 purchaseScopeWhere 로 건다.
+CREATE OR REPLACE VIEW p_backorder AS
+SELECT l.id           AS po_line_id,
+       l.doc_id       AS po_doc_id,
+       d.doc_no       AS po_doc_no,
+       d.doc_date     AS po_date,
+       d.sent_at      AS sent_at,
+       d.branch_id    AS branch_id,
+       d.vendor_id    AS vendor_id,
+       d.to_location_id AS to_location_id,
+       d.manager_id   AS manager_id,
+       l.item_id      AS item_id,
+       l.qty          AS ordered_qty,
+       COALESCE(g.received, 0)         AS received_qty,
+       l.qty - COALESCE(g.received, 0) AS remaining_qty,
+       l.unit_price   AS unit_price
+  FROM p_doc_lines l
+  JOIN p_docs      d ON d.id = l.doc_id
+  LEFT JOIN LATERAL (
+        SELECT sum(c.qty) AS received
+          FROM p_doc_lines c
+          JOIN p_docs      cd ON cd.id = c.doc_id
+         WHERE c.src_line_id = l.id
+           AND cd.doc_type = 'gr'
+           AND c.status  <> 'void'
+           AND cd.status <> 'void'
+       ) g ON true
+ WHERE d.doc_type = 'po'
+   AND d.status  <> 'void'
+   AND l.status  <> 'void'
+   AND d.sent_at IS NOT NULL
+   AND l.qty - COALESCE(g.received, 0) > 0;

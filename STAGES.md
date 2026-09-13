@@ -40,7 +40,8 @@
 | **18** | **18-1** 폴더(F-26, 폴더 자체 권한·불변 규칙·cascade) → **18-2** 일괄 업로드(F-27, 서버 계약 불변·화면 순차) — 사용자 결정 2026-09-13 | ✅ 구현·검토 | ✅ 2026-09-13 (재지시 1회) | ✅ 2026-09-13 (T-40·T-41 통과) | ⚠ 대기 | 18단계 커밋 |
 | **19** | 구매·재고 모듈 골격 + 기초정보(F-28) + 엑셀 가져오기(F-29) + 품목 찾기 API — 확정 2026-09-13 | ✅ 구현·검토 | ✅ 2026-09-13 (Opus, 재지시 0회) | ✅ 2026-09-13 (T-42·T-43·T-44 81/81, 회귀 T-1·T-26·T-36) | ⚠ 대기 | 19단계 커밋 |
 | **20** | 발주요청(PR)·추천/내 리스트·불러오기→발주서(PO)·인쇄·검토·보냄 — 지시서 docs/purchase/05 | ✅ 구현·검토 | ✅ 2026-09-13 (Opus, 재지시 0회) | ✅ 2026-09-13 (T-45 90/90, 동시성 201/400, 회귀 T-42·T-43·T-1·T-26·T-36) | ⚠ 대기 | 20단계 커밋 |
-| 21~23 | 입고·이동·사용·실사·원장·현황(21) / 주간 사용량·월 대사·기공 명세서(22) / 발주 제안·경보(23) | 대기 | | | | |
+| **21** | 입고(GR)·이동(MV)·사용(IS)·실사(ADJ)·**재고 원장**·장소별 재고·수불부·미입고·사이클 완성 — 지시서 docs/purchase/06 | ✅ 구현 | ✅ 2026-09-13 (Opus, 재지시 0회) | 미실시 | ⚠ 대기 | 대기 |
+| 22~23 | 주간 사용량·월 대사·기공 명세서(22) / 발주 제안·미입고 경보(23) | 대기 | | | | |
 
 ---
 
@@ -869,6 +870,62 @@ sudo -u postgres psql -d tbox_re -c "SELECT happened_at, actor_name, action, res
 | 2026-09-13 | 접수(Opus 보고) | 19단계 시험(`tests/purchase_stage19.sh`)의 T-44 7차 보정 절이 **사용자의 실제 브랜드 「플란치과」와 이름이 겹쳐** 409 로 실패한다(11건). 시험 픽스처가 실데이터와 같은 이름을 쓴 탓이며 20단계 코드와 무관하다. T-42·T-43·회귀는 전부 통과 | 시험 픽스처 이름을 `S20-` 처럼 접두로 바꾸는 것이 근본 해결 |
 | 2026-09-13 | 접수(Opus 보고) | 내비 「구매관리」 그룹에 새 화면 셋(발주요청·발주서·전표) 링크가 **없다** — `src/views/shell_top.php` 가 지시서의 「수정 파일」 밖이라 손대지 않았다. 지금은 각 화면 머리의 단추로만 오간다 | Fable 판단 필요(19단계에서도 같은 이유로 shell_top 수정이 사후 수용됐다) |
 
+
+### 21단계 — 입고 · 이동 · 사용 · 실사 · 재고 원장 · 장소별 재고·수불부·미입고·사이클 완성 (F-33 · F-34 · T-46 · Q-18③) — 구현 2026-09-13
+
+> 지시서: `docs/purchase/06-stage21-directive.md`. 근거: PRD F-33 · F-34 · Q-18③, ARCH 5.18
+> (원장·음수 재고·채번·재고관리 안 하는 품목·실사 주기), SECURITY R-65 · R-66 · R-73.
+> **이 단계의 한 문장**: 수량이 바뀌는 모든 일은 `p_stock_moves` 에 **한 줄 더하기**로만 일어나고,
+> 그 줄을 쓰는 코드는 `src/purchase/Stock.php` 하나뿐이며, 앱 계정은 그 줄을 **고치지도 지우지도 못한다**.
+
+**개발 사항**
+- [x] 마이그레이션 `2026-09-14_purchase_stock.sql` — `p_docs.doc_type` 에 `gr|mv|is|adj` 추가(`p_doc_seq` 도),
+      `p_docs.from_location_id`·`count_cycle`(daily|weekly|monthly), `p_doc_lines.lot_no`·`expiry_date`·`counted_qty`,
+      원장 `p_stock_moves`(인덱스 3 + 되돌림 부분 UNIQUE), 뷰 `p_stock_balance`(현재고 = SUM)·`p_backorder`(미입고),
+      GRANT **`tbox_app` = INSERT·SELECT 만**. `db/grants.sql`·`db/schema.sql` 동기화
+- [x] `src/purchase/Stock.php` — 채번(`GR|MV|IS|ADJ-YYYYMMDD-N`)·전표/줄 INSERT(늘어난 칸)·**원장 기록 한 곳**
+      (장소 `FOR UPDATE` → 합 재계산 → 음수면 `negative_stock` → INSERT)·취소는 반대 부호 행 + `reverses_move_id`·
+      재고관리 안 하는 품목의 `+`·`−` 두 행·발주서 상태 재계산
+- [x] API 입고: `GET /api/purchase/gr/load`(보낸 발주서의 미입고 잔량만) · `POST /api/purchase/gr` · `POST …/{num}/void`
+- [x] API 이동·사용·실사: `GET /api/purchase/mv/suggest`(인가량 − 현재고, 보내는 곳 재고 한도) ·
+      `POST /api/purchase/mv|is|adj` · `GET /api/purchase/adj/start`(장부 스냅샷) · 네 종류 `POST …/{num}/void`
+- [x] API 현황: `GET /api/purchase/stock`(현재고·인가량·과부족·미입고·주평균·제안 자리 null) ·
+      `GET /api/purchase/ledger`(수불부 + 누적 잔액) · `GET /api/purchase/backorder`(거래처별·납기 지남·경과일)
+- [x] 화면: `/purchase/receipt`(시안 ⑥) · `/purchase/move`(시안 ⑦ 3탭) · `/purchase/stock`(시안 ⑩⑪ 3탭) —
+      `purchase_stock.js`·`purchase_stock.css` **별도 파일**(다른 JS 를 고치지 않는다)
+- [x] `purchase_cycle.php` — `received_qty`·`not_received` 를 채움(20단계의 `null` 자리)
+- [x] `purchase_page.php` — stock 역할의 첫 화면 `/purchase/stock`
+- [x] `public/index.php` 라우트 16개(정책 명시). 재고 쓰기는 전부 `purchase.stock.write`
+- [x] `Audit` — 문장 틀 `purchase.receipt|move|use|count.{create,void}` 46행 + detail 키
+      (`lot_no`·`count_cycle`·`qty_delta`·`moves`·`location_id`·`from_location_id`·`to_location_id`)
+- [x] `scripts/security_lint.sh` 규칙 셋 추가 — (e) `INSERT INTO p_stock_moves` 는 `Stock.php` 밖 금지 ·
+      (e-2) 재고 핸들러는 지점 격리 예외 표식 금지 · (e-3) 재고 전표도 단가·금액 본문 수신 금지
+- [x] `scripts/alerts.php` **AL-15** 「미입고 30일」(뷰 `p_backorder` 기준, 임계값은 23단계 확정)
+- [x] `tests/purchase_stage21.sh` — T-46 + F-33·F-34, **R-73 안전 규칙 3종 그대로** + 픽스처 `S21-` 접두
+- [x] README 「구매·재고 모듈」 절에 21단계 내용 추가
+- [ ] `Authz` 는 **고치지 않았다** — 정책 `purchase.stock.write` 와 별칭 `l`·`d` 가 이미 있어 더할 것이 없었다
+
+**검토 체크 (관문 ②, Fable) — 미실시**
+
+**자기 공격 (관문 ③, 사용자)**
+- [ ] 창고 재고보다 많은 수량으로 이동·사용을 눌러 본다 (400 이어야 하고 재고가 그대로여야 한다)
+- [ ] 두 창에서 같은 장소·같은 품목을 동시에 빼 본다 (한쪽만 통과해야 한다)
+- [ ] 입고를 취소해 본다 — 원장에 **반대 부호 행**이 새로 생기고 미입고가 되돌아오는지, 원본 행이 남는지
+- [ ] 실사를 열어 둔 채 다른 창에서 그 장소의 재고를 바꾼 뒤 실사를 저장해 본다 (거부되어야 한다)
+- [ ] 요청자(requester) 계정으로 `/purchase/receipt`·`/purchase/move` 의 저장을 눌러 본다 (403)
+- [ ] 다른 지점 장소의 재고·수불부를 URL 로 열어 본다 (`?location=` 을 바꿔도 0건이어야 한다)
+- [ ] `psql` 로 `SET ROLE tbox_app; UPDATE p_stock_moves …` 를 해 본다 (permission denied)
+
+**학습 기록**
+
+| 날짜 | 구분 | 내용 | 해소·근거 |
+|---|---|---|---|
+| 2026-09-13 | 접수(Opus 보고) | 입고(GR) 라우트 정책을 `purchase.stock.write` 로 잡았다. ARCH 5.18 의 `KNOWN_POLICIES` 주석은 입고를 `buy.write` 로 적어 두었지만, `stock.write` 는 stock **과 buyer** 를 함께 허용하므로 「buyer 도 입고할 수 있다」는 그대로이고 창고 담당이 더해질 뿐이다(시안 ⑥ 의 화면 주인공도 지점 담당자) | Fable 판단 대기. 좁히려면 라우트 표의 정책만 바꾸면 된다 |
+| 2026-09-13 | 접수(Opus 보고) | `src/purchase/Doc.php` 가 지시서의 「수정 파일」 밖이라, 채번(`Doc::nextDocNo` 의 접두 표가 `pr`·`po` 뿐)과 전표/줄 INSERT(늘어난 칸)를 `Stock.php` 에 **다시 썼다**. 바뀌지 않은 규칙(`milli`·`qtyText`·`SQL_TAKEN`·`lockLines`·`lineAmount`·`retouchRequestLine`)은 그대로 부른다 | 두 파일에 채번 SQL 이 하나씩 있다. 합치려면 Doc.php 의 `PREFIX` 를 여는 별도 결정이 필요 |
+| 2026-09-13 | 접수(Opus 보고) | `p_doc_lines` 의 `CHECK (qty > 0)` 을 풀어야 했다 — 실사의 「장부 스냅샷」이 0 일 수 있기 때문이다(장부에 없던 것을 세어 찾는 경우). 대신 `qty >= 0` + `qty > 0 OR counted_qty IS NOT NULL` 두 제약을 넣어 **실사 줄에만** 0 을 허용한다 | 요청·발주·입고·이동·사용 줄에는 `counted_qty` 가 없으므로 규칙이 그대로 남는다 |
+| 2026-09-13 | 접수(Opus 보고) | `tests/purchase_stage20.sh` 의 「입고 칸은 값을 지어내지 않는다(null)」 검사 1건이 이제 실패한다 — 21단계가 그 칸을 채웠기 때문이다(의도된 변화). 그 파일은 지시서의 「수정 파일」 밖이라 고치지 않았다 | Fable 판단 필요: 그 한 줄을 `"received_qty":"0.000"` 확인으로 바꾸면 90/90 이 된다 |
+| 2026-09-13 | 접수(Opus 보고) | 새 화면 셋의 내비 항목이 **없다** — `src/views/shell_top.php` 가 지시서 밖이다. `$activeNav` 로 넘기는 `purchase-stock` 등은 그 파일의 허용 목록에 없어 **아무 항목도 켜지지 않을 뿐** 오류는 아니다. 지금은 각 화면 머리의 단추로만 오간다 | 20단계에서도 같은 이유로 사후 수용됐다(내비는 별도 소규모 작업) |
+| 2026-09-13 | 접수(Opus 보고) | `TBOX_REAUTH_PATHS` 에 새 화면 키를 **일부러 넣지 않았다**. 그 표에는 쌍둥이(`public/assets/app.js`)가 있는데 app.js 가 지시서 밖이라, 한쪽만 늘리면 두 표가 어긋난다. 세 화면 모두 재인증 관문에 걸리지 않아 지금은 필요도 없다 | 22단계 월 마감이 붙는 날 두 표를 함께 고친다 |
 
 ## 2-1. 10단계 뒤 일괄 자기 공격 — 진행 순서 (관문 ③, 사용자)
 
