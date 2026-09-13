@@ -56,6 +56,18 @@ final class Authz
         'purchase.stock.write',     // 이동·사용·실사 (21단계)
         'purchase.master.write',    // 기초정보 편집·엑셀 가져오기 ★ 재인증 대상
         'purchase.close',           // 월 마감 (22단계) ★ 재인증 대상
+        /*
+         * 20단계 — 「보냄」 (PRD F-32, Q-18④ 확정, ARCH 5.18 「송부 전 검토」).
+         *
+         * 발주서를 거래처로 내보내는 마지막 관문이다. **viewer(검토) 와 buyer** 가 가진다 —
+         * 사용자가 Q-18④ 에서 "발주 보낼 내용을 미리보기하고 오류를 재점검한 뒤 송부" 라고
+         * 정한 역할이 viewer 이고, 구매실이 자기가 만든 발주서를 스스로 보내는 길도 막지 않는다.
+         * requester·stock 은 여기서 끝난다(라우트 403 + `authz.route deny`).
+         *
+         * `purchase.buy.write` 를 그냥 쓰지 않는 이유: viewer 는 발주서를 **고칠 수는 없고**
+         * 보내기만 한다. 두 권한을 한 이름으로 묶으면 그 구분이 사라진다.
+         */
+        'purchase.send',            // 발주서 「보냄」 (20단계) — viewer · buyer
     ];
 
     /**
@@ -844,11 +856,17 @@ final class Authz
      *   l  = p_locations       (branch_id 컬럼)
      *   b  = p_branches        (지점 자신. 조회 SQL 이 `id AS branch_id` 를 내주는 CTE 로 연다)
      *   ib = p_item_branches   (품목 × 사용 지점)
+     *   d  = p_docs            (전표. 20단계 — 요청·발주서 목록·상세·불러오기·사이클 전부)
+     *   pl = p_lists           (내 발주 리스트. 20단계 — 공유 리스트의 지점 범위)
      * 새 표를 스코프에 넣으려면 이 목록을 **먼저** 고쳐야 한다 — 그것이 검토 지점이다.
+     *
+     * ★ 20단계에서 `d`·`pl` 두 개가 늘었다. 전표(`p_docs`)와 리스트(`p_lists`)에도
+     *   `branch_id` 컬럼이 있으므로 조건의 모양(`<별칭>.branch_id = :p_my_branch`)은 같고,
+     *   함수는 여전히 하나다 — 지점을 보는 코드가 이 파일 밖으로 나가지 않는다.
      *
      * @var list<string>
      */
-    private const PURCHASE_ALIASES = ['l', 'b', 'ib'];
+    private const PURCHASE_ALIASES = ['l', 'b', 'ib', 'd', 'pl'];
 
     /** 조건이 필요 없을 때(전 지점)와 아무것도 볼 수 없을 때의 고정 조각 */
     private const SQL_ALWAYS_TRUE  = '1=1';
@@ -954,6 +972,9 @@ final class Authz
                                      || $role === self::PURCHASE_ROLE_BUYER,
             'purchase.master.write'  => $role === self::PURCHASE_ROLE_BUYER,
             'purchase.close'         => $role === self::PURCHASE_ROLE_BUYER,
+            // 20단계 (Q-18④) — 「보냄」은 검토자와 구매실 둘 다. 그 밖은 안 된다.
+            'purchase.send'          => $role === self::PURCHASE_ROLE_VIEWER
+                                     || $role === self::PURCHASE_ROLE_BUYER,
             default                  => false,
         };
     }

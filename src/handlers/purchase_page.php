@@ -4,17 +4,31 @@ declare(strict_types=1);
 /**
  * src/handlers/purchase_page.php — GET /purchase  (정책: purchase.read)
  *
- * ★ 19단계에는 화면이 **기초정보 하나뿐**이라 그리로 보낸다 (PRD F-28).
- *   전표·현황 탭은 20~23단계에 생긴다. 그때 이 파일이 「입력 · 전표 · 현황」 3탭 허브가 된다.
+ * ★ 20단계 — 모듈에 화면이 넷이 되었으므로, `/purchase` 는 **그 사람이 매일 여는 화면**으로 보낸다.
  *
- * 보내는 곳은 **코드 상수**다 — 요청 값이 Location 헤더에 섞이는 자리가 없다(오픈 리다이렉트 0).
- * 여기까지 왔다는 것 자체가 라우트 정책 `purchase.read` 를 통과했다는 뜻이고,
- * 가는 곳(`/purchase/masters`)도 **같은 정책**을 다시 검사한다 (PRD S-01).
+ *   발주서를 쓰거나 보낼 수 있는 사람(buyer·viewer·Admin) → `/purchase/po`
+ *   요청을 쓰는 사람(requester)                          → `/purchase/pr`
+ *   그 밖(stock 등)                                      → `/purchase/masters`
+ *
+ * ★ 역할 문자열을 여기서 비교하지 않는다 (PRD S-01, SECURITY R-70). 판정은 전부
+ *   `Authz::purchaseAuthorize` 가 하고, 이 파일은 그 **참/거짓만** 본다.
+ *   가는 곳은 코드에 적힌 상수이고 요청 값이 Location 헤더에 섞이는 자리가 없다(오픈 리다이렉트 0).
+ *   보내진 화면도 **같은 정책**을 다시 검사한다.
  *
  * @var array<string,mixed> $user
  * @var list<string>        $params 경로 변수 없음
  */
 
-const TBOX_PURCHASE_HOME = '/purchase/masters';
+const TBOX_PURCHASE_HOME_PO      = '/purchase/po';
+const TBOX_PURCHASE_HOME_PR      = '/purchase/pr';
+const TBOX_PURCHASE_HOME_MASTERS = '/purchase/masters';
 
-Http::redirect(TBOX_PURCHASE_HOME);
+if (Authz::purchaseAuthorize('purchase.buy.write', $user)
+    || Authz::purchaseAuthorize('purchase.send', $user)
+) {
+    Http::redirect(TBOX_PURCHASE_HOME_PO);
+}
+if (Authz::purchaseAuthorize('purchase.request.write', $user)) {
+    Http::redirect(TBOX_PURCHASE_HOME_PR);
+}
+Http::redirect(TBOX_PURCHASE_HOME_MASTERS);

@@ -454,6 +454,44 @@ if ($want('AL-5')) {
 }
 
 // ─────────────────────────────────────────────────────────────
+// AL-14 — 「보냄」 뒤 발주서 수정·취소 (20단계, PRD F-32 · Q-18④, ARCH 5.18 「감사·경보」)
+//
+//   발주서는 한 번 보내면 거래처 쪽에 **이미 나간 문서**다. 그 뒤의 수정·취소는 서버가
+//   막지 않는다(현실에서 일어나는 일이라 막으면 장부 밖에서 처리된다) — 대신 **사유를 요구**하고
+//   그 기록을 여기서 본다. 금액·수량을 조용히 바꿔 대사를 맞추는 일을 사후에 드러내는 규칙이다.
+//
+//   근거 값은 핸들러가 남기는 `detail.after_sent = true` 하나다
+//   (purchase_po_update.php · purchase_po_void.php). 사유는 `detail.reason_text` 에 있다.
+//   AL-5(접근 등급 하향)와 같은 모양이며, 이 파일에 새 골격을 만들지 않는다.
+// ─────────────────────────────────────────────────────────────
+if ($want('AL-14')) {
+    $rows = $db->run(
+        "SELECT id, actor_name, action, target_name,
+                detail->>'doc_no'      AS doc_no,
+                detail->>'reason_text' AS reason_text,
+                happened_at
+           FROM audit_logs
+          WHERE action IN ('purchase.order.update', 'purchase.order.void')
+            AND result = 'allow'
+            AND detail->>'after_sent' = 'true'
+            AND happened_at > now() - interval '10 minutes'"
+    )->fetchAll();
+    foreach ($rows as $r) {
+        $raise('AL-14', 'audit_log#' . (string) $r['id'], [
+            'rule_text' => '거래처에 보낸 뒤 발주서를 고치거나 취소했다',
+            'actor'     => (string) $r['actor_name'],
+            'action'    => (string) $r['action'],
+            'doc_no'    => (string) $r['doc_no'],
+            // 사유는 사람이 적은 자유 문자열이다. 여기서는 **그대로** 싣는다 —
+            // 경보를 받는 사람이 판단할 근거이고, 비밀값이 들어갈 자리가 아니다.
+            'reason'    => (string) $r['reason_text'],
+            'at'        => (string) $r['happened_at'],
+        ]);
+    }
+    cli_say(sprintf('AL-14 대상 %d건', count($rows)));
+}
+
+// ─────────────────────────────────────────────────────────────
 // AL-7 — 감사 로그가 끊겼다 (PRD 7.11 "업무시간에 30분간 0건")
 //   로그가 끊긴 것 자체가 침해 신호다. 다만 **이 서버 안에서 하는 판정은 약한 판정**이다 —
 //   서버가 통째로 털리면 이 배치도 돌지 않는다. 진짜 감시는 원격 로그 서버 쪽에서 해야 한다

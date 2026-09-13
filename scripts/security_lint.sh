@@ -70,6 +70,45 @@ else
   echo "✔ 구매 핸들러의 지점 격리 누락  [S-01 · R-65]"
 fi
 
+# (c) 20단계 전표 핸들러는 **예외 표식을 쓸 수 없다** (지시서 20단계, SECURITY R-65 잔여).
+#     (a) 의 `lint:no-branch-scope` 는 파일 단위라, 예외를 선언한 파일에 나중에 조회가
+#     추가되면 잡지 못한다(19단계 검토가 남긴 잔여 위험). 전표는 지점 격리의 핵심이므로
+#     전표 핸들러(purchase_pr_* · purchase_po_* · purchase_lists_* · cycle · recommend)는
+#     **표식 없이 반드시** Authz::purchaseScopeWhere 를 부르게 한다.
+#     SQL 이 없는 화면 틀(`*_page.php` 중 `FROM p_` 가 없는 것)은 대상이 아니다.
+doc_hits=""
+for f in "$ROOT"/src/handlers/purchase_pr_*.php "$ROOT"/src/handlers/purchase_po_*.php \
+         "$ROOT"/src/handlers/purchase_lists_*.php "$ROOT"/src/handlers/purchase_cycle.php \
+         "$ROOT"/src/handlers/purchase_recommend.php; do
+  [ -f "$f" ] || continue
+  if grep -q 'lint:no-branch-scope' "$f"; then
+    doc_hits="${doc_hits}${f}: 전표 핸들러에는 lint:no-branch-scope 예외를 쓸 수 없음"$'\n'
+    continue
+  fi
+  grep -q 'purchaseScopeWhere(' "$f" && continue
+  grep -q 'FROM p_' "$f" || continue        # SQL 이 없는 화면 틀은 대상이 아니다
+  doc_hits="${doc_hits}${f}: 전표 핸들러인데 purchaseScopeWhere() 호출이 없음"$'\n'
+done
+if [ -n "$doc_hits" ]; then
+  echo "✖ 구매 전표 핸들러의 지점 격리 (예외 없음)  [S-01 · R-65]"; printf '%s' "$doc_hits" | sed 's/^/    /'; fail=1
+else
+  echo "✔ 구매 전표 핸들러의 지점 격리 (예외 없음)  [S-01 · R-65]"
+fi
+
+# (d) 전표에 **금액·단가를 클라이언트에서 받는** 경로가 생기지 않게 한다 (SECURITY R-66).
+#     전표 쓰기 핸들러의 허용 키 목록(TBOX_*_KEYS)에 `unit_price`·`amount` 가 나타나면 반려한다.
+#     금액은 언제나 서버가 `p_items.price_in` 에서 계산한다(Doc::lineAmount).
+#     찾는 곳은 **허용 키 상수를 정의한 줄**뿐이다(`const TBOX_… = [ … ];`). 응답·감사에
+#     금액을 담는 것은 정상이므로 파일 전체를 훑으면 오탐이 된다 — 막으려는 것은
+#     "요청 본문에서 그 이름을 **받아들이는** 것" 하나다.
+price_hits=$(grep -rn --include='purchase_pr_*.php' --include='purchase_po_*.php' \
+  -E "^const TBOX_[A-Z_]*KEYS?[A-Z_]* *=.*'(unit_price|amount)'" "$ROOT/src/handlers" 2>/dev/null || true)
+if [ -n "$price_hits" ]; then
+  echo "✖ 전표 핸들러가 단가·금액을 요청 본문에서 받음  [S-01 · R-66]"; echo "$price_hits" | sed 's/^/    /'; fail=1
+else
+  echo "✔ 전표 핸들러가 단가·금액을 요청 본문에서 받음  [S-01 · R-66]"
+fi
+
 # (b) 모듈 역할 판단이 Authz 밖으로 새는 것 — `purchase_role` **문자열 비교**가
 #     src/Authz.php 밖에 있으면 반려한다 (S-01 / R-70). 본체의 "역할 문자열 직접 비교" 규칙과
 #     같은 방식이다: 컬럼 이름을 적는 것(SQL·허용 키 목록)은 괜찮고, 그 **값을 견주는 것**이

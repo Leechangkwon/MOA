@@ -39,7 +39,8 @@
 | **17** | 관리자 영역 `/admin`(F-24) · 권한 매트릭스 화면 편집(F-25, Q-12 결정) — 사용자 요청 2026-09-12 | ✅ 구현·검토 | ✅ 2026-09-12 | ✅ 2026-09-12 (T-38·T-39 통과) | ⚠ 대기 | 17단계 커밋 |
 | **18** | **18-1** 폴더(F-26, 폴더 자체 권한·불변 규칙·cascade) → **18-2** 일괄 업로드(F-27, 서버 계약 불변·화면 순차) — 사용자 결정 2026-09-13 | ✅ 구현·검토 | ✅ 2026-09-13 (재지시 1회) | ✅ 2026-09-13 (T-40·T-41 통과) | ⚠ 대기 | 18단계 커밋 |
 | **19** | 구매·재고 모듈 골격 + 기초정보(F-28) + 엑셀 가져오기(F-29) + 품목 찾기 API — 확정 2026-09-13 | ✅ 구현·검토 | ✅ 2026-09-13 (Opus, 재지시 0회) | ✅ 2026-09-13 (T-42·T-43·T-44 81/81, 회귀 T-1·T-26·T-36) | ⚠ 대기 | 19단계 커밋 |
-| 20~23 | 발주요청·추천·불러오기→발주서(20) / 입고·이동·사용·실사·원장·현황(21) / 주간 사용량·월 대사·기공 명세서(22) / 발주 제안·경보(23) | 대기 | | | | |
+| **20** | 발주요청(PR)·추천/내 리스트·불러오기→발주서(PO)·인쇄·검토·보냄 — 지시서 docs/purchase/05 | ✅ 구현·검토 | ✅ 2026-09-13 (Opus, 재지시 0회) | ✅ 2026-09-13 (T-45 90/90, 동시성 201/400, 회귀 T-42·T-43·T-1·T-26·T-36) | ⚠ 대기 | 20단계 커밋 |
+| 21~23 | 입고·이동·사용·실사·원장·현황(21) / 주간 사용량·월 대사·기공 명세서(22) / 발주 제안·경보(23) | 대기 | | | | |
 
 ---
 
@@ -821,6 +822,50 @@ sudo -u postgres psql -d tbox_re -c "SELECT happened_at, actor_name, action, res
 | 2026-09-13 | 접수(사용자) | "위키에 갱신이 안 되고 있는 것 같아, 현재 12단계가 최신" | 위키 글은 stage-13 까지만 있고 14~19단계·안내 글(위험 수 56→73 등) 미갱신. 문서 에이전트에 wiki/*.json 갱신 지시(wiki_check 0건 조건). **규칙**: 단계 커밋 관문 ④ 에 「위키 stage 글 갱신」을 넣는다(CLAUDE.md 6장 후보) |
 | 2026-09-13 | 검토(7회차) | 창고명 해석 규칙 수정 결과(실파일 #285, 96행): insert 90·review 5·error 1, 브랜드 1(플란치과)·지점 9(강남·부평·검단·동탄·부산·수원·충남·일산·창원), kind 창고 72·수술방 8·중앙장 10, 판별 불가 6(1조각 이름 — 기본 지점으로). 창고 이름은 원문 그대로 저장, 장소 상세는 표시용 | `node --check`·`php -l`·린트 통과, 커밋 19-보정7. 시험 ⑲ 추가(미실행). 사용자 확인 필요: 「수술방 창고」는 or 로 분류(KIND_HINTS 우선순위) |
 | 2026-09-13 | 사고 | **위키가 13단계에서 멈춘 진짜 원인 = `Wiki::STAGE_MAX = 13`** — 14단계 이후 글은 써도 검증이 거부해 500. 글도 14~19 여섯 편이 없었다. 문서 에이전트가 index 에 stage 14 를 넣자 차례 로딩 예외로 위키 전체가 잠시 500(자리표시 null 로 즉시 복구) | Fable: 상수 13→23(PRD 로드맵 끝), index stage 채움, ARCH 5.10 문구. `wiki_check` 28편 0건, qa_admin01 로 `/wiki`·`/wiki/stage-14`·`/wiki/stage-19`·`guide-risks` 200. 글 6편 신설 + 안내 글 7편 갱신(위험 73·시험 안전 규칙 R-73·구매 역할·문서 지도·T-27~T-46). **규칙**: CLAUDE.md 6장 관문 ④ 에 「위키 stage 글 갱신」 추가 |
+| 2026-09-13 | 접수(20단계 Opus 보고) | 지시서 밖 수정 2(`db/grants.sql`·`db/schema.sql` — 없으면 새 설치에 표가 없음) · `Authz::PURCHASE_ALIASES` 에 `d`·`pl` 추가 · 내비에 새 화면 링크 없음(shell_top 범위 밖) · 발주서 줄 수정 창구 없음(취소 후 재작성 규칙) · 품목 기본 거래처 학습 안 함 · 19단계 T-44 11건 실패는 픽스처 「플란치과」 이름 충돌 | 전부 수용. 내비 링크는 18-3 에이전트에 소규모 지시, 픽스처 접두는 19단계 8회차. 발주서 줄 수정은 21단계 입고 뒤 재검토 |
+
+
+### 20단계 — 발주요청 · 추천/내 리스트 · 불러오기→발주서 · 인쇄·검토·보냄 (F-30 · F-31 · F-32 · T-45 · Q-18①②④) — 구현 2026-09-13
+
+> 지시서: `docs/purchase/05-stage20-directive.md`. 근거: PRD F-30~F-32 · Q-18 ①②④, ARCH 5.18
+> (연결·채번·요청 수정 창·발주서 PDF·송부 전 검토), SECURITY R-65 · R-66 · R-68 · R-73.
+> 재고는 움직이지 않는다 — 원장(`p_stock_moves`)과 입고는 21단계다.
+
+**개발 사항**
+- [x] 마이그레이션 `2026-09-14_purchase_docs.sql` — `p_docs`·`p_doc_lines`·`p_doc_seq`·`p_lists`·`p_list_items` + `p_item_branches.is_active` + 재귀 CTE 뷰 `p_line_chain`, 인덱스, GRANT(**DELETE 없음**). `db/grants.sql`·`db/schema.sql` 동기화
+- [x] `src/purchase/Doc.php` — 채번(`PR|PO-YYYYMMDD-N`)·상태 전이·잔량 계산(요청 qty − Σ 자식 qty)·금액 서버 계산(`qty × p_items.price_in`)·발주서 머리(`header_json`)·참조 확인
+- [x] `src/purchase/Recommend.php` — 담당자별 90일 빈도 상위 30, 지점 확장은 「지점과 공유」 리스트가 있을 때만 (R-68)
+- [x] API 발주요청: `GET/POST /api/purchase/pr` · `GET/PATCH /api/purchase/pr/{num}` · `POST …/void` · `GET /api/purchase/pr/load`(묶는 기준 1~3개 = 트리 층, 잔량만)
+- [x] API 발주서: `GET/POST /api/purchase/po` · `GET/PATCH /api/purchase/po/{num}` · `POST …/send`(정책 `purchase.send`) · `POST …/void`(잔량 되돌리기)
+- [x] API 리스트·추천·사이클: `GET/POST /api/purchase/lists` · `PATCH/DELETE …/{num}` · `GET /api/purchase/recommend` · `GET /api/purchase/cycle`
+- [x] 화면: `/purchase/pr`(시안 ①②③) · `/purchase/po`(시안 ④⑤) · `/purchase/docs`(시안 ⑧⑨) · `/purchase/po/{num}/print`(시안 ⑤ + 이카운트 발주서 양식) — `purchase_docs.js`·`purchase_docs.css` **별도 파일**(19단계 보정과 충돌 방지)
+- [x] `Authz`: `KNOWN_POLICIES` 에 `purchase.send`(viewer·buyer), `PURCHASE_ALIASES` 에 `d`(p_docs)·`pl`(p_lists)
+- [x] `Audit`: 문장 틀 `purchase.request|order|list.*` 44행 + `detail` 키 등록(`doc_no`·`doc_type`·`src_doc_no`·`lines`·`amount`·`sent_to`·`reason_text` …)
+- [x] `public/index.php`: 라우트 21개(정책 필수) + `TBOX_REAUTH_PATHS` 에 `purchasepr`·`purchasepo`·`purchasedocs`
+- [x] `purchase_page.php` 역할별 첫 화면(buyer·viewer → `/purchase/po`, requester → `/purchase/pr`, 그 밖 → `/purchase/masters`) · 구매 화면 `$pageKey='purchase'`(19단계 「내비가 사라짐」 사고 후속)
+- [x] `scripts/security_lint.sh` 규칙 둘 추가 — (c) 전표 핸들러는 `lint:no-branch-scope` 예외 금지 (d) 전표 허용 키에 `unit_price`·`amount` 금지
+- [x] `scripts/alerts.php` **AL-14** 「보냄 뒤 발주서 수정·취소」(`detail.after_sent`)
+- [x] `tests/purchase_stage20.sh` — T-45 + Q-18①②④, **R-73 안전 규칙 3종**(사용자 활동 중이면 종료 코드 3 · 정리는 qa 행만 · 비-qa 행 수 전후 출력)
+- [x] README 「구매·재고 모듈」 절에 20단계 내용 추가
+
+**검토 체크 (관문 ②, Fable) — 미실시**
+
+**자기 공격 (관문 ③, 사용자)**
+- [ ] 요청자 계정으로 발주요청을 넣고, 구매 계정이 담은 **뒤에** 그 줄을 고쳐 본다 (400 `line_locked` 여야 한다)
+- [ ] 담긴 전표에 줄을 더해 **새 요청 전표**로 갈라지는지 본다
+- [ ] 잔량보다 많이 담아 본다 · 두 창에서 동시에 같은 잔량을 담아 본다 (한쪽만 통과해야 한다)
+- [ ] 요청자 계정으로 발주서 「보냄」을 눌러 본다 (403 이어야 한다) · 검토 계정으로 두 번 보내 본다
+- [ ] 인쇄 화면에서 「PDF 로 저장」이 되는지, 머리·금액이 이카운트 발주서와 맞는지
+
+**학습 기록**
+
+| 날짜 | 구분 | 내용 | 해소·근거 |
+|---|---|---|---|
+| 2026-09-13 | 접수(Opus 보고) | 지시서 밖 파일 2개 수정 — `db/grants.sql`·`db/schema.sql`(새 표 5개 + 뷰의 GRANT·정의). 두 파일을 두지 않으면 새로 설치하는 DB 에 전표 표가 없고, `grants.sql` 만 고치면 `REVOKE ALL ON p_docs` 가 없는 표를 가리켜 실패한다 | Fable 판단 대기. 19단계도 두 파일을 함께 고쳤다 |
+| 2026-09-13 | 접수(Opus 보고) | `Authz::PURCHASE_ALIASES` 에 별칭 둘(`d`·`pl`)을 더했다 — 지시서의 「그 밖 무변경」보다 넓다. 더하지 않으면 `purchaseScopeWhere($user,'d')` 가 예외를 던져 전표 조회가 전부 500 이 된다 | 그 상수의 주석이 "새 표를 스코프에 넣으려면 이 목록을 먼저 고쳐야 한다 — 그것이 검토 지점이다" 라고 적고 있다 |
+| 2026-09-13 | 접수(Opus 보고) | 시안 ④의 「미지정 거래처 즉석 지정」은 **요청 전표의 거래처가 비었을 때**의 묶음으로 구현했다. `p_items.vendor_id` 가 NOT NULL 이라 품목에는 언제나 거래처가 있고, 「품목 기본 거래처 학습」(= 품목의 vendor_id 를 고치는 것)은 **하지 않았다** — 그 칸은 `UNIQUE(vendor_id, code)` 의 한쪽이라 바꾸면 품목의 정체가 바뀐다 | 21단계 이후 판단 필요 |
+| 2026-09-13 | 접수(Opus 보고) | 19단계 시험(`tests/purchase_stage19.sh`)의 T-44 7차 보정 절이 **사용자의 실제 브랜드 「플란치과」와 이름이 겹쳐** 409 로 실패한다(11건). 시험 픽스처가 실데이터와 같은 이름을 쓴 탓이며 20단계 코드와 무관하다. T-42·T-43·회귀는 전부 통과 | 시험 픽스처 이름을 `S20-` 처럼 접두로 바꾸는 것이 근본 해결 |
+| 2026-09-13 | 접수(Opus 보고) | 내비 「구매관리」 그룹에 새 화면 셋(발주요청·발주서·전표) 링크가 **없다** — `src/views/shell_top.php` 가 지시서의 「수정 파일」 밖이라 손대지 않았다. 지금은 각 화면 머리의 단추로만 오간다 | Fable 판단 필요(19단계에서도 같은 이유로 shell_top 수정이 사후 수용됐다) |
 
 
 ## 2-1. 10단계 뒤 일괄 자기 공격 — 진행 순서 (관문 ③, 사용자)

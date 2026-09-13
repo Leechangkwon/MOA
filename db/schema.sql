@@ -255,8 +255,9 @@ CREATE INDEX share_links_file_idx       ON share_links (file_id);
 -- 표 접두는 전부 `p_` 다 — 본체 표와 이름이 섞이지 않는다 (ARCH 5.18 「경계」).
 -- **삭제가 없다**: 그만 쓰는 것은 `is_active = false` 이고, 앱 계정에는 이 표들에
 -- DELETE 권한 자체가 없다 (db/grants.sql).
--- 전표·재고 표(p_docs · p_doc_lines · p_stock_moves · p_doc_seq)는 20·21단계다 — 여기 없다.
--- (기존 DB 는 db/migrations/2026-09-13_purchase_masters.sql 로 같은 모양이 된다.)
+-- 재고 원장 표(p_stock_moves)는 21단계다 — 여기 없다. 전표(p_docs · p_doc_lines · p_doc_seq)와
+-- 내 발주 리스트(p_lists · p_list_items)는 20단계에 이 파일 끝에 붙었다.
+-- (기존 DB 는 db/migrations/2026-09-13_purchase_masters.sql · 2026-09-14_purchase_docs.sql 로 같은 모양이 된다.)
 -- ═════════════════════════════════════════════════════════════
 
 CREATE TABLE p_brands (
@@ -414,6 +415,8 @@ CREATE INDEX p_items_barcode_idx ON p_items (barcode) WHERE barcode IS NOT NULL;
 CREATE TABLE p_item_branches (
     item_id   BIGINT NOT NULL REFERENCES p_items(id),
     branch_id BIGINT NOT NULL REFERENCES p_branches(id),
+    -- 20단계: 사용 지점 「빼기」. 이 표에도 DELETE 가 없으므로 빼기는 is_active = false 다.
+    is_active BOOLEAN NOT NULL DEFAULT true,
     PRIMARY KEY (item_id, branch_id)
 );
 CREATE INDEX p_item_branches_branch_idx ON p_item_branches (branch_id);
@@ -452,3 +455,110 @@ CREATE TABLE p_import_mappings (
     CONSTRAINT p_import_mappings_name_len CHECK (length(name) BETWEEN 1 AND 80)
 );
 CREATE UNIQUE INDEX p_import_mappings_kind_name_uidx ON p_import_mappings (kind, lower(name));
+
+-- ═════════════════════════════════════════════════════════════
+-- 구매 전표 (20단계 — PRD F-30 발주요청 · F-31 추천/내 리스트 · F-32 불러오기→발주서,
+--   ARCH 5.18 「연결」·「채번」·「요청 수정 창」·「발주서 PDF」·「송부 전 검토」)
+--
+-- **삭제가 없다**: 전표 취소는 `status = 'void'` 이고, 앱 계정에는 DELETE 권한이 없다.
+-- 연결은 `p_doc_lines.src_line_id` 하나이며 미발주 잔량은 컬럼이 아니라 계산값이다.
+-- (기존 DB 는 db/migrations/2026-09-14_purchase_docs.sql 로 같은 모양이 된다.)
+-- ═════════════════════════════════════════════════════════════
+
+CREATE TABLE p_docs (
+    id             BIGSERIAL   PRIMARY KEY,
+    doc_type       TEXT        NOT NULL CHECK (doc_type IN ('pr','po')),
+    doc_no         TEXT        NOT NULL,
+    doc_date       DATE        NOT NULL DEFAULT CURRENT_DATE,
+    branch_id      BIGINT      NOT NULL REFERENCES p_branches(id),
+    vendor_id      BIGINT      REFERENCES p_vendors(id),
+    to_location_id BIGINT      REFERENCES p_locations(id),
+    manager_id     BIGINT      NOT NULL REFERENCES users(id),
+    status         TEXT        NOT NULL DEFAULT 'unconfirmed'
+                   CHECK (status IN ('unconfirmed','in_progress','partial','done','void')),
+    memo           TEXT,
+    header_json    JSONB,                      -- 발주서 머리 (Q-18②) — 서버가 채운다
+    split_from_id  BIGINT      REFERENCES p_docs(id),   -- 요청 분리 출처 (Q-18①)
+    sent_at        TIMESTAMPTZ,                -- 「보냄」 (Q-18④) — 한 번만
+    sent_by        BIGINT      REFERENCES users(id),
+    closed_month   TEXT,                       -- 월 마감 (22단계)
+    created_by     BIGINT      NOT NULL REFERENCES users(id),
+    created_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
+    CONSTRAINT p_docs_memo_len  CHECK (memo IS NULL OR length(memo) <= 500),
+    CONSTRAINT p_docs_month_fmt CHECK (closed_month IS NULL OR closed_month ~ '^[0-9]{4}-[0-9]{2}$')
+);
+CREATE UNIQUE INDEX p_docs_doc_no_uidx ON p_docs (doc_no);
+CREATE INDEX p_docs_branch_type_status_idx ON p_docs (branch_id, doc_type, status);
+CREATE INDEX p_docs_manager_idx ON p_docs (manager_id);
+CREATE INDEX p_docs_vendor_idx  ON p_docs (vendor_id);
+CREATE INDEX p_docs_date_idx    ON p_docs (doc_date);
+
+CREATE TABLE p_doc_lines (
+    id          BIGSERIAL   PRIMARY KEY,
+    doc_id      BIGINT      NOT NULL REFERENCES p_docs(id),
+    line_no     INT         NOT NULL CHECK (line_no >= 1),
+    item_id     BIGINT      NOT NULL REFERENCES p_items(id),
+    qty         NUMERIC(14,3) NOT NULL CHECK (qty > 0),
+    unit_price  NUMERIC(14,2) CHECK (unit_price IS NULL OR unit_price >= 0),  -- 서버가 p_items 에서
+    amount      NUMERIC(16,2) CHECK (amount IS NULL OR amount >= 0),          -- 서버 계산 (R-66)
+    remark      TEXT,
+    src_line_id BIGINT      REFERENCES p_doc_lines(id),   -- 발주서 줄 → 요청 줄
+    locked_at   TIMESTAMPTZ,                              -- 담긴 시각 (Q-18① 수정 창)
+    status      TEXT        NOT NULL DEFAULT 'unconfirmed'
+                CHECK (status IN ('unconfirmed','ordered','done','void')),
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+    CONSTRAINT p_doc_lines_remark_len CHECK (remark IS NULL OR length(remark) <= 200),
+    CONSTRAINT p_doc_lines_doc_line_uniq UNIQUE (doc_id, line_no)
+);
+CREATE INDEX p_doc_lines_doc_idx  ON p_doc_lines (doc_id);
+CREATE INDEX p_doc_lines_src_idx  ON p_doc_lines (src_line_id);
+CREATE INDEX p_doc_lines_item_idx ON p_doc_lines (item_id);
+
+-- 채번 — 하루·종류마다 한 행. Doc::nextDocNo() 가 이 행을 잠그고 1 올린다.
+CREATE TABLE p_doc_seq (
+    doc_type TEXT NOT NULL CHECK (doc_type IN ('pr','po')),
+    seq_date DATE NOT NULL,
+    last_no  INT  NOT NULL DEFAULT 0 CHECK (last_no >= 0),
+    PRIMARY KEY (doc_type, seq_date)
+);
+
+-- 내 발주 리스트 (F-31, 시안 ③). 남의 리스트는 공유된 것만 보인다 (SECURITY R-68).
+CREATE TABLE p_lists (
+    id         BIGSERIAL   PRIMARY KEY,
+    owner_id   BIGINT      NOT NULL REFERENCES users(id),
+    branch_id  BIGINT      REFERENCES p_branches(id),
+    name       TEXT        NOT NULL,
+    is_shared  BOOLEAN     NOT NULL DEFAULT false,
+    is_active  BOOLEAN     NOT NULL DEFAULT true,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    CONSTRAINT p_lists_name_len CHECK (length(name) BETWEEN 1 AND 60)
+);
+CREATE INDEX p_lists_owner_idx  ON p_lists (owner_id);
+CREATE INDEX p_lists_branch_idx ON p_lists (branch_id);
+
+CREATE TABLE p_list_items (
+    list_id     BIGINT NOT NULL REFERENCES p_lists(id),
+    item_id     BIGINT NOT NULL REFERENCES p_items(id),
+    default_qty NUMERIC(14,3) NOT NULL DEFAULT 1 CHECK (default_qty > 0),
+    sort_no     INT    NOT NULL DEFAULT 1 CHECK (sort_no >= 1),
+    is_active   BOOLEAN NOT NULL DEFAULT true,   -- 「빼기」는 삭제가 아니다
+    PRIMARY KEY (list_id, item_id)
+);
+CREATE INDEX p_list_items_item_idx ON p_list_items (item_id);
+
+-- 줄 연결 사슬 — src_line_id 를 따라 내려가는 재귀 CTE (ARCH 5.18 「연결」).
+-- 권한 조건은 없다: 이 뷰를 쓰는 SQL 이 p_docs 를 조인해 purchaseScopeWhere 로 건다.
+CREATE OR REPLACE VIEW p_line_chain AS
+WITH RECURSIVE chain AS (
+    SELECT l.id AS root_id, l.id, l.src_line_id, l.doc_id, 0 AS depth
+      FROM p_doc_lines l
+     WHERE l.src_line_id IS NULL
+    UNION ALL
+    SELECT c.root_id, l.id, l.src_line_id, l.doc_id, c.depth + 1
+      FROM p_doc_lines l
+      JOIN chain c ON l.src_line_id = c.id
+)
+SELECT root_id, id AS line_id, src_line_id, doc_id, depth FROM chain;

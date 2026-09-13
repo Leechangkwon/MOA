@@ -21,5 +21,6 @@ declare(strict_types=1);
 
 $pageTitle = '기초정보';
 $activeNav = 'purchase';
-$pageKey   = '';
+// 20단계 — 셸이 화면 키를 받아야 app.js 가 initShell 을 돈다(19단계 「내비가 사라짐」 사고).
+$pageKey   = 'purchase';
 require __DIR__ . '/../views/purchase_masters.php';

@@ -1,0 +1,255 @@
+/* public/assets/purchase_docs.css — 구매 전표 화면 (20단계, PRD F-30~F-32, 시안 ①②③④⑤⑧⑨)
+ *
+ * 19단계의 `purchase.css` 와 **별도 파일**이다 (지시서: 19단계 보정과 충돌 방지).
+ * 그래서 이 파일은 `purchase.css` 에 있는 것을 가져다 쓰지 않고 **필요한 것을 스스로** 정의한다.
+ * 색·간격은 t-box 셸의 CSS 변수(`--text`·`--muted`·`--line`·`--accent`)를 쓰되,
+ * 변수가 없어도 읽히도록 대체값을 함께 적는다.
+ *
+ * 마지막 절(`.po-print`)은 **인쇄용 발주서**다. CSP 가 `style-src 'self'` 라 인쇄 화면에
+ * 인라인 <style> 을 둘 수 없어, A4 규칙(`@page`)도 여기 있다 (PRD S-10-C — PDF 라이브러리 없음).
+ */
+
+/* ── 탭 ───────────────────────────────────────────────── */
+.p-tabs {
+  display: flex;
+  gap: 4px;
+  margin: 18px 0 14px;
+  border-bottom: 1px solid var(--line, #dfe4ea);
+  flex-wrap: wrap;
+}
+.p-tab {
+  padding: 10px 16px;
+  border: 0;
+  background: none;
+  font: inherit;
+  font-size: 14.5px;
+  font-weight: 600;
+  color: var(--muted, #5b6472);
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+  cursor: pointer;
+}
+.p-tab:hover { color: var(--text, #1c1f24); }
+.p-tab.is-on {
+  color: var(--accent, #1d5fbf);
+  border-bottom-color: var(--accent, #1d5fbf);
+}
+
+/* ── 표·폼 ────────────────────────────────────────────── */
+.p-num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.p-col-no { width: 40px; text-align: right; color: var(--muted, #5b6472); }
+.p-lines td { vertical-align: middle; }
+.p-lines input[type="number"],
+.p-lines input[type="text"] {
+  width: 100%;
+  min-width: 70px;
+  box-sizing: border-box;
+  padding: 5px 8px;
+  border: 1px solid var(--line, #dfe4ea);
+  border-radius: 6px;
+  font: inherit;
+  font-size: 13.5px;
+}
+.p-lines .p-num input { text-align: right; }
+
+.form__fields {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 12px;
+  margin-bottom: 14px;
+}
+.field--wide { grid-column: 1 / -1; }
+.field--inline {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+}
+.field--inline .field__label { margin: 0; white-space: nowrap; }
+.panel__tools { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+.check { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
+
+.p-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin: 12px 0 6px;
+}
+.p-totals { font-weight: 600; text-align: right; }
+.p-sub { margin: 16px 0 8px; font-size: 15px; }
+
+/* 상태 배지 */
+.p-badge {
+  display: inline-flex;
+  align-items: center;
+  height: 22px;
+  padding: 0 9px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+  background: #eef0f3;
+  color: #6b7482;
+}
+.p-badge--ok     { background: #e6f4ea; color: #1e7a3c; }
+.p-badge--warn   { background: #fff8ec; color: #7a4a06; }
+.p-badge--danger { background: #fdf1f1; color: #a3221f; }
+.p-badge--accent { background: #e8f0fb; color: #1d5fbf; }
+
+.p-row-click { cursor: pointer; }
+.p-row-click:hover { background: #f7f9fc; }
+.p-locked { color: #a3221f; font-size: 12px; margin-left: 6px; }
+.p-src { color: var(--muted, #5b6472); font-size: 12px; }
+
+/* ── 묶는 기준 칩 ─────────────────────────────────────── */
+.chip {
+  display: inline-flex;
+  align-items: center;
+  height: 30px;
+  padding: 0 12px;
+  border-radius: 999px;
+  border: 1px solid var(--line, #dfe4ea);
+  background: #fff;
+  font: inherit;
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--muted, #5b6472);
+  cursor: pointer;
+}
+.chip.is-on {
+  background: #e8f0fb;
+  color: #1d5fbf;
+  border-color: #cfdff6;
+}
+
+/* ── 불러오기 트리 ────────────────────────────────────── */
+.p-tree-wrap {
+  max-height: 46vh;
+  overflow: auto;
+  border: 1px solid var(--line, #dfe4ea);
+  border-radius: 8px;
+  padding: 8px 10px;
+}
+.p-tree-group { margin: 6px 0; }
+.p-tree-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 600;
+  padding: 4px 0;
+}
+.p-tree-sum { color: var(--muted, #5b6472); font-weight: 400; font-size: 12.5px; }
+.p-tree-children { margin-left: 18px; border-left: 2px solid #eef0f3; padding-left: 10px; }
+.p-tree-line {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 3px 0;
+  flex-wrap: wrap;
+}
+.p-tree-line input[type="number"] {
+  width: 86px;
+  padding: 3px 6px;
+  border: 1px solid var(--line, #dfe4ea);
+  border-radius: 6px;
+  font: inherit;
+  text-align: right;
+}
+.p-tree-name { flex: 1 1 240px; }
+
+.p-pick-tools {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+.p-pick-wrap { max-height: 40vh; overflow: auto; }
+
+.modal--wide { max-width: 1000px; width: 94vw; }
+
+/* ══════════════════════════════════════════════════════
+ * 인쇄용 발주서 (Q-18② — 이카운트 발주서 양식, files #188)
+ *
+ * PDF 라이브러리를 쓰지 않는다. A4 세로로 그린 HTML 이고,
+ * 사람은 브라우저의 「인쇄 → PDF 로 저장」으로 파일을 만든다.
+ * ══════════════════════════════════════════════════════ */
+@page { size: A4 portrait; margin: 12mm; }
+
+.po-print {
+  margin: 0;
+  background: #f4f6f9;
+  color: #1c1f24;
+  font-family: system-ui, -apple-system, "Apple SD Gothic Neo", "Malgun Gothic", "Noto Sans KR", sans-serif;
+  font-size: 12px;
+  line-height: 1.5;
+}
+.po-sheet {
+  width: 186mm;
+  margin: 10mm auto;
+  padding: 8mm;
+  background: #fff;
+  border: 1px solid #dfe4ea;
+}
+.po-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  border-bottom: 2px solid #1c1f24;
+  padding-bottom: 8px;
+}
+.po-head__company { display: flex; gap: 10px; align-items: flex-start; }
+.po-logo { max-height: 18mm; max-width: 40mm; }
+.po-company-text p { margin: 0; }
+.po-company-name { font-size: 15px; font-weight: 700; }
+.po-company-line { color: #5b6472; font-size: 11px; }
+.po-title { margin: 0; font-size: 26px; letter-spacing: .3em; font-weight: 700; }
+
+.po-meta { width: 100%; border-collapse: collapse; margin-top: 10px; }
+.po-meta th, .po-meta td {
+  border: 1px solid #dfe4ea;
+  padding: 5px 8px;
+  font-size: 11.5px;
+  text-align: left;
+}
+.po-meta th { width: 22mm; background: #fafbfc; font-weight: 600; color: #5b6472; }
+
+.po-amount-words {
+  margin: 10px 0;
+  padding: 6px 8px;
+  border: 1px solid #1c1f24;
+  font-size: 13px;
+  text-align: center;
+}
+
+.po-lines { width: 100%; border-collapse: collapse; margin-top: 6px; }
+.po-lines th, .po-lines td {
+  border: 1px solid #dfe4ea;
+  padding: 4px 6px;
+  font-size: 11px;
+  text-align: left;
+  vertical-align: top;
+}
+.po-lines th { background: #fafbfc; font-weight: 600; color: #5b6472; white-space: nowrap; }
+.po-num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.po-mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+.po-spec, .po-unit, .po-src { color: #8b95a3; font-size: 10px; margin-left: 4px; }
+.po-empty { text-align: center; color: #8b95a3; }
+
+.po-totals { margin-top: 8px; margin-left: auto; border-collapse: collapse; width: 70mm; }
+.po-totals th, .po-totals td { border: 1px solid #dfe4ea; padding: 4px 8px; font-size: 11.5px; }
+.po-totals th { background: #fafbfc; text-align: left; color: #5b6472; }
+.po-total-row th, .po-total-row td { font-weight: 700; background: #f2f5f9; }
+
+.po-memo { margin-top: 10px; font-size: 11.5px; }
+.po-foot { margin-top: 14px; border-top: 1px solid #dfe4ea; padding-top: 6px; }
+.po-foot-line { margin: 2px 0; font-size: 11px; color: #5b6472; }
+
+@media print {
+  .po-print { background: #fff; }
+  .po-sheet { width: auto; margin: 0; padding: 0; border: 0; }
+  .po-foot-hint { display: none; }
+}

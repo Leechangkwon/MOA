@@ -282,6 +282,50 @@ const TBOX_ROUTES = [
     ['DELETE', '/api/purchase/import/mappings',         'purchase_import_mappings.php', 'purchase.master.write'],
     ['POST',   '/api/purchase/import/{id}/preview',     'purchase_import_preview.php',  'purchase.master.write'],
     ['POST',   '/api/purchase/import/{id}/commit',      'purchase_import_commit.php',   'purchase.master.write'],
+
+    /*
+     * 20단계 — 발주요청(PR)·발주서(PO)·내 리스트·추천·사이클 (PRD F-30~F-32, ARCH 5.18).
+     *
+     * 정책이 네 가지로 갈린다. **표만 보고** 누가 무엇을 할 수 있는지 읽히게 한다:
+     *   purchase.read          목록·상세·추천·사이클·화면 — 모듈 역할이 있는 사람 전부
+     *   purchase.request.write 요청 쓰기·내 리스트 — requester·buyer
+     *   purchase.buy.write     불러오기·발주서 쓰기 — buyer
+     *   purchase.send          발주서 「보냄」 — viewer·buyer (Q-18④)
+     * 화면(`/purchase/pr` …)과 데이터(`/api/purchase/pr` …)는 **같은 읽기 정책**을 쓴다 —
+     * 화면만 숨기고 API 를 열어 두면 그것이 곧 우회 경로다 (PRD S-01).
+     *
+     * ★ 삭제(DELETE) 라우트는 리스트 하나뿐이고, 그것도 핸들러가 하는 일은 `is_active=false` 다.
+     *   전표 취소는 `POST …/void`(status='void')이며 `p_*` 에 DELETE 권한 자체가 없다.
+     *
+     * 경로 충돌: `{num}` 은 `[0-9]{1,9}` 라 `/api/purchase/pr/load` 와 형태가 다르다.
+     * 그래도 의도를 드러내려고 `load` 를 `{num}` 계열보다 **위에** 둔다(`/api/files/fetch` 와 같은 이유).
+     */
+    ['GET',    '/purchase/pr',                   'purchase_pr_page.php',         'purchase.read'],
+    ['GET',    '/purchase/po',                   'purchase_po_page.php',         'purchase.read'],
+    ['GET',    '/purchase/docs',                 'purchase_docs_page.php',       'purchase.read'],
+    ['GET',    '/purchase/po/{num}/print',       'purchase_po_print_page.php',   'purchase.read'],
+
+    ['GET',    '/api/purchase/pr/load',          'purchase_pr_load.php',         'purchase.buy.write'],
+    ['GET',    '/api/purchase/pr',               'purchase_pr_list.php',         'purchase.read'],
+    ['POST',   '/api/purchase/pr',               'purchase_pr_create.php',       'purchase.request.write'],
+    ['GET',    '/api/purchase/pr/{num}',         'purchase_pr_get.php',          'purchase.read'],
+    ['PATCH',  '/api/purchase/pr/{num}',         'purchase_pr_update.php',       'purchase.request.write'],
+    ['POST',   '/api/purchase/pr/{num}/void',    'purchase_pr_void.php',         'purchase.request.write'],
+
+    ['GET',    '/api/purchase/po',               'purchase_po_list.php',         'purchase.read'],
+    ['POST',   '/api/purchase/po',               'purchase_po_create.php',       'purchase.buy.write'],
+    ['GET',    '/api/purchase/po/{num}',         'purchase_po_get.php',          'purchase.read'],
+    ['PATCH',  '/api/purchase/po/{num}',         'purchase_po_update.php',       'purchase.buy.write'],
+    ['POST',   '/api/purchase/po/{num}/send',    'purchase_po_send.php',         'purchase.send'],
+    ['POST',   '/api/purchase/po/{num}/void',    'purchase_po_void.php',         'purchase.buy.write'],
+
+    ['GET',    '/api/purchase/lists',            'purchase_lists_list.php',      'purchase.read'],
+    ['POST',   '/api/purchase/lists',            'purchase_lists_create.php',    'purchase.request.write'],
+    ['PATCH',  '/api/purchase/lists/{num}',      'purchase_lists_update.php',    'purchase.request.write'],
+    ['DELETE', '/api/purchase/lists/{num}',      'purchase_lists_delete.php',    'purchase.request.write'],
+
+    ['GET',    '/api/purchase/recommend',        'purchase_recommend.php',       'purchase.read'],
+    ['GET',    '/api/purchase/cycle',            'purchase_cycle.php',           'purchase.read'],
 ];
 
 /**
@@ -351,6 +395,17 @@ const TBOX_REAUTH_PATHS = [
      */
     'purchasemasters' => '/purchase/masters',
     'purchaseimport'  => '/purchase/import',
+    /*
+     * 20단계 전표 화면 (PRD F-30~F-32). 이 셋의 라우트 정책은 `purchase.read` 라
+     * **재인증 관문에 걸리지 않는다** — 그래도 키를 두는 이유는, 이 화면들의 API 가 언젠가
+     * 재인증 대상이 되거나(월 마감 F-33), 화면에서 기초정보 편집으로 넘어갔다 돌아올 때
+     * 「홈으로 떨어지는」 19단계 사고를 되풀이하지 않기 위해서다.
+     * 값은 다른 키와 똑같이 코드에 적힌 고정 문자열이고, 요청 값은 "표에 이 키가 있나" 를
+     * 묻는 데만 쓰인다. 키에 밑줄·숫자가 없는 것은 `Http::redirect` 의 꼬리표 규칙 때문이다.
+     */
+    'purchasepr'      => '/purchase/pr',
+    'purchasepo'      => '/purchase/po',
+    'purchasedocs'    => '/purchase/docs',
 ];
 
 /** 재인증 화면의 경로. 코드 상수이며 요청 값이 섞이지 않는다 (TBOX_LOGIN_PATH 와 같다). */

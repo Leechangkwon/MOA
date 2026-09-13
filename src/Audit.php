@@ -143,6 +143,24 @@ final class Audit
          * 셋 다 **수치**이고 이름·내용이 아니다.
          */
         'brands_created', 'branches_created', 'locations_inserted',
+        /*
+         * 20단계 구매 전표 (PRD F-30~F-32, Q-18①②④, ARCH 5.18 · 7.5 등록부).
+         *   doc_no      전표 번호 (`PR-20260914-1`) — 화면에도 보이는 값이고 비밀이 아니다
+         *   doc_type    `pr`·`po`
+         *   src_doc_no  발주서가 가져온 **출처 요청 전표 번호**(여럿이면 쉼표로 이은 목록).
+         *               R4 「전표 번호 매칭」을 로그만으로 되짚을 수 있게 하는 값이다
+         *   lines       그 요청 1건이 다룬 **줄 수**(수치). 줄 내용은 남기지 않는다
+         *   added       요청 수정이 새로 더한 줄 수
+         *   split_to    Q-18① 로 갈라져 나간 **새 요청 전표 번호**
+         *   amount      전표 금액(공급가액). 서버가 계산한 값이며 클라이언트 값이 아니다
+         *   sent_to     보낸 곳 — **거래처 이름**이다. 연락처·주소는 넣지 않는다
+         *   resent      재송부였나 (true/false)
+         *   after_sent  「보냄」 뒤의 수정·취소였나 (true/false) — AL-14 가 보는 값
+         *   shared      리스트를 지점과 공유했나 (true/false)
+         * `before`·`after`·`reason_text` 는 이미 등록부에 있고 금지 목록에 걸리지 않는다.
+         */
+        'doc_no', 'doc_type', 'src_doc_no', 'lines', 'added', 'split_to',
+        'amount', 'sent_to', 'resent', 'after_sent', 'shared',
     ];
 
     private const RESULT_ALLOW = 'allow';
@@ -514,6 +532,72 @@ final class Audit
         'purchase.import.commit|deny|default_branch_required'  => '{actor} 이(가) 지점 열도 「기본 지점」도 없이 창고 가져오기 확정을 요청해서 거부했습니다',
         'purchase.import.commit|deny|default_brand_required'   => '{actor} 이(가) 브랜드 열도 「기본 브랜드」도 없이 지점 가져오기 확정을 요청해서 거부했습니다',
         'purchase.master.update|deny|bad_header_row'           => '{actor} 이(가) 있을 수 없는 머리행 번호가 든 엑셀 열 매핑을 저장하려 해서 거부했습니다',
+
+        /* ── 20단계 구매 전표 (PRD F-30~F-32, Q-18①②④, ARCH 5.18 · 7.4) ──
+         *
+         * {target} 에는 **전표 번호**(`PR-20260914-1`)가 들어간다 — 사람이 로그만 보고
+         * 어느 문서인지 알 수 있어야 하고, 그 번호는 화면에도 그대로 보이는 값이다.
+         * 조회(목록·상세·불러오기·추천·사이클)는 기록하지 않는다 — 조회는 사건이 아니다
+         * (ARCH 5.1 마지막 줄, 19단계 품목 찾기와 같은 판단).
+         *
+         * 거부 사유 코드의 뜻
+         *   remaining_exceeded  잔량보다 많이 담으려 했다 (T-45 의 핵심 항목)
+         *   line_locked         이미 발주서에 담긴 줄을 요청자가 고치려 했다 (Q-18①)
+         *   status_invalid      취소된 전표·마감된 달 등 지금 상태에서 할 수 없는 일
+         *   already_sent        이미 보낸 발주서를 사유 없이 또 보내려 했다 (Q-18④)
+         *   reason_required     보낸 뒤 수정·취소인데 사유가 없다 (Q-18④ · AL-14)
+         *   mixed_vendor        한 발주서에 거래처가 섞였다
+         *   not_in_scope        내 지점 밖 전표를 id 로 찍어 담으려 했다 (R-65)
+         *   branch_required     지점이 하나로 정해지지 않는데 지점을 적지 않았다
+         */
+        'purchase.request.create|allow'                 => '{actor} 이(가) 발주요청 「{target}」 을(를) 만들었습니다 (줄 수·금액은 상세 기록)',
+        'purchase.request.create|deny|bad_request'      => '{actor} 이(가) 발주요청을 만들려 했지만 보낸 값의 형식이 잘못되어 거부했습니다',
+        'purchase.request.create|deny|bad_reference'    => '{actor} 이(가) 없는(또는 중단된) 지점·장소·거래처·품목으로 발주요청을 만들려 해서 거부했습니다',
+        'purchase.request.create|deny|not_in_scope'     => '{actor} 이(가) 자기 지점이 아닌 곳의 발주요청을 만들려 해서 막았습니다',
+        'purchase.request.create|deny|branch_required'  => '{actor} 이(가) 어느 지점의 요청인지 적지 않아 거부했습니다',
+        'purchase.request.create|deny|conflict'         => '{actor} 이(가) 만든 발주요청의 전표 번호가 이미 있어 거부했습니다',
+        'purchase.request.update|allow'                 => '{actor} 이(가) 발주요청 「{target}」 을(를) 고쳤습니다 (바뀐 값·갈라진 전표는 상세 기록)',
+        'purchase.request.update|deny|bad_request'      => '{actor} 이(가) 발주요청 「{target}」 을(를) 고치려 했지만 보낸 값의 형식이 잘못되어 거부했습니다',
+        'purchase.request.update|deny|bad_reference'    => '{actor} 이(가) 발주요청 「{target}」 을(를) 없는 값에 이어 붙이려 해서 거부했습니다',
+        'purchase.request.update|deny|line_locked'      => '{actor} 이(가) 이미 발주서에 담긴 줄을 고치려 해서 막았습니다 (발주요청 「{target}」)',
+        'purchase.request.update|deny|status_invalid'   => '{actor} 이(가) 지금 고칠 수 없는 상태의 발주요청 「{target}」 을(를) 고치려 해서 거부했습니다',
+        'purchase.request.update|deny|no_change'        => '{actor} 이(가) 발주요청 「{target}」 에 바뀌는 값 없이 수정을 요청해서 거부했습니다',
+        'purchase.request.void|allow'                   => '{actor} 이(가) 발주요청 「{target}」 을(를) 취소했습니다 (지운 것이 아니라 취소 표시이며 사유는 상세 기록)',
+        'purchase.request.void|deny|bad_request'        => '{actor} 이(가) 발주요청 취소를 잘못된 형식으로 요청해서 거부했습니다',
+        'purchase.request.void|deny|line_locked'        => '{actor} 이(가) 이미 발주서에 담긴 줄이 있는 발주요청 「{target}」 을(를) 취소하려 해서 막았습니다',
+        'purchase.request.void|deny|status_invalid'     => '{actor} 이(가) 지금 취소할 수 없는 상태의 발주요청 「{target}」 을(를) 취소하려 해서 거부했습니다',
+
+        'purchase.order.create|allow'                   => '{actor} 이(가) 발주서 「{target}」 을(를) 만들었습니다 (출처 요청·줄 수·금액은 상세 기록)',
+        'purchase.order.create|deny|bad_request'        => '{actor} 이(가) 발주서를 만들려 했지만 보낸 값의 형식이 잘못되어 거부했습니다',
+        'purchase.order.create|deny|bad_reference'      => '{actor} 이(가) 없는(또는 중단된) 장소·거래처·품목·담당자로 발주서를 만들려 해서 거부했습니다',
+        'purchase.order.create|deny|remaining_exceeded' => '{actor} 이(가) 발주요청의 **미발주 잔량보다 많은 수량**을 발주서에 담으려 해서 거부했습니다',
+        'purchase.order.create|deny|mixed_vendor'       => '{actor} 이(가) 거래처가 섞인 줄들을 한 발주서에 담으려 해서 거부했습니다 (발주서는 거래처 하나입니다)',
+        'purchase.order.create|deny|not_in_scope'       => '{actor} 이(가) 자기 범위 밖의 발주요청 줄을 발주서에 담으려 해서 막았습니다',
+        'purchase.order.create|deny|status_invalid'     => '{actor} 이(가) 취소되었거나 마감된 발주요청 줄을 발주서에 담으려 해서 거부했습니다',
+        'purchase.order.create|deny|conflict'           => '{actor} 이(가) 만든 발주서의 전표 번호가 이미 있어 거부했습니다',
+        'purchase.order.update|allow'                   => '{actor} 이(가) 발주서 「{target}」 의 머리 정보를 고쳤습니다 (이전·이후와 사유는 상세 기록)',
+        'purchase.order.update|deny|bad_request'        => '{actor} 이(가) 발주서 「{target}」 을(를) 고치려 했지만 보낸 값의 형식이 잘못되어 거부했습니다',
+        'purchase.order.update|deny|reason_required'    => '{actor} 이(가) **이미 보낸** 발주서 「{target}」 을(를) 사유 없이 고치려 해서 거부했습니다',
+        'purchase.order.update|deny|status_invalid'     => '{actor} 이(가) 지금 고칠 수 없는 상태의 발주서 「{target}」 을(를) 고치려 해서 거부했습니다',
+        'purchase.order.update|deny|no_change'          => '{actor} 이(가) 발주서 「{target}」 에 바뀌는 값 없이 수정을 요청해서 거부했습니다',
+        'purchase.order.send|allow'                     => '{actor} 이(가) 발주서 「{target}」 을(를) 거래처에 보냈다고 표시했습니다 (받는 곳·금액·재송부 여부는 상세 기록)',
+        'purchase.order.send|deny|bad_request'          => '{actor} 이(가) 발주서 보냄을 잘못된 형식으로 요청해서 거부했습니다',
+        'purchase.order.send|deny|already_sent'         => '{actor} 이(가) 이미 보낸 발주서 「{target}」 을(를) 사유 없이 다시 보내려 해서 거부했습니다',
+        'purchase.order.send|deny|status_invalid'       => '{actor} 이(가) 취소되었거나 줄이 없는 발주서 「{target}」 을(를) 보내려 해서 거부했습니다',
+        'purchase.order.void|allow'                     => '{actor} 이(가) 발주서 「{target}」 을(를) 취소했습니다 (요청의 미발주 잔량이 되돌아갑니다 · 사유는 상세 기록)',
+        'purchase.order.void|deny|bad_request'          => '{actor} 이(가) 발주서 취소를 잘못된 형식으로 요청해서 거부했습니다',
+        'purchase.order.void|deny|reason_required'      => '{actor} 이(가) **이미 보낸** 발주서 「{target}」 을(를) 사유 없이 취소하려 해서 거부했습니다',
+        'purchase.order.void|deny|status_invalid'       => '{actor} 이(가) 지금 취소할 수 없는 상태의 발주서 「{target}」 을(를) 취소하려 해서 거부했습니다',
+
+        'purchase.list.create|allow'                    => '{actor} 이(가) 내 발주 리스트 「{target}」 을(를) 만들었습니다',
+        'purchase.list.create|deny|bad_request'         => '{actor} 이(가) 발주 리스트를 만들려 했지만 보낸 값의 형식이 잘못되어 거부했습니다',
+        'purchase.list.create|deny|bad_reference'       => '{actor} 이(가) 볼 수 없는(또는 중단된) 품목을 발주 리스트에 담으려 해서 거부했습니다',
+        'purchase.list.create|deny|branch_required'     => '{actor} 이(가) 지점이 정해지지 않은 채 발주 리스트를 지점과 공유하려 해서 거부했습니다',
+        'purchase.list.update|allow'                    => '{actor} 이(가) 발주 리스트 「{target}」 을(를) 고쳤습니다 (이전·이후는 상세 기록)',
+        'purchase.list.update|deny|bad_request'         => '{actor} 이(가) 발주 리스트 「{target}」 을(를) 고치려 했지만 보낸 값의 형식이 잘못되어 거부했습니다',
+        'purchase.list.update|deny|bad_reference'       => '{actor} 이(가) 볼 수 없는(또는 중단된) 품목을 발주 리스트에 담으려 해서 거부했습니다',
+        'purchase.list.update|deny|branch_required'     => '{actor} 이(가) 지점이 정해지지 않은 채 발주 리스트를 지점과 공유하려 해서 거부했습니다',
+        'purchase.list.delete|allow'                    => '{actor} 이(가) 발주 리스트 「{target}」 을(를) 닫았습니다 (지운 것이 아니라 중단이며 담겼던 품목은 남습니다)',
     ];
 
     /** 자리표시자에 넣을 값이 없을 때 (ARCH 7.4) */
