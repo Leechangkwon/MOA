@@ -91,7 +91,12 @@ if ($body === [] || array_diff(array_keys($body), ['kind', 'mapping', 'promote',
                                           'default_branch', 'default_brand', 'derive',
                                           // 5차 보정 — 없는 브랜드·지점을 함께 만들까
                                           'create_brands', 'create_branches',
-                                          'exclude_rows']) !== []) {
+                                          'exclude_rows',
+                                          /* 6차 보정의 표시용 키 셋 — 화면은 미리보기·확정에 **같은
+                                           * 본문 함수**를 쓴다. 확정에서는 뜻이 없어 **받아서 무시**한다
+                                           * (판정·저장 범위는 언제나 전체 행). 이 셋이 목록에 없어
+                                           * 2026-09-13 20:05 확정이 전부 `bad_request` 로 막혔다. */
+                                          'page', 'q', 'status']) !== []) {
     $reject('bad_request', 400, Http::MSG_BAD_REQUEST);
 }
 

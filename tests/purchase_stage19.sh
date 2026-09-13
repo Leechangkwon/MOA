@@ -703,9 +703,12 @@ for BAD in 20 99 -1 abc; do
 done
 
 sub "⑪-f 확정 — 분모 1 인 25행만 저장되고 확인 필요 5행은 건너뛴다"
+# 화면은 미리보기·확정에 같은 본문 함수를 써서 표시용 키(page·status·q)가 섞여 올 수 있다.
+# 2026-09-13 20:05 확정이 이 키 때문에 전부 `bad_request` 400 이 났다 — 확정은 이 셋을 받아서
+# 무시해야 한다. 그래서 여기서는 **화면이 실제로 보내던 모양 그대로** 확정을 부른다.
 ITEMS_BEFORE=$(psqlq "SELECT count(*) FROM p_items;")
 R=$(call qa_admin01 POST "/api/purchase/import/$ECOUNT_ID/commit" "$TOK_ADMIN" \
-    "{\"kind\":\"items\",\"mapping\":$EMAP,\"header_row\":1}")
+    "{\"kind\":\"items\",\"mapping\":$EMAP,\"header_row\":1,\"page\":1,\"status\":\"\",\"q\":\"\"}")
 echo "  HTTP $(code_of "$R")  $(body_of "$R")"
 expect "확정 200" 200 "$(code_of "$R")"
 expect "inserted 25" 25 "$(body_of "$R" | sed -n 's/.*"inserted":\([0-9]*\).*/\1/p')"

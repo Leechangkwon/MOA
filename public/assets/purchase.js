@@ -1789,11 +1789,13 @@
         if (Array.isArray(state.promote) && state.promote.length > 0) {
           commitExtra.promote = state.promote;
         }
-        // 확정 요청에는 **쪽·필터를 싣지 않는다** — 저장은 언제나 전체 행이 대상이다.
-        commitExtra.page = 1;
-        commitExtra.status = '';
-        commitExtra.q = '';
+        /* 확정 요청에는 **쪽·필터를 싣지 않는다** — 저장은 언제나 전체 행이 대상이다.
+           importBody() 가 미리보기용으로 붙이는 page·status·q 셋을 **모두** 지운다. 6차 보정
+           직후에는 page 만 남겨 보냈고, 확정 핸들러의 허용 키 목록에 page 가 없어 「잘못된
+           요청입니다」 400 으로 확정이 전부 막혔다(2026-09-13 20:05 실측 — 미리보기는 되는데
+           확정만 안 되는 형태). 서버도 이 셋은 받아서 무시하지만, 안 보내는 것이 원칙이다. */
         var commitBody = importBody(commitExtra);
+        delete commitBody.page;
         delete commitBody.status;
         delete commitBody.q;
         var commitBtn = $('p-commit');
