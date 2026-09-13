@@ -1033,7 +1033,7 @@ sudo -u postgres psql -d tbox_re -c "SELECT happened_at, actor_name, action, res
 - [ ] `db/grants.sql`·`db/schema.sql` 은 **무변경** — 새 표가 없다(20단계가 만든 `p_item_branches.is_active` 를 쓸 뿐)
 - [ ] `Authz` 는 **고치지 않았다** — 정책 `purchase.read`·`purchase.request.write` 와 별칭 `l`·`ib` 가 이미 있다
 
-**검토 체크 (관문 ②, Fable) — 미실시**
+**검토 체크 (관문 ②, Fable, 2026-09-13) — 통과, 커밋 e43222c·3d29663** — `tests/purchase_stage23.sh` Fable 재실행 92/92, 회귀 stage21 105/105(제안 칸 단언 정정), Opus 회귀 19·20·22 통과, 린트 20항목(예외 조회 단위·음성 시험), `\dp` 유지. 미검증: 브라우저. SECURITY 7장 23단계 행
 
 **자기 공격 (관문 ③, 사용자)**
 - [ ] 재고현황에서 제안 옆 근거를 읽어 보고, 인가량·안전재고·조달기간을 바꾼 뒤 제안이 따라 바뀌는지 본다
