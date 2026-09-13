@@ -733,6 +733,7 @@
 | T-45 | 요청·불러오기·발주서 연결 (F-30~F-32, R3·R4) | 요청 2건(요청자 둘) → 불러오기 `group=vendor,location,manager` 잔량만 → 부분 담기(5 중 3) → 발주서 줄 `src_line_id` = 요청 줄, 요청 잔량 2, 같은 줄 다시 담기 4 → 400 잔량 초과; 동시 요청 2개로 잔량 경쟁 → 한쪽 400 |
 | T-46 | 원장·잔량·미입고 (F-33·F-34) | 입고 3/5 → `p_stock_moves` +3, 현재고 = SUM, 미입고 2, 미입고 현황에 등장; 이동으로 음수 되는 수량 → 400; 실사 차이 ± 행; 취소는 반대 부호 행(원본 참조), `tbox_app` 으로 `UPDATE p_stock_moves` → permission denied |
 | T-47 | 주간 사용량 · 월 대사 · 월 마감 · 기공 명세서 (F-34·F-35, S-01·S-02·S-04, R-65·R-66·R-69) | **(a)** 사용(IS) 3건 + 재고관리 안 하는 품목의 입고 1건 → `GET /api/purchase/usage/weekly` 의 대분류 × 지점 × ISO 주 표 합 = 원장이 세는 사용량, requester 는 **자기 지점 열만**(다른 지점 칸 0건) · **(b)** 명세서 xlsx 5행(일치 2·수량 차이 1·단가 차이 1·우리에게 없음 1) + 우리 입고에만 있는 1 → `diff_type` 5종 분포 정확, 합계·차액, 확정은 한 트랜잭션이며 **두 번째 확정은 400**(되돌릴 권한이 없다), 매핑에 연락처 열을 적으면 400 `bad_mapping` 이고 `p_recon_lines` 에 그런 컬럼이 **없다**(R-69), 원본은 `admin-only` 폴더 「구매/명세서/거래처/월」 · **(c)** 그 달에 미확정 전표가 있으면 400 `open_docs_exist`, 치우고 마감하면 201 + `p_docs.closed_month`, 재마감 409, 마감된 달의 전표 취소는 400 `month_closed`(사유가 있어도 `purchase.close` 가 없으면 400), buyer 가 사유를 적으면 200 + 감사 `detail.after_close = true` + AL-14·AL-16 dry-run, **재인증 전 마감은 403 `next:reauth`** · **(d)** 기공 명세서 → 입고 전표 + 원장 `+`·`−` 두 행(순변화 0), 재고관리 품목이 섞이면 400 `stock_managed_item` · **(e)** 회귀 `tests/purchase_stage21.sh`(채번 통합 뒤)·`stage20.sh` 통과, 린트 0건, `\dp` 새 표 셋 `tbox_app=arw`(DELETE 없음)·원장 `ar` 유지 |
+| T-48 | 발주 제안 · 부족 알림 · 경보 AL-14~17 (F-36, S-11-A, R-65 · R-66 · R-73) | **(a)** 인가 10 · 안전 2 · 현재고 3 · 미입고 2 · 주평균 7 · 조달 7일 · 최소단위 5 → `GET /api/purchase/suggest` 의 제안 = ⌈(10+2−3−2+7)÷5⌉×5 = **15**, 근거 값(`par_qty`·`safety_qty`·`on_hand`·`incoming`·`weekly_use`·`lead_days`·`lead_use`·`need_qty`·`min_order_qty`·`usage_basis`)이 응답에 그대로 실림 ; 현재고가 인가량보다 넉넉하면 제안 0 이고 `only_short` 목록에서 빠짐(재고현황에는 `0.000` 으로 보임) ; requester 는 **자기 지점 장소만**(다른 지점 `?location=` → `total:0`) · **(b)** 제안 3건 `POST /api/purchase/suggest/apply` → PR 전표 **1건·줄 3**, memo 「발주 제안 YYYY-MM-DD」, 감사 `purchase.suggest.apply` detail 에 `suggested_qty`·`applied_qty`·`lines` ; 수량을 고쳐도 최소구매단위의 **배수가 아니면 400 `not_multiple`** ; 제안이 없는 품목은 400 `no_suggestion` ; 남의 지점 장소는 400 `not_in_scope` ; 본문에 `unit_price` 를 넣으면 400 · **(c)** 경보 dry-run — AL-14(보낸 뒤 수정) 1건 · AL-15(`sent_at` 31일 전 → **거래처별 한 문장** 「거래처 X 발주서 N건 미입고 30일 초과」) 1건 · AL-16(입고 단가가 품목 기준 단가보다 +30%) 1건 · AL-17(한 사람이 1시간에 취소 5건) 1건, 문장·근거에 계정명·전표 번호·품목 코드 **0건**, 같은 대상 재실행 시 **중복 0**(24시간) · **(d)** `scripts/security_lint.sh` 0건 — 예외 표식 `lint:no-branch-scope` 가 **조회 단위**로 좁혀진 뒤에도 0 이고, 표식 밖에 조회를 더하면 반려 · **(e)** 회귀 `tests/purchase_stage19|20|21|22.sh` · **(f)** 품목의 사용 지점 빼기 → `p_item_branches.is_active=false`(행은 남음), 품목 검색 `branch_used` 에서 제외, 감사 `purchase.master.branch_off` |
 
 ### 12.3 애플리케이션 밖 (S-10, S-11)
 
@@ -783,7 +784,7 @@
 | **20** | 발주요청 F-30 · 추천/내 리스트 F-31 · 불러오기→발주서 F-32(PDF·보냄) | F-30~F-32 | T-45 | F-30~F-32 |
 | **21** | 입고·이동·사용·실사 F-33 · 재고 원장 · 장소별 재고현황·수불부·미입고·사이클 F-34(일부) | F-33, F-34 | T-46 | F-33 |
 | **22** | 주간 사용량 · 월 대사 · 월 마감 · 기공 명세서 자동 전표 F-35 · 채번 통합(Doc.php 한 곳) | F-34, F-35 | T-47 | F-35 |
-| **23** | 발주 제안·부족 알림 F-36 · 경보 AL-14~17 | F-36, S-11-A | T-48(예정) | F-36 |
+| **23** | 발주 제안·부족 알림 F-36(제안 열·제안→발주요청) · 경보 AL-14~17 임계값·문장·중복 억제 확정 · 린트 예외 표식을 조회 단위로(R-65 잔여) · 사용 지점 빼기 | F-36, S-11-A, R-65 | T-48 | F-36 |
 
 **과제 제출물 대응**
 

@@ -58,10 +58,12 @@ if ($scopeItem['sql'] === '1=0') {
 } else {
     // 목록 API(purchase_items_search.php)와 **같은 모양의 조건**이다. 조각을 이어 붙이는
     // 줄에 값이 한 글자도 없고, 지점 번호는 `$scopeItem['params']` 로만 바인딩된다.
+    // 23단계 — 「뺀」 사용 지점(`ib.is_active = false`)은 없는 것으로 본다(목록·담기와 같은 조건).
     $visible  = '(EXISTS (SELECT 1 FROM p_item_branches ib';
-    $visible .= ' WHERE ib.item_id = i.id AND ';
+    $visible .= ' WHERE ib.item_id = i.id AND ib.is_active AND ';
     $visible .= $scopeItem['sql'];
-    $visible .= ') OR NOT EXISTS (SELECT 1 FROM p_item_branches ibx WHERE ibx.item_id = i.id))';
+    $visible .= ') OR NOT EXISTS (SELECT 1 FROM p_item_branches ibx';
+    $visible .= ' WHERE ibx.item_id = i.id AND ibx.is_active))';
     $itemBind = $itemBind + $scopeItem['params'];
 }
 
@@ -75,7 +77,7 @@ $sqlBranches = <<<'SQL'
     SELECT ib.branch_id, b.name AS branch_name
       FROM p_item_branches ib
       JOIN p_branches b ON b.id = ib.branch_id
-     WHERE ib.item_id = CAST(:id AS bigint) AND
+     WHERE ib.item_id = CAST(:id AS bigint) AND ib.is_active AND
     SQL;
 
 $branchRows = $db->run(

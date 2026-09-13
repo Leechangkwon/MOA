@@ -17,7 +17,7 @@ declare(strict_types=1);
  *           (p_* 에 DELETE 권한이 없다 — db/grants.sql). 라우트 이름이 DELETE 인 것은
  *           사람에게 "그만 쓴다" 를 뜻하고, 저장소에서는 중단이다(계정·팀과 같은 규칙).
  *
- * lint:no-branch-scope `p_import_mappings` 는 **지점 무관 마스터**다 — 엑셀 양식은 회사 전체가
+ * 지점 격리 예외 — `p_import_mappings` 는 **지점 무관 마스터**다. 엑셀 양식은 회사 전체가
  *   같은 것을 쓰고 지점마다 다르지 않다(브랜드·거래처·분류와 같은 성격). 그리고 이 라우트는
  *   buyer·Admin(전 지점)만 닿는다.
  *
@@ -44,6 +44,7 @@ $db = Db::instance();
 
 // ─── GET — 목록 ───
 if ($method === 'GET') {
+    // lint:no-branch-scope p_import_mappings 는 지점 무관 마스터다 (브랜드·거래처·분류와 같다).
     $sqlList = <<<'SQL'
         SELECT id, kind, name, mapping_json, header_row, created_at
           FROM p_import_mappings
@@ -83,6 +84,7 @@ if ($method === 'DELETE') {
         exit;
     }
 
+    // lint:no-branch-scope 같은 표 한 건 읽기 — 지점 축이 없다.
     $sqlFind = <<<'SQL'
         SELECT id, kind, name, is_active FROM p_import_mappings WHERE id = CAST(:id AS bigint)
         SQL;

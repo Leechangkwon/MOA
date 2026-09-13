@@ -11,7 +11,7 @@ declare(strict_types=1);
  * `p_*` 에 DELETE 권한 자체가 없다 (db/grants.sql). 전표가 기초정보를 참조하게 되는 20단계
  * 이후에도 "지워서 추적이 끊기는" 경로가 만들어지지 않는다 (팀·계정과 같은 원칙).
  *
- * lint:no-branch-scope 쓰기 라우트다 — 정책 `purchase.master.write` 는 buyer·Admin 에게만
+ * 지점 격리 예외 — 쓰기 라우트다. 정책 `purchase.master.write` 는 buyer·Admin 에게만
  *   열려 있고 그 둘의 지점 범위는 언제나 전 지점(`1=1`)이다. 좁힐 지점이 존재하지 않는다.
  *   (읽기 라우트인 purchase_masters_list.php 는 반대로 반드시 purchaseScopeWhere 를 지난다.)
  *
@@ -85,6 +85,7 @@ try {
 $db = Db::instance();
 
 // ─── [4] 참조 존재 검사 (만들기와 같은 규칙) ───
+// lint:no-branch-scope 참조가 **있는가**만 묻는 조회다 — 결과는 응답에 나가지 않는다.
 $sqlRef = [
     'brand'    => 'SELECT 1 AS ok FROM p_brands    WHERE id = CAST(:id AS bigint) AND is_active',
     'branch'   => 'SELECT 1 AS ok FROM p_branches  WHERE id = CAST(:id AS bigint) AND is_active',
@@ -128,6 +129,7 @@ if (array_key_exists('parent_id', $changes)) {
 
 /* ─── [4-1] 거래처 이름 겹침 (2차 보정) — **자기 자신은 빼고** 센다 ─── */
 if ($kind === 'vendors' && !$allowDuplicateName && array_key_exists('name', $changes)) {
+    // lint:no-branch-scope 거래처는 지점 무관 마스터다 (이름 겹침만 본다).
     $sqlSameName = <<<'SQL'
         SELECT 1 AS ok FROM p_vendors
          WHERE lower(name) = lower(:name) AND id <> CAST(:id AS bigint)

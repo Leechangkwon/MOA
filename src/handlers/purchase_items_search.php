@@ -70,10 +70,13 @@ if ($scope['sql'] === '1=0') {
     // 조각을 이어 붙이는 줄에 **값이 한 글자도 없다** — `$scope['sql']` 은 Authz 가 만든
     // 고정 문자열이고 값은 `$scope['params']` 로만 바인딩된다 (PRD S-04).
     // (SQL 키워드와 변수를 같은 줄에 두지 않는 것은 린트 규칙의 모양을 지키기 위해서이기도 하다.)
+    // 23단계 — 「뺀」 사용 지점(`ib.is_active = false`)은 없는 것으로 본다.
+    // `Doc::loadItems` 가 쓰는 조건과 **같은 모양**이어야 목록과 담기가 갈라지지 않는다.
     $exists  = '(EXISTS (SELECT 1 FROM p_item_branches ib';
-    $exists .= ' WHERE ib.item_id = i.id AND ';
+    $exists .= ' WHERE ib.item_id = i.id AND ib.is_active AND ';
     $exists .= $scope['sql'];
-    $exists .= ') OR NOT EXISTS (SELECT 1 FROM p_item_branches ibx WHERE ibx.item_id = i.id))';
+    $exists .= ') OR NOT EXISTS (SELECT 1 FROM p_item_branches ibx';
+    $exists .= ' WHERE ibx.item_id = i.id AND ibx.is_active))';
     $where[] = $exists;
     $bind    = $bind + $scope['params'];
 }
@@ -111,7 +114,8 @@ if ($branchUsed > 0) {
     // 요청이 고른 지점 필터. 위 지점 격리 조건과 **함께**(AND) 걸리므로, requester 가 다른
     // 지점을 적으면 두 조건이 동시에 참일 수 없어 0건이 된다 — 무시된 것과 같은 결과다.
     $where[]             = 'EXISTS (SELECT 1 FROM p_item_branches ibq'
-                         . ' WHERE ibq.item_id = i.id AND ibq.branch_id = CAST(:branch_used AS bigint))';
+                         . ' WHERE ibq.item_id = i.id AND ibq.is_active'
+                         . ' AND ibq.branch_id = CAST(:branch_used AS bigint))';
     $bind[':branch_used'] = $branchUsed;
 }
 if ($stockManaged !== '') {

@@ -741,7 +741,9 @@ Admin 전용. 정책 `org.manage`(`Authz::canManageOrg` = Admin) 를 `KNOWN_POLI
 | 송부 전 검토 (Q-18④) | viewer 는 전 지점 읽기 + `purchase.send`(발주서 미리보기 → 「보냄」). buyer 도 `purchase.send` 가능. 「보냄」은 `p_docs.sent_at`·`sent_by`, 한 번만(재송부는 사유 + 감사) |
 | 실사 주기 (Q-18③) | `p_docs.count_cycle`(`daily`·`weekly`·`monthly`, 실사 전표만 NOT NULL). 일: 불출·부족재고 구매용, 주·월: 창고 정합성. 현황은 주기별 차이 합계 추세 |
 | 가져오기 | t-box `Upload::validate` → `Preview::table`(xlsx·csv) → 매핑(`p_import_mappings`) → 행별 판정 → 한 트랜잭션. 파일은 `files`(폴더 `구매/가져오기`), 감사 detail 에 sha256·행 수 |
-| 감사·경보 | 문장 틀 `purchase.request|order|receipt|move|use|count|master|import|recon|close … allow/deny/error`(7.4), detail 키 `doc_no`·`doc_type`·`branch_id`·`lines`·`amount`·`src_doc_no`·`before/after`(7.5). 경보 후보 AL-14 마감 뒤 수정 · AL-15 미입고 30일 · AL-16 단가 급변 · AL-17 대량 취소 |
+| 감사·경보 | 문장 틀 `purchase.request|order|receipt|move|use|count|master|import|recon|close … allow/deny/error`(7.4), detail 키 `doc_no`·`doc_type`·`branch_id`·`lines`·`amount`·`src_doc_no`·`before/after`·`suggested_qty`·`applied_qty`(7.5). 경보 **AL-14 보낸 뒤·마감 뒤 수정 · AL-15 미입고 30일 · AL-16 단가 급변 · AL-17 대량 취소 — 23단계에 임계값·문장·묶는 단위까지 확정**(11.4 표) |
+| 발주 제안 (F-36) | ⌈(인가량 + 안전재고 − 현재고 − 미입고 + 조달기간 예상 사용) ÷ 최소구매단위⌉ × 최소구매단위. 계산은 `src/purchase/Suggest.php` 의 **SQL 한 곳**뿐이고 화면은 값과 근거를 표시만 한다. 조달기간 예상 사용 = 주평균 사용(최근 4주) × `lead_days` ÷ 7, 자료가 없으면 0 + `usage_basis: none`. 괄호 안이 0 이하면 제안 없음(0). `POST /api/purchase/suggest/apply` 는 제안을 **다시 계산해** 발주요청(PR) 한 건으로 만든다 — 요청 본문의 제안값은 읽지 않고, 고친 수량은 최소구매단위의 배수여야 한다(400 `not_multiple`). 지점은 **장소에서** 나온다 |
+| 사용 지점 빼기 | `p_item_branches.is_active = false` — 그 표에도 DELETE 가 없으므로 지우기가 아니라 끄기다. 빼면 품목 찾기(`branch_used`·지점 격리 조건)와 `Doc::loadItems` 의 「보이는 품목」에서 함께 빠지고, 지난 전표에는 그대로 남는다 |
 | 화면 | 시안 16장(`docs/purchase/design/`)이 기준. t-box 셸·토큰, `textContent` 만, 서버 계산 값만 표시 |
 
 ---
@@ -1187,7 +1189,7 @@ GRANT  USAGE, SELECT  ON SEQUENCE audit_logs_id_seq TO tbox_app;
 | `file.update|deny|parent_narrower` | `{actor} 이(가) 파일 「{target}」 을(를) 자기보다 좁은 등급의 폴더로 옮기려 해서 거부했습니다` | 18-1 |
 | `file.level_change|deny|parent_narrower` | `{actor} 이(가) 파일 「{target}」 의 접근 등급을 그 파일이 든 폴더보다 넓은 {level} 등급으로 바꾸려 해서 거부했습니다` | 18-1 |
 
-**구매·재고 모듈 `purchase.*` — 19~22단계 요약** (2026-09-14 추가. 문장 전문은 `src/Audit.php` 의 표 하나이고, 여기에는 **어떤 행이 있는지**만 적는다. 행이 100줄을 넘어 이 표에 그대로 옮기면 읽기 어렵다 — 새 행동을 더할 때는 `Audit.php` 의 표를 고치고 아래 요약에 한 줄을 보탠다.)
+**구매·재고 모듈 `purchase.*` — 19~23단계 요약** (2026-09-14 추가. 문장 전문은 `src/Audit.php` 의 표 하나이고, 여기에는 **어떤 행이 있는지**만 적는다. 행이 100줄을 넘어 이 표에 그대로 옮기면 읽기 어렵다 — 새 행동을 더할 때는 `Audit.php` 의 표를 고치고 아래 요약에 한 줄을 보탠다.)
 
 | `action` 묶음 | `result` | `reason` (사유 코드 등록부) | 단계 |
 |---|---|---|---|
@@ -1202,6 +1204,16 @@ GRANT  USAGE, SELECT  ON SEQUENCE audit_logs_id_seq TO tbox_app;
 | `purchase.recon.preview|commit` | allow · deny | `bad_request` · `bad_mapping` · `bad_header_row` · `parse_failed` · `truncated` · `no_rows` · `already_committed` · `bad_reference` | 22 |
 | `purchase.close.create` | allow · deny | `bad_request` · `not_in_scope` · **`open_docs_exist`** · `conflict` · `bad_reference` | 22 |
 | `purchase.lab.create` | allow · deny | `bad_request` · `bad_reference` · `not_in_scope` · **`stock_managed_item`** · `month_closed` · `negative_stock` · `conflict` | 22 |
+| `purchase.suggest.apply` | allow · deny | `bad_request` · `bad_reference` · `not_in_scope` · **`no_suggestion`** · **`not_multiple`** · `conflict` | 23 |
+| `purchase.master.branch_off` | allow · deny | `bad_request` | 23 |
+
+> **23단계** — `purchase.suggest.apply` 는 제안을 발주요청으로 옮긴 **한 순간**만 남긴다(제안 조회는 다른
+> 현황 조회처럼 기록하지 않는다). `detail.suggested_qty`(서버가 계산한 합)와 `detail.applied_qty`(사람이
+> 실제로 담은 합)가 함께 들어가며, 두 숫자의 차이가 "제안을 얼마나 고쳤나" 다. `not_multiple` 은 고친
+> 수량이 `p_items.min_order_qty` 의 배수가 아닐 때이고, `no_suggestion` 은 지금 제안이 0 인 품목을
+> 이 창구로 담으려 할 때다 — 제안 창구가 「아무 품목이나 요청에 넣는 우회로」가 되지 않게 한다.
+> `purchase.master.branch_off` 는 품목의 **사용 지점 빼기**(`p_item_branches.is_active = false`)이며,
+> 바꾼 칸도 더한 지점도 없이 지점만 뺀 요청에만 붙는다(그 밖은 `purchase.master.update` 그대로).
 
 > `month_closed` 는 **여덟 창구가 같은 낱말**을 쓴다(요청 수정·요청 취소·발주서 수정/취소·입고/이동/사용/실사 취소). 판정은 `Doc::closeGuard` 한 곳이고, 사유를 적은 `purchase.close` 보유자가 지나간 요청은 allow 행의 `detail.after_close = true` 로 남아 경보 AL-14 가 본다.
 
@@ -1275,6 +1287,8 @@ GRANT  USAGE, SELECT  ON SEQUENCE audit_logs_id_seq TO tbox_app;
 | `after_close` | 어떻게 | `true`/`false` — **월 마감된 달**의 전표를 고치거나 취소했는가. `after_sent`(보낸 뒤 수정)와 같은 성격이고, 둘 다 경보 AL-14 가 본다 | 핸들러 | `purchase.request.update`·`purchase.order.update|void`·`purchase.receipt|move|use|count.void` (22) |
 | `after_sent` | 어떻게 | `true`/`false` — 거래처에 **보낸 뒤**의 발주서 수정·취소인가 | 핸들러 | `purchase.order.update|void` (20) |
 | `relinked` | 어떻게 | 기공 명세서 전표가 대사표에서 **다시 맞춘 줄 수**(정수) | 핸들러 | `purchase.lab.create` (22) |
+| `suggested_qty` · `applied_qty` | 무엇을 | 발주 제안을 요청으로 옮길 때 **서버가 계산한 제안 합**과 **사람이 실제로 담은 합**(수량 문자열). 두 숫자의 차이가 곧 "제안을 얼마나 고쳤나" 다 | 핸들러 | `purchase.suggest.apply` (23) |
+| `branches` · `branches_off` | 어디에 | 품목에 **더한** 사용 지점 id 목록 / **뺀**(`is_active=false`) 사용 지점 id 목록. 이름이 아니라 id 다 | 핸들러 | `purchase.master.create|update|branch_off` (19 · 23) |
 
 **검토 행동과 사용자 행동 가르기** — 두 조건 중 하나면 검토다. 둘 다 아니면 사용자(또는 침입자)다.
 
@@ -1518,6 +1532,33 @@ php_admin_value[disable_functions]   = fsockopen,pfsockopen,stream_socket_client
 | "로그 끊김" 감시 | 원격 서버 쪽에서 30분 무수신 시 경보 (AL-7) | 앱 서버가 침해되면 앱 서버의 경보는 믿을 수 없으므로 **밖에서** 감시 |
 
 경보 규칙 AL-1 ~ AL-11 의 조건은 PRD 7.11 표를 그대로 쓴다 (AL-10 계정 공유 의심·AL-11 admin-only 다운로드 요약은 2026-09-10 추가).
+
+**구매·재고 경보 AL-14 ~ AL-17 — 23단계 확정 (2026-09-13, PRD F-32 · F-35 · F-36, ARCH 5.18 「감사·경보」)**
+
+20~22단계는 규칙 골격만 두고 "임계값은 23단계에서 정한다" 고 적어 두었다. 그 값이 아래다. 숫자는
+`scripts/alerts.php` 맨 위의 **상수 한 묶음**에 있고, 규칙 본문에는 없다 — 운영하며 조이거나 푸는 것은
+숫자뿐이고, 그때 고칠 자리가 하나여야 "지금 임계값이 얼마냐" 에 코드가 바로 답한다.
+
+| 규칙 | 조건 (임계값 상수) | 무엇을 보나 | 묶는 단위 = 중복 억제 대상 |
+|---|---|---|---|
+| **AL-14** 보낸 뒤·마감 뒤 수정 | 최근 10분의 `allow` 행에 `detail.after_sent = true` 또는 `detail.after_close = true` | `audit_logs` | 감사 로그 행 하나 (`audit_log#id`) |
+| **AL-15** 미입고 30일 | 뷰 `p_backorder` 의 `sent_at < now() − BACKORDER_DAYS(30)일` | `p_backorder` (일어나**지 않은** 일이라 로그에 없다) | **거래처 하나** (`purchase_vendor#id`) — 한 거래처가 30줄 밀려도 알림은 하나다. 사람이 할 일은 "그 거래처에 전화하기" 하나이기 때문 |
+| **AL-16** 단가 급변 | ① 확정된 월 대사의 `diff_type='price'` 줄 중 우리 단가 대비 `PRICE_JUMP_RATIO(20%)` **초과** ② **입고 줄 단가 vs `p_items.price_in`** 이 같은 비율 초과(최근 `PRICE_SCAN_DAYS(7)`일 입고) | `p_recon_lines` · `p_doc_lines`(gr) | 대사 줄 / 입고 줄 하나 |
+| **AL-17** 대량 취소 | 한 행위자의 `purchase.*.void allow` 가 `VOID_BURST_HOURS(1)`시간에 `VOID_BURST_COUNT(5)`건 이상 | `audit_logs` | 행위자 하나 (`user#id`) |
+
+- **중복 억제는 24시간**이다(`PURCHASE_DEDUP_MINUTES`). 다른 규칙의 30분과 다른 이유: 이 넷은 "일어나지
+  않은 일"(미입고)이나 "이미 남은 판정"(단가 차이)을 보므로 조건이 **며칠씩 그대로 참**이다. 30분이면
+  같은 줄이 하루 48번 울리고, 그러면 아무도 보지 않는다.
+- **알림 통로**는 다른 규칙과 같다 — `cli_raise_alert` 하나(`alerts.log` 한 줄 JSON + 감사 `alert.raised allow`).
+  `.env` 의 `ALERT_COMMAND` 가 비어 있으면 `dispatch: log_only` 로 남는다.
+- **근거 값에 계정명·전표 번호·품목 코드를 싣지 않는다** (23단계 규칙). 경보는 앱 밖(메신저·메일)으로
+  나가는 글이므로 id 와 수치만 남기고, 누가·어느 전표·어느 품목인지는 **감사 로그를 열어** 확인한다.
+  예외는 AL-15 의 **거래처 이름**뿐이다 — 「거래처 X 발주서 N건 미입고 30일 초과」라는 문장은 거래처를
+  가리키지 않으면 뜻이 없고, 회사 이름은 개인정보가 아니다.
+- 앞선 규칙(AL-1·AL-5·AL-13)이 계정명을 싣는 것은 9~17단계의 결정이며 23단계에서 바꾸지 않았다.
+- 시험용 인자 `--state <경로>`(23단계): 중복 억제 상태를 그 파일에서 읽고 쓴다. 5분마다 도는 cron 이 이미
+  발동시킨 대상은 운영 상태 파일에서 「억제됨」이라, 「처음 발동 → 다시 억제」를 확인하려면 빈 상태가
+  필요하다. `--auth-log` 와 같은 성격의 인자이며 **운영 상태 파일을 시험이 건드리지 않게** 하는 것이 목적이다.
 
 **AL-2 집계 대상 (13단계 보정 2026-09-12 — SECURITY R-45 · R-48)**
 

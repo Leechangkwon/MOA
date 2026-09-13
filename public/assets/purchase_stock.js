@@ -248,6 +248,10 @@
     var stPage = 1;
     var lgPage = 1;
     var locations = [];
+    /* 23단계 — 「담기」로 고른 줄. 키는 `장소id:품목id`, 값은 서버가 준 제안 한 줄 그대로다.
+       화면은 제안을 **다시 계산하지 않는다** — 계산은 서버(`src/purchase/Suggest.php`)뿐이고,
+       보낼 때도 수량이 아니라 「이 장소의 이 품목」만 보낸다(수량을 고친 때만 그 값을 싣는다). */
+    var picked = {};
 
     function locationsOf(branchValue) {
       if (branchValue === '') { return locations; }
@@ -267,7 +271,13 @@
       }
       if ($('st-short').checked) { params += '&short=1'; }
 
-      request('GET', '/api/purchase/stock' + params).then(function (res) {
+      /* 「제안 있는 것만」은 **다른 창구**다 — 같은 계산을 서버가 하고 제안 0 인 줄을 빼 준다.
+         화면에서 거르지 않는 이유: 그러면 쪽 수·전체 건수가 표와 어긋난다. */
+      var onlySuggest = $('st-suggest-only').checked;
+      var path = onlySuggest ? '/api/purchase/suggest' : '/api/purchase/stock';
+      if (onlySuggest) { params += '&only_short=1'; }
+
+      request('GET', path + params).then(function (res) {
         if (!res) { return; }
         if (!res.ok) { say(errorMessage(res.data)); return; }
         var items = Array.isArray(res.data.items) ? res.data.items : [];
@@ -291,8 +301,34 @@
           gapTd.classList.add(num(row.gap) < 0 ? 'p-short' : 'p-plus');
           cell(tr, qty(row.incoming), 'p-num');
           cell(tr, qty(row.weekly_use), 'p-num');
-          // 발주 제안은 23단계 값이다 — 서버가 null 을 주므로 화면도 지어내지 않는다.
-          cell(tr, row.suggest_qty === null ? '— (23단계)' : qty(row.suggest_qty));
+
+          /* 발주 제안 — 값도 근거도 **서버가 준 것**이다 (PRD F-36). 여기서 더하지 않는다. */
+          var sugN   = num(row.suggest_qty);
+          var sugTd  = cell(tr, '', 'p-num');
+          sugTd.appendChild(el('b', 'p-suggest', sugN > 0 ? qty(row.suggest_qty) : '—'));
+          sugTd.appendChild(el('span', 'p-basis', basisText(row)));
+
+          /* 담기 — 제안이 있는 줄만. 체크만 하고, 전표를 만드는 것은 서버다. */
+          var pickTd = el('td', 'p-pick');
+          if (sugN > 0) {
+            var key = String(row.location_id) + ':' + String(row.item_id);
+            var box = document.createElement('input');
+            box.type = 'checkbox';
+            box.checked = Object.prototype.hasOwnProperty.call(picked, key);
+            box.addEventListener('change', function () {
+              if (box.checked) { picked[key] = row; } else { delete picked[key]; }
+              setText($('st-pick-info'), pickInfo());
+            });
+            pickTd.appendChild(box);
+            var qtyIn = qtyInput(qty(row.suggest_qty), function (value) {
+              if (picked[key]) { picked[key] = rowWithQty(row, value); }
+            }, 'p-in p-in--qty');
+            qtyIn.step = String(row.min_order_qty || 1);
+            pickTd.appendChild(qtyIn);
+          } else {
+            pickTd.appendChild(el('span', 'p-sub', '—'));
+          }
+          tr.appendChild(pickTd);
 
           var actTd = el('td');
           actTd.appendChild(button('수불부', 'btn btn--quiet btn--small', function () {
@@ -433,6 +469,71 @@
       });
     }
 
+    /** 제안의 **근거**를 그대로 읽어 준다 — 서버가 준 값만 이어 붙인다(계산 아님). */
+    function basisText(row) {
+      if (num(row.suggest_qty) <= 0) { return ''; }
+      var lead = row.usage_basis === 'none'
+        ? '조달 ' + String(row.lead_days) + '일 예상 0 (사용 기록 없음)'
+        : '조달 ' + String(row.lead_days) + '일 예상 ' + qty(row.lead_use);
+      return '(인가 ' + (row.par_qty === null ? '0' : String(row.par_qty))
+        + ' · 안전 ' + String(row.safety_qty)
+        + ' · 현재고 ' + qty(row.on_hand)
+        + ' · 미입고 ' + qty(row.incoming)
+        + ' · ' + lead
+        + ' · 최소 ' + String(row.min_order_qty) + '단위)';
+    }
+
+    /** 고른 줄의 수량만 바꾼 사본 — 원본(서버가 준 제안)은 건드리지 않는다. */
+    function rowWithQty(row, value) {
+      var copy = {};
+      Object.keys(row).forEach(function (k) { copy[k] = row[k]; });
+      copy.pick_qty = value;
+      return copy;
+    }
+
+    function pickedList() {
+      return Object.keys(picked).map(function (k) { return picked[k]; });
+    }
+
+    function pickInfo() {
+      var list = pickedList();
+      if (list.length === 0) { return ''; }
+      return '고른 제안 ' + String(list.length) + '줄';
+    }
+
+    /*
+     * 고른 제안 → 발주요청 한 건. 장소가 섞이면 **보내지 않는다** — 요청 전표의 지점은
+     * 장소에서 나오므로(서버 `Doc::locationBranch`) 한 전표에 두 장소를 담을 수 없다.
+     * 수량을 고치지 않은 줄은 `qty` 를 아예 보내지 않는다 — 그러면 서버가 자기 제안값을 쓴다.
+     */
+    function applyPicked() {
+      var list = pickedList();
+      if (list.length === 0) { say('담을 제안을 먼저 고르세요.'); return; }
+      var locId = list[0].location_id;
+      var mixed = list.some(function (r) { return r.location_id !== locId; });
+      if (mixed) {
+        say('한 번에 한 장소씩 담을 수 있습니다 — 장소 필터로 좁힌 뒤 다시 고르세요.');
+        return;
+      }
+      var lines = list.map(function (r) {
+        if (r.pick_qty === undefined || r.pick_qty === null || String(r.pick_qty) === '') {
+          return { item_id: r.item_id };
+        }
+        return { item_id: r.item_id, qty: String(r.pick_qty) };
+      });
+      request('POST', '/api/purchase/suggest/apply', { location_id: locId, lines: lines })
+        .then(function (res) {
+          if (!res) { return; }
+          if (!res.ok) { say(errorMessage(res.data)); return; }
+          picked = {};
+          setText($('st-pick-info'), '');
+          say('발주요청 ' + String(res.data.doc_no) + ' 을(를) 만들었습니다 ('
+            + String((res.data.lines || []).length) + '줄 · 제안 합계 '
+            + qty(res.data.suggested_qty) + ' · 담은 합계 ' + qty(res.data.applied_qty) + ').');
+          loadStatus();
+        });
+    }
+
     function showTab(key) {
       var nav = $('stock-tabs');
       var buttons = nav.querySelectorAll('.p-tab');
@@ -459,6 +560,8 @@
     $('st-location').addEventListener('change', function () { stPage = 1; loadStatus(); });
     $('st-q').addEventListener('change', function () { stPage = 1; loadStatus(); });
     $('st-short').addEventListener('change', function () { stPage = 1; loadStatus(); });
+    $('st-suggest-only').addEventListener('change', function () { stPage = 1; loadStatus(); });
+    $('st-apply').addEventListener('click', applyPicked);
     $('st-prev').addEventListener('click', function () {
       if (stPage > 1) { stPage -= 1; loadStatus(); }
     });

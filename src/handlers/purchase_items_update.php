@@ -7,9 +7,14 @@ declare(strict_types=1);
  *
  * ★ 19단계 품목 고치기 · **중단**(is_active=false) · 재개 (PRD F-28, 시안 ⑮).
  *   삭제 라우트가 없다 — 전표가 품목을 참조하므로 중단만 있다 (지시서 보충 4).
+ * ★ 23단계 **사용 지점 빼기**(`branches_off`) — `p_item_branches.is_active = false`.
+ *   그 표에도 DELETE 권한이 없으므로 「빼기」는 지우기가 아니라 **끄기**다. 지난 전표에는
+ *   그대로 남고, 같은 지점을 `branches` 로 다시 넣으면 되살아난다 (아래 SQL 두 개가 짝이다).
  *
- * lint:no-branch-scope 쓰기 라우트다 — `purchase.master.write` 는 buyer·Admin 만이고 그 둘의
- *   지점 범위는 언제나 전 지점(`1=1`)이다. 좁힐 지점이 존재하지 않는다.
+ * 지점 격리 예외 — 이 파일은 `no-branch-scope` 표식을 **조회마다** 달아 스스로 선언한다
+ *   (23단계에 파일 단위 → 줄 단위로 좁혔다, SECURITY R-65 잔여). 쓰기 라우트이고
+ *   `purchase.master.write` 는 buyer·Admin 만이라 그 둘의 지점 범위는 언제나 전 지점(`1=1`)
+ *   이다 — 좁힐 지점이 존재하지 않는다.
  *
  * 바뀐 칸만 `detail.before` / `detail.after` 로 감사 로그에 남는다 (PRD F-28).
  * 단가·분류 변경이 이력에 남아야 나중에 "왜 이 값이 됐나" 를 되짚을 수 있다(시안 ⑮ 저장 규칙).
@@ -25,7 +30,7 @@ const TBOX_ITEM_PATCH_FIELDS = [
     'name', 'spec', 'unit', 'pack_qty', 'brand_id',
     'cat1_id', 'cat2_id', 'cat3_id', 'stock_managed',
     'safety_qty', 'lead_days', 'min_order_qty', 'price_in', 'barcode',
-    'branches', 'is_active',
+    'branches', 'branches_off', 'is_active',
 ];
 
 $idRaw = $params[0] ?? '';
@@ -49,6 +54,7 @@ $reject = static function (string $reason, int $status, string $message) use ($a
 
 $db = Db::instance();
 
+// lint:no-branch-scope 품목 한 건 읽기 — 쓰기 라우트(buyer·Admin)라 좁힐 지점이 없다.
 $sqlFind = <<<'SQL'
     SELECT id, code, name, spec, unit, pack_qty, brand_id, cat1_id, cat2_id, cat3_id,
            stock_managed, safety_qty, lead_days, min_order_qty,
@@ -147,6 +153,24 @@ try {
         $branchIds = array_values(array_unique($branchIds));
     }
 
+    /*
+     * 23단계 「빼기」 — 끌 지점 목록. `branches`(더하기)와 **같은 요청에 같은 지점**이 오면
+     * 무엇을 원하는지 알 수 없으므로 요청 전체를 거부한다. 조용히 한쪽을 고르지 않는다.
+     */
+    $branchesOff = [];
+    if (array_key_exists('branches_off', $body)) {
+        if (!is_array($body['branches_off'])) {
+            throw new RuntimeException('bad_request');
+        }
+        foreach ($body['branches_off'] as $raw) {
+            $branchesOff[] = Master::id($raw);
+        }
+        $branchesOff = array_values(array_unique($branchesOff));
+        if ($branchIds !== null && array_intersect($branchesOff, $branchIds) !== []) {
+            throw new RuntimeException('bad_request');
+        }
+    }
+
     $nextActive = array_key_exists('is_active', $body) ? Master::flag($body['is_active']) : $wasActive;
 } catch (RuntimeException $e) {
     $reject($e->getMessage(), 400, Http::MSG_BAD_REQUEST);
@@ -176,6 +200,7 @@ if ($nextActive !== $wasActive) {
 }
 
 // ─── 참조 존재 검사 ───
+// lint:no-branch-scope 참조가 **있는가**만 묻는 조회다 — 결과는 응답에 나가지 않는다.
 $sqlRef = [
     'brand'    => 'SELECT 1 AS ok FROM p_brands     WHERE id = CAST(:id AS bigint) AND is_active',
     'category' => 'SELECT 1 AS ok FROM p_categories WHERE id = CAST(:id AS bigint) AND is_active',
@@ -198,8 +223,11 @@ if ($branchIds !== null) {
         $mustExist('branch', $branchId);
     }
 }
+foreach ($branchesOff as $branchId) {
+    $mustExist('branch', $branchId);
+}
 
-if ($before === [] && $branchIds === null) {
+if ($before === [] && $branchIds === null && $branchesOff === []) {
     $reject('no_change', 400, Http::MSG_BAD_REQUEST);
 }
 
@@ -222,13 +250,25 @@ $sqlUpdate = <<<'SQL'
      WHERE id = CAST(:id AS bigint)
     SQL;
 
-// 사용 지점은 "통째로 바꾸기" 다. p_item_branches 에는 DELETE 권한이 없으므로
-// **지우지 않고** 모자란 것만 더한다 — 뺄 수는 없다는 뜻이며, 그 제약은 의도된 것이다
-// (지점을 빼는 것은 20단계 이후 전표에 영향을 주므로 따로 설계한다).
+/*
+ * 사용 지점 **더하기**. `p_item_branches` 에는 DELETE 권한이 없으므로 행을 지우지 않는다 —
+ * 한 번 뺀 지점을 다시 넣는 것은 `is_active` 를 되살리는 일이다(23단계에 칸이 채워졌다).
+ */
 $sqlAddBranch = <<<'SQL'
-    INSERT INTO p_item_branches (item_id, branch_id)
-    VALUES (CAST(:item AS bigint), CAST(:branch AS bigint))
-    ON CONFLICT DO NOTHING
+    INSERT INTO p_item_branches (item_id, branch_id, is_active)
+    VALUES (CAST(:item AS bigint), CAST(:branch AS bigint), true)
+    ON CONFLICT (item_id, branch_id) DO UPDATE SET is_active = true
+    SQL;
+
+/*
+ * 사용 지점 **빼기** (23단계, 20단계 마이그레이션의 `p_item_branches.is_active`).
+ * 지우기가 아니라 끄기다 — 지난 전표는 그대로 남고, 품목 찾기의 `branch_used` 와
+ * `Doc::loadItems` 의 「보이는 품목」에서 빠진다. 없는 (품목, 지점) 짝이면 0행이 바뀔 뿐이다.
+ */
+$sqlOffBranch = <<<'SQL'
+    UPDATE p_item_branches
+       SET is_active = false
+     WHERE item_id = CAST(:item AS bigint) AND branch_id = CAST(:branch AS bigint)
     SQL;
 
 $db->begin();
@@ -259,10 +299,23 @@ try {
             $addedBranches[] = $branchId;
         }
     }
+    foreach ($branchesOff as $branchId) {
+        $db->run($sqlOffBranch, [':item' => $id, ':branch' => $branchId]);
+    }
 
-    $action = ($nextActive !== $wasActive && !$nextActive)
-        ? 'purchase.master.deactivate'
-        : 'purchase.master.update';
+    /*
+     * 한 요청 = 한 행. 무엇을 한 요청인지 **문장으로** 갈린다:
+     *   중단      품목 자체를 껐다
+     *   빼기      바꾼 칸도 더한 지점도 없이 사용 지점만 뺐다 (23단계)
+     *   고치기    그 밖
+     */
+    if ($nextActive !== $wasActive && !$nextActive) {
+        $action = 'purchase.master.deactivate';
+    } elseif ($before === [] && $addedBranches === [] && $branchesOff !== []) {
+        $action = 'purchase.master.branch_off';
+    } else {
+        $action = 'purchase.master.update';
+    }
 
     Audit::allow($action, $auditTarget + [
         'target_name' => (string) $current['code'] . ' ' . $next['name'],
@@ -271,7 +324,8 @@ try {
             'target_id' => $id,
             'before'    => $before,
             'after'     => $after,
-        ] + ($addedBranches === [] ? [] : ['branches' => $addedBranches]),
+        ] + ($addedBranches === [] ? [] : ['branches' => $addedBranches])
+          + ($branchesOff === []   ? [] : ['branches_off' => $branchesOff]),
     ]);
     $db->commit();
 } catch (PDOException $e) {
@@ -285,4 +339,9 @@ try {
     throw $e;
 }
 
-Http::json(['id' => $id, 'before' => $before, 'after' => $after]);
+Http::json([
+    'id'           => $id,
+    'before'       => $before,
+    'after'        => $after,
+    'branches_off' => $branchesOff,
+]);

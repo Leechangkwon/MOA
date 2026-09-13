@@ -733,6 +733,29 @@ final class Audit
         'purchase.lab.create|deny|month_closed'         => '{actor} 이(가) **마감된 달**에 기공 명세서 전표를 만들려 해서 거부했습니다',
         'purchase.lab.create|deny|negative_stock'       => '{actor} 이(가) 확정하면 재고가 음수가 되는 기공 명세서 전표를 넣으려 해서 거부했습니다',
         'purchase.lab.create|deny|conflict'             => '{actor} 이(가) 만든 기공 명세서 전표의 번호가 이미 있어 거부했습니다',
+
+        /*
+         * 23단계 — 발주 제안을 발주요청으로 (PRD F-36, ARCH 5.18 「감사·경보」).
+         * 조회(`GET /api/purchase/suggest`)는 기록하지 않는다 — 다른 현황 조회와 같다.
+         * 여기 남는 것은 **제안이 전표가 된 순간** 하나이고, detail 에 `suggested_qty`(서버가
+         * 계산한 합)와 `applied_qty`(담당자가 실제로 담은 합)가 둘 다 들어간다 —
+         * 두 숫자의 차이가 곧 "사람이 제안을 얼마나 고쳤나" 다 (지시서 23단계 보충 2).
+         */
+        'purchase.suggest.apply|allow'                  => '{actor} 이(가) 발주 제안을 모아 발주요청 「{target}」 을(를) 만들었습니다 (제안 수량·담은 수량·줄 수는 상세 기록)',
+        'purchase.suggest.apply|deny|bad_request'       => '{actor} 이(가) 발주 제안 담기를 잘못된 형식으로 요청해서 거부했습니다',
+        'purchase.suggest.apply|deny|bad_reference'     => '{actor} 이(가) 볼 수 없는(또는 중단된) 품목의 발주 제안을 담으려 해서 거부했습니다',
+        'purchase.suggest.apply|deny|not_in_scope'      => '{actor} 이(가) 자기 범위 밖의 장소에 발주 제안을 담으려 해서 막았습니다',
+        'purchase.suggest.apply|deny|no_suggestion'     => '{actor} 이(가) 지금 발주 제안이 없는 품목을 제안으로 담으려 해서 거부했습니다 (제안 창구는 부족한 것만 담습니다)',
+        'purchase.suggest.apply|deny|not_multiple'      => '{actor} 이(가) 최소구매단위의 배수가 아닌 수량으로 발주 제안을 담으려 해서 거부했습니다',
+        'purchase.suggest.apply|deny|conflict'          => '{actor} 이(가) 제안으로 만든 발주요청의 전표 번호가 이미 있어 거부했습니다',
+
+        /*
+         * 23단계 — 품목의 **사용 지점 빼기** (20단계 마이그레이션의 `p_item_branches.is_active`).
+         * 그 표에도 DELETE 권한이 없으므로 빼기는 「지웠다」가 아니라 「끔」이다 —
+         * 지난 전표에는 그대로 남고, 다시 넣으면 되살아난다.
+         */
+        'purchase.master.branch_off|allow'              => '{actor} 이(가) 품목 「{target}」 의 사용 지점을 뺐습니다 (지운 것이 아니라 끔이며 지난 전표에는 그대로 남습니다 · 지점은 상세 기록)',
+        'purchase.master.branch_off|deny|bad_request'   => '{actor} 이(가) 품목의 사용 지점 빼기를 잘못된 형식으로 요청해서 거부했습니다',
     ];
 
     /** 자리표시자에 넣을 값이 없을 때 (ARCH 7.4) */

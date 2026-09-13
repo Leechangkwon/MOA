@@ -24,7 +24,7 @@ declare(strict_types=1);
  *   sha256 과 대조할 수 있다. 폴더는 **admin-only** 라 거래처 명세서·단가가 일반 사용자에게
  *   보이지 않는다 (SECURITY R-69).
  *
- * lint:no-branch-scope 가져오기 파일은 지점에 묶이지 않는다 — 보관 폴더는 admin-only 한 곳이고,
+ * 지점 격리 예외 — 가져오기 파일은 지점에 묶이지 않는다. 보관 폴더는 admin-only 한 곳이고,
  *   이 파일의 `FROM p_` 조회는 저장된 **매핑 목록**(p_import_mappings, 지점 무관 마스터)뿐이다.
  *   행 판정·쓰기의 범위는 preview·commit 핸들러와 Importer 가 다룬다.
  *

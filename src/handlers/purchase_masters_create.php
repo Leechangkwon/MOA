@@ -8,7 +8,7 @@ declare(strict_types=1);
  *
  * ★ 19단계 기초정보 만들기 (PRD F-28, ARCH 5.18).
  *
- * lint:no-branch-scope 쓰기 라우트다 — 정책 `purchase.master.write` 는 buyer·Admin 에게만
+ * 지점 격리 예외 — 쓰기 라우트다. 정책 `purchase.master.write` 는 buyer·Admin 에게만
  *   열려 있고(Authz::purchaseAuthorize), 그 둘의 지점 범위는 언제나 전 지점(`1=1`)이다.
  *   즉 여기서 좁힐 지점이 존재하지 않는다. 이 파일이 `FROM p_` 를 쓰는 곳은 참조 존재 검사
  *   (브랜드·지점·장소·품목이 실제로 있고 사용 중인가)뿐이고, 그 결과는 응답에 나가지 않는다
@@ -92,6 +92,7 @@ $db = Db::instance();
  * 앱이 먼저 보아야 사유(`bad_reference`)가 감사 로그에 남는다.
  * **활성 행만** 있는 것으로 본다 — 중단된 지점 아래에 새 장소를 만들 이유가 없다(팀과 같은 규칙).
  */
+// lint:no-branch-scope 참조가 **있는가**만 묻는 조회다 — 결과는 응답에 나가지 않는다.
 $sqlRef = [
     'brand'    => 'SELECT 1 AS ok FROM p_brands    WHERE id = CAST(:id AS bigint) AND is_active',
     'branch'   => 'SELECT 1 AS ok FROM p_branches  WHERE id = CAST(:id AS bigint) AND is_active',
@@ -141,6 +142,7 @@ switch ($kind) {
  * 만드는 것은 사람에게 같은 확인거리다.
  */
 if ($kind === 'vendors' && !$allowDuplicateName) {
+    // lint:no-branch-scope 거래처는 지점 무관 마스터다 (이름 겹침만 본다).
     $sqlSameName = <<<'SQL'
         SELECT 1 AS ok FROM p_vendors WHERE lower(name) = lower(:name) LIMIT 1
         SQL;

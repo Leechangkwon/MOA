@@ -7,7 +7,7 @@ declare(strict_types=1);
  *
  * ★ 19단계 품목 등록 (PRD F-28, 시안 ⑮ Item).
  *
- * lint:no-branch-scope 쓰기 라우트다 — `purchase.master.write` 는 buyer·Admin 에게만 열려
+ * 지점 격리 예외 — 쓰기 라우트다. `purchase.master.write` 는 buyer·Admin 에게만 열려
  *   있고 그 둘의 지점 범위는 언제나 전 지점(`1=1`)이다. 좁힐 지점이 존재하지 않는다.
  *   이 파일이 `FROM p_` 를 쓰는 곳은 참조 존재 검사뿐이며 그 결과는 응답에 나가지 않는다.
  *
@@ -86,6 +86,7 @@ if ($values['price_in'] !== null && preg_match('/^[0-9]{1,10}(\.[0-9]{1,2})?$/',
 $db = Db::instance();
 
 // ─── 참조 존재 검사 (활성 행만) ───
+// lint:no-branch-scope 참조가 **있는가**만 묻는 조회다 — 결과는 응답에 나가지 않는다.
 $sqlRef = [
     'vendor'   => 'SELECT 1 AS ok FROM p_vendors    WHERE id = CAST(:id AS bigint) AND is_active',
     'brand'    => 'SELECT 1 AS ok FROM p_brands     WHERE id = CAST(:id AS bigint) AND is_active',

@@ -54,15 +54,32 @@ check "display_errors 켬 / var_dump / print_r 노출"             'display_erro
 #     부르지 않으면 반려한다 (S-01 / R-65). "조건을 빠뜨렸다" 가 코드 리뷰가 아니라
 #     린트에서 드러나게 하는 것이 목적이다(라우트 정책 누락을 부팅 실패로 잡는 것과 같은 원칙).
 #     예외: 지점이라는 축 자체가 없는 마스터(브랜드·거래처·분류·가져오기 매핑)와, buyer·Admin
-#     (언제나 전 지점)만 닿는 쓰기 라우트. 그 파일은 **`// lint:no-branch-scope <이유>`** 를
+#     (언제나 전 지점)만 닿는 쓰기 라우트. 그 자리는 **`// lint:no-branch-scope <이유>`** 를
 #     적어 스스로 선언한다 — 표식이 곧 검토 지점이고, 모듈 역할이 넓어지는 날 여기를 지운다.
+#
+#     ★ 23단계 — 표식의 범위를 **파일 단위 → 조회 단위**로 좁혔다 (SECURITY R-65 잔여).
+#       19단계 검토가 남긴 위험이 이것이었다: 표식이 파일 맨 위 주석에 한 번 있으면 그 파일에
+#       **나중에 추가된 조회**까지 통째로 예외가 되어, 지점 격리가 빠진 새 SELECT 를 린트가
+#       잡지 못했다. 이제 표식은 **바로 다음 줄부터 시작하는 한 덩어리**만 예외로 한다.
+#
+#       덩어리의 끝 = 빈 줄, 또는 문장을 닫는 줄(`SQL;` · `];` · `);`). 조회 하나 + 그 조회를
+#       바로 쓰는 몇 줄이 한 덩어리이며, 거기서 끊긴다. 그래서 같은 파일에 조회를 새로 넣으면
+#       **그 조회 위에 표식을 다시 적어야** 하고, 적는 순간 사람이 "정말 예외인가" 를 묻게 된다.
+#       주석 줄의 `FROM p_`(설명 문장)는 조회가 아니므로 세지 않는다.
 scope_hits=""
 for f in "$ROOT"/src/handlers/purchase_*.php; do
   [ -f "$f" ] || continue
   grep -q 'FROM p_' "$f" || continue
   grep -q 'purchaseScopeWhere(' "$f" && continue
-  grep -q 'lint:no-branch-scope' "$f" && continue
-  scope_hits="${scope_hits}${f}: FROM p_ 가 있는데 purchaseScopeWhere() 도 lint:no-branch-scope 표식도 없음"$'\n'
+  bad=$(awk '
+    /lint:no-branch-scope/                            { armed = 1; next }
+    /^[[:space:]]*$/                                  { armed = 0; next }
+    /^[[:space:]]*(SQL;|\];|\);)[[:space:]]*$/        { armed = 0; next }
+    /^[[:space:]]*(\*|\/\/|#)/                        { next }
+    /FROM[[:space:]]+p_/ { if (!armed) printf "%d행", NR }
+  ' "$f")
+  [ -z "$bad" ] && continue
+  scope_hits="${scope_hits}${f}: purchaseScopeWhere() 없이 지점 격리 표식 밖에서 FROM p_ 를 읽음 ($bad)"$'\n'
 done
 if [ -n "$scope_hits" ]; then
   echo "✖ 구매 핸들러의 지점 격리 누락  [S-01 · R-65]"; printf '%s' "$scope_hits" | sed 's/^/    /'; fail=1
@@ -73,13 +90,16 @@ fi
 # (c) 20단계 전표 핸들러는 **예외 표식을 쓸 수 없다** (지시서 20단계, SECURITY R-65 잔여).
 #     (a) 의 `lint:no-branch-scope` 는 파일 단위라, 예외를 선언한 파일에 나중에 조회가
 #     추가되면 잡지 못한다(19단계 검토가 남긴 잔여 위험). 전표는 지점 격리의 핵심이므로
-#     전표 핸들러(purchase_pr_* · purchase_po_* · purchase_lists_* · cycle · recommend)는
-#     **표식 없이 반드시** Authz::purchaseScopeWhere 를 부르게 한다.
+#     전표 핸들러(purchase_pr_* · purchase_po_* · purchase_lists_* · cycle · recommend
+#     · 23단계 suggest)는 **표식 없이 반드시** Authz::purchaseScopeWhere 를 부르게 한다.
 #     SQL 이 없는 화면 틀(`*_page.php` 중 `FROM p_` 가 없는 것)은 대상이 아니다.
+#     23단계 — 발주 제안(`purchase_suggest*.php`)을 이 목록에 넣는다. 제안은 (장소 × 품목)을
+#     읽고 그대로 **발주요청 전표**가 되므로, 지점 격리가 빠지면 남의 지점 재고가 새는 것과
+#     남의 지점 요청을 만드는 것이 한꺼번에 일어난다.
 doc_hits=""
 for f in "$ROOT"/src/handlers/purchase_pr_*.php "$ROOT"/src/handlers/purchase_po_*.php \
          "$ROOT"/src/handlers/purchase_lists_*.php "$ROOT"/src/handlers/purchase_cycle.php \
-         "$ROOT"/src/handlers/purchase_recommend.php; do
+         "$ROOT"/src/handlers/purchase_recommend.php "$ROOT"/src/handlers/purchase_suggest*.php; do
   [ -f "$f" ] || continue
   if grep -q 'lint:no-branch-scope' "$f"; then
     doc_hits="${doc_hits}${f}: 전표 핸들러에는 lint:no-branch-scope 예외를 쓸 수 없음"$'\n'

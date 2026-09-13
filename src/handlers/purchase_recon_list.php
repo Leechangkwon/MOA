@@ -12,7 +12,7 @@ declare(strict_types=1);
  * 「우리 합계」는 여기서 내지 않는다 — 명세서를 여는 순간 `…/preview` 가 그때의 전표로
  * 다시 계산한다(저장된 합계와 원장이 어긋날 자리를 만들지 않는다).
  *
- * lint:no-branch-scope 명세서는 **거래처**에 묶이고 지점에 묶이지 않는다(한 장에 여러 지점
+ * 지점 격리 예외 — 명세서는 **거래처**에 묶이고 지점에 묶이지 않는다(한 장에 여러 지점
  *   입고가 섞이는 것이 정상 — 시안 Recon 의 「지점」 열). 이 목록이 보여 주는 것은 "어느
  *   거래처의 몇 월 명세서를 언제 올렸나" 이고, 금액은 **명세서 파일에 적힌 값**이다.
  *   지점 격리가 필요한 곳(우리 입고 줄)은 preview·get 이 `purchaseScopeWhere` 로 건다.
@@ -45,6 +45,7 @@ if ($month !== '') {
     $bind[':month'] = $month;
 }
 
+// lint:no-branch-scope 명세서는 거래처에 묶인다 — 한 장에 여러 지점 입고가 섞이는 것이 정상이다.
 $sqlHead = <<<'SQL'
     SELECT s.id, s.vendor_id, s.month, s.status, s.file_id,
            CAST(s.total_amount AS text) AS total_amount,
@@ -62,6 +63,7 @@ $sqlHead = <<<'SQL'
      WHERE
     SQL;
 
+// lint:no-branch-scope 같은 목록의 건수 — 위 조회와 같은 범위다.
 $sqlCount = <<<'SQL'
     SELECT count(*) AS n
       FROM p_recon_statements s

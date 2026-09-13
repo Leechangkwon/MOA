@@ -54,6 +54,11 @@ require __DIR__ . '/shell_top.php';
           <input id="st-short" type="checkbox">
           <span class="field__label">부족만</span>
         </label>
+        <label class="field field--inline">
+          <input id="st-suggest-only" type="checkbox">
+          <span class="field__label">제안 있는 것만</span>
+        </label>
+        <button id="st-apply" class="btn btn--small" type="button">선택 제안을 발주요청으로</button>
       </div>
     </div>
 
@@ -65,17 +70,22 @@ require __DIR__ . '/shell_top.php';
           <tr>
             <th>품목</th><th>장소</th>
             <th class="p-num">현재고</th><th class="p-num">인가량</th><th class="p-num">과부족</th>
-            <th class="p-num">미입고</th><th class="p-num">주평균 사용</th><th>발주 제안</th><th></th>
+            <th class="p-num">미입고</th><th class="p-num">주평균 사용</th>
+            <th class="p-num">발주 제안</th><th>담기</th><th></th>
           </tr>
         </thead>
         <tbody id="st-body"></tbody>
       </table>
     </div>
     <p id="st-empty" class="muted" hidden>표시할 재고가 없습니다.</p>
-    <p class="muted">발주 제안은 <strong>23단계</strong>에 채워집니다 — 값을 지어내지 않습니다.</p>
+    <p class="muted">발주 제안 = ⌈(인가량 + 안전재고 − 현재고 − 미입고 + 조달기간 예상 사용) ÷ 최소구매단위⌉ × 최소구매단위 —
+      <strong>서버가 계산한 값</strong>이고 괄호 안의 근거는 제안 옆에 함께 적습니다. 담당자가 고칠 수 있으며,
+      고친 수량이 최소구매단위의 배수가 아니면 서버가 거절합니다.
+      「담기」는 <strong>한 장소씩</strong> 묶어 발주요청 한 건으로 만듭니다.</p>
 
     <div class="table-foot">
       <span id="st-page-info" class="muted"></span>
+      <span id="st-pick-info" class="muted"></span>
       <div class="pager">
         <button id="st-prev" class="btn btn--quiet btn--small" type="button">이전</button>
         <button id="st-next" class="btn btn--quiet btn--small" type="button">다음</button>

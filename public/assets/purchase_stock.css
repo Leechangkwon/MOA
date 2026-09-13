@@ -131,3 +131,35 @@
 @media (max-width: 720px) {
   .p-in, .p-in--text, .p-in--date { width: 84px; }
 }
+
+/* ── 발주 제안 (23단계, PRD F-36 · 시안 ⑩) ──────────────
+   값과 근거를 한 칸에 위·아래로 둔다. 근거를 접어 두지 않는 이유: 「왜 이 수량인가」가
+   보이지 않으면 사람은 제안을 그냥 누르거나 아예 믿지 않는다. 둘 다 좋지 않다. */
+.p-suggest {
+  display: block;
+  font-size: 15px;
+  font-weight: 700;
+}
+.p-basis {
+  display: block;
+  margin-top: 2px;
+  color: var(--muted, #8b95a3);
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 1.4;
+  white-space: normal;
+  text-align: right;
+}
+.p-pick {
+  white-space: nowrap;
+}
+.p-pick input[type="checkbox"] {
+  margin-right: 6px;
+  vertical-align: middle;
+}
+.p-in--qty { width: 82px; }
+
+@media (max-width: 720px) {
+  .p-basis { font-size: 11px; }
+  .p-in--qty { width: 70px; }
+}

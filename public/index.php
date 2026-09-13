@@ -372,6 +372,21 @@ const TBOX_ROUTES = [
     ['GET',    '/api/purchase/backorder',        'purchase_backorder.php',       'purchase.read'],
 
     /*
+     * 23단계 — 발주 제안 (PRD F-36, docs/purchase/08-stage23-directive.md).
+     *
+     * 정책
+     *   purchase.read          제안 목록 — 모듈 역할이 있는 사람 전부
+     *                          (보이는 범위는 SQL WHERE 의 purchaseScopeWhere 가 정한다)
+     *   purchase.request.write 제안을 **발주요청 전표로** — requester·buyer·Admin.
+     *                          만드는 것이 요청 전표이므로 `POST /api/purchase/pr` 과 같은 정책이다.
+     *
+     * 경로 충돌: `/api/purchase/suggest/apply` 는 `{num}`(`[0-9]{1,9}`)과 형태가 다르고,
+     * 21단계의 `/api/purchase/mv/suggest` 와도 접두가 다르다.
+     */
+    ['GET',    '/api/purchase/suggest',          'purchase_suggest.php',         'purchase.read'],
+    ['POST',   '/api/purchase/suggest/apply',    'purchase_suggest_apply.php',   'purchase.request.write'],
+
+    /*
      * 22단계 — 주간 사용량 · 거래처 월 대사 · 월 마감 · 기공 명세서
      * (PRD F-34 · F-35, ARCH 5.18 「마감」, docs/purchase/07-stage22-directive.md).
      *

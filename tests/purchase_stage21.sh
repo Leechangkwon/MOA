@@ -605,7 +605,7 @@ expect "누적 잔액 칸이 채워진다" 1 "$(body_of "$R" | grep -c '"running
 R=$(call qa_employee01 GET "/api/purchase/stock?location=$LOC_CT" "$TOK_EMP1")
 echo "  $(body_of "$R" | head -c 500)"
 expect "재고현황 200" 200 "$(code_of "$R")"
-expect "발주 제안은 23단계 자리(null)" 1 "$(body_of "$R" | grep -c '"suggest_qty":null')"
+expect "발주 제안 칸은 23단계부터 서버 계산 값(숫자 문자열)" 1 "$(body_of "$R" | grep -c '"suggest_qty":"[0-9]')"
 expect "인가량 4 가 보인다" 1 "$(body_of "$R" | grep -c '"par_qty":4')"
 
 hr "화면 라우트 점검"

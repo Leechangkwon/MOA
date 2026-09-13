@@ -782,6 +782,25 @@
     var itemId = root.getAttribute('data-item-id') || '';
     if (!/^[0-9]{1,9}$/.test(itemId)) { say('품목을 찾을 수 없습니다.'); return; }
 
+    /*
+     * 23단계 — 사용 지점 **빼기**. 서버는 `p_item_branches.is_active` 를 끄고(지우지 않는다),
+     * 권한(`purchase.master.write` + 재인증)은 **서버가** 다시 본다. 화면은 단추를 보여 줄 뿐
+     * 판단하지 않는다 — 권한이 없으면 403 이 오고 그 시도도 감사 로그에 남는다 (PRD S-01).
+     */
+    function offBranch(branchId, branchName) {
+      if (!window.confirm('「' + branchName + '」 을(를) 이 품목의 사용 지점에서 뺍니다. 계속할까요?')) {
+        return;
+      }
+      request('PATCH', '/api/purchase/items/' + itemId, { branches_off: [branchId] })
+        .then(function (result) {
+          if (!result) { return; }
+          if (!result.ok) { say(errorMessage(result.data)); return; }
+          say('사용 지점에서 뺐습니다 (지운 것이 아니라 끈 것이며 지난 전표에는 남습니다).');
+          initItem(root);
+        })
+        .catch(function () { say(GENERIC_ERROR); });
+    }
+
     request('GET', '/api/purchase/items/' + itemId)
       .then(function (result) {
         if (!result) { return; }
@@ -822,7 +841,14 @@
           chips.appendChild(el('li', null, '지정 없음 (브랜드 전체)'));
         } else {
           branches.forEach(function (branch) {
-            chips.appendChild(el('li', null, branch.branch_name));
+            var chip = el('li', null, branch.branch_name);
+            var off  = el('button', 'btn btn--quiet btn--small', '빼기');
+            off.type = 'button';
+            off.addEventListener('click', function () {
+              offBranch(branch.branch_id, String(branch.branch_name));
+            });
+            chip.appendChild(off);
+            chips.appendChild(chip);
           });
         }
 
