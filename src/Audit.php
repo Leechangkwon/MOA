@@ -547,6 +547,44 @@ final class Audit
         'purchase.import.commit|deny|default_brand_required'   => '{actor} 이(가) 브랜드 열도 「기본 브랜드」도 없이 지점 가져오기 확정을 요청해서 거부했습니다',
         'purchase.master.update|deny|bad_header_row'           => '{actor} 이(가) 있을 수 없는 머리행 번호가 든 엑셀 열 매핑을 저장하려 해서 거부했습니다',
 
+        /* ── 24단계 「브랜드·지점·창고」 — 창고 대기표 (PRD F-37, ARCH 5.18 · 7.4, 지시서 6장) ──
+         *
+         * {target} 에는 **업로드한 파일 이름**(upload)이나 `locations`(link·exclude)가 들어간다.
+         * 창고 이름은 target 에 넣지 않는다 — 한 번에 수십 건을 연결하므로 문장이 아니라
+         * 상세 기록(건수·id 목록)에 남는 것이 맞다(가져오기 확정과 같은 판단).
+         * 조회(`GET /api/purchase/structure`)는 기록하지 않는다 — 조회는 사건이 아니다.
+         *
+         * 업로드 거부 사유 12종은 `purchase.import.upload` 와 **같은 키**다 — 두 입구가
+         * `Importer::storeUploaded` 라는 한 함수를 쓰기 때문이고, 사유가 갈라지지 않는다는
+         * 것이 그 함수를 하나로 둔 이유이기도 하다 (지시서 보충 1).
+         */
+        'purchase.structure.upload|allow'                  => '{actor} 이(가) 창고 파일 「{target}」 을(를) 창고 대기표에 올렸습니다 (등록·갱신·건너뜀 수는 상세 기록)',
+        'purchase.structure.upload|deny|no_file'           => '{actor} 이(가) 파일 없이 창고 대기표 올리기를 요청해서 거부했습니다',
+        'purchase.structure.upload|deny|empty_file'        => '{actor} 이(가) 0바이트 파일 「{target}」 로 창고 대기표 올리기를 요청해서 거부했습니다',
+        'purchase.structure.upload|deny|too_large'         => '{actor} 이(가) 100MB 를 넘는 파일 「{target}」 로 창고 대기표 올리기를 요청해서 거부했습니다',
+        'purchase.structure.upload|deny|upload_error'      => '{actor} 이(가) 보낸 창고 파일 업로드의 형식이 잘못되어 거부했습니다',
+        'purchase.structure.upload|deny|not_uploaded_file' => '{actor} 이(가) 보낸 창고 파일 업로드가 정상적인 HTTP 업로드가 아니어서 거부했습니다',
+        'purchase.structure.upload|deny|size_unreadable'   => '{actor} 이(가) 올린 파일 「{target}」 의 크기를 읽을 수 없어 창고 대기표 올리기를 거부했습니다',
+        'purchase.structure.upload|deny|hash_failed'       => '{actor} 이(가) 올린 파일 「{target}」 의 무결성 값을 계산할 수 없어 창고 대기표 올리기를 거부했습니다',
+        'purchase.structure.upload|deny|ext_not_allowed'   => '{actor} 이(가) 읽을 수 없는 종류의 파일 「{target}」 을(를) 창고 대기표에 올려 거부했습니다 (xlsx·csv 만 — xlsm·xls·매크로 문서는 받지 않습니다)',
+        'purchase.structure.upload|deny|mime_mismatch'     => '{actor} 이(가) 올린 파일 「{target}」 의 실제 내용이 확장자와 달라(위장 파일 의심) 창고 대기표 올리기를 거부했습니다',
+        'purchase.structure.upload|deny|double_extension'  => '{actor} 이(가) 이중 확장자 파일 「{target}」 로 창고 대기표 올리기를 요청해서 거부했습니다 (실행 파일 위장 의심)',
+        'purchase.structure.upload|deny|bad_encoding'      => '{actor} 이(가) 올린 창고 파일의 이름이 올바른 문자(UTF-8)가 아니어서 거부했습니다',
+        'purchase.structure.upload|deny|quota_exceeded'    => '{actor} 이(가) 창고 파일을 올리려 했지만 하루 업로드 한도(2GB)를 넘어 거부했습니다',
+        'purchase.structure.upload|deny|bad_header'        => '{actor} 이(가) 창고코드·창고명 열이 없는 파일 「{target}」 을(를) 창고 대기표에 올리려 해서 거부했습니다',
+        'purchase.structure.upload|error|parse_failed'     => '{actor} 이(가) 올린 창고 파일 「{target}」 에서 표를 읽어 내지 못했습니다 (손상 또는 지원 범위 밖)',
+
+        'purchase.structure.link|allow'                    => '{actor} 이(가) 대기표의 창고를 지점에 연결했습니다 (연결 건수·지점·장소 id 는 상세 기록)',
+        'purchase.structure.link|deny|bad_request'         => '{actor} 이(가) 창고 연결을 잘못된 형식으로 요청해서 거부했습니다',
+        'purchase.structure.link|deny|bad_reference'       => '{actor} 이(가) 없는(또는 중단된) 지점에 창고를 연결하려 해서 거부했습니다',
+        'purchase.structure.link|deny|not_unlinked'        => '{actor} 이(가) 이미 연결되었거나 제외된 창고를 다시 연결하려 해서 거부했습니다',
+        'purchase.structure.link|deny|conflict'            => '{actor} 이(가) 지점에 같은 이름의 창고가 이미 있어 연결 묶음을 저장하지 않았습니다',
+
+        'purchase.structure.exclude|allow'                 => '{actor} 이(가) 대기표의 창고를 제외했거나 되살렸습니다 (건수·방향은 상세 기록)',
+        'purchase.structure.exclude|deny|bad_request'      => '{actor} 이(가) 창고 제외를 잘못된 형식으로 요청해서 거부했습니다',
+        'purchase.structure.exclude|deny|not_unlinked'     => '{actor} 이(가) 미연결 상태가 아닌 창고를 제외하려 해서 거부했습니다',
+        'purchase.structure.exclude|deny|not_excluded'     => '{actor} 이(가) 제외 상태가 아닌 창고를 되살리려 해서 거부했습니다',
+
         /* ── 20단계 구매 전표 (PRD F-30~F-32, Q-18①②④, ARCH 5.18 · 7.4) ──
          *
          * {target} 에는 **전표 번호**(`PR-20260914-1`)가 들어간다 — 사람이 로그만 보고

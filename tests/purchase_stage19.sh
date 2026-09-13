@@ -328,9 +328,10 @@ expect "일산점 장소 보임" 1 "$(body_of "$R" | grep -c 'S19-2F 공급실')
 expect "부평점 장소 0건" 0 "$(body_of "$R" | grep -c 'S19-B1F 의약품창고')"
 
 sub "⑦ buyer(qa_manager01, 지점 없음) 는 전 지점"
-R=$(call qa_manager01 GET /api/purchase/locations "$TOK_MGR")
+# 사용자의 실제 창고가 표에 함께 있으므로(24단계 뒤 14행 실측) 전체 수가 아니라 **S19- 픽스처만** 센다.
+R=$(call qa_manager01 GET "/api/purchase/locations?q=S19-" "$TOK_MGR")
 echo "  HTTP $(code_of "$R")"; echo "  $(body_of "$R")"
-expect "buyer 는 두 지점 모두" 2 "$(body_of "$R" | sed -n 's/.*"total":\([0-9]*\).*/\1/p')"
+expect "buyer 는 두 지점 모두 (S19- 장소 2)" 2 "$(body_of "$R" | sed -n 's/.*"total":\([0-9]*\).*/\1/p')"
 
 sub "⑧ 모듈 역할 없는 Employee → 403 (감사 authz.route deny)"
 psqlc "UPDATE users SET purchase_role = NULL, branch_id = NULL WHERE username = 'qa_employee01';"

@@ -43,6 +43,7 @@
 | **21** | 입고(GR)·이동(MV)·사용(IS)·실사(ADJ)·**재고 원장**(append-only)·장소별 재고·수불부·미입고·사이클 완성 — 지시서 docs/purchase/06 | ✅ 구현·검토 | ✅ 2026-09-13 (Opus, 재지시 0회) | ✅ 2026-09-13 (T-46 105/105, 동시 이동 400/201, `UPDATE p_stock_moves` permission denied, 회귀 T-45 90/90) | ⚠ 대기 | 21단계 커밋 ecd2413 |
 | **22** | 주간 사용량·거래처 월 대사(차이 5종)·월 마감(재인증)·기공 명세서 자동 전표·채번 통합(Doc.php) — 지시서 docs/purchase/07 | ✅ 구현·검토 | ✅ 2026-09-13 (Opus, 재지시 0회) | ✅ 2026-09-13 (T-47 72/72, 마감 403/400/201 실측, 회귀 T-45 90/90·T-46 105/105, 채번 통합 전후 동일) | ⚠ 대기 | 22단계 커밋 |
 | **23** | 발주 제안(Suggest.php 한 곳)·부족 알림·경보 AL-14~17 완성·린트 예외 조회 단위·사용 지점 빼기 — 지시서 docs/purchase/08 | ✅ 구현·검토 | ✅ 2026-09-13 (Opus, 재지시 0회) | ✅ 2026-09-13 (T-48 92/92, 경보 dry-run 4종·중복 억제, 회귀 19~22 전부 통과) | ⚠ 대기 | 23단계 커밋 e43222c |
+| **24** | 「브랜드·지점·창고」 한 페이지(F-37)·창고 대기표 `p_location_inbox`·연결/제외·업로드 공통 조각 — 지시서 docs/purchase/09 | ✅ 구현 | ✅ 2026-09-13 (Opus, 재지시 0회) | ⚠ 대기 | ⚠ 대기 | 커밋 전 |
 
 ---
 
@@ -1054,6 +1055,66 @@ sudo -u postgres psql -d tbox_re -c "SELECT happened_at, actor_name, action, res
 | 2026-09-13 | 접수(23단계 Opus 보고) | 경보 근거에서 **계정명·전표 번호·품목 코드를 뺐다**(AL-14·15·16). 20·22단계에는 `actor_name`·`doc_no`·`item_code` 가 들어 있었다. 지시서의 금지 패턴을 「경보 문장뿐 아니라 근거까지」로 읽은 판단이며, AL-1·AL-5·AL-13(9~17단계)은 **그대로 두었다** | Fable 판단 필요 — 앞선 규칙도 같은 기준으로 맞출지, 구매 규칙만 다르게 둘지 |
 | 2026-09-13 | 접수(23단계 Opus 보고) | `alerts.php` 에 시험용 인자 `--state <경로>` 를 더했다. 5분마다 도는 cron 이 이미 발동시킨 대상은 운영 상태 파일에서 「억제됨」이라, 완료 기준 (c) 의 「처음 발동 → 재실행 중복 0」을 확인할 수가 없었다(첫 실행에서 이미 건너뜀). `--auth-log` 와 같은 성격의 인자이고, 시험이 **운영 상태 파일을 건드리지 않게** 하는 것이 목적이다 | 실측: 시험이 끝난 뒤 `/var/lib/tbox-v2/alerts-state.json` 에 시험 대상 키 0건 |
 | 2026-09-13 | 접수(23단계 Opus 보고) | 제안 계산을 **PHP 가 아니라 SQL** 에 두었다. 화면·현황·apply 세 곳이 같은 값을 써야 하는데, PHP 로 한 번 더 더하면 더하는 곳이 둘이 된다. 숫자는 전부 `numeric` 이라 반올림이 자리마다 정해져 있다(부동소수 오차 없음) | 구현 중 실측: 같은 SELECT 의 WHERE 에서는 그 SELECT 가 만든 별칭(`suggest_qty`)을 볼 수 없어 CTE 를 한 층 더 나눴다 |
+
+
+### 24단계 — 브랜드·지점·창고 한 페이지 · 창고 대기표 · 연결/제외 (F-37 · T-49) — 구현 2026-09-13
+
+> 지시서: `docs/purchase/09-stage24-directive.md`. 근거: PRD F-37 · 12.2 T-49, ARCH 5.18(창고 대기표·라우트 표)
+> · 7.4 · 7.5, SECURITY R-65 · R-73, 사용자 결정 2026-09-13 저녁.
+> **이 단계의 한 문장**: 이카운트 창고 파일에는 지점 열이 없으므로, **지점을 묻지 않고 먼저 받아 두고**
+> 사람이 창고마다 지점을 고르는 순간에만 실제 창고를 만든다 — 스키마(`branch_id` NOT NULL)도
+> 지점 격리도 한 글자 풀지 않고.
+
+**개발 사항**
+- [x] `db/migrations/2026-09-15_purchase_location_inbox.sql` — 표 `p_location_inbox`(`ecount_code` UNIQUE ·
+      `status unlinked|linked|excluded` · `location_id`·`source_file_id`), GRANT **SELECT·INSERT·UPDATE**(DELETE 없음).
+      멱등(IF NOT EXISTS). `db/schema.sql`·`db/grants.sql` 에 같은 정의 반영
+- [x] `src/purchase/Structure.php` — 대기표 upsert(코드 기준 멱등) · 나무 조회 · 추천(이름 해석) · 연결(트랜잭션) ·
+      제외/되살리기. SQL 은 전부 고정 문장이고, 역할·branch_id 판정이 한 글자도 없다(ARCH 4.1).
+      `lint:no-branch-scope` 표식은 **조회 단위**로 이유와 함께
+- [x] 핸들러 5개(`purchase_structure_page|get|upload|link|exclude.php`) + 라우트 5줄
+      (`public/index.php`, 전부 `purchase.master.write` → 재인증 관문이 자동으로 붙는다)
+- [x] `Importer::storeUploaded()` — 가져오기 업로드와 창고 업로드가 **함께 쓰는 한 함수**(동작 무변경,
+      stage19 회귀가 증거). 네 번째 인자로 「트랜잭션 안에서 할 일」을 받아, 창고 업로드는 파일 저장 +
+      대기표 upsert + 감사 한 줄이 **한 트랜잭션**이다
+- [x] 화면 `src/views/purchase_structure.php` · `public/assets/purchase_structure.js|css` — `textContent` 만,
+      인라인 script·style·on\* 없음. `purchase.js` 는 건드리지 않았다
+- [x] 내비 `shell_top.php`(항목 `nav-purchase-structure`, 기본 hidden) · `app.js` 한 줄(`can_purchase_master`)
+      + 재인증 복귀 키 `purchasestruct`(서버 두 표 · app.js 한 표, 세 곳이 같은 내용이어야 한다)
+- [x] `Audit.php` 문장 틀 24행(upload 15 · link 5 · exclude 4). `ALLOWED_DETAIL_KEYS` 는 **무변경** —
+      새 키 14개 중 금지 낱말 부분 일치에 걸리는 것이 없다
+- [x] `PRD.md` F-37 신설 · 12.2 T-49 · 13장 24단계 행 / `ARCHITECTURE.md` 5.18(창고 대기표·업로드 공통 조각·
+      라우트 표 5행) · 7.4(3행 + 설명) · 7.5(detail 키 4행) / `SECURITY.md` R-65 한 줄 / `README.md` 한 절
+- [x] `src/views/purchase_import.php` — 가져오기 화면 맨 위에 새 화면으로 가는 안내 한 줄(JS 무변경).
+      19단계의 창고·지점 파생 흐름은 **삭제하지 않았다**(회귀 유지)
+- [x] `tests/purchase_stage24.sh` — T-49 (a)~(h), R-73 안전 규칙 3종 그대로 + 픽스처 `S24-` 접두,
+      인구조사에 `p_location_inbox` 포함, 정리는 qa `created_by` 행만(postgres 로)
+
+**검토 체크 (관문 ②, Fable)** — ✅ 2026-09-13 통과
+- [x] 코드 읽기: Structure.php 고정 SQL·`FOR UPDATE` 행 잠금·유일 인덱스 23505→409 전체 롤백 · 대기표 upsert 가 `storeUploaded()` 트랜잭션 안(파일 저장과 함께 되돌아감) · 핸들러 허용 키 검사 · 감사 문장 24행 등록 · 린트 표식 조회 단위
+- [x] `bash scripts/security_lint.sh` 0건 · `php -l` 전 파일 통과
+- [x] `tests/purchase_stage24.sh` **88/88** · 회귀 `tests/purchase_stage19.sh` **230/230**(⑦ 단언을 `?q=S19-` 로 좁혀 사용자 실데이터와 무관하게 함) · 비-qa 행 수 변동 0
+- [x] 실사용 흔적: 사용자가 검토 전에 이미 새 화면으로 창고 12건을 부산점에 연결(감사 `purchase.structure.link allow · links=12 · 21:21`) — 브라우저 흐름(재인증 복귀·추천 선택·연결)이 실제로 동작함을 뜻함
+- 남은 것: 위키 `stage-24.json` 작성, 관문 ③ 항목(아래) 사용자 확인
+
+**자기 공격 (관문 ③, 사용자)**
+- [ ] 실제 이카운트 창고 파일(ESA005M 96행)을 **지점을 고르지 않고** 그대로 올려 본다 (400 이 없어야 한다)
+- [ ] 같은 파일을 두 번 올려 본다 (두 번째는 「변동 없음」만 늘어야 한다)
+- [ ] 「S24-중앙창고」처럼 지점을 알 수 없는 창고를 **제외**한 뒤, 나머지를 연결해 「모두 정리됨」까지 가 본다
+- [ ] 같은 지점에 같은 이름의 창고를 두 번 연결해 본다 (묶음 전체가 저장되지 않아야 한다)
+- [ ] 개발자도구로 `select` 에 없는 지점 id 를 넣어 보낸다 (중단된 지점·남의 값이면 400)
+- [ ] 구매 권한이 없는 계정으로 `/purchase/structure` 를 직접 열어 본다 (403)
+- [ ] 비밀번호 재확인 창이 뜬 뒤 확인하면 **이 화면으로 돌아오는지** 본다 (홈으로 떨어지면 안 된다)
+
+**학습 기록**
+
+| 날짜 | 구분 | 내용 | 해소·근거 |
+|---|---|---|---|
+| 2026-09-13 | 결정(사용자) | 브랜드·지점은 사람이 만든다 · 창고 파일은 브랜드·지점 없이 그냥 올린다 · 창고 이름은 이카운트 원문 그대로 · 지점 없는 창고는 「제외」 · 창고 하나는 지점 하나 | 지시서 `docs/purchase/09-stage24-directive.md` 「확정 사항」. 스키마 `p_locations.branch_id` NOT NULL 유지가 조건 |
+| 2026-09-13 | 접수(24단계 Opus 보고) | 지시서의 「수정 파일」 밖 두 곳을 함께 고쳤다 — `public/index.php` 의 재인증 복귀 표 2행(`TBOX_REAUTH_RETURN`·`TBOX_REAUTH_PATHS`)과 `public/assets/app.js` 의 같은 맵 1행. 새 화면의 라우트 정책이 `purchase.master.write` 라 **화면 요청 자체가 관문에 걸리고**, 키가 없으면 확인 뒤 홈으로 떨어진다(19단계 4차 보정의 사고) | Fable 판단 대기. 키는 `purchasestruct`(밑줄·숫자 없이 16자 이하 — `Http::redirect` 의 꼬리표 규칙) |
+| 2026-09-13 | 접수(24단계 Opus 보고) | 이 서버에는 **mbstring 확장이 없다** — `mb_strtolower` 를 쓴 첫 판이 500 이었다. `Importer` 가 쓰는 `strtolower`·`iconv_strlen` 으로 맞췄다(한글은 대소문자가 없어 ASCII 만 내려도 충분하다) | 실측: `/var/log/tbox-v2/app.log` 「Call to undefined function mb_strtolower()」 → 고친 뒤 시험 84/87 → 87/87 |
+| 2026-09-13 | 접수(24단계 Opus 보고) | 회귀 `tests/purchase_stage19.sh` 가 **228 ✔ · 1 ✖** 이다. 실패한 한 줄은 ⑦ 「buyer 는 두 지점 모두」(`total` 하드코딩 2)인데, 시험 도중 **사용자가 새 화면으로 실제 창고 12개를 연결**해 `p_locations` 가 14행이 되었기 때문이다(감사 `purchase.structure.link allow · links=12 · admin01 · 21:21`). 24단계 코드의 회귀가 아니라 **표에 시험 행만 있다고 가정한 단언**이다. 그 파일은 지시서의 「수정 파일」 밖이라 고치지 않았다 | Fable 판단 필요: 그 한 줄을 「S19- 행만 세기」로 바꾸면 229/229 가 된다(24단계 시험도 같은 이유로 `counts.*` 대신 `S24W%` 만 센다) |
+| 2026-09-13 | 접수(24단계 Opus 보고) | 400 응답 문구를 이 화면만 **사유별 한국어 문장**으로 돌려준다(`bad_header`·`conflict`·`not_unlinked`·`not_excluded`·`bad_reference`). 다른 화면은 동일 문구 하나다(PRD S-09-5) | 판단 근거: 여기까지 오는 사람은 buyer·Admin 이고 전 지점 기초정보를 이미 다 보므로 새어 나갈 정보가 없다. 문장은 `Structure::MSG_*` **코드 상수**이고 요청 값이 섞이지 않는다(`MSG_FOLDER_NOT_EMPTY` 와 같은 성격) |
 
 
 ## 2-1. 10단계 뒤 일괄 자기 공격 — 진행 순서 (관문 ③, 사용자)

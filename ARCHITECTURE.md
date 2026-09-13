@@ -721,7 +721,7 @@ Admin 전용. 정책 `org.manage`(`Authz::canManageOrg` = Admin) 를 `KNOWN_POLI
 
 ---
 
-### 5.18 구매·재고 모듈 — `/purchase/*` · `/api/purchase/*` (PRD F-28~F-36 · 19~23단계, 확정 2026-09-13)
+### 5.18 구매·재고 모듈 — `/purchase/*` · `/api/purchase/*` (PRD F-28~F-37 · 19~24단계, 확정 2026-09-13)
 
 상세 설계는 `docs/purchase/03-architecture-draft.md`(확정본)에 있다. 여기에는 **본체와 맞닿는 규칙**만 적는다.
 
@@ -741,10 +741,24 @@ Admin 전용. 정책 `org.manage`(`Authz::canManageOrg` = Admin) 를 `KNOWN_POLI
 | 송부 전 검토 (Q-18④) | viewer 는 전 지점 읽기 + `purchase.send`(발주서 미리보기 → 「보냄」). buyer 도 `purchase.send` 가능. 「보냄」은 `p_docs.sent_at`·`sent_by`, 한 번만(재송부는 사유 + 감사) |
 | 실사 주기 (Q-18③) | `p_docs.count_cycle`(`daily`·`weekly`·`monthly`, 실사 전표만 NOT NULL). 일: 불출·부족재고 구매용, 주·월: 창고 정합성. 현황은 주기별 차이 합계 추세 |
 | 가져오기 | t-box `Upload::validate` → `Preview::table`(xlsx·csv) → 매핑(`p_import_mappings`) → 행별 판정 → 한 트랜잭션. 파일은 `files`(폴더 `구매/가져오기`), 감사 detail 에 sha256·행 수 |
-| 감사·경보 | 문장 틀 `purchase.request|order|receipt|move|use|count|master|import|recon|close … allow/deny/error`(7.4), detail 키 `doc_no`·`doc_type`·`branch_id`·`lines`·`amount`·`src_doc_no`·`before/after`·`suggested_qty`·`applied_qty`(7.5). 경보 **AL-14 보낸 뒤·마감 뒤 수정 · AL-15 미입고 30일 · AL-16 단가 급변 · AL-17 대량 취소 — 23단계에 임계값·문장·묶는 단위까지 확정**(11.4 표) |
+| 감사·경보 | 문장 틀 `purchase.request|order|receipt|move|use|count|master|import|recon|close … allow/deny/error`(7.4), detail 키 `doc_no`·`doc_type`·`branch_id`·`lines`·`amount`·`src_doc_no`·`before/after`·`suggested_qty`·`applied_qty`·`links`·`inbox_ids`(7.5). 경보 **AL-14 보낸 뒤·마감 뒤 수정 · AL-15 미입고 30일 · AL-16 단가 급변 · AL-17 대량 취소 — 23단계에 임계값·문장·묶는 단위까지 확정**(11.4 표) |
 | 발주 제안 (F-36) | ⌈(인가량 + 안전재고 − 현재고 − 미입고 + 조달기간 예상 사용) ÷ 최소구매단위⌉ × 최소구매단위. 계산은 `src/purchase/Suggest.php` 의 **SQL 한 곳**뿐이고 화면은 값과 근거를 표시만 한다. 조달기간 예상 사용 = 주평균 사용(최근 4주) × `lead_days` ÷ 7, 자료가 없으면 0 + `usage_basis: none`. 괄호 안이 0 이하면 제안 없음(0). `POST /api/purchase/suggest/apply` 는 제안을 **다시 계산해** 발주요청(PR) 한 건으로 만든다 — 요청 본문의 제안값은 읽지 않고, 고친 수량은 최소구매단위의 배수여야 한다(400 `not_multiple`). 지점은 **장소에서** 나온다 |
 | 사용 지점 빼기 | `p_item_branches.is_active = false` — 그 표에도 DELETE 가 없으므로 지우기가 아니라 끄기다. 빼면 품목 찾기(`branch_used`·지점 격리 조건)와 `Doc::loadItems` 의 「보이는 품목」에서 함께 빠지고, 지난 전표에는 그대로 남는다 |
 | 화면 | 시안 16장(`docs/purchase/design/`)이 기준. t-box 셸·토큰, `textContent` 만, 서버 계산 값만 표시 |
+| 창고 대기표 (F-37, 24단계) | `p_location_inbox` — **지점이 정해지기 전의 창고**가 머무는 표. `p_locations.branch_id` 는 NOT NULL 이고 지점 격리·전표·재고가 전부 그 열로 훑으므로, 지점 없는 창고를 본 표에 넣으려면 그 열을 NULL 허용으로 풀어야 한다 → 대신 **본 표 밖**에 두고 사람이 지점을 고르는 순간에만 `p_locations` 행을 만든다(전표·재고 코드는 한 줄도 바뀌지 않는다). 정체는 `ecount_code`(UNIQUE) — 같은 파일을 다시 올리면 「변동 없음」이다. `status` 는 `unlinked|linked|excluded` 세 값이고 **행을 지우지 않는다**(앱 계정에 DELETE 없음). 이름은 이카운트 원문 그대로(trim 만) 저장하고, linked 행의 이름이 파일에서 바뀌어도 `p_locations.name` 은 건드리지 않는다(`renamed_linked` 수만 알린다). 「추천 지점」은 창고명 토큰 ↔ 활성 지점 이름의 정확 일치(둘 이상이면 앞 토큰 = 브랜드로 좁히고, 그래도 둘 이상이면 추천 없음)이며 **표시용 값**이다 — 연결은 언제나 요청이 보낸 `branch_id` 로만 한다. 코드는 `src/purchase/Structure.php` 한 곳 |
+| 업로드 공통 조각 (24단계) | 가져오기 업로드(F-29)와 창고 대기표 업로드(F-37)는 **같은 함수**를 지난다 — `Importer::storeUploaded(uploaded, user, auditAction, inTransaction?)`: 원본 파일명 정리 → `Upload::validate` → `Sheet::SHEET_EXT` → `Sensitive::scan` → 폴더 「구매/가져오기」(admin-only) → `files` 행 + `Storage::put` → (호출자의 일) → 감사 `allow` 한 줄 → COMMIT. 실패하면 파일까지 되돌린다. 두 벌로 두면 언젠가 한쪽만 고쳐지고 그 한쪽이 곧 두 번째 입구다(거부 사유 12종도 한 곳에서만 나온다) |
+
+**24단계 라우트·정책** (다섯 줄 모두 `purchase.master.write` — `REAUTH_POLICIES` 에 있어 재인증 관문이 자동으로 붙는다)
+
+| 메서드 | 경로 | 핸들러 | 정책 |
+|---|---|---|---|
+| GET | `/purchase/structure` | `purchase_structure_page.php` | `purchase.master.write` |
+| GET | `/api/purchase/structure` | `purchase_structure_get.php` | `purchase.master.write` |
+| POST | `/api/purchase/structure/upload` | `purchase_structure_upload.php` | `purchase.master.write` |
+| POST | `/api/purchase/structure/link` | `purchase_structure_link.php` | `purchase.master.write` |
+| POST | `/api/purchase/structure/exclude` | `purchase_structure_exclude.php` | `purchase.master.write` |
+
+`p_location_inbox` 에는 **지점 축이 없다**(연결 전의 창고라 지점이 정해지지 않았다는 것이 이 표의 존재 이유다). 다섯 라우트가 전부 buyer·Admin 전용이고 그 둘의 지점 범위는 언제나 전 지점이므로, 조회마다 `// lint:no-branch-scope <이유>` 표식을 `src/purchase/Structure.php` 에 적는다(23단계 규칙 — 표식은 **조회 단위**다). 나무 조회의 `p_locations` 도 같은 이유로 표식을 단다(전 지점을 정리하는 마스터 편집 화면이다).
 
 ---
 
@@ -1206,6 +1220,17 @@ GRANT  USAGE, SELECT  ON SEQUENCE audit_logs_id_seq TO tbox_app;
 | `purchase.lab.create` | allow · deny | `bad_request` · `bad_reference` · `not_in_scope` · **`stock_managed_item`** · `month_closed` · `negative_stock` · `conflict` | 22 |
 | `purchase.suggest.apply` | allow · deny | `bad_request` · `bad_reference` · `not_in_scope` · **`no_suggestion`** · **`not_multiple`** · `conflict` | 23 |
 | `purchase.master.branch_off` | allow · deny | `bad_request` | 23 |
+| `purchase.structure.upload` | allow · deny · error | 업로드 검사 코드 그대로(`no_file` · `ext_not_allowed` · `mime_mismatch` · `double_extension` · `too_large` · `quota_exceeded` …, `purchase.import.upload` 와 **같은 키**) + **`bad_header`** · `parse_failed` | 24 |
+| `purchase.structure.link` | allow · deny | `bad_request` · `bad_reference` · **`not_unlinked`** · `conflict` | 24 |
+| `purchase.structure.exclude` | allow · deny | `bad_request` · **`not_unlinked`** · **`not_excluded`** | 24 |
+
+> **24단계** — 창고 대기표(F-37)의 세 창구는 **한 요청에 한 줄**만 남긴다. 업로드는 파일 이름이 `{target}`
+> 이고 건수(`inserted`·`updated`·`unchanged`·`skipped`·`renamed_linked`)가 detail 에 붙는다. 연결·제외는
+> `{target}` 이 `locations` 이고 **창고 이름은 넣지 않는다** — 한 번에 수십 건이 오가므로 문장이 아니라
+> 건수·id 목록으로 남는 것이 맞다(가져오기 확정과 같은 판단). `not_unlinked` 는 이미 연결됐거나 제외된
+> 행을, `not_excluded` 는 제외 상태가 아닌 행을 되살리려 한 요청이고, `conflict` 는 같은 지점에 같은
+> 이름의 창고가 이미 있어 **묶음 전체를 저장하지 않은** 경우다. 조회(`GET /api/purchase/structure`)는
+> 기록하지 않는다 — 조회는 사건이 아니다.
 
 > **23단계** — `purchase.suggest.apply` 는 제안을 발주요청으로 옮긴 **한 순간**만 남긴다(제안 조회는 다른
 > 현황 조회처럼 기록하지 않는다). `detail.suggested_qty`(서버가 계산한 합)와 `detail.applied_qty`(사람이
@@ -1288,6 +1313,10 @@ GRANT  USAGE, SELECT  ON SEQUENCE audit_logs_id_seq TO tbox_app;
 | `after_sent` | 어떻게 | `true`/`false` — 거래처에 **보낸 뒤**의 발주서 수정·취소인가 | 핸들러 | `purchase.order.update|void` (20) |
 | `relinked` | 어떻게 | 기공 명세서 전표가 대사표에서 **다시 맞춘 줄 수**(정수) | 핸들러 | `purchase.lab.create` (22) |
 | `suggested_qty` · `applied_qty` | 무엇을 | 발주 제안을 요청으로 옮길 때 **서버가 계산한 제안 합**과 **사람이 실제로 담은 합**(수량 문자열). 두 숫자의 차이가 곧 "제안을 얼마나 고쳤나" 다 | 핸들러 | `purchase.suggest.apply` (23) |
+| `inserted` · `updated` · `unchanged` · `skipped` · `renamed_linked` | 무엇을 | 창고 파일 한 번의 결과 — 새로 담은 수 · 값이 달라 고친 수 · 그대로인 수 · 건너뛴 수(꼬리행·빈 행) · **이미 연결된 창고인데 파일에서 이름이 바뀐 수**(사람이 판단할 거리이며 `p_locations.name` 은 건드리지 않는다). 창고 이름은 들어가지 않는다 | 핸들러 | `purchase.structure.upload` (24) |
+| `links` · `branch_ids` · `location_ids` | 무엇을 · 어디에 | 한 번에 연결한 건수와, 그때 쓰인 지점 id 목록 · 새로 생긴 장소 id 목록. 이름이 아니라 id 다 | 핸들러 | `purchase.structure.link` (24) |
+| `inbox_ids` · `excluded` | 무엇을 · 어떻게 | 제외·되살리기 대상이 된 대기표 행 id 목록과 방향(`true`=제외, `false`=되살리기) | 핸들러 | `purchase.structure.exclude` (24) |
+| `kind` | 무엇을 | 연결할 때 사람이 고른 **장소 용도**(`warehouse`·`central`·`or`·`other`). `null` 이면 이카운트 「구분」에서 서버가 유추했다는 뜻이다. 기초정보 창구에서는 종류 이름(`brands`·`locations` …)으로도 쓰인다 | 핸들러 | `purchase.structure.link` (24) · `purchase.master.*` (19) |
 | `branches` · `branches_off` | 어디에 | 품목에 **더한** 사용 지점 id 목록 / **뺀**(`is_active=false`) 사용 지점 id 목록. 이름이 아니라 id 다 | 핸들러 | `purchase.master.create|update|branch_off` (19 · 23) |
 
 **검토 행동과 사용자 행동 가르기** — 두 조건 중 하나면 검토다. 둘 다 아니면 사용자(또는 침입자)다.

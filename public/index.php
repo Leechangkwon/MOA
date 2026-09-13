@@ -284,6 +284,26 @@ const TBOX_ROUTES = [
     ['POST',   '/api/purchase/import/{id}/commit',      'purchase_import_commit.php',   'purchase.master.write'],
 
     /*
+     * 24단계 — 「브랜드·지점·창고」 한 페이지 (PRD F-37, ARCH 5.18 「창고 대기표」).
+     *
+     * 다섯 라우트가 **전부 `purchase.master.write`** 다: 화면도 데이터도 같은 정책이고
+     * (화면만 숨기고 API 를 열어 두면 그것이 곧 우회 경로다 — PRD S-01),
+     * 그 정책이 `REAUTH_POLICIES` 에 있어 **재인증 관문이 자동으로** 따라붙는다.
+     * 새 정책 이름을 만들지 않는다(지시서 보충 3).
+     *
+     * `/api/purchase/structure` 는 `{num}`(순차 정수)·`{id}`(UUID 36자)와 형태가 달라
+     * 어느 라우트와도 충돌하지 않는다.
+     *
+     * ★ 삭제(DELETE)가 없다. 창고를 「제외」하는 것은 `POST …/exclude` 의 상태값이고,
+     *   앱 DB 계정에는 `p_location_inbox` 의 DELETE 권한 자체가 없다 (db/grants.sql).
+     */
+    ['GET',    '/purchase/structure',               'purchase_structure_page.php',    'purchase.master.write'],
+    ['GET',    '/api/purchase/structure',           'purchase_structure_get.php',     'purchase.master.write'],
+    ['POST',   '/api/purchase/structure/upload',    'purchase_structure_upload.php',  'purchase.master.write'],
+    ['POST',   '/api/purchase/structure/link',      'purchase_structure_link.php',    'purchase.master.write'],
+    ['POST',   '/api/purchase/structure/exclude',   'purchase_structure_exclude.php', 'purchase.master.write'],
+
+    /*
      * 20단계 — 발주요청(PR)·발주서(PO)·내 리스트·추천·사이클 (PRD F-30~F-32, ARCH 5.18).
      *
      * 정책이 네 가지로 갈린다. **표만 보고** 누가 무엇을 할 수 있는지 읽히게 한다:
@@ -446,6 +466,10 @@ const TBOX_REAUTH_RETURN = [
      * `/reauth?to=purchase_masters` 를 부른다 — 그래서 위 표에는 두 키가 다 있어야 한다.
      */
     'GET /purchase/import'   => 'purchaseimport',
+    /* 24단계 — 「브랜드·지점·창고」 화면(PRD F-37)의 라우트 정책은 `purchase.master.write` 라
+     * **화면 요청이 그대로 관문에 걸린다**. 키가 없으면 확인 뒤 홈으로 떨어진다(19단계 4차
+     * 보정의 사고). 키에 밑줄·숫자가 없고 16자 이하인 것은 `Http::redirect` 의 꼬리표 규칙 때문이다. */
+    'GET /purchase/structure' => 'purchasestruct',
 ];
 
 /**
@@ -483,6 +507,9 @@ const TBOX_REAUTH_PATHS = [
      */
     'purchasemasters' => '/purchase/masters',
     'purchaseimport'  => '/purchase/import',
+    // 24단계 「브랜드·지점·창고」 (PRD F-37). 위 TBOX_REAUTH_RETURN·app.js REAUTH_PATHS 와
+    // **세 곳이 같은 내용**이어야 한다 — 어긋나면 확인 뒤 홈으로 떨어진다.
+    'purchasestruct'  => '/purchase/structure',
     /*
      * 20단계 전표 화면 (PRD F-30~F-32). 이 셋의 라우트 정책은 `purchase.read` 라
      * **재인증 관문에 걸리지 않는다** — 그래도 키를 두는 이유는, 이 화면들의 API 가 언젠가

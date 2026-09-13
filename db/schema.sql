@@ -457,6 +457,37 @@ CREATE TABLE p_import_mappings (
 );
 CREATE UNIQUE INDEX p_import_mappings_kind_name_uidx ON p_import_mappings (kind, lower(name));
 
+-- 창고 대기표 (24단계 — PRD F-37, ARCH 5.18 「창고 대기표」,
+--   db/migrations/2026-09-15_purchase_location_inbox.sql)
+--
+-- ★ **지점이 정해지기 전의 창고**가 머무는 자리다. `p_locations.branch_id` 는 NOT NULL 이고
+--   지점 격리·전표·재고가 전부 그 열로 훑기 때문에, 지점 없는 창고를 본 표에 넣으려면 그 열을
+--   NULL 허용으로 풀어야 한다 — 그 대신 연결되기 전의 창고를 **본 표 밖**에 두고, 사람이
+--   지점을 고르는 순간에만 `p_locations` 행을 만든다(전표·재고 코드는 한 줄도 바뀌지 않는다).
+--   이름은 이카운트 원문 그대로이고(trim 만), **행을 지우지 않는다** — 제외도 상태값이다.
+CREATE TABLE p_location_inbox (
+    id             BIGSERIAL   PRIMARY KEY,
+    ecount_code    TEXT        NOT NULL,               -- 창고코드 (원문 trim) — 이 행의 정체
+    name           TEXT        NOT NULL,               -- 창고명 원문 그대로
+    kind_text      TEXT,                               -- 「구분」 원문 (창고·기타 …)
+    site_name      TEXT,                               -- 「추가사업장명」 원문 (표시용)
+    ecount_active  BOOLEAN     NOT NULL DEFAULT true,  -- 「사용」 Yes/No
+    status         TEXT        NOT NULL DEFAULT 'unlinked'
+                   CHECK (status IN ('unlinked','linked','excluded')),
+    location_id    BIGINT      REFERENCES p_locations(id),   -- linked 일 때만
+    source_file_id BIGINT      REFERENCES files(id),         -- 마지막 업로드 원본
+    created_by     BIGINT      NOT NULL REFERENCES users(id),
+    created_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
+    linked_by      BIGINT      REFERENCES users(id),
+    linked_at      TIMESTAMPTZ,
+    CONSTRAINT p_location_inbox_name_len CHECK (length(name) BETWEEN 1 AND 80),
+    CONSTRAINT p_location_inbox_code_len CHECK (length(ecount_code) BETWEEN 1 AND 40)
+);
+-- 같은 창고코드는 한 행뿐 — 같은 파일을 다시 올리면 「변동 없음」이 되는 근거(멱등)
+CREATE UNIQUE INDEX p_location_inbox_code_uidx   ON p_location_inbox (ecount_code);
+CREATE INDEX        p_location_inbox_status_idx  ON p_location_inbox (status);
+
 -- ═════════════════════════════════════════════════════════════
 -- 구매 전표 (20단계 — PRD F-30 발주요청 · F-31 추천/내 리스트 · F-32 불러오기→발주서,
 --   ARCH 5.18 「연결」·「채번」·「요청 수정 창」·「발주서 PDF」·「송부 전 검토」)

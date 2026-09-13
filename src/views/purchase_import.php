@@ -27,6 +27,10 @@ require __DIR__ . '/shell_top.php';
     </header>
 
   <p class="notice">
+    창고는 새 화면 <a href="/purchase/structure"><strong>「브랜드·지점·창고」</strong></a> 에서 올리는 것이 쉽습니다 —
+    지점을 먼저 고르지 않아도 파일을 그대로 올린 뒤, 창고마다 지점을 골라 연결하면 됩니다.
+  </p>
+  <p class="notice">
     <strong>창고 파일 하나로 브랜드·지점·창고를 한 번에</strong> 넣을 수 있습니다 —
     창고명이 「플란치과_강남점」처럼 <code>브랜드_지점</code> 꼴이면 2단계의 체크 둘을 켜 두세요.
     여러 지점의 창고가 섞여 있어도 <strong>각자의 지점으로</strong> 들어갑니다.

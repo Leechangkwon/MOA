@@ -64,7 +64,10 @@ var REAUTH_PATHS = {
   // 403 next:reauth 를 받을 수 있다. 확인 뒤 그 화면으로 돌아온다.
   // 마감은 대사 화면 안의 탭이라 두 키가 같은 경로다 (서버 TBOX_REAUTH_PATHS 와 같은 내용).
   'purchaserecon': '/purchase/recon',
-  'purchaseclose': '/purchase/recon'
+  'purchaseclose': '/purchase/recon',
+  // 24단계 — 「브랜드·지점·창고」 화면은 라우트 정책이 purchase.master.write 라 **화면 요청이
+  // 그대로** 재인증 관문에 걸린다. 서버 TBOX_REAUTH_PATHS 와 같은 내용이어야 한다.
+  'purchasestruct': '/purchase/structure'
 };
 
 /** 서버가 내려 준 파일 ID 형태 (UUIDv4). 링크를 만들기 전에 반드시 확인한다. */
@@ -5560,6 +5563,8 @@ function initShell(me, csrfToken) {
     ? me.can_purchase_master
     : canPurchase;
   showNav('nav-purchase-import', canPurchaseMaster);
+  // 24단계 「브랜드·지점·창고」 도 같은 규칙이다 (라우트 정책이 purchase.master.write).
+  showNav('nav-purchase-structure', canPurchaseMaster);
   // 22단계 「월 대사·마감」도 같은 규칙이다 (마감은 기초정보를 고칠 수 있는 사람의 일).
   showNav('nav-purchase-recon', canPurchaseMaster);
   var purchaseGroup = document.getElementById('nav-purchase-group');

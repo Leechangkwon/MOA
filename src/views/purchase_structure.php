@@ -1,0 +1,141 @@
+<?php
+declare(strict_types=1);
+
+/**
+ * src/views/purchase_structure.php — 「브랜드·지점·창고」 한 페이지 (24단계, PRD F-37)
+ *
+ * 한 화면에서 ① 브랜드·지점을 만들고 ② 이카운트 창고 파일을 대기표로 올리고
+ * ③ 미연결 창고를 지점에 연결하거나 ④ 제외하고 ⑤ 지점별 결과를 본다.
+ *
+ * 값은 전부 `purchase_structure.js` 가 `/api/purchase/structure` 응답을 받아
+ * `textContent` 로만 채운다 (PRD S-03 — inner/outer HTML 계열을 쓰지 않는다).
+ * 서버가 HTML 에 넣는 동적 값은 **하나도 없다**(셸의 사용자명·역할 제외).
+ * 인라인 <script>·style 속성·on* 이벤트 속성을 쓰지 않는다 (CSP: script-src 'self').
+ *
+ * ★ 역할 비교가 한 글자도 없다 (PRD S-01). 이 화면에 닿은 것 자체가 라우트 정책
+ *   `purchase.master.write` 와 재인증 관문을 지났다는 뜻이다.
+ *
+ * @var array<string,mixed> $user
+ */
+
+require __DIR__ . '/shell_top.php';
+?>
+    <link rel="stylesheet" href="/assets/purchase_structure.css?v=<?= (int) filemtime(__DIR__ . '/../../public/assets/purchase_structure.css') ?>">
+
+    <header class="page-head">
+      <div class="page-head__text">
+        <h1 class="page-head__title">구매관리 › 브랜드·지점·창고</h1>
+        <p class="page-head__sub">브랜드와 지점은 여기서 만들고, 창고는 이카운트 파일을 그대로 올린 뒤 지점에 연결합니다. 지점이 없는 창고는 제외하면 됩니다.</p>
+      </div>
+      <div class="page-head__actions">
+        <form id="st-upload-form" class="st-upload">
+          <input id="st-file" type="file" accept=".xlsx,.csv" required>
+          <button id="st-upload" class="btn" type="submit">창고 파일 올리기</button>
+        </form>
+        <a class="btn btn--quiet" href="/purchase/masters">기초정보</a>
+      </div>
+    </header>
+
+  <p id="msg" class="form-msg" role="status" aria-live="polite"></p>
+
+  <p class="notice">
+    이카운트 창고 내보내기(창고코드·창고명·구분·사용·추가사업장명)를 <strong>그대로</strong> 올리면 됩니다 —
+    지점 열이 없어도 괜찮습니다. 올린 창고는 <strong>대기표</strong>에 담기고,
+    <strong>지점에 연결하는 순간에만</strong> 실제 창고가 만들어집니다.
+    창고 이름은 <strong>이카운트 이름 그대로</strong> 저장합니다.
+  </p>
+
+  <div class="st-counts" id="st-counts"></div>
+
+  <div class="st-layout">
+    <!-- ── 왼쪽: 브랜드 → 지점 → 연결된 창고 ───────────── -->
+    <section class="panel" id="st-tree-panel">
+      <div class="panel__head">
+        <h2 class="panel__title">브랜드 → 지점</h2>
+      </div>
+      <div id="st-tree" class="st-tree"></div>
+      <p id="st-tree-empty" class="muted" hidden>브랜드가 아직 없습니다 — 아래에서 만들 수 있습니다.</p>
+      <form id="st-brand-form" class="st-inline-form" autocomplete="off">
+        <label class="field field--inline">
+          <span class="field__label">새 브랜드</span>
+          <input id="st-brand-name" type="text" maxlength="60" required>
+        </label>
+        <button class="btn btn--quiet btn--small" type="submit">+ 브랜드</button>
+      </form>
+    </section>
+
+    <!-- ── 오른쪽: 미연결 창고 ──────────────────────────── -->
+    <section class="panel" id="st-unlinked-panel">
+      <div class="panel__head">
+        <h2 class="panel__title" id="st-unlinked-title">미연결 창고</h2>
+        <div class="panel__tools">
+          <label class="field field--inline">
+            <span class="field__label">용도</span>
+            <select id="st-kind"></select>
+          </label>
+          <button id="st-select-all" class="btn btn--quiet btn--small" type="button">전체 선택</button>
+          <button id="st-link-suggest" class="btn btn--small" type="button">추천대로 연결</button>
+        </div>
+      </div>
+
+      <div class="st-toolbar">
+        <label class="field field--inline">
+          <span class="field__label">선택한 창고를</span>
+          <select id="st-bulk-branch"></select>
+        </label>
+        <button id="st-link-bulk" class="btn btn--small" type="button">이 지점에 연결</button>
+      </div>
+
+      <div class="table-wrap">
+        <table class="files">
+          <thead>
+            <tr>
+              <th scope="col" class="st-col-check"><span class="sr-only">선택</span></th>
+              <th scope="col">창고코드</th>
+              <th scope="col">창고명</th>
+              <th scope="col">구분</th>
+              <th scope="col">사용</th>
+              <th scope="col">지점</th>
+              <th scope="col">제외</th>
+            </tr>
+          </thead>
+          <tbody id="st-unlinked-body"></tbody>
+        </table>
+      </div>
+      <p id="st-unlinked-empty" class="muted" hidden>모두 정리됨 — 미연결 창고가 없습니다.</p>
+    </section>
+  </div>
+
+  <!-- ── 아래: 제외된 창고 ──────────────────────────────── -->
+  <section class="panel" id="st-excluded-panel">
+    <div class="panel__head">
+      <h2 class="panel__title" id="st-excluded-title">제외된 창고</h2>
+      <div class="panel__tools">
+        <button id="st-excluded-toggle" class="btn btn--quiet btn--small" type="button" aria-expanded="false">펼치기</button>
+      </div>
+    </div>
+    <div id="st-excluded-wrap" hidden>
+      <div class="table-wrap">
+        <table class="files">
+          <thead>
+            <tr>
+              <th scope="col">창고코드</th>
+              <th scope="col">창고명</th>
+              <th scope="col">구분</th>
+              <th scope="col">작업</th>
+            </tr>
+          </thead>
+          <tbody id="st-excluded-body"></tbody>
+        </table>
+      </div>
+      <p id="st-excluded-empty" class="muted" hidden>제외된 창고가 없습니다.</p>
+    </div>
+  </section>
+
+  <p class="muted">
+    이 화면의 편집에는 <strong>비밀번호 재확인</strong>이 필요합니다(15분). 확인 창이 뜨면
+    다시 로그인하는 것이 아니라 지금 계정의 비밀번호를 한 번 더 넣는 것입니다.
+  </p>
+
+<script src="/assets/purchase_structure.js?v=<?= (int) filemtime(__DIR__ . '/../../public/assets/purchase_structure.js') ?>"></script>
+<?php require __DIR__ . '/shell_bottom.php'; ?>

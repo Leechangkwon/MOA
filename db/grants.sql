@@ -71,6 +71,10 @@ GRANT SELECT, INSERT, UPDATE ON p_items           TO tbox_app;
 GRANT SELECT, INSERT, UPDATE ON p_item_branches   TO tbox_app;
 GRANT SELECT, INSERT, UPDATE ON p_par_levels      TO tbox_app;
 GRANT SELECT, INSERT, UPDATE ON p_import_mappings TO tbox_app;
+-- 24단계 창고 대기표 (PRD F-37). 기초정보와 **같은 권한**이다 — DELETE 가 없다:
+-- 제외도 되살리기도 `status` 값이고, 잘못 올린 행조차 앱이 지울 수 없다.
+REVOKE ALL ON p_location_inbox FROM tbox_app;
+GRANT SELECT, INSERT, UPDATE ON p_location_inbox  TO tbox_app;
 
 -- ─── 시퀀스 (INSERT 하는 표의 id 발급에 필요) ───
 GRANT USAGE, SELECT ON SEQUENCE users_id_seq      TO tbox_app;
@@ -88,6 +92,7 @@ GRANT USAGE, SELECT ON SEQUENCE p_categories_id_seq      TO tbox_app;
 GRANT USAGE, SELECT ON SEQUENCE p_items_id_seq           TO tbox_app;
 GRANT USAGE, SELECT ON SEQUENCE p_par_levels_id_seq      TO tbox_app;
 GRANT USAGE, SELECT ON SEQUENCE p_import_mappings_id_seq TO tbox_app;
+GRANT USAGE, SELECT ON SEQUENCE p_location_inbox_id_seq  TO tbox_app;   -- 24단계 창고 대기표
 
 -- 20단계 구매 전표 (F-30~F-32, ARCH 5.18 「연결」·「채번」, SECURITY R-66).
 -- ★ 여기에도 **DELETE 가 한 줄도 없다** — 전표 취소는 `status = 'void'` 다.

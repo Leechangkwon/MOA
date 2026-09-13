@@ -1902,4 +1902,227 @@ final class Importer
             ':is_active' => ($v['is_active'] ?? true) ? 'true' : 'false',
         ]);
     }
+
+    /* ══════════════════════════════════════════════════════════════════
+     * 업로드 한 건을 「구매 / 가져오기」 폴더에 남긴다 — **두 입구가 함께 쓰는 한 함수**
+     * (24단계 지시서 보충 1. PRD F-29 · F-37, SECURITY R-67 · R-69)
+     *
+     * 왜 한 함수인가
+     *   19단계의 가져오기 업로드(`purchase_import_upload.php`)와 24단계의 창고 대기표
+     *   업로드(`purchase_structure_upload.php`)는 **같은 관문**을 지나야 한다: 업로드 검사
+     *   (`Upload::validate`) · 가져오기가 읽을 수 있는 확장자 · 민감정보 검출 · admin-only
+     *   보관 폴더 · files 행 + 저장소 이동 · 실패 시 파일까지 되돌리기. 두 벌로 두면 언젠가
+     *   한쪽만 고쳐지고, 그 한쪽이 곧 **두 번째 입구**다 (`Upload::validate` 를 본체 업로드와
+     *   함께 쓰는 것과 같은 이유). 거부 사유 문자열도 한 곳에서만 나온다.
+     *
+     * 이 함수는 예외적으로 감사·HTTP 를 다룬다 — 거부는 `Audit::deny($auditAction, …)` +
+     * 400 동일 문구이고, 성공은 `Audit::allow($auditAction, …)` 한 줄이다. 사유 코드가
+     * 곧 감사 로그의 `reason` 이라 그 둘을 갈라 두면 "같은 관문" 이라는 성질이 깨진다.
+     *
+     * @param mixed $uploaded `$_FILES['file']` — 배열이 아니면 `no_file` 로 끝난다
+     * @param array<string,mixed> $user     라우터가 넘긴 현재 사용자 (created_by 는 이 값만 쓴다)
+     * @param string $auditAction `purchase.import.upload` · `purchase.structure.upload`
+     * @param callable|null $inTransaction 트랜잭션 **안**에서 files 행과 저장이 끝난 뒤 불린다.
+     *        인자는 아래 반환과 같은 배열이고, 돌려준 배열은 `allow` 의 detail 에 합쳐진다.
+     *        예외를 던지면 files 행도 저장한 파일도 **전부 되돌아간다**. null 이면 19단계와
+     *        똑같은 동작이다(가져오기 업로드는 표를 건드리지 않으므로 null 을 넘긴다).
+     * @return array{file_id:int,public_id:string,original:string,ext:string,mime:string,size:int,sha256:string,stored_name:string,folder_id:int,sensitive:array<string,int>}
+     */
+    public static function storeUploaded(
+        mixed $uploaded,
+        array $user,
+        string $auditAction,
+        ?callable $inTransaction = null
+    ): array {
+        /** 거부 기록 후 끝낸다. 사유는 로그에만, 사용자에게는 동일 문구만 (PRD S-09-5). */
+        $reject = static function (string $reason, ?string $name = null) use ($auditAction): void {
+            $entry = [
+                'target_type'  => 'file',
+                'target_name'  => $name,
+                'access_level' => 'admin-only',
+            ];
+            /* R-71 (2026-09-13) — 위장 파일로 거부할 때는 **무엇으로 감지됐는지**를 함께 남긴다.
+             * files_upload.php 와 같은 방식이다. 값은 finfo 가 돌려준 MIME 문자열이며 비밀이 없다. */
+            if ($reason === 'mime_mismatch' && Upload::$lastDetectedMime !== null) {
+                $entry['detail'] = ['mime' => Upload::$lastDetectedMime];
+            }
+            Audit::deny($auditAction, $reason, $entry);
+            Http::error(400, Http::MSG_BAD_REQUEST);
+        };
+
+        // ─── [1] 파일 필드 ───
+        if (!is_array($uploaded)) {
+            $reject('no_file');
+            exit;   // $reject 안에서 끝나지만 정적 분석을 위해 남긴다
+        }
+
+        /** 원본 파일명 — basename → 제어문자 제거 → 길이 제한. **경로에는 한 글자도 쓰이지 않는다** */
+        $rawName  = is_string($uploaded['name'] ?? null) ? (string) $uploaded['name'] : '';
+        $original = basename(str_replace('\\', '/', $rawName));
+        $original = (string) preg_replace('/[\x00-\x1f\x7f]/', '', $original);
+        if ($original === '' || preg_match('//u', $original) !== 1) {
+            $reject('bad_encoding');
+        }
+        if (iconv_strlen($original, 'UTF-8') > 255) {
+            $cut      = iconv_substr($original, 0, 255, 'UTF-8');
+            $original = is_string($cut) ? $cut : $original;
+        }
+
+        // ─── [2] 업로드 검사 — 본체와 **같은 함수**다 (PRD S-06) ───
+        try {
+            $checked = Upload::validate($uploaded);
+        } catch (RuntimeException $e) {
+            $reject($e->getMessage(), $original);
+            exit;   // $reject 안에서 끝나지만 정적 분석을 위해 남긴다
+        }
+
+        // ─── [3] 가져오기가 읽을 수 있는 형식인가 (xlsx · csv) ───
+        if (!in_array($checked['ext'], Sheet::SHEET_EXT, true)) {
+            $reject('ext_not_allowed', $original);
+        }
+
+        $tmpPath = (string) $uploaded['tmp_name'];
+
+        // ─── [4] 민감정보 검출 (PRD F-22, ARCH 5.13) — 본체 업로드와 같은 자리·같은 함수 ───
+        // 보관 폴더가 admin-only 라 등급 때문에 막히는 일은 없다. 검출 사실만 남긴다.
+        $sensitive      = Sensitive::scan($tmpPath, $checked['ext']);
+        $sensitiveFlags = array_keys($sensitive);
+
+        $db = Db::instance();
+
+        /**
+         * 폴더 하나를 확보한다 — 있으면 그 id, 없으면 만든다(만든 사실은 감사 `folder.create allow`
+         * 로 남고 actor 는 요청자다). 이름은 이 클래스의 상수이고 요청 값이 아니다.
+         */
+        $ensureFolder = static function (?int $parentId, string $name, int $depth) use ($db, $user): int {
+            $row = $db->run(self::SQL_FIND_FOLDER, [':parent' => $parentId, ':name' => $name])->fetch();
+            if (is_array($row)) {
+                return (int) $row['id'];
+            }
+            $made = $db->run(self::SQL_MAKE_FOLDER, [
+                ':parent'     => $parentId,
+                ':name'       => $name,
+                ':depth'      => $depth,
+                ':created_by' => (int) $user['id'],
+            ])->fetch();
+            if (!is_array($made)) {
+                throw new RuntimeException('가져오기 폴더를 만들지 못했습니다');
+            }
+            $newId = (int) $made['id'];
+            Audit::allow('folder.create', [
+                'target_type'  => 'folder',
+                'target_id'    => $newId,
+                'target_name'  => $name,
+                'access_level' => 'admin-only',
+                'detail'       => [
+                    'granted_by'  => Authz::CODE_ADMIN_ALL,
+                    'folder_id'   => $newId,
+                    'parent_id'   => $parentId,
+                    'depth'       => $depth,
+                    'owner_id'    => (int) $user['id'],
+                    'target_team' => null,
+                ],
+            ]);
+            return $newId;
+        };
+
+        $storedName = Storage::newStoredName($checked['ext']);
+
+        // ─── [6] 트랜잭션: 폴더 확보 → files INSERT → 파일 이동 → (호출자의 일) → 감사 → COMMIT ───
+        $moved = false;
+        $db->begin();
+        try {
+            $parentId = $ensureFolder(null, self::FOLDER_PARENT, 1);
+            $folderId = $ensureFolder($parentId, self::FOLDER_CHILD, 2);
+
+            $row = $db->run(self::SQL_INSERT_FILE, [
+                ':original_name' => $original,
+                ':stored_name'   => $storedName,
+                ':ext'           => $checked['ext'],
+                ':mime'          => $checked['mime'],
+                ':size_bytes'    => $checked['size'],
+                ':sha256'        => $checked['sha256'],
+                ':description'   => '구매 기초정보 가져오기 원본',
+                ':uploaded_by'   => (int) $user['id'],
+                ':flags'         => '{' . implode(',', $sensitiveFlags) . '}',
+                ':folder_id'     => $folderId,
+            ])->fetch();
+
+            if (!is_array($row)) {
+                throw new RuntimeException('가져오기 파일을 저장하지 못했습니다');
+            }
+            $stored = [
+                'file_id'     => (int) $row['id'],
+                'public_id'   => (string) $row['public_id'],
+                'original'    => $original,
+                'ext'         => $checked['ext'],
+                'mime'        => $checked['mime'],
+                'size'        => $checked['size'],
+                'sha256'      => $checked['sha256'],
+                'stored_name' => $storedName,
+                'folder_id'   => $folderId,
+                'sensitive'   => $sensitive,
+            ];
+
+            Storage::put($tmpPath, $storedName);
+            $moved = true;
+
+            // 호출자가 같은 트랜잭션 안에서 할 일(24단계 창고 대기표 upsert). 돌려준 값은 감사 detail 로.
+            $extra = $inTransaction === null ? [] : $inTransaction($stored);
+            if (!is_array($extra)) {
+                $extra = [];
+            }
+
+            Audit::allow($auditAction, [
+                'target_type'  => 'file',
+                'target_id'    => $stored['file_id'],
+                'target_name'  => $original,
+                'access_level' => 'admin-only',
+                'detail'       => [
+                    'file_id'   => $stored['file_id'],
+                    'sha256'    => $checked['sha256'],
+                    'ext'       => $checked['ext'],
+                    'folder_id' => $folderId,
+                ] + $extra + ($sensitive === [] ? [] : ['sensitive' => $sensitive]),
+            ]);
+            $db->commit();
+        } catch (Throwable $e) {
+            $db->rollback();
+            if ($moved) {
+                try {
+                    Storage::removeUploaded($storedName);
+                } catch (Throwable $ignored) {
+                    error_log('[tbox] request_id=' . TBOX_REQUEST_ID . ' 가져오기 업로드 롤백 중 파일 삭제 실패');
+                }
+            }
+            throw $e;
+        }
+
+        return $stored;
+    }
+
+    /** 보관 폴더 찾기·만들기·files INSERT — 고정 문장 셋 (요청 값은 바인딩으로만 들어간다) */
+    private const SQL_FIND_FOLDER = <<<'SQL'
+        SELECT id, depth, access_level, team_id
+          FROM folders
+         WHERE parent_id IS NOT DISTINCT FROM CAST(:parent AS bigint)
+           AND name = :name
+        SQL;
+
+    private const SQL_MAKE_FOLDER = <<<'SQL'
+        INSERT INTO folders (parent_id, name, depth, access_level, team_id, created_by)
+        VALUES (CAST(:parent AS bigint), :name, CAST(:depth AS int), 'admin-only', NULL, :created_by)
+        RETURNING id
+        SQL;
+
+    private const SQL_INSERT_FILE = <<<'SQL'
+        INSERT INTO files
+            (original_name, stored_name, ext, mime, size_bytes, sha256,
+             description, access_level, team_id, uploaded_by, sensitive_flags, folder_id)
+        VALUES
+            (:original_name, :stored_name, :ext, :mime, :size_bytes, :sha256,
+             :description, 'admin-only', NULL, :uploaded_by,
+             CAST(:flags AS text[]), CAST(:folder_id AS bigint))
+        RETURNING id, public_id
+        SQL;
 }

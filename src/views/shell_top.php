@@ -47,7 +47,9 @@ $shellKeys = ['files', 'trash', 'settings', 'activity', 'users', 'org', 'audit',
               // 21단계 입고·이동/실사·재고현황
               'purchase-receipt', 'purchase-move', 'purchase-stock',
               // 22단계 주간 사용량·월 대사/마감
-              'purchase-usage', 'purchase-recon'];
+              'purchase-usage', 'purchase-recon',
+              // 24단계 브랜드·지점·창고 (PRD F-37)
+              'purchase-structure'];
 
 $shellUser   = isset($user) && is_array($user) ? $user : [];
 $shellName   = htmlspecialchars((string) ($shellUser['username'] ?? ''), ENT_QUOTES, 'UTF-8');
@@ -177,6 +179,12 @@ if (!headers_sent()) {
         </a>
         <a id="nav-purchase" class="<?= $shellNavClass('purchase') ?>" href="/purchase/masters" hidden>
           <span class="icon" data-icon="files"></span><span>기초정보</span>
+        </a>
+        <!-- 24단계 「브랜드·지점·창고」 (PRD F-37). 라우트 정책이 purchase.master.write 라
+             「가져오기」와 같은 규칙으로 can_purchase_master 가 있으면 그 값으로 연다 —
+             항목을 되살려도 서버가 다시 막는다 (PRD S-01). -->
+        <a id="nav-purchase-structure" class="<?= $shellNavClass('purchase-structure') ?>" href="/purchase/structure" hidden>
+          <span class="icon" data-icon="org"></span><span>브랜드·지점·창고</span>
         </a>
         <!-- 「가져오기」만 can_purchase_master 로 연다(있는 필드일 때) — 라우트 정책도
              purchase.master.write 라 항목을 되살려도 서버가 막는다 (PRD S-01). -->
