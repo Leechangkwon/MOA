@@ -5540,7 +5540,10 @@ function initShell(me, csrfToken) {
   /* 20단계 — 묶음 안의 전표 화면 항목도 **같은 값 하나**로 함께 연다. 역할별로 더 감추지
      않는다: 무엇을 읽고 쓸 수 있는지는 라우트 정책과 Authz 가 매 요청 다시 정하고,
      화면이 역할을 나눠 그리기 시작하면 그것이 곧 화면에 심은 권한 판단이 된다. */
-  ['nav-purchase-pr', 'nav-purchase-po', 'nav-purchase-docs', 'nav-purchase'].forEach(function (id) {
+  ['nav-purchase-pr', 'nav-purchase-po',
+   // 21단계 — 입고·이동/실사·재고현황도 같은 값 하나로 함께 연다 (PRD F-34~F-36).
+   'nav-purchase-receipt', 'nav-purchase-move', 'nav-purchase-stock',
+   'nav-purchase-docs', 'nav-purchase'].forEach(function (id) {
     showNav(id, canPurchase);
   });
   /* 「가져오기」만 예외 — 라우트 정책이 purchase.master.write 라 읽기 전용 사용자에게는

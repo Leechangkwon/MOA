@@ -43,7 +43,9 @@ $shellKeys = ['files', 'trash', 'settings', 'activity', 'users', 'org', 'audit',
                  `$_SERVER['REQUEST_URI']` 를 읽지 않는다 — 어느 항목을 켤지는 **핸들러가
                  넘긴 `$activeNav`** 만 정하고, 여기 목록은 그 값을 받아 줄 뿐이다.
                  목록에 없는 값은 빈 문자열이 되어 아무 항목도 켜지지 않는다. */
-              'purchase-pr', 'purchase-po', 'purchase-docs', 'purchase-import'];
+              'purchase-pr', 'purchase-po', 'purchase-docs', 'purchase-import',
+              // 21단계 입고·이동/실사·재고현황
+              'purchase-receipt', 'purchase-move', 'purchase-stock'];
 
 $shellUser   = isset($user) && is_array($user) ? $user : [];
 $shellName   = htmlspecialchars((string) ($shellUser['username'] ?? ''), ENT_QUOTES, 'UTF-8');
@@ -148,6 +150,17 @@ if (!headers_sent()) {
         </a>
         <a id="nav-purchase-po" class="<?= $shellNavClass('purchase-po') ?>" href="/purchase/po" hidden>
           <span class="icon" data-icon="check"></span><span>발주서</span>
+        </a>
+        <!-- 21단계 입고·이동/실사·재고현황 (PRD F-34~F-36). 앞의 전표 항목과 같은 규칙이다:
+             기본 hidden · can_purchase 하나로 함께 열림 · 실제 허용은 라우트 정책과 Authz 가 정함. -->
+        <a id="nav-purchase-receipt" class="<?= $shellNavClass('purchase-receipt') ?>" href="/purchase/receipt" hidden>
+          <span class="icon" data-icon="download"></span><span>입고</span>
+        </a>
+        <a id="nav-purchase-move" class="<?= $shellNavClass('purchase-move') ?>" href="/purchase/move" hidden>
+          <span class="icon" data-icon="restore"></span><span>이동·실사</span>
+        </a>
+        <a id="nav-purchase-stock" class="<?= $shellNavClass('purchase-stock') ?>" href="/purchase/stock" hidden>
+          <span class="icon" data-icon="eye"></span><span>재고현황</span>
         </a>
         <a id="nav-purchase-docs" class="<?= $shellNavClass('purchase-docs') ?>" href="/purchase/docs" hidden>
           <span class="icon" data-icon="log"></span><span>전표</span>
