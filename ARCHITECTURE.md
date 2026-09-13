@@ -634,11 +634,11 @@ Admin 전용. 정책 `org.manage`(`Authz::canManageOrg` = Admin) 를 `KNOWN_POLI
         "items": [ { "label": "검토 항목", "marks": ["ok", "open"],
                      "how": ["어떻게 확인했나"], "code": "명령과 응답 원문(선택)" } ] } ] } ] }
 ```
-`group` 은 `guide`(안내) 또는 `stage`(단계, `stage` 1~13). `refs.doc` 은 `PRD`·`ARCH`·`SECURITY`·STAGES`·`README`·`CLAUDE` 여섯 값만. `checklist`(2026-09-13 추가, 보안 시험 기록)는 행 = 검토 항목·열 = 차수이며 칸 값은 `ok`·`open`·`todo`·`na` 넷뿐이다 — **기호·툴팁 문구·색은 코드**(`Wiki::CHECK_MARKS`)가 정하고 글은 키만 고른다(감사 요약 문장을 `Audit` 상수 표 하나에 두는 것과 같은 이유, 7.4). 한 줄은 `<details>` 로 그려져 눌러서 펼치며 **자바스크립트를 쓰지 않는다**(CSP `script-src 'self'` 와 무관, 스크립트가 막혀도 내용이 남는다). 차수 개수는 클래스 `wiki-check--N` 으로 나간다 — 인라인 `style` 은 CSP `style-src 'self'` 가 막기 때문이다. `link.slug` 는 차례에 있는 slug 만 그린다(없으면 글자만). 모르는 `type`·빠진 필드·범위 밖 값은 **그 글 전체를 500** 으로 끝낸다(조용히 건너뛰면 검토에서 놓친다) — 그래서 커밋 전에 `scripts/wiki_check.php`(CLI, 전 글 구조 검사)를 돌린다.
+`group` 은 `guide`(안내) 또는 `stage`(단계, `stage` 1~23 — `Wiki::STAGE_MAX`, 2026-09-13 에 13→23). `refs.doc` 은 `PRD`·`ARCH`·`SECURITY`·STAGES`·`README`·`CLAUDE` 여섯 값만. `checklist`(2026-09-13 추가, 보안 시험 기록)는 행 = 검토 항목·열 = 차수이며 칸 값은 `ok`·`open`·`todo`·`na` 넷뿐이다 — **기호·툴팁 문구·색은 코드**(`Wiki::CHECK_MARKS`)가 정하고 글은 키만 고른다(감사 요약 문장을 `Audit` 상수 표 하나에 두는 것과 같은 이유, 7.4). 한 줄은 `<details>` 로 그려져 눌러서 펼치며 **자바스크립트를 쓰지 않는다**(CSP `script-src 'self'` 와 무관, 스크립트가 막혀도 내용이 남는다). 차수 개수는 클래스 `wiki-check--N` 으로 나간다 — 인라인 `style` 은 CSP `style-src 'self'` 가 막기 때문이다. `link.slug` 는 차례에 있는 slug 만 그린다(없으면 글자만). 모르는 `type`·빠진 필드·범위 밖 값은 **그 글 전체를 500** 으로 끝낸다(조용히 건너뛰면 검토에서 놓친다) — 그래서 커밋 전에 `scripts/wiki_check.php`(CLI, 전 글 구조 검사)를 돌린다.
 
 **요청 순서 (4장 공통 관문 그대로).** 라우트 정책은 두 경로 모두 `role:Admin` (PRD F-21, SECURITY R-56). `Auth::requireLogin` → CSRF(GET 이라 해당 없음) → 강제 절차 관문 → `Authz::authorize('role:Admin')` → 핸들러. `/api/me` 는 `can_view_wiki`(`Authz::canReadWiki`, Admin) 를 내려 주고 셸의 「위키」 항목은 그 값이 참일 때만 열린다 — 다른 `can_*` 와 같은 **화면 편의 값**이며 막는 것은 라우트 정책이다. 감사 기록은 남기지 않는다(PRD F-21).
 
-**화면.** `/wiki` 차례: 안내 글 목록 + 단계 카드 1~13(번호·제목·요약·`updated`). `/wiki/{slug}`: 제목·요약·절 차례(`id` 앵커)·본문·이전/다음 단계 링크(차례 순). 공통 셸(`src/views/shell_*.php`) 안에 그리며, 새 JS 는 필요 없다(서버 렌더). CSS 는 `app.css` 토큰을 쓴다.
+**화면.** `/wiki` 차례: 안내 글 목록 + 단계 카드 1~23(번호·제목·요약·`updated`). `/wiki/{slug}`: 제목·요약·절 차례(`id` 앵커)·본문·이전/다음 단계 링크(차례 순). 공통 셸(`src/views/shell_*.php`) 안에 그리며, 새 JS 는 필요 없다(서버 렌더). CSS 는 `app.css` 토큰을 쓴다.
 
 **말의 기준(내용 작성 규칙, PRD F-21).** ① 새 용어는 처음 나올 때 괄호로 풀이하고 `terms` 블록에도 넣는다 ② 영어 약어는 한글 뜻을 함께(예: CSRF — 남의 이름으로 요청 보내기) ③ 한 문장에 새 개념 하나 ④ 단계 글의 절 순서는 「왜 필요한가 → 무엇을 만들었나 → 어떻게 확인했나 → 남은 위험 → 직접 해보기 → 원문 위치」 ⑤ 사실은 원문에 있는 것만, 검토 결과는 SECURITY 7장 실측 값만 쓴다(추정 금지) ⑥ 비밀값(비밀번호·키·IP·계정 비밀)은 넣지 않는다.
 
