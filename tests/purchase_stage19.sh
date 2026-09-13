@@ -199,6 +199,24 @@ cleanup() {
   rm -rf "$JAR_DIR"
 }
 
+# ─────────────────────────────────────────────────────────────
+# ① 사용자 활동 확인 — SECURITY R-73 ② (20단계 스크립트와 **같은 코드**)
+#
+# 이 시험은 p_* 에 행을 만들고 끝에 지운다. 사용자가 같은 DB 에서 실제 자료를 가져오는
+# 중이면 **시작하지 않는다** — 2026-09-13 에 시험 정리가 사용자의 거래처 180행을 지운
+# 사고(R-73)가 그래서 났다. 관문이 막으면 아무것도 만들지 않고 종료 코드 3 으로 끝난다.
+# ─────────────────────────────────────────────────────────────
+BUSY=$(psqlq "SELECT count(*) FROM audit_logs
+               WHERE happened_at > now() - interval '10 minutes'
+                 AND actor_name NOT LIKE 'qa\\_%';")
+if [ "${BUSY:-1}" != "0" ]; then
+  echo "■ 최근 10분 감사 로그에 비-qa actor 가 ${BUSY}건 있습니다 — 사용자가 작업 중입니다."
+  echo "■ 데이터를 남기는 시험을 시작하지 않고 끝냅니다 (SECURITY R-73 ②). 종료 코드 3."
+  rm -rf "$JAR_DIR"
+  exit 3
+fi
+echo "■ 최근 10분 비-qa 활동 0건 — 시험을 시작합니다."
+
 trap cleanup EXIT
 
 hr "0-0. 시작 전 인구조사 — 사용자 자료가 얼마나 있나 (2026-09-13 사고 뒤 필수)"
@@ -223,36 +241,36 @@ hr "1. 기초정보 씨앗 — 브랜드·지점·장소·거래처·분류 (qa_
 
 new_id() { printf '%s' "$1" | sed -n 's/.*"id":\([0-9]*\).*/\1/p'; }
 
-R=$(call qa_admin01 POST /api/purchase/brands "$TOK_ADMIN" '{"name":"치과"}')
+R=$(call qa_admin01 POST /api/purchase/brands "$TOK_ADMIN" '{"name":"S19-치과"}')
 BRAND=$(new_id "$(body_of "$R")"); expect "브랜드 생성" 201 "$(code_of "$R")"
 
-R=$(call qa_admin01 POST /api/purchase/branches "$TOK_ADMIN" "{\"brand_id\":$BRAND,\"name\":\"부평점\"}")
+R=$(call qa_admin01 POST /api/purchase/branches "$TOK_ADMIN" "{\"brand_id\":$BRAND,\"name\":\"S19-부평점\"}")
 BR_A=$(new_id "$(body_of "$R")"); expect "지점A(부평점) 생성" 201 "$(code_of "$R")"
-R=$(call qa_admin01 POST /api/purchase/branches "$TOK_ADMIN" "{\"brand_id\":$BRAND,\"name\":\"일산점\"}")
+R=$(call qa_admin01 POST /api/purchase/branches "$TOK_ADMIN" "{\"brand_id\":$BRAND,\"name\":\"S19-일산점\"}")
 BR_B=$(new_id "$(body_of "$R")"); expect "지점B(일산점) 생성" 201 "$(code_of "$R")"
 
-R=$(call qa_admin01 POST /api/purchase/locations "$TOK_ADMIN" "{\"branch_id\":$BR_A,\"kind\":\"warehouse\",\"name\":\"B1F 의약품창고\",\"code\":\"00011\"}")
+R=$(call qa_admin01 POST /api/purchase/locations "$TOK_ADMIN" "{\"branch_id\":$BR_A,\"kind\":\"warehouse\",\"name\":\"S19-B1F 의약품창고\",\"code\":\"00011\"}")
 LOC_A=$(new_id "$(body_of "$R")"); expect "부평점 장소 생성" 201 "$(code_of "$R")"
-R=$(call qa_admin01 POST /api/purchase/locations "$TOK_ADMIN" "{\"branch_id\":$BR_B,\"kind\":\"central\",\"name\":\"2F 공급실\",\"code\":\"00038\"}")
+R=$(call qa_admin01 POST /api/purchase/locations "$TOK_ADMIN" "{\"branch_id\":$BR_B,\"kind\":\"central\",\"name\":\"S19-2F 공급실\",\"code\":\"00038\"}")
 LOC_B=$(new_id "$(body_of "$R")"); expect "일산점 장소 생성" 201 "$(code_of "$R")"
 
-R=$(call qa_admin01 POST /api/purchase/vendors "$TOK_ADMIN" '{"name":"더존덴탈","code":"V001"}')
+R=$(call qa_admin01 POST /api/purchase/vendors "$TOK_ADMIN" '{"name":"S19-더존덴탈","code":"S19-V001"}')
 VEND=$(new_id "$(body_of "$R")"); expect "거래처 생성" 201 "$(code_of "$R")"
 
-R=$(call qa_admin01 POST /api/purchase/categories "$TOK_ADMIN" '{"name":"소모품","level":1}')
+R=$(call qa_admin01 POST /api/purchase/categories "$TOK_ADMIN" '{"name":"S19-소모품","level":1}')
 CAT1=$(new_id "$(body_of "$R")"); expect "분류1 생성" 201 "$(code_of "$R")"
-R=$(call qa_admin01 POST /api/purchase/categories "$TOK_ADMIN" "{\"name\":\"거즈\",\"level\":2,\"parent_id\":$CAT1}")
+R=$(call qa_admin01 POST /api/purchase/categories "$TOK_ADMIN" "{\"name\":\"S19-거즈\",\"level\":2,\"parent_id\":$CAT1}")
 CAT2=$(new_id "$(body_of "$R")"); expect "분류2 생성" 201 "$(code_of "$R")"
 
 # 품목 3건: A지점 전용 · B지점 전용 · 지점 지정 없음(브랜드 전체)
 R=$(call qa_admin01 POST /api/purchase/items "$TOK_ADMIN" \
-  "{\"vendor_id\":$VEND,\"code\":\"A-0001\",\"name\":\"A gauze 2x2\",\"unit\":\"EA\",\"branches\":[$BR_A],\"cat1_id\":$CAT1,\"cat2_id\":$CAT2}")
+  "{\"vendor_id\":$VEND,\"code\":\"S19-A-0001\",\"name\":\"S19-A gauze 2x2\",\"unit\":\"EA\",\"branches\":[$BR_A],\"cat1_id\":$CAT1,\"cat2_id\":$CAT2}")
 ITEM_A=$(new_id "$(body_of "$R")"); expect "품목A(부평점 전용) 생성" 201 "$(code_of "$R")"
 R=$(call qa_admin01 POST /api/purchase/items "$TOK_ADMIN" \
-  "{\"vendor_id\":$VEND,\"code\":\"B-0001\",\"name\":\"B gauze 3x3\",\"unit\":\"EA\",\"branches\":[$BR_B]}")
+  "{\"vendor_id\":$VEND,\"code\":\"S19-B-0001\",\"name\":\"S19-B gauze 3x3\",\"unit\":\"EA\",\"branches\":[$BR_B]}")
 ITEM_B=$(new_id "$(body_of "$R")"); expect "품목B(일산점 전용) 생성" 201 "$(code_of "$R")"
 R=$(call qa_admin01 POST /api/purchase/items "$TOK_ADMIN" \
-  "{\"vendor_id\":$VEND,\"code\":\"ALL-0001\",\"name\":\"ALL cotton\",\"unit\":\"EA\"}")
+  "{\"vendor_id\":$VEND,\"code\":\"S19-ALL-0001\",\"name\":\"S19-ALL cotton\",\"unit\":\"EA\"}")
 ITEM_ALL=$(new_id "$(body_of "$R")"); expect "품목ALL(지점 무관) 생성" 201 "$(code_of "$R")"
 
 R=$(call qa_admin01 POST /api/purchase/par-levels "$TOK_ADMIN" "{\"location_id\":$LOC_A,\"item_id\":$ITEM_A,\"qty\":380}")
@@ -273,22 +291,22 @@ sub "① requester(부평점, qa_employee01) 의 장소 목록 — 다른 지점
 R=$(call qa_employee01 GET /api/purchase/locations "$TOK_EMP1")
 echo "  HTTP $(code_of "$R")"; echo "  $(body_of "$R")"
 expect "장소 목록 200" 200 "$(code_of "$R")"
-expect "다른 지점(일산점) 장소 0건" 0 "$(body_of "$R" | grep -c '2F 공급실')"
-expect "내 지점(부평점) 장소 보임" 1 "$(body_of "$R" | grep -c 'B1F 의약품창고')"
+expect "다른 지점(일산점) 장소 0건" 0 "$(body_of "$R" | grep -c 'S19-2F 공급실')"
+expect "내 지점(부평점) 장소 보임" 1 "$(body_of "$R" | grep -c 'S19-B1F 의약품창고')"
 expect "total 은 1" 1 "$(body_of "$R" | sed -n 's/.*"total":\([0-9]*\).*/\1/p')"
 
 sub "② requester 가 ?branch= 로 다른 지점을 요구해도 무시된다"
 R=$(call qa_employee01 GET "/api/purchase/locations?branch=$BR_B" "$TOK_EMP1")
 echo "  HTTP $(code_of "$R")"; echo "  $(body_of "$R")"
-expect "?branch=다른지점 → 여전히 다른 지점 0건" 0 "$(body_of "$R" | grep -c '2F 공급실')"
+expect "?branch=다른지점 → 여전히 다른 지점 0건" 0 "$(body_of "$R" | grep -c 'S19-2F 공급실')"
 
 sub "③ requester 의 품목 검색 — 다른 지점 전용 품목은 목록에도 total 에도 없다"
 R=$(call qa_employee01 GET "/api/purchase/items" "$TOK_EMP1")
 echo "  HTTP $(code_of "$R")"; echo "  $(body_of "$R")"
 expect "품목 검색 200" 200 "$(code_of "$R")"
-expect "일산점 전용 품목 0건" 0 "$(body_of "$R" | grep -c 'B gauze 3x3')"
-expect "부평점 품목 보임" 1 "$(body_of "$R" | grep -c 'A gauze 2x2')"
-expect "지점 무관 품목 보임" 1 "$(body_of "$R" | grep -c 'ALL cotton')"
+expect "일산점 전용 품목 0건" 0 "$(body_of "$R" | grep -c 'S19-B gauze 3x3')"
+expect "부평점 품목 보임" 1 "$(body_of "$R" | grep -c 'S19-A gauze 2x2')"
+expect "지점 무관 품목 보임" 1 "$(body_of "$R" | grep -c 'S19-ALL cotton')"
 
 sub "④ requester 가 ?branch_used=다른지점 → 0건"
 R=$(call qa_employee01 GET "/api/purchase/items?branch_used=$BR_B" "$TOK_EMP1")
@@ -306,8 +324,8 @@ echo "  $(body_of "$R")"
 sub "⑥ stock(일산점, qa_employee02) 은 반대로 보인다"
 R=$(call qa_employee02 GET /api/purchase/locations "$TOK_EMP2")
 echo "  HTTP $(code_of "$R")"; echo "  $(body_of "$R")"
-expect "일산점 장소 보임" 1 "$(body_of "$R" | grep -c '2F 공급실')"
-expect "부평점 장소 0건" 0 "$(body_of "$R" | grep -c 'B1F 의약품창고')"
+expect "일산점 장소 보임" 1 "$(body_of "$R" | grep -c 'S19-2F 공급실')"
+expect "부평점 장소 0건" 0 "$(body_of "$R" | grep -c 'S19-B1F 의약품창고')"
 
 sub "⑦ buyer(qa_manager01, 지점 없음) 는 전 지점"
 R=$(call qa_manager01 GET /api/purchase/locations "$TOK_MGR")
@@ -330,18 +348,18 @@ expect "Guest → 403" 403 "$(code_of "$R")"
 
 sub "⑩ 기초정보 편집은 재인증 전 403 next:reauth"
 TOK_MGR2=$(login qa_manager01)   # 재인증 창이 없는 새 세션
-R=$(call qa_manager01 POST /api/purchase/brands "$TOK_MGR2" '{"name":"재인증시험"}')
+R=$(call qa_manager01 POST /api/purchase/brands "$TOK_MGR2" '{"name":"S19-재인증시험"}')
 echo "  HTTP $(code_of "$R")"; echo "  $(body_of "$R")"
 expect "재인증 전 기초정보 생성 403" 403 "$(code_of "$R")"
 expect "next:reauth 표시" 1 "$(body_of "$R" | grep -c '"next":"reauth"')"
 echo "  재인증: $(reauth qa_manager01 "$TOK_MGR2")"
-R=$(call qa_manager01 POST /api/purchase/brands "$TOK_MGR2" '{"name":"재인증시험"}')
+R=$(call qa_manager01 POST /api/purchase/brands "$TOK_MGR2" '{"name":"S19-재인증시험"}')
 echo "  재인증 뒤 HTTP $(code_of "$R"): $(body_of "$R")"
 expect "재인증 뒤 201" 201 "$(code_of "$R")"
 
 sub "⑪ requester 는 재인증해도 기초정보를 못 고친다 (재인증은 권한을 만들지 않는다)"
 echo "  재인증: $(reauth qa_employee01 "$TOK_EMP1")"
-R=$(call qa_employee01 POST /api/purchase/brands "$TOK_EMP1" '{"name":"권한없음시험"}')
+R=$(call qa_employee01 POST /api/purchase/brands "$TOK_EMP1" '{"name":"S19-권한없음시험"}')
 echo "  HTTP $(code_of "$R")"; echo "  $(body_of "$R")"
 expect "requester 기초정보 생성 403" 403 "$(code_of "$R")"
 expect "next:reauth 아님(권한 거부)" 0 "$(body_of "$R" | grep -c '"next"')"
@@ -359,9 +377,9 @@ sub "더미 13,500행 적재 (postgres, 시험 뒤 삭제)"
 ADMIN_UID=$(psqlq "SELECT id FROM users WHERE username='qa_admin01';")
 psqlc "INSERT INTO p_items (vendor_id, code, name, spec, unit, pack_qty, cat1_id, cat2_id,
                             stock_managed, price_in, barcode, created_by)
-       SELECT $VEND, 'D'||lpad(g::text,6,'0'),
-              CASE WHEN g % 7 = 0 THEN 'DSO GAUZE '||g||' 2x2inch'
-                   ELSE 'ITEM '||g||' cotton roll' END,
+       SELECT $VEND, 'S19-D'||lpad(g::text,6,'0'),
+              CASE WHEN g % 7 = 0 THEN 'S19-DSO GAUZE '||g||' 2x2inch'
+                   ELSE 'S19-ITEM '||g||' cotton roll' END,
               g||'mm', 'EA', 1, $CAT1, $CAT2, true, 1000 + g, '880'||lpad(g::text,10,'0'), $ADMIN_UID
          FROM generate_series(1, 13500) g;"
 psqlc "ANALYZE p_items;"
@@ -415,15 +433,15 @@ php -d error_reporting=E_ALL <<PHPGEN
 // 최소 구성의 xlsx 를 ZipArchive 로 만든다 — 시험 자료이며 앱 코드가 아니다.
 \$rows = [['품목코드','품목명','구매처명','규격','단위','입고단가']];
 for (\$i = 1; \$i <= 90; \$i++) {
-    \$rows[] = ['X'.str_pad((string)\$i, 5, '0', STR_PAD_LEFT), 'IMPORT ITEM '.\$i, '더존덴탈', \$i.'mm', 'EA', (string)(1000+\$i)];
+    \$rows[] = ['S19-X'.str_pad((string)\$i, 5, '0', STR_PAD_LEFT), 'S19-IMPORT ITEM '.\$i, 'S19-더존덴탈', \$i.'mm', 'EA', (string)(1000+\$i)];
 }
 // 중복 코드 5 — 앞의 X00001..X00005 와 같은 (거래처, 코드)
 for (\$i = 1; \$i <= 5; \$i++) {
-    \$rows[] = ['X'.str_pad((string)\$i, 5, '0', STR_PAD_LEFT), 'DUPLICATE '.\$i, '더존덴탈', '1mm', 'EA', '999'];
+    \$rows[] = ['S19-X'.str_pad((string)\$i, 5, '0', STR_PAD_LEFT), 'S19-DUPLICATE '.\$i, 'S19-더존덴탈', '1mm', 'EA', '999'];
 }
 // 거래처 없음 5
 for (\$i = 1; \$i <= 5; \$i++) {
-    \$rows[] = ['Z'.str_pad((string)\$i, 5, '0', STR_PAD_LEFT), 'NOVENDOR '.\$i, '없는거래처', '1mm', 'EA', '999'];
+    \$rows[] = ['S19-Z'.str_pad((string)\$i, 5, '0', STR_PAD_LEFT), 'S19-NOVENDOR '.\$i, 'S19-없는거래처', '1mm', 'EA', '999'];
 }
 
 \$esc = static fn (string \$v): string => htmlspecialchars(\$v, ENT_QUOTES | ENT_XML1, 'UTF-8');
@@ -516,7 +534,7 @@ echo "  HTTP $(code_of "$R")"; echo "  $(body_of "$R")"
 expect "확정 200" 200 "$(code_of "$R")"
 expect "inserted 90" 90 "$(body_of "$R" | sed -n 's/.*"inserted":\([0-9]*\).*/\1/p')"
 expect "표에 90행만 늘었다" 13593 "$(psqlq "SELECT count(*) FROM p_items;")"
-expect "오류 행(Z 코드) 0건" 0 "$(psqlq "SELECT count(*) FROM p_items WHERE code LIKE 'Z%';")"
+expect "오류 행(Z 코드) 0건" 0 "$(psqlq "SELECT count(*) FROM p_items WHERE code LIKE 'S19-Z%';")"
 
 sub "⑤ 감사 — 확정 1건에 한 줄 (detail 에 rows·inserted·updated·file_id·sha256)"
 psqlq "SELECT summary FROM audit_logs WHERE action='purchase.import.commit' ORDER BY id DESC LIMIT 1;"
@@ -530,13 +548,13 @@ expect "확정 감사에 행 내용은 없다(요약 수치만)" 0 "$(psqlq "SEL
 
 sub "⑥ 매핑 저장 → 같은 양식 재업로드 시 저장된 매핑이 내려온다"
 R=$(call qa_admin01 POST /api/purchase/import/mappings "$TOK_ADMIN" \
-    "{\"kind\":\"items\",\"name\":\"이카운트 품목 v1\",\"mapping\":$MAPPING}")
+    "{\"kind\":\"items\",\"name\":\"S19-이카운트 품목 v1\",\"mapping\":$MAPPING}")
 echo "  HTTP $(code_of "$R")  $(body_of "$R" | head -c 200)"
 expect "매핑 저장 201" 201 "$(code_of "$R")"
 R=$(curl -s -w '\n%{http_code}' -b "$JAR_DIR/qa_admin01.jar" -A "$UA" \
     -H "X-CSRF-Token: $TOK_ADMIN" -F "file=@$WORK/items.xlsx" "$BASE/api/purchase/import")
 expect "재업로드 201" 201 "$(code_of "$R")"
-expect "저장된 매핑이 응답에 있다" 1 "$(body_of "$R" | grep -c '이카운트 품목 v1')"
+expect "저장된 매핑이 응답에 있다" 1 "$(body_of "$R" | grep -c 'S19-이카운트 품목 v1')"
 IMPORT_ID2=$(body_of "$R" | sed -n 's/.*"import_id":"\([0-9a-f-]*\)".*/\1/p')
 
 sub "⑦ 두 번째 확정 — 같은 파일이므로 전부 「갱신 대상이지만 바뀐 것 없음」 = 건너뜀"
@@ -580,8 +598,8 @@ $rows = [['회사명 : 주식회사 플란랩스'], $header];
 for ($i = 1; $i <= 30; $i++) {
     // 분모 1 = 그대로 등록. 마지막 5행만 분모 2 로 두어 review 로 갈리는지 본다.
     $den = ($i > 25) ? '2' : '1';
-    $rows[] = ['더존덴탈', '소모품', '거즈', '', 'E'.str_pad((string)$i, 5, '0', STR_PAD_LEFT),
-               'ECOUNT ITEM '.$i, $i.'mm', 'EA', (string)(2000+$i), '10', $den, '홍길동'];
+    $rows[] = ['S19-더존덴탈', 'S19-소모품', 'S19-거즈', '', 'S19-E'.str_pad((string)$i, 5, '0', STR_PAD_LEFT),
+               'S19-ECOUNT ITEM '.$i, $i.'mm', 'EA', (string)(2000+$i), '10', $den, '홍길동'];
 }
 
 $esc = static fn (string $v): string => htmlspecialchars($v, ENT_QUOTES | ENT_XML1, 'UTF-8');
@@ -692,24 +710,24 @@ echo "  HTTP $(code_of "$R")  $(body_of "$R")"
 expect "확정 200" 200 "$(code_of "$R")"
 expect "inserted 25" 25 "$(body_of "$R" | sed -n 's/.*"inserted":\([0-9]*\).*/\1/p')"
 expect "표에 25행만 늘었다" 25 "$(($(psqlq "SELECT count(*) FROM p_items;") - ITEMS_BEFORE))"
-expect "분모 2 행(E00026~)은 저장되지 않았다" 0 "$(psqlq "SELECT count(*) FROM p_items WHERE code IN ('E00026','E00027','E00028','E00029','E00030');")"
-expect "분자 10 ÷ 분모 1 = 낱개 10" 25 "$(psqlq "SELECT count(*) FROM p_items WHERE code LIKE 'E%' AND pack_qty = 10;")"
+expect "분모 2 행(E00026~)은 저장되지 않았다" 0 "$(psqlq "SELECT count(*) FROM p_items WHERE code IN ('S19-E00026','S19-E00027','S19-E00028','S19-E00029','S19-E00030');")"
+expect "분자 10 ÷ 분모 1 = 낱개 10" 25 "$(psqlq "SELECT count(*) FROM p_items WHERE code LIKE 'S19-E%' AND pack_qty = 10;")"
 
 sub "⑪-g 매핑에 머리행까지 저장되고, 다시 올리면 그대로 돌아온다"
 R=$(call qa_admin01 POST /api/purchase/import/mappings "$TOK_ADMIN" \
-    "{\"kind\":\"items\",\"name\":\"이카운트 ESA009M\",\"mapping\":$EMAP,\"header_row\":1}")
+    "{\"kind\":\"items\",\"name\":\"S19-이카운트 ESA009M\",\"mapping\":$EMAP,\"header_row\":1}")
 echo "  HTTP $(code_of "$R")  $(body_of "$R" | head -c 200)"
 expect "매핑+머리행 저장 201" 201 "$(code_of "$R")"
 expect "저장 응답의 header_row=1" 1 "$(body_of "$R" | grep -o '"header_row":[0-9]*' | head -1 | cut -d: -f2)"
 R=$(call qa_admin01 GET /api/purchase/import/mappings "$TOK_ADMIN")
-expect "목록에 머리행이 함께 있다" 1 "$(body_of "$R" | grep -c '이카운트 ESA009M')"
+expect "목록에 머리행이 함께 있다" 1 "$(body_of "$R" | grep -c 'S19-이카운트 ESA009M')"
 R=$(curl -s -w '\n%{http_code}' -b "$JAR_DIR/qa_admin01.jar" -A "$UA" \
     -H "X-CSRF-Token: $TOK_ADMIN" -F "file=@$WORK/ecount.xlsx" "$BASE/api/purchase/import")
-expect "재업로드 시 저장된 매핑이 머리행과 함께 내려온다" 1 "$(body_of "$R" | grep -c '이카운트 ESA009M')"
+expect "재업로드 시 저장된 매핑이 머리행과 함께 내려온다" 1 "$(body_of "$R" | grep -c 'S19-이카운트 ESA009M')"
 
 sub "⑪-h 매핑 저장에도 범위 밖 머리행은 400"
 R=$(call qa_admin01 POST /api/purchase/import/mappings "$TOK_ADMIN" \
-    "{\"kind\":\"items\",\"name\":\"범위밖\",\"mapping\":$EMAP,\"header_row\":25}")
+    "{\"kind\":\"items\",\"name\":\"S19-범위밖\",\"mapping\":$EMAP,\"header_row\":25}")
 echo "  HTTP $(code_of "$R")  $(body_of "$R")"
 expect "매핑 header_row=25 → 400" 400 "$(code_of "$R")"
 
@@ -721,16 +739,16 @@ php -d error_reporting=E_ALL -r '
 $header = ["거래처코드","거래처그룹1명","거래처명","대표자명","전화","모바일","검색창내용","사용구분","이체정보"];
 $rows = [["회사명 : 주식회사 플란랩스"], $header];
 for ($i = 1; $i <= 6; $i++) {
-    $rows[] = ["V1".str_pad((string)$i, 4, "0", STR_PAD_LEFT), "그룹", "VEND ".$i, "대표".$i,
+    $rows[] = ["S19-V1".str_pad((string)$i, 4, "0", STR_PAD_LEFT), "그룹", "S19-VEND ".$i, "대표".$i,
                "02-000-000".$i, "010-0000-000".$i, "", "YES", "등록"];
 }
 // 같은 이름·다른 코드 2쌍 (VEND 1 · VEND 2 를 다시)
-$rows[] = ["V29001", "그룹", "VEND 1", "대표A", "02-111-1111", "", "", "YES", "등록"];
-$rows[] = ["V29002", "그룹", "VEND 2", "대표B", "02-222-2222", "", "", "YES", "등록"];
+$rows[] = ["S19-V29001", "그룹", "S19-VEND 1", "대표A", "02-111-1111", "", "", "YES", "등록"];
+$rows[] = ["S19-V29002", "그룹", "S19-VEND 2", "대표B", "02-222-2222", "", "", "YES", "등록"];
 // 이름 빈 행 1
-$rows[] = ["V29003", "그룹", "", "대표C", "02-333-3333", "", "", "YES", "등록"];
+$rows[] = ["S19-V29003", "그룹", "", "대표C", "02-333-3333", "", "", "YES", "등록"];
 // 사용구분 NO 1
-$rows[] = ["V29004", "그룹", "VEND STOPPED", "대표D", "02-444-4444", "", "", "NO", "등록"];
+$rows[] = ["S19-V29004", "그룹", "S19-VEND STOPPED", "대표D", "02-444-4444", "", "", "NO", "등록"];
 
 $esc = static fn (string $v): string => htmlspecialchars($v, ENT_QUOTES | ENT_XML1, "UTF-8");
 $sheet = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>"
@@ -794,13 +812,13 @@ echo "  HTTP $(code_of "$R")  $(body_of "$R")"
 expect "확정 200 (409 아님)" 200 "$(code_of "$R")"
 expect "inserted 7" 7 "$(body_of "$R" | sed -n 's/.*"inserted":\([0-9]*\).*/\1/p')"
 expect "표에 7행만 늘었다" 7 "$(($(psqlq "SELECT count(*) FROM p_vendors;") - VB))"
-expect "확인 필요 행(V29001·V29002)은 저장 안 됨" 0 "$(psqlq "SELECT count(*) FROM p_vendors WHERE code IN ('V29001','V29002');")"
-expect "빈 이름 행(V29003) 저장 안 됨" 0 "$(psqlq "SELECT count(*) FROM p_vendors WHERE code='V29003';")"
-expect "사용구분 NO → is_active=false" 1 "$(psqlq "SELECT count(*) FROM p_vendors WHERE code='V29004' AND NOT is_active;")"
-expect "대표자명·전화가 들어갔다" 1 "$(psqlq "SELECT count(*) FROM p_vendors WHERE code='V10001' AND ceo_name='대표1' AND tel='02-000-0001';")"
+expect "확인 필요 행(V29001·V29002)은 저장 안 됨" 0 "$(psqlq "SELECT count(*) FROM p_vendors WHERE code IN ('S19-V29001','S19-V29002');")"
+expect "빈 이름 행(V29003) 저장 안 됨" 0 "$(psqlq "SELECT count(*) FROM p_vendors WHERE code='S19-V29003';")"
+expect "사용구분 NO → is_active=false" 1 "$(psqlq "SELECT count(*) FROM p_vendors WHERE code='S19-V29004' AND NOT is_active;")"
+expect "대표자명·전화가 들어갔다" 1 "$(psqlq "SELECT count(*) FROM p_vendors WHERE code='S19-V10001' AND ceo_name='대표1' AND tel='02-000-0001';")"
 # ★ 표 전체를 세지 않는다 — 사용자의 실제 거래처는 「전화」 칸에 휴대폰 번호가 들어 있는
 #   경우가 흔하다(실측). **이 시험이 만든 거래처(V1xxxx)** 만 본다.
-expect "모바일이 아니라 전화가 남았다" 0 "$(psqlq "SELECT count(*) FROM p_vendors WHERE code LIKE 'V1%' AND tel LIKE '010-%';")"
+expect "모바일이 아니라 전화가 남았다" 0 "$(psqlq "SELECT count(*) FROM p_vendors WHERE code LIKE 'S19-V1%' AND tel LIKE '010-%';")"
 expect "확정 감사에 conflict 없음" 0 "$(psqlq "SELECT count(*) FROM audit_logs WHERE action='purchase.import.commit' AND reason='conflict' AND happened_at > now() - interval '2 minutes';")"
 
 sub "⑫-b 「확인 필요」를 승격하면 **새로 등록**된다 (promote_to = insert)"
@@ -808,8 +826,8 @@ R=$(call qa_admin01 POST "/api/purchase/import/$VEND_ID/commit" "$TOK_ADMIN" \
     "{\"kind\":\"vendors\",\"mapping\":$VMAP,\"header_row\":1,\"promote\":[9,10]}")
 echo "  HTTP $(code_of "$R")  $(body_of "$R")"
 expect "승격 확정 200" 200 "$(code_of "$R")"
-expect "같은 이름·다른 코드가 따로 등록됐다" 2 "$(psqlq "SELECT count(*) FROM p_vendors WHERE code IN ('V29001','V29002');")"
-expect "같은 이름이 두 건 공존한다" 2 "$(psqlq "SELECT count(*) FROM p_vendors WHERE name='VEND 1';")"
+expect "같은 이름·다른 코드가 따로 등록됐다" 2 "$(psqlq "SELECT count(*) FROM p_vendors WHERE code IN ('S19-V29001','S19-V29002');")"
+expect "같은 이름이 두 건 공존한다" 2 "$(psqlq "SELECT count(*) FROM p_vendors WHERE name='S19-VEND 1';")"
 
 sub "⑬ 창고 파일 — 지점 열이 없다 (2차 보정)"
 export WH_XLSX="$WORK/warehouse.xlsx"
@@ -817,11 +835,11 @@ php -d error_reporting=E_ALL -r '
 $header = ["창고코드","창고명","구분","생산공정명","외주거래처명","사용","추가사업장명"];
 $rows = [["회사명 : 주식회사 플란랩스"], $header];
 // 창고명에 지점 이름이 든 것 2 · 안 든 것 2 · 사용 No 1
-$rows[] = ["00001","플란치과_부평점","창고","","","Yes","주식회사 플란랩스"];
-$rows[] = ["00002","플란치과_일산점","창고","","","Yes","주식회사 플란랩스"];
-$rows[] = ["00003","라미트치과","창고","","","Yes","주식회사 플란랩스"];
-$rows[] = ["00004","중앙창고","기타","","","Yes","주식회사 플란랩스"];
-$rows[] = ["00005","폐기창고","창고","","","No","주식회사 플란랩스"];
+$rows[] = ["00001","S19-플란치과_S19-부평점","창고","","","Yes","주식회사 플란랩스"];
+$rows[] = ["00002","S19-플란치과_S19-일산점","창고","","","Yes","주식회사 플란랩스"];
+$rows[] = ["00003","S19-라미트치과","창고","","","Yes","주식회사 플란랩스"];
+$rows[] = ["00004","S19-중앙창고","기타","","","Yes","주식회사 플란랩스"];
+$rows[] = ["00005","S19-폐기창고","창고","","","No","주식회사 플란랩스"];
 $esc = static fn (string $v): string => htmlspecialchars($v, ENT_QUOTES | ENT_XML1, "UTF-8");
 $sheet = "<?xml version=\"1.0\" encoding=\"UTF-8\"?><worksheet xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\"><sheetData>";
 foreach ($rows as $r => $row) {
@@ -878,11 +896,11 @@ R=$(call qa_admin01 POST "/api/purchase/import/$WH_ID/commit" "$TOK_ADMIN" \
     "{\"kind\":\"locations\",\"mapping\":$WMAP,\"header_row\":1,\"default_branch\":$BR_A}")
 echo "  확정 HTTP $(code_of "$R")  $(body_of "$R")"
 expect "창고 확정 200" 200 "$(code_of "$R")"
-expect "「플란치과_일산점」은 일산점으로 갔다" 1 "$(psqlq "SELECT count(*) FROM p_locations WHERE name='플란치과_일산점' AND branch_id=$BR_B;")"
-expect "「플란치과_부평점」은 부평점으로 갔다" 1 "$(psqlq "SELECT count(*) FROM p_locations WHERE name='플란치과_부평점' AND branch_id=$BR_A;")"
-expect "지점 이름이 없는 「중앙창고」는 기본 지점으로" 1 "$(psqlq "SELECT count(*) FROM p_locations WHERE name='중앙창고' AND branch_id=$BR_A;")"
-expect "구분 「기타」 → other" 1 "$(psqlq "SELECT count(*) FROM p_locations WHERE name='중앙창고' AND kind='other';")"
-expect "사용 No → is_active=false" 1 "$(psqlq "SELECT count(*) FROM p_locations WHERE name='폐기창고' AND NOT is_active;")"
+expect "「플란치과_일산점」은 일산점으로 갔다" 1 "$(psqlq "SELECT count(*) FROM p_locations WHERE name='S19-플란치과_S19-일산점' AND branch_id=$BR_B;")"
+expect "「플란치과_부평점」은 부평점으로 갔다" 1 "$(psqlq "SELECT count(*) FROM p_locations WHERE name='S19-플란치과_S19-부평점' AND branch_id=$BR_A;")"
+expect "지점 이름이 없는 「중앙창고」는 기본 지점으로" 1 "$(psqlq "SELECT count(*) FROM p_locations WHERE name='S19-중앙창고' AND branch_id=$BR_A;")"
+expect "구분 「기타」 → other" 1 "$(psqlq "SELECT count(*) FROM p_locations WHERE name='S19-중앙창고' AND kind='other';")"
+expect "사용 No → is_active=false" 1 "$(psqlq "SELECT count(*) FROM p_locations WHERE name='S19-폐기창고' AND NOT is_active;")"
 
 sub "⑭ 창고명에서 지점 파생 등록 (kind=branches · derive=location_name)"
 BB=$(psqlq "SELECT count(*) FROM p_branches;")
@@ -901,8 +919,8 @@ R=$(call qa_admin01 POST "/api/purchase/import/$WH_ID/commit" "$TOK_ADMIN" \
 echo "  확정 HTTP $(code_of "$R")  $(body_of "$R")"
 expect "파생 확정 200" 200 "$(code_of "$R")"
 expect "지점이 3개 늘었다" 3 "$(($(psqlq "SELECT count(*) FROM p_branches;") - BB))"
-expect "「라미트치과」가 지점으로 생겼다" 1 "$(psqlq "SELECT count(*) FROM p_branches WHERE name='라미트치과';")"
-expect "이미 있던 부평점은 그대로 1건" 1 "$(psqlq "SELECT count(*) FROM p_branches WHERE name='부평점';")"
+expect "「라미트치과」가 지점으로 생겼다" 1 "$(psqlq "SELECT count(*) FROM p_branches WHERE name='S19-라미트치과';")"
+expect "이미 있던 부평점은 그대로 1건" 1 "$(psqlq "SELECT count(*) FROM p_branches WHERE name='S19-부평점';")"
 
 sub "⑭-a 브랜드 열도 기본 브랜드도 없으면 400"
 R=$(call qa_admin01 POST "/api/purchase/import/$WH_ID/preview" "$TOK_ADMIN" \
@@ -911,13 +929,13 @@ echo "  HTTP $(code_of "$R")  $(body_of "$R")"
 expect "기본 브랜드 없음 → 400" 400 "$(code_of "$R")"
 
 sub "⑮ 수동 거래처 등록 — 같은 이름은 409, 확인하면 통과 (2차 보정)"
-R=$(call qa_admin01 POST /api/purchase/vendors "$TOK_ADMIN" '{"name":"VEND 1","code":"V90001"}')
+R=$(call qa_admin01 POST /api/purchase/vendors "$TOK_ADMIN" '{"name":"S19-VEND 1","code":"S19-V90001"}')
 echo "  같은 이름 → HTTP $(code_of "$R")  $(body_of "$R")"
 expect "같은 이름 409" 409 "$(code_of "$R")"
-R=$(call qa_admin01 POST /api/purchase/vendors "$TOK_ADMIN" '{"name":"VEND 1","code":"V90001","allow_duplicate_name":true}')
+R=$(call qa_admin01 POST /api/purchase/vendors "$TOK_ADMIN" '{"name":"S19-VEND 1","code":"S19-V90001","allow_duplicate_name":true}')
 echo "  그래도 등록 → HTTP $(code_of "$R")  $(body_of "$R")"
 expect "allow_duplicate_name → 201" 201 "$(code_of "$R")"
-expect "같은 코드는 여전히 409" 409 "$(code_of "$(call qa_admin01 POST /api/purchase/vendors "$TOK_ADMIN" '{"name":"다른이름","code":"V90001","allow_duplicate_name":true}')")"
+expect "같은 코드는 여전히 409" 409 "$(code_of "$(call qa_admin01 POST /api/purchase/vendors "$TOK_ADMIN" '{"name":"S19-다른이름","code":"S19-V90001","allow_duplicate_name":true}')")"
 
 sub "⑯ 없는 거래처를 등록하면 **재판정만으로** 오류가 등록으로 바뀐다 (3차 보정)"
 # 화면은 이 흐름을 팝업으로 한다: 오류 행 옆 「거래처 등록」 → 201 → 같은 import_id 로 preview 재요청.
@@ -926,8 +944,8 @@ export MISS_XLSX="$WORK/missvendor.xlsx"
 php -d error_reporting=E_ALL -r '
 $header = ["품목코드","품목명","구매처명","단위"];
 $rows = [["회사명 : 시험"], $header];
-for ($i = 1; $i <= 4; $i++) { $rows[] = ["M".str_pad((string)$i,5,"0",STR_PAD_LEFT), "MISS ITEM ".$i, "새거래처A", "EA"]; }
-$rows[] = ["M90001", "MISS ITEM 9", "또다른거래처B", "EA"];
+for ($i = 1; $i <= 4; $i++) { $rows[] = ["S19-M".str_pad((string)$i,5,"0",STR_PAD_LEFT), "S19-MISS ITEM ".$i, "S19-새거래처A", "EA"]; }
+$rows[] = ["S19-M90001", "S19-MISS ITEM 9", "S19-또다른거래처B", "EA"];
 $esc = static fn (string $v): string => htmlspecialchars($v, ENT_QUOTES | ENT_XML1, "UTF-8");
 $sheet = "<?xml version=\"1.0\" encoding=\"UTF-8\"?><worksheet xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\"><sheetData>";
 foreach ($rows as $r => $row) { $sheet .= "<row r=\"".($r+1)."\">";
@@ -965,10 +983,10 @@ expect "1차 미리보기 200" 200 "$(code_of "$R")"
 expect "1차 error 5" 5 "$(body_of "$R" | sed -n 's/.*"error":\([0-9]*\).*/\1/p')"
 # `"kind":"vendors"` 는 행마다(missing)·묶음마다 나온다 → **묶음에만 있는** first_row 로 센다.
 expect "없는 값이 **2가지**로 묶인다" 2 "$(body_of "$R" | grep -o '"first_row":[0-9]*' | wc -l)"
-expect "「새거래처A」 4행으로 묶임" 1 "$(body_of "$R" | grep -c '"value":"새거래처A","reason":"vendor_not_found","rows":4')"
+expect "「새거래처A」 4행으로 묶임" 1 "$(body_of "$R" | grep -c '"value":"S19-새거래처A","reason":"vendor_not_found","rows":4')"
 
 sub "⑯-a 팝업이 부르는 것과 **같은 창구**로 거래처를 만든다"
-R=$(call qa_admin01 POST /api/purchase/vendors "$TOK_ADMIN" '{"name":"새거래처A"}')
+R=$(call qa_admin01 POST /api/purchase/vendors "$TOK_ADMIN" '{"name":"S19-새거래처A"}')
 expect "거래처 등록 201" 201 "$(code_of "$R")"
 
 sub "⑯-b 재업로드 없이 같은 import_id 로 다시 판정하면 4행이 풀린다"
@@ -992,7 +1010,7 @@ expect "확정 200" 200 "$(code_of "$R")"
 expect "inserted 2 (4행 중 2행을 뺐다)" 2 "$(body_of "$R" | sed -n 's/.*"inserted":\([0-9]*\).*/\1/p')"
 expect "excluded 2" 2 "$(body_of "$R" | sed -n 's/.*"excluded":\([0-9]*\).*/\1/p')"
 expect "표에 2행만 늘었다" 2 "$(($(psqlq "SELECT count(*) FROM p_items;") - IB))"
-expect "뺀 행(M00001·M00002)은 저장 안 됨" 0 "$(psqlq "SELECT count(*) FROM p_items WHERE code IN ('M00001','M00002');")"
+expect "뺀 행(M00001·M00002)은 저장 안 됨" 0 "$(psqlq "SELECT count(*) FROM p_items WHERE code IN ('S19-M00001','S19-M00002');")"
 psqlq "SELECT '  감사 detail: '||detail::text FROM audit_logs
         WHERE action='purchase.import.commit' AND result='allow' ORDER BY id DESC LIMIT 1;"
 EXC_AFTER=$(psqlq "SELECT count(*) FROM audit_logs
@@ -1015,16 +1033,16 @@ expect "1000개 초과 → 400" 400 "$(code_of "$R")"
 sub "⑰ 같은 이름 거래처가 여럿이면 「확인 필요」 (SECURITY R-72)"
 # ⑫-b 에서 「VEND 1」 이 두 건 공존한다 — 그 이름으로 품목을 가져오면 어느 쪽인지 알 수 없다.
 # 앞선 시험(⑫-b 승격·⑮ 수동 등록)이 몇 건을 남겼는지에 기대지 않는다 — **지금 세어** 쓴다.
-VEND1_N=$(psqlq "SELECT count(*) FROM p_vendors WHERE name='VEND 1';")
+VEND1_N=$(psqlq "SELECT count(*) FROM p_vendors WHERE name='S19-VEND 1';")
 echo "  같은 이름 「VEND 1」 거래처: ${VEND1_N}건"
 expect "준비: 같은 이름 거래처가 2건 이상" yes "$([ "$VEND1_N" -ge 2 ] && echo yes || echo no)"
 export AMB_XLSX="$WORK/ambiguous.xlsx"
 php -d error_reporting=E_ALL -r '
 $header = ["품목코드","품목명","구매처명","거래처코드","단위"];
 $rows = [["회사명 : 시험"], $header];
-$rows[] = ["A00001","AMB ITEM 1","VEND 1","","EA"];
-$rows[] = ["A00002","AMB ITEM 2","VEND 1","","EA"];
-$rows[] = ["A00003","AMB ITEM 3","VEND 1","V29001","EA"];
+$rows[] = ["S19-A00001","S19-AMB ITEM 1","S19-VEND 1","","EA"];
+$rows[] = ["S19-A00002","S19-AMB ITEM 2","S19-VEND 1","","EA"];
+$rows[] = ["S19-A00003","S19-AMB ITEM 3","S19-VEND 1","S19-V29001","EA"];
 $esc = static fn (string $v): string => htmlspecialchars($v, ENT_QUOTES | ENT_XML1, "UTF-8");
 $sheet = "<?xml version=\"1.0\" encoding=\"UTF-8\"?><worksheet xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\"><sheetData>";
 foreach ($rows as $r => $row) { $sheet .= "<row r=\"".($r+1)."\">";
@@ -1094,24 +1112,36 @@ if [ -n "${MISS_ID:-}" ]; then
   done
 
   sub "⑱-b 상태 필터 — 거르기는 **서버가** 한다(50행 안에서만 거르면 사람을 속인다)"
+  # ★ ⑱ 은 ⑯ **뒤에** 돈다 — 그때는 거래처가 이미 등록돼 판정이 달라져 있다.
+  #   그래서 고정 숫자를 기대하지 않고 **같은 응답 안의 counts 와 견준다**(순서에 기대지 않는 단언).
   R=$(call qa_admin01 POST "/api/purchase/import/$MISS_ID/preview" "$TOK_ADMIN" \
       "{\"kind\":\"items\",\"mapping\":$MMAP,\"header_row\":1,\"status\":\"error\"}")
-  echo "  status=error → row_total=$(body_of "$R" | grep -o '"row_total":[0-9]*' | head -1 | cut -d: -f2)"
+  ERR_COUNT=$(body_of "$R" | sed -n 's/.*"error":\([0-9]*\).*/\1/p')
+  ERR_ROWS=$(body_of "$R" | grep -o '"row_total":[0-9]*' | head -1 | cut -d: -f2)
+  echo "  status=error → counts.error=$ERR_COUNT · row_total=$ERR_ROWS"
   expect "status=error 200" 200 "$(code_of "$R")"
-  expect "counts 는 그대로 전체(error 5)" 1 "$(body_of "$R" | grep -c '"error":5')"
+  expect "거른 행 수 = counts.error (거르기는 서버가 한다)" "$ERR_COUNT" "$ERR_ROWS"
   R=$(call qa_admin01 POST "/api/purchase/import/$MISS_ID/preview" "$TOK_ADMIN" \
       "{\"kind\":\"items\",\"mapping\":$MMAP,\"header_row\":1,\"status\":\"insert\"}")
-  expect "등록 행이 없으면 row_total 0" 0 "$(body_of "$R" | grep -o '"row_total":[0-9]*' | head -1 | cut -d: -f2)"
+  INS_COUNT=$(body_of "$R" | sed -n 's/.*"insert":\([0-9]*\).*/\1/p')
+  INS_ROWS=$(body_of "$R" | grep -o '"row_total":[0-9]*' | head -1 | cut -d: -f2)
+  echo "  status=insert → counts.insert=$INS_COUNT · row_total=$INS_ROWS"
+  expect "거른 행 수 = counts.insert" "$INS_COUNT" "$INS_ROWS"
   R=$(call qa_admin01 POST "/api/purchase/import/$MISS_ID/preview" "$TOK_ADMIN" \
       "{\"kind\":\"items\",\"mapping\":$MMAP,\"header_row\":1,\"status\":\"엉뚱한값\"}")
   expect "모르는 status 는 전체로 (400 아님)" 200 "$(code_of "$R")"
 
   sub "⑱-c 찾기(q) — 판정 결과에서만 찾는다. SQL 에 닿지 않는다"
   R=$(call qa_admin01 POST "/api/purchase/import/$MISS_ID/preview" "$TOK_ADMIN" \
-      "{\"kind\":\"items\",\"mapping\":$MMAP,\"header_row\":1,\"q\":\"MISS ITEM 1\"}")
-  echo "  q='MISS ITEM 1' → row_total=$(body_of "$R" | grep -o '"row_total":[0-9]*' | head -1 | cut -d: -f2)"
+      "{\"kind\":\"items\",\"mapping\":$MMAP,\"header_row\":1,\"q\":\"S19-MISS ITEM 1\"}")
+  Q_ROWS=$(body_of "$R" | grep -o '"row_total":[0-9]*' | head -1 | cut -d: -f2)
+  ALL_ROWS=$(body_of "$(call qa_admin01 POST "/api/purchase/import/$MISS_ID/preview" "$TOK_ADMIN" \
+      "{\"kind\":\"items\",\"mapping\":$MMAP,\"header_row\":1}")" | grep -o '"row_total":[0-9]*' | head -1 | cut -d: -f2)
+  echo "  q='S19-MISS ITEM 1' → row_total=$Q_ROWS (거르지 않으면 $ALL_ROWS)"
   expect "찾기 200" 200 "$(code_of "$R")"
-  expect "q 가 응답에 되돌아온다" 1 "$(body_of "$R" | grep -c '"row_q":"MISS ITEM 1"')"
+  expect "q 가 응답에 되돌아온다" 1 "$(body_of "$R" | grep -c '"row_q":"S19-MISS ITEM 1"')"
+  expect "찾기가 실제로 좁힌다" yes "$([ "${Q_ROWS:-0}" -lt "${ALL_ROWS:-0}" ] && echo yes || echo no)"
+  expect "찾은 행이 있다" yes "$([ "${Q_ROWS:-0}" -ge 1 ] && echo yes || echo no)"
   ITEMS_NOW=$(psqlq "SELECT count(*) FROM p_items;")
   for BADQ in "' OR '1'='1" "%" "'; DROP TABLE p_items; --" "_" "\\"; do
     R=$(call qa_admin01 POST "/api/purchase/import/$MISS_ID/preview" "$TOK_ADMIN" \
@@ -1131,13 +1161,13 @@ export WH3_XLSX="$WORK/warehouse3.xlsx"
 php -d error_reporting=E_ALL -r '
 $header = ["창고코드","창고명","구분","사용"];
 $rows = [["회사명 : 주식회사 플란랩스"], $header];
-$rows[] = ["10001","플란치과_강남점_15층 공용부","창고","Yes"];
-$rows[] = ["10002","플란치과_부평점_B1F_의약품창고","창고","Yes"];
-$rows[] = ["10003","플란치과_검단점_6F_공급실","창고","Yes"];
-$rows[] = ["10004","플란치과_부산점_13층 중앙공급실(구매팀)","창고","Yes"];
-$rows[] = ["10005","플란치과_강남점_3F 수술방","창고","Yes"];
-$rows[] = ["10006","플란치과_동탄점","창고","Yes"];
-$rows[] = ["10007","중앙창고","창고","Yes"];
+$rows[] = ["10001","S19-플란치과_S19-강남점_15층 공용부","창고","Yes"];
+$rows[] = ["10002","S19-플란치과_S19-부평점_B1F_의약품창고","창고","Yes"];
+$rows[] = ["10003","S19-플란치과_S19-검단점_6F_공급실","창고","Yes"];
+$rows[] = ["10004","S19-플란치과_S19-부산점_13층 중앙공급실(구매팀)","창고","Yes"];
+$rows[] = ["10005","S19-플란치과_S19-강남점_3F 수술방","창고","Yes"];
+$rows[] = ["10006","S19-플란치과_S19-동탄점","창고","Yes"];
+$rows[] = ["10007","S19-중앙창고","창고","Yes"];
 $esc = static fn (string $v): string => htmlspecialchars($v, ENT_QUOTES | ENT_XML1, "UTF-8");
 $sheet = "<?xml version=\"1.0\" encoding=\"UTF-8\"?><worksheet xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\"><sheetData>";
 foreach ($rows as $r => $row) { $sheet .= "<row r=\"".($r+1)."\">";
@@ -1177,9 +1207,9 @@ expect "미리보기 200" 200 "$(code_of "$R")"
 expect "insert 6" 6 "$(body_of "$R" | sed -n 's/.*"insert":\([0-9]*\).*/\1/p')"
 expect "review 1 (중앙창고 — 판별 불가)" 1 "$(body_of "$R" | sed -n 's/.*"review":\([0-9]*\).*/\1/p')"
 expect "사유 branch_unresolved" 1 "$(body_of "$R" | grep -c 'branch_unresolved')"
-expect "새로 만들 브랜드 1개 (플란치과)" 1 "$(body_of "$R" | grep -c '"brands":\["플란치과"\]')"
-expect "새로 만들 지점에 강남점" 1 "$(body_of "$R" | grep -c '"name":"강남점"')"
-expect "새로 만들 지점에 검단점" 1 "$(body_of "$R" | grep -c '"name":"검단점"')"
+expect "새로 만들 브랜드 1개 (플란치과)" 1 "$(body_of "$R" | grep -c '"brands":\["S19-플란치과"\]')"
+expect "새로 만들 지점에 강남점" 1 "$(body_of "$R" | grep -c '"name":"S19-강남점"')"
+expect "새로 만들 지점에 검단점" 1 "$(body_of "$R" | grep -c '"name":"S19-검단점"')"
 expect "장소 상세(detail)가 응답에 있다" 1 "$(body_of "$R" | grep -c '"detail":"B1F_의약품창고"')"
 
 sub "⑲-b 자리 이름으로 용도를 짐작한다 (구분 열이 전부 「창고」라도)"
@@ -1189,13 +1219,14 @@ R2=$(call qa_admin01 POST "/api/purchase/import/$WH3_ID/commit" "$TOK_ADMIN" \
 echo "  확정 HTTP $(code_of "$R2")  $(body_of "$R2")"
 expect "확정 200" 200 "$(code_of "$R2")"
 expect "브랜드 1개가 함께 생겼다" 1 "$(body_of "$R2" | sed -n 's/.*"brands_created":\([0-9]*\).*/\1/p')"
-expect "지점 5개가 함께 생겼다" 5 "$(body_of "$R2" | sed -n 's/.*"branches_created":\([0-9]*\).*/\1/p')"
-expect "수술방 자리는 kind=or" 1 "$(psqlq "SELECT count(*) FROM p_locations WHERE name='플란치과_강남점_3F 수술방' AND kind='or';")"
+# S19-부평점은 씨앗(1장)에서 이미 만들어져 있다 → 새로 생기는 지점은 강남·검단·부산·동탄 4개다.
+expect "지점 4개가 함께 생겼다 (부평점은 이미 있다)" 4 "$(body_of "$R2" | sed -n 's/.*"branches_created":\([0-9]*\).*/\1/p')"
+expect "수술방 자리는 kind=or" 1 "$(psqlq "SELECT count(*) FROM p_locations WHERE name='S19-플란치과_S19-강남점_3F 수술방' AND kind='or';")"
 expect "중앙공급실(구매팀)은 kind=central" 1 "$(psqlq "SELECT count(*) FROM p_locations WHERE name LIKE '%중앙공급실(구매팀)' AND kind='central';")"
-expect "의약품창고는 kind=warehouse" 1 "$(psqlq "SELECT count(*) FROM p_locations WHERE name='플란치과_부평점_B1F_의약품창고' AND kind='warehouse';")"
-expect "창고 이름은 **원문 그대로** 저장된다" 1 "$(psqlq "SELECT count(*) FROM p_locations WHERE name='플란치과_검단점_6F_공급실';")"
-expect "legacy_name 에도 같은 원문" 1 "$(psqlq "SELECT count(*) FROM p_locations WHERE name='플란치과_검단점_6F_공급실' AND legacy_name='플란치과_검단점_6F_공급실';")"
-expect "강남점 창고 2개가 같은 지점으로" 2 "$(psqlq "SELECT count(*) FROM p_locations l JOIN p_branches b ON b.id=l.branch_id WHERE b.name='강남점';")"
+expect "의약품창고는 kind=warehouse" 1 "$(psqlq "SELECT count(*) FROM p_locations WHERE name='S19-플란치과_S19-부평점_B1F_의약품창고' AND kind='warehouse';")"
+expect "창고 이름은 **원문 그대로** 저장된다" 1 "$(psqlq "SELECT count(*) FROM p_locations WHERE name='S19-플란치과_S19-검단점_6F_공급실';")"
+expect "legacy_name 에도 같은 원문" 1 "$(psqlq "SELECT count(*) FROM p_locations WHERE name='S19-플란치과_S19-검단점_6F_공급실' AND legacy_name='S19-플란치과_S19-검단점_6F_공급실';")"
+expect "강남점 창고 2개가 같은 지점으로" 2 "$(psqlq "SELECT count(*) FROM p_locations l JOIN p_branches b ON b.id=l.branch_id WHERE b.name='S19-강남점';")"
 
 sub "⑩ 업로드 원본이 「구매/가져오기」 폴더(admin-only)에 있나"
 psqlq "SELECT '  '||f.original_name||' | '||f.access_level||' | 폴더='||fo.name||' | sha256='||left(f.sha256,16)||'…'
