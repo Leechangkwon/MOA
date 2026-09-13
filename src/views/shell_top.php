@@ -38,7 +38,12 @@ declare(strict_types=1);
 /** 내비·본문 키의 허용 목록. 여기 없는 값은 빈 문자열이 된다. */
 $shellKeys = ['files', 'trash', 'settings', 'activity', 'users', 'org', 'audit', 'wiki', 'admin',
               // 19단계 구매·재고 모듈 (PRD F-28, ARCH 5.18)
-              'purchase'];
+              'purchase',
+              /* 20단계 전표 화면 — 한 묶음 안의 항목을 따로 켜기 위한 키다. 이 파일은
+                 `$_SERVER['REQUEST_URI']` 를 읽지 않는다 — 어느 항목을 켤지는 **핸들러가
+                 넘긴 `$activeNav`** 만 정하고, 여기 목록은 그 값을 받아 줄 뿐이다.
+                 목록에 없는 값은 빈 문자열이 되어 아무 항목도 켜지지 않는다. */
+              'purchase-pr', 'purchase-po', 'purchase-docs', 'purchase-import'];
 
 $shellUser   = isset($user) && is_array($user) ? $user : [];
 $shellName   = htmlspecialchars((string) ($shellUser['username'] ?? ''), ENT_QUOTES, 'UTF-8');
@@ -135,8 +140,25 @@ if (!headers_sent()) {
     <div id="nav-purchase-group" hidden>
       <p class="nav-title">구매관리</p>
       <nav class="nav" aria-label="구매관리">
-        <a id="nav-purchase" class="<?= $shellNavClass('purchase') ?>" href="/purchase/masters">
+        <!-- 20단계 전표 화면 (PRD F-31~F-33). 항목마다 기본 hidden 이고 app.js 가
+             `/api/me` 의 can_purchase 로 함께 연다 — 역할별로 더 감추지 않는다.
+             어느 전표를 읽고 쓸 수 있는지는 라우트 정책·`Authz` 가 매 요청 다시 정한다. -->
+        <a id="nav-purchase-pr" class="<?= $shellNavClass('purchase-pr') ?>" href="/purchase/pr" hidden>
+          <span class="icon" data-icon="edit"></span><span>발주요청</span>
+        </a>
+        <a id="nav-purchase-po" class="<?= $shellNavClass('purchase-po') ?>" href="/purchase/po" hidden>
+          <span class="icon" data-icon="check"></span><span>발주서</span>
+        </a>
+        <a id="nav-purchase-docs" class="<?= $shellNavClass('purchase-docs') ?>" href="/purchase/docs" hidden>
+          <span class="icon" data-icon="log"></span><span>전표</span>
+        </a>
+        <a id="nav-purchase" class="<?= $shellNavClass('purchase') ?>" href="/purchase/masters" hidden>
           <span class="icon" data-icon="files"></span><span>기초정보</span>
+        </a>
+        <!-- 「가져오기」만 can_purchase_master 로 연다(있는 필드일 때) — 라우트 정책도
+             purchase.master.write 라 항목을 되살려도 서버가 막는다 (PRD S-01). -->
+        <a id="nav-purchase-import" class="<?= $shellNavClass('purchase-import') ?>" href="/purchase/import" hidden>
+          <span class="icon" data-icon="upload"></span><span>가져오기</span>
         </a>
       </nav>
     </div>

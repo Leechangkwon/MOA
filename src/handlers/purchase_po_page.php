@@ -15,6 +15,6 @@ declare(strict_types=1);
  */
 
 $pageTitle = '발주서';
-$activeNav = 'purchase';
+$activeNav = 'purchase-po';
 $pageKey   = 'purchase';
 require __DIR__ . '/../views/purchase_po.php';

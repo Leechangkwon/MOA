@@ -5537,7 +5537,17 @@ function initShell(me, csrfToken) {
      /purchase/* 를 직접 불러도 라우트 정책 purchase.read 가 다시 막는다 (PRD S-01, T-42).
      역할·purchase_role 문자열을 화면에서 비교하지 않는다 (ARCH 4.1). */
   var canPurchase = me.can_purchase === true;
-  showNav('nav-purchase', canPurchase);
+  /* 20단계 — 묶음 안의 전표 화면 항목도 **같은 값 하나**로 함께 연다. 역할별로 더 감추지
+     않는다: 무엇을 읽고 쓸 수 있는지는 라우트 정책과 Authz 가 매 요청 다시 정하고,
+     화면이 역할을 나눠 그리기 시작하면 그것이 곧 화면에 심은 권한 판단이 된다. */
+  ['nav-purchase-pr', 'nav-purchase-po', 'nav-purchase-docs', 'nav-purchase'].forEach(function (id) {
+    showNav(id, canPurchase);
+  });
+  /* 「가져오기」만 예외 — 라우트 정책이 purchase.master.write 라 읽기 전용 사용자에게는
+     열어도 403 이다. 서버가 can_purchase_master 를 주면 그 값으로, 주지 않으면(옛 응답)
+     can_purchase 로 연다. 화면이 역할에서 값을 지어내지 않는다 (PRD S-01). */
+  showNav('nav-purchase-import',
+    typeof me.can_purchase_master === 'boolean' ? me.can_purchase_master : canPurchase);
   var purchaseGroup = document.getElementById('nav-purchase-group');
   if (purchaseGroup) {
     purchaseGroup.hidden = inGate || !canPurchase;

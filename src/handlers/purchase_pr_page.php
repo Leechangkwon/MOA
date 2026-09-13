@@ -18,7 +18,7 @@ declare(strict_types=1);
  */
 
 $pageTitle = '발주요청';
-$activeNav = 'purchase';
+$activeNav = 'purchase-pr';
 // 19단계 사고(내비가 사라짐)의 후속 — 셸이 화면 키를 받아야 app.js 가 initShell 을 돈다.
 $pageKey   = 'purchase';
 require __DIR__ . '/../views/purchase_pr.php';
