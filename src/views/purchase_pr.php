@@ -28,6 +28,9 @@ require __DIR__ . '/shell_top.php';
         <p class="page-head__sub">필요한 것을 적어 두면 구매실이 거래처별로 묶어 발주합니다. <strong>재고는 움직이지 않습니다.</strong></p>
       </div>
       <div class="page-head__actions">
+        <button type="button" class="btn btn--quiet" data-help-open>
+          <span class="icon" data-icon="help"></span><span>사용 방법</span>
+        </button>
         <button id="pr-goto-docs" class="btn btn--quiet" type="button">
           <span class="icon" data-icon="log"></span><span>전표 보기</span>
         </button>

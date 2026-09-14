@@ -23,6 +23,9 @@ require __DIR__ . '/shell_top.php';
         <p class="page-head__sub">거래처 하나에 보내는 문서입니다. 줄마다 <strong>어느 발주요청에서 왔는지</strong>가 붙고, 저장하면 그 요청의 잔량이 줄어듭니다.</p>
       </div>
       <div class="page-head__actions">
+        <button type="button" class="btn btn--quiet" data-help-open>
+          <span class="icon" data-icon="help"></span><span>사용 방법</span>
+        </button>
         <button id="po-goto-docs" class="btn btn--quiet" type="button">
           <span class="icon" data-icon="log"></span><span>전표 보기</span>
         </button>

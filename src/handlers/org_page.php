@@ -39,12 +39,19 @@ declare(strict_types=1);
 $pageTitle = '조직·권한';
 $activeNav = 'org';
 $pageKey   = 'org';
+/* 「사용 방법」 도움말의 키 — 글은 `src/help/screens.php` 한 벌이고 셸이 그린다 (PRD F-38, ARCH 5.19). */
+$pageHelp  = 'org';
 require __DIR__ . '/../views/shell_top.php';
 ?>
     <header class="page-head">
       <div class="page-head__text">
         <h1 class="page-head__title">조직·권한</h1>
         <p class="page-head__sub">팀을 만들고 구성원을 배정합니다. 권한 매트릭스는 확인만 할 수 있습니다.</p>
+      </div>
+      <div class="page-head__actions">
+        <button type="button" class="btn btn--quiet" data-help-open>
+          <span class="icon" data-icon="help"></span><span>사용 방법</span>
+        </button>
       </div>
     </header>
 

@@ -31,6 +31,8 @@ declare(strict_types=1);
 $pageTitle = '파일';
 $activeNav = 'files';
 $pageKey   = 'files';
+/* 「사용 방법」 도움말의 키 — 글은 `src/help/screens.php` 한 벌이고 셸이 그린다 (PRD F-38, ARCH 5.19). */
+$pageHelp  = 'files';
 require __DIR__ . '/../views/shell_top.php';
 ?>
     <header class="page-head">
@@ -39,6 +41,9 @@ require __DIR__ . '/../views/shell_top.php';
         <p class="page-head__sub">내 파일과 팀 파일을 올리고 내려받습니다.</p>
       </div>
       <div class="page-head__actions">
+        <button type="button" class="btn btn--quiet" data-help-open>
+          <span class="icon" data-icon="help"></span><span>사용 방법</span>
+        </button>
         <!-- 18-3 — 머리에는 단추 둘만 둔다. 폼은 아래 <dialog class="modal"> 로 열린다
              (펼침 패널이 늘 화면을 차지하지 않게 — 사용자 요청 2026-09-13).
              「URL 로 가져오기」는 기본 hidden 이고, /api/me 의 can_fetch 가 참일 때만 app.js 가 연다.

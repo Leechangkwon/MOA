@@ -22,6 +22,11 @@ require __DIR__ . '/shell_top.php';
         <p class="page-head__sub">창고 → 중앙장 → 수술방으로 옮기는 「이동」, 수술방에서 쓴 「사용」,
           실제 세어 맞추는 「실사」. 셋 다 재고 원장에 한 줄씩 남습니다.</p>
       </div>
+      <div class="page-head__actions">
+        <button type="button" class="btn btn--quiet" data-help-open>
+          <span class="icon" data-icon="help"></span><span>사용 방법</span>
+        </button>
+      </div>
     </header>
 
   <p id="msg" class="msg" role="alert" aria-live="polite"></p>

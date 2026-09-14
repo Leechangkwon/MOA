@@ -27,6 +27,11 @@ require __DIR__ . '/shell_top.php';
         <h1 class="page-head__title">기초정보</h1>
         <p class="page-head__sub">브랜드 → 지점 → 장소(용도), 거래처, 분류, 품목, 지점별 인가량. 전표는 여기 없는 값을 쓸 수 없습니다.</p>
       </div>
+      <div class="page-head__actions">
+        <button type="button" class="btn btn--quiet" data-help-open>
+          <span class="icon" data-icon="help"></span><span>사용 방법</span>
+        </button>
+      </div>
     </header>
 
   <p id="msg" class="msg" role="alert" aria-live="polite"></p>

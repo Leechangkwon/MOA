@@ -5617,6 +5617,46 @@ function initShell(me, csrfToken) {
   }
 }
 
+/* ─── 「사용 방법」 도움말 (PRD F-38, ARCH 5.19) ──────────────────
+ *
+ * 화면 머리의 「사용 방법」 단추(`[data-help-open]`)가 셀이 그린 `#help-dialog` 를 열고,
+ * 닫기 단추(`[data-help-close]`)가 닫는다. ESC 는 <dialog> 가 스스로 닫는다(브라우저 기본).
+ *
+ * 위임 하나만 둔다 — 화면이 스무 개라 화면마다 리스너를 달면 언젠가 한 화면만 빠진다.
+ * 도움말에는 요청도 권한 판단도 없다 — 열고 닫는 것이 전부다.
+ * 내용은 이미 서버 HTML 에 있다. 이 함수는 글자를 하나도 만들지 않는다
+ * (inner/outer HTML 계열 미사용 — PRD S-03).
+ */
+function initHelpDialog() {
+  /* 이 파일의 openDialog()·closeDialog() 는 화면 함수 안(initFiles·initOrg)에 있는 **지역 함수**라
+     밖에서 부를 수 없다. 같은 규칙(showModal 이 없는 브라우저에선 아무 일도 하지 않는다)을
+     쓰는 한 쌍을 여기 둔다 — 다른 함수는 한 줄도 고치지 않는다. */
+  function openHelp(dialog) {
+    if (dialog && typeof dialog.showModal === 'function' && !dialog.open) {
+      dialog.showModal();
+    }
+  }
+  function closeHelp(dialog) {
+    if (dialog && dialog.open) {
+      dialog.close();
+    }
+  }
+
+  document.addEventListener('click', function (event) {
+    var target = event.target;
+    if (!target || typeof target.closest !== 'function') {
+      return;
+    }
+    if (target.closest('[data-help-open]')) {
+      openHelp(document.getElementById('help-dialog'));
+      return;
+    }
+    if (target.closest('[data-help-close]')) {
+      closeHelp(document.getElementById('help-dialog'));
+    }
+  });
+}
+
 /* ─── 화면별 시작 (12단계 F-20) ────────────────────────────────────
  *
  * 어느 화면인지는 서버가 <body data-page="…"> 로 알려 준다. 화면 코드가 URL 을 읽어
@@ -5740,6 +5780,10 @@ function bootPage(page) {
 document.addEventListener('DOMContentLoaded', function () {
   // 서버 HTML 의 <template> 아이콘을 [data-icon] 자리에 붙인다 (문자열 → HTML 변환 0).
   paintIcons(document);
+
+  /* 「사용 방법」 도움말 (F-38). 어느 화면이든 단추가 있으면 열리게 여기서 한 번 건다 —
+     구매 화면처럼 아래에서 먼저 return 하는 갈래기도 도움말은 같이 쓰기 때문이다. */
+  initHelpDialog();
 
   var page = document.body && document.body.dataset ? document.body.dataset.page : '';
 

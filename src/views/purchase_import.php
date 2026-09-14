@@ -24,6 +24,11 @@ require __DIR__ . '/shell_top.php';
         <h1 class="page-head__title">엑셀 가져오기</h1>
         <p class="page-head__sub">파일 올리기 → 열 맞추기 → 미리보기(행마다 판정) → 확정. 같은 양식은 매핑을 기억해 다음부터 두 걸음으로 끝납니다.</p>
       </div>
+      <div class="page-head__actions">
+        <button type="button" class="btn btn--quiet" data-help-open>
+          <span class="icon" data-icon="help"></span><span>사용 방법</span>
+        </button>
+      </div>
     </header>
 
   <p id="msg" class="msg" role="alert" aria-live="polite"></p>

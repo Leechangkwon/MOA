@@ -30,12 +30,19 @@ declare(strict_types=1);
 $pageTitle = '계정 관리';
 $activeNav = 'users';
 $pageKey   = 'users';
+/* 「사용 방법」 도움말의 키 — 글은 `src/help/screens.php` 한 벌이고 셸이 그린다 (PRD F-38, ARCH 5.19). */
+$pageHelp  = 'users';
 require __DIR__ . '/../views/shell_top.php';
 ?>
     <header class="page-head">
       <div class="page-head__text">
         <h1 class="page-head__title">계정 관리</h1>
         <p class="page-head__sub">계정 생성 · 역할·팀·만료 변경 · 임시 비밀번호 재발급 · 2단계 인증 초기화</p>
+      </div>
+      <div class="page-head__actions">
+        <button type="button" class="btn btn--quiet" data-help-open>
+          <span class="icon" data-icon="help"></span><span>사용 방법</span>
+        </button>
       </div>
     </header>
 

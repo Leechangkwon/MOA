@@ -33,6 +33,8 @@ declare(strict_types=1);
 $pageTitle = '관리자 페이지';
 $activeNav = 'admin';
 $pageKey   = 'admin';
+/* 「사용 방법」 도움말의 키 — 글은 `src/help/screens.php` 한 벌이고 셸이 그린다 (PRD F-38, ARCH 5.19). */
+$pageHelp  = 'admin';
 require __DIR__ . '/../views/shell_top.php';
 ?>
     <header class="page-head">
@@ -41,6 +43,9 @@ require __DIR__ . '/../views/shell_top.php';
         <p class="page-head__sub">관리 기능의 단일 입구입니다. 각 기능은 아래 카드로 들어갑니다.</p>
       </div>
       <div class="page-head__actions">
+        <button type="button" class="btn btn--quiet" data-help-open>
+          <span class="icon" data-icon="help"></span><span>사용 방법</span>
+        </button>
         <span id="admin-reauth" class="badge">재인증 확인 중…</span>
       </div>
     </header>

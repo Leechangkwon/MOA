@@ -23,6 +23,9 @@ require __DIR__ . '/shell_top.php';
         <p class="page-head__sub">현재고는 전표를 더하고 뺀 값입니다 — 수불부에서 왜 그 값인지 되짚을 수 있습니다.</p>
       </div>
       <div class="page-head__actions">
+        <button type="button" class="btn btn--quiet" data-help-open>
+          <span class="icon" data-icon="help"></span><span>사용 방법</span>
+        </button>
         <button id="st-apply" class="btn" type="button">선택 제안을 발주요청으로</button>
       </div>
     </header>

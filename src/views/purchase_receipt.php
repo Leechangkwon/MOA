@@ -25,6 +25,11 @@ require __DIR__ . '/shell_top.php';
         <p class="page-head__sub">물건이 도착하면 발주서를 불러와 <strong>실제 온 수량만</strong> 적습니다.
           저장하면 입고 장소의 재고가 늘고 발주서의 미입고가 줄어듭니다.</p>
       </div>
+      <div class="page-head__actions">
+        <button type="button" class="btn btn--quiet" data-help-open>
+          <span class="icon" data-icon="help"></span><span>사용 방법</span>
+        </button>
+      </div>
     </header>
 
   <p id="msg" class="msg" role="alert" aria-live="polite"></p>

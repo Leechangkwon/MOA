@@ -30,6 +30,9 @@ require __DIR__ . '/shell_top.php';
         <p class="page-head__sub">브랜드와 지점은 여기서 만들고, 창고는 이카운트 파일을 그대로 올린 뒤 지점에 연결합니다. 지점이 없는 창고는 제외하면 됩니다.</p>
       </div>
       <div class="page-head__actions">
+        <button type="button" class="btn btn--quiet" data-help-open>
+          <span class="icon" data-icon="help"></span><span>사용 방법</span>
+        </button>
         <form id="st-upload-form" class="panel__tools">
           <label class="filelabel">
             <span class="btn btn--quiet">창고 파일 고르기</span>

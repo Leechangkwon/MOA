@@ -24,12 +24,19 @@ declare(strict_types=1);
 $pageTitle = '내 활동';
 $activeNav = 'activity';
 $pageKey   = 'activity';
+/* 「사용 방법」 도움말의 키 — 글은 `src/help/screens.php` 한 벌이고 셸이 그린다 (PRD F-38, ARCH 5.19). */
+$pageHelp  = 'activity';
 require __DIR__ . '/../views/shell_top.php';
 ?>
     <header class="page-head">
       <div class="page-head__text">
         <h1 class="page-head__title">내 활동</h1>
         <p class="page-head__sub">내가 한 일만 최근 순서로 보여 줍니다. 20건씩 넘겨 볼 수 있습니다.</p>
+      </div>
+      <div class="page-head__actions">
+        <button type="button" class="btn btn--quiet" data-help-open>
+          <span class="icon" data-icon="help"></span><span>사용 방법</span>
+        </button>
       </div>
     </header>
 

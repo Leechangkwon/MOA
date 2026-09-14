@@ -18,6 +18,11 @@ declare(strict_types=1);
  *                       자기 `#msg` 를 따로 두어 한 문서에 같은 id 가 둘이었고(dup_id),
  *                       오류가 페이지 맨 아래에서만 뜨는 화면도 있었다.
  *                       기본값(없거나 false)은 옛 동작 그대로 — 다른 화면은 바뀌지 않는다.
+ *   · $pageHelp   string 「사용 방법」 도움말의 **키** (PRD F-38, ARCH 5.19). 화면을 그리는
+ *                       핸들러가 `$pageHelp = 'files';` 처럼 한 줄로 넘긴다. 키가
+ *                       `src/help/screens.php` 배열에 있으면 아래에서 <dialog id="help-dialog">
+ *                       를 **한 번** 그리고, 없거나 오타면 아무것도 그리지 않는다 —
+ *                       도움말 키의 오타가 화면을 깨뜨리지 못하게 하는 자리다.
  */
 
 /** 자산 주소의 정수 버전 — filemtime 값이며 이스케이프 대상이 없다 (11단계) */
@@ -25,12 +30,61 @@ $shellJsVersion = (int) filemtime(__DIR__ . '/../../public/assets/app.js');
 
 /** 요청 값이 아니다 — 화면을 그리는 핸들러가 include 전에 정하는 참/거짓 하나다. */
 $shellMsgTop = isset($pageMsgTop) && $pageMsgTop === true;
+
+/**
+ * 「사용 방법」 도움말 (PRD F-38, ARCH 5.19).
+ *
+ * 글은 `src/help/screens.php` 의 **고정 배열** 한 벌이고, 여기서는 핸들러가 넘긴 키로
+ * 그 배열을 찾아보기만 한다. 요청 값·DB·파일 경로 조립이 한 군데도 없다 — 키는 파일 이름이
+ * 아니라 **배열의 첨자**라서, 어떤 문자열이 와도 배열에 없으면 그냥 없는 것이다 (S-06 과 무관).
+ * 배열에 없으면 `null` 로 두고 아래에서 아무것도 내보내지 않는다.
+ */
+$shellHelp = null;
+if (isset($pageHelp) && is_string($pageHelp) && $pageHelp !== '') {
+    $shellHelpAll = require __DIR__ . '/../help/screens.php';
+    if (is_array($shellHelpAll) && isset($shellHelpAll[$pageHelp]) && is_array($shellHelpAll[$pageHelp])) {
+        $shellHelp = $shellHelpAll[$pageHelp];
+    }
+}
 ?>
 <?php if (!$shellMsgTop): ?>
     <p id="msg" class="msg" role="alert" aria-live="polite"></p>
 <?php endif; ?>
   </main>
 </div>
+
+<?php if ($shellHelp !== null): ?>
+<!-- ─── 「사용 방법」 도움말 (PRD F-38, ARCH 5.19) ──────────────────────────
+     .page-head__actions 의 「사용 방법」 단추(`data-help-open`)가 이것을 연다.
+     내용은 `src/help/screens.php` 의 고정 글이고, **모든 문자열이 htmlspecialchars 를
+     거친다** (PRD S-03). 이 자리에는 HTML 조각이 들어오지 않는다 — 배열에 담긴 것은
+     순수 문자열뿐이라, 글에 `<` 가 섞여 있어도 글자로만 나온다.
+     본문(`<main>`) 밖에 둔다: 닫혀 있는 <dialog> 가 화면 문구 검사에 섞이지 않게. -->
+<dialog id="help-dialog" class="modal help-dialog" aria-labelledby="help-title">
+  <div class="modal__head">
+    <h2 id="help-title" class="modal__title"><?= htmlspecialchars((string) ($shellHelp['title'] ?? ''), ENT_QUOTES, 'UTF-8') ?></h2>
+    <button class="btn btn--icon btn--plain" type="button" data-help-close title="닫기" aria-label="닫기">
+      <span class="icon" data-icon="x"></span>
+    </button>
+  </div>
+  <div class="modal__body">
+<?php foreach ((array) ($shellHelp['sections'] ?? []) as $shellHelpSection): ?>
+<?php   $shellHelpH = is_array($shellHelpSection) ? (string) ($shellHelpSection['h'] ?? '') : ''; ?>
+<?php   if ($shellHelpH !== ''): ?>
+    <h3 class="help-dialog__title"><?= htmlspecialchars($shellHelpH, ENT_QUOTES, 'UTF-8') ?></h3>
+<?php   endif; ?>
+    <ul class="help-dialog__list">
+<?php   foreach ((array) ($shellHelpSection['items'] ?? []) as $shellHelpItem): ?>
+      <li><?= htmlspecialchars((string) $shellHelpItem, ENT_QUOTES, 'UTF-8') ?></li>
+<?php   endforeach; ?>
+    </ul>
+<?php endforeach; ?>
+  </div>
+  <div class="modal__foot">
+    <button class="btn btn--quiet" type="button" data-help-close>닫기</button>
+  </div>
+</dialog>
+<?php endif; ?>
 
 <!-- ─── 아이콘 모음. app.js 가 [data-icon="이름"] 자리에 clone 해서 넣는다 ───
      이모지를 쓰지 않는다(글꼴에 따라 모양·의미가 달라진다). 모든 아이콘은
@@ -54,6 +108,7 @@ $shellMsgTop = isset($pageMsgTop) && $pageMsgTop === true;
 <template id="tpl-icon-lock"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg></template>
 <template id="tpl-icon-plus"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg></template>
 <template id="tpl-icon-x"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg></template>
+<template id="tpl-icon-help"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M9.6 9.3a2.5 2.5 0 0 1 4.9.7c0 1.7-2.5 2-2.5 3.6"/><path d="M12 17.2h.01"/></svg></template>
 <template id="tpl-icon-key"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="8" cy="15" r="4"/><path d="m10.8 12.2 8.2-8.2M17 6l2 2M14 9l2 2"/></svg></template>
 
 <script src="/assets/app.js?v=<?= $shellJsVersion ?>"></script>

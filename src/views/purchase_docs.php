@@ -22,6 +22,11 @@ require __DIR__ . '/shell_top.php';
         <h1 class="page-head__title">전표 · 사이클</h1>
         <p class="page-head__sub">요청 → 발주 → 입고. 한 줄을 누르면 오른쪽에 앞뒤로 연결된 전표가 보입니다.</p>
       </div>
+      <div class="page-head__actions">
+        <button type="button" class="btn btn--quiet" data-help-open>
+          <span class="icon" data-icon="help"></span><span>사용 방법</span>
+        </button>
+      </div>
     </header>
 
   <p id="msg" class="msg" role="alert" aria-live="polite"></p>

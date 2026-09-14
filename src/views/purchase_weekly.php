@@ -22,6 +22,9 @@ require __DIR__ . '/shell_top.php';
         <p class="page-head__sub">「사용」 전표와 재고관리를 하지 않는 품목의 입고를 품목 분류로 모아 주(ISO, 월요일 시작) 단위로 셉니다.</p>
       </div>
       <div class="page-head__actions">
+        <button type="button" class="btn btn--quiet" data-help-open>
+          <span class="icon" data-icon="help"></span><span>사용 방법</span>
+        </button>
         <button id="wk-prev" class="btn btn--quiet" type="button">‹ 전주</button>
         <button id="wk-next" class="btn btn--quiet" type="button">다음 주 ›</button>
       </div>

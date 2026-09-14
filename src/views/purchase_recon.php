@@ -25,6 +25,11 @@ require __DIR__ . '/shell_top.php';
         <h1 class="page-head__title">월 대사 · 마감</h1>
         <p class="page-head__sub">우리 입고 기록과 거래처 명세서를 줄마다 맞춥니다. 마감하면 그 달 전표는 잠기고, 고칠 때는 사유와 기록이 남습니다.</p>
       </div>
+      <div class="page-head__actions">
+        <button type="button" class="btn btn--quiet" data-help-open>
+          <span class="icon" data-icon="help"></span><span>사용 방법</span>
+        </button>
+      </div>
     </header>
 
   <p id="msg" class="msg" role="alert" aria-live="polite"></p>
