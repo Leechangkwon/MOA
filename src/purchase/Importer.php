@@ -44,6 +44,21 @@ final class Importer
     public const SAVABLE_KINDS = ['items', 'vendors', 'locations'];
 
     /**
+     * 매핑과 **함께 저장할 수 있는 옵션**의 이름 (9차 보정 2026-09-14).
+     *
+     * 미리보기·확정이 받는 옵션 키와 **같은 목록**이다 — 저장 창구가 더 넓으면 판정이 모르는
+     * 값을 되살려 보내게 되고, 더 좁으면 「같은 양식은 두 걸음으로 끝난다」 가 깨진다.
+     * 값 타입은 저장 창구(`purchase_import_mappings.php`)가 하나씩 본다:
+     * `create_*` 는 참/거짓, `derive` 는 정해진 문자열, `default_*` 는 양의 정수 id.
+     *
+     * @var list<string>
+     */
+    public const OPTION_KEYS = [
+        'create_brands', 'create_branches', 'create_categories', 'create_vendors',
+        'derive', 'default_branch', 'default_brand',
+    ];
+
+    /**
      * 창고명에서 지점 이름을 뽑아 `branches` 로 판정하는 모드 (2차 보정).
      * 화면의 「창고명에서 지점 이름 뽑기」 단추가 `derive=location_name` 으로 부른다.
      */
@@ -110,6 +125,13 @@ final class Importer
      * 8,100행을 한 화면에 쏟으면 확정 단추가 스크롤 저 아래로 밀린다 — 한 쪽씩 넘겨 본다.
      */
     public const PREVIEW_PAGE = 50;
+
+    /**
+     * 「새로 만들 분류·거래처」 이름을 미리보기 응답에 **몇 개까지** 실을까 (9차 보정).
+     * 실제 이카운트 품목 파일은 분류 이름이 157개다 — 전부 실으면 요약이 목록이 되고,
+     * 사람은 개수만 보고 확정을 누른다. 수는 정확히 세고(`new_categories`), 이름은 맛보기다.
+     */
+    public const CREATE_PREVIEW_NAMES = 20;
 
     /**
      * 머리행을 찾을 때 훑는 **앞부분 행 수** (1차 보정 2026-09-13).
@@ -490,6 +512,16 @@ final class Importer
          * 화면의 체크박스 둘이며, 켜져 있으면 판정이 「만들 계획」을 세운다(아직 쓰지 않는다). */
         $createBrands   = isset($options['create_brands']) && $options['create_brands'] === true;
         $createBranches = isset($options['create_branches']) && $options['create_branches'] === true;
+        /* 9차 보정 2026-09-14 — 품목 가져오기의 짝. 창고에만 있던 「함께 만들기」 를 품목에도 둔다.
+         * `items` 가 아닌 종류에는 뜻이 없으므로 **여기서 끈다**(핸들러가 받아도 무시된다). */
+        $createCategories = $kind === 'items' && ($options['create_categories'] ?? null) === true;
+        $createVendors    = $kind === 'items' && ($options['create_vendors'] ?? null) === true;
+
+        /* 「이번 확정으로 새로 만들 것」 계획 — 판정하며 쌓이고, 확정이 그대로 만든다.
+         * 아직 id 가 없는 것은 **음수 임시 id**로 가리키고(nextTemp), 확정이 진짜 id 로 바꿔 넣는다.
+         * 같은 이름은 lookup 에 함께 넣어 두므로 뒤의 행이 **그 임시 id 를 재사용**한다 —
+         * 파일에 8,100행이 있어도 분류·거래처는 고유한 만큼만 생긴다. */
+        $createPlan = ['vendors' => [], 'categories' => [], 'next_temp' => -1];
 
         /* ─── 지점·브랜드가 어디서 오는지 먼저 확인한다 (2차 보정) ───
          *
@@ -544,7 +576,10 @@ final class Importer
             [$rowNo, $data] = $entry;
 
             $judged = match ($kind) {
-                'items'     => self::judgeItem($data, $lookup, $seen),
+                'items'     => self::judgeItem($data, $lookup, $seen, [
+                    'create_categories' => $createCategories,
+                    'create_vendors'    => $createVendors,
+                ], $createPlan),
                 'vendors'   => self::judgeVendor($data, $lookup, $seen),
                 'locations' => self::judgeLocation($data, $lookup, $seen, $defaultBranch, [
                     'create_brands'   => $createBrands,
@@ -583,14 +618,39 @@ final class Importer
             }
         }
 
+        /* 9차 보정 — 품목 가져오기가 함께 만들 **분류·거래처**.
+         * 이름 목록은 화면에 다 뿌리지 않는다(157개가 예사다) — 앞 20개만 보여 주고 수는 정확히
+         * 센다. 확정이 만드는 것은 `plan` 전부이며, 이 목록은 그것을 사람에게 보여 주는 창이다. */
+        $newCategories = [];
+        foreach (array_slice($createPlan['categories'], 0, self::CREATE_PREVIEW_NAMES) as $cat) {
+            $newCategories[] = [
+                'level'       => (int) $cat['level'],
+                'name'        => (string) $cat['name'],
+                'parent_name' => $cat['parent_name'] === null ? null : (string) $cat['parent_name'],
+            ];
+        }
+        $newVendors = [];
+        foreach (array_slice($createPlan['vendors'], 0, self::CREATE_PREVIEW_NAMES) as $ven) {
+            $newVendors[] = (string) $ven['name'];
+        }
+
         return [
             'counts'    => $counts,
             'rows'      => $out,
             'total'     => count($prepared),
+            // 확정이 그대로 쓰는 **계획 원본**(임시 id 포함). 응답에는 싣지 않는다.
+            // ★ 이름이 `$plan` 이 아니라 `$createPlan` 인 이유: 바로 위 창고 요약 루프가
+            //   행마다의 `$row['plan']` 을 `$plan` 에 담아 쓴다(5차 보정). 같은 이름을 쓰면
+            //   그 루프가 이 계획을 덮어써 품목 계획이 통째로 사라진다.
+            'plan'      => $createPlan,
             'to_create' => [
-                'brands'   => array_values($toCreate['brands']),
-                'branches' => array_values($toCreate['branches']),
+                'brands'     => array_values($toCreate['brands']),
+                'branches'   => array_values($toCreate['branches']),
+                'categories' => $newCategories,
+                'vendors'    => $newVendors,
             ],
+            'new_categories' => count($createPlan['categories']),
+            'new_vendors'    => count($createPlan['vendors']),
         ];
     }
 
@@ -604,10 +664,25 @@ final class Importer
      *        화면의 행 체크박스를 끈 행들이다 — 창고명에서 뽑은 지점 후보 중 「임시」·「상담실」
      *        처럼 지점이 아닌 것을 빼는 용도가 첫 번째다. 판정을 바꾸지 않고 **쓰기만 건너뛴다**
      *        (미리보기에서 본 판정과 확정의 판정이 어긋나지 않게).
+     * @param array<string,mixed>       $plan    judge() 가 세운 「확정 때 만들 것」 (9차 보정).
+     *        `vendors`·`categories` 에 **음수 임시 id** 로 적혀 있고, 여기서 진짜 행을 만든 뒤
+     *        품목 행의 `vendor_id`·`cat*_id` 를 그 id 로 바꿔 넣는다. 전부 **이 트랜잭션 안**이다.
+     *
+     *        ★ 계획은 **판정 전체 기준**이라 `exclude_rows` 로 뺀 행의 분류·거래처도 만들어진다.
+     *          미리보기가 「새 분류 N · 새 거래처 N」 이라고 말한 그 수가 그대로 생기는 편이,
+     *          체크 하나를 끌 때마다 생길 것이 달라지는 것보다 사람에게 예측 가능하다.
+     *          (창고 쪽 `plan` 은 행마다 붙어 있어 반대 규칙이다 — 그쪽은 뺀 창고 때문에 지점이
+     *          생기면 안 된다는 요구가 먼저였다.)
      * @return array{inserted:int, updated:int, skipped:int, excluded:int}
      */
-    public static function commit(string $kind, array $judged, array $promote, int $actorId, array $exclude = []): array
-    {
+    public static function commit(
+        string $kind,
+        array $judged,
+        array $promote,
+        int $actorId,
+        array $exclude = [],
+        array $plan = []
+    ): array {
         $inserted = 0;
         $updated  = 0;
         $skipped  = 0;
@@ -636,6 +711,58 @@ final class Importer
         $newBranchIds = [];   // 소문자 이름 → 방금 만든 지점 id
         $brandsCreated   = 0;
         $branchesCreated = 0;
+
+        /* ─── 9차 보정 — 품목 가져오기: **거래처 → 분류 → 품목** 순서로 만든다 ───
+         *
+         * 사용자 관찰(2026-09-14): 이카운트 품목 파일 8,100행 중 대부분이 「분류를 찾을 수
+         * 없습니다」·「거래처를 찾을 수 없습니다」 오류였다. 분류 157개와 미등록 거래처 11개를
+         * 손으로 먼저 만들지 않으면 한 행도 들어가지 않는다.
+         *
+         * 순서가 중요하다 — 품목은 거래처(NOT NULL)와 분류를 가리키므로 앞의 것이 먼저 있어야
+         * 하고, 분류는 자기 부모를 가리키므로 1단 → 2단 → 3단이어야 한다.
+         *
+         * 이 전부가 **호출자가 연 한 트랜잭션 안**이다: 품목 한 줄이 실패하면 방금 만든 분류·
+         * 거래처까지 함께 되돌아간다. "분류만 생기고 품목은 안 들어온" 반쪽 상태를 만들지 않는다
+         * (F-29 의 한 트랜잭션 약속 · 창고 쪽 브랜드·지점과 같은 판단).
+         */
+        $tempMap           = [];   // 음수 임시 id → 방금 만든 진짜 id
+        $categoriesCreated = 0;
+        $vendorsCreated    = 0;
+
+        if ($kind === 'items') {
+            // ① 거래처 — 이름만, 코드는 NULL (파일에 거래처 코드 열이 없다)
+            foreach (($plan['vendors'] ?? []) as $newVendor) {
+                if (!is_array($newVendor)) {
+                    continue;
+                }
+                $tempMap[(int) $newVendor['temp_id']] =
+                    self::insertVendorName((string) $newVendor['name'], $actorId);
+                $vendorsCreated++;
+            }
+
+            // ② 분류 — 1단 → 2단 → 3단. 부모가 방금 만든 것이면 위에서 받은 진짜 id 로 잇는다.
+            for ($level = 1; $level <= 3; $level++) {
+                foreach (($plan['categories'] ?? []) as $newCat) {
+                    if (!is_array($newCat) || (int) $newCat['level'] !== $level) {
+                        continue;
+                    }
+                    $parentRef = (int) ($newCat['parent'] ?? 0);
+                    $parentId  = null;
+                    if ($parentRef < 0) {
+                        if (!isset($tempMap[$parentRef])) {
+                            // 계획이 깨졌다 — 부모 없는 분류를 만들지 않고 전부 되돌린다.
+                            throw new RuntimeException('insert_failed');
+                        }
+                        $parentId = $tempMap[$parentRef];
+                    } elseif ($parentRef > 0) {
+                        $parentId = $parentRef;
+                    }
+                    $tempMap[(int) $newCat['temp_id']] =
+                        self::insertCategoryRow($level, $parentId, (string) $newCat['name'], $actorId);
+                    $categoriesCreated++;
+                }
+            }
+        }
 
         if ($kind === 'locations') {
             $plans = [];
@@ -710,6 +837,21 @@ final class Importer
 
             $values = is_array($row['values'] ?? null) ? $row['values'] : [];
 
+            /* 방금 만든 거래처·분류를 가리키는 품목 행이면 여기서 진짜 id 로 바꾼다 (9차 보정).
+             * 판정 때는 아직 행이 없어 **음수 임시 id** 였다. */
+            if ($kind === 'items' && $tempMap !== []) {
+                foreach (['vendor_id', 'cat1_id', 'cat2_id', 'cat3_id'] as $column) {
+                    $ref = $values[$column] ?? null;
+                    if (is_int($ref) && $ref < 0) {
+                        if (!isset($tempMap[$ref])) {
+                            // 계획에 없던 임시 id — 반쪽 저장을 만들지 않고 전부 되돌린다.
+                            throw new RuntimeException('insert_failed');
+                        }
+                        $values[$column] = $tempMap[$ref];
+                    }
+                }
+            }
+
             /* 새로 만든 지점을 가리키는 창고 행이면 여기서 id 를 채운다 (5차 보정).
              * 판정 때는 아직 지점이 없어 `branch_id` 가 null 이었다. */
             if ($kind === 'locations' && ($values['branch_id'] ?? null) === null) {
@@ -741,7 +883,9 @@ final class Importer
         return ['inserted' => $inserted, 'updated' => $updated,
                 'skipped' => $skipped, 'excluded' => $excluded,
                 // 5차 보정 — 창고 가져오기가 **덤으로 만든** 것들
-                'brands_created' => $brandsCreated, 'branches_created' => $branchesCreated];
+                'brands_created' => $brandsCreated, 'branches_created' => $branchesCreated,
+                // 9차 보정 — 품목 가져오기가 함께 만든 분류·거래처
+                'categories_created' => $categoriesCreated, 'vendors_created' => $vendorsCreated];
     }
 
     /* ───────────────────────── 내부 ───────────────────────── */
@@ -874,21 +1018,42 @@ final class Importer
         SQL;
 
     /**
-     * 품목 한 행 (지시서 보충 7).
-     *   · 거래처를 코드 또는 이름으로 찾는다 → 없으면 error `vendor_not_found`
-     *   · 단위가 비면 error `unit_missing`
-     *   · 분류 이름이 있는데 그 단계에 없으면 error `category_not_found` (조용히 만들지 않는다)
+     * 품목 한 행 (지시서 보충 7 · 9차 보정 2026-09-14).
+     *   · 거래처를 코드 또는 이름으로 찾는다 → 이름이 **비면** error `vendor_missing`,
+     *     이름은 있는데 없으면 error `vendor_not_found` (옵션 `create_vendors` 가 켜져 있으면
+     *     오류 대신 「확정 때 만들 거래처」로 계획한다), 같은 이름이 둘 이상이면 review
+     *     `vendor_ambiguous` — **이 경우는 옵션과 무관하게 새로 만들지 않는다** (SECURITY R-72)
+     *   · 단위가 비면 **오류가 아니다** — `unit` 을 NULL 로 둔다 (사용자 결정 2026-09-14)
+     *   · 분류 이름이 있는데 그 단계에 없으면 error `category_not_found` (옵션
+     *     `create_categories` 가 켜져 있으면 오류 대신 「확정 때 만들 분류」로 계획한다)
      *   · 같은 (거래처, 코드)가 **이 파일 안에** 또 있으면 error `duplicate_in_file`
      *   · DB 에 이미 있으면 update(달라진 칸만), 이름만 다르면 review
      *   · 없으면 insert
      *
+     * ★ 왜 「빈 단위」가 오류가 아닌가 (2026-09-14 실측·사용자 결정)
+     *   이카운트 품목 파일 8,100행 중 **2,678행의 단위가 빈칸**이다. 그것이 원본의 사실이고,
+     *   우리가 「EA」나 「-」로 메우면 없던 정보를 지어내는 것이다. `p_items.unit` 은 NULL 허용이며
+     *   `Doc.php`·`Stock.php`·화면 셋 다 이미 `unit === null` 을 다룬다.
+     *
+     * ★ 왜 거래처 빈칸만은 끝까지 오류인가
+     *   `p_items.vendor_id` 는 NOT NULL 이다. 「미지정 거래처」 같은 가짜 행에 붙이면 그 순간
+     *   발주서가 갈 곳을 잃고, 그 오류는 발주를 내보내기 전까지 드러나지 않는다.
+     *
      * @param array<string,string>              $d
-     * @param array<string,array<string,mixed>> $lookup
+     * @param array<string,array<string,mixed>> $lookup  **참조** — 계획한 분류·거래처를 여기 넣어
+     *        두어야 뒤의 행이 같은 것을 또 만들지 않는다
      * @param array<string,bool>                $seen
+     * @param array<string,bool>                $opts   create_categories · create_vendors
+     * @param array<string,mixed>               $plan   확정이 만들 것들 (참조로 쌓인다)
      * @return array<string,mixed>
      */
-    private static function judgeItem(array $d, array $lookup, array &$seen): array
-    {
+    private static function judgeItem(
+        array $d,
+        array &$lookup,
+        array &$seen,
+        array $opts = [],
+        array &$plan = []
+    ): array {
         $code = $d['code'] ?? '';
         $name = $d['name'] ?? '';
         if ($code === '' || $name === '') {
@@ -904,35 +1069,49 @@ final class Importer
          *     조용히 첫 거래처에 붙이면 품목 수천 건이 엉뚱한 거래처로 묶이고, 그 오류는
          *     발주서를 내보내기 전까지 드러나지 않는다.
          */
+        $createVendors    = ($opts['create_vendors'] ?? false) === true;
+        $createCategories = ($opts['create_categories'] ?? false) === true;
+
         $vendorCodeText = trim($d['vendor_code'] ?? '');
-        $vendorText     = $d['vendor'] ?? '';
+        $vendorText     = trim($d['vendor'] ?? '');
         $vendorAmbiguous = 0;
 
         if ($vendorCodeText !== '') {
             $vendorId = $lookup['vendor_by_code'][strtolower($vendorCodeText)] ?? null;
             if ($vendorId === null) {
+                /* 코드가 적혀 있는데 그 코드가 우리에게 없다 — **이름만 보고 만들지 않는다.**
+                 * 코드가 그 거래처의 정체이고, 우리가 만드는 거래처에는 코드를 넣지 않는다
+                 * (남의 코드 체계를 우리 표에 복제하는 것은 사람이 정할 일이다). */
                 return self::fail('vendor_not_found', $d, ['kind' => 'vendors', 'value' => $vendorText]);
             }
+        } elseif ($vendorText === '') {
+            // 거래처 칸이 **비어 있다** — vendor_id 는 NOT NULL 이고 가짜 거래처를 만들지 않는다.
+            return self::fail('vendor_missing', $d);
         } else {
             $byCode = $lookup['vendor_by_code'][strtolower($vendorText)] ?? null;
             $byName = $lookup['vendor_by_name'][strtolower($vendorText)] ?? null;
             $vendorId = $byCode ?? $byName;
             if ($vendorId === null) {
-                return self::fail('vendor_not_found', $d, ['kind' => 'vendors', 'value' => $vendorText]);
-            }
-            if ($byCode === null) {
+                if (!$createVendors) {
+                    return self::fail('vendor_not_found', $d, ['kind' => 'vendors', 'value' => $vendorText]);
+                }
+                // 옵션이 켜져 있다 — 확정 때 **이름만** 있는 거래처로 만든다(코드 NULL).
+                $vendorId = self::planVendor($vendorText, $lookup, $plan);
+            } elseif ($byCode === null) {
                 $vendorAmbiguous = (int) ($lookup['vendor_name_count'][strtolower($vendorText)] ?? 1);
             }
         }
+        /* 같은 이름이 **이미 둘 이상** 있으면 옵션이 켜져 있어도 새로 만들지 않는다 (R-72) —
+         * 위에서 이름으로 찾은 첫 거래처를 쥐고 review 로 세운다(아래 $flagReason). */
 
+        // 단위 빈칸은 오류가 아니다 — 원본 그대로 NULL 로 둔다 (위 ★, 사용자 결정 2026-09-14).
         $unit = $d['unit'] ?? '';
-        if ($unit === '') {
-            return self::fail('unit_missing', $d);
-        }
 
         // 분류 3단 — 위에서부터 이름으로 찾아 내려간다. 빈 칸은 "없음" 이고 오류가 아니다.
-        $catIds = [null, null, null];
-        $parent = 0;
+        $catIds     = [null, null, null];
+        $catNew     = [];
+        $parent     = 0;
+        $parentName = null;
         for ($level = 1; $level <= 3; $level++) {
             $label = $d['cat' . $level] ?? '';
             if ($label === '') {
@@ -941,17 +1120,36 @@ final class Importer
             $key = (string) $level . '|' . (string) $parent . '|' . strtolower($label);
             $id  = $lookup['category'][$key] ?? null;
             if ($id === null) {
-                // 3차 보정 — **몇 단계의 어떤 이름**이 없었는지 알려 준다. 화면이 그 값으로
-                // 분류 등록 모달을 채운다(부모까지 함께 넘겨 같은 자리에 만들게 한다).
-                return self::fail('category_not_found', $d, [
-                    'kind'      => 'categories',
-                    'value'     => $label,
-                    'level'     => $level,
-                    'parent_id' => $parent > 0 ? $parent : null,
-                ]);
+                if (!$createCategories) {
+                    // 3차 보정 — **몇 단계의 어떤 이름**이 없었는지 알려 준다. 화면이 그 값으로
+                    // 분류 등록 모달을 채운다(부모까지 함께 넘겨 같은 자리에 만들게 한다).
+                    return self::fail('category_not_found', $d, [
+                        'kind'      => 'categories',
+                        'value'     => $label,
+                        'level'     => $level,
+                        'parent_id' => $parent > 0 ? $parent : null,
+                    ]);
+                }
+                // 옵션이 켜져 있다 — 확정 때 **이 자리에**(같은 부모 밑에) 만든다.
+                $id = self::planCategory($level, $parent, $label, $parentName, $lookup, $plan);
+            }
+            if ($id < 0) {
+                // 아직 없는 분류(임시 id)다 — 화면이 「분류 새로」 배지를 세운다.
+                $catNew[] = ['level' => $level, 'name' => $label, 'parent_name' => $parentName];
             }
             $catIds[$level - 1] = $id;
-            $parent = $id;
+            $parent     = $id;
+            $parentName = $label;
+        }
+
+        /* 이 행이 「새로 만들 것」에 기대고 있나 — 미리보기 표의 작은 배지 재료다.
+         * 값은 파일에 적힌 글자 그대로이고, 화면은 textContent 로만 넣는다. */
+        $flags = [];
+        if ($vendorId < 0) {
+            $flags['vendor_new'] = $vendorText;
+        }
+        if ($catNew !== []) {
+            $flags['category_new'] = $catNew;
         }
 
         $values = [
@@ -959,7 +1157,8 @@ final class Importer
             'code'          => self::cut($code, 60),
             'name'          => self::cut($name, 200),
             'spec'          => self::orNull($d['spec'] ?? ''),
-            'unit'          => self::cut($unit, 40),
+            // 빈 단위는 **빈 값 그대로**(NULL) — 원본과 같게 (사용자 결정 2026-09-14).
+            'unit'          => $unit === '' ? null : self::cut($unit, 40),
             'pack_qty'      => self::intOr($d['pack_qty'] ?? '', 1, 1, 9999999),
             'cat1_id'       => $catIds[0],
             'cat2_id'       => $catIds[1],
@@ -1024,6 +1223,9 @@ final class Importer
             if ($vendorAmbiguous > 1) {
                 $row['vendor_count'] = $vendorAmbiguous;   // 화면이 「같은 이름 N개」 로 보여 준다
             }
+            if ($flags !== []) {
+                $row['flags'] = $flags;
+            }
             return $row;
         }
 
@@ -1049,7 +1251,79 @@ final class Importer
         if ($vendorAmbiguous > 1) {
             $row['vendor_count'] = $vendorAmbiguous;
         }
+        if ($flags !== []) {
+            $row['flags'] = $flags;
+        }
         return $row;
+    }
+
+    /**
+     * 「확정 때 만들 거래처」 하나를 계획한다 (9차 보정). 이름만 있고 **코드는 NULL** 이다.
+     *
+     * 같은 이름은 한 번만 계획한다 — lookup 에 임시 id 를 함께 넣어 두므로 뒤의 행은 그것을
+     * 그대로 쓴다(8,100행짜리 파일이 같은 거래처를 수백 번 가리켜도 한 건만 생긴다).
+     *
+     * @param array<string,array<string,mixed>> $lookup 참조
+     * @param array<string,mixed>               $plan   참조
+     * @return int 음수 임시 id (확정이 진짜 id 로 바꿔 넣는다)
+     */
+    private static function planVendor(string $name, array &$lookup, array &$plan): int
+    {
+        $key      = strtolower($name);
+        $existing = $lookup['vendor_by_name'][$key] ?? null;
+        if ($existing !== null) {
+            return (int) $existing;
+        }
+        $temp = self::nextTemp($plan);
+        $plan['vendors'][] = ['temp_id' => $temp, 'name' => self::cut($name, 120)];
+        $lookup['vendor_by_name'][$key]    = $temp;
+        $lookup['vendor_name_count'][$key] = 1;
+        return $temp;
+    }
+
+    /**
+     * 「확정 때 만들 분류」 하나를 계획한다 (9차 보정).
+     *
+     * 열쇠는 `단계|부모|이름(소문자)` 로 판정 lookup 과 **완전히 같다** — 그래서 같은 부모 밑의
+     * 같은 이름은 한 번만 생기고, 부모가 다르면 같은 이름이라도 따로 생긴다(이카운트의 중분류
+     * 「기타」 는 대분류마다 하나씩 있다). 부모는 이미 있는 분류의 id 이거나 **앞서 계획한
+     * 임시 id**(음수)이며, 확정이 1단 → 2단 → 3단 차례로 만들며 진짜 id 로 이어 준다.
+     *
+     * @param int                               $parent 0 = 뿌리, 양수 = 기존 id, 음수 = 계획한 분류
+     * @param array<string,array<string,mixed>> $lookup 참조
+     * @param array<string,mixed>               $plan   참조
+     * @return int 음수 임시 id
+     */
+    private static function planCategory(
+        int $level,
+        int $parent,
+        string $name,
+        ?string $parentName,
+        array &$lookup,
+        array &$plan
+    ): int {
+        $key = (string) $level . '|' . (string) $parent . '|' . strtolower($name);
+        if (isset($lookup['category'][$key])) {
+            return (int) $lookup['category'][$key];
+        }
+        $temp = self::nextTemp($plan);
+        $plan['categories'][] = [
+            'temp_id'     => $temp,
+            'level'       => $level,
+            'parent'      => $parent,
+            'name'        => self::cut($name, 80),
+            'parent_name' => $parentName,
+        ];
+        $lookup['category'][$key] = $temp;
+        return $temp;
+    }
+
+    /** 다음 임시 id (-1, -2, …). 진짜 id 는 언제나 양수라 섞일 일이 없다. */
+    private static function nextTemp(array &$plan): int
+    {
+        $next = (int) ($plan['next_temp'] ?? -1);
+        $plan['next_temp'] = $next - 1;
+        return $next;
     }
 
     /**
@@ -1791,6 +2065,46 @@ final class Importer
     {
         $row = Db::instance()->run(self::SQL_INSERT_BRAND_ROW, [
             ':name' => self::cut($name, 60), ':created_by' => $actorId,
+        ])->fetch();
+        if (!is_array($row)) {
+            throw new RuntimeException('insert_failed');
+        }
+        return (int) $row['id'];
+    }
+
+    /* 품목 가져오기가 함께 만드는 거래처·분류 (9차 보정). 같은 트랜잭션 안이다.
+     * 거래처는 **이름만** 넣는다 — 이카운트 품목 파일에는 거래처 코드 열이 아예 없고,
+     * 코드 없는 거래처는 이름이 정체다(`p_vendors.code` 는 NULL 허용, UNIQUE 는 NOT NULL 일 때만). */
+    private const SQL_INSERT_VENDOR_NAME = <<<'SQL'
+        INSERT INTO p_vendors (code, name, created_by) VALUES (NULL, :name, :created_by) RETURNING id
+        SQL;
+
+    private const SQL_INSERT_CATEGORY_ROW = <<<'SQL'
+        INSERT INTO p_categories (parent_id, name, level, created_by)
+        VALUES (CAST(:parent_id AS bigint), :name, CAST(:level AS int), :created_by)
+        RETURNING id
+        SQL;
+
+    /** 이름만 있는 거래처 하나 (코드 NULL). 손으로 만드는 창구와 **같은 표·같은 제약**이다. */
+    private static function insertVendorName(string $name, int $actorId): int
+    {
+        $row = Db::instance()->run(self::SQL_INSERT_VENDOR_NAME, [
+            ':name' => self::cut($name, 120), ':created_by' => $actorId,
+        ])->fetch();
+        if (!is_array($row)) {
+            throw new RuntimeException('insert_failed');
+        }
+        return (int) $row['id'];
+    }
+
+    /** 분류 하나. 1단은 부모가 NULL 이고 2·3단은 부모가 있어야 한다(DB CHECK 가 마지막 그물). */
+    private static function insertCategoryRow(int $level, ?int $parentId, string $name, int $actorId): int
+    {
+        $row = Db::instance()->run(self::SQL_INSERT_CATEGORY_ROW, [
+            ':parent_id'  => $parentId,
+            ':name'       => self::cut($name, 80),
+            ':level'      => $level,
+            ':created_by' => $actorId,
         ])->fetch();
         if (!is_array($row)) {
             throw new RuntimeException('insert_failed');

@@ -88,9 +88,21 @@ if ($body === [] || array_diff(array_keys($body), ['kind', 'mapping', 'header_ro
                                           'default_branch', 'default_brand', 'derive',
                                           // 5차 보정 — 없는 브랜드·지점을 함께 만들까
                                           'create_brands', 'create_branches',
+                                          // 9차 보정 — 파일의 분류·없는 거래처를 함께 만들까(품목)
+                                          'create_categories', 'create_vendors',
                                           // 6차 보정 — 행 목록 페이지·필터 (판정은 전체 행 그대로)
                                           'page', 'q', 'status']) !== []) {
     $reject('bad_request', 400, Http::MSG_BAD_REQUEST);
+}
+
+/* 9차 보정 — 「함께 만들기」 스위치는 **참·거짓만** 받는다.
+ * `"yes"` 같은 문자열을 조용히 거짓으로 읽으면, 사람은 켰다고 믿는데 서버는 끈 채로 판정해
+ * 「분류를 찾을 수 없습니다」 8,000행을 돌려준다 — 그 어긋남이 가장 찾기 어렵다.
+ * (앞선 create_brands·create_branches 는 `=== true` 로만 보던 자리라 그대로 둔다.) */
+foreach (['create_categories', 'create_vendors'] as $switch) {
+    if (array_key_exists($switch, $body) && !is_bool($body[$switch])) {
+        $reject('bad_request', 400, Http::MSG_BAD_REQUEST, ['why' => 'bad_option']);
+    }
 }
 
 $kind = $body['kind'] ?? '';
@@ -143,6 +155,10 @@ try {
          * 만드는 것과 **같은 표·같은 제약**에 들어간다. */
         'create_brands'   => ($body['create_brands'] ?? null) === true,
         'create_branches' => ($body['create_branches'] ?? null) === true,
+        /* 9차 보정 — 품목 파일의 분류·없는 거래처를 확정과 **같은 트랜잭션**에서 만든다.
+         * 종류가 items 가 아니면 Importer 가 무시한다(창고 파일에 보내도 아무 일이 없다). */
+        'create_categories' => ($body['create_categories'] ?? null) === true,
+        'create_vendors'    => ($body['create_vendors'] ?? null) === true,
     ]);
 } catch (RuntimeException $e) {
     $why = $e->getMessage();
@@ -197,6 +213,11 @@ $slim = static function (array $row) use ($branchNames): array {
     }
     if (isset($row['vendor_count'])) {
         $out['vendor_count'] = (int) $row['vendor_count'];   // 같은 이름의 거래처 수 (R-72)
+    }
+    /* 9차 보정 — 이 행이 **새로 만들 분류·거래처**에 기대고 있나. 화면은 「등록」 판정 옆에
+     * 작은 배지(「분류 새로」·「거래처 새로」)를 세운다. 값은 파일에 적힌 글자 그대로다. */
+    if (isset($row['flags']) && is_array($row['flags'])) {
+        $out['flags'] = $row['flags'];
     }
     return $out;
 };
@@ -338,5 +359,10 @@ Http::json([
     'missing'   => $missingList,
     /* 5차 보정 — 이번 확정으로 **새로 생길** 브랜드·지점. 화면이 확정 전에
      * 「새로 만들 브랜드 3 · 지점 5」 로 보여 준다 — 무엇이 생기는지 모르고 누르는 일이 없게. */
-    'to_create' => $judged['to_create'] ?? ['brands' => [], 'branches' => []],
+    'to_create' => $judged['to_create'] ?? ['brands' => [], 'branches' => [],
+                                            'categories' => [], 'vendors' => []],
+    /* 9차 보정 — 품목 가져오기가 함께 만들 **분류·거래처의 수**(이름은 to_create 에 앞 20개).
+     * 수는 전체 기준이고 이름만 잘린다 — 「새 분류 157」 이라고 말해 놓고 20개만 만들면 거짓말이다. */
+    'new_categories' => (int) ($judged['new_categories'] ?? 0),
+    'new_vendors'    => (int) ($judged['new_vendors'] ?? 0),
 ]);

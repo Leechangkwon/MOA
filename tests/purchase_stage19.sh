@@ -810,6 +810,9 @@ expect "사유 duplicate_name_in_file" 1 "$(body_of "$R" | grep -c 'duplicate_na
 
 sub "⑫-a 확정 — **409 가 나지 않는다**(겹치는 행은 판정에서 미리 걸렀다)"
 VB=$(psqlq "SELECT count(*) FROM p_vendors;")
+# 2026-09-14: conflict 감사 단언의 창을 「최근 2분」이 아니라 「이 확정 직전 시각 이후」로 좁힌다 —
+# 바로 앞에 돈 tests/purchase_import_items.sh (v) 가 의도된 409 를 남겨 이 단언이 오탐(228/229)했다.
+T12A=$(psqlq "SELECT now();")
 R=$(call qa_admin01 POST "/api/purchase/import/$VEND_ID/commit" "$TOK_ADMIN" \
     "{\"kind\":\"vendors\",\"mapping\":$VMAP,\"header_row\":1}")
 echo "  HTTP $(code_of "$R")  $(body_of "$R")"
@@ -823,7 +826,7 @@ expect "대표자명·전화가 들어갔다" 1 "$(psqlq "SELECT count(*) FROM p
 # ★ 표 전체를 세지 않는다 — 사용자의 실제 거래처는 「전화」 칸에 휴대폰 번호가 들어 있는
 #   경우가 흔하다(실측). **이 시험이 만든 거래처(V1xxxx)** 만 본다.
 expect "모바일이 아니라 전화가 남았다" 0 "$(psqlq "SELECT count(*) FROM p_vendors WHERE code LIKE 'S19-V1%' AND tel LIKE '010-%';")"
-expect "확정 감사에 conflict 없음" 0 "$(psqlq "SELECT count(*) FROM audit_logs WHERE action='purchase.import.commit' AND reason='conflict' AND happened_at > now() - interval '2 minutes';")"
+expect "확정 감사에 conflict 없음" 0 "$(psqlq "SELECT count(*) FROM audit_logs WHERE action='purchase.import.commit' AND reason='conflict' AND happened_at > '$T12A'::timestamptz;")"
 
 sub "⑫-b 「확인 필요」를 승격하면 **새로 등록**된다 (promote_to = insert)"
 R=$(call qa_admin01 POST "/api/purchase/import/$VEND_ID/commit" "$TOK_ADMIN" \

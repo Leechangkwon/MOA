@@ -449,11 +449,19 @@ CREATE TABLE p_import_mappings (
     -- 머리행을 또 골라야 한다 (19단계 1차 보정 2026-09-13, db/migrations/…_import_header.sql).
     -- 범위는 앱의 Importer::HEAD_ROWS(앞 20행을 훑는다)와 같다.
     header_row   SMALLINT    NOT NULL DEFAULT 0 CHECK (header_row BETWEEN 0 AND 19),
+    -- 그때 켜 두었던 **옵션**(9차 보정 2026-09-14, db/migrations/…_import_options.sql).
+    -- 「파일의 분류를 함께 등록」·「없는 거래처를 함께 등록」 같은 스위치와 기본 지점·브랜드 id 만
+    -- 담는다 — 파일 내용도 사람 이름도 들어가지 않는다. 허용 키·값 타입은 저장 창구
+    -- (purchase_import_mappings.php)가 좁히고, 여기서는 **객체인가·너무 크지 않은가**만 본다
+    -- (키 목록을 DB 에 박아 두면 옵션이 하나 늘 때마다 마이그레이션이 필요해진다).
+    options_json JSONB       NOT NULL DEFAULT '{}',
     is_active    BOOLEAN     NOT NULL DEFAULT true,
     created_by   BIGINT      NOT NULL REFERENCES users(id),
     created_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
-    CONSTRAINT p_import_mappings_name_len CHECK (length(name) BETWEEN 1 AND 80)
+    CONSTRAINT p_import_mappings_name_len CHECK (length(name) BETWEEN 1 AND 80),
+    CONSTRAINT p_import_mappings_options_obj
+        CHECK (jsonb_typeof(options_json) = 'object' AND length(options_json::text) <= 2048)
 );
 CREATE UNIQUE INDEX p_import_mappings_kind_name_uidx ON p_import_mappings (kind, lower(name));
 

@@ -143,6 +143,21 @@ require __DIR__ . '/shell_top.php';
         <span><strong>브랜드</strong>도 함께 만들기 (앞 조각 「플란치과」)</span>
       </label>
     </div>
+    <!-- 품목 파일의 짝 (9차 보정 2026-09-14) — 이카운트 품목 내보내기는 분류 157개·미등록
+         거래처 십여 개를 함께 들고 온다. 이 둘을 먼저 만들지 않으면 8,100행 중 한 행도
+         들어가지 않는다. 기본은 **켬** — 그것이 「자동 마이그레이션」의 기본 상태다. -->
+    <div id="p-create-items" class="panel__tools" hidden>
+      <label class="check">
+        <input id="p-create-categories" type="checkbox" checked>
+        <span>파일의 <strong>분류</strong>를 함께 등록</span>
+      </label>
+      <label class="check">
+        <input id="p-create-vendors" type="checkbox" checked>
+        <span>없는 <strong>거래처</strong>를 함께 등록</span>
+      </label>
+    </div>
+    <p id="p-create-items-help" class="help" hidden>이카운트 파일의 대·중·소분류와 새 거래처를 확정과 같은 순간에 만듭니다.
+      거래처 이름이 비어 있는 행과, 같은 이름의 거래처가 둘 이상인 행은 만들지 않고 확인을 기다립니다.</p>
     <p id="p-defaults-note" class="muted"></p>
 
     <div class="table-wrap">
@@ -185,6 +200,13 @@ require __DIR__ . '/shell_top.php';
         <div class="panel__tools" id="p-preview-counts"></div>
       </div>
 
+      <!-- 저장된 매핑이 그대로 맞아 2 걸음을 건너뛴 경우의 안내 (9차 보정).
+           건너뛴 것을 숨기지 않는다 — 무엇이 적용됐는지 말하고, 바로 열어 볼 길을 준다. -->
+      <p id="p-auto-note" class="muted" hidden>
+        <span id="p-auto-text"></span>
+        <button id="p-show-mapping" class="btn btn--quiet btn--small" type="button">열 맞추기 보기</button>
+      </p>
+
       <div class="p-toolbar" id="p-toolbar">
         <div class="p-filters">
           <div class="p-chipbar" id="p-filter-chips"></div>
@@ -206,8 +228,10 @@ require __DIR__ . '/shell_top.php';
         <summary id="p-missing-summary">등록되지 않은 값</summary>
         <div id="p-missing"></div>
       </details>
+      <!-- 확정으로 **새로 생길 것**(브랜드·지점 / 분류·거래처). 개수는 배지로 위에 먼저 보이고,
+           이름은 여기 접어 둔다 — 157개짜리 목록이 확정 단추를 아래로 밀지 않게. -->
       <details class="help" id="p-tocreate-box" hidden>
-        <summary id="p-tocreate-summary">새로 만들 브랜드·지점</summary>
+        <summary id="p-tocreate-summary">새로 만들 기초정보</summary>
         <div id="p-tocreate"></div>
       </details>
 

@@ -9,7 +9,11 @@ declare(strict_types=1);
  * ★ 19단계 열 매핑 저장 (PRD F-29 「같은 양식은 매핑을 기억해 다음부터 두 단계로」, 시안 ⑯).
  *
  *   GET     저장된 매핑 목록 (종류·이름·매핑)
- *   POST    {kind, name, mapping, header_row} 저장. 같은 (종류, 이름)이면 **덮어쓴다**.
+ *   POST    {kind, name, mapping, header_row, options} 저장. 같은 (종류, 이름)이면 **덮어쓴다**.
+ *           `options`(9차 보정 2026-09-14)는 그때 켜 둔 스위치와 기본 id 를 함께 기억한다 —
+ *           허용 키는 `Importer::OPTION_KEYS`(미리보기가 받는 옵션 키와 같은 목록)뿐이고,
+ *           값 타입이 어긋나면 400 이다. 이카운트 품목 파일은 「분류·거래처 함께 등록」 이
+ *           꺼져 있으면 8,100행 중 대부분이 오류라, 이 값을 잊으면 두 걸음이 성립하지 않는다.
  *           `header_row`(0~19, 기본 0)를 함께 저장하는 이유: 이카운트처럼 0행이 제목이고
  *           1행이 진짜 머리행인 양식은, 매핑만 복원하고 머리행을 잊으면 매번 다시 골라야 한다
  *           — F-29 의 「같은 양식은 두 걸음으로 끝난다」 가 성립하지 않는다 (1차 보정 2026-09-13).
@@ -46,7 +50,7 @@ $db = Db::instance();
 if ($method === 'GET') {
     // lint:no-branch-scope p_import_mappings 는 지점 무관 마스터다 (브랜드·거래처·분류와 같다).
     $sqlList = <<<'SQL'
-        SELECT id, kind, name, mapping_json, header_row, created_at
+        SELECT id, kind, name, mapping_json, header_row, options_json, created_at
           FROM p_import_mappings
          WHERE is_active
          ORDER BY kind ASC, name ASC
@@ -56,12 +60,15 @@ if ($method === 'GET') {
     $items = [];
     foreach ($db->run($sqlList)->fetchAll() as $row) {
         $decoded = json_decode((string) $row['mapping_json'], true);
+        // 9차 보정 — 그때 켜 두었던 옵션도 함께 돌려준다(화면이 체크를 되살린다).
+        $options = json_decode((string) $row['options_json'], true);
         $items[] = [
             'id'         => (int) $row['id'],
             'kind'       => (string) $row['kind'],
             'name'       => (string) $row['name'],
             'mapping'    => is_array($decoded) ? $decoded : [],
             'header_row' => (int) $row['header_row'],
+            'options'    => (object) (is_array($options) ? $options : []),
             'created_at' => (string) $row['created_at'],
         ];
     }
@@ -123,7 +130,9 @@ if ($method === 'DELETE') {
 }
 
 // ─── POST — 저장(같은 종류·이름이면 덮어쓴다) ───
-if ($body === [] || array_diff(array_keys($body), ['kind', 'name', 'mapping', 'header_row']) !== []) {
+if ($body === [] || array_diff(array_keys($body), ['kind', 'name', 'mapping', 'header_row',
+                                                   // 9차 보정 — 그때 켜 둔 옵션도 함께 기억한다
+                                                   'options']) !== []) {
     $reject('bad_request', 400, Http::MSG_BAD_REQUEST);
 }
 
@@ -174,6 +183,59 @@ if ($json === false) {
     $reject('bad_mapping', 400, Http::MSG_BAD_REQUEST);
 }
 
+/* ─── 옵션 — 매핑과 **함께** 기억한다 (9차 보정 2026-09-14) ───
+ *
+ * 왜 필요한가: 이카운트 품목 파일은 매핑만 복원해서는 8,100행 중 대부분이 오류다.
+ * 「파일의 분류를 함께 등록」·「없는 거래처를 함께 등록」 두 스위치가 켜져 있어야 한다.
+ * 그 둘을 기억하지 않으면 사람이 매달 같은 체크를 다시 켜야 하고, 한 번 잊으면 그 달
+ * 가져오기가 통째로 오류다 — F-29 의 「같은 양식은 두 걸음으로 끝난다」 가 성립하지 않는다.
+ *
+ * 받는 것은 **한 겹 객체**이고 키는 `Importer::OPTION_KEYS`(= 미리보기가 받는 옵션 키와
+ * 같은 목록)뿐이다. 값 타입은 하나씩 본다 — 모르는 키나 엉뚱한 타입을 저장해 두면 다음
+ * 미리보기가 통째로 400 이 되거나(허용 키 검사), 사람이 켰다고 믿는 스위치가 꺼진 채로 돈다.
+ */
+$options = [];
+if (array_key_exists('options', $body) && $body['options'] !== null) {
+    $raw = $body['options'];
+    if (!is_array($raw) || array_diff(array_keys($raw), Importer::OPTION_KEYS) !== []) {
+        $reject('bad_request', 400, Http::MSG_BAD_REQUEST);
+    }
+    foreach (['create_brands', 'create_branches', 'create_categories', 'create_vendors'] as $switch) {
+        if (!array_key_exists($switch, $raw)) {
+            continue;
+        }
+        if (!is_bool($raw[$switch])) {
+            $reject('bad_request', 400, Http::MSG_BAD_REQUEST);
+        }
+        $options[$switch] = $raw[$switch];
+    }
+    if (array_key_exists('derive', $raw)) {
+        // 파생 모드는 정해진 한 값(또는 빈 값)뿐이다 — 모르는 값은 판정을 바꾸지 못하게 막는다.
+        if (!is_string($raw['derive']) || !in_array($raw['derive'], ['', Importer::DERIVE_LOCATION_NAME], true)) {
+            $reject('bad_request', 400, Http::MSG_BAD_REQUEST);
+        }
+        if ($raw['derive'] !== '') {
+            $options['derive'] = $raw['derive'];
+        }
+    }
+    foreach (['default_branch', 'default_brand'] as $ref) {
+        if (!array_key_exists($ref, $raw)) {
+            continue;
+        }
+        // 값이 아니라 **id** 다. 양의 정수만 — 그 id 로 무엇을 할 수 있는지는 서버가 다시 판단한다.
+        $text = is_int($raw[$ref]) ? (string) $raw[$ref] : (is_string($raw[$ref]) ? trim($raw[$ref]) : '');
+        if (preg_match('/^[1-9][0-9]{0,8}$/', $text) !== 1) {
+            $reject('bad_request', 400, Http::MSG_BAD_REQUEST);
+        }
+        $options[$ref] = (int) $text;
+    }
+}
+
+$optionsJson = json_encode((object) $options, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+if ($optionsJson === false) {
+    $reject('bad_request', 400, Http::MSG_BAD_REQUEST);
+}
+
 /* 머리행 위치 — 0~19 정수만. 형식이 틀리면 400 이다(미리보기와 **같은 좁히기 함수**를 쓴다).
  * 여기서는 파일이 없으므로 감지로 되돌아갈 수 없다 → 값이 없으면 0(첫 행)으로 둔다.
  * DB 에도 같은 범위의 CHECK 가 있다(마지막 그물). */
@@ -192,11 +254,13 @@ if (array_key_exists('header_row', $body) && $body['header_row'] !== null && $bo
 // 같은 (종류, 이름)이면 덮어쓴다 — 사람이 「매핑 저장」 을 두 번 누르는 것이 정상 흐름이다.
 // UNIQUE 인덱스가 lower(name) 이므로 ON CONFLICT 도 같은 식(expression)을 가리켜야 한다.
 $sqlSave = <<<'SQL'
-    INSERT INTO p_import_mappings (kind, name, mapping_json, header_row, created_by)
-    VALUES (:kind, :name, CAST(:mapping AS jsonb), CAST(:header_row AS smallint), :created_by)
+    INSERT INTO p_import_mappings (kind, name, mapping_json, header_row, options_json, created_by)
+    VALUES (:kind, :name, CAST(:mapping AS jsonb), CAST(:header_row AS smallint),
+            CAST(:options AS jsonb), :created_by)
     ON CONFLICT (kind, lower(name))
     DO UPDATE SET mapping_json = EXCLUDED.mapping_json,
                   header_row   = EXCLUDED.header_row,
+                  options_json = EXCLUDED.options_json,
                   is_active    = true,
                   updated_at   = now()
     RETURNING id
@@ -209,6 +273,7 @@ try {
         ':name'       => $name,
         ':mapping'    => $json,
         ':header_row' => $headerRow,
+        ':options'    => $optionsJson,
         ':created_by' => (int) $user['id'],
     ])->fetch();
     if (!is_array($row)) {
@@ -224,7 +289,9 @@ try {
             'kind'      => 'import_mappings',
             'target_id' => $id,
             // 매핑은 열 이름 목록일 뿐 파일 내용이 아니다 — 그대로 남겨도 된다.
-            'after'     => ['name' => $name, 'mapping' => $mapping, 'header_row' => $headerRow],
+            'after'     => ['name' => $name, 'mapping' => $mapping, 'header_row' => $headerRow,
+                            // 9차 보정 — 켜 둔 스위치와 기본 id 뿐이다(파일 내용이 아니다).
+                            'options' => $options],
         ],
     ]);
     $db->commit();
@@ -239,4 +306,5 @@ Http::json([
     'name'       => $name,
     'mapping'    => $mapping,
     'header_row' => $headerRow,
+    'options'    => (object) $options,
 ], 201);

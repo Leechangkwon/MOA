@@ -786,6 +786,18 @@ sudo -u postgres psql -d tbox_re -c "SELECT happened_at, actor_name, action, res
 - [x] 화면: 「구매관리」 내비 그룹(모듈 역할 있는 사용자만 표시), `/purchase/masters`(탭 6개, 시안 ⑭), `/purchase/items/{id}`(시안 ⑮), `/purchase/import`(시안 ⑯)
 - [x] 감사 문장 틀 `purchase.master.*`·`purchase.import.*`, README 「구매·재고 모듈」 절
 
+**개발 사항 — 9차 보정 (2026-09-14, 품목 파일 자동 마이그레이션)**
+- [x] 마이그레이션 `2026-09-15_purchase_import_options.sql` — `p_import_mappings.options_json jsonb NOT NULL DEFAULT '{}'`(객체·2KB CHECK) + `db/schema.sql` 동기화. 값을 바꾸는 UPDATE·DELETE 없음
+- [x] `Importer::judgeItem` — 단위 빈칸은 **오류가 아니라 `unit` NULL**(`unit_missing` 사유·상수 삭제, 코드 어디에도 없음) · 거래처 빈칸은 새 사유 `vendor_missing`(vendor_id NOT NULL, 가짜 거래처를 만들지 않는다) · 옵션이 켜지면 `category_not_found`·`vendor_not_found` 대신 「확정 때 만들 것」으로 계획하고 행에 `flags.category_new`·`flags.vendor_new` · 동명 거래처는 옵션과 무관하게 `vendor_ambiguous` review (R-72)
+- [x] `Importer::planVendor`·`planCategory`·`nextTemp` — 아직 없는 것을 **음수 임시 id** 로 가리키고 lookup 에 함께 넣어 같은 이름이 한 번만 생기게 한다(8,100행이 같은 분류를 가리켜도 1건)
+- [x] `Importer::commit` — **한 트랜잭션** 안에서 ① 새 거래처(이름만, code NULL) → ② 새 분류 1단→2단→3단(부모 id 연결) → ③ 품목 행의 임시 id 를 진짜 id 로 치환 → ④ insert/update → ⑤ 감사. 결과에 `categories_created`·`vendors_created`
+- [x] `Importer::OPTION_KEYS`·`CREATE_PREVIEW_NAMES` — 옵션 허용 키 한 곳, 요약 이름은 앞 20개(수는 전체)
+- [x] 미리보기·확정 핸들러 — 허용 키에 `create_categories`·`create_vendors`(**bool 만**, 다른 타입은 400 `bad_request`), 응답에 `new_categories`·`new_vendors`·`to_create.categories|vendors`·행 `flags`, 감사 detail 에 두 수 + 이름 앞 5개
+- [x] 매핑 저장 핸들러 — 본문 `options`(허용 키 = `Importer::OPTION_KEYS`, 값 타입 검사) → `options_json` 저장·응답·목록에 포함
+- [x] 업로드 핸들러 — `saved[].options` + **자동 적용 후보 `match`**(저장 매핑의 원본 열이 그 매핑의 머리행에 모두 있으면, 둘 이상이면 열이 가장 많은 것). 서버는 판정에 쓰지 않는다
+- [x] `public/assets/purchase.js`·`src/views/purchase_import.php` — 품목일 때 체크 둘(기본 **켬**)과 도움말, 요약 배지 「새 분류 N」·「새 거래처 N」(accent)과 이름 펼치기, 판정 행의 「분류 새로」·「거래처 새로」 배지, 매핑 저장에 옵션 동봉, `match` 가 있으면 매핑·옵션·머리행을 적용하고 **미리보기 직행**(3 걸음 상단 안내 + 「열 맞추기 보기」로 2 걸음 복귀)
+- [x] `tests/purchase_import_items.sh` — T-44 (i)~(vii) 실행(픽스처 접두 `S19I-`, R-73 관문·정리는 qa created_by + 접두 한정). Opus 실행 **83/83**, 비-qa 행 180→180. (viii) 실자료 미리보기는 검토자 몫이라 하지 않음
+
 **검토 체크 (관문 ②, Fable) — 2026-09-13 통과** — `tests/purchase_stage19.sh` Fable 재실행 81/81(T-42 두 지점 requester·stock·buyer·역할 없음 403·Guest 403·재인증 전 403 `next:reauth`·requester 는 재인증 뒤에도 403 / T-43 1.35만 행에서 0.07~0.12s·`sort` 주입 → 기본값·SQLi 5종 200 / T-44 `.xlsm` 400·100행→90 insert 10 error·확정 한 트랜잭션·매핑 재사용 시 skipped 100·보관 폴더 밖 파일 404), 회귀 T-1·T-26·T-36, 린트 15항목 통과, `\dp p_*` 9표 `tbox_app=arw`·`tbox_backup=r`. JS 는 node 없어 **미검증**(사용자 브라우저)
 
 **자기 공격 (관문 ③, 사용자)**
@@ -829,6 +841,9 @@ sudo -u postgres psql -d tbox_re -c "SELECT happened_at, actor_name, action, res
 | 2026-09-13 | 접수(20단계 Opus 보고) | 지시서 밖 수정 2(`db/grants.sql`·`db/schema.sql` — 없으면 새 설치에 표가 없음) · `Authz::PURCHASE_ALIASES` 에 `d`·`pl` 추가 · 내비에 새 화면 링크 없음(shell_top 범위 밖) · 발주서 줄 수정 창구 없음(취소 후 재작성 규칙) · 품목 기본 거래처 학습 안 함 · 19단계 T-44 11건 실패는 픽스처 「플란치과」 이름 충돌 | 전부 수용. 내비 링크는 18-3 에이전트에 소규모 지시, 픽스처 접두는 19단계 8회차. 발주서 줄 수정은 21단계 입고 뒤 재검토 |
 | 2026-09-13 | 보정 | 내비 「구매관리」 그룹에 발주요청·발주서·전표·기초정보·가져오기 링크 5개(기본 hidden, `can_purchase`·가져오기는 `can_purchase_master`), 활성 표시는 핸들러 `$activeNav` 를 `purchase-pr`·`-po`·`-docs`·`-import` 로 갈라 Fable 이 직접 4줄 수정 | `node --check`·`php -l`·린트 통과, qa_admin01 로 4화면 200·활성 항목 확인. 커밋 |
 | 2026-09-13 | 보정(8회차) | 19단계 시험 스크립트: 사용자 활동 관문(최근 10분 비-qa 있으면 종료 3)·모든 픽스처 `S19-` 접두·행 필터 단언을 응답 안 `counts` 대조로. Opus 실행 229/229, 비-qa 행 181→181. 픽스처 결함 5건(접두 누락·큰따옴표 리터럴·LIKE 패턴 등) 함께 수정 | 관문의 경합 구간(확인 뒤 4분 동안 사용자가 시작하면 못 막음)은 남음 — 근본 방어는 created_by 정리. Fable 은 스크립트 문법·접두 94곳·전체 DELETE 0 확인 뒤 커밋(재실행은 사용자 작업 가능성으로 생략, Opus 출력 원문으로 확인) |
+| 2026-09-14 | 결정(사용자) | 품목 파일(ESA009M 8,100행) 가져오기가 전부 판정 오류 — 「어제 마이그레이션에서 품목이 빠진 것 같다」 → 원인은 19단계 규칙(분류 미등록 오류·단위 빈칸 오류·거래처 미등록 오류)과 `p_categories` 0건. **B(옵션 구현)로 진행, 빈 단위는 빈 값 그대로(원본과 같게), 앞으로 이 양식은 자동 마이그레이션 되게** | 지시서 `docs/purchase/11-import-items-directive.md`(보정 9회차). 실측: 단위 빈칸 2,678 · 거래처 빈칸 10 · 미등록 거래처 약 11 · 분류 고유 157(12/70/75) · 거래처 코드 열 없음 · `p_items.unit` 은 이미 NULL 허용 |
+| 2026-09-14 | 보정(9회차) 착수 | 품목 가져오기 옵션 `create_categories`·`create_vendors`(한 트랜잭션) · 단위 빈칸 허용 · 거래처 빈칸은 `vendor_missing` 별도 사유 · 매핑에 `options_json` 저장 · 업로드 응답 `match` 로 자동 적용→미리보기 직행 · T-43 (i)~(n) `tests/purchase_import_items.sh` | Opus 위임 2026-09-14. 검토 결과는 아래 행에 |
+| 2026-09-14 | 보정(9회차) 검토 ✅ | Opus 보고 접수: (1) PRD 번호 — 지시서의 「T-43」은 오기, 가져오기는 **T-44** → T-44 에 (i)~(viii) 붙임 수용 (2) 확정 계획은 판정 전체 기준(exclude_rows 행의 분류도 생김 — 미리보기 수치와 같게) 수용 (3) `match` 는 종류 무관 서버 선택·화면은 같은 kind 만 적용 수용 (4) 운영 DB 마이그레이션 적용(열 추가만) 수용 (5) 경보 AL-x 미판단 → Q-21 후보 | Fable 실행: `tests/purchase_import_items.sh` 83/83 · `stage19.sh` 229/229(연속 실행 오탐 1건은 시험 단언 창 수정) · 린트 0 · 보안 핵심 diff 0 · **실자료 미리보기(읽기만, qa)**: 옵션 on → insert 8,089 / error 11(거래처 빈칸 10 + 꼬리행 1), 새 분류 206 · 새 거래처 2. 확정은 사용자가 admin01 로 — 체크 2개 켠 채 미리보기→확정, 매핑을 「이카운트 품목」 이름으로 옵션과 함께 저장하면 다음부터 올리기→확정 |
 | 2026-09-13 | 접수(21단계 Opus 보고) | 입고 정책 stock.write(buyer 포함) · Doc.php 못 고쳐 채번 SQL 이 Stock.php 에도 · p_doc_lines qty CHECK 를 실사 줄만 0 허용 · 사이클 화면 입고 칸 「—」 하드코딩(purchase_docs.js 범위 밖) · 재인증 키 미추가(대상 아님) · ARCH 7.4 표에 purchase.* 행 없음(19·20단계 선례) | 전부 수용. 채번 통합·ARCH 7.4 표 보강은 22단계 지시서에, 사이클 칸은 20단계 에이전트 |
 | 2026-09-13 | 보정 | 내비 「구매관리」 그룹 8개 링크(발주요청·발주서·입고·이동·실사·재고현황·전표·기초정보·가져오기) 순서 정리, 21단계 세 화면 활성 표시 | 18-3 에이전트, qa_admin01 로 3화면 is-active 확인. 커밋 |
 | 2026-09-13 | 보정 | 사이클 화면 입고·미입고 칸을 API 값으로(하드코딩 「—」 제거, 보낸 발주서의 미입고 배지), 요청 화면 낡은 안내 문장 교체(Fable), 사이클 API 의 `orders` 에 GR 번호가 섞이던 것을 `receipts` 로 분리(Fable) | 20단계 에이전트 + Fable. `node --check`·`php -l`·린트, 20단계 시험 90/90(에이전트 실행). 커밋 |

@@ -91,6 +91,8 @@ if ($body === [] || array_diff(array_keys($body), ['kind', 'mapping', 'promote',
                                           'default_branch', 'default_brand', 'derive',
                                           // 5차 보정 — 없는 브랜드·지점을 함께 만들까
                                           'create_brands', 'create_branches',
+                                          // 9차 보정 — 파일의 분류·없는 거래처를 함께 만들까(품목)
+                                          'create_categories', 'create_vendors',
                                           'exclude_rows',
                                           /* 6차 보정의 표시용 키 셋 — 화면은 미리보기·확정에 **같은
                                            * 본문 함수**를 쓴다. 확정에서는 뜻이 없어 **받아서 무시**한다
@@ -98,6 +100,14 @@ if ($body === [] || array_diff(array_keys($body), ['kind', 'mapping', 'promote',
                                            * 2026-09-13 20:05 확정이 전부 `bad_request` 로 막혔다. */
                                           'page', 'q', 'status']) !== []) {
     $reject('bad_request', 400, Http::MSG_BAD_REQUEST);
+}
+
+/* 9차 보정 — 「함께 만들기」 스위치는 **참·거짓만** 받는다 (미리보기와 같은 규칙).
+ * 미리보기와 확정이 같은 값을 같은 방식으로 읽어야 판정이 어긋나지 않는다. */
+foreach (['create_categories', 'create_vendors'] as $switch) {
+    if (array_key_exists($switch, $body) && !is_bool($body[$switch])) {
+        $reject('bad_request', 400, Http::MSG_BAD_REQUEST, ['why' => 'bad_option']);
+    }
 }
 
 $kind = $body['kind'] ?? '';
@@ -181,6 +191,10 @@ try {
          * 만드는 것과 **같은 표·같은 제약**에 들어간다. */
         'create_brands'   => ($body['create_brands'] ?? null) === true,
         'create_branches' => ($body['create_branches'] ?? null) === true,
+        /* 9차 보정 — 품목 파일의 분류·없는 거래처. 판정이 세운 계획(`$judged['plan']`)을
+         * 아래 확정이 **같은 트랜잭션에서** 만든다. */
+        'create_categories' => ($body['create_categories'] ?? null) === true,
+        'create_vendors'    => ($body['create_vendors'] ?? null) === true,
     ]);
 } catch (RuntimeException $e) {
     $why = $e->getMessage();
@@ -190,10 +204,23 @@ try {
 
 $db = Db::instance();
 
+/* 감사에 적을 **앞 5개 이름** (9차 보정). 판정이 준 목록의 앞부분만 쓴다 — 사람이 로그에서
+ * "아, 그때 이 분류들이 생겼구나" 를 알아보기에 충분하고, detail 이 커지지 않는다. */
+$newCategoryNames = [];
+foreach (array_slice($judged['to_create']['categories'] ?? [], 0, 5) as $cat) {
+    $newCategoryNames[] = (string) ($cat['name'] ?? '');
+}
+$newVendorNames = [];
+foreach (array_slice($judged['to_create']['vendors'] ?? [], 0, 5) as $ven) {
+    $newVendorNames[] = (string) $ven;
+}
+
 // ─── 확정: 한 트랜잭션 (쓰기 + 감사 한 줄) ───
 $db->begin();
 try {
-    $result = Importer::commit($kind, $judged['rows'], $promote, (int) $user['id'], $excludeRows);
+    // 9차 보정 — 판정이 세운 「새로 만들 분류·거래처」 계획을 함께 넘긴다. 만드는 것도 이 안이다.
+    $result = Importer::commit($kind, $judged['rows'], $promote, (int) $user['id'], $excludeRows,
+                               is_array($judged['plan'] ?? null) ? $judged['plan'] : []);
 
     Audit::allow('purchase.import.commit', $auditTarget + [
         'detail' => [
@@ -212,6 +239,14 @@ try {
             'brands_created'     => $result['brands_created'],
             'branches_created'   => $result['branches_created'],
             'locations_inserted' => $kind === 'locations' ? $result['inserted'] : 0,
+            /* 9차 보정 — 품목 가져오기가 **함께 만든** 분류·거래처 수와 **앞 5개 이름**.
+             * 전부 나열하지 않는 이유: 실제 파일은 분류가 157개다. 기록은 "언제 얼마나 늘었나"
+             * 를 되짚게 하는 것이 목적이고, 무엇이 늘었는지는 p_categories 를 보면 된다
+             * (감사 detail 이 커지면 로그 자체가 쓸모없어진다 — 행마다 안 남기는 것과 같은 판단). */
+            'categories_created' => $result['categories_created'],
+            'vendors_created'    => $result['vendors_created'],
+            'new_category_names' => $newCategoryNames,
+            'new_vendor_names'   => $newVendorNames,
         ],
     ]);
     $db->commit();
@@ -253,4 +288,7 @@ Http::json([
     'excluded'  => $result['excluded'],
     'brands_created'   => $result['brands_created'],
     'branches_created' => $result['branches_created'],
+    // 9차 보정 — 화면이 결과 줄에 「함께 만든 분류 N · 거래처 N」 을 적는다
+    'categories_created' => $result['categories_created'],
+    'vendors_created'    => $result['vendors_created'],
 ]);

@@ -87,7 +87,7 @@ $db = Db::instance();
 // ─── [8] 저장된 매핑 — 같은 양식을 다시 올리면 2단계로 끝난다 (F-29) ───
 // lint:no-branch-scope p_import_mappings 는 지점 무관 마스터다 (브랜드·거래처·분류와 같다).
 $sqlMappings = <<<'SQL'
-    SELECT id, kind, name, mapping_json, header_row
+    SELECT id, kind, name, mapping_json, header_row, options_json
       FROM p_import_mappings
      WHERE is_active
      ORDER BY kind ASC, name ASC
@@ -97,6 +97,8 @@ $sqlMappings = <<<'SQL'
 $saved = [];
 foreach ($db->run($sqlMappings)->fetchAll() as $m) {
     $decoded = json_decode((string) $m['mapping_json'], true);
+    // 9차 보정 — 그때 켜 두었던 옵션도 함께 내려 준다(화면이 체크까지 되살린다).
+    $options = json_decode((string) $m['options_json'], true);
     $saved[] = [
         'id'      => (int) $m['id'],
         'kind'    => (string) $m['kind'],
@@ -104,7 +106,50 @@ foreach ($db->run($sqlMappings)->fetchAll() as $m) {
         'mapping' => is_array($decoded) ? $decoded : [],
         // 저장된 매핑은 **머리행 위치도 함께** 기억한다 — 그래야 같은 양식이 두 걸음으로 끝난다
         'header_row' => (int) $m['header_row'],
+        'options'    => (object) (is_array($options) ? $options : []),
     ];
+}
+
+/* ─── 자동 적용 후보 `match` (9차 보정 2026-09-14) ───
+ *
+ * 사용자 결정: 「앞으로 해당 양식으로 자동 마이그레이션 가능하도록」. 매달 같은 이카운트
+ * 파일을 올리면서 종류·머리행·열 15개·체크 둘을 매번 다시 고르는 것은 두 걸음이 아니다.
+ *
+ * 고르는 규칙 — 저장된 매핑의 **원본 열 이름이 그 매핑의 머리행에 전부 있으면** 후보다.
+ * (열이 하나라도 빠진 파일은 후보가 아니다 — 그대로 적용하면 `bad_mapping` 400 이 난다.)
+ * 둘 이상이면 **이어 준 열이 가장 많은** 것을 고른다(더 구체적인 양식이 이긴다).
+ *
+ * ★ 서버는 이 값을 **판정에 쓰지 않는다.** 화면 편의일 뿐이고, 실제 미리보기·확정은 언제나
+ *   요청이 보낸 매핑·머리행·옵션으로만 돈다. 그래서 이 계산이 틀려도 저장되는 것은 달라지지
+ *   않는다 — 사람이 2 걸음(「열 맞추기 보기」)에서 언제든 고쳐 볼 수 있다.
+ */
+$matchId    = null;
+$matchScore = -1;
+foreach ($saved as $m) {
+    $row = $sheet['rows'][$m['header_row']] ?? [];
+    if (!is_array($row) || $m['mapping'] === []) {
+        continue;
+    }
+    $labels = [];
+    foreach ($row as $label) {
+        $text = trim((string) $label);
+        if ($text !== '') {
+            $labels[$text] = true;
+        }
+    }
+    $all   = true;
+    $score = 0;
+    foreach (array_keys($m['mapping']) as $column) {
+        if (!isset($labels[(string) $column])) {
+            $all = false;
+            break;
+        }
+        $score++;
+    }
+    if ($all && $score > $matchScore) {
+        $matchId    = $m['id'];
+        $matchScore = $score;
+    }
 }
 
 // 머리행을 보고 만든 **후보** 매핑(종류별). 서버는 이 값을 판정에 쓰지 않는다.
@@ -130,6 +175,9 @@ Http::json([
     'sample'    => $sample,
     'mapping'   => $guess,
     'saved'     => $saved,
+    /* 9차 보정 — 이 파일에 **그대로 맞는** 저장 매핑의 id (없으면 null).
+     * 화면은 이 값이 있으면 매핑·머리행·옵션을 적용하고 미리보기로 바로 간다. 서버는 쓰지 않는다. */
+    'match'     => $matchId,
     'targets'   => Importer::TARGETS,
     'required'  => Importer::REQUIRED,
 ], 201);

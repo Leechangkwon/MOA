@@ -826,9 +826,14 @@
   /** 오류 사유 코드 → 사람 말 (서버는 코드만 준다 — 문구는 화면의 몫이다) */
   var REASON_LABEL = {
     required_missing: '필수 칸이 비었습니다',
-    vendor_not_found: '거래처를 찾을 수 없습니다 — 거래처를 먼저 가져오세요',
-    unit_missing: '단위가 없습니다',
-    category_not_found: '분류 이름이 등록된 분류와 다릅니다',
+    vendor_not_found: '거래처를 찾을 수 없습니다 — 「없는 거래처를 함께 등록」 을 켜거나'
+                    + ' 거래처를 먼저 가져오세요',
+    // 9차 보정 2026-09-14 — 거래처 칸이 **비어 있는** 행. 품목은 거래처 없이 저장할 수 없고,
+    // 「미지정 거래처」 같은 가짜를 만들지도 않는다(그 순간 발주서가 갈 곳을 잃는다).
+    vendor_missing: '거래처 칸이 비어 있습니다 — 파일에서 구매처명을 채워 주세요'
+                  + ' (품목은 거래처 없이 등록할 수 없습니다)',
+    category_not_found: '분류 이름이 등록된 분류와 다릅니다 — 「파일의 분류를 함께 등록」 을 켜면'
+                      + ' 확정과 같은 순간에 만듭니다',
     duplicate_in_file: '같은 거래처·코드가 이 파일 안에 또 있습니다',
     branch_not_found: '지점 이름을 찾을 수 없습니다',
     name_differs: '품목명이 등록된 이름과 다릅니다',
@@ -1008,7 +1013,9 @@
     fillDefaults();   // 2차 보정 — 지점·브랜드 목록을 미리 받아 둔다
 
     // 5차 보정 — 「함께 만들기」 를 켜고 끄면 필요한 기본값 칸·안내가 달라진다.
-    ['p-create-branches', 'p-create-brands'].forEach(function (id) {
+    ['p-create-branches', 'p-create-brands',
+     // 9차 보정 — 품목 쪽 두 스위치. 켜고 끄면 다음 미리보기부터 판정이 달라진다.
+     'p-create-categories', 'p-create-vendors'].forEach(function (id) {
       var box = $(id);
       if (box) { box.addEventListener('change', function () { showDefaults(); say(''); }); }
     });
@@ -1101,6 +1108,12 @@
       // 창고 종류일 때만 「함께 만들기」 체크 둘을 보여 준다.
       var createBox = $('p-create-missing');
       if (createBox) { createBox.hidden = state.kind !== 'locations'; }
+      /* 9차 보정 — 품목 종류의 짝(「파일의 분류를 함께 등록」·「없는 거래처를 함께 등록」).
+         종류가 items 가 아니면 서버도 이 옵션을 무시하므로 화면에서도 감춘다. */
+      var itemsBox = $('p-create-items');
+      if (itemsBox) { itemsBox.hidden = state.kind !== 'items'; }
+      var itemsHelp = $('p-create-items-help');
+      if (itemsHelp) { itemsHelp.hidden = state.kind !== 'items'; }
 
       box.hidden = !(needBranch || needBrand || derive);
       var bf = $('p-default-branch-field');
@@ -1152,12 +1165,57 @@
       var cr = $('p-create-brands');
       if (cb && cb.checked) { body.create_branches = true; }
       if (cr && cr.checked) { body.create_brands = true; }
+      /* 9차 보정 — 품목 파일의 분류·없는 거래처를 확정과 같은 트랜잭션에서 만들까.
+         종류가 items 일 때만 보낸다(그 밖에는 서버가 무시하지만, 안 보내는 것이 원칙이다). */
+      if (body.kind === 'items') {
+        var cc = $('p-create-categories');
+        var cv = $('p-create-vendors');
+        if (cc && cc.checked) { body.create_categories = true; }
+        if (cv && cv.checked) { body.create_vendors = true; }
+      }
       // 6차 보정 — 보이는 목록의 쪽·필터 (판정 범위가 아니라 **표시 범위**다)
       body.page = state.rowPage;
       if (state.rowStatus !== '') { body.status = state.rowStatus; }
       if (state.rowQuery !== '') { body.q = state.rowQuery; }
       Object.keys(extra || {}).forEach(function (k) { body[k] = extra[k]; });
       return body;
+    }
+
+    /**
+     * 저장된 매핑 하나를 화면에 되살린다 — 매핑 · **머리행** · **옵션**까지 (9차 보정).
+     *
+     * 옵션을 빼면 「파일의 분류를 함께 등록」 이 꺼진 채로 판정이 돌아, 같은 파일인데
+     * 8,000행이 「분류를 찾을 수 없습니다」 가 된다. 사람은 매핑을 골랐으니 됐다고 믿는다 —
+     * 그 어긋남이 F-29 의 「두 걸음」 을 깨뜨린 자리다.
+     */
+    function applySaved(chosen) {
+      var row = typeof chosen.header_row === 'number' ? chosen.header_row : 0;
+      if (row < 0 || row >= state.headRows.length) { row = 0; }
+      var sel = $('p-header-row');
+      if (sel) { sel.value = String(row); }
+
+      var opts = chosen.options || {};
+      [['create_branches', 'p-create-branches'], ['create_brands', 'p-create-brands'],
+       ['create_categories', 'p-create-categories'], ['create_vendors', 'p-create-vendors']
+      ].forEach(function (pair) {
+        var box = $(pair[1]);
+        if (box && typeof opts[pair[0]] === 'boolean') { box.checked = opts[pair[0]]; }
+      });
+      [['default_branch', 'p-default-branch'], ['default_brand', 'p-default-brand']
+      ].forEach(function (pair) {
+        var pick = $(pair[1]);
+        if (pick && opts[pair[0]]) { pick.value = String(opts[pair[0]]); }
+      });
+
+      applyHeaderRow(row, chosen.mapping);
+      showDefaults();
+    }
+
+    /* 「열 맞추기 보기」 — 자동 경로로 3 걸음에 바로 온 사람이 2 걸음을 열어 보는 길 (9차 보정).
+       적용된 매핑을 숨기지 않는다: 무엇이 씌워졌는지 언제든 확인하고 고칠 수 있어야 한다. */
+    var showMapping = $('p-show-mapping');
+    if (showMapping) {
+      showMapping.addEventListener('click', function () { say(''); step(2); });
     }
 
     function currentMapping() {
@@ -1219,12 +1277,7 @@
                 applyHeaderRow(state.detected[state.kind] || 0, state.guess[state.kind] || {});
                 return;
               }
-              // 저장된 매핑은 **머리행 위치도 함께** 기억한다 — 같은 양식이 두 걸음으로 끝난다.
-              var row = typeof chosen.header_row === 'number' ? chosen.header_row : 0;
-              if (row < 0 || row >= state.headRows.length) { row = 0; }
-              var sel = $('p-header-row');
-              if (sel) { sel.value = String(row); }
-              applyHeaderRow(row, chosen.mapping);
+              applySaved(chosen);
             });
 
             state.headerRow = picked;
@@ -1236,6 +1289,46 @@
             state.fileRows = result.data.rows || 0;
             step(2);
             say('');
+
+            /* ─── 9차 보정 — **자동 경로** (사용자 결정 「자동 마이그레이션 가능하도록」) ───
+             *
+             * 서버가 이 파일에 그대로 맞는 저장 매핑을 찾아 `match` 로 알려 준다. 있으면
+             * 매핑·머리행·옵션을 되살려 **미리보기까지 한 번에** 간다 — 매달 같은 이카운트
+             * 파일을 올리면서 열 15개와 체크 둘을 다시 고를 이유가 없다.
+             *
+             * 종류가 다르면 건너뛴다(거래처 파일을 올렸는데 품목 매핑을 씌우지 않는다).
+             * 건너뛴 것을 숨기지도 않는다 — 3 걸음 위에 무엇을 적용했는지 적고,
+             * 「열 맞추기 보기」 로 언제든 2 걸음을 열 수 있다. */
+            var autoNote = $('p-auto-note');
+            var matched = null;
+            var matchedIndex = -1;
+            if (result.data.match) {
+              (result.data.saved || []).forEach(function (one, index) {
+                if (one.id === result.data.match && one.kind === state.kind) {
+                  matched = one;
+                  matchedIndex = index;
+                }
+              });
+            }
+            if (!matched) {
+              if (autoNote) { autoNote.hidden = true; }
+              return;
+            }
+            savedSelect.value = String(matchedIndex);
+            applySaved(matched);
+            if (autoNote) {
+              setText($('p-auto-text'),
+                '저장된 매핑 「' + String(matched.name) + '」 을 적용했습니다 — ');
+              autoNote.hidden = false;
+            }
+            say('저장된 매핑을 적용해 판정하는 중…');
+            request('POST', '/api/purchase/import/' + state.importId + '/preview', importBody())
+              .then(function (preview) {
+                if (!preview) { return; }
+                if (!preview.ok) { say(errorMessage(preview.data)); step(2); return; }
+                renderPreview(preview.data, '');
+              })
+              .catch(function () { say(UI.GENERIC_ERROR); step(2); });
           })
           .catch(function () { say(UI.GENERIC_ERROR); });
       });
@@ -1363,17 +1456,26 @@
       var plan = data.to_create || {};
       var brands = Array.isArray(plan.brands) ? plan.brands : [];
       var branches = Array.isArray(plan.branches) ? plan.branches : [];
-      var none = brands.length === 0 && branches.length === 0;
+      // 9차 보정 — 품목 가져오기의 분류·거래처. **수는 전체**(new_*), 이름은 앞 20개만 온다.
+      var cats = Array.isArray(plan.categories) ? plan.categories : [];
+      var vends = Array.isArray(plan.vendors) ? plan.vendors : [];
+      var catCount = data.new_categories || 0;
+      var vendCount = data.new_vendors || 0;
+      var none = brands.length === 0 && branches.length === 0 && catCount === 0 && vendCount === 0;
       if (shell) {
         shell.hidden = none;
+        var parts = [];
+        if (brands.length > 0) { parts.push('브랜드 ' + String(brands.length) + '개'); }
+        if (branches.length > 0) { parts.push('지점 ' + String(branches.length) + '개'); }
+        if (catCount > 0) { parts.push('분류 ' + String(catCount) + '개'); }
+        if (vendCount > 0) { parts.push('거래처 ' + String(vendCount) + '개'); }
         setText($('p-tocreate-summary'),
-          '확정하면 브랜드 ' + String(brands.length) + '개 · 지점 ' + String(branches.length)
-          + '개가 함께 만들어집니다 (펼치기)');
+          '확정하면 ' + parts.join(' · ') + '가 함께 만들어집니다 (펼치기)');
       }
       if (none) { return; }
 
       box.appendChild(el('p', 'muted',
-        '창고보다 먼저, 같은 트랜잭션 안에서 만들어집니다 — 한 줄이라도 실패하면 함께 되돌아갑니다.'));
+        '품목·창고보다 먼저, 같은 트랜잭션 안에서 만들어집니다 — 한 줄이라도 실패하면 함께 되돌아갑니다.'));
 
       if (brands.length > 0) {
         var bd = document.createElement('details');
@@ -1392,6 +1494,33 @@
         });
         rd.appendChild(rul);
         box.appendChild(rd);
+      }
+
+      /* 9차 보정 — 새 분류는 **몇 단계의 어느 부모 밑**인지까지 보여 준다.
+         「기타」 는 대분류마다 하나씩 있어서, 이름만 보면 어느 것인지 알 수 없다. */
+      if (catCount > 0) {
+        var cd = document.createElement('details');
+        cd.appendChild(el('summary', null, '새로 만들 분류 ' + String(catCount) + '개'
+          + (cats.length < catCount ? ' 중 앞 ' + String(cats.length) + '개' : '') + ' 보기'));
+        var cul = el('ul', 'p-chips');
+        cats.forEach(function (c) {
+          cul.appendChild(el('li', 'chip',
+            String(c.level) + '단 ' + String(c.name)
+            + (c.parent_name ? ' (상위 ' + String(c.parent_name) + ')' : '')));
+        });
+        cd.appendChild(cul);
+        box.appendChild(cd);
+      }
+      if (vendCount > 0) {
+        var vd = document.createElement('details');
+        vd.appendChild(el('summary', null, '새로 만들 거래처 ' + String(vendCount) + '개'
+          + (vends.length < vendCount ? ' 중 앞 ' + String(vends.length) + '개' : '') + ' 보기'));
+        var vul = el('ul', 'p-chips');
+        vends.forEach(function (n) { vul.appendChild(el('li', 'chip', n)); });
+        vd.appendChild(vul);
+        box.appendChild(vd);
+        box.appendChild(el('p', 'muted',
+          '새 거래처는 「이름」만 등록됩니다 (거래처 코드는 비어 있습니다) — 파일에 코드 열이 없습니다.'));
       }
     }
 
@@ -1418,6 +1547,14 @@
       var excludedCount = Object.keys(state.excluded || {}).length;
       if (excludedCount > 0) {
         box.appendChild(badge('제외 ' + String(excludedCount), 'badge--off'));
+      }
+      /* 9차 보정 — 확정으로 **새로 생길** 분류·거래처 수. 사람이 「등록 8,000」 만 보고 누르면,
+         기초정보가 157개 늘어난 것을 나중에야 안다. 누르기 전에 말한다(이름은 아래 details). */
+      if (data.new_categories) {
+        box.appendChild(badge('새 분류 ' + String(data.new_categories), 'badge--accent'));
+      }
+      if (data.new_vendors) {
+        box.appendChild(badge('새 거래처 ' + String(data.new_vendors), 'badge--accent'));
       }
 
       /* 6차 보정 — 도구줄의 단추들. 「확정」 에 **저장될 행 수**를 적어 두면, 오류가 남아
@@ -1463,6 +1600,11 @@
         var statusCell = document.createElement('td');
         statusCell.appendChild(badge(STATUS_LABEL[row.status] || row.status,
                                      VERDICT_CLASS[row.status] || ''));
+        /* 9차 보정 — 이 행이 **새로 만들 것**에 기대고 있으면 판정 옆에 작게 알린다
+           (「등록 · 분류 새로」). 판정 자체는 그대로 「등록」이다. */
+        var rowFlags = row.flags || {};
+        if (rowFlags.category_new) { statusCell.appendChild(badge('분류 새로', 'badge--accent')); }
+        if (rowFlags.vendor_new) { statusCell.appendChild(badge('거래처 새로', 'badge--accent')); }
         tr.appendChild(statusCell);
 
         /* 5차 보정 — 브랜드 칸. 새로 만들 브랜드면 이름과 「새로 만듦」 을 함께 보여 준다.
@@ -1739,12 +1881,28 @@
         var name = ($('p-map-name').value || '').trim();
         if (name === '') { say('매핑 이름을 적어 주세요.'); return; }
         say('');
+        /* 9차 보정 — **옵션도 함께** 저장한다. 매핑만 기억하면 다음 달에 「분류·거래처 함께
+           등록」 이 꺼진 채로 돌아 같은 파일이 통째로 오류가 된다. 보내는 것은 화면의 스위치와
+           기본 지점·브랜드 id 뿐이고, 서버가 허용 키·타입을 다시 본다. */
+        var saveOptions = {};
+        [['create_branches', 'p-create-branches'], ['create_brands', 'p-create-brands'],
+         ['create_categories', 'p-create-categories'], ['create_vendors', 'p-create-vendors']
+        ].forEach(function (pair) {
+          var box = $(pair[1]);
+          if (box) { saveOptions[pair[0]] = !!box.checked; }
+        });
+        [['default_branch', 'p-default-branch'], ['default_brand', 'p-default-brand']
+        ].forEach(function (pair) {
+          var pick = $(pair[1]);
+          if (pick && pick.value !== '') { saveOptions[pair[0]] = pick.value; }
+        });
         request('POST', '/api/purchase/import/mappings',
                 { kind: state.kind, name: name, mapping: currentMapping(),
-                  header_row: state.headerRow })
+                  header_row: state.headerRow, options: saveOptions })
           .then(function (result) {
             if (!result) { return; }
-            say(result.ok ? '매핑을 저장했습니다.' : errorMessage(result.data));
+            say(result.ok ? '매핑과 옵션을 저장했습니다 — 같은 양식을 다시 올리면 자동으로 적용됩니다.'
+                          : errorMessage(result.data));
           })
           .catch(function () { say(UI.GENERIC_ERROR); });
       });
@@ -1784,6 +1942,11 @@
               + (result.data.brands_created || result.data.branches_created
                   ? ' · 함께 만든 브랜드 ' + String(result.data.brands_created || 0)
                     + ' · 지점 ' + String(result.data.branches_created || 0)
+                  : '')
+              // 9차 보정 — 품목 가져오기가 함께 만든 분류·거래처
+              + (result.data.categories_created || result.data.vendors_created
+                  ? ' · 함께 만든 분류 ' + String(result.data.categories_created || 0)
+                    + ' · 거래처 ' + String(result.data.vendors_created || 0)
                   : ''));
             step(4);
             say('');
