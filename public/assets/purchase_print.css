@@ -1,0 +1,94 @@
+/* public/assets/purchase_print.css — 발주서 인쇄 양식 (purchase_po_print.php 전용)
+ *
+ * 25단계에서 20단계 전표 스타일시트의 「인쇄용 발주서」 절을 **그대로** 이 파일로 옮겼다.
+ * 인쇄 양식은 이카운트 캡처를 옮긴 것이라 시안 밖이다 — 모양은 한 값도 바꾸지 않았고
+ * 바뀐 것은 **파일 이름**뿐이다. 이 화면은 공통 셸을 쓰지 않으므로 app.css 도 싣지 않는다.
+ * CSP 가 `style-src 'self'` 라 인라인 <style> 은 쓸 수 없다 — 그래서 외부 파일 하나다.
+ */
+
+/* ══════════════════════════════════════════════════════
+ * 인쇄용 발주서 (Q-18② — 이카운트 발주서 양식, files #188)
+ *
+ * PDF 라이브러리를 쓰지 않는다. A4 세로로 그린 HTML 이고,
+ * 사람은 브라우저의 「인쇄 → PDF 로 저장」으로 파일을 만든다.
+ * ══════════════════════════════════════════════════════ */
+@page { size: A4 portrait; margin: 12mm; }
+
+.po-print {
+  margin: 0;
+  background: #f4f6f9;
+  color: #1c1f24;
+  font-family: system-ui, -apple-system, "Apple SD Gothic Neo", "Malgun Gothic", "Noto Sans KR", sans-serif;
+  font-size: 12px;
+  line-height: 1.5;
+}
+.po-sheet {
+  width: 186mm;
+  margin: 10mm auto;
+  padding: 8mm;
+  background: #fff;
+  border: 1px solid #dfe4ea;
+}
+.po-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  border-bottom: 2px solid #1c1f24;
+  padding-bottom: 8px;
+}
+.po-head__company { display: flex; gap: 10px; align-items: flex-start; }
+.po-logo { max-height: 18mm; max-width: 40mm; }
+.po-company-text p { margin: 0; }
+.po-company-name { font-size: 15px; font-weight: 700; }
+.po-company-line { color: #5b6472; font-size: 11px; }
+.po-title { margin: 0; font-size: 26px; letter-spacing: .3em; font-weight: 700; }
+
+.po-meta { width: 100%; border-collapse: collapse; margin-top: 10px; }
+.po-meta th, .po-meta td {
+  border: 1px solid #dfe4ea;
+  padding: 5px 8px;
+  font-size: 11.5px;
+  text-align: left;
+}
+.po-meta th { width: 22mm; background: #fafbfc; font-weight: 600; color: #5b6472; }
+
+.po-amount-words {
+  margin: 10px 0;
+  padding: 6px 8px;
+  border: 1px solid #1c1f24;
+  font-size: 13px;
+  text-align: center;
+}
+
+.po-lines { width: 100%; border-collapse: collapse; margin-top: 6px; }
+.po-lines th, .po-lines td {
+  border: 1px solid #dfe4ea;
+  padding: 4px 6px;
+  font-size: 11px;
+  text-align: left;
+  vertical-align: top;
+}
+.po-lines th { background: #fafbfc; font-weight: 600; color: #5b6472; white-space: nowrap; }
+.po-num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.po-mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+.po-spec, .po-unit, .po-src { color: #8b95a3; font-size: 10px; margin-left: 4px; }
+.po-empty { text-align: center; color: #8b95a3; }
+
+.po-totals { margin-top: 8px; margin-left: auto; border-collapse: collapse; width: 70mm; }
+.po-totals th, .po-totals td { border: 1px solid #dfe4ea; padding: 4px 8px; font-size: 11.5px; }
+.po-totals th { background: #fafbfc; text-align: left; color: #5b6472; }
+.po-total-row th, .po-total-row td { font-weight: 700; background: #f2f5f9; }
+
+.po-memo { margin-top: 10px; font-size: 11.5px; }
+.po-foot { margin-top: 14px; border-top: 1px solid #dfe4ea; padding-top: 6px; }
+.po-foot-line { margin: 2px 0; font-size: 11px; color: #5b6472; }
+
+@media print {
+  .po-print { background: #fff; }
+  .po-sheet { width: auto; margin: 0; padding: 0; border: 0; }
+  .po-foot-hint { display: none; }
+}
+
+/* 표 첫 칸(#) — 옮겨 오면서 규칙이 없던 것을 채웠다 (모양은 화면 쪽 .p-col-no 와 같다) */
+.po-col-no { width: 8mm; text-align: right; color: #8b95a3; }

@@ -17,7 +17,11 @@ declare(strict_types=1);
  * @var list<string>        $params 경로 변수 없음
  */
 
-$pageTitle = '구매(입고)';
+$pageTitle = '입고 입력';
 $activeNav = 'purchase-receipt';
 $pageKey   = 'purchase';
+/* 25단계 — 스타일시트는 **셸이 head 에서** 싣는다(본문 한가운데 <link> 를 없애 FOUC 0),
+   알림 줄(`#msg`)은 화면이 .page-head 바로 아래에 한 번만 놓는다(id 중복 0). T-50 (b). */
+$pageCss    = ['purchase.css'];
+$pageMsgTop = true;
 require __DIR__ . '/../views/purchase_receipt.php';

@@ -17,58 +17,24 @@
 (function () {
   'use strict';
 
-  var GENERIC_ERROR = '처리하지 못했습니다. 잠시 후 다시 시도해 주세요.';
-
-  /* ── 작은 도우미 ─────────────────────────────────────── */
-
-  function $(id) { return document.getElementById(id); }
-
-  /** 문서에 글자를 넣는 **유일한** 통로 */
-  function setText(node, value) {
-    if (!node) { return; }
-    node.textContent = value === null || value === undefined ? '' : String(value);
-  }
-
-  function el(tag, className, text) {
-    var node = document.createElement(tag);
-    if (className) { node.className = className; }
-    if (text !== undefined) { setText(node, text); }
-    return node;
-  }
-
-  function clear(node) {
-    if (!node) { return; }
-    while (node.firstChild) { node.removeChild(node.firstChild); }
-  }
-
-  function say(message) { setText($('msg'), message); }
-
-  function dash(value) {
-    return value === null || value === undefined || value === '' ? '—' : String(value);
-  }
-
-  /** 서버가 준 오류 문구만 보여 준다(없으면 공통 문구). 상태 코드를 지어내지 않는다. */
-  function errorMessage(data) {
-    if (data && typeof data.error === 'string' && data.error !== '') { return data.error; }
-    return GENERIC_ERROR;
-  }
-
-  function readJson(response) {
-    return response.json().then(function (data) {
-      return data && typeof data === 'object' ? data : {};
-    }).catch(function () { return {}; });
-  }
+  /* ── 공통 도우미 한 벌 (25단계) — purchase_common.js 하나에만 있다 ──
+   * 다섯 번들이 각자 들고 있던 사본(el·setText·dash·errorMessage·request·say …)을 지웠다.
+   * 호출 경로·본문·응답 처리는 그대로다.
+   */
+  var UI = window.PurchaseUI;
+  var $ = UI.$;
+  var el = UI.el;
+  var setText = UI.setText;
+  var clear = UI.clear;
+  var say = UI.say;
+  var dash = UI.dash;
+  var errorMessage = UI.errorMessage;
+  var badge = UI.badge;
 
   /**
-   * 재인증을 마친 뒤 **돌아올 화면의 키** (4차 보정 2026-09-13).
-   *
-   * 전에는 `/reauth` 로만 보내서, 기초정보를 고치려다 비밀번호를 다시 넣으면 **홈으로
-   * 떨어졌다**(사용자 관찰). 키는 서버의 `TBOX_REAUTH_PATHS`·app.js 의 `REAUTH_PATHS` 에
-   * 있는 **고정 문자열**이고, 주소는 그 표가 만든다 — 여기서 경로를 조립하지 않는다
-   * (오픈 리다이렉트가 생길 자리가 없다, PRD F-23).
-   *
+   * 재인증을 마치고 **보던 화면으로** 돌아오게 하는 꼬리표.
    * 지금 어느 화면인지는 **그 화면에만 있는 요소**로 가른다(app.js 가 `/reauth` 화면을
-   * 폼으로 가르는 것과 같은 방식).
+   * 폼으로 가르는 것과 같은 방식). 값은 코드에 적힌 고정 문자열 둘뿐이다.
    */
   function reauthKey() {
     if ($('p-import-form')) { return 'purchaseimport'; }
@@ -76,53 +42,8 @@
     return '';   // 품목 상세 등 — 재인증 대상이 아니라 여기 올 일이 없다
   }
 
-  /** 401 → 로그인, 403 + next → 강제 절차·재인증 화면. 처리했으면 true */
-  function handleGate(response, data) {
-    if (response.status === 401) {
-      window.location.href = '/login';
-      return true;
-    }
-    if (response.status === 403 && data && data.next === 'reauth') {
-      var key = reauthKey();
-      // 키가 없으면 꼬리표 없이 보낸다 — 그러면 확인 뒤 홈으로 간다(서버와 같은 규칙).
-      window.location.href = key === '' ? '/reauth' : '/reauth?to=' + key;
-      return true;
-    }
-    if (response.status === 403 && data
-        && (data.next === 'password_change' || data.next === 'mfa_setup')) {
-      window.location.href = '/';
-      return true;
-    }
-    return false;
-  }
-
-  var csrfToken = '';
-
-  function request(method, path, body, isForm) {
-    var init = {
-      method: method,
-      credentials: 'same-origin',
-      cache: 'no-store',
-      headers: {}
-    };
-    if (method !== 'GET') { init.headers['X-CSRF-Token'] = csrfToken; }
-    if (isForm) {
-      init.body = body;
-    } else if (body !== undefined && body !== null) {
-      init.headers['Content-Type'] = 'application/json';
-      init.body = JSON.stringify(body);
-    }
-    return fetch(path, init).then(function (response) {
-      return readJson(response).then(function (data) {
-        if (handleGate(response, data)) { return null; }
-        return { ok: response.ok, status: response.status, data: data };
-      });
-    });
-  }
-
-  /* ══════════════════════════════════════════════════════
-   * 화면 ⑭ — 기초정보 목록·만들기
-   * ══════════════════════════════════════════════════════ */
+  var apiClient = UI.api(reauthKey);
+  var request = apiClient.request;
 
   /** 종류별 표 머리와 각 행에서 꺼낼 칸. 라벨은 시안 ⑭ 의 것을 따른다. */
   var KIND_COLUMNS = {
@@ -130,8 +51,17 @@
     'branches':   [['name', '지점'], ['brand_name', '브랜드']],
     'locations':  [['code', '코드'], ['name', '장소'], ['kind', '용도'], ['branch_name', '지점'], ['legacy_name', '이전 이름']],
     'vendors':    [['code', '코드'], ['name', '거래처'], ['biz_no', '사업자번호']],
-    'categories': [['name', '분류'], ['level', '단계'], ['parent_name', '상위']],
+    'categories': [['name', '분류'], ['level', '분류 층'], ['parent_name', '상위']],
     'par-levels': [['item_code', '품목코드'], ['item_name', '품목'], ['location_name', '장소'], ['qty', '인가량'], ['effective_from', '적용 시작']]
+  };
+
+  /** 분류 층의 한국어 이름 — 표·셀렉트·모달이 같은 말을 쓴다 */
+  var CATEGORY_LEVELS = { '1': '대분류', '2': '중분류', '3': '소분류' };
+
+  /** 가져오기 행 판정의 배지 색 = 뜻 (시안 ⑯) */
+  var VERDICT_CLASS = {
+    insert: 'badge--accent', update: 'badge--ok',
+    review: 'badge--warn', error: 'badge--danger'
   };
 
   var KIND_TITLE = {
@@ -185,32 +115,19 @@
     ],
     'categories': [
       { key: 'name', label: '분류 이름', type: 'text', required: true },
-      { key: 'level', label: '단계', type: 'choice', required: true, options: [
-        ['1', '1단계 (대분류)'], ['2', '2단계 (중분류)'], ['3', '3단계 (소분류)']
+      { key: 'level', label: '분류 층', type: 'choice', required: true, options: [
+        ['1', '대분류'], ['2', '중분류'], ['3', '소분류']
       ] },
-      { key: 'parent_id', label: '상위 분류 (1단계는 비움)', type: 'ref', ref: 'categories' }
+      { key: 'parent_id', label: '상위 분류 (대분류는 비움)', type: 'ref', ref: 'categories' }
     ],
     'par-levels': [
       { key: 'location_id', label: '장소', type: 'ref', ref: 'locations', required: true },
       { key: 'item_id', label: '품목', type: 'item', required: true },
       { key: 'qty', label: '인가량', type: 'number', required: true },
       { key: 'effective_from', label: '적용 시작 (YYYY-MM-DD)', type: 'date' }
-    ],
-    // 품목 등록은 `/api/purchase/items` 로 간다 (기초정보 6종과 경로가 다르다 — 아래 postFor).
-    'items': [
-      { key: 'vendor_id', label: '기본 거래처', type: 'ref', ref: 'vendors', required: true },
-      { key: 'code', label: '품목코드 (거래처 코드 그대로)', type: 'text', required: true },
-      { key: 'name', label: '품목명', type: 'text', required: true },
-      { key: 'spec', label: '규격', type: 'text' },
-      { key: 'unit', label: '단위', type: 'text' },
-      { key: 'pack_qty', label: '포장 낱개 수', type: 'number' },
-      { key: 'brand_id', label: '브랜드', type: 'ref', ref: 'brands' },
-      { key: 'cat1_id', label: '대분류', type: 'ref', ref: 'categories' },
-      { key: 'cat2_id', label: '중분류', type: 'ref', ref: 'categories' },
-      { key: 'cat3_id', label: '소분류', type: 'ref', ref: 'categories' },
-      { key: 'price_in', label: '입고단가 (VAT 별도)', type: 'text' },
-      { key: 'barcode', label: '바코드', type: 'text' }
     ]
+    // 품목 등록 폼은 25단계에서 지웠다 — 어느 화면에서도 열 수 없는 **도달 불가 코드**였다.
+    // 품목 등록 화면(시안 ⑮ 편집형)은 26단계 후보다 (지시서 4장).
   };
 
   /** 종류 → 등록 API 경로. 품목만 `/items` 이고 나머지는 기초정보 6종 경로다. */
@@ -269,7 +186,8 @@
   /** 참조 항목 하나를 사람이 읽을 한 줄로 (분류는 단계가, 장소는 지점이 함께 보여야 고를 수 있다) */
   function refLabel(kind, row) {
     if (kind === 'categories') {
-      return String(row.level) + '단계 · ' + row.name + (row.parent_name ? ' (상위: ' + row.parent_name + ')' : '');
+      return (CATEGORY_LEVELS[String(row.level)] || String(row.level)) + ' · ' + row.name
+        + (row.parent_name ? ' (상위: ' + row.parent_name + ')' : '');
     }
     if (kind === 'locations') {
       return row.name + (row.branch_name ? ' (' + row.branch_name + ')' : '');
@@ -309,7 +227,10 @@
    * @returns {label, read} — read() 가 지금 값을 돌려준다
    */
   function buildField(spec, value) {
-    var label = el('label', 'field');
+    /* 참조·품목 칸은 안에 컨트롤이 둘·셋이라 한 칸에 넣으면 줄이 접히고, 그러면
+       그 칸만 키가 커져 라벨 줄이 들쭉날쭉해진다 — 그래서 그리드 두 칸을 준다 (25단계). */
+    var wide = spec.type === 'ref' || spec.type === 'item';
+    var label = el('label', wide ? 'field field--span2' : 'field');
     label.appendChild(el('span', 'field__label', spec.label + (spec.required ? ' *' : '')));
 
     if (spec.type === 'ref') {
@@ -512,7 +433,7 @@
         })
         .catch(function () {
           submit.disabled = false;
-          setText(msg, GENERIC_ERROR);
+          setText(msg, UI.GENERIC_ERROR);
         });
     }
 
@@ -591,7 +512,7 @@
           if (!result.ok) { say(errorMessage(result.data)); return; }
           load();
         })
-        .catch(function () { say(GENERIC_ERROR); });
+        .catch(function () { say(UI.GENERIC_ERROR); });
     }
 
     function renderRows(items) {
@@ -604,9 +525,8 @@
         });
 
         var stateCell = document.createElement('td');
-        var badge = el('span', item.is_active ? 'p-badge p-badge--update' : 'p-badge p-badge--off',
-                       item.is_active ? '사용' : '중단');
-        stateCell.appendChild(badge);
+        stateCell.appendChild(UI.badge(item.is_active ? '사용' : '중단',
+                                       item.is_active ? 'badge--ok' : 'badge--off'));
         tr.appendChild(stateCell);
 
         var actions = document.createElement('td');
@@ -666,7 +586,7 @@
           renderCreateForm();
           setText(pageInfo, '전체 ' + String(state.total) + '건 · ' + String(state.page) + '쪽');
         })
-        .catch(function () { say(GENERIC_ERROR); });
+        .catch(function () { say(UI.GENERIC_ERROR); });
     }
 
     if (tabs) {
@@ -678,9 +598,11 @@
         state.kind = kind;
         state.page = 1;
         rememberTab(kind);
-        var buttons = tabs.querySelectorAll('.p-tab');
+        var buttons = tabs.querySelectorAll('.tab');
         for (var i = 0; i < buttons.length; i++) {
-          buttons[i].className = buttons[i] === target ? 'p-tab is-on' : 'p-tab';
+          var on = buttons[i] === target;
+          buttons[i].className = on ? 'tab is-on' : 'tab';
+          buttons[i].setAttribute('aria-selected', on ? 'true' : 'false');
         }
         setText($('p-list-title'), KIND_TITLE[kind]);
         say('');
@@ -692,9 +614,11 @@
       var back = rememberedTab();
       if (back && back !== state.kind) {
         state.kind = back;
-        var all = tabs.querySelectorAll('.p-tab');
+        var all = tabs.querySelectorAll('.tab');
         for (var j = 0; j < all.length; j++) {
-          all[j].className = all[j].getAttribute('data-kind') === back ? 'p-tab is-on' : 'p-tab';
+          var onBack = all[j].getAttribute('data-kind') === back;
+          all[j].className = onBack ? 'tab is-on' : 'tab';
+          all[j].setAttribute('aria-selected', onBack ? 'true' : 'false');
         }
         setText($('p-list-title'), KIND_TITLE[back]);
       }
@@ -745,7 +669,7 @@
           }
           say(errorMessage(result.data));
         })
-        .catch(function () { say(GENERIC_ERROR); });
+        .catch(function () { say(UI.GENERIC_ERROR); });
     }
 
     var form = $('p-create-form');
@@ -798,7 +722,7 @@
           say('사용 지점에서 뺐습니다 (지운 것이 아니라 끈 것이며 지난 전표에는 남습니다).');
           initItem(root);
         })
-        .catch(function () { say(GENERIC_ERROR); });
+        .catch(function () { say(UI.GENERIC_ERROR); });
     }
 
     request('GET', '/api/purchase/items/' + itemId)
@@ -831,17 +755,41 @@
         ];
         rows.forEach(function (row) {
           facts.appendChild(el('dt', null, row[0]));
-          facts.appendChild(el('dd', null, dash(row[1])));
+          var dd = el('dd', row[0] === '품목코드' ? 'mono' : null, dash(row[1]));
+          if (row[0] === '현재고') { dd.id = 'p-item-stock'; }
+          facts.appendChild(dd);
         });
+
+        /* 현재고 — 품목 상세 API 는 아직 null 을 준다. **있는 창구**(재고 현황)에서
+           같은 품목의 장소별 현재고를 받아 더한다. 새 API 를 만들지 않는다.
+           행이 하나도 없으면 「—」 그대로 둔다 — 0 으로 보여 주면 「재고가 없다」는
+           틀린 사실을 말하게 된다. */
+        if (item.code) {
+          request('GET', '/api/purchase/stock?q=' + encodeURIComponent(String(item.code)))
+            .then(function (stockRes) {
+              if (!stockRes || !stockRes.ok) { return; }
+              var mine = (stockRes.data.items || []).filter(function (r) {
+                return String(r.item_id) === String(item.id);
+              });
+              if (mine.length === 0) { return; }
+              var sum = 0;
+              mine.forEach(function (r) {
+                var n = Number(r.on_hand);
+                if (!isNaN(n)) { sum += n; }
+              });
+              setText($('p-item-stock'), String(Math.round(sum * 1000) / 1000)
+                + ' (장소 ' + String(mine.length) + '곳 합계)');
+            });
+        }
 
         var chips = $('p-item-branches');
         clear(chips);
         var branches = Array.isArray(result.data.branches) ? result.data.branches : [];
         if (branches.length === 0) {
-          chips.appendChild(el('li', null, '지정 없음 (브랜드 전체)'));
+          chips.appendChild(el('li', 'chip', '지정 없음 (브랜드 전체)'));
         } else {
           branches.forEach(function (branch) {
-            var chip = el('li', null, branch.branch_name);
+            var chip = el('li', 'chip', branch.branch_name);
             var off  = el('button', 'btn btn--quiet btn--small', '빼기');
             off.type = 'button';
             off.addEventListener('click', function () {
@@ -859,14 +807,14 @@
           var tr = document.createElement('tr');
           tr.appendChild(el('td', null, dash(par.branch_name)));
           tr.appendChild(el('td', null, dash(par.location_name)));
-          tr.appendChild(el('td', null, dash(par.qty)));
+          tr.appendChild(el('td', 'num mono', dash(par.qty)));
           tr.appendChild(el('td', null, dash(par.effective_from)));
           parBody.appendChild(tr);
         });
         var parEmpty = $('p-item-par-empty');
         if (parEmpty) { parEmpty.hidden = pars.length !== 0; }
       })
-      .catch(function () { say(GENERIC_ERROR); });
+      .catch(function () { say(UI.GENERIC_ERROR); });
   }
 
   /* ══════════════════════════════════════════════════════
@@ -917,6 +865,27 @@
       rowPage: 1, rowStatus: '', rowQuery: '', lastPreview: null
     };
 
+    /** 왼쪽 「열 맞추기 요약」 — 무엇을 어떤 칸으로 넣는 중인지 잊지 않게 (시안 ⑯) */
+    function renderSummary() {
+      var box = $('p-summary');
+      if (!box) { return; }
+      clear(box);
+      var mapping = currentMapping();
+      box.appendChild(el('dt', null, '파일'));
+      box.appendChild(el('dd', null, state.fileName || '—'));
+      box.appendChild(el('dt', null, '행 수'));
+      box.appendChild(el('dd', 'num mono', String(state.fileRows || 0)));
+      box.appendChild(el('dt', null, '종류'));
+      box.appendChild(el('dd', null, KIND_NOUN[state.kind] || state.kind));
+      box.appendChild(el('dt', null, '머리행'));
+      box.appendChild(el('dd', 'num mono', String(state.headerRow + 1)));
+      /* mapping 은 {엑셀 열 이름: 우리 칸 키} 다 — 사람이 읽을 이름으로 바꿔 적는다 */
+      Object.keys(mapping).forEach(function (column) {
+        box.appendChild(el('dt', null, labelOf(mapping[column])));
+        box.appendChild(el('dd', null, String(column)));
+      });
+    }
+
     /**
      * 지금 어느 걸음인가 — **한 단계 패널만** 보인다 (6차 보정 2026-09-13, 사용자 결정).
      *
@@ -927,14 +896,17 @@
       state.step = current;
       [1, 2, 3, 4].forEach(function (n) {
         var node = $('p-step-' + String(n));
-        if (node) { node.className = n === current ? 'p-step is-on' : (n < current ? 'p-step is-done' : 'p-step'); }
+        if (node) { node.className = n === current ? 'chip is-on' : (n < current ? 'chip is-done' : 'chip'); }
       });
 
-      var panels = { 1: 'p-file-panel', 2: 'p-map-panel', 3: 'p-preview-panel', 4: 'p-result-panel' };
+      /* 3 걸음은 **2단**이다 — 왼쪽 「열 맞추기 요약」이 미리보기·결과를 보는 동안 남는다
+         (시안 ⑯). 그래서 감추고 켜는 것은 바깥 2단 틀(`p-preview-split`)이다. */
+      var panels = { 1: 'p-file-panel', 2: 'p-map-panel', 3: 'p-preview-split', 4: 'p-result-panel' };
       Object.keys(panels).forEach(function (n) {
         var node = $(panels[n]);
         if (node) { node.hidden = Number(n) !== current; }
       });
+      renderSummary();
 
       // 끝난 단계의 한 줄 요약
       [1, 2].forEach(function (n) {
@@ -1265,7 +1237,7 @@
             step(2);
             say('');
           })
-          .catch(function () { say(GENERIC_ERROR); });
+          .catch(function () { say(UI.GENERIC_ERROR); });
       });
     }
 
@@ -1323,7 +1295,7 @@
           if (!result.ok) { say(errorMessage(result.data)); return; }
           renderPreview(result.data, note || '');
         })
-        .catch(function () { say(GENERIC_ERROR); });
+        .catch(function () { say(UI.GENERIC_ERROR); });
     }
 
     /**
@@ -1347,7 +1319,7 @@
 
       list.forEach(function (miss) {
         var line = el('div', 'p-missing__row');
-        line.appendChild(el('span', 'p-badge p-badge--error', KIND_NOUN[miss.kind] || miss.kind));
+        line.appendChild(badge(KIND_NOUN[miss.kind] || miss.kind, 'badge--danger'));
         line.appendChild(el('span', 'p-missing__value', miss.value));
         line.appendChild(el('span', 'muted', '이 값 ' + String(miss.rows) + '행'));
 
@@ -1407,7 +1379,7 @@
         var bd = document.createElement('details');
         bd.appendChild(el('summary', null, '새로 만들 브랜드 ' + String(brands.length) + '개 보기'));
         var bul = el('ul', 'p-chips');
-        brands.forEach(function (n) { bul.appendChild(el('li', null, n)); });
+        brands.forEach(function (n) { bul.appendChild(el('li', 'chip', n)); });
         bd.appendChild(bul);
         box.appendChild(bd);
       }
@@ -1416,7 +1388,7 @@
         rd.appendChild(el('summary', null, '새로 만들 지점 ' + String(branches.length) + '개 보기'));
         var rul = el('ul', 'p-chips');
         branches.forEach(function (b) {
-          rul.appendChild(el('li', null, b.name + (b.brand ? ' (' + b.brand + ')' : '')));
+          rul.appendChild(el('li', 'chip', b.name + (b.brand ? ' (' + b.brand + ')' : '')));
         });
         rd.appendChild(rul);
         box.appendChild(rd);
@@ -1440,12 +1412,12 @@
       clear(box);
       [['insert', '등록'], ['update', '갱신'],
        ['review', '확인 필요'], ['error', '오류']].forEach(function (pair) {
-        box.appendChild(el('span', 'p-badge p-badge--' + pair[0],
-                           pair[1] + ' ' + String(counts[pair[0]] || 0)));
+        box.appendChild(badge(pair[1] + ' ' + String(counts[pair[0]] || 0),
+                              VERDICT_CLASS[pair[0]] || ''));
       });
       var excludedCount = Object.keys(state.excluded || {}).length;
       if (excludedCount > 0) {
-        box.appendChild(el('span', 'p-badge p-badge--off', '제외 ' + String(excludedCount)));
+        box.appendChild(badge('제외 ' + String(excludedCount), 'badge--off'));
       }
 
       /* 6차 보정 — 도구줄의 단추들. 「확정」 에 **저장될 행 수**를 적어 두면, 오류가 남아
@@ -1489,15 +1461,15 @@
         tr.appendChild(el('td', null, row.row_no));
 
         var statusCell = document.createElement('td');
-        statusCell.appendChild(el('span', 'p-badge p-badge--' + row.status,
-                                  STATUS_LABEL[row.status] || row.status));
+        statusCell.appendChild(badge(STATUS_LABEL[row.status] || row.status,
+                                     VERDICT_CLASS[row.status] || ''));
         tr.appendChild(statusCell);
 
         /* 5차 보정 — 브랜드 칸. 새로 만들 브랜드면 이름과 「새로 만듦」 을 함께 보여 준다.
            (브랜드는 기존 것을 쓰면 지점 아래에 숨으므로 이름을 따로 내지 않는다.) */
         var brandCell = document.createElement('td');
         if (row.brand_name_new) {
-          brandCell.appendChild(el('span', 'p-badge p-badge--insert', '새로 만듦'));
+          brandCell.appendChild(badge('새로 만듦', 'badge--accent'));
           brandCell.appendChild(el('span', 'p-missing__value', ' ' + row.brand_name_new));
         } else {
           setText(brandCell, row.brand_by ? (BY_LABEL[row.brand_by] || row.brand_by) : '—');
@@ -1509,7 +1481,7 @@
         // 5차 보정 — 아직 없는 지점이면 그 이름과 「새로 만듦」 을 보여 준다.
         var branchCell = document.createElement('td');
         if (row.branch_name_new) {
-          branchCell.appendChild(el('span', 'p-badge p-badge--insert', '새로 만듦'));
+          branchCell.appendChild(badge('새로 만듦', 'badge--accent'));
           branchCell.appendChild(el('span', 'p-missing__value', ' ' + row.branch_name_new));
         } else {
           var branchText = '—';
@@ -1601,7 +1573,7 @@
           if (!result.ok) { say(errorMessage(result.data)); return; }
           renderPreview(result.data, '', true);
         })
-        .catch(function () { say(GENERIC_ERROR); });
+        .catch(function () { say(UI.GENERIC_ERROR); });
     }
 
     /** 「N행을 빼고 저장합니다」 안내 — 체크를 끌 때마다 다시 쓴다 */
@@ -1690,7 +1662,7 @@
             if (!result.ok) { say(errorMessage(result.data)); return; }
             renderPreview(result.data, '');
           })
-          .catch(function () { say(GENERIC_ERROR); });
+          .catch(function () { say(UI.GENERIC_ERROR); });
       });
     }
 
@@ -1723,7 +1695,7 @@
               '창고명에서 뽑은 지점 ' + String(result.data.total) + '개입니다. '
               + '확정을 누르면 지점으로 등록되고, 그 뒤에 창고를 다시 가져오면 됩니다.');
           })
-          .catch(function () { state.derive = ''; say(GENERIC_ERROR); });
+          .catch(function () { state.derive = ''; say(UI.GENERIC_ERROR); });
       });
     }
 
@@ -1774,7 +1746,7 @@
             if (!result) { return; }
             say(result.ok ? '매핑을 저장했습니다.' : errorMessage(result.data));
           })
-          .catch(function () { say(GENERIC_ERROR); });
+          .catch(function () { say(UI.GENERIC_ERROR); });
       });
     }
 
@@ -1818,7 +1790,7 @@
           })
           .catch(function () {
             if (commitBtn) { commitBtn.disabled = false; setText(commitBtn, '확정'); }
-            say(GENERIC_ERROR);
+            say(UI.GENERIC_ERROR);
           });
       });
     }
@@ -1876,11 +1848,11 @@
       })
       .then(function (me) {
         if (!me) { return; }
-        csrfToken = typeof me.csrf_token === 'string' ? me.csrf_token : '';
+        apiClient.setCsrf(me.csrf_token);
         if (isMasters) { initMasters(); }
         if (itemRoot) { initItem(itemRoot); }
         if (isImport) { initImport(); }
       })
-      .catch(function () { say(GENERIC_ERROR); });
+      .catch(function () { say(UI.GENERIC_ERROR); });
   });
 }());

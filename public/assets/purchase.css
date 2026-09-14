@@ -1,318 +1,285 @@
-/* public/assets/purchase.css — 구매·재고 모듈 화면 (19단계, PRD F-28·F-29, 시안 ⑭⑮⑯)
+/* public/assets/purchase.css — 구매·재고 모듈 **공통 한 벌** (25단계, PRD F-28~F-37 · T-50)
  *
- * t-box 공통 셸(app.css)의 토큰·컴포넌트를 그대로 쓰고, 이 파일에는 **모듈에만 있는 조각**
- * (탭·걸음 표시·판정 배지·사실 목록)만 둔다. app.css 를 고치지 않는다 — 모듈 때문에
- * 본체 화면이 흔들리면 안 된다 (ARCH 5.18 「경계」).
+ * 25단계 전에는 화면별 CSS 가 다섯 벌(purchase·purchase_docs·purchase_stock·
+ * purchase_recon·purchase_structure)이었고, 각 파일이 「앞 파일을 가져다 쓰지 않고 스스로
+ * 정의」해 같은 요소가 화면마다 다르게 보였다. 이제 **두 벌뿐**이다:
  *
- * 색·간격은 app.css 의 CSS 변수를 먼저 쓰고, 없을 때만 시안(docs/purchase/design/)의 값을
- * 대체값으로 둔다. 그래서 본체 토큰이 바뀌면 이 화면도 함께 따라간다.
+ *   app.css       셸과 공통 조각 (.badge · .btn · .panel · .tabs · .chip · .panel__tools ·
+ *                 .field--inline · .check · .kpi · .num · .empty · .help · .grid-form · .split …)
+ *   purchase.css  이 파일 — **모듈에만 있는 조각**(표 셀·트리·수불부·가져오기 걸음)
+ *
+ * 규칙
+ *   · 접두는 `p-` 하나. 같은 이름을 두 번 정의하지 않는다.
+ *   · app.css 에 있는 이름을 다시 정의하지 않는다 (.badge·.mono·.num·.chip·.tab …).
+ *   · 색·간격은 app.css 의 토큰(var(--…))을 쓴다. `!important` 를 쓰지 않는다.
+ *   · 인쇄 양식은 purchase_print.css 한 벌에 따로 있다 (purchase_po_print.php 전용).
  */
 
-/* ─── 기초정보 탭 (시안 ⑭) ─────────────────────────────── */
-.p-tabs {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px;
-  margin: 0 0 16px;
-  border-bottom: 1px solid var(--line, #dfe4ea);
-}
-
-.p-tab {
-  padding: 10px 16px;
-  border: 0;
-  border-bottom: 2px solid transparent;
-  margin-bottom: -1px;
-  background: none;
-  color: var(--muted, #5b6472);
-  font: inherit;
-  font-size: 14.5px;
-  font-weight: 600;
-  cursor: pointer;
-}
-
-.p-tab:hover { color: var(--text, #1c1f24); }
-
-.p-tab.is-on {
-  color: var(--accent, #1d5fbf);
-  border-bottom-color: var(--accent, #1d5fbf);
-}
-
-/* ─── 가져오기 걸음 표시 (시안 ⑯) ───────────────────────── */
-.p-steps {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  margin: 0 0 16px;
-  padding: 0;
-  list-style: none;
-}
-
-.p-step {
-  padding: 6px 12px;
-  border: 1px solid var(--line, #dfe4ea);
-  border-radius: 999px;
-  background: var(--card, #fff);
-  color: var(--muted, #5b6472);
-  font-size: 13.5px;
-  font-weight: 600;
-}
-
-.p-step.is-on {
-  border-color: var(--accent, #1d5fbf);
-  background: var(--accent-soft, #e8f0fb);
-  color: var(--accent, #1d5fbf);
-}
-
-/* ─── 행 판정 배지 (등록 · 갱신 · 확인 · 오류) ─────────────── */
-.p-badge {
-  display: inline-flex;
-  align-items: center;
-  height: 22px;
-  padding: 0 9px;
-  border-radius: 999px;
-  background: var(--chip, #eef0f3);
-  color: var(--muted, #6b7482);
-  font-size: 12px;
-  font-weight: 600;
-  white-space: nowrap;
-}
-
-.p-badge--insert { background: #e8f0fb; color: #1d5fbf; }
-.p-badge--update { background: #e6f4ea; color: #1e7a3c; }
-.p-badge--review { background: #fff8ec; color: #7a4a06; }
-.p-badge--error  { background: #fdf1f1; color: #a3221f; }
-.p-badge--off    { background: #eef0f3; color: #6b7482; }
-
-/* ─── 품목 상세의 「사실」 목록 (시안 ⑮) ───────────────────── */
-.p-facts {
-  display: grid;
-  grid-template-columns: minmax(120px, max-content) 1fr;
-  gap: 8px 16px;
-  margin: 0;
-}
-
-.p-facts dt {
-  color: var(--muted, #5b6472);
-  font-size: 13px;
-  font-weight: 600;
-}
-
-.p-facts dd { margin: 0; }
-
-/* 좁은 화면에서는 한 줄에 하나씩 */
-@media (max-width: 560px) {
-  .p-facts { grid-template-columns: 1fr; gap: 2px 0; }
-  .p-facts dd { margin-bottom: 10px; }
-}
-
-/* ─── 사용 지점 칩 목록 ─────────────────────────────────── */
-.p-chips {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-
-.p-chips li {
-  padding: 4px 12px;
-  border: 1px solid var(--line, #dfe4ea);
-  border-radius: 999px;
-  font-size: 13.5px;
-}
-
-/* ─── 폼·패널 보조 ─────────────────────────────────────── */
-.form__fields {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-  gap: 12px;
-  width: 100%;
-}
-
-.panel__tools {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 12px;
-}
-
-.panel__foot {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: flex-end;
-  gap: 12px;
-  margin-top: 12px;
-}
-
-.field--inline {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.field--inline .field__label { margin: 0; white-space: nowrap; }
-
-.check {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 13.5px;
-  color: var(--muted, #5b6472);
-}
-
-/* 표 안의 긴 값이 화면을 밀지 않게 — 가로 스크롤은 .table-wrap 이 맡는다 */
-.p-cell-wide { max-width: 380px; }
-
-/* ─── 가져오기 머리행 안내 (19단계 1차 보정 2026-09-13) ───────
- * 「2행을 머리행으로 봅니다 — 서버가 자동으로 고른 줄입니다」 한 줄.
- * 열 맞추기 표 바로 위에 붙어, 사람이 표를 읽기 전에 전제를 먼저 알게 한다.
- */
-#p-header-note {
-  margin: 0 0 12px;
-  padding: 8px 12px;
-  border-left: 3px solid var(--accent, #1d5fbf);
-  background: var(--accent-soft, #e8f0fb);
-  border-radius: 0 6px 6px 0;
-  font-size: 13.5px;
-}
-
-#p-header-note:empty { display: none; }
-
-/* 머리행 셀렉트는 각 줄의 첫 세 칸을 보여 주므로 길어진다 — 잘라서 줄바꿈을 막는다 */
-#p-header-row {
-  max-width: 320px;
-  text-overflow: ellipsis;
-}
-
-/* ─── 「+ 새로 등록」 팝업과 없는 값 목록 (19단계 3차 보정 2026-09-13) ─────
- *
- * 사용자 결정: "접근한 페이지에서 필요한 정보에 대한 팝업창을 띄워 등록할 수 있도록".
- * 팝업 자체(`dialog.modal`·`.modal__head/body/foot`)는 **app.css 의 것을 그대로** 쓴다 —
- * 파일 올리기의 새 폴더 대화상자와 같은 모양이어야 사람이 다시 배우지 않는다.
- * 여기에는 모듈에만 있는 조각(참조 칸의 한 줄 배치·없는 값 목록)만 둔다.
- */
-
-/* 참조 칸 — 셀렉트와 「+ 새로 등록」 을 한 줄에. 좁으면 단추가 아래로 내려간다. */
-.field__row {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 8px;
-  min-width: 0;
-}
-
-.field__row > select,
-.field__row > input {
-  flex: 1 1 160px;
-  min-width: 0;
-}
-
-/* 「이것만 등록하면 N행이 풀린다」 목록 */
-#p-missing { display: grid; gap: 8px; }
-
-.p-missing__row {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 8px;
-}
-
-/* 파일에 적힌 값 — 길어도 줄을 밀지 않게 */
-.p-missing__value {
-  font-weight: 600;
-  overflow-wrap: anywhere;
-  max-width: 420px;
-}
-
-/* 미리보기 표의 저장 체크 칸은 좁게 */
-#p-preview-body td:first-child,
-#p-preview-panel thead th:first-child { width: 44px; text-align: center; }
-
-/* 화면에는 안 보이고 읽어 주는 글자만 (표 머리의 중복 안내) */
+/* ─── 화면에는 안 보이고 읽어 주는 글자만 (빈 <th> 의 이름) ──────────── */
 .sr-only {
   position: absolute;
-  width: 1px; height: 1px;
-  margin: -1px; padding: 0; border: 0;
-  clip: rect(0 0 0 0);
-  clip-path: inset(50%);
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
   overflow: hidden;
+  clip: rect(0 0 0 0);
   white-space: nowrap;
+  border: 0;
 }
 
-/* ─── 가져오기 화면을 「한 걸음씩」 으로 (19단계 6차 보정 2026-09-13) ────────
- *
- * 사용자 관찰: "엑셀을 올리면 하단에 정보가 굉장히 길게 나오고 **확정은 맨 아래에** 나온다."
- * 그래서 ① 한 번에 한 단계 패널만 보이고 ② 요약·확정은 **카드 위에 붙박이**로 둔다.
- */
+/* ─── 표 ─────────────────────────────────────────────────────────── */
+.p-col-no { width: 40px; text-align: right; color: var(--muted-2); }
+.p-col-check { width: 44px; text-align: center; }
+.p-col-branch { min-width: 200px; }
+.p-branch-select { max-width: 260px; }
 
-/* 끝난 단계의 한 줄 요약 + 「수정」 */
+/* 셀 안의 두 번째 줄(규격·근거·장소) — 이 이름의 뜻은 **셀 부제 하나**다 */
+.p-sub { display: block; color: var(--muted); font-size: 12.5px; }
+.p-name { font-weight: 600; }
+
+/* 긴 값이 표를 밀지 않게 — 가로 스크롤은 .table-wrap 이 맡는다 */
+.p-cell-wide { max-width: 380px; }
+/* 짧은 낱말이 한 글자씩 접히지 않게 (구분·사용 같은 두 글자 칸) */
+.p-nowrap { white-space: nowrap; }
+
+/* 부족·여유를 눈에 띄게. 저장을 막는 것은 서버이고 이것은 안내다. */
+.p-short { color: var(--danger); font-weight: 600; }
+.p-plus  { color: var(--ok-fg); font-weight: 600; }
+
+.p-row-bad  { background: var(--danger-soft); }
+.p-row-late { background: var(--danger-soft); }
+.p-row-total td { background: var(--surface-2); font-weight: 700; }
+.p-row-click { cursor: pointer; }
+.p-row-click:hover { background: var(--surface-2); }
+.p-row-click.is-on { background: var(--accent-soft); }
+
+.p-locked { margin-left: 6px; color: var(--danger); font-size: 12px; }
+.p-src { color: var(--muted); font-size: 12px; }
+.p-closed { color: var(--muted); }
+
+.p-week-head { white-space: nowrap; }
+.p-week-total { font-weight: 700; }
+
+/* 표 푸터의 큰 합계 (시안 ① Main 푸터) */
+.p-total { font-family: var(--mono); font-size: 18px; font-weight: 700; }
+.p-totals { text-align: right; font-weight: 600; }
+
+/* 두 칸짜리 머리 카드 — 칸이 넓게 퍼져 빈자리가 생기지 않게 (입고 화면) */
+.grid-form--2 { grid-template-columns: minmax(0, 14rem) minmax(0, 1fr); }
+@media (max-width: 720px) {
+  .grid-form--2 { grid-template-columns: minmax(0, 1fr); }
+}
+
+/* ─── 표 안의 작은 입력칸 ────────────────────────────────────────── */
+.p-lines td { vertical-align: middle; }
+.p-in {
+  width: 82px;
+  height: 34px;
+  padding: 0 8px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--fg);
+  font: inherit;
+  font-size: 14px;
+  text-align: right;
+}
+.p-in--text { width: 130px; text-align: left; }
+.p-in--date { width: 140px; text-align: left; }
+.p-in--qty  { width: 82px; }
+.p-pick { text-align: center; }
+.p-pick input[type="checkbox"] { width: 16px; height: 16px; }
+
+/* 발주 제안의 근거 한 줄 (23단계) */
+.p-suggest { font-weight: 700; }
+.p-basis { display: block; color: var(--muted); font-size: 12px; white-space: normal; }
+
+/* ─── KPI 줄 (카드 자체는 app.css 의 .kpi) ──────────────────────── */
+.p-kpis {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr));
+  gap: 12px;
+}
+.p-kpis:empty { display: none; }
+
+/* ─── 세로로 쌓는 카드 묶음 (한 탭 안의 카드 여러 장) ──────────── */
+.p-stack { display: flex; flex-direction: column; gap: 20px; }
+
+/* ─── 접기 화살표 (묶음 머리) ───────────────────────────────────── */
+.p-caret { display: inline-block; width: 1em; color: var(--muted); }
+
+/* ─── 2단 폭 — 화면마다 곁가지의 너비가 다르다 ──────────────────── */
+.split--even { --split-side: minmax(0, 1fr); }
+#load-split { --split-side: 300px; }
+#docs-all { --split-side: 340px; }
+#p-preview-split { --split-side: 320px; }
+#st-split { --split-side: 340px; }
+
+/* ─── 칩 줄 · 가져오기 걸음 (칩 자체는 app.css 의 .chip) ────────── */
+.p-chipbar { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.p-steps { display: flex; flex-wrap: wrap; gap: 8px; margin: 0; padding: 0; list-style: none; }
+.p-chips { display: flex; flex-wrap: wrap; gap: 8px; margin: 0; padding: 0; list-style: none; }
+
+/* ─── 품목 상세의 「사실」 목록 (시안 ⑮ Item) ────────────────────── */
+.p-facts {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: 8px 18px;
+  margin: 0;
+}
+.p-facts dt { color: var(--muted); font-size: 13px; font-weight: 600; }
+.p-facts dd { margin: 0; overflow-wrap: anywhere; }
+@media (max-width: 560px) {
+  .p-facts { grid-template-columns: minmax(0, 1fr); gap: 2px 0; }
+}
+
+/* ─── 묶음(거래처·발주서) 접기 ─────────────────────────────────── */
+.p-group {
+  border: 1px solid var(--line);
+  border-radius: var(--r-card);
+}
+.p-group + .p-group { margin-top: 10px; }
+/* <div> 로도 <button> 으로도 쓴다 — 단추일 때의 기본 모양을 여기서 지운다 */
+.p-group__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 10px 14px;
+  background: var(--surface-2);
+  border: 0;
+  border-bottom: 1px solid var(--line);
+  border-radius: calc(var(--r-card) - 1px) calc(var(--r-card) - 1px) 0 0;
+  color: var(--fg);
+  font: inherit;
+  font-weight: 700;
+  text-align: left;
+  cursor: pointer;
+}
+.p-group__meta { color: var(--muted); font-size: 13px; font-weight: 400; }
+.p-group__body { padding: 0; }
+
+/* ─── 트리 (불러오기 모달 · 브랜드→지점→창고) ──────────────────── */
+.p-tree { display: flex; flex-direction: column; gap: 10px; }
+.p-tree-group { margin: 0; }
+.p-tree-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 4px 0;
+  border: 0;
+  background: none;
+  color: var(--fg);
+  font: inherit;
+  font-weight: 700;
+  text-align: left;
+  cursor: pointer;
+}
+.p-tree-head.is-on { color: var(--accent); }
+.p-tree-sum { color: var(--muted); font-size: 12.5px; font-weight: 400; }
+.p-tree-children {
+  margin: 6px 0 0 10px;
+  padding: 0 0 0 12px;
+  border-left: 2px solid var(--line);
+  list-style: none;
+}
+.p-tree-line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 0;
+}
+.p-tree-name { flex: 1 1 240px; min-width: 0; overflow-wrap: anywhere; }
+
+/* ─── 연결 전표 타임라인 (시안 ⑧ Docs 우측 aside) ───────────────── */
+.p-flow { display: flex; flex-direction: column; gap: 10px; margin: 0; padding: 0; list-style: none; }
+.p-flow__item {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--accent-line);
+  border-radius: var(--r-ctl);
+  background: var(--surface-2);
+}
+.p-flow__head { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.p-flow__meta { color: var(--muted); font-size: 12.5px; }
+
+/* ─── 열 맞추기 (월 대사) ──────────────────────────────────────── */
+.p-map { display: grid; grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr)); gap: 12px; }
+.p-map__field { display: grid; gap: 6px; min-width: 0; }
+.p-map__label { color: var(--muted); font-size: 12.5px; font-weight: 600; }
+
+/* ─── 가져오기 화면 (시안 ⑯) ───────────────────────────────────── */
 .p-done {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: 10px;
-  margin: 0 0 12px;
-  padding: 8px 14px;
-  border: 1px solid var(--line, #dfe4ea);
-  border-radius: 8px;
-  background: var(--surface-2, #fafbfc);
-  font-size: 13.5px;
+  padding: 10px 14px;
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-radius: var(--r-ctl);
 }
-
-.p-done__text { flex: 1 1 auto; color: var(--muted, #5b6472); overflow-wrap: anywhere; }
-
-/* 끝난 걸음은 흐리게 (지금 걸음만 진하다) */
-.p-step.is-done { opacity: .65; }
-
-/* 상단 고정 도구줄 — 표가 아무리 길어도 요약과 「확정」 이 눈에 남는다.
-   카드 안에서만 붙박이라 화면 맨 위 내비를 가리지 않는다. */
+.p-done__text { flex: 1 1 auto; color: var(--muted); overflow-wrap: anywhere; }
 .p-toolbar {
-  position: sticky;
-  top: 0;
-  z-index: 5;
   display: flex;
   flex-wrap: wrap;
   align-items: center;
+  justify-content: space-between;
   gap: 10px;
-  padding: 10px 14px;
-  border-bottom: 1px solid var(--line, #dfe4ea);
-  background: var(--card, #fff);
-  border-radius: 12px 12px 0 0;
 }
-
-.p-toolbar .panel__tools { flex: 1 1 auto; gap: 6px; }
-
-.p-toolbar__actions {
+.p-toolbar__actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.p-filters { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; }
+.p-missing__row {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: 8px;
-  margin-left: auto;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--line);
+}
+.p-missing__value { max-width: 320px; overflow-wrap: anywhere; font-weight: 600; }
+
+/* ─── 참조·품목 칸은 그리드 두 칸을 쓴다 ─────────────────────────
+   셀렉트 하나보다 넓어야(셀렉트 + 「+ 새로 등록」, 또는 검색 + 셀렉트 + 「찾기」)
+   한 줄에 서고, 그래야 옆 칸들과 높이가 같아진다.
+   **머리 카드 그리드 안에서만** 적용한다 — 한 칸짜리 그리드(등록 모달의 `.modal__body`)에
+   쓰면 없던 둘째 칸이 생겨 배치가 바뀐다. */
+.grid-form > .field--span2 { grid-column: span 2; }
+@media (max-width: 720px) {
+  .grid-form > .field--span2 { grid-column: span 1; }
 }
 
-/* 상태 필터 칩 + 찾기 */
-.p-filters {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 12px;
-  margin: 12px 0;
-}
+/* ─── 참조 칸 — 셀렉트와 「+ 새로 등록」 을 한 줄에 ──────────────── */
+.field__row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.field__row > select,
+.field__row > input { flex: 1 1 12rem; min-width: 0; }
+.field__row .btn { height: var(--h-input); }
 
-.p-chipbar { display: flex; flex-wrap: wrap; gap: 6px; }
+/* ─── 긴 목록은 제 자리에서 구른다 (data-allow-scroll 로 표시) ──── */
+.p-scroll { max-height: 70vh; overflow: auto; }
+.p-pick-wrap { max-height: 40vh; overflow: auto; }
 
-/* 접힘 상자(없는 값 · 새로 만들 것) — 기본은 건수만 */
-#p-missing-box summary,
-#p-tocreate-box summary { cursor: pointer; font-weight: 600; }
-#p-missing-box[open] summary,
-#p-tocreate-box[open] summary { margin-bottom: 10px; }
+/* ─── 머리행 안내·셀렉트 (가져오기) ─────────────────────────────── */
+#p-header-note { color: var(--muted); font-size: 12.5px; }
+#p-header-note:empty { display: none; }
+#p-header-row { max-width: 26rem; }
+#p-missing { display: grid; gap: 8px; }
+#p-preview-panel thead th:first-child { width: 44px; text-align: center; }
 
-/* 폰 폭(400px) — 도구줄이 두 줄로 접히고, 확정 단추는 한 줄을 다 쓴다 */
-@media (max-width: 560px) {
-  .p-toolbar { padding: 10px; gap: 8px; }
-  .p-toolbar__actions { margin-left: 0; width: 100%; }
-  .p-toolbar__actions #p-commit { flex: 1 1 100%; }
-  .p-filters { gap: 8px; }
-  .p-done { padding: 8px 10px; }
+/* ─── 모달을 넓게 (불러오기 트리·품목 찾기) ─────────────────────── */
+dialog.modal--wide { width: min(1100px, calc(100vw - 32px)); }
+/* 모달 바닥 — 요약은 왼쪽, 단추는 오른쪽 */
+.modal__foot > .muted { margin-right: auto; }
+
+@media (max-width: 720px) {
+  .p-in { width: 72px; }
+  .p-cell-wide { max-width: 220px; }
 }

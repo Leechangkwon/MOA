@@ -21,122 +21,32 @@
 (function () {
   'use strict';
 
-  var GENERIC_ERROR = '처리하지 못했습니다. 잠시 후 다시 시도해 주세요.';
-
-  /* ── 작은 도우미 ─────────────────────────────────────── */
-
-  function $(id) { return document.getElementById(id); }
-
-  /** 문서에 글자를 넣는 **유일한** 통로 */
-  function setText(node, value) {
-    if (!node) { return; }
-    node.textContent = value === null || value === undefined ? '' : String(value);
-  }
-
-  function el(tag, className, text) {
-    var node = document.createElement(tag);
-    if (className) { node.className = className; }
-    if (text !== undefined) { setText(node, text); }
-    return node;
-  }
-
-  function clear(node) {
-    if (!node) { return; }
-    while (node.firstChild) { node.removeChild(node.firstChild); }
-  }
-
-  function say(message) { setText($('msg'), message); }
-
-  function dash(value) {
-    return value === null || value === undefined || value === '' ? '—' : String(value);
-  }
-
-  /** 수량 — 소수점 뒤 0 은 지운다(5.000 → 5). 값 자체는 서버가 만든 문자열이다. */
-  function qty(value) {
-    if (value === null || value === undefined || value === '') { return '—'; }
-    var n = Number(value);
-    if (isNaN(n)) { return String(value); }
-    return String(Math.round(n * 1000) / 1000);
-  }
-
-  function money(value) {
-    if (value === null || value === undefined || value === '') { return '—'; }
-    var n = Number(value);
-    if (isNaN(n)) { return String(value); }
-    return n.toLocaleString('ko-KR');
-  }
-
-  function today() {
-    var d = new Date();
-    function two(v) { return (v < 10 ? '0' : '') + v; }
-    return d.getFullYear() + '-' + two(d.getMonth() + 1) + '-' + two(d.getDate());
-  }
-
-  function num(value) {
-    var n = Number(value);
-    return isNaN(n) ? 0 : n;
-  }
-
-  function errorMessage(data) {
-    if (data && typeof data.error === 'string' && data.error !== '') { return data.error; }
-    return GENERIC_ERROR;
-  }
-
-  function readJson(response) {
-    return response.json().then(function (data) {
-      return data && typeof data === 'object' ? data : {};
-    }).catch(function () { return {}; });
-  }
-
-  /**
-   * 401 → 로그인, 403 + next → 강제 절차·재인증 화면. 처리했으면 true.
-   * 경로는 서버가 정한 **고정 키**에서만 나오고 이 파일이 주소를 조립하지 않는다
-   * (PRD F-23 오픈 리다이렉트 방지).
+  /* ── 공통 도우미 한 벌 (25단계) — purchase_common.js 하나에만 있다 ──
+   * 다섯 번들이 각자 들고 있던 사본을 지웠다. 호출 경로·본문·응답 처리는 그대로다.
    */
-  function handleGate(response, data) {
-    if (response.status === 401) {
-      window.location.href = '/login';
-      return true;
-    }
-    if (response.status === 403 && data && data.next === 'reauth') {
-      window.location.href = '/reauth';
-      return true;
-    }
-    if (response.status === 403 && data
-        && (data.next === 'password_change' || data.next === 'mfa_setup')) {
-      window.location.href = '/';
-      return true;
-    }
-    return false;
-  }
+  var UI = window.PurchaseUI;
+  var $ = UI.$;
+  var el = UI.el;
+  var setText = UI.setText;
+  var clear = UI.clear;
+  var say = UI.say;
+  var dash = UI.dash;
+  var qty = UI.qty;
+  var money = UI.money;
+  var today = UI.today;
+  var num = UI.toNumber;
+  var errorMessage = UI.errorMessage;
+  var cell = UI.cell;
+  var badge = UI.badge;
+  var button = UI.button;
+  var kpi = UI.kpi;
+  var fillSelect = UI.fillSelect;
+  var initTabs = UI.initTabs;
 
-  var csrfToken = '';
-
-  function request(method, path, body) {
-    var init = {
-      method: method,
-      credentials: 'same-origin',
-      cache: 'no-store',
-      headers: {}
-    };
-    if (method !== 'GET') { init.headers['X-CSRF-Token'] = csrfToken; }
-    if (body !== undefined && body !== null) {
-      init.headers['Content-Type'] = 'application/json';
-      init.body = JSON.stringify(body);
-    }
-    return fetch(path, init).then(function (response) {
-      return readJson(response).then(function (data) {
-        if (handleGate(response, data)) { return null; }
-        return { ok: response.ok, status: response.status, data: data };
-      });
-    });
-  }
-
-  function cell(row, text, className) {
-    var td = el('td', className || null, text);
-    row.appendChild(td);
-    return td;
-  }
+  /* 재고 화면의 라우트는 재인증 대상이 아니다 — 꼬리표 없이 `/reauth` 로 보낸다
+     (경로는 코드에 적힌 고정 문자열이고, 응답 값이 주소가 되지 않는다). */
+  var apiClient = UI.api('');
+  var request = apiClient.request;
 
   /** 표 안의 수량 입력칸. 값은 문자열 그대로 서버에 간다(서버가 형식을 다시 본다). */
   function qtyInput(value, onInput, className) {
@@ -169,31 +79,6 @@
     return input;
   }
 
-  function button(label, className, onClick) {
-    var b = el('button', className || 'btn btn--quiet btn--small', label);
-    b.type = 'button';
-    b.addEventListener('click', onClick);
-    return b;
-  }
-
-  /** 셀렉트를 목록으로 채운다. `textContent` 로만 글자를 넣는다. */
-  function fillSelect(select, rows, valueKey, labelKey, emptyLabel) {
-    if (!select) { return; }
-    var keep = select.value;
-    clear(select);
-    if (emptyLabel !== null && emptyLabel !== undefined) {
-      var blank = el('option', null, emptyLabel);
-      blank.value = '';
-      select.appendChild(blank);
-    }
-    rows.forEach(function (row) {
-      var opt = el('option', null, String(row[labelKey]));
-      opt.value = String(row[valueKey]);
-      select.appendChild(opt);
-    });
-    if (keep !== '') { select.value = keep; }
-  }
-
   /** 기초정보 목록 — 서버가 이미 지점으로 좁혀 준다 */
   function loadMaster(kind) {
     return request('GET', '/api/purchase/' + kind).then(function (res) {
@@ -202,42 +87,17 @@
     });
   }
 
+  /* 상태 어휘는 README 의 고정 어휘 그대로다 — 축약하지 않는다(「일부」 ✕ / 「일부 발주」 ○).
+     색이 곧 뜻이다: 진행중 warn · 일부 발주 accent · 완료 ok · 취소 off · 미확인 기본. */
   var STATUS_LABEL = {
-    unconfirmed: '미확인', in_progress: '진행중', partial: '일부', done: '완료', void: '취소'
+    unconfirmed: '미확인', in_progress: '진행중', partial: '일부 발주', done: '완료', void: '취소'
   };
   var STATUS_CLASS = {
-    unconfirmed: 'p-badge', in_progress: 'p-badge p-badge--accent',
-    partial: 'p-badge p-badge--warn', done: 'p-badge p-badge--ok',
-    void: 'p-badge p-badge--danger'
+    unconfirmed: '', in_progress: 'badge--warn',
+    partial: 'badge--accent', done: 'badge--ok', void: 'badge--off'
   };
   function statusBadge(status) {
-    return el('span', STATUS_CLASS[status] || 'p-badge', STATUS_LABEL[status] || status);
-  }
-
-  function kpi(container, label, value, note) {
-    var card = el('div', 'p-kpi');
-    card.appendChild(el('div', 'p-kpi__label', label));
-    card.appendChild(el('div', 'p-kpi__value', value));
-    card.appendChild(el('div', 'p-kpi__note', note || ''));
-    container.appendChild(card);
-  }
-
-  function initTabs(navId, map) {
-    var nav = $(navId);
-    if (!nav) { return; }
-    var buttons = nav.querySelectorAll('.p-tab');
-    Array.prototype.forEach.call(buttons, function (b) {
-      b.addEventListener('click', function () {
-        Array.prototype.forEach.call(buttons, function (x) { x.classList.remove('is-on'); });
-        b.classList.add('is-on');
-        var wanted = b.getAttribute('data-tab');
-        Object.keys(map).forEach(function (key) {
-          var panel = $(map[key].panel);
-          if (panel) { panel.hidden = key !== wanted; }
-        });
-        if (map[wanted] && typeof map[wanted].onShow === 'function') { map[wanted].onShow(); }
-      });
-    });
+    return badge(STATUS_LABEL[status] || status, STATUS_CLASS[status] || '');
   }
 
   /* ══════════════════════════════════════════════════════
@@ -292,19 +152,47 @@
 
           var tr = el('tr');
           if (num(row.gap) < 0) { tr.className = 'p-row-bad'; }
-          var nameTd = cell(tr, row.name);
-          nameTd.appendChild(el('span', 'p-sub', row.code + (row.spec ? ' · ' + row.spec : '')));
+          var nameTd = cell(tr, row.name, 'p-name');
+          nameTd.appendChild(el('span', 'p-sub mono', row.code + (row.spec ? ' · ' + row.spec : '')));
           cell(tr, row.location_name);
-          cell(tr, qty(row.on_hand), 'p-num');
-          cell(tr, row.par_qty === null ? '—' : String(row.par_qty), 'p-num');
-          var gapTd = cell(tr, qty(row.gap), 'p-num');
-          gapTd.classList.add(num(row.gap) < 0 ? 'p-short' : 'p-plus');
-          cell(tr, qty(row.incoming), 'p-num');
-          cell(tr, qty(row.weekly_use), 'p-num');
+
+          /* 현재고 숫자를 누르면 **그 품목·그 장소**의 수불부가 열린다
+             (DB 내부 id 를 사람이 타이핑하던 칸을 없앤 자리 — 25단계). */
+          var onHandTd = el('td', 'num mono');
+          onHandTd.appendChild(button(qty(row.on_hand), 'btn btn--plain btn--small', function () {
+            openLedgerFor(row);
+          }));
+          tr.appendChild(onHandTd);
+
+          cell(tr, row.par_qty === null ? '—' : String(row.par_qty), 'num mono');
+
+          /* 과부족 — 모자라면 danger 배지, 딱 맞으면 warn 배지, 남으면 배지 없이 숫자 */
+          var gapTd = el('td', 'num mono');
+          if (num(row.gap) < 0) {
+            gapTd.appendChild(badge(qty(row.gap), 'badge--danger'));
+          } else if (num(row.gap) === 0) {
+            gapTd.appendChild(badge('0', 'badge--warn'));
+          } else {
+            setText(gapTd, qty(row.gap));
+            gapTd.classList.add('p-plus');
+          }
+          tr.appendChild(gapTd);
+
+          /* 미입고 — 0 이면 배지 없이 흐리게 */
+          var incTd = el('td', 'num mono');
+          if (num(row.incoming) > 0) {
+            incTd.appendChild(badge(qty(row.incoming), 'badge--warn'));
+          } else {
+            setText(incTd, '—');
+            incTd.classList.add('muted');
+          }
+          tr.appendChild(incTd);
+
+          cell(tr, qty(row.weekly_use), 'num mono');
 
           /* 발주 제안 — 값도 근거도 **서버가 준 것**이다 (PRD F-36). 여기서 더하지 않는다. */
           var sugN   = num(row.suggest_qty);
-          var sugTd  = cell(tr, '', 'p-num');
+          var sugTd  = cell(tr, '', 'num');
           sugTd.appendChild(el('b', 'p-suggest', sugN > 0 ? qty(row.suggest_qty) : '—'));
           sugTd.appendChild(el('span', 'p-basis', basisText(row)));
 
@@ -332,11 +220,7 @@
 
           var actTd = el('td');
           actTd.appendChild(button('수불부', 'btn btn--quiet btn--small', function () {
-            $('lg-location').value = String(row.location_id);
-            $('lg-item').value = String(row.item_id);
-            lgPage = 1;
-            showTab('ledger');
-            loadLedger();
+            openLedgerFor(row);
           }));
           tr.appendChild(actTd);
           body.appendChild(tr);
@@ -345,11 +229,22 @@
         $('st-empty').hidden = items.length > 0;
         var kpis = $('st-kpis');
         clear(kpis);
-        kpi(kpis, '인가량 미달 품목', String(shortCount), '이 페이지 기준');
+        kpi(kpis, '인가량 미달', String(shortCount), '이 페이지 기준', shortCount > 0);
         kpi(kpis, '미입고 수량', qty(String(incoming)), '이 페이지 기준');
         kpi(kpis, '전체 행', String(res.data.total), '장소 × 품목');
         setText($('st-page-info'), res.data.page + ' 쪽 · 전체 ' + res.data.total + '행');
       });
+    }
+
+    /** 재고 표의 한 줄에서 수불부 탭으로. 품목 id 는 **화면이 들고 있던 값**이다. */
+    function openLedgerFor(row) {
+      $('lg-location').value = String(row.location_id);
+      $('lg-item').value = String(row.item_id);
+      setText($('lg-item-name'), row.name + ' · ' + row.location_name);
+      $('lg-item-box').hidden = false;
+      lgPage = 1;
+      UI.showTab('stock-tabs', 'ledger');
+      loadLedger();
     }
 
     function loadLedger() {
@@ -371,15 +266,15 @@
         (res.data.rows || []).forEach(function (row) {
           var tr = el('tr');
           cell(tr, row.moved_at);
-          var docTd = cell(tr, row.doc_no);
+          var docTd = cell(tr, row.doc_no, 'mono');
           docTd.appendChild(el('span', 'p-sub', row.doc_type.toUpperCase()
             + (row.reverses ? ' · 되돌림' : '')));
-          var itemTd = cell(tr, row.name);
-          itemTd.appendChild(el('span', 'p-sub', row.code));
+          var itemTd = cell(tr, row.name, 'p-name');
+          itemTd.appendChild(el('span', 'p-sub mono', row.code));
           cell(tr, row.location_name);
-          var deltaTd = cell(tr, qty(row.qty_delta), 'p-num');
+          var deltaTd = cell(tr, qty(row.qty_delta), 'num mono');
           deltaTd.classList.add(num(row.qty_delta) < 0 ? 'p-short' : 'p-plus');
-          cell(tr, row.balance === null ? '—' : qty(row.balance), 'p-num');
+          cell(tr, row.balance === null ? '—' : qty(row.balance), 'num mono');
           cell(tr, dash(row.lot_no) + (row.expiry_date ? ' · ' + row.expiry_date : ''));
           cell(tr, dash(row.actor_name));
           body.appendChild(tr);
@@ -414,14 +309,19 @@
         clear(kpis);
         kpi(kpis, '미입고 발주서', String(res.data.doc_count) + ' 건',
           '거래처 ' + groups.length + '곳');
-        kpi(kpis, '납기 지남', String(res.data.overdue) + ' 줄', '보낸 날 + 조달기간 기준');
+        kpi(kpis, '납기 지남', String(res.data.overdue) + ' 줄', '보낸 날 + 조달기간 기준',
+          num(res.data.overdue) > 0);
         kpi(kpis, '미입고 금액', money(res.data.amount), '공급가액 기준');
         kpi(kpis, '미입고 줄', String(res.data.line_count) + ' 줄',
           res.data.truncated ? '상한에서 끊김 — 좁혀 보세요' : '');
 
         groups.forEach(function (group) {
           var box = el('div', 'p-group');
-          var head = el('div', 'p-group__head');
+          var head = el('button', 'p-group__head');
+          head.type = 'button';
+          head.setAttribute('aria-expanded', 'true');
+          var caret = el('span', 'p-caret', '\u25be');
+          head.appendChild(caret);
           head.appendChild(el('span', null, group.vendor_name));
           head.appendChild(el('span', 'p-group__meta',
             '발주서 ' + group.doc_count + '건 · 미입고 ' + group.line_count + '줄 · '
@@ -434,7 +334,8 @@
           var hrow = el('tr');
           ['발주서', '보낸 날 · 납기', '지점 · 입고 장소', '품목', '발주', '입고', '미입고', '경과', '요청자']
             .forEach(function (label, index) {
-              var th = el('th', index >= 4 && index <= 6 ? 'p-num' : null, label);
+              var th = el('th', index >= 4 && index <= 6 ? 'num' : null, label);
+              th.setAttribute('scope', 'col');
               hrow.appendChild(th);
             });
           thead.appendChild(hrow);
@@ -443,17 +344,19 @@
           var tbody = el('tbody');
           group.lines.forEach(function (line) {
             var tr = el('tr');
-            if (line.is_overdue) { tr.className = 'p-row-bad'; }
-            cell(tr, line.po_doc_no);
+            if (line.is_overdue) { tr.className = 'p-row-late'; }
+            cell(tr, line.po_doc_no, 'mono');
             cell(tr, dash(line.sent_at ? line.sent_at.slice(0, 10) : null)
               + ' · ' + dash(line.due_date));
             cell(tr, dash(line.branch_name) + ' · ' + dash(line.location_name));
-            var itemTd = cell(tr, line.name);
-            itemTd.appendChild(el('span', 'p-sub',
+            var itemTd = cell(tr, line.name, 'p-name');
+            itemTd.appendChild(el('span', 'p-sub mono',
               line.code + (line.partial ? ' · 부분 입고' : '')));
-            cell(tr, qty(line.ordered_qty), 'p-num');
-            cell(tr, qty(line.received_qty), 'p-num');
-            cell(tr, qty(line.remaining), 'p-num');
+            cell(tr, qty(line.ordered_qty), 'num mono');
+            cell(tr, qty(line.received_qty), 'num mono');
+            var remTd = el('td', 'num mono');
+            remTd.appendChild(badge(qty(line.remaining), 'badge--danger'));
+            tr.appendChild(remTd);
             var days = cell(tr, line.days_elapsed + '일');
             if (line.is_overdue) { days.className = 'p-short'; }
             cell(tr, dash(line.manager_name));
@@ -461,7 +364,13 @@
           });
           table.appendChild(tbody);
           wrap.appendChild(table);
+          wrap.className = 'table-wrap p-group__body';
           box.appendChild(wrap);
+          head.addEventListener('click', function () {
+            wrap.hidden = !wrap.hidden;
+            head.setAttribute('aria-expanded', wrap.hidden ? 'false' : 'true');
+            setText(caret, wrap.hidden ? '\u25b8' : '\u25be');
+          });
           host.appendChild(box);
         });
 
@@ -534,18 +443,6 @@
         });
     }
 
-    function showTab(key) {
-      var nav = $('stock-tabs');
-      var buttons = nav.querySelectorAll('.p-tab');
-      Array.prototype.forEach.call(buttons, function (b) {
-        var on = b.getAttribute('data-tab') === key;
-        b.classList.toggle('is-on', on);
-      });
-      $('stock-status').hidden = key !== 'status';
-      $('stock-ledger').hidden = key !== 'ledger';
-      $('stock-backorder').hidden = key !== 'backorder';
-    }
-
     initTabs('stock-tabs', {
       status: { panel: 'stock-status', onShow: loadStatus },
       ledger: { panel: 'stock-ledger', onShow: loadLedger },
@@ -567,7 +464,14 @@
     });
     $('st-next').addEventListener('click', function () { stPage += 1; loadStatus(); });
 
+    $('st-reload').addEventListener('click', function () { stPage = 1; loadStatus(); });
     $('lg-run').addEventListener('click', function () { lgPage = 1; loadLedger(); });
+    $('lg-item-clear').addEventListener('click', function () {
+      $('lg-item').value = '';
+      $('lg-item-box').hidden = true;
+      lgPage = 1;
+      loadLedger();
+    });
     $('lg-prev').addEventListener('click', function () {
       if (lgPage > 1) { lgPage -= 1; loadLedger(); }
     });
@@ -600,25 +504,34 @@
       lines.forEach(function (line, index) {
         var tr = el('tr');
         cell(tr, String(index + 1), 'p-col-no');
-        var nameTd = cell(tr, line.name);
-        nameTd.appendChild(el('span', 'p-sub', line.code));
-        cell(tr, line.po_doc_no);
-        cell(tr, qty(line.ordered), 'p-num');
-        cell(tr, qty(line.received), 'p-num');
+        var nameTd = cell(tr, line.name, 'p-name');
+        nameTd.appendChild(el('span', 'p-sub mono', line.code));
+        cell(tr, line.po_doc_no, 'mono');
+        cell(tr, qty(line.ordered), 'num mono');
+        cell(tr, qty(line.received), 'num mono');
 
-        var qtyTd = el('td', 'p-num');
+        var qtyTd = el('td', 'num');
         qtyTd.appendChild(qtyInput(line.qty, function (value) {
           line.qty = value;
           renderLines();
         }));
         tr.appendChild(qtyTd);
 
+        /* 남는 미입고 — 0 이면 ok, 일부 남으면 warn, 하나도 안 왔으면 danger.
+           음수(발주보다 많이 적음)는 빨간 줄로 보이고, 막는 것은 서버다. */
         var left = num(line.remaining) - num(line.qty);
-        var leftTd = cell(tr, qty(String(left)), 'p-num');
+        var leftTd = el('td', 'num mono');
         if (left < 0) {
-          leftTd.classList.add('p-short');
+          leftTd.appendChild(badge(qty(String(left)), 'badge--danger'));
           tr.className = 'p-row-bad';
+        } else if (left === 0) {
+          leftTd.appendChild(badge('0', 'badge--ok'));
+        } else if (left >= num(line.remaining)) {
+          leftTd.appendChild(badge(qty(String(left)), 'badge--danger'));
+        } else {
+          leftTd.appendChild(badge(qty(String(left)), 'badge--warn'));
         }
+        tr.appendChild(leftTd);
 
         var lotTd = el('td');
         lotTd.appendChild(textInput(line.lot, 60, function (v) { line.lot = v; }));
@@ -643,6 +556,7 @@
         total += num(line.qty);
       });
       $('gr-line-empty').hidden = lines.length > 0;
+      $('gr-foot').hidden = lines.length === 0;
       setText($('gr-sum'), lines.length === 0
         ? ''
         : '입고 줄 ' + lines.length + '건 · 이번 입고 ' + qty(String(total)) + ' 낱개'
@@ -690,7 +604,7 @@
         orders.forEach(function (order) {
           var box = el('div', 'p-group');
           var head = el('div', 'p-group__head');
-          head.appendChild(el('span', null, order.po_doc_no));
+          head.appendChild(el('span', 'mono', order.po_doc_no));
           head.appendChild(el('span', 'p-group__meta',
             dash(order.vendor_name) + ' · ' + dash(order.location_name)
               + ' · 보낸 지 ' + order.days_elapsed + '일'));
@@ -703,8 +617,14 @@
           var table = el('table', 'files');
           var thead = el('thead');
           var hrow = el('tr');
-          ['품목', '발주', '기입고', '미입고', ''].forEach(function (label, index) {
-            hrow.appendChild(el('th', index >= 1 && index <= 3 ? 'p-num' : null, label));
+          ['품목', '발주', '기입고', '미입고', '담기'].forEach(function (label, index) {
+            var th = el('th', index >= 1 && index <= 3 ? 'num' : null, label);
+            th.setAttribute('scope', 'col');
+            if (index === 4) {
+              clear(th);
+              th.appendChild(el('span', 'sr-only', label));
+            }
+            hrow.appendChild(th);
           });
           thead.appendChild(hrow);
           table.appendChild(thead);
@@ -712,12 +632,14 @@
           var tbody = el('tbody');
           order.lines.forEach(function (line) {
             var tr = el('tr');
-            var nameTd = cell(tr, line.name);
-            nameTd.appendChild(el('span', 'p-sub',
+            var nameTd = cell(tr, line.name, 'p-name');
+            nameTd.appendChild(el('span', 'p-sub mono',
               line.code + (line.stock_managed ? '' : ' · 재고관리 안 함')));
-            cell(tr, qty(line.ordered_qty), 'p-num');
-            cell(tr, qty(line.received_qty), 'p-num');
-            cell(tr, qty(line.remaining), 'p-num');
+            cell(tr, qty(line.ordered_qty), 'num mono');
+            cell(tr, qty(line.received_qty), 'num mono');
+            var remTd = el('td', 'num mono');
+            remTd.appendChild(badge(qty(line.remaining), 'badge--warn'));
+            tr.appendChild(remTd);
             var actTd = el('td');
             actTd.appendChild(button('담기', 'btn btn--quiet btn--small', function () {
               addLine(order, line);
@@ -744,11 +666,11 @@
       (doc.lines || []).forEach(function (line) {
         var tr = el('tr');
         cell(tr, String(line.line_no), 'p-col-no');
-        var nameTd = cell(tr, line.name);
-        nameTd.appendChild(el('span', 'p-sub', line.code));
-        cell(tr, qty(line.qty), 'p-num');
+        var nameTd = cell(tr, line.name, 'p-name');
+        nameTd.appendChild(el('span', 'p-sub mono', line.code));
+        cell(tr, qty(line.qty), 'num mono');
         cell(tr, dash(line.lot_no) + (line.expiry_date ? ' · ' + line.expiry_date : ''));
-        cell(tr, dash(line.src_doc_no));
+        cell(tr, dash(line.src_doc_no), 'mono');
         var st = el('td');
         st.appendChild(statusBadge(line.status));
         tr.appendChild(st);
@@ -832,8 +754,8 @@
         cell(tr, String(line.line_no), 'p-col-no');
         var nameTd = cell(tr, line.name);
         nameTd.appendChild(el('span', 'p-sub', line.code));
-        cell(tr, qty(line.qty), 'p-num');
-        cell(tr, line.counted_qty === null ? '—' : qty(line.counted_qty), 'p-num');
+        cell(tr, qty(line.qty), 'num');
+        cell(tr, line.counted_qty === null ? '—' : qty(line.counted_qty), 'num');
         var st = el('td');
         st.appendChild(statusBadge(line.status));
         tr.appendChild(st);
@@ -863,16 +785,16 @@
         cell(tr, String(index + 1), 'p-col-no');
         var nameTd = cell(tr, line.name);
         nameTd.appendChild(el('span', 'p-sub', line.code));
-        cell(tr, qty(line.from_qty), 'p-num');
-        cell(tr, qty(line.to_qty) + ' / ' + (line.par_qty === null ? '—' : line.par_qty), 'p-num');
+        cell(tr, qty(line.from_qty), 'num');
+        cell(tr, qty(line.to_qty) + ' / ' + (line.par_qty === null ? '—' : line.par_qty), 'num');
 
-        var qtyTd = el('td', 'p-num');
+        var qtyTd = el('td', 'num');
         qtyTd.appendChild(qtyInput(line.qty, function (v) { line.qty = v; renderMv(); }));
         tr.appendChild(qtyTd);
 
         var afterFrom = num(line.from_qty) - num(line.qty);
         var afterTo = num(line.to_qty) + num(line.qty);
-        var afterTd = cell(tr, qty(String(afterFrom)) + ' / ' + qty(String(afterTo)), 'p-num');
+        var afterTd = cell(tr, qty(String(afterFrom)) + ' / ' + qty(String(afterTo)), 'num');
         if (afterFrom < 0) {
           afterTd.classList.add('p-short');
           tr.className = 'p-row-bad';
@@ -892,6 +814,7 @@
         total += num(line.qty);
       });
       $('mv-empty').hidden = mvLines.length > 0;
+      $('mv-foot').hidden = mvLines.length === 0;
       setText($('mv-sum'), mvLines.length === 0
         ? ''
         : '이동 줄 ' + mvLines.length + '건 · 합계 ' + qty(String(total)) + ' 낱개');
@@ -962,14 +885,14 @@
         cell(tr, String(index + 1), 'p-col-no');
         var nameTd = cell(tr, line.name);
         nameTd.appendChild(el('span', 'p-sub', line.code));
-        cell(tr, qty(line.on_hand), 'p-num');
+        cell(tr, qty(line.on_hand), 'num');
 
-        var qtyTd = el('td', 'p-num');
+        var qtyTd = el('td', 'num');
         qtyTd.appendChild(qtyInput(line.qty, function (v) { line.qty = v; renderIs(); }));
         tr.appendChild(qtyTd);
 
         var after = num(line.on_hand) - num(line.qty);
-        var afterTd = cell(tr, qty(String(after)), 'p-num');
+        var afterTd = cell(tr, qty(String(after)), 'num');
         if (after < 0) {
           afterTd.classList.add('p-short');
           tr.className = 'p-row-bad';
@@ -989,6 +912,7 @@
         total += num(line.qty);
       });
       $('is-empty').hidden = isLines.length > 0;
+      $('is-foot').hidden = isLines.length === 0;
       setText($('is-sum'), isLines.length === 0
         ? ''
         : '사용 줄 ' + isLines.length + '건 · 합계 ' + qty(String(total)) + ' 낱개');
@@ -1046,9 +970,9 @@
         cell(tr, String(index + 1), 'p-col-no');
         var nameTd = cell(tr, line.name);
         nameTd.appendChild(el('span', 'p-sub', line.code));
-        cell(tr, qty(line.book), 'p-num');
+        cell(tr, qty(line.book), 'num');
 
-        var countedTd = el('td', 'p-num');
+        var countedTd = el('td', 'num');
         countedTd.appendChild(qtyInput(line.counted, function (v) {
           line.counted = v;
           renderAdj();
@@ -1056,12 +980,12 @@
         tr.appendChild(countedTd);
 
         var diff = num(line.counted) - num(line.book);
-        var diffTd = cell(tr, diff === 0 ? '0' : qty(String(diff)), 'p-num');
+        var diffTd = cell(tr, diff === 0 ? '0' : qty(String(diff)), 'num');
         if (diff !== 0) {
           diffCount += 1;
           diffTd.classList.add(diff < 0 ? 'p-short' : 'p-plus');
         }
-        cell(tr, line.par_qty === null ? '—' : String(line.par_qty), 'p-num');
+        cell(tr, line.par_qty === null ? '—' : String(line.par_qty), 'num');
 
         var remarkTd = el('td');
         remarkTd.appendChild(textInput(line.remark, 200, function (v) { line.remark = v; }));
@@ -1069,6 +993,7 @@
         body.appendChild(tr);
       });
       $('adj-empty').hidden = adjLines.length > 0;
+      $('adj-foot').hidden = adjLines.length === 0;
       setText($('adj-sum'), adjLines.length === 0
         ? ''
         : '센 품목 ' + adjLines.length + '건 · 차이 있는 줄 ' + diffCount + '건'
@@ -1161,16 +1086,16 @@
           window.location.href = '/login';
           return null;
         }
-        return readJson(response);
+        return UI.readJson(response);
       })
       .then(function (me) {
         if (me === null) { return; }
-        csrfToken = typeof me.csrf_token === 'string' ? me.csrf_token : '';
+        apiClient.setCsrf(me.csrf_token);
         if ($('stock-tabs')) { initStatus(); }
         if ($('gr-load')) { initReceipt(); }
         if ($('move-tabs')) { initMove(); }
       })
-      .catch(function () { say(GENERIC_ERROR); });
+      .catch(function () { say(UI.GENERIC_ERROR); });
   }
 
   if (document.readyState === 'loading') {

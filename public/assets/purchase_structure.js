@@ -17,107 +17,27 @@
 (function () {
   'use strict';
 
-  var GENERIC_ERROR = '처리하지 못했습니다. 잠시 후 다시 시도해 주세요.';
-  /* 재인증 뒤 돌아올 **고정 키** — 서버 TBOX_REAUTH_PATHS·app.js REAUTH_PATHS 와 같은 값 */
+  /** 재인증 뒤 돌아올 **고정 키** — 서버 TBOX_REAUTH_PATHS·app.js REAUTH_PATHS 와 같은 값 */
   var REAUTH_KEY = 'purchasestruct';
 
-  /** 장소 용도의 한국어 이름. 값 목록 자체는 서버(`kinds`)가 준다. */
+  /** 창고 용도 — 서버가 주는 네 값 말고는 만들지 않는다 */
   var KIND_LABEL = { warehouse: '창고', central: '중앙', or: '진료실', other: '기타' };
 
-  /* ── 작은 도우미 ─────────────────────────────────────── */
+  /* ── 공통 도우미 한 벌 (25단계) — purchase_common.js 하나에만 있다 ── */
+  var UI = window.PurchaseUI;
+  var $ = UI.$;
+  var el = UI.el;
+  var setText = UI.setText;
+  var clear = UI.clear;
+  var say = UI.say;
+  var dash = UI.dash;
+  var errorMessage = UI.errorMessage;
+  var cell = UI.cell;
+  var badge = UI.badge;
+  var button = UI.button;
 
-  function $(id) { return document.getElementById(id); }
-
-  /** 문서에 글자를 넣는 **유일한** 통로 */
-  function setText(node, value) {
-    if (!node) { return; }
-    node.textContent = value === null || value === undefined ? '' : String(value);
-  }
-
-  function el(tag, className, text) {
-    var node = document.createElement(tag);
-    if (className) { node.className = className; }
-    if (text !== undefined) { setText(node, text); }
-    return node;
-  }
-
-  function clear(node) {
-    if (!node) { return; }
-    while (node.firstChild) { node.removeChild(node.firstChild); }
-  }
-
-  function say(message) { setText($('msg'), message); }
-
-  function dash(value) {
-    return value === null || value === undefined || value === '' ? '—' : String(value);
-  }
-
-  /** 서버가 준 오류 문구만 보여 준다(없으면 공통 문구). 상태 코드를 지어내지 않는다. */
-  function errorMessage(data) {
-    if (data && typeof data.error === 'string' && data.error !== '') { return data.error; }
-    return GENERIC_ERROR;
-  }
-
-  function readJson(response) {
-    return response.json().then(function (data) {
-      return data && typeof data === 'object' ? data : {};
-    }).catch(function () { return {}; });
-  }
-
-  /** 401 → 로그인, 403 + next → 강제 절차·재인증 화면. 처리했으면 true */
-  function handleGate(response, data) {
-    if (response.status === 401) {
-      window.location.href = '/login';
-      return true;
-    }
-    if (response.status === 403 && data && data.next === 'reauth') {
-      window.location.href = '/reauth?to=' + REAUTH_KEY;
-      return true;
-    }
-    if (response.status === 403 && data
-        && (data.next === 'password_change' || data.next === 'mfa_setup')) {
-      window.location.href = '/';
-      return true;
-    }
-    return false;
-  }
-
-  var csrfToken = '';
-
-  function request(method, path, body, isForm) {
-    var init = {
-      method: method,
-      credentials: 'same-origin',
-      cache: 'no-store',
-      headers: {}
-    };
-    if (method !== 'GET') { init.headers['X-CSRF-Token'] = csrfToken; }
-    if (isForm) {
-      init.body = body;
-    } else if (body !== undefined && body !== null) {
-      init.headers['Content-Type'] = 'application/json';
-      init.body = JSON.stringify(body);
-    }
-    return fetch(path, init).then(function (response) {
-      return readJson(response).then(function (data) {
-        if (handleGate(response, data)) { return null; }
-        return { ok: response.ok, status: response.status, data: data };
-      });
-    });
-  }
-
-  function button(label, className, onClick) {
-    var b = el('button', className || 'btn btn--quiet btn--small', label);
-    b.type = 'button';
-    b.addEventListener('click', onClick);
-    return b;
-  }
-
-  function cell(row, text, className) {
-    var td = el('td', className || null, text);
-    row.appendChild(td);
-    return td;
-  }
+  var apiClient = UI.api(REAUTH_KEY);
+  var request = apiClient.request;
 
   /* ── 화면 상태 — 서버가 준 값을 그대로 들고 있을 뿐이다 ─── */
   var state = {
@@ -141,7 +61,7 @@
   /** 지점 셀렉트 — 브랜드별 optgroup. 중단된 지점은 넣지 않는다(연결 대상이 아니다). */
   function branchSelect(selected) {
     var select = document.createElement('select');
-    select.className = 'st-branch-select';
+    select.className = 'p-branch-select';
     var blank = el('option', null, '— 지점 고르기 —');
     blank.value = '';
     select.appendChild(blank);
@@ -168,15 +88,14 @@
     var c = state.counts || {};
     [['미연결', c.unlinked], ['연결', c.linked], ['제외', c.excluded],
      ['브랜드', c.brands], ['지점', c.branches]].forEach(function (pair) {
-      var chip = el('span', 'st-chip');
-      chip.appendChild(el('span', 'st-chip__label', pair[0]));
-      chip.appendChild(el('span', 'st-chip__value', String(pair[1] === undefined ? 0 : pair[1])));
+      var chip = el('span', 'chip');
+      chip.appendChild(el('span', null, pair[0]));
+      chip.appendChild(el('b', 'mono', String(pair[1] === undefined ? 0 : pair[1])));
       box.appendChild(chip);
     });
     if (Number(c.unlinked) === 0) {
-      var done = el('span', 'st-chip st-chip--ok',
-        '모두 정리됨 — 연결 ' + String(c.linked || 0) + ' · 제외 ' + String(c.excluded || 0));
-      box.appendChild(done);
+      box.appendChild(badge('모두 정리됨 — 연결 ' + String(c.linked || 0)
+        + ' · 제외 ' + String(c.excluded || 0), 'badge--ok'));
     }
   }
 
@@ -186,33 +105,32 @@
     $('st-tree-empty').hidden = state.brands.length > 0;
 
     state.brands.forEach(function (brand) {
-      var block = el('div', 'st-brand');
-      var head = el('div', 'st-brand__head');
-      head.appendChild(el('span', 'st-brand__name', String(brand.name)));
-      if (brand.is_active === false) { head.appendChild(el('span', 'p-badge p-badge--off', '중단')); }
+      var block = el('div', 'p-tree-group');
+      var head = el('div', 'p-tree-head');
+      head.appendChild(el('span', 'p-tree-name', String(brand.name)));
+      if (brand.is_active === false) { head.appendChild(badge('중단', 'badge--off')); }
       block.appendChild(head);
 
       (brand.branches || []).forEach(function (branch) {
-        var row = el('div', 'st-branch');
-        var line = el('div', 'st-branch__head');
-        line.appendChild(el('span', 'st-branch__name', String(branch.name)));
-        if (branch.code) { line.appendChild(el('span', 'st-branch__code', String(branch.code))); }
-        line.appendChild(el('span', 'st-branch__count',
-          '창고 ' + String((branch.locations || []).length)));
-        if (branch.is_active === false) { line.appendChild(el('span', 'p-badge p-badge--off', '중단')); }
+        var row = el('div', 'p-tree-children');
+        var line = el('div', 'p-tree-head');
+        line.appendChild(el('span', 'p-tree-name', String(branch.name)));
+        if (branch.code) { line.appendChild(el('span', 'mono p-tree-sum', String(branch.code))); }
+        line.appendChild(badge('창고 ' + String((branch.locations || []).length), 'badge--off'));
+        if (branch.is_active === false) { line.appendChild(badge('중단', 'badge--off')); }
         row.appendChild(line);
 
-        var list = el('ul', 'st-locs');
+        var list = el('ul', 'p-tree-children');
         (branch.locations || []).forEach(function (loc) {
-          var li = el('li', 'st-loc');
-          li.appendChild(el('span', 'st-loc__name', String(loc.name)));
-          li.appendChild(el('span', 'st-loc__meta',
+          var li = el('li', 'p-tree-line');
+          li.appendChild(el('span', 'p-tree-name', String(loc.name)));
+          li.appendChild(el('span', 'p-tree-sum mono',
             dash(loc.code) + ' · ' + kindLabel(loc.kind)));
-          if (loc.is_active === false) { li.appendChild(el('span', 'p-badge p-badge--off', '중단')); }
+          if (loc.is_active === false) { li.appendChild(badge('중단', 'badge--off')); }
           list.appendChild(li);
         });
         if ((branch.locations || []).length === 0) {
-          list.appendChild(el('li', 'st-loc st-loc--empty', '연결된 창고가 없습니다'));
+          list.appendChild(el('li', 'p-tree-line muted', '연결된 창고가 없습니다'));
         }
         row.appendChild(list);
         block.appendChild(row);
@@ -225,7 +143,7 @@
 
   /** 브랜드 블록 끝의 「+ 지점」 — 이름 한 칸만 받는다 */
   function branchForm(brand) {
-    var form = el('form', 'st-inline-form');
+    var form = el('form', 'panel__tools');
     form.autocomplete = 'off';
     var label = el('label', 'field field--inline');
     label.appendChild(el('span', 'field__label', '새 지점'));
@@ -251,7 +169,7 @@
           say('지점 「' + name + '」 을(를) 만들었습니다.');
           load();
         })
-        .catch(function () { say(GENERIC_ERROR); });
+        .catch(function () { say(UI.GENERIC_ERROR); });
     });
     return form;
   }
@@ -265,7 +183,7 @@
     state.unlinked.forEach(function (item) {
       var row = document.createElement('tr');
 
-      var checkCell = el('td', 'st-col-check');
+      var checkCell = el('td', 'p-col-check p-pick');
       var check = document.createElement('input');
       check.type = 'checkbox';
       check.checked = state.checked[item.id] === true;
@@ -276,11 +194,11 @@
       row.appendChild(checkCell);
 
       cell(row, String(item.ecount_code), 'mono');
-      cell(row, String(item.name));
-      cell(row, dash(item.kind_text));
-      cell(row, item.ecount_active === false ? '미사용' : '사용');
+      cell(row, String(item.name), 'p-name');
+      cell(row, dash(item.kind_text), 'p-nowrap');
+      cell(row, item.ecount_active === false ? '미사용' : '사용', 'p-nowrap');
 
-      var branchCell = el('td', 'st-col-branch');
+      var branchCell = el('td', 'p-col-branch');
       var suggested = item.suggest && item.suggest.branch_id ? item.suggest.branch_id : null;
       var picked = Object.prototype.hasOwnProperty.call(state.picked, item.id)
         ? state.picked[item.id]
@@ -288,10 +206,10 @@
       var select = branchSelect(picked);
       select.addEventListener('change', function () { state.picked[item.id] = select.value; });
       branchCell.appendChild(select);
-      if (suggested !== null) { branchCell.appendChild(el('span', 'p-badge', '추천')); }
+      if (suggested !== null) { branchCell.appendChild(badge('추천', 'badge--accent')); }
       row.appendChild(branchCell);
 
-      var excludeCell = el('td', 'st-col-exclude');
+      var excludeCell = el('td', 'p-col-check p-pick');
       var exclude = document.createElement('input');
       exclude.type = 'checkbox';
       exclude.addEventListener('change', function () {
@@ -368,7 +286,7 @@
       renderBulkBranch();
       renderUnlinked();
       renderExcluded();
-    }).catch(function () { say(GENERIC_ERROR); });
+    }).catch(function () { say(UI.GENERIC_ERROR); });
   }
 
   /** 행마다의 (창고, 지점) 짝을 보낸다. 용도는 셀렉트가 비어 있으면 보내지 않는다(서버가 유추). */
@@ -385,7 +303,7 @@
         say('창고 ' + String(result.data.links) + '개를 연결했습니다.');
         load();
       })
-      .catch(function () { say(GENERIC_ERROR); });
+      .catch(function () { say(UI.GENERIC_ERROR); });
   }
 
   function setExcluded(ids, excluded) {
@@ -399,7 +317,7 @@
           : '창고 ' + String(result.data.changed) + '개를 되살렸습니다.');
         load();
       })
-      .catch(function () { say(GENERIC_ERROR); });
+      .catch(function () { say(UI.GENERIC_ERROR); });
   }
 
   /** 행에서 지금 고른 지점 — 사람이 바꿨으면 그 값, 아니면 서버가 준 추천 */
@@ -437,7 +355,7 @@
           input.value = '';
           load();
         })
-        .catch(function () { say(GENERIC_ERROR); });
+        .catch(function () { say(UI.GENERIC_ERROR); });
     });
   }
 
@@ -455,11 +373,11 @@
           say('브랜드 「' + name + '」 을(를) 만들었습니다.');
           load();
         })
-        .catch(function () { say(GENERIC_ERROR); });
+        .catch(function () { say(UI.GENERIC_ERROR); });
     });
 
     $('st-select-all').addEventListener('click', function () {
-      var boxes = $('st-unlinked-body').querySelectorAll('.st-col-check input');
+      var boxes = $('st-unlinked-body').querySelectorAll('.p-col-check input');
       var turnOn = Object.keys(state.checked).length !== state.unlinked.length;
       state.checked = {};
       Array.prototype.forEach.call(boxes, function (box, index) {
@@ -514,16 +432,16 @@
           window.location.href = '/login';
           return null;
         }
-        return readJson(response);
+        return UI.readJson(response);
       })
       .then(function (me) {
         if (me === null) { return; }
-        csrfToken = typeof me.csrf_token === 'string' ? me.csrf_token : '';
+        apiClient.setCsrf(me.csrf_token);
         initUpload();
         initButtons();
         load();
       })
-      .catch(function () { say(GENERIC_ERROR); });
+      .catch(function () { say(UI.GENERIC_ERROR); });
   }
 
   if (document.readyState === 'loading') {

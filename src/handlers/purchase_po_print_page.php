@@ -19,6 +19,10 @@ declare(strict_types=1);
  *
  * 지점 격리 (SECURITY R-65): `Authz::purchaseScopeWhere($user, 'd')`. 범위 밖은 404.
  *
+ * ★ 25단계 — 이 화면은 공통 셸을 쓰지 않는다(인쇄물에 내비가 끼면 안 된다). 그래서
+ *   다른 12개 구매 화면처럼 `$pageCss` 를 셸에 넘기지 않고, 아래 view 가 자기 <head> 에
+ *   `purchase_print.css` 한 벌만 싣는다. 그 파일은 25단계에서 이름만 정리한 것이다.
+ *
  * @var array<string,mixed> $user
  * @var list<string>        $params $params[0] = p_docs.id
  */

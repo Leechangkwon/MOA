@@ -23,10 +23,19 @@
 (function () {
   'use strict';
 
-  var GENERIC_ERROR = '처리하지 못했습니다. 잠시 후 다시 시도해 주세요.';
+  /* 오류 문구는 purchase_common.js 에 한 벌 있다 (UI.GENERIC_ERROR). */
 
   /** 재인증 뒤 돌아올 **고정 키** — 서버 TBOX_REAUTH_PATHS·app.js REAUTH_PATHS 와 같은 값 */
   var REAUTH_KEY = 'purchaserecon';
+
+  /** 판정 배지의 색 = 뜻 (시안 README) — 일치 ok · 차이 warn · 한쪽에만 있음 danger */
+  var DIFF_CLASS = {
+    'none': 'badge--ok',
+    'qty': 'badge--warn',
+    'price': 'badge--warn',
+    'missing_ours': 'badge--danger',
+    'missing_theirs': 'badge--danger'
+  };
 
   /** 차이 판정의 한국어 이름. 서버가 정한 다섯 값 말고는 만들지 않는다. */
   var DIFF_LABELS = {
@@ -48,163 +57,32 @@
 
   /* ── 작은 도우미 ─────────────────────────────────────── */
 
-  function $(id) { return document.getElementById(id); }
-
-  /** 문서에 글자를 넣는 **유일한** 통로 */
-  function setText(node, value) {
-    if (!node) { return; }
-    node.textContent = value === null || value === undefined ? '' : String(value);
-  }
-
-  function el(tag, className, text) {
-    var node = document.createElement(tag);
-    if (className) { node.className = className; }
-    if (text !== undefined) { setText(node, text); }
-    return node;
-  }
-
-  function clear(node) {
-    if (!node) { return; }
-    while (node.firstChild) { node.removeChild(node.firstChild); }
-  }
-
-  function say(message) { setText($('msg'), message); }
-
-  function dash(value) {
-    return value === null || value === undefined || value === '' ? '—' : String(value);
-  }
-
-  function qty(value) {
-    if (value === null || value === undefined || value === '') { return '—'; }
-    var n = Number(value);
-    if (isNaN(n)) { return String(value); }
-    return String(Math.round(n * 1000) / 1000);
-  }
-
-  function money(value) {
-    if (value === null || value === undefined || value === '') { return '—'; }
-    var n = Number(value);
-    if (isNaN(n)) { return String(value); }
-    return n.toLocaleString('ko-KR');
-  }
-
-  function today() {
-    var d = new Date();
-    function two(v) { return (v < 10 ? '0' : '') + v; }
-    return d.getFullYear() + '-' + two(d.getMonth() + 1) + '-' + two(d.getDate());
-  }
+  /* ── 공통 도우미 한 벌 (25단계) — purchase_common.js 하나에만 있다 ── */
+  var UI = window.PurchaseUI;
+  var $ = UI.$;
+  var el = UI.el;
+  var setText = UI.setText;
+  var clear = UI.clear;
+  var say = UI.say;
+  var dash = UI.dash;
+  var qty = UI.qty;
+  var money = UI.money;
+  var today = UI.today;
+  var errorMessage = UI.errorMessage;
+  var cell = UI.cell;
+  var badge = UI.badge;
+  var button = UI.button;
+  var kpi = UI.kpi;
+  var fillSelect = UI.fillSelect;
+  var initTabs = UI.initTabs;
 
   function thisMonth() { return today().slice(0, 7); }
 
-  function errorMessage(data) {
-    if (data && typeof data.error === 'string' && data.error !== '') { return data.error; }
-    return GENERIC_ERROR;
-  }
-
-  function readJson(response) {
-    return response.json().then(function (data) {
-      return data && typeof data === 'object' ? data : {};
-    }).catch(function () { return {}; });
-  }
-
-  /**
-   * 401 → 로그인, 403 + next → 강제 절차·재인증 화면. 처리했으면 true.
-   * 재인증은 이 화면으로 돌아오도록 **코드에 적힌 키**를 붙인다 — 응답 값이 주소가 되지 않는다.
-   */
-  function handleGate(response, data) {
-    if (response.status === 401) {
-      window.location.href = '/login';
-      return true;
-    }
-    if (response.status === 403 && data && data.next === 'reauth') {
-      window.location.href = '/reauth?to=' + REAUTH_KEY;
-      return true;
-    }
-    if (response.status === 403 && data
-        && (data.next === 'password_change' || data.next === 'mfa_setup')) {
-      window.location.href = '/';
-      return true;
-    }
-    return false;
-  }
-
-  var csrfToken = '';
-
-  function request(method, path, body) {
-    var init = { method: method, credentials: 'same-origin', cache: 'no-store', headers: {} };
-    if (method !== 'GET') { init.headers['X-CSRF-Token'] = csrfToken; }
-    if (body !== undefined && body !== null) {
-      init.headers['Content-Type'] = 'application/json';
-      init.body = JSON.stringify(body);
-    }
-    return fetch(path, init).then(function (response) {
-      return readJson(response).then(function (data) {
-        if (handleGate(response, data)) { return null; }
-        return { ok: response.ok, status: response.status, data: data };
-      });
-    });
-  }
-
-  /** 파일 올리기 — multipart 는 Content-Type 을 브라우저가 정하게 둔다(경계 문자열) */
-  function upload(path, formData) {
-    return fetch(path, {
-      method: 'POST',
-      credentials: 'same-origin',
-      cache: 'no-store',
-      headers: { 'X-CSRF-Token': csrfToken },
-      body: formData
-    }).then(function (response) {
-      return readJson(response).then(function (data) {
-        if (handleGate(response, data)) { return null; }
-        return { ok: response.ok, status: response.status, data: data };
-      });
-    });
-  }
-
-  function cell(row, text, className) {
-    var td = el('td', className || null, text);
-    row.appendChild(td);
-    return td;
-  }
-
-  function button(label, className, onClick) {
-    var b = el('button', className || 'btn btn--quiet btn--small', label);
-    b.type = 'button';
-    b.addEventListener('click', onClick);
-    return b;
-  }
-
-  function badge(text, kind) {
-    return el('span', 'p-badge ' + kind, text);
-  }
-
-  /** 셀렉트를 목록으로 채운다. `textContent` 로만 글자를 넣는다. */
-  function fillSelect(select, rows, valueKey, labelKey, emptyLabel) {
-    if (!select) { return; }
-    var keep = select.value;
-    clear(select);
-    if (emptyLabel !== null && emptyLabel !== undefined) {
-      var blank = el('option', null, emptyLabel);
-      blank.value = '';
-      select.appendChild(blank);
-    }
-    rows.forEach(function (row) {
-      var opt = el('option', null, String(row[labelKey]));
-      opt.value = String(row[valueKey]);
-      select.appendChild(opt);
-    });
-    if (keep) { select.value = keep; }
-  }
-
-  function kpi(container, label, value, note) {
-    var box = el('div', 'p-kpi');
-    box.appendChild(el('div', 'p-kpi__label', label));
-    box.appendChild(el('div', 'p-kpi__value', value));
-    if (note !== undefined && note !== null) {
-      box.appendChild(el('div', 'p-kpi__note', note));
-    }
-    container.appendChild(box);
-  }
+  /* 월 마감은 재인증 대상이다 — 확인을 마치면 **이 화면으로** 돌아오도록
+     코드에 적힌 키를 붙인다(응답 값이 주소가 되지 않는다). */
+  var apiClient = UI.api(REAUTH_KEY);
+  var request = apiClient.request;
+  var upload = apiClient.upload;
 
   /* ══════════════════════════════════════════════════════
    * 주간 사용량 (시안 Weekly)
@@ -238,8 +116,8 @@
       order.sort();
 
       head.appendChild(el('th', null, data.group_label || '분류'));
-      weeks.forEach(function (w) { head.appendChild(el('th', 'p-num p-week-head', w)); });
-      head.appendChild(el('th', 'p-num p-week-total', '합계'));
+      weeks.forEach(function (w) { head.appendChild(el('th', 'num p-week-head', w)); });
+      head.appendChild(el('th', 'num p-week-total', '합계'));
 
       order.forEach(function (name) {
         var tr = el('tr');
@@ -248,9 +126,9 @@
         weeks.forEach(function (w) {
           var v = rows[name][w] || 0;
           sum += v;
-          cell(tr, v === 0 ? '—' : qty(v), 'p-num');
+          cell(tr, v === 0 ? '—' : qty(v), 'num mono');
         });
-        cell(tr, qty(sum), 'p-num p-week-total');
+        cell(tr, qty(sum), 'num mono p-week-total');
         body.appendChild(tr);
       });
 
@@ -258,18 +136,22 @@
         var tot = el('tr', 'p-row-total');
         cell(tot, '합계 (낱개)');
         weeks.forEach(function (w) {
-          cell(tot, qty(weekTotals[w] || 0), 'p-num');
+          cell(tot, qty(weekTotals[w] || 0), 'num mono');
         });
-        cell(tot, qty(grand), 'p-num p-week-total');
+        cell(tot, qty(grand), 'num mono p-week-total');
         body.appendChild(tot);
       }
 
       $('wk-empty').hidden = order.length > 0;
-      $('wk-cut').hidden = !data.truncated;
+      $('wk-foot').hidden = !data.truncated;
+      setText($('wk-range'), String(data.from) + ' ~ ' + String(data.to));
+      /* 기간 칸을 **서버가 고른 범위**로 채운다 — 「‹ 전주 / 다음 주 ›」가 그 값을 7일 민다. */
+      if ($('wk-from').value === '') { $('wk-from').value = String(data.from); }
+      if ($('wk-to').value === '') { $('wk-to').value = String(data.to); }
 
       var kpis = $('wk-kpis');
       clear(kpis);
-      kpi(kpis, '기간', String(data.from) + ' ~ ' + String(data.to), String(weeks.length) + '주');
+      kpi(kpis, '기간', String(weeks.length) + '주', String(data.from) + ' ~ ' + String(data.to));
       kpi(kpis, '합계 (낱개)', qty(grand), data.group_label + ' ' + String(order.length) + '줄');
       kpi(kpis, '지점', branchFilter === '' ? '전체' : $('wk-branch').selectedOptions[0].textContent,
           '보이는 범위는 서버가 정합니다');
@@ -285,12 +167,30 @@
         if (!res.ok) { say(errorMessage(res.data)); return; }
         fillSelect($('wk-branch'), res.data.branches || [], 'id', 'name', '전체');
         draw(res.data);
-      }).catch(function () { say(GENERIC_ERROR); });
+      }).catch(function () { say(UI.GENERIC_ERROR); });
+    }
+
+    /** 기간을 7일씩 민다 — 조회 로직은 그대로 `load()` 를 다시 부른다 */
+    function shiftWeek(days) {
+      var from = $('wk-from').value;
+      var to = $('wk-to').value;
+      if (from === '' || to === '') { say('먼저 기간을 골라 주세요.'); return; }
+      function moved(value) {
+        var d = new Date(value + 'T00:00:00');
+        d.setDate(d.getDate() + days);
+        function two(v) { return (v < 10 ? '0' : '') + v; }
+        return d.getFullYear() + '-' + two(d.getMonth() + 1) + '-' + two(d.getDate());
+      }
+      $('wk-from').value = moved(from);
+      $('wk-to').value = moved(to);
+      load();
     }
 
     $('wk-run').addEventListener('click', load);
     $('wk-group').addEventListener('change', load);
     $('wk-branch').addEventListener('change', load);
+    $('wk-prev').addEventListener('click', function () { shiftWeek(-7); });
+    $('wk-next').addEventListener('click', function () { shiftWeek(7); });
     load();
   }
 
@@ -302,19 +202,11 @@
     var current = null;     // 지금 열어 둔 명세서 (서버 응답 그대로)
     var labLines = [];      // 기공 명세서에 담은 줄
 
-    /* ── 탭 ── */
-    var panels = { recon: $('recon-main'), close: $('recon-close'), lab: $('recon-lab') };
-    Array.prototype.forEach.call($('recon-tabs').querySelectorAll('.p-tab'), function (tab) {
-      tab.addEventListener('click', function () {
-        Array.prototype.forEach.call($('recon-tabs').querySelectorAll('.p-tab'), function (t) {
-          t.classList.remove('is-on');
-        });
-        tab.classList.add('is-on');
-        Object.keys(panels).forEach(function (key) {
-          if (panels[key]) { panels[key].hidden = key !== tab.getAttribute('data-tab'); }
-        });
-        say('');
-      });
+    /* ── 탭 — 공통 한 벌(initTabs)을 쓴다 ── */
+    initTabs('recon-tabs', {
+      recon: { panel: 'recon-main', onShow: function () { say(''); } },
+      close: { panel: 'recon-close', onShow: function () { say(''); } },
+      lab:   { panel: 'recon-lab',   onShow: function () { say(''); } }
     });
 
     /* ── 명세서 목록 ── */
@@ -330,9 +222,9 @@
           cell(tr, st.vendor_name);
           cell(tr, st.month);
           cell(tr, st.file_name);
-          cell(tr, st.committed ? String(st.lines) : '—', 'p-num');
-          cell(tr, st.committed ? String(st.diffs) : '—', 'p-num');
-          cell(tr, money(st.total_amount), 'p-num');
+          cell(tr, st.committed ? String(st.lines) : '—', 'num');
+          cell(tr, st.committed ? String(st.diffs) : '—', 'num');
+          cell(tr, money(st.total_amount), 'num');
           cell(tr, st.created_by);
           var act = el('td');
           act.appendChild(button(st.committed ? '대사표 열기' : '열 맞추기', 'btn btn--quiet btn--small',
@@ -341,7 +233,7 @@
           body.appendChild(tr);
         });
         $('rc-empty').hidden = rows.length > 0;
-      }).catch(function () { say(GENERIC_ERROR); });
+      }).catch(function () { say(UI.GENERIC_ERROR); });
     }
 
     /* ── 열 맞추기 ── */
@@ -403,7 +295,8 @@
       kpi(kpis, '차이', money(totals.diff),
           '수량 ' + String(counts.qty || 0) + ' · 단가 ' + String(counts.price || 0)
           + ' · 명세서만 ' + String(counts.missing_ours || 0)
-          + ' · 우리만 ' + String(counts.missing_theirs || 0));
+          + ' · 우리만 ' + String(counts.missing_theirs || 0),
+          Number(totals.diff || 0) !== 0);
       kpi(kpis, '일치', String(counts.none || 0) + '줄', '전체 ' + String((data.lines || []).length) + '줄');
 
       var body = $('rc-lines');
@@ -416,19 +309,19 @@
         cell(tr, dash(line.branch_name));
         var item = el('td');
         item.appendChild(el('span', null, String(line.item_name)));
-        if (line.item_code) { item.appendChild(el('span', 'p-sub', String(line.item_code))); }
-        if (line.our_doc_no) { item.appendChild(el('span', 'p-sub', String(line.our_doc_no))); }
+        if (line.item_code) { item.appendChild(el('span', 'p-sub mono', String(line.item_code))); }
+        if (line.our_doc_no) { item.appendChild(el('span', 'p-sub mono', String(line.our_doc_no))); }
         tr.appendChild(item);
-        cell(tr, qty(line.our_qty), 'p-num');
-        cell(tr, money(line.our_unit_price), 'p-num');
-        cell(tr, money(line.our_amount), 'p-num');
-        cell(tr, line.diff_type === 'missing_theirs' ? '—' : qty(line.qty), 'p-num');
-        cell(tr, line.diff_type === 'missing_theirs' ? '—' : money(line.unit_price), 'p-num');
-        cell(tr, line.diff_type === 'missing_theirs' ? '—' : money(line.amount), 'p-num');
-        cell(tr, money(line.amount_diff !== undefined ? line.amount_diff : null), 'p-num');
+        cell(tr, qty(line.our_qty), 'num mono');
+        cell(tr, money(line.our_unit_price), 'num mono');
+        cell(tr, money(line.our_amount), 'num mono');
+        cell(tr, line.diff_type === 'missing_theirs' ? '—' : qty(line.qty), 'num mono');
+        cell(tr, line.diff_type === 'missing_theirs' ? '—' : money(line.unit_price), 'num mono');
+        cell(tr, line.diff_type === 'missing_theirs' ? '—' : money(line.amount), 'num mono');
+        cell(tr, money(line.amount_diff !== undefined ? line.amount_diff : null), 'num mono');
         var judge = el('td');
         judge.appendChild(badge(DIFF_LABELS[line.diff_type] || String(line.diff_type),
-                                'p-diff--' + String(line.diff_type)));
+                                DIFF_CLASS[line.diff_type] || ''));
         tr.appendChild(judge);
         cell(tr, dash(line.note));
         body.appendChild(tr);
@@ -450,7 +343,7 @@
           $('rc-result').hidden = true;
           say('열을 맞춘 뒤 「맞춰 보기」로 결과를 확인하고 확정하세요.');
         }
-      }).catch(function () { say(GENERIC_ERROR); });
+      }).catch(function () { say(UI.GENERIC_ERROR); });
     }
 
     $('rc-upload').addEventListener('click', function () {
@@ -476,7 +369,7 @@
         drawMapping(res.data);
         $('rc-result').hidden = true;
         say('열을 맞춘 뒤 「맞춰 보기」를 누르세요.');
-      }).catch(function () { say(GENERIC_ERROR); });
+      }).catch(function () { say(UI.GENERIC_ERROR); });
     });
 
     $('rc-reload').addEventListener('click', loadList);
@@ -496,7 +389,7 @@
         current.lastResult = res.data;
         drawResult(res.data);
         say('맞춰 봤습니다 — 아직 저장하지 않았습니다.');
-      }).catch(function () { say(GENERIC_ERROR); });
+      }).catch(function () { say(UI.GENERIC_ERROR); });
     });
 
     $('rc-commit').addEventListener('click', function () {
@@ -511,7 +404,7 @@
         say('대사를 확정했습니다 (' + String(res.data.lines) + '줄).');
         loadList();
         openStatement(id);
-      }).catch(function () { say(GENERIC_ERROR); });
+      }).catch(function () { say(UI.GENERIC_ERROR); });
     });
 
     /* ── 월 마감 ── */
@@ -532,7 +425,7 @@
           body.appendChild(tr);
         });
         $('cl-empty').hidden = rows.length > 0;
-      }).catch(function () { say(GENERIC_ERROR); });
+      }).catch(function () { say(UI.GENERIC_ERROR); });
     }
 
     $('cl-run').addEventListener('click', function () {
@@ -546,7 +439,7 @@
         if (!res.ok) { say(errorMessage(res.data)); return; }
         say('마감했습니다 — 전표 ' + String(res.data.docs_closed) + '건이 잠겼습니다.');
         loadCloses();
-      }).catch(function () { say(GENERIC_ERROR); });
+      }).catch(function () { say(UI.GENERIC_ERROR); });
     });
 
     /* ── 기공 명세서 ── */
@@ -561,10 +454,10 @@
         tr.appendChild(item);
         var flag = el('td');
         flag.appendChild(line.stock_managed
-          ? badge('재고관리 — 담을 수 없음', 'p-badge--danger')
-          : badge('재고관리 안 함', 'p-badge--ok'));
+          ? badge('재고관리 — 담을 수 없음', 'badge--danger')
+          : badge('재고관리 안 함', 'badge--ok'));
         tr.appendChild(flag);
-        var qtyCell = el('td', 'p-num');
+        var qtyCell = el('td', 'num');
         var input = document.createElement('input');
         input.type = 'number';
         input.min = '0';
@@ -621,7 +514,7 @@
         });
         drawLab();
         say('담았습니다 — 재고관리를 하는 품목은 서버가 거부합니다(400).');
-      }).catch(function () { say(GENERIC_ERROR); });
+      }).catch(function () { say(UI.GENERIC_ERROR); });
     });
 
     $('lb-save').addEventListener('click', function () {
@@ -650,7 +543,7 @@
         say('입고 전표 ' + String(res.data.doc_no) + ' 을(를) 만들었습니다 (원장 ' + String(res.data.moves) + '행).');
         labLines = [];
         drawLab();
-      }).catch(function () { say(GENERIC_ERROR); });
+      }).catch(function () { say(UI.GENERIC_ERROR); });
     });
 
     /* ── 기초 목록 ── */
@@ -686,13 +579,13 @@
 
   function start() {
     fetch('/api/me', { credentials: 'same-origin', cache: 'no-store' })
-      .then(function (response) { return readJson(response); })
+      .then(function (response) { return UI.readJson(response); })
       .then(function (me) {
-        csrfToken = typeof me.csrf_token === 'string' ? me.csrf_token : '';
+        apiClient.setCsrf(me.csrf_token);
         if ($('weekly-panel')) { initWeekly(); }
         if ($('recon-tabs')) { initRecon(); }
       })
-      .catch(function () { say(GENERIC_ERROR); });
+      .catch(function () { say(UI.GENERIC_ERROR); });
   }
 
   if (document.readyState === 'loading') {

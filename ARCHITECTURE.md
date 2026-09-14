@@ -721,7 +721,7 @@ Admin 전용. 정책 `org.manage`(`Authz::canManageOrg` = Admin) 를 `KNOWN_POLI
 
 ---
 
-### 5.18 구매·재고 모듈 — `/purchase/*` · `/api/purchase/*` (PRD F-28~F-37 · 19~24단계, 확정 2026-09-13)
+### 5.18 구매·재고 모듈 — `/purchase/*` · `/api/purchase/*` (PRD F-28~F-37 · 19~25단계, 확정 2026-09-13)
 
 상세 설계는 `docs/purchase/03-architecture-draft.md`(확정본)에 있다. 여기에는 **본체와 맞닿는 규칙**만 적는다.
 
@@ -761,6 +761,18 @@ Admin 전용. 정책 `org.manage`(`Authz::canManageOrg` = Admin) 를 `KNOWN_POLI
 `p_location_inbox` 에는 **지점 축이 없다**(연결 전의 창고라 지점이 정해지지 않았다는 것이 이 표의 존재 이유다). 다섯 라우트가 전부 buyer·Admin 전용이고 그 둘의 지점 범위는 언제나 전 지점이므로, 조회마다 `// lint:no-branch-scope <이유>` 표식을 `src/purchase/Structure.php` 에 적는다(23단계 규칙 — 표식은 **조회 단위**다). 나무 조회의 `p_locations` 도 같은 이유로 표식을 단다(전 지점을 정리하는 마스터 편집 화면이다).
 
 ---
+
+**구매 화면 공통 규칙 (25단계, 사용자 피드백 2026-09-14)** — 화면 13개가 「한 제품」으로 보이려면 규칙이 파일 하나에 있어야 한다.
+
+| 규칙 | 내용 | 왜 |
+|---|---|---|
+| CSS 두 벌만 | 셸 공통 `app.css`(토큰·.page-head·.panel·.panel__head--row·.panel__tools·.field--inline·.check·.badge--*·.chip·.tabs·.kpi·.num·.kbd·.empty·.help·.grid-form·.split·.filelabel) + 모듈 공통 `purchase.css`(접두 `p-`). 인쇄 화면만 `purchase_print.css` 추가. **화면별 CSS 파일을 만들지 않는다.** 같은 클래스 이름을 두 곳에서 정의하지 않는다 | 19~24단계에 화면마다 CSS 를 새로 만들며 「앞 파일을 가져다 쓰지 않는다」고 적었더니 `.panel__tools` 가 절반의 화면에서 미정의라 필터가 세로로 무너졌다(T-50 이전 46건). 규칙이 다섯 벌이면 고칠 때 한 벌만 고쳐진다 |
+| CSS 는 head 에서 | handler 가 `$pageCss = ['purchase.css']` 를 넘기고 `shell_top.php` 가 화이트리스트 검사 뒤 `<link>` 로 싣는다. 본문 안 `<link>` 금지 | 본문 링크는 app.css 만으로 한 번 그린 뒤 다시 배치되어 화면이 튄다 |
+| 메시지 슬롯 하나 | `#msg` 는 페이지에 한 번. handler 가 `$pageMsgTop = true` 면 view 가 `.page-head` 아래에 출력하고 `shell_bottom.php` 는 생략 | 중복 id 가 있으면 `getElementById` 가 첫 것을 집어 오류가 안 보이거나 맨 아래에 뜬다 |
+| JS 헬퍼 한 벌 | `purchase_common.js` 의 `window.PurchaseUI`(el/setText/dash/errorMessage/request/cell/badge/qty/money/kpi/initTabs/say/openModal/closeModal). 화면 번들은 화면 로직만. **textContent 만**(S-03) | 같은 표를 두 화면이 다른 열로 그리던 사이클 표가 그 증거다 |
+| 시안이 규범 | `docs/purchase/design/*.dc.html` 의 배치(머리 카드 위·줄 카드 아래, 2단 `.split`)·배지 색(ok 완료/warn 진행중·부분/danger 부족·지남/accent 일부 발주·정보/team 이동/off 취소)·글꼴(전표번호·코드·금액 `mono`, 숫자 `num`)·어휘(README) 를 그대로 쓴다. 안내는 `.page-head__sub` 한 줄 + 표 아래 `.help`; 상단 `.notice` 더미 금지 | 시안은 사용자가 「확정」한 요구사항이다. 기능 시험 통과가 단계 완료 조건의 전부가 아니다 |
+| 내비는 사이드바만 | 「구매관리」 아래 세 소제목 전표/현황/기초정보. 화면 헤더 `.page-head__actions` 에는 **그 화면의 동작**만(인쇄·PDF 예외). 표시는 편의, 허용은 라우트 정책(변경 없음) | 헤더마다 다른 링크 집합은 내비 두 벌이다 |
+| 시각 결함은 실행해서 잡는다 | `scripts/ui_snapshot.sh <폴더> <폭>` — qa_admin01 로 로그인해 11화면·모든 탭을 찍고 잘림·겹침·높이 불일치·가로 넘침·미정의 class·id 중복·「N단계」 문구·콘솔 오류를 센다(T-50). 검토 도구이며 런타임 의존성이 아니다(`deploy/DEPENDENCIES.md`) | 「코드를 읽어 보니 정리돼 보인다」는 증거가 아니다 |
 
 ## 6. 저장 위치 — 파일 정보 vs 실제 파일
 

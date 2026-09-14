@@ -5,8 +5,11 @@ declare(strict_types=1);
  * src/views/purchase_po_print.php — 발주서 인쇄용 HTML (Q-18② 이카운트 발주서 양식, files #188)
  *
  * 공통 셸을 쓰지 않는다 — 인쇄물에 내비와 상단바가 끼면 안 된다.
- * 인쇄 규칙(A4 세로 `@page`)은 `/assets/purchase_docs.css` 의 `.po-print` 아래에 있다
- * (CSP 가 `style-src 'self'` 라 인라인 <style> 은 쓸 수 없다 — 그래서 외부 파일 하나다).
+ * 인쇄 규칙(A4 세로 `@page`)은 `/assets/purchase_print.css` 에 있다 — 25단계에서
+ * 20단계의 전표 스타일시트에 섞여 있던 인쇄 절을 그대로 옮기고 파일 이름만 정리했다.
+ * (CSP 가 `style-src 'self'` 라 인라인 <style> 은 쓸 수 없다 — 그래서 외부 파일 하나다.)
+ * 이 화면은 공통 셸을 쓰지 않으므로 `$pageCss`(셸이 head 에서 내보내는 목록)를 지나지 않고,
+ * 자기 <head> 에 한 벌만 싣는다.
  *
  * ★ 이 파일이 문서에 글자를 넣는 곳은 전부 `htmlspecialchars(..., ENT_QUOTES, 'UTF-8')` 이다
  *   (PRD S-03). JS 가 한 줄도 없고, 값은 모두 서버가 계산한 것이다.
@@ -39,7 +42,7 @@ $head = static function (string $key, $fallback = null) use ($header) {
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>발주서 <?= $e($doc['doc_no']) ?></title>
-<link rel="stylesheet" href="/assets/purchase_docs.css?v=<?= (int) filemtime(__DIR__ . '/../../public/assets/purchase_docs.css') ?>">
+<link rel="stylesheet" href="/assets/purchase_print.css?v=<?= (int) filemtime(__DIR__ . '/../../public/assets/purchase_print.css') ?>">
 </head>
 <body class="po-print">
 

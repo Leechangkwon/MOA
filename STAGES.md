@@ -44,6 +44,7 @@
 | **22** | 주간 사용량·거래처 월 대사(차이 5종)·월 마감(재인증)·기공 명세서 자동 전표·채번 통합(Doc.php) — 지시서 docs/purchase/07 | ✅ 구현·검토 | ✅ 2026-09-13 (Opus, 재지시 0회) | ✅ 2026-09-13 (T-47 72/72, 마감 403/400/201 실측, 회귀 T-45 90/90·T-46 105/105, 채번 통합 전후 동일) | ⚠ 대기 | 22단계 커밋 |
 | **23** | 발주 제안(Suggest.php 한 곳)·부족 알림·경보 AL-14~17 완성·린트 예외 조회 단위·사용 지점 빼기 — 지시서 docs/purchase/08 | ✅ 구현·검토 | ✅ 2026-09-13 (Opus, 재지시 0회) | ✅ 2026-09-13 (T-48 92/92, 경보 dry-run 4종·중복 억제, 회귀 19~22 전부 통과) | ⚠ 대기 | 23단계 커밋 e43222c |
 | **24** | 「브랜드·지점·창고」 한 페이지(F-37)·창고 대기표 `p_location_inbox`·연결/제외·업로드 공통 조각 — 지시서 docs/purchase/09 | ✅ 구현 | ✅ 2026-09-13 (Opus, 재지시 0회) | ⚠ 대기 | ⚠ 대기 | 커밋 전 |
+| 25 | 구매 화면 UI 정돈 — 공통 CSS 한 벌·시안 충실도·사이드바 3묶음·2단 레이아웃·개발 잔재 제거 (T-50) | ✅ 구현·검토 | ✅ | ✅ 2026-09-14 | 대기(눈 점검 1440·1024) | (커밋 해시는 4장 절 참조) |
 
 ---
 
@@ -1116,6 +1117,43 @@ sudo -u postgres psql -d tbox_re -c "SELECT happened_at, actor_name, action, res
 | 2026-09-13 | 접수(24단계 Opus 보고) | 회귀 `tests/purchase_stage19.sh` 가 **228 ✔ · 1 ✖** 이다. 실패한 한 줄은 ⑦ 「buyer 는 두 지점 모두」(`total` 하드코딩 2)인데, 시험 도중 **사용자가 새 화면으로 실제 창고 12개를 연결**해 `p_locations` 가 14행이 되었기 때문이다(감사 `purchase.structure.link allow · links=12 · admin01 · 21:21`). 24단계 코드의 회귀가 아니라 **표에 시험 행만 있다고 가정한 단언**이다. 그 파일은 지시서의 「수정 파일」 밖이라 고치지 않았다 | Fable 판단 필요: 그 한 줄을 「S19- 행만 세기」로 바꾸면 229/229 가 된다(24단계 시험도 같은 이유로 `counts.*` 대신 `S24W%` 만 센다) |
 | 2026-09-13 | 접수(24단계 Opus 보고) | 400 응답 문구를 이 화면만 **사유별 한국어 문장**으로 돌려준다(`bad_header`·`conflict`·`not_unlinked`·`not_excluded`·`bad_reference`). 다른 화면은 동일 문구 하나다(PRD S-09-5) | 판단 근거: 여기까지 오는 사람은 buyer·Admin 이고 전 지점 기초정보를 이미 다 보므로 새어 나갈 정보가 없다. 문장은 `Structure::MSG_*` **코드 상수**이고 요청 값이 섞이지 않는다(`MSG_FOLDER_NOT_EMPTY` 와 같은 성격) |
 
+
+### 25단계 — 구매 화면 UI 정돈 · 공통 CSS 한 벌 · 시안 충실도 · 사이드바 3묶음 · 2단 레이아웃 (T-50) — 착수 2026-09-14
+
+> 지시서: `docs/purchase/10-stage25-directive.md`. 근거: PRD 13장 25단계 · 12.2 T-50, ARCH 5.18 「구매 화면 공통 규칙」. 사용자 피드백(2026-09-14): 「구매 관련 기능들이 최초 기획 초안 대비 상당히 퀄리티가 떨어져 보이고, 정리가 안 되어 보이는 모습이 굉장히 많다 — 구성 요소 크기가 들쭉날쭉, 같은 줄 버튼 하나만 크다, 텍스트 잘림·찝힘, 카드 겹침·잘림, 한눈에 정보를 알기 어렵다」 → 한 단계로 묶어 통합 진행, **사용자 관점 시각 점검 필수**.
+
+**개발 사항** (Opus)
+- [x] `app.css` 공통 조각(.panel__head--row·.panel__tools·.field--inline·.check·.badge--warn/danger/accent·.chip·.tabs·.kpi·.num·.kbd·.empty·.help·.grid-form·.split·.split--aside·.filelabel·.nav-subtitle) · `purchase.css` 한 벌로 재작성 · 4벌(docs/stock/recon/structure.css) 삭제 · `purchase_print.css`
+- [x] `purchase_common.js`(PurchaseUI 헬퍼 한 벌) · 5개 번들 중복 제거 · 사이클 표 한 함수(`renderCycleRows` — 발주요청 현황 탭과 전표 사이클 탭이 같은 열)
+- [x] `shell_top.php` `$pageCss` head 출력(화이트리스트) · 「구매관리」 세 소제목(전표/현황/기초정보) · `shell_bottom.php` `#msg` 한 번(`$pageMsgTop`)
+- [x] 13개 view: 시안 뼈대(crumbs·제목·리드문 1줄·이 화면의 액션만) · 머리 카드 위/줄 카드 아래(pr·po) · 필터 한 줄 · 빈 상태 `.empty` hidden 토글 · 페이징·재조회 라벨 표준 · 배지 색=의미 · `mono`/`num` · `.notice` 더미 → `.help`
+- [x] 2단 복원: 전표 목록 우측 「연결 전표」(기존 `GET /api/purchase/cycle?pr=|po=` 만) · 불러오기 좌 트리/우 줄 표 · 추천/내 리스트 2열 · 가져오기 좌 요약 카드 · 브랜드지점창고 `.split`
+- [x] 개발 잔재 제거: 「N단계」 문구 0(분류 옵션 「1단계(대분류)」→「대분류」 포함) · 수불부 「품목 id」 입력(→ 현재고 숫자 링크) · 더미 인쇄 링크 · 라벨 없는 `<th>` 0(`sr-only`) · 도달 불가 품목 폼 삭제
+- [x] `tests/purchase_stage25.sh` T-50 (a)~(g) · `deploy/DEPENDENCIES.md` 5.4 검토 도구 절 · README 내비 설명 3묶음
+- [x] (지시서 밖 한 줄, 판단 필요) `shell_top.php` 에 `data:` 파비콘 — 브라우저가 스스로 부르는 `/favicon.ico` 404 가 모든 화면의 콘솔 오류로 잡혀 T-50 (a) 의 `console_errors` 를 0 으로 만들지 못했다. 셸 전체에 영향을 주므로 Fable 이 되돌려도 되는 한 줄이다
+
+**검토 체크** (Fable — 실행해서 확인)
+- [x] `scripts/ui_snapshot.sh` 1440·1024 두 폭 합계 **0건**(착수 시 실측 65건 — 지시서의 46건은 dup_id·stage_text·console 검사 추가 전 값) — `tests/purchase_stage25.sh` **40/40**. 스크린샷 12장을 Read 로 직접 열어 확인(pr·po·receipt·stock·import·masters·masters 장소·docs·structure·pr 전표·pr 1024). 눈으로 잡은 잔여 1건: 전표 목록 좌 칸에서 「기간 ~」 두 번째 날짜가 다음 줄로 접힘 → Fable 이 두 날짜를 한 묶음(`.field--range`, 로직 없음)으로 합치고 `app.css` 에 날짜 폭·묶음 2규칙 추가 후 1440·1024 재촬영 0건
+- [x] 회귀 stage19~24 = 229·90·100·71·90·87, 실패 0 · 비-qa 행 196→196 · 린트 20항목 통과 · 핸들러 13개 diff = `$pageTitle`·`$pageCss`·`$pageMsgTop`·주석만(`git diff -U0` 로 확인)
+- [x] 보안 핵심 파일 diff 0(`git status -- public/index.php src/Authz.php src/Audit.php src/Auth.php src/Db.php src/Storage.php src/Upload.php db/ deploy/sites` 출력 없음) · `$pageCss` 허용 목록 `in_array(strict)` · 인라인 style 0 · innerHTML 0 · CSP 헤더 `img-src 'self' data:` 실측(파비콘 data: URL 허용 범위)
+
+**자기 공격 (관문 ③, 사용자)**
+- [ ] 1440 과 1024 폭에서 구매 화면 11개를 한 바퀴 돌며 「들쭉날쭉·잘림·겹침·헤매는 내비」가 남았는지 본다 — 남았으면 화면·위치를 학습 기록에 적는다(보정 커밋)
+- [ ] 사이드바에서 「구매관리」 세 묶음만으로 모든 화면에 닿는지(헤더의 다른 화면 링크가 사라졌으므로)
+- [ ] 개발자도구로 `<link>` 목록을 본다 — app.css·purchase.css 두 개(인쇄 화면 +1)뿐인지
+
+**학습 기록**
+
+| 날짜 | 구분 | 내용 | 해소·근거 |
+|---|---|---|---|
+| 2026-09-14 | 요청(사용자) | 구매 기능이 초안 대비 퀄리티가 떨어지고 정리가 안 돼 보인다 — 크기 들쭉날쭉, 같은 줄 버튼 하나만 큼, 텍스트 잘림·찝힘, 카드 겹침·잘림, 한눈에 정보 파악 어려움. 한 단계로 묶어 통합 진행, 사용자 관점 시각 점검 필수 | 원인 12가지를 파일·스크린샷으로 검증해 지시서 0장에 적음(`docs/purchase/10-stage25-directive.md`). 최대 원인은 화면별 CSS 5벌 — `.panel__tools` 가 6개 화면에서 미정의 |
+| 2026-09-14 | 결정(Fable) | 시각 결함을 「읽어서」 아니라 「실행해서」 잡기 위해 headless Chromium 검토 도구 `scripts/ui_snapshot.sh` 를 만들었다(qa_admin01, UA tbox-review). 이 서버에 node 가 없어 python3 playwright 를 사용자 로컬(`~/.local`, `~/.cache/ms-playwright` ≈ 440MB)에 설치 — 런타임 의존성 아님 | 개선 전 기준 1440px 46건(undefined_class 43·row_height 4). 설치 중 루트 디스크(12G)가 100% 가 되어 apt 캐시·불필요 브라우저를 지웠다 — 현재 96%(521MB 남음). **디스크 여유 확보는 사용자 결정 필요**(SECURITY 6장 앱 밖 위험 후보) |
+| 2026-09-14 | 결정(Fable, 사용자 확인 대기) | 사이드바는 시안의 3허브(기초정보/전표/현황)를 **소제목 3묶음**으로 옮기고 링크 11개는 유지한다 — 허브 페이지 3장으로 바꾸면 라우트·화면이 늘어나 이번 단계(기능 추가 없음) 범위를 넘는다 | 지시서 shell_top (b) |
+| 2026-09-14 | 접수(25단계 Opus 보고) | 지시서 밖 1줄 — `shell_top.php` 에 `data:` SVG 파비콘. 브라우저가 스스로 부르는 `/favicon.ico` 404 가 모든 화면 콘솔에 오류 1줄을 남겨 T-50 (a) console=0 이 성립하지 않았음 | **수용(Fable)**: 고정 문자열, CSP `img-src 'self' data:` 안(응답 헤더 실측), 새 파일 없음. `/login` 은 셸을 안 써 여전히 404 — 다음에 셸 밖 화면까지 같은 방식으로 |
+| 2026-09-14 | 접수(25단계 Opus 보고) | 완료 기준 (c) 의 원문 grep(`^\.[a-z0-9_-]+ … uniq -d`)은 `.btn:hover`·`.btn .icon` 같은 정상 선택자도 같은 낱말로 세어 app.css 기존 규칙에서 반드시 걸림 → 「단일 클래스 규칙 블록이 두 번」으로 판정, 원문 grep 출력은 로그에 그대로 | 수용. 예외 `.wiki-check__row`(14단계 위키가 묶음+개별 선택자로 쓰는 자리) 명시 |
+| 2026-09-14 | 접수(25단계 Opus 보고) | 시안 PNG 와 나란히 비교하지 못함(디스크 여유) → 소스 대조로 갈음. JS 문법 검사 도구 없음(node 미설치) → 브라우저 콘솔 0 + 모달 4종 수동 확인 | Fable 이 시안 PNG(착수 시 렌더해 둔 것)와 구현 스크린샷을 직접 비교 — 배치·배지·mono 일치 확인. 남은 차이는 26단계 후보(포장 열·납기·품목 등록·필터 칩·미입고 행 액션)로 지시서 4장에 있음 |
+| 2026-09-14 | 결정(Fable) | 개선 전 기준 수치가 46 → 65 로 달라진 이유: 지시서 작성 뒤 검사기에 dup_id·stage_text·console 세 항목을 추가함(46 + 11 + 6 + 1 + 1). 두 수치 모두 기록으로 남김 | `scripts/ui_snapshot.py` 머리 주석의 결함 종류 목록 |
+| 2026-09-14 | 운영(Fable, 사용자 승인) | 루트 디스크 12G 가 96%(500MB) — LVM 볼륨 그룹에 11.5G 미할당 확인. 사용자 결정으로 **0.5GB 만** 확장(`lvextend -L +512M -r`, 온라인, 무중단) → 92%(983MB). VG 잔여 11.0G | SECURITY 6장 「앱 밖 위험」 후보: 같은 디스크의 PostgreSQL. 추가 확장은 사용자 결정 |
 
 ## 2-1. 10단계 뒤 일괄 자기 공격 — 진행 순서 (관문 ③, 사용자)
 

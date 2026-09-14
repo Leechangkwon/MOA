@@ -15,6 +15,12 @@ declare(strict_types=1);
  *                         여전히 값을 넘기므로 허용 목록에는 남겨 둔다 — 맞는 항목이 없으면
  *                         아무 항목도 켜지지 않을 뿐이다)
  *   · $pageKey   string  <body data-page> — app.js 가 어떤 화면인지 고르는 열쇠
+ *   · $pageCss   array   이 화면이 더 싣는 스타일시트 이름들 (25단계). **head 에서** 내보낸다 —
+ *                        본문 한가운데에서 <link> 를 부르면 첫 그림이 스타일 없이 보였다가
+ *                        바뀐다(FOUC). 값은 `public/assets/` 안의 **허용 목록**에 있는
+ *                        파일 이름만 통과한다 — 경로를 조립하지 않으므로 `../` 가 섞일 자리가 없다.
+ *   · $pageMsgTop bool   참이면 알림 줄(`#msg`)을 화면이 .page-head 바로 아래에 **한 번** 놓고
+ *                        shell_bottom 은 그것을 내보내지 않는다 (id 중복 0 — 25단계).
  *
  * ★ HTML 에 들어가는 동적 값은 **사용자명·역할·pageTitle·activeNav·pageKey 다섯 개뿐**이고
  *   전부 htmlspecialchars(ENT_QUOTES, 'UTF-8') 를 거친다 (PRD S-03).
@@ -78,6 +84,23 @@ $shellInitial = htmlspecialchars($shellInitial, ENT_QUOTES, 'UTF-8');
 /** 자산 주소에 파일이 마지막으로 바뀐 시각(정수)을 붙여 옛 파일이 남지 않게 한다 (11단계) */
 $shellCssVersion = (int) filemtime(__DIR__ . '/../../public/assets/app.css');
 
+/**
+ * 25단계 — 화면이 더 싣는 스타일시트. **허용 목록 안의 이름만** 통과한다.
+ * 핸들러의 오타나 어떤 요청 값도 `<link href>` 로 새어 나가지 못한다 (PRD S-03).
+ * 구매 13개 화면은 전부 `['purchase.css']` 하나다 — 화면별 CSS 는 없앴다 (T-50 (b)).
+ */
+$shellCssAllowed = ['purchase.css', 'purchase_print.css'];
+$shellPageCss    = [];
+if (isset($pageCss) && is_array($pageCss)) {
+    foreach ($pageCss as $shellCssName) {
+        if (is_string($shellCssName) && in_array($shellCssName, $shellCssAllowed, true)
+            && !in_array($shellCssName, $shellPageCss, true)
+        ) {
+            $shellPageCss[] = $shellCssName;
+        }
+    }
+}
+
 /** 지금 켜 둘 항목에만 is-active 를 붙인다. 값은 위 허용 목록을 통과한 문자열이다. */
 $shellNavClass = static function (string $key) use ($shellActive): string {
     return $key === $shellActive ? 'nav__item is-active' : 'nav__item';
@@ -94,7 +117,15 @@ if (!headers_sent()) {
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title><?= $shellTitle ?> · t-box</title>
+<!-- 25단계 — 브라우저가 스스로 부르는 `/favicon.ico` 가 404 로 떨어져 모든 화면의 콘솔에
+     오류 한 줄을 남겼다(시각 점검 도구가 세는 console_errors). 아이콘을 **문서 안에** 둔다:
+     파일을 새로 만들지 않고, CSP 의 `img-src 'self' data:` 안에서 끝난다. 고정 문자열이라
+     동적 값이 한 글자도 들어가지 않는다. -->
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath fill='%2314213d' d='M12 2 4 5v6c0 5 3.4 9.4 8 11 4.6-1.6 8-6 8-11V5z'/%3E%3C/svg%3E">
 <link rel="stylesheet" href="/assets/app.css?v=<?= $shellCssVersion ?>">
+<?php foreach ($shellPageCss as $shellCssName): ?>
+<link rel="stylesheet" href="/assets/<?= $shellCssName ?>?v=<?= (int) filemtime(__DIR__ . '/../../public/assets/' . $shellCssName) ?>">
+<?php endforeach; ?>
 </head>
 <body data-page="<?= $shellPage ?>">
 <a class="skip" href="#main">본문으로 건너뛰기</a>
@@ -143,9 +174,15 @@ if (!headers_sent()) {
          `/api/me` 의 can_purchase 가 참일 때만 app.js 가 연다. **이 파일에는 역할 비교가 없다.**
          항목을 개발자도구로 되살려 /purchase 나 /api/purchase/* 를 직접 불러도 라우트 정책
          purchase.read 가 다시 막는다 — 표시는 편의, 근거는 라우트 정책이다 (PRD S-01, T-42). -->
+    <!-- 25단계 — 평평한 링크 11개를 **업무 순 세 묶음**으로 나눴다(시안의 3허브).
+         묶음 제목(`.nav-subtitle`)은 글자일 뿐이고, 링크 id·href·hidden 규칙·
+         can_purchase 로 여는 방식은 **한 글자도 바뀌지 않았다** — app.js 가 여는 id 가 그대로다.
+         라벨은 화면 제목과 같게 맞춰, 사이드바와 화면이 서로 다른 이름을 부르지 않게 했다. -->
     <div id="nav-purchase-group" hidden>
       <p class="nav-title">구매관리</p>
-      <nav class="nav" aria-label="구매관리">
+
+      <p class="nav-subtitle">전표</p>
+      <nav class="nav" aria-label="구매관리 전표">
         <!-- 20단계 전표 화면 (PRD F-31~F-33). 항목마다 기본 hidden 이고 app.js 가
              `/api/me` 의 can_purchase 로 함께 연다 — 역할별로 더 감추지 않는다.
              어느 전표를 읽고 쓸 수 있는지는 라우트 정책·`Authz` 가 매 요청 다시 정한다. -->
@@ -155,16 +192,23 @@ if (!headers_sent()) {
         <a id="nav-purchase-po" class="<?= $shellNavClass('purchase-po') ?>" href="/purchase/po" hidden>
           <span class="icon" data-icon="check"></span><span>발주서</span>
         </a>
-        <!-- 21단계 입고·이동/실사·재고현황 (PRD F-34~F-36). 앞의 전표 항목과 같은 규칙이다:
+        <!-- 21단계 입고·이동/실사 (PRD F-34~F-36). 앞의 전표 항목과 같은 규칙이다:
              기본 hidden · can_purchase 하나로 함께 열림 · 실제 허용은 라우트 정책과 Authz 가 정함. -->
         <a id="nav-purchase-receipt" class="<?= $shellNavClass('purchase-receipt') ?>" href="/purchase/receipt" hidden>
           <span class="icon" data-icon="download"></span><span>입고</span>
         </a>
         <a id="nav-purchase-move" class="<?= $shellNavClass('purchase-move') ?>" href="/purchase/move" hidden>
-          <span class="icon" data-icon="restore"></span><span>이동·실사</span>
+          <span class="icon" data-icon="restore"></span><span>이동·사용·실사</span>
         </a>
+        <a id="nav-purchase-docs" class="<?= $shellNavClass('purchase-docs') ?>" href="/purchase/docs" hidden>
+          <span class="icon" data-icon="log"></span><span>전표·사이클</span>
+        </a>
+      </nav>
+
+      <p class="nav-subtitle">현황</p>
+      <nav class="nav" aria-label="구매관리 현황">
         <a id="nav-purchase-stock" class="<?= $shellNavClass('purchase-stock') ?>" href="/purchase/stock" hidden>
-          <span class="icon" data-icon="eye"></span><span>재고현황</span>
+          <span class="icon" data-icon="eye"></span><span>재고·미입고</span>
         </a>
         <!-- 22단계 주간 사용량·월 대사/마감. 「월 대사·마감」은 「가져오기」와 같은 규칙으로
              can_purchase_master 가 있으면 그 값으로 연다 — 표시는 편의이고 허용은 서버가 정한다. -->
@@ -174,9 +218,10 @@ if (!headers_sent()) {
         <a id="nav-purchase-recon" class="<?= $shellNavClass('purchase-recon') ?>" href="/purchase/recon" hidden>
           <span class="icon" data-icon="lock"></span><span>월 대사·마감</span>
         </a>
-        <a id="nav-purchase-docs" class="<?= $shellNavClass('purchase-docs') ?>" href="/purchase/docs" hidden>
-          <span class="icon" data-icon="log"></span><span>전표</span>
-        </a>
+      </nav>
+
+      <p class="nav-subtitle">기초정보</p>
+      <nav class="nav" aria-label="구매관리 기초정보">
         <a id="nav-purchase" class="<?= $shellNavClass('purchase') ?>" href="/purchase/masters" hidden>
           <span class="icon" data-icon="files"></span><span>기초정보</span>
         </a>

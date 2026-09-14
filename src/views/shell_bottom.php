@@ -12,13 +12,23 @@ declare(strict_types=1);
  *   `template.content.cloneNode(true)` 로 복제해 붙이기만 한다 (문자열 → HTML 변환 0).
  *   이 파일의 SVG 에는 사용자 입력이 한 글자도 들어가지 않는다(전부 고정 문자열).
  *
- * 받는 변수: 없음 (shell_top.php 와 짝으로 쓴다).
+ * 받는 변수
+ *   · $pageMsgTop bool  (25단계) 참이면 **화면이** 알림 줄을 .page-head 바로 아래에 이미
+ *                       놓았다는 뜻이라 여기서는 내보내지 않는다. 그 전에는 화면 여섯 개가
+ *                       자기 `#msg` 를 따로 두어 한 문서에 같은 id 가 둘이었고(dup_id),
+ *                       오류가 페이지 맨 아래에서만 뜨는 화면도 있었다.
+ *                       기본값(없거나 false)은 옛 동작 그대로 — 다른 화면은 바뀌지 않는다.
  */
 
 /** 자산 주소의 정수 버전 — filemtime 값이며 이스케이프 대상이 없다 (11단계) */
 $shellJsVersion = (int) filemtime(__DIR__ . '/../../public/assets/app.js');
+
+/** 요청 값이 아니다 — 화면을 그리는 핸들러가 include 전에 정하는 참/거짓 하나다. */
+$shellMsgTop = isset($pageMsgTop) && $pageMsgTop === true;
 ?>
+<?php if (!$shellMsgTop): ?>
     <p id="msg" class="msg" role="alert" aria-live="polite"></p>
+<?php endif; ?>
   </main>
 </div>
 

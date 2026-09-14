@@ -121,6 +121,19 @@ PRD S-10-C 가 "배포판 패키지만·의존성 0 이 기본" 이라고 못박
 | `rsyslog` TLS 전송 | PRD S-10-E, ARCH 11.4 | **미적용** — 보낼 서버가 없다 | 예시 설정 `deploy/rsyslog/tbox-v2.conf.example` + `chattr +a` + `scripts/audit_chain.php` 해시 체인 | ❗ root 를 잃으면 감사 로그를 믿을 수 없다 (R-11). 운영 전환 조건 |
 | PostgreSQL WAL 아카이브 | PRD S-08 RPO 15분 | **미적용** — 재시작 필요 + 원격 저장소 미결(Q-4) | 예시 설정 `deploy/postgresql/archive.conf.example` | ❗ **실제 RPO 는 일 1회(최대 24시간)** 다. 운영 전환 조건 |
 
+### 5.4 검토 도구 (**런타임 아님** — 서버가 돌아가는 데 필요하지 않다, 25단계 추가)
+
+구매 화면의 시각 결함(잘림·겹침·같은 줄 높이·빈 공백)을 **눈이 아니라 측정**으로 잡기 위해
+25단계에서 `scripts/ui_snapshot.sh`·`ui_snapshot.py` 를 두었다. 검토할 때만 돌린다.
+
+| 도구 | 설치 위치 | 어디에 | 왜 | 확인 |
+|---|---|---|---|---|
+| `python3-playwright` (chromium 채널) | **사용자 로컬 `~/.local`** — 배포판 패키지가 아니며 `deploy/install.sh` 가 설치하지 않는다 | `scripts/ui_snapshot.py` (`scripts/ui_snapshot.sh` 가 부른다) | 검토 계정(qa_admin01)으로 구매 13개 화면을 실제로 열어 스크린샷을 찍고 DOM 결함을 센다 (PRD 12.2 T-50) | `PATH="$HOME/.local/bin:$PATH" python3 -c "import playwright"` |
+
+- **운영 서버에는 넣지 않는다.** 앱 코드가 이 패키지를 부르는 곳이 한 곳도 없고(런타임 의존성 0),
+  없으면 `ui_snapshot.sh` 만 실패한다 — 서비스는 그대로다 (PRD S-10-C 「의존성 0 이 기본」).
+- 브라우저는 headless_shell 대신 **정식 chromium 빌드**를 쓴다(디스크 절약 — shell 을 따로 받지 않는다).
+
 ## 6. 갱신 규칙
 
 - 패키지·확장·외부 도구를 **하나라도** 추가하면 이 파일을 같은 커밋에서 갱신한다 (CLAUDE.md 7장).

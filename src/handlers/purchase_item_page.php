@@ -22,4 +22,8 @@ $pageTitle = '품목';
 $activeNav = 'purchase';
 // 20단계 — 셸이 화면 키를 받아야 app.js 가 initShell 을 돈다(19단계 「내비가 사라짐」 사고).
 $pageKey   = 'purchase';
+/* 25단계 — 스타일시트는 **셸이 head 에서** 싣는다(본문 한가운데 <link> 를 없애 FOUC 0),
+   알림 줄(`#msg`)은 화면이 .page-head 바로 아래에 한 번만 놓는다(id 중복 0). T-50 (b). */
+$pageCss    = ['purchase.css'];
+$pageMsgTop = true;
 require __DIR__ . '/../views/purchase_item.php';

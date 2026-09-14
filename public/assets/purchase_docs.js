@@ -20,114 +20,31 @@
 (function () {
   'use strict';
 
-  var GENERIC_ERROR = '처리하지 못했습니다. 잠시 후 다시 시도해 주세요.';
-
-  /* ── 작은 도우미 ─────────────────────────────────────── */
-
-  function $(id) { return document.getElementById(id); }
-
-  /** 문서에 글자를 넣는 **유일한** 통로 */
-  function setText(node, value) {
-    if (!node) { return; }
-    node.textContent = value === null || value === undefined ? '' : String(value);
-  }
-
-  function el(tag, className, text) {
-    var node = document.createElement(tag);
-    if (className) { node.className = className; }
-    if (text !== undefined) { setText(node, text); }
-    return node;
-  }
-
-  function clear(node) {
-    if (!node) { return; }
-    while (node.firstChild) { node.removeChild(node.firstChild); }
-  }
-
-  function say(message) { setText($('msg'), message); }
-
-  function dash(value) {
-    return value === null || value === undefined || value === '' ? '—' : String(value);
-  }
-
-  /** 숫자 보기 좋게. 값 자체는 서버가 만든 문자열이며 여기서 바꾸지 않는다. */
-  function money(value) {
-    if (value === null || value === undefined || value === '') { return '—'; }
-    var n = Number(value);
-    if (isNaN(n)) { return String(value); }
-    return n.toLocaleString('ko-KR');
-  }
-
-  /** 수량 — 소수점 뒤 0 은 지운다(5.000 → 5) */
-  function qtyText(value) {
-    if (value === null || value === undefined || value === '') { return '—'; }
-    var n = Number(value);
-    if (isNaN(n)) { return String(value); }
-    return String(Math.round(n * 1000) / 1000);
-  }
-
-  function today() {
-    var d = new Date();
-    function two(v) { return (v < 10 ? '0' : '') + v; }
-    return d.getFullYear() + '-' + two(d.getMonth() + 1) + '-' + two(d.getDate());
-  }
-
-  function errorMessage(data) {
-    if (data && typeof data.error === 'string' && data.error !== '') { return data.error; }
-    return GENERIC_ERROR;
-  }
-
-  function readJson(response) {
-    return response.json().then(function (data) {
-      return data && typeof data === 'object' ? data : {};
-    }).catch(function () { return {}; });
-  }
-
-  /**
-   * 401 → 로그인, 403 + next → 강제 절차·재인증 화면. 처리했으면 true.
-   *
-   * 20단계의 라우트는 재인증 대상이 아니다(`purchase.read`·`request.write`·`buy.write`·`send`).
-   * 그래도 관문이 늘어날 날을 위해 `next` 를 그대로 따른다 — 경로는 서버가 정한 **고정 키**
-   * 목록에서만 나오고, 이 파일이 주소를 조립하지 않는다 (PRD F-23 오픈 리다이렉트 방지).
+  /* ── 공통 도우미 한 벌 (25단계) ─────────────────────────
+   * el·setText·dash·errorMessage·request·cell·badge·qty·money·kpi·initTabs·say 는
+   * 이제 `purchase_common.js` 한 곳에만 있다. 다섯 번들이 각자 들고 있던 사본을 지웠다 —
+   * 한쪽만 고쳐지는 일이 없도록. 호출 경로·본문·응답 처리는 그대로다.
    */
-  function handleGate(response, data) {
-    if (response.status === 401) {
-      window.location.href = '/login';
-      return true;
-    }
-    if (response.status === 403 && data && data.next === 'reauth') {
-      window.location.href = '/reauth';
-      return true;
-    }
-    if (response.status === 403 && data
-        && (data.next === 'password_change' || data.next === 'mfa_setup')) {
-      window.location.href = '/';
-      return true;
-    }
-    return false;
-  }
+  var UI = window.PurchaseUI;
+  var $ = UI.$;
+  var el = UI.el;
+  var setText = UI.setText;
+  var clear = UI.clear;
+  var say = UI.say;
+  var dash = UI.dash;
+  var money = UI.money;
+  var qtyText = UI.qty;
+  var today = UI.today;
+  var errorMessage = UI.errorMessage;
+  var cell = UI.cell;
+  var badge = UI.badge;
+  var openModal = UI.openModal;
+  var closeModal = UI.closeModal;
 
-  var csrfToken = '';
-
-  function request(method, path, body) {
-    var init = {
-      method: method,
-      credentials: 'same-origin',
-      cache: 'no-store',
-      headers: {}
-    };
-    if (method !== 'GET') { init.headers['X-CSRF-Token'] = csrfToken; }
-    if (body !== undefined && body !== null) {
-      init.headers['Content-Type'] = 'application/json';
-      init.body = JSON.stringify(body);
-    }
-    return fetch(path, init).then(function (response) {
-      return readJson(response).then(function (data) {
-        if (handleGate(response, data)) { return null; }
-        return { ok: response.ok, status: response.status, data: data };
-      });
-    });
-  }
+  /* 이 화면들(발주요청·발주서·전표)의 라우트는 재인증 대상이 아니다 — 그래도 관문이
+     늘어날 날을 위해 서버가 준 `next` 를 따른다. 꼬리표는 없다(확인 뒤 홈으로). */
+  var apiClient = UI.api('');
+  var request = apiClient.request;
 
   /** 셀렉트를 목록으로 채운다. `textContent` 로만 글자를 넣는다. */
   function fillSelect(select, rows, valueKey, labelKey, emptyLabel) {
@@ -145,12 +62,6 @@
     });
   }
 
-  function cell(row, text, className) {
-    var td = el('td', className || null, text);
-    row.appendChild(td);
-    return td;
-  }
-
   /** 상태 어휘 — 서버 값 → 사람이 읽는 말 (여기서 판단을 하지 않는다, 이름만 바꾼다) */
   var STATUS_LABEL = {
     unconfirmed: '미확인',
@@ -159,16 +70,18 @@
     done: '완료',
     void: '취소'
   };
+  /* 색이 곧 뜻이다 (시안 README): 진행중·주의 warn · 일부 발주·정보 accent ·
+     완료 ok · 취소 off · 미확인은 기본 회색. 다섯 화면이 같은 표를 본다. */
   var STATUS_CLASS = {
-    unconfirmed: 'p-badge',
-    in_progress: 'p-badge p-badge--accent',
-    partial: 'p-badge p-badge--warn',
-    done: 'p-badge p-badge--ok',
-    void: 'p-badge p-badge--danger'
+    unconfirmed: '',
+    in_progress: 'badge--warn',
+    partial: 'badge--accent',
+    done: 'badge--ok',
+    void: 'badge--off'
   };
 
   function statusBadge(status) {
-    return el('span', STATUS_CLASS[status] || 'p-badge', STATUS_LABEL[status] || status);
+    return badge(STATUS_LABEL[status] || status, STATUS_CLASS[status] || '');
   }
 
   /** 수량 문자열을 숫자로. 값이 없거나(21단계 전) 숫자가 아니면 0 — 배지 판정에만 쓴다. */
@@ -193,7 +106,7 @@
       return order.doc_type === 'po' && order.sent_at;
     });
     if (!sent) { return td; }
-    td.appendChild(el('span', 'p-badge p-badge--warn', '미입고'));
+    td.appendChild(badge('미입고', 'badge--danger'));
     return td;
   }
 
@@ -209,21 +122,78 @@
    * 탭
    * ══════════════════════════════════════════════════════ */
 
-  function initTabs(navId, map) {
-    var nav = $(navId);
-    if (!nav) { return; }
-    var buttons = nav.querySelectorAll('.p-tab');
-    Array.prototype.forEach.call(buttons, function (button) {
-      button.addEventListener('click', function () {
-        Array.prototype.forEach.call(buttons, function (b) { b.classList.remove('is-on'); });
-        button.classList.add('is-on');
-        var wanted = button.getAttribute('data-tab');
-        Object.keys(map).forEach(function (key) {
-          var panel = $(map[key].panel);
-          if (panel) { panel.hidden = key !== wanted; }
+  var initTabs = UI.initTabs;
+
+
+  /* ══════════════════════════════════════════════════════
+   * 사이클 표 — **한 벌** (시안 ⑨ Cycle)
+   *
+   * 25단계 전에는 같은 API(`/api/purchase/cycle`)를 두 함수가 **다른 열**로 그렸다
+   * (발주요청 「현황」 탭 9열 · 전표 「사이클」 탭 10열). 한쪽만 고쳐지는 자리였다.
+   * 이제 머리와 몸을 이 함수 하나가 그리고, 두 화면은 그릴 자리만 넘긴다.
+   * ══════════════════════════════════════════════════════ */
+
+  var CYCLE_COLUMNS = [
+    ['발주요청', ''], ['요청자 · 장소', ''], ['품목', ''], ['요청', 'num'],
+    ['발주서', ''], ['발주', 'num'], ['미발주', 'num'],
+    ['입고', 'num'], ['미입고', 'num'], ['상태', '']
+  ];
+
+  function renderCycleHead(headRow) {
+    if (!headRow || headRow.childNodes.length > 0) { return; }
+    CYCLE_COLUMNS.forEach(function (column) {
+      var th = el('th', column[1] || null, column[0]);
+      th.setAttribute('scope', 'col');
+      headRow.appendChild(th);
+    });
+  }
+
+  /** 사이클 한 줄. 전표번호는 mono, 수량은 num mono, 상태는 배지다. */
+  function renderCycleRows(bodyEl, rows) {
+    clear(bodyEl);
+    (rows || []).forEach(function (row) {
+      var tr = el('tr');
+      cell(tr, row.pr_doc_no, 'mono').appendChild(el('span', 'p-sub', row.pr_date));
+      cell(tr, dash(row.requester)).appendChild(el('span', 'p-sub', dash(row.location_name)));
+      cell(tr, row.name).appendChild(el('span', 'p-sub mono', row.code));
+
+      cell(tr, qtyText(row.qty), 'num mono');
+
+      var orderTd = el('td');
+      var orders = row.orders || [];
+      if (orders.length === 0) {
+        setText(orderTd, '—');
+      } else {
+        orders.forEach(function (order) {
+          var line = el('div');
+          line.appendChild(el('span', 'mono', order.doc_no));
+          if (order.sent_at) { line.appendChild(badge('보냄', 'badge--accent')); }
+          orderTd.appendChild(line);
         });
-        if (map[wanted] && typeof map[wanted].onShow === 'function') { map[wanted].onShow(); }
-      });
+      }
+      tr.appendChild(orderTd);
+
+      cell(tr, qtyText(row.ordered_qty), 'num mono');
+      cell(tr, qtyText(row.not_ordered), 'num mono');
+      // 서버가 원장 합으로 채우는 두 칸 (PRD F-34 R4) — 화면이 0 을 지어내지 않는다.
+      cell(tr, qtyText(row.received_qty), 'num mono');
+      markLate(cell(tr, qtyText(row.not_received), 'num mono'), row);
+
+      var st = el('td');
+      st.appendChild(statusBadge(row.pr_status));
+      tr.appendChild(st);
+      bodyEl.appendChild(tr);
+    });
+  }
+
+  /** 사이클 한 벌을 불러 그린다. `ids` = {head, body, info}, `params` = 질의 문자열 */
+  function loadCycleInto(ids, params) {
+    renderCycleHead($(ids.head));
+    return request('GET', '/api/purchase/cycle' + (params || '')).then(function (res) {
+      if (!res || !res.ok) { return; }
+      renderCycleRows($(ids.body), res.data.rows);
+      setText($(ids.info), '요청 줄 ' + res.data.total + '개'
+        + (res.data.truncated ? ' · 상한에서 끊김 — 기간을 좁혀 주세요' : ''));
     });
   }
 
@@ -241,19 +211,21 @@
     function renderLines() {
       var body = $('pr-line-body');
       clear(body);
-      var sum = 0;
       lines.forEach(function (line, index) {
         var tr = el('tr');
         cell(tr, String(index + 1), 'p-col-no');
-        cell(tr, line.code);
-        cell(tr, line.name + (line.spec ? ' · ' + line.spec : ''));
+        cell(tr, line.code, 'mono');
+        var nameTd = cell(tr, line.name);
+        nameTd.className = 'p-name p-cell-wide';
+        if (line.spec) { nameTd.appendChild(el('span', 'p-sub', line.spec)); }
         cell(tr, dash(line.vendor_name));
 
-        var qtyTd = el('td', 'p-num');
+        var qtyTd = el('td', 'num');
         var qtyInput = document.createElement('input');
         qtyInput.type = 'number';
         qtyInput.min = '0.001';
         qtyInput.step = '0.001';
+        qtyInput.className = 'p-in p-in--qty';
         qtyInput.value = String(line.qty);
         qtyInput.addEventListener('input', function () {
           line.qty = qtyInput.value;
@@ -262,47 +234,55 @@
         qtyTd.appendChild(qtyInput);
         tr.appendChild(qtyTd);
 
-        cell(tr, money(line.price_in), 'p-num');
+        cell(tr, money(line.price_in), 'num mono');
         var amount = line.price_in === null ? null : Number(line.price_in) * Number(line.qty || 0);
-        cell(tr, amount === null || isNaN(amount) ? '—' : money(amount), 'p-num');
+        cell(tr, amount === null || isNaN(amount) ? '—' : money(amount), 'num mono');
 
         var remarkTd = el('td');
         var remarkInput = document.createElement('input');
         remarkInput.type = 'text';
         remarkInput.maxLength = 200;
+        remarkInput.className = 'p-in p-in--text';
         remarkInput.value = line.remark || '';
         remarkInput.addEventListener('input', function () { line.remark = remarkInput.value; });
         remarkTd.appendChild(remarkInput);
         tr.appendChild(remarkTd);
 
         var actTd = el('td');
-        var drop = el('button', 'btn btn--quiet btn--small', '빼기');
-        drop.type = 'button';
-        drop.addEventListener('click', function () {
+        actTd.appendChild(UI.button('빼기', 'btn btn--quiet btn--small', function () {
           lines.splice(index, 1);
           renderLines();
-        });
-        actTd.appendChild(drop);
+        }));
         tr.appendChild(actTd);
 
         body.appendChild(tr);
-        if (amount !== null && !isNaN(amount)) { sum += amount; }
       });
       $('pr-line-empty').hidden = lines.length > 0;
       renderSum();
     }
 
+    /** 푸터 — 좌 「품목 N건 · 수량 M · 거래처 K곳」, 우 합계(시안 ① Main 푸터) */
     function renderSum() {
       var sum = 0;
-      var count = 0;
+      var qtySum = 0;
+      var vendors = {};
       lines.forEach(function (line) {
-        count += 1;
+        var q = Number(line.qty || 0);
+        if (!isNaN(q)) { qtySum += q; }
+        if (line.vendor_name) { vendors[String(line.vendor_name)] = true; }
         if (line.price_in !== null && line.price_in !== undefined) {
-          var v = Number(line.price_in) * Number(line.qty || 0);
+          var v = Number(line.price_in) * Number(q || 0);
           if (!isNaN(v)) { sum += v; }
         }
       });
-      setText($('pr-sum'), '품목 ' + count + '건 · 합계(부가세 별도) ' + money(sum) + ' 원');
+      var left = $('pr-sum');
+      clear(left);
+      left.appendChild(el('span', null, '품목 ' + lines.length + '건 · 수량 ' + qtyText(qtySum) + ' '));
+      var vendorCount = Object.keys(vendors).length;
+      if (vendorCount > 0) {
+        left.appendChild(badge('거래처 ' + vendorCount + '곳', 'badge--accent'));
+      }
+      setText($('pr-total'), money(sum));
     }
 
     function addItem(row, qty) {
@@ -351,9 +331,9 @@
           cell(tr, row.code);
           cell(tr, row.name + (row.spec ? ' · ' + row.spec : ''));
           cell(tr, dash(row.vendor_name));
-          cell(tr, money(row.price_in), 'p-num');
+          cell(tr, money(row.price_in), 'num');
 
-          var qtyTd = el('td', 'p-num');
+          var qtyTd = el('td', 'num');
           var qtyInput = document.createElement('input');
           qtyInput.type = 'number';
           qtyInput.min = '0.001';
@@ -390,7 +370,7 @@
     $('pr-pick').addEventListener('click', function () {
       pickPage = 1;
       picked = {};
-      $('pick-modal').showModal();
+      openModal('pick-modal');
       runPick();
     });
     $('pick-search').addEventListener('click', function () { pickPage = 1; runPick(); });
@@ -404,7 +384,7 @@
       });
       picked = {};
       renderLines();
-      $('pick-modal').close();
+      closeModal('pick-modal');
     });
 
     /* ── 추천 · 내 리스트 모달 ──────────────────────────── */
@@ -425,10 +405,10 @@
           checkTd.appendChild(check);
           tr.appendChild(checkTd);
           cell(tr, row.name + ' · ' + row.code);
-          cell(tr, String(row.times), 'p-num');
-          cell(tr, qtyText(row.avg_qty), 'p-num');
+          cell(tr, String(row.times), 'num');
+          cell(tr, qtyText(row.avg_qty), 'num');
           cell(tr, row.last_date);
-          var qtyTd = el('td', 'p-num');
+          var qtyTd = el('td', 'num');
           var qtyInput = document.createElement('input');
           qtyInput.type = 'number';
           qtyInput.min = '0.001';
@@ -476,7 +456,7 @@
         checkTd.appendChild(check);
         tr.appendChild(checkTd);
         cell(tr, row.name + ' · ' + row.code);
-        cell(tr, qtyText(row.default_qty), 'p-num');
+        cell(tr, qtyText(row.default_qty), 'num');
         check.addEventListener('change', function () {
           if (check.checked) {
             recoChosen['l' + row.item_id] = { row: row, qty: row.default_qty };
@@ -490,7 +470,7 @@
 
     $('pr-reco').addEventListener('click', function () {
       recoChosen = {};
-      $('reco-modal').showModal();
+      openModal('reco-modal');
       runReco();
       runLists();
     });
@@ -502,7 +482,7 @@
       });
       recoChosen = {};
       renderLines();
-      $('reco-modal').close();
+      closeModal('reco-modal');
     });
     $('reco-list-add').addEventListener('click', function () {
       var id = $('reco-list').value;
@@ -530,7 +510,7 @@
     });
 
     /* ── 저장 ──────────────────────────────────────────── */
-    $('pr-form').addEventListener('submit', function (event) {
+    $('pr-input').addEventListener('submit', function (event) {
       event.preventDefault();
       if (lines.length === 0) { say('품목을 한 줄 이상 담아 주세요.'); return; }
       var payload = { doc_date: $('pr-date').value, lines: [] };
@@ -568,13 +548,14 @@
         var items = Array.isArray(res.data.items) ? res.data.items : [];
         items.forEach(function (row) {
           var tr = el('tr', 'p-row-click');
-          cell(tr, row.doc_date + ' · ' + row.doc_no);
+          var noTd = cell(tr, row.doc_no, 'mono');
+          noTd.appendChild(el('span', 'p-sub', row.doc_date));
           cell(tr, dash(row.branch_name));
           cell(tr, dash(row.location_name));
           cell(tr, dash(row.vendor_name));
           cell(tr, dash(row.manager_name));
-          cell(tr, String(row.line_count), 'p-num');
-          cell(tr, money(row.amount), 'p-num');
+          cell(tr, String(row.line_count), 'num mono');
+          cell(tr, money(row.amount), 'num mono');
           var st = el('td');
           st.appendChild(statusBadge(row.status));
           tr.appendChild(st);
@@ -607,12 +588,12 @@
           cell(tr, String(line.line_no), 'p-col-no');
           cell(tr, line.code);
           cell(tr, line.name);
-          cell(tr, qtyText(line.qty), 'p-num');
-          cell(tr, qtyText(line.taken_qty), 'p-num');
-          cell(tr, qtyText(line.remaining), 'p-num');
-          cell(tr, money(line.amount), 'p-num');
+          cell(tr, qtyText(line.qty), 'num');
+          cell(tr, qtyText(line.taken_qty), 'num');
+          cell(tr, qtyText(line.remaining), 'num');
+          cell(tr, money(line.amount), 'num');
           var st = el('td');
-          st.appendChild(el('span', 'p-badge', line.status === 'void' ? '취소'
+          st.appendChild(el('span', 'badge', line.status === 'void' ? '취소'
             : (line.locked_at ? '잠김' : '미확인')));
           tr.appendChild(st);
           var actTd = el('td');
@@ -665,37 +646,25 @@
     });
     $('pr-next').addEventListener('click', function () { docPage += 1; loadDocs(); });
 
-    /* ── 현황(사이클) ──────────────────────────────────── */
+    /* ── 현황(사이클) — 전표 화면과 **같은 함수**가 그린다 ── */
     function loadCycle() {
-      request('GET', '/api/purchase/cycle').then(function (res) {
-        if (!res || !res.ok) { return; }
-        var body = $('pr-cycle-body');
-        clear(body);
-        (res.data.rows || []).forEach(function (row) {
-          var tr = el('tr');
-          cell(tr, row.pr_doc_no + ' · ' + row.pr_date);
-          cell(tr, dash(row.requester) + ' · ' + dash(row.location_name));
-          cell(tr, row.name + ' · ' + row.code);
-          cell(tr, qtyText(row.qty), 'p-num');
-          var orders = (row.orders || []).map(function (o) { return o.doc_no; }).join(', ');
-          cell(tr, orders === '' ? '—' : orders);
-          cell(tr, qtyText(row.ordered_qty), 'p-num');
-          cell(tr, qtyText(row.not_ordered), 'p-num');
-          // 21단계 입고 — 이 탭에는 「미입고」 칸이 따로 없으므로 받은 수량을 적고,
-          // 아직 안 온 것이 있으면 같은 칸에 배지를 세운다.
-          markLate(cell(tr, qtyText(row.received_qty), 'p-num'), row);
-          var st = el('td');
-          st.appendChild(statusBadge(row.pr_status));
-          tr.appendChild(st);
-          body.appendChild(tr);
-        });
-      });
+      loadCycleInto({ head: 'pr-cycle-head', body: 'pr-cycle-body', info: 'pr-cycle-info' }, '');
     }
 
     initTabs('pr-tabs', {
       input: { panel: 'pr-input' },
       docs: { panel: 'pr-docs', onShow: loadDocs },
       status: { panel: 'pr-status-panel', onShow: loadCycle }
+    });
+
+    /* 머리말 액션은 **이 화면 안의 일**만 한다 — 다른 화면으로 가는 링크는 사이드바가 맡는다.
+       「전표 보기」는 탭을 바꾸고, 「다시 작성」은 담은 줄을 비운다. */
+    $('pr-goto-docs').addEventListener('click', function () { UI.showTab('pr-tabs', 'docs'); });
+    $('pr-reset').addEventListener('click', function () {
+      lines = [];
+      renderLines();
+      $('pr-memo').value = '';
+      say('담은 줄을 비웠습니다.');
     });
 
     // 탭 전환은 패널 셋만 여닫는다 — 상세는 전표 탭에서 열린다.
@@ -725,20 +694,34 @@
     function renderLines() {
       var body = $('po-line-body');
       clear(body);
-      var sum = 0;
       lines.forEach(function (line, index) {
         var tr = el('tr');
         cell(tr, String(index + 1), 'p-col-no');
-        cell(tr, line.code);
-        cell(tr, line.name + (line.spec ? ' · ' + line.spec : ''));
-        cell(tr, line.doc_no + ' · ' + dash(line.manager_name));
-        cell(tr, qtyText(line.remaining), 'p-num');
+        cell(tr, line.code, 'mono');
+        var nameTd = cell(tr, line.name);
+        nameTd.className = 'p-name p-cell-wide';
+        if (line.spec) { nameTd.appendChild(el('span', 'p-sub', line.spec)); }
 
-        var qtyTd = el('td', 'p-num');
+        /* 출처 요청 — 전표번호는 mono, 잔량이 남아 있으면 주의(warn) 배지 */
+        var srcTd = el('td');
+        srcTd.appendChild(el('span', 'mono', line.doc_no));
+        srcTd.appendChild(el('span', 'p-sub', dash(line.manager_name)));
+        tr.appendChild(srcTd);
+
+        var remainTd = el('td', 'num mono');
+        if (Number(line.remaining || 0) > 0) {
+          remainTd.appendChild(badge(qtyText(line.remaining), 'badge--warn'));
+        } else {
+          setText(remainTd, qtyText(line.remaining));
+        }
+        tr.appendChild(remainTd);
+
+        var qtyTd = el('td', 'num');
         var qtyInput = document.createElement('input');
         qtyInput.type = 'number';
         qtyInput.min = '0.001';
         qtyInput.step = '0.001';
+        qtyInput.className = 'p-in p-in--qty';
         qtyInput.value = String(line.qty);
         qtyInput.addEventListener('input', function () {
           line.qty = qtyInput.value;
@@ -747,22 +730,18 @@
         qtyTd.appendChild(qtyInput);
         tr.appendChild(qtyTd);
 
-        cell(tr, money(line.price_in), 'p-num');
+        cell(tr, money(line.price_in), 'num mono');
         var amount = line.price_in === null ? null : Number(line.price_in) * Number(line.qty || 0);
-        cell(tr, amount === null || isNaN(amount) ? '—' : money(amount), 'p-num');
+        cell(tr, amount === null || isNaN(amount) ? '—' : money(amount), 'num mono');
 
         var actTd = el('td');
-        var drop = el('button', 'btn btn--quiet btn--small', '빼기');
-        drop.type = 'button';
-        drop.addEventListener('click', function () {
+        actTd.appendChild(UI.button('빼기', 'btn btn--quiet btn--small', function () {
           lines.splice(index, 1);
           renderLines();
-        });
-        actTd.appendChild(drop);
+        }));
         tr.appendChild(actTd);
 
         body.appendChild(tr);
-        if (amount !== null && !isNaN(amount)) { sum += amount; }
       });
       $('po-line-empty').hidden = lines.length > 0;
       renderSum();
@@ -770,74 +749,126 @@
 
     function renderSum() {
       var sum = 0;
+      var qtySum = 0;
       lines.forEach(function (line) {
+        var q = Number(line.qty || 0);
+        if (!isNaN(q)) { qtySum += q; }
         if (line.price_in === null || line.price_in === undefined) { return; }
-        var v = Number(line.price_in) * Number(line.qty || 0);
+        var v = Number(line.price_in) * q;
         if (!isNaN(v)) { sum += v; }
       });
-      setText($('po-sum'), '줄 ' + lines.length + '개 · 공급가액 ' + money(sum) + ' 원 (부가세 별도)');
+      setText($('po-sum'), '줄 ' + lines.length + '개 · 수량 ' + qtyText(qtySum));
+      setText($('po-total'), money(sum));
     }
 
-    /* ── 불러오기 모달 ─────────────────────────────────── */
+    /* ── 불러오기 모달 (시안 ④ ImportModal) ───────────────
+     * 좌 트리(묶음) / 우 줄 표 2단. 25단계 전에는 트리 안에 줄이 섞여 있어
+     * 층이 깊어질수록 줄이 오른쪽으로 밀려 이름이 잘렸다.
+     * 부르는 API·질의 문자열은 그대로다 — 배치만 바꾼다.
+     */
     var pickedLines = {};
+    var openLeaf = null;
 
+    function syncLoadInfo() {
+      setText($('load-info'), '고른 줄 ' + Object.keys(pickedLines).length + '개');
+    }
+
+    /** 오른쪽 표 — 고른 묶음의 줄만 그린다 */
+    function drawLines(node) {
+      var body = $('load-lines-body');
+      clear(body);
+      var rows = (node && node.lines) ? node.lines : [];
+      setText($('load-lines-title'), node ? node.label : '줄');
+      $('load-lines-empty').hidden = rows.length > 0;
+      setText($('load-lines-empty'), node ? '이 묶음에는 줄이 없습니다.' : '왼쪽에서 묶음을 고르세요.');
+
+      rows.forEach(function (line) {
+        var key = String(line.line_id);
+        var tr = el('tr');
+
+        var checkTd = el('td', 'p-col-check p-pick');
+        var check = document.createElement('input');
+        check.type = 'checkbox';
+        check.checked = Object.prototype.hasOwnProperty.call(pickedLines, key);
+        checkTd.appendChild(check);
+        tr.appendChild(checkTd);
+
+        cell(tr, line.code, 'mono');
+        var nameTd = cell(tr, line.name);
+        nameTd.className = 'p-name p-cell-wide';
+        if (line.spec) { nameTd.appendChild(el('span', 'p-sub', line.spec)); }
+
+        var srcTd = el('td');
+        srcTd.appendChild(el('span', 'mono', line.doc_no));
+        srcTd.appendChild(el('span', 'p-sub', dash(line.manager_name)));
+        tr.appendChild(srcTd);
+
+        cell(tr, qtyText(line.remaining), 'num mono');
+
+        var qtyTd = el('td', 'num');
+        var qtyInput = document.createElement('input');
+        qtyInput.type = 'number';
+        qtyInput.min = '0.001';
+        qtyInput.step = '0.001';
+        qtyInput.className = 'p-in p-in--qty';
+        qtyInput.value = Object.prototype.hasOwnProperty.call(pickedLines, key)
+          ? pickedLines[key].qty : qtyText(line.remaining);
+        qtyTd.appendChild(qtyInput);
+        tr.appendChild(qtyTd);
+
+        function sync() {
+          if (check.checked) {
+            pickedLines[key] = {
+              src_line_id: line.line_id,
+              code: line.code,
+              name: line.name,
+              spec: line.spec,
+              doc_no: line.doc_no,
+              manager_name: line.manager_name,
+              price_in: line.price_in,
+              remaining: line.remaining,
+              vendor_id: line.doc_vendor_id === null ? line.item_vendor_id : line.doc_vendor_id,
+              qty: qtyInput.value
+            };
+          } else {
+            delete pickedLines[key];
+          }
+          syncLoadInfo();
+        }
+        check.addEventListener('change', sync);
+        qtyInput.addEventListener('input', function () { if (check.checked) { sync(); } });
+
+        body.appendChild(tr);
+      });
+    }
+
+    /** 왼쪽 트리 — 층마다 들여쓰고, 줄이 달린 마디를 누르면 오른쪽이 바뀐다 */
     function drawTree(nodes, container) {
       nodes.forEach(function (node) {
         var box = el('div', 'p-tree-group');
-        var head = el('div', 'p-tree-head');
-        head.appendChild(el('span', null, node.label));
-        head.appendChild(el('span', 'p-tree-sum',
-          '줄 ' + node.line_count + ' · 잔량 ' + qtyText(node.qty)));
+        var head = el('button', 'p-tree-head');
+        head.type = 'button';
+        head.appendChild(el('span', 'p-tree-name', node.label));
+        head.appendChild(badge('줄 ' + node.line_count, 'badge--off'));
+        head.appendChild(el('span', 'p-tree-sum', '잔량 ' + qtyText(node.qty)));
         box.appendChild(head);
 
         if (node.children) {
           var kids = el('div', 'p-tree-children');
           drawTree(node.children, kids);
           box.appendChild(kids);
-        } else if (node.lines) {
-          var wrap = el('div', 'p-tree-children');
-          node.lines.forEach(function (line) {
-            var row = el('div', 'p-tree-line');
-            var check = document.createElement('input');
-            check.type = 'checkbox';
-            row.appendChild(check);
-            row.appendChild(el('span', 'p-tree-name',
-              line.code + ' · ' + line.name + (line.spec ? ' · ' + line.spec : '')));
-            row.appendChild(el('span', 'p-tree-sum',
-              line.doc_no + ' · ' + dash(line.manager_name)
-              + ' · 잔량 ' + qtyText(line.remaining)));
-            var qtyInput = document.createElement('input');
-            qtyInput.type = 'number';
-            qtyInput.min = '0.001';
-            qtyInput.step = '0.001';
-            qtyInput.value = qtyText(line.remaining);
-            row.appendChild(qtyInput);
-
-            function sync() {
-              if (check.checked) {
-                pickedLines[String(line.line_id)] = {
-                  src_line_id: line.line_id,
-                  code: line.code,
-                  name: line.name,
-                  spec: line.spec,
-                  doc_no: line.doc_no,
-                  manager_name: line.manager_name,
-                  price_in: line.price_in,
-                  remaining: line.remaining,
-                  vendor_id: line.doc_vendor_id === null ? line.item_vendor_id : line.doc_vendor_id,
-                  qty: qtyInput.value
-                };
-              } else {
-                delete pickedLines[String(line.line_id)];
-              }
-              setText($('load-info'), '고른 줄 ' + Object.keys(pickedLines).length + '개');
-            }
-            check.addEventListener('change', sync);
-            qtyInput.addEventListener('input', function () { if (check.checked) { sync(); } });
-
-            wrap.appendChild(row);
+          head.addEventListener('click', function () {
+            kids.hidden = !kids.hidden;
+            head.setAttribute('aria-expanded', kids.hidden ? 'false' : 'true');
           });
-          box.appendChild(wrap);
+          head.setAttribute('aria-expanded', 'true');
+        } else {
+          head.addEventListener('click', function () {
+            if (openLeaf) { openLeaf.classList.remove('is-on'); }
+            head.classList.add('is-on');
+            openLeaf = head;
+            drawLines(node);
+          });
         }
         container.appendChild(box);
       });
@@ -854,40 +885,58 @@
         if (!res.ok) { say(errorMessage(res.data)); return; }
         var tree = $('load-tree');
         clear(tree);
-        drawTree(res.data.groups || [], tree);
-        setText($('load-info'), '미발주 줄 ' + res.data.line_count + '개 · 잔량 합계 '
-          + qtyText(res.data.qty) + (res.data.truncated ? ' (상한에서 끊김 — 조건을 좁혀 주세요)' : ''));
+        openLeaf = null;
+        var nodes = res.data.groups || [];
+        drawTree(nodes, tree);
+        $('load-tree-empty').hidden = nodes.length > 0;
+        drawLines(null);
+        syncLoadInfo();
       });
     }
 
+    /* 묶는 기준 칩 — **누른 순서**가 층이다. 순서는 칩 안의 번호로 보인다. */
+    var GROUP_MARKS = ['\u2460', '\u2461', '\u2462'];
     var groupNav = $('load-groups');
+
+    function renderGroupMarks() {
+      Array.prototype.forEach.call(groupNav.querySelectorAll('.chip'), function (chip) {
+        var at = groups.indexOf(chip.getAttribute('data-group'));
+        var mark = chip.querySelector('b');
+        if (at < 0) {
+          chip.classList.remove('is-on');
+          if (mark) { chip.removeChild(mark); }
+          return;
+        }
+        chip.classList.add('is-on');
+        if (!mark) {
+          mark = el('b');
+          chip.insertBefore(mark, chip.firstChild);
+        }
+        setText(mark, GROUP_MARKS[at] || String(at + 1));
+      });
+    }
+
     Array.prototype.forEach.call(groupNav.querySelectorAll('.chip'), function (chip) {
       chip.addEventListener('click', function () {
         var key = chip.getAttribute('data-group');
         var at = groups.indexOf(key);
         if (at >= 0) {
           groups.splice(at, 1);
-          chip.classList.remove('is-on');
         } else if (groups.length < 3) {
           groups.push(key);
-          chip.classList.add('is-on');
         } else {
           say('묶는 기준은 세 개까지입니다.');
           return;
         }
-        setText($('load-order'), groups.length === 0 ? '' : '층 순서: ' + groups.join(' › '));
+        renderGroupMarks();
       });
     });
 
     $('po-load').addEventListener('click', function () {
       pickedLines = {};
-      if (groups.length === 0) {
-        groups = ['vendor'];
-        var first = groupNav.querySelector('.chip[data-group="vendor"]');
-        if (first) { first.classList.add('is-on'); }
-        setText($('load-order'), '층 순서: vendor');
-      }
-      $('load-modal').showModal();
+      if (groups.length === 0) { groups = ['vendor']; }
+      renderGroupMarks();
+      openModal('load-modal');
       runLoad();
     });
     $('load-run').addEventListener('click', runLoad);
@@ -901,11 +950,11 @@
       });
       pickedLines = {};
       renderLines();
-      $('load-modal').close();
+      closeModal('load-modal');
     });
 
     /* ── 저장 ──────────────────────────────────────────── */
-    $('po-form').addEventListener('submit', function (event) {
+    $('po-input').addEventListener('submit', function (event) {
       event.preventDefault();
       if (lines.length === 0) { say('발주요청에서 줄을 담아 주세요.'); return; }
       if ($('po-location').value === '') { say('입고 장소를 골라 주세요.'); return; }
@@ -944,12 +993,13 @@
         var items = Array.isArray(res.data.items) ? res.data.items : [];
         items.forEach(function (row) {
           var tr = el('tr', 'p-row-click');
-          cell(tr, row.doc_date + ' · ' + row.doc_no);
+          var noTd = cell(tr, row.doc_no, 'mono');
+          noTd.appendChild(el('span', 'p-sub', row.doc_date));
           cell(tr, dash(row.vendor_name));
           cell(tr, dash(row.location_name));
           cell(tr, dash(row.manager_name));
-          cell(tr, String(row.line_count), 'p-num');
-          cell(tr, money(row.amount), 'p-num');
+          cell(tr, String(row.line_count), 'num mono');
+          cell(tr, money(row.amount), 'num mono');
           var st = el('td');
           st.appendChild(statusBadge(row.status));
           tr.appendChild(st);
@@ -974,7 +1024,9 @@
           + dash(doc.location_name) + ' · 담당 ' + dash(doc.manager_name)
           + (doc.sent_at ? ' · 보냄 ' + doc.sent_at + ' (' + dash(doc.sent_by_name) + ')'
                          : ' · 아직 보내지 않음'));
+        /* 인쇄 링크는 **전표를 고른 뒤에만** 나온다 — 더미 href 를 두지 않는다 */
         $('po-print').href = '/purchase/po/' + id + '/print';
+        $('po-print').hidden = false;
 
         var head = res.data.header || {};
         $('poh-receiver').value = head.receiver || '';
@@ -990,12 +1042,12 @@
         (res.data.lines || []).forEach(function (line) {
           var tr = el('tr');
           cell(tr, String(line.line_no), 'p-col-no');
-          cell(tr, line.code);
-          cell(tr, line.name);
-          cell(tr, dash(line.src_doc_no));
-          cell(tr, qtyText(line.qty), 'p-num');
-          cell(tr, money(line.unit_price), 'p-num');
-          cell(tr, money(line.amount), 'p-num');
+          cell(tr, line.code, 'mono');
+          cell(tr, line.name, 'p-name p-cell-wide');
+          cell(tr, dash(line.src_doc_no), 'mono');
+          cell(tr, qtyText(line.qty), 'num mono');
+          cell(tr, money(line.unit_price), 'num mono');
+          cell(tr, money(line.amount), 'num mono');
           body.appendChild(tr);
         });
         setText($('po-detail-totals'), '공급가액 ' + money(res.data.totals.supply)
@@ -1004,12 +1056,16 @@
 
         $('po-send').hidden = !res.data.can_send;
         $('po-void').hidden = !res.data.can_write;
-        $('po-head-form').hidden = !res.data.can_write;
+        $('po-head-box').hidden = !res.data.can_write;
         $('po-detail').hidden = false;
       });
     }
 
-    $('po-detail-close').addEventListener('click', function () { $('po-detail').hidden = true; });
+    $('po-detail-close').addEventListener('click', function () {
+      $('po-detail').hidden = true;
+      $('po-print').hidden = true;
+    });
+    $('po-goto-docs').addEventListener('click', function () { UI.showTab('po-tabs', 'docs'); });
 
     $('po-head-form').addEventListener('submit', function (event) {
       event.preventDefault();
@@ -1090,6 +1146,86 @@
 
   function initDocs() {
     var page = 1;
+    var openRow = null;
+
+    /* ── 연결 전표 aside (시안 ⑧ Docs 우측) ───────────────
+     * 자료는 기존 `GET /api/purchase/cycle?pr=…|po=…` **하나**뿐이다 (새 API 없음).
+     * 요청 줄들을 받아 ① 요청 ② 발주서 ③ 입고 로 묶어 시간 순으로 세운다.
+     */
+    var FLOW_STEP = {
+      pr: { label: '발주요청', kind: '' },
+      po: { label: '발주서', kind: 'badge--accent' },
+      gr: { label: '입고', kind: 'badge--ok' }
+    };
+
+    function flowItem(type, docNo, meta, href) {
+      var li = el('li', 'p-flow__item');
+      var head = el('div', 'p-flow__head');
+      var step = FLOW_STEP[type] || FLOW_STEP.pr;
+      head.appendChild(badge(step.label, step.kind));
+      if (href) {
+        var link = el('a', 'mono', docNo);
+        link.href = href;
+        head.appendChild(link);
+      } else {
+        head.appendChild(el('span', 'mono', docNo));
+      }
+      li.appendChild(head);
+      li.appendChild(el('div', 'p-flow__meta', meta));
+      return li;
+    }
+
+    function loadFlow(type, row) {
+      var flow = $('docs-flow');
+      var items = $('docs-flow-items');
+      clear(flow);
+      clear(items);
+      $('docs-flow-empty').hidden = true;
+      $('docs-flow-items-wrap').hidden = false;
+
+      request('GET', '/api/purchase/cycle?' + (type === 'po' ? 'po=' : 'pr=') + row.id)
+        .then(function (res) {
+          if (!res || !res.ok) { return; }
+          var rows = res.data.rows || [];
+          if (rows.length === 0) {
+            $('docs-flow-empty').hidden = false;
+            $('docs-flow-items-wrap').hidden = true;
+            setText($('docs-flow-empty'), '연결된 전표가 없습니다.');
+            return;
+          }
+
+          var first = rows[0];
+          flow.appendChild(flowItem('pr', first.pr_doc_no,
+            first.pr_date + ' · ' + dash(first.requester) + ' · ' + dash(first.location_name),
+            '/purchase/pr?doc=' + first.pr_doc_id));
+
+          var seen = {};
+          ['orders', 'receipts'].forEach(function (bucket) {
+            rows.forEach(function (r) {
+              (r[bucket] || []).forEach(function (d) {
+                var key = d.doc_type + ':' + d.doc_no;
+                if (seen[key]) { return; }
+                seen[key] = true;
+                var meta = d.doc_date + ' · ' + dash(d.manager_name)
+                  + (d.sent_at ? ' · 보냄' : '');
+                flow.appendChild(flowItem(d.doc_type, d.doc_no, meta,
+                  d.doc_type === 'po' ? '/purchase/po?doc=' + d.doc_id : null));
+              });
+            });
+          });
+
+          rows.forEach(function (r) {
+            var tr = el('tr');
+            var nameTd = cell(tr, r.name);
+            nameTd.className = 'p-name';
+            nameTd.appendChild(el('span', 'p-sub mono', r.code));
+            cell(tr, qtyText(r.qty), 'num mono');
+            cell(tr, qtyText(r.ordered_qty), 'num mono');
+            cell(tr, qtyText(r.received_qty), 'num mono');
+            items.appendChild(tr);
+          });
+        });
+    }
 
     function loadList() {
       var type = $('docs-type').value;
@@ -1104,17 +1240,28 @@
         clear(body);
         var items = Array.isArray(res.data.items) ? res.data.items : [];
         items.forEach(function (row) {
-          var tr = el('tr');
-          cell(tr, row.doc_date + ' · ' + row.doc_no);
-          cell(tr, row.doc_type === 'pr' ? '발주요청' : '발주서');
+          var tr = el('tr', 'p-row-click');
+          var noTd = cell(tr, row.doc_no, 'mono');
+          noTd.appendChild(el('span', 'p-sub', row.doc_date));
+          var kindTd = el('td');
+          kindTd.appendChild(row.doc_type === 'pr'
+            ? badge('발주요청', '')
+            : badge('발주서', 'badge--accent'));
+          tr.appendChild(kindTd);
           cell(tr, dash(row.vendor_name));
-          cell(tr, dash(row.branch_name) + ' ' + dash(row.location_name));
+          cell(tr, dash(row.branch_name)).appendChild(el('span', 'p-sub', dash(row.location_name)));
           cell(tr, dash(row.manager_name));
-          cell(tr, String(row.line_count), 'p-num');
-          cell(tr, money(row.amount), 'p-num');
+          cell(tr, String(row.line_count), 'num mono');
+          cell(tr, money(row.amount), 'num mono');
           var st = el('td');
           st.appendChild(statusBadge(row.status));
           tr.appendChild(st);
+          tr.addEventListener('click', function () {
+            if (openRow) { openRow.classList.remove('is-on'); }
+            tr.classList.add('is-on');
+            openRow = tr;
+            loadFlow(type, row);
+          });
           body.appendChild(tr);
         });
         $('docs-empty').hidden = items.length > 0;
@@ -1132,35 +1279,7 @@
       if ($('cycle-to').value !== '') {
         params += joiner + 'to=' + encodeURIComponent($('cycle-to').value);
       }
-      request('GET', '/api/purchase/cycle' + params).then(function (res) {
-        if (!res || !res.ok) { return; }
-        var body = $('cycle-body');
-        clear(body);
-        (res.data.rows || []).forEach(function (row) {
-          var tr = el('tr');
-          cell(tr, row.pr_doc_no + ' · ' + row.pr_date);
-          cell(tr, dash(row.requester) + ' · ' + dash(row.location_name));
-          cell(tr, row.name + ' · ' + row.code);
-          cell(tr, qtyText(row.qty), 'p-num');
-          var orders = (row.orders || []).map(function (o) {
-            return o.doc_no + (o.sent_at ? ' (보냄)' : '');
-          }).join(', ');
-          cell(tr, orders === '' ? '—' : orders);
-          cell(tr, qtyText(row.ordered_qty), 'p-num');
-          cell(tr, qtyText(row.not_ordered), 'p-num');
-          // 21단계부터 서버가 원장 합으로 채우는 두 칸 (PRD F-34 R4).
-          // 20단계에는 없던 값이라 `qtyText` 가 null·빈 값을 「—」로 되돌린다 —
-          // 화면이 0 을 지어내지 않는다.
-          cell(tr, qtyText(row.received_qty), 'p-num');
-          markLate(cell(tr, qtyText(row.not_received), 'p-num'), row);
-          var st = el('td');
-          st.appendChild(statusBadge(row.pr_status));
-          tr.appendChild(st);
-          body.appendChild(tr);
-        });
-        setText($('cycle-info'), '요청 줄 ' + res.data.total + '개'
-          + (res.data.truncated ? ' (상한에서 끊김 — 기간을 좁혀 주세요)' : ''));
-      });
+      loadCycleInto({ head: 'cycle-head', body: 'cycle-body', info: 'cycle-info' }, params);
     }
 
     $('docs-type').addEventListener('change', function () { page = 1; loadList(); });
@@ -1192,16 +1311,20 @@
           window.location.href = '/login';
           return null;
         }
-        return readJson(response);
+        return UI.readJson(response);
       })
       .then(function (me) {
         if (me === null) { return; }
-        csrfToken = typeof me.csrf_token === 'string' ? me.csrf_token : '';
+        apiClient.setCsrf(me.csrf_token);
+        /* 담당자 칸은 **서버가 준 이름**(`/api/me`)을 그대로 넣는다 — 읽기 전용이고,
+           저장 본문에 실리지 않는다(요청의 담당자는 서버가 세션에서 정한다). */
+        var managerBox = $('pr-manager');
+        if (managerBox) { managerBox.value = typeof me.username === 'string' ? me.username : ''; }
         if ($('pr-tabs')) { initPr(); }
         if ($('po-tabs')) { initPo(); }
         if ($('docs-tabs')) { initDocs(); }
       })
-      .catch(function () { say(GENERIC_ERROR); });
+      .catch(function () { say(UI.GENERIC_ERROR); });
   }
 
   if (document.readyState === 'loading') {
