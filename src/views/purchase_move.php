@@ -76,7 +76,7 @@ require __DIR__ . '/shell_top.php';
     <div class="form-actions">
       <button id="mv-save" class="btn" type="button">이동 확정</button>
     </div>
-    <p class="help">음수가 되는 수량은 <strong>저장되지 않습니다</strong> — 서버가 장소를 잠그고 합을 다시 세어 막습니다.</p>
+    <p class="help">보내는 곳의 재고보다 많이 옮길 수 없습니다.</p>
   </section>
 
   <!-- ── 사용 ───────────────────────────────────────────── -->
@@ -166,8 +166,7 @@ require __DIR__ . '/shell_top.php';
     <div class="form-actions">
       <button id="adj-save" class="btn" type="button">실사 확정</button>
     </div>
-    <p class="help">차이가 <strong>0 이 아닌 줄만</strong> 원장에 한 행으로 남습니다.
-      장부를 불러온 뒤 다른 전표가 재고를 바꿨다면 저장이 거부됩니다(다시 불러오세요).</p>
+    <p class="help">차이가 0 이 아닌 줄만 저장됩니다. 불러온 뒤 재고가 바뀌었다면 다시 불러오세요.</p>
   </section>
 
   <section class="panel" id="mv-result" hidden>

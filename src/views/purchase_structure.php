@@ -101,10 +101,7 @@ require __DIR__ . '/shell_top.php';
         </table>
       </div>
       <p id="st-unlinked-empty" class="empty" hidden>모두 정리됨 — 미연결 창고가 없습니다.</p>
-      <p class="help">
-        이카운트 창고 내보내기(창고코드·창고명·구분·사용·추가사업장명)를 <strong>그대로</strong> 올리면 됩니다 — 지점 열이 없어도 괜찮습니다.
-        올린 창고는 <strong>대기표</strong>에 담기고, <strong>지점에 연결하는 순간에만</strong> 실제 창고가 만들어집니다. 이름은 이카운트 것 그대로 저장합니다.
-      </p>
+      <p class="help">이카운트 창고 내보내기를 그대로 올린 뒤 지점에 연결합니다.</p>
     </section>
   </div>
 
@@ -132,10 +129,7 @@ require __DIR__ . '/shell_top.php';
       </div>
       <p id="st-excluded-empty" class="empty" hidden>제외된 창고가 없습니다.</p>
     </div>
-    <p class="help">
-      이 화면의 편집에는 <strong>비밀번호 재확인</strong>이 필요합니다(15분). 확인 창이 뜨면
-      다시 로그인하는 것이 아니라 지금 계정의 비밀번호를 한 번 더 넣는 것입니다.
-    </p>
+    <p class="help">편집하려면 비밀번호를 다시 확인합니다.</p>
   </section>
 
 <script src="/assets/purchase_common.js?v=<?= (int) filemtime(__DIR__ . '/../../public/assets/purchase_common.js') ?>"></script>

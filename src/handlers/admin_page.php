@@ -45,11 +45,7 @@ require __DIR__ . '/../views/shell_top.php';
       </div>
     </header>
 
-    <p class="notice">
-      이 영역은 <strong>관리자만</strong> 쓸 수 있고, 들어올 때 <strong>비밀번호를 다시 확인</strong>합니다
-      (재인증 창 15분). 창이 닫히면 다시 묻습니다 — 훔친 세션 쿠키나 자리 비움만으로
-      관리 기능에 닿지 못하게 하는 겹입니다. 여기서 한 일은 모두 감사 로그에 남습니다.
-    </p>
+    
 
     <section class="admin-hub">
       <a class="admin-card" href="/users">
@@ -70,7 +66,7 @@ require __DIR__ . '/../views/shell_top.php';
         <span class="admin-card__icon"><span class="icon" data-icon="lock"></span></span>
         <span class="admin-card__text">
           <strong class="admin-card__name">권한 매트릭스 편집</strong>
-          <span class="admin-card__desc">역할 × 등급 표를 바꿉니다 — 사유와 2단계 인증 코드가 필요하고, 칸마다 감사 기록이 남습니다</span>
+          <span class="admin-card__desc">역할 × 등급 표를 바꿉니다</span>
         </span>
       </a>
       <a class="admin-card" href="/audit">
@@ -84,14 +80,14 @@ require __DIR__ . '/../views/shell_top.php';
         <span class="admin-card__icon"><span class="icon" data-icon="trash"></span></span>
         <span class="admin-card__text">
           <strong class="admin-card__name">휴지통</strong>
-          <span class="admin-card__desc">삭제된 파일 복구 (30일 안)</span>
+          <span class="admin-card__desc">삭제된 파일 복구</span>
         </span>
       </a>
       <a class="admin-card" href="/wiki">
         <span class="admin-card__icon"><span class="icon" data-icon="shield"></span></span>
         <span class="admin-card__text">
           <strong class="admin-card__name">위키</strong>
-          <span class="admin-card__desc">이 서비스를 어떻게 안전하게 만들었나 — 네 문서의 해설</span>
+          <span class="admin-card__desc">서비스 구조와 운영 해설 (관리자)</span>
         </span>
       </a>
     </section>
@@ -100,7 +96,7 @@ require __DIR__ . '/../views/shell_top.php';
       <div class="org-matrix__head">
         <div class="org-detail__text">
           <strong class="org-detail__name">공유 링크 전체</strong>
-          <span class="muted">지금 밖에 나가 있는 링크입니다. 토큰은 어디에도 저장하지 않으므로 여기에도 없습니다.</span>
+          <span class="muted">지금 살아 있는 공유 링크입니다.</span>
         </div>
       </div>
       <div class="table-wrap">
@@ -124,7 +120,7 @@ require __DIR__ . '/../views/shell_top.php';
       <div class="org-matrix__head">
         <div class="org-detail__text">
           <strong class="org-detail__name">최근 경보</strong>
-          <span class="muted">5분마다 도는 경보 배치(<code>scripts/alerts.php</code>)가 남긴 마지막 50건입니다.</span>
+          <span class="muted">최근 경보 50건</span>
         </div>
       </div>
       <ul id="admin-alerts" class="alert-list"></ul>

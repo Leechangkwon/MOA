@@ -120,7 +120,7 @@ require __DIR__ . '/shell_top.php';
     <div class="table-foot">
       <span id="cycle-info" class="muted"></span>
     </div>
-    <p class="help">「입고」·「미입고」는 <strong>재고 원장의 합</strong>입니다 — 화면이 계산하지 않고 서버가 준 값을 그대로 적습니다.</p>
+    
   </section>
 
 <script src="/assets/purchase_common.js?v=<?= (int) filemtime(__DIR__ . '/../../public/assets/purchase_common.js') ?>"></script>

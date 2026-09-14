@@ -72,9 +72,7 @@ require __DIR__ . '/shell_top.php';
       <span id="wk-cut" class="muted">표가 상한에서 끊겼습니다 — 기간을 좁히거나 분류로 걸러 보세요.</span>
     </div>
 
-    <p class="help">집계 규칙: 사용 = 「사용」 전표가 원장에 남긴 음수 행 + <strong>재고관리를 하지 않는 품목</strong>의
-      입고 양수 행. 이동은 사용이 아니며(장소만 바뀝니다), 실사 차이도 사용이 아닙니다.
-      취소된 전표는 원장의 반대 부호 행으로 저절로 빠집니다.</p>
+    <p class="help">사용 = 「사용」 전표 + 재고관리를 하지 않는 품목의 입고. 이동·실사 차이는 사용이 아닙니다.</p>
   </section>
 
 <script src="/assets/purchase_common.js?v=<?= (int) filemtime(__DIR__ . '/../../public/assets/purchase_common.js') ?>"></script>

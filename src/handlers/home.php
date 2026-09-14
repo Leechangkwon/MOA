@@ -36,7 +36,7 @@ require __DIR__ . '/../views/shell_top.php';
     <header class="page-head">
       <div class="page-head__text">
         <h1 class="page-head__title">파일</h1>
-        <p class="page-head__sub">내가 볼 수 있는 파일만 표시됩니다. 권한은 서버가 매 요청 확인합니다.</p>
+        <p class="page-head__sub">내 파일과 팀 파일을 올리고 내려받습니다.</p>
       </div>
       <div class="page-head__actions">
         <!-- 18-3 — 머리에는 단추 둘만 둔다. 폼은 아래 <dialog class="modal"> 로 열린다
@@ -80,7 +80,7 @@ require __DIR__ . '/../views/shell_top.php';
 
       <div id="forced-mfa" hidden>
         <h2>2단계 인증을 설정해 주세요</h2>
-        <p class="muted">비밀번호는 바뀌었습니다. 마지막으로 인증 앱을 등록하면 서비스를 쓸 수 있습니다. 2단계 인증은 모든 계정에 필요합니다.</p>
+        <p class="muted">비밀번호는 바뀌었습니다. 마지막으로 인증 앱을 등록하면 서비스를 쓸 수 있습니다.</p>
         <!-- 「내 계정」과 **같은 파일**을 include 한다(두 벌 금지). -->
         <div id="forced-mfa-slot"><?php require __DIR__ . '/../views/mfa_enroll.php'; ?></div>
       </div>
@@ -157,7 +157,7 @@ require __DIR__ . '/../views/shell_top.php';
       </div>
     </section>
 
-    <p class="muted">내가 볼 수 있는 파일만 · 다운로드는 항상 파일로 저장 · 모든 행동은 감사 로그</p>
+    
       </div>
     </div>
 
@@ -185,13 +185,7 @@ require __DIR__ . '/../views/shell_top.php';
         </p>
         <!-- 15-3 민감정보 검출 안내 (PRD F-22 「한계」, SECURITY R-58).
              검출은 **보조 장치**라는 것과 책임이 올리는 사람에게 있다는 것을 같은 자리에서 알린다. -->
-        <p class="panel__sub">
-          올리기 전에 <strong>민감정보(주민등록번호·카드번호·급여 등)를 자동으로 한 번 살펴봅니다</strong> —
-          보이면 <code>team</code>·<code>admin-only</code> 로만 올릴 수 있습니다.
-          다만 <strong>이미지·PDF·암호가 걸린 zip·스캔한 문서는 검사하지 못하고</strong>
-          우연히 형식이 맞는 숫자를 잘못 짚기도 합니다. 이 검사는 도움장치일 뿐이며
-          <strong>접근 등급을 고르는 책임은 올리는 사람에게 있습니다.</strong>
-        </p>
+        <p class="panel__sub">민감정보(주민등록번호·카드번호·급여 등)가 보이는 파일은 <code>team</code>·<code>admin-only</code> 로만 올릴 수 있습니다.</p>
         <form id="upload-form" class="form form--grid" autocomplete="off">
           <!-- 18-2 일괄 업로드 (F-27, ARCH 5.17) — 여러 개를 고르거나 끌어 놓는다.
                **서버 계약은 그대로**다: 파일 하나 = 요청 하나이고, app.js 가 순서대로 보낸다. -->
@@ -261,7 +255,7 @@ require __DIR__ . '/../views/shell_top.php';
         </button>
       </div>
       <div class="modal__body">
-        <p class="panel__sub">허용된 사이트의 https 주소만 받습니다. 주소가 가리키는 곳은 서버가 다시 확인합니다.</p>
+        <p class="panel__sub">허용된 사이트의 https 주소만 받습니다.</p>
         <form id="fetch-form" class="form form--grid" autocomplete="off">
           <label class="field field--full">
             <span class="field__label">주소 (https 만 · 허용된 사이트만)</span>
@@ -384,7 +378,7 @@ require __DIR__ . '/../views/shell_top.php';
 
       <div class="modal__body">
         <p class="muted">
-          로그인하지 않은 사람도 이 주소만 있으면 파일을 받습니다(사내망 안에서만).
+          로그인하지 않은 사람도 이 주소만 있으면 파일을 받습니다.
           꼭 필요한 만큼만 열어 주고, 다 쓰면 「내 계정」의 「내 공유 링크」에서 회수하세요.
         </p>
         <form id="share-form" class="form form--grid" autocomplete="off">

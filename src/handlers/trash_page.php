@@ -30,14 +30,11 @@ require __DIR__ . '/../views/shell_top.php';
     <header class="page-head">
       <div class="page-head__text">
         <h1 class="page-head__title">휴지통</h1>
-        <p class="page-head__sub">삭제된 파일을 30일 안에 되살립니다. 복구도 감사 로그에 남습니다.</p>
+        <p class="page-head__sub">삭제된 파일을 되살립니다.</p>
       </div>
     </header>
 
-    <p class="notice">
-      삭제는 <strong>논리 삭제</strong>이고 30일 동안 되돌릴 수 있습니다.
-      30일이 지나 배치가 실제 파일을 지운 뒤에는 목록에 나오지 않고 복구할 수도 없습니다.
-    </p>
+    <p class="help">보존 기간이 지난 파일은 목록에 나오지 않고 복구할 수 없습니다.</p>
 
     <section class="card card--flush">
       <div class="table-wrap">

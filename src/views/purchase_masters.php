@@ -70,10 +70,7 @@ require __DIR__ . '/shell_top.php';
         <button id="p-next" class="btn btn--quiet btn--small" type="button">다음</button>
       </div>
     </div>
-    <p class="help">
-      기초정보는 <strong>지우지 않습니다</strong>. 그만 쓰는 것은 「중단」이며, 중단된 값은 새 전표에 쓸 수 없지만 지난 전표에는 그대로 남습니다.
-      바뀐 값은 이전·이후가 감사 로그에 남습니다. <strong>장소·인가량은 자기 지점 것만</strong> 보입니다(구매팀·관리자는 전 지점) — 걸러 내는 곳은 서버입니다.
-    </p>
+    <p class="help">기초정보는 지우지 않고 「중단」합니다. 중단된 값은 새 전표에 쓸 수 없지만 지난 전표에는 남습니다.</p>
   </section>
 
   <!-- 만들기 폼. 종류마다 필요한 칸이 달라 purchase.js 가 칸을 만들어 넣는다.
@@ -89,10 +86,7 @@ require __DIR__ . '/shell_top.php';
         <button id="p-create-submit" class="btn" type="submit">만들기</button>
       </div>
     </form>
-    <p class="help">
-      기초정보 편집에는 <strong>비밀번호 재확인</strong>이 필요합니다(15분). 확인 창이 뜨면
-      다시 로그인하는 것이 아니라 지금 계정의 비밀번호를 한 번 더 넣는 것입니다.
-    </p>
+    <p class="help">편집하려면 비밀번호를 다시 확인합니다.</p>
   </section>
 
 <script src="/assets/purchase_common.js?v=<?= (int) filemtime(__DIR__ . '/../../public/assets/purchase_common.js') ?>"></script>

@@ -48,16 +48,11 @@ require __DIR__ . '/../views/shell_top.php';
     <header class="page-head">
       <div class="page-head__text">
         <h1 class="page-head__title">위키</h1>
-        <p class="page-head__sub">이 서비스를 어떻게 만들었나 — 네 문서(PRD·ARCHITECTURE·SECURITY·STAGES)를 초보자 말로 다시 쓴 해설입니다.</p>
+        <p class="page-head__sub">이 서비스의 구조와 운영 해설입니다 (관리자).</p>
       </div>
     </header>
 
-    <p class="notice">
-      이 위키는 <strong>관리자만</strong> 볼 수 있습니다 — 남은 위험·서버 설정·사고 경위가
-      함께 적혀 있어, 그대로 열면 공격에 쓰일 지도가 되기 때문입니다(<code>R-56</code>).
-      글은 원문 문서를 <strong>다시 쓴 해설</strong>이며, 자세한 내용은 글마다 달린
-      「원문 위치」를 따라가 확인합니다.
-    </p>
+    
 
 <?php if ($wikiBody === null) { ?>
     <section class="card card--pad">

@@ -50,7 +50,7 @@ require __DIR__ . '/shell_top.php';
     </div>
     <div id="gr-orders"></div>
     <p id="gr-load-empty" class="empty" hidden>보낸 발주서 가운데 미입고가 남은 것이 없습니다.</p>
-    <p class="help">「보냄」 표시가 된 발주서만 나옵니다 — 아직 거래처에 나가지 않은 문서의 물건은 도착할 수 없습니다.</p>
+    <p class="help">「보냄」 표시가 된 발주서만 나옵니다.</p>
   </section>
 
   <section class="panel" id="gr-form">
@@ -110,7 +110,7 @@ require __DIR__ . '/shell_top.php';
         <tbody id="gr-result-body"></tbody>
       </table>
     </div>
-    <p class="help">취소하면 원장에 <strong>반대 부호 행</strong>이 새로 들어가고 미입고가 되돌아옵니다 — 행을 지우지 않습니다.</p>
+    <p class="help">취소하면 미입고가 되돌아옵니다.</p>
   </section>
 
 <script src="/assets/purchase_common.js?v=<?= (int) filemtime(__DIR__ . '/../../public/assets/purchase_common.js') ?>"></script>

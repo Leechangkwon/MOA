@@ -38,7 +38,7 @@ require __DIR__ . '/../views/shell_top.php';
     <header class="page-head">
       <div class="page-head__text">
         <h1 class="page-head__title">내 계정</h1>
-        <p class="page-head__sub">비밀번호와 2단계 인증을 관리합니다. 대상은 언제나 로그인한 본인입니다.</p>
+        <p class="page-head__sub">비밀번호와 2단계 인증을 관리합니다.</p>
       </div>
     </header>
 
@@ -46,7 +46,7 @@ require __DIR__ . '/../views/shell_top.php';
       <section class="panel">
         <div class="panel__head">
           <h2 class="panel__title">내 정보</h2>
-          <p class="panel__sub">서버가 세션에서 읽은 값입니다. 이 화면에서 바꿀 수 없습니다.</p>
+          <p class="panel__sub">이 화면에서 바꿀 수 없습니다.</p>
         </div>
         <div class="info-grid">
           <div class="info-item">
@@ -123,7 +123,7 @@ require __DIR__ . '/../views/shell_top.php';
       <section class="panel span-all">
         <div class="panel__head">
           <h2 class="panel__title">2단계 인증</h2>
-          <p class="panel__sub">모든 계정에 필수입니다. 끄면 다음 요청부터 다시 등록을 요구합니다.</p>
+          <p class="panel__sub">끄면 다음 로그인 때 다시 등록합니다.</p>
         </div>
         <div class="mfa">
           <p id="mfa-state" class="muted">2단계 인증 상태를 불러오는 중…</p>
@@ -131,10 +131,7 @@ require __DIR__ . '/../views/shell_top.php';
 <?php require __DIR__ . '/../views/mfa_enroll.php'; ?>
 
           <form id="mfa-disable-form" class="form form--grid" autocomplete="off" hidden>
-            <p class="field field--full muted">
-              끄려면 <strong>현재 비밀번호와 지금의 코드</strong>가 모두 필요합니다 —
-              세션만 훔친 사람이 2단계 인증을 꺼 버리지 못하게 하기 위해서입니다.
-            </p>
+            <p class="field field--full muted">끄려면 현재 비밀번호와 지금의 코드가 필요합니다.</p>
             <label class="field">
               <span class="field__label">현재 비밀번호</span>
               <input id="mfa-off-password" type="password" maxlength="1024" required>
@@ -146,11 +143,7 @@ require __DIR__ . '/../views/shell_top.php';
             <button id="mfa-disable" class="btn btn--danger" type="submit">2단계 인증 끄기</button>
           </form>
 
-          <p class="muted">
-            스마트폰이 어려우면 <a href="/assets/totp-generator.html">오프라인 코드 생성기</a>를
-            내려받아 PC 에 두고 쓸 수 있습니다. 같은 PC 에 두면 두 번째 겹이 "그 PC" 로 약해진다는 점을
-            생성기 안의 안내에서 확인하세요.
-          </p>
+          <p class="muted">스마트폰이 어려우면 <a href="/assets/totp-generator.html">오프라인 코드 생성기</a>를 내려받아 PC 에 두고 쓸 수 있습니다.</p>
         </div>
       </section>
     </div>

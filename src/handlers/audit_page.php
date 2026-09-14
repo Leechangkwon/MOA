@@ -36,11 +36,7 @@ require __DIR__ . '/../views/shell_top.php';
       </div>
     </header>
 
-  <p class="notice">
-    이 화면은 <strong>관리자만</strong> 볼 수 있고, <strong>이 조회 자체도 감사 로그에 남습니다</strong>
-    (<code>audit.view</code>). 기록은 지울 수 없습니다 — 앱 계정에는 추가(INSERT) 권한만 있습니다.
-    <code>ip</code>·<code>user_agent</code> 는 개인정보이며 보안 사고 조사·감사 목적으로만 봅니다.
-  </p>
+  <p class="help">ip·기기 정보는 개인정보이며 보안 사고 조사·감사 목적으로만 봅니다.</p>
 
   <section class="panel">
     <div class="panel__head"><h2 class="panel__title">필터 — 누가 · 언제 · 어디서 · 무엇을 · 어떻게 · 왜</h2></div>

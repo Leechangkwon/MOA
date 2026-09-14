@@ -39,28 +39,9 @@ require __DIR__ . '/../views/shell_top.php';
       </div>
     </header>
 
-  <p class="notice">
-    이 화면은 <strong>관리자만</strong> 볼 수 있습니다. 계정은 <strong>1인 1개</strong>이며
-    공용 계정을 쓰지 않습니다 — 감사 로그의 「누가」는 계정이 사람에 1:1 로 묶일 때만 성립합니다.
-    역할 변경·비활성화·재활성화에는 <strong>사유 입력이 필수</strong>이고, 사유는 감사 로그
-    <code>detail.reason_text</code> 에 남습니다. 역할·팀을 바꾸거나 계정을 끄면
-    <strong>그 사람의 모든 기기 세션이 즉시 끊깁니다</strong>.
-    <strong>자기 자신</strong>의 역할·활성 상태는 이 화면에서 바꿀 수 없고,
-    <strong>마지막 활성 관리자</strong>는 강등·비활성화되지 않습니다.
-  </p>
-  <p class="notice">
-    <strong>Guest 계정은 만료일이 필수</strong>입니다(협력사 계정이 프로젝트가 끝나도 남지 않게).
-    만료된 뒤에는 비밀번호가 맞아도 로그인할 수 없습니다.
-    계정을 지우는 기능은 없습니다 — 파일·감사 로그가 계정을 가리키고 있어,
-    지우면 추적이 끊어집니다. 그만 쓸 계정은 <strong>비활성화</strong>합니다.
-  </p>
-  <p class="notice">
-    <strong>구매 모듈</strong>(19단계~)은 t-box 4역할 <em>위에</em> 얹힌 두 축으로 움직입니다 —
-    <strong>모듈 역할</strong>(요청·구매·재고·검토)과 <strong>지점</strong>입니다.
-    요청(requester)·재고(stock)는 <strong>자기 지점 밖의 자료를 목록에서 보지 못합니다</strong>(서버가 거릅니다).
-    구매(buyer)·검토(viewer)는 전 지점이고, 기초정보 편집·엑셀 가져오기는 구매(buyer)와 관리자만 할 수 있으며
-    <strong>비밀번호 재확인</strong>이 필요합니다. 모듈 역할을 비워 두면 그 계정은 <code>/purchase</code> 전체가 403 입니다.
-  </p>
+  <p class="help">계정은 1인 1개입니다. 역할 변경·비활성화·재활성화에는 사유가 필요하고, 역할·팀을 바꾸면 그 사람은 다시 로그인해야 합니다. 자기 자신의 역할·활성 상태는 바꿀 수 없고, 마지막 활성 관리자는 강등·비활성화되지 않습니다.</p>
+  <p class="help">Guest 계정은 만료일이 필수입니다. 계정은 지우지 않고 비활성화합니다.</p>
+  <p class="help">구매 모듈은 모듈 역할(요청·구매·재고·검토)과 지점을 함께 정합니다. 요청·재고는 자기 지점 자료만 보고, 구매·검토는 전 지점입니다. 모듈 역할을 비워 두면 구매 화면을 쓸 수 없습니다.</p>
 
   <section class="panel">
     <div class="panel__head"><h2 class="panel__title">계정 만들기</h2></div>

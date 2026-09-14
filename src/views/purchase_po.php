@@ -94,10 +94,7 @@ require __DIR__ . '/shell_top.php';
         <span id="po-sum" class="muted"></span>
         <span class="muted">공급가액(부가세 별도) <b id="po-total" class="p-total">0</b></span>
       </div>
-      <p class="help">
-        발주서는 <strong>발주요청의 미발주 잔량</strong>에서 만듭니다. 같은 줄을 두 번 담거나 잔량보다 많이 담으면 서버가 거부합니다 —
-        두 사람이 동시에 담아도 한쪽만 통과합니다. 「보냄」은 검토·구매만 누를 수 있고, 보낸 뒤 고치려면 사유가 필요합니다.
-      </p>
+      <p class="help">발주서는 발주요청의 미발주 잔량에서 만듭니다. 보낸 뒤 고치려면 사유가 필요합니다.</p>
     </section>
 
     <div class="form-actions">
@@ -191,7 +188,7 @@ require __DIR__ . '/shell_top.php';
           </label>
         </div>
         <div class="table-foot">
-          <span class="muted">금액 세 칸은 저장하지 않습니다 — 볼 때마다 서버가 줄에서 다시 계산합니다.</span>
+          <span class="muted"></span>
           <button id="poh-save" class="btn btn--quiet" type="submit">머리 수정 저장</button>
         </div>
       </form>

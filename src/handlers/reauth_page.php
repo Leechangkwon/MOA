@@ -70,11 +70,7 @@ require __DIR__ . '/../views/shell_top.php';
     </header>
 
     <section class="card reauth">
-      <p class="notice">
-        계정 관리 · 조직 · 권한 · 감사 로그 · 휴지통 · 위키는 <strong>최근 15분 안에 비밀번호를
-        다시 확인한 창</strong>에서만 열립니다. 자리를 비운 사이의 브라우저나 새어 나간 세션만으로는
-        관리 기능에 닿지 못하게 하는 장치입니다.
-      </p>
+      
 
       <form id="reauth-form" class="reauth__form" method="post" action="/api/me/reauth"
             autocomplete="off" data-to="<?= $reauthToAttr ?>">
@@ -84,7 +80,7 @@ require __DIR__ . '/../views/shell_top.php';
                  maxlength="1024" autocomplete="current-password" required autofocus>
         </label>
         <button id="reauth-submit" class="btn" type="submit">확인</button>
-        <p class="muted">비밀번호를 5번 틀리면 계정이 10분 잠기고 열려 있던 모든 창이 닫힙니다.</p>
+        
         <p id="reauth-msg" class="msg" role="alert" aria-live="polite"></p>
       </form>
     </section>

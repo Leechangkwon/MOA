@@ -36,9 +36,9 @@ declare(strict_types=1);
  * @var list<string> $orgRules
  */
 $orgRules = [
-    'team 레벨의 ✓ 는 「같은 팀일 때」라는 뜻입니다 — 팀 일치는 서버가 계정의 team_id 로 판단하고, Admin 은 모든 팀을 봅니다 (PRD 5.1).',
-    '삭제·수정은 Admin 이 모든 파일, Manager 는 본인이 올린 파일과 자기 팀 파일, Employee 는 본인이 올린 파일만, Guest 는 할 수 없습니다 (PRD 5.3).',
-    '접근 레벨을 낮추는 변경(보는 사람이 늘어나는 변경)은 Admin 만 할 수 있습니다 (PRD 5.3).',
+    'team 레벨의 ✓ 는 「같은 팀일 때」라는 뜻입니다. Admin 은 모든 팀을 봅니다.',
+    '삭제·수정은 Admin 이 모든 파일, Manager 는 본인이 올린 파일과 자기 팀 파일, Employee 는 본인이 올린 파일만, Guest 는 할 수 없습니다.',
+    '접근 레벨을 낮추는 변경(보는 사람이 늘어나는 변경)은 Admin 만 할 수 있습니다.',
 ];
 
 $sqlMatrix = <<<'SQL'

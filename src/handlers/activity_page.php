@@ -33,11 +33,7 @@ require __DIR__ . '/../views/shell_top.php';
       </div>
     </header>
 
-  <p class="notice">
-    여기에는 <strong>로그인한 본인의 행동만</strong> 나옵니다 — 대상은 서버가 세션에서 정하고,
-    주소에 다른 계정을 적어 넣을 수 있는 칸이 없습니다. 접속 IP·기기 정보(User-Agent)는
-    본인 것이라도 이 화면에 보이지 않습니다. 이 화면을 보는 것 자체는 감사 로그에 남지 않습니다.
-  </p>
+  
 
   <section class="panel">
     <div class="panel__head"><h2 class="panel__title">최근 활동</h2></div>

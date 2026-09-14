@@ -48,12 +48,7 @@ require __DIR__ . '/../views/shell_top.php';
       </div>
     </header>
 
-  <p class="notice">
-    이 화면은 <strong>관리자만</strong> 볼 수 있습니다. 팀을 만들고, 이름을 바꾸고,
-    구성원을 배정할 수 있으며 <strong>모든 변경에 사유가 필수</strong>입니다 —
-    사유와 이전값 → 새값은 감사 로그(<code>team.create</code> · <code>team.update</code>)에 남습니다.
-    팀을 바꾸면 <strong>그 사람의 모든 기기 세션이 즉시 끊깁니다</strong>.
-  </p>
+  <p class="help">모든 변경에 사유가 필요합니다. 팀을 바꾸면 그 사람은 다시 로그인해야 합니다.</p>
 
   <div class="org-layout">
     <section class="panel org-teams">
@@ -66,8 +61,7 @@ require __DIR__ . '/../views/shell_top.php';
       <div id="org-teams" class="org-cards"></div>
       <p id="org-teams-empty" class="muted" hidden>표시할 팀이 없습니다.</p>
       <p class="muted">
-        팀은 지우지 않고 비활성화합니다 — 파일·감사 기록이 참조하기 때문입니다.
-        비활성화는 활성 구성원이 0명일 때만 됩니다.
+        팀은 지우지 않고 비활성화합니다. 활성 구성원이 0명일 때만 됩니다.
       </p>
     </section>
 
@@ -108,10 +102,7 @@ require __DIR__ . '/../views/shell_top.php';
           </div>
           <p id="org-members-empty" class="muted" hidden>이 팀에 배정된 계정이 없습니다.</p>
 
-          <p class="ok-note">
-            모든 변경에는 <strong>사유</strong>가 필요하고 감사 로그에 이전값 → 새값이 남습니다.
-            팀을 바꾸면 그 사람의 다른 기기 세션은 즉시 끊깁니다.
-          </p>
+          
         </div>
       </div>
 
@@ -119,7 +110,7 @@ require __DIR__ . '/../views/shell_top.php';
         <div class="org-matrix__head">
           <div class="org-detail__text">
             <strong class="org-detail__name">권한 매트릭스</strong>
-            <span class="muted">역할 × 접근 레벨 — 서버 <code>permissions</code> 표의 16행을 그대로 보여 줍니다.</span>
+            <span class="muted">역할 × 접근 등급</span>
           </div>
           <span class="badge badge--off">
             <span class="icon" data-icon="lock"></span>읽기 전용
@@ -165,14 +156,7 @@ require __DIR__ . '/../views/shell_top.php';
 
         <ul id="org-matrix-rules" class="notice__list muted"></ul>
 
-        <p class="warn">
-          * 팀 레벨은 <strong>같은 팀</strong>일 때만 (Admin 은 모든 팀). 이 화면에서는
-          <strong>보기만</strong> 합니다 — 바꾸려면
-          <a href="/admin/permissions">관리자 페이지 → 권한 매트릭스 편집</a>에서 사유와
-          2단계 인증 코드를 입력해야 합니다(17단계 F-25). 앱의 DB 계정은 이 표에 여전히
-          <strong>읽기 권한만</strong> 갖고, 쓰기는 별도 DB 계정으로 창구 하나에서만 이뤄집니다 —
-          그것이 권한 상승을 막는 핵심 방어입니다.
-        </p>
+        <p class="muted">* 팀 등급은 같은 팀일 때만 적용됩니다 (Admin 은 모든 팀). 바꾸려면 <a href="/admin/permissions">관리자 페이지 → 권한 매트릭스 편집</a>.</p>
       </div>
     </section>
   </div>
@@ -191,7 +175,7 @@ require __DIR__ . '/../views/shell_top.php';
           <input id="tc-name" type="text" maxlength="50" required>
         </label>
         <label class="field">
-          <span class="field__label">사유 (필수 · 500자 · 감사 로그에 남습니다)</span>
+          <span class="field__label">사유 (필수 · 500자)</span>
           <input id="tc-reason" type="text" maxlength="500" required>
         </label>
         <p id="tc-msg" class="msg" role="alert" aria-live="polite"></p>
@@ -215,7 +199,7 @@ require __DIR__ . '/../views/shell_top.php';
           <input id="tr-name" type="text" maxlength="50" required>
         </label>
         <label class="field">
-          <span class="field__label">사유 (필수 · 500자 · 감사 로그에 남습니다)</span>
+          <span class="field__label">사유 (필수 · 500자)</span>
           <input id="tr-reason" type="text" maxlength="500" required>
         </label>
         <p id="tr-msg" class="msg" role="alert" aria-live="polite"></p>
@@ -244,10 +228,10 @@ require __DIR__ . '/../views/shell_top.php';
           <select id="ta-team" required></select>
         </label>
         <label class="field">
-          <span class="field__label">사유 (필수 · 500자 · 감사 로그에 남습니다)</span>
+          <span class="field__label">사유 (필수 · 500자)</span>
           <input id="ta-reason" type="text" maxlength="500" required>
         </label>
-        <p class="warn">팀을 바꾸면 그 사람의 모든 기기 세션이 즉시 끊깁니다 (T-22).</p>
+        <p class="muted">팀을 바꾸면 그 사람은 다시 로그인해야 합니다.</p>
         <p id="ta-msg" class="msg" role="alert" aria-live="polite"></p>
       </div>
       <div class="modal__foot">
@@ -265,7 +249,7 @@ require __DIR__ . '/../views/shell_top.php';
       <div class="modal__body">
         <p id="td-note" class="muted"></p>
         <label class="field">
-          <span class="field__label">사유 (필수 · 500자 · 감사 로그에 남습니다)</span>
+          <span class="field__label">사유 (필수 · 500자)</span>
           <input id="td-reason" type="text" maxlength="500" required>
         </label>
         <p id="td-msg" class="msg" role="alert" aria-live="polite"></p>

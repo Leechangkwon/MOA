@@ -34,7 +34,7 @@ $itemIdAttr = htmlspecialchars(isset($itemId) && is_string($itemId) ? $itemId : 
       <h2 class="panel__title">기본 정보</h2>
     </div>
     <dl class="p-facts" id="p-item-facts"></dl>
-    <p class="help">현재고는 <strong>재고 원장(입고·이동·사용·실사)의 합</strong>입니다 — 장소별 내역은 「재고 · 미입고」 화면에서 봅니다.</p>
+    <p class="help">장소별 내역은 「재고 · 미입고」 화면에서 봅니다.</p>
   </section>
 
   <section class="panel">
@@ -42,7 +42,7 @@ $itemIdAttr = htmlspecialchars(isset($itemId) && is_string($itemId) ? $itemId : 
       <h2 class="panel__title">사용 지점</h2>
     </div>
     <ul class="p-chips" id="p-item-branches"></ul>
-    <p class="help">비어 있으면 브랜드 전체에서 쓰는 품목입니다. 여기 보이는 지점은 <strong>내가 볼 수 있는 지점</strong>뿐입니다.</p>
+    <p class="help">비어 있으면 브랜드 전체에서 쓰는 품목입니다.</p>
   </section>
 
   <section class="panel">

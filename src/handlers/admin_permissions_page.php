@@ -42,17 +42,11 @@ require __DIR__ . '/../views/shell_top.php';
     <header class="page-head">
       <div class="page-head__text">
         <h1 class="page-head__title">권한 매트릭스 편집</h1>
-        <p class="page-head__sub">역할 × 접근 등급 표(<code>permissions</code> 16행)를 바꿉니다. <a href="/admin">관리자 페이지로 돌아가기</a></p>
+        <p class="page-head__sub">역할 × 접근 등급 표를 바꿉니다. <a href="/admin">관리자 페이지로 돌아가기</a></p>
       </div>
     </header>
 
-    <p class="warn">
-      이 표를 바꾸는 것은 <strong>보안 정책을 바꾸는 것</strong>입니다. 체크 하나로 손님(Guest)이
-      사내 문서를 보게 될 수 있습니다. 그래서 <strong>사유</strong>와 <strong>2단계 인증 코드</strong>가
-      매 요청 필요하고, 칸마다 이전값 → 새값이 감사 로그(<code>permission.change</code>)에 남으며
-      경보 <code>AL-13</code> 이 즉시 발동합니다. 효과는 <strong>다음 요청부터</strong>
-      — 이미 로그인해 있는 사람에게도 바로 적용됩니다.
-    </p>
+    <p class="warn">체크 하나로 Guest 가 사내 문서를 볼 수 있게 됩니다. 저장에는 사유와 인증 앱 코드가 필요하고, 이미 로그인해 있는 사람에게도 바로 적용됩니다.</p>
 
     <section class="card card--pad perm-edit">
       <div class="table-wrap">
@@ -81,11 +75,11 @@ require __DIR__ . '/../views/shell_top.php';
 
       <form id="perm-form" class="form perm-form" autocomplete="off">
         <label class="field">
-          <span class="field__label">사유 (필수 · 500자 · 감사 로그에 남습니다)</span>
+          <span class="field__label">사유 (필수 · 500자)</span>
           <input id="perm-reason" type="text" maxlength="500" required>
         </label>
         <label class="field">
-          <span class="field__label">2단계 인증 코드 6자리 (요청마다 새 코드, 한 번만 쓸 수 있습니다)</span>
+          <span class="field__label">인증 앱의 6자리 코드</span>
           <input id="perm-otp" type="text" inputmode="numeric" autocomplete="one-time-code"
                  pattern="[0-9]{6}" maxlength="6" required>
         </label>

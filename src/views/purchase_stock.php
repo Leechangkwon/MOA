@@ -90,9 +90,7 @@ require __DIR__ . '/shell_top.php';
         <button id="st-next" class="btn btn--quiet btn--small" type="button">다음</button>
       </div>
     </div>
-    <p class="help">발주 제안 = ⌈(인가량 + 안전재고 − 현재고 − 미입고 + 조달기간 예상 사용) ÷ 최소구매단위⌉ × 최소구매단위 —
-      <strong>서버가 계산한 값</strong>이고 괄호 안의 근거는 제안 옆에 함께 적습니다. 담당자가 고칠 수 있으며,
-      고친 수량이 최소구매단위의 배수가 아니면 서버가 거절합니다. 「담기」는 <strong>한 장소씩</strong> 묶어 발주요청 한 건으로 만듭니다.</p>
+    <p class="help">발주 제안은 인가량·안전재고·현재고·미입고·조달기간으로 계산한 값입니다. 수량은 최소구매단위의 배수로 고칠 수 있고, 「담기」는 장소별로 발주요청 한 건을 만듭니다.</p>
   </section>
 
   <!-- ── 수불부 ─────────────────────────────────────────── -->
@@ -168,8 +166,7 @@ require __DIR__ . '/shell_top.php';
     <div class="p-kpis" id="bo-kpis"></div>
     <div id="bo-groups"></div>
     <p id="bo-empty" class="empty" hidden>미입고가 없습니다.</p>
-    <p class="help">미입고 = 보낸 발주서 줄의 수량 − 그 줄을 출처로 하는 입고 줄 수량의 합입니다.
-      발주서를 취소하면 여기서 사라지고 사유가 감사 기록에 남습니다.</p>
+    <p class="help">미입고 = 발주 수량 − 입고 수량.</p>
   </section>
 
 <script src="/assets/purchase_common.js?v=<?= (int) filemtime(__DIR__ . '/../../public/assets/purchase_common.js') ?>"></script>

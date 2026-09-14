@@ -53,13 +53,7 @@ $loginJsVersion  = (int) filemtime(__DIR__ . '/../../public/assets/app.js');
       </span>
     </div>
     <div>
-      <h2 class="login__lead">권한이 있는 파일만,<br>기록이 남는 방식으로.</h2>
-      <p class="login__copy">모든 요청은 서버가 권한을 확인하고 감사 로그에 남깁니다. 사내망 · VPN 에서만 접속됩니다.</p>
-      <div class="login__points">
-        <p class="login__point"><span class="icon" data-icon="check"></span><span>비밀번호 + 인증 앱 6자리 (2단계 인증 필수)</span></p>
-        <p class="login__point"><span class="icon" data-icon="check"></span><span>다운로드는 항상 파일로 저장됩니다</span></p>
-        <p class="login__point"><span class="icon" data-icon="check"></span><span>삭제는 30일 안에 관리자가 복구할 수 있습니다</span></p>
-      </div>
+      <h2 class="login__lead">사내 파일 공유</h2>
     </div>
     <p class="login__foot">거부되거나 잘 안 되면 관리자에게 문의하세요.</p>
   </section>
@@ -95,7 +89,7 @@ $loginJsVersion  = (int) filemtime(__DIR__ . '/../../public/assets/app.js');
         <input id="otp" name="otp" type="text" inputmode="numeric"
                autocomplete="one-time-code" pattern="[0-9]{6}"
                maxlength="6" spellcheck="false">
-        <span class="otp-hint">비밀번호가 맞은 뒤에만 이 칸이 열립니다.</span>
+        
       </label>
 
       <button id="login-submit" class="btn login__submit" type="submit">로그인</button>

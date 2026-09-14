@@ -79,19 +79,7 @@ require __DIR__ . '/shell_top.php';
       </div>
     </form>
 
-    <details class="help">
-      <summary>가져오기 규칙 (권장 순서 · 머리행 · 창고 파일 · 확정)</summary>
-      <p>권장 순서는 <strong>브랜드 → 지점 → 창고 → 거래처 → 품목</strong>입니다. 앞의 것이 없으면 뒤의 것이 가리킬 곳이 없어
-        「거래처를 찾을 수 없습니다」 같은 오류가 됩니다.</p>
-      <p>엑셀의 <strong>첫 줄이 곧 열 이름이 아닐 수도 있습니다</strong> — 서버가 앞 20줄을 보고 열 이름이 적힌 줄을 스스로 고르고,
-        2 걸음의 「머리행」 칸에서 바꿀 수 있습니다(파일을 다시 올릴 필요가 없습니다).</p>
-      <p>창고 파일 하나로 <strong>브랜드·지점·창고를 한 번에</strong> 넣을 수 있습니다 — 창고명이 「플란치과_강남점」처럼
-        <code>브랜드_지점</code> 꼴이면 2 걸음의 체크 둘을 켜 두세요. 「기본 지점」은 지점을 알아낼 수 없는 창고에만 쓰입니다.
-        창고만 정리할 때는 <a href="/purchase/structure">「브랜드·지점·창고」</a> 화면이 더 쉽습니다.</p>
-      <p>확정은 <strong>한 트랜잭션</strong>입니다 — 한 행이라도 실패하면 앞서 넣은 행까지 되돌아갑니다. 오류 행은 저장하지 않습니다.
-        올린 원본 파일은 「구매 / 가져오기」 폴더(관리자 전용)에 남고, 확정 기록에 파일의 sha256 과 행 수가 붙습니다.
-        <code>.xlsm</code>·<code>.xls</code>·매크로 문서는 업로드 검사에서 거부됩니다.</p>
-    </details>
+    <p class="help">권장 순서는 브랜드 → 지점 → 창고 → 거래처 → 품목입니다. 오류 행은 저장하지 않습니다.</p>
   </section>
 
   <section class="panel" id="p-map-panel" hidden>
@@ -191,7 +179,7 @@ require __DIR__ . '/shell_top.php';
         <h2 class="panel__title">열 맞추기 요약</h2>
       </div>
       <dl class="p-facts" id="p-summary"></dl>
-      <p class="help">이 요약은 미리보기와 결과를 보는 동안 그대로 남습니다 — 무엇을 어떤 칸으로 넣는 중인지 잊지 않게.</p>
+      
     </aside>
 
     <section class="panel" id="p-preview-panel">

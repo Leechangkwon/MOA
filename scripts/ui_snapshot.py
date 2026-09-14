@@ -8,7 +8,8 @@ import json, sys, time
 from playwright.sync_api import sync_playwright
 
 BASE, UA, COOKIES, OUT, WIDTH = sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4], int(sys.argv[5])
-PAGES = ["/purchase/pr", "/purchase/po", "/purchase/receipt", "/purchase/move", "/purchase/stock",
+import os
+PAGES = os.environ["UI_PAGES"].split(",") if os.environ.get("UI_PAGES") else ["/purchase/pr", "/purchase/po", "/purchase/receipt", "/purchase/move", "/purchase/stock",
          "/purchase/usage", "/purchase/recon", "/purchase/docs", "/purchase/masters",
          "/purchase/structure", "/purchase/import"]
 
@@ -87,7 +88,7 @@ def main():
         page.on("pageerror", lambda e: console.append("pageerror: " + str(e)[:160]))
         for path in PAGES:
             console.clear()
-            slug = path.strip("/").replace("/", "_")
+            slug = path.strip("/").replace("/", "_") or "home"
             page.goto(BASE + path, wait_until="networkidle")
             time.sleep(0.4)
             shots = {}

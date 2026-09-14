@@ -115,10 +115,7 @@ require __DIR__ . '/shell_top.php';
         <span id="pr-sum" class="muted"></span>
         <span class="muted">합계(부가세 별도) <b id="pr-total" class="p-total">0</b></span>
       </div>
-      <p class="help">
-        단가와 금액은 <strong>서버가 품목 정보에서 계산</strong>합니다 — 화면에서 고칠 수 없고, 고쳐 보내도 서버는 읽지 않습니다.
-        요청은 <strong>미확인</strong>일 때만 고칠 수 있고, 구매실이 담은 줄은 잠깁니다(잠긴 뒤 더 적는 내역은 새 요청 전표로 분리됩니다).
-      </p>
+      <p class="help">요청은 미확인일 때만 고칠 수 있고, 구매실이 담은 줄은 잠깁니다.</p>
     </section>
 
     <div class="form-actions">
@@ -215,7 +212,7 @@ require __DIR__ . '/shell_top.php';
     <div class="table-foot">
       <span id="pr-cycle-info" class="muted"></span>
     </div>
-    <p class="help">입고·미입고 칸은 재고 원장의 합입니다. 보낸 발주서인데 아직 오지 않은 줄에는 「미입고」 배지가 섭니다.</p>
+    <p class="help">보낸 발주서인데 아직 오지 않은 줄에는 「미입고」 배지가 섭니다.</p>
   </section>
 
   <!-- ── 품목 찾기 모달 (시안 ② ItemPicker) ─────────────────── -->

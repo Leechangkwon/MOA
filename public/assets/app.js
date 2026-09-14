@@ -3075,7 +3075,7 @@ function initAccount(csrfToken, mfaEnabled, onMfaEnabled) {
       mfaState,
       (enabled
         ? '2단계 인증이 켜져 있습니다. 로그인할 때 인증 앱의 6자리 코드가 필요합니다.'
-        : '2단계 인증이 꺼져 있습니다. 켜면 비밀번호가 새어 나가도 코드 없이는 로그인할 수 없습니다.'
+        : '2단계 인증이 꺼져 있습니다.'
       ) + MFA_CODE_HINT
     );
     if (mfaOff) {
@@ -3519,7 +3519,7 @@ function initUsers(csrfToken) {
 
   /** 사유를 받는다. 비우거나 취소하면 아무것도 보내지 않는다(서버도 400 으로 막는다). */
   function askReason(what) {
-    var reason = window.prompt(what + '\n사유를 적어 주세요 (필수 · 감사 로그에 남습니다)', '');
+    var reason = window.prompt(what + '\n사유를 적어 주세요 (필수)', '');
     if (reason === null) {
       return null;
     }
@@ -4500,7 +4500,7 @@ function initOrg(csrfToken) {
             return null;
           }
           closeDialog(renameDialog);
-          setText(msg, '팀 이름을 바꿨습니다. 이전값 → 새값이 감사 로그에 남았습니다.');
+          setText(msg, '팀 이름을 바꿨습니다.');
           return loadTeams(true);
         })
         .catch(function () {

@@ -86,8 +86,7 @@ require __DIR__ . '/shell_top.php';
       </div>
     </div>
     <div class="p-map" id="rc-map-fields"></div>
-    <p class="help">명세서에서 읽는 열은 <strong>품목코드 · 품목명 · 수량 · 단가 · 금액</strong> 다섯뿐입니다 —
-      담당자 연락처·계좌 열은 고를 수도, 저장될 수도 없습니다 (SECURITY R-69).</p>
+    <p class="help">명세서에서 읽는 열은 품목코드 · 품목명 · 수량 · 단가 · 금액입니다.</p>
   </section>
 
   <!-- 대조 결과 — 별도 패널 -->
@@ -113,8 +112,7 @@ require __DIR__ . '/shell_top.php';
         <tbody id="rc-lines"></tbody>
       </table>
     </div>
-    <p class="help">「우리 금액」은 입고 확정 때 <strong>서버가 수량 × 단가로 계산해 둔 값</strong>입니다 —
-      명세서 값이 우리 장부로 넘어오는 길은 없습니다 (SECURITY R-66).</p>
+    <p class="help">「우리 금액」은 입고 때의 수량 × 단가입니다.</p>
     </section>
   </div>
 
@@ -146,9 +144,7 @@ require __DIR__ . '/shell_top.php';
       </table>
     </div>
     <p id="cl-empty" class="empty" hidden>마감한 달이 없습니다.</p>
-    <p class="help">마감은 <strong>되돌릴 수 없습니다</strong>. 그 달에 아직 확정되지 않은 전표가 있으면 마감되지 않습니다.
-      마감 뒤의 수정·취소는 마감 권한과 <strong>사유</strong>가 있어야 하고, 감사 기록에 남아 경보(AL-14)가 봅니다.
-      마감 단추는 비밀번호 재확인(재인증)을 지나야 동작합니다.</p>
+    <p class="help">마감은 되돌릴 수 없습니다. 그 달에 아직 확정되지 않은 전표가 있으면 마감되지 않습니다. 마감 뒤의 수정·취소에는 사유가 필요합니다.</p>
   </section>
 
   <!-- ── 기공 명세서 ─────────────────────────────────────── -->
@@ -187,9 +183,7 @@ require __DIR__ . '/shell_top.php';
     <div class="form-actions">
       <button id="lb-save" class="btn" type="button">입고 전표 만들기</button>
     </div>
-    <p class="help"><strong>재고관리를 하지 않는 품목만</strong> 담을 수 있습니다(기공료 등).
-      만들어지는 입고 전표는 원장에 <code>+</code>·<code>−</code> 두 행을 남겨 현재고는 그대로이고,
-      사용 통계와 월 대사에는 잡힙니다. 단가·금액은 서버가 품목 단가에서 계산합니다.</p>
+    <p class="help">재고관리를 하지 않는 품목만 담을 수 있습니다(기공료 등). 현재고는 바뀌지 않고 사용 통계와 월 대사에만 잡힙니다.</p>
   </section>
 
 <script src="/assets/purchase_common.js?v=<?= (int) filemtime(__DIR__ . '/../../public/assets/purchase_common.js') ?>"></script>
