@@ -1077,6 +1077,50 @@ SharePoint 의 공개 링크는 `download=1` 로 302 한 뒤 **같은 호스트*
 없으니 코드에 적어 두고 검토를 받는 것이며, 이 값을 늘리는 일은 커밋으로만 가능하다.
 
 
+### 5.23 버전과 변경 이력 — `VERSION` · `CHANGELOG.json` · 「변경 이력」 모달 (PRD F-47, 사용자 결정 2026-09-15)
+
+**번호 규칙.** `X.Y.Z` 세 자리. X 는 **대규모**(뽐낼 만한 업데이트), Y 는 **중규모**(공치사 정도), Z 는
+**버그 수정 등 작은 것**. 위 자리가 오르면 아래 자리는 0 으로 돌아간다. 등급은 발행하는 사람(Fable, 관문 ④)이
+정하되 기본은 patch, 새 화면·새 기능(F-xx·N단계)은 minor, **major 는 사용자가 말했을 때만** 올린다.
+
+**진실은 한 곳.** 현재 버전은 저장소 루트 `VERSION` 한 줄, 이력은 `CHANGELOG.json` 한 벌(최신이 첫 항목).
+`CHANGELOG.md` 는 `scripts/changelog_md.php` 가 JSON 에서 **생성**하는 파일이라 손으로 고치지 않는다
+(T-59 (a) 가 byte 동일을 검사한다). 세 파일이 어긋나는 일은 `scripts/release.sh` 만 쓰면 생기지 않는다.
+
+```
+CHANGELOG.json 항목
+{ "version": "1.2.0",              ^\d+\.\d+\.\d+$
+  "level":   "minor",              major | minor | patch
+  "released_at": "2026-09-15 18:30",  서버 시각(KST) — 「몇 날 몇 시에 올렸나」
+  "title":   "한 줄 제목",
+  "changes": ["무엇이 변했나 …", "…"] }   사용자 말로. T-xx·R-xx·파일 이름 없음(5.19 「사용 방법」 규칙과 같다)
+```
+
+**발행 한 번 = 커밋 하나 + 태그 하나.**
+
+```
+scripts/release.sh <major|minor|patch> "제목" "변경 1" ["변경 2" …] [--no-push] [--dry-run]
+  0) git status --porcelain 에 수정·스테이징 파일이 있으면 거부(untracked 는 허용) — 기능 커밋을 먼저 하고 발행한다
+  1) VERSION 읽어 다음 번호 계산 · 같은 이름의 태그가 이미 있으면 거부
+  2) CHANGELOG.json 맨 앞에 항목 추가(released_at = 지금, php json_encode UNESCAPED_UNICODE|PRETTY_PRINT)
+  3) VERSION 갱신 · scripts/changelog_md.php > CHANGELOG.md
+  4) git add VERSION CHANGELOG.json CHANGELOG.md  (-A 금지) · commit "vX.Y.Z: 제목" · tag -a vX.Y.Z
+  5) git push origin main && git push origin vX.Y.Z   (--no-push 면 생략)
+```
+
+**화면.** `src/Changelog.php` 가 두 파일을 읽어 검증(형식이 틀린 항목은 버리고 `error_log`)한 배열을 돌려주고,
+`shell_top.php` 가 사이드바 아래(사용자 칩 위)에 `v1.0.0` 단추(`data-changelog-open`)를, `shell_bottom.php` 가
+`<main>` 밖에 `<dialog id="changelog-dialog" class="modal">` 를 그린다 — 「사용 방법」 모달(5.19)과 **같은 뼈대·같은
+CSS·같은 열고 닫는 JS 방식**이다. 내용은 서버가 그린 정적 문자열이고 **모든 값이 `htmlspecialchars` 를 거친다**
+(S-03). 새 라우트·API 는 없다(`public/index.php` 는 손대지 않는다).
+
+**보이지 않는 곳.** 로그인 전 화면(`login_page.php`)·`/api/health`·`/api/time` 에는 버전을 내지 않는다 —
+버전은 「어떤 코드가 돌고 있나」를 알려 주는 정찰 재료이고, 로그인한 사람에게만 보이면 목적(무엇이 바뀌었나
+알리기)은 충분하다. 자산 주소의 `?v=filemtime` 은 캐시용이며 이 버전과 무관하다.
+
+**깃.** 태그 `vX.Y.Z` 는 릴리스 커밋을 가리키고 원격(`origin`)에도 올라간다. `git tag -l`·`git describe --tags` 로
+어느 코드가 어느 버전인지 알 수 있고, 되돌릴 때는 `git checkout v1.0.0` 처럼 태그 이름으로 간다.
+
 ## 6. 저장 위치 — 파일 정보 vs 실제 파일
 
 ### 6.1 두 곳에 나눠 저장하는 이유

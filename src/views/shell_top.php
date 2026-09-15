@@ -67,6 +67,17 @@ $shellUser   = isset($user) && is_array($user) ? $user : [];
 $shellName   = htmlspecialchars((string) ($shellUser['username'] ?? ''), ENT_QUOTES, 'UTF-8');
 
 /*
+ * F-47 버전 (PRD F-47, ARCH 5.23) — 사이드바 아래에 보이는 `v1.0.0` 한 줄.
+ *
+ * 부트스트랩의 require 목록에 새 줄을 더하지 않고 쓰는 곳에서 한 번 읽어 온다
+ * (`Wiki.php`·`Sensitive.php` 와 같은 방식). 값은 저장소 루트 `VERSION` 한 줄이며
+ * 요청·DB 와 무관하고, 아래에서 htmlspecialchars 를 거쳐 글자로만 나간다 (PRD S-03).
+ * **로그인 전 화면(`login_page.php`)은 이 셸을 쓰지 않으므로 버전이 나가지 않는다** (S-09).
+ */
+require_once __DIR__ . '/../Changelog.php';
+$shellVersion = htmlspecialchars(Changelog::version(), ENT_QUOTES, 'UTF-8');
+
+/*
  * 26단계 「역할로 보기」 (PRD F-39, ARCH 5.20) — 셸이 **서버에서** 띠를 그린다.
  *
  * 왜 app.js 가 아니라 서버인가: 보는 중에는 사이드바의 관리 묶음이 닫힌다(유효 역할이 Admin 이
@@ -359,6 +370,12 @@ if (!headers_sent()) {
     </div>
 
     <div class="sidebar__spacer"></div>
+
+    <!-- F-47 「변경 이력」 여는 단추 (PRD F-47, ARCH 5.23).
+         누르면 shell_bottom.php 가 그린 #changelog-dialog 가 열린다 — 요청도 권한 판단도 없고,
+         내용은 이미 이 응답 안에 들어 있다. 「사용 방법」 단추(5.19)와 같은 뼈대다. -->
+    <button type="button" class="sidebar__version" data-changelog-open title="변경 이력"
+            aria-haspopup="dialog" aria-controls="changelog-dialog">v<?= $shellVersion ?></button>
 
     <div class="userchip">
       <span class="userchip__avatar" aria-hidden="true"><?= $shellInitial ?></span>

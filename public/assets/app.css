@@ -1074,6 +1074,9 @@ dialog.modal--upload .upload-status { font-size: 13.5px; }
   }
   /* 접혀 있는 상태: app.js 가 aria-expanded 와 함께 hidden 을 토글한다 */
   .sidebar__spacer { display: none; }
+  /* F-47 버전 단추도 여백(spacer)과 같은 처리 — 좁은 화면의 사이드바는 위에서 아래로
+     흐르는 상단 바라 「아래에 붙은 한 줄」이라는 자리가 없다. 변경 이력은 넓은 화면에서 본다. */
+  .sidebar__version { display: none; }
   .main { padding: 20px 16px 32px; }
   .login { flex-direction: column; }
   .login__brand {
@@ -1565,6 +1568,44 @@ dialog.help-dialog .modal__body { max-height: 70vh; }
 .help-dialog__title:first-child { margin-top: 0; }
 .help-dialog__list { margin: 6px 0 0; padding-left: 20px; font-size: 14px; line-height: 1.7; }
 .help-dialog__list li { margin: 5px 0; overflow-wrap: anywhere; }
+
+/* ─── F-47 버전 단추와 「변경 이력」 모달 (PRD F-47, ARCH 5.23) ─────
+   단추는 사이드바 아래(사용자 칩 위)에 조용히 놓인다 — 내비 항목이 아니라 **표시**라서
+   배경도 테두리도 없고, 누를 수 있다는 것만 hover 밑줄로 알린다.
+   모달은 「사용 방법」과 같은 폭·같은 뼈대를 쓰고 항목 사이만 선으로 가른다. */
+.sidebar__version {
+  align-self: flex-start;
+  margin: 0 0 8px;
+  padding: 2px 12px;
+  border: 0;
+  background: none;
+  color: var(--muted-2);
+  font-family: var(--mono);
+  font-size: 12px;
+  line-height: 1.4;
+  text-align: left;
+  cursor: pointer;
+}
+.sidebar__version:hover { color: var(--muted); text-decoration: underline; }
+
+dialog.changelog-dialog { width: min(640px, 92vw); }
+dialog.changelog-dialog .modal__title { flex-grow: 1; min-width: 0; }
+dialog.changelog-dialog .modal__body { max-height: 70vh; }
+.changelog__entry { padding: 16px 0; border-top: 1px solid var(--line); }
+.changelog__entry:first-child { padding-top: 0; border-top: 0; }
+.changelog__ver {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+}
+.changelog__num { font-family: var(--mono); font-size: 14px; font-weight: 700; }
+.changelog__at { color: var(--muted); font-size: 12.5px; }
+.changelog__title { margin: 8px 0 0; font-size: 14px; font-weight: 600; overflow-wrap: anywhere; }
+.changelog__list { margin: 6px 0 0; padding-left: 20px; font-size: 14px; line-height: 1.7; }
+.changelog__list li { margin: 5px 0; overflow-wrap: anywhere; }
+.changelog__empty { color: var(--muted); font-size: 14px; }
 
 /* ─── 26단계 「역할로 보기」 띠 (F-39) — 셸이 그린다. 상태 띠이므로 .notice 색을 빌리되 한 줄 정렬 ── */
 .act-banner { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }

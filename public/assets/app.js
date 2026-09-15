@@ -6572,6 +6572,50 @@ function initHelpDialog() {
   });
 }
 
+/* ─── 「변경 이력」 (PRD F-47, ARCH 5.23) ──────────────────────────
+ *
+ * 사이드바 아래의 버전 단추(`[data-changelog-open]`)가 셸이 그린 `#changelog-dialog` 를 열고,
+ * 닫기 단추(`[data-changelog-close]`)와 배경 누름이 닫는다. ESC 는 <dialog> 가 스스로 닫는다.
+ *
+ * 「사용 방법」(initHelpDialog)과 **같은 방식**이다 — 위임 하나, 요청 0, 권한 판단 0.
+ * 내용은 이미 서버 HTML 에 있으므로 이 함수는 글자를 하나도 만들지 않는다
+ * (inner/outer HTML 계열 미사용 — PRD S-03).
+ */
+function initChangelogDialog() {
+  function changelogDialog() {
+    return document.getElementById('changelog-dialog');
+  }
+  function openChangelog(dialog) {
+    if (dialog && typeof dialog.showModal === 'function' && !dialog.open) {
+      dialog.showModal();
+    }
+  }
+  function closeChangelog(dialog) {
+    if (dialog && dialog.open) {
+      dialog.close();
+    }
+  }
+
+  document.addEventListener('click', function (event) {
+    var target = event.target;
+    if (!target || typeof target.closest !== 'function') {
+      return;
+    }
+    if (target.closest('[data-changelog-open]')) {
+      openChangelog(changelogDialog());
+      return;
+    }
+    if (target.closest('[data-changelog-close]')) {
+      closeChangelog(changelogDialog());
+      return;
+    }
+    // 배경(backdrop)을 누르면 이벤트 대상이 <dialog> 자신이다 — 안쪽 칸은 자식이 받는다.
+    if (target === changelogDialog()) {
+      closeChangelog(changelogDialog());
+    }
+  });
+}
+
 /* ─── 화면별 시작 (12단계 F-20) ────────────────────────────────────
  *
  * 어느 화면인지는 서버가 <body data-page="…"> 로 알려 준다. 화면 코드가 URL 을 읽어
@@ -6708,6 +6752,10 @@ document.addEventListener('DOMContentLoaded', function () {
   /* 「사용 방법」 도움말 (F-38). 어느 화면이든 단추가 있으면 열리게 여기서 한 번 건다 —
      구매 화면처럼 아래에서 먼저 return 하는 갈래기도 도움말은 같이 쓰기 때문이다. */
   initHelpDialog();
+
+  /* 「변경 이력」(F-47). 사이드바 버전 단추는 셸을 쓰는 **모든** 화면에 있으므로
+     도움말과 같은 자리에서 한 번 건다. 로그인 화면에는 셸도 단추도 없어 아무 일도 하지 않는다. */
+  initChangelogDialog();
 
   var page = document.body && document.body.dataset ? document.body.dataset.page : '';
 

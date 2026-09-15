@@ -46,7 +46,7 @@
 | **24** | 「브랜드·지점·창고」 한 페이지(F-37)·창고 대기표 `p_location_inbox`·연결/제외·업로드 공통 조각 — 지시서 docs/purchase/09 | ✅ 구현 | ✅ 2026-09-13 (Opus, 재지시 0회) | ⚠ 대기 | ⚠ 대기 | 커밋 전 |
 | 25 | 구매 화면 UI 정돈 — 공통 CSS 한 벌·시안 충실도·사이드바 3묶음·2단 레이아웃·개발 잔재 제거 (T-50) | ✅ 구현·검토 | ✅ | ✅ 2026-09-14 | 대기(눈 점검 1440·1024) | `6d0d818` |
 | 26 | 관리자 「역할로 보기」(세션 임시 역할·아래로만·활동 없는 30분)·관리 내비 7링크·계정 편집 모달·폴더 삭제 세 갈래 (F-39~41 · T-52~54) | ✅ 구현·검토 | ✅ | ✅ 2026-09-15 | 대기(6항목) | (아래 절 참조) |
-| F-47 | 버전 관리 `X.Y.Z`(대규모/중규모/수정) — `VERSION`·`CHANGELOG.json`·git 태그·`scripts/release.sh` · 사이드바 버전 → 「변경 이력」 모달(발행 날짜·시각·무엇이 변했나). 초기 1.0.0 — 사용자 결정 2026-09-15 | ◐ 구현 중 (Opus) | 대기 | 대기 | 대기 | 지시서 `docs/purchase/19` |
+| F-47 | 버전 관리 `X.Y.Z`(대규모/중규모/수정) — `VERSION`·`CHANGELOG.json`·git 태그·`scripts/release.sh` · 사이드바 버전 → 「변경 이력」 모달(발행 날짜·시각·무엇이 변했나). 초기 1.0.0 — 사용자 결정 2026-09-15 | ✅ 구현·검토 | ✅ 2026-09-15 (Opus, 재지시 0회) | ✅ 2026-09-15 (T-59 65/65 Fable 재실행, 린트 0, help_button 17/17) | ⚠ 대기 | F-47 커밋 + 태그 `v1.0.0` |
 | 문구 정리 | 화면 문구 정리 — **1단계** 화면에 늘 펼쳐져 있던 안내 68곳 삭제·축소 / **2단계** 「사용 방법」 단추와 화면별 도움말 20화면 (F-38 · T-51) | ◐ 2단계 구현 | ✅ 2026-09-15 (Opus) | ⚠ 대기 | ⚠ 대기 | 1단계 `06ee617` · 2단계 커밋 전 |
 | **26** | 관리자 「역할로 보기」(F-39) · 관리 내비·계정 편집 폼(F-40) · 폴더 삭제 세 갈래(F-41) — 사용자 결정·지적 2026-09-15 | ✅ 구현 | ⚠ Fable 재검토 대기 (Opus 자체 시험 124/124) | ⚠ 대기 | ⚠ 대기 | 커밋 전 |
 
@@ -1450,15 +1450,15 @@ sudo -u postgres psql -d tbox_re -c "SELECT happened_at, actor_name, action, res
 > Fable 판단(사용자 미결): 초기 번호 **1.0.0** = 2026-09-15 시점 전체. 지난 26단계에 번호를 거꾸로 붙이지 않는다(그 이력은 git log·이 문서가 갖고 있다). 2.0.0 이 낫다면 태그를 만들기 전에 `VERSION`·`CHANGELOG.json` 첫 항목 한 줄씩만 고치면 된다.
 
 **개발 사항** (Opus)
-- [ ] `VERSION`(1.0.0) · `CHANGELOG.json`(첫 항목, Fable 작성) · `CHANGELOG.md`(생성)
-- [ ] `src/Changelog.php` — 두 파일 읽기·형식 검증·등급 표기(대규모/중규모/수정)
-- [ ] `shell_top.php` 사이드바 아래 `v1.0.0` 단추 · `shell_bottom.php` `<dialog id="changelog-dialog">`(「사용 방법」 뼈대) · `app.js` 열기/닫기 · `app.css`
-- [ ] `scripts/changelog_md.php`(JSON → 마크다운, 결정적) · `scripts/release.sh`(번호 계산·항목 추가·릴리스 커밋·태그·push, 더러운 트리 거부, `--dry-run`·`--bump`)
-- [ ] `tests/changelog.sh`(T-59 (a)~(e))
+- [x] `VERSION`(1.0.0) · `CHANGELOG.json`(첫 항목, Fable 작성) · `CHANGELOG.md`(생성)
+- [x] `src/Changelog.php` — 두 파일 읽기·형식 검증·등급 표기(대규모/중규모/수정)
+- [x] `shell_top.php` 사이드바 아래 `v1.0.0` 단추 · `shell_bottom.php` `<dialog id="changelog-dialog">`(「사용 방법」 뼈대) · `app.js` 열기/닫기 · `app.css`
+- [x] `scripts/changelog_md.php`(JSON → 마크다운, 결정적) · `scripts/release.sh`(번호 계산·항목 추가·릴리스 커밋·태그·push, 더러운 트리 거부, `--dry-run`·`--bump`)
+- [x] `tests/changelog.sh`(T-59 (a)~(e))
 
 **검토 체크** (Fable, 관문 ②)
-- [ ] `bash tests/changelog.sh` 재실행 · 린트 0 · `php -l` · 로그인 전 화면·health·time 에 버전 0 실측
-- [ ] 첫 발행 `scripts/release.sh` 는 **F-47 기능 커밋 뒤** 실행 — 태그 `v1.0.0` 이 원격에 보이는지 `git ls-remote --tags origin`
+- [x] **Fable 검토 (2026-09-15 18:34)** — 코드 읽기: `Changelog.php` 경로는 상수 2개·다섯 칸만 통과·형식 틀리면 버림 / `shell_bottom.php` 모든 값 `htmlspecialchars` / `app.js` 위임 하나·innerHTML 0 / `release.sh` JSON 은 php 인자로만·`git add` 세 파일 지정·더러운 트리 거부 / `index.php` 변경 0. `bash tests/changelog.sh` **재실행 65/65**(로그인 전 `/login`·`/api/health`·`/api/time` 에 버전 0 실측 포함, Playwright 클릭→open→ESC 닫힘, 콘솔 오류 0) · 린트 0 · `help_button.sh` 17/17 · 스크린샷 눈 확인(모달 등급·시각·6줄). CHANGELOG.json 은 Fable 이 4칸 들여쓰기로 맞춤(다음 발행 diff 가 항목만 보이게). **미검증**: `release.sh` 의 실제 commit·tag·push 경로(첫 발행은 1.0.0 그대로라 스크립트를 쓰지 않고 태그를 직접 만든다 — 다음 발행 때 실측). 좁은 화면(≤959px)에서는 버전 단추가 사이드바 여백과 함께 숨는다(Opus 판단, 수용)
+- [x] 첫 발행: F-47 커밋에 태그 `v1.0.0` 직접 부착 · push (아래 학습 기록에 원격 확인)
 
 **자기 공격 체크** (사용자, 관문 ③)
 - [ ] 로그인 전 `curl -s http://127.0.0.1:8082/login | grep -c v1.0` → 0 · `/api/health`·`/api/time` 에 버전 0

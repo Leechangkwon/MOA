@@ -15,7 +15,8 @@
 | [`PRD.md`](PRD.md) | 역할 4종 × 접근 레벨 4종 권한 매트릭스, 보안 요구사항 S-01~S-11, 수락 기준 T-1~T-23, **9단계 로드맵(13장)** | 기능·정책이 궁금할 때 |
 | [`ARCHITECTURE.md`](ARCHITECTURE.md) | 요청 처리 순서, 업로드/목록/다운로드/삭제 흐름과 **권한 검사 위치**, 저장 위치, 감사 로그, nginx/php/DB 설정, 서버 기준선, 백업·복구·침해 대응 | 코드를 짜거나 서버를 세울 때 |
 | [`SECURITY.md`](SECURITY.md) | **보안 자체점검 문서**. 5대 취약점 대조, 잔여 위험 R-xx, 앱 밖 위험, 단계별 공격 결과 이력(7장) | 매 단계 끝, 제출 전 |
-| [`CLAUDE.md`](CLAUDE.md) | AI 작업 지침 — Fable(설계·검토) / Opus(구현) 역할, 검토 증거 규칙, 커밋 규칙 | AI 와 작업할 때 |
+| [`CLAUDE.md`](CLAUDE.md) | AI 작업 지침 — Fable(설계·검토) / Opus(구현) 역할, 검토 증거 규칙, 커밋·발행 규칙 | AI 와 작업할 때 |
+| [`CHANGELOG.md`](CHANGELOG.md) | **변경 이력** — 버전마다 발행 날짜·시각과 무엇이 변했나(`CHANGELOG.json` 에서 생성) | 무엇이 언제 바뀌었나 볼 때 |
 
 ## 실습에서 뚫린 5가지 → 이번 설계의 방어 (요약)
 
@@ -387,6 +388,26 @@ sudo -u postgres psql -d tbox_re -c "SET ROLE tbox_app; UPDATE permissions SET c
 
 끄면(기본) 관리자 영역을 막는 겹은 **라우트 정책 `role:Admin` 과 재인증 15분 창** 둘입니다 —
 네트워크 겹은 그 위에 더하는 세 번째 겹이지 대체가 아닙니다.
+
+## 버전과 변경 이력 (`PRD.md` F-47 · `ARCHITECTURE.md` 5.23)
+
+| 무엇 | 어디 |
+|---|---|
+| 지금 버전 | 저장소 루트 `VERSION` 한 줄 · 로그인한 화면 왼쪽 아래 `v1.0.0` |
+| 변경 이력 | `CHANGELOG.json`(진실) → `CHANGELOG.md`(생성) · 화면에서는 왼쪽 아래 버전 번호를 누르면 **「변경 이력」 창** |
+| 깃 | 발행마다 태그 `vX.Y.Z`, 원격에도 push — `git tag -l` · `git describe --tags` |
+
+번호 규칙 `X.Y.Z` — **X 대규모**(뽐낼 만한 업데이트) · **Y 중규모**(공치사 정도) · **Z 버그 수정 등 작은 것**. 위 자리가 오르면 아래는 0.
+
+발행은 한 번에:
+
+```bash
+scripts/release.sh minor "입고 화면 3탭" "입고 화면에 입력·전표·현황 탭이 생겼습니다" "미입고 현황을 입고 화면에서도 봅니다"
+scripts/release.sh patch "오탈자" "발주서 인쇄 제목의 오탈자를 고쳤습니다" --no-push   # push 는 나중에
+scripts/release.sh major "…" "…" --dry-run                                            # 무엇을 할지 보기만
+```
+
+작업 트리에 커밋 안 된 수정이 있으면 발행이 거부됩니다 — 기능 커밋을 먼저 하세요. 로그인 전 화면과 `/api/health`·`/api/time` 에는 버전이 나오지 않습니다(정찰 재료).
 
 ## 설치 · 실행
 

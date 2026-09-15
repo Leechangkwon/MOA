@@ -86,6 +86,53 @@ if (isset($pageHelp) && is_string($pageHelp) && $pageHelp !== '') {
 </dialog>
 <?php endif; ?>
 
+<?php
+/**
+ * 「변경 이력」 (PRD F-47, ARCH 5.23).
+ *
+ * 「사용 방법」과 달리 **조건이 없다** — 셸을 그리는 모든 화면에 사이드바 버전 단추가 있으므로
+ * 이 모달도 언제나 그린다. 도움말 키처럼 화면마다 달라지는 값이 없기 때문이다.
+ *
+ * 값은 저장소 루트 `CHANGELOG.json` 에서 온 **형식 검사를 통과한 문자열**뿐이고,
+ * 여기서 전부 htmlspecialchars 를 거친다 (PRD S-03). 요청 값·DB·경로 조립이 한 군데도 없다.
+ * 본문(`<main>`) 밖에 둔다 — 닫혀 있는 <dialog> 가 화면 문구 검사에 섞이지 않게.
+ */
+require_once __DIR__ . '/../Changelog.php';
+$shellChangelog = Changelog::entries();
+?>
+<dialog id="changelog-dialog" class="modal changelog-dialog" aria-labelledby="changelog-title">
+  <div class="modal__head">
+    <h2 id="changelog-title" class="modal__title">변경 이력</h2>
+    <button class="btn btn--icon btn--plain" type="button" data-changelog-close title="닫기" aria-label="닫기">
+      <span class="icon" data-icon="x"></span>
+    </button>
+  </div>
+  <div class="modal__body">
+<?php if ($shellChangelog === []): ?>
+    <p class="changelog__empty">기록이 없습니다.</p>
+<?php else: ?>
+<?php foreach ($shellChangelog as $shellClEntry): ?>
+    <section class="changelog__entry">
+      <h3 class="changelog__ver">
+        <span class="changelog__num">v<?= htmlspecialchars($shellClEntry['version'], ENT_QUOTES, 'UTF-8') ?></span>
+        <span class="badge"><?= htmlspecialchars(Changelog::levelLabel($shellClEntry['level']), ENT_QUOTES, 'UTF-8') ?></span>
+        <time class="changelog__at"><?= htmlspecialchars($shellClEntry['released_at'], ENT_QUOTES, 'UTF-8') ?></time>
+      </h3>
+      <p class="changelog__title"><?= htmlspecialchars($shellClEntry['title'], ENT_QUOTES, 'UTF-8') ?></p>
+      <ul class="changelog__list">
+<?php   foreach ($shellClEntry['changes'] as $shellClChange): ?>
+        <li><?= htmlspecialchars($shellClChange, ENT_QUOTES, 'UTF-8') ?></li>
+<?php   endforeach; ?>
+      </ul>
+    </section>
+<?php endforeach; ?>
+<?php endif; ?>
+  </div>
+  <div class="modal__foot">
+    <button class="btn btn--quiet" type="button" data-changelog-close>닫기</button>
+  </div>
+</dialog>
+
 <!-- ─── 아이콘 모음. app.js 가 [data-icon="이름"] 자리에 clone 해서 넣는다 ───
      이모지를 쓰지 않는다(글꼴에 따라 모양·의미가 달라진다). 모든 아이콘은
      aria-hidden 이고, 뜻은 옆의 글자나 버튼의 title·aria-label 이 전한다. -->
