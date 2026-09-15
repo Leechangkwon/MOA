@@ -1572,7 +1572,7 @@ sudo -u postgres psql -d tbox_re -c "SELECT happened_at, actor_name, action, res
 - [x] **Fable 검토 (2026-09-15 21:00~21:10)** — 코드 읽기 + `tests/api_read.sh` 38/0/0(귀속 `qa_employee01`) + 추가 실측(빈 결과 `[]`, SQLi `[]`, 다운로드 헤더·`diff` 동일, 404) → 시험 파일 휴지통 → 귀속 `admin01` 회전. 린트 0 · `php -l` 2/2
 
 **자기 공격 체크** (사용자, 관문 ③)
-- [ ] 토큰으로 `GET /api/files?q=test&limit=8` → 배열·키 5개 · `q=%' OR 1=1 --` 가 전체를 못 뽑음
+- [x] (사용자 2026-09-15 21:2x) 토큰으로 `GET /api/files?q=api-test&limit=8` → `[{id,name,level,size,uploaded_at}]` [200] 확인 · SQLi 시도는 미보고
 - [ ] 토큰으로 남의(admin-only) 파일 id 다운로드 → 403 · 없는 id → 404
 - [ ] 같은 토큰으로 `DELETE /api/files/{id}` → 401
 
@@ -1586,6 +1586,7 @@ sudo -u postgres psql -d tbox_re -c "SELECT happened_at, actor_name, action, res
 | 2026-09-15 | 결함(지시서, Opus 발견) | 「`[2-T]` 를 `in_array` 하나로」 → 화면의 목록·다운로드가 세션으로도 401 (Opus 실측) | 넓힌 둘은 화면도 쓰는 라우트. 고침: 헤더가 실제로 온 요청만 토큰 경로, `POST /api/upload` 만 헤더 없어도 토큰 경로(ONLY), 틀린 토큰은 세션 폴백 없음. ARCH 4.3 「헤더 유무의 갈림길」·지시서 정오표. 교훈: 지시서도 실측 대상 — 구현자가 지시서를 의심해 준 사례 |
 | 2026-09-15 | 알림(Fable) | 검토 중 감사 로그에 `admin01`/`t-box-assistant/1.0` 요청 10건 관찰(Opus R-73 관문이 한 번 멈춤) | 사용자의 로컬 프로그램이 실제 토큰으로 서버를 부르고 있다는 뜻 — 관문 ③ 실사용 진행 중으로 본다. 검토는 그 창이 지난 뒤 재실행 |
 | 2026-09-15 | 해소(Fable) | 관문 ②→④: 커밋 `b8929a8` 「F-50: 프로그램용 검색·다운로드」 → push → `release.sh minor` → `v1.2.0`(`5977306`, 태그 원격 확인). 관문 ③(사용자): 진짜 토큰으로 검색·다운로드 한 번씩 | STAGES F-50 · SECURITY 7장 F-50 행 |
+| 2026-09-15 | 어려움(사용자) | 다운로드 명령에 `<id>` 를 꺾쇠째 입력 → `bash: id: No such file or directory` · 이어서 `api_token_rotate.sh admin01` 실행 뒤 「된 거야 안 된 거야?」 | `<` 는 셸 입력 리다이렉션 — 자리표시자는 꺾쇠 없이 실제 id 로(3장 기초 기록의 `<아이디>` 와 같은 유형). 회전은 성공(「갱신됨·640」이 성공 출력)이지만 토큰이 새 값으로 바뀌어 셸의 `$API_TOKEN` 재 export 필요. 회전은 필수 아니었음(귀속 이미 admin01) |
 
 ## 2-1. 10단계 뒤 일괄 자기 공격 — 진행 순서 (관문 ③, 사용자)
 
