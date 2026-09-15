@@ -1636,6 +1636,7 @@ sudo -u postgres psql -d tbox_re -c "SELECT happened_at, actor_name, action, res
 - [x] 손대지 않음(확인): `public/index.php` 관문 코드(조건은 `nextStep` 안) · `Totp.php`·`Qr.php`·`db/*`·`mfa_enroll.php`·nginx
 
 **검토 체크** (Fable, 관문 ②)
+- [x] 관문 ④ 커밋 `98f7550` → push → 발행 **v1.4.0**(`87b5df3`, 태그 push). 관문 ③ 은 커밋 뒤 사용자(아래)
 - [x] **Fable 검토 (2026-09-16)** — `tests/f52.sh` 재실행 **71/0** (a) 단위 (b) Employee 200·카드 (c) Admin 403·강제 상자 (d) 로그인 코드 유무 (e) 문구 0건 (f) 린트·원상
 - [x] `Auth.php` diff 읽기(41+/1−, 네 군데뿐, `real_role` 우선 확인) — 바뀐 곳이 상수·두 함수·`nextStep` 조건뿐인지, `real_role` 우선인지
 
