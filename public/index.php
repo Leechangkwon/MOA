@@ -42,6 +42,8 @@ const TBOX_ROUTES = [
     ['POST', '/api/logout',  'logout.php',     Authz::POLICY_AUTHENTICATED],
     ['GET',  '/api/me',      'me.php',         Authz::POLICY_AUTHENTICATED],
     ['GET',  '/api/health',  'health.php',     Authz::POLICY_PUBLIC],
+    // F-42 — 오프라인 코드 생성기가 시계를 맞추는 창구. 시각과 주기만 내준다 (ARCH 5.21).
+    ['GET',  '/api/time',    'time.php',       Authz::POLICY_PUBLIC],
 
     // 4단계 라우트 — 파일 관련 라우트는 역할·팀 정책을 쓴다 (PRD S-01, 13장 4단계).
     // 여기(라우터)의 정책은 "이 역할이 그 종류의 행위를 할 수 있는가"까지만 본다 —
