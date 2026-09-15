@@ -27,7 +27,17 @@ declare(strict_types=1);
  * @var list<string>        $params 경로 변수 없음
  */
 
-$perPage = 20;
+/* ─── 26-2 (F-50) — 이 요청이 프로그램용 토큰으로 들어왔나 (ARCH 4.3) ───────────
+ * `TBOX_AUTH_METHOD` 는 라우터의 [2-T] 가 토큰 인증에 성공했을 때만 정의한다. 요청이 보낸
+ * 값이 아니라 **서버가 세운 상수**이므로 헤더·파라미터로 흉내 낼 수 없다.
+ * 이 값이 바꾸는 것은 **페이지 크기와 마지막 투영**뿐이다 — 권한 조건·SQL·검색·폴더 규칙은
+ * 세션 요청과 한 글자도 다르지 않다(PRD S-02, ARCH 4.3 「새 판정 코드가 없다」).
+ */
+$viaToken = defined('TBOX_AUTH_METHOD');
+
+// 웹은 20 고정. 토큰 요청만 limit(1~100, 기본 20)을 받는다 — 형태가 아니거나 범위를
+// 벗어나면 queryInt 가 기본값 20 으로 좁힌다(거부하지 않는다, ARCH 5.1 [2]).
+$perPage = $viaToken ? Http::queryInt('limit', 20, 1, 100) : 20;
 
 // ─── 입력 좁히기 (거부가 아니라 안전한 기본값으로 대체) ───
 $q    = Http::queryText('q', 200);
@@ -295,6 +305,24 @@ if ($folder !== 0) {
             'access_level' => (string) $step['access_level'],
         ];
     }
+}
+
+/* ─── 26-2 (F-50) — 프로그램용 응답은 **간결한 배열** (PRD F-50, ARCH 4.3) ──────
+ * 토큰 요청이면 최상위가 배열이고 원소 키는 다섯뿐이다: id·name·level·size·uploaded_at.
+ * 화면 편의 값(can_delete·can_edit·preview_kind·sensitive)과 폴더 경로·팀 이름은 넣지 않는다 —
+ * 프로그램에는 쓸모가 없고, 적게 내보내는 쪽이 정찰 재료도 적다(PRD S-09-5).
+ * **보이는 파일 집합은 세션 응답과 똑같다** — 위 `visibleFilesWhere` 가 이미 SQL 에서 걸렀고
+ * 여기서 무엇을 지우거나 더하지 않는다. 빈 결과는 `[]` 다.
+ */
+if ($viaToken) {
+    Http::json(array_map(static fn (array $f): array => [
+        'id'          => $f['id'],
+        'name'        => $f['name'],
+        'level'       => $f['access_level'],
+        'size'        => $f['size_bytes'],
+        'uploaded_at' => $f['created_at'],
+    ], $files));
+    return;
 }
 
 Http::json([

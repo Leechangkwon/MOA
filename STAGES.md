@@ -49,6 +49,7 @@
 | F-47 | 버전 관리 `X.Y.Z`(대규모/중규모/수정) — `VERSION`·`CHANGELOG.json`·git 태그·`scripts/release.sh` · 사이드바 버전 → 「변경 이력」 모달(발행 날짜·시각·무엇이 변했나). 초기 1.0.0 — 사용자 결정 2026-09-15 | ✅ 구현·검토 | ✅ 2026-09-15 (Opus, 재지시 0회) | ✅ 2026-09-15 (T-59 65/65 Fable 재실행, 린트 0, help_button 17/17) | ⚠ 대기 | F-47 커밋 + 태그 `v1.0.0` |
 | F-48 | 상태 확인 `GET /api/health` 에 DB 확인(`SELECT 1`) — 200 `{status,db,time}` / 503 `{status:fail, db:분류어}` · 저장소 루트 `API.md`(외부 프로그램용 API 문서, 상태 확인·로그인·내 정보·업로드·삭제·로그아웃) — 사용자 요청 2026-09-15 | ✅ 구현·검토 | ✅ 2026-09-15 (Opus, 재지시 0회 + 추가 지시 1건 R-80 디스크 관문) | ✅ 2026-09-15 (T-60 38/38 Fable 재실행, 린트 0, 공개 도메인 200·405·`/API.md` 404) | ⚠ 대기 | `8457c0d` health API 추가 + 발행 `v1.0.1`(`a1c0d4a`) |
 | F-49 | 프로그램용 업로드 `POST /api/upload` — `.env` `API_TOKEN` + 헤더 `X-API-Token`(`hash_equals`, 이 라우트만) · 귀속 `API_TOKEN_USER` · 웹과 공통 업로드 함수 · 400/401/403/413 이유 문구(500 일반) · nginx JSON 413 — 강사 2차 프롬프트, 사용자 결정 A 2026-09-15 | ✅ 구현·검토 | ✅ 2026-09-15 (Opus, 1차 설계 B 중단·원복 후 v2, 재지시 1회 `ext_not_allowed`) | ✅ 2026-09-15 (T-61 25/0/미검증1 재실행 + 긍정 경로 qa 귀속 실측 201·403·400×5·401×2, 린트 0, health 38/38) | ⚠ 대기 (사용자 토큰 201; JSON 413 은 검증됨) | `20f51cb` F-49 + 발행 `v1.1.0`(`613d229`) |
+| F-50 | 프로그램용 검색·다운로드 — `X-API-Token` 라우트를 셋으로(업로드·`GET /api/files`·`GET /api/files/{id}/download`), 토큰 검색은 간결 배열 `[{id,name,level,size,uploaded_at}]`+`limit`, 인가는 기존 `visibleFilesWhere`·`decideRead` 상속(IDOR 403) — 강사 3차 프롬프트 2026-09-15 | ✅ 구현·검토 | ✅ 2026-09-15 (Opus, 재지시 0회 — 지시서 결함을 Opus 가 실측으로 잡아 헤더 갈림길 추가) | ✅ 2026-09-15 (T-62 38/0/0 Fable 재실행, qa 귀속 실측, 린트 0) | ⚠ 대기 | (아래 커밋) |
 | 문구 정리 | 화면 문구 정리 — **1단계** 화면에 늘 펼쳐져 있던 안내 68곳 삭제·축소 / **2단계** 「사용 방법」 단추와 화면별 도움말 20화면 (F-38 · T-51) | ◐ 2단계 구현 | ✅ 2026-09-15 (Opus) | ⚠ 대기 | ⚠ 대기 | 1단계 `06ee617` · 2단계 커밋 전 |
 | **26** | 관리자 「역할로 보기」(F-39) · 관리 내비·계정 편집 폼(F-40) · 폴더 삭제 세 갈래(F-41) — 사용자 결정·지적 2026-09-15 | ✅ 구현 | ⚠ Fable 재검토 대기 (Opus 자체 시험 124/124) | ⚠ 대기 | ⚠ 대기 | 커밋 전 |
 
@@ -1554,6 +1555,36 @@ sudo -u postgres psql -d tbox_re -c "SELECT happened_at, actor_name, action, res
 | 2026-09-15 | 차단(분류기) | nginx JSON 413 반영 `sudo bash deploy/switch-site.sh status` 가 자동 승인 분류기에 거부 | 시스템 설정 변경은 사용자 실행: `! sudo bash /var/www/tbox-v2/deploy/switch-site.sh status`. 반영 전 T-61 (e) 미검증. 반영 뒤 `check_baseline.sh`(T-17~19) 재실행 권고(CLAUDE.md 7장) |
 | 2026-09-15 | 알림(Fable) | Opus 에이전트 보고 ⑦ 「작업 중 사용자가 curl 명령을 물었다」 | 이 세션에 그런 사용자 메시지는 없었다 — 에이전트가 Fable 의 보정 지시를 사용자 질문으로 오인한 것으로 보임. 기록하지 않음 |
 | 2026-09-15 | 해소(Fable) | 관문 ②→④: 커밋 `20f51cb` 「F-49: 프로그램용 업로드 API」 → push → `release.sh minor` → `v1.1.0`(`613d229`, 태그 원격 확인). 관문 ③(사용자): ① `! sudo bash deploy/switch-site.sh status` 로 nginx JSON 413 반영 → 102MB 던져 JSON 413 확인 ② `cat .env` 로 토큰 확인 → 진짜 토큰으로 201·`.exe` 400 이유 확인 ③ `check_baseline.sh`(T-17~19) 재실행 | STAGES F-49 · SECURITY 7장 2026-09-15 F-49 행 |
+
+### F-50 — 프로그램용 검색·다운로드 (토큰 라우트 확장) — 착수 2026-09-15
+
+> 지시서: `docs/f50-api-read-directive.md`. 근거: PRD F-50 · 8장 `/api/files`·download 행 · 12.2 T-62 · S-02 · S-04, ARCH 4.3, SECURITY R-82(갱신)·R-83.
+> 배경: 강사 3차 프롬프트 — 검색(`q`,`limit`, 간결 배열, 바인딩) + 다운로드(원래 이름, IDOR 403), 2단계와 같은 토큰 인증. 사용자 「제일 늦고 있어 빨리」.
+
+**개발 사항** (구현 Opus / 문서 Fable)
+- [x] (Fable) PRD F-50·8장 두 행·T-62, ARCH 4.3, SECURITY R-82 갱신·R-83, 지시서
+- [x] (Opus) `public/index.php` — `TBOX_API_TOKEN_ROUTES`(셋) + **`TBOX_API_TOKEN_ONLY_ROUTES`**(업로드만) · `[2-T]` = 집합 ∧ (헤더 있음 ∨ ONLY)
+- [x] (Opus) `src/handlers/files_list.php` — 토큰 요청이면 간결 배열 + `limit`; 웹 응답 불변
+- [x] (Opus) `API.md` 8·9장(실측 응답은 Fable) · `tests/api_read.sh`(T-62)
+- [x] 손대지 않음(확인): `files_download.php`·`Auth.php`·`Http.php`·`Audit.php`·`Authz.php`
+
+**검토 체크** (Fable, 관문 ②)
+- [x] **Fable 검토 (2026-09-15 21:00~21:10)** — 코드 읽기 + `tests/api_read.sh` 38/0/0(귀속 `qa_employee01`) + 추가 실측(빈 결과 `[]`, SQLi `[]`, 다운로드 헤더·`diff` 동일, 404) → 시험 파일 휴지통 → 귀속 `admin01` 회전. 린트 0 · `php -l` 2/2
+
+**자기 공격 체크** (사용자, 관문 ③)
+- [ ] 토큰으로 `GET /api/files?q=test&limit=8` → 배열·키 5개 · `q=%' OR 1=1 --` 가 전체를 못 뽑음
+- [ ] 토큰으로 남의(admin-only) 파일 id 다운로드 → 403 · 없는 id → 404
+- [ ] 같은 토큰으로 `DELETE /api/files/{id}` → 401
+
+**학습 기록**
+
+| 날짜 | 구분 | 내용 | 해소·근거 |
+|---|---|---|---|
+| 2026-09-15 | 요청(사용자) | 강사 3차: `GET /api/files?q&limit`(바인딩, 역할 필터 원천 제외) · `GET /api/files/{id}/download`(원래 이름, IDOR 403), 2단계와 같은 인증, API.md 이어 쓰기, 한글 커밋 | 두 라우트는 이미 있음 — 토큰을 여는 것 + 검색 응답 투영만 추가. 인가 새 코드 0(ARCH 4.3) |
+| 2026-09-15 | 결정(Fable) | 새 라우트 대신 **기존 라우트에 토큰을 열고 응답 모양만 갈래** | 사용자가 적은 경로가 기존 경로와 같고, `visibleFilesWhere`·`decideRead` 를 그대로 타야 「원천 제외·IDOR 403」이 새 코드 없이 성립. 관리자 귀속이면 전부 보이는 점은 R-83 권고로 |
+| 2026-09-15 | 알림(Fable) | 세션 모델이 잠시 Opus 4.8 로 표시된 뒤 Fable 복귀 | CLAUDE.md 1장. 구현 Opus 에이전트·검토 Fable 유지 |
+| 2026-09-15 | 결함(지시서, Opus 발견) | 「`[2-T]` 를 `in_array` 하나로」 → 화면의 목록·다운로드가 세션으로도 401 (Opus 실측) | 넓힌 둘은 화면도 쓰는 라우트. 고침: 헤더가 실제로 온 요청만 토큰 경로, `POST /api/upload` 만 헤더 없어도 토큰 경로(ONLY), 틀린 토큰은 세션 폴백 없음. ARCH 4.3 「헤더 유무의 갈림길」·지시서 정오표. 교훈: 지시서도 실측 대상 — 구현자가 지시서를 의심해 준 사례 |
+| 2026-09-15 | 알림(Fable) | 검토 중 감사 로그에 `admin01`/`t-box-assistant/1.0` 요청 10건 관찰(Opus R-73 관문이 한 번 멈춤) | 사용자의 로컬 프로그램이 실제 토큰으로 서버를 부르고 있다는 뜻 — 관문 ③ 실사용 진행 중으로 본다. 검토는 그 창이 지난 뒤 재실행 |
 
 ## 2-1. 10단계 뒤 일괄 자기 공격 — 진행 순서 (관문 ③, 사용자)
 
