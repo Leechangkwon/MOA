@@ -1604,6 +1604,7 @@ sudo -u postgres psql -d tbox_re -c "SELECT happened_at, actor_name, action, res
 - [x] 손대지 않음(확인, 주석 제외): `src/Totp.php`·`src/Auth.php`·`mfa_confirm.php`·`mfa_disable.php`·`Http.php`·`Audit.php`·`db/*`·nginx conf
 
 **검토 체크** (Fable, 관문 ②)
+- [x] 관문 ④ 커밋 `50fa62b` → push → 발행 **v1.3.0**(`52d77d0`, 태그 push 확인). 관문 ③ 은 커밋 뒤 사용자 일괄(아래)
 - [x] **Fable 검토 (2026-09-16)** — `tests/f51.sh` 재실행 **50/0** (a) 오라클 48/48 (b) 응답 모양·재인코딩 동일·계정 원상 (c) 비노출 (d) 화면 4장 (e) 폴백 (f) 린트·`php -l`
 - [x] `Qr.php` 코드 읽기 — 입력 경로에 사용자 값 없음, 로그·파일·요청 0, 예외는 `RuntimeException` 하나
 
