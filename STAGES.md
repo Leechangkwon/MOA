@@ -48,7 +48,7 @@
 | 26 | 관리자 「역할로 보기」(세션 임시 역할·아래로만·활동 없는 30분)·관리 내비 7링크·계정 편집 모달·폴더 삭제 세 갈래 (F-39~41 · T-52~54) | ✅ 구현·검토 | ✅ | ✅ 2026-09-15 | 대기(6항목) | (아래 절 참조) |
 | F-47 | 버전 관리 `X.Y.Z`(대규모/중규모/수정) — `VERSION`·`CHANGELOG.json`·git 태그·`scripts/release.sh` · 사이드바 버전 → 「변경 이력」 모달(발행 날짜·시각·무엇이 변했나). 초기 1.0.0 — 사용자 결정 2026-09-15 | ✅ 구현·검토 | ✅ 2026-09-15 (Opus, 재지시 0회) | ✅ 2026-09-15 (T-59 65/65 Fable 재실행, 린트 0, help_button 17/17) | ⚠ 대기 | F-47 커밋 + 태그 `v1.0.0` |
 | F-48 | 상태 확인 `GET /api/health` 에 DB 확인(`SELECT 1`) — 200 `{status,db,time}` / 503 `{status:fail, db:분류어}` · 저장소 루트 `API.md`(외부 프로그램용 API 문서, 상태 확인·로그인·내 정보·업로드·삭제·로그아웃) — 사용자 요청 2026-09-15 | ✅ 구현·검토 | ✅ 2026-09-15 (Opus, 재지시 0회 + 추가 지시 1건 R-80 디스크 관문) | ✅ 2026-09-15 (T-60 38/38 Fable 재실행, 린트 0, 공개 도메인 200·405·`/API.md` 404) | ⚠ 대기 | `8457c0d` health API 추가 + 발행 `v1.0.1`(`a1c0d4a`) |
-| F-49 | 프로그램용 업로드 `POST /api/upload` — `.env` `API_TOKEN` + 헤더 `X-API-Token`(`hash_equals`, 이 라우트만) · 귀속 `API_TOKEN_USER` · 웹과 공통 업로드 함수 · 400/401/403/413 이유 문구(500 일반) · nginx JSON 413 — 강사 2차 프롬프트, 사용자 결정 A 2026-09-15 | ✅ 구현·검토 | ✅ 2026-09-15 (Opus, 1차 설계 B 중단·원복 후 v2, 재지시 1회 `ext_not_allowed`) | ✅ 2026-09-15 (T-61 25/0/미검증1 재실행 + 긍정 경로 qa 귀속 실측 201·403·400×5·401×2, 린트 0, health 38/38) | ⚠ 대기 (사용자 토큰 201 · nginx reload 후 JSON 413) | `20f51cb` F-49 + 발행 `v1.1.0`(`613d229`) |
+| F-49 | 프로그램용 업로드 `POST /api/upload` — `.env` `API_TOKEN` + 헤더 `X-API-Token`(`hash_equals`, 이 라우트만) · 귀속 `API_TOKEN_USER` · 웹과 공통 업로드 함수 · 400/401/403/413 이유 문구(500 일반) · nginx JSON 413 — 강사 2차 프롬프트, 사용자 결정 A 2026-09-15 | ✅ 구현·검토 | ✅ 2026-09-15 (Opus, 1차 설계 B 중단·원복 후 v2, 재지시 1회 `ext_not_allowed`) | ✅ 2026-09-15 (T-61 25/0/미검증1 재실행 + 긍정 경로 qa 귀속 실측 201·403·400×5·401×2, 린트 0, health 38/38) | ⚠ 대기 (사용자 토큰 201; JSON 413 은 검증됨) | `20f51cb` F-49 + 발행 `v1.1.0`(`613d229`) |
 | 문구 정리 | 화면 문구 정리 — **1단계** 화면에 늘 펼쳐져 있던 안내 68곳 삭제·축소 / **2단계** 「사용 방법」 단추와 화면별 도움말 20화면 (F-38 · T-51) | ◐ 2단계 구현 | ✅ 2026-09-15 (Opus) | ⚠ 대기 | ⚠ 대기 | 1단계 `06ee617` · 2단계 커밋 전 |
 | **26** | 관리자 「역할로 보기」(F-39) · 관리 내비·계정 편집 폼(F-40) · 폴더 삭제 세 갈래(F-41) — 사용자 결정·지적 2026-09-15 | ✅ 구현 | ⚠ Fable 재검토 대기 (Opus 자체 시험 124/124) | ⚠ 대기 | ⚠ 대기 | 커밋 전 |
 
@@ -1527,10 +1527,10 @@ sudo -u postgres psql -d tbox_re -c "SELECT happened_at, actor_name, action, res
 - [x] (Opus) `deploy/sites/tbox-v2.conf`·`tbox-v2-local.conf`(보정 지시) JSON 413 · `.env.example` 두 키 · `scripts/api_token_rotate.sh`(값 비출력)
 - [x] (Opus) `API.md` 7장(실측 응답은 Fable 이 채움) · `tests/api_upload.sh`(T-61 a~f)
 - [x] (Fable, 배포) `scripts/api_token_rotate.sh qa_employee01`(검토) → 실측 → `… admin01`(운영 귀속, 검토 토큰 무효). 값은 `cat .env` 로만
-- [ ] (사용자) nginx 반영 `! sudo bash deploy/switch-site.sh status` — Fable 실행은 자동 승인 분류기 차단(2026-09-15 20:4x)
+- [x] (사용자 실행 20:39) nginx 반영 `sudo bash deploy/switch-site.sh status` — nginx -t 통과·reload·공개 tbox-v2 유지. (Fable 실행은 자동 승인 분류기 차단) → Fable 실측: 102MB → **JSON 413** 8082·공개 둘 다, 보안 헤더·health 불변, `check_baseline.sh` OK 16·주의 5·미적용 6
 
 **검토 체크** (Fable, 관문 ②)
-- [x] **Fable 검토 (2026-09-15 20:20~20:50)** — 코드 읽기 + `tests/api_upload.sh` 재실행 25/0/미검증1 + 긍정 경로를 **검토 계정 귀속으로 실측**(201 `level:"public"` · Employee 의 admin-only 403 이유 · team_id 없음 400 · 401 missing_header/bad_token · 다른 라우트 401 「로그인이 필요합니다」·`auth.token` 행 0 · 감사 `actor=qa_employee01`+`auth=api_token` · 토큰 모양 문자열 유출 0). **결함 1**: `.exe` → 「잘못된 요청입니다」(매핑에 `ext_not_allowed` 없음) → 재지시 1회 → 상수 기반 문구, 20:20 대조, 5종 이유 문구 실측(확장자·이중확장자·level·빈 파일·설명 초과). 린트 0 · `php -l` 7/7 · health 38/38 · 시험 파일 휴지통 정리. **미검증**: (e) JSON 413(nginx 반영 대기) · 사용자 계정 토큰의 201(관문 ③)
+- [x] **Fable 검토 (2026-09-15 20:20~20:50)** — 코드 읽기 + `tests/api_upload.sh` 재실행 25/0/미검증1 + 긍정 경로를 **검토 계정 귀속으로 실측**(201 `level:"public"` · Employee 의 admin-only 403 이유 · team_id 없음 400 · 401 missing_header/bad_token · 다른 라우트 401 「로그인이 필요합니다」·`auth.token` 행 0 · 감사 `actor=qa_employee01`+`auth=api_token` · 토큰 모양 문자열 유출 0). **결함 1**: `.exe` → 「잘못된 요청입니다」(매핑에 `ext_not_allowed` 없음) → 재지시 1회 → 상수 기반 문구, 20:20 대조, 5종 이유 문구 실측(확장자·이중확장자·level·빈 파일·설명 초과). 린트 0 · `php -l` 7/7 · health 38/38 · 시험 파일 휴지통 정리. **(e) JSON 413 은 20:40 검증 완료**(사용자 nginx 반영 뒤). **미검증**: 사용자 계정 토큰의 201(관문 ③)
 
 **자기 공격 체크** (사용자, 관문 ③)
 - [ ] `curl -H "X-API-Token: $API_TOKEN" -F file=@… https://changkwon.mso.so/api/upload` → 201 `{id,name,level:"public"}`, 감사 `detail.auth=api_token`
