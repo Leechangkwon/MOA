@@ -1403,13 +1403,13 @@ sudo -u postgres psql -d tbox_re -c "SELECT happened_at, actor_name, action, res
 - [x] `tests/f46.sh`(새 파일) — T-58 (a)~(g)
 - [x] PRD F-46·T-58 / ARCH 5.21·5.22·7.5 / SECURITY R-40·R-77 보충 / `docs/totp-generator-internals.md` 「휴대폰 · 홈 화면에 추가」 절
 
-**검토 체크** (Opus 자체 실행 — 원문은 보고서)
+**검토 체크** (Opus 자체 실행 — 원문은 보고서 / Fable 재실행 — 아래)
 - [x] `bash tests/f46.sh` → **59 ✔ · 0 ✘** (스크린샷 `~/.claude/ui-shots/f46/c-shots/`)
 - [x] (c) 휴대폰 390×844 — `scrollWidth 390 = innerWidth 390`(가로 스크롤 0) · 버튼 최소 높이 **48px** · 코드 글자 **40px** · 자체 점검 **9/9** · 콘솔 오류 0 ; 데스크톱 1440 도 같음(버튼 42px — 요구는 휴대폰에만)
 - [x] (f) **실링크 2개 실제 가져오기 성공** — SharePoint 「링크가 있는 모든 사용자」 링크 → 201, `플란부평 24년 12월 판매상품 수불대장 v1.0.xlsx` 355,174B, `hops` 2(같은 호스트) · **`cookie_hops` 1** · provider microsoft · 감사에 쿠키 값 0 ; `?e=` 뗀 것도 201 ; 가짜 id → 400 `needs_login`(원문 첨부) ; 구글 시트 → 201, `2026년 데일리 재고 마감.xlsx`, `hops` = `docs.google.com` → `doc-08-9g-sheets.googleusercontent.com` · **`cookie_hops` 0**(호스트가 달라 쿠키를 버림) · provider google. **가져온 파일 3건은 휴지통으로만**(psql purge 하지 않음, R-73)
 - [x] 회귀 — `tests/help_button.sh` **17 ✔ · 0 ✘** · `scripts/security_lint.sh` **0건** · `php -l` 전부 · `/login` 200(Fetch.php·Audit.php 저장 직후 즉시 확인)
-- [ ] `tests/totp_time_sync.sh` **48 ✔ · 1 ✘** — 실패 1건은 **이 작업과 무관한 기대값 노후**: (c)① 「지금 배포된 CSP 그대로면 상태 줄이 「오프라인」」. F-42 의 nginx 적용이 끝나 `connect-src 'self'` 가 살아 있으므로 지금은 「서버와 동기화됨」이 정상이다. 그 시험 파일은 이번 「수정 파일」 밖이라 고치지 않았다 → **Fable 판단**
-- [ ] **Fable 검토** 대기 — `/etc/nginx` 에 매니페스트 location·`manifest-src` 복사·reload 도 Fable
+- [x] `tests/totp_time_sync.sh` — Opus 48 ✔ · 1 ✘(기대값 노후 → Fable 이 고침). **Fable 재실행 2회: 47 ✔ · 2 ✘** — 실패는 (e) 「스텝 안 1초 지점」으로 F-46 무관한 **새 결함 R-79**(경계 직후 이전 스텝 코드 + 창 0). 학습 기록 참조
+- [x] **Fable 검토 (2026-09-15 16:00~17:52, 세션 끊김 뒤 새 세션이 이어받음)** — ① 코드 읽기: `Fetch.php` 쿠키는 `cookieHeader()` 첫 줄에서 호스트 불일치 시 빈 문자열 · 값은 `CURLOPT_COOKIE` 로만 · 감사에는 `cookie_hops` 정수만 · 첫 요청 `Fetch::check($safeInput)` 은 공급자 없이(files_fetch.php 230) · `FOLLOWLOCATION` false 유지 · `Audit.php` 한 줄은 정수 키라 승인. ② **Fable 단독 단위 15케이스**(`php -r`): 다른 호스트 쿠키 0 · CRLF 주입 줄 폐기 · `;`·`,`·공백 값 폐기 · 21→20 · 8KB 초과 → 빈 문자열 · provider null → 회전 도메인 거부 · `evil.googleusercontent.com.attacker.tld` 거부 · 접미 자체 거부 · 교차 공급자 거부 · `redirectStep` provider 없이 거부/있으면 통과/http 거부 — **15/15**. ③ `bash tests/f46.sh` **Fable 재실행 59 ✔ · 0 ✘**(17:51, 사용자 유휴 확인 뒤) — SharePoint 201(`cookie_hops` 1 · hops 2 · 감사 detail 에 쿠키 값 0) · `?e=` 없는 링크 201 · 가짜 id 400 `needs_login` · 구글 시트 201(hops `docs.google.com`→`doc-08-9g-sheets.googleusercontent.com` · `cookie_hops` 0) · 저장 3건 휴지통. ④ 회귀: `security_lint` 0 · `php -l` 0 · `tests/fetch_hosts.sh` **63 ✔ · 3 ✘**(3건은 「허용 목록 비어 있음」 가정, F-46 무관 — 학습 기록) · `help_button` 17/17(Opus). ⑤ nginx **사용자 승인 뒤 16:15 적용**(라이브·8082) — 외부 실측 매니페스트 `application/manifest+json`·생성기 CSP `manifest-src 'self'`. ⑥ 스크린샷 390px 눈 확인(제목·홈 화면 안내·전체 폭 입력). **미검증**: iOS 실기기 「홈 화면에 추가」(관문 ③). **커밋 fbc20c3**(코드·시험·문서) + 보충 커밋(이 검토 기록·SECURITY 7장 — 편집이 먼저 실패한 채 커밋이 나가 한 번 더)
 
 **자기 공격 (관문 ③, 사용자)**
 - [ ] 휴대폰 브라우저로 `/assets/totp-generator.html` 을 열고 「홈 화면에 추가」 — 아이콘·이름이 나오고, 눌렀을 때 주소창 없이 열리는지. 가로로 밀리는 곳이 없는지
