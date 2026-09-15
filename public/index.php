@@ -184,6 +184,23 @@ const TBOX_ROUTES = [
     ['POST',   '/api/me/reauth',                 'reauth.php',           Authz::POLICY_AUTHENTICATED],
     ['GET',    '/reauth',                        'reauth_page.php',      Authz::POLICY_AUTHENTICATED],
 
+    /* 26단계 — 「역할로 보기」 (PRD F-39 · 8장 `/api/me/act` 행, ARCH 5.20, SECURITY R-74).
+     *
+     * 두 줄의 정책이 **일부러 다르다**:
+     *   POST   role:Admin     켜기. 새 정책 이름을 만들지 않은 이유는 관리자 영역과 같다 —
+     *                         자격이 같고, `role:Admin` 은 이미 `Authz::REAUTH_POLICIES` 에
+     *                         있어 **재인증 관문 [3-2] 가 자동으로 따라붙는다**(F-23).
+     *                         보는 중에는 유효 역할이 Admin 이 아니므로 이 정책이 「겹쳐 켜기」도
+     *                         함께 막는다 — 먼저 꺼야 다시 켤 수 있다 (F-39 「아래로만」).
+     *   DELETE authenticated  끄기. 보는 중인 사람의 유효 역할은 Admin 이 아니라, 끄기에도
+     *                         role:Admin 을 걸면 **돌아올 길이 없다**. 끄기는 권한을 만들지
+     *                         않는다 — 임시로 좁혀 둔 역할을 원래 `users.role` 로 되돌릴 뿐이다.
+     *
+     * 화면(`/admin` 의 카드)과 데이터가 같은 자격을 쓰는 것은 다른 관리 기능과 같다 (PRD S-01).
+     */
+    ['POST',   '/api/me/act',                    'me_act_start.php',     'role:Admin'],
+    ['DELETE', '/api/me/act',                    'me_act_stop.php',      Authz::POLICY_AUTHENTICATED],
+
     // 17단계 — 관리자 영역 (PRD F-24 · F-25 · 8장 `/admin`·`/api/admin/*` 행, ARCH 5.14 · 5.15).
     //   여섯 라우트 전부 정책은 `role:Admin` 이다. 새 정책 이름을 만들지 않은 이유는 위키·휴지통과
     //   같다 — 자격이 같고, 무엇보다 `role:Admin` 은 이미 `Authz::REAUTH_POLICIES` 에 들어 있어

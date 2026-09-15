@@ -45,6 +45,28 @@ if ($myTeamId !== null && $myTeamId !== '') {
     }
 }
 
+/*
+ * 26단계 「역할로 보기」 (PRD F-39, ARCH 5.20) — 지금 보고 있는 지점의 **이름**.
+ * 위 팀 이름과 같은 성격의 표시용 값이다: 화면이 번호로 이름을 스스로 찾지 않게 서버가 읽어 준다.
+ * 값은 세션이 들고 있는 유효 branch_id 이고 요청이 정하지 않는다 — 지점 격리는 여전히 요청마다
+ * Authz::purchaseScopeWhere 가 만든다 (PRD S-01).
+ */
+$sqlBranchName = <<<'SQL'
+    SELECT name FROM p_branches WHERE id = :id
+    SQL;
+
+$branchName = null;
+$myBranchId = $user['branch_id'] ?? null;
+if ($myBranchId !== null && $myBranchId !== '') {
+    $branchRow = Db::instance()->run($sqlBranchName, [':id' => (int) $myBranchId])->fetch();
+    if (is_array($branchRow)) {
+        $branchName = (string) $branchRow['name'];
+    }
+}
+
+/** 지금 「역할로 보기」 중인가 — 판정은 Auth::currentUser 한 곳에서 이미 끝났다 */
+$acting = ($user['acting'] ?? false) === true;
+
 Http::json([
     'username'   => (string) $user['username'],
     'role'       => (string) $user['role'],
@@ -120,4 +142,28 @@ Http::json([
     'purchase_role'       => Authz::purchaseProfile($user)['purchase_role'],
     'can_purchase'        => Authz::canUsePurchase($user),
     'can_purchase_master' => Authz::canEditPurchaseMaster($user),
+    /*
+     * 26단계 — 「역할로 보기」 (PRD F-39, ARCH 5.20).
+     *
+     *   acting              지금 다른 역할로 보는 중인가
+     *   acting_as           무슨 역할·팀·모듈 역할·지점으로 보는 중인가 (**표시용**, 값은 위 유효 값과 같다)
+     *   real_role           실제 역할. 보는 중이면 언제나 Admin 이고, 띠가 「실제 계정 …」 에 쓴다
+     *   acting_idle_minutes 활동이 없으면 몇 분 뒤 저절로 풀리나 (안내 문구용)
+     *   can_stop_acting     「원래대로」 단추를 보일까 — 다른 can_* 와 똑같은 화면 편의 값이다
+     *
+     * ★ 위의 role·team_id·can_* 는 **유효 역할 기준 그대로**다. 그래야 화면이 그 역할이 보는
+     *   화면과 똑같아진다 — 화면만 원래대로 보이면 이 기능은 아무 의미가 없다.
+     * ★ 이 값들은 권한이 아니다. acting 을 false 로 고쳐 보내도 서버는 요청마다 sessions.act_*
+     *   를 다시 읽고, can_admin 을 true 로 바꿔도 라우트 정책이 다시 막는다 (PRD S-01, T-52).
+     */
+    'acting'              => $acting,
+    'acting_as'           => $acting ? [
+        'role'          => (string) $user['role'],
+        'team_name'     => $teamName,
+        'purchase_role' => $user['purchase_role'] ?? null,
+        'branch_name'   => $branchName,
+    ] : null,
+    'real_role'           => (string) ($user['real_role'] ?? $user['role']),
+    'acting_idle_minutes' => Auth::ACT_IDLE_MINUTES,
+    'can_stop_acting'     => $acting,
 ]);

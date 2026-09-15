@@ -2108,39 +2108,161 @@ function initFiles(csrfToken, uploadLevels, canFetch, myTeamId) {
       });
   }
 
+  /* ─── 26단계 폴더 삭제 (PRD F-41, 사용자 지적 2026-09-15 「빈 폴더인데 안 지워진다」) ────
+   *
+   * 서버가 세 갈래로 답한다. 화면은 그 코드에 따라 다르게 말한다:
+   *   folder_has_children  하위 폴더를 먼저 지우세요        (그대로 알림)
+   *   folder_not_empty     파일이 있는 폴더는 지울 수 없습니다 (그대로 알림)
+   *   folder_has_trashed   휴지통 파일만 남았다 → **무엇이 남았는지 보여 주고** 되묻는다
+   *
+   * 되묻기를 `window.confirm` 으로 하지 않는 이유: 확인 창에는 목록을 넣을 수 없어서 사용자가
+   * **무엇을 지우는지 모른 채** 「예」를 누르게 된다. 서버가 준 `trashed` 목록(그 사람이 볼 수
+   * 있는 파일만)을 이름·삭제일로 보여 주고, 볼 수 없는 파일이 섞였으면 그 사실만 한 줄 적는다
+   * (개수·이름은 오지 않는다 — SECURITY R-63).
+   *
+   * 모달은 여기서 **요소로** 만든다(문자열 → HTML 변환 0, 인라인 style 0). 값은 전부
+   * textContent 로만 들어간다 (PRD S-03).
+   */
+  var trashedDialog = null;
+  var trashedList = null;
+  var trashedOthers = null;
+  var trashedOk = null;
+
+  function buildTrashedDialog() {
+    if (trashedDialog) {
+      return trashedDialog;
+    }
+    var dialog = document.createElement('dialog');
+    dialog.id = 'folder-trashed-dialog';
+    dialog.className = 'modal modal--form';
+
+    var head = document.createElement('div');
+    head.className = 'modal__head';
+    var title = document.createElement('h2');
+    title.className = 'modal__title';
+    setText(title, '휴지통에 있는 파일이 남아 있습니다');
+    head.appendChild(title);
+    dialog.appendChild(head);
+
+    var bodyBox = document.createElement('div');
+    bodyBox.className = 'modal__body';
+
+    trashedList = document.createElement('ul');
+    trashedList.className = 'notice__list';
+    bodyBox.appendChild(trashedList);
+
+    trashedOthers = document.createElement('p');
+    trashedOthers.className = 'muted';
+    setText(trashedOthers, '이 밖에 내가 볼 수 없는 파일도 있습니다');
+    trashedOthers.hidden = true;
+    bodyBox.appendChild(trashedOthers);
+
+    var lead = document.createElement('p');
+    lead.className = 'warn';
+    setText(lead, '폴더를 지우면 이 파일들은 루트로 옮겨진 채 휴지통에 남습니다(복구 가능). 진짜 지울까요?');
+    bodyBox.appendChild(lead);
+
+    dialog.appendChild(bodyBox);
+
+    var foot = document.createElement('div');
+    foot.className = 'modal__foot';
+    var cancel = document.createElement('button');
+    cancel.type = 'button';
+    cancel.className = 'btn btn--quiet';
+    setText(cancel, '취소');
+    cancel.addEventListener('click', function () {
+      dialog.close();
+      setText(folderMsg, '취소했습니다');
+    });
+    foot.appendChild(cancel);
+
+    trashedOk = document.createElement('button');
+    trashedOk.type = 'button';
+    trashedOk.className = 'btn btn--danger';
+    setText(trashedOk, '휴지통 파일을 옮기고 폴더 삭제');
+    foot.appendChild(trashedOk);
+    dialog.appendChild(foot);
+
+    dialog.addEventListener('cancel', function (event) {
+      event.preventDefault();
+      dialog.close();
+      setText(folderMsg, '취소했습니다');
+    });
+
+    document.body.appendChild(dialog);
+    trashedDialog = dialog;
+    return dialog;
+  }
+
+  /** 서버가 준 목록으로 되묻는다. 「예」면 `?move_trashed=1` 로 다시 보낸다. */
+  function askTrashed(data, again) {
+    var dialog = buildTrashedDialog();
+    var items = data && Array.isArray(data.trashed) ? data.trashed : [];
+    trashedList.replaceChildren();
+    items.forEach(function (file) {
+      var li = document.createElement('li');
+      var when = typeof file.deleted_at === 'string' ? file.deleted_at.slice(0, 10) : '';
+      setText(li, String(file.name) + (when === '' ? '' : ' · ' + when + ' 삭제'));
+      trashedList.appendChild(li);
+    });
+    trashedOthers.hidden = !(data && data.others === true);
+    trashedOk.disabled = false;
+    trashedOk.onclick = function () {
+      trashedOk.disabled = true;
+      dialog.close();
+      again();
+    };
+    dialog.showModal();
+  }
+
   function deleteFolder() {
     if (state.folder === 0) {
       return;
     }
+    var parentId = state.crumbs.length >= 2 ? state.crumbs[state.crumbs.length - 2].id : 0;
+    var folderId = state.folder;
+
+    function send(confirmMove) {
+      setText(folderMsg, '');
+      var path = '/api/folders/' + encodeURIComponent(String(folderId))
+        + (confirmMove ? '?move_trashed=1' : '');
+      fetch(path, {
+        method: 'DELETE',
+        headers: csrfHeaders(),
+        credentials: 'same-origin',
+        cache: 'no-store'
+      })
+        .then(function (response) {
+          if (response.status === 401) {
+            toLogin();
+            return null;
+          }
+          if (response.status === 200) {
+            goToFolder(parentId);
+            return null;
+          }
+          return readJson(response).then(function (data) {
+            // 되묻기는 **서버가 그 코드를 준 경우에만** 한다 — 화면이 사유를 추측하지 않는다.
+            if (!confirmMove && data && data.code === 'folder_has_trashed') {
+              askTrashed(data, function () {
+                send(true);
+              });
+              return null;
+            }
+            setText(folderMsg, errorMessage(data));
+            return null;
+          });
+        })
+        .catch(function () {
+          setText(folderMsg, GENERIC_ERROR);
+        });
+    }
+
     var here = state.folderInfo && state.folderInfo.name ? state.folderInfo.name : '';
-    if (!window.confirm('폴더 「' + here + '」 을(를) 지웁니다. 안에 파일·하위 폴더가 없어야 지워집니다.')) {
+    if (!window.confirm('폴더 「' + here + '」 을(를) 지웁니다. 안에 살아 있는 파일·하위 폴더가 없어야 지워집니다.')) {
       return;
     }
-    var parentId = state.crumbs.length >= 2 ? state.crumbs[state.crumbs.length - 2].id : 0;
-    setText(folderMsg, '');
-    fetch('/api/folders/' + encodeURIComponent(String(state.folder)), {
-      method: 'DELETE',
-      headers: csrfHeaders(),
-      credentials: 'same-origin',
-      cache: 'no-store'
-    })
-      .then(function (response) {
-        if (response.status === 401) {
-          toLogin();
-          return null;
-        }
-        if (response.status === 200) {
-          goToFolder(parentId);
-          return null;
-        }
-        return readJson(response).then(function (data) {
-          setText(folderMsg, errorMessage(data));
-          return null;
-        });
-      })
-      .catch(function () {
-        setText(folderMsg, GENERIC_ERROR);
-      });
+    send(false);
   }
 
   /* ─── 파일 이동 모달 ─────────────────────────────────────────────────
@@ -3481,8 +3603,12 @@ function initUsers(csrfToken) {
     return td;
   }
 
-  /** PATCH /api/users/{uid} — 바뀌는 값 + 사유만 보낸다 */
-  function patch(id, payload) {
+  /**
+   * PATCH /api/users/{uid} — 바뀌는 값 + 사유만 보낸다.
+   * 26단계 — 성공했을 때 **무엇이 됐는지 화면에 말한다**(`okText`). 전에는 조용히 다시 읽기만 해서
+   * 사용자가 "바뀌었나?" 를 알 수 없었다 (PRD F-40).
+   */
+  function patch(id, payload, okText) {
     if (typeof id !== 'number' || !isFinite(id) || id <= 0) {
       setText(msg, GENERIC_ERROR);
       return;
@@ -3508,6 +3634,7 @@ function initUsers(csrfToken) {
             setText(msg, errorMessage(data));
             return null;
           }
+          setText(msg, typeof okText === 'string' && okText !== '' ? okText : '저장했습니다');
           load();
           return null;
         });
@@ -3517,17 +3644,214 @@ function initUsers(csrfToken) {
       });
   }
 
-  /** 사유를 받는다. 비우거나 취소하면 아무것도 보내지 않는다(서버도 400 으로 막는다). */
-  function askReason(what) {
-    var reason = window.prompt(what + '\n사유를 적어 주세요 (필수)', '');
-    if (reason === null) {
-      return null;
+  /* ─── 26단계 모달 두 개 (PRD F-40, 사용자 지적 2026-09-15) ─────────────────────
+   *
+   * 여기 있던 것은 `window.prompt` 여섯 번이었다. 하나라도 취소하면 **조용히 return** 했고,
+   * 화면에 아무 알림이 없어 사용자는 「바꿨다」고 느꼈지만 요청은 한 번도 나가지 않았다
+   * (그날 감사 로그에 user.role_change 0건이 그 증거였다). 그래서 두 가지를 바꾼다:
+   *   ① 입력은 폼 하나(모달)로 받는다 — 셀렉트·날짜·사유. 오타로 팀 번호를 잘못 치는 일이 없다.
+   *   ② **조용한 return 을 없앤다** — 취소·무변경·실패를 전부 #msg 로 말한다.
+   * 이 화면에 `window.prompt` 는 이제 0개다 (T-53 (c) 가 정적으로 센다).
+   *
+   * 값은 전부 value·textContent 로만 넣는다(문자열 → HTML 변환 0). 무엇을 바꿀 수 있는지는
+   * 여전히 서버가 정한다 — 모달은 요청을 만들 뿐이고 자기 자신 금지·마지막 Admin 보호는
+   * `PATCH /api/users/{uid}` 의 Authz::decideUserChange 가 다시 본다 (PRD S-01, T-22).
+   */
+  var ueDialog = document.getElementById('user-edit');
+  var ueForm = document.getElementById('user-edit-form');
+  var ueTitle = document.getElementById('ue-title');
+  var ueRole = document.getElementById('ue-role');
+  var ueTeam = document.getElementById('ue-team');
+  var ueExpires = document.getElementById('ue-expires');
+  var ueBranch = document.getElementById('ue-branch');
+  var uePurchaseRole = document.getElementById('ue-purchase-role');
+  var ueReason = document.getElementById('ue-reason');
+  var ueMsg = document.getElementById('ue-msg');
+  var ueCancel = document.getElementById('ue-cancel');
+
+  var rdDialog = document.getElementById('reason-dialog');
+  var rdForm = document.getElementById('reason-form');
+  var rdTitle = document.getElementById('rd-title');
+  var rdLead = document.getElementById('rd-lead');
+  var rdReason = document.getElementById('rd-reason');
+  var rdMsg = document.getElementById('rd-msg');
+  var rdCancel = document.getElementById('rd-cancel');
+
+  /** 지금 열려 있는 모달이 끝나면 부를 함수. 닫히는 길은 「확인」·「취소」·Esc 셋뿐이다. */
+  var reasonDone = null;
+  var editDone = null;
+  /** 지금 모달이 고치고 있는 계정 행(서버가 준 값 그대로). 열 때 담고 닫을 때 비운다. */
+  var editItem = null;
+
+  function closeReason(value) {
+    var done = reasonDone;
+    reasonDone = null;
+    if (rdDialog && rdDialog.open) {
+      rdDialog.close();
     }
-    if (reason.replace(/\s+/g, '') === '') {
-      setText(msg, '사유를 적어야 합니다.');
-      return null;
+    if (done) {
+      done(value);
     }
-    return reason;
+  }
+
+  /**
+   * 사유만 받는다 (임시 비밀번호 재발급 · 2단계 인증 초기화 · 비활성화/재활성화).
+   * `done(사유)` 또는 `done(null)`(취소) 로 끝난다 — 어느 쪽이든 **반드시 부른다**.
+   */
+  function askReason(what, done) {
+    if (!rdDialog || !rdForm) {
+      setText(msg, GENERIC_ERROR);
+      done(null);
+      return;
+    }
+    reasonDone = done;
+    setText(rdTitle, what);
+    setText(rdLead, '이 행동은 사유와 함께 감사 로그에 남습니다.');
+    setText(rdMsg, '');
+    if (rdReason) {
+      rdReason.value = '';
+    }
+    rdDialog.showModal();
+    if (rdReason) {
+      rdReason.focus();
+    }
+  }
+
+  if (rdForm) {
+    rdForm.addEventListener('submit', function (event) {
+      event.preventDefault();
+      var text = rdReason ? rdReason.value : '';
+      if (text.replace(/\s+/g, '') === '') {
+        setText(rdMsg, '사유를 적어야 합니다.');
+        return;
+      }
+      closeReason(text);
+    });
+  }
+  if (rdCancel) {
+    rdCancel.addEventListener('click', function () {
+      closeReason(null);
+    });
+  }
+  if (rdDialog) {
+    // Esc 로 닫아도 「취소했습니다」 가 남게 한다 (조용한 종료 금지).
+    rdDialog.addEventListener('cancel', function (event) {
+      event.preventDefault();
+      closeReason(null);
+    });
+  }
+
+  function closeEdit(changed) {
+    var done = editDone;
+    editDone = null;
+    editItem = null;
+    if (ueDialog && ueDialog.open) {
+      ueDialog.close();
+    }
+    if (done) {
+      done(changed);
+    }
+  }
+
+  /** 셀렉트를 값으로 맞춘다. 없는 값이면 아무것도 고르지 않는다(화면이 값을 지어내지 않는다). */
+  function selectValue(select, value) {
+    if (!select) {
+      return;
+    }
+    select.value = value === null || value === undefined ? '' : String(value);
+  }
+
+  /** 계정 변경 모달을 연다. 현재 값을 채워 두고, **바뀐 칸만** 보낸다. */
+  function openUserEdit(item) {
+    if (!ueDialog || !ueForm) {
+      setText(msg, GENERIC_ERROR);
+      return;
+    }
+    setText(msg, '');
+    setText(ueTitle, '계정 「' + item.username + '」 변경');
+    setText(ueMsg, '');
+    selectValue(ueRole, item.role);
+    selectValue(ueTeam, item.team_id);
+    selectValue(ueBranch, item.branch_id);
+    selectValue(uePurchaseRole, item.purchase_role);
+    if (ueExpires) {
+      // 서버가 주는 만료는 날짜(YYYY-MM-DD)다. 없으면 비워 두고, 비운 채 저장하면 안 보낸다.
+      ueExpires.value = typeof item.expires_at === 'string' ? item.expires_at.slice(0, 10) : '';
+    }
+    if (ueReason) {
+      ueReason.value = '';
+    }
+
+    editItem = item;
+    editDone = function (payload) {
+      if (payload === null) {
+        setText(msg, '취소했습니다');
+        return;
+      }
+      if (payload === false) {
+        setText(msg, '바뀐 내용이 없습니다');
+        return;
+      }
+      patch(item.id, payload, '저장했습니다');
+    };
+    ueDialog.showModal();
+    if (ueReason) {
+      ueReason.focus();
+    }
+  }
+
+  if (ueForm) {
+    ueForm.addEventListener('submit', function (event) {
+      event.preventDefault();
+      var payload = {};
+      var before = editItem || {};
+
+      if (ueRole && ueRole.value !== String(before.role)) {
+        payload.role = ueRole.value;
+      }
+      var beforeTeam = before.team_id === null || before.team_id === undefined
+        ? '' : String(before.team_id);
+      if (ueTeam && ueTeam.value !== beforeTeam) {
+        payload.team_id = ueTeam.value === '' ? null : ueTeam.value;
+      }
+      var beforeExpires = typeof before.expires_at === 'string' ? before.expires_at.slice(0, 10) : '';
+      if (ueExpires && ueExpires.value !== beforeExpires && ueExpires.value !== '') {
+        payload.expires_at = ueExpires.value;
+      }
+      var beforeBranch = before.branch_id === null || before.branch_id === undefined
+        ? '' : String(before.branch_id);
+      if (ueBranch && ueBranch.value !== beforeBranch) {
+        payload.branch_id = ueBranch.value === '' ? null : ueBranch.value;
+      }
+      var beforePurchase = before.purchase_role === null || before.purchase_role === undefined
+        ? '' : String(before.purchase_role);
+      if (uePurchaseRole && uePurchaseRole.value !== beforePurchase) {
+        payload.purchase_role = uePurchaseRole.value === '' ? null : uePurchaseRole.value;
+      }
+
+      if (Object.keys(payload).length === 0) {
+        closeEdit(false);
+        return;
+      }
+      var reasonText = ueReason ? ueReason.value : '';
+      if (reasonText.replace(/\s+/g, '') === '') {
+        setText(ueMsg, '사유를 적어야 합니다.');
+        return;
+      }
+      payload.reason_text = reasonText;
+      closeEdit(payload);
+    });
+  }
+  if (ueCancel) {
+    ueCancel.addEventListener('click', function () {
+      closeEdit(null);
+    });
+  }
+  if (ueDialog) {
+    ueDialog.addEventListener('cancel', function (event) {
+      event.preventDefault();
+      closeEdit(null);
+    });
   }
 
   function addActions(row, item) {
@@ -3545,52 +3869,10 @@ function initUsers(csrfToken) {
     roleButton.type = 'button';
     roleButton.className = 'btn btn--quiet btn--small';
     setText(roleButton, '역할·팀·만료');
+    // 26단계 — `window.prompt` 여섯 번이 모달 하나가 됐다 (PRD F-40). 취소·무변경·실패는
+    // 전부 #msg 로 말한다(조용한 return 금지). 바뀐 칸만 payload 에 들어간다.
     roleButton.addEventListener('click', function () {
-      var role = window.prompt('역할 (Admin / Manager / Employee / Guest)', item.role);
-      if (role === null) {
-        return;
-      }
-      var payload = {};
-      if (role !== item.role) {
-        payload.role = role;
-      }
-      var currentTeam = item.team_id === null || item.team_id === undefined ? '' : String(item.team_id);
-      var team = window.prompt('팀 번호 (비우면 팀 없음)', currentTeam);
-      if (team !== null && team !== currentTeam) {
-        payload.team_id = team === '' ? null : team;
-      }
-      var expires = window.prompt('만료일 YYYY-MM-DD (Guest 는 필수 · 비우면 없음)', '');
-      if (expires !== null && expires !== '') {
-        payload.expires_at = expires;
-      }
-      /* 19단계 — 구매 모듈의 두 축 (PRD F-28). 취소(null)면 바꾸지 않고, 빈 문자열이면
-         "없음" 으로 바꾼다. 값의 유효성·지점 존재는 서버가 다시 본다 (PRD S-01). */
-      var currentBranch = item.branch_id === null || item.branch_id === undefined
-        ? '' : String(item.branch_id);
-      var branch = window.prompt('구매 모듈 지점 번호 (비우면 지점 없음)', currentBranch);
-      if (branch !== null && branch !== currentBranch) {
-        payload.branch_id = branch === '' ? null : branch;
-      }
-      var currentPurchase = item.purchase_role === null || item.purchase_role === undefined
-        ? '' : String(item.purchase_role);
-      var purchaseRole = window.prompt(
-        '구매 모듈 역할 (requester / buyer / stock / viewer · 비우면 사용 안 함)\n'
-        + 'requester 요청 — 자기 지점만 / buyer 구매 — 전 지점·기초정보 편집 /\n'
-        + 'stock 재고 — 자기 지점 이동·실사 / viewer 검토 — 전 지점 읽기·발주서 송부',
-        currentPurchase
-      );
-      if (purchaseRole !== null && purchaseRole !== currentPurchase) {
-        payload.purchase_role = purchaseRole === '' ? null : purchaseRole;
-      }
-      if (Object.keys(payload).length === 0) {
-        return;
-      }
-      var reason = askReason('계정 「' + item.username + '」 변경');
-      if (reason === null) {
-        return;
-      }
-      payload.reason_text = reason;
-      patch(item.id, payload);
+      openUserEdit(item);
     });
     td.appendChild(roleButton);
 
@@ -3604,8 +3886,9 @@ function initUsers(csrfToken) {
     pwResetButton.className = 'btn btn--quiet btn--small';
     setText(pwResetButton, '임시 비밀번호 재발급');
     pwResetButton.addEventListener('click', function () {
-      var reason = askReason('계정 「' + item.username + '」 임시 비밀번호 재발급');
+      askReason('계정 「' + item.username + '」 임시 비밀번호 재발급', function (reason) {
       if (reason === null) {
+        setText(msg, '취소했습니다');
         return;
       }
       setText(msg, '');
@@ -3626,6 +3909,7 @@ function initUsers(csrfToken) {
         .catch(function () {
           setText(msg, GENERIC_ERROR);
         });
+      });
     });
     td.appendChild(pwResetButton);
 
@@ -3634,8 +3918,9 @@ function initUsers(csrfToken) {
     mfaResetButton.className = 'btn btn--quiet btn--small';
     setText(mfaResetButton, '2단계 인증 초기화');
     mfaResetButton.addEventListener('click', function () {
-      var reason = askReason('계정 「' + item.username + '」 2단계 인증 초기화');
+      askReason('계정 「' + item.username + '」 2단계 인증 초기화', function (reason) {
       if (reason === null) {
+        setText(msg, '취소했습니다');
         return;
       }
       setText(msg, '');
@@ -3655,6 +3940,7 @@ function initUsers(csrfToken) {
         .catch(function () {
           setText(msg, GENERIC_ERROR);
         });
+      });
     });
     td.appendChild(mfaResetButton);
 
@@ -3663,13 +3949,20 @@ function initUsers(csrfToken) {
     activeButton.className = 'btn btn--quiet btn--small';
     setText(activeButton, item.is_active === true ? '비활성화' : '다시 활성화');
     activeButton.addEventListener('click', function () {
-      var reason = askReason(
-        '계정 「' + item.username + '」 ' + (item.is_active === true ? '비활성화' : '재활성화')
+      askReason(
+        '계정 「' + item.username + '」 ' + (item.is_active === true ? '비활성화' : '재활성화'),
+        function (reason) {
+          if (reason === null) {
+            setText(msg, '취소했습니다');
+            return;
+          }
+          patch(
+            item.id,
+            { is_active: item.is_active !== true, reason_text: reason },
+            item.is_active === true ? '비활성화했습니다' : '다시 활성화했습니다'
+          );
+        }
       );
-      if (reason === null) {
-        return;
-      }
-      patch(item.id, { is_active: item.is_active !== true, reason_text: reason });
     });
     td.appendChild(activeButton);
 
@@ -3741,14 +4034,24 @@ function initUsers(csrfToken) {
       });
   }
 
+  /* 26단계 — 같은 목록을 **만들기 폼과 변경 모달 둘 다**에 채운다 (PRD F-40).
+     모달이 팀 「번호」 대신 이름을 고르게 하려면 목록이 필요하고, 목록을 두 벌로 두면
+     언젠가 한쪽만 낡는다. 값은 전부 value·textContent 로만 넣는다 (PRD S-03). */
   function loadTeams() {
-    if (!fTeam) {
+    var targets = [];
+    if (fTeam) {
+      var blank = document.createElement('option');
+      blank.value = '';
+      setText(blank, '(팀 없음)');
+      fTeam.appendChild(blank);
+      targets.push(fTeam);
+    }
+    if (ueTeam) {
+      targets.push(ueTeam);   // 「— 팀 없음 —」 은 서버 마크업에 이미 있다
+    }
+    if (targets.length === 0) {
       return;
     }
-    var blank = document.createElement('option');
-    blank.value = '';
-    setText(blank, '(팀 없음)');
-    fTeam.appendChild(blank);
     fetch('/api/teams', { credentials: 'same-origin', cache: 'no-store' })
       .then(function (response) {
         if (!response.ok) {
@@ -3757,10 +4060,12 @@ function initUsers(csrfToken) {
         return readJson(response).then(function (data) {
           var teams = data && Array.isArray(data.teams) ? data.teams : [];
           teams.forEach(function (team) {
-            var option = document.createElement('option');
-            option.value = String(team.id);
-            setText(option, team.name);
-            fTeam.appendChild(option);
+            targets.forEach(function (select) {
+              var option = document.createElement('option');
+              option.value = String(team.id);
+              setText(option, team.name);
+              select.appendChild(option);
+            });
           });
           return null;
         });
@@ -3775,7 +4080,14 @@ function initUsers(csrfToken) {
      Admin 은 이 API 에 닿을 수 있다(purchase.read 는 Admin 에게 언제나 참). 못 받아도
      나머지 화면은 그대로 동작한다 — 지점은 선택 칸이다. */
   function loadBranches() {
-    if (!fBranch) {
+    var targets = [];
+    if (fBranch) {
+      targets.push(fBranch);
+    }
+    if (ueBranch) {
+      targets.push(ueBranch);   // 26단계 — 변경 모달도 같은 목록을 쓴다
+    }
+    if (targets.length === 0) {
       return;
     }
     fetch('/api/purchase/branches', { credentials: 'same-origin', cache: 'no-store' })
@@ -3786,10 +4098,12 @@ function initUsers(csrfToken) {
         return readJson(response).then(function (data) {
           var branches = data && Array.isArray(data.items) ? data.items : [];
           branches.forEach(function (branch) {
-            var option = document.createElement('option');
-            option.value = String(branch.id);
-            setText(option, branch.name);
-            fBranch.appendChild(option);
+            targets.forEach(function (select) {
+              var option = document.createElement('option');
+              option.value = String(branch.id);
+              setText(option, branch.name);
+              select.appendChild(option);
+            });
           });
           return null;
         });
@@ -5177,6 +5491,107 @@ function initAdmin(csrfToken, me) {
       });
   }
 
+  /* ─── 26단계 「역할로 보기」 폼 (PRD F-39, ARCH 5.20) ─────────────────────────
+   *
+   * 고른 값을 `POST /api/me/act` 로 보낼 뿐이다. 무엇을 고를 수 있는지도, 그 값이 유효한지도
+   * 서버가 정한다 — 화면은 역할 문자열을 비교하지 않고, 목록에 없는 값을 손으로 보내도
+   * 서버가 400 으로 막는다 (PRD S-01). 성공하면 화면을 다시 읽는다: 셸의 띠·내비·can_* 가
+   * 통째로 새 역할 기준으로 와야 하기 때문이다.
+   *
+   * 선택지는 다른 화면과 같은 API 에서 받는다(팀 `/api/teams`, 지점 `/api/purchase/branches`) —
+   * 화면이 고정 목록을 들고 있으면 팀·지점이 늘 때마다 화면을 고쳐야 하고 언젠가 어긋난다.
+   */
+  var actForm = document.getElementById('act-form');
+  var actRole = document.getElementById('act-role');
+  var actTeam = document.getElementById('act-team');
+  var actPurchaseRole = document.getElementById('act-purchase-role');
+  var actBranch = document.getElementById('act-branch');
+  var actSubmit = document.getElementById('act-submit');
+  var actMsg = document.getElementById('act-msg');
+
+  /** $1 셀렉트 · $2 경로 · $3 응답 배열 이름 — 값은 전부 textContent·value 로만 넣는다 */
+  function fillSelect(select, path, key) {
+    if (!select) {
+      return;
+    }
+    fetch(path, { credentials: 'same-origin', cache: 'no-store' })
+      .then(function (response) {
+        if (!response.ok) {
+          return null;
+        }
+        return readJson(response).then(function (data) {
+          var rows = data && Array.isArray(data[key]) ? data[key] : [];
+          rows.forEach(function (row) {
+            var option = document.createElement('option');
+            option.value = String(row.id);
+            setText(option, row.name);
+            select.appendChild(option);
+          });
+          return null;
+        });
+      })
+      .catch(function () {
+        // 목록을 못 받아도 나머지 화면은 그대로 동작한다 (둘 다 선택 칸이다).
+      });
+  }
+
+  if (actForm) {
+    fillSelect(actTeam, '/api/teams', 'teams');
+    fillSelect(actBranch, '/api/purchase/branches', 'items');
+
+    actForm.addEventListener('submit', function (event) {
+      event.preventDefault();
+      setText(actMsg, '');
+      var payload = { role: actRole ? actRole.value : '' };
+      if (actTeam && actTeam.value !== '') {
+        payload.team_id = actTeam.value;
+      }
+      if (actPurchaseRole && actPurchaseRole.value !== '') {
+        payload.purchase_role = actPurchaseRole.value;
+      }
+      if (actBranch && actBranch.value !== '') {
+        payload.branch_id = actBranch.value;
+      }
+      if (actSubmit) {
+        actSubmit.disabled = true;
+      }
+      fetch('/api/me/act', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken },
+        body: JSON.stringify(payload),
+        credentials: 'same-origin',
+        cache: 'no-store'
+      })
+        .then(function (response) {
+          if (response.status === 401) {
+            toLogin();
+            return null;
+          }
+          return readJson(response).then(function (data) {
+            if (toGate(response, data)) {
+              return null;
+            }
+            if (!response.ok) {
+              // 거부 문구는 **서버가 준 것만** 쓴다 (사유는 감사 로그에만 갈라져 남는다).
+              setText(actMsg, errorMessage(data));
+              if (actSubmit) {
+                actSubmit.disabled = false;
+              }
+              return null;
+            }
+            window.location.reload();
+            return null;
+          });
+        })
+        .catch(function () {
+          setText(actMsg, GENERIC_ERROR);
+          if (actSubmit) {
+            actSubmit.disabled = false;
+          }
+        });
+    });
+  }
+
   // 재인증 모달이 닫힌 뒤 다시 읽을 로더를 등록한다 (16-1 과 같은 방식).
   setReauthRetry(load);
   load();
@@ -5509,8 +5924,15 @@ function initShell(me, csrfToken) {
   var navToggle = document.getElementById('nav-toggle');
   var logout = document.getElementById('logout');
 
-  /** 최초 로그인 강제 절차가 남았나 (있으면 다른 화면으로 갈 길을 접어 둔다) */
-  var inGate = typeof me.next === 'string' && me.next !== '';
+  /* 최초 로그인 강제 절차가 남았나 (있으면 다른 화면으로 갈 길을 접어 둔다).
+   *
+   * ★ 26단계 (PRD F-40, 사용자 지적 2026-09-15 「관리자 페이지에 들어가면 사이드바에서
+   *   관리자 페이지가 사라진다」). 전에는 `me.next !== ''` 였다. `next` 에는 강제 절차의 두 값
+   *   (`password_change`·`mfa_setup`)만이 아니라 **재인증 안내**(`reauth`)도 들어온다 —
+   *   관리 화면은 전부 재인증 대상이라, 창이 닫힌 순간 사이드바의 모든 항목이 함께 닫혔다.
+   *   재인증은 "지금 할 일이 하나 더 있다" 일 뿐 **다른 화면을 막는 절차가 아니다**(관문 [3-2] 는
+   *   인가 뒤에 있고 권한을 만들지도 없애지도 않는다). 그래서 닫는 것은 그 두 값뿐이다. */
+  var inGate = me.next === 'password_change' || me.next === 'mfa_setup';
 
   /* 17-1 (PRD F-24, ARCH 5.14) — 일반 셸의 관리 항목은 「관리자 페이지」 **하나**다.
      전에는 계정·조직·감사·휴지통·위키 다섯 항목을 can_* 다섯 개로 각각 열었다. 이제 그
@@ -5532,7 +5954,15 @@ function initShell(me, csrfToken) {
   // 15-1 — 「내 활동」은 모든 로그인 사용자에게 열린다(권한 플래그가 없다, PRD F-12).
   // 강제 절차(F-16) 중에는 다른 항목과 함께 닫힌다 — showNav 가 inGate 를 먼저 본다.
   showNav('nav-activity', true);
-  showNav('nav-admin', canAdmin);
+  /* 26단계 (PRD F-40) — 「관리」 묶음의 링크 **7개를 같은 값 하나로** 함께 연다.
+     구매관리 묶음이 can_purchase 하나로 11개를 여는 것과 같은 모양이다: 화면이 역할별로 더
+     감추기 시작하면 그것이 곧 화면에 심은 권한 판단이 된다. 항목을 개발자도구로 되살려도
+     각 경로의 라우트 정책(user.manage·org.manage·audit.read·role:Admin)과 재인증 관문이
+     서버에서 다시 막는다 (PRD S-01, T-38·T-53). */
+  ['nav-admin', 'nav-users', 'nav-org', 'nav-admin-permissions',
+   'nav-audit', 'nav-trash', 'nav-wiki'].forEach(function (id) {
+    showNav(id, canAdmin);
+  });
 
   // 「관리」 묶음은 그 안의 항목이 열릴 때만 제목째 보인다.
   var adminGroup = document.getElementById('nav-admin-group');
@@ -5581,6 +6011,47 @@ function initShell(me, csrfToken) {
       var open = sidebar.hidden === true;
       sidebar.hidden = !open;
       navToggle.setAttribute('aria-expanded', open ? 'true' : 'false');
+    });
+  }
+
+  /* 26단계 「역할로 보기」 — 띠의 「원래대로」 (PRD F-39, ARCH 5.20).
+     띠는 **서버(shell_top.php)가** 그린다. 보는 중에는 can_admin 이 거짓이라 관리 묶음이 닫히고,
+     이 단추가 유일한 복귀 경로이기 때문이다. 여기서는 그 단추에 동작만 건다.
+     끄기는 `DELETE /api/me/act` 이고 정책은 authenticated 다 — 보는 중의 유효 역할로도 닿는다.
+     성공하면 화면을 다시 읽는다(서버가 그린 띠·내비가 통째로 새로 와야 한다). */
+  var actStop = document.querySelector('[data-act-stop]');
+  if (actStop) {
+    actStop.addEventListener('click', function () {
+      if (csrfToken === null) {
+        setText(msg, GENERIC_ERROR);
+        return;
+      }
+      actStop.disabled = true;
+      fetch('/api/me/act', {
+        method: 'DELETE',
+        headers: { 'X-CSRF-Token': csrfToken },
+        credentials: 'same-origin',
+        cache: 'no-store'
+      })
+        .then(function (response) {
+          if (response.status === 401) {
+            toLogin();
+            return null;
+          }
+          if (response.ok) {
+            window.location.reload();
+            return null;
+          }
+          return readJson(response).then(function (data) {
+            setText(msg, errorMessage(data));
+            actStop.disabled = false;
+            return null;
+          });
+        })
+        .catch(function () {
+          setText(msg, GENERIC_ERROR);
+          actStop.disabled = false;
+        });
     });
   }
 

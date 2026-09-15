@@ -187,6 +187,25 @@ else
   echo "✔ purchase_role 값 비교가 src/Authz.php 밖에 있음  [S-01 · R-70]"
 fi
 
+# ─── 26단계 「역할로 보기」 (PRD F-39, ARCH 5.20, SECURITY R-74) ──────────────────────
+#
+# (f) **보는 역할 판정이 흩어지지 않게 한다.** `act_role`·`real_role` 의 **값을 견주는 코드**가
+#     아래 세 곳 밖에 있으면 반려한다:
+#       src/Auth.php                 유효 역할을 만드는 유일한 자리 (currentUser)
+#       src/Audit.php                actor_role 에 실제 역할을 적는 자리
+#       src/handlers/me_act_*.php    켜기·끄기 창구 (시작 자격 확인)
+#
+#     막으려는 것: 핸들러·화면이 "보는 중이면 이건 빼고" 같은 판단을 따로 하기 시작하는 것.
+#     그 순간 유효 역할이 두 벌이 되고, 한쪽만 고쳐지는 날이 곧 우회 경로다 (R-70 과 같은 원칙).
+#     컬럼 이름을 적는 것(SQL·마이그레이션·응답 키)은 괜찮다 — 잡는 것은 `=== '값'` 비교뿐이다.
+act_hits=$(grep -rnE "${INCLUDE[@]}" "${EXCLUDE[@]}" -- "(act_role|real_role)'?\]?[[:space:]]*===?[[:space:]]*'" "$ROOT" 2>/dev/null \
+  | grep -v '/src/Auth\.php:' | grep -v '/src/Audit\.php:' | grep -v '/src/handlers/me_act_' || true)
+if [ -n "$act_hits" ]; then
+  echo "✖ act_role·real_role 값 비교가 Auth·Audit·me_act_* 밖에 있음  [F-39 · R-74]"; echo "$act_hits" | sed 's/^/    /'; fail=1
+else
+  echo "✔ act_role·real_role 값 비교가 Auth·Audit·me_act_* 밖에 있음  [F-39 · R-74]"
+fi
+
 # Authz.php 자체는 역할 문자열 비교가 허용되는 유일한 파일 — 위 검사에서 걸렸다면 그 파일만 예외
 if [ "$fail" -eq 1 ] && [ -f "$ROOT/src/Authz.php" ]; then
   echo "(참고) src/Authz.php 의 역할 비교는 허용. 위 목록에서 해당 파일만 나온 항목은 무시해도 됨"

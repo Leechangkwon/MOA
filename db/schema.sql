@@ -216,7 +216,25 @@ CREATE TABLE sessions (
     -- (user.manage·org.manage·audit.read·role:Admin)은 최근 15분 안의 값일 때만 열린다.
     -- 로그인은 이 값을 놓지 않는다 — 관리 영역 첫 진입에 반드시 한 번 묻는다.
     -- (기존 DB 는 db/migrations/2026-09-12_sessions_reauth.sql 로 같은 모양이 된다.)
-    reauth_at    TIMESTAMPTZ
+    reauth_at    TIMESTAMPTZ,
+    -- 26단계 (PRD F-39, ARCH 5.20 「역할로 보기」): 이 **세션**이 지금 어떤 역할로 보고 있나.
+    -- act_role 이 NULL 이면 보는 중이 아니다. 실제 역할(users.role)은 한 글자도 바뀌지 않는다 —
+    -- Auth::currentUser() 가 이 값들로 **유효 역할**을 만들어 주고, 판정 코드는 그대로 따라온다.
+    -- 만료는 「활동 없는 30분」이다: 요청마다 act_last_seen_at 을 밀고 그 값으로만 판정한다
+    -- (시작 뒤 30분이면 쓰는 중에 끊긴다 — 사용자 결정 2026-09-15 ③).
+    -- CHECK 두 개가 **위로 가는 조합**을 표 수준에서 막는다(act_role 에 'Admin' 은 넣을 수 없다).
+    -- (기존 DB 는 db/migrations/2026-09-16_sessions_act_as.sql 로 같은 모양이 된다.)
+    act_role          TEXT,
+    act_team_id       BIGINT,
+    act_purchase_role TEXT,
+    act_branch_id     BIGINT,
+    act_started_at    TIMESTAMPTZ,
+    act_last_seen_at  TIMESTAMPTZ,
+    CONSTRAINT sessions_act_role_check
+        CHECK (act_role IS NULL OR act_role IN ('Manager', 'Employee', 'Guest')),
+    CONSTRAINT sessions_act_purchase_role_check
+        CHECK (act_purchase_role IS NULL
+               OR act_purchase_role IN ('requester', 'buyer', 'stock', 'viewer'))
 );
 CREATE INDEX sessions_user_idx ON sessions (user_id);
 

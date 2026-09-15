@@ -36,8 +36,12 @@ declare(strict_types=1);
  *
  * ★ 17-1 (PRD F-24, ARCH 5.14): 관리 그룹(계정 관리·조직·권한·감사 로그·휴지통·위키)을
  *   일반 셸에서 **없앴다**. 대신 Admin 에게만 「관리자 페이지」 한 항목이 보이고, 세부 화면은
- *   허브(`/admin`)의 카드로만 간다. 기존 경로(`/users`·`/org`·`/audit`·`/trash`·`/wiki`)는
- *   그대로 살아 있다(문서·위키가 가리킨다) — 없어진 것은 **내비 항목**이지 경로가 아니다.
+ *   허브(`/admin`)의 카드로만 갔다.
+ * ★ 26단계 (PRD F-40, 사용자 지적 2026-09-15): 그 결과 세부 화면에서 **돌아올 길이 뒤로가기뿐**
+ *   이었다. 「관리」 묶음에 하위 6화면 링크를 되살린다 — 경로도 정책도 그대로이고, 달라진 것은
+ *   내비에 보이느냐뿐이다. 여는 값도 여전히 `can_admin` 하나다(이 파일에 역할 비교 없음).
+ * ★ 26단계 (PRD F-39): `$user['acting']` 이 참이면 본문 맨 위에 「역할로 보기」 띠를 그린다.
+ *   보는 중에는 관리 묶음이 닫히므로 그 띠의 「원래대로」가 유일한 복귀 경로다 — 그래서 서버가 그린다.
  *
  * ★ 인라인 <script>·style 속성·on* 이벤트 속성을 쓰지 않는다 (CSP: script-src 'self', style-src 'self').
  *   아이콘은 shell_bottom.php 의 <template> 을 app.js 가 cloneNode 로 붙인다 (문자열 → HTML 변환 0).
@@ -61,7 +65,78 @@ $shellKeys = ['files', 'trash', 'settings', 'activity', 'users', 'org', 'audit',
 
 $shellUser   = isset($user) && is_array($user) ? $user : [];
 $shellName   = htmlspecialchars((string) ($shellUser['username'] ?? ''), ENT_QUOTES, 'UTF-8');
-$shellRole   = htmlspecialchars((string) ($shellUser['role'] ?? ''), ENT_QUOTES, 'UTF-8');
+
+/*
+ * 26단계 「역할로 보기」 (PRD F-39, ARCH 5.20) — 셸이 **서버에서** 띠를 그린다.
+ *
+ * 왜 app.js 가 아니라 서버인가: 보는 중에는 사이드바의 관리 묶음이 닫힌다(유효 역할이 Admin 이
+ * 아니므로 can_admin 이 거짓이다). 그러면 원래대로 돌아올 길이 이 띠뿐인데, 그 유일한 길을
+ * 스크립트가 못 그리는 상황(오류·차단)에 잃으면 사용자는 30분을 기다려야 한다.
+ *
+ * ★ 여기에도 **역할 비교는 없다.** `acting` 은 Auth::currentUser 가 판정해 준 불린이고,
+ *   이 파일은 그 값이 참일 때 글자를 그릴 뿐이다. 값은 전부 htmlspecialchars 를 거친다 (PRD S-03).
+ */
+$shellActing = ($shellUser['acting'] ?? false) === true;
+
+/** 사용자 칩에 보이는 역할 — 언제나 **유효 역할**이고, 보는 중이면 그 사실을 함께 적는다 */
+$shellRoleText = (string) ($shellUser['role'] ?? '');
+if ($shellActing) {
+    $shellRoleText .= ' (보기)';
+}
+$shellRole = htmlspecialchars($shellRoleText, ENT_QUOTES, 'UTF-8');
+
+/*
+ * 띠에 쓸 이름들. 보는 중일 때만 읽는다(평소 요청에는 쿼리가 늘지 않는다).
+ * 값은 세션이 들고 있는 유효 team_id·branch_id 이고 요청이 정하지 않는다 (PRD S-01).
+ */
+$shellActParts  = [];
+$shellActActual = '';
+if ($shellActing) {
+    $shellActParts[] = (string) ($shellUser['role'] ?? '');
+
+    $shellActTeamId = $shellUser['team_id'] ?? null;
+    if ($shellActTeamId !== null && $shellActTeamId !== '') {
+        $shellActRow = Db::instance()->run(
+            'SELECT name FROM teams WHERE id = :id',
+            [':id' => (int) $shellActTeamId]
+        )->fetch();
+        if (is_array($shellActRow)) {
+            $shellActParts[] = (string) $shellActRow['name'];
+        }
+    }
+
+    /** 모듈 역할의 한국어 이름 — 화면 라벨 표일 뿐이고 판정이 아니다 (app.js 의 같은 표와 짝) */
+    $shellActRoleLabels = [
+        'requester' => '요청',
+        'buyer'     => '구매',
+        'stock'     => '재고',
+        'viewer'    => '검토',
+    ];
+    $shellActPurchase = (string) ($shellUser['purchase_role'] ?? '');
+    if ($shellActPurchase !== '') {
+        $shellActLabel  = $shellActRoleLabels[$shellActPurchase] ?? $shellActPurchase;
+        $shellActBranch = $shellUser['branch_id'] ?? null;
+        if ($shellActBranch !== null && $shellActBranch !== '') {
+            $shellActRow = Db::instance()->run(
+                'SELECT name FROM p_branches WHERE id = :id',
+                [':id' => (int) $shellActBranch]
+            )->fetch();
+            if (is_array($shellActRow)) {
+                $shellActLabel .= '(' . (string) $shellActRow['name'] . ')';
+            }
+        }
+        $shellActParts[] = $shellActLabel;
+    }
+
+    $shellActActual = htmlspecialchars(
+        (string) ($shellUser['username'] ?? '') . '(' . (string) ($shellUser['real_role'] ?? '') . ')',
+        ENT_QUOTES,
+        'UTF-8'
+    );
+}
+$shellActWhat = htmlspecialchars(implode(' · ', array_filter($shellActParts, static function ($v) {
+    return $v !== '';
+})), ENT_QUOTES, 'UTF-8');
 $shellTitle  = htmlspecialchars(isset($pageTitle) && is_string($pageTitle) ? $pageTitle : '', ENT_QUOTES, 'UTF-8');
 $shellActive = isset($activeNav) && is_string($activeNav) && in_array($activeNav, $shellKeys, true) ? $activeNav : '';
 $shellPage   = isset($pageKey) && is_string($pageKey) && in_array($pageKey, $shellKeys, true) ? $pageKey : '';
@@ -241,14 +316,38 @@ if (!headers_sent()) {
       </nav>
     </div>
 
-    <!-- 17-1 관리자 영역 (PRD F-24, ARCH 5.14) — 일반 셸에 남은 관리 항목은 **이 하나뿐**이다.
-         기본은 hidden 이고, `/api/me` 의 can_admin 이 참일 때만 app.js 가 연다.
-         계정 관리·조직·권한·감사 로그·휴지통·위키는 허브(/admin)의 카드로 들어간다. -->
+    <!-- 관리자 영역 (17-1 PRD F-24 · 26단계 F-40, ARCH 5.14).
+         기본은 전부 hidden 이고, `/api/me` 의 can_admin 이 참일 때만 app.js 가 **함께** 연다.
+         **이 파일에는 역할 비교가 없다** — 항목을 개발자도구로 되살려도 각 경로의 라우트 정책
+         (user.manage·org.manage·audit.read·role:Admin)과 재인증 관문이 다시 막는다 (PRD S-01, T-38).
+
+         ★ 26단계 (사용자 지적 2026-09-15 「계정·조직 화면에서 뒤로가기로만 돌아온다」):
+           17-1 에서 이 묶음을 「관리자 페이지」 한 항목으로 줄였더니, 허브에서 카드로 들어간 뒤에는
+           사이드바에 돌아올 길이 없었다. 하위 6화면을 다시 항목으로 둔다 — **경로·정책은 그대로**이고
+           달라진 것은 내비에 보이느냐뿐이다. 구매관리 묶음이 링크 11개를 한 값으로 여는 것과 같은 모양이다. -->
     <div id="nav-admin-group" hidden>
       <p class="nav-title">관리</p>
       <nav class="nav" aria-label="관리">
         <a id="nav-admin" class="<?= $shellNavClass('admin') ?>" href="/admin" hidden>
           <span class="icon" data-icon="lock"></span><span>관리자 페이지</span>
+        </a>
+        <a id="nav-users" class="<?= $shellNavClass('users') ?>" href="/users" hidden>
+          <span class="icon" data-icon="users"></span><span>계정 관리</span>
+        </a>
+        <a id="nav-org" class="<?= $shellNavClass('org') ?>" href="/org" hidden>
+          <span class="icon" data-icon="org"></span><span>조직 · 권한</span>
+        </a>
+        <a id="nav-admin-permissions" class="nav__item" href="/admin/permissions" hidden>
+          <span class="icon" data-icon="lock"></span><span>권한 매트릭스</span>
+        </a>
+        <a id="nav-audit" class="<?= $shellNavClass('audit') ?>" href="/audit" hidden>
+          <span class="icon" data-icon="log"></span><span>감사 로그</span>
+        </a>
+        <a id="nav-trash" class="<?= $shellNavClass('trash') ?>" href="/trash" hidden>
+          <span class="icon" data-icon="trash"></span><span>휴지통</span>
+        </a>
+        <a id="nav-wiki" class="<?= $shellNavClass('wiki') ?>" href="/wiki" hidden>
+          <span class="icon" data-icon="shield"></span><span>위키</span>
         </a>
       </nav>
     </div>
@@ -268,3 +367,13 @@ if (!headers_sent()) {
   </aside>
 
   <main id="main" class="main">
+<?php if ($shellActing): ?>
+    <!-- 26단계 「역할로 보기」 띠 (PRD F-39, ARCH 5.20).
+         본문(.page-head)보다 **위**에 있어 어느 화면에서든 첫 줄에 보인다. 보는 중에는 사이드바의
+         관리 묶음이 닫히므로 이 「원래대로」 단추가 유일한 복귀 경로다 — 그래서 서버가 그린다.
+         값은 전부 위에서 htmlspecialchars 를 거쳤고, 이 줄에는 역할 비교도 인라인 style·script 도 없다. -->
+    <div class="act-banner notice" role="status">
+      <span>지금 <b><?= $shellActWhat ?></b> 으로 보는 중 — 실제 계정 <?= $shellActActual ?></span>
+      <button type="button" data-act-stop class="btn btn--quiet btn--small">원래대로</button>
+    </div>
+<?php endif; ?>

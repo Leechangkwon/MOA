@@ -137,4 +137,90 @@ require __DIR__ . '/../views/shell_top.php';
     </div>
   </section>
 
+  <!-- 26단계 계정 변경 모달 (PRD F-40, 사용자 지적 2026-09-15 「변경했는데 로그에 없다」).
+       전에는 `window.prompt` 여섯 번(역할→팀 번호→만료일→지점 번호→모듈 역할→사유)이었다.
+       하나라도 취소하면 app.js 가 **조용히 return** 했고, 화면에 아무 알림이 없어 사용자는
+       「바꿨다」고 느꼈지만 요청은 한 번도 나가지 않았다(감사 로그 0건이 그 증거였다).
+       이제 폼 하나로 받고, 취소·무변경·실패까지 전부 #msg 로 말한다.
+
+       ★ 마크업만 서버가 낸다. 선택지의 **값**(팀·지점 이름, 현재 선택)은 app.js 가 API 응답에서
+         받아 textContent·value 로만 채운다 — 서버가 HTML 로 만들지 않는다 (PRD S-03).
+       ★ 여기에도 권한 판단이 없다. 무엇을 바꿀 수 있는지는 `PATCH /api/users/{uid}` 가
+         Authz::decideUserChange 로 다시 정한다(자기 자신 금지·마지막 Admin 보호 — PRD S-01, T-22). -->
+  <dialog id="user-edit" class="modal modal--form" aria-labelledby="ue-title">
+    <form id="user-edit-form" class="form" autocomplete="off">
+      <div class="modal__head">
+        <h2 class="modal__title" id="ue-title">계정 변경</h2>
+      </div>
+      <div class="modal__body">
+        <label class="field">
+          <span class="field__label">역할</span>
+          <select id="ue-role">
+            <option value="Admin">Admin</option>
+            <option value="Manager">Manager</option>
+            <option value="Employee">Employee</option>
+            <option value="Guest">Guest</option>
+          </select>
+        </label>
+        <label class="field">
+          <span class="field__label">팀</span>
+          <select id="ue-team"><option value="">— 팀 없음 —</option></select>
+        </label>
+        <label class="field">
+          <span class="field__label">만료일 (Guest 는 필수 · 비우면 그대로)</span>
+          <input id="ue-expires" type="date">
+        </label>
+        <label class="field">
+          <span class="field__label">구매 모듈 지점</span>
+          <select id="ue-branch"><option value="">— 지점 없음 —</option></select>
+        </label>
+        <label class="field">
+          <span class="field__label">구매 모듈 역할</span>
+          <select id="ue-purchase-role">
+            <option value="">— 사용 안 함 —</option>
+            <option value="requester">요청(requester) — 자기 지점 발주요청</option>
+            <option value="buyer">구매(buyer) — 전 지점·기초정보 편집</option>
+            <option value="stock">재고(stock) — 자기 지점 이동·실사</option>
+            <option value="viewer">검토(viewer) — 전 지점 읽기·발주서 송부</option>
+          </select>
+        </label>
+        <label class="field">
+          <!-- `required` 를 두지 않는다: 브라우저 기본 검사가 먼저 막으면 **submit 이벤트 자체가
+               일어나지 않아**, 「바뀐 칸이 없습니다」 를 알릴 기회가 사라진다(아무 칸도 바꾸지 않은
+               채 저장을 누른 경우). 비었는지는 아래 app.js 가 보고, 서버도 400 으로 다시 막는다. -->
+          <span class="field__label">사유 (필수 · 500자)</span>
+          <textarea id="ue-reason" rows="3" maxlength="500"></textarea>
+        </label>
+        <p id="ue-msg" class="msg" role="alert" aria-live="polite"></p>
+      </div>
+      <div class="modal__foot">
+        <button id="ue-cancel" class="btn btn--quiet" type="button">취소</button>
+        <button id="ue-submit" class="btn" type="submit">저장</button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- 사유만 받는 모달 — 임시 비밀번호 재발급 · 2단계 인증 초기화 · 비활성화/재활성화.
+       세 가지가 같은 형식을 쓰는 이유는 하나다: 계정 화면에서 `window.prompt` 를 0개로 만든다.
+       사유가 비면 화면이 먼저 막고, 비워 보내도 서버가 400 으로 막는다 (PRD S-07, SECURITY R-20). -->
+  <dialog id="reason-dialog" class="modal modal--form" aria-labelledby="rd-title">
+    <form id="reason-form" class="form" autocomplete="off">
+      <div class="modal__head">
+        <h2 class="modal__title" id="rd-title">사유</h2>
+      </div>
+      <div class="modal__body">
+        <p id="rd-lead" class="muted"></p>
+        <label class="field">
+          <span class="field__label">사유 (필수 · 500자)</span>
+          <textarea id="rd-reason" rows="3" maxlength="500"></textarea>
+        </label>
+        <p id="rd-msg" class="msg" role="alert" aria-live="polite"></p>
+      </div>
+      <div class="modal__foot">
+        <button id="rd-cancel" class="btn btn--quiet" type="button">취소</button>
+        <button id="rd-submit" class="btn" type="submit">확인</button>
+      </div>
+    </form>
+  </dialog>
+
 <?php require __DIR__ . '/../views/shell_bottom.php'; ?>

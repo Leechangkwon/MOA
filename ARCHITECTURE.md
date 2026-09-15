@@ -711,7 +711,7 @@ Admin 전용. 정책 `org.manage`(`Authz::canManageOrg` = Admin) 를 `KNOWN_POLI
 
 **파일 쪽 변경(5.2·5.6·5.7).** 업로드·가져오기 본문에 `folder_id`(선택) — 폴더 `decideRead` + `fitsUnderFolder(level, team, folder)` 를 등급 검사 바로 뒤에서. `PATCH /api/files/{id}` 허용 키에 `folder_id`(이동: 대상 폴더 `decideRead` + ①) ; 파일 등급 변경(`access_level`)도 폴더 안에 있으면 ① 검사(폴더보다 넓게 못 바꿈, `parent_narrower`).
 
-**삭제.** 살아 있는 파일 0(`purged_at IS NULL` 포함 — 휴지통 파일도 참조) · 하위 폴더 0 → DELETE, 아니면 400 `folder_not_empty`.
+**삭제(26단계 — PRD F-41).** 거부를 **세 갈래**로 가른다. ① 하위 폴더 있음 → 400 `folder_has_children` ② **살아 있는** 파일 있음(`deleted_at IS NULL`) → 400 `folder_not_empty` ③ 휴지통 파일만 남음 → 400 `folder_has_trashed` + **볼 수 있는** 휴지통 파일의 이름·삭제일 목록(최대 50, 안 보이는 것이 섞이면 `others: true` 만 — R-63), `?move_trashed=1` 로 확인하면 **같은 트랜잭션**에서 `UPDATE files SET folder_id = NULL WHERE folder_id=:id AND deleted_at IS NOT NULL AND purged_at IS NULL` 뒤 폴더 삭제(감사 `moved_trashed`·`moved_file_ids`). 살아 있는 파일은 **한 행도** 옮기지 않고, `deleted_at`·`purged_at` 도 손대지 않는다 — 휴지통의 「30일 안에 되살릴 수 있다」는 약속을 깨지 않기 위해서다(복구하면 루트로 살아난다). 18-1 에는 갈래가 하나여서, 휴지통 파일이 있으면 배치가 지울 때까지 폴더도 30일간 지울 수 없었다.
 
 **화면.** 트리는 읽을 수 있는 폴더만(등급 배지), 「새 폴더」 등급 선택지는 `upload_levels` ∩ (부모 등급 이상), 파일 이동 모달은 대상 폴더 등급 이상인 파일만 허용(서버가 다시 검사). 전부 `textContent`.
 
@@ -813,6 +813,69 @@ CSS 다섯 벌이 남긴 교훈과 같다). 글을 한곳에 모으면 "무엇�
 
 **5.18 「내비는 사이드바만」 규칙과의 관계.** 헤더 액션에는 여전히 **그 화면의 동작**만 둔다. 「사용 방법」은 다른
 화면으로 가는 링크가 아니라 **그 화면 자리에서 열리는 모달**이라 이 규칙을 깨지 않는다.
+
+
+### 5.20 「역할로 보기」 — 세션 안의 임시 역할 (PRD F-39 · 26단계, 사용자 결정 2026-09-15 A안)
+
+관리자가 「Employee 에게는 이 화면이 어떻게 보이나」를 **직접 확인**하는 장치다. 계정을 하나 더 만들어
+로그인하는 방식은 감사 로그에서 사람이 갈라지지 않고, 화면만 흉내 내는 방식은 서버 판정과 어긋나
+「화면엔 안 보이는데 API 는 되는」 상태를 만든다. 그래서 **유효 역할 자체를 세션 안에서 바꾼다.**
+
+**어디에 두나 — `sessions` 의 여섯 열** (`db/migrations/2026-09-16_sessions_act_as.sql`)
+
+| 열 | 뜻 |
+|---|---|
+| `act_role` | 보는 t-box 역할. NULL 이면 보는 중이 아니다. CHECK 로 `Manager`·`Employee`·`Guest` 만 |
+| `act_team_id` | 보는 팀 (NULL 이면 팀 없음) |
+| `act_purchase_role` | 보는 구매 모듈 역할. CHECK 로 4값만 |
+| `act_branch_id` | 보는 지점 |
+| `act_started_at` | 시작 시각 — 표시·감사용이고 **만료 판정에 쓰지 않는다** |
+| `act_last_seen_at` | 보는 중 마지막 요청 시각 — **만료 판정의 기준** |
+
+`users` 가 아니라 `sessions` 인 이유는 `reauth_at`(16-1)과 같다: 확인은 「이 기기, 이 창」의 일이고,
+`users.role` 을 바꾸면 **실제 권한**이 바뀌어 되돌릴 사람이 없어질 수 있다(브라우저를 닫거나 세션이
+끊기면 그 계정은 Employee 인 채로 남는다). 세션 행에 두면 로그아웃·세션 만료와 함께 저절로 사라진다.
+
+**어디서 바뀌나 — `Auth::currentUser()` 한 곳**
+
+```
+SQL_LOOKUP  →  act_role, act_* 값 + DB 가 계산한 두 불린
+                 act_role_ok = (act_role IS NOT NULL AND u.role = 'Admin')     ← 강등되면 거짓
+                 act_fresh   = (act_last_seen_at > now() - 30분)               ← 활동 없는 창
+셋 다 참이면  →  반환 배열의 role · team_id · purchase_role · branch_id 를 act_* 값으로 바꾼다
+                 real_role · real_team_id · real_purchase_role · real_branch_id 는 언제나 실제 값
+```
+
+그 한 곳이 모든 핸들러·`Authz`·`purchaseScopeWhere` 가 읽는 `$u` 를 만들므로 **판정 코드는 한 줄도
+바뀌지 않는다** — 목록 WHERE·지점 격리·라우트 정책이 전부 그 역할로 동작한다(흉내가 아니다).
+역할 문자열을 견주는 자리는 위 SQL 한 줄뿐이고, PHP 쪽에는 역할 비교가 생기지 않는다.
+`scripts/security_lint.sh` 의 규칙 (f) 가 `act_role`·`real_role` 값 비교를 `Auth`·`Audit`·`me_act_*`
+밖에서 찾으면 반려한다(R-70 의 `purchase_role` 규칙과 같은 방식).
+
+**아래로만 — 권한이 늘어나는 조합이 없다**
+
+1. 켜기 라우트의 정책이 `role:Admin` 이다. **보는 중에는 유효 역할이 Admin 이 아니므로 그 라우트가
+   스스로 403** 이다 — 겹쳐 켜기(Employee 로 보다가 Manager 로 갈아타기)가 불가능하고, 먼저 꺼야 한다.
+2. 고를 수 있는 값이 Manager·Employee·Guest 뿐이다(핸들러 허용 목록 + DB CHECK 두 겹).
+3. `role:Admin` 은 이미 `Authz::REAUTH_POLICIES` 에 있어 **재인증 관문이 자동으로** 따라붙는다.
+
+**끄기는 `authenticated`.** 보는 중의 유효 역할로도 닿아야 원래대로 돌아올 수 있다. 끄기는 권한을
+만들지 않는다 — 임시로 좁혀 둔 역할을 `users.role` 로 되돌릴 뿐이고, `users` 는 손대지 않는다.
+
+**만료는 「활동 없는 30분」.** 요청마다 `act_last_seen_at` 을 미는 문장은 기존
+`UPDATE sessions SET last_seen_at = now()` 에 한 열을 더한 것이라 **쿼리 수가 늘지 않는다**.
+만료·강등을 발견한 요청이 그 자리에서 여섯 열을 NULL 로 되돌리고 `act.expire allow`(reason `idle`·
+`role_lost`)를 한 줄 남긴다 — 배치를 두지 않는 이유는 reauth 창과 같다(지났는데 아직 열려 있는 틈을
+만들지 않는다). 「시작 뒤 30분」이 아니다: 쓰는 중에 끊기면 관리자는 자기가 무엇을 보는지 알 수 없다.
+
+**감사.** `actor_role` 열은 **실제 역할**이다(「누가」는 사람이다). 무슨 역할로 보였는지는
+`Audit::autoDetail()` 이 붙이는 `detail.acting_as {role, team_id, purchase_role, branch_id}` 와
+`detail.real_role` 에 남는다 — 자동 키라 핸들러가 빠뜨릴 수도 덮어쓸 수도 없다.
+
+**셸이 서버에서 띠를 그린다.** 보는 중에는 `can_admin` 이 거짓이라 사이드바 「관리」 묶음이 닫힌다.
+그러면 복귀 경로가 띠의 「원래대로」 하나뿐인데, 그 하나를 스크립트가 못 그리는 상황에 잃으면
+사용자는 30분을 기다려야 한다. 그래서 `shell_top.php` 가 `$user['acting']` 으로 직접 그린다
+(이 파일에도 역할 비교는 없다 — 판정 결과인 불린 하나만 본다).
 
 
 ## 6. 저장 위치 — 파일 정보 vs 실제 파일
@@ -1129,6 +1192,11 @@ GRANT  USAGE, SELECT  ON SEQUENCE audit_logs_id_seq TO tbox_app;
 | `auth.gate|deny|mfa_setup_required` | `{target} 이(가) 2단계 인증을 아직 설정하지 않은 상태로 다른 기능을 요청해서 거부했습니다` | 11단계 관문 |
 | `auth.gate|deny|reauth_required` | `{target} 이(가) 비밀번호를 다시 확인하지 않은 채 관리 기능을 요청해서 거부했습니다` | 16-1 관문 [3-2] (target = 본인, route 패턴·`next`·`policy` 는 상세) |
 | `auth.reauth|allow` | `{actor} 이(가) 관리 기능을 쓰려고 비밀번호를 다시 확인했습니다` | 16-1 `POST /api/me/reauth` (Auth::reauth, `detail.window_minutes`) |
+| `act.start|allow` | `{actor} 이(가) 다른 역할로 보기를 시작했습니다 (역할·팀·지점은 상세 기록)` | 26단계 `POST /api/me/act` (F-39). `detail` 에 고른 role·team_id·purchase_role·branch_id |
+| `act.start|deny|bad_request` | `{actor} 이(가) 역할로 보기를 허용되지 않는 형식(모르는 항목·역할·팀·지점)으로 요청해서 거부했습니다` | 26단계. Admin 으로 보기·지점 없는 요청 역할·없는 지점·모르는 키 |
+| `act.start|deny|role_not_permitted` | `{actor} 이(가) 역할로 보기를 시작할 자격 없이 요청해서 막았습니다` | 26단계. 실제 역할이 Admin 이 아니거나 이미 보는 중 |
+| `act.stop|allow` | `{actor} 이(가) 역할로 보기를 끝내고 원래 역할로 돌아왔습니다` | 26단계 `DELETE /api/me/act`. 끄기 **전** 상태에서 기록해 `detail.acting_as` 가 함께 남는다 |
+| `act.expire|allow` | `{actor} 의 역할로 보기가 자동으로 풀렸습니다 (사유는 상세 기록)` | 26단계 `Auth::currentUser()`. `detail.reason` = `idle`(활동 없는 30분) · `role_lost`(강등). 거부가 아니라 **서버가 판정한 사실**이라 allow |
 | `auth.reauth|deny|bad_credentials` | `{actor} 이(가) 관리 기능을 쓰려고 비밀번호를 다시 확인했지만 비밀번호가 틀렸습니다` | 16-1 (실패는 로그인 뒤 창구와 같은 카운터 — R-48) |
 | `auth.password_change|deny|same_password` | `{actor} 이(가) 비밀번호를 현재와 같은 값으로 바꾸려 해서 거부했습니다` | 11단계 |
 | `user.password_reset|allow` | `{actor} 이(가) 계정 「{target}」 의 임시 비밀번호를 재발급하고 모든 세션을 끊었습니다 (사유는 상세 기록)` | 11단계 users (Admin) |
@@ -1244,7 +1312,9 @@ GRANT  USAGE, SELECT  ON SEQUENCE audit_logs_id_seq TO tbox_app;
 | `folder.level_change|deny|not_owner` | `{actor} 이(가) 폴더 「{target}」 의 등급을 하위까지 함께 좁히려 했지만 자기가 고칠 수 없는 항목이 있어 전부 되돌렸습니다 (개수는 상세 기록)` | 18-1 `cascade:true` 전체 롤백 |
 | `folder.delete|allow` | `{actor} 이(가) 빈 폴더 「{target}」 을(를) 지웠습니다 (부모·깊이는 상세 기록)` | 18-1 folders_delete |
 | `folder.delete|deny|not_found` | `{actor} 이(가) 없는 폴더를 지우려 해서 거부했습니다` | 18-1 (403 동일 문구) |
-| `folder.delete|deny|folder_not_empty` | `{actor} 이(가) 파일 또는 하위 폴더가 남아 있는 폴더 「{target}」 을(를) 지우려 해서 거부했습니다 (휴지통의 파일도 포함)` | 18-1 (400, FK 가 마지막 그물) |
+| `folder.delete|deny|folder_not_empty` | `{actor} 이(가) 살아 있는 파일이 남아 있는 폴더 「{target}」 을(를) 지우려 해서 거부했습니다` | 18-1 (400, FK 가 마지막 그물). 26단계에서 「살아 있는 파일」로 좁혔다 |
+| `folder.delete|deny|folder_has_children` | `{actor} 이(가) 하위 폴더가 남아 있는 폴더 「{target}」 을(를) 지우려 해서 거부했습니다` | 26단계 (400) |
+| `folder.delete|deny|folder_has_trashed` | `{actor} 이(가) 휴지통 파일만 남은 폴더 「{target}」 을(를) 확인 없이 지우려 해서 되물었습니다` | 26단계 (400 + 목록). `?move_trashed=1` 로 다시 오면 삭제된다 |
 | `folder.delete|deny|not_owner` | `{actor} 이(가) 다른 사람이 만든 폴더 「{target}」 을(를) 지우려 해서 막았습니다` | 18-1 |
 | `folder.delete|deny|team_mismatch` | `{actor} 이(가) 다른 팀의 폴더 「{target}」 을(를) 지우려 해서 막았습니다` | 18-1 |
 | `folder.delete|deny|role_not_permitted` | `{actor} 이(가) 폴더 「{target}」 을(를) 지우려 했지만 볼 권한조차 없어 막았습니다` | 18-1 |
@@ -1311,6 +1381,10 @@ GRANT  USAGE, SELECT  ON SEQUENCE audit_logs_id_seq TO tbox_app;
 | `forced` | 왜 | `true` — 최초 로그인 강제 절차 중에 한 변경 | 핸들러 | `auth.password_change allow`·`auth.mfa_enroll allow` |
 | `next` | 어떻게 | 관문이 요구한 다음 단계 `password_change`·`mfa_setup` | 라우터 | `auth.gate deny` |
 | `actor_team` | 누가 | 행동 당시 사용자의 `team_id` (정수 또는 null) | `Audit::write()` 자동 (`Auth::currentUser()`) | 로그인된 모든 행 |
+| `acting_as` | 어떻게 | 「역할로 보기」 중이었다면 그때의 유효 역할 `{role, team_id, purchase_role, branch_id}` (26단계 F-39). `actor_role` 열은 **실제 역할**이고 이 키가 「어떤 권한으로 판정됐나」다 | `Audit::write()` 자동 (`autoDetail`) | 보는 중의 **모든** 행 |
+| `real_role` | 누가 | 보는 중일 때의 실제 역할(언제나 `Admin`). `acting_as` 와 짝으로만 나온다 | `Audit::write()` 자동 | 보는 중의 모든 행 |
+| `moved_trashed` | 무엇을 | 폴더를 지우면서 루트로 옮긴 **휴지통 파일의 개수** (26단계 F-41) | 핸들러 | `folder.delete allow` (확인 삭제일 때만) |
+| `moved_file_ids` | 무엇을 | 위에서 옮긴 파일들의 `public_id` 목록 — 되짚어 볼 수 있게. 이름은 넣지 않는다 | 핸들러 | 위와 같음 |
 | `login_ref` | 누가 | 로그인 1회당 고정되는 12자 16진수. `substr(hash('sha256', 'audit-login-ref:' . $session_id), 0, 12)` — 세션 id(토큰의 해시)에서 **한 번 더 단방향으로 파생**하므로 이 값으로 쿠키도 세션 행도 찾을 수 없다. 키 이름에 `session`·`hash` 를 쓰지 않는 이유는 `FORBIDDEN_DETAIL_KEYS` 부분 일치 때문 | `Audit::write()` 자동 | 로그인된 모든 행 |
 | `granted_by` | 왜 | 4.1 판정 코드 중 허용 코드 하나 | 핸들러가 `Authz::decide*()` 결과를 그대로 | 인가를 거친 `allow` 행 (`file.download`·`file.delete`·`file.upload`) |
 | `sha256` | 무엇을 | 파일 내용 해시 64자 (DB `files.sha256`) | 핸들러 | `file.download`·`file.delete`·`file.upload`(allow) |

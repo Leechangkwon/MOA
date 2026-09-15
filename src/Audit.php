@@ -362,6 +362,16 @@ final class Audit
         'auth.reauth|allow'                             => '{actor} 이(가) 관리 기능을 쓰려고 비밀번호를 다시 확인했습니다',
         'auth.reauth|deny|bad_credentials'              => '{actor} 이(가) 관리 기능을 쓰려고 비밀번호를 다시 확인했지만 비밀번호가 틀렸습니다',
         'auth.password_change|deny|same_password'       => '{actor} 이(가) 비밀번호를 현재와 같은 값으로 바꾸려 해서 거부했습니다',
+
+        // ── 「역할로 보기」 (26단계 — PRD F-39, ARCH 5.20 · 7.4, SECURITY R-74) ──────────
+        // 실제 계정은 {actor}(= actor_role 열의 실제 역할)이고, 고른 역할·팀·지점은 detail 에 남는다.
+        // 자동 해제(act.expire)는 사용자가 누른 행동이 아니라 **서버가 판정한 사실**이라
+        // allow 로 남기고 사유(idle·role_lost)를 detail 에 적는다 — 거부가 아니기 때문이다.
+        'act.start|allow'                               => '{actor} 이(가) 다른 역할로 보기를 시작했습니다 (역할·팀·지점은 상세 기록)',
+        'act.start|deny|bad_request'                    => '{actor} 이(가) 역할로 보기를 허용되지 않는 형식(모르는 항목·역할·팀·지점)으로 요청해서 거부했습니다',
+        'act.start|deny|role_not_permitted'             => '{actor} 이(가) 역할로 보기를 시작할 자격 없이 요청해서 막았습니다',
+        'act.stop|allow'                                => '{actor} 이(가) 역할로 보기를 끝내고 원래 역할로 돌아왔습니다',
+        'act.expire|allow'                              => '{actor} 의 역할로 보기가 자동으로 풀렸습니다 (사유는 상세 기록)',
         'user.password_reset|allow'                     => '{actor} 이(가) 계정 「{target}」 의 임시 비밀번호를 재발급하고 모든 세션을 끊었습니다 (사유는 상세 기록)',
         'user.password_reset|deny|self_change'          => '{actor} 이(가) 자기 자신의 임시 비밀번호를 재발급하려 해서 거부했습니다',
         'user.password_reset|deny|bad_request'          => '{actor} 이(가) 계정 「{target}」 임시 비밀번호 재발급을 사유 없이 요청해서 거부했습니다',
@@ -463,7 +473,12 @@ final class Audit
 
         'folder.delete|allow'                           => '{actor} 이(가) 빈 폴더 「{target}」 을(를) 지웠습니다 (부모·깊이는 상세 기록)',
         'folder.delete|deny|not_found'                  => '{actor} 이(가) 없는 폴더를 지우려 해서 거부했습니다',
-        'folder.delete|deny|folder_not_empty'           => '{actor} 이(가) 파일 또는 하위 폴더가 남아 있는 폴더 「{target}」 을(를) 지우려 해서 거부했습니다 (휴지통의 파일도 포함)',
+        // 26단계 (PRD F-41) — 「무엇이 막았나」 를 셋으로 갈랐다. 전에는 한 줄이라 로그만 보고는
+        // 하위 폴더인지·살아 있는 파일인지·휴지통 파일인지 알 수 없었다.
+        // `folder_has_trashed` 는 확인 한 번이면 지울 수 있는 상태다(거부이자 안내).
+        'folder.delete|deny|folder_not_empty'           => '{actor} 이(가) 살아 있는 파일이 남아 있는 폴더 「{target}」 을(를) 지우려 해서 거부했습니다',
+        'folder.delete|deny|folder_has_children'        => '{actor} 이(가) 하위 폴더가 남아 있는 폴더 「{target}」 을(를) 지우려 해서 거부했습니다',
+        'folder.delete|deny|folder_has_trashed'         => '{actor} 이(가) 휴지통 파일만 남은 폴더 「{target}」 을(를) 확인 없이 지우려 해서 되물었습니다',
         'folder.delete|deny|not_owner'                  => '{actor} 이(가) 다른 사람이 만든 폴더 「{target}」 을(를) 지우려 해서 막았습니다',
         'folder.delete|deny|team_mismatch'              => '{actor} 이(가) 다른 팀의 폴더 「{target}」 을(를) 지우려 해서 막았습니다',
         'folder.delete|deny|role_not_permitted'         => '{actor} 이(가) 폴더 「{target}」 을(를) 지우려 했지만 볼 권한조차 없어 막았습니다',
@@ -903,7 +918,16 @@ final class Audit
             'request_id'   => self::requestId(),
             'actor_id'     => $user === null ? null : (int) $user['id'],
             'actor_name'   => $user === null ? null : (string) $user['username'],
-            'actor_role'   => $user === null ? null : (string) $user['role'],
+            /*
+             * 26단계 (PRD F-39, ARCH 7.5) — 「역할로 보기」 중에도 `actor_role` 은 **실제 역할**이다.
+             * 감사의 「누가」 는 사람이고, 관리자가 Employee 로 보는 동안 한 행동을 Employee 가 한
+             * 것처럼 남기면 그 순간 로그가 사람을 가린다. 어떤 역할로 **보였는지**는 지우지 않고
+             * detail.acting_as 에 남는다 (autoDetail). real_role 은 Auth::currentUser 가 언제나
+             * 넣어 주지만, 옛 호출 경로를 위해 없으면 role 로 되돌린다.
+             */
+            'actor_role'   => $user === null
+                ? null
+                : (string) ($user['real_role'] ?? $user['role']),
             'action'       => $action,
             'target_type'  => self::str($ctx, 'target_type'),
             'target_id'    => self::int($ctx, 'target_id'),
@@ -959,6 +983,29 @@ final class Audit
             $sessionId = isset($user['session_id']) ? (string) $user['session_id'] : '';
             if ($sessionId !== '') {
                 $out['login_ref'] = substr(hash('sha256', 'audit-login-ref:' . $sessionId), 0, 12);
+            }
+
+            /*
+             * 26단계 「역할로 보기」 (PRD F-39, ARCH 5.20 · 7.5 등록부).
+             *
+             * 보는 중의 행동에는 **두 가지**를 함께 남긴다:
+             *   actor_role (열)   실제 역할 — 「누가」. 위 write() 가 real_role 로 적는다.
+             *   acting_as (detail) 그때 무슨 역할로 보였나 — 「어떤 권한으로 판정됐나」.
+             *
+             * 핸들러가 이것을 적어 넣지 않는다. 자동 키(route·actor_team·login_ref)와 같은 자리에서
+             * 붙이므로 **모든 행**에 빠짐없이 들어가고, 호출자가 덮어쓸 수도 없다(자동 값이 뒤에 온다).
+             * 보는 중이 아니면 키 자체가 없다 — 평소 행이 커지지 않는다.
+             */
+            if (($user['acting'] ?? false) === true) {
+                $out['acting_as'] = [
+                    'role'          => isset($user['role']) ? (string) $user['role'] : null,
+                    'team_id'       => $user['team_id'] === null ? null : (int) $user['team_id'],
+                    'purchase_role' => isset($user['purchase_role']) && $user['purchase_role'] !== null
+                        ? (string) $user['purchase_role'] : null,
+                    'branch_id'     => isset($user['branch_id']) && $user['branch_id'] !== null
+                        ? (int) $user['branch_id'] : null,
+                ];
+                $out['real_role'] = (string) ($user['real_role'] ?? '');
             }
         }
 

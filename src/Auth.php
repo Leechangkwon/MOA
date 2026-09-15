@@ -75,6 +75,21 @@ final class Auth
     public const REAUTH_MINUTES = 15;
 
     /**
+     * 「역할로 보기」가 저절로 풀리는 **활동 없는** 시간 — 분 (26단계, PRD F-39, ARCH 5.20).
+     *
+     * 「시작 뒤 30분」이 아니다. 요청마다 `sessions.act_last_seen_at` 을 밀고(SQL_TOUCH),
+     * 그 값이 이 창보다 오래됐을 때만 해제한다 — 쓰는 중에 화면이 갑자기 원래 역할로 돌아가면
+     * 관리자는 자기가 무엇을 보고 있는지 알 수 없게 된다 (사용자 결정 2026-09-15 ③).
+     * 판정은 SQL_LOOKUP 의 `act_fresh` 가 **DB 시계 하나**로 한다 (reauth_fresh 와 같다).
+     * 늘리는 요청 파라미터·연장 API 는 만들지 않는다 (R-59 와 같은 원칙).
+     */
+    public const ACT_IDLE_MINUTES = 30;
+
+    /** 감사 `act.expire` 의 사유 — 활동 없는 창이 지남 / 실제 역할이 Admin 이 아니게 됨 */
+    private const ACT_EXPIRE_IDLE      = 'idle';
+    private const ACT_EXPIRE_ROLE_LOST = 'role_lost';
+
+    /**
      * 아이디가 없을 때 대신 검증하는 고정 Argon2id 해시.
      * 평문은 만들 때 쓰고 버린 무작위 24바이트이며 어디에도 남기지 않았다 — 이 해시로는 로그인할 수 없다.
      * 부팅 시 password_hash() 로 만들지 않는 이유: 요청마다 해시 1회가 더 늘어나고,
@@ -89,6 +104,13 @@ final class Auth
                u.username      AS username,
                u.role          AS role,
                u.team_id       AS team_id,
+               -- 26단계 (PRD F-39) — 구매 모듈의 두 축을 세션 조회에 함께 싣는다.
+               -- 19단계에는 Authz::purchaseFields 가 요청마다 users 를 한 번 더 읽었는데,
+               -- 「역할로 보기」는 이 두 칸도 바꿔 줘야 하므로 값을 만드는 자리가 한 곳이어야 한다.
+               -- purchaseFields 는 "호출자가 두 칸을 이미 들고 있으면 그것을 쓴다" 는 계약이라
+               -- 판정 코드는 그대로이고, 쿼리는 오히려 하나 줄어든다.
+               u.purchase_role AS purchase_role,
+               u.branch_id     AS branch_id,
                u.is_active     AS is_active,
                u.mfa_enabled   AS mfa_enabled,
                -- 11단계 (PRD F-16) — 최초 로그인 강제 절차의 두 플래그.
@@ -102,7 +124,21 @@ final class Auth
                s.reauth_at    AS reauth_at,
                (s.reauth_at IS NOT NULL
                 AND s.reauth_at > now() - make_interval(mins => CAST(:reauth_min AS integer)))
-                              AS reauth_fresh
+                              AS reauth_fresh,
+               -- 26단계 (PRD F-39, ARCH 5.20) — 「역할로 보기」. 이 세션이 지금 어떤 역할로 보나.
+               -- 판정에 필요한 두 가지를 **DB 가 계산해서** 실어 준다 (reauth_fresh 와 같은 방식):
+               --   act_role_ok  보기를 시작할 자격(실제 역할 Admin)이 **지금도** 있나 — 강등되면 거짓
+               --   act_fresh    활동 없는 30분이 지나지 않았나 — 시계는 DB 하나뿐이다
+               -- 역할 문자열을 견주는 자리가 SQL 한 줄이므로, PHP 쪽에는 역할 비교가 생기지 않는다.
+               s.act_role          AS act_role,
+               s.act_team_id       AS act_team_id,
+               s.act_purchase_role AS act_purchase_role,
+               s.act_branch_id     AS act_branch_id,
+               s.act_started_at    AS act_started_at,
+               (s.act_role IS NOT NULL AND u.role = 'Admin')            AS act_role_ok,
+               (s.act_last_seen_at IS NOT NULL
+                AND s.act_last_seen_at > now() - make_interval(mins => CAST(:act_idle_min AS integer)))
+                              AS act_fresh
           FROM sessions s
           JOIN users   u ON u.id = s.user_id
          WHERE s.id = :id
@@ -110,8 +146,34 @@ final class Auth
            AND s.last_seen_at > now() - make_interval(mins => CAST(:idle_min AS integer))
         SQL;
 
+    /**
+     * 요청 1회당 한 번 도는 활동 갱신.
+     *
+     * 26단계 (PRD F-39) — 「역할로 보기」의 만료는 **활동 없는 30분**이다. 그래서 보는 중인
+     * 세션(`act_role IS NOT NULL`)은 여기서 `act_last_seen_at` 도 함께 민다. 기존 문장에 한 열을
+     * 더한 것이라 **쿼리 수가 늘지 않는다**. 보는 중이 아니면 NULL 그대로 둔다 — 값이 있는 것
+     * 자체가 "보는 중" 의 흔적이 되면 안 된다.
+     */
     private const SQL_TOUCH = <<<'SQL'
-        UPDATE sessions SET last_seen_at = now() WHERE id = :id
+        UPDATE sessions
+           SET last_seen_at     = now(),
+               act_last_seen_at = CASE WHEN act_role IS NULL THEN NULL ELSE now() END
+         WHERE id = :id
+        SQL;
+
+    /**
+     * 「역할로 보기」 해제 (26단계, PRD F-39).
+     * 만료(idle)·강등(role_lost)일 때 Auth 가, 사용자가 껐을 때 me_act_stop.php 가 같은 모양으로 쓴다.
+     */
+    private const SQL_CLEAR_ACT = <<<'SQL'
+        UPDATE sessions
+           SET act_role          = NULL,
+               act_team_id       = NULL,
+               act_purchase_role = NULL,
+               act_branch_id     = NULL,
+               act_started_at    = NULL,
+               act_last_seen_at  = NULL
+         WHERE id = :id
         SQL;
 
     private const SQL_DROP_SESSION = <<<'SQL'
@@ -254,9 +316,10 @@ final class Auth
         }
         $db  = Db::instance();
         $row = $db->run(self::SQL_LOOKUP, [
-            ':id'         => $id,
-            ':idle_min'   => Env::getInt('SESSION_IDLE_MIN'),
-            ':reauth_min' => self::REAUTH_MINUTES,
+            ':id'           => $id,
+            ':idle_min'     => Env::getInt('SESSION_IDLE_MIN'),
+            ':reauth_min'   => self::REAUTH_MINUTES,
+            ':act_idle_min' => self::ACT_IDLE_MINUTES,
         ])->fetch();
 
         if (!is_array($row)) {
@@ -292,11 +355,53 @@ final class Auth
 
         $db->run(self::SQL_TOUCH, [':id' => $id]);
 
+        /*
+         * ── 26단계 「역할로 보기」 (PRD F-39, ARCH 5.20, SECURITY R-74) ─────────────────
+         *
+         * 여기가 이 기능의 **전부**다. 유효 역할(role·team_id·purchase_role·branch_id)을 이 한
+         * 곳에서 만들어 두면 Authz·purchaseScopeWhere·모든 핸들러가 읽는 `$u` 가 그대로 그 역할이
+         * 된다 — 판정 코드는 한 줄도 고치지 않았고, 그래서 **화면 흉내가 아니라 서버 판정**이다.
+         *
+         * 실제 값은 `real_*` 로 함께 내려 준다. 감사 로그의 `actor_role` 은 그쪽을 쓴다 —
+         * 「누가」 했는지는 사람이고, 「어떤 역할로 보였나」는 detail.acting_as 다 (ARCH 7.5).
+         *
+         * 켜짐 조건은 세 가지가 **모두** 참일 때뿐이다:
+         *   ① 세션에 act_role 이 있다          — 값은 sessions 열에서만 온다(요청 파라미터 아님)
+         *   ② 실제 역할이 지금도 Admin 이다     — act_role_ok. 강등되면 그 자리에서 풀린다
+         *   ③ 활동 없는 30분이 지나지 않았다    — act_fresh
+         * ②③ 은 위 SQL 이 DB 시계 하나로 계산했다. 아래에는 역할 문자열 비교가 없다.
+         */
+        $actRole  = $row['act_role'] === null ? null : (string) $row['act_role'];
+        $actValid = $actRole !== null && $row['act_role_ok'] === true && $row['act_fresh'] === true;
+        $actGone  = $actRole !== null && !$actValid;
+
         self::$user = [
             'id'         => (int) $row['id'],
             'username'   => (string) $row['username'],
-            'role'       => (string) $row['role'],
-            'team_id'    => $row['team_id'] === null ? null : (int) $row['team_id'],
+            // 유효 역할 — 보는 중이면 보는 값, 아니면 실제 값. 아래 real_* 가 언제나 실제 값이다.
+            'role'       => $actValid ? $actRole : (string) $row['role'],
+            'team_id'    => $actValid
+                ? ($row['act_team_id'] === null ? null : (int) $row['act_team_id'])
+                : ($row['team_id'] === null ? null : (int) $row['team_id']),
+            /*
+             * 19단계 구매 모듈의 두 축. 전에는 Authz::purchaseFields 가 users 를 한 번 더 읽었다 —
+             * 이제 세션 조회가 함께 싣고(쿼리 1회 감소), 보는 중이면 보는 값으로 바뀐다.
+             * purchaseFields 는 "두 키가 **모두** 있으면 그것을 쓴다" 는 계약이라 둘 다 언제나 넣는다.
+             */
+            'purchase_role' => $actValid
+                ? ($row['act_purchase_role'] === null ? null : (string) $row['act_purchase_role'])
+                : ($row['purchase_role'] === null ? null : (string) $row['purchase_role']),
+            'branch_id'     => $actValid
+                ? ($row['act_branch_id'] === null ? null : (int) $row['act_branch_id'])
+                : ($row['branch_id'] === null ? null : (int) $row['branch_id']),
+            // 실제 값 — **언제나** users 행 그대로다. 감사·띠·「원래대로」가 이 값을 본다.
+            'real_role'          => (string) $row['role'],
+            'real_team_id'       => $row['team_id'] === null ? null : (int) $row['team_id'],
+            'real_purchase_role' => $row['purchase_role'] === null ? null : (string) $row['purchase_role'],
+            'real_branch_id'     => $row['branch_id'] === null ? null : (int) $row['branch_id'],
+            'acting'             => $actValid,
+            'acting_since'       => $actValid && $row['act_started_at'] !== null
+                ? (string) $row['act_started_at'] : null,
             'session_id' => (string) $row['session_id'],
             // 10단계 — 화면이 "2단계 인증 켜기/끄기" 를 어떻게 보일지 정하는 값 (R-05).
             // 권한이 아니라 상태다. 실제 검증은 언제나 로그인 때 서버가 한다.
@@ -315,7 +420,53 @@ final class Auth
             'reauth_fresh' => $row['reauth_fresh'] === true,
             'reauth_at'    => $row['reauth_at'] === null ? null : (string) $row['reauth_at'],
         ];
+
+        /*
+         * 만료(활동 없는 30분)·강등(실제 역할이 Admin 이 아니게 됨)이면 **그 자리에서** 되돌린다
+         * (26단계, PRD F-39). 배치를 따로 두지 않는 이유는 reauth 창과 같다 — 다음 요청이
+         * 판정하는 순간이 곧 만료되는 순간이어야 "지났는데 아직 열려 있는" 틈이 생기지 않는다.
+         *
+         * 기록을 **먼저** 남기고 지운다: Audit 은 actor 를 Auth::currentUser() 에서 읽는데
+         * self::$user 는 위에서 이미 실제 역할(acting=false)로 채워졌으므로, 이 한 줄은
+         * `actor_role = 실제 역할` 로 남고 detail.acting_as 는 붙지 않는다(이미 해제된 상태다).
+         * UPDATE 는 이때만 한 번 더 돈다 — 평소 요청의 쿼리 수는 그대로다.
+         */
+        if ($actGone) {
+            Audit::allow('act.expire', [
+                'target_type' => 'user',
+                'target_id'   => (int) $row['id'],
+                'target_name' => (string) $row['username'],
+                'detail'      => [
+                    'reason'       => $row['act_role_ok'] === true
+                        ? self::ACT_EXPIRE_IDLE
+                        : self::ACT_EXPIRE_ROLE_LOST,
+                    'was_acting_as' => $actRole,
+                    'idle_minutes'  => self::ACT_IDLE_MINUTES,
+                ],
+            ]);
+            $db->run(self::SQL_CLEAR_ACT, [':id' => $id]);
+        }
+
         return self::$user;
+    }
+
+    /**
+     * 세션 캐시를 버리고 **다시 읽는다** (26단계, PRD F-39).
+     *
+     * 쓰는 곳은 `POST /api/me/act` · `DELETE /api/me/act` 두 핸들러뿐이다. 그 둘은 자기 요청
+     * 안에서 세션 행을 바꾸고 **바뀐 뒤의 `/api/me`** 를 그대로 돌려줘야 하는데, currentUser 는
+     * 요청 1회당 한 번만 읽도록 캐시돼 있어 바꾸기 **전**의 값이 남는다.
+     *
+     * 이 함수는 권한을 만들지 않는다 — 하는 일은 캐시를 버리는 것뿐이고, 값은 언제나 DB 를
+     * 다시 읽어서 온다 (PRD S-01). 요청 값은 한 글자도 섞이지 않는다.
+     *
+     * @return array<string,mixed>|null
+     */
+    public static function reload(): ?array
+    {
+        self::$resolved = false;
+        self::$user     = null;
+        return self::currentUser();
     }
 
     /**
