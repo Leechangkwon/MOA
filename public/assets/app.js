@@ -3147,8 +3147,10 @@ function initAudit() {
  *
  * ★ 대상은 언제나 **세션의 본인**이다. 화면이 "누구의 비밀번호를" 을 고르지 않는다.
  * ★ 2단계 인증 비밀(secret)과 otpauth 주소는 서버가 enroll 응답으로 딱 한 번 내려 준다.
- *   QR 라이브러리를 쓰지 않으므로 **글자 그대로** 보여 주고 사용자가 인증 앱에 옮겨 적는다.
  *   두 값 모두 textContent 로만 넣는다(다른 모든 값과 같은 규칙).
+ * ★ QR 은 서버(src/Qr.php)가 만든 **모듈 행렬**(`qr.rows` — '0'/'1' 문자열)로 내려온다.
+ *   화면은 그것을 <canvas> 에 fillRect 로 그린다 — 마크업·SVG 문자열·`data:` 주소를 만들지
+ *   않는다(PRD S-03 · F-51 ③, ARCH 5.25). 모양이 조금이라도 어긋나면 그리지 않고 숨긴다.
  * ★ 오류 문구는 서버가 준 것만 쓴다 — 브라우저가 "코드가 틀렸습니다" 같은 말을 지어내지 않는다.
  */
 function initAccount(csrfToken, mfaEnabled, onMfaEnabled) {
@@ -3165,6 +3167,7 @@ function initAccount(csrfToken, mfaEnabled, onMfaEnabled) {
   var mfaSecret = document.getElementById('mfa-secret');
   var mfaUri = document.getElementById('mfa-uri');
   var mfaUriLink = document.getElementById('mfa-uri-link');
+  var mfaQr = document.getElementById('mfa-qr');
   var mfaConfirmForm = document.getElementById('mfa-confirm-form');
   var mfaCode = document.getElementById('mfa-code');
   var mfaDisableForm = document.getElementById('mfa-disable-form');
@@ -3207,6 +3210,75 @@ function initAccount(csrfToken, mfaEnabled, onMfaEnabled) {
     }
   }
 
+  /** QR 한 모듈의 크기(px)와 규격이 요구하는 여백(quiet zone, 모듈 수) */
+  var MFA_QR_MODULE = 4;
+  var MFA_QR_QUIET = 4;
+
+  /** canvas 를 비우고 숨긴다 (등록 전 · 확정 뒤 · 이미 켜져 있을 때) */
+  function clearMfaQr() {
+    if (!mfaQr) {
+      return;
+    }
+    if (mfaQr.getContext) {
+      var ctx = mfaQr.getContext('2d');
+      if (ctx) {
+        ctx.clearRect(0, 0, mfaQr.width, mfaQr.height);
+      }
+    }
+    mfaQr.width = 0;
+    mfaQr.height = 0;
+    mfaQr.hidden = true;
+  }
+
+  /**
+   * 서버가 준 모듈 행렬을 그린다. 그리기 전에 **모양을 확인**한다 —
+   * 객체인가 · size 가 21~177 의 정수인가 · rows 가 size 줄인가 · 각 줄이 size 글자 '0'/'1' 인가.
+   * 하나라도 어긋나면 그리지 않고 숨긴다(비밀 키·링크로 등록하는 길은 그대로 남는다).
+   */
+  function drawMfaQr(qr) {
+    clearMfaQr();
+    if (!mfaQr || !mfaQr.getContext || !qr || typeof qr !== 'object') {
+      return;
+    }
+    var size = qr.size;
+    if (typeof size !== 'number' || !isFinite(size) || Math.floor(size) !== size
+        || size < 21 || size > 177) {
+      return;
+    }
+    var rows = qr.rows;
+    if (!Array.isArray(rows) || rows.length !== size) {
+      return;
+    }
+    var r;
+    for (r = 0; r < size; r++) {
+      if (typeof rows[r] !== 'string' || rows[r].length !== size || !/^[01]+$/.test(rows[r])) {
+        return;
+      }
+    }
+    var side = (size + MFA_QR_QUIET * 2) * MFA_QR_MODULE;
+    mfaQr.width = side;
+    mfaQr.height = side;
+    var ctx2 = mfaQr.getContext('2d');
+    if (!ctx2) {
+      clearMfaQr();
+      return;
+    }
+    // 어두운 테마에서도 흰 바탕·검정 모듈이어야 인증 앱이 읽는다 (색 토큰을 쓰지 않는다)
+    ctx2.fillStyle = '#ffffff';
+    ctx2.fillRect(0, 0, side, side);
+    ctx2.fillStyle = '#000000';
+    for (r = 0; r < size; r++) {
+      var line = rows[r];
+      for (var c = 0; c < size; c++) {
+        if (line.charAt(c) === '1') {
+          ctx2.fillRect((c + MFA_QR_QUIET) * MFA_QR_MODULE, (r + MFA_QR_QUIET) * MFA_QR_MODULE,
+                        MFA_QR_MODULE, MFA_QR_MODULE);
+        }
+      }
+    }
+    mfaQr.hidden = false;
+  }
+
   function showMfa(enabled) {
     setText(
       mfaState,
@@ -3223,6 +3295,7 @@ function initAccount(csrfToken, mfaEnabled, onMfaEnabled) {
     }
     if (mfaSetup && enabled) {
       mfaSetup.hidden = true;
+      clearMfaQr();
     }
   }
 
@@ -3275,6 +3348,7 @@ function initAccount(csrfToken, mfaEnabled, onMfaEnabled) {
           // 서버가 준 문자열을 링크로 만들기 전에 **스킴을 확인**한다 — javascript: 같은 값이
           // href 로 들어가지 못하게 하는 최소 방어다. 확인을 통과할 때만 href 를 넣는다.
           clearMfaUriLink();
+          drawMfaQr(result.data.qr);
           if (mfaUriLink && typeof result.data.otpauth === 'string'
               && result.data.otpauth.indexOf('otpauth://') === 0) {
             mfaUriLink.setAttribute('href', result.data.otpauth);
@@ -3312,6 +3386,7 @@ function initAccount(csrfToken, mfaEnabled, onMfaEnabled) {
           setText(mfaSecret, '');
           setText(mfaUri, '');
           clearMfaUriLink();
+          clearMfaQr();
           showMfa(true);
           setText(msg, '2단계 인증을 켰습니다.');
           // 11단계 — 최초 로그인 강제 절차에서 불렀다면 여기서 끝이다(호출자가 다음을 정한다).

@@ -129,6 +129,7 @@ PRD S-10-C 가 "배포판 패키지만·의존성 0 이 기본" 이라고 못박
 | 도구 | 설치 위치 | 어디에 | 왜 | 확인 |
 |---|---|---|---|---|
 | `python3-playwright` (chromium 채널) | **사용자 로컬 `~/.local`** — 배포판 패키지가 아니며 `deploy/install.sh` 가 설치하지 않는다 | `scripts/ui_snapshot.py` (`scripts/ui_snapshot.sh` 가 부른다) | 검토 계정(qa_admin01)으로 구매 13개 화면을 실제로 열어 스크린샷을 찍고 DOM 결함을 센다 (PRD 12.2 T-50) | `PATH="$HOME/.local/bin:$PATH" python3 -c "import playwright"` |
+| `python3` `qrcode` (pip, 순수 파이썬) | **사용자 로컬 `~/.local`** — 배포판 패키지가 아니며 `deploy/install.sh` 가 설치하지 않는다. **앱·배포는 부르지 않는다(시험 전용 오라클)** | `tests/f51.sh` (a) | `src/Qr.php`(자체 QR 인코더, PRD F-51)가 만든 모듈 행렬을 독립 구현과 비트 단위로 대조한다 (PRD 12.2 T-63) | `python3 -c "import qrcode"` (2026-09-16 `pip install --user qrcode`) |
 
 - **운영 서버에는 넣지 않는다.** 앱 코드가 이 패키지를 부르는 곳이 한 곳도 없고(런타임 의존성 0),
   없으면 `ui_snapshot.sh` 만 실패한다 — 서비스는 그대로다 (PRD S-10-C 「의존성 0 이 기본」).

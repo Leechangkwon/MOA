@@ -1590,6 +1590,37 @@ sudo -u postgres psql -d tbox_re -c "SELECT happened_at, actor_name, action, res
 | 2026-09-15 | 궁금(사용자) | 「비밀번호는 어떻게 암호화 되어있어?」 | 암호화(복호화 가능)가 아니라 **단방향 해시** — `password_hash(…, PASSWORD_ARGON2ID)`(m=65536 KiB, t=4, p=1, 사용자별 무작위 소금 포함) 로 `users.password_hash` 에만 저장, 평문은 어디에도 없음. 로그인은 `password_verify` 로 비교, 없는 아이디는 고정 더미 해시로 같은 시간 소비(계정 존재 유추 방지). 근거: PRD S-09-4 · `db/schema.sql` users 주석 · `src/Auth.php` DUMMY_HASH·`password_verify`. 확인: `psql … -c "SELECT split_part(password_hash,'$',2), count(*) FROM users GROUP BY 1"` → `argon2id` 25건 |
 | 2026-09-15 | 요청(사용자) | 「17시 2차 강의 이후 세션(죽은 것 포함)을 참조해 t-box 업로드·다운로드 과정을 정리하고, 2차 비밀번호→토큰 전환에 시간이 왜 많이 걸렸는지 리뷰해서 문서에 포함해」 | `docs/practice-review-2026-09-15.md` — 시간표(17:00~22:14) · 세 인증 방식(강사 curl 실패 → 세션+CSRF 201 → F-49 토큰) · 87분 분해(폐기·재작업 33분, 방향 탐색 16분, 규칙 고정 비용 44분) · 지연 요인 10건 · 다음 실습 권고 9건 · 남은 정리 목록 |
 
+### F-51 — 2단계 인증 등록 화면에 QR 코드 — 착수 2026-09-16
+
+> 지시서: `docs/f51-mfa-qr-directive.md`. 근거: PRD F-51 · 8장 `/api/me/mfa/enroll` 행 · 12.2 T-63 · S-03 · S-10-C, ARCH 5.25, SECURITY R-84.
+> 배경: 동료 의견 「2단계 인증은 좋으나 불편, 구글 인증도 있으니 그걸 쓰면 좋겠다」 → Google Authenticator 의 정상 경로 「QR 코드 스캔」이 t-box 에 없었다. 2026-09-11 「QR(ⓒ)은 후속」의 후속. 사용자 「QR진행해」.
+
+**개발 사항** (구현 Opus / 문서 Fable)
+- [x] (Fable) PRD F-51·F-17-2·8장 enroll 행·T-63, ARCH 5.25, SECURITY R-84, DEPENDENCIES(시험용 `qrcode`), 지시서
+- [x] (Opus) `src/Qr.php`(새) — 외부 의존 0 QR 인코더(바이트·M·v1~10·마스크 벌점·버전 정보) → `{version,size,rows}`
+- [x] (Opus) `src/bootstrap.php` require 한 줄 · `src/handlers/mfa_enroll.php` — 응답에 `qr`(실패 시 `null`), 머리말 주석 갱신
+- [x] (Opus) `src/views/mfa_enroll.php` — `#mfa-qr` canvas + 안내 순서(QR → 링크 → 손 입력) · `public/assets/app.js` — 모양 검사 뒤 `fillRect` 그리기·지우기 · `public/assets/app.css`
+- [x] (Opus) `README.md` 2단계 인증 절 문구 · `tests/f51.sh`(T-63) · (Fable, 경미) 낡은 주석 3곳 `Totp.php`·`settings_page.php`·`scripts/totp_code.php`
+- [x] 손대지 않음(확인, 주석 제외): `src/Totp.php`·`src/Auth.php`·`mfa_confirm.php`·`mfa_disable.php`·`Http.php`·`Audit.php`·`db/*`·nginx conf
+
+**검토 체크** (Fable, 관문 ②)
+- [x] **Fable 검토 (2026-09-16)** — `tests/f51.sh` 재실행 **50/0** (a) 오라클 48/48 (b) 응답 모양·재인코딩 동일·계정 원상 (c) 비노출 (d) 화면 4장 (e) 폴백 (f) 린트·`php -l`
+- [x] `Qr.php` 코드 읽기 — 입력 경로에 사용자 값 없음, 로그·파일·요청 0, 예외는 `RuntimeException` 하나
+
+**자기 공격 체크** (사용자, 관문 ③)
+- [ ] 휴대폰 Google Authenticator 「QR 코드 스캔」으로 t-box 등록 화면의 QR 을 찍는다 → 계정 `t-box:아이디` 가 생기고 6자리 코드가 t-box 「확인하고 켜기」에서 통과
+- [ ] 같은 화면에서 비밀 키(텍스트)로 「설정 키 입력」 등록도 여전히 되는지(둘이 같은 코드를 냄)
+- [ ] 등록 뒤 화면을 새로 고쳐 QR·비밀 키가 다시 보이지 않는지
+
+**학습 기록**
+
+| 날짜 | 구분 | 내용 | 해소·근거 |
+|---|---|---|---|
+| 2026-09-16 | 어려움(사용자) | 「2차 인증은 좋으나 불편, 구글 인증도 있으니 그걸 쓰면 좋겠다」는 의견 → Google Authenticator 「인증자 코드 추가」(QR 스캔 / 설정 키 입력) 화면을 보며 「인증 앱 바로 추가 링크가 안 보인다」 | **새 방식이 아니라 이미 되는 것** — 2단계 인증은 표준 TOTP(RFC 6238)라 Google Authenticator 에 그대로 등록된다(`src/Totp.php` 규격 주석, 9/11 「공짜 앱」 문답). 링크가 안 보인 이유: 보고 있던 화면이 「t-box 2단계 코드 생성기」(`/assets/totp-generator.html`)였고, 「인증 앱에 바로 추가(otpauth 링크)」는 로그인 뒤 「내 계정」에서 「2단계 인증 켜기」를 누른 **뒤**에만 나온다(이미 켜진 계정은 끄고 다시 켜야 새 키). 폰 브라우저로 내 계정 → 끄기 → 켜기 → 링크 → 앱 자동 등록으로 **해결(사용자 「됬다」)**. 남는 불편: 앱의 정상 경로인 **QR 스캔**이 없어(9/11 결정 「QR 은 후속」) PC 에서 등록하면 32자 손 입력. 외부 의존 없이 QR 을 직접 그리는 것을 후속 후보로 둔다. 구글 **계정 로그인(OAuth)** 은 외부 요청(S-05·CLAUDE.md 4장)·Admin 계정 생성 구조(F-16)와 어긋나 채택하지 않는다 |
+| 2026-09-16 | 판단(Opus→Fable) | 시험 (d) 첫 실행 실패 — 직전 `confirm` 과 같은 30초 창의 같은 코드로 브라우저 로그인 시도 | R-45(코드 1회성)가 의도대로 막은 것. 시험을 「항상 다음 창 + 3회 재시도」로 고침. 앱 결함 아님. 시험 시간 약 6분 |
+| 2026-09-16 | 정보(Fable) | 자동 마스크 선택이 파이썬 `qrcode` 와 6건 중 3건 다름 | 벌점 동률·N3 셈법 차이. 어느 마스크든 규격상 유효하고 강제 마스크 8종 전부 비트 일치이므로 판독에 영향 없음 — 정보로만 기록 |
+| 2026-09-16 | 결정(사용자) | 「QR진행해」 | F-51 — 서버(`src/Qr.php`)가 행렬을 만들고 화면이 canvas 에 그린다. 외부 라이브러리 대신 직접 구현(`Totp.php` 와 같은 이유, S-10-C). 시험 오라클로 파이썬 `qrcode` 를 `~/.local` 에만 설치(앱 무관) |
+
 ## 2-1. 10단계 뒤 일괄 자기 공격 — 진행 순서 (관문 ③, 사용자)
 
 일괄 진행 모드에서는 4~10단계의 관문 ③을 한 번에 수행한다. **각 단계 절의 "자기 공격 체크" 를 위에서부터 차례로** 하되, 아래 순서가 효율적이다(계정 전환 최소화). 시드 계정 비밀번호: `sudo cat /etc/tbox-v2/seed-accounts.txt`.
@@ -1670,6 +1701,7 @@ sudo -u postgres psql -d tbox_re -c "SELECT happened_at, actor_name, action, res
 | 2026-09-13 | 「생성기에서 만든 코드가 시간이 지나도 인증이 통과한다」 | **서버 정상·생성기 표시 문제** — 한 코드는 최대 59초 통과(±1 창), 60초부터 거부, 재사용은 `code_reused` 거부. 생성기가 「다음 코드」(미래 스텝)를 미리 보여 줘 그 코드가 지금부터 약 1분 더 유효했던 것 | 생성기 「다음 코드」 표시 제거·시각 카드 문구 수정, SECURITY R-45 후속 기록. 2분 이상 지난 코드가 통과했다면 다른 원인 — 시각을 받아 `auth.login`·`auth.mfa` 감사에서 확인 예정 |
 | 2026-09-15 | `$(whoami)` 를 `$(changkwon)` 으로 바꾸니 `changkwon: command not found` | `$( … )` 는 **명령 치환** — 괄호 안을 명령으로 실행하고 그 출력으로 바꾼다. `whoami` 는 사용자 이름을 출력하는 명령이라 `$(whoami)` → `changkwon` 이 되지만, `changkwon` 은 명령이 아니므로 실행 실패. 값을 직접 쓰려면 괄호 없이 `https://changkwon.mso.so/…` | `echo $(whoami)` → `changkwon` · `echo $(changkwon)` → `command not found` |
 | 2026-09-15 | `curl.exe https://changkwon.mso.so/api/health\` 가 왜 실패하나? | 두 가지가 겹쳤다. ① **`curl.exe` 는 Windows 용 실행 파일 이름**이다. 프롬프트 `changkwon@eric:/var/www/tbox-v2$` 는 리눅스 서버의 bash 이므로 `curl.exe` 라는 명령이 없어 `command not found` 가 난다 — PowerShell 에서 `curl` 이 `Invoke-WebRequest` 별칭이라 `.exe` 를 붙이던 습관이 서버에 따라온 것. 리눅스에서는 `curl` 이 실제 명령(`/usr/bin/curl`). ② 끝의 **`\`(역슬래시)** 는 bash 에서 「다음 줄에 명령이 이어진다」 는 뜻이라, 엔터를 쳐도 실행되지 않고 `>` 프롬프트로 다음 줄을 기다린다(`Ctrl+C` 로 빠져나온다). 주소는 정상 — `curl` 로 200 이 온다 | `which curl.exe` → 없음 · `curl -sS -o /dev/null -w '%{http_code}\n' https://changkwon.mso.so/api/health` → `200` |
+| 2026-09-15 | `git add 파일… && git commit -m "…" && git push origin main` 을 실행하면 어떻게 되나? | 세 단계가 차례로 돈다(`&&` 는 앞이 성공해야 다음 실행). ① `add` = 지정한 파일만 「이번 커밋에 넣을 목록」(스테이징)에 올림 — 목록에 없는 `jar`·`api-test.txt` 는 빠짐(CLAUDE.md 6장 `git add -A` 금지의 이유) ② `commit` = 그 목록을 메시지와 함께 로컬 저장소 이력에 한 덩이로 기록(해시 생김, 서버 파일·서비스는 안 바뀜) ③ `push` = 그 커밋을 원격(`git2.tla.so`)의 `main` 에 올림. 되돌리기: push 전이면 `git reset --soft HEAD~1`, 후면 새 커밋으로 고침 | `git status` → `git log --oneline -1` → `git status -sb`(`ahead 0` 이면 push 됨) |
 
 ## 4. 이 문서를 채우는 규칙 (요약 — 원문은 `CLAUDE.md` 9장)
 

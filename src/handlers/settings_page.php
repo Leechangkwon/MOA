@@ -124,8 +124,8 @@ require __DIR__ . '/../views/shell_top.php';
       </section>
 
       <!-- 2단계 인증 (PRD F-16 ③ "모든 역할에 필수", SECURITY R-05).
-           QR 라이브러리를 넣지 않으므로 비밀과 otpauth 주소를 **글자 그대로** 보여 주고
-           사용자가 인증 앱에 손으로 옮겨 적는다. 화면에 나오는 값은 전부 app.js 가
+           QR(F-51, `src/Qr.php` 행렬을 canvas 에 그림)·비밀·otpauth 주소를 함께 보여 준다 —
+           QR 이 기본 경로, 글자는 카메라를 못 쓸 때의 대안. 화면에 나오는 값은 전부 app.js 가
            textContent / setAttribute 로 넣는다. -->
       <section class="panel span-all">
         <div class="panel__head">

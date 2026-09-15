@@ -17,8 +17,9 @@ declare(strict_types=1);
  * 비밀이 밖으로 나가는 곳은 **이 응답 한 곳뿐**이다.
  *   · 감사 로그에 남기지 않는다 (Audit::FORBIDDEN_DETAIL_KEYS 의 `secret`·`mfa` 가 다시 한 번 막는다)
  *   · app.log·오류 문구에도 넣지 않는다
- *   · 응답은 `Cache-Control: no-store`(Http::json) 로 나가고 화면은 텍스트로만 보여 준다
- *     — QR 라이브러리를 넣지 않으므로 사용자가 인증 앱에 손으로 옮겨 적는다
+ *   · 응답은 `Cache-Control: no-store`(Http::json) 로 나간다. QR 은 `src/Qr.php`(외부 의존 0)가
+ *     만든 모듈 행렬을 화면이 canvas 에 그린다 — 이미지 파일·외부 요청 없음 (F-51, ARCH 5.25).
+ *     비밀 키·`otpauth` 주소는 전과 같이 글자로도 함께 보여 준다(카메라를 못 쓰는 경우)
  *
  * 이미 켜져 있는 계정은 다시 enroll 할 수 없다(400). 켜진 상태에서 비밀을 갈아 끼우면
  * 옛 비밀로 만든 코드가 갑자기 안 맞게 되어 잠기기 때문이다. 끄고(disable) 다시 켠다.
@@ -72,9 +73,20 @@ $db->run($sqlSave, [':secret' => $secret, ':id' => $userId]);
 
 // 확정(confirm) 전이므로 감사 로그를 남기지 않는다 — 켜진 사실(`auth.mfa_enroll|allow`)은
 // mfa_confirm.php 가 남긴다. 여기서 남기면 "켰다" 는 기록만 있고 실제로는 꺼져 있을 수 있다.
+$otpauth = Totp::otpauthUri((string) $user['username'], $secret);
+
+// QR 은 **편의**다 — 만들지 못하면 `null` 로 내리고 텍스트 등록은 그대로 된다 (PRD F-51 ⑤).
+// 잡은 예외의 문구도 비밀도 로그·응답에 남기지 않는다.
+try {
+    $qr = Qr::encode($otpauth);
+} catch (RuntimeException $e) {
+    $qr = null;
+}
+
 Http::json([
     'secret'  => $secret,
-    'otpauth' => Totp::otpauthUri((string) $user['username'], $secret),
+    'otpauth' => $otpauth,
     'digits'  => Totp::DIGITS,
     'period'  => Totp::PERIOD,
+    'qr'      => $qr,
 ]);

@@ -532,6 +532,17 @@ table.files td.actions .btn:first-child { margin-left: 0; }
 .mfa { display: flex; flex-direction: column; gap: 12px; }
 .mfa .audit-detail { max-width: 34rem; }
 #mfa-uri-link { font-size: 13.5px; font-weight: 600; }
+/* 등록 QR (F-51) — 어두운 테마에서도 **흰 바탕 · 검정 모듈**이어야 인증 앱이 읽는다.
+   그래서 배경색만은 색 토큰을 쓰지 않는다. 칸 경계가 뭉개지지 않게 pixelated. */
+.mfa-qr {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  image-rendering: pixelated;
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: var(--r-ctl);
+}
 
 /* ─── 모달 (<dialog>) — 12-2 미리보기가 쓴다 ────────────────────── */
 dialog.modal {
