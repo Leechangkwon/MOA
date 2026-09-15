@@ -55,6 +55,11 @@ const TBOX_ROUTES = [
     //   file.delete : 삭제할 수 있는 역할인가 (Guest 는 여기서 끝)
     ['GET',    '/api/files',               'files_list.php',     'file.read'],
     ['POST',   '/api/files',               'files_upload.php',   'file.upload'],
+    // F-49 — 프로그램용 업로드 (PRD F-49 · 8장 `/api/upload` 행, ARCH 4.2, SECURITY R-82).
+    //   정책은 웹 업로드와 **같은 file.upload** 다. 다른 것은 인증 방법 하나뿐이고(아래 [2] 의
+    //   토큰 가지), 인가 [4] 와 등급 권한은 귀속 계정 기준으로 그대로 탄다.
+    //   ★ `X-API-Token` 이 통하는 라우트는 **이 한 줄뿐**이다 — 다른 라우트는 그 헤더를 읽지도 않는다.
+    ['POST',   '/api/upload',              'api_upload.php',     'file.upload'],
     // 7단계 — URL 로 파일 가져오기 (PRD F-14, S-05, ARCH 5.6).
     //   file.fetch : Manager 이상만 (PRD 5.4). Employee·Guest 는 여기서 끝난다(authz.route deny).
     //   `{id}` 는 UUID 36자만 받으므로 `/api/files/fetch` 와 충돌하지 않지만,
@@ -646,6 +651,15 @@ const TBOX_LOGIN_PATH = '/login';
 const TBOX_HOME_PATH = '/';
 
 /**
+ * 프로그램용 업로드 토큰이 통하는 **유일한 라우트** (PRD F-49 ①, ARCH 4.2).
+ *
+ * 값은 `TBOX_ROUTE`(메서드 + 라우트 **패턴**)와 정확히 같은 표기여야 한다. 아래 [2] 가
+ * 이 상수 하나와 견주므로, 토큰 경로를 넓히려면 여기를 고쳐야 하고 그것이 곧 검토 지점이다.
+ * 목록이 아니라 문자열 하나인 것도 의도다 — "창구 하나" 라는 성질을 코드 모양으로 남긴다.
+ */
+const TBOX_API_TOKEN_ROUTE = 'POST /api/upload';
+
+/**
  * 라우트 표가 스스로 성립하는지 검사한다. 하나라도 어긋나면 요청을 처리하지 않는다.
  *
  * 검사 항목
@@ -791,7 +805,32 @@ define('TBOX_ROUTE', $reqMethod . ' ' . $routePattern);
 
 // ─── [2] 인증 · [3] CSRF · [4] 인가 ────────────────────────────
 $user = null;
+
+/* F-49 — 이 요청이 **프로그램용 업로드 토큰**으로 들어왔나 (PRD F-49, ARCH 4.2).
+ * 아래 [2] 에서만 참이 되고, [3-2] 재인증 관문을 건너뛰는 판단에 쓴다.
+ * 토큰 경로는 세션이 없으므로 "15분 안에 비밀번호를 다시 확인했나" 라는 물음 자체가 성립하지 않는다.
+ * (file.upload 는 Authz::REAUTH_POLICIES 에 없어 어차피 해당 없음이지만, 코드 구조로도 지나지 않게 한다.) */
+$viaApiToken = false;
+
 if ($policy !== Authz::POLICY_PUBLIC) {
+    /* ─── [2-T] 프로그램용 업로드 토큰 경로 (F-49, ARCH 4.2) ──────────────────────
+     *
+     * ★ 이 가지에 들어오는 라우트는 **딱 하나**다. 그래서 `X-API-Token` 은 그 창구 밖에서
+     *   아무것도 열지 못한다 — 다른 라우트는 그 헤더를 읽는 코드에 닿지도 않는다(PRD F-49 ①).
+     *   판단 기준은 요청이 보낸 값이 아니라 **라우터가 매칭한 라우트 패턴**이다.
+     *
+     * 건너뛰는 것: 세션 조회 · CSRF([3]) · 최초 로그인 강제 절차([3-1]) · 재인증([3-2]).
+     *   CSRF 는 "브라우저가 쿠키를 자동으로 싣는 것" 을 막는 장치인데 토큰은 자동으로 실리지
+     *   않으므로 대상이 아니다. 강제 절차·재인증은 **사람**의 절차이고, 귀속 계정이 그 절차 중이면
+     *   requireApiToken 이 아예 503(`user_invalid`)으로 끊는다.
+     * 그대로 타는 것: 아래 [4] 인가와, 핸들러 안의 등급 권한·폴더 규칙·형식 검사 — 웹과 같은 코드다.
+     */
+    if (TBOX_ROUTE === TBOX_API_TOKEN_ROUTE) {
+        $user        = Auth::requireApiToken();   // 실패 시 401·503 + Audit::deny (Auth 안에서)
+        $viaApiToken = true;
+        // 감사 로그가 모든 행에 자동으로 붙이는 분류어 (Audit::autoDetail, ARCH 4.2 「감사의 구분」).
+        define('TBOX_AUTH_METHOD', 'api_token');
+    } else {
     // 미로그인 처리 (ARCH 4.0): API 는 401 JSON + Audit::deny, 화면 경로는 302 /login.
     // 화면 경로에 감사 로그를 남기지 않는 이유 — 세션이 만료된 뒤의 첫 방문은 공격이 아니고,
     // 그런 요청까지 남기면 실제 공격 흔적이 묻힌다 (PRD S-07 취지).
@@ -853,6 +892,7 @@ if ($policy !== Authz::POLICY_PUBLIC) {
             exit;
         }
     }
+    }   // ← [2-T] 토큰 경로 / 세션 경로의 갈림 끝 (F-49). 아래 [4] 인가부터는 **둘 다** 탄다.
 
     if (!Authz::authorize($policy, $user)) {
         Audit::deny('authz.route', 'role_not_permitted', [
@@ -882,7 +922,7 @@ if ($policy !== Authz::POLICY_PUBLIC) {
      * 하나), 요청이 정하지 않는다 (PRD S-01). 대상 정책 목록은 Authz 한 곳에 있다 —
      * 라우터가 정책 이름을 직접 비교하지 않는다 (ARCH 4.1).
      */
-    if (Authz::requiresReauth($policy) && ($user['reauth_fresh'] ?? false) !== true) {
+    if (!$viaApiToken && Authz::requiresReauth($policy) && ($user['reauth_fresh'] ?? false) !== true) {
         Audit::deny('auth.gate', 'reauth_required', [
             // 막힌 사람이 곧 대상이다 (ARCH 7.4 문장 틀의 {target}, 강제 절차 관문과 같은 모양).
             'target_type' => 'user',

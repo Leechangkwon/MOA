@@ -492,6 +492,100 @@ final class Auth
         return $u;
     }
 
+    /** 프로그램용 업로드 토큰의 최소 길이 (PRD F-49 ①, ARCH 4.2 「설정 확인」) */
+    public const API_TOKEN_MIN_CHARS = 32;
+
+    /**
+     * 프로그램용 업로드 `POST /api/upload` 의 인증 (PRD F-49, ARCH 4.2, S-09-11).
+     *
+     * 사람의 로그인(requireLogin)과 **다른 길**이다. 세션도 쿠키도 CSRF 도 없고, 대신
+     * `.env` 의 정적 토큰 하나를 헤더 `X-API-Token` 과 견준다. 이 함수를 부르는 곳은
+     * 라우터 [2] 의 `POST /api/upload` 가지 하나뿐이다 — **다른 라우트는 이 헤더를 읽지도
+     * 않으므로**, 토큰을 쥔 사람도 그 창구 밖에서는 아무것도 할 수 없다.
+     *
+     * 실패는 네 가지이고 전부 `auth.token deny` 로 남는다. 감사의 대상은 **라우트 패턴**이다
+     * (`target_type=system`) — 어느 계정에 귀속되는지는 요청자에게도 로그에도 흘리지 않는다.
+     *   not_configured  `.env` 에 토큰이 없다·짧다 → 503. **닫힌 실패**다: 설정이 안 된 서버는
+     *                   "아무나 올릴 수 있는 서버" 가 아니라 "아무도 못 올리는 서버" 여야 한다
+     *   missing_header  헤더가 없다 → 401
+     *   bad_token       헤더가 다르다 → 401. 비교는 **hash_equals 만** 쓴다(타이밍 안전).
+     *                   `==`·`===`·`strcmp` 는 앞에서부터 다른 자리를 만나면 바로 끝나므로,
+     *                   응답 시간 차이를 재서 한 글자씩 맞혀 볼 수 있다
+     *   user_invalid    귀속 계정(`API_TOKEN_USER`)이 없다·비활성·만료·강제 절차 중 → 503.
+     *                   요청이 잘못된 것이 아니라 **서버 설정**이 잘못된 것이므로 4xx 가 아니다
+     *
+     * 성공하면 그 계정을 `currentUser()` 가 돌려주는 것과 **같은 자리**(self::$user)에 앉힌다.
+     * 그래야 감사 로그의 `actor_*` 가 귀속 계정 이름으로 남고(PRD F-49 ②), 업로드 공통 함수는
+     * "누가 불렀는지" 를 모른 채 웹과 똑같은 코드를 실행한다. 비밀번호 해시·TOTP 비밀은
+     * 배열에서 **빼고** 앉힌다 — 업로드 경로가 그 값을 볼 이유가 없다.
+     *
+     * 토큰 값은 이 함수 어디에서도 로그·감사·응답에 나가지 않는다 (PRD S-09-11, SECURITY R-82).
+     *
+     * @return array<string,mixed>
+     */
+    public static function requireApiToken(): array
+    {
+        // ① 서버 설정 — 없거나 짧으면 아무도 못 들어온다 (닫힌 실패)
+        $configured = Env::getOrEmpty('API_TOKEN');
+        if (strlen($configured) < self::API_TOKEN_MIN_CHARS) {
+            self::denyApiToken('not_configured');
+            Http::error(503, 'API 토큰이 서버에 설정되지 않았습니다');
+        }
+
+        // ② 헤더
+        $sent = Http::apiTokenHeader();
+        if ($sent === null) {
+            self::denyApiToken('missing_header');
+            Http::error(401, 'X-API-Token 헤더가 없습니다');
+        }
+
+        // ③ 비교 — hash_equals 만. 길이가 달라도 false 이고 시간이 값에 따라 변하지 않는다.
+        if (!hash_equals($configured, $sent)) {
+            self::denyApiToken('bad_token');
+            Http::error(401, 'API 토큰이 올바르지 않습니다');
+        }
+
+        // ④ 귀속 계정 — 로그인과 **같은 조회**를 쓴다(비밀번호 검증만 없다).
+        $name = Env::getOrEmpty('API_TOKEN_USER');
+        $row  = null;
+        if ($name !== '' && preg_match(self::USERNAME_RE, $name) === 1) {
+            $row = Db::instance()->run(self::SQL_LOAD_USER, [':username' => $name])->fetch();
+        }
+        if (!is_array($row)
+            || $row['is_active'] !== true
+            || $row['is_expired'] === true
+            || self::nextStep($row) !== null
+        ) {
+            self::denyApiToken('user_invalid');
+            // 계정 이름도, 넷 중 무엇이 틀렸는지도 응답에 넣지 않는다 (PRD S-09-5).
+            Http::error(503, 'API 토큰 귀속 계정이 올바르지 않습니다(서버 설정)');
+        }
+
+        // 인증 값은 들고 다니지 않는다 — 업로드 경로가 쓰는 것은 id·username·role·team_id 다.
+        unset($row['password_hash'], $row['mfa_secret'], $row['mfa_last_step']);
+
+        // ⑤ 감사의 「누가」 가 귀속 계정이 되도록 현재 사용자 자리에 앉힌다 (Audit::actor).
+        //    세션이 없으므로 session_id 는 없다 → detail.login_ref 도 생기지 않는다(맞는 동작).
+        self::$user     = $row;
+        self::$resolved = true;
+
+        return $row;
+    }
+
+    /**
+     * 토큰 경로의 거부 기록 (ARCH 4.2 「감사의 구분」, 7.4 `auth.token`).
+     * 대상은 **라우트 패턴**뿐이다 — 계정 정보도 토큰 값도 남기지 않는다.
+     */
+    private static function denyApiToken(string $reason): void
+    {
+        Audit::deny('auth.token', $reason, [
+            'target_type' => 'system',
+            'target_name' => defined('TBOX_ROUTE')
+                ? (string) constant('TBOX_ROUTE')
+                : Http::method() . ' ' . Http::path(),
+        ]);
+    }
+
     /**
      * CSRF 토큰 (ARCH 4.0). 세션 해시에 APP_SECRET 으로 HMAC 을 걸어 계산한다 —
      * 저장하지 않으므로 스키마 변경이 없고, 세션이 죽으면 토큰도 함께 무효가 된다.

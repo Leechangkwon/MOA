@@ -278,6 +278,44 @@ public static function canRead(array $u, array $file): bool { return self::decid
 
 ---
 
+### 4.2 프로그램용 업로드 `POST /api/upload` — 정적 API 토큰 (PRD F-49, 사용자 결정 2026-09-15 A)
+
+로컬 프로그램이 매번 2단계 인증 없이 파일을 올릴 수 있게, **한 창구에만 통하는 정적 토큰**을 둔다.
+사람의 대화형 로그인(4.0)은 그대로다. 강사 2차 프롬프트의 계약(경로·필드·응답·`.env API_TOKEN`)을
+그대로 따르되, v2 의 원칙 두 가지는 지킨다 — **업로드 로직은 하나**(웹과 같은 함수), **인가는 Authz 한 곳**.
+
+**어디에 꽂히나.** 공통 관문 `[2] 인증` 에서 라우트가 `POST /api/upload` 이면 **토큰 경로**, 아니면 기존
+세션 경로다. 다른 라우트에 `X-API-Token` 이 실려 와도 **무시**한다(토큰은 이 라우트 밖에서 아무것도 열지 못한다).
+
+| 순서 | 토큰 경로가 하는 일 |
+|---|---|
+| 설정 확인 | `.env` `API_TOKEN` 이 없거나 빈 값·32자 미만이면 **503** `{"error":"API 토큰이 서버에 설정되지 않았습니다"}` + `auth.token deny not_configured` — 닫힌 실패. 앱은 `.env` 를 읽기만 하므로(0640, 그룹 읽기) 스스로 토큰을 만들 수 없다 |
+| 헤더 확인 | `X-API-Token` 없음 → 401 「X-API-Token 헤더가 없습니다」(`missing_header`). 있으면 `hash_equals(API_TOKEN, 헤더)` — 다르면 401 「API 토큰이 올바르지 않습니다」(`bad_token`). 문자열 비교는 타이밍 안전한 `hash_equals` 만 쓴다 |
+| 귀속 계정 | `.env` `API_TOKEN_USER` 의 계정을 `users` 에서 읽어 `$user` 로 세운다. 없음·비활성·강제절차 중(`nextStep !== null`)이면 503 `user_invalid`(설정 문제) — 요청자에게 계정 정보는 나가지 않는다 |
+| 건너뛰는 것 | CSRF·강제절차 관문 `[3-1]`·재인증 관문 `[3-2]`. 토큰은 브라우저가 자동으로 싣지 않으므로 CSRF 대상이 아니다 |
+| 그대로 타는 것 | `[4] Authz::authorize('file.upload', $user)` + 업로드 공통 함수 안의 등급 권한(`decideUploadAs`)·폴더 규칙(`fitsUnderFolder`)·형식 검사(`Upload::validate`)·일일 총량·민감정보 검출. **웹 업로드와 한 글자도 다르지 않은 판정**이다 |
+
+**업로드 로직은 하나.** `files_upload.php` 의 본문을 공통 함수로 빼고(예: `src/handlers/_upload_common.php`),
+웹(`POST /api/files`)과 API(`POST /api/upload`)가 **둘 다 그 함수를 부른다**. 차이는 세 가지 매핑뿐이다:
+① 등급 필드 이름(`access_level` ↔ `level`, 없으면 `public`) ② 거부 문구(웹 = 통일 「잘못된 요청입니다」·「권한이
+없습니다」 그대로, API = 사유 코드 → 사람이 읽는 이유) ③ 성공 응답(`{id,name}` ↔ `{id,name,level}`). 감사 행·사유
+코드·트랜잭션은 같다. 사유 코드 목록은 `Upload::validate`·`checkDailyQuota`·`fitsUnderFolder`·핸들러의
+`$rejectBadRequest` 호출을 **전부** 훑어 매핑하고, 모르는 코드는 「잘못된 요청입니다」로 떨어진다(빠짐 없음).
+
+**오류 문구 정책(사용자 결정).** 400/401/403/413 은 이유를 알려 준다 — 부르는 쪽이 토큰을 아는 **우리 프로그램**이고,
+이유를 모르면 고칠 수 없기 때문이다. **500 은 기존 일반 문구**(`{"error":"서버 오류"}`)를 유지한다(PRD S-09-7 —
+예외·DB 오류 원문은 서버 로그의 `request_id` 로만). 100MB 초과는 nginx 가 PHP 앞에서 끊으므로
+`deploy/sites/tbox-v2.conf` 에 `error_page 413` 을 **JSON** 으로 두어 계약(413 + `{"error"}`)을 지킨다.
+
+**감사의 구분.** 토큰 경로는 요청 스코프에 인증 방식을 세우고(`TBOX_AUTH_METHOD = 'api_token'`), `Audit` 이
+모든 행의 `detail.auth` 에 자동으로 붙인다 — 업로드 공통 함수는 누가 불렀는지 모른 채 같은 코드를 실행한다.
+실패는 `auth.token deny(missing_header·bad_token·not_configured·user_invalid)`. 새 (action·result·reason) 조합과
+상세 키 `auth` 는 `Audit.php` 허용표에 등록해야 기록이 통과한다(7장).
+
+**토큰의 수명.** 생성·교체는 `scripts/api_token_rotate.sh`(무작위 48자, `.env` 의 `API_TOKEN=` 줄만 바꾸고 **값을
+출력하지 않는다**). 확인은 서버에서 `cat .env`. 값은 저장소·문서·채팅·감사 로그 어디에도 적지 않는다.
+한계는 SECURITY R-82 — 공용 정적 토큰이라 사용자별 회수·귀속이 없다(사용자별 토큰은 필요 시 후속 F-50).
+
 ## 5. 네 가지 흐름 — 순서대로, 권한 검사 위치 표시
 
 표기: **[권한 ✔]** = 여기서 권한 검사 · **[DB]** = PostgreSQL · **[FS]** = 스토리지 디스크 · **[LOG]** = 감사 로그

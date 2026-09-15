@@ -93,6 +93,38 @@ final class Http
     /** JSON 본문 상한 — 로그인·삭제 같은 작은 요청만 JSON 으로 받는다 */
     private const MAX_JSON_BYTES = 65536;
 
+    /**
+     * 프로그램용 업로드 토큰 헤더의 **상한**(F-49, ARCH 4.2).
+     * 토큰은 48자(scripts/api_token_rotate.sh)이고 `.env` 값도 32자 이상이면 된다.
+     * 256자를 넘는 값은 비교조차 하지 않는다 — 긴 문자열을 hash_equals 에 계속 던져
+     * CPU 를 태우는 경로를 만들지 않는다. 길이만 보고 버리므로 값의 내용은 읽지 않는다.
+     */
+    private const MAX_API_TOKEN_BYTES = 256;
+
+    /**
+     * 요청 헤더 `X-API-Token` — 프로그램용 업로드 `POST /api/upload` 전용 (PRD F-49, ARCH 4.2).
+     *
+     * ★ 이 함수를 부르는 곳은 `Auth::requireApiToken()` **하나**이고, 그 함수를 부르는 곳은
+     *   라우터 [2] 의 `TBOX_ROUTE === 'POST /api/upload'` 가지 **하나**다. 그래서 다른 라우트는
+     *   이 헤더를 **읽지도 않는다** — 토큰으로는 그 창구 밖의 어떤 기능도 열리지 않는다.
+     *
+     * 값은 여기서 **판단하지 않는다**(같다·다르다는 hash_equals 의 몫이다). 하는 일은
+     * 공백을 떼고, 없거나 빈 값이면 null 을 돌려주고, 터무니없이 긴 값을 버리는 것뿐이다.
+     * 토큰 값은 이 함수에서도 호출자에서도 **로그·감사·응답 어디에도 나가지 않는다**.
+     */
+    public static function apiTokenHeader(): ?string
+    {
+        $raw = $_SERVER['HTTP_X_API_TOKEN'] ?? null;
+        if (!is_string($raw)) {
+            return null;
+        }
+        $token = trim($raw);
+        if ($token === '' || strlen($token) > self::MAX_API_TOKEN_BYTES) {
+            return null;
+        }
+        return $token;
+    }
+
     /** @param array<string,mixed> $data */
     public static function json(array $data, int $code = 200): void
     {

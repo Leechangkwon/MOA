@@ -4,6 +4,12 @@ declare(strict_types=1);
 /**
  * src/handlers/files_upload.php — POST /api/files (multipart/form-data) (정책: file.upload)
  *
+ * ★ F-49 (2026-09-15) — 이 파일의 본문은 `_upload_common.php` 의 `tbox_upload_run()` 으로 옮겼다.
+ *   프로그램용 업로드(`POST /api/upload`)가 **같은 함수**를 부르기 때문이다 (ARCH 4.2 「업로드
+ *   로직은 하나」, PRD F-49 ⑤). 두 입구가 각자 검증을 구현하면 언젠가 한쪽에만 규칙이
+ *   추가되고, 규칙이 빠진 쪽이 곧 우회 경로가 된다.
+ *   여기 남은 것은 **웹의 문구와 응답 모양**뿐이고, 판정·감사·트랜잭션은 옮기기 전과 같다.
+ *
  * ★ 4단계: 레벨·팀을 읽은 **직후**, 파일 검증·저장 **전에**
  *   `Authz::decideUploadAs($user, $level, $teamId)` 로 판정한다 (ARCH 5.2 "[권한 ✔ A]").
  *   화면의 <select> 를 조작해 admin-only 나 남의 팀을 보내도 여기서 403 + 감사 로그 deny 다.
@@ -13,7 +19,7 @@ declare(strict_types=1);
  *   `Sensitive::scan()` 을 한 번 부른다 (PRD F-22, ARCH 5.13). URL 가져오기(files_fetch)도
  *   **같은 함수**를 같은 자리에서 부르므로 한쪽 입구만 검사가 빠지는 일이 없다.
  *
- * 요구사항: PRD F-05 · F-22, S-01, 7.6(S-06), 8장 API 표, ARCH 5.2 · 5.13
+ * 요구사항: PRD F-05 · F-22 · F-49 ⑤, S-01, 7.6(S-06), 8장 API 표, ARCH 5.2 · 5.13 · 4.2
  *
  * 그 밖에 지키는 것
  *   · CSRF: 라우터 [3] 의 Http::requireCsrf() 가 X-CSRF-Token 헤더를 검사한다 (PRD S-09-3)
@@ -29,303 +35,34 @@ declare(strict_types=1);
  * @var list<string>        $params 경로 변수 없음
  */
 
+require_once __DIR__ . '/_upload_common.php';
+
 /**
- * 폼 필드 하나를 문자열로 읽는다.
- * 키를 변수로 넘기는 이유: 폼 필드 이름을 리터럴 첨자로 쓰면
- * scripts/security_lint.sh 의 "요청 파라미터의 역할값 사용" 검사(role·is_admin·팀 첨자)에 걸린다.
- * 팀 번호는 역할이 아니라 사용자가 고른 업로드 대상 팀이지만(PRD F-05),
- * 린트를 예외 처리하기보다 요청 값을 읽는 통로를 한 곳으로 모으는 편이 안전하다.
- * 실제 권한 판단(그 팀으로 올릴 수 있는가)은 아래 [3-2] Authz::decideUploadAs 가 한다.
+ * 웹의 거부 문구 — 사유는 감사 로그에만, 사용자에게는 통일된 문구만 (PRD S-09-5).
+ *
+ * 세 가지뿐이고 **F-49 이전과 한 글자도 같다**:
+ *   403                        「권한이 없습니다」          (등급·팀 권한)
+ *   400 sensitive_level_required 「민감정보가 보여 …」        예외적으로 이유를 알려 주는 400
+ *                                (막힌 사람이 올리는 본인이고, 이유를 모르면 어떤 등급으로
+ *                                 다시 올려야 하는지 알 수 없다 — Http 상수 주석)
+ *   그 밖의 400                 「잘못된 요청입니다」
+ *
+ * @param array<string,mixed> $entry 감사 엔트리 (공통 함수가 만든 것을 그대로 남긴다)
  */
-$formText = static function (string $key): string {
-    $raw = $_POST[$key] ?? '';
-    return is_string($raw) ? $raw : '';
-};
-
-/** 검증 실패 — 사유는 감사 로그에만, 사용자에게는 동일한 400 문구만 (PRD S-09-5) */
-$rejectBadRequest = static function (string $reason, ?string $name, ?string $level): void {
-    $entry = [
-        'target_type'  => 'file',
-        'target_name'  => $name,
-        'access_level' => $level,
-    ];
-    // MIME 짝 불일치는 "무엇으로 감지됐나" 가 없으면 진단할 수 없다 (2026-09-13 이카운트 xlsx 거부 사례, R-71).
-    if ($reason === 'mime_mismatch' && Upload::$lastDetectedMime !== null) {
-        $entry['detail'] = ['mime' => Upload::$lastDetectedMime];
-    }
+$reject = static function (string $reason, int $status, array $entry): void {
     Audit::deny('file.upload', $reason, $entry);
-    Http::error(400, Http::MSG_BAD_REQUEST);
+
+    if ($status === 403) {
+        Http::error(403, Http::MSG_FORBIDDEN);
+    }
+    Http::error($status, $reason === 'sensitive_level_required'
+        ? Http::MSG_SENSITIVE_LEVEL_REQUIRED
+        : Http::MSG_BAD_REQUEST);
 };
 
-// ─── [1] 파일 필드 확인 ────────────────────────────────────────
-// 101MB 같은 과대 요청은 nginx(client_max_body_size 101m)가 413 으로 먼저 끊는다.
-// 정확히 100MB(104,857,600 B) 경계는 PHP Upload::MAX_BYTES 가 판정한다 (ARCH 8장 6단계 결정).
-$uploaded = $_FILES['file'] ?? null;
-if (!is_array($uploaded)) {
-    $rejectBadRequest('no_file', null, null);
-}
+// 웹은 등급 필드가 `access_level` 이고 **기본값이 없다** — 비어 있으면 지금까지처럼
+// `bad_access_level` 400 이다 (기본값 `public` 은 프로그램용 입구에만 있다, PRD F-49 ③).
+$result = tbox_upload_run($user, 'access_level', '', $reject);
 
-// ─── [2] 원본 파일명 정리 (DB 전용 값) ─────────────────────────
-// basename() 으로 경로를 떼고(`../../etc/passwd.txt` → `passwd.txt`),
-// 제어문자·CR/LF 를 지우고, 255자로 자른다. 이 값은 경로 조립에 쓰이지 않는다.
-$rawName = $uploaded['name'] ?? '';
-$original = is_string($rawName) ? $rawName : '';
-$original = basename(str_replace('\\', '/', $original));
-if ($original !== '' && preg_match('//u', $original) !== 1) {
-    // 잘못된 UTF-8 은 DB(UTF8)·JSON 에서 오류를 만든다 → 저장하지 않고 거부한다
-    $rejectBadRequest('bad_encoding', null, null);
-}
-$original = (string) preg_replace('/[\x00-\x1f\x7f]+/u', '', $original);
-$original = trim($original);
-if ($original !== '' && iconv_strlen($original, 'UTF-8') > 255) {
-    $original = (string) iconv_substr($original, 0, 255, 'UTF-8');
-}
-if ($original === '') {
-    $original = 'file';
-}
-
-// ─── [3] 설명·접근 레벨·팀 ─────────────────────────────────────
-$description = $formText('description');
-if ($description !== '' && preg_match('//u', $description) !== 1) {
-    $rejectBadRequest('bad_encoding', $original, null);
-}
-$description = (string) preg_replace('/[\x00-\x1f\x7f]+/u', '', $description);
-if (iconv_strlen($description, 'UTF-8') > 500) {
-    // DB CHECK(length(description) <= 500) 와 같은 한계를 앱에서도 확인한다
-    $rejectBadRequest('description_too_long', $original, null);
-}
-
-$level = $formText('access_level');
-if (!in_array($level, ['public', 'internal', 'team', 'admin-only'], true)) {
-    $rejectBadRequest('bad_access_level', $original, null);
-}
-
-$teamId = null;
-if ($level === 'team') {
-    // team 레벨은 team_id 필수 (PRD 4장, DB CHECK team_requires_team_id 로도 강제)
-    $teamRaw = $formText('team_id');
-    if (preg_match('/^[1-9][0-9]{0,8}$/', $teamRaw) !== 1) {
-        $rejectBadRequest('bad_team', $original, $level);
-    }
-    // 12-3 (F-19, ARCH 5.9): **활성 팀만** 있는 것으로 본다 — 비활성 팀으로 올리려는 요청은
-    // 기존 거부 경로(bad_team → 400)로 끝난다. 이미 그 팀에 있는 파일은 그대로다.
-    $sqlTeam = <<<'SQL'
-        SELECT id FROM teams WHERE id = :id AND is_active
-        SQL;
-    $teamRow = Db::instance()->run($sqlTeam, [':id' => (int) $teamRaw])->fetch();
-    if (!is_array($teamRow)) {
-        $rejectBadRequest('bad_team', $original, $level);
-    }
-    $teamId = (int) $teamRow['id'];
-}
-
-/* ─── [3-3] 폴더 (18-1, PRD F-26, ARCH 5.16 "파일 쪽 변경") ───
- *
- * `folder_id` 는 **선택**이다 — 비어 있으면 루트에 올린다. 값이 있으면 폴더가 실제로 있고
- * **읽을 수 있어야** 한다(못 읽는 폴더 안으로 파일을 밀어 넣는 길을 만들지 않는다).
- * 없는 폴더와 못 읽는 폴더는 **같은 400 동일 문구**이고 사유(`bad_folder`)는 로그에만 남는다.
- *
- * 불변 규칙 ①(파일은 폴더보다 넓을 수 없다)은 등급 판정 바로 뒤 [3-4] 에서 본다.
- * 이 검사들은 파일을 읽기 **전**에 끝난다 — 거부될 업로드의 바이트를 검사·저장하지 않는다.
- */
-$folderId  = null;
-$folderRow = null;
-$folderRaw = $formText('folder_id');
-if ($folderRaw !== '') {
-    if (preg_match('/^[1-9][0-9]{0,8}$/', $folderRaw) !== 1) {
-        $rejectBadRequest('bad_folder', $original, $level);
-    }
-    $sqlFolder = <<<'SQL'
-        SELECT id, name, access_level, team_id
-          FROM folders
-         WHERE id = CAST(:id AS bigint)
-        SQL;
-    $folderRow = Db::instance()->run($sqlFolder, [':id' => (int) $folderRaw])->fetch();
-    if (!is_array($folderRow)) {
-        $rejectBadRequest('bad_folder', $original, $level);
-    }
-    // 폴더도 파일과 **같은 함수**로 읽기 판정한다 (폴더도 등급을 갖는다, F-26).
-    if (!Authz::decideRead($user, $folderRow)[0]) {
-        $rejectBadRequest('bad_folder', $original, $level);
-    }
-    $folderId = (int) $folderRow['id'];
-}
-
-// ─── [3-2] 권한 ✔ A — 이 레벨(+팀)로 올릴 수 있나 (검증·저장 전, ARCH 5.2) ───
-// 판정 코드는 Authz 가 돌려준 것을 그대로 기록한다 (ARCH 4.1).
-[$mayUpload, $uploadCode] = Authz::decideUploadAs($user, $level, $teamId);
-if (!$mayUpload) {
-    // 응답은 403 동일 문구뿐이다. 대상 팀 같은 서버가 아는 값은 로그에만 남긴다 (PRD S-07).
-    Audit::deny('file.upload', $uploadCode, [
-        'target_type'  => 'file',
-        'target_name'  => $original,
-        'access_level' => $level,
-        'detail'       => ['target_team' => $teamId],
-    ]);
-    Http::error(403, Http::MSG_FORBIDDEN);
-}
-
-/* ─── [3-4] 불변 규칙 ① — 파일은 폴더보다 넓을 수 없다 (ARCH 5.16) ───
- * 판정은 Authz::fitsUnderFolder 한 곳이고, 업로드·가져오기·이동·등급 변경·폴더 생성·이동·
- * 등급 변경 **일곱 경로**가 전부 이 함수를 지난다. 400 이고 Admin 도 같은 400 이다 —
- * 막는 것은 "누가" 가 아니라 "무엇이 어디에 들어갈 수 있나" 이기 때문이다.
- */
-if ($folderRow !== null) {
-    [$fits, $fitCode] = Authz::fitsUnderFolder($level, $teamId, $folderRow);
-    if (!$fits) {
-        Audit::deny('file.upload', $fitCode, [
-            'target_type'  => 'file',
-            'target_name'  => $original,
-            'access_level' => $level,
-            'detail'       => ['folder_id' => $folderId, 'target_team' => $teamId],
-        ]);
-        Http::error(400, Http::MSG_BAD_REQUEST);
-    }
-}
-
-// ─── [4] 업로드 검증 (크기·확장자 화이트리스트·이중 확장자·MIME 짝·해시) ───
-// 6단계: PRD S-06 전부를 Upload 이 판정한다 (T-7 · T-8 · 이중 확장자, src/Upload.php 주석).
-try {
-    $checked = Upload::validate($uploaded);
-} catch (RuntimeException $e) {
-    // 예외 메시지는 사유 코드다. 사용자에게는 나가지 않는다.
-    $rejectBadRequest($e->getMessage(), $original, $level);
-    return;
-}
-
-// ─── [4-2] 일일 총량 2GB (6단계, PRD S-06) ─────────────────────
-// 검증을 통과한 크기로 INSERT **전에** 본다. 삭제한 파일도 합계에 들어가므로
-// "올리고 지우기" 로 한도를 넘길 수 없다. 초과 응답은 413 이 아니라 다른 검증 실패와 같은
-// 400 동일 문구다 — 413 은 nginx 크기 제한의 몫이고, 사유는 감사 로그에만 남는다.
-try {
-    Upload::checkDailyQuota((int) $user['id'], $checked['size']);
-} catch (RuntimeException $e) {
-    $rejectBadRequest($e->getMessage(), $original, $level);
-    return;
-}
-
-$tmpPath = (string) $uploaded['tmp_name'];
-
-/* ─── [4-3] 민감정보 패턴 검출 (15-3, PRD F-22, ARCH 5.13, SECURITY R-58) ───
- *
- * 자리: 형식 검사·일일 총량을 통과한 **직후**, 저장 트랜잭션 **전**. 검사 대상은 미리보기가
- * 글자를 뽑을 수 있는 형식(text·table·office)뿐이고, 그 밖(이미지·PDF·zip)은 검사하지 못한다
- * — 한계는 R-58 로 문서에 남기고 화면에도 안내한다.
- *
- * 결과는 **패턴 이름과 건수**만이다(`['rrn'=>1]`). 검출된 숫자·문자열 원문은 돌려받지도,
- * 기록하지도, 응답에 담지도 않는다 (PRD S-07).
- *
- * 검출됐는데 등급이 public·internal 이면 저장하지 않는다. team·admin-only 면 저장하되
- * files.sensitive_flags 에 **이름만** 남겨 목록의 「민감」 배지와 등급 하향 거부에 쓴다.
- */
-require_once __DIR__ . '/../Sensitive.php';
-
-$sensitive      = Sensitive::scan($tmpPath, $checked['ext']);
-$sensitiveFlags = array_keys($sensitive);
-
-if ($sensitive !== [] && in_array($level, ['public', 'internal'], true)) {
-    // 임시 파일은 PHP 가 요청 끝에 지우지만, 저장하지 않기로 정한 순간 바로 치운다.
-    if (is_uploaded_file($tmpPath)) {
-        @unlink($tmpPath);
-    }
-    Audit::deny('file.upload', 'sensitive_level_required', [
-        'target_type'  => 'file',
-        'target_name'  => $original,
-        'access_level' => $level,
-        'detail'       => ['sensitive' => $sensitive, 'target_team' => $teamId],
-    ]);
-    // 이 400 만 예외적으로 "무엇이 막았는지" 를 알려 준다 — 막힌 사람이 올리는 본인이고,
-    // 이유를 모르면 어떤 등급으로 다시 올려야 하는지 알 수 없기 때문이다 (Http 상수 주석).
-    Http::error(400, Http::MSG_SENSITIVE_LEVEL_REQUIRED);
-}
-
-$storedName = Storage::newStoredName($checked['ext']);
-
-// sensitive_flags 는 **패턴 이름 배열**이다(`{rrn,card}`). 값은 Sensitive 가 돌려준 고정
-// 식별자뿐이고 사용자 입력이 섞이지 않지만, 그래도 텍스트 배열 리터럴을 바인딩해 CAST 한다.
-$sqlInsert = <<<'SQL'
-    INSERT INTO files
-        (original_name, stored_name, ext, mime, size_bytes, sha256,
-         description, access_level, team_id, uploaded_by, sensitive_flags, folder_id)
-    VALUES
-        (:original_name, :stored_name, :ext, :mime, :size_bytes, :sha256,
-         :description, :access_level, :team_id, :uploaded_by,
-         CAST(:flags AS text[]), CAST(:folder_id AS bigint))
-    RETURNING id, public_id
-    SQL;
-
-// ─── [5] 트랜잭션: INSERT → 파일 이동 → 감사 로그 → COMMIT ──────
-$db    = Db::instance();
-$moved = false;
-$db->begin();
-try {
-    $row = $db->run($sqlInsert, [
-        ':original_name' => $original,
-        ':stored_name'   => $storedName,
-        ':ext'           => $checked['ext'],
-        ':mime'          => $checked['mime'],
-        ':size_bytes'    => $checked['size'],
-        ':sha256'        => $checked['sha256'],
-        ':description'   => $description,
-        ':access_level'  => $level,
-        ':team_id'       => $teamId,
-        ':uploaded_by'   => (int) $user['id'],
-        ':flags'         => '{' . implode(',', $sensitiveFlags) . '}',
-        ':folder_id'     => $folderId,
-    ])->fetch();
-
-    if (!is_array($row)) {
-        throw new RuntimeException('업로드 레코드를 만들 수 없습니다');
-    }
-
-    Storage::put($tmpPath, $storedName);
-    $moved = true;
-
-    Audit::allow('file.upload', [
-        'target_type'  => 'file',
-        'target_id'    => (int) $row['id'],
-        'target_name'  => $original,
-        'access_level' => $level,
-        'detail'       => [
-            'ext'         => $checked['ext'],
-            'mime'        => $checked['mime'],
-            'size_bytes'  => $checked['size'],
-            // 육하원칙 칸 (ARCH 7.5): 왜 허용됐나 · 어떤 내용인가 · 누가 올렸나 · 어느 팀인가
-            'granted_by'  => $uploadCode,
-            'sha256'      => $checked['sha256'],
-            'owner_id'    => (int) $user['id'],
-            'target_team' => $teamId,
-            // 18-1 (F-26) — 어느 폴더에 올렸나. null 이면 루트다 (ARCH 7.5).
-            'folder_id'   => $folderId,
-        ] + ($sensitive === [] ? [] : ['sensitive' => $sensitive]),
-    ]);
-
-    $db->commit();
-} catch (Throwable $e) {
-    $db->rollback();
-    if ($moved) {
-        // DB 에 남지 않는 파일(고아 파일)을 두지 않는다
-        try {
-            Storage::removeUploaded($storedName);
-        } catch (Throwable $ignored) {
-            error_log('[tbox] request_id=' . TBOX_REQUEST_ID . ' 업로드 롤백 중 파일 삭제 실패');
-        }
-    }
-
-    // 실패도 기록한다 (PRD S-07). 롤백 뒤라 이 INSERT 는 별개 트랜잭션으로 남는다.
-    // 기록 자체가 실패한 경우까지 다시 예외로 덮지 않도록 감싼다 — 응답은 어차피 500 이다.
-    try {
-        Audit::error('file.upload', 'upload_failed', [
-            'target_type'  => 'file',
-            'target_name'  => $original,
-            'access_level' => $level,
-            'detail'       => ['moved' => $moved],
-        ]);
-    } catch (Throwable $ignored) {
-        error_log('[tbox] request_id=' . TBOX_REQUEST_ID . ' 업로드 실패 감사 기록 실패');
-    }
-
-    throw $e;   // bootstrap 의 예외 핸들러가 500 + {"error":"서버 오류"} 로 끝낸다
-}
-
-Http::json(['id' => (string) $row['public_id'], 'name' => $original], 201);
+// 응답 모양도 그대로다 — 등급은 웹 화면이 이미 알고 있으므로 담지 않는다 (PRD 8장 API 표).
+Http::json(['id' => $result['id'], 'name' => $result['name']], 201);

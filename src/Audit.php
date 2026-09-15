@@ -198,6 +198,18 @@ final class Audit
          *   needs_login 공개 링크가 아니어서 거부했나 (true). 값이 아니라 판정 사실이다
          */
         'hops', 'source_url', 'provider', 'needs_login',
+        /*
+         * F-49 프로그램용 업로드 (PRD F-49 ⑥, ARCH 4.2 「감사의 구분」·7.5 등록부).
+         *   auth — 이 요청이 **어떤 방법으로 인증됐나** 를 가리키는 고정 분류어(`api_token`).
+         *          값도 이름도 토큰이 아니다. 아래 autoDetail() 이 요청 스코프의
+         *          `TBOX_AUTH_METHOD` 를 보고 모든 행에 자동으로 붙이므로, 업로드 공통 함수는
+         *          누가 불렀는지 모른 채 같은 코드를 실행하면서도 `file.upload allow` 에
+         *          「프로그램이 올린 것」 이 남는다.
+         *          이름 자체는 FORBIDDEN_DETAIL_KEYS 부분 일치에 걸리지 않지만(`authorization`
+         *          쪽이 아니다), 등록부에 있는 키임을 코드에서도 드러내려고 여기 적는다
+         *          (preview_kind·part 와 같은 이유).
+         */
+        'auth',
     ];
 
     private const RESULT_ALLOW = 'allow';
@@ -220,6 +232,17 @@ final class Audit
         'auth.login|deny|inactive'                => '{target} 계정으로 로그인을 시도했지만 비활성화된 계정입니다',
         'auth.logout|allow'                       => '{actor} 이(가) 로그아웃했습니다',
         'auth.required|deny|not_authenticated'    => '로그인하지 않은 채 {target} 에 접근하려 해서 막았습니다',
+
+        /*
+         * F-49 프로그램용 업로드 토큰 (ARCH 4.2, PRD S-09-11, SECURITY R-82).
+         * 네 행 모두 {target} 은 **라우트 패턴**(`POST /api/upload`)이다 — 계정 이름도
+         * 토큰 값도 들어가지 않는다. 성공은 여기 없다: 토큰이 맞으면 그 요청은 곧바로
+         * 업로드 판정으로 넘어가고, 남는 것은 `file.upload` 행에 붙는 `detail.auth=api_token` 이다.
+         */
+        'auth.token|deny|not_configured'          => '{target} 을(를) 불렀지만 이 서버에 프로그램용 API 토큰이 설정되어 있지 않아 막았습니다 (설정 전에는 아무도 쓸 수 없습니다)',
+        'auth.token|deny|missing_header'          => 'API 토큰 없이 {target} 을(를) 부르려 해서 막았습니다',
+        'auth.token|deny|bad_token'               => '틀린 API 토큰으로 {target} 을(를) 부르려 해서 막았습니다',
+        'auth.token|deny|user_invalid'            => '{target} 의 API 토큰은 맞았지만 그 토큰에 연결된 계정이 없거나 쓸 수 없는 상태여서 막았습니다 (서버 설정 점검 필요)',
 
         // ── 공통 관문 (Http::requireCsrf, index.php 라우트 정책) ──
         'csrf|deny|token_mismatch'                => '{actor} 이(가) {target} 요청을 보냈지만 CSRF 토큰이 없거나 달라서 막았습니다 (다른 사이트에서 몰래 보낸 요청일 수 있음)',
@@ -1011,6 +1034,17 @@ final class Audit
         }
         if ($route !== null && $route !== '') {
             $out['route'] = $route;
+        }
+
+        /*
+         * F-49 (PRD F-49 ⑥, ARCH 4.2 「감사의 구분」) — 이 요청이 세션이 아니라 **프로그램용
+         * API 토큰**으로 들어왔나. 라우터 [2] 의 토큰 가지가 `TBOX_AUTH_METHOD` 를 세우고,
+         * 여기서 모든 행에 붙는다. 자리를 여기로 잡은 이유는 route·actor_team 과 같다:
+         * 핸들러가 적어 넣는 값이면 언젠가 한 곳이 빠지고, 빠진 그 행이 곧 "누가 올렸는지
+         * 모르는 업로드" 가 된다. 값은 코드에 적힌 고정 분류어뿐이고 요청이 정하지 않는다.
+         */
+        if (defined('TBOX_AUTH_METHOD')) {
+            $out['auth'] = (string) constant('TBOX_AUTH_METHOD');
         }
 
         // 미로그인 행(auth.login·auth.required)에는 누가에 해당하는 값이 없다 → 키를 넣지 않는다.

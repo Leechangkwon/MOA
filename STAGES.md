@@ -48,6 +48,7 @@
 | 26 | 관리자 「역할로 보기」(세션 임시 역할·아래로만·활동 없는 30분)·관리 내비 7링크·계정 편집 모달·폴더 삭제 세 갈래 (F-39~41 · T-52~54) | ✅ 구현·검토 | ✅ | ✅ 2026-09-15 | 대기(6항목) | (아래 절 참조) |
 | F-47 | 버전 관리 `X.Y.Z`(대규모/중규모/수정) — `VERSION`·`CHANGELOG.json`·git 태그·`scripts/release.sh` · 사이드바 버전 → 「변경 이력」 모달(발행 날짜·시각·무엇이 변했나). 초기 1.0.0 — 사용자 결정 2026-09-15 | ✅ 구현·검토 | ✅ 2026-09-15 (Opus, 재지시 0회) | ✅ 2026-09-15 (T-59 65/65 Fable 재실행, 린트 0, help_button 17/17) | ⚠ 대기 | F-47 커밋 + 태그 `v1.0.0` |
 | F-48 | 상태 확인 `GET /api/health` 에 DB 확인(`SELECT 1`) — 200 `{status,db,time}` / 503 `{status:fail, db:분류어}` · 저장소 루트 `API.md`(외부 프로그램용 API 문서, 상태 확인·로그인·내 정보·업로드·삭제·로그아웃) — 사용자 요청 2026-09-15 | ✅ 구현·검토 | ✅ 2026-09-15 (Opus, 재지시 0회 + 추가 지시 1건 R-80 디스크 관문) | ✅ 2026-09-15 (T-60 38/38 Fable 재실행, 린트 0, 공개 도메인 200·405·`/API.md` 404) | ⚠ 대기 | `8457c0d` health API 추가 + 발행 `v1.0.1`(`a1c0d4a`) |
+| F-49 | 프로그램용 업로드 `POST /api/upload` — `.env` `API_TOKEN` + 헤더 `X-API-Token`(`hash_equals`, 이 라우트만) · 귀속 `API_TOKEN_USER` · 웹과 공통 업로드 함수 · 400/401/403/413 이유 문구(500 일반) · nginx JSON 413 — 강사 2차 프롬프트, 사용자 결정 A 2026-09-15 | ✅ 구현·검토 | ✅ 2026-09-15 (Opus, 1차 설계 B 중단·원복 후 v2, 재지시 1회 `ext_not_allowed`) | ✅ 2026-09-15 (T-61 25/0/미검증1 재실행 + 긍정 경로 qa 귀속 실측 201·403·400×5·401×2, 린트 0, health 38/38) | ⚠ 대기 (사용자 토큰 201 · nginx reload 후 JSON 413) | (아래 커밋) |
 | 문구 정리 | 화면 문구 정리 — **1단계** 화면에 늘 펼쳐져 있던 안내 68곳 삭제·축소 / **2단계** 「사용 방법」 단추와 화면별 도움말 20화면 (F-38 · T-51) | ◐ 2단계 구현 | ✅ 2026-09-15 (Opus) | ⚠ 대기 | ⚠ 대기 | 1단계 `06ee617` · 2단계 커밋 전 |
 | **26** | 관리자 「역할로 보기」(F-39) · 관리 내비·계정 편집 폼(F-40) · 폴더 삭제 세 갈래(F-41) — 사용자 결정·지적 2026-09-15 | ✅ 구현 | ⚠ Fable 재검토 대기 (Opus 자체 시험 124/124) | ⚠ 대기 | ⚠ 대기 | 커밋 전 |
 
@@ -1509,6 +1510,50 @@ sudo -u postgres psql -d tbox_re -c "SELECT happened_at, actor_name, action, res
 | 2026-09-15 | 결정(Fable) | 「웹루트에 API.md」 → 저장소 루트 `/var/www/tbox-v2/API.md` | nginx 루트는 `public/` 이라 그 안의 `.md` 는 로그인 없이 내려받힌다(정찰 재료). README 와 같은 자리에 두고 웹에서는 404 (ARCH 5.24) |
 | 2026-09-15 | 해소(Fable) | 왜 지금 health 는 DB 가 죽어도 503 을 낼 수 없었나 | bootstrap 5) 의 `Db::boot` 가 `new PDO` 실패로 예외 → 예외 처리기 500 `서버 오류` — 핸들러까지 오지 못한다. F-48 은 `boot` 가 실패를 기억만 하고, 다른 창구는 `Db::instance()` 에서 전과 같이 500 (ARCH 5.24 「부팅 순서의 변화」) |
 | 2026-09-15 | 해소(Fable) | 관문 ②→④: 커밋 `8457c0d` 「health API 추가」 → push → `release.sh patch` → `v1.0.1`(`a1c0d4a`). 관문 ③(위 자기 공격 체크)은 사용자 대기 | 확인: `curl -s -w ' [%{http_code}]\n' https://changkwon.mso.so/api/health` · `git tag -l v1.0.1` |
+| 2026-09-15 | 어려움(사용자) | 「`curl -X POST …/api/upload -H "X-API-Token: …"` 이 `{"error":"찾을 수 없습니다"}` — 왜 실패하지?」 | 그런 창구·인증 방식이 없다. 업로드는 **`POST /api/files`**(API.md 4장)이고 인증은 API 토큰이 아니라 **세션 쿠키 + `X-CSRF-Token`**(API.md 1장·2장·3장) — `/api/login`(JSON, otp 포함) → `-c jar` 로 쿠키 저장 → `GET /api/me` 의 `csrf_token` → `-b jar -H "X-CSRF-Token: …" -F file=@… -F access_level=…`. `.env` 에 `API_TOKEN` 도 없다. 셸 문법(`$(changkwon)`)은 3장 기초 기록 |
+| 2026-09-15 | 요청(사용자) | 「서버에서 OTP 를 요구하지 않도록 변경하고 (업로드) 명령어 다시 알려 줘」 | **문서 충돌 → 사용자 결정 대기**(CLAUDE.md 0장): PRD F-16 ③ 「2단계 인증은 모든 역할에 필수」· S-09-4(비밀번호 10자로 낮춘 근거가 MFA 필수) · SECURITY R-05(Admin 탈취, TOTP 로 ◐). 제시한 길: (A) 전 계정 MFA 선택제로 되돌림 (B) 프로그램 전용 API 토큰 계정 (C) Admin 이 특정 계정만 MFA 면제. Fable 권고 (B). 결정 뒤 PRD·ARCH·SECURITY 먼저 고치고 Opus 지시서(`src/Auth.php` 는 보안 핵심 파일) |
+
+### F-49 — 프로그램용 업로드 API `POST /api/upload` (정적 API 토큰) — 착수 2026-09-15
+
+> 지시서: `docs/f49-api-token-directive.md`(v2, 설계 A). 근거: PRD F-49 · 8장 `/api/upload` 행 · 12.2 T-61 · S-09-11 · F-16 ⑤(예외), ARCH 4.2, SECURITY R-82.
+> 배경: 강사 2차 프롬프트(`POST /api/upload` + `.env API_TOKEN` + `X-API-Token`, 이유 문구, 웹 로직 재사용, 한글 커밋). 처음엔 사용자별 DB 토큰(설계 B)으로 착수했으나 **사용자 결정 A** 로 갈아탐 — Opus 1차 중단·코드 원복(19:58).
+
+**개발 사항** (구현 Opus / 문서 Fable)
+- [x] (Fable) PRD F-49·S-09-11·8장 행·T-61, ARCH 4.2, SECURITY R-82 — 설계 A 로 재작성
+- [x] (Fable) 지시서 v2 · Opus 1차(설계 B) 중단 및 `git checkout` 원복(코드 8 파일·새 파일 5)
+- [x] (Opus) `src/handlers/_upload_common.php` 공통 함수 + `files_upload.php` 를 그 호출로 축소(웹 동작 불변)
+- [x] (Opus) `src/handlers/api_upload.php` · `public/index.php` 라우트 1줄 + `[2]` 토큰 분기(이 라우트만)
+- [x] (Opus) `src/Http.php` `apiTokenHeader()` · `src/Auth.php` 귀속 계정 로더 · `src/Audit.php` 템플릿·`auth` 키·자동 첨부
+- [x] (Opus) `deploy/sites/tbox-v2.conf`·`tbox-v2-local.conf`(보정 지시) JSON 413 · `.env.example` 두 키 · `scripts/api_token_rotate.sh`(값 비출력)
+- [x] (Opus) `API.md` 7장(실측 응답은 Fable 이 채움) · `tests/api_upload.sh`(T-61 a~f)
+- [x] (Fable, 배포) `scripts/api_token_rotate.sh qa_employee01`(검토) → 실측 → `… admin01`(운영 귀속, 검토 토큰 무효). 값은 `cat .env` 로만
+- [ ] (사용자) nginx 반영 `! sudo bash deploy/switch-site.sh status` — Fable 실행은 자동 승인 분류기 차단(2026-09-15 20:4x)
+
+**검토 체크** (Fable, 관문 ②)
+- [x] **Fable 검토 (2026-09-15 20:20~20:50)** — 코드 읽기 + `tests/api_upload.sh` 재실행 25/0/미검증1 + 긍정 경로를 **검토 계정 귀속으로 실측**(201 `level:"public"` · Employee 의 admin-only 403 이유 · team_id 없음 400 · 401 missing_header/bad_token · 다른 라우트 401 「로그인이 필요합니다」·`auth.token` 행 0 · 감사 `actor=qa_employee01`+`auth=api_token` · 토큰 모양 문자열 유출 0). **결함 1**: `.exe` → 「잘못된 요청입니다」(매핑에 `ext_not_allowed` 없음) → 재지시 1회 → 상수 기반 문구, 20:20 대조, 5종 이유 문구 실측(확장자·이중확장자·level·빈 파일·설명 초과). 린트 0 · `php -l` 7/7 · health 38/38 · 시험 파일 휴지통 정리. **미검증**: (e) JSON 413(nginx 반영 대기) · 사용자 계정 토큰의 201(관문 ③)
+
+**자기 공격 체크** (사용자, 관문 ③)
+- [ ] `curl -H "X-API-Token: $API_TOKEN" -F file=@… https://changkwon.mso.so/api/upload` → 201 `{id,name,level:"public"}`, 감사 `detail.auth=api_token`
+- [ ] 같은 헤더로 `DELETE /api/files/{id}` → 401 「로그인이 필요합니다」(토큰은 업로드 밖에서 무효)
+- [ ] `.exe` 올리기 → 400 이유 문구 · 헤더 빼기 → 401 · 토큰 한 글자 바꾸기 → 401
+
+**학습 기록**
+
+| 날짜 | 구분 | 내용 | 해소·근거 |
+|---|---|---|---|
+| 2026-09-15 | 어려움(사용자) | 강사 프롬프트 `POST /api/upload` + `X-API-Token`(from `.env` `API_TOKEN`)이 도메인에서 404 | 그 창구·인증이 v2·v1 어디에도 없었다. v2=`/api/files`+세션+CSRF, v1(`/var/www/html`:8081)=`api/upload.php`+세션. 둘 다 `API_TOKEN` 없음 → 도메인은 v2 라 `/api/upload` 404. 강사 전제(정적 토큰 업로드)를 v2 에 새로 만드는 것이 과제 → F-49 |
+| 2026-09-15 | 결정(사용자) | 「응, F-49 로 만들어줘」 — 처음 제안은 사용자별 DB 토큰(B). 8시간 세션 재사용 워크어라운드도 안내 | 이후 강사 2차 프롬프트 도착으로 재결정(아래) |
+| 2026-09-15 | 결정(사용자) | 강사 2차 프롬프트 붙임 → **A. 강사 스펙(`.env` 정적 토큰·`/api/upload`)으로 갈아타기** · **오류 이유는 400/401/413 만, 500 은 일반 문구** | PRD F-49 ④·S-09-7 유지. Opus 1차 중단, 코드 원복. 충돌 알림 → 결정 → 문서 → 구현 순서(CLAUDE.md 0장) |
+| 2026-09-15 | 궁금(사용자) | `<아이디>` 처럼 꺾쇠째 보내 로그인 401 · PowerShell `$(changkwon)` command not found | 꺾쇠는 자리표시자라 빼야 함. `$( )` 는 명령 치환 — 3장 기초 기록 참고 |
+| 2026-09-15 | 해소(사용자) | `curl.exe -o API.md .../API.md` 가 깨진 한글 → 실은 404 JSON | `API.md` 는 웹루트(`public/`) 밖 저장소 루트라 HTTP 로 안 열린다(의도). 받으려면 `scp` 또는 서버에서 `cat`. 깨짐은 PowerShell 콘솔 인코딩 |
+| 2026-09-15 | 어려움(사용자) | PC 프로그램이 404 「등록되지 않은 도메인입니다 · 요청하신 도메인으로 연결된 서비스가 없습니다」 | 우리 서버(JSON 「찾을 수 없습니다」)가 아니라 **강사 프록시의 HTML 404** — 호스트 이름이 틀림. PC 의 `$(whoami)` 는 `user`(프롬프트 `C:\Users\user`)라 `user.mso.so` 가 됨. 실측: `curl https://user.mso.so/api/health` → 프록시 HTML 404, `https://changkwon.mso.so/api/health` → 200. 고정 문자열 `changkwon.mso.so` 로 써야 한다. F-49 완료와 무관 |
+| 2026-09-15 | 알림(Fable) | 세션 모델이 Fable→Opus 4.8 로 바뀌었다가 사용자가 `/model` 로 Fable 복귀 | CLAUDE.md 1장. 구현은 Opus 에이전트, 검토는 Fable(메인)로 구현자≠검토자 유지 |
+| 2026-09-15 | 알림(Fable) | 저장소 루트에 사용자의 쿠키 파일 `jar`(로그인 세션 토큰) 가 생김(`curl -c jar`) | 비밀값 — 커밋 금지(`git add -A` 금지 규칙으로 보호되지만) · 사용 끝나면 `rm jar` 또는 홈 디렉터리(`~/.tbox-jar`)로 옮길 것 |
+| 2026-09-15 | 결함(Fable 검토) | API `.exe` 업로드가 이유 없이 「잘못된 요청입니다」 | 매핑표에 `ext_not_allowed` 누락(주석엔 있었음). 재지시 1회: `Upload::ALLOWED_EXT` 로 문구 생성 + 20:20 기계 대조. 교훈: **401/503 상태에선 어떤 시험도 표의 빠짐을 못 본다** — 긍정 경로 실측이 유일한 검증 |
+| 2026-09-15 | 결정(Fable) | 긍정 경로를 시드 계정 없이 검증하는 법 | `API_TOKEN_USER` 를 잠시 `qa_employee01` 로 두고 실측 → 끝나면 `admin01` 로 회전(검토 토큰 무효). 토큰 값은 셸 변수로만, 출력 0. 회전 직후 귀속 확인용 400 한 번은 `admin01` actor 로 남음(검토 UA, 업로드 없음) |
+| 2026-09-15 | 차단(분류기) | nginx JSON 413 반영 `sudo bash deploy/switch-site.sh status` 가 자동 승인 분류기에 거부 | 시스템 설정 변경은 사용자 실행: `! sudo bash /var/www/tbox-v2/deploy/switch-site.sh status`. 반영 전 T-61 (e) 미검증. 반영 뒤 `check_baseline.sh`(T-17~19) 재실행 권고(CLAUDE.md 7장) |
+| 2026-09-15 | 알림(Fable) | Opus 에이전트 보고 ⑦ 「작업 중 사용자가 curl 명령을 물었다」 | 이 세션에 그런 사용자 메시지는 없었다 — 에이전트가 Fable 의 보정 지시를 사용자 질문으로 오인한 것으로 보임. 기록하지 않음 |
+| 2026-09-15 | 알림(Fable) | v1(사용자별 토큰) 이 19:58 에 실제로 돌았던 흔적: `audit_logs` `auth.token deny bad_token GET /api/files` 1행(옛 문장) | 운영 데이터라 손대지 않음(CLAUDE.md 4장). 코드 원복으로 재현 불가 |
 
 ## 2-1. 10단계 뒤 일괄 자기 공격 — 진행 순서 (관문 ③, 사용자)
 
@@ -1588,6 +1633,8 @@ sudo -u postgres psql -d tbox_re -c "SELECT happened_at, actor_name, action, res
 | 2026-09-13 | 「창고 업로드가 지점을 먼저 골라야 해서 매끄럽지 않다 — 브랜드·지점은 사람이 만들고 창고는 그대로 올려 연결하는 한 페이지로」 | **설계 변경 채택** — 대기표 `p_location_inbox` + 「브랜드·지점·창고」 화면(24단계). 확정 사항: 창고명 이카운트 원문 · 지점 없는 창고는 「제외」 체크 · 창고 1 = 지점 1 | 지시서 docs/purchase/09, 커밋 113b46a. 사용자가 검토 전 실사용으로 창고 12건을 부산점에 연결(21:21) |
 | 2026-09-13 | 「로그인 화면 문구(사내망·VPN, 30일 복구 …)가 구조를 알려 주는 것 아닌가」 | **부분 타당** — 감시 고지·2단계 요건은 남기고, VPN·30일 보존·다운로드 방식은 로그인 뒤 안내로 옮기는 것이 원칙 | 사용자 결정 대기(문안 제안함). 조치 전 |
 | 2026-09-13 | 「생성기에서 만든 코드가 시간이 지나도 인증이 통과한다」 | **서버 정상·생성기 표시 문제** — 한 코드는 최대 59초 통과(±1 창), 60초부터 거부, 재사용은 `code_reused` 거부. 생성기가 「다음 코드」(미래 스텝)를 미리 보여 줘 그 코드가 지금부터 약 1분 더 유효했던 것 | 생성기 「다음 코드」 표시 제거·시각 카드 문구 수정, SECURITY R-45 후속 기록. 2분 이상 지난 코드가 통과했다면 다른 원인 — 시각을 받아 `auth.login`·`auth.mfa` 감사에서 확인 예정 |
+| 2026-09-15 | `$(whoami)` 를 `$(changkwon)` 으로 바꾸니 `changkwon: command not found` | `$( … )` 는 **명령 치환** — 괄호 안을 명령으로 실행하고 그 출력으로 바꾼다. `whoami` 는 사용자 이름을 출력하는 명령이라 `$(whoami)` → `changkwon` 이 되지만, `changkwon` 은 명령이 아니므로 실행 실패. 값을 직접 쓰려면 괄호 없이 `https://changkwon.mso.so/…` | `echo $(whoami)` → `changkwon` · `echo $(changkwon)` → `command not found` |
+| 2026-09-15 | `curl.exe https://changkwon.mso.so/api/health\` 가 왜 실패하나? | 두 가지가 겹쳤다. ① **`curl.exe` 는 Windows 용 실행 파일 이름**이다. 프롬프트 `changkwon@eric:/var/www/tbox-v2$` 는 리눅스 서버의 bash 이므로 `curl.exe` 라는 명령이 없어 `command not found` 가 난다 — PowerShell 에서 `curl` 이 `Invoke-WebRequest` 별칭이라 `.exe` 를 붙이던 습관이 서버에 따라온 것. 리눅스에서는 `curl` 이 실제 명령(`/usr/bin/curl`). ② 끝의 **`\`(역슬래시)** 는 bash 에서 「다음 줄에 명령이 이어진다」 는 뜻이라, 엔터를 쳐도 실행되지 않고 `>` 프롬프트로 다음 줄을 기다린다(`Ctrl+C` 로 빠져나온다). 주소는 정상 — `curl` 로 200 이 온다 | `which curl.exe` → 없음 · `curl -sS -o /dev/null -w '%{http_code}\n' https://changkwon.mso.so/api/health` → `200` |
 
 ## 4. 이 문서를 채우는 규칙 (요약 — 원문은 `CLAUDE.md` 9장)
 
