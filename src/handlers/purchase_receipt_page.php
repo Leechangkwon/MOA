@@ -4,7 +4,9 @@ declare(strict_types=1);
 /**
  * src/handlers/purchase_receipt_page.php — GET /purchase/receipt  (정책: purchase.read)
  *
- * ★ 21단계 **구매(입고) 입력** 화면 (시안 ⑥ GR, PRD F-33).
+ * ★ 21단계 **입고** 화면 (시안 ⑥ GR, PRD F-33). F-45 에서 발주요청·발주서와 같은
+ *   「입력 · 전표 · 현황」 3탭이 되었다 — 탭은 화면(`purchase_receipt.php`)의 것이고
+ *   이 파일이 넘기는 값은 그대로다.
  *
  * 「발주서 불러오기」로 미입고 잔량을 끌어와 **실제 온 수량만** 적고, 로트·유효기간을 단다.
  * 틀만 만들고 값은 `purchase_stock.js` 가 그린다. 저장 요청 본문에는 **수량·로트·유효기간**만
@@ -17,7 +19,7 @@ declare(strict_types=1);
  * @var list<string>        $params 경로 변수 없음
  */
 
-$pageTitle = '입고 입력';
+$pageTitle = '입고';
 $activeNav = 'purchase-receipt';
 $pageKey   = 'purchase';
 /* 「사용 방법」 도움말의 키 — 글은 `src/help/screens.php` 한 벌이고 셸이 그린다 (PRD F-38, ARCH 5.19). */

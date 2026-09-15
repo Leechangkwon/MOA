@@ -1338,6 +1338,44 @@ sudo -u postgres psql -d tbox_re -c "SELECT happened_at, actor_name, action, res
 |---|---|---|---|
 | 2026-09-15 | 사고(운영) | F-43 구현 에이전트가 **사용량 한도(rate limit, 12:40 리셋)** 로 문서 단계에서 중단 | 코드는 완결이라 Fable 이 문서·검토를 이어 마무리. 시험은 관문 대기 |
 
+### F-45 — 입고 화면에 입력·전표·현황 3탭 (T-57) — 구현 2026-09-15
+
+> 지시서: `docs/purchase/17-f45-receipt-tabs-directive.md`. 근거: 사용자 지적 2026-09-15 「입고에는 왜 입력/전표/현황이 안 나오고 입력만 있나」.
+> PRD F-45 · 12.2 T-57 · 8장 API 2행 ; ARCH 5.18(입고 전표 조회 · F-45 라우트 표) ; SECURITY R-65·R-66.
+> 시안 ⑥ `GR.dc.html` 은 처음부터 탭 셋이었는데 21단계에서 입고만 두 카드로 줄었다 — 검토자(Fable)의 결정 오류였고, 그래서 **만든 입고 전표를 화면에서 다시 찾을 길이 없었다**.
+
+**개발 사항** (Opus)
+- [x] `src/handlers/purchase_gr_list.php` — `GET /api/purchase/gr`(q·page·vendor·branch·from·to·status), `purchaseScopeWhere` 필수, 20건 페이지, 봉투는 발주서 목록과 같은 `{items,total,page,per_page,can_void}`
+- [x] `src/handlers/purchase_gr_get.php` — `GET /api/purchase/gr/{num}`, 줄은 `Stock::lines()` + `src_line_no`, `totals.qty`, `can_void`(stock.write × 취소 전 × 마감 아님). **범위 밖 404**
+- [x] `public/index.php` — 라우트 2줄(`purchase.read`). 핸들러 파일을 먼저 만들고, 저장 직후 `php -l` + `/login` 200 + 로그인 요청 1회로 500 없음 확인
+- [x] `src/views/purchase_receipt.php` — `.tabs`(입력·전표·현황). 입력 탭은 21단계 카드 그대로(id 유지), 전표 탭은 목록+상세(취소 사유 모달 — `window.prompt` 0), 현황 탭은 `#gr-backorder`
+- [x] `public/assets/purchase_common.js` — 미입고 렌더러를 `PurchaseUI.renderBackorder(host, opts)` **한 벌**로. `public/assets/purchase_stock.js` — 재고 화면·입고 화면 둘 다 그 함수를 부른다(정의 1 · 호출 2)
+- [x] `src/handlers/purchase_receipt_page.php` 제목 「입고 입력」 → 「입고」 · `src/help/screens.php` 「전표」·「현황」 두 절
+- [x] `tests/purchase_f45.sh` — T-57 (a)~(f), R-73 관문·`S45-` 접두·qa `created_by` 만 정리. **(e)·(f) 통과, (a)~(d) 는 위 채번 사고로 미검증**
+- [x] PRD(F-45·T-57·8장 2행) · ARCHITECTURE 5.18 · STAGES 이 절
+
+**검토 체크** (Fable) — 미보고
+- [ ] T-57 (a)~(f) 실행 결과 확인 (`tests/purchase_f45.sh`)
+- [ ] 지점 격리 실측: 남의 지점 전표 상세 404 · 목록 0건 · `?branch=` 무시
+- [ ] 취소가 **새 창구를 만들지 않았는지**(라우트 표에 `POST /api/purchase/gr/{num}/void` 하나) · 원장 반대 부호 행 회귀
+- [ ] `scripts/security_lint.sh` 0건 · 바뀐 파일 `php -l` · 화면 1440px 결함 0
+
+**자기 공격 (관문 ③, 사용자)**
+- [ ] 입고 화면에서 「전표」 탭을 열어 **남의 지점 전표 번호**를 주소창에 직접 넣어 본다(`/api/purchase/gr/<남의 지점 id>`) — 404 여야 하고, 403 이면 「있다」가 새는 것이다
+- [ ] 취소 사유를 비워 두고 「취소 확정」 — 평소 달에는 통과하고, **마감된 달**에는 `purchase.close` 가 없으면 막히는지
+- [ ] 「현황」 탭의 숫자와 재고·미입고 화면의 「미입고」 탭 숫자가 같은지 (같은 함수·같은 API 여야 한다)
+- [ ] 입고 전표 목록에서 취소한 전표가 **사라지지 않고** 「취소」로 남는지
+
+**학습 기록**
+
+| 날짜 | 구분 | 내용 | 해소·근거 |
+|---|---|---|---|
+| 2026-09-15 | 지적(사용자) | 「입고에는 왜 입력/전표/현황이 안 나오고 입력만 있나」 | 시안 ⑥ 은 탭 셋인데 21단계에서 두 카드로 줄인 것이 원인. F-45 로 되돌림 — 지시서 `docs/purchase/17-f45-receipt-tabs-directive.md` |
+| 2026-09-15 | 결정 | 전표 탭의 취소는 **기존 void 창구**를 부른다(새 API 0) · 현황 탭은 기존 `/api/purchase/backorder` 를 부른다(새 API 0) | 새로 생긴 것은 읽기 창구 둘뿐 — ARCH 5.18 「F-45 라우트·정책」 |
+| 2026-09-15 | 어려움(구현) | 검토 계정 `qa_admin01` 의 TOTP 코드가 **다른 세션(F-43 `tests/fetch_hosts.sh`)과 겹쳐** 재사용 거부 → 5회 실패로 10분 잠김 | 코드 재사용을 막는 것은 R-45 가 제대로 동작한 것. 검토 계정을 여러 세션이 함께 쓰면 생기는 일이라, **시험은 겹치지 않게 돌린다**(감사 `auth.mfa deny code_reused` 로 확인) |
+| 2026-09-15 | 사고(운영) — **미해결, 사용자 판단 필요** | 오늘(2026-09-15) `PR`·`PO`·`GR` 전표를 **만들 수 없다**(409). 원인은 19~23단계 시험 스크립트의 정리에 있는 `DELETE FROM p_doc_seq WHERE seq_date = CURRENT_DATE` 다 — 그 표는 qa 의 것이 아니라 **그날의 전표 번호 카운터**이고, 지우면 번호가 1부터 다시 발급된다. 사용자가 같은 날 만든 전표(`PR-20260915-7`·`PO-20260915-1`·`GR-20260915-1`·`GR-20260915-2`)가 남아 있어 `p_docs_doc_no_uidx` 에 부딪히고, 실패하면 트랜잭션이 되돌아가 카운터도 오르지 않아 **그날 내내 막힌다** | 사용자 전표 4건은 그대로다(비-qa 행 수 8548 → 8548 변동 0). 복구는 카운터를 오늘 최대 번호로 올리는 일이고 **판단은 사용자 몫**이다(CLAUDE.md 4장 — 스스로 실행하지 않는다). `tests/purchase_f45.sh` 의 정리에서는 그 DELETE 를 **뺐다**; `purchase_stage20|21|22|23.sh` 에는 그대로 남아 있다(이 작업의 수정 범위 밖) |
+| 2026-09-15 | 미검증 | 그 사고로 T-57 (a)~(d) 의 **픽스처를 세울 수 없었다** — 대신 사용자의 실 전표를 **읽기만** 해서 목록·상세·걸개·404·`can_void`·미입고 API 를 확인했다 | 쓰기가 필요한 항목(지점 격리 404·취소 → 원장 반대 부호 행)은 **미검증**이며, 카운터가 복구되면 `bash tests/purchase_f45.sh` 한 번으로 끝난다 |
+
 ## 2-1. 10단계 뒤 일괄 자기 공격 — 진행 순서 (관문 ③, 사용자)
 
 일괄 진행 모드에서는 4~10단계의 관문 ③을 한 번에 수행한다. **각 단계 절의 "자기 공격 체크" 를 위에서부터 차례로** 하되, 아래 순서가 효율적이다(계정 전환 최소화). 시드 계정 비밀번호: `sudo cat /etc/tbox-v2/seed-accounts.txt`.

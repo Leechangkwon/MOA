@@ -410,7 +410,13 @@ const TBOX_ROUTES = [
     ['GET',    '/purchase/move',                 'purchase_move_page.php',       'purchase.read'],
 
     ['GET',    '/api/purchase/gr/load',          'purchase_gr_load.php',         'purchase.stock.write'],
+    ['GET',    '/api/purchase/gr',               'purchase_gr_list.php',         'purchase.read'],
     ['POST',   '/api/purchase/gr',               'purchase_gr_create.php',       'purchase.stock.write'],
+    /* F-45 — 입고 전표 상세. `{num}` 은 `[0-9]{1,9}` 라 바로 위의 글자 경로(`/gr/load`)와
+       형태가 다르고, 아래 취소(`/gr/{num}/void`)는 **메서드도 경로도** 다르다.
+       읽기는 `purchase.read`(보이는 범위는 핸들러 SQL 의 purchaseScopeWhere 가 정한다),
+       움직이는 것만 `purchase.stock.write` 다 — 발주서(`/po`·`/po/{num}`)와 같은 갈래. */
+    ['GET',    '/api/purchase/gr/{num}',         'purchase_gr_get.php',          'purchase.read'],
     ['POST',   '/api/purchase/gr/{num}/void',    'purchase_gr_void.php',         'purchase.stock.write'],
 
     ['GET',    '/api/purchase/mv/suggest',       'purchase_mv_suggest.php',      'purchase.stock.write'],

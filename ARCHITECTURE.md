@@ -750,6 +750,7 @@ Admin 전용. 정책 `org.manage`(`Authz::canManageOrg` = Admin) 를 `KNOWN_POLI
 | 화면 | 시안 16장(`docs/purchase/design/`)이 기준. t-box 셸·토큰, `textContent` 만, 서버 계산 값만 표시 |
 | 창고 대기표 (F-37, 24단계) | `p_location_inbox` — **지점이 정해지기 전의 창고**가 머무는 표. `p_locations.branch_id` 는 NOT NULL 이고 지점 격리·전표·재고가 전부 그 열로 훑으므로, 지점 없는 창고를 본 표에 넣으려면 그 열을 NULL 허용으로 풀어야 한다 → 대신 **본 표 밖**에 두고 사람이 지점을 고르는 순간에만 `p_locations` 행을 만든다(전표·재고 코드는 한 줄도 바뀌지 않는다). 정체는 `ecount_code`(UNIQUE) — 같은 파일을 다시 올리면 「변동 없음」이다. `status` 는 `unlinked|linked|excluded` 세 값이고 **행을 지우지 않는다**(앱 계정에 DELETE 없음). 이름은 이카운트 원문 그대로(trim 만) 저장하고, linked 행의 이름이 파일에서 바뀌어도 `p_locations.name` 은 건드리지 않는다(`renamed_linked` 수만 알린다). 「추천 지점」은 창고명 토큰 ↔ 활성 지점 이름의 정확 일치(둘 이상이면 앞 토큰 = 브랜드로 좁히고, 그래도 둘 이상이면 추천 없음)이며 **표시용 값**이다 — 연결은 언제나 요청이 보낸 `branch_id` 로만 한다. 코드는 `src/purchase/Structure.php` 한 곳 |
 | 업로드 공통 조각 (24단계) | 가져오기 업로드(F-29)와 창고 대기표 업로드(F-37)는 **같은 함수**를 지난다 — `Importer::storeUploaded(uploaded, user, auditAction, inTransaction?)`: 원본 파일명 정리 → `Upload::validate` → `Sheet::SHEET_EXT` → `Sensitive::scan` → 폴더 「구매/가져오기」(admin-only) → `files` 행 + `Storage::put` → (호출자의 일) → 감사 `allow` 한 줄 → COMMIT. 실패하면 파일까지 되돌린다. 두 벌로 두면 언젠가 한쪽만 고쳐지고 그 한쪽이 곧 두 번째 입구다(거부 사유 12종도 한 곳에서만 나온다) |
+| 입고 전표 조회 (F-45) | 입고에는 21단계부터 **만들기·불러오기·취소**만 있었고 **찾는 길이 없었다** — 화면이 방금 저장한 한 건만 취소할 수 있었다. 그래서 읽기 창구 둘을 더한다: `GET /api/purchase/gr`(목록)·`GET /api/purchase/gr/{num}`(상세), 둘 다 정책 `purchase.read` 이고 `Authz::purchaseScopeWhere($user, 'd')` 를 SQL WHERE 에 건다. **범위 밖 전표는 404** 다(발주서 상세와 같은 판단 — 403 은 「있긴 있다」를 알려 주는 셈이다). 쓰기는 하나도 늘지 않는다: 취소는 여전히 `POST /api/purchase/gr/{num}/void`(21단계) 한 곳이고, 화면이 부르는 것도 그것이다. 응답에 **금액이 없다** — 입고 전표가 세는 것은 수량(`qty_total`·`totals.qty`)이고 단가는 서버가 발주서 줄에서 읽어 이미 줄에 적혀 있다(R-66). `voided_at` 은 따로 저장하는 칸이 아니라 취소가 `p_docs` 를 건드리는 마지막 수정이므로 `updated_at` 을 그 뜻으로 돌려준다(취소가 아닌 전표는 null) |
 
 **24단계 라우트·정책** (다섯 줄 모두 `purchase.master.write` — `REAUTH_POLICIES` 에 있어 재인증 관문이 자동으로 붙는다)
 
@@ -762,6 +763,21 @@ Admin 전용. 정책 `org.manage`(`Authz::canManageOrg` = Admin) 를 `KNOWN_POLI
 | POST | `/api/purchase/structure/exclude` | `purchase_structure_exclude.php` | `purchase.master.write` |
 
 `p_location_inbox` 에는 **지점 축이 없다**(연결 전의 창고라 지점이 정해지지 않았다는 것이 이 표의 존재 이유다). 다섯 라우트가 전부 buyer·Admin 전용이고 그 둘의 지점 범위는 언제나 전 지점이므로, 조회마다 `// lint:no-branch-scope <이유>` 표식을 `src/purchase/Structure.php` 에 적는다(23단계 규칙 — 표식은 **조회 단위**다). 나무 조회의 `p_locations` 도 같은 이유로 표식을 단다(전 지점을 정리하는 마스터 편집 화면이다).
+
+**F-45 라우트·정책** — 입고 화면의 「전표」 탭이 쓰는 **읽기 창구 둘**. 새 쓰기 경로는 없다.
+
+| 메서드 | 경로 | 핸들러 | 정책 |
+|---|---|---|---|
+| GET | `/api/purchase/gr` | `purchase_gr_list.php` | `purchase.read` |
+| GET | `/api/purchase/gr/{num}` | `purchase_gr_get.php` | `purchase.read` |
+| (기존) | `POST /api/purchase/gr/{num}/void` | `purchase_gr_void.php` | `purchase.stock.write` |
+
+경로 충돌은 없다: `{num}` 은 `[0-9]{1,9}` 라 같은 자리의 글자 경로(`/api/purchase/gr/load`)와 형태가 다르고, 취소는 메서드도 경로도 다르다.
+읽기는 `purchase.read`, **움직이는 것만** `purchase.stock.write` 라는 갈래는 발주서(`/po`·`/po/{num}` 읽기 vs `/po/{num}/void` 쓰기)와 같다 —
+「볼 수는 있어도 되돌리지는 못하는 사람」이 있다는 뜻이고, 그 판단은 라우트 정책 한 곳에서만 난다(PRD S-01).
+
+입고 화면의 「현황」 탭은 **새 API 를 만들지 않는다** — `GET /api/purchase/backorder`(21단계)를 그대로 부르고, 표를 그리는 함수도
+`PurchaseUI.renderBackorder` **한 벌**이라 재고 화면의 「미입고」 탭과 같은 것을 본다(25단계 「사이클 표 한 벌」과 같은 원칙).
 
 ---
 

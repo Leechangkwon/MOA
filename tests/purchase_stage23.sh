@@ -197,7 +197,11 @@ cleanup() {
          DELETE FROM p_stock_moves WHERE created_by IN ($qa_ids);
          DELETE FROM p_doc_lines WHERE doc_id IN (SELECT id FROM p_docs WHERE created_by IN ($qa_ids));
          DELETE FROM p_docs      WHERE created_by IN ($qa_ids);
-         DELETE FROM p_doc_seq   WHERE seq_date = CURRENT_DATE;
+         -- 2026-09-15 사고 뒤: 채번 카운터는 qa 의 것이 아니다 — 지우지 않고 「남은 전표의 최대 번호」로 되돌린다
+         -- (지우면 사용자가 같은 날 만든 PR/PO/GR 과 번호가 겹쳐 그날 내내 409 가 난다)
+         UPDATE p_doc_seq s SET last_no = COALESCE((SELECT max(split_part(d.doc_no,'-',3)::int) FROM p_docs d
+                                                    WHERE d.doc_date = CURRENT_DATE AND d.doc_type = s.doc_type), 0)
+          WHERE s.seq_date = CURRENT_DATE;
          DELETE FROM p_par_levels    WHERE created_by IN ($qa_ids);
          DELETE FROM p_item_branches WHERE item_id IN (SELECT id FROM p_items WHERE created_by IN ($qa_ids));
          DELETE FROM p_items         WHERE created_by IN ($qa_ids);

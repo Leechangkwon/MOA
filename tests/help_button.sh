@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # tests/help_button.sh — 「화면 문구 정리 2단계」 수락 기준 실행 (PRD 12.2 T-51, F-38, ARCH 5.19)
 #
-#   (a) 도움말 내용 파일 — 문법 · 키 20개 · HTML 0 · 구조 설명 문구 0
+#   (a) 도움말 내용 파일 — 문법 · 키 21개 · HTML 0 · 구조 설명 문구 0
 #   (b) 대상 핸들러 20개가 `$pageHelp` 를 넘기고 그 키가 배열에 있음 / 대상 아닌 화면은 안 넘김
 #   (c) 대상 화면 20개에 `data-help-open` 단추 1개 · 아이콘 `data-icon="help"`
 #   (d) scripts/ui_snapshot.sh 로 20화면(UI_PAGES) 1440px 시각 점검
@@ -78,7 +78,7 @@ else
   php -l "$ROOT/src/help/screens.php"; expect "php -l 통과" 0 1
 fi
 
-sub "키 20개 · 순수 문자열 · 구조 설명 문구"
+sub "키 21개 · 순수 문자열 · 구조 설명 문구"
 # 배열 **값만** 본다 — 파일 맨 위 설명 주석은 개발자용이라 검사 대상이 아니다.
 php -r '
 $a = require $argv[1];
@@ -109,7 +109,7 @@ echo "KEYLIST=", implode(",", $keys), "\n";
 echo "NOTE_감사로그=", preg_match_all("/감사 로그/u", $all), "\n";
 ' "$ROOT/src/help/screens.php" > "$OUT/a-screens.txt" 2>&1
 cat "$OUT/a-screens.txt"
-expect "키 20개" 20 "$(sed -n 's/^KEYS=//p' "$OUT/a-screens.txt")"
+expect "키 21개(F-43 fetch-hosts 포함)" 21 "$(sed -n 's/^KEYS=//p' "$OUT/a-screens.txt")"
 expect "모든 문자열에 '<' 없음" 0 "$(sed -n 's/^LT=//p' "$OUT/a-screens.txt")"
 expect "구조 설명 문구 0건" 0 "$(sed -n 's/^BANNED=//p' "$OUT/a-screens.txt")"
 

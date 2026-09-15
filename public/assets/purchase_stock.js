@@ -32,7 +32,6 @@
   var say = UI.say;
   var dash = UI.dash;
   var qty = UI.qty;
-  var money = UI.money;
   var today = UI.today;
   var num = UI.toNumber;
   var errorMessage = UI.errorMessage;
@@ -286,95 +285,19 @@
       });
     }
 
+    /**
+     * 미입고 표 — **그리는 함수는 `PurchaseUI.renderBackorder` 한 벌**이다 (F-45).
+     * 입고 화면의 「현황」 탭도 같은 함수를 부른다. 여기서 하는 일은 자기 화면의 칸을
+     * 넘겨 주는 것뿐이라, 두 화면이 어긋날 자리가 없다.
+     */
     function loadBackorder() {
-      var params = '';
-      var joiner = '?';
-      if ($('bo-vendor').value !== '') {
-        params += joiner + 'vendor=' + encodeURIComponent($('bo-vendor').value);
-        joiner = '&';
-      }
-      if ($('bo-overdue').checked) { params += joiner + 'overdue=1'; joiner = '&'; }
-      if ($('bo-q').value.trim() !== '') {
-        params += joiner + 'q=' + encodeURIComponent($('bo-q').value.trim());
-      }
-
-      request('GET', '/api/purchase/backorder' + params).then(function (res) {
-        if (!res) { return; }
-        if (!res.ok) { say(errorMessage(res.data)); return; }
-        var host = $('bo-groups');
-        clear(host);
-        var groups = Array.isArray(res.data.groups) ? res.data.groups : [];
-
-        var kpis = $('bo-kpis');
-        clear(kpis);
-        kpi(kpis, '미입고 발주서', String(res.data.doc_count) + ' 건',
-          '거래처 ' + groups.length + '곳');
-        kpi(kpis, '납기 지남', String(res.data.overdue) + ' 줄', '보낸 날 + 조달기간 기준',
-          num(res.data.overdue) > 0);
-        kpi(kpis, '미입고 금액', money(res.data.amount), '공급가액 기준');
-        kpi(kpis, '미입고 줄', String(res.data.line_count) + ' 줄',
-          res.data.truncated ? '상한에서 끊김 — 좁혀 보세요' : '');
-
-        groups.forEach(function (group) {
-          var box = el('div', 'p-group');
-          var head = el('button', 'p-group__head');
-          head.type = 'button';
-          head.setAttribute('aria-expanded', 'true');
-          var caret = el('span', 'p-caret', '\u25be');
-          head.appendChild(caret);
-          head.appendChild(el('span', null, group.vendor_name));
-          head.appendChild(el('span', 'p-group__meta',
-            '발주서 ' + group.doc_count + '건 · 미입고 ' + group.line_count + '줄 · '
-              + money(group.amount) + ' 원'));
-          box.appendChild(head);
-
-          var wrap = el('div', 'table-wrap');
-          var table = el('table', 'files');
-          var thead = el('thead');
-          var hrow = el('tr');
-          ['발주서', '보낸 날 · 납기', '지점 · 입고 장소', '품목', '발주', '입고', '미입고', '경과', '요청자']
-            .forEach(function (label, index) {
-              var th = el('th', index >= 4 && index <= 6 ? 'num' : null, label);
-              th.setAttribute('scope', 'col');
-              hrow.appendChild(th);
-            });
-          thead.appendChild(hrow);
-          table.appendChild(thead);
-
-          var tbody = el('tbody');
-          group.lines.forEach(function (line) {
-            var tr = el('tr');
-            if (line.is_overdue) { tr.className = 'p-row-late'; }
-            cell(tr, line.po_doc_no, 'mono');
-            cell(tr, dash(line.sent_at ? line.sent_at.slice(0, 10) : null)
-              + ' · ' + dash(line.due_date));
-            cell(tr, dash(line.branch_name) + ' · ' + dash(line.location_name));
-            var itemTd = cell(tr, line.name, 'p-name');
-            itemTd.appendChild(el('span', 'p-sub mono',
-              line.code + (line.partial ? ' · 부분 입고' : '')));
-            cell(tr, qty(line.ordered_qty), 'num mono');
-            cell(tr, qty(line.received_qty), 'num mono');
-            var remTd = el('td', 'num mono');
-            remTd.appendChild(badge(qty(line.remaining), 'badge--danger'));
-            tr.appendChild(remTd);
-            var days = cell(tr, line.days_elapsed + '일');
-            if (line.is_overdue) { days.className = 'p-short'; }
-            cell(tr, dash(line.manager_name));
-            tbody.appendChild(tr);
-          });
-          table.appendChild(tbody);
-          wrap.appendChild(table);
-          wrap.className = 'table-wrap p-group__body';
-          box.appendChild(wrap);
-          head.addEventListener('click', function () {
-            wrap.hidden = !wrap.hidden;
-            head.setAttribute('aria-expanded', wrap.hidden ? 'false' : 'true');
-            setText(caret, wrap.hidden ? '\u25b8' : '\u25be');
-          });
-          host.appendChild(box);
-        });
-
-        $('bo-empty').hidden = groups.length > 0;
+      UI.renderBackorder($('bo-groups'), {
+        request: request,
+        kpis: $('bo-kpis'),
+        empty: $('bo-empty'),
+        vendor: $('bo-vendor'),
+        overdue: $('bo-overdue'),
+        q: $('bo-q')
       });
     }
 
@@ -496,6 +419,7 @@
   function initReceipt() {
     var lines = [];      // [{po_line_id, code, name, ordered, received, remaining, qty, lot, exp, remark}]
     var lastDocId = null;
+    var lastDocNo = '';
 
     function renderLines() {
       var body = $('gr-line-body');
@@ -658,6 +582,7 @@
 
     function renderResult(doc) {
       lastDocId = doc.id;
+      lastDocNo = doc.doc_no;
       $('gr-result').hidden = false;
       setText($('gr-result-head'), doc.doc_no + ' · ' + doc.doc_date
         + ' · 원장 ' + doc.moves + '행');
@@ -704,15 +629,170 @@
       });
     }
 
-    function voidDoc() {
-      if (lastDocId === null) { return; }
-      request('POST', '/api/purchase/gr/' + lastDocId + '/void', {}).then(function (res) {
+    /* ── 사유 모달 (F-45) ────────────────────────────────
+     * 26단계 계정 화면의 사유 모달과 **같은 형식**이다. 구매 화면에서 `window.prompt`
+     * 를 늘리지 않으려는 것이 이유다 — 모달은 화면 안에 있고, 글자는 textContent 로만
+     * 들어가며, 닫히는 길은 「취소 확정」·「그만두기」·Esc 셋뿐이다.
+     *
+     * `done(사유문자열)` 또는 `done(null)`(그만둠) 로 끝난다 — 어느 쪽이든 반드시 부른다.
+     * 사유는 **비어 있어도 된다**: 입고 취소의 사유는 서버에서 선택값이고(마감된 달만
+     * 필수), 여기서 더 조이면 화면이 서버보다 엄해져 판단이 두 곳으로 갈린다.
+     */
+    var reasonDone = null;
+
+    function closeReason(value) {
+      var done = reasonDone;
+      reasonDone = null;
+      var dialog = $('gr-reason');
+      if (dialog && dialog.open) { dialog.close(); }
+      if (done) { done(value); }
+    }
+
+    function askReason(lead, done) {
+      var dialog = $('gr-reason');
+      if (!dialog || typeof dialog.showModal !== 'function') {
+        say(UI.GENERIC_ERROR);
+        done(null);
+        return;
+      }
+      reasonDone = done;
+      setText($('grr-lead'), lead);
+      setText($('grr-msg'), '');
+      $('grr-text').value = '';
+      dialog.showModal();
+      $('grr-text').focus();
+    }
+
+    $('gr-reason-form').addEventListener('submit', function (event) {
+      event.preventDefault();
+      closeReason($('grr-text').value);
+    });
+    $('grr-cancel').addEventListener('click', function () { closeReason(null); });
+    $('gr-reason').addEventListener('cancel', function (event) {
+      // Esc 로 닫아도 「그만두었다」 가 남게 한다 (조용한 종료 금지).
+      event.preventDefault();
+      closeReason(null);
+    });
+
+    /**
+     * 입고 취소 — **기존 API 그대로**다 (`POST /api/purchase/gr/{id}/void`, 21단계).
+     * 입력 탭의 「이 전표 취소」와 전표 탭의 「입고 취소」가 같은 함수를 부른다.
+     */
+    function voidGr(docId, docNo, after) {
+      askReason('입고 전표 ' + docNo + ' 을(를) 취소합니다. 원장에 반대 부호 행이 새로 들어가고'
+        + ' 발주서의 미입고가 되돌아옵니다.', function (reason) {
+        if (reason === null) { say('취소하지 않았습니다.'); return; }
+        var payload = {};
+        if (reason.trim() !== '') { payload.reason = reason.trim(); }
+        request('POST', '/api/purchase/gr/' + docId + '/void', payload).then(function (res) {
+          if (!res) { return; }
+          if (!res.ok) { say(errorMessage(res.data)); return; }
+          say('입고 전표를 취소했습니다 (원장에 반대 부호 행 ' + res.data.moves + '행).');
+          loadOrders();
+          if (typeof after === 'function') { after(res.data); }
+        });
+      });
+    }
+
+    /* ══ 전표 탭 — 목록 · 상세 · 취소 ══════════════════════ */
+
+    var docPage = 1;
+    var openDocId = null;
+
+    function loadDocs() {
+      var params = '?page=' + docPage;
+      if ($('gr-doc-q').value.trim() !== '') {
+        params += '&q=' + encodeURIComponent($('gr-doc-q').value.trim());
+      }
+      if ($('gr-doc-vendor').value !== '') {
+        params += '&vendor=' + encodeURIComponent($('gr-doc-vendor').value);
+      }
+      if ($('gr-doc-from').value !== '') {
+        params += '&from=' + encodeURIComponent($('gr-doc-from').value);
+      }
+      if ($('gr-doc-to').value !== '') {
+        params += '&to=' + encodeURIComponent($('gr-doc-to').value);
+      }
+      if ($('gr-doc-status').value !== '') {
+        params += '&status=' + encodeURIComponent($('gr-doc-status').value);
+      }
+
+      request('GET', '/api/purchase/gr' + params).then(function (res) {
         if (!res) { return; }
         if (!res.ok) { say(errorMessage(res.data)); return; }
-        say('입고 전표를 취소했습니다 (원장에 반대 부호 행 ' + res.data.moves + '행).');
-        $('gr-result').hidden = true;
-        lastDocId = null;
-        loadOrders();
+        var body = $('gr-doc-body');
+        clear(body);
+        var items = Array.isArray(res.data.items) ? res.data.items : [];
+        items.forEach(function (row) {
+          var tr = el('tr', 'p-row-click');
+          var noTd = cell(tr, row.doc_no, 'mono');
+          noTd.appendChild(el('span', 'p-sub', row.doc_date));
+          cell(tr, dash(row.vendor_name));
+          cell(tr, dash(row.location_name));
+          cell(tr, dash(row.manager_name));
+          cell(tr, String(row.line_count), 'num mono');
+          cell(tr, qty(row.qty_total), 'num mono');
+          var st = el('td');
+          st.appendChild(statusBadge(row.status));
+          tr.appendChild(st);
+          tr.addEventListener('click', function () { openDetail(row.id); });
+          body.appendChild(tr);
+        });
+        $('gr-doc-empty').hidden = items.length > 0;
+        setText($('gr-doc-page-info'), '전체 ' + res.data.total + '건 · ' + res.data.page + '쪽');
+      });
+    }
+
+    function openDetail(id) {
+      request('GET', '/api/purchase/gr/' + id).then(function (res) {
+        if (!res) { return; }
+        if (!res.ok) { say(errorMessage(res.data)); return; }
+        openDocId = id;
+        var doc = res.data.doc;
+        setText($('gr-detail-title'), doc.doc_no);
+        setText($('gr-detail-sub'), doc.doc_date + ' · ' + dash(doc.vendor_name)
+          + ' · ' + dash(doc.location_name) + ' · 담당 ' + dash(doc.manager_name)
+          + (doc.voided_at ? ' · 취소됨 ' + doc.voided_at.slice(0, 16).replace('T', ' ') : '')
+          + (doc.closed_month ? ' · 마감 ' + doc.closed_month : '')
+          + (doc.memo ? ' · ' + doc.memo : ''));
+
+        var body = $('gr-detail-body');
+        clear(body);
+        var lines = res.data.lines || [];
+        lines.forEach(function (line) {
+          var tr = el('tr');
+          if (line.status === 'void') { tr.className = 'p-row-bad'; }
+          cell(tr, String(line.line_no), 'p-col-no');
+          var nameTd = cell(tr, line.name, 'p-name p-cell-wide');
+          nameTd.appendChild(el('span', 'p-sub mono', line.code));
+          cell(tr, dash(line.spec));
+          cell(tr, qty(line.qty), 'num mono');
+          cell(tr, dash(line.lot_no));
+          cell(tr, dash(line.expiry_date));
+          var srcTd = cell(tr, dash(line.src_doc_no), 'mono');
+          if (line.src_line_no !== null && line.src_line_no !== undefined) {
+            srcTd.appendChild(el('span', 'p-sub', line.src_line_no + '번 줄'));
+          }
+          cell(tr, dash(line.remark));
+          body.appendChild(tr);
+        });
+        setText($('gr-detail-totals'), '줄 ' + lines.length + '건 · 입고 수량 합계 '
+          + qty(res.data.totals.qty) + ' 낱개');
+        /* 단추를 보일지는 서버가 준 `can_void` 로만 정한다 — 화면은 역할을 판단하지 않는다. */
+        $('gr-detail-void').hidden = !res.data.can_void;
+        $('gr-detail').hidden = false;
+      });
+    }
+
+    /* ══ 현황 탭 — 미입고. 재고 화면과 **같은 함수**를 부른다 (F-45) ══ */
+
+    function loadStatus() {
+      UI.renderBackorder($('gr-backorder'), {
+        request: request,
+        kpis: $('gr-bo-kpis'),
+        empty: $('gr-bo-empty'),
+        vendor: $('gr-bo-vendor'),
+        overdue: $('gr-bo-overdue')
       });
     }
 
@@ -722,10 +802,49 @@
     $('gr-overdue').addEventListener('change', loadOrders);
     $('gr-q').addEventListener('change', loadOrders);
     $('gr-save').addEventListener('click', save);
-    $('gr-void').addEventListener('click', voidDoc);
+    $('gr-void').addEventListener('click', function () {
+      if (lastDocId === null) { return; }
+      voidGr(lastDocId, lastDocNo, function () {
+        $('gr-result').hidden = true;
+        lastDocId = null;
+        lastDocNo = '';
+      });
+    });
+
+    $('gr-doc-q').addEventListener('change', function () { docPage = 1; loadDocs(); });
+    $('gr-doc-vendor').addEventListener('change', function () { docPage = 1; loadDocs(); });
+    $('gr-doc-from').addEventListener('change', function () { docPage = 1; loadDocs(); });
+    $('gr-doc-to').addEventListener('change', function () { docPage = 1; loadDocs(); });
+    $('gr-doc-status').addEventListener('change', function () { docPage = 1; loadDocs(); });
+    $('gr-doc-prev').addEventListener('click', function () {
+      if (docPage > 1) { docPage -= 1; loadDocs(); }
+    });
+    $('gr-doc-next').addEventListener('click', function () { docPage += 1; loadDocs(); });
+    $('gr-detail-close').addEventListener('click', function () { $('gr-detail').hidden = true; });
+    $('gr-detail-void').addEventListener('click', function () {
+      if (openDocId === null) { return; }
+      var docNo = $('gr-detail-title').textContent;
+      voidGr(openDocId, docNo, function () {
+        $('gr-detail').hidden = true;
+        openDocId = null;
+        loadDocs();
+      });
+    });
+
+    $('gr-bo-run').addEventListener('click', loadStatus);
+    $('gr-bo-vendor').addEventListener('change', loadStatus);
+    $('gr-bo-overdue').addEventListener('change', loadStatus);
+
+    initTabs('gr-tabs', {
+      input: { panel: 'gr-input' },
+      docs: { panel: 'gr-docs', onShow: loadDocs },
+      status: { panel: 'gr-status', onShow: loadStatus }
+    });
 
     loadMaster('vendors').then(function (rows) {
       fillSelect($('gr-vendor'), rows, 'id', 'name', '전체 거래처');
+      fillSelect($('gr-doc-vendor'), rows, 'id', 'name', '전체 거래처');
+      fillSelect($('gr-bo-vendor'), rows, 'id', 'name', '전체 거래처');
       loadOrders();
     });
     renderLines();

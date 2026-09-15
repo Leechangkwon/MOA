@@ -129,6 +129,118 @@
     return card;
   }
 
+  /* ── 미입고 현황 — **한 벌** (F-45) ─────────────────────
+   *
+   * 왜 여기 있나
+   *   같은 표를 두 화면이 그린다: 재고 화면의 「미입고」 탭과 입고 화면의 「현황」 탭.
+   *   21단계에는 재고 화면 것 하나뿐이었고, F-45 에서 입고 화면에 같은 표가 필요해졌다.
+   *   복사해 두면 한쪽만 고쳐지는 날이 온다(25단계가 다섯 벌의 도우미를 한 벌로 모은 이유와
+   *   같다) — 그래서 **함수는 하나**이고, 두 화면은 자기 칸들을 넘겨 줄 뿐이다.
+   *
+   * 화면마다 다른 것은 **DOM 요소와 request 함수**뿐이라 그것만 인자로 받는다. 경로·
+   * 파라미터·응답 처리는 두 화면이 한 글자도 같다 — 그래야 「같은 것을 보고 있다」 가 참이 된다.
+   *
+   *   host  그룹(거래처별 접이식 표)이 들어갈 요소
+   *   opts  { request, kpis, empty, vendor, overdue, q } — request 만 필수이고 나머지는
+   *         없으면 그 칸이 없는 화면이다(예: 입고 화면 현황 탭에는 검색 칸이 없다).
+   *
+   * 글자는 전부 `textContent` 로만 들어간다 (PRD S-03). 판정에 쓰는 값은 서버가 준 것뿐이다.
+   */
+  function renderBackorder(host, opts) {
+    var o = opts || {};
+    if (!host || typeof o.request !== 'function') { return; }
+
+    var params = '';
+    var joiner = '?';
+    if (o.vendor && o.vendor.value !== '') {
+      params += joiner + 'vendor=' + encodeURIComponent(o.vendor.value);
+      joiner = '&';
+    }
+    if (o.overdue && o.overdue.checked) { params += joiner + 'overdue=1'; joiner = '&'; }
+    if (o.q && o.q.value.trim() !== '') {
+      params += joiner + 'q=' + encodeURIComponent(o.q.value.trim());
+    }
+
+    o.request('GET', '/api/purchase/backorder' + params).then(function (res) {
+      if (!res) { return; }
+      if (!res.ok) { say(errorMessage(res.data)); return; }
+      clear(host);
+      var groups = Array.isArray(res.data.groups) ? res.data.groups : [];
+
+      if (o.kpis) {
+        clear(o.kpis);
+        kpi(o.kpis, '미입고 발주서', String(res.data.doc_count) + ' 건',
+          '거래처 ' + groups.length + '곳');
+        kpi(o.kpis, '납기 지남', String(res.data.overdue) + ' 줄', '보낸 날 + 조달기간 기준',
+          toNumber(res.data.overdue) > 0);
+        kpi(o.kpis, '미입고 금액', money(res.data.amount), '공급가액 기준');
+        kpi(o.kpis, '미입고 줄', String(res.data.line_count) + ' 줄',
+          res.data.truncated ? '상한에서 끊김 — 좁혀 보세요' : '');
+      }
+
+      groups.forEach(function (group) {
+        var box = el('div', 'p-group');
+        var head = el('button', 'p-group__head');
+        head.type = 'button';
+        head.setAttribute('aria-expanded', 'true');
+        var caret = el('span', 'p-caret', '▾');
+        head.appendChild(caret);
+        head.appendChild(el('span', null, group.vendor_name));
+        head.appendChild(el('span', 'p-group__meta',
+          '발주서 ' + group.doc_count + '건 · 미입고 ' + group.line_count + '줄 · '
+            + money(group.amount) + ' 원'));
+        box.appendChild(head);
+
+        var wrap = el('div', 'table-wrap');
+        var table = el('table', 'files');
+        var thead = el('thead');
+        var hrow = el('tr');
+        ['발주서', '보낸 날 · 납기', '지점 · 입고 장소', '품목', '발주', '입고', '미입고', '경과', '요청자']
+          .forEach(function (label, index) {
+            var th = el('th', index >= 4 && index <= 6 ? 'num' : null, label);
+            th.setAttribute('scope', 'col');
+            hrow.appendChild(th);
+          });
+        thead.appendChild(hrow);
+        table.appendChild(thead);
+
+        var tbody = el('tbody');
+        group.lines.forEach(function (line) {
+          var tr = el('tr');
+          if (line.is_overdue) { tr.className = 'p-row-late'; }
+          cell(tr, line.po_doc_no, 'mono');
+          cell(tr, dash(line.sent_at ? line.sent_at.slice(0, 10) : null)
+            + ' · ' + dash(line.due_date));
+          cell(tr, dash(line.branch_name) + ' · ' + dash(line.location_name));
+          var itemTd = cell(tr, line.name, 'p-name');
+          itemTd.appendChild(el('span', 'p-sub mono',
+            line.code + (line.partial ? ' · 부분 입고' : '')));
+          cell(tr, qty(line.ordered_qty), 'num mono');
+          cell(tr, qty(line.received_qty), 'num mono');
+          var remTd = el('td', 'num mono');
+          remTd.appendChild(badge(qty(line.remaining), 'badge--danger'));
+          tr.appendChild(remTd);
+          var days = cell(tr, line.days_elapsed + '일');
+          if (line.is_overdue) { days.className = 'p-short'; }
+          cell(tr, dash(line.manager_name));
+          tbody.appendChild(tr);
+        });
+        table.appendChild(tbody);
+        wrap.appendChild(table);
+        wrap.className = 'table-wrap p-group__body';
+        box.appendChild(wrap);
+        head.addEventListener('click', function () {
+          wrap.hidden = !wrap.hidden;
+          head.setAttribute('aria-expanded', wrap.hidden ? 'false' : 'true');
+          setText(caret, wrap.hidden ? '▸' : '▾');
+        });
+        host.appendChild(box);
+      });
+
+      if (o.empty) { o.empty.hidden = groups.length > 0; }
+    });
+  }
+
   /** 셀렉트를 목록으로 채운다. 고르고 있던 값은 목록에 남아 있으면 지킨다. */
   function fillSelect(select, rows, valueKey, labelKey, emptyLabel) {
     if (!select) { return; }
@@ -313,6 +425,7 @@
     badge: badge,
     button: button,
     kpi: kpi,
+    renderBackorder: renderBackorder,
     fillSelect: fillSelect,
     initTabs: initTabs,
     showTab: showTab,
