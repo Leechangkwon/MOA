@@ -11,7 +11,7 @@ declare(strict_types=1);
  * 규격 (인증 앱 — Google Authenticator·Aegis·1Password 등이 기본으로 쓰는 값)
  *   · 비밀: 20바이트 무작위 → base32(RFC 4648, 패딩 없음) 32자
  *   · 해시: HMAC-SHA1, 시간 단위 30초, 6자리
- *   · 허용 오차: 앞뒤 1스텝(±30초) — 서버·휴대폰 시계 차이를 흡수한다.
+ *   · 허용 오차: 없음(현재 구간만). 2026-09-15 까지는 앞뒤 1스텝(±30초)이었다 — 사용자 결정으로 좁힘.
  *     더 넓히면 훔쳐본 코드의 유효 시간이 길어진다.
  *
  * 이 파일이 하지 않는 것
@@ -69,14 +69,16 @@ final class Totp
     }
 
     /**
-     * 코드가 맞나. 앞뒤 $window 스텝까지 인정한다(기본 ±1 = ±30초).
+     * 코드가 맞나. 앞뒤 $window 스텝까지 인정한다.
+     * 기본 0 = **현재 30초 구간만** (사용자 결정 2026-09-15: 생성기가 서버 시각과 동기화되므로
+     * 화면에 보이는 남은 초와 서버가 받아 주는 구간을 똑같이 한다. 시계가 어긋난 기기는 실패한다).
      *
      * 비교는 `hash_equals` 로 한다 — `===` 는 첫 글자가 다르면 바로 끝나 응답 시간이 달라지고,
      * 그 차이로 코드를 한 자리씩 맞춰 갈 수 있다.
      * 후보를 **전부** 돌린 뒤 결과를 돌려주어(중간에 return 하지 않는다) 몇 번째에서 맞았는지도
      * 시간으로 드러나지 않게 한다.
      */
-    public static function verify(string $secret, string $code, int $window = 1, ?int $time = null): bool
+    public static function verify(string $secret, string $code, int $window = 0, ?int $time = null): bool
     {
         return self::verifyStep($secret, $code, $window, $time) !== null;
     }
@@ -99,7 +101,7 @@ final class Totp
      * 여러 개가 맞으면 **가장 큰 스텝**을 돌려준다 — 재사용 판정을 느슨한 쪽이 아니라
      * 엄격한 쪽(더 높은 기준선)으로 남기기 위해서다.
      */
-    public static function verifyStep(string $secret, string $code, int $window = 1, ?int $time = null): ?int
+    public static function verifyStep(string $secret, string $code, int $window = 0, ?int $time = null): ?int
     {
         if (preg_match(self::CODE_RE, $code) !== 1) {
             return null;
@@ -108,7 +110,7 @@ final class Totp
             return null;
         }
         if ($window < 0 || $window > 10) {
-            $window = 1;
+            $window = 0;
         }
 
         $key = self::base32Decode($secret);

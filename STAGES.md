@@ -1373,6 +1373,7 @@ sudo -u postgres psql -d tbox_re -c "SELECT happened_at, actor_name, action, res
 |---|---|---|---|
 | 2026-09-15 | **사고**(13:22) | 회귀 `tests/purchase_stage21.sh` 정리 절의 `DELETE FROM p_doc_seq WHERE seq_date=CURRENT_DATE` 가 **오늘 채번 카운터**를 지움 → 사용자 전표(PR-…-7·PO-…-1·GR-…-1/2)와 번호 충돌, 오늘 새 발주요청·발주서·입고 생성 전부 409. 사용자 자료 무손상 | SECURITY R-78. stage20~23 네 스크립트의 DELETE → 「남은 전표 최대 번호로 UPDATE」. 규칙: 소유자 열 없는 공유 표(카운터·시퀀스·설정)는 시험이 지우지 않는다 |
 | 2026-09-15 | 복구(사용자 승인 14:2x) | 채번 카운터 INSERT 3행(gr 2 · po 1 · pr 7 = 남은 전표 최대 번호) — 삭제·변경 0, 비-qa 전표 4건 그대로. 같은 승인으로 F-42 nginx CSP(`connect-src 'self'`)를 라이브·검토 포트 둘 다 적용(`nginx -t`·reload) → 라이브 생성기 「서버와 동기화됨 · 서버 시각 14:28:15 · PC 와 -1초」, 콘솔 오류 0 | 스크린샷 `~/.claude/ui-shots/f42/live-sync.png`, nginx 백업 `~/.claude/ui-shots/nginx-tbox-v2.bak.*` |
+| 2026-09-15 | 궁금·결정(사용자) | 「같은 시계로 보는데 시간 초과된 코드로 로그인이 됐다 — 맞추고 싶다」 → 서버가 앞뒤 1구간(±30초)을 받아 주던 표준 허용 오차 때문. **사용자 결정: 현재 구간만 받는다** | `src/Totp.php` 기본 창 1→0(한 값). 단위·실측 통과(직전 코드 거부·현재 코드 200). 대가(휴대폰 앱 시계 편차 시 실패↑) 수용 — SECURITY 7장 행 |
 | 2026-09-15 | 보정 | `tests/help_button.sh` 키 기대값 20→21(F-43 이 fetch-hosts 도움말을 더함) | 시험 스크립트만 |
 | 2026-09-15 | 지적(사용자) | 「입고에는 왜 입력/전표/현황이 안 나오고 입력만 있나」 | 시안 ⑥ 은 탭 셋인데 21단계에서 두 카드로 줄인 것이 원인. F-45 로 되돌림 — 지시서 `docs/purchase/17-f45-receipt-tabs-directive.md` |
 | 2026-09-15 | 결정 | 전표 탭의 취소는 **기존 void 창구**를 부른다(새 API 0) · 현황 탭은 기존 `/api/purchase/backorder` 를 부른다(새 API 0) | 새로 생긴 것은 읽기 창구 둘뿐 — ARCH 5.18 「F-45 라우트·정책」 |
