@@ -107,8 +107,13 @@ $sqlEnable = <<<'SQL'
 /*
  * 지금 이 등록이 **최초 로그인 강제 절차** 안에서 일어난 것인가 (11단계, ARCH 7.5 `forced`).
  * DB 의 현재 플래그이고 요청이 정하지 않는다 — 감사 detail 로만 쓴다.
+ *
+ * F-52 (2026-09-16, PRD F-52 ④) — 플래그만으로는 모자란다. 플래그는 해제·초기화가 역할과
+ * 무관하게 켜 두는 값이라, **권장 카드를 보고 스스로 켠** 비-Admin 도 플래그가 true 다.
+ * 그것은 강제가 아니므로 `forced` 로 남기지 않는다 — 필수 역할일 때만 강제다.
+ * 역할 판정은 Auth 안에서만 한다(이 파일은 역할 문자열을 비교하지 않는다).
  */
-$forced = $row['mfa_setup_required'] === true;
+$forced = $row['mfa_setup_required'] === true && Auth::mfaRequired($user);
 
 $db->begin();
 try {

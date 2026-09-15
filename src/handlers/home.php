@@ -57,6 +57,19 @@ require __DIR__ . '/../views/shell_top.php';
       </div>
     </header>
 
+    <!-- ─── 2단계 인증 권장 카드 (PRD F-52 ③, ARCH 5.26) ──────────────────────
+         **필수가 아닌 역할**이 아직 켜지 않았을 때만 나온다. app.js 가 /api/me 의
+         `mfa_recommended`(boolean) 하나만 보고 연다 — 화면은 역할 문자열을 비교하지 않는다.
+         「나중에」는 이 브라우저의 **이 세션**(sessionStorage)에만 남고 서버는 아무것도
+         저장하지 않는다 — 탭을 닫고 다시 로그인하면 또 나온다. 그것이 「권장」의 강도다. -->
+    <section class="notice notice--recommend" id="mfa-recommend" hidden>
+      <p><strong>2단계 인증을 켜 두는 것을 권장합니다.</strong> 비밀번호가 새어도 인증 앱의 6자리 코드가 없으면 계정에 들어올 수 없습니다.</p>
+      <p class="notice__actions">
+        <a class="btn btn--small" href="/settings">지금 켜기</a>
+        <button id="mfa-recommend-later" class="btn btn--quiet btn--small" type="button">나중에</button>
+      </p>
+    </section>
+
     <!-- ─── 최초 로그인 강제 절차 (PRD F-16, ARCH 4.0) ────────────────────────
          임시 비밀번호로 처음 들어온 사람은 **비밀번호 변경 → 2단계 인증 등록**을 마칠 때까지
          다른 화면을 보지 못한다. app.js 가 /api/me 의 `next` 를 보고 이 상자만 남긴다.
@@ -85,7 +98,9 @@ require __DIR__ . '/../views/shell_top.php';
 
       <div id="forced-mfa" hidden>
         <h2>2단계 인증을 설정해 주세요</h2>
-        <p class="muted">비밀번호는 바뀌었습니다. 마지막으로 인증 앱을 등록하면 서비스를 쓸 수 있습니다.</p>
+        <!-- F-52 — 이 걸음에 닿는 것은 **관리자 권한이 있는 계정**뿐이다(ARCH 5.26).
+             다른 역할은 여기 대신 위쪽 권장 카드를 본다. -->
+        <p class="muted">관리자 권한이 있는 계정은 2단계 인증이 필수입니다. 인증 앱을 등록하면 서비스를 쓸 수 있습니다.</p>
         <!-- 「내 계정」과 **같은 파일**을 include 한다(두 벌 금지). -->
         <div id="forced-mfa-slot"><?php require __DIR__ . '/../views/mfa_enroll.php'; ?></div>
       </div>

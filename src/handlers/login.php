@@ -58,5 +58,16 @@ if ($result === null) {
  * `next` 는 "다음에 무엇을 해야 하나" 한 값뿐이고(`password_change`·`mfa_setup`·null),
  * 계산은 Auth::nextStep 한 곳에서만 한다 — /api/me 도 같은 값을 돌려준다.
  * 이 값은 **편의**다: 화면이 무시하고 다른 기능을 불러도 라우터 관문이 403 으로 막는다.
+ *
+ * F-52 (2026-09-16, ARCH 5.26) — 두 값을 더 준다.
+ *   mfa_required     이 계정의 **실제 역할**에 2단계 인증이 필수인가 (Admin)
+ *   mfa_recommended  필수는 아닌데 아직 안 켠 상태인가 — 홈의 권장 카드가 이 값만 본다
+ * 둘 다 **상태**이지 권한이 아니다. 판정은 Auth 안에서만 하고(화면·핸들러가 역할 문자열을
+ * 직접 비교하지 않는다), 화면이 이 값을 무시해도 관문은 서버가 막는다 (PRD S-01).
  */
-Http::json(['ok' => true, 'next' => Auth::nextStep($result)]);
+Http::json([
+    'ok'              => true,
+    'next'            => Auth::nextStep($result),
+    'mfa_required'    => Auth::mfaRequired($result),
+    'mfa_recommended' => Auth::mfaRecommended($result),
+]);

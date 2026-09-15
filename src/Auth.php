@@ -61,6 +61,12 @@ final class Auth
     /** 비밀번호 입력 상한 (Argon2id 계산 시간을 요청으로 늘리지 못하게) */
     public const MAX_PASSWORD_BYTES = 1024;
 
+    /**
+     * 2단계 인증이 **필수**인 역할 (PRD F-52, 사용자 결정 2026-09-16 「Admin 만」).
+     * Manager 를 넣으려면 여기 한 단어 — 문서(PRD F-52·SECURITY R-85) 먼저.
+     */
+    public const MFA_REQUIRED_ROLES = ['Admin'];
+
     /** PRD S-09-4: 실패 5회 → 10분 잠금 */
     private const MAX_FAILED   = 5;
     private const LOCK_MINUTES = 10;
@@ -774,12 +780,46 @@ final class Auth
     }
 
     /**
+     * 이 사용자에게 2단계 인증이 **필수**인가 (PRD F-52, ARCH 5.26).
+     *
+     * 판정은 **실제 역할**로 한다 — 「역할로 보기」(5.20) 중에는 `role` 이 흉내 역할이고
+     * `real_role` 이 진짜다. Employee 를 흉내 내는 Admin 이 관문을 빠져나가면 안 된다.
+     * `login()` 이 돌려주는 배열에는 `real_role` 이 없고 `role` 만 있다 — 로그인 시점에는
+     * 흉내 역할이 없으므로 그 `role` 이 곧 실제 역할이다. 아래 `??` 순서가 둘을 함께 받는다.
+     *
+     * @param array<string,mixed> $user Auth::currentUser() 또는 Auth::login() 이 돌려준 배열
+     */
+    public static function mfaRequired(array $user): bool
+    {
+        $role = (string) ($user['real_role'] ?? $user['role'] ?? '');
+        return in_array($role, self::MFA_REQUIRED_ROLES, true);
+    }
+
+    /**
+     * 필수는 아니지만 아직 안 켠 상태 — 화면이 **권장 카드**를 보일지 고르는 값
+     * (PRD F-52 ③, ARCH 5.26). 권한이 아니라 상태다.
+     *
+     * @param array<string,mixed> $user Auth::currentUser() 또는 Auth::login() 이 돌려준 배열
+     */
+    public static function mfaRecommended(array $user): bool
+    {
+        return !self::mfaRequired($user) && (($user['mfa_enabled'] ?? false) !== true);
+    }
+
+    /**
      * 최초 로그인 강제 절차에서 **다음에 무엇을 해야 하나** (11단계, PRD F-16, ARCH 4.0).
      *
      * 순서가 있다: 비밀번호 변경 → 2단계 인증 등록 → 끝(null).
      * 이 함수는 **판단을 한 곳에 모으기 위한 것**이다 — 로그인 응답(`next`)·`/api/me`·
      * 라우터 관문이 전부 같은 값을 보고 움직여야 화면과 서버가 어긋나지 않는다.
      * 값은 언제나 DB 에서 읽은 사용자 배열에서 나오며 요청 값은 섞이지 않는다 (PRD S-01).
+     *
+     * F-52 (2026-09-16, ARCH 5.26) — `mfa_setup` 갈래는 **필수 역할**(MFA_REQUIRED_ROLES)
+     * 에만 걸린다. 그리고 보는 값은 `mfa_setup_required` 플래그가 아니라 `mfa_enabled` 다:
+     * 플래그는 생성·해제·초기화가 켜고 확정이 끄는 값이라 보통 `!mfa_enabled` 와 같지만,
+     * 어긋난 순간(마이그레이션·수동 수정)에 관문이 **열리면** 안 된다. 켜져 있는지는
+     * `mfa_enabled` 가 진실이다. 플래그는 그대로 남아 감사 `forced` 와 안내 문구에 쓰인다.
+     * `must_change_password` 갈래는 역할과 무관하게 그대로다 (F-16 ②).
      *
      * @param array<string,mixed> $user Auth::currentUser() 또는 Auth::login() 이 돌려준 배열
      * @return 'password_change'|'mfa_setup'|null
@@ -789,7 +829,7 @@ final class Auth
         if (($user['must_change_password'] ?? false) === true) {
             return 'password_change';
         }
-        if (($user['mfa_setup_required'] ?? false) === true) {
+        if (self::mfaRequired($user) && (($user['mfa_enabled'] ?? false) !== true)) {
             return 'mfa_setup';
         }
         return null;

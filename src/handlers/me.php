@@ -139,6 +139,13 @@ $mePayload = [
     'next'                 => Auth::nextStep($user),
     'must_change_password' => ($user['must_change_password'] ?? false) === true,
     'mfa_setup_required'   => ($user['mfa_setup_required'] ?? false) === true,
+    // F-52 (2026-09-16, ARCH 5.26) — 2단계 인증의 **필수 여부**와 **권장 여부**.
+    //   mfa_required     실제 역할(real_role)이 Auth::MFA_REQUIRED_ROLES 에 있는가 (Admin)
+    //   mfa_recommended  필수는 아닌데 아직 안 켰는가 — 홈의 권장 카드가 이 값만 본다
+    // 둘 다 위의 셋과 같은 **상태**이지 권한이 아니다. 판정은 Auth 안에서만 하므로 화면은
+    // 역할 문자열을 비교하지 않고, 화면이 이 값을 무시해도 관문은 서버가 막는다 (PRD S-01).
+    'mfa_required'         => Auth::mfaRequired($user),
+    'mfa_recommended'      => Auth::mfaRecommended($user),
     // 16-1 — 관리 기능 재인증 (PRD F-23, ARCH 4.0). 이 세션의 창이 지금 열려 있나.
     // 다른 can_* 와 같은 **화면 편의 값**이다: 화면이 관리 링크를 누르기 전에 모달을 미리
     // 띄울지 고르는 데만 쓴다. 값이 무엇이든 막는 것은 라우터 관문 [3-2] 이고,

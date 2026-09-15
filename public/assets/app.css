@@ -477,6 +477,24 @@ table.files td.actions .btn:first-child { margin-left: 0; }
 .notice__list { margin: 0; padding-left: 1.1rem; }
 .notice__list li { margin: .18rem 0; }
 
+/* 2단계 인증 권장 카드 (F-52) — 경고(주황)가 아니라 **권함**이므로 강조색 계열로 두고,
+   왼쪽 강조선으로 다른 알림과 구분한다. 색은 토큰만 쓴다. */
+.notice--recommend {
+  margin: 0 0 14px;
+  color: var(--fg);
+  background: var(--accent-soft);
+  border-color: var(--accent-line);
+  border-left: 4px solid var(--accent);
+}
+.notice--recommend p { margin: 0; }
+.notice--recommend .notice__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  margin: 10px 0 0;
+}
+
 .warn {
   margin: 0;
   padding: 10px 12px;

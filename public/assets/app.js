@@ -3153,7 +3153,9 @@ function initAudit() {
  *   않는다(PRD S-03 · F-51 ③, ARCH 5.25). 모양이 조금이라도 어긋나면 그리지 않고 숨긴다.
  * ★ 오류 문구는 서버가 준 것만 쓴다 — 브라우저가 "코드가 틀렸습니다" 같은 말을 지어내지 않는다.
  */
-function initAccount(csrfToken, mfaEnabled, onMfaEnabled) {
+/* mfaRequired — /api/me 의 `mfa_required`(boolean) 그대로다. 상태 문구가 「필수」와
+   「선택(권장)」으로 갈리는 데만 쓴다. 화면은 역할 문자열을 비교하지 않는다 (F-52). */
+function initAccount(csrfToken, mfaEnabled, onMfaEnabled, mfaRequired) {
   var msg = document.getElementById('msg');
   var pwForm = document.getElementById('password-form');
   var pwCurrent = document.getElementById('pw-current');
@@ -3280,11 +3282,18 @@ function initAccount(csrfToken, mfaEnabled, onMfaEnabled) {
   }
 
   function showMfa(enabled) {
+    /*
+     * 꺼져 있을 때의 문구는 **필수인 역할인지**에 따라 갈린다 (F-52, ARCH 5.26).
+     * 판정은 서버가 했고(`/api/me` 의 mfa_required) 화면은 그 boolean 만 본다.
+     */
+    var offText = mfaRequired === true
+      ? '2단계 인증이 꺼져 있습니다. 이 계정의 역할(관리자)은 필수라 켜기 전에는 다른 기능을 쓸 수 없습니다.'
+      : '2단계 인증이 꺼져 있습니다. 선택이지만 켜 두기를 권장합니다 — 비밀번호가 새어도 계정을 지킵니다.';
     setText(
       mfaState,
       (enabled
         ? '2단계 인증이 켜져 있습니다. 로그인할 때 인증 앱의 6자리 코드가 필요합니다.'
-        : '2단계 인증이 꺼져 있습니다.'
+        : offText
       ) + MFA_CODE_HINT
     );
     if (mfaOff) {
@@ -4994,6 +5003,44 @@ function initOrg(csrfToken) {
   loadMatrix();
 }
 
+/* ─── 2단계 인증 권장 카드 (F-52 ③ — PRD F-52, ARCH 5.26) ────────
+ *
+ * **필수가 아닌 역할**이 아직 켜지 않았을 때만 홈에 나온다. 서버가 `/api/me` 로 준
+ * `mfa_recommended`(boolean) 하나만 보고 정한다 — 화면은 역할 문자열을 비교하지 않는다.
+ *
+ * 「나중에」는 이 브라우저의 **이 세션**(sessionStorage)에만 남는다. 서버·DB·쿠키에는
+ * 아무것도 저장하지 않으므로 탭을 닫고 다시 로그인하면 또 나온다 — 막지 않되 매번
+ * 상기시키는 것이 「권장」의 강도다(SECURITY R-85 완화책). 저장이 막힌 브라우저
+ * (사생활 보호 모드 등)에서도 카드는 닫혀야 하므로 try/catch 로 감싼다.
+ */
+function initMfaRecommend(me) {
+  var box = document.getElementById('mfa-recommend');
+  var later = document.getElementById('mfa-recommend-later');
+  if (!box || me.mfa_recommended !== true) {
+    return;
+  }
+  var dismissed = false;
+  try {
+    dismissed = window.sessionStorage.getItem('tbox-mfa-later') === '1';
+  } catch (e) {
+    dismissed = false;
+  }
+  if (dismissed) {
+    return;
+  }
+  box.hidden = false;
+  if (later) {
+    later.addEventListener('click', function () {
+      try {
+        window.sessionStorage.setItem('tbox-mfa-later', '1');
+      } catch (e) {
+        /* 저장하지 못해도 닫는다 */
+      }
+      box.hidden = true;
+    });
+  }
+}
+
 /* ─── 최초 로그인 강제 절차 화면 (11단계 — PRD F-16, ARCH 4.0) ────
  *
  * 서버가 /api/me 로 내려 준 `next` 가 있으면 홈은 **그 절차 화면만** 보여 준다.
@@ -5005,7 +5052,7 @@ function initOrg(csrfToken) {
  *   라우터 관문이 403 으로 막고 감사 로그(auth.gate)에 남긴다 (PRD S-01).
  * ★ 모든 문구는 textContent 로만 넣는다(다른 화면과 같은 규칙).
  */
-function initForcedGate(csrfToken, firstStep, mfaEnabled) {
+function initForcedGate(csrfToken, firstStep, mfaEnabled, mfaRequired) {
   var msg = document.getElementById('msg');
   var gate = document.getElementById('forced-gate');
   var pwBox = document.getElementById('forced-password');
@@ -5080,7 +5127,7 @@ function initForcedGate(csrfToken, firstStep, mfaEnabled) {
   if (slot) {
     initAccount(csrfToken, mfaEnabled, function () {
       refresh();
-    });
+    }, mfaRequired === true);
   }
 
   if (pwForm) {
@@ -6735,9 +6782,11 @@ function bootPage(page) {
           // F-43 — 「사용 방법」 도움말에 지금 허용된 사이트를 채운다(자격이 있을 때만 온다).
           renderFetchHostsHelp(me);
           if (next !== null && document.getElementById('forced-gate')) {
-            initForcedGate(csrfToken, next, me.mfa_enabled === true);
+            initForcedGate(csrfToken, next, me.mfa_enabled === true, me.mfa_required === true);
             return null;
           }
+          // F-52 — 관문에 걸리지 않은(next === null) 사람에게만 권장 카드를 물어본다.
+          initMfaRecommend(me);
           if (document.getElementById('files-body')) {
             initFiles(
               csrfToken,
@@ -6763,7 +6812,7 @@ function bootPage(page) {
         if (page === 'settings') {
           initSettings(me);
           if (document.getElementById('password-form')) {
-            initAccount(csrfToken, me.mfa_enabled === true);
+            initAccount(csrfToken, me.mfa_enabled === true, null, me.mfa_required === true);
           }
           // 15-2 — 「내 공유 링크」. 로그인한 사람이면 누구나 자기 링크를 본다 (PRD F-13).
           initShares(csrfToken);

@@ -1622,6 +1622,36 @@ sudo -u postgres psql -d tbox_re -c "SELECT happened_at, actor_name, action, res
 | 2026-09-16 | 정보(Fable) | 자동 마스크 선택이 파이썬 `qrcode` 와 6건 중 3건 다름 | 벌점 동률·N3 셈법 차이. 어느 마스크든 규격상 유효하고 강제 마스크 8종 전부 비트 일치이므로 판독에 영향 없음 — 정보로만 기록 |
 | 2026-09-16 | 결정(사용자) | 「QR진행해」 | F-51 — 서버(`src/Qr.php`)가 행렬을 만들고 화면이 canvas 에 그린다. 외부 라이브러리 대신 직접 구현(`Totp.php` 와 같은 이유, S-10-C). 시험 오라클로 파이썬 `qrcode` 를 `~/.local` 에만 설치(앱 무관) |
 
+### F-52 — 2단계 인증 필수 범위: Admin 만 필수, 나머지는 선택 + 권장 — 착수 2026-09-16
+
+> 지시서: `docs/f52-mfa-scope-directive.md`. 근거: PRD F-52(F-16 ③ 대체) · 8장 관문 행 · 12.2 T-64 · S-01, ARCH 5.26 · 4.0, SECURITY R-05(유지)·R-85(새).
+> 배경: 사용자 「보통 다른 사이트는 2차 OTP 가 선택인데 우리 너무 과한 것 같아. Admin 권한자만 필수, 게스트·직원은 선택. 다만 권장하는 절차는 필요」.
+
+**개발 사항** (구현 Opus / 문서 Fable)
+- [x] (Fable) PRD F-52·F-16 ③ 주석·8장 관문·enroll 행·T-64, ARCH 5.26·강제 절차 행, SECURITY R-85·R-05 보충, 지시서
+- [x] (Opus) `src/Auth.php` — `MFA_REQUIRED_ROLES`·`mfaRequired()`·`mfaRecommended()`·`nextStep` 조건(실제 역할 + `mfa_enabled`)
+- [x] (Opus) `login.php`·`me.php` — `mfa_required`·`mfa_recommended` · `mfa_confirm.php` — `forced` 조건 · 주석(`mfa_disable.php`·`settings_page.php`·`users_mfa_reset.php`)
+- [x] (Opus) `home.php` 권장 카드 마크업 · `app.js`(홈 카드·「나중에」 sessionStorage·내 계정 문구) · `app.css` · `src/help/screens.php`·`README.md`·`wiki/*.json` 문구
+- [x] (Opus) `tests/f52.sh`(T-64)
+- [x] 손대지 않음(확인): `public/index.php` 관문 코드(조건은 `nextStep` 안) · `Totp.php`·`Qr.php`·`db/*`·`mfa_enroll.php`·nginx
+
+**검토 체크** (Fable, 관문 ②)
+- [x] **Fable 검토 (2026-09-16)** — `tests/f52.sh` 재실행 **71/0** (a) 단위 (b) Employee 200·카드 (c) Admin 403·강제 상자 (d) 로그인 코드 유무 (e) 문구 0건 (f) 린트·원상
+- [x] `Auth.php` diff 읽기(41+/1−, 네 군데뿐, `real_role` 우선 확인) — 바뀐 곳이 상수·두 함수·`nextStep` 조건뿐인지, `real_role` 우선인지
+
+**자기 공격 체크** (사용자, 관문 ③)
+- [ ] employee01 로 2단계 인증 끄기 → 로그아웃 → 비밀번호만으로 로그인 → 홈에 권장 카드 → 「나중에」 → 파일 화면 정상 → 재로그인 시 카드 다시
+- [ ] admin01 로 2단계 인증 끄기 → 다음 요청부터 등록 화면만 보이는지(막힘) → 다시 켜기
+- [ ] (선택) Admin 이 employee01 을 Admin 으로 올리면 그 계정이 다음 요청에 등록 화면에 걸리는지 → 원상
+
+**학습 기록**
+
+| 날짜 | 구분 | 내용 | 해소·근거 |
+|---|---|---|---|
+| 2026-09-16 | 결정(사용자) | 「보통 다른 사이트는 2차 OTP 설정이 선택인데 우리 너무 과한 것 같아. admin 권한자만 필수, 게스트·직원은 선택. 다만 권장하는 절차는 필요」 | F-16 ③(모든 역할 필수, 9/11)을 F-52 로 대체. **Manager 는 사용자가 언급하지 않아 「Admin 만」을 글자 그대로** 적용(선택) — 필수로 바꾸려면 `Auth::MFA_REQUIRED_ROLES` 한 단어 + R-85 갱신. 위험은 R-85 로 기록(사용자 수용) |
+| 2026-09-16 | 판단(Opus) | 시험 (b)(c) 1차에서 「콘솔 오류 0건」 실패 → 원인은 `GET /favicon.ico` 404(F-52 이전부터, 사용자 브라우저에서도 발생) | 앱 결함 아님. 시험은 파비콘 404 를 갈라 세도록 고침. 파비콘 파일을 둘지는 사용자 판단(후속 후보) |
+| 2026-09-16 | 판단(Fable) | 관문 조건을 `mfa_setup_required` 플래그가 아니라 `mfa_enabled` 로 | 플래그는 보통 `!mfa_enabled` 와 같지만 어긋난 순간 관문이 열리면 안 된다. 켜졌는지의 진실은 `mfa_enabled`. 「역할로 보기」 중에는 `real_role` 로 판정(흉내로 빠져나갈 수 없게) |
+
 ## 2-1. 10단계 뒤 일괄 자기 공격 — 진행 순서 (관문 ③, 사용자)
 
 일괄 진행 모드에서는 4~10단계의 관문 ③을 한 번에 수행한다. **각 단계 절의 "자기 공격 체크" 를 위에서부터 차례로** 하되, 아래 순서가 효율적이다(계정 전환 최소화). 시드 계정 비밀번호: `sudo cat /etc/tbox-v2/seed-accounts.txt`.

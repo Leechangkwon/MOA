@@ -123,14 +123,14 @@ require __DIR__ . '/../views/shell_top.php';
         <p id="shares-empty" class="muted" hidden>만든 공유 링크가 없습니다.</p>
       </section>
 
-      <!-- 2단계 인증 (PRD F-16 ③ "모든 역할에 필수", SECURITY R-05).
+      <!-- 2단계 인증 (PRD F-16 ③ → F-52 "필수는 Admin 만, 나머지 역할은 권장", SECURITY R-05·R-85).
            QR(F-51, `src/Qr.php` 행렬을 canvas 에 그림)·비밀·otpauth 주소를 함께 보여 준다 —
            QR 이 기본 경로, 글자는 카메라를 못 쓸 때의 대안. 화면에 나오는 값은 전부 app.js 가
            textContent / setAttribute 로 넣는다. -->
       <section class="panel span-all">
         <div class="panel__head">
           <h2 class="panel__title">2단계 인증</h2>
-          <p class="panel__sub">끄면 다음 로그인 때 다시 등록합니다.</p>
+          <p class="panel__sub">관리자 권한이 있는 계정은 반드시 켜야 하고, 그 밖의 계정은 켜 두기를 권장합니다.</p>
         </div>
         <div class="mfa">
           <p id="mfa-state" class="muted">2단계 인증 상태를 불러오는 중…</p>
