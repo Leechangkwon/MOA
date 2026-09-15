@@ -1587,6 +1587,8 @@ sudo -u postgres psql -d tbox_re -c "SELECT happened_at, actor_name, action, res
 | 2026-09-15 | 알림(Fable) | 검토 중 감사 로그에 `admin01`/`t-box-assistant/1.0` 요청 10건 관찰(Opus R-73 관문이 한 번 멈춤) | 사용자의 로컬 프로그램이 실제 토큰으로 서버를 부르고 있다는 뜻 — 관문 ③ 실사용 진행 중으로 본다. 검토는 그 창이 지난 뒤 재실행 |
 | 2026-09-15 | 해소(Fable) | 관문 ②→④: 커밋 `b8929a8` 「F-50: 프로그램용 검색·다운로드」 → push → `release.sh minor` → `v1.2.0`(`5977306`, 태그 원격 확인). 관문 ③(사용자): 진짜 토큰으로 검색·다운로드 한 번씩 | STAGES F-50 · SECURITY 7장 F-50 행 |
 | 2026-09-15 | 어려움(사용자) | 다운로드 명령에 `<id>` 를 꺾쇠째 입력 → `bash: id: No such file or directory` · 이어서 `api_token_rotate.sh admin01` 실행 뒤 「된 거야 안 된 거야?」 | `<` 는 셸 입력 리다이렉션 — 자리표시자는 꺾쇠 없이 실제 id 로(3장 기초 기록의 `<아이디>` 와 같은 유형). 회전은 성공(「갱신됨·640」이 성공 출력)이지만 토큰이 새 값으로 바뀌어 셸의 `$API_TOKEN` 재 export 필요. 회전은 필수 아니었음(귀속 이미 admin01) |
+| 2026-09-15 | 궁금(사용자) | 「비밀번호는 어떻게 암호화 되어있어?」 | 암호화(복호화 가능)가 아니라 **단방향 해시** — `password_hash(…, PASSWORD_ARGON2ID)`(m=65536 KiB, t=4, p=1, 사용자별 무작위 소금 포함) 로 `users.password_hash` 에만 저장, 평문은 어디에도 없음. 로그인은 `password_verify` 로 비교, 없는 아이디는 고정 더미 해시로 같은 시간 소비(계정 존재 유추 방지). 근거: PRD S-09-4 · `db/schema.sql` users 주석 · `src/Auth.php` DUMMY_HASH·`password_verify`. 확인: `psql … -c "SELECT split_part(password_hash,'$',2), count(*) FROM users GROUP BY 1"` → `argon2id` 25건 |
+| 2026-09-15 | 요청(사용자) | 「17시 2차 강의 이후 세션(죽은 것 포함)을 참조해 t-box 업로드·다운로드 과정을 정리하고, 2차 비밀번호→토큰 전환에 시간이 왜 많이 걸렸는지 리뷰해서 문서에 포함해」 | `docs/practice-review-2026-09-15.md` — 시간표(17:00~22:14) · 세 인증 방식(강사 curl 실패 → 세션+CSRF 201 → F-49 토큰) · 87분 분해(폐기·재작업 33분, 방향 탐색 16분, 규칙 고정 비용 44분) · 지연 요인 10건 · 다음 실습 권고 9건 · 남은 정리 목록 |
 
 ## 2-1. 10단계 뒤 일괄 자기 공격 — 진행 순서 (관문 ③, 사용자)
 
