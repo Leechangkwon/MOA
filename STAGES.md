@@ -46,6 +46,7 @@
 | **24** | 「브랜드·지점·창고」 한 페이지(F-37)·창고 대기표 `p_location_inbox`·연결/제외·업로드 공통 조각 — 지시서 docs/purchase/09 | ✅ 구현 | ✅ 2026-09-13 (Opus, 재지시 0회) | ⚠ 대기 | ⚠ 대기 | 커밋 전 |
 | 25 | 구매 화면 UI 정돈 — 공통 CSS 한 벌·시안 충실도·사이드바 3묶음·2단 레이아웃·개발 잔재 제거 (T-50) | ✅ 구현·검토 | ✅ | ✅ 2026-09-14 | 대기(눈 점검 1440·1024) | `6d0d818` |
 | 문구 정리 | 화면 문구 정리 — **1단계** 화면에 늘 펼쳐져 있던 안내 68곳 삭제·축소 / **2단계** 「사용 방법」 단추와 화면별 도움말 20화면 (F-38 · T-51) | ◐ 2단계 구현 | ✅ 2026-09-15 (Opus) | ⚠ 대기 | ⚠ 대기 | 1단계 `06ee617` · 2단계 커밋 전 |
+| **26** | 관리자 「역할로 보기」(F-39) · 관리 내비·계정 편집 폼(F-40) · 폴더 삭제 세 갈래(F-41) — 사용자 결정·지적 2026-09-15 | ✅ 구현 | ⚠ Fable 재검토 대기 (Opus 자체 시험 124/124) | ⚠ 대기 | ⚠ 대기 | 커밋 전 |
 
 ---
 
@@ -849,6 +850,8 @@ sudo -u postgres psql -d tbox_re -c "SELECT happened_at, actor_name, action, res
 | 2026-09-15 | 결정(사용자) | 「사용 방법 버튼(화면 사용자 모두) + 구조 설명은 위키」 — 화면에는 조작 안내만, 업무 기준은 각 화면 「사용 방법」 버튼 뒤로, 보안 구조 설명은 관리자 위키에. 로그인 화면 설명은 삭제 | 1단계(문구 삭제·축소 68곳, 화면 25개 + JS 3 + 권한 매트릭스 각주 3) Fable 직접 수행(CLAUDE.md 5장 경미 변경 — 로직·권한·SQL 무변경). 확인: `php -l` 전부 통과, `scripts/ui_snapshot.sh` 구매 11화면 0건 · 홈/계정/활동/관리자/조직/권한/감사/휴지통/재인증 시각 결함 0(`2단계` 라벨·사용자 파일 설명의 「3단계」는 데이터), 로그인·홈·계정·조직 스크린샷 눈 확인. 2단계(사용 방법 버튼)는 Opus 지시서 `docs/purchase/12-help-button-directive.md` |
 | 2026-09-15 | 검토 ✅ (2단계 Opus 보고) | 「사용 방법」 버튼 20화면 + `src/help/screens.php` 도움말 20편(지시서 1장 그대로) · shell_bottom 이 `htmlspecialchars` 로만 그림 · app.js 위임 1개 · F-38·T-51·ARCH 5.19 | Fable 재실행 `tests/help_button.sh` 17/17 · 린트 0 · 보안 핵심 diff 0 · 모달 3장 눈 확인. 수용: 「감사 로그」 화면 이름 유지 / (d) 기준 7건 이하(데이터·기능 이름·기존 `org-teams`) / `openDialog` 지역 함수라 복제. 후속: `org-teams` CSS 규칙 1개, 위키 과제 어휘(「N단계」 517회·문서 번호 1,004회) 정리 여부는 사용자 결정 |
 | 2026-09-15 | 요청·결정(사용자) | 권한 시험을 위해 Admin 이 역할을 골라 그 역할로 써 볼 수 있게 — A안(세션 안 임시 역할, 아래로만) · 구매 모듈 역할·지점까지 · 만료는 **활동 없는 30분**(쓰는 중 끊기면 안 됨). 함께 지적: 관리자 페이지에 들어가면 사이드바 「관리자 페이지」 사라짐 / 계정·조직 화면은 뒤로가기로만 / 계정 변경이 문답 텍스트라 불편·「변경했는데 로그에 없음」 / 빈 폴더(qa-18r-T) 삭제 거부 | 실측: 오늘 admin01 의 user.*·permission.* 감사 0건 → **변경이 저장되지 않았다**(prompt 취소 시 조용히 return) ; `inGate` 가 next=reauth 도 내비를 닫음 ; qa-18r-T 는 휴지통 파일 때문에 거부(규칙대로) · qa-18-3 은 하위 폴더 1. → 26단계 지시서 `docs/purchase/13-stage26-directive.md`(F-39 역할로 보기 · F-40 관리 내비·계정 폼 · F-41 폴더 삭제 규칙, T-52~54, R-74·R-75). Opus 위임 2026-09-15 |
+| 2026-09-15 | **사고**(26단계 구현 중) | 09:52 부터 모든 로그인 요청 500 — Opus 가 `src/Auth.php` 에 `s.act_role` 조회를 먼저 저장하고 마이그레이션은 아직 적용 전이라 PDOException 42703. 사용자가 실사용 중 「서버 오류」로 발견 | Fable 이 마이그레이션(열 추가만, DROP/UPDATE 없음 확인) 즉시 적용 → 복구. 규칙 추가(Opus 에 전달, CLAUDE.md 후보): **DB 열을 읽는 코드를 저장하기 전에 마이그레이션을 먼저 적용** · 보안 핵심 파일은 한 파일 저장 직후 `php -l` + 로그인 요청 1회로 500 확인 · 라우트 추가 전에 핸들러 파일 존재. 근본: 이 서버는 개발과 운영이 한 곳 — 스테이징 분리는 사용자 결정 사항(Q-22 후보) |
+| 2026-09-15 | 궁금·결정(사용자) | 「HTML 생성기는 서버와 통신하지 않는데 어떻게 인증되나」 → 비밀 키 공유 + 시각 공식(TOTP) 설명. 「소스가 개발자도구에 전부 보이는데 문제 없나」 → 원칙(비밀은 키에만)이지만 사용자 결정: **용도·경고·저장 방식·검토 포인트 설명은 피싱 복제 시 그럴듯함을 주므로 소스·화면에서 빼고 문서로**. 시각은 로그인 화면이 아니라 생성기가 인터넷 있을 때 서버와 **동기화**(하드코딩 아님) | 생성기 머리 주석·화면 설명·근거 각주를 `docs/totp-generator-internals.md` 로 옮김(사용 안내만 남김), 자체 점검 headless 실행 통과·pageerror 0. 동기화(GET /api/time·왕복 보정·오프라인 저장 보정값)와 잠금 문구 12자 최소는 **F-42** 로 26단계 뒤 진행 |
 | 2026-09-13 | 접수(21단계 Opus 보고) | 입고 정책 stock.write(buyer 포함) · Doc.php 못 고쳐 채번 SQL 이 Stock.php 에도 · p_doc_lines qty CHECK 를 실사 줄만 0 허용 · 사이클 화면 입고 칸 「—」 하드코딩(purchase_docs.js 범위 밖) · 재인증 키 미추가(대상 아님) · ARCH 7.4 표에 purchase.* 행 없음(19·20단계 선례) | 전부 수용. 채번 통합·ARCH 7.4 표 보강은 22단계 지시서에, 사이클 칸은 20단계 에이전트 |
 | 2026-09-13 | 보정 | 내비 「구매관리」 그룹 8개 링크(발주요청·발주서·입고·이동·실사·재고현황·전표·기초정보·가져오기) 순서 정리, 21단계 세 화면 활성 표시 | 18-3 에이전트, qa_admin01 로 3화면 is-active 확인. 커밋 |
 | 2026-09-13 | 보정 | 사이클 화면 입고·미입고 칸을 API 값으로(하드코딩 「—」 제거, 보낸 발주서의 미입고 배지), 요청 화면 낡은 안내 문장 교체(Fable), 사이클 API 의 `orders` 에 GR 번호가 섞이던 것을 `receipts` 로 분리(Fable) | 20단계 에이전트 + Fable. `node --check`·`php -l`·린트, 20단계 시험 90/90(에이전트 실행). 커밋 |
@@ -1210,6 +1213,60 @@ sudo -u postgres psql -d tbox_re -c "SELECT happened_at, actor_name, action, res
 | 2026-09-15 | 결정(Opus, 판단 필요) | 완료 기준 (a) 의 금지어 목록에 「감사 로그」가 통째로 적혀 있으나, 지시서 **금지 패턴** 줄의 원문은 「감사 로그에 남습니다」이고 1장 도움말 원문에는 「전체 기록은 관리자가 「감사 로그」에서 봅니다」·화면 이름 「감사 로그」가 그대로 있다. **1장 내용 그대로**가 우선이라 판단해 시험은 「감사 로그에 남」으로 검사하고, 화면 이름으로 쓰인 3곳은 남겼다 | `tests/help_button.sh` (a) 의 `$banned` 배열과 `NOTE_감사로그=3` 출력 |
 | 2026-09-15 | 측정(Opus) | (d) 「20화면 1440px 합계 0건」은 **작업 전에도 7건**이었다: 기능 이름 「2단계 인증」과 자료에 들어 있는 파일 이름(「3단계 화면 확인용 공개 파일」)이 `stage_text` 정규식 `\d{1,2}단계` 에 걸린 6건 + `/org` 의 규칙 없는 class `org-teams` 1건. 전부 이번 변경과 무관하고 지시서 「수정 파일」 밖이라 손대지 않았다 | 착수 전 측정 `~/.claude/ui-shots/help-button/baseline-1440.txt`(합계 7건) ↔ 작업 후 `d-1440.txt`(합계 7건, 같은 항목). 시험은 「기존값 이하」로 판정 |
 | 2026-09-15 | 결정(Opus) | 지시서는 app.js 에서 `openDialog()` 를 부르라 했으나 그 함수는 `initFiles`·`initOrg` **안의 지역 함수**라 밖에서 부를 수 없다. 같은 규칙(showModal 이 없으면 아무 일도 하지 않음)을 쓰는 한 쌍을 `initHelpDialog` 안에 두고 **다른 함수는 한 줄도 고치지 않았다** | `public/assets/app.js` `initHelpDialog()` 주석 |
+
+### 26단계 — 관리자 「역할로 보기」 · 관리 내비 · 계정 편집 폼 · 폴더 삭제 규칙 (F-39 · F-40 · F-41 · T-52~T-54) — 구현 2026-09-15
+
+> 지시서: `docs/purchase/13-stage26-directive.md`. 근거: PRD 6장 F-39~F-41 · 12.2 T-52~T-54 · Q-21, ARCH 5.20, SECURITY R-74·R-75.
+> 사용자 결정 2026-09-15: ① 「역할로 보기」 A안(세션 안 임시 역할, 아래로만) ② 구매 모듈 역할·지점까지 고름 ③ 만료는 **활동 없는 30분**만.
+> 같은 날 사용자 지적 4건: 관리자 페이지에 들어가면 사이드바의 「관리자 페이지」가 사라짐 / 계정·조직 화면에서 뒤로가기로만 돌아옴 /
+> 계정 변경이 문답(prompt) 입력이라 불편하고 「변경했는데 로그에 없다」 / 빈 폴더(qa-18r-T) 삭제가 거부됨.
+
+**개발 사항** (Opus)
+- [x] `db/migrations/2026-09-16_sessions_act_as.sql` — `sessions` 에 `act_role`·`act_team_id`·`act_purchase_role`·`act_branch_id`·`act_started_at`·`act_last_seen_at` 6열 + CHECK 2개(`Manager|Employee|Guest`, 모듈 역할 4값). `db/schema.sql` 동기화. grants 변경 0
+- [x] `src/Auth.php` — `SQL_LOOKUP` 에 act_* 6열 + DB 가 계산한 `act_role_ok`(실제 역할이 지금도 Admin 인가)·`act_fresh`(활동 없는 30분). 셋 다 참이면 `role`·`team_id`·`purchase_role`·`branch_id` 를 보는 값으로 바꿔 돌려주고 `real_*`·`acting`·`acting_since` 를 함께 준다. `SQL_TOUCH` 에 `act_last_seen_at` 한 열 추가(쿼리 수 증가 0). 만료·강등이면 그 자리에서 6열 NULL + `act.expire allow`. `Auth::reload()`(캐시만 버림) 추가. **역할 비교는 SQL 한 줄뿐**
+- [x] `src/Authz.php` — **변경 0줄**. 유효 역할이 이미 `$u` 에 들어오므로 `authorize`·`can*`·`purchaseAuthorize`·`purchaseScopeWhere` 가 그대로 따라온다(이 단계의 핵심)
+- [x] `src/Audit.php` — `actor_role` 은 **실제 역할**(`real_role`), `autoDetail()` 이 보는 중이면 `acting_as {role, team_id, purchase_role, branch_id}`·`real_role` 을 자동으로 붙임. 문장 틀 `act.start`(allow/deny 2) · `act.stop` · `act.expire` · `folder.delete deny folder_has_children|folder_has_trashed` 추가
+- [x] `src/handlers/me_act_start.php`(POST `/api/me/act`, 정책 `role:Admin` → 재인증 자동) · `me_act_stop.php`(DELETE, 정책 `authenticated`) · `public/index.php` 라우트 2줄
+- [x] `src/handlers/me.php` — `acting`·`acting_as{role,team_name,purchase_role,branch_name}`·`real_role`·`acting_idle_minutes`·`can_stop_acting` 추가. can_* 는 **유효 역할 기준 그대로**(그래야 화면이 그 역할로 보인다)
+- [x] `src/views/shell_top.php` — 「관리」 묶음에 링크 7개(기본 hidden, `can_admin` 하나로 함께 열림 — 역할 비교 없음) · `$user['acting']` 이면 본문 맨 위에 띠(서버가 그린다 — 보는 중에는 관리 묶음이 닫혀 이 「원래대로」가 유일한 복귀 경로) · 칩 역할에 「(보기)」
+- [x] `src/handlers/admin_page.php` — 카드 「역할로 보기」(역할·팀·모듈 역할·지점 셀렉트, 선택지는 `/api/teams`·`/api/purchase/branches` 에서)
+- [x] `public/assets/app.js` — `inGate` 를 `password_change|mfa_setup` 로(재인증은 내비를 닫지 않음) · 관리 링크 7개 열기 · `[data-act-stop]` → DELETE → 새로고침 · 역할로 보기 폼 submit · **계정 변경 모달**(prompt 6개 → `<dialog>` 하나, 바뀐 칸만 PATCH, 취소·무변경·실패를 전부 `#msg` 에) · 사유 모달 · 폴더 삭제 3갈래 + 휴지통 목록 경고 모달
+- [x] `src/handlers/users_page.php` — 모달 마크업 2개(`user-edit`·`reason-dialog`). 계정 화면의 `window.prompt(` **0개**
+- [x] `src/handlers/folders_delete.php` — 세 갈래(`folder_has_children` / `folder_not_empty` / `folder_has_trashed` + 볼 수 있는 파일 목록·`others`). 확인하면 같은 트랜잭션에서 휴지통 파일 `folder_id` NULL → 폴더 삭제, 감사 `moved_trashed`·`moved_file_ids`
+- [x] `src/Http.php` 문구 상수 3개 · `src/help/screens.php`(admin 「역할로 보기」 절 · users 「바꾸기」 모달 기준 · files 삭제 한 줄 · trash 한 줄)
+- [x] `scripts/security_lint.sh` 새 규칙 (f) — `act_role`·`real_role` **값 비교**가 `Auth`·`Audit`·`me_act_*` 밖에 있으면 반려(반려 동작도 확인)
+- [x] `tests/stage26.sh` — T-52·T-53·T-54 (qa 계정만·UA `tbox-review`·픽스처 `S26-`·정리는 qa created_by/uploaded_by·R-73 관문)
+- [x] PRD F-39~41 · T-52~54 · Q-21 · 8장 API 2행 / ARCH 5.20 · 7.4 · 7.5 / SECURITY R-74·R-75·R-63 보충·7장 이력 / README 「관리자」 절
+
+**검토 체크** (Opus 자체 실행 — 원문은 보고서)
+- [x] `bash tests/stage26.sh` → **124 ✔ · 0 ✘**, 비-qa 행 374 → 374(남의 자료 0건 변화)
+- [x] 회귀 `tests/purchase_stage19.sh` 229 ✔ · 0 ✘(T-1·T-26·T-36 포함) · `tests/purchase_stage25.sh` 34 ✔ · 0 ✘(1440·1024 시각 결함 0) · `tests/help_button.sh` 17 ✔ · 0 ✘ · T-22 수동 실측(200 → 비활성화 → 401 → 재활성화)
+- [x] `scripts/security_lint.sh` 0건(새 규칙 포함) · `php -l` src·public 전체 · `\d sessions` act_* 6열 + CHECK 2개
+- [x] 화면 눈 확인 — 띠(`act-banner.png`) · 관리 내비(`admin-nav.png`) · 계정 변경 모달(`user-edit-modal.png`) · 폴더 경고 모달(`folder-trashed-modal.png`) @ `~/.claude/ui-shots/stage26/`
+- [ ] **Fable 재검토** — R-74·R-75 의 설계 상태를 ◐ → ✅ 로 올릴지 판단(그 판단은 검토자의 몫이다)
+
+**자기 공격 (관문 ③, 사용자)**
+- [ ] 관리자 페이지 → 「역할로 보기」로 Employee 를 켠 뒤, 개발자도구로 띠를 지우고 `/users`·`/api/users` 를 직접 불러 본다 — 403 이 나오는지(화면이 아니라 서버가 막는지)
+- [ ] 보는 중에 `POST /api/me/act` 를 콘솔에서 `{"role":"Admin"}` 으로 직접 던져 본다 — 403 인지(겹쳐 켜기·위로 가기 둘 다)
+- [ ] 보는 중에 파일을 하나 올린 뒤 감사 로그에서 그 행을 찾아, **누가**(actor_role) 와 **무슨 역할로 보였나**(acting_as) 가 함께 남았는지 본다
+- [ ] 30분 동안 아무것도 하지 않은 뒤 새로고침 — 원래 역할로 돌아와 있는지. 반대로 계속 쓰는 동안에는 끊기지 않는지
+- [ ] 휴지통 파일만 남은 폴더를 지워 보고, 경고 창의 목록이 **내가 볼 수 있는 파일**만인지 · 지운 뒤 그 파일이 휴지통에 그대로 있고 복구하면 맨 위로 오는지
+- [ ] 계정 변경 창에서 아무것도 바꾸지 않고 「저장」 — 「바뀐 내용이 없습니다」가 뜨고 감사 로그에 아무 행도 안 생기는지
+
+**학습 기록**
+
+| 날짜 | 구분 | 내용 | 해소·근거 |
+|---|---|---|---|
+| 2026-09-15 | 결정(사용자) | 「역할로 보기」는 A안(세션 안 임시 역할)·구매 모듈 역할과 지점까지 고름·만료는 활동 없는 30분만 | B안(`users.role` 을 바꿨다 되돌리기)은 실제 권한이 바뀌어 되돌릴 사람이 없어질 수 있다 — ARCH 5.20 「어디에 두나」 |
+| 2026-09-15 | 지적(사용자) | 「권한 설정을 변경했는데 로그에 없다」 | **변경이 저장되지 않았다.** 계정 변경이 `window.prompt` 6번이었고 하나라도 취소하면 조용히 `return` — 화면에 알림이 없어 「바꿨다」고 느끼기 쉬웠다. 26단계에서 모달 하나 + 취소·무변경·실패 알림으로 (PRD F-40) |
+| 2026-09-15 | 지적(사용자) | 관리자 페이지에 들어가면 사이드바의 「관리자 페이지」가 사라진다 | `inGate = me.next !== ''` 가 **재인증**(`reauth`)까지 강제 절차로 보고 내비를 통째로 닫았다. 강제 절차 두 값만 보게 고침 (app.js `initShell`) |
+| 2026-09-15 | 지적(사용자) | 빈 폴더(qa-18r-T)가 안 지워진다 | 하위 0·살아 있는 파일 0 이지만 **휴지통 파일**이 남아 있었다. 그 파일은 30일 배치 전에는 없앨 방법이 없어 폴더도 한 달간 잠겼다 → 확인 뒤 루트로 옮기고 삭제 (PRD F-41) |
+| 2026-09-15 | 결정(사용자) | 휴지통 파일만 남은 폴더를 지울 때 「어떤 파일이 있다, 진짜 삭제하겠냐」 **목록**을 보여 줄 것 | 볼 수 있는 파일만 이름·삭제일로, 볼 수 없는 파일은 `others:true` 한 줄. R-63 이 숨기는 것은 「안 보이는 파일」이라는 구분을 SECURITY R-63 에 보충 |
+| 2026-09-15 | 사고(Opus, 09:52) | `src/Auth.php` 가 새 열을 읽는 상태로 저장됐는데 마이그레이션이 아직 적용되지 않아 **운영 로그인이 전부 500**(PDOException 42703) | Fable 이 마이그레이션을 적용해 복구. 규칙: **DB 열을 읽는 코드를 저장하기 전에 마이그레이션을 먼저 적용**하고, 보안 핵심 파일은 저장 직후 `php -l` + 로그인 요청 하나로 500 여부를 즉시 확인한다 (SECURITY 7장 이력) |
+| 2026-09-15 | 판단(Opus) | 「관리」 묶음 링크가 7개인데 지시서 본문은 「하위 6화면」이라 적혀 있다 | 「관리자 페이지」를 포함해 7개다(지시서 수정 파일 항목의 목록도 7개) — 목록 쪽을 따랐다 |
+| 2026-09-15 | 판단(Opus) | 폴더 삭제 거부 응답에 `code` 를 함께 넣었다 | 화면이 세 갈래를 가르려면 **문구가 아니라 코드**를 봐야 한다(문구가 바뀌면 화면이 조용히 깨진다). 개수·이름은 여전히 담지 않는다 — R-63 |
+| 2026-09-15 | 판단(Opus) | 계정 변경 모달의 사유 칸에서 HTML `required` 를 뺐다 | `required` 가 있으면 브라우저 기본 검사가 먼저 막아 **submit 이벤트 자체가 일어나지 않고**, 「바뀐 칸이 없습니다」를 알릴 기회가 사라진다(실측). 비었는지는 화면 코드가 보고 서버가 400 으로 다시 막는다 |
+| 2026-09-15 | 판단(Opus) | 「역할로 보기」 띠에 CSS 를 새로 만들지 않고 기존 `.notice` 클래스를 함께 썼다 | `public/assets/app.css` 가 지시서의 「수정 파일」 밖이라 새 규칙을 만들지 않았다. 띠는 `.act-banner .notice` 로 기존 상자 스타일을 빌린다 |
 
 ## 2-1. 10단계 뒤 일괄 자기 공격 — 진행 순서 (관문 ③, 사용자)
 

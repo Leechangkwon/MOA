@@ -1,35 +1,4 @@
-<!--
-  totp-generator.html — 오프라인 2단계 인증(TOTP) 코드 생성기 · t-box 11단계 부록
-  근거: PRD.md F-17 · F-17-2 · SECURITY.md R-40 · 서버 구현 src/Totp.php 와 같은 규격(RFC 6238)
-
-  [용도]
-    스마트폰 인증 앱을 쓸 수 없을 때 쓰는 대안. 이 파일 하나를 PC 에 저장해 브라우저로 열면
-    비밀 키(base32) 또는 otpauth 주소로부터 6자리 코드를 30초마다 계산한다.
-    네트워크 요청 0 · 외부 스크립트 0 · 서버와 통신하지 않는다. 계산은 전부 이 파일 안에서 한다.
-
-  [경고 — SECURITY.md R-40]
-    이 생성기를 "로그인하는 그 PC" 에 두면 두 번째 겹이 그 PC 하나로 줄어든다.
-    그 PC 를 쥔 사람(악성코드·자리 비움)은 비밀번호와 코드를 함께 얻는다.
-    스마트폰 인증 앱은 기기가 분리돼 있어 더 강하다. 가능하면 앱을 쓴다.
-
-  [저장 방식 — PRD F-17-2]
-    평문 저장 없음. 「잠금 문구」에서 PBKDF2-SHA256(무작위 salt 16B, 60만 회)으로 잠금 키를 만들어
-    AES-GCM(무작위 IV 12B)으로 비밀 키를 암호화하고, **암호문만** localStorage 에 둔다:
-      tbox-totp-vault = {"v":1,"kdf":"PBKDF2-SHA256","iter":600000,"salt":b64,"iv":b64,"ct":b64}
-    문구·잠금 키·평문은 저장하지 않는다(복호화된 값은 메모리 변수에만). 「잠금」은 메모리만,
-    「지우기」는 암호문까지 지운다. 문구를 잊으면 t-box 「내 계정」에서 2단계 인증을 껐다 켜서 새 키를 받는다.
-
-  [검토자가 볼 곳]
-    · base32 해독 base32Decode() / 인코딩 base32Encode()  · 8바이트 카운터 counterBytes()
-    · HMAC-SHA1 hmacSha1() (WebCrypto crypto.subtle 만 사용)
-    · 동적 절단·자릿수 totpCode()  · 입력 파싱 parseInput()  · 4자 묶음 표시 groupFours()
-    · 잠금 키 유도 deriveLockKey() (PBKDF2-SHA256 600000회)
-    · 암호화 lockToVault() · 복호화 openVault() · 저장 saveVault()(「잠금 문구 확인」 칸과 대조) /
-      열기 unlockVault()(확인 칸 없음 — 한 번만 입력) / 지우기 wipeVault()
-    · 옛 평문 저장값 즉시 삭제 dropLegacySecret()
-    · RFC 6238 부록 B 시험값 TEST_VECTORS / runSelfTest() + 잠금 왕복·틀린 문구·평문 미포함 점검 vaultSelfTest()
-    · DOM 조작은 textContent 와 createElement 만 — HTML 문자열 주입·동적 코드 실행·외부 리소스 없음.
--->
+<!-- t-box 2단계 인증 코드 생성기 — 사용 방법은 화면 안내를, 내부 구조는 docs/totp-generator-internals.md 를 본다. -->
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data:">
@@ -116,7 +85,7 @@
 
 <div class="wrap">
   <h1>t-box 오프라인 2단계 코드 생성기</h1>
-  <p class="sub">RFC 6238 TOTP · HMAC-SHA1 · 이 파일 안에서만 계산합니다 (네트워크 요청 없음)</p>
+  <p class="sub">스마트폰 인증 앱을 쓸 수 없을 때, 이 파일로 6자리 코드를 만듭니다.</p>
   <p class="warn">비밀 키는 문구로 잠가 이 PC 브라우저에만 저장됩니다. 문구를 잊으면 t-box 「내 계정」에서 2단계 인증을 끄고 다시 켜서 새 키를 받아야 합니다.</p>
   <p id="msg" class="msg"></p>
 
@@ -146,7 +115,7 @@
       <button id="apply" class="primary" type="button">코드 만들기</button>
       <button id="save" type="button">잠가 저장</button>
     </div>
-    <p class="meta">「코드 만들기」 는 아무것도 저장하지 않습니다(메모리에만). 「잠가 저장」 은 문구로 잠근 <b>암호문만</b> 남깁니다 — 스마트폰 인증 앱이 여전히 더 강합니다 (SECURITY R-40).</p>
+    <p class="meta">「코드 만들기」 는 저장하지 않습니다. 「잠가 저장」 은 문구로 잠가 이 브라우저에 저장합니다. 가능하면 스마트폰 인증 앱을 쓰세요.</p>
   </div>
 
   <div class="card">
@@ -165,17 +134,17 @@
   <div class="card">
     <h2>시각 확인</h2>
     <div id="utc" class="meta">—</div>
-    <div class="meta">코드가 계속 틀리면 PC 시계를 맞추세요. 서버는 시계 오차를 ±30초까지 인정하므로 한 코드는 만들어진 뒤 최대 1분 안에만 통과하고, 한 번 쓴 코드는 다시 쓸 수 없습니다.</div>
+    <div class="meta">코드가 계속 틀리면 PC 시계를 맞추세요. 한 번 쓴 코드는 다시 쓸 수 없습니다.</div>
   </div>
 
   <div class="card">
     <h2>자체 점검</h2>
-    <div class="meta">RFC 6238 부록 B 공개 시험값 6개 + 잠금·해제 3개, 모두 <b>9개</b>를 확인합니다. 비밀 키 없이 눌러도 되고 저장된 값은 건드리지 않습니다(메모리에서만). 60만 회 반복 때문에 몇 초 걸립니다.</div>
+    <div class="meta">계산과 잠금 저장이 정상인지 확인합니다. 저장된 값은 건드리지 않으며 몇 초 걸릴 수 있습니다.</div>
     <div class="row"><button id="selftest" type="button">자체 점검 실행</button></div>
     <div id="testout" class="result"></div>
   </div>
 
-  <p class="foot">복호화된 비밀 키는 메모리에만 있습니다. 서버로 보내지 않으며, 로그도 남기지 않습니다. 근거: PRD F-17 · F-17-2 · SECURITY R-40 · 서버 구현 src/Totp.php</p>
+  <p class="foot">비밀 키는 이 브라우저 밖으로 나가지 않습니다. 다 쓰면 「잠금」을 누르세요.</p>
 </div>
 
 <script>
@@ -286,7 +255,7 @@
     return String(text).toUpperCase().replace(/[\s\-_]+/g, '').replace(/=+$/, '');
   }
 
-  /** 옮겨 적기 오류를 줄이려고 4자씩 띄어 보여 준다 (PRD F-17-2). 값은 바뀌지 않는다. */
+  /** 4자씩 띄어 보여 준다. 값은 바뀌지 않는다. */
   function groupFours(text) {
     return String(text).replace(/(.{4})/g, '$1 ').trim();
   }
@@ -460,7 +429,7 @@
 
   function hasVault() { return readVault() !== null; }
 
-  /** 11단계 부록1 의 평문 저장값이 남아 있으면 즉시 지운다 (PRD F-17-2). */
+  /** 옛 저장값이 남아 있으면 지운다. */
   function dropLegacySecret() {
     var old = null;
     try {
@@ -713,7 +682,7 @@
     if (key === null) { addLine('시험 비밀 키 해독 실패', 'bad'); return; }
 
     el.selftest.disabled = true;
-    addLine('RFC 6238 부록 B (SHA1) — 비밀 "12345678901234567890"', 'head');
+    addLine('계산 시험값', 'head');
 
     var passed = 0;
     var chain = Promise.resolve();
