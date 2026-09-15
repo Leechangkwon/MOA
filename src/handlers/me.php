@@ -67,7 +67,25 @@ if ($myBranchId !== null && $myBranchId !== '') {
 /** 지금 「역할로 보기」 중인가 — 판정은 Auth::currentUser 한 곳에서 이미 끝났다 */
 $acting = ($user['acting'] ?? false) === true;
 
-Http::json([
+/*
+ * F-43 — 「URL 로 가져오기」 (PRD F-43, ARCH 5.22).
+ *
+ *   can_fetch          그 기능을 쓸 자격이 있나 (Manager 이상, 7단계부터 있던 값)
+ *   fetch_enabled      **지금 허용된 사이트가 하나라도 있나**. 목록이 비면 어떤 주소도 가져올 수
+ *                      없으므로(전부 host_not_allowed), 눌러도 반드시 실패하는 단추를 보여 주지
+ *                      않으려는 값이다. 홈의 단추는 `can_fetch && fetch_enabled` 일 때만 열린다.
+ *   fetch_hosts_public 지금 허용된 사이트 이름 목록. 「사용 방법」 도움말이 그대로 보여 준다.
+ *                      **자격이 있는 사람(can_fetch)에게만** 내려 준다 — 서버가 어디로 나갈 수
+ *                      있는지는 그 기능을 쓸 수 없는 사람이 알아야 할 값이 아니다.
+ *
+ * ★ 셋 다 **화면 편의 값이며 권한이 아니다**. fetch_enabled 를 true 로 고쳐 단추를 되살려도,
+ *   목록에 없는 주소를 보내도, 허용 여부는 요청마다 서버가 Fetch::check 로 다시 판단하고
+ *   라우트 정책 file.fetch 가 다시 막는다 (PRD S-01, T-56).
+ */
+$canFetch   = Authz::canFetch($user);
+$fetchHosts = Fetch::publicHosts();
+
+$mePayload = [
     'username'   => (string) $user['username'],
     'role'       => (string) $user['role'],
     'team_id'    => $user['team_id'],
@@ -78,7 +96,9 @@ Http::json([
     // 7단계 — "URL 로 가져오기" 패널을 그릴지 여부 (F-14, Manager 이상).
     // 화면은 이 값만 본다. 역할 문자열을 보고 화면이 스스로 판단하지 않는다 (PRD S-01).
     // 감추는 것은 편의일 뿐이고, POST /api/files/fetch 는 라우터 정책 file.fetch 가 다시 막는다.
-    'can_fetch'     => Authz::canFetch($user),
+    'can_fetch'     => $canFetch,
+    // F-43 — 허용된 사이트가 하나라도 있나 (위 주석). 목록이 비면 홈 단추를 열지 않는다.
+    'fetch_enabled' => $fetchHosts !== [],
     // 8단계 — "감사 로그" 링크를 보일지 여부 (F-09, Admin 만, PRD 5.4 Q-8).
     // can_fetch 와 똑같은 성격의 **화면 편의 값**이다. 링크를 되살려 /audit 이나
     // /api/audit 을 직접 불러도 라우터 정책 audit.read 가 다시 막는다 (PRD S-01, 10장).
@@ -166,4 +186,11 @@ Http::json([
     'real_role'           => (string) ($user['real_role'] ?? $user['role']),
     'acting_idle_minutes' => Auth::ACT_IDLE_MINUTES,
     'can_stop_acting'     => $acting,
-]);
+];
+
+/* 허용 목록 자체는 자격이 있는 사람에게만 — Employee·Guest 응답에는 **키가 아예 없다**. */
+if ($canFetch) {
+    $mePayload['fetch_hosts_public'] = $fetchHosts;
+}
+
+Http::json($mePayload);

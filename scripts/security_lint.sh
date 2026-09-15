@@ -206,6 +206,30 @@ else
   echo "✔ act_role·real_role 값 비교가 Auth·Audit·me_act_* 밖에 있음  [F-39 · R-74]"
 fi
 
+# ─── F-43 URL 가져오기 통제된 리다이렉트 (PRD F-43, ARCH 5.22, SECURITY R-77) ─────────
+#
+# (g) **리다이렉트 통제가 풀리지 않게 한다.** 두 가지를 반려한다:
+#     ① `CURLOPT_FOLLOWLOCATION` 이 `true` — curl 이 스스로 리다이렉트를 따라가면 우리 코드의
+#        단계별 검사(https · 443 · 허용 호스트 · 사설 IP)가 **한 번도** 일어나지 않는다.
+#        리다이렉트를 따라가는 것 자체는 F-43 이 허용했지만, 따라가는 주체는 언제나 우리다.
+#     ② `curl_exec` 가 있는 파일에 `check(` 호출이 없음 — 검사 없이 밖으로 나가는 코드.
+#        cURL 은 src/Fetch.php 한 파일에서만 허용되므로(위 S-05 ⑬ 규칙) 실질적으로
+#        "그 파일이 check() 를 잃어버리지 않았는가" 를 지킨다.
+follow_hits=$(grep -rnE "${INCLUDE[@]}" "${EXCLUDE[@]}" -- 'CURLOPT_FOLLOWLOCATION[[:space:]]*=>[[:space:]]*true|CURLOPT_FOLLOWLOCATION[^,;]*,[[:space:]]*true' "$ROOT" 2>/dev/null || true)
+nocheck_hits=""
+for f in $(grep -rlE "${INCLUDE[@]}" "${EXCLUDE[@]}" -- 'curl_exec\(' "$ROOT" 2>/dev/null || true); do
+  grep -qE '(self|Fetch)::check\(' "$f" && continue
+  nocheck_hits="${nocheck_hits}${f}: curl_exec 이 있는데 check() 호출이 없음"$'\n'
+done
+if [ -n "$follow_hits" ] || [ -n "$nocheck_hits" ]; then
+  echo "✖ 리다이렉트 통제 (FOLLOWLOCATION true · check() 없는 curl_exec)  [F-43 · R-77]"
+  [ -n "$follow_hits" ] && echo "$follow_hits" | sed 's/^/    /'
+  [ -n "$nocheck_hits" ] && printf '%s' "$nocheck_hits" | sed 's/^/    /'
+  fail=1
+else
+  echo "✔ 리다이렉트 통제 (FOLLOWLOCATION true · check() 없는 curl_exec)  [F-43 · R-77]"
+fi
+
 # Authz.php 자체는 역할 문자열 비교가 허용되는 유일한 파일 — 위 검사에서 걸렸다면 그 파일만 예외
 if [ "$fail" -eq 1 ] && [ -f "$ROOT/src/Authz.php" ]; then
   echo "(참고) src/Authz.php 의 역할 비교는 허용. 위 목록에서 해당 파일만 나온 항목은 무시해도 됨"

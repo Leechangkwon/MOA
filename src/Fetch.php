@@ -1,6 +1,10 @@
 <?php
 declare(strict_types=1);
 
+/* F-43 — 공개 링크 → 내려받기 주소 변환 (순수 함수·네트워크 0). 리다이렉트 루프가 부른다.
+   bootstrap.php 의 명시 목록에 새 줄을 더하지 않고 여기서 한 번만 읽는다 (Sensitive.php 와 같은 방식). */
+require_once __DIR__ . '/CloudLink.php';
+
 /**
  * src/Fetch.php — URL 로 파일 가져오기의 외부 요청 코드 (PRD F-14 · S-05 ①~⑬, ARCHITECTURE 5.6)
  *
@@ -13,6 +17,13 @@ declare(strict_types=1);
  *   ② 검사한 곳과 실제 가는 곳이 같다      → check() 가 돌려준 IP 를 CURLOPT_RESOLVE 로 고정하고,
  *                                          접속에 쓰는 URL 도 **검사한 host 로 다시 조립한 것**만 쓴다
  *   ③ 가져온 것을 업로드와 똑같이 검사한다 → 호출자(files_fetch.php)가 Upload::validatePath()
+ *
+ * F-43 (2026-09-15) 로 달라진 것 두 가지 — 뼈대 셋은 그대로다.
+ *   · 허용 목록이 `.env` 한 줄에서 **표 `fetch_hosts`** 로 옮겨졌다(allowedHosts). 값이 어디서
+ *     오느냐가 바뀌었을 뿐, 정확 일치·와일드카드 금지는 그대로다.
+ *   · 3xx 를 전면 거부하는 대신 **통제된 리다이렉트**(최대 3번)를 둔다. 단계마다
+ *     redirectStep() + check() 를 처음부터 다시 통과해야 하고, CURLOPT_FOLLOWLOCATION 은
+ *     여전히 false 다 — curl 이 스스로 따라가면 ①②가 무력해진다 (SECURITY R-77).
  *
  * 이 파일이 하지 않는 것
  *   · 권한·속도 제한·감사 로그 — 핸들러(src/handlers/files_fetch.php)의 몫이다.
@@ -28,6 +39,7 @@ declare(strict_types=1);
  * PHP 8.1 이 `Cannot redeclare non-readonly property` 로 거부한다 → `$reason` 으로 둔다.
  *
  *   scheme · port · host_not_allowed · private_ip · redirect · too_large · fetch_failed
+ *   needs_login (F-43 — 공개 링크가 아니라 로그인 화면(HTML)이 돌아왔다)
  *
  * `$httpStatus` 는 외부 응답 상태(ARCH 7.5 `http_status`), `$host` 는 정규화된 호스트
  * (ARCH 7.5 `source_host`)다. 둘 다 감사 로그 전용이며 사용자 응답에는 들어가지 않는다.
@@ -81,20 +93,51 @@ final class Fetch
     private const HOST_RE = '/^[a-z0-9.-]{1,253}$/';
 
     /**
-     * 허용 호스트 목록 (.env `FETCH_ALLOWED_HOSTS`, PRD S-05 ③).
+     * 리다이렉트를 따라갈 수 있는 **최대 횟수** (F-43, PRD F-43, SECURITY R-77).
      *
-     *   · `,` 로 나누고 trim·소문자. 빈 항목은 버린다.
-     *   · **목록이 비면 빈 배열** = 전부 거부다 (Q-10 초기값). 비었다고 전부 허용하지 않는다.
-     *   · `*` 나 공백이 섞인 항목은 **설정 오류**로 보고 예외를 던진다 — 와일드카드를 조금이라도
-     *     해석하면 화이트리스트가 블랙리스트로 변한다 (SECURITY 1.6 "와일드카드 허용 금지").
+     * 7단계에는 3xx 를 무조건 거부했다. 드라이브·OneDrive 의 공개 파일이 내려받기 호스트로
+     * 한두 번 넘기기 때문에 그 규칙으로는 둘 다 가져올 수 없다(지시서 0장 실측).
+     * 그래서 **따라가되 통제한다**: `CURLOPT_FOLLOWLOCATION` 은 여전히 false 이고,
+     * 단계마다 우리 코드가 Location 을 읽어 `check()` 를 **처음부터** 다시 통과시킨다
+     * (https · 443 · 허용 호스트 · DNS 뒤 사설 IP). curl 이 스스로 따라가면 그 검사가
+     * 한 번도 일어나지 않는다 — 그것이 7단계에 전면 거부를 택한 이유였다.
+     */
+    public const MAX_REDIRECTS = 3;
+
+    /**
+     * 허용 호스트 목록 (PRD S-05 ③ · F-43, ARCH 5.22).
+     *
+     * 두 곳을 합친다.
+     *   ① **표 `fetch_hosts` 의 활성 행** — F-43 이 만든 자리. 관리자가 화면에서 넣고 빼며,
+     *      바꾼 사실이 `fetch_host.change` 로 감사 로그에 남는다. 이것이 평소의 통로다.
+     *   ② `.env` 의 `FETCH_ALLOWED_HOSTS` — 7단계부터 있던 자리. 마이그레이션이 값을 표로
+     *      옮겼고 지금은 비어 있지만, **비상 통로**로 남겨 둔다: DB 가 이상해 화면으로 못
+     *      고치는 상황에서도 서버에 들어갈 수 있는 사람은 열 수 있어야 한다.
+     *
+     * 규칙은 두 곳 모두 같다.
+     *   · trim·소문자. 빈 항목은 버린다.
+     *   · **둘 다 비면 빈 배열** = 전부 거부다 (Q-10 초기값). 비었다고 전부 허용하지 않는다.
+     *   · `*` 나 공백이 섞인 `.env` 항목은 **설정 오류**로 보고 예외를 던진다 — 와일드카드를
+     *     조금이라도 해석하면 화이트리스트가 블랙리스트로 변한다 (SECURITY 1.6).
      *     호출자는 이 예외를 host_not_allowed 로 기록한다 = 그 상태에서는 전부 거부.
+     *   · 표 쪽은 같은 모양을 **DB CHECK 와 창구(fetch_hosts_update.php)가 이미** 강제하지만,
+     *     읽는 자리에서도 한 번 더 거른다 — 표를 직접 고친 행이 있어도 통과하지 않게.
+     *
+     * ★ 요청 값에서 읽는 자리가 한 군데도 없다. 목록은 DB 와 설정 파일에서만 온다 (PRD S-01).
      *
      * @return list<string>
      */
     public static function allowedHosts(): array
     {
-        $raw  = Env::getOrEmpty('FETCH_ALLOWED_HOSTS');
-        $out  = [];
+        $out = [];
+
+        // ① 표 — 활성 행만
+        foreach (self::dbHosts() as $host) {
+            $out[] = $host;
+        }
+
+        // ② .env (비상 통로)
+        $raw = Env::getOrEmpty('FETCH_ALLOWED_HOSTS');
         foreach (explode(',', $raw) as $item) {
             $host = strtolower(trim($item));
             if ($host === '') {
@@ -105,7 +148,58 @@ final class Fetch
             }
             $out[] = $host;
         }
+
         return array_values(array_unique($out));
+    }
+
+    /**
+     * 표 `fetch_hosts` 의 **활성 호스트**. 조회는 값 바인딩이 없는 고정 문장 하나다 (PRD S-04).
+     *
+     * 읽은 값도 `HOST_RE` 와 와일드카드 검사를 다시 통과해야 목록에 들어간다 — DB 를 직접
+     * 고친 행이 있어도 `*` 가 허용 목록에 들어가는 길을 만들지 않는다(닫힌 방향으로 실패).
+     *
+     * @return list<string>
+     */
+    private static function dbHosts(): array
+    {
+        $sql = <<<'SQL'
+            SELECT host
+              FROM fetch_hosts
+             WHERE is_active
+             ORDER BY host
+            SQL;
+
+        $out = [];
+        foreach (Db::instance()->run($sql)->fetchAll() as $row) {
+            $host = strtolower(trim((string) ($row['host'] ?? '')));
+            if ($host === '' || strpos($host, '*') !== false || preg_match(self::HOST_RE, $host) !== 1) {
+                continue;
+            }
+            $out[] = $host;
+        }
+        return $out;
+    }
+
+    /**
+     * 화면에 보여 줄 허용 목록 (F-43 — `/api/me` 의 `fetch_hosts_public`, 도움말 모달).
+     *
+     * `allowedHosts()` 와 같은 값이되 **설정 오류로 터지지 않는다**: `.env` 에 와일드카드가
+     * 섞여 있으면 그 상태는 "아무 호스트도 허용되지 않음" 이므로 빈 배열을 돌려준다.
+     * 화면 편의 값이며 권한이 아니다 — 여기 없는 주소를 보내도, 여기 있는 주소를 보내도
+     * 허용 여부는 요청마다 `check()` 가 다시 판단한다 (PRD S-01).
+     *
+     * @return list<string>
+     */
+    public static function publicHosts(): array
+    {
+        try {
+            $hosts = self::allowedHosts();
+        } catch (RuntimeException $e) {
+            error_log('[tbox] fetch 허용 목록 설정 오류: ' . $e->getMessage());
+            return [];
+        }
+        sort($hosts);
+        return array_values($hosts);
     }
 
     /**
@@ -189,13 +283,220 @@ final class Fetch
     }
 
     /**
-     * 검사한 IP 로 고정 접속해 임시파일에 내려받는다 (PRD S-05 ⑥⑦⑧, ARCH 5.6 [6][7]).
+     * 검사한 IP 로 고정 접속해 임시파일에 내려받는다 (PRD S-05 ⑥⑦⑧, ARCH 5.6 [6][7] · 5.22).
+     *
+     * ★ F-43 — **통제된 리다이렉트** (SECURITY R-77)
+     *   `CURLOPT_FOLLOWLOCATION` 은 여전히 `false` 다. 3xx 를 만나면 curl 이 아니라 **우리 코드**가
+     *   `Location` 을 읽어 다음 단계를 정한다. 그리고 다음 단계로 가기 전에 반드시
+     *     redirectStep()  — 횟수 · https · 443 · 허용 호스트 (네트워크 없이 판단)
+     *     check()         — **처음부터 다시** (표기 정규화 · 허용 목록 · DNS 뒤 사설 IP)
+     *   둘을 통과해야 한다. 최대 self::MAX_REDIRECTS 번이고 넘으면 `redirect` 로 거부한다.
+     *   curl 이 스스로 따라가면 이 검사가 **한 번도** 일어나지 않는다 — 그래서 옵션은 false 로 둔다.
+     *
+     * ★ 응답이 HTML 이면 (`Content-Type: text/html`) 공급자 링크에 한해 `needs_login` 으로 거부한다.
+     *   드라이브·OneDrive 는 권한이 없으면 파일 대신 **로그인 화면**을 200 으로 준다.
+     *   그것을 파일로 저장하면 "로그인 페이지가 첨부된 문서" 가 쌓인다.
      *
      * 실패는 FetchDenied. 임시파일은 성공·실패 모두 **호출자**가 지운다.
      *
-     * @return array{filename:?string}  Content-Disposition 에서 뽑은 이름(없으면 null)
+     * @param ?string $provider CloudLink 가 판정한 공급자(google·microsoft). 변환하지 않은
+     *                          보통 주소면 null 이고, 그때는 HTML 검사와 followUp 이 적용되지 않는다.
+     * @return array{filename:?string,hops:list<string>,host:string,ip:string}
      */
-    public static function download(string $url, string $host, string $ip, string $tmpPath): array
+    public static function download(
+        string $url,
+        string $host,
+        string $ip,
+        string $tmpPath,
+        ?string $provider = null
+    ): array {
+        /** 지나온 호스트 — 감사 로그 detail.hops (첫 칸이 처음 주소의 호스트다) */
+        $hops = [$host];
+
+        for ($step = 0; $step <= self::MAX_REDIRECTS; $step++) {
+            $one = self::request($url, $host, $ip, $tmpPath);
+
+            // ── 3xx : 다음 단계를 **우리가** 정한다 ────────────────────────
+            if ($one['status'] >= 300 && $one['status'] < 400) {
+                if ($one['location'] === '') {
+                    // Location 없는 3xx — 갈 곳을 모른다. 추측하지 않는다.
+                    throw new FetchDenied('redirect', $one['status'], $host);
+                }
+                // 1drv.ms → onedrive.live.com 처럼 다음 주소에 깃발이 필요한 경우에만 손본다.
+                // 호스트는 바뀌지 않고, 고친 주소도 아래 두 검사를 그대로 지난다.
+                $next = CloudLink::followUp(
+                    self::absolute($one['location'], $url),
+                    $provider
+                );
+
+                $decided = self::redirectStep($next, $step + 1, self::allowedHosts());
+                if (!$decided['ok']) {
+                    throw new FetchDenied((string) $decided['reason'], $one['status'], $host);
+                }
+
+                // ★ 여기서 check() 를 **처음부터** 다시 부른다 — 호스트 표기 정규화, 허용 목록
+                //   재확인, DNS 해석 뒤 사설 IP 차단까지 첫 주소와 똑같은 검사를 받는다.
+                $checked = self::check((string) $decided['url']);
+                $url     = $checked['url'];
+                $host    = $checked['host'];
+                $ip      = $checked['ip'];
+                $hops[]  = $host;
+                continue;
+            }
+
+            if ($one['status'] !== 200) {
+                throw new FetchDenied('fetch_failed', $one['status'], $host);
+            }
+
+            // ── 200 : 받은 것이 파일인가 ──────────────────────────────────
+            if ($provider !== null && self::isHtml($one['content_type'])) {
+                // 공개(링크가 있는 모든 사용자)가 아닌 문서다 — 로그인 화면을 파일로 저장하지 않는다.
+                throw new FetchDenied('needs_login', $one['status'], $host);
+            }
+
+            $size = filesize($tmpPath);
+            if ($size === false || $size > self::MAX_BYTES) {
+                throw new FetchDenied('too_large', $one['status'], $host);
+            }
+
+            return [
+                'filename' => self::filenameFrom($one['disposition'], $url),
+                'hops'     => $hops,
+                'host'     => $host,
+                'ip'       => $ip,
+            ];
+        }
+
+        // 루프를 다 돌았다 = MAX_REDIRECTS 를 넘게 넘겼다
+        throw new FetchDenied('redirect', null, $host);
+    }
+
+    /**
+     * 리다이렉트 한 단계를 **따라가도 되는가** — 네트워크·DNS 가 한 줄도 없는 순수 판정이다.
+     *
+     * 왜 따로 떼어 두나 (지시서 완료 기준 (f))
+     *   시험용 https 서버를 세우지 않고도 「허용 → 허용 → 통과」·「허용 → 비허용 → 거부」·
+     *   「4번째 → 거부」·「Location 이 http → 거부」를 `php -r` 로 확인할 수 있어야 한다.
+     *   판단이 curl 호출 안에 섞여 있으면 그 확인이 불가능하다.
+     *
+     * 여기서 보는 것은 **횟수 · 스킴 · 포트 · 호스트 표기 · 허용 목록**까지다.
+     * DNS 해석과 사설 IP 차단은 호출자가 이어서 부르는 `check()` 가 한다(같은 검사를 두 번
+     * 하는 셈이지만, 한쪽만 고쳐지는 날에도 다른 한쪽이 남는다).
+     *
+     * @param list<string> $allowed 허용 호스트 목록 (호출자가 allowedHosts() 로 받아 넘긴다)
+     * @return array{ok:bool,reason:?string,url:?string,host:?string}
+     */
+    public static function redirectStep(string $location, int $hop, array $allowed): array
+    {
+        $no = static function (string $reason): array {
+            return ['ok' => false, 'reason' => $reason, 'url' => null, 'host' => null];
+        };
+
+        if ($hop > self::MAX_REDIRECTS) {
+            return $no('redirect');
+        }
+        if ($location === '' || strlen($location) > self::MAX_URL_BYTES) {
+            return $no('redirect');
+        }
+        if (preg_match('/[\x00-\x20\x7f]/', $location) === 1) {
+            return $no('redirect');
+        }
+
+        $parts = parse_url($location);
+        if (!is_array($parts)) {
+            return $no('redirect');
+        }
+        // 스킴 — https 만. `http://` 로 내려보내는 응답은 여기서 끝난다
+        if (strtolower((string) ($parts['scheme'] ?? '')) !== self::SCHEME) {
+            return $no('scheme');
+        }
+        if (isset($parts['port']) && (int) $parts['port'] !== self::PORT) {
+            return $no('port');
+        }
+        if (isset($parts['user']) || isset($parts['pass'])) {
+            return $no('host_not_allowed');
+        }
+
+        $host = strtolower(rtrim((string) ($parts['host'] ?? ''), '.'));
+        if (preg_match(self::HOST_RE, $host) !== 1) {
+            return $no('host_not_allowed');
+        }
+        if ($host === 'localhost'
+            || strpos($host, '[') !== false
+            || filter_var($host, FILTER_VALIDATE_IP) !== false
+            || ctype_digit(str_replace('.', '', $host))
+            || strpos($host, '0x') === 0
+        ) {
+            return $no('host_not_allowed');
+        }
+        // 허용 목록 — 첫 주소와 **같은 목록, 같은 정확 일치**다. 넘긴 곳이라고 봐주지 않는다.
+        if (!in_array($host, $allowed, true)) {
+            return $no('host_not_allowed');
+        }
+
+        return [
+            'ok'     => true,
+            'reason' => null,
+            'url'    => self::rebuild($host, $parts),
+            'host'   => $host,
+        ];
+    }
+
+    /**
+     * 상대 Location(`/a/b`·`b.txt`)을 지금 주소 기준의 절대 주소로 만든다.
+     *
+     * 스킴·호스트는 **지금 주소의 것**을 그대로 쓴다(상대 주소는 호스트를 바꿀 수 없다).
+     * `//host/path` 처럼 스킴만 없는 표기는 https 를 붙인다 — 붙인 뒤에도 redirectStep 의
+     * 허용 목록 검사를 지나야 하므로 여기서 관문이 느슨해지지 않는다.
+     */
+    private static function absolute(string $location, string $base): string
+    {
+        $loc = trim($location);
+        if ($loc === '') {
+            return '';
+        }
+        if (strpos($loc, '//') === 0) {
+            return self::SCHEME . ':' . $loc;
+        }
+        if (preg_match('#^[a-zA-Z][a-zA-Z0-9+.\-]*:#', $loc) === 1) {
+            return $loc;    // 절대 주소 (스킴은 redirectStep 이 본다)
+        }
+
+        $parts  = parse_url($base);
+        $scheme = strtolower((string) ($parts['scheme'] ?? self::SCHEME));
+        $host   = strtolower((string) ($parts['host'] ?? ''));
+        if ($host === '') {
+            return '';
+        }
+        if ($loc[0] === '/') {
+            return $scheme . '://' . $host . $loc;
+        }
+        $dir = (string) ($parts['path'] ?? '/');
+        $cut = strrpos($dir, '/');
+        $dir = $cut === false ? '/' : substr($dir, 0, $cut + 1);
+        return $scheme . '://' . $host . $dir . $loc;
+    }
+
+    /** 응답이 HTML 인가 (`text/html`·`application/xhtml+xml`). 매개변수(charset)는 무시한다. */
+    private static function isHtml(string $contentType): bool
+    {
+        $type = strtolower(trim($contentType));
+        $semi = strpos($type, ';');
+        if ($semi !== false) {
+            $type = trim(substr($type, 0, $semi));
+        }
+        return $type === 'text/html' || $type === 'application/xhtml+xml';
+    }
+
+    /**
+     * 한 번의 HTTP 요청 (리다이렉트를 따라가지 않는다). download() 의 루프가 단계마다 부른다.
+     *
+     * 임시파일은 단계마다 **처음부터 다시 쓴다**(`wb`) — 3xx 본문이 파일에 남아 다음 단계
+     * 내용 앞에 붙는 일이 없어야 한다.
+     *
+     * @return array{status:int,location:string,disposition:string,content_type:string}
+     */
+    private static function request(string $url, string $host, string $ip, string $tmpPath): array
     {
         $fh = fopen($tmpPath, 'wb');
         if ($fh === false) {
@@ -203,6 +504,9 @@ final class Fetch
         }
 
         $disposition = '';
+        $location    = '';
+        $contentType = '';
+
         $ch = curl_init($url);
         if ($ch === false) {
             fclose($fh);
@@ -213,7 +517,7 @@ final class Fetch
             // 프로토콜 이중 잠금 — URL 검사를 통과했어도 curl 자체가 https 외에는 말하지 않는다
             CURLOPT_PROTOCOLS       => CURLPROTO_HTTPS,
             CURLOPT_REDIR_PROTOCOLS => 0,
-            // ⑦ 리다이렉트를 따라가지 않는다. 3xx 는 아래에서 실패로 처리한다
+            // ⑦ 리다이렉트를 curl 이 따라가지 않는다. 3xx 는 **호출자**가 검사하고 다시 부른다
             CURLOPT_FOLLOWLOCATION  => false,
             // ⑥ DNS 리바인딩 방지 — 검사한 IP 로만 접속한다
             CURLOPT_RESOLVE         => [$host . ':' . self::PORT . ':' . $ip],
@@ -227,12 +531,22 @@ final class Fetch
             CURLOPT_USERAGENT       => self::USER_AGENT,
             CURLOPT_HTTPGET         => true,
             CURLOPT_FORBID_REUSE    => true,
-            // 헤더는 파일에 쓰지 않는다. Content-Disposition 한 줄만 따로 모아 둔다
-            CURLOPT_HEADERFUNCTION  => static function ($handle, string $header) use (&$disposition): int {
+            // 헤더는 파일에 쓰지 않는다. 필요한 세 줄만 따로 모아 둔다
+            CURLOPT_HEADERFUNCTION  => static function ($handle, string $header)
+                use (&$disposition, &$location, &$contentType): int {
                 $len = strlen($header);
                 $pos = strpos($header, ':');
-                if ($pos !== false && strtolower(trim(substr($header, 0, $pos))) === 'content-disposition') {
-                    $disposition = substr($header, $pos + 1);
+                if ($pos === false) {
+                    return $len;
+                }
+                $name  = strtolower(trim(substr($header, 0, $pos)));
+                $value = substr($header, $pos + 1);
+                if ($name === 'content-disposition') {
+                    $disposition = $value;
+                } elseif ($name === 'location') {
+                    $location = trim($value);
+                } elseif ($name === 'content-type') {
+                    $contentType = trim($value);
                 }
                 return $len;
             },
@@ -266,19 +580,12 @@ final class Fetch
             throw new FetchDenied('fetch_failed', $status !== 0 ? $status : null, $host);
         }
 
-        if ($status >= 300 && $status < 400) {
-            throw new FetchDenied('redirect', $status, $host);
-        }
-        if ($status !== 200) {
-            throw new FetchDenied('fetch_failed', $status, $host);
-        }
-
-        $size = filesize($tmpPath);
-        if ($size === false || $size > self::MAX_BYTES) {
-            throw new FetchDenied('too_large', $status, $host);
-        }
-
-        return ['filename' => self::filenameFrom($disposition, $url)];
+        return [
+            'status'       => $status,
+            'location'     => $location,
+            'disposition'  => $disposition,
+            'content_type' => $contentType,
+        ];
     }
 
     /**

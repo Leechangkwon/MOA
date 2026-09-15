@@ -266,6 +266,33 @@ CREATE TABLE share_links (
 CREATE INDEX share_links_created_by_idx ON share_links (created_by);
 CREATE INDEX share_links_file_idx       ON share_links (file_id);
 
+-- ─────────────────────────────────────────────────────────────
+-- fetch_hosts — 「URL 로 가져오기」가 갈 수 있는 곳 (F-43, PRD F-43 · S-05 ③, ARCH 5.22)
+--   허용 호스트 목록을 `.env` 문자열에서 표로 옮긴 것이다. 관리자가 화면에서 넣고 빼되
+--   권한 매트릭스와 같은 급의 조건(재인증 · 사유 · 인증 앱 코드 · 감사 · AL-18)을 지난다.
+--   **행을 지우지 않는다** — 뺀 호스트도 "언제부터 언제까지 열려 있었나" 가 조사에 필요하다.
+--   그래서 앱 계정에 DELETE 권한이 없고 `is_active = false` 로만 내린다.
+--   (기존 DB 는 db/migrations/2026-09-17_fetch_hosts.sql 로 같은 모양이 된다.)
+-- ─────────────────────────────────────────────────────────────
+CREATE TABLE fetch_hosts (
+    id         BIGSERIAL   PRIMARY KEY,
+    host       TEXT        NOT NULL,
+    note       TEXT,
+    is_active  BOOLEAN     NOT NULL DEFAULT true,
+    created_by BIGINT      REFERENCES users(id),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    -- 소문자 영숫자·점·붙임표만, 점이 최소 하나. 와일드카드(`*`)는 어떤 경로로도 못 들어온다.
+    CONSTRAINT fetch_hosts_host_fmt CHECK (
+        host ~ '^[a-z0-9.-]{1,253}$'
+        AND host NOT LIKE '%*%'
+        AND host LIKE '%.%'
+    ),
+    CONSTRAINT fetch_hosts_note_len CHECK (note IS NULL OR length(note) <= 200)
+);
+CREATE UNIQUE INDEX fetch_hosts_host_uidx   ON fetch_hosts (host);
+CREATE INDEX        fetch_hosts_active_idx  ON fetch_hosts (is_active);
+
 -- ═════════════════════════════════════════════════════════════
 -- 구매·재고 모듈 기초정보 (19단계 — PRD F-28 · F-29, ARCH 5.18,
 --   docs/purchase/03-architecture-draft.md 3장)

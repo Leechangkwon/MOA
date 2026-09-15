@@ -3,7 +3,7 @@ declare(strict_types=1);
 
 /**
  * scripts/alerts.php — 감사 로그를 5분마다 훑어 경보 규칙을 판정한다 (9단계)
- *   PRD 7.11 S-11-A (AL-1 · AL-2 · AL-5 · AL-7 · AL-10 · AL-12 · AL-13 · 서버 층 AL-3 · AL-9)
+ *   PRD 7.11 S-11-A (AL-1 · AL-2 · AL-5 · AL-7 · AL-10 · AL-12 · AL-13 · AL-18 · 서버 층 AL-3 · AL-9)
  *   구매·재고 AL-14 ~ AL-17 (PRD F-32 · F-35 · F-36, ARCH 5.18 「감사·경보」 · 11.4)
  *   ARCHITECTURE 11.1 (5분마다 cron) · 11.4 (경보 구성) · 7.4 `alert.raised|allow` · 7.5 `rule`·`evidence`
  *
@@ -896,6 +896,41 @@ if ($want('AL-13')) {
         ]);
     }
     cli_say(sprintf('AL-13 대상 %d명', count($rows)));
+}
+
+// ─────────────────────────────────────────────────────────────
+// AL-18 — URL 가져오기 허용 사이트 변경 (PRD 7.11 · F-43, ARCH 5.22 · 11.4, SECURITY R-76)
+//   AL-13 과 **같은 형태**다: `fetch_host.change allow` 가 **1건이라도** 있으면 즉시.
+//   건수 임계값이 없는 이유도 같다 — 허용 호스트 한 줄이 바뀌면 그 순간부터 **서버가 나갈 수
+//   있는 곳**이 달라진다(PRD S-05). 정상 작업이어도 운영 담당이 알아야 하고, Admin 세션을
+//   훔친 사람이 한 짓이라면 그것이 곧 SSRF 의 첫 단추다.
+//   창은 다른 audit_logs 규칙과 맞춰 5분(배치 주기)이고, 중복 억제는 $raise 가 한다.
+//   근거에 **호스트 이름**을 담는다 — 개인정보가 아니고, 무엇이 열렸는지가 곧 알림의 내용이다
+//   (AL-13 이 바뀐 칸 이름을 담는 것과 같다). 2단계 인증 코드는 감사 로그에 애초에 없다.
+// ─────────────────────────────────────────────────────────────
+if ($want('AL-18')) {
+    $rows = $db->run(
+        "SELECT actor_name, count(*) AS n,
+                array_to_string(array_agg(target_name ORDER BY id), ',') AS hosts,
+                max(detail->>'reason_text') AS reason_text,
+                max(happened_at) AS last_at
+           FROM audit_logs
+          WHERE action = 'fetch_host.change' AND result = 'allow'
+            AND happened_at > now() - interval '5 minutes'
+          GROUP BY actor_name"
+    )->fetchAll();
+    foreach ($rows as $r) {
+        $raise('AL-18', (string) ($r['actor_name'] ?? '?'), [
+            'rule_text'   => 'URL 가져오기 허용 사이트 변경 — 건수와 무관하게 즉시 알린다',
+            'count'       => (int) $r['n'],
+            // 바뀐 호스트 이름 목록. 켠 것인지 끈 것인지는 before/after 로 감사 로그에 있다.
+            'hosts'       => (string) $r['hosts'],
+            'reason_text' => $r['reason_text'] === null ? '' : (string) $r['reason_text'],
+            'window'      => '5 minutes',
+            'last_at'     => (string) $r['last_at'],
+        ]);
+    }
+    cli_say(sprintf('AL-18 대상 %d명', count($rows)));
 }
 
 // ─────────────────────────────────────────────────────────────

@@ -175,6 +175,20 @@ final class Audit
          */
         'lot_no', 'count_cycle', 'qty_delta', 'moves',
         'location_id', 'from_location_id', 'to_location_id',
+        /*
+         * F-43 URL 가져오기 허용 사이트 · 공개 링크 변환 (PRD F-43, ARCH 5.22 · 7.5 등록부).
+         *   hops        리다이렉트로 **지나온 호스트 목록**. 통제된 리다이렉트가 정말 단계마다
+         *               검사를 받았는지를 로그만으로 되짚는 값이다. 호스트 이름뿐이고 경로는 없다
+         *   source_url  사람이 넣은 주소와 서버가 바꾼 주소(`원 → 변환`, 512바이트로 자름).
+         *               ★ 7단계에는 "URL 전체를 남기지 않는다" 였는데 F-43 이 이 키를 열었다:
+         *                 변환이 맞았는지·어떤 링크로 나갔는지는 그 문자열이 없으면 알 수 없고,
+         *                 이 값은 **요청자가 직접 적어 넣은 공개 문서 주소**다. 감사 로그를 볼 수
+         *                 있는 사람은 Admin 뿐이다 (PRD 5장). 비밀번호·토큰이 섞일 수 있는
+         *                 헤더·쿠키는 여전히 한 글자도 남기지 않는다
+         *   provider    드라이브·OneDrive 링크였나 (`google`·`microsoft`·null)
+         *   needs_login 공개 링크가 아니어서 거부했나 (true). 값이 아니라 판정 사실이다
+         */
+        'hops', 'source_url', 'provider', 'needs_login',
     ];
 
     private const RESULT_ALLOW = 'allow';
@@ -234,6 +248,9 @@ final class Audit
         'file.fetch|deny|fetch_failed'            => '{actor} 이(가) 요청한 주소에서 파일을 받을 수 없었습니다 (연결 실패·시간 초과·200 이 아닌 응답)',
         'file.fetch|deny|invalid_file'            => '{actor} 이(가) 외부 주소에서 가져온 파일 「{target}」 이(가) 업로드 규칙(확장자·내용·크기)에 맞지 않아 저장하지 않았습니다',
         'file.fetch|deny|rate_limited'            => '{actor} 이(가) 한 시간에 10회를 넘게 파일 가져오기를 요청해서 막았습니다',
+        // F-43 — 공개(「링크가 있는 모든 사용자」)가 아닌 문서. 서버는 로그인할 수 없으므로
+        // 로그인 화면(HTML)을 파일로 저장하지 않고 거부한다 (ARCH 5.22).
+        'file.fetch|deny|needs_login'             => '{actor} 이(가) 로그인이 필요한 클라우드 문서를 가져오려 해서 막았습니다 (공개 링크만 가져올 수 있습니다)',
         'file.fetch|deny|bad_request'             => '{actor} 이(가) 파일 가져오기 요청을 잘못된 형식(URL 없음·등급 오류·팀 오류)으로 보내 거부했습니다',
         'file.fetch|deny|role_not_permitted'      => '{actor} 이(가) 파일 「{target}」 을(를) {level} 등급으로 가져오려 했지만 그 등급으로 올릴 권한이 없어 막았습니다',
         'file.fetch|deny|team_mismatch'           => '{actor} 이(가) 파일 「{target}」 을(를) 자기 팀이 아닌 팀의 team 등급으로 가져오려 해서 막았습니다',
@@ -427,6 +444,16 @@ final class Audit
         'permission.change|deny|bad_code'               => '{actor} 이(가) 권한 매트릭스를 바꾸려 했지만 2단계 인증 코드가 맞지 않아 거부했습니다',
         'permission.change|deny|code_reused'            => '{actor} 이(가) 권한 매트릭스를 바꾸려 했지만 이미 쓴 2단계 인증 코드라 거부했습니다',
         'permission.change|deny|invariant'              => '{actor} 이(가) 권한 매트릭스의 바꿀 수 없는 규칙을 어기는 변경을 요청해서 거부했습니다 (어긴 규칙은 상세 기록)',
+
+        // ── F-43 URL 가져오기 허용 사이트 (PRD F-43 · 7.11 AL-18, ARCH 5.22 · 7.4) ──
+        //   허용 호스트 한 줄은 "서버가 어디로 나갈 수 있나" 를 바꾸는 값이라(PRD S-05),
+        //   권한 매트릭스와 **같은 급**의 기록을 남긴다: 이전값→새값·사유·코드 확인 사실.
+        //   행을 지우는 갈래가 없으므로 `deny|…` 에도 삭제 관련 사유가 없다.
+        'fetch_host.change|allow'                       => '{actor} 이(가) URL 가져오기 허용 사이트 {target} 을(를) 바꿨습니다 (이전값→새값·사유·코드 확인은 상세 기록)',
+        'fetch_host.change|deny|bad_request'            => '{actor} 이(가) 허용 사이트 변경을 허용되지 않는 형식(모르는 항목·사유·코드)으로 요청해서 거부했습니다',
+        'fetch_host.change|deny|bad_code'               => '{actor} 이(가) 허용 사이트를 바꾸려 했지만 2단계 인증 코드가 맞지 않아 거부했습니다',
+        'fetch_host.change|deny|code_reused'            => '{actor} 이(가) 허용 사이트를 바꾸려 했지만 이미 쓴 2단계 인증 코드라 거부했습니다',
+        'fetch_host.change|deny|invariant'              => '{actor} 이(가) 허용 사이트에 넣을 수 없는 주소(와일드카드·IP·사내망 이름·형식 오류)를 요청하거나 바뀌는 것이 없어 거부했습니다 (어긴 규칙은 상세 기록)',
 
         // ── 폴더 (18-1 folders_* — F-26, ARCH 5.16 · 7.4) ──
         // {target} 은 **폴더 이름**이다 — 사용자가 정한 자유 텍스트이며(파일명과 같은 성격),

@@ -2889,13 +2889,28 @@ function initFiles(csrfToken, uploadLevels, canFetch, myTeamId) {
     }
   }
 
-  // "URL 로 가져오기" 단추는 서버가 can_fetch === true 를 준 경우에만 연다
-  // (F-14, Manager 이상). 레벨 선택지는 업로드와 같은 목록(서버가 정한 upload_levels)을 쓴다.
+  // "URL 로 가져오기" 단추는 서버가 can_fetch && fetch_enabled 를 준 경우에만 연다
+  // (F-14 · F-43). 레벨 선택지는 업로드와 같은 목록(서버가 정한 upload_levels)을 쓴다.
   var canFetchUrl = canFetch === true && fillLevelOptions(fetchLevel, uploadLevels, hasTeam) > 0;
   if (fetchToggle) {
     fetchToggle.hidden = !canFetchUrl;
     if (canFetchUrl) {
       fetchToggle.addEventListener('click', openFetchDialog);
+    }
+  }
+
+  /* F-43 — 대화상자에 안내 한 줄을 더한다. 글자는 **고정 문자열**이고 textContent 로만
+     들어간다(문자열 → HTML 변환 0, PRD S-03). 화면 틀(home.php)을 고치지 않고 여기서
+     만드는 이유는, 이 안내가 가져오기 기능과 함께 켜지고 꺼지는 값이기 때문이다. */
+  if (fetchDialog) {
+    var fetchBody = fetchDialog.querySelector('.modal__body');
+    var fetchForm0 = document.getElementById('fetch-form');
+    if (fetchBody && fetchForm0 && !fetchBody.querySelector('[data-fetch-hint]')) {
+      var hint = document.createElement('p');
+      hint.className = 'panel__sub';
+      hint.setAttribute('data-fetch-hint', '');
+      setText(hint, '구글 드라이브·OneDrive 의 공개 링크(「링크가 있는 모든 사용자」)는 보이는 주소 그대로 붙여도 됩니다. 로그인이 필요한 문서는 가져올 수 없습니다.');
+      fetchBody.insertBefore(hint, fetchForm0);
     }
   }
 
@@ -5918,6 +5933,435 @@ function initAdminPermissions(csrfToken) {
   load();
 }
 
+/* ─── F-43 URL 가져오기 허용 사이트 — `/admin/fetch-hosts` (PRD F-43, ARCH 5.22) ────
+ *
+ * 표의 「허용」 체크상자를 켜고 끄거나 아래 줄에서 사이트를 추가한 뒤, 무엇이 바뀌는지를
+ * 미리보기로 보여 주고 **사유·인증 앱 코드 모달**을 거쳐 `POST /api/fetch-hosts` 로 보낸다.
+ * 권한 매트릭스 편집(initAdminPermissions)과 같은 모양이며, 다른 점은 셋이다:
+ *   · 행이 고정 16칸이 아니라 **늘어난다**(추가 줄이 임시 행을 표에 얹는다)
+ *   · **지우는 단추가 없다** — 「허용」을 끄는 것이 그만 쓰는 방법이다
+ *   · 사유·코드를 폼이 아니라 **모달**에서 받는다(저장 직전에 한 번 더 읽게)
+ *
+ * ★ 이 화면은 아무 것도 막지 않는다. 체크상자를 개발자도구로 고쳐도, 와일드카드를 적어도,
+ *   코드를 비워도 서버가 400 으로 막고 `fetch_host.change deny …` 로 남긴다 (T-56).
+ * ★ 값은 전부 textContent 로만 넣는다. 실패 문구는 서버가 준 것만 쓴다 (PRD S-03).
+ */
+function initAdminFetchHosts(csrfToken) {
+  var msg = document.getElementById('msg');
+  var tableBody = document.getElementById('fetch-hosts-table');
+  var emptyNote = document.getElementById('fetch-hosts-empty');
+  var rulesBox = document.getElementById('fetch-hosts-rules');
+  var addForm = document.getElementById('fetch-hosts-add');
+  var addInput = document.getElementById('fetch-hosts-new');
+  var addNote = document.getElementById('fetch-hosts-new-note');
+  var addMsg = document.getElementById('fetch-hosts-add-msg');
+  var previewBox = document.getElementById('fetch-hosts-preview');
+  var previewEmpty = document.getElementById('fetch-hosts-preview-empty');
+  var saveButton = document.getElementById('fetch-hosts-save');
+  var resetButton = document.getElementById('fetch-hosts-reset');
+  var pageMsg = document.getElementById('fetch-hosts-msg');
+  var dialog = document.getElementById('fetch-hosts-dialog');
+  var dialogCount = document.getElementById('fetch-hosts-dialog-count');
+  var dialogList = document.getElementById('fetch-hosts-dialog-list');
+  var dialogClose = document.getElementById('fetch-hosts-dialog-close');
+  var dialogX = document.getElementById('fetch-hosts-dialog-x');
+  var dialogMsg = document.getElementById('fetch-hosts-dialog-msg');
+  var form = document.getElementById('fetch-hosts-form');
+  var reasonInput = document.getElementById('fetch-hosts-reason');
+  var otpInput = document.getElementById('fetch-hosts-otp');
+  var submit = document.getElementById('fetch-hosts-submit');
+
+  /* 서버에서 받은 행(기준값) · 아직 저장하지 않은 새 줄 · 행마다 만든 체크상자 */
+  var state = { rows: [], added: [], boxes: Object.create(null), notes: Object.create(null) };
+
+  /* 화면에서도 형식을 한 번 본다 — **막는 것이 아니라 알려 주는 것**이다.
+     같은 규칙을 서버(fetch_hosts_update.php)와 DB CHECK 가 다시 본다 (PRD S-01). */
+  var HOST_RE = /^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)+$/;
+
+  function getJson(path) {
+    return fetch(path, { credentials: 'same-origin', cache: 'no-store' }).then(function (response) {
+      if (response.status === 401) {
+        toLogin();
+        return null;
+      }
+      return readJson(response).then(function (data) {
+        if (toGate(response, data)) {
+          return null;
+        }
+        return { ok: response.ok, status: response.status, data: data };
+      });
+    });
+  }
+
+  function sendJson(method, path, payload) {
+    return fetch(path, {
+      method: method,
+      headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken },
+      body: JSON.stringify(payload),
+      credentials: 'same-origin',
+      cache: 'no-store'
+    }).then(function (response) {
+      if (response.status === 401) {
+        toLogin();
+        return null;
+      }
+      return readJson(response).then(function (data) {
+        if (toGate(response, data)) {
+          return null;
+        }
+        return { ok: response.ok, status: response.status, data: data };
+      });
+    });
+  }
+
+  function openDialog(el) {
+    if (el && typeof el.showModal === 'function' && !el.open) {
+      el.showModal();
+    }
+  }
+  function closeDialog(el) {
+    if (el && el.open) {
+      el.close();
+    }
+  }
+
+  /** 「허용」 체크상자 하나 */
+  function makeToggle(host, checked) {
+    var wrap = document.createElement('label');
+    wrap.className = 'perm-toggle';
+    var box = document.createElement('input');
+    box.type = 'checkbox';
+    box.checked = checked === true;
+    box.addEventListener('change', renderPreview);
+    wrap.appendChild(box);
+    var text = document.createElement('span');
+    setText(text, '허용');
+    wrap.appendChild(text);
+    state.boxes[host] = box;
+    return wrap;
+  }
+
+  function addCell(row, value) {
+    var td = document.createElement('td');
+    setText(td, value);
+    row.appendChild(td);
+    return td;
+  }
+
+  function renderTable() {
+    if (!tableBody) {
+      return;
+    }
+    tableBody.replaceChildren();
+    state.boxes = Object.create(null);
+
+    state.rows.forEach(function (row) {
+      if (!row || typeof row.host !== 'string') {
+        return;
+      }
+      var tr = document.createElement('tr');
+      var head = document.createElement('td');
+      var name = document.createElement('strong');
+      setText(name, row.host);
+      head.appendChild(name);
+      tr.appendChild(head);
+      addCell(tr, typeof row.note === 'string' ? row.note : '');
+      var toggleCell = document.createElement('td');
+      toggleCell.className = 'perm-cell';
+      toggleCell.appendChild(makeToggle(row.host, row.is_active === true));
+      tr.appendChild(toggleCell);
+      addCell(tr, typeof row.created_by === 'string' ? row.created_by : '');
+      addCell(tr, typeof row.updated_at === 'string' ? row.updated_at : '');
+      tableBody.appendChild(tr);
+    });
+
+    // 아직 저장하지 않은 새 줄 — 표 아래쪽에 붙고, 저장하면 서버 응답의 행으로 바뀐다.
+    state.added.forEach(function (row) {
+      var tr = document.createElement('tr');
+      var head = document.createElement('td');
+      var name = document.createElement('strong');
+      setText(name, row.host);
+      head.appendChild(name);
+      var mark = document.createElement('span');
+      mark.className = 'badge';
+      setText(mark, '저장 전');
+      head.appendChild(mark);
+      tr.appendChild(head);
+      addCell(tr, row.note);
+      var toggleCell = document.createElement('td');
+      toggleCell.className = 'perm-cell';
+      toggleCell.appendChild(makeToggle(row.host, true));
+      tr.appendChild(toggleCell);
+      addCell(tr, '');
+      addCell(tr, '');
+      tableBody.appendChild(tr);
+    });
+
+    if (emptyNote) {
+      emptyNote.hidden = state.rows.length !== 0 || state.added.length !== 0;
+    }
+    renderPreview();
+  }
+
+  function renderRules(rules) {
+    if (!rulesBox) {
+      return;
+    }
+    rulesBox.replaceChildren();
+    rules.forEach(function (text) {
+      var item = document.createElement('li');
+      setText(item, text);
+      rulesBox.appendChild(item);
+    });
+  }
+
+  /** 지금 표에서 바뀐 것 (서버에 보낼 모양 + 미리보기 문장) */
+  function changedHosts() {
+    var out = [];
+    state.rows.forEach(function (row) {
+      var box = state.boxes[row.host];
+      if (!box) {
+        return;
+      }
+      var active = box.checked === true;
+      if (active === (row.is_active === true)) {
+        return;
+      }
+      out.push({
+        change: { host: row.host, is_active: active },
+        text: row.host + ' : 허용 ' + (row.is_active === true ? '예' : '아니오') + ' → ' + (active ? '예' : '아니오')
+      });
+    });
+    state.added.forEach(function (row) {
+      var box = state.boxes[row.host];
+      var active = box ? box.checked === true : true;
+      var entry = { host: row.host, is_active: active };
+      if (row.note !== '') {
+        entry.note = row.note;
+      }
+      out.push({
+        change: entry,
+        text: row.host + ' : 새로 추가 (허용 ' + (active ? '예' : '아니오') + ')'
+      });
+    });
+    return out;
+  }
+
+  function renderPreview() {
+    var list = changedHosts();
+    if (previewBox) {
+      previewBox.replaceChildren();
+      list.forEach(function (item) {
+        var li = document.createElement('li');
+        li.className = 'alert-item';
+        setText(li, item.text);
+        previewBox.appendChild(li);
+      });
+    }
+    if (previewEmpty) {
+      previewEmpty.hidden = list.length !== 0;
+    }
+    if (saveButton) {
+      // 바꾼 것이 없으면 보낼 것이 없다(서버도 invariant 로 거부한다).
+      saveButton.disabled = list.length === 0;
+    }
+  }
+
+  function load() {
+    return getJson('/api/fetch-hosts')
+      .then(function (result) {
+        if (result === null) {
+          return null;
+        }
+        if (!result.ok) {
+          setText(msg, errorMessage(result.data));
+          return null;
+        }
+        var data = result.data || {};
+        state.rows = Array.isArray(data.hosts) ? data.hosts : [];
+        state.added = [];
+        renderTable();
+        renderRules(Array.isArray(data.rules) ? data.rules : []);
+        return null;
+      })
+      .catch(function () {
+        setText(msg, GENERIC_ERROR);
+      });
+  }
+
+  /* ── 「목록에 추가」 — 표에 임시 행을 얹기만 한다(요청 없음) ── */
+  if (addForm) {
+    addForm.addEventListener('submit', function (event) {
+      event.preventDefault();
+      setText(addMsg, '');
+      var host = addInput ? addInput.value.trim().toLowerCase() : '';
+      var note = addNote ? addNote.value.trim() : '';
+      if (host === '') {
+        return;
+      }
+      if (!HOST_RE.test(host)) {
+        setText(addMsg, '호스트 이름만 넣습니다 — https:// 나 경로는 빼고, 점이 들어간 정확한 이름으로 적으세요 (와일드카드 * 는 쓸 수 없습니다).');
+        return;
+      }
+      var exists = state.rows.some(function (row) { return row.host === host; })
+        || state.added.some(function (row) { return row.host === host; });
+      if (exists) {
+        setText(addMsg, '이미 목록에 있는 사이트입니다. 표에서 「허용」을 켜세요.');
+        return;
+      }
+      state.added.push({ host: host, note: note });
+      if (addInput) {
+        addInput.value = '';
+      }
+      if (addNote) {
+        addNote.value = '';
+      }
+      renderTable();
+    });
+  }
+
+  /* ── 「저장」 → 사유·코드 모달 ── */
+  if (saveButton) {
+    saveButton.addEventListener('click', function () {
+      var list = changedHosts();
+      if (list.length === 0) {
+        return;
+      }
+      setText(dialogMsg, '');
+      if (dialogCount) {
+        setText(dialogCount, String(list.length) + '건을 바꿉니다');
+      }
+      if (dialogList) {
+        dialogList.replaceChildren();
+        list.forEach(function (item) {
+          var li = document.createElement('li');
+          li.className = 'alert-item';
+          setText(li, item.text);
+          dialogList.appendChild(li);
+        });
+      }
+      openDialog(dialog);
+    });
+  }
+
+  [dialogClose, dialogX].forEach(function (btn) {
+    if (btn) {
+      btn.addEventListener('click', function () {
+        closeDialog(dialog);
+      });
+    }
+  });
+
+  if (form) {
+    form.addEventListener('submit', function (event) {
+      event.preventDefault();
+      setText(dialogMsg, '');
+      var list = changedHosts();
+      if (list.length === 0) {
+        closeDialog(dialog);
+        return;
+      }
+      var changes = list.map(function (item) {
+        return item.change;
+      });
+      if (submit) {
+        submit.disabled = true;
+      }
+      sendJson('POST', '/api/fetch-hosts', {
+        changes: changes,
+        reason_text: reasonInput ? reasonInput.value : '',
+        otp: otpInput ? otpInput.value : ''
+      })
+        .then(function (result) {
+          if (submit) {
+            submit.disabled = false;
+          }
+          if (result === null) {
+            return null;
+          }
+          if (!result.ok) {
+            // 실패 문구는 **서버가 준 것만** 쓴다 (사유는 감사 로그에만 갈라져 남는다).
+            setText(dialogMsg, errorMessage(result.data));
+            return null;
+          }
+          var data = result.data || {};
+          var n = Array.isArray(data.changed) ? data.changed.length : 0;
+          state.rows = Array.isArray(data.hosts) ? data.hosts : state.rows;
+          state.added = [];
+          renderTable();
+          if (reasonInput) {
+            reasonInput.value = '';
+          }
+          if (otpInput) {
+            // 코드는 1회성이다 — 남겨 두면 다음 요청에서 거부된다.
+            otpInput.value = '';
+          }
+          closeDialog(dialog);
+          setText(pageMsg, String(n) + '건을 바꿨습니다. 효과는 다음 요청부터입니다.');
+          return null;
+        })
+        .catch(function () {
+          setText(dialogMsg, GENERIC_ERROR);
+          if (submit) {
+            submit.disabled = false;
+          }
+        });
+    });
+  }
+
+  if (resetButton) {
+    resetButton.addEventListener('click', function () {
+      setText(pageMsg, '');
+      setText(addMsg, '');
+      load();
+    });
+  }
+
+  setReauthRetry(load);
+  load();
+}
+
+/* ─── F-43 「사용 방법」 도움말의 허용 사이트 목록 (PRD F-43, ARCH 5.22) ──────────
+ *
+ * 도움말 글 자체는 서버의 고정 배열(`src/help/screens.php`)이지만, **지금 허용된 사이트**는
+ * 그때그때 달라지는 값이라 글에 적어 둘 수 없다. 그래서 `/api/me` 의 `fetch_hosts_public`
+ * (자격이 있는 사람에게만 내려온다)을 받아 도움말 모달 안에 목록 하나를 만들어 넣는다.
+ *
+ * 값은 **서버가 준 문자열**이고 전부 textContent 로 들어간다 (문자열 → HTML 변환 0, PRD S-03).
+ * 키가 아예 없는 응답(Employee·Guest)에서는 아무것도 그리지 않는다.
+ */
+function renderFetchHostsHelp(me) {
+  var dialog = document.getElementById('help-dialog');
+  if (!dialog || !Array.isArray(me.fetch_hosts_public)) {
+    return;
+  }
+  var body = dialog.querySelector('.modal__body');
+  if (!body || body.querySelector('[data-fetch-hosts]')) {
+    return;
+  }
+
+  var title = document.createElement('h3');
+  title.className = 'help-dialog__title';
+  setText(title, '지금 가져올 수 있는 사이트');
+  body.appendChild(title);
+
+  var list = document.createElement('ul');
+  list.className = 'help-dialog__list';
+  list.setAttribute('data-fetch-hosts', '');
+  if (me.fetch_hosts_public.length === 0) {
+    var none = document.createElement('li');
+    setText(none, '아직 없습니다. 관리자가 사이트를 등록해야 「URL 로 가져오기」를 쓸 수 있습니다.');
+    list.appendChild(none);
+  } else {
+    me.fetch_hosts_public.forEach(function (host) {
+      var item = document.createElement('li');
+      setText(item, String(host));
+      list.appendChild(item);
+    });
+  }
+  body.appendChild(list);
+}
+
 function initShell(me, csrfToken) {
   var msg = document.getElementById('msg');
   var sidebar = document.getElementById('sidebar');
@@ -5959,7 +6403,7 @@ function initShell(me, csrfToken) {
      감추기 시작하면 그것이 곧 화면에 심은 권한 판단이 된다. 항목을 개발자도구로 되살려도
      각 경로의 라우트 정책(user.manage·org.manage·audit.read·role:Admin)과 재인증 관문이
      서버에서 다시 막는다 (PRD S-01, T-38·T-53). */
-  ['nav-admin', 'nav-users', 'nav-org', 'nav-admin-permissions',
+  ['nav-admin', 'nav-users', 'nav-org', 'nav-admin-permissions', 'nav-admin-fetch-hosts',
    'nav-audit', 'nav-trash', 'nav-wiki'].forEach(function (id) {
     showNav(id, canAdmin);
   });
@@ -6169,6 +6613,8 @@ function bootPage(page) {
         initShell(me, csrfToken);
 
         if (page === 'files') {
+          // F-43 — 「사용 방법」 도움말에 지금 허용된 사이트를 채운다(자격이 있을 때만 온다).
+          renderFetchHostsHelp(me);
           if (next !== null && document.getElementById('forced-gate')) {
             initForcedGate(csrfToken, next, me.mfa_enabled === true);
             return null;
@@ -6177,7 +6623,11 @@ function bootPage(page) {
             initFiles(
               csrfToken,
               Array.isArray(me.upload_levels) ? me.upload_levels : [],
-              me.can_fetch === true,
+              /* F-43 — 「URL 로 가져오기」 단추는 **자격 + 허용 목록**이 둘 다 있어야 열린다.
+                 목록이 비면 어떤 주소도 가져올 수 없으므로(전부 host_not_allowed), 눌러도
+                 반드시 실패하는 단추를 보여 주지 않는다. 감추는 것은 편의일 뿐이고,
+                 단추를 되살려 POST /api/files/fetch 를 불러도 서버가 다시 막는다 (PRD S-01). */
+              me.can_fetch === true && me.fetch_enabled === true,
               // team_id 는 레벨 기본값(team)·팀 선택 기본값에만 쓰는 화면 편의 값이다 (PRD S-01).
               typeof me.team_id === 'number' || typeof me.team_id === 'string' ? me.team_id : null
             );
@@ -6227,6 +6677,9 @@ function bootPage(page) {
              **그 화면에만 있는 요소**로 가른다(`/reauth` 화면을 폼으로 가르는 것과 같은 방식). */
           if (document.getElementById('perm-table')) {
             initAdminPermissions(csrfToken);
+          } else if (document.getElementById('fetch-hosts-table')) {
+            // F-43 — 허용 사이트 화면. 셸 키가 `admin` 으로 같아서 요소로 가른다.
+            initAdminFetchHosts(csrfToken);
           } else if (document.getElementById('admin-shares')) {
             initAdmin(csrfToken, me);
           }

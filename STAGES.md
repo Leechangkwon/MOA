@@ -1310,6 +1310,34 @@ sudo -u postgres psql -d tbox_re -c "SELECT happened_at, actor_name, action, res
 | 2026-09-15 | 판단(Opus) | 화면 문구에서 `HMAC-SHA1`·`PBKDF2-SHA256 60만 회` 같은 말을 뺐다 | T-55 (b) 가 화면 문구의 구조 설명 키워드 0 을 요구한다(피싱 복제 시 「그럴듯함」을 주지 않기 위한 앞선 결정). 코드 식별자(WebCrypto 알고리즘 이름)는 그대로다 |
 | 2026-09-15 | 발견(Opus) | 주소 입력칸이 서버에서 연 화면에도 보였다 | `.row { display: flex }` 가 `hidden` 속성의 기본 `display:none` 을 이겼다. `[hidden] { display: none !important; }` 한 줄로 고치고 (c)에 「주소 입력칸 숨김」 확인을 넣었다 |
 
+### F-43 — URL 가져오기: 허용 사이트 관리 · 공개 링크 · 통제된 리다이렉트 (T-56) — 구현 2026-09-15
+
+> 지시서: `docs/purchase/15-f43-fetch-allowlist-directive.md`(OAuth 이음새는 같은 날 철회 결정으로 제외). 근거: PRD F-43 · T-56 · AL-18, ARCH 5.22, SECURITY R-76·R-77.
+
+**개발 사항** (Opus — 사용량 한도로 문서 단계에서 중단, 코드는 완결)
+- [x] `db/migrations/2026-09-17_fetch_hosts.sql`(kind 열 없음) · `db/schema.sql` · `db/grants.sql`(tbox_app SELECT·INSERT·UPDATE, DELETE 없음) — 운영 DB 적용됨(`\dp` = arw)
+- [x] `src/handlers/fetch_hosts_list.php` · `fetch_hosts_update.php`(재인증·사유·OTP 1회성·한 트랜잭션·감사 before/after) · `admin_fetch_hosts_page.php` · 라우트 3줄(role:Admin)
+- [x] `src/CloudLink.php`(드라이브 file/d·open?id·docs 3종 export·OneDrive download=1·1drv.ms·sharepoint needs_login) · `src/Fetch.php`(허용 목록 DB∪.env · 통제된 리다이렉트 ≤3 · needs_login) · `files_fetch.php` · `me.php`(fetch_enabled·fetch_hosts_public) · app.js(버튼 조건·관리 화면·문구) · `admin_page.php` 카드 · `shell_top.php` 링크 · `alerts.php` AL-18 · `Audit.php` 문장 · `help/screens.php` · 린트 규칙 (g)
+- [x] PRD F-43·T-56·8장·AL-18 / ARCH 5.22 / SECURITY R-76·R-77·7장(Fable) / README(Fable)
+- [x] `tests/fetch_hosts.sh` 작성 — **실행은 R-73 관문(사용자 활동)으로 대기**
+
+**검토 체크** (Fable, 2026-09-15)
+- [x] 읽기 전용 실측: manager 403 · admin 재인증 전 403·뒤 200 · 사유/OTP 없음 400 · 와일드카드 400 · 화면 200 · `/api/me` fetch_enabled=false(목록 0)
+- [x] CloudLink 단위 12케이스 통과(짧은 ID·evil.tld 미변환 확인) · Fetch 루프 코드 읽기(매 단계 check()·hops·needs_login) · 린트 0 · php -l · 서버 500 없음
+- [ ] `tests/fetch_hosts.sh` 전체 실행(사용자 유휴 때) → 결과 뒤 보정 커밋
+
+**자기 공격 (관문 ③, 사용자)**
+- [ ] 관리자 페이지 → 「URL 가져오기 허용 사이트」에서 `drive.google.com`·`drive.usercontent.google.com`·`docs.google.com`(구글) / `1drv.ms`·`onedrive.live.com`(OneDrive) 를 넣는다 — 사유·인증 앱 코드 없이 저장이 막히는지, 저장 뒤 감사 로그·경보(AL-18)에 남는지
+- [ ] 「링크가 있는 모든 사용자」로 공개한 드라이브 파일 링크를 홈 「URL 로 가져오기」에 붙여 가져온다 · 같은 파일을 비공개로 바꾸고 다시 → 「로그인이 필요합니다」 거부
+- [ ] 목록을 전부 비활성화하면 홈의 버튼이 사라지는지 · 「사용 방법」에 목록이 보이는지
+- [ ] `http://` 주소·`*.example.com`·`10.0.0.5` 를 넣어 본다 — 전부 거부
+
+**학습 기록**
+
+| 날짜 | 구분 | 내용 | 해소·근거 |
+|---|---|---|---|
+| 2026-09-15 | 사고(운영) | F-43 구현 에이전트가 **사용량 한도(rate limit, 12:40 리셋)** 로 문서 단계에서 중단 | 코드는 완결이라 Fable 이 문서·검토를 이어 마무리. 시험은 관문 대기 |
+
 ## 2-1. 10단계 뒤 일괄 자기 공격 — 진행 순서 (관문 ③, 사용자)
 
 일괄 진행 모드에서는 4~10단계의 관문 ③을 한 번에 수행한다. **각 단계 절의 "자기 공격 체크" 를 위에서부터 차례로** 하되, 아래 순서가 효율적이다(계정 전환 최소화). 시드 계정 비밀번호: `sudo cat /etc/tbox-v2/seed-accounts.txt`.

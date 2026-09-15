@@ -353,6 +353,11 @@ sudo -u postgres psql -d tbox_re -c "SET ROLE tbox_app; UPDATE permissions SET c
 두 줄에 넣습니다(예시는 `.env.example` 의 주석만). 두 줄이 없으면 **매트릭스 편집 요청만**
 500 이 되고 나머지 기능은 정상입니다.
 
+### URL 가져오기 허용 사이트 (F-43)
+
+- 관리자 페이지 → 「URL 가져오기 허용 사이트」에서 호스트 이름을 넣고 뺀다(비밀번호 재확인 · 사유 · 인증 앱 코드). https 만, 정확한 호스트 이름만(와일드카드·IP 금지), 사내망 주소는 넣어도 서버가 거부한다. 목록이 비면 홈의 「URL 로 가져오기」 단추가 보이지 않는다.
+- 구글 드라이브·OneDrive 는 「링크가 있는 모든 사용자」로 공개된 문서만 가져올 수 있다(공유 링크를 그대로 붙이면 된다). 필요한 호스트: `drive.google.com` `drive.usercontent.google.com` `docs.google.com` / `1drv.ms` `onedrive.live.com`. 로그인이 필요한 문서는 내려받아 올린다.
+
 ### 관리자 영역을 관리망에서만 (선택, 기본 꺼짐) (`SECURITY.md` R-61)
 
 `/admin` 과 `/api/admin` 을 **특정 IP 대역에서만** 열 수 있습니다. nginx 사이트 파일

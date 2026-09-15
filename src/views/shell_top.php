@@ -340,6 +340,12 @@ if (!headers_sent()) {
         <a id="nav-admin-permissions" class="nav__item" href="/admin/permissions" hidden>
           <span class="icon" data-icon="lock"></span><span>권한 매트릭스</span>
         </a>
+        <!-- F-43 — URL 가져오기 허용 사이트 (PRD F-43, ARCH 5.22). 위 항목들과 **같은 값
+             하나**(can_admin)로 함께 열린다. 항목을 개발자도구로 되살려도 /admin/fetch-hosts 는
+             라우트 정책 role:Admin 과 재인증 관문이 다시 막는다 (PRD S-01, T-56). -->
+        <a id="nav-admin-fetch-hosts" class="nav__item" href="/admin/fetch-hosts" hidden>
+          <span class="icon" data-icon="link"></span><span>가져오기 허용 사이트</span>
+        </a>
         <a id="nav-audit" class="<?= $shellNavClass('audit') ?>" href="/audit" hidden>
           <span class="icon" data-icon="log"></span><span>감사 로그</span>
         </a>

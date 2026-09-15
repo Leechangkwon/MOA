@@ -222,6 +222,24 @@ const TBOX_ROUTES = [
     ['GET',    '/api/admin/shares',              'admin_shares.php',             'role:Admin'],
     ['GET',    '/api/admin/alerts',              'admin_alerts.php',             'role:Admin'],
 
+    /*
+     * F-43 — URL 가져오기 허용 사이트 (PRD F-43 · 8장 3행, ARCH 5.22, SECURITY R-76).
+     *
+     * 정책은 위 관리자 영역과 **같은 `role:Admin`** 이다. 새 정책 이름을 만들지 않는 이유도 같다:
+     * 자격이 같고, `role:Admin` 은 이미 `Authz::REAUTH_POLICIES` 에 있어 **재인증 관문 [3-2] 가
+     * 자동으로 따라붙는다**(F-23). 정책을 새로 만들면 그 목록에 넣는 것을 빠뜨릴 수 있고,
+     * 빠뜨린 그 하나가 곧 우회 경로다 (SECURITY R-04).
+     *
+     * ★ `POST /api/fetch-hosts` 가 이 저장소에서 `fetch_hosts` 표를 바꾸는 **유일한** 라우트다.
+     *   DELETE 라우트는 **없다** — 그만 쓰는 것은 `is_active=false` 이고, 앱 DB 계정에도 그 표의
+     *   DELETE 권한이 없다 (db/grants.sql, ARCH 10장).
+     * ★ 화면(`/admin/fetch-hosts`)과 데이터(`/api/fetch-hosts`)가 같은 정책을 쓴다 —
+     *   화면만 숨기고 API 를 열어 두면 그것이 곧 우회 경로다 (PRD S-01).
+     */
+    ['GET',    '/admin/fetch-hosts',             'admin_fetch_hosts_page.php',   'role:Admin'],
+    ['GET',    '/api/fetch-hosts',               'fetch_hosts_list.php',         'role:Admin'],
+    ['POST',   '/api/fetch-hosts',               'fetch_hosts_update.php',       'role:Admin'],
+
     // 18-1 — 폴더 (PRD F-26 · 8장 `/api/folders` 4행, ARCH 5.16).
     //   폴더도 **파일과 같은 등급 체계**를 갖는다(사용자 결정 2026-09-13 「폴더 자체도 권한」).
     //   그래서 정책도 파일의 같은 행동과 **같은 것**을 쓴다 — 새 정책 이름을 만들지 않는다:
@@ -475,8 +493,10 @@ const TBOX_REAUTH_RETURN = [
     // 하나이고, 확인이 끝나면 **허브**(`/admin`)로 돌아온다. 화면이 하나 더 늘어도 키를 늘리지
     // 않는 이유는 오픈 리다이렉트 표면을 키 목록만큼으로 묶어 두기 위해서다 — 돌아갈 경로는
     // 아래 TBOX_REAUTH_PATHS 에 적힌 고정 문자열뿐이고, 요청 값은 키를 고르는 데만 쓰인다.
-    'GET /admin'             => 'admin',
-    'GET /admin/permissions' => 'admin',
+    'GET /admin'              => 'admin',
+    'GET /admin/permissions'  => 'admin',
+    // F-43 — 허용 사이트 화면도 키는 `admin` 하나다(화면이 늘어도 키를 늘리지 않는다).
+    'GET /admin/fetch-hosts'  => 'admin',
     /*
      * 19단계 4차 보정 — 화면 요청이 재인증 관문에 걸렸을 때 **돌아올 곳**.
      * 지금 재인증 대상인 구매 화면은 `/purchase/import` 하나다(정책 `purchase.master.write`).

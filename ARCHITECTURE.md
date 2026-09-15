@@ -916,6 +916,93 @@ t-box 주소 입력칸을 한 번 보여 준다(`https?://` 로 시작하는 값
 상태 줄이 「오프라인」 이 되며, 그 상태에서도 코드는 PC 시계로 계속 나온다(기능이 멈추지 않는다).
 
 
+### 5.22 URL 가져오기 — 허용 사이트 표 · 공개 링크 변환 · 통제된 리다이렉트 (PRD F-43, 사용자 결정 2026-09-15)
+
+7단계(F-14)가 만든 SSRF 방어의 뼈대 셋은 그대로다 — ① 갈 수 있는 곳을 미리 정해 둔다 ② 검사한 곳과
+실제 가는 곳이 같다 ③ 가져온 것을 업로드와 똑같이 검사한다 (5.6). F-43 이 바꾼 것은 **①의 값이 어디서
+오느냐**와 **3xx 를 어떻게 다루느냐** 둘뿐이다.
+
+**허용 목록의 자리.** `.env` 의 `FETCH_ALLOWED_HOSTS` 한 줄에서 표 `fetch_hosts` 로 옮겼다.
+
+| 어디 | 무엇 | 왜 |
+|---|---|---|
+| `fetch_hosts` (표) | `host`(UNIQUE, 소문자, 점 하나 이상, `*` 금지 — DB CHECK) · `note` · `is_active` · `created_by` · 시각 | 서버에 들어갈 수 있는 사람만 고칠 수 있고 **고친 기록이 남지 않던** 값을, 누가·언제·왜 바꿨는지가 감사 로그에 남는 값으로 바꾼다 |
+| `.env` (그대로 둠) | 같은 형식의 비상 통로. 지금은 비어 있다 | DB 가 이상해 화면으로 못 고치는 상황에서도 열 수 있어야 한다 |
+| `Fetch::allowedHosts()` | 위 둘의 합집합. 표 쪽 값도 읽는 자리에서 `HOST_RE`·`*` 검사를 **다시** 받는다 | DB 를 직접 고친 행이 있어도 와일드카드가 목록에 들어가지 않는다(닫힌 방향으로 실패) |
+
+**목록을 바꾸는 창구는 하나다** — `POST /api/fetch-hosts`(`src/handlers/fetch_hosts_update.php`). 조건은 권한
+매트릭스 편집(5.15)과 같은 급이다: ① `role:Admin` ② 재인증 15분 창(정책이 `REAUTH_POLICIES` 에 있어
+관문 [3-2] 가 자동으로 붙는다) ③ CSRF ④ 요청마다 인증 앱 코드(`Totp::verifyStep` + `mfa_last_step` 1회성)
+⑤ 사유 1~500자 ⑥ 호스트 형식 규칙 ⑦ 한 트랜잭션 + 호스트마다 감사 `fetch_host.change allow` + 경보 AL-18.
+
+권한 매트릭스와 **다른 점 하나**: 별도 DB 롤(`Db::perm`)을 쓰지 않는다. 그 롤은 `permissions` 표 하나를
+위한 것이고(R-60), 여기에 자격을 더하면 그 롤이 닿는 표가 늘어난다. 이 표의 방어는 「앱 롤에 DELETE 가
+없다 + 창구가 하나 + 코드·사유·재인증·감사·경보」다.
+
+**삭제가 없다.** `DELETE` 라우트도, 앱 DB 계정의 DELETE 권한도 없다(`\dp fetch_hosts` = `tbox_app=arw`).
+허용에서 뺀 호스트도 "언제부터 언제까지 열려 있었나" 가 조사에 필요하기 때문이며, `teams.is_active`·
+`share_links.revoked_at` 과 같은 방식이다.
+
+**화면이 보는 값.** `/api/me` 에 둘이 늘었다.
+
+| 키 | 뜻 | 누구에게 |
+|---|---|---|
+| `fetch_enabled` | 활성 호스트가 하나라도 있나 | 모두 |
+| `fetch_hosts_public` | 활성 호스트 이름 배열 | `can_fetch` 인 사람에게만(Manager 이상). Employee·Guest 응답에는 **키가 없다** |
+
+홈의 「URL 로 가져오기」 단추는 `can_fetch && fetch_enabled` 일 때만 열린다 — 목록이 비면 어떤 주소도
+`host_not_allowed` 이므로 **눌러도 반드시 실패하는 단추**를 보여 주지 않는다. 「사용 방법」 도움말(files)은
+`fetch_hosts_public` 으로 `<ul data-fetch-hosts>` 를 채운다(app.js 가 만들고 textContent 로만 넣는다).
+셋 다 화면 편의 값이며 권한이 아니다 — 무엇이 허용인지는 요청마다 `Fetch::check` 가 다시 판단한다.
+
+**공개 링크 변환 — `src/CloudLink.php`.** 사람이 손에 쥐는 주소는 **보는 주소**(`…/file/d/<ID>/view`)라
+그대로 가져오면 파일이 아니라 웹 페이지가 저장된다. 규칙표는 이렇다(호스트는 정확 일치, 경로·ID 는 정규식).
+
+| 들어온 주소 | 나가는 주소 | provider |
+|---|---|---|
+| `drive.google.com/file/d/<ID>/…` · `drive.google.com/open?id=<ID>` | `https://drive.google.com/uc?export=download&id=<ID>` | google |
+| `docs.google.com/{document\|spreadsheets\|presentation}/d/<ID>/…` | `…/export?format={docx\|xlsx\|pptx}` | google |
+| `onedrive.live.com/…` | 원 주소 + `download=1` | microsoft |
+| `1drv.ms/…` | 그대로. `onedrive.live.com` 으로 302 한 **다음 단계**에 `download=1` 을 붙인다(`CloudLink::followUp`) | microsoft |
+| `<tenant>.sharepoint.com` · `<tenant>-my.sharepoint.com` | 변환 안 함 · `needs_login = true` | microsoft |
+| 그 밖 | 그대로 | null |
+
+`CloudLink` 는 **순수 함수**다 — cURL·DNS 가 한 줄도 없고, 허용 여부를 판단하지 않는다. 바꾼 주소도
+`Fetch::check` 를 똑같이 지나므로, 관리자가 `drive.google.com` 을 목록에 넣지 않았으면 변환해도 거부된다.
+**변환은 편의이지 관문이 아니다** (S-01 과 같은 원칙). 파일 ID 는 base64url 글자만 받고, 그 밖이면 변환하지
+않는다(애매한 문자열을 억지로 해석해 만든 주소로 나가지 않는다).
+
+**통제된 리다이렉트.** 드라이브의 `uc?export=download` 는 `drive.usercontent.google.com` 으로, `1drv.ms` 는
+`onedrive.live.com` 으로 302 한다. 7단계의 "3xx 는 전부 거부" 로는 둘 다 가져올 수 없다. 그래서 따라가되
+**따라가는 주체를 우리로 둔다**.
+
+```
+[1] check(첫 주소)  ── https · 443 · 호스트 표기 · 허용 목록 · DNS → 사설 IP 차단
+[2] request()       ── CURLOPT_FOLLOWLOCATION = false, CURLOPT_RESOLVE 로 IP 고정
+     │  200 → [5]
+     │  3xx → Location 을 읽는다 (없으면 redirect 거부)
+[3]  ├─ absolute()        상대 주소를 지금 주소 기준 절대 주소로 (호스트는 못 바꾼다)
+     ├─ CloudLink::followUp()  1drv.ms → onedrive.live.com 이면 download=1 (질의만 더함)
+     ├─ redirectStep()    횟수(≤3) · https · 443 · 호스트 표기 · **같은 허용 목록** — 네트워크 0
+     └─ check(다음 주소)  ★ 처음부터 다시. DNS 해석 뒤 사설 IP 차단까지 첫 주소와 똑같이
+        → [2] 로 (hops 에 호스트를 하나 더 적는다)
+[4] 4번째 단계 · Location 없음 · 검사 실패 → FetchDenied(redirect|scheme|port|host_not_allowed)
+[5] Content-Type 이 text/html 이고 provider 가 있으면 → FetchDenied(needs_login)
+[6] 크기 확인 → Upload::validatePath (5.6 [8] 과 같은 함수)
+```
+
+`redirectStep()` 이 `check()` 와 **따로 있는** 이유는 둘이다. ① 시험용 https 서버를 세우지 않고도
+`php -r` 로 단계 판단을 확인할 수 있어야 한다(T-56 (f)). ② 같은 검사를 두 번 하므로 한쪽만 고쳐지는 날에도
+다른 한쪽이 남는다. `CURLOPT_FOLLOWLOCATION` 이 `true` 이거나 `curl_exec` 가 있는 파일에 `check()` 가 없으면
+`scripts/security_lint.sh` 규칙 (g)가 반려한다.
+
+**`needs_login`.** 두 자리에서 난다 — ① `CloudLink` 가 SharePoint 로 판정했을 때(요청 전) ② 공급자 링크인데
+200 응답의 `Content-Type` 이 `text/html` 일 때(로그인 화면). 이 거부만 **다른 가져오기 실패와 문구가 다르다**:
+요청자가 고쳐서 다시 할 수 있는 일(공유 설정을 바꾸거나 내려받아 올리기)이고 내부 상태를 한 글자도 알려
+주지 않는다 — 민감정보 거부(5.13)와 같은 판단이다. 서버가 대신 로그인하는 길(OAuth)은 **만들지 않는다**
+(사용자 결정 2026-09-15: 「전체 공유된 링크만 지원하면 인증이 필요 없다」).
+
+
 ## 6. 저장 위치 — 파일 정보 vs 실제 파일
 
 ### 6.1 두 곳에 나눠 저장하는 이유
@@ -1433,6 +1520,10 @@ GRANT  USAGE, SELECT  ON SEQUENCE audit_logs_id_seq TO tbox_app;
 | `before` · `after` | 어떻게 | 이전값 → 새값 (레벨 변경·역할 변경). 레벨 변경은 `{"access_level":…, "team_id":…}` 객체 두 개 | 핸들러 | `file.level_change`·`user.role_change` (5·10단계) |
 | `changed` | 어떻게 | 이번 요청으로 바뀐 필드 이름 목록 (예 `["description"]`) | 핸들러 | `file.update`·`file.level_change` (5단계) |
 | `source_host` · `source_ip` | 어디서(출처) | F-14 로 가져온 파일의 허용 도메인과 검사·고정한 IP. **URL 전체는 남기지 않는다**(경로에 토큰·개인정보가 있을 수 있음). 거부 행에도 host 는 남긴다(정규화에 실패했으면 `?`) | 핸들러 | `file.fetch` (7단계) |
+| `hops` | 어디서 | 리다이렉트로 **지나온 호스트 목록**(첫 주소 → 마지막). 단계마다 정말 검사를 받았는지를 로그만으로 되짚는 값이다. 호스트 이름뿐이고 경로는 없다 | 핸들러 | `file.fetch` (F-43) |
+| `source_url` | 어디서 | 사람이 넣은 주소와 서버가 바꾼 주소(`원 → 변환`, 512바이트로 자름). 7단계의 「URL 전체는 남기지 않는다」를 F-43 이 **이 한 키에 한해** 열었다 — 변환이 맞았는지·어떤 링크로 나갔는지는 그 문자열이 없으면 알 수 없고, 값은 요청자가 직접 적어 넣은 **공개 문서 주소**이며 감사 로그를 볼 수 있는 사람은 Admin 뿐이다. 헤더·쿠키·토큰은 여전히 한 글자도 남기지 않는다 | 핸들러 | `file.fetch` (F-43) |
+| `provider` | 무엇을 | 드라이브·OneDrive 링크였나 (`google`·`microsoft`·null) | 핸들러 | `file.fetch` (F-43) |
+| `needs_login` | 왜 | 공개 링크가 아니어서 거부했나(true). 값이 아니라 판정 사실이다 | 핸들러 | `file.fetch` (F-43) |
 | `http_status` | 왜 | 외부 응답 상태 코드 (거부 사유 `redirect`·`fetch_failed` 의 근거). 사용자에게는 보이지 않는다 (S-05 ⑩) | 핸들러 | `file.fetch` deny |
 | `upload_reason` | 왜 | `invalid_file` 거부의 세부 사유(`ext_not_allowed`·`mime_mismatch`·`too_large`·`quota_exceeded`…) — Upload 검증 코드 그대로 | 핸들러 | `file.fetch` deny `invalid_file` (7단계 검토에서 등록, 8단계 이후 반영) |
 | `filters` | 어떻게 | 감사 로그 조회에 적용한 필터(키·값 객체). 값은 500자 절단 | 핸들러 | `audit.view` (8단계) |
@@ -1758,6 +1849,8 @@ php_admin_value[disable_functions]   = fsockopen,pfsockopen,stream_socket_client
 
 **서버 층 경보 — AL-3 확장·AL-9 (16단계 2026-09-12, SECURITY 8.4-5)**: `alerts.php`(root, 5분)가 `audit_logs` 외에 `/var/log/auth.log`(와 `.1`)도 읽는다. ① AL-3: `sshd … Accepted (publickey|password) for <계정> from <IP>` 중 **최근 30일 안에 본 적 없는 IP** → `AL-3|계정@IP`(상태 파일에 IP 별 첫 관측 시각을 기억) ② AL-9: `sudo: <계정> : … COMMAND=<명령>` 의 명령이 `psql|pg_dump|pg_restore|dropdb|rm |find .* -delete|truncate|chattr -a` 에 걸리면 `AL-9|계정`(명령은 앞 200자만, 인자 속 비밀값이 있을 수 있어 `password=`·`PGPASSWORD` 조각은 지운다). 파일 위치·읽기 오프셋은 상태 파일에 두고 회전(`auth.log.1`)을 따라간다. 시험은 `--auth-log <사본 경로>` 인자로. 정합성 검사(`consistency_check.php`)는 주 1회 → **매일 02:00**(8.4-6).
 
+**AL-18 (F-43 2026-09-15)**: 5분 창에 `fetch_host.change allow` 1건 이상 → 즉시(`AL-18|행위자`, evidence 에 바뀐 호스트 이름·사유). AL-13 과 **같은 형태**이고 임계값이 없는 이유도 같다 — 허용 호스트가 바뀌면 그 순간부터 서버가 나갈 수 있는 곳이 달라진다(S-05).
+
 **AL-13 · AL-2 보강 (17단계 2026-09-12)**: AL-13 = 5분 창에 `permission.change allow` 1건 이상 → 즉시(`AL-13|행위자`). AL-2 세는 행에 `auth.reauth deny bad_credentials`(16단계 재인증 창구)를 추가. AL-9 명령 가리기에 SQL `PASSWORD '…'` 형태 추가(첫 실행이 v1 설치 명령을 그대로 재생한 관찰).
 
 | 항목 | 내용 |
@@ -1840,6 +1933,7 @@ SELECT actor_id, count(*) FROM audit_logs
 | ☐ | 상태를 바꾸는 요청(POST/PATCH/DELETE)에 CSRF 검사가 있나? |
 | ☐ | 성공·거부 모두 `Audit` 에 기록하나? |
 | ☐ | `src/Fetch.php` 밖에 외부 요청 코드(`curl_*`, 소켓)가 생겼나? → 반려. Fetch.php 를 고쳤나? → S-05 13개 조건 재확인 + T-6 |
+| ☐ | `CURLOPT_FOLLOWLOCATION` 이 `true` 로 바뀌었나? 리다이렉트 단계에서 `check()` 를 건너뛰나? → 반려 (F-43, 린트 규칙 (g)) |
 | ☐ | 오류 메시지에 DB 오류·경로·스택 트레이스가 섞여 나가나? |
 | ☐ | 새 패키지·라이브러리·외부 도구를 추가했나? → `deploy/DEPENDENCIES.md` 갱신 + EOL 확인 (S-10-C) |
 | ☐ | 새 기능이 만드는 이벤트가 경보 규칙(AL-x)에 필요하진 않나? (S-11-A) |

@@ -74,6 +74,13 @@ require __DIR__ . '/../views/shell_top.php';
           <span class="admin-card__desc">역할 × 등급 표를 바꿉니다</span>
         </span>
       </a>
+      <a class="admin-card admin-card--warn" href="/admin/fetch-hosts">
+        <span class="admin-card__icon"><span class="icon" data-icon="link"></span></span>
+        <span class="admin-card__text">
+          <strong class="admin-card__name">URL 가져오기 허용 사이트</strong>
+          <span class="admin-card__desc">「URL 로 가져오기」가 접속할 수 있는 사이트를 정합니다</span>
+        </span>
+      </a>
       <a class="admin-card" href="/audit">
         <span class="admin-card__icon"><span class="icon" data-icon="log"></span></span>
         <span class="admin-card__text">

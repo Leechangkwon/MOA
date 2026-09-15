@@ -35,6 +35,23 @@ declare(strict_types=1);
 $sourceHost = '?';
 $sourceIp   = null;
 
+/*
+ * F-43 — 클라우드 공개 링크 변환 (PRD F-43, ARCH 5.22).
+ *   $provider   CloudLink 가 판정한 공급자 (google·microsoft·null)
+ *   $sourceUrl  감사 로그에 남길 「원 주소 → 바꾼 주소」. 변환이 없었으면 원 주소 하나뿐이다
+ *   $hops       리다이렉트로 지나온 호스트 목록 (Fetch::download 가 채운다)
+ */
+require_once __DIR__ . '/../CloudLink.php';
+
+$provider  = null;
+$sourceUrl = '';
+$hops      = [];
+
+/** 감사 로그 detail 에 넣을 주소 — 512바이트로 자른다(로그 한 줄이 주소로 채워지지 않게) */
+$shortUrl = static function (string $url): string {
+    return strlen($url) > 512 ? substr($url, 0, 512) : $url;
+};
+
 /**
  * 가져오기 실패 — 사유는 감사 로그에만, 사용자에게는 상태 코드만 다른 같은 문구.
  *
@@ -167,9 +184,47 @@ if (!$mayUpload) {
     $rejectFetch(403, $uploadCode, null, $level, ['target_team' => $teamId]);
 }
 
+/* ─── [3-3] 클라우드 공개 링크 → 내려받기 주소 (F-43, ARCH 5.22) ─────
+ *
+ * 사람이 손에 쥐는 주소는 **보는 주소**다(`…/file/d/<ID>/view`). 그대로 가져오면 파일이 아니라
+ * 웹 페이지가 저장되므로, 공급자가 정해 둔 내려받기 주소로 바꾼 뒤 검사에 넘긴다.
+ *
+ * ★ 변환은 **관문이 아니다**. 바꾼 주소도 아래 [4] 의 Fetch::check 를 똑같이 지난다 —
+ *   관리자가 `drive.google.com` 을 허용 목록에 넣지 않았다면 변환해도 host_not_allowed 다.
+ * ★ 회사 테넌트(SharePoint) 문서처럼 **로그인이 필요한 주소**는 여기서 끝낸다. 서버는
+ *   로그인할 수 없고(계정 연결 기능을 두지 않기로 했다 — 사용자 결정 2026-09-15),
+ *   로그인 화면을 파일로 저장하면 "로그인 페이지가 첨부된 문서" 가 쌓인다.
+ *   이 거부만은 **다른 가져오기 실패와 문구가 다르다**: 요청자가 고쳐서 다시 할 수 있는
+ *   일(공유 설정을 바꾸거나 내려받아 올리기)이고, 내부 상태를 한 글자도 알려 주지 않는다
+ *   (민감정보 거부와 같은 판단, Http::MSG_SENSITIVE_LEVEL_REQUIRED).
+ */
+$link      = CloudLink::normalize($requestedUrl);
+$provider  = $link['provider'];
+$safeInput = $link['url'];
+$sourceUrl = $safeInput === $requestedUrl
+    ? $shortUrl($requestedUrl)
+    : $shortUrl($requestedUrl . ' → ' . $safeInput);
+
+if ($link['needs_login'] === true) {
+    Audit::deny('file.fetch', 'needs_login', [
+        'target_type'  => 'file',
+        'target_name'  => null,
+        'access_level' => $level,
+        'detail'       => [
+            'source_url'  => $sourceUrl,
+            'provider'    => $provider,
+            'needs_login' => true,
+        ],
+    ]);
+    Http::error(
+        400,
+        '이 문서는 로그인이 필요합니다. 「링크가 있는 모든 사용자」로 공개된 문서만 가져올 수 있습니다 — 공유 설정을 바꾸거나 내려받아 올리세요.'
+    );
+}
+
 // ─── [4] URL 검사 (PRD S-05 ①②③④⑤) ─────────────────────────
 try {
-    $checked    = Fetch::check($requestedUrl);
+    $checked    = Fetch::check($safeInput);
     $sourceHost = $checked['host'];
     $sourceIp   = $checked['ip'];
     $safeUrl    = $checked['url'];
@@ -177,13 +232,21 @@ try {
     if ($e->host !== null) {
         $sourceHost = $e->host;
     }
-    $rejectFetch(400, $e->reason, null, $level, ['source_host' => $sourceHost]);
+    $rejectFetch(400, $e->reason, null, $level, [
+        'source_host' => $sourceHost,
+        'source_url'  => $sourceUrl,
+        'provider'    => $provider,
+    ]);
     return;
 } catch (RuntimeException $e) {
     // 설정 오류(FETCH_ALLOWED_HOSTS 의 와일드카드·공백)도 "아무 호스트도 허용되지 않는" 상태다.
     // 조용히 통과시키지 않고 host_not_allowed 로 기록한다 (SECURITY 1.6 "와일드카드 금지").
     error_log('[tbox] request_id=' . TBOX_REQUEST_ID . ' file.fetch 설정 오류: ' . $e->getMessage());
-    $rejectFetch(400, 'host_not_allowed', null, $level, ['source_host' => $sourceHost]);
+    $rejectFetch(400, 'host_not_allowed', null, $level, [
+        'source_host' => $sourceHost,
+        'source_url'  => $sourceUrl,
+        'provider'    => $provider,
+    ]);
     return;
 }
 
@@ -206,13 +269,43 @@ $cleanTmp = static function () use ($tmpPath): void {
 register_shutdown_function($cleanTmp);
 
 try {
-    $result = Fetch::download($safeUrl, $sourceHost, $sourceIp, $tmpPath);
+    // F-43 — 리다이렉트는 여기서 **최대 3번**, 단계마다 Fetch::check 를 처음부터 다시 받는다.
+    // $provider 가 있으면(드라이브·OneDrive) HTML 응답을 needs_login 으로 거른다 (ARCH 5.22).
+    $result     = Fetch::download($safeUrl, $sourceHost, $sourceIp, $tmpPath, $provider);
+    $hops       = $result['hops'] ?? [$sourceHost];
+    // 마지막으로 실제 받은 곳 — 감사 로그의 source_host 는 "어디서 받았나" 여야 한다.
+    $sourceHost = (string) ($result['host'] ?? $sourceHost);
+    $sourceIp   = (string) ($result['ip'] ?? $sourceIp);
 } catch (FetchDenied $e) {
     $cleanTmp();
+    if ($e->host !== null) {
+        $sourceHost = $e->host;
+    }
+    if ($e->reason === 'needs_login') {
+        // 위 [3-3] 과 같은 거부다 — 링크는 공개가 아니었고, 그것을 200 응답(HTML)으로 알았다.
+        Audit::deny('file.fetch', 'needs_login', [
+            'target_type'  => 'file',
+            'target_name'  => null,
+            'access_level' => $level,
+            'detail'       => [
+                'source_host' => $sourceHost,
+                'source_url'  => $sourceUrl,
+                'provider'    => $provider,
+                'needs_login' => true,
+                'http_status' => $e->httpStatus,
+            ],
+        ]);
+        Http::error(
+            400,
+            '이 문서는 로그인이 필요합니다. 「링크가 있는 모든 사용자」로 공개된 문서만 가져올 수 있습니다 — 공유 설정을 바꾸거나 내려받아 올리세요.'
+        );
+    }
     $rejectFetch(400, $e->reason, null, $level, [
         'source_host' => $sourceHost,
         'source_ip'   => $sourceIp,
         'http_status' => $e->httpStatus,
+        'source_url'  => $sourceUrl,
+        'provider'    => $provider,
     ]);
     return;
 }
@@ -333,9 +426,16 @@ try {
             'sha256'      => $checkedFile['sha256'],
             'owner_id'    => (int) $user['id'],
             'target_team' => $teamId,
-            // 출처는 host 와 IP 만 — URL 전체는 남기지 않는다 (ARCH 7.5 source_host)
+            // 출처 — 마지막으로 받은 host 와 IP (ARCH 7.5 source_host)
             'source_host' => $sourceHost,
             'source_ip'   => $sourceIp,
+            /* F-43 — 되짚기에 필요한 세 값 (ARCH 7.5 등록부).
+               hops       지나온 호스트 목록. 「어디를 거쳐 왔나」가 리다이렉트 통제의 증거다
+               source_url 사람이 넣은 주소와 서버가 바꾼 주소. 변환이 맞았는지를 로그만으로 본다
+               provider   드라이브·OneDrive 링크였나 (google·microsoft·null) */
+            'hops'        => $hops,
+            'source_url'  => $sourceUrl,
+            'provider'    => $provider,
         ] + ($sensitive === [] ? [] : ['sensitive' => $sensitive]),
     ]);
 
