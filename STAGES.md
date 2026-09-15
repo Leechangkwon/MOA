@@ -1473,6 +1473,7 @@ sudo -u postgres psql -d tbox_re -c "SELECT happened_at, actor_name, action, res
 | 2026-09-15 | 요청(사용자) | 「changelog 도 몇 날 몇 시 뭘 올렸고, 무엇이 변했는지를 설명하게」 | 항목마다 `released_at`(서버 KST, 분까지) + 사용자 말로 쓴 변경 문장 — ARCH 5.23 항목 형식 |
 | 2026-09-15 | 요청(사용자) | 「모달로 볼 수 있게」 | 사이드바 버전 단추 → `<dialog id="changelog-dialog">`, 「사용 방법」 모달과 같은 뼈대(ARCH 5.19·5.23) — 새 API 없음 |
 | 2026-09-15 | 궁금(사용자) | 「깃에도 버전 관리 되는 거지?」 | 된다 — 발행마다 릴리스 커밋 + 주석 태그 `vX.Y.Z`, `git push origin vX.Y.Z` 로 원격에도. 확인: `git tag -l`, `git ls-remote --tags origin`. ARCH 5.23 「깃」 |
+| 2026-09-15 | 해소(Fable) | 첫 발행 — F-47 커밋 `5c59c4f` 에 태그 `v1.0.0` 부착, `git push origin main`·`git push origin v1.0.0` 완료. `git ls-remote --tags origin` 에 `refs/tags/v1.0.0` 확인, `git describe --tags` = `v1.0.0` | 다음부터는 `scripts/release.sh` 한 번(CLAUDE.md 6장). 1.0.0 은 이미 파일에 있어 스크립트를 쓰지 않았다 |
 
 ## 2-1. 10단계 뒤 일괄 자기 공격 — 진행 순서 (관문 ③, 사용자)
 
