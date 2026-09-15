@@ -130,6 +130,8 @@ body_of() { printf '%s' "$1" | sed '$d'; }
 # ─────────────────────────────────────────────────────────────
 hr "0. 시험 안전 점검 (SECURITY R-73)"
 # ─────────────────────────────────────────────────────────────
+# 2026-09-15 Fable: 감사 단언은 「이 실행 시작 이후」만 센다 — 고정 창(2·10분)은 연속 실행 때 앞 실행의 행을 함께 세어 오탐했다
+T0=$(psqlq "SELECT now();")
 NONQA_BEFORE=$(psqlq "SELECT count(*) FROM audit_logs WHERE happened_at > now() - interval '10 minutes' AND actor_name IS NOT NULL AND actor_name NOT LIKE 'qa\\_%'")
 echo "  최근 10분 비-qa 감사 행: $NONQA_BEFORE"
 if [ "${NONQA_BEFORE:-1}" != "0" ]; then
@@ -170,7 +172,7 @@ R=$(call qa_manager01 GET  /api/fetch-hosts "$TOK_MGR")
 expect "GET  /api/fetch-hosts → 403" 403 "$(code_of "$R")"
 R=$(call qa_manager01 POST /api/fetch-hosts "$TOK_MGR" '{"changes":[{"host":"'"$H1"'","is_active":true}],"reason_text":"x","otp":"000000"}')
 expect "POST /api/fetch-hosts → 403" 403 "$(code_of "$R")"
-expect "감사 authz.route deny 남음" 1 "$(psqlq "SELECT count(*) > 0 FROM audit_logs WHERE action='authz.route' AND result='deny' AND actor_name='qa_manager01' AND happened_at > now() - interval '2 minutes'" | grep -c '^t$')"
+expect "감사 authz.route deny 남음" 1 "$(psqlq "SELECT count(*) > 0 FROM audit_logs WHERE action='authz.route' AND result='deny' AND actor_name='qa_manager01' AND happened_at > '$T0'::timestamptz" | grep -c '^t$')"
 
 sub "Admin 이라도 재인증 창이 없으면 막힌다 (F-23)"
 R=$(call qa_admin01 GET /api/fetch-hosts "$TOK_ADMIN")
@@ -190,7 +192,7 @@ R=$(call qa_admin01 POST /api/fetch-hosts "$TOK_ADMIN" '{"changes":[{"host":"'"$
 expect "코드 없음 → 400" 400 "$(code_of "$R")"
 R=$(call qa_admin01 POST /api/fetch-hosts "$TOK_ADMIN" '{"changes":[{"host":"'"$H1"'","is_active":true}],"reason_text":"시험","otp":"000000"}')
 expect "코드 틀림 → 400" 400 "$(code_of "$R")"
-expect "감사 fetch_host.change deny bad_code" 1 "$(psqlq "SELECT count(*) > 0 FROM audit_logs WHERE action='fetch_host.change' AND result='deny' AND reason='bad_code' AND actor_name='qa_admin01' AND happened_at > now() - interval '2 minutes'" | grep -c '^t$')"
+expect "감사 fetch_host.change deny bad_code" 1 "$(psqlq "SELECT count(*) > 0 FROM audit_logs WHERE action='fetch_host.change' AND result='deny' AND reason='bad_code' AND actor_name='qa_admin01' AND happened_at > '$T0'::timestamptz" | grep -c '^t$')"
 expect "표는 여전히 0행" 0 "$(psqlq "SELECT count(*) FROM fetch_hosts WHERE host LIKE 's43-%'")"
 
 # ─────────────────────────────────────────────────────────────
@@ -205,16 +207,16 @@ expect "POST → 200"     200 "$(code_of "$R")"
 expect "changed 2건"      2 "$(body_of "$R" | grep -o '"added":true' | wc -l)"
 expect "표에 2행"         2 "$(psqlq "SELECT count(*) FROM fetch_hosts WHERE host LIKE 's43-%'")"
 expect "소문자로 저장"    1 "$(psqlq "SELECT count(*) FROM fetch_hosts WHERE host = '$H1'")"
-expect "감사 allow 2건"   2 "$(psqlq "SELECT count(*) FROM audit_logs WHERE action='fetch_host.change' AND result='allow' AND actor_name='qa_admin01' AND happened_at > now() - interval '2 minutes'")"
+expect "감사 allow 2건"   2 "$(psqlq "SELECT count(*) FROM audit_logs WHERE action='fetch_host.change' AND result='allow' AND actor_name='qa_admin01' AND happened_at > '$T0'::timestamptz")"
 echo "  감사 detail 원문:"
-psqlq "SELECT target_name || ' :: ' || detail::text FROM audit_logs WHERE action='fetch_host.change' AND result='allow' AND happened_at > now() - interval '2 minutes' ORDER BY id" | sed 's/^/    /'
-expect "detail 에 before(null)·after·사유·코드확인" 2 "$(psqlq "SELECT count(*) FROM audit_logs WHERE action='fetch_host.change' AND result='allow' AND happened_at > now() - interval '2 minutes' AND detail ? 'after' AND detail ? 'reason_text' AND detail->>'otp_verified' = 'true'")"
+psqlq "SELECT target_name || ' :: ' || detail::text FROM audit_logs WHERE action='fetch_host.change' AND result='allow' AND happened_at > '$T0'::timestamptz ORDER BY id" | sed 's/^/    /'
+expect "detail 에 before(null)·after·사유·코드확인" 2 "$(psqlq "SELECT count(*) FROM audit_logs WHERE action='fetch_host.change' AND result='allow' AND happened_at > '$T0'::timestamptz AND detail ? 'after' AND detail ? 'reason_text' AND detail->>'otp_verified' = 'true'")"
 
 sub "같은 코드를 다시 쓰면 거부 (R-45)"
 R=$(call qa_admin01 POST /api/fetch-hosts "$TOK_ADMIN" \
    '{"changes":[{"host":"'"$H1"'","is_active":false}],"reason_text":"코드 재사용 시험","otp":"'"$OTP"'"}')
 expect "같은 코드 재사용 → 400" 400 "$(code_of "$R")"
-expect "감사 code_reused" 1 "$(psqlq "SELECT count(*) > 0 FROM audit_logs WHERE action='fetch_host.change' AND result='deny' AND reason='code_reused' AND happened_at > now() - interval '2 minutes'" | grep -c '^t$')"
+expect "감사 code_reused" 1 "$(psqlq "SELECT count(*) > 0 FROM audit_logs WHERE action='fetch_host.change' AND result='deny' AND reason='code_reused' AND happened_at > '$T0'::timestamptz" | grep -c '^t$')"
 expect "여전히 활성 2행" 2 "$(psqlq "SELECT count(*) FROM fetch_hosts WHERE host LIKE 's43-%' AND is_active")"
 
 sub "AL-18 — 허용 사이트 변경은 1건이라도 즉시 경보"
@@ -234,7 +236,7 @@ for BAD in '*.example.invalid' '10.0.0.5' 'https://s43-3.example.invalid/x' 'loc
   expect "거부: $BAD → 400" 400 "$(code_of "$R")"
 done
 expect "형식 거부가 행을 만들지 않음" 2 "$(psqlq "SELECT count(*) FROM fetch_hosts WHERE host LIKE 's43-%'")"
-expect "감사 invariant 5건" 5 "$(psqlq "SELECT count(*) FROM audit_logs WHERE action='fetch_host.change' AND result='deny' AND reason='invariant' AND happened_at > now() - interval '10 minutes'")"
+expect "감사 invariant 5건" 5 "$(psqlq "SELECT count(*) FROM audit_logs WHERE action='fetch_host.change' AND result='deny' AND reason='invariant' AND happened_at > '$T0'::timestamptz")"
 
 sub "DELETE 라우트가 없다 (405/404)"
 R=$(call qa_admin01 DELETE /api/fetch-hosts "$TOK_ADMIN")
@@ -271,7 +273,7 @@ hr "가져오기 동작 — 허용 목록이 실제로 통로를 여닫는가"
 sub "비활성 상태: 픽스처 주소로 가져오기 → host_not_allowed"
 R=$(call qa_manager01 POST /api/files/fetch "$TOK_MGR" '{"url":"https://'"$H1"'/a.csv","access_level":"internal"}')
 expect "가져오기 → 400" 400 "$(code_of "$R")"
-expect "감사 reason=host_not_allowed" 1 "$(psqlq "SELECT count(*) > 0 FROM audit_logs WHERE action='file.fetch' AND result='deny' AND reason='host_not_allowed' AND actor_name='qa_manager01' AND happened_at > now() - interval '2 minutes'" | grep -c '^t$')"
+expect "감사 reason=host_not_allowed" 1 "$(psqlq "SELECT count(*) > 0 FROM audit_logs WHERE action='file.fetch' AND result='deny' AND reason='host_not_allowed' AND actor_name='qa_manager01' AND happened_at > '$T0'::timestamptz" | grep -c '^t$')"
 
 sub "활성화하면 사유가 바뀐다 — 허용은 됐고 DNS 가 없어 private_ip (밖으로 나가지 않음)"
 wait_next_step qa_admin01
@@ -289,7 +291,7 @@ sub "SharePoint 링크 → needs_login (바깥으로 나가지 않는다)"
 R=$(call qa_manager01 POST /api/files/fetch "$TOK_MGR" '{"url":"https://contoso-my.sharepoint.com/:x:/g/personal/a_b/EABCdefgh","access_level":"internal"}')
 expect "needs_login → 400" 400 "$(code_of "$R")"
 expect "문구가 다른 가져오기 실패와 다르다" 1 "$(body_of "$R" | grep -c '로그인이 필요합니다')"
-expect "감사 reason=needs_login" 1 "$(psqlq "SELECT count(*) > 0 FROM audit_logs WHERE action='file.fetch' AND result='deny' AND reason='needs_login' AND actor_name='qa_manager01' AND happened_at > now() - interval '2 minutes'" | grep -c '^t$')"
+expect "감사 reason=needs_login" 1 "$(psqlq "SELECT count(*) > 0 FROM audit_logs WHERE action='file.fetch' AND result='deny' AND reason='needs_login' AND actor_name='qa_manager01' AND happened_at > '$T0'::timestamptz" | grep -c '^t$')"
 
 # ─────────────────────────────────────────────────────────────
 hr "(e) CloudLink 단위 시험 (네트워크 0)"
@@ -401,7 +403,7 @@ except Exception as e:
 
 report = {}
 with sync_playwright() as p:
-    browser = p.chromium.launch()
+    browser = p.chromium.launch(channel='chromium')
     for who, jarfile, pages in (('manager', mgr_jar, ['/']), ('admin', admin_jar, ['/', '/admin/fetch-hosts'])):
         ctx = browser.new_context(viewport={'width': 1440, 'height': 1000}, user_agent=ua)
         ctx.add_cookies(cookies(jarfile))
@@ -448,8 +450,8 @@ cat "$OUT/d-ui.txt"
 if grep -q PLAYWRIGHT_MISSING "$OUT/d-ui.txt"; then
   echo "  ! playwright 가 없어 (d) 를 실행하지 못했다 — 미검증"
 else
-  expect "Manager 홈: 단추 보임(활성 1건)" 1 "$(grep -c '"fetch_button_visible": true' "$OUT/d-ui.txt")"
-  expect "도움말에 허용 목록이 채워짐"      1 "$(grep -c 's43-1.example.invalid' "$OUT/d-ui.txt")"
+  expect "Manager 홈: 단추 보임(활성 1건)" 1 "$(python3 -c "import json,sys;d=json.load(open(sys.argv[1]));print(1 if d.get('manager/',{}).get('fetch_button_visible') is True else 0)" "$OUT/d-ui.txt")"
+  expect "도움말에 허용 목록이 채워짐"      1 "$(python3 -c "import json,sys;d=json.load(open(sys.argv[1]));print(1 if 's43-1.example.invalid' in d.get('manager/',{}).get('help_host_list',[]) else 0)" "$OUT/d-ui.txt")"
   expect "저장 모달이 열림"                 1 "$(grep -c '"save_dialog_open": true' "$OUT/d-ui.txt")"
   expect "콘솔 오류 0건"                    0 "$(python3 -c "
 import json,sys

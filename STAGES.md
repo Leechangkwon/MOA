@@ -1324,7 +1324,7 @@ sudo -u postgres psql -d tbox_re -c "SELECT happened_at, actor_name, action, res
 **검토 체크** (Fable, 2026-09-15)
 - [x] 읽기 전용 실측: manager 403 · admin 재인증 전 403·뒤 200 · 사유/OTP 없음 400 · 와일드카드 400 · 화면 200 · `/api/me` fetch_enabled=false(목록 0)
 - [x] CloudLink 단위 12케이스 통과(짧은 ID·evil.tld 미변환 확인) · Fetch 루프 코드 읽기(매 단계 check()·hops·needs_login) · 린트 0 · php -l · 서버 500 없음
-- [ ] `tests/fetch_hosts.sh` 전체 실행(사용자 유휴 때) → 결과 뒤 보정 커밋
+- [x] `tests/fetch_hosts.sh` 전체 실행(2026-09-15 13:1x, 사용자 유휴) → **66 ✔ · 0 ✘**, s43- 잔여 0. 앞선 두 실행의 실패는 시험 스크립트 결함(헤드리스 셸 채널 · 감사 단언 고정 창(2·10분)이 연속 실행에서 앞 실행 행을 셈 · UI 단언이 파일 전체 grep) — 스크립트만 고침(코드 변경 0). 세 번째 실행은 qa_admin01 잠금(OTP 재사용 5회 = 실패 5회, R-45 정상)으로 미착수
 
 **자기 공격 (관문 ③, 사용자)**
 - [ ] 관리자 페이지 → 「URL 가져오기 허용 사이트」에서 `drive.google.com`·`drive.usercontent.google.com`·`docs.google.com`(구글) / `1drv.ms`·`onedrive.live.com`(OneDrive) 를 넣는다 — 사유·인증 앱 코드 없이 저장이 막히는지, 저장 뒤 감사 로그·경보(AL-18)에 남는지
