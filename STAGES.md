@@ -1385,6 +1385,63 @@ sudo -u postgres psql -d tbox_re -c "SELECT happened_at, actor_name, action, res
 | 2026-09-15 | 사고(운영) — **미해결, 사용자 판단 필요** | 오늘(2026-09-15) `PR`·`PO`·`GR` 전표를 **만들 수 없다**(409). 원인은 19~23단계 시험 스크립트의 정리에 있는 `DELETE FROM p_doc_seq WHERE seq_date = CURRENT_DATE` 다 — 그 표는 qa 의 것이 아니라 **그날의 전표 번호 카운터**이고, 지우면 번호가 1부터 다시 발급된다. 사용자가 같은 날 만든 전표(`PR-20260915-7`·`PO-20260915-1`·`GR-20260915-1`·`GR-20260915-2`)가 남아 있어 `p_docs_doc_no_uidx` 에 부딪히고, 실패하면 트랜잭션이 되돌아가 카운터도 오르지 않아 **그날 내내 막힌다** | 사용자 전표 4건은 그대로다(비-qa 행 수 8548 → 8548 변동 0). 복구는 카운터를 오늘 최대 번호로 올리는 일이고 **판단은 사용자 몫**이다(CLAUDE.md 4장 — 스스로 실행하지 않는다). `tests/purchase_f45.sh` 의 정리에서는 그 DELETE 를 **뺐다**; `purchase_stage20|21|22|23.sh` 에는 그대로 남아 있다(이 작업의 수정 범위 밖) |
 | 2026-09-15 | 미검증 | 그 사고로 T-57 (a)~(d) 의 **픽스처를 세울 수 없었다** — 대신 사용자의 실 전표를 **읽기만** 해서 목록·상세·걸개·404·`can_void`·미입고 API 를 확인했다 | 쓰기가 필요한 항목(지점 격리 404·취소 → 원장 반대 부호 행)은 **미검증**이며, 카운터가 복구되면 `bash tests/purchase_f45.sh` 한 번으로 끝난다 |
 
+### F-46 — 2단계 코드 생성기 이름·휴대폰 화면 · SharePoint/구글 시트 공개 링크 (T-58) — 구현 2026-09-15
+
+> 지시서: `docs/purchase/18-f46-directive.md` (+ 조정자 추가 지시 C2 — 구글 시트의 회전 도메인).
+> 근거: PRD F-46 · 12.2 T-58, ARCH 5.21(휴대폰·매니페스트)·5.22(쿠키·공급자 내려받기 호스트)·7.5(`cookie_hops`), SECURITY R-40·R-77 보충.
+> 사용자 결정 2026-09-15: ① 「오프라인」이라는 이름이 오해를 준다 → 「t-box 2단계 코드 생성기」 ② 휴대폰 인증 앱은 광고·결제 유도로 못 쓴다 → APK 가 아니라 **생성기를 휴대폰 브라우저에서** ③ SharePoint 「전체 공유」 링크가 거부되던 것은 **우리 쪽 결함 2개**.
+
+**개발 사항** (Opus)
+- [x] `public/assets/totp-generator.html` — title·h1 「t-box 2단계 코드 생성기」 · `@media (max-width: 480px)`(입력·버튼 100%, 버튼 ≥44px, 코드 40px, 가로 스크롤 0) · `<link rel="manifest">`·`theme-color`·`apple-touch-icon`(둘 다 `data:` SVG) · CSP meta 에 `manifest-src 'self'` · 「홈 화면에 추가」 안내 한 줄 · 경고 문구를 기기 중립으로(「이 PC 브라우저」 → 「이 기기의 브라우저」). **상태 줄의 「오프라인 · …」 세 문구는 그대로** (동기화 상태)
+- [x] `public/assets/totp-generator.webmanifest` (새 파일) — `standalone`·시작 주소·`theme_color`, **아이콘은 `data:` SVG 하나뿐**(외부 참조 0)
+- [x] `deploy/sites/tbox-v2.conf` — 생성기 CSP 에 `manifest-src 'self'` · 매니페스트 전용 location(`types { application/manifest+json webmanifest; }` + 같은 보안 헤더). **`/etc/nginx` 복사·reload 는 하지 않음 — Fable 의 몫**
+- [x] `src/CloudLink.php` — `<tenant>.sharepoint.com`·`-my`·`-admin` → `download=1`, provider microsoft, `needs_login` **false**(판단을 「주소 모양」에서 「돌아온 것」으로 옮김). 머리 주석 표 갱신
+- [x] `src/Fetch.php` — ① `cookieHeader()`(이름=값만·속성 버림·20개·8KB·초과 시 쿠키 없이·**다음 호스트가 같을 때만**) + `request(?string $cookie)` 의 `CURLOPT_COOKIE` ② `PROVIDER_DOWNLOAD_SUFFIXES` 코드 상수 + `providerHostAllowed()`, `redirectStep(..., ?string $provider)`·`check(..., ?string $downloadProvider)` — **리다이렉트 다음 단계에서만**. `FOLLOWLOCATION` false·단계마다 `check()`·최대 3단계 그대로
+- [x] `src/handlers/files_fetch.php` — 감사 `detail.cookie_hops`(수만). **첫 요청의 `Fetch::check($safeInput)` 에는 공급자를 넘기지 않는다**
+- [x] `src/Audit.php` — `ALLOWED_DETAIL_KEYS` 에 `cookie_hops` 한 줄(**지시서 「수정 파일」 밖 — 아래 학습 기록 참조**)
+- [x] `src/help/screens.php`(2단계 인증 안내 · files 「SharePoint 도 …」 한 구 · fetch-hosts 도움말) · `src/handlers/settings_page.php`(링크 문구) · `README.md`(제목 + 휴대폰 문단)
+- [x] `tests/f46.sh`(새 파일) — T-58 (a)~(g)
+- [x] PRD F-46·T-58 / ARCH 5.21·5.22·7.5 / SECURITY R-40·R-77 보충 / `docs/totp-generator-internals.md` 「휴대폰 · 홈 화면에 추가」 절
+
+**검토 체크** (Opus 자체 실행 — 원문은 보고서)
+- [x] `bash tests/f46.sh` → **59 ✔ · 0 ✘** (스크린샷 `~/.claude/ui-shots/f46/c-shots/`)
+- [x] (c) 휴대폰 390×844 — `scrollWidth 390 = innerWidth 390`(가로 스크롤 0) · 버튼 최소 높이 **48px** · 코드 글자 **40px** · 자체 점검 **9/9** · 콘솔 오류 0 ; 데스크톱 1440 도 같음(버튼 42px — 요구는 휴대폰에만)
+- [x] (f) **실링크 2개 실제 가져오기 성공** — SharePoint 「링크가 있는 모든 사용자」 링크 → 201, `플란부평 24년 12월 판매상품 수불대장 v1.0.xlsx` 355,174B, `hops` 2(같은 호스트) · **`cookie_hops` 1** · provider microsoft · 감사에 쿠키 값 0 ; `?e=` 뗀 것도 201 ; 가짜 id → 400 `needs_login`(원문 첨부) ; 구글 시트 → 201, `2026년 데일리 재고 마감.xlsx`, `hops` = `docs.google.com` → `doc-08-9g-sheets.googleusercontent.com` · **`cookie_hops` 0**(호스트가 달라 쿠키를 버림) · provider google. **가져온 파일 3건은 휴지통으로만**(psql purge 하지 않음, R-73)
+- [x] 회귀 — `tests/help_button.sh` **17 ✔ · 0 ✘** · `scripts/security_lint.sh` **0건** · `php -l` 전부 · `/login` 200(Fetch.php·Audit.php 저장 직후 즉시 확인)
+- [ ] `tests/totp_time_sync.sh` **48 ✔ · 1 ✘** — 실패 1건은 **이 작업과 무관한 기대값 노후**: (c)① 「지금 배포된 CSP 그대로면 상태 줄이 「오프라인」」. F-42 의 nginx 적용이 끝나 `connect-src 'self'` 가 살아 있으므로 지금은 「서버와 동기화됨」이 정상이다. 그 시험 파일은 이번 「수정 파일」 밖이라 고치지 않았다 → **Fable 판단**
+- [ ] **Fable 검토** 대기 — `/etc/nginx` 에 매니페스트 location·`manifest-src` 복사·reload 도 Fable
+
+**자기 공격 (관문 ③, 사용자)**
+- [ ] 휴대폰 브라우저로 `/assets/totp-generator.html` 을 열고 「홈 화면에 추가」 — 아이콘·이름이 나오고, 눌렀을 때 주소창 없이 열리는지. 가로로 밀리는 곳이 없는지
+- [ ] 그 휴대폰에서 개발자도구(또는 PC 에서 같은 화면) Network 로 **생성기가 `/api/time` 말고 어디를 부르는지** 본다 — 0 이어야 한다. 매니페스트·아이콘도 밖에서 받아오지 않는다(`data:`)
+- [ ] 관리자 화면에서 `planlabs.sharepoint.com` 을 **「허용」 끄고** 같은 링크를 가져와 본다 — `host_not_allowed` 로 막히는지(코드 상수는 **첫 요청**을 열어 주지 않는다)
+- [ ] 아무 사이트의 공개 xlsx 주소를 허용 목록에 넣지 않고 넣어 본다 — 거부되는지
+- [ ] 로그인이 **정말 필요한** SharePoint 문서(공유 안 한 것) 링크를 가져와 본다 — 「로그인이 필요합니다」로 끝나고 파일이 저장되지 않는지
+- [ ] 감사 로그에서 방금 가져오기 행을 열어 `cookie_hops` 가 **숫자 하나**이고 쿠키 값·이름이 어디에도 없는지 확인
+
+**학습 기록**
+
+| 날짜 | 구분 | 내용 | 해소·근거 |
+|---|---|---|---|
+| 2026-09-15 | 결정(사용자) | 「생성기가 인터넷으로도 열리네, 오프라인 문서가 아니라」 → 이름을 「t-box 2단계 코드 생성기」로 | 「오프라인」은 **계산 방식**(키를 안 보냄)이지 접근 경로가 아니다. 상태 줄의 「오프라인 · …」은 동기화 상태라 유지 — ARCH 5.21 「이름 (F-46)」 |
+| 2026-09-15 | 결정(사용자) | 「휴대폰 인증 앱은 광고·결제 유도로 못 쓴다 — APK 말고 생성기를 휴대폰에서」 | 브라우저의 「홈 화면에 추가」(웹 매니페스트). 설치되는 앱이 아니라 바로가기라 스토어·권한·자동 갱신이 없다 — ARCH 5.21 「휴대폰에서 쓰기」, R-40 보충 |
+| 2026-09-15 | 발견(사용자 실측) | SharePoint 「링크가 있는 모든 사용자」 링크가 「로그인이 필요합니다」로 거부됨 | **우리 쪽 결함 2개**였다 — ① `CloudLink` 가 sharepoint 를 주소만 보고 `needs_login` 으로 분류 ② 리다이렉트 루프가 단계 사이에 쿠키를 넘기지 않아 2단계에서 403. 둘 다 고쳐 실제 355KB 엑셀을 가져왔다 |
+| 2026-09-15 | 발견(사용자 실측) | 구글 시트 공개 링크는 변환은 되는데 2단계에서 `host_not_allowed`(감사 15:00 admin01) | `export` 가 매번 바뀌는 `doc-xx-yy-sheets.googleusercontent.com` 으로 307 한다. 정확 일치 목록으로는 담을 수 없어 **코드 상수** `PROVIDER_DOWNLOAD_SUFFIXES` 를 두고 **리다이렉트 다음 단계에서만** 연다(첫 요청은 그대로 정확 일치) — ARCH 5.22 「F-46 ②」 |
+| 2026-09-15 | 판단(Opus) | 감사 detail 의 `cookie_hops` 가 `[제거됨]` 으로 남았다 | `Audit::FORBIDDEN_DETAIL_KEYS` 의 `cookie` **부분 일치**에 걸린 것이다(실측). 값은 쿠키가 아니라 **단계 수(정수)** 이므로 `sessions_revoked`·`chain_hash` 와 같은 자리(`ALLOWED_DETAIL_KEYS` 정확 일치)에 한 줄 더하고 ARCH 7.5 등록부에 적었다. **`src/Audit.php` 는 지시서의 「수정 파일」 밖이자 보안 핵심 파일**이라 Fable 검토가 필요하다 |
+| 2026-09-15 | 판단(Opus) | 도움말(`screens.php`)에는 「2단계 코드 생성기」라고 쓰지 못했다 | `tests/help_button.sh` 의 금지 문구 규칙 `[0-9]{1,2}단계(?! 인증)` 에 걸린다(로드맵 「N단계」를 사용자 문구에서 막는 규칙). 2단계 인증 절 안이라 문맥이 이미 분명하므로 「아래의 코드 생성기」로 적었다. 링크 문구(`settings_page.php`)와 README·화면 제목은 지시서대로 「2단계 코드 생성기」 |
+| 2026-09-15 | 판단(Opus) | 「저장소 전체에서 「오프라인 코드 생성기」 0」 을 **화면 문구·README 범위**로 좁혀 시험했다 | 남은 자리가 전부 이번 「수정 파일」 밖이다 — 과거 기록(STAGES 학습 기록·지난 지시서·`wiki/*.json`·`docs/ui-copy-cleanup.md`)과 보안 핵심 파일의 주석(`public/index.php`). 기록을 고쳐 쓰지 않는 것이 CLAUDE.md 9장 규칙이라 그대로 두고, 시험이 **남은 자리를 파일별로 출력**한다 |
+| 2026-09-15 | 판단(Opus) | 매니페스트 location 에 `add_header Content-Type` 대신 `types { … }` 를 썼다 | `add_header` 는 Content-Type 헤더를 **두 줄**로 만든다. nginx 1.18 의 `mime.types` 에 `webmanifest` 가 없어 이 한 줄이 형식을 정한다 |
+| 2026-09-15 | 해소(Fable) | `/etc/nginx` 배포본 미적용 — 매니페스트가 `application/octet-stream` 으로 나가고, 배포본 CSP 에 `manifest-src` 가 없었다 | **사용자 승인 뒤 16:15 적용**(`tbox-v2`·`tbox-v2-local` 두 conf 복사 · `nginx -t` ok · reload). 실측: 외부 `https://changkwon.mso.so/assets/totp-generator.webmanifest` → 200 `application/manifest+json`, 생성기 CSP 에 `manifest-src 'self'`, 8082 도 같음. `/login` 200 |
+| 2026-09-15 | 해소(Fable) | `tests/totp_time_sync.sh` (c)① 1건 실패 — 기대값 노후 | Fable 이 기대값을 「서버와 동기화됨」으로 고침(F-42 nginx 적용 2026-09-15 이후의 정상). `tests/fetch_hosts.sh` 의 F-46 이전 기대값 2건(SharePoint 무조건 needs_login · `check()` 인자)도 같이 고침 — 시험 파일은 보안 핵심 파일이 아니라 Fable 직접(CLAUDE.md 5장) |
+| 2026-09-15 | 궁금(사용자) | 「`googleusercontent.com` 이걸로 도메인 등록하면 되겠네?」 | 안 된다. ① 허용 목록은 **정확 일치**라 `doc-08-9g-sheets.googleusercontent.com` 과 맞지 않고 와일드카드는 화면에서 금지 ② `googleusercontent.com` 은 블로거·포토 등 **누구나 올리는 사용자 콘텐츠 도메인**이라 통째로 열면 「허용된 사이트」의 뜻이 사라진다. 그래서 회전 도메인은 **코드 상수**(`Fetch::PROVIDER_DOWNLOAD_SUFFIXES`)로 「리다이렉트 다음 단계에서만」 — ARCH 5.22. 관리자 목록에는 `docs.google.com`(+ 드라이브 링크면 `drive.google.com`)만 있으면 된다 |
+| 2026-09-15 | 궁금(사용자) | 「URL 로 파일 공유할 때 미리보기로 보여 주고 다운로드는 0, 열람만 되게 할 수 있나? HTML 동적 보고서 같은 것. 단순 보고용」 | 가능하되 지금 구조와 둘이 부딪힌다 — 공유 링크(`/s/토큰`)는 **항상 파일 저장**이고, **HTML 업로드는 금지 확장자**. 제안 **F-47 「열람 전용 공유 링크」**: 링크 생성 때 「내려받기 허용/열람만」 선택, PDF·이미지·텍스트 먼저(오피스 문서는 변환 도구가 필요해 2단계), HTML 은 **격리 도메인 + CSP 스크립트 차단**으로만. 「다운로드 0」의 한계: 화면은 캡처·인쇄로 복제된다 — 「실수로 파일이 퍼지는 것」을 막는 장치이지 유출 방지가 아니다. 결정 대기 |
+| 2026-09-15 | 궁금(사용자) | 「HTML 업로드가 안 되는 게, 해커가 HTML 을 올리면 그 파일 기반으로 코드가 실행돼 서버에 접근할 통로가 열릴 수 있어서?」 | 절반만 맞다. 서버는 HTML 을 **실행하지 않는다**(저장했다 내줄 뿐). 위험은 **열어 본 사람의 브라우저**다 — 같은 주소(출처)에서 열리면 그 안의 스크립트가 그 사용자의 t-box 세션으로 요청을 보낼 수 있고, 관리자가 열면 관리자 권한 도용 = 결과는 서버 장악과 같다. 격리 도메인(`view.…`)에서 보여 주면 브라우저 규칙상 t-box 쿠키에 닿지 못하고, 거기에 CSP 로 스크립트 자체를 막는다 → HTML 은 「정적 보고서」까지만. 동적 차트가 필요하면 PDF 로 내보내 올리는 편이 안전 — SECURITY R-xx(F-47 때 부여) |
+| 2026-09-15 | 결정(사용자) | 「view 로 해 줘, DNS 추가할게 — 근데 DNS 는 어떻게 추가해?」 | 조사 결과 **DNS 는 할 일이 없다**: `mso.so` 는 Cloudflare 관리이고 `*.mso.so`·`*.changkwon.mso.so` 와일드카드가 이미 있어 `view.changkwon.mso.so` 가 해석된다(`dig`). 막히는 곳은 **앞단 프록시**(112.220.89.250 — 이 서버는 사설망 192.168.105.44, nginx 는 80 만 듣고 TLS 는 프록시가 종단, 인증서 `*.mso.so` 한 단계). 프록시가 `changkwon.mso.so` 만 넘기고 다른 이름은 404. 권고: 두 단계 이름 대신 **`changkwon-view.mso.so`**(지금 인증서로 바로 됨) + 프록시에 「그 이름 → 192.168.105.44:80」 한 줄. **프록시가 회사 IT 것인지 직접 관리인지 답 대기** — 이쪽 nginx 격리 설정은 F-47 에서 준비 |
+| 2026-09-15 | 기초(사용자) | 「인터넷이 끊겨서 세션이 끊겼다 — 직전 내용 요약하고 작업 중이던 것 확인해 줘」 | 터미널 연결만 끊기고 claude 프로세스(PID 882235)와 Opus 서브에이전트는 서버에서 계속 돌았다(`ps`·transcript mtime 으로 확인). 서브에이전트 보고를 받은 직후 API 요청이 끊겨 유휴. 새 세션이 `~/.claude/projects/-var/<세션>.jsonl` 과 `subagents/` 의 기록을 읽어 이어받았다. 유령 프로세스는 `kill` 로 안 죽고 **`kill -9`** 필요. 이어받을 때 살아 있는 프로세스와 `--resume` 을 동시에 두지 않는다(같은 파일을 두 세션이 건드림) |
+| 2026-09-15 | **사건(운영)** | 16:45 루트 디스크 다시 100% → **PostgreSQL PANIC 으로 다운, 사이트 503**(사용자: 「503 에러로 이용할 수 없다고 나와 서버가 죽었어 왜이래」) | 서버 프로세스가 죽은 게 아니라 DB 가 디스크 0 으로 PANIC(체크포인트 파일 못 씀) 뒤 자동 재시작이 안 된 것. 사용자가 볼륨 +512MB(17:09) → Fable 이 `sudo pg_ctlcluster 14 main start` → WAL 자동 복구 → 로그인 200·health 200. 자료 무손상. **범인은 VS Code 확장 자동 갱신**(Claude Code 2.1.271·272, 버전당 328MB) — SECURITY **R-80**. 옛 버전·VSIX 캐시 삭제와 루트 +2GB 확장은 사용자 판단 대기 |
+| 2026-09-15 | 발견(Fable 검토) | `tests/totp_time_sync.sh` (e) 「스텝 안 1초 지점」이 3회 연속 실패 — 화면 코드 ≠ 서버 코드, `verifyStep(창 0)` null | 우연이 아니라 결함: `/api/time` 이 정수 초라 보정값이 0~1초 뒤처지고 화면 갱신이 경계와 정렬돼 있지 않아 **경계 직후 1~2초는 이전 스텝 코드**가 보인다. 오늘 창을 0 으로 좁혀 그 코드가 401 이 된다. F-46 과 무관, F-42+창 0 의 조합 — SECURITY **R-79**. 고치려면 Opus 지시서(F-48: `/api/time` 밀리초 + 경계 정렬 갱신). 15초·28초 지점은 3회 모두 일치 |
+| 2026-09-15 | 알림 | `tests/fetch_hosts.sh` 3건 실패는 시험이 「허용 목록이 비어 있다」고 가정한 것 — 관리자가 실제 호스트 3개를 넣어 둔 지금은 맞지 않는다 | F-46 무관. 시험을 「비어 있으면 ~, 아니면 건너뜀」으로 바꾸거나 시험 전용 표 상태를 만들지는 F-48 때 함께 판단. F-46 이 바꾼 동작의 기대값 2건은 이번에 고쳐 통과 |
+
 ## 2-1. 10단계 뒤 일괄 자기 공격 — 진행 순서 (관문 ③, 사용자)
 
 일괄 진행 모드에서는 4~10단계의 관문 ③을 한 번에 수행한다. **각 단계 절의 "자기 공격 체크" 를 위에서부터 차례로** 하되, 아래 순서가 효율적이다(계정 전환 최소화). 시드 계정 비밀번호: `sudo cat /etc/tbox-v2/seed-accounts.txt`.

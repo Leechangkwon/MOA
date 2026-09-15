@@ -287,11 +287,14 @@ LASTREASON=$(psqlq "SELECT reason FROM audit_logs WHERE action='file.fetch' AND 
 expect "사유가 host_not_allowed 가 아니다 (허용 목록을 통과했다)" "yes" "$([ "$LASTREASON" != "host_not_allowed" ] && echo yes || echo "no($LASTREASON)")"
 echo "    마지막 사유: $LASTREASON"
 
-sub "SharePoint 링크 → needs_login (바깥으로 나가지 않는다)"
+sub "SharePoint 링크 → download=1 로 변환(F-46) · 허용 목록에 없는 테넌트는 host_not_allowed (바깥으로 나가지 않는다)"
+# F-46(2026-09-15) 전에는 주소 모양만 보고 needs_login 으로 미리 거절했다. 지금은 OneDrive 와 같이
+# download=1 을 붙여 정상 경로로 보내고, 「공개가 아니다」는 돌아온 HTML 을 보고 판단한다.
+# 그래서 이 가짜 테넌트는 허용 목록 검사(첫 요청 = 정확 일치)에서 막혀야 하고, 로그인 문구가 나오면 안 된다.
 R=$(call qa_manager01 POST /api/files/fetch "$TOK_MGR" '{"url":"https://contoso-my.sharepoint.com/:x:/g/personal/a_b/EABCdefgh","access_level":"internal"}')
-expect "needs_login → 400" 400 "$(code_of "$R")"
-expect "문구가 다른 가져오기 실패와 다르다" 1 "$(body_of "$R" | grep -c '로그인이 필요합니다')"
-expect "감사 reason=needs_login" 1 "$(psqlq "SELECT count(*) > 0 FROM audit_logs WHERE action='file.fetch' AND result='deny' AND reason='needs_login' AND actor_name='qa_manager01' AND happened_at > '$T0'::timestamptz" | grep -c '^t$')"
+expect "host_not_allowed → 400" 400 "$(code_of "$R")"
+expect "로그인 문구가 아니다 (주소 모양으로 미리 거절하지 않는다, F-46)" 0 "$(body_of "$R" | grep -c '로그인이 필요합니다')"
+expect "감사 reason=host_not_allowed" 1 "$(psqlq "SELECT count(*) > 0 FROM audit_logs WHERE action='file.fetch' AND result='deny' AND reason='host_not_allowed' AND actor_name='qa_manager01' AND happened_at > '$T0'::timestamptz" | grep -c '^t$')"
 
 # ─────────────────────────────────────────────────────────────
 hr "(e) CloudLink 단위 시험 (네트워크 0)"
@@ -307,7 +310,7 @@ $cases = [
   ["https://docs.google.com/presentation/d/$id/edit",      "https://docs.google.com/presentation/d/$id/export?format=pptx", "google", false],
   ["https://1drv.ms/w/s!AbCdEfGh",                          "https://1drv.ms/w/s!AbCdEfGh", "microsoft", false],
   ["https://onedrive.live.com/?resid=ABC&authkey=k",        "https://onedrive.live.com/?resid=ABC&authkey=k&download=1", "microsoft", false],
-  ["https://contoso-my.sharepoint.com/:x:/g/personal/a/E1", "https://contoso-my.sharepoint.com/:x:/g/personal/a/E1", "microsoft", true],
+  ["https://contoso-my.sharepoint.com/:x:/g/personal/a/E1", "https://contoso-my.sharepoint.com/:x:/g/personal/a/E1?download=1", "microsoft", false],  // F-46: download=1 · needs_login 은 돌아온 것으로 판단
   ["https://s43-1.example.invalid/a.csv",                   "https://s43-1.example.invalid/a.csv", "", false],
   ["https://drive.google.com/file/d/bad id!/view",          "https://drive.google.com/file/d/bad id!/view", "", false],
   ["https://drive.google.com/file/d/short/view",            "https://drive.google.com/file/d/short/view", "", false],
@@ -359,7 +362,7 @@ expect "최대 3번"                    3 "$(sed -n 's/^MAX_REDIRECTS=//p' "$OUT
 sub "코드 자체 — FOLLOWLOCATION 은 false 로 남아 있는가"
 expect "CURLOPT_FOLLOWLOCATION => false 한 줄" 1 "$(grep -c 'CURLOPT_FOLLOWLOCATION  => false' "$ROOT/src/Fetch.php")"
 expect "FOLLOWLOCATION true 0건"                0 "$(grep -c 'CURLOPT_FOLLOWLOCATION[^,;]*true' "$ROOT/src/Fetch.php")"
-expect "리다이렉트 뒤 check() 를 다시 부른다"   1 "$(grep -c 'self::check((string) \$decided\[.url.\])' "$ROOT/src/Fetch.php")"
+expect "리다이렉트 뒤 check() 를 다시 부른다"   1 "$(grep -c 'self::check((string) \$decided\[.url.\], \$provider)' "$ROOT/src/Fetch.php")"
 
 # ─────────────────────────────────────────────────────────────
 hr "(g) 실제 드라이브 공개 파일 — 미검증 (외부 파일 없음)"

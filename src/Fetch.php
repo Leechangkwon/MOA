@@ -25,6 +25,13 @@ require_once __DIR__ . '/CloudLink.php';
  *     redirectStep() + check() 를 처음부터 다시 통과해야 하고, CURLOPT_FOLLOWLOCATION 은
  *     여전히 false 다 — curl 이 스스로 따라가면 ①②가 무력해진다 (SECURITY R-77).
  *
+ * F-46 (2026-09-15) 이 더한 것 둘 — 뼈대 셋은 그대로다.
+ *   · **같은 호스트로 가는 다음 단계에만** 직전 응답의 쿠키를 싣는다(cookieHeader). SharePoint 의
+ *     공개 링크가 302 뒤 같은 호스트에서 쿠키를 요구하기 때문이다. 다른 호스트로 넘어가면 버린다.
+ *   · 공급자의 **내려받기 전용 호스트**(회전 도메인)를 코드 상수로 둔다(PROVIDER_DOWNLOAD_SUFFIXES).
+ *     구글 시트의 `export` 가 매번 다른 `doc-xx-yy-sheets.googleusercontent.com` 으로 넘기기 때문이며,
+ *     **리다이렉트 다음 단계에서만** 열린다. 첫 요청은 언제나 관리자 허용 목록의 정확 일치다.
+ *
  * 이 파일이 하지 않는 것
  *   · 권한·속도 제한·감사 로그 — 핸들러(src/handlers/files_fetch.php)의 몫이다.
  *   · 사용자에게 무엇을 보여 줄지 결정하기 — 실패는 예외(FetchDenied)로만 알리고,
@@ -91,6 +98,38 @@ final class Fetch
 
     /** 호스트 표기 — 소문자 영숫자·점·붙임표만 (PRD S-05 ④) */
     private const HOST_RE = '/^[a-z0-9.-]{1,253}$/';
+
+    /**
+     * 공급자의 **내려받기 전용 호스트** (F-46, 사용자 실측 2026-09-15).
+     *
+     * 왜 필요한가 — 구글 시트의 `…/export?format=xlsx` 는 307 로
+     * `doc-08-9g-sheets.googleusercontent.com` 처럼 **매번 바뀌는 이름**으로 넘긴다.
+     * 정확 일치 허용 목록으로는 담을 수 없는 회전 도메인이라 2단계에서 `host_not_allowed` 가 났다.
+     *
+     * 규칙은 좁다. 이 표는 **세 조건이 모두 맞을 때만** 허용 목록을 대신한다.
+     *   ① 리다이렉트 **다음 단계**일 것 — 첫 요청은 언제나 관리자 허용 목록의 정확 일치다
+     *   ② 첫 주소의 공급자(CloudLink 판정)가 그 칸의 공급자일 것 — provider 가 null 이면 적용 0
+     *   ③ 다음 호스트가 이 값에 맞을 것 — `.` 로 시작하면 **접미**(앞에 라벨이 하나 이상 있어야 한다),
+     *      아니면 정확 일치. 그래서 `evil.googleusercontent.com.attacker.tld` 는 맞지 않는다
+     *
+     * 그 밖의 검사(https · 443 · 호스트 표기 · DNS 뒤 사설 IP · 최대 3단계)는 하나도 빠지지 않는다.
+     * **이 값은 코드 상수다** — 화면에서 관리자가 넣는 허용 목록의 「와일드카드 금지」 규칙은 그대로이고,
+     * 여기에 값을 더하려면 코드를 고쳐 검토를 받아야 한다. 지나온 호스트는 감사 `hops` 에 그대로 남는다.
+     *
+     * @var array<string,list<string>>
+     */
+    private const PROVIDER_DOWNLOAD_SUFFIXES = [
+        CloudLink::PROVIDER_GOOGLE    => ['.googleusercontent.com', 'drive.usercontent.google.com'],
+        CloudLink::PROVIDER_MICROSOFT => ['.files.1drv.com', '.sharepoint.com'],
+    ];
+
+    /**
+     * 리다이렉트 단계에 실어 보내는 쿠키의 상한 (F-46).
+     * 20개·합계 8KB 를 넘으면 **자르지 않고 쿠키 없이** 보낸다 — 반쪽짜리 쿠키는
+     * 보내 봐야 의미가 없고, 상대 서버에 무엇이 갈지 예측할 수 없는 상태를 만들지 않는다.
+     */
+    public const COOKIE_MAX_PAIRS = 20;
+    public const COOKIE_MAX_BYTES = 8192;
 
     /**
      * 리다이렉트를 따라갈 수 있는 **최대 횟수** (F-43, PRD F-43, SECURITY R-77).
@@ -212,9 +251,14 @@ final class Fetch
      * 달라질 수 있다.** 그러면 CURLOPT_RESOLVE 항목과 이름이 어긋나 curl 이 실제 DNS 를 다시 물어
      * ⑥(IP 고정)이 무력해진다. 그래서 검사를 통과한 host 로 URL 을 다시 조립해 그것만 쓴다.
      *
+     * @param ?string $downloadProvider **리다이렉트 다음 단계에서만** 넘어오는 공급자 이름
+     *                (F-46). 이 값이 있으면 허용 목록 정확 일치 대신 PROVIDER_DOWNLOAD_SUFFIXES
+     *                의 내려받기 호스트도 통과시킨다. 첫 요청(핸들러 [4])은 **언제나 null** 로
+     *                부르므로, 사람이 보낸 주소는 관리자 허용 목록에 정확히 있어야만 나간다.
+     *
      * @return array{host:string,ip:string,url:string}
      */
-    public static function check(string $url): array
+    public static function check(string $url, ?string $downloadProvider = null): array
     {
         if (strlen($url) > self::MAX_URL_BYTES) {
             throw new FetchDenied('bad_request');
@@ -259,8 +303,12 @@ final class Fetch
             throw new FetchDenied('host_not_allowed', null, $host);
         }
 
-        // ③ 화이트리스트 — 정확 일치만. 목록이 비면 어떤 호스트도 통과하지 못한다
-        if (!in_array($host, self::allowedHosts(), true)) {
+        // ③ 화이트리스트 — 정확 일치만. 목록이 비면 어떤 호스트도 통과하지 못한다.
+        //   F-46: 리다이렉트 다음 단계에 한해 공급자의 내려받기 호스트도 통과시킨다
+        //   (첫 요청은 $downloadProvider 가 null 이라 이 곁길이 열리지 않는다).
+        if (!in_array($host, self::allowedHosts(), true)
+            && !self::providerHostAllowed($downloadProvider, $host)
+        ) {
             throw new FetchDenied('host_not_allowed', null, $host);
         }
 
@@ -299,9 +347,16 @@ final class Fetch
      *
      * 실패는 FetchDenied. 임시파일은 성공·실패 모두 **호출자**가 지운다.
      *
+     * ★ F-46 — **같은 호스트로 가는 다음 단계에만** 직전 응답의 쿠키를 싣는다 (SECURITY R-77 보충)
+     *   SharePoint 의 공개 링크는 `download=1` 로 302 한 뒤 **같은 호스트**의 파일 주소로 보내면서
+     *   `Set-Cookie: FedAuth=…` 를 준다. 그 쿠키 없이 따라가면 403 이다(사용자 실측 2026-09-15).
+     *   그래서 직전 응답의 Set-Cookie 를 **이름=값만** 모아 다음 요청에 싣되,
+     *   **다음 단계 호스트가 직전 호스트와 다르면 버린다** — 쿠키가 다른 사이트로 새지 않게.
+     *   값은 어디에도 기록하지 않는다(감사에는 실은 **단계 수** `cookie_hops` 만).
+     *
      * @param ?string $provider CloudLink 가 판정한 공급자(google·microsoft). 변환하지 않은
      *                          보통 주소면 null 이고, 그때는 HTML 검사와 followUp 이 적용되지 않는다.
-     * @return array{filename:?string,hops:list<string>,host:string,ip:string}
+     * @return array{filename:?string,hops:list<string>,host:string,ip:string,cookie_hops:int}
      */
     public static function download(
         string $url,
@@ -313,8 +368,16 @@ final class Fetch
         /** 지나온 호스트 — 감사 로그 detail.hops (첫 칸이 처음 주소의 호스트다) */
         $hops = [$host];
 
+        /** 이번 요청에 실을 쿠키 (`이름=값; …`). 첫 요청은 언제나 빈 문자열이다 */
+        $cookie = '';
+        /** 쿠키를 실은 단계 수 — 감사 로그 detail.cookie_hops (값은 남기지 않는다) */
+        $cookieHops = 0;
+
         for ($step = 0; $step <= self::MAX_REDIRECTS; $step++) {
-            $one = self::request($url, $host, $ip, $tmpPath);
+            if ($cookie !== '') {
+                $cookieHops++;
+            }
+            $one = self::request($url, $host, $ip, $tmpPath, $cookie);
 
             // ── 3xx : 다음 단계를 **우리가** 정한다 ────────────────────────
             if ($one['status'] >= 300 && $one['status'] < 400) {
@@ -329,18 +392,22 @@ final class Fetch
                     $provider
                 );
 
-                $decided = self::redirectStep($next, $step + 1, self::allowedHosts());
+                $decided = self::redirectStep($next, $step + 1, self::allowedHosts(), $provider);
                 if (!$decided['ok']) {
                     throw new FetchDenied((string) $decided['reason'], $one['status'], $host);
                 }
 
                 // ★ 여기서 check() 를 **처음부터** 다시 부른다 — 호스트 표기 정규화, 허용 목록
                 //   재확인, DNS 해석 뒤 사설 IP 차단까지 첫 주소와 똑같은 검사를 받는다.
-                $checked = self::check((string) $decided['url']);
+                $checked = self::check((string) $decided['url'], $provider);
+                $prevHost = $host;
                 $url     = $checked['url'];
                 $host    = $checked['host'];
                 $ip      = $checked['ip'];
                 $hops[]  = $host;
+                // F-46 — 다음 단계가 **같은 호스트**일 때만 직전 응답의 쿠키를 싣는다.
+                // 호스트가 바뀌면 cookieHeader() 가 빈 문자열을 돌려주어 쿠키가 버려진다.
+                $cookie  = self::cookieHeader($one['set_cookie'], $prevHost, $host);
                 continue;
             }
 
@@ -360,10 +427,11 @@ final class Fetch
             }
 
             return [
-                'filename' => self::filenameFrom($one['disposition'], $url),
-                'hops'     => $hops,
-                'host'     => $host,
-                'ip'       => $ip,
+                'filename'    => self::filenameFrom($one['disposition'], $url),
+                'hops'        => $hops,
+                'host'        => $host,
+                'ip'          => $ip,
+                'cookie_hops' => $cookieHops,
             ];
         }
 
@@ -383,11 +451,18 @@ final class Fetch
      * DNS 해석과 사설 IP 차단은 호출자가 이어서 부르는 `check()` 가 한다(같은 검사를 두 번
      * 하는 셈이지만, 한쪽만 고쳐지는 날에도 다른 한쪽이 남는다).
      *
-     * @param list<string> $allowed 허용 호스트 목록 (호출자가 allowedHosts() 로 받아 넘긴다)
+     * @param list<string> $allowed  허용 호스트 목록 (호출자가 allowedHosts() 로 받아 넘긴다)
+     * @param ?string      $provider 첫 주소의 공급자 (F-46). 있으면 그 공급자의 내려받기 호스트
+     *                     (PROVIDER_DOWNLOAD_SUFFIXES)도 통과시킨다. 이 함수는 **리다이렉트
+     *                     단계에서만** 불리므로 첫 요청에는 이 곁길이 없다.
      * @return array{ok:bool,reason:?string,url:?string,host:?string}
      */
-    public static function redirectStep(string $location, int $hop, array $allowed): array
-    {
+    public static function redirectStep(
+        string $location,
+        int $hop,
+        array $allowed,
+        ?string $provider = null
+    ): array {
         $no = static function (string $reason): array {
             return ['ok' => false, 'reason' => $reason, 'url' => null, 'host' => null];
         };
@@ -430,7 +505,8 @@ final class Fetch
             return $no('host_not_allowed');
         }
         // 허용 목록 — 첫 주소와 **같은 목록, 같은 정확 일치**다. 넘긴 곳이라고 봐주지 않는다.
-        if (!in_array($host, $allowed, true)) {
+        // F-46 의 예외는 하나뿐이다: 공급자의 내려받기 호스트(회전 도메인). 아래 함수가 판단한다.
+        if (!in_array($host, $allowed, true) && !self::providerHostAllowed($provider, $host)) {
             return $no('host_not_allowed');
         }
 
@@ -440,6 +516,95 @@ final class Fetch
             'url'    => self::rebuild($host, $parts),
             'host'   => $host,
         ];
+    }
+
+    /**
+     * 이 호스트가 **그 공급자의 내려받기 호스트**인가 (F-46). 네트워크가 한 줄도 없는 순수 판정이다.
+     *
+     * `provider` 가 null 이면 언제나 false 다 — 보통 주소(변환하지 않은 링크)에는 이 곁길이 없다.
+     * 표의 값이 `.` 로 시작하면 **접미**로 보되 앞에 라벨이 하나 이상 있어야 하고
+     * (`.googleusercontent.com` 은 `doc-08-9g-sheets.googleusercontent.com` 에 맞지만
+     *  `googleusercontent.com` 자체나 `evil.googleusercontent.com.attacker.tld` 에는 맞지 않는다),
+     * `.` 로 시작하지 않으면 정확 일치다.
+     *
+     * 호출자는 **리다이렉트 단계에서만** 이 함수를 부른다(첫 요청은 관리자 허용 목록 정확 일치).
+     */
+    public static function providerHostAllowed(?string $provider, string $host): bool
+    {
+        if ($provider === null || $provider === '' || $host === '') {
+            return false;
+        }
+        $suffixes = self::PROVIDER_DOWNLOAD_SUFFIXES[$provider] ?? [];
+        foreach ($suffixes as $suffix) {
+            if ($suffix[0] === '.') {
+                $len = strlen($suffix);
+                if (strlen($host) > $len && substr($host, -$len) === $suffix) {
+                    return true;
+                }
+                continue;
+            }
+            if ($host === $suffix) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * 직전 응답의 `Set-Cookie` 들 → 다음 요청에 실을 `Cookie` 헤더 값 (F-46).
+     *
+     * 규칙 (SECURITY R-77 보충)
+     *   · **호스트가 같을 때만.** 다음 단계가 다른 호스트면 빈 문자열이다 — 쿠키를 다른 사이트로
+     *     보내지 않는다. 이것이 이 함수의 첫 줄인 이유다.
+     *   · **이름=값만.** `Path`·`Domain`·`Secure`·`HttpOnly`·`Expires` 같은 속성은 버린다
+     *     (첫 `;` 앞까지만 읽는다). 속성은 브라우저가 저장할 때 쓰는 값이지 보낼 때 쓰는 값이 아니다.
+     *   · 최대 COOKIE_MAX_PAIRS(20)개까지만 모으고, 합계가 COOKIE_MAX_BYTES(8KB)를 넘으면
+     *     **잘라내지 않고 빈 문자열**을 돌려준다(쿠키 없이 진행 → cookie_hops 0).
+     *   · 이름·값에 제어문자·공백·`;`·`,` 가 섞인 줄은 버린다(헤더 주입 방지).
+     *
+     * 돌려준 값은 CURLOPT_COOKIE 로만 쓰이며 **로그·감사에 한 글자도 남지 않는다**.
+     *
+     * @param list<string> $setCookies 직전 응답의 Set-Cookie 헤더 값들(헤더 이름은 빠진 상태)
+     */
+    public static function cookieHeader(array $setCookies, string $prevHost, string $nextHost): string
+    {
+        $prev = strtolower(rtrim(trim($prevHost), '.'));
+        $next = strtolower(rtrim(trim($nextHost), '.'));
+        if ($prev === '' || $prev !== $next) {
+            return '';
+        }
+
+        $pairs = [];
+        foreach ($setCookies as $line) {
+            if (count($pairs) >= self::COOKIE_MAX_PAIRS) {
+                break;
+            }
+            if (!is_string($line)) {
+                continue;
+            }
+            $semi = strpos($line, ';');
+            $pair = trim($semi === false ? $line : substr($line, 0, $semi));
+            $eq   = strpos($pair, '=');
+            if ($eq === false || $eq === 0) {
+                continue;
+            }
+            $name  = trim(substr($pair, 0, $eq));
+            $value = trim(substr($pair, $eq + 1));
+            if ($name === ''
+                || preg_match('/^[A-Za-z0-9!#$%&\'*+.^_`|~-]+$/', $name) !== 1
+                || preg_match('/[\x00-\x20\x7f;,]/', $value) === 1
+            ) {
+                continue;
+            }
+            $pairs[] = $name . '=' . $value;
+        }
+
+        if ($pairs === []) {
+            return '';
+        }
+        $header = implode('; ', $pairs);
+        // 상한을 넘으면 **자르지 않고** 쿠키 없이 진행한다 (반쪽짜리 쿠키를 보내지 않는다).
+        return strlen($header) > self::COOKIE_MAX_BYTES ? '' : $header;
     }
 
     /**
@@ -494,10 +659,18 @@ final class Fetch
      * 임시파일은 단계마다 **처음부터 다시 쓴다**(`wb`) — 3xx 본문이 파일에 남아 다음 단계
      * 내용 앞에 붙는 일이 없어야 한다.
      *
-     * @return array{status:int,location:string,disposition:string,content_type:string}
+     * @param ?string $cookie 이 요청에 실을 `Cookie` 헤더 값 (F-46). 빈 문자열·null 이면 붙이지
+     *                않는다. 호출자(download)가 **같은 호스트로 가는 다음 단계에만** 채워 준다.
+     *
+     * @return array{status:int,location:string,disposition:string,content_type:string,set_cookie:list<string>}
      */
-    private static function request(string $url, string $host, string $ip, string $tmpPath): array
-    {
+    private static function request(
+        string $url,
+        string $host,
+        string $ip,
+        string $tmpPath,
+        ?string $cookie = null
+    ): array {
         $fh = fopen($tmpPath, 'wb');
         if ($fh === false) {
             throw new FetchDenied('fetch_failed', null, $host);
@@ -506,6 +679,8 @@ final class Fetch
         $disposition = '';
         $location    = '';
         $contentType = '';
+        /** 이 응답이 준 Set-Cookie 들 — 다음 단계가 같은 호스트일 때만 쓰인다 @var list<string> */
+        $setCookies  = [];
 
         $ch = curl_init($url);
         if ($ch === false) {
@@ -533,7 +708,7 @@ final class Fetch
             CURLOPT_FORBID_REUSE    => true,
             // 헤더는 파일에 쓰지 않는다. 필요한 세 줄만 따로 모아 둔다
             CURLOPT_HEADERFUNCTION  => static function ($handle, string $header)
-                use (&$disposition, &$location, &$contentType): int {
+                use (&$disposition, &$location, &$contentType, &$setCookies): int {
                 $len = strlen($header);
                 $pos = strpos($header, ':');
                 if ($pos === false) {
@@ -547,6 +722,12 @@ final class Fetch
                     $location = trim($value);
                 } elseif ($name === 'content-type') {
                     $contentType = trim($value);
+                } elseif ($name === 'set-cookie') {
+                    // 값은 여기서 **읽기만** 한다 — 로그에 남기지 않고, 다음 단계가 같은 호스트일
+                    // 때만 cookieHeader() 를 거쳐 쓰인다. 줄 수 자체에도 상한을 둔다.
+                    if (count($setCookies) < 64) {
+                        $setCookies[] = trim($value);
+                    }
                 }
                 return $len;
             },
@@ -557,6 +738,11 @@ final class Fetch
                 return ((int) $dlTotal > self::MAX_BYTES || (int) $dlNow > self::MAX_BYTES) ? 1 : 0;
             },
         ]);
+
+        // F-46 — 같은 호스트로 가는 다음 단계에만 실린다(호출자가 정한다). 값은 로그에 없다.
+        if (is_string($cookie) && $cookie !== '') {
+            curl_setopt($ch, CURLOPT_COOKIE, $cookie);
+        }
 
         $ok     = curl_exec($ch);
         $errno  = curl_errno($ch);
@@ -585,6 +771,7 @@ final class Fetch
             'location'     => $location,
             'disposition'  => $disposition,
             'content_type' => $contentType,
+            'set_cookie'   => $setCookies,
         ];
     }
 

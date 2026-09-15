@@ -1247,7 +1247,7 @@ sudo php /var/www/tbox-v2/scripts/totp_code.php JBSWY3DPEHPK3PXP
 비밀번호를 잃어버렸다면 `sudo -u postgres psql -d tbox_re -c 'DELETE FROM users'` 후 재설치가 아니라,
 10단계 계정 관리(F-10)나 `psql` 로 해시를 직접 교체하세요 — `users` 를 지우면 파일·감사 로그의 참조가 깨집니다.
 
-### 스마트폰이 어려울 때 — 오프라인 코드 생성기 (`public/assets/totp-generator.html`)
+### 스마트폰이 어려울 때 — 2단계 코드 생성기 (`public/assets/totp-generator.html`)
 
 스마트폰에 인증 앱을 넣기 어려운 분을 위한 **대안**입니다 (`PRD.md` F-17).
 HTML 파일 **한 개**로, 브라우저에서 열어 비밀 키를 붙이면 6자리 코드를 30초마다 계산합니다.
@@ -1267,6 +1267,15 @@ scp changkwon@192.168.105.44:/var/www/tbox-v2/public/assets/totp-generator.html 
 > 내려받은 파일은 **내 PC 에 두고 파일로(`file://`) 엽니다.** 브라우저 주소창에 끌어다 놓으면 됩니다.
 > (`crypto.subtle` 은 `https`·`file://`·`localhost` 에서만 동작합니다. 평문 `http` 로 다른 PC 에서
 > 열면 "암호 계산 기능을 쓸 수 없습니다" 라고 안내가 나옵니다.)
+
+> **휴대폰에서 쓰기 (F-46).** 인증 앱을 넣기 어려운 분은 휴대폰 브라우저로 t-box 주소의
+> `/assets/totp-generator.html` 을 연 뒤, 브라우저 메뉴의 **「홈 화면에 추가」** 를 누르면 앱처럼
+> 열립니다(주소창 없는 전체 화면). 480px 이하에서는 입력칸·버튼이 화면 폭을 다 쓰고 버튼은 손가락에
+> 맞는 높이(44px 이상)가 되며, 코드 글자는 크게 나옵니다. 아이콘과 이름은 같은 폴더의
+> `totp-generator.webmanifest` 가 정하고, **아이콘까지 파일 안에 들어 있어 외부에서 받아오는 것이
+> 하나도 없습니다.** 설치되는 앱(APK)이 아니라 **브라우저가 만든 바로가기**이므로 스토어·결제·광고가
+> 없고, 지우는 것도 바로가기를 지우면 끝입니다. 다만 그 휴대폰이 곧 두 번째 겹이므로, 로그인하는
+> PC 와 **다른 기기**에 두어야 의미가 있습니다(`SECURITY.md` R-40).
 
 **② 쓰는 순서**
 

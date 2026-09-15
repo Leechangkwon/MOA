@@ -1,4 +1,6 @@
-# 오프라인 2단계 인증 코드 생성기 — 내부 구조 (public/assets/totp-generator.html)
+# t-box 2단계 코드 생성기 — 내부 구조 (public/assets/totp-generator.html)
+
+> 이름은 F-46(2026-09-15)에서 「t-box 2단계 코드 생성기」로 바뀌었다. 아래 원문 머리 주석에 남은 「오프라인」은 **그때의 기록**이다. 상태 줄의 「오프라인 · …」 세 문구는 지금도 그대로이며, 거기서는 「서버 시각을 받지 못했다」는 동기화 상태를 뜻한다.
 
 2026-09-15 사용자 결정: 생성기 문서·화면에는 사용 방법만 두고, 용도·경고·저장 방식·검토 포인트는 이 문서로 옮긴다(피싱용 복제 시 「그럴듯함」을 주지 않기 위해 구조를 노출하지 않는다 — 소스는 브라우저에서 읽히지만 설명까지 붙여 주지는 않는다).
 
@@ -80,6 +82,40 @@ serverNow() = Date.now() + offset
 **CSP** — 생성기 전용 CSP(`deploy/sites/tbox-v2.conf` 의 location, 그리고 파일 안 `<meta>`)는 `default-src 'none'` 이라 어떤 연결도 막는다. 여기에 `connect-src 'self'` 한 칸만 더한다. `'self'` 라서 **이 서버 말고는 어디로도 보낼 수 없다** — 비밀 키가 새는 경로를 만들지 않는 것이 이 한 칸의 요점이다. 적용 전에는 fetch 가 막혀 상태 줄이 「오프라인」 이 되고, 그 상태에서도 코드는 PC 시계로 계속 나온다. 파일로 연 문서에는 `'self'` 에 해당하는 출처가 없으므로, 주소를 적어도 실제 맞추기는 CSP 를 그 주소까지 넓히는 결정이 있어야 동작한다(넓히면 「어디로도 보낼 수 없다」는 성질이 약해진다 — 미결).
 
 **잠금 문구** — 최소 길이 12자(`MIN_PASS`). 안내는 「잠금 문구는 12자 이상이어야 합니다. 단어 2~3개를 권합니다.」
+
+## 휴대폰 · 홈 화면에 추가 (F-46, 2026-09-15)
+
+인증 앱이 광고·결제를 요구해 못 쓰는 사람을 위해 **휴대폰 브라우저**에서 쓰는 길을 열었다. 만드는 것은
+앱(APK)이 아니라 **브라우저의 바로가기**다 — 스토어·권한·자동 갱신·결제가 없고, 지우는 것도 바로가기를
+지우면 끝이다.
+
+**화면** — `@media (max-width: 480px)` 한 블록이 전부다. `.wrap` 패딩 12px, 입력칸·버튼 100% 폭,
+버튼 `min-height: 44px`(손가락 목표 크기), 입력 글자 16px(iOS 가 그보다 작으면 자동 확대한다),
+코드 글자 40px, 긴 문자열은 `overflow-wrap: anywhere`. 전에 있던 `@media (max-width: 420px)` 의
+「코드를 32px 로 줄인다」 규칙은 **없앴다** — 휴대폰에서 읽어야 하는 것이 그 코드이기 때문이다.
+
+**매니페스트** — `public/assets/totp-generator.webmanifest`.
+
+| 키 | 값 | 왜 |
+|---|---|---|
+| `name` · `short_name` | 「t-box 2단계 코드」 · 「t-box 코드」 | 홈 화면 아래에 짧은 이름이 나온다 |
+| `start_url` · `scope` | `/assets/totp-generator.html` · `/assets/` | 바로가기를 누르면 생성기만 열린다 |
+| `display` | `standalone` | 주소창 없이 앱처럼. 주소창이 없다는 점은 **피싱 관점에서 양날**이라 이름·아이콘을 t-box 로 고정해 둔다 |
+| `theme_color` · `background_color` | `#1d5fbf` · `#f4f6f9` | 여는 동안의 색 |
+| `icons[0].src` | **`data:image/svg+xml,…`** | 외부에서 받아오는 것이 **0**. 아이콘 하나 때문에 새 출처를 여는 일을 하지 않는다 |
+
+`<head>` 에는 `<link rel="manifest">`·`<meta name="theme-color">`·`<link rel="apple-touch-icon" href="data:…">`
+가 있다. iOS 가 SVG 아이콘을 못 읽으면 그냥 무시하고 화면 캡처를 쓴다 — 그래도 둔다(동작에 영향이 없다).
+
+**CSP 한 칸** — `default-src 'none'` 아래에서는 매니페스트도 막히므로 `manifest-src 'self'` 를 더했다
+(파일 안 `<meta>` 와 `deploy/sites/tbox-v2.conf` 의 생성기 location 둘 다). `'self'` 라서 성질은 그대로다:
+**이 서버 말고는 어디에도 닿지 못한다.** 매니페스트 자체는 `location = /assets/totp-generator.webmanifest`
+에서 `types { application/manifest+json webmanifest; }` 로 내보낸다(`add_header Content-Type` 은 헤더를
+두 줄로 만들기 때문에 쓰지 않는다). 배포본(`/etc/nginx`)에 적용되기 전에는 Content-Type 이 달라
+브라우저에 따라 매니페스트를 무시할 수 있고, 그때도 페이지는 정상 동작한다.
+
+**보내는 것은 여전히 없다** — 휴대폰에서도 비밀 키·코드·잠금 문구는 그 브라우저 밖으로 나가지 않는다.
+다만 **그 휴대폰으로 t-box 에 로그인하면** 기기가 다시 하나가 되어 R-40 의 조건이 그대로 돌아온다.
 
 ## 화면에서 뺀 문구 (F-42 에서 추가로)
 

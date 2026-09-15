@@ -150,7 +150,7 @@ require __DIR__ . '/../views/shell_top.php';
             <button id="mfa-disable" class="btn btn--danger" type="submit">2단계 인증 끄기</button>
           </form>
 
-          <p class="muted">스마트폰이 어려우면 <a href="/assets/totp-generator.html">오프라인 코드 생성기</a>를 내려받아 PC 에 두고 쓸 수 있습니다.</p>
+          <p class="muted">스마트폰이 어려우면 <a href="/assets/totp-generator.html">2단계 코드 생성기</a>를 내려받아 PC 에 두고 쓸 수 있습니다.</p>
         </div>
       </section>
     </div>

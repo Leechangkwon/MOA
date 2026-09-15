@@ -894,9 +894,9 @@ SQL_LOOKUP  →  act_role, act_* 값 + DB 가 계산한 두 불린
 (이 파일에도 역할 비교는 없다 — 판정 결과인 불린 하나만 본다).
 
 
-### 5.21 생성기의 시각 맞추기 — `GET /api/time` (PRD F-42, 사용자 결정 2026-09-15)
+### 5.21 생성기의 시각 맞추기 — `GET /api/time` (PRD F-42 · F-46, 사용자 결정 2026-09-15)
 
-오프라인 2단계 코드 생성기(`public/assets/totp-generator.html`)가 내는 코드는 **시각의 함수**다
+2단계 코드 생성기(`public/assets/totp-generator.html`)가 내는 코드는 **시각의 함수**다
 (스텝 = `시각 ÷ 30`). 그래서 그 PC 의 시계가 몇십 초만 어긋나도 화면의 코드가 서버에서 거부된다.
 전에는 생성기가 `Date.now()`(PC 시계)를 그대로 썼고, 화면의 「남은 초」와 실제 인증 초가 갈렸다.
 
@@ -930,6 +930,26 @@ t-box 주소 입력칸을 한 번 보여 준다(`https?://` 로 시작하는 값
 (`deploy/sites/tbox-v2.conf`, 파일 안 `<meta>` 도 같다). `'self'` 라서 **이 서버 말고는 어디로도 보낼 수 없다** —
 생성기가 비밀 키를 밖으로 내보내는 경로를 만들지 않는 것이 이 한 칸의 요점이다. 적용 전에는 fetch 가 막혀
 상태 줄이 「오프라인」 이 되며, 그 상태에서도 코드는 PC 시계로 계속 나온다(기능이 멈추지 않는다).
+
+**이름 (F-46).** 화면·문서의 이름은 「t-box 2단계 코드 생성기」다. 「오프라인」을 뺀 이유는
+그것이 **계산 방식**(키를 보내지 않는다)을 가리키는 말인데 **접근 경로**(인터넷으로 열린다)로
+읽혔기 때문이다(사용자 관찰 2026-09-15). 상태 줄의 「오프라인 · …」 세 문구는 **그대로 둔다** —
+거기서는 정확히 「서버 시각을 못 받았다」는 동기화 상태를 뜻한다.
+
+**휴대폰에서 쓰기 (F-46).** 인증 앱이 광고·결제를 요구해 못 쓰는 사람을 위해, 생성기를
+**휴대폰 브라우저**에서 쓸 수 있게 한다. 만드는 것은 앱(APK)이 아니라 **브라우저의 바로가기**다.
+
+| 무엇 | 어디 | 왜 |
+|---|---|---|
+| `@media (max-width: 480px)` | 생성기 `<style>` | 입력칸·버튼이 화면 폭을 다 쓰고, 누르는 것은 44px 이상, 코드 글자는 40px. 가로 스크롤이 생기지 않아야 한 손으로 쓴다 |
+| `totp-generator.webmanifest` | `public/assets/` | 「홈 화면에 추가」의 이름·아이콘·시작 주소·`display: standalone` 를 정한다. **아이콘은 `data:` SVG** 라 파일 밖에서 받아오는 것이 하나도 없다 |
+| `<meta name="theme-color">` · `apple-touch-icon` | 생성기 `<head>` | 홈 화면 아이콘과 주소 표시줄 색. iOS 가 SVG 아이콘을 못 읽으면 그냥 무시된다 |
+| `manifest-src 'self'` | 생성기 location 의 CSP · 파일 안 `<meta>` | `default-src 'none'` 아래에서는 매니페스트도 막힌다. 한 칸만 연다 — **여전히 이 서버 말고는 어디에도 닿지 못한다** |
+| `location = /assets/totp-generator.webmanifest` | `deploy/sites/tbox-v2.conf` | 정적 파일 하나. 로그인이 필요 없고(생성기와 같은 성격), `types { application/manifest+json webmanifest; }` 로 형식을 정한다 |
+
+생성기가 **보내는 것은 여전히 없다**. 휴대폰에서도 비밀 키는 그 브라우저 밖으로 나가지 않으며,
+받는 것은 `GET /api/time` 의 시각 하나뿐이다(5.21 위). 다만 **그 휴대폰이 두 번째 겹**이므로
+로그인하는 PC 와 다른 기기여야 의미가 있다 — R-40 의 조건이 여기서도 그대로다.
 
 
 ### 5.22 URL 가져오기 — 허용 사이트 표 · 공개 링크 변환 · 통제된 리다이렉트 (PRD F-43, 사용자 결정 2026-09-15)
@@ -980,7 +1000,7 @@ t-box 주소 입력칸을 한 번 보여 준다(`https?://` 로 시작하는 값
 | `docs.google.com/{document\|spreadsheets\|presentation}/d/<ID>/…` | `…/export?format={docx\|xlsx\|pptx}` | google |
 | `onedrive.live.com/…` | 원 주소 + `download=1` | microsoft |
 | `1drv.ms/…` | 그대로. `onedrive.live.com` 으로 302 한 **다음 단계**에 `download=1` 을 붙인다(`CloudLink::followUp`) | microsoft |
-| `<tenant>.sharepoint.com` · `<tenant>-my.sharepoint.com` | 변환 안 함 · `needs_login = true` | microsoft |
+| `<tenant>.sharepoint.com` · `<tenant>-my.sharepoint.com` | 원 주소 + `download=1` (**F-46 에서 바뀜** — 전에는 변환 없이 `needs_login = true` 였다) | microsoft |
 | 그 밖 | 그대로 | null |
 
 `CloudLink` 는 **순수 함수**다 — cURL·DNS 가 한 줄도 없고, 허용 여부를 판단하지 않는다. 바꾼 주소도
@@ -1000,7 +1020,9 @@ t-box 주소 입력칸을 한 번 보여 준다(`https?://` 로 시작하는 값
 [3]  ├─ absolute()        상대 주소를 지금 주소 기준 절대 주소로 (호스트는 못 바꾼다)
      ├─ CloudLink::followUp()  1drv.ms → onedrive.live.com 이면 download=1 (질의만 더함)
      ├─ redirectStep()    횟수(≤3) · https · 443 · 호스트 표기 · **같은 허용 목록** — 네트워크 0
-     └─ check(다음 주소)  ★ 처음부터 다시. DNS 해석 뒤 사설 IP 차단까지 첫 주소와 똑같이
+     │                    (F-46) 공급자의 내려받기 호스트면 허용 목록 대신 통과 — 아래 표
+     ├─ check(다음 주소)  ★ 처음부터 다시. DNS 해석 뒤 사설 IP 차단까지 첫 주소와 똑같이
+     └─ cookieHeader()    (F-46) 다음 호스트가 **직전과 같을 때만** 직전 응답의 쿠키를 싣는다
         → [2] 로 (hops 에 호스트를 하나 더 적는다)
 [4] 4번째 단계 · Location 없음 · 검사 실패 → FetchDenied(redirect|scheme|port|host_not_allowed)
 [5] Content-Type 이 text/html 이고 provider 가 있으면 → FetchDenied(needs_login)
@@ -1012,11 +1034,47 @@ t-box 주소 입력칸을 한 번 보여 준다(`https?://` 로 시작하는 값
 다른 한쪽이 남는다. `CURLOPT_FOLLOWLOCATION` 이 `true` 이거나 `curl_exec` 가 있는 파일에 `check()` 가 없으면
 `scripts/security_lint.sh` 규칙 (g)가 반려한다.
 
-**`needs_login`.** 두 자리에서 난다 — ① `CloudLink` 가 SharePoint 로 판정했을 때(요청 전) ② 공급자 링크인데
-200 응답의 `Content-Type` 이 `text/html` 일 때(로그인 화면). 이 거부만 **다른 가져오기 실패와 문구가 다르다**:
+**`needs_login`.** 이제 **한 자리**에서만 난다 — 공급자 링크인데 200 응답의 `Content-Type` 이 `text/html`
+일 때(로그인 화면)다. F-46 전에는 `CloudLink` 가 SharePoint 주소를 보자마자 요청 전에 거부했는데, 그것이
+**공개 링크까지 막고 있었다**(사용자 실측 2026-09-15). 판단을 「주소 모양」이 아니라 「돌아온 것」에 맡긴다 —
+`download=1` 을 붙여 실제로 요청해 보고, 파일이 오면 파일이고 로그인 화면이 오면 거부다.
+이 거부만 **다른 가져오기 실패와 문구가 다르다**:
 요청자가 고쳐서 다시 할 수 있는 일(공유 설정을 바꾸거나 내려받아 올리기)이고 내부 상태를 한 글자도 알려
 주지 않는다 — 민감정보 거부(5.13)와 같은 판단이다. 서버가 대신 로그인하는 길(OAuth)은 **만들지 않는다**
 (사용자 결정 2026-09-15: 「전체 공유된 링크만 지원하면 인증이 필요 없다」).
+
+**F-46 ① 리다이렉트 사이의 쿠키 — 같은 호스트로 가는 다음 단계에만.**
+SharePoint 의 공개 링크는 `download=1` 로 302 한 뒤 **같은 호스트**의 파일 주소로 보내면서
+`Set-Cookie: FedAuth=…` 를 준다. 쿠키 없이 따라가면 `403`(text/plain)이고, 그 쿠키를 실으면 200 에
+355KB 엑셀이 온다(사용자 실측 2026-09-15). 그래서 단계 사이에 쿠키를 넘기되 규칙을 좁게 둔다.
+
+| 규칙 | 값 | 왜 |
+|---|---|---|
+| 언제 싣나 | **다음 단계 호스트 == 직전 호스트** 일 때만 | 호스트가 바뀌면 버린다. 쿠키가 다른 사이트로 새는 길을 만들지 않는다 |
+| 무엇을 싣나 | 직전 응답 `Set-Cookie` 의 **이름=값만** (첫 `;` 앞까지) | `Path`·`Domain`·`Secure`·`HttpOnly` 는 브라우저가 **저장할 때** 쓰는 값이지 보낼 때 쓰는 값이 아니다 |
+| 상한 | 20개 · 합계 8KB. 넘으면 **자르지 않고 쿠키 없이** | 반쪽짜리 쿠키는 상대 서버에 무엇이 갈지 예측할 수 없는 상태를 만든다 |
+| 버리는 줄 | 이름이 토큰 글자가 아니거나 값에 제어문자·공백·`;`·`,` | 헤더 주입 |
+| 기록 | 감사 `detail.cookie_hops`(쿠키를 실은 **단계 수**)만. **값은 어디에도 없다** | 조사에 필요한 것은 「썼나·몇 번」이지 값이 아니다 |
+
+구현은 `Fetch::cookieHeader()`(순수 함수, 네트워크 0)와 `request()` 의 `CURLOPT_COOKIE` 한 줄뿐이다.
+`CURLOPT_COOKIEJAR`·`COOKIEFILE` 은 쓰지 않는다 — 파일에 쌓이면 요청 사이에 남고, 남으면 언젠가 다른
+호스트로 간다.
+
+**F-46 ② 공급자의 내려받기 호스트 — 코드 상수, 리다이렉트 단계에서만.**
+구글 시트의 `…/export?format=xlsx` 는 307 로 `doc-08-9g-sheets.googleusercontent.com` 처럼 **매번 바뀌는**
+이름으로 넘긴다(사용자 실측 2026-09-15, 감사 15:00). 정확 일치 허용 목록으로는 담을 수 없다.
+
+| | |
+|---|---|
+| 어디에 | `Fetch::PROVIDER_DOWNLOAD_SUFFIXES` — **코드 상수**. 관리자가 화면에서 못 바꾼다 |
+| 값 | google → `.googleusercontent.com` · `drive.usercontent.google.com` / microsoft → `.files.1drv.com` · `.sharepoint.com` |
+| 언제 | **리다이렉트 다음 단계에서만**. 첫 요청은 언제나 관리자 허용 목록의 **정확 일치**다 |
+| 조건 | 첫 주소의 공급자가 그 칸의 공급자일 때만. `provider` 가 null 이면 이 곁길이 아예 없다 |
+| 모양 | `.` 로 시작하면 접미(앞에 라벨이 하나 이상), 아니면 정확 일치 → `evil.googleusercontent.com.attacker.tld` 는 맞지 않는다 |
+| 그대로인 것 | https · 443 · 호스트 표기 · DNS 뒤 사설 IP · 최대 3단계 · `FOLLOWLOCATION` false · 감사 `hops` 에 실제 호스트 |
+
+화면에서 넣는 허용 목록의 **와일드카드 금지 규칙은 그대로다**. 회전 도메인을 관리자가 손으로 넣을 수
+없으니 코드에 적어 두고 검토를 받는 것이며, 이 값을 늘리는 일은 커밋으로만 가능하다.
 
 
 ## 6. 저장 위치 — 파일 정보 vs 실제 파일
@@ -1538,7 +1596,8 @@ GRANT  USAGE, SELECT  ON SEQUENCE audit_logs_id_seq TO tbox_app;
 | `source_host` · `source_ip` | 어디서(출처) | F-14 로 가져온 파일의 허용 도메인과 검사·고정한 IP. **URL 전체는 남기지 않는다**(경로에 토큰·개인정보가 있을 수 있음). 거부 행에도 host 는 남긴다(정규화에 실패했으면 `?`) | 핸들러 | `file.fetch` (7단계) |
 | `hops` | 어디서 | 리다이렉트로 **지나온 호스트 목록**(첫 주소 → 마지막). 단계마다 정말 검사를 받았는지를 로그만으로 되짚는 값이다. 호스트 이름뿐이고 경로는 없다 | 핸들러 | `file.fetch` (F-43) |
 | `source_url` | 어디서 | 사람이 넣은 주소와 서버가 바꾼 주소(`원 → 변환`, 512바이트로 자름). 7단계의 「URL 전체는 남기지 않는다」를 F-43 이 **이 한 키에 한해** 열었다 — 변환이 맞았는지·어떤 링크로 나갔는지는 그 문자열이 없으면 알 수 없고, 값은 요청자가 직접 적어 넣은 **공개 문서 주소**이며 감사 로그를 볼 수 있는 사람은 Admin 뿐이다. 헤더·쿠키·토큰은 여전히 한 글자도 남기지 않는다 | 핸들러 | `file.fetch` (F-43) |
-| `provider` | 무엇을 | 드라이브·OneDrive 링크였나 (`google`·`microsoft`·null) | 핸들러 | `file.fetch` (F-43) |
+| `provider` | 무엇을 | 드라이브·OneDrive·SharePoint 링크였나 (`google`·`microsoft`·null) | 핸들러 | `file.fetch` (F-43) |
+| `cookie_hops` | 무엇을 | 리다이렉트 중 직전 응답의 쿠키를 **같은 호스트**로 실어 보낸 **단계 수**(정수. 보통 0 또는 1). **쿠키 값도 이름도 남기지 않는다** — 조사에 필요한 것은 「썼나·몇 번」뿐이다. 이름에 `cookie` 가 들어가 `Audit` 의 부분 일치 금지 목록에 걸리므로 `ALLOWED_DETAIL_KEYS` 에 **정확 일치 예외**로 등록했다(`sessions_revoked`·`chain_hash` 와 같은 자리) | 핸들러 | `file.fetch` (F-46) |
 | `needs_login` | 왜 | 공개 링크가 아니어서 거부했나(true). 값이 아니라 판정 사실이다 | 핸들러 | `file.fetch` (F-43) |
 | `http_status` | 왜 | 외부 응답 상태 코드 (거부 사유 `redirect`·`fetch_failed` 의 근거). 사용자에게는 보이지 않는다 (S-05 ⑩) | 핸들러 | `file.fetch` deny |
 | `upload_reason` | 왜 | `invalid_file` 거부의 세부 사유(`ext_not_allowed`·`mime_mismatch`·`too_large`·`quota_exceeded`…) — Upload 검증 코드 그대로 | 핸들러 | `file.fetch` deny `invalid_file` (7단계 검토에서 등록, 8단계 이후 반영) |

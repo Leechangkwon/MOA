@@ -87,6 +87,15 @@ final class Audit
          */
         'chain_hash', 'resealed_from_hash', 'resealed_from_lines', 'resealed_from_bytes',
         /*
+         * F-46 (2026-09-15, ARCH 5.22 · 7.5 등록부).
+         *   cookie_hops — URL 가져오기의 리다이렉트 중 **직전 응답의 쿠키를 같은 호스트로 실어 보낸
+         *                 단계 수**(정수, 보통 0 또는 1). 이름에 `cookie` 가 들어가 부분 일치에 걸려
+         *                 `[제거됨]` 으로 남았다(2026-09-15 실측). **쿠키 값도 이름도 아니고 개수다** —
+         *                 `sessions_revoked`(세션 수)·`chain_hash` 와 같은 예외다. 조사에 필요한 것은
+         *                 「쿠키를 썼나·몇 번 썼나」이고, 값은 `Fetch` 가 어디에도 남기지 않는다.
+         */
+        'cookie_hops',
+        /*
          * 15단계 (PRD F-13 · F-22, ARCH 7.5 등록부).
          *   share_id      — 공유 링크 행의 id. 링크 원문도 그 해시도 아니다(그 둘은 어디에도 남지 않는다)
          *   issued_by     — 링크를 만든 사람의 계정명. 받는 쪽에는 actor 가 없으므로 "누가 열어 줬나" 가 여기 남는다

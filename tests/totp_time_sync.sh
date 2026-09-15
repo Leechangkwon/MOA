@@ -7,8 +7,9 @@
 #   (b) 생성기 소스 정적 검사 — Date.now() 직접 사용은 serverNow()·syncTime() 안에만 ·
 #       MIN_PASS = 12 · 화면 문구에 구조 설명 키워드 0
 #   (c) Playwright(headless) — 서버에서 연 생성기의 상태 줄·남은 초·자체 점검·콘솔
-#       ① 지금 배포된 CSP 그대로 → fetch 가 막혀 「오프라인」 이 정상이다
-#       ② CSP 응답 헤더를 벗긴 상태(= Fable 이 nginx 를 적용한 뒤와 같음) → 「서버와 동기화됨」
+#       ① 지금 배포된 CSP 그대로 → 「서버와 동기화됨」 (F-42 의 nginx `connect-src 'self'` 가
+#          2026-09-15 적용됨 — 그 전에는 fetch 가 막혀 「오프라인」 이 정상이었다)
+#       ② CSP 응답 헤더를 벗긴 상태 → 역시 「서버와 동기화됨」 (헤더가 없어도 생성기는 같은 서버만 부른다)
 #   (d) Playwright(file://) — 저장된 보정값이 없으면 「오프라인 · PC 시각 사용」 + 주소 입력칸,
 #       보정값을 넣어 두고 열면 「저장된 보정값 사용」
 #   (e) 시각 일치 실증 — 시험용 임의 비밀 키로 서버 Totp::code 와 생성기 화면의 6자리를
@@ -197,7 +198,7 @@ echo Totp::generateSecret(), PHP_EOL;')
 echo "  · 시험용 임의 비밀 키(이번 실행에서만 쓰고 버린다): $TEST_SECRET"
 
 for MODE in csp nocsp; do
-  if [ "$MODE" = csp ]; then sub "① 지금 배포된 CSP 그대로 — fetch 가 막혀 「오프라인」 이 정상"
+  if [ "$MODE" = csp ]; then sub "① 지금 배포된 CSP 그대로 — connect-src 'self' 적용 뒤(F-42, 2026-09-15)라 「서버와 동기화됨」 이 정상"
   else sub "② CSP 응답 헤더를 벗긴 상태 — nginx 에 connect-src 'self' 를 적용한 뒤와 같다"; fi
   if python3 "$WORK/server_page.py" "$BASE" "$OUT" "$MODE" "$TEST_SECRET" > "$WORK/c-$MODE.json" 2>"$WORK/c-$MODE.err"; then
     STATUS=$(python3 -c "import json;print(json.load(open('$WORK/c-$MODE.json'))['status'])")
@@ -218,7 +219,7 @@ for MODE in csp nocsp; do
     DIFF=$(( LEFT > LEFT_E ? LEFT - LEFT_E : LEFT_E - LEFT ))
     [ "$DIFF" -gt 15 ] && DIFF=$(( 30 - DIFF ))   # 30↔0 경계를 사이에 둔 경우
     if [ "$MODE" = csp ]; then
-      expect "① 상태 줄이 「오프라인」 (CSP 미적용이라 정상)" "yes" "$(case "$STATUS" in 오프라인*) echo yes;; *) echo no;; esac)"
+      expect "① 상태 줄이 「서버와 동기화됨」 (nginx CSP 에 connect-src 'self' 적용됨, F-42)" "yes" "$(case "$STATUS" in 서버와\ 동기화됨*) echo yes;; *) echo no;; esac)"
       expect "① 페이지 오류 0" "0" "$ERRP"
     else
       expect "② 상태 줄이 「서버와 동기화됨」" "yes" "$(case "$STATUS" in 서버와\ 동기화됨*) echo yes;; *) echo no;; esac)"

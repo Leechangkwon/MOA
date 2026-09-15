@@ -28,13 +28,19 @@ declare(strict_types=1);
  *                                                  이 주소는 onedrive.live.com 으로 302 하므로
  *                                                  download=1 은 **그 다음 단계**에 붙인다
  *                                                  (followUp(), Fetch 의 리다이렉트 루프에서 호출)
- *   <tenant>.sharepoint.com / <tenant>-my.sharepoint.com → 변환하지 않고 needs_login = true
- *                                                  (회사 테넌트 문서. 내려받기 주소 규칙이
- *                                                  테넌트마다 다르고 대개 로그인을 요구한다)
+ *   <tenant>.sharepoint.com / <tenant>-my.sharepoint.com → 원 주소에 download=1 을 더한다
+ *                                                  (F-46. 「링크가 있는 모든 사용자」로 공유된
+ *                                                  문서는 이것으로 파일이 온다. 로그인이 필요한
+ *                                                  문서는 HTML 이 돌아오므로 Fetch 가 거른다)
  *   그 밖                                         → 그대로. provider = null
  *
  * 파일 ID 는 base64url 글자(`A-Za-z0-9_-`)만 받는다. 그 밖의 글자가 섞이면 **변환하지 않는다** —
  * 애매한 문자열을 억지로 해석해 만든 주소로 서버가 나가지 않게 하려는 것이다(닫힌 방향으로 실패).
+ *
+ * `needs_login` 은 이제 이 파일에서 참이 되는 자리가 없다(F-46). 「공개가 아니다」 라는 판단은
+ * **돌아온 것**(HTML 로그인 화면)을 보는 `Fetch::download` 의 몫이다 — 주소 모양만 보고 미리
+ * 거절하면 공개 링크까지 함께 막힌다(SharePoint 실측). 키는 그대로 남겨 둔다: 호출자가 읽는
+ * 계약이고, 앞으로 모양만으로 확실히 판단할 수 있는 공급자가 생기면 다시 쓰인다.
  *
  * ★ 이 파일에 토큰·로그인·OAuth 코드가 **한 줄도 없다** (사용자 결정 2026-09-15
  *   「OAuth 는 빼자 — 「링크가 있는 모든 사용자」로 공개된 링크만 지원한다」).
@@ -87,14 +93,20 @@ final class CloudLink
         $path  = (string) ($parts['path'] ?? '');
         $query = (string) ($parts['query'] ?? '');
 
-        // ─── 마이크로소프트: 회사(SharePoint) 문서는 공개 링크가 아니다 ───
+        // ─── 마이크로소프트: 회사(SharePoint) 문서 ───
         // 테넌트 이름이 앞에 붙으므로 정확 일치가 불가능하다. 대신 **호스트 전체를 묶는**
         // 정규식으로 좁게 본다 — 점이 더 들어간 이름(`a.b.sharepoint.com.evil.tld`)은 맞지 않는다.
+        //
+        // F-46 (사용자 실측 2026-09-15): 「링크가 있는 모든 사용자」로 공유된 SharePoint 링크는
+        // OneDrive 와 똑같이 `download=1` 을 붙이면 파일이 온다. 전에는 무조건 needs_login 으로
+        // 되돌려 **공개 링크까지 막고 있었다**. 로그인이 정말 필요한 문서는 HTML(로그인 화면)이
+        // 돌아오므로 Fetch 의 [5] 가 needs_login 으로 거부한다 — 판단을 「주소 모양」이 아니라
+        // 「돌아온 것」에 맡기는 편이 정확하다.
         if (preg_match('/^[a-z0-9][a-z0-9-]{0,62}(-my|-admin)?\.sharepoint\.com$/', $host) === 1) {
             return [
-                'url'         => $url,
+                'url'         => self::withDownloadFlag($url),
                 'provider'    => self::PROVIDER_MICROSOFT,
-                'needs_login' => true,
+                'needs_login' => false,
                 'note'        => 'sharepoint',
             ];
         }

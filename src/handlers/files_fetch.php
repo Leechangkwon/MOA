@@ -46,6 +46,9 @@ require_once __DIR__ . '/../CloudLink.php';
 $provider  = null;
 $sourceUrl = '';
 $hops      = [];
+/* F-46 — 리다이렉트 단계 중 **쿠키를 실은 단계 수**. 쿠키 값은 어디에도 남기지 않는다
+   (SECURITY R-77 보충). 0 이면 한 단계도 쿠키 없이 왔다는 뜻이다. */
+$cookieHops = 0;
 
 /** 감사 로그 detail 에 넣을 주소 — 512바이트로 자른다(로그 한 줄이 주소로 채워지지 않게) */
 $shortUrl = static function (string $url): string {
@@ -273,6 +276,7 @@ try {
     // $provider 가 있으면(드라이브·OneDrive) HTML 응답을 needs_login 으로 거른다 (ARCH 5.22).
     $result     = Fetch::download($safeUrl, $sourceHost, $sourceIp, $tmpPath, $provider);
     $hops       = $result['hops'] ?? [$sourceHost];
+    $cookieHops = (int) ($result['cookie_hops'] ?? 0);
     // 마지막으로 실제 받은 곳 — 감사 로그의 source_host 는 "어디서 받았나" 여야 한다.
     $sourceHost = (string) ($result['host'] ?? $sourceHost);
     $sourceIp   = (string) ($result['ip'] ?? $sourceIp);
@@ -432,10 +436,14 @@ try {
             /* F-43 — 되짚기에 필요한 세 값 (ARCH 7.5 등록부).
                hops       지나온 호스트 목록. 「어디를 거쳐 왔나」가 리다이렉트 통제의 증거다
                source_url 사람이 넣은 주소와 서버가 바꾼 주소. 변환이 맞았는지를 로그만으로 본다
-               provider   드라이브·OneDrive 링크였나 (google·microsoft·null) */
+               provider   드라이브·OneDrive·SharePoint 링크였나 (google·microsoft·null)
+               F-46 —
+               cookie_hops 직전 응답의 쿠키를 **같은 호스트**로 실어 보낸 단계 수. 값은 남기지
+                           않는다 — 「쿠키를 썼나·몇 번 썼나」만 조사에 필요하다 (R-77 보충) */
             'hops'        => $hops,
             'source_url'  => $sourceUrl,
             'provider'    => $provider,
+            'cookie_hops' => $cookieHops,
         ] + ($sensitive === [] ? [] : ['sensitive' => $sensitive]),
     ]);
 
