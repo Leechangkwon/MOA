@@ -68,7 +68,9 @@ set_exception_handler(static function (Throwable $e): void {
         $e->getLine()
     ));
     try {
-        if (class_exists('Db', false)) {
+        // Db::ready() — 부팅에서 연결이 실패했으면 부르지 않는다 (F-48, ARCH 5.24).
+        // 없는 연결에 rollback 을 걸어 로그에 「rollback failed」 잡음을 남기지 않기 위해서다.
+        if (class_exists('Db', false) && Db::ready()) {
             Db::instance()->rollback();
         }
     } catch (Throwable $ignored) {

@@ -22,6 +22,17 @@ final class Db
      */
     private static ?Db $permInstance = null;
 
+    /**
+     * 부팅 때 DB 연결이 실패했는가 (F-48, ARCH 5.24).
+     *
+     * 전에는 boot() 의 `new PDO` 실패가 그대로 밖으로 던져져 **모든 요청**이 500 으로 끝났다 —
+     * `GET /api/health` 핸들러까지 오지도 못하므로 「DB 만 죽었다」 를 503 으로 알릴 수 없었다
+     * (2026-09-15 디스크 0 → PostgreSQL PANIC 사고, SECURITY R-80).
+     * 이제 실패는 서버 로그에만 적고 이 표식으로 기억한다. 표식이 있으면 instance() 가 던지므로
+     * DB 를 읽는 창구의 결과는 전과 같은 500 이다 — 달라지는 것은 health 하나뿐이다.
+     */
+    private static bool $bootFailed = false;
+
     private PDO $pdo;
     private int $depth = 0;
 
@@ -41,12 +52,36 @@ final class Db
             return;
         }
         $dsn = 'pgsql:host=' . $host . ';port=' . $port . ';dbname=' . $name;
-        self::$instance = new self($dsn, $user, $pass);
+        try {
+            self::$instance = new self($dsn, $user, $pass);
+        } catch (PDOException $e) {
+            // 예외 문구에는 호스트·포트·계정 이름이 들어 있다 — 서버 로그에만, request_id 와 함께
+            // 남긴다 (PRD S-09-7, ARCH 5.24). 응답으로 나가는 것은 고정 분류어뿐이다.
+            // TBOX_REQUEST_ID 는 bootstrap 이 먼저 정의하지만, CLI 단위 실행도 고려해 확인한다.
+            self::$bootFailed = true;
+            error_log('[tbox] request_id=' . (defined('TBOX_REQUEST_ID') ? TBOX_REQUEST_ID : '-')
+                . ' db connect failed: ' . get_class($e) . ': ' . $e->getMessage());
+        }
+    }
+
+    /**
+     * 연결이 살아 있는가 (F-48, ARCH 5.24).
+     *
+     * 쓰는 곳은 두 군데다 — health 핸들러(연결 실패와 질의 실패를 가른다)와
+     * bootstrap 예외 처리기(연결이 없으면 rollback 을 부르지 않는다).
+     */
+    public static function ready(): bool
+    {
+        return self::$instance !== null;
     }
 
     public static function instance(): Db
     {
         if (self::$instance === null) {
+            // 부팅에서 연결이 실패한 경우 (F-48). 문구에 호스트·포트·계정 같은 값을 담지 않는다.
+            if (self::$bootFailed) {
+                throw new RuntimeException('DB 연결에 실패했습니다');
+            }
             throw new RuntimeException('DB 가 초기화되지 않았습니다');
         }
         return self::$instance;

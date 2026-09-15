@@ -1121,6 +1121,38 @@ CSS·같은 열고 닫는 JS 방식**이다. 내용은 서버가 그린 정적 �
 **깃.** 태그 `vX.Y.Z` 는 릴리스 커밋을 가리키고 원격(`origin`)에도 올라간다. `git tag -l`·`git describe --tags` 로
 어느 코드가 어느 버전인지 알 수 있고, 되돌릴 때는 `git checkout v1.0.0` 처럼 태그 이름으로 간다.
 
+### 5.24 상태 확인 — `GET /api/health` 의 DB 확인 (PRD F-48, 사용자 요청 2026-09-15)
+
+**무엇을 하나.** 1단계부터 있던 `GET /api/health`(정책 `POLICY_PUBLIC`, `src/handlers/health.php`)는 `{"ok":true}` 만 돌려줬다 —
+PHP 까지 살아 있다는 뜻일 뿐, 2026-09-15 16:45 사고(디스크 0 → PostgreSQL PANIC → 사이트 503, SECURITY R-80)처럼 **DB 만 죽은 상태**를
+구분하지 못했다. F-48 부터는 `Db::instance()->run('SELECT 1')` 한 번을 해 보고 답한다.
+
+| 상황 | 상태 | 본문 | 비고 |
+|---|---|---|---|
+| DB 가 답함 | 200 | `{"status":"ok","db":"ok","time":"2026-09-15T19:02:11+09:00"}` | `time` 은 `DATE_ATOM`(ISO 8601, 서버 시간대 Asia/Seoul). 시각은 `/api/time`·`Date` 헤더로 이미 나가는 값 |
+| 연결 자체가 안 됨 | 503 | `{"status":"fail","db":"connect_failed"}` | 부팅의 `Db::boot` 가 실패한 경우 |
+| 연결은 됐는데 질의 실패 | 503 | `{"status":"fail","db":"query_failed"}` | `run('SELECT 1')` 이 던진 경우 |
+
+**부팅 순서의 변화 — `Db::boot` 는 실패를 삼키고 기억한다.** 전에는 bootstrap 5) 의 `Db::boot` 가 `new PDO` 실패로 예외를 던져
+**모든 요청**이 예외 처리기의 500 `{"error":"서버 오류"}` 로 끝났다 — health 핸들러까지 오지도 못하므로 503 을 낼 수 없었다.
+이제 `Db::boot` 는 `PDOException` 을 잡아 서버 로그(`request_id` + 예외 문구)에만 적고 `연결 실패` 표식을 남긴다. 그 뒤 `Db::instance()` 는
+표식이 있으면 `RuntimeException` 을 던진다 → health 를 뺀 나머지 창구는 **전과 똑같이** 500 이다(`Auth::requireLogin` 의 첫 질의에서).
+DB 없이 렌더되는 것은 `/login` 화면·`/api/time`·404/405 정도이고, 이들은 DB 를 읽지 않으므로 달라지는 것이 없다.
+예외 처리기의 `Db::instance()->rollback()` 은 표식이 있으면 부르지 않는다(`Db::ready()`) — 로그에 「rollback failed」 잡음을 남기지 않기 위해서다.
+
+**왜 `db` 가 고정 분류어인가 (S-09-7).** PDO 의 오류 문구는 `connection to server at "127.0.0.1", port 5432 failed: FATAL: password
+authentication failed for user "tbox_app"` 같은 형태다 — 호스트·포트·계정 이름이 들어 있다. 사용자 요청의 「에러 요약」은 응답에는
+두 분류어 중 하나로만 나가고, 원문은 `error_log` 에 `request_id` 와 함께 남는다(5.23 의 「보이지 않는 곳」 원칙과 같다).
+정찰 재료가 되는 값(버전·서버 이름·설정)은 F-47 ④ 그대로 넣지 않고, CORS 헤더도 F-42 그대로 없다.
+
+**남는 위험(SECURITY R-81).** 로그인 없이 부를 수 있는 창구가 요청마다 DB 질의 하나를 하게 됐다. `SELECT 1` 은 표를 읽지 않고
+연결 풀도 없으므로(요청당 연결 1) 비용은 연결 한 번과 같고, 이미 모든 로그인 화면 요청이 같은 비용을 낸다. IP 속도 제한 존을 따로
+붙이지 않았다 — 필요해지면 `tbox_login` 과 같은 방식으로 `location = /api/health` 에 붙인다.
+
+**API 문서 `API.md`.** 저장소 루트에 둔다(README 와 같은 자리). `public/` 이 nginx 루트라 그 안의 `.md` 는 로그인 없이 내려받힌다 —
+문서가 곧 정찰 재료가 되므로 웹 루트 **밖**이다. 외부 프로그램이 부를 창구(상태 확인·로그인·내 정보·업로드·로그아웃)의 주소·요청·응답
+예시를 적고, API 가 늘 때마다 이어 적는다(PRD 8장 표가 요구사항, `API.md` 는 사용 설명이다 — 둘이 어긋나면 8장이 옳다).
+
 ## 6. 저장 위치 — 파일 정보 vs 실제 파일
 
 ### 6.1 두 곳에 나눠 저장하는 이유

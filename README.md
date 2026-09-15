@@ -495,7 +495,7 @@ sudo bash deploy/switch-site.sh v2       # 도메인에 재구축 사이트를 �
 
 ```bash
 # 1) 애플리케이션이 살아 있나
-curl -s http://127.0.0.1:8082/api/health                                   # {"ok":true}
+curl -s http://127.0.0.1:8082/api/health   # {"status":"ok","db":"ok","time":"…"} — DB 가 죽었으면 503 (F-48, API.md 1장)
 
 # 2) 소스·설정·DB 파일이 URL 로 보이지 않나 (전부 404)
 curl -s -o /dev/null -w '%{http_code}\n' http://127.0.0.1:8082/.env

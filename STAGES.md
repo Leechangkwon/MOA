@@ -47,6 +47,7 @@
 | 25 | 구매 화면 UI 정돈 — 공통 CSS 한 벌·시안 충실도·사이드바 3묶음·2단 레이아웃·개발 잔재 제거 (T-50) | ✅ 구현·검토 | ✅ | ✅ 2026-09-14 | 대기(눈 점검 1440·1024) | `6d0d818` |
 | 26 | 관리자 「역할로 보기」(세션 임시 역할·아래로만·활동 없는 30분)·관리 내비 7링크·계정 편집 모달·폴더 삭제 세 갈래 (F-39~41 · T-52~54) | ✅ 구현·검토 | ✅ | ✅ 2026-09-15 | 대기(6항목) | (아래 절 참조) |
 | F-47 | 버전 관리 `X.Y.Z`(대규모/중규모/수정) — `VERSION`·`CHANGELOG.json`·git 태그·`scripts/release.sh` · 사이드바 버전 → 「변경 이력」 모달(발행 날짜·시각·무엇이 변했나). 초기 1.0.0 — 사용자 결정 2026-09-15 | ✅ 구현·검토 | ✅ 2026-09-15 (Opus, 재지시 0회) | ✅ 2026-09-15 (T-59 65/65 Fable 재실행, 린트 0, help_button 17/17) | ⚠ 대기 | F-47 커밋 + 태그 `v1.0.0` |
+| F-48 | 상태 확인 `GET /api/health` 에 DB 확인(`SELECT 1`) — 200 `{status,db,time}` / 503 `{status:fail, db:분류어}` · 저장소 루트 `API.md`(외부 프로그램용 API 문서, 상태 확인·로그인·내 정보·업로드·삭제·로그아웃) — 사용자 요청 2026-09-15 | ✅ 구현·검토 | ✅ 2026-09-15 (Opus, 재지시 0회 + 추가 지시 1건 R-80 디스크 관문) | ✅ 2026-09-15 (T-60 38/38 Fable 재실행, 린트 0, 공개 도메인 200·405·`/API.md` 404) | ⚠ 대기 | `health API 추가` 커밋 |
 | 문구 정리 | 화면 문구 정리 — **1단계** 화면에 늘 펼쳐져 있던 안내 68곳 삭제·축소 / **2단계** 「사용 방법」 단추와 화면별 도움말 20화면 (F-38 · T-51) | ◐ 2단계 구현 | ✅ 2026-09-15 (Opus) | ⚠ 대기 | ⚠ 대기 | 1단계 `06ee617` · 2단계 커밋 전 |
 | **26** | 관리자 「역할로 보기」(F-39) · 관리 내비·계정 편집 폼(F-40) · 폴더 삭제 세 갈래(F-41) — 사용자 결정·지적 2026-09-15 | ✅ 구현 | ⚠ Fable 재검토 대기 (Opus 자체 시험 124/124) | ⚠ 대기 | ⚠ 대기 | 커밋 전 |
 
@@ -1474,6 +1475,38 @@ sudo -u postgres psql -d tbox_re -c "SELECT happened_at, actor_name, action, res
 | 2026-09-15 | 요청(사용자) | 「모달로 볼 수 있게」 | 사이드바 버전 단추 → `<dialog id="changelog-dialog">`, 「사용 방법」 모달과 같은 뼈대(ARCH 5.19·5.23) — 새 API 없음 |
 | 2026-09-15 | 궁금(사용자) | 「깃에도 버전 관리 되는 거지?」 | 된다 — 발행마다 릴리스 커밋 + 주석 태그 `vX.Y.Z`, `git push origin vX.Y.Z` 로 원격에도. 확인: `git tag -l`, `git ls-remote --tags origin`. ARCH 5.23 「깃」 |
 | 2026-09-15 | 해소(Fable) | 첫 발행 — F-47 커밋 `5c59c4f` 에 태그 `v1.0.0` 부착, `git push origin main`·`git push origin v1.0.0` 완료. `git ls-remote --tags origin` 에 `refs/tags/v1.0.0` 확인, `git describe --tags` = `v1.0.0` | 다음부터는 `scripts/release.sh` 한 번(CLAUDE.md 6장). 1.0.0 은 이미 파일에 있어 스크립트를 쓰지 않았다 |
+
+### F-48 — 상태 확인 API 의 DB 확인 · 외부 프로그램용 API 문서 `API.md` (T-60) — 착수 2026-09-15
+
+> 지시서: `docs/f48-health-directive.md`. 근거: PRD F-48 · 8장 `/api/health` 행 · 12.2 T-60, ARCH 5.24, SECURITY R-81.
+> 사용자 요청 2026-09-15: 「로컬에서 API 를 통해 파일을 업로드하는 파일을 만들고 있어 — 업로드 가능한 API 문서를 만들어 줘. `GET /api/health` 는 DB 에 SELECT 1, 성공 200 `{status:ok, db:ok, time}`, 실패 503 `{status:fail, db:에러 요약}`, 로그인 없이, 민감 정보 금지. nginx 에서 `/api/` 가 PHP 로 가는지 확인. 웹루트에 `API.md`. curl 한 줄, "health API 추가" 한글 커밋」.
+> Fable 판단 ① 「에러 요약」은 PDO 문구 원문이 아니라 **고정 분류어**(`connect_failed`·`query_failed`)다 — 원문에 호스트·포트·계정이 들어간다(S-09-7). ② 「웹루트」는 nginx 루트 `public/` 이 아니라 **저장소 루트**로 해석했다 — `public/` 안의 파일은 로그인 없이 내려받힌다. ③ nginx 는 이미 `location / { try_files $uri /index.php… }` 로 `/api/` 를 PHP 에 넘기고 있어(라이브 conf = 저장소 conf, diff 0) 설정 변경·reload 가 없다. ④ 업로드 문서는 코드 추정이 아니라 `qa_employee01` 로 로그인→내 정보→업로드 201→휴지통 200→로그아웃 200 을 실측해 적었다.
+
+**개발 사항** (Opus)
+- [x] `src/handlers/health.php` — `Db::ready()` → `SELECT 1` → 200 `{status,db,time}` / 503 `{status:fail, db:connect_failed|query_failed}`, 원문은 `error_log` 에만
+- [x] `src/Db.php` — `boot()` 의 `PDOException` 삼키기(로그 + 표식) · `instance()` 표식 시 `RuntimeException` · `ready()`
+- [x] `src/bootstrap.php` — 예외 처리기 rollback 을 `Db::ready()` 로 가드(한 곳)
+- [x] `tests/health.sh` — T-60 (a) 라이브 8082 정상 · (b) 임시 복사본 + 가짜 `.env` + `php -S` 로 503 실측 · (c) 린트·`php -l` · **첫 줄 디스크 여유 1GB 점검(R-80)**
+- [x] (Fable) `API.md` 저장소 루트 · README health 예시 줄 · PRD F-48·8장·T-60 · ARCH 5.24 · SECURITY R-81
+
+**검토 체크** (Fable, 관문 ②)
+- [x] **Fable 검토 (2026-09-15 19:06)** — 코드 읽기: `health.php` 는 요청 값 0·SQL 고정 문자열 `SELECT 1`·응답은 고정 분류어와 `date(DATE_ATOM)` 뿐, 원문은 `error_log` 만 / `Db.php` diff 는 `$bootFailed`·try/catch·`ready()`·`instance()` 분기 4곳(run·트랜잭션·perm 불변) / `bootstrap.php` 는 rollback 가드 한 줄. `bash tests/health.sh` **Fable 재실행 38/38**(라이브 200 `{status,db,time}`·키 정확·time ±0초·CORS 0·버전 0·POST 405·감사 행 0 / 가짜 `.env` 복사본 503 `connect_failed`·본문+헤더에 fakeuser·fakepass·SQLSTATE·PDOException 0·`/api/me` 는 500 그대로 / 린트 0·`php -l` 3파일) · 공개 도메인 `https://changkwon.mso.so/api/health` 200 `{"status":"ok","db":"ok","time":"2026-09-15T19:06:31+09:00"}` · POST 405 · `/API.md` 404 · 시험 뒤 `php -S` 잔여 프로세스 0. **미검증**: `query_failed` 분기(연결은 되고 질의만 실패하는 DB 를 운영을 건드리지 않고 만들 수 없음 — 코드상 `ready()` 참 뒤 모든 Throwable 이 그 분기). 시험 스크립트가 실제 `.env` 를 읽지 않음은 `grep` 으로 확인(가짜 키만 heredoc)
+
+**자기 공격 체크** (사용자, 관문 ③)
+- [ ] `curl -s -w ' [%{http_code}]\n' https://changkwon.mso.so/api/health` → 200 `{"status":"ok","db":"ok","time":"…"}` · 본문에 버전·호스트·계정 없음
+- [ ] `curl -s -X POST https://changkwon.mso.so/api/health` → 405
+- [ ] `curl -s https://changkwon.mso.so/API.md` → 404 (문서는 웹으로 열리지 않는다)
+- [ ] (선택) `API.md` 2~6장 순서대로 자기 계정으로 따라가 업로드 201 을 받아 보고, 올린 파일을 휴지통으로
+
+**학습 기록**
+
+| 날짜 | 구분 | 내용 | 해소·근거 |
+|---|---|---|---|
+| 2026-09-15 | 요청(사용자) | 「로컬에서 API 로 파일을 업로드하는 프로그램을 만들고 있다 — 업로드 가능한 API 문서를 만들어 줘」 | `API.md` 0장(공통: 쿠키 `tbox_session`·`X-CSRF-Token`) → 2 로그인(otp 필수, 401 `mfa_required` 뒤 재시도) → 3 `/api/me`(`csrf_token`·`upload_levels`) → 4 `POST /api/files` multipart(`file`·`access_level`·`team_id`·`description`·`folder_id`) → 5 삭제 → 6 로그아웃. 예시는 실측값 |
+| 2026-09-15 | 요청(사용자) | 「`/api/health`: DB 에 SELECT 1, 성공 200 / 실패 503 + 에러 요약, 로그인 없이, 민감 정보 금지」 | PRD F-48 · ARCH 5.24. 「에러 요약」은 고정 분류어로 — PDO 오류 문구에 호스트·포트·계정이 들어가므로 원문은 서버 로그(`request_id`)에만(S-09-7) |
+| 2026-09-15 | 요청(사용자) | 「nginx 에서 `/api/` 가 PHP 로 가는지 확인, 안 가면 고치고 reload」 | 이미 간다 — `deploy/sites/tbox-v2.conf` `location / { try_files $uri /index.php$is_args$args; }`, 라이브 `/etc/nginx/sites-available/tbox-v2` 와 diff 0, `curl 127.0.0.1:8082/api/health` 200. 변경·reload 없음 |
+| 2026-09-15 | 결정(Fable) | 「웹루트에 API.md」 → 저장소 루트 `/var/www/tbox-v2/API.md` | nginx 루트는 `public/` 이라 그 안의 `.md` 는 로그인 없이 내려받힌다(정찰 재료). README 와 같은 자리에 두고 웹에서는 404 (ARCH 5.24) |
+| 2026-09-15 | 해소(Fable) | 왜 지금 health 는 DB 가 죽어도 503 을 낼 수 없었나 | bootstrap 5) 의 `Db::boot` 가 `new PDO` 실패로 예외 → 예외 처리기 500 `서버 오류` — 핸들러까지 오지 못한다. F-48 은 `boot` 가 실패를 기억만 하고, 다른 창구는 `Db::instance()` 에서 전과 같이 500 (ARCH 5.24 「부팅 순서의 변화」) |
 
 ## 2-1. 10단계 뒤 일괄 자기 공격 — 진행 순서 (관문 ③, 사용자)
 
