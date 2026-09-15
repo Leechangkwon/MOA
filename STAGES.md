@@ -1356,7 +1356,7 @@ sudo -u postgres psql -d tbox_re -c "SELECT happened_at, actor_name, action, res
 
 **검토 체크** (Fable, 2026-09-15)
 - [x] 코드 읽기(gr_list·gr_get 세 SQL 전부 `purchaseScopeWhere`, 범위 밖 404, 라우트 2줄 purchase.read, Authz 변경 0) · 설계 판단 2건(목록 봉투 {items,total,page,per_page,can_void} = 구매 목록 공통 / voided_at = 취소 때 updated_at) 수용
-- [ ] T-57 (a)~(d) 쓰기 항목 — 채번 카운터 복구(14:2x, 사용자 승인) 뒤 사용자 유휴 때 `tests/purchase_f45.sh` 자동 실행 대기
+- [x] T-57 (a)~(d) 쓰기 항목 — 사용자 유휴 때 자동 실행(15:0x): 지점 격리(지점B 전표 404 · 거꾸로 404 · 없는 id 404 · `?branch=` 무시 0건) · 취소 200 → status=void · can_void 전이 **전부 ✔**. 전체 82 ✔ · 4 ✘ — 4건은 전부 **디스크 100%** 로 헤드리스 브라우저가 죽은 것(ui_snapshot 「Page crashed」 ×2, help_button 하위 2)과 help_button 의 낡은 기대값(핸들러 20→21). 코드 결함 0
 - [ ] 지점 격리 실측: 남의 지점 전표 상세 404 · 목록 0건 · `?branch=` 무시
 - [ ] 취소가 **새 창구를 만들지 않았는지**(라우트 표에 `POST /api/purchase/gr/{num}/void` 하나) · 원장 반대 부호 행 회귀
 - [x] `scripts/security_lint.sh` 0건 · 바뀐 파일 `php -l` · 화면 1440px 결함 0(입고 3탭·재고 미입고 탭) · 스크린샷 3장 눈 확인
@@ -1375,6 +1375,7 @@ sudo -u postgres psql -d tbox_re -c "SELECT happened_at, actor_name, action, res
 | 2026-09-15 | 복구(사용자 승인 14:2x) | 채번 카운터 INSERT 3행(gr 2 · po 1 · pr 7 = 남은 전표 최대 번호) — 삭제·변경 0, 비-qa 전표 4건 그대로. 같은 승인으로 F-42 nginx CSP(`connect-src 'self'`)를 라이브·검토 포트 둘 다 적용(`nginx -t`·reload) → 라이브 생성기 「서버와 동기화됨 · 서버 시각 14:28:15 · PC 와 -1초」, 콘솔 오류 0 | 스크린샷 `~/.claude/ui-shots/f42/live-sync.png`, nginx 백업 `~/.claude/ui-shots/nginx-tbox-v2.bak.*` |
 | 2026-09-15 | 궁금·결정(사용자) | 「같은 시계로 보는데 시간 초과된 코드로 로그인이 됐다 — 맞추고 싶다」 → 서버가 앞뒤 1구간(±30초)을 받아 주던 표준 허용 오차 때문. **사용자 결정: 현재 구간만 받는다** | `src/Totp.php` 기본 창 1→0(한 값). 단위·실측 통과(직전 코드 거부·현재 코드 200). 대가(휴대폰 앱 시계 편차 시 실패↑) 수용 — SECURITY 7장 행 |
 | 2026-09-15 | 보정 | `tests/help_button.sh` 키 기대값 20→21(F-43 이 fetch-hosts 도움말을 더함) | 시험 스크립트만 |
+| 2026-09-15 | **사고(운영)** | 루트 디스크 **100%**(39MB) — playwright 캐시 390MB·claude 캐시 217MB·pip 47MB·스크린샷 80MB 누적. 헤드리스 브라우저 「Page crashed」로 시험의 화면 항목이 실패 | 내 산출물 정리(옛 스크린샷·pip 캐시·journal·apt) → 249MB, 이어 **LVM +512MB**(앞서 승인한 것과 같은 크기) → 아래 df. VG 잔여 10.5G. 스크린샷 폴더는 검토 뒤 지우는 규칙 추가 |
 | 2026-09-15 | 지적(사용자) | 「입고에는 왜 입력/전표/현황이 안 나오고 입력만 있나」 | 시안 ⑥ 은 탭 셋인데 21단계에서 두 카드로 줄인 것이 원인. F-45 로 되돌림 — 지시서 `docs/purchase/17-f45-receipt-tabs-directive.md` |
 | 2026-09-15 | 결정 | 전표 탭의 취소는 **기존 void 창구**를 부른다(새 API 0) · 현황 탭은 기존 `/api/purchase/backorder` 를 부른다(새 API 0) | 새로 생긴 것은 읽기 창구 둘뿐 — ARCH 5.18 「F-45 라우트·정책」 |
 | 2026-09-15 | 어려움(구현) | 검토 계정 `qa_admin01` 의 TOTP 코드가 **다른 세션(F-43 `tests/fetch_hosts.sh`)과 겹쳐** 재사용 거부 → 5회 실패로 10분 잠김 | 코드 재사용을 막는 것은 R-45 가 제대로 동작한 것. 검토 계정을 여러 세션이 함께 쓰면 생기는 일이라, **시험은 겹치지 않게 돌린다**(감사 `auth.mfa deny code_reused` 로 확인) |

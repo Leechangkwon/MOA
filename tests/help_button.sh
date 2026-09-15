@@ -135,7 +135,7 @@ done
 expect "로그인·재인증·2단계 등록·위키·품목·인쇄 0건" 0 "$n_bad"
 
 sub "저장소 전체에서 \$pageHelp 를 넘기는 파일 수"
-expect "정확히 20개" 20 "$(grep -rl '^\$pageHelp' "$ROOT/src" | wc -l)"
+expect "정확히 21개(F-43 fetch-hosts 포함)" 21 "$(grep -rl '^\$pageHelp' "$ROOT/src" | wc -l)"
 
 # ─────────────────────────────────────────────────────────────
 hr "(c) 화면의 「사용 방법」 단추"
