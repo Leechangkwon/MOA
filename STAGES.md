@@ -1653,6 +1653,55 @@ sudo -u postgres psql -d tbox_re -c "SELECT happened_at, actor_name, action, res
 | 2026-09-16 | 판단(Opus) | 시험 (b)(c) 1차에서 「콘솔 오류 0건」 실패 → 원인은 `GET /favicon.ico` 404(F-52 이전부터, 사용자 브라우저에서도 발생) | 앱 결함 아님. 시험은 파비콘 404 를 갈라 세도록 고침. 파비콘 파일을 둘지는 사용자 판단(후속 후보) |
 | 2026-09-16 | 판단(Fable) | 관문 조건을 `mfa_setup_required` 플래그가 아니라 `mfa_enabled` 로 | 플래그는 보통 `!mfa_enabled` 와 같지만 어긋난 순간 관문이 열리면 안 된다. 켜졌는지의 진실은 `mfa_enabled`. 「역할로 보기」 중에는 `real_role` 로 판정(흉내로 빠져나갈 수 없게) |
 
+### F-53 — 업로드 내용 검사 강화 (zip 내부·매크로·PDF·HWP, 앱 안) — 착수 2026-09-16
+
+> 지시서: `docs/f53-upload-inspect-directive.md`. 근거: PRD F-53 · 7.6 S-06 표 · 12.2 T-65, ARCH 5.27 · 5.2, SECURITY R-02(갱신)·R-86.
+> 배경: 사용자 「업로드되는 파일의 보안검사를 권장 받았어」 → Fable 평가(R-02 높음·Q-3 미룬 사유 해소) → 사용자 「둘 다 진행해」(앱 안 검사 + ClamAV).
+
+**개발 사항** (구현 Opus / 문서 Fable)
+- [x] (Fable) PRD Q-3 재결정·F-53·S-06 표·T-65, ARCH 5.27, SECURITY R-02·A-3·R-86, 지시서
+- [x] (Opus) `src/Upload.php` — zip 내부 이름·경로·중첩·압축 폭탄(32MB 바닥, 검토 보정) · 오피스 매크로 · PDF 능동 내용 · HWP OLE 서명 (추출 0)
+- [x] (Opus) `Audit.php` 문장 틀 40줄(5 창구 × 8 사유) · (Fable) ARCH 7.4 에 옮김 · `tests/f53.sh`(T-65)
+- [x] 손대지 않음(확인): `ALLOWED_EXT`·`BLOCKED_EXT`·MIME 표 · 핸들러 · DB
+
+**검토 체크** (Fable, 관문 ②)
+- [x] **Fable 검토 (2026-09-16)** — `tests/f53.sh` 재실행 **69/0**(미검증 3: 진짜 hwp·가져오기 HTTP·zip_unreadable) · 100MB zip 속 검사 0.0003초 · 회귀 T-7·T-8
+- [x] `Upload.php` diff 읽기 — 추출·임시 파일·외부 호출 0, 실패는 사유 코드 예외뿐 · 보정 1(압축비 32MB 바닥)
+
+**자기 공격 체크** (사용자, 관문 ③)
+- [ ] zip 안에 `.exe` 를 넣어 올리기 → 거부 · 정상 zip → 성공
+- [ ] 워드에서 매크로 포함 문서를 `.docx` 로 저장해 올리기 → 거부
+- [ ] 관리자 감사 로그에서 사유 코드(`zip_blocked_entry`·`macro_found`…) 확인
+
+### F-54 — 악성코드 검사 파이프라인 (ClamAV `clamscan` 배치·격리·403·AL-19) — 착수 2026-09-16
+
+> 지시서: `docs/f54-clamav-directive.md`(F-53 뒤 작성). 근거: PRD F-54 · 7.6 · 8장 download 행 · 7.11 AL-19 · 12.2 T-66, ARCH 5.28 · 5.3 [4] · 11.1, SECURITY R-02·R-86·R-87, DEPENDENCIES(ClamAV).
+> 설치(`apt-get install clamav clamav-freshclam`, 격리 디렉터리, cron 행)는 서버 설정 변경 — CLAUDE.md 7장에 따라 T-17~T-19 재실행·DEPENDENCIES 실측 갱신. 사용자 「둘 다 진행해」로 승인.
+
+**개발 사항** (구현 Opus / 설치·문서 Fable)
+- [x] (Fable) PRD F-54·S-06 표·download 행·AL-19·T-66, ARCH 5.28·5.3·11.1, SECURITY R-86·R-87, DEPENDENCIES
+- [x] (Fable, 09:10) 패키지 설치 `clamav`·`clamav-freshclam` 1.5.3(데몬 제외) · enable · 시그니처 main 63/daily 28124/bytecode 339 수신 · `/var/lib/tbox-v2/quarantine` 0750 tbox-php · `check_baseline` OK 16 불변 · T-18 리스너 추가 없음 · `clamscan` 실측 22초/991MB. `.env` `SCAN_ENABLED=1` 은 배치 코드 검토 뒤 · 첫 시그니처 수신 확인 · `/var/lib/tbox-v2/quarantine` 0750 tbox-php · `.env` `SCAN_ENABLED=1`
+- [ ] (Opus) `Upload::initialScanStatus()` + INSERT 네 곳 · `scripts/scan_pending.php` · 다운로드·미리보기·공유·토큰 403 · 목록 `scan_status`·화면 배지 · `alerts.php` AL-19 · `deploy/cron.d`·`install.sh`·`check_baseline.sh` · `tests/f54.sh`(T-66)
+- [ ] 손대지 않음(확인): `Authz`·`Auth`·`db/schema.sql`(열은 이미 있음)
+
+**검토 체크** (Fable, 관문 ②)
+- [ ] `tests/f54.sh` 재실행 (a) pending→clean (b) EICAR→infected·격리·403·AL-19 (c) 대기 0건 즉시 종료·잠금 (d) SCAN_ENABLED 꺼짐 (e) 서버 층 (f) 자원 (g) 린트
+- [ ] `scan_pending.php` 읽기 — 경로는 `Storage::pathFor` 만, 격리 이동은 `rename`, 오류 시 상태 유지
+
+**자기 공격 체크** (사용자, 관문 ③)
+- [ ] EICAR 텍스트를 `.txt` 로 올리기 → 1~2분 뒤 목록에 「격리됨」, 다운로드 403, 관리자 감사에 `file.scan deny infected`, `alerts.log` AL-19
+- [ ] 정상 파일 올린 직후 다운로드 → 「검사 중」 → 1분 뒤 성공
+
+**학습 기록**
+
+| 날짜 | 구분 | 내용 | 해소·근거 |
+|---|---|---|---|
+| 2026-09-16 | 요청(사용자) | 「업로드되는 파일의 보안검사를 권장 받았어」 → Fable 평가 → 「둘 다 진행해」 | R-02(높음) 는 9/11 Q-3 로 미뤘던 것 — 사유(디스크 89%)가 54% 로 해소. 두 겹: F-53 앱 안(의존성 0, 풀지 않고 이름·바이트만) + F-54 ClamAV(앱 밖 배치) |
+| 2026-09-16 | 판단(Fable) | `clamd` 상주 대신 `clamscan` 을 「대기 파일 있을 때만」 | VM 메모리 3.8GB·가용 1.1GB, clamd 는 1GB 이상 상주 → PostgreSQL 과 다툼(9/15 디스크 사고처럼 자원 고갈이 곧 장애). 대가는 검사 창 1분 + 실행마다 시그니처 적재(R-86). 운영 전환 시 배치 [3] 만 `clamdscan` 으로 교체 |
+| 2026-09-16 | 보정(Fable 검토) | F-53 압축비 100:1 규칙이 5KB→500KB 반복 텍스트(로그·CSV)를 폭탄으로 오탐 | 폭탄은 수십 MB 이상으로 커질 때만 위험 — 합계 32MB 바닥(`ZIP_RATIO_FLOOR`)을 두고 시험 케이스(815:1·500KB → 201) 추가. PRD F-53 ①·ARCH 5.27 갱신 |
+| 2026-09-16 | 관찰(Fable) | F-53 첫 재실행이 R-73 사전 검사(최근 10분 비-qa 활동: admin01 `auth.gate`)에 걸려 시작 안 됨 | 사용자가 F-52 관문 ③ 을 하던 중 — 규칙이 의도대로 시험과 실사용을 갈랐다. 10분 뒤 재실행 |
+| 2026-09-16 | 판단(Fable) | 앱 코드가 아니라 `scripts/` 배치가 ClamAV 를 부른다 | CLAUDE.md 금지 패턴(exec·소켓)·php-fpm `disable_functions` 은 앱에만. `scripts/` 는 CLI·린트 제외(`purge_trash`·`alerts` 와 같은 자리). 앱은 상태를 읽어 403 만 |
+
 ## 2-1. 10단계 뒤 일괄 자기 공격 — 진행 순서 (관문 ③, 사용자)
 
 일괄 진행 모드에서는 4~10단계의 관문 ③을 한 번에 수행한다. **각 단계 절의 "자기 공격 체크" 를 위에서부터 차례로** 하되, 아래 순서가 효율적이다(계정 전환 최소화). 시드 계정 비밀번호: `sudo cat /etc/tbox-v2/seed-accounts.txt`.

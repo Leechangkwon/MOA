@@ -16,6 +16,7 @@
 | tar (GNU) | 1.34 | `tar --version` |
 | cron | Vixie cron (Ubuntu `cron` 패키지, 서비스 active) | `systemctl is-active cron` |
 | systemd-timesyncd | systemd 249 (NTP 동기화 active) | `timedatectl` |
+| ClamAV (`clamscan`·`freshclam`, 데몬 없음) | 1.5.3+dfsg-0ubuntu0.22.04.2 (2026-09-16 설치, 시그니처 main 63 · daily 28124 · bytecode 339) | `clamscan --version` · `sigtool --info /var/lib/clamav/daily.cvd` |
 
 ## 2. 지원 종료(EOL) 와 그에 따른 위험
 
@@ -24,6 +25,7 @@
 | PHP 8.1 | **2025-12-31 (이미 종료)** | 없음 — 이미 지났다 | ❗ 위험 **수용**: 실습 VM 설치본을 그대로 쓴다 (PRD Q-11, SECURITY R-21). 운영 전환 시 8.4 로 업그레이드가 **필수 조건**이다 |
 | PostgreSQL 14 | 2026-11-12 | 약 2개월 | ◐ 1년 미만. 9단계(운영) 전에 15 이상 업그레이드 계획을 세운다 |
 | nginx 1.18 (Ubuntu 22.04 패키지) | 2027-04 (Ubuntu 22.04 표준 지원 종료와 동일) | 약 1년 7개월 | ◐ 배포판 보안 패치로 유지된다 |
+| ClamAV 1.5 (Ubuntu 22.04 패키지) | 2027-04 (배포판 지원과 동일; 상류 1.5 LTS 는 2028) | 약 1년 7개월 | ◐ 배포판 보안 패치. 시그니처는 `clamav-freshclam` 이 매일 갱신(R-87) |
 | Ubuntu 22.04 LTS | 2027-04 (표준 지원) | 약 1년 7개월 | ◐ ESM 은 2032-04 |
 
 > PRD S-10-C 는 "EOL 까지 2년 이상" 을 기준으로 한다. 위 표의 어느 항목도 그 기준을 만족하지 않는다.
@@ -116,7 +118,7 @@ PRD S-10-C 가 "배포판 패키지만·의존성 0 이 기본" 이라고 못박
 | `restic` | PRD S-08 "증분 백업(`restic`/`rsync`)" | **미사용** (미설치) | `tar` 전체 + `rsync --delete` 로컬 미러, 보관 7개 | 중복 제거가 없어 **디스크를 더 쓴다**. 저장소가 커지면 재검토 |
 | `chrony` | PRD S-10-A "시간 동기화: `chrony` 필수" | **미사용** (미설치) | `systemd-timesyncd` (동기화 active 실측) | 낮음 — 동기화 자체는 되고 있다. `chronyc tracking` 대신 `timedatectl` 로 확인 |
 | `fail2ban` | PRD S-10-A "SSH ... `fail2ban`" | **미적용** (미설치) | sshd `MaxAuthTries 3`(hardening.sh), 앱 로그인 잠금 5회/10분(S-09-4), nginx 로그인 속도 제한 | ◐ SSH 브루트포스를 **차단**하지는 못한다. 운영 전환 조건 |
-| `ClamAV` | PRD S-10-A·S-11-B | **미포함** (Q-3 결정 2026-09-11) | `files.scan_status` 컬럼과 차단 자리만 유지 | ◐ R-02 유지 |
+| `ClamAV` (`clamav` + `clamav-freshclam`, 배포판 패키지) | PRD S-10-A·S-11-B·F-54 | **포함** (Q-3 재결정 2026-09-16). `clamav-daemon` 은 설치하지 않는다(메모리, ARCH 5.28) | `scripts/scan_pending.php` 가 `clamscan` 실행, `clamav-freshclam` 데몬이 시그니처 갱신(아웃바운드 `database.clamav.net` HTTPS) | R-02 → ✅, R-27·R-87 |
 | `AIDE`/`debsums` | ARCH 11.3 "무결성 감시 → AL-9" | **미적용** | `scripts/check_baseline.sh` 수동 점검 | ◐ AL-9 자동 탐지 없음 |
 | `rsyslog` TLS 전송 | PRD S-10-E, ARCH 11.4 | **미적용** — 보낼 서버가 없다 | 예시 설정 `deploy/rsyslog/tbox-v2.conf.example` + `chattr +a` + `scripts/audit_chain.php` 해시 체인 | ❗ root 를 잃으면 감사 로그를 믿을 수 없다 (R-11). 운영 전환 조건 |
 | PostgreSQL WAL 아카이브 | PRD S-08 RPO 15분 | **미적용** — 재시작 필요 + 원격 저장소 미결(Q-4) | 예시 설정 `deploy/postgresql/archive.conf.example` | ❗ **실제 RPO 는 일 1회(최대 24시간)** 다. 운영 전환 조건 |

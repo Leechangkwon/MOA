@@ -427,7 +427,7 @@ public static function canRead(array $u, array $file): bool { return self::decid
                                        [권한 ✔] Authz::canRead($u, $file)
                                              false → 403 {"error":"권한이 없습니다"} (파일명·레벨 등 아무 정보 없이)
                                                    → [LOG] deny 'file.download' 기록   ※ Q-6 결정: 과제 기준 403 통일
-                                       [4] scan_status = 'pending'/'infected' → 403 (검사 중/격리, 선택)
+                                       [4] scan_status <> 'clean' → 403 (pending 「검사 중」 / infected 「격리」, F-54 부터 **필수** — 5.28)
                                        [5] 경로 = Storage::pathOf($file['stored_name'])
                                              · basename() 처리, UUID 형식 정규식 검사
                                              · realpath()가 storage 디렉터리 안인지 확인
@@ -1266,6 +1266,59 @@ authentication failed for user "tbox_app"` 같은 형태다 — 호스트·포�
 
 **남는 위험(SECURITY R-85).** Manager·Employee·Guest 는 비밀번호 하나로 지켜질 수 있다 — 사용자 수용. Manager 는 「URL 로 가져오기」·구매 모듈 권한이 있어 상수 한 단어로 필수에 넣을 수 있게 해 두었다.
 
+### 5.27 업로드 내용 검사 강화 — zip 내부·매크로·PDF 능동 내용·HWP 서명 (PRD F-53, 사용자 결정 2026-09-16)
+
+**무엇을 더 보나.** 6단계 검사(확장자 화이트리스트·이중 확장자·finfo MIME 짝·OOXML 구조)는 「겉」을 본다. F-53 은 **속을 풀지 않고** 속을 본다 — 전부 `Upload::validatePath` 안, MIME 짝 검사 **뒤**에 붙는다(F-14 가져오기·구매 업로드도 같은 함수를 타므로 자동).
+
+| 검사 | 대상 | 방법 (추출 0) | 거부 사유 코드 |
+|---|---|---|---|
+| zip 내부 이름 | `zip`·`hwpx`·`docx/xlsx/pptx` | `ZipArchive` 중앙 디렉터리의 **이름만** 훑는다. 마지막 확장자 ∈ `BLOCKED_EXT`, `..` 세그먼트, 절대 경로(`/`·`\`·드라이브), 항목 > 10,000, `.zip` 항목이 3단 이상 | `zip_blocked_entry` · `zip_bad_path` · `nested_zip` |
+| 압축 폭탄 | 같은 대상 | 항목 > 10,000 · `statIndex` 의 `size`(원본) 합 > 1GB · 합 ÷ 파일 크기 > 100 **이면서 합 > 32MB**(작은 zip 의 반복 텍스트 오탐 방지, 검토 보정 2026-09-16) | `zip_bomb` |
+| 오피스 매크로 | `docx/xlsx/pptx` | 항목 이름이 `vbaProject.bin` 으로 끝나거나 `*/vbaData.xml` | `macro_found` |
+| PDF 능동 내용 | `pdf` | 파일 앞 4MB + 뒤 4MB 를 읽어 `/JavaScript` `/JS` `/OpenAction` `/AA` `/Launch` `/EmbeddedFile` `/RichMedia` 키를 대소문자 그대로 찾는다(PDF 이름 객체는 대소문자 구분) | `pdf_active_content` |
+| HWP 서명 | `hwp` 이고 머리 8바이트가 OLE 서명(`D0 CF 11 E0 A1 B1 1A E1`) | **휴리스틱**(OLE 디렉터리·미니 FAT 를 해석하지 않는다): 파일을 1MB 조각(64바이트 겹침)으로 읽어 디렉터리 항목 이름 UTF-16LE `FileHeader` 와 ASCII 서명 `HWP Document File` 이 **둘 다** 있어야 통과. 목적은 `.doc/.xls/.msi` 를 `.hwp` 로 바꿔 올린 것을 잡는 것 — 두 문자열을 갖춘 OLE 를 일부러 만든 공격자는 ClamAV(F-54) 몫 | `hwp_not_hwp` |
+
+**왜 풀지 않나.** 추출은 그 자체가 공격면이다(경로 탈출·폭탄·심볼릭 링크). 이름과 크기 표만 읽으면 100MB zip 도 0.1초이고 디스크를 쓰지 않는다.
+
+**오탐과 한계(SECURITY R-86).** `/OpenAction` 은 정상 PDF 에도 「첫 페이지로 이동」 용도로 있다 — 거부하고 사유를 관리자가 감사에서 볼 수 있게 한다. 사용자가 「정상인데 막힌다」고 하면 그 파일은 zip 으로 싸서 올리는 우회가 있다(zip 속 pdf 는 이름만 본다) — 이것이 곧 이 검사의 한계이며 F-54 ClamAV 가 그 자리를 맡는다. 암호 zip 은 이름은 보이지만 내용은 못 본다(ClamAV 도 못 본다) — 그대로 통과하되 R-86 에 적는다.
+
+**바뀌지 않는 것.** 응답은 동일 문구 400, 사유는 감사 `file.upload deny <코드>` 에만(7.4 표에 다섯 줄 추가). `ALLOWED_EXT`·`BLOCKED_EXT`·MIME 표 불변.
+
+### 5.28 악성코드 검사 파이프라인 — `pending` → `scripts/scan_pending.php` → `clean`/`infected` (PRD F-54, 사용자 결정 2026-09-16)
+
+**한 줄.** 업로드는 **검사 대기**로 저장되고, 1분마다 도는 배치가 ClamAV 로 검사해 **깨끗함/격리** 로 바꾼다. 깨끗해지기 전에는 아무도 내려받지 못한다.
+
+**왜 앱 밖 배치인가.** ① 앱 코드에 소켓·`exec` 를 넣지 않는다(CLAUDE.md 금지 패턴, php-fpm `disable_functions`) — `scripts/` 는 CLI 이고 린트 대상 밖이다(`purge_trash.php`·`alerts.php` 와 같은 자리). ② `clamd` 상주 데몬은 시그니처를 올리면 1GB 이상을 쥔다 — 이 VM(3.8GB, 가용 1.1GB)에서는 PostgreSQL 과 다툰다. 그래서 **`clamscan` 을 대기 파일이 있을 때만** 띄운다(없으면 배치는 DB 한 번 보고 끝). ③ 업로드 응답이 느려지지 않는다.
+
+**흐름.**
+```
+[업로드]  Upload::validatePath ✔ → INSERT files (scan_status = Upload::initialScanStatus())
+              · SCAN_ENABLED=1 → 'pending'   · 아니면 'clean' (지금까지의 동작)
+              · 네 곳 전부: _upload_common · files_fetch · purchase_recon_upload · purchase/Importer
+[cron * * * * *  tbox-php]  php scripts/scan_pending.php
+   [1] 잠금 /var/lib/tbox-v2/scan.lock (flock, 있으면 즉시 종료)
+   [2] SELECT id, stored_name FROM files WHERE scan_status='pending' AND purged_at IS NULL ORDER BY created_at LIMIT 200
+       0건 → 종료 (clamscan 실행 없음)
+   [3] proc_open clamscan --no-summary --infected --stdout --max-filesize=100M --max-scansize=1G <경로…>
+       종료 코드 0 = 전부 깨끗 · 1 = 감염 있음(stdout 에 "<경로>: <시그니처> FOUND") · 2 = 오류
+   [4] 건마다 트랜잭션: clean → UPDATE scan_status='clean' + Audit::system('file.scan' allow)
+                       infected → rename(storage → /var/lib/tbox-v2/quarantine/<stored_name>) → UPDATE 'infected' + Audit::system('file.scan' deny infected, detail.signature)
+                       오류 → 상태 유지 + Audit::system('file.scan' error scan_failed) → 다음 실행이 다시 시도
+[다운로드 · 미리보기 · 공유 링크 · 토큰 다운로드]
+   [권한 ✔] 뒤 [4] scan_status<>'clean' → 403 (pending: 「검사 중입니다. 잠시 뒤 다시 시도하세요」 / infected: 「악성코드가 발견되어 격리된 파일입니다」)
+             + Audit deny 'file.download' scan_pending | scan_infected
+[목록]     응답에 scan_status → 화면 배지 「검사 중」(회색) · 「격리됨」(빨강), 다운로드 단추 비활성
+[경보]     alerts.php AL-19: file.scan deny infected 1건 → 즉시, evidence {name, uploader, signature}
+```
+
+**격리는 삭제가 아니다.** 바이트는 `quarantine/` 로 옮기고(`0640 tbox-php`, 웹 루트 밖, `open_basedir` 안) 행은 `deleted_at` 없이 남는다 — 누가 언제 무엇을 올렸는지가 증거다(S-07). 되살리는 창구는 없다(원하면 관리자가 서버에서 수동). 30일 뒤 `purge_trash` 는 격리 파일을 건드리지 않는다.
+
+**시그니처 갱신.** `clamav-freshclam` 데몬(배포판 패키지)이 `database.clamav.net` 에서 HTTPS 로 받는다 — 이 서버가 밖으로 내는 통신은 이것과 패키지 미러·NTP·백업뿐이고 PRD 10장 아웃바운드 표에 이미 예외로 적혀 있다(ufw 는 현재 비활성, 켤 때 이 예외를 넣는다). `check_baseline.sh` 가 `daily.cld/cvd` 갱신 시각이 24시간을 넘으면 경고한다.
+
+**남는 위험(SECURITY R-86).** 검사 창(업로드 뒤 최대 1분 + clamscan 시간) 동안 다운로드 불가 · `clamscan` 1회 실측 RSS 991MB·22초(스왑 2GB 있음, 대기 있을 때만) · 알려진 시그니처만 잡는다(직원 PC 백신 대체 불가) · 암호 zip 내부 미검사 · 오탐 시 격리 해제는 수동. 이 문제들은 운영 전환 때 `clamd` + 전용 메모리로 바꾸면 창이 초 단위로 준다 — 배치 [3] 만 `clamdscan` 으로 바꾸면 된다.
+
+**바뀌지 않는 것.** `Upload::validatePath`(F-53 포함)는 그대로 먼저 돈다 — ClamAV 는 그 뒤의 두 번째 겹이다. 권한 판정(`decideRead`)이 상태 검사보다 **앞**이라 403 의 의미(IDOR)는 그대로다.
+
 ## 6. 저장 위치 — 파일 정보 vs 실제 파일
 
 ### 6.1 두 곳에 나눠 저장하는 이유
@@ -1708,6 +1761,46 @@ GRANT  USAGE, SELECT  ON SEQUENCE audit_logs_id_seq TO tbox_app;
 | `folder.delete|deny|role_not_permitted` | `{actor} 이(가) 폴더 「{target}」 을(를) 지우려 했지만 볼 권한조차 없어 막았습니다` | 18-1 |
 | `file.upload|deny|bad_folder` | `{actor} 이(가) 파일 「{target}」 을(를) 없는 폴더 또는 볼 수 없는 폴더에 올리려 해서 거부했습니다` | 18-1 files_upload |
 | `file.upload|deny|parent_narrower` | `{actor} 이(가) 파일 「{target}」 을(를) 폴더보다 넓은 {level} 등급으로 올리려 해서 거부했습니다` | 18-1 불변 규칙 ① |
+| `file.upload|deny|zip_unreadable` | `{actor} 이(가) 올린 「{target}」 의 압축 파일 구조를 읽을 수 없어 거부했습니다` | F-53 `Upload::inspectContent` (ARCH 5.27) |
+| `file.upload|deny|zip_bad_path` | `{actor} 이(가) 올린 압축 파일 「{target}」 안에 경로를 벗어나는 항목이 있어 거부했습니다` | F-53 `Upload::inspectContent` (ARCH 5.27) |
+| `file.upload|deny|zip_blocked_entry` | `{actor} 이(가) 올린 압축 파일 「{target}」 안에 실행 파일이 들어 있어 거부했습니다` | F-53 `Upload::inspectContent` (ARCH 5.27) |
+| `file.upload|deny|nested_zip` | `{actor} 이(가) 올린 「{target}」 안에 압축 파일이 여러 겹 겹쳐 있어 거부했습니다` | F-53 `Upload::inspectContent` (ARCH 5.27) |
+| `file.upload|deny|zip_bomb` | `{actor} 이(가) 올린 「{target}」 은(는) 압축을 풀면 지나치게 커지거나 항목이 너무 많아(압축 폭탄 의심) 거부했습니다` | F-53 `Upload::inspectContent` (ARCH 5.27) |
+| `file.upload|deny|macro_found` | `{actor} 이(가) 올린 문서 「{target}」 에 매크로가 들어 있어 거부했습니다` | F-53 `Upload::inspectContent` (ARCH 5.27) |
+| `file.upload|deny|pdf_active_content` | `{actor} 이(가) 올린 PDF 「{target}」 에 열리면 실행되는 내용(스크립트·자동 실행)이 들어 있어 거부했습니다` | F-53 `Upload::inspectContent` (ARCH 5.27) |
+| `file.upload|deny|hwp_not_hwp` | `{actor} 이(가) 올린 파일 「{target}」 이(가) 한글 문서 형식이 아닌데 .hwp 이름이라(위장 의심) 거부했습니다` | F-53 `Upload::inspectContent` (ARCH 5.27) |
+| `file.fetch|deny|zip_unreadable` | `{actor} 이(가) 가져온 「{target}」 의 압축 파일 구조를 읽을 수 없어 저장하지 않았습니다` | F-53 `Upload::inspectContent` (ARCH 5.27) |
+| `file.fetch|deny|zip_bad_path` | `{actor} 이(가) 가져온 압축 파일 「{target}」 안에 경로를 벗어나는 항목이 있어 저장하지 않았습니다` | F-53 `Upload::inspectContent` (ARCH 5.27) |
+| `file.fetch|deny|zip_blocked_entry` | `{actor} 이(가) 가져온 압축 파일 「{target}」 안에 실행 파일이 들어 있어 저장하지 않았습니다` | F-53 `Upload::inspectContent` (ARCH 5.27) |
+| `file.fetch|deny|nested_zip` | `{actor} 이(가) 가져온 「{target}」 안에 압축 파일이 여러 겹 겹쳐 있어 저장하지 않았습니다` | F-53 `Upload::inspectContent` (ARCH 5.27) |
+| `file.fetch|deny|zip_bomb` | `{actor} 이(가) 가져온 「{target}」 은(는) 압축을 풀면 지나치게 커지거나 항목이 너무 많아(압축 폭탄 의심) 저장하지 않았습니다` | F-53 `Upload::inspectContent` (ARCH 5.27) |
+| `file.fetch|deny|macro_found` | `{actor} 이(가) 가져온 문서 「{target}」 에 매크로가 들어 있어 저장하지 않았습니다` | F-53 `Upload::inspectContent` (ARCH 5.27) |
+| `file.fetch|deny|pdf_active_content` | `{actor} 이(가) 가져온 PDF 「{target}」 에 열리면 실행되는 내용(스크립트·자동 실행)이 들어 있어 저장하지 않았습니다` | F-53 `Upload::inspectContent` (ARCH 5.27) |
+| `file.fetch|deny|hwp_not_hwp` | `{actor} 이(가) 가져온 파일 「{target}」 이(가) 한글 문서 형식이 아닌데 .hwp 이름이라(위장 의심) 저장하지 않았습니다` | F-53 `Upload::inspectContent` (ARCH 5.27) |
+| `purchase.import.upload|deny|zip_unreadable` | `{actor} 이(가) 올린 「{target}」 의 압축 파일 구조를 읽을 수 없어 구매 가져오기를 거부했습니다` | F-53 `Upload::inspectContent` (ARCH 5.27) |
+| `purchase.import.upload|deny|zip_bad_path` | `{actor} 이(가) 올린 압축 파일 「{target}」 안에 경로를 벗어나는 항목이 있어 구매 가져오기를 거부했습니다` | F-53 `Upload::inspectContent` (ARCH 5.27) |
+| `purchase.import.upload|deny|zip_blocked_entry` | `{actor} 이(가) 올린 압축 파일 「{target}」 안에 실행 파일이 들어 있어 구매 가져오기를 거부했습니다` | F-53 `Upload::inspectContent` (ARCH 5.27) |
+| `purchase.import.upload|deny|nested_zip` | `{actor} 이(가) 올린 「{target}」 안에 압축 파일이 여러 겹 겹쳐 있어 구매 가져오기를 거부했습니다` | F-53 `Upload::inspectContent` (ARCH 5.27) |
+| `purchase.import.upload|deny|zip_bomb` | `{actor} 이(가) 올린 「{target}」 은(는) 압축을 풀면 지나치게 커지거나 항목이 너무 많아(압축 폭탄 의심) 구매 가져오기를 거부했습니다` | F-53 `Upload::inspectContent` (ARCH 5.27) |
+| `purchase.import.upload|deny|macro_found` | `{actor} 이(가) 올린 문서 「{target}」 에 매크로가 들어 있어 구매 가져오기를 거부했습니다` | F-53 `Upload::inspectContent` (ARCH 5.27) |
+| `purchase.import.upload|deny|pdf_active_content` | `{actor} 이(가) 올린 PDF 「{target}」 에 열리면 실행되는 내용(스크립트·자동 실행)이 들어 있어 구매 가져오기를 거부했습니다` | F-53 `Upload::inspectContent` (ARCH 5.27) |
+| `purchase.import.upload|deny|hwp_not_hwp` | `{actor} 이(가) 올린 파일 「{target}」 이(가) 한글 문서 형식이 아닌데 .hwp 이름이라(위장 의심) 구매 가져오기를 거부했습니다` | F-53 `Upload::inspectContent` (ARCH 5.27) |
+| `purchase.structure.upload|deny|zip_unreadable` | `{actor} 이(가) 올린 「{target}」 의 압축 파일 구조를 읽을 수 없어 창고 대기표 올리기를 거부했습니다` | F-53 `Upload::inspectContent` (ARCH 5.27) |
+| `purchase.structure.upload|deny|zip_bad_path` | `{actor} 이(가) 올린 압축 파일 「{target}」 안에 경로를 벗어나는 항목이 있어 창고 대기표 올리기를 거부했습니다` | F-53 `Upload::inspectContent` (ARCH 5.27) |
+| `purchase.structure.upload|deny|zip_blocked_entry` | `{actor} 이(가) 올린 압축 파일 「{target}」 안에 실행 파일이 들어 있어 창고 대기표 올리기를 거부했습니다` | F-53 `Upload::inspectContent` (ARCH 5.27) |
+| `purchase.structure.upload|deny|nested_zip` | `{actor} 이(가) 올린 「{target}」 안에 압축 파일이 여러 겹 겹쳐 있어 창고 대기표 올리기를 거부했습니다` | F-53 `Upload::inspectContent` (ARCH 5.27) |
+| `purchase.structure.upload|deny|zip_bomb` | `{actor} 이(가) 올린 「{target}」 은(는) 압축을 풀면 지나치게 커지거나 항목이 너무 많아(압축 폭탄 의심) 창고 대기표 올리기를 거부했습니다` | F-53 `Upload::inspectContent` (ARCH 5.27) |
+| `purchase.structure.upload|deny|macro_found` | `{actor} 이(가) 올린 문서 「{target}」 에 매크로가 들어 있어 창고 대기표 올리기를 거부했습니다` | F-53 `Upload::inspectContent` (ARCH 5.27) |
+| `purchase.structure.upload|deny|pdf_active_content` | `{actor} 이(가) 올린 PDF 「{target}」 에 열리면 실행되는 내용(스크립트·자동 실행)이 들어 있어 창고 대기표 올리기를 거부했습니다` | F-53 `Upload::inspectContent` (ARCH 5.27) |
+| `purchase.structure.upload|deny|hwp_not_hwp` | `{actor} 이(가) 올린 파일 「{target}」 이(가) 한글 문서 형식이 아닌데 .hwp 이름이라(위장 의심) 창고 대기표 올리기를 거부했습니다` | F-53 `Upload::inspectContent` (ARCH 5.27) |
+| `purchase.recon.upload|deny|zip_unreadable` | `{actor} 이(가) 올린 명세서 「{target}」 의 압축 파일 구조를 읽을 수 없어 거부했습니다` | F-53 `Upload::inspectContent` (ARCH 5.27) |
+| `purchase.recon.upload|deny|zip_bad_path` | `{actor} 이(가) 올린 명세서 「{target}」 안에 경로를 벗어나는 항목이 있어 거부했습니다` | F-53 `Upload::inspectContent` (ARCH 5.27) |
+| `purchase.recon.upload|deny|zip_blocked_entry` | `{actor} 이(가) 올린 명세서 「{target}」 안에 실행 파일이 들어 있어 거부했습니다` | F-53 `Upload::inspectContent` (ARCH 5.27) |
+| `purchase.recon.upload|deny|nested_zip` | `{actor} 이(가) 올린 명세서 「{target}」 안에 압축 파일이 여러 겹 겹쳐 있어 거부했습니다` | F-53 `Upload::inspectContent` (ARCH 5.27) |
+| `purchase.recon.upload|deny|zip_bomb` | `{actor} 이(가) 올린 명세서 「{target}」 은(는) 압축을 풀면 지나치게 커지거나 항목이 너무 많아(압축 폭탄 의심) 거부했습니다` | F-53 `Upload::inspectContent` (ARCH 5.27) |
+| `purchase.recon.upload|deny|macro_found` | `{actor} 이(가) 올린 명세서 「{target}」 에 매크로가 들어 있어 거부했습니다` | F-53 `Upload::inspectContent` (ARCH 5.27) |
+| `purchase.recon.upload|deny|pdf_active_content` | `{actor} 이(가) 올린 명세서 PDF 「{target}」 에 열리면 실행되는 내용(스크립트·자동 실행)이 들어 있어 거부했습니다` | F-53 `Upload::inspectContent` (ARCH 5.27) |
+| `purchase.recon.upload|deny|hwp_not_hwp` | `{actor} 이(가) 올린 명세서 「{target}」 이(가) 한글 문서 형식이 아닌데 .hwp 이름이라(위장 의심) 거부했습니다` | F-53 `Upload::inspectContent` (ARCH 5.27) |
 | `file.fetch|deny|bad_folder` | `{actor} 이(가) 가져온 파일을 없는 폴더 또는 볼 수 없는 폴더에 저장하려 해서 거부했습니다` | 18-1 files_fetch (응답은 기존 fetch 문구 하나) |
 | `file.fetch|deny|parent_narrower` | `{actor} 이(가) 가져온 파일을 폴더보다 넓은 {level} 등급으로 저장하려 해서 거부했습니다` | 18-1 |
 | `file.update|deny|bad_folder` | `{actor} 이(가) 파일 「{target}」 을(를) 없는 폴더 또는 볼 수 없는 폴더로 옮기려 해서 거부했습니다` | 18-1 files_update |
@@ -2009,6 +2102,7 @@ php_admin_value[disable_functions]   = fsockopen,pfsockopen,stream_socket_client
 | 04:30 | `scripts/verify_backup.sh` | 최신 산출물 `sha256sum -c` + gpg 복호화 시험(`pg_restore -l` 목록만) | `audit.integrity allow|error`, 2회 연속 실패 → `alert.raised AL-8` |
 | 00:05 | `scripts/audit_chain.php` | `audit.log` 일별 sha256 해시 체인(R-11) | `/var/lib/tbox-v2/audit-chain.txt`, `audit.integrity` |
 | 매 5분 | `scripts/alerts.php` | AL-1·AL-2·AL-5·AL-7·AL-10 SQL 판정, 중복 억제 30분 | `/var/log/tbox-v2/alerts.log`, `alert.raised` |
+| 매분 | `scripts/scan_pending.php` (`tbox-php`) | `pending` 파일이 있을 때만 `clamscan` → `clean`/`infected`·격리·감사 `file.scan` (F-54, 5.28) |
 | **매일 02:00** (16-2, 2026-09-12 — 주 1회에서 당김, SECURITY 8.4-6) | `scripts/consistency_check.php` | DB ↔ 스토리지 정합성 (고아·누락·sha256) | `audit.integrity`, 불일치 → `alert.raised AL-6` |
 
 셸 스크립트의 감사 기록은 `scripts/audit_cli.php <action> <result> [reason] --target … --detail JSON` 로 남긴다(문장 표에 없는 조합은 실패). 복구는 `scripts/restore.sh`(11.2). 서버 기준선 점검은 `scripts/check_baseline.sh`(읽기 전용), 강화 적용은 `deploy/hardening.sh --apply`(기본은 출력만 — 원격 세션 차단 위험이 있어 사용자가 직접 실행).
