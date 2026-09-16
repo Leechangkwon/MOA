@@ -53,7 +53,7 @@
 | F-55 | 백업 원격 사본 — 사용자 PC 가 매일 05:00 pull(`deploy/pc/pull_backup.ps1`), 서버 변경 0 | ✅ | ✅ Opus 09-16 | ✅ 09-16 정적 + 09-16 PC 실행 | ✅ T-67 (a)(c)(d)(e) 통과 · (b) 시험 무효(함수는 격리 시험 통과) | `ac6f7f4` · `a049bd3` · `6953b94` |
 | F-56 | 프로그램용 `GET /api/whoami` — 토큰 귀속 계정의 {username, role, team_id, upload_levels} 만, 토큰 창구 셋→넷 | ✅ | ✅ Opus 09-16 | ✅ 09-16 T-68 22/0/0 | ✅ 사용자 09-16 14:29 전 구간 확인 | `dedd3ca` · v1.7.0 `7a2805a` |
 | F-57 | 「검사 중」 423 + `Retry-After: 30` — 일시 상태(pending)와 영구 거부(403 격리·권한)를 상태 코드로 구분, 넷(다운로드·미리보기·raw·공유) 한 함수 | ⚠ | ✅ Opus 09-16 | ✅ 09-16 f54.sh 61/0 + 추가 실측 | ⚠ 사용자 프로그램 | `038e562` · v1.8.0 `f7c0931` |
-| F-58 | 프로그램용 폴더 관리 — 토큰 창구 넷→**여덟**(`GET/POST /api/folders`·`PATCH /api/folders/{num}`·`PATCH /api/files/{id}`), 토큰 PATCH 는 허용 키 좁힘(폴더 `name`·`parent_id`, 파일 `folder_id`), 삭제·등급 변경은 닫힘 | ✅ 구현·검토 | ✅ 09-16 (Opus, 재지시 1회 — 시험 (f) 기준) | ✅ 09-16 api_folders.sh 54/0/0 | ⚠ 대기 | 커밋 뒤 기입 |
+| F-58 | 프로그램용 폴더 관리 — 토큰 창구 넷→**여덟**(`GET/POST /api/folders`·`PATCH /api/folders/{num}`·`PATCH /api/files/{id}`), 토큰 PATCH 는 허용 키 좁힘(폴더 `name`·`parent_id`, 파일 `folder_id`), 삭제·등급 변경은 닫힘 | ✅ 구현·검토 | ✅ 09-16 (Opus, 재지시 1회 — 시험 (f) 기준) | ✅ 09-16 api_folders.sh 54/0/0 | ⚠ 대기 | `0132dfd` · v1.9.0 `6d1ced5` |
 | 문구 정리 | 화면 문구 정리 — **1단계** 화면에 늘 펼쳐져 있던 안내 68곳 삭제·축소 / **2단계** 「사용 방법」 단추와 화면별 도움말 20화면 (F-38 · T-51) | ◐ 2단계 구현 | ✅ 2026-09-15 (Opus) | ⚠ 대기 | ⚠ 대기 | 1단계 `06ee617` · 2단계 커밋 전 |
 | **26** | 관리자 「역할로 보기」(F-39) · 관리 내비·계정 편집 폼(F-40) · 폴더 삭제 세 갈래(F-41) — 사용자 결정·지적 2026-09-15 | ✅ 구현 | ⚠ Fable 재검토 대기 (Opus 자체 시험 124/124) | ⚠ 대기 | ⚠ 대기 | 커밋 전 |
 
@@ -1843,7 +1843,7 @@ sudo -u postgres psql -d tbox_re -c "SELECT happened_at, actor_name, action, res
 - [x] 코드 읽기: 상수 넉 줄이 라우트 패턴과 글자까지 같은가 · `TBOX_API_TOKEN_ONLY_ROUTES` 무변경 · 두 핸들러 diff 가 `$allowedFields` 한 줄 + 주석뿐인가 — **Fable 검토(09-16 17:00)** 셋 다 확인. Opus 가 지시 범위 밖이라 남긴 `[2-T]` 주석 두 곳(F-58·4.5 언급)은 Fable 이 보정(주석만)
 - [x] `tests/api_folders.sh` 실행 — 귀속을 `qa_employee01` 로 잠시(**토큰 값은 그대로, `API_TOKEN_USER` 줄만** — 사용자가 17:05 직접 실행) → 1차 **53/1/0**(실패 1 = 시험 (f) 의 「새 조합」 기준이 DB 이력이라 문장표에 있는 세 조합을 오판 → 재지시 1회) → 2차 **54/0/0**(17:22). 1차 시작은 R-73 관문에 걸려 10분 대기(로컬 프로그램 `tbox-buddy/3.0` 이 admin01 토큰으로 두드린 흔적) → `admin01` 복귀는 사용자 실행 대기
 - [x] `API.md` 11·12장 실측 응답 채움(1차 실행 로그 원문) · lint 0 · `php -l` 3 파일
-- [ ] 관문 ④ 한글 커밋 → push → `release.sh minor`
+- [x] 관문 ④ 한글 커밋 `0132dfd` → push → `release.sh minor` → **v1.9.0**(`6d1ced5`, 태그 push)
 
 **자기 공격 체크** (사용자, 관문 ③)
 - [ ] 진짜 토큰(admin01 귀속)으로 `GET /api/folders` → 트리가 화면과 같은가
