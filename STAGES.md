@@ -1674,6 +1674,7 @@ sudo -u postgres psql -d tbox_re -c "SELECT happened_at, actor_name, action, res
 - [ ] zip 안에 `.exe` 를 넣어 올리기 → 거부 · 정상 zip → 성공
 - [ ] 워드에서 매크로 포함 문서를 `.docx` 로 저장해 올리기 → 거부
 - [ ] 관리자 감사 로그에서 사유 코드(`zip_blocked_entry`·`macro_found`…) 확인
+- [ ] **진짜 HWP 5.x 통과(미검증 항목)** — 사용자 「hwp 문서 올렸어」(10:1x)라 했으나 서버에는 `.hwp` 요청이 없다(nginx·감사 모두 `aa.docx` 두 건뿐). 한글에서 `.docx` 로 저장된 파일이었을 가능성 — `.hwp` 확장자 그대로 다시 올려 확인 필요
 
 ### F-54 — 악성코드 검사 파이프라인 (ClamAV `clamscan` 배치·격리·403·AL-19) — 착수 2026-09-16
 
@@ -1692,8 +1693,9 @@ sudo -u postgres psql -d tbox_re -c "SELECT happened_at, actor_name, action, res
 - [x] `scan_pending.php` 읽기 — 경로는 `Storage::pathFor` 만, 격리 이동은 `rename`, 오류 시 상태 유지
 
 **자기 공격 체크** (사용자, 관문 ③)
-- [ ] EICAR 텍스트를 `.txt` 로 올리기 → 1~2분 뒤 목록에 「격리됨」, 다운로드 403, 관리자 감사에 `file.scan deny infected`, `alerts.log` AL-19
-- [ ] 정상 파일 올린 직후 다운로드 → 「검사 중」 → 1분 뒤 성공
+- [x] (사용자 2026-09-16 10:1x) 목록에서 「격리됨」 확인 — 다만 그 파일은 Fable 시험(T-66 (b), `qa_employee01`)이 올린 EICAR 였다. 사용자 목록에 남지 않게 Fable 이 앱 창구로 휴지통 이동(행 `infected` 유지, 바이트는 `quarantine/`, 감사 기록 보존). 사용자 본인의 EICAR 업로드는 아직
+- [x] (사용자 2026-09-16 10:09) `aa.docx` 업로드 → 201 → 배치 10:10 `file.scan allow`(clean). 첫 시도 10:08:44 는 0바이트로 `empty_file` 거부(파일이 저장 중이었던 듯)
+- [ ] 정상 파일 올린 직후 다운로드 → 「검사 중」 → 1분 뒤 성공 (aa.docx 로 배지 관찰 여부는 사용자 미보고)
 
 **학습 기록**
 
@@ -1706,7 +1708,8 @@ sudo -u postgres psql -d tbox_re -c "SELECT happened_at, actor_name, action, res
 | 2026-09-16 | 보정(Fable 검토) | F-54 ① 403 문구 상수가 핸들러 네 파일에 중복 ② 격리 이동 뒤 DB 기록 실패 시 그 행이 영영 pending(매분 `file_missing`) ③ CSS 고정 색값 | ① `Http::MSG_SCAN_PENDING/INFECTED`(보안 핵심 파일이지만 상수 2줄만 허용) ② 다음 실행이 격리 폴더에 같은 이름이 있으면 `quarantined_earlier` 로 infected 마무리 ③ 토큰 `--bg` |
 | 2026-09-16 | 관찰(Fable) | 공유 링크는 다른 실패를 404 로 통일하는데 검사 상태만 403 | 유효 토큰 보유자는 이미 아는 사실, 추측자는 유효 토큰을 맞혀야 하므로 실익 없음 — R-86 ⑦ 로 기록, 문구 유지 |
 | 2026-09-16 | 판단(Fable) | 앱 코드가 아니라 `scripts/` 배치가 ClamAV 를 부른다 | CLAUDE.md 금지 패턴(exec·소켓)·php-fpm `disable_functions` 은 앱에만. `scripts/` 는 CLI·린트 제외(`purge_trash`·`alerts` 와 같은 자리). 앱은 상태를 읽어 403 만 |
-
+| 2026-09-16 | 관찰(Fable) | `app.log` 에 08:55:27~08:57:13 `Upload.php` 구문 오류 54줄 — Opus 가 F-53 을 편집하던 중간 상태 | 운영 트리에서 직접 편집하는 구조의 대가: 그 2분간 모든 요청이 500 이 될 수 있었다. 실측: 공개·로컬 사이트 접근 로그에 5xx **0건**(사용자 요청 없던 시간). 후속 후보: 구현 에이전트가 파일을 통째로 다시 쓸 때 임시 파일에 쓰고 `php -l` 통과 뒤 `mv` 하도록 CLAUDE.md 4장에 한 줄(사용자 결정 필요) |
+| 2026-09-16 | 관찰(Fable) | 관문 ③ 첫 보고 「hwp 올렸어 / EICAR 가 격리됐대」 | 서버 기록은 `aa.docx` 두 건(0바이트 거부 → 성공 → clean)뿐, `.hwp` 없음. 격리 표시는 시험 파일 → 휴지통으로 정리. 시험이 남긴 증거 파일이 사용자 목록에 보이는 것은 혼란 요인 — 다음 시험부터 (g) 정리 단계에서 격리 행도 휴지통으로(바이트·감사는 그대로) |
 ### F-55 — 백업 원격 사본: 사용자 PC 가 매일 끌어온다 (pull) — 착수 2026-09-16
 
 > 지시서: `docs/f55-backup-pull-directive.md`. 근거: PRD 7.8 S-08·Q-4(임시 결정)·12.2 T-67, ARCH 11.1 (PC) 행, SECURITY R-08·R-88(새)·8.4-4, 09-15 리뷰 3·5번.
