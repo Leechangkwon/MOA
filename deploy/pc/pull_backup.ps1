@@ -161,6 +161,12 @@ function Invoke-SshToFile {
 
     $proc = Start-Process -FilePath $SshExe -ArgumentList $argLine -NoNewWindow -PassThru `
         -RedirectStandardOutput $OutFile -RedirectStandardError $ErrFile
+
+    # Handle 을 한 번 읽어 프로세스 핸들을 캐시해 둔다.
+    # 이것을 하지 않으면 자식이 끝난 뒤 .NET 이 핸들을 놓아 버려 ExitCode 가 빈 값이 된다.
+    # 빈 값은 아래 호출부의 -ne 0 에 걸려 성공한 전송까지 실패로 처리된다.
+    $null = $proc.Handle
+
     $proc.WaitForExit()
     return $proc.ExitCode
 }
