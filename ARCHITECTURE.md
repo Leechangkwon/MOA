@@ -363,6 +363,35 @@ F-50 의 셋에 **프로그램용 자기 확인** 창구 하나를 더해 넷이
 이 창구의 응답은 그 사람을 가리킨다 — 핸들러도 클라이언트도 고치지 않는다. 다른 PC 로 넓힐 때의 순서가 그것이다.
 
 
+### 4.5 토큰 창구 여덟 — 폴더 목록·생성·이름 변경·이동, 파일 이동 (PRD F-58, 사용자 요청 2026-09-16)
+
+F-56 의 넷에 **폴더 관리 넷**을 더해 여덟이 됐다: `GET /api/folders` · `POST /api/folders` · `PATCH /api/folders/{num}` · `PATCH /api/files/{id}`.
+넷 다 **화면도 쓰는 라우트**라 F-50 의 갈림길(4.3)을 그대로 탄다 — `X-API-Token` 헤더가 실제로 온 요청만 토큰 경로, 없으면 세션 경로(웹 불변),
+틀린 값은 401 이고 세션으로 되돌아가지 않는다. `TBOX_API_TOKEN_ONLY_ROUTES` 에는 넣지 않는다. 상수 `TBOX_API_TOKEN_ROUTES` 에 넉 줄 추가가 라우터 쪽 변경의 전부다.
+
+**새 판정 코드가 없다(4.3·4.4 와 같은 원칙).** 넷의 정책은 `file.read`·`file.upload`·`file.update` 이고 인가 `[4]` 는 그대로 탄다. 핸들러 안의 판정도
+세션과 같은 함수다 — 트리 `decideRead(folder)` + `visibleFoldersWhere`(5.16), 만들기 `decideUploadAs` + 부모 `decideRead` + `fitsUnderFolder`,
+폴더 이름·이동 `decideFolderChange` + `cycle`·`depth_exceeded`, 파일 이동 `decideRead`·`decideEdit` + 대상 폴더 `decideRead` + `fitsUnderFolder`.
+토큰 요청의 `$user` 는 귀속 계정이므로 「귀속 계정이 만들었거나 그 역할로 고칠 수 있는 것만」이 자동으로 성립한다.
+
+**토큰 요청은 허용 키가 더 좁다 — 유일한 새 코드.** 두 PATCH 핸들러의 첫머리 `$allowedFields` 를 `defined('TBOX_AUTH_METHOD')` 로 한 줄 가른다:
+
+| 라우트 | 세션(웹) 허용 키 | 토큰 허용 키 |
+|---|---|---|
+| `PATCH /api/folders/{num}` | `name` `parent_id` `access_level` `team_id` `cascade` `reason_text` | **`name` `parent_id`** |
+| `PATCH /api/files/{id}` | `description` `access_level` `team_id` `folder_id` | **`folder_id`** |
+
+그 밖의 키가 오면 이미 있는 허용 키 검사(R-07 대량 할당 차단)가 400 `bad_request` 로 거부한다 — 새 거부 갈래·새 문구가 아니라 **허용 목록의 원소가 줄어든 것**뿐이다.
+등급·팀 변경을 토큰에 열지 않는 이유: 넓히기는 Admin 만이고(`downgrade_not_permitted`) 그 계정은 재인증 관문 `[3-2]` 대상인데 토큰 경로는 그 관문을 지나지 않는다(4.2) —
+사람의 절차가 붙은 결정을 프로그램 창구로 우회시키지 않는다. `cascade`(하위 일괄 좁히기)도 같은 이유다. `folders_list.php`·`folders_create.php` 는 **한 글자도 바뀌지 않는다**.
+
+**응답·문구는 세션과 같다.** F-50 의 검색은 정찰 재료(전체 건수·`can_*`·올린 사람)를 빼기 위해 투영을 갈랐지만, 폴더 트리 응답은 이미 그런 값이 없다(`id`·`name`·`depth`·`access_level`·`team_id`·`team_name`·`child_count`·`file_count`, 전부 호출자가 볼 수 있는 것만).
+오류는 화면과 같은 통일 문구(400·403·409)다 — F-49 업로드처럼 이유 문구를 주지 않는다. 프로그램이 이유를 알아야 하면 그때 사유 코드 응답을 별건으로 검토한다(지금은 감사 로그 `detail.auth=api_token` 행에 사유가 남는다).
+
+**남는 표면(R-90).** 토큰이 처음으로 **「고치기」 계열**에 닿는다. 유출된 토큰은 귀속 계정 권한으로 폴더를 만들고 이름을 바꾸고 파일·폴더를 옮길 수 있다 — 삭제는 아니지만
+**복구 수단이 없다**(휴지통이 아니다, 옮긴 것은 감사 로그를 보고 사람이 되돌린다). 귀속이 Admin 이면 모든 폴더·파일이 대상이다. 완화는 4.2~4.4 와 같다(회전·TLS·감사 `auth=api_token`), 그리고
+**귀속 계정을 Employee 로 두면** 고칠 수 있는 것이 자기가 만든 폴더·자기 파일로 좁혀진다(`decideFolderChange owner`·`decideEdit`). 지우기·등급 변경은 사용자별 토큰(설계 B) 결정 뒤 별건이다.
+
 ## 5. 네 가지 흐름 — 순서대로, 권한 검사 위치 표시
 
 표기: **[권한 ✔]** = 여기서 권한 검사 · **[DB]** = PostgreSQL · **[FS]** = 스토리지 디스크 · **[LOG]** = 감사 로그

@@ -10,7 +10,7 @@ API 를 추가할 때마다 이 문서에 **이어서** 적는다(마지막 장�
 |---|---|
 | 기본 주소 | 공개: `https://changkwon.mso.so` · 서버 안 검토용: `http://127.0.0.1:8082` |
 | 형식 | 요청·응답은 JSON (`Content-Type: application/json; charset=utf-8`). 파일 업로드만 `multipart/form-data` |
-| 인증 | 기본은 **세션 쿠키**(아래 「세션」)다. 헤더 `X-API-Token` 이 통하는 창구는 **넷**이다 — `POST /api/upload`(7장) · `GET /api/files`(8장) · `GET /api/files/{id}/download`(9장) · `GET /api/whoami`(10장). 업로드와 whoami 둘은 토큰 전용이고(세션 쿠키로는 부를 수 없다 — 헤더가 없으면 401), 검색·다운로드 둘은 화면도 쓰는 창구라 **헤더를 보내면 토큰으로, 안 보내면 세션으로** 판정한다. 그 헤더는 **그 밖의 창구에서는 무시된다**(삭제·수정·계정·감사 등은 읽지도 않는다) |
+| 인증 | 기본은 **세션 쿠키**(아래 「세션」)다. 헤더 `X-API-Token` 이 통하는 창구는 **여덟**이다 — `POST /api/upload`(7장) · `GET /api/files`(8장) · `GET /api/files/{id}/download`(9장) · `GET /api/whoami`(10장) · `GET /api/folders`·`POST /api/folders`·`PATCH /api/folders/{num}`(11장) · `PATCH /api/files/{id}`(12장, 폴더 이동만). 업로드와 whoami 둘은 토큰 전용이고(세션 쿠키로는 부를 수 없다 — 헤더가 없으면 401), 나머지 여섯은 화면도 쓰는 창구라 **헤더를 보내면 토큰으로, 안 보내면 세션으로** 판정한다. 그 헤더는 **그 밖의 창구에서는 무시된다**(삭제·등급 변경·계정·감사 등은 읽지도 않는다) |
 | 세션 | 로그인 성공 시 쿠키 `tbox_session` (HttpOnly·Secure·SameSite=Lax). 이후 요청에 그 쿠키를 함께 보낸다. 유휴 30분·최대 8시간 |
 | CSRF | 상태를 바꾸는 요청(POST·PATCH·DELETE)은 헤더 `X-CSRF-Token: <토큰>` 필수. 토큰은 `GET /api/me` 의 `csrf_token`. 없거나 틀리면 `403 {"error":"권한이 없습니다"}` |
 | 오류 응답 | 항상 `{"error":"<한국어 문구>"}`. 권한 없음은 언제나 403 + 같은 문구(대상 정보 없음). 서버 오류는 500 `{"error":"서버 오류"}` — 원인은 응답에 나오지 않는다 |
@@ -376,6 +376,139 @@ curl -s -w ' [%{http_code}]\n' -b jar 'http://127.0.0.1:8082/api/whoami'
 
 > 200 응답은 토큰 귀속이 검토 계정(`qa_`)일 때만 찍을 수 있어 비워 두었다 — 지금 귀속은
 > 사용자 프로그램용 계정이다. 추가 규칙 2 에 따라 **추정 응답을 적지 않는다**.
+
+---
+
+## 11. 프로그램용 폴더 — `GET /api/folders` · `POST /api/folders` · `PATCH /api/folders/{num}`
+
+프로그램이 **폴더를 탐색하고, 만들고, 이름을 바꾸고, 옮기는** 창구다 (PRD F-58, ARCHITECTURE 4.5). 화면의 폴더 기능과
+**같은 창구·같은 권한 판정·같은 응답**이고, 다른 것은 ① 인증 방법 ② `PATCH` 의 허용 키가 더 좁다는 것 둘뿐이다.
+폴더 **삭제**(`DELETE /api/folders/{num}`)와 **등급 변경**은 토큰으로 열려 있지 않다 — 헤더를 보내도 무시되어 401 「로그인이 필요합니다」다.
+
+### 11-1. 목록(트리) — `GET /api/folders?parent=<id>`
+
+| 항목 | 내용 |
+|---|---|
+| 인증 | 헤더 **`X-API-Token: <토큰>`**(7장과 같은 토큰). 헤더를 보내지 않으면 세션 쿠키 경로로 판정한다 |
+| 요청 | `parent`(선택, 폴더 번호. **0 또는 없음 = 루트**) |
+| 성공 | `200` `{"folder":{"id":<parent>,"name":…,"access_level":…,"breadcrumb":[{id,name,access_level}…]},"folders":[{"id":<정수>,"name":…,"depth":1~5,"access_level":…,"team_id":…,"team_name":…,"child_count":<n>,"file_count":<n>}]}` — 화면 응답과 **동일**. `folders` 는 **귀속 계정이 읽을 수 있는 자식만**(못 읽는 폴더는 응답에 없다), `file_count` 는 그 안에서 귀속 계정이 볼 수 있는 파일 수 |
+| 실패 | `401`(헤더 없음 → 「로그인이 필요합니다」 · 틀린 토큰 → 「API 토큰이 올바르지 않습니다」) · `403 {"error":"권한이 없습니다"}`(`parent` 를 읽을 수 없거나 없는 번호 — 둘을 구분하지 않는다) · `503`(토큰 미설정) |
+| 넣지 않는 것 | 폴더를 만든 사람 · 못 읽는 폴더의 존재 · 전체 개수 |
+
+폴더 안의 **파일**은 8장의 검색에 `folder=<id>` 를 붙여 받는다: `GET /api/files?folder=<id>&limit=` (`q` 없이 `folder` 만 보내면 그 폴더 안 목록, `q` 도 보내면 그 폴더 안에서 검색).
+
+```bash
+curl -s -H "X-API-Token: $API_TOKEN" 'https://changkwon.mso.so/api/folders'            # 루트
+curl -s -H "X-API-Token: $API_TOKEN" 'https://changkwon.mso.so/api/folders?parent=12'  # 12번 폴더의 자식
+curl -s -H "X-API-Token: $API_TOKEN" 'https://changkwon.mso.so/api/files?folder=12&limit=50'   # 12번 폴더 안 파일(8장 배열)
+```
+
+실측 2026-09-16 (검토 포트 8082, 귀속을 검토 계정 `qa_employee01`(Employee·팀 1)로 잠시 두고, `-A "tbox-review/2026-09-16"`). 시험이 만든 폴더는 곧바로 지웠고 파일은 휴지통으로 보냈다.
+
+```bash
+# 루트 — 이 계정이 볼 수 있는 루트 폴더가 없던 시점. 같은 계정의 세션 응답과 JSON 문자열까지 동일했다
+curl -s -w ' [%{http_code}]\n' -H "X-API-Token: $API_TOKEN" 'http://127.0.0.1:8082/api/folders'
+{"folder":{"id":0,"name":null,"access_level":null,"breadcrumb":[]},"folders":[]} [200]
+
+# qa_admin01 이 만든 admin-only 폴더 S — Employee 귀속의 트리에는 없고, 번호로 직접 열어도 403
+curl -s -w ' [%{http_code}]\n' -H "X-API-Token: $API_TOKEN" 'http://127.0.0.1:8082/api/folders?parent=<S>'
+{"error":"권한이 없습니다"} [403]
+```
+
+### 11-2. 만들기 — `POST /api/folders`
+
+| 항목 | 내용 |
+|---|---|
+| 인증 | 헤더 **`X-API-Token`**. `X-CSRF-Token` 은 필요 없다 |
+| 요청 | JSON `{"name":"<1~50자>","access_level":"public|internal|team|admin-only","parent_id":<번호 또는 생략>,"team_id":<team 일 때 필수>}` — 허용 키는 이 넷뿐(화면과 같다) |
+| 성공 | `201` `{"folder":{"id":<정수>,"parent_id":…,"name":…,"depth":…,"access_level":…,"team_id":…,"child_count":0,"file_count":0,"created_at":…}}` — 화면 응답과 동일 |
+| 실패 | `400 {"error":"잘못된 요청입니다"}`(이름 규칙·깊이 6·부모보다 넓은 등급·허용 외 키) · `403 {"error":"권한이 없습니다"}`(그 등급·팀으로 만들 자격 없음 — 10장 `upload_levels` 밖 · 부모를 읽을 수 없음) · `409 {"error":"이미 있는 이름입니다"}`(같은 부모 안 같은 이름) |
+
+```bash
+curl -s -w '\n[%{http_code}]\n' -H "X-API-Token: $API_TOKEN" -H 'Content-Type: application/json' \
+  -d '{"name":"2026-09 보고서","access_level":"internal"}' https://changkwon.mso.so/api/folders
+```
+
+실측 2026-09-16 (검토 포트 8082, 귀속을 검토 계정 `qa_employee01`(Employee·팀 1)로 잠시 두고, `-A "tbox-review/2026-09-16"`). 시험이 만든 폴더는 곧바로 지웠고 파일은 휴지통으로 보냈다.
+
+```bash
+# 만들기 → 201
+{"folder":{"id":57,"parent_id":null,"name":"F58-a-0916-1453127","depth":1,"access_level":"internal","team_id":null,"child_count":0,"file_count":0,"created_at":"2026-09-16 17:15:19.57908+09"}} [201]
+# 같은 이름 다시 → 409
+{"error":"이미 있는 이름입니다"} [409]
+# name 없음 → 400
+{"error":"잘못된 요청입니다"} [400]
+# access_level=admin-only (Employee 귀속 — 10장 upload_levels 밖) → 403
+{"error":"권한이 없습니다"} [403]
+```
+
+### 11-3. 이름 변경·이동 — `PATCH /api/folders/{num}`
+
+| 항목 | 내용 |
+|---|---|
+| 인증 | 헤더 **`X-API-Token`** |
+| 요청 | JSON — 토큰 요청의 허용 키는 **`name`·`parent_id` 둘뿐**이다. `{"name":"새 이름"}` · `{"parent_id":<번호>}`(옮기기) · `{"parent_id":null}`(루트로) · 둘을 함께. `access_level`·`team_id`·`cascade`·`reason_text` 는 화면에서는 되지만 **토큰으로 보내면 400** — 등급 변경은 사람의 결정이라 프로그램 창구에 열지 않았다(ARCH 4.5) |
+| 성공 | `200` `{"folder":{"id","parent_id","name","depth","access_level","team_id","updated_at"},"cascaded":0}` — 화면 응답과 동일 |
+| 실패 | `400`(허용 외 키 · 이름 규칙 · 바뀌는 것 없음 · 자기 자신·자손 아래로 이동 · 옮긴 뒤 깊이 5 초과 · 새 부모보다 넓은 등급) · `403`(귀속 계정이 고칠 수 없는 폴더 — 남이 만든 폴더, Employee 는 자기가 만든 것만 · 없는 번호도 같은 403) · `409`(새 위치에 같은 이름) |
+
+```bash
+curl -s -w '\n[%{http_code}]\n' -X PATCH -H "X-API-Token: $API_TOKEN" -H 'Content-Type: application/json' \
+  -d '{"name":"2026-09 월간 보고서"}' https://changkwon.mso.so/api/folders/12
+curl -s -w '\n[%{http_code}]\n' -X PATCH -H "X-API-Token: $API_TOKEN" -H 'Content-Type: application/json' \
+  -d '{"parent_id":7}' https://changkwon.mso.so/api/folders/12
+```
+
+실측 2026-09-16 (검토 포트 8082, 귀속을 검토 계정 `qa_employee01`(Employee·팀 1)로 잠시 두고, `-A "tbox-review/2026-09-16"`). 시험이 만든 폴더는 곧바로 지웠고 파일은 휴지통으로 보냈다.
+
+```bash
+# 이름 변경 {"name":"F58-a2-…"} → 200
+{"folder":{"id":57,"parent_id":null,"name":"F58-a2-0916-1453127","depth":1,"access_level":"internal","team_id":null,"updated_at":"2026-09-16 17:15:20.046726+09"},"cascaded":0} [200]
+# 폴더 58 을 57 아래로 {"parent_id":57} → 200, depth 2
+{"folder":{"id":58,"parent_id":57,"name":"F58-b-0916-1453127","depth":2,"access_level":"internal","team_id":null,"updated_at":"2026-09-16 17:15:20.248046+09"},"cascaded":0} [200]
+# 57 을 자기 자식 58 아래로 → 400 (cycle)
+{"error":"잘못된 요청입니다"} [400]
+# {"access_level":"public"} — 토큰 허용 키 밖 → 400 (화면에서는 되는 요청이다)
+{"error":"잘못된 요청입니다"} [400]
+# {"name":"…","cascade":false} — 토큰 허용 키 밖 → 400
+{"error":"잘못된 요청입니다"} [400]
+# 못 읽는(admin-only) 폴더 S 의 이름 변경 → 403
+{"error":"권한이 없습니다"} [403]
+```
+
+---
+
+## 12. 프로그램용 파일 이동 — `PATCH /api/files/{id}`
+
+8장이 돌려준 파일 `id` 를 **다른 폴더로 옮기는** 창구다 (PRD F-58, ARCHITECTURE 4.5). 화면의 「이동」과 같은 창구·같은 판정이다.
+같은 경로가 화면에서는 설명·등급 변경도 하지만, **토큰 요청은 `folder_id` 하나만** 받는다.
+
+| 항목 | 내용 |
+|---|---|
+| 인증 | 헤더 **`X-API-Token`**. `X-CSRF-Token` 은 필요 없다 |
+| 요청 | JSON `{"folder_id":<폴더 번호>}` 또는 `{"folder_id":null}`(루트로). **다른 키가 하나라도 있으면 400** |
+| 성공 | `200 {"ok":true}` |
+| 실패 | `400 {"error":"잘못된 요청입니다"}`(허용 외 키 · 대상 폴더가 없거나 **읽을 수 없음**(둘을 구분하지 않는다) · 폴더보다 넓은 등급의 파일 · 바뀌는 것 없음) · `403 {"error":"권한이 없습니다"}`(귀속 계정이 고칠 수 없는 파일 — Employee 는 자기가 올린 것만) · `404`(없는 id) |
+| 삭제는 | `DELETE /api/files/{id}` 는 토큰으로 열려 있지 않다(헤더 무시 → 401 「로그인이 필요합니다」) |
+
+```bash
+curl -s -w '\n[%{http_code}]\n' -X PATCH -H "X-API-Token: $API_TOKEN" -H 'Content-Type: application/json' \
+  -d '{"folder_id":12}' https://changkwon.mso.so/api/files/<id>
+```
+
+실측 2026-09-16 (검토 포트 8082, 귀속을 검토 계정 `qa_employee01`(Employee·팀 1)로 잠시 두고, `-A "tbox-review/2026-09-16"`). 시험이 만든 폴더는 곧바로 지웠고 파일은 휴지통으로 보냈다.
+
+```bash
+# 7장으로 올린 파일을 폴더 57 로 {"folder_id":57} → 200. 이어서 GET /api/files?folder=57 배열에 그 id 가 있었다
+{"ok":true} [200]
+# 루트로 {"folder_id":null} → 200
+{"ok":true} [200]
+# {"description":"x"} — 토큰 허용 키 밖 → 400 (화면에서는 되는 요청이다)
+{"error":"잘못된 요청입니다"} [400]
+# 못 읽는(admin-only) 폴더 S 로 {"folder_id":<S>} → 400 (없는 폴더와 같은 응답 — 존재를 알리지 않는다)
+{"error":"잘못된 요청입니다"} [400]
+```
+
+> 토큰은 이 **여덟** 밖에서는 아무것도 열지 못한다 — 삭제·등급 변경·계정·감사 창구는 헤더를 읽지도 않는다(0장).
 
 ---
 

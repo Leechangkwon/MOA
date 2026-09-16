@@ -50,7 +50,13 @@ $db = Db::instance();
 // ─── [2] 허용 필드 화이트리스트 (SECURITY R-07, ARCH 5.7 [2]) ───
 // 파일 행을 **읽기 전에** 본문 형태부터 본다. 모르는 키가 섞인 요청은 대상이 무엇이든 거부다.
 // 그래서 이 거부 기록에는 대상이 없다 — 문장 틀의 {target} 은 '?' 로 남는다 (ARCH 7.4).
-$allowedFields = ['description', 'access_level', 'team_id', 'folder_id'];
+// F-58 — **토큰 요청은 허용 키가 더 좁다** (ARCH 4.5, SECURITY R-90).
+//   `X-API-Token` 으로 들어온 요청(라우터 [2-T] 가 TBOX_AUTH_METHOD 를 세운다)에는 폴더 이동
+//   (`folder_id`)만 열고, 설명·등급·팀은 허용 목록에서 뺀다 — 등급 변경은 사람의 결정이라
+//   프로그램 창구로 우회시키지 않는다. 아래 판정·감사·응답은 두 경로가 같은 코드다.
+$allowedFields = defined('TBOX_AUTH_METHOD')
+    ? ['folder_id']
+    : ['description', 'access_level', 'team_id', 'folder_id'];
 
 $body = Http::jsonBody();
 if ($body === [] || array_diff(array_keys($body), $allowedFields) !== []) {

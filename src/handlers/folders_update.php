@@ -116,7 +116,14 @@ $reject = static function (string $reason, int $status, string $message) use ($r
 };
 
 // ─── [2] 허용 키 검사 (SECURITY R-07) ───────────────────────────
-$allowedFields = ['name', 'parent_id', 'access_level', 'team_id', 'cascade', 'reason_text'];
+// F-58 — **토큰 요청은 허용 키가 더 좁다** (ARCH 4.5, SECURITY R-90).
+//   `X-API-Token` 으로 들어온 요청은 라우터 [2-T] 가 TBOX_AUTH_METHOD 를 세워 둔다. 그 요청에는
+//   이름 변경·이동(`name`·`parent_id`)만 열고, 등급·팀·`cascade`·`reason_text` 는 허용 목록에서
+//   뺀다 — 등급 넓히기는 Admin 의 결정이고 그 계정은 재인증 관문 [3-2] 대상인데 토큰 경로는
+//   그 관문을 지나지 않기 때문이다(4.2). 아래 검사·판정·감사·응답은 한 글자도 갈라지지 않는다.
+$allowedFields = defined('TBOX_AUTH_METHOD')
+    ? ['name', 'parent_id']
+    : ['name', 'parent_id', 'access_level', 'team_id', 'cascade', 'reason_text'];
 
 $body = Http::jsonBody();
 if ($body === [] || array_diff(array_keys($body), $allowedFields) !== []) {
