@@ -50,6 +50,7 @@
 | F-48 | 상태 확인 `GET /api/health` 에 DB 확인(`SELECT 1`) — 200 `{status,db,time}` / 503 `{status:fail, db:분류어}` · 저장소 루트 `API.md`(외부 프로그램용 API 문서, 상태 확인·로그인·내 정보·업로드·삭제·로그아웃) — 사용자 요청 2026-09-15 | ✅ 구현·검토 | ✅ 2026-09-15 (Opus, 재지시 0회 + 추가 지시 1건 R-80 디스크 관문) | ✅ 2026-09-15 (T-60 38/38 Fable 재실행, 린트 0, 공개 도메인 200·405·`/API.md` 404) | ⚠ 대기 | `8457c0d` health API 추가 + 발행 `v1.0.1`(`a1c0d4a`) |
 | F-49 | 프로그램용 업로드 `POST /api/upload` — `.env` `API_TOKEN` + 헤더 `X-API-Token`(`hash_equals`, 이 라우트만) · 귀속 `API_TOKEN_USER` · 웹과 공통 업로드 함수 · 400/401/403/413 이유 문구(500 일반) · nginx JSON 413 — 강사 2차 프롬프트, 사용자 결정 A 2026-09-15 | ✅ 구현·검토 | ✅ 2026-09-15 (Opus, 1차 설계 B 중단·원복 후 v2, 재지시 1회 `ext_not_allowed`) | ✅ 2026-09-15 (T-61 25/0/미검증1 재실행 + 긍정 경로 qa 귀속 실측 201·403·400×5·401×2, 린트 0, health 38/38) | ⚠ 대기 (사용자 토큰 201; JSON 413 은 검증됨) | `20f51cb` F-49 + 발행 `v1.1.0`(`613d229`) |
 | F-50 | 프로그램용 검색·다운로드 — `X-API-Token` 라우트를 셋으로(업로드·`GET /api/files`·`GET /api/files/{id}/download`), 토큰 검색은 간결 배열 `[{id,name,level,size,uploaded_at}]`+`limit`, 인가는 기존 `visibleFilesWhere`·`decideRead` 상속(IDOR 403) — 강사 3차 프롬프트 2026-09-15 | ✅ 구현·검토 | ✅ 2026-09-15 (Opus, 재지시 0회 — 지시서 결함을 Opus 가 실측으로 잡아 헤더 갈림길 추가) | ✅ 2026-09-15 (T-62 38/0/0 Fable 재실행, qa 귀속 실측, 린트 0) | ◐ 사용자 확인 2026-09-15: 검색 200·다운로드 200 (403·401 갈래 미보고) | `b8929a8` F-50 + 발행 `v1.2.0`(`5977306`) |
+| F-55 | 백업 원격 사본 — 사용자 PC 가 매일 05:00 pull(`deploy/pc/pull_backup.ps1`), 서버 변경 0 | 🔄 | 🔄 Opus | ⬜ | ⚠ T-67 (a)~(e) 사용자 PC | — |
 | 문구 정리 | 화면 문구 정리 — **1단계** 화면에 늘 펼쳐져 있던 안내 68곳 삭제·축소 / **2단계** 「사용 방법」 단추와 화면별 도움말 20화면 (F-38 · T-51) | ◐ 2단계 구현 | ✅ 2026-09-15 (Opus) | ⚠ 대기 | ⚠ 대기 | 1단계 `06ee617` · 2단계 커밋 전 |
 | **26** | 관리자 「역할로 보기」(F-39) · 관리 내비·계정 편집 폼(F-40) · 폴더 삭제 세 갈래(F-41) — 사용자 결정·지적 2026-09-15 | ✅ 구현 | ⚠ Fable 재검토 대기 (Opus 자체 시험 124/124) | ⚠ 대기 | ⚠ 대기 | 커밋 전 |
 
@@ -1702,6 +1703,41 @@ sudo -u postgres psql -d tbox_re -c "SELECT happened_at, actor_name, action, res
 | 2026-09-16 | 보정(Fable 검토) | F-53 압축비 100:1 규칙이 5KB→500KB 반복 텍스트(로그·CSV)를 폭탄으로 오탐 | 폭탄은 수십 MB 이상으로 커질 때만 위험 — 합계 32MB 바닥(`ZIP_RATIO_FLOOR`)을 두고 시험 케이스(815:1·500KB → 201) 추가. PRD F-53 ①·ARCH 5.27 갱신 |
 | 2026-09-16 | 관찰(Fable) | F-53 첫 재실행이 R-73 사전 검사(최근 10분 비-qa 활동: admin01 `auth.gate`)에 걸려 시작 안 됨 | 사용자가 F-52 관문 ③ 을 하던 중 — 규칙이 의도대로 시험과 실사용을 갈랐다. 10분 뒤 재실행 |
 | 2026-09-16 | 판단(Fable) | 앱 코드가 아니라 `scripts/` 배치가 ClamAV 를 부른다 | CLAUDE.md 금지 패턴(exec·소켓)·php-fpm `disable_functions` 은 앱에만. `scripts/` 는 CLI·린트 제외(`purge_trash`·`alerts` 와 같은 자리). 앱은 상태를 읽어 403 만 |
+
+### F-55 — 백업 원격 사본: 사용자 PC 가 매일 끌어온다 (pull) — 착수 2026-09-16
+
+> 지시서: `docs/f55-backup-pull-directive.md`. 근거: PRD 7.8 S-08·Q-4(임시 결정)·12.2 T-67, ARCH 11.1 (PC) 행, SECURITY R-08·R-88(새)·8.4-4, 09-15 리뷰 3·5번.
+> 배경: 09-16 재확인에서 치명·높음 5건 중 3건이 미해결 → Fable 권고 순서 ③백업 원격 사본 → ②방화벽 → ⑤원격 로그. 사용자 「여기」 = 지금 접속 중인 PC(Windows, PowerShell, 10.0.4.173).
+
+**개발 사항** (구현 Opus / 문서 Fable)
+- [x] (Fable) PRD F-55·Q-4·S-08 표·T-67, ARCH 11.1 행, SECURITY R-88·R-08·8.4-4·7장, 지시서, STAGES
+- [ ] (Opus) `deploy/pc/pull_backup.ps1` — 매개변수 기본값(서버·계정·목적지·3일·45일), ssh→파일 리다이렉트(파이프 금지)→`tar.exe -xf`, sha256 대조, 45일 정리, `-Key`·`-Install`·`-Uninstall`, `pull.log`
+- [ ] (Opus) `deploy/pc/README.md` — 처음 설정 순서·매일 확인·실패 시·한계
+- [ ] 손대지 않음(확인): 서버 파일 전부(`scripts/*`·cron·install.sh·nginx). `README.md` 링크 추가는 F-54 커밋 뒤(같은 작업 트리에 미커밋 변경)
+
+**검토 체크** (Fable, 관문 ②)
+- [ ] 스크립트 정적 검토: 바이너리 파이프 없음 · 키 내용 미출력 · 서버 쪽 명령이 `tar`·`cat` 만 · 자리표시자 없음 · `.sha256` 파싱 `<해시>  <이름>`
+- [x] 서버 쪽 명령 실측(09-16): `sudo -n tar … --newer-mtime='3 days ago' \| tar -tvf -` 19개·약 140MB, AL-9 헛경보 없음
+- [ ] 관문 ④ 커밋 → push. 문서·PC 스크립트만이라 **발행하지 않음**(CLAUDE.md 6장: 사용자에게 보이는 화면 변경 없음)
+
+**자기 공격 체크** (사용자, 관문 ③ = T-67, PC PowerShell 에서)
+- [ ] (a) `powershell -File deploy\pc\pull_backup.ps1` 첫 실행 → `C:\tbox-backup\var\backups\tbox-v2\db\db-<오늘>-0300.dump.gpg` 있음, `pull.log` 마지막 줄 `OK`
+- [ ] (b) `.sha256` 한 글자 바꾸고 재실행 → `FAIL`
+- [ ] (c) `-Key E:\tbox-backup.key` → 65바이트, `C:\tbox-backup` 안에 키 없음
+- [ ] (d) `-Install` → 작업 스케줄러에 05:00 작업. 다음 날 `Get-Content C:\tbox-backup\pull.log -Tail 3` 에 새 `OK`
+- [ ] (e) 46일 전 이름의 가짜 파일 → 삭제됨
+- [ ] 서버에서 `sudo tail -3 /var/log/tbox-v2/alerts.log` — pull 로 AL-9 가 울리지 않는지
+
+**학습 기록**
+
+| 날짜 | 구분 | 내용 | 해소·근거 |
+|---|---|---|---|
+| 2026-09-16 | 결정(사용자) | 백업 원격 사본을 「여기」(지금 접속 중인 PC)로 | PRD Q-4 임시 결정. 지시서 「설계」 표 |
+| 2026-09-16 | 판단(Fable) | push(서버→PC) 가 아니라 pull(PC→서버) | 서버에 원격 자격증명을 두면 root 공격자가 원격 사본까지 지운다(8.4-4, 9-11 사고 ⑥). 서버 파일 변경도 0 |
+| 2026-09-16 | 판단(Fable) | `scp` 가 아니라 `ssh … sudo -n tar` 표준 출력 | 산출물이 root 0700 이라 changkwon 으로 `scp` 불가. tar 한 번이면 sudo 도 한 번 |
+| 2026-09-16 | 판단(Fable) | PowerShell 파이프 금지, 파일로 리다이렉트 뒤 `tar.exe -xf` | PowerShell `\|` 는 바이너리를 문자열로 바꿔 깨뜨린다. Windows 10+ 는 `ssh.exe`·`tar.exe` 내장 |
+| 2026-09-16 | 한계(Fable) | 이 VM 에 PowerShell 이 없어 스크립트 실행 검증 불가 | T-67 은 사용자 PC 에서. Opus·Fable 은 정적 점검 + 서버 쪽 명령만 실측 |
+
 
 ## 2-1. 10단계 뒤 일괄 자기 공격 — 진행 순서 (관문 ③, 사용자)
 

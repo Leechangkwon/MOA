@@ -2104,6 +2104,7 @@ php_admin_value[disable_functions]   = fsockopen,pfsockopen,stream_socket_client
 | 매 5분 | `scripts/alerts.php` | AL-1·AL-2·AL-5·AL-7·AL-10 SQL 판정, 중복 억제 30분 | `/var/log/tbox-v2/alerts.log`, `alert.raised` |
 | 매분 | `scripts/scan_pending.php` (`tbox-php`) | `pending` 파일이 있을 때만 `clamscan` → `clean`/`infected`·격리·감사 `file.scan` (F-54, 5.28) |
 | **매일 02:00** (16-2, 2026-09-12 — 주 1회에서 당김, SECURITY 8.4-6) | `scripts/consistency_check.php` | DB ↔ 스토리지 정합성 (고아·누락·sha256) | `audit.integrity`, 불일치 → `alert.raised AL-6` |
+| **(PC) 매일 05:00** (F-55, 2026-09-16) | `deploy/pc/pull_backup.ps1` — **사용자 PC 의 작업 스케줄러**가 실행 | PC 가 `ssh changkwon@서버 "sudo -n tar -C / --newer-mtime='3 days ago' -cf - var/backups/tbox-v2/{db,files,weekly,monthly} var/log/tbox-v2"` 로 암호화 산출물·`.sha256`·로그를 **끌어와(pull)** `C:\tbox-backup\` 에 풀고 최신 db·files 를 sha256 대조, 45일 지난 사본 삭제. 서버 파일·cron 변경 0, 서버에 원격 자격증명 0(root 공격자가 원격 사본까지 지우지 못하게). `files-mirror/`·평문 덤프 제외. `backup.key` 는 `-Key` 로 한 번만 별도 장소에 | PC `pull.log` 마지막 줄 `OK\|WARN\|FAIL`. 서버 감사 기록 없음(읽기 전용 tar). 3-2-1 의 「원격 1」 임시 충족(Q-4) |
 
 셸 스크립트의 감사 기록은 `scripts/audit_cli.php <action> <result> [reason] --target … --detail JSON` 로 남긴다(문장 표에 없는 조합은 실패). 복구는 `scripts/restore.sh`(11.2). 서버 기준선 점검은 `scripts/check_baseline.sh`(읽기 전용), 강화 적용은 `deploy/hardening.sh --apply`(기본은 출력만 — 원격 세션 차단 위험이 있어 사용자가 직접 실행).
 
