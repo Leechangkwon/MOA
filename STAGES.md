@@ -51,7 +51,7 @@
 | F-49 | 프로그램용 업로드 `POST /api/upload` — `.env` `API_TOKEN` + 헤더 `X-API-Token`(`hash_equals`, 이 라우트만) · 귀속 `API_TOKEN_USER` · 웹과 공통 업로드 함수 · 400/401/403/413 이유 문구(500 일반) · nginx JSON 413 — 강사 2차 프롬프트, 사용자 결정 A 2026-09-15 | ✅ 구현·검토 | ✅ 2026-09-15 (Opus, 1차 설계 B 중단·원복 후 v2, 재지시 1회 `ext_not_allowed`) | ✅ 2026-09-15 (T-61 25/0/미검증1 재실행 + 긍정 경로 qa 귀속 실측 201·403·400×5·401×2, 린트 0, health 38/38) | ⚠ 대기 (사용자 토큰 201; JSON 413 은 검증됨) | `20f51cb` F-49 + 발행 `v1.1.0`(`613d229`) |
 | F-50 | 프로그램용 검색·다운로드 — `X-API-Token` 라우트를 셋으로(업로드·`GET /api/files`·`GET /api/files/{id}/download`), 토큰 검색은 간결 배열 `[{id,name,level,size,uploaded_at}]`+`limit`, 인가는 기존 `visibleFilesWhere`·`decideRead` 상속(IDOR 403) — 강사 3차 프롬프트 2026-09-15 | ✅ 구현·검토 | ✅ 2026-09-15 (Opus, 재지시 0회 — 지시서 결함을 Opus 가 실측으로 잡아 헤더 갈림길 추가) | ✅ 2026-09-15 (T-62 38/0/0 Fable 재실행, qa 귀속 실측, 린트 0) | ◐ 사용자 확인 2026-09-15: 검색 200·다운로드 200 (403·401 갈래 미보고) | `b8929a8` F-50 + 발행 `v1.2.0`(`5977306`) |
 | F-55 | 백업 원격 사본 — 사용자 PC 가 매일 05:00 pull(`deploy/pc/pull_backup.ps1`), 서버 변경 0 | ✅ | ✅ Opus 09-16 | ✅ 09-16 정적 + 09-16 PC 실행 | ✅ T-67 (a)(c)(d)(e) 통과 · (b) 시험 무효(함수는 격리 시험 통과) | `ac6f7f4` · `a049bd3` · `6953b94` |
-| F-56 | 프로그램용 `GET /api/whoami` — 토큰 귀속 계정의 {username, role, team_id, upload_levels} 만, 토큰 창구 셋→넷 | ⚠ | ✅ Opus 09-16 | ✅ 09-16 T-68 22/0/0 | ⚠ 사용자 진짜 토큰 curl | 보충 커밋 참조 |
+| F-56 | 프로그램용 `GET /api/whoami` — 토큰 귀속 계정의 {username, role, team_id, upload_levels} 만, 토큰 창구 셋→넷 | ⚠ | ✅ Opus 09-16 | ✅ 09-16 T-68 22/0/0 | ⚠ 사용자 진짜 토큰 curl | `dedd3ca` · v1.7.0 `7a2805a` |
 | 문구 정리 | 화면 문구 정리 — **1단계** 화면에 늘 펼쳐져 있던 안내 68곳 삭제·축소 / **2단계** 「사용 방법」 단추와 화면별 도움말 20화면 (F-38 · T-51) | ◐ 2단계 구현 | ✅ 2026-09-15 (Opus) | ⚠ 대기 | ⚠ 대기 | 1단계 `06ee617` · 2단계 커밋 전 |
 | **26** | 관리자 「역할로 보기」(F-39) · 관리 내비·계정 편집 폼(F-40) · 폴더 삭제 세 갈래(F-41) — 사용자 결정·지적 2026-09-15 | ✅ 구현 | ⚠ Fable 재검토 대기 (Opus 자체 시험 124/124) | ⚠ 대기 | ⚠ 대기 | 커밋 전 |
 
@@ -1774,7 +1774,7 @@ sudo -u postgres psql -d tbox_re -c "SELECT happened_at, actor_name, action, res
 - [x] 코드 읽기: 핸들러가 `$user` 넷 + `uploadableLevels` 만 · 상수 둘에 들어갔나 · 세션 쿠키만으로 401 인가 — **Fable 검토(09-16)** diff 읽기: 라우트 1행·상수 둘·주석 넷 갱신, 핸들러 4키 + `uploadableLevels` 단일 호출, 헤더·env 재확인 없음
 - [x] `tests/api_whoami.sh` — 귀속을 `qa_employee01` 로 회전 → (a)~(e) 실측 → `admin01` 복귀(토큰 값 미출력). 사용자 프로그램은 그 사이 401 → 회전 뒤 재export 필요(F-50 학습 기록과 같다) → **22/0/0**(귀속 qa_employee01: (a) 200·키 넷·순서·username (b) `upload_levels` == `/api/me` `["public","internal","team"]` (c) 401 셋 (d) deny 셋·성공 감사 0 (e) `/api/me` 키 불변·`/api/users` 401·lint 0) → `admin01` 복귀 확인
 - [x] `API.md` 10장 응답 원문을 실측으로 채움 · `security_lint.sh` 0 · `php -l`
-- [x] 관문 ④ 한글 커밋 → push → `release.sh minor`(새 창구 = 사용자에게 보이는 변경) — 커밋·발행 해시는 보충 커밋에
+- [x] 관문 ④ 한글 커밋 `dedd3ca` → push → `release.sh minor` → **v1.7.0**(`7a2805a`, 태그 push)
 
 **자기 공격 체크** (사용자, 관문 ③)
 - [ ] 진짜 토큰으로 `curl -s -H "X-API-Token: $API_TOKEN" https://changkwon.mso.so/api/whoami` → `{"username":"admin01","role":"Admin","team_id":…,"upload_levels":[…4개]}` [200]
