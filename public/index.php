@@ -58,9 +58,10 @@ const TBOX_ROUTES = [
     // F-49 — 프로그램용 업로드 (PRD F-49 · 8장 `/api/upload` 행, ARCH 4.2, SECURITY R-82).
     //   정책은 웹 업로드와 **같은 file.upload** 다. 다른 것은 인증 방법 하나뿐이고(아래 [2] 의
     //   토큰 가지), 인가 [4] 와 등급 권한은 귀속 계정 기준으로 그대로 탄다.
-    //   ★ `X-API-Token` 이 통하는 라우트는 아래 `TBOX_API_TOKEN_ROUTES` 의 **여덟뿐**이다
-    //     (F-49 의 이 한 줄 + F-50 의 둘 + F-56 의 whoami + F-58 의 폴더·파일 이동 넷) —
-    //     그 밖의 라우트는 그 헤더를 읽지도 않는다.
+    //   ★ `X-API-Token` 이 통하는 라우트는 아래 `TBOX_API_TOKEN_ROUTES` 의 **열뿐**이다
+    //     (F-49 의 이 한 줄 + F-50 의 둘 + F-56 의 whoami + F-58 의 폴더·파일 이동 넷
+    //      + F-59 의 삭제 둘) — 그 밖의 라우트는 그 헤더를 읽지도 않는다.
+    //     삭제 둘은 그중에서도 `TBOX_API_TOKEN_PERSONAL_ROUTES` 라 **개인 토큰만** 통한다.
     ['POST',   '/api/upload',              'api_upload.php',     'file.upload'],
     // F-56 — 프로그램용 자기 확인 (PRD F-56 · 8장 `/api/whoami` 행, ARCH 4.4, SECURITY R-89).
     //   정책은 `authenticated` — 귀속 계정이 유효하면 누구든이고, 인가 [4] 는 그대로 탄다.
@@ -113,6 +114,16 @@ const TBOX_ROUTES = [
     //   핸들러가 Authz::decideUserChange 로 판단한다 — 역할 비교를 핸들러에 복사하지 않는다.
     ['POST',   '/api/users/{num}/password/reset', 'users_password_reset.php', 'user.manage'],
     ['POST',   '/api/users/{num}/mfa/reset',      'users_mfa_reset.php',      'user.manage'],
+
+    // F-59 — 계정별 **개인 프로그램 토큰** (PRD F-59 ② · 8장 `/api/users/{uid}/api-tokens` 세 행,
+    //   ARCH 4.6, API.md 13장, SECURITY R-91). 정책은 계정 관리와 같은 `user.manage` 이고,
+    //   그래서 재인증 관문 [3-2] 를 자동으로 지난다 — 토큰 발급은 「자격을 만드는」 행동이다.
+    //   ★ 이 셋은 **세션 창구**다. `TBOX_API_TOKEN_ROUTES` 에 들어가지 않으므로 토큰으로는
+    //     부를 수 없다(토큰이 토큰을 발급하는 길을 만들지 않는다).
+    //   `$params[0]` = 대상 계정 id · `$params[1]` = 토큰 id.
+    ['GET',    '/api/users/{num}/api-tokens',         'api_tokens_list.php',   'user.manage'],
+    ['POST',   '/api/users/{num}/api-tokens',         'api_tokens_issue.php',  'user.manage'],
+    ['DELETE', '/api/users/{num}/api-tokens/{num}',   'api_tokens_revoke.php', 'user.manage'],
 
     // 본인 계정 관리 — 로그인한 사람이면 누구나 자기 것만 (PRD 7.7 "비밀번호 변경", R-05).
     // 대상은 언제나 **세션의 본인**이며 요청 본문에 대상 계정을 받지 않는다.
@@ -659,12 +670,13 @@ const TBOX_LOGIN_PATH = '/login';
 const TBOX_HOME_PATH = '/';
 
 /**
- * 프로그램용 토큰(`X-API-Token`)이 통하는 **라우트 집합** (PRD F-49 ① · F-50, ARCH 4.2 · 4.3).
+ * 프로그램용 토큰(`X-API-Token`)이 통하는 **라우트 집합** (PRD F-49 ① · F-50 · F-59, ARCH 4.2 · 4.3 · 4.6).
  *
  * 값은 `TBOX_ROUTE`(메서드 + 라우트 **패턴**)와 정확히 같은 표기여야 한다. 아래 [2-T] 가
  * 이 집합과만 견주므로, 토큰 경로를 넓히려면 여기를 고쳐야 하고 그것이 곧 검토 지점이다.
  *
- * F-50 에서 셋으로, F-56 에서 넷으로, F-58 에서 **여덟으로**. 넓히려면 여기 + R-82/R-83/R-89/R-90 재검토.
+ * F-50 에서 셋으로, F-56 에서 넷으로, F-58 에서 여덟으로, F-59 에서 **열로**.
+ * 넓히려면 여기 + R-82/R-83/R-89/R-90/R-91 재검토.
  */
 const TBOX_API_TOKEN_ROUTES = [
     'POST /api/upload',
@@ -676,6 +688,24 @@ const TBOX_API_TOKEN_ROUTES = [
     'POST /api/folders',
     'PATCH /api/folders/{num}',
     'PATCH /api/files/{id}',
+    // F-59 — 삭제 둘 (ARCH 4.6, SECURITY R-91). 아래 PERSONAL_ROUTES 이기도 하다.
+    'DELETE /api/files/{id}',
+    'DELETE /api/folders/{num}',
+];
+
+/**
+ * 그중 **개인 토큰만** 통하는 창구 (F-59 ⑤, PRD F-59, ARCH 4.6 판정 순서 표 마지막 줄).
+ *
+ * 지우는 창구 둘이다. 공용 토큰(`.env`)으로 부르면 403 「이 창구는 개인 토큰으로만 쓸 수
+ * 있습니다」 이고 `auth.token deny shared_token_not_permitted` 가 남는다 — 「누가 지웠나」 가
+ * 사람 단위로 남지 않는 자격으로는 지울 수 없게 한 것이다(R-82 의 결손이 곧 이 제한의 이유다).
+ *
+ * ★ 판정은 **여기 한 곳**이다. `requireApiToken($personalOnly)` 이 그 인자를 받아 마지막에
+ *   판단하고, 삭제 핸들러에는 토큰 종류를 보는 코드가 한 줄도 없다(세션과 같은 코드다).
+ */
+const TBOX_API_TOKEN_PERSONAL_ROUTES = [
+    'DELETE /api/files/{id}',
+    'DELETE /api/folders/{num}',
 ];
 
 /**
@@ -683,8 +713,9 @@ const TBOX_API_TOKEN_ROUTES = [
  * 판단해 「X-API-Token 헤더가 없습니다」 401 을 돌려준다 — 화면이 쓰지 않는 프로그램 전용 창구라
  * "로그인하라" 는 답이 뜻이 없기 때문이다.
  *
- * 여덟 중 나머지 여섯(`GET /api/files`·`GET /api/files/{id}/download`·`GET /api/folders`·
- * `POST /api/folders`·`PATCH /api/folders/{num}`·`PATCH /api/files/{id}`)은 **화면도 쓰는 라우트**다. 그래서
+ * 열 중 나머지 여덟(`GET /api/files`·`GET /api/files/{id}/download`·`GET /api/folders`·
+ * `POST /api/folders`·`PATCH /api/folders/{num}`·`PATCH /api/files/{id}`·`DELETE /api/files/{id}`·
+ * `DELETE /api/folders/{num}`)은 **화면도 쓰는 라우트**다. 그래서
  * 토큰 경로로 가는 조건은 `X-API-Token` 헤더가 실제로 왔을 때뿐이고, 헤더가 없으면 지금까지와
  * 똑같이 세션 경로로 간다(웹 동작 불변). 헤더가 왔는데 값이 틀리면 401 이다 — 세션으로
  * 되돌아가지 않는다(보낸 인증 방법으로만 판정한다).
@@ -848,9 +879,9 @@ $user = null;
 $viaApiToken = false;
 
 if ($policy !== Authz::POLICY_PUBLIC) {
-    /* ─── [2-T] 프로그램용 토큰 경로 (F-49 · F-50 · F-56 · F-58, ARCH 4.2 · 4.3 · 4.4 · 4.5) ──
+    /* ─── [2-T] 프로그램용 토큰 경로 (F-49 · F-50 · F-56 · F-58 · F-59, ARCH 4.2 · 4.3 · 4.4 · 4.5 · 4.6) ──
      *
-     * ★ 이 가지에 들어오는 라우트는 위 집합의 **여덟뿐**이다. 그래서 `X-API-Token` 은 그 창구 밖에서
+     * ★ 이 가지에 들어오는 라우트는 위 집합의 **열뿐**이다. 그래서 `X-API-Token` 은 그 창구 밖에서
      *   아무것도 열지 못한다 — 다른 라우트는 그 헤더를 읽는 코드에 닿지도 않는다(PRD F-49 ①).
      *   **어느 라우트인가**는 요청이 보낸 값이 아니라 라우터가 매칭한 **라우트 패턴**으로만 판단한다.
      *
@@ -870,7 +901,11 @@ if ($policy !== Authz::POLICY_PUBLIC) {
         && (Http::apiTokenHeader() !== null
             || in_array(TBOX_ROUTE, TBOX_API_TOKEN_ONLY_ROUTES, true))
     ) {
-        $user        = Auth::requireApiToken();   // 실패 시 401·503 + Audit::deny (Auth 안에서)
+        /* F-59 — 「개인 토큰만 통하는 창구인가」 도 **라우트 패턴으로만** 판단해서 넘긴다.
+         * 이 인자 하나가 그 판정의 전부이고, 삭제 핸들러는 토큰 종류를 보지 않는다(ARCH 4.6). */
+        $user = Auth::requireApiToken(
+            in_array(TBOX_ROUTE, TBOX_API_TOKEN_PERSONAL_ROUTES, true)
+        );                                        // 실패 시 401·403·503 + Audit::deny (Auth 안에서)
         $viaApiToken = true;
         // 감사 로그가 모든 행에 자동으로 붙이는 분류어 (Audit::autoDetail, ARCH 4.2 「감사의 구분」).
         define('TBOX_AUTH_METHOD', 'api_token');

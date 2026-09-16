@@ -1648,3 +1648,22 @@ dialog.changelog-dialog .modal__body { max-height: 70vh; }
 .act-banner { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
 .act-banner b { font-weight: 700; }
 .act-banner .btn { margin-left: auto; }
+
+/* ─── F-59 계정 편집 모달의 「프로그램 토큰」 구역 (PRD F-59 ②, ARCH 4.6) ──────────
+   모달 안, 폼 아래에 붙는 구역이다. 색·간격은 기존 토큰만 쓰고 새 색을 만들지 않는다. */
+.token-box {
+  margin: 0 24px 20px;
+  padding-top: 14px;
+  border-top: 1px solid var(--line);
+}
+.token-box__title { margin: 0 0 6px; font-size: 15px; font-weight: 700; }
+.token-box__lead { margin: 0 0 10px; color: var(--muted); font-size: 13px; line-height: 1.6; }
+.token-box__table { width: 100%; font-size: 13px; }
+.token-box__form {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  margin: 10px 0 0;
+}
+.token-box__form input { flex: 1 1 160px; height: var(--h-input); padding: 0 10px; }

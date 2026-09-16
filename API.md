@@ -10,7 +10,7 @@ API 를 추가할 때마다 이 문서에 **이어서** 적는다(마지막 장�
 |---|---|
 | 기본 주소 | 공개: `https://changkwon.mso.so` · 서버 안 검토용: `http://127.0.0.1:8082` |
 | 형식 | 요청·응답은 JSON (`Content-Type: application/json; charset=utf-8`). 파일 업로드만 `multipart/form-data` |
-| 인증 | 기본은 **세션 쿠키**(아래 「세션」)다. 헤더 `X-API-Token` 이 통하는 창구는 **여덟**이다 — `POST /api/upload`(7장) · `GET /api/files`(8장) · `GET /api/files/{id}/download`(9장) · `GET /api/whoami`(10장) · `GET /api/folders`·`POST /api/folders`·`PATCH /api/folders/{num}`(11장) · `PATCH /api/files/{id}`(12장, 폴더 이동만). 업로드와 whoami 둘은 토큰 전용이고(세션 쿠키로는 부를 수 없다 — 헤더가 없으면 401), 나머지 여섯은 화면도 쓰는 창구라 **헤더를 보내면 토큰으로, 안 보내면 세션으로** 판정한다. 그 헤더는 **그 밖의 창구에서는 무시된다**(삭제·등급 변경·계정·감사 등은 읽지도 않는다) |
+| 인증 | 기본은 **세션 쿠키**(아래 「세션」)다. 헤더 `X-API-Token` 이 통하는 창구는 **열**이다 — `POST /api/upload`(7장) · `GET /api/files`(8장) · `GET /api/files/{id}/download`(9장) · `GET /api/whoami`(10장) · `GET /api/folders`·`POST /api/folders`·`PATCH /api/folders/{num}`(11장) · `PATCH /api/files/{id}`(12장, 폴더 이동만) · `DELETE /api/files/{id}`·`DELETE /api/folders/{num}`(14장, **개인 토큰만**). 업로드와 whoami 둘은 토큰 전용이고(세션 쿠키로는 부를 수 없다 — 헤더가 없으면 401), 나머지 여덟은 화면도 쓰는 창구라 **헤더를 보내면 토큰으로, 안 보내면 세션으로** 판정한다. 그 헤더는 **그 밖의 창구에서는 무시된다**(등급 변경·휴지통 복원·계정·감사 등은 읽지도 않는다). **토큰은 두 종류**다(13장): 관리자가 계정마다 발급하는 **개인 토큰**(권장 — 누가 했는지 사람 단위로 남고 회수할 수 있다)과 서버 `.env` 의 **공용 토큰**(F-49, 이행용 — 삭제 창구는 쓸 수 없다) |
 | 세션 | 로그인 성공 시 쿠키 `tbox_session` (HttpOnly·Secure·SameSite=Lax). 이후 요청에 그 쿠키를 함께 보낸다. 유휴 30분·최대 8시간 |
 | CSRF | 상태를 바꾸는 요청(POST·PATCH·DELETE)은 헤더 `X-CSRF-Token: <토큰>` 필수. 토큰은 `GET /api/me` 의 `csrf_token`. 없거나 틀리면 `403 {"error":"권한이 없습니다"}` |
 | 오류 응답 | 항상 `{"error":"<한국어 문구>"}`. 권한 없음은 언제나 403 + 같은 문구(대상 정보 없음). 서버 오류는 500 `{"error":"서버 오류"}` — 원인은 응답에 나오지 않는다 |
@@ -508,7 +508,96 @@ curl -s -w '\n[%{http_code}]\n' -X PATCH -H "X-API-Token: $API_TOKEN" -H 'Conten
 {"error":"잘못된 요청입니다"} [400]
 ```
 
-> 토큰은 이 **여덟** 밖에서는 아무것도 열지 못한다 — 삭제·등급 변경·계정·감사 창구는 헤더를 읽지도 않는다(0장).
+## 13. 개인 프로그램 토큰 — 발급·목록·회수 (관리자 화면·세션)
+
+프로그램이 부르는 창구가 아니라 **관리자가 토큰을 만드는** 창구다 (PRD F-59, ARCHITECTURE 4.6). 계정 편집 모달(관리 → 계정)의 「프로그램 토큰」 구역이 이 셋을 부른다.
+개인 토큰은 발급받은 **그 계정의 권한**으로 동작하고, 감사 로그에 계정과 토큰 번호가 남으며, 회수하면 즉시 401 이다. 공용 토큰(7장, `.env`)은 이행용으로만 남는다 — 개인 토큰을 프로그램에 심었으면 서버 `.env` 의 `API_TOKEN`·`API_TOKEN_USER` 두 줄을 지운다.
+
+| 항목 | 내용 |
+|---|---|
+| 인증 | 세션 쿠키 + `X-CSRF-Token`(POST·DELETE). **Admin** + 최근 15분 안 재인증(`POST /api/me/reauth`) — 없으면 403 `{"error":"…","next":"reauth"}` |
+| 목록 | `GET /api/users/{uid}/api-tokens` → `200 {"tokens":[{"id":<정수>,"name":"…","hint":"<앞 6자>","created_at":"…","last_used_at":"…|null","revoked_at":"…|null"}]}` — 토큰 값은 없다 |
+| 발급 | `POST /api/users/{uid}/api-tokens` JSON `{"name":"<1~50자>","reason_text":"<필수, 500자>"}` → `201 {"id":<정수>,"name":"…","hint":"…","token":"<48자>"}`. **`token` 은 이 응답에만 나온다** — 서버는 sha256 만 저장하므로 다시 보여 줄 수 없다. 잃으면 회수하고 새로 발급한다 |
+| 회수 | `DELETE /api/users/{uid}/api-tokens/{tid}` → `200 {"ok":true}`. 그 순간부터 그 토큰은 401 |
+| 실패 | `400`(허용 외 키 · 이름 규칙 · 사유 없음 · 살아 있는 토큰 5개 초과 · 대상 계정 비활성·만료 · 이미 회수됨) · `403`(Admin 아님 · 재인증 없음 · CSRF 없음) · `404`(없는 계정 · 그 계정의 토큰이 아님) |
+| 넣지 않는 것 | 토큰 원문(발급 응답 한 번 밖에는 어디에도 — 목록·감사·로그) · 해시 |
+| 감사 | `api_token.issue allow`(detail `token_id`·`token_name`·`reason_text`) · `api_token.revoke allow` · 경보 **AL-20**(발급 1건 즉시) |
+
+```bash
+# 관리자 세션(jar)으로 — CSRF 는 3장, 재인증은 POST /api/me/reauth {"password"} 먼저
+curl -s -b jar -H "X-CSRF-Token: $CSRF" -H 'Content-Type: application/json' \
+  -d '{"name":"사무실 PC","reason_text":"트레이 프로그램용"}' https://changkwon.mso.so/api/users/<uid>/api-tokens
+```
+
+실측 2026-09-16 (검토 포트 8082, 검토 계정 `qa_admin01`(발급자·재인증)·`qa_employee01`(대상), `-A "tbox-review/2026-09-16"`, `tests/api_tokens.sh`). 발급받은 토큰은 규칙(S-09-11)대로 어디에도 기록하지 않았다 — 아래 `token` 자리는 모양만이다. 시험이 발급한 토큰은 전부 회수했고 파일은 휴지통, 폴더는 삭제했다.
+
+```bash
+# 재인증 없는 Admin → 403 + next:reauth  (관리 기능 재인증 관문 — F-23)
+{"error":"관리 기능을 쓰려면 비밀번호를 다시 확인해야 합니다","next":"reauth"} [403]
+# 재인증 뒤 발급 → 201. token 은 48자 [A-Za-z0-9], hint 는 그 앞 6자 (실측 일치)
+{"id":6,"name":"F59-pc-0916-1467462","hint":"<앞 6자>","token":"<48자 — 이 응답에만>"} [201]
+# 목록 → 200. 행의 키는 정확히 여섯(created_at·hint·id·last_used_at·name·revoked_at), token 키 없음 (실측)
+{"tokens":[{"id":6,"name":"F59-pc-0916-1467462","hint":"<앞 6자>","created_at":"2026-09-16 18:17:08+09","last_used_at":null,"revoked_at":null}]} [200]
+# 사유 없음 → 400 · 이름 51자 → 400 · 모르는 키 → 400 (R-07)
+{"error":"잘못된 요청입니다"} [400]
+# Manager 세션 → 403 (발급·목록 둘 다)
+{"error":"권한이 없습니다"} [403]
+# 살아 있는 토큰 5개 뒤 6번째 → 400 (limit_exceeded)
+{"error":"잘못된 요청입니다"} [400]
+# 회수 → 200 · 다시 회수 → 400 · 다른 계정의 tid → 404
+{"ok":true} [200]
+{"error":"잘못된 요청입니다"} [400]
+{"error":"찾을 수 없습니다"} [404]
+# 회수된 토큰으로 GET /api/whoami → 401 (회수 사실을 알리지 않는다 — 틀린 토큰과 같은 답)
+{"error":"API 토큰이 올바르지 않습니다"} [401]
+# 개인 토큰으로 발급 창구를 부르면 → 401 (토큰 라우트 집합 밖 — 토큰이 토큰을 낳지 못한다)
+{"error":"로그인이 필요합니다"} [401]
+```
+
+감사 로그(실측): `api_token.issue allow` 의 detail 은 `token_id`·`token_name`·`reason_text`(+`route`·`login_ref`·`actor_team`)이고, `audit_logs`·`api_tokens` 어디에도 토큰 원문이 없었다(문자열 grep 0건, `token_hash` == sha256). `scripts/alerts.php --rule AL-20 --dry-run` 이 발급자 1명을 잡았다.
+
+---
+
+## 14. 프로그램용 삭제 — `DELETE /api/files/{id}` · `DELETE /api/folders/{num}` (개인 토큰만)
+
+8장·11장이 돌려준 `id`·번호로 **파일을 휴지통에 보내고 빈 폴더를 지우는** 창구다 (PRD F-59, ARCHITECTURE 4.6). 화면의 삭제와 같은 창구·같은 판정이다.
+**개인 토큰(13장)만 통한다.** 공용 토큰(`.env`)으로 부르면 403 이다 — 누가 지웠는지 사람 단위로 남지 않는 자격으로는 지울 수 없게 했다.
+
+| 항목 | 내용 |
+|---|---|
+| 인증 | 헤더 **`X-API-Token: <개인 토큰>`**. `X-CSRF-Token` 은 필요 없다. 헤더를 보내지 않으면 세션 쿠키 경로 |
+| 파일 | `DELETE /api/files/{id}` → `200 {"ok":true}` — **30일 휴지통**(관리자가 화면 「휴지통」에서 되살릴 수 있다). 토큰 계정이 지울 수 있는 파일만(Employee 는 자기가 올린 것) |
+| 폴더 | `DELETE /api/folders/{num}` → `200 {"ok":true,"moved_trashed":0}` — **빈 폴더만**. 하위 폴더 있음 → `400 {"error":"하위 폴더가 있습니다 — 먼저 지우세요","code":"folder_has_children"}` · 살아 있는 파일 있음 → `400 {"error":"파일이 있는 폴더는 지울 수 없습니다","code":"folder_not_empty"}` · 휴지통 파일만 남음 → `400 {"error":"휴지통에 있는 파일만 남았습니다 — …","code":"folder_has_trashed","trashed":[…]}` 이고 `?move_trashed=1` 을 붙여 다시 보내면 그 파일을 루트로 옮기고 폴더를 지운다. 재귀 삭제는 없다 |
+| 실패 | `401`(헤더 없음 → 「로그인이 필요합니다」 · 틀린·회수된 토큰 → 「API 토큰이 올바르지 않습니다」) · **`403 {"error":"이 창구는 개인 토큰으로만 쓸 수 있습니다"}`**(공용 토큰) · `403 {"error":"권한이 없습니다"}`(남의 파일·폴더 · **없는 폴더 번호도 같은 403** — 순차 정수라 404 와 가르면 개수를 셀 수 있다) · `404`(없는 파일 id — UUID 라 열거가 안 된다) |
+| 감사 | `file.delete allow`·`folder.delete allow` 에 `detail.auth=api_token`·`token_kind=personal`·`token_id=<번호>` — 관리자가 13장 목록의 번호와 맞춰 「어느 PC 의 토큰」인지 안다 |
+
+```bash
+curl -s -w '\n[%{http_code}]\n' -X DELETE -H "X-API-Token: $API_TOKEN" https://changkwon.mso.so/api/files/<id>
+curl -s -w '\n[%{http_code}]\n' -X DELETE -H "X-API-Token: $API_TOKEN" 'https://changkwon.mso.so/api/folders/<번호>?move_trashed=1'
+```
+
+실측 2026-09-16 (검토 포트 8082, 검토 계정 `qa_admin01`(발급자·재인증)·`qa_employee01`(대상), `-A "tbox-review/2026-09-16"`, `tests/api_tokens.sh`). 발급받은 토큰은 규칙(S-09-11)대로 어디에도 기록하지 않았다 — 아래 `token` 자리는 모양만이다. 시험이 발급한 토큰은 전부 회수했고 파일은 휴지통, 폴더는 삭제했다.
+
+```bash
+# 개인 토큰(qa_employee01)으로 — whoami 가 그 사람을 가리킨다 (F-56 ⑤)
+curl -s -H "X-API-Token: $API_TOKEN" http://127.0.0.1:8082/api/whoami
+{"username":"qa_employee01","role":"Employee","team_id":1,"upload_levels":["public","internal","team"]} [200]
+# 자기가 올린 파일 삭제 → 200, DB deleted_at 설정(휴지통)
+{"ok":true} [200]
+# 자기 빈 폴더 삭제 → 200
+{"ok":true,"moved_trashed":0} [200]
+# 파일이 든 폴더 → 400 (code 로 갈래를 준다 — F-41)
+{"error":"파일이 있는 폴더는 지울 수 없습니다","code":"folder_not_empty"} [400]
+# 남의(qa_admin01) 파일 → 403 · 없는 폴더 번호 → 403(같은 문구) · 없는 파일 id → 404
+{"error":"권한이 없습니다"} [403]
+{"error":"찾을 수 없습니다"} [404]
+# 세션으로 같은 삭제를 CSRF 없이 → 403 (웹 동작 불변)
+{"error":"권한이 없습니다"} [403]
+```
+
+감사 로그(실측): `file.delete allow`·`folder.delete allow` 행에 `detail.auth=api_token`·`token_kind=personal`·`token_id=<번호>` 가 붙었다. 공용 토큰의 403(`shared_token_not_permitted`)은 귀속을 검토 계정으로 둔 실행에서 확인한다(아래 갱신).
+
+> 토큰은 이 **열** 밖에서는 아무것도 열지 못한다 — 등급 변경·휴지통 복원·계정·감사 창구는 헤더를 읽지도 않는다(0장).
 
 ---
 

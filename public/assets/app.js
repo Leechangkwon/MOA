@@ -3952,10 +3952,357 @@ function initUsers(csrfToken) {
       }
       patch(item.id, payload, '저장했습니다');
     };
+    openTokenSection(item);
     ueDialog.showModal();
     if (ueReason) {
       ueReason.focus();
     }
+  }
+
+  /* ─── F-59 「프로그램 토큰」 구역 (PRD F-59 ②, ARCH 4.6, API.md 13장) ──────────
+   *
+   * 계정 편집 모달 안에서 그 계정의 **개인 프로그램 토큰**을 보고·발급하고·회수한다.
+   * 창구 셋은 `/api/users/{uid}/api-tokens` 이고 전부 관리자 세션 + CSRF 다 —
+   * 이 화면에 들어온 것으로 권한이 생기지 않는다. 막는 것은 서버(user.manage + 재인증
+   * 관문 [3-2])이고, 여기 있는 코드는 요청을 만들 뿐이다 (PRD S-01).
+   *
+   * ★ 발급 응답의 `token` 은 **그 순간 한 번만** 보인다. 읽기 전용 입력칸의 value 로만 넣고
+   *   (문서에 글자로 심지 않는다) 닫으면 지운다 — 임시 비밀번호 상자와 같은 방식이다
+   *   (11단계 showTempPassword, SECURITY R-39 · R-91). 서버에는 sha256 만 있어 다시 볼 수 없다.
+   * ★ 표에 나오는 값(이름·hint)도 사람이 적은 문자열이다 → 전부 createElement + textContent.
+   *   이 구역에는 문자열을 HTML 로 바꾸는 코드가 한 곳도 없다 (PRD S-03).
+   * ★ 구역은 `#user-edit` 모달 **안**이되 폼 **밖**에 붙인다 — 폼 안에 입력칸을 두면 Enter 가
+   *   계정 변경 저장(submit)으로 새기 때문이다.
+   */
+  var tkBox = null;      // 구역 전체 (모달 안에 한 번만 만든다)
+  var tkBody = null;     // 표의 tbody
+  var tkMsg = null;      // 이 구역의 알림 줄 (서버 문구를 그대로 쓴다)
+  var tkName = null;     // 이름 입력칸
+  var tkReason = null;   // 사유 입력칸
+  var tkUid = null;      // 지금 보고 있는 계정 id
+
+  /**
+   * 이 구역의 요청 하나 — 세션 쿠키 + CSRF.
+   * 재인증 관문(403 `next:"reauth"`)에 걸리면 모달을 띄우고 **막혔던 요청을 다시** 보낸다.
+   */
+  function tokenFetch(method, path, payload, retry) {
+    var init = {
+      method: method,
+      headers: { 'X-CSRF-Token': csrfToken },
+      credentials: 'same-origin',
+      cache: 'no-store'
+    };
+    if (payload) {
+      init.headers['Content-Type'] = 'application/json';
+      init.body = JSON.stringify(payload);
+    }
+    return fetch(path, init).then(function (response) {
+      if (response.status === 401) {
+        toLogin();
+        return null;
+      }
+      return readJson(response).then(function (data) {
+        if (handleReauth(response, data, retry)) {
+          return null;
+        }
+        if (toGate(response, data)) {
+          return null;
+        }
+        return { ok: response.ok, status: response.status, data: data };
+      });
+    });
+  }
+
+  /** 발급된 토큰을 **한 번만** 보여 주는 상자. 닫으면 값이 사라진다(다시 볼 방법은 없다). */
+  function showIssuedToken(tokenValue) {
+    if (!tkBox || typeof tokenValue !== 'string' || tokenValue === '') {
+      return;
+    }
+    var old = document.getElementById('api-token-once');
+    if (old && old.parentNode) {
+      old.parentNode.removeChild(old);
+    }
+
+    var box = document.createElement('div');
+    box.id = 'api-token-once';
+    box.className = 'notice';
+
+    var title = document.createElement('p');
+    title.className = 'notice__title';
+    setText(title, '새 프로그램 토큰');
+    box.appendChild(title);
+
+    var field = document.createElement('input');
+    field.type = 'text';
+    field.readOnly = true;
+    field.className = 'temp-password';
+    field.value = tokenValue;            // 값은 value 로만 (문서에 글자로 심지 않는다)
+    box.appendChild(field);
+
+    var copy = document.createElement('button');
+    copy.type = 'button';
+    copy.className = 'btn btn--quiet btn--small';
+    setText(copy, '복사');
+    copy.addEventListener('click', function () {
+      if (navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
+        navigator.clipboard.writeText(field.value).then(function () {
+          setText(tkMsg, '복사했습니다.');
+        }, function () {
+          setText(tkMsg, '복사하지 못했습니다 — 칸의 값을 직접 선택해 복사하세요.');
+        });
+        return;
+      }
+      field.focus();
+      field.select();
+      setText(tkMsg, '이 브라우저는 자동 복사를 지원하지 않습니다 — 선택된 값을 복사하세요.');
+    });
+    box.appendChild(copy);
+
+    var warn = document.createElement('p');
+    warn.className = 'warn';
+    setText(warn, '지금만 보입니다. 닫으면 다시 볼 수 없습니다');
+    box.appendChild(warn);
+
+    var close = document.createElement('button');
+    close.type = 'button';
+    close.className = 'btn btn--quiet btn--small';
+    setText(close, '닫기');
+    close.addEventListener('click', function () {
+      field.value = '';
+      if (box.parentNode) {
+        box.parentNode.removeChild(box);
+      }
+    });
+    box.appendChild(close);
+
+    tkBox.appendChild(box);
+  }
+
+  /** 표 한 줄 — 이름 · hint · 발급일 · 마지막 사용 · 상태 · (살아 있으면) 회수 */
+  function addTokenRow(token) {
+    var row = document.createElement('tr');
+    var live = token.revoked_at === null || token.revoked_at === undefined;
+
+    [token.name, token.hint, token.created_at,
+      live ? token.last_used_at : token.revoked_at].forEach(function (value) {
+      var td = document.createElement('td');
+      setText(td, value === null || value === undefined || value === '' ? '—' : value);
+      row.appendChild(td);
+    });
+
+    var state = document.createElement('td');
+    setText(state, live ? '살아있음' : '회수됨');
+    row.appendChild(state);
+
+    var actions = document.createElement('td');
+    actions.className = 'actions';
+    if (live) {
+      var button = document.createElement('button');
+      button.type = 'button';
+      button.className = 'btn btn--quiet btn--small';
+      setText(button, '회수');
+      button.addEventListener('click', function () {
+        revokeToken(token);
+      });
+      actions.appendChild(button);
+    }
+    row.appendChild(actions);
+
+    tkBody.appendChild(row);
+  }
+
+  /** 목록을 다시 읽어 표를 그린다. 실패는 알림 줄에 **서버 문구**로 말한다. */
+  function loadTokens() {
+    if (tkUid === null || !tkBody) {
+      return;
+    }
+    var uid = tkUid;
+    tokenFetch('GET', '/api/users/' + String(uid) + '/api-tokens', null, loadTokens)
+      .then(function (result) {
+        if (result === null || tkUid !== uid) {
+          return null;
+        }
+        while (tkBody.firstChild) {
+          tkBody.removeChild(tkBody.firstChild);
+        }
+        if (!result.ok) {
+          setText(tkMsg, errorMessage(result.data));
+          return null;
+        }
+        var tokens = result.data && Array.isArray(result.data.tokens) ? result.data.tokens : [];
+        if (tokens.length === 0) {
+          setText(tkMsg, '발급된 토큰이 없습니다.');
+          return null;
+        }
+        tokens.forEach(addTokenRow);
+        return null;
+      })
+      .catch(function () {
+        setText(tkMsg, GENERIC_ERROR);
+      });
+  }
+
+  /** 발급 — 이름·사유를 보내고, 성공하면 토큰을 한 번 보여 준 뒤 표를 다시 읽는다. */
+  function issueToken() {
+    if (tkUid === null) {
+      return;
+    }
+    var uid = tkUid;
+    var name = tkName ? tkName.value : '';
+    var reason = tkReason ? tkReason.value : '';
+    if (name.replace(/\s+/g, '') === '') {
+      setText(tkMsg, '토큰 이름을 적어야 합니다.');
+      return;
+    }
+    if (reason.replace(/\s+/g, '') === '') {
+      setText(tkMsg, '사유를 적어야 합니다.');
+      return;
+    }
+    setText(tkMsg, '');
+    tokenFetch('POST', '/api/users/' + String(uid) + '/api-tokens',
+      { name: name, reason_text: reason }, issueToken)
+      .then(function (result) {
+        if (result === null) {
+          return null;
+        }
+        if (!result.ok) {
+          setText(tkMsg, errorMessage(result.data));
+          return null;
+        }
+        if (tkName) {
+          tkName.value = '';
+        }
+        if (tkReason) {
+          tkReason.value = '';
+        }
+        setText(tkMsg, '토큰을 발급했습니다.');
+        showIssuedToken(result.data ? result.data.token : '');
+        loadTokens();
+        return null;
+      })
+      .catch(function () {
+        setText(tkMsg, GENERIC_ERROR);
+      });
+  }
+
+  /** 회수 — 되묻고 나서 DELETE. 회수한 순간부터 그 토큰은 401 이다. */
+  function revokeToken(token) {
+    if (tkUid === null || !token || typeof token.id !== 'number') {
+      return;
+    }
+    if (!window.confirm('토큰 「' + String(token.name) + '」 을(를) 회수합니다. 그 프로그램은 바로 쓸 수 없게 됩니다.')) {
+      setText(tkMsg, '취소했습니다');
+      return;
+    }
+    var uid = tkUid;
+    setText(tkMsg, '');
+    tokenFetch('DELETE', '/api/users/' + String(uid) + '/api-tokens/' + String(token.id),
+      null, function () { revokeToken(token); })
+      .then(function (result) {
+        if (result === null) {
+          return null;
+        }
+        if (!result.ok) {
+          setText(tkMsg, errorMessage(result.data));
+          return null;
+        }
+        setText(tkMsg, '토큰을 회수했습니다.');
+        loadTokens();
+        return null;
+      })
+      .catch(function () {
+        setText(tkMsg, GENERIC_ERROR);
+      });
+  }
+
+  /** 구역을 한 번 만든다(모달 안, 폼 밖). 두 번째부터는 있는 것을 다시 쓴다. */
+  function buildTokenSection() {
+    if (tkBox || !ueDialog) {
+      return;
+    }
+    tkBox = document.createElement('section');
+    tkBox.className = 'token-box';
+
+    var title = document.createElement('h3');
+    title.className = 'token-box__title';
+    setText(title, '프로그램 토큰');
+    tkBox.appendChild(title);
+
+    var lead = document.createElement('p');
+    lead.className = 'token-box__lead';
+    setText(lead, '이 계정의 권한으로 프로그램이 쓰는 토큰입니다. 값은 발급할 때 한 번만 보이고, 회수하면 바로 쓸 수 없게 됩니다.');
+    tkBox.appendChild(lead);
+
+    var table = document.createElement('table');
+    table.className = 'table token-box__table';
+    var head = document.createElement('thead');
+    var headRow = document.createElement('tr');
+    ['이름', '앞 6자', '발급일', '마지막 사용 · 회수', '상태', ''].forEach(function (label) {
+      var th = document.createElement('th');
+      setText(th, label);
+      headRow.appendChild(th);
+    });
+    head.appendChild(headRow);
+    table.appendChild(head);
+    tkBody = document.createElement('tbody');
+    table.appendChild(tkBody);
+    tkBox.appendChild(table);
+
+    var form = document.createElement('div');
+    form.className = 'token-box__form';
+
+    tkName = document.createElement('input');
+    tkName.type = 'text';
+    tkName.maxLength = 50;
+    tkName.placeholder = '토큰 이름 (예: 사무실 PC)';
+    form.appendChild(tkName);
+
+    tkReason = document.createElement('input');
+    tkReason.type = 'text';
+    tkReason.maxLength = 500;
+    tkReason.placeholder = '사유 (필수)';
+    form.appendChild(tkReason);
+
+    var issue = document.createElement('button');
+    issue.type = 'button';
+    issue.className = 'btn btn--small';
+    setText(issue, '발급');
+    issue.addEventListener('click', issueToken);
+    form.appendChild(issue);
+
+    tkBox.appendChild(form);
+
+    tkMsg = document.createElement('p');
+    tkMsg.className = 'msg';
+    tkMsg.setAttribute('role', 'alert');
+    tkMsg.setAttribute('aria-live', 'polite');
+    tkBox.appendChild(tkMsg);
+
+    ueDialog.appendChild(tkBox);
+  }
+
+  /** 모달을 열 때 — 구역을 비우고 그 계정의 토큰을 읽는다. */
+  function openTokenSection(item) {
+    buildTokenSection();
+    if (!tkBox) {
+      return;
+    }
+    var once = document.getElementById('api-token-once');
+    if (once && once.parentNode) {
+      once.parentNode.removeChild(once);   // 앞서 본 토큰 값을 다음 계정으로 끌고 가지 않는다
+    }
+    if (tkName) {
+      tkName.value = '';
+    }
+    if (tkReason) {
+      tkReason.value = '';
+    }
+    setText(tkMsg, '');
+    while (tkBody && tkBody.firstChild) {
+      tkBody.removeChild(tkBody.firstChild);
+    }
+    tkUid = typeof item.id === 'number' ? item.id : null;
+    loadTokens();
   }
 
   if (ueForm) {

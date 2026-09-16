@@ -392,6 +392,33 @@ F-56 의 넷에 **폴더 관리 넷**을 더해 여덟이 됐다: `GET /api/fold
 **복구 수단이 없다**(휴지통이 아니다, 옮긴 것은 감사 로그를 보고 사람이 되돌린다). 귀속이 Admin 이면 모든 폴더·파일이 대상이다. 완화는 4.2~4.4 와 같다(회전·TLS·감사 `auth=api_token`), 그리고
 **귀속 계정을 Employee 로 두면** 고칠 수 있는 것이 자기가 만든 폴더·자기 파일로 좁혀진다(`decideFolderChange owner`·`decideEdit`). 지우기·등급 변경은 사용자별 토큰(설계 B) 결정 뒤 별건이다.
 
+### 4.6 사용자별 프로그램 토큰 — 설계 B 와 토큰 삭제 (PRD F-59, 사용자 결정 2026-09-16)
+
+F-49 는 「공용 정적 토큰 하나」(설계 A)로 갔고, 그 한계(회수·귀속 없음 — R-82)가 F-50·F-56·F-58 을 지나며 매번 「남는 위험」으로 적혔다.
+지우기를 프로그램에 열려면 **누가 지웠는지가 사람 단위로 남아야** 하므로, 여기서 설계 B 로 간다. 4.2~4.5 의 원칙은 그대로다 — 인증만 갈리고 인가·판정·응답은 세션과 같은 코드다.
+
+**표 `api_tokens`(6.2-5).** 계정별 개인 토큰. 토큰 원문은 발급 응답에 **한 번** 나가고 서버에는 **sha256 만** 남는다(`sessions`·`share_links` 와 같은 방식). 화면 식별용으로 앞 6자 `hint` 만 따로 둔다(48자 중 6자 — 남은 42자의 무작위성으로 충분하다). 회수는 `revoked_at`·`revoked_by` UPDATE 이고 행은 지우지 않는다 — 「그 토큰이 언제부터 언제까지 살아 있었나」 가 조사에 필요하다(앱 계정에 DELETE 권한 없음).
+
+**발급·회수는 관리자의 세션 행동이다.** `GET/POST /api/users/{uid}/api-tokens`·`DELETE /api/users/{uid}/api-tokens/{tid}`, 정책 `user.manage`(Admin, 재인증 관문 `[3-2]` 자동). 발급은 `reason_text` 필수(S-07), 살아 있는 토큰 계정당 **5개**(`limit_exceeded`), 대상이 비활성·만료면 거부(`target_inactive`). 자기 자신도 대상이 된다 — 관리자 자신의 PC 프로그램이 첫 용례다(`decideUserChange` 의 `self_change` 는 여기 적용하지 않는다). 화면은 계정 편집 모달(F-40)의 「프로그램 토큰」 구역: 목록(이름·hint·발급일·마지막 사용·상태), 발급(이름·사유 → 토큰을 **한 번** 보여 주고 복사), 회수. 전부 `textContent`.
+
+**`Auth::requireApiToken` 의 판정 순서(4.2 표를 대신한다).**
+
+| 순서 | 하는 일 |
+|---|---|
+| 헤더 | `X-API-Token` 없음 → 401 `missing_header` (불변) |
+| 개인 토큰 | `sha256(헤더값)` 으로 `api_tokens` 를 조회(`revoked_at IS NULL`). 있으면 그 `user_id` 의 계정을 **로그인과 같은 열 목록**으로 읽어 4조건(존재·활성·미만료·강제절차 없음)을 본다. 실패 → **403** 「권한이 없습니다」 + `auth.token deny user_disabled`(계정을 비활성화하면 그 계정의 토큰이 자동으로 막히는 경로다 — 회수를 따로 하지 않아도 된다). 성공 → `$user` 로 앉히고 `TBOX_API_TOKEN_KIND='personal'`·`TBOX_API_TOKEN_ID=<id>`, `last_used_at` 갱신(NULL 이거나 60초 넘게 지났을 때만 — 요청마다 UPDATE 하지 않는다) |
+| 공용 토큰 | 개인 토큰이 없을 때만. `.env` `API_TOKEN` 이 32자 이상이고 `hash_equals` → 기존 F-49 ④(귀속 계정 4조건, 실패 503 `user_invalid`) 그대로, `TBOX_API_TOKEN_KIND='shared'`(`TBOX_API_TOKEN_ID` 없음) |
+| 둘 다 아님 | 401 「API 토큰이 올바르지 않습니다」 `bad_token`. 회수된 개인 토큰도 이 갈래다(회수됐다는 사실을 알리지 않는다) |
+| 개인 전용 창구 | 라우터가 `TBOX_API_TOKEN_PERSONAL_ROUTES` 에 든 라우트면 `requireApiToken(true)` 로 부르고, 공용 토큰이면 **403** 「이 창구는 개인 토큰으로만 쓸 수 있습니다」 + `auth.token deny shared_token_not_permitted` |
+
+`not_configured` 503 은 **더 나오지 않는다** — 개인 토큰이 있는 서버에서 공용 토큰 미설정은 정상 상태다(문장 틀은 표에 남되 쓰이지 않는다). 공용 토큰은 **이행용**이다: 사용자가 개인 토큰을 PC 프로그램에 심은 뒤 `.env` 두 줄을 지우면 공용 경로가 닫히고 R-82 가 ✅ 가 된다.
+
+**감사 — 누가·어느 토큰으로.** `Audit::autoDetail` 이 토큰 경로의 모든 행에 `auth=api_token` 에 더해 `token_kind`(`personal`·`shared`)와 `token_id`(개인만)를 붙인다. 핸들러는 여전히 누가 불렀는지 모른다. 세 키는 이름에 `token` 이 들어 `FORBIDDEN_DETAIL_KEYS` 부분 일치에 걸리므로 `ALLOWED_DETAIL_KEYS` 에 **정확 일치 예외**로 등록한다(7.5) — 값은 번호·라벨·분류어이고 토큰이 아니다. 발급 행 `api_token.issue allow` 의 detail 은 `token_id`·`token_name`·`reason_text` 뿐, 토큰 원문·hint 도 남기지 않는다.
+
+**토큰 창구 열 — 삭제 둘은 개인 토큰만.** `TBOX_API_TOKEN_ROUTES` 에 `DELETE /api/files/{id}`·`DELETE /api/folders/{num}` 을 더해 열이 되고, 그 둘만 `TBOX_API_TOKEN_PERSONAL_ROUTES` 다. 둘 다 화면도 쓰는 라우트라 헤더 유무 갈림길(4.3) 그대로다. 인가는 세션과 같은 함수(`decideDelete`·`decideFolderChange`), 파일 삭제는 30일 휴지통, 폴더 삭제는 세 갈래 400 + `?move_trashed=1`(5.16) 그대로다. 등급 변경·`cascade`·휴지통 복원(`/api/files/trash`·`restore`)은 여전히 닫힘.
+
+**남는 표면(R-91).** 개인 토큰은 그 계정 권한으로 2단계 인증 없이 올리고·옮기고·지운다. 유출되면 그 계정의 파일이 휴지통으로 갈 수 있다(30일 복구). 완화: 회수 즉시 무효 · 계정 비활성화로 자동 차단 · 발급 1건 즉시 경보(AL-20) · 모든 행에 `token_id` · TLS · 살아 있는 토큰 5개 상한. 공용 토큰이 남아 있는 동안은 R-82 가 그대로 살아 있다.
+
 ## 5. 네 가지 흐름 — 순서대로, 권한 검사 위치 표시
 
 표기: **[권한 ✔]** = 여기서 권한 검사 · **[DB]** = PostgreSQL · **[FS]** = 스토리지 디스크 · **[LOG]** = 감사 로그
@@ -1490,6 +1517,28 @@ CREATE INDEX sessions_user_idx ON sessions (user_id);
 흐름: 로그인 성공 → `random_bytes(32)` → 쿠키에 hex 토큰(HttpOnly·Secure·SameSite=Lax) → DB 에는 `hash('sha256', 토큰)`. 요청마다 해시로 조회 → `expires_at` 확인 → `last_seen_at` 갱신. 로그아웃은 행 삭제.
 DB 가 유출돼도 해시만 있으므로 세션을 위조할 수 없다.
 
+### 6.2-5 `api_tokens` 테이블 — 사용자별 프로그램 토큰 (F-59, PRD F-59, ARCH 4.6)
+
+```sql
+CREATE TABLE api_tokens (
+    id           BIGSERIAL   PRIMARY KEY,
+    user_id      BIGINT      NOT NULL REFERENCES users(id),
+    name         TEXT        NOT NULL CHECK (length(name) BETWEEN 1 AND 50),   -- 라벨 「사무실 PC」
+    token_hash   CHAR(64)    NOT NULL UNIQUE,   -- 48자 토큰의 sha256. 원문은 저장하지 않음
+    hint         CHAR(6)     NOT NULL,          -- 토큰 앞 6자 — 화면에서 어느 토큰인지 알아보는 용도
+    created_by   BIGINT      NOT NULL REFERENCES users(id),
+    created_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
+    last_used_at TIMESTAMPTZ,
+    revoked_at   TIMESTAMPTZ,
+    revoked_by   BIGINT      REFERENCES users(id),
+    reason_text  TEXT        CHECK (reason_text IS NULL OR length(reason_text) <= 500)
+);
+CREATE INDEX api_tokens_user_idx ON api_tokens (user_id);
+-- 권한: tbox_app 에 SELECT, INSERT, UPDATE 만 (DELETE 없음 — 회수는 revoked_at). 시퀀스 USAGE, SELECT.
+```
+
+`token_hash` 의 UNIQUE 가 조회 인덱스를 겸한다(`WHERE token_hash = … AND revoked_at IS NULL` 이 유일한 조회 경로). 살아 있는 토큰 5개 상한은 앱이 본다(DB CHECK 로 표현하기 어려운 조건). 기존 DB 는 `db/migrations/2026-09-16_api_tokens.sql` 로 같은 모양이 된다.
+
 ### 6.3 실제 파일의 위치와 이름
 
 ```
@@ -1867,6 +1916,15 @@ GRANT  USAGE, SELECT  ON SEQUENCE audit_logs_id_seq TO tbox_app;
 | `file.update|deny|bad_folder` | `{actor} 이(가) 파일 「{target}」 을(를) 없는 폴더 또는 볼 수 없는 폴더로 옮기려 해서 거부했습니다` | 18-1 files_update |
 | `file.update|deny|parent_narrower` | `{actor} 이(가) 파일 「{target}」 을(를) 자기보다 좁은 등급의 폴더로 옮기려 해서 거부했습니다` | 18-1 |
 | `file.level_change|deny|parent_narrower` | `{actor} 이(가) 파일 「{target}」 의 접근 등급을 그 파일이 든 폴더보다 넓은 {level} 등급으로 바꾸려 해서 거부했습니다` | 18-1 |
+| `api_token.issue|allow` | `{actor} 이(가) 계정 「{target}」 의 프로그램 토큰을 발급했습니다 (이름·사유는 상세 기록, 토큰 값은 남기지 않습니다)` | F-59 |
+| `api_token.issue|deny|bad_request` | `{actor} 이(가) 계정 「{target}」 의 프로그램 토큰 발급을 허용되지 않는 형식(모르는 항목·이름 규칙·사유 없음)으로 요청해서 거부했습니다` | F-59 |
+| `api_token.issue|deny|limit_exceeded` | `{actor} 이(가) 계정 「{target}」 에 프로그램 토큰을 더 발급하려 했지만 살아 있는 토큰이 이미 5개여서 거부했습니다` | F-59 |
+| `api_token.issue|deny|target_inactive` | `{actor} 이(가) 비활성·만료된 계정 「{target}」 에 프로그램 토큰을 발급하려 해서 거부했습니다` | F-59 |
+| `api_token.revoke|allow` | `{actor} 이(가) 계정 「{target}」 의 프로그램 토큰을 회수했습니다 (이후 그 토큰은 쓸 수 없습니다)` | F-59 |
+| `api_token.revoke|deny|not_found` | `{actor} 이(가) 계정 「{target}」 에 없는 프로그램 토큰을 회수하려 해서 거부했습니다` | F-59 |
+| `api_token.revoke|deny|bad_request` | `{actor} 이(가) 이미 회수된 프로그램 토큰을 다시 회수하려 해서 거부했습니다` | F-59 |
+| `auth.token|deny|user_disabled` | `{target} 의 개인 토큰은 맞았지만 그 계정이 비활성·만료·절차 중이어서 막았습니다` | F-59 |
+| `auth.token|deny|shared_token_not_permitted` | `공용 토큰으로 개인 토큰 전용 창구 {target} 을(를) 부르려 해서 막았습니다` | F-59 |
 
 **구매·재고 모듈 `purchase.*` — 19~23단계 요약** (2026-09-14 추가. 문장 전문은 `src/Audit.php` 의 표 하나이고, 여기에는 **어떤 행이 있는지**만 적는다. 행이 100줄을 넘어 이 표에 그대로 옮기면 읽기 어렵다 — 새 행동을 더할 때는 `Audit.php` 의 표를 고치고 아래 요약에 한 줄을 보탠다.)
 
@@ -1992,6 +2050,9 @@ GRANT  USAGE, SELECT  ON SEQUENCE audit_logs_id_seq TO tbox_app;
 | `inbox_ids` · `excluded` | 무엇을 · 어떻게 | 제외·되살리기 대상이 된 대기표 행 id 목록과 방향(`true`=제외, `false`=되살리기) | 핸들러 | `purchase.structure.exclude` (24) |
 | `kind` | 무엇을 | 연결할 때 사람이 고른 **장소 용도**(`warehouse`·`central`·`or`·`other`). `null` 이면 이카운트 「구분」에서 서버가 유추했다는 뜻이다. 기초정보 창구에서는 종류 이름(`brands`·`locations` …)으로도 쓰인다 | 핸들러 | `purchase.structure.link` (24) · `purchase.master.*` (19) |
 | `branches` · `branches_off` | 어디에 | 품목에 **더한** 사용 지점 id 목록 / **뺀**(`is_active=false`) 사용 지점 id 목록. 이름이 아니라 id 다 | 핸들러 | `purchase.master.create|update|branch_off` (19 · 23) |
+| `token_kind` | 어떻게 | 토큰 경로의 **종류** 분류어(`personal`·`shared`). 코드에 적힌 고정값이고 요청이 정하지 않는다. 이름에 `token` 이 들어 부분 일치 금지에 걸리므로 `ALLOWED_DETAIL_KEYS` 정확 일치 예외 | `Audit::autoDetail` | 토큰 경로의 모든 행 (F-59) |
+| `token_id` | 어떻게 | 개인 토큰의 **행 번호**(정수, `api_tokens.id`). 토큰 값·hint 가 아니다 — 「어느 토큰으로」 를 사람이 목록에서 되짚는 열쇠. 정확 일치 예외 | `Audit::autoDetail`(개인 토큰 경로) · `api_token.issue`·`api_token.revoke` 핸들러 | F-59 |
+| `token_name` | 무엇을 | 발급·회수한 토큰의 **라벨**(「사무실 PC」). 사람이 붙인 이름이고 비밀이 아니다. 정확 일치 예외 | 핸들러 | `api_token.issue`·`api_token.revoke` (F-59) |
 
 **검토 행동과 사용자 행동 가르기** — 두 조건 중 하나면 검토다. 둘 다 아니면 사용자(또는 침입자)다.
 

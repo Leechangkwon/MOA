@@ -210,6 +210,19 @@ final class Audit
          *          (preview_kind·part 와 같은 이유).
          */
         'auth',
+        /*
+         * F-59 사용자별 개인 토큰 (PRD F-59 ④ ⑦, ARCH 4.6 「감사」 · 7.5 등록부).
+         * 세 키 모두 이름에 `token` 이 들어 FORBIDDEN_DETAIL_KEYS 의 **부분 일치**에 걸린다.
+         * 값은 토큰이 아니라 분류어·번호·라벨이므로 **정확 일치 예외**로만 통과시킨다
+         * (목록을 느슨하게 푸는 것이 아니다 — `sessions_revoked` 와 같은 방식).
+         *   token_kind — 토큰 경로의 종류 분류어(`personal`·`shared`). 코드에 적힌 고정값이고
+         *                요청이 정하지 않는다. autoDetail() 이 모든 행에 붙인다
+         *   token_id   — 개인 토큰의 **행 번호**(정수, api_tokens.id). 토큰 값·hint 가 아니다 —
+         *                「어느 토큰으로」 를 관리자가 목록에서 되짚는 열쇠
+         *   token_name — 발급·회수한 토큰의 **라벨**(「사무실 PC」). 사람이 붙인 이름이고 비밀이 아니다
+         * ★ 토큰 원문·hint·해시는 어떤 키로도 남지 않는다 (PRD S-09-11, SECURITY R-91).
+         */
+        'token_kind', 'token_id', 'token_name',
     ];
 
     private const RESULT_ALLOW = 'allow';
@@ -243,6 +256,29 @@ final class Audit
         'auth.token|deny|missing_header'          => 'API 토큰 없이 {target} 을(를) 부르려 해서 막았습니다',
         'auth.token|deny|bad_token'               => '틀린 API 토큰으로 {target} 을(를) 부르려 해서 막았습니다',
         'auth.token|deny|user_invalid'            => '{target} 의 API 토큰은 맞았지만 그 토큰에 연결된 계정이 없거나 쓸 수 없는 상태여서 막았습니다 (서버 설정 점검 필요)',
+
+        /*
+         * F-59 사용자별 개인 토큰 (ARCH 4.6 판정 순서 표 · 7.4, SECURITY R-91).
+         *   user_disabled              개인 토큰은 맞았지만 그 계정이 비활성·만료·강제 절차 중이다 → 403.
+         *                              계정을 비활성화하면 그 계정의 토큰이 자동으로 막히는 경로다.
+         *   shared_token_not_permitted 공용 토큰(.env)으로 **개인 토큰 전용 창구**(삭제 둘)를 불렀다 → 403.
+         * 둘 다 {target} 은 라우트 패턴이다 — 계정 이름도 토큰 값도 들어가지 않는다.
+         */
+        'auth.token|deny|user_disabled'           => '{target} 의 개인 토큰은 맞았지만 그 계정이 비활성·만료·절차 중이어서 막았습니다',
+        'auth.token|deny|shared_token_not_permitted' => '공용 토큰으로 개인 토큰 전용 창구 {target} 을(를) 부르려 해서 막았습니다',
+
+        /*
+         * F-59 개인 토큰의 발급·회수 (PRD F-59 ②, ARCH 4.6 · 7.4, API.md 13장).
+         * 일곱 행 모두 {target} 은 **대상 계정의 아이디**다 — 토큰 원문도 hint 도 어느 문장에도
+         * 들어가지 않는다(남는 것은 detail 의 token_id·token_name·reason_text 뿐, ARCH 7.5).
+         */
+        'api_token.issue|allow'                   => '{actor} 이(가) 계정 「{target}」 의 프로그램 토큰을 발급했습니다 (이름·사유는 상세 기록, 토큰 값은 남기지 않습니다)',
+        'api_token.issue|deny|bad_request'        => '{actor} 이(가) 계정 「{target}」 의 프로그램 토큰 발급을 허용되지 않는 형식(모르는 항목·이름 규칙·사유 없음)으로 요청해서 거부했습니다',
+        'api_token.issue|deny|limit_exceeded'     => '{actor} 이(가) 계정 「{target}」 에 프로그램 토큰을 더 발급하려 했지만 살아 있는 토큰이 이미 5개여서 거부했습니다',
+        'api_token.issue|deny|target_inactive'    => '{actor} 이(가) 비활성·만료된 계정 「{target}」 에 프로그램 토큰을 발급하려 해서 거부했습니다',
+        'api_token.revoke|allow'                  => '{actor} 이(가) 계정 「{target}」 의 프로그램 토큰을 회수했습니다 (이후 그 토큰은 쓸 수 없습니다)',
+        'api_token.revoke|deny|not_found'         => '{actor} 이(가) 계정 「{target}」 에 없는 프로그램 토큰을 회수하려 해서 거부했습니다',
+        'api_token.revoke|deny|bad_request'       => '{actor} 이(가) 이미 회수된 프로그램 토큰을 다시 회수하려 해서 거부했습니다',
 
         // ── 공통 관문 (Http::requireCsrf, index.php 라우트 정책) ──
         'csrf|deny|token_mismatch'                => '{actor} 이(가) {target} 요청을 보냈지만 CSRF 토큰이 없거나 달라서 막았습니다 (다른 사이트에서 몰래 보낸 요청일 수 있음)',
@@ -1102,6 +1138,21 @@ final class Audit
          */
         if (defined('TBOX_AUTH_METHOD')) {
             $out['auth'] = (string) constant('TBOX_AUTH_METHOD');
+        }
+
+        /*
+         * F-59 (PRD F-59 ④, ARCH 4.6 「감사 — 누가·어느 토큰으로」) — 토큰 경로의 **종류**와
+         * **어느 토큰**인가. `Auth::requireApiToken` 이 판정한 뒤 세우는 상수를 그대로 읽는다.
+         * 여기 두는 이유는 `auth` 와 같다: 핸들러가 적어 넣는 값이면 언젠가 한 곳이 빠지고,
+         * 빠진 그 행이 곧 「누가 지웠는지 모르는 삭제」가 된다. 값은 코드가 정한 분류어와
+         * 행 번호뿐이고 **토큰 원문·hint 는 어느 쪽에도 들어가지 않는다**.
+         * 공용 토큰에는 TBOX_API_TOKEN_ID 가 없다 → `token_id` 키 자체가 생기지 않는다.
+         */
+        if (defined('TBOX_API_TOKEN_KIND')) {
+            $out['token_kind'] = (string) constant('TBOX_API_TOKEN_KIND');
+        }
+        if (defined('TBOX_API_TOKEN_ID')) {
+            $out['token_id'] = (int) constant('TBOX_API_TOKEN_ID');
         }
 
         // 미로그인 행(auth.login·auth.required)에는 누가에 해당하는 값이 없다 → 키를 넣지 않는다.

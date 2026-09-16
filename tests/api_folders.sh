@@ -12,9 +12,12 @@
 #   (d) 파일 이동  토큰 업로드(POST /api/upload) 한 파일을 PATCH /api/files/{id}
 #       {folder_id} 로 옮김 → 200 · 토큰 GET /api/files?folder=<id> 배열에 그 id 있음 ·
 #       {folder_id:null} 루트 복귀 → 200 · {description} → **400** · {folder_id:S} → 400.
-#   (e) 닫힘  토큰으로 DELETE /api/folders/{num}·DELETE /api/files/{id} → 401
-#       「로그인이 필요합니다」(헤더 무시) · 헤더 없이 GET /api/folders → 401 「로그인이
-#       필요합니다」(세션 경로) · 틀린 토큰 → 401 「API 토큰이 올바르지 않습니다」.
+#   (e) 닫힘  **틀린 토큰**으로 DELETE /api/folders/{num}·DELETE /api/files/{id} → 401
+#       「API 토큰이 올바르지 않습니다」 — F-59 로 삭제 둘이 토큰 라우트가 됐다(옛 기대였던
+#       「헤더 무시」가 아니다) · 헤더 없이 GET /api/folders → 401 「로그인이 필요합니다」
+#       (세션 경로) · 틀린 토큰 GET /api/folders → 401 「API 토큰이 올바르지 않습니다」 ·
+#       **헤더 무시**는 여전히 닫힌 라우트로 확인한다: 틀린 토큰으로 GET /api/users ·
+#       POST /api/users/{num}/api-tokens → 401 「로그인이 필요합니다」(세션 경로).
 #   (f) 감사  (b)(c)(d) 의 folder.create·folder.update·file.update 행이 전부
 #       detail.auth=api_token · 나온 (action·result·reason) 조합이 전부 src/Audit.php 의
 #       SUMMARY_TEMPLATES 에 있다(0 건이 「없는 조합」). 「새 조합」의 기준은 이 DB 의 과거
@@ -435,25 +438,29 @@ else
   fi
 fi
 
-# ─── (e) 닫힘 — 삭제는 토큰으로 열려 있지 않다 ──────────────────
-hr "(e) 닫힘 — 헤더 무시 · 헤더 없음 · 틀린 토큰"
-# 이 항목은 **토큰 귀속과 무관하게** 돈다. 보는 것이 「헤더를 아예 읽지 않는가」이기 때문이다.
-if [ "$USE_TOKEN" -eq 1 ]; then TOK="$API_TOKEN"; note "진짜 토큰으로 확인한다(값은 출력하지 않는다)"
-else TOK="$WRONG_TOKEN"; note "귀속이 검토 계정이 아니라 **틀린 토큰**으로 확인한다 — 삭제 라우트는 헤더를 읽지도 않으므로 결과가 같다"; fi
+# ─── (e) 닫힘 — 삭제는 토큰 라우트다(틀린 값이면 401) · 집합 밖은 헤더를 읽지 않는다 ──
+hr "(e) 닫힘 — 삭제는 토큰 라우트(틀린 토큰 401) · 헤더 없음 · 헤더 무시"
+# 이 항목은 **토큰 귀속과 무관하게** 돈다. 보는 것이 「틀린 값이면 어떤 답인가」이기 때문이다.
+# ★ 2026-09-16 (F-59) — 옛 기대는 「삭제 둘은 헤더를 읽지도 않는다(세션 경로 401)」였다.
+#   이제 DELETE 둘은 **토큰 라우트**(TBOX_API_TOKEN_ROUTES, 그중 개인 토큰 전용)라
+#   틀린 토큰이면 401 「API 토큰이 올바르지 않습니다」 + `auth.token deny bad_token` 이다.
+#   설계가 바뀐 것이므로 시험의 기대를 바꾼다. 「헤더 무시」는 아래 **닫힌 라우트**로 확인한다.
+# ★ 삭제에는 **언제나 틀린 토큰**을 쓴다 — 진짜 토큰으로 부르면 실제로 지워질 수 있다.
+note "삭제 둘은 틀린 토큰으로 확인한다(진짜 토큰은 쓰지 않는다 — 지워질 수 있다)"
 
 E_NUM="${A_ID:-999999999}"
 E_UUID='00000000-0000-4000-8000-000000000000'
 T_E=$(mark)
 
-OUT=$(curl -s -w '\n%{http_code}' -X DELETE -A "$UA" -H "X-API-Token: $TOK" "$BASE/api/folders/$E_NUM")
-echo "  DELETE /api/folders/$E_NUM → [$(code_of "$OUT")] $(body_of "$OUT")"
-expect "토큰 폴더 삭제 상태" "401" "$(code_of "$OUT")"
-expect "토큰 폴더 삭제 문구(세션 경로 — 헤더를 읽지 않는다)" '{"error":"로그인이 필요합니다"}' "$(body_of "$OUT")"
+OUT=$(curl -s -w '\n%{http_code}' -X DELETE -A "$UA" -H "X-API-Token: $WRONG_TOKEN" "$BASE/api/folders/$E_NUM")
+echo "  틀린 토큰 DELETE /api/folders/$E_NUM → [$(code_of "$OUT")] $(body_of "$OUT")"
+expect "틀린 토큰 폴더 삭제 상태(F-59 — 토큰 라우트)" "401" "$(code_of "$OUT")"
+expect "틀린 토큰 폴더 삭제 문구" '{"error":"API 토큰이 올바르지 않습니다"}' "$(body_of "$OUT")"
 
-OUT=$(curl -s -w '\n%{http_code}' -X DELETE -A "$UA" -H "X-API-Token: $TOK" "$BASE/api/files/$E_UUID")
-echo "  DELETE /api/files/$E_UUID → [$(code_of "$OUT")] $(body_of "$OUT")"
-expect "토큰 파일 삭제 상태" "401" "$(code_of "$OUT")"
-expect "토큰 파일 삭제 문구" '{"error":"로그인이 필요합니다"}' "$(body_of "$OUT")"
+OUT=$(curl -s -w '\n%{http_code}' -X DELETE -A "$UA" -H "X-API-Token: $WRONG_TOKEN" "$BASE/api/files/$E_UUID")
+echo "  틀린 토큰 DELETE /api/files/$E_UUID → [$(code_of "$OUT")] $(body_of "$OUT")"
+expect "틀린 토큰 파일 삭제 상태(F-59 — 토큰 라우트)" "401" "$(code_of "$OUT")"
+expect "틀린 토큰 파일 삭제 문구" '{"error":"API 토큰이 올바르지 않습니다"}' "$(body_of "$OUT")"
 
 OUT=$(curl -s -w '\n%{http_code}' -A "$UA" "$BASE/api/folders")
 echo "  헤더 없음 GET /api/folders → [$(code_of "$OUT")] $(body_of "$OUT")"
@@ -465,12 +472,27 @@ echo "  틀린 토큰 GET /api/folders → [$(code_of "$OUT")] $(body_of "$OUT")
 expect "틀린 토큰 상태(세션으로 되돌아가지 않는다)" "401" "$(code_of "$OUT")"
 expect "틀린 토큰 문구" '{"error":"API 토큰이 올바르지 않습니다"}' "$(body_of "$OUT")"
 
+# 「헤더 무시」 — 토큰 집합 **밖**의 라우트는 헤더를 읽는 코드에 닿지도 않는다.
+#   계정 창구(user.manage)와 개인 토큰 발급 창구가 그것이다(F-59: 토큰이 토큰을 만들 수 없다).
+OUT=$(curl -s -w '\n%{http_code}' -A "$UA" -H "X-API-Token: $WRONG_TOKEN" "$BASE/api/users")
+echo "  틀린 토큰 GET /api/users → [$(code_of "$OUT")] $(body_of "$OUT")"
+expect "닫힌 라우트 상태(헤더 무시 — 세션 경로)" "401" "$(code_of "$OUT")"
+expect "닫힌 라우트 문구" '{"error":"로그인이 필요합니다"}' "$(body_of "$OUT")"
+
+OUT=$(curl -s -w '\n%{http_code}' -X POST -A "$UA" -H "X-API-Token: $WRONG_TOKEN" \
+      -H 'Content-Type: application/json' -d '{"name":"x","reason_text":"x"}' \
+      "$BASE/api/users/999999999/api-tokens")
+echo "  틀린 토큰 POST /api/users/{num}/api-tokens → [$(code_of "$OUT")] $(body_of "$OUT")"
+expect "토큰 발급 창구도 헤더 무시(세션 경로)" "401" "$(code_of "$OUT")"
+expect "토큰 발급 창구 문구" '{"error":"로그인이 필요합니다"}' "$(body_of "$OUT")"
+
 if [ "$HAVE_PSQL" -eq 1 ]; then
-  # 삭제 라우트 둘은 토큰 집합 밖이라 auth.token 판정에 닿지도 않는다. 틀린 토큰 한 건만 남는다.
+  # 토큰 집합 **안**의 라우트로 보낸 틀린 토큰 셋만 auth.token 에 남는다
+  # (DELETE 둘 + GET /api/folders). 닫힌 라우트 둘은 헤더를 읽지도 않아 여기 없다.
   N=$(psqlq "SELECT count(*) FROM audit_logs WHERE action='auth.token' AND id > ${T_E:-0}")
-  expect "auth.token 감사 행(틀린 토큰 1건만)" "1" "${N:-?}"
+  expect "auth.token 감사 행(틀린 토큰 3건)" "3" "${N:-?}"
   GOT=$(psqlq "SELECT string_agg(result||' '||coalesce(reason,'없음')||' @'||coalesce(target_name,'?'), ' | ' ORDER BY id) FROM audit_logs WHERE action='auth.token' AND id > ${T_E:-0}")
-  expect "그 한 건" "deny bad_token @GET /api/folders" "${GOT:-없음}"
+  expect "그 세 건" "deny bad_token @DELETE /api/folders/{num} | deny bad_token @DELETE /api/files/{id} | deny bad_token @GET /api/folders" "${GOT:-없음}"
 fi
 
 # ─── (f) 감사 — 전부 detail.auth=api_token · 문장표에 없는 조합 0 ─────────

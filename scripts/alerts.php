@@ -3,7 +3,8 @@ declare(strict_types=1);
 
 /**
  * scripts/alerts.php — 감사 로그를 5분마다 훑어 경보 규칙을 판정한다 (9단계)
- *   PRD 7.11 S-11-A (AL-1 · AL-2 · AL-5 · AL-7 · AL-10 · AL-12 · AL-13 · AL-18 · AL-19 · 서버 층 AL-3 · AL-9)
+ *   PRD 7.11 S-11-A (AL-1 · AL-2 · AL-5 · AL-7 · AL-10 · AL-12 · AL-13 · AL-18 · AL-19 · AL-20 · 서버 층 AL-3 · AL-9)
+ *   개인 프로그램 토큰 AL-20 (PRD F-59 ⑦, ARCH 4.6 · 11.4 — `api_token.issue allow` 1건이라도 즉시)
  *   악성코드 AL-19 (PRD F-54 ④, ARCH 5.28 · 11.4 — `file.scan deny infected` 1건이라도 즉시)
  *   구매·재고 AL-14 ~ AL-17 (PRD F-32 · F-35 · F-36, ARCH 5.18 「감사·경보」 · 11.4)
  *   ARCHITECTURE 11.1 (5분마다 cron) · 11.4 (경보 구성) · 7.4 `alert.raised|allow` · 7.5 `rule`·`evidence`
@@ -969,6 +970,43 @@ if ($want('AL-19')) {
         ]);
     }
     cli_say(sprintf('AL-19 대상 %d건', count($rows)));
+}
+
+// ─────────────────────────────────────────────────────────────
+// AL-20 — 개인 프로그램 토큰 발급 (PRD 7.11 · F-59 ⑦, ARCH 4.6 · 11.4, SECURITY R-91)
+//   AL-18·AL-13 과 **같은 형태**다: `api_token.issue allow` 가 **1건이라도** 있으면 즉시.
+//   건수 임계값이 없는 이유: 개인 토큰은 2단계 인증 없이 그 계정 권한으로 파일을 올리고
+//   **지우는** 자격 증명이다. 관리자 세션을 훔친 사람이 토큰을 발급해 두면 세션이 끊긴
+//   뒤에도 자격이 남는다 — 발급은 드문 일이라 한 건도 알린다.
+//   근거에 담는 것: 발급한 사람(묶는 단위)·대상 계정 목록·토큰 **이름**·사유.
+//   ★ 토큰 값도 hint 도 해시도 담지 않는다 — 감사 로그에 애초에 없다(ARCH 4.6, PRD S-09-11).
+//   창은 다른 audit_logs 규칙과 맞춰 5분(배치 주기)이고, 중복 억제는 $raise 가 한다.
+// ─────────────────────────────────────────────────────────────
+if ($want('AL-20')) {
+    $rows = $db->run(
+        "SELECT actor_name, count(*) AS n,
+                array_to_string(array_agg(target_name ORDER BY id), ',') AS targets,
+                max(detail->>'token_name')  AS token_name,
+                max(detail->>'reason_text') AS reason_text,
+                max(happened_at) AS last_at
+           FROM audit_logs
+          WHERE action = 'api_token.issue' AND result = 'allow'
+            AND happened_at > now() - interval '5 minutes'
+          GROUP BY actor_name"
+    )->fetchAll();
+    foreach ($rows as $r) {
+        $raise('AL-20', (string) ($r['actor_name'] ?? '?'), [
+            'rule_text'   => '개인 프로그램 토큰 발급 — 건수와 무관하게 즉시 알린다',
+            'count'       => (int) $r['n'],
+            // 토큰을 받은 계정 목록. 어느 토큰인지는 감사 로그 detail.token_id 에 있다.
+            'targets'     => (string) $r['targets'],
+            'token_name'  => $r['token_name']  === null ? '' : (string) $r['token_name'],
+            'reason_text' => $r['reason_text'] === null ? '' : (string) $r['reason_text'],
+            'window'      => '5 minutes',
+            'last_at'     => (string) $r['last_at'],
+        ]);
+    }
+    cli_say(sprintf('AL-20 대상 %d명', count($rows)));
 }
 
 // ─────────────────────────────────────────────────────────────

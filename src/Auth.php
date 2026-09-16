@@ -208,6 +208,46 @@ final class Auth
          WHERE username = :username
         SQL;
 
+    /**
+     * 개인 프로그램 토큰의 주인을 **로그인과 같은 열 목록**으로 읽는다 (F-59, ARCH 4.6).
+     *
+     * SQL_LOAD_USER 와 열이 한 글자도 다르지 않다 — 다르면 토큰 경로의 `$user` 가 세션의
+     * `$user` 와 다른 모양이 되고, 그날부터 두 경로의 판정이 갈린다. 다른 것은 찾는 열쇠
+     * (아이디 ↔ id)뿐이다.
+     */
+    private const SQL_LOAD_USER_BY_ID = <<<'SQL'
+        SELECT id, username, password_hash, role, team_id, is_active,
+               failed_count, locked_until,
+               mfa_enabled, mfa_secret, mfa_last_step,
+               must_change_password, mfa_setup_required,
+               (locked_until IS NOT NULL AND locked_until > now()) AS is_locked,
+               (expires_at IS NOT NULL AND expires_at < now())     AS is_expired
+          FROM users
+         WHERE id = :id
+        SQL;
+
+    /**
+     * 개인 토큰 조회 (F-59, ARCH 4.6 · 6.2-5) — **해시로만** 찾는다.
+     * 원문은 서버 어디에도 없으므로 이 조회가 유일한 경로이고, 회수된 행(`revoked_at`)은
+     * 애초에 나오지 않는다(회수된 토큰은 「틀린 토큰」과 같은 답을 받는다).
+     */
+    private const SQL_FIND_API_TOKEN = <<<'SQL'
+        SELECT id, user_id
+          FROM api_tokens
+         WHERE token_hash = :hash AND revoked_at IS NULL
+        SQL;
+
+    /**
+     * 「마지막으로 쓴 시각」 갱신 (F-59, ARCH 4.6). 요청마다 UPDATE 하지 않는다 —
+     * NULL 이거나 60초가 지났을 때만 쓴다(프로그램이 초당 여러 번 부르는 창구다).
+     */
+    private const SQL_TOUCH_API_TOKEN = <<<'SQL'
+        UPDATE api_tokens
+           SET last_used_at = now()
+         WHERE id = :id
+           AND (last_used_at IS NULL OR last_used_at < now() - interval '60 seconds')
+        SQL;
+
     /** 비밀번호 변경(10단계) — 현재 비밀번호 확인용. 세션의 user_id 로만 찾는다 */
     private const SQL_LOAD_BY_ID = <<<'SQL'
         SELECT id, username, password_hash, must_change_password
@@ -502,78 +542,132 @@ final class Auth
     public const API_TOKEN_MIN_CHARS = 32;
 
     /**
-     * 프로그램용 업로드 `POST /api/upload` 의 인증 (PRD F-49, ARCH 4.2, S-09-11).
+     * 프로그램용 토큰 인증 — 개인 토큰 우선, 공용 토큰은 이행용
+     * (PRD F-49 · F-50 · F-56 · F-58 · **F-59**, ARCH 4.2 · 4.6, S-09-11, SECURITY R-82 · R-91).
      *
-     * 사람의 로그인(requireLogin)과 **다른 길**이다. 세션도 쿠키도 CSRF 도 없고, 대신
-     * `.env` 의 정적 토큰 하나를 헤더 `X-API-Token` 과 견준다. 이 함수를 부르는 곳은
-     * 라우터 [2] 의 `POST /api/upload` 가지 하나뿐이다 — **다른 라우트는 이 헤더를 읽지도
-     * 않으므로**, 토큰을 쥔 사람도 그 창구 밖에서는 아무것도 할 수 없다.
+     * 사람의 로그인(requireLogin)과 **다른 길**이다. 세션도 쿠키도 CSRF 도 없고, 헤더
+     * `X-API-Token` 하나로 판정한다. 이 함수를 부르는 곳은 라우터 [2-T] 한 곳이고,
+     * 그 가지에 들어오는 라우트는 `TBOX_API_TOKEN_ROUTES` 의 **열뿐**이다 — 토큰을 쥔
+     * 사람도 그 창구 밖에서는 아무것도 열지 못한다.
      *
-     * 실패는 네 가지이고 전부 `auth.token deny` 로 남는다. 감사의 대상은 **라우트 패턴**이다
-     * (`target_type=system`) — 어느 계정에 귀속되는지는 요청자에게도 로그에도 흘리지 않는다.
-     *   not_configured  `.env` 에 토큰이 없다·짧다 → 503. **닫힌 실패**다: 설정이 안 된 서버는
-     *                   "아무나 올릴 수 있는 서버" 가 아니라 "아무도 못 올리는 서버" 여야 한다
-     *   missing_header  헤더가 없다 → 401
-     *   bad_token       헤더가 다르다 → 401. 비교는 **hash_equals 만** 쓴다(타이밍 안전).
-     *                   `==`·`===`·`strcmp` 는 앞에서부터 다른 자리를 만나면 바로 끝나므로,
-     *                   응답 시간 차이를 재서 한 글자씩 맞혀 볼 수 있다
-     *   user_invalid    귀속 계정(`API_TOKEN_USER`)이 없다·비활성·만료·강제 절차 중 → 503.
-     *                   요청이 잘못된 것이 아니라 **서버 설정**이 잘못된 것이므로 4xx 가 아니다
+     * 판정 순서는 ARCH 4.6 의 표 그대로다.
+     *   ① 헤더 없음                      → 401 `missing_header` (F-49 불변)
+     *   ② sha256(헤더값)으로 `api_tokens` 조회(회수되지 않은 것)
+     *      있으면 **개인 토큰**: 그 계정을 로그인과 같은 열 목록으로 읽어 4조건(존재·활성·
+     *      미만료·강제 절차 없음)을 본다. 실패 → 403 `user_disabled`(계정을 비활성화하면
+     *      그 계정의 토큰이 자동으로 막히는 경로다 — 회수를 따로 하지 않아도 된다).
+     *      성공 → `TBOX_API_TOKEN_KIND='personal'`·`TBOX_API_TOKEN_ID=<id>` + `last_used_at` 갱신
+     *   ③ 없으면 **공용 토큰**(`.env`): 32자 이상이고 `hash_equals` 일 때만. 귀속 계정의 4조건
+     *      실패는 요청이 아니라 **서버 설정** 문제라 503 `user_invalid` 다(F-49 그대로).
+     *      → `TBOX_API_TOKEN_KIND='shared'` (`TBOX_API_TOKEN_ID` 는 없다 — 사람 단위 귀속이 없다)
+     *   ④ 둘 다 아님                      → 401 `bad_token`. **회수된 개인 토큰도 이 갈래다**
+     *      (회수됐다는 사실을 요청자에게 알리지 않는다)
+     *   ⑤ `$personalOnly` 인 창구를 공용 토큰으로 불렀으면 → 403 `shared_token_not_permitted`
+     *
+     * `not_configured` 503 은 **더 나오지 않는다** — 개인 토큰이 있는 서버에서 공용 토큰
+     * 미설정은 정상 상태다(문장 틀은 ARCH 7.4 표에 남되 쓰이지 않는다). 공용 토큰은
+     * 이행용이며, `.env` 의 두 줄을 지우면 공용 경로가 닫힌다(R-82 ✅ 조건).
+     *
+     * 비교는 언제나 `hash_equals`(타이밍 안전)이고, 개인 토큰은 해시로만 조회한다 —
+     * `==`·`===`·`strcmp` 는 앞에서부터 다른 자리를 만나면 바로 끝나므로 응답 시간 차이로
+     * 한 글자씩 맞혀 볼 수 있다.
      *
      * 성공하면 그 계정을 `currentUser()` 가 돌려주는 것과 **같은 자리**(self::$user)에 앉힌다.
-     * 그래야 감사 로그의 `actor_*` 가 귀속 계정 이름으로 남고(PRD F-49 ②), 업로드 공통 함수는
-     * "누가 불렀는지" 를 모른 채 웹과 똑같은 코드를 실행한다. 비밀번호 해시·TOTP 비밀은
-     * 배열에서 **빼고** 앉힌다 — 업로드 경로가 그 값을 볼 이유가 없다.
+     * 그래야 감사 로그의 `actor_*` 가 **토큰을 쓴 사람**으로 남고(F-59 ④), 핸들러는 누가
+     * 불렀는지 모른 채 웹과 똑같은 코드를 실행한다. 비밀번호 해시·TOTP 비밀은 배열에서
+     * **빼고** 앉힌다 — 토큰 경로가 그 값을 볼 이유가 없다.
      *
-     * 토큰 값은 이 함수 어디에서도 로그·감사·응답에 나가지 않는다 (PRD S-09-11, SECURITY R-82).
+     * 토큰 값·해시·hint 는 이 함수 어디에서도 로그·감사·응답에 나가지 않는다 (PRD S-09-11).
      *
+     * @param bool $personalOnly 라우터가 `TBOX_API_TOKEN_PERSONAL_ROUTES` 로 판단한다.
+     *                           **요청 값이 정하지 않는다**(라우트 패턴만 본다).
      * @return array<string,mixed>
      */
-    public static function requireApiToken(): array
+    public static function requireApiToken(bool $personalOnly = false): array
     {
-        // ① 서버 설정 — 없거나 짧으면 아무도 못 들어온다 (닫힌 실패)
-        $configured = Env::getOrEmpty('API_TOKEN');
-        if (strlen($configured) < self::API_TOKEN_MIN_CHARS) {
-            self::denyApiToken('not_configured');
-            Http::error(503, 'API 토큰이 서버에 설정되지 않았습니다');
-        }
-
-        // ② 헤더
+        // ① 헤더 (F-49 불변)
         $sent = Http::apiTokenHeader();
         if ($sent === null) {
             self::denyApiToken('missing_header');
             Http::error(401, 'X-API-Token 헤더가 없습니다');
         }
 
-        // ③ 비교 — hash_equals 만. 길이가 달라도 false 이고 시간이 값에 따라 변하지 않는다.
-        if (!hash_equals($configured, $sent)) {
-            self::denyApiToken('bad_token');
-            Http::error(401, 'API 토큰이 올바르지 않습니다');
+        $db      = Db::instance();
+        $row     = null;
+        $kind    = '';
+        $tokenId = null;
+
+        // ② 개인 토큰 — 해시로만 찾는다 (F-59, ARCH 4.6)
+        $found = $db->run(self::SQL_FIND_API_TOKEN, [':hash' => hash('sha256', $sent)])->fetch();
+
+        if (is_array($found)) {
+            $row = $db->run(self::SQL_LOAD_USER_BY_ID, [':id' => (int) $found['user_id']])->fetch();
+            if (!is_array($row)
+                || $row['is_active'] !== true
+                || $row['is_expired'] === true
+                || self::nextStep($row) !== null
+            ) {
+                // 토큰은 맞았지만 그 계정이 쓸 수 없는 상태다. 넷 중 무엇이 틀렸는지는
+                // 응답에 넣지 않는다 (PRD S-09-5) — 통일 문구 403 이다.
+                self::denyApiToken('user_disabled');
+                Http::error(403, Http::MSG_FORBIDDEN);
+            }
+            $kind    = 'personal';
+            $tokenId = (int) $found['id'];
+        } else {
+            // ③ 공용 토큰 — 이행용 (F-49 ④ 그대로). 32자 미만이면 비교조차 하지 않는다.
+            $configured = Env::getOrEmpty('API_TOKEN');
+            if (strlen($configured) < self::API_TOKEN_MIN_CHARS
+                || !hash_equals($configured, $sent)
+            ) {
+                // ④ 둘 다 아니다 — 회수된 개인 토큰도 여기로 온다.
+                self::denyApiToken('bad_token');
+                Http::error(401, 'API 토큰이 올바르지 않습니다');
+            }
+
+            // 귀속 계정 — 로그인과 **같은 조회**를 쓴다(비밀번호 검증만 없다).
+            $name = Env::getOrEmpty('API_TOKEN_USER');
+            if ($name !== '' && preg_match(self::USERNAME_RE, $name) === 1) {
+                $row = $db->run(self::SQL_LOAD_USER, [':username' => $name])->fetch();
+            }
+            if (!is_array($row)
+                || $row['is_active'] !== true
+                || $row['is_expired'] === true
+                || self::nextStep($row) !== null
+            ) {
+                self::denyApiToken('user_invalid');
+                // 계정 이름도, 넷 중 무엇이 틀렸는지도 응답에 넣지 않는다 (PRD S-09-5).
+                Http::error(503, 'API 토큰 귀속 계정이 올바르지 않습니다(서버 설정)');
+            }
+            $kind = 'shared';
         }
 
-        // ④ 귀속 계정 — 로그인과 **같은 조회**를 쓴다(비밀번호 검증만 없다).
-        $name = Env::getOrEmpty('API_TOKEN_USER');
-        $row  = null;
-        if ($name !== '' && preg_match(self::USERNAME_RE, $name) === 1) {
-            $row = Db::instance()->run(self::SQL_LOAD_USER, [':username' => $name])->fetch();
-        }
-        if (!is_array($row)
-            || $row['is_active'] !== true
-            || $row['is_expired'] === true
-            || self::nextStep($row) !== null
-        ) {
-            self::denyApiToken('user_invalid');
-            // 계정 이름도, 넷 중 무엇이 틀렸는지도 응답에 넣지 않는다 (PRD S-09-5).
-            Http::error(503, 'API 토큰 귀속 계정이 올바르지 않습니다(서버 설정)');
-        }
-
-        // 인증 값은 들고 다니지 않는다 — 업로드 경로가 쓰는 것은 id·username·role·team_id 다.
+        // 인증 값은 들고 다니지 않는다 — 토큰 경로가 쓰는 것은 id·username·role·team_id 다.
         unset($row['password_hash'], $row['mfa_secret'], $row['mfa_last_step']);
 
-        // ⑤ 감사의 「누가」 가 귀속 계정이 되도록 현재 사용자 자리에 앉힌다 (Audit::actor).
-        //    세션이 없으므로 session_id 는 없다 → detail.login_ref 도 생기지 않는다(맞는 동작).
+        // 감사의 「누가」 가 토큰의 주인이 되도록 현재 사용자 자리에 앉힌다 (Audit::actor).
+        // 세션이 없으므로 session_id 는 없다 → detail.login_ref 도 생기지 않는다(맞는 동작).
         self::$user     = $row;
         self::$resolved = true;
+
+        // 감사 로그가 모든 행에 자동으로 붙이는 값 (Audit::autoDetail, ARCH 4.6 「감사」).
+        // 값은 코드가 정한 분류어와 행 번호뿐이고 요청이 정하지 않는다.
+        define('TBOX_API_TOKEN_KIND', $kind);
+        if ($tokenId !== null) {
+            define('TBOX_API_TOKEN_ID', $tokenId);
+        }
+
+        // ⑤ 개인 토큰 전용 창구(삭제 둘) — 공용 토큰은 여기서 끝난다.
+        //    「누가 지웠나」 가 사람 단위로 남지 않는 자격으로는 지울 수 없게 한 것이다(F-59 ⑤).
+        if ($personalOnly && $kind === 'shared') {
+            self::denyApiToken('shared_token_not_permitted');
+            Http::error(403, Http::MSG_PERSONAL_TOKEN_REQUIRED);
+        }
+
+        // 마지막으로 쓴 시각 — 60초에 한 번만 (요청마다 UPDATE 하지 않는다).
+        if ($tokenId !== null) {
+            $db->run(self::SQL_TOUCH_API_TOKEN, [':id' => $tokenId]);
+        }
 
         return $row;
     }

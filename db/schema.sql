@@ -267,6 +267,33 @@ CREATE INDEX share_links_created_by_idx ON share_links (created_by);
 CREATE INDEX share_links_file_idx       ON share_links (file_id);
 
 -- ─────────────────────────────────────────────────────────────
+-- api_tokens — 사용자별 프로그램 토큰 (F-59, PRD F-59 ①, ARCH 4.6 · 6.2-5)
+--   계정마다 발급하는 개인 토큰이다. 토큰 원문은 발급 응답에 **한 번** 나가고 서버에는
+--   **sha256 만** 남는다(sessions·share_links 와 같은 방식). 화면 식별용으로 앞 6자
+--   `hint` 만 따로 둔다 — 48자 중 6자이고 남은 42자의 무작위성으로 추측이 성립하지 않는다.
+--   회수는 `revoked_at`·`revoked_by` UPDATE 이고 **행은 지우지 않는다** — 「그 토큰이
+--   언제부터 언제까지 살아 있었나」 가 조사에 필요하다 → 앱 계정에 DELETE 권한이 없다.
+--   살아 있는 토큰 계정당 5개 상한은 앱이 본다(다른 행들의 상태에 달린 조건이라 CHECK 로
+--   표현하기 어렵다). (기존 DB 는 db/migrations/2026-09-16_api_tokens.sql 로 같은 모양이 된다.)
+-- ─────────────────────────────────────────────────────────────
+CREATE TABLE api_tokens (
+    id           BIGSERIAL   PRIMARY KEY,
+    user_id      BIGINT      NOT NULL REFERENCES users(id),
+    name         TEXT        NOT NULL CHECK (length(name) BETWEEN 1 AND 50),   -- 라벨 「사무실 PC」
+    token_hash   CHAR(64)    NOT NULL UNIQUE,   -- 48자 토큰의 sha256. 원문은 저장하지 않음
+    hint         CHAR(6)     NOT NULL,          -- 토큰 앞 6자 — 화면에서 어느 토큰인지 알아보는 용도
+    created_by   BIGINT      NOT NULL REFERENCES users(id),
+    created_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
+    last_used_at TIMESTAMPTZ,
+    revoked_at   TIMESTAMPTZ,
+    revoked_by   BIGINT      REFERENCES users(id),
+    reason_text  TEXT        CHECK (reason_text IS NULL OR length(reason_text) <= 500)
+);
+-- token_hash 의 UNIQUE 가 조회 인덱스를 겸한다
+-- (`WHERE token_hash = … AND revoked_at IS NULL` 이 유일한 조회 경로 — ARCH 6.2-5)
+CREATE INDEX api_tokens_user_idx ON api_tokens (user_id);
+
+-- ─────────────────────────────────────────────────────────────
 -- fetch_hosts — 「URL 로 가져오기」가 갈 수 있는 곳 (F-43, PRD F-43 · S-05 ③, ARCH 5.22)
 --   허용 호스트 목록을 `.env` 문자열에서 표로 옮긴 것이다. 관리자가 화면에서 넣고 빼되
 --   권한 매트릭스와 같은 급의 조건(재인증 · 사유 · 인증 앱 코드 · 감사 · AL-18)을 지난다.

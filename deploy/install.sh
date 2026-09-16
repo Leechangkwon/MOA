@@ -344,7 +344,8 @@ fi
 #        운영 DB 에 DDL 을 자동으로 거는 스크립트는 만들지 않는다(ARCH 7.4 "기존 DB 반영").
 for _mig in "summary|audit_logs|2026-09-10_audit_summary.sql" \
             "purged_at|files|2026-09-11_purged_at.sql" \
-            "mfa_enabled|users|2026-09-11_users_mfa_expiry.sql"; do
+            "mfa_enabled|users|2026-09-11_users_mfa_expiry.sql" \
+            "token_hash|api_tokens|2026-09-16_api_tokens.sql"; do
   _col="${_mig%%|*}"; _rest="${_mig#*|}"; _tbl="${_rest%%|*}"; _file="${_rest##*|}"
   _has="$(psql_su -d "$DB_NAME" -Atc "SELECT 1 FROM information_schema.columns WHERE table_name='${_tbl}' AND column_name='${_col}'")"
   if [ "$_has" = "1" ]; then

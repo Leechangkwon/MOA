@@ -109,6 +109,17 @@ final class Http
      */
     public const MSG_REAUTH_REQUIRED = '관리 기능을 쓰려면 비밀번호를 다시 확인해야 합니다';
 
+    /**
+     * 개인 토큰 전용 창구의 문구 (F-59, PRD F-59 ⑤, ARCH 4.6 판정 순서 표 마지막 줄).
+     *
+     * 삭제 창구 둘(`DELETE /api/files/{id}`·`DELETE /api/folders/{num}`)은 **개인 토큰만**
+     * 통한다. 공용 토큰(`.env`)으로 부르면 이 문구의 403 이다 — 권한이 모자란 것이 아니라
+     * **자격의 종류**가 맞지 않는 것이라, 통일 문구 「권한이 없습니다」 대신 부르는 쪽이
+     * 고칠 수 있는 말을 준다(부르는 쪽은 토큰을 쥔 우리 프로그램이다 — ARCH 4.2 「오류 문구 정책」).
+     * 어느 계정·어느 토큰인지는 담지 않는다.
+     */
+    public const MSG_PERSONAL_TOKEN_REQUIRED = '이 창구는 개인 토큰으로만 쓸 수 있습니다';
+
     /** JSON 본문 상한 — 로그인·삭제 같은 작은 요청만 JSON 으로 받는다 */
     private const MAX_JSON_BYTES = 65536;
 

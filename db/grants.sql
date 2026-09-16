@@ -38,7 +38,7 @@ GRANT  CONNECT ON DATABASE tbox_re TO tbox_app, tbox_owner;
 
 -- ─── 먼저 전부 회수한다(재실행 시 과거 권한이 남지 않게) ───
 REVOKE ALL ON teams, users, permissions, files, audit_logs, sessions, share_links, folders,
-              fetch_hosts FROM tbox_app;
+              fetch_hosts, api_tokens FROM tbox_app;
 
 -- ─── 표별 권한 ───
 GRANT SELECT, INSERT, UPDATE                 ON users     TO tbox_app;
@@ -58,6 +58,11 @@ GRANT SELECT, INSERT, UPDATE, DELETE         ON folders   TO tbox_app;
 -- 갈 수 있는 곳을 담은 표다. ★ DELETE 없음 — 허용에서 뺀 호스트도 "언제부터 언제까지 열려
 -- 있었나" 가 조사에 필요해서 행을 지우지 않고 is_active=false 로만 내린다 (share_links 와 같은 방식).
 GRANT SELECT, INSERT, UPDATE                 ON fetch_hosts TO tbox_app; -- ★ DELETE 없음
+-- F-59 사용자별 프로그램 토큰 (PRD F-59 ①, ARCH 4.6 · 6.2-5, SECURITY R-82 · R-91).
+-- 계정마다 발급하는 개인 토큰이고 서버에는 sha256 만 남는다. ★ DELETE 없음 — 회수는
+-- revoked_at UPDATE 다. 행이 남아야 「그 토큰이 언제부터 언제까지 살아 있었나」 를 되짚을 수
+-- 있다 (share_links 와 같은 방식).
+GRANT SELECT, INSERT, UPDATE                 ON api_tokens  TO tbox_app; -- ★ DELETE 없음
 
 -- 19단계 구매·재고 모듈 기초정보 (F-28 · F-29, ARCH 5.18 · 10장 마지막 행).
 -- ★ **DELETE 가 한 줄도 없다** — 기초정보를 그만 쓰는 것은 `is_active = false` 다.
@@ -89,6 +94,7 @@ GRANT USAGE, SELECT ON SEQUENCE audit_logs_id_seq TO tbox_app;
 GRANT USAGE, SELECT ON SEQUENCE share_links_id_seq TO tbox_app;
 GRANT USAGE, SELECT ON SEQUENCE folders_id_seq     TO tbox_app;
 GRANT USAGE, SELECT ON SEQUENCE fetch_hosts_id_seq  TO tbox_app;   -- F-43 허용 사이트 목록
+GRANT USAGE, SELECT ON SEQUENCE api_tokens_id_seq   TO tbox_app;   -- F-59 개인 프로그램 토큰
 -- 19단계 p_* 시퀀스. p_item_branches 는 (item_id, branch_id) 복합 PK 라 시퀀스가 없다.
 GRANT USAGE, SELECT ON SEQUENCE p_brands_id_seq          TO tbox_app;
 GRANT USAGE, SELECT ON SEQUENCE p_branches_id_seq        TO tbox_app;
@@ -171,7 +177,7 @@ REVOKE ALL ON teams, users, permissions, files, audit_logs, sessions, share_link
               p_docs, p_doc_lines, p_doc_seq, p_lists, p_list_items, p_line_chain,
               p_stock_moves, p_stock_balance, p_backorder,
               p_recon_statements, p_recon_lines, p_month_close,
-              fetch_hosts FROM tbox_backup;
+              fetch_hosts, api_tokens FROM tbox_backup;
 
 GRANT SELECT ON ALL TABLES    IN SCHEMA public TO tbox_backup;   -- ★ SELECT 만
 GRANT SELECT ON ALL SEQUENCES IN SCHEMA public TO tbox_backup;   -- 시퀀스 현재값 (pg_dump)
@@ -215,7 +221,7 @@ REVOKE ALL ON teams, users, permissions, files, audit_logs, sessions, share_link
               p_docs, p_doc_lines, p_doc_seq, p_lists, p_list_items, p_line_chain,
               p_stock_moves, p_stock_balance, p_backorder,
               p_recon_statements, p_recon_lines, p_month_close,
-              fetch_hosts FROM tbox_perm;
+              fetch_hosts, api_tokens FROM tbox_perm;
 REVOKE ALL ON ALL SEQUENCES IN SCHEMA public FROM tbox_perm;
 
 GRANT SELECT, UPDATE ON permissions TO tbox_perm;   -- ★ 이 한 줄이 전부. INSERT·DELETE 없음

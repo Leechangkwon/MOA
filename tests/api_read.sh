@@ -10,9 +10,12 @@
 #   (d) 토큰으로 F50-emp.txt 다운로드 → 200 · Content-Disposition 에 원래 이름 · 본문 sha256 일치.
 #   (e) 토큰으로 F50-adm.txt → **403** {"error":"권한이 없습니다"} + 감사 file.download deny 의
 #       detail.auth=api_token · 없는 UUID → 404 · UUID 형태가 아니면 → 404(라우트 불일치).
-#   (f) 토큰은 **읽기 두 창구 밖에서 아무것도 열지 못한다** — 같은 헤더로
-#       DELETE /api/files/{id} · PATCH /api/files/{id} · GET /api/users → 401 「로그인이 필요합니다」,
-#       그 사이 auth.token 감사 행 0.
+#   (f) 토큰은 **자기 집합 밖에서 아무것도 열지 못한다** — 틀린 토큰으로
+#       GET /api/users → 401 「로그인이 필요합니다」(헤더를 읽지도 않는 세션 경로),
+#       그 사이 그 창구의 auth.token 감사 행 0.
+#       ★ DELETE /api/files/{id}(F-59)·PATCH /api/files/{id}(F-58)는 **이제 토큰 라우트**라
+#         틀린 토큰이면 401 「API 토큰이 올바르지 않습니다」 + auth.token deny bad_token 2건이다
+#         (옛 기대였던 「세션 경로 401」이 아니다 — 설계가 바뀌었다).
 #   (g) 웹(세션) 회귀 — qa_employee01 세션 GET /api/files?q=F50 은 여전히 **객체**이고
 #       키가 정확히 files,total,page,per_page,scope,folder.
 #   (h) 회귀 — scripts/security_lint.sh 0 · 바뀐 PHP php -l · bash -n.
@@ -303,33 +306,40 @@ else
   expect "형태가 아닌 id 상태" "404" "$(code_of "$OUT")"
 fi
 
-# ─── (f) 토큰은 읽기 두 창구 밖에서 아무것도 열지 못한다 ─────────
-hr "(f) 토큰이 통하지 않는 라우트 — 삭제 · 수정 · 계정"
-if [ "$USE_TOKEN" -eq 1 ]; then TOK="$API_TOKEN"; note "진짜 토큰으로 확인한다(값은 출력하지 않는다)"
-else TOK="$WRONG_TOKEN"; note "귀속이 검토 계정이 아니라 **틀린 토큰**으로 확인한다 — 이 항목이 보는 것은 「헤더를 아예 읽지 않는가」다"; fi
+# ─── (f) 토큰은 **자기 집합 밖에서** 아무것도 열지 못한다 ────────
+hr "(f) 토큰 집합 밖 — 계정 창구는 헤더를 읽지도 않는다 · 삭제·수정은 토큰 라우트"
+# ★ 2026-09-16 (F-58 · F-59) — 옛 기대는 「DELETE·PATCH 도 헤더를 읽지 않는다(세션 경로 401)」
+#   였다. 이제 `PATCH /api/files/{id}`(F-58)와 `DELETE /api/files/{id}`(F-59)는 **토큰 라우트**라
+#   틀린 토큰이면 401 「API 토큰이 올바르지 않습니다」이고 `auth.token deny bad_token` 이 남는다.
+#   「헤더 무시」는 집합 밖 라우트(`GET /api/users`, user.manage)로 확인한다.
+# ★ 여기서는 **언제나 틀린 토큰**을 쓴다 — 삭제·수정이 열린 지금 진짜 토큰으로 부를 이유가 없다.
+note "틀린 토큰으로 확인한다(진짜 토큰은 쓰지 않는다 — 삭제·수정이 열려 있다)"
 
 T0=$(mark)
 FAKE_ID='00000000-0000-4000-8000-000000000000'
 
-OUT=$(curl -s -w '\n%{http_code}' -X DELETE -A "$UA" -H "X-API-Token: $TOK" "$BASE/api/files/$FAKE_ID")
-echo "  DELETE /api/files/{id} → [$(code_of "$OUT")] $(body_of "$OUT")"
-expect "DELETE 상태" "401" "$(code_of "$OUT")"
-expect "DELETE 문구(세션 경로)" '{"error":"로그인이 필요합니다"}' "$(body_of "$OUT")"
+OUT=$(curl -s -w '\n%{http_code}' -X DELETE -A "$UA" -H "X-API-Token: $WRONG_TOKEN" "$BASE/api/files/$FAKE_ID")
+echo "  틀린 토큰 DELETE /api/files/{id} → [$(code_of "$OUT")] $(body_of "$OUT")"
+expect "DELETE 상태(F-59 — 토큰 라우트)" "401" "$(code_of "$OUT")"
+expect "DELETE 문구(틀린 토큰)" '{"error":"API 토큰이 올바르지 않습니다"}' "$(body_of "$OUT")"
 
-OUT=$(curl -s -w '\n%{http_code}' -X PATCH -A "$UA" -H "X-API-Token: $TOK" \
+OUT=$(curl -s -w '\n%{http_code}' -X PATCH -A "$UA" -H "X-API-Token: $WRONG_TOKEN" \
       -H 'Content-Type: application/json' -d '{"description":"x"}' "$BASE/api/files/$FAKE_ID")
-echo "  PATCH /api/files/{id} → [$(code_of "$OUT")] $(body_of "$OUT")"
-expect "PATCH 상태" "401" "$(code_of "$OUT")"
-expect "PATCH 문구(세션 경로)" '{"error":"로그인이 필요합니다"}' "$(body_of "$OUT")"
+echo "  틀린 토큰 PATCH /api/files/{id} → [$(code_of "$OUT")] $(body_of "$OUT")"
+expect "PATCH 상태(F-58 — 토큰 라우트)" "401" "$(code_of "$OUT")"
+expect "PATCH 문구(틀린 토큰)" '{"error":"API 토큰이 올바르지 않습니다"}' "$(body_of "$OUT")"
 
-OUT=$(curl -s -w '\n%{http_code}' -A "$UA" -H "X-API-Token: $TOK" "$BASE/api/users")
-echo "  GET /api/users → [$(code_of "$OUT")] $(body_of "$OUT")"
-expect "GET /api/users 상태" "401" "$(code_of "$OUT")"
+OUT=$(curl -s -w '\n%{http_code}' -A "$UA" -H "X-API-Token: $WRONG_TOKEN" "$BASE/api/users")
+echo "  틀린 토큰 GET /api/users → [$(code_of "$OUT")] $(body_of "$OUT")"
+expect "GET /api/users 상태(헤더 무시 — 세션 경로)" "401" "$(code_of "$OUT")"
 expect "GET /api/users 문구(세션 경로)" '{"error":"로그인이 필요합니다"}' "$(body_of "$OUT")"
 
 if [ "$HAVE_PSQL" -eq 1 ]; then
+  # 집합 **안**의 둘(DELETE·PATCH)만 auth.token 에 남는다. 계정 창구는 헤더를 읽지도 않아 없다.
   N=$(psqlq "SELECT count(*) FROM audit_logs WHERE action='auth.token' AND id > ${T0:-0}")
-  expect "그 사이 auth.token 감사 행" "0" "${N:-?}"
+  expect "그 사이 auth.token 감사 행(토큰 라우트 둘)" "2" "${N:-?}"
+  GOT=$(psqlq "SELECT count(*) FROM audit_logs WHERE action='auth.token' AND id > ${T0:-0} AND target_name = 'GET /api/users'")
+  expect "계정 창구의 auth.token 행(헤더 무시)" "0" "${GOT:-?}"
 fi
 
 # ─── (g) 웹(세션) 응답 모양 불변 ─────────────────────────────────
