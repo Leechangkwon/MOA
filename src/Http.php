@@ -91,6 +91,15 @@ final class Http
     public const MSG_SCAN_INFECTED = '악성코드가 발견되어 격리된 파일입니다';
 
     /**
+     * 「검사 중」 거부에 실어 보내는 재시도 간격(초) — F-57, ARCH 5.28, SECURITY R-86.
+     *
+     * 감사 로그 실측(업로드 → `file.scan`)이 21~76초, 중앙값 25초다 — 배치가 매분 돌고
+     * `clamscan` 이 약 22초 걸리기 때문이다. 그래서 30초로 잡았다(30초 간격 4번이면 2분).
+     * 이 값은 `Http::locked()` 로만 나가고, `infected`·권한 없음(403)에는 붙지 않는다.
+     */
+    public const SCAN_RETRY_AFTER_SECONDS = 30;
+
+    /**
      * 관리 기능 재인증 관문의 문구 (16-1, PRD F-23, ARCH 4.0 「관리 기능 재인증 — sudo 모드」).
      *
      * 강제 절차 관문의 두 문구와 같은 성격이다 — 막힌 사람이 **본인**이고, 다음에 무엇을
@@ -150,6 +159,29 @@ final class Http
     public static function error(int $code, string $message): void
     {
         self::json(['error' => $message], $code);
+        exit;
+    }
+
+    /**
+     * **일시 상태**로 막힌 요청 — 423 Locked + `Retry-After` (F-57, PRD F-57 ①, ARCH 5.28).
+     *
+     * `error()` 와 같은 자리에 두는 이유는 둘이 같은 갈래이기 때문이다 — 다른 것은 「지금은
+     * 안 되지만 곧 된다」와 「앞으로도 안 된다」뿐이다. 403 은 「인증됐지만 허용되지 않음」이라
+     * 재시도 신호가 없어서, 클라이언트가 검사 창(`scan_status='pending'`) 안의 거부를 영구
+     * 실패로 처리했다(사용자 프로그램 실측 보고 2026-09-16). 상태 코드와 헤더로 갈라 두면
+     * 한국어 문구가 바뀌어도 조용히 깨지지 않는다.
+     *
+     * `Retry-After` 는 `json()`(상태 코드·`Content-Type`·`Cache-Control: no-store`) **앞**에
+     * 보낸다 — 본문을 내보낸 뒤에는 헤더를 더할 수 없다. 본문에도 `retry_after` 를 같은 값으로
+     * 담아 헤더를 못 읽는 클라이언트도 대기 시간을 알 수 있게 한다. 대상에 대한 정보는 한
+     * 글자도 담지 않는다(다른 오류 응답과 같다).
+     */
+    public static function locked(int $retryAfterSeconds, string $message): void
+    {
+        if (!headers_sent()) {
+            header('Retry-After: ' . $retryAfterSeconds);
+        }
+        self::json(['error' => $message, 'retry_after' => $retryAfterSeconds], 423);
         exit;
     }
 

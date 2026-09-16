@@ -1326,11 +1326,13 @@ authentication failed for user "tbox_app"` 같은 형태다 — 호스트·포�
                        infected → rename(storage → /var/lib/tbox-v2/quarantine/<stored_name>) → UPDATE 'infected' + Audit::system('file.scan' deny infected, detail.signature)
                        오류 → 상태 유지 + Audit::system('file.scan' error scan_failed) → 다음 실행이 다시 시도
 [다운로드 · 미리보기 · 공유 링크 · 토큰 다운로드]
-   [권한 ✔] 뒤 [4] scan_status<>'clean' → 403 (pending: 「검사 중입니다. 잠시 뒤 다시 시도하세요」 / infected: 「악성코드가 발견되어 격리된 파일입니다」)
+   [권한 ✔] 뒤 [4] scan_status<>'clean' → pending: **423 + Retry-After: 30** 「검사 중입니다. 잠시 뒤 다시 시도하세요」 (F-57) / infected: **403** 「악성코드가 발견되어 격리된 파일입니다」
              + Audit deny 'file.download' scan_pending | scan_infected
 [목록]     응답에 scan_status → 화면 배지 「검사 중」(회색) · 「격리됨」(빨강), 다운로드 단추 비활성
 [경보]     alerts.php AL-19: file.scan deny infected 1건 → 즉시, evidence {name, uploader, signature}
 ```
+
+**일시 상태와 영구 거부는 상태 코드로 갈린다 (F-57, 2026-09-16).** `pending` 은 곧 풀리는 상태라 **423 Locked** + `Retry-After: 30` + 본문 `retry_after`(초)로 답하고, `infected`(격리)·권한 없음은 **403** 그대로다. 사용자 프로그램이 403 을 전부 영구 실패로 처리하다 올린 직후 다운로드에 실패한 실측 보고가 계기다 — 한국어 문구로만 구분되는 상태는 문구가 바뀌면 조용히 깨진다. 넷(다운로드·미리보기·raw·공유 링크)이 `Http::locked()` 한 함수를 부르므로 코드가 어긋날 자리가 없다. 감사 사유 `scan_pending` 과 문장은 그대로다. 검사 소요 실측(감사 로그 5건): 21~76초, 중앙값 25초(배치 매분 + `clamscan` 약 22초). 다른 코드를 고르지 않은 이유는 PRD F-57 행.
 
 **격리는 삭제가 아니다.** 바이트는 `quarantine/` 로 옮기고(`0640 tbox-php`, 웹 루트 밖, `open_basedir` 안) 행은 `deleted_at` 없이 남는다 — 누가 언제 무엇을 올렸는지가 증거다(S-07). 되살리는 창구는 없다(원하면 관리자가 서버에서 수동). 30일 뒤 `purge_trash` 는 격리 파일을 건드리지 않는다.
 

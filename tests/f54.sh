@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # tests/f54.sh — F-54 「악성코드 검사 파이프라인」 수락 기준 실행 (PRD 12.2 T-66, F-54, S-06, R-02, R-86)
 #
-#   (a) 정상 txt 업로드 → 201 · DB `pending` · 즉시 다운로드 403 「검사 중」 + 감사
+#   (a) 정상 txt 업로드 → 201 · DB `pending` · 즉시 다운로드 **423 + Retry-After: 30**
+#       「검사 중」·본문 `retry_after` 30 (F-57, T-69 (a)) + 감사
 #       `file.download deny scan_pending` · 목록 `scan_status:"pending"` → 배치 1회 →
 #       DB `clean` · 감사 `file.scan allow` · 다운로드 200
 #   (b) EICAR 시험 문자열 → 201 · `pending` → 배치 → `infected` ·
@@ -183,7 +184,7 @@ run_batch() {   # 표준출력+표준오류를 그대로 돌려준다
   sudo -n -u tbox-php php "$ROOT/scripts/scan_pending.php" --force-enabled 2>&1
 }
 
-# ─── (a) 정상 파일 — pending → 403 → 배치 → clean → 200 ─────────
+# ─── (a) 정상 파일 — pending → 423 → 배치 → clean → 200 ─────────
 hr "(a) 정상 txt — 저장은 「검사 중」, 검사 뒤에 열린다"
 
 A_ID=""
@@ -203,10 +204,19 @@ else
       expect "DB scan_status" "pending" "$(psqlq "SELECT scan_status FROM files WHERE public_id='$A_ID'")"
     else skip "DB scan_status" "psql 없음"; fi
 
-    sub "검사 전 다운로드"
+    sub "검사 전 다운로드 — 423 Locked + Retry-After (F-57, T-69 (a))"
     M=$(mark)
-    expect "다운로드 상태" "403" "$(get_code "/api/files/$A_ID/download")"
-    contains "응답 문구" "검사 중" "$(get_body "/api/files/$A_ID/download")"
+    # 한 번의 요청에서 상태·헤더·본문을 같이 받는다 — 검사 창(배치 매분)이 짧아
+    # 같은 요청을 여러 번 보내면 그 사이에 clean 으로 바뀔 수 있다.
+    DL_HDR="$WORK/F54-a-download.hdr"
+    DL_BODY=$(curl -s -D "$DL_HDR" -b "$JAR" -A "$UA" "$BASE/api/files/$A_ID/download")
+    expect "다운로드 상태" "423" \
+      "$(sed -n 's#^HTTP/[0-9.]* \([0-9][0-9][0-9]\).*#\1#p' "$DL_HDR" | tail -1)"
+    expect "Retry-After 헤더" "30" \
+      "$(grep -i '^Retry-After:' "$DL_HDR" | tail -1 | tr -d '\r' | sed 's/^[^:]*: *//')"
+    contains "응답 문구" "검사 중" "$DL_BODY"
+    expect "본문 retry_after" "30" \
+      "$(printf '%s' "$DL_BODY" | sed -n 's/.*"retry_after":\([0-9]*\).*/\1/p')"
     if [ "$HAVE_PSQL" -eq 1 ]; then
       expect "감사 action|result|reason" "file.download|deny|scan_pending" \
         "$(psqlq "SELECT action||'|'||result||'|'||coalesce(reason,'') FROM audit_logs WHERE id > ${M:-0} AND action='file.download' ORDER BY id DESC LIMIT 1")"

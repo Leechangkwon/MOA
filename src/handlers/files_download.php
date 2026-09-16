@@ -97,7 +97,12 @@ if ($scan !== 'clean') {
         'access_level' => (string) $file['access_level'],
         'detail'       => $auditWhat + ['scan_status' => $scan],
     ]);
-    Http::error(403, $scan === 'infected' ? Http::MSG_SCAN_INFECTED : Http::MSG_SCAN_PENDING);
+    // F-57: 격리(`infected`)는 **영구** 거부라 403, 검사 중(`pending`)은 곧 풀리는
+    // **일시** 상태라 423 + `Retry-After`. 네 창구가 이 두 줄로 똑같다 (ARCH 5.28).
+    if ($scan === 'infected') {
+        Http::error(403, Http::MSG_SCAN_INFECTED);
+    }
+    Http::locked(Http::SCAN_RETRY_AFTER_SECONDS, Http::MSG_SCAN_PENDING);
 }
 
 $storedName = (string) $file['stored_name'];
