@@ -51,6 +51,7 @@
 | F-49 | 프로그램용 업로드 `POST /api/upload` — `.env` `API_TOKEN` + 헤더 `X-API-Token`(`hash_equals`, 이 라우트만) · 귀속 `API_TOKEN_USER` · 웹과 공통 업로드 함수 · 400/401/403/413 이유 문구(500 일반) · nginx JSON 413 — 강사 2차 프롬프트, 사용자 결정 A 2026-09-15 | ✅ 구현·검토 | ✅ 2026-09-15 (Opus, 1차 설계 B 중단·원복 후 v2, 재지시 1회 `ext_not_allowed`) | ✅ 2026-09-15 (T-61 25/0/미검증1 재실행 + 긍정 경로 qa 귀속 실측 201·403·400×5·401×2, 린트 0, health 38/38) | ⚠ 대기 (사용자 토큰 201; JSON 413 은 검증됨) | `20f51cb` F-49 + 발행 `v1.1.0`(`613d229`) |
 | F-50 | 프로그램용 검색·다운로드 — `X-API-Token` 라우트를 셋으로(업로드·`GET /api/files`·`GET /api/files/{id}/download`), 토큰 검색은 간결 배열 `[{id,name,level,size,uploaded_at}]`+`limit`, 인가는 기존 `visibleFilesWhere`·`decideRead` 상속(IDOR 403) — 강사 3차 프롬프트 2026-09-15 | ✅ 구현·검토 | ✅ 2026-09-15 (Opus, 재지시 0회 — 지시서 결함을 Opus 가 실측으로 잡아 헤더 갈림길 추가) | ✅ 2026-09-15 (T-62 38/0/0 Fable 재실행, qa 귀속 실측, 린트 0) | ◐ 사용자 확인 2026-09-15: 검색 200·다운로드 200 (403·401 갈래 미보고) | `b8929a8` F-50 + 발행 `v1.2.0`(`5977306`) |
 | F-55 | 백업 원격 사본 — 사용자 PC 가 매일 05:00 pull(`deploy/pc/pull_backup.ps1`), 서버 변경 0 | ✅ | ✅ Opus 09-16 | ✅ 09-16 정적 + 09-16 PC 실행 | ✅ T-67 (a)(c)(d)(e) 통과 · (b) 시험 무효(함수는 격리 시험 통과) | `ac6f7f4` · `a049bd3` · `6953b94` |
+| F-56 | 프로그램용 `GET /api/whoami` — 토큰 귀속 계정의 {username, role, team_id, upload_levels} 만, 토큰 창구 셋→넷 | ⚠ | ✅ Opus 09-16 | ✅ 09-16 T-68 22/0/0 | ⚠ 사용자 진짜 토큰 curl | 보충 커밋 참조 |
 | 문구 정리 | 화면 문구 정리 — **1단계** 화면에 늘 펼쳐져 있던 안내 68곳 삭제·축소 / **2단계** 「사용 방법」 단추와 화면별 도움말 20화면 (F-38 · T-51) | ◐ 2단계 구현 | ✅ 2026-09-15 (Opus) | ⚠ 대기 | ⚠ 대기 | 1단계 `06ee617` · 2단계 커밋 전 |
 | **26** | 관리자 「역할로 보기」(F-39) · 관리 내비·계정 편집 폼(F-40) · 폴더 삭제 세 갈래(F-41) — 사용자 결정·지적 2026-09-15 | ✅ 구현 | ⚠ Fable 재검토 대기 (Opus 자체 시험 124/124) | ⚠ 대기 | ⚠ 대기 | 커밋 전 |
 
@@ -1755,6 +1756,40 @@ sudo -u postgres psql -d tbox_re -c "SELECT happened_at, actor_name, action, res
 | 2026-09-16 | 결함(Opus) | `recover.ps1` 첫 실행에서 한글이 전부 깨졌다 | PowerShell 5.1 은 BOM 없는 파일을 ANSI(CP949)로 읽는다. `pull_backup.ps1` 에 BOM 이 있던 이유가 이것. UTF-8 BOM 으로 다시 저장해 해결. **PC 용 `.ps1`·`.md` 는 BOM 필수** |
 | 2026-09-16 | 관찰(Opus, T-67 실행) | pull 이 AL-9 를 울리지 않는 것이 좋은 소식만은 아니다 | AL-9 는 「sudo 로 데이터·로그를 통째로 읽는 명령」인데, `sudo -n tar`(백업 전체)·`sudo -n cat backup.key`(복호화 키)가 바로 그것인데도 목록에 없다. 즉 **`changkwon` 의 SSH 키를 쥔 공격자가 백업 전체와 키를 가져가도 경보가 없다.** F-55 가 그 명령 모양을 매일 05:00 정상 동작으로 만들어 구분은 더 어려워졌다. SECURITY 7장 후속 후보 |
 | 2026-09-16 | 보정(Fable 검토) | PC README 에 「스크립트를 PC 로 가져오는」 0단계가 없었다 | `scp changkwon@192.168.105.44:/var/www/tbox-v2/deploy/pc/pull_backup.ps1 C:\tbox-tools\` 추가. `-Install` 이 경로를 박아 두므로 옮기면 재등록 |
+
+
+### F-56 — 프로그램용 `GET /api/whoami` (토큰 귀속 계정의 최소 정보) — 착수 2026-09-16
+
+> 지시서: `docs/f56-api-whoami-directive.md`. 근거: PRD F-56 · 8장 `/api/whoami` 행 · 12.2 T-68 · S-01, ARCH 4.4, SECURITY R-82·R-83·R-89(새).
+> 배경: 사용자 요청(강사 4차 프롬프트 형식) — 「X-API-Token 하나, 세션 쿠키 안 받음, 200 `{username,role,team_id,upload_levels}`, upload_levels 는 `/api/me` 와 같은 계산 재사용(중복 구현 금지), 401·503 문구는 7장과 동일, csrf_token·can_* 넣지 않음. API.md 0장 「셋뿐」 도 고치고, PRD 8장 행을 먼저 추가하고 구현(추가 규칙 4)」. 목적: 사용자 프로그램이 `admin-only` 를 미확인 기본값이 아니라 계정 권한으로 잡는다. 뒤에 사용자별 토큰(`api_tokens`)으로 가도 같은 응답이 「토큰을 쓴 진짜 사람」을 가리켜 클라이언트 불변.
+
+**개발 사항** (구현 Opus / 문서 Fable)
+- [x] (Fable) PRD 8장 행·13장 F-56·T-68, ARCH 4.4, SECURITY R-89, 지시서 — **문서 먼저(추가 규칙 4)**
+- [x] (Opus) `public/index.php` — 라우트 `GET /api/whoami`(정책 `authenticated`) · `TBOX_API_TOKEN_ROUTES` **와** `TBOX_API_TOKEN_ONLY_ROUTES` 에 추가(토큰 전용) · 「셋뿐」 주석 → 넷
+- [x] (Opus) `src/handlers/api_whoami.php` — `$user` 의 넷 + `Authz::uploadableLevels($user)` 재사용 — 실행문 `Http::json([...])` 하나
+- [x] (Opus) `API.md` 10장(응답 원문은 Fable 실측) · 0장 인증 줄 「셋뿐」→「넷」 · 9장 끝 인용 · `tests/api_whoami.sh`(T-68)
+- [x] 손대지 않음(확인): `Auth.php`·`Http.php`·`Audit.php`·`Authz.php`·`me.php`·`db/*`·`.env`
+
+**검토 체크** (Fable, 관문 ②)
+- [x] 코드 읽기: 핸들러가 `$user` 넷 + `uploadableLevels` 만 · 상수 둘에 들어갔나 · 세션 쿠키만으로 401 인가 — **Fable 검토(09-16)** diff 읽기: 라우트 1행·상수 둘·주석 넷 갱신, 핸들러 4키 + `uploadableLevels` 단일 호출, 헤더·env 재확인 없음
+- [x] `tests/api_whoami.sh` — 귀속을 `qa_employee01` 로 회전 → (a)~(e) 실측 → `admin01` 복귀(토큰 값 미출력). 사용자 프로그램은 그 사이 401 → 회전 뒤 재export 필요(F-50 학습 기록과 같다) → **22/0/0**(귀속 qa_employee01: (a) 200·키 넷·순서·username (b) `upload_levels` == `/api/me` `["public","internal","team"]` (c) 401 셋 (d) deny 셋·성공 감사 0 (e) `/api/me` 키 불변·`/api/users` 401·lint 0) → `admin01` 복귀 확인
+- [x] `API.md` 10장 응답 원문을 실측으로 채움 · `security_lint.sh` 0 · `php -l`
+- [x] 관문 ④ 한글 커밋 → push → `release.sh minor`(새 창구 = 사용자에게 보이는 변경) — 커밋·발행 해시는 보충 커밋에
+
+**자기 공격 체크** (사용자, 관문 ③)
+- [ ] 진짜 토큰으로 `curl -s -H "X-API-Token: $API_TOKEN" https://changkwon.mso.so/api/whoami` → `{"username":"admin01","role":"Admin","team_id":…,"upload_levels":[…4개]}` [200]
+- [ ] 헤더 없이 → 401 「X-API-Token 헤더가 없습니다」 · 브라우저(세션)로 `/api/whoami` 열어도 같은 401
+- [ ] 사용자 프로그램이 이 응답으로 `admin-only` 를 계정 권한으로 잡는지
+
+**학습 기록**
+
+| 날짜 | 구분 | 내용 | 해소·근거 |
+|---|---|---|---|
+| 2026-09-16 | 요청(사용자) | 위 배경 인용문 그대로. 「끝나면 curl 로 확인하는 명령 한 줄」 | 지시서 · API.md 10장 |
+| 2026-09-16 | 판단(Fable) | 토큰 **전용**(ONLY 집합)으로 — 화면이 쓰지 않는 창구라 `/api/upload` 와 같은 갈래. 「세션 쿠키는 받지 않는다」 를 코드로 강제 | ARCH 4.4. 세션으로 부르면 401 `missing_header`(로그인 상태여도) |
+| 2026-09-16 | 판단(Fable) | 새 위험은 R-89(낮음)로 — 데이터 노출 범위는 R-83 그대로, 달라지는 것은 계정 정보가 응답 하나로 확정되는 것 | SECURITY R-89 |
+| 2026-09-16 | 판단(Opus, 승인) | 지시서의 `Http::json(200, […])` 는 실제 시그니처(`json(array, int=200)`)와 인자 순서가 반대 → `Http::json([...])` 로. ONLY 집합 머리 주석 「창구 (F-49)」→「둘 (F-49·F-56)」 추가 수정. 10장 「세션 쿠키만 401」 은 Opus 가 직접 실측해 채움 | 지시서 오기, 코드가 맞다. 셋 다 승인 |
+| 2026-09-16 | 알림(Fable) | 검토를 위해 토큰 귀속을 `qa_employee01` 로 회전 → 복귀(`admin01`). **토큰 값이 바뀌었다** — 사용자 프로그램(tbox-buddy/2.0, 12:56 마지막 요청)은 `.env` 의 새 `API_TOKEN` 을 다시 넣어야 한다 | F-50 학습 기록과 같은 절차. `cat /var/www/tbox-v2/.env` |
 
 
 ## 2-1. 10단계 뒤 일괄 자기 공격 — 진행 순서 (관문 ③, 사용자)

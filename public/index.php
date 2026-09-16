@@ -58,8 +58,14 @@ const TBOX_ROUTES = [
     // F-49 — 프로그램용 업로드 (PRD F-49 · 8장 `/api/upload` 행, ARCH 4.2, SECURITY R-82).
     //   정책은 웹 업로드와 **같은 file.upload** 다. 다른 것은 인증 방법 하나뿐이고(아래 [2] 의
     //   토큰 가지), 인가 [4] 와 등급 권한은 귀속 계정 기준으로 그대로 탄다.
-    //   ★ `X-API-Token` 이 통하는 라우트는 **이 한 줄뿐**이다 — 다른 라우트는 그 헤더를 읽지도 않는다.
+    //   ★ `X-API-Token` 이 통하는 라우트는 아래 `TBOX_API_TOKEN_ROUTES` 의 **넷뿐**이다
+    //     (F-49 의 이 한 줄 + F-50 의 둘 + F-56 의 whoami) — 그 밖의 라우트는 그 헤더를 읽지도 않는다.
     ['POST',   '/api/upload',              'api_upload.php',     'file.upload'],
+    // F-56 — 프로그램용 자기 확인 (PRD F-56 · 8장 `/api/whoami` 행, ARCH 4.4, SECURITY R-89).
+    //   정책은 `authenticated` — 귀속 계정이 유효하면 누구든이고, 인가 [4] 는 그대로 탄다.
+    //   토큰 **전용** 창구라 두 집합(ROUTES · ONLY_ROUTES)에 모두 들어간다: 헤더가 없으면
+    //   세션 쿠키가 있어도 401 `missing_header` 다(세션으로 되돌아가지 않는다).
+    ['GET',    '/api/whoami',              'api_whoami.php',     Authz::POLICY_AUTHENTICATED],
     // 7단계 — URL 로 파일 가져오기 (PRD F-14, S-05, ARCH 5.6).
     //   file.fetch : Manager 이상만 (PRD 5.4). Employee·Guest 는 여기서 끝난다(authz.route deny).
     //   `{id}` 는 UUID 36자만 받으므로 `/api/files/fetch` 와 충돌하지 않지만,
@@ -656,25 +662,29 @@ const TBOX_HOME_PATH = '/';
  * 값은 `TBOX_ROUTE`(메서드 + 라우트 **패턴**)와 정확히 같은 표기여야 한다. 아래 [2-T] 가
  * 이 집합과만 견주므로, 토큰 경로를 넓히려면 여기를 고쳐야 하고 그것이 곧 검토 지점이다.
  *
- * F-50 에서 셋으로. 넓히려면 여기 + R-82/R-83 재검토.
+ * F-50 에서 셋으로, F-56 에서 **넷으로**. 넓히려면 여기 + R-82/R-83/R-89 재검토.
  */
 const TBOX_API_TOKEN_ROUTES = [
     'POST /api/upload',
     'GET /api/files',
     'GET /api/files/{id}/download',
+    'GET /api/whoami',
 ];
 
 /**
- * 그중 **세션으로는 부를 수 없는** 창구 (F-49). 여기 적힌 라우트는 헤더가 없어도 토큰 경로로
+ * 그중 **세션으로는 부를 수 없는** 창구 둘 (F-49 · F-56). 여기 적힌 라우트는 헤더가 없어도 토큰 경로로
  * 판단해 「X-API-Token 헤더가 없습니다」 401 을 돌려준다 — 화면이 쓰지 않는 프로그램 전용 창구라
  * "로그인하라" 는 답이 뜻이 없기 때문이다.
  *
- * 나머지 둘(`GET /api/files`·`GET /api/files/{id}/download`)은 **화면도 쓰는 라우트**다. 그래서
+ * 넷 중 나머지 둘(`GET /api/files`·`GET /api/files/{id}/download`)은 **화면도 쓰는 라우트**다. 그래서
  * 토큰 경로로 가는 조건은 `X-API-Token` 헤더가 실제로 왔을 때뿐이고, 헤더가 없으면 지금까지와
  * 똑같이 세션 경로로 간다(웹 동작 불변). 헤더가 왔는데 값이 틀리면 401 이다 — 세션으로
  * 되돌아가지 않는다(보낸 인증 방법으로만 판정한다).
  */
-const TBOX_API_TOKEN_ONLY_ROUTES = ['POST /api/upload'];
+const TBOX_API_TOKEN_ONLY_ROUTES = [
+    'POST /api/upload',
+    'GET /api/whoami',
+];
 
 /**
  * 라우트 표가 스스로 성립하는지 검사한다. 하나라도 어긋나면 요청을 처리하지 않는다.
@@ -830,9 +840,9 @@ $user = null;
 $viaApiToken = false;
 
 if ($policy !== Authz::POLICY_PUBLIC) {
-    /* ─── [2-T] 프로그램용 토큰 경로 (F-49 · F-50, ARCH 4.2 · 4.3) ────────────────
+    /* ─── [2-T] 프로그램용 토큰 경로 (F-49 · F-50 · F-56, ARCH 4.2 · 4.3 · 4.4) ────
      *
-     * ★ 이 가지에 들어오는 라우트는 위 집합의 **셋뿐**이다. 그래서 `X-API-Token` 은 그 창구 밖에서
+     * ★ 이 가지에 들어오는 라우트는 위 집합의 **넷뿐**이다. 그래서 `X-API-Token` 은 그 창구 밖에서
      *   아무것도 열지 못한다 — 다른 라우트는 그 헤더를 읽는 코드에 닿지도 않는다(PRD F-49 ①).
      *   **어느 라우트인가**는 요청이 보낸 값이 아니라 라우터가 매칭한 **라우트 패턴**으로만 판단한다.
      *

@@ -342,6 +342,27 @@ public static function canRead(array $u, array $file): bool { return self::decid
 넓다). 귀속 계정의 역할이 곧 노출 범위다 — 관리자 계정을 귀속하면 전부 보인다. 완화는 4.2 와 같다(회전·TLS·감사 `auth=api_token`), 그리고
 귀속 계정을 **필요한 최소 역할**로 두는 것이 운영 권고다.
 
+### 4.4 토큰 창구 넷 — `GET /api/whoami` (PRD F-56, 사용자 요청 2026-09-16)
+
+F-50 의 셋에 **프로그램용 자기 확인** 창구 하나를 더해 넷이 됐다: `POST /api/upload` · `GET /api/files` · `GET /api/files/{id}/download` · **`GET /api/whoami`**.
+상수는 `TBOX_API_TOKEN_ROUTES` 에 한 줄 추가, 그리고 `TBOX_API_TOKEN_ONLY_ROUTES` 에도 추가한다 — 화면이 쓰지 않는 **토큰 전용** 창구라 `POST /api/upload` 와 같은 갈래다:
+헤더가 없으면 세션 쿠키가 있어도 401 `missing_header` 다(세션으로 되돌아가지 않는다). 정책은 `authenticated`(귀속 계정이 유효하면 누구든), 인가 [4] 는 그대로 탄다.
+
+**새 판정 코드가 없다(F-50 과 같은 원칙).** 핸들러 `api_whoami.php` 는 `Auth::requireApiToken()` 이 앉힌 귀속 계정 `$user` 에서
+`username`·`role`·`team_id` 를 읽고, `upload_levels` 는 `GET /api/me` 가 쓰는 **바로 그 함수** `Authz::uploadableLevels($user)` 를 부른다.
+같은 계정이면 세션 `/api/me` 의 `upload_levels` 와 원소·순서까지 같아야 하며(T-68 (b)), 그것이 "중복 구현 금지" 의 검증 방법이다.
+
+**넣지 않는 것.** `csrf_token`(세션이 없으니 뜻이 없다) · `can_*`·`next`·`acting*`(화면 편의 값) · 세션 정보 · 토큰 값. 프로그램이
+"내가 무엇을 올릴 수 있나" 를 알기 위한 **최소한**만 준다 — 응답의 키는 정확히 넷이다. 성공은 감사 행을 남기지 않는다(조회, `/api/me` 와 같다);
+실패는 `auth.token deny` 네 가지가 그대로다(새 문장 없음).
+
+**남는 표면(R-89).** 유출된 토큰으로 귀속 계정의 아이디·역할·팀·업로드 가능 등급을 **한 번에** 알 수 있다 — F-50 까지는 검색 결과를 보고
+추정해야 했던 것이 응답 하나로 확정된다. 데이터 자체가 새로 열리는 것은 아니다(R-83 범위 안). 완화는 4.2·4.3 과 같다(회전·TLS·최소 역할 귀속).
+
+**뒤를 위한 모양.** 사용자별 토큰(`api_tokens` 표, 설계 B 후보)으로 가면 `requireApiToken` 이 앉히는 `$user` 가 「토큰을 쓴 진짜 사람」이 되고
+이 창구의 응답은 그 사람을 가리킨다 — 핸들러도 클라이언트도 고치지 않는다. 다른 PC 로 넓힐 때의 순서가 그것이다.
+
+
 ## 5. 네 가지 흐름 — 순서대로, 권한 검사 위치 표시
 
 표기: **[권한 ✔]** = 여기서 권한 검사 · **[DB]** = PostgreSQL · **[FS]** = 스토리지 디스크 · **[LOG]** = 감사 로그

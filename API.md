@@ -10,7 +10,7 @@ API 를 추가할 때마다 이 문서에 **이어서** 적는다(마지막 장�
 |---|---|
 | 기본 주소 | 공개: `https://changkwon.mso.so` · 서버 안 검토용: `http://127.0.0.1:8082` |
 | 형식 | 요청·응답은 JSON (`Content-Type: application/json; charset=utf-8`). 파일 업로드만 `multipart/form-data` |
-| 인증 | 기본은 **세션 쿠키**(아래 「세션」)다. 헤더 `X-API-Token` 이 통하는 창구는 **셋뿐**이다 — `POST /api/upload`(7장) · `GET /api/files`(8장) · `GET /api/files/{id}/download`(9장). 앞의 하나는 토큰 전용이고, 뒤의 둘은 화면도 쓰는 창구라 **헤더를 보내면 토큰으로, 안 보내면 세션으로** 판정한다. 그 헤더는 **그 밖의 창구에서는 무시된다**(삭제·수정·계정·감사 등은 읽지도 않는다) |
+| 인증 | 기본은 **세션 쿠키**(아래 「세션」)다. 헤더 `X-API-Token` 이 통하는 창구는 **넷**이다 — `POST /api/upload`(7장) · `GET /api/files`(8장) · `GET /api/files/{id}/download`(9장) · `GET /api/whoami`(10장). 업로드와 whoami 둘은 토큰 전용이고(세션 쿠키로는 부를 수 없다 — 헤더가 없으면 401), 검색·다운로드 둘은 화면도 쓰는 창구라 **헤더를 보내면 토큰으로, 안 보내면 세션으로** 판정한다. 그 헤더는 **그 밖의 창구에서는 무시된다**(삭제·수정·계정·감사 등은 읽지도 않는다) |
 | 세션 | 로그인 성공 시 쿠키 `tbox_session` (HttpOnly·Secure·SameSite=Lax). 이후 요청에 그 쿠키를 함께 보낸다. 유휴 30분·최대 8시간 |
 | CSRF | 상태를 바꾸는 요청(POST·PATCH·DELETE)은 헤더 `X-CSRF-Token: <토큰>` 필수. 토큰은 `GET /api/me` 의 `csrf_token`. 없거나 틀리면 `403 {"error":"권한이 없습니다"}` |
 | 오류 응답 | 항상 `{"error":"<한국어 문구>"}`. 권한 없음은 언제나 403 + 같은 문구(대상 정보 없음). 서버 오류는 500 `{"error":"서버 오류"}` — 원인은 응답에 나오지 않는다 |
@@ -127,7 +127,7 @@ curl -s -b jar -H "X-CSRF-Token: $CSRF" -X POST https://changkwon.mso.so/api/log
 | 항목 | 내용 |
 |---|---|
 | 메서드·경로 | `POST /api/upload` |
-| 인증 | 헤더 **`X-API-Token: <토큰>`** 하나. 세션 쿠키도 `X-CSRF-Token` 도 필요 없다. 이 헤더가 통하는 창구는 **여기 하나뿐**이고 다른 경로는 읽지도 않는다. 토큰 값은 서버의 `.env` 에만 있다 — **서버에서 `cat .env` 로 확인**하고, 문서·채팅·소스에 적지 않는다 |
+| 인증 | 헤더 **`X-API-Token: <토큰>`** 하나. 세션 쿠키도 `X-CSRF-Token` 도 필요 없다. 이 헤더가 통하는 창구는 **여기 하나뿐**이고 다른 경로는 읽지도 않는다(F-50·F-56 으로 넷, 0장). 토큰 값은 서버의 `.env` 에만 있다 — **서버에서 `cat .env` 로 확인**하고, 문서·채팅·소스에 적지 않는다 |
 | 요청 | `multipart/form-data`. `file`(필수) · `description`(선택, 500자) · `level`(선택: `public`·`internal`·`team`·`admin-only` — **없으면 `public`**) · `team_id`(`level=team` 이면 필수, 양의 정수) · `folder_id`(선택) |
 | 제한 | 4장과 같다 — 100MB · 허용 확장자 `pdf docx xlsx pptx hwp hwpx txt csv md png jpg jpeg gif zip` · 내용(MIME)이 확장자와 맞아야 함 · 이중 확장자 거부 · 하루 총량 2GB · 민감정보가 보이면 `team`/`admin-only` 로만 |
 | 성공 | `201` `{"id":"<UUID>","name":"<원래 파일명>","level":"<등급>"}` — 4장과 달리 `level` 이 함께 온다(기본값 `public` 이 적용됐는지 프로그램이 확인할 수 있게) |
@@ -303,8 +303,58 @@ curl -s -w ' [%{http_code}]\n' -H 'X-API-Token: <틀린 값>' \
 {"error":"API 토큰이 올바르지 않습니다"} [401]
 ```
 
-> 토큰은 이 셋 밖에서는 아무것도 열지 못한다 — 같은 헤더로 `DELETE /api/files/{id}` ·
+> 토큰은 이 넷 밖에서는 아무것도 열지 못한다 — 같은 헤더로 `DELETE /api/files/{id}` ·
 > `PATCH /api/files/{id}` · `GET /api/users` 를 불러도 `401 {"error":"로그인이 필요합니다"}` 다(실측).
+
+---
+
+## 10. 프로그램용 자기 확인 — `GET /api/whoami`
+
+프로그램이 **「나는 누구고 무엇을 올릴 수 있나」** 를 묻는 창구다 (PRD F-56, ARCHITECTURE 4.4).
+7장의 `level` 을 고를 때 프로그램이 `admin-only` 를 「모르니까 일단 기본값」이 아니라
+**계정 권한**으로 정할 수 있게 하는 것이 목적이다. 3장(`GET /api/me`)과 **같은 함수**로 등급 목록을
+만들지만, 화면용 값(`csrf_token`·`can_*`·`next` …)은 하나도 오지 않는다.
+
+| 항목 | 내용 |
+|---|---|
+| 메서드·경로 | `GET /api/whoami` |
+| 인증 | 헤더 **`X-API-Token: <토큰>`** 하나. **세션 쿠키는 받지 않는다** — 화면이 쓰지 않는 토큰 전용 창구라(7장과 같은 갈래), 로그인해 둔 브라우저로 불러도 헤더가 없으면 401 이다. 토큰 값은 서버의 `.env` 에만 있다(`cat .env` 로 확인, 문서·채팅·소스에 적지 않는다) |
+| 요청 | 본문·파라미터 없음 |
+| 성공 | `200` `{"username":"…","role":"…","team_id":<정수 또는 null>,"upload_levels":["public","internal",…]}` — 키는 **정확히 이 넷**, 이 순서다. 대상은 `.env` `API_TOKEN_USER` 의 귀속 계정이고, `upload_levels` 는 3장 `GET /api/me` 의 같은 이름 값과 **원소·순서까지 같다**(같은 함수 `Authz::uploadableLevels`) |
+| 실패 | `401` `{"error":"X-API-Token 헤더가 없습니다"}`(헤더 없음 — 세션 쿠키만 보내도 같다) · `401` `{"error":"API 토큰이 올바르지 않습니다"}`(값이 틀림, 세션으로 되돌아가지 않는다) · `503`(서버에 토큰이 설정되지 않음·귀속 계정이 잘못됨). 문구·상태는 7장과 **한 글자도 같다** |
+| 넣지 않는 것 | `csrf_token`(세션이 없으니 뜻이 없다) · `can_*`·`next`·`acting*`·`team_name` 같은 화면 편의 값 · 세션 정보 · 내부 id · **토큰 값**. 넷 밖의 키는 하나도 오지 않는다 |
+| 감사 | 성공은 감사 행을 남기지 않는다(대상 없는 조회, `GET /api/me` 와 같다). 실패는 `auth.token deny`(`missing_header`·`bad_token`·`not_configured`·`user_invalid`) 로 남는다 |
+
+```bash
+# 실측 2026-09-16 — 귀속을 검토 계정 qa_employee01(Employee, 팀 1)로 돌려 받은 값. 운영 귀속(admin01)이면 role=Admin, upload_levels 4개
+curl -s -w '\n[%{http_code}]\n' -H "X-API-Token: $API_TOKEN" \
+  https://changkwon.mso.so/api/whoami
+{"username":"qa_employee01","role":"Employee","team_id":1,"upload_levels":["public","internal","team"]}
+[200]
+```
+
+프로그램이 쓰는 방법 — 받은 `upload_levels` 안에 있는 값만 7장의 `level` 로 보낸다. 목록에 없는 값을
+보내도 서버가 `Authz::decideUploadAs` 로 다시 판단해 403 이므로(PRD S-01), 이 응답은 **권한이 아니라
+선택지**다. 3장의 `upload_levels` 와 같은 성격이다.
+
+아래는 **실측**이다(2026-09-16, 검토 포트 8082, `-A "tbox-review/2026-09-16"`).
+
+```bash
+# 헤더 없음 — 세션 쿠키를 함께 보내도 같다(토큰 전용 창구)
+curl -s -w ' [%{http_code}]\n' 'http://127.0.0.1:8082/api/whoami'
+{"error":"X-API-Token 헤더가 없습니다"} [401]
+
+# 틀린 토큰
+curl -s -w ' [%{http_code}]\n' -H 'X-API-Token: <틀린 값>' 'http://127.0.0.1:8082/api/whoami'
+{"error":"API 토큰이 올바르지 않습니다"} [401]
+
+# 세션 쿠키만 (qa_employee01 로 로그인한 상태) — 헤더가 없으므로 같은 401 이다
+curl -s -w ' [%{http_code}]\n' -b jar 'http://127.0.0.1:8082/api/whoami'
+{"error":"X-API-Token 헤더가 없습니다"} [401]
+```
+
+> 200 응답은 토큰 귀속이 검토 계정(`qa_`)일 때만 찍을 수 있어 비워 두었다 — 지금 귀속은
+> 사용자 프로그램용 계정이다. 추가 규칙 2 에 따라 **추정 응답을 적지 않는다**.
 
 ---
 
