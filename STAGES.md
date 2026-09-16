@@ -1665,6 +1665,7 @@ sudo -u postgres psql -d tbox_re -c "SELECT happened_at, actor_name, action, res
 - [x] 손대지 않음(확인): `ALLOWED_EXT`·`BLOCKED_EXT`·MIME 표 · 핸들러 · DB
 
 **검토 체크** (Fable, 관문 ②)
+- [x] 관문 ④ 커밋 `34e4fdf` → push → 발행 **v1.5.0**(`a2112e2`). 관문 ③ 은 커밋 뒤 사용자(아래)
 - [x] **Fable 검토 (2026-09-16)** — `tests/f53.sh` 재실행 **69/0**(미검증 3: 진짜 hwp·가져오기 HTTP·zip_unreadable) · 100MB zip 속 검사 0.0003초 · 회귀 T-7·T-8
 - [x] `Upload.php` diff 읽기 — 추출·임시 파일·외부 호출 0, 실패는 사유 코드 예외뿐 · 보정 1(압축비 32MB 바닥)
 
