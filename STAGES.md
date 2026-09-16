@@ -50,7 +50,7 @@
 | F-48 | 상태 확인 `GET /api/health` 에 DB 확인(`SELECT 1`) — 200 `{status,db,time}` / 503 `{status:fail, db:분류어}` · 저장소 루트 `API.md`(외부 프로그램용 API 문서, 상태 확인·로그인·내 정보·업로드·삭제·로그아웃) — 사용자 요청 2026-09-15 | ✅ 구현·검토 | ✅ 2026-09-15 (Opus, 재지시 0회 + 추가 지시 1건 R-80 디스크 관문) | ✅ 2026-09-15 (T-60 38/38 Fable 재실행, 린트 0, 공개 도메인 200·405·`/API.md` 404) | ⚠ 대기 | `8457c0d` health API 추가 + 발행 `v1.0.1`(`a1c0d4a`) |
 | F-49 | 프로그램용 업로드 `POST /api/upload` — `.env` `API_TOKEN` + 헤더 `X-API-Token`(`hash_equals`, 이 라우트만) · 귀속 `API_TOKEN_USER` · 웹과 공통 업로드 함수 · 400/401/403/413 이유 문구(500 일반) · nginx JSON 413 — 강사 2차 프롬프트, 사용자 결정 A 2026-09-15 | ✅ 구현·검토 | ✅ 2026-09-15 (Opus, 1차 설계 B 중단·원복 후 v2, 재지시 1회 `ext_not_allowed`) | ✅ 2026-09-15 (T-61 25/0/미검증1 재실행 + 긍정 경로 qa 귀속 실측 201·403·400×5·401×2, 린트 0, health 38/38) | ⚠ 대기 (사용자 토큰 201; JSON 413 은 검증됨) | `20f51cb` F-49 + 발행 `v1.1.0`(`613d229`) |
 | F-50 | 프로그램용 검색·다운로드 — `X-API-Token` 라우트를 셋으로(업로드·`GET /api/files`·`GET /api/files/{id}/download`), 토큰 검색은 간결 배열 `[{id,name,level,size,uploaded_at}]`+`limit`, 인가는 기존 `visibleFilesWhere`·`decideRead` 상속(IDOR 403) — 강사 3차 프롬프트 2026-09-15 | ✅ 구현·검토 | ✅ 2026-09-15 (Opus, 재지시 0회 — 지시서 결함을 Opus 가 실측으로 잡아 헤더 갈림길 추가) | ✅ 2026-09-15 (T-62 38/0/0 Fable 재실행, qa 귀속 실측, 린트 0) | ◐ 사용자 확인 2026-09-15: 검색 200·다운로드 200 (403·401 갈래 미보고) | `b8929a8` F-50 + 발행 `v1.2.0`(`5977306`) |
-| F-55 | 백업 원격 사본 — 사용자 PC 가 매일 05:00 pull(`deploy/pc/pull_backup.ps1`), 서버 변경 0 | 🔄 | 🔄 Opus | ⬜ | ⚠ T-67 (a)~(e) 사용자 PC | — |
+| F-55 | 백업 원격 사본 — 사용자 PC 가 매일 05:00 pull(`deploy/pc/pull_backup.ps1`), 서버 변경 0 | ⚠ | ✅ Opus 09-16 | ✅ 09-16 정적(PowerShell 실행 불가) | ⚠ T-67 (a)~(e) 사용자 PC | `ac6f7f4` + 구현 커밋 |
 | 문구 정리 | 화면 문구 정리 — **1단계** 화면에 늘 펼쳐져 있던 안내 68곳 삭제·축소 / **2단계** 「사용 방법」 단추와 화면별 도움말 20화면 (F-38 · T-51) | ◐ 2단계 구현 | ✅ 2026-09-15 (Opus) | ⚠ 대기 | ⚠ 대기 | 1단계 `06ee617` · 2단계 커밋 전 |
 | **26** | 관리자 「역할로 보기」(F-39) · 관리 내비·계정 편집 폼(F-40) · 폴더 삭제 세 갈래(F-41) — 사용자 결정·지적 2026-09-15 | ✅ 구현 | ⚠ Fable 재검토 대기 (Opus 자체 시험 124/124) | ⚠ 대기 | ⚠ 대기 | 커밋 전 |
 
@@ -1714,14 +1714,14 @@ sudo -u postgres psql -d tbox_re -c "SELECT happened_at, actor_name, action, res
 
 **개발 사항** (구현 Opus / 문서 Fable)
 - [x] (Fable) PRD F-55·Q-4·S-08 표·T-67, ARCH 11.1 행, SECURITY R-88·R-08·8.4-4·7장, 지시서, STAGES
-- [ ] (Opus) `deploy/pc/pull_backup.ps1` — 매개변수 기본값(서버·계정·목적지·3일·45일), ssh→파일 리다이렉트(파이프 금지)→`tar.exe -xf`, sha256 대조, 45일 정리, `-Key`·`-Install`·`-Uninstall`, `pull.log`
-- [ ] (Opus) `deploy/pc/README.md` — 처음 설정 순서·매일 확인·실패 시·한계
-- [ ] 손대지 않음(확인): 서버 파일 전부(`scripts/*`·cron·install.sh·nginx). `README.md` 링크 추가는 F-54 커밋 뒤(같은 작업 트리에 미커밋 변경)
+- [x] (Opus) `deploy/pc/pull_backup.ps1` — 매개변수 기본값(서버·계정·목적지·3일·45일), ssh→파일 리다이렉트(파이프 금지)→`tar.exe -xf`, sha256 대조, 45일 정리, `-Key`·`-Install`·`-Uninstall`, `pull.log` — 598줄, UTF-8 BOM, `Start-Process -RedirectStandardOutput`(파이프 0)
+- [x] (Opus) `deploy/pc/README.md` — 처음 설정 순서·매일 확인·실패 시·한계 (+ Fable 0단계 「스크립트를 PC 로 scp」 추가)
+- [x] 손대지 않음(확인): 서버 파일 전부. `README.md` 「서버 밖 사본」 절은 F-54 발행(v1.6.0) 뒤 Fable 이 추가
 
 **검토 체크** (Fable, 관문 ②)
-- [ ] 스크립트 정적 검토: 바이너리 파이프 없음 · 키 내용 미출력 · 서버 쪽 명령이 `tar`·`cat` 만 · 자리표시자 없음 · `.sha256` 파싱 `<해시>  <이름>`
+- [x] 스크립트 정적 검토: 바이너리 파이프 없음 · 키 내용 미출력 · 서버 쪽 명령이 `tar`·`cat` 만 · 자리표시자 없음 · `.sha256` 파싱 `<해시>  <이름>` — **Fable 검토(09-16)**: 원격 명령은 `sudo -n tar …`·`sudo -n cat backup.key` 둘뿐, PowerShell 파이프·`>` 없음, `StrictHostKeyChecking` 미완화(1단계 수동 접속으로 known_hosts), 해시 `^[0-9a-fA-F]{64}$` 검사·`-ieq` 대조, `-Key` 는 `pull.log` 에 위치도 안 남김·`-Dest` 안 거부(코드 2), 보관은 이름 날짜 `TryParseExact`, 스케줄 `-Daily -At 05:00 -StartWhenAvailable`. 금지 패턴 계수 0(주석 1줄 제외)
 - [x] 서버 쪽 명령 실측(09-16): `sudo -n tar … --newer-mtime='3 days ago' \| tar -tvf -` 19개·약 140MB, AL-9 헛경보 없음
-- [ ] 관문 ④ 커밋 → push. 문서·PC 스크립트만이라 **발행하지 않음**(CLAUDE.md 6장: 사용자에게 보이는 화면 변경 없음)
+- [x] 관문 ④ 설계 커밋 `ac6f7f4` · 구현 커밋 (아래 학습 기록 뒤 보충) → push. 문서·PC 스크립트만이라 **발행하지 않음**(CLAUDE.md 6장: 사용자에게 보이는 화면 변경 없음)
 
 **자기 공격 체크** (사용자, 관문 ③ = T-67, PC PowerShell 에서)
 - [ ] (a) `powershell -File deploy\pc\pull_backup.ps1` 첫 실행 → `C:\tbox-backup\var\backups\tbox-v2\db\db-<오늘>-0300.dump.gpg` 있음, `pull.log` 마지막 줄 `OK`
@@ -1740,6 +1740,7 @@ sudo -u postgres psql -d tbox_re -c "SELECT happened_at, actor_name, action, res
 | 2026-09-16 | 판단(Fable) | `scp` 가 아니라 `ssh … sudo -n tar` 표준 출력 | 산출물이 root 0700 이라 changkwon 으로 `scp` 불가. tar 한 번이면 sudo 도 한 번 |
 | 2026-09-16 | 판단(Fable) | PowerShell 파이프 금지, 파일로 리다이렉트 뒤 `tar.exe -xf` | PowerShell `\|` 는 바이너리를 문자열로 바꿔 깨뜨린다. Windows 10+ 는 `ssh.exe`·`tar.exe` 내장 |
 | 2026-09-16 | 한계(Fable) | 이 VM 에 PowerShell 이 없어 스크립트 실행 검증 불가 | T-67 은 사용자 PC 에서. Opus·Fable 은 정적 점검 + 서버 쪽 명령만 실측 |
+| 2026-09-16 | 보정(Fable 검토) | PC README 에 「스크립트를 PC 로 가져오는」 0단계가 없었다 | `scp changkwon@192.168.105.44:/var/www/tbox-v2/deploy/pc/pull_backup.ps1 C:\tbox-tools\` 추가. `-Install` 이 경로를 박아 두므로 옮기면 재등록 |
 
 
 ## 2-1. 10단계 뒤 일괄 자기 공격 — 진행 순서 (관문 ③, 사용자)
