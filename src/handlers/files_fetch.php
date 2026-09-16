@@ -383,11 +383,13 @@ $storedName = Storage::newStoredName($checkedFile['ext']);
 $sqlInsert = <<<'SQL'
     INSERT INTO files
         (original_name, stored_name, ext, mime, size_bytes, sha256,
-         description, access_level, team_id, uploaded_by, sensitive_flags, folder_id)
+         description, access_level, team_id, uploaded_by, sensitive_flags, folder_id,
+         scan_status)
     VALUES
         (:original_name, :stored_name, :ext, :mime, :size_bytes, :sha256,
          :description, :access_level, :team_id, :uploaded_by,
-         CAST(:flags AS text[]), CAST(:folder_id AS bigint))
+         CAST(:flags AS text[]), CAST(:folder_id AS bigint),
+         :scan_status)
     RETURNING id, public_id
     SQL;
 
@@ -408,6 +410,8 @@ try {
         ':uploaded_by'   => (int) $user['id'],
         ':flags'         => '{' . implode(',', $sensitiveFlags) . '}',
         ':folder_id'     => $folderId,
+        // F-54 ① (ARCH 5.28) — 가져온 파일도 수동 업로드와 **같은 상태**로 저장한다.
+        ':scan_status'   => Upload::initialScanStatus(),
     ])->fetch();
 
     if (!is_array($row)) {

@@ -258,7 +258,35 @@ function makeLevelBadge(level) {
  * 스스로 판단하지 않는다. 배지는 표시일 뿐이고 등급 규칙은 서버가 막는다 (PRD 10장).
  * 파일명은 언제나 textContent 로 넣는다.
  */
-function addNameCell(row, name, sensitive) {
+/*
+ * F-54 (PRD F-54 ③, ARCH 5.28) — 악성코드 검사 상태의 화면 문구.
+ *
+ * 화면은 **서버가 준 문자열**만 본다. 이 표에 없는 값('clean' 포함)은 배지가 없다 —
+ * 서버 문자열이 class 이름이 되지 않게 하는 방어는 레벨 배지와 같다.
+ * 배지는 표시일 뿐이고, 실제 차단은 서버의 403 이다 (PRD 10장).
+ */
+var SCAN_BADGE = {
+  'pending': {
+    label: '검사 중',
+    cls: 'badge badge--scan-pending',
+    title: '악성코드 검사 중입니다. 잠시 뒤 다시 시도하세요'
+  },
+  'infected': {
+    label: '격리됨',
+    cls: 'badge badge--scan-infected',
+    title: '악성코드가 발견되어 격리된 파일입니다'
+  }
+};
+
+/** 서버가 준 scan_status 에 붙일 배지 정보. 모르는 값·'clean' 이면 null. */
+function scanBadgeFor(scanStatus) {
+  if (typeof scanStatus !== 'string') {
+    return null;
+  }
+  return Object.prototype.hasOwnProperty.call(SCAN_BADGE, scanStatus) ? SCAN_BADGE[scanStatus] : null;
+}
+
+function addNameCell(row, name, sensitive, scanStatus) {
   var td = document.createElement('td');
   var text = document.createElement('span');
   setText(text, name);
@@ -270,6 +298,16 @@ function addNameCell(row, name, sensitive) {
     setText(badge, '민감');
     td.appendChild(document.createTextNode(' '));
     td.appendChild(badge);
+  }
+  // F-54 — 「검사 중」(회색) · 「격리됨」(빨강). 문구는 textContent 로만 넣는다.
+  var scan = scanBadgeFor(scanStatus);
+  if (scan !== null) {
+    var scanBadge = document.createElement('span');
+    scanBadge.className = scan.cls;
+    scanBadge.setAttribute('title', scan.title);
+    setText(scanBadge, scan.label);
+    td.appendChild(document.createTextNode(' '));
+    td.appendChild(scanBadge);
   }
   row.appendChild(td);
   return td;
@@ -1600,6 +1638,11 @@ function initFiles(csrfToken, uploadLevels, canFetch, myTeamId) {
     var td = document.createElement('td');
     td.className = 'actions';
 
+    /* F-54 (PRD F-54 ③, ARCH 5.28) — 검사 전(pending)·격리(infected) 파일은 받지도 미리
+       보지도 못한다. 화면은 단추를 **비활성**으로 두고 왜인지를 title 로 알린다.
+       이것은 편의일 뿐이다 — 주소를 직접 쳐도 서버가 403 으로 막는다 (PRD 10장). */
+    var scanBlock = scanBadgeFor(file.scan_status);
+
     // 서버가 준 ID 가 UUID 형태일 때만 링크를 만든다(주소에 예상 밖의 문자가 들어가지 않게).
     if (UUID_RE.test(file.id)) {
       // 「미리보기」는 **모든 행**에 만든다 — 지원하지 않는 형식이면 서버가 kind:'none' 을 주고
@@ -1609,18 +1652,33 @@ function initFiles(csrfToken, uploadLevels, canFetch, myTeamId) {
         ? PREVIEW_KIND_LABELS[file.preview_kind]
         : '';
       var previewButton = makeIconButton('eye', kindLabel === '' ? '미리보기' : '미리보기 — ' + kindLabel);
-      previewButton.addEventListener('click', function () {
-        openPreview(file);
-      });
+      if (scanBlock !== null) {
+        previewButton.disabled = true;
+        previewButton.setAttribute('title', scanBlock.title);
+        previewButton.setAttribute('aria-label', scanBlock.title);
+      } else {
+        previewButton.addEventListener('click', function () {
+          openPreview(file);
+        });
+      }
       td.appendChild(previewButton);
 
-      var link = document.createElement('a');
-      link.setAttribute('href', '/api/files/' + file.id + '/download');
-      link.className = 'btn btn--icon';
-      link.setAttribute('title', '다운로드');
-      link.setAttribute('aria-label', '다운로드');
-      link.appendChild(makeIcon('download'));
-      td.appendChild(link);
+      if (scanBlock !== null) {
+        /* 막힌 동안에는 **주소가 없는 단추**를 둔다. <a> 에는 disabled 가 없어(클릭이 그대로
+           나간다) 링크 대신 button 으로 바꾼다 — 화면에서 사라지지는 않게 해서 "왜 못 받나" 가
+           title 로 보이게 한다. */
+        var blockedDownload = makeIconButton('download', scanBlock.title);
+        blockedDownload.disabled = true;
+        td.appendChild(blockedDownload);
+      } else {
+        var link = document.createElement('a');
+        link.setAttribute('href', '/api/files/' + file.id + '/download');
+        link.className = 'btn btn--icon';
+        link.setAttribute('title', '다운로드');
+        link.setAttribute('aria-label', '다운로드');
+        link.appendChild(makeIcon('download'));
+        td.appendChild(link);
+      }
 
       // 수정 버튼은 서버가 그 행에 대해 can_edit 를 참으로 준 경우에만 만든다.
       if (file.can_edit === true) {
@@ -1696,7 +1754,8 @@ function initFiles(csrfToken, uploadLevels, canFetch, myTeamId) {
     files.forEach(function (file) {
       var row = document.createElement('tr');
       // 15-3 — 「민감」 배지는 서버가 준 sensitive 불리언만 보고 붙인다 (PRD F-22).
-      addNameCell(row, file.name, file.sensitive === true);
+      // F-54 — 「검사 중」·「격리됨」 배지도 서버가 준 scan_status 하나만 보고 붙인다.
+      addNameCell(row, file.name, file.sensitive === true, file.scan_status);
       addCell(row, formatSize(file.size_bytes));
       addLevelCell(row, file.access_level);
       addCell(row, file.team_name === null || file.team_name === undefined ? '—' : file.team_name);

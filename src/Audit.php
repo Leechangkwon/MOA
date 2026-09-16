@@ -310,6 +310,10 @@ final class Audit
         'file.download|deny|team_mismatch'        => '{actor} 이(가) 다른 팀의 team 등급 파일 「{target}」 을(를) 내려받으려 해서 막았습니다',
         'file.download|error|file_missing'        => '{actor} 이(가) 파일 「{target}」 을(를) 내려받으려 했지만 저장소에 실제 파일이 없습니다 (점검 필요)',
         'file.download|error|hash_mismatch'       => '{actor} 이(가) 파일 「{target}」 을(를) 내려받으려 했지만 저장된 파일의 내용이 기록과 달라 전송을 막았습니다 (변조 의심, 점검 필요)',
+        // F-54 (ARCH 5.28) — 악성코드 검사 상태로 막힌 다운로드. 권한 판정을 통과한 뒤의
+        // 거부라 사유가 권한과 섞이지 않는다 (ARCH 5.3 [4]).
+        'file.download|deny|scan_pending'         => '{actor} 이(가) 아직 검사 중인 파일 「{target}」 을(를) 내려받으려 해서 막았습니다',
+        'file.download|deny|scan_infected'        => '{actor} 이(가) 악성코드로 격리된 파일 「{target}」 을(를) 내려받으려 해서 막았습니다',
 
         // ── 미리보기 (files_preview · files_preview_raw — 12-2, ARCH 7.4 file.preview 7행) ──
         'file.preview|allow'                      => '{actor} 이(가) {level} 등급 파일 「{target}」 을(를) 미리보기로 열었습니다',
@@ -319,6 +323,9 @@ final class Audit
         'file.preview|error|file_missing'         => '{actor} 이(가) 파일 「{target}」 을(를) 미리보기로 열려 했지만 저장소에 실제 파일이 없습니다 (점검 필요)',
         'file.preview|error|hash_mismatch'        => '{actor} 이(가) 파일 「{target}」 을(를) 미리보기로 열려 했지만 저장된 파일의 내용이 기록과 달라 표시를 막았습니다 (변조 의심, 점검 필요)',
         'file.preview|error|parse_failed'         => '{actor} 이(가) 파일 「{target}」 의 미리보기를 요청했지만 내용을 읽어 내지 못했습니다 (손상 또는 지원 범위 밖)',
+        // F-54 (ARCH 5.28) — 미리보기 두 창구(JSON·raw)가 같은 자리에서 같은 사유로 막는다.
+        'file.preview|deny|scan_pending'          => '{actor} 이(가) 아직 검사 중인 파일 「{target}」 을(를) 미리 보려 해서 막았습니다',
+        'file.preview|deny|scan_infected'         => '{actor} 이(가) 악성코드로 격리된 파일 「{target}」 을(를) 미리 보려 해서 막았습니다',
 
         // ── 삭제 (files_delete) ──
         'file.delete|allow'                       => '{actor} 이(가) {level} 등급 파일 「{target}」 을(를) 삭제했습니다 (30일 휴지통)',
@@ -353,6 +360,12 @@ final class Audit
         // 근거 수치(산출물·검증값·검사 건수·불일치 목록·경보 근거)는 전부 detail 로 간다 (ARCH 7.5).
         'file.purge|allow'                        => '휴지통에 30일 넘게 있던 {level} 등급 파일 「{target}」 을(를) 배치가 영구 삭제했습니다',
         'file.purge|error|purge_failed'           => '휴지통 파일 「{target}」 영구 삭제 중 오류가 나서 건너뛰었습니다 (점검 필요)',
+        // F-54 배치 (scripts/scan_pending.php — ARCH 5.28 · 11.1 「매분」). cron 이 남기므로
+        // actor_* 는 NULL 이고 문장에 {actor} 를 쓰지 않는다(file.purge 와 같은 성질).
+        // 시그니처 이름·해시·올린 사람은 문장이 아니라 detail 로 간다 (ARCH 7.5).
+        'file.scan|allow'                         => '배치가 파일 「{target}」 을(를) 검사했습니다 — 이상 없음',
+        'file.scan|deny|infected'                 => '배치가 파일 「{target}」 에서 악성코드를 발견해 격리했습니다',
+        'file.scan|error|scan_failed'             => '파일 「{target}」 검사 중 오류가 나서 다음 실행에 다시 시도합니다',
         'backup.run|allow'                        => '백업이 완료되었습니다 (대상·산출물·검증값은 상세 기록)',
         'backup.run|error|backup_failed'          => '백업이 실패했습니다 (사유는 상세 기록·app.log) — 2회 연속이면 경보 AL-8',
         'backup.restore|allow'                    => '{actor} 이(가) 백업에서 복구를 실행했습니다 (대상 시점·범위는 상세 기록)',
@@ -476,6 +489,10 @@ final class Audit
         'share.download|deny|file_gone'                 => '이미 삭제된 파일 「{target}」 을(를) 가리키는 공유 링크로 받으려 해서 막았습니다',
         'share.download|error|file_missing'             => '공유 링크로 파일 「{target}」 을(를) 보내려 했지만 저장소에 실제 파일이 없습니다 (점검 필요)',
         'share.download|error|hash_mismatch'            => '공유 링크로 파일 「{target}」 을(를) 보내려 했지만 저장된 파일의 내용이 기록과 달라 전송을 막았습니다 (변조 의심, 점검 필요)',
+        // F-54 (ARCH 5.28) — 링크가 유효해도 검사 전·격리 파일은 나가지 않는다.
+        // 이 창구에는 로그인한 사람이 없으므로 다른 share 행처럼 {actor} 를 쓰지 않는다.
+        'share.download|deny|scan_pending'              => '공유 링크로 아직 검사 중인 파일 「{target}」 을(를) 내려받으려 해서 막았습니다',
+        'share.download|deny|scan_infected'             => '공유 링크로 악성코드가 격리된 파일 「{target}」 을(를) 내려받으려 해서 막았습니다',
 
         // ── 민감정보 패턴 검출 (15-3 — F-22, ARCH 5.13 · 7.4, SECURITY R-58) ──
         // 문장에도 detail 에도 **패턴 이름과 건수만** 남는다 (검출된 숫자 원문은 금지, PRD S-07).

@@ -43,7 +43,8 @@ $sqlFind = <<<'SQL'
            f.size_bytes,
            f.team_id,
            f.uploaded_by,
-           f.sha256
+           f.sha256,
+           f.scan_status
       FROM files f
      WHERE f.public_id = CAST(:pid AS uuid)
        AND f.deleted_at IS NULL
@@ -76,6 +77,27 @@ if (!$mayRead) {
         'detail'       => $auditWhat,
     ]);
     Http::error(403, Http::MSG_FORBIDDEN);
+}
+
+/* ─── [4] F-54 검사 상태 관문 (ARCH 5.3 [4] · 5.28, PRD F-54 ③) ─────
+ *
+ * 검사 전(`pending`)·격리(`infected`) 파일은 **아무도** 받지 못한다. 자리가 여기인 이유:
+ *   · 권한 판정(`decideRead`)보다 **뒤** — 볼 자격이 없는 사람에게는 "그런 파일이 있다"
+ *     조차 알려 주지 않아야 하고, 403 의 뜻(IDOR)이 섞이면 안 된다.
+ *   · 저장소 접근(`assertExists`·sha256)보다 **앞** — 격리된 바이트는 이미 저장소에 없다.
+ * 사유 코드는 상태에 따라 `scan_pending`·`scan_infected` 두 가지이고, 문장 틀은 Audit 표에 있다.
+ */
+$scan = (string) ($file['scan_status'] ?? 'clean');
+if ($scan !== 'clean') {
+    $scanReason = $scan === 'infected' ? 'scan_infected' : 'scan_pending';
+    Audit::deny('file.download', $scanReason, [
+        'target_type'  => 'file',
+        'target_id'    => (int) $file['id'],
+        'target_name'  => (string) $file['original_name'],
+        'access_level' => (string) $file['access_level'],
+        'detail'       => $auditWhat + ['scan_status' => $scan],
+    ]);
+    Http::error(403, $scan === 'infected' ? Http::MSG_SCAN_INFECTED : Http::MSG_SCAN_PENDING);
 }
 
 $storedName = (string) $file['stored_name'];

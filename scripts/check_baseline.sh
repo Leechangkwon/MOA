@@ -190,6 +190,52 @@ fi
   || warn "cron 일정이 없다 (deploy/install.sh 가 복사한다)"
 
 # ─────────────────────────────────────────────────────────────
+# ─────────────────────────────────────────────────────────────
+hdr "악성코드 검사 (PRD F-54 · T-66 (e), ARCHITECTURE 5.28, SECURITY R-86 · R-87)"
+if command -v clamscan >/dev/null 2>&1; then
+  ok "clamscan 있음: $(clamscan --version 2>/dev/null | head -1)"
+else
+  warn "clamscan 이 없다 — 검사 배치(scripts/scan_pending.php)가 돌지 못한다 (apt install clamav)"
+fi
+# 상주 데몬은 **일부러 설치하지 않는다** — 시그니처를 올리면 1GB 이상을 쥔다(이 VM 3.8GB, R-86).
+# 그러므로 `dpkg -s` 가 실패하는 것이 정상이다.
+if dpkg -s clamav-daemon >/dev/null 2>&1; then
+  warn "clamav-daemon 이 설치돼 있다 — 이 VM 의 결정은 '데몬 없음'이다 (메모리, SECURITY R-86)"
+else
+  ok "clamav-daemon 미설치 (결정대로 — clamscan 을 대기 파일이 있을 때만 띄운다)"
+fi
+if systemctl is-active clamav-freshclam >/dev/null 2>&1; then
+  ok "clamav-freshclam 가 돌고 있다 (시그니처 자동 갱신 — R-87)"
+else
+  warn "clamav-freshclam 가 돌지 않는다 — 시그니처가 낡으면 미탐이 늘어난다 (R-87)"
+fi
+# 시그니처 나이. daily.cvd(내려받은 그대로) 또는 daily.cld(증분 갱신본) 중 있는 것을 본다.
+SIG_FILE="$(ls -t /var/lib/clamav/daily.c*d 2>/dev/null | head -1)"
+if [ -n "$SIG_FILE" ]; then
+  SIG_AGE=$(( ( $(date +%s) - $(stat -c %Y "$SIG_FILE" 2>/dev/null || echo 0) ) / 3600 ))
+  printf '      시그니처: %s (갱신 %s, %d시간 전)\n' "$SIG_FILE" "$(stat -c %y "$SIG_FILE" 2>/dev/null | cut -d. -f1)" "$SIG_AGE"
+  if [ "$SIG_AGE" -le 24 ]; then ok "시그니처가 24시간 안에 갱신됐다"
+  else warn "시그니처가 ${SIG_AGE}시간 전 것이다 (기준 24시간 — freshclam 을 확인할 것, R-87)"; fi
+else
+  unk "/var/lib/clamav/daily.c*d 를 읽지 못했다"
+fi
+QDIR="/var/lib/tbox-v2/quarantine"
+QSTAT="$(stat -c '%a %U:%G' "$QDIR" 2>/dev/null)"
+if [ -z "$QSTAT" ]; then
+  unk "격리 디렉터리를 읽지 못했다: ${QDIR} (root 권한 필요)"
+else
+  printf '      %s → %s\n' "$QDIR" "$QSTAT"
+  [ "$QSTAT" = "750 tbox-php:tbox-php" ] && ok "격리 디렉터리 0750 tbox-php" \
+    || warn "격리 디렉터리가 기준(0750 tbox-php)과 다르다: ${QSTAT}"
+fi
+if [ -r /etc/cron.d/tbox-v2 ]; then
+  grep -q 'scan_pending.php' /etc/cron.d/tbox-v2 \
+    && ok "cron 에 scan_pending.php 행이 있다 (매분, tbox-php)" \
+    || todo "cron 에 scan_pending.php 행이 없다 — deploy/cron.d/tbox-v2 를 복사할 것 (검사가 영영 안 돈다)"
+else
+  unk "/etc/cron.d/tbox-v2 를 읽지 못했다 (root 권한 필요)"
+fi
+
 hdr "계정 (PRD S-10-A: 서비스 계정은 로그인 셸 없음 · 사람은 1인 1계정)"
 printf '      로그인 셸이 있는 계정:\n'
 getent passwd | grep -vE '(nologin|/bin/false|/bin/sync)$' | raw

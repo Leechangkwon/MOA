@@ -1606,6 +1606,15 @@ GRANT  USAGE, SELECT  ON SEQUENCE audit_logs_id_seq TO tbox_app;
 | `file.restore|deny|not_found_in_trash` | `{actor} 이(가) 휴지통에 없는 파일을 복구하려 해서 거부했습니다` | 10단계 files_restore |
 | `file.purge|allow` | `휴지통에 30일 넘게 있던 {level} 등급 파일 「{target}」 을(를) 배치가 영구 삭제했습니다` | 9단계 scripts/purge_trash.php (actor 없음 = 시스템) |
 | `file.purge|error|purge_failed` | `휴지통 파일 「{target}」 영구 삭제 중 오류가 나서 건너뛰었습니다 (점검 필요)` | 9단계 purge_trash |
+| `file.download|deny|scan_pending` | `{actor} 이(가) 아직 검사 중인 파일 「{target}」 을(를) 내려받으려 해서 막았습니다` | F-54 읽기 창구 [4] (ARCH 5.28) |
+| `file.download|deny|scan_infected` | `{actor} 이(가) 악성코드로 격리된 파일 「{target}」 을(를) 내려받으려 해서 막았습니다` | F-54 읽기 창구 [4] (ARCH 5.28) |
+| `file.preview|deny|scan_pending` | `{actor} 이(가) 아직 검사 중인 파일 「{target}」 을(를) 미리 보려 해서 막았습니다` | F-54 읽기 창구 [4] (ARCH 5.28) |
+| `file.preview|deny|scan_infected` | `{actor} 이(가) 악성코드로 격리된 파일 「{target}」 을(를) 미리 보려 해서 막았습니다` | F-54 읽기 창구 [4] (ARCH 5.28) |
+| `share.download|deny|scan_pending` | `공유 링크로 아직 검사 중인 파일 「{target}」 을(를) 내려받으려 해서 막았습니다` | F-54 읽기 창구 [4] (ARCH 5.28) |
+| `share.download|deny|scan_infected` | `공유 링크로 악성코드가 격리된 파일 「{target}」 을(를) 내려받으려 해서 막았습니다` | F-54 읽기 창구 [4] (ARCH 5.28) |
+| `file.scan|allow` | `배치가 파일 「{target}」 을(를) 검사했습니다 — 이상 없음` | scripts/scan_pending.php (ARCH 5.28) |
+| `file.scan|deny|infected` | `배치가 파일 「{target}」 에서 악성코드를 발견해 격리했습니다` | scripts/scan_pending.php (ARCH 5.28) |
+| `file.scan|error|scan_failed` | `파일 「{target}」 검사 중 오류가 나서 다음 실행에 다시 시도합니다` | scripts/scan_pending.php (ARCH 5.28) |
 | `backup.run|allow` | `백업이 완료되었습니다 (대상·산출물·검증값은 상세 기록)` | 9단계 scripts/backup_*.sh → audit_cli.php (시스템) |
 | `backup.run|error|backup_failed` | `백업이 실패했습니다 (사유는 상세 기록·app.log) — 2회 연속이면 경보 AL-8` | 9단계 |
 | `backup.restore|allow` | `{actor} 이(가) 백업에서 복구를 실행했습니다 (대상 시점·범위는 상세 기록)` | 9단계 scripts/restore.sh (운영자, actor = 실행 계정명) |

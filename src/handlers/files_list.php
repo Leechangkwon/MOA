@@ -125,6 +125,9 @@ $sqlList = <<<'SQL'
            -- 15-3 (F-22) — 「민감」 배지용 **불리언 하나**. 패턴 이름은 목록에 내리지 않는다
            -- (어떤 패턴이 몇 건 걸렸는지는 감사 로그에만 남는다, ARCH 5.13).
            cardinality(f.sensitive_flags) > 0 AS sensitive,
+           -- F-54 (ARCH 5.28) — 「검사 중」·「격리됨」 배지와 단추 비활성에 쓰는 상태 하나.
+           -- 세 값('pending'·'clean'·'infected')뿐이고 파일 이름·시그니처는 내리지 않는다.
+           f.scan_status,
            f.team_id,
            f.folder_id,
            f.uploaded_by,
@@ -274,6 +277,13 @@ foreach ($rows as $row) {
         // 15-3 (F-22): 민감정보 패턴이 걸린 파일인가 — 화면의 「민감」 배지에만 쓰는 표시용
         // 값이다. 배지가 보이든 안 보이든 등급 규칙은 서버가 판단한다 (PRD 10장).
         'sensitive'    => $row['sensitive'] === true,
+        /* F-54 (PRD F-54 ③, ARCH 5.28): 악성코드 검사 상태 — 'pending'·'clean'·'infected'.
+         * 화면은 이 값만 보고 「검사 중」·「격리됨」 배지를 붙이고 다운로드·미리보기 단추를
+         * 비활성으로 둔다. 단추가 보이든 안 보이든 실제 차단은 서버가 다시 한다
+         * (files_download·files_preview·files_preview_raw·share_download 의 403, PRD 10장).
+         * ★ 아래 F-50 토큰 응답(간결한 배열 다섯 칸)에는 **넣지 않는다** — API.md 의
+         *   안정성 약속(키를 늘리지 않는다)을 지킨다. 토큰 다운로드도 서버가 똑같이 막는다. */
+        'scan_status'  => (string) $row['scan_status'],
     ];
 }
 

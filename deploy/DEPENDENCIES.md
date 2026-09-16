@@ -66,6 +66,8 @@ PostgreSQL 확장도 설치하지 않는다 — UUID 는 PostgreSQL 13+ 내장 `
 |---|---|---|
 | php-fpm 계정 | `tbox-php` (system, nologin, 홈 없음) | — |
 | php-fpm 소켓 | `/run/php/php8.1-fpm-tbox.sock` | 0660 www-data:www-data |
+| 격리 디렉터리 (F-54) | `/var/lib/tbox-v2/quarantine` — 악성 판정 파일의 바이트를 옮겨 두는 곳(삭제 안 함, 증거) | 0750 tbox-php:tbox-php · `scripts/scan_pending.php`(cron, tbox-php)만 쓴다 |
+| 검사 잠금 (F-54) | `/var/lib/tbox-v2/scan.lock` | tbox-php · `flock` 로 동시 실행 방지 |
 | 업로드 저장소 | `/var/lib/tbox-v2/storage` | 0750 tbox-php |
 | PHP 세션(예비) | `/var/lib/tbox-v2/sessions` | 0700 tbox-php |
 | 로그 | `/var/log/tbox-v2/{audit,app}.log` (audit.log 는 `chattr +a`) | 0640 tbox-php:adm |

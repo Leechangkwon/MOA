@@ -267,11 +267,13 @@ function tbox_upload_run(array $user, string $levelField, string $levelDefault, 
     $sqlInsert = <<<'SQL'
         INSERT INTO files
             (original_name, stored_name, ext, mime, size_bytes, sha256,
-             description, access_level, team_id, uploaded_by, sensitive_flags, folder_id)
+             description, access_level, team_id, uploaded_by, sensitive_flags, folder_id,
+             scan_status)
         VALUES
             (:original_name, :stored_name, :ext, :mime, :size_bytes, :sha256,
              :description, :access_level, :team_id, :uploaded_by,
-             CAST(:flags AS text[]), CAST(:folder_id AS bigint))
+             CAST(:flags AS text[]), CAST(:folder_id AS bigint),
+             :scan_status)
         RETURNING id, public_id
         SQL;
 
@@ -293,6 +295,9 @@ function tbox_upload_run(array $user, string $levelField, string $levelDefault, 
             ':uploaded_by'   => (int) $user['id'],
             ':flags'         => '{' . implode(',', $sensitiveFlags) . '}',
             ':folder_id'     => $folderId,
+            // F-54 ① (ARCH 5.28) — 검사를 켜 두었으면 'pending' 으로 시작한다. 판단은
+            // Upload::initialScanStatus() 한 곳이고 네 입구가 그것을 함께 쓴다.
+            ':scan_status'   => Upload::initialScanStatus(),
         ])->fetch();
 
         if (!is_array($row)) {

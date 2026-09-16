@@ -1683,12 +1683,12 @@ sudo -u postgres psql -d tbox_re -c "SELECT happened_at, actor_name, action, res
 **개발 사항** (구현 Opus / 설치·문서 Fable)
 - [x] (Fable) PRD F-54·S-06 표·download 행·AL-19·T-66, ARCH 5.28·5.3·11.1, SECURITY R-86·R-87, DEPENDENCIES
 - [x] (Fable, 09:10) 패키지 설치 `clamav`·`clamav-freshclam` 1.5.3(데몬 제외) · enable · 시그니처 main 63/daily 28124/bytecode 339 수신 · `/var/lib/tbox-v2/quarantine` 0750 tbox-php · `check_baseline` OK 16 불변 · T-18 리스너 추가 없음 · `clamscan` 실측 22초/991MB. `.env` `SCAN_ENABLED=1` 은 배치 코드 검토 뒤 · 첫 시그니처 수신 확인 · `/var/lib/tbox-v2/quarantine` 0750 tbox-php · `.env` `SCAN_ENABLED=1`
-- [ ] (Opus) `Upload::initialScanStatus()` + INSERT 네 곳 · `scripts/scan_pending.php` · 다운로드·미리보기·공유·토큰 403 · 목록 `scan_status`·화면 배지 · `alerts.php` AL-19 · `deploy/cron.d`·`install.sh`·`check_baseline.sh` · `tests/f54.sh`(T-66)
-- [ ] 손대지 않음(확인): `Authz`·`Auth`·`db/schema.sql`(열은 이미 있음)
+- [x] (Opus) `Upload::initialScanStatus()` + INSERT 네 곳 · `scripts/scan_pending.php` · 다운로드·미리보기·공유·토큰 403 · 목록 `scan_status`·화면 배지 · `alerts.php` AL-19 · `deploy/cron.d`·`install.sh`·`check_baseline.sh` · `tests/f54.sh`(T-66)
+- [x] 손대지 않음(확인): `Authz`·`Auth`·`db/schema.sql`(열은 이미 있음) · `Http.php` 는 검토 보정으로 문구 상수 2줄만
 
 **검토 체크** (Fable, 관문 ②)
-- [ ] `tests/f54.sh` 재실행 (a) pending→clean (b) EICAR→infected·격리·403·AL-19 (c) 대기 0건 즉시 종료·잠금 (d) SCAN_ENABLED 꺼짐 (e) 서버 층 (f) 자원 (g) 린트
-- [ ] `scan_pending.php` 읽기 — 경로는 `Storage::pathFor` 만, 격리 이동은 `rename`, 오류 시 상태 유지
+- [x] **Fable 검토 (2026-09-16)** — 보정 3건(Http 상수·격리 복구·CSS 토큰) 반영 → cron 설치·`SCAN_ENABLED=1`(09:46) → `tests/f54.sh` 재실행 **59/0** (a) pending→clean (b) EICAR→infected·격리·403·AL-19 (c) 대기 0건 즉시 종료·잠금 (d) SCAN_ENABLED 꺼짐 (e) 서버 층 (f) 자원 (g) 린트
+- [x] `scan_pending.php` 읽기 — 경로는 `Storage::pathFor` 만, 격리 이동은 `rename`, 오류 시 상태 유지
 
 **자기 공격 체크** (사용자, 관문 ③)
 - [ ] EICAR 텍스트를 `.txt` 로 올리기 → 1~2분 뒤 목록에 「격리됨」, 다운로드 403, 관리자 감사에 `file.scan deny infected`, `alerts.log` AL-19
@@ -1702,6 +1702,8 @@ sudo -u postgres psql -d tbox_re -c "SELECT happened_at, actor_name, action, res
 | 2026-09-16 | 판단(Fable) | `clamd` 상주 대신 `clamscan` 을 「대기 파일 있을 때만」 | VM 메모리 3.8GB·가용 1.1GB, clamd 는 1GB 이상 상주 → PostgreSQL 과 다툼(9/15 디스크 사고처럼 자원 고갈이 곧 장애). 대가는 검사 창 1분 + 실행마다 시그니처 적재(R-86). 운영 전환 시 배치 [3] 만 `clamdscan` 으로 교체 |
 | 2026-09-16 | 보정(Fable 검토) | F-53 압축비 100:1 규칙이 5KB→500KB 반복 텍스트(로그·CSV)를 폭탄으로 오탐 | 폭탄은 수십 MB 이상으로 커질 때만 위험 — 합계 32MB 바닥(`ZIP_RATIO_FLOOR`)을 두고 시험 케이스(815:1·500KB → 201) 추가. PRD F-53 ①·ARCH 5.27 갱신 |
 | 2026-09-16 | 관찰(Fable) | F-53 첫 재실행이 R-73 사전 검사(최근 10분 비-qa 활동: admin01 `auth.gate`)에 걸려 시작 안 됨 | 사용자가 F-52 관문 ③ 을 하던 중 — 규칙이 의도대로 시험과 실사용을 갈랐다. 10분 뒤 재실행 |
+| 2026-09-16 | 보정(Fable 검토) | F-54 ① 403 문구 상수가 핸들러 네 파일에 중복 ② 격리 이동 뒤 DB 기록 실패 시 그 행이 영영 pending(매분 `file_missing`) ③ CSS 고정 색값 | ① `Http::MSG_SCAN_PENDING/INFECTED`(보안 핵심 파일이지만 상수 2줄만 허용) ② 다음 실행이 격리 폴더에 같은 이름이 있으면 `quarantined_earlier` 로 infected 마무리 ③ 토큰 `--bg` |
+| 2026-09-16 | 관찰(Fable) | 공유 링크는 다른 실패를 404 로 통일하는데 검사 상태만 403 | 유효 토큰 보유자는 이미 아는 사실, 추측자는 유효 토큰을 맞혀야 하므로 실익 없음 — R-86 ⑦ 로 기록, 문구 유지 |
 | 2026-09-16 | 판단(Fable) | 앱 코드가 아니라 `scripts/` 배치가 ClamAV 를 부른다 | CLAUDE.md 금지 패턴(exec·소켓)·php-fpm `disable_functions` 은 앱에만. `scripts/` 는 CLI·린트 제외(`purge_trash`·`alerts` 와 같은 자리). 앱은 상태를 읽어 403 만 |
 
 ### F-55 — 백업 원격 사본: 사용자 PC 가 매일 끌어온다 (pull) — 착수 2026-09-16

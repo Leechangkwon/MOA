@@ -159,6 +159,11 @@ install -d -o "$APP_USER" -g "$APP_USER" -m 0700 "$SESSION_DIR"
 # (Storage::putLocal 의 rename 이 디스크를 넘지 않는다) php-fpm 의 open_basedir 안이다.
 # 앱만 쓰므로 0700 tbox-php. 여기 남는 파일은 실패한 가져오기의 흔적이다(정상 상태는 0건).
 install -d -o "$APP_USER" -g "$APP_USER" -m 0700 "$TMP_DIR"
+# 격리 디렉터리 — F-54 (PRD F-54 ⑤, ARCH 5.28). 악성으로 판정된 파일의 **바이트를 옮겨 두는** 곳이다
+# (지우지 않는다 — 증거, PRD S-07). 저장소의 **형제** 디렉터리라 같은 파일시스템이고,
+# 그래서 scripts/scan_pending.php 의 rename 이 디스크를 넘지 않는다(원자적 이동).
+# 웹 루트 밖이고 php-fpm 의 open_basedir 안이며, 0750 tbox-php 라 www-data(옛 취약판 v1)는 못 읽는다.
+install -d -o "$APP_USER" -g "$APP_USER" -m 0750 /var/lib/tbox-v2/quarantine
 install -d -o "$APP_USER" -g adm         -m 0750 "$LOG_DIR"
 install -d -o root       -g "$APP_USER"  -m 0750 "$CONF_DIR"
 # 감사 로그 파일 사본 — Audit.php 가 직접 append 한다 (ARCH 7.1)

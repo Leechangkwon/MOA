@@ -3,7 +3,8 @@ declare(strict_types=1);
 
 /**
  * scripts/alerts.php — 감사 로그를 5분마다 훑어 경보 규칙을 판정한다 (9단계)
- *   PRD 7.11 S-11-A (AL-1 · AL-2 · AL-5 · AL-7 · AL-10 · AL-12 · AL-13 · AL-18 · 서버 층 AL-3 · AL-9)
+ *   PRD 7.11 S-11-A (AL-1 · AL-2 · AL-5 · AL-7 · AL-10 · AL-12 · AL-13 · AL-18 · AL-19 · 서버 층 AL-3 · AL-9)
+ *   악성코드 AL-19 (PRD F-54 ④, ARCH 5.28 · 11.4 — `file.scan deny infected` 1건이라도 즉시)
  *   구매·재고 AL-14 ~ AL-17 (PRD F-32 · F-35 · F-36, ARCH 5.18 「감사·경보」 · 11.4)
  *   ARCHITECTURE 11.1 (5분마다 cron) · 11.4 (경보 구성) · 7.4 `alert.raised|allow` · 7.5 `rule`·`evidence`
  *
@@ -931,6 +932,43 @@ if ($want('AL-18')) {
         ]);
     }
     cli_say(sprintf('AL-18 대상 %d명', count($rows)));
+}
+
+// ─────────────────────────────────────────────────────────────
+// AL-19 — 악성코드가 들어왔다 (PRD 7.11 · F-54 ④, ARCH 5.28 · 11.4, SECURITY R-02 · R-86)
+//   AL-18·AL-13 과 **같은 형태**다: `file.scan deny infected` 가 **1건이라도** 있으면 즉시.
+//   건수 임계값이 없는 이유: 악성 파일 하나가 들어온 것 자체가 사건이다. 서버는 격리로 막았어도
+//   **올린 사람의 PC 는 이미 감염돼 있을 수 있고**, 그쪽은 이 서버가 못 막는다 — 알림의 목적이
+//   "서버를 지켜라" 가 아니라 "그 PC 를 점검하라" 인 규칙이다.
+//   묶는 단위는 **파일 하나**(target_name) 다. 배치가 한 번에 여러 건을 격리해도 파일마다
+//   따로 알린다 — 사람이 할 일(그 파일을 올린 사람에게 연락)이 파일마다 다르기 때문이다.
+//   근거에 파일 이름·올린 사람 id·시그니처 이름을 담는다 (PRD 7.11 AL-19 evidence 칸).
+//   올린 사람은 **id** 로만 담는다 — 계정명은 감사 로그를 열면 나온다(23단계 규칙과 같은 선).
+//   창은 다른 audit_logs 규칙과 맞춰 5분(배치 주기)이고, 중복 억제는 $raise 가 한다.
+// ─────────────────────────────────────────────────────────────
+if ($want('AL-19')) {
+    $rows = $db->run(
+        "SELECT target_name, count(*) AS n,
+                max(detail->>'signature')   AS signature,
+                max(detail->>'uploader_id') AS uploader,
+                max(happened_at)            AS last_at
+           FROM audit_logs
+          WHERE action = 'file.scan' AND result = 'deny' AND reason = 'infected'
+            AND happened_at > now() - interval '5 minutes'
+          GROUP BY target_name"
+    )->fetchAll();
+    foreach ($rows as $r) {
+        $raise('AL-19', (string) ($r['target_name'] ?? '?'), [
+            'rule_text' => '업로드 파일에서 악성코드가 발견돼 격리했다 — 건수와 무관하게 즉시 알린다',
+            'count'     => (int) $r['n'],
+            'file_name' => (string) ($r['target_name'] ?? ''),
+            'signature' => $r['signature'] === null ? '' : (string) $r['signature'],
+            'uploader'  => $r['uploader'] === null ? '' : (string) $r['uploader'],
+            'window'    => '5 minutes',
+            'last_at'   => (string) $r['last_at'],
+        ]);
+    }
+    cli_say(sprintf('AL-19 대상 %d건', count($rows)));
 }
 
 // ─────────────────────────────────────────────────────────────

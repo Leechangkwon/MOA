@@ -111,6 +111,24 @@ final class Upload
     private const DEFAULT_MIME = 'application/octet-stream';
 
     /**
+     * 새 파일 행의 `scan_status` — F-54 ① (PRD F-54, ARCHITECTURE 5.28).
+     *
+     * `SCAN_ENABLED=1` 이면 `'pending'`(= 아직 아무도 내려받지 못한다. 1분마다 도는
+     * `scripts/scan_pending.php` 가 `clamscan` 으로 검사해 `'clean'`/`'infected'` 로 바꾼다),
+     * 그 밖에는 `'clean'`(지금까지의 동작 그대로).
+     *
+     * 이 파일은 ClamAV 를 **부르지 않는다** — 소켓도 `exec` 도 없다. 스캐너를 부르는 곳은
+     * 앱 밖 배치 하나뿐이고(ARCH 5.28 「왜 앱 밖 배치인가」), 이 함수가 하는 일은
+     * "새 행을 어떤 상태로 저장할 것인가" 를 **한 곳에서** 정하는 것뿐이다.
+     * INSERT 는 네 곳(`_upload_common`·`files_fetch`·`purchase_recon_upload`·`purchase/Importer`)
+     * 이고, 네 곳이 각자 판단하면 언젠가 한 곳만 빠진다 — 그 한 곳이 검사 없는 입구가 된다.
+     */
+    public static function initialScanStatus(): string
+    {
+        return Env::getOrEmpty('SCAN_ENABLED') === '1' ? 'pending' : 'clean';
+    }
+
+    /**
      * $_FILES 한 건을 검증한다. 통과하면 ['ext','mime','size','sha256'] 반환.
      *
      * 순서(ARCH 5.2 [3]): 오류코드 → uploaded_file → 크기 → 확장자(이중 포함) → MIME 짝 → sha256.

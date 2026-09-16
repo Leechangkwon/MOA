@@ -84,6 +84,7 @@ $sqlFind = <<<'SQL'
            f.mime,
            f.access_level,
            f.sha256,
+           f.scan_status,
            f.deleted_at,
            f.purged_at
       FROM share_links s
@@ -137,6 +138,29 @@ if ($used >= $max) {
 // ─── ⑤ 파일이 아직 살아 있나 (논리 삭제·영구 삭제) ────────────
 if ($link['deleted_at'] !== null || $link['purged_at'] !== null) {
     $rejectShare('file_gone', $target, $detail);
+}
+
+/* ─── ⑤-1 F-54 검사 상태 관문 (ARCH 5.28, PRD F-54 ③) ──────────
+ *
+ * 검사 전(`pending`)·격리(`infected`) 파일은 **링크가 유효해도** 나가지 않는다.
+ * 자리는 **링크 검증을 전부 통과한 뒤**다(권한을 대신하는 것이 토큰이므로, 이 창구에서
+ * "권한 판정 뒤" 란 곧 "링크 판정 뒤" 다 — ARCH 5.3 [4] 와 같은 순서).
+ *
+ * ★ 이 하나만 404 가 아니라 **403 + 사유 문구**다(PRD F-54 ③). 다른 실패를 404 로 통일한
+ *   이유는 토큰 탐색에 재료를 주지 않기 위해서인데, 여기까지 온 요청은 **이미 맞는 토큰**을
+ *   가진 요청이라 감출 것이 없다. 반대로 「검사 중」과 「격리」를 구분해 주지 않으면 받는
+ *   사람은 링크가 망가진 줄 알고 발급자에게 다시 요청하게 된다.
+ * ★ 횟수(`download_count`)는 **아직 올리지 않았다** — 보내지도 못할 파일로 남은 한 번을
+ *   태우지 않는다(⑤-2 sha256 대조와 같은 판단).
+ */
+$scan = (string) ($link['scan_status'] ?? 'clean');
+if ($scan !== 'clean') {
+    $db->rollback();
+    $scanReason = $scan === 'infected' ? 'scan_infected' : 'scan_pending';
+    Audit::deny('share.download', $scanReason, $target + [
+        'detail' => $detail + ['scan_status' => $scan],
+    ]);
+    Http::error(403, $scan === 'infected' ? Http::MSG_SCAN_INFECTED : Http::MSG_SCAN_PENDING);
 }
 
 $storedName = (string) $link['stored_name'];

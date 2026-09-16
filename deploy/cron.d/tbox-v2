@@ -12,6 +12,9 @@
 #   · 정합성 검사는 저장소(0750 tbox-php)를 통째로 읽어야 한다.
 #   PHP 배치는 .env 의 tbox_app 계정으로 DB 에 붙는다 — DB 권한까지 root 가 되는 것은 아니다.
 #
+# 예외: scan_pending.php(F-54)만 **tbox-php** 로 돈다. 악성일 수 있는 파일을 root 권한의
+#       프로세스에 물리지 않기 위해서다. 그 배치에 root 가 필요한 자원은 하나도 없다.
+#
 # MAILTO="" : 이 VM 에는 MTA 가 없다. 결과는 감사 로그(audit_logs)·alerts.log 에 남는다.
 #             메일로 보내려면 MTA 를 세운 뒤 이 값을 운영자 주소로 바꾼다.
 # PATH      : cron 의 기본 PATH 는 짧다. gpg·pg_dump·php 가 모두 들어가도록 명시한다.
@@ -50,3 +53,10 @@ SHELL=/bin/bash
 #          auth.log 는 0640 syslog:adm 이라 **root 로 실행할 때만** 그 두 규칙이 돈다.
 #          읽지 못하면 그 규칙만 `[건너뜀]` 을 찍고 나머지는 그대로 판정한다.
 */5  *   *   *  *     root  php  /var/www/tbox-v2/scripts/alerts.php
+# 매분  악성코드 검사 (F-54, ARCH 5.28 · 11.1) — `pending` 행이 **있을 때만** clamscan 을 띄운다.
+#         대기가 0건이면 DB 를 한 번 보고 끝나므로 1분 주기여도 평소 비용이 없다.
+#         실행 계정이 **tbox-php** 인 이유: 이 배치는 사용자가 올린(어쩌면 악성인) 바이트를
+#         스캐너에 물린다. root 로 파싱하지 않는다. 필요한 권한은 저장소 읽기·격리 폴더 쓰기·
+#         DB UPDATE 뿐이고 셋 다 tbox-php 가 이미 가진 것이다 (ARCH 10장).
+#         상주 데몬(clamav-daemon)은 설치하지 않는다 — 메모리 (SECURITY R-86).
+*    *   *   *  *     tbox-php  php  /var/www/tbox-v2/scripts/scan_pending.php
