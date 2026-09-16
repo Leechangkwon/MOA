@@ -1687,6 +1687,7 @@ sudo -u postgres psql -d tbox_re -c "SELECT happened_at, actor_name, action, res
 - [x] 손대지 않음(확인): `Authz`·`Auth`·`db/schema.sql`(열은 이미 있음) · `Http.php` 는 검토 보정으로 문구 상수 2줄만
 
 **검토 체크** (Fable, 관문 ②)
+- [x] 관문 ④ 커밋 `106e677` → push → 발행 **v1.6.0**(`fca33e6`). 관문 ③ 은 커밋 뒤 사용자(아래)
 - [x] **Fable 검토 (2026-09-16)** — 보정 3건(Http 상수·격리 복구·CSS 토큰) 반영 → cron 설치·`SCAN_ENABLED=1`(09:46) → `tests/f54.sh` 재실행 **59/0** (a) pending→clean (b) EICAR→infected·격리·403·AL-19 (c) 대기 0건 즉시 종료·잠금 (d) SCAN_ENABLED 꺼짐 (e) 서버 층 (f) 자원 (g) 린트
 - [x] `scan_pending.php` 읽기 — 경로는 `Storage::pathFor` 만, 격리 이동은 `rename`, 오류 시 상태 유지
 
