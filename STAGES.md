@@ -50,7 +50,7 @@
 | F-48 | 상태 확인 `GET /api/health` 에 DB 확인(`SELECT 1`) — 200 `{status,db,time}` / 503 `{status:fail, db:분류어}` · 저장소 루트 `API.md`(외부 프로그램용 API 문서, 상태 확인·로그인·내 정보·업로드·삭제·로그아웃) — 사용자 요청 2026-09-15 | ✅ 구현·검토 | ✅ 2026-09-15 (Opus, 재지시 0회 + 추가 지시 1건 R-80 디스크 관문) | ✅ 2026-09-15 (T-60 38/38 Fable 재실행, 린트 0, 공개 도메인 200·405·`/API.md` 404) | ⚠ 대기 | `8457c0d` health API 추가 + 발행 `v1.0.1`(`a1c0d4a`) |
 | F-49 | 프로그램용 업로드 `POST /api/upload` — `.env` `API_TOKEN` + 헤더 `X-API-Token`(`hash_equals`, 이 라우트만) · 귀속 `API_TOKEN_USER` · 웹과 공통 업로드 함수 · 400/401/403/413 이유 문구(500 일반) · nginx JSON 413 — 강사 2차 프롬프트, 사용자 결정 A 2026-09-15 | ✅ 구현·검토 | ✅ 2026-09-15 (Opus, 1차 설계 B 중단·원복 후 v2, 재지시 1회 `ext_not_allowed`) | ✅ 2026-09-15 (T-61 25/0/미검증1 재실행 + 긍정 경로 qa 귀속 실측 201·403·400×5·401×2, 린트 0, health 38/38) | ⚠ 대기 (사용자 토큰 201; JSON 413 은 검증됨) | `20f51cb` F-49 + 발행 `v1.1.0`(`613d229`) |
 | F-50 | 프로그램용 검색·다운로드 — `X-API-Token` 라우트를 셋으로(업로드·`GET /api/files`·`GET /api/files/{id}/download`), 토큰 검색은 간결 배열 `[{id,name,level,size,uploaded_at}]`+`limit`, 인가는 기존 `visibleFilesWhere`·`decideRead` 상속(IDOR 403) — 강사 3차 프롬프트 2026-09-15 | ✅ 구현·검토 | ✅ 2026-09-15 (Opus, 재지시 0회 — 지시서 결함을 Opus 가 실측으로 잡아 헤더 갈림길 추가) | ✅ 2026-09-15 (T-62 38/0/0 Fable 재실행, qa 귀속 실측, 린트 0) | ◐ 사용자 확인 2026-09-15: 검색 200·다운로드 200 (403·401 갈래 미보고) | `b8929a8` F-50 + 발행 `v1.2.0`(`5977306`) |
-| F-55 | 백업 원격 사본 — 사용자 PC 가 매일 05:00 pull(`deploy/pc/pull_backup.ps1`), 서버 변경 0 | ⚠ | ✅ Opus 09-16 | ✅ 09-16 정적(PowerShell 실행 불가) | ⚠ T-67 (a)~(e) 사용자 PC | `ac6f7f4` · `a049bd3` |
+| F-55 | 백업 원격 사본 — 사용자 PC 가 매일 05:00 pull(`deploy/pc/pull_backup.ps1`), 서버 변경 0 | ✅ | ✅ Opus 09-16 | ✅ 09-16 정적 + 09-16 PC 실행 | ✅ T-67 (a)(c)(d)(e) 통과 · (b) 시험 무효(함수는 격리 시험 통과) | `ac6f7f4` · `a049bd3` · `6953b94` |
 | 문구 정리 | 화면 문구 정리 — **1단계** 화면에 늘 펼쳐져 있던 안내 68곳 삭제·축소 / **2단계** 「사용 방법」 단추와 화면별 도움말 20화면 (F-38 · T-51) | ◐ 2단계 구현 | ✅ 2026-09-15 (Opus) | ⚠ 대기 | ⚠ 대기 | 1단계 `06ee617` · 2단계 커밋 전 |
 | **26** | 관리자 「역할로 보기」(F-39) · 관리 내비·계정 편집 폼(F-40) · 폴더 삭제 세 갈래(F-41) — 사용자 결정·지적 2026-09-15 | ✅ 구현 | ⚠ Fable 재검토 대기 (Opus 자체 시험 124/124) | ⚠ 대기 | ⚠ 대기 | 커밋 전 |
 
@@ -1727,12 +1727,15 @@ sudo -u postgres psql -d tbox_re -c "SELECT happened_at, actor_name, action, res
 - [x] 관문 ④ 설계 커밋 `ac6f7f4` · 구현 커밋 `a049bd3` → push. 문서·PC 스크립트만이라 **발행하지 않음**(CLAUDE.md 6장: 사용자에게 보이는 화면 변경 없음)
 
 **자기 공격 체크** (사용자, 관문 ③ = T-67, PC PowerShell 에서)
-- [ ] (a) `powershell -File deploy\pc\pull_backup.ps1` 첫 실행 → `C:\tbox-backup\var\backups\tbox-v2\db\db-<오늘>-0300.dump.gpg` 있음, `pull.log` 마지막 줄 `OK`
-- [ ] (b) `.sha256` 한 글자 바꾸고 재실행 → `FAIL`
-- [ ] (c) `-Key E:\tbox-backup.key` → 65바이트, `C:\tbox-backup` 안에 키 없음
-- [ ] (d) `-Install` → 작업 스케줄러에 05:00 작업. 다음 날 `Get-Content C:\tbox-backup\pull.log -Tail 3` 에 새 `OK`
-- [ ] (e) 46일 전 이름의 가짜 파일 → 삭제됨
-- [ ] 서버에서 `sudo tail -3 /var/log/tbox-v2/alerts.log` — pull 로 AL-9 가 울리지 않는지
+**2026-09-16 사용자 PC(Windows 11 Pro, PowerShell 5.1)에서 Opus 가 실행.** 결과는 `deploy/pc/README.md` 「검증 상태」에 같이 적었다.
+
+- [x] (a) 첫 실행 → **처음엔 실패**(`FAIL | ssh 종료 코드  `, 142MB 를 받아 놓고 지움). 원인 고친 뒤(`6953b94`) 재실행 → 142,325,760 바이트·26항목, db·files sha256 일치, `pull.log` 마지막 줄 `OK`, 종료 코드 0
+- [~] (b) `.sha256` 한 글자 바꾸고 재실행 → **시험이 성립하지 않는다.** pull 이 서버에서 `.sha256` 을 다시 받아 변조를 덮어쓴 뒤 검증하므로 언제나 `OK`. `Test-BackupArtifact` 만 떼어내 격리 시험 → 해시 변조·데이터 변조·`.sha256` 없음 3가지 모두 정확히 `FAIL` 반환(함수는 정상). 지시서의 시험 문구를 고치거나 `-VerifyOnly` 를 만들어야 한다
+- [x] (c) `-Key F:\tbox-key\backup.key`(사용자 결정: 외장하드 F:) → 65바이트, 서버 키와 sha256 일치, `pull.log` 에 경로 미기록, `C:\tbox-backup` 안에 키 없음
+- [x] (d) `-Install` → `tbox-v2 backup pull` State `Ready`, 05:00·StartWhenAvailable. `Start-ScheduledTask` 강제 실행 → `LastTaskResult 0`, `pull.log` 에 새 `OK`(다음 날을 기다리지 않고 확인)
+- [x] (e) 46일·77일 전 이름 가짜 파일 → 삭제(4개), 44일 전 이름 → 보존. 경계 정확
+- [x] 서버 `alerts.log` — pull 이 AL-9 를 울리지 않음(10:00~10:20 AL-9 1건은 다른 세션 `psql`). **다만 이것이 좋은 소식만은 아니다 — 아래 학습 기록**
+- [x] 복호화 사슬: PC 사본 sha256 == 서버본, 서버 키로 풀면 `PGDMP` 매직 → `F:` 의 키로 `C:` 의 백업을 열 수 있다
 
 **학습 기록**
 
@@ -1743,6 +1746,10 @@ sudo -u postgres psql -d tbox_re -c "SELECT happened_at, actor_name, action, res
 | 2026-09-16 | 판단(Fable) | `scp` 가 아니라 `ssh … sudo -n tar` 표준 출력 | 산출물이 root 0700 이라 changkwon 으로 `scp` 불가. tar 한 번이면 sudo 도 한 번 |
 | 2026-09-16 | 판단(Fable) | PowerShell 파이프 금지, 파일로 리다이렉트 뒤 `tar.exe -xf` | PowerShell `\|` 는 바이너리를 문자열로 바꿔 깨뜨린다. Windows 10+ 는 `ssh.exe`·`tar.exe` 내장 |
 | 2026-09-16 | 한계(Fable) | 이 VM 에 PowerShell 이 없어 스크립트 실행 검증 불가 | T-67 은 사용자 PC 에서. Opus·Fable 은 정적 점검 + 서버 쪽 명령만 실측 |
+| 2026-09-16 | 결함(Opus, T-67 실행) | `Start-Process -PassThru` 의 `ExitCode` 가 빈 값 → 성공한 142MB 전송을 `FAIL` 로 처리하고 받은 tar 까지 삭제 | 핸들을 캐시하지 않으면 자식 종료 뒤 .NET 이 놓아 버린다. `WaitForExit()` 앞 `$null = $proc.Handle`. 커밋 `6953b94`. **정적 검토 2회(Opus·Fable)가 모두 놓쳤다** — 실행해야만 보이는 종류였다 |
+| 2026-09-16 | 결함(Opus, T-67 실행) | T-67 (b) 「`.sha256` 변조 → FAIL」 시험이 설계상 성립하지 않는다 | pull 이 해시 파일을 서버에서 다시 받아 변조를 덮어쓴 뒤 검증한다. 함수 자체는 격리 시험에서 3가지 변조를 모두 잡았다. **진짜 문제는 그 다음**: 검증이 「방금 받은 파일 vs 방금 받은 해시」라 PC 사본이 나중에 썩어도 복구 시점까지 모른다. `-VerifyOnly` 필요(미구현) |
+| 2026-09-16 | 한계(Opus, T-67 실행) | 이 PC 에 `gpg` 가 없다 | 서버가 사라진 순간 암호화 백업을 풀 도구가 PC 에 없다 — 원격 사본의 목적이 바로 그 순간이다. Gpg4win 설치 또는 휴대용 `gpg.exe` 를 키와 같은 `F:` 에 두는 것(외장하드만으로 복구가 서도록). 사용자 결정 대기 |
+| 2026-09-16 | 관찰(Opus, T-67 실행) | pull 이 AL-9 를 울리지 않는 것이 좋은 소식만은 아니다 | AL-9 는 「sudo 로 데이터·로그를 통째로 읽는 명령」인데, `sudo -n tar`(백업 전체)·`sudo -n cat backup.key`(복호화 키)가 바로 그것인데도 목록에 없다. 즉 **`changkwon` 의 SSH 키를 쥔 공격자가 백업 전체와 키를 가져가도 경보가 없다.** F-55 가 그 명령 모양을 매일 05:00 정상 동작으로 만들어 구분은 더 어려워졌다. SECURITY 7장 후속 후보 |
 | 2026-09-16 | 보정(Fable 검토) | PC README 에 「스크립트를 PC 로 가져오는」 0단계가 없었다 | `scp changkwon@192.168.105.44:/var/www/tbox-v2/deploy/pc/pull_backup.ps1 C:\tbox-tools\` 추가. `-Install` 이 경로를 박아 두므로 옮기면 재등록 |
 
 
