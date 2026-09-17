@@ -223,6 +223,15 @@ final class Audit
          * ★ 토큰 원문·hint·해시는 어떤 키로도 남지 않는다 (PRD S-09-11, SECURITY R-91).
          */
         'token_kind', 'token_id', 'token_name',
+        /*
+         * F-60 거래처별 발주서 분할 저장 (PRD F-60 ③, ARCH 5.18 「분할 저장」 · 7.5 등록부).
+         *   split_count — 한 번의 저장으로 **함께 만들어진 발주서 장 수**(정수). 같은 트랜잭션에서
+         *                 나온 N 행이 저마다 이 값을 들고 있어, 로그만 보고 「이 발주서는 혼자 만들어진
+         *                 것인가, 다섯 장 중 하나인가」 를 알 수 있다. 수치이고 비밀이 없다.
+         * 이름이 FORBIDDEN_DETAIL_KEYS 부분 일치에 걸리지는 않지만, 등록부에 있는 키임을
+         * 코드에서도 드러내려고 여기 적는다(preview_kind·part 와 같은 이유).
+         */
+        'split_count',
     ];
 
     private const RESULT_ALLOW = 'allow';

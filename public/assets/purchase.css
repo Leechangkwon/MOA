@@ -180,6 +180,10 @@
   cursor: pointer;
 }
 .p-tree-head.is-on { color: var(--accent); }
+/* F-60 — 묶음 노드의 체크박스는 펼치기 단추의 **형제**다 (클릭이 서로 전파되지 않는다) */
+.p-tree-row { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.p-tree-row .p-tree-head { flex: 1 1 auto; min-width: 0; }
+.p-tree-check { flex: 0 0 auto; width: 16px; height: 16px; cursor: pointer; }
 .p-tree-sum { color: var(--muted); font-size: 12.5px; font-weight: 400; }
 .p-tree-children {
   margin: 6px 0 0 10px;
@@ -195,6 +199,9 @@
   padding: 5px 0;
 }
 .p-tree-name { flex: 1 1 240px; min-width: 0; overflow-wrap: anywhere; }
+
+/* F-60 — 저장 단추 옆 분할 미리보기 (거래처가 섞이면 몇 장이 되는지 미리 알려 준다) */
+.p-split-preview { align-self: center; margin-right: auto; font-size: 12.5px; }
 
 /* ─── 연결 전표 타임라인 (시안 ⑧ Docs 우측 aside) ───────────────── */
 .p-flow { display: flex; flex-direction: column; gap: 10px; margin: 0; padding: 0; list-style: none; }

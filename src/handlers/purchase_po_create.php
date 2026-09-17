@@ -7,8 +7,16 @@ declare(strict_types=1);
  * ★ 20단계 **불러오기 → 발주서** (PRD F-32, ARCH 5.18 「연결」, 완료 기준 T-45).
  *
  * 본문
- *   { to_location_id, vendor_id?, manager_id?, doc_date?, memo?,
+ *   { to_location_id, vendor_id?, manager_id?, doc_date?, memo?, split?,
  *     lines: [ { src_line_id, qty, vendor_id? } … ] }
+ *
+ * ★ F-60 **거래처별 분할 저장** (2026-09-17, ARCH 5.18 「분할 저장」, 완료 기준 T-72)
+ *   `split: true` 면 담긴 줄을 **판정된 거래처별로 나눠** 발주서를 N 장 만든다.
+ *   나누는 것은 ⑤ 이후의 *만드는* 일뿐이고, **판정은 하나도 갈리지 않는다** —
+ *   잠금·격리·상태·마감·잔량 검사는 아래 ③ 에서 **전 줄에 대해 한 번** 돌고,
+ *   거래처 판정식도 그대로 한 곳이다. 만드는 블록만 묶음마다 반복된다(같은 코드다).
+ *   한 트랜잭션·한 commit 이므로 어느 묶음에서 거부돼도 **반 장이 남지 않는다**.
+ *   `split` 이 없으면 이 파일은 예전과 한 글자도 다르게 굴지 않는다(응답·상태·감사 불변).
  *
  * 이 파일이 지키는 것 — 여기가 20단계에서 **가장 위험한 쓰기 경로**다.
  *   ① **잔량 초과 거부**: 요청 줄을 `SELECT … FOR UPDATE` 로 잠근 **뒤**에 잔량을 다시 세고,
@@ -33,7 +41,7 @@ declare(strict_types=1);
 
 require_once __DIR__ . '/../purchase/Doc.php';
 
-const TBOX_PO_CREATE_KEYS = ['to_location_id', 'vendor_id', 'manager_id', 'doc_date', 'memo', 'lines'];
+const TBOX_PO_CREATE_KEYS = ['to_location_id', 'vendor_id', 'manager_id', 'doc_date', 'memo', 'split', 'lines'];
 const TBOX_PO_LINE_KEYS   = ['src_line_id', 'qty', 'vendor_id'];
 
 $db   = Db::instance();
@@ -88,6 +96,16 @@ if (is_string($memo) && (preg_match('//u', $memo) !== 1 || iconv_strlen($memo, '
 if ($memo === '') {
     $memo = null;
 }
+
+/**
+ * F-60 — **나눠 저장할까**. 참/거짓만 받는다(문자열 `"true"` 도 400 이다).
+ * 없으면 `false` 이고, 그때 이 요청은 20단계와 똑같이 흐른다.
+ */
+$splitRaw = $body['split'] ?? null;
+if ($splitRaw !== null && !is_bool($splitRaw)) {
+    $reject('bad_request');
+}
+$split = ($splitRaw === true);
 
 $lines = $body['lines'] ?? null;
 if (!is_array($lines) || $lines === [] || count($lines) > Doc::MAX_LINES) {
@@ -230,89 +248,126 @@ try {
             'doc_id'    => (int) $row['doc_id'],
             'doc_no'    => (string) $row['doc_no'],
             'want_qty'  => (string) $row['qty'],
+            // 위에서 **이미 판정한** 거래처를 줄에 적어 둔다 — 아래에서 다시 판정하지 않는다.
+            'vendor_id' => $vendorOfLine,
         ];
     }
 
-    // ④ 한 발주서 = 한 거래처 (지시서 보충 2)
-    if (count($vendors) !== 1) {
+    /*
+     * ④ 한 발주서 = 한 거래처. 그 규칙은 그대로다 — F-60 이 바꾼 것은 **거래처가 섞였을 때
+     *    무엇을 하느냐**뿐이다: `split:true` 면 나눠 담고, 아니면 예전처럼 거절한다.
+     *    `vendor_id` 머리값은 「이 거래처로 한 장」이라는 **명시**라 split 보다 우선한다
+     *    (둘을 함께 보내면 섞인 순간 여기서 끝난다 — PRD F-60 ③).
+     */
+    if (count($vendors) !== 1 && ($split !== true || $vendorReq !== null)) {
         $db->rollback();
         $reject('mixed_vendor');
     }
-    $vendorId = (int) array_key_first($vendors);
-    if ($vendorReq !== null && $vendorReq !== $vendorId) {
-        $db->rollback();
-        $reject('mixed_vendor');
-    }
-    if (!Doc::vendorOk($db, $vendorId)) {
-        $db->rollback();
-        $reject('bad_reference');
-    }
 
-    // ⑤ 발주서 만들기
-    $docNo = Doc::nextDocNo($db, Doc::TYPE_PO);
-    $docId = Doc::insertDoc($db, [
-        'doc_type'       => Doc::TYPE_PO,
-        'doc_no'         => $docNo,
-        'doc_date'       => $docDate,
-        'branch_id'      => $branchId,
-        'vendor_id'      => $vendorId,
-        'to_location_id' => $locId,
-        'manager_id'     => $managerId,
-        'status'         => Doc::ST_IN_PROGRESS,
-        'memo'           => $memo,
-        'split_from_id'  => null,
-        'created_by'     => (int) $user['id'],
-    ]);
-
-    $lineNo    = 1;
-    $amountSum = 0.0;
-    $srcDocs   = [];
-    $srcDocNos = [];
+    /*
+     * 거래처별 묶음 — **담긴 순서 그대로**다. 위 ③ 에서 이미 판정해 줄에 적어 둔 값으로만
+     * 가르므로 여기에는 새 판정이 한 줄도 없다. split 이 아니면 묶음은 언제나 하나이고
+     * 아래 반복문은 한 바퀴만 돈다(20단계와 같은 코드가 같은 횟수만큼 돈다).
+     *
+     * @var array<int,list<array<string,mixed>>> $buckets
+     */
+    $buckets = [];
     foreach ($prepared as $p) {
-        Doc::insertLine(
-            $db,
-            $docId,
-            $lineNo,
-            $p['item_id'],
-            $p['qty'],
-            $p['price_in'],
-            null,
-            $p['src'],
-            Doc::LINE_UNCONFIRMED
-        );
-        $calc = Doc::lineAmount($p['qty'], $p['price_in']);
-        if ($calc !== null) {
-            $amountSum += (float) $calc;
+        $buckets[$p['vendor_id']][] = $p;
+    }
+    $splitCount = count($buckets);
+
+    // ⑤ 발주서 만들기 — **묶음마다** 채번·머리·줄·되짚기·감사. 잔량·격리·상태는 위에서 끝났다.
+    $made = [];
+    foreach ($buckets as $bucketVendor => $bucket) {
+        $vendorId = (int) $bucketVendor;
+        if ($vendorReq !== null && $vendorReq !== $vendorId) {
+            $db->rollback();
+            $reject('mixed_vendor');
         }
-        $lineNo++;
+        if (!Doc::vendorOk($db, $vendorId)) {
+            $db->rollback();
+            $reject('bad_reference');
+        }
 
-        // ⑥ 담긴 요청 줄을 잠그고 상태를 다시 계산한다 (Q-18①)
-        Doc::retouchRequestLine($db, $p['src'], $p['want_qty'], Doc::takenQty($db, $p['src']));
-        $srcDocs[$p['doc_id']]   = true;
-        $srcDocNos[$p['doc_no']] = true;
-    }
+        $docNo = Doc::nextDocNo($db, Doc::TYPE_PO);
+        $docId = Doc::insertDoc($db, [
+            'doc_type'       => Doc::TYPE_PO,
+            'doc_no'         => $docNo,
+            'doc_date'       => $docDate,
+            'branch_id'      => $branchId,
+            'vendor_id'      => $vendorId,
+            'to_location_id' => $locId,
+            'manager_id'     => $managerId,
+            'status'         => Doc::ST_IN_PROGRESS,
+            'memo'           => $memo,
+            'split_from_id'  => null,
+            'created_by'     => (int) $user['id'],
+        ]);
 
-    // ⑦ 출처 요청 전표의 상태를 다시 계산한다 (일부 발주 / 완료)
-    foreach (array_keys($srcDocs) as $srcDocId) {
-        Doc::recalcRequestStatus($db, (int) $srcDocId);
-    }
+        $lineNo    = 1;
+        $amountSum = 0.0;
+        $srcDocs   = [];
+        $srcDocNos = [];
+        foreach ($bucket as $p) {
+            Doc::insertLine(
+                $db,
+                $docId,
+                $lineNo,
+                $p['item_id'],
+                $p['qty'],
+                $p['price_in'],
+                null,
+                $p['src'],
+                Doc::LINE_UNCONFIRMED
+            );
+            $calc = Doc::lineAmount($p['qty'], $p['price_in']);
+            if ($calc !== null) {
+                $amountSum += (float) $calc;
+            }
+            $lineNo++;
 
-    // ⑧ 발주서 머리 — 서버가 채운다 (Q-18②)
-    Doc::saveHeader($db, $docId, Doc::buildHeader($db, $docId, $docNo));
+            // ⑥ 담긴 요청 줄을 잠그고 상태를 다시 계산한다 (Q-18①)
+            Doc::retouchRequestLine($db, $p['src'], $p['want_qty'], Doc::takenQty($db, $p['src']));
+            $srcDocs[$p['doc_id']]   = true;
+            $srcDocNos[$p['doc_no']] = true;
+        }
 
-    Audit::allow('purchase.order.create', [
-        'target_type' => 'purchase_doc',
-        'target_id'   => $docId,
-        'target_name' => $docNo,
-        'detail'      => [
+        // ⑦ 출처 요청 전표의 상태를 다시 계산한다 (일부 발주 / 완료)
+        foreach (array_keys($srcDocs) as $srcDocId) {
+            Doc::recalcRequestStatus($db, (int) $srcDocId);
+        }
+
+        // ⑧ 발주서 머리 — 서버가 채운다 (Q-18②)
+        Doc::saveHeader($db, $docId, Doc::buildHeader($db, $docId, $docNo));
+
+        $detail = [
             'doc_no'     => $docNo,
             'doc_type'   => Doc::TYPE_PO,
             'branch_id'  => $branchId,
-            'lines'      => count($prepared),
+            'lines'      => count($bucket),
             'amount'     => number_format($amountSum, 2, '.', ''),
             'src_doc_no' => implode(',', array_keys($srcDocNos)),
-        ],
-    ]);
+        ];
+        if ($split) {
+            // 나눠 달라고 한 저장에만 붙인다 — `split` 없는 요청의 감사 행은 예전 그대로다.
+            $detail['split_count'] = $splitCount;
+        }
+        Audit::allow('purchase.order.create', [
+            'target_type' => 'purchase_doc',
+            'target_id'   => $docId,
+            'target_name' => $docNo,
+            'detail'      => $detail,
+        ]);
+
+        $made[] = [
+            'id'          => $docId,
+            'doc_no'      => $docNo,
+            'vendor_id'   => $vendorId,
+            'vendor_name' => Doc::vendorName($db, $vendorId),
+            'line_count'  => count($bucket),
+        ];
+    }
     $db->commit();
 } catch (PDOException $e) {
     $db->rollback();
@@ -326,6 +381,23 @@ try {
 } catch (Throwable $e) {
     $db->rollback();
     throw $e;
+}
+
+/*
+ * ⑨ 응답. `split:true` 로 부른 요청에는 **언제나 같은 모양**을 돌려준다 —
+ * 한 장뿐이어도 `docs` 배열이다(화면이 갈래를 두지 않게 하려는 것이다).
+ * `split` 이 없으면 20단계 응답 그대로다: 그때 묶음은 하나뿐이라 아래 변수들이
+ * 그 한 장을 가리킨다.
+ */
+if ($split) {
+    $docs = [];
+    foreach ($made as $m) {
+        $mLines = Doc::lines($db, (int) $m['id']);
+        $m['totals'] = Doc::totals($mLines);
+        $docs[] = $m;
+    }
+    Http::json(['docs' => $docs, 'count' => count($docs)], 201);
+    return;   // 핸들러는 index.php 의 클로저 안에서 require 된다 — 여기서 끝난다
 }
 
 $poLines = Doc::lines($db, $docId);

@@ -29,8 +29,12 @@ declare(strict_types=1);
 
 require_once __DIR__ . '/../purchase/Doc.php';
 
-/** 묶는 기준 — 코드에 적힌 다섯 개만. 요청 문자열은 이 표의 열쇠가 될 뿐이다. */
-const TBOX_LOAD_GROUPS = ['vendor', 'location', 'manager', 'branch', 'category'];
+/**
+ * 묶는 기준 — 코드에 적힌 **여섯** 개만. 요청 문자열은 이 표의 열쇠가 될 뿐이다.
+ * `doc`(전표)는 F-60 에서 더했다 — 줄 필드에 이미 `doc_id`·`doc_no`·`doc_date` 가 있어
+ * **새 SQL 열도 새 조회도 없다**. 묶기만 한 층 더 할 수 있게 된 것이다.
+ */
+const TBOX_LOAD_GROUPS = ['vendor', 'location', 'manager', 'branch', 'category', 'doc'];
 const TBOX_LOAD_MAX_GROUPS = 3;
 /** 한 번에 돌려주는 줄 수 상한 (화면은 묶어서 보여 주므로 넉넉히, 그러나 무한하지 않게) */
 const TBOX_LOAD_MAX_LINES = 500;
@@ -192,6 +196,9 @@ $keyOf = static function (array $line, string $kind): array {
             return [(int) $line['manager_id'], (string) ($line['manager_name'] ?? '?')];
         case 'branch':
             return [(int) $line['branch_id'], (string) ($line['branch_name'] ?? '?')];
+        case 'doc':
+            // 전표(F-60) — 열쇠는 요청 전표 id, 이름은 「PR 번호 · 일자」.
+            return [(int) $line['doc_id'], $line['doc_no'] . ' · ' . $line['doc_date']];
         default:   // category
             return $line['cat1_id'] === null
                 ? [0, '미분류']

@@ -873,6 +873,7 @@ Admin 전용. 정책 `org.manage`(`Authz::canManageOrg` = Admin) 를 `KNOWN_POLI
 | 정책 | `purchase.read` · `purchase.request.write` · `purchase.buy.write` · `purchase.stock.write` · `purchase.master.write`(**재인증 대상**, `REAUTH_POLICIES` 추가) · `purchase.close`(재인증 — **비밀번호 재확인**, F-23 규칙 그대로. 2단계 인증 코드는 다시 묻지 않는다 — 22단계 결정 2026-09-13) · Admin 은 전부 |
 | 원장 | `p_stock_moves` 는 append-only — 앱 계정 INSERT·SELECT 만(`grants.sql`). 현재고 = `SUM(qty_delta)`(뷰 `p_stock_balance`). 취소·정정 = 반대 부호 행 + `reverses_move_id` |
 | 연결 | `p_doc_lines.src_line_id` 하나로 요청→발주→입고. 미발주·미입고는 계산값(재귀 CTE). 담기·입고 확정은 `FOR UPDATE` 뒤 잔량 초과 거부 |
+| 분할 저장 (F-60, 2026-09-17) | 발주서 한 장 = 거래처 하나는 그대로다. 대신 `POST /api/purchase/po` 가 `split:true` 를 받으면 **핸들러가 줄을 거래처별로 나눠 N 장을 한 트랜잭션에서** 만든다 — 잠금(`lockLines`)·잔량·격리·상태 검사는 전 줄에 대해 **한 번**(기존 코드 그대로), 그 뒤 거래처 묶음마다 채번·`insertDoc`·`insertLine`·`retouchRequestLine`·`buildHeader` 를 반복한다. 한 줄이라도 거부면 전부 롤백(반 장 없음). `split` 없이 섞이면 `mixed_vendor`(계약 불변), `vendor_id` 명시가 있으면 `split` 보다 우선한다. 불러오기 묶는 기준에 `doc`(전표, key=`doc_id`)을 더해 여섯. 화면은 묶음 노드 체크(하위 전부 잔량 담기)와 저장 전 분할 미리보기 |
 | 음수 재고 | 이동·사용 확정 트랜잭션에서 잠금 뒤 합 재계산, 0 미만이면 400 |
 | 채번 | `p_doc_seq(doc_type, date, last)` 잠금 증가 → `PR|PO|GR|MV|IS|ADJ-YYYYMMDD-N`, UNIQUE |
 | 마감 | `p_docs.closed_month` 가 있으면 수정·취소는 `purchase.close` + 사유 + 감사 |
@@ -2053,6 +2054,7 @@ GRANT  USAGE, SELECT  ON SEQUENCE audit_logs_id_seq TO tbox_app;
 | `token_kind` | 어떻게 | 토큰 경로의 **종류** 분류어(`personal`·`shared`). 코드에 적힌 고정값이고 요청이 정하지 않는다. 이름에 `token` 이 들어 부분 일치 금지에 걸리므로 `ALLOWED_DETAIL_KEYS` 정확 일치 예외 | `Audit::autoDetail` | 토큰 경로의 모든 행 (F-59) |
 | `token_id` | 어떻게 | 개인 토큰의 **행 번호**(정수, `api_tokens.id`). 토큰 값·hint 가 아니다 — 「어느 토큰으로」 를 사람이 목록에서 되짚는 열쇠. 정확 일치 예외 | `Audit::autoDetail`(개인 토큰 경로) · `api_token.issue`·`api_token.revoke` 핸들러 | F-59 |
 | `token_name` | 무엇을 | 발급·회수한 토큰의 **라벨**(「사무실 PC」). 사람이 붙인 이름이고 비밀이 아니다. 정확 일치 예외 | 핸들러 | `api_token.issue`·`api_token.revoke` (F-59) |
+| `split_count` | 어떻게 | 한 번의 저장으로 **함께 만들어진 발주서 장 수**(정수). `split:true` 저장의 행에만 붙는다 — N 장이 한 트랜잭션에서 나왔음을 각 행이 스스로 말한다(1 이면 나눌 거래처가 하나였다는 뜻). `split` 없는 옛 저장의 행은 20단계와 같다(키 없음) | `purchase_po_create.php` | `purchase.order.create` (F-60) |
 
 **검토 행동과 사용자 행동 가르기** — 두 조건 중 하나면 검토다. 둘 다 아니면 사용자(또는 침입자)다.
 

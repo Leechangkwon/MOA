@@ -57,6 +57,7 @@ require __DIR__ . '/shell_top.php';
         <label class="field">
           <span class="field__label">거래처</span>
           <select id="po-vendor"></select>
+          <span id="po-vendor-help" class="p-sub" hidden></span>
         </label>
         <label class="field field--full">
           <span class="field__label">참조 · 비고</span>
@@ -80,6 +81,7 @@ require __DIR__ . '/shell_top.php';
               <th scope="col" class="p-col-no">#</th>
               <th scope="col">코드</th>
               <th scope="col">품목명 · 규격</th>
+              <th scope="col">거래처</th>
               <th scope="col">출처 요청</th>
               <th scope="col" class="num">잔량</th>
               <th scope="col" class="num">담을 수량</th>
@@ -101,6 +103,7 @@ require __DIR__ . '/shell_top.php';
     </section>
 
     <div class="form-actions">
+      <span id="po-split-preview" class="muted p-split-preview"></span>
       <button id="po-save" class="btn" type="submit">발주서 만들기</button>
     </div>
   </form>
@@ -216,6 +219,7 @@ require __DIR__ . '/shell_top.php';
           <button class="chip" type="button" data-group="manager">담당자</button>
           <button class="chip" type="button" data-group="branch">지점</button>
           <button class="chip" type="button" data-group="category">분류</button>
+          <button class="chip" type="button" data-group="doc">전표</button>
         </span>
       </div>
       <div class="panel__tools">

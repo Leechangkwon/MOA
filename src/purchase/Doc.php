@@ -789,6 +789,21 @@ final class Doc
         return is_array($db->run(self::SQL_VENDOR_ONE, [':id' => $vendorId])->fetch());
     }
 
+    private const SQL_VENDOR_NAME = <<<'SQL'
+        SELECT name FROM p_vendors WHERE id = CAST(:id AS bigint)
+        SQL;
+
+    /**
+     * 거래처 이름 — **응답에 보여 줄 값**만 읽는다 (F-60 분할 저장의 `docs[].vendor_name`).
+     * 판정에는 쓰지 않는다: 쓸 수 있는 거래처인가는 여전히 `vendorOk` 한 곳이 본다.
+     * 없는 id 면 null (지어내지 않는다).
+     */
+    public static function vendorName(Db $db, int $vendorId): ?string
+    {
+        $row = $db->run(self::SQL_VENDOR_NAME, [':id' => $vendorId])->fetch();
+        return is_array($row) ? (string) $row['name'] : null;
+    }
+
     private const SQL_USER_ONE = <<<'SQL'
         SELECT id FROM users
          WHERE id = CAST(:id AS bigint) AND is_active AND purchase_role IS NOT NULL

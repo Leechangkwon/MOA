@@ -702,6 +702,9 @@
         nameTd.className = 'p-name p-cell-wide';
         if (line.spec) { nameTd.appendChild(el('span', 'p-sub', line.spec)); }
 
+        /* 거래처 — 서버가 준 값을 그대로 보여 준다. 저장하면 이 값으로 전표가 나뉜다 (F-60) */
+        cell(tr, dash(line.vendor_name));
+
         /* 출처 요청 — 전표번호는 mono, 잔량이 남아 있으면 주의(warn) 배지 */
         var srcTd = el('td');
         srcTd.appendChild(el('span', 'mono', line.doc_no));
@@ -759,6 +762,55 @@
       });
       setText($('po-sum'), '줄 ' + lines.length + '개 · 수량 ' + qtyText(qtySum));
       setText($('po-total'), money(sum));
+      renderSplitPreview();
+    }
+
+    /**
+     * 저장 단추 옆 **분할 미리보기** (F-60 ④).
+     * 담은 줄의 `vendor_id` 는 불러오기 응답이 준 값이고, 화면은 그것으로 **세어 보여만** 준다 —
+     * 실제로 나누는 판정은 서버가 저장할 때 다시 한다.
+     * 머리 거래처 칸도 여기서 함께 맞춘다: 섞여 있으면 비우고 잠근다.
+     */
+    function renderSplitPreview() {
+      var order = [];
+      var byVendor = {};
+      lines.forEach(function (line) {
+        var key = String(line.vendor_id === undefined || line.vendor_id === null ? '' : line.vendor_id);
+        if (!Object.prototype.hasOwnProperty.call(byVendor, key)) {
+          byVendor[key] = { name: line.vendor_name, count: 0 };
+          order.push(key);
+        }
+        byVendor[key].count += 1;
+      });
+
+      var preview = $('po-split-preview');
+      var vendorSelect = $('po-vendor');
+      var vendorHelp = $('po-vendor-help');
+      if (order.length === 0) {
+        setText(preview, '');
+        vendorSelect.disabled = false;
+        vendorHelp.hidden = true;
+        setText(vendorHelp, '');
+        return;
+      }
+
+      var parts = order.map(function (key) {
+        return dash(byVendor[key].name) + '(' + byVendor[key].count + '줄)';
+      });
+      if (order.length === 1) {
+        setText(preview, dash(byVendor[order[0]].name) + ' · 1장');
+        vendorSelect.disabled = false;
+        vendorHelp.hidden = true;
+        setText(vendorHelp, '');
+        /* 거래처가 하나뿐이면 머리 칸을 그 값으로 미리 채운다 (기존 동작 유지) */
+        if (vendorSelect.value === '' && order[0] !== '') { vendorSelect.value = order[0]; }
+        return;
+      }
+      setText(preview, '저장하면 거래처별 ' + order.length + '장: ' + parts.join(' · '));
+      vendorSelect.value = '';
+      vendorSelect.disabled = true;
+      setText(vendorHelp, '거래처별로 나눠 저장됩니다');
+      vendorHelp.hidden = false;
     }
 
     /* ── 불러오기 모달 (시안 ④ ImportModal) ───────────────
@@ -768,9 +820,54 @@
      */
     var pickedLines = {};
     var openLeaf = null;
+    var openNode = null;
+    /* 트리 묶음 노드의 체크 상태를 다시 맞추려고 들고 있는 목록 — [{input, lines}] (F-60) */
+    var nodeChecks = [];
 
     function syncLoadInfo() {
       setText($('load-info'), '고른 줄 ' + Object.keys(pickedLines).length + '개');
+    }
+
+    /**
+     * 담은 줄 하나의 모양. 거래처는 **서버가 준 값**을 그대로 옮긴다 —
+     * 화면은 나중에 그것을 미리보기로 **보여만** 주고, 나누는 판정은 서버가 한다 (F-60).
+     */
+    function pickedFrom(line, qty) {
+      return {
+        src_line_id: line.line_id,
+        code: line.code,
+        name: line.name,
+        spec: line.spec,
+        doc_no: line.doc_no,
+        manager_name: line.manager_name,
+        price_in: line.price_in,
+        remaining: line.remaining,
+        vendor_id: line.doc_vendor_id === null ? line.item_vendor_id : line.doc_vendor_id,
+        vendor_name: line.doc_vendor_id === null ? line.item_vendor_name : line.doc_vendor_name,
+        qty: qty
+      };
+    }
+
+    /** 묶음 노드 아래의 **모든 잎 줄** (층이 몇 겹이든 내려간다) */
+    function leafLines(node) {
+      if (node.lines) { return node.lines.slice(); }
+      var out = [];
+      (node.children || []).forEach(function (kid) {
+        out = out.concat(leafLines(kid));
+      });
+      return out;
+    }
+
+    /** 담긴 줄 수에 따라 묶음 체크박스를 다시 맞춘다 — 하위 일부만 담겼으면 중간 상태 */
+    function syncNodeChecks() {
+      nodeChecks.forEach(function (node) {
+        var on = 0;
+        node.lines.forEach(function (line) {
+          if (Object.prototype.hasOwnProperty.call(pickedLines, String(line.line_id))) { on += 1; }
+        });
+        node.input.checked = on > 0 && on === node.lines.length;
+        node.input.indeterminate = on > 0 && on < node.lines.length;
+      });
     }
 
     /** 오른쪽 표 — 고른 묶음의 줄만 그린다 */
@@ -778,6 +875,7 @@
       var body = $('load-lines-body');
       clear(body);
       var rows = (node && node.lines) ? node.lines : [];
+      openNode = node;
       setText($('load-lines-title'), node ? node.label : '줄');
       $('load-lines-empty').hidden = rows.length > 0;
       setText($('load-lines-empty'), node ? '이 묶음에는 줄이 없습니다.' : '왼쪽에서 묶음을 고르세요.');
@@ -818,22 +916,12 @@
 
         function sync() {
           if (check.checked) {
-            pickedLines[key] = {
-              src_line_id: line.line_id,
-              code: line.code,
-              name: line.name,
-              spec: line.spec,
-              doc_no: line.doc_no,
-              manager_name: line.manager_name,
-              price_in: line.price_in,
-              remaining: line.remaining,
-              vendor_id: line.doc_vendor_id === null ? line.item_vendor_id : line.doc_vendor_id,
-              qty: qtyInput.value
-            };
+            pickedLines[key] = pickedFrom(line, qtyInput.value);
           } else {
             delete pickedLines[key];
           }
           syncLoadInfo();
+          syncNodeChecks();
         }
         check.addEventListener('change', sync);
         qtyInput.addEventListener('input', function () { if (check.checked) { sync(); } });
@@ -842,16 +930,47 @@
       });
     }
 
-    /** 왼쪽 트리 — 층마다 들여쓰고, 줄이 달린 마디를 누르면 오른쪽이 바뀐다 */
+    /**
+     * 왼쪽 트리 — 층마다 들여쓰고, 줄이 달린 마디를 누르면 오른쪽이 바뀐다.
+     *
+     * F-60: **모든 묶음 노드**에 체크박스가 붙는다. 체크하면 그 아래 잎 줄을 전부
+     * **잔량 그대로** 담고, 해제하면 전부 뺀다. 체크박스는 펼치기 단추의 **형제**라
+     * 두 클릭이 서로 전파되지 않는다(단추 안에 넣으면 누를 때마다 접혔다 펴진다).
+     */
     function drawTree(nodes, container) {
       nodes.forEach(function (node) {
         var box = el('div', 'p-tree-group');
+        var row = el('div', 'p-tree-row');
+
+        var check = document.createElement('input');
+        check.type = 'checkbox';
+        check.className = 'p-tree-check';
+        check.setAttribute('aria-label', node.label + ' 묶음 전체 담기');
+        var mine = leafLines(node);
+        nodeChecks.push({ input: check, lines: mine });
+        check.addEventListener('click', function (event) { event.stopPropagation(); });
+        check.addEventListener('change', function () {
+          mine.forEach(function (line) {
+            var key = String(line.line_id);
+            if (check.checked) {
+              pickedLines[key] = pickedFrom(line, qtyText(line.remaining));
+            } else {
+              delete pickedLines[key];
+            }
+          });
+          if (openNode) { drawLines(openNode); }
+          syncLoadInfo();
+          syncNodeChecks();
+        });
+        row.appendChild(check);
+
         var head = el('button', 'p-tree-head');
         head.type = 'button';
         head.appendChild(el('span', 'p-tree-name', node.label));
         head.appendChild(badge('줄 ' + node.line_count, 'badge--off'));
         head.appendChild(el('span', 'p-tree-sum', '잔량 ' + qtyText(node.qty)));
-        box.appendChild(head);
+        row.appendChild(head);
+        box.appendChild(row);
 
         if (node.children) {
           var kids = el('div', 'p-tree-children');
@@ -886,11 +1005,14 @@
         var tree = $('load-tree');
         clear(tree);
         openLeaf = null;
+        openNode = null;
+        nodeChecks = [];
         var nodes = res.data.groups || [];
         drawTree(nodes, tree);
         $('load-tree-empty').hidden = nodes.length > 0;
         drawLines(null);
         syncLoadInfo();
+        syncNodeChecks();
       });
     }
 
@@ -961,22 +1083,26 @@
       var payload = {
         doc_date: $('po-date').value,
         to_location_id: Number($('po-location').value),
+        // F-60 — 화면은 **언제나** 나눠 달라고 한다. 거래처가 하나면 1장이 나온다.
+        split: true,
         lines: []
       };
       if ($('po-vendor').value !== '') { payload.vendor_id = Number($('po-vendor').value); }
       if ($('po-memo').value !== '') { payload.memo = $('po-memo').value; }
       lines.forEach(function (line) {
-        // 여기도 **수량만** 보낸다 (R-66).
+        // 여기도 **수량만** 보낸다 (R-66). 거래처는 서버가 줄에서 다시 판정한다.
         payload.lines.push({ src_line_id: line.src_line_id, qty: String(line.qty) });
       });
       request('POST', '/api/purchase/po', payload).then(function (res) {
         if (!res) { return; }
         if (!res.ok) { say(errorMessage(res.data)); return; }
-        say('발주서 ' + res.data.doc_no + ' 을(를) 만들었습니다.');
+        var docs = Array.isArray(res.data.docs) ? res.data.docs : [];
+        var nos = docs.map(function (doc) { return doc.doc_no; });
+        say('발주서 ' + docs.length + '장을 만들었습니다: ' + nos.join(', '));
         lines = [];
         renderLines();
         loadDocs();
-        openDetail(res.data.id);
+        if (docs.length > 0) { openDetail(docs[0].id); }
       });
     });
 
