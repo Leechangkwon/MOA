@@ -241,6 +241,132 @@
     });
   }
 
+  /* ── 품목 찾기 (ItemPicker) — **한 벌** (F-61) ───────────
+   *
+   * 왜 여기 있나
+   *   같은 창을 두 화면이 연다: 발주요청 화면(시안 ① ItemPicker)과 발주서 화면(F-61 ③
+   *   「직접 입력」). 20단계에는 발주요청 것 하나뿐이었고, F-61 에서 발주서에도 같은 창이
+   *   필요해졌다. 복사해 두면 한쪽만 고쳐지는 날이 온다(25단계가 다섯 벌의 도우미를 한 벌로
+   *   모은 이유, F-45 가 미입고 표를 한 벌로 만든 이유와 같다) — 그래서 **함수는 하나**다.
+   *
+   *   opts.request   API 호출 함수 (필수)
+   *   opts.ids       칸 id 를 바꿀 때만. 기본은 `pick-*`(두 화면이 같은 이름을 쓴다)
+   *   opts.guard     담기 전에 부른다. 문자열을 돌려주면 그 말을 알림 줄에 적고 멈춘다
+   *                  (발주서에서 「입고 장소를 골라 주세요」 에 쓰인다)
+   *   opts.onAdd     담기 — [{row, qty}] 를 받는다. row 는 서버가 준 값만 옮긴 것이다
+   *
+   * 단가는 **보여 주기만** 한다 — 저장 본문에 단가가 실리는 길은 어느 화면에도 없다 (R-66).
+   * 글자는 전부 `textContent` 로만 들어간다 (PRD S-03).
+   */
+  function itemPicker(opts) {
+    var o = opts || {};
+    var ids = o.ids || {};
+    var page = 1;
+    var picked = {};
+
+    function key(name, fallback) { return ids[name] || fallback; }
+    function node(name, fallback) { return $(key(name, fallback)); }
+
+    function syncInfo(total) {
+      setText(node('info', 'pick-info'), '전체 ' + total + '건 · ' + page + '쪽 · 고른 품목 '
+        + Object.keys(picked).length + '건');
+    }
+
+    function run() {
+      var params = '?page=' + page;
+      var qBox = node('q', 'pick-q');
+      if (qBox && qBox.value.trim() !== '') {
+        params += '&q=' + encodeURIComponent(qBox.value.trim());
+      }
+      var vendorBox = node('vendor', 'pick-vendor');
+      if (vendorBox && vendorBox.value !== '') {
+        params += '&vendor=' + encodeURIComponent(vendorBox.value);
+      }
+
+      o.request('GET', '/api/purchase/items' + params).then(function (res) {
+        if (!res) { return; }
+        if (!res.ok) { say(errorMessage(res.data)); return; }
+        var body = node('body', 'pick-body');
+        clear(body);
+        var items = Array.isArray(res.data.items) ? res.data.items : [];
+        items.forEach(function (row) {
+          var tr = el('tr');
+          var checkTd = el('td');
+          var check = document.createElement('input');
+          check.type = 'checkbox';
+          check.checked = Object.prototype.hasOwnProperty.call(picked, String(row.id));
+          checkTd.appendChild(check);
+          tr.appendChild(checkTd);
+
+          cell(tr, row.code);
+          cell(tr, row.name + (row.spec ? ' · ' + row.spec : ''));
+          cell(tr, dash(row.vendor_name));
+          cell(tr, money(row.price_in), 'num');
+
+          var qtyTd = el('td', 'num');
+          var qtyInput = document.createElement('input');
+          qtyInput.type = 'number';
+          qtyInput.min = '0.001';
+          qtyInput.step = '0.001';
+          qtyInput.value = picked[String(row.id)] ? picked[String(row.id)].qty : '1';
+          qtyTd.appendChild(qtyInput);
+          tr.appendChild(qtyTd);
+
+          function sync() {
+            if (check.checked) {
+              picked[String(row.id)] = {
+                row: {
+                  item_id: row.id, code: row.code, name: row.name, spec: row.spec,
+                  unit: row.unit, vendor_id: row.vendor_id, vendor_name: row.vendor_name,
+                  price_in: row.price_in
+                },
+                qty: qtyInput.value
+              };
+            } else {
+              delete picked[String(row.id)];
+            }
+            syncInfo(res.data.total);
+          }
+          check.addEventListener('change', sync);
+          qtyInput.addEventListener('input', function () { if (check.checked) { sync(); } });
+
+          body.appendChild(tr);
+        });
+        syncInfo(res.data.total);
+      });
+    }
+
+    function on(name, fallback, handler) {
+      var b = node(name, fallback);
+      if (b) { b.addEventListener('click', handler); }
+    }
+
+    on('search', 'pick-search', function () { page = 1; run(); });
+    on('prev', 'pick-prev', function () { if (page > 1) { page -= 1; run(); } });
+    on('next', 'pick-next', function () { page += 1; run(); });
+    on('add', 'pick-add', function () {
+      if (typeof o.guard === 'function') {
+        var problem = o.guard();
+        if (typeof problem === 'string' && problem !== '') { say(problem); return; }
+      }
+      var out = [];
+      Object.keys(picked).forEach(function (k) { out.push(picked[k]); });
+      picked = {};
+      if (typeof o.onAdd === 'function') { o.onAdd(out); }
+      closeModal(key('modal', 'pick-modal'));
+    });
+
+    return {
+      open: function () {
+        page = 1;
+        picked = {};
+        openModal(key('modal', 'pick-modal'));
+        run();
+      },
+      run: run
+    };
+  }
+
   /** 셀렉트를 목록으로 채운다. 고르고 있던 값은 목록에 남아 있으면 지킨다. */
   function fillSelect(select, rows, valueKey, labelKey, emptyLabel) {
     if (!select) { return; }
@@ -426,6 +552,7 @@
     button: button,
     kpi: kpi,
     renderBackorder: renderBackorder,
+    itemPicker: itemPicker,
     fillSelect: fillSelect,
     initTabs: initTabs,
     showTab: showTab,

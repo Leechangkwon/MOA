@@ -37,6 +37,7 @@ require __DIR__ . '/shell_top.php';
   <nav class="tabs" id="po-tabs" role="tablist" aria-label="발주서 화면">
     <button class="tab is-on" type="button" role="tab" aria-selected="true" data-tab="input">입력</button>
     <button class="tab" type="button" role="tab" aria-selected="false" data-tab="docs">전표</button>
+    <button class="tab" type="button" role="tab" aria-selected="false" data-tab="status">현황</button>
   </nav>
 
   <!-- ── 입력 탭 — 머리 카드(위) + 줄 카드(아래) ─────────────── -->
@@ -53,6 +54,7 @@ require __DIR__ . '/shell_top.php';
         <label class="field">
           <span class="field__label">입고 장소</span>
           <select id="po-location"></select>
+          <span class="p-sub">비워 두면 줄마다 발주요청서의 창고로 들어갑니다 (거래처 × 입고 장소로 나뉩니다)</span>
         </label>
         <label class="field">
           <span class="field__label">거래처</span>
@@ -71,6 +73,8 @@ require __DIR__ . '/shell_top.php';
         <h2 class="panel__title">발주 줄</h2>
         <div class="panel__tools">
           <button id="po-load" class="btn btn--quiet" type="button">발주요청 불러오기</button>
+          <button id="po-pick" class="btn btn--quiet" type="button">품목 찾기</button>
+          <button id="po-short" class="btn btn--quiet" type="button">부족 산출</button>
         </div>
       </div>
 
@@ -82,7 +86,8 @@ require __DIR__ . '/shell_top.php';
               <th scope="col">코드</th>
               <th scope="col">품목명 · 규격</th>
               <th scope="col">거래처</th>
-              <th scope="col">출처 요청</th>
+              <th scope="col">입고 장소</th>
+              <th scope="col">출처</th>
               <th scope="col" class="num">잔량</th>
               <th scope="col" class="num">담을 수량</th>
               <th scope="col" class="num">단가</th>
@@ -93,7 +98,7 @@ require __DIR__ . '/shell_top.php';
           <tbody id="po-line-body"></tbody>
         </table>
       </div>
-      <p id="po-line-empty" class="empty">「발주요청 불러오기」로 줄을 담습니다.</p>
+      <p id="po-line-empty" class="empty">「발주요청 불러오기」·「품목 찾기」·「부족 산출」 셋 중 하나로 줄을 담습니다.</p>
 
       <div class="table-foot">
         <span id="po-sum" class="muted"></span>
@@ -200,6 +205,132 @@ require __DIR__ . '/shell_top.php';
       </form>
     </details>
   </section>
+
+  <!-- ── 현황 탭 — 미입고 현황. 입고 화면의 현황 탭과 **같은 API·같은 렌더러**다 (F-61 ①).
+       새 조회도 새 렌더러도 없다 — `PurchaseUI.renderBackorder` 한 벌이 그린다. ── -->
+  <section class="panel" id="po-status" hidden>
+    <div class="panel__head panel__head--row">
+      <h2 class="panel__title">미입고 현황</h2>
+      <div class="panel__tools">
+        <label class="field field--inline">
+          <span class="field__label">거래처</span>
+          <select id="po-bo-vendor"></select>
+        </label>
+        <label class="check">
+          <input id="po-bo-overdue" type="checkbox">
+          <span>납기 지남만</span>
+        </label>
+        <button id="po-bo-run" class="btn btn--quiet" type="button">다시 보기</button>
+      </div>
+    </div>
+
+    <div class="p-kpis" id="po-bo-kpis"></div>
+    <div id="po-backorder"></div>
+    <p id="po-bo-empty" class="empty" hidden>미입고가 없습니다.</p>
+    <p class="help">미입고 = 발주 수량 − 입고 수량. 「보낸」 발주서만 셉니다.</p>
+  </section>
+
+  <!-- ── 품목 찾기 모달 — 발주요청 화면(시안 ① ItemPicker)과 **같은 창**이다.
+       그리는 코드는 `PurchaseUI.itemPicker` 한 벌이고(F-61 ③), 여기에는 발주서에만
+       있는 칸이 하나 더 있다: 머리 「입고 장소」 를 비워 둔 채 직접 담을 때 고르는 장소. ── -->
+  <dialog class="modal modal--stack modal--wide" id="pick-modal" aria-labelledby="pick-title">
+    <div class="modal__head">
+      <h2 class="modal__title" id="pick-title">품목 찾기</h2>
+      <span class="modal__meta">코드 · 이름 · 규격으로 찾아 여러 품목을 한 번에 담습니다</span>
+      <button class="btn btn--icon" type="button" data-modal-close aria-label="닫기" title="닫기">
+        <span class="icon" data-icon="x"></span>
+      </button>
+    </div>
+    <div class="modal__body">
+      <div class="panel__tools">
+        <label class="field field--inline">
+          <span class="field__label">검색</span>
+          <input id="pick-q" type="search" maxlength="100" autocomplete="off" spellcheck="false">
+        </label>
+        <label class="field field--inline">
+          <span class="field__label">거래처</span>
+          <select id="pick-vendor"></select>
+        </label>
+        <label class="field field--inline" id="pick-location-field">
+          <span class="field__label">입고 장소</span>
+          <select id="pick-location"></select>
+        </label>
+        <button id="pick-search" class="btn btn--quiet" type="button">찾기</button>
+      </div>
+      <div class="table-wrap p-pick-wrap">
+        <table class="files">
+          <thead>
+            <tr>
+              <th scope="col" class="p-col-check"><span class="sr-only">선택</span></th>
+              <th scope="col">코드</th><th scope="col">품목명 · 규격</th><th scope="col">거래처</th>
+              <th scope="col" class="num">단가</th><th scope="col" class="num">수량</th>
+            </tr>
+          </thead>
+          <tbody id="pick-body"></tbody>
+        </table>
+      </div>
+    </div>
+    <div class="modal__foot">
+      <span id="pick-info" class="muted"></span>
+      <div class="pager">
+        <button id="pick-prev" class="btn btn--quiet btn--small" type="button">이전</button>
+        <button id="pick-next" class="btn btn--quiet btn--small" type="button">다음</button>
+      </div>
+      <button id="pick-add" class="btn" type="button">담기</button>
+    </div>
+  </dialog>
+
+  <!-- ── 부족 산출 모달 (시안 ⑩ Status 의 「발주 제안」, F-36 · F-61 ④) ──
+       자료는 기존 `GET /api/purchase/suggest` 하나뿐이다. 제안 수량은 **서버가** 계산하고
+       화면은 보여 준 뒤 사람이 고친 값을 직접 줄로 담는다 (새 창구 0). ── -->
+  <dialog class="modal modal--stack modal--wide" id="short-modal" aria-labelledby="short-title">
+    <div class="modal__head">
+      <h2 class="modal__title" id="short-title">부족 산출</h2>
+      <span class="modal__meta">인가량 대비 부족분을 미입고까지 빼고 계산합니다</span>
+      <button class="btn btn--icon" type="button" data-modal-close aria-label="닫기" title="닫기">
+        <span class="icon" data-icon="x"></span>
+      </button>
+    </div>
+    <div class="modal__body">
+      <div class="panel__tools">
+        <label class="field field--inline">
+          <span class="field__label">장소</span>
+          <select id="short-location"></select>
+        </label>
+        <label class="check">
+          <input id="short-only" type="checkbox" checked>
+          <span>부족만</span>
+        </label>
+        <label class="field field--inline">
+          <span class="field__label">검색</span>
+          <input id="short-q" type="search" maxlength="100" autocomplete="off" spellcheck="false">
+        </label>
+        <button id="short-search" class="btn btn--quiet" type="button">산출</button>
+      </div>
+      <div class="table-wrap p-pick-wrap">
+        <table class="files">
+          <thead>
+            <tr>
+              <th scope="col" class="p-col-check"><span class="sr-only">선택</span></th>
+              <th scope="col">품목</th>
+              <th scope="col" class="num">인가</th>
+              <th scope="col" class="num">현재고</th>
+              <th scope="col" class="num">미입고</th>
+              <th scope="col" class="num">제안</th>
+              <th scope="col" class="num">담을 수량</th>
+            </tr>
+          </thead>
+          <tbody id="short-body"></tbody>
+        </table>
+      </div>
+      <p id="short-empty" class="empty" hidden>부족한 품목이 없습니다.</p>
+      <p id="short-formula" class="p-sub"></p>
+    </div>
+    <div class="modal__foot">
+      <span id="short-info" class="muted"></span>
+      <button id="short-add" class="btn" type="button">담기</button>
+    </div>
+  </dialog>
 
   <!-- ── 불러오기 모달 (시안 ④ ImportModal) — 좌 트리 / 우 줄 표 ── -->
   <dialog class="modal modal--stack modal--wide" id="load-modal" aria-labelledby="load-title">

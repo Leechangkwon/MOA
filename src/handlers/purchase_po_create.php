@@ -7,8 +7,23 @@ declare(strict_types=1);
  * ★ 20단계 **불러오기 → 발주서** (PRD F-32, ARCH 5.18 「연결」, 완료 기준 T-45).
  *
  * 본문
- *   { to_location_id, vendor_id?, manager_id?, doc_date?, memo?, split?,
- *     lines: [ { src_line_id, qty, vendor_id? } … ] }
+ *   { to_location_id?, vendor_id?, manager_id?, doc_date?, memo?, split?,
+ *     lines: [ { src_line_id, qty, vendor_id? } | { item_id, qty, location_id?, vendor_id? } … ] }
+ *
+ * ★ F-61 **줄이 정하는 입고 장소 · 직접 줄** (2026-09-17, ARCH 5.18 「발주서 세 갈래·장소 규칙」,
+ *   완료 기준 T-73)
+ *   ① **장소**: `split:true` 면 머리 `to_location_id` 는 **선택**이다. 없으면 줄이 정한다 —
+ *      요청 줄은 **그 발주요청 전표의** `to_location_id`(아래 `$sqlSrcHead` 가 함께 읽는다),
+ *      직접 줄은 줄의 `location_id`. 머리값이 있으면 그것이 우선이다(`vendor_id` 와 같은 규칙).
+ *      정할 수 없는 줄이 하나라도 있으면 400 `bad_request`.
+ *      나누는 **열쇠는 (거래처, 입고 장소)** 가 된다 — F-60 의 거래처 분할을 한 축 넓힌 것이다.
+ *      묶음의 장소는 묶음마다 기존 `Doc::locationBranch`·`Doc::locationOk` 를 지난다(새 판정 0).
+ *      `split` 없는 옛 요청은 **머리 필수 그대로**이고 지점도 예전처럼 머리 장소에서 나온다.
+ *   ② **직접 줄**: 줄에 `item_id` 를 적으면 발주요청 없이 바로 담긴다. 한 줄은 `src_line_id`·
+ *      `item_id` 중 **정확히 하나**다(둘 다·둘 다 없음 → 400). 품목은 `Doc::loadItems`(활성·범위,
+ *      기존 함수)로 확인하고, 거래처는 줄 `vendor_id` ?? 품목 거래처, 단가는 **품목의** `price_in`
+ *      이다 — 본문의 단가는 어느 경로로도 들어오지 않는다 (R-66). `src_line_id` 는 NULL 이라
+ *      요청 잔량·잠금·상태 되짚기가 **없다**(잠글 요청 줄이 아예 없다).
  *
  * ★ F-60 **거래처별 분할 저장** (2026-09-17, ARCH 5.18 「분할 저장」, 완료 기준 T-72)
  *   `split: true` 면 담긴 줄을 **판정된 거래처별로 나눠** 발주서를 N 장 만든다.
@@ -42,7 +57,8 @@ declare(strict_types=1);
 require_once __DIR__ . '/../purchase/Doc.php';
 
 const TBOX_PO_CREATE_KEYS = ['to_location_id', 'vendor_id', 'manager_id', 'doc_date', 'memo', 'split', 'lines'];
-const TBOX_PO_LINE_KEYS   = ['src_line_id', 'qty', 'vendor_id'];
+/** F-61 — 줄은 `src_line_id`(요청 줄) 또는 `item_id`(직접 줄) 중 **하나**를 적는다. */
+const TBOX_PO_LINE_KEYS   = ['src_line_id', 'item_id', 'qty', 'vendor_id', 'location_id'];
 
 $db   = Db::instance();
 $body = Http::jsonBody();
@@ -71,10 +87,30 @@ $asId = static function ($v): ?int {
     return $n >= 1 ? $n : -1;
 };
 
+/**
+ * F-60 — **나눠 저장할까**. 참/거짓만 받는다(문자열 `"true"` 도 400 이다).
+ * 없으면 `false` 이고, 그때 이 요청은 20단계와 똑같이 흐른다.
+ *
+ * F-61 에서 이 판정이 **머리 검사보다 앞으로** 왔다 — 머리 `to_location_id` 가 필수인지
+ * 아닌지가 이 값에 달렸기 때문이다(값을 읽는 순서만 바뀌었고 규칙은 그대로다).
+ */
+$splitRaw = $body['split'] ?? null;
+if ($splitRaw !== null && !is_bool($splitRaw)) {
+    $reject('bad_request');
+}
+$split = ($splitRaw === true);
+
 $locId     = $asId($body['to_location_id'] ?? null);
 $vendorReq = $asId($body['vendor_id'] ?? null);
 $mgrReq    = $asId($body['manager_id'] ?? null);
-if ($locId === null || $locId === -1 || $vendorReq === -1 || $mgrReq === -1) {
+if ($locId === -1 || $vendorReq === -1 || $mgrReq === -1) {
+    $reject('bad_request');
+}
+/*
+ * F-61 — 머리 장소는 `split:true` 일 때만 생략할 수 있다. `split` 없는 옛 요청에는
+ * 20단계와 **같은 검사**가 그대로 걸린다(계약 불변: 머리 장소 없이 부르면 400).
+ */
+if (!$split && $locId === null) {
     $reject('bad_request');
 }
 
@@ -97,36 +133,44 @@ if ($memo === '') {
     $memo = null;
 }
 
-/**
- * F-60 — **나눠 저장할까**. 참/거짓만 받는다(문자열 `"true"` 도 400 이다).
- * 없으면 `false` 이고, 그때 이 요청은 20단계와 똑같이 흐른다.
- */
-$splitRaw = $body['split'] ?? null;
-if ($splitRaw !== null && !is_bool($splitRaw)) {
-    $reject('bad_request');
-}
-$split = ($splitRaw === true);
-
 $lines = $body['lines'] ?? null;
 if (!is_array($lines) || $lines === [] || count($lines) > Doc::MAX_LINES) {
     $reject('bad_request');
 }
 
-$wanted = [];
-$seen   = [];
+$wanted    = [];
+$seen      = [];
+$seenItem  = [];
 foreach ($lines as $line) {
     if (!is_array($line) || array_diff(array_keys($line), TBOX_PO_LINE_KEYS) !== []) {
         $reject('bad_request');
     }
-    $srcId = $asId($line['src_line_id'] ?? null);
-    if ($srcId === null || $srcId === -1) {
+    $srcId  = $asId($line['src_line_id'] ?? null);
+    $itemId = $asId($line['item_id'] ?? null);
+    if ($srcId === -1 || $itemId === -1) {
         $reject('bad_request');
     }
-    if (isset($seen[$srcId])) {
-        // 같은 요청 줄을 한 발주서에 두 번 적으면 잔량 판정이 두 갈래가 된다 — 먼저 막는다.
+    /*
+     * F-61 — 한 줄의 출처는 **정확히 하나**다: 발주요청 줄이거나(`src_line_id`) 직접 고른
+     * 품목이거나(`item_id`). 둘을 함께 적으면 "이 줄이 요청의 잔량을 쓰는가" 가 두 갈래가 되고,
+     * 둘 다 없으면 무엇을 담으라는 말인지 알 수 없다 — 둘 다 400 이다.
+     */
+    if (($srcId === null) === ($itemId === null)) {
         $reject('bad_request');
     }
-    $seen[$srcId] = true;
+    if ($srcId !== null) {
+        if (isset($seen[$srcId])) {
+            // 같은 요청 줄을 한 발주서에 두 번 적으면 잔량 판정이 두 갈래가 된다 — 먼저 막는다.
+            $reject('bad_request');
+        }
+        $seen[$srcId] = true;
+    } else {
+        if (isset($seenItem[$itemId])) {
+            // 같은 품목을 직접 줄로 두 번 (요청 줄 중복과 같은 규칙)
+            $reject('bad_request');
+        }
+        $seenItem[$itemId] = true;
+    }
 
     $qtyRaw = $line['qty'] ?? null;
     if (is_int($qtyRaw) || is_float($qtyRaw)) {
@@ -142,16 +186,43 @@ foreach ($lines as $line) {
     if ($lineVendor === -1) {
         $reject('bad_request');
     }
-    $wanted[] = ['src' => $srcId, 'qty' => $qtyRaw, 'vendor_id' => $lineVendor];
+    $lineLoc = $asId($line['location_id'] ?? null);
+    if ($lineLoc === -1) {
+        $reject('bad_request');
+    }
+    /*
+     * 요청 줄의 입고 장소는 **그 발주요청 전표가** 정한다(또는 머리값). 줄에 적어 보내면
+     * 어느 쪽이 이겼는지 사람이 알 수 없으므로 조용히 무시하지 않고 400 으로 되돌린다.
+     */
+    if ($srcId !== null && $lineLoc !== null) {
+        $reject('bad_request');
+    }
+    $wanted[] = [
+        'src'         => $srcId,
+        'item_id'     => $itemId,
+        'qty'         => $qtyRaw,
+        'vendor_id'   => $lineVendor,
+        'location_id' => $lineLoc,
+    ];
 }
 
 // ─── 지점 격리·참조 ─────────────────────────────────────────
-$scopeD = Authz::purchaseScopeWhere($user, 'd');
-$scopeL = Authz::purchaseScopeWhere($user, 'l');
+$scopeD  = Authz::purchaseScopeWhere($user, 'd');
+$scopeL  = Authz::purchaseScopeWhere($user, 'l');
+/** 직접 줄의 품목을 볼 수 있는 범위 — 발주요청 만들기와 **같은 조각**이다 (F-61) */
+$scopeIb = Authz::purchaseScopeWhere($user, 'ib');
 
-$branchId = Doc::locationBranch($db, $scopeL, $locId);
-if ($branchId === null) {
-    $reject('bad_reference');
+/*
+ * `split` 없는 요청 — 20단계 그대로다: 지점은 **머리 장소**에서 나오고, 그 장소가 범위 밖이면
+ * `bad_reference` 로 끝난다. `split:true` 인 요청의 장소는 묶음마다 아래에서 확인한다
+ * (머리값을 적었든 줄에서 왔든 같은 자리·같은 함수다 — F-61).
+ */
+$branchId = null;
+if (!$split) {
+    $branchId = Doc::locationBranch($db, $scopeL, $locId);
+    if ($branchId === null) {
+        $reject('bad_reference');
+    }
 }
 if ($vendorReq !== null && !Doc::vendorOk($db, $vendorReq)) {
     $reject('bad_reference');
@@ -168,7 +239,7 @@ if ($mgrReq !== null && !Doc::managerOk($db, $mgrReq)) {
 $sqlSrcHead = <<<'SQL'
     SELECT l.id, l.doc_id, l.item_id, CAST(l.qty AS text) AS qty, l.status,
            d.doc_no, d.doc_type, d.status AS doc_status, d.closed_month,
-           d.vendor_id AS doc_vendor_id,
+           d.vendor_id AS doc_vendor_id, d.to_location_id AS doc_location_id,
            i.vendor_id AS item_vendor_id, i.is_active AS item_active,
            CAST(i.price_in AS text) AS price_in
       FROM p_doc_lines l
@@ -177,9 +248,26 @@ $sqlSrcHead = <<<'SQL'
      WHERE l.id IN
     SQL;
 
+/**
+ * 요청 줄과 직접 줄을 갈라 둔다 — 아래 조회·잠금은 **요청 줄에만** 걸린다 (F-61).
+ * 직접 줄만으로 이루어진 저장에서는 `$srcIds` 가 비고, 그때 이 조회는 아예 돌지 않는다.
+ *
+ * @var list<int> $srcIds
+ * @var list<int> $directItemIds
+ */
+$srcIds        = [];
+$directItemIds = [];
+foreach ($wanted as $w) {
+    if ($w['src'] !== null) {
+        $srcIds[] = $w['src'];
+    } else {
+        $directItemIds[] = $w['item_id'];
+    }
+}
+
 $names = [];
 $bind  = [];
-foreach (array_column($wanted, 'src') as $i => $id) {
+foreach ($srcIds as $i => $id) {
     $name        = ':s' . (string) $i;
     $names[]     = $name;
     $bind[$name] = $id;
@@ -191,23 +279,70 @@ $sqlSrcTail = " AND d.doc_type = 'pr' AND ";
 // ─── 트랜잭션 — 잠그고, 다시 세고, 넣는다 ───────────────────
 $db->begin();
 try {
-    // ① 출처 줄을 **먼저 잠근다** (id 오름차순 — 교착 방지)
-    $locked = Doc::lockLines($db, array_column($wanted, 'src'));
+    // ① 출처 줄을 **먼저 잠근다** (id 오름차순 — 교착 방지). 직접 줄은 잠글 대상이 없다.
+    $locked = Doc::lockLines($db, $srcIds);
 
     // ② 잠근 뒤에 전표·품목 정보를 읽는다 (지점 격리 포함)
-    $srcRows = $db->run(
-        $sqlSrcHead . ' ' . $inList . $sqlSrcTail . $scopeD['sql'],
-        $bind + $scopeD['params']
-    )->fetchAll();
     $src = [];
-    foreach ($srcRows as $row) {
-        $src[(int) $row['id']] = $row;
+    if ($srcIds !== []) {
+        $srcRows = $db->run(
+            $sqlSrcHead . ' ' . $inList . $sqlSrcTail . $scopeD['sql'],
+            $bind + $scopeD['params']
+        )->fetchAll();
+        foreach ($srcRows as $row) {
+            $src[(int) $row['id']] = $row;
+        }
+    }
+
+    /*
+     * ②-2 직접 줄의 품목 — **활성·범위 안**인 것만 돌아온다 (기존 `Doc::loadItems`,
+     * 발주요청 만들기와 같은 함수·같은 조각). 사유를 가르려고 범위 없이 한 번 더 읽는다:
+     * 범위를 빼고도 없으면 없는·중단된 품목(`bad_request`), 범위를 빼면 있으면 남의 지점
+     * 품목(`not_in_scope`)이다. 어느 쪽이든 사람에게 나가는 응답은 400 동일 문구 하나다.
+     */
+    $directItems = Doc::loadItems($db, $scopeIb, $directItemIds);
+    $activeItems = [];
+    if ($directItemIds !== []) {
+        $activeItems = Doc::loadItems($db, ['sql' => '1=1', 'params' => []], $directItemIds);
     }
 
     // ③ 줄마다 확인 — 존재·범위·상태·잔량
     $vendors = [];
     $prepared = [];
     foreach ($wanted as $w) {
+        /*
+         * ③-0 **직접 줄** (F-61) — 요청 줄이 아니므로 잔량도 잠금도 없다. 확인하는 것은
+         * 품목이 살아 있고 내 범위 안인가와, 이 줄의 입고 장소를 정할 수 있는가 둘뿐이다.
+         * 단가는 **품목의 값**을 그대로 옮긴다 (본문의 단가는 허용 키에 없다 — R-66).
+         * 아래 요청 줄 경로 코드는 20단계·F-60 그대로이며 이 갈래가 그 앞에서 끝난다.
+         */
+        if ($w['src'] === null) {
+            $item = $directItems[$w['item_id']] ?? null;
+            if ($item === null) {
+                $db->rollback();
+                $reject(isset($activeItems[$w['item_id']]) ? 'not_in_scope' : 'bad_request');
+            }
+            $lineLoc = $locId ?? $w['location_id'];
+            if ($lineLoc === null) {
+                $db->rollback();
+                $reject('bad_request');
+            }
+            $vendorOfLine           = $w['vendor_id'] ?? (int) $item['vendor_id'];
+            $vendors[$vendorOfLine] = true;
+            $prepared[] = [
+                'src'         => null,
+                'qty'         => $w['qty'],
+                'item_id'     => (int) $w['item_id'],
+                'price_in'    => $item['price_in'] === null ? null : (string) $item['price_in'],
+                'doc_id'      => null,
+                'doc_no'      => null,
+                'want_qty'    => null,
+                'vendor_id'   => $vendorOfLine,
+                'location_id' => (int) $lineLoc,
+            ];
+            continue;
+        }
+
         $row = $src[$w['src']] ?? null;
         if ($row === null || !isset($locked[$w['src']])) {
             $db->rollback();
@@ -240,16 +375,28 @@ try {
             ?? ($row['doc_vendor_id'] === null ? (int) $row['item_vendor_id'] : (int) $row['doc_vendor_id']);
         $vendors[$vendorOfLine] = true;
 
+        /*
+         * 입고 장소 — 머리값이 있으면 그것, 없으면 **이 줄이 온 발주요청 전표의 장소**다
+         * (F-61 ②: 「요청서와 같은 창고」). 둘 다 없으면 이 줄은 어디로 받을지 알 수 없다.
+         */
+        $lineLoc = $locId
+            ?? ($row['doc_location_id'] === null ? null : (int) $row['doc_location_id']);
+        if ($lineLoc === null) {
+            $db->rollback();
+            $reject('bad_request');
+        }
+
         $prepared[] = [
-            'src'       => $w['src'],
-            'qty'       => $w['qty'],
-            'item_id'   => (int) $row['item_id'],
-            'price_in'  => $row['price_in'] === null ? null : (string) $row['price_in'],
-            'doc_id'    => (int) $row['doc_id'],
-            'doc_no'    => (string) $row['doc_no'],
-            'want_qty'  => (string) $row['qty'],
+            'src'         => $w['src'],
+            'qty'         => $w['qty'],
+            'item_id'     => (int) $row['item_id'],
+            'price_in'    => $row['price_in'] === null ? null : (string) $row['price_in'],
+            'doc_id'      => (int) $row['doc_id'],
+            'doc_no'      => (string) $row['doc_no'],
+            'want_qty'    => (string) $row['qty'],
             // 위에서 **이미 판정한** 거래처를 줄에 적어 둔다 — 아래에서 다시 판정하지 않는다.
-            'vendor_id' => $vendorOfLine,
+            'vendor_id'   => $vendorOfLine,
+            'location_id' => (int) $lineLoc,
         ];
     }
 
@@ -273,14 +420,26 @@ try {
      */
     $buckets = [];
     foreach ($prepared as $p) {
-        $buckets[$p['vendor_id']][] = $p;
+        // F-61 — 열쇠가 **(거래처, 입고 장소)** 로 넓어졌다. F-60 에서 장소가 하나뿐이던
+        // 저장은 열쇠의 뒤 칸이 늘 같으므로 그때와 **같은 수의 묶음**이 나온다.
+        $key = (string) $p['vendor_id'] . ':' . (string) $p['location_id'];
+        if (!isset($buckets[$key])) {
+            $buckets[$key] = [
+                'vendor_id'   => $p['vendor_id'],
+                'location_id' => $p['location_id'],
+                'lines'       => [],
+            ];
+        }
+        $buckets[$key]['lines'][] = $p;
     }
     $splitCount = count($buckets);
 
     // ⑤ 발주서 만들기 — **묶음마다** 채번·머리·줄·되짚기·감사. 잔량·격리·상태는 위에서 끝났다.
     $made = [];
-    foreach ($buckets as $bucketVendor => $bucket) {
-        $vendorId = (int) $bucketVendor;
+    foreach ($buckets as $group) {
+        $vendorId  = (int) $group['vendor_id'];
+        $bucketLoc = (int) $group['location_id'];
+        $bucket    = $group['lines'];
         if ($vendorReq !== null && $vendorReq !== $vendorId) {
             $db->rollback();
             $reject('mixed_vendor');
@@ -290,14 +449,31 @@ try {
             $reject('bad_reference');
         }
 
+        /*
+         * 묶음의 입고 장소 — **기존 함수 둘**을 지난다 (F-61, 새 판정 없음).
+         * `split` 없는 요청은 위에서 이미 지점을 얻었으므로 그 값을 그대로 쓴다(거동 불변).
+         */
+        $bucketBranch = $branchId;
+        if ($bucketBranch === null) {
+            $bucketBranch = Doc::locationBranch($db, $scopeL, $bucketLoc);
+            if ($bucketBranch === null) {
+                $db->rollback();
+                $reject('not_in_scope');
+            }
+        }
+        if (!Doc::locationOk($db, $scopeL, $bucketLoc, $bucketBranch)) {
+            $db->rollback();
+            $reject('not_in_scope');
+        }
+
         $docNo = Doc::nextDocNo($db, Doc::TYPE_PO);
         $docId = Doc::insertDoc($db, [
             'doc_type'       => Doc::TYPE_PO,
             'doc_no'         => $docNo,
             'doc_date'       => $docDate,
-            'branch_id'      => $branchId,
+            'branch_id'      => $bucketBranch,
             'vendor_id'      => $vendorId,
-            'to_location_id' => $locId,
+            'to_location_id' => $bucketLoc,
             'manager_id'     => $managerId,
             'status'         => Doc::ST_IN_PROGRESS,
             'memo'           => $memo,
@@ -328,6 +504,10 @@ try {
             $lineNo++;
 
             // ⑥ 담긴 요청 줄을 잠그고 상태를 다시 계산한다 (Q-18①)
+            //    직접 줄에는 되짚을 요청 줄이 없다 — 잔량도 잠금도 없는 줄이다 (F-61).
+            if ($p['src'] === null) {
+                continue;
+            }
             Doc::retouchRequestLine($db, $p['src'], $p['want_qty'], Doc::takenQty($db, $p['src']));
             $srcDocs[$p['doc_id']]   = true;
             $srcDocNos[$p['doc_no']] = true;
@@ -342,13 +522,16 @@ try {
         Doc::saveHeader($db, $docId, Doc::buildHeader($db, $docId, $docNo));
 
         $detail = [
-            'doc_no'     => $docNo,
-            'doc_type'   => Doc::TYPE_PO,
-            'branch_id'  => $branchId,
-            'lines'      => count($bucket),
-            'amount'     => number_format($amountSum, 2, '.', ''),
-            'src_doc_no' => implode(',', array_keys($srcDocNos)),
+            'doc_no'    => $docNo,
+            'doc_type'  => Doc::TYPE_PO,
+            'branch_id' => $bucketBranch,
+            'lines'     => count($bucket),
+            'amount'    => number_format($amountSum, 2, '.', ''),
         ];
+        if ($srcDocNos !== []) {
+            // 직접 줄만으로 만든 발주서에는 출처 요청이 **없다** — 빈 칸을 남기지 않는다 (F-61).
+            $detail['src_doc_no'] = implode(',', array_keys($srcDocNos));
+        }
         if ($split) {
             // 나눠 달라고 한 저장에만 붙인다 — `split` 없는 요청의 감사 행은 예전 그대로다.
             $detail['split_count'] = $splitCount;
@@ -365,7 +548,10 @@ try {
             'doc_no'      => $docNo,
             'vendor_id'   => $vendorId,
             'vendor_name' => Doc::vendorName($db, $vendorId),
-            'line_count'  => count($bucket),
+            // F-61 — 어느 장소로 받는 장인지. 머리값을 비우고 저장했을 때 화면·시험이
+            // 「요청서와 같은 창고로 갔는가」 를 눈으로 확인할 수 있어야 한다.
+            'to_location_id' => $bucketLoc,
+            'line_count'     => count($bucket),
         ];
     }
     $db->commit();

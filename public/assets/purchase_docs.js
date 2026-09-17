@@ -203,8 +203,6 @@
 
   function initPr() {
     var lines = [];          // [{item_id, code, name, spec, unit, vendor_name, price_in, qty, remark}]
-    var picked = {};         // 품목 찾기에서 고른 것 (item_id → {row, qty})
-    var pickPage = 1;
     var docPage = 1;
     var recoChosen = {};
 
@@ -305,87 +303,19 @@
       });
     }
 
-    /* ── 품목 찾기 모달 ─────────────────────────────────── */
-    function runPick() {
-      var params = '?page=' + pickPage;
-      var q = $('pick-q').value.trim();
-      if (q !== '') { params += '&q=' + encodeURIComponent(q); }
-      var vendor = $('pick-vendor').value;
-      if (vendor !== '') { params += '&vendor=' + encodeURIComponent(vendor); }
-
-      request('GET', '/api/purchase/items' + params).then(function (res) {
-        if (!res) { return; }
-        if (!res.ok) { say(errorMessage(res.data)); return; }
-        var body = $('pick-body');
-        clear(body);
-        var items = Array.isArray(res.data.items) ? res.data.items : [];
-        items.forEach(function (row) {
-          var tr = el('tr');
-          var checkTd = el('td');
-          var check = document.createElement('input');
-          check.type = 'checkbox';
-          check.checked = Object.prototype.hasOwnProperty.call(picked, String(row.id));
-          checkTd.appendChild(check);
-          tr.appendChild(checkTd);
-
-          cell(tr, row.code);
-          cell(tr, row.name + (row.spec ? ' · ' + row.spec : ''));
-          cell(tr, dash(row.vendor_name));
-          cell(tr, money(row.price_in), 'num');
-
-          var qtyTd = el('td', 'num');
-          var qtyInput = document.createElement('input');
-          qtyInput.type = 'number';
-          qtyInput.min = '0.001';
-          qtyInput.step = '0.001';
-          qtyInput.value = picked[String(row.id)] ? picked[String(row.id)].qty : '1';
-          qtyTd.appendChild(qtyInput);
-          tr.appendChild(qtyTd);
-
-          function sync() {
-            if (check.checked) {
-              picked[String(row.id)] = {
-                row: {
-                  item_id: row.id, code: row.code, name: row.name, spec: row.spec,
-                  unit: row.unit, vendor_name: row.vendor_name, price_in: row.price_in
-                },
-                qty: qtyInput.value
-              };
-            } else {
-              delete picked[String(row.id)];
-            }
-            setText($('pick-info'), '전체 ' + res.data.total + '건 · '
-              + pickPage + '쪽 · 고른 품목 ' + Object.keys(picked).length + '건');
-          }
-          check.addEventListener('change', sync);
-          qtyInput.addEventListener('input', function () { if (check.checked) { sync(); } });
-
-          body.appendChild(tr);
-        });
-        setText($('pick-info'), '전체 ' + res.data.total + '건 · ' + pickPage + '쪽 · 고른 품목 '
-          + Object.keys(picked).length + '건');
-      });
-    }
-
-    $('pr-pick').addEventListener('click', function () {
-      pickPage = 1;
-      picked = {};
-      openModal('pick-modal');
-      runPick();
+    /* ── 품목 찾기 모달 ───────────────────────────────────
+     * F-61 — 창을 그리고 다루는 코드는 이제 `PurchaseUI.itemPicker` **한 벌**이다
+     * (발주서 화면이 같은 창을 연다). 이 화면이 넘기는 것은 「담았을 때 무엇을 할까」뿐이다.
+     */
+    var picker = UI.itemPicker({
+      request: request,
+      onAdd: function (chosen) {
+        chosen.forEach(function (one) { addItem(one.row, one.qty); });
+        renderLines();
+      }
     });
-    $('pick-search').addEventListener('click', function () { pickPage = 1; runPick(); });
-    $('pick-prev').addEventListener('click', function () {
-      if (pickPage > 1) { pickPage -= 1; runPick(); }
-    });
-    $('pick-next').addEventListener('click', function () { pickPage += 1; runPick(); });
-    $('pick-add').addEventListener('click', function () {
-      Object.keys(picked).forEach(function (key) {
-        addItem(picked[key].row, picked[key].qty);
-      });
-      picked = {};
-      renderLines();
-      closeModal('pick-modal');
-    });
+
+    $('pr-pick').addEventListener('click', picker.open);
 
     /* ── 추천 · 내 리스트 모달 ──────────────────────────── */
     function runReco() {
@@ -685,11 +615,37 @@
    * ══════════════════════════════════════════════════════ */
 
   function initPo() {
-    var lines = [];        // [{src_line_id, code, name, ..., remaining, qty}]
+    /*
+     * 담은 줄 — F-61 부터 **세 갈래**다 (`source`):
+     *   'request'  발주요청에서 불러온 줄 (`src_line_id`, 잔량이 있다)
+     *   'direct'   품목 찾기로 바로 담은 줄 (`item_id`)
+     *   'suggest'  부족 산출에서 담은 줄 (`item_id` — 서버에는 'direct' 와 같은 줄이다)
+     * 뒤 둘은 요청 잔량이 없으므로 잔량 칸이 「—」 다.
+     */
+    var lines = [];        // [{source, src_line_id|item_id, code, name, …, location_id, qty}]
     var groups = [];       // 묶는 기준(누른 순서)
     var docPage = 1;
     var openDocId = null;
     var openSentAt = null;
+
+    /**
+     * 이 줄이 실제로 들어갈 **입고 장소** — 머리값이 있으면 그것, 없으면 줄이 들고 온 장소다.
+     * 서버(`purchase_po_create.php`)의 규칙과 같은 문장이고, 화면은 그것을 **보여만** 준다.
+     */
+    function lineLocation(line) {
+      var head = $('po-location');
+      if (head && head.value !== '') {
+        return {
+          id: Number(head.value),
+          name: head.options[head.selectedIndex] ? head.options[head.selectedIndex].text : ''
+        };
+      }
+      if (line.location_id === null || line.location_id === undefined) { return null; }
+      return { id: line.location_id, name: line.location_name };
+    }
+
+    /** 출처 칸 — 요청 줄은 PR 번호(+요청자), 직접 줄은 「직접」, 부족 산출은 「부족 산출」 */
+    var SOURCE_LABEL = { direct: '직접', suggest: '부족 산출' };
 
     function renderLines() {
       var body = $('po-line-body');
@@ -705,14 +661,27 @@
         /* 거래처 — 서버가 준 값을 그대로 보여 준다. 저장하면 이 값으로 전표가 나뉜다 (F-60) */
         cell(tr, dash(line.vendor_name));
 
-        /* 출처 요청 — 전표번호는 mono, 잔량이 남아 있으면 주의(warn) 배지 */
+        /* 입고 장소 — 머리값이 있으면 그것, 없으면 줄의 장소 (F-61 ②) */
+        var where = lineLocation(line);
+        var locTd = cell(tr, where ? dash(where.name) : '—');
+        if (!where) { locTd.className = 'p-short'; }
+
+        /* 출처 — 요청 줄은 PR 번호(+요청자), 직접·부족 산출은 그 말 그대로 (F-61 ⑤) */
         var srcTd = el('td');
-        srcTd.appendChild(el('span', 'mono', line.doc_no));
-        srcTd.appendChild(el('span', 'p-sub', dash(line.manager_name)));
+        if (line.source === 'request') {
+          srcTd.appendChild(el('span', 'mono', line.doc_no));
+          srcTd.appendChild(el('span', 'p-sub', dash(line.manager_name)));
+        } else {
+          srcTd.appendChild(badge(SOURCE_LABEL[line.source] || '직접', 'badge--accent'));
+          if (line.note) { srcTd.appendChild(el('span', 'p-sub', line.note)); }
+        }
         tr.appendChild(srcTd);
 
         var remainTd = el('td', 'num mono');
-        if (Number(line.remaining || 0) > 0) {
+        if (line.source !== 'request') {
+          /* 직접 줄에는 되짚을 요청 잔량이 **없다** — 0 이 아니라 「없음」 이다 */
+          setText(remainTd, '—');
+        } else if (Number(line.remaining || 0) > 0) {
           remainTd.appendChild(badge(qtyText(line.remaining), 'badge--warn'));
         } else {
           setText(remainTd, qtyText(line.remaining));
@@ -766,21 +735,31 @@
     }
 
     /**
-     * 저장 단추 옆 **분할 미리보기** (F-60 ④).
-     * 담은 줄의 `vendor_id` 는 불러오기 응답이 준 값이고, 화면은 그것으로 **세어 보여만** 준다 —
-     * 실제로 나누는 판정은 서버가 저장할 때 다시 한다.
+     * 저장 단추 옆 **분할 미리보기** (F-60 ④ · F-61 ⑤).
+     * 담은 줄의 `vendor_id` 는 서버가 준 값이고, 장소는 머리값 또는 줄의 장소다.
+     * 화면은 그 둘로 **세어 보여만** 준다 — 실제로 나누는 판정은 서버가 저장할 때 다시 한다.
+     * 나누는 열쇠가 F-61 에서 (거래처, 입고 장소)로 넓어졌으므로 미리보기도 두 축을 센다.
      * 머리 거래처 칸도 여기서 함께 맞춘다: 섞여 있으면 비우고 잠근다.
      */
     function renderSplitPreview() {
       var order = [];
-      var byVendor = {};
+      var byKey = {};
+      var vendorOrder = [];
       lines.forEach(function (line) {
-        var key = String(line.vendor_id === undefined || line.vendor_id === null ? '' : line.vendor_id);
-        if (!Object.prototype.hasOwnProperty.call(byVendor, key)) {
-          byVendor[key] = { name: line.vendor_name, count: 0 };
+        var vendor = String(line.vendor_id === undefined || line.vendor_id === null ? '' : line.vendor_id);
+        var where = lineLocation(line);
+        var key = vendor + ':' + String(where ? where.id : '');
+        if (!Object.prototype.hasOwnProperty.call(byKey, key)) {
+          byKey[key] = {
+            vendor: vendor,
+            vendor_name: line.vendor_name,
+            location_name: where ? where.name : null,
+            count: 0
+          };
           order.push(key);
         }
-        byVendor[key].count += 1;
+        byKey[key].count += 1;
+        if (vendorOrder.indexOf(vendor) < 0) { vendorOrder.push(vendor); }
       });
 
       var preview = $('po-split-preview');
@@ -794,19 +773,38 @@
         return;
       }
 
+      /*
+       * 장소가 **한 곳뿐이면** 장소를 말하지 않는다 — 「거래처별 N장」(F-60 문장 그대로).
+       * 장소가 갈리는 순간에만 두 축을 말한다 — 「거래처×입고장소별 N장」(F-61 ⑤).
+       * 같은 값을 두 번 읽게 하지 않는 것이 이 갈래의 이유다.
+       */
+      var places = {};
+      order.forEach(function (key) { places[String(byKey[key].location_name)] = true; });
+      var manyPlaces = Object.keys(places).length > 1;
+
       var parts = order.map(function (key) {
-        return dash(byVendor[key].name) + '(' + byVendor[key].count + '줄)';
+        var group = byKey[key];
+        var who = dash(group.vendor_name);
+        if (manyPlaces) { who += '·' + dash(group.location_name); }
+        return who + '(' + group.count + '줄)';
       });
       if (order.length === 1) {
-        setText(preview, dash(byVendor[order[0]].name) + ' · 1장');
+        setText(preview, dash(byKey[order[0]].vendor_name)
+          + (manyPlaces ? '·' + dash(byKey[order[0]].location_name) : '') + ' · 1장');
+      } else if (manyPlaces) {
+        setText(preview, '저장하면 거래처×입고장소별 ' + order.length + '장: ' + parts.join(' · '));
+      } else {
+        setText(preview, '저장하면 거래처별 ' + order.length + '장: ' + parts.join(' · '));
+      }
+
+      if (vendorOrder.length === 1) {
         vendorSelect.disabled = false;
         vendorHelp.hidden = true;
         setText(vendorHelp, '');
         /* 거래처가 하나뿐이면 머리 칸을 그 값으로 미리 채운다 (기존 동작 유지) */
-        if (vendorSelect.value === '' && order[0] !== '') { vendorSelect.value = order[0]; }
+        if (vendorSelect.value === '' && vendorOrder[0] !== '') { vendorSelect.value = vendorOrder[0]; }
         return;
       }
-      setText(preview, '저장하면 거래처별 ' + order.length + '장: ' + parts.join(' · '));
       vendorSelect.value = '';
       vendorSelect.disabled = true;
       setText(vendorHelp, '거래처별로 나눠 저장됩니다');
@@ -834,6 +832,7 @@
      */
     function pickedFrom(line, qty) {
       return {
+        source: 'request',
         src_line_id: line.line_id,
         code: line.code,
         name: line.name,
@@ -844,6 +843,10 @@
         remaining: line.remaining,
         vendor_id: line.doc_vendor_id === null ? line.item_vendor_id : line.doc_vendor_id,
         vendor_name: line.doc_vendor_id === null ? line.item_vendor_name : line.doc_vendor_name,
+        /* F-61 ② — 요청서의 창고를 그대로 들고 온다. 서버도 같은 값을 **자기가 다시** 읽는다
+           (화면이 보낸 장소를 믿지 않는다 — 요청 줄의 장소는 그 요청 전표가 정한다). */
+        location_id: line.location_id,
+        location_name: line.location_name,
         qty: qty
       };
     }
@@ -1075,23 +1078,243 @@
       closeModal('load-modal');
     });
 
+    /* ══ 직접 입력 — 품목 찾기 (F-61 ③) ══════════════════
+     * 창을 그리는 코드는 발주요청 화면과 **한 벌**이다 (`PurchaseUI.itemPicker`).
+     * 발주서에만 있는 것은 「입고 장소」 칸 하나다: 머리 장소를 비워 두었으면 여기서 고른다.
+     */
+    function pickLocationNeeded() {
+      return $('po-location').value === '';
+    }
+
+    function syncPickLocation() {
+      var field = $('pick-location-field');
+      if (field) { field.hidden = !pickLocationNeeded(); }
+    }
+
+    function chosenLocation(select) {
+      if (!select || select.value === '') { return null; }
+      return {
+        id: Number(select.value),
+        name: select.options[select.selectedIndex] ? select.options[select.selectedIndex].text : ''
+      };
+    }
+
+    /** 직접 줄 하나를 담는다 (품목 찾기·부족 산출이 같은 함수를 쓴다) */
+    function addDirect(row, qty, where, source, note) {
+      var exists = null;
+      lines.forEach(function (line) {
+        if (line.source !== 'request' && String(line.item_id) === String(row.item_id)
+            && String(line.location_id) === String(where ? where.id : '')) {
+          exists = line;
+        }
+      });
+      if (exists) {
+        exists.qty = String(Number(exists.qty || 0) + Number(qty || 1));
+        return;
+      }
+      lines.push({
+        source: source,
+        item_id: row.item_id,
+        code: row.code,
+        name: row.name,
+        spec: row.spec || null,
+        unit: row.unit || null,
+        vendor_id: row.vendor_id === undefined ? null : row.vendor_id,
+        vendor_name: row.vendor_name || null,
+        price_in: row.price_in === undefined ? null : row.price_in,
+        qty: String(qty || 1),
+        location_id: where ? where.id : null,
+        location_name: where ? where.name : null,
+        note: note || null
+      });
+    }
+
+    var picker = UI.itemPicker({
+      request: request,
+      guard: function () {
+        if (pickLocationNeeded() && $('pick-location').value === '') {
+          return '머리 「입고 장소」가 비어 있습니다 — 창에서 장소를 골라 주세요.';
+        }
+        return '';
+      },
+      onAdd: function (chosen) {
+        var where = pickLocationNeeded()
+          ? chosenLocation($('pick-location'))
+          : chosenLocation($('po-location'));
+        chosen.forEach(function (one) { addDirect(one.row, one.qty, where, 'direct', null); });
+        renderLines();
+      }
+    });
+
+    $('po-pick').addEventListener('click', function () {
+      syncPickLocation();
+      picker.open();
+    });
+
+    /* ══ 부족 산출 (F-61 ④ · F-36) ════════════════════════
+     * 자료는 **기존 창구** `GET /api/purchase/suggest` 하나뿐이다. 제안 수량은 서버가
+     * 계산한 값(`suggest_qty`)이고, 화면은 그것을 기본값으로 보여 준 뒤 사람이 고친 수량을
+     * 직접 줄로 담는다. 화면이 식을 다시 계산하지 않는다 — 응답의 `formula` 를 그대로 적는다.
+     */
+    var shortPicked = {};
+
+    function syncShortInfo() {
+      setText($('short-info'), '고른 품목 ' + Object.keys(shortPicked).length + '건');
+    }
+
+    function runShort() {
+      var loc = $('short-location').value;
+      if (loc === '') { say('장소를 골라 주세요.'); return; }
+      var params = '?location=' + encodeURIComponent(loc)
+        + '&only_short=' + ($('short-only').checked ? '1' : '0');
+      if ($('short-q').value.trim() !== '') {
+        params += '&q=' + encodeURIComponent($('short-q').value.trim());
+      }
+      request('GET', '/api/purchase/suggest' + params).then(function (res) {
+        if (!res) { return; }
+        if (!res.ok) { say(errorMessage(res.data)); return; }
+        var body = $('short-body');
+        clear(body);
+        shortPicked = {};
+        var items = Array.isArray(res.data.items) ? res.data.items : [];
+        items.forEach(function (row) {
+          var tr = el('tr');
+          var checkTd = el('td', 'p-col-check');
+          var check = document.createElement('input');
+          check.type = 'checkbox';
+          checkTd.appendChild(check);
+          tr.appendChild(checkTd);
+
+          var nameTd = cell(tr, row.name, 'p-name p-cell-wide');
+          nameTd.appendChild(el('span', 'p-sub mono', row.code
+            + (row.spec ? ' · ' + row.spec : '')));
+          cell(tr, row.par_qty === null ? '—' : qtyText(row.par_qty), 'num mono');
+          cell(tr, qtyText(row.on_hand), 'num mono');
+          cell(tr, qtyText(row.incoming), 'num mono');
+          var sugTd = el('td', 'num mono');
+          sugTd.appendChild(badge(qtyText(row.suggest_qty), 'badge--accent'));
+          tr.appendChild(sugTd);
+
+          var qtyTd = el('td', 'num');
+          var qtyInput = document.createElement('input');
+          qtyInput.type = 'number';
+          qtyInput.min = '0.001';
+          qtyInput.step = '0.001';
+          qtyInput.className = 'p-in p-in--qty';
+          qtyInput.value = qtyText(row.suggest_qty);
+          qtyTd.appendChild(qtyInput);
+          tr.appendChild(qtyTd);
+
+          function sync() {
+            if (check.checked) {
+              shortPicked[String(row.item_id)] = { row: row, qty: qtyInput.value };
+            } else {
+              delete shortPicked[String(row.item_id)];
+            }
+            syncShortInfo();
+          }
+          check.addEventListener('change', sync);
+          qtyInput.addEventListener('input', function () { if (check.checked) { sync(); } });
+
+          body.appendChild(tr);
+        });
+        $('short-empty').hidden = items.length > 0;
+        /* 식은 서버가 준 문장 그대로다 — 화면이 고쳐 적으면 두 곳이 갈린다 */
+        setText($('short-formula'), res.data.formula || '');
+        syncShortInfo();
+      });
+    }
+
+    $('po-short').addEventListener('click', function () {
+      shortPicked = {};
+      clear($('short-body'));
+      setText($('short-formula'), '');
+      $('short-empty').hidden = true;
+      /* 머리 장소를 이미 골랐으면 그 장소를 기본으로 (사람이 바꿀 수 있다) */
+      if ($('po-location').value !== '') { $('short-location').value = $('po-location').value; }
+      syncShortInfo();
+      openModal('short-modal');
+      if ($('short-location').value !== '') { runShort(); }
+    });
+    $('short-search').addEventListener('click', runShort);
+    $('short-location').addEventListener('change', runShort);
+    $('short-only').addEventListener('change', runShort);
+    $('short-add').addEventListener('click', function () {
+      var where = chosenLocation($('short-location'));
+      if (!where) { say('장소를 골라 주세요.'); return; }
+      Object.keys(shortPicked).forEach(function (key) {
+        var one = shortPicked[key];
+        addDirect({
+          item_id: one.row.item_id,
+          code: one.row.code,
+          name: one.row.name,
+          spec: one.row.spec,
+          unit: one.row.unit,
+          vendor_id: one.row.vendor_id,
+          vendor_name: one.row.vendor_name,
+          price_in: null
+        }, one.qty, where, 'suggest', '제안 ' + qtyText(one.row.suggest_qty));
+      });
+      shortPicked = {};
+      renderLines();
+      closeModal('short-modal');
+    });
+
+    /* ══ 현황 탭 — 미입고. 입고·재고 화면과 **같은 함수**를 부른다 (F-45 · F-61 ①) ══ */
+    function loadStatus() {
+      UI.renderBackorder($('po-backorder'), {
+        request: request,
+        kpis: $('po-bo-kpis'),
+        empty: $('po-bo-empty'),
+        vendor: $('po-bo-vendor'),
+        overdue: $('po-bo-overdue')
+      });
+    }
+    $('po-bo-run').addEventListener('click', loadStatus);
+    $('po-bo-vendor').addEventListener('change', loadStatus);
+    $('po-bo-overdue').addEventListener('change', loadStatus);
+
+    /* 머리 장소를 바꾸면 줄의 입고 장소·미리보기·찾기 창이 함께 따라온다 */
+    $('po-location').addEventListener('change', function () {
+      syncPickLocation();
+      renderLines();
+    });
+
     /* ── 저장 ──────────────────────────────────────────── */
     $('po-input').addEventListener('submit', function (event) {
       event.preventDefault();
-      if (lines.length === 0) { say('발주요청에서 줄을 담아 주세요.'); return; }
-      if ($('po-location').value === '') { say('입고 장소를 골라 주세요.'); return; }
+      if (lines.length === 0) { say('발주요청 불러오기·품목 찾기·부족 산출로 줄을 담아 주세요.'); return; }
+      var missing = 0;
+      lines.forEach(function (line) { if (!lineLocation(line)) { missing += 1; } });
+      if (missing > 0) {
+        say('입고 장소를 정할 수 없는 줄이 ' + missing + '개 있습니다 — 머리 「입고 장소」를 고르세요.');
+        return;
+      }
       var payload = {
         doc_date: $('po-date').value,
-        to_location_id: Number($('po-location').value),
-        // F-60 — 화면은 **언제나** 나눠 달라고 한다. 거래처가 하나면 1장이 나온다.
+        // F-60 — 화면은 **언제나** 나눠 달라고 한다. 거래처·장소가 하나씩이면 1장이 나온다.
         split: true,
         lines: []
       };
+      /* F-61 ② — 머리 장소가 비어 있으면 **키 자체를 싣지 않는다**. 그래야 서버가
+         「줄에서 자동」 으로 읽는다(빈 값을 보내면 형식 오류다). */
+      if ($('po-location').value !== '') {
+        payload.to_location_id = Number($('po-location').value);
+      }
       if ($('po-vendor').value !== '') { payload.vendor_id = Number($('po-vendor').value); }
       if ($('po-memo').value !== '') { payload.memo = $('po-memo').value; }
       lines.forEach(function (line) {
-        // 여기도 **수량만** 보낸다 (R-66). 거래처는 서버가 줄에서 다시 판정한다.
-        payload.lines.push({ src_line_id: line.src_line_id, qty: String(line.qty) });
+        // 여기도 **수량만** 보낸다 (R-66). 거래처·단가는 서버가 줄에서 다시 판정한다.
+        if (line.source === 'request') {
+          payload.lines.push({ src_line_id: line.src_line_id, qty: String(line.qty) });
+          return;
+        }
+        var one = { item_id: line.item_id, qty: String(line.qty) };
+        /* 머리 장소가 있으면 그것이 우선이므로 줄에는 적지 않는다 (서버가 400 으로 되돌린다) */
+        if ($('po-location').value === '' && line.location_id !== null) {
+          one.location_id = line.location_id;
+        }
+        payload.lines.push(one);
       });
       request('POST', '/api/purchase/po', payload).then(function (res) {
         if (!res) { return; }
@@ -1255,14 +1478,22 @@
 
     initTabs('po-tabs', {
       input: { panel: 'po-input' },
-      docs: { panel: 'po-docs', onShow: loadDocs }
+      docs: { panel: 'po-docs', onShow: loadDocs },
+      /* 현황 = 미입고. 입고 화면 현황 탭과 **같은 창구·같은 렌더러**다 (F-61 ①) */
+      status: { panel: 'po-status', onShow: loadStatus }
     });
 
     $('po-date').value = today();
     renderLines();
     Promise.all([loadMaster('locations'), loadMaster('vendors')]).then(function (all) {
-      fillSelect($('po-location'), all[0], 'id', 'name', '— 입고 장소 —');
+      /* 머리 장소의 첫 항목이 기본값이다 — 비워 두면 줄이 장소를 정한다 (F-61 ②) */
+      fillSelect($('po-location'), all[0], 'id', 'name', '— 줄에서 자동 —');
       fillSelect($('po-vendor'), all[1], 'id', 'name', '— 줄에서 자동 —');
+      fillSelect($('pick-location'), all[0], 'id', 'name', '— 입고 장소 —');
+      fillSelect($('short-location'), all[0], 'id', 'name', '— 장소 —');
+      fillSelect($('pick-vendor'), all[1], 'id', 'name', '— 전체 —');
+      fillSelect($('po-bo-vendor'), all[1], 'id', 'name', '— 전체 —');
+      syncPickLocation();
     });
   }
 
