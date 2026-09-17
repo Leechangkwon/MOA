@@ -10,6 +10,15 @@ declare(strict_types=1);
  *   { to_location_id?, vendor_id?, manager_id?, doc_date?, memo?, split?,
  *     lines: [ { src_line_id, qty, vendor_id? } | { item_id, qty, location_id?, vendor_id? } … ] }
  *
+ * ★ F-62 **발주서 담당자 · 3축 분할** (2026-09-17, ARCH 5.18 「발주서 담당자·3축 분할」,
+ *   완료 기준 T-74)
+ *   나누는 **열쇠가 (거래처, 입고 장소, 담당자)** 세 축이 된다. 담당자 판정은 장소와 같은
+ *   모양이다: 머리 `manager_id` 명시가 우선이고, 없으면 요청 줄은 **그 발주요청 전표의**
+ *   `manager_id`(아래 `$sqlSrcHead` 가 함께 읽는다), 직접 줄·부족 산출 줄은 로그인 사용자다.
+ *   묶음마다 기존 `Doc::managerOk` 를 지난다(새 판정·새 사유 코드 0). `split` 없는 옛 요청은
+ *   **머리 `??` 로그인 사용자 하나** 그대로다 — 묶음을 만들기 직전에 그 값으로 덮어써서
+ *   담당자 축이 옛 경로에 닿지 않게 한다(계약 불변).
+ *
  * ★ F-61 **줄이 정하는 입고 장소 · 직접 줄** (2026-09-17, ARCH 5.18 「발주서 세 갈래·장소 규칙」,
  *   완료 기준 T-73)
  *   ① **장소**: `split:true` 면 머리 `to_location_id` 는 **선택**이다. 없으면 줄이 정한다 —
@@ -240,6 +249,7 @@ $sqlSrcHead = <<<'SQL'
     SELECT l.id, l.doc_id, l.item_id, CAST(l.qty AS text) AS qty, l.status,
            d.doc_no, d.doc_type, d.status AS doc_status, d.closed_month,
            d.vendor_id AS doc_vendor_id, d.to_location_id AS doc_location_id,
+           d.manager_id AS doc_manager_id,
            i.vendor_id AS item_vendor_id, i.is_active AS item_active,
            CAST(i.price_in AS text) AS price_in
       FROM p_doc_lines l
@@ -339,6 +349,11 @@ try {
                 'want_qty'    => null,
                 'vendor_id'   => $vendorOfLine,
                 'location_id' => (int) $lineLoc,
+                /*
+                 * F-62 ② — 직접 줄의 담당자. 머리 명시가 우선이고, 없으면 **로그인 사용자**다:
+                 * 발주요청서가 없으니 물려받을 담당자가 없다(부족 산출 줄도 같은 갈래다).
+                 */
+                'manager_id'  => $mgrReq ?? (int) $user['id'],
             ];
             continue;
         }
@@ -397,6 +412,12 @@ try {
             // 위에서 **이미 판정한** 거래처를 줄에 적어 둔다 — 아래에서 다시 판정하지 않는다.
             'vendor_id'   => $vendorOfLine,
             'location_id' => (int) $lineLoc,
+            /*
+             * F-62 ② — 담당자. 머리 명시가 우선이고(거래처·장소와 **같은 규칙**), 없으면
+             * **이 줄이 온 발주요청 전표의 담당자**다. `p_docs.manager_id` 는 NOT NULL 이라
+             * 위 조회가 늘 값을 준다 — 「정할 수 없는 줄」 갈래가 없다.
+             */
+            'manager_id'  => $mgrReq ?? (int) $row['doc_manager_id'],
         ];
     }
 
@@ -412,6 +433,17 @@ try {
     }
 
     /*
+     * F-62 — `split` 이 아닌 요청의 담당자는 **옛 계약 하나**다: 머리 `manager_id` ?? 로그인
+     * 사용자. 위 ③ 이 줄마다 적어 둔 값을 여기서 그 하나로 덮어써서, 아래 묶음·머리·응답이
+     * 20단계와 **한 글자도 다르지 않게** 굴도록 한다(줄이 정하는 담당자는 split 의 기능이다).
+     */
+    if ($split !== true) {
+        foreach ($prepared as $i => $p) {
+            $prepared[$i]['manager_id'] = $managerId;
+        }
+    }
+
+    /*
      * 거래처별 묶음 — **담긴 순서 그대로**다. 위 ③ 에서 이미 판정해 줄에 적어 둔 값으로만
      * 가르므로 여기에는 새 판정이 한 줄도 없다. split 이 아니면 묶음은 언제나 하나이고
      * 아래 반복문은 한 바퀴만 돈다(20단계와 같은 코드가 같은 횟수만큼 돈다).
@@ -422,11 +454,15 @@ try {
     foreach ($prepared as $p) {
         // F-61 — 열쇠가 **(거래처, 입고 장소)** 로 넓어졌다. F-60 에서 장소가 하나뿐이던
         // 저장은 열쇠의 뒤 칸이 늘 같으므로 그때와 **같은 수의 묶음**이 나온다.
-        $key = (string) $p['vendor_id'] . ':' . (string) $p['location_id'];
+        // F-62 — 여기에 **담당자**가 더해져 열쇠가 세 축이 됐다. 담당자가 하나뿐인 저장은
+        // 뒤 칸이 늘 같으므로 F-61 과 **같은 수의 묶음**이 나온다(같은 방식의 확장이다).
+        $key = (string) $p['vendor_id'] . ':' . (string) $p['location_id']
+             . ':' . (string) $p['manager_id'];
         if (!isset($buckets[$key])) {
             $buckets[$key] = [
                 'vendor_id'   => $p['vendor_id'],
                 'location_id' => $p['location_id'],
+                'manager_id'  => $p['manager_id'],
                 'lines'       => [],
             ];
         }
@@ -439,6 +475,7 @@ try {
     foreach ($buckets as $group) {
         $vendorId  = (int) $group['vendor_id'];
         $bucketLoc = (int) $group['location_id'];
+        $bucketMgr = (int) $group['manager_id'];
         $bucket    = $group['lines'];
         if ($vendorReq !== null && $vendorReq !== $vendorId) {
             $db->rollback();
@@ -466,6 +503,24 @@ try {
             $reject('not_in_scope');
         }
 
+        /*
+         * 묶음의 담당자 — **기존 함수** `Doc::managerOk` 하나를 지난다 (F-62 ③, 새 판정 0).
+         * 요청 전표가 이미 통과한 값이지만 그 사이 계정이 중단될 수 있으므로 묶음마다 본다.
+         * 실패는 기존 사유 `bad_reference` 다(새 사유 코드 0).
+         *
+         * ★ 다시 보는 것은 **물려받은 값**뿐이다. 머리 명시(`$mgrReq`)는 위 머리 검사에서
+         *   이미 같은 함수를 지났고, 로그인 사용자는 20단계부터 이 경로의 기본값이라 검사
+         *   대상이 아니었다 — 그 둘에 검사를 새로 붙이면 모듈 역할 없는 Admin(라우트 정책
+         *   `purchase.buy.write` 는 통과한다)의 저장이 갑자기 400 이 되어, `split` 없는 옛
+         *   요청의 거동이 바뀐다. F-62 는 담당자 축을 **넓히는** 일이고 좁히는 일이 아니다.
+         */
+        if ($bucketMgr !== $mgrReq && $bucketMgr !== (int) $user['id']
+            && !Doc::managerOk($db, $bucketMgr)
+        ) {
+            $db->rollback();
+            $reject('bad_reference');
+        }
+
         $docNo = Doc::nextDocNo($db, Doc::TYPE_PO);
         $docId = Doc::insertDoc($db, [
             'doc_type'       => Doc::TYPE_PO,
@@ -474,7 +529,8 @@ try {
             'branch_id'      => $bucketBranch,
             'vendor_id'      => $vendorId,
             'to_location_id' => $bucketLoc,
-            'manager_id'     => $managerId,
+            // F-62 — 묶음의 담당자. `split` 이 아닌 요청에서는 위에서 덮어쓴 $managerId 다.
+            'manager_id'     => $bucketMgr,
             'status'         => Doc::ST_IN_PROGRESS,
             'memo'           => $memo,
             'split_from_id'  => null,
@@ -551,6 +607,9 @@ try {
             // F-61 — 어느 장소로 받는 장인지. 머리값을 비우고 저장했을 때 화면·시험이
             // 「요청서와 같은 창고로 갔는가」 를 눈으로 확인할 수 있어야 한다.
             'to_location_id' => $bucketLoc,
+            // F-62 — 어느 담당자의 장인지. **번호만** 낸다(이름을 내려면 새 조회가 필요하고,
+            // 화면은 담은 줄에서 이미 담당자 이름을 들고 있다).
+            'manager_id'     => $bucketMgr,
             'line_count'     => count($bucket),
         ];
     }

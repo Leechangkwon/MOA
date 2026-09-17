@@ -487,7 +487,14 @@
           + ' · 수량 0 인 줄은 보내지 않습니다');
     }
 
-    function addLine(order, line) {
+    /**
+     * 입고 줄 하나를 담는다. **같은 발주서 줄은 한 번만** 들어간다(중복 방지 그대로).
+     * 줄 객체의 칸 이름은 21단계 그대로다 — 입고 확정 본문이 그것을 쓴다.
+     *
+     * F-63: 셋째 인자는 불러오기 창의 「담을 수량」이다. 없으면 21단계와 같이 미입고
+     * 잔량을 그대로 넣는다.
+     */
+    function addLine(order, line, qtyValue) {
       var exists = false;
       lines.forEach(function (l) { if (l.po_line_id === line.po_line_id) { exists = true; } });
       if (exists) { return; }
@@ -499,7 +506,8 @@
         ordered: line.ordered_qty,
         received: line.received_qty,
         remaining: line.remaining,
-        qty: line.remaining,
+        qty: (qtyValue === undefined || qtyValue === null || qtyValue === '')
+          ? line.remaining : qtyValue,
         lot: '',
         exp: '',
         remark: ''
@@ -507,78 +515,88 @@
       renderLines();
     }
 
-    function loadOrders() {
-      var params = '';
-      var joiner = '?';
-      if ($('gr-vendor').value !== '') {
-        params += joiner + 'vendor=' + encodeURIComponent($('gr-vendor').value);
-        joiner = '&';
-      }
-      if ($('gr-overdue').checked) { params += joiner + 'overdue=1'; joiner = '&'; }
-      if ($('gr-q').value.trim() !== '') {
-        params += joiner + 'q=' + encodeURIComponent($('gr-q').value.trim());
-      }
+    /* ══ 발주서 불러오기 창 (F-63) ══════════════════════════
+     *
+     * 21단계에는 이 자리에 `loadOrders()` 가 있었다 — 화면에 들어갈 때마다 자동으로
+     * `GET /api/purchase/gr/load` 를 부르고, 발주서별 고정 묶음을 「입력」 탭 맨 위에
+     * 펼쳐 그렸다. 이제 **단추 뒤 창**이고, 트리·묶음 체크·담을 수량을 그리는 코드는
+     * 발주서 화면과 **한 벌**(`UI.loadPicker`)이다. 이 파일에 남은 것은 이 화면만의
+     * 두 가지 — **줄 표의 열**과 **담은 뒤 무엇을 만드는지**다.
+     */
 
-      request('GET', '/api/purchase/gr/load' + params).then(function (res) {
-        if (!res) { return; }
-        if (!res.ok) { say(errorMessage(res.data)); return; }
-        var host = $('gr-orders');
-        clear(host);
-        var orders = Array.isArray(res.data.orders) ? res.data.orders : [];
-        orders.forEach(function (order) {
-          var box = el('div', 'p-group');
-          var head = el('div', 'p-group__head');
-          head.appendChild(el('span', 'mono', order.po_doc_no));
-          head.appendChild(el('span', 'p-group__meta',
-            dash(order.vendor_name) + ' · ' + dash(order.location_name)
-              + ' · 보낸 지 ' + order.days_elapsed + '일'));
-          head.appendChild(button('줄 전부 담기', 'btn btn--quiet btn--small', function () {
-            order.lines.forEach(function (line) { addLine(order, line); });
-          }));
-          box.appendChild(head);
+    /** 창 안 줄 표의 열 — 체크 칸과 「담을 수량」 칸 사이 */
+    function grLoadCells(tr, line) {
+      cell(tr, line.code, 'mono');
+      var nameTd = cell(tr, line.name);
+      nameTd.className = 'p-name p-cell-wide';
+      var sub = line.spec ? String(line.spec) : '';
+      if (!line.stock_managed) { sub += (sub === '' ? '' : ' · ') + '재고관리 안 함'; }
+      if (sub !== '') { nameTd.appendChild(el('span', 'p-sub', sub)); }
 
-          var wrap = el('div', 'table-wrap');
-          var table = el('table', 'files');
-          var thead = el('thead');
-          var hrow = el('tr');
-          ['품목', '발주', '기입고', '미입고', '담기'].forEach(function (label, index) {
-            var th = el('th', index >= 1 && index <= 3 ? 'num' : null, label);
-            th.setAttribute('scope', 'col');
-            if (index === 4) {
-              clear(th);
-              th.appendChild(el('span', 'sr-only', label));
-            }
-            hrow.appendChild(th);
-          });
-          thead.appendChild(hrow);
-          table.appendChild(thead);
+      var srcTd = el('td');
+      srcTd.appendChild(el('span', 'mono', line.po_doc_no));
+      srcTd.appendChild(el('span', 'p-sub',
+        dash(line.manager_name) + ' · 보낸 지 ' + line.days_elapsed + '일'));
+      tr.appendChild(srcTd);
 
-          var tbody = el('tbody');
-          order.lines.forEach(function (line) {
-            var tr = el('tr');
-            var nameTd = cell(tr, line.name, 'p-name');
-            nameTd.appendChild(el('span', 'p-sub mono',
-              line.code + (line.stock_managed ? '' : ' · 재고관리 안 함')));
-            cell(tr, qty(line.ordered_qty), 'num mono');
-            cell(tr, qty(line.received_qty), 'num mono');
-            var remTd = el('td', 'num mono');
-            remTd.appendChild(badge(qty(line.remaining), 'badge--warn'));
-            tr.appendChild(remTd);
-            var actTd = el('td');
-            actTd.appendChild(button('담기', 'btn btn--quiet btn--small', function () {
-              addLine(order, line);
-            }));
-            tr.appendChild(actTd);
-            tbody.appendChild(tr);
-          });
-          table.appendChild(tbody);
-          wrap.appendChild(table);
-          box.appendChild(wrap);
-          host.appendChild(box);
-        });
-        $('gr-load-empty').hidden = orders.length > 0;
-      });
+      cell(tr, qty(line.ordered_qty), 'num mono');
+      cell(tr, qty(line.received_qty), 'num mono');
+      var remTd = el('td', 'num mono');
+      remTd.appendChild(badge(qty(line.remaining), 'badge--warn'));
+      tr.appendChild(remTd);
     }
+
+    var grLoad = UI.loadPicker({
+      request: request,
+      path: '/api/purchase/gr/load',
+      nodesKey: 'nodes',
+      ids: {
+        modal: 'gr-load-modal',
+        groups: 'grload-groups',
+        tree: 'grload-tree',
+        treeEmpty: 'grload-tree-empty',
+        linesTitle: 'grload-lines-title',
+        body: 'grload-lines-body',
+        linesEmpty: 'grload-lines-empty',
+        info: 'grload-info',
+        run: 'grload-run',
+        add: 'grload-add'
+      },
+      /* 조회는 창 안 「불러오기」를 눌러야 돈다 — 창을 여는 것만으로는 한 번도 부르지
+         않는다 (사용자 결정 2026-09-17, PRD 12.2 T-75 (f)). */
+      runOnOpen: false,
+      /* 기본은 **전표(발주서)** 한 층이다 — 사용자 요청이 「발주서에서 발주요청 불러오듯이
+         **전표** 불러오도록」 이었다(PRD F-63). 다른 기준으로 묶고 싶으면 칩을 누른다. */
+      groups: ['doc'],
+      /* 왼쪽 마디를 「묶음」 이 아니라 「발주서」 라고 부른다 — 기본 층이 전표 하나다.
+         조사가 달라 문장을 조립하지 않고 통째로 넘긴다. */
+      nodeWord: '발주서',
+      pickText: '왼쪽에서 발주서를 고르세요.',
+      emptyText: '이 발주서에는 줄이 없습니다.',
+      lineKey: function (line) { return line.po_line_id; },
+      params: function () {
+        var out = '';
+        if ($('gr-vendor').value !== '') {
+          out += '&vendor=' + encodeURIComponent($('gr-vendor').value);
+        }
+        if ($('gr-overdue').checked) { out += '&overdue=1'; }
+        if ($('gr-q').value.trim() !== '') {
+          out += '&q=' + encodeURIComponent($('gr-q').value.trim());
+        }
+        return out;
+      },
+      cells: grLoadCells,
+      /* 담은 줄 — 서버가 준 줄을 그대로 들고 있는다. 발주서 번호도 **줄에** 실려 오므로
+         묶음 머리를 들고 다닐 필요가 없다(여러 전표를 한 번에 담을 수 있는 이유다). */
+      pickedFrom: function (line, qtyValue) {
+        return { line: line, qty: qtyValue };
+      },
+      onAdd: function (list) {
+        list.forEach(function (item) {
+          addLine({ po_doc_no: item.line.po_doc_no }, item.line, item.qty);
+        });
+      }
+    });
 
     function renderResult(doc) {
       lastDocId = doc.id;
@@ -625,7 +643,8 @@
         lines = [];
         renderLines();
         renderResult(res.data);
-        loadOrders();
+        /* F-63 — 21단계에는 여기서 불러오기 목록을 다시 읽었다(패널이 늘 펼쳐져 있었으므로).
+           이제 목록은 창 안에만 있고 창은 닫힌 상태라, 다시 열 때 조회한다. */
       });
     }
 
@@ -688,7 +707,7 @@
           if (!res) { return; }
           if (!res.ok) { say(errorMessage(res.data)); return; }
           say('입고 전표를 취소했습니다 (원장에 반대 부호 행 ' + res.data.moves + '행).');
-          loadOrders();
+          /* F-63 — 되돌아온 미입고는 불러오기 창을 **다시 열 때** 보인다(같은 이유). */
           if (typeof after === 'function') { after(res.data); }
         });
       });
@@ -797,10 +816,9 @@
     }
 
     $('gr-date').value = today();
-    $('gr-load-run').addEventListener('click', loadOrders);
-    $('gr-vendor').addEventListener('change', loadOrders);
-    $('gr-overdue').addEventListener('change', loadOrders);
-    $('gr-q').addEventListener('change', loadOrders);
+    /* 단추는 **창만** 연다 — 조회 0회. 창 안 「불러오기」(`#grload-run`) 배선은
+       `UI.loadPicker` 가 들고 있다 (F-63). */
+    $('gr-load-open').addEventListener('click', function () { grLoad.open(); });
     $('gr-save').addEventListener('click', save);
     $('gr-void').addEventListener('click', function () {
       if (lastDocId === null) { return; }
@@ -841,11 +859,12 @@
       status: { panel: 'gr-status', onShow: loadStatus }
     });
 
+    /* 거래처 목록만 채운다 — **미입고 조회는 하지 않는다**(F-63). 21단계에는 여기서
+       `loadOrders()` 를 불러 화면에 들어갈 때마다 300줄까지 읽었다. */
     loadMaster('vendors').then(function (rows) {
       fillSelect($('gr-vendor'), rows, 'id', 'name', '전체 거래처');
       fillSelect($('gr-doc-vendor'), rows, 'id', 'name', '전체 거래처');
       fillSelect($('gr-bo-vendor'), rows, 'id', 'name', '전체 거래처');
-      loadOrders();
     });
     renderLines();
   }
@@ -1211,7 +1230,7 @@
         if (me === null) { return; }
         apiClient.setCsrf(me.csrf_token);
         if ($('stock-tabs')) { initStatus(); }
-        if ($('gr-load')) { initReceipt(); }
+        if ($('gr-form')) { initReceipt(); }
         if ($('move-tabs')) { initMove(); }
       })
       .catch(function () { say(UI.GENERIC_ERROR); });

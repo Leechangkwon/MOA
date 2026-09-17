@@ -28,6 +28,10 @@ declare(strict_types=1);
  */
 
 require_once __DIR__ . '/../purchase/Doc.php';
+/* 묶기는 `Grouping` **한 벌**이다 — 입고 불러오기(`purchase_gr_load.php`)도 같은 함수를
+   부른다 (F-63). 이 파일에서 옮겨 간 것은 재귀 묶기뿐이고, 줄에서 열쇠·이름을 뽑는
+   규칙(`$keyOf`)은 줄 필드 이름이 화면마다 달라 **부르는 쪽에** 남는다. */
+require_once __DIR__ . '/../purchase/Grouping.php';
 
 /**
  * 묶는 기준 — 코드에 적힌 **여섯** 개만. 요청 문자열은 이 표의 열쇠가 될 뿐이다.
@@ -207,48 +211,13 @@ $keyOf = static function (array $line, string $kind): array {
 };
 
 /**
- * 층 순서대로 재귀로 묶는다. 각 층에 **소계**(줄 수·수량)를 붙인다 (지시서 보충 2).
+ * 한 줄의 수량(밀리 정수). 층마다의 소계는 `Grouping` 이 이 값을 더해 만든다 —
+ * 발주요청 쪽 잔량 칸 이름이 `remaining_milli` 라는 것을 아는 곳은 여기뿐이다.
  *
- * @param list<array<string,mixed>> $rows
- * @param list<string>              $levels
- * @return list<array<string,mixed>>
+ * @param array<string,mixed> $line
  */
-$build = static function (array $rows, array $levels) use (&$build, $keyOf): array {
-    if ($levels === []) {
-        return [];
-    }
-    $kind    = $levels[0];
-    $rest    = array_slice($levels, 1);
-    $buckets = [];
-    foreach ($rows as $row) {
-        [$key, $label] = $keyOf($row, $kind);
-        if (!isset($buckets[$key])) {
-            $buckets[$key] = ['label' => $label, 'rows' => []];
-        }
-        $buckets[$key]['rows'][] = $row;
-    }
-
-    $out = [];
-    foreach ($buckets as $key => $bucket) {
-        $qty = 0;
-        foreach ($bucket['rows'] as $r) {
-            $qty += (int) $r['remaining_milli'];
-        }
-        $node = [
-            'group'     => $kind,
-            'key'       => (int) $key,
-            'label'     => $bucket['label'],
-            'line_count' => count($bucket['rows']),
-            'qty'       => Doc::qtyText($qty),
-        ];
-        if ($rest === []) {
-            $node['lines'] = $bucket['rows'];
-        } else {
-            $node['children'] = $build($bucket['rows'], $rest);
-        }
-        $out[] = $node;
-    }
-    return $out;
+$qtyOf = static function (array $line): int {
+    return (int) $line['remaining_milli'];
 };
 
 $totalQty = 0;
@@ -258,7 +227,7 @@ foreach ($lines as $l) {
 
 Http::json([
     'group'      => $groups,
-    'groups'     => $build($lines, $groups),
+    'groups'     => Grouping::tree($lines, $groups, $keyOf, $qtyOf),
     'line_count' => count($lines),
     'qty'        => Doc::qtyText($totalQty),
     // 상한에 닿았으면 화면이 "더 좁혀 보라" 고 안내한다 (조용히 자르지 않는다).

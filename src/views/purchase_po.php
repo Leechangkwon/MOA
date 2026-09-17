@@ -54,12 +54,19 @@ require __DIR__ . '/shell_top.php';
         <label class="field">
           <span class="field__label">입고 장소</span>
           <select id="po-location"></select>
-          <span class="p-sub">비워 두면 줄마다 발주요청서의 창고로 들어갑니다 (거래처 × 입고 장소로 나뉩니다)</span>
+          <span class="p-sub">비워 두면 줄마다 발주요청서의 창고로 들어갑니다 (거래처 × 입고 장소 × 담당자로 나뉩니다)</span>
         </label>
         <label class="field">
           <span class="field__label">거래처</span>
           <select id="po-vendor"></select>
           <span id="po-vendor-help" class="p-sub" hidden></span>
+        </label>
+        <!-- F-62 — 머리 담당자. 비워 두면 줄이 정한다(요청 줄은 그 발주요청 전표의 담당자,
+             직접 줄은 로그인 사용자). 목록은 `GET /api/purchase/managers` 가 준다. -->
+        <label class="field">
+          <span class="field__label">담당자</span>
+          <select id="po-manager"></select>
+          <span class="p-sub">비워 두면 줄마다 발주요청서의 담당자로 나뉩니다</span>
         </label>
         <label class="field field--full">
           <span class="field__label">참조 · 비고</span>

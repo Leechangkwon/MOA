@@ -386,6 +386,7 @@ const TBOX_ROUTES = [
     ['GET',    '/purchase/docs',                 'purchase_docs_page.php',       'purchase.read'],
     ['GET',    '/purchase/po/{num}/print',       'purchase_po_print_page.php',   'purchase.read'],
 
+    ['GET',    '/api/purchase/managers',         'purchase_managers_list.php',   'purchase.buy.write'],
     ['GET',    '/api/purchase/pr/load',          'purchase_pr_load.php',         'purchase.buy.write'],
     ['GET',    '/api/purchase/pr',               'purchase_pr_list.php',         'purchase.read'],
     ['POST',   '/api/purchase/pr',               'purchase_pr_create.php',       'purchase.request.write'],

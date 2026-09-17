@@ -318,12 +318,20 @@ expect "보낸 뒤 불러오기에 등장" 1 "$(body_of "$R" | grep -c "$PO1_NO"
 
 hr "T-46 ① 입고 5 중 3 → 원장 +3 · 현재고 3 · 미입고 2"
 
+# 채번 단언은 **상대 번호**다 (정정 2026-09-17). 예전에는 `GR-<오늘>-1` 절대 번호를
+# 기대했는데, 사용자가 그날 입고 전표를 하나라도 만들면(또는 다른 시험이 먼저 돌면)
+# 코드와 무관하게 실패했다 — R-78 정리가 카운터를 **지우지 않고 되돌리므로** 그날의
+# 번호는 계속 올라간다. 그래서 「직전 카운터 + 1」을 기대한다.
+GR_SEQ_BEFORE=$(psqlq "SELECT coalesce(last_no, 0) FROM p_doc_seq
+                        WHERE doc_type='gr' AND seq_date = current_date;")
+[ -n "$GR_SEQ_BEFORE" ] || GR_SEQ_BEFORE=0
 R=$(call qa_employee01 POST /api/purchase/gr "$TOK_EMP1" \
   "{\"lines\":[{\"src_line_id\":$PO_LINE_A,\"qty\":\"3\",\"lot_no\":\"S21-L1\",\"expiry_date\":\"2028-06-30\"}]}")
 GR1=$(new_id "$(body_of "$R")"); GR1_NO=$(field doc_no "$(body_of "$R")")
 echo "  HTTP $(code_of "$R")"; echo "  $(body_of "$R" | head -c 400)"
 expect "입고 확정 201" 201 "$(code_of "$R")"
-expect "채번 GR-$TODAY-1" "GR-$TODAY-1" "$GR1_NO"
+expect "채번이 직전 카운터+1 (GR-$TODAY-$((GR_SEQ_BEFORE+1)))" \
+  "GR-$TODAY-$((GR_SEQ_BEFORE+1))" "$GR1_NO"
 
 MOVES=$(psqlq "SELECT count(*) FROM p_stock_moves m JOIN p_doc_lines l ON l.id = m.doc_line_id
                 WHERE l.doc_id = $GR1;")

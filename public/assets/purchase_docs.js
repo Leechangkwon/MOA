@@ -46,6 +46,11 @@
   var apiClient = UI.api('');
   var request = apiClient.request;
 
+  /* F-62 — 로그인 사용자. **이름**은 `/api/me` 가 주고(그 창구는 내부 id 를 주지 않는다),
+     **번호**는 발주서 화면이 담당자 목록에서 같은 이름을 찾아 맞춘다. 둘 다 표시·미리보기용
+     이며 저장 본문에 실리지 않는다 — 직접 줄의 담당자는 서버가 세션에서 정한다. */
+  var meUser = { id: null, name: '' };
+
   /** 셀렉트를 목록으로 채운다. `textContent` 로만 글자를 넣는다. */
   function fillSelect(select, rows, valueKey, labelKey, emptyLabel) {
     if (!select) { return; }
@@ -623,7 +628,6 @@
      * 뒤 둘은 요청 잔량이 없으므로 잔량 칸이 「—」 다.
      */
     var lines = [];        // [{source, src_line_id|item_id, code, name, …, location_id, qty}]
-    var groups = [];       // 묶는 기준(누른 순서)
     var docPage = 1;
     var openDocId = null;
     var openSentAt = null;
@@ -642,6 +646,51 @@
       }
       if (line.location_id === null || line.location_id === undefined) { return null; }
       return { id: line.location_id, name: line.location_name };
+    }
+
+    /**
+     * 이 줄의 **담당자** — 머리값이 있으면 그것, 없으면 줄이 들고 온 담당자다 (F-62 ②).
+     * 위 `lineLocation` 과 같은 문장이고, 서버(`purchase_po_create.php`)의 규칙과도 같다 —
+     * 화면은 그것을 **보여만** 준다.
+     */
+    function lineManager(line) {
+      var head = $('po-manager');
+      if (head && head.value !== '') {
+        return {
+          id: Number(head.value),
+          name: head.options[head.selectedIndex] ? head.options[head.selectedIndex].text : ''
+        };
+      }
+      var noId = (line.manager_id === null || line.manager_id === undefined);
+      var noName = (line.manager_name === null || line.manager_name === undefined);
+      if (noId && noName) { return null; }
+      return { id: noId ? null : line.manager_id, name: line.manager_name };
+    }
+
+    /**
+     * 미리보기 묶음에 쓸 담당자 조각 — **이름을 먼저** 쓴다 (독립 검토 지적 ②2, 2026-09-17).
+     *
+     * 왜 번호가 아니라 이름인가: 담당자 이름이 오는 세 곳(`pr_load` 의 `manager_name` ·
+     * `/api/me` 의 `username` · 담당자 목록의 `name`)이 **모두 `users.username` 한 열**이고
+     * 그 열은 NOT NULL UNIQUE 다. 그래서 이름으로 묶는 것은 서버가 번호로 묶는 것과 **같은
+     * 결과**다. 반면 번호는 화면이 늘 알 수 있는 값이 아니다 — 직접 줄의 담당자 번호는
+     * 담당자 목록에서 이름을 찾아 맞추므로, 구매 역할이 없는 계정(목록에 없다)으로 로그인하면
+     * `null` 로 남는다. 그때 번호로 묶으면 같은 사람이 두 묶음으로 갈려 미리보기가 「2장」이라고
+     * 말하고 서버는 1장을 저장한다(라벨도 똑같이 보인다). 이름으로 묶으면 그 어긋남이 없다.
+     *
+     * ★ 주의 — **이 함수는 `manager_name` 이 유일하다는 것에 기대고 있다.** 지금 그 값은
+     *   `users.username`(NOT NULL UNIQUE, 소문자·숫자만)이라 참이다. 앞으로 사람 이름 칸
+     *   (`display_name` 같은 것)을 만들어 `manager_name` 이 **사람 이름**을 담게 되면 동명이인이
+     *   한 묶음으로 합쳐진다. 그때는 이 함수를 **번호 기준으로 되돌리고**, 대신 직접 줄의 담당자
+     *   번호를 화면이 확실히 알 수 있게 창구(`/api/me` 또는 담당자 목록)가 번호를 주도록 고쳐야
+     *   한다. 사람 이름 칸은 별건 후보다(STAGES 「후보(사람 이름)」).
+     */
+    function managerKey(who) {
+      if (!who) { return ''; }
+      if (who.name !== null && who.name !== undefined && String(who.name) !== '') {
+        return 'n:' + String(who.name);
+      }
+      return 'i:' + String(who.id);
     }
 
     /** 출처 칸 — 요청 줄은 PR 번호(+요청자), 직접 줄은 「직접」, 부족 산출은 「부족 산출」 */
@@ -735,10 +784,10 @@
     }
 
     /**
-     * 저장 단추 옆 **분할 미리보기** (F-60 ④ · F-61 ⑤).
-     * 담은 줄의 `vendor_id` 는 서버가 준 값이고, 장소는 머리값 또는 줄의 장소다.
+     * 저장 단추 옆 **분할 미리보기** (F-60 ④ · F-61 ⑤ · F-62 ⑤).
+     * 담은 줄의 `vendor_id` 는 서버가 준 값이고, 장소·담당자는 머리값 또는 줄의 값이다.
      * 화면은 그 둘로 **세어 보여만** 준다 — 실제로 나누는 판정은 서버가 저장할 때 다시 한다.
-     * 나누는 열쇠가 F-61 에서 (거래처, 입고 장소)로 넓어졌으므로 미리보기도 두 축을 센다.
+     * 나누는 열쇠가 (거래처, 입고 장소, 담당자) 세 축이므로 미리보기도 세 축을 센다.
      * 머리 거래처 칸도 여기서 함께 맞춘다: 섞여 있으면 비우고 잠근다.
      */
     function renderSplitPreview() {
@@ -748,12 +797,16 @@
       lines.forEach(function (line) {
         var vendor = String(line.vendor_id === undefined || line.vendor_id === null ? '' : line.vendor_id);
         var where = lineLocation(line);
-        var key = vendor + ':' + String(where ? where.id : '');
+        var who = lineManager(line);
+        var key = vendor + ':' + String(where ? where.id : '') + ':' + managerKey(who);
         if (!Object.prototype.hasOwnProperty.call(byKey, key)) {
           byKey[key] = {
             vendor: vendor,
             vendor_name: line.vendor_name,
             location_name: where ? where.name : null,
+            manager_name: who ? who.name : null,
+            /* 축 판정이 다시 계산하지 않게 묶음 열쇠 조각을 그대로 적어 둔다 */
+            manager_key: managerKey(who),
             count: 0
           };
           order.push(key);
@@ -774,27 +827,41 @@
       }
 
       /*
-       * 장소가 **한 곳뿐이면** 장소를 말하지 않는다 — 「거래처별 N장」(F-60 문장 그대로).
-       * 장소가 갈리는 순간에만 두 축을 말한다 — 「거래처×입고장소별 N장」(F-61 ⑤).
-       * 같은 값을 두 번 읽게 하지 않는 것이 이 갈래의 이유다.
+       * 문구는 **갈리는 축만** 말한다 (F-62 ⑤ · F-61 ⑤ · F-60 ④).
+       * 장소가 한 곳뿐이면 장소를, 담당자가 한 사람뿐이면 담당자를 말하지 않는다 —
+       * 그래서 장소·담당자가 하나씩인 저장의 문장은 F-60 문장 그대로이고, 담당자만 하나인
+       * 저장의 문장은 F-61 문장 그대로다. 같은 값을 두 번 읽게 하지 않는 것이 이 갈래의 이유다.
        */
       var places = {};
-      order.forEach(function (key) { places[String(byKey[key].location_name)] = true; });
+      var mgrs = {};
+      /* 「축이 갈렸나」 도 묶음과 **같은 기준**으로 센다 — 두 기준이 다르면 미리보기의 장 수와
+         라벨이 어긋난다(독립 검토 지적 ②2). 담당자는 `managerKey` 한 곳에서만 정한다. */
+      order.forEach(function (key) {
+        places[String(byKey[key].location_name)] = true;
+        mgrs[byKey[key].manager_key] = true;
+      });
       var manyPlaces = Object.keys(places).length > 1;
+      var manyMgrs = Object.keys(mgrs).length > 1;
 
+      /** 갈리는 축의 이름을 `×` 로 잇는다 — 라벨도 같은 축만 `·` 로 잇는다 */
+      var axisLabel = '거래처';
+      if (manyPlaces) { axisLabel += '×입고장소'; }
+      if (manyMgrs) { axisLabel += '×담당자'; }
+
+      var label = function (group) {
+        var text = dash(group.vendor_name);
+        if (manyPlaces) { text += '·' + dash(group.location_name); }
+        if (manyMgrs) { text += '·' + dash(group.manager_name); }
+        return text;
+      };
       var parts = order.map(function (key) {
-        var group = byKey[key];
-        var who = dash(group.vendor_name);
-        if (manyPlaces) { who += '·' + dash(group.location_name); }
-        return who + '(' + group.count + '줄)';
+        return label(byKey[key]) + '(' + byKey[key].count + '줄)';
       });
       if (order.length === 1) {
-        setText(preview, dash(byKey[order[0]].vendor_name)
-          + (manyPlaces ? '·' + dash(byKey[order[0]].location_name) : '') + ' · 1장');
-      } else if (manyPlaces) {
-        setText(preview, '저장하면 거래처×입고장소별 ' + order.length + '장: ' + parts.join(' · '));
+        /* 묶음이 하나면 갈리는 축이 없다 — 축 이름을 붙이지 않는다 (F-61 과 같은 문장) */
+        setText(preview, label(byKey[order[0]]) + ' · 1장');
       } else {
-        setText(preview, '저장하면 거래처별 ' + order.length + '장: ' + parts.join(' · '));
+        setText(preview, '저장하면 ' + axisLabel + '별 ' + order.length + '장: ' + parts.join(' · '));
       }
 
       if (vendorOrder.length === 1) {
@@ -814,17 +881,13 @@
     /* ── 불러오기 모달 (시안 ④ ImportModal) ───────────────
      * 좌 트리(묶음) / 우 줄 표 2단. 25단계 전에는 트리 안에 줄이 섞여 있어
      * 층이 깊어질수록 줄이 오른쪽으로 밀려 이름이 잘렸다.
-     * 부르는 API·질의 문자열은 그대로다 — 배치만 바꾼다.
+     *
+     * F-63 — 칩바·트리·묶음 체크(중간 상태)·담을 수량을 그리는 코드는 `UI.loadPicker`
+     * **한 벌**로 옮겼다. 입고 화면의 「발주서 불러오기」 창이 같은 함수를 부른다
+     * (F-61 이 `itemPicker()` 를 뽑은 것과 같은 방식). 이 파일에 남은 것은 이 화면만의
+     * 두 가지 — **줄 표의 열**과 **담은 뒤 무엇을 만드는지**다.
+     * 부르는 API·질의 문자열·겉모양·문구는 그대로다.
      */
-    var pickedLines = {};
-    var openLeaf = null;
-    var openNode = null;
-    /* 트리 묶음 노드의 체크 상태를 다시 맞추려고 들고 있는 목록 — [{input, lines}] (F-60) */
-    var nodeChecks = [];
-
-    function syncLoadInfo() {
-      setText($('load-info'), '고른 줄 ' + Object.keys(pickedLines).length + '개');
-    }
 
     /**
      * 담은 줄 하나의 모양. 거래처는 **서버가 준 값**을 그대로 옮긴다 —
@@ -838,6 +901,10 @@
         name: line.name,
         spec: line.spec,
         doc_no: line.doc_no,
+        /* F-62 ② — 요청서의 담당자를 그대로 들고 온다(`GET /api/purchase/pr/load` 가
+           두 칸 다 준다). 서버도 같은 값을 **자기가 다시** 읽는다 — 화면이 보낸 담당자를
+           믿지 않는다(요청 줄의 담당자는 그 요청 전표가 정한다). */
+        manager_id: line.manager_id,
         manager_name: line.manager_name,
         price_in: line.price_in,
         remaining: line.remaining,
@@ -851,232 +918,54 @@
       };
     }
 
-    /** 묶음 노드 아래의 **모든 잎 줄** (층이 몇 겹이든 내려간다) */
-    function leafLines(node) {
-      if (node.lines) { return node.lines.slice(); }
-      var out = [];
-      (node.children || []).forEach(function (kid) {
-        out = out.concat(leafLines(kid));
-      });
-      return out;
+    /** 창 안 줄 표의 열 — 체크 칸과 「담을 수량」 칸 **사이** (코드·품목·출처 요청·잔량) */
+    function poLoadCells(tr, line) {
+      cell(tr, line.code, 'mono');
+      var nameTd = cell(tr, line.name);
+      nameTd.className = 'p-name p-cell-wide';
+      if (line.spec) { nameTd.appendChild(el('span', 'p-sub', line.spec)); }
+
+      var srcTd = el('td');
+      srcTd.appendChild(el('span', 'mono', line.doc_no));
+      srcTd.appendChild(el('span', 'p-sub', dash(line.manager_name)));
+      tr.appendChild(srcTd);
+
+      cell(tr, qtyText(line.remaining), 'num mono');
     }
 
-    /** 담긴 줄 수에 따라 묶음 체크박스를 다시 맞춘다 — 하위 일부만 담겼으면 중간 상태 */
-    function syncNodeChecks() {
-      nodeChecks.forEach(function (node) {
-        var on = 0;
-        node.lines.forEach(function (line) {
-          if (Object.prototype.hasOwnProperty.call(pickedLines, String(line.line_id))) { on += 1; }
+    var loadPick = UI.loadPicker({
+      request: request,
+      path: '/api/purchase/pr/load',
+      lineKey: function (line) { return line.line_id; },
+      params: function () {
+        var out = '';
+        if ($('load-q').value.trim() !== '') {
+          out += '&q=' + encodeURIComponent($('load-q').value.trim());
+        }
+        if ($('load-from').value !== '') {
+          out += '&from=' + encodeURIComponent($('load-from').value);
+        }
+        if ($('load-to').value !== '') {
+          out += '&to=' + encodeURIComponent($('load-to').value);
+        }
+        return out;
+      },
+      cells: poLoadCells,
+      pickedFrom: pickedFrom,
+      /* 같은 요청 줄은 한 번만 들어간다 — 20단계의 판정을 그대로 옮긴 것이다 */
+      onAdd: function (list) {
+        list.forEach(function (picked) {
+          var found = false;
+          lines.forEach(function (line) {
+            if (String(line.src_line_id) === String(picked.src_line_id)) { found = true; }
+          });
+          if (!found) { lines.push(picked); }
         });
-        node.input.checked = on > 0 && on === node.lines.length;
-        node.input.indeterminate = on > 0 && on < node.lines.length;
-      });
-    }
-
-    /** 오른쪽 표 — 고른 묶음의 줄만 그린다 */
-    function drawLines(node) {
-      var body = $('load-lines-body');
-      clear(body);
-      var rows = (node && node.lines) ? node.lines : [];
-      openNode = node;
-      setText($('load-lines-title'), node ? node.label : '줄');
-      $('load-lines-empty').hidden = rows.length > 0;
-      setText($('load-lines-empty'), node ? '이 묶음에는 줄이 없습니다.' : '왼쪽에서 묶음을 고르세요.');
-
-      rows.forEach(function (line) {
-        var key = String(line.line_id);
-        var tr = el('tr');
-
-        var checkTd = el('td', 'p-col-check p-pick');
-        var check = document.createElement('input');
-        check.type = 'checkbox';
-        check.checked = Object.prototype.hasOwnProperty.call(pickedLines, key);
-        checkTd.appendChild(check);
-        tr.appendChild(checkTd);
-
-        cell(tr, line.code, 'mono');
-        var nameTd = cell(tr, line.name);
-        nameTd.className = 'p-name p-cell-wide';
-        if (line.spec) { nameTd.appendChild(el('span', 'p-sub', line.spec)); }
-
-        var srcTd = el('td');
-        srcTd.appendChild(el('span', 'mono', line.doc_no));
-        srcTd.appendChild(el('span', 'p-sub', dash(line.manager_name)));
-        tr.appendChild(srcTd);
-
-        cell(tr, qtyText(line.remaining), 'num mono');
-
-        var qtyTd = el('td', 'num');
-        var qtyInput = document.createElement('input');
-        qtyInput.type = 'number';
-        qtyInput.min = '0.001';
-        qtyInput.step = '0.001';
-        qtyInput.className = 'p-in p-in--qty';
-        qtyInput.value = Object.prototype.hasOwnProperty.call(pickedLines, key)
-          ? pickedLines[key].qty : qtyText(line.remaining);
-        qtyTd.appendChild(qtyInput);
-        tr.appendChild(qtyTd);
-
-        function sync() {
-          if (check.checked) {
-            pickedLines[key] = pickedFrom(line, qtyInput.value);
-          } else {
-            delete pickedLines[key];
-          }
-          syncLoadInfo();
-          syncNodeChecks();
-        }
-        check.addEventListener('change', sync);
-        qtyInput.addEventListener('input', function () { if (check.checked) { sync(); } });
-
-        body.appendChild(tr);
-      });
-    }
-
-    /**
-     * 왼쪽 트리 — 층마다 들여쓰고, 줄이 달린 마디를 누르면 오른쪽이 바뀐다.
-     *
-     * F-60: **모든 묶음 노드**에 체크박스가 붙는다. 체크하면 그 아래 잎 줄을 전부
-     * **잔량 그대로** 담고, 해제하면 전부 뺀다. 체크박스는 펼치기 단추의 **형제**라
-     * 두 클릭이 서로 전파되지 않는다(단추 안에 넣으면 누를 때마다 접혔다 펴진다).
-     */
-    function drawTree(nodes, container) {
-      nodes.forEach(function (node) {
-        var box = el('div', 'p-tree-group');
-        var row = el('div', 'p-tree-row');
-
-        var check = document.createElement('input');
-        check.type = 'checkbox';
-        check.className = 'p-tree-check';
-        check.setAttribute('aria-label', node.label + ' 묶음 전체 담기');
-        var mine = leafLines(node);
-        nodeChecks.push({ input: check, lines: mine });
-        check.addEventListener('click', function (event) { event.stopPropagation(); });
-        check.addEventListener('change', function () {
-          mine.forEach(function (line) {
-            var key = String(line.line_id);
-            if (check.checked) {
-              pickedLines[key] = pickedFrom(line, qtyText(line.remaining));
-            } else {
-              delete pickedLines[key];
-            }
-          });
-          if (openNode) { drawLines(openNode); }
-          syncLoadInfo();
-          syncNodeChecks();
-        });
-        row.appendChild(check);
-
-        var head = el('button', 'p-tree-head');
-        head.type = 'button';
-        head.appendChild(el('span', 'p-tree-name', node.label));
-        head.appendChild(badge('줄 ' + node.line_count, 'badge--off'));
-        head.appendChild(el('span', 'p-tree-sum', '잔량 ' + qtyText(node.qty)));
-        row.appendChild(head);
-        box.appendChild(row);
-
-        if (node.children) {
-          var kids = el('div', 'p-tree-children');
-          drawTree(node.children, kids);
-          box.appendChild(kids);
-          head.addEventListener('click', function () {
-            kids.hidden = !kids.hidden;
-            head.setAttribute('aria-expanded', kids.hidden ? 'false' : 'true');
-          });
-          head.setAttribute('aria-expanded', 'true');
-        } else {
-          head.addEventListener('click', function () {
-            if (openLeaf) { openLeaf.classList.remove('is-on'); }
-            head.classList.add('is-on');
-            openLeaf = head;
-            drawLines(node);
-          });
-        }
-        container.appendChild(box);
-      });
-    }
-
-    function runLoad() {
-      var params = '?group=' + encodeURIComponent(groups.join(','));
-      if ($('load-q').value.trim() !== '') { params += '&q=' + encodeURIComponent($('load-q').value.trim()); }
-      if ($('load-from').value !== '') { params += '&from=' + encodeURIComponent($('load-from').value); }
-      if ($('load-to').value !== '') { params += '&to=' + encodeURIComponent($('load-to').value); }
-
-      request('GET', '/api/purchase/pr/load' + params).then(function (res) {
-        if (!res) { return; }
-        if (!res.ok) { say(errorMessage(res.data)); return; }
-        var tree = $('load-tree');
-        clear(tree);
-        openLeaf = null;
-        openNode = null;
-        nodeChecks = [];
-        var nodes = res.data.groups || [];
-        drawTree(nodes, tree);
-        $('load-tree-empty').hidden = nodes.length > 0;
-        drawLines(null);
-        syncLoadInfo();
-        syncNodeChecks();
-      });
-    }
-
-    /* 묶는 기준 칩 — **누른 순서**가 층이다. 순서는 칩 안의 번호로 보인다. */
-    var GROUP_MARKS = ['\u2460', '\u2461', '\u2462'];
-    var groupNav = $('load-groups');
-
-    function renderGroupMarks() {
-      Array.prototype.forEach.call(groupNav.querySelectorAll('.chip'), function (chip) {
-        var at = groups.indexOf(chip.getAttribute('data-group'));
-        var mark = chip.querySelector('b');
-        if (at < 0) {
-          chip.classList.remove('is-on');
-          if (mark) { chip.removeChild(mark); }
-          return;
-        }
-        chip.classList.add('is-on');
-        if (!mark) {
-          mark = el('b');
-          chip.insertBefore(mark, chip.firstChild);
-        }
-        setText(mark, GROUP_MARKS[at] || String(at + 1));
-      });
-    }
-
-    Array.prototype.forEach.call(groupNav.querySelectorAll('.chip'), function (chip) {
-      chip.addEventListener('click', function () {
-        var key = chip.getAttribute('data-group');
-        var at = groups.indexOf(key);
-        if (at >= 0) {
-          groups.splice(at, 1);
-        } else if (groups.length < 3) {
-          groups.push(key);
-        } else {
-          say('묶는 기준은 세 개까지입니다.');
-          return;
-        }
-        renderGroupMarks();
-      });
+        renderLines();
+      }
     });
 
-    $('po-load').addEventListener('click', function () {
-      pickedLines = {};
-      if (groups.length === 0) { groups = ['vendor']; }
-      renderGroupMarks();
-      openModal('load-modal');
-      runLoad();
-    });
-    $('load-run').addEventListener('click', runLoad);
-    $('load-add').addEventListener('click', function () {
-      Object.keys(pickedLines).forEach(function (key) {
-        var found = false;
-        lines.forEach(function (line) {
-          if (String(line.src_line_id) === key) { found = true; }
-        });
-        if (!found) { lines.push(pickedLines[key]); }
-      });
-      pickedLines = {};
-      renderLines();
-      closeModal('load-modal');
-    });
+    $('po-load').addEventListener('click', function () { loadPick.open(); });
 
     /* ══ 직접 입력 — 품목 찾기 (F-61 ③) ══════════════════
      * 창을 그리는 코드는 발주요청 화면과 **한 벌**이다 (`PurchaseUI.itemPicker`).
@@ -1125,6 +1014,10 @@
         qty: String(qty || 1),
         location_id: where ? where.id : null,
         location_name: where ? where.name : null,
+        /* F-62 ② — 직접 줄·부족 산출 줄의 담당자는 **로그인 사용자**다(물려받을 요청서가
+           없다). 저장 본문에는 싣지 않는다 — 서버가 세션에서 같은 값을 정한다. */
+        manager_id: meUser.id,
+        manager_name: meUser.name,
         note: note || null
       });
     }
@@ -1280,6 +1173,9 @@
       renderLines();
     });
 
+    /* 머리 담당자를 바꾸면 미리보기가 함께 따라온다 (F-62 — 장소 칸과 같은 방식) */
+    $('po-manager').addEventListener('change', renderLines);
+
     /* ── 저장 ──────────────────────────────────────────── */
     $('po-input').addEventListener('submit', function (event) {
       event.preventDefault();
@@ -1288,6 +1184,13 @@
       lines.forEach(function (line) { if (!lineLocation(line)) { missing += 1; } });
       if (missing > 0) {
         say('입고 장소를 정할 수 없는 줄이 ' + missing + '개 있습니다 — 머리 「입고 장소」를 고르세요.');
+        return;
+      }
+      /* F-62 — 담당자도 같은 방식으로 본다: 머리가 비었고 줄에도 없으면 나눌 수 없다 */
+      var noMgr = 0;
+      lines.forEach(function (line) { if (!lineManager(line)) { noMgr += 1; } });
+      if (noMgr > 0) {
+        say('담당자를 정할 수 없는 줄이 ' + noMgr + '개 있습니다 — 머리 「담당자」를 고르세요.');
         return;
       }
       var payload = {
@@ -1302,6 +1205,9 @@
         payload.to_location_id = Number($('po-location').value);
       }
       if ($('po-vendor').value !== '') { payload.vendor_id = Number($('po-vendor').value); }
+      /* F-62 — 머리 담당자도 장소·거래처와 같은 규칙이다: 비었으면 **키 자체를 싣지 않는다**.
+         담은 줄에는 담당자를 싣지 않는다 — 서버가 줄에서 다시 판정한다(거래처·단가와 같다). */
+      if ($('po-manager').value !== '') { payload.manager_id = Number($('po-manager').value); }
       if ($('po-memo').value !== '') { payload.memo = $('po-memo').value; }
       lines.forEach(function (line) {
         // 여기도 **수량만** 보낸다 (R-66). 거래처·단가는 서버가 줄에서 다시 판정한다.
@@ -1485,16 +1391,25 @@
 
     $('po-date').value = today();
     renderLines();
-    Promise.all([loadMaster('locations'), loadMaster('vendors')]).then(function (all) {
-      /* 머리 장소의 첫 항목이 기본값이다 — 비워 두면 줄이 장소를 정한다 (F-61 ②) */
-      fillSelect($('po-location'), all[0], 'id', 'name', '— 줄에서 자동 —');
-      fillSelect($('po-vendor'), all[1], 'id', 'name', '— 줄에서 자동 —');
-      fillSelect($('pick-location'), all[0], 'id', 'name', '— 입고 장소 —');
-      fillSelect($('short-location'), all[0], 'id', 'name', '— 장소 —');
-      fillSelect($('pick-vendor'), all[1], 'id', 'name', '— 전체 —');
-      fillSelect($('po-bo-vendor'), all[1], 'id', 'name', '— 전체 —');
-      syncPickLocation();
-    });
+    Promise.all([loadMaster('locations'), loadMaster('vendors'), loadMaster('managers')])
+      .then(function (all) {
+        /* 머리 장소의 첫 항목이 기본값이다 — 비워 두면 줄이 장소를 정한다 (F-61 ②) */
+        fillSelect($('po-location'), all[0], 'id', 'name', '— 줄에서 자동 —');
+        fillSelect($('po-vendor'), all[1], 'id', 'name', '— 줄에서 자동 —');
+        /* F-62 — 머리 담당자. 비워 두면 줄이 담당자를 정한다(요청서의 담당자로 나뉜다) */
+        fillSelect($('po-manager'), all[2], 'id', 'name', '— 줄에서 자동 —');
+        fillSelect($('pick-location'), all[0], 'id', 'name', '— 입고 장소 —');
+        fillSelect($('short-location'), all[0], 'id', 'name', '— 장소 —');
+        fillSelect($('pick-vendor'), all[1], 'id', 'name', '— 전체 —');
+        fillSelect($('po-bo-vendor'), all[1], 'id', 'name', '— 전체 —');
+        /* 로그인 사용자의 **번호**를 여기서 맞춘다 — `/api/me` 는 이름만 주므로, 같은 이름을
+           담당자 목록에서 찾는다(모듈 역할이 없는 계정은 목록에 없어 번호가 null 로 남고,
+           그때 미리보기는 이름으로 센다). 직접 줄의 담당자 표시에만 쓰인다. */
+        all[2].forEach(function (row) {
+          if (String(row.name) === meUser.name) { meUser.id = row.id; }
+        });
+        syncPickLocation();
+      });
   }
 
   /* ══════════════════════════════════════════════════════
@@ -1675,8 +1590,9 @@
         apiClient.setCsrf(me.csrf_token);
         /* 담당자 칸은 **서버가 준 이름**(`/api/me`)을 그대로 넣는다 — 읽기 전용이고,
            저장 본문에 실리지 않는다(요청의 담당자는 서버가 세션에서 정한다). */
+        meUser.name = typeof me.username === 'string' ? me.username : '';
         var managerBox = $('pr-manager');
-        if (managerBox) { managerBox.value = typeof me.username === 'string' ? me.username : ''; }
+        if (managerBox) { managerBox.value = meUser.name; }
         if ($('pr-tabs')) { initPr(); }
         if ($('po-tabs')) { initPo(); }
         if ($('docs-tabs')) { initDocs(); }

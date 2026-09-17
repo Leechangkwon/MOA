@@ -367,6 +367,303 @@
     };
   }
 
+  /* ── 불러오기 창 — 트리 · 묶음 체크 · 담을 수량 (LoadPicker) — **한 벌** (F-63) ─────
+   *
+   * 왜 여기 있나
+   *   같은 창을 두 화면이 연다: 발주서 화면의 「발주요청 불러오기」(20단계 · F-60)와
+   *   입고 화면의 「발주서 불러오기」(F-63). 베껴 두면 한쪽만 고쳐지는 날이 온다
+   *   (25단계가 다섯 벌의 도우미를 한 벌로 모은 이유, F-61 이 `itemPicker()` 를 뽑은
+   *   이유와 같다) — 그래서 **함수는 하나**다.
+   *
+   *   두 화면이 다른 것은 **줄 표의 열**과 **담은 뒤 무엇을 만드는지**뿐이고, 그 둘만
+   *   인자로 받는다. 칩바·트리·묶음 체크(중간 상태)·담을 수량은 여기 한 벌이다.
+   *
+   *   opts.request     API 호출 함수 (필수)
+   *   opts.path        조회 경로 (필수). 질의 문자열은 `?group=` + opts.params() 다
+   *   opts.params      fn(): string — 이 화면의 걸개. `&` 로 시작하는 문자열을 돌려준다
+   *   opts.nodesKey    응답에서 트리를 꺼낼 키 (기본 'groups' — 입고는 'nodes')
+   *   opts.ids         칸 id 를 바꿀 때만. 기본은 `load-*`(발주서 화면이 쓰는 이름)
+   *   opts.groups      묶는 기준 기본값 (기본 ['vendor'])
+   *   opts.lineKey     fn(line): 줄을 가리키는 열쇠 (기본 line.line_id)
+   *   opts.cells       fn(tr, line) — 체크 칸과 「담을 수량」 칸 **사이**의 열을 그린다
+   *   opts.pickedFrom  fn(line, qty) — 담은 줄 하나의 모양 (서버가 준 값만 옮긴다)
+   *   opts.onAdd       fn(list) — 담기. list 는 pickedFrom 이 만든 것들이다
+   *   opts.runOnOpen   창을 열 때 바로 조회하나 (기본 true. 입고는 false — 사용자 결정
+   *                    2026-09-17: 조회는 창 안 「불러오기」를 눌러야 돈다)
+   *   opts.nodeWord    묶음 체크박스의 읽어 주는 이름에 쓰는 말 (기본 '묶음')
+   *   opts.pickText    줄 표가 비었을 때 문구 (기본 '왼쪽에서 묶음을 고르세요.')
+   *   opts.emptyText   고른 마디에 줄이 없을 때 문구 (기본 '이 묶음에는 줄이 없습니다.')
+   *                    — 조사(을/를)가 말마다 다르므로 **문장을 조립하지 않고** 통째로 받는다.
+   *                    입고 창은 기본 층이 전표 하나라 '발주서' 라고 부른다(문구만 다르고
+   *                    동작은 같다). 기본값은 발주서 화면의 20단계 문구 그대로다.
+   *
+   * 단가는 **보여 주기만** 한다 — 저장 본문에 단가가 실리는 길은 어느 화면에도 없다 (R-66).
+   * 글자는 전부 `textContent` 로만 들어간다 (PRD S-03).
+   */
+
+  /** 묶는 기준 칩의 순서 표시 — **누른 순서**가 층이다 */
+  var LOAD_GROUP_MARKS = ['\u2460', '\u2461', '\u2462'];
+
+  function loadPicker(opts) {
+    var o = opts || {};
+    var ids = o.ids || {};
+    var fallbackGroups = (o.groups || ['vendor']).slice();
+    var nodeWord  = o.nodeWord  || '묶음';
+    var pickText  = o.pickText  || '왼쪽에서 묶음을 고르세요.';
+    var emptyText = o.emptyText || '이 묶음에는 줄이 없습니다.';
+    var groups = fallbackGroups.slice();
+    var picked = {};
+    var openLeaf = null;
+    var openNode = null;
+    /* 트리 묶음 노드의 체크 상태를 다시 맞추려고 들고 있는 목록 — [{input, lines}] (F-60) */
+    var nodeChecks = [];
+
+    function key(name, fallback) { return ids[name] || fallback; }
+    function node(name, fallback) { return $(key(name, fallback)); }
+
+    function lineKey(line) {
+      return String(typeof o.lineKey === 'function' ? o.lineKey(line) : line.line_id);
+    }
+
+    function syncInfo() {
+      setText(node('info', 'load-info'), '고른 줄 ' + Object.keys(picked).length + '개');
+    }
+
+    /** 묶음 노드 아래의 **모든 잎 줄** (층이 몇 겹이든 내려간다) */
+    function leafLines(treeNode) {
+      if (treeNode.lines) { return treeNode.lines.slice(); }
+      var out = [];
+      (treeNode.children || []).forEach(function (kid) {
+        out = out.concat(leafLines(kid));
+      });
+      return out;
+    }
+
+    /** 담긴 줄 수에 따라 묶음 체크박스를 다시 맞춘다 — 하위 일부만 담겼으면 중간 상태 */
+    function syncNodeChecks() {
+      nodeChecks.forEach(function (item) {
+        var on = 0;
+        item.lines.forEach(function (line) {
+          if (Object.prototype.hasOwnProperty.call(picked, lineKey(line))) { on += 1; }
+        });
+        item.input.checked = on > 0 && on === item.lines.length;
+        item.input.indeterminate = on > 0 && on < item.lines.length;
+      });
+    }
+
+    /** 오른쪽 표 — 고른 묶음의 줄만 그린다 */
+    function drawLines(treeNode) {
+      var body = node('body', 'load-lines-body');
+      clear(body);
+      var rows = (treeNode && treeNode.lines) ? treeNode.lines : [];
+      openNode = treeNode;
+      setText(node('linesTitle', 'load-lines-title'), treeNode ? treeNode.label : '줄');
+      var empty = node('linesEmpty', 'load-lines-empty');
+      if (empty) {
+        empty.hidden = rows.length > 0;
+        setText(empty, treeNode ? emptyText : pickText);
+      }
+
+      rows.forEach(function (line) {
+        var k = lineKey(line);
+        var tr = el('tr');
+
+        var checkTd = el('td', 'p-col-check p-pick');
+        var check = document.createElement('input');
+        check.type = 'checkbox';
+        check.checked = Object.prototype.hasOwnProperty.call(picked, k);
+        checkTd.appendChild(check);
+        tr.appendChild(checkTd);
+
+        /* 화면마다 다른 열 — 여기까지가 인자다 */
+        if (typeof o.cells === 'function') { o.cells(tr, line); }
+
+        var qtyTd = el('td', 'num');
+        var qtyBox = document.createElement('input');
+        qtyBox.type = 'number';
+        qtyBox.min = '0.001';
+        qtyBox.step = '0.001';
+        qtyBox.className = 'p-in p-in--qty';
+        qtyBox.value = Object.prototype.hasOwnProperty.call(picked, k)
+          ? picked[k].qty : qty(line.remaining);
+        qtyTd.appendChild(qtyBox);
+        tr.appendChild(qtyTd);
+
+        function sync() {
+          if (check.checked) {
+            picked[k] = o.pickedFrom(line, qtyBox.value);
+          } else {
+            delete picked[k];
+          }
+          syncInfo();
+          syncNodeChecks();
+        }
+        check.addEventListener('change', sync);
+        qtyBox.addEventListener('input', function () { if (check.checked) { sync(); } });
+
+        body.appendChild(tr);
+      });
+    }
+
+    /**
+     * 왼쪽 트리 — 층마다 들여쓰고, 줄이 달린 마디를 누르면 오른쪽이 바뀐다.
+     *
+     * **모든 묶음 노드**에 체크박스가 붙는다 (F-60). 체크하면 그 아래 잎 줄을 전부
+     * **잔량 그대로** 담고, 해제하면 전부 뺀다. 체크박스는 펼치기 단추의 **형제**라
+     * 두 클릭이 서로 전파되지 않는다(단추 안에 넣으면 누를 때마다 접혔다 펴진다).
+     */
+    function drawTree(nodes, container) {
+      nodes.forEach(function (treeNode) {
+        var box = el('div', 'p-tree-group');
+        var row = el('div', 'p-tree-row');
+
+        var check = document.createElement('input');
+        check.type = 'checkbox';
+        check.className = 'p-tree-check';
+        check.setAttribute('aria-label', treeNode.label + ' ' + nodeWord + ' 전체 담기');
+        var mine = leafLines(treeNode);
+        nodeChecks.push({ input: check, lines: mine });
+        check.addEventListener('click', function (event) { event.stopPropagation(); });
+        check.addEventListener('change', function () {
+          mine.forEach(function (line) {
+            var k = lineKey(line);
+            if (check.checked) {
+              picked[k] = o.pickedFrom(line, qty(line.remaining));
+            } else {
+              delete picked[k];
+            }
+          });
+          if (openNode) { drawLines(openNode); }
+          syncInfo();
+          syncNodeChecks();
+        });
+        row.appendChild(check);
+
+        var head = el('button', 'p-tree-head');
+        head.type = 'button';
+        head.appendChild(el('span', 'p-tree-name', treeNode.label));
+        head.appendChild(badge('줄 ' + treeNode.line_count, 'badge--off'));
+        head.appendChild(el('span', 'p-tree-sum', '잔량 ' + qty(treeNode.qty)));
+        row.appendChild(head);
+        box.appendChild(row);
+
+        if (treeNode.children) {
+          var kids = el('div', 'p-tree-children');
+          drawTree(treeNode.children, kids);
+          box.appendChild(kids);
+          head.addEventListener('click', function () {
+            kids.hidden = !kids.hidden;
+            head.setAttribute('aria-expanded', kids.hidden ? 'false' : 'true');
+          });
+          head.setAttribute('aria-expanded', 'true');
+        } else {
+          head.addEventListener('click', function () {
+            if (openLeaf) { openLeaf.classList.remove('is-on'); }
+            head.classList.add('is-on');
+            openLeaf = head;
+            drawLines(treeNode);
+          });
+        }
+        container.appendChild(box);
+      });
+    }
+
+    /** 트리·줄 표를 처음 상태로 (담은 줄은 지우지 않는다 — 부르는 쪽이 정한다) */
+    function reset() {
+      var tree = node('tree', 'load-tree');
+      clear(tree);
+      openLeaf = null;
+      openNode = null;
+      nodeChecks = [];
+      drawLines(null);
+    }
+
+    function run() {
+      var params = '?group=' + encodeURIComponent(groups.join(','));
+      if (typeof o.params === 'function') { params += o.params(); }
+
+      o.request('GET', o.path + params).then(function (res) {
+        if (!res) { return; }
+        if (!res.ok) { say(errorMessage(res.data)); return; }
+        reset();
+        var nodes = res.data[o.nodesKey || 'groups'] || [];
+        drawTree(nodes, node('tree', 'load-tree'));
+        var treeEmpty = node('treeEmpty', 'load-tree-empty');
+        if (treeEmpty) { treeEmpty.hidden = nodes.length > 0; }
+        syncInfo();
+        syncNodeChecks();
+      });
+    }
+
+    /* 묶는 기준 칩 — **누른 순서**가 층이다. 순서는 칩 안의 번호로 보인다. */
+    var groupNav = node('groups', 'load-groups');
+
+    function renderGroupMarks() {
+      if (!groupNav) { return; }
+      Array.prototype.forEach.call(groupNav.querySelectorAll('.chip'), function (chip) {
+        var at = groups.indexOf(chip.getAttribute('data-group'));
+        var mark = chip.querySelector('b');
+        if (at < 0) {
+          chip.classList.remove('is-on');
+          if (mark) { chip.removeChild(mark); }
+          return;
+        }
+        chip.classList.add('is-on');
+        if (!mark) {
+          mark = el('b');
+          chip.insertBefore(mark, chip.firstChild);
+        }
+        setText(mark, LOAD_GROUP_MARKS[at] || String(at + 1));
+      });
+    }
+
+    if (groupNav) {
+      Array.prototype.forEach.call(groupNav.querySelectorAll('.chip'), function (chip) {
+        chip.addEventListener('click', function () {
+          var name = chip.getAttribute('data-group');
+          var at = groups.indexOf(name);
+          if (at >= 0) {
+            groups.splice(at, 1);
+          } else if (groups.length < LOAD_GROUP_MARKS.length) {
+            groups.push(name);
+          } else {
+            say('묶는 기준은 세 개까지입니다.');
+            return;
+          }
+          renderGroupMarks();
+        });
+      });
+    }
+
+    var runBtn = node('run', 'load-run');
+    if (runBtn) { runBtn.addEventListener('click', run); }
+
+    var addBtn = node('add', 'load-add');
+    if (addBtn) {
+      addBtn.addEventListener('click', function () {
+        var out = [];
+        Object.keys(picked).forEach(function (k) { out.push(picked[k]); });
+        picked = {};
+        if (typeof o.onAdd === 'function') { o.onAdd(out); }
+        closeModal(key('modal', 'load-modal'));
+      });
+    }
+
+    return {
+      open: function () {
+        picked = {};
+        if (groups.length === 0) { groups = fallbackGroups.slice(); }
+        renderGroupMarks();
+        reset();
+        syncInfo();
+        openModal(key('modal', 'load-modal'));
+        /* 입고 화면은 여기서 조회하지 않는다 — 창만 열린다 (F-63) */
+        if (o.runOnOpen !== false) { run(); }
+      },
+      run: run
+    };
+  }
+
   /** 셀렉트를 목록으로 채운다. 고르고 있던 값은 목록에 남아 있으면 지킨다. */
   function fillSelect(select, rows, valueKey, labelKey, emptyLabel) {
     if (!select) { return; }
@@ -553,6 +850,7 @@
     kpi: kpi,
     renderBackorder: renderBackorder,
     itemPicker: itemPicker,
+    loadPicker: loadPicker,
     fillSelect: fillSelect,
     initTabs: initTabs,
     showTab: showTab,

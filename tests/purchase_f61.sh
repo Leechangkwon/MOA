@@ -545,9 +545,15 @@ R=$(call qa_manager01 POST /api/purchase/po "$TOK_MGR" \
 expect "직접 줄에 장소가 없고 머리도 없으면 400" 400 "$(code_of "$R")"
 expect "감사 사유 bad_request" "bad_request" "$(deny_reason)"
 
-sub "요청 줄 + 직접 줄 섞기 — 같은 (거래처, 장소) 면 **한 장**"
-R=$(call qa_employee01 POST /api/purchase/pr "$TOK_EMP1" \
-  "{\"to_location_id\":$LOC_X,\"memo\":\"F61 섞기\",\"lines\":[{\"item_id\":$ITEM_A1,\"qty\":\"2\"}]}")
+# F-62(2026-09-17) — 이 장면이 검증하는 성질은 「한 발주서에 **요청 줄과 직접 줄이 함께**
+# 들어간다」(PRD F-61 ③)다. F-62 로 묶음 열쇠에 담당자가 더해졌으므로, 그 성질을 계속
+# 검증하려면 요청 줄의 담당자와 직접 줄의 담당자(= 저장하는 사람)가 **같아야** 한다.
+# 그래서 이 요청만 `qa_manager01`(buyer)이 만든다 — buyer 는 지점이 비어 있어 `branch_id`
+# 를 함께 적어 준다(`Doc::resolveBranch`). 담당자가 갈릴 때 두 장이 되는 것은 T-74 (e) 가
+# 따로 시험한다.
+sub "요청 줄 + 직접 줄 섞기 — 같은 (거래처, 장소, 담당자) 면 **한 장**"
+R=$(call qa_manager01 POST /api/purchase/pr "$TOK_MGR" \
+  "{\"branch_id\":$BR_A,\"to_location_id\":$LOC_X,\"memo\":\"F61 섞기\",\"lines\":[{\"item_id\":$ITEM_A1,\"qty\":\"2\"}]}")
 PRM=$(new_id "$(body_of "$R")")
 LM=$(psqlq "SELECT id FROM p_doc_lines WHERE doc_id = $PRM;")
 R=$(call qa_manager01 POST /api/purchase/po "$TOK_MGR" \
@@ -555,7 +561,7 @@ R=$(call qa_manager01 POST /api/purchase/po "$TOK_MGR" \
 B=$(body_of "$R")
 echo "  HTTP $(code_of "$R")"; echo "  $B" | head -c 600; echo
 expect "섞어 저장 201" 201 "$(code_of "$R")"
-expect "한 장이다 (거래처A·장소X)" 1 "$(jq_py "$B" "d['count']")"
+expect "한 장이다 (거래처A·장소X·담당자 qa_manager01)" 1 "$(jq_py "$B" "d['count']")"
 expect "그 장의 줄 수 2" 2 "$(jq_py "$B" "d['docs'][0]['line_count']")"
 PO_MIX=$(jq_py "$B" "d['docs'][0]['id']")
 expect "요청 줄 1 · 직접 줄 1" "1 1" \
@@ -890,8 +896,12 @@ print($1)"; }
       "$(py "int('최소구매단위' in (d['short_formula'] or ''))")"
     expect "부족 산출로 담은 줄의 출처가 「부족 산출」" 1 \
       "$(py "int(any(c.startswith('부족 산출') for c in d['after_short_sources']))")"
-    expect "미리보기가 세 갈래를 합쳐 「거래처×입고장소별 N장」" 1 \
-      "$(py "int('거래처×입고장소별' in (d['preview2'] or ''))")"
+    # F-62(2026-09-17) — 이 시점의 줄은 요청 줄(담당자 qa_employee01)과 직접·부족 산출 줄
+    # (담당자 = 로그인한 qa_manager01)이 섞여 있어 **담당자 축이 갈린다**. 그래서 문구가
+    # 세 축이 된다(PRD F-62 ⑥ 「갈리는 축만 말한다」). 담당자가 한 사람뿐인 위의 단언
+    # 「거래처×입고장소별 2장」은 그대로다 — 그것이 축을 갈라 말하는 규칙의 증거다.
+    expect "미리보기가 세 갈래를 합쳐 「거래처×입고장소×담당자별 N장」 (F-62)" 1 \
+      "$(py "int('거래처×입고장소×담당자별' in (d['preview2'] or ''))")"
     expect "성공 알림에 「발주서 N장을 만들었습니다」" 1 \
       "$(py "int('장을 만들었습니다' in (d['msg'] or ''))")"
     expect "알림에 전표 번호가 2개 이상" 1 \

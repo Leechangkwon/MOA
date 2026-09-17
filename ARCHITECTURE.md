@@ -874,7 +874,9 @@ Admin 전용. 정책 `org.manage`(`Authz::canManageOrg` = Admin) 를 `KNOWN_POLI
 | 원장 | `p_stock_moves` 는 append-only — 앱 계정 INSERT·SELECT 만(`grants.sql`). 현재고 = `SUM(qty_delta)`(뷰 `p_stock_balance`). 취소·정정 = 반대 부호 행 + `reverses_move_id` |
 | 연결 | `p_doc_lines.src_line_id` 하나로 요청→발주→입고. 미발주·미입고는 계산값(재귀 CTE). 담기·입고 확정은 `FOR UPDATE` 뒤 잔량 초과 거부 |
 | 분할 저장 (F-60, 2026-09-17) | 발주서 한 장 = 거래처 하나는 그대로다. 대신 `POST /api/purchase/po` 가 `split:true` 를 받으면 **핸들러가 줄을 거래처별로 나눠 N 장을 한 트랜잭션에서** 만든다 — 잠금(`lockLines`)·잔량·격리·상태 검사는 전 줄에 대해 **한 번**(기존 코드 그대로), 그 뒤 거래처 묶음마다 채번·`insertDoc`·`insertLine`·`retouchRequestLine`·`buildHeader` 를 반복한다. 한 줄이라도 거부면 전부 롤백(반 장 없음). `split` 없이 섞이면 `mixed_vendor`(계약 불변), `vendor_id` 명시가 있으면 `split` 보다 우선한다. 불러오기 묶는 기준에 `doc`(전표, key=`doc_id`)을 더해 여섯. 화면은 묶음 노드 체크(하위 전부 잔량 담기)와 저장 전 분할 미리보기 |
-| 발주서 세 갈래·장소 규칙 (F-61, 2026-09-17) | 발주서 줄의 출처는 셋 — **요청 줄**(`src_line_id`), **직접 줄**(`item_id`, `src_line_id` NULL), **부족 산출**(화면이 `GET /api/purchase/suggest` 의 제안을 직접 줄로 담는다 — 서버에 새 창구 없음). 한 줄은 `src_line_id`·`item_id` 중 **하나만**. 직접 줄의 품목은 `Doc::loadItems`(활성·범위) 로, 거래처는 줄 `vendor_id` ?? 품목 거래처, 단가는 품목 `price_in`, 요청 잔량 갱신 없음. **입고 장소는 줄이 정한다**: `split:true` 면 머리 `to_location_id` 는 선택이고 없으면 요청 줄은 그 요청의 `to_location_id`, 직접 줄은 `location_id` — 묶음 열쇠는 **(거래처, 장소)**, 묶음마다 `Doc::locationOk`(기존). 머리값 명시가 우선(`vendor_id` 와 같은 규칙). `split` 없는 옛 요청은 머리 필수 그대로. 화면 3탭(입력·전표·현황) — 현황은 입고 화면과 같은 `backorder` API·`renderBackorder` |
+| 발주서 세 갈래·장소 규칙 (F-61, 2026-09-17) | 발주서 줄의 출처는 셋 — **요청 줄**(`src_line_id`), **직접 줄**(`item_id`, `src_line_id` NULL), **부족 산출**(화면이 `GET /api/purchase/suggest` 의 제안을 직접 줄로 담는다 — 서버에 새 창구 없음). 한 줄은 `src_line_id`·`item_id` 중 **하나만**. 직접 줄의 품목은 `Doc::loadItems`(활성·범위) 로, 거래처는 줄 `vendor_id` ?? 품목 거래처, 단가는 품목 `price_in`, 요청 잔량 갱신 없음. **입고 장소는 줄이 정한다**: `split:true` 면 머리 `to_location_id` 는 선택이고 없으면 요청 줄은 그 요청의 `to_location_id`, 직접 줄은 `location_id` — 묶음 열쇠는 **(거래처, 장소)** — F-62 에서 담당자가 더해져 **세 축**이 되었다 —, 묶음마다 `Doc::locationOk`(기존). 머리값 명시가 우선(`vendor_id` 와 같은 규칙). `split` 없는 옛 요청은 머리 필수 그대로. 화면 3탭(입력·전표·현황) — 현황은 입고 화면과 같은 `backorder` API·`renderBackorder` |
+| 발주서 담당자·3축 분할 (F-62, 2026-09-17) | 발주서를 나누는 열쇠가 **(거래처, 입고 장소, 담당자)** 세 축이 된다. 줄의 담당자는 머리 `manager_id` 명시 → **요청 줄은 그 발주요청 전표의 `manager_id`**(출처 줄 조회가 `d.manager_id` 를 함께 읽는다) → 직접 줄·부족 산출 줄은 로그인 사용자. 명시 우선은 `vendor_id`·`to_location_id` 와 같은 규칙이고 `split` 없는 옛 요청은 머리 `??` 로그인 사용자 그대로(계약 불변 — 묶음 만들기 직전에 전 줄의 담당자를 그 값으로 덮어쓴다). 확인은 묶음마다 기존 `Doc::managerOk`(활성 + 구매 역할 있음), 실패는 기존 `bad_reference`. 화면 머리에 「담당자」 칸이 생기고(비우면 「— 줄에서 자동 —」) 그 목록은 새 창구 `GET /api/purchase/managers` 가 준다 — **정의가 `Doc::managerOk` 의 SQL 과 같아야** 고를 수 있는데 저장이 거부되는 어긋남이 없다(R-92). 분할 미리보기는 **갈리는 축만** 말한다(거래처만 → F-60 문장, 장소까지 → F-61 문장, 담당자까지 → 세 축). 새 판정 함수·새 감사 키·스키마·CSS 변경 0 |
+| 입고 불러오기 — 단추 뒤 창·묶는 기준 (F-63, 2026-09-17) | 입고 「입력」 탭 맨 위에 늘 펼쳐져 있던 불러오기 패널을 **단추 뒤 창**(`gr-load-modal`)으로 옮기고 화면 진입 자동 조회를 없앤다 — 조회는 창 안 「불러오기」를 눌러야 돈다(발주요청 불러오기 창과 같은 동작). 창 안은 발주요청 불러오기와 **같은 틀**이고 묶는 기준은 `p_backorder` 가 이미 가진 열로 여섯(거래처·입고 장소·담당자·지점·분류 `i.cat1_id`·전표=발주서). `GET /api/purchase/gr/load` 에 선택 키 `?group=`(1~3개) — 있으면 `nodes` 트리, **없으면 지금의 `orders` 그대로**(계약 불변). `group` 값은 코드에 적힌 여섯의 열쇠가 될 뿐 **SQL 에 닿지 않는다**(`pr_load` 와 같은 화이트리스트). 묶기는 `src/purchase/Grouping.php` **한 벌**(순수 함수, DB 접근 0)이고 `pr_load`·`gr_load` 가 같이 부른다 — 두 벌이면 언젠가 한쪽만 고쳐진다(25단계 CSS 교훈). 화면 쪽도 `purchase_common.js` 의 `UI.loadPicker()` 한 벌. 입고 확정 API·정책·감사는 변경 0 |
 | 음수 재고 | 이동·사용 확정 트랜잭션에서 잠금 뒤 합 재계산, 0 미만이면 400 |
 | 채번 | `p_doc_seq(doc_type, date, last)` 잠금 증가 → `PR|PO|GR|MV|IS|ADJ-YYYYMMDD-N`, UNIQUE |
 | 마감 | `p_docs.closed_month` 가 있으면 수정·취소는 `purchase.close` + 사유 + 감사 |
@@ -915,6 +917,18 @@ Admin 전용. 정책 `org.manage`(`Authz::canManageOrg` = Admin) 를 `KNOWN_POLI
 | GET | `/api/purchase/gr/{num}` | `purchase_gr_get.php` | `purchase.read` |
 | (기존) | `POST /api/purchase/gr/{num}/void` | `purchase_gr_void.php` | `purchase.stock.write` |
 
+**F-62·F-63 창구 변화** — 새 라우트는 **한 줄**이고, 입고 불러오기는 기존 라우트에 선택 키 하나가 붙을 뿐이다.
+
+| 메서드 | 경로 | 핸들러 | 정책 | 무엇 |
+|---|---|---|---|---|
+| GET | `/api/purchase/managers` | `purchase_managers_list.php` | `purchase.buy.write` | **새 창구**(F-62) — 담당자 후보 `id`·`name`. 정의는 `Doc::managerOk` 의 SQL 과 같다 (R-92) |
+| (기존) | `GET /api/purchase/gr/load` | `purchase_gr_load.php` | `purchase.stock.write` | F-63 이 **선택 키 `?group=`** 만 더한다. 없으면 응답이 지금과 같다(계약 불변) |
+| (기존) | `POST /api/purchase/po` | `purchase_po_create.php` | `purchase.buy.write` | F-62 는 **키를 늘리지 않는다** — `manager_id` 는 20단계부터 있던 머리 키다 |
+
+담당자 목록에 **지점 격리를 걸지 않는 것**은 이 표의 유일한 예외적 판단이고, 그 이유(구매실은 어느 지점 요청이든
+담당자로 적는다 · 창구가 buyer·Admin 전용 · `Doc::managerOk` 에도 지점 조건이 없다)를 `lint:no-branch-scope`
+표식으로 조회 위에 적는다. 표식은 조회 단위다(23단계 규칙).
+
 경로 충돌은 없다: `{num}` 은 `[0-9]{1,9}` 라 같은 자리의 글자 경로(`/api/purchase/gr/load`)와 형태가 다르고, 취소는 메서드도 경로도 다르다.
 읽기는 `purchase.read`, **움직이는 것만** `purchase.stock.write` 라는 갈래는 발주서(`/po`·`/po/{num}` 읽기 vs `/po/{num}/void` 쓰기)와 같다 —
 「볼 수는 있어도 되돌리지는 못하는 사람」이 있다는 뜻이고, 그 판단은 라우트 정책 한 곳에서만 난다(PRD S-01).
@@ -931,7 +945,7 @@ Admin 전용. 정책 `org.manage`(`Authz::canManageOrg` = Admin) 를 `KNOWN_POLI
 | CSS 두 벌만 | 셸 공통 `app.css`(토큰·.page-head·.panel·.panel__head--row·.panel__tools·.field--inline·.check·.badge--*·.chip·.tabs·.kpi·.num·.kbd·.empty·.help·.grid-form·.split·.filelabel) + 모듈 공통 `purchase.css`(접두 `p-`). 인쇄 화면만 `purchase_print.css` 추가. **화면별 CSS 파일을 만들지 않는다.** 같은 클래스 이름을 두 곳에서 정의하지 않는다 | 19~24단계에 화면마다 CSS 를 새로 만들며 「앞 파일을 가져다 쓰지 않는다」고 적었더니 `.panel__tools` 가 절반의 화면에서 미정의라 필터가 세로로 무너졌다(T-50 이전 46건). 규칙이 다섯 벌이면 고칠 때 한 벌만 고쳐진다 |
 | CSS 는 head 에서 | handler 가 `$pageCss = ['purchase.css']` 를 넘기고 `shell_top.php` 가 화이트리스트 검사 뒤 `<link>` 로 싣는다. 본문 안 `<link>` 금지 | 본문 링크는 app.css 만으로 한 번 그린 뒤 다시 배치되어 화면이 튄다 |
 | 메시지 슬롯 하나 | `#msg` 는 페이지에 한 번. handler 가 `$pageMsgTop = true` 면 view 가 `.page-head` 아래에 출력하고 `shell_bottom.php` 는 생략 | 중복 id 가 있으면 `getElementById` 가 첫 것을 집어 오류가 안 보이거나 맨 아래에 뜬다 |
-| JS 헬퍼 한 벌 | `purchase_common.js` 의 `window.PurchaseUI`(el/setText/dash/errorMessage/request/cell/badge/qty/money/kpi/initTabs/say/openModal/closeModal). 화면 번들은 화면 로직만. **textContent 만**(S-03) | 같은 표를 두 화면이 다른 열로 그리던 사이클 표가 그 증거다 |
+| JS 헬퍼 한 벌 | `purchase_common.js` 의 `window.PurchaseUI`(el/setText/dash/errorMessage/request/cell/badge/qty/money/kpi/initTabs/say/openModal/closeModal/fillSelect/itemPicker(F-61)/loadPicker(F-63 — 불러오기 창의 트리·묶음 체크·담을 수량)). 화면 번들은 화면 로직만. **textContent 만**(S-03) | 같은 표를 두 화면이 다른 열로 그리던 사이클 표가 그 증거다 |
 | 시안이 규범 | `docs/purchase/design/*.dc.html` 의 배치(머리 카드 위·줄 카드 아래, 2단 `.split`)·배지 색(ok 완료/warn 진행중·부분/danger 부족·지남/accent 일부 발주·정보/team 이동/off 취소)·글꼴(전표번호·코드·금액 `mono`, 숫자 `num`)·어휘(README) 를 그대로 쓴다. 안내는 `.page-head__sub` 한 줄 + 표 아래 `.help`; 상단 `.notice` 더미 금지 | 시안은 사용자가 「확정」한 요구사항이다. 기능 시험 통과가 단계 완료 조건의 전부가 아니다 |
 | 내비는 사이드바만 | 「구매관리」 아래 세 소제목 전표/현황/기초정보. 화면 헤더 `.page-head__actions` 에는 **그 화면의 동작**만(인쇄·PDF 예외). 표시는 편의, 허용은 라우트 정책(변경 없음) | 헤더마다 다른 링크 집합은 내비 두 벌이다 |
 | 시각 결함은 실행해서 잡는다 | `scripts/ui_snapshot.sh <폴더> <폭>` — qa_admin01 로 로그인해 11화면·모든 탭을 찍고 잘림·겹침·높이 불일치·가로 넘침·미정의 class·id 중복·「N단계」 문구·콘솔 오류를 센다(T-50). 검토 도구이며 런타임 의존성이 아니다(`deploy/DEPENDENCIES.md`) | 「코드를 읽어 보니 정리돼 보인다」는 증거가 아니다 |
