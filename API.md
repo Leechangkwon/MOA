@@ -595,7 +595,7 @@ curl -s -H "X-API-Token: $API_TOKEN" http://127.0.0.1:8082/api/whoami
 {"error":"권한이 없습니다"} [403]
 ```
 
-감사 로그(실측): `file.delete allow`·`folder.delete allow` 행에 `detail.auth=api_token`·`token_kind=personal`·`token_id=<번호>` 가 붙었다. 공용 토큰의 403(`shared_token_not_permitted`)은 귀속을 검토 계정으로 둔 실행에서 확인한다(아래 갱신).
+감사 로그(실측): `file.delete allow`·`folder.delete allow` 행에 `detail.auth=api_token`·`token_kind=personal`·`token_id=<번호>` 가 붙었다. 공용 토큰(`.env`, 귀속 admin01)으로 같은 DELETE 둘을 부른 실측(2026-09-17): `{"error":"이 창구는 개인 토큰으로만 쓸 수 있습니다"} [403]`, 감사 `auth.token deny shared_token_not_permitted` + `token_kind=shared`. 같은 토큰의 `GET /api/files` 는 200 그대로다.
 
 > 토큰은 이 **열** 밖에서는 아무것도 열지 못한다 — 등급 변경·휴지통 복원·계정·감사 창구는 헤더를 읽지도 않는다(0장).
 
