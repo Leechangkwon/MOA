@@ -3952,7 +3952,6 @@ function initUsers(csrfToken) {
       }
       patch(item.id, payload, '저장했습니다');
     };
-    openTokenSection(item);
     ueDialog.showModal();
     if (ueReason) {
       ueReason.focus();
@@ -3971,10 +3970,17 @@ function initUsers(csrfToken) {
    *   (11단계 showTempPassword, SECURITY R-39 · R-91). 서버에는 sha256 만 있어 다시 볼 수 없다.
    * ★ 표에 나오는 값(이름·hint)도 사람이 적은 문자열이다 → 전부 createElement + textContent.
    *   이 구역에는 문자열을 HTML 로 바꾸는 코드가 한 곳도 없다 (PRD S-03).
-   * ★ 구역은 `#user-edit` 모달 **안**이되 폼 **밖**에 붙인다 — 폼 안에 입력칸을 두면 Enter 가
-   *   계정 변경 저장(submit)으로 새기 때문이다.
+   * ★ 구역은 **전용 모달**(`#token-dialog`)에 있다. 처음에는 계정 편집 모달(`#user-edit`) 안에
+   *   두었는데, 그 모달은 `is_self` 행에서 열리지 않아(계정 화면은 자기 자신을 고칠 수 없다)
+   *   **관리자 자신의 토큰을 발급할 길이 없었다** — F-59 의 첫 용례가 「관리자 자신의 PC
+   *   프로그램」인데 그 길이 막혀 있었다(사용자 실측 2026-09-17). 서버는 자기 자신 대상
+   *   발급을 허용한다(PRD F-59 ②: `api_tokens_issue.php` 는 `decideUserChange` 를 부르지 않는다).
+   *   그래서 구역을 모달 하나로 떼어 **모든 행**의 「프로그램 토큰」 단추가 같은 것을 연다.
+   *   같은 구역을 두 자리에 두지 않는다 — 두면 두 벌의 상태가 어긋난다.
    */
-  var tkBox = null;      // 구역 전체 (모달 안에 한 번만 만든다)
+  var tkDialog = null;   // 전용 모달
+  var tkTitle = null;    // 모달 제목 (「프로그램 토큰 — <username>」)
+  var tkBox = null;      // 구역 전체 (한 번만 만든다)
   var tkBody = null;     // 표의 tbody
   var tkMsg = null;      // 이 구역의 알림 줄 (서버 문구를 그대로 쓴다)
   var tkName = null;     // 이름 입력칸
@@ -4215,11 +4221,29 @@ function initUsers(csrfToken) {
       });
   }
 
-  /** 구역을 한 번 만든다(모달 안, 폼 밖). 두 번째부터는 있는 것을 다시 쓴다. */
+  /** 구역과 그것을 담는 **전용 모달**을 한 번 만든다. 두 번째부터는 있는 것을 다시 쓴다. */
   function buildTokenSection() {
-    if (tkBox || !ueDialog) {
+    if (tkBox) {
       return;
     }
+    tkDialog = document.createElement('dialog');
+    tkDialog.id = 'token-dialog';
+    tkDialog.className = 'modal token-modal';
+    tkDialog.setAttribute('aria-labelledby', 'token-title');
+
+    var head = document.createElement('div');
+    head.className = 'modal__head';
+    tkTitle = document.createElement('h2');
+    tkTitle.className = 'modal__title';
+    tkTitle.id = 'token-title';
+    setText(tkTitle, '프로그램 토큰');
+    head.appendChild(tkTitle);
+    tkDialog.appendChild(head);
+
+    var body = document.createElement('div');
+    body.className = 'modal__body';
+    tkDialog.appendChild(body);
+
     tkBox = document.createElement('section');
     tkBox.className = 'token-box';
 
@@ -4278,19 +4302,59 @@ function initUsers(csrfToken) {
     tkMsg.setAttribute('aria-live', 'polite');
     tkBox.appendChild(tkMsg);
 
-    ueDialog.appendChild(tkBox);
+    body.appendChild(tkBox);
+
+    var foot = document.createElement('div');
+    foot.className = 'modal__foot';
+    var close = document.createElement('button');
+    close.type = 'button';
+    close.className = 'btn btn--quiet';
+    setText(close, '닫기');
+    close.addEventListener('click', closeTokenSection);
+    foot.appendChild(close);
+    tkDialog.appendChild(foot);
+
+    // Esc 로 닫아도 보여 준 토큰 값이 남지 않게 같은 길로 보낸다.
+    tkDialog.addEventListener('cancel', function (event) {
+      event.preventDefault();
+      closeTokenSection();
+    });
+
+    document.body.appendChild(tkDialog);
   }
 
-  /** 모달을 열 때 — 구역을 비우고 그 계정의 토큰을 읽는다. */
+  /** 닫는다 — **보여 준 토큰 값을 지우고** 나서 닫는다(닫으면 다시 볼 수 없다). */
+  function closeTokenSection() {
+    clearIssuedToken();
+    tkUid = null;
+    if (tkDialog && tkDialog.open) {
+      tkDialog.close();
+    }
+  }
+
+  /** 한 번 보여 준 토큰 상자를 지운다(값은 상자와 함께 사라진다). */
+  function clearIssuedToken() {
+    var once = document.getElementById('api-token-once');
+    if (once) {
+      var field = once.querySelector('input');
+      if (field) {
+        field.value = '';
+      }
+      if (once.parentNode) {
+        once.parentNode.removeChild(once);
+      }
+    }
+  }
+
+  /** 모달을 연다 — 구역을 비우고 그 계정의 토큰을 읽는다. 자기 자신도 대상이 된다. */
   function openTokenSection(item) {
     buildTokenSection();
-    if (!tkBox) {
+    if (!tkBox || !tkDialog) {
+      setText(msg, GENERIC_ERROR);
       return;
     }
-    var once = document.getElementById('api-token-once');
-    if (once && once.parentNode) {
-      once.parentNode.removeChild(once);   // 앞서 본 토큰 값을 다음 계정으로 끌고 가지 않는다
-    }
+    clearIssuedToken();                    // 앞서 본 토큰 값을 다음 계정으로 끌고 가지 않는다
+    setText(tkTitle, '프로그램 토큰 — ' + item.username);
     if (tkName) {
       tkName.value = '';
     }
@@ -4303,6 +4367,23 @@ function initUsers(csrfToken) {
     }
     tkUid = typeof item.id === 'number' ? item.id : null;
     loadTokens();
+    tkDialog.showModal();
+    if (tkName) {
+      tkName.focus();
+    }
+  }
+
+  /** 행마다 붙는 「프로그램 토큰」 단추 — **자기 자신 행에도** 붙는다 (F-59 첫 용례). */
+  function tokenButton(item) {
+    var button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'btn btn--quiet btn--small';
+    setText(button, '프로그램 토큰');
+    button.addEventListener('click', function () {
+      setText(msg, '');
+      openTokenSection(item);
+    });
+    return button;
   }
 
   if (ueForm) {
@@ -4363,9 +4444,16 @@ function initUsers(csrfToken) {
     var td = document.createElement('td');
     td.className = 'actions';
 
-    // 자기 자신은 이 화면에서 바꿀 수 없다(서버 Authz 의 self_change 와 같은 규칙).
+    // 자기 자신은 이 화면에서 **바꿀 수 없다**(서버 Authz 의 self_change 와 같은 규칙).
+    // 다만 「프로그램 토큰」은 자기 자신에게도 열려 있다 — 관리자 자신의 PC 프로그램이
+    // F-59 의 첫 용례이고, 서버도 자기 대상 발급을 허용한다(PRD F-59 ②). 토큰 발급은
+    // 계정의 역할·상태를 바꾸는 일이 아니라 **그 계정으로 쓰는 자격**을 만드는 일이다.
     if (item.is_self === true) {
-      setText(td, '(본인)');
+      var selfLabel = document.createElement('span');
+      selfLabel.className = 'muted';
+      setText(selfLabel, '(본인)');
+      td.appendChild(selfLabel);
+      td.appendChild(tokenButton(item));
       row.appendChild(td);
       return;
     }
@@ -4470,6 +4558,9 @@ function initUsers(csrfToken) {
       );
     });
     td.appendChild(activeButton);
+
+    // F-59 — 다른 행에서는 기존 단추들 **뒤**에 붙인다(자기 자신 행과 같은 함수).
+    td.appendChild(tokenButton(item));
 
     row.appendChild(td);
   }

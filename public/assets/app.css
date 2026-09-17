@@ -1649,12 +1649,13 @@ dialog.changelog-dialog .modal__body { max-height: 70vh; }
 .act-banner b { font-weight: 700; }
 .act-banner .btn { margin-left: auto; }
 
-/* ─── F-59 계정 편집 모달의 「프로그램 토큰」 구역 (PRD F-59 ②, ARCH 4.6) ──────────
-   모달 안, 폼 아래에 붙는 구역이다. 색·간격은 기존 토큰만 쓰고 새 색을 만들지 않는다. */
+/* ─── F-59 「프로그램 토큰」 전용 모달 (PRD F-59 ②, ARCH 4.6) ──────────────────
+   계정 화면의 **모든 행**(자기 자신 포함)이 여는 모달이다 — 관리자 자신의 PC 프로그램이
+   첫 용례라 계정 편집 모달 안에 둘 수 없었다(그 모달은 자기 행에서 열리지 않는다).
+   색·간격은 기존 토큰만 쓰고 새 색을 만들지 않는다. */
+dialog.token-modal { width: min(720px, calc(100vw - 32px)); }
 .token-box {
-  margin: 0 24px 20px;
-  padding-top: 14px;
-  border-top: 1px solid var(--line);
+  margin: 0;
 }
 .token-box__title { margin: 0 0 6px; font-size: 15px; font-weight: 700; }
 .token-box__lead { margin: 0 0 10px; color: var(--muted); font-size: 13px; line-height: 1.6; }

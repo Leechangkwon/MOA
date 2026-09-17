@@ -399,7 +399,7 @@ F-49 는 「공용 정적 토큰 하나」(설계 A)로 갔고, 그 한계(회�
 
 **표 `api_tokens`(6.2-5).** 계정별 개인 토큰. 토큰 원문은 발급 응답에 **한 번** 나가고 서버에는 **sha256 만** 남는다(`sessions`·`share_links` 와 같은 방식). 화면 식별용으로 앞 6자 `hint` 만 따로 둔다(48자 중 6자 — 남은 42자의 무작위성으로 충분하다). 회수는 `revoked_at`·`revoked_by` UPDATE 이고 행은 지우지 않는다 — 「그 토큰이 언제부터 언제까지 살아 있었나」 가 조사에 필요하다(앱 계정에 DELETE 권한 없음).
 
-**발급·회수는 관리자의 세션 행동이다.** `GET/POST /api/users/{uid}/api-tokens`·`DELETE /api/users/{uid}/api-tokens/{tid}`, 정책 `user.manage`(Admin, 재인증 관문 `[3-2]` 자동). 발급은 `reason_text` 필수(S-07), 살아 있는 토큰 계정당 **5개**(`limit_exceeded`), 대상이 비활성·만료면 거부(`target_inactive`). 자기 자신도 대상이 된다 — 관리자 자신의 PC 프로그램이 첫 용례다(`decideUserChange` 의 `self_change` 는 여기 적용하지 않는다). 화면은 계정 편집 모달(F-40)의 「프로그램 토큰」 구역: 목록(이름·hint·발급일·마지막 사용·상태), 발급(이름·사유 → 토큰을 **한 번** 보여 주고 복사), 회수. 전부 `textContent`.
+**발급·회수는 관리자의 세션 행동이다.** `GET/POST /api/users/{uid}/api-tokens`·`DELETE /api/users/{uid}/api-tokens/{tid}`, 정책 `user.manage`(Admin, 재인증 관문 `[3-2]` 자동). 발급은 `reason_text` 필수(S-07), 살아 있는 토큰 계정당 **5개**(`limit_exceeded`), 대상이 비활성·만료면 거부(`target_inactive`). 자기 자신도 대상이 된다 — 관리자 자신의 PC 프로그램이 첫 용례다(`decideUserChange` 의 `self_change` 는 여기 적용하지 않는다). 화면은 계정 관리(`/users`) 각 행의 「프로그램 토큰」 버튼이 여는 **토큰 창**: 목록(이름·hint·발급일·마지막 사용·상태), 발급(이름·사유 → 토큰을 **한 번** 보여 주고 복사), 회수. 전부 `textContent`. 처음엔 계정 편집 모달(F-40) 안의 구역으로 만들었으나 그 모달은 **자기 행에는 열리지 않아**(`is_self` → `(본인)`, 서버 `self_change` 와 같은 규칙) 관리자 자신의 토큰을 발급할 수 없었다 — 2026-09-17 사용자 실측으로 별도 버튼·창으로 보정.
 
 **`Auth::requireApiToken` 의 판정 순서(4.2 표를 대신한다).**
 
