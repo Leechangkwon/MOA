@@ -2010,6 +2010,7 @@ sudo -u postgres psql -d tbox_re -c "SELECT happened_at, actor_name, action, res
 - [x] `tests/purchase_f62.sh` **104/0** · 회귀 `purchase_f61.sh` **142/0** · `purchase_f60.sh` **103/0** ·
       `security_lint.sh` 0건 · `php -l` · 사용자 비-qa 행 8578 불변
 - [x] SECURITY 7장 검토 이력 한 줄 · R-92 상태 갱신
+- [x] 관문 ④ 커밋 `d96f11a` → push → `release.sh minor` → **v1.13.0**(`b294b59`, 태그 push 완료)
 
 **자기 공격 체크** (사용자, 관문 ③)
 - [ ] 담당자가 다른 발주요청 둘을 한 번에 담고 저장 → 발주서가 담당자별로 갈라지는가 · 각 발주서의 담당자가
@@ -2082,6 +2083,7 @@ sudo -u postgres psql -d tbox_re -c "SELECT happened_at, actor_name, action, res
       `f61` **142/0** · `f62` **104/0** · lint 0 · `php -l`. `ui_snapshot.sh` 는 **미실행**(창의 CSS 클래스가
       전부 기존 것인지는 확인)
 - [x] SECURITY 7장 검토 이력 한 줄
+- [x] 관문 ④ — F-62 와 **한 커밋**이다: `d96f11a` → push → `release.sh minor` → **v1.13.0**(`b294b59`)
 
 **자기 공격 체크** (사용자, 관문 ③)
 - [ ] 입고 화면에 들어갔을 때 목록이 저절로 뜨지 않는가 · 첫 그림이 가벼워졌는가
