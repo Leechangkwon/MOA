@@ -45,7 +45,7 @@ final class Wiki
 
     /** 단계 글의 번호 범위 (PRD 13장의 1~13단계) */
     public const STAGE_MIN = 1;
-    public const STAGE_MAX = 25;   // PRD 13장 로드맵 끝(25단계)
+    public const STAGE_MAX = 27;   // PRD 13장 로드맵 끝(27단계)
 
     /** 본문 블록의 전체 목록. 여기 없는 type 은 예외다 (ARCH 5.10) */
     public const BLOCK_TYPES = ['p', 'list', 'steps', 'table', 'code', 'callout', 'terms', 'refs', 'link', 'checklist'];

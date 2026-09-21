@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""구매 화면 스크린샷 + DOM 시각 결함 점검 (Playwright). ui_snapshot.sh 가 부른다.
+"""화면 스크린샷 + DOM 시각 결함 점검 (Playwright). ui_snapshot.sh 가 부른다.
 결함 종류: dup_id(id 중복) · stage_text(화면 문구의 「N단계」) · overflow_x(페이지 가로 넘침) · clipped(텍스트가 상자에서 잘림) · overlap(형제 카드 겹침)
           · row_height(같은 줄의 버튼·입력 높이 불일치) · offscreen(뷰포트 오른쪽 밖으로 나간 요소)
           · undefined_class(어느 스타일시트에도 규칙이 없는 class)
@@ -9,9 +9,8 @@ from playwright.sync_api import sync_playwright
 
 BASE, UA, COOKIES, OUT, WIDTH = sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4], int(sys.argv[5])
 import os
-PAGES = os.environ["UI_PAGES"].split(",") if os.environ.get("UI_PAGES") else ["/purchase/pr", "/purchase/po", "/purchase/receipt", "/purchase/move", "/purchase/stock",
-         "/purchase/usage", "/purchase/recon", "/purchase/docs", "/purchase/masters",
-         "/purchase/structure", "/purchase/import"]
+PAGES = os.environ["UI_PAGES"].split(",") if os.environ.get("UI_PAGES") else ["/", "/settings", "/activity", "/admin", "/users",
+         "/org", "/admin/permissions", "/audit", "/trash"]
 
 AUDIT_JS = r"""
 () => {

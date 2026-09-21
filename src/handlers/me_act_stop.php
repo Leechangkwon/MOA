@@ -28,8 +28,6 @@ if (($user['acting'] ?? false) === true) {
         UPDATE sessions
            SET act_role          = NULL,
                act_team_id       = NULL,
-               act_purchase_role = NULL,
-               act_branch_id     = NULL,
                act_started_at    = NULL,
                act_last_seen_at  = NULL
          WHERE id = :id

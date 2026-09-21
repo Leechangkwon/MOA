@@ -302,10 +302,9 @@ final class Preview
      *
      * @return array{0:string, 1:string} [문자열, encoding]
      *
-     * ★ 19단계(F-29)에서 `private` → `public` 으로만 바꿨다. 로직은 한 글자도 바뀌지 않았다.
-     *   엑셀 가져오기(`src/purchase/Sheet.php`)가 csv 를 같은 방식으로 읽어야 하는데,
-     *   같은 코드를 그쪽에 **복사해 두면 언젠가 한쪽만 고쳐진다** — 인코딩 판정이 두 벌이 되는
-     *   순간 "미리보기에는 제대로 보이는데 가져오기는 깨지는" 상태가 생긴다.
+     * ★ 19단계에서 `private` → `public` 으로만 바꿨다(그 호출자는 2026-09-21 에 없어졌다).
+     *   로직은 한 글자도 바뀌지 않았다 — 같은 코드를 두 벌로 두면 언젠가 한쪽만 고쳐지므로,
+     *   csv 인코딩 판정의 자리는 앞으로도 이 한 곳이다.
      */
     public static function toUtf8(string $raw): array
     {

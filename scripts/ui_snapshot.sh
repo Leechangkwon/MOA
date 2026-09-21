@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# 구매 화면 시각 점검 — 검토 계정(qa_admin01)으로 로그인해 화면을 찍고 DOM 결함을 센다.
+# 화면 시각 점검 — 검토 계정(qa_admin01)으로 로그인해 화면을 찍고 DOM 결함을 센다.
 #   scripts/ui_snapshot.sh <출력 폴더> [폭(기본 1440)]
 # 요구: python3 playwright(사용자 로컬 설치, 런타임 의존성 아님 — deploy/DEPENDENCIES.md 「검토 도구」). CLAUDE.md 3장: qa_ 계정 · UA tbox-review/<날짜>.
 set -u
@@ -19,7 +19,7 @@ for try in 1 2 3; do
   echo "  · 코드 재사용 거부 — ${left}초 대기" >&2; sleep $((left+1))
 done
 case "$out" in *'"ok":true'*) ;; *) echo "로그인 실패: $out" >&2; exit 1;; esac
-# 재인증(purchase.master.write 화면이 홈으로 튀지 않게)
+# 재인증(재인증 관문이 걸린 관리 화면이 홈으로 튀지 않게)
 curl -s -o /dev/null -b "$JAR" -c "$JAR" -A "$UA" -H 'Content-Type: application/json' \
   -H "X-CSRF-Token: $(curl -s -b "$JAR" -A "$UA" "$BASE/api/me" | sed -n 's/.*"csrf_token":"\([0-9a-f]*\)".*/\1/p')" \
   -d "{\"password\":\"$pw\"}" "$BASE/api/me/reauth"

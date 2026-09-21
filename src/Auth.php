@@ -110,13 +110,6 @@ final class Auth
                u.username      AS username,
                u.role          AS role,
                u.team_id       AS team_id,
-               -- 26단계 (PRD F-39) — 구매 모듈의 두 축을 세션 조회에 함께 싣는다.
-               -- 19단계에는 Authz::purchaseFields 가 요청마다 users 를 한 번 더 읽었는데,
-               -- 「역할로 보기」는 이 두 칸도 바꿔 줘야 하므로 값을 만드는 자리가 한 곳이어야 한다.
-               -- purchaseFields 는 "호출자가 두 칸을 이미 들고 있으면 그것을 쓴다" 는 계약이라
-               -- 판정 코드는 그대로이고, 쿼리는 오히려 하나 줄어든다.
-               u.purchase_role AS purchase_role,
-               u.branch_id     AS branch_id,
                u.is_active     AS is_active,
                u.mfa_enabled   AS mfa_enabled,
                -- 11단계 (PRD F-16) — 최초 로그인 강제 절차의 두 플래그.
@@ -138,8 +131,6 @@ final class Auth
                -- 역할 문자열을 견주는 자리가 SQL 한 줄이므로, PHP 쪽에는 역할 비교가 생기지 않는다.
                s.act_role          AS act_role,
                s.act_team_id       AS act_team_id,
-               s.act_purchase_role AS act_purchase_role,
-               s.act_branch_id     AS act_branch_id,
                s.act_started_at    AS act_started_at,
                (s.act_role IS NOT NULL AND u.role = 'Admin')            AS act_role_ok,
                (s.act_last_seen_at IS NOT NULL
@@ -175,8 +166,6 @@ final class Auth
         UPDATE sessions
            SET act_role          = NULL,
                act_team_id       = NULL,
-               act_purchase_role = NULL,
-               act_branch_id     = NULL,
                act_started_at    = NULL,
                act_last_seen_at  = NULL
          WHERE id = :id
@@ -404,8 +393,8 @@ final class Auth
         /*
          * ── 26단계 「역할로 보기」 (PRD F-39, ARCH 5.20, SECURITY R-74) ─────────────────
          *
-         * 여기가 이 기능의 **전부**다. 유효 역할(role·team_id·purchase_role·branch_id)을 이 한
-         * 곳에서 만들어 두면 Authz·purchaseScopeWhere·모든 핸들러가 읽는 `$u` 가 그대로 그 역할이
+         * 여기가 이 기능의 **전부**다. 유효 역할(role·team_id)을 이 한
+         * 곳에서 만들어 두면 Authz·모든 핸들러가 읽는 `$u` 가 그대로 그 역할이
          * 된다 — 판정 코드는 한 줄도 고치지 않았고, 그래서 **화면 흉내가 아니라 서버 판정**이다.
          *
          * 실제 값은 `real_*` 로 함께 내려 준다. 감사 로그의 `actor_role` 은 그쪽을 쓴다 —
@@ -429,22 +418,9 @@ final class Auth
             'team_id'    => $actValid
                 ? ($row['act_team_id'] === null ? null : (int) $row['act_team_id'])
                 : ($row['team_id'] === null ? null : (int) $row['team_id']),
-            /*
-             * 19단계 구매 모듈의 두 축. 전에는 Authz::purchaseFields 가 users 를 한 번 더 읽었다 —
-             * 이제 세션 조회가 함께 싣고(쿼리 1회 감소), 보는 중이면 보는 값으로 바뀐다.
-             * purchaseFields 는 "두 키가 **모두** 있으면 그것을 쓴다" 는 계약이라 둘 다 언제나 넣는다.
-             */
-            'purchase_role' => $actValid
-                ? ($row['act_purchase_role'] === null ? null : (string) $row['act_purchase_role'])
-                : ($row['purchase_role'] === null ? null : (string) $row['purchase_role']),
-            'branch_id'     => $actValid
-                ? ($row['act_branch_id'] === null ? null : (int) $row['act_branch_id'])
-                : ($row['branch_id'] === null ? null : (int) $row['branch_id']),
             // 실제 값 — **언제나** users 행 그대로다. 감사·띠·「원래대로」가 이 값을 본다.
             'real_role'          => (string) $row['role'],
             'real_team_id'       => $row['team_id'] === null ? null : (int) $row['team_id'],
-            'real_purchase_role' => $row['purchase_role'] === null ? null : (string) $row['purchase_role'],
-            'real_branch_id'     => $row['branch_id'] === null ? null : (int) $row['branch_id'],
             'acting'             => $actValid,
             'acting_since'       => $actValid && $row['act_started_at'] !== null
                 ? (string) $row['act_started_at'] : null,

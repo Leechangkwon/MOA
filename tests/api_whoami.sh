@@ -243,7 +243,7 @@ else
   # F-56 이전과 같은 키 집합이어야 한다(Employee 세션 기준 — can_fetch 가 false 라
   # fetch_hosts_public 는 애초에 없다. me.php 는 이번 변경에서 손대지 않았다).
   expect "세션 /api/me 키 집합 불변" \
-    "acting,acting_as,acting_idle_minutes,branch_id,can_admin,can_fetch,can_manage_org,can_manage_users,can_purchase,can_purchase_master,can_stop_acting,can_view_audit,can_view_trash,can_view_wiki,csrf_token,fetch_enabled,mfa_enabled,mfa_recommended,mfa_required,mfa_setup_required,must_change_password,next,purchase_role,real_role,reauth_fresh,role,team_id,team_name,upload_levels,username" \
+    "acting,acting_as,acting_idle_minutes,can_admin,can_fetch,can_manage_org,can_manage_users,can_stop_acting,can_view_audit,can_view_trash,can_view_wiki,csrf_token,fetch_enabled,mfa_enabled,mfa_recommended,mfa_required,mfa_setup_required,must_change_password,next,real_role,reauth_fresh,role,team_id,team_name,upload_levels,username" \
     "$(jq_py '",".join(sorted(d.keys()))' < "$WORK/e_me.json")"
 fi
 

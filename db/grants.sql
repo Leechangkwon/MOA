@@ -64,27 +64,8 @@ GRANT SELECT, INSERT, UPDATE                 ON fetch_hosts TO tbox_app; -- ★ 
 -- 있다 (share_links 와 같은 방식).
 GRANT SELECT, INSERT, UPDATE                 ON api_tokens  TO tbox_app; -- ★ DELETE 없음
 
--- 19단계 구매·재고 모듈 기초정보 (F-28 · F-29, ARCH 5.18 · 10장 마지막 행).
--- ★ **DELETE 가 한 줄도 없다** — 기초정보를 그만 쓰는 것은 `is_active = false` 다.
---   앱 계정에 지우는 자격 자체가 없으므로, 핸들러에 결함이 생겨도 전표가 참조하는
---   기초정보가 사라져 추적이 끊기는 경로가 만들어지지 않는다 (audit_logs 와 같은 원칙).
--- ★ 전표 표(p_docs · p_doc_lines)는 아래 20단계 절, 재고 원장(p_stock_moves)은 21단계 절에 있다.
---   원장만 INSERT·SELECT 로 더 좁다(원장 불변, SECURITY R-66).
-REVOKE ALL ON p_brands, p_branches, p_locations, p_vendors, p_categories,
-              p_items, p_item_branches, p_par_levels, p_import_mappings FROM tbox_app;
-GRANT SELECT, INSERT, UPDATE ON p_brands          TO tbox_app;
-GRANT SELECT, INSERT, UPDATE ON p_branches        TO tbox_app;
-GRANT SELECT, INSERT, UPDATE ON p_locations       TO tbox_app;
-GRANT SELECT, INSERT, UPDATE ON p_vendors         TO tbox_app;
-GRANT SELECT, INSERT, UPDATE ON p_categories      TO tbox_app;
-GRANT SELECT, INSERT, UPDATE ON p_items           TO tbox_app;
-GRANT SELECT, INSERT, UPDATE ON p_item_branches   TO tbox_app;
-GRANT SELECT, INSERT, UPDATE ON p_par_levels      TO tbox_app;
-GRANT SELECT, INSERT, UPDATE ON p_import_mappings TO tbox_app;
 -- 24단계 창고 대기표 (PRD F-37). 기초정보와 **같은 권한**이다 — DELETE 가 없다:
 -- 제외도 되살리기도 `status` 값이고, 잘못 올린 행조차 앱이 지울 수 없다.
-REVOKE ALL ON p_location_inbox FROM tbox_app;
-GRANT SELECT, INSERT, UPDATE ON p_location_inbox  TO tbox_app;
 
 -- ─── 시퀀스 (INSERT 하는 표의 id 발급에 필요) ───
 GRANT USAGE, SELECT ON SEQUENCE users_id_seq      TO tbox_app;
@@ -95,58 +76,7 @@ GRANT USAGE, SELECT ON SEQUENCE share_links_id_seq TO tbox_app;
 GRANT USAGE, SELECT ON SEQUENCE folders_id_seq     TO tbox_app;
 GRANT USAGE, SELECT ON SEQUENCE fetch_hosts_id_seq  TO tbox_app;   -- F-43 허용 사이트 목록
 GRANT USAGE, SELECT ON SEQUENCE api_tokens_id_seq   TO tbox_app;   -- F-59 개인 프로그램 토큰
--- 19단계 p_* 시퀀스. p_item_branches 는 (item_id, branch_id) 복합 PK 라 시퀀스가 없다.
-GRANT USAGE, SELECT ON SEQUENCE p_brands_id_seq          TO tbox_app;
-GRANT USAGE, SELECT ON SEQUENCE p_branches_id_seq        TO tbox_app;
-GRANT USAGE, SELECT ON SEQUENCE p_locations_id_seq       TO tbox_app;
-GRANT USAGE, SELECT ON SEQUENCE p_vendors_id_seq         TO tbox_app;
-GRANT USAGE, SELECT ON SEQUENCE p_categories_id_seq      TO tbox_app;
-GRANT USAGE, SELECT ON SEQUENCE p_items_id_seq           TO tbox_app;
-GRANT USAGE, SELECT ON SEQUENCE p_par_levels_id_seq      TO tbox_app;
-GRANT USAGE, SELECT ON SEQUENCE p_import_mappings_id_seq TO tbox_app;
-GRANT USAGE, SELECT ON SEQUENCE p_location_inbox_id_seq  TO tbox_app;   -- 24단계 창고 대기표
-
--- 20단계 구매 전표 (F-30~F-32, ARCH 5.18 「연결」·「채번」, SECURITY R-66).
--- ★ 여기에도 **DELETE 가 한 줄도 없다** — 전표 취소는 `status = 'void'` 다.
---   지운 전표는 잔량 계산(요청 qty − Σ 자식 qty)에서 조용히 사라지므로, 지울 수 있다는 것은
---   곧 "발주 이력을 흔적 없이 바꿀 수 있다" 는 뜻이다 (audit_logs 와 같은 원칙).
-REVOKE ALL ON p_docs, p_doc_lines, p_doc_seq, p_lists, p_list_items, p_line_chain FROM tbox_app;
-GRANT SELECT, INSERT, UPDATE ON p_docs       TO tbox_app;
-GRANT SELECT, INSERT, UPDATE ON p_doc_lines  TO tbox_app;
-GRANT SELECT, INSERT, UPDATE ON p_doc_seq    TO tbox_app;
-GRANT SELECT, INSERT, UPDATE ON p_lists      TO tbox_app;
-GRANT SELECT, INSERT, UPDATE ON p_list_items TO tbox_app;
-GRANT SELECT                 ON p_line_chain TO tbox_app;   -- 줄 연결 사슬 뷰 (읽기 전용)
-GRANT USAGE, SELECT ON SEQUENCE p_docs_id_seq      TO tbox_app;
-GRANT USAGE, SELECT ON SEQUENCE p_doc_lines_id_seq TO tbox_app;
-GRANT USAGE, SELECT ON SEQUENCE p_lists_id_seq     TO tbox_app;
--- p_doc_seq·p_list_items 는 복합 PK 라 시퀀스가 없다.
 -- sessions.id 는 CHAR(64) 해시이므로 시퀀스가 없다. permissions 도 시퀀스가 없다.
-
--- 21단계 재고 원장 (F-33, ARCH 5.18 「원장」, SECURITY R-66).
---
--- ★ 여기가 이 파일에서 **가장 좁은 권한**이다: `p_stock_moves` 는 INSERT·SELECT 뿐이고
---   UPDATE 도 없다(전표 표에는 UPDATE 가 있다). 이미 적힌 수량 변화는 앱이 **고칠 수도
---   지울 수도 없다** — 취소·정정은 반대 부호 행이다. 코드에 결함이 생겨도 DB 가 마지막으로
---   막는다(`audit_logs` 와 같은 급의 보호). 검토는 `\dp p_stock_moves` 가 `tbox_app=ar` 인지
---   보는 것으로 끝난다.
--- 뷰 둘(`p_stock_balance` 현재고 · `p_backorder` 미입고)은 계산값이라 읽기만 준다.
-REVOKE ALL ON p_stock_moves, p_stock_balance, p_backorder FROM tbox_app;
-GRANT SELECT, INSERT ON p_stock_moves     TO tbox_app;   -- ★ UPDATE·DELETE 없음
-GRANT SELECT         ON p_stock_balance   TO tbox_app;   -- 현재고 = SUM(qty_delta)
-GRANT SELECT         ON p_backorder       TO tbox_app;   -- 미입고 = 발주 − 입고
-GRANT USAGE, SELECT ON SEQUENCE p_stock_moves_id_seq TO tbox_app;
-
--- 22단계 거래처 월 대사 · 월 마감 (F-35, ARCH 5.18 「마감」, SECURITY R-69).
---
--- 셋 다 SELECT·INSERT·UPDATE 이고 **DELETE 는 없다** — 대사 결과를 다시 만들려면 명세서를
--- 다시 올리고(파일마다 한 장), 마감을 되돌리는 길은 코드에도 권한에도 없다.
--- 명세서에서 가져온 값은 `p_recon_lines` 의 품목·수량·단가·금액 컬럼이 전부다 (R-69).
-REVOKE ALL ON p_recon_statements, p_recon_lines, p_month_close FROM tbox_app;
-GRANT SELECT, INSERT, UPDATE ON p_recon_statements, p_recon_lines, p_month_close TO tbox_app;
-GRANT USAGE, SELECT ON SEQUENCE p_recon_statements_id_seq TO tbox_app;
-GRANT USAGE, SELECT ON SEQUENCE p_recon_lines_id_seq      TO tbox_app;
-GRANT USAGE, SELECT ON SEQUENCE p_month_close_id_seq      TO tbox_app;
 
 -- ─── 앞으로 만들 표에 자동으로 권한이 새지 않게 한다 ───
 -- (기본 권한을 설정하지 않는다 = 새 표는 명시적으로 GRANT 해야 앱이 쓸 수 있다)
@@ -172,11 +102,6 @@ GRANT USAGE   ON SCHEMA   public  TO tbox_backup;
 
 -- 재실행 시 과거 권한이 남지 않게 먼저 전부 회수한다(위 tbox_app 과 같은 방식).
 REVOKE ALL ON teams, users, permissions, files, audit_logs, sessions, share_links, folders,
-              p_brands, p_branches, p_locations, p_vendors, p_categories,
-              p_items, p_item_branches, p_par_levels, p_import_mappings,
-              p_docs, p_doc_lines, p_doc_seq, p_lists, p_list_items, p_line_chain,
-              p_stock_moves, p_stock_balance, p_backorder,
-              p_recon_statements, p_recon_lines, p_month_close,
               fetch_hosts, api_tokens FROM tbox_backup;
 
 GRANT SELECT ON ALL TABLES    IN SCHEMA public TO tbox_backup;   -- ★ SELECT 만
@@ -214,13 +139,7 @@ GRANT CONNECT ON DATABASE tbox_re TO tbox_perm;
 GRANT USAGE   ON SCHEMA   public  TO tbox_perm;
 
 -- 재실행 시 과거 권한이 남지 않게 먼저 **전부** 회수한다(위 두 롤과 같은 방식).
--- 19단계: 구매 모듈 표에도 이 롤은 **아무 권한이 없다** (SECURITY R-60).
 REVOKE ALL ON teams, users, permissions, files, audit_logs, sessions, share_links, folders,
-              p_brands, p_branches, p_locations, p_vendors, p_categories,
-              p_items, p_item_branches, p_par_levels, p_import_mappings,
-              p_docs, p_doc_lines, p_doc_seq, p_lists, p_list_items, p_line_chain,
-              p_stock_moves, p_stock_balance, p_backorder,
-              p_recon_statements, p_recon_lines, p_month_close,
               fetch_hosts, api_tokens FROM tbox_perm;
 REVOKE ALL ON ALL SEQUENCES IN SCHEMA public FROM tbox_perm;
 

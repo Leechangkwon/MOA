@@ -48,20 +48,7 @@ declare(strict_types=1);
  */
 
 /** 내비·본문 키의 허용 목록. 여기 없는 값은 빈 문자열이 된다. */
-$shellKeys = ['files', 'trash', 'settings', 'activity', 'users', 'org', 'audit', 'wiki', 'admin',
-              // 19단계 구매·재고 모듈 (PRD F-28, ARCH 5.18)
-              'purchase',
-              /* 20단계 전표 화면 — 한 묶음 안의 항목을 따로 켜기 위한 키다. 이 파일은
-                 `$_SERVER['REQUEST_URI']` 를 읽지 않는다 — 어느 항목을 켤지는 **핸들러가
-                 넘긴 `$activeNav`** 만 정하고, 여기 목록은 그 값을 받아 줄 뿐이다.
-                 목록에 없는 값은 빈 문자열이 되어 아무 항목도 켜지지 않는다. */
-              'purchase-pr', 'purchase-po', 'purchase-docs', 'purchase-import',
-              // 21단계 입고·이동/실사·재고현황
-              'purchase-receipt', 'purchase-move', 'purchase-stock',
-              // 22단계 주간 사용량·월 대사/마감
-              'purchase-usage', 'purchase-recon',
-              // 24단계 브랜드·지점·창고 (PRD F-37)
-              'purchase-structure'];
+$shellKeys = ['files', 'trash', 'settings', 'activity', 'users', 'org', 'audit', 'wiki', 'admin'];
 
 $shellUser   = isset($user) && is_array($user) ? $user : [];
 $shellName   = htmlspecialchars((string) ($shellUser['username'] ?? ''), ENT_QUOTES, 'UTF-8');
@@ -98,7 +85,7 @@ $shellRole = htmlspecialchars($shellRoleText, ENT_QUOTES, 'UTF-8');
 
 /*
  * 띠에 쓸 이름들. 보는 중일 때만 읽는다(평소 요청에는 쿼리가 늘지 않는다).
- * 값은 세션이 들고 있는 유효 team_id·branch_id 이고 요청이 정하지 않는다 (PRD S-01).
+ * 값은 세션이 들고 있는 유효 team_id 이고 요청이 정하지 않는다 (PRD S-01).
  */
 $shellActParts  = [];
 $shellActActual = '';
@@ -114,29 +101,6 @@ if ($shellActing) {
         if (is_array($shellActRow)) {
             $shellActParts[] = (string) $shellActRow['name'];
         }
-    }
-
-    /** 모듈 역할의 한국어 이름 — 화면 라벨 표일 뿐이고 판정이 아니다 (app.js 의 같은 표와 짝) */
-    $shellActRoleLabels = [
-        'requester' => '요청',
-        'buyer'     => '구매',
-        'stock'     => '재고',
-        'viewer'    => '검토',
-    ];
-    $shellActPurchase = (string) ($shellUser['purchase_role'] ?? '');
-    if ($shellActPurchase !== '') {
-        $shellActLabel  = $shellActRoleLabels[$shellActPurchase] ?? $shellActPurchase;
-        $shellActBranch = $shellUser['branch_id'] ?? null;
-        if ($shellActBranch !== null && $shellActBranch !== '') {
-            $shellActRow = Db::instance()->run(
-                'SELECT name FROM p_branches WHERE id = :id',
-                [':id' => (int) $shellActBranch]
-            )->fetch();
-            if (is_array($shellActRow)) {
-                $shellActLabel .= '(' . (string) $shellActRow['name'] . ')';
-            }
-        }
-        $shellActParts[] = $shellActLabel;
     }
 
     $shellActActual = htmlspecialchars(
@@ -175,9 +139,10 @@ $shellCssVersion = (int) filemtime(__DIR__ . '/../../public/assets/app.css');
 /**
  * 25단계 — 화면이 더 싣는 스타일시트. **허용 목록 안의 이름만** 통과한다.
  * 핸들러의 오타나 어떤 요청 값도 `<link href>` 로 새어 나가지 못한다 (PRD S-03).
- * 구매 13개 화면은 전부 `['purchase.css']` 하나다 — 화면별 CSS 는 없앴다 (T-50 (b)).
+ * 지금은 더 싣는 스타일시트가 없다 — 목록이 비어 있으므로 `$pageCss` 는 어떤 값이든 버려진다.
+ * 구조를 남겨 두는 이유는, 화면별 CSS 가 다시 생길 때 이 허용 목록을 거치게 하기 위해서다.
  */
-$shellCssAllowed = ['purchase.css', 'purchase_print.css'];
+$shellCssAllowed = [];
 $shellPageCss    = [];
 if (isset($pageCss) && is_array($pageCss)) {
     foreach ($pageCss as $shellCssName) {
@@ -258,75 +223,6 @@ if (!headers_sent()) {
       </a>
     </nav>
 
-    <!-- 19단계 구매·재고 모듈 (PRD F-28, ARCH 5.18) — 기본은 hidden 이고
-         `/api/me` 의 can_purchase 가 참일 때만 app.js 가 연다. **이 파일에는 역할 비교가 없다.**
-         항목을 개발자도구로 되살려 /purchase 나 /api/purchase/* 를 직접 불러도 라우트 정책
-         purchase.read 가 다시 막는다 — 표시는 편의, 근거는 라우트 정책이다 (PRD S-01, T-42). -->
-    <!-- 25단계 — 평평한 링크 11개를 **업무 순 세 묶음**으로 나눴다(시안의 3허브).
-         묶음 제목(`.nav-subtitle`)은 글자일 뿐이고, 링크 id·href·hidden 규칙·
-         can_purchase 로 여는 방식은 **한 글자도 바뀌지 않았다** — app.js 가 여는 id 가 그대로다.
-         라벨은 화면 제목과 같게 맞춰, 사이드바와 화면이 서로 다른 이름을 부르지 않게 했다. -->
-    <div id="nav-purchase-group" hidden>
-      <p class="nav-title">구매관리</p>
-
-      <p class="nav-subtitle">전표</p>
-      <nav class="nav" aria-label="구매관리 전표">
-        <!-- 20단계 전표 화면 (PRD F-31~F-33). 항목마다 기본 hidden 이고 app.js 가
-             `/api/me` 의 can_purchase 로 함께 연다 — 역할별로 더 감추지 않는다.
-             어느 전표를 읽고 쓸 수 있는지는 라우트 정책·`Authz` 가 매 요청 다시 정한다. -->
-        <a id="nav-purchase-pr" class="<?= $shellNavClass('purchase-pr') ?>" href="/purchase/pr" hidden>
-          <span class="icon" data-icon="edit"></span><span>발주요청</span>
-        </a>
-        <a id="nav-purchase-po" class="<?= $shellNavClass('purchase-po') ?>" href="/purchase/po" hidden>
-          <span class="icon" data-icon="check"></span><span>발주서</span>
-        </a>
-        <!-- 21단계 입고·이동/실사 (PRD F-34~F-36). 앞의 전표 항목과 같은 규칙이다:
-             기본 hidden · can_purchase 하나로 함께 열림 · 실제 허용은 라우트 정책과 Authz 가 정함. -->
-        <a id="nav-purchase-receipt" class="<?= $shellNavClass('purchase-receipt') ?>" href="/purchase/receipt" hidden>
-          <span class="icon" data-icon="download"></span><span>입고</span>
-        </a>
-        <a id="nav-purchase-move" class="<?= $shellNavClass('purchase-move') ?>" href="/purchase/move" hidden>
-          <span class="icon" data-icon="restore"></span><span>이동·사용·실사</span>
-        </a>
-        <a id="nav-purchase-docs" class="<?= $shellNavClass('purchase-docs') ?>" href="/purchase/docs" hidden>
-          <span class="icon" data-icon="log"></span><span>전표·사이클</span>
-        </a>
-      </nav>
-
-      <p class="nav-subtitle">현황</p>
-      <nav class="nav" aria-label="구매관리 현황">
-        <a id="nav-purchase-stock" class="<?= $shellNavClass('purchase-stock') ?>" href="/purchase/stock" hidden>
-          <span class="icon" data-icon="eye"></span><span>재고·미입고</span>
-        </a>
-        <!-- 22단계 주간 사용량·월 대사/마감. 「월 대사·마감」은 「가져오기」와 같은 규칙으로
-             can_purchase_master 가 있으면 그 값으로 연다 — 표시는 편의이고 허용은 서버가 정한다. -->
-        <a id="nav-purchase-usage" class="<?= $shellNavClass('purchase-usage') ?>" href="/purchase/usage" hidden>
-          <span class="icon" data-icon="org"></span><span>주간 사용량</span>
-        </a>
-        <a id="nav-purchase-recon" class="<?= $shellNavClass('purchase-recon') ?>" href="/purchase/recon" hidden>
-          <span class="icon" data-icon="lock"></span><span>월 대사·마감</span>
-        </a>
-      </nav>
-
-      <p class="nav-subtitle">기초정보</p>
-      <nav class="nav" aria-label="구매관리 기초정보">
-        <a id="nav-purchase" class="<?= $shellNavClass('purchase') ?>" href="/purchase/masters" hidden>
-          <span class="icon" data-icon="files"></span><span>기초정보</span>
-        </a>
-        <!-- 24단계 「브랜드·지점·창고」 (PRD F-37). 라우트 정책이 purchase.master.write 라
-             「가져오기」와 같은 규칙으로 can_purchase_master 가 있으면 그 값으로 연다 —
-             항목을 되살려도 서버가 다시 막는다 (PRD S-01). -->
-        <a id="nav-purchase-structure" class="<?= $shellNavClass('purchase-structure') ?>" href="/purchase/structure" hidden>
-          <span class="icon" data-icon="org"></span><span>브랜드·지점·창고</span>
-        </a>
-        <!-- 「가져오기」만 can_purchase_master 로 연다(있는 필드일 때) — 라우트 정책도
-             purchase.master.write 라 항목을 되살려도 서버가 막는다 (PRD S-01). -->
-        <a id="nav-purchase-import" class="<?= $shellNavClass('purchase-import') ?>" href="/purchase/import" hidden>
-          <span class="icon" data-icon="upload"></span><span>가져오기</span>
-        </a>
-      </nav>
-    </div>
-
     <!-- 관리자 영역 (17-1 PRD F-24 · 26단계 F-40, ARCH 5.14).
          기본은 전부 hidden 이고, `/api/me` 의 can_admin 이 참일 때만 app.js 가 **함께** 연다.
          **이 파일에는 역할 비교가 없다** — 항목을 개발자도구로 되살려도 각 경로의 라우트 정책
@@ -335,7 +231,7 @@ if (!headers_sent()) {
          ★ 26단계 (사용자 지적 2026-09-15 「계정·조직 화면에서 뒤로가기로만 돌아온다」):
            17-1 에서 이 묶음을 「관리자 페이지」 한 항목으로 줄였더니, 허브에서 카드로 들어간 뒤에는
            사이드바에 돌아올 길이 없었다. 하위 6화면을 다시 항목으로 둔다 — **경로·정책은 그대로**이고
-           달라진 것은 내비에 보이느냐뿐이다. 구매관리 묶음이 링크 11개를 한 값으로 여는 것과 같은 모양이다. -->
+           달라진 것은 내비에 보이느냐뿐이다. -->
     <div id="nav-admin-group" hidden>
       <p class="nav-title">관리</p>
       <nav class="nav" aria-label="관리">

@@ -119,71 +119,22 @@ final class Audit
          */
         'otp_verified',
         /*
-         * 19단계 구매·재고 모듈 (PRD F-28 · F-29, ARCH 5.18 · 7.5 등록부).
-         *   kind      — 기초정보 종류 또는 가져오기 종류 (`locations`·`items` …)
-         *   target_id — 만든·고친 행의 id (target_id 칼럼과 같은 값을 detail 에도 남긴다)
-         *   file_id   — 가져오기 원본 `files.id`
-         *   sha256    — 그 파일의 해시. 이름에 `hash` 가 들어가지 않아 부분 일치에 걸리지 않지만,
-         *               등록부에 있는 키임을 코드에서도 드러내려고 적는다(chain_hash 와 같은 성격)
-         *   rows · inserted · updated — 확정 1건의 요약 **수치**. 행 내용은 남기지 않는다
-         *   branch_id — 어느 지점의 기초정보인가 (지점 격리를 되짚는 값)
-         *   mapping · branches — 엑셀 열 이름 목록 / 품목에 이어 붙인 지점 id 목록.
-         *               둘 다 **이름·번호 목록**이고 파일 내용이 아니다.
-         * `before`·`after` 는 이미 등록부에 있고 금지 목록에 걸리지 않아 따로 적지 않는다.
-         */
-        'kind', 'target_id', 'file_id', 'sha256', 'rows', 'inserted', 'updated',
-        'branch_id', 'mapping', 'branches',
-        /*
-         * 19단계 보정 (2026-09-13).
-         *   header_row — 어느 줄을 머리행으로 보고 판정했나 (같은 파일을 다시 볼 때의 근거)
-         *   why        — 문장 표에 아직 없는 세부 사유를 남기는 자리 (보정 1)
-         *   constraint — 확정이 DB 제약에 부딪혔을 때 **그 제약 이름**. 값이 아니라 규칙 이름이라
-         *                비밀이 없고, "어느 규칙이 막았나" 를 로그만으로 알 수 있게 한다 (보정 2)
-         *   derive     — 창고명에서 지점을 뽑아 등록했나 (`location_name`)
-         */
-        'header_row', 'why', 'constraint', 'derive',
-        /*
-         * 19단계 5차 보정 (2026-09-13, 사용자 결정 「여러 지점이 한 번에 올라간다」).
-         *   brands_created · branches_created — 창고 가져오기 한 번이 **덤으로 만든** 기초정보 수.
-         *     브랜드·지점은 손으로 만들 때 건건이 감사에 남는 값이라, 가져오기로 한꺼번에
-         *     생길 때도 "언제 몇 개가 늘었나" 가 남아야 한다.
-         *   locations_inserted — 그 확정으로 들어간 창고 수(`inserted` 와 같은 값이지만,
-         *     종류가 섞여도 로그만 보고 갈라 읽을 수 있게 이름을 붙여 남긴다).
-         * 셋 다 **수치**이고 이름·내용이 아니다.
-         */
-        'brands_created', 'branches_created', 'locations_inserted',
-        /*
-         * 20단계 구매 전표 (PRD F-30~F-32, Q-18①②④, ARCH 5.18 · 7.5 등록부).
-         *   doc_no      전표 번호 (`PR-20260914-1`) — 화면에도 보이는 값이고 비밀이 아니다
-         *   doc_type    `pr`·`po`
-         *   src_doc_no  발주서가 가져온 **출처 요청 전표 번호**(여럿이면 쉼표로 이은 목록).
-         *               R4 「전표 번호 매칭」을 로그만으로 되짚을 수 있게 하는 값이다
-         *   lines       그 요청 1건이 다룬 **줄 수**(수치). 줄 내용은 남기지 않는다
-         *   added       요청 수정이 새로 더한 줄 수
-         *   split_to    Q-18① 로 갈라져 나간 **새 요청 전표 번호**
-         *   amount      전표 금액(공급가액). 서버가 계산한 값이며 클라이언트 값이 아니다
-         *   sent_to     보낸 곳 — **거래처 이름**이다. 연락처·주소는 넣지 않는다
-         *   resent      재송부였나 (true/false)
-         *   after_sent  「보냄」 뒤의 수정·취소였나 (true/false) — AL-14 가 보는 값
-         *   shared      리스트를 지점과 공유했나 (true/false)
+         * 19~25단계의 모듈이 넣었던 키 묶음 — 2026-09-21 (F-64) 에 그 모듈을 지우면서
+         * **남는 코드가 더는 쓰지 않는 이름만** 함께 지웠다. 아래 열 개는 t-box 본체가 계속 쓰므로
+         * 남긴다 (등록부 = ARCH 7.5).
+         *   kind      — 갈래를 가리키는 고정 분류어 (무결성 점검의 `missing`·`orphan` 등)
+         *   target_id — 대상 행의 id. 감사 표의 target_id 칼럼과 같은 값을 detail 에도 남긴다
+         *   file_id   — 어느 파일 행인가 (`files.id`)
+         *   sha256    — 파일·로그의 해시. 이름에 `hash` 가 들어가지 않아 부분 일치에 걸리지
+         *               않지만, 등록부에 있는 키임을 코드에서도 드러내려고 적는다
+         *   rows · updated — 한 번의 처리가 다룬 **수치**. 행 내용은 남기지 않는다
+         *   why       — 문장 표에 아직 없는 세부 사유를 남기는 자리
+         *   lines · added — 줄 수·더한 줄 수 (수치)
+         *   shared    — 공용 경로였나 (토큰 종류 분류어와 짝을 이루는 true/false)
          * `before`·`after`·`reason_text` 는 이미 등록부에 있고 금지 목록에 걸리지 않는다.
          */
-        'doc_no', 'doc_type', 'src_doc_no', 'lines', 'added', 'split_to',
-        'amount', 'sent_to', 'resent', 'after_sent', 'shared',
-        /*
-         * 21단계 재고 원장 (PRD F-33 · F-34, ARCH 5.18 · 7.5 등록부).
-         *   lot_no           입고 줄의 로트 번호(여럿이면 쉼표로 이은 목록). 포장에 찍혀 나오는
-         *                    값이고 비밀이 아니다 — 회수·유효기간 추적을 로그만으로 되짚게 한다
-         *   count_cycle      실사 주기 `daily`·`weekly`·`monthly` (Q-18③)
-         *   qty_delta        그 전표가 원장에 넣은 변화의 **크기**(취소는 되돌린 절대합,
-         *                    실사는 `+합/-합`). 품목별 내용은 전표에 있고 여기엔 수치만 남긴다
-         *   moves            그 요청 1건이 원장에 넣은 **행 수**(수치)
-         *   location_id      어느 장소인가 — 입고·실사의 대상 장소
-         *   from_location_id · to_location_id  이동의 두 장소. 사용·실사는 from 만 쓴다
-         * 셋 다 id·수치·코드이고 사람이 적은 자유 문자열이 아니다(사유는 `reason_text`).
-         */
-        'lot_no', 'count_cycle', 'qty_delta', 'moves',
-        'location_id', 'from_location_id', 'to_location_id',
+        'kind', 'target_id', 'file_id', 'sha256', 'rows', 'updated',
+        'why', 'lines', 'added', 'shared',
         /*
          * F-43 URL 가져오기 허용 사이트 · 공개 링크 변환 (PRD F-43, ARCH 5.22 · 7.5 등록부).
          *   hops        리다이렉트로 **지나온 호스트 목록**. 통제된 리다이렉트가 정말 단계마다
@@ -223,15 +174,6 @@ final class Audit
          * ★ 토큰 원문·hint·해시는 어떤 키로도 남지 않는다 (PRD S-09-11, SECURITY R-91).
          */
         'token_kind', 'token_id', 'token_name',
-        /*
-         * F-60 거래처별 발주서 분할 저장 (PRD F-60 ③, ARCH 5.18 「분할 저장」 · 7.5 등록부).
-         *   split_count — 한 번의 저장으로 **함께 만들어진 발주서 장 수**(정수). 같은 트랜잭션에서
-         *                 나온 N 행이 저마다 이 값을 들고 있어, 로그만 보고 「이 발주서는 혼자 만들어진
-         *                 것인가, 다섯 장 중 하나인가」 를 알 수 있다. 수치이고 비밀이 없다.
-         * 이름이 FORBIDDEN_DETAIL_KEYS 부분 일치에 걸리지는 않지만, 등록부에 있는 키임을
-         * 코드에서도 드러내려고 여기 적는다(preview_kind·part 와 같은 이유).
-         */
-        'split_count',
     ];
 
     private const RESULT_ALLOW = 'allow';
@@ -490,8 +432,8 @@ final class Audit
         // 실제 계정은 {actor}(= actor_role 열의 실제 역할)이고, 고른 역할·팀·지점은 detail 에 남는다.
         // 자동 해제(act.expire)는 사용자가 누른 행동이 아니라 **서버가 판정한 사실**이라
         // allow 로 남기고 사유(idle·role_lost)를 detail 에 적는다 — 거부가 아니기 때문이다.
-        'act.start|allow'                               => '{actor} 이(가) 다른 역할로 보기를 시작했습니다 (역할·팀·지점은 상세 기록)',
-        'act.start|deny|bad_request'                    => '{actor} 이(가) 역할로 보기를 허용되지 않는 형식(모르는 항목·역할·팀·지점)으로 요청해서 거부했습니다',
+        'act.start|allow'                               => '{actor} 이(가) 다른 역할로 보기를 시작했습니다 (역할·팀은 상세 기록)',
+        'act.start|deny|bad_request'                    => '{actor} 이(가) 역할로 보기를 허용되지 않는 형식(모르는 항목·역할·팀)으로 요청해서 거부했습니다',
         'act.start|deny|role_not_permitted'             => '{actor} 이(가) 역할로 보기를 시작할 자격 없이 요청해서 막았습니다',
         'act.stop|allow'                                => '{actor} 이(가) 역할로 보기를 끝내고 원래 역할로 돌아왔습니다',
         'act.expire|allow'                              => '{actor} 의 역할로 보기가 자동으로 풀렸습니다 (사유는 상세 기록)',
@@ -630,346 +572,6 @@ final class Audit
         'file.update|deny|bad_folder'                   => '{actor} 이(가) 파일 「{target}」 을(를) 없는 폴더 또는 볼 수 없는 폴더로 옮기려 해서 거부했습니다',
         'file.update|deny|parent_narrower'              => '{actor} 이(가) 파일 「{target}」 을(를) 자기보다 좁은 등급의 폴더로 옮기려 해서 거부했습니다',
         'file.level_change|deny|parent_narrower'        => '{actor} 이(가) 파일 「{target}」 의 접근 등급을 그 파일이 든 폴더보다 넓은 {level} 등급으로 바꾸려 해서 거부했습니다',
-
-        // ── 19단계 구매·재고 모듈 (PRD F-28 · F-29, ARCH 5.18 「감사·경보」, SECURITY R-65 · R-67) ──
-        //
-        // {target} 에는 `종류:이름`(예: `locations:B1F 의약품창고`) 또는 가져오기 파일 이름이 들어간다.
-        // 품목 찾기(`/api/purchase/items`)는 **조회라서 기록하지 않는다** — 1.35만 건을 훑는 검색을
-        // 행마다 남기면 감사 로그가 검색 기록이 되고, 정작 중요한 변경이 그 속에 묻힌다
-        // (파일 목록·폴더 트리를 기록하지 않는 것과 같은 판단, ARCH 5.1 마지막 줄).
-        // 가져오기 확정도 **한 줄**이다: 1.3만 행을 행마다 남기면 그 자체가 로그를 밀어내는 공격이 된다.
-        'purchase.master.create|allow'                  => '{actor} 이(가) 구매 기초정보 「{target}」 을(를) 새로 만들었습니다',
-        'purchase.master.create|deny|bad_request'       => '{actor} 이(가) 구매 기초정보를 만들려 했지만 보낸 값의 형식이 잘못되어 거부했습니다',
-        'purchase.master.create|deny|bad_reference'     => '{actor} 이(가) 없는(또는 중단된) 브랜드·지점·장소·품목을 가리키는 구매 기초정보를 만들려 해서 거부했습니다',
-        'purchase.master.create|deny|conflict'          => '{actor} 이(가) 이미 있는 이름·코드로 구매 기초정보를 만들려 해서 거부했습니다',
-        'purchase.master.update|allow'                  => '{actor} 이(가) 구매 기초정보 「{target}」 을(를) 고쳤습니다 (바뀐 값은 상세 기록의 before/after)',
-        'purchase.master.update|deny|bad_request'       => '{actor} 이(가) 구매 기초정보 「{target}」 을(를) 고치려 했지만 보낸 값의 형식이 잘못되어 거부했습니다',
-        'purchase.master.update|deny|bad_reference'     => '{actor} 이(가) 구매 기초정보 「{target}」 을(를) 없는(또는 중단된) 값에 이어 붙이려 해서 거부했습니다',
-        'purchase.master.update|deny|conflict'          => '{actor} 이(가) 구매 기초정보 「{target}」 을(를) 이미 있는 이름·코드로 바꾸려 해서 거부했습니다',
-        'purchase.master.update|deny|no_change'         => '{actor} 이(가) 구매 기초정보 「{target}」 에 바뀌는 값 없이 수정을 요청해서 거부했습니다',
-        'purchase.master.update|deny|bad_kind'          => '{actor} 이(가) 알 수 없는 종류의 구매 기초정보를 고치려 해서 거부했습니다',
-        'purchase.master.update|deny|bad_mapping'       => '{actor} 이(가) 형식에 맞지 않는 엑셀 열 매핑을 저장하려 해서 거부했습니다',
-        'purchase.master.deactivate|allow'              => '{actor} 이(가) 구매 기초정보 「{target}」 을(를) 중단했습니다 (삭제가 아니라 중단이며 지난 전표에는 그대로 남습니다)',
-        'purchase.master.deactivate|deny|bad_request'   => '{actor} 이(가) 구매 기초정보 「{target}」 을(를) 중단하려 했지만 보낸 값의 형식이 잘못되어 거부했습니다',
-
-        'purchase.import.upload|allow'                  => '{actor} 이(가) 구매 기초정보 가져오기 파일 「{target}」 을(를) 올렸습니다 (관리자 전용 폴더 「구매/가져오기」)',
-        'purchase.import.upload|deny|no_file'           => '{actor} 이(가) 파일 없이 구매 가져오기를 요청해서 거부했습니다',
-        'purchase.import.upload|deny|empty_file'        => '{actor} 이(가) 0바이트 파일 「{target}」 로 구매 가져오기를 요청해서 거부했습니다',
-        'purchase.import.upload|deny|too_large'         => '{actor} 이(가) 100MB 를 넘는 파일 「{target}」 로 구매 가져오기를 요청해서 거부했습니다',
-        'purchase.import.upload|deny|upload_error'      => '{actor} 이(가) 보낸 구매 가져오기 업로드의 형식이 잘못되어 거부했습니다',
-        'purchase.import.upload|deny|not_uploaded_file' => '{actor} 이(가) 보낸 구매 가져오기 업로드가 정상적인 HTTP 업로드가 아니어서 거부했습니다',
-        'purchase.import.upload|deny|size_unreadable'   => '{actor} 이(가) 올린 파일 「{target}」 의 크기를 읽을 수 없어 구매 가져오기를 거부했습니다',
-        'purchase.import.upload|deny|hash_failed'       => '{actor} 이(가) 올린 파일 「{target}」 의 무결성 값을 계산할 수 없어 구매 가져오기를 거부했습니다',
-        'purchase.import.upload|deny|ext_not_allowed'   => '{actor} 이(가) 가져오기가 읽을 수 없는 종류의 파일 「{target}」 을(를) 올려 거부했습니다 (xlsx·csv 만 — xlsm·xls·매크로 문서는 받지 않습니다)',
-        'purchase.import.upload|deny|mime_mismatch'     => '{actor} 이(가) 올린 파일 「{target}」 의 실제 내용이 확장자와 달라(위장 파일 의심) 구매 가져오기를 거부했습니다',
-        'purchase.import.upload|deny|zip_unreadable'    => '{actor} 이(가) 올린 「{target}」 의 압축 파일 구조를 읽을 수 없어 구매 가져오기를 거부했습니다',
-        'purchase.import.upload|deny|zip_bad_path'      => '{actor} 이(가) 올린 압축 파일 「{target}」 안에 경로를 벗어나는 항목이 있어 구매 가져오기를 거부했습니다',
-        'purchase.import.upload|deny|zip_blocked_entry' => '{actor} 이(가) 올린 압축 파일 「{target}」 안에 실행 파일이 들어 있어 구매 가져오기를 거부했습니다',
-        'purchase.import.upload|deny|nested_zip'        => '{actor} 이(가) 올린 「{target}」 안에 압축 파일이 여러 겹 겹쳐 있어 구매 가져오기를 거부했습니다',
-        'purchase.import.upload|deny|zip_bomb'          => '{actor} 이(가) 올린 「{target}」 은(는) 압축을 풀면 지나치게 커지거나 항목이 너무 많아(압축 폭탄 의심) 구매 가져오기를 거부했습니다',
-        'purchase.import.upload|deny|macro_found'       => '{actor} 이(가) 올린 문서 「{target}」 에 매크로가 들어 있어 구매 가져오기를 거부했습니다',
-        'purchase.import.upload|deny|pdf_active_content' => '{actor} 이(가) 올린 PDF 「{target}」 에 열리면 실행되는 내용(스크립트·자동 실행)이 들어 있어 구매 가져오기를 거부했습니다',
-        'purchase.import.upload|deny|hwp_not_hwp'       => '{actor} 이(가) 올린 파일 「{target}」 이(가) 한글 문서 형식이 아닌데 .hwp 이름이라(위장 의심) 구매 가져오기를 거부했습니다',
-        'purchase.import.upload|deny|double_extension'  => '{actor} 이(가) 이중 확장자 파일 「{target}」 로 구매 가져오기를 요청해서 거부했습니다 (실행 파일 위장 의심)',
-        'purchase.import.upload|deny|bad_encoding'      => '{actor} 이(가) 올린 구매 가져오기 파일의 이름이 올바른 문자(UTF-8)가 아니어서 거부했습니다',
-        'purchase.import.upload|deny|quota_exceeded'    => '{actor} 이(가) 구매 가져오기 파일을 올리려 했지만 하루 업로드 한도(2GB)를 넘어 거부했습니다',
-        'purchase.import.upload|error|parse_failed'     => '{actor} 이(가) 올린 구매 가져오기 파일 「{target}」 에서 표를 읽어 내지 못했습니다 (손상 또는 지원 범위 밖)',
-
-        'purchase.import.preview|deny|bad_request'      => '{actor} 이(가) 구매 가져오기 미리보기를 잘못된 형식으로 요청해서 거부했습니다',
-        'purchase.import.preview|deny|bad_kind'         => '{actor} 이(가) 알 수 없는 종류로 구매 가져오기 미리보기를 요청해서 거부했습니다',
-        'purchase.import.preview|deny|bad_mapping'      => '{actor} 이(가) 파일의 열과 맞지 않는 매핑으로 구매 가져오기 미리보기를 요청해서 거부했습니다',
-        'purchase.import.preview|deny|mapping_incomplete' => '{actor} 이(가) 필수 칸이 빠진 매핑으로 구매 가져오기 미리보기를 요청해서 거부했습니다',
-        'purchase.import.preview|deny|too_many_rows'    => '{actor} 이(가) 상한을 넘는 행 수의 파일로 구매 가져오기 미리보기를 요청해서 거부했습니다',
-        'purchase.import.preview|deny|parse_failed'     => '{actor} 이(가) 읽을 수 없는 파일로 구매 가져오기 미리보기를 요청해서 거부했습니다',
-        'purchase.import.preview|error|truncated'       => '{actor} 이(가) 미리보기한 구매 가져오기 파일 「{target}」 이(가) 상한에서 끊겼습니다 (확정은 막힙니다)',
-
-        'purchase.import.commit|allow'                  => '{actor} 이(가) 구매 기초정보 가져오기를 확정했습니다 (파일 「{target}」 · 행 수·등록·갱신 건수는 상세 기록)',
-        'purchase.import.commit|deny|bad_request'       => '{actor} 이(가) 구매 가져오기 확정을 잘못된 형식으로 요청해서 거부했습니다',
-        'purchase.import.commit|deny|bad_kind'          => '{actor} 이(가) 알 수 없는 종류로 구매 가져오기 확정을 요청해서 거부했습니다',
-        'purchase.import.commit|deny|bad_mapping'       => '{actor} 이(가) 파일의 열과 맞지 않는 매핑으로 구매 가져오기 확정을 요청해서 거부했습니다',
-        'purchase.import.commit|deny|mapping_incomplete' => '{actor} 이(가) 필수 칸이 빠진 매핑으로 구매 가져오기 확정을 요청해서 거부했습니다',
-        'purchase.import.commit|deny|too_many_rows'     => '{actor} 이(가) 상한을 넘는 행 수의 파일로 구매 가져오기 확정을 요청해서 거부했습니다',
-        'purchase.import.commit|deny|parse_failed'      => '{actor} 이(가) 읽을 수 없는 파일로 구매 가져오기 확정을 요청해서 거부했습니다',
-        'purchase.import.commit|deny|truncated'         => '{actor} 이(가) 상한에서 끊긴 파일 「{target}」 로 구매 가져오기 확정을 요청해서 거부했습니다 (반쯤 들어간 기초정보를 만들지 않습니다)',
-        'purchase.import.commit|deny|conflict'          => '{actor} 이(가) 확정한 구매 가져오기에 이미 있는 거래처·코드가 있어 **전부 되돌렸습니다**',
-        'purchase.import.commit|deny|bad_reference'     => '{actor} 이(가) 확정한 구매 가져오기가 없는 기초정보를 가리켜 **전부 되돌렸습니다**',
-
-        // 19단계 보정(2026-09-13) — 실제 이카운트 파일에서 드러난 세 가지 거부 사유.
-        //   bad_header_row          머리행 번호가 0~19 밖이다 (보정 1)
-        //   default_branch_required 창고 파일에 지점 열이 없는데 「기본 지점」도 고르지 않았다 (보정 2)
-        //   default_brand_required  지점 파일에 브랜드 열이 없는데 「기본 브랜드」도 고르지 않았다 (보정 2)
-        // 행마다 오류를 내지 않고 **한 번에** 말하는 사유들이라, 문장도 "무엇을 고르면 되는지" 를 담는다.
-        'purchase.import.preview|deny|bad_header_row'          => '{actor} 이(가) 있을 수 없는 머리행 번호로 구매 가져오기 미리보기를 요청해서 거부했습니다 (앞 20줄 안에서만 고를 수 있습니다)',
-        'purchase.import.preview|deny|default_branch_required' => '{actor} 이(가) 지점 열도 「기본 지점」도 없이 창고 가져오기 미리보기를 요청해서 거부했습니다 (어느 지점의 창고인지 알 수 없습니다)',
-        'purchase.import.preview|deny|default_brand_required'  => '{actor} 이(가) 브랜드 열도 「기본 브랜드」도 없이 지점 가져오기 미리보기를 요청해서 거부했습니다',
-        'purchase.import.commit|deny|bad_header_row'           => '{actor} 이(가) 있을 수 없는 머리행 번호로 구매 가져오기 확정을 요청해서 거부했습니다',
-        'purchase.import.commit|deny|default_branch_required'  => '{actor} 이(가) 지점 열도 「기본 지점」도 없이 창고 가져오기 확정을 요청해서 거부했습니다',
-        'purchase.import.commit|deny|default_brand_required'   => '{actor} 이(가) 브랜드 열도 「기본 브랜드」도 없이 지점 가져오기 확정을 요청해서 거부했습니다',
-        'purchase.master.update|deny|bad_header_row'           => '{actor} 이(가) 있을 수 없는 머리행 번호가 든 엑셀 열 매핑을 저장하려 해서 거부했습니다',
-
-        /* ── 24단계 「브랜드·지점·창고」 — 창고 대기표 (PRD F-37, ARCH 5.18 · 7.4, 지시서 6장) ──
-         *
-         * {target} 에는 **업로드한 파일 이름**(upload)이나 `locations`(link·exclude)가 들어간다.
-         * 창고 이름은 target 에 넣지 않는다 — 한 번에 수십 건을 연결하므로 문장이 아니라
-         * 상세 기록(건수·id 목록)에 남는 것이 맞다(가져오기 확정과 같은 판단).
-         * 조회(`GET /api/purchase/structure`)는 기록하지 않는다 — 조회는 사건이 아니다.
-         *
-         * 업로드 거부 사유 12종은 `purchase.import.upload` 와 **같은 키**다 — 두 입구가
-         * `Importer::storeUploaded` 라는 한 함수를 쓰기 때문이고, 사유가 갈라지지 않는다는
-         * 것이 그 함수를 하나로 둔 이유이기도 하다 (지시서 보충 1).
-         */
-        'purchase.structure.upload|allow'                  => '{actor} 이(가) 창고 파일 「{target}」 을(를) 창고 대기표에 올렸습니다 (등록·갱신·건너뜀 수는 상세 기록)',
-        'purchase.structure.upload|deny|no_file'           => '{actor} 이(가) 파일 없이 창고 대기표 올리기를 요청해서 거부했습니다',
-        'purchase.structure.upload|deny|empty_file'        => '{actor} 이(가) 0바이트 파일 「{target}」 로 창고 대기표 올리기를 요청해서 거부했습니다',
-        'purchase.structure.upload|deny|too_large'         => '{actor} 이(가) 100MB 를 넘는 파일 「{target}」 로 창고 대기표 올리기를 요청해서 거부했습니다',
-        'purchase.structure.upload|deny|upload_error'      => '{actor} 이(가) 보낸 창고 파일 업로드의 형식이 잘못되어 거부했습니다',
-        'purchase.structure.upload|deny|not_uploaded_file' => '{actor} 이(가) 보낸 창고 파일 업로드가 정상적인 HTTP 업로드가 아니어서 거부했습니다',
-        'purchase.structure.upload|deny|size_unreadable'   => '{actor} 이(가) 올린 파일 「{target}」 의 크기를 읽을 수 없어 창고 대기표 올리기를 거부했습니다',
-        'purchase.structure.upload|deny|hash_failed'       => '{actor} 이(가) 올린 파일 「{target}」 의 무결성 값을 계산할 수 없어 창고 대기표 올리기를 거부했습니다',
-        'purchase.structure.upload|deny|ext_not_allowed'   => '{actor} 이(가) 읽을 수 없는 종류의 파일 「{target}」 을(를) 창고 대기표에 올려 거부했습니다 (xlsx·csv 만 — xlsm·xls·매크로 문서는 받지 않습니다)',
-        'purchase.structure.upload|deny|mime_mismatch'     => '{actor} 이(가) 올린 파일 「{target}」 의 실제 내용이 확장자와 달라(위장 파일 의심) 창고 대기표 올리기를 거부했습니다',
-        'purchase.structure.upload|deny|zip_unreadable'    => '{actor} 이(가) 올린 「{target}」 의 압축 파일 구조를 읽을 수 없어 창고 대기표 올리기를 거부했습니다',
-        'purchase.structure.upload|deny|zip_bad_path'      => '{actor} 이(가) 올린 압축 파일 「{target}」 안에 경로를 벗어나는 항목이 있어 창고 대기표 올리기를 거부했습니다',
-        'purchase.structure.upload|deny|zip_blocked_entry' => '{actor} 이(가) 올린 압축 파일 「{target}」 안에 실행 파일이 들어 있어 창고 대기표 올리기를 거부했습니다',
-        'purchase.structure.upload|deny|nested_zip'        => '{actor} 이(가) 올린 「{target}」 안에 압축 파일이 여러 겹 겹쳐 있어 창고 대기표 올리기를 거부했습니다',
-        'purchase.structure.upload|deny|zip_bomb'          => '{actor} 이(가) 올린 「{target}」 은(는) 압축을 풀면 지나치게 커지거나 항목이 너무 많아(압축 폭탄 의심) 창고 대기표 올리기를 거부했습니다',
-        'purchase.structure.upload|deny|macro_found'       => '{actor} 이(가) 올린 문서 「{target}」 에 매크로가 들어 있어 창고 대기표 올리기를 거부했습니다',
-        'purchase.structure.upload|deny|pdf_active_content' => '{actor} 이(가) 올린 PDF 「{target}」 에 열리면 실행되는 내용(스크립트·자동 실행)이 들어 있어 창고 대기표 올리기를 거부했습니다',
-        'purchase.structure.upload|deny|hwp_not_hwp'       => '{actor} 이(가) 올린 파일 「{target}」 이(가) 한글 문서 형식이 아닌데 .hwp 이름이라(위장 의심) 창고 대기표 올리기를 거부했습니다',
-        'purchase.structure.upload|deny|double_extension'  => '{actor} 이(가) 이중 확장자 파일 「{target}」 로 창고 대기표 올리기를 요청해서 거부했습니다 (실행 파일 위장 의심)',
-        'purchase.structure.upload|deny|bad_encoding'      => '{actor} 이(가) 올린 창고 파일의 이름이 올바른 문자(UTF-8)가 아니어서 거부했습니다',
-        'purchase.structure.upload|deny|quota_exceeded'    => '{actor} 이(가) 창고 파일을 올리려 했지만 하루 업로드 한도(2GB)를 넘어 거부했습니다',
-        'purchase.structure.upload|deny|bad_header'        => '{actor} 이(가) 창고코드·창고명 열이 없는 파일 「{target}」 을(를) 창고 대기표에 올리려 해서 거부했습니다',
-        'purchase.structure.upload|error|parse_failed'     => '{actor} 이(가) 올린 창고 파일 「{target}」 에서 표를 읽어 내지 못했습니다 (손상 또는 지원 범위 밖)',
-
-        'purchase.structure.link|allow'                    => '{actor} 이(가) 대기표의 창고를 지점에 연결했습니다 (연결 건수·지점·장소 id 는 상세 기록)',
-        'purchase.structure.link|deny|bad_request'         => '{actor} 이(가) 창고 연결을 잘못된 형식으로 요청해서 거부했습니다',
-        'purchase.structure.link|deny|bad_reference'       => '{actor} 이(가) 없는(또는 중단된) 지점에 창고를 연결하려 해서 거부했습니다',
-        'purchase.structure.link|deny|not_unlinked'        => '{actor} 이(가) 이미 연결되었거나 제외된 창고를 다시 연결하려 해서 거부했습니다',
-        'purchase.structure.link|deny|conflict'            => '{actor} 이(가) 지점에 같은 이름의 창고가 이미 있어 연결 묶음을 저장하지 않았습니다',
-
-        'purchase.structure.exclude|allow'                 => '{actor} 이(가) 대기표의 창고를 제외했거나 되살렸습니다 (건수·방향은 상세 기록)',
-        'purchase.structure.exclude|deny|bad_request'      => '{actor} 이(가) 창고 제외를 잘못된 형식으로 요청해서 거부했습니다',
-        'purchase.structure.exclude|deny|not_unlinked'     => '{actor} 이(가) 미연결 상태가 아닌 창고를 제외하려 해서 거부했습니다',
-        'purchase.structure.exclude|deny|not_excluded'     => '{actor} 이(가) 제외 상태가 아닌 창고를 되살리려 해서 거부했습니다',
-
-        /* ── 20단계 구매 전표 (PRD F-30~F-32, Q-18①②④, ARCH 5.18 · 7.4) ──
-         *
-         * {target} 에는 **전표 번호**(`PR-20260914-1`)가 들어간다 — 사람이 로그만 보고
-         * 어느 문서인지 알 수 있어야 하고, 그 번호는 화면에도 그대로 보이는 값이다.
-         * 조회(목록·상세·불러오기·추천·사이클)는 기록하지 않는다 — 조회는 사건이 아니다
-         * (ARCH 5.1 마지막 줄, 19단계 품목 찾기와 같은 판단).
-         *
-         * 거부 사유 코드의 뜻
-         *   remaining_exceeded  잔량보다 많이 담으려 했다 (T-45 의 핵심 항목)
-         *   line_locked         이미 발주서에 담긴 줄을 요청자가 고치려 했다 (Q-18①)
-         *   status_invalid      취소된 전표·마감된 달 등 지금 상태에서 할 수 없는 일
-         *   already_sent        이미 보낸 발주서를 사유 없이 또 보내려 했다 (Q-18④)
-         *   reason_required     보낸 뒤 수정·취소인데 사유가 없다 (Q-18④ · AL-14)
-         *   mixed_vendor        한 발주서에 거래처가 섞였다
-         *   not_in_scope        내 지점 밖 전표를 id 로 찍어 담으려 했다 (R-65)
-         *   branch_required     지점이 하나로 정해지지 않는데 지점을 적지 않았다
-         */
-        'purchase.request.create|allow'                 => '{actor} 이(가) 발주요청 「{target}」 을(를) 만들었습니다 (줄 수·금액은 상세 기록)',
-        'purchase.request.create|deny|bad_request'      => '{actor} 이(가) 발주요청을 만들려 했지만 보낸 값의 형식이 잘못되어 거부했습니다',
-        'purchase.request.create|deny|bad_reference'    => '{actor} 이(가) 없는(또는 중단된) 지점·장소·거래처·품목으로 발주요청을 만들려 해서 거부했습니다',
-        'purchase.request.create|deny|not_in_scope'     => '{actor} 이(가) 자기 지점이 아닌 곳의 발주요청을 만들려 해서 막았습니다',
-        'purchase.request.create|deny|branch_required'  => '{actor} 이(가) 어느 지점의 요청인지 적지 않아 거부했습니다',
-        'purchase.request.create|deny|conflict'         => '{actor} 이(가) 만든 발주요청의 전표 번호가 이미 있어 거부했습니다',
-        'purchase.request.update|allow'                 => '{actor} 이(가) 발주요청 「{target}」 을(를) 고쳤습니다 (바뀐 값·갈라진 전표는 상세 기록)',
-        'purchase.request.update|deny|bad_request'      => '{actor} 이(가) 발주요청 「{target}」 을(를) 고치려 했지만 보낸 값의 형식이 잘못되어 거부했습니다',
-        'purchase.request.update|deny|bad_reference'    => '{actor} 이(가) 발주요청 「{target}」 을(를) 없는 값에 이어 붙이려 해서 거부했습니다',
-        'purchase.request.update|deny|line_locked'      => '{actor} 이(가) 이미 발주서에 담긴 줄을 고치려 해서 막았습니다 (발주요청 「{target}」)',
-        'purchase.request.update|deny|status_invalid'   => '{actor} 이(가) 지금 고칠 수 없는 상태의 발주요청 「{target}」 을(를) 고치려 해서 거부했습니다',
-        'purchase.request.update|deny|no_change'        => '{actor} 이(가) 발주요청 「{target}」 에 바뀌는 값 없이 수정을 요청해서 거부했습니다',
-        'purchase.request.void|allow'                   => '{actor} 이(가) 발주요청 「{target}」 을(를) 취소했습니다 (지운 것이 아니라 취소 표시이며 사유는 상세 기록)',
-        'purchase.request.void|deny|bad_request'        => '{actor} 이(가) 발주요청 취소를 잘못된 형식으로 요청해서 거부했습니다',
-        'purchase.request.void|deny|line_locked'        => '{actor} 이(가) 이미 발주서에 담긴 줄이 있는 발주요청 「{target}」 을(를) 취소하려 해서 막았습니다',
-        'purchase.request.void|deny|status_invalid'     => '{actor} 이(가) 지금 취소할 수 없는 상태의 발주요청 「{target}」 을(를) 취소하려 해서 거부했습니다',
-
-        'purchase.order.create|allow'                   => '{actor} 이(가) 발주서 「{target}」 을(를) 만들었습니다 (출처 요청·줄 수·금액은 상세 기록)',
-        'purchase.order.create|deny|bad_request'        => '{actor} 이(가) 발주서를 만들려 했지만 보낸 값의 형식이 잘못되어 거부했습니다',
-        'purchase.order.create|deny|bad_reference'      => '{actor} 이(가) 없는(또는 중단된) 장소·거래처·품목·담당자로 발주서를 만들려 해서 거부했습니다',
-        'purchase.order.create|deny|remaining_exceeded' => '{actor} 이(가) 발주요청의 **미발주 잔량보다 많은 수량**을 발주서에 담으려 해서 거부했습니다',
-        'purchase.order.create|deny|mixed_vendor'       => '{actor} 이(가) 거래처가 섞인 줄들을 한 발주서에 담으려 해서 거부했습니다 (발주서는 거래처 하나입니다)',
-        'purchase.order.create|deny|not_in_scope'       => '{actor} 이(가) 자기 범위 밖의 발주요청 줄을 발주서에 담으려 해서 막았습니다',
-        'purchase.order.create|deny|status_invalid'     => '{actor} 이(가) 취소되었거나 마감된 발주요청 줄을 발주서에 담으려 해서 거부했습니다',
-        'purchase.order.create|deny|conflict'           => '{actor} 이(가) 만든 발주서의 전표 번호가 이미 있어 거부했습니다',
-        'purchase.order.update|allow'                   => '{actor} 이(가) 발주서 「{target}」 의 머리 정보를 고쳤습니다 (이전·이후와 사유는 상세 기록)',
-        'purchase.order.update|deny|bad_request'        => '{actor} 이(가) 발주서 「{target}」 을(를) 고치려 했지만 보낸 값의 형식이 잘못되어 거부했습니다',
-        'purchase.order.update|deny|reason_required'    => '{actor} 이(가) **이미 보낸** 발주서 「{target}」 을(를) 사유 없이 고치려 해서 거부했습니다',
-        'purchase.order.update|deny|status_invalid'     => '{actor} 이(가) 지금 고칠 수 없는 상태의 발주서 「{target}」 을(를) 고치려 해서 거부했습니다',
-        'purchase.order.update|deny|no_change'          => '{actor} 이(가) 발주서 「{target}」 에 바뀌는 값 없이 수정을 요청해서 거부했습니다',
-        'purchase.order.send|allow'                     => '{actor} 이(가) 발주서 「{target}」 을(를) 거래처에 보냈다고 표시했습니다 (받는 곳·금액·재송부 여부는 상세 기록)',
-        'purchase.order.send|deny|bad_request'          => '{actor} 이(가) 발주서 보냄을 잘못된 형식으로 요청해서 거부했습니다',
-        'purchase.order.send|deny|already_sent'         => '{actor} 이(가) 이미 보낸 발주서 「{target}」 을(를) 사유 없이 다시 보내려 해서 거부했습니다',
-        'purchase.order.send|deny|status_invalid'       => '{actor} 이(가) 취소되었거나 줄이 없는 발주서 「{target}」 을(를) 보내려 해서 거부했습니다',
-        'purchase.order.void|allow'                     => '{actor} 이(가) 발주서 「{target}」 을(를) 취소했습니다 (요청의 미발주 잔량이 되돌아갑니다 · 사유는 상세 기록)',
-        'purchase.order.void|deny|bad_request'          => '{actor} 이(가) 발주서 취소를 잘못된 형식으로 요청해서 거부했습니다',
-        'purchase.order.void|deny|reason_required'      => '{actor} 이(가) **이미 보낸** 발주서 「{target}」 을(를) 사유 없이 취소하려 해서 거부했습니다',
-        'purchase.order.void|deny|status_invalid'       => '{actor} 이(가) 지금 취소할 수 없는 상태의 발주서 「{target}」 을(를) 취소하려 해서 거부했습니다',
-
-        'purchase.list.create|allow'                    => '{actor} 이(가) 내 발주 리스트 「{target}」 을(를) 만들었습니다',
-        'purchase.list.create|deny|bad_request'         => '{actor} 이(가) 발주 리스트를 만들려 했지만 보낸 값의 형식이 잘못되어 거부했습니다',
-        'purchase.list.create|deny|bad_reference'       => '{actor} 이(가) 볼 수 없는(또는 중단된) 품목을 발주 리스트에 담으려 해서 거부했습니다',
-        'purchase.list.create|deny|branch_required'     => '{actor} 이(가) 지점이 정해지지 않은 채 발주 리스트를 지점과 공유하려 해서 거부했습니다',
-        'purchase.list.update|allow'                    => '{actor} 이(가) 발주 리스트 「{target}」 을(를) 고쳤습니다 (이전·이후는 상세 기록)',
-        'purchase.list.update|deny|bad_request'         => '{actor} 이(가) 발주 리스트 「{target}」 을(를) 고치려 했지만 보낸 값의 형식이 잘못되어 거부했습니다',
-        'purchase.list.update|deny|bad_reference'       => '{actor} 이(가) 볼 수 없는(또는 중단된) 품목을 발주 리스트에 담으려 해서 거부했습니다',
-        'purchase.list.update|deny|branch_required'     => '{actor} 이(가) 지점이 정해지지 않은 채 발주 리스트를 지점과 공유하려 해서 거부했습니다',
-        'purchase.list.delete|allow'                    => '{actor} 이(가) 발주 리스트 「{target}」 을(를) 닫았습니다 (지운 것이 아니라 중단이며 담겼던 품목은 남습니다)',
-
-        // ── 21단계 재고 (PRD F-33 · F-34, ARCH 5.18 「원장」·7.4, SECURITY R-66) ──
-        // 네 행동(입고·이동·사용·실사)이 **같은 사유 코드 묶음**을 쓴다. 사유가 종류마다 달라지면
-        // 로그를 읽는 사람이 네 표를 외워야 한다 — 같은 뜻에는 같은 낱말을 쓴다.
-        'purchase.receipt.create|allow'                 => '{actor} 이(가) 입고 「{target}」 을(를) 확정했습니다 (장소·줄 수·원장 행 수·로트는 상세 기록)',
-        'purchase.receipt.create|deny|bad_request'      => '{actor} 이(가) 입고를 확정하려 했지만 보낸 값의 형식이 잘못되어 거부했습니다',
-        'purchase.receipt.create|deny|bad_reference'    => '{actor} 이(가) 없는(또는 중단된) 장소·품목·담당자로 입고를 확정하려 해서 거부했습니다',
-        'purchase.receipt.create|deny|not_in_scope'     => '{actor} 이(가) 자기 범위 밖의 발주서 줄을 입고하려 해서 막았습니다',
-        'purchase.receipt.create|deny|status_invalid'   => '{actor} 이(가) 아직 보내지 않았거나 취소·마감된 발주서를 입고하려 해서 거부했습니다',
-        'purchase.receipt.create|deny|remaining_exceeded' => '{actor} 이(가) 발주서의 **미입고 잔량보다 많은 수량**을 입고하려 해서 거부했습니다',
-        'purchase.receipt.create|deny|negative_stock'   => '{actor} 이(가) 확정하면 재고가 음수가 되는 입고를 넣으려 해서 거부했습니다',
-        'purchase.receipt.create|deny|conflict'         => '{actor} 이(가) 만든 입고 전표의 번호가 이미 있어 거부했습니다',
-        'purchase.receipt.void|allow'                   => '{actor} 이(가) 입고 「{target}」 을(를) 취소했습니다 (원장에 반대 부호 행이 들어가고 미입고가 되돌아갑니다 · 사유는 상세 기록)',
-        'purchase.receipt.void|deny|bad_request'        => '{actor} 이(가) 입고 취소를 잘못된 형식으로 요청해서 거부했습니다',
-        'purchase.receipt.void|deny|status_invalid'     => '{actor} 이(가) 이미 취소되었거나 마감된 입고 「{target}」 을(를) 취소하려 해서 거부했습니다',
-        'purchase.receipt.void|deny|negative_stock'     => '{actor} 이(가) 입고 「{target}」 을(를) 취소하려 했지만 그 물건이 이미 나가 재고가 음수가 되므로 막았습니다 (실사로 맞추세요)',
-
-        'purchase.move.create|allow'                    => '{actor} 이(가) 이동 「{target}」 을(를) 확정했습니다 (두 장소·줄 수·원장 행 수는 상세 기록)',
-        'purchase.move.create|deny|bad_request'         => '{actor} 이(가) 이동을 확정하려 했지만 보낸 값의 형식이 잘못되어 거부했습니다',
-        'purchase.move.create|deny|bad_reference'       => '{actor} 이(가) 없는(또는 중단된) 장소·품목·담당자로 이동을 확정하려 해서 거부했습니다',
-        'purchase.move.create|deny|not_in_scope'        => '{actor} 이(가) 자기 범위 밖의 장소로(또는 장소에서) 재고를 옮기려 해서 막았습니다',
-        'purchase.move.create|deny|not_stock_managed'   => '{actor} 이(가) 재고를 관리하지 않는 품목을 옮기려 해서 거부했습니다 (옮길 재고가 없습니다)',
-        'purchase.move.create|deny|negative_stock'      => '{actor} 이(가) 보내는 장소의 재고보다 많은 수량을 옮기려 해서 거부했습니다 (재고는 음수가 될 수 없습니다)',
-        'purchase.move.create|deny|conflict'            => '{actor} 이(가) 만든 이동 전표의 번호가 이미 있어 거부했습니다',
-        'purchase.move.void|allow'                      => '{actor} 이(가) 이동 「{target}」 을(를) 취소했습니다 (원장에 반대 부호 행이 들어갑니다 · 사유는 상세 기록)',
-        'purchase.move.void|deny|bad_request'           => '{actor} 이(가) 이동 취소를 잘못된 형식으로 요청해서 거부했습니다',
-        'purchase.move.void|deny|status_invalid'        => '{actor} 이(가) 이미 취소되었거나 마감된 이동 「{target}」 을(를) 취소하려 해서 거부했습니다',
-        'purchase.move.void|deny|negative_stock'        => '{actor} 이(가) 이동 「{target}」 을(를) 취소하려 했지만 받은 장소의 물건이 이미 나가 재고가 음수가 되므로 막았습니다',
-
-        'purchase.use.create|allow'                     => '{actor} 이(가) 사용 「{target}」 을(를) 확정했습니다 (장소·줄 수·원장 행 수는 상세 기록)',
-        'purchase.use.create|deny|bad_request'          => '{actor} 이(가) 사용을 확정하려 했지만 보낸 값의 형식이 잘못되어 거부했습니다',
-        'purchase.use.create|deny|bad_reference'        => '{actor} 이(가) 없는(또는 중단된) 장소·품목·담당자로 사용을 확정하려 해서 거부했습니다',
-        'purchase.use.create|deny|not_in_scope'         => '{actor} 이(가) 자기 범위 밖의 장소에서 재고를 빼려 해서 막았습니다',
-        'purchase.use.create|deny|not_stock_managed'    => '{actor} 이(가) 재고를 관리하지 않는 품목을 사용으로 빼려 해서 거부했습니다',
-        'purchase.use.create|deny|negative_stock'       => '{actor} 이(가) 그 장소의 재고보다 많은 수량을 사용으로 빼려 해서 거부했습니다',
-        'purchase.use.create|deny|conflict'             => '{actor} 이(가) 만든 사용 전표의 번호가 이미 있어 거부했습니다',
-        'purchase.use.void|allow'                       => '{actor} 이(가) 사용 「{target}」 을(를) 취소했습니다 (원장에 반대 부호 행이 들어갑니다 · 사유는 상세 기록)',
-        'purchase.use.void|deny|bad_request'            => '{actor} 이(가) 사용 취소를 잘못된 형식으로 요청해서 거부했습니다',
-        'purchase.use.void|deny|status_invalid'         => '{actor} 이(가) 이미 취소되었거나 마감된 사용 「{target}」 을(를) 취소하려 해서 거부했습니다',
-        'purchase.use.void|deny|negative_stock'         => '{actor} 이(가) 사용 「{target}」 을(를) 취소하려 했지만 재고가 음수가 되므로 막았습니다',
-
-        'purchase.count.create|allow'                   => '{actor} 이(가) 실사 「{target}」 을(를) 확정했습니다 (장소·주기·차이 크기·원장 행 수는 상세 기록)',
-        'purchase.count.create|deny|bad_request'        => '{actor} 이(가) 실사를 확정하려 했지만 보낸 값의 형식이 잘못되어 거부했습니다',
-        'purchase.count.create|deny|bad_reference'      => '{actor} 이(가) 없는(또는 중단된) 장소·품목·담당자로 실사를 확정하려 해서 거부했습니다',
-        'purchase.count.create|deny|not_in_scope'       => '{actor} 이(가) 자기 범위 밖의 장소를 실사하려 해서 막았습니다',
-        'purchase.count.create|deny|not_stock_managed'  => '{actor} 이(가) 재고를 관리하지 않는 품목을 실사에 넣으려 해서 거부했습니다',
-        'purchase.count.create|deny|stale_snapshot'     => '{actor} 이(가) 실사를 확정하려 했지만 장부를 불러온 뒤 다른 전표가 재고를 바꿔 거부했습니다 (다시 불러와 세어야 합니다)',
-        'purchase.count.create|deny|negative_stock'     => '{actor} 이(가) 확정하면 재고가 음수가 되는 실사를 넣으려 해서 거부했습니다',
-        'purchase.count.create|deny|conflict'           => '{actor} 이(가) 만든 실사 전표의 번호가 이미 있어 거부했습니다',
-        'purchase.count.void|allow'                     => '{actor} 이(가) 실사 「{target}」 을(를) 취소했습니다 (원장에 반대 부호 행이 들어갑니다 · 사유는 상세 기록)',
-        'purchase.count.void|deny|bad_request'          => '{actor} 이(가) 실사 취소를 잘못된 형식으로 요청해서 거부했습니다',
-        'purchase.count.void|deny|status_invalid'       => '{actor} 이(가) 이미 취소되었거나 마감된 실사 「{target}」 을(를) 취소하려 해서 거부했습니다',
-        'purchase.count.void|deny|negative_stock'       => '{actor} 이(가) 실사 「{target}」 을(를) 취소하려 했지만 재고가 음수가 되므로 막았습니다',
-
-        // ── 22단계 거래처 월 대사 · 월 마감 · 기공 명세서 (PRD F-35, ARCH 5.18 「마감」, SECURITY R-69) ──
-        //
-        // 마감된 달의 전표를 고치거나 취소하려는 시도는 **여덟 창구가 같은 사유 코드**
-        // (`month_closed`)를 쓴다 — 같은 뜻에는 같은 낱말을 쓴다는 21단계 규칙 그대로다.
-        // 지나간 요청(사유를 적은 purchase.close 보유자)은 allow 행의 detail.after_close 에 남는다.
-        'purchase.request.update|deny|month_closed'     => '{actor} 이(가) **마감된 달**의 발주요청 「{target}」 을(를) 고치려 해서 막았습니다 (마감을 연 사람이 사유를 남겨야 합니다)',
-        'purchase.request.void|deny|month_closed'       => '{actor} 이(가) **마감된 달**의 발주요청 「{target}」 을(를) 사유 없이(또는 자격 없이) 취소하려 해서 막았습니다',
-        'purchase.order.update|deny|month_closed'       => '{actor} 이(가) **마감된 달**의 발주서 「{target}」 을(를) 사유 없이(또는 자격 없이) 고치려 해서 막았습니다',
-        'purchase.order.void|deny|month_closed'         => '{actor} 이(가) **마감된 달**의 발주서 「{target}」 을(를) 사유 없이(또는 자격 없이) 취소하려 해서 막았습니다',
-        'purchase.receipt.void|deny|month_closed'       => '{actor} 이(가) **마감된 달**의 입고 「{target}」 을(를) 사유 없이(또는 자격 없이) 취소하려 해서 막았습니다',
-        'purchase.move.void|deny|month_closed'          => '{actor} 이(가) **마감된 달**의 이동 「{target}」 을(를) 사유 없이(또는 자격 없이) 취소하려 해서 막았습니다',
-        'purchase.use.void|deny|month_closed'           => '{actor} 이(가) **마감된 달**의 사용 「{target}」 을(를) 사유 없이(또는 자격 없이) 취소하려 해서 막았습니다',
-        'purchase.count.void|deny|month_closed'         => '{actor} 이(가) **마감된 달**의 실사 「{target}」 을(를) 사유 없이(또는 자격 없이) 취소하려 해서 막았습니다',
-
-        // 명세서 올리기 — 거부 사유는 19단계 가져오기(purchase.import.upload)와 **같은 낱말**이다.
-        'purchase.recon.upload|allow'                   => '{actor} 이(가) 거래처 명세서 「{target}」 을(를) 올렸습니다 (관리자 전용 폴더 「구매/명세서/거래처/월」 · 거래처·월은 상세 기록)',
-        'purchase.recon.upload|deny|no_file'            => '{actor} 이(가) 파일 없이 거래처 명세서 등록을 요청해서 거부했습니다',
-        'purchase.recon.upload|deny|bad_request'        => '{actor} 이(가) 거래처 명세서를 올리려 했지만 거래처·월의 형식이 잘못되어 거부했습니다',
-        'purchase.recon.upload|deny|bad_reference'      => '{actor} 이(가) 없는(또는 중단된) 거래처의 명세서를 올리려 해서 거부했습니다',
-        'purchase.recon.upload|deny|bad_encoding'       => '{actor} 이(가) 올린 명세서 파일의 이름이 올바른 문자(UTF-8)가 아니어서 거부했습니다',
-        'purchase.recon.upload|deny|ext_not_allowed'    => '{actor} 이(가) 대사가 읽을 수 없는 종류의 파일 「{target}」 을(를) 명세서로 올려 거부했습니다 (xlsx·csv·pdf 만)',
-        'purchase.recon.upload|deny|mime_mismatch'      => '{actor} 이(가) 올린 명세서 「{target}」 의 실제 내용이 확장자와 달라(위장 파일 의심) 거부했습니다',
-        'purchase.recon.upload|deny|zip_unreadable'     => '{actor} 이(가) 올린 명세서 「{target}」 의 압축 파일 구조를 읽을 수 없어 거부했습니다',
-        'purchase.recon.upload|deny|zip_bad_path'       => '{actor} 이(가) 올린 명세서 「{target}」 안에 경로를 벗어나는 항목이 있어 거부했습니다',
-        'purchase.recon.upload|deny|zip_blocked_entry'  => '{actor} 이(가) 올린 명세서 「{target}」 안에 실행 파일이 들어 있어 거부했습니다',
-        'purchase.recon.upload|deny|nested_zip'         => '{actor} 이(가) 올린 명세서 「{target}」 안에 압축 파일이 여러 겹 겹쳐 있어 거부했습니다',
-        'purchase.recon.upload|deny|zip_bomb'           => '{actor} 이(가) 올린 명세서 「{target}」 은(는) 압축을 풀면 지나치게 커지거나 항목이 너무 많아(압축 폭탄 의심) 거부했습니다',
-        'purchase.recon.upload|deny|macro_found'        => '{actor} 이(가) 올린 명세서 「{target}」 에 매크로가 들어 있어 거부했습니다',
-        'purchase.recon.upload|deny|pdf_active_content' => '{actor} 이(가) 올린 명세서 PDF 「{target}」 에 열리면 실행되는 내용(스크립트·자동 실행)이 들어 있어 거부했습니다',
-        'purchase.recon.upload|deny|hwp_not_hwp'        => '{actor} 이(가) 올린 명세서 「{target}」 이(가) 한글 문서 형식이 아닌데 .hwp 이름이라(위장 의심) 거부했습니다',
-        'purchase.recon.upload|deny|double_extension'   => '{actor} 이(가) 이중 확장자 파일 「{target}」 을(를) 명세서로 올려 거부했습니다 (실행 파일 위장 의심)',
-        'purchase.recon.upload|deny|empty_file'         => '{actor} 이(가) 0바이트 파일 「{target}」 을(를) 명세서로 올려 거부했습니다',
-        'purchase.recon.upload|deny|too_large'          => '{actor} 이(가) 100MB 를 넘는 파일 「{target}」 을(를) 명세서로 올려 거부했습니다',
-        'purchase.recon.upload|deny|upload_error'       => '{actor} 이(가) 보낸 명세서 업로드의 형식이 잘못되어 거부했습니다',
-        'purchase.recon.upload|deny|not_uploaded_file'  => '{actor} 이(가) 보낸 명세서 업로드가 정상적인 HTTP 업로드가 아니어서 거부했습니다',
-        'purchase.recon.upload|deny|size_unreadable'    => '{actor} 이(가) 올린 명세서 「{target}」 의 크기를 읽을 수 없어 거부했습니다',
-        'purchase.recon.upload|deny|hash_failed'        => '{actor} 이(가) 올린 명세서 「{target}」 의 무결성 값을 계산할 수 없어 거부했습니다',
-        'purchase.recon.upload|deny|quota_exceeded'     => '{actor} 이(가) 명세서를 올리려 했지만 하루 업로드 한도(2GB)를 넘어 거부했습니다',
-        'purchase.recon.upload|error|parse_failed'      => '{actor} 이(가) 올린 명세서 「{target}」 에서 표를 읽어 내지 못했습니다 (손상 · 글자가 없는 PDF · 지원 범위 밖)',
-
-        // 대조 미리보기 — 아무것도 저장하지 않는 단계다(열 매핑을 바꿔 가며 본다)
-        'purchase.recon.preview|allow'                  => '{actor} 이(가) 거래처 명세서 「{target}」 을(를) 우리 입고와 맞춰 봤습니다 (차이 건수는 상세 기록)',
-        'purchase.recon.preview|deny|bad_request'       => '{actor} 이(가) 명세서 대조를 잘못된 형식으로 요청해서 거부했습니다',
-        'purchase.recon.preview|deny|bad_mapping'       => '{actor} 이(가) 허용되지 않은 열(또는 필수 열이 빠진 매핑)으로 명세서 대조를 요청해서 거부했습니다 (품목·수량·단가·금액 열만 읽습니다)',
-        'purchase.recon.preview|deny|bad_header_row'    => '{actor} 이(가) 있을 수 없는 머리행 번호로 명세서 대조를 요청해서 거부했습니다 (앞 20줄 안에서만 고를 수 있습니다)',
-        'purchase.recon.preview|deny|parse_failed'      => '{actor} 이(가) 읽을 수 없는 명세서로 대조를 요청해서 거부했습니다',
-
-        // 대사 확정 — 한 트랜잭션, 한 번만
-        'purchase.recon.commit|allow'                   => '{actor} 이(가) 거래처 명세서 「{target}」 의 대사 결과를 확정했습니다 (줄 수·차이 건수·명세서 합계는 상세 기록)',
-        'purchase.recon.commit|deny|bad_request'        => '{actor} 이(가) 대사 확정을 잘못된 형식으로 요청해서 거부했습니다',
-        'purchase.recon.commit|deny|bad_mapping'        => '{actor} 이(가) 허용되지 않은 열(또는 필수 열이 빠진 매핑)로 대사 확정을 요청해서 거부했습니다',
-        'purchase.recon.commit|deny|bad_header_row'     => '{actor} 이(가) 있을 수 없는 머리행 번호로 대사 확정을 요청해서 거부했습니다',
-        'purchase.recon.commit|deny|parse_failed'       => '{actor} 이(가) 읽을 수 없는 명세서로 대사 확정을 요청해서 거부했습니다',
-        'purchase.recon.commit|deny|truncated'          => '{actor} 이(가) 상한에서 끊긴 명세서로 대사 확정을 요청해서 거부했습니다 (반쯤 읽은 표로 차이를 세지 않습니다)',
-        'purchase.recon.commit|deny|no_rows'            => '{actor} 이(가) 읽어 낸 줄이 하나도 없는 명세서로 대사 확정을 요청해서 거부했습니다 (빈 대사표를 만들지 않습니다)',
-        'purchase.recon.commit|deny|already_committed'  => '{actor} 이(가) 이미 확정된 명세서를 다시 확정하려 해서 거부했습니다 (다시 하려면 명세서를 새로 올립니다)',
-        'purchase.recon.commit|deny|bad_reference'      => '{actor} 이(가) 없는 전표 줄을 가리키는 대사 결과를 확정하려 해서 **전부 되돌렸습니다**',
-
-        // 월 마감 — 재인증 관문을 지난 뒤의 행동이다 (ARCH 4.0 「sudo 모드」)
-        'purchase.close.create|allow'                   => '{actor} 이(가) {target} 의 구매·재고 전표를 **월 마감**했습니다 (지점·잠근 전표 수·사유는 상세 기록)',
-        'purchase.close.create|deny|bad_request'        => '{actor} 이(가) 월 마감을 잘못된 형식으로 요청해서 거부했습니다',
-        'purchase.close.create|deny|not_in_scope'       => '{actor} 이(가) 자기 범위 밖의 지점을 마감하려 해서 막았습니다',
-        'purchase.close.create|deny|open_docs_exist'    => '{actor} 이(가) {target} 을(를) 마감하려 했지만 **아직 확정되지 않은 전표**가 남아 있어 거부했습니다 (진행 중인 요청·발주가 잠기지 않게)',
-        'purchase.close.create|deny|conflict'           => '{actor} 이(가) 이미 마감된 달을 다시 마감하려 해서 거부했습니다',
-        'purchase.close.create|deny|bad_reference'      => '{actor} 이(가) 없는 지점으로 월 마감을 요청해서 거부했습니다',
-
-        // 기공 명세서 → 입고 전표 (재고관리 안 하는 품목만, 원장에는 +·− 두 행)
-        'purchase.lab.create|allow'                     => '{actor} 이(가) 기공 명세서로 입고 전표 「{target}」 을(를) 만들었습니다 (거래처·줄 수·금액·연결한 명세서는 상세 기록)',
-        'purchase.lab.create|deny|bad_request'          => '{actor} 이(가) 기공 명세서 전표를 만들려 했지만 보낸 값의 형식이 잘못되어 거부했습니다',
-        'purchase.lab.create|deny|bad_reference'        => '{actor} 이(가) 없는(또는 중단된) 거래처·장소·품목·명세서로 기공 명세서 전표를 만들려 해서 거부했습니다',
-        'purchase.lab.create|deny|not_in_scope'         => '{actor} 이(가) 자기 범위 밖의 장소로 기공 명세서 전표를 만들려 해서 막았습니다',
-        'purchase.lab.create|deny|stock_managed_item'   => '{actor} 이(가) **재고를 관리하는 품목**을 기공 명세서에 담으려 해서 거부했습니다 (기공은 재고관리 안 하는 품목만입니다)',
-        'purchase.lab.create|deny|month_closed'         => '{actor} 이(가) **마감된 달**에 기공 명세서 전표를 만들려 해서 거부했습니다',
-        'purchase.lab.create|deny|negative_stock'       => '{actor} 이(가) 확정하면 재고가 음수가 되는 기공 명세서 전표를 넣으려 해서 거부했습니다',
-        'purchase.lab.create|deny|conflict'             => '{actor} 이(가) 만든 기공 명세서 전표의 번호가 이미 있어 거부했습니다',
-
-        /*
-         * 23단계 — 발주 제안을 발주요청으로 (PRD F-36, ARCH 5.18 「감사·경보」).
-         * 조회(`GET /api/purchase/suggest`)는 기록하지 않는다 — 다른 현황 조회와 같다.
-         * 여기 남는 것은 **제안이 전표가 된 순간** 하나이고, detail 에 `suggested_qty`(서버가
-         * 계산한 합)와 `applied_qty`(담당자가 실제로 담은 합)가 둘 다 들어간다 —
-         * 두 숫자의 차이가 곧 "사람이 제안을 얼마나 고쳤나" 다 (지시서 23단계 보충 2).
-         */
-        'purchase.suggest.apply|allow'                  => '{actor} 이(가) 발주 제안을 모아 발주요청 「{target}」 을(를) 만들었습니다 (제안 수량·담은 수량·줄 수는 상세 기록)',
-        'purchase.suggest.apply|deny|bad_request'       => '{actor} 이(가) 발주 제안 담기를 잘못된 형식으로 요청해서 거부했습니다',
-        'purchase.suggest.apply|deny|bad_reference'     => '{actor} 이(가) 볼 수 없는(또는 중단된) 품목의 발주 제안을 담으려 해서 거부했습니다',
-        'purchase.suggest.apply|deny|not_in_scope'      => '{actor} 이(가) 자기 범위 밖의 장소에 발주 제안을 담으려 해서 막았습니다',
-        'purchase.suggest.apply|deny|no_suggestion'     => '{actor} 이(가) 지금 발주 제안이 없는 품목을 제안으로 담으려 해서 거부했습니다 (제안 창구는 부족한 것만 담습니다)',
-        'purchase.suggest.apply|deny|not_multiple'      => '{actor} 이(가) 최소구매단위의 배수가 아닌 수량으로 발주 제안을 담으려 해서 거부했습니다',
-        'purchase.suggest.apply|deny|conflict'          => '{actor} 이(가) 제안으로 만든 발주요청의 전표 번호가 이미 있어 거부했습니다',
-
-        /*
-         * 23단계 — 품목의 **사용 지점 빼기** (20단계 마이그레이션의 `p_item_branches.is_active`).
-         * 그 표에도 DELETE 권한이 없으므로 빼기는 「지웠다」가 아니라 「끔」이다 —
-         * 지난 전표에는 그대로 남고, 다시 넣으면 되살아난다.
-         */
-        'purchase.master.branch_off|allow'              => '{actor} 이(가) 품목 「{target}」 의 사용 지점을 뺐습니다 (지운 것이 아니라 끔이며 지난 전표에는 그대로 남습니다 · 지점은 상세 기록)',
-        'purchase.master.branch_off|deny|bad_request'   => '{actor} 이(가) 품목의 사용 지점 빼기를 잘못된 형식으로 요청해서 거부했습니다',
     ];
 
     /** 자리표시자에 넣을 값이 없을 때 (ARCH 7.4) */
@@ -1187,10 +789,6 @@ final class Audit
                 $out['acting_as'] = [
                     'role'          => isset($user['role']) ? (string) $user['role'] : null,
                     'team_id'       => $user['team_id'] === null ? null : (int) $user['team_id'],
-                    'purchase_role' => isset($user['purchase_role']) && $user['purchase_role'] !== null
-                        ? (string) $user['purchase_role'] : null,
-                    'branch_id'     => isset($user['branch_id']) && $user['branch_id'] !== null
-                        ? (int) $user['branch_id'] : null,
                 ];
                 $out['real_role'] = (string) ($user['real_role'] ?? '');
             }

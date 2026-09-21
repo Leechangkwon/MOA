@@ -862,93 +862,12 @@ Admin 전용. 정책 `org.manage`(`Authz::canManageOrg` = Admin) 를 `KNOWN_POLI
 
 ---
 
-### 5.18 구매·재고 모듈 — `/purchase/*` · `/api/purchase/*` (PRD F-28~F-37 · 19~25단계, 확정 2026-09-13)
+### 5.18 (비었음) — 구매·재고 모듈이 있던 자리
 
-상세 설계는 `docs/purchase/03-architecture-draft.md`(확정본)에 있다. 여기에는 **본체와 맞닿는 규칙**만 적는다.
-
-| 항목 | 규칙 |
-|---|---|
-| 경계 | 라우트 `/purchase/*`(화면)·`/api/purchase/*`(API), 정책 접두 `purchase.*`, 표 접두 `p_`, 코드 `src/purchase/`·`handlers/purchase_*.php`·`assets/purchase.js|css`. 본체 파일 변경은 라우트 표·`Authz`(모듈 판정 함수)·`Audit`(문장 틀)·`me.php`·셸 내비(「구매관리」 그룹)·`users`(`branch_id`·`purchase_role`)로 한정 |
-| 권한 두 축 | `users.purchase_role`(requester·buyer·stock·viewer·NULL) × `users.branch_id`. 판정은 `Authz::purchaseAuthorize(policy, user)`(라우트)와 `Authz::purchaseScopeWhere(user, alias)`(모든 조회 SQL — requester·stock 은 `alias.branch_id = :my_branch`, 그 밖은 조건 없음) **한 곳**. 핸들러의 SELECT 에 `purchaseScopeWhere` 호출이 없으면 `security_lint.sh` 가 반려 |
-| 정책 | `purchase.read` · `purchase.request.write` · `purchase.buy.write` · `purchase.stock.write` · `purchase.master.write`(**재인증 대상**, `REAUTH_POLICIES` 추가) · `purchase.close`(재인증 — **비밀번호 재확인**, F-23 규칙 그대로. 2단계 인증 코드는 다시 묻지 않는다 — 22단계 결정 2026-09-13) · Admin 은 전부 |
-| 원장 | `p_stock_moves` 는 append-only — 앱 계정 INSERT·SELECT 만(`grants.sql`). 현재고 = `SUM(qty_delta)`(뷰 `p_stock_balance`). 취소·정정 = 반대 부호 행 + `reverses_move_id` |
-| 연결 | `p_doc_lines.src_line_id` 하나로 요청→발주→입고. 미발주·미입고는 계산값(재귀 CTE). 담기·입고 확정은 `FOR UPDATE` 뒤 잔량 초과 거부 |
-| 분할 저장 (F-60, 2026-09-17) | 발주서 한 장 = 거래처 하나는 그대로다. 대신 `POST /api/purchase/po` 가 `split:true` 를 받으면 **핸들러가 줄을 거래처별로 나눠 N 장을 한 트랜잭션에서** 만든다 — 잠금(`lockLines`)·잔량·격리·상태 검사는 전 줄에 대해 **한 번**(기존 코드 그대로), 그 뒤 거래처 묶음마다 채번·`insertDoc`·`insertLine`·`retouchRequestLine`·`buildHeader` 를 반복한다. 한 줄이라도 거부면 전부 롤백(반 장 없음). `split` 없이 섞이면 `mixed_vendor`(계약 불변), `vendor_id` 명시가 있으면 `split` 보다 우선한다. 불러오기 묶는 기준에 `doc`(전표, key=`doc_id`)을 더해 여섯. 화면은 묶음 노드 체크(하위 전부 잔량 담기)와 저장 전 분할 미리보기 |
-| 발주서 세 갈래·장소 규칙 (F-61, 2026-09-17) | 발주서 줄의 출처는 셋 — **요청 줄**(`src_line_id`), **직접 줄**(`item_id`, `src_line_id` NULL), **부족 산출**(화면이 `GET /api/purchase/suggest` 의 제안을 직접 줄로 담는다 — 서버에 새 창구 없음). 한 줄은 `src_line_id`·`item_id` 중 **하나만**. 직접 줄의 품목은 `Doc::loadItems`(활성·범위) 로, 거래처는 줄 `vendor_id` ?? 품목 거래처, 단가는 품목 `price_in`, 요청 잔량 갱신 없음. **입고 장소는 줄이 정한다**: `split:true` 면 머리 `to_location_id` 는 선택이고 없으면 요청 줄은 그 요청의 `to_location_id`, 직접 줄은 `location_id` — 묶음 열쇠는 **(거래처, 장소)** — F-62 에서 담당자가 더해져 **세 축**이 되었다 —, 묶음마다 `Doc::locationOk`(기존). 머리값 명시가 우선(`vendor_id` 와 같은 규칙). `split` 없는 옛 요청은 머리 필수 그대로. 화면 3탭(입력·전표·현황) — 현황은 입고 화면과 같은 `backorder` API·`renderBackorder` |
-| 발주서 담당자·3축 분할 (F-62, 2026-09-17) | 발주서를 나누는 열쇠가 **(거래처, 입고 장소, 담당자)** 세 축이 된다. 줄의 담당자는 머리 `manager_id` 명시 → **요청 줄은 그 발주요청 전표의 `manager_id`**(출처 줄 조회가 `d.manager_id` 를 함께 읽는다) → 직접 줄·부족 산출 줄은 로그인 사용자. 명시 우선은 `vendor_id`·`to_location_id` 와 같은 규칙이고 `split` 없는 옛 요청은 머리 `??` 로그인 사용자 그대로(계약 불변 — 묶음 만들기 직전에 전 줄의 담당자를 그 값으로 덮어쓴다). 확인은 묶음마다 기존 `Doc::managerOk`(활성 + 구매 역할 있음), 실패는 기존 `bad_reference`. 화면 머리에 「담당자」 칸이 생기고(비우면 「— 줄에서 자동 —」) 그 목록은 새 창구 `GET /api/purchase/managers` 가 준다 — **정의가 `Doc::managerOk` 의 SQL 과 같아야** 고를 수 있는데 저장이 거부되는 어긋남이 없다(R-92). 분할 미리보기는 **갈리는 축만** 말한다(거래처만 → F-60 문장, 장소까지 → F-61 문장, 담당자까지 → 세 축). 새 판정 함수·새 감사 키·스키마·CSS 변경 0 |
-| 입고 불러오기 — 단추 뒤 창·묶는 기준 (F-63, 2026-09-17) | 입고 「입력」 탭 맨 위에 늘 펼쳐져 있던 불러오기 패널을 **단추 뒤 창**(`gr-load-modal`)으로 옮기고 화면 진입 자동 조회를 없앤다 — 조회는 창 안 「불러오기」를 눌러야 돈다(발주요청 불러오기 창과 같은 동작). 창 안은 발주요청 불러오기와 **같은 틀**이고 묶는 기준은 `p_backorder` 가 이미 가진 열로 여섯(거래처·입고 장소·담당자·지점·분류 `i.cat1_id`·전표=발주서). `GET /api/purchase/gr/load` 에 선택 키 `?group=`(1~3개) — 있으면 `nodes` 트리, **없으면 지금의 `orders` 그대로**(계약 불변). `group` 값은 코드에 적힌 여섯의 열쇠가 될 뿐 **SQL 에 닿지 않는다**(`pr_load` 와 같은 화이트리스트). 묶기는 `src/purchase/Grouping.php` **한 벌**(순수 함수, DB 접근 0)이고 `pr_load`·`gr_load` 가 같이 부른다 — 두 벌이면 언젠가 한쪽만 고쳐진다(25단계 CSS 교훈). 화면 쪽도 `purchase_common.js` 의 `UI.loadPicker()` 한 벌. 입고 확정 API·정책·감사는 변경 0 |
-| 음수 재고 | 이동·사용 확정 트랜잭션에서 잠금 뒤 합 재계산, 0 미만이면 400 |
-| 채번 | `p_doc_seq(doc_type, date, last)` 잠금 증가 → `PR|PO|GR|MV|IS|ADJ-YYYYMMDD-N`, UNIQUE |
-| 마감 | `p_docs.closed_month` 가 있으면 수정·취소는 `purchase.close` + 사유 + 감사 |
-| 재고관리 안 하는 품목 | 입고 확정 시 `+`·`−` 두 행(순변화 0), 사용 통계에는 포함 |
-| 요청 수정 창 (Q-18①) | `p_doc_lines.locked_at` — 구매실이 그 줄을 발주서에 담는 순간(FOR UPDATE 안에서) 기록. 요청자 PATCH 는 `status='unconfirmed' AND locked_at IS NULL` 인 줄만. 요청 전표가 **하나라도 담긴 뒤** 요청자가 추가하는 줄은 같은 전표에 붙이지 않고 **새 PR 전표**(`p_docs.split_from_id` 로 출처 표시)를 만들어 붙인다 — 발주서 생성 중 병목·누락 방지 |
-| 발주서 PDF (Q-18②) | 양식은 `files` #188(이카운트 발주서 캡처). 머리 정보(일련번호·수신·참조·TEL·납품창고·납기일자·회사 정보·담당/연락처)는 `p_docs`·`p_branches`·`p_vendors`·`users` 에서 서버가 채워 `p_docs.header_json` 에 저장, 발행 전 buyer 가 수정 가능(수정도 before/after 감사). 금액은 공급가액·부가세·합계(VAT 포함) 셋을 서버가 계산. 로고·회사 정보는 `p_brands` 열(19단계 표에 `logo_file_id`·`biz_no`·`ceo_name`·`address`·`tel` 포함) |
-| 송부 전 검토 (Q-18④) | viewer 는 전 지점 읽기 + `purchase.send`(발주서 미리보기 → 「보냄」). buyer 도 `purchase.send` 가능. 「보냄」은 `p_docs.sent_at`·`sent_by`, 한 번만(재송부는 사유 + 감사) |
-| 실사 주기 (Q-18③) | `p_docs.count_cycle`(`daily`·`weekly`·`monthly`, 실사 전표만 NOT NULL). 일: 불출·부족재고 구매용, 주·월: 창고 정합성. 현황은 주기별 차이 합계 추세 |
-| 가져오기 | t-box `Upload::validate` → `Preview::table`(xlsx·csv) → 매핑(`p_import_mappings`) → 행별 판정 → 한 트랜잭션. 파일은 `files`(폴더 `구매/가져오기`), 감사 detail 에 sha256·행 수 |
-| 가져오기 옵션 (9차 보정 2026-09-14) | 미리보기·확정이 받는 스위치는 **다섯**이고 `p_import_mappings.options_json` 에 매핑·머리행과 **함께** 저장된다 — 저장하지 않으면 매핑만 복원돼 같은 파일이 매달 통째로 오류가 난다. `create_brands`·`create_branches`(창고 파일: 창고명에서 브랜드·지점) · `create_categories`·`create_vendors`(**품목 파일**: 파일의 대·중·소분류와 미등록 거래처) · `derive`(창고명→지점 파생) + 기본값 `default_branch`·`default_brand`. 값은 **bool 또는 양의 정수 id 만**이고 다른 타입은 400(`bad_request`). 종류에 뜻이 없는 옵션은 `Importer::judge` 가 끈다(창고 파일에 `create_categories` 를 보내도 아무 일이 없다). 허용 키 목록은 `Importer::OPTION_KEYS` 한 곳이며 미리보기·확정·매핑 저장 셋이 같은 목록을 쓴다 |
-| 품목 가져오기의 확정 순서 (9차 보정) | **한 트랜잭션 안에서** ① 새 거래처(이름만, `code` NULL) → ② 새 분류 1단 → 2단 → 3단(부모 id 를 이어 가며) → ③ 품목 행의 `vendor_id`·`cat*_id` 를 방금 만든 진짜 id 로 바꿔 넣기 → ④ insert/update → ⑤ 감사 한 줄 → COMMIT. 판정은 아직 없는 것을 **음수 임시 id** 로 가리키고(`Importer::planVendor`·`planCategory`), 같은 이름은 lookup 에 함께 넣어 두어 8,100행이 같은 분류를 가리켜도 한 건만 생긴다. 어느 단계든 예외면 전부 롤백 — 「분류만 생기고 품목은 안 들어온」 반쪽 상태를 만들지 않는다. 판정 규칙: 단위 빈칸 → 오류 아님(`unit` NULL, 원본 그대로) · 거래처 빈칸 → `vendor_missing` 오류(`p_items.vendor_id` 는 NOT NULL, 가짜 거래처를 만들지 않는다) · 같은 이름의 거래처가 둘 이상 → `vendor_ambiguous` review 이고 **옵션과 무관하게 새로 만들지 않는다**(R-72) |
-| 매핑 자동 적용 `match` (9차 보정) | 업로드 응답의 `match` = 저장된 매핑 중 **원본 열 이름이 그 매핑의 머리행에 전부 있는** 것(둘 이상이면 이어 준 열이 가장 많은 것). 화면은 종류가 같으면 매핑·머리행·옵션을 적용하고 **미리보기로 직행**(2 걸음은 「열 맞추기 보기」로 연다). **서버는 이 값을 판정에 쓰지 않는다** — 미리보기·확정은 언제나 요청이 보낸 값으로만 돈다 |
-| 감사·경보 | 문장 틀 `purchase.request|order|receipt|move|use|count|master|import|recon|close … allow/deny/error`(7.4), detail 키 `doc_no`·`doc_type`·`branch_id`·`lines`·`amount`·`src_doc_no`·`before/after`·`suggested_qty`·`applied_qty`·`links`·`inbox_ids`(7.5). 경보 **AL-14 보낸 뒤·마감 뒤 수정 · AL-15 미입고 30일 · AL-16 단가 급변 · AL-17 대량 취소 — 23단계에 임계값·문장·묶는 단위까지 확정**(11.4 표) |
-| 발주 제안 (F-36) | ⌈(인가량 + 안전재고 − 현재고 − 미입고 + 조달기간 예상 사용) ÷ 최소구매단위⌉ × 최소구매단위. 계산은 `src/purchase/Suggest.php` 의 **SQL 한 곳**뿐이고 화면은 값과 근거를 표시만 한다. 조달기간 예상 사용 = 주평균 사용(최근 4주) × `lead_days` ÷ 7, 자료가 없으면 0 + `usage_basis: none`. 괄호 안이 0 이하면 제안 없음(0). `POST /api/purchase/suggest/apply` 는 제안을 **다시 계산해** 발주요청(PR) 한 건으로 만든다 — 요청 본문의 제안값은 읽지 않고, 고친 수량은 최소구매단위의 배수여야 한다(400 `not_multiple`). 지점은 **장소에서** 나온다 |
-| 사용 지점 빼기 | `p_item_branches.is_active = false` — 그 표에도 DELETE 가 없으므로 지우기가 아니라 끄기다. 빼면 품목 찾기(`branch_used`·지점 격리 조건)와 `Doc::loadItems` 의 「보이는 품목」에서 함께 빠지고, 지난 전표에는 그대로 남는다 |
-| 화면 | 시안 16장(`docs/purchase/design/`)이 기준. t-box 셸·토큰, `textContent` 만, 서버 계산 값만 표시 |
-| 창고 대기표 (F-37, 24단계) | `p_location_inbox` — **지점이 정해지기 전의 창고**가 머무는 표. `p_locations.branch_id` 는 NOT NULL 이고 지점 격리·전표·재고가 전부 그 열로 훑으므로, 지점 없는 창고를 본 표에 넣으려면 그 열을 NULL 허용으로 풀어야 한다 → 대신 **본 표 밖**에 두고 사람이 지점을 고르는 순간에만 `p_locations` 행을 만든다(전표·재고 코드는 한 줄도 바뀌지 않는다). 정체는 `ecount_code`(UNIQUE) — 같은 파일을 다시 올리면 「변동 없음」이다. `status` 는 `unlinked|linked|excluded` 세 값이고 **행을 지우지 않는다**(앱 계정에 DELETE 없음). 이름은 이카운트 원문 그대로(trim 만) 저장하고, linked 행의 이름이 파일에서 바뀌어도 `p_locations.name` 은 건드리지 않는다(`renamed_linked` 수만 알린다). 「추천 지점」은 창고명 토큰 ↔ 활성 지점 이름의 정확 일치(둘 이상이면 앞 토큰 = 브랜드로 좁히고, 그래도 둘 이상이면 추천 없음)이며 **표시용 값**이다 — 연결은 언제나 요청이 보낸 `branch_id` 로만 한다. 코드는 `src/purchase/Structure.php` 한 곳 |
-| 업로드 공통 조각 (24단계) | 가져오기 업로드(F-29)와 창고 대기표 업로드(F-37)는 **같은 함수**를 지난다 — `Importer::storeUploaded(uploaded, user, auditAction, inTransaction?)`: 원본 파일명 정리 → `Upload::validate` → `Sheet::SHEET_EXT` → `Sensitive::scan` → 폴더 「구매/가져오기」(admin-only) → `files` 행 + `Storage::put` → (호출자의 일) → 감사 `allow` 한 줄 → COMMIT. 실패하면 파일까지 되돌린다. 두 벌로 두면 언젠가 한쪽만 고쳐지고 그 한쪽이 곧 두 번째 입구다(거부 사유 12종도 한 곳에서만 나온다) |
-| 입고 전표 조회 (F-45) | 입고에는 21단계부터 **만들기·불러오기·취소**만 있었고 **찾는 길이 없었다** — 화면이 방금 저장한 한 건만 취소할 수 있었다. 그래서 읽기 창구 둘을 더한다: `GET /api/purchase/gr`(목록)·`GET /api/purchase/gr/{num}`(상세), 둘 다 정책 `purchase.read` 이고 `Authz::purchaseScopeWhere($user, 'd')` 를 SQL WHERE 에 건다. **범위 밖 전표는 404** 다(발주서 상세와 같은 판단 — 403 은 「있긴 있다」를 알려 주는 셈이다). 쓰기는 하나도 늘지 않는다: 취소는 여전히 `POST /api/purchase/gr/{num}/void`(21단계) 한 곳이고, 화면이 부르는 것도 그것이다. 응답에 **금액이 없다** — 입고 전표가 세는 것은 수량(`qty_total`·`totals.qty`)이고 단가는 서버가 발주서 줄에서 읽어 이미 줄에 적혀 있다(R-66). `voided_at` 은 따로 저장하는 칸이 아니라 취소가 `p_docs` 를 건드리는 마지막 수정이므로 `updated_at` 을 그 뜻으로 돌려준다(취소가 아닌 전표는 null) |
-
-**24단계 라우트·정책** (다섯 줄 모두 `purchase.master.write` — `REAUTH_POLICIES` 에 있어 재인증 관문이 자동으로 붙는다)
-
-| 메서드 | 경로 | 핸들러 | 정책 |
-|---|---|---|---|
-| GET | `/purchase/structure` | `purchase_structure_page.php` | `purchase.master.write` |
-| GET | `/api/purchase/structure` | `purchase_structure_get.php` | `purchase.master.write` |
-| POST | `/api/purchase/structure/upload` | `purchase_structure_upload.php` | `purchase.master.write` |
-| POST | `/api/purchase/structure/link` | `purchase_structure_link.php` | `purchase.master.write` |
-| POST | `/api/purchase/structure/exclude` | `purchase_structure_exclude.php` | `purchase.master.write` |
-
-`p_location_inbox` 에는 **지점 축이 없다**(연결 전의 창고라 지점이 정해지지 않았다는 것이 이 표의 존재 이유다). 다섯 라우트가 전부 buyer·Admin 전용이고 그 둘의 지점 범위는 언제나 전 지점이므로, 조회마다 `// lint:no-branch-scope <이유>` 표식을 `src/purchase/Structure.php` 에 적는다(23단계 규칙 — 표식은 **조회 단위**다). 나무 조회의 `p_locations` 도 같은 이유로 표식을 단다(전 지점을 정리하는 마스터 편집 화면이다).
-
-**F-45 라우트·정책** — 입고 화면의 「전표」 탭이 쓰는 **읽기 창구 둘**. 새 쓰기 경로는 없다.
-
-| 메서드 | 경로 | 핸들러 | 정책 |
-|---|---|---|---|
-| GET | `/api/purchase/gr` | `purchase_gr_list.php` | `purchase.read` |
-| GET | `/api/purchase/gr/{num}` | `purchase_gr_get.php` | `purchase.read` |
-| (기존) | `POST /api/purchase/gr/{num}/void` | `purchase_gr_void.php` | `purchase.stock.write` |
-
-**F-62·F-63 창구 변화** — 새 라우트는 **한 줄**이고, 입고 불러오기는 기존 라우트에 선택 키 하나가 붙을 뿐이다.
-
-| 메서드 | 경로 | 핸들러 | 정책 | 무엇 |
-|---|---|---|---|---|
-| GET | `/api/purchase/managers` | `purchase_managers_list.php` | `purchase.buy.write` | **새 창구**(F-62) — 담당자 후보 `id`·`name`. 정의는 `Doc::managerOk` 의 SQL 과 같다 (R-92) |
-| (기존) | `GET /api/purchase/gr/load` | `purchase_gr_load.php` | `purchase.stock.write` | F-63 이 **선택 키 `?group=`** 만 더한다. 없으면 응답이 지금과 같다(계약 불변) |
-| (기존) | `POST /api/purchase/po` | `purchase_po_create.php` | `purchase.buy.write` | F-62 는 **키를 늘리지 않는다** — `manager_id` 는 20단계부터 있던 머리 키다 |
-
-담당자 목록에 **지점 격리를 걸지 않는 것**은 이 표의 유일한 예외적 판단이고, 그 이유(구매실은 어느 지점 요청이든
-담당자로 적는다 · 창구가 buyer·Admin 전용 · `Doc::managerOk` 에도 지점 조건이 없다)를 `lint:no-branch-scope`
-표식으로 조회 위에 적는다. 표식은 조회 단위다(23단계 규칙).
-
-경로 충돌은 없다: `{num}` 은 `[0-9]{1,9}` 라 같은 자리의 글자 경로(`/api/purchase/gr/load`)와 형태가 다르고, 취소는 메서드도 경로도 다르다.
-읽기는 `purchase.read`, **움직이는 것만** `purchase.stock.write` 라는 갈래는 발주서(`/po`·`/po/{num}` 읽기 vs `/po/{num}/void` 쓰기)와 같다 —
-「볼 수는 있어도 되돌리지는 못하는 사람」이 있다는 뜻이고, 그 판단은 라우트 정책 한 곳에서만 난다(PRD S-01).
-
-입고 화면의 「현황」 탭은 **새 API 를 만들지 않는다** — `GET /api/purchase/backorder`(21단계)를 그대로 부르고, 표를 그리는 함수도
-`PurchaseUI.renderBackorder` **한 벌**이라 재고 화면의 「미입고」 탭과 같은 것을 본다(25단계 「사이클 표 한 벌」과 같은 원칙).
+2026-09-21 에 F-64 로 제거했다. 설계는 태그 `v1.13.0-with-purchase` 의 이 절과 `docs/purchase/` 에 있다.
+절 번호는 5.19 이후가 흔들리지 않게 남긴다.
 
 ---
-
-**구매 화면 공통 규칙 (25단계, 사용자 피드백 2026-09-14)** — 화면 13개가 「한 제품」으로 보이려면 규칙이 파일 하나에 있어야 한다.
-
-| 규칙 | 내용 | 왜 |
-|---|---|---|
-| CSS 두 벌만 | 셸 공통 `app.css`(토큰·.page-head·.panel·.panel__head--row·.panel__tools·.field--inline·.check·.badge--*·.chip·.tabs·.kpi·.num·.kbd·.empty·.help·.grid-form·.split·.filelabel) + 모듈 공통 `purchase.css`(접두 `p-`). 인쇄 화면만 `purchase_print.css` 추가. **화면별 CSS 파일을 만들지 않는다.** 같은 클래스 이름을 두 곳에서 정의하지 않는다 | 19~24단계에 화면마다 CSS 를 새로 만들며 「앞 파일을 가져다 쓰지 않는다」고 적었더니 `.panel__tools` 가 절반의 화면에서 미정의라 필터가 세로로 무너졌다(T-50 이전 46건). 규칙이 다섯 벌이면 고칠 때 한 벌만 고쳐진다 |
-| CSS 는 head 에서 | handler 가 `$pageCss = ['purchase.css']` 를 넘기고 `shell_top.php` 가 화이트리스트 검사 뒤 `<link>` 로 싣는다. 본문 안 `<link>` 금지 | 본문 링크는 app.css 만으로 한 번 그린 뒤 다시 배치되어 화면이 튄다 |
-| 메시지 슬롯 하나 | `#msg` 는 페이지에 한 번. handler 가 `$pageMsgTop = true` 면 view 가 `.page-head` 아래에 출력하고 `shell_bottom.php` 는 생략 | 중복 id 가 있으면 `getElementById` 가 첫 것을 집어 오류가 안 보이거나 맨 아래에 뜬다 |
-| JS 헬퍼 한 벌 | `purchase_common.js` 의 `window.PurchaseUI`(el/setText/dash/errorMessage/request/cell/badge/qty/money/kpi/initTabs/say/openModal/closeModal/fillSelect/itemPicker(F-61)/loadPicker(F-63 — 불러오기 창의 트리·묶음 체크·담을 수량)). 화면 번들은 화면 로직만. **textContent 만**(S-03) | 같은 표를 두 화면이 다른 열로 그리던 사이클 표가 그 증거다 |
-| 시안이 규범 | `docs/purchase/design/*.dc.html` 의 배치(머리 카드 위·줄 카드 아래, 2단 `.split`)·배지 색(ok 완료/warn 진행중·부분/danger 부족·지남/accent 일부 발주·정보/team 이동/off 취소)·글꼴(전표번호·코드·금액 `mono`, 숫자 `num`)·어휘(README) 를 그대로 쓴다. 안내는 `.page-head__sub` 한 줄 + 표 아래 `.help`; 상단 `.notice` 더미 금지 | 시안은 사용자가 「확정」한 요구사항이다. 기능 시험 통과가 단계 완료 조건의 전부가 아니다 |
-| 내비는 사이드바만 | 「구매관리」 아래 세 소제목 전표/현황/기초정보. 화면 헤더 `.page-head__actions` 에는 **그 화면의 동작**만(인쇄·PDF 예외). 표시는 편의, 허용은 라우트 정책(변경 없음) | 헤더마다 다른 링크 집합은 내비 두 벌이다 |
-| 시각 결함은 실행해서 잡는다 | `scripts/ui_snapshot.sh <폴더> <폭>` — qa_admin01 로 로그인해 11화면·모든 탭을 찍고 잘림·겹침·높이 불일치·가로 넘침·미정의 class·id 중복·「N단계」 문구·콘솔 오류를 센다(T-50). 검토 도구이며 런타임 의존성이 아니다(`deploy/DEPENDENCIES.md`) | 「코드를 읽어 보니 정리돼 보인다」는 증거가 아니다 |
 
 ### 5.19 「사용 방법」 도움말 — 화면별 정적 글 (PRD F-38 · 화면 문구 정리 2단계, 사용자 결정 2026-09-15)
 
@@ -959,15 +878,15 @@ Admin 전용. 정책 `org.manage`(`Authz::canManageOrg` = Admin) 를 `KNOWN_POLI
 | 무엇 | 어디 |
 |---|---|
 | 글 (내용) | `src/help/screens.php` — `'<키>' => ['title' => …, 'sections' => [['h' => …, 'items' => [ … ]], …]]` 인 **정적 PHP 배열 한 벌**. 값은 **순수 문자열**이고 HTML 조각(`<`)이 한 글자도 없다 |
-| 키를 정하는 곳 | 화면 handler 한 줄 — `$pageHelp = 'purchase-pr';` (`$pageKey` 옆). 로직은 건드리지 않는다 |
+| 키를 정하는 곳 | 화면 handler 한 줄 — `$pageHelp = 'files';` (`$pageKey` 옆). 로직은 건드리지 않는다 |
 | 그리는 곳 | `src/views/shell_bottom.php` — 키가 배열에 있으면 `<dialog id="help-dialog" class="modal help-dialog">` 를 **한 번** 출력한다. 모든 문자열이 `htmlspecialchars(…, ENT_QUOTES, 'UTF-8')` 를 거친다 (PRD S-03) |
-| 여는 곳 | 화면의 `.page-head__actions` **첫 자리**에 `data-help-open` 단추 하나(아이콘 `help` + 「사용 방법」). 모양·자리는 20화면이 모두 같다 |
+| 여는 곳 | 화면의 `.page-head__actions` **첫 자리**에 `data-help-open` 단추 하나(아이콘 `help` + 「사용 방법」). 모양·자리는 9화면이 모두 같다 |
 | 여닫는 코드 | `public/assets/app.js` 의 `initHelpDialog()` — `document` 에 붙인 **위임 하나**. `[data-help-open]` → `showModal()`, `[data-help-close]` → `close()`. ESC 는 `<dialog>` 가 스스로 닫는다. `innerHTML` 계열을 쓰지 않는다 |
 | 폭·스크롤 | `app.css` 끝의 `.help-dialog` — 폭 `min(640px, 92vw)`, 본문 `max-height: 70vh`(머리·바닥은 늘 보인다). 인라인 `style` 은 CSP(`style-src 'self'`)가 금지한다 |
 
 **왜 라우트가 아닌가.** 도움말에 `/api/help/{key}` 같은 창구를 내면 **새 입구가 하나 늘고**, 그 입구마다
 정책·인가·감사·속도 제한을 다시 정해야 한다. 그런데 이 글에는 지킬 비밀이 없다 — **그 화면을 열 수 있는 사람은
-그 화면의 쓰는 법을 봐도 된다**. 화면 요청이 이미 라우트 정책(`authenticated`·`role:Admin`·`purchase.*`)과 재인증
+그 화면의 쓰는 법을 봐도 된다**. 화면 요청이 이미 라우트 정책(`authenticated`·`role:Admin`·`user.manage` …)과 재인증
 관문을 통과했으므로, 도움말은 그 통과의 **부산물**로 같은 응답 안에 실려 나간다. 새 창구 0 · 새 표 0 · 새 권한 판단 0.
 
 **왜 파일 하나인가.** 같은 설명이 화면 스무 곳의 마크업에 흩어져 있으면 언젠가 한 화면만 고쳐진다(25단계의
@@ -982,10 +901,7 @@ CSS 다섯 벌이 남긴 교훈과 같다). 글을 한곳에 모으면 "무엇�
 언젠가 한쪽만 고쳐진다.
 
 **대상이 아닌 화면.** 로그인·재인증·2단계 인증 등록·위키는 단추를 달지 않는다 — 앞의 셋은 화면 자체가 한 가지
-동작만 시키는 관문이고, 위키는 그 자체가 해설이다. 품목 상세(`/purchase/items/{id}`)는 기초정보 도움말로 충분하다.
-
-**5.18 「내비는 사이드바만」 규칙과의 관계.** 헤더 액션에는 여전히 **그 화면의 동작**만 둔다. 「사용 방법」은 다른
-화면으로 가는 링크가 아니라 **그 화면 자리에서 열리는 모달**이라 이 규칙을 깨지 않는다.
+동작만 시키는 관문이고, 위키는 그 자체가 해설이다.
 
 
 ### 5.20 「역할로 보기」 — 세션 안의 임시 역할 (PRD F-39 · 26단계, 사용자 결정 2026-09-15 A안)
@@ -994,14 +910,12 @@ CSS 다섯 벌이 남긴 교훈과 같다). 글을 한곳에 모으면 "무엇�
 로그인하는 방식은 감사 로그에서 사람이 갈라지지 않고, 화면만 흉내 내는 방식은 서버 판정과 어긋나
 「화면엔 안 보이는데 API 는 되는」 상태를 만든다. 그래서 **유효 역할 자체를 세션 안에서 바꾼다.**
 
-**어디에 두나 — `sessions` 의 여섯 열** (`db/migrations/2026-09-16_sessions_act_as.sql`)
+**어디에 두나 — `sessions` 의 네 열** (`db/migrations/2026-09-16_sessions_act_as.sql`)
 
 | 열 | 뜻 |
 |---|---|
 | `act_role` | 보는 t-box 역할. NULL 이면 보는 중이 아니다. CHECK 로 `Manager`·`Employee`·`Guest` 만 |
 | `act_team_id` | 보는 팀 (NULL 이면 팀 없음) |
-| `act_purchase_role` | 보는 구매 모듈 역할. CHECK 로 4값만 |
-| `act_branch_id` | 보는 지점 |
 | `act_started_at` | 시작 시각 — 표시·감사용이고 **만료 판정에 쓰지 않는다** |
 | `act_last_seen_at` | 보는 중 마지막 요청 시각 — **만료 판정의 기준** |
 
@@ -1015,15 +929,15 @@ CSS 다섯 벌이 남긴 교훈과 같다). 글을 한곳에 모으면 "무엇�
 SQL_LOOKUP  →  act_role, act_* 값 + DB 가 계산한 두 불린
                  act_role_ok = (act_role IS NOT NULL AND u.role = 'Admin')     ← 강등되면 거짓
                  act_fresh   = (act_last_seen_at > now() - 30분)               ← 활동 없는 창
-셋 다 참이면  →  반환 배열의 role · team_id · purchase_role · branch_id 를 act_* 값으로 바꾼다
-                 real_role · real_team_id · real_purchase_role · real_branch_id 는 언제나 실제 값
+셋 다 참이면  →  반환 배열의 role · team_id 를 act_* 값으로 바꾼다
+                 real_role · real_team_id 는 언제나 실제 값
 ```
 
-그 한 곳이 모든 핸들러·`Authz`·`purchaseScopeWhere` 가 읽는 `$u` 를 만들므로 **판정 코드는 한 줄도
-바뀌지 않는다** — 목록 WHERE·지점 격리·라우트 정책이 전부 그 역할로 동작한다(흉내가 아니다).
+그 한 곳이 모든 핸들러·`Authz` 가 읽는 `$u` 를 만들므로 **판정 코드는 한 줄도
+바뀌지 않는다** — 목록 WHERE·라우트 정책이 전부 그 역할로 동작한다(흉내가 아니다).
 역할 문자열을 견주는 자리는 위 SQL 한 줄뿐이고, PHP 쪽에는 역할 비교가 생기지 않는다.
 `scripts/security_lint.sh` 의 규칙 (f) 가 `act_role`·`real_role` 값 비교를 `Auth`·`Audit`·`me_act_*`
-밖에서 찾으면 반려한다(R-70 의 `purchase_role` 규칙과 같은 방식).
+밖에서 찾으면 반려한다(본체 역할 문자열 비교 규칙과 같은 방식).
 
 **아래로만 — 권한이 늘어나는 조합이 없다**
 
@@ -1042,7 +956,7 @@ SQL_LOOKUP  →  act_role, act_* 값 + DB 가 계산한 두 불린
 만들지 않는다). 「시작 뒤 30분」이 아니다: 쓰는 중에 끊기면 관리자는 자기가 무엇을 보는지 알 수 없다.
 
 **감사.** `actor_role` 열은 **실제 역할**이다(「누가」는 사람이다). 무슨 역할로 보였는지는
-`Audit::autoDetail()` 이 붙이는 `detail.acting_as {role, team_id, purchase_role, branch_id}` 와
+`Audit::autoDetail()` 이 붙이는 `detail.acting_as {role, team_id}` 와
 `detail.real_role` 에 남는다 — 자동 키라 핸들러가 빠뜨릴 수도 덮어쓸 수도 없다.
 
 **셸이 서버에서 띠를 그린다.** 보는 중에는 `can_admin` 이 거짓이라 사이드바 「관리」 묶음이 닫힌다.
@@ -1357,11 +1271,11 @@ authentication failed for user "tbox_app"` 같은 형태다 — 호스트·포�
 
 **바뀌지 않는 것.** 순차 2단계 로그인(켠 계정은 코드 필요, 4.0) · `enroll/confirm/disable` 세 창구 · 코드 1회성(R-45) · Admin 의 재발급·초기화(F-16 ⑤) · DB 스키마 · 관문 [2-G] 의 허용 목록과 403 모양.
 
-**남는 위험(SECURITY R-85).** Manager·Employee·Guest 는 비밀번호 하나로 지켜질 수 있다 — 사용자 수용. Manager 는 「URL 로 가져오기」·구매 모듈 권한이 있어 상수 한 단어로 필수에 넣을 수 있게 해 두었다.
+**남는 위험(SECURITY R-85).** Manager·Employee·Guest 는 비밀번호 하나로 지켜질 수 있다 — 사용자 수용. Manager 는 「URL 로 가져오기」 권한이 있어 상수 한 단어로 필수에 넣을 수 있게 해 두었다.
 
 ### 5.27 업로드 내용 검사 강화 — zip 내부·매크로·PDF 능동 내용·HWP 서명 (PRD F-53, 사용자 결정 2026-09-16)
 
-**무엇을 더 보나.** 6단계 검사(확장자 화이트리스트·이중 확장자·finfo MIME 짝·OOXML 구조)는 「겉」을 본다. F-53 은 **속을 풀지 않고** 속을 본다 — 전부 `Upload::validatePath` 안, MIME 짝 검사 **뒤**에 붙는다(F-14 가져오기·구매 업로드도 같은 함수를 타므로 자동).
+**무엇을 더 보나.** 6단계 검사(확장자 화이트리스트·이중 확장자·finfo MIME 짝·OOXML 구조)는 「겉」을 본다. F-53 은 **속을 풀지 않고** 속을 본다 — 전부 `Upload::validatePath` 안, MIME 짝 검사 **뒤**에 붙는다(F-14 가져오기도 같은 함수를 타므로 자동).
 
 | 검사 | 대상 | 방법 (추출 0) | 거부 사유 코드 |
 |---|---|---|---|
@@ -1387,7 +1301,7 @@ authentication failed for user "tbox_app"` 같은 형태다 — 호스트·포�
 ```
 [업로드]  Upload::validatePath ✔ → INSERT files (scan_status = Upload::initialScanStatus())
               · SCAN_ENABLED=1 → 'pending'   · 아니면 'clean' (지금까지의 동작)
-              · 네 곳 전부: _upload_common · files_fetch · purchase_recon_upload · purchase/Importer
+              · 두 곳 전부: _upload_common · files_fetch
 [cron * * * * *  tbox-php]  php scripts/scan_pending.php
    [1] 잠금 /var/lib/tbox-v2/scan.lock (flock, 있으면 즉시 종료)
    [2] SELECT id, stored_name FROM files WHERE scan_status='pending' AND purged_at IS NULL ORDER BY created_at LIMIT 200
@@ -1759,8 +1673,8 @@ GRANT  USAGE, SELECT  ON SEQUENCE audit_logs_id_seq TO tbox_app;
 | `auth.gate|deny|mfa_setup_required` | `{target} 이(가) 2단계 인증을 아직 설정하지 않은 상태로 다른 기능을 요청해서 거부했습니다` | 11단계 관문 |
 | `auth.gate|deny|reauth_required` | `{target} 이(가) 비밀번호를 다시 확인하지 않은 채 관리 기능을 요청해서 거부했습니다` | 16-1 관문 [3-2] (target = 본인, route 패턴·`next`·`policy` 는 상세) |
 | `auth.reauth|allow` | `{actor} 이(가) 관리 기능을 쓰려고 비밀번호를 다시 확인했습니다` | 16-1 `POST /api/me/reauth` (Auth::reauth, `detail.window_minutes`) |
-| `act.start|allow` | `{actor} 이(가) 다른 역할로 보기를 시작했습니다 (역할·팀·지점은 상세 기록)` | 26단계 `POST /api/me/act` (F-39). `detail` 에 고른 role·team_id·purchase_role·branch_id |
-| `act.start|deny|bad_request` | `{actor} 이(가) 역할로 보기를 허용되지 않는 형식(모르는 항목·역할·팀·지점)으로 요청해서 거부했습니다` | 26단계. Admin 으로 보기·지점 없는 요청 역할·없는 지점·모르는 키 |
+| `act.start|allow` | `{actor} 이(가) 다른 역할로 보기를 시작했습니다 (역할·팀은 상세 기록)` | 26단계 `POST /api/me/act` (F-39). `detail` 에 고른 role·team_id |
+| `act.start|deny|bad_request` | `{actor} 이(가) 역할로 보기를 허용되지 않는 형식(모르는 항목·역할·팀)으로 요청해서 거부했습니다` | 26단계. Admin 으로 보기·없는 팀·모르는 키 |
 | `act.start|deny|role_not_permitted` | `{actor} 이(가) 역할로 보기를 시작할 자격 없이 요청해서 막았습니다` | 26단계. 실제 역할이 Admin 이 아니거나 이미 보는 중 |
 | `act.stop|allow` | `{actor} 이(가) 역할로 보기를 끝내고 원래 역할로 돌아왔습니다` | 26단계 `DELETE /api/me/act`. 끄기 **전** 상태에서 기록해 `detail.acting_as` 가 함께 남는다 |
 | `act.expire|allow` | `{actor} 의 역할로 보기가 자동으로 풀렸습니다 (사유는 상세 기록)` | 26단계 `Auth::currentUser()`. `detail.reason` = `idle`(활동 없는 30분) · `role_lost`(강등). 거부가 아니라 **서버가 판정한 사실**이라 allow |
@@ -1903,30 +1817,6 @@ GRANT  USAGE, SELECT  ON SEQUENCE audit_logs_id_seq TO tbox_app;
 | `file.fetch|deny|macro_found` | `{actor} 이(가) 가져온 문서 「{target}」 에 매크로가 들어 있어 저장하지 않았습니다` | F-53 `Upload::inspectContent` (ARCH 5.27) |
 | `file.fetch|deny|pdf_active_content` | `{actor} 이(가) 가져온 PDF 「{target}」 에 열리면 실행되는 내용(스크립트·자동 실행)이 들어 있어 저장하지 않았습니다` | F-53 `Upload::inspectContent` (ARCH 5.27) |
 | `file.fetch|deny|hwp_not_hwp` | `{actor} 이(가) 가져온 파일 「{target}」 이(가) 한글 문서 형식이 아닌데 .hwp 이름이라(위장 의심) 저장하지 않았습니다` | F-53 `Upload::inspectContent` (ARCH 5.27) |
-| `purchase.import.upload|deny|zip_unreadable` | `{actor} 이(가) 올린 「{target}」 의 압축 파일 구조를 읽을 수 없어 구매 가져오기를 거부했습니다` | F-53 `Upload::inspectContent` (ARCH 5.27) |
-| `purchase.import.upload|deny|zip_bad_path` | `{actor} 이(가) 올린 압축 파일 「{target}」 안에 경로를 벗어나는 항목이 있어 구매 가져오기를 거부했습니다` | F-53 `Upload::inspectContent` (ARCH 5.27) |
-| `purchase.import.upload|deny|zip_blocked_entry` | `{actor} 이(가) 올린 압축 파일 「{target}」 안에 실행 파일이 들어 있어 구매 가져오기를 거부했습니다` | F-53 `Upload::inspectContent` (ARCH 5.27) |
-| `purchase.import.upload|deny|nested_zip` | `{actor} 이(가) 올린 「{target}」 안에 압축 파일이 여러 겹 겹쳐 있어 구매 가져오기를 거부했습니다` | F-53 `Upload::inspectContent` (ARCH 5.27) |
-| `purchase.import.upload|deny|zip_bomb` | `{actor} 이(가) 올린 「{target}」 은(는) 압축을 풀면 지나치게 커지거나 항목이 너무 많아(압축 폭탄 의심) 구매 가져오기를 거부했습니다` | F-53 `Upload::inspectContent` (ARCH 5.27) |
-| `purchase.import.upload|deny|macro_found` | `{actor} 이(가) 올린 문서 「{target}」 에 매크로가 들어 있어 구매 가져오기를 거부했습니다` | F-53 `Upload::inspectContent` (ARCH 5.27) |
-| `purchase.import.upload|deny|pdf_active_content` | `{actor} 이(가) 올린 PDF 「{target}」 에 열리면 실행되는 내용(스크립트·자동 실행)이 들어 있어 구매 가져오기를 거부했습니다` | F-53 `Upload::inspectContent` (ARCH 5.27) |
-| `purchase.import.upload|deny|hwp_not_hwp` | `{actor} 이(가) 올린 파일 「{target}」 이(가) 한글 문서 형식이 아닌데 .hwp 이름이라(위장 의심) 구매 가져오기를 거부했습니다` | F-53 `Upload::inspectContent` (ARCH 5.27) |
-| `purchase.structure.upload|deny|zip_unreadable` | `{actor} 이(가) 올린 「{target}」 의 압축 파일 구조를 읽을 수 없어 창고 대기표 올리기를 거부했습니다` | F-53 `Upload::inspectContent` (ARCH 5.27) |
-| `purchase.structure.upload|deny|zip_bad_path` | `{actor} 이(가) 올린 압축 파일 「{target}」 안에 경로를 벗어나는 항목이 있어 창고 대기표 올리기를 거부했습니다` | F-53 `Upload::inspectContent` (ARCH 5.27) |
-| `purchase.structure.upload|deny|zip_blocked_entry` | `{actor} 이(가) 올린 압축 파일 「{target}」 안에 실행 파일이 들어 있어 창고 대기표 올리기를 거부했습니다` | F-53 `Upload::inspectContent` (ARCH 5.27) |
-| `purchase.structure.upload|deny|nested_zip` | `{actor} 이(가) 올린 「{target}」 안에 압축 파일이 여러 겹 겹쳐 있어 창고 대기표 올리기를 거부했습니다` | F-53 `Upload::inspectContent` (ARCH 5.27) |
-| `purchase.structure.upload|deny|zip_bomb` | `{actor} 이(가) 올린 「{target}」 은(는) 압축을 풀면 지나치게 커지거나 항목이 너무 많아(압축 폭탄 의심) 창고 대기표 올리기를 거부했습니다` | F-53 `Upload::inspectContent` (ARCH 5.27) |
-| `purchase.structure.upload|deny|macro_found` | `{actor} 이(가) 올린 문서 「{target}」 에 매크로가 들어 있어 창고 대기표 올리기를 거부했습니다` | F-53 `Upload::inspectContent` (ARCH 5.27) |
-| `purchase.structure.upload|deny|pdf_active_content` | `{actor} 이(가) 올린 PDF 「{target}」 에 열리면 실행되는 내용(스크립트·자동 실행)이 들어 있어 창고 대기표 올리기를 거부했습니다` | F-53 `Upload::inspectContent` (ARCH 5.27) |
-| `purchase.structure.upload|deny|hwp_not_hwp` | `{actor} 이(가) 올린 파일 「{target}」 이(가) 한글 문서 형식이 아닌데 .hwp 이름이라(위장 의심) 창고 대기표 올리기를 거부했습니다` | F-53 `Upload::inspectContent` (ARCH 5.27) |
-| `purchase.recon.upload|deny|zip_unreadable` | `{actor} 이(가) 올린 명세서 「{target}」 의 압축 파일 구조를 읽을 수 없어 거부했습니다` | F-53 `Upload::inspectContent` (ARCH 5.27) |
-| `purchase.recon.upload|deny|zip_bad_path` | `{actor} 이(가) 올린 명세서 「{target}」 안에 경로를 벗어나는 항목이 있어 거부했습니다` | F-53 `Upload::inspectContent` (ARCH 5.27) |
-| `purchase.recon.upload|deny|zip_blocked_entry` | `{actor} 이(가) 올린 명세서 「{target}」 안에 실행 파일이 들어 있어 거부했습니다` | F-53 `Upload::inspectContent` (ARCH 5.27) |
-| `purchase.recon.upload|deny|nested_zip` | `{actor} 이(가) 올린 명세서 「{target}」 안에 압축 파일이 여러 겹 겹쳐 있어 거부했습니다` | F-53 `Upload::inspectContent` (ARCH 5.27) |
-| `purchase.recon.upload|deny|zip_bomb` | `{actor} 이(가) 올린 명세서 「{target}」 은(는) 압축을 풀면 지나치게 커지거나 항목이 너무 많아(압축 폭탄 의심) 거부했습니다` | F-53 `Upload::inspectContent` (ARCH 5.27) |
-| `purchase.recon.upload|deny|macro_found` | `{actor} 이(가) 올린 명세서 「{target}」 에 매크로가 들어 있어 거부했습니다` | F-53 `Upload::inspectContent` (ARCH 5.27) |
-| `purchase.recon.upload|deny|pdf_active_content` | `{actor} 이(가) 올린 명세서 PDF 「{target}」 에 열리면 실행되는 내용(스크립트·자동 실행)이 들어 있어 거부했습니다` | F-53 `Upload::inspectContent` (ARCH 5.27) |
-| `purchase.recon.upload|deny|hwp_not_hwp` | `{actor} 이(가) 올린 명세서 「{target}」 이(가) 한글 문서 형식이 아닌데 .hwp 이름이라(위장 의심) 거부했습니다` | F-53 `Upload::inspectContent` (ARCH 5.27) |
 | `file.fetch|deny|bad_folder` | `{actor} 이(가) 가져온 파일을 없는 폴더 또는 볼 수 없는 폴더에 저장하려 해서 거부했습니다` | 18-1 files_fetch (응답은 기존 fetch 문구 하나) |
 | `file.fetch|deny|parent_narrower` | `{actor} 이(가) 가져온 파일을 폴더보다 넓은 {level} 등급으로 저장하려 해서 거부했습니다` | 18-1 |
 | `file.update|deny|bad_folder` | `{actor} 이(가) 파일 「{target}」 을(를) 없는 폴더 또는 볼 수 없는 폴더로 옮기려 해서 거부했습니다` | 18-1 files_update |
@@ -1941,46 +1831,6 @@ GRANT  USAGE, SELECT  ON SEQUENCE audit_logs_id_seq TO tbox_app;
 | `api_token.revoke|deny|bad_request` | `{actor} 이(가) 이미 회수된 프로그램 토큰을 다시 회수하려 해서 거부했습니다` | F-59 |
 | `auth.token|deny|user_disabled` | `{target} 의 개인 토큰은 맞았지만 그 계정이 비활성·만료·절차 중이어서 막았습니다` | F-59 |
 | `auth.token|deny|shared_token_not_permitted` | `공용 토큰으로 개인 토큰 전용 창구 {target} 을(를) 부르려 해서 막았습니다` | F-59 |
-
-**구매·재고 모듈 `purchase.*` — 19~23단계 요약** (2026-09-14 추가. 문장 전문은 `src/Audit.php` 의 표 하나이고, 여기에는 **어떤 행이 있는지**만 적는다. 행이 100줄을 넘어 이 표에 그대로 옮기면 읽기 어렵다 — 새 행동을 더할 때는 `Audit.php` 의 표를 고치고 아래 요약에 한 줄을 보탠다.)
-
-| `action` 묶음 | `result` | `reason` (사유 코드 등록부) | 단계 |
-|---|---|---|---|
-| `purchase.master.create|update|deactivate` | allow · deny | `bad_request` · `bad_reference` · `conflict` · `no_change` · `bad_kind` · `bad_mapping` · `bad_header_row` | 19 |
-| `purchase.import.upload|preview|commit` | allow · deny · error | 업로드 검사 코드 그대로(`ext_not_allowed` · `mime_mismatch` · `double_extension` · `too_large` · `quota_exceeded` …) + `mapping_incomplete` · `too_many_rows` · `truncated` · `parse_failed` · `default_branch_required` · `default_brand_required` | 19 |
-| `purchase.request.create|update|void` | allow · deny | `bad_request` · `bad_reference` · `not_in_scope` · `branch_required` · `line_locked` · `status_invalid` · `no_change` · `conflict` · **`month_closed`** | 20 · 22 |
-| `purchase.order.create|update|send|void` | allow · deny | `remaining_exceeded` · `mixed_vendor` · `not_in_scope` · `status_invalid` · `reason_required` · `already_sent` · `no_change` · `conflict` · **`month_closed`** | 20 · 22 |
-| `purchase.list.create|update|delete` | allow · deny | `bad_request` · `bad_reference` · `branch_required` | 20 |
-| `purchase.receipt|move|use|count.create` | allow · deny | `bad_request` · `bad_reference` · `not_in_scope` · `status_invalid` · `remaining_exceeded` · `negative_stock` · `not_stock_managed` · `stale_snapshot` · `conflict` | 21 |
-| `purchase.receipt|move|use|count.void` | allow · deny | `bad_request` · `status_invalid` · `negative_stock` · **`month_closed`** | 21 · 22 |
-| `purchase.recon.upload` | allow · deny · error | 업로드 검사 코드 그대로 + `no_file` · `bad_request` · `bad_reference` · `parse_failed` | 22 |
-| `purchase.recon.preview|commit` | allow · deny | `bad_request` · `bad_mapping` · `bad_header_row` · `parse_failed` · `truncated` · `no_rows` · `already_committed` · `bad_reference` | 22 |
-| `purchase.close.create` | allow · deny | `bad_request` · `not_in_scope` · **`open_docs_exist`** · `conflict` · `bad_reference` | 22 |
-| `purchase.lab.create` | allow · deny | `bad_request` · `bad_reference` · `not_in_scope` · **`stock_managed_item`** · `month_closed` · `negative_stock` · `conflict` | 22 |
-| `purchase.suggest.apply` | allow · deny | `bad_request` · `bad_reference` · `not_in_scope` · **`no_suggestion`** · **`not_multiple`** · `conflict` | 23 |
-| `purchase.master.branch_off` | allow · deny | `bad_request` | 23 |
-| `purchase.structure.upload` | allow · deny · error | 업로드 검사 코드 그대로(`no_file` · `ext_not_allowed` · `mime_mismatch` · `double_extension` · `too_large` · `quota_exceeded` …, `purchase.import.upload` 와 **같은 키**) + **`bad_header`** · `parse_failed` | 24 |
-| `purchase.structure.link` | allow · deny | `bad_request` · `bad_reference` · **`not_unlinked`** · `conflict` | 24 |
-| `purchase.structure.exclude` | allow · deny | `bad_request` · **`not_unlinked`** · **`not_excluded`** | 24 |
-
-> **24단계** — 창고 대기표(F-37)의 세 창구는 **한 요청에 한 줄**만 남긴다. 업로드는 파일 이름이 `{target}`
-> 이고 건수(`inserted`·`updated`·`unchanged`·`skipped`·`renamed_linked`)가 detail 에 붙는다. 연결·제외는
-> `{target}` 이 `locations` 이고 **창고 이름은 넣지 않는다** — 한 번에 수십 건이 오가므로 문장이 아니라
-> 건수·id 목록으로 남는 것이 맞다(가져오기 확정과 같은 판단). `not_unlinked` 는 이미 연결됐거나 제외된
-> 행을, `not_excluded` 는 제외 상태가 아닌 행을 되살리려 한 요청이고, `conflict` 는 같은 지점에 같은
-> 이름의 창고가 이미 있어 **묶음 전체를 저장하지 않은** 경우다. 조회(`GET /api/purchase/structure`)는
-> 기록하지 않는다 — 조회는 사건이 아니다.
-
-> **23단계** — `purchase.suggest.apply` 는 제안을 발주요청으로 옮긴 **한 순간**만 남긴다(제안 조회는 다른
-> 현황 조회처럼 기록하지 않는다). `detail.suggested_qty`(서버가 계산한 합)와 `detail.applied_qty`(사람이
-> 실제로 담은 합)가 함께 들어가며, 두 숫자의 차이가 "제안을 얼마나 고쳤나" 다. `not_multiple` 은 고친
-> 수량이 `p_items.min_order_qty` 의 배수가 아닐 때이고, `no_suggestion` 은 지금 제안이 0 인 품목을
-> 이 창구로 담으려 할 때다 — 제안 창구가 「아무 품목이나 요청에 넣는 우회로」가 되지 않게 한다.
-> `purchase.master.branch_off` 는 품목의 **사용 지점 빼기**(`p_item_branches.is_active = false`)이며,
-> 바꾼 칸도 더한 지점도 없이 지점만 뺀 요청에만 붙는다(그 밖은 `purchase.master.update` 그대로).
-
-> `month_closed` 는 **여덟 창구가 같은 낱말**을 쓴다(요청 수정·요청 취소·발주서 수정/취소·입고/이동/사용/실사 취소). 판정은 `Doc::closeGuard` 한 곳이고, 사유를 적은 `purchase.close` 보유자가 지나간 요청은 allow 행의 `detail.after_close = true` 로 남아 경보 AL-14 가 본다.
-
 
 > 7·8·9단계(URL 가져오기·감사 로그 조회·백업)의 행동은 그 단계 지시서에서 이 표에 행을 먼저 추가한 뒤 구현한다.
 
@@ -1997,7 +1847,7 @@ GRANT  USAGE, SELECT  ON SEQUENCE audit_logs_id_seq TO tbox_app;
 | `forced` | 왜 | `true` — 최초 로그인 강제 절차 중에 한 변경 | 핸들러 | `auth.password_change allow`·`auth.mfa_enroll allow` |
 | `next` | 어떻게 | 관문이 요구한 다음 단계 `password_change`·`mfa_setup` | 라우터 | `auth.gate deny` |
 | `actor_team` | 누가 | 행동 당시 사용자의 `team_id` (정수 또는 null) | `Audit::write()` 자동 (`Auth::currentUser()`) | 로그인된 모든 행 |
-| `acting_as` | 어떻게 | 「역할로 보기」 중이었다면 그때의 유효 역할 `{role, team_id, purchase_role, branch_id}` (26단계 F-39). `actor_role` 열은 **실제 역할**이고 이 키가 「어떤 권한으로 판정됐나」다 | `Audit::write()` 자동 (`autoDetail`) | 보는 중의 **모든** 행 |
+| `acting_as` | 어떻게 | 「역할로 보기」 중이었다면 그때의 유효 역할 `{role, team_id}` (26단계 F-39). `actor_role` 열은 **실제 역할**이고 이 키가 「어떤 권한으로 판정됐나」다 | `Audit::write()` 자동 (`autoDetail`) | 보는 중의 **모든** 행 |
 | `real_role` | 누가 | 보는 중일 때의 실제 역할(언제나 `Admin`). `acting_as` 와 짝으로만 나온다 | `Audit::write()` 자동 | 보는 중의 모든 행 |
 | `moved_trashed` | 무엇을 | 폴더를 지우면서 루트로 옮긴 **휴지통 파일의 개수** (26단계 F-41) | 핸들러 | `folder.delete allow` (확인 삭제일 때만) |
 | `moved_file_ids` | 무엇을 | 위에서 옮긴 파일들의 `public_id` 목록 — 되짚어 볼 수 있게. 이름은 넣지 않는다 | 핸들러 | 위와 같음 |
@@ -2050,26 +1900,9 @@ GRANT  USAGE, SELECT  ON SEQUENCE audit_logs_id_seq TO tbox_app;
 | `cascade` · `cascaded` | 어떻게 | 「하위에도 적용」을 썼나(`true`)와 **함께 바뀐 항목 수**(정수). 항목 하나하나는 자기 행(`file.level_change`·`folder.level_change`)으로 따로 남는다 | 핸들러 | `folder.level_change` (18-1) |
 | `cascade_from` | 왜 | 이 항목이 **어느 폴더의** 「하위에도 적용」으로 바뀌었나 — 그 폴더의 id. 값 하나로 한 번의 일괄 변경을 묶어 볼 수 있다 | 핸들러 | `file.level_change`·`folder.level_change`(cascade 로 바뀐 행, 18-1) |
 | `violations` | 왜 | 불변 규칙 ①을 어긴 하위 항목의 **개수만**. 어떤 파일·폴더인지는 넣지 않는다 — 요청한 사람이 못 보는 항목일 수 있다 (SECURITY R-63) | 핸들러 | `folder.level_change deny children_exceed`·`not_owner` (18-1) |
-| `doc_no` · `doc_type` · `src_doc_no` | 무엇을 | 전표 번호(`PR-20260914-1` …)·종류(`pr`·`po`·`gr`·`mv`·`is`·`adj`)·출처 전표 번호. 전표 id 가 아니라 **사람이 읽는 번호**를 남긴다 | 핸들러 | `purchase.request|order|receipt|move|use|count|lab.*` (20~22) |
-| `branch_id` · `location_id` | 어디서 | 전표의 지점·장소 id. `actor_team` 과 나란히 놓으면 지점 격리 판정을 로그만으로 재검산할 수 있다 | 핸들러 | 구매 모듈의 쓰기 행 전부 (19~22) |
-| `lines` · `moves` · `amount` | 무엇을 | 줄 수(정수) · 원장에 들어간 행 수(정수) · **서버가 계산한** 금액 합. 마감 행에서 `lines` 는 잠근 전표 수다 | 핸들러 | `purchase.*.create`·`void`·`purchase.close.create` (20~22) |
-| `month` | 언제의 | `YYYY-MM`. 마감한 달, 명세서의 달, 기공 명세서 전표가 속한 달 | 핸들러 | `purchase.close.create`·`purchase.recon.*`·`purchase.lab.create` (22) |
-| `vendor_id` | 누구와 | 거래처 id. 이름이 아니라 id 다(같은 이름 거래처가 여럿일 수 있다 — SECURITY R-72) | 핸들러 | `purchase.recon.*`·`purchase.lab.create` (22) |
-| `statement_id` | 무엇을 | 명세서 행(`p_recon_statements.id`). 파일 자체는 `file_id`·`sha256` 로 따로 남는다 | 핸들러 | `purchase.recon.*`·`purchase.lab.create` (22) |
-| `diff_counts` | 왜 | 대사 판정의 **건수 분포**(`{"none":2,"qty":1,…}`). 어떤 품목인지·금액이 얼마인지는 넣지 않는다 — 그것은 `p_recon_lines` 에 있다 | 핸들러 | `purchase.recon.preview|commit` (22) |
-| `after_close` | 어떻게 | `true`/`false` — **월 마감된 달**의 전표를 고치거나 취소했는가. `after_sent`(보낸 뒤 수정)와 같은 성격이고, 둘 다 경보 AL-14 가 본다 | 핸들러 | `purchase.request.update`·`purchase.order.update|void`·`purchase.receipt|move|use|count.void` (22) |
-| `after_sent` | 어떻게 | `true`/`false` — 거래처에 **보낸 뒤**의 발주서 수정·취소인가 | 핸들러 | `purchase.order.update|void` (20) |
-| `relinked` | 어떻게 | 기공 명세서 전표가 대사표에서 **다시 맞춘 줄 수**(정수) | 핸들러 | `purchase.lab.create` (22) |
-| `suggested_qty` · `applied_qty` | 무엇을 | 발주 제안을 요청으로 옮길 때 **서버가 계산한 제안 합**과 **사람이 실제로 담은 합**(수량 문자열). 두 숫자의 차이가 곧 "제안을 얼마나 고쳤나" 다 | 핸들러 | `purchase.suggest.apply` (23) |
-| `inserted` · `updated` · `unchanged` · `skipped` · `renamed_linked` | 무엇을 | 창고 파일 한 번의 결과 — 새로 담은 수 · 값이 달라 고친 수 · 그대로인 수 · 건너뛴 수(꼬리행·빈 행) · **이미 연결된 창고인데 파일에서 이름이 바뀐 수**(사람이 판단할 거리이며 `p_locations.name` 은 건드리지 않는다). 창고 이름은 들어가지 않는다 | 핸들러 | `purchase.structure.upload` (24) |
-| `links` · `branch_ids` · `location_ids` | 무엇을 · 어디에 | 한 번에 연결한 건수와, 그때 쓰인 지점 id 목록 · 새로 생긴 장소 id 목록. 이름이 아니라 id 다 | 핸들러 | `purchase.structure.link` (24) |
-| `inbox_ids` · `excluded` | 무엇을 · 어떻게 | 제외·되살리기 대상이 된 대기표 행 id 목록과 방향(`true`=제외, `false`=되살리기) | 핸들러 | `purchase.structure.exclude` (24) |
-| `kind` | 무엇을 | 연결할 때 사람이 고른 **장소 용도**(`warehouse`·`central`·`or`·`other`). `null` 이면 이카운트 「구분」에서 서버가 유추했다는 뜻이다. 기초정보 창구에서는 종류 이름(`brands`·`locations` …)으로도 쓰인다 | 핸들러 | `purchase.structure.link` (24) · `purchase.master.*` (19) |
-| `branches` · `branches_off` | 어디에 | 품목에 **더한** 사용 지점 id 목록 / **뺀**(`is_active=false`) 사용 지점 id 목록. 이름이 아니라 id 다 | 핸들러 | `purchase.master.create|update|branch_off` (19 · 23) |
 | `token_kind` | 어떻게 | 토큰 경로의 **종류** 분류어(`personal`·`shared`). 코드에 적힌 고정값이고 요청이 정하지 않는다. 이름에 `token` 이 들어 부분 일치 금지에 걸리므로 `ALLOWED_DETAIL_KEYS` 정확 일치 예외 | `Audit::autoDetail` | 토큰 경로의 모든 행 (F-59) |
 | `token_id` | 어떻게 | 개인 토큰의 **행 번호**(정수, `api_tokens.id`). 토큰 값·hint 가 아니다 — 「어느 토큰으로」 를 사람이 목록에서 되짚는 열쇠. 정확 일치 예외 | `Audit::autoDetail`(개인 토큰 경로) · `api_token.issue`·`api_token.revoke` 핸들러 | F-59 |
 | `token_name` | 무엇을 | 발급·회수한 토큰의 **라벨**(「사무실 PC」). 사람이 붙인 이름이고 비밀이 아니다. 정확 일치 예외 | 핸들러 | `api_token.issue`·`api_token.revoke` (F-59) |
-| `split_count` | 어떻게 | 한 번의 저장으로 **함께 만들어진 발주서 장 수**(정수). `split:true` 저장의 행에만 붙는다 — N 장이 한 트랜잭션에서 나왔음을 각 행이 스스로 말한다(1 이면 나눌 거래처가 하나였다는 뜻). `split` 없는 옛 저장의 행은 20단계와 같다(키 없음) | `purchase_po_create.php` | `purchase.order.create` (F-60) |
 
 **검토 행동과 사용자 행동 가르기** — 두 조건 중 하나면 검토다. 둘 다 아니면 사용자(또는 침입자)다.
 
@@ -2217,7 +2050,6 @@ php_admin_value[disable_functions]   = fsockopen,pfsockopen,stream_socket_client
 | `tbox_app` | PHP 앱 런타임 | `users teams files`: SELECT/INSERT/UPDATE · `sessions`: SELECT/INSERT/UPDATE/DELETE · `permissions`: **SELECT 만** · `audit_logs`: SELECT/INSERT 만 · DROP 없음 |
 | `tbox_backup` | 백업 스크립트 | 전체 SELECT (읽기 전용) |
 | `tbox_perm` | 권한 매트릭스 편집 핸들러 **하나**(`admin_permissions_update.php`, 17단계 F-25) | `permissions`: SELECT/UPDATE 만 · 다른 표 0 · INSERT/DELETE 없음(16행 고정). `.env` `DB_PERM_USER/PASS`, `Db::perm()` 지연 연결 |
-| `tbox_app` (구매 모듈 표) | `p_*` 표(19단계~) | `p_stock_moves`: **INSERT·SELECT 만** · 그 밖 `p_*`: SELECT·INSERT·UPDATE(DELETE 없음 — 중단은 `is_active`) · 시퀀스 USAGE |
 
 > 파일 삭제가 논리 삭제(UPDATE)이므로 앱 계정에 `DELETE` 권한 자체가 필요 없다. 30일 실제 정리는 `tbox_owner` 권한의 배치 스크립트가 수행한다.
 
@@ -2315,33 +2147,6 @@ php_admin_value[disable_functions]   = fsockopen,pfsockopen,stream_socket_client
 | "로그 끊김" 감시 | 원격 서버 쪽에서 30분 무수신 시 경보 (AL-7) | 앱 서버가 침해되면 앱 서버의 경보는 믿을 수 없으므로 **밖에서** 감시 |
 
 경보 규칙 AL-1 ~ AL-11 의 조건은 PRD 7.11 표를 그대로 쓴다 (AL-10 계정 공유 의심·AL-11 admin-only 다운로드 요약은 2026-09-10 추가).
-
-**구매·재고 경보 AL-14 ~ AL-17 — 23단계 확정 (2026-09-13, PRD F-32 · F-35 · F-36, ARCH 5.18 「감사·경보」)**
-
-20~22단계는 규칙 골격만 두고 "임계값은 23단계에서 정한다" 고 적어 두었다. 그 값이 아래다. 숫자는
-`scripts/alerts.php` 맨 위의 **상수 한 묶음**에 있고, 규칙 본문에는 없다 — 운영하며 조이거나 푸는 것은
-숫자뿐이고, 그때 고칠 자리가 하나여야 "지금 임계값이 얼마냐" 에 코드가 바로 답한다.
-
-| 규칙 | 조건 (임계값 상수) | 무엇을 보나 | 묶는 단위 = 중복 억제 대상 |
-|---|---|---|---|
-| **AL-14** 보낸 뒤·마감 뒤 수정 | 최근 10분의 `allow` 행에 `detail.after_sent = true` 또는 `detail.after_close = true` | `audit_logs` | 감사 로그 행 하나 (`audit_log#id`) |
-| **AL-15** 미입고 30일 | 뷰 `p_backorder` 의 `sent_at < now() − BACKORDER_DAYS(30)일` | `p_backorder` (일어나**지 않은** 일이라 로그에 없다) | **거래처 하나** (`purchase_vendor#id`) — 한 거래처가 30줄 밀려도 알림은 하나다. 사람이 할 일은 "그 거래처에 전화하기" 하나이기 때문 |
-| **AL-16** 단가 급변 | ① 확정된 월 대사의 `diff_type='price'` 줄 중 우리 단가 대비 `PRICE_JUMP_RATIO(20%)` **초과** ② **입고 줄 단가 vs `p_items.price_in`** 이 같은 비율 초과(최근 `PRICE_SCAN_DAYS(7)`일 입고) | `p_recon_lines` · `p_doc_lines`(gr) | 대사 줄 / 입고 줄 하나 |
-| **AL-17** 대량 취소 | 한 행위자의 `purchase.*.void allow` 가 `VOID_BURST_HOURS(1)`시간에 `VOID_BURST_COUNT(5)`건 이상 | `audit_logs` | 행위자 하나 (`user#id`) |
-
-- **중복 억제는 24시간**이다(`PURCHASE_DEDUP_MINUTES`). 다른 규칙의 30분과 다른 이유: 이 넷은 "일어나지
-  않은 일"(미입고)이나 "이미 남은 판정"(단가 차이)을 보므로 조건이 **며칠씩 그대로 참**이다. 30분이면
-  같은 줄이 하루 48번 울리고, 그러면 아무도 보지 않는다.
-- **알림 통로**는 다른 규칙과 같다 — `cli_raise_alert` 하나(`alerts.log` 한 줄 JSON + 감사 `alert.raised allow`).
-  `.env` 의 `ALERT_COMMAND` 가 비어 있으면 `dispatch: log_only` 로 남는다.
-- **근거 값에 계정명·전표 번호·품목 코드를 싣지 않는다** (23단계 규칙). 경보는 앱 밖(메신저·메일)으로
-  나가는 글이므로 id 와 수치만 남기고, 누가·어느 전표·어느 품목인지는 **감사 로그를 열어** 확인한다.
-  예외는 AL-15 의 **거래처 이름**뿐이다 — 「거래처 X 발주서 N건 미입고 30일 초과」라는 문장은 거래처를
-  가리키지 않으면 뜻이 없고, 회사 이름은 개인정보가 아니다.
-- 앞선 규칙(AL-1·AL-5·AL-13)이 계정명을 싣는 것은 9~17단계의 결정이며 23단계에서 바꾸지 않았다.
-- 시험용 인자 `--state <경로>`(23단계): 중복 억제 상태를 그 파일에서 읽고 쓴다. 5분마다 도는 cron 이 이미
-  발동시킨 대상은 운영 상태 파일에서 「억제됨」이라, 「처음 발동 → 다시 억제」를 확인하려면 빈 상태가
-  필요하다. `--auth-log` 와 같은 성격의 인자이며 **운영 상태 파일을 시험이 건드리지 않게** 하는 것이 목적이다.
 
 **AL-2 집계 대상 (13단계 보정 2026-09-12 — SECURITY R-45 · R-48)**
 

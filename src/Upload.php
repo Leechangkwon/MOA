@@ -120,8 +120,8 @@ final class Upload
      * 이 파일은 ClamAV 를 **부르지 않는다** — 소켓도 `exec` 도 없다. 스캐너를 부르는 곳은
      * 앱 밖 배치 하나뿐이고(ARCH 5.28 「왜 앱 밖 배치인가」), 이 함수가 하는 일은
      * "새 행을 어떤 상태로 저장할 것인가" 를 **한 곳에서** 정하는 것뿐이다.
-     * INSERT 는 네 곳(`_upload_common`·`files_fetch`·`purchase_recon_upload`·`purchase/Importer`)
-     * 이고, 네 곳이 각자 판단하면 언젠가 한 곳만 빠진다 — 그 한 곳이 검사 없는 입구가 된다.
+     * INSERT 는 두 곳(`_upload_common`·`files_fetch`)이고, 두 곳이 각자 판단하면 언젠가
+     * 한 곳만 빠진다 — 그 한 곳이 검사 없는 입구가 된다.
      */
     public static function initialScanStatus(): string
     {

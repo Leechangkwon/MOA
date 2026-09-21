@@ -48,7 +48,6 @@ require __DIR__ . '/../views/shell_top.php';
 
   <p class="help">계정은 1인 1개입니다. 역할 변경·비활성화·재활성화에는 사유가 필요하고, 역할·팀을 바꾸면 그 사람은 다시 로그인해야 합니다. 자기 자신의 역할·활성 상태는 바꿀 수 없고, 마지막 활성 관리자는 강등·비활성화되지 않습니다.</p>
   <p class="help">Guest 계정은 만료일이 필수입니다. 계정은 지우지 않고 비활성화합니다.</p>
-  <p class="help">구매 모듈은 모듈 역할(요청·구매·재고·검토)과 지점을 함께 정합니다. 요청·재고는 자기 지점 자료만 보고, 구매·검토는 전 지점입니다. 모듈 역할을 비워 두면 구매 화면을 쓸 수 없습니다.</p>
 
   <section class="panel">
     <div class="panel__head"><h2 class="panel__title">계정 만들기</h2></div>
@@ -77,25 +76,6 @@ require __DIR__ . '/../views/shell_top.php';
         <span class="field__label">만료일 (Guest 는 필수)</span>
         <input id="u-expires" type="date">
       </label>
-      <!-- 19단계 구매·재고 모듈의 두 축 (PRD F-28, ARCH 5.18 「권한 두 축」).
-           둘 다 **선택**이다 — 비워 두면 그 계정은 구매 모듈을 쓰지 않는다.
-           지점 목록은 app.js 가 `/api/purchase/branches` 에서 받아 채운다(고정 목록을 화면에
-           두지 않는다). 값이 무엇이든 서버가 다시 검사하고, 지점 격리는 요청마다
-           Authz::purchaseScopeWhere 가 DB 의 users.branch_id 로 만든다 (PRD S-01). -->
-      <label class="field">
-        <span class="field__label">지점 (구매 모듈 · 비우면 없음)</span>
-        <select id="u-branch"><option value="">— 지점 없음 —</option></select>
-      </label>
-      <label class="field">
-        <span class="field__label">구매 모듈 역할 (비우면 사용 안 함)</span>
-        <select id="u-purchase-role">
-          <option value="">— 사용 안 함 —</option>
-          <option value="requester">요청(requester) — 자기 지점 발주요청·사용 입력</option>
-          <option value="buyer">구매(buyer) — 전 지점 발주·입고·기초정보 편집</option>
-          <option value="stock">재고(stock) — 자기 지점 이동·실사 입력</option>
-          <option value="viewer">검토(viewer) — 전 지점 읽기, 발주서 검토·송부</option>
-        </select>
-      </label>
       <label class="field">
         <span class="field__label">사유 (필수 · 500자)</span>
         <input id="u-reason" type="text" maxlength="500" required>
@@ -117,8 +97,6 @@ require __DIR__ . '/../views/shell_top.php';
             <th scope="col">활성</th>
             <th scope="col">만료</th>
             <th scope="col">2단계</th>
-            <th scope="col">지점</th>
-            <th scope="col">구매 역할</th>
             <th scope="col">만든 시각</th>
             <th scope="col">작업</th>
           </tr>
@@ -138,12 +116,12 @@ require __DIR__ . '/../views/shell_top.php';
   </section>
 
   <!-- 26단계 계정 변경 모달 (PRD F-40, 사용자 지적 2026-09-15 「변경했는데 로그에 없다」).
-       전에는 `window.prompt` 여섯 번(역할→팀 번호→만료일→지점 번호→모듈 역할→사유)이었다.
+       전에는 `window.prompt` 를 여러 번(역할→팀 번호→만료일→사유) 띄웠다.
        하나라도 취소하면 app.js 가 **조용히 return** 했고, 화면에 아무 알림이 없어 사용자는
        「바꿨다」고 느꼈지만 요청은 한 번도 나가지 않았다(감사 로그 0건이 그 증거였다).
        이제 폼 하나로 받고, 취소·무변경·실패까지 전부 #msg 로 말한다.
 
-       ★ 마크업만 서버가 낸다. 선택지의 **값**(팀·지점 이름, 현재 선택)은 app.js 가 API 응답에서
+       ★ 마크업만 서버가 낸다. 선택지의 **값**(팀 이름, 현재 선택)은 app.js 가 API 응답에서
          받아 textContent·value 로만 채운다 — 서버가 HTML 로 만들지 않는다 (PRD S-03).
        ★ 여기에도 권한 판단이 없다. 무엇을 바꿀 수 있는지는 `PATCH /api/users/{uid}` 가
          Authz::decideUserChange 로 다시 정한다(자기 자신 금지·마지막 Admin 보호 — PRD S-01, T-22). -->
@@ -169,20 +147,6 @@ require __DIR__ . '/../views/shell_top.php';
         <label class="field">
           <span class="field__label">만료일 (Guest 는 필수 · 비우면 그대로)</span>
           <input id="ue-expires" type="date">
-        </label>
-        <label class="field">
-          <span class="field__label">구매 모듈 지점</span>
-          <select id="ue-branch"><option value="">— 지점 없음 —</option></select>
-        </label>
-        <label class="field">
-          <span class="field__label">구매 모듈 역할</span>
-          <select id="ue-purchase-role">
-            <option value="">— 사용 안 함 —</option>
-            <option value="requester">요청(requester) — 자기 지점 발주요청</option>
-            <option value="buyer">구매(buyer) — 전 지점·기초정보 편집</option>
-            <option value="stock">재고(stock) — 자기 지점 이동·실사</option>
-            <option value="viewer">검토(viewer) — 전 지점 읽기·발주서 송부</option>
-          </select>
         </label>
         <label class="field">
           <!-- `required` 를 두지 않는다: 브라우저 기본 검사가 먼저 막으면 **submit 이벤트 자체가

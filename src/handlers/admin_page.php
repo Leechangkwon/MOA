@@ -107,14 +107,14 @@ require __DIR__ . '/../views/shell_top.php';
     <!-- 26단계 「역할로 보기」 (PRD F-39, ARCH 5.20).
          여기서 고른 값은 `POST /api/me/act` 로 가고, 서버가 **이 세션**의 유효 역할을 바꾼다 —
          화면이 무엇을 감추는 것이 아니라 서버 판정 자체가 그 역할이 된다.
-         셀렉트의 선택지는 화면이 지어내지 않는다: 팀은 `/api/teams`, 지점은
-         `/api/purchase/branches` 에서 app.js 가 받아 채운다. 값이 무엇이든 서버가 다시 검사하고
-         (활성 팀·활성 지점·Admin 아님), 위로 가는 조합은 목록에도 DB CHECK 에도 없다 (PRD S-01). -->
+         셀렉트의 선택지는 화면이 지어내지 않는다: 팀은 `/api/teams` 에서 app.js 가 받아 채운다.
+         값이 무엇이든 서버가 다시 검사하고(활성 팀·Admin 아님), 위로 가는 조합은 목록에도
+         DB CHECK 에도 없다 (PRD S-01). -->
     <section class="card card--pad">
       <div class="org-matrix__head">
         <div class="org-detail__text">
           <strong class="org-detail__name">역할로 보기</strong>
-          <span class="muted">다른 역할·팀·지점의 눈으로 화면과 권한을 확인합니다. 활동이 없으면 30분 뒤 자동으로 원래 역할로 돌아옵니다.</span>
+          <span class="muted">다른 역할·팀의 눈으로 화면과 권한을 확인합니다. 활동이 없으면 30분 뒤 자동으로 원래 역할로 돌아옵니다.</span>
         </div>
       </div>
       <form id="act-form" class="form form--grid" autocomplete="off">
@@ -129,20 +129,6 @@ require __DIR__ . '/../views/shell_top.php';
         <label class="field">
           <span class="field__label">팀 (비우면 팀 없음)</span>
           <select id="act-team"><option value="">— 팀 없음 —</option></select>
-        </label>
-        <label class="field">
-          <span class="field__label">구매 모듈 역할 (비우면 사용 안 함)</span>
-          <select id="act-purchase-role">
-            <option value="">— 사용 안 함 —</option>
-            <option value="requester">요청(requester) — 자기 지점만</option>
-            <option value="buyer">구매(buyer) — 전 지점</option>
-            <option value="stock">재고(stock) — 자기 지점만</option>
-            <option value="viewer">검토(viewer) — 전 지점 읽기</option>
-          </select>
-        </label>
-        <label class="field">
-          <span class="field__label">지점 (요청·재고는 필수)</span>
-          <select id="act-branch"><option value="">— 지점 없음 —</option></select>
         </label>
         <button id="act-submit" class="btn" type="submit">이 역할로 보기</button>
       </form>

@@ -45,25 +45,6 @@ if ($myTeamId !== null && $myTeamId !== '') {
     }
 }
 
-/*
- * 26단계 「역할로 보기」 (PRD F-39, ARCH 5.20) — 지금 보고 있는 지점의 **이름**.
- * 위 팀 이름과 같은 성격의 표시용 값이다: 화면이 번호로 이름을 스스로 찾지 않게 서버가 읽어 준다.
- * 값은 세션이 들고 있는 유효 branch_id 이고 요청이 정하지 않는다 — 지점 격리는 여전히 요청마다
- * Authz::purchaseScopeWhere 가 만든다 (PRD S-01).
- */
-$sqlBranchName = <<<'SQL'
-    SELECT name FROM p_branches WHERE id = :id
-    SQL;
-
-$branchName = null;
-$myBranchId = $user['branch_id'] ?? null;
-if ($myBranchId !== null && $myBranchId !== '') {
-    $branchRow = Db::instance()->run($sqlBranchName, [':id' => (int) $myBranchId])->fetch();
-    if (is_array($branchRow)) {
-        $branchName = (string) $branchRow['name'];
-    }
-}
-
 /** 지금 「역할로 보기」 중인가 — 판정은 Auth::currentUser 한 곳에서 이미 끝났다 */
 $acting = ($user['acting'] ?? false) === true;
 
@@ -152,28 +133,10 @@ $mePayload = [
     // 이 값을 true 로 고쳐 보내도 서버는 요청마다 DB(sessions.reauth_at)를 다시 본다 (PRD S-01).
     'reauth_fresh'         => ($user['reauth_fresh'] ?? false) === true,
     /*
-     * 19단계 — 구매·재고 모듈 (PRD F-28, ARCH 5.18 「권한 두 축」).
-     *
-     *   branch_id     내 지점 (없으면 null — 구매팀·경영진). **표시용**이다.
-     *   purchase_role 내 모듈 역할 (없으면 null). 역시 표시용이다.
-     *   can_purchase  「구매관리」 내비를 보일지 — 다른 can_* 와 **똑같은 화면 편의 값**이다.
-     *   can_purchase_master 「새로 만들기」·「엑셀 가져오기」 를 보일지.
-     *
-     * ★ 이 네 값은 권한이 **아니다**. 화면이 branch_id 를 고쳐 보내도 서버는 목록마다
-     *   `Authz::purchaseScopeWhere` 가 DB 의 `users.branch_id` 로 다시 조건을 만들고,
-     *   can_* 를 true 로 바꿔도 라우트 정책 `purchase.*` 가 다시 막는다 (PRD S-01, T-42).
-     * ★ 판정 함수는 Authz 안에 있다 — 이 파일에서 purchase_role 문자열을 비교하지 않는다
-     *   (ARCH 4.1, scripts/security_lint.sh 새 규칙 (b)).
-     */
-    'branch_id'           => Authz::purchaseProfile($user)['branch_id'],
-    'purchase_role'       => Authz::purchaseProfile($user)['purchase_role'],
-    'can_purchase'        => Authz::canUsePurchase($user),
-    'can_purchase_master' => Authz::canEditPurchaseMaster($user),
-    /*
      * 26단계 — 「역할로 보기」 (PRD F-39, ARCH 5.20).
      *
      *   acting              지금 다른 역할로 보는 중인가
-     *   acting_as           무슨 역할·팀·모듈 역할·지점으로 보는 중인가 (**표시용**, 값은 위 유효 값과 같다)
+     *   acting_as           무슨 역할·팀으로 보는 중인가 (**표시용**, 값은 위 유효 값과 같다)
      *   real_role           실제 역할. 보는 중이면 언제나 Admin 이고, 띠가 「실제 계정 …」 에 쓴다
      *   acting_idle_minutes 활동이 없으면 몇 분 뒤 저절로 풀리나 (안내 문구용)
      *   can_stop_acting     「원래대로」 단추를 보일까 — 다른 can_* 와 똑같은 화면 편의 값이다
@@ -187,8 +150,6 @@ $mePayload = [
     'acting_as'           => $acting ? [
         'role'          => (string) $user['role'],
         'team_name'     => $teamName,
-        'purchase_role' => $user['purchase_role'] ?? null,
-        'branch_name'   => $branchName,
     ] : null,
     'real_role'           => (string) ($user['real_role'] ?? $user['role']),
     'acting_idle_minutes' => Auth::ACT_IDLE_MINUTES,

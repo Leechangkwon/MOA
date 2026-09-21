@@ -36,15 +36,9 @@ $sqlList = <<<'SQL'
            u.locked_until,
            u.created_at,
            u.updated_at,
-           -- 19단계 구매·재고 모듈의 두 축 (PRD F-28, ARCH 5.18). **표시용**이며
-           -- 권한 판정은 Authz::purchaseAuthorize / purchaseScopeWhere 가 요청마다 다시 한다.
-           u.branch_id,
-           u.purchase_role,
-           pb.name AS branch_name,
            (u.expires_at IS NOT NULL AND u.expires_at < now()) AS is_expired
       FROM users u
       LEFT JOIN teams t ON t.id = u.team_id
-      LEFT JOIN p_branches pb ON pb.id = u.branch_id
      ORDER BY u.id ASC
      LIMIT :lim OFFSET :off
     SQL;
@@ -81,10 +75,6 @@ foreach ($rows as $row) {
         // 화면이 "나 자신은 고칠 수 없다" 를 미리 알 수 있게 하는 **편의 값**이다.
         // 실제 거부는 users_update 가 Authz::decideUserChange 로 다시 판단한다 (PRD S-01).
         'is_self'     => (int) $row['id'] === (int) $user['id'],
-        // 19단계 — 지점·모듈 역할 (F-28). 화면의 두 셀렉트를 채우는 값이다.
-        'branch_id'     => $row['branch_id'] === null ? null : (int) $row['branch_id'],
-        'branch_name'   => $row['branch_name'] === null ? null : (string) $row['branch_name'],
-        'purchase_role' => $row['purchase_role'] === null ? null : (string) $row['purchase_role'],
     ];
 }
 

@@ -497,13 +497,12 @@ expect "네 창구가 Http::MSG_SCAN_* 를 쓴다" "4" \
 sub "php -l · bash -n"
 PHPBAD=0
 for f in src/Upload.php src/Audit.php src/Http.php src/handlers/_upload_common.php src/handlers/files_fetch.php \
-         src/handlers/purchase_recon_upload.php src/purchase/Importer.php \
          src/handlers/files_download.php src/handlers/files_preview.php \
          src/handlers/files_preview_raw.php src/handlers/share_download.php \
          src/handlers/files_list.php scripts/scan_pending.php scripts/alerts.php; do
   php -l "$ROOT/$f" >/dev/null 2>&1 || { echo "  ✖ php -l 실패: $f"; PHPBAD=1; }
 done
-expect "php -l (수정한 14개 PHP)" "0" "$PHPBAD"
+expect "php -l (수정한 12개 PHP)" "0" "$PHPBAD"
 
 BASHBAD=0
 for f in scripts/check_baseline.sh deploy/install.sh tests/f54.sh; do

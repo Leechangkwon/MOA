@@ -11,7 +11,7 @@
 #   ① 최근 10분 감사 로그에 비-qa actor 가 하나라도 있으면 **시작하지 않는다**(종료 코드 3).
 #   ② 만드는 것은 전부 `S26-` 접두이고, 정리는 **created_by/uploaded_by 가 qa 계정인 행만** 지운다.
 #   ③ 시작·끝에 「비-qa 행 수」를 세어 같은지 보고한다.
-#   ④ qa 계정에 잠깐 심는 값(purchase_role·branch_id·role)은 끝에서 **원래 값으로** 되돌린다.
+#   ④ qa 계정에 잠깐 심는 값(role)은 끝에서 **원래 값으로** 되돌린다.
 #
 # 준비물: sudo(로 /etc/tbox-v2 읽기 · psql 실행), php(TOTP), curl, python3+playwright(화면 확인)
 #
@@ -135,12 +135,6 @@ CENSUS_SUM=0
 census() {
   local when="$1" t total nonqa sum=0
   printf '  %-18s %8s %10s\n' "표" "전체" "비-qa"
-  for t in p_brands p_branches p_locations p_vendors p_items; do
-    total=$(psqlq "SELECT count(*) FROM $t;")
-    nonqa=$(psqlq "SELECT count(*) FROM $t WHERE created_by NOT IN ($QA_IDS);")
-    printf '  %-18s %8s %10s\n' "$t" "$total" "$nonqa"
-    sum=$((sum + nonqa))
-  done
   total=$(psqlq "SELECT count(*) FROM folders;")
   nonqa=$(psqlq "SELECT count(*) FROM folders WHERE created_by NOT IN ($QA_IDS);")
   printf '  %-18s %8s %10s\n' "folders" "$total" "$nonqa"; sum=$((sum + nonqa))
@@ -158,11 +152,8 @@ cleanup() {
   # ④ qa 계정에 심었던 값 원복 (계정 행 자체는 지우지 않는다)
   psqlc "UPDATE users SET role = 'Admin'    WHERE username = 'qa_admin01' AND role <> 'Admin';" \
     && echo "  qa_admin01 실제 역할 Admin 확인·원복"
-  psqlc "UPDATE users SET branch_id = NULL, purchase_role = NULL
-          WHERE username IN ('qa_employee01','qa_employee02','qa_manager01');" \
-    && echo "  qa 계정 branch_id·purchase_role 원복"
-  psqlc "UPDATE sessions SET act_role = NULL, act_team_id = NULL, act_purchase_role = NULL,
-                             act_branch_id = NULL, act_started_at = NULL, act_last_seen_at = NULL
+  psqlc "UPDATE sessions SET act_role = NULL, act_team_id = NULL,
+                             act_started_at = NULL, act_last_seen_at = NULL
           WHERE user_id IN ($QA_IDS);" \
     && echo "  qa 세션의 act_* 해제"
 
@@ -180,21 +171,6 @@ cleanup() {
     && echo "  S26- 파일 행·바이트 삭제"
   psqlc "DELETE FROM folders WHERE created_by IN ($QA_IDS) AND name LIKE 'S26-%';" \
     && echo "  S26- 폴더 삭제"
-
-  # 구매 픽스처 — 참조가 있는 것부터. 전부 created_by 가 qa 인 행만이다.
-  psqlc "DELETE FROM p_doc_lines WHERE doc_id IN (SELECT id FROM p_docs WHERE created_by IN ($QA_IDS)
-                                                    AND branch_id IN (SELECT id FROM p_branches WHERE name LIKE 'S26-%'));
-         DELETE FROM p_docs      WHERE created_by IN ($QA_IDS)
-                                   AND branch_id IN (SELECT id FROM p_branches WHERE name LIKE 'S26-%');
-         DELETE FROM p_item_branches WHERE item_id IN (SELECT id FROM p_items WHERE created_by IN ($QA_IDS) AND code LIKE 'S26-%');
-         DELETE FROM p_items     WHERE created_by IN ($QA_IDS) AND code LIKE 'S26-%';
-         DELETE FROM p_vendors   WHERE created_by IN ($QA_IDS) AND code LIKE 'S26-%';
-         UPDATE p_branches SET warehouse_location_id = NULL, central_location_id = NULL
-          WHERE created_by IN ($QA_IDS) AND name LIKE 'S26-%';
-         DELETE FROM p_locations WHERE created_by IN ($QA_IDS) AND name LIKE 'S26-%';
-         DELETE FROM p_branches  WHERE created_by IN ($QA_IDS) AND name LIKE 'S26-%';
-         DELETE FROM p_brands    WHERE created_by IN ($QA_IDS) AND name LIKE 'S26-%';" \
-    && echo "  S26- 구매 픽스처 삭제"
 
   sub "정리 뒤 인구조사 — 사용자 자료가 그대로인가"
   census after
@@ -253,19 +229,15 @@ DENY=$(psqlq "SELECT count(*) FROM audit_logs
 expect "감사에 deny 1건 이상" 1 "$([ "${DENY:-0}" -ge 1 ] && echo 1 || echo 0)"
 
 # ═════════════════════════════════════════════════════════════
-hr "T-52 (j) 값 검사 — 위로 가는 조합·지점 없는 요청·없는 지점"
+hr "T-52 (j) 값 검사 — 위로 가는 조합 · 없어진 키 · 없는 팀 · 모르는 키"
 # ═════════════════════════════════════════════════════════════
 R=$(call qa_admin01 POST /api/me/act "$TOK_ADMIN" '{"role":"Admin"}')
 echo "  {role:Admin} → HTTP $(code_of "$R") $(body_of "$R")"
 expect "{role:'Admin'} → 400 (위로 갈 수 없다)" 400 "$(code_of "$R")"
 
-R=$(call qa_admin01 POST /api/me/act "$TOK_ADMIN" '{"role":"Employee","purchase_role":"requester"}')
-echo "  {purchase_role:requester, 지점 없음} → HTTP $(code_of "$R")"
-expect "요청 역할인데 지점이 없으면 400" 400 "$(code_of "$R")"
-
-R=$(call qa_admin01 POST /api/me/act "$TOK_ADMIN" '{"role":"Employee","branch_id":999999999}')
-echo "  {branch_id:999999999} → HTTP $(code_of "$R")"
-expect "없는 지점 → 400" 400 "$(code_of "$R")"
+R=$(call qa_admin01 POST /api/me/act "$TOK_ADMIN" '{"role":"Employee","team_id":999999999}')
+echo "  {team_id:999999999} → HTTP $(code_of "$R")"
+expect "없는 팀 → 400" 400 "$(code_of "$R")"
 
 R=$(call qa_admin01 POST /api/me/act "$TOK_ADMIN" '{"role":"Employee","nope":1}')
 expect "모르는 키 → 400" 400 "$(code_of "$R")"
@@ -389,54 +361,6 @@ psqlc "UPDATE users SET role = 'Admin' WHERE username = 'qa_admin01';"
 echo "  qa_admin01 실제 역할 Admin 으로 원복"
 R=$(call qa_admin01 GET /api/me "$TOK_ADMIN")
 expect "원복 뒤 role=Admin" "Admin" "$(field role "$(body_of "$R")")"
-
-# ═════════════════════════════════════════════════════════════
-hr "T-52 (d) 구매 모듈 — 보는 역할의 지점 격리가 그대로 걸린다"
-# ═════════════════════════════════════════════════════════════
-echo "  재인증(기초정보 편집 창): qa_admin01 → $(reauth qa_admin01 "$TOK_ADMIN")"
-
-R=$(call qa_admin01 POST /api/purchase/brands "$TOK_ADMIN" '{"name":"S26-치과"}')
-BRAND=$(new_id "$(body_of "$R")"); expect "브랜드 생성" 201 "$(code_of "$R")"
-R=$(call qa_admin01 POST /api/purchase/branches "$TOK_ADMIN" "{\"brand_id\":$BRAND,\"name\":\"S26-부평점\"}")
-BR_A=$(new_id "$(body_of "$R")"); expect "지점A 생성" 201 "$(code_of "$R")"
-R=$(call qa_admin01 POST /api/purchase/branches "$TOK_ADMIN" "{\"brand_id\":$BRAND,\"name\":\"S26-일산점\"}")
-BR_B=$(new_id "$(body_of "$R")"); expect "지점B 생성" 201 "$(code_of "$R")"
-R=$(call qa_admin01 POST /api/purchase/locations "$TOK_ADMIN" "{\"branch_id\":$BR_A,\"kind\":\"warehouse\",\"name\":\"S26-A창고\"}")
-LOC_A=$(new_id "$(body_of "$R")"); expect "지점A 장소 생성" 201 "$(code_of "$R")"
-R=$(call qa_admin01 POST /api/purchase/locations "$TOK_ADMIN" "{\"branch_id\":$BR_B,\"kind\":\"central\",\"name\":\"S26-B창고\"}")
-LOC_B=$(new_id "$(body_of "$R")"); expect "지점B 장소 생성" 201 "$(code_of "$R")"
-R=$(call qa_admin01 POST /api/purchase/vendors "$TOK_ADMIN" '{"name":"S26-거래처","code":"S26-V1"}')
-VEND=$(new_id "$(body_of "$R")"); expect "거래처 생성" 201 "$(code_of "$R")"
-R=$(call qa_admin01 POST /api/purchase/items "$TOK_ADMIN" \
-  "{\"vendor_id\":$VEND,\"code\":\"S26-I1\",\"name\":\"S26-거즈\",\"unit\":\"EA\",\"price_in\":\"1000\"}")
-ITEM=$(new_id "$(body_of "$R")"); expect "품목 생성" 201 "$(code_of "$R")"
-
-sub "전표 2건 — 지점마다 하나 (Admin 이 자기 자격으로 만든다)"
-R=$(call qa_admin01 POST /api/purchase/pr "$TOK_ADMIN" \
-  "{\"branch_id\":$BR_A,\"to_location_id\":$LOC_A,\"vendor_id\":$VEND,\"memo\":\"S26-A요청\",\"lines\":[{\"item_id\":$ITEM,\"qty\":\"3\"}]}")
-PR_A=$(field doc_no "$(body_of "$R")"); expect "지점A 요청 생성" 201 "$(code_of "$R")"
-R=$(call qa_admin01 POST /api/purchase/pr "$TOK_ADMIN" \
-  "{\"branch_id\":$BR_B,\"to_location_id\":$LOC_B,\"vendor_id\":$VEND,\"memo\":\"S26-B요청\",\"lines\":[{\"item_id\":$ITEM,\"qty\":\"4\"}]}")
-PR_B=$(field doc_no "$(body_of "$R")"); expect "지점B 요청 생성" 201 "$(code_of "$R")"
-echo "  지점A 전표 $PR_A · 지점B 전표 $PR_B"
-
-sub "요청(requester) · 지점A 로 보기"
-R=$(call qa_admin01 POST /api/me/act "$TOK_ADMIN" \
-  "{\"role\":\"Employee\",\"purchase_role\":\"requester\",\"branch_id\":$BR_A}")
-echo "  HTTP $(code_of "$R")"
-expect "requester+지점A 로 켜기 200" 200 "$(code_of "$R")"
-
-R=$(call qa_admin01 GET /api/purchase/pr "$TOK_ADMIN")
-echo "  $(body_of "$R" | head -c 400)"
-expect "지점A 전표는 보인다"      1 "$(body_of "$R" | grep -c "$PR_A")"
-expect "지점B 전표는 0건 (격리)"  0 "$(body_of "$R" | grep -c "$PR_B")"
-
-R=$(call qa_admin01 GET "/api/purchase/pr?branch=$BR_B" "$TOK_ADMIN")
-expect "?branch=다른지점 으로도 0건" 0 "$(body_of "$R" | grep -c "$PR_B")"
-
-R=$(call qa_admin01 POST /api/purchase/vendors "$TOK_ADMIN" '{"name":"S26-막힘","code":"S26-V9"}')
-echo "  기초정보 편집 → HTTP $(code_of "$R") $(body_of "$R")"
-expect "requester 로 보는 중 기초정보 편집 403" 403 "$(code_of "$R")"
 
 # ═════════════════════════════════════════════════════════════
 hr "T-52 (f) 끄기 — 원래대로"
@@ -581,10 +505,9 @@ hr "T-52 (k) · T-53 (a)(b)(c) — 화면 확인 (Playwright)"
 # ═════════════════════════════════════════════════════════════
 jar_cookies() { awk '(!/^#/ || /^#HttpOnly_/) && NF>=7 {printf "%s=%s;", $6, $7}' "$1"; }
 
-# 띠를 찍으려면 보는 중이어야 한다. 구매 화면을 열어야 하므로 모듈 역할은 viewer(전 지점 읽기)로 —
-# 지점 없이도 목록이 열리는 유일한 조합이다(requester 는 지점이 필수).
+# 띠를 찍으려면 보는 중이어야 한다.
 R=$(call qa_admin01 POST /api/me/act "$TOK_ADMIN" \
-  "{\"role\":\"Employee\",\"team_id\":$TEAM_ID,\"purchase_role\":\"viewer\"}")
+  "{\"role\":\"Employee\",\"team_id\":$TEAM_ID}")
 expect "화면 확인용으로 다시 켜기 200" 200 "$(code_of "$R")"
 
 cat > "$WORK/shots.py" <<'PYEOF'
@@ -607,7 +530,7 @@ with sync_playwright() as p:
     c = ctx(b, CK_ADMIN); pg = c.new_page()
     errs = []
     pg.on("pageerror", lambda e: errs.append(str(e)))
-    pg.goto(BASE + "/purchase/pr", wait_until="networkidle")
+    pg.goto(BASE + "/activity", wait_until="networkidle")
     pg.wait_for_timeout(800)
     banner = pg.query_selector(".act-banner")
     out["banner_text"] = banner.inner_text().replace("\n", " ") if banner else None
@@ -720,7 +643,6 @@ if python3 "$WORK/shots.py" "$BASE" "$UA" "$(jar_cookies "$JAR_DIR/qa_admin01.ja
   expect "PATCH 본문에 role 있음"          1 "$(printf '%s' "$PB" | grep -c '"role"')"
   expect "PATCH 본문에 reason_text 있음"   1 "$(printf '%s' "$PB" | grep -c '"reason_text"')"
   expect "PATCH 본문에 team_id 없음"       0 "$(printf '%s' "$PB" | grep -c '"team_id"')"
-  expect "PATCH 본문에 branch_id 없음"     0 "$(printf '%s' "$PB" | grep -c '"branch_id"')"
   expect "PATCH 본문에 expires_at 없음"    0 "$(printf '%s' "$PB" | grep -c '"expires_at"')"
 else
   echo "  ! Playwright 확인을 실행하지 못했습니다 — 아래 오류를 보고에 적습니다 (미검증)"

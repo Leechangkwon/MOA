@@ -151,9 +151,9 @@ expect "첫 항목 제목이 보임"              1 "$(grep -cF -- "$FIRST_TITLE
 expect "등급 표기 「$LABEL」"             1 "$(grep -o "<span class=\"badge\">$LABEL</span>" "$WORK/home.html" | wc -l)"
 expect "모달 안 innerHTML 계열 0"         0 "$(grep -c 'innerHTML' "$WORK/home.html")"
 
-sub "구매 화면에도 같은 단추 하나 (셸을 쓰는 모든 화면)"
-curl -s -o "$WORK/pr.html" -b "$JAR" -A "$UA" "$BASE/purchase/pr"
-expect "/purchase/pr 단추 1개" 1 "$(grep -o 'data-changelog-open' "$WORK/pr.html" | wc -l)"
+sub "다른 화면에도 같은 단추 하나 (셸을 쓰는 모든 화면)"
+curl -s -o "$WORK/activity.html" -b "$JAR" -A "$UA" "$BASE/activity"
+expect "/activity 단추 1개" 1 "$(grep -o 'data-changelog-open' "$WORK/activity.html" | wc -l)"
 
 sub "로그인 전 /login — 쿠키 없이"
 curl -s -o "$WORK/login.html" -w '%{http_code}' -A "$UA" "$BASE/login" > "$WORK/login.code"

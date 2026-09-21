@@ -9,7 +9,7 @@ declare(strict_types=1);
  *           SECURITY R-74(권한 축소 위임) · R-05 · R-59(재인증 창)
  *
  * 하는 일: **이 세션**에 「어떤 역할로 볼지」를 적는다(`sessions.act_*` 여섯 열). 그 뒤부터
- * `Auth::currentUser()` 가 유효 역할을 그 값으로 만들어 주고, Authz·목록 SQL·구매 지점 격리가
+ * `Auth::currentUser()` 가 유효 역할을 그 값으로 만들어 주고, Authz·목록 SQL 이
  * 전부 그 역할로 판정한다 — **화면 흉내가 아니다**. 실제 계정(`users.role`)은 손대지 않는다.
  *
  * 막는 겹 (지나온 순서대로)
@@ -32,21 +32,13 @@ declare(strict_types=1);
  */
 
 /** 받을 수 있는 키. 하나라도 밖에 있으면 400 (R-07 과 같은 원칙) */
-$actAllowedFields = ['role', 'team_id', 'purchase_role', 'branch_id'];
+$actAllowedFields = ['role', 'team_id'];
 
 /**
  * 고를 수 있는 t-box 역할 — **아래로만**. Admin 은 목록에 없다 (PRD F-39 「위로 가는 조합 없음」).
  * `db/schema.sql` 의 `sessions_act_role_check` 와 같은 값이며, 두 곳이 어긋나면 DB 가 막는다.
  */
 $actAssignableRoles = ['Manager', 'Employee', 'Guest'];
-
-/**
- * 지점이 **반드시** 있어야 하는 모듈 역할. 그 둘은 `Authz::purchaseScopeWhere` 가 지점 없이는
- * `1=0` 을 돌려주므로(= 아무것도 안 보임), 지점 없이 켜면 시험할 것이 없는 빈 화면이 된다.
- * 모듈 역할 값 자체의 유효성은 `Authz::isAssignablePurchaseRole` 이 본다 — 값 목록이 두 벌이
- * 되지 않게 판정은 Authz 에 둔다 (ARCH 4.1, 린트 규칙 (b)).
- */
-$actBranchRequiredRoles = ['requester', 'stock'];
 
 $auditTarget = [
     'target_type' => 'user',
@@ -103,53 +95,11 @@ if (array_key_exists('team_id', $body)) {
     }
 }
 
-/** 모듈 역할 — 4값 또는 없음. 값 목록은 Authz 한 곳에만 있다 */
-$actPurchaseRole = null;
-if (array_key_exists('purchase_role', $body)) {
-    $raw = $body['purchase_role'];
-    if ($raw === null || $raw === '') {
-        $actPurchaseRole = null;
-    } elseif (is_string($raw) && Authz::isAssignablePurchaseRole($raw)) {
-        $actPurchaseRole = $raw;
-    } else {
-        $reject('bad_request', 400);
-    }
-}
-
-/** 지점 — 없거나 **활성 지점**이어야 한다 */
-$actBranch = null;
-if (array_key_exists('branch_id', $body)) {
-    $raw = $body['branch_id'];
-    if ($raw === null || $raw === '') {
-        $actBranch = null;
-    } elseif (is_int($raw) || (is_string($raw) && preg_match('/^[0-9]{1,9}$/', $raw) === 1)) {
-        $sqlBranch = <<<'SQL'
-            SELECT id FROM p_branches WHERE id = CAST(:id AS bigint) AND is_active
-            SQL;
-        $branchRow = $db->run($sqlBranch, [':id' => (int) $raw])->fetch();
-        if (!is_array($branchRow)) {
-            $reject('bad_request', 400);
-        }
-        $actBranch = (int) $raw;
-    } else {
-        $reject('bad_request', 400);
-    }
-}
-
-// 요청·재고로 보려면 지점이 있어야 한다 (없으면 목록이 1=0 이라 확인할 것이 없다)
-if ($actPurchaseRole !== null && $actBranch === null
-    && in_array($actPurchaseRole, $actBranchRequiredRoles, true)
-) {
-    $reject('bad_request', 400);
-}
-
 // ─── [4] 세션에 적는다 — 기록이 실패하면 아무것도 바뀌지 않는다 (PRD S-07) ───
 $sqlSet = <<<'SQL'
     UPDATE sessions
        SET act_role          = :role,
            act_team_id       = :team_id,
-           act_purchase_role = :purchase_role,
-           act_branch_id     = :branch_id,
            act_started_at    = now(),
            act_last_seen_at  = now()
      WHERE id = :id
@@ -160,8 +110,6 @@ try {
     $db->run($sqlSet, [
         ':role'          => $actRole,
         ':team_id'       => $actTeam,
-        ':purchase_role' => $actPurchaseRole,
-        ':branch_id'     => $actBranch,
         ':id'            => (string) $user['session_id'],
     ]);
 
@@ -174,8 +122,6 @@ try {
         'detail' => [
             'role'          => $actRole,
             'team_id'       => $actTeam,
-            'purchase_role' => $actPurchaseRole,
-            'branch_id'     => $actBranch,
             'idle_minutes'  => Auth::ACT_IDLE_MINUTES,
         ],
     ]);

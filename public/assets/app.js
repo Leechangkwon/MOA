@@ -55,19 +55,7 @@ var REAUTH_PATHS = {
   'wiki': '/wiki',
   // 17-1 관리자 허브 (PRD F-24). `/admin`·`/admin/permissions` 둘 다 이 키 하나를 쓰고,
   // 확인이 끝나면 허브로 돌아온다 (서버 TBOX_REAUTH_RETURN 과 같은 내용).
-  'admin': '/admin',
-  // 19단계 4차 보정 2026-09-13 — 구매 기초정보·엑셀 가져오기 (서버 TBOX_REAUTH_PATHS 와 같은 내용).
-  // 이 두 줄이 없어서 기초정보에서 재인증하면 홈으로 떨어졌다(사용자 관찰).
-  'purchasemasters': '/purchase/masters',
-  'purchaseimport': '/purchase/import',
-  // 22단계 — 월 마감(`purchase.close`)은 재인증 대상이라 대사 화면의 마감 단추가
-  // 403 next:reauth 를 받을 수 있다. 확인 뒤 그 화면으로 돌아온다.
-  // 마감은 대사 화면 안의 탭이라 두 키가 같은 경로다 (서버 TBOX_REAUTH_PATHS 와 같은 내용).
-  'purchaserecon': '/purchase/recon',
-  'purchaseclose': '/purchase/recon',
-  // 24단계 — 「브랜드·지점·창고」 화면은 라우트 정책이 purchase.master.write 라 **화면 요청이
-  // 그대로** 재인증 관문에 걸린다. 서버 TBOX_REAUTH_PATHS 와 같은 내용이어야 한다.
-  'purchasestruct': '/purchase/structure'
+  'admin': '/admin'
 };
 
 /** 서버가 내려 준 파일 ID 형태 (UUIDv4). 링크를 만들기 전에 반드시 확인한다. */
@@ -3631,19 +3619,6 @@ function initTrash(csrfToken, onRestored) {
  * ★ 역할 변경·활성 변경에는 **사유가 필수**다. 사유가 비면 보내지 않고(그래도 서버가 400),
  *   사유 원문은 서버 감사 로그 detail.reason_text 에만 남는다.
  */
-/**
- * 19단계 구매 모듈 역할의 사람 말 (PRD F-28, docs/purchase/02-prd-draft.md 1장).
- * 사용자 Q-18 확정(2026-09-13)으로 `viewer` 의 뜻이 「경영진 읽기 전용」에서
- * **「검토 — 전 지점 읽기, 발주서 검토·송부」** 로 바뀌었다. 라벨은 이 표 한 곳에만 둔다.
- * ★ 여기 있는 것은 **표시 문구**뿐이다 — 무엇을 할 수 있는지는 서버 Authz 가 정한다.
- */
-var PURCHASE_ROLE_LABEL = {
-  requester: '요청(requester)',
-  buyer: '구매(buyer)',
-  stock: '재고(stock)',
-  viewer: '검토(viewer)'
-};
-
 function initUsers(csrfToken) {
   var msg = document.getElementById('msg');
   var body = document.getElementById('users-body');
@@ -3658,10 +3633,6 @@ function initUsers(csrfToken) {
   var fTeam = document.getElementById('u-team');
   var fExpires = document.getElementById('u-expires');
   var fReason = document.getElementById('u-reason');
-  // 19단계 (PRD F-28, ARCH 5.18 「권한 두 축」) — 구매 모듈의 지점·모듈 역할.
-  // 둘 다 **선택**이고, 서버(Authz)가 값을 다시 검사한다 (PRD S-01).
-  var fBranch = document.getElementById('u-branch');
-  var fPurchaseRole = document.getElementById('u-purchase-role');
   var fSubmit = document.getElementById('u-submit');
 
   var state = { page: 1, total: 0, perPage: 50 };
@@ -3821,8 +3792,6 @@ function initUsers(csrfToken) {
   var ueRole = document.getElementById('ue-role');
   var ueTeam = document.getElementById('ue-team');
   var ueExpires = document.getElementById('ue-expires');
-  var ueBranch = document.getElementById('ue-branch');
-  var uePurchaseRole = document.getElementById('ue-purchase-role');
   var ueReason = document.getElementById('ue-reason');
   var ueMsg = document.getElementById('ue-msg');
   var ueCancel = document.getElementById('ue-cancel');
@@ -3930,8 +3899,6 @@ function initUsers(csrfToken) {
     setText(ueMsg, '');
     selectValue(ueRole, item.role);
     selectValue(ueTeam, item.team_id);
-    selectValue(ueBranch, item.branch_id);
-    selectValue(uePurchaseRole, item.purchase_role);
     if (ueExpires) {
       // 서버가 주는 만료는 날짜(YYYY-MM-DD)다. 없으면 비워 두고, 비운 채 저장하면 안 보낸다.
       ueExpires.value = typeof item.expires_at === 'string' ? item.expires_at.slice(0, 10) : '';
@@ -4404,16 +4371,6 @@ function initUsers(csrfToken) {
       if (ueExpires && ueExpires.value !== beforeExpires && ueExpires.value !== '') {
         payload.expires_at = ueExpires.value;
       }
-      var beforeBranch = before.branch_id === null || before.branch_id === undefined
-        ? '' : String(before.branch_id);
-      if (ueBranch && ueBranch.value !== beforeBranch) {
-        payload.branch_id = ueBranch.value === '' ? null : ueBranch.value;
-      }
-      var beforePurchase = before.purchase_role === null || before.purchase_role === undefined
-        ? '' : String(before.purchase_role);
-      if (uePurchaseRole && uePurchaseRole.value !== beforePurchase) {
-        payload.purchase_role = uePurchaseRole.value === '' ? null : uePurchaseRole.value;
-      }
 
       if (Object.keys(payload).length === 0) {
         closeEdit(false);
@@ -4581,9 +4538,6 @@ function initUsers(csrfToken) {
       addCell(row, item.is_active === true ? '활성' : '비활성');
       addCell(row, item.expires_at === null ? '—' : item.expires_at + (item.is_expired === true ? ' (만료)' : ''));
       addCell(row, item.mfa_enabled === true ? '켜짐' : '꺼짐');
-      // 19단계 — 지점·모듈 역할 (F-28). 서버가 준 표시용 값이며 권한이 아니다.
-      addCell(row, item.branch_name);
-      addCell(row, PURCHASE_ROLE_LABEL[item.purchase_role] || null);
       addCell(row, item.created_at);
       addActions(row, item);
       body.appendChild(row);
@@ -4671,45 +4625,6 @@ function initUsers(csrfToken) {
       });
   }
 
-  /* 19단계 — 지점 목록을 `/api/purchase/branches` 에서 받아 셀렉트를 채운다 (팀 목록과 같은 방식).
-     화면이 고정 목록을 들고 있으면 지점이 늘 때마다 화면을 고쳐야 하고, 언젠가 어긋난다.
-     Admin 은 이 API 에 닿을 수 있다(purchase.read 는 Admin 에게 언제나 참). 못 받아도
-     나머지 화면은 그대로 동작한다 — 지점은 선택 칸이다. */
-  function loadBranches() {
-    var targets = [];
-    if (fBranch) {
-      targets.push(fBranch);
-    }
-    if (ueBranch) {
-      targets.push(ueBranch);   // 26단계 — 변경 모달도 같은 목록을 쓴다
-    }
-    if (targets.length === 0) {
-      return;
-    }
-    fetch('/api/purchase/branches', { credentials: 'same-origin', cache: 'no-store' })
-      .then(function (response) {
-        if (!response.ok) {
-          return null;
-        }
-        return readJson(response).then(function (data) {
-          var branches = data && Array.isArray(data.items) ? data.items : [];
-          branches.forEach(function (branch) {
-            targets.forEach(function (select) {
-              var option = document.createElement('option');
-              option.value = String(branch.id);
-              setText(option, branch.name);
-              select.appendChild(option);
-            });
-          });
-          return null;
-        });
-      })
-      .catch(function () {
-        // 지점 목록을 못 받아도 나머지 화면은 동작한다.
-      });
-  }
-  loadBranches();
-
   if (form) {
     form.addEventListener('submit', function (event) {
       event.preventDefault();
@@ -4725,13 +4640,6 @@ function initUsers(csrfToken) {
       }
       if (fExpires && fExpires.value !== '') {
         payload.expires_at = fExpires.value;
-      }
-      // 19단계 — 비운 칸은 아예 보내지 않는다(서버의 허용 키 검사는 "있는 키" 만 본다).
-      if (fBranch && fBranch.value !== '') {
-        payload.branch_id = fBranch.value;
-      }
-      if (fPurchaseRole && fPurchaseRole.value !== '') {
-        payload.purchase_role = fPurchaseRole.value;
       }
       fSubmit.disabled = true;
       var newName = String(payload.username);
@@ -6132,14 +6040,12 @@ function initAdmin(csrfToken, me) {
    * 서버가 400 으로 막는다 (PRD S-01). 성공하면 화면을 다시 읽는다: 셸의 띠·내비·can_* 가
    * 통째로 새 역할 기준으로 와야 하기 때문이다.
    *
-   * 선택지는 다른 화면과 같은 API 에서 받는다(팀 `/api/teams`, 지점 `/api/purchase/branches`) —
-   * 화면이 고정 목록을 들고 있으면 팀·지점이 늘 때마다 화면을 고쳐야 하고 언젠가 어긋난다.
+   * 선택지는 다른 화면과 같은 API 에서 받는다(팀 `/api/teams`) — 화면이 고정 목록을 들고
+   * 있으면 팀이 늘 때마다 화면을 고쳐야 하고 언젠가 어긋난다.
    */
   var actForm = document.getElementById('act-form');
   var actRole = document.getElementById('act-role');
   var actTeam = document.getElementById('act-team');
-  var actPurchaseRole = document.getElementById('act-purchase-role');
-  var actBranch = document.getElementById('act-branch');
   var actSubmit = document.getElementById('act-submit');
   var actMsg = document.getElementById('act-msg');
 
@@ -6165,13 +6071,12 @@ function initAdmin(csrfToken, me) {
         });
       })
       .catch(function () {
-        // 목록을 못 받아도 나머지 화면은 그대로 동작한다 (둘 다 선택 칸이다).
+        // 목록을 못 받아도 나머지 화면은 그대로 동작한다 (선택 칸이다).
       });
   }
 
   if (actForm) {
     fillSelect(actTeam, '/api/teams', 'teams');
-    fillSelect(actBranch, '/api/purchase/branches', 'items');
 
     actForm.addEventListener('submit', function (event) {
       event.preventDefault();
@@ -6179,12 +6084,6 @@ function initAdmin(csrfToken, me) {
       var payload = { role: actRole ? actRole.value : '' };
       if (actTeam && actTeam.value !== '') {
         payload.team_id = actTeam.value;
-      }
-      if (actPurchaseRole && actPurchaseRole.value !== '') {
-        payload.purchase_role = actPurchaseRole.value;
-      }
-      if (actBranch && actBranch.value !== '') {
-        payload.branch_id = actBranch.value;
       }
       if (actSubmit) {
         actSubmit.disabled = true;
@@ -7018,8 +6917,7 @@ function initShell(me, csrfToken) {
   // 강제 절차(F-16) 중에는 다른 항목과 함께 닫힌다 — showNav 가 inGate 를 먼저 본다.
   showNav('nav-activity', true);
   /* 26단계 (PRD F-40) — 「관리」 묶음의 링크 **7개를 같은 값 하나로** 함께 연다.
-     구매관리 묶음이 can_purchase 하나로 11개를 여는 것과 같은 모양이다: 화면이 역할별로 더
-     감추기 시작하면 그것이 곧 화면에 심은 권한 판단이 된다. 항목을 개발자도구로 되살려도
+     화면이 역할별로 더 감추기 시작하면 그것이 곧 화면에 심은 권한 판단이 된다. 항목을 개발자도구로 되살려도
      각 경로의 라우트 정책(user.manage·org.manage·audit.read·role:Admin)과 재인증 관문이
      서버에서 다시 막는다 (PRD S-01, T-38·T-53). */
   ['nav-admin', 'nav-users', 'nav-org', 'nav-admin-permissions', 'nav-admin-fetch-hosts',
@@ -7031,38 +6929,6 @@ function initShell(me, csrfToken) {
   var adminGroup = document.getElementById('nav-admin-group');
   if (adminGroup) {
     adminGroup.hidden = inGate || !canAdmin;
-  }
-
-  /* 19단계 (PRD F-28, ARCH 5.18) — 「구매관리」 묶음. can_admin 과 **똑같은 성격**의
-     표시용 값이다: 서버가 `/api/me` 에 준 can_purchase 하나만 보고, 항목을 되살려
-     /purchase/* 를 직접 불러도 라우트 정책 purchase.read 가 다시 막는다 (PRD S-01, T-42).
-     역할·purchase_role 문자열을 화면에서 비교하지 않는다 (ARCH 4.1). */
-  var canPurchase = me.can_purchase === true;
-  /* 20단계 — 묶음 안의 전표 화면 항목도 **같은 값 하나**로 함께 연다. 역할별로 더 감추지
-     않는다: 무엇을 읽고 쓸 수 있는지는 라우트 정책과 Authz 가 매 요청 다시 정하고,
-     화면이 역할을 나눠 그리기 시작하면 그것이 곧 화면에 심은 권한 판단이 된다. */
-  ['nav-purchase-pr', 'nav-purchase-po',
-   // 21단계 — 입고·이동/실사·재고현황도 같은 값 하나로 함께 연다 (PRD F-34~F-36).
-   'nav-purchase-receipt', 'nav-purchase-move', 'nav-purchase-stock',
-   // 22단계 — 주간 사용량도 같다(월 대사·마감은 아래에서 can_purchase_master 로).
-   'nav-purchase-usage',
-   'nav-purchase-docs', 'nav-purchase'].forEach(function (id) {
-    showNav(id, canPurchase);
-  });
-  /* 「가져오기」만 예외 — 라우트 정책이 purchase.master.write 라 읽기 전용 사용자에게는
-     열어도 403 이다. 서버가 can_purchase_master 를 주면 그 값으로, 주지 않으면(옛 응답)
-     can_purchase 로 연다. 화면이 역할에서 값을 지어내지 않는다 (PRD S-01). */
-  var canPurchaseMaster = typeof me.can_purchase_master === 'boolean'
-    ? me.can_purchase_master
-    : canPurchase;
-  showNav('nav-purchase-import', canPurchaseMaster);
-  // 24단계 「브랜드·지점·창고」 도 같은 규칙이다 (라우트 정책이 purchase.master.write).
-  showNav('nav-purchase-structure', canPurchaseMaster);
-  // 22단계 「월 대사·마감」도 같은 규칙이다 (마감은 기초정보를 고칠 수 있는 사람의 일).
-  showNav('nav-purchase-recon', canPurchaseMaster);
-  var purchaseGroup = document.getElementById('nav-purchase-group');
-  if (purchaseGroup) {
-    purchaseGroup.hidden = inGate || !canPurchase;
   }
 
   /* 좁은 화면(960px 미만)의 접이식 내비. 넓은 화면에서는 CSS 가 내비를 늘 펼쳐 두므로
@@ -7371,7 +7237,7 @@ document.addEventListener('DOMContentLoaded', function () {
   paintIcons(document);
 
   /* 「사용 방법」 도움말 (F-38). 어느 화면이든 단추가 있으면 열리게 여기서 한 번 건다 —
-     구매 화면처럼 아래에서 먼저 return 하는 갈래기도 도움말은 같이 쓰기 때문이다. */
+     아래에서 먼저 return 하는 갈래기도 도움말은 같이 쓰기 때문이다. */
   initHelpDialog();
 
   /* 「변경 이력」(F-47). 사이드바 버전 단추는 셸을 쓰는 **모든** 화면에 있으므로
@@ -7416,18 +7282,15 @@ document.addEventListener('DOMContentLoaded', function () {
     return;
   }
   /*
-   * 18-3 보정 (사용자 관찰 2026-09-13: 「구매관리 › 기초정보」에서 내비의 「구매관리」·
-   * 「관리자」가 사라짐).
+   * 18-3 보정 (사용자 관찰 2026-09-13: 셸을 쓰는 화면인데 내비의 「관리자」가 사라짐).
    *
-   * 공통 셸을 쓰지만 셸의 화면 키 목록에 없는 화면(`/purchase/*` 등)은 <body data-page>
-   * 가 비어 있다. 전에는 여기서 그대로 return 해 `initShell` 이 아예 불리지 않았고,
-   * 기본이 hidden 인 `#nav-purchase-group`·`#nav-admin-group`·`#nav-admin` 이 닫힌 채
-   * 남았다. 재인증 화면(`/reauth`)이 「폼이 있는지」로 예외 처리한 것과 같은 방식을
-   * **셸이 있는지**(`#nav-files`)로 일반화한다.
+   * 공통 셸을 쓰지만 셸의 화면 키 목록에 없는 화면은 <body data-page> 가 비어 있다.
+   * 전에는 여기서 그대로 return 해 `initShell` 이 아예 불리지 않았고, 기본이 hidden 인
+   * `#nav-admin-group`·`#nav-admin` 이 닫힌 채 남았다. 재인증 화면(`/reauth`)이
+   * 「폼이 있는지」로 예외 처리한 것과 같은 방식을 **셸이 있는지**(`#nav-files`)로 일반화한다.
    *
-   * 이 분기는 셸만 그린다 — 화면 내용은 그 화면의 스크립트(예: purchase.js)가 따로 그린다.
-   * 무엇이 열리는지는 여전히 `/api/me` 의 `can_*` 가 정하고, 항목을 개발자도구로 되살려도
-   * 라우트 정책이 다시 막는다 (PRD S-01).
+   * 이 분기는 셸만 그린다. 무엇이 열리는지는 여전히 `/api/me` 의 `can_*` 가 정하고,
+   * 항목을 개발자도구로 되살려도 라우트 정책이 다시 막는다 (PRD S-01).
    */
   if (typeof page !== 'string' || page === '') {
     if (!document.getElementById('nav-files')) {
