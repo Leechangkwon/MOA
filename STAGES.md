@@ -60,6 +60,7 @@
 | 문구 정리 | 화면 문구 정리 — **1단계** 화면에 늘 펼쳐져 있던 안내 68곳 삭제·축소 / **2단계** 「사용 방법」 단추와 화면별 도움말 20화면 (F-38 · T-51) | ◐ 2단계 구현 | ✅ 2026-09-15 (Opus) | ⚠ 대기 | ⚠ 대기 | 1단계 `06ee617` · 2단계 커밋 전 |
 | **26** | 관리자 「역할로 보기」(F-39) · 관리 내비·계정 편집 폼(F-40) · 폴더 삭제 세 갈래(F-41) — 사용자 결정·지적 2026-09-15 | ✅ 구현 | ⚠ Fable 재검토 대기 (Opus 자체 시험 124/124) | ⚠ 대기 | ⚠ 대기 | 커밋 전 |
 | **27** | 구매·재고 모듈 제거(F-64) — 강사 지시·사용자 결정 2026-09-21(Q-22). 백업: 태그 `v1.13.0-with-purchase` · `~/tbox-v2-purchase-backup-2026-09-21.zip` | ✅ 구현·검토 | ✅ 2026-09-21 (Opus, 재지시 0회) | ✅ 2026-09-21 (T-76 (a)~(g), Fable 재실행 stage26 108/0·help_button 16/0·api_whoami 15/0) | ⚠ 대기(마이그레이션 실행 뒤) | `60715a9` · v1.14.0 `226a48b` |
+| **F-65** | 실행 파일이 든 압축본의 관리자 확인 업로드·확인 다운로드 — 요청마다 비밀번호+OTP(올릴 때·받을 때)·확인 문구·경고 배지·공유/토큰/등급 변경 금지·AL-21 (Q-23, 사용자 결정 2026-09-21) | ◐ 착수 | ⚠ Opus 위임 | ⚠ 대기 | ⚠ 대기 | 커밋 전 |
 
 ---
 
@@ -2165,6 +2166,41 @@ sudo -u postgres psql -d tbox_re -c "SELECT happened_at, actor_name, action, res
 | 2026-09-21 | 해소 | Opus 미결 5건 판정 — node 없음(Playwright 파싱으로 갈음, 미실행 표기) · `tests/f53.sh` 문구·`2026-09-17` 주석 경로(Fable 직접) · `2026-09-16_sessions_act_as.sql`(이력이라 보존) · 위키 묘비(의도, T-76 (a) 문구 정정) · `changelog.sh` 드리프트 4건(별건) | 위 ② 체크 표 |
 | 2026-09-21 | 지적(사용자) | 「너가 직접하면 되는데 나한테 시키는 이유는?」 — 백업 zip 업로드를 사용자에게 넘긴 것 | Fable 이 CLAUDE.md 3장 시드 계정 금지를 넓게 읽은 잘못. 검토 계정 `qa_admin01` 로 직접 업로드: `POST /api/files` 201, id `eb2dcb5d-4726-46e8-af8c-de8fc9acf3ec`, admin-only, 3,603,086 B, ClamAV 검사 대기 → R-93 ④ 충족 |
 | 2026-09-21 | 대기 | 도메인 루트에 무엇을 둘지(구매 솔루션은 아직 없음) · `/tbox` 이동은 28단계 | 사용자 결정 대기 |
+
+### F-65 — 실행 파일이 든 압축본의 관리자 확인 업로드·확인 다운로드 (T-77 · Q-23 · R-94) — 착수 2026-09-21
+
+> 지시서: `docs/f65-exec-upload-directive.md`. 근거: PRD F-65 · Q-23 · T-77 · 7.6 S-06 예외 행 · 8장 `exec-download` 행 · 7.11 AL-21, ARCH **5.29** · 7.4(16행) · 7.5, SECURITY **R-94**.
+> 배경: F-64 백업 zip 이 F-53 에 걸리자 사용자 「올라갈 수 있도록 하면 되는 것 아니냐」 → 문답 4회(27단계 학습 기록) → 「2차 인증·주의 사항으로 보완」 → 「받는 쪽도 OTP」.
+
+**개발 사항 (① 구현 — Opus)**
+- [ ] `files.exec_content` 열 — 마이그레이션 `2026-09-21_files_exec_content.sql` · `schema.sql` · `install.sh` 4-4-1 감지 목록
+- [ ] `Auth::verifyCurrentPassword` · `Auth::verifyOtpOnce` (새 helper, 세션 창 없음)
+- [ ] `Upload::validate(..., allowBlockedEntries)` + 차단 이름을 담는 예외 · `_upload_common.php` 의 갈래 ①~⑤(ARCH 5.29 표) · `files_upload.php` 의 `next:"exec_ack"` 응답
+- [ ] 받기 관문: `files_download`·`files_preview`·`files_preview_raw`·`share_create`·`share_download`·`files_update` + 새 핸들러 `files_exec_download.php`(`POST /api/files/{id}/exec-download`, `file.read`, 토큰 목록 밖)
+- [ ] `files_list` 에 `exec_content` · 화면(올리기 확인 블록·배지·확인 다운로드 창·공유 숨김·등급 잠금) · `Http` 문구 상수 · `Audit` 문장 16행·키 4개 · `alerts.php` AL-21
+- [ ] `tests/f65.sh` · 문서 보정(ARCH 6.2 행 · API.md 9장 한 줄 · README 사용 안내)
+
+**체크 (② 검토 — Fable, T-77)**
+| 항목 | 결과 | 근거 |
+|---|---|---|
+| (a) 올리기 갈래 | ⚠ 대기 | |
+| (b) 예외가 아닌 갈래(직원·internal·역할로 보기·토큰) | ⚠ 대기 | |
+| (c) 받기 관문·exec-download | ⚠ 대기 | |
+| (d) AL-21 | ⚠ 대기 | |
+| (e) 화면 | ⚠ 대기 | |
+| (f) 회귀·린트 | ⚠ 대기 | |
+| (g) 마이그레이션 임시 DB | ⚠ 대기 | |
+| (h) 시험 파일 정리 | ⚠ 대기 | |
+
+**③ 자기 공격 (사용자)** — 다른 브라우저에서 훔친 쿠키(개발자도구로 복사)로 exec 파일 GET → 403 · 쿠키로 exec-download 를 비밀번호 없이 → 400 · Employee 로 같은 zip 올리기 → 400 에 힌트 없음 · 공유 링크 만들기 → 400 · 등급 내리기 → 400.
+
+**④ 커밋** — 대기. 발행 minor.
+
+**학습 기록**
+| 날짜 | 구분 | 내용 | 해소·근거 |
+|---|---|---|---|
+| 2026-09-21 | 결정(Fable) | 「요청마다 OTP」는 F-23 의 15분 창을 쓰지 않고 권한 매트릭스 편집(17-2)의 요청마다 코드 방식을 따른다. 받기는 GET 이 아니라 `POST …/exec-download` 본문에 비밀번호·코드 — GET 쿼리에 비밀번호를 싣지 않기 위해 | ARCH 5.29 · 4.0 · 5.15 |
+| 2026-09-21 | 결정(Fable) | 등급 변경 금지·공유/토큰 금지는 「받는 사람이 언제나 Admin(=OTP 필수)」 전제를 지키기 위한 것 | ARCH 5.29 받기 표 |
 
 ## 2-1. 10단계 뒤 일괄 자기 공격 — 진행 순서 (관문 ③, 사용자)
 

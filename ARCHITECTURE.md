@@ -1328,6 +1328,49 @@ authentication failed for user "tbox_app"` 같은 형태다 — 호스트·포�
 
 **바뀌지 않는 것.** `Upload::validatePath`(F-53 포함)는 그대로 먼저 돈다 — ClamAV 는 그 뒤의 두 번째 겹이다. 권한 판정(`decideRead`)이 상태 검사보다 **앞**이라 403 의 의미(IDOR)는 그대로다.
 
+### 5.29 실행 파일이 든 압축본 — 관리자 확인 업로드·확인 다운로드 (PRD F-65 · Q-23, 사용자 결정 2026-09-21)
+
+**무엇을 바꾸나.** F-53(5.27)은 zip 안에 차단 확장자(`.php`·`.sh`·`.js`·`.html` …)가 하나라도 있으면 `zip_blocked_entry` 로 거부한다. 이 절은 그 한 갈래에 **예외가 아니라 더 무거운 조건**을 둔다: 내용 검사를 건너뛰는 대신 「누가(Admin·admin-only)」·「진짜 그 사람인가(요청마다 비밀번호+OTP)」·「알고 올리나(확인 문구)」·「알고 받나(경고 배지 + 받을 때도 요청마다 비밀번호+OTP)」·「나중에 추적(감사·경보)」 다섯 겹으로 바꾼다. F-53 의 나머지 검사(경로 탈출·중첩·압축 폭탄·매크로·PDF·HWP)와 F-54 ClamAV 는 **그대로** 돈다.
+
+**왜 이렇게 하나 (사용자 문답 2026-09-21, STAGES 27단계 학습 기록).** 서버는 저장 구조(3장·6장)가 지키므로 zip 속 `.php` 가 서버에 해가 되지 않는다. F-53 이 막는 것은 **직원 PC 로의 배달**이다. 게시자 신원만으로는 「훔친 세션」·「게시자가 속은 파일」·「판단 못 하는 독자」를 못 막는다 — 그래서 요청마다 OTP(훔친 세션 차단), 확인 문구(모르고 올림 차단), 받는 쪽 OTP·경고(모르고 받음 차단)를 겹친다. 「알고도」 하는 경우와 게시자 PC 자체의 감염은 이 설계로도 못 막는다(SECURITY R-94, 받아들인 위험).
+
+**표.** `files.exec_content BOOLEAN NOT NULL DEFAULT false` 한 열(6.2, 마이그레이션 `db/migrations/2026-09-21_files_exec_content.sql`). 참이면 「실행 파일 포함」 파일이다. 이 값은 업로드 트랜잭션에서만 참이 되고 **다시 거짓이 되지 않는다.**
+
+**올리기 — `POST /api/files` (웹 세션만).** 5.2 의 흐름에 한 갈래가 붙는다. `Upload::validate` 가 `zip_blocked_entry` 를 던졌을 때:
+
+| 순서 | 조건 | 결과 |
+|---|---|---|
+| ① | 토큰 입구(`POST /api/upload`, `TBOX_AUTH_METHOD` 정의됨) · URL 가져오기(`files_fetch`) | 지금처럼 400 「잘못된 요청입니다」, 감사 `file.upload deny zip_blocked_entry` — 이 갈래는 **웹 세션에만** 있다 |
+| ② | `$user['real_role'] !== 'Admin'` 또는 「역할로 보기」 중(`acting`) 또는 등급이 `admin-only` 가 아님 | 지금처럼 400 통일 문구. **응답에 `next` 를 넣지 않는다** — Employee 에게 「실행 파일이 들어 있다」는 힌트를 주지 않는다 |
+| ③ | Admin · admin-only · 세션인데 `exec_ack` 필드가 `"1"` 이 아님 | 400 `{error: MSG_EXEC_ACK_REQUIRED, next:"exec_ack", entries:[차단 항목 이름 ≤ 20]}`, 감사 `file.upload_exec deny exec_ack_required`(detail `exec_entry_count`). 화면이 이 응답으로 확인 창을 연다 |
+| ④ | `exec_ack="1"` | `Auth::verifyCurrentPassword($user, $password)` → 실패면 `file.upload_exec deny bad_credentials` + `countFailureAndRevoke` + 400 통일 문구. 이어서 `Auth::verifyOtpOnce($user, $otp)` → `mfa_not_enabled`(403) · `bad_code`·`code_reused`(400 + `countFailureAndRevoke`). **둘 다 요청마다**, 세션에 창을 남기지 않는다(`reauth_at` 을 놓지 않는다) |
+| ⑤ | 통과 | `Upload::validate($file, allowBlockedEntries: true)` 로 **다시** 검사 — 차단 이름은 모으기만 하고(`exec_entries`) 나머지 검사는 그대로 던진다. 이어 민감정보 검사(5.13) → INSERT(`exec_content = true`) → 감사 `file.upload_exec allow`(detail `exec_ack:true`·`otp_verified:true`·`exec_entry_count`·`exec_entries`(≤ 20 이름)) — 한 트랜잭션(5.2 [5]) |
+
+비밀번호·코드는 `$_POST` 에서 읽은 직후 `unset` 하고 응답·감사·`app.log` 어디에도 남기지 않는다(PRD 7.7). `password`·`otp`·`exec_ack` 는 multipart 필드이고 다른 필드(`access_level`·`description`·`folder_id`)와 같은 자리에서 읽는다.
+
+**받기.** `exec_content = true` 인 파일은 네 창구(5.3 다운로드·5.7 미리보기 둘·5.12 공유)가 전부 막히고, **새 창구 하나**만 연다.
+
+| 창구 | 동작 |
+|---|---|
+| `GET /api/files/{id}/download` (세션) | `decideRead` 뒤 · `scan_status` 관문 앞에서 403 `{error: MSG_EXEC_ACK_REQUIRED, next:"exec_ack"}`, 감사 `file.download deny exec_ack_required` |
+| `GET /api/files/{id}/download` (`X-API-Token`) | 403 `MSG_FORBIDDEN`, 감사 `file.download deny exec_content_token` — 토큰은 OTP 를 칠 수 없다 |
+| `GET …/preview` · `…/preview/raw` | 403 같은 사유(`exec_ack_required`) — zip 은 미리보기 종류가 없지만 관문을 같은 모양으로 둔다 |
+| `POST /api/files/{id}/share` | 400 통일 문구, 감사 `share.create deny exec_content` — 링크는 OTP 없이 받는 길이다 |
+| `GET /s/{token}` | 만들 수 없으니 닿을 일이 없지만, 5.12 의 검사 순서에 `exec_content` 를 넣어 404 (겹 방어) |
+| `PATCH /api/files/{id}` `access_level` | 400 통일 문구, 감사 `file.update deny exec_content` — 등급을 내리면 「Admin 만·OTP 필수」 전제가 깨진다. `description`·`folder_id` 는 그대로 |
+| **`POST /api/files/{id}/exec-download`** (정책 `file.read`, 세션만, CSRF) | JSON `{password, otp}` 허용 키 둘. 5.3 과 같은 순서(uuid → 행 → `decideRead` → ) 뒤 `exec_content` 가 거짓이면 400 · `verifyCurrentPassword` → `verifyOtpOnce`(위 ④ 와 같은 사유·집계) → `scan_status` 관문(5.28) → 무결성 → **본문으로 파일 전송**(`Content-Disposition: attachment`, 5.3 과 같은 헤더). 감사 `file.download_exec allow`(detail `otp_verified:true` + 5.3 의 키) |
+
+`decideRead` 가 앞에 있으므로 받는 사람은 **언제나 Admin** 이다(admin-only). Admin 은 F-52 로 2단계 인증이 필수라 `mfa_not_enabled` 갈래는 실제로는 닿지 않지만, 정책이 바뀌어도 코드가 지키도록 둔다.
+
+**목록·화면.** `GET /api/files` 항목에 `exec_content`(bool) 추가. 화면은 그 값 **하나만** 보고 「실행 파일 포함」 배지를 붙이고(`textContent`), 다운로드 단추가 **확인 창**(올린 사람·올린 날짜·경고 문장·비밀번호·코드)을 연 뒤 `exec-download` 를 `fetch` 로 불러 blob 으로 저장한다. 공유 단추는 감추고 등급 셀렉트는 잠근다 — 표시는 편의이고 근거는 위 서버 표다(PRD S-01). 올리기 창은 400 `next:"exec_ack"` 를 받으면 그 파일 줄 아래에 항목 이름(`entries`, textContent)·확인 문구 체크·비밀번호·코드 칸을 펴고, 체크 없이는 보내지 않는다(서버가 다시 400).
+
+**감사·경보.** 새 action 둘 — `file.upload_exec`·`file.download_exec`(7.4 문장 표·7.5 키 `exec_ack`·`exec_entry_count`·`exec_entries`·`otp_verified`). 기존 action 의 새 사유 — `file.download deny exec_ack_required|exec_content_token`, `share.create deny exec_content`, `file.update deny exec_content`. **AL-21**: `file.upload_exec allow` 1건이라도 즉시(PRD 7.11), evidence 파일명·올린 사람·항목 수.
+
+**검증 helper 두 개 (`src/Auth.php`).** `verifyCurrentPassword(array $user, string $password): bool` — `reauth()` 의 앞부분(`SQL_LOAD_BY_ID` + `password_verify`)과 같고 세션에 `reauth_at` 을 **놓지 않는다**. `verifyOtpOnce(array $user, string $otp): string` — `admin_permissions_update.php` ②의 규칙(`mfa_enabled` 필수 · `Totp::verifyStep` · `mfa_last_step` 1회성)과 같으며 `'ok'|'mfa_not_enabled'|'bad_code'|'code_reused'` 를 돌려주고 실패 집계는 호출자가 한다. `admin_permissions_update.php` 는 이번에 손대지 않는다 — 같은 규칙이 두 벌이 되는 것은 알고 있으며 다음 정리 대상이다(SECURITY R-94 비고).
+
+**바뀌지 않는 것.** `ALLOWED_EXT`·`BLOCKED_EXT`·이름 검사 자체 · 토큰·가져오기 입구의 거부 · ClamAV · 저장 구조 · admin-only 가 아닌 모든 업로드.
+
+
 ## 6. 저장 위치 — 파일 정보 vs 실제 파일
 
 ### 6.1 두 곳에 나눠 저장하는 이유
@@ -1804,6 +1847,22 @@ GRANT  USAGE, SELECT  ON SEQUENCE audit_logs_id_seq TO tbox_app;
 | `file.upload|deny|zip_unreadable` | `{actor} 이(가) 올린 「{target}」 의 압축 파일 구조를 읽을 수 없어 거부했습니다` | F-53 `Upload::inspectContent` (ARCH 5.27) |
 | `file.upload|deny|zip_bad_path` | `{actor} 이(가) 올린 압축 파일 「{target}」 안에 경로를 벗어나는 항목이 있어 거부했습니다` | F-53 `Upload::inspectContent` (ARCH 5.27) |
 | `file.upload|deny|zip_blocked_entry` | `{actor} 이(가) 올린 압축 파일 「{target}」 안에 실행 파일이 들어 있어 거부했습니다` | F-53 `Upload::inspectContent` (ARCH 5.27) |
+| `file.upload_exec|allow` | `{actor} 이(가) 실행 파일이 든 압축본 「{target}」 을(를) 내용을 확인했다고 밝히고 비밀번호·2단계 코드를 다시 확인한 뒤 admin-only 등급으로 올렸습니다 (항목 수는 상세 기록)` | F-65 ⑤ (5.29) |
+| `file.upload_exec|deny|exec_ack_required` | `{actor} 이(가) 실행 파일이 든 압축본 「{target}」 을(를) 확인 절차 없이 올리려 해서 확인을 요청했습니다` | F-65 ③ — 화면이 확인 창을 여는 갈래 |
+| `file.upload_exec|deny|bad_credentials` | `{actor} 이(가) 실행 파일이 든 압축본 「{target}」 을(를) 올리며 비밀번호를 틀려 거부했습니다` | F-65 ④ (실패 집계) |
+| `file.upload_exec|deny|bad_code` | `{actor} 이(가) 실행 파일이 든 압축본 「{target}」 을(를) 올리며 2단계 인증 코드를 틀려 거부했습니다` | F-65 ④ (실패 집계) |
+| `file.upload_exec|deny|code_reused` | `{actor} 이(가) 실행 파일이 든 압축본 「{target}」 을(를) 올리며 이미 쓴 2단계 인증 코드를 다시 보내 거부했습니다` | F-65 ④ (R-45) |
+| `file.upload_exec|deny|mfa_not_enabled` | `{actor} 이(가) 2단계 인증이 꺼진 상태로 실행 파일이 든 압축본 「{target}」 을(를) 올리려 해서 거부했습니다` | F-65 ④ |
+| `file.download_exec|allow` | `{actor} 이(가) 실행 파일이 든 압축본 「{target}」 을(를) 비밀번호·2단계 코드를 다시 확인한 뒤 내려받았습니다` | F-65 (5.29 받기) |
+| `file.download_exec|deny|bad_credentials` | `{actor} 이(가) 실행 파일이 든 압축본 「{target}」 을(를) 받으며 비밀번호를 틀려 거부했습니다` | F-65 (실패 집계) |
+| `file.download_exec|deny|bad_code` | `{actor} 이(가) 실행 파일이 든 압축본 「{target}」 을(를) 받으며 2단계 인증 코드를 틀려 거부했습니다` | F-65 (실패 집계) |
+| `file.download_exec|deny|code_reused` | `{actor} 이(가) 실행 파일이 든 압축본 「{target}」 을(를) 받으며 이미 쓴 2단계 인증 코드를 다시 보내 거부했습니다` | F-65 (R-45) |
+| `file.download_exec|deny|mfa_not_enabled` | `{actor} 이(가) 2단계 인증이 꺼진 상태로 실행 파일이 든 압축본 「{target}」 을(를) 받으려 해서 거부했습니다` | F-65 |
+| `file.download_exec|deny|bad_request` | `{actor} 이(가) 실행 파일 확인 절차를 허용되지 않는 형식으로 요청하거나 실행 파일이 아닌 파일에 요청해서 거부했습니다` | F-65 |
+| `file.download|deny|exec_ack_required` | `{actor} 이(가) 실행 파일이 든 압축본 「{target}」 을(를) 확인 절차 없이 받으려 해서 확인을 요청했습니다` | F-65 — 미리보기 두 창구도 같은 문장 |
+| `file.download|deny|exec_content_token` | `{actor} 이(가) 프로그램 토큰으로 실행 파일이 든 압축본 「{target}」 을(를) 받으려 해서 거부했습니다 (이 파일은 사람이 2단계 코드를 넣어야 받을 수 있습니다)` | F-65 |
+| `share.create|deny|exec_content` | `{actor} 이(가) 실행 파일이 든 압축본 「{target}」 의 공유 링크를 만들려 해서 거부했습니다 (이 파일은 링크로 나갈 수 없습니다)` | F-65 |
+| `file.update|deny|exec_content` | `{actor} 이(가) 실행 파일이 든 압축본 「{target}」 의 접근 등급을 바꾸려 해서 거부했습니다 (admin-only 로 고정됩니다)` | F-65 |
 | `file.upload|deny|nested_zip` | `{actor} 이(가) 올린 「{target}」 안에 압축 파일이 여러 겹 겹쳐 있어 거부했습니다` | F-53 `Upload::inspectContent` (ARCH 5.27) |
 | `file.upload|deny|zip_bomb` | `{actor} 이(가) 올린 「{target}」 은(는) 압축을 풀면 지나치게 커지거나 항목이 너무 많아(압축 폭탄 의심) 거부했습니다` | F-53 `Upload::inspectContent` (ARCH 5.27) |
 | `file.upload|deny|macro_found` | `{actor} 이(가) 올린 문서 「{target}」 에 매크로가 들어 있어 거부했습니다` | F-53 `Upload::inspectContent` (ARCH 5.27) |
@@ -1934,6 +1993,7 @@ SELECT happened_at, actor_name, detail->>'login_ref' AS login_ref, ip, user_agen
 | 정렬·페이지 | `happened_at DESC` 고정, `page` 20건, `audit_time_idx` 사용 |
 | 응답 | 구조화 컬럼 + `detail` + `summary`. 화면은 `summary` 를 `textContent` 로만 출력(7.4 "파일명이 문장을 흉내") |
 | 내보내기 | 없음(비목표). 필요하면 서버에서 `psql \\copy` |
+| `exec_ack` · `otp_verified` · `exec_entry_count` · `exec_entries` | F-65 (5.29) — 확인 문구를 받았나(true) · 2단계 코드를 확인했나(true) · zip 안의 차단 항목 수 · 그 이름 목록(≤ 20, 이름뿐 내용 아님). 비밀번호·코드 값은 **절대** 들어가지 않는다 |
 
 **행동 목록 상태 (2026-09-11)**: 5단계 `file.update`·`file.level_change`, 7단계 `file.fetch`, 8단계 `audit.view`, 9단계 `file.purge`·`backup.run`·`backup.restore`·`audit.integrity`·`alert.raised`, 10단계 `file.restore`·`user.create`·`user.role_change`·`user.deactivate`·`user.activate`·`user.expired`·`auth.password_change`·`auth.mfa_enroll`·`auth.mfa_disable`·`auth.mfa` 의 문장 틀이 7.4 표에 **모두 등록**되었다(일괄 진행 모드에서 단계별 지시서 작성 전에 한 번에 추가). 이 목록이 PRD 7.7 "기록해야 하는 행동" 표와 1:1 이어야 하며, 새 행동은 여기와 7.4 표에 먼저 넣는다. `auth.revoke_sessions` 는 별도 행동이 아니라 `auth.password_change`·`user.deactivate` 의 결과(detail.sessions_revoked)로 기록한다.
 

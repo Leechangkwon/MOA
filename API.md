@@ -329,6 +329,10 @@ HTTP/1.1 200 OK
 
 ---
 
+### 9-1. 받을 수 없는 파일 — 「실행 파일 포함」 (F-65, 2026-09-21)
+
+관리자가 확인 절차를 거쳐 올린 **실행 파일이 든 압축본**(목록의 `exec_content: true`)은 토큰으로 받을 수 없다 — 사람이 비밀번호와 2단계 코드를 넣어야 하는 파일이라서다. 토큰으로 `GET /api/files/{id}/download` 를 부르면 **403** `{"error":"권한이 없습니다"}` 이고 감사에 `file.download deny exec_content_token` 이 남는다. 웹 화면에서 받는 창구는 `POST /api/files/{id}/exec-download`(세션 전용)이며 프로그램은 쓸 수 없다.
+
 ## 10. 프로그램용 자기 확인 — `GET /api/whoami`
 
 프로그램이 **「나는 누구고 무엇을 올릴 수 있나」** 를 묻는 창구다 (PRD F-56, ARCHITECTURE 4.4).
