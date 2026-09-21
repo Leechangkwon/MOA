@@ -757,6 +757,42 @@ final class Authz
         return [true, ''];
     }
 
+    /**
+     * F-65 — **실행 파일이 든 압축본의 확인 업로드 자격**이 있는 요청인가 (ARCH 5.29 「올리기」 ②).
+     *
+     * 왜 Authz 에 두나: 이 판정은 「누가(실제 역할) · 어떤 상태로(보는 중인가) · 어떤 등급으로 ·
+     * 어떤 입구로」 네 가지를 한꺼번에 견주는 **역할 판단**이다. 핸들러에 두면 그것이 곧
+     * "Authz 밖의 역할 비교"이고(CLAUDE.md 4장 금지 패턴, `scripts/security_lint.sh` (f)),
+     * 언젠가 두 벌이 되는 날 한쪽만 고쳐진다 (R-70 과 같은 걱정).
+     *
+     * 네 조건 — **전부** 참일 때만 참이다.
+     *   ① 실제 역할이 Admin — `real_role` 을 본다. 「역할로 보기」 중의 유효 역할(`role`)이
+     *      아니라 진짜 역할이다 (Auth::currentUser 가 언제나 채운다).
+     *   ② 「역할로 보기」 중이 **아니다**(`acting` 이 참이 아니다) — 보는 중에는 Admin 이
+     *      Employee 를 흉내 내고 있고, 그 상태에서 admin-only 예외를 여는 것은 F-39 의
+     *      「보는 동안은 그 역할로만 행동한다」 와 어긋난다.
+     *   ③ 올리려는 등급이 `admin-only` — 받을 사람이 언제나 Admin(= OTP 필수)이어야 한다.
+     *   ④ **웹 세션**이다 (`TBOX_AUTH_METHOD` 가 정의되지 않았다) — 토큰 입구는 OTP 를
+     *      칠 수 없으므로 예외가 열리지 않는다 (ARCH 5.29 ①, PRD F-65 ①).
+     *
+     * 거짓이면 지금까지처럼 400 통일 문구이고, 응답에 `next` 를 넣지 않는다 — Employee 에게
+     * 「실행 파일이 들어 있다」는 힌트를 주지 않기 위해서다 (ARCH 5.29 ②).
+     *
+     * @param array<string,mixed> $u 현재 사용자 (요청 값이 아니다 — PRD S-01)
+     */
+    public static function canUploadExec(array $u, string $level): bool
+    {
+        // 값을 먼저 변수로 꺼낸다 — 배열 첨자와 리터럴을 한 줄에 붙이지 않는 것은
+        // security_lint 의 역할 비교 검사가 Authz 도 훑기 때문이다(예외 파일이 없다).
+        $realRole = (string) ($u['real_role'] ?? $u['role'] ?? '');
+        $acting   = ($u['acting'] ?? false) === true;
+
+        return $realRole === 'Admin'
+            && !$acting
+            && $level === 'admin-only'
+            && !defined('TBOX_AUTH_METHOD');
+    }
+
     /** 업로드 자체가 가능한 역할인가 (Guest 는 불가 — PRD 5.2) */
     public static function canUploadAtAll(array $u): bool
     {

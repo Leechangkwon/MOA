@@ -120,6 +120,20 @@ final class Http
      */
     public const MSG_PERSONAL_TOKEN_REQUIRED = '이 창구는 개인 토큰으로만 쓸 수 있습니다';
 
+    /**
+     * 실행 파일이 든 압축본의 **확인 관문** 문구 (F-65, PRD F-65 ②③, ARCH 5.29).
+     *
+     * 통일 문구(`MSG_BAD_REQUEST`·`MSG_FORBIDDEN`)를 쓰지 않는 자리다. 이유는 강제 절차
+     * 관문(`MSG_PASSWORD_CHANGE_REQUIRED`)·재인증 관문(`MSG_REAUTH_REQUIRED`)과 **같다**:
+     * 막힌 사람이 그 파일을 올리는 본인 또는 그 파일을 받을 자격이 이미 있는 Admin 이고,
+     * 「다음에 무엇을 해야 하나」(`next: "exec_ack"`)를 모르면 아무것도 할 수 없다.
+     *
+     * ★ 이 문구가 나가는 자리는 **자격을 이미 통과한 요청**뿐이다 (ARCH 5.29 「올리기」 ③ ·
+     *   「받기」 표). Admin 이 아니거나 등급이 admin-only 가 아니면 그보다 **앞**에서
+     *   통일 문구 400 으로 끝난다 — 「실행 파일이 들어 있다」는 힌트조차 주지 않는다 (②).
+     */
+    public const MSG_EXEC_ACK_REQUIRED = '실행 파일이 든 압축본입니다 — 비밀번호와 2단계 인증 코드로 확인해야 합니다';
+
     /** JSON 본문 상한 — 로그인·삭제 같은 작은 요청만 JSON 으로 받는다 */
     private const MAX_JSON_BYTES = 65536;
 

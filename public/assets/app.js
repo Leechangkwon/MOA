@@ -274,7 +274,20 @@ function scanBadgeFor(scanStatus) {
   return Object.prototype.hasOwnProperty.call(SCAN_BADGE, scanStatus) ? SCAN_BADGE[scanStatus] : null;
 }
 
-function addNameCell(row, name, sensitive, scanStatus) {
+/*
+ * F-65 (PRD F-65 ③, ARCH 5.29 「목록·화면」) — 「실행 파일 포함」 배지.
+ *
+ * 화면은 서버가 준 `exec_content` 불리언 **하나만** 본다. 파일명·확장자를 보고 스스로
+ * 판단하지 않는다. 배지는 표시일 뿐이고, 받는 길을 가르는 것은 서버의 관문 여섯이다
+ * (PRD 10장 「버튼 표시는 권한의 근거가 아님」).
+ */
+var EXEC_BADGE = {
+  label: '실행 파일 포함',
+  cls: 'badge badge--exec',
+  title: '실행 파일이 든 압축본입니다. 받으려면 비밀번호와 2단계 인증 코드를 다시 넣어야 합니다'
+};
+
+function addNameCell(row, name, sensitive, scanStatus, execContent) {
   var td = document.createElement('td');
   var text = document.createElement('span');
   setText(text, name);
@@ -296,6 +309,15 @@ function addNameCell(row, name, sensitive, scanStatus) {
     setText(scanBadge, scan.label);
     td.appendChild(document.createTextNode(' '));
     td.appendChild(scanBadge);
+  }
+  // F-65 — 「실행 파일 포함」. scan 배지와 **같은 방식**(createElement + textContent)이다.
+  if (execContent === true) {
+    var execBadge = document.createElement('span');
+    execBadge.className = EXEC_BADGE.cls;
+    execBadge.setAttribute('title', EXEC_BADGE.title);
+    setText(execBadge, EXEC_BADGE.label);
+    td.appendChild(document.createTextNode(' '));
+    td.appendChild(execBadge);
   }
   row.appendChild(td);
   return td;
@@ -1029,8 +1051,15 @@ function initFiles(csrfToken, uploadLevels, canFetch, myTeamId) {
       payload.description = description;
     }
 
+    /* F-65 — 「실행 파일 포함」 파일은 **등급을 묻지 않는다**(= 잠긴 셀렉트와 같은 뜻이다).
+       admin-only 를 내리면 「받는 사람은 언제나 Admin(2단계 인증 필수)」 전제가 깨지므로
+       서버가 `access_level` 키 자체를 400 으로 막는다 (ARCH 5.29 「받기」 표).
+       설명·폴더는 그대로 바꿀 수 있다. 화면이 묻지 않는 것은 편의이고, 콘솔에서 직접
+       PATCH 를 보내도 서버가 같은 400 을 준다 (PRD S-01). */
     var currentLevel = typeof file.access_level === 'string' ? file.access_level : '';
-    var level = window.prompt('접근 등급 (public / internal / team / admin-only)', currentLevel);
+    var level = file.exec_content === true
+      ? null
+      : window.prompt('접근 등급 (public / internal / team / admin-only)', currentLevel);
     if (level !== null) {
       if (level !== currentLevel) {
         payload.access_level = level;
@@ -1617,6 +1646,155 @@ function initFiles(csrfToken, uploadLevels, canFetch, myTeamId) {
     });
   }
 
+  /* ─── F-65 확인 다운로드 (PRD F-65 ③, ARCH 5.29 「받기」 표) ─────────────────
+   *
+   * 「실행 파일 포함」 파일의 다운로드 단추가 이 창을 연다. 보통 다운로드는 그 파일에 대해
+   * 403 이고(서버가 막는다), 여기서 **요청마다** 비밀번호와 2단계 코드를 넣어야 받는다.
+   *
+   * 받는 방법이 링크가 아니라 `fetch` + blob 인 이유: 비밀번호를 주소에 실을 수 없어
+   * POST 본문으로 보내야 하고, POST 응답 본문을 파일로 저장하려면 blob 이 필요하다.
+   * 만든 객체 URL 은 바로 되돌린다(revokeObjectURL) — 창이 남아 있는 동안 그 주소로
+   * 파일을 다시 열 수 있게 두지 않는다.
+   *
+   * 비밀번호·코드는 입력 칸에만 있고, 창을 닫거나 보낸 뒤에 지운다. 화면 어디에도,
+   * 브라우저 저장소에도 남기지 않는다 (PRD 7.7).
+   */
+  var execDialog = document.getElementById('exec-download-dialog');
+  var execForm = document.getElementById('exec-dl-form');
+  var execFileName = document.getElementById('exec-dl-file');
+  var execUploader = document.getElementById('exec-dl-uploader');
+  var execCreated = document.getElementById('exec-dl-created');
+  var execPassword = document.getElementById('exec-dl-password');
+  var execOtp = document.getElementById('exec-dl-otp');
+  var execSubmit = document.getElementById('exec-dl-submit');
+  var execMsg = document.getElementById('exec-dl-msg');
+  var execClose = document.getElementById('exec-dl-close');
+  var execCloseX = document.getElementById('exec-dl-x');
+
+  /** 지금 창이 다루는 파일 (서버가 준 목록 항목 그대로). 보낼 때 id 형태를 한 번 더 본다. */
+  var execTarget = null;
+
+  /** 입력 칸을 비운다 — 창을 열 때와 닫을 때, 그리고 보낸 뒤에 부른다. */
+  function clearExecFields() {
+    if (execPassword) {
+      execPassword.value = '';
+    }
+    if (execOtp) {
+      execOtp.value = '';
+    }
+  }
+
+  function openExecDownload(file) {
+    if (!execDialog || !UUID_RE.test(file.id)) {
+      setText(msg, GENERIC_ERROR);
+      return;
+    }
+    execTarget = file;
+    setText(execFileName, file.name);
+    setText(execUploader, typeof file.uploaded_by === 'string' ? file.uploaded_by : '—');
+    setText(execCreated, typeof file.created_at === 'string' ? file.created_at : '—');
+    setText(execMsg, '');
+    clearExecFields();
+    if (execSubmit) {
+      execSubmit.disabled = false;
+    }
+    execDialog.showModal();
+  }
+
+  function closeExecDownload() {
+    if (execDialog && execDialog.open) {
+      execDialog.close();
+    }
+  }
+
+  if (execDialog) {
+    // close 는 Esc 로도 일어난다 — 어느 경로든 비밀번호·코드를 화면에서 지운다.
+    execDialog.addEventListener('close', function () {
+      execTarget = null;
+      clearExecFields();
+      setText(execMsg, '');
+    });
+  }
+  if (execClose) {
+    execClose.addEventListener('click', closeExecDownload);
+  }
+  if (execCloseX) {
+    execCloseX.addEventListener('click', closeExecDownload);
+  }
+
+  /** 받은 blob 을 파일로 저장한다 — a[download] 한 번 누르고 객체 URL 을 되돌린다. */
+  function saveBlob(blob, name) {
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement('a');
+    a.setAttribute('href', url);
+    a.setAttribute('download', typeof name === 'string' && name !== '' ? name : 'download');
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }
+
+  if (execForm) {
+    execForm.addEventListener('submit', function (event) {
+      event.preventDefault();
+      if (execTarget === null || !UUID_RE.test(execTarget.id)) {
+        setText(execMsg, GENERIC_ERROR);
+        return;
+      }
+      var target = execTarget;
+      // 서버가 받는 키는 이 둘뿐이다 — 모르는 키가 하나라도 있으면 400 이므로
+      // 화면도 같은 형태만 만든다 (share 폼과 같은 규칙).
+      var payload = {
+        password: execPassword ? execPassword.value : '',
+        otp: execOtp ? execOtp.value : ''
+      };
+
+      setText(execMsg, '');
+      if (execSubmit) {
+        execSubmit.disabled = true;
+      }
+
+      fetch('/api/files/' + target.id + '/exec-download', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken },
+        body: JSON.stringify(payload),
+        credentials: 'same-origin',
+        cache: 'no-store'
+      })
+        .then(function (response) {
+          // 보낸 값은 응답을 기다리는 동안에도 남겨 두지 않는다.
+          clearExecFields();
+          if (response.status === 401) {
+            toLogin();
+            return null;
+          }
+          if (response.status === 200) {
+            return response.blob().then(function (blob) {
+              saveBlob(blob, target.name);
+              closeExecDownload();
+              return null;
+            });
+          }
+          // 400·403·423 문구는 **서버가 준 것만** 쓴다 — 「비밀번호가 틀렸나 코드가
+          // 틀렸나」를 브라우저가 추측해 알려 주지 않는다 (서버도 갈라 주지 않는다).
+          return readJson(response).then(function (data) {
+            setText(execMsg, errorMessage(data));
+            if (execSubmit) {
+              execSubmit.disabled = false;
+            }
+            return null;
+          });
+        })
+        .catch(function () {
+          clearExecFields();
+          setText(execMsg, GENERIC_ERROR);
+          if (execSubmit) {
+            execSubmit.disabled = false;
+          }
+        });
+    });
+  }
+
   /*
    * 작업 칸 — 12단계부터 **아이콘 단추**다. 뜻은 title·aria-label 의 한글이 전한다.
    * 무엇을 만들지는 여전히 서버가 행마다 내려 준 can_delete·can_edit 만 본다 —
@@ -1658,6 +1836,16 @@ function initFiles(csrfToken, uploadLevels, canFetch, myTeamId) {
         var blockedDownload = makeIconButton('download', scanBlock.title);
         blockedDownload.disabled = true;
         td.appendChild(blockedDownload);
+      } else if (file.exec_content === true) {
+        /* F-65 — 「실행 파일 포함」 파일은 **링크가 아니라 단추**다. 링크(`<a href>`)는
+           누르는 순간 GET 이 나가는데 그 창구는 이 파일에 대해 403 이다(ARCH 5.29 「받기」).
+           단추는 확인 창을 열고, 거기서 비밀번호·코드를 넣어 POST 로 받는다.
+           단추가 아니라 주소를 직접 쳐도 서버가 같은 403 을 준다 (PRD S-01). */
+        var execButton = makeIconButton('download', '확인하고 받기 — ' + EXEC_BADGE.label);
+        execButton.addEventListener('click', function () {
+          openExecDownload(file);
+        });
+        td.appendChild(execButton);
       } else {
         var link = document.createElement('a');
         link.setAttribute('href', '/api/files/' + file.id + '/download');
@@ -1678,12 +1866,17 @@ function initFiles(csrfToken, uploadLevels, canFetch, myTeamId) {
 
         /* 15-2 — 「공유 링크」도 **같은 can_edit** 로 갈린다: 링크를 만들 수 있는 사람은
            그 파일을 고칠 수 있는 사람이다 (PRD F-13). 화면이 역할·소유자를 따지지 않는다.
-           단추가 보이지 않아도, 콘솔에서 직접 POST 해도 서버가 다시 판단한다 (PRD S-01). */
-        var shareButton = makeIconButton('link', '공유 링크 만들기');
-        shareButton.addEventListener('click', function () {
-          openShare(file);
-        });
-        td.appendChild(shareButton);
+           단추가 보이지 않아도, 콘솔에서 직접 POST 해도 서버가 다시 판단한다 (PRD S-01).
+           ★ F-65 — 「실행 파일 포함」 파일에는 이 단추를 **만들지 않는다**. 공유 링크는
+             로그인하지 않은 사람이 OTP 없이 받는 길이라 서버가 400 으로 막는다
+             (ARCH 5.29 「받기」 표). 단추를 지우는 것은 편의이고 근거는 서버다. */
+        if (file.exec_content !== true) {
+          var shareButton = makeIconButton('link', '공유 링크 만들기');
+          shareButton.addEventListener('click', function () {
+            openShare(file);
+          });
+          td.appendChild(shareButton);
+        }
 
         /* 18-1 — 「폴더로 이동」도 **같은 can_edit** 로 갈린다 (PRD F-26: 파일을 옮기는 것은
            그 파일을 고칠 수 있는 사람). 단추가 보이든 안 보이든 서버가 다시 판단하고,
@@ -1743,7 +1936,8 @@ function initFiles(csrfToken, uploadLevels, canFetch, myTeamId) {
       var row = document.createElement('tr');
       // 15-3 — 「민감」 배지는 서버가 준 sensitive 불리언만 보고 붙인다 (PRD F-22).
       // F-54 — 「검사 중」·「격리됨」 배지도 서버가 준 scan_status 하나만 보고 붙인다.
-      addNameCell(row, file.name, file.sensitive === true, file.scan_status);
+      // F-65 — 「실행 파일 포함」 배지도 서버가 준 exec_content 하나만 보고 붙인다.
+      addNameCell(row, file.name, file.sensitive === true, file.scan_status, file.exec_content === true);
       addCell(row, formatSize(file.size_bytes));
       addLevelCell(row, file.access_level);
       addCell(row, file.team_name === null || file.team_name === undefined ? '—' : file.team_name);
@@ -2590,7 +2784,11 @@ function initFiles(csrfToken, uploadLevels, canFetch, myTeamId) {
     setText(uploadPicked, note);
   }
 
-  /** 진행 표에 파일 한 줄을 만들고, 상태 칸을 바꿀 수 있는 함수를 돌려준다. */
+  /**
+   * 진행 표에 파일 한 줄을 만들고 `{ set, row }` 를 돌려준다.
+   *   set(text, cls) — 상태 칸 글자·색
+   *   row            — 그 <tr>. F-65 확인 블록을 **바로 아래 줄**에 끼우는 데 쓴다.
+   */
   function addStatusRow(file) {
     var row = document.createElement('tr');
     var nameCell = document.createElement('td');
@@ -2603,15 +2801,25 @@ function initFiles(csrfToken, uploadLevels, canFetch, myTeamId) {
     setText(stateCell, '대기');
     row.appendChild(stateCell);
     uploadStatusBody.appendChild(row);
-    return function (text, cls) {
-      // 문구는 **서버가 준 것 또는 고정 문구**뿐이고 언제나 textContent 다 (PRD S-03).
-      setText(stateCell, text);
-      stateCell.className = cls ? 'upload-status__state ' + cls : 'upload-status__state';
+    return {
+      row: row,
+      set: function (text, cls) {
+        // 문구는 **서버가 준 것 또는 고정 문구**뿐이고 언제나 textContent 다 (PRD S-03).
+        setText(stateCell, text);
+        stateCell.className = cls ? 'upload-status__state ' + cls : 'upload-status__state';
+      }
     };
   }
 
-  /** 파일 하나를 보낸다 — 기존 단일 업로드와 **완전히 같은 요청**이다. */
-  function uploadOne(file, common) {
+  /**
+   * 파일 하나를 보낸다 — 기존 단일 업로드와 **완전히 같은 요청**이다.
+   *
+   * F-65 (ARCH 5.29 「올리기」) — `exec` 가 있으면 확인 필드 셋을 **같은 multipart 요청**에
+   * 더한다(`exec_ack`·`password`·`otp`). 따로 만든 창구가 아니라 같은 `POST /api/files` 라서,
+   * 확인을 통과해도 등급·폴더·민감정보·ClamAV 검사를 똑같이 받는다.
+   * 세 값은 이 FormData 에만 있고 화면·저장소 어디에도 남지 않는다 (PRD 7.7).
+   */
+  function uploadOne(file, common, exec) {
     var form = new FormData();
     form.append('file', file);
     form.append('description', common.description);
@@ -2621,6 +2829,11 @@ function initFiles(csrfToken, uploadLevels, canFetch, myTeamId) {
     }
     if (common.folderId !== '' && common.folderId !== '0') {
       form.append('folder_id', common.folderId);
+    }
+    if (exec) {
+      form.append('exec_ack', '1');
+      form.append('password', exec.password);
+      form.append('otp', exec.otp);
     }
     // headers 에 Content-Type 을 넣지 않는다 — 브라우저가 boundary 를 붙여야 한다.
     return fetch('/api/files', {
@@ -2633,6 +2846,148 @@ function initFiles(csrfToken, uploadLevels, canFetch, myTeamId) {
       return readJson(response).then(function (data) {
         return { status: response.status, data: data };
       });
+    });
+  }
+
+  /* ─── F-65 올리기 확인 블록 (PRD F-65 ②, ARCH 5.29 「올리기」 ③) ─────────────
+   *
+   * 서버가 400 `{next:"exec_ack", entries:[…]}` 를 주면 그 파일의 상태 줄 **바로 아래**에
+   * 이 블록을 편다. 사용자는 무엇이 걸렸는지(항목 이름)를 보고, 확인 문구에 체크하고,
+   * 비밀번호와 2단계 코드를 넣어 **같은 파일을 다시** 보낸다.
+   *
+   * 체크가 없으면 **요청을 보내지 않는다** — 안내만 띄운다. (서버도 체크 없는 요청을 다시
+   * 400 으로 막으므로 이 검사는 편의다. 근거는 언제나 서버다 — PRD S-01.)
+   *
+   * 항목 이름은 서버가 zip 에서 읽은 문자열이므로 **textContent 로만** 넣는다 (PRD S-03).
+   */
+  function showExecAck(setter, file, common, entries) {
+    var tr = document.createElement('tr');
+    tr.className = 'upload-exec__row';
+    var td = document.createElement('td');
+    td.setAttribute('colspan', '3');
+
+    var boxEl = document.createElement('div');
+    boxEl.className = 'upload-exec';
+
+    var warn = document.createElement('p');
+    warn.className = 'upload-exec__warn';
+    setText(warn, '이 압축본 안에 실행 파일이 들어 있습니다. 관리자만, admin-only 등급으로, '
+      + '내용을 확인했다고 밝힌 뒤에만 올릴 수 있습니다.');
+    boxEl.appendChild(warn);
+
+    var list = document.createElement('ul');
+    list.className = 'upload-exec__list';
+    var names = Array.isArray(entries) ? entries : [];
+    var n;
+    for (n = 0; n < names.length; n++) {
+      var li = document.createElement('li');
+      setText(li, names[n]);
+      list.appendChild(li);
+    }
+    if (names.length > 0) {
+      boxEl.appendChild(list);
+    }
+
+    var ackLabel = document.createElement('label');
+    ackLabel.className = 'upload-exec__ack';
+    var ackBox = document.createElement('input');
+    ackBox.type = 'checkbox';
+    ackLabel.appendChild(ackBox);
+    var ackText = document.createElement('span');
+    setText(ackText, '이 묶음에는 실행 파일이 있습니다. 내가 만든 것이 맞고 내용을 압니다');
+    ackLabel.appendChild(ackText);
+    boxEl.appendChild(ackLabel);
+
+    var pwLabel = document.createElement('label');
+    pwLabel.className = 'upload-exec__field';
+    var pwText = document.createElement('span');
+    setText(pwText, '비밀번호');
+    pwLabel.appendChild(pwText);
+    var pwInput = document.createElement('input');
+    pwInput.type = 'password';
+    pwInput.maxLength = 1024;
+    pwInput.autocomplete = 'off';
+    pwLabel.appendChild(pwInput);
+    boxEl.appendChild(pwLabel);
+
+    var otpLabel = document.createElement('label');
+    otpLabel.className = 'upload-exec__field';
+    var otpText = document.createElement('span');
+    setText(otpText, '2단계 인증 코드 (6자리)');
+    otpLabel.appendChild(otpText);
+    var otpInput = document.createElement('input');
+    otpInput.type = 'text';
+    otpInput.inputMode = 'numeric';
+    otpInput.maxLength = 6;
+    otpInput.autocomplete = 'off';
+    otpLabel.appendChild(otpInput);
+    boxEl.appendChild(otpLabel);
+
+    var send = document.createElement('button');
+    send.type = 'button';
+    send.className = 'btn btn--small';
+    setText(send, '확인하고 올리기');
+    boxEl.appendChild(send);
+
+    var note = document.createElement('p');
+    note.className = 'upload-exec__msg';
+    boxEl.appendChild(note);
+
+    td.appendChild(boxEl);
+    tr.appendChild(td);
+    // 그 파일의 상태 줄 **바로 아래**에 끼운다 (여러 파일을 한 번에 올릴 때 짝이 흐려지지 않게).
+    if (setter.row && setter.row.parentNode) {
+      setter.row.parentNode.insertBefore(tr, setter.row.nextSibling);
+    } else {
+      uploadStatusBody.appendChild(tr);
+    }
+
+    /** 확인 칸을 비운다 — 보낸 뒤·성공 뒤에 부른다. */
+    function clearAckFields() {
+      pwInput.value = '';
+      otpInput.value = '';
+    }
+
+    send.addEventListener('click', function () {
+      if (!ackBox.checked) {
+        // **요청을 보내지 않는다.** 확인 문구는 사람이 읽고 누르는 것이 전부이므로
+        // 체크 없이 보내는 것은 그 뜻을 비우는 일이다 (PRD F-65 ②).
+        setText(note, '확인란에 체크해야 올릴 수 있습니다.');
+        return;
+      }
+      var exec = { password: pwInput.value, otp: otpInput.value };
+      clearAckFields();
+      send.disabled = true;
+      setText(note, '');
+      setter.set('확인하고 올리는 중…', 'is-busy');
+
+      uploadOne(file, common, exec)
+        .then(function (result) {
+          if (result.status === 401) {
+            setter.set('중단 — 로그인이 필요합니다', 'is-deny');
+            toLogin();
+            return;
+          }
+          if (result.status === 201) {
+            setter.set('완료', 'is-ok');
+            // 블록은 지운다 — 남겨 두면 같은 파일을 또 보낼 수 있는 자리가 된다.
+            if (tr.parentNode) {
+              tr.parentNode.removeChild(tr);
+            }
+            loadFiles();
+            loadTree();
+            return;
+          }
+          // 400·403 문구는 **서버가 준 것만** 쓴다 (사유를 브라우저가 추측하지 않는다).
+          setter.set(errorMessage(result.data), 'is-deny');
+          setText(note, errorMessage(result.data));
+          send.disabled = false;
+        })
+        .catch(function () {
+          setter.set(GENERIC_ERROR, 'is-deny');
+          setText(note, GENERIC_ERROR);
+          send.disabled = false;
+        });
     });
   }
 
@@ -2693,34 +3048,42 @@ function initFiles(csrfToken, uploadLevels, canFetch, myTeamId) {
       }
       var i = index;
       index += 1;
-      setters[i]('올리는 중…', 'is-busy');
+      setters[i].set('올리는 중…', 'is-busy');
 
       uploadOne(queue[i], common)
         .then(function (result) {
           if (result.status === 401) {
-            setters[i]('중단 — 로그인이 필요합니다', 'is-deny');
+            setters[i].set('중단 — 로그인이 필요합니다', 'is-deny');
             stopped = true;
             toLogin();
             return;
           }
           if (result.status === 201) {
-            setters[i]('완료', 'is-ok');
+            setters[i].set('완료', 'is-ok');
           } else if (result.status === 403) {
             // 권한 문제는 나머지 파일도 같은 결과다 → 멈춘다 (ARCH 5.17).
-            setters[i](errorMessage(result.data), 'is-deny');
+            setters[i].set(errorMessage(result.data), 'is-deny');
             stopped = true;
             var k;
             for (k = index; k < queue.length; k++) {
-              setters[k]('중단', 'is-deny');
+              setters[k].set('중단', 'is-deny');
             }
             setText(uploadMsg, errorMessage(result.data));
+          } else if (result.status === 400 && result.data && result.data.next === 'exec_ack') {
+            /* F-65 — 「실행 파일이 든 압축본」이고 이 사람·이 등급·이 입구라면 확인으로
+               올릴 수 있다. 줄 아래에 확인 블록을 펴고 **여기서는 멈추지 않는다** —
+               나머지 파일은 그대로 이어 올리고, 이 파일만 사용자가 확인한 뒤 다시 간다.
+               `next` 가 없는 400(자격이 없는 사람·등급·토큰)은 아래 갈래로 떨어져
+               지금까지와 같은 통일 문구만 보인다 (ARCH 5.29 ①②). */
+            setters[i].set('확인이 필요합니다 — 아래에서 확인하세요', 'is-deny');
+            showExecAck(setters[i], queue[i], common, result.data.entries);
           } else {
             // 400 계열 — 이 파일만 거부하고 다음으로 계속한다.
-            setters[i](errorMessage(result.data), 'is-deny');
+            setters[i].set(errorMessage(result.data), 'is-deny');
           }
         })
         .catch(function () {
-          setters[i](GENERIC_ERROR, 'is-deny');
+          setters[i].set(GENERIC_ERROR, 'is-deny');
         })
         .then(function () {
           step();

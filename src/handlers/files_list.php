@@ -128,6 +128,10 @@ $sqlList = <<<'SQL'
            -- F-54 (ARCH 5.28) — 「검사 중」·「격리됨」 배지와 단추 비활성에 쓰는 상태 하나.
            -- 세 값('pending'·'clean'·'infected')뿐이고 파일 이름·시그니처는 내리지 않는다.
            f.scan_status,
+           -- F-65 (ARCH 5.29) — 「실행 파일 포함」 배지·확인 다운로드 창·공유 단추 숨김·
+           -- 등급 셀렉트 잠금에 쓰는 **불리언 하나**. 어떤 항목이 들어 있었는지(이름·개수)는
+           -- 목록에 내리지 않는다 — 그 값은 감사 로그에만 있다 (ARCH 7.5 `exec_entries`).
+           f.exec_content,
            f.team_id,
            f.folder_id,
            f.uploaded_by,
@@ -284,6 +288,14 @@ foreach ($rows as $row) {
          * ★ 아래 F-50 토큰 응답(간결한 배열 다섯 칸)에는 **넣지 않는다** — API.md 의
          *   안정성 약속(키를 늘리지 않는다)을 지킨다. 토큰 다운로드도 서버가 똑같이 막는다. */
         'scan_status'  => (string) $row['scan_status'],
+        /* F-65 (PRD F-65 ③, ARCH 5.29 「목록·화면」): 실행 파일이 든 압축본인가.
+         * 화면은 이 값 **하나만** 보고 배지를 붙이고, 다운로드 단추를 확인 창으로 바꾸고,
+         * 공유 단추를 만들지 않고, 등급을 잠근다. 표시는 편의이고 근거는 서버다 (PRD S-01) —
+         * 단추를 되살려도 여섯 관문이 다시 막는다.
+         * ★ 아래 F-50 토큰 응답에는 **넣는다**(scan_status 와 다른 판단이다) — API.md 9-1 이
+         *   「목록의 exec_content: true 인 파일은 토큰으로 받을 수 없다」 를 약속하므로,
+         *   프로그램이 받기 전에 그 값으로 걸러 낼 수 있어야 한다. */
+        'exec_content' => $row['exec_content'] === true,
     ];
 }
 
@@ -331,6 +343,9 @@ if ($viaToken) {
         'level'       => $f['access_level'],
         'size'        => $f['size_bytes'],
         'uploaded_at' => $f['created_at'],
+        // F-65 (API.md 9-1) — 이 값이 참이면 `GET …/download` 는 403 이다. 프로그램이
+        // 받기 전에 거를 수 있도록 여섯 번째 칸으로 내린다.
+        'exec_content' => $f['exec_content'],
     ], $files));
     return;
 }

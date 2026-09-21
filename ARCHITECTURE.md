@@ -1397,6 +1397,7 @@ CREATE TABLE files (
     team_id       BIGINT      REFERENCES teams(id),
     uploaded_by   BIGINT      NOT NULL REFERENCES users(id),
     scan_status   TEXT        NOT NULL DEFAULT 'clean' CHECK (scan_status IN ('pending','clean','infected')),
+    exec_content  BOOLEAN     NOT NULL DEFAULT false,   -- F-65 (5.29): 실행 파일이 든 압축본을 관리자가 확인하고 올렸나. 참이면 공유·토큰·미리보기·등급 변경이 막히고 받을 때도 요청마다 비밀번호+OTP (업로드 때만 참이 되고 되돌아가지 않는다)
     created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
     deleted_at    TIMESTAMPTZ,                          -- NULL 이면 살아있는 파일
     deleted_by    BIGINT      REFERENCES users(id),
@@ -1859,8 +1860,9 @@ GRANT  USAGE, SELECT  ON SEQUENCE audit_logs_id_seq TO tbox_app;
 | `file.download_exec|deny|code_reused` | `{actor} 이(가) 실행 파일이 든 압축본 「{target}」 을(를) 받으며 이미 쓴 2단계 인증 코드를 다시 보내 거부했습니다` | F-65 (R-45) |
 | `file.download_exec|deny|mfa_not_enabled` | `{actor} 이(가) 2단계 인증이 꺼진 상태로 실행 파일이 든 압축본 「{target}」 을(를) 받으려 해서 거부했습니다` | F-65 |
 | `file.download_exec|deny|bad_request` | `{actor} 이(가) 실행 파일 확인 절차를 허용되지 않는 형식으로 요청하거나 실행 파일이 아닌 파일에 요청해서 거부했습니다` | F-65 |
-| `file.download|deny|exec_ack_required` | `{actor} 이(가) 실행 파일이 든 압축본 「{target}」 을(를) 확인 절차 없이 받으려 해서 확인을 요청했습니다` | F-65 — 미리보기 두 창구도 같은 문장 |
+| `file.download|deny|exec_ack_required` | `{actor} 이(가) 실행 파일이 든 압축본 「{target}」 을(를) 확인 절차 없이 받으려 해서 확인을 요청했습니다` | F-65 — 미리보기 두 창구(`/preview`·`/preview/raw`)도 **action 까지 `file.download`** 로 같은 행을 쓴다(문장은 `action|result|reason` 으로 고르므로). 어느 창구였나는 `detail.route` 가 답한다. `exec-download` 창구의 권한·검사·무결성 거부도 5.3 과 같은 `file.download` 행이다 |
 | `file.download|deny|exec_content_token` | `{actor} 이(가) 프로그램 토큰으로 실행 파일이 든 압축본 「{target}」 을(를) 받으려 해서 거부했습니다 (이 파일은 사람이 2단계 코드를 넣어야 받을 수 있습니다)` | F-65 |
+| `share.download|deny|exec_content` | `실행 파일이 든 압축본 「{target}」 이(가) 공유 링크로 요청되어 거부했습니다 (이 파일은 링크로 나갈 수 없습니다)` | F-65 겹 방어 — 링크는 만들 수 없어 보통 닿지 않지만, 닿으면 404 와 함께 기록한다(actor 없음) |
 | `share.create|deny|exec_content` | `{actor} 이(가) 실행 파일이 든 압축본 「{target}」 의 공유 링크를 만들려 해서 거부했습니다 (이 파일은 링크로 나갈 수 없습니다)` | F-65 |
 | `file.update|deny|exec_content` | `{actor} 이(가) 실행 파일이 든 압축본 「{target}」 의 접근 등급을 바꾸려 해서 거부했습니다 (admin-only 로 고정됩니다)` | F-65 |
 | `file.upload|deny|nested_zip` | `{actor} 이(가) 올린 「{target}」 안에 압축 파일이 여러 겹 겹쳐 있어 거부했습니다` | F-53 `Upload::inspectContent` (ARCH 5.27) |

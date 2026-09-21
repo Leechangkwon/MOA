@@ -85,6 +85,7 @@ $sqlFind = <<<'SQL'
            f.access_level,
            f.sha256,
            f.scan_status,
+           f.exec_content,
            f.deleted_at,
            f.purged_at
       FROM share_links s
@@ -140,6 +141,26 @@ if ($link['deleted_at'] !== null || $link['purged_at'] !== null) {
     $rejectShare('file_gone', $target, $detail);
 }
 
+/* ─── ⑤-0 F-65 실행 파일이 든 압축본 (ARCH 5.29 「받기」 표, **겹 방어**) ─────
+ *
+ * 이 갈래에는 닿을 일이 없다 — `share_create.php` 가 그런 파일의 링크를 만들지 못하게
+ * 막고, `exec_content` 는 업로드 트랜잭션에서만 참이 되며 다시 거짓이 되지 않는다.
+ * 그래도 검사 순서에 한 줄을 둔다: 링크를 만드는 쪽의 규칙이 언젠가 바뀌더라도
+ * **받는 쪽이 스스로 성립**해야 한다(다운로드·미리보기 핸들러가 라우트 표와 무관하게
+ * UUID 형태를 다시 보는 것과 같은 이유).
+ *
+ * 응답은 다른 실패와 같은 **404 통일 문구**다 (ARCH 5.29 「받기」 표).
+ *
+ * 감사는 `share.download deny exec_content` 로 남는다 (ARCH 7.4, 2026-09-21 Fable 추가).
+ * 다른 실패와 **같은 `$rejectShare`** 를 쓰므로 「조회 잠금 해제(rollback) → 기록 → 404」
+ * 순서가 한 곳에서 지켜진다. 받는 쪽에는 로그인한 사람이 없어 actor 가 비고(문장 틀에
+ * {actor} 가 없는 이유), 「누가 열어 줬나」는 detail 의 `issued_by`·`share_id` 가 답한다
+ * (ARCH 5.12 · 7.5).
+ */
+if ($link['exec_content'] === true) {
+    $rejectShare('exec_content', $target, $detail);
+}
+
 /* ─── ⑤-1 F-54 검사 상태 관문 (ARCH 5.28, PRD F-54 ③) ──────────
  *
  * 검사 전(`pending`)·격리(`infected`) 파일은 **링크가 유효해도** 나가지 않는다.
@@ -161,7 +182,7 @@ if ($scan !== 'clean') {
         'detail' => $detail + ['scan_status' => $scan],
     ]);
     // F-57: 격리(`infected`)는 **영구** 거부라 403, 검사 중(`pending`)은 곧 풀리는
-    // **일시** 상태라 423 + `Retry-After`. 네 창구가 이 두 줄로 똑같다 (ARCH 5.28).
+    // **일시** 상태라 423 + `Retry-After`. 다섯 창구(F-65 exec-download 포함)가 이 두 줄로 똑같다 (ARCH 5.28).
     if ($scan === 'infected') {
         Http::error(403, Http::MSG_SCAN_INFECTED);
     }

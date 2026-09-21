@@ -57,7 +57,8 @@ $sqlFind = <<<'SQL'
            f.team_id,
            f.uploaded_by,
            f.sha256,
-           f.size_bytes
+           f.size_bytes,
+           f.exec_content
       FROM files f
      WHERE f.public_id = CAST(:pid AS uuid)
        AND f.deleted_at IS NULL
@@ -97,6 +98,18 @@ if (!$mayRead) {
 if (!$mayEdit) {
     Audit::deny('share.create', $editCode, $auditTarget + ['detail' => $auditWhat]);
     Http::error(403, Http::MSG_FORBIDDEN);
+}
+
+/* ─── [권한 ✔ 3] F-65 실행 파일이 든 압축본은 링크로 나가지 않는다 (ARCH 5.29 「받기」 표) ───
+ *
+ * 공유 링크는 **로그인하지 않은 사람이 OTP 없이 받는 길**이다. 그 길을 열면 F-65 의 전제
+ * (받는 사람은 언제나 Admin 이고 요청마다 2단계 코드를 친다)가 통째로 무너진다.
+ * 자리는 `decideEdit` **뒤** — 그 파일을 고칠 수 없는 사람에게는 이 파일이 어떤 종류인지
+ * 알려 주지 않는다(403 이 먼저 끝낸다). 응답은 400 통일 문구이고 사유는 감사에만 남는다.
+ */
+if ($file['exec_content'] === true) {
+    Audit::deny('share.create', 'exec_content', $auditTarget + ['detail' => $auditWhat]);
+    Http::error(400, Http::MSG_BAD_REQUEST);
 }
 
 // ─── [3] 값 검증 — 사유는 감사 로그에만, 사용자에게는 같은 400 문구 ───

@@ -78,6 +78,7 @@ $sqlFind = <<<'SQL'
            f.description,
            f.sha256,
            f.size_bytes,
+           f.exec_content,
            cardinality(f.sensitive_flags) > 0 AS has_sensitive
       FROM files f
      WHERE f.public_id = CAST(:pid AS uuid)
@@ -122,6 +123,22 @@ if (!$mayRead) {
 if (!$mayEdit) {
     Audit::deny('file.update', $editCode, $auditTarget + ['detail' => $auditWhat]);
     Http::error(403, Http::MSG_FORBIDDEN);
+}
+
+/* ─── [권한 ✔ 3] F-65 — 실행 파일이 든 압축본의 **등급은 고정**이다 (ARCH 5.29 「받기」 표) ───
+ *
+ * `admin-only` 를 내리는 순간 「받는 사람은 언제나 Admin(= 2단계 인증 필수)」 이라는 F-65 의
+ * 전제가 무너진다. 그래서 `access_level` 키가 **있기만 하면** 값이 무엇이든 거부한다 —
+ * 지금과 같은 값이어도 마찬가지다. 「같으면 통과」를 만들면 그 비교가 한 줄 더 생기고,
+ * 그 한 줄이 언젠가 어긋나는 자리가 된다(단순한 쪽을 고른다).
+ * `description`·`folder_id`·`team_id` 는 그대로 바꿀 수 있다 — 등급과 상관없는 값이다.
+ *
+ * 자리는 `decideEdit` **뒤** · 값 검증 **앞**이다: 고칠 수 없는 사람에게는 이 파일이 어떤
+ * 종류인지 알려 주지 않고(403 이 먼저), 형식 오류보다 먼저 이 사실을 기록한다.
+ */
+if ($file['exec_content'] === true && array_key_exists('access_level', $body)) {
+    Audit::deny('file.update', 'exec_content', $auditTarget + ['detail' => $auditWhat]);
+    Http::error(400, Http::MSG_BAD_REQUEST);
 }
 
 // ─── [4] 값 검증 — 업로드와 같은 규칙 ─────────────────────────

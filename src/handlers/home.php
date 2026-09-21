@@ -431,6 +431,57 @@ require __DIR__ . '/../views/shell_top.php';
       </div>
     </dialog>
 
+    <!-- ─── 확인 다운로드 모달 (F-65 — PRD F-65 ③, ARCH 5.29 「받기」 표) ───────
+         「실행 파일이 든 압축본」(목록의 exec_content)을 받는 유일한 길이다. 보통 다운로드는
+         그 파일에 대해 403 이고, 여기서 **요청마다** 비밀번호와 2단계 코드를 다시 넣는다.
+
+         **여기에도 값이 하나도 적혀 있지 않다** — 파일명·올린 사람·올린 날짜는 app.js 가
+         목록 응답에서 받아 textContent 로만 넣는다 (PRD S-03).
+
+         비밀번호·코드는 이 폼에만 있고 어디에도 저장되지 않는다: 창이 닫히면 app.js 가
+         값을 지우고, 서버는 읽은 직후 unset 한다(PRD 7.7). autocomplete="off" 와
+         `name` 없는 input 이라 브라우저 저장소에도 남지 않는다. -->
+    <dialog id="exec-download-dialog" class="modal modal--form" aria-labelledby="exec-dl-title">
+      <div class="modal__head">
+        <span class="preview__mark"><span class="icon" data-icon="download"></span></span>
+        <div class="preview__headtext">
+          <h2 class="modal__title" id="exec-dl-title">실행 파일이 든 압축본 받기</h2>
+          <div class="modal__meta"><span id="exec-dl-file"></span></div>
+        </div>
+        <button id="exec-dl-x" class="btn btn--icon" type="button" title="닫기" aria-label="닫기">
+          <span class="icon" data-icon="x"></span>
+        </button>
+      </div>
+
+      <div class="modal__body">
+        <p class="upload-exec__warn">
+          이 압축본 안에는 <strong>실행 파일</strong>이 들어 있습니다. 관리자가 내용을 확인하고
+          올린 파일이지만, 받은 뒤 여는 것은 여러분의 PC 에서 일어나는 일입니다 —
+          보낸 사람과 용도를 알고 있을 때만 받으세요.
+        </p>
+        <dl class="exec-dl__meta">
+          <dt>올린 사람</dt><dd id="exec-dl-uploader"></dd>
+          <dt>올린 날짜</dt><dd id="exec-dl-created"></dd>
+        </dl>
+        <form id="exec-dl-form" class="form form--grid" autocomplete="off">
+          <label class="field">
+            <span class="field__label">비밀번호</span>
+            <input id="exec-dl-password" type="password" maxlength="1024" autocomplete="off" required>
+          </label>
+          <label class="field">
+            <span class="field__label">2단계 인증 코드 (6자리)</span>
+            <input id="exec-dl-otp" type="text" inputmode="numeric" pattern="[0-9]{6}" maxlength="6" autocomplete="off" required>
+          </label>
+          <button id="exec-dl-submit" class="btn" type="submit">확인하고 받기</button>
+        </form>
+      </div>
+
+      <div class="modal__foot">
+        <p id="exec-dl-msg" class="msg" role="alert" aria-live="polite"></p>
+        <button id="exec-dl-close" class="btn btn--quiet" type="button">닫기</button>
+      </div>
+    </dialog>
+
     <!-- ─── 미리보기 모달 (PRD F-18, ARCH 5.8) ──────────────────────────────
          **여기에는 값이 하나도 적혀 있지 않다.** 파일명·크기·등급·팀·올린 사람·시각·형식·
          sha256·본문은 전부 app.js 가 서버 응답(GET /api/files/{id}/preview)에서 받아

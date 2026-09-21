@@ -74,6 +74,12 @@ const TBOX_ROUTES = [
     //   **의도를 드러내기 위해** `/api/files/{id}` 계열보다 위에 둔다.
     ['POST',   '/api/files/fetch',         'files_fetch.php',    'file.fetch'],
     ['GET',    '/api/files/{id}/download', 'files_download.php', 'file.read'],
+    // F-65 — 「실행 파일이 든 압축본」 받기 (PRD F-65 ③, ARCH 5.29 「받기」 표, API.md 9-1).
+    //   정책은 다운로드와 **같은** file.read 이고, 그 파일을 받을 수 있는지는 핸들러가
+    //   decideRead 로 다시 판단한 뒤 **요청마다** 비밀번호·2단계 코드를 확인한다.
+    //   ★ `TBOX_API_TOKEN_ROUTES` 에 넣지 않는다 — 프로그램은 2단계 코드를 칠 수 없다.
+    //     그래서 X-API-Token 헤더는 이 창구에서 읽히지도 않고, 토큰만 있는 요청은 401 이다.
+    ['POST',   '/api/files/{id}/exec-download', 'files_exec_download.php', 'file.read'],
     // 12-2 — 미리보기 (PRD F-18, 8장 API 표 `/preview`·`/preview/raw` 행, ARCH 5.8).
     //   정책은 다운로드와 **같은** file.read 다 — 미리보기는 읽기의 다른 모양일 뿐이고,
     //   그 파일을 볼 수 있는지는 핸들러가 decideRead 로 다시 판단한다(다운로드와 같은 코드 경로).

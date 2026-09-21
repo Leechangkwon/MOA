@@ -491,7 +491,7 @@ expect "Http.php 에 두 상수" "2" \
   "$(grep -c '^    public const MSG_SCAN_' "$ROOT/src/Http.php")"
 expect "핸들러의 파일 최상위 const MSG_SCAN_* 0건" "0" \
   "$(grep -rc '^const MSG_SCAN_' "$ROOT/src/handlers/" 2>/dev/null | awk -F: '{n+=$2} END{print n+0}')"
-expect "네 창구가 Http::MSG_SCAN_* 를 쓴다" "4" \
+expect "다섯 창구가 Http::MSG_SCAN_* 를 쓴다 (F-65 exec-download 포함)" "5" \
   "$(grep -rl 'Http::MSG_SCAN_' "$ROOT/src/handlers/" | wc -l)"
 
 sub "php -l · bash -n"

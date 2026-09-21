@@ -34,8 +34,32 @@ declare(strict_types=1);
  * 실패는 예외로 알린다. 예외 메시지는 **감사 로그용 사유 코드**이며 사용자에게 보이지 않는다
  * (핸들러가 Audit::deny 의 reason 으로만 쓰고, 응답은 Http::MSG_BAD_REQUEST 하나다).
  */
+/**
+ * zip 안에서 **차단 확장자 항목**이 나왔을 때 던지는 예외 (F-65, ARCH 5.29).
+ *
+ * 왜 새 클래스인가 — 화면의 확인 블록이 「무엇이 걸렸나」(항목 이름)를 보여 줘야 하는데,
+ * 기존 `RuntimeException('zip_blocked_entry')` 는 사유 코드 한 줄뿐이라 이름을 실어 나를
+ * 자리가 없다. 그래서 **메시지는 그대로 두고**(`zip_blocked_entry`) 이름 목록만 더한다 —
+ * 기존 `catch (RuntimeException $e) { $e->getMessage() }` 흐름은 한 글자도 바뀌지 않는다
+ * (`UploadBlockedEntries` 는 `RuntimeException` 이므로 같은 catch 에 잡히고 같은 사유가 된다.
+ *  F-53 회귀 `tests/f53.sh` 가 그것을 증명한다).
+ *
+ * `entries` 는 **이름뿐**이다 — 항목의 내용은 한 바이트도 읽지 않는다 (ARCH 5.27).
+ */
+final class UploadBlockedEntries extends RuntimeException
+{
+    /** @param list<string> $entries zip 안에서 걸린 항목 이름 전부 (순서는 중앙 디렉터리 순서) */
+    public function __construct(public readonly array $entries)
+    {
+        parent::__construct('zip_blocked_entry');
+    }
+}
+
 final class Upload
 {
+    /** 감사·응답에 싣는 차단 항목 이름의 최대 개수 (ARCH 5.29 ③⑤ 「≤ 20」) */
+    public const EXEC_ENTRIES_MAX = 20;
+
     /** 허용 확장자 화이트리스트 — PRD 7.6 S-06 표 그대로 */
     public const ALLOWED_EXT = [
         'pdf', 'docx', 'xlsx', 'pptx', 'hwp', 'hwpx',
@@ -137,9 +161,13 @@ final class Upload
      * 일일 총량(checkDailyQuota)은 권한·검증을 통과한 뒤 핸들러가 INSERT 직전에 부른다.
      *
      * @param array<string,mixed> $file $_FILES['file'] 한 건
-     * @return array{ext:string,mime:string,size:int,sha256:string}
+     * @param bool $allowBlockedEntries F-65 (ARCH 5.29 ⑤) — 참이면 zip 안의 **차단 확장자 항목**만
+     *        거부하지 않고 이름을 모아 반환값 `exec_entries` 에 싣는다. 나머지 검사(경로 탈출·
+     *        중첩·압축 폭탄·매크로·MIME·크기·확장자)는 **그대로 던진다**. 기본값 거짓이 지금까지의
+     *        모든 업로드이고, 참으로 부를 수 있는 자리는 `_upload_common.php` 의 ⑤ 갈래 하나뿐이다.
+     * @return array{ext:string,mime:string,size:int,sha256:string,exec_entries?:list<string>}
      */
-    public static function validate(array $file): array
+    public static function validate(array $file, bool $allowBlockedEntries = false): array
     {
         $error = $file['error'] ?? null;
         if (!is_int($error)) {
@@ -161,7 +189,7 @@ final class Upload
 
         $name = $file['name'] ?? null;
 
-        return self::validatePath($tmp, is_string($name) ? $name : '');
+        return self::validatePath($tmp, is_string($name) ? $name : '', $allowBlockedEntries);
     }
 
     /**
@@ -178,9 +206,12 @@ final class Upload
      * 규칙을 한 함수에 둔 이유: 갈라 두면 언제 한쪽만 고쳐진다. 그때 **URL 가져오기가
      * 업로드 하드닝을 우회하는 두 번째 입구**가 된다 (ARCH 5.6 [8] 표).
      *
-     * @return array{ext:string,mime:string,size:int,sha256:string}
+     * @param bool $allowBlockedEntries F-65 — validate() 의 같은 이름 인자를 그대로 내려받는다.
+     *        URL 가져오기(`files_fetch.php`)는 이 인자를 **넘기지 않는다** — 가져오기 입구에는
+     *        F-65 예외가 없다(ARCH 5.29 ① · 「바뀌지 않는 것」).
+     * @return array{ext:string,mime:string,size:int,sha256:string,exec_entries?:list<string>}
      */
-    public static function validatePath(string $tmpPath, string $originalName): array
+    public static function validatePath(string $tmpPath, string $originalName, bool $allowBlockedEntries = false): array
     {
         if ($tmpPath === '' || !is_file($tmpPath)) {
             throw new RuntimeException('size_unreadable');
@@ -201,19 +232,26 @@ final class Upload
 
         $ext  = self::checkExtension($originalName);
         $mime = self::checkMime($tmpPath, $ext);
-        self::inspectContent($tmpPath, $ext, (int) $size);   // F-53 — 속 검사 (ARCH 5.27). 실패는 사유 코드 예외
+        // F-53 — 속 검사 (ARCH 5.27). 실패는 사유 코드 예외.
+        // F-65 — 참으로 불렀으면 차단 항목 이름이 돌아온다(거부되지 않은 것들). 거짓이면 언제나 빈 배열이다.
+        $execEntries = self::inspectContent($tmpPath, $ext, (int) $size, $allowBlockedEntries);
 
         $sha256 = hash_file('sha256', $tmpPath);
         if ($sha256 === false) {
             throw new RuntimeException('hash_failed');
         }
 
-        return [
+        $out = [
             'ext'    => $ext,
             'mime'   => $mime,
             'size'   => (int) $size,
             'sha256' => $sha256,
         ];
+        if ($allowBlockedEntries) {
+            // 키는 참으로 부른 경우에만 붙는다 — 기존 호출자의 반환 배열은 한 글자도 바뀌지 않는다.
+            $out['exec_entries'] = $execEntries;
+        }
+        return $out;
     }
 
     /**
@@ -381,17 +419,23 @@ final class Upload
      *
      * 갈래에 없는 확장자(txt·csv·md·png·jpg·jpeg·gif)는 **아무것도 하지 않는다** —
      * 이 형식들은 컨테이너가 아니라서 「속」이라 할 것이 없고, 겉 검사(확장자·MIME 짝)가 끝이다.
+     *
+     * @param bool $allowBlockedEntries F-65 (ARCH 5.29) — zip 갈래에만 뜻이 있다.
+     * @return list<string> 차단 확장자 항목의 이름 (모으지 않았으면 빈 배열)
      */
-    private static function inspectContent(string $tmpPath, string $ext, int $fileSize): void
-    {
+    private static function inspectContent(
+        string $tmpPath,
+        string $ext,
+        int $fileSize,
+        bool $allowBlockedEntries = false
+    ): array {
         if (in_array($ext, self::ZIP_LIKE_EXT, true)) {
-            self::inspectZip($tmpPath, $ext, $fileSize);
-            return;
+            return self::inspectZip($tmpPath, $ext, $fileSize, $allowBlockedEntries);
         }
 
         if ($ext === 'pdf') {
             self::inspectPdf($tmpPath, $fileSize);
-            return;
+            return [];
         }
 
         if ($ext === 'hwp') {
@@ -405,6 +449,8 @@ final class Upload
                 self::inspectHwpOle($tmpPath);
             }
         }
+
+        return [];
     }
 
     /**
@@ -415,10 +461,29 @@ final class Upload
      *
      * 사유 코드: `zip_unreadable` · `zip_bad_path` · `zip_blocked_entry` · `nested_zip` · `zip_bomb`
      * (OOXML 이면 `macro_found` 도 여기서 난다 — ②).
+     *
+     * ★ F-65 (ARCH 5.29) — 차단 확장자 항목의 처리만 두 갈래다.
+     *   · 이름 검사에 걸리면 **그 자리에서 던지지 않고 목록에 모으고 계속** 훑는다.
+     *     화면의 확인 블록이 「무엇이 걸렸나」를 전부 보여 줘야 하기 때문이다 —
+     *     첫 항목만 알려 주면 관리자는 확인 → 다시 걸림을 반복하게 된다.
+     *   · 루프가 끝난 뒤, `$allowBlockedEntries` 가 **거짓이고** 목록이 비어 있지 않으면
+     *     `UploadBlockedEntries`(= 메시지 `zip_blocked_entry`)를 던진다. 참이면 목록을 돌려준다.
+     *   · **경로 탈출(`zip_bad_path`)·중첩(`nested_zip`)·압축 폭탄(`zip_bomb`)·매크로
+     *     (`macro_found`)·읽기 실패(`zip_unreadable`)는 만나는 즉시 던진다** — 그 다섯에는
+     *     예외가 없다(ARCH 5.29 「바뀌지 않는 것」). 그러므로 폭탄 zip 안에 `.php` 가 있어도
+     *     사용자는 `zip_bomb` 으로 먼저 막히고 F-65 확인 창은 열리지 않는다.
+     *
+     * @return list<string> 차단 확장자 항목의 이름 (던지지 않고 통과한 경우에만 값이 있다)
      */
-    private static function inspectZip(string $tmpPath, string $ext, int $fileSize): void
-    {
+    private static function inspectZip(
+        string $tmpPath,
+        string $ext,
+        int $fileSize,
+        bool $allowBlockedEntries = false
+    ): array {
         $isOoxml = isset(self::OOXML_MARKERS[$ext]);
+        /** @var list<string> $blocked  이름 검사에 걸린 항목 (이름뿐, 내용은 읽지 않는다) */
+        $blocked = [];
 
         $zip = new ZipArchive();
         if ($zip->open($tmpPath, ZipArchive::RDONLY) !== true) {
@@ -472,7 +537,10 @@ final class Upload
                 $entryExt = $dot === false ? '' : substr($leaf, $dot + 1);
 
                 if ($entryExt !== '' && in_array($entryExt, self::BLOCKED_EXT, true)) {
-                    throw new RuntimeException('zip_blocked_entry');
+                    // F-65 — 모으기만 하고 계속 훑는다. 던지는 자리는 루프 **뒤**다.
+                    // 이름은 정규화한 경로(`$norm`) 그대로 — 화면이 textContent 로만 넣는다.
+                    $blocked[] = $norm;
+                    continue;
                 }
 
                 if ($entryExt === 'zip') {
@@ -499,6 +567,14 @@ final class Upload
                 }
             }
 
+            /* F-65 — 차단 항목의 **유일한** 던지는 자리 (ARCH 5.29).
+             * 자리가 압축 폭탄 총계 검사보다 **앞**인 이유: 지금까지는 첫 차단 항목에서
+             * 루프 안에서 던졌으므로 총계 검사에 닿지 않았다. 같은 파일이 같은 사유로
+             * 거부되게 하려면(회귀 f53.sh) 순서를 그대로 지켜야 한다. */
+            if (!$allowBlockedEntries && $blocked !== []) {
+                throw new UploadBlockedEntries($blocked);
+            }
+
             // 압축 폭탄 — 푼 뒤의 총 크기, 그리고 압축비
             if ($total > self::ZIP_TOTAL_MAX) {
                 throw new RuntimeException('zip_bomb');
@@ -510,6 +586,8 @@ final class Upload
         } finally {
             $zip->close();
         }
+
+        return $blocked;
     }
 
     /**

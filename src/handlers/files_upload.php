@@ -47,10 +47,31 @@ require_once __DIR__ . '/_upload_common.php';
  *                                 다시 올려야 하는지 알 수 없다 — Http 상수 주석)
  *   그 밖의 400                 「잘못된 요청입니다」
  *
+ * ★ F-65 (2026-09-21, ARCH 5.29 「올리기」 표) — 네 번째 갈래가 생겼다:
+ *   `$exec['action']` 이 있으면 감사 action 이 `file.upload_exec` 이고, 그중
+ *   `exec_ack_required` 하나만 **통일 문구가 아닌** 응답을 낸다
+ *   (`next:"exec_ack"` + 차단 항목 이름 — 화면이 이 응답으로 확인 블록을 편다).
+ *   나머지(`bad_credentials`·`bad_code`·`code_reused`)는 400 통일 문구이고,
+ *   `mfa_not_enabled` 는 403 통일 문구다 — 「비밀번호가 틀렸나 코드가 틀렸나」를
+ *   응답으로 갈라 주지 않는다 (로그인 창구와 같은 원칙, PRD S-09-5).
+ *   `$exec` 가 비어 있으면 **F-49 이전과 한 글자도 같다**.
+ *
  * @param array<string,mixed> $entry 감사 엔트리 (공통 함수가 만든 것을 그대로 남긴다)
+ * @param array{action?:string,entries?:list<string>} $exec F-65 갈래에서만 채워진다
  */
-$reject = static function (string $reason, int $status, array $entry): void {
-    Audit::deny('file.upload', $reason, $entry);
+$reject = static function (string $reason, int $status, array $entry, array $exec = []): void {
+    Audit::deny(isset($exec['action']) ? (string) $exec['action'] : 'file.upload', $reason, $entry);
+
+    if ($reason === 'exec_ack_required') {
+        // 이름은 서버가 zip 중앙 디렉터리에서 읽은 **문자열 그대로**다. 화면은 textContent
+        // 로만 넣으므로 어떤 문자가 들어 있어도 글자로만 보인다 (PRD S-03).
+        Http::json([
+            'error'   => Http::MSG_EXEC_ACK_REQUIRED,
+            'next'    => 'exec_ack',
+            'entries' => $exec['entries'] ?? [],
+        ], 400);
+        exit;
+    }
 
     if ($status === 403) {
         Http::error(403, Http::MSG_FORBIDDEN);

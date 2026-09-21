@@ -119,6 +119,18 @@ final class Audit
          */
         'otp_verified',
         /*
+         * F-65 실행 파일이 든 압축본 (PRD F-65, ARCH 5.29 · 7.5 등록부).
+         *   exec_ack         — 확인 문구를 받았다는 **사실**(true)만. 문구 원문도 체크 시각도 아니다
+         *   exec_entry_count — zip 안에서 이름 검사에 걸린 항목의 **개수**(정수)
+         *   exec_entries     — 그 항목들의 **이름**(≤ 20). 이름뿐이고 내용은 한 바이트도 들어가지 않는다
+         *                      (ARCH 5.27 — 검사 자체가 중앙 디렉터리의 이름만 본다)
+         * 셋 다 오늘의 FORBIDDEN_DETAIL_KEYS 부분 일치에는 걸리지 않지만, 등록부에 있는 키임을
+         * 코드에서도 드러내려고 여기 적는다(preview_kind·part 와 같은 이유).
+         * ★ 같은 요청에 실린 **비밀번호·2단계 코드 값은 어떤 키로도 들어가지 않는다** —
+         *   `otp_verified: true`(바로 위 17-2 키)가 「확인했다」는 사실을 대신한다 (PRD 7.7).
+         */
+        'exec_ack', 'exec_entry_count', 'exec_entries',
+        /*
          * 19~25단계의 모듈이 넣었던 키 묶음 — 2026-09-21 (F-64) 에 그 모듈을 지우면서
          * **남는 코드가 더는 쓰지 않는 이름만** 함께 지웠다. 아래 열 개는 t-box 본체가 계속 쓰므로
          * 남긴다 (등록부 = ARCH 7.5).
@@ -255,6 +267,33 @@ final class Audit
         'file.upload|deny|zip_unreadable'         => '{actor} 이(가) 올린 「{target}」 의 압축 파일 구조를 읽을 수 없어 거부했습니다',
         'file.upload|deny|zip_bad_path'           => '{actor} 이(가) 올린 압축 파일 「{target}」 안에 경로를 벗어나는 항목이 있어 거부했습니다',
         'file.upload|deny|zip_blocked_entry'      => '{actor} 이(가) 올린 압축 파일 「{target}」 안에 실행 파일이 들어 있어 거부했습니다',
+
+        /* F-65 실행 파일이 든 압축본 — ARCH 7.4 표의 16행을 **글자 그대로** 옮긴 것이다
+         * (PRD F-65, ARCH 5.29). 새 action 둘(`file.upload_exec`·`file.download_exec`)과
+         * 기존 action 의 새 사유 넷(`file.download` 둘 · `share.create` · `file.update`). */
+        'file.upload_exec|allow'                  => '{actor} 이(가) 실행 파일이 든 압축본 「{target}」 을(를) 내용을 확인했다고 밝히고 비밀번호·2단계 코드를 다시 확인한 뒤 admin-only 등급으로 올렸습니다 (항목 수는 상세 기록)',
+        'file.upload_exec|deny|exec_ack_required' => '{actor} 이(가) 실행 파일이 든 압축본 「{target}」 을(를) 확인 절차 없이 올리려 해서 확인을 요청했습니다',
+        'file.upload_exec|deny|bad_credentials'   => '{actor} 이(가) 실행 파일이 든 압축본 「{target}」 을(를) 올리며 비밀번호를 틀려 거부했습니다',
+        'file.upload_exec|deny|bad_code'          => '{actor} 이(가) 실행 파일이 든 압축본 「{target}」 을(를) 올리며 2단계 인증 코드를 틀려 거부했습니다',
+        'file.upload_exec|deny|code_reused'       => '{actor} 이(가) 실행 파일이 든 압축본 「{target}」 을(를) 올리며 이미 쓴 2단계 인증 코드를 다시 보내 거부했습니다',
+        'file.upload_exec|deny|mfa_not_enabled'   => '{actor} 이(가) 2단계 인증이 꺼진 상태로 실행 파일이 든 압축본 「{target}」 을(를) 올리려 해서 거부했습니다',
+        'file.download_exec|allow'                => '{actor} 이(가) 실행 파일이 든 압축본 「{target}」 을(를) 비밀번호·2단계 코드를 다시 확인한 뒤 내려받았습니다',
+        'file.download_exec|deny|bad_credentials' => '{actor} 이(가) 실행 파일이 든 압축본 「{target}」 을(를) 받으며 비밀번호를 틀려 거부했습니다',
+        'file.download_exec|deny|bad_code'        => '{actor} 이(가) 실행 파일이 든 압축본 「{target}」 을(를) 받으며 2단계 인증 코드를 틀려 거부했습니다',
+        'file.download_exec|deny|code_reused'     => '{actor} 이(가) 실행 파일이 든 압축본 「{target}」 을(를) 받으며 이미 쓴 2단계 인증 코드를 다시 보내 거부했습니다',
+        'file.download_exec|deny|mfa_not_enabled' => '{actor} 이(가) 2단계 인증이 꺼진 상태로 실행 파일이 든 압축본 「{target}」 을(를) 받으려 해서 거부했습니다',
+        'file.download_exec|deny|bad_request'     => '{actor} 이(가) 실행 파일 확인 절차를 허용되지 않는 형식으로 요청하거나 실행 파일이 아닌 파일에 요청해서 거부했습니다',
+        /* 미리보기 두 창구(`/preview`·`/preview/raw`)도 이 **같은 문장**을 쓴다 — ARCH 7.4 의
+         * F-65 표에는 `file.preview|deny|exec_ack_required` 행이 없고 「미리보기 두 창구도 같은
+         * 문장」이라고만 적혀 있다. 그래서 두 핸들러의 F-65 관문만 action 을 `file.download` 로
+         * 남긴다(그 파일들의 다른 거부는 지금처럼 `file.preview` 그대로다). */
+        'file.download|deny|exec_ack_required'    => '{actor} 이(가) 실행 파일이 든 압축본 「{target}」 을(를) 확인 절차 없이 받으려 해서 확인을 요청했습니다',
+        'file.download|deny|exec_content_token'   => '{actor} 이(가) 프로그램 토큰으로 실행 파일이 든 압축본 「{target}」 을(를) 받으려 해서 거부했습니다 (이 파일은 사람이 2단계 코드를 넣어야 받을 수 있습니다)',
+        'share.create|deny|exec_content'          => '{actor} 이(가) 실행 파일이 든 압축본 「{target}」 의 공유 링크를 만들려 해서 거부했습니다 (이 파일은 링크로 나갈 수 없습니다)',
+        /* 겹 방어 — 링크는 만들 수 없어 보통 닿지 않지만, 닿으면 404 와 함께 기록한다.
+         * 받는 쪽에는 로그인한 사람이 없어 문장에 {actor} 가 없다(share.download 의 다른 행과 같다). */
+        'share.download|deny|exec_content'        => '실행 파일이 든 압축본 「{target}」 이(가) 공유 링크로 요청되어 거부했습니다 (이 파일은 링크로 나갈 수 없습니다)',
+        'file.update|deny|exec_content'           => '{actor} 이(가) 실행 파일이 든 압축본 「{target}」 의 접근 등급을 바꾸려 해서 거부했습니다 (admin-only 로 고정됩니다)',
         'file.upload|deny|nested_zip'             => '{actor} 이(가) 올린 「{target}」 안에 압축 파일이 여러 겹 겹쳐 있어 거부했습니다',
         'file.upload|deny|zip_bomb'               => '{actor} 이(가) 올린 「{target}」 은(는) 압축을 풀면 지나치게 커지거나 항목이 너무 많아(압축 폭탄 의심) 거부했습니다',
         'file.upload|deny|macro_found'            => '{actor} 이(가) 올린 문서 「{target}」 에 매크로가 들어 있어 거부했습니다',

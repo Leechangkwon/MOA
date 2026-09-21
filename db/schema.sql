@@ -136,6 +136,12 @@ CREATE TABLE files (
     team_id       BIGINT      REFERENCES teams(id),
     uploaded_by   BIGINT      NOT NULL REFERENCES users(id),
     scan_status   TEXT        NOT NULL DEFAULT 'clean' CHECK (scan_status IN ('pending','clean','infected')),
+    -- F-65 (ARCH 5.29) — 실행 파일이 든 압축본을 관리자가 확인 문구·비밀번호·OTP 로 확인하고
+    -- 올린 파일이면 참. 참이면 공유 링크·프로그램 토큰·미리보기·등급 변경이 막히고, 받을 때도
+    -- 요청마다 비밀번호+OTP 를 묻는다(`POST /api/files/{id}/exec-download`).
+    -- 업로드 트랜잭션에서만 참이 되고 다시 거짓이 되지 않는다.
+    -- (기존 DB 는 db/migrations/2026-09-21_files_exec_content.sql 로 같은 모양이 된다.)
+    exec_content  BOOLEAN     NOT NULL DEFAULT false,
     created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
     deleted_at    TIMESTAMPTZ,                          -- NULL 이면 살아있는 파일
     deleted_by    BIGINT      REFERENCES users(id),

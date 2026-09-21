@@ -1093,6 +1093,80 @@ final class Auth
         return [true, (string) $updated['reauth_until']];
     }
 
+    /**
+     * F-65 helper ① — **지금 이 요청에 실린 비밀번호가 맞나** 만 본다 (ARCH 5.29 「검증 helper」).
+     *
+     * `reauth()` 의 앞부분(`SQL_LOAD_BY_ID` + `password_verify`)과 **같은 규칙**이고,
+     * 다른 점은 셋이다:
+     *   · 세션에 `reauth_at` 을 **놓지 않는다** — F-65 는 「요청마다 확인」이 명세라
+     *     15분 창을 열면 그 창이 곧 우회 경로가 된다 (PRD F-65 ②, ARCH 5.29 ④).
+     *   · 감사·실패 집계(`countFailureAndRevoke`)를 **하지 않는다** — 같은 실패라도
+     *     action 이 부르는 쪽마다 다르다(`file.upload_exec`·`file.download_exec`).
+     *     그래서 「무엇을 하다 틀렸나」를 아는 호출자가 기록한다.
+     *   · 성공해도 실패 카운터를 0 으로 돌리지 않는다 — 이 함수는 상태를 만들지 않는다.
+     *
+     * 비밀번호는 여기서 비교에만 쓰이고 응답·감사·`app.log` 어디에도 남지 않는다 (PRD 7.7).
+     *
+     * @param array<string,mixed> $user 현재 로그인한 사용자 (요청 값이 아니다 — PRD S-01)
+     */
+    public static function verifyCurrentPassword(array $user, string $password): bool
+    {
+        $row = Db::instance()->run(self::SQL_LOAD_BY_ID, [':id' => (int) $user['id']])->fetch();
+        if (!is_array($row)) {
+            return false;
+        }
+        return password_verify($password, (string) $row['password_hash']);
+    }
+
+    /**
+     * F-65 helper ② — **2단계 인증 코드 한 번**을 확인하고 기준선을 올린다 (ARCH 5.29).
+     *
+     * ★ `admin_permissions_update.php` ② 와 **같은 규칙 두 벌**이다 — 같은 규칙이 두 곳에
+     *   있다는 것은 알고 있고, 다음 정리 대상으로 남겨 두었다 (SECURITY R-94 비고).
+     *   이번에 그 파일을 고치지 않는 이유: 권한 매트릭스 편집 창구는 F-65 와 무관한 보안
+     *   핵심 경로이고, 지시서의 허용 목록 밖이다.
+     *
+     * 규칙(그쪽 151~170행과 글자 그대로 같다)
+     *   · `mfa_enabled` 가 참이 아니거나 비밀이 없다 → `'mfa_not_enabled'`
+     *     (코드 추측이 아니므로 **실패로 세지 않는다** — 집계 여부도 호출자가 정한다)
+     *   · `Totp::verifyStep` 이 null → `'bad_code'`
+     *   · 그 스텝을 이미 썼다(`mfa_last_step` 이상) → `'code_reused'` (R-45, RFC 6238 §5.2)
+     *   · 통과 → `markMfaStep` 으로 기준선을 **바로** 올리고 `'ok'`
+     *     맞은 코드는 뒤에서 거부되더라도 다시 쓸 수 없다 — 그래야 1회성이 뜻을 갖는다.
+     *
+     * 코드의 **형식**(`Totp::CODE_RE`, 6자리)은 호출자가 먼저 본다 — 형식 오류와 인증 실패는
+     * 감사 사유가 다르기 때문이다. 코드 값·비밀·스텝 번호는 어디에도 남기지 않는다 (PRD 7.7).
+     *
+     * @param array<string,mixed> $user
+     * @return string `ok` | `mfa_not_enabled` | `bad_code` | `code_reused`
+     */
+    public static function verifyOtpOnce(array $user, string $otp): string
+    {
+        $userId = (int) $user['id'];
+
+        $sqlMfa = <<<'SQL'
+            SELECT mfa_enabled, mfa_secret, mfa_last_step FROM users WHERE id = :id
+            SQL;
+
+        $row = Db::instance()->run($sqlMfa, [':id' => $userId])->fetch();
+        if (!is_array($row) || $row['mfa_enabled'] !== true || !is_string($row['mfa_secret'])) {
+            return 'mfa_not_enabled';
+        }
+
+        $step = Totp::verifyStep((string) $row['mfa_secret'], $otp);
+        if ($step === null) {
+            return 'bad_code';
+        }
+
+        $lastStep = $row['mfa_last_step'] === null ? null : (int) $row['mfa_last_step'];
+        if (self::isMfaStepUsed($lastStep, (int) $step)) {
+            return 'code_reused';
+        }
+
+        self::markMfaStep($userId, (int) $step);
+        return 'ok';
+    }
+
     /** 로그아웃 (PRD F-02): 서버측 세션 행 삭제가 본체이고, 쿠키 삭제는 정리다. */
     public static function logout(): void
     {

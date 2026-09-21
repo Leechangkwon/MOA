@@ -3,7 +3,8 @@ declare(strict_types=1);
 
 /**
  * scripts/alerts.php — 감사 로그를 5분마다 훑어 경보 규칙을 판정한다 (9단계)
- *   PRD 7.11 S-11-A (AL-1 · AL-2 · AL-5 · AL-7 · AL-10 · AL-12 · AL-13 · AL-18 · AL-19 · AL-20 · 서버 층 AL-3 · AL-9)
+ *   PRD 7.11 S-11-A (AL-1 · AL-2 · AL-5 · AL-7 · AL-10 · AL-12 · AL-13 · AL-18 · AL-19 · AL-20 · AL-21 · 서버 층 AL-3 · AL-9)
+ *   실행 파일이 든 압축본 AL-21 (PRD F-65 ⑤ · 7.11, ARCH 5.29 · 11.4 — `file.upload_exec allow` 1건이라도 즉시)
  *   개인 프로그램 토큰 AL-20 (PRD F-59 ⑦, ARCH 4.6 · 11.4 — `api_token.issue allow` 1건이라도 즉시)
  *   악성코드 AL-19 (PRD F-54 ④, ARCH 5.28 · 11.4 — `file.scan deny infected` 1건이라도 즉시)
  *   ARCHITECTURE 11.1 (5분마다 cron) · 11.4 (경보 구성) · 7.4 `alert.raised|allow` · 7.5 `rule`·`evidence`
@@ -702,6 +703,44 @@ if ($want('AL-20')) {
         ]);
     }
     cli_say(sprintf('AL-20 대상 %d명', count($rows)));
+}
+
+// ─────────────────────────────────────────────────────────────
+// AL-21 — 실행 파일이 든 압축본이 들어왔다 (PRD 7.11 · F-65 ⑤, ARCH 5.29 · 11.4, SECURITY R-94)
+//   AL-19·AL-20 과 **같은 형태**다: `file.upload_exec allow` 가 **1건이라도** 있으면 즉시.
+//   건수 임계값이 없는 이유: 이 업로드는 F-53 의 「실행 파일이 든 zip 은 거부」 를 사람의
+//   신원 보증(Admin · admin-only · 요청마다 비밀번호+OTP · 확인 문구)으로 바꾼 갈래다.
+//   확인을 거쳤더라도 **관리자 전원이 알아야** 한다 — 계정을 탈취당했거나 게시자가 속은
+//   경우의 마지막 그물이 이 알림이기 때문이다(R-94 「막지 못하는 것」 ①②).
+//   묶는 단위는 **파일 하나**(target_name) 다 — AL-19 와 같은 이유로, 사람이 할 일
+//   (그 묶음이 정말 그 사람이 만든 것인지 확인)이 파일마다 다르다.
+//   근거에 담는 것: 파일 이름 · 올린 사람 · 차단 항목 수 (PRD 7.11 AL-21 evidence 칸).
+//   ★ 비밀번호도 2단계 코드도 담지 않는다 — 감사 로그에 애초에 없다 (PRD 7.7, ARCH 5.29).
+//   창은 다른 audit_logs 규칙과 맞춰 5분(배치 주기)이고, 중복 억제는 $raise 가 한다.
+// ─────────────────────────────────────────────────────────────
+if ($want('AL-21')) {
+    $rows = $db->run(
+        "SELECT target_name, count(*) AS n,
+                max(actor_name)                      AS actor_name,
+                max(detail->>'exec_entry_count')     AS entry_count,
+                max(happened_at)                     AS last_at
+           FROM audit_logs
+          WHERE action = 'file.upload_exec' AND result = 'allow'
+            AND happened_at > now() - interval '5 minutes'
+          GROUP BY target_name"
+    )->fetchAll();
+    foreach ($rows as $r) {
+        $raise('AL-21', (string) ($r['target_name'] ?? '?'), [
+            'rule_text'        => '실행 파일이 든 압축본이 관리자 확인으로 올라왔다 — 건수와 무관하게 즉시 알린다',
+            'count'            => (int) $r['n'],
+            'file_name'        => (string) ($r['target_name'] ?? ''),
+            'actor_name'       => $r['actor_name'] === null ? '' : (string) $r['actor_name'],
+            'exec_entry_count' => $r['entry_count'] === null ? '' : (string) $r['entry_count'],
+            'window'           => '5 minutes',
+            'last_at'          => (string) $r['last_at'],
+        ]);
+    }
+    cli_say(sprintf('AL-21 대상 %d건', count($rows)));
 }
 
 // ─────────────────────────────────────────────────────────────

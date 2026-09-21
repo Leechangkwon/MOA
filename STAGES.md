@@ -2176,25 +2176,57 @@ sudo -u postgres psql -d tbox_re -c "SELECT happened_at, actor_name, action, res
 > 지시서: `docs/f65-exec-upload-directive.md`. 근거: PRD F-65 · Q-23 · T-77 · 7.6 S-06 예외 행 · 8장 `exec-download` 행 · 7.11 AL-21, ARCH **5.29** · 7.4(16행) · 7.5, SECURITY **R-94**.
 > 배경: F-64 백업 zip 이 F-53 에 걸리자 사용자 「올라갈 수 있도록 하면 되는 것 아니냐」 → 문답 4회(27단계 학습 기록) → 「2차 인증·주의 사항으로 보완」 → 「받는 쪽도 OTP」.
 
-**개발 사항 (① 구현 — Opus)**
-- [ ] `files.exec_content` 열 — 마이그레이션 `2026-09-21_files_exec_content.sql` · `schema.sql` · `install.sh` 4-4-1 감지 목록
-- [ ] `Auth::verifyCurrentPassword` · `Auth::verifyOtpOnce` (새 helper, 세션 창 없음)
-- [ ] `Upload::validate(..., allowBlockedEntries)` + 차단 이름을 담는 예외 · `_upload_common.php` 의 갈래 ①~⑤(ARCH 5.29 표) · `files_upload.php` 의 `next:"exec_ack"` 응답
-- [ ] 받기 관문: `files_download`·`files_preview`·`files_preview_raw`·`share_create`·`share_download`·`files_update` + 새 핸들러 `files_exec_download.php`(`POST /api/files/{id}/exec-download`, `file.read`, 토큰 목록 밖)
-- [ ] `files_list` 에 `exec_content` · 화면(올리기 확인 블록·배지·확인 다운로드 창·공유 숨김·등급 잠금) · `Http` 문구 상수 · `Audit` 문장 16행·키 4개 · `alerts.php` AL-21
-- [ ] `tests/f65.sh` · 문서 보정(ARCH 6.2 행 · API.md 9장 한 줄 · README 사용 안내)
+**개발 사항 (① 구현 — Opus)** — 2026-09-21 Opus 작성 완료(운영 트리 병합 전, 격리 worktree `f65-wip`).
+HTTP 시험(T-77 (a)~(e))은 **미실행** — 운영 DB 에 `files.exec_content` 열이 아직 없어 사용자의
+마이그레이션 실행 뒤에 돈다(배포 순서: 마이그레이션 → 코드).
+- [x] `files.exec_content` 열 — 마이그레이션 `2026-09-21_files_exec_content.sql` · `schema.sql` · `install.sh` 4-4-1 감지 목록 *(임시 DB `tbox_f65_fresh` 로 검증, 운영 DB 는 사용자 실행)*
+- [x] `Auth::verifyCurrentPassword` · `Auth::verifyOtpOnce` (새 helper, 세션 창 없음 — `reauth_at` 을 놓지 않는다)
+- [x] `Upload::validate(..., allowBlockedEntries)` + 차단 이름을 담는 예외 `UploadBlockedEntries` · `_upload_common.php` 의 갈래 ①~⑤(ARCH 5.29 표) · `files_upload.php` 의 `next:"exec_ack"` 응답
+- [x] 받기 관문: `files_download`·`files_preview`·`files_preview_raw`·`share_create`·`share_download`·`files_update` + 새 핸들러 `files_exec_download.php`(`POST /api/files/{id}/exec-download`, `file.read`, 토큰 목록 밖)
+- [x] `files_list` 에 `exec_content`(웹 항목·토큰 간결 배열 둘 다) · 화면(올리기 확인 블록·배지·확인 다운로드 창·공유 숨김·등급 잠금) · `Http::MSG_EXEC_ACK_REQUIRED` · `Audit` 문장 16행·키 3개(`otp_verified` 는 17-2 가 이미 등록) · `alerts.php` AL-21
+- [x] `tests/f65.sh`(`bash -n` 까지 — 실행은 마이그레이션 뒤) · 문서 보정(ARCH 6.2 행 · README 사용 안내 · 이 절)
+- [x] **해소** — `share.download|deny|exec_content` 문장 틀. Fable 이 ARCH 7.4(1865행)에 행을
+      추가했고, Opus 가 `Audit::SUMMARY_TEMPLATES` 에 글자 그대로 옮긴 뒤 `share_download.php`
+      ⑤-0 이 다른 실패와 **같은 `$rejectShare`** 로 「잠금 해제 → 기록 → 404」를 내게 바꿨다.
+- [x] **Fable 핫픽스 (2026-09-21 16:05) — 운영 장애 1건, 되돌리지 말 것.** `_upload_common.php`
+      INSERT 가 `:exec_content` 에 PHP `false` 를 그대로 바인딩해 PDO 가 빈 문자열로 보냈고,
+      PostgreSQL 이 `invalid input syntax for type boolean: ""` 로 거절해 **모든 업로드가 500**
+      이 됐다(15:26~16:05, app.log 15:55:04 request_id 4d82de30, 사용자 피해 0건).
+      고침은 이 저장소 관례(`users_update.php:224·247`) 그대로 — SQL 을 `CAST(:exec_content AS
+      boolean)` 로, 값을 `$execEntries !== null ? 'true' : 'false'` 로. txt·zip 업로드 201 확인.
+      **앞으로 boolean 바인딩은 전부 이 관례를 따른다**(PDO 는 PHP `false` 를 `''` 로 보낸다).
+- [x] **2단계 보정 (Opus, 2026-09-21)** — T-77 첫 실행(통과 76·실패 12·건너뜀 3)에서 나온
+      시험 스크립트 결함 4건과 (e) 화면 시험을 고쳤다: ① 「역할로 보기」 중 admin-only 는
+      400 이 아니라 **403**(`decideUploadAs` 가 F-65 갈래보다 먼저 막는다 — 코드가 맞고 기대가
+      틀렸다) ② 라우트 grep 패턴의 셸 인용 오류 ③ 폴더 id 를 `d['folder']['id']` 에서 읽도록
+      ④ 「비-qa 행 수 불변」을 `actor_name IS NOT NULL` 조건으로(시험이 만든 시스템 행
+      `file.scan`·`alert.raised` 가 사용자 행으로 잡혔다 — 이제 따로 세어 보고만 한다)
+      ⑤ (e) 는 stderr 를 따로 받고 크로미움 실행 파일을 직접 넘기며, 확인 업로드 201 →
+      배지 → 확인 다운로드 창까지 자동으로 본다(코드 1회성은 창을 기다려 넘긴다).
+      **결과: 통과 106 · 실패 0 · 건너뜀 0 (4회차 16:5x, exit 0).**
+      고치는 동안 드러난 것 둘 — 둘 다 **앱이 맞고 시험이 성급했다**:
+      · `SCAN_ENABLED=1` 이면 올린 직후는 `scan_status='pending'` 이라 **모든 받기 창구**가
+        423 다. `addActions` 도 검사 관문을 먼저 보아 「확인하고 받기」 단추 대신 비활성
+        단추를 만든다. F-54 관문이 F-65 보다 앞이라는 뜻이고(ARCH 5.28 → 5.29), 시험은
+        cron 을 기다리는 대신 `scan_pending.php` 를 직접 돌려 `clean` 을 확인한 뒤 묻는다.
+      · 「사용자 데이터 불변」을 **행 개수**로 재면 시험 도중 사용자가 t-box 를 쓸 때
+        거짓 실패가 난다(2회차 864→877, 전부 admin01 본인 작업). 판정은 CLAUDE.md 3장의
+        가름대로 **검토 UA(`tbox-review/…`)로 들어온 비-qa 행이 0건인가**로 바꿨다.
+      또 (c) 의 개인 토큰 귀속을 qa_employee01 → **qa_admin01** 로 바꿨다: 읽을 수 없는
+      계정이면 `decideRead` 가 먼저 막아 **`exec_content_token` 갈래에 닿지 못한다**.
+      이제 API.md 9-1 이 약속한 그 사유가 실제로 기록되는 것까지 확인한다.
 
 **체크 (② 검토 — Fable, T-77)**
 | 항목 | 결과 | 근거 |
 |---|---|---|
-| (a) 올리기 갈래 | ⚠ 대기 | |
-| (b) 예외가 아닌 갈래(직원·internal·역할로 보기·토큰) | ⚠ 대기 | |
-| (c) 받기 관문·exec-download | ⚠ 대기 | |
-| (d) AL-21 | ⚠ 대기 | |
-| (e) 화면 | ⚠ 대기 | |
-| (f) 회귀·린트 | ⚠ 대기 | |
-| (g) 마이그레이션 임시 DB | ⚠ 대기 | |
-| (h) 시험 파일 정리 | ⚠ 대기 | |
+| (a) 올리기 갈래 | ✅ | Fable 재실행 17:06 `tests/f65.sh` 106/0/0 — 확인 없이 400 `next:exec_ack`+항목 2 · 틀린 비밀번호 `bad_credentials` · 틀린 코드 `bad_code` · 201 `file.upload_exec allow`(detail 키 넷, 코드 문자열 0) · 재사용 `code_reused` |
+| (b) 예외가 아닌 갈래(직원·internal·역할로 보기·토큰) | ✅ | 전부 `next` 없음. 「역할로 보기」 admin-only 는 `decideUploadAs` 가 먼저 403(코드가 맞음, 시험 기대 정정). 정상 zip 201 |
+| (c) 받기 관문·exec-download | ✅ | GET 403 `exec_ack_required` · 미리보기 403 · 토큰 GET 403 `exec_content_token`(qa_admin01 토큰) · share 400 · PATCH 등급 400 · folder_id 200 · exec-download 틀린 비밀번호 400 → 맞으면 200, 본문 sha256 = 올린 zip · 보통 파일 400 |
+| (d) AL-21 | ✅ | dry-run 1건 + 실제 `alert.raised AL-21` 3회(감사 로그) |
+| (e) 화면 | ✅ | Playwright 19항목 — 확인 블록·항목 이름 2·체크 없이 요청 0·확인 업로드 201·배지·공유 단추 없음·확인 다운로드 창·콘솔 0. ClamAV `pending` 이면 「검사 중」 단추가 먼저(F-54 관문이 앞, 설계대로) |
+| (f) 회귀·린트 | ✅ | Opus: f53 69/0/3 · api_tokens 70/0/3 · help_button 16/0 · stage26 108/0. Fable 재실행: f54 61/0/2 · api_upload 27/0/0(기대값 드리프트 2건 정정: 「네 창구」→다섯, F-59 뒤 DELETE 는 토큰 창구). 린트 0 · `php -l` · wiki_check 0 |
+| (g) 마이그레이션 임시 DB | ✅ | 1단계 임시 DB 2개 검증(멱등 포함) · 운영 DB 는 사용자가 14:47 실행 |
+| (h) 시험 파일 정리 | ✅ | 살아 있는 `F65-` 파일·토큰·폴더 0, 스모크 파일 2 휴지통, 검토 UA 비-qa 행 0 |
 
 **③ 자기 공격 (사용자)** — 다른 브라우저에서 훔친 쿠키(개발자도구로 복사)로 exec 파일 GET → 403 · 쿠키로 exec-download 를 비밀번호 없이 → 400 · Employee 로 같은 zip 올리기 → 400 에 힌트 없음 · 공유 링크 만들기 → 400 · 등급 내리기 → 400.
 
@@ -2204,6 +2236,10 @@ sudo -u postgres psql -d tbox_re -c "SELECT happened_at, actor_name, action, res
 | 날짜 | 구분 | 내용 | 해소·근거 |
 |---|---|---|---|
 | 2026-09-21 | 결정(Fable) | 「요청마다 OTP」는 F-23 의 15분 창을 쓰지 않고 권한 매트릭스 편집(17-2)의 요청마다 코드 방식을 따른다. 받기는 GET 이 아니라 `POST …/exec-download` 본문에 비밀번호·코드 — GET 쿼리에 비밀번호를 싣지 않기 위해 | ARCH 5.29 · 4.0 · 5.15 |
+| 2026-09-21 | 사고(Fable) | 합친 직후 40분간 **일반 업로드 전부 500** — INSERT 가 PHP `false` 를 그대로 바인딩(PDO → `""`, PostgreSQL boolean 오류). 사용자 피해 0(감사 확인). Fable 이 관례(`CAST(:x AS boolean)`+`'true'/'false'`)로 즉시 고침 | 교훈: 합친 직후 업로드 1건 스모크를 먼저 돈다. Opus 단위 시험이 `validatePath` 만 부르고 INSERT 까지 가지 않아 놓쳤다 |
+| 2026-09-21 | 사고(Fable) | 격리 브랜치를 `git checkout f65-wip -- .` 로 합쳐 **추적 파일 전부**를 덮음 → 디자인 세션(D5)의 미커밋 `app.css` 삭제(그쪽이 복구), 브랜치 갈라진 뒤 main 커밋(R-93 ✅·27단계 행) 되돌아감(HEAD 에서 복원) | 같은 저장소를 세 세션(F-65·디자인·커뮤니티)이 동시에 고친다. 합치기는 hunk 단위(`git apply`), 커밋은 내 줄만(`update-index`), 전후에 다른 세션에 알림 |
+| 2026-09-21 | 어려움(사용자) | 「뭘 이래 오래 걸려」 — 시험이 느림 | OTP 1회성(확인마다 30초 창 대기)·ClamAV 대기·R-73 안전 관문 10분. Fable 이 회귀 재실행을 줄이고 기대값 확인은 직접 즉시 확인으로 대체 |
+| 2026-09-21 | 궁금(사용자) | 「finished 알림이 계속 — 무한 루프 아니냐」 | 루프 아님: Opus 가 자기 백그라운드 시험을 기다릴 때마다 알림이 옴. 감사 로그로 진전 확인(16:54 download_exec allow·16:56 upload_exec allow·16:57 정리) |
 | 2026-09-21 | 결정(Fable) | 등급 변경 금지·공유/토큰 금지는 「받는 사람이 언제나 Admin(=OTP 필수)」 전제를 지키기 위한 것 | ARCH 5.29 받기 표 |
 
 ## 2-1. 10단계 뒤 일괄 자기 공격 — 진행 순서 (관문 ③, 사용자)

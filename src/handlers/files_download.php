@@ -44,7 +44,8 @@ $sqlFind = <<<'SQL'
            f.team_id,
            f.uploaded_by,
            f.sha256,
-           f.scan_status
+           f.scan_status,
+           f.exec_content
       FROM files f
      WHERE f.public_id = CAST(:pid AS uuid)
        AND f.deleted_at IS NULL
@@ -79,6 +80,34 @@ if (!$mayRead) {
     Http::error(403, Http::MSG_FORBIDDEN);
 }
 
+/* ─── [3-5] F-65 실행 파일이 든 압축본 관문 (ARCH 5.29 「받기」 표) ───
+ *
+ * 자리: `decideRead` **뒤** · `scan_status` 관문 **앞**. F-54 관문과 **같은 이유**로 이 자리다 —
+ * 볼 자격이 없는 사람에게는 「그런 파일이 있다」조차 알려 주지 않아야 하고(그래서 권한 뒤),
+ * 저장소에 손대기 전에 끝나야 한다(그래서 무결성 앞).
+ *
+ * 두 갈래다.
+ *   · **토큰**(`TBOX_AUTH_METHOD` 정의됨) → 403 통일 문구. 프로그램은 2단계 코드를 칠 수
+ *     없으므로 「다음에 무엇을 하라」가 없다 — 알려 줄 것도 없다 (API.md 9-1).
+ *   · **세션** → 403 `{error: MSG_EXEC_ACK_REQUIRED, next:"exec_ack"}`. 여기까지 온 사람은
+ *     admin-only 를 읽을 수 있는 Admin 이고, 받는 길(`POST …/exec-download`)이 따로 있다.
+ */
+if ($file['exec_content'] === true) {
+    $execReason = defined('TBOX_AUTH_METHOD') ? 'exec_content_token' : 'exec_ack_required';
+    Audit::deny('file.download', $execReason, [
+        'target_type'  => 'file',
+        'target_id'    => (int) $file['id'],
+        'target_name'  => (string) $file['original_name'],
+        'access_level' => (string) $file['access_level'],
+        'detail'       => $auditWhat,
+    ]);
+    if ($execReason === 'exec_content_token') {
+        Http::error(403, Http::MSG_FORBIDDEN);
+    }
+    Http::json(['error' => Http::MSG_EXEC_ACK_REQUIRED, 'next' => 'exec_ack'], 403);
+    exit;
+}
+
 /* ─── [4] F-54 검사 상태 관문 (ARCH 5.3 [4] · 5.28, PRD F-54 ③) ─────
  *
  * 검사 전(`pending`)·격리(`infected`) 파일은 **아무도** 받지 못한다. 자리가 여기인 이유:
@@ -98,7 +127,7 @@ if ($scan !== 'clean') {
         'detail'       => $auditWhat + ['scan_status' => $scan],
     ]);
     // F-57: 격리(`infected`)는 **영구** 거부라 403, 검사 중(`pending`)은 곧 풀리는
-    // **일시** 상태라 423 + `Retry-After`. 네 창구가 이 두 줄로 똑같다 (ARCH 5.28).
+    // **일시** 상태라 423 + `Retry-After`. 다섯 창구(F-65 exec-download 포함)가 이 두 줄로 똑같다 (ARCH 5.28).
     if ($scan === 'infected') {
         Http::error(403, Http::MSG_SCAN_INFECTED);
     }

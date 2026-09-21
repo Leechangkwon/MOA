@@ -8,7 +8,7 @@
 #   (b) 틀린 토큰 → 401 「API 토큰이 올바르지 않습니다」 + `auth.token deny bad_token`
 #       (미설정이면 위와 같은 이유로 503 not_configured).
 #   (c) 다른 라우트는 토큰을 **무시한다** — 틀린 토큰 헤더로 GET /api/users ·
-#       DELETE /api/files/{uuid} → 401 「로그인이 필요합니다」(세션 경로) · `auth.token` 행 0.
+#       DELETE /api/files/{uuid} → 401 「API 토큰이 올바르지 않습니다」(F-59 뒤 토큰 창구) · `auth.token` 행 1.
 #   (d) 웹 업로드 회귀 — qa_employee01 세션으로 POST /api/files 정상 txt 201 {id,name}(키 정확히 둘) ·
 #       x.exe → 400 {"error":"잘못된 요청입니다"}(통일 문구 불변) · 감사 사유 코드 전과 같음 ·
 #       올린 파일은 같은 세션으로 DELETE 해 정리한다.
@@ -173,11 +173,13 @@ OUT=$(curl -s -w '\n%{http_code}' -X DELETE -A "$UA" -H "X-API-Token: $WRONG_TOK
       "$BASE/api/files/00000000-0000-4000-8000-000000000000")
 echo "  DELETE /api/files/{uuid} → $(body_of "$OUT")"
 expect "DELETE /api/files/{id} 상태" "401" "$(code_of "$OUT")"
-expect "DELETE /api/files/{id} 문구(세션 경로)" '{"error":"로그인이 필요합니다"}' "$(body_of "$OUT")"
+# F-59(2026-09-16) 뒤 DELETE /api/files/{id} 는 **토큰 창구**다(TBOX_API_TOKEN_ROUTES) — 틀린 토큰은 토큰 문구 401 + auth.token 행 1.
+# (F-65 검토 2026-09-21 에 드리프트 발견 — 그때까지 기대가 F-59 이전 「세션 경로」로 남아 있었다.)
+expect "DELETE /api/files/{id} 문구(토큰 경로, F-59)" '{"error":"API 토큰이 올바르지 않습니다"}' "$(body_of "$OUT")"
 
 if [ "$HAVE_PSQL" -eq 1 ]; then
   N=$(psqlq "SELECT count(*) FROM audit_logs WHERE action='auth.token' AND id > ${T0:-0}")
-  expect "그 사이 auth.token 감사 행" "0" "${N:-?}"
+  expect "그 사이 auth.token 감사 행 (DELETE 는 토큰 창구라 1)" "1" "${N:-?}"
   N=$(psqlq "SELECT count(*) FROM audit_logs WHERE action='auth.required' AND id > ${T0:-0}")
   note "같은 구간의 auth.required 행: ${N:-?} (세션 경로로 갔다는 뜻)"
 fi

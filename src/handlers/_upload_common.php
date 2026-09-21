@@ -33,10 +33,16 @@ declare(strict_types=1);
  * @param string $levelField                등급을 담은 폼 필드 이름: `access_level`(웹) | `level`(API)
  * @param string $levelDefault              그 필드가 비었을 때의 기본값:
  *                                          `''`(웹 — 비면 `bad_access_level`) | `'public'`(API, PRD F-49 ③)
- * @param callable $reject                  fn(string $reasonCode, int $status, array $auditEntry): never
+ * @param callable $reject                  fn(string $reasonCode, int $status, array $auditEntry,
+ *                                             array $exec = []): never
  *                                          — 감사 deny 를 남기고 응답한 뒤 **돌아오지 않는다**.
  *                                          사유 코드·상태 코드·감사 엔트리는 두 입구가 같고,
  *                                          문구만 호출자가 정한다.
+ *                                          네 번째 인자 `$exec` 는 **F-65 갈래에서만** 채워진다
+ *                                          (`action` = `file.upload_exec` · `entries` = 차단 항목
+ *                                          이름 ≤ 20). 그 갈래는 **웹 세션에만** 있으므로
+ *                                          (ARCH 5.29 ①) 프로그램용 입구의 3인자 클로저에는
+ *                                          이 값이 한 번도 가지 않는다.
  * @return array{id:string,name:string,level:string}  성공한 업로드의 외부 ID · 원래 파일명 · 등급
  */
 function tbox_upload_run(array $user, string $levelField, string $levelDefault, callable $reject): array
@@ -53,6 +59,20 @@ function tbox_upload_run(array $user, string $levelField, string $levelDefault, 
         $raw = $_POST[$key] ?? '';
         return is_string($raw) ? $raw : '';
     };
+
+    /* ─── [0] F-65 확인 필드 — 읽고 **즉시 지운다** (ARCH 5.29, PRD 7.7) ───
+     *
+     * `exec_ack`·`password`·`otp` 는 다른 폼 필드(`access_level`·`description`·`folder_id`)와
+     * **같은 자리**에서 읽는 multipart 필드다. 읽은 직후 `$_POST` 에서 지우는 이유:
+     * 그 뒤의 어떤 코드도(예외 핸들러의 덤프·미래에 추가될 로깅) 이 세 값을 볼 수 없게 하려는
+     * 것이다. 값은 이 함수의 지역 변수에만 있고 응답·감사·app.log 어디에도 나가지 않는다.
+     *
+     * 세 값 모두 **검증 전에** 읽는다 — 어느 갈래로 가든(거부 포함) $_POST 에 남지 않아야 한다.
+     */
+    $execAck      = $formText('exec_ack');
+    $execPassword = $formText('password');
+    $execOtp      = $formText('otp');
+    unset($_POST['exec_ack'], $_POST['password'], $_POST['otp']);
 
     /**
      * 검증 실패 — 사유 코드와 감사 엔트리를 만들어 호출자의 $reject 에 넘긴다.
@@ -205,8 +225,101 @@ function tbox_upload_run(array $user, string $levelField, string $levelDefault, 
 
     // ─── [4] 업로드 검증 (크기·확장자 화이트리스트·이중 확장자·MIME 짝·해시) ───
     // 6단계: PRD S-06 전부를 Upload 이 판정한다 (T-7 · T-8 · 이중 확장자, src/Upload.php 주석).
+
+    /* F-65 (ARCH 5.29 「올리기」 표) — 이 업로드가 「실행 파일이 든 압축본의 확인 업로드」로
+     * 들어왔나. null 이면 **지금까지와 완전히 같은 업로드**이고(대다수), 배열이면 아래 ⑤ 를
+     * 통과해 차단 항목 이름을 들고 온 것이다. INSERT 의 `exec_content` 와 감사 action 이
+     * 이 값 하나로 갈린다. */
+    $execEntries = null;
+
     try {
         $checked = Upload::validate($uploaded);
+    } catch (UploadBlockedEntries $execBlocked) {
+        /* ─── F-65 — zip 안에 차단 확장자 항목이 있다 (ARCH 5.29 「올리기」 표) ─────
+         *
+         * 여기 닿는 요청은 **`zip_blocked_entry` 하나**다. 경로 탈출·중첩·압축 폭탄·매크로·
+         * MIME·크기·확장자는 이 예외가 아니라 아래 일반 `RuntimeException` 으로 떨어져
+         * 지금까지와 똑같이 거부된다 (Upload::inspectZip 주석).
+         */
+
+        // 화면·감사에 싣는 이름은 20개까지. 개수는 자르기 **전**의 값이다(몇 개였나가 정보다).
+        $execNames = array_slice($execBlocked->entries, 0, Upload::EXEC_ENTRIES_MAX);
+        $execCount = count($execBlocked->entries);
+
+        /* ①② 자격이 없다 — 토큰 입구(`POST /api/upload`)·「역할로 보기」 중·Admin 이 아님·
+         *    등급이 admin-only 가 아님. 지금까지처럼 400 통일 문구이고 **응답에 `next` 가
+         *    없다** — Employee 에게 「실행 파일이 들어 있다」는 힌트를 주지 않는다.
+         *    감사도 지금까지와 같은 `file.upload deny zip_blocked_entry` 다.
+         *    판정은 Authz 한 곳에서 한다 (역할 비교를 핸들러에 두지 않는다 — ARCH 4.1). */
+        if (!Authz::canUploadExec($user, $level)) {
+            $rejectBadRequest($execBlocked->getMessage(), $original, $level);
+            throw $execBlocked;   // 도달하지 않는다
+        }
+
+        $execAudit = [
+            'target_type'  => 'file',
+            'target_name'  => $original,
+            'access_level' => $level,
+            'detail'       => ['exec_entry_count' => $execCount],
+        ];
+
+        /* ③ 자격은 있는데 확인 문구 체크가 없다 → 400 `next:"exec_ack"` + 항목 이름.
+         *    화면이 이 응답으로 확인 블록을 편다. 체크는 문자열 `"1"` 정확 일치다. */
+        if ($execAck !== '1') {
+            $reject('exec_ack_required', 400, $execAudit, [
+                'action'  => 'file.upload_exec',
+                'entries' => $execNames,
+            ]);
+            throw $execBlocked;   // 도달하지 않는다
+        }
+
+        /* ④ 확인 — **요청마다** 비밀번호 → 2단계 코드. 세션에 창을 남기지 않는다
+         *    (`reauth_at` 을 놓지 않는다 — Auth::verifyCurrentPassword 주석).
+         *    실패 사유마다 감사 + 실패 집계(`countFailureAndRevoke`)는 로그인 뒤 창구와 같다. */
+        $execFail = static function (string $reason, int $status) use ($reject, $execAudit): void {
+            $reject($reason, $status, $execAudit, ['action' => 'file.upload_exec']);
+        };
+
+        if (!Auth::verifyCurrentPassword($user, $execPassword)) {
+            unset($execPassword, $execOtp);
+            Auth::countFailureAndRevoke((int) $user['id']);
+            $execFail('bad_credentials', 400);
+            throw $execBlocked;   // 도달하지 않는다
+        }
+
+        // 코드의 **형식**은 호출자가 먼저 본다 (Auth::verifyOtpOnce 주석). 형식이 아니면
+        // Totp::verifyStep 도 null 을 주므로 사유는 같은 `bad_code` 다.
+        $execOtpResult = preg_match(Totp::CODE_RE, $execOtp) === 1
+            ? Auth::verifyOtpOnce($user, $execOtp)
+            : 'bad_code';
+        unset($execPassword, $execOtp);
+
+        if ($execOtpResult !== 'ok') {
+            if ($execOtpResult === 'mfa_not_enabled') {
+                // 코드 추측이 아니므로 실패로 세지 않는다 (admin_permissions_update.php ② 와 같다).
+                $execFail('mfa_not_enabled', 403);
+            } else {
+                Auth::countFailureAndRevoke((int) $user['id']);
+                $execFail($execOtpResult, 400);
+            }
+            throw $execBlocked;   // 도달하지 않는다
+        }
+
+        /* ⑤ 통과 — **다시** 검사한다. 이번에는 차단 이름을 모으기만 하고 나머지 검사는
+         *    그대로 던진다. 비용은 zip 중앙 디렉터리를 한 번 더 훑는 것뿐이다(100MB zip 도
+         *    0.1초 — 항목 **내용**은 한 바이트도 읽지 않는다, ARCH 5.27).
+         *    다시 검사하는 이유: 첫 검사는 차단 항목에서 멈췄으므로 그 **뒤쪽** 항목의
+         *    경로 탈출·중첩·폭탄·매크로를 아직 보지 않았다. 확인을 통과했다고 그 검사들을
+         *    건너뛰면 예외가 「이름 검사 한 갈래」가 아니라 「속 검사 전체」가 된다. */
+        try {
+            $checked = Upload::validate($uploaded, true);
+        } catch (RuntimeException $e) {
+            $rejectBadRequest($e->getMessage(), $original, $level);
+            throw $e;   // 도달하지 않는다
+        }
+
+        $execEntries = array_slice($checked['exec_entries'] ?? [], 0, Upload::EXEC_ENTRIES_MAX);
+        $execCount   = count($checked['exec_entries'] ?? []);
     } catch (RuntimeException $e) {
         // 예외 메시지는 사유 코드다. 웹에서는 사용자에게 나가지 않고,
         // API 에서는 코드로 이유 문구를 고르는 재료가 된다 (원문이 그대로 나가지는 않는다).
@@ -268,12 +381,12 @@ function tbox_upload_run(array $user, string $levelField, string $levelDefault, 
         INSERT INTO files
             (original_name, stored_name, ext, mime, size_bytes, sha256,
              description, access_level, team_id, uploaded_by, sensitive_flags, folder_id,
-             scan_status)
+             scan_status, exec_content)
         VALUES
             (:original_name, :stored_name, :ext, :mime, :size_bytes, :sha256,
              :description, :access_level, :team_id, :uploaded_by,
              CAST(:flags AS text[]), CAST(:folder_id AS bigint),
-             :scan_status)
+             :scan_status, CAST(:exec_content AS boolean))
         RETURNING id, public_id
         SQL;
 
@@ -298,6 +411,10 @@ function tbox_upload_run(array $user, string $levelField, string $levelDefault, 
             // F-54 ① (ARCH 5.28) — 검사를 켜 두었으면 'pending' 으로 시작한다. 판단은
             // Upload::initialScanStatus() 한 곳이고 네 입구가 그것을 함께 쓴다.
             ':scan_status'   => Upload::initialScanStatus(),
+            /* F-65 (ARCH 5.29 ⑤) — 확인 절차를 통과한 업로드만 참이다. 이 값이 참이면
+             * 그 파일은 이후 공유·토큰·미리보기·등급 변경이 막히고 받을 때도 다시 확인한다.
+             * 참이 되는 자리는 **여기 하나**이고, 거짓으로 되돌리는 창구는 만들지 않는다. */
+            ':exec_content'  => $execEntries !== null ? 'true' : 'false',   // PDO 는 false 를 "" 로 보내 boolean 오류 — users_update 와 같은 관례
         ])->fetch();
 
         if (!is_array($row)) {
@@ -309,23 +426,40 @@ function tbox_upload_run(array $user, string $levelField, string $levelDefault, 
 
         // 세션이었나 토큰이었나는 Audit 이 detail.auth 로 자동으로 붙인다 (ARCH 4.2) —
         // 이 함수는 누가 불렀는지 모른 채 두 입구에 같은 행을 남긴다.
-        Audit::allow('file.upload', [
+        /* F-65 (ARCH 5.29 ⑤) — 확인 업로드는 **action 이 갈린다**: `file.upload_exec allow`
+         * 하나만 남고 `file.upload allow` 는 남기지 않는다. 한 업로드에 allow 두 줄이 생기면
+         * 「몇 개를 올렸나」 를 세는 모든 조회가 어긋나고, 경보 AL-21 도 두 번 발동한다.
+         * detail 은 기존 업로드 키 그대로에 확인의 흔적 넷을 더한 것이다 (ARCH 7.5).
+         * **비밀번호·코드 값은 어느 키에도 들어가지 않는다** — `otp_verified: true` 가
+         * 「서버가 확인했다」는 사실을 대신한다 (PRD 7.7). */
+        $uploadDetail = [
+            'ext'         => $checked['ext'],
+            'mime'        => $checked['mime'],
+            'size_bytes'  => $checked['size'],
+            // 육하원칙 칸 (ARCH 7.5): 왜 허용됐나 · 어떤 내용인가 · 누가 올렸나 · 어느 팀인가
+            'granted_by'  => $uploadCode,
+            'sha256'      => $checked['sha256'],
+            'owner_id'    => (int) $user['id'],
+            'target_team' => $teamId,
+            // 18-1 (F-26) — 어느 폴더에 올렸나. null 이면 루트다 (ARCH 7.5).
+            'folder_id'   => $folderId,
+        ] + ($sensitive === [] ? [] : ['sensitive' => $sensitive]);
+
+        if ($execEntries !== null) {
+            $uploadDetail += [
+                'exec_ack'         => true,
+                'otp_verified'     => true,
+                'exec_entry_count' => $execCount,
+                'exec_entries'     => $execEntries,
+            ];
+        }
+
+        Audit::allow($execEntries === null ? 'file.upload' : 'file.upload_exec', [
             'target_type'  => 'file',
             'target_id'    => (int) $row['id'],
             'target_name'  => $original,
             'access_level' => $level,
-            'detail'       => [
-                'ext'         => $checked['ext'],
-                'mime'        => $checked['mime'],
-                'size_bytes'  => $checked['size'],
-                // 육하원칙 칸 (ARCH 7.5): 왜 허용됐나 · 어떤 내용인가 · 누가 올렸나 · 어느 팀인가
-                'granted_by'  => $uploadCode,
-                'sha256'      => $checked['sha256'],
-                'owner_id'    => (int) $user['id'],
-                'target_team' => $teamId,
-                // 18-1 (F-26) — 어느 폴더에 올렸나. null 이면 루트다 (ARCH 7.5).
-                'folder_id'   => $folderId,
-            ] + ($sensitive === [] ? [] : ['sensitive' => $sensitive]),
+            'detail'       => $uploadDetail,
         ]);
 
         $db->commit();

@@ -43,6 +43,7 @@ $sqlFind = <<<'SQL'
            f.uploaded_by,
            f.sha256,
            f.scan_status,
+           f.exec_content,
            f.created_at,
            t.name     AS team_name,
            u.username AS uploader
@@ -80,6 +81,32 @@ if (!$mayRead) {
     Http::error(403, Http::MSG_FORBIDDEN);
 }
 
+/* ─── [2-5] F-65 실행 파일이 든 압축본 관문 (ARCH 5.29 「받기」 표) ───
+ *
+ * 다운로드(5.3)와 **같은 자리·같은 모양**이다 — `decideRead` 뒤, `scan_status` 앞.
+ * zip 은 미리보기 갈래가 `archive` 라 내용이 나가지는 않지만, 관문을 같은 모양으로 둔다:
+ * 창구마다 다르게 두면 언젠가 한 창구만 빠진다 (ARCH 5.29).
+ *
+ * ★ 감사 action 은 이 갈래만 `file.download` 다 — ARCH 7.4 의 F-65 표에
+ *   `file.preview|deny|exec_ack_required` 행이 없고 「미리보기 두 창구도 같은 문장」이라고
+ *   적혀 있기 때문이다. 이 파일의 다른 거부는 지금처럼 `file.preview` 그대로다.
+ */
+if ($file['exec_content'] === true) {
+    $execReason = defined('TBOX_AUTH_METHOD') ? 'exec_content_token' : 'exec_ack_required';
+    Audit::deny('file.download', $execReason, [
+        'target_type'  => 'file',
+        'target_id'    => (int) $file['id'],
+        'target_name'  => (string) $file['original_name'],
+        'access_level' => (string) $file['access_level'],
+        'detail'       => $auditWhat,
+    ]);
+    if ($execReason === 'exec_content_token') {
+        Http::error(403, Http::MSG_FORBIDDEN);
+    }
+    Http::json(['error' => Http::MSG_EXEC_ACK_REQUIRED, 'next' => 'exec_ack'], 403);
+    exit;
+}
+
 /* ─── [4] F-54 검사 상태 관문 (ARCH 5.3 [4] · 5.28, PRD F-54 ③) ─────
  *
  * 검사 전(`pending`)·격리(`infected`) 파일은 **아무도** 받지 못한다. 자리가 여기인 이유:
@@ -99,7 +126,7 @@ if ($scan !== 'clean') {
         'detail'       => $auditWhat + ['scan_status' => $scan],
     ]);
     // F-57: 격리(`infected`)는 **영구** 거부라 403, 검사 중(`pending`)은 곧 풀리는
-    // **일시** 상태라 423 + `Retry-After`. 네 창구가 이 두 줄로 똑같다 (ARCH 5.28).
+    // **일시** 상태라 423 + `Retry-After`. 다섯 창구(F-65 exec-download 포함)가 이 두 줄로 똑같다 (ARCH 5.28).
     if ($scan === 'infected') {
         Http::error(403, Http::MSG_SCAN_INFECTED);
     }
