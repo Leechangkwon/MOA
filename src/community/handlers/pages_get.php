@@ -47,30 +47,41 @@ if (!$mayRead) {
         ]);
         Http::error(403, Http::MSG_FORBIDDEN);
     }
-    /* 3단계 데이터에는 없는 조합(팀 공간·게시판·공개 범위)이다. 판정은 이미 「막는다」로
-       끝났고, 그 조합의 감사 문장은 4단계에 함께 들어온다. 문장 틀이 없는 조합을 억지로
-       기록하면 요청이 500 으로 끝나므로(문장 없는 기록은 예외다), 여기서는 서버 로그에만
-       남기고 같은 403 동일 문구로 답한다. */
+    /* 아직 판정 규칙이 없는 조합이다 — 게시판 공간(5단계) · `published` 범위(5단계) ·
+       내가 팀원이 아닌 팀 공간(`not_member`). 판정은 이미 「막는다」로 끝났고, 그 조합의
+       감사 문장은 그 단계에 함께 들어온다. 문장 틀이 없는 조합을 억지로 기록하면 요청이
+       500 으로 끝나므로(문장 없는 기록은 예외다), 서버 로그에만 남기고 403 동일 문구로 답한다. */
     error_log('[tbox] request_id=' . TBOX_REQUEST_ID
-        . ' community page.read deny code=' . $readCode . ' (3단계에 없는 조합)');
+        . ' community page.read deny code=' . $readCode . ' (문장 없는 조합)');
     Http::error(403, Http::MSG_FORBIDDEN);
 }
 
-/* 사용자 결정 2026-09-22 (커뮤니티 PRD 4.1) — 관리자가 **남의** 개인 페이지를 연 일은
-   남긴다. 자기 페이지를 여는 것은 일상이라 남기지 않는다(그것까지 남기면 진짜 사건이 묻힌다). */
-if ($readCode === CommunityAuthz::CODE_ADMIN_ALL) {
+/* 남의 개인 페이지를 **무엇을 근거로** 열었나를 남긴다 (PRD 4.1, C:T-30).
+     `admin_all` 관리자 권한으로 (사용자 결정 2026-09-22 「회사 자료라 관리자는 볼 수 있다」)
+     `same_team` 주인과 같은 팀이라서 (4-B)
+   자기 페이지를 여는 것은 일상이라 남기지 않는다 — 그것까지 남기면 진짜 사건이 묻힌다.
+   `matrix`(사내 공개)도 남기지 않는다: 사내 전원이 대상이라 모든 열람이 행이 된다. */
+if ($readCode === CommunityAuthz::CODE_ADMIN_ALL || $readCode === CommunityAuthz::CODE_SAME_TEAM) {
     Audit::allow('page.read', [
         'target_type' => 'page',
         'target_id'   => (int) $row['id'],
         'target_name' => community_target_title((string) $row['title']),
         'detail'      => [
-            'granted_by' => CommunityAuthz::CODE_ADMIN_ALL,
+            'granted_by' => $readCode,
             'page_title' => community_target_title((string) $row['title']),
         ],
-    ], CommunityAuthz::CODE_ADMIN_ALL);
+    ], $readCode);
 }
 
-[$mayChange] = CommunityAuthz::decidePageChange($user, $row);
+[$mayChange, $changeCode] = CommunityAuthz::decidePageChange($user, $row);
+
+/* 「공개 범위」 단추를 열지 말지 고르는 값 (4-B). 개인 공간의 **주인**일 때만 참이다 —
+   팀 공간의 페이지는 자기 범위가 없고(공간 등급을 따른다), 남의 페이지는 볼 수 있어도
+   범위를 바꾸지 못한다. 판단 근거가 아니라 **서버가 이미 한 판단의 결과**다: 단추를
+   개발자도구로 되살려 창구를 불러도 `pages_visibility.php` 가 같은 함수로 다시 막는다. */
+$maySetVisibility = $mayChange
+    && $changeCode === CommunityAuthz::CODE_OWNER
+    && (string) $row['space_kind'] === 'personal';
 
 /* 경로(breadcrumb) — 뿌리부터 **자기 자신까지**. 재귀 CTE **한 번**이다 (4-A).
    조상은 전부 같은 개인 공간의 행이라 이 페이지와 판정이 같다 — 볼 수 있는 페이지의 조상은
@@ -86,8 +97,9 @@ $parent = count($breadcrumb) >= 2
     : null;
 
 /* 하위 페이지 — 제목·아이콘과 **그 아래 하위 수**까지 한 질의로(N+1 금지).
-   볼 수 있는 페이지의 하위는 같은 공간 안이라 같은 판정을 받는다. */
-$children = community_children((int) $row['id']);
+   4-B: 자식은 부모보다 **좁을 수 있으므로**(팀 페이지 아래의 비공개 페이지) 볼 수 있는
+   것만 SQL `WHERE` 로 거른다. 거르는 일을 화면에 미루지 않는다 (C:S-02 · C:T-37). */
+$children = community_children((int) $row['id'], $user);
 
 /* 「지금 이 페이지를 편집 중인 사람」 — 30초 heartbeat 가 민 시각이 2분 안이면 보인다.
    나 자신은 빼고 보여 준다(내가 열어 둔 것은 알려 줄 일이 아니다). */
@@ -115,15 +127,17 @@ if (!is_array($doc)) {
 /* ── `child_page` 블록이 가리키는 페이지들의 제목 (4-A, C:T-28) ──
  *
  * ★ **읽기 판정은 여기서** 한다 — 저장 때가 아니다(`Doc::validate` 는 DB 를 읽지 않는다).
- *   질의가 `space_id = 내 공간` 으로 좁히므로 **남의 페이지 id 는 결과에 아예 없다**. 없는
- *   id 는 지도에 자리가 없고, 렌더러 두 벌이 그 자리에 「볼 수 없는 페이지」를 그린다.
- *   화면이 판단하지 않고, 서버가 준 지도에 있나 없나만 본다 (DESIGN 원칙 1).
+ *   질의에 4-B 의 **볼 수 있는 행 조건절**이 그대로 붙으므로 볼 수 없는 페이지의 제목은
+ *   결과에 아예 없다. 없는 id 는 지도에 자리가 없고, 렌더러 두 벌이 그 자리에 「볼 수 없는
+ *   페이지」를 그린다. 화면이 판단하지 않고, 서버가 준 지도에 있나 없나만 본다 (DESIGN 원칙 1).
  * ★ `IN` 자리표시자 이름은 **개수로 만든 코드 문자열**(`:c0`, `:c1` …)이고 요청 값이 SQL 에
  *   한 글자도 들어가지 않는다. 값은 전부 바인딩된다 (PRD S-04).
  */
+[$visibleWhere, $visibleBind] = community_visible_pages_where($user);
+
 $childTitles = [];
 $names       = [];
-$bind        = [':space' => (int) $row['space_id']];
+$bind        = array_merge([':space' => (int) $row['space_id']], $visibleBind);
 foreach (array_slice(Doc::extract($doc)['child_pages'], 0, 200) as $uuid) {
     // 형태가 아닌 값은 질의에 넣지 않는다 — `uuid` 칸에 닿으면 DB 가 예외를 던진다.
     if (preg_match('/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/', $uuid) !== 1) {
@@ -136,8 +150,11 @@ foreach (array_slice(Doc::extract($doc)['child_pages'], 0, 200) as $uuid) {
 if ($names !== []) {
     $sqlTitles = 'SELECT p.public_id, p.title, p.icon'
         . ' FROM community.pages p'
+        . ' JOIN community.spaces s ON s.id = p.space_id'
+        . ' LEFT JOIN public.users owner ON owner.id = s.owner_user_id'
         . ' WHERE p.space_id = CAST(:space AS bigint)'
         . ' AND p.deleted_at IS NULL'
+        . ' AND ' . $visibleWhere
         . ' AND p.public_id IN (' . implode(', ', $names) . ')';
     foreach ($db->run($sqlTitles, $bind)->fetchAll() as $t) {
         $childTitles[(string) $t['public_id']] = [
@@ -164,14 +181,18 @@ Http::json([
         'created_at'  => (string) $row['created_at'],
         'updated_at'  => (string) $row['updated_at'],
     ],
+    // 공간 요약 (4-B) — 화면의 공간 고르개·배지가 「여기가 어느 공간인가」를 아는 값이다.
     'space' => [
-        'id'   => (int) $row['space_id'],
-        'name' => (string) $row['space_name'],
-        'kind' => (string) $row['space_kind'],
+        'id'      => (int) $row['space_id'],
+        'name'    => (string) $row['space_name'],
+        'kind'    => (string) $row['space_kind'],
+        'team_id' => $row['space_team_id'] === null ? null : (int) $row['space_team_id'],
     ],
     // 화면이 「편집」 단추를 열지 말지 고르는 값이다 — 판단 근거가 아니다 (DESIGN 원칙 1).
     // 단추를 되살려 PATCH 를 불러도 서버가 같은 함수로 다시 막는다.
     'can_edit'   => $mayChange,
+    // 4-B — 「공개 범위」 단추를 보일지. 값은 위 판정의 결과이고 화면은 그대로 따른다.
+    'can_set_visibility' => $maySetVisibility,
     'granted_by' => $readCode,
     // 4-A — 뿌리부터 자기 자신까지의 경로. 길이가 곧 깊이다(뿌리는 1).
     'breadcrumb' => $breadcrumb,

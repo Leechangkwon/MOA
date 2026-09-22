@@ -30,8 +30,9 @@ require __DIR__ . '/../../views/shell_top.php';
 ?>
     <header class="page-head">
       <div class="page-head__text">
-        <h1 class="page-head__title">내 공간</h1>
-        <p class="page-head__sub">나만 보는 개인 업무 공간입니다. 페이지를 만들어 적어 두세요.</p>
+        <!-- 제목·설명은 고른 공간에 따라 editor.js 가 textContent 로 바꾼다 (4-B). -->
+        <h1 id="community-space-title" class="page-head__title">내 공간</h1>
+        <p id="community-space-sub" class="page-head__sub">나만 보는 개인 업무 공간입니다. 페이지를 만들어 적어 두세요.</p>
       </div>
       <div class="page-head__actions">
         <button type="button" class="btn btn--quiet" data-help-open>
@@ -45,7 +46,13 @@ require __DIR__ . '/../../views/shell_top.php';
 
     <p id="msg" class="msg" role="alert" aria-live="polite"></p>
 
+    <!-- 공간 고르개 (4-B) — 왼쪽 첫 자리다. 목록은 `<select>` 한 칸이고 항목은 창구
+         `GET /community/api/spaces` 가 준 것만 들어간다(화면이 공간 목록을 알고 있지 않다).
+         공간이 하나뿐이면(팀이 없는 계정) 통째로 숨는다 — 고를 것이 없는 고르개는 군더더기다.
+         `.toolbar select` 는 DESIGN 2.4 도구줄에 이미 있는 구성 요소다(새 클래스 0). -->
     <div class="toolbar">
+      <label id="community-space-label" class="muted" for="community-space" hidden>공간</label>
+      <select id="community-space" hidden aria-label="공간 고르기"></select>
       <input id="community-search" type="search" placeholder="제목·내용으로 찾기" maxlength="100"
              autocomplete="off" spellcheck="false">
       <span id="community-count" class="muted"></span>

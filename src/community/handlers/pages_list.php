@@ -4,20 +4,29 @@ declare(strict_types=1);
 /**
  * src/community/handlers/pages_list.php — GET /community/api/pages (정책: community.read)
  *
- * 요구사항: `C:F-17` 최소(목록), `C:S-02`(못 보는 것은 응답에 없다), `C:S-04`,
- *           `../../../../community/ARCHITECTURE.md` 13.3 · 21.3.
+ * 요구사항: `C:F-17`(공간·트리), `C:F-18`(공개 범위), `C:S-02`(못 보는 것은 응답에 없다),
+ *           `C:S-04`, `../../../../community/ARCHITECTURE.md` 13.3 · 21.3,
+ *           수락 기준 C:T-35(목록 격리) · C:T-36(팀 공간) · C:T-37(판정 위치).
  *
  * 쿼리 (전부 선택 — 없거나 이상하면 **거부하지 않고 안전한 값으로 좁힌다**, t-box ARCH 5.1)
+ *   space  공간 번호. 없으면 **내 개인 공간**
+ *   tree   `1` 이면 그 공간의 살아 있는 페이지를 한 질의로 전부(트리는 화면이 만든다)
  *   q      제목·본문 찾기 (≤ 100자). `ILIKE` 는 `#` 로 이스케이프한 뒤 **바인딩**한다
- *   parent 하위 페이지만 (UUID). 없으면 공간의 모든 페이지를 평평하게 보인다(3단계는 트리가 없다)
+ *   parent 하위 페이지만 (UUID)
  *   page   1부터. 한 쪽 20건
  *
- * ★ 범위는 **SQL 이 정한다** (C:S-02). `WHERE p.space_id = 내 개인 공간` 이므로 남의 공간은
- *   목록 질의에 아예 들어오지 않는다 — 애플리케이션이 나중에 걸러 내는 코드가 없다.
- *   내 공간이 아직 없으면 빈 목록이다(`GET /api/me/space` 가 만들기 전에 이 창구를 불렀을 때).
+ * ★ 범위는 **SQL 이 정한다** (C:S-02 · C:T-37). 관문이 둘이다:
+ *     [공간] `community_space_gate()` — 남의 개인 공간은 통째로 403, 남의 팀 공간도 403.
+ *            그 안에 사내로 열어 둔 페이지가 있더라도 **남의 공간 목차를 넘겨보는 일**은
+ *            공개 범위가 허락한 일이 아니다 (C:T-35).
+ *     [행]   `community_visible_pages_where()` — `decidePageRead` 를 그대로 옮긴 조건절.
+ *            같은 공간 안에서도 볼 수 없는 행(넓은 페이지 아래의 비공개 하위 등)은
+ *            **질의 결과에 아예 들어오지 않는다**. 응답을 받은 뒤 PHP 가 거르는 코드가 없다.
  *
- * ★ SQL 문장은 **고정 문자열 두 개**다. 「찾기를 켰나」·「부모를 골랐나」는 SQL 조각을 이어
+ * ★ SQL 문장은 **고정 문자열**이다. 「찾기를 켰나」·「부모를 골랐나」는 SQL 조각을 이어
  *   붙이지 않고 **바인딩한 참/거짓**으로 끈다 — 문자열을 조립하는 자리 자체를 없앤다 (PRD S-04).
+ *   문장에 끼워 넣는 조각은 조건절 상수 하나뿐이고, 그 안의 별칭 `p`·`s`·`owner` 도 코드에
+ *   적힌 리터럴이다. 요청 값은 한 글자도 SQL 에 들어가지 않는다.
  *
  * 목록 조회는 감사에 남기지 않는다 (t-box 파일 목록과 같은 취급).
  *
@@ -28,56 +37,104 @@ declare(strict_types=1);
 $db = Db::instance();
 $me = (int) $user['id'];
 
-$sqlSpace = <<<'SQL'
-    SELECT id FROM community.spaces
-     WHERE kind = 'personal' AND owner_user_id = CAST(:uid AS bigint)
-    SQL;
+/* ─── [1] 어느 공간인가 (4-B) ───────────────────────────────── */
 
-$spaceRow = $db->run($sqlSpace, [':uid' => $me])->fetch();
-if (!is_array($spaceRow)) {
-    Http::json(['pages' => [], 'total' => 0, 'page' => 1, 'per_page' => 20, 'q' => '']);
-    exit;
+$spaceRaw = Http::queryText('space', 20);
+
+if ($spaceRaw === '') {
+    // 기본값 — 내 개인 공간. 아직 없으면 빈 목록이다(`GET /api/me/space` 가 만들기 전).
+    $space = community_my_personal_space($me);
+    if ($space === null) {
+        Http::json([
+            'pages' => [], 'total' => 0, 'page' => 1, 'per_page' => 20, 'q' => '', 'space' => null,
+        ]);
+        exit;
+    }
+} else {
+    // 공간 번호는 **양의 정수**만. 형태가 아니면 「그런 공간은 없다」로 답한다.
+    if (preg_match('/^[1-9][0-9]{0,17}$/', $spaceRaw) !== 1) {
+        Http::error(404, Http::MSG_NOT_FOUND);
+    }
+    $space = community_space_row((int) $spaceRaw);
+    if ($space === null) {
+        Http::error(404, Http::MSG_NOT_FOUND);
+    }
 }
-$spaceId = (int) $spaceRow['id'];
+
+$spaceId = (int) $space['id'];
+
+/* ─── [공간 관문] 이 그릇을 열어 볼 수 있나 (C:T-35 · C:T-36) ─── */
+[$mayOpen, $spaceCode] = community_space_gate($user, $space);
+if (!$mayOpen) {
+    /* 403 동일 문구다. 목록 조회는 t-box 파일 목록과 같이 감사 대상이 아니므로(그 창구에
+       붙는 감사 문장이 없다) 서버 로그에만 남긴다. 어느 공간을 열려 했는지는 그 줄에 있다. */
+    error_log('[tbox] request_id=' . TBOX_REQUEST_ID
+        . ' community space list deny code=' . $spaceCode . ' space_id=' . (string) $spaceId);
+    Http::error(403, Http::MSG_FORBIDDEN);
+}
+
+/* 이 공간에서 내가 페이지를 만들고 고칠 수 있나 — 공간 하나당 **한 번만** 판단한다.
+   행마다 다시 묻지 않는 이유: 「고칠 수 있나」는 개인 공간이면 주인인가, 팀 공간이면
+   팀원인가뿐이고 둘 다 행이 아니라 공간의 성질이다 (같은 함수 `decidePageChange`). */
+[$canWrite] = CommunityAuthz::decidePageChange($user, [
+    'deleted_at'          => null,
+    'space_kind'          => (string) $space['kind'],
+    'space_owner_user_id' => $space['owner_user_id'] ?? null,
+    'space_team_id'       => $space['team_id'] ?? null,
+]);
+
+$spaceSummary = [
+    'id'        => $spaceId,
+    'kind'      => (string) $space['kind'],
+    'name'      => (string) $space['name'],
+    'team_id'   => $space['team_id'] === null ? null : (int) $space['team_id'],
+    'can_write' => $canWrite,
+];
+
+/* ─── [행 관문] 볼 수 있는 행 조건절 ────────────────────────── */
+[$visible, $visBind] = community_visible_pages_where($user);
 
 /* ─── `?tree=1` — 트리 화면용 (4-A) ─────────────────────────────
  *
- * 그 공간의 살아 있는 페이지를 **한 질의로 전부** 돌려준다(id·parent·position·title·icon).
- * 트리를 만드는 일은 화면이 한다 — 서버가 겹겹이 중첩된 JSON 을 만들면 같은 트리를 두 벌
- * (여기와 화면)로 짜게 되고, 언젠가 한쪽만 고쳐진다.
+ * 그 공간의 **볼 수 있는** 페이지를 한 질의로 전부 돌려준다(id·parent·position·title·icon·
+ * visibility). 트리를 만드는 일은 화면이 한다 — 서버가 겹겹이 중첩된 JSON 을 만들면 같은
+ * 트리를 두 벌(여기와 화면)로 짜게 되고, 언젠가 한쪽만 고쳐진다.
  *
- * ★ 부모를 따라 한 층씩 묻지 않는다(N+1 금지). 같은 개인 공간의 페이지는 어차피 전부 볼 수
- *   있으니 층마다 판정할 것이 없고, `WHERE p.space_id = 내 공간` 한 줄이 범위를 정한다 (C:S-02).
+ * ★ 부모를 따라 한 층씩 묻지 않는다(N+1 금지). 조건절 한 줄이 범위를 정한다 (C:S-02).
  * ★ 평평한 목록 응답(아래)은 **그대로** 둔다 — 찾기·쪽 넘기기는 그 길을 계속 쓴다.
  */
 if (Http::queryText('tree', 4) === '1') {
-    $sqlTree = <<<'SQL'
-        SELECT p.public_id, p.title, p.icon, p.position, p.updated_at,
+    $sqlTree = <<<SQL
+        SELECT p.public_id, p.title, p.icon, p.position, p.updated_at, p.visibility,
                parent.public_id AS parent_public_id
           FROM community.pages p
+          JOIN community.spaces s ON s.id = p.space_id
+          LEFT JOIN public.users owner ON owner.id = s.owner_user_id
           LEFT JOIN community.pages parent
                  ON parent.id = p.parent_page_id AND parent.deleted_at IS NULL
          WHERE p.space_id = CAST(:space AS bigint)
            AND p.deleted_at IS NULL
+           AND {$visible}
          ORDER BY p.position, p.id
          LIMIT 2000
         SQL;
 
     $tree = [];
-    foreach ($db->run($sqlTree, [':space' => $spaceId])->fetchAll() as $r) {
+    foreach ($db->run($sqlTree, array_merge([':space' => $spaceId], $visBind))->fetchAll() as $r) {
         $tree[] = [
             'id'         => (string) $r['public_id'],
             'parent_id'  => $r['parent_public_id'] === null ? null : (string) $r['parent_public_id'],
             'position'   => (int) $r['position'],
             'title'      => (string) $r['title'],
             'icon'       => $r['icon'] === null ? null : (string) $r['icon'],
+            'visibility' => (string) $r['visibility'],
             'updated_at' => (string) $r['updated_at'],
-            // 내 개인 공간의 페이지라 언제나 참이다 (평평한 목록과 같은 이유 — DESIGN 원칙 1).
-            'can_edit'   => true,
+            // 공간 하나당 한 번 판단한 값이다 (DESIGN 원칙 1 — 화면은 판단하지 않는다).
+            'can_edit'   => $canWrite,
         ];
     }
 
-    Http::json(['tree' => true, 'pages' => $tree, 'total' => count($tree)]);
+    Http::json(['tree' => true, 'pages' => $tree, 'total' => count($tree), 'space' => $spaceSummary]);
     exit;
 }
 
@@ -89,8 +146,8 @@ $q = Http::queryText('q', 100);
 $like = $q === '' ? '' : '%' . str_replace(['#', '%', '_'], ['##', '#%', '#_'], $q) . '%';
 
 /*
- * 부모 고르기. UUID 형태가 맞고 **내 공간 안에** 있을 때만 그 부모로 좁힌다.
- * 형태가 틀렸거나 내 공간에 없는 값이면 「그런 하위 목록은 비어 있다」로 다룬다 —
+ * 부모 고르기. UUID 형태가 맞고 **이 공간 안에** 있을 때만 그 부모로 좁힌다.
+ * 형태가 틀렸거나 이 공간에 없는 값이면 「그런 하위 목록은 비어 있다」로 다룬다 —
  * 있는지 없는지를 응답으로 알려 주지 않는 쪽이 목록 창구에 맞다 (C:S-02).
  */
 $parentRaw    = Http::queryText('parent', 36);
@@ -111,7 +168,7 @@ if ($parentPicked
     }
 }
 
-$bind = [
+$bind = array_merge([
     ':space'  => $spaceId,
     // 찾기를 껐나 — 참이면 아래 OR 의 첫 항이 언제나 참이라 뒤의 ILIKE 두 개가 무의미해진다.
     ':qoff'   => $q === '' ? 'true' : 'false',
@@ -120,13 +177,16 @@ $bind = [
     // 부모를 안 골랐나 — 참이면 공간 전체를 본다.
     ':pall'   => $parentPicked ? 'false' : 'true',
     ':parent' => $parentId,
-];
+], $visBind);
 
-$sqlCount = <<<'SQL'
+$sqlCount = <<<SQL
     SELECT count(*) AS n
       FROM community.pages p
+      JOIN community.spaces s ON s.id = p.space_id
+      LEFT JOIN public.users owner ON owner.id = s.owner_user_id
      WHERE p.space_id = CAST(:space AS bigint)
        AND p.deleted_at IS NULL
+       AND {$visible}
        AND (CAST(:qoff AS boolean)
             OR p.title ILIKE :like1 ESCAPE '#'
             OR p.plain_text ILIKE :like2 ESCAPE '#')
@@ -137,15 +197,18 @@ $sqlCount = <<<'SQL'
 $countRow = $db->run($sqlCount, $bind)->fetch();
 $total    = is_array($countRow) ? (int) $countRow['n'] : 0;
 
-$sqlList = <<<'SQL'
+$sqlList = <<<SQL
     SELECT p.public_id, p.title, p.icon, p.block_count, p.doc_version,
            p.created_at, p.updated_at, p.visibility,
            parent.public_id AS parent_public_id,
            left(p.plain_text, 160) AS excerpt
       FROM community.pages p
+      JOIN community.spaces s ON s.id = p.space_id
+      LEFT JOIN public.users owner ON owner.id = s.owner_user_id
       LEFT JOIN community.pages parent ON parent.id = p.parent_page_id
      WHERE p.space_id = CAST(:space AS bigint)
        AND p.deleted_at IS NULL
+       AND {$visible}
        AND (CAST(:qoff AS boolean)
             OR p.title ILIKE :like1 ESCAPE '#'
             OR p.plain_text ILIKE :like2 ESCAPE '#')
@@ -173,9 +236,9 @@ foreach ($rows as $r) {
         'parent_id'   => $r['parent_public_id'] === null ? null : (string) $r['parent_public_id'],
         'created_at'  => (string) $r['created_at'],
         'updated_at'  => (string) $r['updated_at'],
-        // 내 개인 공간의 페이지이므로 언제나 참이다. 값을 서버가 내려 주는 이유는 화면이
-        // 소유·역할을 스스로 따지지 않게 하려는 것이다 (DESIGN 원칙 1).
-        'can_edit'    => true,
+        // 값을 서버가 내려 주는 이유는 화면이 소유·역할을 스스로 따지지 않게 하려는 것이다
+        // (DESIGN 원칙 1). 단추를 되살려 창구를 불러도 서버가 같은 함수로 다시 막는다.
+        'can_edit'    => $canWrite,
     ];
 }
 
@@ -185,4 +248,5 @@ Http::json([
     'page'     => $pageNo,
     'per_page' => $perPage,
     'q'        => $q,
+    'space'    => $spaceSummary,
 ]);

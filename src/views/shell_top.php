@@ -294,7 +294,13 @@ if (!headers_sent()) {
       <button id="nav-community-new" class="nav__item" type="button">
         <span class="icon" data-icon="plus"></span><span>새 페이지</span>
       </button>
+      <!-- 팀 공간 (4-B) — 항목은 `editor.js` 가 창구 `GET /community/api/spaces` 의 답으로
+           채운다. **이 파일에는 팀 판단이 없다**: 내 팀이 무엇인지도, 팀 공간이 있는지도
+           서버가 정하고 화면은 받은 것만 그린다 (PRD S-01, DESIGN 원칙 1).
+           팀 공간이 없으면 이 자리는 끝까지 비어 있고 제목 줄도 보이지 않는다. -->
     </nav>
+    <p id="nav-community-team-title" class="nav-title" hidden>팀 공간</p>
+    <nav id="nav-community-teams" class="nav" aria-label="팀 공간" hidden></nav>
 <?php else: ?>
     <p class="nav-title">파일</p>
     <nav class="nav" aria-label="파일">

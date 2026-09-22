@@ -17,11 +17,15 @@ declare(strict_types=1);
  *   [1] 허용 키 → [2] 행+공간 → 404 → [권한 ✔ A] `decidePageRead` → [권한 ✔ B] `decidePageChange`
  *   [3] 새 부모 찾기 — 없는 UUID 404 · 남의 것 403(+감사 `page.read deny not_owner`)
  *   [4] 트리 모양을 **재귀 CTE 한 번**으로 (`community_move_shape`)
- *   [권한 ✔ C] `CommunityAuthz::decidePageMove` — `cycle` · `depth_exceeded` 는 여기서 갈린다
+ *   [권한 ✔ C] `CommunityAuthz::decidePageMove` — `cycle` · `depth_exceeded` ·
+ *              **`wider_than_parent`**(4-B 트리 불변 규칙)가 여기서 갈린다
  *   [5] 트랜잭션: 옛 형제 줄 세우기 → 새 부모 아래 끼워 넣기 → 감사 `page.move allow` → 200
  *
  * ★ 순서는 **형제 안에서 0..n-1 로 다시 매긴다**(C:T-26). 값을 띄엄띄엄 두면 언젠가 두 페이지가
  *   같은 번호를 갖고, 그때부터 목록 차례가 `id` 순으로 조용히 바뀐다.
+ * ★ 4-B — 옮기는 것도 트리 불변 규칙을 지킨다. 견주는 값은 옮길 페이지 하나가 아니라
+ *   **옮겨 가는 가지에서 가장 넓은 범위**다: 자기는 맞고 자식이 더 넓으면, 옮긴 자리에서
+ *   규칙이 깨진 트리가 만들어진다. 그 값은 `community_move_shape` 가 같은 CTE 에서 센다.
  *
  * @var array<string,mixed> $user   라우터가 넘긴 현재 사용자
  * @var list<string>        $params [0] = 페이지 public_id (UUID)
@@ -80,7 +84,7 @@ if (!$mayRead) {
         Http::error(403, Http::MSG_FORBIDDEN);
     }
     error_log('[tbox] request_id=' . TBOX_REQUEST_ID
-        . ' community page.read deny code=' . $readCode . ' (4-A 에 없는 조합)');
+        . ' community page.read deny code=' . $readCode . ' (문장 없는 조합)');
     Http::error(403, Http::MSG_FORBIDDEN);
 }
 
@@ -100,9 +104,10 @@ if (!$mayChange) {
 $parentRow = null;
 if ($rawParent !== null) {
     $sqlParent = <<<'SQL'
-        SELECT p.id, p.space_id, p.title, p.deleted_at,
+        SELECT p.id, p.space_id, p.title, p.deleted_at, p.visibility,
                s.kind          AS space_kind,
-               s.owner_user_id AS space_owner_user_id
+               s.owner_user_id AS space_owner_user_id,
+               s.team_id       AS space_team_id
           FROM community.pages p
           JOIN community.spaces s ON s.id = p.space_id
          WHERE p.public_id = CAST(:pid AS uuid)
@@ -130,6 +135,8 @@ if ($rawParent !== null) {
 // ─── [4] 트리 모양 — 재귀 CTE **한 번** ───────────────────────
 $shape = community_move_shape($pageId, $parentRow === null ? null : (int) $parentRow['id']);
 $row['subtree_height'] = $shape['subtree_height'];
+// 4-B — 옮겨 가는 가지에서 가장 넓은 범위. 판정은 `fitsUnderParent` 한 곳에서 한다.
+$row['subtree_widest'] = $shape['subtree_widest'];
 if ($parentRow !== null) {
     $parentRow['depth']        = $shape['parent_depth'] ?? 1;
     $parentRow['ancestor_ids'] = $shape['parent_ancestors'];
@@ -138,10 +145,21 @@ if ($parentRow !== null) {
 // ─── [권한 ✔ C] 옮길 수 있나 ──────────────────────────────────
 [$mayMove, $moveCode] = CommunityAuthz::decidePageMove($user, $row, $parentRow);
 if (!$mayMove) {
-    if ($moveCode === CommunityAuthz::CODE_CYCLE || $moveCode === CommunityAuthz::CODE_DEPTH_EXCEEDED) {
+    /* 규칙으로 막은 셋 — 같은 모양으로 400 + 감사다. 「권한이 없다」가 아니라 「트리가
+       그렇게 되면 안 된다」이므로 403 이 아니라 400 이고, 사유 글자가 곧 화면 문구의 열쇠다. */
+    $ruleCodes = [
+        CommunityAuthz::CODE_CYCLE            => '자기 자신이나 자기 하위 페이지 아래로는 옮길 수 없습니다',
+        CommunityAuthz::CODE_DEPTH_EXCEEDED   => '페이지는 8 단계까지만 겹칠 수 있습니다',
+        CommunityAuthz::CODE_WIDER_THAN_PARENT => '옮기려는 페이지가 새 상위 페이지보다 넓게 열려 있습니다',
+    ];
+    if (isset($ruleCodes[$moveCode])) {
         $detail = ['page_title' => $pageTitle];
         if ($parentRow !== null) {
             $detail['parent_title'] = community_target_title((string) $parentRow['title']);
+        }
+        if ($moveCode === CommunityAuthz::CODE_WIDER_THAN_PARENT) {
+            $detail['visibility_from'] = (string) $row['subtree_widest'];
+            $detail['visibility_to']   = (string) ($parentRow['visibility'] ?? '');
         }
         Audit::deny('page.move', $moveCode, [
             'target_type' => 'page',
@@ -149,12 +167,7 @@ if (!$mayMove) {
             'target_name' => $pageTitle,
             'detail'      => $detail,
         ]);
-        Http::json([
-            'error'  => $moveCode === CommunityAuthz::CODE_CYCLE
-                ? '자기 자신이나 자기 하위 페이지 아래로는 옮길 수 없습니다'
-                : '페이지는 8 단계까지만 겹칠 수 있습니다',
-            'reason' => $moveCode,
-        ], 400);
+        Http::json(['error' => $ruleCodes[$moveCode], 'reason' => $moveCode], 400);
         exit;
     }
     if ($moveCode === CommunityAuthz::CODE_NOT_FOUND) {

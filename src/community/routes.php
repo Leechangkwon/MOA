@@ -44,7 +44,7 @@ require_once __DIR__ . '/CommunityAuthz.php';
  * 자리표시자는 `public/index.php` 의 `TBOX_PATH_PATTERNS` 를 그대로 쓴다 — `{id}` 는
  * UUID 36자만 받으므로 순차 정수를 주소로 받는 자리가 없다(열거 방지, t-box S-09-5).
  *
- * 4-A 범위: 화면 둘 · API 여덟(3단계의 일곱 + `PATCH /api/pages/{id}/move`).
+ * 4-B 범위: 화면 둘 · API 열(4-A 의 여덟 + `GET /api/spaces` + `PATCH /api/pages/{id}/visibility`).
  */
 const COMMUNITY_ROUTES = [
     // ── 화면 ─────────────────────────────────────────────────
@@ -54,13 +54,17 @@ const COMMUNITY_ROUTES = [
     // ── API ──────────────────────────────────────────────────
     // 개인 공간 — 없으면 만든다(「시작하기」 페이지와 함께). ARCH 13.3 의 설계 그대로다.
     ['GET',    '/api/me/space',              'space_me.php',        'community.read'],
-    // 목록은 **내 개인 공간 안**만 본다. 다른 사람의 공간은 목록 자체가 없다 (C:S-02).
+    // 내가 볼 수 있는 공간들 — 내 개인 공간 + 내 팀 공간(없으면 그 자리에서 만든다, 4-B).
+    ['GET',    '/api/spaces',                'spaces_list.php',     'community.read'],
+    // 목록은 **한 공간 안**만 본다(`?space=`, 기본 내 개인 공간). 볼 수 없는 행은 SQL 이 거른다 (C:S-02).
     ['GET',    '/api/pages',                 'pages_list.php',      'community.read'],
     ['POST',   '/api/pages',                 'pages_create.php',    'community.write'],
     ['GET',    '/api/pages/{id}',            'pages_get.php',       'community.read'],
     ['PATCH',  '/api/pages/{id}',            'pages_update.php',    'community.write'],
     // 트리에서 자리를 바꾼다 — 부모 갈아 끼우기와 형제 순서가 같은 창구다 (4-A).
     ['PATCH',  '/api/pages/{id}/move',       'pages_move.php',      'community.write'],
+    // 공개 범위 바꾸기 — 소유자만. 트리 불변 규칙(부모보다 넓을 수 없다)은 여기서 갈린다 (4-B).
+    ['PATCH',  '/api/pages/{id}/visibility',  'pages_visibility.php', 'community.write'],
     ['DELETE', '/api/pages/{id}',            'pages_delete.php',    'community.write'],
     ['POST',   '/api/pages/{id}/heartbeat',  'pages_heartbeat.php', 'community.write'],
 ];
@@ -210,9 +214,14 @@ function community_page_row(string $publicId): ?array
                s.owner_user_id AS space_owner_user_id,
                s.access_level  AS space_access_level,
                s.team_id       AS space_team_id,
-               s.name          AS space_name
+               s.name          AS space_name,
+               -- 4-B: 개인 공간 **주인의 t-box 팀**. `visibility='team'` 판정이 이 값과
+               -- 보는 사람의 팀을 견준다(PRD 4.1 「소유자의 t-box 팀」). 팀 판정을 위해
+               -- t-box 사용자 표를 읽는 자리는 여기 하나다 — 핸들러가 따로 묻지 않는다.
+               owner.team_id   AS space_owner_team_id
           FROM community.pages p
           JOIN community.spaces s ON s.id = p.space_id
+          LEFT JOIN public.users owner ON owner.id = s.owner_user_id
          WHERE p.public_id = CAST(:pid AS uuid)
         SQL;
 
@@ -343,25 +352,36 @@ function community_breadcrumb(int $pageId, int $spaceId): array
  * `LEFT JOIN` + `GROUP BY` 로 손자 수를 함께 센다. 자식마다 「하위가 있나」를 다시 묻지
  * 않으려는 것이다(N+1 금지).
  *
+ * ★ 4-B — **볼 수 있는 자식만** 돌려준다. 자식은 부모보다 넓을 수 없을 뿐 **좁을 수는
+ *   있다**(팀 페이지 아래의 비공개 페이지). 그래서 「부모를 볼 수 있으면 자식도 볼 수
+ *   있다」가 성립하지 않고, 거르는 자리는 **SQL `WHERE`** 다 (C:S-02 · C:T-37).
+ *
+ * @param  array<string,mixed> $u 보는 사람
  * @return list<array{id:string,title:string,icon:?string,position:int,child_count:int,updated_at:string}>
  */
-function community_children(int $pageId): array
+function community_children(int $pageId, array $u): array
 {
-    $sql = <<<'SQL'
-        SELECT c.public_id, c.title, c.icon, c.position, c.updated_at,
+    [$visible, $visBind] = community_visible_pages_where($u);
+
+    // 별칭을 맞춘다 — 조건절은 `p`(페이지)·`s`(공간)·`owner`(공간 주인)를 전제로 쓰였다.
+    $sql = <<<SQL
+        SELECT p.public_id, p.title, p.icon, p.position, p.updated_at,
                count(g.id) AS child_count
-          FROM community.pages c
+          FROM community.pages p
+          JOIN community.spaces s ON s.id = p.space_id
+          LEFT JOIN public.users owner ON owner.id = s.owner_user_id
           LEFT JOIN community.pages g
-                 ON g.parent_page_id = c.id AND g.deleted_at IS NULL
-         WHERE c.parent_page_id = CAST(:pid AS bigint)
-           AND c.deleted_at IS NULL
-         GROUP BY c.id, c.public_id, c.title, c.icon, c.position, c.updated_at
-         ORDER BY c.position, c.id
+                 ON g.parent_page_id = p.id AND g.deleted_at IS NULL
+         WHERE p.parent_page_id = CAST(:pid AS bigint)
+           AND p.deleted_at IS NULL
+           AND {$visible}
+         GROUP BY p.id, p.public_id, p.title, p.icon, p.position, p.updated_at
+         ORDER BY p.position, p.id
          LIMIT 500
         SQL;
 
     $out = [];
-    foreach (Db::instance()->run($sql, [':pid' => $pageId])->fetchAll() as $r) {
+    foreach (Db::instance()->run($sql, array_merge([':pid' => $pageId], $visBind))->fetchAll() as $r) {
         $out[] = [
             'id'          => (string) $r['public_id'],
             'title'       => (string) $r['title'],
@@ -419,22 +439,27 @@ function community_next_position(int $spaceId, ?int $parentId): int
  *
  * 돌려주는 것
  *   `subtree_height`   옮길 페이지를 1 로 센 자기 가지의 높이 (잎이면 1)
+ *   `subtree_widest`   옮겨 가는 가지 전체에서 **가장 넓은 공개 범위** (4-B). 자기만이면 자기 값
  *   `parent_depth`     새 부모의 깊이 (뿌리를 1 로 센 값). 부모가 없으면 `null`
  *   `parent_ancestors` 새 부모 자신과 그 위 조상들의 `pages.id` 목록. 부모가 없으면 빈 배열
  *
  * 두 갈래(아래로·위로)를 CTE 둘로 나란히 돌리고 마지막에 한 행으로 모은다 — 요청 하나에
  * 트리 질의는 **이 한 번**이다.
  *
- * @return array{subtree_height:int,parent_depth:?int,parent_ancestors:list<int>}
+ * ★ 「가장 넓은 범위」를 SQL 이 센다 (4-B). PHP 가 가지를 훑어 최대값을 구하면 같은 순서표
+ *   (private<team<internal<published)가 두 벌이 된다. 여기서는 순서만 SQL 에 적고, 그 값을
+ *   **이름으로 되돌려** 판정은 `CommunityAuthz::fitsUnderParent` 한 곳에서 한다.
+ *
+ * @return array{subtree_height:int,subtree_widest:string,parent_depth:?int,parent_ancestors:list<int>}
  */
 function community_move_shape(int $pageId, ?int $parentId): array
 {
     $sql = <<<'SQL'
         WITH RECURSIVE down AS (
-            SELECT p.id, 1 AS lvl FROM community.pages p
+            SELECT p.id, p.visibility, 1 AS lvl FROM community.pages p
              WHERE p.id = CAST(:pid AS bigint) AND p.deleted_at IS NULL
             UNION ALL
-            SELECT c.id, d.lvl + 1 FROM community.pages c
+            SELECT c.id, c.visibility, d.lvl + 1 FROM community.pages c
               JOIN down d ON c.parent_page_id = d.id
              WHERE c.deleted_at IS NULL
         ), up AS (
@@ -446,6 +471,9 @@ function community_move_shape(int $pageId, ?int $parentId): array
              WHERE parent.deleted_at IS NULL
         )
         SELECT (SELECT max(lvl) FROM down)      AS subtree_height,
+               (SELECT max(CASE visibility WHEN 'private' THEN 0 WHEN 'team' THEN 1
+                                           WHEN 'internal' THEN 2 WHEN 'published' THEN 3 END)
+                  FROM down)                    AS subtree_widest_rank,
                (SELECT max(lvl) FROM up)        AS parent_depth,
                (SELECT string_agg(CAST(id AS text), ',') FROM up) AS parent_ancestors
         SQL;
@@ -459,11 +487,200 @@ function community_move_shape(int $pageId, ?int $parentId): array
         }
     }
 
+    // 번호를 이름으로 되돌린다. 모르는 번호는 **가장 넓은 값**으로 본다 — 모르면 막는 쪽이다.
+    $names  = ['private', 'team', 'internal', 'published'];
+    $rank   = is_array($row) && $row['subtree_widest_rank'] !== null ? (int) $row['subtree_widest_rank'] : 0;
+    $widest = $names[$rank] ?? 'published';
+
     return [
         'subtree_height'   => is_array($row) && $row['subtree_height'] !== null ? (int) $row['subtree_height'] : 1,
+        'subtree_widest'   => $widest,
         'parent_depth'     => is_array($row) && $row['parent_depth'] !== null ? (int) $row['parent_depth'] : null,
         'parent_ancestors' => $ancestors,
     ];
+}
+
+/* ══════════════════════════════════════════════════════════════════
+ * 공간 (4-B) — 개인 공간 · 팀 공간
+ *
+ * 규칙 하나: **목록은 SQL `WHERE` 로 거른다.** 아래 `community_visible_pages_where()` 가
+ * 그 조건절이고, `CommunityAuthz::decidePageRead()` 와 **같은 판정**을 SQL 로 적은 것이다.
+ * 두 벌이 어긋나면 화면이 볼 수 없는 제목을 내려주게 되므로, 고칠 때는 **둘을 함께** 고친다
+ * (C:T-37 이 psql 로 센 수와 API 가 준 수를 대조한다).
+ * ══════════════════════════════════════════════════════════════════ */
+
+/**
+ * 공간 한 건 + (개인 공간이면) 주인의 팀. 없으면 `null`.
+ *
+ * @return array<string,mixed>|null
+ */
+function community_space_row(int $spaceId): ?array
+{
+    $sql = <<<'SQL'
+        SELECT s.id, s.kind, s.name, s.description, s.access_level, s.team_id,
+               s.owner_user_id, s.is_active, s.created_at,
+               owner.team_id AS owner_team_id,
+               t.name        AS team_name,
+               t.is_active   AS team_is_active
+          FROM community.spaces s
+          LEFT JOIN public.users owner ON owner.id = s.owner_user_id
+          LEFT JOIN public.teams t     ON t.id = s.team_id
+         WHERE s.id = CAST(:sid AS bigint)
+        SQL;
+
+    $row = Db::instance()->run($sql, [':sid' => $spaceId])->fetch();
+    return is_array($row) ? $row : null;
+}
+
+/**
+ * 내 개인 공간. 아직 없으면 `null`(`GET /api/me/space` 가 만든다).
+ *
+ * @return array<string,mixed>|null
+ */
+function community_my_personal_space(int $userId): ?array
+{
+    $sql = <<<'SQL'
+        SELECT s.id, s.kind, s.name, s.description, s.access_level, s.team_id,
+               s.owner_user_id, s.is_active, s.created_at,
+               owner.team_id AS owner_team_id,
+               NULL::text    AS team_name,
+               NULL::boolean AS team_is_active
+          FROM community.spaces s
+          LEFT JOIN public.users owner ON owner.id = s.owner_user_id
+         WHERE s.kind = 'personal' AND s.owner_user_id = CAST(:uid AS bigint)
+        SQL;
+
+    $row = Db::instance()->run($sql, [':uid' => $userId])->fetch();
+    return is_array($row) ? $row : null;
+}
+
+/**
+ * 이 사람이 **그 공간을 열어 볼 수 있나** (목록 창구의 공간 관문, C:T-35 · C:T-36).
+ *
+ * 페이지 한 건의 판정(`decidePageRead`)과 다른 물음이다 — 여기서는 「그 그릇을 통째로
+ * 훑어도 되나」를 묻는다. 남의 개인 공간은 **통째로 닫혀 있다**: 그 안에 사내로 열어 둔
+ * 페이지가 있더라도, 남의 공간 목차를 넘겨보는 일은 공개 범위가 허락한 일이 아니다.
+ *
+ * @param  array<string,mixed> $u
+ * @param  array<string,mixed> $space `community_space_row()` 의 행
+ * @return array{0:bool,1:string} [허용 여부, 코드]
+ */
+function community_space_gate(array $u, array $space): array
+{
+    $kind = (string) ($space['kind'] ?? '');
+
+    if ($kind === 'personal') {
+        $owner = $space['owner_user_id'] ?? null;
+        if ($owner !== null && (int) $owner === (int) $u['id']) {
+            return [true, CommunityAuthz::CODE_OWNER];
+        }
+        return [false, CommunityAuthz::CODE_NOT_OWNER];
+    }
+
+    if ($kind === 'team') {
+        // 판정을 두 벌로 적지 않으려고 페이지 판정 함수를 그대로 부른다 — 팀 공간의
+        // 페이지 판정은 「그 팀원인가」 하나뿐이라 공간 판정과 같은 물음이다.
+        return CommunityAuthz::decidePageRead($u, [
+            'deleted_at'          => null,
+            'space_kind'          => 'team',
+            'space_team_id'       => $space['team_id'] ?? null,
+            'space_owner_user_id' => null,
+            'visibility'          => 'private',
+        ]);
+    }
+
+    // 게시판 공간(`board`)은 5단계다.
+    return [false, CommunityAuthz::CODE_ROLE_NOT_PERMITTED];
+}
+
+/**
+ * 목록 질의에 붙일 **행 단위 조건절** (C:S-02 「못 보는 것은 응답에 없다」, C:T-37).
+ *
+ * 돌려주는 조건절은 별칭 셋을 전제로 한다 — 부르는 SQL 은 반드시
+ * `FROM community.pages p JOIN community.spaces s ON s.id = p.space_id
+ *  LEFT JOIN public.users owner ON owner.id = s.owner_user_id` 여야 한다.
+ * 별칭은 SQL 식별자 자리라 바인딩할 수 없으므로 **코드에 적힌 리터럴 셋**으로 고정한다
+ * (t-box `Authz::visibleWhere` 의 허용 목록과 같은 이유).
+ *
+ * 조건은 `CommunityAuthz::decidePageRead` 를 한 줄씩 옮긴 것이다:
+ *   내 개인 공간 전부 / `internal` + 쓰기 자격 / `team` + 주인과 같은 팀 / Admin / 내 팀 공간.
+ * `published` 는 어느 갈래에도 없다 — 5단계까지는 목록에도 없다.
+ *
+ * @param  array<string,mixed> $u
+ * @return array{0:string,1:array<string,mixed>}
+ */
+function community_visible_pages_where(array $u): array
+{
+    $sql = <<<'SQL'
+(
+      (s.kind = 'personal' AND s.owner_user_id = CAST(:vis_me AS bigint))
+   OR (s.kind = 'personal' AND p.visibility = 'internal' AND CAST(:vis_write AS boolean))
+   OR (s.kind = 'personal' AND p.visibility = 'team'
+       AND owner.team_id IS NOT NULL AND owner.team_id = CAST(:vis_team AS bigint))
+   OR (s.kind = 'personal' AND p.visibility IN ('private','team','internal')
+       AND CAST(:vis_admin AS boolean))
+   OR (s.kind = 'team' AND s.team_id IS NOT NULL AND s.team_id = CAST(:vis_team AS bigint))
+   OR (s.kind = 'team' AND CAST(:vis_admin AS boolean))
+)
+SQL;
+
+    return [$sql, [
+        ':vis_me'    => (int) $u['id'],
+        // 「쓰기 자격이 있는 역할인가」·「Admin 인가」의 판단은 `Authz` 가 한다 — 이 파일에
+        // 역할 문자열 비교가 생기지 않게 참·거짓만 받아 바인딩한다 (ARCH 4.1).
+        ':vis_write' => Authz::canCommunityWrite($u) ? 'true' : 'false',
+        ':vis_admin' => Authz::canAdmin($u) ? 'true' : 'false',
+        // 팀이 없으면 NULL 이고, NULL 과의 `=` 는 참이 되지 않는다(팀 갈래가 통째로 꺼진다).
+        ':vis_team'  => $u['team_id'] === null ? null : (int) $u['team_id'],
+    ]];
+}
+
+/**
+ * 이 페이지 **아래에서 더 넓은** 페이지들 (4-B `children_wider` · `cascade`).
+ *
+ * 재귀 CTE **한 번**으로 후손 전부를 모으고, 새 범위보다 넓은 것만 돌려준다.
+ * 자기 자신은 포함하지 않는다.
+ *
+ * @return list<array{id:int,public_id:string,title:string,visibility:string}>
+ */
+function community_descendants_wider(int $pageId, string $newVisibility): array
+{
+    $sql = <<<'SQL'
+        WITH RECURSIVE down AS (
+            SELECT p.id FROM community.pages p
+             WHERE p.id = CAST(:pid AS bigint) AND p.deleted_at IS NULL
+            UNION ALL
+            SELECT c.id FROM community.pages c
+              JOIN down d ON c.parent_page_id = d.id
+             WHERE c.deleted_at IS NULL
+        )
+        SELECT p.id, p.public_id, p.title, p.visibility
+          FROM community.pages p
+          JOIN down ON down.id = p.id
+         WHERE p.id <> CAST(:pid2 AS bigint)
+           AND p.deleted_at IS NULL
+           AND (CASE p.visibility WHEN 'private' THEN 0 WHEN 'team' THEN 1
+                                  WHEN 'internal' THEN 2 WHEN 'published' THEN 3 END)
+               > CAST(:rank AS int)
+         ORDER BY p.id
+         LIMIT 2000
+        SQL;
+
+    $rank = CommunityAuthz::visibilityRank($newVisibility);
+    if ($rank === null) {
+        return [];
+    }
+
+    $out = [];
+    foreach (Db::instance()->run($sql, [':pid' => $pageId, ':pid2' => $pageId, ':rank' => $rank])->fetchAll() as $r) {
+        $out[] = [
+            'id'         => (int) $r['id'],
+            'public_id'  => (string) $r['public_id'],
+            'title'      => (string) $r['title'],
+            'visibility' => (string) $r['visibility'],
+        ];
+    }
+    return $out;
 }
 
 /**

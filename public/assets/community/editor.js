@@ -100,6 +100,123 @@ function toLogin() {
   window.location.assign(APP_BASE + '/login?to=community');
 }
 
+/* ─── 공개 범위 (4-B) ────────────────────────────────────────────
+ *
+ * ★ 이 표는 **보이는 말과 색**일 뿐 판정이 아니다. 무엇을 고를 수 있고 무엇이 거부되는지는
+ *   서버가 요청마다 정하고(`CommunityAuthz`), 화면은 그 답을 그린다 (DESIGN 원칙 1).
+ * ★ 색은 t-box 등급 배지의 뜻 그대로다 — 좁을수록 빨강, 넓을수록 파랑 (DESIGN 2.2).
+ *   새 색값을 만들지 않았다.
+ */
+const VISIBILITY_LABELS = {
+  private: { text: '비공개', badge: 'badge--admin-only' },
+  team: { text: '팀', badge: 'badge--team' },
+  internal: { text: '사내', badge: 'badge--internal' }
+};
+
+/** 거부 사유(서버가 준 `reason`) → 사람 문장. 표에 없으면 서버가 준 문구를 그대로 쓴다. */
+const VISIBILITY_REASONS = {
+  children_wider: '하위 페이지가 더 넓게 열려 있습니다. 하위까지 함께 바꾸려면 아래를 켜세요',
+  wider_than_parent: '상위 페이지보다 넓게 열 수 없습니다. 상위 페이지를 먼저 넓히세요',
+  space_governed: '팀 공간의 페이지는 공간 등급을 따릅니다'
+};
+
+/**
+ * 아이콘 한 칸. `app.js` 의 `makeIcon` 과 **같은 방식**이다 — SVG 마크업은 서버가 만든
+ * `<template>` 안에 있고 여기서는 `cloneNode` 로 복제만 한다. 문자열을 HTML 로 바꾸는
+ * 자리가 없다 (CSP `script-src 'self'`, C:S-03). 이 파일은 모듈이라 `app.js` 의 함수를
+ * 부를 수 없어 같은 여섯 줄을 여기에도 둔다.
+ */
+function makeIcon(name) {
+  const host = document.createElement('span');
+  host.className = 'icon';
+  const tpl = document.getElementById('tpl-icon-' + String(name));
+  if (tpl && tpl.content) { host.appendChild(tpl.content.cloneNode(true)); }
+  return host;
+}
+
+/** 배지 한 칸을 공개 범위로 채운다. 모르는 값이면 숨긴다(지어내지 않는다). */
+function paintVisibility(el, visibility) {
+  if (!el) { return; }
+  const entry = VISIBILITY_LABELS[visibility];
+  if (!entry) { show(el, false); return; }
+  el.className = 'badge ' + entry.badge;
+  el.setAttribute('title', visibility);
+  setText(el, entry.text);
+  show(el, true);
+}
+
+/** 트리·카드 줄에 붙일 작은 배지 하나. */
+function visibilityBadge(visibility) {
+  const entry = VISIBILITY_LABELS[visibility];
+  if (!entry) { return null; }
+  const span = document.createElement('span');
+  span.className = 'badge ' + entry.badge;
+  span.setAttribute('title', visibility);
+  span.textContent = entry.text;
+  return span;
+}
+
+/**
+ * 주소의 `?space=` — 숫자만 받는다 (4-B).
+ * 형태가 아니면 없는 것으로 다룬다: 창구가 어차피 404 로 답하지만, 이상한 값을 그대로
+ * 창구에 실어 보내면 「무엇이 잘못됐나」가 주소와 응답 두 곳으로 흩어진다.
+ */
+function currentSpaceId() {
+  let raw = '';
+  try {
+    raw = new URLSearchParams(window.location.search).get('space') || '';
+  } catch (e) {
+    raw = '';
+  }
+  return /^[1-9][0-9]{0,17}$/.test(raw) ? raw : '';
+}
+
+/** 공간 하나의 주소. 개인 공간(기본)은 꼬리표 없이 둔다. */
+function spaceHref(id, kind) {
+  return COMMUNITY_BASE + '/' + (kind === 'personal' ? '' : '?space=' + String(id));
+}
+
+/**
+ * 셸 왼쪽 내비의 「팀 공간」 묶음을 채운다 (4-B, 두 화면 공통).
+ *
+ * 항목은 창구가 준 것만 들어간다 — 이 파일에는 「내 팀이 무엇인가」를 아는 코드가 없다.
+ * 팀 공간이 없으면 제목 줄까지 숨은 채로 끝난다.
+ */
+function fillSpaceNav(spaces) {
+  const box = document.getElementById('nav-community-teams');
+  const title = document.getElementById('nav-community-team-title');
+  if (!box) { return; }
+  clear(box);
+  const teams = (Array.isArray(spaces) ? spaces : []).filter((s) => s && s.kind === 'team');
+  const here = currentSpaceId();
+  for (const space of teams) {
+    const a = document.createElement('a');
+    a.className = 'nav__item' + (here === String(space.id) ? ' is-active' : '');
+    a.setAttribute('href', spaceHref(space.id, space.kind));
+    const icon = makeIcon('users');
+    const label = document.createElement('span');
+    label.textContent = space.name;
+    a.appendChild(icon);
+    a.appendChild(label);
+    box.appendChild(a);
+  }
+  show(box, teams.length > 0);
+  show(title, teams.length > 0);
+}
+
+/**
+ * 내가 볼 수 있는 공간들. **팀 공간이 아직 없으면 창구가 그 자리에서 만든다**(C:T-36) —
+ * 그래서 이 호출은 화면을 여는 것만으로 팀 공간을 여는 일을 겸한다. 두 번 불러도 같다.
+ */
+function loadSpaces() {
+  return api('GET', '/api/spaces').then((result) => {
+    if (result.status !== 200) { return []; }
+    const spaces = Array.isArray(result.data.spaces) ? result.data.spaces : [];
+    fillSpaceNav(spaces);
+    return spaces;
+  }).catch(() => []);
+}
+
 /* ─── 내 공간 (community-home) ───────────────────────────────── */
 
 function initHome() {
@@ -109,7 +226,33 @@ function initHome() {
   const empty = document.getElementById('community-empty');
   const count = document.getElementById('community-count');
   const search = document.getElementById('community-search');
+  const spaceSelect = document.getElementById('community-space');
+  const spaceLabel = document.getElementById('community-space-label');
+  const headTitle = document.getElementById('community-space-title');
+  const headSub = document.getElementById('community-space-sub');
+  const spaceId = currentSpaceId();
   let timer = null;
+
+  /** 목록 창구 주소 — 고른 공간을 꼬리표로 붙인다 (4-B). */
+  function listPath(extra) {
+    const parts = [];
+    if (spaceId !== '') { parts.push('space=' + encodeURIComponent(spaceId)); }
+    if (extra) { parts.push(extra); }
+    return '/api/pages' + (parts.length > 0 ? '?' + parts.join('&') : '');
+  }
+
+  /** 화면 머리를 창구가 준 공간 요약으로 바꾼다. 화면이 이름을 지어내지 않는다. */
+  function drawSpaceHead(space) {
+    if (!space) { return; }
+    setText(headTitle, space.kind === 'team' ? space.name : '내 공간');
+    setText(headSub, space.kind === 'team'
+      ? '팀이 함께 쓰는 공간입니다. 팀원 누구나 페이지를 만들고 고칠 수 있습니다.'
+      : '나만 보는 개인 업무 공간입니다. 페이지마다 공개 범위를 고를 수 있습니다.');
+    document.title = (space.kind === 'team' ? space.name : '내 공간') + ' · 커뮤니티';
+  }
+
+  // 지금 보고 있는 공간의 종류. 창구가 준 값이고 화면이 정하지 않는다.
+  let spaceKind = 'personal';
 
   function card(page) {
     const a = document.createElement('a');
@@ -130,6 +273,9 @@ function initHome() {
 
     a.appendChild(title);
     a.appendChild(desc);
+    // 공개 범위 배지 (4-B). 팀 공간의 페이지에는 자기 범위가 없어 값이 와도 그리지 않는다.
+    const mark = spaceKind === 'team' ? null : visibilityBadge(page.visibility);
+    if (mark) { a.appendChild(mark); }
     a.appendChild(when);
     return a;
   }
@@ -150,6 +296,8 @@ function initHome() {
     link.setAttribute('href', COMMUNITY_BASE + '/p/' + node.id);
     link.textContent = (node.icon ? node.icon + ' ' : '') + node.title;
 
+    const mark = spaceKind === 'team' ? null : visibilityBadge(node.visibility);
+
     const add = document.createElement('button');
     add.type = 'button';
     add.className = 'btn btn--small btn--quiet page-tree__add';
@@ -159,6 +307,7 @@ function initHome() {
       event.preventDefault();
       event.stopPropagation();
       add.disabled = true;
+      // 부모가 정해지면 공간도 따라 정해진다 — 창구가 부모의 공간을 그대로 쓴다.
       api('POST', '/api/pages', { parent_id: node.id })
         .then((result) => {
           if (result.status === 401) { toLogin(); return; }
@@ -174,6 +323,7 @@ function initHome() {
 
     row.appendChild(caret);
     row.appendChild(link);
+    if (mark) { row.appendChild(mark); }
     if (kidCount > 0) {
       const badge = document.createElement('span');
       badge.className = 'muted';
@@ -220,10 +370,11 @@ function initHome() {
   }
 
   function loadTree() {
-    return api('GET', '/api/pages?tree=1').then((result) => {
+    return api('GET', listPath('tree=1')).then((result) => {
       if (result.status === 401) { toLogin(); return; }
       if (result.status !== 200) { setText(msg, errorMessage(result.data)); return; }
       setText(msg, '');
+      if (result.data.space) { spaceKind = result.data.space.kind; drawSpaceHead(result.data.space); }
       clear(treeBox);
       const pages = Array.isArray(result.data.pages) ? result.data.pages : [];
       const byParent = new Map();
@@ -243,10 +394,11 @@ function initHome() {
   function load(q) {
     // 찾기를 껐으면 트리로 돌아간다 — 트리 안에서 찾는 것은 뜻이 없다.
     if (!q || q === '') { return loadTree(); }
-    return api('GET', '/api/pages?q=' + encodeURIComponent(q)).then((result) => {
+    return api('GET', listPath('q=' + encodeURIComponent(q))).then((result) => {
       if (result.status === 401) { toLogin(); return; }
       if (result.status !== 200) { setText(msg, errorMessage(result.data)); return; }
       setText(msg, '');
+      if (result.data.space) { spaceKind = result.data.space.kind; drawSpaceHead(result.data.space); }
       clear(list);
       const pages = Array.isArray(result.data.pages) ? result.data.pages : [];
       for (const page of pages) { list.appendChild(card(page)); }
@@ -257,11 +409,52 @@ function initHome() {
     });
   }
 
+  /* 공간 고르개 (4-B) — 항목은 창구가 준 것만이다. 고르면 주소를 바꿔 **화면을 다시
+     연다**: 고른 공간이 주소에 남아야 새로 고침·뒤로 가기·즐겨찾기가 같은 곳을 연다. */
+  function fillSpacePicker(spaces) {
+    if (!spaceSelect) { return; }
+    clear(spaceSelect);
+    for (const space of spaces) {
+      const option = document.createElement('option');
+      option.value = String(space.id);
+      option.setAttribute('data-kind', space.kind);
+      option.textContent = space.name;
+      if (spaceId === '' ? space.kind === 'personal' : spaceId === String(space.id)) {
+        option.selected = true;
+      }
+      spaceSelect.appendChild(option);
+    }
+    // 고를 것이 하나뿐이면 고르개를 보이지 않는다(팀이 없는 계정).
+    show(spaceSelect, spaces.length > 1);
+    show(spaceLabel, spaces.length > 1);
+  }
+
+  if (spaceSelect) {
+    spaceSelect.addEventListener('change', () => {
+      const picked = spaceSelect.value;
+      const option = spaceSelect.options[spaceSelect.selectedIndex];
+      const kind = option && option.getAttribute('data-kind') === 'personal' ? 'personal' : 'team';
+      window.location.assign(spaceHref(picked, kind));
+    });
+  }
+
   // 개인 공간은 첫 방문에 서버가 만든다(「시작하기」 페이지와 함께).
+  // 팀 공간은 `GET /api/spaces` 가 만든다 — 두 창구 모두 두 번 불러도 결과가 같다.
   api('GET', '/api/me/space')
     .then((result) => {
-      if (result.status === 401) { toLogin(); return; }
-      if (result.status !== 200) { setText(msg, errorMessage(result.data)); return; }
+      if (result.status === 401) { toLogin(); return null; }
+      if (result.status !== 200) { setText(msg, errorMessage(result.data)); return null; }
+      return loadSpaces();
+    })
+    .then((spaces) => {
+      if (spaces === null) { return null; }
+      const list2 = Array.isArray(spaces) ? spaces : [];
+      fillSpacePicker(list2);
+      for (const space of list2) {
+        if (spaceId === '' ? space.kind === 'personal' : spaceId === String(space.id)) {
+          drawSpaceHead(space);
+        }
+      }
       return load('');
     })
     .catch(() => setText(msg, GENERIC_ERROR));
@@ -289,7 +482,11 @@ function bindNewPage() {
     if (!button) { continue; }
     button.addEventListener('click', () => {
       button.disabled = true;
-      api('POST', '/api/pages', {})
+      /* 4-B — 지금 보고 있는 공간에 만든다. 값은 주소의 `?space=` 이고 창구가 다시
+         판단한다(팀 공간이면 그 팀원만). 개인 공간이면 꼬리표가 없으므로 칸을 보내지
+         않고, 창구의 기본값(내 개인 공간)이 그대로 쓰인다. */
+      const here = currentSpaceId();
+      api('POST', '/api/pages', here === '' ? {} : { space_id: here })
         .then((result) => {
           if (result.status === 401) { toLogin(); return; }
           if (result.status === 201 && result.data.page && typeof result.data.page.id === 'string') {
@@ -904,11 +1101,15 @@ function initPage() {
   const newChildButton = document.getElementById('page-new-child');
   const moveButton = document.getElementById('page-move');
   const conflictDialog = document.getElementById('conflict-dialog');
+  const visibilityBadgeEl = document.getElementById('page-visibility');
+  const visibilityButton = document.getElementById('page-visibility-edit');
 
   let state = {
     doc: null, version: 0, title: '', canEdit: false, editing: false,
     // 4-A — 창구가 준 「볼 수 있는 하위 페이지」 제목 지도. 렌더러 두 벌이 이것만 본다.
-    childTitles: {}
+    childTitles: {},
+    // 4-B — 지금의 공개 범위와 이 페이지가 든 공간. 둘 다 창구가 준 값이다.
+    visibility: 'private', space: null, canSetVisibility: false
   };
   let view = null;
   let toolbar = null;
@@ -1020,6 +1221,10 @@ function initPage() {
       state.childTitles = result.data.child_titles && typeof result.data.child_titles === 'object'
         ? result.data.child_titles
         : {};
+      state.visibility = typeof page.visibility === 'string' ? page.visibility : 'private';
+      state.space = result.data.space || null;
+      state.canSetVisibility = result.data.can_set_visibility === true;
+      drawVisibility();
       setText(titleEl, page.title);
       document.title = page.title + ' · 커뮤니티';
       setText(subEl, page.parent ? '상위: ' + page.parent.title : '');
@@ -1030,8 +1235,89 @@ function initPage() {
       show(editButton, state.canEdit && !state.editing);
       show(deleteButton, state.canEdit);
       show(moveButton, state.canEdit);
+      show(visibilityButton, state.canSetVisibility);
       setText(msg, '');
     });
+  }
+
+  /**
+   * 머리의 공개 범위 배지 (4-B).
+   * 팀 공간의 페이지에는 자기 범위가 없다(공간 등급을 따른다) — 그 자리에는 「팀 공간」을
+   * 보인다. 어느 쪽이든 **창구가 준 값**이고 화면이 판단해서 고르지 않는다.
+   */
+  function drawVisibility() {
+    if (state.space && state.space.kind === 'team') {
+      if (visibilityBadgeEl) {
+        visibilityBadgeEl.className = 'badge badge--team';
+        visibilityBadgeEl.setAttribute('title', 'team');
+        setText(visibilityBadgeEl, '팀 공간');
+        show(visibilityBadgeEl, true);
+      }
+      return;
+    }
+    paintVisibility(visibilityBadgeEl, state.visibility);
+  }
+
+  /* ── 「공개 범위」 창 (4-B) ──
+     라디오 셋(비공개·팀·사내) + 「하위 페이지까지 함께」 체크다. 「게시」는 없다 —
+     게시판 공간이 아직 없기 때문이고, 보내도 창구가 400 으로 막는다.
+     거부 사유는 **사람 문장**으로 바꿔 보인다(표 `VISIBILITY_REASONS`). */
+  const visibilityDialog = document.getElementById('visibility-dialog');
+  const visibilityMsg = document.getElementById('visibility-msg');
+  const visibilitySave = document.getElementById('visibility-save');
+  const cascadeBox = document.getElementById('visibility-cascade');
+
+  function visibilityRadios() {
+    return visibilityDialog
+      ? visibilityDialog.querySelectorAll('input[name="page-visibility"]')
+      : [];
+  }
+
+  function openVisibility() {
+    if (!visibilityDialog || typeof visibilityDialog.showModal !== 'function') { return; }
+    setText(visibilityMsg, '');
+    if (cascadeBox) { cascadeBox.checked = false; }
+    for (const radio of visibilityRadios()) {
+      radio.checked = radio.value === state.visibility;
+    }
+    if (!visibilityDialog.open) { visibilityDialog.showModal(); }
+  }
+
+  function pickedVisibility() {
+    for (const radio of visibilityRadios()) {
+      if (radio.checked) { return radio.value; }
+    }
+    return null;
+  }
+
+  if (visibilityButton && visibilityDialog) {
+    visibilityButton.addEventListener('click', openVisibility);
+    for (const close of visibilityDialog.querySelectorAll('[data-visibility-close]')) {
+      close.addEventListener('click', () => visibilityDialog.close());
+    }
+    if (visibilitySave) {
+      visibilitySave.addEventListener('click', () => {
+        const want = pickedVisibility();
+        if (want === null) { setText(visibilityMsg, '공개 범위를 고르세요'); return; }
+        visibilitySave.disabled = true;
+        api('PATCH', '/api/pages/' + pageId + '/visibility', {
+          visibility: want,
+          cascade: cascadeBox ? cascadeBox.checked === true : false
+        })
+          .then((result) => {
+            visibilitySave.disabled = false;
+            if (result.status === 401) { toLogin(); return; }
+            if (result.status === 200) {
+              visibilityDialog.close();
+              // 배지·하위 목록이 함께 바뀐다 — 서버가 준 값으로 다시 그린다.
+              return load();
+            }
+            const reason = result.data && typeof result.data.reason === 'string' ? result.data.reason : '';
+            setText(visibilityMsg, VISIBILITY_REASONS[reason] || errorMessage(result.data));
+          })
+          .catch(() => { visibilitySave.disabled = false; setText(visibilityMsg, GENERIC_ERROR); });
+      });
+    }
   }
 
   function showEditors(editors) {
@@ -1379,7 +1665,8 @@ function initPage() {
     movePicked = false;
     setText(moveMsg, '');
     clear(moveTreeBox);
-    api('GET', '/api/pages?tree=1')
+    // 4-B — 이 페이지가 **든 공간**의 트리를 받는다(팀 공간에서도 같은 창을 쓴다).
+    api('GET', '/api/pages?tree=1' + (state.space ? '&space=' + encodeURIComponent(String(state.space.id)) : ''))
       .then((result) => {
         if (result.status === 401) { toLogin(); return; }
         if (result.status !== 200) { setText(moveMsg, errorMessage(result.data)); return; }
@@ -1494,7 +1781,13 @@ function boot() {
         if (typeof me.csrf_token !== 'string') { return null; }
         csrfToken = me.csrf_token;
         bindNewPage();
-        if (page === 'community-home') { initHome(); } else { initPage(); }
+        if (page === 'community-home') {
+          initHome();
+        } else {
+          // 4-B — 페이지 화면에서도 셸 왼쪽의 「팀 공간」 묶음을 채운다(홈은 initHome 이 한다).
+          loadSpaces();
+          initPage();
+        }
         return null;
       });
     })

@@ -48,6 +48,10 @@ require __DIR__ . '/../../views/shell_top.php';
         <button type="button" class="btn btn--quiet" data-help-open>
           <span class="icon" data-icon="help"></span><span>사용 방법</span>
         </button>
+        <!-- 공개 범위 배지 (4-B, DESIGN 2.2) — 한글 라벨을 보이고 원래 값은 `title` 에 둔다.
+             색은 t-box 등급 배지의 뜻 그대로다: 비공개=`--admin-only`(빨강, 가장 좁다) ·
+             팀=`--team`(보라) · 사내=`--internal`(파랑). 새 색값을 만들지 않았다. -->
+        <span id="page-visibility" class="badge" hidden></span>
         <span id="page-editors" class="badge" hidden></span>
         <span id="page-save-state" class="badge" hidden></span>
         <button id="page-delete" class="btn btn--quiet btn--danger" type="button" hidden>
@@ -55,6 +59,11 @@ require __DIR__ . '/../../views/shell_top.php';
         </button>
         <button id="page-move" class="btn btn--quiet" type="button" hidden>
           <span class="icon" data-icon="files"></span>옮기기
+        </button>
+        <!-- 「공개 범위」 (4-B). 창구가 준 `can_set_visibility` 가 참일 때만 보인다 —
+             화면이 소유·역할을 따지지 않는다. 되살려 눌러도 서버가 다시 막는다 (PRD S-01). -->
+        <button id="page-visibility-edit" class="btn btn--quiet" type="button" hidden>
+          <span class="icon" data-icon="shield"></span>공개 범위
         </button>
         <button id="page-edit" class="btn" type="button" hidden>
           <span class="icon" data-icon="edit"></span>편집
@@ -156,6 +165,56 @@ require __DIR__ . '/../../views/shell_top.php';
       <div class="form-actions">
         <button class="btn btn--quiet" type="button" data-move-close>그만두기</button>
         <button id="move-confirm" class="btn" type="button">여기로 옮기기</button>
+      </div>
+    </dialog>
+
+    <!-- 「공개 범위」 창 (4-B, DESIGN 2.7 `.modal--form` 520px · PRD 4.1).
+         세 줄 라디오 + 「하위 페이지까지 함께」 체크 + 설명 한 줄이다. 값은 셋뿐이고
+         「게시」는 없다 — 게시판 공간이 아직 없기 때문이다(5단계).
+         t-box 의 「폴더 등급 바꾸기」 창(`src/handlers/home.php`)과 **같은 모양**을 쓴다:
+         `.field field--full` 안에 입력을 넣고 설명을 라벨에 붙이는 방식이라 새 클래스가 0 이다. -->
+    <dialog id="visibility-dialog" class="modal modal--form" aria-labelledby="visibility-title">
+      <div class="modal__head">
+        <h2 id="visibility-title" class="modal__title">공개 범위</h2>
+        <button class="btn btn--icon btn--plain" type="button" data-visibility-close aria-label="닫기">
+          <span class="icon" data-icon="x"></span>
+        </button>
+      </div>
+      <div class="modal__body">
+        <p class="muted">이 페이지를 누가 볼 수 있는지 고릅니다. 고치는 사람은 언제나 나 하나입니다.</p>
+        <p id="visibility-msg" class="msg" role="alert" aria-live="polite"></p>
+
+        <label class="field field--full">
+          <span class="field__label">
+            <input type="radio" name="page-visibility" value="private" checked>
+            비공개 — 나와 관리자만 봅니다
+          </span>
+        </label>
+        <label class="field field--full">
+          <span class="field__label">
+            <input type="radio" name="page-visibility" value="team">
+            팀 — 내 팀 사람들이 봅니다
+          </span>
+        </label>
+        <label class="field field--full">
+          <span class="field__label">
+            <input type="radio" name="page-visibility" value="internal">
+            사내 — 로그인한 사내 구성원이 봅니다 (손님 제외)
+          </span>
+        </label>
+
+        <label class="field field--full">
+          <span class="field__label">
+            <input id="visibility-cascade" type="checkbox">
+            하위 페이지까지 함께 (더 넓게 열린 하위만 같이 좁힙니다)
+          </span>
+        </label>
+
+        <p class="muted">하위 페이지는 상위보다 넓게 열 수 없습니다.</p>
+      </div>
+      <div class="form-actions">
+        <button class="btn btn--quiet" type="button" data-visibility-close>그만두기</button>
+        <button id="visibility-save" class="btn" type="button">바꾸기</button>
       </div>
     </dialog>
 

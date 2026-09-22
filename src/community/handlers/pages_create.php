@@ -10,14 +10,19 @@ declare(strict_types=1);
  * 받는 값 (JSON, **허용 키 목록 밖의 키가 하나라도 있으면 400** — 대량 할당 차단)
  *   title     제목 (선택). 없으면 「제목 없는 페이지」. trim 뒤 1~200자, 줄바꿈·제어문자 금지
  *   doc       첫 본문 (선택). 없으면 빈 문단 하나. 있으면 `Doc::validate` 를 그대로 지난다
- *   parent_id 부모 페이지 (선택, UUID). **내 공간 안**의 살아 있는 페이지여야 한다
+ *   parent_id 부모 페이지 (선택, UUID). **그 공간 안**의 살아 있는 페이지여야 한다
+ *   space_id  공간 번호 (선택, 4-B). 없으면 **내 개인 공간**. 팀 공간이면 그 팀원만
  *
- * ★ `visibility` 는 **허용 키가 아니다**(오면 400). 3단계의 페이지는 언제나 `private` 이고,
- *   공개 범위는 4단계에 화면·판정·감사와 함께 들어온다. 값을 미리 받아 두면 「지금은 무시되는
- *   칸」이 생기고, 그 칸을 믿은 화면이 나중에 어긋난다.
+ * ★ `visibility` 는 **허용 키가 아니다**(오면 400). 새 페이지의 범위는 요청이 정하지 않는다
+ *   (4-B 지시서): 부모가 있으면 **부모와 같게**, 없으면 `private` 이다. 부모와 같게 시작해야
+ *   트리 불변 규칙(자식 ≤ 부모)이 만들어지는 순간부터 성립하고, 뿌리는 가장 좁은 값에서
+ *   시작해야 실수로 열린 페이지가 생기지 않는다. 넓히는 일은 `PATCH …/visibility` 한 곳이고
+ *   거기에 규칙 검사와 감사가 붙어 있다.
+ *   팀 공간의 페이지는 자기 범위가 없다(공간 등급을 따른다) — 칸은 `private` 고정 문자열로
+ *   채우되 **판정은 공간으로** 한다 (`CommunityAuthz::decidePageRead` 의 `team` 갈래).
  *
  * 검사 순서
- *   [1] 허용 키 → [2] 제목 규칙 → [3] 본문 검사 → [4] 내 개인 공간 → [5] 부모 →
+ *   [1] 허용 키 → [2] 제목 규칙 → [3] 본문 검사 → [4] 공간(기본: 내 개인 공간) → [5] 부모 →
  *   [6] 트랜잭션(INSERT + 파생 표 + 감사 `page.create allow`) → 201
  *
  * 왜 형식 거부에 감사가 없나: 여기서 나오는 400 은 전부 **요청 형식**의 문제다(허용 키 밖·
@@ -31,7 +36,7 @@ declare(strict_types=1);
  * @var list<string>        $params 경로 변수 없음
  */
 
-$allowedFields = ['title', 'doc', 'parent_id'];
+$allowedFields = ['title', 'doc', 'parent_id', 'space_id'];
 
 /*
  * 본문 상한 (관문 ② 실측 2026-09-22) — `Http::jsonBody()` 의 기본 상한은 64KB 인데 문서 스키마는
@@ -99,21 +104,49 @@ if ($docJson === false) {
 $db = Db::instance();
 $me = (int) $user['id'];
 
-// ─── [4] 내 개인 공간 ──────────────────────────────────────────
-// 요청은 공간을 고르지 못한다. 대상은 언제나 세션 본인의 개인 공간이다 (C:S-02).
-$sqlSpace = <<<'SQL'
-    SELECT id FROM community.spaces
-     WHERE kind = 'personal' AND owner_user_id = CAST(:uid AS bigint)
-    SQL;
-$spaceRow = $db->run($sqlSpace, [':uid' => $me])->fetch();
-if (!is_array($spaceRow)) {
-    // 개인 공간은 `GET /api/me/space` 가 만든다. 아직 없다면 화면이 그 창구를 먼저 부르면 된다.
-    Http::error(409, '개인 공간을 먼저 엽니다');
+// ─── [4] 공간 (4-B) ────────────────────────────────────────────
+/* 기본은 세션 본인의 개인 공간이다. `space_id` 를 주면 그 공간이 되지만, **그 공간에
+   쓸 수 있는 사람인지는 서버가 판단한다** (`decidePageChange` — 개인 공간이면 주인만,
+   팀 공간이면 그 팀원만). 번호를 바꿔 넣어도 남의 공간에는 한 줄도 들어가지 않는다. */
+if (array_key_exists('space_id', $body) && $body['space_id'] !== null) {
+    $rawSpace = $body['space_id'];
+    if (is_int($rawSpace)) {
+        $rawSpace = (string) $rawSpace;
+    }
+    if (!is_string($rawSpace) || preg_match('/^[1-9][0-9]{0,17}$/', $rawSpace) !== 1) {
+        Http::error(400, Http::MSG_BAD_REQUEST);
+    }
+    $spaceRow = community_space_row((int) $rawSpace);
+    if ($spaceRow === null) {
+        Http::error(404, Http::MSG_NOT_FOUND);
+    }
+} else {
+    $spaceRow = community_my_personal_space($me);
+    if ($spaceRow === null) {
+        // 개인 공간은 `GET /api/me/space` 가 만든다. 아직 없다면 화면이 그 창구를 먼저 부르면 된다.
+        Http::error(409, '개인 공간을 먼저 엽니다');
+    }
 }
 $spaceId = (int) $spaceRow['id'];
 
+[$maySpaceWrite, $spaceCode] = CommunityAuthz::decidePageChange($user, [
+    'deleted_at'          => null,
+    'space_kind'          => (string) $spaceRow['kind'],
+    'space_owner_user_id' => $spaceRow['owner_user_id'] ?? null,
+    'space_team_id'       => $spaceRow['team_id'] ?? null,
+]);
+if (!$maySpaceWrite) {
+    /* 남의 개인 공간·다른 팀의 공간이다 (C:T-36 「다른 팀은 403」). 만들기 거부에 붙일
+       감사 문장이 표에 없으므로(문장 없는 기록은 요청을 500 으로 끝낸다) 서버 로그에
+       남기고 403 동일 문구로 답한다 — `pages_delete.php` 와 같은 자리다. */
+    error_log('[tbox] request_id=' . TBOX_REQUEST_ID
+        . ' community page.create deny code=' . $spaceCode . ' space_id=' . (string) $spaceId);
+    Http::error(403, Http::MSG_FORBIDDEN);
+}
+
 // ─── [5] 부모 ─────────────────────────────────────────────────
-$parentId = null;
+$parentId         = null;
+$parentVisibility = null;
 if (array_key_exists('parent_id', $body) && $body['parent_id'] !== null) {
     $rawParent = $body['parent_id'];
     if (!is_string($rawParent)
@@ -122,7 +155,7 @@ if (array_key_exists('parent_id', $body) && $body['parent_id'] !== null) {
         Http::error(400, Http::MSG_BAD_REQUEST);
     }
     $sqlParent = <<<'SQL'
-        SELECT p.id, p.space_id, p.title
+        SELECT p.id, p.space_id, p.title, p.visibility
           FROM community.pages p
          WHERE p.public_id = CAST(:pid AS uuid)
            AND p.deleted_at IS NULL
@@ -145,7 +178,8 @@ if (array_key_exists('parent_id', $body) && $body['parent_id'] !== null) {
         ]);
         Http::error(403, Http::MSG_FORBIDDEN);
     }
-    $parentId = (int) $parentRow['id'];
+    $parentId         = (int) $parentRow['id'];
+    $parentVisibility = (string) $parentRow['visibility'];
 
     // 깊이는 뿌리를 1 로 세어 8 까지. 부모가 8 이면 그 아래는 9 다 (4-A 규칙).
     if (community_page_depth($parentId) + 1 > CommunityAuthz::MAX_DEPTH) {
@@ -161,6 +195,16 @@ if (array_key_exists('parent_id', $body) && $body['parent_id'] !== null) {
    때문인데, 트리가 생긴 지금 0 을 그대로 쓰면 새로 만든 것이 형제 사이에 끼어든다. */
 $position = community_next_position($spaceId, $parentId);
 
+/* 새 페이지의 공개 범위 (4-B) — 부모가 있으면 **부모와 같게**, 없으면 `private`.
+   요청이 정하지 않는다. 팀 공간이면 뿌리도 하위도 `private` 고정 문자열이고, 그 칸은
+   판정에 쓰이지 않는다(팀 공간의 판정은 공간 하나로 끝난다). */
+$visibility = 'private';
+if ($parentVisibility !== null && in_array($parentVisibility, CommunityAuthz::VISIBILITIES, true)
+    && (string) $spaceRow['kind'] === 'personal'
+) {
+    $visibility = $parentVisibility;
+}
+
 // ─── [6] 저장 — 기록이 실패하면 페이지도 남지 않는다 (PRD S-07) ───
 $sqlInsert = <<<'SQL'
     INSERT INTO community.pages
@@ -169,7 +213,7 @@ $sqlInsert = <<<'SQL'
     VALUES
         (CAST(:space AS bigint), CAST(:parent AS bigint), :title, CAST(:doc AS jsonb), 1, :plain,
          to_tsvector('simple', :tsv), CAST(:blocks AS int),
-         CAST(:author AS bigint), CAST(:editor AS bigint), 'private', CAST(:pos AS int))
+         CAST(:author AS bigint), CAST(:editor AS bigint), :vis, CAST(:pos AS int))
     RETURNING id, public_id, created_at, updated_at
     SQL;
 
@@ -179,6 +223,7 @@ try {
         ':space'  => $spaceId,
         ':parent' => $parentId,
         ':pos'    => $position,
+        ':vis'    => $visibility,
         ':title'  => $title,
         ':doc'    => $docJson,
         ':plain'  => $extract['plain_text'],
@@ -218,7 +263,12 @@ Http::json([
         'title'       => $title,
         'doc_version' => 1,
         'block_count' => count($extract['blocks']),
-        'visibility'  => 'private',
+        'visibility'  => $visibility,
+        'space'       => [
+            'id'   => $spaceId,
+            'kind' => (string) $spaceRow['kind'],
+            'name' => (string) $spaceRow['name'],
+        ],
         // 트리(4-A) — 만든 자리를 화면이 바로 알 수 있게 함께 돌려준다.
         'parent_id'   => array_key_exists('parent_id', $body) && is_string($body['parent_id'] ?? null)
             ? (string) $body['parent_id'] : null,

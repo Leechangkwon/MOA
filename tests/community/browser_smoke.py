@@ -65,6 +65,12 @@ saves = []
 patch_started = []
 delay_patch = {"on": False}
 
+# **일부러 거부당하는 요청** (4-B 28번: 하위가 더 넓은데 cascade 없이 좁히기).
+# 그 400 은 이 시험이 **요구한 결과**이므로 「끝까지 오류 0건」에 넣지 않는다.
+# 숨기는 것이 아니라 따로 세어 마지막에 줄 수를 찍는다(브라우저 내부 CSP 차단과 같은 방식).
+expected_bad = []
+expected_rules = []          # (메서드, URL 조각) — 이 짝에 맞는 400 만 옮겨 담는다
+
 
 def step(name, ok, detail=""):
     global fails
@@ -118,7 +124,15 @@ with sync_playwright() as p:
     def on_console(m):
         if m.type != "error":
             return
-        (csp_style if CSP_STYLE_RE.search(m.text) else console_errors).append(m.text)
+        if CSP_STYLE_RE.search(m.text):
+            csp_style.append(m.text)
+            return
+        # 일부러 거부당하기로 한 요청이 날아가 있는 동안의 「400 (Bad Request)」 한 줄.
+        # 브라우저가 붙이는 이 메시지에는 URL 이 없으므로, 규칙이 걸려 있는 동안만 옮긴다.
+        if expected_rules and "400 (Bad Request)" in m.text:
+            expected_bad.append(m.text)
+            return
+        console_errors.append(m.text)
 
     page.on("console", on_console)
     page.on("requestfailed", lambda r: req_failed.append("%s %s (%s)" % (
@@ -130,7 +144,11 @@ with sync_playwright() as p:
 
     def on_response(r):
         if r.status >= 400:
-            http_bad.append("%d %s %s" % (r.status, r.request.method, r.url))
+            line = "%d %s %s" % (r.status, r.request.method, r.url)
+            if any(r.request.method == m and frag in r.url for m, frag in expected_rules):
+                expected_bad.append(line)
+            else:
+                http_bad.append(line)
         if r.request.method == "PATCH" and "/community/api/pages/" in r.url and r.status == 200:
             saves.append(r.url)
 
@@ -202,6 +220,7 @@ with sync_playwright() as p:
         print("REQFAIL=%d" % len(req_failed))
         print("HTTP4XX=%d" % len(http_bad))
         print("CSPSTYLE=%d" % len(csp_style))
+        print("EXPECTEDBAD=%d" % len(expected_bad))
         print("SMOKE_FAIL=%d" % (fails + 1))
         browser.close()
         sys.exit(1)
@@ -726,6 +745,153 @@ with sync_playwright() as p:
     page.goto(page_url, wait_until="networkidle")
     page.wait_for_selector("#page-doc .doc", timeout=10000)
 
+    # ══════════════════════════════════════════════════════════════
+    # 4-B — 공개 범위 · 팀 공간 (stage4b-visibility-directive.md 「브라우저」 줄)
+    #   범위를 바꾸면 배지가 바뀌고 새로 고침 뒤에도 유지 · 하위까지 적용 체크가 동작 ·
+    #   팀 공간으로 옮겨 다닌다 · 콘솔 오류 0
+    # 여기서도 단언은 전부 「행동 → 결과」다.
+    # ══════════════════════════════════════════════════════════════
+
+    def vis_badge():
+        """머리의 공개 범위 배지 — 글자와 `title`(원래 값) 둘 다 본다 (DESIGN 2.2)."""
+        el = page.locator("#page-visibility")
+        if el.count() == 0 or el.first.is_hidden():
+            return ("", "")
+        return (el.first.inner_text().strip(), el.first.get_attribute("title") or "")
+
+    def set_visibility(value, cascade=False):
+        """창을 열어 라디오를 고르고 「바꾸기」를 누른다. 창이 닫혔는지를 돌려준다."""
+        page.wait_for_selector("#page-visibility-edit:not([hidden])", timeout=10000)
+        page.click("#page-visibility-edit")
+        page.wait_for_selector("#visibility-dialog[open]", timeout=5000)
+        page.locator('#visibility-dialog input[name="page-visibility"][value="%s"]' % value).check()
+        box = page.locator("#visibility-cascade")
+        if cascade:
+            box.check()
+        else:
+            box.uncheck()
+        page.click("#visibility-save")
+        page.wait_for_timeout(700)
+        return page.locator("#visibility-dialog[open]").count() == 0
+
+    # ── 27. 공개 범위 창 — 바꾸면 배지가 바뀌고 새로 고침 뒤에도 유지 ──
+    print("── 27. 「공개 범위」 창에서 범위를 바꾼다")
+    step("처음 배지는 「비공개」다", vis_badge() == ("비공개", "private"), "배지=%r" % (vis_badge(),))
+
+    step("「팀」으로 바꾸면 창이 닫힌다", set_visibility("team"))
+    step("배지가 「팀」으로 바뀐다", vis_badge() == ("팀", "team"), "배지=%r" % (vis_badge(),))
+    page.reload(wait_until="networkidle")
+    page.wait_for_selector("#page-doc .doc", timeout=10000)
+    page.wait_for_timeout(300)
+    step("새로 고침 뒤에도 「팀」이 유지된다", vis_badge() == ("팀", "team"), "배지=%r" % (vis_badge(),))
+    step("창구가 준 값도 team 이다",
+         page.request.get(COMMUNITY + "/api/pages/" + page_id).json()["page"]["visibility"] == "team")
+
+    step("「사내」로 바꾸면 창이 닫힌다", set_visibility("internal"))
+    step("배지가 「사내」로 바뀐다", vis_badge() == ("사내", "internal"), "배지=%r" % (vis_badge(),))
+
+    # ── 28. 하위까지 적용 체크 ────────────────────────────────────
+    print("── 28. 하위를 더 넓게 열어 두고, 「하위 페이지까지 함께」로 한 번에 좁힌다")
+    page.goto(COMMUNITY + "/p/" + child_id, wait_until="networkidle")
+    page.wait_for_selector("#page-doc", timeout=10000)
+    step("하위 페이지를 「사내」로 연다", set_visibility("internal"))
+    step("하위 배지가 「사내」다", vis_badge() == ("사내", "internal"), "배지=%r" % (vis_badge(),))
+
+    page.goto(page_url, wait_until="networkidle")
+    page.wait_for_selector("#page-doc .doc", timeout=10000)
+    page.wait_for_selector("#page-visibility-edit:not([hidden])", timeout=10000)
+    page.click("#page-visibility-edit")
+    page.wait_for_selector("#visibility-dialog[open]", timeout=5000)
+    page.locator('#visibility-dialog input[name="page-visibility"][value="private"]').check()
+    page.locator("#visibility-cascade").uncheck()
+    # 이 한 번은 **일부러 400 을 받는다**(children_wider). 규칙을 켜 두었다가 바로 끈다.
+    expected_rules.append(("PATCH", "/visibility"))
+    page.click("#visibility-save")
+    page.wait_for_timeout(700)
+    expected_rules.clear()
+    step("체크 없이 좁히면 창이 **열린 채로** 남는다",
+         page.locator("#visibility-dialog[open]").count() == 1)
+    step("창 안에 사람 문장이 뜬다 (「하위 페이지가 더 넓게…」)",
+         "하위 페이지가 더 넓게" in page.locator("#visibility-msg").inner_text(),
+         "문구=%r" % page.locator("#visibility-msg").inner_text().strip())
+    step("거부된 사이 배지는 그대로 「사내」다", vis_badge() == ("사내", "internal"),
+         "배지=%r" % (vis_badge(),))
+
+    page.locator("#visibility-cascade").check()
+    page.click("#visibility-save")
+    page.wait_for_timeout(900)
+    step("체크를 켜고 다시 누르면 창이 닫힌다",
+         page.locator("#visibility-dialog[open]").count() == 0)
+    step("배지가 「비공개」로 바뀐다", vis_badge() == ("비공개", "private"), "배지=%r" % (vis_badge(),))
+    kid = page.request.get(COMMUNITY + "/api/pages/" + child_id).json()["page"]
+    step("하위 페이지도 함께 「비공개」가 됐다 (창구 원문으로 확인)",
+         kid["visibility"] == "private", "하위 visibility=%r" % kid["visibility"])
+
+    # ── 29. 공간 고르개 · 팀 공간 ─────────────────────────────────
+    print("── 29. 공간 고르개로 팀 공간에 다녀온다")
+    page.goto(COMMUNITY + "/", wait_until="networkidle")
+    page.wait_for_selector("#community-tree .page-tree__row", timeout=10000)
+
+    spaces = page.request.get(COMMUNITY + "/api/spaces").json()["spaces"]
+    team_spaces = [sp for sp in spaces if sp["kind"] == "team"]
+    if not team_spaces:
+        step("팀 공간이 있어야 이 항목을 잰다 (검토 계정에 팀이 없다)", False,
+             "공간=%r" % [sp["kind"] for sp in spaces])
+    else:
+        team_space = team_spaces[0]
+        options = page.locator("#community-space option")
+        values = [options.nth(i).get_attribute("value") for i in range(options.count())]
+        step("고르개에 내 개인 공간과 팀 공간이 모두 들어 있다",
+             str(team_space["id"]) in values and len(values) == len(spaces),
+             "항목=%r" % values)
+        step("셸 왼쪽에 팀 공간 링크가 생겼다",
+             page.locator('#nav-community-teams a[href*="space=%d"]' % team_space["id"]).count() == 1)
+
+        page.select_option("#community-space", str(team_space["id"]))
+        try:
+            page.wait_for_url(re.compile(r"/community/\?space=%d$" % team_space["id"]), timeout=10000)
+            switched = True
+        except Exception:
+            switched = False
+        step("고르면 그 공간으로 **주소가 바뀌며** 이동한다", switched, page.url)
+        page.wait_for_timeout(500)
+        step("화면 머리가 팀 이름으로 바뀐다",
+             page.locator("#community-space-title").inner_text().strip() == team_space["name"],
+             "머리=%r" % page.locator("#community-space-title").inner_text().strip())
+
+        before = page.request.get(COMMUNITY + "/api/pages?tree=1&space=%d" % team_space["id"]).json()["total"]
+        page.click("#community-new")
+        try:
+            page.wait_for_url(PAGE_RE, timeout=10000)
+            made = True
+        except Exception:
+            made = False
+        step("「새 페이지」를 누르면 **그 팀 공간에** 만들어진다", made, page.url)
+        team_page_id = page.url.rsplit("/", 1)[-1]
+        page.wait_for_selector("#page-doc", timeout=10000)
+        page.wait_for_timeout(400)
+        after = page.request.get(COMMUNITY + "/api/pages?tree=1&space=%d" % team_space["id"]).json()["total"]
+        step("팀 공간의 페이지가 한 장 늘었다", after == before + 1, "%d → %d" % (before, after))
+        made_row = page.request.get(COMMUNITY + "/api/pages/" + team_page_id).json()
+        step("그 페이지의 공간이 팀 공간이다", made_row["space"]["id"] == team_space["id"],
+             "space=%r" % made_row["space"])
+        step("팀 공간 페이지에는 「공개 범위」 단추가 없다 (공간 등급을 따른다)",
+             page.locator("#page-visibility-edit:not([hidden])").count() == 0)
+        step("그 자리에 「팀 공간」 배지가 보인다", vis_badge() == ("팀 공간", "team"),
+             "배지=%r" % (vis_badge(),))
+
+        print("── 29-b. 팀 공간에 만든 페이지를 지운다 (정리)")
+        page.click("#page-delete")
+        page.wait_for_selector("#delete-dialog[open]", timeout=5000)
+        page.click("#delete-confirm")
+        page.wait_for_timeout(1200)
+        gone_team = page.request.get(COMMUNITY + "/api/pages/" + team_page_id)
+        step("팀 공간의 그 페이지는 창구가 더 이상 주지 않는다 (404)",
+             gone_team.status == 404, "HTTP %d" % gone_team.status)
+
+    page.goto(page_url, wait_until="networkidle")
+    page.wait_for_selector("#page-doc .doc", timeout=10000)
+
     # ── 20. 정리 — 만든 페이지를 삭제 단추로 지운다 ───────────────
     print("── 20. 정리 (삭제 단추)")
     page.wait_for_selector("#page-delete:not([hidden])", timeout=10000)
@@ -745,7 +911,8 @@ with sync_playwright() as p:
     print("── 19. 브라우저가 본 오류 (처음부터 끝까지)")
     for name, items in (("pageerror", pageerrors), ("console error", console_errors),
                         ("requestfailed", req_failed), ("HTTP>=400", http_bad),
-                        ("CSP inline style(브라우저 내부)", csp_style)):
+                        ("CSP inline style(브라우저 내부)", csp_style),
+                        ("일부러 거부당한 요청(4-B 28번)", expected_bad)):
         print("   %-28s %d건%s" % (name, len(items), (" — " + " | ".join(items[:3])) if items else ""))
     step("끝까지 pageerror 0건", len(pageerrors) == 0, " | ".join(pageerrors[:2]))
     step("끝까지 콘솔 오류 0건 (브라우저 내부 CSP 차단 제외 — 머리글 ★)",
@@ -760,6 +927,7 @@ print("CONSOLEERR=%d" % len(console_errors))
 print("REQFAIL=%d" % len(req_failed))
 print("HTTP4XX=%d" % len(http_bad))
 print("CSPSTYLE=%d" % len(csp_style))
+print("EXPECTEDBAD=%d" % len(expected_bad))
 if diff is not None:
     print("DIFF=%d" % diff)
 print("SMOKE_FAIL=%d" % fails)

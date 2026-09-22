@@ -217,6 +217,17 @@ final class Audit
          * 코드에서도 드러내려고 여기 적는다 (preview_kind·part 와 같은 이유).
          */
         'parent_title', 'cascaded',
+        /*
+         * 커뮤니티 4-B — 공개 범위 (4-B 지시서 「감사」, PRD 4.1).
+         *   visibility_from — 바꾸기 **전**의 공개 범위 (`private`·`team`·`internal`)
+         *   visibility_to   — 바꾸려던 / 바뀐 공개 범위. 거부 행에도 남는다
+         *                     (「무엇으로 열려 했나」가 남아야 시도를 되짚을 수 있다)
+         * 값은 코드가 정한 분류어 셋 중 하나이고 본문 글자가 아니다. 함께 바뀐 하위 수는
+         * 위 `cascaded`(이미 등록부에 있는 키)를 그대로 쓴다 — 같은 뜻에 새 이름을 만들지 않는다.
+         * 둘 다 FORBIDDEN_DETAIL_KEYS 부분 일치에 걸리지 않지만, 등록부에 있는 키임을
+         * 코드에서도 드러내려고 여기 적는다 (preview_kind·part 와 같은 이유).
+         */
+        'visibility_from', 'visibility_to',
     ];
 
     private const RESULT_ALLOW = 'allow';
@@ -684,6 +695,29 @@ final class Audit
         'page.move|allow'                       => '{actor} 이(가) 페이지 「{target}」 을(를) 트리의 다른 자리로 옮겼습니다 (옮긴 곳·형제 수는 상세 기록)',
         'page.move|deny|cycle'                  => '{actor} 이(가) 페이지 「{target}」 을(를) 자기 자신 또는 자기 하위 페이지 아래로 옮기려 해서 거부했습니다',
         'page.move|deny|depth_exceeded'         => '{actor} 이(가) 페이지 「{target}」 을(를) 8 단계보다 깊은 자리로 옮기려 해서 거부했습니다',
+        // 4-B — 옮기기도 트리 불변 규칙을 지킨다. 거부 사유 글자는 `page.visibility` 쪽과 **같다**.
+        'page.move|deny|wider_than_parent'      => '{actor} 이(가) 자기보다 좁게 열린 상위 페이지 아래로 페이지 「{target}」 을(를) 옮기려 해서 거부했습니다',
+
+        /* ── 커뮤니티 4-B — 공개 범위·팀 공간 (4-B 지시서, C:T-30 ~ C:T-34) ──
+         * 이전값 → 새값은 `detail.visibility_from`·`visibility_to` 에, 하위까지 함께 바꾼
+         * 건수는 `detail.cascaded` 에 남는다. **하위는 항목마다 자기 행을 갖는다** —
+         * 「다섯 개가 함께 닫혔다」가 아니라 무엇이 무엇에서 무엇으로 바뀌었나가 남는다.
+         *
+         * `page.read|allow|same_team` — 남의 개인 페이지를 **같은 팀이라서** 열어 본 일.
+         * `admin_all` 과 같은 자리의 기록이다: 자기 페이지를 여는 것은 남기지 않지만,
+         * 남의 페이지를 열어 본 일은 그 근거와 함께 남는다 (PRD 4.1 · S-07).
+         * `internal`(사내) 열람은 남기지 않는다 — 사내 전원이 대상이라 모든 열람이 행이 되고,
+         * 그러면 진짜 사건이 묻힌다.
+         *
+         * `space.create|allow|team_member` — 팀 공간을 처음 연 일. 사유 없는
+         * `space.create|allow` 는 **개인 공간**의 문장이므로(자리표시자가 없다) 그 문장을
+         * 팀 공간에 돌려쓰지 않고 사유가 붙은 줄을 따로 둔다. */
+        'page.visibility|allow'                 => '{actor} 이(가) 페이지 「{target}」 의 공개 범위를 바꿨습니다 (이전→새값·함께 바뀐 수는 상세 기록)',
+        'page.visibility|deny|wider_than_parent' => '{actor} 이(가) 페이지 「{target}」 을(를) 상위 페이지보다 넓게 열려 해서 거부했습니다',
+        'page.visibility|deny|children_wider'   => '{actor} 이(가) 페이지 「{target}」 을(를) 좁히려 했지만 하위에 더 넓은 페이지가 있어 거부했습니다',
+        'page.visibility|deny|not_owner'        => '{actor} 이(가) 다른 사람의 페이지 「{target}」 의 공개 범위를 바꾸려 해서 막았습니다',
+        'page.read|allow|same_team'             => '{actor} 이(가) 같은 팀이라서 다른 사람의 개인 페이지 「{target}」 을(를) 열어 봤습니다',
+        'space.create|allow|team_member'        => '{actor} 이(가) 팀 공간 「{target}」 을(를) 열었습니다',
     ];
 
     /** 자리표시자에 넣을 값이 없을 때 (ARCH 7.4) */
