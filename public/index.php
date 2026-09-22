@@ -599,6 +599,23 @@ if ($modulePath === null) {
         exit;
     }
 
+    /* ─── 커뮤니티 모듈 (커뮤니티 ARCHITECTURE.md 21.1) ─────────────────────────
+     *
+     * `/community…` 는 **자기 라우트 표**(`src/community/routes.php` 의 COMMUNITY_ROUTES)를
+     * 돈다. 위 t-box 갈래와 아래 308·404 판정은 한 글자도 바뀌지 않았다 — 갈래가 하나 늘었을
+     * 뿐이다. 접두를 떼는 방식도 t-box 와 같고, 뗀 뒤의 경로만 그쪽 표와 견준다.
+     *
+     * `community_dispatch()` 는 돌아오지 않는다(언제나 응답을 내보내고 끝난다).
+     */
+    if ($reqPath === COMMUNITY_BASE || strpos($reqPath, COMMUNITY_BASE . '/') === 0) {
+        $communityPath = substr($reqPath, strlen(COMMUNITY_BASE));
+        if ($communityPath === '' || $communityPath === false) {
+            $communityPath = '/';
+        }
+        require __DIR__ . '/../src/community/routes.php';
+        community_dispatch($communityPath, $reqMethod);
+    }
+
     // 옛 t-box 경로인가 — 라우트 표의 경로 패턴과만 견준다(메서드는 보지 않는다).
     $wasTboxPath = false;
     foreach (TBOX_ROUTES as $route) {

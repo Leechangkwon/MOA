@@ -254,7 +254,9 @@
 | 인라인 마크 | `<strong>` `<em>` `<u>` `<s>` `<code class="doc-inline-code">` `<a>`(외부는 `rel="noopener noreferrer"`) | 기존 글자 토큰 |
 | 에디터 | `.editor`(PM 루트, `.doc` 와 같은 규칙으로 보이게) · `.editor-menu`(슬래시 메뉴 = `.panel > .list`) · `.editor-toolbar`(인라인 툴바 = `.btn.btn--icon.btn--plain` 묶음) · 저장 상태 배지 `.badge`(「저장됨」「저장 중」「충돌」) | 새 색·간격 0. 다크는 토큰이 따라온다 |
 
-원칙 6(화면 전용 CSS 금지)의 예외 아님 — 위 클래스는 **문서 렌더 구성 요소**로 여기 등록된 것이며, `community.css` 한 파일에만 둔다.
+| 하위 요소(BEM, 구현 2026-09-22 등록) | `.doc-li[data-kind]`(편집기 안 목록 항목 — 편집기 DOM 은 평평한 블록, 읽기 렌더러가 `<ul>`·`<ol>` 로 묶는다) · `.doc-link` · `.doc-todo__box` `.doc-todo__text` · `.doc-callout__icon` `.doc-callout__text` · `.doc-code__lang` `.doc-code__caption` · `.doc-toc__item` · `.block-unsupported`(모르는 블록 자리표시, ARCH 12.4) · `.editor-palette`(색 고르기) · `.editor-toolbar__row` | 부모 블록의 토큰을 그대로 |
+
+원칙 6(화면 전용 CSS 금지)의 예외 아님 — 위 클래스는 **문서 렌더 구성 요소**로 여기 등록된 것이며, `community.css` 한 파일에만 둔다. 인라인 툴바·슬래시 메뉴는 좌표를 JS 로 찍지 않고(인라인 style 0) 편집 영역 위·아래의 sticky 줄로 CSS 가 자리를 정한다.
 
 ## 3. 화면 배치 규칙
 

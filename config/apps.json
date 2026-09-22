@@ -13,7 +13,6 @@
     "desc": "개인 업무 공간 · 게시판 · 인계",
     "path": "/community/",
     "icon": "grid",
-    "order": 2,
-    "status": "soon"
+    "order": 2
   }
 ]

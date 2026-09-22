@@ -1,0 +1,315 @@
+/* public/assets/community/community.css — 문서(블록 본문)와 편집기의 화면 규칙
+ *
+ * 요구사항: DESIGN.md 2.14(문서 토큰 — 이 파일에 등록된 것만 쓴다) · 2.12(다크 모드) · 0장(원칙),
+ *           ../../../../community/ARCHITECTURE.md 12.5.
+ *
+ * 규칙
+ *   · **새 색값을 `:root` 밖에 쓰지 않는다.** 아래 `--nt-*`·`--size-*` 는 DESIGN 2.14 에 등록된
+ *     토큰이고, 그 밖의 색·간격·모서리는 `app.css` 의 토큰(`--line`·`--muted`·`--r-card` …)만 쓴다.
+ *   · 다크 모드는 **토큰만 뒤집는다**. 화면 규칙에 다크용 갈래를 따로 쓰지 않는다 (DESIGN 2.12).
+ *     규칙의 모양도 app.css 와 같다 — `:root[data-theme="dark"]` 와
+ *     `@media (prefers-color-scheme: dark) :root:not([data-theme="light"])` 두 곳에 같은 값.
+ *   · 여기 있는 클래스는 전부 **문서 렌더 구성 요소**다(DESIGN 2.14 에 등록). 화면 이름이 붙은
+ *     클래스를 만들지 않는다.
+ *   · 이 파일은 셸의 허용 목록(`shell_top.php` 의 `$shellCssAllowed`)을 지나야 실린다.
+ */
+
+/* ─── 문서 토큰 (DESIGN.md 2.14) ──────────────────────────────── */
+
+:root {
+  /* 글자색 9 — 노션 기본 팔레트에 맞춘 값 */
+  --nt-gray:   #787774;
+  --nt-brown:  #976d57;
+  --nt-orange: #cc772f;
+  --nt-yellow: #c29343;
+  --nt-green:  #548164;
+  --nt-blue:   #477da5;
+  --nt-purple: #8a67ab;
+  --nt-pink:   #b35588;
+  --nt-red:    #c4554d;
+
+  /* 배경색 9 — 같은 색의 옅은 바탕 */
+  --nt-gray-bg:   #f1f1ef;
+  --nt-brown-bg:  #f3eeee;
+  --nt-orange-bg: #f8ecdf;
+  --nt-yellow-bg: #faf3dd;
+  --nt-green-bg:  #eef3ed;
+  --nt-blue-bg:   #e9f3f7;
+  --nt-purple-bg: #f6f3f8;
+  --nt-pink-bg:   #faf1f5;
+  --nt-red-bg:    #fdebec;
+
+  /* 블록 크기 4단계 (DESIGN 1.3 의 사다리 안에서 고른 값) */
+  --size-small:  13px;
+  --size-normal: 15px;
+  --size-large:  18px;
+  --size-xlarge: 22px;
+}
+
+:root[data-theme="dark"] {
+  --nt-gray:   #9b9b9b;
+  --nt-brown:  #ba856f;
+  --nt-orange: #c77d48;
+  --nt-yellow: #ca9849;
+  --nt-green:  #529e72;
+  --nt-blue:   #5e87c9;
+  --nt-purple: #9d68d3;
+  --nt-pink:   #d15796;
+  --nt-red:    #df5452;
+
+  --nt-gray-bg:   #2f2f2f;
+  --nt-brown-bg:  #4a3228;
+  --nt-orange-bg: #5c3b23;
+  --nt-yellow-bg: #56452f;
+  --nt-green-bg:  #243d30;
+  --nt-blue-bg:   #143a4e;
+  --nt-purple-bg: #3c2d49;
+  --nt-pink-bg:   #4e2c3c;
+  --nt-red-bg:    #522e2a;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --nt-gray:   #9b9b9b;
+    --nt-brown:  #ba856f;
+    --nt-orange: #c77d48;
+    --nt-yellow: #ca9849;
+    --nt-green:  #529e72;
+    --nt-blue:   #5e87c9;
+    --nt-purple: #9d68d3;
+    --nt-pink:   #d15796;
+    --nt-red:    #df5452;
+
+    --nt-gray-bg:   #2f2f2f;
+    --nt-brown-bg:  #4a3228;
+    --nt-orange-bg: #5c3b23;
+    --nt-yellow-bg: #56452f;
+    --nt-green-bg:  #243d30;
+    --nt-blue-bg:   #143a4e;
+    --nt-purple-bg: #3c2d49;
+    --nt-pink-bg:   #4e2c3c;
+    --nt-red-bg:    #522e2a;
+  }
+}
+
+/* ─── 글자색·배경색·크기·정렬 (이름 → 토큰) ─────────────────── */
+
+.nt-gray   { color: var(--nt-gray); }
+.nt-brown  { color: var(--nt-brown); }
+.nt-orange { color: var(--nt-orange); }
+.nt-yellow { color: var(--nt-yellow); }
+.nt-green  { color: var(--nt-green); }
+.nt-blue   { color: var(--nt-blue); }
+.nt-purple { color: var(--nt-purple); }
+.nt-pink   { color: var(--nt-pink); }
+.nt-red    { color: var(--nt-red); }
+
+.nt-gray-bg   { background: var(--nt-gray-bg); }
+.nt-brown-bg  { background: var(--nt-brown-bg); }
+.nt-orange-bg { background: var(--nt-orange-bg); }
+.nt-yellow-bg { background: var(--nt-yellow-bg); }
+.nt-green-bg  { background: var(--nt-green-bg); }
+.nt-blue-bg   { background: var(--nt-blue-bg); }
+.nt-purple-bg { background: var(--nt-purple-bg); }
+.nt-pink-bg   { background: var(--nt-pink-bg); }
+.nt-red-bg    { background: var(--nt-red-bg); }
+
+.sz-small  { font-size: var(--size-small); }
+.sz-normal { font-size: var(--size-normal); }
+.sz-large  { font-size: var(--size-large); }
+.sz-xlarge { font-size: var(--size-xlarge); }
+
+.al-left   { text-align: left; }
+.al-center { text-align: center; }
+.al-right  { text-align: right; }
+
+/* ─── 문서 본문 ─────────────────────────────────────────────── */
+
+.doc {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-height: 2rem;
+  font-size: var(--size-normal);
+  line-height: 1.65;
+  word-break: keep-all;
+  overflow-wrap: anywhere;
+}
+
+.doc-h1 { font-size: 24px; font-weight: 600; letter-spacing: -.025em; line-height: 1.3; margin-top: 12px; }
+.doc-h2 { font-size: 18px; font-weight: 600; letter-spacing: -.01em; line-height: 1.35; margin-top: 10px; }
+.doc-h3 { font-size: 16px; font-weight: 600; line-height: 1.4; margin-top: 8px; }
+.doc-p  { margin: 0; }
+
+.doc-ul, .doc-ol { margin: 0; padding-left: 1.4rem; display: flex; flex-direction: column; gap: 4px; }
+.doc-ul { list-style: disc; }
+.doc-ol { list-style: decimal; }
+.doc-li { margin: 0; }
+
+.doc-todo { display: flex; align-items: flex-start; gap: 8px; }
+.doc-todo__box {
+  flex: 0 0 auto;
+  width: 18px;
+  height: 18px;
+  margin-top: 2px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  background: var(--surface);
+  color: var(--ok-fg);
+  font-size: 12px;
+  line-height: 16px;
+  text-align: center;
+  user-select: none;
+}
+.doc-todo.is-done .doc-todo__box { background: var(--ok-bg); border-color: var(--ok-line); }
+.doc-todo.is-done .doc-todo__text { color: var(--muted); text-decoration: line-through; }
+.doc-todo__text { min-width: 0; }
+
+.doc-quote {
+  margin: 0;
+  padding-left: 12px;
+  border-left: 3px solid var(--line);
+  color: var(--fg-2);
+}
+
+.doc-callout {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 12px 14px;
+  border-radius: var(--r-ctl);
+  background: var(--nt-gray-bg);
+}
+.doc-callout__icon { flex: 0 0 auto; user-select: none; }
+.doc-callout__text { min-width: 0; }
+
+.doc-divider { width: 100%; height: 0; margin: 10px 0; border: 0; border-top: 1px solid var(--line); }
+
+.doc-code {
+  position: relative;
+  border: 1px solid var(--line);
+  border-radius: var(--r-ctl);
+  background: var(--surface-2);
+  padding: 12px 14px;
+  overflow-x: auto;
+}
+.doc-code__lang,
+.doc-code[data-lang]::before {
+  display: block;
+  margin-bottom: 6px;
+  color: var(--muted);
+  font-family: var(--mono);
+  font-size: 12px;
+}
+.doc-code[data-lang]::before { content: attr(data-lang); }
+.doc-code pre { margin: 0; }
+.doc-code pre, .doc-code code { font-family: var(--mono); font-size: 13px; white-space: pre-wrap; }
+.doc-code__caption { margin: 8px 0 0; color: var(--muted); font-size: 13px; }
+
+.doc-toc {
+  border: 1px solid var(--line);
+  border-radius: var(--r-ctl);
+  padding: 12px 14px;
+  background: var(--surface-2);
+}
+.doc-toc ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+.doc-toc__item--2 { padding-left: 14px; }
+.doc-toc__item--3 { padding-left: 28px; }
+
+.doc-inline-code {
+  padding: 1px 5px;
+  border-radius: var(--r-sm);
+  background: var(--muted-bg);
+  font-family: var(--mono);
+  font-size: 13px;
+}
+.doc-link { color: var(--accent); }
+
+.block-unsupported {
+  padding: 8px 12px;
+  border: 1px dashed var(--line);
+  border-radius: var(--r-ctl);
+  color: var(--muted);
+  font-size: 13px;
+}
+
+/* ─── 편집기 (ProseMirror 의 루트에 `.doc.editor` 가 붙는다) ──── */
+
+.editor { outline: none; min-height: 16rem; }
+.editor:focus { outline: none; }
+.editor [data-kind] { position: relative; padding-left: 1.4rem; }
+.editor [data-kind="bulleted"]::before { content: "•"; position: absolute; left: .45rem; color: var(--muted); }
+.editor [data-kind="numbered"]::before { content: "1."; position: absolute; left: .1rem; color: var(--muted); font-size: 13px; }
+.editor .doc-toc { color: var(--muted); font-size: 13px; }
+
+/* ProseMirror 가 스스로 붙이는 클래스 두 개(빈 자리 표시·가짜 커서). 색은 토큰만 쓴다. */
+.ProseMirror-gapcursor { display: none; pointer-events: none; position: absolute; }
+.ProseMirror-gapcursor::after {
+  content: "";
+  display: block;
+  position: absolute;
+  top: -2px;
+  width: 20px;
+  border-top: 1px solid var(--fg);
+}
+.ProseMirror-focused .ProseMirror-gapcursor { display: block; }
+.prosemirror-dropcursor-block { background: var(--accent); }
+
+/* ─── 슬래시 메뉴 (`/`) — `.panel` 안 `.list` (DESIGN 2.13 · 2.14) ─── */
+
+.editor-menu {
+  position: sticky;
+  bottom: 12px;
+  z-index: 5;
+  max-height: 18rem;
+  overflow-y: auto;
+  padding: 8px;
+  box-shadow: var(--shadow-lg);
+}
+.editor-menu .list__item { cursor: pointer; border-radius: var(--r-sm); }
+.editor-menu .list__item.is-active { background: var(--muted-bg); }
+
+/* ─── 인라인 툴바 — `.btn.btn--icon.btn--plain` 묶음 (DESIGN 2.14) ─── */
+
+.editor-toolbar {
+  position: sticky;
+  top: 8px;
+  z-index: 6;
+  padding: 6px 8px;
+  gap: 6px;
+  box-shadow: var(--shadow-lg);
+}
+.editor-toolbar__row { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; }
+.editor-toolbar .btn--icon { font-weight: 600; }
+
+.editor-palette { padding: 8px; gap: 6px; box-shadow: none; }
+.editor-palette__row { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; }
+.editor-palette__row > .muted { flex: 0 0 3.5rem; }
+.editor-palette__row input[type="text"] {
+  flex: 1 1 14rem;
+  min-width: 0;
+  height: var(--h-input);
+  padding: 0 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-ctl);
+  background: var(--surface);
+  color: var(--fg);
+  font: inherit;
+  font-size: 14px;
+}
+
+/* ─── 셸의 「새 페이지」는 단추이지만 내비 항목과 같은 모양이다 (모듈 모드) ─── */
+
+.nav button.nav__item {
+  width: 100%;
+  border: 0;
+  background: none;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+/* 좁은 화면 — 문서는 그대로 흐르고 메뉴만 화면 폭에 맞춘다 */
+@media (max-width: 640px) {
+  .editor-menu, .editor-toolbar { max-width: 100%; }
+}

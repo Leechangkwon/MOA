@@ -2,7 +2,8 @@
 # tests/q_launcher.sh — Qaredi C 수락 기준 실행 (사이트 PRD.md 9장 Q:T-1 · 3 · 4 · 5 · 6 · 7 · 8 · 9,
 #                        설계 ../docs/launcher/ARCHITECTURE.md, 지시서 ../docs/launcher/c-launcher-basepath-directive.md)
 #
-#   Q:T-1 런처 `GET /`         200 HTML · 타일 t-box·커뮤니티(「준비 중」) · `<script` 0 · `Set-Cookie` 0 ·
+#   Q:T-1 런처 `GET /`         200 HTML · 타일 t-box·커뮤니티(**둘 다 링크** — 커뮤니티 3단계로 열렸다) ·
+#                              `<script` 0 · `Set-Cookie` 0 ·
 #                              미로그인이면 사용자 칩 없음 · 로그인(qa)이면 표시 이름 · `POST /` 405
 #   Q:T-3 옛 주소 308          `/api/health` `/login` `POST /api/login` `/s/{43자}` `/settings` `/assets/app.css`
 #                              → 308 + `Location: /tbox<경로+쿼리 원문>` · POST 는 처리 0(감사 행 0 · Set-Cookie 0)
@@ -170,14 +171,16 @@ expect "인라인 style= 0건 (CSP)" "0" "$(grep -cE '<[^>]+ style="' "$WORK/roo
 expect "인라인 on…= 0건 (CSP)" "0" "$(grep -cE '<[^>]+ on[a-z]+=' "$WORK/root.html" | tr -d ' ')"
 contains "타일 t-box" "t-box" "$(cat "$WORK/root.html")"
 contains "타일 커뮤니티" "커뮤니티" "$(cat "$WORK/root.html")"
-contains "배지 준비 중" "준비 중" "$(cat "$WORK/root.html")"
+# 커뮤니티 3단계(2026-09-22) — `config/apps.json` 에서 `status: soon` 을 뺐다. 「준비 중」 배지는
+# 이제 어느 타일에도 없다(다시 생기면 그것은 새 앱이 늘었다는 뜻이고, 그때 이 줄을 고친다).
+expect "배지 준비 중 0건 (커뮤니티가 열렸다)" "0" "$(grep -c '준비 중' "$WORK/root.html" | tr -d ' ')"
 contains "타일 클래스 card--link" "card card--link" "$(cat "$WORK/root.html")"
 contains "격자 card-grid" "card-grid" "$(cat "$WORK/root.html")"
 expect "화면 전용 클래스 launcher- 0건 (DESIGN 원칙 6)" "0" "$(grep -c 'launcher-' "$WORK/root.html" | tr -d ' ')"
 expect "미로그인 사용자 표시 없음 (page-head__actions 0)" "0" "$(grep -c 'page-head__actions' "$WORK/root.html" | tr -d ' ')"
 expect "런처에 userchip 0건 (DESIGN 2.9 — 배지 하나만)" "0" "$(grep -c 'userchip' "$WORK/root.html" | tr -d ' ')"
 expect "t-box 타일이 /tbox/ 로 간다" "1" "$(grep -c 'href="/tbox/"' "$WORK/root.html" | tr -d ' ')"
-expect "커뮤니티 타일에 링크 없음" "0" "$(grep -c 'href="/community/"' "$WORK/root.html" | tr -d ' ')"
+expect "커뮤니티 타일이 /community/ 로 간다" "1" "$(grep -c 'href="/community/"' "$WORK/root.html" | tr -d ' ')"
 
 curl -s -D "$WORK/rootpost.head" -o /dev/null -A "$UA" -X POST "$SITE/"
 expect "POST / 상태 405" "405" "$(status_of "$WORK/rootpost.head")"
@@ -217,11 +220,18 @@ else
 fi
 
 sub "라우트가 아닌 경로는 404 (리다이렉트가 아니다)"
-for p in /foo /api/nope /tbox/nope /community/; do
+for p in /foo /api/nope /tbox/nope /community/nope; do
   curl -s -D "$WORK/r.head" -o /dev/null -A "$UA" "$SITE$p"
   expect "GET $p 상태" "404" "$(status_of "$WORK/r.head")"
   expect "GET $p Location 없음" "" "$(hdr Location "$WORK/r.head")"
 done
+
+sub "커뮤니티 갈래 (3단계, 2026-09-22) — 전에는 `/community/` 가 404 였다"
+curl -s -D "$WORK/r.head" -o /dev/null -A "$UA" "$SITE/community/"
+expect "GET /community/ (미로그인) 상태" "302" "$(status_of "$WORK/r.head")"
+expect "GET /community/ Location" "/tbox/login?to=community" "$(hdr Location "$WORK/r.head")"
+curl -s -D "$WORK/r.head" -o /dev/null -A "$UA" "$SITE/community/api/pages"
+expect "GET /community/api/pages (미로그인) 상태" "401" "$(status_of "$WORK/r.head")"
 
 # ════════════════════════════════════════════════════════════════
 hr "Q:T-9 — 정적 자산 (nginx 적용 뒤에만 통과한다)"
@@ -250,7 +260,9 @@ expect "app.js 절대 경로 중 APP_BASE 로 감싸이지 않은 것 0건" "0" 
   "$(grep -nE "['\"]/(api|login|reauth|wiki|admin|settings|files|s)(/|['\"])" "$ROOT/public/assets/app.js" \
      | grep -vc 'APP_BASE' | tr -d ' ')"
 expect "app.js 에 APP_BASE 정의 1곳" "1" "$(grep -c '^var APP_BASE =' "$ROOT/public/assets/app.js" | tr -d ' ')"
-expect "서버 화면의 절대 경로 링크 중 Http::url 밖 (Qaredi 홈 둘 제외)" "2" \
+# 커뮤니티 3단계 — 「커뮤니티 준비 중」 안내(src/community/routes.php)에도 「Qaredi 홈」 링크가
+# 하나 있어 셋이 됐다. 전부 사이트 루트(`/`)이고 `/tbox` 접두를 타지 않는 것이 맞다.
+expect "서버 화면의 절대 경로 링크 중 Http::url 밖 (Qaredi 홈 셋 제외)" "3" \
   "$(grep -rhE 'href=\"/|action=\"/|src=\"/' "$ROOT/src" --include=*.php | grep -vc 'Http::url' | tr -d ' ')"
 
 # ════════════════════════════════════════════════════════════════

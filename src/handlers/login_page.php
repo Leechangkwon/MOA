@@ -38,6 +38,21 @@ $loginJsVersion  = (int) filemtime(__DIR__ . '/../../public/assets/app.js');
    (ARCH-launcher 3장). 로그인 전 화면에도 같은 규칙을 둔다 — 취향 쿠키는 비밀이 아니므로
    S-09(버전 비노출)와 무관하다. */
 $themeAttr = Http::themeAttr();
+
+/**
+ * 로그인 뒤 어디로 보낼까 — `?to=` (커뮤니티 ARCHITECTURE.md 21.2).
+ *
+ * 커뮤니티 화면을 미로그인으로 열면 `/tbox/login?to=community` 로 오는데, 로그인을 마치고
+ * t-box 홈으로 떨어지면 「가려던 곳」을 잃는다. 그 한 가지를 고치는 값이다.
+ *
+ * ★ 요청 값은 **키를 고르는 데만** 쓴다. 허용 목록(`tbox`·`community`)에 정확히 있을 때만
+ *   그 글자를 속성에 넣고, 그 밖의 값은 **무시**한다(속성 자체를 그리지 않는다).
+ *   app.js 는 이 키가 자기 고정 맵에 있을 때만 맵의 값으로 이동한다 — 주소 문자열이
+ *   요청에서 만들어지는 자리가 서버에도 화면에도 없다(재인증 `?to=` 와 같은 방식).
+ */
+$loginToAllowed = ['tbox', 'community'];
+$loginToRaw     = $_GET['to'] ?? '';
+$loginTo        = is_string($loginToRaw) && in_array($loginToRaw, $loginToAllowed, true) ? $loginToRaw : '';
 ?>
 <!doctype html>
 <html lang="ko"<?= $themeAttr ?>>
@@ -47,7 +62,7 @@ $themeAttr = Http::themeAttr();
 <title>로그인 · t-box</title>
 <link rel="stylesheet" href="<?= Http::url('/assets/app.css') ?>?v=<?= $loginCssVersion ?>">
 </head>
-<body data-page="login" data-base="<?= TBOX_BASE ?>">
+<body data-page="login" data-base="<?= TBOX_BASE ?>" data-community-base="<?= COMMUNITY_BASE ?>"<?= $loginTo === '' ? '' : ' data-to="' . htmlspecialchars($loginTo, ENT_QUOTES, 'UTF-8') . '"' ?>>
 <div class="login">
   <!-- D-5 (DESIGN.md 2.12) — 로그인 화면에는 셸이 없으므로 같은 단추를 오른쪽 위 구석에 둔다.
        자리는 CSS(.login .theme-toggle)가 정하고, 해·달 중 무엇을 보일지도 CSS 가 정한다. -->

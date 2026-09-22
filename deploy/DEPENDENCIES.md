@@ -50,13 +50,57 @@
 
 ## 4. 외부 라이브러리 · 패키지 매니저
 
-**없다.** Composer 를 쓰지 않고, 서드파티 PHP 라이브러리를 한 개도 넣지 않는다.
-프론트엔드도 CDN·npm 없이 순수 CSS/JS 다 (CSP `default-src 'self'` 이므로 외부 자원은 애초에 차단된다).
+**서버는 0 이다.** Composer 를 쓰지 않고, 서드파티 PHP 라이브러리를 한 개도 넣지 않는다.
+패키지 매니저(npm·Composer)도 이 VM 에 없고, node 도 설치하지 않는다.
 
 | 왜 | 근거 |
 |---|---|
 | 공급망 공격 표면을 0 으로 유지 | PRD S-10-C |
 | 업데이트 추적 대상이 OS 패키지 4개뿐 | 운영 부담 최소화 |
+
+### 4.1 브라우저에서 도는 외부 코드 — ProseMirror (커뮤니티 3단계, 2026-09-22)
+
+**의존성 0 원칙의 첫 예외**다 (사용자 결정 Q-6 · D-1, 커뮤니티 PRD 12장). 노션식 블록 에디터를
+자체 구현하는 대신 ProseMirror 를 들이되, 아래 조건을 전부 건다 — 커뮤니티 `C:S-12`.
+
+| 조건 | 어떻게 지키나 |
+|---|---|
+| 고정 버전 | 아래 표의 버전 그대로. 범위 표기(`^`·`~`)가 들어갈 자리가 없다(`package.json` 자체가 없다) |
+| 저장소 안 고정 | `public/assets/community/vendor/pm/<패키지>.js` — **CDN 0**, CSP 는 `script-src 'self'` 그대로 |
+| 무결성 | tarball 의 sha256 을 아래 표에 적고, `bash scripts/vendor_prosemirror.sh --verify` 가 **다시 받아 대조**한다. 산출물도 바이트까지 견준다 |
+| 서버 실행 0 | 서버(PHP)는 이 파일들을 **열지도 않는다**. 브라우저에만 나가는 정적 자산이다 |
+| node 0 | 번들러를 쓰지 않는다. 각 패키지의 ESM 진입 파일 하나를 꺼내 **bare import 를 상대 경로로 바꿔** 두고, 브라우저가 서로를 불러 쓰게 한다(import map 도 쓰지 않는다 — 인라인 스크립트가 필요해 CSP 에 걸린다) |
+| 라이선스 | 14개 전부 **MIT** |
+| 후퇴 경로 | 저장 형식(블록 JSON)·검증기·렌더러는 전부 우리 것이다. 에디터를 걷어 내도 저장된 문서는 그대로 읽힌다 |
+
+**다시 만드는 절차** (이 VM 에서 그대로 돌아간다 — 준비물은 `curl`·`tar`·`sha256sum` 뿐이다)
+
+```
+bash scripts/vendor_prosemirror.sh            # 받아서 vendor/pm 에 두고 아래 표를 갱신한다
+bash scripts/vendor_prosemirror.sh --verify   # 받지만 쓰지 않는다 — 해시·산출물 일치만 본다
+```
+
+버전을 올릴 때는 스크립트 안의 고정 버전 목록과 커뮤니티 `ARCHITECTURE.md` 21.3 을 **함께** 고치고,
+`--verify` 가 통과한 출력을 커밋 메시지에 붙인다.
+
+<!-- PM-VENDOR-BEGIN -->
+| 패키지 | 버전 | 라이선스 | tarball sha256 |
+|---|---|---|---|
+| `prosemirror-model` | 1.25.12 | MIT | `0ac7e5deed004b7f983ca295fa1e84b19f7ee38995e39dee9809d9a4ebd5c6c8` |
+| `prosemirror-state` | 1.4.4 | MIT | `ad3eb60bd6db8e74b2576dc0b7c2800d6def362e0e990c9fb108fc4b724ee651` |
+| `prosemirror-view` | 1.42.5 | MIT | `e6dd816d77e1a9f65962734bcfa520be51120ca37922905eec8454f0331300c1` |
+| `prosemirror-transform` | 1.12.1 | MIT | `ff213c7ec902517c9013513c59e71a6a8ff892dd32f1e3f8dd37928c7baeb976` |
+| `prosemirror-commands` | 1.7.2 | MIT | `7cca5b9379ff9f83d6bb54d69373e79715cad1f33d8b73d5cb604bc5e73e90d0` |
+| `prosemirror-keymap` | 1.2.3 | MIT | `3131823ce73eaf3487cada22c85b76349da02c114dee3de696f4c1c3c645ca8c` |
+| `prosemirror-history` | 1.5.0 | MIT | `5ffc66c053f3e2d4d6c1f7d5f352c4401fee49b075a5b1bb5b03e7b9d84172a7` |
+| `prosemirror-inputrules` | 1.5.1 | MIT | `785502d7e5ce0b9617d1aa6c0ef2aa2a0a6b06a5d8efb8942eb7c1b2d3b155aa` |
+| `prosemirror-dropcursor` | 1.8.3 | MIT | `cb91fb2971ed4b93a68eb6d036c0a1ae8f9211c465579a5ac107aa7bd09b97f6` |
+| `prosemirror-gapcursor` | 1.4.1 | MIT | `961e88b82ce7f434cc781ba644a82810461cf9ba3993834f654384c493998eba` |
+| `prosemirror-schema-list` | 1.5.1 | MIT | `c60638c4fd055328cebada5a36a661d454eb87114919bfc2bfbfbcda2b939c2e` |
+| `orderedmap` | 2.1.1 | MIT | `9ad98abe6ac4156daef2232d7c1d2c8b3681545604c54f7f3754e791f12c168d` |
+| `w3c-keyname` | 2.2.8 | MIT | `05d21484026d1f2dd842c843181e391e66d60f1d5dff292d562c3f40302dab36` |
+| `rope-sequence` | 1.3.4 | MIT | `2a483ee02e5a21b59b63a29bca162e6aa2cd8fafb474261040c3d8538a1f067c` |
+<!-- PM-VENDOR-END -->
 
 PostgreSQL 확장도 설치하지 않는다 — UUID 는 PostgreSQL 13+ 내장 `gen_random_uuid()` 로 충분하므로 `pgcrypto` 가 필요 없다.
 
@@ -133,6 +177,7 @@ PRD S-10-C 가 "배포판 패키지만·의존성 0 이 기본" 이라고 못박
 | 도구 | 설치 위치 | 어디에 | 왜 | 확인 |
 |---|---|---|---|---|
 | `python3-playwright` (chromium 채널) | **사용자 로컬 `~/.local`** — 배포판 패키지가 아니며 `deploy/install.sh` 가 설치하지 않는다 | `scripts/ui_snapshot.py` (`scripts/ui_snapshot.sh` 가 부른다) | 검토 계정(qa_admin01)으로 구매 13개 화면을 실제로 열어 스크린샷을 찍고 DOM 결함을 센다 (PRD 12.2 T-50) | `PATH="$HOME/.local/bin:$PATH" python3 -c "import playwright"` |
+| `python3` `esprima` (pip, 순수 파이썬 4.0.1) | **사용자 로컬 `~/.local`** — 배포판 패키지가 아니며 `deploy/install.sh` 가 설치하지 않는다. **앱·배포는 부르지 않는다(검토 전용)** | 커뮤니티 3단계 구현·검토 — `public/assets/**/*.js` 를 구문 분석해 오타를 잡는다(이 VM 에 node 가 없어 `node --check` 를 쓸 수 없다) | 브라우저에서만 도는 JS 라 `php -l` 같은 관문이 없다. 파서 하나가 「괄호가 안 맞는 파일을 커밋」을 막는다 | `python3 -c "import esprima"` |
 | `python3` `qrcode` (pip, 순수 파이썬) | **사용자 로컬 `~/.local`** — 배포판 패키지가 아니며 `deploy/install.sh` 가 설치하지 않는다. **앱·배포는 부르지 않는다(시험 전용 오라클)** | `tests/f51.sh` (a) | `src/Qr.php`(자체 QR 인코더, PRD F-51)가 만든 모듈 행렬을 독립 구현과 비트 단위로 대조한다 (PRD 12.2 T-63) | `python3 -c "import qrcode"` (2026-09-16 `pip install --user qrcode`) |
 
 - **운영 서버에는 넣지 않는다.** 앱 코드가 이 패키지를 부르는 곳이 한 곳도 없고(런타임 의존성 0),

@@ -50,6 +50,27 @@ var REAUTH_PATH = APP_BASE + '/reauth';
 var GENERIC_ERROR = '요청을 처리할 수 없습니다. 잠시 후 다시 시도하세요';
 
 /**
+ * 커뮤니티 모듈의 주소 접두 (커뮤니티 ARCHITECTURE.md 21.1).
+ *
+ * 서버가 <body data-community-base="/community"> 로 알려 준다. 이 파일이 이 값을 쓰는 자리는
+ * **로그인 성공 뒤 어디로 가나** 하나뿐이다 — 커뮤니티 화면의 동작은 전부
+ * `assets/community/editor.js` 가 맡는다.
+ */
+var COMMUNITY_BASE = (document.body && document.body.getAttribute('data-community-base')) || '/community';
+
+/**
+ * 로그인 화면의 `?to=` **키 → 갈 곳** 고정 맵 (커뮤니티 ARCHITECTURE.md 21.2).
+ *
+ * 서버(`src/handlers/login_page.php`)가 허용 목록으로 거른 키만 <body data-to> 에 넣고,
+ * 화면은 키가 이 맵에 있을 때만 **맵의 값**으로 이동한다 — 주소 문자열을 요청 값이나
+ * data 속성에서 만들지 않는다(재인증 REAUTH_PATHS 와 같은 방식, 오픈 리다이렉트 0).
+ */
+var LOGIN_TO_PATHS = {
+  'tbox': HOME_PATH,
+  'community': COMMUNITY_BASE + '/'
+};
+
+/**
  * 16-1 재인증(sudo 모드) — 돌아갈 화면의 **키 → 경로** 고정 맵 (PRD F-23).
  *
  * 서버(public/index.php 의 TBOX_REAUTH_PATHS)와 **같은 내용**의 표다. `/reauth` 화면의
@@ -837,7 +858,16 @@ function initLogin(form) {
       .then(function (response) {
         if (response.status === 200) {
           pendingPassword = null;
-          window.location.assign(HOME_PATH);
+          /* 어디로 돌아가나 (커뮤니티 ARCHITECTURE.md 21.2).
+             서버가 `?to=` 를 **허용 목록**으로 걸러 <body data-to> 에 넣어 준 키 하나를 읽고,
+             그 키가 고정 맵에 있을 때만 맵의 값으로 간다. 주소를 data 속성 값으로 만들지
+             않으므로, 속성을 개발자도구로 고쳐도 갈 수 있는 곳은 맵의 두 값뿐이다. */
+          var to = document.body ? document.body.getAttribute('data-to') : null;
+          window.location.assign(
+            to !== null && Object.prototype.hasOwnProperty.call(LOGIN_TO_PATHS, to)
+              ? LOGIN_TO_PATHS[to]
+              : HOME_PATH
+          );
           return null;
         }
         return readJson(response).then(function (body) {
@@ -8056,6 +8086,16 @@ function bootPage(page) {
         }
 
         initShell(me, csrfToken);
+
+        /* 커뮤니티 화면 (커뮤니티 ARCHITECTURE.md 21.1 · 21.3).
+           셸(내비·로그아웃·해달·도움말)은 t-box 화면과 같은 것을 쓰므로 위에서 그렸고,
+           **화면 동작은 여기서 끝낸다** — 본문·에디터는 `assets/community/editor.js`
+           (type="module") 가 맡는다. 이 두 키를 여기서 무시하지 않으면 아래 갈래가 없는 채로
+           흘러가므로 지금도 아무 일이 없지만, 나중에 t-box 화면 키가 늘 때 섞이지 않도록
+           **뜻을 코드에 적어 둔다**. */
+        if (page === 'community-home' || page === 'community-page') {
+          return null;
+        }
 
         if (page === 'files') {
           // F-43 — 「사용 방법」 도움말에 지금 허용된 사이트를 채운다(자격이 있을 때만 온다).

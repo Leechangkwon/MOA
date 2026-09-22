@@ -48,7 +48,32 @@ declare(strict_types=1);
  */
 
 /** 내비·본문 키의 허용 목록. 여기 없는 값은 빈 문자열이 된다. */
-$shellKeys = ['files', 'trash', 'settings', 'activity', 'users', 'org', 'audit', 'wiki', 'admin'];
+$shellKeys = [
+    'files', 'trash', 'settings', 'activity', 'users', 'org', 'audit', 'wiki', 'admin',
+    // 커뮤니티 3단계 (커뮤니티 ARCHITECTURE.md 21.3) — 모듈 모드의 화면 둘.
+    // app.js 는 이 두 키를 만나면 셸만 그리고 물러난다(t-box 화면 JS 가 돌지 않는다).
+    'community-home', 'community-page',
+];
+
+/**
+ * 모듈 모드 (커뮤니티 ARCHITECTURE.md 21.3).
+ *
+ * 화면을 그리는 핸들러가 include 전에 `$shellModule = 'community';` 한 줄을 넘기면 브랜드·
+ * 내비·그리드의 현재 앱이 그 모듈 것이 된다. **넘기지 않으면 지금까지와 한 글자도 같은
+ * t-box 셸**이다 — 기본값이 t-box 라는 뜻이고, t-box 화면 스무 곳을 고칠 일이 없다.
+ * 값은 허용 목록 안의 것만 통과한다(핸들러의 오타가 속성값으로 새지 않는다).
+ */
+$shellModuleKeys = ['community'];
+$shellMod = isset($shellModule) && is_string($shellModule) && in_array($shellModule, $shellModuleKeys, true)
+    ? $shellModule
+    : '';
+
+/** 셸이 보이는 이름 — 브랜드·`<title>` 꼬리표·그리드의 현재 앱이 이 값 하나를 따른다 */
+$shellBrandName = $shellMod === 'community' ? '커뮤니티' : 't-box';
+$shellBrandSub  = $shellMod === 'community' ? '개인 업무 공간' : '사내 파일 공유';
+$shellBrandIcon = $shellMod === 'community' ? 'grid' : 'shield';
+/** 그리드 팝업에서 `aria-current="page"` 가 붙는 앱의 key (`config/apps.json` 의 key) */
+$shellCurrentApp = $shellMod === 'community' ? 'community' : 'tbox';
 
 $shellUser   = isset($user) && is_array($user) ? $user : [];
 $shellName   = htmlspecialchars((string) ($shellUser['username'] ?? ''), ENT_QUOTES, 'UTF-8');
@@ -154,7 +179,11 @@ $shellApps = Apps::all();
  * 지금은 더 싣는 스타일시트가 없다 — 목록이 비어 있으므로 `$pageCss` 는 어떤 값이든 버려진다.
  * 구조를 남겨 두는 이유는, 화면별 CSS 가 다시 생길 때 이 허용 목록을 거치게 하기 위해서다.
  */
-$shellCssAllowed = [];
+$shellCssAllowed = [
+    // 커뮤니티 3단계 — 문서 토큰·블록 클래스 한 벌 (DESIGN.md 2.14). 이름은 `public/assets/`
+    // 기준의 **정확한 상대 경로**이고, 허용 목록 안의 값만 통과하므로 경로가 조립되지 않는다.
+    'community/community.css',
+];
 $shellPageCss    = [];
 if (isset($pageCss) && is_array($pageCss)) {
     foreach ($pageCss as $shellCssName) {
@@ -181,7 +210,7 @@ if (!headers_sent()) {
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title><?= $shellTitle ?> · t-box</title>
+<title><?= $shellTitle ?> · <?= htmlspecialchars($shellBrandName, ENT_QUOTES, 'UTF-8') ?></title>
 <!-- 25단계 — 브라우저가 스스로 부르는 `/favicon.ico` 가 404 로 떨어져 모든 화면의 콘솔에
      오류 한 줄을 남겼다(시각 점검 도구가 세는 console_errors). 아이콘을 **문서 안에** 둔다:
      파일을 새로 만들지 않고, CSP 의 `img-src 'self' data:` 안에서 끝난다. 고정 문자열이라
@@ -191,8 +220,15 @@ if (!headers_sent()) {
 <?php foreach ($shellPageCss as $shellCssName): ?>
 <link rel="stylesheet" href="<?= Http::url('/assets/') ?><?= $shellCssName ?>?v=<?= (int) filemtime(__DIR__ . '/../../public/assets/' . $shellCssName) ?>">
 <?php endforeach; ?>
+<?php if ($shellMod === 'community'): ?>
+<!-- 커뮤니티 화면의 동작 한 벌 (커뮤니티 ARCHITECTURE.md 21.3). `type="module"` 은 기본이
+     defer 라 <head> 에 두어도 본문이 다 그려진 뒤 돌아간다 — shell_bottom 을 고치지 않고
+     모듈 스크립트를 싣는 자리다. CSP 는 `script-src 'self'` 그대로이고 import map 을 쓰지
+     않는다(ProseMirror 는 저장소 안 상대 경로로 서로를 부른다). -->
+<script type="module" src="<?= Http::url('/assets/community/editor.js') ?>?v=<?= (int) filemtime(__DIR__ . '/../../public/assets/community/editor.js') ?>"></script>
+<?php endif; ?>
 </head>
-<body data-page="<?= $shellPage ?>" data-base="<?= TBOX_BASE ?>">
+<body data-page="<?= $shellPage ?>" data-base="<?= TBOX_BASE ?>"<?= $shellMod === '' ? '' : ' data-community-base="' . COMMUNITY_BASE . '"' ?>>
 <a class="skip" href="#main">본문으로 건너뛰기</a>
 <div class="app">
   <!-- 좁은 화면(960px 미만)에서만 보이는 상단 바. 메뉴 단추가 좌측 내비를 접었다 편다.
@@ -202,16 +238,16 @@ if (!headers_sent()) {
             aria-expanded="false" aria-controls="sidebar" aria-label="메뉴 열기">
       <span class="icon" data-icon="menu"></span>
     </button>
-    <span class="appbar__brand">t-box</span>
+    <span class="appbar__brand"><?= htmlspecialchars($shellBrandName, ENT_QUOTES, 'UTF-8') ?></span>
     <span class="appbar__page"><?= $shellTitle ?></span>
   </header>
 
   <aside id="sidebar" class="sidebar" hidden>
     <div class="brand">
-      <span class="brand__mark"><span class="icon" data-icon="shield"></span></span>
+      <span class="brand__mark"><span class="icon" data-icon="<?= htmlspecialchars($shellBrandIcon, ENT_QUOTES, 'UTF-8') ?>"></span></span>
       <span class="brand__text">
-        <span class="brand__name">t-box</span>
-        <span class="brand__sub">사내 파일 공유</span>
+        <span class="brand__name"><?= htmlspecialchars($shellBrandName, ENT_QUOTES, 'UTF-8') ?></span>
+        <span class="brand__sub"><?= htmlspecialchars($shellBrandSub, ENT_QUOTES, 'UTF-8') ?></span>
       </span>
 
       <!-- ─── 앱 그리드 단추 (Qaredi C — DESIGN.md 2.9 「자리 정정 2026-09-22」, ARCH-launcher 6장) ───
@@ -232,7 +268,7 @@ if (!headers_sent()) {
 <?php foreach ($shellApps as $shellApp): ?>
 <?php   if (($shellApp['status'] ?? '') === 'soon'): ?>
             <li class="list__item"><span class="muted"><?= htmlspecialchars((string) $shellApp['name'], ENT_QUOTES, 'UTF-8') ?></span> <span class="badge">준비 중</span></li>
-<?php   elseif ($shellApp['key'] === 'tbox'): ?>
+<?php   elseif ($shellApp['key'] === $shellCurrentApp): ?>
             <li class="list__item"><a href="<?= htmlspecialchars((string) $shellApp['path'], ENT_QUOTES, 'UTF-8') ?>" aria-current="page"><?= htmlspecialchars((string) $shellApp['name'], ENT_QUOTES, 'UTF-8') ?></a></li>
 <?php   else: ?>
             <li class="list__item"><a href="<?= htmlspecialchars((string) $shellApp['path'], ENT_QUOTES, 'UTF-8') ?>"><?= htmlspecialchars((string) $shellApp['name'], ENT_QUOTES, 'UTF-8') ?></a></li>
@@ -243,6 +279,23 @@ if (!headers_sent()) {
       </details>
     </div>
 
+<?php if ($shellMod === 'community'): ?>
+    <!-- ─── 커뮤니티 모듈의 내비 (커뮤니티 ARCHITECTURE.md 21.3) ───────────────────
+         항목 둘이다. 「내 공간」은 링크, 「새 페이지」는 만들자마자 그 페이지로 가야 해서
+         단추다(누르면 editor.js 가 `POST /community/api/pages` 를 부르고 이동한다).
+         단추에도 같은 `.nav__item` 을 쓴다 — 화면 전용 클래스를 만들지 않는다(DESIGN 원칙 6).
+         t-box 의 파일·설정·관리 묶음은 이 모드에서 **그리지 않는다**: 다른 앱의 내비이고,
+         앱 사이 이동은 위 그리드 단추가 맡는다. -->
+    <p class="nav-title">내 공간</p>
+    <nav class="nav" aria-label="커뮤니티">
+      <a id="nav-community-home" class="<?= $shellNavClass('community-home') ?>" href="<?= Http::communityUrl('/') ?>">
+        <span class="icon" data-icon="files"></span><span>내 공간</span>
+      </a>
+      <button id="nav-community-new" class="nav__item" type="button">
+        <span class="icon" data-icon="plus"></span><span>새 페이지</span>
+      </button>
+    </nav>
+<?php else: ?>
     <p class="nav-title">파일</p>
     <nav class="nav" aria-label="파일">
       <a id="nav-files" class="<?= $shellNavClass('files') ?>" href="<?= Http::url('/') ?>">
@@ -304,6 +357,7 @@ if (!headers_sent()) {
         </a>
       </nav>
     </div>
+<?php endif; ?>
 
     <div class="sidebar__spacer"></div>
 

@@ -39,6 +39,21 @@ final class Authz
         // 12-3 — 조직·권한 관리 (PRD F-19 · 5.4, ARCH 5.9). user.manage 를 재사용하지 않는 이유는
         // 감사 로그와 라우트 표에서 "무엇을 관리했나" 가 이름만으로 갈리게 하기 위해서다.
         'org.manage',
+        /*
+         * 커뮤니티 3단계 (C:S-01, 커뮤니티 ARCHITECTURE.md 21.2).
+         *
+         * 커뮤니티 라우트 표(`src/community/routes.php`)가 쓰는 정책은 이 둘뿐이다. 여기 적는
+         * 이유는 t-box 와 같다 — 라우트의 정책이 `KNOWN_POLICIES` 밖이면 **부팅이 실패**하므로
+         * 「정책을 빠뜨린 라우트」가 코드 리뷰가 아니라 첫 요청에서 드러난다 (SECURITY R-04).
+         *
+         *   community.read   로그인한 사람이면 통과 (= authenticated). 행 단위 판정이 아니다 —
+         *                    그 페이지를 볼 수 있는지는 핸들러가 `CommunityAuthz::decidePageRead`
+         *                    로 다시 판단한다 (file.read 와 같은 구조).
+         *   community.write  쓰는 종류의 행위를 할 수 있는 역할인가 (Guest 는 여기서 끝난다).
+         *                    그 페이지를 고칠 수 있는지는 `CommunityAuthz::decidePageChange` 가 본다.
+         */
+        'community.read',
+        'community.write',
     ];
 
     /**
@@ -858,6 +873,22 @@ final class Authz
         }
     }
 
+    /**
+     * 커뮤니티에 **쓸 수 있는 역할**인가 (커뮤니티 PRD 4장 「쓰기 자격」, ARCHITECTURE.md 21.2).
+     *
+     * 판정은 t-box 파일 업로드 자격과 **같은 표**다 — 권한 매트릭스의 `can_upload` 가
+     * 한 등급이라도 참이면 쓸 수 있다(Guest 는 전부 거짓이라 여기서 끝난다).
+     * 표를 새로 만들지 않는 이유: 매트릭스가 바뀌면(t-box F-25) 커뮤니티도 그대로 따라가야
+     * 하고, 표가 두 벌이면 언젠가 한쪽만 고쳐진다.
+     *
+     * 이 함수는 **라우트 자격**만 본다. 그 페이지를 고칠 수 있는지는 행을 읽은 뒤
+     * `CommunityAuthz::decidePageChange` 가 판단한다.
+     */
+    public static function canCommunityWrite(array $u): bool
+    {
+        return self::canUploadAtAll($u);
+    }
+
     /** 업로드 자체가 가능한 역할인가 (Guest 는 불가 — PRD 5.2) */
     public static function canUploadAtAll(array $u): bool
     {
@@ -942,6 +973,15 @@ final class Authz
 
             case 'org.manage':
                 return self::canManageOrg($u);
+
+            /* 커뮤니티 3단계 (커뮤니티 ARCHITECTURE.md 21.2). t-box 의 file.* 와 같은 구조다:
+               라우터는 「그 종류의 행위를 할 수 있는 역할인가」까지만 보고, 특정 페이지에 대한
+               판단은 핸들러가 행을 읽은 뒤 CommunityAuthz::decidePage* 로 다시 한다. */
+            case 'community.read':
+                return true;     // 라우터가 이미 requireLogin() 을 통과시켰다 (authenticated 와 같다)
+
+            case 'community.write':
+                return self::canCommunityWrite($u);
 
             default:
                 // 알 수 없는 정책 이름은 통과시키지 않는다 (기본 거부)

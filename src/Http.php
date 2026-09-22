@@ -245,6 +245,16 @@ final class Http
     private const MAX_JSON_BYTES = 65536;
 
     /**
+     * JSON 본문의 **중첩 깊이** 상한 (기본값 — 지금까지와 같은 8).
+     *
+     * `json_decode` 의 깊이는 「가장 깊은 값까지의 칸 수 + 1」로 센다(실측 2026-09-22):
+     * 커뮤니티 본문 `{doc:{blocks:[{text:[{m:{link:{href}}}]}]}}` 은 8칸이라 **9** 가 필요하고,
+     * 8 로 두면 **링크 마크가 들어간 문서는 한 건도 저장되지 않는다**(관문 ② 실측 — 스키마는
+     * 허용하는데 입구가 막는 두 번째 자리였다). 그래서 상한을 인자로 받는다.
+     */
+    private const MAX_JSON_DEPTH = 8;
+
+    /**
      * 프로그램용 업로드 토큰 헤더의 **상한**(F-49, ARCH 4.2).
      * 토큰은 48자(scripts/api_token_rotate.sh)이고 `.env` 값도 32자 이상이면 된다.
      * 256자를 넘는 값은 비교조차 하지 않는다 — 긴 문자열을 hash_equals 에 계속 던져
@@ -346,6 +356,22 @@ final class Http
             throw new RuntimeException('주소는 / 로 시작해야 합니다');
         }
         return TBOX_BASE . $path;
+    }
+
+    /**
+     * 커뮤니티 모듈 경로(`/p/<uuid>`)를 **내보낼 주소**(`/community/p/<uuid>`)로 만든다
+     * (커뮤니티 ARCHITECTURE.md 21.1).
+     *
+     * `url()` 과 같은 규칙의 짝이다 — 접두만 다르다. 커뮤니티 화면·핸들러가 만드는 절대
+     * 주소는 전부 이 함수를 지난다. 인자는 언제나 코드에 적힌 모듈 경로이고 `/` 로 시작해야
+     * 한다. 요청 값으로 호스트·스킴을 만들지 않는다.
+     */
+    public static function communityUrl(string $path): string
+    {
+        if ($path === '' || $path[0] !== '/') {
+            throw new RuntimeException('주소는 / 로 시작해야 합니다');
+        }
+        return COMMUNITY_BASE . $path;
     }
 
     /**
@@ -480,22 +506,41 @@ final class Http
      * 크로스사이트에서 자동 전송할 수 있는 형식을 상태 변경 API 가 받지 않게 하는 것이 목적이다
      * (ARCH 4.0 "로그인 CSRF"). 형식이 어긋나면 전부 400 동일 문구다.
      *
+     * $maxBytes — 받아들일 본문의 **바이트 상한**. 기본값은 지금까지와 같은 64KB 이고,
+     *   t-box 창구는 인자를 넘기지 않으므로 **한 글자도 달라지지 않는다**.
+     *   커뮤니티의 본문 저장 창구(`pages_create`·`pages_update`) 둘만 더 큰 값을 넘긴다:
+     *   문서 스키마가 허용하는 크기(`doc-schema.json` 의 `doc_bytes` = 1MB)보다 여기가 작으면
+     *   **스키마는 받아 주는데 입구가 막는** 모순이 생기고, 긴 노트 하나에 저장이 멈춘다
+     *   (2026-09-22 관문 ② 실측). 상한을 없애지는 않는다 — 없으면 메모리가 요청 크기를 따라간다.
+     *
+     * $maxDepth — 중첩 깊이 상한. 기본값 8 도 지금까지와 같고, 같은 창구 둘만 문서 스키마가
+     *   허용하는 깊이에 맞춰 넓힌다. 넓혀도 **검증기가 다시 본다** — `Doc::validate` 의
+     *   `depth` 상한(10)을 넘는 문서는 `too_deep` 으로 거부되고, 그 거부는 감사에 남는다.
+     *   여기서 막으면 「왜 안 되는지 알 수 없는 400」이 되고, 여기서 통과시키면 「어디가
+     *   얼마나 깊은지」가 응답에 적힌다.
+     *
      * @return array<string,mixed>
      */
-    public static function jsonBody(): array
+    public static function jsonBody(int $maxBytes = self::MAX_JSON_BYTES, int $maxDepth = self::MAX_JSON_DEPTH): array
     {
+        if ($maxBytes < 1) {
+            $maxBytes = self::MAX_JSON_BYTES;
+        }
+        if ($maxDepth < 1) {
+            $maxDepth = self::MAX_JSON_DEPTH;
+        }
         $ctype = (string) ($_SERVER['CONTENT_TYPE'] ?? '');
         if (stripos($ctype, 'application/json') !== 0) {
             self::error(400, self::MSG_BAD_REQUEST);
         }
-        $raw = file_get_contents('php://input', false, null, 0, self::MAX_JSON_BYTES + 1);
+        $raw = file_get_contents('php://input', false, null, 0, $maxBytes + 1);
         if ($raw === false) {
             self::error(400, self::MSG_BAD_REQUEST);
         }
-        if (strlen($raw) > self::MAX_JSON_BYTES) {
+        if (strlen($raw) > $maxBytes) {
             self::error(400, self::MSG_BAD_REQUEST);
         }
-        $data = json_decode($raw, true, 8, JSON_INVALID_UTF8_SUBSTITUTE);
+        $data = json_decode($raw, true, $maxDepth, JSON_INVALID_UTF8_SUBSTITUTE);
         if (!is_array($data)) {
             self::error(400, self::MSG_BAD_REQUEST);
         }

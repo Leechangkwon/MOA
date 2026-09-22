@@ -194,6 +194,18 @@ final class Audit
          *                 핸들러·Auth 가 붙인다. 위 세 키와 같은 **정확 일치 예외**다.
          */
         'token_scope',
+        /*
+         * 커뮤니티 3단계 (커뮤니티 ARCHITECTURE.md 21.3 「감사 문장」, C:S-07).
+         *   page_title   — 페이지 제목(30자로 자른 것). `target_name` 과 같은 값이지만, 거부 행에서
+         *                  target 이 비는 갈래(없는 페이지)에도 「무엇을 하려 했나」를 남긴다
+         *   doc_version  — 저장 뒤의 판 번호(정수). 409 거부 행에는 서버가 갖고 있던 값
+         *   block_count  — 저장된 블록 수(정수). **내용은 아니다** — 개수뿐이다
+         *   error_path   — 검사에 걸린 **첫 자리**(`blocks[12].text[3].m.color`)와 사유 코드.
+         *                  본문의 글자는 한 글자도 넣지 않는다(무엇이 틀렸나만 남긴다)
+         * 넷 다 오늘의 FORBIDDEN_DETAIL_KEYS 부분 일치에는 걸리지 않지만, 등록부에 있는 키임을
+         * 코드에서도 드러내려고 여기 적는다 (preview_kind·part 와 같은 이유).
+         */
+        'page_title', 'doc_version', 'block_count', 'error_path',
     ];
 
     private const RESULT_ALLOW = 'allow';
@@ -632,6 +644,27 @@ final class Audit
         'file.update|deny|bad_folder'                   => '{actor} 이(가) 파일 「{target}」 을(를) 없는 폴더 또는 볼 수 없는 폴더로 옮기려 해서 거부했습니다',
         'file.update|deny|parent_narrower'              => '{actor} 이(가) 파일 「{target}」 을(를) 자기보다 좁은 등급의 폴더로 옮기려 해서 거부했습니다',
         'file.level_change|deny|parent_narrower'        => '{actor} 이(가) 파일 「{target}」 의 접근 등급을 그 파일이 든 폴더보다 넓은 {level} 등급으로 바꾸려 해서 거부했습니다',
+
+        /* ── 커뮤니티 3단계 — 개인 업무 공간·블록 본문 (커뮤니티 ARCHITECTURE.md 21.3 표) ──
+         *
+         * 아홉 줄이 전부다. `{target}` 은 **페이지 제목**(30자로 자른 것)이고, 공간에는 이름이
+         * 없어 `space.create` 만 자리표시자를 쓰지 않는다.
+         *
+         * 무엇을 남기고 무엇을 남기지 않나
+         *   · 읽기는 **관리자가 남의 개인 페이지를 열었을 때만** 남긴다(`admin_all`). 자기
+         *     페이지를 여는 것은 일상이고, 그것까지 남기면 진짜 사건이 묻힌다 (PRD S-07 취지).
+         *   · 저장·삭제는 언제나 남는다. 본문 글자는 어디에도 넣지 않는다 —
+         *     남는 것은 제목·판 번호·블록 수·어긋난 자리뿐이다 (ARCH 7.5 등록부).
+         */
+        'page.create|allow'                     => '{actor} 이(가) 페이지 「{target}」 을(를) 만들었습니다',
+        'page.read|allow|admin_all'             => '{actor} 이(가) 관리자 권한으로 다른 사람의 개인 페이지 「{target}」 을(를) 열어 봤습니다',
+        'page.read|deny|not_owner'              => '{actor} 이(가) 다른 사람의 개인 페이지 「{target}」 을(를) 열려 해서 막았습니다',
+        'page.update|allow'                     => '{actor} 이(가) 페이지 「{target}」 의 내용을 저장했습니다 (판 번호·블록 수는 상세 기록)',
+        'page.update|deny|not_owner'            => '{actor} 이(가) 다른 사람의 개인 페이지 「{target}」 을(를) 고치려 해서 막았습니다',
+        'page.update|deny|version_conflict'     => '{actor} 이(가) 페이지 「{target}」 을(를) 저장하려 했지만 그 사이 다른 곳에서 먼저 저장되어 되돌렸습니다',
+        'page.update|deny|invalid_doc'          => '{actor} 이(가) 페이지 「{target}」 에 형식에 맞지 않는 본문을 저장하려 해서 거부했습니다 (어긋난 자리는 상세 기록)',
+        'page.delete|allow'                     => '{actor} 이(가) 페이지 「{target}」 을(를) 휴지통으로 옮겼습니다',
+        'space.create|allow'                    => '{actor} 이(가) 자기 개인 업무 공간을 만들었습니다',
     ];
 
     /** 자리표시자에 넣을 값이 없을 때 (ARCH 7.4) */
@@ -687,10 +720,19 @@ final class Audit
              :result, :reason, CAST(:ip AS inet), :user_agent, CAST(:detail AS jsonb), :summary)
         SQL;
 
-    /** 성공한 행동 (PRD 7.7 표의 "성공 시") */
-    public static function allow(string $action, array $ctx = []): void
+    /**
+     * 성공한 행동 (PRD 7.7 표의 "성공 시").
+     *
+     * $reason 은 **거의 언제나 null** 이다 — 허용 행의 문장 틀 키는 `action|allow` 두 칸이고,
+     * 「왜 허용됐나」는 `detail.granted_by` 가 답한다. 셋째 칸을 쓰는 자리는 지금 하나뿐이다:
+     * 커뮤니티 `page.read|allow|admin_all` — 관리자가 **남의** 개인 페이지를 연 일은 같은
+     * 「읽기 허용」이라도 다른 사건이라, 조합마다 문장을 따로 등록하기로 한 것이다
+     * (커뮤니티 ARCHITECTURE.md 21.3 표의 키 그대로). 인자를 넘기지 않는 기존 호출은 한 줄도
+     * 달라지지 않는다.
+     */
+    public static function allow(string $action, array $ctx = [], ?string $reason = null): void
     {
-        self::write(self::RESULT_ALLOW, $action, null, $ctx);
+        self::write(self::RESULT_ALLOW, $action, $reason, $ctx);
     }
 
     /** 거부된 행동 — 401/403 과 권한 사유 404 (PRD 7.7 "실패·거부 시") */

@@ -586,24 +586,28 @@ step "8. 자체 확인 (PRD 13장 1 · 2단계 통과 기준)"
 # https://127.0.0.1 은 더 이상 없다 — VM 은 TLS 를 하지 않는다 (ARCH 3장 배포 메모).
 code() { curl -s -o /dev/null -w '%{http_code}' --max-time 5 "$1"; }
 
-printf '   GET  %s/api/health        → %s  %s\n' \
-  "$LOCAL_HTTP" "$(code "${LOCAL_HTTP}/api/health")" "$(curl -s --max-time 5 "${LOCAL_HTTP}/api/health")"
-printf '   GET  %s/                  → %s\n' "$LOCAL_HTTP" "$(code "${LOCAL_HTTP}/")"
+# Qaredi C 이후의 주소 지도 (../docs/launcher/ARCHITECTURE.md 1장):
+#   `/`               Qaredi 런처 (로그인 전에도 200)
+#   `/tbox/…`         t-box 모듈의 화면·API
+#   `/.env` `/src/…`  라우트가 아니다 → **루트 그대로** 두고 404 를 기대한다(웹으로 새지 않는가)
+printf '   GET  %s/tbox/api/health   → %s  %s\n' \
+  "$LOCAL_HTTP" "$(code "${LOCAL_HTTP}/tbox/api/health")" "$(curl -s --max-time 5 "${LOCAL_HTTP}/tbox/api/health")"
+printf '   GET  %s/                  → %s  (Qaredi 런처, 200 기대)\n' "$LOCAL_HTTP" "$(code "${LOCAL_HTTP}/")"
 printf '   GET  %s/.env              → %s  (404 기대)\n' "$LOCAL_HTTP" "$(code "${LOCAL_HTTP}/.env")"
 printf '   GET  %s/src/Db.php        → %s  (404 기대)\n' "$LOCAL_HTTP" "$(code "${LOCAL_HTTP}/src/Db.php")"
 printf '   GET  %s/db/schema.sql     → %s  (404 기대)\n' "$LOCAL_HTTP" "$(code "${LOCAL_HTTP}/db/schema.sql")"
 printf '   GET  %s/index.php         → %s\n' "$LOCAL_HTTP" "$(code "${LOCAL_HTTP}/index.php")"
 printf '   GET  %s/protected/x       → %s  (404 기대)\n' "$LOCAL_HTTP" "$(code "${LOCAL_HTTP}/protected/x")"
-printf '   GET  %s/nope              → %s  %s  (404 JSON 기대)\n' \
-  "$LOCAL_HTTP" "$(code "${LOCAL_HTTP}/nope")" "$(curl -s --max-time 5 "${LOCAL_HTTP}/nope")"
-printf '   POST %s/api/health        → %s  %s  (405 기대)\n' "$LOCAL_HTTP" \
-  "$(curl -s -X POST -o /dev/null -w '%{http_code}' --max-time 5 "${LOCAL_HTTP}/api/health")" \
-  "$(curl -s -X POST --max-time 5 "${LOCAL_HTTP}/api/health")"
+printf '   GET  %s/tbox/nope         → %s  %s  (404 JSON 기대)\n' \
+  "$LOCAL_HTTP" "$(code "${LOCAL_HTTP}/tbox/nope")" "$(curl -s --max-time 5 "${LOCAL_HTTP}/tbox/nope")"
+printf '   POST %s/tbox/api/health   → %s  %s  (405 기대)\n' "$LOCAL_HTTP" \
+  "$(curl -s -X POST -o /dev/null -w '%{http_code}' --max-time 5 "${LOCAL_HTTP}/tbox/api/health")" \
+  "$(curl -s -X POST --max-time 5 "${LOCAL_HTTP}/tbox/api/health")"
 printf '   GET  http://127.0.0.1:8081/index.php            → %s  (v1 실습 사이트 생존, 200 기대)\n' \
   "$(code http://127.0.0.1:8081/index.php)"
 
-printf '\n   보안 헤더 (%s/):\n' "$LOCAL_HTTP"
-curl -sI --max-time 5 "${LOCAL_HTTP}/" | grep -iE 'content-security-policy|x-content-type|x-frame|referrer-policy|strict-transport' | sed 's/^/     /'
+printf '\n   보안 헤더 (%s/tbox/):\n' "$LOCAL_HTTP"
+curl -sI --max-time 5 "${LOCAL_HTTP}/tbox/" | grep -iE 'content-security-policy|x-content-type|x-frame|referrer-policy|strict-transport' | sed 's/^/     /'
 printf '   (HSTS 는 공개용 tbox-v2 에만 붙는다 — 로컬 8082 에는 없는 것이 정상)\n'
 
 printf '\n   앱 설정 파일 (%s:%s 0640, 저장소 루트 .env. PRD S-09-6):\n' "$OWNER_UNIX_USER" "$APP_USER"
