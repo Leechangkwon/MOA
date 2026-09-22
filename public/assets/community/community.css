@@ -365,3 +365,98 @@
 @media (max-width: 640px) {
   .editor-toolbar { max-width: 100%; }
 }
+
+/* ─── 페이지 트리 · 경로 · 하위 페이지 카드 · 옮기기 창 (4-A, DESIGN 2.14) ───
+ *
+ * 새 색값·새 간격 토큰은 하나도 만들지 않는다 — 전부 app.css 의 토큰이다.
+ * 트리의 접기·펼치기는 `<details>` 가 하므로 여기에는 여는 규칙이 없다(화살표만 돌린다).
+ */
+
+.page-tree { display: flex; flex-direction: column; gap: 2px; }
+.page-tree:empty { display: none; }
+
+.page-tree__node > summary { list-style: none; cursor: pointer; }
+.page-tree__node > summary::-webkit-details-marker { display: none; }
+.page-tree__node > summary::marker { content: ""; }
+
+.page-tree__row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 6px;
+  border-radius: var(--r-sm);
+}
+.page-tree__node > summary:hover > .page-tree__row,
+.page-tree__row:hover { background: var(--surface-2); }
+
+.page-tree__caret {
+  flex: 0 0 1rem;
+  color: var(--muted-2);
+  font-size: 12px;
+  transition: transform .12s;
+}
+details.page-tree__node[open] > summary > .page-tree__row > .page-tree__caret { transform: rotate(90deg); }
+
+.page-tree__link { flex: 1 1 auto; min-width: 0; color: var(--fg); text-decoration: none; }
+.page-tree__link:hover { text-decoration: underline; }
+
+.page-tree__add { opacity: 0; }
+.page-tree__row:hover .page-tree__add,
+.page-tree__add:focus-visible { opacity: 1; }
+
+.page-tree__kids {
+  margin-left: 1rem;
+  padding-left: 8px;
+  border-left: 1px solid var(--line);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+/* 경로 — 「내 공간 › 부모 › 이 페이지」 */
+.crumb {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 8px;
+  font-size: 13px;
+  color: var(--muted);
+}
+.crumb__item { color: var(--muted); text-decoration: none; }
+.crumb__item:hover { text-decoration: underline; }
+.crumb__item.is-current { color: var(--fg); font-weight: 600; }
+.crumb__sep { color: var(--muted-2); }
+
+/* 본문 안의 하위 페이지 카드 — `.card`·`.card--link` 위에 한 줄짜리 모양만 얹는다 */
+.doc-child-page {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 8px 0;
+  padding: 12px 16px;
+}
+
+/* 옮기기 창의 트리 */
+.move-tree { max-height: 24rem; overflow-y: auto; display: flex; flex-direction: column; gap: 2px; }
+.move-tree__node { display: flex; flex-direction: column; gap: 2px; }
+.move-tree__kids {
+  margin-left: 1rem;
+  padding-left: 8px;
+  border-left: 1px solid var(--line);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.move-tree__pick {
+  border: 1px solid transparent;
+  border-radius: var(--r-sm);
+  background: none;
+  color: var(--fg);
+  font: inherit;
+  text-align: left;
+  padding: 6px 10px;
+  cursor: pointer;
+}
+.move-tree__pick:hover { background: var(--surface-2); }
+.move-tree__pick.is-selected { background: var(--surface-2); border-color: var(--ring); }

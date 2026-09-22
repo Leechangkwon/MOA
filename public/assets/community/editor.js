@@ -105,6 +105,7 @@ function toLogin() {
 function initHome() {
   const msg = document.getElementById('msg');
   const list = document.getElementById('community-list');
+  const treeBox = document.getElementById('community-tree');
   const empty = document.getElementById('community-empty');
   const count = document.getElementById('community-count');
   const search = document.getElementById('community-search');
@@ -133,15 +134,124 @@ function initHome() {
     return a;
   }
 
+  /** 트리 한 줄 — 제목 링크 + 「하위 추가」. 하위가 있으면 `<details>` 안에 들어간다. */
+  function treeRow(node, kidCount) {
+    const row = document.createElement('span');
+    row.className = 'page-tree__row';
+
+    // 삼각형 자리. 하위가 없어도 자리를 비워 둬 제목의 왼쪽 끝이 층마다 가지런하다.
+    const caret = document.createElement('span');
+    caret.className = 'page-tree__caret';
+    caret.setAttribute('aria-hidden', 'true');
+    caret.textContent = kidCount > 0 ? '▸' : '';
+
+    const link = document.createElement('a');
+    link.className = 'page-tree__link';
+    link.setAttribute('href', COMMUNITY_BASE + '/p/' + node.id);
+    link.textContent = (node.icon ? node.icon + ' ' : '') + node.title;
+
+    const add = document.createElement('button');
+    add.type = 'button';
+    add.className = 'btn btn--small btn--quiet page-tree__add';
+    add.textContent = '하위 추가';
+    add.addEventListener('click', (event) => {
+      // `<summary>` 안에서 눌렸을 때 접힘·펼침이 함께 일어나지 않게 기본 동작을 멈춘다.
+      event.preventDefault();
+      event.stopPropagation();
+      add.disabled = true;
+      api('POST', '/api/pages', { parent_id: node.id })
+        .then((result) => {
+          if (result.status === 401) { toLogin(); return; }
+          if (result.status === 201 && result.data.page && typeof result.data.page.id === 'string') {
+            window.location.assign(COMMUNITY_BASE + '/p/' + result.data.page.id);
+            return;
+          }
+          setText(msg, errorMessage(result.data));
+          add.disabled = false;
+        })
+        .catch(() => { setText(msg, GENERIC_ERROR); add.disabled = false; });
+    });
+
+    row.appendChild(caret);
+    row.appendChild(link);
+    if (kidCount > 0) {
+      const badge = document.createElement('span');
+      badge.className = 'muted';
+      badge.textContent = '하위 ' + String(kidCount);
+      row.appendChild(badge);
+    }
+    row.appendChild(add);
+    return row;
+  }
+
+  /**
+   * 평평한 목록을 트리로 그린다. **접기·펼치기는 `<details>` 가 한다** — 여닫는 스크립트가
+   * 없으므로 JS 가 멈춰 있어도(그리고 키보드로도) 동작한다.
+   * 깊이는 서버가 8 까지만 허용하지만, 그래도 12 에서 멈춘다 — 자료가 어긋나도 화면이
+   * 끝없이 파고들지 않게 하는 안전장치다.
+   */
+  function treeLevel(byParent, key, depth) {
+    const box = document.createDocumentFragment();
+    const nodes = byParent.get(key) || [];
+    if (depth > 12) { return box; }
+
+    for (const node of nodes) {
+      const kids = byParent.get(node.id) || [];
+      if (kids.length === 0) {
+        const leaf = document.createElement('div');
+        leaf.className = 'page-tree__node';
+        leaf.appendChild(treeRow(node, 0));
+        box.appendChild(leaf);
+        continue;
+      }
+      const details = document.createElement('details');
+      details.className = 'page-tree__node';
+      details.open = true;
+      const summary = document.createElement('summary');
+      summary.appendChild(treeRow(node, kids.length));
+      const kidBox = document.createElement('div');
+      kidBox.className = 'page-tree__kids';
+      kidBox.appendChild(treeLevel(byParent, node.id, depth + 1));
+      details.appendChild(summary);
+      details.appendChild(kidBox);
+      box.appendChild(details);
+    }
+    return box;
+  }
+
+  function loadTree() {
+    return api('GET', '/api/pages?tree=1').then((result) => {
+      if (result.status === 401) { toLogin(); return; }
+      if (result.status !== 200) { setText(msg, errorMessage(result.data)); return; }
+      setText(msg, '');
+      clear(treeBox);
+      const pages = Array.isArray(result.data.pages) ? result.data.pages : [];
+      const byParent = new Map();
+      for (const page of pages) {
+        const key = typeof page.parent_id === 'string' ? page.parent_id : '';
+        if (!byParent.has(key)) { byParent.set(key, []); }
+        byParent.get(key).push(page);
+      }
+      treeBox.appendChild(treeLevel(byParent, '', 0));
+      show(treeBox, pages.length > 0);
+      show(list, false);
+      show(empty, pages.length === 0);
+      setText(count, pages.length === 0 ? '' : '페이지 ' + String(result.data.total) + '개');
+    });
+  }
+
   function load(q) {
-    const query = q && q !== '' ? '?q=' + encodeURIComponent(q) : '';
-    return api('GET', '/api/pages' + query).then((result) => {
+    // 찾기를 껐으면 트리로 돌아간다 — 트리 안에서 찾는 것은 뜻이 없다.
+    if (!q || q === '') { return loadTree(); }
+    return api('GET', '/api/pages?q=' + encodeURIComponent(q)).then((result) => {
       if (result.status === 401) { toLogin(); return; }
       if (result.status !== 200) { setText(msg, errorMessage(result.data)); return; }
       setText(msg, '');
       clear(list);
       const pages = Array.isArray(result.data.pages) ? result.data.pages : [];
       for (const page of pages) { list.appendChild(card(page)); }
+      show(treeBox, false);
+      show(list, true);
       show(empty, pages.length === 0);
       setText(count, pages.length === 0 ? '' : '페이지 ' + String(result.data.total) + '개');
     });
@@ -410,7 +520,7 @@ function buildInputRules() {
 
 /* ─── 「블록 추가」 창 (지시서 2장 — `/` 슬래시 메뉴를 대신한다) ─── */
 
-function createBlockDialog(getView) {
+function createBlockDialog(getView, hooks) {
   const dialog = document.getElementById('block-dialog');
   const listEl = document.getElementById('block-list');
   const titleEl = document.getElementById('block-dialog-title');
@@ -459,7 +569,8 @@ function createBlockDialog(getView) {
     setText(nameEl, entry.label);
     setText(descEl, entry.desc);
     clear(sampleEl);
-    sampleEl.appendChild(renderDoc(entry.sample));
+    // 미리보기도 읽기 렌더러로 그린다. 4단계의 「하위 페이지」는 제목 지도(`sampleCtx`)가 있다.
+    sampleEl.appendChild(renderDoc(entry.sample, entry.sampleCtx || {}));
   }
 
   function open(kind, pos) {
@@ -475,6 +586,27 @@ function createBlockDialog(getView) {
     const view = getView();
     const entry = BLOCK_TYPES[index];
     if (!view || !entry) { dialog.close(); return; }
+
+    /* 4단계 「하위 페이지」만 **넣기 전에 서버를 부른다** — 빈 페이지를 먼저 만들고 그 id 로
+       블록을 넣는다. 만들지 못하면 블록도 넣지 않는다(가리킬 곳이 없는 카드를 만들지 않는다).
+       블록을 바꾸는 자리에서 골랐더라도 같은 동작이다 — 「바꾼다」로 새 페이지가 생기는 것이
+       더 놀라운 일이라 커서 뒤에 **넣는다**. */
+    if (entry.makesPage) {
+      if (!hooks || typeof hooks.createChildPage !== 'function') { dialog.close(); return; }
+      insertButton.disabled = true;
+      hooks.createChildPage()
+        .then((made) => {
+          insertButton.disabled = false;
+          dialog.close();
+          if (!made || typeof made.id !== 'string') { return; }
+          const node = schema.nodes.child_page.create({ id: uuid4(), page_id: made.id, title: made.title || '' });
+          insertNode(view, node);
+          view.focus();
+        })
+        .catch(() => { insertButton.disabled = false; dialog.close(); });
+      return;
+    }
+
     if (mode === 'change') { changeBlock(view, entry, targetPos); } else { insertBlock(view, entry); }
     dialog.close();
     view.focus();
@@ -484,6 +616,11 @@ function createBlockDialog(getView) {
   function insertBlock(view, entry) {
     const node = makeBlockNode(entry);
     if (!node) { return; }
+    insertNode(view, node);
+  }
+
+  /** 이미 만들어진 노드 하나를 커서 다음에 넣는다 (위 둘이 같이 쓴다) */
+  function insertNode(view, node) {
     const $from = view.state.selection.$from;
     const at = $from.depth >= 1 ? $from.after(1) : view.state.doc.content.size;
     const tr = view.state.tr.insert(at, node);
@@ -749,6 +886,7 @@ function initPage() {
   const msg = document.getElementById('msg');
   const titleEl = document.getElementById('page-title');
   const crumbEl = document.getElementById('page-crumb');
+  const subEl = document.getElementById('page-sub');
   const docEl = document.getElementById('page-doc');
   const editorEl = document.getElementById('page-editor');
   const titleField = document.getElementById('page-title-field');
@@ -761,9 +899,17 @@ function initPage() {
   const editorsBadge = document.getElementById('page-editors');
   const childrenWrap = document.getElementById('page-children-wrap');
   const childrenBox = document.getElementById('page-children');
+  const childrenCount = document.getElementById('page-children-count');
+  const childrenEmpty = document.getElementById('page-children-empty');
+  const newChildButton = document.getElementById('page-new-child');
+  const moveButton = document.getElementById('page-move');
   const conflictDialog = document.getElementById('conflict-dialog');
 
-  let state = { doc: null, version: 0, title: '', canEdit: false, editing: false };
+  let state = {
+    doc: null, version: 0, title: '', canEdit: false, editing: false,
+    // 4-A — 창구가 준 「볼 수 있는 하위 페이지」 제목 지도. 렌더러 두 벌이 이것만 본다.
+    childTitles: {}
+  };
   let view = null;
   let toolbar = null;
   let saveTimer = null;
@@ -790,7 +936,46 @@ function initPage() {
 
   function drawRead() {
     clear(docEl);
-    if (state.doc) { docEl.appendChild(renderDoc(state.doc)); }
+    if (state.doc) {
+      docEl.appendChild(renderDoc(state.doc, { child_titles: state.childTitles, base: COMMUNITY_BASE }));
+    }
+  }
+
+  /** 경로(breadcrumb) — 「내 공간 › 부모 › 이 페이지」. 마지막 칸만 링크가 아니다. */
+  function drawCrumb(breadcrumb) {
+    if (!crumbEl) { return; }
+    clear(crumbEl);
+    const trail = Array.isArray(breadcrumb) ? breadcrumb : [];
+
+    const home = document.createElement('a');
+    home.className = 'crumb__item';
+    home.setAttribute('href', COMMUNITY_BASE + '/');
+    home.textContent = '내 공간';
+    crumbEl.appendChild(home);
+
+    for (let i = 0; i < trail.length; i++) {
+      const sep = document.createElement('span');
+      sep.className = 'crumb__sep';
+      sep.setAttribute('aria-hidden', 'true');
+      sep.textContent = '›';
+      crumbEl.appendChild(sep);
+
+      const label = (trail[i].icon ? trail[i].icon + ' ' : '') + trail[i].title;
+      if (i === trail.length - 1) {
+        const here = document.createElement('span');
+        here.className = 'crumb__item is-current';
+        here.setAttribute('aria-current', 'page');
+        here.textContent = label;
+        crumbEl.appendChild(here);
+        continue;
+      }
+      const a = document.createElement('a');
+      a.className = 'crumb__item';
+      a.setAttribute('href', COMMUNITY_BASE + '/p/' + trail[i].id);
+      a.textContent = label;
+      crumbEl.appendChild(a);
+    }
+    show(crumbEl, true);
   }
 
   function drawChildren(children) {
@@ -804,9 +989,19 @@ function initPage() {
       title.className = 'card__title';
       title.textContent = (child.icon ? child.icon + ' ' : '') + child.title;
       a.appendChild(title);
+      if (child.child_count > 0) {
+        const meta = document.createElement('span');
+        meta.className = 'card__meta';
+        meta.textContent = '하위 ' + String(child.child_count);
+        a.appendChild(meta);
+      }
       childrenBox.appendChild(a);
     }
-    show(childrenWrap, list.length > 0);
+    setText(childrenCount, list.length === 0 ? '' : String(list.length) + '개');
+    show(childrenEmpty, list.length === 0);
+    // 하위가 없어도 「하위 페이지 만들기」가 있어야 하므로, 고칠 수 있으면 칸을 연다.
+    show(childrenWrap, list.length > 0 || state.canEdit);
+    show(newChildButton, state.canEdit);
   }
 
   function load() {
@@ -822,14 +1017,19 @@ function initPage() {
       state.version = page.doc_version;
       state.title = page.title;
       state.canEdit = result.data.can_edit === true;
+      state.childTitles = result.data.child_titles && typeof result.data.child_titles === 'object'
+        ? result.data.child_titles
+        : {};
       setText(titleEl, page.title);
       document.title = page.title + ' · 커뮤니티';
-      setText(crumbEl, page.parent ? '상위: ' + page.parent.title : '');
+      setText(subEl, page.parent ? '상위: ' + page.parent.title : '');
+      drawCrumb(result.data.breadcrumb);
       drawRead();
       drawChildren(result.data.children);
       showEditors(result.data.editors);
       show(editButton, state.canEdit && !state.editing);
       show(deleteButton, state.canEdit);
+      show(moveButton, state.canEdit);
       setText(msg, '');
     });
   }
@@ -842,7 +1042,25 @@ function initPage() {
     show(editorsBadge, true);
   }
 
-  const blockDialog = createBlockDialog(() => view);
+  /**
+   * 이 페이지 **아래**에 빈 페이지를 하나 만든다 (4-A).
+   * 「블록 추가」 창의 「하위 페이지」와 「하위 페이지 만들기」 단추가 같이 쓴다.
+   * 만들어진 제목은 곧 카드에 보여야 하므로 제목 지도에도 함께 넣는다.
+   */
+  function createChildPage() {
+    return api('POST', '/api/pages', { parent_id: pageId }).then((result) => {
+      if (result.status === 401) { toLogin(); return null; }
+      if (result.status !== 201 || !result.data.page || typeof result.data.page.id !== 'string') {
+        setText(msg, errorMessage(result.data));
+        return null;
+      }
+      const made = { id: result.data.page.id, title: result.data.page.title || '제목 없는 페이지' };
+      state.childTitles[made.id] = { title: made.title, icon: null };
+      return made;
+    });
+  }
+
+  const blockDialog = createBlockDialog(() => view, { createChildPage: createChildPage });
 
   /* ── 편집 모드 ── */
 
@@ -852,7 +1070,8 @@ function initPage() {
 
     let pmDoc;
     try {
-      pmDoc = fromDoc(state.doc);
+      // 하위 페이지 카드에 제목을 보여 주려고 지도를 함께 넘긴다 (4-A).
+      pmDoc = fromDoc(state.doc, { child_titles: state.childTitles });
     } catch (e) {
       setText(msg, e && e.message ? e.message : GENERIC_ERROR);
       return;
@@ -1084,6 +1303,123 @@ function initPage() {
   }
   if (titleInput) {
     titleInput.addEventListener('input', () => { markDirty(); });
+  }
+
+  /* ── 「하위 페이지 만들기」 (4-A) ──
+     본문은 건드리지 않고 트리에만 한 장 더한다. 만든 뒤 목록을 다시 받아 **결과를 보인다** —
+     화면이 스스로 카드를 지어내지 않는다(서버가 준 목록만 그린다). */
+  if (newChildButton) {
+    newChildButton.addEventListener('click', () => {
+      newChildButton.disabled = true;
+      createChildPage()
+        .then((made) => {
+          newChildButton.disabled = false;
+          if (!made) { return; }
+          return load();
+        })
+        .catch(() => { newChildButton.disabled = false; setText(msg, GENERIC_ERROR); });
+    });
+  }
+
+  /* ── 「옮기기」 창 (4-A) ──
+     트리를 한 번(`?tree=1`)에 받아 고를 수 있는 부모만 그린다. 자기 자신과 자기 하위는
+     목록에서 빼지만, **막는 것은 서버**다(`decidePageMove` — cycle·depth_exceeded).
+     화면의 목록은 편의일 뿐 판정이 아니다 (DESIGN 원칙 1). */
+  const moveDialog = document.getElementById('move-dialog');
+  const moveTreeBox = document.getElementById('move-tree');
+  const moveMsg = document.getElementById('move-msg');
+  const moveConfirm = document.getElementById('move-confirm');
+  let movePick = null;          // 고른 새 부모의 id (null = 맨 위)
+  let movePicked = false;       // 하나라도 골랐나
+
+  function movePickButton(label, id, depth) {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'move-tree__pick';
+    button.setAttribute('role', 'option');
+    button.setAttribute('aria-selected', 'false');
+    button.setAttribute('data-parent-id', id === null ? '' : id);
+    button.setAttribute('data-depth', String(depth));
+    button.textContent = label;
+    button.addEventListener('click', () => {
+      movePick = id;
+      movePicked = true;
+      for (const other of moveTreeBox.querySelectorAll('.move-tree__pick')) {
+        const on = other === button;
+        other.className = 'move-tree__pick' + (on ? ' is-selected' : '');
+        other.setAttribute('aria-selected', on ? 'true' : 'false');
+      }
+    });
+    return button;
+  }
+
+  function moveLevel(byParent, key, depth, skip) {
+    const box = document.createDocumentFragment();
+    if (depth > 12) { return box; }
+    for (const node of byParent.get(key) || []) {
+      if (node.id === skip) { continue; }   // 자기 자신과 그 아래는 부모가 될 수 없다
+      const wrap = document.createElement('div');
+      wrap.className = 'move-tree__node';
+      wrap.appendChild(movePickButton((node.icon ? node.icon + ' ' : '') + node.title, node.id, depth));
+      const kids = moveLevel(byParent, node.id, depth + 1, skip);
+      if (kids.childNodes.length > 0) {
+        const kidBox = document.createElement('div');
+        kidBox.className = 'move-tree__kids';
+        kidBox.appendChild(kids);
+        wrap.appendChild(kidBox);
+      }
+      box.appendChild(wrap);
+    }
+    return box;
+  }
+
+  function openMove() {
+    if (!moveDialog || typeof moveDialog.showModal !== 'function') { return; }
+    movePick = null;
+    movePicked = false;
+    setText(moveMsg, '');
+    clear(moveTreeBox);
+    api('GET', '/api/pages?tree=1')
+      .then((result) => {
+        if (result.status === 401) { toLogin(); return; }
+        if (result.status !== 200) { setText(moveMsg, errorMessage(result.data)); return; }
+        const pages = Array.isArray(result.data.pages) ? result.data.pages : [];
+        const byParent = new Map();
+        for (const page of pages) {
+          const k = typeof page.parent_id === 'string' ? page.parent_id : '';
+          if (!byParent.has(k)) { byParent.set(k, []); }
+          byParent.get(k).push(page);
+        }
+        moveTreeBox.appendChild(movePickButton('맨 위 (상위 없음)', null, 0));
+        moveTreeBox.appendChild(moveLevel(byParent, '', 0, pageId));
+      })
+      .catch(() => setText(moveMsg, GENERIC_ERROR));
+    if (!moveDialog.open) { moveDialog.showModal(); }
+  }
+
+  if (moveButton && moveDialog) {
+    moveButton.addEventListener('click', openMove);
+    for (const close of moveDialog.querySelectorAll('[data-move-close]')) {
+      close.addEventListener('click', () => moveDialog.close());
+    }
+    if (moveConfirm) {
+      moveConfirm.addEventListener('click', () => {
+        if (!movePicked) { setText(moveMsg, '새 상위 페이지를 고르세요'); return; }
+        moveConfirm.disabled = true;
+        api('PATCH', '/api/pages/' + pageId + '/move', { parent_id: movePick })
+          .then((result) => {
+            moveConfirm.disabled = false;
+            if (result.status === 401) { toLogin(); return; }
+            if (result.status === 200) {
+              moveDialog.close();
+              // 경로·하위 목록이 함께 바뀐다 — 서버가 준 값으로 다시 그린다.
+              return load();
+            }
+            setText(moveMsg, errorMessage(result.data));
+          })
+          .catch(() => { moveConfirm.disabled = false; setText(moveMsg, GENERIC_ERROR); });
+      });
+    }
   }
 
   // 블록 손잡이(⋮⋮) — 자리는 클릭할 때 다시 찾는다(장식은 문서가 바뀔 때마다 새로 그려진다).

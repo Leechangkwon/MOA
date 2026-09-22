@@ -34,11 +34,15 @@ $pageCss     = ['community/community.css'];
 $shellModule = 'community';
 require __DIR__ . '/../../views/shell_top.php';
 ?>
+    <!-- 경로(breadcrumb) — 뿌리부터 이 페이지까지 (4-A, DESIGN 2.14 `.crumb`).
+         줄의 내용은 editor.js 가 createElement/textContent 로 채운다. -->
+    <nav id="page-crumb" class="crumb" aria-label="페이지 경로" hidden></nav>
+
     <header class="page-head">
       <div class="page-head__text">
         <!-- 제목은 창구가 준 값을 editor.js 가 textContent 로 넣는다(편집 모드에서는 입력 칸). -->
         <h1 id="page-title" class="page-head__title">페이지</h1>
-        <p id="page-crumb" class="page-head__sub"></p>
+        <p id="page-sub" class="page-head__sub"></p>
       </div>
       <div class="page-head__actions">
         <button type="button" class="btn btn--quiet" data-help-open>
@@ -48,6 +52,9 @@ require __DIR__ . '/../../views/shell_top.php';
         <span id="page-save-state" class="badge" hidden></span>
         <button id="page-delete" class="btn btn--quiet btn--danger" type="button" hidden>
           <span class="icon" data-icon="trash"></span>삭제
+        </button>
+        <button id="page-move" class="btn btn--quiet" type="button" hidden>
+          <span class="icon" data-icon="files"></span>옮기기
         </button>
         <button id="page-edit" class="btn" type="button" hidden>
           <span class="icon" data-icon="edit"></span>편집
@@ -79,10 +86,18 @@ require __DIR__ . '/../../views/shell_top.php';
     <!-- 편집 모드의 본문이 들어오는 자리 (ProseMirror 가 자기 DOM 을 그린다) -->
     <div id="page-editor" class="panel" hidden></div>
 
-    <!-- 하위 페이지 -->
+    <!-- 하위 페이지 (4-A). 「하위 페이지 만들기」는 언제나 보이고(고칠 수 있을 때),
+         목록은 있을 때만 보인다. 카드는 editor.js 가 `.card--link` 로 만든다. -->
     <section id="page-children-wrap" hidden>
-      <p class="nav-title">하위 페이지</p>
+      <div class="toolbar">
+        <p class="nav-title">하위 페이지</p>
+        <span id="page-children-count" class="muted"></span>
+        <button id="page-new-child" class="btn btn--quiet" type="button" hidden>
+          <span class="icon" data-icon="plus"></span>하위 페이지 만들기
+        </button>
+      </div>
       <div id="page-children" class="card-grid"></div>
+      <p id="page-children-empty" class="muted" hidden>아직 하위 페이지가 없습니다.</p>
     </section>
 
     <!-- 409 모달 (ARCH 14.3 「다른 곳에서 수정됨」). 내용은 고정 문구뿐이다. -->
@@ -119,6 +134,28 @@ require __DIR__ . '/../../views/shell_top.php';
       <div class="form-actions">
         <button class="btn btn--quiet" type="button" data-delete-close>그만두기</button>
         <button id="delete-confirm" class="btn btn--danger" type="button">지우기</button>
+      </div>
+    </dialog>
+
+    <!-- 「옮기기」 창 (4-A, DESIGN 2.7 모달 · 2.14 `.move-tree`).
+         내 공간의 트리를 한 번(`GET /api/pages?tree=1`)에 받아 그린다. 자기 자신과 자기
+         하위는 고를 수 없게 빼 두지만, **서버가 다시 판단한다**(`decidePageMove` — cycle).
+         목록 내용은 전부 editor.js 가 createElement/textContent 로 채운다. -->
+    <dialog id="move-dialog" class="modal" aria-labelledby="move-title">
+      <div class="modal__head">
+        <h2 id="move-title" class="modal__title">페이지 옮기기</h2>
+        <button class="btn btn--icon btn--plain" type="button" data-move-close aria-label="닫기">
+          <span class="icon" data-icon="x"></span>
+        </button>
+      </div>
+      <div class="modal__body">
+        <p class="muted">새 상위 페이지를 고르세요. 하위 페이지도 함께 따라갑니다.</p>
+        <p id="move-msg" class="msg" role="alert" aria-live="polite"></p>
+        <div id="move-tree" class="move-tree" role="listbox" aria-label="새 상위 페이지"></div>
+      </div>
+      <div class="form-actions">
+        <button class="btn btn--quiet" type="button" data-move-close>그만두기</button>
+        <button id="move-confirm" class="btn" type="button">여기로 옮기기</button>
       </div>
     </dialog>
 

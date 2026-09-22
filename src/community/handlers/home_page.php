@@ -51,8 +51,13 @@ require __DIR__ . '/../../views/shell_top.php';
       <span id="community-count" class="muted"></span>
     </div>
 
-    <!-- 목록이 들어오는 자리. editor.js 가 `createElement` 로만 채운다. -->
-    <section id="community-list" class="card-grid" aria-live="polite"></section>
+    <!-- 트리가 들어오는 자리 (4-A). editor.js 가 `createElement` 로만 채우고, 접기·펼치기는
+         `<details>`/`<summary>` 가 **브라우저 기능으로** 한다 — 여닫는 스크립트가 없다.
+         찾기를 켜면 아래 평평한 목록으로 바뀐다(트리 안에서 찾는 것은 뜻이 없다). -->
+    <section id="community-tree" class="panel page-tree" aria-live="polite"></section>
+
+    <!-- 찾기 결과가 들어오는 자리. 3단계의 카드 목록 그대로다. -->
+    <section id="community-list" class="card-grid" aria-live="polite" hidden></section>
     <p id="community-empty" class="muted" hidden>아직 페이지가 없습니다. 「새 페이지」로 시작하세요.</p>
 <?php
 $pageMsgTop = true;

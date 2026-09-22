@@ -220,6 +220,26 @@ export const schema = new Schema({
       selectable: true,
       attrs: { id: { default: null } },
       toDOM: () => ['div', { class: 'doc-toc', contenteditable: 'false' }, '목차 (읽기 모드에서 제목이 채워집니다)']
+    },
+
+    /*
+     * 하위 페이지 (4단계 `child_page`).
+     *
+     * 우리 JSON 에 저장되는 것은 `page_id` **하나**다. `title` 은 편집기 안에서만 쓰는
+     * **보여 주기용** 속성이라 `toDoc` 이 버린다 — 제목의 진실은 그 페이지 행이고, 여기 베껴
+     * 두면 제목을 바꾼 뒤 두 값이 어긋난다.
+     * 글자를 담지 않는 덩어리(atom)라 `divider`·`toc` 와 같은 갈래로 다룬다.
+     */
+    child_page: {
+      group: 'block',
+      atom: true,
+      selectable: true,
+      attrs: { id: { default: null }, page_id: { default: null }, title: { default: '' } },
+      toDOM: (node) => [
+        'div',
+        { class: 'card card--soon doc-child-page', contenteditable: 'false' },
+        ['span', { class: 'card__title' }, '📄 ' + (node.attrs.title || '하위 페이지')]
+      ]
     }
   },
 
@@ -318,9 +338,11 @@ function richToPM(text) {
  * 편집기가 다룰 수 없는 것을 만나면 **예외**다. 부르는 쪽(editor.js)이 그것을 잡아
  * 「이 문서는 아직 편집할 수 없습니다」로 안내하고 읽기 모드에 머문다.
  */
-export function fromDoc(doc) {
+export function fromDoc(doc, ctx) {
   const blocks = doc && Array.isArray(doc.blocks) ? doc.blocks : [];
   const content = [];
+  // 4단계 — 하위 페이지 카드에 보여 줄 제목 지도(창구가 준 `child_titles`). 없어도 된다.
+  const childTitles = ctx && ctx.child_titles && typeof ctx.child_titles === 'object' ? ctx.child_titles : {};
 
   for (const b of blocks) {
     if (!b || typeof b.type !== 'string') {
@@ -338,6 +360,20 @@ export function fromDoc(doc) {
 
     if (b.type === 'divider' || b.type === 'toc') {
       content.push({ type: b.type, attrs: { id: attrs.id } });
+      continue;
+    }
+    if (b.type === 'child_page') {
+      const pid = typeof b.page_id === 'string' ? b.page_id : null;
+      const entry = pid && Object.prototype.hasOwnProperty.call(childTitles, pid) ? childTitles[pid] : null;
+      content.push({
+        type: 'child_page',
+        attrs: {
+          id: attrs.id,
+          page_id: pid,
+          // 지도에 없으면 읽기 렌더러와 같은 문구로 보인다 — 볼 수 없는 페이지라는 뜻이다.
+          title: entry && typeof entry.title === 'string' ? entry.title : '볼 수 없는 페이지'
+        }
+      });
       continue;
     }
     if (b.type === 'code') {
@@ -430,13 +466,23 @@ export function toDoc(pmDoc) {
     const ourType = node.type === 'code_block' ? 'code' : node.type;
     const block = { id: typeof a.id === 'string' && a.id !== '' ? a.id : uuid4(), type: ourType };
 
-    if (ourType !== 'divider' && ourType !== 'toc') {
+    // 글자를 담지 않는 덩어리에는 꾸밈 세 가지를 얹지 않는다.
+    const isAtom = ourType === 'divider' || ourType === 'toc' || ourType === 'child_page';
+
+    if (!isAtom) {
       if (colorAllowed(a.color)) { block.color = a.color; }
       if (a.align === 'center' || a.align === 'right') { block.align = a.align; }
       if (a.size && a.size !== 'normal' && SIZES.indexOf(a.size) !== -1) { block.size = a.size; }
     }
 
-    if (ourType === 'divider' || ourType === 'toc') {
+    if (ourType === 'child_page') {
+      // `title` 은 편집기 안에서만 쓰는 값이라 **저장하지 않는다**(제목의 진실은 그 페이지 행).
+      if (typeof a.page_id !== 'string' || a.page_id === '') { continue; }
+      block.page_id = a.page_id;
+      blocks.push(block);
+      continue;
+    }
+    if (isAtom) {
       blocks.push(block);
       continue;
     }
@@ -556,5 +602,18 @@ export const BLOCK_TYPES = [
       { id: '00000000-0000-4000-8000-000000000002', type: 'heading', level: 2, text: [{ t: '제목 2', m: {} }] },
       { type: 'toc' }
     ] }
+  },
+  {
+    /*
+     * 하위 페이지 (4단계). 이 한 줄만 **넣기 전에 서버를 부른다** — 빈 페이지를 먼저 만들고
+     * 그 id 로 블록을 넣는다(`makesPage`). 그래서 「넣기」를 누르면 새 페이지가 하나 생긴다.
+     */
+    type: 'child_page', label: '하위 페이지', makesPage: true,
+    desc: '이 페이지 아래에 새 페이지를 만들고 카드로 걸어 둡니다. 카드를 누르면 그 페이지로 갑니다.',
+    sample: { schema: 1, blocks: [
+      { id: '00000000-0000-4000-8000-0000000000aa', type: 'child_page', page_id: '00000000-0000-4000-8000-0000000000bb' }
+    ] },
+    // 미리보기도 읽기 렌더러로 그린다 — 제목 지도를 여기서 흉내 낸다(견본과 실제가 같은 코드).
+    sampleCtx: { base: '', child_titles: { '00000000-0000-4000-8000-0000000000bb': { title: '새 하위 페이지', icon: null } } }
   }
 ];

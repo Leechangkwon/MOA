@@ -28,6 +28,12 @@ final class DocRender
      */
     private const MARK_ORDER = ['code', 'color', 'strike', 'underline', 'italic', 'bold', 'link'];
 
+    /**
+     * `child_page` 가 가리키는 페이지를 볼 수 없을 때의 문구 (4단계).
+     * **클라이언트 렌더러(`doc-render.js`)의 같은 상수와 한 글자도 다르면 안 된다** — C:T-19.
+     */
+    private const CHILD_PAGE_UNREADABLE = '볼 수 없는 페이지';
+
     /** 마크 이름 → 태그 (색은 span + 클래스, 링크는 a) */
     private const MARK_TAG = [
         'code'      => 'code',
@@ -42,10 +48,10 @@ final class DocRender
      *
      * @param array<string,mixed> $doc 검사를 통과한 문서
      */
-    public static function html(array $doc): string
+    public static function html(array $doc, array $ctx = []): string
     {
         $blocks = is_array($doc['blocks'] ?? null) ? $doc['blocks'] : [];
-        return '<div class="doc">' . self::blocks($blocks, $blocks) . '</div>';
+        return '<div class="doc">' . self::blocks($blocks, $blocks, $ctx) . '</div>';
     }
 
     /**
@@ -54,7 +60,7 @@ final class DocRender
      * @param list<mixed> $list
      * @param list<mixed> $rootBlocks 목차(`toc`)가 훑을 문서 전체
      */
-    private static function blocks(array $list, array $rootBlocks): string
+    private static function blocks(array $list, array $rootBlocks, array $ctx = []): string
     {
         $out     = '';
         $openTag = '';   // 지금 열려 있는 목록 태그 (ul·ol) — 없으면 빈 문자열
@@ -79,7 +85,7 @@ final class DocRender
                 }
             }
 
-            $out .= self::block($block, $rootBlocks);
+            $out .= self::block($block, $rootBlocks, $ctx);
         }
 
         return $out . self::closeList($openTag);
@@ -102,14 +108,14 @@ final class DocRender
      * @param array<string,mixed> $block
      * @param list<mixed>         $rootBlocks
      */
-    private static function block(array $block, array $rootBlocks): string
+    private static function block(array $block, array $rootBlocks, array $ctx = []): string
     {
         $type  = (string) $block['type'];
         $id    = isset($block['id']) && is_string($block['id']) ? $block['id'] : '';
         $idAttr = $id === '' ? '' : ' id="block-' . self::esc($id) . '"';
         $text  = isset($block['text']) && is_array($block['text']) ? self::rich($block['text']) : '';
         $kids  = isset($block['children']) && is_array($block['children'])
-            ? self::blocks($block['children'], $rootBlocks)
+            ? self::blocks($block['children'], $rootBlocks, $ctx)
             : '';
 
         switch ($type) {
@@ -160,6 +166,32 @@ final class DocRender
 
             case 'toc':
                 return self::toc($rootBlocks, $idAttr);
+
+            /*
+             * 하위 페이지 (4단계). 본문 안에 **카드**로 놓이고 누르면 그 페이지로 간다.
+             *
+             * 제목은 `$ctx['child_titles']` 에서 찾는다 — 그 지도는 창구가 **볼 수 있는 것만**
+             * 담아 준다(`pages_get.php`). 지도에 없으면 「볼 수 없는 페이지」 한 장이고, 그때는
+             * 누를 수 없으니 `<a>` 가 아니다 (DESIGN 2.3 — 눌러도 아무 일 없는 카드에
+             * `.card--link` 를 쓰지 않는다). 클라이언트 렌더러와 **같은 문구·같은 클래스**다
+             * (C:T-19 가 텍스트 노드 열과 클래스 집합을 견준다).
+             */
+            case 'child_page':
+                $childId = isset($block['page_id']) && is_string($block['page_id']) ? $block['page_id'] : '';
+                $titles  = is_array($ctx['child_titles'] ?? null) ? $ctx['child_titles'] : [];
+                $entry   = is_array($titles[$childId] ?? null) ? $titles[$childId] : null;
+                if ($entry === null) {
+                    return '<div class="card card--soon doc-child-page"' . $idAttr . '>'
+                         . '<span class="card__title">' . self::CHILD_PAGE_UNREADABLE . '</span></div>';
+                }
+                $childIcon = isset($entry['icon']) && is_string($entry['icon']) && $entry['icon'] !== ''
+                    ? $entry['icon'] . ' '
+                    : '';
+                $childLabel = $childIcon
+                    . (isset($entry['title']) && is_string($entry['title']) ? $entry['title'] : '');
+                return '<a class="card card--link doc-child-page"'
+                     . ' href="' . self::esc(Http::communityUrl('/p/' . $childId)) . '"' . $idAttr . '>'
+                     . '<span class="card__title">' . self::esc($childLabel) . '</span></a>';
 
             default:
                 return '<div class="block-unsupported">지원하지 않는 블록</div>';

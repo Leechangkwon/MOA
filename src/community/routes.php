@@ -44,7 +44,7 @@ require_once __DIR__ . '/CommunityAuthz.php';
  * 자리표시자는 `public/index.php` 의 `TBOX_PATH_PATTERNS` 를 그대로 쓴다 — `{id}` 는
  * UUID 36자만 받으므로 순차 정수를 주소로 받는 자리가 없다(열거 방지, t-box S-09-5).
  *
- * 3단계 범위 (ARCH 21.3): 화면 둘 · API 일곱.
+ * 4-A 범위: 화면 둘 · API 여덟(3단계의 일곱 + `PATCH /api/pages/{id}/move`).
  */
 const COMMUNITY_ROUTES = [
     // ── 화면 ─────────────────────────────────────────────────
@@ -59,6 +59,8 @@ const COMMUNITY_ROUTES = [
     ['POST',   '/api/pages',                 'pages_create.php',    'community.write'],
     ['GET',    '/api/pages/{id}',            'pages_get.php',       'community.read'],
     ['PATCH',  '/api/pages/{id}',            'pages_update.php',    'community.write'],
+    // 트리에서 자리를 바꾼다 — 부모 갈아 끼우기와 형제 순서가 같은 창구다 (4-A).
+    ['PATCH',  '/api/pages/{id}/move',       'pages_move.php',      'community.write'],
     ['DELETE', '/api/pages/{id}',            'pages_delete.php',    'community.write'],
     ['POST',   '/api/pages/{id}/heartbeat',  'pages_heartbeat.php', 'community.write'],
 ];
@@ -283,6 +285,185 @@ function community_target_title(string $title): string
     return iconv_strlen($title, 'UTF-8') > 30
         ? (string) iconv_substr($title, 0, 30, 'UTF-8')
         : $title;
+}
+
+/* ══════════════════════════════════════════════════════════════════
+ * 트리 질의 (4-A) — 전부 **재귀 CTE 한 번**이다
+ *
+ * 규칙 하나: 트리를 따라가는 일은 **SQL 이 한다.** PHP 가 부모를 한 줄씩 다시 물으면
+ * 깊이만큼 질의가 늘고(N+1), 그 사이에 다른 요청이 트리를 바꾸면 화면이 반쯤 옛 트리를
+ * 그린다. 아래 세 함수는 각각 SQL 문장 **하나**만 실행한다.
+ * ══════════════════════════════════════════════════════════════════ */
+
+/**
+ * 뿌리까지의 경로 (breadcrumb). 맨 앞이 뿌리, **맨 뒤가 자기 자신**이다.
+ *
+ * 왜 자기를 넣나: 화면의 경로 줄이 「일지 › 9월 › 오늘」처럼 끝까지 보여야 하고, 길이가
+ * 곧 깊이다(C:T-22 가 1·2·3 을 본다). 끊긴 조상(지워진 페이지)은 CTE 의 `deleted_at IS NULL`
+ * 이 걸러 내므로 거기서 멈춘다 — 지워진 부모 너머는 보이지 않는다.
+ *
+ * 볼 수 있는 것만: 조상은 전부 **같은 개인 공간**의 행이라 페이지 자체와 판정이 같다.
+ * 그래서 조상마다 다시 판정하지 않고 같은 공간인 것만 CTE 안에서 확인한다.
+ *
+ * @return list<array{id:string,title:string,icon:?string}>
+ */
+function community_breadcrumb(int $pageId, int $spaceId): array
+{
+    $sql = <<<'SQL'
+        WITH RECURSIVE up AS (
+            SELECT p.id, p.parent_page_id, p.public_id, p.title, p.icon, 0 AS lvl
+              FROM community.pages p
+             WHERE p.id = CAST(:pid AS bigint)
+               AND p.space_id = CAST(:space AS bigint)
+               AND p.deleted_at IS NULL
+            UNION ALL
+            SELECT parent.id, parent.parent_page_id, parent.public_id, parent.title, parent.icon, up.lvl + 1
+              FROM community.pages parent
+              JOIN up ON parent.id = up.parent_page_id
+             WHERE parent.space_id = CAST(:space2 AS bigint)
+               AND parent.deleted_at IS NULL
+        )
+        SELECT public_id, title, icon FROM up ORDER BY lvl DESC
+        SQL;
+
+    $out = [];
+    foreach (Db::instance()->run($sql, [':pid' => $pageId, ':space' => $spaceId, ':space2' => $spaceId])->fetchAll() as $r) {
+        $out[] = [
+            'id'    => (string) $r['public_id'],
+            'title' => (string) $r['title'],
+            'icon'  => $r['icon'] === null ? null : (string) $r['icon'],
+        ];
+    }
+    return $out;
+}
+
+/**
+ * 바로 아래 자식들 — 제목·아이콘·**그 아래 하위 수**까지 한 질의로.
+ *
+ * `LEFT JOIN` + `GROUP BY` 로 손자 수를 함께 센다. 자식마다 「하위가 있나」를 다시 묻지
+ * 않으려는 것이다(N+1 금지).
+ *
+ * @return list<array{id:string,title:string,icon:?string,position:int,child_count:int,updated_at:string}>
+ */
+function community_children(int $pageId): array
+{
+    $sql = <<<'SQL'
+        SELECT c.public_id, c.title, c.icon, c.position, c.updated_at,
+               count(g.id) AS child_count
+          FROM community.pages c
+          LEFT JOIN community.pages g
+                 ON g.parent_page_id = c.id AND g.deleted_at IS NULL
+         WHERE c.parent_page_id = CAST(:pid AS bigint)
+           AND c.deleted_at IS NULL
+         GROUP BY c.id, c.public_id, c.title, c.icon, c.position, c.updated_at
+         ORDER BY c.position, c.id
+         LIMIT 500
+        SQL;
+
+    $out = [];
+    foreach (Db::instance()->run($sql, [':pid' => $pageId])->fetchAll() as $r) {
+        $out[] = [
+            'id'          => (string) $r['public_id'],
+            'title'       => (string) $r['title'],
+            'icon'        => $r['icon'] === null ? null : (string) $r['icon'],
+            'position'    => (int) $r['position'],
+            'child_count' => (int) $r['child_count'],
+            'updated_at'  => (string) $r['updated_at'],
+        ];
+    }
+    return $out;
+}
+
+/**
+ * 그 페이지의 깊이 — **뿌리를 1** 로 센 값 (4-A `pages_create.php` 가 쓴다).
+ * 행이 없거나 지워졌으면 0 이다(부르는 쪽이 이미 행을 확인한 뒤에 부른다).
+ */
+function community_page_depth(int $pageId): int
+{
+    $sql = <<<'SQL'
+        WITH RECURSIVE up AS (
+            SELECT p.id, p.parent_page_id, 1 AS lvl FROM community.pages p
+             WHERE p.id = CAST(:pid AS bigint) AND p.deleted_at IS NULL
+            UNION ALL
+            SELECT parent.id, parent.parent_page_id, u.lvl + 1 FROM community.pages parent
+              JOIN up u ON parent.id = u.parent_page_id
+             WHERE parent.deleted_at IS NULL
+        )
+        SELECT max(lvl) AS depth FROM up
+        SQL;
+
+    $row = Db::instance()->run($sql, [':pid' => $pageId])->fetch();
+    return is_array($row) && $row['depth'] !== null ? (int) $row['depth'] : 0;
+}
+
+/**
+ * 형제 맨 뒤 자리 번호. 새 페이지는 언제나 형제의 **끝**에 붙는다.
+ * 부모가 없으면(뿌리) 같은 공간의 뿌리 페이지들 사이에서 센다.
+ */
+function community_next_position(int $spaceId, ?int $parentId): int
+{
+    $sql = <<<'SQL'
+        SELECT coalesce(max(p.position), -1) + 1 AS next
+          FROM community.pages p
+         WHERE p.space_id = CAST(:space AS bigint)
+           AND p.deleted_at IS NULL
+           AND p.parent_page_id IS NOT DISTINCT FROM CAST(:parent AS bigint)
+        SQL;
+
+    $row = Db::instance()->run($sql, [':space' => $spaceId, ':parent' => $parentId])->fetch();
+    return is_array($row) ? (int) $row['next'] : 0;
+}
+
+/**
+ * 트리 옮기기에 필요한 값을 **한 문장**으로 모은다 (4-A `pages_move.php`).
+ *
+ * 돌려주는 것
+ *   `subtree_height`   옮길 페이지를 1 로 센 자기 가지의 높이 (잎이면 1)
+ *   `parent_depth`     새 부모의 깊이 (뿌리를 1 로 센 값). 부모가 없으면 `null`
+ *   `parent_ancestors` 새 부모 자신과 그 위 조상들의 `pages.id` 목록. 부모가 없으면 빈 배열
+ *
+ * 두 갈래(아래로·위로)를 CTE 둘로 나란히 돌리고 마지막에 한 행으로 모은다 — 요청 하나에
+ * 트리 질의는 **이 한 번**이다.
+ *
+ * @return array{subtree_height:int,parent_depth:?int,parent_ancestors:list<int>}
+ */
+function community_move_shape(int $pageId, ?int $parentId): array
+{
+    $sql = <<<'SQL'
+        WITH RECURSIVE down AS (
+            SELECT p.id, 1 AS lvl FROM community.pages p
+             WHERE p.id = CAST(:pid AS bigint) AND p.deleted_at IS NULL
+            UNION ALL
+            SELECT c.id, d.lvl + 1 FROM community.pages c
+              JOIN down d ON c.parent_page_id = d.id
+             WHERE c.deleted_at IS NULL
+        ), up AS (
+            SELECT p.id, p.parent_page_id, 1 AS lvl FROM community.pages p
+             WHERE p.id = CAST(:parent AS bigint) AND p.deleted_at IS NULL
+            UNION ALL
+            SELECT parent.id, parent.parent_page_id, u.lvl + 1 FROM community.pages parent
+              JOIN up u ON parent.id = u.parent_page_id
+             WHERE parent.deleted_at IS NULL
+        )
+        SELECT (SELECT max(lvl) FROM down)      AS subtree_height,
+               (SELECT max(lvl) FROM up)        AS parent_depth,
+               (SELECT string_agg(CAST(id AS text), ',') FROM up) AS parent_ancestors
+        SQL;
+
+    $row = Db::instance()->run($sql, [':pid' => $pageId, ':parent' => $parentId])->fetch();
+
+    $ancestors = [];
+    if (is_array($row) && $row['parent_ancestors'] !== null && (string) $row['parent_ancestors'] !== '') {
+        foreach (explode(',', (string) $row['parent_ancestors']) as $id) {
+            $ancestors[] = (int) $id;
+        }
+    }
+
+    return [
+        'subtree_height'   => is_array($row) && $row['subtree_height'] !== null ? (int) $row['subtree_height'] : 1,
+        'parent_depth'     => is_array($row) && $row['parent_depth'] !== null ? (int) $row['parent_depth'] : null,
+        'parent_ancestors' => $ancestors,
+    ];
 }
 
 /**

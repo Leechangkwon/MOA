@@ -206,6 +206,17 @@ final class Audit
          * 코드에서도 드러내려고 여기 적는다 (preview_kind·part 와 같은 이유).
          */
         'page_title', 'doc_version', 'block_count', 'error_path',
+        /*
+         * 커뮤니티 4-A — 페이지 트리 (4-A 지시서 「감사」).
+         *   parent_title — 옮겨 간 **부모 페이지의 제목**(30자로 자른 것). 칸이 없으면
+         *                  뿌리로 올렸다는 뜻이다. 본문 글자는 들어가지 않는다
+         *   cascaded     — 함께 바뀐 항목 **수**(정수). 삭제에서는 함께 내려간 하위 수,
+         *                  이동에서는 떠나온 자리에서 번호를 다시 매긴 형제 수다.
+         *                  이미 t-box 등록부(ARCH 7.5)에 있는 키이고 뜻이 같다
+         * 둘 다 FORBIDDEN_DETAIL_KEYS 부분 일치에 걸리지 않지만, 등록부에 있는 키임을
+         * 코드에서도 드러내려고 여기 적는다 (preview_kind·part 와 같은 이유).
+         */
+        'parent_title', 'cascaded',
     ];
 
     private const RESULT_ALLOW = 'allow';
@@ -665,6 +676,14 @@ final class Audit
         'page.update|deny|invalid_doc'          => '{actor} 이(가) 페이지 「{target}」 에 형식에 맞지 않는 본문을 저장하려 해서 거부했습니다 (어긋난 자리는 상세 기록)',
         'page.delete|allow'                     => '{actor} 이(가) 페이지 「{target}」 을(를) 휴지통으로 옮겼습니다',
         'space.create|allow'                    => '{actor} 이(가) 자기 개인 업무 공간을 만들었습니다',
+
+        /* ── 커뮤니티 4-A — 페이지 트리 옮기기 (4-A 지시서, C:T-24 · C:T-26) ──
+         * 세 줄이다. 옮긴 곳은 `detail.parent_title`(그 칸이 없으면 뿌리로 올린 것)에,
+         * 떠나온 자리에서 번호를 다시 매긴 형제 수는 `detail.cascaded` 에 남는다.
+         * 거부 둘은 **판정 코드 그대로**가 열쇠다 — 화면이 보는 `reason` 과 같은 글자다. */
+        'page.move|allow'                       => '{actor} 이(가) 페이지 「{target}」 을(를) 트리의 다른 자리로 옮겼습니다 (옮긴 곳·형제 수는 상세 기록)',
+        'page.move|deny|cycle'                  => '{actor} 이(가) 페이지 「{target}」 을(를) 자기 자신 또는 자기 하위 페이지 아래로 옮기려 해서 거부했습니다',
+        'page.move|deny|depth_exceeded'         => '{actor} 이(가) 페이지 「{target}」 을(를) 8 단계보다 깊은 자리로 옮기려 해서 거부했습니다',
     ];
 
     /** 자리표시자에 넣을 값이 없을 때 (ARCH 7.4) */

@@ -72,36 +72,22 @@ if ($readCode === CommunityAuthz::CODE_ADMIN_ALL) {
 
 [$mayChange] = CommunityAuthz::decidePageChange($user, $row);
 
-// 부모 — 화면의 빵부스러기(breadcrumb)에 쓴다. 같은 공간 안이라 같은 판정을 받는다.
-$parent = null;
-if ($row['parent_page_id'] !== null) {
-    $sqlParent = <<<'SQL'
-        SELECT public_id, title FROM community.pages
-         WHERE id = CAST(:pid AS bigint) AND deleted_at IS NULL
-        SQL;
-    $parentRow = $db->run($sqlParent, [':pid' => (int) $row['parent_page_id']])->fetch();
-    if (is_array($parentRow)) {
-        $parent = ['id' => (string) $parentRow['public_id'], 'title' => (string) $parentRow['title']];
-    }
-}
+/* 경로(breadcrumb) — 뿌리부터 **자기 자신까지**. 재귀 CTE **한 번**이다 (4-A).
+   조상은 전부 같은 개인 공간의 행이라 이 페이지와 판정이 같다 — 볼 수 있는 페이지의 조상은
+   볼 수 있다. 지워진 조상에서 CTE 가 멈추므로 그 너머는 경로에 나오지 않는다. */
+$breadcrumb = community_breadcrumb((int) $row['id'], (int) $row['space_id']);
 
-// 하위 페이지 — 볼 수 있는 페이지의 하위는 같은 공간 안이라 같은 판정을 받는다.
-$sqlChildren = <<<'SQL'
-    SELECT public_id, title, icon, updated_at
-      FROM community.pages
-     WHERE parent_page_id = CAST(:pid AS bigint) AND deleted_at IS NULL
-     ORDER BY position, id
-     LIMIT 200
-    SQL;
-$children = [];
-foreach ($db->run($sqlChildren, [':pid' => (int) $row['id']])->fetchAll() as $c) {
-    $children[] = [
-        'id'         => (string) $c['public_id'],
-        'title'      => (string) $c['title'],
-        'icon'       => $c['icon'] === null ? null : (string) $c['icon'],
-        'updated_at' => (string) $c['updated_at'],
-    ];
-}
+// 바로 위 하나 — 3단계부터 쓰던 칸이라 그대로 둔다(경로의 끝에서 둘째와 같은 값이다).
+$parent = count($breadcrumb) >= 2
+    ? [
+        'id'    => $breadcrumb[count($breadcrumb) - 2]['id'],
+        'title' => $breadcrumb[count($breadcrumb) - 2]['title'],
+    ]
+    : null;
+
+/* 하위 페이지 — 제목·아이콘과 **그 아래 하위 수**까지 한 질의로(N+1 금지).
+   볼 수 있는 페이지의 하위는 같은 공간 안이라 같은 판정을 받는다. */
+$children = community_children((int) $row['id']);
 
 /* 「지금 이 페이지를 편집 중인 사람」 — 30초 heartbeat 가 민 시각이 2분 안이면 보인다.
    나 자신은 빼고 보여 준다(내가 열어 둔 것은 알려 줄 일이 아니다). */
@@ -126,6 +112,41 @@ if (!is_array($doc)) {
     throw new RuntimeException('저장된 본문을 읽을 수 없습니다');
 }
 
+/* ── `child_page` 블록이 가리키는 페이지들의 제목 (4-A, C:T-28) ──
+ *
+ * ★ **읽기 판정은 여기서** 한다 — 저장 때가 아니다(`Doc::validate` 는 DB 를 읽지 않는다).
+ *   질의가 `space_id = 내 공간` 으로 좁히므로 **남의 페이지 id 는 결과에 아예 없다**. 없는
+ *   id 는 지도에 자리가 없고, 렌더러 두 벌이 그 자리에 「볼 수 없는 페이지」를 그린다.
+ *   화면이 판단하지 않고, 서버가 준 지도에 있나 없나만 본다 (DESIGN 원칙 1).
+ * ★ `IN` 자리표시자 이름은 **개수로 만든 코드 문자열**(`:c0`, `:c1` …)이고 요청 값이 SQL 에
+ *   한 글자도 들어가지 않는다. 값은 전부 바인딩된다 (PRD S-04).
+ */
+$childTitles = [];
+$names       = [];
+$bind        = [':space' => (int) $row['space_id']];
+foreach (array_slice(Doc::extract($doc)['child_pages'], 0, 200) as $uuid) {
+    // 형태가 아닌 값은 질의에 넣지 않는다 — `uuid` 칸에 닿으면 DB 가 예외를 던진다.
+    if (preg_match('/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/', $uuid) !== 1) {
+        continue;
+    }
+    $name        = ':c' . (string) count($names);
+    $names[]     = 'CAST(' . $name . ' AS uuid)';
+    $bind[$name] = $uuid;
+}
+if ($names !== []) {
+    $sqlTitles = 'SELECT p.public_id, p.title, p.icon'
+        . ' FROM community.pages p'
+        . ' WHERE p.space_id = CAST(:space AS bigint)'
+        . ' AND p.deleted_at IS NULL'
+        . ' AND p.public_id IN (' . implode(', ', $names) . ')';
+    foreach ($db->run($sqlTitles, $bind)->fetchAll() as $t) {
+        $childTitles[(string) $t['public_id']] = [
+            'title' => (string) $t['title'],
+            'icon'  => $t['icon'] === null ? null : (string) $t['icon'],
+        ];
+    }
+}
+
 Http::json([
     'page' => [
         'id'          => (string) $row['public_id'],
@@ -139,6 +160,7 @@ Http::json([
         'small_text'  => $row['small_text'] === true,
         'full_width'  => $row['full_width'] === true,
         'parent'      => $parent,
+        'position'    => (int) $row['position'],
         'created_at'  => (string) $row['created_at'],
         'updated_at'  => (string) $row['updated_at'],
     ],
@@ -151,6 +173,11 @@ Http::json([
     // 단추를 되살려 PATCH 를 불러도 서버가 같은 함수로 다시 막는다.
     'can_edit'   => $mayChange,
     'granted_by' => $readCode,
+    // 4-A — 뿌리부터 자기 자신까지의 경로. 길이가 곧 깊이다(뿌리는 1).
+    'breadcrumb' => $breadcrumb,
     'children'   => $children,
+    /* 4-A — 본문의 `child_page` 블록이 가리키는 페이지들의 제목 지도.
+       여기에 없는 id 는 렌더러가 「볼 수 없는 페이지」로 그린다 (C:T-28). */
+    'child_titles' => $childTitles === [] ? new stdClass() : $childTitles,
     'editors'    => $editors,
 ]);

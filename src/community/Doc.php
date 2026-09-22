@@ -370,6 +370,26 @@ final class Doc
                 }
                 return;
 
+            /*
+             * `uuid` — 지금 이 모양을 쓰는 칸은 `child_page.page_id` 하나다 (4단계).
+             *
+             * ★ **형태만 본다.** 그 페이지가 실제로 있는지·볼 수 있는지는 **여기서 묻지 않는다.**
+             *   검증기는 DB 를 읽지 않는 자리이고(ARCH 12.3), 읽기 판정은 페이지를 **그릴 때**
+             *   핸들러가 한다(`pages_get.php` 의 `child_titles`). 그래서 남의 페이지 id 를 적어
+             *   넣어도 저장은 400 이 아니고 화면에 「볼 수 없는 페이지」가 보인다 (C:T-28).
+             *   저장 때 존재를 확인하면 그 400 자체가 「그 UUID 가 있다·없다」를 알려 주는
+             *   탐지기가 된다 — 판정을 렌더 시점에 두는 편이 덜 새고 더 정직하다.
+             */
+            case 'uuid':
+                if (!is_string($value)) {
+                    $add($p, 'bad_type');
+                    return;
+                }
+                if (preg_match('/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/', $value) !== 1) {
+                    $add($p, 'bad_id');
+                }
+                return;
+
             case 'emoji|icon':
                 if (!is_string($value)) {
                     $add($p, 'bad_type');
@@ -570,12 +590,17 @@ final class Doc
     /**
      * 파생값 추출 (ARCH 12.1 · 12.3). **검사를 통과한 문서**에만 쓴다.
      *
+     * `child_pages` 는 4단계에 생긴 칸이다 — 본문 안의 `child_page` 블록이 가리키는 페이지
+     * UUID 들이다. **`links` 에 넣지 않는다**: `links` 는 「글자에 걸린 페이지 링크」(파생 표
+     * `page_links`)이고, `child_page` 는 트리에 얹힌 **자식 페이지**라 쓰임이 다르다. 한 칸에
+     * 섞으면 「본문에서 언급했을 뿐인 페이지」와 「하위 페이지」를 나중에 가를 수 없다.
+     *
      * @param  array<string,mixed> $doc
-     * @return array{plain_text:string,blocks:list<array{block_id:string,block_type:string,ord:int,excerpt:string}>,links:list<array{from_block_id:string,to_page_id:string}>,todos:list<array{block_id:string,checked:bool,text:string}>}
+     * @return array{plain_text:string,blocks:list<array{block_id:string,block_type:string,ord:int,excerpt:string}>,links:list<array{from_block_id:string,to_page_id:string}>,child_pages:list<string>,todos:list<array{block_id:string,checked:bool,text:string}>}
      */
     public static function extract(array $doc): array
     {
-        $out = ['plain_text' => '', 'blocks' => [], 'links' => [], 'todos' => []];
+        $out = ['plain_text' => '', 'blocks' => [], 'links' => [], 'child_pages' => [], 'todos' => []];
         $ord = 0;
         $parts = [];
         self::collect(is_array($doc['blocks'] ?? null) ? $doc['blocks'] : [], $ord, $parts, $out);
@@ -623,6 +648,14 @@ final class Doc
                 'excerpt'    => $excerpt,
             ];
             $ord++;
+
+            /* 4단계 — 본문에 얹힌 하위 페이지. 같은 페이지를 두 번 가리켜도 한 번만 센다
+               (화면이 제목을 찾는 데 쓰는 목록이라 중복이 의미가 없다). */
+            if ($type === 'child_page' && isset($block['page_id']) && is_string($block['page_id'])
+                && !in_array($block['page_id'], $out['child_pages'], true)
+            ) {
+                $out['child_pages'][] = $block['page_id'];
+            }
 
             if ($type === 'to_do') {
                 $out['todos'][] = [

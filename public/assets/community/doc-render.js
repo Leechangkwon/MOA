@@ -24,6 +24,12 @@ const MARK_TAG = {
   bold: 'strong'
 };
 
+/**
+ * `child_page` 가 가리키는 페이지를 볼 수 없을 때의 문구 (4단계).
+ * **서버 렌더러 `DocRender::CHILD_PAGE_UNREADABLE` 과 한 글자도 다르면 안 된다** — C:T-19.
+ */
+const CHILD_PAGE_UNREADABLE = '볼 수 없는 페이지';
+
 /** 기본 색 9 — 배경은 `_bg` 를 붙인 값이다 (doc-schema.json `colors`·`color_suffix_bg`). */
 const COLORS = ['gray', 'brown', 'orange', 'yellow', 'green', 'blue', 'purple', 'pink', 'red'];
 
@@ -176,12 +182,49 @@ function renderToc(rootBlocks, id) {
   return nav;
 }
 
+/**
+ * 하위 페이지 카드 (4단계 `child_page`).
+ *
+ * 제목은 `ctx.child_titles` 에서 찾는다 — 그 지도는 창구가 **볼 수 있는 것만** 담아 준다
+ * (`GET /community/api/pages/{id}` 의 `child_titles`). 지도에 없으면 「볼 수 없는 페이지」
+ * 한 장이고, 그때는 누를 수 없으니 `<a>` 를 만들지 않는다 (DESIGN 2.3).
+ * **문구·클래스는 서버 렌더러 `DocRender::CHILD_PAGE_UNREADABLE` 과 같아야 한다** (C:T-19).
+ */
+function renderChildPage(block, id, ctx) {
+  const map = ctx && ctx.child_titles && typeof ctx.child_titles === 'object' ? ctx.child_titles : {};
+  const pageId = typeof block.page_id === 'string' ? block.page_id : '';
+  const entry = Object.prototype.hasOwnProperty.call(map, pageId) ? map[pageId] : null;
+
+  if (!entry || typeof entry !== 'object') {
+    const div = document.createElement('div');
+    div.className = 'card card--soon doc-child-page';
+    if (id) { div.id = 'block-' + id; }
+    const span = document.createElement('span');
+    span.className = 'card__title';
+    span.textContent = CHILD_PAGE_UNREADABLE;
+    div.appendChild(span);
+    return div;
+  }
+
+  const base = ctx && typeof ctx.base === 'string' ? ctx.base : '';
+  const a = document.createElement('a');
+  a.className = 'card card--link doc-child-page';
+  a.setAttribute('href', base + '/p/' + pageId);
+  if (id) { a.id = 'block-' + id; }
+  const span = document.createElement('span');
+  span.className = 'card__title';
+  const icon = typeof entry.icon === 'string' && entry.icon !== '' ? entry.icon + ' ' : '';
+  span.textContent = icon + (typeof entry.title === 'string' ? entry.title : '');
+  a.appendChild(span);
+  return a;
+}
+
 /** 블록 하나 → 노드 배열 (하위 블록이 있으면 형제로 뒤에 붙는다 — 서버 렌더러와 같은 모양) */
-function renderBlock(block, rootBlocks) {
+function renderBlock(block, rootBlocks, ctx) {
   const nodes = [];
   const type = block.type;
   const id = typeof block.id === 'string' ? block.id : '';
-  const kids = Array.isArray(block.children) ? renderBlocks(block.children, rootBlocks) : null;
+  const kids = Array.isArray(block.children) ? renderBlocks(block.children, rootBlocks, ctx) : null;
   const setId = (el) => { if (id) { el.id = 'block-' + id; } };
 
   if (type === 'paragraph') {
@@ -270,6 +313,9 @@ function renderBlock(block, rootBlocks) {
   } else if (type === 'toc') {
     nodes.push(renderToc(rootBlocks, id));
     return nodes;
+  } else if (type === 'child_page') {
+    nodes.push(renderChildPage(block, id, ctx));
+    return nodes;
   } else {
     nodes.push(unsupported());
     return nodes;
@@ -280,7 +326,7 @@ function renderBlock(block, rootBlocks) {
 }
 
 /** 블록 배열 → DocumentFragment. 이어진 목록은 한 ul·ol 로 묶는다. */
-function renderBlocks(list, rootBlocks) {
+function renderBlocks(list, rootBlocks, ctx) {
   const frag = document.createDocumentFragment();
   let openTag = '';
   let listEl = null;
@@ -304,7 +350,7 @@ function renderBlocks(list, rootBlocks) {
       }
     }
     const target = listEl || frag;
-    for (const node of renderBlock(block, rootBlocks)) {
+    for (const node of renderBlock(block, rootBlocks, ctx)) {
       target.appendChild(node);
     }
   }
@@ -316,14 +362,17 @@ function renderBlocks(list, rootBlocks) {
  * 문서 하나를 그린다.
  *
  * @param {object} doc  `{ schema: 1, blocks: [...] }`
+ * @param {object} [ctx] 그릴 때 필요한 곁가지 (4단계)
+ *                       · `child_titles` 창구가 준 「볼 수 있는 하위 페이지」 제목 지도
+ *                       · `base`         커뮤니티 주소 접두 (`/community`)
  * @returns {DocumentFragment} `<div class="doc">…</div>` 하나를 담은 조각
  */
-export function renderDoc(doc) {
+export function renderDoc(doc, ctx) {
   const frag = document.createDocumentFragment();
   const root = document.createElement('div');
   root.className = 'doc';
   const blocks = doc && Array.isArray(doc.blocks) ? doc.blocks : [];
-  root.appendChild(renderBlocks(blocks, blocks));
+  root.appendChild(renderBlocks(blocks, blocks, ctx || {}));
   frag.appendChild(root);
   return frag;
 }

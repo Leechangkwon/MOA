@@ -63,8 +63,8 @@
   "children_allowed": ["paragraph", "heading", "bulleted", "numbered", "to_do", "quote", "callout", "toggle", "column"],
   "stage": {
     "3": ["paragraph", "heading", "bulleted", "numbered", "to_do", "quote", "callout", "divider", "code", "toc"],
-    "4": ["toggle", "table", "child_page"],
-    "5": ["image", "file", "column_list", "column", "link_to_page"],
+    "4": ["child_page"],
+    "5": ["toggle", "table", "image", "file", "column_list", "column", "link_to_page"],
     "7": ["embed"]
   },
   "stage_marks": {

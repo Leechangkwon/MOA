@@ -20,10 +20,12 @@ declare(strict_types=1);
  *   [1] 허용 키 → [2] 제목 규칙 → [3] 본문 검사 → [4] 내 개인 공간 → [5] 부모 →
  *   [6] 트랜잭션(INSERT + 파생 표 + 감사 `page.create allow`) → 201
  *
- * 왜 거부에 감사가 없나: 여기서 나오는 400 은 전부 **요청 형식**의 문제다(허용 키 밖·제목
- * 길이·본문 스키마). t-box 도 `Http::jsonBody()` 의 형식 오류를 감사에 남기지 않는다 —
- * 남기는 것은 「권한으로 막은 일」이다. 그 판정(남의 공간에 만들기)은 이 창구에 없다:
- * 대상 공간을 요청이 고르지 못하고 **언제나 세션 본인의 개인 공간**이기 때문이다.
+ * 왜 형식 거부에 감사가 없나: 여기서 나오는 400 은 전부 **요청 형식**의 문제다(허용 키 밖·
+ * 제목 길이·본문 스키마·깊이 초과). t-box 도 `Http::jsonBody()` 의 형식 오류를 감사에 남기지
+ * 않는다 — 남기는 것은 「권한으로 막은 일」이다. 대상 공간은 요청이 고르지 못하고 **언제나
+ * 세션 본인의 개인 공간**이다.
+ * 단 하나 감사가 남는 자리는 **남의 페이지를 부모로 준 경우**다(4-A) — 그것은 형식이 아니라
+ * 권한으로 막은 일이라 `page.read deny not_owner` 한 줄이 남는다.
  *
  * @var array<string,mixed> $user   라우터가 넘긴 현재 사용자
  * @var list<string>        $params 경로 변수 없음
@@ -120,18 +122,44 @@ if (array_key_exists('parent_id', $body) && $body['parent_id'] !== null) {
         Http::error(400, Http::MSG_BAD_REQUEST);
     }
     $sqlParent = <<<'SQL'
-        SELECT id FROM community.pages
-         WHERE public_id = CAST(:pid AS uuid)
-           AND space_id = CAST(:space AS bigint)
-           AND deleted_at IS NULL
+        SELECT p.id, p.space_id, p.title
+          FROM community.pages p
+         WHERE p.public_id = CAST(:pid AS uuid)
+           AND p.deleted_at IS NULL
         SQL;
-    $parentRow = $db->run($sqlParent, [':pid' => $rawParent, ':space' => $spaceId])->fetch();
+    $parentRow = $db->run($sqlParent, [':pid' => $rawParent])->fetch();
     if (!is_array($parentRow)) {
-        // 내 공간에 없는 부모 — 있는지 없는지를 따로 알려 주지 않고 형식 문제로 다룬다.
-        Http::error(400, Http::MSG_BAD_REQUEST);
+        // 아무 공간에도 없는 UUID — 「없다」로 답한다 (4-A 규칙).
+        Http::error(404, Http::MSG_NOT_FOUND);
+    }
+    if ((int) $parentRow['space_id'] !== $spaceId) {
+        /* 있지만 남의 공간이다 — **403**, 그리고 남의 개인 페이지에 닿으려 한 일을 남긴다.
+           「없다」로 답하지 않는 이유는 `pages_get.php` 와 같다: 주소가 UUID 라 존재 여부가
+           새어도 얻을 것이 없고, 「막혔다」와 「없다」를 가르는 편이 정직하다 (ARCH 13.2). */
+        $parentTitle = community_target_title((string) $parentRow['title']);
+        Audit::deny('page.read', CommunityAuthz::CODE_NOT_OWNER, [
+            'target_type' => 'page',
+            'target_id'   => (int) $parentRow['id'],
+            'target_name' => $parentTitle,
+            'detail'      => ['page_title' => $parentTitle],
+        ]);
+        Http::error(403, Http::MSG_FORBIDDEN);
     }
     $parentId = (int) $parentRow['id'];
+
+    // 깊이는 뿌리를 1 로 세어 8 까지. 부모가 8 이면 그 아래는 9 다 (4-A 규칙).
+    if (community_page_depth($parentId) + 1 > CommunityAuthz::MAX_DEPTH) {
+        Http::json([
+            'error'  => '페이지는 8 단계까지만 겹칠 수 있습니다',
+            'reason' => CommunityAuthz::CODE_DEPTH_EXCEEDED,
+        ], 400);
+        exit;
+    }
 }
+
+/* 새 페이지는 형제의 **맨 뒤**에 붙는다 (4-A). 3단계는 언제나 0 이었다 — 형제가 없었기
+   때문인데, 트리가 생긴 지금 0 을 그대로 쓰면 새로 만든 것이 형제 사이에 끼어든다. */
+$position = community_next_position($spaceId, $parentId);
 
 // ─── [6] 저장 — 기록이 실패하면 페이지도 남지 않는다 (PRD S-07) ───
 $sqlInsert = <<<'SQL'
@@ -141,7 +169,7 @@ $sqlInsert = <<<'SQL'
     VALUES
         (CAST(:space AS bigint), CAST(:parent AS bigint), :title, CAST(:doc AS jsonb), 1, :plain,
          to_tsvector('simple', :tsv), CAST(:blocks AS int),
-         CAST(:author AS bigint), CAST(:editor AS bigint), 'private', 0)
+         CAST(:author AS bigint), CAST(:editor AS bigint), 'private', CAST(:pos AS int))
     RETURNING id, public_id, created_at, updated_at
     SQL;
 
@@ -150,6 +178,7 @@ try {
     $row = $db->run($sqlInsert, [
         ':space'  => $spaceId,
         ':parent' => $parentId,
+        ':pos'    => $position,
         ':title'  => $title,
         ':doc'    => $docJson,
         ':plain'  => $extract['plain_text'],
@@ -190,6 +219,10 @@ Http::json([
         'doc_version' => 1,
         'block_count' => count($extract['blocks']),
         'visibility'  => 'private',
+        // 트리(4-A) — 만든 자리를 화면이 바로 알 수 있게 함께 돌려준다.
+        'parent_id'   => array_key_exists('parent_id', $body) && is_string($body['parent_id'] ?? null)
+            ? (string) $body['parent_id'] : null,
+        'position'    => $position,
         'created_at'  => (string) $row['created_at'],
         'updated_at'  => (string) $row['updated_at'],
         'url'         => Http::communityUrl('/p/' . (string) $row['public_id']),

@@ -254,6 +254,10 @@
 | 인라인 마크 | `<strong>` `<em>` `<u>` `<s>` `<code class="doc-inline-code">` `<a>`(외부는 `rel="noopener noreferrer"`) | 기존 글자 토큰 |
 | 에디터 | `.editor`(PM 루트, `.doc` 와 같은 규칙으로 보이게) · `.editor-toolbar`(글자를 고르면 뜨는 줄 — **「색」 「배경」 「링크」 셋뿐**, `.btn.btn--small.btn--quiet`) · `.block-handle`(블록 왼쪽 손잡이 ⋮⋮) · 저장 상태 배지 `.badge`(「저장 중…」「저장됨」「저장 못 함」 **셋**) | 새 색·간격 0. 다크는 토큰이 따라온다 |
 | 「블록 추가」 창 (2026-09-23 등록) | `dialog.modal`(2.7 의 960px) 안에 `.block-picker`(왼쪽 `.list` 종류 목록 15rem + 오른쪽 상세) · `.block-pick`(목록의 단추) · `.block-picker__detail` · `.block-picker__sample`(미리보기를 **읽기 렌더러 `renderDoc` 으로** 그린다) | 격자·간격은 기존 토큰만. 720px 미만에서 한 열 |
+| 페이지 트리 (커뮤니티 4-A, 2026-09-23 등록) | `.page-tree`(내 공간 목록 상자, `.panel` 위에) > `.page-tree__node`(하위가 있으면 **`<details>`**, 없으면 `<div>`) > `.page-tree__row`(한 줄 = `.page-tree__caret` 삼각형 + `.page-tree__link` 제목 + `.page-tree__add` 「하위 추가」) · `.page-tree__kids`(한 층 들여쓰고 왼쪽에 `--line` 선) | 새 색·간격 0. **접기·펼치기는 `<details>` 가 한다** — 여닫는 JS 가 한 줄도 없고 키보드로도 열린다. 줄의 요소는 `<a>`·`<button>` 이라 Tab 으로 닿는다 (4장) |
+| 경로(breadcrumb) (4-A) | `.crumb`(`<nav aria-label="페이지 경로">`) > `.crumb__item`(마지막 칸은 `.is-current` + `aria-current="page"`, 링크가 아니다) · `.crumb__sep`(`›`, `aria-hidden`) | 13px `--muted`. 화면 머리 **위**에 한 줄 |
+| 본문의 하위 페이지 카드 (4-A `child_page`) | 볼 수 있으면 `a.card.card--link.doc-child-page` > `.card__title`, 볼 수 없으면 `div.card.card--soon.doc-child-page` > `.card__title` 「볼 수 없는 페이지」 | 2.3 의 규칙대로 — **눌러도 아무 일 없는 카드에 `.card--link` 를 쓰지 않는다.** 서버·클라이언트 렌더러가 **같은 문구·같은 클래스**여야 한다 (C:T-19) |
+| 「옮기기」 창 (4-A) | `dialog.modal` 안 `.move-tree`(`role="listbox"`) > `.move-tree__node` > `.move-tree__pick`(고른 것은 `.is-selected`) · `.move-tree__kids` | 들여쓰기는 중첩 상자로 한다 — 인라인 `style` 0 |
 
 | 하위 요소(BEM, 구현 2026-09-22 등록) | `.doc-li[data-kind]`(편집기 안 목록 항목 — 편집기 DOM 은 평평한 블록, 읽기 렌더러가 `<ul>`·`<ol>` 로 묶는다) · `.doc-link` · `.doc-todo__box` `.doc-todo__text` · `.doc-callout__icon` `.doc-callout__text` · `.doc-code__lang` `.doc-code__caption` · `.doc-toc__item` · `.block-unsupported`(모르는 블록 자리표시, ARCH 12.4) · `.editor-palette`(색 고르기) · `.editor-toolbar__row` | 부모 블록의 토큰을 그대로 |
 

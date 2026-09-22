@@ -40,6 +40,47 @@ if (!is_array($spaceRow)) {
 }
 $spaceId = (int) $spaceRow['id'];
 
+/* ─── `?tree=1` — 트리 화면용 (4-A) ─────────────────────────────
+ *
+ * 그 공간의 살아 있는 페이지를 **한 질의로 전부** 돌려준다(id·parent·position·title·icon).
+ * 트리를 만드는 일은 화면이 한다 — 서버가 겹겹이 중첩된 JSON 을 만들면 같은 트리를 두 벌
+ * (여기와 화면)로 짜게 되고, 언젠가 한쪽만 고쳐진다.
+ *
+ * ★ 부모를 따라 한 층씩 묻지 않는다(N+1 금지). 같은 개인 공간의 페이지는 어차피 전부 볼 수
+ *   있으니 층마다 판정할 것이 없고, `WHERE p.space_id = 내 공간` 한 줄이 범위를 정한다 (C:S-02).
+ * ★ 평평한 목록 응답(아래)은 **그대로** 둔다 — 찾기·쪽 넘기기는 그 길을 계속 쓴다.
+ */
+if (Http::queryText('tree', 4) === '1') {
+    $sqlTree = <<<'SQL'
+        SELECT p.public_id, p.title, p.icon, p.position, p.updated_at,
+               parent.public_id AS parent_public_id
+          FROM community.pages p
+          LEFT JOIN community.pages parent
+                 ON parent.id = p.parent_page_id AND parent.deleted_at IS NULL
+         WHERE p.space_id = CAST(:space AS bigint)
+           AND p.deleted_at IS NULL
+         ORDER BY p.position, p.id
+         LIMIT 2000
+        SQL;
+
+    $tree = [];
+    foreach ($db->run($sqlTree, [':space' => $spaceId])->fetchAll() as $r) {
+        $tree[] = [
+            'id'         => (string) $r['public_id'],
+            'parent_id'  => $r['parent_public_id'] === null ? null : (string) $r['parent_public_id'],
+            'position'   => (int) $r['position'],
+            'title'      => (string) $r['title'],
+            'icon'       => $r['icon'] === null ? null : (string) $r['icon'],
+            'updated_at' => (string) $r['updated_at'],
+            // 내 개인 공간의 페이지라 언제나 참이다 (평평한 목록과 같은 이유 — DESIGN 원칙 1).
+            'can_edit'   => true,
+        ];
+    }
+
+    Http::json(['tree' => true, 'pages' => $tree, 'total' => count($tree)]);
+    exit;
+}
+
 $perPage = 20;
 $pageNo  = Http::queryInt('page', 1, 1, 100000);
 

@@ -159,6 +159,19 @@ with sync_playwright() as p:
                 return True
         return False
 
+    def wait_closed(selector, limit=40):
+        """`<dialog>` 가 닫히기를 기다린다.
+
+        `wait_for_selector("#x:not([open])")` 를 쓰면 안 된다 — 닫힌 `<dialog>` 는 **보이지
+        않는 요소**라 「보일 때까지」 기다리는 그 함수가 끝내 실패한다(2026-09-23 실측).
+        그래서 「`[open]` 인 것이 0개가 될 때까지」로 센다.
+        """
+        for _ in range(limit):
+            if page.locator(selector + "[open]").count() == 0:
+                return True
+            page.wait_for_timeout(250)
+        return False
+
     def saved_doc(page_id):
         r = page.request.get(COMMUNITY + "/api/pages/" + page_id)
         return r.json()["page"]["doc"]
@@ -561,6 +574,157 @@ with sync_playwright() as p:
                 print("      PHP classes=%s" % sorted(a["classes"]))
                 print("      JS  classes=%s" % sorted(b["classes"]))
         step("두 렌더러의 텍스트 노드·클래스 집합이 같다", diff == 0, "다른 표본 %d개" % diff)
+
+    # ══════════════════════════════════════════════════════════════
+    # 4-A — 페이지 트리 (stage4a-tree-directive.md 「브라우저」 줄)
+    #   창에서 하위 페이지 만들기 → 카드 클릭 → 이동 → 경로 → 뒤로 ·
+    #   트리 접기·펼치기 · 옮기기 창
+    # 여기서도 단언은 전부 「행동 → 결과」다 — 「요소가 보인다」로 끝나는 줄을 두지 않는다.
+    # ══════════════════════════════════════════════════════════════
+
+    # ── 21. 「블록 추가」 창의 「하위 페이지」 ─────────────────────
+    print("── 21. 「블록 추가」 → 「하위 페이지」 → 넣기")
+    if page.locator("#page-edit:not([hidden])").count() > 0:
+        page.click("#page-edit")
+    page.wait_for_selector(".ProseMirror", timeout=10000)
+    reset_doc()
+
+    before_pages = page.request.get(COMMUNITY + "/api/pages?tree=1").json()["total"]
+    page.click("#page-add-block")
+    page.wait_for_selector("#block-dialog[open]", timeout=5000)
+    picks = page.locator('#block-list .block-pick[data-block-type="child_page"]')
+    step("창의 종류 목록에 「하위 페이지」가 있다", picks.count() == 1, "%d개" % picks.count())
+    picks.first.click()
+    page.wait_for_timeout(150)
+    step("고르면 오른쪽 미리보기가 하위 페이지 카드로 바뀐다",
+         page.locator("#block-sample .doc-child-page").count() == 1,
+         "미리보기 카드 %d개" % page.locator("#block-sample .doc-child-page").count())
+    page.click("#block-insert")
+    step("「넣기」 뒤 창이 닫힌다", wait_closed("#block-dialog"))
+    page.wait_for_timeout(500)
+
+    after_pages = page.request.get(COMMUNITY + "/api/pages?tree=1").json()["total"]
+    step("「넣기」를 누르면 페이지가 **한 장 새로 생긴다**", after_pages == before_pages + 1,
+         "%d → %d" % (before_pages, after_pages))
+    step("편집기 안에 하위 페이지 카드가 들어갔다",
+         page.locator(".ProseMirror .doc-child-page").count() == 1,
+         "카드 %d개" % page.locator(".ProseMirror .doc-child-page").count())
+
+    wait_saved()
+    blocks = saved_doc(page_id)["blocks"]
+    child_blocks = [b for b in blocks if b["type"] == "child_page"]
+    step("저장 JSON 에 child_page 블록이 있다", len(child_blocks) == 1,
+         "types=%r" % [b["type"] for b in blocks])
+    child_id = child_blocks[0].get("page_id") if child_blocks else ""
+    step("그 블록의 page_id 가 UUID 다",
+         isinstance(child_id, str) and re.match(r"^[0-9a-f-]{36}$", child_id) is not None,
+         "page_id=%r" % child_id)
+
+    # ── 22. 읽기 모드의 카드를 눌러 그 페이지로 간다 ──────────────
+    print("── 22. 「편집 끝」 → 카드 클릭 → 그 페이지로 이동")
+    page.click("#page-done")
+    page.wait_for_selector("#page-doc .doc", timeout=10000)
+    page.wait_for_timeout(300)
+    card = page.locator("#page-doc a.doc-child-page")
+    step("읽기 모드의 카드가 **링크**다 (제목을 찾았다는 뜻)", card.count() == 1,
+         "링크 카드 %d개 / 볼 수 없는 카드 %d개"
+         % (card.count(), page.locator("#page-doc .doc-child-page.card--soon").count()))
+    card_text = card.first.inner_text().strip() if card.count() else ""
+    card.first.click()
+    try:
+        page.wait_for_url(re.compile(r"/community/p/" + re.escape(child_id) + r"$"), timeout=10000)
+        moved_in = True
+    except Exception:
+        moved_in = False
+    step("카드를 누르면 그 하위 페이지로 간다", moved_in, "%s (카드 글자=%r)" % (page.url, card_text))
+
+    # ── 23. 경로(breadcrumb) 와 뒤로 ──────────────────────────────
+    print("── 23. 경로가 보이고, 경로를 눌러 부모로 돌아온다")
+    page.wait_for_selector("#page-crumb:not([hidden])", timeout=10000)
+    crumbs = page.locator("#page-crumb .crumb__item")
+    labels = [crumbs.nth(i).inner_text().strip() for i in range(crumbs.count())]
+    step("경로가 「내 공간 › 부모 › 이 페이지」 세 칸이다", len(labels) == 3, "경로=%r" % labels)
+    step("마지막 칸이 현재 페이지로 표시된다",
+         page.locator("#page-crumb .crumb__item.is-current").count() == 1
+         and page.locator('#page-crumb [aria-current="page"]').count() == 1)
+    page.locator("#page-crumb a.crumb__item").nth(1).click()
+    try:
+        page.wait_for_url(re.compile(r"/community/p/" + re.escape(page_id) + r"$"), timeout=10000)
+        back_ok = True
+    except Exception:
+        back_ok = False
+    step("경로의 부모를 누르면 부모 페이지로 돌아온다", back_ok, page.url)
+
+    # ── 24. 「하위 페이지 만들기」 단추 ───────────────────────────
+    print("── 24. 「하위 페이지 만들기」 단추")
+    page.wait_for_selector("#page-new-child:not([hidden])", timeout=10000)
+    before_cards = page.locator("#page-children .card--link").count()
+    page.click("#page-new-child")
+    page.wait_for_timeout(1500)
+    after_cards = page.locator("#page-children .card--link").count()
+    step("누르면 하위 목록이 한 장 늘어난다", after_cards == before_cards + 1,
+         "%d → %d" % (before_cards, after_cards))
+
+    # ── 25. 내 공간 트리 — 접기·펼치기 ───────────────────────────
+    print("── 25. 내 공간 트리에서 접고 편다")
+    page.goto(COMMUNITY + "/", wait_until="networkidle")
+    page.wait_for_selector("#community-tree .page-tree__row", timeout=10000)
+    node = 'details.page-tree__node:has(> summary a.page-tree__link[href$="/p/%s"])' % page_id
+    step("트리에 하위를 가진 마디(<details>)로 그려졌다", page.locator(node).count() == 1,
+         "마디 %d개" % page.locator(node).count())
+    kid_link = page.locator('%s > .page-tree__kids a.page-tree__link[href$="/p/%s"]' % (node, child_id))
+    step("펼친 상태에서 하위 페이지 줄이 보인다",
+         kid_link.count() == 1 and kid_link.first.is_visible(), "줄 %d개" % kid_link.count())
+    page.click("%s > summary .page-tree__caret" % node)
+    page.wait_for_timeout(300)
+    step("삼각형을 누르면 접히고 하위 줄이 **사라진다**",
+         page.locator("%s[open]" % node).count() == 0 and not kid_link.first.is_visible(),
+         "open 마디 %d개" % page.locator("%s[open]" % node).count())
+    page.click("%s > summary .page-tree__caret" % node)
+    page.wait_for_timeout(300)
+    step("다시 누르면 펴지고 하위 줄이 **되돌아온다**",
+         page.locator("%s[open]" % node).count() == 1 and kid_link.first.is_visible())
+
+    # ── 26. 옮기기 창 ────────────────────────────────────────────
+    print("── 26. 옮기기 창으로 부모를 바꾼다")
+    page.goto(COMMUNITY + "/p/" + child_id, wait_until="networkidle")
+    page.wait_for_selector("#page-move:not([hidden])", timeout=10000)
+    page.click("#page-move")
+    page.wait_for_selector("#move-dialog[open]", timeout=5000)
+    page.wait_for_selector("#move-tree .move-tree__pick", timeout=10000)
+    self_pick = page.locator('#move-tree .move-tree__pick[data-parent-id="%s"]' % child_id)
+    step("옮기기 창에 **자기 자신은 고를 수 없다**", self_pick.count() == 0,
+         "자기 자신 항목 %d개" % self_pick.count())
+    page.locator('#move-tree .move-tree__pick[data-parent-id=""]').first.click()
+    page.wait_for_timeout(150)
+    step("고른 항목에 표시가 붙는다",
+         page.locator("#move-tree .move-tree__pick.is-selected").count() == 1)
+    page.click("#move-confirm")
+    step("「여기로 옮기기」 뒤 창이 닫힌다", wait_closed("#move-dialog"))
+    page.wait_for_timeout(800)
+    crumbs = page.locator("#page-crumb .crumb__item")
+    labels = [crumbs.nth(i).inner_text().strip() for i in range(crumbs.count())]
+    step("맨 위로 옮기면 경로가 「내 공간 › 이 페이지」 두 칸으로 줄어든다",
+         len(labels) == 2, "경로=%r" % labels)
+    parent_now = page.request.get(COMMUNITY + "/api/pages/" + page_id).json()
+    step("옛 부모의 하위 목록에서도 빠졌다",
+         all(c["id"] != child_id for c in parent_now["children"]),
+         "하위=%r" % [c["title"] for c in parent_now["children"]])
+
+    print("── 26-b. 다시 원래 부모 아래로 되돌린다 (정리가 함께 지우도록)")
+    page.click("#page-move")
+    page.wait_for_selector("#move-dialog[open]", timeout=5000)
+    page.wait_for_selector("#move-tree .move-tree__pick", timeout=10000)
+    page.locator('#move-tree .move-tree__pick[data-parent-id="%s"]' % page_id).first.click()
+    page.click("#move-confirm")
+    step("되돌리기 뒤 창이 닫힌다", wait_closed("#move-dialog"))
+    page.wait_for_timeout(800)
+    step("되돌리면 경로가 다시 세 칸이 된다",
+         page.locator("#page-crumb .crumb__item").count() == 3,
+         "칸 %d개" % page.locator("#page-crumb .crumb__item").count())
+
+    page.goto(page_url, wait_until="networkidle")
+    page.wait_for_selector("#page-doc .doc", timeout=10000)
 
     # ── 20. 정리 — 만든 페이지를 삭제 단추로 지운다 ───────────────
     print("── 20. 정리 (삭제 단추)")
