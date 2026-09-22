@@ -240,6 +240,22 @@
 
 ---
 
+### 2.14 문서(블록 본문) 토큰 — 커뮤니티 3단계 (2026-09-22, `../community/ARCHITECTURE.md` 12.5)
+
+블록 JSON 의 꾸밈 값은 **이름**으로 저장되고 화면이 여기 토큰으로 바꾼다. 색은 라이트·다크 각각 정의해 해/달 전환이 따라온다(2.12). 새 값은 이 표에 먼저 등록한다.
+
+| 무엇 | 토큰·클래스 | 값(라이트 / 다크) |
+|---|---|---|
+| 글자색 9 | `--nt-gray` `--nt-brown` `--nt-orange` `--nt-yellow` `--nt-green` `--nt-blue` `--nt-purple` `--nt-pink` `--nt-red` → `.nt-<color>` | 노션 기본 팔레트에 맞춘 값을 `community.css` `:root`·`[data-theme="dark"]` 에 둔다(회색 #787774/#9B9B9B 처럼 라이트·다크 한 쌍씩) |
+| 배경색 9 | `--nt-<color>-bg` → `.nt-<color>-bg` | 같은 색의 옅은 배경(라이트 12%·다크 24% 정도) |
+| 블록 크기 4단계 | `.sz-small` `.sz-normal` `.sz-large` `.sz-xlarge` | 13 / 15 / 18 / 22px (`--size-*`) |
+| 정렬 | `.al-left`(기본) `.al-center` `.al-right` | `text-align` |
+| 블록 요소 | `.doc` 안 `.doc-h1~3` `.doc-p` `.doc-ul` `.doc-ol` `.doc-todo`(체크 상자 + 완료 시 취소선·`--muted`) `.doc-quote`(왼 테두리 3px `--line`) `.doc-callout`(배경 `--nt-gray-bg` + 아이콘 칸, 색 있으면 그 `-bg`) `.doc-divider` `.doc-code`(고정폭·`--panel` 배경·언어 라벨) `.doc-toc` | 간격·반경은 기존 토큰(`--space-*`·`--radius`)만 |
+| 인라인 마크 | `<strong>` `<em>` `<u>` `<s>` `<code class="doc-inline-code">` `<a>`(외부는 `rel="noopener noreferrer"`) | 기존 글자 토큰 |
+| 에디터 | `.editor`(PM 루트, `.doc` 와 같은 규칙으로 보이게) · `.editor-menu`(슬래시 메뉴 = `.panel > .list`) · `.editor-toolbar`(인라인 툴바 = `.btn.btn--icon.btn--plain` 묶음) · 저장 상태 배지 `.badge`(「저장됨」「저장 중」「충돌」) | 새 색·간격 0. 다크는 토큰이 따라온다 |
+
+원칙 6(화면 전용 CSS 금지)의 예외 아님 — 위 클래스는 **문서 렌더 구성 요소**로 여기 등록된 것이며, `community.css` 한 파일에만 둔다.
+
 ## 3. 화면 배치 규칙
 
 | 규칙 | 값 |
