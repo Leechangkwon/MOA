@@ -52,54 +52,54 @@ require __DIR__ . '/../views/shell_top.php';
 
     
 
-    <section class="admin-hub">
-      <a class="admin-card" href="/users">
-        <span class="admin-card__icon"><span class="icon" data-icon="users"></span></span>
-        <span class="admin-card__text">
-          <strong class="admin-card__name">계정 관리</strong>
-          <span class="admin-card__desc">계정 생성·역할 변경·비활성화, 임시 비밀번호 재발급, 2단계 인증 초기화</span>
+    <section class="card-grid">
+      <a class="card card--link" href="/users">
+        <span class="card__icon"><span class="icon" data-icon="users"></span></span>
+        <span class="card__body">
+          <strong class="card__title">계정 관리</strong>
+          <span class="card__desc">계정 생성·역할 변경·비활성화, 임시 비밀번호 재발급, 2단계 인증 초기화</span>
         </span>
       </a>
-      <a class="admin-card" href="/org">
-        <span class="admin-card__icon"><span class="icon" data-icon="org"></span></span>
-        <span class="admin-card__text">
-          <strong class="admin-card__name">조직 · 권한</strong>
-          <span class="admin-card__desc">팀 만들기·이름 변경·구성원 배정·비활성화. 권한 매트릭스 확인</span>
+      <a class="card card--link" href="/org">
+        <span class="card__icon"><span class="icon" data-icon="org"></span></span>
+        <span class="card__body">
+          <strong class="card__title">조직 · 권한</strong>
+          <span class="card__desc">팀 만들기·이름 변경·구성원 배정·비활성화. 권한 매트릭스 확인</span>
         </span>
       </a>
-      <a class="admin-card admin-card--warn" href="/admin/permissions">
-        <span class="admin-card__icon"><span class="icon" data-icon="lock"></span></span>
-        <span class="admin-card__text">
-          <strong class="admin-card__name">권한 매트릭스 편집</strong>
-          <span class="admin-card__desc">역할 × 등급 표를 바꿉니다</span>
+      <a class="card card--link card--warn" href="/admin/permissions">
+        <span class="card__icon"><span class="icon" data-icon="lock"></span></span>
+        <span class="card__body">
+          <strong class="card__title">권한 매트릭스 편집</strong>
+          <span class="card__desc">역할 × 등급 표를 바꿉니다</span>
         </span>
       </a>
-      <a class="admin-card admin-card--warn" href="/admin/fetch-hosts">
-        <span class="admin-card__icon"><span class="icon" data-icon="link"></span></span>
-        <span class="admin-card__text">
-          <strong class="admin-card__name">URL 가져오기 허용 사이트</strong>
-          <span class="admin-card__desc">「URL 로 가져오기」가 접속할 수 있는 사이트를 정합니다</span>
+      <a class="card card--link card--warn" href="/admin/fetch-hosts">
+        <span class="card__icon"><span class="icon" data-icon="link"></span></span>
+        <span class="card__body">
+          <strong class="card__title">URL 가져오기 허용 사이트</strong>
+          <span class="card__desc">「URL 로 가져오기」가 접속할 수 있는 사이트를 정합니다</span>
         </span>
       </a>
-      <a class="admin-card" href="/audit">
-        <span class="admin-card__icon"><span class="icon" data-icon="log"></span></span>
-        <span class="admin-card__text">
-          <strong class="admin-card__name">감사 로그</strong>
-          <span class="admin-card__desc">누가·언제·어디서·무엇을·어떻게·왜 — 전체 기록 조회</span>
+      <a class="card card--link" href="/audit">
+        <span class="card__icon"><span class="icon" data-icon="log"></span></span>
+        <span class="card__body">
+          <strong class="card__title">감사 로그</strong>
+          <span class="card__desc">누가·언제·어디서·무엇을·어떻게·왜 — 전체 기록 조회</span>
         </span>
       </a>
-      <a class="admin-card" href="/trash">
-        <span class="admin-card__icon"><span class="icon" data-icon="trash"></span></span>
-        <span class="admin-card__text">
-          <strong class="admin-card__name">휴지통</strong>
-          <span class="admin-card__desc">삭제된 파일 복구</span>
+      <a class="card card--link" href="/trash">
+        <span class="card__icon"><span class="icon" data-icon="trash"></span></span>
+        <span class="card__body">
+          <strong class="card__title">휴지통</strong>
+          <span class="card__desc">삭제된 파일 복구</span>
         </span>
       </a>
-      <a class="admin-card" href="/wiki">
-        <span class="admin-card__icon"><span class="icon" data-icon="shield"></span></span>
-        <span class="admin-card__text">
-          <strong class="admin-card__name">위키</strong>
-          <span class="admin-card__desc">서비스 구조와 운영 해설 (관리자)</span>
+      <a class="card card--link" href="/wiki">
+        <span class="card__icon"><span class="icon" data-icon="shield"></span></span>
+        <span class="card__body">
+          <strong class="card__title">위키</strong>
+          <span class="card__desc">서비스 구조와 운영 해설 (관리자)</span>
         </span>
       </a>
     </section>
@@ -112,9 +112,9 @@ require __DIR__ . '/../views/shell_top.php';
          DB CHECK 에도 없다 (PRD S-01). -->
     <section class="card card--pad">
       <div class="org-matrix__head">
-        <div class="org-detail__text">
-          <strong class="org-detail__name">역할로 보기</strong>
-          <span class="muted">다른 역할·팀의 눈으로 화면과 권한을 확인합니다. 활동이 없으면 30분 뒤 자동으로 원래 역할로 돌아옵니다.</span>
+        <div class="panel__head">
+          <h2 class="panel__title">역할로 보기</h2>
+          <p class="panel__sub">다른 역할·팀의 눈으로 화면과 권한을 확인합니다. 활동이 없으면 30분 뒤 자동으로 원래 역할로 돌아옵니다.</p>
         </div>
       </div>
       <form id="act-form" class="form form--grid" autocomplete="off">
@@ -137,9 +137,9 @@ require __DIR__ . '/../views/shell_top.php';
 
     <section class="card card--pad">
       <div class="org-matrix__head">
-        <div class="org-detail__text">
-          <strong class="org-detail__name">공유 링크 전체</strong>
-          <span class="muted">지금 살아 있는 공유 링크입니다.</span>
+        <div class="panel__head">
+          <h2 class="panel__title">공유 링크 전체</h2>
+          <p class="panel__sub">지금 살아 있는 공유 링크입니다.</p>
         </div>
       </div>
       <div class="table-wrap">
@@ -161,12 +161,12 @@ require __DIR__ . '/../views/shell_top.php';
 
     <section class="card card--pad">
       <div class="org-matrix__head">
-        <div class="org-detail__text">
-          <strong class="org-detail__name">최근 경보</strong>
-          <span class="muted">최근 경보 50건</span>
+        <div class="panel__head">
+          <h2 class="panel__title">최근 경보</h2>
+          <p class="panel__sub">최근 경보 50건</p>
         </div>
       </div>
-      <ul id="admin-alerts" class="alert-list"></ul>
+      <ul id="admin-alerts" class="list list--scroll"></ul>
       <p id="admin-alerts-empty" class="muted" hidden>기록된 경보가 없습니다.</p>
     </section>
 <?php require __DIR__ . '/../views/shell_bottom.php'; ?>

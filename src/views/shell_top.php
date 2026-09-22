@@ -133,6 +133,14 @@ if ($shellInitial === '') {
 }
 $shellInitial = htmlspecialchars($shellInitial, ENT_QUOTES, 'UTF-8');
 
+/* DESIGN.md 2.12 — 화면 밝기 취향. 쿠키 값은 허용 목록 두 개만 통과하고 그 밖은 속성 자체를 안 그린다.
+   (그러면 CSS 가 OS 설정 prefers-color-scheme 을 따른다.) 값은 어차피 상수 두 개라 이스케이프할 것이
+   없지만 규칙대로 htmlspecialchars 를 거친다 (PRD S-03). */
+$themeCookie = $_COOKIE['tbox_theme'] ?? '';
+$themeAttr   = in_array($themeCookie, ['dark', 'light'], true)
+    ? ' data-theme="' . htmlspecialchars($themeCookie, ENT_QUOTES, 'UTF-8') . '"'
+    : '';
+
 /** 자산 주소에 파일이 마지막으로 바뀐 시각(정수)을 붙여 옛 파일이 남지 않게 한다 (11단계) */
 $shellCssVersion = (int) filemtime(__DIR__ . '/../../public/assets/app.css');
 
@@ -165,7 +173,7 @@ if (!headers_sent()) {
 }
 ?>
 <!doctype html>
-<html lang="ko">
+<html lang="ko"<?= $themeAttr ?>>
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -270,8 +278,17 @@ if (!headers_sent()) {
     <!-- F-47 「변경 이력」 여는 단추 (PRD F-47, ARCH 5.23).
          누르면 shell_bottom.php 가 그린 #changelog-dialog 가 열린다 — 요청도 권한 판단도 없고,
          내용은 이미 이 응답 안에 들어 있다. 「사용 방법」 단추(5.19)와 같은 뼈대다. -->
-    <button type="button" class="sidebar__version" data-changelog-open title="변경 이력"
-            aria-haspopup="dialog" aria-controls="changelog-dialog">v<?= $shellVersion ?></button>
+    <!-- D-5 (DESIGN.md 2.9 · 2.12) — 버전 표기와 해/달 단추를 한 줄(.sidebar__foot)에 둔다.
+         해와 달을 **둘 다** 그려 두고 어느 것을 보일지는 CSS 가 정한다
+         (:root[data-theme] · prefers-color-scheme) — app.js 는 아이콘을 갈아 끼우지 않는다. -->
+    <div class="sidebar__foot">
+      <button type="button" class="sidebar__version" data-changelog-open title="변경 이력"
+              aria-haspopup="dialog" aria-controls="changelog-dialog">v<?= $shellVersion ?></button>
+      <button type="button" class="btn btn--icon btn--plain theme-toggle" data-theme-toggle
+              aria-label="어두운 화면으로">
+        <span class="icon icon--moon" data-icon="moon"></span><span class="icon icon--sun" data-icon="sun"></span>
+      </button>
+    </div>
 
     <div class="userchip">
       <span class="userchip__avatar" aria-hidden="true"><?= $shellInitial ?></span>

@@ -90,7 +90,7 @@ require __DIR__ . '/../views/shell_top.php';
 
       <div class="perm-preview">
         <p class="field__label">변경 미리보기</p>
-        <ul id="fetch-hosts-preview" class="alert-list"></ul>
+        <ul id="fetch-hosts-preview" class="list list--scroll"></ul>
         <p id="fetch-hosts-preview-empty" class="muted">바꾼 것이 없습니다. 「허용」을 켜고 끄거나 사이트를 추가하면 여기에 나옵니다.</p>
       </div>
 
@@ -116,7 +116,7 @@ require __DIR__ . '/../views/shell_top.php';
         </button>
       </div>
       <div class="modal__body">
-        <ul id="fetch-hosts-dialog-list" class="alert-list"></ul>
+        <ul id="fetch-hosts-dialog-list" class="list list--scroll"></ul>
         <form id="fetch-hosts-form" class="form form--grid" autocomplete="off">
           <label class="field field--full">
             <span class="field__label">사유 (필수 · 500자)</span>

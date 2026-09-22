@@ -778,7 +778,7 @@ final class Wiki
         if ($stages === []) {
             $h[] = '<p class="muted">단계 글이 아직 없습니다.</p>';
         } else {
-            $h[] = '<div class="wiki-cards">';
+            $h[] = '<div class="card-grid">';
             foreach ($stages as $entry) {
                 $h[] = self::stageCard($entry);
             }
@@ -881,7 +881,7 @@ final class Wiki
                 return implode('', $h);
 
             case 'table':
-                $h = ['<div class="table-wrap"><table class="files wiki-table"><thead><tr>'];
+                $h = ['<div class="table-wrap"><table class="files"><thead><tr>'];
                 foreach (self::stringList($block['header'] ?? null) as $cell) {
                     $h[] = '<th scope="col">' . self::inline($cell) . '</th>';
                 }
@@ -924,14 +924,16 @@ final class Wiki
                 return implode('', $h);
 
             case 'refs':
-                $h = ['<div class="table-wrap"><table class="files wiki-table wiki-refs"><thead><tr>'
-                    . '<th scope="col">문서</th><th scope="col">위치</th><th scope="col">무엇이 적혀 있나</th>'
+                /* 첫 열(문서)만 줄이 바뀌지 않게 .nowrap — 예전 참고 표 전용 규칙과 같은 뜻 (C-10). */
+                $h = ['<div class="table-wrap"><table class="files"><thead><tr>'
+                    . '<th scope="col" class="nowrap">문서</th><th scope="col">위치</th>'
+                    . '<th scope="col">무엇이 적혀 있나</th>'
                     . '</tr></thead><tbody>'];
                 foreach (is_array($block['items'] ?? null) ? $block['items'] : [] as $item) {
                     if (!is_array($item)) {
                         continue;
                     }
-                    $h[] = '<tr><td><strong>' . self::esc((string) ($item['doc'] ?? '')) . '</strong></td>'
+                    $h[] = '<tr><td class="nowrap"><strong>' . self::esc((string) ($item['doc'] ?? '')) . '</strong></td>'
                         . '<td>' . self::inline((string) ($item['where'] ?? '')) . '</td>'
                         . '<td>' . self::inline((string) ($item['what'] ?? '')) . '</td></tr>';
                 }
@@ -1085,21 +1087,25 @@ final class Wiki
     /** 단계 카드 하나 */
     private static function stageCard(array $entry): string
     {
-        $num = $entry['stage'] === null ? '·' : self::esc((string) $entry['stage']);
-        $in  = '<span class="wiki-card__num">' . $num . '</span>'
-            . '<span class="wiki-card__body">'
-            . '<span class="wiki-card__title">' . self::esc((string) $entry['title']) . '</span>'
+        $num  = $entry['stage'] === null ? '·' : self::esc((string) $entry['stage']);
+        /* 「준비 중」 배지는 카드 끝이 아니라 제목 옆(.card__head)에 붙는다 (DESIGN 2.3, C-7). */
+        $soon = $entry['exists'] !== true;
+        $in   = '<span class="card__icon">' . $num . '</span>'
+            . '<span class="card__body">'
+            . '<span class="card__head">'
+            . '<span class="card__title">' . self::esc((string) $entry['title']) . '</span>'
+            . ($soon ? '<span class="badge badge--off">준비 중</span>' : '')
+            . '</span>'
             . ((string) $entry['summary'] !== ''
-                ? '<span class="wiki-card__sub">' . self::inline((string) $entry['summary']) . '</span>' : '')
+                ? '<span class="card__desc">' . self::inline((string) $entry['summary']) . '</span>' : '')
             . ((string) $entry['updated'] !== ''
-                ? '<span class="wiki-card__date">고친 날 ' . self::esc((string) $entry['updated']) . '</span>' : '')
+                ? '<span class="card__meta">고친 날 ' . self::esc((string) $entry['updated']) . '</span>' : '')
             . '</span>';
 
-        if ($entry['exists'] !== true) {
-            return '<span class="wiki-card wiki-card--soon">' . $in
-                . '<span class="badge badge--off">준비 중</span></span>';
+        if ($soon) {
+            return '<span class="card card--link card--soon">' . $in . '</span>';
         }
-        return '<a class="wiki-card" href="' . self::BASE_PATH . '/' . self::esc((string) $entry['slug']) . '">'
+        return '<a class="card card--link" href="' . self::BASE_PATH . '/' . self::esc((string) $entry['slug']) . '">'
             . $in . '</a>';
     }
 

@@ -76,7 +76,7 @@ require __DIR__ . '/../views/shell_top.php';
 
       <div class="perm-preview">
         <p class="field__label">변경 미리보기</p>
-        <ul id="perm-preview" class="alert-list"></ul>
+        <ul id="perm-preview" class="list list--scroll"></ul>
         <p id="perm-preview-empty" class="muted">바꾼 칸이 없습니다. 표에서 체크를 바꾸면 여기에 나옵니다.</p>
       </div>
 

@@ -65,7 +65,7 @@ require __DIR__ . '/../views/shell_top.php';
           <span class="icon" data-icon="plus"></span>팀 만들기
         </button>
       </div>
-      <div id="org-teams" class="org-cards"></div>
+      <div id="org-teams" class="card-stack"></div>
       <p id="org-teams-empty" class="muted" hidden>표시할 팀이 없습니다.</p>
       <p class="muted">
         팀은 지우지 않고 비활성화합니다. 활성 구성원이 0명일 때만 됩니다.
@@ -115,9 +115,9 @@ require __DIR__ . '/../views/shell_top.php';
 
       <div class="card card--pad org-matrix">
         <div class="org-matrix__head">
-          <div class="org-detail__text">
-            <strong class="org-detail__name">권한 매트릭스</strong>
-            <span class="muted">역할 × 접근 등급</span>
+          <div class="panel__head">
+            <h2 class="panel__title">권한 매트릭스</h2>
+            <p class="panel__sub">역할 × 접근 등급</p>
           </div>
           <span class="badge badge--off">
             <span class="icon" data-icon="lock"></span>읽기 전용

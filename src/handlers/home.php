@@ -75,10 +75,12 @@ require __DIR__ . '/../views/shell_top.php';
          다른 화면을 보지 못한다. app.js 가 /api/me 의 `next` 를 보고 이 상자만 남긴다.
          ★ 감추는 것은 **편의**일 뿐 막는 것이 아니다 — 화면을 되살려 API 를 직접 불러도
            라우터 관문(public/index.php)이 403 으로 막고 감사 로그에 남긴다 (PRD S-01). -->
-    <section class="gate" id="forced-gate" hidden>
+    <section class="panel" id="forced-gate" hidden>
       <div id="forced-password" hidden>
-        <h2>비밀번호를 변경해 주세요</h2>
-        <p class="muted">임시 비밀번호로 처음 로그인했거나 관리자가 재발급했습니다. 새 비밀번호를 정한 뒤 2단계 인증을 설정하면 서비스를 쓸 수 있습니다</p>
+        <div class="panel__head">
+          <h2 class="panel__title">비밀번호를 변경해 주세요</h2>
+          <p class="panel__sub">임시 비밀번호로 처음 로그인했거나 관리자가 재발급했습니다. 새 비밀번호를 정한 뒤 2단계 인증을 설정하면 서비스를 쓸 수 있습니다</p>
+        </div>
         <form id="forced-password-form" class="form form--grid" autocomplete="off">
           <label class="field">
             <span class="field__label">현재 비밀번호 (받은 임시 비밀번호)</span>
@@ -97,10 +99,12 @@ require __DIR__ . '/../views/shell_top.php';
       </div>
 
       <div id="forced-mfa" hidden>
-        <h2>2단계 인증을 설정해 주세요</h2>
-        <!-- F-52 — 이 걸음에 닿는 것은 **관리자 권한이 있는 계정**뿐이다(ARCH 5.26).
-             다른 역할은 여기 대신 위쪽 권장 카드를 본다. -->
-        <p class="muted">관리자 권한이 있는 계정은 2단계 인증이 필수입니다. 인증 앱을 등록하면 서비스를 쓸 수 있습니다.</p>
+        <div class="panel__head">
+          <h2 class="panel__title">2단계 인증을 설정해 주세요</h2>
+          <!-- F-52 — 이 걸음에 닿는 것은 **관리자 권한이 있는 계정**뿐이다(ARCH 5.26).
+               다른 역할은 여기 대신 위쪽 권장 카드를 본다. -->
+          <p class="panel__sub">관리자 권한이 있는 계정은 2단계 인증이 필수입니다. 인증 앱을 등록하면 서비스를 쓸 수 있습니다.</p>
+        </div>
         <!-- 「내 계정」과 **같은 파일**을 include 한다(두 벌 금지). -->
         <div id="forced-mfa-slot"><?php require __DIR__ . '/../views/mfa_enroll.php'; ?></div>
       </div>
@@ -113,13 +117,13 @@ require __DIR__ . '/../views/shell_top.php';
          서버 응답에 아예 없다 (PRD S-02). 이름·등급 배지는 전부 textContent 로 들어간다.
          트리는 `GET /api/folders?parent=` 로 **한 층씩** 받는다. -->
     <div class="workspace">
-      <aside class="foldertree" id="folder-pane" aria-label="폴더">
+      <aside class="panel panel--tight foldertree" id="folder-pane" aria-label="폴더">
         <div class="foldertree__head">
-          <h2 class="foldertree__title">폴더</h2>
+          <h2 class="panel__title">폴더</h2>
           <button id="folder-new" class="btn btn--quiet btn--small" type="button" hidden>새 폴더</button>
         </div>
         <!-- 폴더 이름은 **읽을 수 있는 사람 모두**에게 보이는 메타데이터다 (SECURITY R-63). -->
-        <p class="foldertree__note">폴더 이름에는 민감한 말(사람 이름·금액·사건명)을 넣지 마세요. 이름은 그 폴더를 볼 수 있는 사람 모두에게 보입니다.</p>
+        <p class="panel__sub">폴더 이름에는 민감한 말(사람 이름·금액·사건명)을 넣지 마세요. 이름은 그 폴더를 볼 수 있는 사람 모두에게 보입니다.</p>
         <nav class="crumbs" id="folder-crumbs" aria-label="폴더 경로"></nav>
         <ul class="foldertree__list" id="folder-list"></ul>
         <p id="folder-empty" class="muted" hidden>하위 폴더가 없습니다.</p>

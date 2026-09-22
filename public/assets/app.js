@@ -456,21 +456,32 @@ function openReauthModal(onDone) {
   reauthOpen = true;
 
   var dialog = document.createElement('dialog');
-  dialog.className = 'modal reauth-modal';
+  dialog.className = 'modal modal--form';
+
+  // 표준 세 구역 — 머리(제목 + 메타) / 본문(폼) / 바닥(오류 한 줄 + 단추). DESIGN 2.7 · 9장 C-2.
+  var head = document.createElement('div');
+  head.className = 'modal__head';
 
   var title = document.createElement('h2');
   title.className = 'modal__title';
   setText(title, '비밀번호 다시 확인');
-  dialog.appendChild(title);
+  head.appendChild(title);
 
-  var lead = document.createElement('p');
-  lead.className = 'modal__lead';
+  var lead = document.createElement('span');
+  lead.className = 'modal__meta';
   setText(lead, '관리 기능을 쓰려면 비밀번호를 다시 확인합니다. 확인한 창은 15분 동안 열려 있습니다.');
-  dialog.appendChild(lead);
+  head.appendChild(lead);
+
+  dialog.appendChild(head);
+
+  var body = document.createElement('div');
+  body.className = 'modal__body';
 
   var form = document.createElement('form');
   form.setAttribute('method', 'dialog');
-  form.className = 'reauth__form';
+  form.className = 'form';
+  // 제출 단추는 `.modal__foot` 에 있다 — 폼 밖의 단추가 이 폼을 제출하려면 id 가 필요하다.
+  form.id = 'reauth-dialog-form';
 
   var label = document.createElement('label');
   label.className = 'field';
@@ -486,32 +497,37 @@ function openReauthModal(onDone) {
   label.appendChild(input);
   form.appendChild(label);
 
-  var row = document.createElement('div');
-  row.className = 'modal__actions';
-  var submit = document.createElement('button');
-  submit.type = 'submit';
-  submit.className = 'btn';
-  setText(submit, '확인');
-  var cancel = document.createElement('button');
-  cancel.type = 'button';
-  cancel.className = 'btn btn--quiet';
-  setText(cancel, '취소');
-  row.appendChild(submit);
-  row.appendChild(cancel);
-  form.appendChild(row);
-
   var hint = document.createElement('p');
   hint.className = 'muted';
   setText(hint, '비밀번호를 5번 틀리면 계정이 10분 잠기고 열려 있던 모든 창이 닫힙니다.');
   form.appendChild(hint);
 
+  body.appendChild(form);
+  dialog.appendChild(body);
+
+  var foot = document.createElement('div');
+  foot.className = 'modal__foot';
+
   var modalMsg = document.createElement('p');
   modalMsg.className = 'msg';
   modalMsg.setAttribute('role', 'alert');
   modalMsg.setAttribute('aria-live', 'polite');
-  form.appendChild(modalMsg);
+  foot.appendChild(modalMsg);
 
-  dialog.appendChild(form);
+  var cancel = document.createElement('button');
+  cancel.type = 'button';
+  cancel.className = 'btn btn--quiet';
+  setText(cancel, '취소');
+  foot.appendChild(cancel);
+
+  var submit = document.createElement('button');
+  submit.type = 'submit';
+  submit.className = 'btn';
+  submit.setAttribute('form', form.id);
+  setText(submit, '확인');
+  foot.appendChild(submit);
+
+  dialog.appendChild(foot);
   document.body.appendChild(dialog);
 
   function close() {
@@ -4577,15 +4593,21 @@ function initUsers(csrfToken) {
     tkBox = document.createElement('section');
     tkBox.className = 'token-box';
 
+    // 패널 머리 꼴 — 제목 위, 설명 한 줄 아래 (DESIGN 2.3 · 9장 C-6).
+    var boxHead = document.createElement('div');
+    boxHead.className = 'panel__head';
+
     var title = document.createElement('h3');
-    title.className = 'token-box__title';
+    title.className = 'panel__title';
     setText(title, '프로그램 토큰');
-    tkBox.appendChild(title);
+    boxHead.appendChild(title);
 
     var lead = document.createElement('p');
-    lead.className = 'token-box__lead';
+    lead.className = 'panel__sub';
     setText(lead, '이 계정의 권한으로 프로그램이 쓰는 토큰입니다. 값은 발급할 때 한 번만 보이고, 회수하면 바로 쓸 수 없게 됩니다.');
-    tkBox.appendChild(lead);
+    boxHead.appendChild(lead);
+
+    tkBox.appendChild(boxHead);
 
     var table = document.createElement('table');
     table.className = 'table token-box__table';
@@ -5196,13 +5218,17 @@ function initOrg(csrfToken) {
   function makeCard(team) {
     var card = document.createElement('button');
     card.type = 'button';
-    card.className = team.id === state.selected ? 'team-card is-selected' : 'team-card';
+    card.className = team.id === state.selected ? 'card card--link is-selected' : 'card card--link';
     card.setAttribute('aria-pressed', team.id === state.selected ? 'true' : 'false');
 
+    /* 누를 수 있는 카드 한 벌 (DESIGN 2.3, C-7): 아이콘 없이 .card__body 하나만 둔다. */
+    var body = document.createElement('span');
+    body.className = 'card__body';
+
     var head = document.createElement('span');
-    head.className = 'team-card__head';
+    head.className = 'card__head';
     var name = document.createElement('strong');
-    name.className = 'team-card__name';
+    name.className = 'card__title';
     setText(name, team.name);
     head.appendChild(name);
 
@@ -5210,14 +5236,15 @@ function initOrg(csrfToken) {
     badge.className = team.is_active === true ? 'badge badge--ok' : 'badge badge--off';
     setText(badge, team.is_active === true ? '활성' : '비활성');
     head.appendChild(badge);
-    card.appendChild(head);
+    body.appendChild(head);
 
     var stats = document.createElement('span');
-    stats.className = 'team-card__stats';
+    stats.className = 'card__meta';
     stats.appendChild(statBlock('구성원', team.member_count));
     stats.appendChild(statBlock('Manager', team.manager_count));
     stats.appendChild(statBlock('파일', team.file_count));
-    card.appendChild(stats);
+    body.appendChild(stats);
+    card.appendChild(body);
 
     card.addEventListener('click', function () {
       select(team.id);
@@ -6315,10 +6342,10 @@ function initAdmin(csrfToken, me) {
 
     alerts.forEach(function (alert) {
       var item = document.createElement('li');
-      item.className = 'alert-item';
+      item.className = 'list__item';
 
       var head = document.createElement('div');
-      head.className = 'alert-item__head';
+      head.className = 'list__head';
       var rule = document.createElement('strong');
       setText(rule, alert.rule);
       head.appendChild(rule);
@@ -6333,7 +6360,7 @@ function initAdmin(csrfToken, me) {
          문자열로 바꿔 **문자로만** 넣는다 (문자열 → HTML 변환 0). */
       var evidence = alert.evidence && typeof alert.evidence === 'object' ? alert.evidence : {};
       var body = document.createElement('div');
-      body.className = 'alert-item__body muted';
+      body.className = 'list__body';
       Object.keys(evidence).forEach(function (key) {
         var value = evidence[key];
         var text = value === null || typeof value === 'undefined'
@@ -6704,7 +6731,7 @@ function initAdminPermissions(csrfToken) {
       previewBox.replaceChildren();
       cells.forEach(function (cell) {
         var item = document.createElement('li');
-        item.className = 'alert-item';
+        item.className = 'list__item';
         setText(item, cell.text);
         previewBox.appendChild(item);
       });
@@ -7034,7 +7061,7 @@ function initAdminFetchHosts(csrfToken) {
       previewBox.replaceChildren();
       list.forEach(function (item) {
         var li = document.createElement('li');
-        li.className = 'alert-item';
+        li.className = 'list__item';
         setText(li, item.text);
         previewBox.appendChild(li);
       });
@@ -7116,7 +7143,7 @@ function initAdminFetchHosts(csrfToken) {
         dialogList.replaceChildren();
         list.forEach(function (item) {
           var li = document.createElement('li');
-          li.className = 'alert-item';
+          li.className = 'list__item';
           setText(li, item.text);
           dialogList.appendChild(li);
         });
@@ -7595,9 +7622,48 @@ function bootPage(page) {
     });
 }
 
+/* ─── 해/달 단추 — 밝은 화면 ↔ 어두운 화면 (DESIGN.md 2.12, D-5) ─────────────
+ *
+ * 상태는 <html data-theme> **하나**뿐이고 색은 CSS 가 그 값으로 그린다. 여기서는
+ *   ① 지금 무엇으로 보이는지 읽고(속성이 없으면 OS 설정)
+ *   ② 속성을 뒤집고
+ *   ③ 다음 방문 때 서버가 첫 그림부터 맞게 그리도록 쿠키에 남긴다
+ * 세 가지만 한다. 아이콘은 갈아 끼우지 않는다 — 해·달이 둘 다 들어 있고 CSS 가 하나를 감춘다.
+ * 쿠키는 취향일 뿐 비밀이 아니라 HttpOnly 가 아니고, 서버는 그 값을 허용 목록(dark|light)으로
+ * 거른 뒤에야 속성으로 그린다 (shell_top.php · login_page.php, PRD S-03).
+ */
+function currentTheme() {
+  var set = document.documentElement.getAttribute('data-theme');
+  if (set === 'dark' || set === 'light') { return set; }
+  return window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+}
+
+/** 단추의 뜻은 「지금 무엇인가」가 아니라 「누르면 무엇이 되는가」다 (DESIGN.md 2.8 — 툴팁이 이 글을 보인다) */
+function applyThemeLabel(button) {
+  button.setAttribute('aria-label', currentTheme() === 'dark' ? '밝은 화면으로' : '어두운 화면으로');
+}
+
+/** 셸에도 로그인 화면에도 같은 단추가 있으므로 화면 분기 밖에서 한 번 건다 */
+function initThemeToggle() {
+  document.querySelectorAll('[data-theme-toggle]').forEach(function (button) {
+    applyThemeLabel(button);
+    button.addEventListener('click', function () {
+      var next = currentTheme() === 'dark' ? 'light' : 'dark';
+      document.documentElement.setAttribute('data-theme', next);
+      var secure = location.protocol === 'https:' ? '; Secure' : '';
+      document.cookie = 'tbox_theme=' + next + '; Path=/; Max-Age=31536000; SameSite=Lax' + secure;
+      applyThemeLabel(button);
+    });
+  });
+}
+
 document.addEventListener('DOMContentLoaded', function () {
   // 서버 HTML 의 <template> 아이콘을 [data-icon] 자리에 붙인다 (문자열 → HTML 변환 0).
   paintIcons(document);
+
+  /* 해/달 단추 (D-5, DESIGN.md 2.12). 셸과 로그인 화면이 같이 쓰므로 아래 화면 분기 **밖**에서
+     한 번만 건다 — 단추가 없는 화면에서는 아무 일도 하지 않는다. */
+  initThemeToggle();
 
   /* 「사용 방법」 도움말 (F-38). 어느 화면이든 단추가 있으면 열리게 여기서 한 번 건다 —
      아래에서 먼저 return 하는 갈래기도 도움말은 같이 쓰기 때문이다. */

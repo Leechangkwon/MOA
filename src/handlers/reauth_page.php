@@ -69,18 +69,18 @@ require __DIR__ . '/../views/shell_top.php';
       </div>
     </header>
 
-    <section class="card reauth">
-      
+    <section class="panel panel--narrow">
 
-      <form id="reauth-form" class="reauth__form" method="post" action="/api/me/reauth"
+
+      <form id="reauth-form" class="form" method="post" action="/api/me/reauth"
             autocomplete="off" data-to="<?= $reauthToAttr ?>">
         <label class="field">
           <span class="field__label">현재 비밀번호</span>
           <input id="reauth-password" name="password" type="password"
                  maxlength="1024" autocomplete="current-password" required autofocus>
         </label>
-        <button id="reauth-submit" class="btn" type="submit">확인</button>
-        
+        <button id="reauth-submit" class="btn btn--block" type="submit">확인</button>
+
         <p id="reauth-msg" class="msg" role="alert" aria-live="polite"></p>
       </form>
     </section>
