@@ -65,6 +65,12 @@ require __DIR__ . '/../../views/shell_top.php';
         <button id="page-visibility-edit" class="btn btn--quiet" type="button" hidden>
           <span class="icon" data-icon="shield"></span>공개 범위
         </button>
+        <!-- 「이력」 (4-C). 이 페이지를 **볼 수 있는 사람이면 누구나** 연다 — 읽기 판정과 같은
+             자격이고(`decidePageRead`), 되돌리기 단추만 고칠 수 있는 사람에게 보인다.
+             내용은 창구가 준 값으로 editor.js 가 채운다. -->
+        <button id="page-history" class="btn btn--quiet" type="button">
+          <span class="icon" data-icon="log"></span>이력
+        </button>
         <button id="page-edit" class="btn" type="button" hidden>
           <span class="icon" data-icon="edit"></span>편집
         </button>
@@ -138,7 +144,9 @@ require __DIR__ . '/../../views/shell_top.php';
       </div>
       <div class="modal__body">
         <p>이 페이지와 하위 페이지가 목록에서 사라집니다.</p>
-        <p class="muted">되살리는 화면은 아직 없습니다. 지우기 전에 한 번 더 확인하세요.</p>
+        <!-- 4-C — 되살리는 길이 생겼다(「내 공간」의 휴지통). 30일은 창구가 정한 값이고
+             화면은 그 숫자를 되풀이해 적지 않는다(`GET /api/me/trash` 의 `keep_days`). -->
+        <p class="muted">30일 안에는 「내 공간」의 휴지통에서 되살릴 수 있습니다. 하위 페이지도 함께 돌아옵니다.</p>
       </div>
       <div class="form-actions">
         <button class="btn btn--quiet" type="button" data-delete-close>그만두기</button>
@@ -215,6 +223,76 @@ require __DIR__ . '/../../views/shell_top.php';
       <div class="form-actions">
         <button class="btn btn--quiet" type="button" data-visibility-close>그만두기</button>
         <button id="visibility-save" class="btn" type="button">바꾸기</button>
+      </div>
+    </dialog>
+
+    <!-- 「이력」 창 (4-C, DESIGN 2.7 모달 960px · 2.4 표 · 2.13 줄 목록).
+         탭 둘은 **단추 둘**이다 — 고른 쪽이 검정(`.btn`), 나머지가 흐림(`.btn--quiet`)이고
+         `aria-selected` 로 읽어 주는 기계에도 알린다. 탭용 새 클래스를 만들지 않았다
+         (DESIGN 원칙 6).
+         · 「버전」 탭 — 판마다 한 줄인 표(`table.files`). 「보기」는 **이 창 안에서** 그 판을
+           읽기 렌더러로 그리고, 「되돌리기」는 같은 창 안에서 한 번 더 묻는다
+           (모달 안에 모달을 열지 않는다 — DESIGN 2.7).
+         · 「처리 이력」 탭 — 판·체크를 시간순 한 줄씩(`.list`). 열이 정해져 있지 않아 표가
+           아니라 줄 목록이다 (DESIGN 2.13).
+         내용은 전부 editor.js 가 createElement/textContent 로 채운다. 본문 글자는 「보기」를
+         눌렀을 때만, 창구 `GET …/versions/{num}` 을 지나 들어온다 (C:T-44). -->
+    <dialog id="history-dialog" class="modal" aria-labelledby="history-title">
+      <div class="modal__head">
+        <h2 id="history-title" class="modal__title">이력</h2>
+        <p id="history-meta" class="muted"></p>
+        <button class="btn btn--icon btn--plain" type="button" data-history-close aria-label="닫기">
+          <span class="icon" data-icon="x"></span>
+        </button>
+      </div>
+      <div class="modal__body">
+        <div class="toolbar" role="tablist" aria-label="이력 종류">
+          <button id="history-tab-versions" class="btn" type="button" role="tab"
+                  aria-selected="true" aria-controls="history-versions">버전</button>
+          <button id="history-tab-events" class="btn btn--quiet" type="button" role="tab"
+                  aria-selected="false" aria-controls="history-events">처리 이력</button>
+        </div>
+
+        <p id="history-msg" class="msg" role="alert" aria-live="polite"></p>
+
+        <!-- 되돌리기 확인 (DESIGN 4장 「되돌릴 수 없는 동작은 확인이 뒤따른다」) -->
+        <div id="history-confirm" class="notice" role="status" hidden>
+          <p id="history-confirm-text" class="notice__title"></p>
+          <p class="muted">지금 내용은 새 판으로 남고, 지난 판도 그대로 남습니다. 지워지는 것은 없습니다.</p>
+          <p>
+            <button id="history-confirm-cancel" class="btn btn--quiet" type="button">그만두기</button>
+            <button id="history-confirm-ok" class="btn btn--danger" type="button">되돌리기</button>
+          </p>
+        </div>
+
+        <section id="history-versions" role="tabpanel" aria-labelledby="history-tab-versions">
+          <div class="table-wrap">
+            <table class="files">
+              <thead>
+                <tr><th>판</th><th>제목</th><th>바꾼 사람</th><th>시각</th><th>블록</th><th></th></tr>
+              </thead>
+              <tbody id="history-versions-body"></tbody>
+            </table>
+          </div>
+          <p id="history-versions-empty" class="muted" hidden>아직 지난 판이 없습니다.</p>
+        </section>
+
+        <section id="history-events" role="tabpanel" aria-labelledby="history-tab-events" hidden>
+          <ul id="history-events-list" class="list list--scroll"></ul>
+          <p id="history-events-empty" class="muted" hidden>아직 남은 기록이 없습니다.</p>
+        </section>
+
+        <!-- 「보기」로 연 판의 본문. 읽기 렌더러(`renderDoc`)가 그리므로 화면과 실제가 같다. -->
+        <section id="history-preview" hidden>
+          <div class="toolbar">
+            <p id="history-preview-title" class="nav-title"></p>
+            <button id="history-preview-back" class="btn btn--quiet" type="button">목록으로</button>
+          </div>
+          <article id="history-preview-doc" class="panel"></article>
+        </section>
+      </div>
+      <div class="form-actions">
+        <button class="btn btn--quiet" type="button" data-history-close>닫기</button>
       </div>
     </dialog>
 

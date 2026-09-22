@@ -38,6 +38,11 @@ require __DIR__ . '/../../views/shell_top.php';
         <button type="button" class="btn btn--quiet" data-help-open>
           <span class="icon" data-icon="help"></span><span>사용 방법</span>
         </button>
+        <!-- 「휴지통」 (4-C). 목록은 창구 `GET /api/me/trash` 가 주는 것만이고, 화면에는
+             「내가 지운 것인가」를 따지는 코드가 한 줄도 없다 (PRD S-01). -->
+        <button id="community-trash" class="btn btn--quiet" type="button">
+          <span class="icon" data-icon="trash"></span>휴지통
+        </button>
         <button id="community-new" class="btn" type="button">
           <span class="icon" data-icon="plus"></span>새 페이지
         </button>
@@ -66,6 +71,35 @@ require __DIR__ . '/../../views/shell_top.php';
     <!-- 찾기 결과가 들어오는 자리. 3단계의 카드 목록 그대로다. -->
     <section id="community-list" class="card-grid" aria-live="polite" hidden></section>
     <p id="community-empty" class="muted" hidden>아직 페이지가 없습니다. 「새 페이지」로 시작하세요.</p>
+
+    <!-- 「휴지통」 창 (4-C, DESIGN 2.7 모달 · 2.4 표). 지운 페이지를 목록에서 떠나지 않고
+         되살린다. 한 줄은 **한 번의 삭제**다 — 함께 내려간 하위는 「하위 n」으로만 세고,
+         되살리면 함께 돌아온다(창구가 그렇게 돌려준다).
+         표 내용은 editor.js 가 createElement/textContent 로 채운다. 본문 글자는 없다. -->
+    <dialog id="trash-dialog" class="modal" aria-labelledby="trash-title">
+      <div class="modal__head">
+        <h2 id="trash-title" class="modal__title">휴지통</h2>
+        <p id="trash-meta" class="muted"></p>
+        <button class="btn btn--icon btn--plain" type="button" data-trash-close aria-label="닫기">
+          <span class="icon" data-icon="x"></span>
+        </button>
+      </div>
+      <div class="modal__body">
+        <p id="trash-msg" class="msg" role="alert" aria-live="polite"></p>
+        <div class="table-wrap">
+          <table class="files">
+            <thead>
+              <tr><th>제목</th><th>공간</th><th>함께 지운 하위</th><th>지운 때</th><th></th></tr>
+            </thead>
+            <tbody id="trash-body"></tbody>
+          </table>
+        </div>
+        <p id="trash-empty" class="muted" hidden>휴지통이 비어 있습니다.</p>
+      </div>
+      <div class="form-actions">
+        <button class="btn btn--quiet" type="button" data-trash-close>닫기</button>
+      </div>
+    </dialog>
 <?php
 $pageMsgTop = true;
 require __DIR__ . '/../../views/shell_bottom.php';

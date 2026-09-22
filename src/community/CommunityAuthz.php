@@ -223,6 +223,27 @@ final class CommunityAuthz
     }
 
     /**
+     * 이 사람이 **지워진 페이지를 되살릴 수 있나** (4-C, C:F-29 휴지통).
+     *
+     * 자격은 `decidePageChange` 와 **같다** — 되살리기는 고치기의 한 갈래이고, 지운 사람과
+     * 되살릴 수 있는 사람이 다르면 「내가 지운 것을 남이 도로 꺼낸다」가 된다.
+     * 다른 점은 **딱 하나**: 판정의 대상이 `deleted_at` 이 놓인 행이라 그 갈래를 건너뛴다.
+     * 그래서 규칙을 다시 적지 않고 같은 함수를 부른다 — 두 벌이 되면 한쪽만 고쳐진다.
+     *
+     * 「지워진 상태인가」는 **판정이 아니라 사실 확인**이므로 부르는 쪽(`page_restore.php`)이
+     * 본다: 지워지지 않은 페이지에 되살리기를 부르면 404 다(되살릴 것이 없다).
+     *
+     * @param  array<string,mixed> $u
+     * @param  array<string,mixed> $row
+     * @return array{0:bool,1:string}
+     */
+    public static function decidePageRestore(array $u, array $row): array
+    {
+        $row['deleted_at'] = null;
+        return self::decidePageChange($u, $row);
+    }
+
+    /**
      * 자식의 범위가 **부모 아래에 들어맞나** (4-B 트리 불변 규칙, PRD 4.1).
      *
      * 규칙 한 줄: `private(0) < team(1) < internal(2) < published(3)` 에서 **자식 ≤ 부모**.

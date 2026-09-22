@@ -228,6 +228,18 @@ final class Audit
          * 코드에서도 드러내려고 여기 적는다 (preview_kind·part 와 같은 이유).
          */
         'visibility_from', 'visibility_to',
+        /*
+         * 커뮤니티 4-C — 되돌리기·되살리기 (4-C 지시서 「감사」, C:F-19 · C:F-29).
+         *   restored_from — **되돌린 판 번호**(정수). 새 판 번호는 이미 있는 `doc_version` 에
+         *                   남으므로, 이 키 하나로 「몇 판을 몇 판으로 되돌렸나」가 완성된다.
+         *                   본문 글자가 아니라 번호뿐이다
+         *   moved_to_root — 되살릴 때 부모가 아직 지워져 있어 **뿌리로 올렸나**(true/false).
+         *                   「어디로 돌아갔나」가 기록에 있어야 나중에 되짚을 수 있다
+         * 함께 돌아온 하위 수는 위 `cascaded`(등록부에 있는 키)를 그대로 쓴다.
+         * 둘 다 FORBIDDEN_DETAIL_KEYS 부분 일치에 걸리지 않지만, 등록부에 있는 키임을
+         * 코드에서도 드러내려고 여기 적는다 (preview_kind·part 와 같은 이유).
+         */
+        'restored_from', 'moved_to_root',
     ];
 
     private const RESULT_ALLOW = 'allow';
@@ -718,6 +730,26 @@ final class Audit
         'page.visibility|deny|not_owner'        => '{actor} 이(가) 다른 사람의 페이지 「{target}」 의 공개 범위를 바꾸려 해서 막았습니다',
         'page.read|allow|same_team'             => '{actor} 이(가) 같은 팀이라서 다른 사람의 개인 페이지 「{target}」 을(를) 열어 봤습니다',
         'space.create|allow|team_member'        => '{actor} 이(가) 팀 공간 「{target}」 을(를) 열었습니다',
+
+        /* ── 커뮤니티 4-C — 버전 되돌리기 · 휴지통 되살리기 (4-C 지시서, C:T-39 · C:T-43) ──
+         *
+         * **되돌리기는 과거를 고치지 않는다** (C:S-14). 지난 판의 내용을 **새 판으로 복사**할
+         * 뿐이고, 과거 스냅샷은 개수도 내용도 그대로 남는다. 그래서 문장도 「고쳤다」가 아니라
+         * 「되돌렸다」다. 되돌린 판 번호는 `detail.restored_from`, 새 판 번호는
+         * `detail.doc_version`(이미 등록부에 있는 키)에 남는다.
+         *
+         * `page.restore|allow` — 휴지통에서 꺼낸 일. 하위까지 함께 돌아온 수는
+         * `detail.cascaded`(등록부에 있는 키), 부모가 아직 지워져 있어 뿌리로 올린 경우는
+         * `detail.moved_to_root` 에 남는다 — 「어디로 돌아갔나」가 기록에 있어야 한다.
+         *
+         * `page.delete|deny|not_owner` — 3단계에 빠져 있던 줄이다(그때는 서버 로그로만 남고
+         * 감사에는 남지 않았다). 남의 페이지를 지우려 한 시도는 읽기·고치기 시도와 **같은
+         * 무게**이므로 여기서 보완한다 (4-C 지시서 「감사」). */
+        'page.restore_version|allow'            => '{actor} 이(가) 페이지 「{target}」 을(를) 지난 판의 내용으로 되돌렸습니다 (되돌린 판·새 판 번호는 상세 기록)',
+        'page.restore_version|deny|not_owner'   => '{actor} 이(가) 다른 사람의 페이지 「{target}」 을(를) 지난 판으로 되돌리려 해서 막았습니다',
+        'page.restore|allow'                    => '{actor} 이(가) 휴지통에서 페이지 「{target}」 을(를) 되살렸습니다 (함께 돌아온 하위 수는 상세 기록)',
+        'page.restore|deny|not_owner'           => '{actor} 이(가) 다른 사람이 지운 페이지 「{target}」 을(를) 되살리려 해서 막았습니다',
+        'page.delete|deny|not_owner'            => '{actor} 이(가) 다른 사람의 개인 페이지 「{target}」 을(를) 지우려 해서 막았습니다',
     ];
 
     /** 자리표시자에 넣을 값이 없을 때 (ARCH 7.4) */

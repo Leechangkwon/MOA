@@ -57,11 +57,21 @@ if (!$mayRead) {
 // ─── [권한 ✔ B] 고칠 수 있나 (지우기도 고치기다) ───────────────
 [$mayChange, $changeCode] = CommunityAuthz::decidePageChange($user, $row);
 if (!$mayChange) {
-    /* 여기서 막히는 사람은 「볼 수는 있으나 고칠 수 없는 사람」 — 3단계에서는 Admin 이다.
-       그 사실은 바로 위 `page.read allow admin_all` 행에 이미 남아 있다. 지우기 거부에
-       붙일 문장(`page.delete|deny|…`)은 3단계 표(ARCH 21.3)에 없으므로, 문장 없는 기록으로
-       요청을 500 으로 끝내는 대신 서버 로그에 남기고 403 동일 문구로 답한다.
-       (4단계에서 표에 줄을 더할 때 이 자리를 감사로 바꾼다.) */
+    /* 여기서 막히는 사람은 「볼 수는 있으나 고칠 수 없는 사람」이다 — 관리자, 또는 남의
+       페이지를 팀·사내 범위로 보고 있는 사람.
+       ★ 4-C 에서 **감사로 바꿨다**(3단계 주석의 약속 그대로). 남의 페이지를 지우려 한 시도는
+         읽기·고치기 시도와 같은 무게인데 그때는 서버 로그에만 남아, 감사 화면에서는 보이지
+         않았다. 문장 `page.delete|deny|not_owner` 를 `src/Audit.php` 에 더하고 여기서 쓴다. */
+    if ($changeCode === CommunityAuthz::CODE_NOT_OWNER) {
+        Audit::deny('page.delete', CommunityAuthz::CODE_NOT_OWNER, [
+            'target_type' => 'page',
+            'target_id'   => $pageId,
+            'target_name' => $pageTitle,
+            'detail'      => ['page_title' => $pageTitle],
+        ]);
+        Http::error(403, Http::MSG_FORBIDDEN);
+    }
+    // 아직 문장 틀이 없는 조합(팀원이 아닌 팀 공간 등)은 서버 로그에만 — 판정은 이미 끝났다.
     error_log('[tbox] request_id=' . TBOX_REQUEST_ID
         . ' community page.delete deny code=' . $changeCode . ' page_id=' . (string) $pageId);
     Http::error(403, Http::MSG_FORBIDDEN);

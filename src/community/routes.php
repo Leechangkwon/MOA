@@ -67,6 +67,19 @@ const COMMUNITY_ROUTES = [
     ['PATCH',  '/api/pages/{id}/visibility',  'pages_visibility.php', 'community.write'],
     ['DELETE', '/api/pages/{id}',            'pages_delete.php',    'community.write'],
     ['POST',   '/api/pages/{id}/heartbeat',  'pages_heartbeat.php', 'community.write'],
+
+    /* ── 이력 · 되돌리기 · 휴지통 (4-C, C:F-19 · C:F-20 · C:S-14) ──
+     * 읽는 넷은 `community.read`, 바꾸는 둘은 `community.write` 다. 행 단위 판정은 각각
+     * `decidePageRead`(이력 읽기) · `decidePageChange`(되돌리기) · `decidePageRestore`(되살리기)이고,
+     * 정책 이름만으로 열리는 것은 하나도 없다 (ARCH 4.1).
+     * `{num}` 은 `TBOX_PATH_PATTERNS` 의 **숫자 9자리까지**다 — 판 번호 자리에 글자가 오면
+     * 라우트에 맞지 않아 404 이고, 핸들러가 받는 값은 이미 숫자 문자열이다. */
+    ['GET',    '/api/pages/{id}/versions',               'versions_list.php',   'community.read'],
+    ['GET',    '/api/pages/{id}/versions/{num}',         'version_get.php',     'community.read'],
+    ['POST',   '/api/pages/{id}/versions/{num}/restore', 'version_restore.php', 'community.write'],
+    ['GET',    '/api/pages/{id}/history',                'history.php',         'community.read'],
+    ['GET',    '/api/me/trash',                          'trash_list.php',      'community.read'],
+    ['POST',   '/api/pages/{id}/restore',                'page_restore.php',    'community.write'],
 ];
 
 /** 핸들러 디렉터리. 코드 상수이며 요청 값이 경로에 한 글자도 들어가지 않는다. */
@@ -218,10 +231,14 @@ function community_page_row(string $publicId): ?array
                -- 4-B: 개인 공간 **주인의 t-box 팀**. `visibility='team'` 판정이 이 값과
                -- 보는 사람의 팀을 견준다(PRD 4.1 「소유자의 t-box 팀」). 팀 판정을 위해
                -- t-box 사용자 표를 읽는 자리는 여기 하나다 — 핸들러가 따로 묻지 않는다.
-               owner.team_id   AS space_owner_team_id
+               owner.team_id   AS space_owner_team_id,
+               -- 4-C: 지금 판을 **마지막으로 쓴 사람의 이름**. 이력 목록의 맨 윗줄(지금 판)이
+               -- 이 값을 그대로 보인다 — 화면이 계정 id 를 이름으로 바꾸는 일이 없게 한다.
+               editor.username AS last_edited_by_name
           FROM community.pages p
           JOIN community.spaces s ON s.id = p.space_id
-          LEFT JOIN public.users owner ON owner.id = s.owner_user_id
+          LEFT JOIN public.users owner  ON owner.id = s.owner_user_id
+          LEFT JOIN public.users editor ON editor.id = p.last_edited_by
          WHERE p.public_id = CAST(:pid AS uuid)
         SQL;
 
@@ -681,6 +698,269 @@ function community_descendants_wider(int $pageId, string $newVisibility): array
         ];
     }
     return $out;
+}
+
+/* ══════════════════════════════════════════════════════════════════
+ * 기록 (4-C) — 판 스냅샷 · 5분 합치기 · 체크 변화
+ *
+ * 규칙 하나: **기록은 지울 수 없다** (C:S-14). 앱 계정에는 `page_versions`·`checklist_events`
+ * 에 UPDATE·DELETE 가 없고(`db/community/grants.sql`), 아래 함수들도 INSERT 와 SELECT 만 쓴다.
+ * 되돌리기는 과거를 고치지 않는다 — 지금 판을 스냅샷으로 남기고 **새 판을 하나 더** 만든다.
+ *
+ * 시각에 대하여 — `page_versions.edited_at` 은 **그 판이 스냅샷으로 남은 시각**이다
+ * (3단계부터 `DEFAULT now()` 로 채워 온 값 그대로다). 5분 합치기가 보는 값도 이것이고,
+ * 이력 목록의 「시각」도 이것이다 — 「이 판이 기록에 남은 때」라는 한 가지 뜻이다.
+ * 마이그레이션 `2026-09-23_community_version_squash.sql` 이 더하는 `created_at` 은 같은 뜻을
+ * **자기 이름으로** 들고 있는 칸이고, 4-C 런타임은 그 칸을 읽지도 쓰지도 않는다(기본값이
+ * 스스로 채운다) — 그래서 이 코드는 마이그레이션 **전후 모두 그대로 동작한다**.
+ * ══════════════════════════════════════════════════════════════════ */
+
+/**
+ * 이 페이지의 **직전 스냅샷** 한 줄 + DB 의 지금 시각 (5분 합치기 판정의 재료).
+ *
+ * 시각 둘(`snapshot_at`·`now_at`)을 **같은 질의**에서 가져온다 — 웹 서버와 DB 의 시계가
+ * 어긋나 있어도 판정이 흔들리지 않게 하려는 것이다. 질의는 `UNIQUE(page_id, version)` 이
+ * 만든 btree 를 뒤로 훑는다(`Index Scan Backward`) — 같은 열 짝의 인덱스를 새로 만들지 않았다.
+ *
+ * @return array{version:int,edited_by:int,snapshot_at:string,now_at:string}|null 스냅샷이 없으면 null
+ */
+function community_last_snapshot(int $pageId): ?array
+{
+    $sql = <<<'SQL'
+        SELECT v.version, v.edited_by, v.edited_at AS snapshot_at, now() AS now_at
+          FROM community.page_versions v
+         WHERE v.page_id = CAST(:pid AS bigint)
+         ORDER BY v.version DESC
+         LIMIT 1
+        SQL;
+
+    $row = Db::instance()->run($sql, [':pid' => $pageId])->fetch();
+    if (!is_array($row)) {
+        return null;
+    }
+    return [
+        'version'     => (int) $row['version'],
+        'edited_by'   => (int) $row['edited_by'],
+        'snapshot_at' => (string) $row['snapshot_at'],
+        'now_at'      => (string) $row['now_at'],
+    ];
+}
+
+/**
+ * **5분 합치기** — 이번 저장에서 스냅샷을 새로 만들지 말아야 하나 (C:F-19, C:T-38).
+ *
+ * 규칙 한 줄: 직전 스냅샷이 **같은 사람**이고 **5분 안**에 남은 것이면 새 스냅샷을 만들지
+ * 않는다. 그 사이의 변화는 다음 스냅샷에 합쳐진다. 판 번호(`doc_version`)는 합치든 말든
+ * **매번 오른다** — 낙관적 잠금이 그 번호에 걸려 있기 때문이다(번호를 멈추면 두 창이 서로를
+ * 덮어쓴다).
+ *
+ * 왜 이렇게 나눴나: 이 함수는 **DB 를 읽지 않는다.** 재료(직전 스냅샷 한 줄)는 부르는 쪽이
+ * 가져오고 여기서는 판단만 한다 — 그래야 규칙 하나를 `php -r` 한 줄로 시험할 수 있다
+ * (`tests/community/stage4c.sh` 의 단위 확인, C:T-38).
+ *
+ * 모르면 **합치지 않는다**(스냅샷을 남긴다). 기록을 잃는 쪽보다 하나 더 남는 쪽이 낫다.
+ *
+ * @param array{edited_by?:mixed,snapshot_at?:mixed,now_at?:mixed}|null $last `community_last_snapshot()`
+ * @param int $editorId 이번에 스냅샷으로 남을 **내용을 쓴 사람**(`pages.last_edited_by`)
+ * @param int $window   합치는 창 (초). 기본 300 = 5분
+ */
+function community_squash_snapshot(?array $last, int $editorId, int $window = 300): bool
+{
+    if ($last === null || !isset($last['edited_by'], $last['snapshot_at'], $last['now_at'])) {
+        return false;
+    }
+    if ((int) $last['edited_by'] !== $editorId) {
+        return false;          // 사람이 다르면 언제나 새 스냅샷이다
+    }
+
+    $then = strtotime((string) $last['snapshot_at']);
+    $now  = strtotime((string) $last['now_at']);
+    if ($then === false || $now === false) {
+        return false;          // 시각을 읽지 못하면 합치지 않는다
+    }
+    if ($then > $now) {
+        return false;          // 앞뒤가 뒤집힌 값 — 모르는 상태다
+    }
+    return $then > $now - $window;
+}
+
+/**
+ * 지금의 페이지 내용을 **스냅샷으로 남긴다** (`page_versions` INSERT 하나).
+ *
+ * 남는 판 번호는 **지금 판**(`doc_version`)이다 — 부르는 쪽이 곧바로 `doc_version + 1` 로
+ * 올리므로, 이 행은 「방금 교체된 판」의 사본이 된다. 반드시 부르는 쪽의 트랜잭션 안에서
+ * 부른다(본문 갱신과 기록이 갈라지지 않게).
+ *
+ * 시각 칸(`edited_at`, 그리고 마이그레이션 뒤의 `created_at`)은 **적지 않는다** — DB 의
+ * `DEFAULT now()` 가 채운다. 「스냅샷이 남은 시각」은 DB 가 아는 사실이고, 웹 서버의 시계를
+ * 그 자리에 적어 넣을 이유가 없다.
+ *
+ * @param array<string,mixed> $row     `community_page_row()` 의 행 (갱신 **전**의 값)
+ * @param string|null         $summary 이 판이 어떻게 끝났나. 되돌리기면 `restore from v<번호>`
+ */
+function community_insert_snapshot(array $row, ?string $summary = null): void
+{
+    $sql = <<<'SQL'
+        INSERT INTO community.page_versions (page_id, version, title, doc, edited_by, summary)
+        VALUES (CAST(:pid AS bigint), CAST(:version AS int), :title, CAST(:doc AS jsonb),
+                CAST(:by AS bigint), :summary)
+        SQL;
+
+    Db::instance()->run($sql, [
+        ':pid'     => (int) $row['id'],
+        ':version' => (int) $row['doc_version'],
+        ':title'   => (string) $row['title'],
+        ':doc'     => (string) $row['doc'],
+        // 그 판의 **내용을 쓴 사람**이다(지금 저장 단추를 누른 사람이 아니다).
+        ':by'      => (int) $row['last_edited_by'],
+        ':summary' => $summary,
+    ]);
+}
+
+/**
+ * 체크 상자의 **변화**만 골라낸다 (C:F-20, C:T-41).
+ *
+ * 이전 문서의 `to_do` 상태와 견준다. 없던 블록이 **켜진 채로** 생겼으면 그것도 「켰다」로
+ * 남긴다 — 지울 수 없는 기록이므로 「어느 순간 켜져 있었다」는 사실이 빠지지 않아야 한다.
+ * 지워진 블록은 남기지 않는다(꺼진 것이 아니라 사라진 것이다).
+ *
+ * 저장(`pages_update`)과 되돌리기(`version_restore`)가 **같은 함수**를 쓴다 — 되돌리기로
+ * 체크가 풀린 것도 체크 이력에 남아야 하고, 규칙이 두 벌이 되면 한쪽만 고쳐진다.
+ *
+ * @param  array<string,mixed> $prevDoc 바뀌기 전 문서
+ * @param  array<string,mixed> $nextDoc 바뀐 뒤 문서
+ * @return list<array{block_id:string,checked:bool}>
+ */
+function community_check_changes(array $prevDoc, array $nextDoc): array
+{
+    $before = [];
+    foreach (Doc::extract($prevDoc)['todos'] as $t) {
+        $before[$t['block_id']] = $t['checked'];
+    }
+
+    $changes = [];
+    foreach (Doc::extract($nextDoc)['todos'] as $t) {
+        $was = $before[$t['block_id']] ?? false;
+        if ($was !== $t['checked']) {
+            $changes[] = ['block_id' => $t['block_id'], 'checked' => $t['checked']];
+        }
+    }
+    return $changes;
+}
+
+/**
+ * 체크 변화를 `checklist_events` 에 **덧붙인다**(INSERT 만 — 고치지도 지우지도 않는다).
+ * 부르는 쪽의 트랜잭션 안에서 부른다.
+ *
+ * @param list<array{block_id:string,checked:bool}> $changes
+ */
+function community_insert_check_events(int $pageId, array $changes, int $byUserId): void
+{
+    if ($changes === []) {
+        return;
+    }
+    $sql = <<<'SQL'
+        INSERT INTO community.checklist_events (page_id, block_id, checked, by_user_id)
+        VALUES (CAST(:pid AS bigint), CAST(:bid AS uuid), CAST(:checked AS boolean), CAST(:by AS bigint))
+        SQL;
+
+    $db = Db::instance();
+    foreach ($changes as $c) {
+        $db->run($sql, [
+            ':pid'     => $pageId,
+            ':bid'     => $c['block_id'],
+            ':checked' => $c['checked'] ? 'true' : 'false',
+            ':by'      => $byUserId,
+        ]);
+    }
+}
+
+/**
+ * 이력 창구의 **공통 관문** (4-C) — 페이지 한 건을 읽고 「볼 수 있나」까지 끝낸다.
+ *
+ * 왜 여기인가: `versions_list`·`version_get`·`history`·`version_restore` 넷이 **글자 그대로
+ * 같은** 스무 줄로 시작한다. 그 스무 줄이 네 벌이면 언젠가 한 벌만 고쳐지고, 그 한 벌이
+ * 남의 이력을 열어 준다 (C:T-42). 새 파일을 만들지 않고 모듈의 입구 파일에 둔다 —
+ * `community_page_row()`·`community_rewrite_derived()` 와 같은 자리다.
+ *
+ * 하는 일
+ *   [1] 행 + 공간 → 없으면 **404**
+ *   [권한 ✔] `decidePageRead` — 지워짐 404 · 남의 개인 페이지 **403 + 감사 `page.read deny not_owner`**
+ *            · 관리자·같은 팀이라서 열렸으면 그 근거를 감사에 남긴다(`pages_get.php` 와 같은 규칙)
+ *   [2] 「고칠 수 있나」도 함께 판단해 돌려준다 — 화면의 「되돌리기」 단추가 그 값을 따른다
+ *
+ * 실패하면 **돌아오지 않는다**(응답을 내보내고 끝난다).
+ *
+ * @param  array<string,mixed> $u
+ * @return array{row:array<string,mixed>,read_code:string,may_change:bool,change_code:string}
+ */
+function community_history_gate(array $u, string $publicId): array
+{
+    $row = community_page_row($publicId);
+    if ($row === null) {
+        Http::error(404, Http::MSG_NOT_FOUND);
+    }
+    $pageTitle = community_target_title((string) $row['title']);
+
+    [$mayRead, $readCode] = CommunityAuthz::decidePageRead($u, $row);
+    if (!$mayRead) {
+        if ($readCode === CommunityAuthz::CODE_NOT_FOUND) {
+            Http::error(404, Http::MSG_NOT_FOUND);
+        }
+        if ($readCode === CommunityAuthz::CODE_NOT_OWNER) {
+            Audit::deny('page.read', CommunityAuthz::CODE_NOT_OWNER, [
+                'target_type' => 'page',
+                'target_id'   => (int) $row['id'],
+                'target_name' => $pageTitle,
+                'detail'      => ['page_title' => $pageTitle],
+            ]);
+            Http::error(403, Http::MSG_FORBIDDEN);
+        }
+        /* 문장 틀이 없는 조합(게시판 공간·`published`·팀원이 아닌 팀 공간)이다. 판정은 이미
+           「막는다」로 끝났고, 문장 없는 기록은 요청을 500 으로 끝내므로 서버 로그에만 남긴다
+           (`pages_get.php` 와 같은 처리). */
+        error_log('[tbox] request_id=' . TBOX_REQUEST_ID
+            . ' community page.read deny code=' . $readCode . ' (문장 없는 조합, 이력)');
+        Http::error(403, Http::MSG_FORBIDDEN);
+    }
+
+    /* 남의 개인 페이지를 **무엇을 근거로** 열었나 (PRD 4.1, S-07). 이력도 그 페이지의 내용에
+       딸린 기록이므로 본문을 여는 것과 같은 무게로 남긴다. 자기 페이지·사내 공개는 남기지
+       않는다 — 그것까지 남기면 진짜 사건이 묻힌다. */
+    if ($readCode === CommunityAuthz::CODE_ADMIN_ALL || $readCode === CommunityAuthz::CODE_SAME_TEAM) {
+        Audit::allow('page.read', [
+            'target_type' => 'page',
+            'target_id'   => (int) $row['id'],
+            'target_name' => $pageTitle,
+            'detail'      => ['granted_by' => $readCode, 'page_title' => $pageTitle],
+        ], $readCode);
+    }
+
+    [$mayChange, $changeCode] = CommunityAuthz::decidePageChange($u, $row);
+
+    return [
+        'row'         => $row,
+        'read_code'   => $readCode,
+        'may_change'  => $mayChange,
+        'change_code' => $changeCode,
+    ];
+}
+
+/**
+ * 스냅샷의 `summary` 에서 **되돌린 판 번호**를 읽는다 (4-C).
+ *
+ * 저장 형식은 `restore from v<번호>` 한 가지다. 이 값은 **판 N 이 끝난 사연**이므로, 화면에
+ * 보일 때는 **그 다음 판(N+1)**의 줄에 「판 k 에서 되돌림」으로 붙는다 — 되돌리기로 만들어진
+ * 것은 다음 판이기 때문이다(`versions_list.php`·`history.php` 가 그렇게 옮겨 붙인다).
+ *
+ * 모르는 글자는 `null` 이다 — 지어내지 않는다.
+ */
+function community_restore_source(?string $summary): ?int
+{
+    if ($summary === null || preg_match('/^restore from v([0-9]{1,9})$/', $summary, $m) !== 1) {
+        return null;
+    }
+    return (int) $m[1];
 }
 
 /**

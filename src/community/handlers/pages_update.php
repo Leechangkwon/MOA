@@ -20,8 +20,9 @@ declare(strict_types=1);
  *   [3] `doc_version` 이 서버 값과 다르면 **409** `{error, current_version, doc}`
  *       + 감사 `page.update deny version_conflict`
  *   [4] `Doc::validate` 실패 **400** `{error, errors}` + 감사 `page.update deny invalid_doc`
- *   [5] 트랜잭션: `page_versions` 에 **이전 판** 남기기 → `pages` 갱신 → 파생 표 다시 쓰기 →
- *       체크 변화 → `checklist_events` → 감사 `page.update allow` → 200 `{doc_version}`
+ *   [5-0] **5분 합치기** (4-C) — 직전 스냅샷이 같은 사람이고 5분 안이면 새 스냅샷을 만들지 않는다
+ *   [5] 트랜잭션: (합치지 않을 때) `page_versions` 에 **이전 판** 남기기 → `pages` 갱신 →
+ *       파생 표 다시 쓰기 → 체크 변화 → `checklist_events` → 감사 `page.update allow` → 200 `{doc_version}`
  *
  * ★ 판 번호는 **DB 가 올린다**(`doc_version = doc_version + 1`)고 쓰지 않고, 읽은 값 + 1 을
  *   `WHERE doc_version = 읽은 값` 과 함께 쓴다 — 두 요청이 같은 순간에 오면 둘째가 0행을
@@ -193,27 +194,28 @@ if ($docJson === false) {
     Http::error(400, Http::MSG_BAD_REQUEST);
 }
 
-/* 체크 상자의 변화 (C:F-20). 이전 문서의 `to_do` 상태와 견준다 —
-   없던 블록이 체크된 채로 생겼으면 그것도 「켰다」로 남긴다(지울 수 없는 기록). */
-$prevTodo = [];
-foreach (Doc::extract($currentDoc)['todos'] as $t) {
-    $prevTodo[$t['block_id']] = $t['checked'];
-}
-$checkChanges = [];
-foreach ($extract['todos'] as $t) {
-    $before = $prevTodo[$t['block_id']] ?? false;
-    if ($before !== $t['checked']) {
-        $checkChanges[] = ['block_id' => $t['block_id'], 'checked' => $t['checked']];
-    }
-}
+/* 체크 상자의 변화 (C:F-20). 규칙은 `community_check_changes()` **한 곳**에 있고 되돌리기도
+   같은 함수를 쓴다 — 없던 블록이 체크된 채로 생겼으면 그것도 「켰다」로 남는다. */
+$checkChanges = community_check_changes($currentDoc, $doc);
+
+/* ─── [5-0] 5분 합치기 (4-C, C:F-19 · C:T-38) ────────────────────
+ *
+ * 직전 스냅샷이 **같은 사람**이고 **5분 안**에 남은 것이면 새 스냅샷을 만들지 않는다 —
+ * 한 번 앉아서 고치는 동안 1.5초마다 판이 하나씩 쌓이면 이력이 읽을 수 없는 것이 되기
+ * 때문이다. 그 사이의 변화는 다음 스냅샷에 **합쳐진다**(잃는 것은 없다 — 지금 내용은
+ * `pages` 에 그대로 있고, 다음 스냅샷이 그 전부를 담는다).
+ *
+ * 판 번호는 합치든 말든 **매번 오른다.** 낙관적 잠금이 그 번호에 걸려 있으므로 번호를
+ * 멈추면 두 창이 서로를 조용히 덮어쓴다 (C:T-16).
+ *
+ * 견주는 사람은 **지금 판의 내용을 쓴 사람**(`last_edited_by`)이다 — 스냅샷으로 남을 내용의
+ * 임자이지 지금 저장 단추를 누른 사람이 아니다. 판정은 DB 를 읽지 않는 함수 하나에 있고
+ * (`community_squash_snapshot`), 재료만 여기서 가져온다.
+ */
+$lastSnapshot = community_last_snapshot($pageId);
+$squashed     = community_squash_snapshot($lastSnapshot, (int) $row['last_edited_by']);
 
 // ─── [5] 저장 ─────────────────────────────────────────────────
-$sqlSnapshot = <<<'SQL'
-    INSERT INTO community.page_versions (page_id, version, title, doc, edited_by, summary)
-    VALUES (CAST(:pid AS bigint), CAST(:version AS int), :title, CAST(:doc AS jsonb),
-            CAST(:by AS bigint), NULL)
-    SQL;
-
 $sqlUpdate = <<<'SQL'
     UPDATE community.pages
        SET title = :title,
@@ -229,23 +231,15 @@ $sqlUpdate = <<<'SQL'
        AND deleted_at IS NULL
     SQL;
 
-$sqlCheckEvent = <<<'SQL'
-    INSERT INTO community.checklist_events (page_id, block_id, checked, by_user_id)
-    VALUES (CAST(:pid AS bigint), CAST(:bid AS uuid), CAST(:checked AS boolean), CAST(:by AS bigint))
-    SQL;
-
 $newVersion = $currentVersion + 1;
 
 $db->begin();
 try {
-    // 이전 판을 먼저 남긴다 — 뒤의 UPDATE 가 실패하면 함께 되돌아간다.
-    $db->run($sqlSnapshot, [
-        ':pid'     => $pageId,
-        ':version' => $currentVersion,
-        ':title'   => (string) $row['title'],
-        ':doc'     => (string) $row['doc'],
-        ':by'      => (int) $row['last_edited_by'],
-    ]);
+    /* 이전 판을 먼저 남긴다 — 뒤의 UPDATE 가 실패하면 함께 되돌아간다.
+       5분 합치기에 걸리면 이 줄을 건너뛴다(그 판의 내용은 다음 스냅샷에 합쳐진다). */
+    if (!$squashed) {
+        community_insert_snapshot($row);
+    }
 
     $st = $db->run($sqlUpdate, [
         ':title'  => $title,
@@ -275,14 +269,7 @@ try {
 
     community_rewrite_derived($pageId, $extract);
 
-    foreach ($checkChanges as $c) {
-        $db->run($sqlCheckEvent, [
-            ':pid'     => $pageId,
-            ':bid'     => $c['block_id'],
-            ':checked' => $c['checked'] ? 'true' : 'false',
-            ':by'      => $me,
-        ]);
-    }
+    community_insert_check_events($pageId, $checkChanges, $me);
 
     Audit::allow('page.update', [
         'target_type' => 'page',

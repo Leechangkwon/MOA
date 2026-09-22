@@ -460,3 +460,26 @@ details.page-tree__node[open] > summary > .page-tree__row > .page-tree__caret { 
 }
 .move-tree__pick:hover { background: var(--surface-2); }
 .move-tree__pick.is-selected { background: var(--surface-2); border-color: var(--ring); }
+
+/* ─── 이력 창 · 휴지통 창 (4-C, DESIGN 2.4 폭 규칙 · 2.7 모달) ───
+ *
+ * 새 클래스는 없다 — `table.files`·`.table-wrap`·`.list`·`.notice` 는 app.css 에 이미 있는
+ * 구성 요소이고, 여기 있는 것은 그 표들의 **폭·높이 규칙**뿐이다(DESIGN 2.4 「새 표를 만들면
+ * 그 표의 <thead> 순서로 이 줄을 추가한다」). 새 색값·새 간격 토큰 0.
+ */
+
+/* 이력: 판 · 제목 · 바꾼 사람 · 시각 · 블록 · 동작 */
+#history-versions-body td:nth-child(2) { overflow-wrap: anywhere; min-width: 8rem; }
+#history-versions-body td:nth-child(3) { overflow-wrap: anywhere; min-width: 6rem; }
+#history-versions-body td.actions { min-width: 9.5rem; }
+
+/* 휴지통: 제목 · 공간 · 함께 지운 하위 · 지운 때 · 동작 */
+#trash-body td:nth-child(1) { overflow-wrap: anywhere; min-width: 9rem; }
+#trash-body td:nth-child(2) { overflow-wrap: anywhere; min-width: 6rem; }
+#trash-body td.actions { min-width: 6.5rem; }
+
+/* 창 안에서 스크롤하는 자리 — 모달이 화면 밖으로 자라지 않게 한다(블록 추가 창과 같은 방식).
+   `.list--scroll`(480px)이 처리 이력 탭을 이미 맡으므로 여기에는 표와 미리보기만 적는다. */
+#history-versions .table-wrap,
+#trash-dialog .table-wrap { max-height: 24rem; overflow-y: auto; }
+#history-preview-doc { max-height: 24rem; overflow-y: auto; }

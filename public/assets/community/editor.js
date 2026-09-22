@@ -465,6 +465,110 @@ function initHome() {
       timer = window.setTimeout(() => { load(search.value).catch(() => setText(msg, GENERIC_ERROR)); }, 300);
     });
   }
+
+  // 휴지통 (4-C) — 되살린 뒤에는 트리를 다시 받는다(화면이 카드를 지어내지 않는다).
+  bindTrash(() => { load(search ? search.value : '').catch(() => setText(msg, GENERIC_ERROR)); });
+}
+
+/* ─── 휴지통 (4-C, C:F-29) ─────────────────────────────────────
+ *
+ * 「내 공간」 화면의 단추 하나가 창을 열고, 목록은 창구 `GET /api/me/trash` 가 주는 것만
+ * 그린다 — 화면에는 「내가 지운 것인가」·「되살릴 수 있나」를 따지는 코드가 한 줄도 없다
+ * (DESIGN 원칙 1, PRD S-01). 되살리기는 서버가 다시 판단한다.
+ *
+ * 한 줄은 **한 번의 삭제**다. 함께 내려간 하위는 「하위 n」으로만 세고, 되살리면 함께
+ * 돌아온다. 부모가 그 사이 다시 지워졌다면 창구가 뿌리로 올리고 그 사실을 응답에 적는데,
+ * 그때는 **그렇게 됐다고 말한다** — 조용히 옮기지 않는다.
+ *
+ * @param onRestored 되살린 뒤 목록을 다시 그리는 일 (initHome 이 넘긴다)
+ */
+const TRASH_MOVE_REASONS = {
+  parent_deleted: '되살렸습니다. 상위 페이지가 아직 휴지통에 있어 맨 위로 올렸습니다',
+  parent_narrower: '되살렸습니다. 상위 페이지가 그 사이 더 좁게 닫혀 맨 위로 올렸습니다'
+};
+
+function bindTrash(onRestored) {
+  const button = document.getElementById('community-trash');
+  const dialog = document.getElementById('trash-dialog');
+  const tbody = document.getElementById('trash-body');
+  const empty = document.getElementById('trash-empty');
+  const meta = document.getElementById('trash-meta');
+  const msg = document.getElementById('trash-msg');
+  if (!button || !dialog || !tbody) { return; }
+
+  function row(page) {
+    const tr = document.createElement('tr');
+
+    const title = document.createElement('td');
+    title.textContent = (page.icon ? page.icon + ' ' : '') + page.title;
+    tr.appendChild(title);
+
+    const space = document.createElement('td');
+    space.textContent = page.space && page.space.name ? page.space.name : '—';
+    tr.appendChild(space);
+
+    const kids = document.createElement('td');
+    kids.textContent = page.descendants > 0 ? String(page.descendants) + '개' : '—';
+    tr.appendChild(kids);
+
+    const when = document.createElement('td');
+    when.textContent = shortWhen(page.deleted_at);
+    when.setAttribute('title', String(page.deleted_at));
+    tr.appendChild(when);
+
+    const actions = document.createElement('td');
+    actions.className = 'actions';
+    const back = document.createElement('button');
+    back.type = 'button';
+    back.className = 'btn btn--small btn--quiet';
+    back.textContent = '되살리기';
+    back.addEventListener('click', () => {
+      back.disabled = true;
+      api('POST', '/api/pages/' + page.id + '/restore', {})
+        .then((result) => {
+          if (result.status === 401) { toLogin(); return; }
+          if (result.status !== 200) {
+            setText(msg, errorMessage(result.data));
+            back.disabled = false;
+            return;
+          }
+          /* 왜 맨 위로 올렸는지는 **창구가 준 까닭**으로 가른다. 화면이 「상위가 지워졌겠지」
+             하고 지어내지 않는다 (DESIGN 원칙 1). 모르는 까닭이면 까닭 없이 알린다. */
+          setText(msg, result.data.moved_to_root !== true
+            ? '되살렸습니다'
+            : (TRASH_MOVE_REASONS[result.data.moved_reason] || '되살렸습니다. 원래 자리로 돌아갈 수 없어 맨 위로 올렸습니다'));
+          return load().then(() => { if (typeof onRestored === 'function') { onRestored(); } });
+        })
+        .catch(() => { setText(msg, GENERIC_ERROR); back.disabled = false; });
+    });
+    actions.appendChild(back);
+    tr.appendChild(actions);
+    return tr;
+  }
+
+  function load() {
+    return api('GET', '/api/me/trash').then((result) => {
+      if (result.status === 401) { toLogin(); return; }
+      if (result.status !== 200) { setText(msg, errorMessage(result.data)); return; }
+      const pages = Array.isArray(result.data.pages) ? result.data.pages : [];
+      clear(tbody);
+      for (const page of pages) { tbody.appendChild(row(page)); }
+      show(empty, pages.length === 0);
+      setText(meta, pages.length === 0
+        ? ''
+        : String(pages.length) + '건 · ' + String(result.data.keep_days) + '일 뒤 지워집니다');
+    });
+  }
+
+  button.addEventListener('click', () => {
+    if (typeof dialog.showModal !== 'function') { return; }
+    setText(msg, '');
+    if (!dialog.open) { dialog.showModal(); }
+    load().catch(() => setText(msg, GENERIC_ERROR));
+  });
+  for (const close of dialog.querySelectorAll('[data-trash-close]')) {
+    close.addEventListener('click', () => dialog.close());
+  }
 }
 
 /** 시각을 짧게 (t-box 의 `shortWhen` 과 같은 뜻 — 이 파일은 모듈이라 따로 둔다) */
@@ -1318,6 +1422,277 @@ function initPage() {
           .catch(() => { visibilitySave.disabled = false; setText(visibilityMsg, GENERIC_ERROR); });
       });
     }
+  }
+
+  /* ── 「이력」 창 (4-C, C:F-19 · C:F-20) ──
+     탭 둘은 단추 둘이다 — 고른 쪽이 검정(`.btn`), 나머지가 흐림(`.btn--quiet`).
+     · 「버전」  판마다 한 줄. 「보기」는 이 창 안에서 그 판을 **읽기 렌더러로** 그리고,
+                「되돌리기」는 같은 창 안에서 한 번 더 묻는다(모달 안에 모달을 열지 않는다).
+     · 「처리 이력」 판·체크를 시간순 한 줄씩. **본문 글자는 여기에 없다** — 창구가 주지
+                않기 때문이고(C:T-44), 화면도 지어내지 않는다.
+     되돌리기 단추는 창구가 준 `can_edit` 을 따른다. 되살려 눌러도 서버가 다시 막는다. */
+  const historyDialog = document.getElementById('history-dialog');
+  const historyMeta = document.getElementById('history-meta');
+  const historyMsg = document.getElementById('history-msg');
+  const historyTabVersions = document.getElementById('history-tab-versions');
+  const historyTabEvents = document.getElementById('history-tab-events');
+  const historyVersions = document.getElementById('history-versions');
+  const historyVersionsBody = document.getElementById('history-versions-body');
+  const historyVersionsEmpty = document.getElementById('history-versions-empty');
+  const historyEvents = document.getElementById('history-events');
+  const historyEventsList = document.getElementById('history-events-list');
+  const historyEventsEmpty = document.getElementById('history-events-empty');
+  const historyPreview = document.getElementById('history-preview');
+  const historyPreviewTitle = document.getElementById('history-preview-title');
+  const historyPreviewDoc = document.getElementById('history-preview-doc');
+  const historyPreviewBack = document.getElementById('history-preview-back');
+  const historyConfirm = document.getElementById('history-confirm');
+  const historyConfirmText = document.getElementById('history-confirm-text');
+  const historyConfirmOk = document.getElementById('history-confirm-ok');
+  const historyConfirmCancel = document.getElementById('history-confirm-cancel');
+  const historyButton = document.getElementById('page-history');
+
+  let historyCanEdit = false;      // 창구가 준 값. 화면이 정하지 않는다
+  let historyPending = null;       // 되돌리기 확인을 기다리는 판 번호
+
+  /** 탭 하나를 고른다. 단추 두 개의 모양과 `aria-selected`, 그리고 보이는 칸이 함께 바뀐다. */
+  function historyTab(which) {
+    const onVersions = which === 'versions';
+    if (historyTabVersions) {
+      historyTabVersions.className = onVersions ? 'btn' : 'btn btn--quiet';
+      historyTabVersions.setAttribute('aria-selected', onVersions ? 'true' : 'false');
+    }
+    if (historyTabEvents) {
+      historyTabEvents.className = onVersions ? 'btn btn--quiet' : 'btn';
+      historyTabEvents.setAttribute('aria-selected', onVersions ? 'false' : 'true');
+    }
+    historyClosePreview();
+    show(historyVersions, onVersions);
+    show(historyEvents, !onVersions);
+  }
+
+  /** 미리보기를 닫고 목록으로 돌아온다. */
+  function historyClosePreview() {
+    show(historyPreview, false);
+    clear(historyPreviewDoc);
+    setText(historyPreviewTitle, '');
+  }
+
+  function historyHideConfirm() {
+    historyPending = null;
+    show(historyConfirm, false);
+    setText(historyConfirmText, '');
+  }
+
+  /** 판 한 줄. 마지막 칸이 「보기」·「되돌리기」다 (DESIGN 2.4 `td.actions`). */
+  function historyRow(entry) {
+    const tr = document.createElement('tr');
+
+    const num = document.createElement('td');
+    num.textContent = entry.is_current
+      ? String(entry.version) + ' (지금)'
+      : String(entry.version);
+    tr.appendChild(num);
+
+    const title = document.createElement('td');
+    title.textContent = entry.title;
+    tr.appendChild(title);
+
+    const who = document.createElement('td');
+    who.textContent = entry.by === '' ? '—' : entry.by;
+    tr.appendChild(who);
+
+    const when = document.createElement('td');
+    when.textContent = shortWhen(entry.at);
+    when.setAttribute('title', String(entry.at));
+    tr.appendChild(when);
+
+    const blocks = document.createElement('td');
+    blocks.textContent = String(entry.block_count);
+    tr.appendChild(blocks);
+
+    const actions = document.createElement('td');
+    actions.className = 'actions';
+
+    const view = document.createElement('button');
+    view.type = 'button';
+    view.className = 'btn btn--small btn--quiet';
+    view.textContent = '보기';
+    view.addEventListener('click', () => historyShow(entry.version, entry.is_current === true));
+    actions.appendChild(view);
+
+    if (historyCanEdit && entry.is_current !== true) {
+      const back = document.createElement('button');
+      back.type = 'button';
+      back.className = 'btn btn--small btn--quiet btn--danger';
+      back.textContent = '되돌리기';
+      back.addEventListener('click', () => historyAskRestore(entry.version));
+      actions.appendChild(back);
+    }
+    tr.appendChild(actions);
+
+    // 되돌리기로 만들어진 판이면 그 사실을 줄 아래에 한 줄로 적는다(본문 글자가 아니다).
+    if (typeof entry.restored_from === 'number') {
+      const note = document.createElement('span');
+      note.className = 'muted';
+      note.textContent = ' · 판 ' + String(entry.restored_from) + ' 에서 되돌림';
+      num.appendChild(note);
+    }
+    return tr;
+  }
+
+  function historyLoadVersions() {
+    return api('GET', '/api/pages/' + pageId + '/versions').then((result) => {
+      if (result.status === 401) { toLogin(); return; }
+      if (result.status !== 200) { setText(historyMsg, errorMessage(result.data)); return; }
+      setText(historyMsg, '');
+      historyCanEdit = result.data.can_edit === true;
+      const list = Array.isArray(result.data.versions) ? result.data.versions : [];
+      clear(historyVersionsBody);
+      for (const entry of list) { historyVersionsBody.appendChild(historyRow(entry)); }
+      // 지금 판 한 줄만 있으면 「지난 판이 없다」는 뜻이다.
+      show(historyVersionsEmpty, list.length <= 1);
+      setText(historyMeta, '판 ' + String(result.data.page.doc_version) + ' · 기록 ' + String(list.length) + '개');
+    });
+  }
+
+  /** 줄 하나 — 「무엇을 · 누가 · 언제」. 본문 글자는 창구가 주지 않는다 (C:T-44). */
+  function historyEventItem(event) {
+    const li = document.createElement('li');
+    li.className = 'list__item';
+
+    const head = document.createElement('div');
+    head.className = 'list__head';
+    const what = document.createElement('strong');
+    if (event.kind === 'check') {
+      what.textContent = event.checked === true ? '할 일을 체크했습니다' : '체크를 풀었습니다';
+    } else if (typeof event.restored_from === 'number') {
+      what.textContent = '판 ' + String(event.version) + ' — 판 ' + String(event.restored_from) + ' 에서 되돌림';
+    } else {
+      what.textContent = '판 ' + String(event.version) + ' 저장';
+    }
+    const when = document.createElement('span');
+    when.className = 'muted';
+    when.textContent = shortWhen(event.at);
+    when.setAttribute('title', String(event.at));
+    head.appendChild(what);
+    head.appendChild(when);
+    li.appendChild(head);
+
+    const body = document.createElement('div');
+    body.className = 'list__body';
+    const who = document.createElement('span');
+    who.textContent = (event.by === '' ? '—' : event.by) + ' 님';
+    body.appendChild(who);
+    if (event.kind === 'version') {
+      const blocks = document.createElement('span');
+      blocks.textContent = '블록 ' + String(event.block_count) + '개';
+      body.appendChild(blocks);
+      if (event.is_current === true) {
+        const now = document.createElement('span');
+        now.textContent = '지금 판';
+        body.appendChild(now);
+      }
+    } else {
+      // 어느 칸인가는 블록 id 앞 8자로 가리킨다 — 할 일에 적힌 글자는 싣지 않는다.
+      const which = document.createElement('span');
+      which.textContent = '칸 ' + String(event.block_id).slice(0, 8);
+      body.appendChild(which);
+    }
+    li.appendChild(body);
+    return li;
+  }
+
+  function historyLoadEvents() {
+    return api('GET', '/api/pages/' + pageId + '/history').then((result) => {
+      if (result.status === 401) { toLogin(); return; }
+      if (result.status !== 200) { setText(historyMsg, errorMessage(result.data)); return; }
+      setText(historyMsg, '');
+      const list = Array.isArray(result.data.events) ? result.data.events : [];
+      clear(historyEventsList);
+      for (const event of list) { historyEventsList.appendChild(historyEventItem(event)); }
+      show(historyEventsEmpty, list.length === 0);
+    });
+  }
+
+  /** 그 판을 **이 창 안에서** 읽기 렌더러로 그린다. 본문은 이 창구로만 들어온다. */
+  function historyShow(version, isCurrent) {
+    historyHideConfirm();
+    return api('GET', '/api/pages/' + pageId + '/versions/' + String(version))
+      .then((result) => {
+        if (result.status === 401) { toLogin(); return; }
+        if (result.status !== 200) { setText(historyMsg, errorMessage(result.data)); return; }
+        setText(historyMsg, '');
+        const got = result.data.version;
+        setText(historyPreviewTitle, '판 ' + String(got.version) + (isCurrent ? ' (지금)' : '') + ' · ' + got.title);
+        clear(historyPreviewDoc);
+        /* 하위 페이지 카드의 제목 지도는 **지금 문서의 것**이다 — 지난 판이 가리키던 페이지가
+           그 뒤에 지워졌다면 지도에 없고, 렌더러가 「볼 수 없는 페이지」로 그린다. */
+        historyPreviewDoc.appendChild(renderDoc(got.doc, {
+          child_titles: state.childTitles, base: COMMUNITY_BASE
+        }));
+        show(historyVersions, false);
+        show(historyEvents, false);
+        show(historyPreview, true);
+      })
+      .catch(() => setText(historyMsg, GENERIC_ERROR));
+  }
+
+  function historyAskRestore(version) {
+    historyPending = version;
+    setText(historyConfirmText, '판 ' + String(version) + ' 의 내용으로 되돌릴까요?');
+    show(historyConfirm, true);
+  }
+
+  function historyDoRestore() {
+    if (historyPending === null) { return; }
+    const version = historyPending;
+    historyConfirmOk.disabled = true;
+    api('POST', '/api/pages/' + pageId + '/versions/' + String(version) + '/restore', {})
+      .then((result) => {
+        historyConfirmOk.disabled = false;
+        if (result.status === 401) { toLogin(); return; }
+        if (result.status !== 200) { setText(historyMsg, errorMessage(result.data)); return; }
+        historyHideConfirm();
+        historyClosePreview();
+        /* 본문·판 번호가 바뀌었다 — 창구가 준 값으로 화면과 목록을 다시 그린다.
+           알림은 **다시 그린 뒤에** 놓는다: 목록을 새로 받는 일이 알림 칸을 비우기 때문이다
+           (그 전에 적어 두면 사람이 읽기도 전에 사라진다 — 브라우저 스모크 30번 실측). */
+        return load()
+          .then(() => historyLoadVersions())
+          .then(() => historyLoadEvents())
+          .then(() => setText(historyMsg, '판 ' + String(version) + ' 의 내용으로 되돌렸습니다'));
+      })
+      .catch(() => { historyConfirmOk.disabled = false; setText(historyMsg, GENERIC_ERROR); });
+  }
+
+  function openHistory() {
+    if (!historyDialog || typeof historyDialog.showModal !== 'function') { return; }
+    setText(historyMsg, '');
+    historyHideConfirm();
+    historyTab('versions');
+    if (!historyDialog.open) { historyDialog.showModal(); }
+    historyLoadVersions()
+      .then(() => historyLoadEvents())
+      .catch(() => setText(historyMsg, GENERIC_ERROR));
+  }
+
+  if (historyButton && historyDialog) {
+    historyButton.addEventListener('click', openHistory);
+    for (const close of historyDialog.querySelectorAll('[data-history-close]')) {
+      close.addEventListener('click', () => historyDialog.close());
+    }
+    if (historyTabVersions) { historyTabVersions.addEventListener('click', () => historyTab('versions')); }
+    if (historyTabEvents) { historyTabEvents.addEventListener('click', () => historyTab('events')); }
+    if (historyPreviewBack) {
+      historyPreviewBack.addEventListener('click', () => {
+        historyClosePreview();
+        show(historyVersions, historyTabVersions.getAttribute('aria-selected') === 'true');
+        show(historyEvents, historyTabEvents.getAttribute('aria-selected') === 'true');
+      });
+    }
+    if (historyConfirmCancel) { historyConfirmCancel.addEventListener('click', historyHideConfirm); }
+    if (historyConfirmOk) { historyConfirmOk.addEventListener('click', historyDoRestore); }
   }
 
   function showEditors(editors) {

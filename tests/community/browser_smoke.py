@@ -892,6 +892,102 @@ with sync_playwright() as p:
     page.goto(page_url, wait_until="networkidle")
     page.wait_for_selector("#page-doc .doc", timeout=10000)
 
+    # ── 30. 이력 창 — 탭 둘 · 보기 · 되돌리기 (4-C) ───────────────
+    print("── 30. 이력 창 (버전 · 처리 이력 · 보기 · 되돌리기)")
+    page.goto(page_url, wait_until="networkidle")
+    page.wait_for_selector("#page-doc .doc", timeout=10000)
+
+    page.click("#page-history")
+    page.wait_for_selector("#history-dialog[open]", timeout=5000)
+    page.wait_for_timeout(600)
+    n_rows = page.locator("#history-versions-body tr").count()
+    step("30 「이력」을 누르면 창이 열리고 판 목록이 채워진다", n_rows >= 2, "%d줄" % n_rows)
+    step("30 맨 윗줄이 「지금」 판이다",
+         "(지금)" in page.locator("#history-versions-body tr").first.inner_text(),
+         page.locator("#history-versions-body tr").first.inner_text().replace("\n", " "))
+
+    # 목록에 본문 글자가 새지 않는다 (C:T-44) — 본문에만 있던 글자로 확인한다.
+    versions_text = page.locator("#history-versions").inner_text()
+    step("30 판 목록에 본문 글자가 없다", "INFLIGHT" not in versions_text and "빨강글자" not in versions_text,
+         versions_text[:80].replace("\n", " "))
+
+    page.click("#history-tab-events")
+    page.wait_for_timeout(400)
+    ev_shown = page.locator("#history-events").is_visible()
+    ver_hidden = not page.locator("#history-versions").is_visible()
+    n_ev = page.locator("#history-events-list li").count()
+    step("30 「처리 이력」 탭을 누르면 그쪽이 보이고 버전 탭이 숨는다", ev_shown and ver_hidden,
+         "보임=%s 숨김=%s" % (ev_shown, ver_hidden))
+    step("30 처리 이력에 줄이 있다", n_ev >= 1, "%d줄" % n_ev)
+    events_text = page.locator("#history-events").inner_text()
+    step("30 처리 이력에도 본문 글자가 없다",
+         "INFLIGHT" not in events_text and "빨강글자" not in events_text,
+         events_text[:80].replace("\n", " "))
+
+    page.click("#history-tab-versions")
+    page.wait_for_timeout(300)
+    step("30 「버전」 탭으로 돌아온다", page.locator("#history-versions").is_visible())
+
+    # 「보기」 — 가장 오래된 판을 이 창 안에서 읽기 렌더러로 그린다
+    oldest = page.locator("#history-versions-body tr").last
+    old_no = oldest.inner_text().split("\n")[0].strip()
+    oldest.locator("td.actions button").first.click()
+    page.wait_for_timeout(700)
+    prev_shown = page.locator("#history-preview").is_visible()
+    prev_title = page.locator("#history-preview-title").inner_text()
+    n_prev_blocks = page.locator("#history-preview-doc .doc > *").count()
+    step("30 「보기」를 누르면 그 판이 창 안에 그려진다",
+         prev_shown and n_prev_blocks >= 1, "제목=%r 블록=%d" % (prev_title, n_prev_blocks))
+    prev_text = page.locator("#history-preview-doc").inner_text().strip()
+
+    page.click("#history-preview-back")
+    page.wait_for_timeout(300)
+    step("30 「목록으로」를 누르면 목록이 돌아온다",
+         page.locator("#history-preview").is_visible() is False
+         and page.locator("#history-versions").is_visible())
+
+    # 「되돌리기」 — 확인 한 번 더
+    before_text = page.locator("#page-doc").inner_text().strip()
+    before_ver = page.request.get(COMMUNITY + "/api/pages/" + page_id).json()["page"]["doc_version"]
+    n_snap_before = len(page.request.get(
+        COMMUNITY + "/api/pages/" + page_id + "/versions").json()["versions"])
+
+    page.locator("#history-versions-body tr").last.locator("td.actions button").last.click()
+    page.wait_for_timeout(300)
+    step("30 「되돌리기」는 한 번 더 묻는다 (창 안에서)",
+         page.locator("#history-confirm").is_visible(),
+         page.locator("#history-confirm-text").inner_text())
+    step("30 물어보는 동안 본문은 그대로다",
+         page.locator("#page-doc").inner_text().strip() == before_text)
+
+    page.click("#history-confirm-ok")
+    page.wait_for_timeout(1500)
+    after = page.request.get(COMMUNITY + "/api/pages/" + page_id).json()["page"]
+    step("30 되돌린 뒤 판 번호가 오른다", after["doc_version"] > before_ver,
+         "%d → %d" % (before_ver, after["doc_version"]))
+    now_text = page.locator("#page-doc").inner_text().strip()
+    step("30 본문이 그 판의 내용으로 바뀐다", now_text == prev_text,
+         "화면=%r 판=%r" % (now_text[:40], prev_text[:40]))
+    step("30 되돌리기 전 본문과는 달라졌다", now_text != before_text,
+         "전=%r 후=%r" % (before_text[:40], now_text[:40]))
+    step("30 창은 열린 채로 남고 결과를 알린다",
+         page.locator("#history-dialog[open]").count() == 1
+         and "되돌렸습니다" in page.locator("#history-msg").inner_text(),
+         page.locator("#history-msg").inner_text())
+
+    n_snap_after = len(page.request.get(
+        COMMUNITY + "/api/pages/" + page_id + "/versions").json()["versions"])
+    step("30 지난 판은 지워지지 않고 늘어난다 (기록 불변)", n_snap_after > n_snap_before,
+         "%d → %d" % (n_snap_before, n_snap_after))
+
+    page.keyboard.press("Escape")
+    page.wait_for_timeout(300)
+    page.reload(wait_until="networkidle")
+    page.wait_for_selector("#page-doc .doc", timeout=10000)
+    step("30 새로 고쳐도 되돌린 내용이 그대로다 (판 %s)" % old_no,
+         page.locator("#page-doc").inner_text().strip() == prev_text,
+         page.locator("#page-doc").inner_text().strip()[:40])
+
     # ── 20. 정리 — 만든 페이지를 삭제 단추로 지운다 ───────────────
     print("── 20. 정리 (삭제 단추)")
     page.wait_for_selector("#page-delete:not([hidden])", timeout=10000)
@@ -906,6 +1002,42 @@ with sync_playwright() as p:
     step("삭제 뒤 내 공간으로 돌아온다", removed, page.url)
     gone = page.request.get(COMMUNITY + "/api/pages/" + page_id)
     step("지운 페이지는 창구가 더 이상 주지 않는다 (404)", gone.status == 404, "HTTP %d" % gone.status)
+
+    # ── 31. 휴지통 — 지운 페이지를 되살린다 (4-C) ─────────────────
+    print("── 31. 휴지통 (되살리기)")
+    page.goto(COMMUNITY + "/", wait_until="networkidle")
+    page.click("#community-trash")
+    page.wait_for_selector("#trash-dialog[open]", timeout=5000)
+    page.wait_for_timeout(700)
+    n_trash = page.locator("#trash-body tr").count()
+    step("31 「휴지통」을 누르면 창이 열리고 지운 페이지가 보인다", n_trash >= 1, "%d줄" % n_trash)
+
+    # 맨 윗줄이 방금 지운 그 페이지다(창구가 지운 때 내림차순으로 준다).
+    page.locator("#trash-body tr").first.locator("td.actions button").click()
+    page.wait_for_timeout(1500)
+    back = page.request.get(COMMUNITY + "/api/pages/" + page_id)
+    step("31 「되살리기」를 누르면 그 페이지가 돌아온다 (창구 200)",
+         back.status == 200, "HTTP %d" % back.status)
+    step("31 창이 결과를 알린다", "되살렸습니다" in page.locator("#trash-msg").inner_text(),
+         page.locator("#trash-msg").inner_text())
+
+    page.keyboard.press("Escape")
+    page.wait_for_timeout(300)
+    page.goto(COMMUNITY + "/", wait_until="networkidle")
+    page.wait_for_timeout(700)
+    tree_text = page.locator("#community-tree").inner_text()
+    step("31 되살린 페이지가 트리에 다시 보인다", back.json()["page"]["title"] in tree_text,
+         "제목=%r" % back.json()["page"]["title"])
+
+    # 정리 — 다시 지운다(이 시험이 만든 것은 이 시험이 되돌린다).
+    page.goto(page_url, wait_until="networkidle")
+    page.wait_for_selector("#page-delete:not([hidden])", timeout=10000)
+    page.click("#page-delete")
+    page.wait_for_selector("#delete-dialog[open]", timeout=5000)
+    page.click("#delete-confirm")
+    page.wait_for_timeout(1500)
+    gone2 = page.request.get(COMMUNITY + "/api/pages/" + page_id)
+    step("31 정리 — 다시 지웠다 (404)", gone2.status == 404, "HTTP %d" % gone2.status)
 
     # ── 19. 전 과정의 오류 ────────────────────────────────────────
     print("── 19. 브라우저가 본 오류 (처음부터 끝까지)")
