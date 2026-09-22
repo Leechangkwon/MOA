@@ -1,7 +1,7 @@
 # DESIGN.md — t-box 화면 디자인 규칙
 
 이 문서는 **화면을 만들 때 무엇을 어떤 모양으로 쓰는지**를 정한다. 어떤 기능이 있어야 하는지는
-`PRD.md` 10장, 어디서 권한을 검사하는지는 `ARCHITECTURE.md` 가 정한다. 이 문서는 그 위에 얹는
+`docs/tbox/PRD.md` 10장, 어디서 권한을 검사하는지는 `docs/tbox/ARCHITECTURE.md` 가 정한다. 이 문서는 그 위에 얹는
 **표현의 규칙**이다 — 같은 뜻은 같은 모양으로, 다른 뜻은 다른 모양으로.
 
 | 항목 | 값 |
@@ -298,12 +298,12 @@
 
 | # | 항목 | 상태 | 비고 |
 |---|---|---|---|
-| D-1 | 표·모달의 시각을 초 단위까지만 보이기 (전체 값은 `title`) | **적용 완료 2026-09-22** — `shortWhen`·`addWhenCell`·`setWhen` 도우미, 표 9곳·모달 6곳. 서버 값 무변경 | 지시서 `docs/d8-polish-directive.md`. 감사 표의 1280px 가로 넘침(74px)이 함께 사라짐 |
+| D-1 | 표·모달의 시각을 초 단위까지만 보이기 (전체 값은 `title`) | **적용 완료 2026-09-22** — `shortWhen`·`addWhenCell`·`setWhen` 도우미, 표 9곳·모달 6곳. 서버 값 무변경 | 지시서 `docs/tbox/d8-polish-directive.md`. 감사 표의 1280px 가로 넘침(74px)이 함께 사라짐 |
 | D-2 | 계정 관리 표의 「비활성화」 에 `.btn--danger` | **적용 완료 2026-09-22** — 활성 계정 행은 빨강, 「다시 활성화」 는 회색(팀 토글과 같은 규칙) | |
 | D-8 | 모달 단추 문구 「취소」 → 「닫기」 (5장 규칙) | **적용 완료 2026-09-22** — 모달 단추 8곳(JS 2 · 조직 4 · 계정 2). 결과 문구 「취소했습니다」 는 단추가 아니라 유지 | |
-| D-10 | 화면·패널에 펼쳐진 폼 다섯을 단추 → 모달로 (사용자 지시 2026-09-22 「호스트 같은 것도 별도로 두지 말고 버튼을 통해 접근해서 모달로」 「요것도 있고… 꽤 많다」): ① 허용 사이트 「목록에 추가」 ② 「계정 만들기」 ③ 내 계정 「토큰 발급」 ④ 내 계정 「2단계 인증 끄기」 ⑤ 권한 매트릭스 「사유·코드·적용」 | **적용 완료 2026-09-22** (Opus 1차 `docs/d10-create-modals-directive.md` · 2차 `docs/d10b-more-modals-directive.md`, Fable 검토 SECURITY 7장 D-10). 화면에 남은 폼은 내 계정 비밀번호 변경 하나 | 남기는 화면 내 폼: 비밀번호 변경(내 계정의 본래 목적) · 감사 필터 · 역할로 보기 · 첫 로그인 관문 · 2단계 등록. 조직 화면의 폼 넷은 이미 모달 |
+| D-10 | 화면·패널에 펼쳐진 폼 다섯을 단추 → 모달로 (사용자 지시 2026-09-22 「호스트 같은 것도 별도로 두지 말고 버튼을 통해 접근해서 모달로」 「요것도 있고… 꽤 많다」): ① 허용 사이트 「목록에 추가」 ② 「계정 만들기」 ③ 내 계정 「토큰 발급」 ④ 내 계정 「2단계 인증 끄기」 ⑤ 권한 매트릭스 「사유·코드·적용」 | **적용 완료 2026-09-22** (Opus 1차 `docs/tbox/d10-create-modals-directive.md` · 2차 `docs/tbox/d10b-more-modals-directive.md`, Fable 검토 SECURITY 7장 D-10). 화면에 남은 폼은 내 계정 비밀번호 변경 하나 | 남기는 화면 내 폼: 비밀번호 변경(내 계정의 본래 목적) · 감사 필터 · 역할로 보기 · 첫 로그인 관문 · 2단계 등록. 조직 화면의 폼 넷은 이미 모달 |
 | D-9 | 관리 화면 첫 진입의 비밀번호 재확인을 **페이지가 아니라 모달로** (사용자 제안 2026-09-22 「비밀번호 같은 거 다시 쓸 때도 모달로 하면 좋지 않을까」) | **적용 완료 2026-09-22** (Opus 구현 · Fable 검토, SECURITY 7장 D-9). `app.js` +47줄, 서버 무변경 | 서버 관문(302 `/reauth`)·정책 무변경. `/api/me` 의 `reauth_fresh` 로 필요할 때만 묻고, 기존 `openReauthModal` 재사용. `/reauth` 화면은 후퇴 경로 |
-| D-3 | 아이콘 단추의 중복 `title` 제거 — 브라우저 기본 툴팁과 CSS 툴팁이 겹침 | **적용 완료 2026-09-22** — JS(`makeIconButton` + 2곳)와 서버 HTML 12곳(지시서 `docs/d8b-icon-title-directive.md`). 화면의 `.btn--icon[title]` 0 | 배지·버전 단추·iframe·시각 셀의 `title` 은 원래 값 표기라 유지 |
+| D-3 | 아이콘 단추의 중복 `title` 제거 — 브라우저 기본 툴팁과 CSS 툴팁이 겹침 | **적용 완료 2026-09-22** — JS(`makeIconButton` + 2곳)와 서버 HTML 12곳(지시서 `docs/tbox/d8b-icon-title-directive.md`). 화면의 `.btn--icon[title]` 0 | 배지·버전 단추·iframe·시각 셀의 `title` 은 원래 값 표기라 유지 |
 | D-4 | 행 동작 단추 — 여섯 개를 다 보이되 **뜻별 색**(받기 파랑 · 삭제 빨강 · 나머지 회색)으로 구분 | **결정 → 2.1**. CSS 적용 완료 | 「⋯」 메뉴로 접는 안은 보류. 순서별 무지개 색은 뜻이 없어 채택하지 않음 |
 | D-5 | 다크 모드 — 해/달 단추로 전환, 쿠키 저장, 기본은 OS 설정 | **적용 완료 → 2.12** (Opus 구현 · Fable 검토 2026-09-21, SECURITY 7장) | 관문 ③ **사용자 확인** 완료 2026-09-22 (「확인했어」). 쿠키 자기 공격은 Fable 이 curl 로 **보조 재실측**한 것이며 관문 ③ 을 대신한 것은 아님 — 근거는 STAGES 디자인 절 검토 체크 |
 | D-6 | 빈 표·빈 목록 문구 | **확인 완료 → 2.4** — 14곳 전부 「(무엇)이 없습니다」 + 필요할 때 다음 행동 한 문장. 바꿀 것 없음 | |
@@ -326,7 +326,7 @@
 | C-5 | `.foldertree__head/__title/__note` | `.panel__head` > `.panel__title` + `.panel__sub`; 카드 자체는 `.panel.panel--tight`(좁은 카드 16px 여백, 새 배치 변형) | `home.php` | ✅ 2026-09-21 (Opus 구현 · Fable 검토, 고아 CSS 삭제) |
 | C-6 | `.token-box__title/__lead` | `.panel__title` + `.panel__sub` | `app.js` 프로그램 토큰 모달 | ✅ 2026-09-21 (Opus 구현 · Fable 검토, 고아 CSS 삭제) |
 | C-7 | `.admin-card` `.team-card` `.wiki-card` 세 벌 + 격자 `.admin-hub` `.org-cards` `.wiki-cards` | `.card.card--link`(2.3) + `.card-grid` / `.card-stack` | `admin_page.php` · `app.js` · `Wiki.php` | ✅ 2026-09-22 (Opus 구현 · Fable 검토, 고아 CSS 삭제) |
-| C-8 | `.alert-item` `.alert-list` | `.list.list--scroll` > `.list__item` > `.list__head` · `.list__body` (2.13) | `admin_page.php` · `admin_permissions_page.php` · `admin_fetch_hosts_page.php` · `app.js` | ✅ 항목 · 컨테이너 3곳은 지시서 `docs/d7b-alert-list-directive.md` |
+| C-8 | `.alert-item` `.alert-list` | `.list.list--scroll` > `.list__item` > `.list__head` · `.list__body` (2.13) | `admin_page.php` · `admin_permissions_page.php` · `admin_fetch_hosts_page.php` · `app.js` | ✅ 항목 · 컨테이너 3곳은 지시서 `docs/tbox/d7b-alert-list-directive.md` |
 | C-9 | `.preview-*` | **구성 요소로 인정** — 「미리보기 본문」(모달 안 내용 변형 7종). 화면이 아니라 구성 요소이므로 이름을 바꾸지 않는다. 2.7 에 기록 | — | ✅ 판단만 |
 | C-10 | `.wiki-*` | 「글 한 편」 구성 요소로 인정(문서 조판) — 이름 유지. 다만 `.wiki-card*` `.wiki-cards` 는 C-7 로, `.wiki-table` `.wiki-refs` 는 `table.files` + `.nowrap` 로 | `Wiki.php` | ✅ 2026-09-22 |
 | C-11 | `.login__card` `.login__title` `.login__sub` `.login__submit` | `.panel.panel--narrow` + `.page-head__text` + `.form` + `.btn--block` (2.10). 좌측 판 `.login__brand*` · `.login__pane` 은 배치라 유지 | `login_page.php` · `reauth_page.php`(단추를 `.btn--block` 으로 맞춤) | ✅ 2026-09-22 |

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # t-box 보안 린트 — 금지 패턴을 찾는다. 0건이면 통과(exit 0), 있으면 exit 1.
 # 사용: scripts/security_lint.sh [검사 루트, 기본: 저장소 루트]
-# 근거: CLAUDE.md 2장 금지 패턴, SECURITY.md 4장 2단계, ARCHITECTURE.md 13장
+# 근거: CLAUDE.md 2장 금지 패턴, SECURITY.md 4장 2단계, docs/tbox/ARCHITECTURE.md 13장
 set -u
 ROOT="${1:-$(cd "$(dirname "$0")/.." && pwd)}"
 INCLUDE=(--include='*.php' --include='*.js' --include='*.html' --include='*.phtml')

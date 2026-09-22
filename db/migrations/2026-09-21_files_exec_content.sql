@@ -4,7 +4,7 @@
 --                                      PRD F-65 ① · 7.6 S-06 「관리자 확인 예외」 ·
 --                                      8장 `POST /api/files/{id}/exec-download` · 7.11 AL-21 · T-77,
 --                                      ARCHITECTURE 5.29 · 6.2, SECURITY R-94,
---                                      docs/f65-exec-upload-directive.md)
+--                                      docs/tbox/f65-exec-upload-directive.md)
 --
 -- 목적: files 에 `exec_content BOOLEAN NOT NULL DEFAULT false` 한 칸을 더한다.
 --   참이면 「F-53 이름 검사에 걸리는 실행 파일이 들어 있는데, 관리자가 확인하고 올린 압축본」

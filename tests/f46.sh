@@ -134,7 +134,7 @@ expect "http(s):// 로 시작하는 src/href 0건" 0 \
 
 sub "「오프라인 코드 생성기」 — 화면 문구·사용자 문서에서 0건"
 # 대상은 **지금 보이는 것**이다: 생성기 화면 · 도움말 · 내 계정 화면 · README.
-# 과거 기록(STAGES 학습 기록·지난 지시서·wiki 의 지난 단계 글·docs/ui-copy-cleanup.md)과
+# 과거 기록(STAGES 학습 기록·지난 지시서·wiki 의 지난 단계 글·docs/tbox/ui-copy-cleanup.md)과
 # 코드 주석(public/index.php · src/handlers/time.php — 이번 지시서의 「수정 파일」 밖)은
 # 고치지 않았다. 아래 「남은 자리」에 그대로 센다.
 LIVE_HITS=$(grep -c '오프라인 코드 생성기' \

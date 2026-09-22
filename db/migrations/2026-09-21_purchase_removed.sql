@@ -1,7 +1,7 @@
 -- ─────────────────────────────────────────────────────────────
 -- 2026-09-21_purchase_removed.sql  (F-64 — 구매·재고 모듈을 t-box 에서 떼어낸다,
 --                                   PRD F-64 · Q-22 · T-76, ARCHITECTURE 5.18(묘비),
---                                   SECURITY R-93, docs/f64-purchase-removal-directive.md)
+--                                   SECURITY R-93, docs/tbox/f64-purchase-removal-directive.md)
 --
 -- 목적: 19~25단계에 붙었던 모듈의 표 19개·뷰 3개·시퀀스 16개와, 본체 두 표에 얹혀 있던
 --       네 칸(`users.branch_id`·`users.purchase_role`·`sessions.act_branch_id`·

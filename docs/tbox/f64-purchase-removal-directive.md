@@ -31,13 +31,13 @@
 ### 1-2. 이동 (git mv) — `docs/purchase/` 아래 잘못 놓인 **t-box 지시서** 7개. 번호 접두를 떼고 `docs/` 로
 | 지금 | 옮길 곳 |
 |---|---|
-| `docs/purchase/12-help-button-directive.md` | `docs/help-button-directive.md` |
-| `docs/purchase/13-stage26-directive.md` | `docs/stage26-directive.md` |
-| `docs/purchase/14-totp-time-sync-directive.md` | `docs/f42-totp-time-sync-directive.md` |
-| `docs/purchase/15-f43-fetch-allowlist-directive.md` | `docs/f43-fetch-allowlist-directive.md` |
-| `docs/purchase/16-f44-oauth-design.md` | `docs/f44-oauth-design.md` |
-| `docs/purchase/18-f46-directive.md` | `docs/f46-directive.md` |
-| `docs/purchase/19-f47-versioning-directive.md` | `docs/f47-versioning-directive.md` |
+| `docs/purchase/12-help-button-directive.md` | `docs/tbox/help-button-directive.md` |
+| `docs/purchase/13-stage26-directive.md` | `docs/tbox/stage26-directive.md` |
+| `docs/purchase/14-totp-time-sync-directive.md` | `docs/tbox/f42-totp-time-sync-directive.md` |
+| `docs/purchase/15-f43-fetch-allowlist-directive.md` | `docs/tbox/f43-fetch-allowlist-directive.md` |
+| `docs/purchase/16-f44-oauth-design.md` | `docs/tbox/f44-oauth-design.md` |
+| `docs/purchase/18-f46-directive.md` | `docs/tbox/f46-directive.md` |
+| `docs/purchase/19-f47-versioning-directive.md` | `docs/tbox/f47-versioning-directive.md` |
 옮긴 뒤 `STAGES.md`·`PRD.md` 의 옛 경로 참조(현재 14곳)를 새 경로로 고친다. `11-`·`17-`·`20-`~`23-` 은 구매 것이라 삭제.
 
 ### 1-3. 새로 만드는 파일 (2개)

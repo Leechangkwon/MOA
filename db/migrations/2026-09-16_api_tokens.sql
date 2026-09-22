@@ -2,7 +2,7 @@
 -- 2026-09-16_api_tokens.sql  (F-59 — 사용자별 프로그램 토큰(설계 B),
 --                              PRD F-59 ① · 8장 `/api/users/{uid}/api-tokens` 세 행,
 --                              ARCHITECTURE 4.6 · 6.2-5, SECURITY R-82 · R-91,
---                              docs/f59-personal-tokens-directive.md)
+--                              docs/tbox/f59-personal-tokens-directive.md)
 --
 -- 목적: 프로그램용 토큰을 「서버에 하나뿐인 공용 값(.env)」에서 **계정마다 발급하는 개인
 --       토큰**으로 옮긴다. 지우기를 프로그램에 열려면 「누가 지웠나」가 사람 단위로 남아야

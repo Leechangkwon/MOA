@@ -607,7 +607,7 @@ fi
 hr "(e) 문구 — 「모든 역할」 0건 (화면·도움말·README·위키)"
 # ─────────────────────────────────────────────────────────────
 cd "$ROOT"
-HITS=$(grep -rn "모든 역할" src public README.md wiki | tee "$OUT/e-grep.txt" | wc -l)
+HITS=$(grep -rn "모든 역할" src public README.md docs/tbox/README.md wiki | tee "$OUT/e-grep.txt" | wc -l)
 [ "$HITS" = "0" ] || sed 's/^/    /' "$OUT/e-grep.txt"
 expect "「모든 역할」 0건" 0 "$HITS"
 echo "  (과거 기록 STAGES·SECURITY 7장·CHANGELOG 는 검사 대상이 아니다)"
