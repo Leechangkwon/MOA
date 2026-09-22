@@ -419,6 +419,46 @@ F-49 는 「공용 정적 토큰 하나」(설계 A)로 갔고, 그 한계(회�
 
 **남는 표면(R-91).** 개인 토큰은 그 계정 권한으로 2단계 인증 없이 올리고·옮기고·지운다. 유출되면 그 계정의 파일이 휴지통으로 갈 수 있다(30일 복구). 완화: 회수 즉시 무효 · 계정 비활성화로 자동 차단 · 발급 1건 즉시 경보(AL-20) · 모든 행에 `token_id` · TLS · 살아 있는 토큰 5개 상한. 공용 토큰이 남아 있는 동안은 R-82 가 그대로 살아 있다.
 
+### 4.7 프로그램 토큰 본인 발급 — 범위(scope)·만료 180일 (PRD F-66 · Q-24, 사용자 결정 2026-09-21)
+
+**왜.** F-59 는 「관리자가 남의 토큰을 만든다」였다. 관리자 세션을 훔친 사람이 아무 계정의 자격을 만들 수 있고(R-91), 만든 토큰은 회수 전까지 영구였다. 사용자가 로컬 AI 비서에 admin01 토큰을 심어 쓰는 것을 계기로 「더 좋게」 — **토큰은 본인이, 비밀번호+OTP 를 치고, 필요한 만큼만, 180일까지**.
+
+**세 가지 변화.**
+
+| | F-59 (전) | F-66 (후) |
+|---|---|---|
+| 발급 | Admin 이 `/users` 에서 남의 것도(재인증 15분 창) | **본인만** `/settings` 에서 — 요청마다 비밀번호+OTP(`verifyCurrentPassword`·`verifyOtpOnce`, F-65 와 같은 helper, 세션에 창을 남기지 않는다). 2단계가 꺼진 계정은 발급 불가(403 `mfa_not_enabled`). `POST /api/users/{uid}/api-tokens` 는 **라우트에서 지운다** |
+| 범위 | 없음(토큰 창구 열 전부) | `api_tokens.scope` ∈ `read` · `read+upload` · `read+upload+delete`. 선택지는 **역할이 정한다**(`Authz::tokenScopesFor`: Guest 는 `read` 만, 나머지 셋). 창구마다 필요한 범위는 **라우트 정책**이 정한다(아래 표) — 범위는 창구를 좁힐 뿐이고 파일별 판정(`decideRead`·`decideUploadAs`·`decideDelete`…)은 지금처럼 요청마다 한다. 토큰이 계정보다 커질 수 없다 |
+| 만료 | 없음 | `api_tokens.expires_at` = 발급 + **180일** 고정. 지난 토큰은 401 `token_expired`(틀린 토큰 401 `bad_token` 과 문구가 다르다 — 토큰을 쥔 쪽은 우리 프로그램이라 이유를 준다, 4.2 오류 문구 정책). 목록의 `expires_soon`(14일 안)으로 화면이 안내한다 |
+
+**창구 → 필요한 범위 (`Authz::tokenScopeAllows(scope, policy)`).** 정책 문자열 하나로 정한다 — 새 토큰 창구가 생겨도 표를 고칠 일이 없다.
+
+| 라우트 정책 | 필요한 범위 | 창구 |
+|---|---|---|
+| `file.read` · `authenticated` | `read` 이상(전부) | `GET /api/files` · `GET /api/files/{id}/download` · `GET /api/folders` · `GET /api/whoami` |
+| `file.upload` · `file.update` | `read+upload` 이상 | `POST /api/upload` · `POST /api/folders` · `PATCH /api/folders/{num}` · `PATCH /api/files/{id}` |
+| `file.delete` | `read+upload+delete` | `DELETE /api/files/{id}` · `DELETE /api/folders/{num}` |
+
+범위 밖 → **403** `MSG_TOKEN_SCOPE`(「이 토큰의 범위에 없는 창구입니다 — 범위가 더 넓은 토큰을 발급하세요」) + `auth.token deny scope_not_permitted`(detail `token_id`·`token_scope`). 판정 자리는 `index.php` 토큰 가지에서 `requireApiToken` **직후, 정책 인가 앞** — 범위는 「이 토큰이 무엇을 할 수 있나」이고 정책 인가는 「이 계정이 무엇을 할 수 있나」다. 공용 토큰(`.env`, 이행용)은 범위 열이 없으니 `read+upload` 로 본다(삭제는 이미 개인 전용).
+
+**`Auth::requireApiToken` 판정 순서(4.6 표에 두 줄이 늘어난다).** `SQL_FIND_API_TOKEN` 이 `scope`·`expires_at` 을 함께 읽고(`revoked_at IS NULL` 은 그대로), 행이 있는데 `expires_at <= now()` 면 401 `token_expired` 로 끝낸다 — 회수와 달리 만료는 알려 준다(회수는 관리자의 결정이라 숨기고, 만료는 시간의 결과라 숨길 이유가 없다). 통과하면 `TBOX_API_TOKEN_SCOPE` 상수를 세운다(공용은 `read+upload`). `Audit::autoDetail` 이 토큰 경로의 모든 행에 `token_scope` 를 붙인다(`token_kind`·`token_id` 와 같은 자리).
+
+**본인 창구 셋 — `/api/me/api-tokens`(정책 `authenticated`, 세션·CSRF, 토큰 집합 밖).**
+- `GET` — 내 것만(`WHERE user_id = 세션 본인`). 행마다 `scope`·`purpose`(=`reason_text`)·`expires_at`·`expires_soon`(`expires_at < now()+14일`)이 F-59 여섯 키에 더해진다.
+- `POST` — 허용 키 **다섯**(`name`·`purpose`·`scope`·`password`·`otp`, R-07). 순서: 키·형식 → `scope ∈ Authz::tokenScopesFor($user)`(아니면 `bad_request` — 역할 힌트를 주지 않는다) → 2단계 켜짐(아니면 403 `mfa_not_enabled`, 실패로 세지 않음) → `verifyCurrentPassword`(실패 `bad_credentials` + `countFailureAndRevoke`) → `verifyOtpOnce`(`bad_code`·`code_reused` + 집계) → 살아 있는 5개(`limit_exceeded`) → INSERT(`created_by` = 본인, `scope`, `expires_at = now() + interval '180 days'`, `reason_text` = 용도) → `api_token.issue allow`(detail `token_id`·`token_name`·`token_scope`·`reason_text`·`otp_verified:true`). 비밀번호·코드는 읽은 즉시 지역 변수로만, 응답·감사·로그 0(PRD 7.7). 인증 실패 문구는 전부 「잘못된 요청입니다」(5.30 예외 목록).
+- `DELETE /{tid}` — 내 것이 아니면 404, 이미 회수됨 400, 회수는 `revoked_at`·`revoked_by`(본인). 비밀번호·OTP 를 묻지 않는다 — 닫는 방향은 자격을 **줄이는** 일이고, 세션 탈취자가 회수해 봐야 얻는 것이 없다.
+
+**관리자 창구.** 목록 `GET /api/users/{uid}/api-tokens`(행에 `scope`·`expires_at` 추가)·회수 `DELETE …/{tid}` 는 그대로(`user.manage`). **발급은 없다** — 핸들러 `api_tokens_issue.php` 는 지운다(옛 `POST` 는 같은 경로의 `GET` 이 남아 라우터 `[1]` 이 **405** 로 끝낸다 — 인증·인가에 닿지 않는다). 그와 함께 사유 코드 `target_inactive`(비활성 계정에 발급 불가)는 **닿을 수 없는 코드**가 된다 — 본인은 세션이 있으니 활성이다. 5.30 표와 `Http::REASON_MESSAGES` 에서 빼고, 7.4 의 문장 틀은 옛 감사 행이 그대로 보이도록 남긴다. 관리자가 남을 대신해 자격을 만드는 길이 사라지는 것이 R-91 의 핵심 완화다.
+
+**표 `api_tokens`(6.2-5).** 열 둘: `scope TEXT NOT NULL CHECK (scope IN ('read','read+upload','read+upload+delete'))`, `expires_at TIMESTAMPTZ NOT NULL`. 마이그레이션 `2026-09-22_api_tokens_scope_expiry.sql` 은 기존 행을 **`read+upload+delete`**(그때는 범위가 없어 전부 열려 있었다 — 좁히면 사용자 프로그램이 멎는다)·`created_at + 180일`로 채운 뒤 NOT NULL 을 건다. 기존 토큰도 180일 규칙을 따른다는 뜻이다 — 사용자 비서의 admin01 토큰이 그 대상이며, 만료 전에 본인 창구에서 새로 발급한다.
+
+**`GET /api/me`.** `token_scopes`(이 역할이 고를 수 있는 범위 배열)·`can_issue_tokens`(= `mfa_enabled`). 화면은 이 둘로만 폼을 그린다(역할 비교 0, DESIGN 0장 1).
+
+**화면.** `/settings` 에 「프로그램 토큰」 절(패널 `span-all`) — 표(`.table-wrap`: 이름·용도·앞 6자·범위·만료·마지막 사용·상태·회수)·발급 폼(`.form--grid`: 이름·용도·범위 select·현재 비밀번호·2단계 코드 `.otp-box`·「토큰 발급」)·발급 직후 토큰 한 번 표시(F-59 `showIssuedToken` 과 같은 값 전용 칸)·만료 14일 안이면 `.notice--recommend` 한 줄. 2단계가 꺼져 있으면 폼 대신 `.notice--recommend` 「2단계 인증을 켜야 발급할 수 있습니다」. `/users` 의 토큰 모달은 **발급 폼을 빼고** 목록(범위·만료 열 추가)·회수만.
+
+**남는 위험(R-97).** `read` 범위도 다운로드가 된다(정찰·유출은 범위로 못 막는다) · 만료 전 유출은 여전히 그 범위만큼 · 공용 토큰은 범위·만료가 없다(이행용, R-82 그대로) · 만료 뒤 갱신을 잊으면 프로그램이 멎는다(14일 안내로 완화).
+
+
 ## 5. 네 가지 흐름 — 순서대로, 권한 검사 위치 표시
 
 표기: **[권한 ✔]** = 여기서 권한 검사 · **[DB]** = PostgreSQL · **[FS]** = 스토리지 디스크 · **[LOG]** = 감사 로그
@@ -1416,8 +1456,7 @@ authentication failed for user "tbox_app"` 같은 형태다 — 호스트·포�
 | `macro_found` | 업로드 내용 검사 | 문서에 매크로가 들어 있어 올릴 수 없습니다 |
 | `pdf_active_content` | 업로드 내용 검사 | PDF 에 실행되는 내용(자바스크립트·자동 실행)이 있어 올릴 수 없습니다 |
 | `hwp_not_hwp` | 업로드 내용 검사 | HWP 형식이 아닌 파일입니다 |
-| `target_inactive` | 개인 토큰 발급 (`api_tokens_issue`) | 비활성이거나 만료된 계정에는 토큰을 만들 수 없습니다 |
-| `limit_exceeded` | 개인 토큰 발급 | 살아 있는 토큰이 상한에 이르렀습니다 — 먼저 하나를 회수하세요 |
+| `limit_exceeded` | 개인 토큰 본인 발급 (`me_tokens_issue`, F-66) | 살아 있는 토큰이 상한에 이르렀습니다 — 먼저 하나를 회수하세요 |
 | `invariant` | 권한 매트릭스 · 허용 사이트 (`admin_permissions_update`·`fetch_hosts_update`) | 바꿀 수 없는 항목이거나 규칙에 어긋나는 값입니다 |
 | `already_enabled` | 2단계 등록 시작 (`mfa_enroll`) | 2단계 인증이 이미 켜져 있습니다 |
 | `sensitive_level_required` · `folder_has_children` · `folder_not_empty` · `folder_has_trashed` · `exec_ack_required` | (기존 상수) | 기존 `MSG_*` 그대로 — 표에서도 찾을 수 있게 같은 상수를 가리킨다 |
@@ -1572,7 +1611,10 @@ CREATE TABLE api_tokens (
     last_used_at TIMESTAMPTZ,
     revoked_at   TIMESTAMPTZ,
     revoked_by   BIGINT      REFERENCES users(id),
-    reason_text  TEXT        CHECK (reason_text IS NULL OR length(reason_text) <= 500)
+    reason_text  TEXT        CHECK (reason_text IS NULL OR length(reason_text) <= 500),
+    -- F-66 (2026-09-22): 범위·만료. 마이그레이션 2026-09-22_api_tokens_scope_expiry.sql (기존 행은 read+upload+delete · created_at+180일)
+    scope        TEXT        NOT NULL CHECK (scope IN ('read','read+upload','read+upload+delete')),
+    expires_at   TIMESTAMPTZ NOT NULL           -- 발급 + 180일 고정 (ARCH 4.7)
 );
 CREATE INDEX api_tokens_user_idx ON api_tokens (user_id);
 -- 권한: tbox_app 에 SELECT, INSERT, UPDATE 만 (DELETE 없음 — 회수는 revoked_at). 시퀀스 USAGE, SELECT.
@@ -1957,6 +1999,12 @@ GRANT  USAGE, SELECT  ON SEQUENCE audit_logs_id_seq TO tbox_app;
 | `api_token.revoke|allow` | `{actor} 이(가) 계정 「{target}」 의 프로그램 토큰을 회수했습니다 (이후 그 토큰은 쓸 수 없습니다)` | F-59 |
 | `api_token.revoke|deny|not_found` | `{actor} 이(가) 계정 「{target}」 에 없는 프로그램 토큰을 회수하려 해서 거부했습니다` | F-59 |
 | `api_token.revoke|deny|bad_request` | `{actor} 이(가) 이미 회수된 프로그램 토큰을 다시 회수하려 해서 거부했습니다` | F-59 |
+| `api_token.issue|deny|mfa_not_enabled` | `{actor} 이(가) 2단계 인증이 꺼진 채 프로그램 토큰을 발급하려 해서 거부했습니다 (먼저 2단계 인증을 켜야 합니다)` | F-66 |
+| `api_token.issue|deny|bad_credentials` | `{actor} 이(가) 프로그램 토큰을 발급하려 했지만 비밀번호가 틀려서 거부했습니다` | F-66 |
+| `api_token.issue|deny|bad_code` | `{actor} 이(가) 프로그램 토큰을 발급하려 했지만 2단계 인증 코드가 틀려서 거부했습니다` | F-66 |
+| `api_token.issue|deny|code_reused` | `{actor} 이(가) 프로그램 토큰을 발급하려 했지만 이미 쓴 2단계 인증 코드여서 거부했습니다` | F-66 |
+| `auth.token|deny|token_expired` | `만료된 개인 토큰으로 {target} 을(를) 부르려 해서 막았습니다 (내 계정에서 새로 발급해야 합니다)` | F-66 |
+| `auth.token|deny|scope_not_permitted` | `개인 토큰의 범위에 없는 창구 {target} 을(를) 부르려 해서 막았습니다` | F-66 |
 | `auth.token|deny|user_disabled` | `{target} 의 개인 토큰은 맞았지만 그 계정이 비활성·만료·절차 중이어서 막았습니다` | F-59 |
 | `auth.token|deny|shared_token_not_permitted` | `공용 토큰으로 개인 토큰 전용 창구 {target} 을(를) 부르려 해서 막았습니다` | F-59 |
 
@@ -2031,6 +2079,7 @@ GRANT  USAGE, SELECT  ON SEQUENCE audit_logs_id_seq TO tbox_app;
 | `token_kind` | 어떻게 | 토큰 경로의 **종류** 분류어(`personal`·`shared`). 코드에 적힌 고정값이고 요청이 정하지 않는다. 이름에 `token` 이 들어 부분 일치 금지에 걸리므로 `ALLOWED_DETAIL_KEYS` 정확 일치 예외 | `Audit::autoDetail` | 토큰 경로의 모든 행 (F-59) |
 | `token_id` | 어떻게 | 개인 토큰의 **행 번호**(정수, `api_tokens.id`). 토큰 값·hint 가 아니다 — 「어느 토큰으로」 를 사람이 목록에서 되짚는 열쇠. 정확 일치 예외 | `Audit::autoDetail`(개인 토큰 경로) · `api_token.issue`·`api_token.revoke` 핸들러 | F-59 |
 | `token_name` | 무엇을 | 발급·회수한 토큰의 **라벨**(「사무실 PC」). 사람이 붙인 이름이고 비밀이 아니다. 정확 일치 예외 | 핸들러 | `api_token.issue`·`api_token.revoke` (F-59) |
+| `token_scope` | 어떻게 | 토큰의 **범위** 분류어(`read`·`read+upload`·`read+upload+delete`). 코드가 정한 세 값 중 하나. `autoDetail()` 이 토큰 경로의 모든 행에, 발급·범위 거부 행에는 핸들러/Auth 가 붙인다. 이름에 `token` 이 들어 부분 일치 금지에 걸리므로 정확 일치 예외 | Audit·핸들러 | F-66 (ARCH 4.7) |
 
 **검토 행동과 사용자 행동 가르기** — 두 조건 중 하나면 검토다. 둘 다 아니면 사용자(또는 침입자)다.
 

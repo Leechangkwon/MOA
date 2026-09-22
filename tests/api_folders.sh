@@ -17,7 +17,9 @@
 #       「헤더 무시」가 아니다) · 헤더 없이 GET /api/folders → 401 「로그인이 필요합니다」
 #       (세션 경로) · 틀린 토큰 GET /api/folders → 401 「API 토큰이 올바르지 않습니다」 ·
 #       **헤더 무시**는 여전히 닫힌 라우트로 확인한다: 틀린 토큰으로 GET /api/users ·
-#       POST /api/users/{num}/api-tokens → 401 「로그인이 필요합니다」(세션 경로).
+#       POST /api/me/api-tokens → 401 「로그인이 필요합니다」(세션 경로).
+#       F-66(2026-09-22): 옛 관리자 발급 창구 POST /api/users/{num}/api-tokens 는 **404**
+#       (라우트 제거 — 라우터가 라우트를 못 찾으면 인증·인가에 닿지도 않는다).
 #   (f) 감사  (b)(c)(d) 의 folder.create·folder.update·file.update 행이 전부
 #       detail.auth=api_token · 나온 (action·result·reason) 조합이 전부 src/Audit.php 의
 #       SUMMARY_TEMPLATES 에 있다(0 건이 「없는 조합」). 「새 조합」의 기준은 이 DB 의 과거
@@ -479,12 +481,24 @@ echo "  틀린 토큰 GET /api/users → [$(code_of "$OUT")] $(body_of "$OUT")"
 expect "닫힌 라우트 상태(헤더 무시 — 세션 경로)" "401" "$(code_of "$OUT")"
 expect "닫힌 라우트 문구" '{"error":"로그인이 필요합니다"}' "$(body_of "$OUT")"
 
+# F-66 (2026-09-22) — 관리자 발급 창구(POST)는 **라우트에서 사라졌다**. 같은 경로의 목록
+#   라우트(GET)는 남아 있으므로 라우터 [1] 의 「경로는 맞고 메서드만 다르다」 갈래가 먼저
+#   잡아 **405** 다(404 가 아니다 — 인증·인가에는 닿지 않는다. 헤더도 읽히지 않는다).
+#   본인 발급 창구(`POST /api/me/api-tokens`)도 토큰 집합 밖이라 세션 경로 401 이다.
 OUT=$(curl -s -w '\n%{http_code}' -X POST -A "$UA" -H "X-API-Token: $WRONG_TOKEN" \
       -H 'Content-Type: application/json' -d '{"name":"x","reason_text":"x"}' \
       "$BASE/api/users/999999999/api-tokens")
 echo "  틀린 토큰 POST /api/users/{num}/api-tokens → [$(code_of "$OUT")] $(body_of "$OUT")"
-expect "토큰 발급 창구도 헤더 무시(세션 경로)" "401" "$(code_of "$OUT")"
-expect "토큰 발급 창구 문구" '{"error":"로그인이 필요합니다"}' "$(body_of "$OUT")"
+expect "옛 관리자 발급 창구 → 405 (F-66 으로 POST 만 제거 · GET 은 남음)" "405" "$(code_of "$OUT")"
+expect "옛 관리자 발급 창구 문구" '{"error":"허용되지 않는 메서드입니다"}' "$(body_of "$OUT")"
+
+OUT=$(curl -s -w '\n%{http_code}' -X POST -A "$UA" -H "X-API-Token: $WRONG_TOKEN" \
+      -H 'Content-Type: application/json' \
+      -d '{"name":"x","purpose":"x","scope":"read","password":"x","otp":"000000"}' \
+      "$BASE/api/me/api-tokens")
+echo "  틀린 토큰 POST /api/me/api-tokens → [$(code_of "$OUT")] $(body_of "$OUT")"
+expect "본인 발급 창구도 헤더 무시(세션 경로)" "401" "$(code_of "$OUT")"
+expect "본인 발급 창구 문구" '{"error":"로그인이 필요합니다"}' "$(body_of "$OUT")"
 
 if [ "$HAVE_PSQL" -eq 1 ]; then
   # 토큰 집합 **안**의 라우트로 보낸 틀린 토큰 셋만 auth.token 에 남는다

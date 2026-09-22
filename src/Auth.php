@@ -216,12 +216,21 @@ final class Auth
         SQL;
 
     /**
-     * 개인 토큰 조회 (F-59, ARCH 4.6 · 6.2-5) — **해시로만** 찾는다.
+     * 개인 토큰 조회 (F-59 → **F-66**, ARCH 4.6 · 4.7 · 6.2-5) — **해시로만** 찾는다.
      * 원문은 서버 어디에도 없으므로 이 조회가 유일한 경로이고, 회수된 행(`revoked_at`)은
      * 애초에 나오지 않는다(회수된 토큰은 「틀린 토큰」과 같은 답을 받는다).
+     *
+     * F-66 — `scope`·`expires_at` 을 **함께** 읽는다. 만료 판정은 `(expires_at <= now())` 을
+     * **SQL 이** 해서 `is_expired` 로 돌려준다 — PHP 시계와 DB 시계를 섞지 않는다
+     * (`SQL_LOAD_USER` 의 계정 만료 판정과 같은 방식).
+     *
+     * ★ 이 문장은 두 열이 **있어야** 돈다. 그래서 배포 순서가
+     *   **마이그레이션(`2026-09-22_api_tokens_scope_expiry.sql`) → 코드** 다 —
+     *   순서를 뒤집으면 토큰 경로 전체가 500 이다(F-59 때의 1분 500 사고).
      */
     private const SQL_FIND_API_TOKEN = <<<'SQL'
-        SELECT id, user_id
+        SELECT id, user_id, scope,
+               (expires_at <= now()) AS is_expired
           FROM api_tokens
          WHERE token_hash = :hash AND revoked_at IS NULL
         SQL;
@@ -518,6 +527,19 @@ final class Auth
     public const API_TOKEN_MIN_CHARS = 32;
 
     /**
+     * 개인 토큰의 수명 (F-66 ④, PRD F-66, ARCH 4.7 「만료」).
+     *
+     * 발급 핸들러(`me_tokens_issue.php`)가 `now() + make_interval(days => :ttl)` 에 이 값을
+     * **바인딩으로** 넘긴다 — 180 을 두 곳에 적지 않는다. 마이그레이션이 기존 행을 채운
+     * `created_at + 180일` 도 같은 규칙이다(그쪽은 SQL 리터럴이라 값이 둘로 보이지만,
+     * 한 번 지나가는 일회성 문장이고 이 상수를 바꾸면 새 토큰부터 따라간다).
+     *
+     * 지난 토큰은 401 `token_expired` 이고, 목록의 `expires_soon`(14일 안)이 화면에 안내를
+     * 띄운다. 창을 늘리거나 줄이려면 여기 한 곳만 고친다.
+     */
+    public const API_TOKEN_TTL_DAYS = 180;
+
+    /**
      * 프로그램용 토큰 인증 — 개인 토큰 우선, 공용 토큰은 이행용
      * (PRD F-49 · F-50 · F-56 · F-58 · **F-59**, ARCH 4.2 · 4.6, S-09-11, SECURITY R-82 · R-91).
      *
@@ -529,13 +551,20 @@ final class Auth
      * 판정 순서는 ARCH 4.6 의 표 그대로다.
      *   ① 헤더 없음                      → 401 `missing_header` (F-49 불변)
      *   ② sha256(헤더값)으로 `api_tokens` 조회(회수되지 않은 것)
-     *      있으면 **개인 토큰**: 그 계정을 로그인과 같은 열 목록으로 읽어 4조건(존재·활성·
+     *      있으면 **개인 토큰**: 먼저 **만료**를 본다(F-66) — `expires_at <= now()` 면 401
+     *      `token_expired` 로 끝낸다. 계정 4조건보다 **앞**이다: 만료된 토큰으로는 계정을
+     *      읽지 않는다. 회수는 숨기고(틀린 토큰과 같은 답) 만료는 알려 준다 —
+     *      회수는 사람의 결정이고 만료는 시간의 결과라 숨길 이유가 없다(ARCH 4.7).
+     *      그다음 그 계정을 로그인과 같은 열 목록으로 읽어 4조건(존재·활성·
      *      미만료·강제 절차 없음)을 본다. 실패 → 403 `user_disabled`(계정을 비활성화하면
      *      그 계정의 토큰이 자동으로 막히는 경로다 — 회수를 따로 하지 않아도 된다).
-     *      성공 → `TBOX_API_TOKEN_KIND='personal'`·`TBOX_API_TOKEN_ID=<id>` + `last_used_at` 갱신
+     *      성공 → `TBOX_API_TOKEN_KIND='personal'`·`TBOX_API_TOKEN_ID=<id>`·
+     *      `TBOX_API_TOKEN_SCOPE=<범위>` + `last_used_at` 갱신
      *   ③ 없으면 **공용 토큰**(`.env`): 32자 이상이고 `hash_equals` 일 때만. 귀속 계정의 4조건
      *      실패는 요청이 아니라 **서버 설정** 문제라 503 `user_invalid` 다(F-49 그대로).
-     *      → `TBOX_API_TOKEN_KIND='shared'` (`TBOX_API_TOKEN_ID` 는 없다 — 사람 단위 귀속이 없다)
+     *      → `TBOX_API_TOKEN_KIND='shared'` (`TBOX_API_TOKEN_ID` 는 없다 — 사람 단위 귀속이 없다).
+     *      범위 열이 없으므로 `TBOX_API_TOKEN_SCOPE='read+upload'` 로 본다(F-66, 이행용 —
+     *      삭제 둘은 이미 개인 전용 창구라 공용 토큰으로는 애초에 열리지 않는다)
      *   ④ 둘 다 아님                      → 401 `bad_token`. **회수된 개인 토큰도 이 갈래다**
      *      (회수됐다는 사실을 요청자에게 알리지 않는다)
      *   ⑤ `$personalOnly` 인 창구를 공용 토큰으로 불렀으면 → 403 `shared_token_not_permitted`
@@ -572,11 +601,34 @@ final class Auth
         $row     = null;
         $kind    = '';
         $tokenId = null;
+        $scope   = '';
 
         // ② 개인 토큰 — 해시로만 찾는다 (F-59, ARCH 4.6)
         $found = $db->run(self::SQL_FIND_API_TOKEN, [':hash' => hash('sha256', $sent)])->fetch();
 
         if (is_array($found)) {
+            /* F-66 — **만료**는 계정보다 먼저 본다 (ARCH 4.7 판정 순서).
+             * 만료된 토큰으로는 계정을 읽지 않는다: 그 토큰은 이미 자격이 아니고,
+             * 「계정이 어떤 상태인가」는 요청자가 알 필요가 없다.
+             * 판정은 SQL 이 한 `is_expired` 를 그대로 쓴다 — PHP 시계를 섞지 않는다.
+             *
+             * 거부 행은 `denyApiToken` 과 **같은 target 모양**(라우트 패턴)에 detail 로
+             * 「어느 토큰이었나」를 더한다. 토큰 값·hint 는 넣지 않는다(PRD S-09-11). */
+            if ($found['is_expired'] === true) {
+                Audit::deny('auth.token', 'token_expired', [
+                    'target_type' => 'system',
+                    'target_name' => defined('TBOX_ROUTE')
+                        ? (string) constant('TBOX_ROUTE')
+                        : Http::method() . ' ' . Http::path(),
+                    'detail'      => [
+                        'token_id'    => (int) $found['id'],
+                        'token_scope' => (string) $found['scope'],
+                    ],
+                ]);
+                // 틀린 토큰의 401 과 **문구가 다르다** — 쥔 쪽이 우리 프로그램이라 이유를 준다.
+                Http::error(401, Http::MSG_TOKEN_EXPIRED);
+            }
+
             $row = $db->run(self::SQL_LOAD_USER_BY_ID, [':id' => (int) $found['user_id']])->fetch();
             if (!is_array($row)
                 || $row['is_active'] !== true
@@ -590,6 +642,8 @@ final class Auth
             }
             $kind    = 'personal';
             $tokenId = (int) $found['id'];
+            // F-66 — 이 토큰이 열 수 있는 창구의 넓이. 값은 DB 의 세 값 중 하나다(CHECK).
+            $scope   = (string) $found['scope'];
         } else {
             // ③ 공용 토큰 — 이행용 (F-49 ④ 그대로). 32자 미만이면 비교조차 하지 않는다.
             $configured = Env::getOrEmpty('API_TOKEN');
@@ -616,6 +670,9 @@ final class Auth
                 Http::error(503, 'API 토큰 귀속 계정이 올바르지 않습니다(서버 설정)');
             }
             $kind = 'shared';
+            // F-66 — 공용 토큰에는 범위 열이 없다. 이행용이므로 `read+upload` 로 본다
+            // (삭제 둘은 그보다 앞의 관문 ⑤ 가 이미 막는다 — ARCH 4.7).
+            $scope = 'read+upload';
         }
 
         // 인증 값은 들고 다니지 않는다 — 토큰 경로가 쓰는 것은 id·username·role·team_id 다.
@@ -632,6 +689,9 @@ final class Auth
         if ($tokenId !== null) {
             define('TBOX_API_TOKEN_ID', $tokenId);
         }
+        // F-66 — 라우터의 범위 관문([2-S])과 `Audit::autoDetail` 이 함께 읽는다.
+        // 여기 한 곳에서만 세운다 — 요청이 정하지 않고 핸들러가 고칠 수도 없다(상수).
+        define('TBOX_API_TOKEN_SCOPE', $scope);
 
         // ⑤ 개인 토큰 전용 창구(삭제 둘) — 공용 토큰은 여기서 끝난다.
         //    「누가 지웠나」 가 사람 단위로 남지 않는 자격으로는 지울 수 없게 한 것이다(F-59 ⑤).

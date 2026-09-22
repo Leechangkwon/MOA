@@ -121,14 +121,19 @@ const TBOX_ROUTES = [
     ['POST',   '/api/users/{num}/password/reset', 'users_password_reset.php', 'user.manage'],
     ['POST',   '/api/users/{num}/mfa/reset',      'users_mfa_reset.php',      'user.manage'],
 
-    // F-59 — 계정별 **개인 프로그램 토큰** (PRD F-59 ② · 8장 `/api/users/{uid}/api-tokens` 세 행,
-    //   ARCH 4.6, API.md 13장, SECURITY R-91). 정책은 계정 관리와 같은 `user.manage` 이고,
-    //   그래서 재인증 관문 [3-2] 를 자동으로 지난다 — 토큰 발급은 「자격을 만드는」 행동이다.
-    //   ★ 이 셋은 **세션 창구**다. `TBOX_API_TOKEN_ROUTES` 에 들어가지 않으므로 토큰으로는
-    //     부를 수 없다(토큰이 토큰을 발급하는 길을 만들지 않는다).
+    // F-59 → **F-66** — 계정별 개인 프로그램 토큰의 **관리자 창구** (PRD F-59 ② · F-66 ①,
+    //   8장 `/api/users/{uid}/api-tokens` 두 행, ARCH 4.6 · 4.7 「관리자 창구」, API.md 13장,
+    //   SECURITY R-91). 정책은 계정 관리와 같은 `user.manage` 이고, 그래서 재인증 관문 [3-2]
+    //   를 자동으로 지난다.
+    //   ★ 남은 것은 **목록과 회수**다. 발급 행(`POST`)은 F-66 으로 **지웠다**(2026-09-22) —
+    //     관리자가 남을 대신해 자격을 만드는 길이 사라지는 것이 R-91 의 핵심 완화다.
+    //     발급은 본인 창구 `POST /api/me/api-tokens` 하나뿐이다. 옛 주소로 POST 하면, 같은
+    //     경로의 목록(GET)이 남아 있어 라우터 [1] 의 「경로는 맞고 메서드만 다르다」 갈래가
+    //     먼저 잡아 **405** 다(인증·인가에는 닿지 않는다 — 실측 2026-09-22).
+    //   ★ 이 둘은 **세션 창구**다. `TBOX_API_TOKEN_ROUTES` 에 들어가지 않으므로 토큰으로는
+    //     부를 수 없다(토큰이 토큰을 낳지 않는다).
     //   `$params[0]` = 대상 계정 id · `$params[1]` = 토큰 id.
     ['GET',    '/api/users/{num}/api-tokens',         'api_tokens_list.php',   'user.manage'],
-    ['POST',   '/api/users/{num}/api-tokens',         'api_tokens_issue.php',  'user.manage'],
     ['DELETE', '/api/users/{num}/api-tokens/{num}',   'api_tokens_revoke.php', 'user.manage'],
 
     // 본인 계정 관리 — 로그인한 사람이면 누구나 자기 것만 (PRD 7.7 "비밀번호 변경", R-05).
@@ -137,6 +142,19 @@ const TBOX_ROUTES = [
     ['POST',   '/api/me/mfa/enroll',       'mfa_enroll.php',      Authz::POLICY_AUTHENTICATED],
     ['POST',   '/api/me/mfa/confirm',      'mfa_confirm.php',     Authz::POLICY_AUTHENTICATED],
     ['POST',   '/api/me/mfa/disable',      'mfa_disable.php',     Authz::POLICY_AUTHENTICATED],
+
+    // F-66 — 프로그램 토큰 **본인 창구 셋** (PRD F-66 ① · 8장 `/api/me/api-tokens` 세 행,
+    //   ARCH 4.7 「본인 창구 셋」, API.md 13장, SECURITY R-97). 정책은 위 넷과 같은
+    //   `authenticated` — 로그인한 사람이면 누구나, 대상은 언제나 **세션의 본인**이다.
+    //   발급(`POST`)만 요청마다 비밀번호 + 2단계 코드를 확인한다(핸들러 안에서, 세션에
+    //   「확인됨」을 남기지 않는다). 회수는 묻지 않는다 — 닫는 방향은 자격을 줄이는 일이다.
+    //   ★ **토큰 집합 밖**이다 — `TBOX_API_TOKEN_ROUTES` 에 넣지 않는다. 토큰이 토큰을
+    //     낳지 않는다(개인 토큰으로 이 창구를 부르면 401 「헤더가 없습니다」 가 아니라
+    //     세션이 없어 401 로그인 필요다 — 어느 쪽이든 발급되지 않는다).
+    //   `$params[0]` = 토큰 id (`{num}`).
+    ['GET',    '/api/me/api-tokens',         'me_tokens_list.php',   Authz::POLICY_AUTHENTICATED],
+    ['POST',   '/api/me/api-tokens',         'me_tokens_issue.php',  Authz::POLICY_AUTHENTICATED],
+    ['DELETE', '/api/me/api-tokens/{num}',   'me_tokens_revoke.php', Authz::POLICY_AUTHENTICATED],
 
     // 휴지통 — Admin 만 (PRD 5.4 "삭제된 파일 복구(30일 내)", F-11).
     // `/api/files/trash` 는 `{id}`(UUID 36자)와 형태가 달라 `/api/files/{id}` 계열과 충돌하지 않지만,
@@ -623,6 +641,33 @@ if ($policy !== Authz::POLICY_PUBLIC) {
         $viaApiToken = true;
         // 감사 로그가 모든 행에 자동으로 붙이는 분류어 (Audit::autoDetail, ARCH 4.2 「감사의 구분」).
         define('TBOX_AUTH_METHOD', 'api_token');
+
+        /* ─── [2-S] F-66 범위 관문 (PRD F-66 ③, ARCH 4.7 「창구 → 필요한 범위」 표) ───
+         *
+         * 자리가 여기인 이유: 범위는 「이 **토큰**이 무엇을 할 수 있나」이고, 바로 아래 [4]
+         * 의 정책 인가는 「이 **계정**이 무엇을 할 수 있나」다. 좁은 쪽을 먼저 본다 —
+         * 범위 밖이면 계정 권한을 볼 필요가 없고, 감사에도 「범위 때문에 막혔다」가 남는다.
+         *
+         * 판단은 `Authz::tokenScopeAllows` 한 곳이고 인자는 **범위와 라우트 정책** 둘뿐이다
+         * (요청 값도 역할 문자열도 보지 않는다). 창구 이름을 여기에 적지 않으므로 토큰
+         * 집합이 넓어져도 이 가지는 그대로다 — 모르는 정책은 닫힌 실패다.
+         *
+         * 범위는 창구를 좁힐 뿐이다: 통과해도 파일 한 건의 판정(decideRead·decideUploadAs·
+         * decideDelete…)은 핸들러가 요청마다 그대로 한다 — 토큰이 계정보다 커질 수 없다.
+         */
+        if (!Authz::tokenScopeAllows(TBOX_API_TOKEN_SCOPE, $policy)) {
+            Audit::deny('auth.token', 'scope_not_permitted', [
+                'target_type' => 'system',
+                // 실제 경로가 아니라 라우트 패턴이다 (ARCH 7.5 route, Auth::denyApiToken 과 같은 모양).
+                'target_name' => TBOX_ROUTE,
+                // 값은 코드가 정한 분류어와 행 번호뿐이다 — 토큰 원문은 어디에도 없다.
+                'detail'      => ['token_scope' => TBOX_API_TOKEN_SCOPE]
+                    + (defined('TBOX_API_TOKEN_ID') ? ['token_id' => constant('TBOX_API_TOKEN_ID')] : []),
+            ]);
+            // 권한이 모자란 것이 아니라 **범위**가 좁다 — 부르는 쪽(우리 프로그램)이
+            // 고칠 수 있는 말을 준다 (ARCH 4.2 「오류 문구 정책」).
+            Http::error(403, Http::MSG_TOKEN_SCOPE);
+        }
     } else {
     // 미로그인 처리 (ARCH 4.0): API 는 401 JSON + Audit::deny, 화면 경로는 302 /login.
     // 화면 경로에 감사 로그를 남기지 않는 이유 — 세션이 만료된 뒤의 첫 방문은 공격이 아니고,

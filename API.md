@@ -10,7 +10,8 @@ API 를 추가할 때마다 이 문서에 **이어서** 적는다(마지막 장�
 |---|---|
 | 기본 주소 | 공개: `https://changkwon.mso.so` · 서버 안 검토용: `http://127.0.0.1:8082` |
 | 형식 | 요청·응답은 JSON (`Content-Type: application/json; charset=utf-8`). 파일 업로드만 `multipart/form-data` |
-| 인증 | 기본은 **세션 쿠키**(아래 「세션」)다. 헤더 `X-API-Token` 이 통하는 창구는 **열**이다 — `POST /api/upload`(7장) · `GET /api/files`(8장) · `GET /api/files/{id}/download`(9장) · `GET /api/whoami`(10장) · `GET /api/folders`·`POST /api/folders`·`PATCH /api/folders/{num}`(11장) · `PATCH /api/files/{id}`(12장, 폴더 이동만) · `DELETE /api/files/{id}`·`DELETE /api/folders/{num}`(14장, **개인 토큰만**). 업로드와 whoami 둘은 토큰 전용이고(세션 쿠키로는 부를 수 없다 — 헤더가 없으면 401), 나머지 여덟은 화면도 쓰는 창구라 **헤더를 보내면 토큰으로, 안 보내면 세션으로** 판정한다. 그 헤더는 **그 밖의 창구에서는 무시된다**(등급 변경·휴지통 복원·계정·감사 등은 읽지도 않는다). **토큰은 두 종류**다(13장): 관리자가 계정마다 발급하는 **개인 토큰**(권장 — 누가 했는지 사람 단위로 남고 회수할 수 있다)과 서버 `.env` 의 **공용 토큰**(F-49, 이행용 — 삭제 창구는 쓸 수 없다) |
+| 인증 | 기본은 **세션 쿠키**(아래 「세션」)다. 헤더 `X-API-Token` 이 통하는 창구는 **열**이다 — `POST /api/upload`(7장) · `GET /api/files`(8장) · `GET /api/files/{id}/download`(9장) · `GET /api/whoami`(10장) · `GET /api/folders`·`POST /api/folders`·`PATCH /api/folders/{num}`(11장) · `PATCH /api/files/{id}`(12장, 폴더 이동만) · `DELETE /api/files/{id}`·`DELETE /api/folders/{num}`(14장, **개인 토큰만**). 업로드와 whoami 둘은 토큰 전용이고(세션 쿠키로는 부를 수 없다 — 헤더가 없으면 401), 나머지 여덟은 화면도 쓰는 창구라 **헤더를 보내면 토큰으로, 안 보내면 세션으로** 판정한다. 그 헤더는 **그 밖의 창구에서는 무시된다**(등급 변경·휴지통 복원·계정·감사 등은 읽지도 않는다). **토큰은 두 종류**다(13장): **본인이** 「내 계정」 화면에서 발급하는 **개인 토큰**(권장 — 누가 했는지 사람 단위로 남고 회수할 수 있다)과 서버 `.env` 의 **공용 토큰**(F-49, 이행용 — 삭제 창구는 쓸 수 없다) |
+| 범위·만료 (F-66) | 개인 토큰은 발급할 때 고른 **범위**(`read` · `read+upload` · `read+upload+delete`)만큼만 창구를 열고, 발급 시각 + **180일**에 만료된다. 범위 밖 창구 → `403 {"error":"이 토큰의 범위에 없는 창구입니다 — 범위가 더 넓은 토큰을 발급하세요"}` · 만료된 토큰 → `401 {"error":"만료된 API 토큰입니다 — 내 계정에서 새로 발급하세요"}`(틀린·회수된 토큰의 401 문구와 다르다). 범위는 창구를 좁힐 뿐이고 파일 한 건의 판정은 요청마다 그대로 한다 — 토큰이 계정보다 커질 수 없다. 공용 토큰은 범위·만료가 없고 `read+upload` 로 본다(이행용). 어느 장이 어느 범위인지는 각 장의 「범위(F-66)」 줄 |
 | 세션 | 로그인 성공 시 쿠키 `tbox_session` (HttpOnly·Secure·SameSite=Lax). 이후 요청에 그 쿠키를 함께 보낸다. 유휴 30분·최대 8시간 |
 | CSRF | 상태를 바꾸는 요청(POST·PATCH·DELETE)은 헤더 `X-CSRF-Token: <토큰>` 필수. 토큰은 `GET /api/me` 의 `csrf_token`. 없거나 틀리면 `403 {"error":"권한이 없습니다"}` |
 | 오류 응답 | 항상 `{"error":"<한국어 문구>"}`. 권한 없음은 언제나 403 + 같은 문구(대상 정보 없음). 서버 오류는 500 `{"error":"서버 오류"}` — 원인은 응답에 나오지 않는다 |
@@ -124,6 +125,8 @@ curl -s -b jar -H "X-CSRF-Token: $CSRF" -X POST https://changkwon.mso.so/api/log
 로컬 PC 의 **프로그램**이 사람의 로그인·2단계 인증 없이 파일을 올리는 창구다. 4장(`POST /api/files`)과
 **같은 검증·저장 코드**를 쓰고, 다른 것은 ① 인증 방법 ② 등급 필드 이름과 기본값 ③ 실패 문구 셋뿐이다.
 
+**범위(F-66)** — 이 창구는 `read+upload` 이상의 범위가 필요하다. `read` 토큰으로 부르면 `403 {"error":"이 토큰의 범위에 없는 창구입니다 — 범위가 더 넓은 토큰을 발급하세요"}` 다 (13장 · ARCHITECTURE 4.7).
+
 | 항목 | 내용 |
 |---|---|
 | 메서드·경로 | `POST /api/upload` |
@@ -196,6 +199,8 @@ curl -s -w '\n[%{http_code}]\n' -H "X-API-Token: $API_TOKEN" \
 프로그램이 **볼 수 있는 파일을 찾는** 창구다. 같은 주소를 화면(브라우저)도 쓰지만, `X-API-Token` 을
 보내면 응답이 **프로그램용 간결한 배열**로 온다. 세션 쿠키로 부르면 지금까지의 화면용 응답 그대로다.
 
+**범위(F-66)** — 이 창구는 `read` 이상, 곧 **모든 범위**가 쓸 수 있다. 범위 밖 403 은 나오지 않는다 (13장 · ARCHITECTURE 4.7).
+
 | 항목 | 내용 |
 |---|---|
 | 메서드·경로 | `GET /api/files?q=<검색어>&limit=<1~100>` |
@@ -253,6 +258,8 @@ curl -s -b jar 'http://127.0.0.1:8082/api/files?q=F50'
 
 8장이 돌려준 `id` 로 **파일 내용을 받는다**. 화면의 다운로드와 **같은 창구·같은 권한 판정**이고,
 다른 것은 인증 방법뿐이다. 서버는 보내기 전에 저장된 sha256 과 대조한다(다르면 500).
+
+**범위(F-66)** — 이 창구는 `read` 이상, 곧 **모든 범위**가 쓸 수 있다 — 「읽기만」 토큰도 받을 수 있는 파일은 내려받는다 (13장 · ARCHITECTURE 4.7, 남는 위험 R-97).
 
 | 항목 | 내용 |
 |---|---|
@@ -340,6 +347,8 @@ HTTP/1.1 200 OK
 **계정 권한**으로 정할 수 있게 하는 것이 목적이다. 3장(`GET /api/me`)과 **같은 함수**로 등급 목록을
 만들지만, 화면용 값(`csrf_token`·`can_*`·`next` …)은 하나도 오지 않는다.
 
+**범위(F-66)** — 이 창구는 `read` 이상, 곧 **모든 범위**가 쓸 수 있다 (13장 · ARCHITECTURE 4.7).
+
 | 항목 | 내용 |
 |---|---|
 | 메서드·경로 | `GET /api/whoami` |
@@ -390,6 +399,8 @@ curl -s -w ' [%{http_code}]\n' -b jar 'http://127.0.0.1:8082/api/whoami'
 폴더 **삭제**(`DELETE /api/folders/{num}`)와 **등급 변경**은 토큰으로 열려 있지 않다 — 헤더를 보내도 무시되어 401 「로그인이 필요합니다」다.
 
 ### 11-1. 목록(트리) — `GET /api/folders?parent=<id>`
+
+**범위(F-66)** — 목록(`GET`)은 `read` 이상, 만들기·이름 변경·이동(`POST`·`PATCH`)은 `read+upload` 이상이다. 범위 밖이면 `403 {"error":"이 토큰의 범위에 없는 창구입니다 — 범위가 더 넓은 토큰을 발급하세요"}` (13장 · ARCHITECTURE 4.7).
 
 | 항목 | 내용 |
 |---|---|
@@ -486,6 +497,8 @@ curl -s -w '\n[%{http_code}]\n' -X PATCH -H "X-API-Token: $API_TOKEN" -H 'Conten
 8장이 돌려준 파일 `id` 를 **다른 폴더로 옮기는** 창구다 (PRD F-58, ARCHITECTURE 4.5). 화면의 「이동」과 같은 창구·같은 판정이다.
 같은 경로가 화면에서는 설명·등급 변경도 하지만, **토큰 요청은 `folder_id` 하나만** 받는다.
 
+**범위(F-66)** — 이 창구는 `read+upload` 이상의 범위가 필요하다. `read` 토큰으로 부르면 `403 {"error":"이 토큰의 범위에 없는 창구입니다 — 범위가 더 넓은 토큰을 발급하세요"}` 다 (13장 · ARCHITECTURE 4.7).
+
 | 항목 | 내용 |
 |---|---|
 | 인증 | 헤더 **`X-API-Token`**. `X-CSRF-Token` 은 필요 없다 |
@@ -512,53 +525,71 @@ curl -s -w '\n[%{http_code}]\n' -X PATCH -H "X-API-Token: $API_TOKEN" -H 'Conten
 {"error":"folder_id 가 없거나 접근할 수 없는 폴더입니다"} [400]
 ```
 
-## 13. 개인 프로그램 토큰 — 발급·목록·회수 (관리자 화면·세션)
+## 13. 개인 프로그램 토큰 — 본인 발급·목록·회수 (내 계정 화면·세션)
 
-프로그램이 부르는 창구가 아니라 **관리자가 토큰을 만드는** 창구다 (PRD F-59, ARCHITECTURE 4.6). 계정 관리(관리 → 계정, `/users`) 각 행의 「프로그램 토큰」 버튼이 여는 창이 이 셋을 부른다(자기 자신 행에도 있다).
-개인 토큰은 발급받은 **그 계정의 권한**으로 동작하고, 감사 로그에 계정과 토큰 번호가 남으며, 회수하면 즉시 401 이다. 공용 토큰(7장, `.env`)은 이행용으로만 남는다 — 개인 토큰을 프로그램에 심었으면 서버 `.env` 의 `API_TOKEN`·`API_TOKEN_USER` 두 줄을 지운다.
+프로그램이 부르는 창구가 아니라 **내가 내 토큰을 만드는** 창구다 (PRD F-66, ARCHITECTURE 4.7).
+「내 계정」(`/settings`)의 **「프로그램 토큰」** 절이 이 셋을 부른다.
+
+F-66(2026-09-22)에서 세 가지가 바뀌었다.
+1. **발급은 본인만** 한다. 관리자가 남의 토큰을 만드는 창구(`POST /api/users/{uid}/api-tokens`)는 **라우터에서 지웠다** — 지금 부르면 `405 {"error":"허용되지 않는 메서드입니다"}` 다(같은 경로의 목록 `GET` 은 남아 있어 라우터가 「메서드만 다르다」로 먼저 끝낸다. 인증·인가에는 닿지 않는다). 관리자는 남의 토큰을 **보고 회수**할 수만 있다(아래 「관리자 창구」).
+2. 발급 요청마다 **현재 비밀번호 + 2단계 인증 코드**를 함께 보낸다. 세션에 「확인됨」이 남지 않으므로 15분 창 같은 것이 없고, **2단계 인증이 꺼진 계정은 발급할 수 없다**.
+3. 토큰마다 **범위**와 **만료 180일**이 있다(0장 「범위·만료」).
+
+개인 토큰은 발급받은 **그 계정의 권한** 안에서, **고른 범위**만큼 동작한다. 감사 로그에 계정·토큰 번호·범위가 남고, 회수하면 즉시 401 이다. 공용 토큰(7장, `.env`)은 이행용으로만 남는다 — 개인 토큰을 프로그램에 심었으면 서버 `.env` 의 `API_TOKEN`·`API_TOKEN_USER` 두 줄을 지운다.
 
 | 항목 | 내용 |
 |---|---|
-| 인증 | 세션 쿠키 + `X-CSRF-Token`(POST·DELETE). **Admin** + 최근 15분 안 재인증(`POST /api/me/reauth`) — 없으면 403 `{"error":"…","next":"reauth"}` |
-| 목록 | `GET /api/users/{uid}/api-tokens` → `200 {"tokens":[{"id":<정수>,"name":"…","hint":"<앞 6자>","created_at":"…","last_used_at":"…|null","revoked_at":"…|null"}]}` — 토큰 값은 없다 |
-| 발급 | `POST /api/users/{uid}/api-tokens` JSON `{"name":"<1~50자>","reason_text":"<필수, 500자>"}` → `201 {"id":<정수>,"name":"…","hint":"…","token":"<48자>"}`. **`token` 은 이 응답에만 나온다** — 서버는 sha256 만 저장하므로 다시 보여 줄 수 없다. 잃으면 회수하고 새로 발급한다 |
-| 회수 | `DELETE /api/users/{uid}/api-tokens/{tid}` → `200 {"ok":true}`. 그 순간부터 그 토큰은 401 |
-| 실패 | `400` — 살아 있는 토큰 5개 초과 `{"error":"살아 있는 토큰이 상한에 이르렀습니다 — 먼저 하나를 회수하세요"}` · 대상 계정 비활성·만료 `{"error":"비활성이거나 만료된 계정에는 토큰을 만들 수 없습니다"}` (F-68, ARCHITECTURE 5.30) · 허용 외 키·이름 규칙·사유 없음·이미 회수됨은 `{"error":"잘못된 요청입니다"}` · `403`(Admin 아님 · 재인증 없음 · CSRF 없음) · `404`(없는 계정 · 그 계정의 토큰이 아님) |
-| 넣지 않는 것 | 토큰 원문(발급 응답 한 번 밖에는 어디에도 — 목록·감사·로그) · 해시 |
-| 감사 | `api_token.issue allow`(detail `token_id`·`token_name`·`reason_text`) · `api_token.revoke allow` · 경보 **AL-20**(발급 1건 즉시) |
+| 인증 | 세션 쿠키 + `X-CSRF-Token`(POST·DELETE). **로그인한 본인**이면 누구나(정책 `authenticated`) — 재인증 관문은 없다. 대상은 언제나 세션의 본인이고 요청에 계정을 받지 않는다 |
+| 목록 | `GET /api/me/api-tokens` → `200 {"tokens":[{"id":<정수>,"name":"…","hint":"<앞 6자>","purpose":"…|null","scope":"read|read+upload|read+upload+delete","created_at":"…","expires_at":"…","expires_soon":<true/false>,"last_used_at":"…|null","revoked_at":"…|null"}]}` — **토큰 값은 없다**. `expires_soon` 은 만료가 14일 안인가(화면이 안내 줄을 켜는 값) |
+| 발급 | `POST /api/me/api-tokens` JSON **허용 키 다섯** `{"name":"<1~50자>","purpose":"<필수, 500자>","scope":"<아래 셋 중 하나>","password":"<현재 비밀번호>","otp":"<6자리>"}` → `201 {"id":<정수>,"name":"…","hint":"…","scope":"…","expires_at":"…","token":"<48자>"}`. **`token` 은 이 응답에만 나온다** — 서버는 sha256 만 저장하므로 다시 보여 줄 수 없다. 잃으면 회수하고 새로 발급한다 |
+| 고를 수 있는 범위 | `read`(읽기만) · `read+upload`(읽기 + 올리기) · `read+upload+delete`(읽기 + 올리기 + 지우기). **역할이 허용하는 것만** 고를 수 있다 — 올릴 수 없는 역할(Guest)은 `read` 하나뿐이다. 그 목록은 `GET /api/me` 의 `token_scopes` 이고, 발급 폼을 보일지는 `can_issue_tokens`(= 2단계 인증이 켜졌나)가 정한다 |
+| 회수 | `DELETE /api/me/api-tokens/{tid}` → `200 {"ok":true}`. 그 순간부터 그 토큰은 401 「API 토큰이 올바르지 않습니다」. **비밀번호·코드를 묻지 않는다** — 닫는 방향은 자격을 줄이는 일이다 |
+| 실패 | `400 {"error":"살아 있는 토큰이 상한에 이르렀습니다 — 먼저 하나를 회수하세요"}` — 살아 있는 토큰이 이미 5개(F-68, ARCHITECTURE 5.30) · `400 {"error":"잘못된 요청입니다"}` — 허용 외 키·이름 규칙·용도 없음·**역할 밖 범위나 모르는 범위**(역할 힌트를 주지 않는다), 그리고 **인증 실패 전부**(틀린 비밀번호·틀린 코드·이미 쓴 코드 — 세 사유가 한 문구다, ARCHITECTURE 5.30 예외 목록·R-48) · `403 {"error":"권한이 없습니다"}` — **2단계 인증이 꺼진 계정**(`mfa_not_enabled`, 실패로 세지 않는다) · CSRF 없음 · `404 {"error":"찾을 수 없습니다"}` — 내 토큰이 아닌 tid(그 번호가 있는지도 새지 않는다) · 이미 회수된 토큰은 `400 {"error":"잘못된 요청입니다"}` |
+| 넣지 않는 것 | 토큰 원문(발급 응답 한 번 밖에는 어디에도 — 목록·감사·로그) · 해시 · **비밀번호·2단계 코드**(응답·감사·로그 0) |
+| 감사 | `api_token.issue allow`(detail `token_id`·`token_name`·**`token_scope`**·`reason_text`·`otp_verified:true`) · 거부 `mfa_not_enabled`·`bad_credentials`·`bad_code`·`code_reused`·`bad_request`·`limit_exceeded` · `api_token.revoke allow` · 경보 **AL-20**(발급 1건 즉시, 근거에 범위) |
+| 관리자 창구 | 목록 `GET /api/users/{uid}/api-tokens`(행에 `scope`·`expires_at` 추가) · 회수 `DELETE /api/users/{uid}/api-tokens/{tid}` — 정책 `user.manage`(Admin + 재인증 15분 창). **발급은 없다**(`POST` → 405) |
+| 토큰으로는 부를 수 없다 | 이 셋은 **토큰 집합 밖**이다 — `X-API-Token` 으로 부르면 세션이 없어 `401 {"error":"로그인이 필요합니다"}` 다. 토큰이 토큰을 낳지 않는다 |
 
 ```bash
-# 관리자 세션(jar)으로 — CSRF 는 3장, 재인증은 POST /api/me/reauth {"password"} 먼저
+# 본인 세션(jar)으로 — CSRF 는 3장. 비밀번호와 지금의 2단계 코드를 **요청마다** 함께 보낸다.
 curl -s -b jar -H "X-CSRF-Token: $CSRF" -H 'Content-Type: application/json' \
-  -d '{"name":"사무실 PC","reason_text":"트레이 프로그램용"}' https://changkwon.mso.so/api/users/<uid>/api-tokens
+  -d '{"name":"사무실 PC","purpose":"트레이 프로그램용","scope":"read+upload","password":"<현재 비밀번호>","otp":"123456"}' \
+  https://changkwon.mso.so/api/me/api-tokens
+
+# 목록 · 회수
+curl -s -b jar https://changkwon.mso.so/api/me/api-tokens
+curl -s -b jar -X DELETE -H "X-CSRF-Token: $CSRF" https://changkwon.mso.so/api/me/api-tokens/<tid>
 ```
 
-실측 2026-09-16 (검토 포트 8082, 검토 계정 `qa_admin01`(발급자·재인증)·`qa_employee01`(대상), `-A "tbox-review/2026-09-16"`, `tests/api_tokens.sh`). 발급받은 토큰은 규칙(S-09-11)대로 어디에도 기록하지 않았다 — 아래 `token` 자리는 모양만이다. 시험이 발급한 토큰은 전부 회수했고 파일은 휴지통, 폴더는 삭제했다.
+실측은 `tests/f66.sh`(T-78)가 남긴다 — 검토 계정 `qa_employee01`(본인 발급)·`qa_admin01`(관리자 목록·회수), `-A "tbox-review/<날짜>"`. 발급받은 토큰·비밀번호·코드는 규칙(S-09-11 · 7.7)대로 어디에도 기록하지 않는다 — 아래 `token` 자리는 모양만이다. 시험이 발급한 토큰은 전부 회수하고 파일은 휴지통, 폴더는 삭제한다.
 
 ```bash
-# 재인증 없는 Admin → 403 + next:reauth  (관리 기능 재인증 관문 — F-23)
-{"error":"관리 기능을 쓰려면 비밀번호를 다시 확인해야 합니다","next":"reauth"} [403]
-# 재인증 뒤 발급 → 201. token 은 48자 [A-Za-z0-9], hint 는 그 앞 6자 (실측 일치)
-{"id":6,"name":"F59-pc-0916-1467462","hint":"<앞 6자>","token":"<48자 — 이 응답에만>"} [201]
-# 목록 → 200. 행의 키는 정확히 여섯(created_at·hint·id·last_used_at·name·revoked_at), token 키 없음 (실측)
-{"tokens":[{"id":6,"name":"F59-pc-0916-1467462","hint":"<앞 6자>","created_at":"2026-09-16 18:17:08+09","last_used_at":null,"revoked_at":null}]} [200]
-# 사유 없음 → 400 · 이름 51자 → 400 · 모르는 키 → 400 (R-07)
+# 본인 발급 → 201. token 은 48자 [A-Za-z0-9], hint 는 그 앞 6자, expires_at 은 발급 + 180일
+{"id":12,"name":"F66-a-…","hint":"<앞 6자>","scope":"read+upload","expires_at":"2027-03-21 12:00:00+09","token":"<48자 — 이 응답에만>"} [201]
+# 내 목록 → 200. 행의 키는 열(created_at·expires_at·expires_soon·hint·id·last_used_at·name·purpose·revoked_at·scope), token 키 없음
+{"tokens":[{"id":12,"name":"F66-a-…","hint":"<앞 6자>","purpose":"…","scope":"read+upload","created_at":"…","expires_at":"…","expires_soon":false,"last_used_at":null,"revoked_at":null}]} [200]
+# 틀린 비밀번호 · 틀린 코드 · 이미 쓴 코드 · 역할 밖 범위 · 모르는 키 → 전부 같은 400 문구
 {"error":"잘못된 요청입니다"} [400]
-# Manager 세션 → 403 (발급·목록 둘 다)
+# 2단계 인증이 꺼진 계정 → 403 (실패로 세지 않는다)
 {"error":"권한이 없습니다"} [403]
-# 살아 있는 토큰 5개 뒤 6번째 → 400 (limit_exceeded) — F-68 부터 사유 문장이다
+# 살아 있는 토큰 5개 뒤 6번째 → 400 (limit_exceeded — F-68 부터 사유 문장이다)
 {"error":"살아 있는 토큰이 상한에 이르렀습니다 — 먼저 하나를 회수하세요"} [400]
-# 회수 → 200 · 다시 회수 → 400 · 다른 계정의 tid → 404
+# 회수 → 200 · 다시 회수 → 400 · 내 것이 아닌 tid → 404
 {"ok":true} [200]
 {"error":"잘못된 요청입니다"} [400]
 {"error":"찾을 수 없습니다"} [404]
 # 회수된 토큰으로 GET /api/whoami → 401 (회수 사실을 알리지 않는다 — 틀린 토큰과 같은 답)
 {"error":"API 토큰이 올바르지 않습니다"} [401]
-# 개인 토큰으로 발급 창구를 부르면 → 401 (토큰 라우트 집합 밖 — 토큰이 토큰을 낳지 못한다)
+# **만료된** 토큰은 문구가 다르다 (시간의 결과라 숨길 이유가 없다 — ARCHITECTURE 4.7)
+{"error":"만료된 API 토큰입니다 — 내 계정에서 새로 발급하세요"} [401]
+# 범위 밖 창구 (read 토큰으로 POST /api/upload)
+{"error":"이 토큰의 범위에 없는 창구입니다 — 범위가 더 넓은 토큰을 발급하세요"} [403]
+# 옛 관리자 발급 창구 → 405 (POST 라우트만 제거 · GET 은 남음) · 개인 토큰으로 본인 발급 창구 → 401 (토큰 집합 밖)
+{"error":"허용되지 않는 메서드입니다"} [405]
 {"error":"로그인이 필요합니다"} [401]
 ```
 
-감사 로그(실측): `api_token.issue allow` 의 detail 은 `token_id`·`token_name`·`reason_text`(+`route`·`login_ref`·`actor_team`)이고, `audit_logs`·`api_tokens` 어디에도 토큰 원문이 없었다(문자열 grep 0건, `token_hash` == sha256). `scripts/alerts.php --rule AL-20 --dry-run` 이 발급자 1명을 잡았다.
+감사 로그: `api_token.issue allow` 의 actor 와 target 이 **같은 본인**이고 detail 은 `token_id`·`token_name`·`token_scope`·`reason_text`·`otp_verified`(+`route`·`login_ref`·`actor_team`)다. 범위 거부는 `auth.token deny scope_not_permitted`(detail `token_id`·`token_scope`), 만료는 `auth.token deny token_expired`. `audit_logs`·`api_tokens` 어디에도 토큰 원문·비밀번호·코드가 없다. `scripts/alerts.php --rule AL-20 --dry-run` 이 발급자(=본인) 1명을 잡고 근거에 범위가 담긴다.
 
 ---
 
@@ -566,6 +597,8 @@ curl -s -b jar -H "X-CSRF-Token: $CSRF" -H 'Content-Type: application/json' \
 
 8장·11장이 돌려준 `id`·번호로 **파일을 휴지통에 보내고 빈 폴더를 지우는** 창구다 (PRD F-59, ARCHITECTURE 4.6). 화면의 삭제와 같은 창구·같은 판정이다.
 **개인 토큰(13장)만 통한다.** 공용 토큰(`.env`)으로 부르면 403 이다 — 누가 지웠는지 사람 단위로 남지 않는 자격으로는 지울 수 없게 했다.
+
+**범위(F-66)** — 이 창구는 **`read+upload+delete`** 범위만 쓸 수 있다. 좁은 범위의 토큰으로 부르면 `403 {"error":"이 토큰의 범위에 없는 창구입니다 — 범위가 더 넓은 토큰을 발급하세요"}` 이고, 개인 전용 창구 관문(공용 토큰 403)이 그보다 **앞**이다 (13장 · ARCHITECTURE 4.7).
 
 | 항목 | 내용 |
 |---|---|

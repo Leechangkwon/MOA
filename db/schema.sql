@@ -279,7 +279,15 @@ CREATE TABLE api_tokens (
     last_used_at TIMESTAMPTZ,
     revoked_at   TIMESTAMPTZ,
     revoked_by   BIGINT      REFERENCES users(id),
-    reason_text  TEXT        CHECK (reason_text IS NULL OR length(reason_text) <= 500)
+    reason_text  TEXT        CHECK (reason_text IS NULL OR length(reason_text) <= 500),
+    -- F-66 (2026-09-22, ARCH 4.7 · 6.2-5): 범위·만료.
+    --   scope      창구를 좁힐 뿐이고 파일별 판정(decideRead·decideUploadAs·decideDelete)은
+    --              요청마다 그대로 한다 — 토큰이 계정보다 커질 수 없다.
+    --   expires_at 발급 + 180일 고정. 지난 토큰은 401 `token_expired`.
+    -- (기존 DB 는 db/migrations/2026-09-22_api_tokens_scope_expiry.sql 로 같은 모양이 된다 —
+    --  기존 행은 `read+upload+delete` · `created_at + 180일` 로 채운다.)
+    scope        TEXT        NOT NULL CHECK (scope IN ('read','read+upload','read+upload+delete')),
+    expires_at   TIMESTAMPTZ NOT NULL
 );
 -- token_hash 의 UNIQUE 가 조회 인덱스를 겸한다
 -- (`WHERE token_hash = … AND revoked_at IS NULL` 이 유일한 조회 경로 — ARCH 6.2-5)

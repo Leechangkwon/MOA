@@ -674,7 +674,8 @@ if ($want('AL-19')) {
 //   건수 임계값이 없는 이유: 개인 토큰은 2단계 인증 없이 그 계정 권한으로 파일을 올리고
 //   **지우는** 자격 증명이다. 관리자 세션을 훔친 사람이 토큰을 발급해 두면 세션이 끊긴
 //   뒤에도 자격이 남는다 — 발급은 드문 일이라 한 건도 알린다.
-//   근거에 담는 것: 발급한 사람(묶는 단위)·대상 계정 목록·토큰 **이름**·사유.
+//   근거에 담는 것: 발급한 사람(묶는 단위)·대상 계정 목록·토큰 **이름**·**범위**·사유.
+//   F-66(2026-09-22)부터 발급자 = 대상 = 본인이고 범위(token_scope)가 근거에 함께 들어간다.
 //   ★ 토큰 값도 hint 도 해시도 담지 않는다 — 감사 로그에 애초에 없다(ARCH 4.6, PRD S-09-11).
 //   창은 다른 audit_logs 규칙과 맞춰 5분(배치 주기)이고, 중복 억제는 $raise 가 한다.
 // ─────────────────────────────────────────────────────────────
@@ -683,6 +684,7 @@ if ($want('AL-20')) {
         "SELECT actor_name, count(*) AS n,
                 array_to_string(array_agg(target_name ORDER BY id), ',') AS targets,
                 max(detail->>'token_name')  AS token_name,
+                max(detail->>'token_scope') AS token_scope,
                 max(detail->>'reason_text') AS reason_text,
                 max(happened_at) AS last_at
            FROM audit_logs
@@ -697,6 +699,9 @@ if ($want('AL-20')) {
             // 토큰을 받은 계정 목록. 어느 토큰인지는 감사 로그 detail.token_id 에 있다.
             'targets'     => (string) $r['targets'],
             'token_name'  => $r['token_name']  === null ? '' : (string) $r['token_name'],
+            // F-66 (PRD 7.11 AL-20 evidence 칸, ARCH 4.7) — 그 토큰이 무엇을 할 수 있나.
+            // 발급자 = 대상 = 본인이 된 뒤에도 규칙은 같다(한 건이라도 즉시).
+            'token_scope' => $r['token_scope'] === null ? '' : (string) $r['token_scope'],
             'reason_text' => $r['reason_text'] === null ? '' : (string) $r['reason_text'],
             'window'      => '5 minutes',
             'last_at'     => (string) $r['last_at'],

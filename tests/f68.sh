@@ -540,46 +540,11 @@ fi
 
 # ── 13. limit_exceeded ──────────────────────────────────────────
 sub "13. limit_exceeded — 살아 있는 개인 토큰 5개 뒤 6번째 발급"
-if [ -z "$ADM_CSRF" ] || [ -z "${EMP_UID:-}" ]; then
-  skip "(a)13 limit_exceeded" "qa_admin01 세션 또는 qa_employee01 계정 번호 없음"
-else
-  reauth qa_admin01 "$ADM_CSRF" >/dev/null
-  curl -s -b "$ADM_JAR" -A "$UA" "$BASE/api/users/$EMP_UID/api-tokens" > "$WORK/tok.json"
-  LIVE=$(jget "str(len([t for t in d['tokens'] if t['revoked_at'] is None]))" < "$WORK/tok.json")
-  note "qa_employee01 의 살아 있는 토큰: ${LIVE:-?}개 (상한 5)"
-  TOK_OK=1
-  if [ "${LIVE:-0}" -gt 5 ] 2>/dev/null; then
-    skip "(a)13 limit_exceeded" "살아 있는 토큰이 이미 5개를 넘는다 (${LIVE}) — 운영 데이터 이상, 손대지 않는다"
-    TOK_OK=0
-  fi
-  if [ "$TOK_OK" -eq 1 ]; then
-    i=${LIVE:-0}
-    while [ "$i" -lt 5 ]; do
-      i=$((i+1))
-      RC=$(curl -s -o "$WORK/issue.json" -w '%{http_code}' -X POST -b "$ADM_JAR" -A "$UA" \
-           -H 'Content-Type: application/json' -H "X-CSRF-Token: $ADM_CSRF" \
-           -d "{\"name\":\"F68-tok$i-$TAG\",\"reason_text\":\"T-81 (a)13 시험 — 상한까지 채운 뒤 6번째가 거부되는지\"}" \
-           "$BASE/api/users/$EMP_UID/api-tokens")
-      TID=$(jget "str(d.get('id',''))" < "$WORK/issue.json")
-      : > "$WORK/issue.json"
-      if [ "$RC" != "201" ] || [ -z "$TID" ]; then
-        note "부족분 발급 실패 [$RC] — 이 항목은 SKIP 한다"; TOK_OK=0; break
-      fi
-      MADE_TOKENS="$MADE_TOKENS $EMP_UID:$TID"
-      note "F68-tok$i 발급 (#$TID)"
-    done
-  fi
-  if [ "$TOK_OK" -eq 1 ]; then
-    M=$(mark)
-    OUT=$(curl -s -w '\n%{http_code}' -X POST -b "$ADM_JAR" -A "$UA" \
-          -H 'Content-Type: application/json' -H "X-CSRF-Token: $ADM_CSRF" \
-          -d "{\"name\":\"F68-tok6-$TAG\",\"reason_text\":\"T-81 (a)13 시험 — 6번째는 거부되어야 한다\"}" \
-          "$BASE/api/users/$EMP_UID/api-tokens")
-    reason_case "(a)13 limit_exceeded" "limit_exceeded" "$(code_of "$OUT")" "$(body_of "$OUT")" "api_token.issue" "$M"
-  else
-    skip "(a)13 limit_exceeded" "토큰을 상한까지 채우지 못했다"
-  fi
-fi
+# F-66 (2026-09-22) — 발급 창구가 **본인 창구**로 옮겨졌다(`POST /api/me/api-tokens`,
+# 요청마다 비밀번호 + 2단계 코드). 코드는 1회성(R-45)이라 상한까지 채우려면 30초 창을
+# 다섯 번 기다려야 하고, 그 몫은 `tests/f66.sh` (b) 가 맡는다(T-78 (b)).
+# 문장 대조(`Http::reasonMessage('limit_exceeded')` ↔ 응답 `error`)도 거기서 한다.
+skip "(a)13 limit_exceeded" "F-66 으로 발급이 본인 창구가 되어 tests/f66.sh (b) 로 옮겼다 — 2단계 코드 1회성 때문에 30초 창 다섯 번이 필요하다"
 
 # ── 14. already_enabled ─────────────────────────────────────────
 sub "14. already_enabled — 2단계가 켜진 qa_admin01 의 enroll (mfa_secret 불변)"
@@ -785,7 +750,8 @@ for f in "$ROOT/src/Http.php" \
          "$ROOT/src/handlers/folders_update.php"  "$ROOT/src/handlers/files_update.php" \
          "$ROOT/src/handlers/users_update.php"    "$ROOT/src/handlers/users_create.php" \
          "$ROOT/src/handlers/users_mfa_reset.php" "$ROOT/src/handlers/users_password_reset.php" \
-         "$ROOT/src/handlers/api_tokens_issue.php" "$ROOT/src/handlers/admin_permissions_update.php" \
+         "$ROOT/src/handlers/me_tokens_list.php"  "$ROOT/src/handlers/me_tokens_issue.php" \
+         "$ROOT/src/handlers/me_tokens_revoke.php" "$ROOT/src/handlers/admin_permissions_update.php" \
          "$ROOT/src/handlers/fetch_hosts_update.php" "$ROOT/src/handlers/mfa_enroll.php" \
          "$ROOT/src/handlers/share_create.php"    "$ROOT/src/handlers/files_upload.php" \
          "$ROOT/src/handlers/api_upload.php"; do

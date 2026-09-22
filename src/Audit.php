@@ -186,6 +186,14 @@ final class Audit
          * ★ 토큰 원문·hint·해시는 어떤 키로도 남지 않는다 (PRD S-09-11, SECURITY R-91).
          */
         'token_kind', 'token_id', 'token_name',
+        /*
+         * F-66 범위 (PRD F-66 ③, ARCH 4.7 · 7.5 등록부).
+         *   token_scope — 토큰의 **범위** 분류어(`read`·`read+upload`·`read+upload+delete`).
+         *                 코드가 정한 세 값 중 하나이고 요청이 정하지 않는다.
+         *                 autoDetail() 이 토큰 경로의 모든 행에, 발급·범위 거부 행에는
+         *                 핸들러·Auth 가 붙인다. 위 세 키와 같은 **정확 일치 예외**다.
+         */
+        'token_scope',
     ];
 
     private const RESULT_ALLOW = 'allow';
@@ -242,6 +250,19 @@ final class Audit
         'api_token.revoke|allow'                  => '{actor} 이(가) 계정 「{target}」 의 프로그램 토큰을 회수했습니다 (이후 그 토큰은 쓸 수 없습니다)',
         'api_token.revoke|deny|not_found'         => '{actor} 이(가) 계정 「{target}」 에 없는 프로그램 토큰을 회수하려 해서 거부했습니다',
         'api_token.revoke|deny|bad_request'       => '{actor} 이(가) 이미 회수된 프로그램 토큰을 다시 회수하려 해서 거부했습니다',
+
+        /*
+         * F-66 본인 발급의 인증 실패와 토큰의 만료·범위 (PRD F-66 ① ② ③ ④, ARCH 4.7 · 7.4).
+         * 앞 넷은 {target} 이 **본인의 아이디**다(발급자 = 대상 = 본인). 뒤 둘은 {target} 이
+         * **라우트 패턴**이다 — 계정 이름도 토큰 값도 어느 문장에도 들어가지 않는다.
+         * 비밀번호·코드는 사유 코드로만 남는다 (PRD 7.7, S-09-11).
+         */
+        'api_token.issue|deny|mfa_not_enabled'    => '{actor} 이(가) 2단계 인증이 꺼진 채 프로그램 토큰을 발급하려 해서 거부했습니다 (먼저 2단계 인증을 켜야 합니다)',
+        'api_token.issue|deny|bad_credentials'    => '{actor} 이(가) 프로그램 토큰을 발급하려 했지만 비밀번호가 틀려서 거부했습니다',
+        'api_token.issue|deny|bad_code'           => '{actor} 이(가) 프로그램 토큰을 발급하려 했지만 2단계 인증 코드가 틀려서 거부했습니다',
+        'api_token.issue|deny|code_reused'        => '{actor} 이(가) 프로그램 토큰을 발급하려 했지만 이미 쓴 2단계 인증 코드여서 거부했습니다',
+        'auth.token|deny|token_expired'           => '만료된 개인 토큰으로 {target} 을(를) 부르려 해서 막았습니다 (내 계정에서 새로 발급해야 합니다)',
+        'auth.token|deny|scope_not_permitted'     => '개인 토큰의 범위에 없는 창구 {target} 을(를) 부르려 해서 막았습니다',
 
         // ── 공통 관문 (Http::requireCsrf, index.php 라우트 정책) ──
         'csrf|deny|token_mismatch'                => '{actor} 이(가) {target} 요청을 보냈지만 CSRF 토큰이 없거나 달라서 막았습니다 (다른 사이트에서 몰래 보낸 요청일 수 있음)',
@@ -803,6 +824,10 @@ final class Audit
         }
         if (defined('TBOX_API_TOKEN_ID')) {
             $out['token_id'] = (int) constant('TBOX_API_TOKEN_ID');
+        }
+        // F-66 (ARCH 4.7 「감사」) — 범위도 같은 자리에서. 공용 토큰은 `read+upload` 다.
+        if (defined('TBOX_API_TOKEN_SCOPE')) {
+            $out['token_scope'] = (string) constant('TBOX_API_TOKEN_SCOPE');
         }
 
         // 미로그인 행(auth.login·auth.required)에는 누가에 해당하는 값이 없다 → 키를 넣지 않는다.

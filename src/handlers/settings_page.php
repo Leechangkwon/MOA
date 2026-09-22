@@ -40,7 +40,7 @@ require __DIR__ . '/../views/shell_top.php';
     <header class="page-head">
       <div class="page-head__text">
         <h1 class="page-head__title">내 계정</h1>
-        <p class="page-head__sub">비밀번호와 2단계 인증을 관리합니다.</p>
+        <p class="page-head__sub">비밀번호 · 2단계 인증 · 프로그램 토큰을 관리합니다.</p>
       </div>
       <div class="page-head__actions">
         <button type="button" class="btn btn--quiet" data-help-open>
@@ -121,6 +121,84 @@ require __DIR__ . '/../views/shell_top.php';
           </table>
         </div>
         <p id="shares-empty" class="muted" hidden>만든 공유 링크가 없습니다.</p>
+      </section>
+
+      <!-- 프로그램 토큰 (F-66 — PRD F-66 · 10장 「설정 — 내 계정」, ARCH 4.7 「화면」,
+           DESIGN 2.3 패널 · 2.4 표 · 2.5 폼 · 2.6 알림).
+           목록은 /api/me/api-tokens 가 내려 주고 **내 것만** 나온다(서버가 세션으로 고정).
+           토큰 값도 그 해시도 응답에 없다 — 발급 직후 한 번 보여 준 값을 여기서 다시 볼 수 없다.
+           발급 폼을 보일지(②③)와 범위 선택지는 /api/me 의 can_issue_tokens·token_scopes 로만
+           고른다 — 이 파일에도 app.js 에도 역할 비교가 없다 (DESIGN 0장 1, PRD S-01).
+           모든 값은 app.js 가 textContent 로 넣는다 (PRD S-03). 인라인 style·script 0. -->
+      <section class="panel span-all">
+        <div class="panel__head">
+          <h2 class="panel__title">프로그램 토큰</h2>
+          <p class="panel__sub">
+            이 계정의 권한 안에서 프로그램이 쓰는 토큰입니다. 값은 발급할 때 한 번만 보이고, 180일 뒤 만료됩니다.
+          </p>
+        </div>
+
+        <!-- ① 만료가 가까운 토큰(14일 안)이 있으면 app.js 가 hidden 을 내린다 -->
+        <p id="tokens-expiring" class="notice notice--recommend" hidden>
+          만료가 가까운 토큰이 있습니다 — 새로 발급하고 프로그램에 바꿔 심으세요
+        </p>
+
+        <!-- ② 내 토큰 표 -->
+        <div class="table-wrap">
+          <table class="files">
+            <thead>
+              <tr>
+                <th scope="col">이름</th>
+                <th scope="col">용도</th>
+                <th scope="col">앞 6자</th>
+                <th scope="col">범위</th>
+                <th scope="col">만료</th>
+                <th scope="col">마지막 사용</th>
+                <th scope="col">상태</th>
+                <th scope="col">작업</th>
+              </tr>
+            </thead>
+            <tbody id="my-tokens-body"></tbody>
+          </table>
+        </div>
+        <p id="my-tokens-empty" class="muted" hidden>발급한 프로그램 토큰이 없습니다. 아래에서 발급하세요.</p>
+
+        <!-- ③ 발급 폼 — can_issue_tokens 가 참일 때만 app.js 가 보인다.
+             범위 <select> 의 옵션은 app.js 가 /api/me 의 token_scopes 로 채운다(고정 목록 0). -->
+        <form id="token-issue-form" class="form form--grid" autocomplete="off" hidden>
+          <label class="field">
+            <span class="field__label">이름 (필수)</span>
+            <input id="token-name" type="text" maxlength="50" required>
+            <span class="help">「사무실 PC」처럼 어느 프로그램인지 알아볼 이름입니다.</span>
+          </label>
+          <label class="field">
+            <span class="field__label">용도 (필수)</span>
+            <input id="token-purpose" type="text" maxlength="500" required>
+            <span class="help">무엇에 쓰는 토큰인지 적습니다. 감사 기록에 함께 남습니다.</span>
+          </label>
+          <label class="field">
+            <span class="field__label">범위 (필수)</span>
+            <select id="token-scope" required></select>
+            <span class="help">계정 권한보다 넓은 범위는 고를 수 없습니다.</span>
+          </label>
+          <label class="field">
+            <span class="field__label">현재 비밀번호</span>
+            <input id="token-password" type="password" maxlength="1024" required>
+          </label>
+          <!-- 6자리 코드는 `.otp-box` 한 칸 — 여섯 칸으로 쪼개지 않는다 (DESIGN 2.5).
+               모노·20px·글자 간격은 기존 `.otp-box input` 규칙이 준다(새 CSS 0). -->
+          <label class="field otp-box">
+            <span class="field__label">2단계 인증 코드</span>
+            <input id="token-otp" type="text" inputmode="numeric" pattern="[0-9]{6}" maxlength="6" required>
+          </label>
+          <button id="token-issue" class="btn" type="submit">토큰 발급</button>
+          <p id="token-issue-msg" class="msg field--full" role="alert"></p>
+        </form>
+
+        <!-- ④ 2단계 인증이 꺼져 있으면 폼 대신 이 줄 (can_issue_tokens 가 거짓) -->
+        <p id="token-issue-blocked" class="notice notice--recommend" hidden>
+          2단계 인증을 켜야 발급할 수 있습니다 — 아래 2단계 인증 절에서 켜세요
+        </p>
       </section>
 
       <!-- 2단계 인증 (PRD F-16 ③ → F-52 "필수는 Admin 만, 나머지 역할은 권장", SECURITY R-05·R-85).

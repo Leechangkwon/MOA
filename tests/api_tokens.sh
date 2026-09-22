@@ -2,12 +2,16 @@
 # tests/api_tokens.sh — F-59 「사용자별 프로그램 토큰 · 개인 토큰으로 삭제」 수락 기준 실행
 #                       (PRD 12.2 T-71, F-59, ARCH 4.6 · 6.2-5, SECURITY R-82 · R-90 · R-91)
 #
-#   (a) 발급  재인증 없는 Admin → 403 `next:reauth` · 재인증 뒤 POST → 201(토큰 48자
-#       `[A-Za-z0-9]` · hint == 토큰 앞 6자) · 목록에 그 행(`hint` 있음 · `token` 키 **없음**) ·
-#       사유 없음 400 · 이름 51자 400 · 모르는 키 400 · qa_manager01 세션 403 ·
+#   (a) 발급  **F-66 갱신(2026-09-22)**: 발급은 관리자 창구가 아니라 **본인 창구**다 —
+#       qa_employee01 이 `POST /api/me/api-tokens`(이름·용도·범위·비밀번호·2단계 코드)로
+#       만든다. 옛 관리자 발급 창구 `POST /api/users/{uid}/api-tokens` 는 **404**(라우트 제거).
+#       → 201(토큰 48자 `[A-Za-z0-9]` · hint == 토큰 앞 6자) · 목록에 그 행(`hint`·`scope`·
+#       `expires_at` 있음 · `token` 키 **없음**) · 용도 없음 400 · 이름 51자 400 ·
+#       모르는 키 400 · qa_manager01 **목록** 403(관리자 창구는 그대로 user.manage) ·
 #       살아 있는 5개 뒤 6번째 400(limit_exceeded) · 감사 `api_token.issue allow` 의 detail
-#       (`token_id`·`token_name`·`reason_text`) · **DB 어디에도 토큰 원문 없음** ·
-#       `api_tokens.token_hash` == 토큰의 sha256.
+#       (`token_id`·`token_name`·`token_scope`·`reason_text`·`otp_verified`) ·
+#       **DB 어디에도 토큰 원문 없음** · `api_tokens.token_hash` == 토큰의 sha256.
+#       ★ 2단계 코드는 1회성(R-45)이라 발급마다 **다음 30초 창**을 기다린다 — 느린 것이 정상이다.
 #   (b) 개인 토큰 사용  그 토큰으로 GET /api/whoami(`username`) · GET /api/files 200 ·
 #       POST /api/upload 201 · GET /api/folders 200 · 감사 행에 `auth=api_token` ·
 #       `token_kind=personal` · `token_id=<id>` · `api_tokens.last_used_at` 갱신.
@@ -286,18 +290,44 @@ ISSUED_TOKEN=''
 ISSUED_ID=''
 ISSUED_HINT=''
 ISSUED_CODE=''
+ISSUED_SCOPE=''
+ISSUED_EXPIRES=''
+
+# **다음 창**의 2단계 코드 — 방금 쓴 코드를 다시 쓰면 `code_reused` 가 정상이다 (R-45).
+# 발급은 요청마다 코드를 요구하므로(F-66 ②) 발급 한 번에 창 하나를 쓴다.
+totp_next() {   # $1 계정 → 코드만 (표준출력)
+  local who="$1" sec raw left
+  sec=$(sudo -n awk -v u="$who" '$1==u{print $2}' /etc/tbox-v2/qa-totp.txt 2>/dev/null)
+  [ -n "$sec" ] || return 1
+  raw=$(php "$ROOT/scripts/totp_code.php" "$sec" 2>/dev/null) || return 1
+  left=$(printf '%s' "$raw" | sed -n 's/^남은 시간: \([0-9]*\)초.*/\1/p')
+  [ -n "$left" ] || left=31
+  printf '  · %s 다음 2단계 코드 창까지 %s초 기다린다 (R-45 1회성)\n' "$who" "$left" >&2
+  sleep $((left + 1))
+  raw=$(php "$ROOT/scripts/totp_code.php" "$sec" 2>/dev/null) || return 1
+  printf '%s\n' "${raw%%$'\n'*}"
+}
+
+# 발급 한 번 — **본인 창구**(F-66). 결과는 전역 변수로만 돌려준다(서브셸에 가두지 않는다).
+# 비밀번호·코드는 변수와 임시 파일 안에서만 다루고 출력하지 않는다 (PRD 7.7).
 issue_token() {
-  local uid="$1" name="$2" reason="$3" body
-  ISSUED_TOKEN=''; ISSUED_ID=''; ISSUED_HINT=''; ISSUED_CODE=''
-  body=$(python3 -c 'import json,sys; print(json.dumps({"name":sys.argv[1],"reason_text":sys.argv[2]}))' "$name" "$reason")
-  ISSUED_CODE=$(curl -s -o "$WORK/issue.json" -w '%{http_code}' -X POST -b "$JAR_DIR/qa_admin01.jar" -A "$UA" \
-         -H "X-CSRF-Token: $ADM_CSRF" -H 'Content-Type: application/json' \
-         -d "$body" "$BASE/api/users/$uid/api-tokens")
+  local name="$1" purpose="$2" scope="${3:-read+upload+delete}" pw code body
+  ISSUED_TOKEN=''; ISSUED_ID=''; ISSUED_HINT=''; ISSUED_CODE=''; ISSUED_SCOPE=''; ISSUED_EXPIRES=''
+  pw=$(sudo -n awk -v u=qa_employee01 '$1==u{print $3}' /etc/tbox-v2/seed-accounts.txt 2>/dev/null)
+  code=$(totp_next qa_employee01) || { ISSUED_CODE='코드없음'; return 0; }
+  [ -n "$pw" ] || { ISSUED_CODE='비밀번호없음'; return 0; }
+  body=$(python3 -c 'import json,sys; print(json.dumps({"name":sys.argv[1],"purpose":sys.argv[2],"scope":sys.argv[3],"password":sys.argv[4],"otp":sys.argv[5]}))' \
+         "$name" "$purpose" "$scope" "$pw" "$code")
+  ISSUED_CODE=$(curl -s -o "$WORK/issue.json" -w '%{http_code}' -X POST -b "$JAR_DIR/qa_employee01.jar" -A "$UA" \
+         -H "X-CSRF-Token: $EMP_CSRF" -H 'Content-Type: application/json' \
+         -d "$body" "$BASE/api/me/api-tokens")
   if [ "$ISSUED_CODE" = "201" ]; then
     ISSUED_TOKEN=$(jq_py "d.get('token','')" < "$WORK/issue.json")
     ISSUED_ID=$(jq_py "str(d.get('id',''))" < "$WORK/issue.json")
     ISSUED_HINT=$(jq_py "d.get('hint','')" < "$WORK/issue.json")
-    [ -n "$ISSUED_ID" ] && MADE_TOKENS="$MADE_TOKENS $uid:$ISSUED_ID"
+    ISSUED_SCOPE=$(jq_py "d.get('scope','')" < "$WORK/issue.json")
+    ISSUED_EXPIRES=$(jq_py "d.get('expires_at','')" < "$WORK/issue.json")
+    [ -n "$ISSUED_ID" ] && MADE_TOKENS="$MADE_TOKENS ${EMP_UID:-0}:$ISSUED_ID"
   fi
   : > "$WORK/issue.json"      # 토큰이 든 응답 파일은 곧바로 비운다
 }
@@ -329,19 +359,19 @@ T0=$(psqlq "SELECT now();")
 # ─── (a) 발급 ────────────────────────────────────────────────────
 hr "(a) POST /api/users/{uid}/api-tokens — 발급"
 
-if [ "$UID_VIA_API" -eq 1 ]; then
-  skip "(a) 재인증 없는 Admin → 403" "psql 이 없어 계정 id 를 GET /api/users 로 찾느라 준비 단계에서 이미 재인증했다"
-else
-  R=$(curl -s -w '\n%{http_code}' -X POST -b "$JAR_DIR/qa_admin01.jar" -A "$UA" \
-      -H "X-CSRF-Token: $ADM_CSRF" -H 'Content-Type: application/json' \
-      -d '{"name":"F59-nopreauth","reason_text":"재인증 관문 확인"}' "$BASE/api/users/$EMP_UID/api-tokens")
-  expect "재인증 없는 Admin → 403" "403" "$(code_of "$R")"
-  expect "본문에 next:reauth" "1" "$(body_of "$R" | grep -c '"next":"reauth"')"
-fi
+# F-66 — 관리자 발급 창구(POST)는 **라우트에서 사라졌다**. 같은 경로의 목록(GET)이 남아
+# 있으므로 라우터 [1] 의 「경로는 맞고 메서드만 다르다」 갈래가 먼저 잡아 **405** 다
+# (재인증 창과 무관하다 — 인증·인가에 닿지도 않는다).
+R=$(curl -s -w '\n%{http_code}' -X POST -b "$JAR_DIR/qa_admin01.jar" -A "$UA" \
+    -H "X-CSRF-Token: $ADM_CSRF" -H 'Content-Type: application/json' \
+    -d '{"name":"F59-admin","reason_text":"관리자 발급 창구 확인"}' "$BASE/api/users/$EMP_UID/api-tokens")
+echo "  관리자 발급 창구 → [$(code_of "$R")] $(body_of "$R")"
+expect "관리자 발급 창구 → 405 (F-66 으로 POST 만 제거)" "405" "$(code_of "$R")"
+expect "관리자 발급 창구 문구" '{"error":"허용되지 않는 메서드입니다"}' "$(body_of "$R")"
 
 note "재인증: qa_admin01 → $(reauth qa_admin01 "$ADM_CSRF")"
 
-issue_token "$EMP_UID" "F59-pc-$TAG" "T-71 시험 — 개인 토큰 발급"
+issue_token "F59-pc-$TAG" "T-71 시험 — 개인 토큰 발급"
 CODE="$ISSUED_CODE"
 expect "발급 상태" "201" "$CODE"
 TOK="$ISSUED_TOKEN"; TID="$ISSUED_ID"; THINT="$ISSUED_HINT"
@@ -360,43 +390,41 @@ R=$(curl -s -w '\n%{http_code}' -b "$JAR_DIR/qa_admin01.jar" -A "$UA" "$BASE/api
 CODE=$(code_of "$R"); printf '%s' "$(body_of "$R")" > "$WORK/list.json"
 expect "목록 상태" "200" "$CODE"
 expect "목록에 방금 발급한 행" "1" "$(jq_py "sum(1 for t in d['tokens'] if str(t['id'])=='$TID')" < "$WORK/list.json")"
-expect "목록 행의 키" "created_at,hint,id,last_used_at,name,revoked_at" \
+expect "목록 행의 키 (F-66: scope·expires_at 추가)" "created_at,expires_at,hint,id,last_used_at,name,revoked_at,scope" \
   "$(jq_py "','.join(sorted(d['tokens'][0].keys())) if d['tokens'] else '(빈 목록)'" < "$WORK/list.json")"
 expect "목록에 token 키 없음" "0" "$(grep -c '"token"' "$WORK/list.json")"
 
-R=$(curl -s -w '\n%{http_code}' -X POST -b "$JAR_DIR/qa_admin01.jar" -A "$UA" \
-    -H "X-CSRF-Token: $ADM_CSRF" -H 'Content-Type: application/json' \
-    -d '{"name":"F59-noreason"}' "$BASE/api/users/$EMP_UID/api-tokens")
-expect "사유 없음 → 400" "400" "$(code_of "$R")"
-expect "사유 없음 문구" '{"error":"잘못된 요청입니다"}' "$(body_of "$R")"
+# 형식 거부 셋 — 본인 창구다. 비밀번호·코드가 **맞아도** 형식에서 먼저 끝나므로
+# (핸들러 [1]~[5] 가 인증보다 앞이다) 여기서는 코드 창을 쓰지 않는다(값은 아무것이나).
+bad_issue() {   # $1 = JSON 본문 → 상태 코드
+  curl -s -o /dev/null -w '%{http_code}' -X POST -b "$JAR_DIR/qa_employee01.jar" -A "$UA" \
+    -H "X-CSRF-Token: $EMP_CSRF" -H 'Content-Type: application/json' -d "$1" "$BASE/api/me/api-tokens"
+}
+R=$(curl -s -w '\n%{http_code}' -X POST -b "$JAR_DIR/qa_employee01.jar" -A "$UA" \
+    -H "X-CSRF-Token: $EMP_CSRF" -H 'Content-Type: application/json' \
+    -d '{"name":"F59-nopurpose","scope":"read","password":"x","otp":"000000"}' "$BASE/api/me/api-tokens")
+expect "용도 없음 → 400" "400" "$(code_of "$R")"
+expect "용도 없음 문구" '{"error":"잘못된 요청입니다"}' "$(body_of "$R")"
 
 LONG=$(python3 -c 'print("가"*51)')
-R=$(curl -s -w '\n%{http_code}' -X POST -b "$JAR_DIR/qa_admin01.jar" -A "$UA" \
-    -H "X-CSRF-Token: $ADM_CSRF" -H 'Content-Type: application/json' \
-    -d "$(python3 -c 'import json,sys; print(json.dumps({"name":sys.argv[1],"reason_text":"길이 시험"}))' "$LONG")" \
-    "$BASE/api/users/$EMP_UID/api-tokens")
-expect "이름 51자 → 400" "400" "$(code_of "$R")"
+expect "이름 51자 → 400" "400" \
+  "$(bad_issue "$(python3 -c 'import json,sys; print(json.dumps({"name":sys.argv[1],"purpose":"길이 시험","scope":"read","password":"x","otp":"000000"}))' "$LONG")")"
 
-R=$(curl -s -w '\n%{http_code}' -X POST -b "$JAR_DIR/qa_admin01.jar" -A "$UA" \
-    -H "X-CSRF-Token: $ADM_CSRF" -H 'Content-Type: application/json' \
-    -d '{"name":"F59-x","reason_text":"모르는 키","user_id":1}' "$BASE/api/users/$EMP_UID/api-tokens")
-expect "모르는 키 → 400 (R-07)" "400" "$(code_of "$R")"
+expect "모르는 키 → 400 (R-07)" "400" \
+  "$(bad_issue '{"name":"F59-x","purpose":"모르는 키","scope":"read","password":"x","otp":"000000","user_id":1}')"
 
 if [ -z "$MGR_CSRF" ]; then
-  skip "(a) Manager 403" "qa_manager01 세션 없음"
+  skip "(a) Manager 목록 403" "qa_manager01 세션 없음"
 else
-  R=$(curl -s -w '\n%{http_code}' -X POST -b "$JAR_DIR/qa_manager01.jar" -A "$UA" \
-      -H "X-CSRF-Token: $MGR_CSRF" -H 'Content-Type: application/json' \
-      -d '{"name":"F59-mgr","reason_text":"권한 시험"}' "$BASE/api/users/$EMP_UID/api-tokens")
-  expect "Manager 세션 → 403" "403" "$(code_of "$R")"
   R=$(curl -s -w '\n%{http_code}' -b "$JAR_DIR/qa_manager01.jar" -A "$UA" "$BASE/api/users/$EMP_UID/api-tokens")
-  expect "Manager 목록 → 403" "403" "$(code_of "$R")"
+  expect "Manager 가 남의 목록 → 403 (user.manage 그대로)" "403" "$(code_of "$R")"
 fi
 
-# 살아 있는 토큰 5개를 채우고 6번째를 본다 (하나는 위에서 이미 발급했다)
+# 살아 있는 토큰 5개를 채우고 6번째를 본다 (하나는 위에서 이미 발급했다).
+# 발급마다 2단계 코드 창 하나를 쓰므로 여기서 몇 분이 걸린다 — 느린 것이 정상이다(R-45).
 LIMIT_CODE=''
 for i in 2 3 4 5 6; do
-  issue_token "$EMP_UID" "F59-lim$i-$TAG" "T-71 상한 시험"
+  issue_token "F59-lim$i-$TAG" "T-71 상한 시험" "read"
   LIMIT_CODE="$ISSUED_CODE"
   [ "$i" -lt 6 ] && note "상한 채우기 $i 번째 [$LIMIT_CODE]"
 done
@@ -405,10 +433,10 @@ expect "살아 있는 5개 뒤 6번째 → 400 (limit_exceeded)" "400" "$LIMIT_C
 if [ "$HAVE_PSQL" -eq 0 ]; then
   skip "(a) 감사·해시·원문 확인" "psql 을 쓸 수 없다"
 else
-  expect "감사 api_token.issue allow" "t" \
-    "$(psqlq "SELECT count(*) > 0 FROM audit_logs WHERE action='api_token.issue' AND result='allow' AND actor_name='qa_admin01' AND happened_at > '$T0'::timestamptz")"
-  expect "감사 detail 에 token_id·token_name·reason_text" "t" \
-    "$(psqlq "SELECT count(*) > 0 FROM audit_logs WHERE action='api_token.issue' AND result='allow' AND happened_at > '$T0'::timestamptz AND detail ? 'token_id' AND detail ? 'token_name' AND detail ? 'reason_text'")"
+  expect "감사 api_token.issue allow (발급자 = 대상 = 본인)" "t" \
+    "$(psqlq "SELECT count(*) > 0 FROM audit_logs WHERE action='api_token.issue' AND result='allow' AND actor_name='qa_employee01' AND target_name='qa_employee01' AND happened_at > '$T0'::timestamptz")"
+  expect "감사 detail 에 token_id·token_name·token_scope·reason_text·otp_verified (F-66)" "t" \
+    "$(psqlq "SELECT count(*) > 0 FROM audit_logs WHERE action='api_token.issue' AND result='allow' AND happened_at > '$T0'::timestamptz AND detail ? 'token_id' AND detail ? 'token_name' AND detail ? 'token_scope' AND detail ? 'reason_text' AND detail ? 'otp_verified'")"
   expect "감사 detail 에 hint·token 원문 키 없음" "t" \
     "$(psqlq "SELECT count(*) = 0 FROM audit_logs WHERE action='api_token.issue' AND happened_at > '$T0'::timestamptz AND (detail ? 'hint' OR detail ? 'token' OR detail ? 'token_hash')")"
   expect "감사 api_token.issue deny limit_exceeded" "t" \
@@ -676,11 +704,13 @@ if [ -z "$TOK" ]; then
   skip "(g) 토큰 닫힘" "토큰이 없다"
 else
   # 회수됐어도 **라우트 집합 밖**이라는 사실은 그대로 확인된다(세션 경로 401).
+  # F-66 — 이제 발급 창구는 본인 창구 하나이고, 그것도 토큰 집합 밖이다(토큰이 토큰을 낳지 않는다).
   R=$(curl -s -w '\n%{http_code}' -X POST -A "$UA" -H "X-API-Token: $TOK" \
-      -H 'Content-Type: application/json' -d '{"name":"F59-x","reason_text":"닫힘 시험"}' \
-      "$BASE/api/users/$EMP_UID/api-tokens")
-  echo "  토큰으로 발급 창구 → [$(code_of "$R")] $(body_of "$R")"
-  expect "개인 토큰으로 POST …/api-tokens → 401 (라우트 집합 밖)" "401" "$(code_of "$R")"
+      -H 'Content-Type: application/json' \
+      -d '{"name":"F59-x","purpose":"닫힘 시험","scope":"read","password":"x","otp":"000000"}' \
+      "$BASE/api/me/api-tokens")
+  echo "  토큰으로 본인 발급 창구 → [$(code_of "$R")] $(body_of "$R")"
+  expect "개인 토큰으로 POST /api/me/api-tokens → 401 (토큰 집합 밖)" "401" "$(code_of "$R")"
   expect "그 문구는 세션 경로의 것" '{"error":"로그인이 필요합니다"}' "$(body_of "$R")"
 fi
 
@@ -730,8 +760,9 @@ tail -1 "$WORK/lint.out" | sed 's/^/  /'
 
 PHPBAD=0
 for f in public/index.php src/Auth.php src/Http.php src/Audit.php \
-         src/handlers/api_tokens_list.php src/handlers/api_tokens_issue.php \
-         src/handlers/api_tokens_revoke.php scripts/alerts.php; do
+         src/handlers/api_tokens_list.php src/handlers/api_tokens_revoke.php \
+         src/handlers/me_tokens_list.php src/handlers/me_tokens_issue.php \
+         src/handlers/me_tokens_revoke.php src/Authz.php scripts/alerts.php; do
   php -l "$ROOT/$f" >/dev/null 2>&1 || { echo "  ✖ php -l 실패: $f"; PHPBAD=1; }
 done
 expect "바뀐 PHP php -l" "0" "$PHPBAD"

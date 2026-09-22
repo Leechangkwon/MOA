@@ -4024,6 +4024,187 @@ function initTrash(csrfToken, onRestored) {
  * ★ 역할 변경·활성 변경에는 **사유가 필수**다. 사유가 비면 보내지 않고(그래도 서버가 400),
  *   사유 원문은 서버 감사 로그 detail.reason_text 에만 남는다.
  */
+/* ─── 프로그램 토큰 — 두 화면이 **함께 쓰는** 조각 (F-59 → F-66, ARCH 4.6 · 4.7) ──────
+ *
+ * 같은 표·같은 「한 번만 보이는 값」을 두 자리가 쓴다:
+ *   · `/settings` 「프로그램 토큰」 절 — **본인**의 목록·발급·회수 (`/api/me/api-tokens`)
+ *   · `/users` 토큰 모달        — **남의** 목록·회수 (`/api/users/{uid}/api-tokens`).
+ *     F-66 으로 그 모달의 **발급 폼은 사라졌다** — 관리자가 남을 대신해 자격을 만드는 길이
+ *     없어지는 것이 R-91 의 핵심 완화다(라우트도 없어 404 다).
+ * 코드를 두 벌로 두면 한쪽만 고치는 날이 오고, 그날 두 화면의 말이 달라진다.
+ *
+ * ★ 이 조각에는 역할 비교가 한 줄도 없다. 무엇이 보이는지는 서버가 내려 준 값
+ *   (`can_issue_tokens`·`token_scopes`)과 라우트 정책이 정한다 (DESIGN 0장 1, PRD S-01).
+ * ★ 값은 전부 `setText`(textContent)다. 발급된 토큰만 읽기 전용 칸의 `value` 로 들어간다 —
+ *   문서에 글자로 심지 않는다 (PRD S-03, S-09-11).
+ */
+
+/** 범위 세 값의 화면 라벨 (ARCH 4.7 · DESIGN 5장 「영어 약어는 한글 뜻을 붙인다」) */
+var TOKEN_SCOPE_LABELS = {
+  'read': '읽기만',
+  'read+upload': '읽기 + 올리기',
+  'read+upload+delete': '읽기 + 올리기 + 지우기'
+};
+
+/** 모르는 값이 오면 **서버가 준 값 그대로** 보인다 — 화면이 문장을 지어내지 않는다 */
+function tokenScopeLabel(scope) {
+  if (typeof scope !== 'string' || scope === '') { return '—'; }
+  return Object.prototype.hasOwnProperty.call(TOKEN_SCOPE_LABELS, scope)
+    ? TOKEN_SCOPE_LABELS[scope] : scope;
+}
+
+/**
+ * 토큰 창구의 요청 하나 — 세션 쿠키 + CSRF (토큰 창구 셋은 전부 **세션**이다).
+ * 재인증 관문(403 `next:"reauth"`)에 걸리면 모달을 띄우고 **막혔던 요청을 다시** 보낸다
+ * (관리자 창구만 해당된다 — 본인 창구의 정책은 `authenticated` 라 그 관문이 없다).
+ */
+function tokenApiFetch(csrfToken, method, path, payload, retry) {
+  var init = {
+    method: method,
+    headers: { 'X-CSRF-Token': csrfToken },
+    credentials: 'same-origin',
+    cache: 'no-store'
+  };
+  if (payload) {
+    init.headers['Content-Type'] = 'application/json';
+    init.body = JSON.stringify(payload);
+  }
+  return fetch(path, init).then(function (response) {
+    if (response.status === 401) {
+      toLogin();
+      return null;
+    }
+    return readJson(response).then(function (data) {
+      if (handleReauth(response, data, retry)) {
+        return null;
+      }
+      if (toGate(response, data)) {
+        return null;
+      }
+      return { ok: response.ok, status: response.status, data: data };
+    });
+  });
+}
+
+/** 한 번 보여 준 토큰 상자를 지운다(값은 상자와 함께 사라진다) */
+function clearIssuedToken() {
+  var once = document.getElementById('api-token-once');
+  if (once) {
+    var field = once.querySelector('input');
+    if (field) {
+      field.value = '';
+    }
+    if (once.parentNode) {
+      once.parentNode.removeChild(once);
+    }
+  }
+}
+
+/**
+ * 발급된 토큰을 **한 번만** 보여 주는 상자 — 닫으면 값이 사라진다(다시 볼 방법은 없다).
+ * 값은 읽기 전용 입력칸의 `value` 로만 넣는다(문서에 글자로 심지 않는다) — 임시 비밀번호
+ * 상자와 같은 방식이다 (11단계 showTempPassword, SECURITY R-39 · R-91).
+ * @param host  상자를 붙일 자리 · @param msgEl 복사 결과를 말할 줄
+ */
+function showIssuedToken(host, msgEl, tokenValue) {
+  if (!host || typeof tokenValue !== 'string' || tokenValue === '') {
+    return;
+  }
+  clearIssuedToken();
+
+  var box = document.createElement('div');
+  box.id = 'api-token-once';
+  box.className = 'notice';
+
+  var title = document.createElement('p');
+  title.className = 'notice__title';
+  setText(title, '새 프로그램 토큰');
+  box.appendChild(title);
+
+  var field = document.createElement('input');
+  field.type = 'text';
+  field.readOnly = true;
+  field.className = 'temp-password';
+  field.value = tokenValue;            // 값은 value 로만 (문서에 글자로 심지 않는다)
+  box.appendChild(field);
+
+  var copy = document.createElement('button');
+  copy.type = 'button';
+  copy.className = 'btn btn--quiet btn--small';
+  setText(copy, '복사');
+  copy.addEventListener('click', function () {
+    if (navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
+      navigator.clipboard.writeText(field.value).then(function () {
+        setText(msgEl, '복사했습니다.');
+      }, function () {
+        setText(msgEl, '복사하지 못했습니다 — 칸의 값을 직접 선택해 복사하세요.');
+      });
+      return;
+    }
+    field.focus();
+    field.select();
+    setText(msgEl, '이 브라우저는 자동 복사를 지원하지 않습니다 — 선택된 값을 복사하세요.');
+  });
+  box.appendChild(copy);
+
+  var warn = document.createElement('p');
+  warn.className = 'warn';
+  setText(warn, '지금만 보입니다. 닫으면 다시 볼 수 없습니다');
+  box.appendChild(warn);
+
+  var close = document.createElement('button');
+  close.type = 'button';
+  close.className = 'btn btn--quiet btn--small';
+  setText(close, '닫기');
+  close.addEventListener('click', clearIssuedToken);
+  box.appendChild(close);
+
+  host.appendChild(box);
+}
+
+/**
+ * 표 한 줄 — 어느 칸을 그릴지는 `ctx.columns` 가 정한다(두 화면의 `<thead>` 순서 그대로).
+ *   name · purpose · hint · scope · expires · created · used · state · actions
+ * 시각 칸은 전부 `addWhenCell` 이다 — 초 단위까지만 보이고 전체 값은 title 로 간다 (DESIGN 2.4).
+ * @param ctx {body, columns, onRevoke}
+ */
+function addTokenRowShared(ctx, token) {
+  var row = document.createElement('tr');
+  var live = token.revoked_at === null || token.revoked_at === undefined;
+
+  ctx.columns.forEach(function (column) {
+    if (column === 'created') { addWhenCell(row, token.created_at); return; }
+    if (column === 'used')    { addWhenCell(row, live ? token.last_used_at : token.revoked_at); return; }
+    if (column === 'expires') {
+      // 「곧 만료」 는 **서버가 판정한** expires_soon 만 본다 — 화면이 날짜를 계산하지 않는다
+      // (본인 목록에만 있는 값이라, 관리자 목록에서는 꼬리가 붙지 않는다).
+      addWhenCell(row, token.expires_at, live && token.expires_soon === true ? ' (곧 만료)' : '');
+      return;
+    }
+
+    var td = document.createElement('td');
+    if (column === 'name')    { setText(td, token.name); }
+    else if (column === 'purpose') { setText(td, token.purpose === null || token.purpose === undefined || token.purpose === '' ? '—' : token.purpose); }
+    else if (column === 'hint')    { setText(td, token.hint === null || token.hint === undefined || token.hint === '' ? '—' : token.hint); }
+    else if (column === 'scope')   { setText(td, tokenScopeLabel(token.scope)); }
+    else if (column === 'state')   { setText(td, live ? '살아있음' : '회수됨'); }
+    else if (column === 'actions') {
+      td.className = 'actions';
+      if (live && typeof ctx.onRevoke === 'function') {
+        var button = document.createElement('button');
+        button.type = 'button';
+        button.className = 'btn btn--quiet btn--small';
+        setText(button, '회수');
+        button.addEventListener('click', function () { ctx.onRevoke(token); });
+        td.appendChild(button);
+      }
+    }
+    row.appendChild(td);
+  });
+
+  ctx.body.appendChild(row);
+}
+
 function initUsers(csrfToken) {
   var msg = document.getElementById('msg');
   var body = document.getElementById('users-body');
@@ -4330,164 +4511,39 @@ function initUsers(csrfToken) {
     }
   }
 
-  /* ─── F-59 「프로그램 토큰」 구역 (PRD F-59 ②, ARCH 4.6, API.md 13장) ──────────
+  /* ─── F-59 → **F-66** 「프로그램 토큰」 모달 (ARCH 4.6 · 4.7, API.md 13장) ────────
    *
-   * 계정 편집 모달 안에서 그 계정의 **개인 프로그램 토큰**을 보고·발급하고·회수한다.
-   * 창구 셋은 `/api/users/{uid}/api-tokens` 이고 전부 관리자 세션 + CSRF 다 —
-   * 이 화면에 들어온 것으로 권한이 생기지 않는다. 막는 것은 서버(user.manage + 재인증
-   * 관문 [3-2])이고, 여기 있는 코드는 요청을 만들 뿐이다 (PRD S-01).
+   * 계정 관리 화면에서 그 계정의 개인 프로그램 토큰을 **보고 회수한다**.
+   * 창구 둘(`GET`·`DELETE /api/users/{uid}/api-tokens…`)은 관리자 세션 + CSRF 이고,
+   * 이 화면에 들어온 것으로 권한이 생기지 않는다 — 막는 것은 서버(user.manage + 재인증
+   * 관문 [3-2])이고 여기 있는 코드는 요청을 만들 뿐이다 (PRD S-01).
    *
-   * ★ 발급 응답의 `token` 은 **그 순간 한 번만** 보인다. 읽기 전용 입력칸의 value 로만 넣고
-   *   (문서에 글자로 심지 않는다) 닫으면 지운다 — 임시 비밀번호 상자와 같은 방식이다
-   *   (11단계 showTempPassword, SECURITY R-39 · R-91). 서버에는 sha256 만 있어 다시 볼 수 없다.
-   * ★ 표에 나오는 값(이름·hint)도 사람이 적은 문자열이다 → 전부 createElement + textContent.
-   *   이 구역에는 문자열을 HTML 로 바꾸는 코드가 한 곳도 없다 (PRD S-03).
-   * ★ 구역은 **전용 모달**(`#token-dialog`)에 있다. 처음에는 계정 편집 모달(`#user-edit`) 안에
-   *   두었는데, 그 모달은 `is_self` 행에서 열리지 않아(계정 화면은 자기 자신을 고칠 수 없다)
-   *   **관리자 자신의 토큰을 발급할 길이 없었다** — F-59 의 첫 용례가 「관리자 자신의 PC
-   *   프로그램」인데 그 길이 막혀 있었다(사용자 실측 2026-09-17). 서버는 자기 자신 대상
-   *   발급을 허용한다(PRD F-59 ②: `api_tokens_issue.php` 는 `decideUserChange` 를 부르지 않는다).
-   *   그래서 구역을 모달 하나로 떼어 **모든 행**의 「프로그램 토큰」 단추가 같은 것을 연다.
-   *   같은 구역을 두 자리에 두지 않는다 — 두면 두 벌의 상태가 어긋난다.
+   * ★ **발급 폼이 없다**(F-66, 2026-09-22). 관리자가 남을 대신해 자격을 만드는 길이
+   *   사라지는 것이 R-91 의 핵심 완화이고, 라우트 자체가 없어 404 다. 관리자 자신의
+   *   토큰도 이제 「내 계정」 화면에서 본인이 발급한다(비밀번호 + 2단계 코드).
+   * ★ 표에 나오는 값(이름·hint·범위)은 전부 `setText`(textContent)다. 이 구역에는 문자열을
+   *   HTML 로 바꾸는 코드가 한 곳도 없다 (PRD S-03).
+   * ★ 표를 그리는 코드는 「내 계정」 절과 **한 벌**이다(모듈 위쪽 `addTokenRow`) —
+   *   두 벌로 두면 한쪽만 고치는 날 두 화면의 말이 달라진다.
    */
   var tkDialog = null;   // 전용 모달
   var tkTitle = null;    // 모달 제목 (「프로그램 토큰 — <username>」)
   var tkBox = null;      // 구역 전체 (한 번만 만든다)
   var tkBody = null;     // 표의 tbody
   var tkMsg = null;      // 이 구역의 알림 줄 (서버 문구를 그대로 쓴다)
-  var tkName = null;     // 이름 입력칸
-  var tkReason = null;   // 사유 입력칸
   var tkUid = null;      // 지금 보고 있는 계정 id
 
-  /**
-   * 이 구역의 요청 하나 — 세션 쿠키 + CSRF.
-   * 재인증 관문(403 `next:"reauth"`)에 걸리면 모달을 띄우고 **막혔던 요청을 다시** 보낸다.
-   */
+  /** 「내 계정」 절과 같은 표를 그린다 — 칸 차례만 다르다(`<thead>` 순서 그대로) */
+  var TK_COLUMNS = ['name', 'hint', 'scope', 'expires', 'created', 'used', 'state', 'actions'];
+
+  /** 이 구역의 요청 하나 — 공용 조각에 그대로 넘긴다(세션 쿠키 + CSRF, 재인증 재시도 포함) */
   function tokenFetch(method, path, payload, retry) {
-    var init = {
-      method: method,
-      headers: { 'X-CSRF-Token': csrfToken },
-      credentials: 'same-origin',
-      cache: 'no-store'
-    };
-    if (payload) {
-      init.headers['Content-Type'] = 'application/json';
-      init.body = JSON.stringify(payload);
-    }
-    return fetch(path, init).then(function (response) {
-      if (response.status === 401) {
-        toLogin();
-        return null;
-      }
-      return readJson(response).then(function (data) {
-        if (handleReauth(response, data, retry)) {
-          return null;
-        }
-        if (toGate(response, data)) {
-          return null;
-        }
-        return { ok: response.ok, status: response.status, data: data };
-      });
-    });
+    return tokenApiFetch(csrfToken, method, path, payload, retry);
   }
 
-  /** 발급된 토큰을 **한 번만** 보여 주는 상자. 닫으면 값이 사라진다(다시 볼 방법은 없다). */
-  function showIssuedToken(tokenValue) {
-    if (!tkBox || typeof tokenValue !== 'string' || tokenValue === '') {
-      return;
-    }
-    var old = document.getElementById('api-token-once');
-    if (old && old.parentNode) {
-      old.parentNode.removeChild(old);
-    }
-
-    var box = document.createElement('div');
-    box.id = 'api-token-once';
-    box.className = 'notice';
-
-    var title = document.createElement('p');
-    title.className = 'notice__title';
-    setText(title, '새 프로그램 토큰');
-    box.appendChild(title);
-
-    var field = document.createElement('input');
-    field.type = 'text';
-    field.readOnly = true;
-    field.className = 'temp-password';
-    field.value = tokenValue;            // 값은 value 로만 (문서에 글자로 심지 않는다)
-    box.appendChild(field);
-
-    var copy = document.createElement('button');
-    copy.type = 'button';
-    copy.className = 'btn btn--quiet btn--small';
-    setText(copy, '복사');
-    copy.addEventListener('click', function () {
-      if (navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
-        navigator.clipboard.writeText(field.value).then(function () {
-          setText(tkMsg, '복사했습니다.');
-        }, function () {
-          setText(tkMsg, '복사하지 못했습니다 — 칸의 값을 직접 선택해 복사하세요.');
-        });
-        return;
-      }
-      field.focus();
-      field.select();
-      setText(tkMsg, '이 브라우저는 자동 복사를 지원하지 않습니다 — 선택된 값을 복사하세요.');
-    });
-    box.appendChild(copy);
-
-    var warn = document.createElement('p');
-    warn.className = 'warn';
-    setText(warn, '지금만 보입니다. 닫으면 다시 볼 수 없습니다');
-    box.appendChild(warn);
-
-    var close = document.createElement('button');
-    close.type = 'button';
-    close.className = 'btn btn--quiet btn--small';
-    setText(close, '닫기');
-    close.addEventListener('click', function () {
-      field.value = '';
-      if (box.parentNode) {
-        box.parentNode.removeChild(box);
-      }
-    });
-    box.appendChild(close);
-
-    tkBox.appendChild(box);
-  }
-
-  /** 표 한 줄 — 이름 · hint · 발급일 · 마지막 사용 · 상태 · (살아 있으면) 회수 */
+  /** 표 한 줄 — 「내 계정」 절과 같은 공용 함수로 그린다(칸 차례만 이 화면 것) */
   function addTokenRow(token) {
-    var row = document.createElement('tr');
-    var live = token.revoked_at === null || token.revoked_at === undefined;
-
-    [token.name, token.hint].forEach(function (value) {
-      var td = document.createElement('td');
-      setText(td, value === null || value === undefined || value === '' ? '—' : value);
-      row.appendChild(td);
-    });
-    addWhenCell(row, token.created_at);
-    addWhenCell(row, live ? token.last_used_at : token.revoked_at);
-
-    var state = document.createElement('td');
-    setText(state, live ? '살아있음' : '회수됨');
-    row.appendChild(state);
-
-    var actions = document.createElement('td');
-    actions.className = 'actions';
-    if (live) {
-      var button = document.createElement('button');
-      button.type = 'button';
-      button.className = 'btn btn--quiet btn--small';
-      setText(button, '회수');
-      button.addEventListener('click', function () {
-        revokeToken(token);
-      });
-      actions.appendChild(button);
-    }
-    row.appendChild(actions);
-
-    tkBody.appendChild(row);
+    addTokenRowShared({ body: tkBody, columns: TK_COLUMNS, onRevoke: revokeToken }, token);
   }
 
   /** 목록을 다시 읽어 표를 그린다. 실패는 알림 줄에 **서버 문구**로 말한다. */
@@ -4514,49 +4570,6 @@ function initUsers(csrfToken) {
           return null;
         }
         tokens.forEach(addTokenRow);
-        return null;
-      })
-      .catch(function () {
-        setText(tkMsg, GENERIC_ERROR);
-      });
-  }
-
-  /** 발급 — 이름·사유를 보내고, 성공하면 토큰을 한 번 보여 준 뒤 표를 다시 읽는다. */
-  function issueToken() {
-    if (tkUid === null) {
-      return;
-    }
-    var uid = tkUid;
-    var name = tkName ? tkName.value : '';
-    var reason = tkReason ? tkReason.value : '';
-    if (name.replace(/\s+/g, '') === '') {
-      setText(tkMsg, '토큰 이름을 적어야 합니다.');
-      return;
-    }
-    if (reason.replace(/\s+/g, '') === '') {
-      setText(tkMsg, '사유를 적어야 합니다.');
-      return;
-    }
-    setText(tkMsg, '');
-    tokenFetch('POST', '/api/users/' + String(uid) + '/api-tokens',
-      { name: name, reason_text: reason }, issueToken)
-      .then(function (result) {
-        if (result === null) {
-          return null;
-        }
-        if (!result.ok) {
-          setText(tkMsg, errorMessage(result.data));
-          return null;
-        }
-        if (tkName) {
-          tkName.value = '';
-        }
-        if (tkReason) {
-          tkReason.value = '';
-        }
-        setText(tkMsg, '토큰을 발급했습니다.');
-        showIssuedToken(result.data ? result.data.token : '');
-        loadTokens();
         return null;
       })
       .catch(function () {
@@ -4631,7 +4644,7 @@ function initUsers(csrfToken) {
 
     var lead = document.createElement('p');
     lead.className = 'panel__sub';
-    setText(lead, '이 계정의 권한으로 프로그램이 쓰는 토큰입니다. 값은 발급할 때 한 번만 보이고, 회수하면 바로 쓸 수 없게 됩니다.');
+    setText(lead, '이 계정의 프로그램 토큰입니다. 발급은 본인만 「내 계정」 화면에서 하고, 여기서는 보고 회수합니다.');
     boxHead.appendChild(lead);
 
     tkBox.appendChild(boxHead);
@@ -4640,7 +4653,8 @@ function initUsers(csrfToken) {
     table.className = 'table token-box__table';
     var head = document.createElement('thead');
     var headRow = document.createElement('tr');
-    ['이름', '앞 6자', '발급일', '마지막 사용 · 회수', '상태', ''].forEach(function (label) {
+    // F-66 — 범위·만료 두 칸이 늘었다 (위 TK_COLUMNS 와 같은 차례여야 한다).
+    ['이름', '앞 6자', '범위', '만료', '발급일', '마지막 사용 · 회수', '상태', ''].forEach(function (label) {
       var th = document.createElement('th');
       setText(th, label);
       headRow.appendChild(th);
@@ -4651,29 +4665,8 @@ function initUsers(csrfToken) {
     table.appendChild(tkBody);
     tkBox.appendChild(table);
 
-    var form = document.createElement('div');
-    form.className = 'token-box__form';
-
-    tkName = document.createElement('input');
-    tkName.type = 'text';
-    tkName.maxLength = 50;
-    tkName.placeholder = '토큰 이름 (예: 사무실 PC)';
-    form.appendChild(tkName);
-
-    tkReason = document.createElement('input');
-    tkReason.type = 'text';
-    tkReason.maxLength = 500;
-    tkReason.placeholder = '사유 (필수)';
-    form.appendChild(tkReason);
-
-    var issue = document.createElement('button');
-    issue.type = 'button';
-    issue.className = 'btn btn--small';
-    setText(issue, '발급');
-    issue.addEventListener('click', issueToken);
-    form.appendChild(issue);
-
-    tkBox.appendChild(form);
+    // F-66 — 발급 폼이 있던 자리다. 관리자는 남의 토큰을 **만들지 않는다**(라우트도 없다).
+    //         발급은 본인이 「내 계정」 화면에서 비밀번호 + 2단계 코드로 한다.
 
     tkMsg = document.createElement('p');
     tkMsg.className = 'msg';
@@ -4711,20 +4704,6 @@ function initUsers(csrfToken) {
     }
   }
 
-  /** 한 번 보여 준 토큰 상자를 지운다(값은 상자와 함께 사라진다). */
-  function clearIssuedToken() {
-    var once = document.getElementById('api-token-once');
-    if (once) {
-      var field = once.querySelector('input');
-      if (field) {
-        field.value = '';
-      }
-      if (once.parentNode) {
-        once.parentNode.removeChild(once);
-      }
-    }
-  }
-
   /** 모달을 연다 — 구역을 비우고 그 계정의 토큰을 읽는다. 자기 자신도 대상이 된다. */
   function openTokenSection(item) {
     buildTokenSection();
@@ -4734,12 +4713,6 @@ function initUsers(csrfToken) {
     }
     clearIssuedToken();                    // 앞서 본 토큰 값을 다음 계정으로 끌고 가지 않는다
     setText(tkTitle, '프로그램 토큰 — ' + item.username);
-    if (tkName) {
-      tkName.value = '';
-    }
-    if (tkReason) {
-      tkReason.value = '';
-    }
     setText(tkMsg, '');
     while (tkBody && tkBody.firstChild) {
       tkBody.removeChild(tkBody.firstChild);
@@ -4747,12 +4720,9 @@ function initUsers(csrfToken) {
     tkUid = typeof item.id === 'number' ? item.id : null;
     loadTokens();
     tkDialog.showModal();
-    if (tkName) {
-      tkName.focus();
-    }
   }
 
-  /** 행마다 붙는 「프로그램 토큰」 단추 — **자기 자신 행에도** 붙는다 (F-59 첫 용례). */
+  /** 행마다 붙는 「프로그램 토큰」 단추 — 목록·회수를 여는 창이다 (F-66: 발급은 본인만). */
   function tokenButton(item) {
     var button = document.createElement('button');
     button.type = 'button';
@@ -6143,6 +6113,166 @@ function initSettings(me) {
  * 회수 자격(만든 사람 또는 Admin)은 서버 Authz::decideShareRevoke 가 판단한다. 여기서 회수
  * 단추를 그리는 기준은 "아직 살아 있는 링크인가" 라는 **상태**일 뿐 권한이 아니다.
  */
+/* ─── F-66 「프로그램 토큰」 절 — `/settings` 본인 창구 (PRD F-66, ARCH 4.7 「화면」) ────
+ *
+ * 창구 셋은 `/api/me/api-tokens` 이고 대상은 언제나 **세션의 본인**이다 — 이 화면은
+ * 「누구의」 를 고르지 않고, 요청 본문에도 대상 계정이 들어가지 않는다.
+ *
+ * ★ 역할 비교가 한 줄도 없다. 범위 선택지는 `/api/me` 의 `token_scopes`, 폼을 보일지는
+ *   `can_issue_tokens` 만 본다 (DESIGN 0장 1, PRD S-01). 두 값을 개발자도구로 고쳐도
+ *   서버가 요청마다 다시 판단한다(역할 밖 범위 → 400, 2단계 꺼짐 → 403).
+ * ★ 발급 응답의 `token` 은 그 순간 한 번만 보인다 — 공용 `showIssuedToken` 이 읽기 전용
+ *   칸의 `value` 로만 넣는다(문서 텍스트에 넣지 않는다). 비밀번호·코드 칸은 응답을 받은
+ *   **즉시** 비운다(성공이든 실패든).
+ * ★ 실패 문구는 서버가 준 것을 그대로 `.msg` 에 보인다 — 화면이 문장을 지어내지 않는다
+ *   (DESIGN 2.5 · 5장).
+ */
+function initMyTokens(csrfToken, me) {
+  var body = document.getElementById('my-tokens-body');
+  var form = document.getElementById('token-issue-form');
+  if (!body || !form) {
+    return;
+  }
+  var empty    = document.getElementById('my-tokens-empty');
+  var expiring = document.getElementById('tokens-expiring');
+  var blocked  = document.getElementById('token-issue-blocked');
+  var msg      = document.getElementById('token-issue-msg');
+  var scopeSel = document.getElementById('token-scope');
+  var nameEl   = document.getElementById('token-name');
+  var purpEl   = document.getElementById('token-purpose');
+  var pwEl     = document.getElementById('token-password');
+  var otpEl    = document.getElementById('token-otp');
+  var submit   = document.getElementById('token-issue');
+
+  /** 비밀은 브라우저 안에서도 오래 두지 않는다 — 응답을 받는 즉시 비운다 (PRD 7.7) */
+  function clearSecrets() {
+    if (pwEl)  { pwEl.value = ''; }
+    if (otpEl) { otpEl.value = ''; }
+  }
+
+  // 범위 선택지 — **서버가 내려 준 목록만**. 화면에 고정 목록을 두지 않는다.
+  var scopes = me && Array.isArray(me.token_scopes) ? me.token_scopes : [];
+  if (scopeSel) {
+    while (scopeSel.firstChild) {
+      scopeSel.removeChild(scopeSel.firstChild);
+    }
+    scopes.forEach(function (scope) {
+      var option = document.createElement('option');
+      option.value = scope;
+      setText(option, tokenScopeLabel(scope));
+      scopeSel.appendChild(option);
+    });
+  }
+
+  // 폼이냐 안내냐 — `can_issue_tokens`(= 2단계 인증이 켜졌나) 하나만 본다.
+  var canIssue = me && me.can_issue_tokens === true;
+  form.hidden = !canIssue;
+  if (blocked) {
+    blocked.hidden = canIssue;
+  }
+
+  /** 회수 — 되묻고 나서 DELETE. 회수한 순간부터 그 토큰은 401 이다. */
+  function revoke(token) {
+    if (!token || typeof token.id !== 'number') {
+      return;
+    }
+    if (!window.confirm('토큰 「' + String(token.name) + '」 을(를) 회수합니다. 그 프로그램은 바로 쓸 수 없게 됩니다.')) {
+      setText(msg, '취소했습니다');
+      return;
+    }
+    setText(msg, '');
+    tokenApiFetch(csrfToken, 'DELETE', '/api/me/api-tokens/' + String(token.id), null,
+      function () { revoke(token); })
+      .then(function (result) {
+        if (result === null) { return null; }
+        if (!result.ok) {
+          setText(msg, errorMessage(result.data));
+          return null;
+        }
+        setText(msg, '토큰을 회수했습니다.');
+        load();
+        return null;
+      })
+      .catch(function () {
+        setText(msg, GENERIC_ERROR);
+      });
+  }
+
+  /** 목록을 다시 읽어 표를 그린다. 만료 14일 안(`expires_soon`)이 있으면 안내 줄을 켠다. */
+  function load() {
+    tokenApiFetch(csrfToken, 'GET', '/api/me/api-tokens', null, load)
+      .then(function (result) {
+        if (result === null) { return null; }
+        while (body.firstChild) {
+          body.removeChild(body.firstChild);
+        }
+        if (!result.ok) {
+          setText(msg, errorMessage(result.data));
+          return null;
+        }
+        var tokens = result.data && Array.isArray(result.data.tokens) ? result.data.tokens : [];
+        var soon = false;
+        tokens.forEach(function (token) {
+          addTokenRowShared({
+            body: body,
+            columns: ['name', 'purpose', 'hint', 'scope', 'expires', 'used', 'state', 'actions'],
+            onRevoke: revoke
+          }, token);
+          if (token.expires_soon === true && (token.revoked_at === null || token.revoked_at === undefined)) {
+            soon = true;
+          }
+        });
+        if (empty) {
+          empty.hidden = tokens.length !== 0;
+        }
+        if (expiring) {
+          expiring.hidden = !soon;
+        }
+        return null;
+      })
+      .catch(function () {
+        setText(msg, GENERIC_ERROR);
+      });
+  }
+
+  form.addEventListener('submit', function (event) {
+    event.preventDefault();
+    var payload = {
+      name: nameEl ? nameEl.value : '',
+      purpose: purpEl ? purpEl.value : '',
+      scope: scopeSel ? scopeSel.value : '',
+      password: pwEl ? pwEl.value : '',
+      otp: otpEl ? otpEl.value : ''
+    };
+    setText(msg, '');
+    if (submit) { submit.disabled = true; }
+    // 재시도(retry)를 넘기지 않는다 — 2단계 코드는 1회성이라 같은 요청을 다시 보낼 수 없다.
+    tokenApiFetch(csrfToken, 'POST', '/api/me/api-tokens', payload, null)
+      .then(function (result) {
+        clearSecrets();                     // 성공이든 실패든 비밀은 여기서 사라진다
+        if (submit) { submit.disabled = false; }
+        if (result === null) { return null; }
+        if (!result.ok) {
+          setText(msg, errorMessage(result.data));
+          return null;
+        }
+        if (nameEl) { nameEl.value = ''; }
+        if (purpEl) { purpEl.value = ''; }
+        setText(msg, '토큰을 발급했습니다. 값은 지금만 보입니다.');
+        showIssuedToken(form.parentNode, msg, result.data ? result.data.token : '');
+        load();
+        return null;
+      })
+      .catch(function () {
+        clearSecrets();
+        if (submit) { submit.disabled = false; }
+        setText(msg, GENERIC_ERROR);
+      });
+  });
+
+  load();
+}
+
 function initShares(csrfToken) {
   var msg = document.getElementById('msg');
   var body = document.getElementById('shares-body');
@@ -7603,6 +7733,9 @@ function bootPage(page) {
           }
           // 15-2 — 「내 공유 링크」. 로그인한 사람이면 누구나 자기 링크를 본다 (PRD F-13).
           initShares(csrfToken);
+          // F-66 — 「프로그램 토큰」. 대상은 언제나 본인이고, 폼·선택지는 me 의
+          //        can_issue_tokens·token_scopes 가 정한다 (역할 비교 0).
+          initMyTokens(csrfToken, me);
           return null;
         }
         if (page === 'users') {

@@ -112,6 +112,23 @@ $mePayload = [
     // 10단계 — 내 2단계 인증이 켜져 있나 (R-05). 권한이 아니라 상태이며,
     // 화면이 "켜기" 를 보일지 "끄기" 를 보일지 고르는 데만 쓴다.
     'mfa_enabled'      => ($user['mfa_enabled'] ?? false) === true,
+    /*
+     * F-66 — 「프로그램 토큰」 절이 쓰는 값 둘 (PRD F-66 ② ③, ARCH 4.7 「GET /api/me」).
+     *
+     *   token_scopes     이 역할이 **고를 수 있는** 범위 배열. 발급 폼의 <select> 를 채운다.
+     *                    upload_levels 와 **똑같은 성격**이다 — 화면이 고정 목록을 들고 있으면
+     *                    역할 판단이 화면에 생기므로 서버가 내려 준다. 목록에 없는 값을 보내도
+     *                    발급 핸들러가 Authz::tokenScopesFor 로 다시 막는다 (PRD S-01).
+     *   can_issue_tokens 발급 폼을 보일까, 「2단계 인증을 켜야 합니다」 안내를 보일까.
+     *                    값은 mfa_enabled 와 같다 — 그래도 **이름을 따로 두는 이유**는
+     *                    화면이 「2단계가 켜졌나」가 아니라 「발급할 수 있나」를 묻게 하기
+     *                    위해서다(다른 can_* 와 같은 자리). 화면 편의 값이며 권한이 아니다:
+     *                    true 로 고쳐 보내도 서버가 요청마다 DB 를 다시 본다.
+     *
+     * ★ 화면은 이 둘만 본다 — 역할 문자열을 비교하지 않는다 (DESIGN 0장 1, PRD S-01).
+     */
+    'token_scopes'     => Authz::tokenScopesFor($user),
+    'can_issue_tokens' => ($user['mfa_enabled'] ?? false) === true,
     // 11단계 — 최초 로그인 강제 절차 (PRD F-16, ARCH 4.0).
     //   next — 지금 무엇을 해야 하나: 'password_change' → 'mfa_setup' → null(끝).
     //          로그인 200 응답과 **같은 값**이며 계산은 Auth::nextStep 한 곳에서만 한다.

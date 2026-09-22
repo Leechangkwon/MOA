@@ -793,6 +793,71 @@ final class Authz
             && !defined('TBOX_AUTH_METHOD');
     }
 
+    /**
+     * F-66 — 개인 프로그램 토큰의 **범위** 세 값 (PRD F-66 ③, ARCH 4.7).
+     *
+     * `api_tokens.scope` 의 CHECK 와 같은 세 값이고, 순서는 넓어지는 순서다.
+     * 이 목록을 늘리려면 DB CHECK(6.2-5)·`tokenScopeAllows`·화면 라벨을 함께 고쳐야 한다.
+     */
+    public const TOKEN_SCOPES = ['read', 'read+upload', 'read+upload+delete'];
+
+    /**
+     * F-66 — 이 계정이 **고를 수 있는** 범위 목록 (PRD F-66 ③, ARCH 4.7, `GET /api/me` 의 `token_scopes`).
+     *
+     * 올릴 수도 지울 수도 없는 역할(Guest — PRD 5.2·5.3)에게는 `read` 하나뿐이다.
+     * 판단은 **역할 문자열이 아니라** `uploadableLevels()` 의 결과로 한다 — 권한 표
+     * (`permissions` 16행)가 바뀌면 이 목록도 자동으로 따라 바뀐다(ARCH 6.2-1).
+     *
+     * ★ `upload_levels` 와 같은 성격의 **선택지**이며 권한이 아니다: 화면이 목록에 없는
+     *   값을 보내도 발급 핸들러가 이 함수로 다시 판단하고(`bad_request`), 범위 안이라도
+     *   파일별 판정은 요청마다 `decide*()` 가 다시 한다 (PRD S-01, ARCH 4.7).
+     *
+     * @param array<string,mixed> $u
+     * @return list<string>
+     */
+    public static function tokenScopesFor(array $u): array
+    {
+        // 올릴 수 있는 등급이 하나도 없으면 「읽기만」 이다 (Guest 가 그 경우다).
+        return self::uploadableLevels($u) === [] ? ['read'] : self::TOKEN_SCOPES;
+    }
+
+    /**
+     * F-66 — **라우트 정책**이 요구하는 범위를 이 토큰이 갖고 있나 (ARCH 4.7 표).
+     *
+     * 창구 이름을 하나하나 적지 않고 **정책 문자열**로 정한다 — 새 토큰 창구가 늘어도
+     * 이 표를 고칠 일이 없고, 창구와 범위가 어긋날 여지가 없다.
+     *
+     *   `file.read` · `authenticated`  → 전부 허용 (`read` 이상)
+     *   `file.upload` · `file.update`  → `read+upload` 이상
+     *   `file.delete`                  → `read+upload+delete` 만
+     *   그 밖(모르는 정책)             → **거부**(닫힌 실패). 토큰 집합이 넓어지는 날
+     *                                    그 창구는 범위를 정할 때까지 열리지 않는다.
+     *
+     * ★ 이 함수는 「이 **토큰**이 무엇을 할 수 있나」만 본다. 「이 **계정**이 무엇을 할 수
+     *   있나」는 그 뒤의 `authorize()` 이고, 파일 한 건의 판정은 핸들러의 `decide*()` 다.
+     *   셋이 모두 통과해야 요청이 산다 — 토큰이 계정보다 커질 수 없다(ARCH 4.7).
+     * ★ 역할을 보지 않는다. 인자는 문자열 둘뿐이다.
+     */
+    public static function tokenScopeAllows(string $scope, string $policy): bool
+    {
+        switch ($policy) {
+            case self::POLICY_AUTHENTICATED:
+            case 'file.read':
+                return in_array($scope, self::TOKEN_SCOPES, true);
+
+            case 'file.upload':
+            case 'file.update':
+                return $scope === 'read+upload' || $scope === 'read+upload+delete';
+
+            case 'file.delete':
+                return $scope === 'read+upload+delete';
+
+            default:
+                // 모르는 정책은 통과시키지 않는다 (authorize() 의 default 와 같은 원칙).
+                return false;
+        }
+    }
+
     /** 업로드 자체가 가능한 역할인가 (Guest 는 불가 — PRD 5.2) */
     public static function canUploadAtAll(array $u): bool
     {
