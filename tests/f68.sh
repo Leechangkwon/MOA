@@ -568,7 +568,7 @@ sub "15. Http::reasonMessage() ↔ ARCHITECTURE.md 5.30 표 — 글자 대조 (�
 CMP=$(php -r '
 require $argv[1] . "/src/Http.php";
 require $argv[1] . "/src/Upload.php";
-$md = file($argv[1] . "/docs/tbox/ARCHITECTURE.md");
+$md = file($argv[1] . "/ARCHITECTURE.md");
 $in = false; $rows = 0; $bad = 0; $out = [];
 foreach ($md as $line) {
     if (strpos($line, "### 5.30 ") === 0) { $in = true; continue; }

@@ -35,7 +35,7 @@
  */
 
 /**
- * Qaredi C — t-box 모듈의 주소 접두 (docs/launcher/ARCHITECTURE.md 3장).
+ * Qaredi C — t-box 모듈의 주소 접두 (../docs/launcher/ARCHITECTURE.md 3장).
  *
  * 서버가 <body data-base="/tbox"> 로 알려 준다. 이 파일의 **모든** 절대 경로는 이 값 뒤에
  * 붙는다 — 주소를 만드는 자리가 한 곳이라, 접두가 바뀌어도 고칠 곳이 여기 하나다.

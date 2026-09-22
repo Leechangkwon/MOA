@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # tests/f66.sh — F-66 「프로그램 토큰 본인 발급 · 범위 · 만료 180일」 수락 기준 실행
 #                (PRD 12.2 T-78, F-66, ARCH 4.7 · 4.6 · 6.2-5 · 7.4 · 7.5,
-#                 SECURITY R-97 · R-91 · R-48 · R-45, docs/tbox/f66-self-tokens-directive.md)
+#                 SECURITY R-97 · R-91 · R-48 · R-45, docs/f66-self-tokens-directive.md)
 #
 #   (a) 발급   qa_employee01 `POST /api/me/api-tokens {name,purpose,scope:"read+upload",password,otp}`
 #       → 201 · `token` 48자 `[A-Za-z0-9]` · `hint` = 앞 6자 · `scope` 그대로 ·

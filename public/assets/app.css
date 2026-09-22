@@ -1683,7 +1683,7 @@ dialog.token-modal { width: min(720px, calc(100vw - 32px)); }
 .login { position: relative; }
 .login .theme-toggle { position: absolute; top: 12px; right: 12px; color: var(--muted); }
 
-/* ─── 앱 그리드 단추 (Qaredi C — DESIGN.md 2.9 「자리 정정 2026-09-22」, docs/launcher/ARCHITECTURE.md 6장) ───
+/* ─── 앱 그리드 단추 (Qaredi C — DESIGN.md 2.9 「자리 정정 2026-09-22」, ../docs/launcher/ARCHITECTURE.md 6장) ───
    자리는 **사이드바 `.brand` 줄 오른쪽** 하나다(`header.appbar` 는 넓은 화면에서 숨겨진다).
    `.brand` 는 이미 flex 이므로 `margin-left: auto` 한 줄이 단추를 오른끝으로 보낸다.
    `<details>` 의 기본 동작으로 스크립트 0 으로 열린다. 여기서 정하는 것은 **자리와 배치**뿐이고,

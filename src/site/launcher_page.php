@@ -4,7 +4,7 @@ declare(strict_types=1);
 /**
  * src/site/launcher_page.php — GET·HEAD `/` (Qaredi 런처, Q:F-1)
  *
- * 요구사항: 사이트 `PRD.md` 4장 · 9장 Q:T-1 · `docs/launcher/ARCHITECTURE.md` 5장.
+ * 요구사항: 사이트 `../PRD.md` 4장 · 9장 Q:T-1 · `../docs/launcher/ARCHITECTURE.md` 5장.
  *
  * 라우터([1-0])가 관문 **앞에서** 직접 부른다 — 이 화면은 t-box 라우트 표에 들어가지 않는다.
  * t-box 모듈의 라우트·정책·핸들러는 한 글자도 바뀌지 않았다.

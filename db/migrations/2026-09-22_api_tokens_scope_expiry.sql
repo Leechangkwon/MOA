@@ -2,7 +2,7 @@
 -- 2026-09-22_api_tokens_scope_expiry.sql  (F-66 — 프로그램 토큰 본인 발급의 범위·만료,
 --                              PRD F-66 ③ ④ · 8장 `/api/me/api-tokens` 세 행 · T-78,
 --                              ARCHITECTURE 4.7 · 6.2-5, SECURITY R-97 · R-91,
---                              docs/tbox/f66-self-tokens-directive.md)
+--                              docs/f66-self-tokens-directive.md)
 --
 -- 목적: 개인 프로그램 토큰에 **범위**(scope)와 **만료**(expires_at)를 준다. F-59 의 토큰은
 --       계정 권한 전부 · 회수 전까지 영구였다(R-91). F-66 은 「본인이 · 필요한 만큼만 ·

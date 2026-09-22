@@ -2,7 +2,7 @@
 declare(strict_types=1);
 
 /**
- * src/Apps.php — Qaredi 앱 목록 한 곳 (Q:F-1, docs/launcher/ARCHITECTURE.md 5장)
+ * src/Apps.php — Qaredi 앱 목록 한 곳 (Q:F-1, ../docs/launcher/ARCHITECTURE.md 5장)
  *
  * 런처 타일(`/`)과 셸의 그리드 팝업(모든 t-box 화면)이 **같은 목록**을 본다.
  * 목록이 두 벌이면 언젠가 한쪽만 고쳐진다(25단계 CSS 다섯 벌의 교훈).

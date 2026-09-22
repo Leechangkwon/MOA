@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # tests/q_launcher.sh — Qaredi C 수락 기준 실행 (사이트 PRD.md 9장 Q:T-1 · 3 · 4 · 5 · 6 · 7 · 8 · 9,
-#                        설계 docs/launcher/ARCHITECTURE.md, 지시서 docs/launcher/c-launcher-basepath-directive.md)
+#                        설계 ../docs/launcher/ARCHITECTURE.md, 지시서 ../docs/launcher/c-launcher-basepath-directive.md)
 #
 #   Q:T-1 런처 `GET /`         200 HTML · 타일 t-box·커뮤니티(「준비 중」) · `<script` 0 · `Set-Cookie` 0 ·
 #                              미로그인이면 사용자 칩 없음 · 로그인(qa)이면 표시 이름 · `POST /` 405

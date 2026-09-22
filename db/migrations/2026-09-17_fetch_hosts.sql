@@ -1,7 +1,7 @@
 -- ─────────────────────────────────────────────────────────────
 -- 2026-09-17_fetch_hosts.sql  (F-43 — URL 가져오기 허용 사이트 목록을 DB 로,
 --                              PRD F-43 · S-05 ③, ARCHITECTURE 5.22,
---                              SECURITY R-76, docs/tbox/f43-fetch-allowlist-directive.md)
+--                              SECURITY R-76, docs/f43-fetch-allowlist-directive.md)
 --
 -- 목적: 「URL 로 가져오기」가 갈 수 있는 곳(허용 호스트)을 `.env` 의 문자열에서
 --       **표 하나**로 옮긴다 — 관리자가 화면에서 넣고 빼되, 권한 매트릭스와 같은 급의

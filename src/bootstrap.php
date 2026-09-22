@@ -57,7 +57,7 @@ if (!defined('TBOX_REQUEST_ID')) {
 }
 
 /**
- * t-box 모듈의 주소 접두 (Qaredi C — docs/launcher/ARCHITECTURE.md 2장).
+ * t-box 모듈의 주소 접두 (Qaredi C — ../docs/launcher/ARCHITECTURE.md 2장).
  *
  * `/` 에는 Qaredi 런처가 서고, t-box 의 모든 주소(화면·API·공유 링크·정적 자산)는
  * 이 접두 아래로 간다. **코드 상수**이며 `.env` 값이 아니다 — 로컬(8082)과 공개(80)가

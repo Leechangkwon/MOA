@@ -27,7 +27,7 @@ PRD F-46(신설)·12.2 T-58 ; ARCH 5.21(생성기)·5.22(URL 가져오기) 보�
     src/handlers/settings_page.php 153 · src/help/screens.php 73·files 도움말 · README 1250~ — 「오프라인 코드 생성기」 → 「2단계 코드 생성기」, files 도움말에 「SharePoint 도 「링크가 있는 모든 사용자」 링크면 됩니다」 한 구.
     deploy/sites/tbox-v2.conf                 — `location = /assets/totp-generator.webmanifest { try_files $uri =404; expires 1h; add_header Content-Type "application/manifest+json"; }` 와 보안 헤더(생성기 location 과 같은 것). **/etc/nginx 복사·reload 는 Fable**.
     scripts/security_lint.sh                  — 규칙 (g) 유지 확인(변경 없음이면 그대로).
-    PRD.md(F-46·T-58) · ARCHITECTURE.md(5.21 휴대폰·매니페스트 / 5.22 쿠키 규칙) · SECURITY.md(R-77 보충: 쿠키는 같은 호스트 다음 단계에만·값 미기록) · STAGES.md 「F-46」 · docs/tbox/totp-generator-internals.md(휴대폰·매니페스트 절).
+    PRD.md(F-46·T-58) · ARCHITECTURE.md(5.21 휴대폰·매니페스트 / 5.22 쿠키 규칙) · SECURITY.md(R-77 보충: 쿠키는 같은 호스트 다음 단계에만·값 미기록) · STAGES.md 「F-46」 · docs/totp-generator-internals.md(휴대폰·매니페스트 절).
 금지 패턴   : 쿠키를 다른 호스트로 보내는 것 · 쿠키 값을 감사·로그에 남기는 것 · CURLOPT_FOLLOWLOCATION true · 리다이렉트 단계에서 check() 생략 · 생성기가 비밀 키·코드를 어디로든 보내는 코드 · 외부 아이콘/폰트/스크립트 URL(매니페스트 아이콘도 data: 만) · 생성기 소스·화면에 구조 설명 · APK/네이티브 · 패키지 설치 · 운영 표 변경.
              라이브 서버 규칙: Fetch.php 저장 직후 `php -l` + `/login` + 로그인 요청 1회.
 완료 기준   : tests/f46.sh —

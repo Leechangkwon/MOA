@@ -1,6 +1,6 @@
 # F-42 지시서 (Fable → Opus) — 오프라인 2단계 코드 생성기의 서버 시각 동기화 · 잠금 문구 최소 12자
 
-작성 2026-09-15. 근거: 사용자 결정 2026-09-15 — 「생성기 화면의 초와 실제 인증 초가 같게. 서버 시각을 하드코딩하지 말고 **인터넷이 있으면 서버와 동기화**」. 앞선 결정(같은 날): 생성기 소스·화면에는 사용 방법만, 구조 설명은 문서(`docs/tbox/totp-generator-internals.md`)에.
+작성 2026-09-15. 근거: 사용자 결정 2026-09-15 — 「생성기 화면의 초와 실제 인증 초가 같게. 서버 시각을 하드코딩하지 말고 **인터넷이 있으면 서버와 동기화**」. 앞선 결정(같은 날): 생성기 소스·화면에는 사용 방법만, 구조 설명은 문서(`docs/totp-generator-internals.md`)에.
 PRD F-42(신설)·12.2 T-55 ; ARCH 5.21 ; SECURITY R-40 보충(생성기 위험) ; STAGES 「F-42」.
 
 ## 0. 사실
@@ -15,7 +15,7 @@ PRD F-42(신설)·12.2 T-55 ; ARCH 5.21 ; SECURITY R-40 보충(생성기 위험)
               오프라인이면 마지막 차이(브라우저 저장)를, 그것도 없으면 PC 시각을 쓰고 상태를 표시한다. 잠금 문구는 12자 이상.
 요구사항    : PRD F-17·F-17-2(생성기)·F-42 ; S-03·S-05(외부 요청 없음 — 생성기가 부르는 것은 이 서버 자신) ; 12.2 T-55 ; ARCH 5.21 ; SECURITY R-40 ;
               `src/Totp.php`(PERIOD·verify 창) · `public/index.php` 라우트 표(`Authz::POLICY_PUBLIC` 예: /api/health) · `src/handlers/health.php`(공개 응답의 본보기) · `deploy/sites/tbox-v2.conf` 64~72 ·
-              `docs/tbox/totp-generator-internals.md`(구조 설명은 여기에만 쓴다 — 생성기 소스·화면에는 사용 문구만).
+              `docs/totp-generator-internals.md`(구조 설명은 여기에만 쓴다 — 생성기 소스·화면에는 사용 문구만).
 수정 파일   :
   [새로 만듦]
     src/handlers/time.php                     — GET /api/time → `{"now": <unix 초, 정수>, "period": 30}` 만. 로그인 불필요(POLICY_PUBLIC). 캐시 금지 헤더(`Cache-Control: no-store`). **CORS**: `Access-Control-Allow-Origin: *`·`Access-Control-Allow-Methods: GET` — 이 창구만(시각 하나뿐이라 잃을 것이 없다). 감사 기록 없음(조회, health 와 같음). 속도 제한은 기존 IP 제한이 있으면 그대로 따른다.
@@ -29,7 +29,7 @@ PRD F-42(신설)·12.2 T-55 ; ARCH 5.21 ; SECURITY R-40 보충(생성기 위험)
                                                 (5) `MIN_PASS` 를 12 로. 안내 문구 「잠금 문구는 12자 이상이어야 합니다. 단어 2~3개를 권합니다.」
                                                 (6) 소스 안 주석은 사용·동작 설명만(구조·근거·문서 번호 금지 — 앞선 결정).
     deploy/sites/tbox-v2.conf                 — 생성기 location 의 CSP 에 `connect-src 'self'` 추가(그 밖 지시어 그대로). **/etc/nginx 에는 복사하지 않는다** — Fable 이 사용자 승인 뒤 적용·reload.
-    docs/tbox/totp-generator-internals.md          — 「동기화」 절: 공식·저장 키·상태 3종·file:// 처리·CORS 근거.
+    docs/totp-generator-internals.md          — 「동기화」 절: 공식·저장 키·상태 3종·file:// 처리·CORS 근거.
     PRD.md(F-42·T-55·8장 API 행) · ARCHITECTURE.md 5.21 · SECURITY.md R-40 보충 한 줄(생성기가 서버에서 받는 것은 시각뿐, 보내는 것은 없음) · STAGES.md 「F-42」 개발 사항 · README 생성기 문단 한 줄.
 금지 패턴   : 생성기가 비밀 키·코드·문구를 어디로든 보내는 코드 · `/api/time` 응답에 시각·period 이외 값 · 외부 시간 서버(NTP·타 사이트) 호출 · 인라인 이벤트 속성 · 서버 시각을 문서에 박아 넣기(하드코딩) · 다른 라우트에 CORS 헤더 · 생성기 소스·화면에 구조 설명·문서 번호.
 완료 기준   : tests/totp_time_sync.sh —
