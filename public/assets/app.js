@@ -3668,6 +3668,33 @@ function initAccount(csrfToken, mfaEnabled, onMfaEnabled, mfaRequired) {
   var mfaDisableForm = document.getElementById('mfa-disable-form');
   var mfaOffPassword = document.getElementById('mfa-off-password');
   var mfaOffCode = document.getElementById('mfa-off-code');
+  /* D-10 (DESIGN 2.7, 사용자 지시 2026-09-22) — 끄기 폼은 상태 문장 아래 「2단계 인증 끄기」
+     단추가 여는 모달 안에 있다. 폼 id·칸·요청 본문은 그대로고 자리만 옮겼다.
+     (최초 로그인 강제 절차 화면에는 이 요소들이 없다 — 전부 null 검사 뒤에 쓴다.) */
+  var mfaDisableOpen   = document.getElementById('mfa-disable-open');
+  var mfaDisableDialog = document.getElementById('mfa-disable-dialog');
+  var mfaDisableX      = document.getElementById('mfa-disable-dialog-x');
+  var mfaDisableClose  = document.getElementById('mfa-disable-dialog-close');
+  /* 끄기 실패 문구는 화면 공통 `#msg` 가 아니라 **모달 안**의 이 줄에 쓴다(모달이 열려
+     있는 동안 공통 줄은 백드롭 뒤에 가려 보이지 않는다). 열 때·닫을 때·성공 때 비운다.
+     성공 끝맺음은 모달이 닫히므로 그대로 `#msg` 에 남긴다. */
+  var mfaDisableMsg    = document.getElementById('mfa-disable-msg');
+
+  /** 끄기 모달 닫기 — 비밀은 남기지 않고, 초점은 연 단추로 돌려준다 (키보드 자리 유지) */
+  function closeMfaDisableDialog() {
+    if (mfaDisableDialog && mfaDisableDialog.open) {
+      mfaDisableDialog.close();
+    }
+    if (mfaOffPassword) {
+      mfaOffPassword.value = '';
+    }
+    if (mfaOffCode) {
+      mfaOffCode.value = '';
+    }
+    if (mfaDisableOpen && mfaDisableOpen.hidden !== true) {
+      mfaDisableOpen.focus();
+    }
+  }
 
   /** 상태 변경 요청 공통 (JSON + CSRF 토큰). 401 이면 로그인 화면으로. */
   function post(path, payload) {
@@ -3795,6 +3822,10 @@ function initAccount(csrfToken, mfaEnabled, onMfaEnabled, mfaRequired) {
     if (mfaDisableForm) {
       mfaDisableForm.hidden = !enabled;
     }
+    // D-10 — 모달을 여는 단추는 폼과 **같은 조건**으로 켜고 끈다.
+    if (mfaDisableOpen) {
+      mfaDisableOpen.hidden = !enabled;
+    }
     if (mfaSetup && enabled) {
       mfaSetup.hidden = true;
       clearMfaQr();
@@ -3918,16 +3949,60 @@ function initAccount(csrfToken, mfaEnabled, onMfaEnabled, mfaRequired) {
           mfaOffPassword.value = '';
           mfaOffCode.value = '';
           if (!result.ok) {
-            setText(msg, errorMessage(result.data));
+            // 실패는 **모달 안**에서 말한다(모달은 열린 채 — 비밀번호·코드를 고쳐 다시 보낸다).
+            setText(mfaDisableMsg, errorMessage(result.data));
             return null;
           }
+          setText(mfaDisableMsg, '');
           showMfa(false);
           setText(msg, '2단계 인증을 껐습니다.');
+          /* D-10 — 성공에는 모달을 닫고 바뀐 상태 문장으로 초점을 옮긴다(실패는 열어 둔다).
+             <p> 는 원래 초점을 받지 못하므로 tabIndex 를 -1 로 두고 부른다(탭 순서에는
+             들어가지 않는다). */
+          if (mfaDisableDialog && mfaDisableDialog.open) {
+            mfaDisableDialog.close();
+          }
+          if (mfaState && typeof mfaState.focus === 'function') {
+            mfaState.tabIndex = -1;
+            mfaState.focus();
+          }
           return null;
         })
         .catch(function () {
-          setText(msg, GENERIC_ERROR);
+          setText(mfaDisableMsg, GENERIC_ERROR);
         });
+    });
+  }
+
+  /* ── D-10 「2단계 인증 끄기」 단추 · 모달의 ✕ 와 「닫기」 (Esc 는 <dialog> 기본) ── */
+  if (mfaDisableOpen) {
+    mfaDisableOpen.addEventListener('click', function () {
+      if (!mfaDisableDialog || typeof mfaDisableDialog.showModal !== 'function' || mfaDisableDialog.open) {
+        return;
+      }
+      setText(msg, '');
+      setText(mfaDisableMsg, '');
+      mfaDisableDialog.showModal();
+      if (mfaOffPassword) {
+        mfaOffPassword.focus();
+      }
+    });
+  }
+  [mfaDisableX, mfaDisableClose].forEach(function (btn) {
+    if (btn) {
+      btn.addEventListener('click', closeMfaDisableDialog);
+    }
+  });
+  if (mfaDisableDialog) {
+    // Esc 로 닫으면 위의 처리기를 거치지 않는다 — 어떤 길로 닫혀도 비밀은 남기지 않는다 (PRD 7.7)
+    mfaDisableDialog.addEventListener('close', function () {
+      if (mfaOffPassword) {
+        mfaOffPassword.value = '';
+      }
+      if (mfaOffCode) {
+        mfaOffCode.value = '';
+      }
+      setText(mfaDisableMsg, '');
     });
   }
 
@@ -4261,8 +4336,43 @@ function initUsers(csrfToken) {
   var fExpires = document.getElementById('u-expires');
   var fReason = document.getElementById('u-reason');
   var fSubmit = document.getElementById('u-submit');
+  /* D-10 (DESIGN 2.7, 사용자 지시 2026-09-22) — 만들기 폼은 화면에 펼쳐 두지 않는다.
+     화면 머리의 「계정 만들기」 단추가 모달을 열고, 폼·제출 단추는 그 안에 있다.
+     폼의 id·칸·요청 본문은 그대로다 — 자리만 옮겼다. */
+  var createOpen = document.getElementById('user-create-open');
+  var createDialog = document.getElementById('user-create-dialog');
+  var createDialogX = document.getElementById('user-create-dialog-x');
+  var createDialogClose = document.getElementById('user-create-dialog-close');
+  /* D-10 2차 B — 만들기 실패 문구는 화면 맨 아래 공통 `#msg` 가 아니라 **모달 안**의
+     이 줄에 쓴다(모달이 열려 있는 동안 공통 줄은 뒷면에 가려 보이지 않는다).
+     성공·닫기 때 비운다. 문구는 서버가 준 것 그대로다 (PRD S-03). */
+  var createMsg = document.getElementById('user-create-msg');
 
   var state = { page: 1, total: 0, perPage: 50 };
+
+  /** 「계정 만들기」 모달 열기 — 첫 칸(아이디)으로 초점을 옮긴다 (DESIGN 4). */
+  function openCreateDialog() {
+    if (!createDialog || typeof createDialog.showModal !== 'function' || createDialog.open) {
+      return;
+    }
+    setText(msg, '');
+    setText(createMsg, '');
+    createDialog.showModal();
+    if (fUsername) {
+      fUsername.focus();
+    }
+  }
+
+  /** 닫고 초점을 연 단추로 돌려준다 (키보드만 쓰는 사람이 제자리를 잃지 않게). */
+  function closeCreateDialog() {
+    if (createDialog && createDialog.open) {
+      createDialog.close();
+    }
+    setText(createMsg, '');
+    if (createOpen) {
+      createOpen.focus();
+    }
+  }
 
   /*
    * 11단계 (PRD F-16 ①) — 생성 폼의 **비밀번호 칸을 없앤다.** 비밀번호는 서버가 만들고
@@ -4278,10 +4388,14 @@ function initUsers(csrfToken) {
    * 임시 비밀번호를 **한 번만** 보여 주는 상자 (11단계, SECURITY R-39).
    * 값은 읽기 전용 입력칸의 value 로만 넣고(문서에 HTML 로 쓰지 않는다), 닫으면 지운다.
    * 다시 볼 방법은 없다 — 서버에도 해시만 있고, 잃으면 재발급이 답이다.
+   *
+   * D-10 뒤로 폼이 모달 안에 있으므로 이 상자도 **모달 안**(폼 바로 아래)에 나온다.
+   * 그래서 만들기 성공에 모달을 곧바로 닫지 않는다 — 상자의 「닫기」 를 누른 **뒤**에 닫는다.
+   * 보였는지를 돌려주어(true/false), 상자가 없을 때만 바로 닫게 한다.
    */
   function showTempPassword(username, temp) {
     if (typeof temp !== 'string' || temp === '' || !form || !form.parentNode) {
-      return;
+      return false;
     }
     var old = document.getElementById('temp-password-box');
     if (old && old.parentNode) {
@@ -4318,10 +4432,13 @@ function initUsers(csrfToken) {
       if (box.parentNode) {
         box.parentNode.removeChild(box);
       }
+      // 임시 비밀번호를 다 읽은 뒤에야 모달이 닫힌다 (D-10).
+      closeCreateDialog();
     });
     box.appendChild(close);
 
     form.parentNode.insertBefore(box, form.nextSibling);
+    return true;
   }
 
   /** 상태 변경 요청 공통 (JSON + CSRF). 401 → 로그인, 403+next → 강제 절차 화면 */
@@ -5059,6 +5176,7 @@ function initUsers(csrfToken) {
     form.addEventListener('submit', function (event) {
       event.preventDefault();
       setText(msg, '');
+      setText(createMsg, '');
       // 비밀번호는 보내지 않는다 — 서버가 만들어 201 응답으로 한 번 돌려준다 (F-16 ①)
       var payload = {
         username: fUsername.value,
@@ -5079,21 +5197,43 @@ function initUsers(csrfToken) {
             return null;
           }
           if (result.status !== 201) {
-            setText(msg, errorMessage(result.data));
+            // D-10 2차 B — 실패는 **모달 안**에서 말한다(모달은 열린 채다).
+            setText(createMsg, errorMessage(result.data));
             return null;
           }
           form.reset();
+          setText(createMsg, '');
           setText(msg, '계정을 만들었습니다. 아래 임시 비밀번호를 본인에게만 전달하세요 — 첫 로그인에서 반드시 바꾸게 됩니다.');
-          showTempPassword(newName, result.data.temp_password);
+          // 성공했을 때만 모달을 닫는다. 임시 비밀번호 상자가 떴으면 그 상자의 「닫기」 가 닫는다 (D-10).
+          if (!showTempPassword(newName, result.data.temp_password)) {
+            closeCreateDialog();
+          }
           load();
           return null;
         })
         .catch(function () {
-          setText(msg, GENERIC_ERROR);
+          setText(createMsg, GENERIC_ERROR);
         })
         .then(function () {
           fSubmit.disabled = false;
         });
+    });
+  }
+  // D-10 — 화면 머리의 「계정 만들기」 단추 · 모달의 ✕ 와 「닫기」 (Esc 는 <dialog> 기본)
+  if (createOpen) {
+    createOpen.addEventListener('click', openCreateDialog);
+  }
+  [createDialogX, createDialogClose].forEach(function (btn) {
+    if (btn) {
+      btn.addEventListener('click', function () {
+        closeCreateDialog();
+      });
+    }
+  });
+  if (createDialog) {
+    // Esc 로 닫으면 위의 처리기를 거치지 않는다 — 지난 오류 문구를 남겨 두지 않는다 (D-10 2차 B)
+    createDialog.addEventListener('close', function () {
+      setText(createMsg, '');
     });
   }
   if (prev) {
@@ -6184,11 +6324,32 @@ function initMyTokens(csrfToken, me) {
   var pwEl     = document.getElementById('token-password');
   var otpEl    = document.getElementById('token-otp');
   var submit   = document.getElementById('token-issue');
+  /* D-10 (DESIGN 2.7, 사용자 지시 2026-09-22) — 발급 폼은 패널에 펼쳐 두지 않는다.
+     패널 머리의 「토큰 발급」 단추가 모달을 열고, 폼·제출 단추·`.msg` 는 그 안에 있다.
+     폼 id·칸·요청 본문은 그대로다 — 자리만 옮겼다. */
+  var openBtn     = document.getElementById('token-issue-open');
+  var dialog      = document.getElementById('token-issue-dialog');
+  var dialogX     = document.getElementById('token-issue-dialog-x');
+  var dialogClose = document.getElementById('token-issue-dialog-close');
 
   /** 비밀은 브라우저 안에서도 오래 두지 않는다 — 응답을 받는 즉시 비운다 (PRD 7.7) */
   function clearSecrets() {
     if (pwEl)  { pwEl.value = ''; }
     if (otpEl) { otpEl.value = ''; }
+  }
+
+  /** 모달 닫기 — 한 번만 보이는 토큰 상자도 함께 지우고(값은 상자와 함께 사라진다),
+   *  초점은 연 단추로 돌려준다 (키보드 자리 유지). */
+  function closeIssueDialog() {
+    if (dialog && dialog.open) {
+      dialog.close();
+    }
+    clearSecrets();
+    clearIssuedToken();
+    setText(msg, '');
+    if (openBtn && openBtn.hidden !== true) {
+      openBtn.focus();
+    }
   }
 
   // 범위 선택지 — **서버가 내려 준 목록만**. 화면에 고정 목록을 두지 않는다.
@@ -6208,6 +6369,11 @@ function initMyTokens(csrfToken, me) {
   // 폼이냐 안내냐 — `can_issue_tokens`(= 2단계 인증이 켜졌나) 하나만 본다.
   var canIssue = me && me.can_issue_tokens === true;
   form.hidden = !canIssue;
+  // D-10 — 모달을 여는 단추는 폼과 **같은 조건**으로 켜고 끈다(발급 불가면 단추도 숨고
+  // 패널에는 `#token-issue-blocked` 안내만 남는다).
+  if (openBtn) {
+    openBtn.hidden = !canIssue;
+  }
   if (blocked) {
     blocked.hidden = canIssue;
   }
@@ -6300,6 +6466,9 @@ function initMyTokens(csrfToken, me) {
         if (nameEl) { nameEl.value = ''; }
         if (purpEl) { purpEl.value = ''; }
         setText(msg, '토큰을 발급했습니다. 값은 지금만 보입니다.');
+        /* D-10 — 폼이 모달 안이므로 한 번만 보이는 토큰 상자도 **모달 안**(폼 바로 아래)에
+           나온다. 그래서 성공에도 모달을 곧바로 닫지 않는다 — 값을 복사한 뒤 「닫기」 를
+           누르면 상자와 함께 값이 사라진다. 실패도 모달을 연 채 `.msg` 만 바뀐다. */
         showIssuedToken(form.parentNode, msg, result.data ? result.data.token : '');
         load();
         return null;
@@ -6310,6 +6479,34 @@ function initMyTokens(csrfToken, me) {
         setText(msg, GENERIC_ERROR);
       });
   });
+
+  /* ── D-10 「토큰 발급」 단추 · 모달의 ✕ 와 「닫기」 (Esc 는 <dialog> 기본) ── */
+  if (openBtn) {
+    openBtn.addEventListener('click', function () {
+      if (!dialog || typeof dialog.showModal !== 'function' || dialog.open) {
+        return;
+      }
+      setText(msg, '');
+      clearIssuedToken();
+      dialog.showModal();
+      if (nameEl) {
+        nameEl.focus();
+      }
+    });
+  }
+  [dialogX, dialogClose].forEach(function (btn) {
+    if (btn) {
+      btn.addEventListener('click', closeIssueDialog);
+    }
+  });
+  if (dialog) {
+    /* Esc 로 닫으면 위의 처리기를 거치지 않는다 — 어떤 길로 닫혀도 비밀번호·코드와
+       한 번만 보이는 토큰 값은 남기지 않는다 (PRD 7.7, SECURITY R-91). */
+    dialog.addEventListener('close', function () {
+      clearSecrets();
+      clearIssuedToken();
+    });
+  }
 
   load();
 }
@@ -6748,6 +6945,28 @@ function initAdminPermissions(csrfToken) {
   var submit = document.getElementById('perm-submit');
   var resetButton = document.getElementById('perm-reset');
   var formMsg = document.getElementById('perm-msg');
+  /* D-10 (DESIGN 2.7, 사용자 지시 2026-09-22) — 사유·코드 폼은 화면에 펼쳐 두지 않는다.
+     화면에는 미리보기와 단추 줄만 남고, 「적용」 이 이 모달을 연다. 폼 id·칸·요청 본문
+     (`PATCH /api/admin/permissions`)은 그대로다 — 허용 사이트 화면과 같은 꼴이다. */
+  var applyOpen = document.getElementById('perm-apply-open');
+  var dialog = document.getElementById('perm-dialog');
+  var dialogX = document.getElementById('perm-dialog-x');
+  var dialogClose = document.getElementById('perm-dialog-close');
+  var dialogCount = document.getElementById('perm-dialog-count');
+
+  function closeDialog() {
+    if (dialog && dialog.open) {
+      dialog.close();
+    }
+  }
+
+  /** 모달 닫기 + 초점을 연 단추로 (닫혀 있으면 아무 일도 하지 않는다) */
+  function closePermDialog() {
+    closeDialog();
+    if (applyOpen && applyOpen.disabled !== true) {
+      applyOpen.focus();
+    }
+  }
 
   /** 서버에서 받은 16행(기준값)과, 칸마다 만든 체크상자 두 개 */
   var state = { rows: [], boxes: Object.create(null) };
@@ -6948,6 +7167,10 @@ function initAdminPermissions(csrfToken) {
       // 바꾼 칸이 없으면 보낼 것이 없다(서버도 규칙 (e) 로 거부한다).
       submit.disabled = cells.length === 0;
     }
+    // D-10 — 모달을 여는 「적용」 에도 **같은 조건**을 건다.
+    if (applyOpen) {
+      applyOpen.disabled = cells.length === 0;
+    }
   }
 
   /* ── 읽기 ──────────────────────────────────────────────────── */
@@ -7000,10 +7223,16 @@ function initAdminPermissions(csrfToken) {
             if (submit) {
               submit.disabled = false;
             }
+            /* 재인증 관문(403 next:"reauth")에 걸리면 toGate 가 **재인증 모달**을 띄운다.
+               모달 위에 모달을 겹치지 않으려고 이 모달을 닫는다 — 재인증을 통과하면
+               등록해 둔 로더(load)가 표를 다시 읽으므로, 이 모달을 다시 열지는 않는다
+               (D-10 2차 ③ 의 「어느 쪽인지 보고」 에 대한 선택). */
+            closeDialog();
             return null;
           }
           if (!result.ok) {
             // 실패 문구는 **서버가 준 것만** 쓴다 (사유는 감사 로그에만 갈라져 남는다).
+            // 모달은 열어 둔다 — 사유·코드를 고쳐 다시 보낼 자리가 여기다.
             setText(formMsg, errorMessage(result.data));
             if (submit) {
               submit.disabled = false;
@@ -7023,7 +7252,11 @@ function initAdminPermissions(csrfToken) {
             // 코드는 1회성이다 — 남겨 두면 다음 요청에서 code_reused 로 거부된다.
             otpInput.value = '';
           }
-          setText(formMsg, String(changedCount) + '개 칸을 바꿨습니다. 효과는 다음 요청부터이며 감사 로그에 남았습니다.');
+          /* D-10 — 성공에는 모달을 닫는다. 그래서 끝맺는 문구는 모달 안(`#perm-msg`)이 아니라
+             화면의 알림 줄(`#msg`)에 쓴다 — 문구 자체는 예전 그대로다. */
+          setText(formMsg, '');
+          closePermDialog();
+          setText(msg, String(changedCount) + '개 칸을 바꿨습니다. 효과는 다음 요청부터이며 감사 로그에 남았습니다.');
           return null;
         })
         .catch(function () {
@@ -7035,9 +7268,45 @@ function initAdminPermissions(csrfToken) {
     });
   }
 
+  /* ── D-10 「적용」 단추 → 모달 · ✕ 와 「닫기」 (Esc 는 <dialog> 기본) ── */
+  if (applyOpen) {
+    applyOpen.addEventListener('click', function () {
+      var cells = changedCells();
+      if (cells.length === 0) {
+        return;
+      }
+      if (!dialog || typeof dialog.showModal !== 'function' || dialog.open) {
+        return;
+      }
+      setText(formMsg, '');
+      if (dialogCount) {
+        setText(dialogCount, '바뀐 칸 ' + String(cells.length) + '개를 적용합니다');
+      }
+      dialog.showModal();
+      if (reasonInput) {
+        reasonInput.focus();
+      }
+    });
+  }
+  [dialogX, dialogClose].forEach(function (btn) {
+    if (btn) {
+      btn.addEventListener('click', closePermDialog);
+    }
+  });
+  if (dialog) {
+    // Esc 로 닫아도 1회성 코드는 남기지 않는다 (사유는 다시 쓰지 않아도 되게 남긴다)
+    dialog.addEventListener('close', function () {
+      if (otpInput) {
+        otpInput.value = '';
+      }
+    });
+  }
+
   if (resetButton) {
     resetButton.addEventListener('click', function () {
       setText(formMsg, '');
+      setText(msg, '');
+      closeDialog();
       load();
     });
   }
@@ -7068,6 +7337,13 @@ function initAdminFetchHosts(csrfToken) {
   var addInput = document.getElementById('fetch-hosts-new');
   var addNote = document.getElementById('fetch-hosts-new-note');
   var addMsg = document.getElementById('fetch-hosts-add-msg');
+  /* D-10 (DESIGN 2.7, 사용자 지시 2026-09-22) — 추가 폼은 화면 머리의 「사이트 추가」 단추가
+     여는 모달 안에 있다. 폼 id·칸·요청은 그대로고 자리만 옮겼다(요청은 여전히 「저장」 에서만
+     나간다 — 이 모달은 표에 임시 행을 얹을 뿐이다). */
+  var addOpenBtn = document.getElementById('fetch-hosts-add-open');
+  var addDialog = document.getElementById('fetch-hosts-add-dialog');
+  var addDialogX = document.getElementById('fetch-hosts-add-dialog-x');
+  var addDialogClose = document.getElementById('fetch-hosts-add-dialog-close');
   var previewBox = document.getElementById('fetch-hosts-preview');
   var previewEmpty = document.getElementById('fetch-hosts-preview-empty');
   var saveButton = document.getElementById('fetch-hosts-save');
@@ -7135,6 +7411,14 @@ function initAdminFetchHosts(csrfToken) {
   function closeDialog(el) {
     if (el && el.open) {
       el.close();
+    }
+  }
+
+  /** 「사이트 추가」 모달 닫기 — 초점을 연 단추로 돌려준다 (키보드 자리 유지). */
+  function closeAddDialog() {
+    closeDialog(addDialog);
+    if (addOpenBtn) {
+      addOpenBtn.focus();
     }
   }
 
@@ -7302,6 +7586,22 @@ function initAdminFetchHosts(csrfToken) {
       });
   }
 
+  /* ── D-10 「사이트 추가」 단추 · 모달의 ✕ 와 「닫기」 (Esc 는 <dialog> 기본) ── */
+  if (addOpenBtn) {
+    addOpenBtn.addEventListener('click', function () {
+      setText(addMsg, '');
+      openDialog(addDialog);
+      if (addInput) {
+        addInput.focus();
+      }
+    });
+  }
+  [addDialogX, addDialogClose].forEach(function (btn) {
+    if (btn) {
+      btn.addEventListener('click', closeAddDialog);
+    }
+  });
+
   /* ── 「목록에 추가」 — 표에 임시 행을 얹기만 한다(요청 없음) ── */
   if (addForm) {
     addForm.addEventListener('submit', function (event) {
@@ -7310,6 +7610,8 @@ function initAdminFetchHosts(csrfToken) {
       var host = addInput ? addInput.value.trim().toLowerCase() : '';
       var note = addNote ? addNote.value.trim() : '';
       if (host === '') {
+        // D-10 2차 C — 전에는 조용히 return 했다(아무 일도 일어나지 않아 보였다).
+        setText(addMsg, '호스트를 넣으세요.');
         return;
       }
       if (!HOST_RE.test(host)) {
@@ -7330,6 +7632,9 @@ function initAdminFetchHosts(csrfToken) {
         addNote.value = '';
       }
       renderTable();
+      // 미리보기에 한 줄이 들어갔으니 모달은 할 일을 마쳤다 (D-10).
+      // 실패했을 때는 위에서 이미 return 했으므로 모달이 열린 채 .msg 만 바뀐다.
+      closeAddDialog();
     });
   }
 

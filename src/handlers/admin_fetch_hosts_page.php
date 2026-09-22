@@ -14,7 +14,8 @@ declare(strict_types=1);
  *
  * 화면 구성
  *   ① 표 — 호스트 · 메모 · 허용(체크상자) · 넣은 사람 · 마지막 변경
- *   ② 「추가」 줄 — 호스트·메모. 표에 임시 행으로 얹히고 저장할 때 함께 나간다
+ *   ② 「사이트 추가」 모달 (D-10) — 화면 머리 단추가 연다. 호스트·메모를 받아 표에 임시 행으로
+ *      얹히고 저장할 때 함께 나간다. 만들기·추가 폼은 화면에 펼쳐 두지 않는다 (DESIGN 2.7)
  *   ③ 「변경 미리보기」 — 무엇이 무엇으로 바뀌는지. 잘못 누른 체크 하나가 곧 서버가 나갈 수
  *      있는 곳의 변경이므로, 보내기 전에 사람이 한 번 더 읽게 한다
  *   ④ 「저장」 → 사유·인증 앱 코드 모달 (권한 매트릭스와 같은 모양)
@@ -51,6 +52,10 @@ require __DIR__ . '/../views/shell_top.php';
         <button type="button" class="btn btn--quiet" data-help-open>
           <span class="icon" data-icon="help"></span><span>사용 방법</span>
         </button>
+        <button id="fetch-hosts-add-open" class="btn" type="button"
+                aria-haspopup="dialog" aria-controls="fetch-hosts-add-dialog">
+          <span class="icon" data-icon="plus"></span>사이트 추가
+        </button>
       </div>
     </header>
 
@@ -71,22 +76,7 @@ require __DIR__ . '/../views/shell_top.php';
           <tbody id="fetch-hosts-table"></tbody>
         </table>
       </div>
-      <p id="fetch-hosts-empty" class="muted" hidden>등록된 사이트가 없습니다. 아래에서 추가하세요. 목록이 비어 있으면 「URL 로 가져오기」 단추 자체가 보이지 않습니다.</p>
-
-      <form id="fetch-hosts-add" class="form form--grid" autocomplete="off">
-        <label class="field">
-          <span class="field__label">호스트 (예: <code>drive.google.com</code>)</span>
-          <input id="fetch-hosts-new" type="text" maxlength="253" placeholder="example.com">
-        </label>
-        <label class="field">
-          <span class="field__label">메모 (선택, 200자 이내)</span>
-          <input id="fetch-hosts-new-note" type="text" maxlength="200">
-        </label>
-        <button id="fetch-hosts-add-btn" class="btn btn--quiet" type="submit">목록에 추가</button>
-        <p id="fetch-hosts-add-msg" class="msg" role="alert" aria-live="polite"></p>
-      </form>
-
-      <ul id="fetch-hosts-rules" class="notice__list muted"></ul>
+      <p id="fetch-hosts-empty" class="muted" hidden>등록된 사이트가 없습니다. 오른쪽 위 「사이트 추가」 로 넣으세요. 목록이 비어 있으면 「URL 로 가져오기」 단추 자체가 보이지 않습니다.</p>
 
       <div class="perm-preview">
         <p class="field__label">변경 미리보기</p>
@@ -100,6 +90,43 @@ require __DIR__ . '/../views/shell_top.php';
       </div>
       <p id="fetch-hosts-msg" class="msg" role="alert" aria-live="polite"></p>
     </section>
+
+    <!-- ─── 「사이트 추가」 모달 (D-10, DESIGN 2.7 · 2.1) ──────────────────────
+         만들기·추가 폼은 화면에 펼쳐 두지 않는다 — 화면 머리의 「사이트 추가」 단추가 이 모달을
+         열고, 폼과 규칙 설명(#fetch-hosts-rules)이 그 안에 있다. 화면에는 표 · 미리보기 · 저장
+         줄만 남는다. 여기서 「목록에 추가」 를 눌러도 **요청은 나가지 않는다** — 표에 임시 행을
+         얹고 미리보기에 한 줄을 더할 뿐이고, 서버로는 「저장」 의 사유·코드 모달에서만 나간다.
+         제출 단추가 폼 밖(.modal__foot)에 있으므로 form="fetch-hosts-add" 로 잇는다. -->
+    <dialog id="fetch-hosts-add-dialog" class="modal modal--form" aria-labelledby="fetch-hosts-add-title">
+      <div class="modal__head">
+        <span class="preview__mark"><span class="icon" data-icon="plus"></span></span>
+        <div class="preview__headtext">
+          <h2 class="modal__title" id="fetch-hosts-add-title">사이트 추가</h2>
+          <div class="modal__meta"><span>정확한 호스트 이름만, https 로만 나갑니다</span></div>
+        </div>
+        <button id="fetch-hosts-add-dialog-x" class="btn btn--icon" type="button" aria-label="닫기">
+          <span class="icon" data-icon="x"></span>
+        </button>
+      </div>
+      <div class="modal__body">
+        <form id="fetch-hosts-add" class="form form--grid" autocomplete="off">
+          <label class="field">
+            <span class="field__label">호스트 (예: <code>drive.google.com</code>)</span>
+            <input id="fetch-hosts-new" type="text" maxlength="253" placeholder="example.com">
+          </label>
+          <label class="field">
+            <span class="field__label">메모 (선택, 200자 이내)</span>
+            <input id="fetch-hosts-new-note" type="text" maxlength="200">
+          </label>
+        </form>
+        <ul id="fetch-hosts-rules" class="notice__list muted"></ul>
+      </div>
+      <div class="modal__foot">
+        <p id="fetch-hosts-add-msg" class="msg" role="alert" aria-live="polite"></p>
+        <button id="fetch-hosts-add-dialog-close" class="btn btn--quiet" type="button">닫기</button>
+        <button id="fetch-hosts-add-btn" class="btn" type="submit" form="fetch-hosts-add">목록에 추가</button>
+      </div>
+    </dialog>
 
     <!-- ─── 사유 · 인증 앱 코드 모달 (권한 매트릭스와 같은 모양) ────────────────
          여기서 받은 값은 POST /api/fetch-hosts 로 그대로 간다. 코드는 **1회성**이라

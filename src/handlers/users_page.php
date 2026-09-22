@@ -43,46 +43,76 @@ require __DIR__ . '/../views/shell_top.php';
         <button type="button" class="btn btn--quiet" data-help-open>
           <span class="icon" data-icon="help"></span><span>사용 방법</span>
         </button>
+        <button id="user-create-open" class="btn" type="button"
+                aria-haspopup="dialog" aria-controls="user-create-dialog">
+          <span class="icon" data-icon="plus"></span>계정 만들기
+        </button>
       </div>
     </header>
 
   <p class="help">계정은 1인 1개입니다. 역할 변경·비활성화·재활성화에는 사유가 필요하고, 역할·팀을 바꾸면 그 사람은 다시 로그인해야 합니다. 자기 자신의 역할·활성 상태는 바꿀 수 없고, 마지막 활성 관리자는 강등·비활성화되지 않습니다.</p>
   <p class="help">Guest 계정은 만료일이 필수입니다. 계정은 지우지 않고 비활성화합니다.</p>
 
-  <section class="panel">
-    <div class="panel__head"><h2 class="panel__title">계정 만들기</h2></div>
-    <form id="user-create-form" class="form form--grid" autocomplete="off">
-      <label class="field">
-        <span class="field__label">아이디 (소문자·숫자·<code>_ . -</code>, 3~64자)</span>
-        <input id="u-username" type="text" maxlength="64" inputmode="latin"
-               autocapitalize="none" autocorrect="off" spellcheck="false" required>
-      </label>
-      <!-- 11단계 (PRD F-16): 비밀번호 칸이 없다. 서버가 임시 비밀번호를 만들어 생성 응답에 한 번만 돌려주고,
-           본인이 첫 로그인에서 바꾼다. Admin 이 비밀번호를 정하면 Admin 이 그 값을 계속 아는 상태가 남기 때문이다(R-39). -->
-      <label class="field">
-        <span class="field__label">역할</span>
-        <select id="u-role">
-          <option value="Employee">Employee</option>
-          <option value="Manager">Manager</option>
-          <option value="Guest">Guest</option>
-          <option value="Admin">Admin</option>
-        </select>
-      </label>
-      <label class="field">
-        <span class="field__label">팀 (Guest 는 비움)</span>
-        <select id="u-team"></select>
-      </label>
-      <label class="field">
-        <span class="field__label">만료일 (Guest 는 필수)</span>
-        <input id="u-expires" type="date">
-      </label>
-      <label class="field">
-        <span class="field__label">사유 (필수 · 500자)</span>
-        <input id="u-reason" type="text" maxlength="500" required>
-      </label>
-      <button id="u-submit" class="btn" type="submit">만들기</button>
-    </form>
-  </section>
+  <!-- ─── 「계정 만들기」 모달 (D-10, DESIGN 2.7 · 2.1) ──────────────────────
+       만들기 폼은 화면에 펼쳐 두지 않는다 — 화면 머리의 「계정 만들기」 단추가 이 모달을 열고,
+       화면에는 목록(표)만 남는다. 마크업·id·요청은 그대로다: 폼 안의 칸도, `POST /api/users`
+       본문도, 검증 문구도 바뀌지 않았다. 제출 단추가 폼 밖(.modal__foot)에 있으므로
+       form="user-create-form" 로 잇는다. -->
+  <dialog id="user-create-dialog" class="modal modal--form" aria-labelledby="user-create-title">
+    <div class="modal__head">
+      <span class="preview__mark"><span class="icon" data-icon="plus"></span></span>
+      <div class="preview__headtext">
+        <h2 class="modal__title" id="user-create-title">계정 만들기</h2>
+        <!-- 메타는 한 줄이다. 전에는 ✕ 가 아랫줄로 밀려 `<br>` 로 끊어 두었는데,
+             `.modal__head > .preview__headtext { flex: 1 1 16rem; min-width: 0 }` 규칙이
+             app.css 에 들어오면서 묶음이 남은 폭 안에서 스스로 줄을 바꾼다 (D-10 2차 A). -->
+        <div class="modal__meta"><span>Guest 는 만료일이 필수 · 비밀번호는 본인이 첫 로그인에서 정합니다</span></div>
+      </div>
+      <button id="user-create-dialog-x" class="btn btn--icon" type="button" aria-label="닫기">
+        <span class="icon" data-icon="x"></span>
+      </button>
+    </div>
+    <div class="modal__body">
+      <form id="user-create-form" class="form form--grid" autocomplete="off">
+        <label class="field">
+          <span class="field__label">아이디 (소문자·숫자·<code>_ . -</code>, 3~64자)</span>
+          <input id="u-username" type="text" maxlength="64" inputmode="latin"
+                 autocapitalize="none" autocorrect="off" spellcheck="false" required>
+        </label>
+        <!-- 11단계 (PRD F-16): 비밀번호 칸이 없다. 서버가 임시 비밀번호를 만들어 생성 응답에 한 번만 돌려주고,
+             본인이 첫 로그인에서 바꾼다. Admin 이 비밀번호를 정하면 Admin 이 그 값을 계속 아는 상태가 남기 때문이다(R-39). -->
+        <label class="field">
+          <span class="field__label">역할</span>
+          <select id="u-role">
+            <option value="Employee">Employee</option>
+            <option value="Manager">Manager</option>
+            <option value="Guest">Guest</option>
+            <option value="Admin">Admin</option>
+          </select>
+        </label>
+        <label class="field">
+          <span class="field__label">팀 (Guest 는 비움)</span>
+          <select id="u-team"></select>
+        </label>
+        <label class="field">
+          <span class="field__label">만료일 (Guest 는 필수)</span>
+          <input id="u-expires" type="date">
+        </label>
+        <label class="field">
+          <span class="field__label">사유 (필수 · 500자)</span>
+          <input id="u-reason" type="text" maxlength="500" required>
+        </label>
+      </form>
+    </div>
+    <div class="modal__foot">
+      <!-- 만들기가 서버에 막혔을 때의 문구 자리 (D-10 2차 B). 전에는 화면 맨 아래 공통
+           `#msg` 에 썼는데, 모달이 열려 있는 동안에는 뒷면에 가려 보이지 않았다.
+           문구는 **서버가 준 것 그대로**이고 app.js 가 textContent 로 넣는다 (PRD S-03). -->
+      <p id="user-create-msg" class="msg" role="alert" aria-live="polite"></p>
+      <button id="user-create-dialog-close" class="btn btn--quiet" type="button">닫기</button>
+      <button id="u-submit" class="btn" type="submit" form="user-create-form">만들기</button>
+    </div>
+  </dialog>
 
   <section class="panel">
     <div class="panel__head"><h2 class="panel__title">계정 목록</h2></div>
