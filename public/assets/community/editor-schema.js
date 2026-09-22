@@ -191,7 +191,15 @@ export const schema = new Schema({
       toDOM: () => ['hr', { class: 'doc-divider' }]
     },
 
-    code: {
+    /*
+     * ★ 노드 이름이 `code` 가 **아니다**. ProseMirror 의 `Schema` 는 같은 이름이 노드와 마크에
+     *   둘 다 있으면 「code can not be both a node and a mark」 로 **예외를 던지고**, 그러면
+     *   이 모듈의 평가가 거기서 멈춰 커뮤니티 화면의 JS 가 통째로 죽는다
+     *   (2026-09-22 관문 ③ 실측 — 「새 페이지」 단추가 눌리지 않았다).
+     *   우리 **JSON 의 블록 타입은 `code` 그대로**이고, 이름을 옮기는 일은 아래
+     *   `toDoc`/`fromDoc` 이 한 곳에서만 한다.
+     */
+    code_block: {
       group: 'block',
       content: 'text*',
       marks: '',
@@ -329,9 +337,10 @@ export function fromDoc(doc) {
       continue;
     }
     if (b.type === 'code') {
+      // 우리 `code` → ProseMirror `code_block` (이름이 갈리는 자리는 여기와 toDoc 둘뿐이다)
       const text = typeof b.code === 'string' ? b.code : '';
       content.push({
-        type: 'code',
+        type: 'code_block',
         attrs: Object.assign({ language: LANGUAGES.indexOf(b.language) !== -1 ? b.language : 'plain' }, attrs),
         content: text === '' ? [] : [{ type: 'text', text: text }]
       });
@@ -413,19 +422,21 @@ export function toDoc(pmDoc) {
   for (const node of content) {
     if (!node || typeof node.type !== 'string') { continue; }
     const a = node.attrs || {};
-    const block = { id: typeof a.id === 'string' && a.id !== '' ? a.id : uuid4(), type: node.type };
+    // ProseMirror `code_block` → 우리 `code`. 그 밖의 이름은 양쪽이 같다.
+    const ourType = node.type === 'code_block' ? 'code' : node.type;
+    const block = { id: typeof a.id === 'string' && a.id !== '' ? a.id : uuid4(), type: ourType };
 
-    if (node.type !== 'divider' && node.type !== 'toc') {
+    if (ourType !== 'divider' && ourType !== 'toc') {
       if (colorAllowed(a.color)) { block.color = a.color; }
       if (a.align === 'center' || a.align === 'right') { block.align = a.align; }
       if (a.size && a.size !== 'normal' && SIZES.indexOf(a.size) !== -1) { block.size = a.size; }
     }
 
-    if (node.type === 'divider' || node.type === 'toc') {
+    if (ourType === 'divider' || ourType === 'toc') {
       blocks.push(block);
       continue;
     }
-    if (node.type === 'code') {
+    if (ourType === 'code') {
       let text = '';
       for (const t of Array.isArray(node.content) ? node.content : []) {
         if (t && typeof t.text === 'string') { text += t.text; }
@@ -435,13 +446,13 @@ export function toDoc(pmDoc) {
       blocks.push(block);
       continue;
     }
-    if (node.type === 'heading') {
+    if (ourType === 'heading') {
       block.level = a.level === 2 || a.level === 3 ? a.level : 1;
     }
-    if (node.type === 'to_do') {
+    if (ourType === 'to_do') {
       block.checked = a.checked === true;
     }
-    if (node.type === 'callout') {
+    if (ourType === 'callout') {
       block.icon = typeof a.icon === 'string' && a.icon !== '' ? a.icon : '💡';
     }
     block.text = pmToRich(node.content);
@@ -466,6 +477,6 @@ export const BLOCK_MENU = [
   { type: 'quote', label: '인용', hint: '왼쪽 선', keywords: 'quote 인용' },
   { type: 'callout', label: '강조 상자', hint: '아이콘 + 배경', keywords: 'callout 강조 상자 안내' },
   { type: 'divider', label: '구분선', hint: '가로줄', keywords: 'divider hr 구분선 줄' },
-  { type: 'code', label: '코드', hint: '고정폭 + 언어', keywords: 'code 코드' },
+  { type: 'code_block', label: '코드', hint: '고정폭 + 언어', keywords: 'code 코드' },
   { type: 'toc', label: '목차', hint: '제목 모으기', keywords: 'toc 목차 차례' }
 ];

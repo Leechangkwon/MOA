@@ -218,7 +218,7 @@ function buildInputRules() {
   rules.push(textblockTypeInputRule(/^\s*\[\]\s$/, schema.nodes.to_do, { checked: false }));
   rules.push(textblockTypeInputRule(/^\s*\[x\]\s$/i, schema.nodes.to_do, { checked: true }));
   rules.push(textblockTypeInputRule(/^\s*>\s$/, schema.nodes.quote));
-  rules.push(textblockTypeInputRule(/^```$/, schema.nodes.code));
+  rules.push(textblockTypeInputRule(/^```$/, schema.nodes.code_block));
 
   // `---` → 구분선. 그 자리의 블록을 통째로 바꾸고 **뒤에 빈 문단**을 둔다 —
   // 구분선은 글자를 담지 않는 블록이라, 뒤에 쓸 자리가 없으면 커서가 갈 곳을 잃는다.
@@ -346,7 +346,7 @@ function createSlashMenu(view) {
   /** 문서가 바뀔 때마다 커서 앞을 보고 열고 닫는다 */
   function refresh() {
     const { $from, empty } = view.state.selection;
-    if (!empty || !$from.parent.isTextblock || $from.parent.type.name === 'code') { close(); return; }
+    if (!empty || !$from.parent.isTextblock || $from.parent.type.name === 'code_block') { close(); return; }
     const before = $from.parent.textBetween(0, $from.parentOffset, undefined, '￼');
     const match = before.match(/\/([^/\s]*)$/);
     if (match === null) { close(); return; }
@@ -520,6 +520,7 @@ function initPage() {
   let saveTimer = null;
   let firstDirtyAt = 0;
   let saving = false;
+  let savePending = false;   // 보내는 중에 또 고쳐졌나 (끝나면 한 번 더 보낸다)
   let pendingConflict = null;
   let heartbeat = null;
 
@@ -695,19 +696,43 @@ function initPage() {
     return view ? toDoc(view.state.doc.toJSON()) : state.doc;
   }
 
+  /** 남은 것을 지금 보낸다. 보내는 중이었다면 그 뒤에 이어지는 저장까지 기다린다. */
   function flushSave() {
     window.clearTimeout(saveTimer);
-    if (firstDirtyAt === 0 && (!titleInput || titleInput.value === state.title)) {
+    if (!saving && !savePending && firstDirtyAt === 0
+        && (!titleInput || titleInput.value === state.title)) {
       return Promise.resolve();
     }
-    return save();
+    return Promise.resolve(save());
   }
 
+  /**
+   * 저장 한 번.
+   *
+   * ★ 보내는 중에 또 고쳐지면 **그 변경을 잃지 않는다** (관문 ③ 실측 2026-09-22).
+   *   전에는 `if (saving) return;` 한 줄이라, 요청이 날아가 있는 1초 남짓 사이에 친 글자가
+   *   조용히 사라졌다 — 배지는 앞선 요청이 끝나며 「저장됨」으로 바뀌어서 **사용자는 저장된
+   *   줄 알았다**. 이제 그 사이의 변경은 `savePending` 에 표시해 두고, 끝나는 즉시 한 번 더 보낸다.
+   *   409(충돌)일 때는 이어서 보내지 않는다 — 무엇을 할지는 사람이 모달에서 고른다.
+   */
   function save() {
-    if (saving) { return Promise.resolve(); }
+    if (saving) { savePending = true; return Promise.resolve(); }
     saving = true;
+    savePending = false;
+
     const doc = currentDoc();
     const title = titleInput && titleInput.value.trim() !== '' ? titleInput.value.trim() : state.title;
+    const startedAt = firstDirtyAt;
+
+    /** 보내는 동안 또 고쳐졌으면 한 번 더 — 아니면 여기서 끝난다 */
+    const done = () => {
+      saving = false;
+      if (savePending) {
+        savePending = false;
+        return save();
+      }
+      return undefined;
+    };
 
     return api('PATCH', '/api/pages/' + pageId, {
       doc_version: state.version,
@@ -715,23 +740,27 @@ function initPage() {
       title: title
     })
       .then((result) => {
-        saving = false;
-        if (result.status === 401) { toLogin(); return; }
+        if (result.status === 401) { saving = false; toLogin(); return; }
         if (result.status === 200) {
           state.version = result.data.doc_version;
           state.title = result.data.title;
           state.doc = doc;
-          firstDirtyAt = 0;
+          // 보내는 사이에 또 고쳐졌다면 아직 「깨끗」하지 않다 — 그때는 시작 시각을 살려 둔다.
+          if (!savePending && firstDirtyAt === startedAt) { firstDirtyAt = 0; }
           setText(titleEl, state.title);
-          badge('저장됨', 'badge--ok');
-          return;
+          badge(savePending ? '저장 중…' : '저장됨', savePending ? '' : 'badge--ok');
+          return done();
         }
         if (result.status === 409) {
+          savePending = false;
+          saving = false;
           badge('충돌', 'badge--admin-only');
           pendingConflict = { doc: doc, title: title, server: result.data };
           openConflict();
           return;
         }
+        savePending = false;
+        saving = false;
         badge('저장 안 됨', 'badge--admin-only');
         setText(msg, errorMessage(result.data));
         if (Array.isArray(result.data.errors) && result.data.errors.length > 0) {
@@ -739,6 +768,7 @@ function initPage() {
         }
       })
       .catch(() => {
+        savePending = false;
         saving = false;
         badge('저장 안 됨', 'badge--admin-only');
         setText(msg, GENERIC_ERROR);

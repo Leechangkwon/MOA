@@ -15,7 +15,13 @@
 #   C:T-18 쓰기 자격·CSRF  qa_guest01 `POST /api/pages` → 403 `authz.route deny` ·
 #                          쿠키만 보내고 `X-CSRF-Token` 없이 PATCH → 403 `csrf`
 #   C:T-19 렌더러 동등성   표본 문서 20개를 `DocRender.php` 와 `doc-render.js` 로 그려
-#                          **텍스트 노드 열·클래스 집합**을 견준다 (Playwright 없으면 JS 쪽 미검증)
+#                          **텍스트 노드 열·클래스 집합**을 견준다. PHP 쪽은 여기서, JS 쪽은
+#                          아래 C:T-21 의 브라우저 안에서 잰다(Playwright 없으면 JS 쪽 미검증)
+#   C:T-21 브라우저 스모크 **진짜 브라우저로** /community/ 를 열어 `pageerror`·콘솔 오류·
+#                          실패한 요청·HTTP≥400 이 0 인지 보고, 「새 페이지」→ 편집 → 마크다운·
+#                          슬래시 메뉴·인라인 툴바 → 자동 저장 → 새로 고침 → 삭제까지 눌러 본다.
+#                          (관문 ③ 2026-09-22: JS 가 첫 줄에서 죽어 화면 전체가 멈춰 있었는데
+#                           curl 시험은 전부 통과였다 — 그 구멍을 메우는 자리다)
 #   C:T-20 vendoring 무결성 `scripts/vendor_prosemirror.sh --verify` · bare import 0 ·
 #                          `editor.js` 에 절대 경로 리터럴 0
 #   회귀                   `scripts/security_lint.sh` 0건 · 바뀐 PHP `php -l` · 이 파일 `bash -n`
@@ -621,69 +627,7 @@ printf("표본 %d개 · 스키마를 통과하지 못한 것 %d개\n", count($sa
 cat "$WORK/parity-php.txt"
 expect "표본 20개가 모두 스키마를 지난다" "표본 20개 · 스키마를 통과하지 못한 것 0개" "$(cat "$WORK/parity-php.txt")"
 
-# Playwright 는 **모듈이 있는 것만으로는 부족하다** — 브라우저 실행 파일이 함께 받아져 있어야
-# 한다(`playwright install`). 없으면 실패가 아니라 **미검증**이다: 검토 도구가 없는 것과
-# 렌더러가 다른 것은 다른 일이고, 둘을 섞으면 진짜 차이를 놓친다.
-HAVE_PW=0
-python3 -c "import playwright" >/dev/null 2>&1 && HAVE_PW=1
-if [ "$HAVE_PW" -eq 1 ]; then
-  PATH="$HOME/.local/bin:$PATH" python3 - "$WORK" "$SITE" <<'PY' > "$WORK/parity-js.txt" 2>&1
-import json, sys
-from playwright.sync_api import sync_playwright
-work, site = sys.argv[1], sys.argv[2]
-samples = json.load(open(work + "/samples.json", encoding="utf-8"))
-php = json.load(open(work + "/php-render.json", encoding="utf-8"))
-script = """
-async (docs) => {
-  const m = await import('/tbox/assets/community/doc-render.js');
-  const out = [];
-  for (const doc of docs) {
-    const host = document.createElement('div');
-    host.appendChild(m.renderDoc(doc));
-    const texts = [];
-    const classes = new Set();
-    const walk = (n) => {
-      for (const c of n.childNodes) {
-        if (c.nodeType === 3) { const t = c.nodeValue.trim(); if (t) texts.push(t); }
-        else if (c.nodeType === 1) {
-          for (const k of c.classList) classes.add(k);
-          walk(c);
-        }
-      }
-    };
-    walk(host);
-    out.push({texts: texts, classes: Array.from(classes).sort()});
-  }
-  return out;
-}
-"""
-with sync_playwright() as p:
-    browser = p.chromium.launch()
-    ctx = browser.new_context(bypass_csp=True)
-    page = ctx.new_page()
-    page.goto(site + "/tbox/login")
-    js = page.evaluate(script, samples)
-    browser.close()
-bad = 0
-for i, (a, b) in enumerate(zip(php, js)):
-    if a["texts"] != b["texts"] or sorted(a["classes"]) != sorted(b["classes"]):
-        bad += 1
-        print("  다름 #%d\n    PHP texts=%s classes=%s\n    JS  texts=%s classes=%s"
-              % (i, a["texts"], a["classes"], b["texts"], b["classes"]))
-print("DIFF=%d" % bad)
-PY
-  if grep -q '^DIFF=' "$WORK/parity-js.txt"; then
-    cat "$WORK/parity-js.txt"
-    expect "두 렌더러의 텍스트 노드·클래스 집합이 같다" "DIFF=0" "$(grep '^DIFF=' "$WORK/parity-js.txt")"
-  else
-    skip "doc-render.js 쪽 동등성" "Playwright 브라우저를 열지 못했다 — JS 쪽 **미검증**"
-    note "$(tail -3 "$WORK/parity-js.txt" | tr '\n' ' ')"
-    note "받으려면: PATH=\"\$HOME/.local/bin:\$PATH\" playwright install chromium"
-  fi
-else
-  skip "doc-render.js 쪽 동등성" "Playwright 가 없다 — JS 쪽 **미검증**"
-  note "PHP 쪽 텍스트 노드·클래스는 $WORK/php-render.json 에 남겼다"
-fi
+note "JS 쪽(doc-render.js)은 아래 C:T-21 의 브라우저 안에서 잰다 — 창을 두 번 띄우지 않는다"
 
 # ════════════════════════════════════════════════════════════════
 hr "C:T-20 — vendoring 무결성"
@@ -704,6 +648,50 @@ expect "doc-schema.json 사본이 원본과 같다" "0" \
   "$(diff "$ROOT/../community/doc-schema.json" "$ROOT/public/assets/community/doc-schema.json" >/dev/null 2>&1; echo $?)"
 
 # ════════════════════════════════════════════════════════════════
+hr "C:T-21 — 브라우저 스모크 (진짜 브라우저로 눌러 본다)"
+
+# 왜 이 항목이 있나 (관문 ③ 2026-09-22)
+#   커뮤니티 화면의 동작은 전부 브라우저 안에서 일어난다. `curl` 은 **서버에 요청이 왔을 때**
+#   무엇이 오는지를 볼 뿐이라, JS 가 첫 줄에서 죽어 요청이 아예 오지 않는 상태를 통과시킨다.
+#   실제로 ProseMirror 스키마가 예외를 던져 화면이 통째로 멈춰 있었는데 이 시험은 82 통과였다.
+#   그래서 「콘솔에 오류 0 · 단추가 실제로 눌린다」를 여기서 본다.
+#   C:T-19 의 JS 쪽 동등성도 같은 브라우저에서 함께 잰다(창을 두 번 띄우지 않는다).
+
+SMOKE_OUT="$WORK/smoke.txt"
+SESSION_VALUE=$(awk '$6=="tbox_session"{print $7}' "$JAR_DIR/qa_employee01.jar" 2>/dev/null)
+
+if ! python3 -c "import playwright" >/dev/null 2>&1; then
+  skip "브라우저 스모크" "Playwright 가 없다 — **미검증**"
+  skip "doc-render.js 쪽 동등성 (C:T-19)" "같은 이유 — **미검증**"
+elif [ -z "$SESSION_VALUE" ]; then
+  skip "브라우저 스모크" "qa_employee01 세션 쿠키를 얻지 못했다 — **미검증**"
+  skip "doc-render.js 쪽 동등성 (C:T-19)" "같은 이유 — **미검증**"
+else
+  PATH="$HOME/.local/bin:$PATH" python3 "$ROOT/tests/community/browser_smoke.py" \
+    "$SITE" "$UA" "$SESSION_VALUE" "$WORK/samples.json" "$WORK/php-render.json" \
+    > "$SMOKE_OUT" 2>&1
+  if grep -q '^SMOKE_FAIL=' "$SMOKE_OUT"; then
+    sed -n '1,/^── 브라우저가 본 오류/p' "$SMOKE_OUT"
+    grep -E '^   (pageerror|console error|requestfailed|HTTP>=400)' "$SMOKE_OUT"
+    expect "브라우저에서 pageerror 0건" "PAGEERROR=0" "$(grep '^PAGEERROR=' "$SMOKE_OUT")"
+    expect "브라우저에서 콘솔 오류 0건" "CONSOLEERR=0" "$(grep '^CONSOLEERR=' "$SMOKE_OUT")"
+    expect "브라우저에서 실패한 요청 0건" "REQFAIL=0" "$(grep '^REQFAIL=' "$SMOKE_OUT")"
+    expect "브라우저에서 HTTP 400 이상 0건" "HTTP4XX=0" "$(grep '^HTTP4XX=' "$SMOKE_OUT")"
+    expect "스모크 항목 실패 0건" "SMOKE_FAIL=0" "$(grep '^SMOKE_FAIL=' "$SMOKE_OUT")"
+    if grep -q '^DIFF=' "$SMOKE_OUT"; then
+      expect "C:T-19 두 렌더러의 텍스트 노드·클래스 집합이 같다" "DIFF=0" "$(grep '^DIFF=' "$SMOKE_OUT")"
+    else
+      skip "doc-render.js 쪽 동등성 (C:T-19)" "스모크가 그 단계까지 가지 못했다 — **미검증**"
+    fi
+  else
+    skip "브라우저 스모크" "브라우저를 열지 못했다 — **미검증**"
+    skip "doc-render.js 쪽 동등성 (C:T-19)" "같은 이유 — **미검증**"
+    note "$(tail -4 "$SMOKE_OUT" | tr '\n' ' ')"
+    note "받으려면: PATH=\"\$HOME/.local/bin:\$PATH\" playwright install chromium"
+  fi
+fi
+
+# ════════════════════════════════════════════════════════════════
 hr "회귀 — 린트 · 문법"
 
 bash "$ROOT/scripts/security_lint.sh" > "$WORK/lint.txt" 2>&1
@@ -716,6 +704,10 @@ for f in $(find "$ROOT/src/community" "$ROOT/src/help/community.php" -name '*.ph
 done
 expect "커뮤니티 PHP 문법 오류 0건" "0" "$n_bad"
 bash -n "$0" && expect "이 시험 파일 bash -n" "0" "0" || expect "이 시험 파일 bash -n" "0" "1"
+# 구문만 본다 — `py_compile` 은 저장소에 `__pycache__` 를 남기므로 쓰지 않는다.
+python3 -c 'import sys; compile(open(sys.argv[1], encoding="utf-8").read(), sys.argv[1], "exec")' \
+  "$ROOT/tests/community/browser_smoke.py" 2>/dev/null \
+  && expect "browser_smoke.py 구문" "0" "0" || expect "browser_smoke.py 구문" "0" "1"
 
 # ─── 정리 ───────────────────────────────────────────────────────
 hr "정리 — 만든 페이지는 앱 창구로 되돌린다"
