@@ -62,6 +62,7 @@
 | **27** | 구매·재고 모듈 제거(F-64) — 강사 지시·사용자 결정 2026-09-21(Q-22). 백업: 태그 `v1.13.0-with-purchase` · `~/tbox-v2-purchase-backup-2026-09-21.zip` | ✅ 구현·검토 | ✅ 2026-09-21 (Opus, 재지시 0회) | ✅ 2026-09-21 (T-76 (a)~(g), Fable 재실행 stage26 108/0·help_button 16/0·api_whoami 15/0) | ◐ 2026-09-21 14:47 마이그레이션 실행(사용자) — `p_*` 0·네 열 없음·앱 200. 화면 자기 공격은 대기 | `60715a9` · v1.14.0 `226a48b` |
 | F-68 | 400 거부 이유를 사람 문장으로(Q-27) — `Http::reasonMessage` 한 표(ARCH 5.30), 인증·403·404·공유 링크·URL 가져오기는 통일 문구 유지 (T-81 · S-09-12 · R-96) | ✅ | ✅ 2026-09-22 | ✅ 2026-09-22 (T-81 114/0/1) | ⚠ 사용자 확인 대기 | `df126a4` · 발행 v1.16.0 `4357fa6`(디자인과 묶음) |
 | F-66 | 프로그램 토큰 본인 발급 — 내 계정 화면·요청마다 비밀번호+OTP·범위(역할이 정함)·만료 180일 (T-78 · Q-24 · R-97) | ✅ | ✅ 2026-09-22 | ✅ 2026-09-22 (T-78 129/0/2) | ⚠ 사용자 확인 대기 | `8f6afa7` · 발행 v1.17.0 `06f6ba4`(디자인 다듬기 문장 포함) |
+| **28** | t-box 를 `/tbox/` 아래로(base-path) + 루트 `/` Qaredi 런처 + 옛 주소 308 — 강사 지시 2026-09-21 · 사용자 결정 2026-09-22(Qaredi C). 설계 `../launcher/ARCHITECTURE.md` | 🔄 2026-09-22 지시서 → Opus | ⬜ | ⬜ (사이트 Q:T-1~Q:T-9) | ⬜ (Q:T-10 PC 프로그램 확인) | — · 발행 예정 **v2.0.0 「Qaredi」** |
 | **F-65** | 실행 파일이 든 압축본의 관리자 확인 업로드·확인 다운로드 — 요청마다 비밀번호+OTP(올릴 때·받을 때)·확인 문구·경고 배지·공유/토큰/등급 변경 금지·AL-21 (Q-23, 사용자 결정 2026-09-21) | ✅ 구현·검토 | ✅ 2026-09-21 (Opus 2단계, 후속 1회) | ✅ 2026-09-21 (T-77 Fable 재실행 106/0/0 · f54 61/0/2 · api_upload 27/0/0) | ⚠ 대기(브라우저로 `x.php` 든 zip 업로드) | `777ffe1` · v1.15.0 `dadcc03` |
 
 ---
@@ -2362,6 +2363,37 @@ HTTP 시험(T-77 (a)~(e))은 **미실행** — 운영 DB 에 `files.exec_content
 | 2026-09-22 | 판단(Fable) | 옛 관리자 발급 `POST` 는 404 가 아니라 **405** — 같은 경로의 `GET` 이 남아 라우터가 메서드 불일치로 먼저 끝낸다 | Opus 실측(api_folders.sh 실패로 발견). PRD 8장·T-78 (f)·ARCH 4.7 을 405 로 정정. 인증·인가에 닿지 않으니 뜻은 같다 |
 | 2026-09-22 | 해소(시험 결함) | `f66.sh` (c) 다운로드 423·PATCH 400 | 앱이 맞다: 방금 올린 파일은 `scan_status=pending`(F-54, ARCH 5.28) · 토큰 경로 `PATCH /api/files/{id}` 는 `folder_id` 만(F-58, R-90). 시험을 `wait_clean`·`folder_id` 로 고침 — F-65 때와 같은 교훈 |
 | 2026-09-22 | 판단(Fable) | 기존 토큰은 `read+upload+delete` 로 채운다 | 그때는 범위가 없어 전부 열려 있었다 — 좁히면 사용자 비서가 멎는다. 만료는 소급(created_at+180일) — R-97 ⑤ |
+
+### 28단계 — `/tbox/` base-path · Qaredi 런처 · 옛 주소 308 (Qaredi C, 2026-09-22)
+
+> 배경: 강사 지시(2026-09-21) 「도메인 루트는 기존 솔루션, `/tbox` 는 t-box」 → 사용자 결정(2026-09-22) 루트는 **Qaredi 런처**(로그인 전에도 타일), 커뮤니티는 `/community/`. 설계 `../launcher/ARCHITECTURE.md`, 수락 기준 사이트 `PRD.md` 9장, 지시서 `../launcher/c-launcher-basepath-directive.md`.
+
+**개발 사항 (Opus)**
+- [ ] `TBOX_BASE='/tbox'` 상수 · 라우터 한 층(런처 / `/tbox` 접두 떼기 / 옛 경로 308 / 404) — 라우트 표 무변경
+- [ ] `Http::base`·`url`·`redirectPermanent`(·`themeAttr`)
+- [ ] 서버 HTML·리다이렉트·재인증 복귀·공유 링크·위키 링크·정적 자산 경로 → `Http::url`
+- [ ] `app.js` `APP_BASE` + 절대 경로 리터럴 전부 · 생성기 `../api/time` · 매니페스트
+- [ ] 런처 `src/site/launcher_page.php`·`src/views/launcher.php`·`config/apps.json`·`src/Apps.php` (스크립트 0·쿠키 0)
+- [ ] 셸 그리드 단추 `<details class="appbar__apps">` · 로그인 화면 「Qaredi 홈」
+- [ ] nginx 두 conf: `/tbox/assets/` alias · 생성기 location 이동 · 속도 제한 exact location 이동 · 옛 `/assets/` 308
+- [ ] `docs/tbox/API.md` 0장 새 주소 + 「주소 변경」 절 · 시험 `BASE` 18곳 · `ui_snapshot.sh`·`check_baseline.sh`·`switch-site.sh`
+- [ ] `tests/q_launcher.sh`
+
+**검토 체크 (Fable, 관문 ②)** — nginx 적용(사용자) 뒤
+- [ ] Q:T-1 런처 200 · 스크립트 0 · 쿠키 0 · 데이터 0 · POST 405
+- [ ] Q:T-2 회귀 통과 수 전과 동일(stage26 108/0 · help_button 16/0 · api_whoami 15/0 · f68 109/0 · api_read · api_folders · f66)
+- [ ] Q:T-3 옛 주소 308(경로·쿼리 원문, POST 처리 0) · 비라우트 404
+- [ ] Q:T-4 링크 접두 grep 0 · Q:T-5 302 경로 · Q:T-6 공유 링크 · Q:T-7 쿠키·CSP 불변 · Q:T-8 그리드 단추 · Q:T-9 정적 자산·생성기 CSP
+- [ ] `security_lint` 0 · `wiki_check` 0 · `php -l` · SECURITY 7장 한 줄 · R-98(런처 앱 목록 공개 — Q-B 수용)
+
+**자기 공격 (사용자, 관문 ③)**
+- [ ] 브라우저로 `https://changkwon.mso.so/` → 런처 타일 · 로그인 없이 다른 정보가 없는지 · 커뮤니티 타일은 눌리지 않는지
+- [ ] 옛 주소 `https://changkwon.mso.so/login` 을 치면 `/tbox/login` 으로 가는지 · 개발자도구 Network 에서 308 확인
+- [ ] Q:T-10 PC 업로드 프로그램·AI 비서를 옛 주소 그대로 한 번 실행 → 성공(308 추종)인지, 실패면 설정을 `/tbox/api/…` 로 바꿔 재실행
+- [ ] 휴대폰 생성기(PWA) 다시 열기 → 시각 맞추기 동작
+
+**커밋·발행**: 커밋 `Qaredi C: …` → `scripts/release.sh major "Qaredi — 앱 런처와 새 주소" "…"` = **v2.0.0**(사용자 결정 Q-G).
+
 
 ## 2-1. 10단계 뒤 일괄 자기 공격 — 진행 순서 (관문 ③, 사용자)
 

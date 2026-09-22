@@ -8,7 +8,7 @@
 | 단계 | 내용 | 상태 |
 |---|---|---|
 | Q-0 기획 | 이름·구조·판단 기준·문서 구조 · 커뮤니티 ③~⑧(v0.3) · 사이트 Q-A~Q-C — **전부 확정** | ✅ 2026-09-22 |
-| Q-1 통합 | A 문서 재배치 ✅ · B 모듈 폴더 ⬜ · C 런처+`/tbox` ⬜ · D DB·서버 정리 ⬜ · E 시험·발행 v2.0.0 ⬜ | 🔄 2026-09-22 A 완료 |
+| Q-1 통합 | A 문서 재배치 ✅ · C 런처+`/tbox` 🔄(지시서 → Opus) · B 모듈 폴더 ⬜ · D DB·서버 정리 ⬜ · E 시험·발행 v2.0.0 ⬜ | 🔄 2026-09-22 A 완료 |
 | Q-2~ | 커뮤니티 3~7단계 | ⬜ |
 
 ## 1. 학습 기록 — Q-0 기획
@@ -35,3 +35,4 @@
 | 2026-09-22 | 요청(사용자) | 「세션명 커뮤니티 구축 방향을 여기서 이어서하자」 — 원본 세션(cwd `/var/www`)이 끝나 새 세션(cwd `/home/changkwon`)에서 transcript 를 읽어 이어받음 | 이어받기 방식은 t-box 2026-09-15 사례와 같음. 새 cwd 에서는 `/var/www` 의 지침·메모리가 자동 로드되지 않아 `CLAUDE.md` 를 직접 읽고 시작 |
 | 2026-09-22 | 결정(사용자) | 통합 확인 4건 — Q-D 「지금 진행」 · Q-E 「이 세션」 · Q-G 「v2.0.0 Qaredi」. Q-F(API 리다이렉트)는 답 없음 → Fable 가정(308 둠) | `PRD.md` 8장 Q-D~Q-G. 두 세션(changkwon-ae·changkwon-02)에 정지 신호 → 둘 다 미커밋 0 회신 |
 | 2026-09-22 | 완료 | **A 문서 재배치** — 공통 `CLAUDE.md` 한 벌(t-box 장 번호 0~9 보존: 코드·시험·위키가 번호로 인용), 사이트 `PRD.md`·`STAGES.md`·`README.md` 루트, t-box 문서 40개 `docs/tbox/`(`git mv`), 커뮤니티 문서 `docs/community/`, 통합 계획 `docs/integration-plan.md`. `SECURITY.md`·`DESIGN.md`·`docs/design-guide.html` 은 사이트 공통으로 자리 유지 | 경로 치환: `docs/<이름>`→`docs/tbox/<이름>`(옮긴 파일만), 루트 SECURITY·DESIGN 의 t-box 문서 언급, 위키 문서 지도, `tests/f68.sh` 571행(ARCH 를 경로로 읽음 — changkwon-ae 제보), `tests/f52.sh` 610행 grep 대상, 마이그레이션 주석. 커밋 `675d31f`. 검증: 린트 0 · 위키 0 · `tests/f68.sh` 109/0((a)15 통과) — SECURITY 7장 |
+| 2026-09-22 | 결정(사용자) | 「진행해」 — C 단계 착수. 순서는 계획 F 절의 C-1 → C-2 를 **한 지시서**로 합침(런처 `/` 와 `/tbox` 접두는 라우터 한 층에서 함께 정해지므로 나누면 반쪽 상태가 두 번 생긴다) | 설계 `docs/launcher/ARCHITECTURE.md` · 사이트 PRD 4·9장(Q:T-1~10) · t-box PRD 28단계 · 지시서 `docs/launcher/c-launcher-basepath-directive.md`. nginx 적용은 사용자, 적용 전까지 화면 자산 404 창이 생김을 사용자에게 알림 |

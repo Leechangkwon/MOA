@@ -21,8 +21,8 @@
 ## 3. 구조
 
 ```
-https://changkwon.mso.so/            Qaredi 런처 (Q:F-1)  — 로그인 뒤 타일: t-box · 커뮤니티 · (…)
-                        /tbox/       t-box 모듈 (파일)      — 지금의 t-box 그대로, 경로만 이동
+https://changkwon.mso.so/            Qaredi 런처 (Q:F-1)  — 로그인 전에도 타일: t-box · 커뮤니티 · (…)
+                        /tbox/       t-box 모듈 (파일)      — 지금의 t-box 그대로, 경로만 이동(옛 주소 → 308)
                         /community/  커뮤니티 모듈           — docs/community/PRD.md v0.3
 한 저장소(T-Box_Re, Q-A) · 한 PHP 앱 · 한 세션 · 한 DB(tbox_re: public = 계정·파일, community = 커뮤니티 표)
 ```
@@ -35,9 +35,11 @@ https://changkwon.mso.so/            Qaredi 런처 (Q:F-1)  — 로그인 뒤 �
 | DB | 한 DB. 커뮤니티 표는 스키마 `community`(이미 있음). 앱 계정 `tbox_app` 에 그 스키마 권한 부여, `community_app` 은 폐기 | docs/community/ARCHITECTURE 5장 → 통합 시 갱신 |
 | 문서 | 지침은 `CLAUDE.md` 한 벌, 참조 문서는 모듈별 | 사용자 「3으로 가자」 2026-09-22 |
 
-## 4. 런처 (Q:F-1)
-- **로그인 전에도 보이는** 첫 화면(Q-B). 타일 = `config/apps.json`(이름·설명·경로·아이콘 SVG·순서). 타일을 누르면 그 앱의 로그인 화면(이미 로그인돼 있으면 바로 앱). 런처는 데이터를 하나도 내려 주지 않는다 — 이름·설명·아이콘만(정적). 로그인 뒤 런처에는 사용자 칩·로그아웃이 더해진다.
-- 각 모듈 셸 머리 오른쪽에 그리드 단추 → 팝업(같은 목록). 스크립트 없이 `<details>` 로 열린다.
+## 4. 런처 (Q:F-1) — 설계 `docs/launcher/ARCHITECTURE.md`
+- **로그인 전에도 보이는** 첫 화면(Q-B). 타일 = `config/apps.json`(이름·설명·경로·아이콘·순서·상태), 읽기는 `src/Apps.php` 한 곳. 타일을 누르면 그 앱(로그인이 필요하면 그 앱의 로그인 화면). 런처는 데이터를 하나도 내려 주지 않는다 — 이름·설명·아이콘만(정적), **스크립트 0 · 쿠키 발행 0**. 로그인돼 있으면 사용자 칩(표시 이름·역할)이 더해진다. 아직 없는 앱(커뮤니티)은 「준비 중」 배지, 링크 없음.
+- 로그아웃 단추는 **v1 런처에 없다**(정정 2026-09-22): CSRF 헤더가 필요해 스크립트 없이는 안 되고, 로그아웃은 각 앱 안에 있다. 뒤에 넣으려면 「스크립트 0」 원칙과 저울질한다.
+- 각 모듈 셸 머리 오른쬬에 그리드 단추(⋮⋮⋮) → `<details>` 팝업(같은 목록 + 「Qaredi 홈」). 스크립트 없이 열린다.
+- 주소 규칙: `/` 런처 · `/tbox/…` t-box · `/community/…` 커뮤니티. **옛 t-box 주소는 308** 로 새 주소로(메서드·본문 보존, Q-F). 쿠키 `path=/`·CSP·CSRF 무변경.
 - 런처에는 알림 요약(커뮤니티 미읽음 n·t-box 검사 중 파일 n)을 뒤에 더할 수 있다(선택).
 
 ## 5. 커뮤니티 모듈 — 확정된 것 (상세는 `docs/community/PRD.md` v0.3)
@@ -54,7 +56,7 @@ https://changkwon.mso.so/            Qaredi 런처 (Q:F-1)  — 로그인 뒤 �
 | 단계 | 내용 |
 |---|---|
 | Q-0 기획 | **완료 2026-09-22** — 커뮤니티 ③~⑧(PRD v0.3) · 사이트 Q-A~Q-C 확정 → 이 PRD v1.0 |
-| Q-1 통합 | **T-Box_Re 저장소 안에서**(Q-A) — A 문서 재배치(✅ 2026-09-22) · B 모듈 폴더(t-box 자리 그대로, 커뮤니티 `src/community/`) · C 런처 + `/tbox` 경로(t-box 28단계, 이 세션 담당) · D DB·서버 정리(사용자 실행) · E 시험 통합 · 발행 **v2.0.0 「Qaredi」**. 계획 `docs/integration-plan.md` |
+| Q-1 통합 | **T-Box_Re 저장소 안에서**(Q-A) — A 문서 재배치(✅ 2026-09-22) · **C 런처+`/tbox`(🔄 2026-09-22 착수, 지시서 `docs/launcher/c-launcher-basepath-directive.md`)** · B 모듈 폴더(t-box 자리 그대로, 커뮤니티 `src/community/`) · C 런처 + `/tbox` 경로(t-box 28단계, 이 세션 담당) · D DB·서버 정리(사용자 실행) · E 시험 통합 · 발행 **v2.0.0 「Qaredi」**. 계획 `docs/integration-plan.md` |
 | Q-2~ | 커뮤니티 3~7단계(`docs/community/PRD.md` 11장) 를 Qaredi 안에서 |
 
 ## 8. 열린 질문 (사이트 공통)
@@ -67,3 +69,19 @@ https://changkwon.mso.so/            Qaredi 런처 (Q:F-1)  — 로그인 뒤 �
 | Q-E | C-2(t-box `/tbox` 이동, 28단계)를 어느 세션이 하나 | **확정(사용자 2026-09-22 「이 세션」)** — Qaredi 통합 세션이 Opus 지시서로 진행. 「사이트 디자인」 세션은 종료돼 t-box 문맥 세션이 따로 없음 |
 | Q-F | `/api/*` → `/tbox/api/*` 로 바뀌는 프로그램 창구 주소 — 옛 주소 리다이렉트(308)를 두나 | **가정(Fable, 2026-09-22)** — 사용자 답 없음. 권고안대로 **308 리다이렉트를 둔다**(PC 프로그램·AI 비서 설정을 나중에 바꿀 수 있게). 사용자가 다르게 정하면 C-2 지시서에서 고친다 |
 | Q-G | 런처가 뜨는 발행 번호 | **확정(사용자 2026-09-22 「v2.0.0 Qaredi」)** — major 는 사용자가 말했을 때만 쓰는 규칙에 따라 물어 확정 |
+
+## 9. 수락 기준 — 사이트 공통 (Q:T-xx)
+> 실행 스크립트 `tests/q_launcher.sh`(C 단계). 규칙은 `CLAUDE.md` 3장(qa 계정 · UA `tbox-review/<날짜>` · 운영 데이터 불변).
+
+| ID | 무엇 | 기대 |
+|---|---|---|
+| Q:T-1 | 런처 `GET /` | 200 HTML · 타일 t-box·커뮤니티(「준비 중」) · `<script` 0 · `Set-Cookie` 0 · 미로그인이면 사용자 칩 없음, 로그인(qa)이면 표시 이름만 · `POST /` 405 |
+| Q:T-2 | t-box 회귀 — 주소만 바뀜 | `BASE=…/tbox` 로 `stage26.sh` 108/0 · `help_button.sh` 16/0 · `api_whoami.sh` 15/0 · `f68.sh` 109/0 · `api_read.sh`·`api_folders.sh`·`f66.sh` 통과 수 전과 동일 |
+| Q:T-3 | 옛 주소 308 | `GET /api/health` `GET /login` `POST /api/login` `GET /s/{token}` `GET /settings` `GET /assets/app.css` → 308 + `Location: /tbox<경로+쿼리 원문>` · POST 는 처리 0(감사 행 0·쿠키 0) · `/foo` `/api/nope` `/tbox/nope` `/community/` → 404(리다이렉트 아님) |
+| Q:T-4 | 링크 접두 | 렌더된 HTML(로그인·홈·설정·관리·위키)의 `href|src|action="/…"` 가 전부 `/tbox/` 로 시작(예외: 그리드 팝업·「Qaredi 홈」의 `/`, 커뮤니티 `/community/`) · `app.js` 에 `'/api/` 리터럴 0 |
+| Q:T-5 | 리다이렉트 경로 | 미로그인 `GET /tbox/settings` → 302 `/tbox/login` · 재인증 전 `GET /tbox/admin` → 302 `/tbox/reauth?to=admin` · 재인증 뒤 복귀 `/tbox/admin` |
+| Q:T-6 | 공유 링크 | `POST …/share` 응답 `url` 이 `APP_URL/tbox/s/` 로 시작 · 그 주소 GET 동작(stage26 포함) |
+| Q:T-7 | 쿠키·헤더 불변 | `Set-Cookie` `path=/; Secure; HttpOnly; SameSite=Lax` 전과 동일 · CSP 헤더 문자열 전후 동일(전역·생성기 둘) |
+| Q:T-8 | 그리드 단추 | 셸 화면 9종 전부 `<details class="appbar__apps">` · 항목 「Qaredi 홈」·t-box(현재)·커뮤니티(준비 중) · 로그인 화면에 「Qaredi 홈」 링크 |
+| Q:T-9 | 정적 자산 | `/tbox/assets/app.css` 200 `text/css` · `/tbox/assets/totp-generator.html` 200 + 자체 CSP(`unsafe-inline`) · 매니페스트 `start_url` `/tbox/…` · 생성기의 시각 창구 `../api/time` 동작 |
+| Q:T-10 | 프로그램 창구(관문 ③, 사용자) | `docs/tbox/API.md` 0장 새 주소 · 사용자 PC 업로드 프로그램·AI 비서가 옛 주소로 보낼 때 308 을 따라 성공하는지, 안 따르면 설정을 `/tbox/api/…` 로 바꾼 뒤 성공하는지 |
