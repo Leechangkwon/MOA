@@ -188,7 +188,7 @@ require __DIR__ . '/../views/shell_top.php';
         <p id="tc-msg" class="msg" role="alert" aria-live="polite"></p>
       </div>
       <div class="modal__foot">
-        <button id="tc-cancel" class="btn btn--quiet" type="button">취소</button>
+        <button id="tc-cancel" class="btn btn--quiet" type="button">닫기</button>
         <button id="tc-submit" class="btn" type="submit">만들기</button>
       </div>
     </form>
@@ -212,7 +212,7 @@ require __DIR__ . '/../views/shell_top.php';
         <p id="tr-msg" class="msg" role="alert" aria-live="polite"></p>
       </div>
       <div class="modal__foot">
-        <button id="tr-cancel" class="btn btn--quiet" type="button">취소</button>
+        <button id="tr-cancel" class="btn btn--quiet" type="button">닫기</button>
         <button id="tr-submit" class="btn" type="submit">바꾸기</button>
       </div>
     </form>
@@ -242,7 +242,7 @@ require __DIR__ . '/../views/shell_top.php';
         <p id="ta-msg" class="msg" role="alert" aria-live="polite"></p>
       </div>
       <div class="modal__foot">
-        <button id="ta-cancel" class="btn btn--quiet" type="button">취소</button>
+        <button id="ta-cancel" class="btn btn--quiet" type="button">닫기</button>
         <button id="ta-submit" class="btn" type="submit">배정</button>
       </div>
     </form>
@@ -262,7 +262,7 @@ require __DIR__ . '/../views/shell_top.php';
         <p id="td-msg" class="msg" role="alert" aria-live="polite"></p>
       </div>
       <div class="modal__foot">
-        <button id="td-cancel" class="btn btn--quiet" type="button">취소</button>
+        <button id="td-cancel" class="btn btn--quiet" type="button">닫기</button>
         <button id="td-submit" class="btn" type="submit">비활성화</button>
       </div>
     </form>

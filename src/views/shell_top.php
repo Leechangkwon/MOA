@@ -195,7 +195,7 @@ if (!headers_sent()) {
        넓은 화면에서는 CSS 가 이 줄을 감추고 내비를 늘 펼쳐 둔다. -->
   <header class="appbar">
     <button id="nav-toggle" class="btn btn--icon" type="button"
-            aria-expanded="false" aria-controls="sidebar" aria-label="메뉴 열기" title="메뉴">
+            aria-expanded="false" aria-controls="sidebar" aria-label="메뉴 열기">
       <span class="icon" data-icon="menu"></span>
     </button>
     <span class="appbar__brand">t-box</span>
@@ -296,7 +296,7 @@ if (!headers_sent()) {
         <span class="userchip__name"><?= $shellName ?></span>
         <span class="userchip__role"><?= $shellRole ?></span>
       </span>
-      <button id="logout" class="btn btn--icon btn--plain" type="button" title="로그아웃" aria-label="로그아웃">
+      <button id="logout" class="btn btn--icon btn--plain" type="button" aria-label="로그아웃">
         <span class="icon" data-icon="logout"></span>
       </button>
     </div>

@@ -63,7 +63,7 @@ if (isset($pageHelp) && is_string($pageHelp) && $pageHelp !== '') {
 <dialog id="help-dialog" class="modal help-dialog" aria-labelledby="help-title">
   <div class="modal__head">
     <h2 id="help-title" class="modal__title"><?= htmlspecialchars((string) ($shellHelp['title'] ?? ''), ENT_QUOTES, 'UTF-8') ?></h2>
-    <button class="btn btn--icon btn--plain" type="button" data-help-close title="닫기" aria-label="닫기">
+    <button class="btn btn--icon btn--plain" type="button" data-help-close aria-label="닫기">
       <span class="icon" data-icon="x"></span>
     </button>
   </div>
@@ -103,7 +103,7 @@ $shellChangelog = Changelog::entries();
 <dialog id="changelog-dialog" class="modal changelog-dialog" aria-labelledby="changelog-title">
   <div class="modal__head">
     <h2 id="changelog-title" class="modal__title">변경 이력</h2>
-    <button class="btn btn--icon btn--plain" type="button" data-changelog-close title="닫기" aria-label="닫기">
+    <button class="btn btn--icon btn--plain" type="button" data-changelog-close aria-label="닫기">
       <span class="icon" data-icon="x"></span>
     </button>
   </div>

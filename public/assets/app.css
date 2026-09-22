@@ -580,9 +580,13 @@ table.files tbody tr:hover .btn--icon { color: var(--fg-2); }
    마이크로초까지 붙은 시각. 열 순서는 각 화면의 <thead> 와 같다. 짧은 값이 든 열은 그대로 두어
    「allo/w」 식 세로 쪼개짐이 다시 생기지 않는다. */
 #files-body td:nth-child(1), #trash-body td:nth-child(1) { overflow-wrap: anywhere; min-width: 9rem; }   /* 이름 */
-#files-body td:nth-child(6), #trash-body td:nth-child(6) { overflow-wrap: anywhere; min-width: 7rem; }   /* 시각 */
+/* 시각 열 — D-1 뒤 값은 「2026-09-21 17:22:02」 19자. 날짜의 하이픈이 줄바꿈 자리라 좁으면 「2026-09-」 에서 끊기므로
+   날짜 한 덩이(10자)가 들어갈 최소 폭(6.5rem)만 준다: 자리가 있으면 한 줄, 좁으면 날짜 줄 · 시간 줄 두 줄까지 */
+#files-body td:nth-child(6), #trash-body td:nth-child(6),
+#users-body td:nth-child(6), #users-body td:nth-child(8),
+#audit-body td:nth-child(1), #activity-body td:nth-child(1) { min-width: 6.5rem; }
 #users-body td:nth-child(2) { overflow-wrap: anywhere; min-width: 7rem; }                                /* 아이디 */
-#users-body td:nth-child(6), #users-body td:nth-child(8) { overflow-wrap: anywhere; min-width: 7rem; }   /* 만료 · 만든 시각 */
+/* 만료(6) · 만든 시각(8): 같은 이유로 규칙 없음 */
 
 .table-foot {
   display: flex;
@@ -762,9 +766,12 @@ dialog.modal::backdrop { background: rgba(0, 0, 0, .5); }
   border-bottom: 1px solid var(--line);
 }
 .modal__head { flex-wrap: wrap; }
-.modal__title { flex: 1 1 auto; font-size: 16px; font-weight: 600; letter-spacing: -.01em; overflow-wrap: anywhere; }
-/* 메타가 긴 문장이면(재인증 모달) 제목을 밀어 접지 않고 다음 줄로 내려간다 */
-.modal__meta { display: flex; flex: 1 1 16rem; min-width: 0; flex-wrap: wrap; align-items: center; gap: 8px; font-size: 13px; color: var(--muted); }
+.modal__title { font-size: 16px; font-weight: 600; letter-spacing: -.01em; overflow-wrap: anywhere; }
+.modal__meta { display: flex; min-width: 0; flex-wrap: wrap; align-items: center; gap: 8px; font-size: 13px; color: var(--muted); }
+/* 머리 바로 아래에 제목·메타가 나란히 있을 때(재인증 모달): 메타가 긴 문장이면 제목을 접지 않고 다음 줄로 내려간다.
+   미리보기·올리기 모달처럼 .preview__headtext(세로 묶음) 안에 든 경우는 이 규칙이 닿지 않는다 — 세로로 늘어나 빈칸이 생겼던 일(2026-09-22) */
+.modal__head > .modal__title { flex: 1 1 auto; }
+.modal__head > .modal__meta { flex: 1 1 16rem; }
 .modal__head > .btn--icon { margin-left: auto; }
 .modal__body { padding: 20px 24px; overflow: auto; background: var(--surface-2); }
 .modal__foot {

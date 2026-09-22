@@ -111,7 +111,7 @@ require __DIR__ . '/../views/shell_top.php';
           <h2 class="modal__title" id="fetch-hosts-dialog-title">허용 사이트 변경 확인</h2>
           <div class="modal__meta"><span id="fetch-hosts-dialog-count"></span></div>
         </div>
-        <button id="fetch-hosts-dialog-x" class="btn btn--icon" type="button" title="닫기" aria-label="닫기">
+        <button id="fetch-hosts-dialog-x" class="btn btn--icon" type="button" aria-label="닫기">
           <span class="icon" data-icon="x"></span>
         </button>
       </div>

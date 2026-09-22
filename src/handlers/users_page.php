@@ -158,7 +158,7 @@ require __DIR__ . '/../views/shell_top.php';
         <p id="ue-msg" class="msg" role="alert" aria-live="polite"></p>
       </div>
       <div class="modal__foot">
-        <button id="ue-cancel" class="btn btn--quiet" type="button">취소</button>
+        <button id="ue-cancel" class="btn btn--quiet" type="button">닫기</button>
         <button id="ue-submit" class="btn" type="submit">저장</button>
       </div>
     </form>
@@ -181,7 +181,7 @@ require __DIR__ . '/../views/shell_top.php';
         <p id="rd-msg" class="msg" role="alert" aria-live="polite"></p>
       </div>
       <div class="modal__foot">
-        <button id="rd-cancel" class="btn btn--quiet" type="button">취소</button>
+        <button id="rd-cancel" class="btn btn--quiet" type="button">닫기</button>
         <button id="rd-submit" class="btn" type="submit">확인</button>
       </div>
     </form>

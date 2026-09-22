@@ -198,7 +198,7 @@ require __DIR__ . '/../views/shell_top.php';
           <!-- 「올릴 위치: …」 — app.js 가 서버가 준 경로로만 채운다(읽기 전용 글자). -->
           <div class="modal__meta"><span id="upload-where"></span></div>
         </div>
-        <button id="upload-dialog-x" class="btn btn--icon" type="button" title="닫기" aria-label="닫기">
+        <button id="upload-dialog-x" class="btn btn--icon" type="button" aria-label="닫기">
           <span class="icon" data-icon="x"></span>
         </button>
       </div>
@@ -274,7 +274,7 @@ require __DIR__ . '/../views/shell_top.php';
           <h2 class="modal__title" id="fetch-dialog-title">URL 로 가져오기</h2>
           <div class="modal__meta"><span id="fetch-where"></span></div>
         </div>
-        <button id="fetch-dialog-x" class="btn btn--icon" type="button" title="닫기" aria-label="닫기">
+        <button id="fetch-dialog-x" class="btn btn--icon" type="button" aria-label="닫기">
           <span class="icon" data-icon="x"></span>
         </button>
       </div>
@@ -318,7 +318,7 @@ require __DIR__ . '/../views/shell_top.php';
           <h2 class="modal__title" id="folder-dialog-title">새 폴더</h2>
           <div class="modal__meta"><span id="folder-dialog-where"></span></div>
         </div>
-        <button id="folder-dialog-x" class="btn btn--icon" type="button" title="닫기" aria-label="닫기">
+        <button id="folder-dialog-x" class="btn btn--icon" type="button" aria-label="닫기">
           <span class="icon" data-icon="x"></span>
         </button>
       </div>
@@ -366,7 +366,7 @@ require __DIR__ . '/../views/shell_top.php';
           <h2 class="modal__title" id="move-title">폴더로 이동</h2>
           <div class="modal__meta"><span id="move-file"></span></div>
         </div>
-        <button id="move-x" class="btn btn--icon" type="button" title="닫기" aria-label="닫기">
+        <button id="move-x" class="btn btn--icon" type="button" aria-label="닫기">
           <span class="icon" data-icon="x"></span>
         </button>
       </div>
@@ -395,7 +395,7 @@ require __DIR__ . '/../views/shell_top.php';
           <h2 class="modal__title" id="share-title">공유 링크 만들기</h2>
           <div class="modal__meta"><span id="share-file"></span></div>
         </div>
-        <button id="share-close-x" class="btn btn--icon" type="button" title="닫기" aria-label="닫기">
+        <button id="share-close-x" class="btn btn--icon" type="button" aria-label="닫기">
           <span class="icon" data-icon="x"></span>
         </button>
       </div>
@@ -452,7 +452,7 @@ require __DIR__ . '/../views/shell_top.php';
           <h2 class="modal__title" id="exec-dl-title">실행 파일이 든 압축본 받기</h2>
           <div class="modal__meta"><span id="exec-dl-file"></span></div>
         </div>
-        <button id="exec-dl-x" class="btn btn--icon" type="button" title="닫기" aria-label="닫기">
+        <button id="exec-dl-x" class="btn btn--icon" type="button" aria-label="닫기">
           <span class="icon" data-icon="x"></span>
         </button>
       </div>
@@ -510,7 +510,7 @@ require __DIR__ . '/../views/shell_top.php';
             <span id="preview-uploader"></span>
           </div>
         </div>
-        <button id="preview-close-x" class="btn btn--icon" type="button" title="닫기" aria-label="닫기">
+        <button id="preview-close-x" class="btn btn--icon" type="button" aria-label="닫기">
           <span class="icon" data-icon="x"></span>
         </button>
       </div>

@@ -147,6 +147,33 @@ function setText(el, value) {
   }
 }
 
+/* DESIGN.md 2.4 · 5장 — 시각은 「YYYY-MM-DD HH:MM:SS」 까지만 보이고 마이크로초·시간대는 title 로 옮긴다.
+   서버 값(PostgreSQL timestamptz 문자열, 예 2026-09-21 14:27:21.850281+09)은 바꾸지 않는다 — 표시만 자른다.
+   형식이 다르면(빈 값·'—'·이미 짧은 값·날짜만) 그대로 둔다. */
+var WHEN_RE = /^(\d{4}-\d{2}-\d{2})[ T](\d{2}:\d{2}:\d{2})/;
+function shortWhen(value) {
+  if (typeof value !== 'string') { return { text: '—', full: '' }; }
+  var m = value.match(WHEN_RE);   // String#match 로만 본다 — security_lint 의 코드 실행 함수 규칙(S-09)에 걸리는 이름을 쓰지 않는다
+  if (!m) { return { text: value === '' ? '—' : value, full: '' }; }
+  var text = m[1] + ' ' + m[2];
+  return { text: text, full: value.length > text.length ? value : '' };
+}
+/* 표 칸 하나 — 글자는 짧게, title 에 전체 값. suffix 는 「 (만료)」 같은 꼬리(없으면 생략). */
+function addWhenCell(row, value, suffix) {
+  var td = document.createElement('td');
+  var w = shortWhen(value);
+  setText(td, w.text + (typeof suffix === 'string' ? suffix : ''));
+  if (w.full !== '') { td.setAttribute('title', w.full); }
+  row.appendChild(td);
+  return td;
+}
+/* 표 밖 글자(모달 정보 판·카드 메타)용 */
+function setWhen(el, value) {
+  var w = shortWhen(value);
+  setText(el, w.text);
+  if (w.full !== '') { el.setAttribute('title', w.full); } else { el.removeAttribute('title'); }
+}
+
 /* ─── 아이콘 — <template> 복제만 쓴다 (CSP `script-src 'self'`, S-03) ───
  *
  * SVG 마크업은 **서버가 만든 HTML**(src/views/shell_bottom.php · login_page.php)의
@@ -177,13 +204,14 @@ function paintIcons(root) {
 
 /**
  * 표의 작업 칸에 쓰는 아이콘 단추. 그림만 있으면 뜻이 전해지지 않으므로
- * **한글 이름**을 title 과 aria-label 에 함께 넣는다(화면 낭독기·마우스 올림 모두).
+ * **한글 이름**을 aria-label 에 넣는다 — 화면 낭독기가 읽고, CSS 툴팁(DESIGN 2.8)이
+ * `attr(aria-label)` 로 같은 글을 보인다. title 은 넣지 않는다(D-3): 브라우저 기본
+ * 툴팁과 CSS 툴팁이 겹쳐 같은 글이 두 번 떴다.
  */
 function makeIconButton(iconName, label) {
   var button = document.createElement('button');
   button.type = 'button';
   button.className = 'btn btn--icon';
-  button.setAttribute('title', label);
   button.setAttribute('aria-label', label);
   button.appendChild(makeIcon(iconName));
   return button;
@@ -517,7 +545,7 @@ function openReauthModal(onDone) {
   var cancel = document.createElement('button');
   cancel.type = 'button';
   cancel.className = 'btn btn--quiet';
-  setText(cancel, '취소');
+  setText(cancel, '닫기');
   foot.appendChild(cancel);
 
   var submit = document.createElement('button');
@@ -1354,7 +1382,7 @@ function initFiles(csrfToken, uploadLevels, canFetch, myTeamId) {
     }
     setText(previewTeam, data.team_name === null || data.team_name === undefined ? '' : data.team_name);
     setText(previewUploader, data.uploaded_by);
-    setText(previewCreated, data.created_at);
+    setWhen(previewCreated, data.created_at);
     setText(previewSha, data.sha256_short);
 
     var kindLabel = Object.prototype.hasOwnProperty.call(PREVIEW_KIND_LABELS, kind)
@@ -1412,7 +1440,7 @@ function initFiles(csrfToken, uploadLevels, canFetch, myTeamId) {
     setText(previewSize, formatSize(file.size_bytes));
     setText(previewTeam, file.team_name === null || file.team_name === undefined ? '' : file.team_name);
     setText(previewUploader, file.uploaded_by);
-    setText(previewCreated, file.created_at);
+    setWhen(previewCreated, file.created_at);
     setText(previewSha, '');
     setText(previewKind, '');
     if (previewLevel) {
@@ -1626,7 +1654,7 @@ function initFiles(csrfToken, uploadLevels, canFetch, myTeamId) {
             setText(shareUrlText, typeof data.url === 'string' ? data.url : '');
             setText(
               shareMeta,
-              '만료 ' + (typeof data.expires_at === 'string' ? data.expires_at : '—') +
+              '만료 ' + shortWhen(data.expires_at).text +
                 ' · 최대 ' + (typeof data.max_downloads === 'number' ? data.max_downloads : '—') + '회'
             );
             return null;
@@ -1708,7 +1736,7 @@ function initFiles(csrfToken, uploadLevels, canFetch, myTeamId) {
     execTarget = file;
     setText(execFileName, file.name);
     setText(execUploader, typeof file.uploaded_by === 'string' ? file.uploaded_by : '—');
-    setText(execCreated, typeof file.created_at === 'string' ? file.created_at : '—');
+    setWhen(execCreated, file.created_at);
     setText(execMsg, '');
     clearExecFields();
     if (execSubmit) {
@@ -1836,7 +1864,6 @@ function initFiles(csrfToken, uploadLevels, canFetch, myTeamId) {
       var previewButton = makeIconButton('eye', kindLabel === '' ? '미리보기' : '미리보기 — ' + kindLabel);
       if (scanBlock !== null) {
         previewButton.disabled = true;
-        previewButton.setAttribute('title', scanBlock.title);
         previewButton.setAttribute('aria-label', scanBlock.title);
       } else {
         previewButton.addEventListener('click', function () {
@@ -1866,7 +1893,6 @@ function initFiles(csrfToken, uploadLevels, canFetch, myTeamId) {
         var link = document.createElement('a');
         link.setAttribute('href', '/api/files/' + file.id + '/download');
         link.className = 'btn btn--icon';
-        link.setAttribute('title', '다운로드');
         link.setAttribute('aria-label', '다운로드');
         link.appendChild(makeIcon('download'));
         td.appendChild(link);
@@ -1964,7 +1990,7 @@ function initFiles(csrfToken, uploadLevels, canFetch, myTeamId) {
           : '—');
       }
       addCell(row, file.uploaded_by);
-      addCell(row, file.created_at);
+      addWhenCell(row, file.created_at);
       addCell(row, file.description);
       addActions(row, file);
       body.appendChild(row);
@@ -2426,7 +2452,7 @@ function initFiles(csrfToken, uploadLevels, canFetch, myTeamId) {
     var cancel = document.createElement('button');
     cancel.type = 'button';
     cancel.className = 'btn btn--quiet';
-    setText(cancel, '취소');
+    setText(cancel, '닫기');
     cancel.addEventListener('click', function () {
       dialog.close();
       setText(folderMsg, '취소했습니다');
@@ -3462,7 +3488,7 @@ function initAudit() {
 
     rows.forEach(function (item) {
       var row = document.createElement('tr');
-      addCell(row, item.happened_at);
+      addWhenCell(row, item.happened_at);
       addCell(row, item.actor_name);
       addCell(row, item.actor_role);
       addCell(row, item.action);
@@ -3939,7 +3965,7 @@ function initTrash(csrfToken, onRestored) {
       addLevelCell(row, file.access_level);
       addCell(row, file.uploaded_by);
       addCell(row, file.deleted_by);
-      addCell(row, file.deleted_at);
+      addWhenCell(row, file.deleted_at);
       var td = document.createElement('td');
       td.className = 'actions';
       if (UUID_RE.test(file.id)) {
@@ -4435,12 +4461,13 @@ function initUsers(csrfToken) {
     var row = document.createElement('tr');
     var live = token.revoked_at === null || token.revoked_at === undefined;
 
-    [token.name, token.hint, token.created_at,
-      live ? token.last_used_at : token.revoked_at].forEach(function (value) {
+    [token.name, token.hint].forEach(function (value) {
       var td = document.createElement('td');
       setText(td, value === null || value === undefined || value === '' ? '—' : value);
       row.appendChild(td);
     });
+    addWhenCell(row, token.created_at);
+    addWhenCell(row, live ? token.last_used_at : token.revoked_at);
 
     var state = document.createElement('td');
     setText(state, live ? '살아있음' : '회수됨');
@@ -4881,7 +4908,12 @@ function initUsers(csrfToken) {
 
     var activeButton = document.createElement('button');
     activeButton.type = 'button';
-    activeButton.className = 'btn btn--quiet btn--small';
+    /* DESIGN 2.1 — 비활성화(되돌릴 수 있지만 그 사람이 즉시 못 들어오게 되는 동작)는 위험 색,
+       다시 활성화는 보조 색. 목록이 다시 그려질 때마다 여기가 실행되므로 상태 전환도 따라간다.
+       (팀 토글과 같은 규칙) */
+    activeButton.className = item.is_active === true
+      ? 'btn btn--danger btn--small'
+      : 'btn btn--quiet btn--small';
     setText(activeButton, item.is_active === true ? '비활성화' : '다시 활성화');
     activeButton.addEventListener('click', function () {
       askReason(
@@ -4921,9 +4953,11 @@ function initUsers(csrfToken) {
       addCell(row, item.role);
       addCell(row, item.team_name);
       addCell(row, item.is_active === true ? '활성' : '비활성');
-      addCell(row, item.expires_at === null ? '—' : item.expires_at + (item.is_expired === true ? ' (만료)' : ''));
+      item.expires_at === null
+        ? addCell(row, '—')
+        : addWhenCell(row, item.expires_at, item.is_expired === true ? ' (만료)' : '');
       addCell(row, item.mfa_enabled === true ? '켜짐' : '꺼짐');
-      addCell(row, item.created_at);
+      addWhenCell(row, item.created_at);
       addActions(row, item);
       body.appendChild(row);
     });
@@ -5294,7 +5328,7 @@ function initOrg(csrfToken) {
       detailBadge.className = team.is_active === true ? 'badge badge--ok' : 'badge badge--off';
       setText(detailBadge, team.is_active === true ? '활성' : '비활성');
     }
-    setText(detailMeta, '만든 날 ' + team.created_at + ' · 마지막 변경 ' + team.updated_at);
+    setText(detailMeta, '만든 날 ' + shortWhen(team.created_at).text + ' · 마지막 변경 ' + shortWhen(team.updated_at).text);
     if (toggleButton) {
       toggleButton.className = team.is_active === true
         ? 'btn btn--danger btn--small'
@@ -6030,7 +6064,7 @@ function initActivity() {
 
     rows.forEach(function (item) {
       var row = document.createElement('tr');
-      addCell(row, item.happened_at);
+      addWhenCell(row, item.happened_at);
       addCell(row, item.summary);
       addCell(row, item.result);
       body.appendChild(row);
@@ -6183,10 +6217,10 @@ function initShares(csrfToken) {
     links.forEach(function (link) {
       var row = document.createElement('tr');
       addCell(row, link.file_name);
-      addCell(row, link.expires_at);
+      addWhenCell(row, link.expires_at);
       addCell(row, link.download_count + ' / ' + link.max_downloads);
       addCell(row, stateOf(link));
-      addCell(row, link.created_at);
+      addWhenCell(row, link.created_at);
       addCell(row, link.reason_text);
 
       var actions = document.createElement('td');
@@ -6323,7 +6357,7 @@ function initAdmin(csrfToken, me) {
       row.appendChild(count);
 
       var exp = document.createElement('td');
-      setText(exp, link.expires_at);
+      setWhen(exp, link.expires_at);
       row.appendChild(exp);
 
       sharesBody.appendChild(row);
@@ -6351,7 +6385,7 @@ function initAdmin(csrfToken, me) {
       head.appendChild(rule);
       var when = document.createElement('span');
       when.className = 'muted';
-      setText(when, alert.raised_at);
+      setWhen(when, alert.raised_at);
       head.appendChild(when);
       item.appendChild(head);
 
@@ -6979,7 +7013,7 @@ function initAdminFetchHosts(csrfToken) {
       toggleCell.appendChild(makeToggle(row.host, row.is_active === true));
       tr.appendChild(toggleCell);
       addCell(tr, typeof row.created_by === 'string' ? row.created_by : '');
-      addCell(tr, typeof row.updated_at === 'string' ? row.updated_at : '');
+      addWhenCell(tr, row.updated_at);
       tableBody.appendChild(tr);
     });
 
