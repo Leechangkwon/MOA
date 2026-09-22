@@ -17,11 +17,18 @@
 #   C:T-19 렌더러 동등성   표본 문서 20개를 `DocRender.php` 와 `doc-render.js` 로 그려
 #                          **텍스트 노드 열·클래스 집합**을 견준다. PHP 쪽은 여기서, JS 쪽은
 #                          아래 C:T-21 의 브라우저 안에서 잰다(Playwright 없으면 JS 쪽 미검증)
-#   C:T-21 브라우저 스모크 **진짜 브라우저로** /community/ 를 열어 `pageerror`·콘솔 오류·
-#                          실패한 요청·HTTP≥400 이 0 인지 보고, 「새 페이지」→ 편집 → 마크다운·
-#                          슬래시 메뉴·인라인 툴바 → 자동 저장 → 새로 고침 → 삭제까지 눌러 본다.
+#   C:T-21 브라우저 스모크 **진짜 브라우저로** 편집기를 눌러 보는 20항목(2026-09-23 전면 재작성,
+#                          `../../../community/stage3b-editor-rework-directive.md` 「완료 기준」).
+#                          목록·번호·할 일의 Enter · 빈 항목 Enter · 제목 뒤 Enter · 맨 앞 Backspace ·
+#                          「블록 추가」 창(10종 이상, 하나씩 전부 넣기) · 블록 손잡이로 바꾸기 ·
+#                          글자색·배경색·링크(입력칸 Enter, `javascript:` 거절) · `/` 는 글자 ·
+#                          툴바 한 줄·단추 셋·폭 · **빠른 타자(delay=0) 200자 유실 0** ·
+#                          **저장 중 이어친 20자 유실 0** · 삭제까지. 단언은 전부 「행동 → 결과」이고
+#                          결과는 DOM 또는 **저장 JSON** 으로 본다.
 #                          (관문 ③ 2026-09-22: JS 가 첫 줄에서 죽어 화면 전체가 멈춰 있었는데
-#                           curl 시험은 전부 통과였다 — 그 구멍을 메우는 자리다)
+#                           curl 시험은 전부 통과였다 — 그 구멍을 메우는 자리다.
+#                           2026-09-23: 「요소가 보인다」만 보던 단언으로는 목록 Enter·링크 Enter가
+#                           안 되는 것을 잡지 못했다 — 그래서 전부 결과로 바꿨다)
 #   C:T-20 vendoring 무결성 `scripts/vendor_prosemirror.sh --verify` · bare import 0 ·
 #                          `editor.js` 에 절대 경로 리터럴 0
 #   회귀                   `scripts/security_lint.sh` 0건 · 바뀐 PHP `php -l` · 이 파일 `bash -n`
@@ -678,6 +685,9 @@ else
     expect "브라우저에서 실패한 요청 0건" "REQFAIL=0" "$(grep '^REQFAIL=' "$SMOKE_OUT")"
     expect "브라우저에서 HTTP 400 이상 0건" "HTTP4XX=0" "$(grep '^HTTP4XX=' "$SMOKE_OUT")"
     expect "스모크 항목 실패 0건" "SMOKE_FAIL=0" "$(grep '^SMOKE_FAIL=' "$SMOKE_OUT")"
+    # 브라우저가 스스로 막은 인라인 style(우리 코드가 아니다 — browser_smoke.py 머리글 ★).
+    # 실패로 세지 않고 줄 수만 알린다. 숨기지 않는다.
+    note "브라우저 내부 CSP 인라인 style 차단: $(grep '^CSPSTYLE=' "$SMOKE_OUT")"
     if grep -q '^DIFF=' "$SMOKE_OUT"; then
       expect "C:T-19 두 렌더러의 텍스트 노드·클래스 집합이 같다" "DIFF=0" "$(grep '^DIFF=' "$SMOKE_OUT")"
     else

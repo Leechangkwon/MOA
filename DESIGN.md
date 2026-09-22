@@ -252,11 +252,14 @@
 | 정렬 | `.al-left`(기본) `.al-center` `.al-right` | `text-align` |
 | 블록 요소 | `.doc` 안 `.doc-h1~3` `.doc-p` `.doc-ul` `.doc-ol` `.doc-todo`(체크 상자 + 완료 시 취소선·`--muted`) `.doc-quote`(왼 테두리 3px `--line`) `.doc-callout`(배경 `--nt-gray-bg` + 아이콘 칸, 색 있으면 그 `-bg`) `.doc-divider` `.doc-code`(고정폭·`--panel` 배경·언어 라벨) `.doc-toc` | 간격·반경은 기존 토큰(`--space-*`·`--radius`)만 |
 | 인라인 마크 | `<strong>` `<em>` `<u>` `<s>` `<code class="doc-inline-code">` `<a>`(외부는 `rel="noopener noreferrer"`) | 기존 글자 토큰 |
-| 에디터 | `.editor`(PM 루트, `.doc` 와 같은 규칙으로 보이게) · `.editor-menu`(슬래시 메뉴 = `.panel > .list`) · `.editor-toolbar`(인라인 툴바 = `.btn.btn--icon.btn--plain` 묶음) · 저장 상태 배지 `.badge`(「저장됨」「저장 중」「충돌」) | 새 색·간격 0. 다크는 토큰이 따라온다 |
+| 에디터 | `.editor`(PM 루트, `.doc` 와 같은 규칙으로 보이게) · `.editor-toolbar`(글자를 고르면 뜨는 줄 — **「색」 「배경」 「링크」 셋뿐**, `.btn.btn--small.btn--quiet`) · `.block-handle`(블록 왼쪽 손잡이 ⋮⋮) · 저장 상태 배지 `.badge`(「저장 중…」「저장됨」「저장 못 함」 **셋**) | 새 색·간격 0. 다크는 토큰이 따라온다 |
+| 「블록 추가」 창 (2026-09-23 등록) | `dialog.modal`(2.7 의 960px) 안에 `.block-picker`(왼쪽 `.list` 종류 목록 15rem + 오른쪽 상세) · `.block-pick`(목록의 단추) · `.block-picker__detail` · `.block-picker__sample`(미리보기를 **읽기 렌더러 `renderDoc` 으로** 그린다) | 격자·간격은 기존 토큰만. 720px 미만에서 한 열 |
 
 | 하위 요소(BEM, 구현 2026-09-22 등록) | `.doc-li[data-kind]`(편집기 안 목록 항목 — 편집기 DOM 은 평평한 블록, 읽기 렌더러가 `<ul>`·`<ol>` 로 묶는다) · `.doc-link` · `.doc-todo__box` `.doc-todo__text` · `.doc-callout__icon` `.doc-callout__text` · `.doc-code__lang` `.doc-code__caption` · `.doc-toc__item` · `.block-unsupported`(모르는 블록 자리표시, ARCH 12.4) · `.editor-palette`(색 고르기) · `.editor-toolbar__row` | 부모 블록의 토큰을 그대로 |
 
-원칙 6(화면 전용 CSS 금지)의 예외 아님 — 위 클래스는 **문서 렌더 구성 요소**로 여기 등록된 것이며, `community.css` 한 파일에만 둔다. 인라인 툴바·슬래시 메뉴는 좌표를 JS 로 찍지 않고(인라인 style 0) 편집 영역 위·아래의 sticky 줄로 CSS 가 자리를 정한다.
+원칙 6(화면 전용 CSS 금지)의 예외 아님 — 위 클래스는 **문서 렌더 구성 요소**로 여기 등록된 것이며, `community.css` 한 파일에만 둔다. 인라인 툴바는 좌표를 JS 로 찍지 않고(인라인 style 0) 편집 영역 위의 sticky 줄로 CSS 가 자리를 정하고, 블록 손잡이도 `.editor > *` 를 기준으로 CSS 가 왼쪽 바깥에 놓는다.
+
+**툴바 구성(사용자 결정 2026-09-23)** — 글자 꾸미기(굵게·기울임·밑줄·취소선·인라인 코드)는 **만들지 않는다**. 툴바는 한 줄(`.editor-toolbar__row` **하나**)에 단추 셋 「색」 「배경」 「링크」 뿐이고 닫힌 폭은 320px 이하다. 팔레트(9색 + 「없앰」)와 링크 입력칸은 그 단추를 눌렀을 때만 `.editor-palette__row` 로 펼쳐진다. 링크 입력칸의 **Enter = 「걸기」**, Esc = 닫기이고, 허용 스킴 밖이라는 안내는 화면 위 `#msg` 가 아니라 **그 줄 안에서** 한 줄로 알린다. 블록 넣기는 `/` 슬래시 메뉴가 아니라 위의 「블록 추가」 창이다(`/` 는 그냥 글자).
 
 ## 3. 화면 배치 규칙
 

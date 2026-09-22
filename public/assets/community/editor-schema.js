@@ -16,6 +16,10 @@
  *   블록 10종: paragraph · heading(1~3) · bulleted · numbered · to_do · quote · callout ·
  *              divider · code · toc
  *   마크 7종 : bold · italic · underline · strike · code · color(글자 9·배경 9) · link
+ *              ★ 2026-09-23 사용자 결정으로 **에디터는 bold·italic·underline·strike·code 를
+ *                만들지 않는다**(툴바에 단추도 단축키도 없다). 마크 정의는 여기 **그대로 둔다** —
+ *                서버 `doc-schema.json`·`Doc::validate`·렌더러 두 벌이 무변경이고, 이미 그
+ *                마크가 든 글을 **읽을 때 전과 똑같이 보여야** 하기 때문이다.
  *   **하위 블록(children)은 만들지 않는다.** 트리는 4단계다 — 들어 있는 문서를 만나면
  *   `fromDoc` 이 예외를 던지고 편집기가 열리지 않는다(읽기는 된다). 조용히 펴서 저장하면
  *   사용자가 쓴 구조가 말없이 사라진다.
@@ -463,20 +467,94 @@ export function toDoc(pmDoc) {
 }
 
 /**
- * `/` 슬래시 메뉴에 나오는 것들 (ARCH 14.3). 3단계의 블록 10종 그대로이고, 순서는
- * 「자주 쓰는 것부터」다. `keywords` 는 한글·영문 둘 다 받아 좁힌다.
+ * 「블록 추가」 창이 쓰는 표 (사용자 결정 2026-09-23 — `/` 슬래시 메뉴는 없앴다).
+ *
+ * 한 줄이 한 종류다.
+ *   `type`   ProseMirror 노드 이름 (우리 JSON 의 `code` 는 PM 에서 `code_block` 이다)
+ *   `label`  창의 왼쪽 목록에 보이는 이름
+ *   `desc`   오른쪽에 한 줄로 붙는 설명
+ *   `sample` 오른쪽 미리보기를 **읽기 렌더러(`renderDoc`)로 그리는** 우리 문서 JSON.
+ *            견본과 실제가 어긋나지 않게 같은 렌더러를 쓴다.
+ *   `attrs`  넣을 때 블록에 얹을 속성(제목의 `level` 처럼)
+ *
+ * 3단계의 블록 10종(ARCH 21.3) + 제목 3단계를 따로 세어 12줄이다.
  */
-export const BLOCK_MENU = [
-  { type: 'paragraph', label: '본문', hint: '보통 글', keywords: 'text 본문 문단 글' },
-  { type: 'heading', attrs: { level: 1 }, label: '제목 1', hint: '큰 제목', keywords: 'h1 heading 제목' },
-  { type: 'heading', attrs: { level: 2 }, label: '제목 2', hint: '중간 제목', keywords: 'h2 heading 제목' },
-  { type: 'heading', attrs: { level: 3 }, label: '제목 3', hint: '작은 제목', keywords: 'h3 heading 제목' },
-  { type: 'bulleted', label: '글머리 목록', hint: '• 로 시작', keywords: 'bullet list 목록 점' },
-  { type: 'numbered', label: '번호 목록', hint: '1. 로 시작', keywords: 'number list 번호 목록' },
-  { type: 'to_do', label: '할 일', hint: '체크 상자', keywords: 'todo check 할일 체크' },
-  { type: 'quote', label: '인용', hint: '왼쪽 선', keywords: 'quote 인용' },
-  { type: 'callout', label: '강조 상자', hint: '아이콘 + 배경', keywords: 'callout 강조 상자 안내' },
-  { type: 'divider', label: '구분선', hint: '가로줄', keywords: 'divider hr 구분선 줄' },
-  { type: 'code_block', label: '코드', hint: '고정폭 + 언어', keywords: 'code 코드' },
-  { type: 'toc', label: '목차', hint: '제목 모으기', keywords: 'toc 목차 차례' }
+export const BLOCK_TYPES = [
+  {
+    type: 'paragraph', label: '본문',
+    desc: '보통 글입니다. 가장 많이 쓰는 블록입니다.',
+    sample: { schema: 1, blocks: [{ type: 'paragraph', text: [{ t: '보통 글을 쓰는 자리입니다.', m: {} }] }] }
+  },
+  {
+    type: 'heading', attrs: { level: 1 }, label: '제목 1',
+    desc: '가장 큰 제목입니다. 문서를 큰 단락으로 나눕니다.',
+    sample: { schema: 1, blocks: [{ type: 'heading', level: 1, text: [{ t: '제목 1', m: {} }] }] }
+  },
+  {
+    type: 'heading', attrs: { level: 2 }, label: '제목 2',
+    desc: '중간 제목입니다. 제목 1 아래를 나눕니다.',
+    sample: { schema: 1, blocks: [{ type: 'heading', level: 2, text: [{ t: '제목 2', m: {} }] }] }
+  },
+  {
+    type: 'heading', attrs: { level: 3 }, label: '제목 3',
+    desc: '작은 제목입니다. 제목 2 아래를 나눕니다.',
+    sample: { schema: 1, blocks: [{ type: 'heading', level: 3, text: [{ t: '제목 3', m: {} }] }] }
+  },
+  {
+    type: 'bulleted', label: '글머리 목록',
+    desc: '점으로 늘어놓습니다. 줄 끝에서 Enter 를 누르면 다음 항목이 이어집니다.',
+    sample: { schema: 1, blocks: [
+      { type: 'bulleted', text: [{ t: '첫째 항목', m: {} }] },
+      { type: 'bulleted', text: [{ t: '둘째 항목', m: {} }] }
+    ] }
+  },
+  {
+    type: 'numbered', label: '번호 목록',
+    desc: '번호로 늘어놓습니다. 줄 끝에서 Enter 를 누르면 다음 번호가 이어집니다.',
+    sample: { schema: 1, blocks: [
+      { type: 'numbered', text: [{ t: '첫째 항목', m: {} }] },
+      { type: 'numbered', text: [{ t: '둘째 항목', m: {} }] }
+    ] }
+  },
+  {
+    type: 'to_do', attrs: { checked: false }, label: '할 일',
+    desc: '체크 상자가 앞에 붙습니다. 끝낸 일은 취소선으로 보입니다.',
+    sample: { schema: 1, blocks: [
+      { type: 'to_do', checked: false, text: [{ t: '아직 못 한 일', m: {} }] },
+      { type: 'to_do', checked: true, text: [{ t: '끝낸 일', m: {} }] }
+    ] }
+  },
+  {
+    type: 'quote', label: '인용',
+    desc: '왼쪽에 선이 붙습니다. 다른 글을 옮겨 적을 때 씁니다.',
+    sample: { schema: 1, blocks: [{ type: 'quote', text: [{ t: '옮겨 적은 문장입니다.', m: {} }] }] }
+  },
+  {
+    type: 'callout', attrs: { icon: '💡' }, label: '강조 상자',
+    desc: '아이콘과 배경이 붙는 상자입니다. 눈에 띄게 알릴 때 씁니다.',
+    sample: { schema: 1, blocks: [{ type: 'callout', icon: '💡', text: [{ t: '눈에 띄게 알릴 내용입니다.', m: {} }] }] }
+  },
+  {
+    type: 'divider', label: '구분선',
+    desc: '가로줄 하나로 위아래를 나눕니다. 글자는 담지 않습니다.',
+    sample: { schema: 1, blocks: [
+      { type: 'paragraph', text: [{ t: '위쪽 글', m: {} }] },
+      { type: 'divider' },
+      { type: 'paragraph', text: [{ t: '아래쪽 글', m: {} }] }
+    ] }
+  },
+  {
+    type: 'code_block', label: '코드',
+    desc: '고정폭 글꼴로 그대로 보여 줍니다. 안에서 Enter 는 줄바꿈입니다.',
+    sample: { schema: 1, blocks: [{ type: 'code', language: 'plain', code: 'echo "안녕"' }] }
+  },
+  {
+    type: 'toc', label: '목차',
+    desc: '이 페이지의 제목들을 모아 보여 줍니다. 읽기 모드에서 채워집니다.',
+    sample: { schema: 1, blocks: [
+      { id: '00000000-0000-4000-8000-000000000001', type: 'heading', level: 1, text: [{ t: '제목 1', m: {} }] },
+      { id: '00000000-0000-4000-8000-000000000002', type: 'heading', level: 2, text: [{ t: '제목 2', m: {} }] },
+      { type: 'toc' }
+    ] }
+  }
 ];

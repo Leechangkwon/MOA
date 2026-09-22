@@ -52,6 +52,9 @@ require __DIR__ . '/../../views/shell_top.php';
         <button id="page-edit" class="btn" type="button" hidden>
           <span class="icon" data-icon="edit"></span>편집
         </button>
+        <button id="page-add-block" class="btn btn--quiet" type="button" hidden>
+          <span class="icon" data-icon="plus"></span>블록 추가
+        </button>
         <button id="page-done" class="btn" type="button" hidden>
           <span class="icon" data-icon="check"></span>편집 끝
         </button>
@@ -68,6 +71,10 @@ require __DIR__ . '/../../views/shell_top.php';
 
     <!-- 읽기 모드의 본문이 들어오는 자리 (renderDoc 의 결과) -->
     <article id="page-doc" class="panel" aria-live="polite"></article>
+
+    <!-- 글자를 고르면 뜨는 줄 — 「색」 「배경」 「링크」 셋뿐이다 (지시서 1장).
+         굵게·기울임·밑줄·취소선·인라인 코드는 만들지 않는다(사용자 결정 2026-09-23). -->
+    <div id="inline-toolbar" class="panel editor-toolbar" hidden role="toolbar" aria-label="글자 색과 링크"></div>
 
     <!-- 편집 모드의 본문이 들어오는 자리 (ProseMirror 가 자기 DOM 을 그린다) -->
     <div id="page-editor" class="panel" hidden></div>
@@ -115,13 +122,30 @@ require __DIR__ . '/../../views/shell_top.php';
       </div>
     </dialog>
 
-    <!-- `/` 슬래시 메뉴가 들어오는 자리 (DESIGN 2.14 — `.panel` 안 `.list`) -->
-    <div id="slash-menu" class="panel editor-menu" hidden role="listbox" aria-label="블록 넣기">
-      <ul id="slash-list" class="list"></ul>
-    </div>
+    <!-- 「블록 추가」 창 (DESIGN 2.7 모달 · 2.14). 왼쪽 목록에서 고르면 오른쪽에 미리보기가
+         그려진다 — 미리보기는 읽기 렌더러 `renderDoc` 이 그리므로 견본과 실제가 어긋나지 않는다.
+         목록·미리보기 내용은 전부 `editor.js` 가 createElement/textContent 로 채운다. -->
+    <dialog id="block-dialog" class="modal" aria-labelledby="block-dialog-title">
+      <div class="modal__head">
+        <h2 id="block-dialog-title" class="modal__title">블록 추가</h2>
+        <button class="btn btn--icon btn--plain" type="button" data-block-close aria-label="닫기">
+          <span class="icon" data-icon="x"></span>
+        </button>
+      </div>
+      <div class="modal__body block-picker">
+        <ul id="block-list" class="list" role="listbox" aria-label="블록 종류"></ul>
+        <div class="block-picker__detail">
+          <p id="block-preview-name" class="panel__title"></p>
+          <p id="block-desc" class="muted"></p>
+          <div id="block-sample" class="block-picker__sample"></div>
+        </div>
+      </div>
+      <div class="form-actions">
+        <button class="btn btn--quiet" type="button" data-block-close>닫기</button>
+        <button id="block-insert" class="btn" type="button">넣기</button>
+      </div>
+    </dialog>
 
-    <!-- 글자를 고르면 뜨는 인라인 툴바 (DESIGN 2.14 — `.btn.btn--icon.btn--plain` 묶음) -->
-    <div id="inline-toolbar" class="panel editor-toolbar" hidden role="toolbar" aria-label="글자 꾸미기"></div>
 
     <!-- 페이지 id 를 전하는 자리. 값은 라우터가 UUID 로만 통과시킨 뒤 이스케이프한 것이다. -->
     <span id="page-meta" hidden data-page-id="<?= htmlspecialchars($viewPageId, ENT_QUOTES, 'UTF-8') ?>"></span>
