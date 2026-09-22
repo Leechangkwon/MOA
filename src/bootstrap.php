@@ -56,6 +56,15 @@ if (!defined('TBOX_REQUEST_ID')) {
     define('TBOX_REQUEST_ID', tbox_uuid_v4());
 }
 
+/**
+ * t-box 모듈의 주소 접두 (Qaredi C — docs/launcher/ARCHITECTURE.md 2장).
+ *
+ * `/` 에는 Qaredi 런처가 서고, t-box 의 모든 주소(화면·API·공유 링크·정적 자산)는
+ * 이 접두 아래로 간다. **코드 상수**이며 `.env` 값이 아니다 — 로컬(8082)과 공개(80)가
+ * 같은 주소 구조여야 시험이 곧 운영 검증이 된다. 요청 값이 섞이는 통로는 없다.
+ */
+const TBOX_BASE = '/tbox';
+
 // ─── 3) 예외·치명적 오류 은닉 (PRD S-09-7, SECURITY 1.7) ───────
 // 어떤 예외도 스택 트레이스·DB 오류 문구·파일 경로를 응답에 넣지 않는다.
 // 응답은 언제나 500 + {"error":"서버 오류"} 한 가지다.

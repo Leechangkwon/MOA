@@ -257,7 +257,7 @@ print_status
 step "접속 확인"
 printf '   GET  http://127.0.0.1/                    → %s   (공개 80 포트)\n' "$(http_code http://127.0.0.1/)"
 printf '   GET  http://127.0.0.1:8081/index.php      → %s   (v1 실습, 로컬)\n' "$(http_code http://127.0.0.1:8081/index.php)"
-printf '   GET  http://127.0.0.1:8082/api/health     → %s   (v2 재구축, 로컬)\n' "$(http_code http://127.0.0.1:8082/api/health)"
+printf '   GET  http://127.0.0.1:8082/tbox/api/health → %s   (v2 재구축, 로컬)\n' "$(http_code http://127.0.0.1:8082/tbox/api/health)"
 printf '   HSTS 헤더 (공개 80, v2 일 때만 보인다):\n'
 curl -sI --max-time 5 http://127.0.0.1/ 2>/dev/null | grep -i strict | sed 's/^/     /' || printf '     (없음)\n'
 

@@ -53,49 +53,49 @@ require __DIR__ . '/../views/shell_top.php';
     
 
     <section class="card-grid">
-      <a class="card card--link" href="/users">
+      <a class="card card--link" href="<?= Http::url('/users') ?>">
         <span class="card__icon"><span class="icon" data-icon="users"></span></span>
         <span class="card__body">
           <strong class="card__title">계정 관리</strong>
           <span class="card__desc">계정 생성·역할 변경·비활성화, 임시 비밀번호 재발급, 2단계 인증 초기화</span>
         </span>
       </a>
-      <a class="card card--link" href="/org">
+      <a class="card card--link" href="<?= Http::url('/org') ?>">
         <span class="card__icon"><span class="icon" data-icon="org"></span></span>
         <span class="card__body">
           <strong class="card__title">조직 · 권한</strong>
           <span class="card__desc">팀 만들기·이름 변경·구성원 배정·비활성화. 권한 매트릭스 확인</span>
         </span>
       </a>
-      <a class="card card--link card--warn" href="/admin/permissions">
+      <a class="card card--link card--warn" href="<?= Http::url('/admin/permissions') ?>">
         <span class="card__icon"><span class="icon" data-icon="lock"></span></span>
         <span class="card__body">
           <strong class="card__title">권한 매트릭스 편집</strong>
           <span class="card__desc">역할 × 등급 표를 바꿉니다</span>
         </span>
       </a>
-      <a class="card card--link card--warn" href="/admin/fetch-hosts">
+      <a class="card card--link card--warn" href="<?= Http::url('/admin/fetch-hosts') ?>">
         <span class="card__icon"><span class="icon" data-icon="link"></span></span>
         <span class="card__body">
           <strong class="card__title">URL 가져오기 허용 사이트</strong>
           <span class="card__desc">「URL 로 가져오기」가 접속할 수 있는 사이트를 정합니다</span>
         </span>
       </a>
-      <a class="card card--link" href="/audit">
+      <a class="card card--link" href="<?= Http::url('/audit') ?>">
         <span class="card__icon"><span class="icon" data-icon="log"></span></span>
         <span class="card__body">
           <strong class="card__title">감사 로그</strong>
           <span class="card__desc">누가·언제·어디서·무엇을·어떻게·왜 — 전체 기록 조회</span>
         </span>
       </a>
-      <a class="card card--link" href="/trash">
+      <a class="card card--link" href="<?= Http::url('/trash') ?>">
         <span class="card__icon"><span class="icon" data-icon="trash"></span></span>
         <span class="card__body">
           <strong class="card__title">휴지통</strong>
           <span class="card__desc">삭제된 파일 복구</span>
         </span>
       </a>
-      <a class="card card--link" href="/wiki">
+      <a class="card card--link" href="<?= Http::url('/wiki') ?>">
         <span class="card__icon"><span class="icon" data-icon="shield"></span></span>
         <span class="card__body">
           <strong class="card__title">위키</strong>

@@ -204,7 +204,7 @@ require __DIR__ . '/../views/shell_top.php';
 
 <?php require __DIR__ . '/../views/mfa_enroll.php'; ?>
 
-          <p class="muted">스마트폰이 어려우면 <a href="/assets/totp-generator.html">2단계 코드 생성기</a>를 내려받아 PC 에 두고 쓸 수 있습니다.</p>
+          <p class="muted">스마트폰이 어려우면 <a href="<?= Http::url('/assets/totp-generator.html') ?>">2단계 코드 생성기</a>를 내려받아 PC 에 두고 쓸 수 있습니다.</p>
         </div>
       </section>
     </div>

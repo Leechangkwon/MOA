@@ -219,7 +219,7 @@
 - 화면 머리(`.page-head`): 왼쭉 제목 24px + 한 줄 설명, 오른쪽 `.page-head__actions` — **ghost(도움말) → outline → 검정(주요) 순서**로 왼쪽에서 오른쪽.
 - 관리 화면은 「관리자 페이지」 허브(카드)로 들어가고, 사이드바 「관리」 묶음에도 하위 링크가 있다(PRD F-24 · F-40).
 
-- **앱 그리드 단추(Qaredi C, 2026-09-22)**: `header.appbar` 오른쪽 `<details class="appbar__apps">` — `<summary>` 는 `.btn.btn--icon.btn--plain` + 아이콘 `grid`(2.11) + CSS 툴팁 「앱」(2.8, `title` 금지 D-3). 펼침 패널은 `.panel` 안 `.list`(2.13) 로 「Qaredi 홈」·앱 목록(현재 앱 `aria-current="page"`, 준비 중인 앱은 배지 「준비 중」). 스크립트 0·인라인 속성 0, 색·간격은 토큰만. 런처 화면(`/`)은 독립 화면(2.10 과 같은 층) + `.card-grid` 의 `.card--link` 타일 — 화면 전용 클래스 없음.
+- **앱 그리드 단추(Qaredi C, 2026-09-22 · 자리 정정 같은 날)**: `header.appbar` 는 넓은 화면(≥960px)에서 숨겨지므로 단추는 **사이드바 `.brand` 줄 오른쪽**에 둔다 — `<details class="appbar__apps">`(클래스 이름은 유지, 좁은 화면에서는 사이드바 서랍을 열면 같은 자리에 보인다). 마크업은 — `<summary>` 는 `.btn.btn--icon.btn--plain` + 아이콘 `grid`(2.11) + CSS 툴팁 「앱」(2.8, `title` 금지 D-3). 펼침 패널은 `.panel` 안 `.list`(2.13) 로 「Qaredi 홈」·앱 목록(현재 앱 `aria-current="page"`, 준비 중인 앱은 배지 「준비 중」), 브랜드 줄 아래로 펼쳐진다. 스크립트 0·인라인 속성 0, 색·간격은 토큰만. 런처 화면(`/`)은 독립 화면(2.10 과 같은 층) + `.card-grid` 의 `.card--link` 타일 — 화면 전용 클래스 없음. 런처의 로그인 사용자 표시는 `.userchip`(사이드바 바닥용, 위 테두리 있음)이 아니라 `.page-head__actions` 안 **배지 `.badge`** 하나(표시 이름 · 역할).
 
 ### 2.10 로그인
 

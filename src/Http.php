@@ -324,6 +324,78 @@ final class Http
     }
 
     /**
+     * t-box 모듈의 주소 접두 (Qaredi C, ARCH-launcher 2·3장).
+     *
+     * 값은 `src/bootstrap.php` 의 코드 상수 `TBOX_BASE` 하나다 — `.env` 도 요청 값도 아니다.
+     */
+    public static function base(): string
+    {
+        return TBOX_BASE;
+    }
+
+    /**
+     * 모듈 경로(`/settings`)를 **내보낼 주소**(`/tbox/settings`)로 만든다 (ARCH-launcher 3장).
+     *
+     * 주소를 만드는 자리는 이 함수 하나다. 인자는 언제나 코드에 적힌 모듈 경로이며
+     * `/` 로 시작해야 한다 — 시작하지 않으면(상대 경로·`http://…`·`//evil`) 예외다.
+     * 접두를 붙이는 것 말고는 아무것도 하지 않는다: 요청 값으로 호스트·스킴을 만들지 않는다.
+     */
+    public static function url(string $path): string
+    {
+        if ($path === '' || $path[0] !== '/') {
+            throw new RuntimeException('주소는 / 로 시작해야 합니다');
+        }
+        return TBOX_BASE . $path;
+    }
+
+    /**
+     * 옛 t-box 주소 → 새 주소 **308 Permanent Redirect** (ARCH-launcher 1·2장).
+     *
+     * 왜 308 인가: 301·302 는 클라이언트가 POST 를 GET 으로 바꿀 수 있다. 308 은
+     * **메서드와 본문을 보존**하므로 PC 업로드 프로그램이 옛 `/api/upload` 로 보내도
+     * 리다이렉트를 따르는 클라이언트면 그대로 동작한다 (PRD Q:T-10).
+     *
+     * $location 은 **고정 접두 + 요청 경로·쿼리 원문**만이다. 요청 헤더(Host·Referer)로
+     * 호스트·스킴을 만들지 않으므로 열린 리다이렉트가 아니고, 여기서 형태를 한 번 더 본다:
+     * `/` 로 시작해야 하고 `//`(스킴 상대 주소)로 시작할 수 없으며 제어 문자(헤더 주입)가
+     * 들어 있으면 예외다.
+     *
+     * `Cache-Control: no-store` 를 붙이지 않는다 — 영구 이동은 캐시돼도 되는 사실이고,
+     * 리다이렉트 응답에는 본문도 세션도 없다. (302 를 보내는 redirect() 와 다른 점이다.)
+     */
+    public static function redirectPermanent(string $location): void
+    {
+        if ($location === '' || $location[0] !== '/'
+            || strncmp($location, '//', 2) === 0
+            || strlen($location) > 4096
+            || preg_match('/[\x00-\x1f\x7f]/', $location) === 1
+        ) {
+            throw new RuntimeException('허용되지 않는 리다이렉트 대상입니다');
+        }
+        if (!headers_sent()) {
+            http_response_code(308);
+            header('Location: ' . $location);
+        }
+        exit;
+    }
+
+    /**
+     * `<html>` 에 붙일 화면 밝기 속성 (DESIGN.md 2.12).
+     *
+     * 셸·로그인·런처 세 곳이 같은 규칙을 쓰므로 한 벌로 모은다. 쿠키 값은 허용 목록
+     * 두 개(`dark`·`light`)만 통과하고 그 밖은 속성 자체를 그리지 않는다 — 그러면 CSS 가
+     * OS 설정(prefers-color-scheme)을 따른다. 값은 상수 둘뿐이지만 규칙대로
+     * htmlspecialchars 를 거친다 (PRD S-03).
+     */
+    public static function themeAttr(): string
+    {
+        $cookie = $_COOKIE['tbox_theme'] ?? '';
+        return in_array($cookie, ['dark', 'light'], true)
+            ? ' data-theme="' . htmlspecialchars((string) $cookie, ENT_QUOTES, 'UTF-8') . '"'
+            : '';
+    }
+
+    /**
      * 요청 경로. 쿼리스트링을 떼고, 퍼센트 디코딩은 하지 않는다.
      * (디코딩하면 %2e%2e 같은 값이 경로 매칭을 통과할 여지가 생긴다)
      */

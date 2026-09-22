@@ -19,7 +19,7 @@ set -uo pipefail       # -e 를 쓰지 않는다: 한 항목이 실패해도 나
 
 REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 FPM_POOL="/etc/php/8.1/fpm/pool.d/tbox.conf"
-LOCAL_HTTP="http://127.0.0.1:8082"
+LOCAL_HTTP="http://127.0.0.1:8082/tbox"   # Qaredi C — t-box 는 /tbox 아래 (ARCH-launcher 2장)
 AUDIT_LOG="/var/log/tbox-v2/audit.log"
 PROXY_IP="192.168.104.100"
 

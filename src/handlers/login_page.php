@@ -22,7 +22,7 @@ declare(strict_types=1);
 
 // 이미 로그인한 사용자를 로그인 화면에 두지 않는다. 경로는 코드 상수다 (ARCH 4.0).
 if (Auth::currentUser() !== null) {
-    Http::redirect(TBOX_HOME_PATH);
+    Http::redirect(Http::url(TBOX_HOME_PATH));   // 접두는 내보낼 때 (ARCH-launcher 3장)
 }
 
 if (!headers_sent()) {
@@ -34,14 +34,10 @@ if (!headers_sent()) {
 $loginCssVersion = (int) filemtime(__DIR__ . '/../../public/assets/app.css');
 $loginJsVersion  = (int) filemtime(__DIR__ . '/../../public/assets/app.js');
 
-/* DESIGN.md 2.12 — 화면 밝기 취향. 쿠키 값은 허용 목록 두 개만 통과하고 그 밖은 속성 자체를 안 그린다.
-   (그러면 CSS 가 OS 설정 prefers-color-scheme 을 따른다.) 값은 어차피 상수 두 개라 이스케이프할 것이
-   없지만 규칙대로 htmlspecialchars 를 거친다 (PRD S-03).
-   로그인 전 화면에도 같은 규칙을 둔다 — 취향 쿠키는 비밀이 아니므로 S-09(버전 비노출)와 무관하다. */
-$themeCookie = $_COOKIE['tbox_theme'] ?? '';
-$themeAttr   = in_array($themeCookie, ['dark', 'light'], true)
-    ? ' data-theme="' . htmlspecialchars($themeCookie, ENT_QUOTES, 'UTF-8') . '"'
-    : '';
+/* DESIGN.md 2.12 — 화면 밝기 취향. 규칙은 셸·런처와 같으므로 Http::themeAttr() 한 벌을 쓴다
+   (ARCH-launcher 3장). 로그인 전 화면에도 같은 규칙을 둔다 — 취향 쿠키는 비밀이 아니므로
+   S-09(버전 비노출)와 무관하다. */
+$themeAttr = Http::themeAttr();
 ?>
 <!doctype html>
 <html lang="ko"<?= $themeAttr ?>>
@@ -49,9 +45,9 @@ $themeAttr   = in_array($themeCookie, ['dark', 'light'], true)
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>로그인 · t-box</title>
-<link rel="stylesheet" href="/assets/app.css?v=<?= $loginCssVersion ?>">
+<link rel="stylesheet" href="<?= Http::url('/assets/app.css') ?>?v=<?= $loginCssVersion ?>">
 </head>
-<body data-page="login">
+<body data-page="login" data-base="<?= TBOX_BASE ?>">
 <div class="login">
   <!-- D-5 (DESIGN.md 2.12) — 로그인 화면에는 셸이 없으므로 같은 단추를 오른쪽 위 구석에 둔다.
        자리는 CSS(.login .theme-toggle)가 정하고, 해·달 중 무엇을 보일지도 CSS 가 정한다. -->
@@ -71,12 +67,15 @@ $themeAttr   = in_array($themeCookie, ['dark', 'light'], true)
     <div>
       <h2 class="login__lead">사내 파일 공유</h2>
     </div>
-    <p class="login__foot">거부되거나 잘 안 되면 관리자에게 문의하세요.</p>
+    <!-- Qaredi C — 로그인 화면에는 「Qaredi 홈」 텍스트 링크 하나만 (ARCH-launcher 6장).
+         런처는 로그인 전에도 열리므로 이 링크가 막다른 화면을 만들지 않는다. 주소는
+         사이트 루트라 `/tbox` 접두를 타지 않는다(이 화면에서 접두 없는 링크는 이것뿐이다). -->
+    <p class="login__foot"><a href="/">Qaredi 홈</a> · 거부되거나 잘 안 되면 관리자에게 문의하세요.</p>
   </section>
 
   <section class="login__pane">
     <section class="panel panel--narrow">
-      <form id="login-form" class="form" method="post" action="/api/login" autocomplete="off">
+      <form id="login-form" class="form" method="post" action="<?= Http::url('/api/login') ?>" autocomplete="off">
         <div class="page-head__text">
           <h1 class="page-head__title">로그인</h1>
           <p class="page-head__sub">아이디와 비밀번호를 입력하세요.</p>
@@ -124,6 +123,6 @@ $themeAttr   = in_array($themeCookie, ['dark', 'light'], true)
 <template id="tpl-icon-sun"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/></svg></template>
 <template id="tpl-icon-moon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/></svg></template>
 
-<script src="/assets/app.js?v=<?= $loginJsVersion ?>"></script>
+<script src="<?= Http::url('/assets/app.js') ?>?v=<?= $loginJsVersion ?>"></script>
 </body>
 </html>

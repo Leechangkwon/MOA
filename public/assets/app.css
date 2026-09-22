@@ -1682,3 +1682,25 @@ dialog.token-modal { width: min(720px, calc(100vw - 32px)); }
 /* 로그인 화면에는 셸이 없으므로 오른쪽 위 구석에 같은 단추를 띄운다 (.login 이 기준 상자) */
 .login { position: relative; }
 .login .theme-toggle { position: absolute; top: 12px; right: 12px; color: var(--muted); }
+
+/* ─── 앱 그리드 단추 (Qaredi C — DESIGN.md 2.9 「자리 정정 2026-09-22」, docs/launcher/ARCHITECTURE.md 6장) ───
+   자리는 **사이드바 `.brand` 줄 오른쪽** 하나다(`header.appbar` 는 넓은 화면에서 숨겨진다).
+   `.brand` 는 이미 flex 이므로 `margin-left: auto` 한 줄이 단추를 오른끝으로 보낸다.
+   `<details>` 의 기본 동작으로 스크립트 0 으로 열린다. 여기서 정하는 것은 **자리와 배치**뿐이고,
+   색·간격·모서리는 `.btn--icon.btn--plain`·`.panel`·`.list` 와 `:root` 토큰이 그대로 낸다
+   (원칙 6 — 화면 전용 색·간격을 만들지 않는다. 다크 모드도 토큰이 따라온다 — 2.12). */
+.appbar__apps { position: relative; margin-left: auto; }
+/* summary 의 기본 삼각형 표식을 지운다 — 단추 모양은 .btn--icon 이 낸다 */
+.appbar__apps > summary { list-style: none; cursor: pointer; }
+.appbar__apps > summary::-webkit-details-marker { display: none; }
+/* 펼침 패널은 브랜드 줄 **아래**로, 오른끝을 맞춰 편다. 폭 상한은 사이드바(240px) 안쪽이라
+   가로 스크롤이 생기지 않는다. 사이드바에는 z-index 가 없으므로 이 한 칸이면 내비 위에 선다. */
+.appbar__apps > .panel {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 30;
+  width: max-content;
+  min-width: 11rem;
+  max-width: 12.5rem;
+}

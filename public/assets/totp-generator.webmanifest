@@ -1,8 +1,8 @@
 {
   "name": "t-box 2단계 코드",
   "short_name": "t-box 코드",
-  "start_url": "/assets/totp-generator.html",
-  "scope": "/assets/",
+  "start_url": "/tbox/assets/totp-generator.html",
+  "scope": "/tbox/assets/",
   "display": "standalone",
   "orientation": "portrait",
   "lang": "ko",

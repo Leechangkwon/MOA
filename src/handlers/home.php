@@ -65,7 +65,7 @@ require __DIR__ . '/../views/shell_top.php';
     <section class="notice notice--recommend" id="mfa-recommend" hidden>
       <p><strong>2단계 인증을 켜 두는 것을 권장합니다.</strong> 비밀번호가 새어도 인증 앱의 6자리 코드가 없으면 계정에 들어올 수 없습니다.</p>
       <p class="notice__actions">
-        <a class="btn btn--small" href="/settings">지금 켜기</a>
+        <a class="btn btn--small" href="<?= Http::url('/settings') ?>">지금 켜기</a>
         <button id="mfa-recommend-later" class="btn btn--quiet btn--small" type="button">나중에</button>
       </p>
     </section>
@@ -532,11 +532,11 @@ require __DIR__ . '/../views/shell_top.php';
 
       <div class="modal__foot">
         <p id="preview-msg" class="msg preview__msg"></p>
-        <a id="preview-download" class="btn btn--quiet" href="/">
+        <a id="preview-download" class="btn btn--quiet" href="<?= Http::url('/') ?>">
           <span class="icon" data-icon="download"></span>다운로드
         </a>
         <!-- rel="noopener noreferrer": 새 탭이 이 창(window.opener)에 손대지 못하게 한다 -->
-        <a id="preview-open" class="btn btn--quiet" href="/" target="_blank" rel="noopener noreferrer" hidden>
+        <a id="preview-open" class="btn btn--quiet" href="<?= Http::url('/') ?>" target="_blank" rel="noopener noreferrer" hidden>
           <span class="icon" data-icon="link"></span>새 탭에서 열기
         </a>
         <button id="preview-close" class="btn" type="button">닫기</button>

@@ -185,7 +185,7 @@ $parseFailed = false;
 try {
     if ($kind === 'image' || $kind === 'pdf') {
         // 원본은 별도 경로로만 나간다 (CSP sandbox·nosniff·inline — ARCH 5.8 [5-raw], R-41).
-        $body['src'] = '/api/files/' . $publicId . '/preview/raw';
+        $body['src'] = Http::url('/api/files/' . $publicId . '/preview/raw');
     } elseif ($kind === 'text') {
         $text = Preview::text(Storage::pathFor($storedName));
         $body['content']   = $text['content'];

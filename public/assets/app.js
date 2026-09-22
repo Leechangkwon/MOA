@@ -34,9 +34,19 @@
  *   · 세션이 끊기면(401) 어떤 요청이든 로그인 화면으로 보낸다.
  */
 
-var LOGIN_PATH = '/login';
-var HOME_PATH = '/';
-var REAUTH_PATH = '/reauth';
+/**
+ * Qaredi C — t-box 모듈의 주소 접두 (docs/launcher/ARCHITECTURE.md 3장).
+ *
+ * 서버가 <body data-base="/tbox"> 로 알려 준다. 이 파일의 **모든** 절대 경로는 이 값 뒤에
+ * 붙는다 — 주소를 만드는 자리가 한 곳이라, 접두가 바뀌어도 고칠 곳이 여기 하나다.
+ * 값은 서버가 그린 고정 문자열이고 사용자가 고칠 수 있는 입력이 아니다(요청 값 아님).
+ * 속성이 없으면(옛 캐시된 HTML) 서버 상수와 같은 기본값을 쓴다.
+ */
+var APP_BASE = (document.body && document.body.getAttribute('data-base')) || '/tbox';
+
+var LOGIN_PATH = APP_BASE + '/login';
+var HOME_PATH = APP_BASE + '/';
+var REAUTH_PATH = APP_BASE + '/reauth';
 var GENERIC_ERROR = '요청을 처리할 수 없습니다. 잠시 후 다시 시도하세요';
 
 /**
@@ -48,14 +58,14 @@ var GENERIC_ERROR = '요청을 처리할 수 없습니다. 잠시 후 다시 시
  * data 속성에서 만들지 않는다 — 오픈 리다이렉트가 생길 자리가 없다.
  */
 var REAUTH_PATHS = {
-  'users': '/users',
-  'org': '/org',
-  'audit': '/audit',
-  'trash': '/trash',
-  'wiki': '/wiki',
+  'users': APP_BASE + '/users',
+  'org': APP_BASE + '/org',
+  'audit': APP_BASE + '/audit',
+  'trash': APP_BASE + '/trash',
+  'wiki': APP_BASE + '/wiki',
   // 17-1 관리자 허브 (PRD F-24). `/admin`·`/admin/permissions` 둘 다 이 키 하나를 쓰고,
   // 확인이 끝나면 허브로 돌아온다 (서버 TBOX_REAUTH_RETURN 과 같은 내용).
-  'admin': '/admin'
+  'admin': APP_BASE + '/admin'
 };
 
 /** 서버가 내려 준 파일 ID 형태 (UUIDv4). 링크를 만들기 전에 반드시 확인한다. */
@@ -249,7 +259,7 @@ var PREVIEW_KIND_LABELS = {
  * 정보 카드로 바꾼다 — 서버 응답이 바뀌어도 화면이 남의 출처를 끼워 넣지 않는다.
  */
 function safeFileSrc(value) {
-  if (typeof value !== 'string' || value.indexOf('/api/files/') !== 0) {
+  if (typeof value !== 'string' || value.indexOf(APP_BASE + '/api/files/') !== 0) {
     return '';
   }
   return value;
@@ -613,7 +623,7 @@ function openReauthModal(onDone) {
  * @return Promise<{ok:boolean, message:string, toLogin:boolean}>
  */
 function postReauth(password, csrfToken) {
-  return fetch('/api/me/reauth', {
+  return fetch(APP_BASE + '/api/me/reauth', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken },
     body: JSON.stringify({ password: password }),
@@ -817,7 +827,7 @@ function initLogin(form) {
       payload.otp = otp;
     }
 
-    fetch('/api/login', {
+    fetch(APP_BASE + '/api/login', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
@@ -1088,7 +1098,7 @@ function initFiles(csrfToken, uploadLevels, canFetch, myTeamId) {
       return;
     }
     setText(msg, '');
-    fetch('/api/files/' + id, {
+    fetch(APP_BASE + '/api/files/' + id, {
       method: 'DELETE',
       headers: csrfHeaders(),
       credentials: 'same-origin',
@@ -1165,7 +1175,7 @@ function initFiles(csrfToken, uploadLevels, canFetch, myTeamId) {
     }
 
     setText(msg, '');
-    fetch('/api/files/' + file.id, {
+    fetch(APP_BASE + '/api/files/' + file.id, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken },
       body: JSON.stringify(payload),
@@ -1459,7 +1469,7 @@ function initFiles(csrfToken, uploadLevels, canFetch, myTeamId) {
       var rawSrc = kind === 'image' || kind === 'pdf' ? safeFileSrc(data.src) : '';
       if (rawSrc === '') {
         previewOpen.hidden = true;
-        previewOpen.setAttribute('href', '/');
+        previewOpen.setAttribute('href', HOME_PATH);
       } else {
         previewOpen.setAttribute('href', rawSrc);
         previewOpen.hidden = false;
@@ -1493,12 +1503,12 @@ function initFiles(csrfToken, uploadLevels, canFetch, myTeamId) {
     }
     if (previewOpen) {
       previewOpen.hidden = true;
-      previewOpen.setAttribute('href', '/');
+      previewOpen.setAttribute('href', HOME_PATH);
     }
     if (previewDownload) {
       // 다운로드는 기존 동작 그대로(항상 첨부) — 같은 접두 검사를 거쳐 주소를 넣는다.
-      var downloadHref = safeFileSrc('/api/files/' + file.id + '/download');
-      previewDownload.setAttribute('href', downloadHref === '' ? '/' : downloadHref);
+      var downloadHref = safeFileSrc(APP_BASE + '/api/files/' + file.id + '/download');
+      previewDownload.setAttribute('href', downloadHref === '' ? HOME_PATH : downloadHref);
     }
     previewBody.appendChild(previewCard('불러오는 중입니다…'));
 
@@ -1511,7 +1521,7 @@ function initFiles(csrfToken, uploadLevels, canFetch, myTeamId) {
       return;
     }
 
-    fetch('/api/files/' + file.id + '/preview', { credentials: 'same-origin', cache: 'no-store' })
+    fetch(APP_BASE + '/api/files/' + file.id + '/preview', { credentials: 'same-origin', cache: 'no-store' })
       .then(function (response) {
         if (response.status === 401) {
           toLogin();
@@ -1664,7 +1674,7 @@ function initFiles(csrfToken, uploadLevels, canFetch, myTeamId) {
         shareSubmit.disabled = true;
       }
 
-      fetch('/api/files/' + shareTargetId + '/share', {
+      fetch(APP_BASE + '/api/files/' + shareTargetId + '/share', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken },
         body: JSON.stringify(payload),
@@ -1839,7 +1849,7 @@ function initFiles(csrfToken, uploadLevels, canFetch, myTeamId) {
         execSubmit.disabled = true;
       }
 
-      fetch('/api/files/' + target.id + '/exec-download', {
+      fetch(APP_BASE + '/api/files/' + target.id + '/exec-download', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken },
         body: JSON.stringify(payload),
@@ -1932,7 +1942,7 @@ function initFiles(csrfToken, uploadLevels, canFetch, myTeamId) {
         td.appendChild(execButton);
       } else {
         var link = document.createElement('a');
-        link.setAttribute('href', '/api/files/' + file.id + '/download');
+        link.setAttribute('href', APP_BASE + '/api/files/' + file.id + '/download');
         link.className = 'btn btn--icon';
         link.setAttribute('aria-label', '다운로드');
         link.appendChild(makeIcon('download'));
@@ -2066,7 +2076,7 @@ function initFiles(csrfToken, uploadLevels, canFetch, myTeamId) {
       query += '&folder=' + encodeURIComponent(String(state.folder));
     }
 
-    fetch('/api/files' + query, { credentials: 'same-origin', cache: 'no-store' })
+    fetch(APP_BASE + '/api/files' + query, { credentials: 'same-origin', cache: 'no-store' })
       .then(function (response) {
         if (response.status === 401) {
           toLogin();
@@ -2153,7 +2163,7 @@ function initFiles(csrfToken, uploadLevels, canFetch, myTeamId) {
   /** 한 층 아래 폴더 목록을 받아 그린다. */
   function loadTree() {
     setText(folderMsg, '');
-    fetch('/api/folders?parent=' + encodeURIComponent(String(state.folder)), {
+    fetch(APP_BASE + '/api/folders?parent=' + encodeURIComponent(String(state.folder)), {
       credentials: 'same-origin',
       cache: 'no-store'
     })
@@ -2356,11 +2366,11 @@ function initFiles(csrfToken, uploadLevels, canFetch, myTeamId) {
 
     var payload = {};
     var method = 'PATCH';
-    var path = '/api/folders/' + encodeURIComponent(String(state.folder));
+    var path = APP_BASE + '/api/folders/' + encodeURIComponent(String(state.folder));
 
     if (folderMode === 'create') {
       method = 'POST';
-      path = '/api/folders';
+      path = APP_BASE + '/api/folders';
       payload.name = folderNameInput ? folderNameInput.value : '';
       payload.access_level = folderLevelSelect ? folderLevelSelect.value : '';
       if (payload.access_level === '') {
@@ -2548,7 +2558,7 @@ function initFiles(csrfToken, uploadLevels, canFetch, myTeamId) {
 
     function send(confirmMove) {
       setText(folderMsg, '');
-      var path = '/api/folders/' + encodeURIComponent(String(folderId))
+      var path = APP_BASE + '/api/folders/' + encodeURIComponent(String(folderId))
         + (confirmMove ? '?move_trashed=1' : '');
       fetch(path, {
         method: 'DELETE',
@@ -2607,7 +2617,7 @@ function initFiles(csrfToken, uploadLevels, canFetch, myTeamId) {
   }
 
   function loadMoveTree() {
-    fetch('/api/folders?parent=' + encodeURIComponent(String(movePick.folder)), {
+    fetch(APP_BASE + '/api/folders?parent=' + encodeURIComponent(String(movePick.folder)), {
       credentials: 'same-origin',
       cache: 'no-store'
     })
@@ -2692,7 +2702,7 @@ function initFiles(csrfToken, uploadLevels, canFetch, myTeamId) {
     }
     setText(moveMsg, '');
     var body = { folder_id: movePick.folder === 0 ? null : movePick.folder };
-    fetch('/api/files/' + movePick.file.id, {
+    fetch(APP_BASE + '/api/files/' + movePick.file.id, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken },
       body: JSON.stringify(body),
@@ -2723,7 +2733,7 @@ function initFiles(csrfToken, uploadLevels, canFetch, myTeamId) {
       });
   }
   function loadTeams() {
-    fetch('/api/teams', { credentials: 'same-origin', cache: 'no-store' })
+    fetch(APP_BASE + '/api/teams', { credentials: 'same-origin', cache: 'no-store' })
       .then(function (response) {
         if (response.status === 401) {
           toLogin();
@@ -2803,7 +2813,7 @@ function initFiles(csrfToken, uploadLevels, canFetch, myTeamId) {
     }
 
     fetchSubmit.disabled = true;
-    fetch('/api/files/fetch', {
+    fetch(APP_BASE + '/api/files/fetch', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken },
       body: JSON.stringify(payload),
@@ -2919,7 +2929,7 @@ function initFiles(csrfToken, uploadLevels, canFetch, myTeamId) {
       form.append('otp', exec.otp);
     }
     // headers 에 Content-Type 을 넣지 않는다 — 브라우저가 boundary 를 붙여야 한다.
-    return fetch('/api/files', {
+    return fetch(APP_BASE + '/api/files', {
       method: 'POST',
       headers: csrfHeaders(),
       body: form,
@@ -3575,7 +3585,7 @@ function initAudit() {
   }
 
   function load() {
-    fetch('/api/audit' + buildQuery(), { credentials: 'same-origin', cache: 'no-store' })
+    fetch(APP_BASE + '/api/audit' + buildQuery(), { credentials: 'same-origin', cache: 'no-store' })
       .then(function (response) {
         if (response.status === 401) {
           toLogin();
@@ -3837,7 +3847,7 @@ function initAccount(csrfToken, mfaEnabled, onMfaEnabled, mfaRequired) {
       event.preventDefault();
       setText(msg, '');
       pwSubmit.disabled = true;
-      post('/api/me/password', { current: pwCurrent.value, 'new': pwNew.value })
+      post(APP_BASE + '/api/me/password', { current: pwCurrent.value, 'new': pwNew.value })
         .then(function (result) {
           if (result === null) {
             return null;
@@ -3865,7 +3875,7 @@ function initAccount(csrfToken, mfaEnabled, onMfaEnabled, mfaRequired) {
     mfaEnrollBtn.addEventListener('click', function () {
       setText(msg, '');
       mfaEnrollBtn.disabled = true;
-      post('/api/me/mfa/enroll', {})
+      post(APP_BASE + '/api/me/mfa/enroll', {})
         .then(function (result) {
           if (result === null) {
             return null;
@@ -3905,7 +3915,7 @@ function initAccount(csrfToken, mfaEnabled, onMfaEnabled, mfaRequired) {
     mfaConfirmForm.addEventListener('submit', function (event) {
       event.preventDefault();
       setText(msg, '');
-      post('/api/me/mfa/confirm', { otp: mfaCode.value })
+      post(APP_BASE + '/api/me/mfa/confirm', { otp: mfaCode.value })
         .then(function (result) {
           if (result === null) {
             return null;
@@ -3938,7 +3948,7 @@ function initAccount(csrfToken, mfaEnabled, onMfaEnabled, mfaRequired) {
     mfaDisableForm.addEventListener('submit', function (event) {
       event.preventDefault();
       setText(msg, '');
-      post('/api/me/mfa/disable', {
+      post(APP_BASE + '/api/me/mfa/disable', {
         current_password: mfaOffPassword.value,
         otp: mfaOffCode.value
       })
@@ -4038,7 +4048,7 @@ function initTrash(csrfToken, onRestored) {
       return;
     }
     setText(msg, '');
-    fetch('/api/files/' + id + '/restore', {
+    fetch(APP_BASE + '/api/files/' + id + '/restore', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken },
       body: '{}',
@@ -4100,7 +4110,7 @@ function initTrash(csrfToken, onRestored) {
   }
 
   function load() {
-    fetch('/api/files/trash', { credentials: 'same-origin', cache: 'no-store' })
+    fetch(APP_BASE + '/api/files/trash', { credentials: 'same-origin', cache: 'no-store' })
       .then(function (response) {
         if (response.status === 401) {
           toLogin();
@@ -4487,7 +4497,7 @@ function initUsers(csrfToken) {
       return;
     }
     setText(msg, '');
-    fetch('/api/users/' + String(id), {
+    fetch(APP_BASE + '/api/users/' + String(id), {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken },
       body: JSON.stringify(payload),
@@ -4710,7 +4720,7 @@ function initUsers(csrfToken) {
       return;
     }
     var uid = tkUid;
-    tokenFetch('GET', '/api/users/' + String(uid) + '/api-tokens', null, loadTokens)
+    tokenFetch('GET', APP_BASE + '/api/users/' + String(uid) + '/api-tokens', null, loadTokens)
       .then(function (result) {
         if (result === null || tkUid !== uid) {
           return null;
@@ -4746,7 +4756,7 @@ function initUsers(csrfToken) {
     }
     var uid = tkUid;
     setText(tkMsg, '');
-    tokenFetch('DELETE', '/api/users/' + String(uid) + '/api-tokens/' + String(token.id),
+    tokenFetch('DELETE', APP_BASE + '/api/users/' + String(uid) + '/api-tokens/' + String(token.id),
       null, function () { revokeToken(token); })
       .then(function (result) {
         if (result === null) {
@@ -4982,7 +4992,7 @@ function initUsers(csrfToken) {
         return;
       }
       setText(msg, '');
-      postJson('/api/users/' + String(item.id) + '/password/reset', { reason_text: reason })
+      postJson(APP_BASE + '/api/users/' + String(item.id) + '/password/reset', { reason_text: reason })
         .then(function (result) {
           if (result === null) {
             return null;
@@ -5014,7 +5024,7 @@ function initUsers(csrfToken) {
         return;
       }
       setText(msg, '');
-      postJson('/api/users/' + String(item.id) + '/mfa/reset', { reason_text: reason })
+      postJson(APP_BASE + '/api/users/' + String(item.id) + '/mfa/reset', { reason_text: reason })
         .then(function (result) {
           if (result === null) {
             return null;
@@ -5105,7 +5115,7 @@ function initUsers(csrfToken) {
   }
 
   function load() {
-    fetch('/api/users?page=' + encodeURIComponent(String(state.page)), {
+    fetch(APP_BASE + '/api/users?page=' + encodeURIComponent(String(state.page)), {
       credentials: 'same-origin',
       cache: 'no-store'
     })
@@ -5149,7 +5159,7 @@ function initUsers(csrfToken) {
     if (targets.length === 0) {
       return;
     }
-    fetch('/api/teams', { credentials: 'same-origin', cache: 'no-store' })
+    fetch(APP_BASE + '/api/teams', { credentials: 'same-origin', cache: 'no-store' })
       .then(function (response) {
         if (!response.ok) {
           return null;
@@ -5191,7 +5201,7 @@ function initUsers(csrfToken) {
       }
       fSubmit.disabled = true;
       var newName = String(payload.username);
-      postJson('/api/users', payload)
+      postJson(APP_BASE + '/api/users', payload)
         .then(function (result) {
           if (result === null) {
             return null;
@@ -5537,7 +5547,7 @@ function initOrg(csrfToken) {
     if (state.selected === null) {
       return;
     }
-    getJson('/api/org/teams/' + encodeURIComponent(String(state.selected)) + '/members')
+    getJson(APP_BASE + '/api/org/teams/' + encodeURIComponent(String(state.selected)) + '/members')
       .then(function (result) {
         if (result === null) {
           return null;
@@ -5565,7 +5575,7 @@ function initOrg(csrfToken) {
   }
 
   function loadTeams(keepSelection) {
-    return getJson('/api/org/teams')
+    return getJson(APP_BASE + '/api/org/teams')
       .then(function (result) {
         if (result === null) {
           return null;
@@ -5650,7 +5660,7 @@ function initOrg(csrfToken) {
   }
 
   function loadMatrix() {
-    getJson('/api/org/permissions')
+    getJson(APP_BASE + '/api/org/permissions')
       .then(function (result) {
         if (result === null) {
           return null;
@@ -5683,7 +5693,7 @@ function initOrg(csrfToken) {
     assignUser.appendChild(placeholder);
 
     function addPage(pageNo) {
-      return getJson('/api/users?page=' + encodeURIComponent(String(pageNo))).then(function (result) {
+      return getJson(APP_BASE + '/api/users?page=' + encodeURIComponent(String(pageNo))).then(function (result) {
         if (result === null || !result.ok) {
           return null;
         }
@@ -5850,7 +5860,7 @@ function initOrg(csrfToken) {
     createForm.addEventListener('submit', function (event) {
       event.preventDefault();
       setText(createMsg, '');
-      sendJson('POST', '/api/org/teams', {
+      sendJson('POST', APP_BASE + '/api/org/teams', {
         name: createName.value,
         reason_text: createReason.value
       })
@@ -5880,7 +5890,7 @@ function initOrg(csrfToken) {
         return;
       }
       setText(renameMsg, '');
-      sendJson('PATCH', '/api/org/teams/' + encodeURIComponent(String(team.id)), {
+      sendJson('PATCH', APP_BASE + '/api/org/teams/' + encodeURIComponent(String(team.id)), {
         name: renameName.value,
         reason_text: renameReason.value
       })
@@ -5910,7 +5920,7 @@ function initOrg(csrfToken) {
         return;
       }
       setText(activeMsg, '');
-      sendJson('PATCH', '/api/org/teams/' + encodeURIComponent(String(team.id)), {
+      sendJson('PATCH', APP_BASE + '/api/org/teams/' + encodeURIComponent(String(team.id)), {
         is_active: team.is_active !== true,
         reason_text: activeReason.value
       })
@@ -5947,7 +5957,7 @@ function initOrg(csrfToken) {
         return;
       }
       // 배정은 **기존 계정 변경 API** 다 (ARCH 5.9). 값은 그대로 보내고 판단은 서버가 한다.
-      sendJson('PATCH', '/api/users/' + encodeURIComponent(userId), {
+      sendJson('PATCH', APP_BASE + '/api/users/' + encodeURIComponent(userId), {
         team_id: teamId,
         reason_text: assignReason.value
       })
@@ -6080,7 +6090,7 @@ function initForcedGate(csrfToken, firstStep, mfaEnabled, mfaRequired) {
 
   /** 서버에 "다음은 무엇인가" 를 다시 묻는다 — 판단은 언제나 서버가 한다 */
   function refresh() {
-    fetch('/api/me', { credentials: 'same-origin', cache: 'no-store' })
+    fetch(APP_BASE + '/api/me', { credentials: 'same-origin', cache: 'no-store' })
       .then(function (response) {
         if (response.status === 401) {
           toLogin();
@@ -6120,7 +6130,7 @@ function initForcedGate(csrfToken, firstStep, mfaEnabled, mfaRequired) {
         return;
       }
       pwSubmit.disabled = true;
-      fetch('/api/me/password', {
+      fetch(APP_BASE + '/api/me/password', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken },
         body: JSON.stringify({ current: pwCurrent.value, 'new': pwNew.value }),
@@ -6236,7 +6246,7 @@ function initActivity() {
   }
 
   function load() {
-    fetch('/api/me/activity?page=' + encodeURIComponent(String(state.page)), {
+    fetch(APP_BASE + '/api/me/activity?page=' + encodeURIComponent(String(state.page)), {
       credentials: 'same-origin',
       cache: 'no-store'
     })
@@ -6388,7 +6398,7 @@ function initMyTokens(csrfToken, me) {
       return;
     }
     setText(msg, '');
-    tokenApiFetch(csrfToken, 'DELETE', '/api/me/api-tokens/' + String(token.id), null,
+    tokenApiFetch(csrfToken, 'DELETE', APP_BASE + '/api/me/api-tokens/' + String(token.id), null,
       function () { revoke(token); })
       .then(function (result) {
         if (result === null) { return null; }
@@ -6407,7 +6417,7 @@ function initMyTokens(csrfToken, me) {
 
   /** 목록을 다시 읽어 표를 그린다. 만료 14일 안(`expires_soon`)이 있으면 안내 줄을 켠다. */
   function load() {
-    tokenApiFetch(csrfToken, 'GET', '/api/me/api-tokens', null, load)
+    tokenApiFetch(csrfToken, 'GET', APP_BASE + '/api/me/api-tokens', null, load)
       .then(function (result) {
         if (result === null) { return null; }
         while (body.firstChild) {
@@ -6454,7 +6464,7 @@ function initMyTokens(csrfToken, me) {
     setText(msg, '');
     if (submit) { submit.disabled = true; }
     // 재시도(retry)를 넘기지 않는다 — 2단계 코드는 1회성이라 같은 요청을 다시 보낼 수 없다.
-    tokenApiFetch(csrfToken, 'POST', '/api/me/api-tokens', payload, null)
+    tokenApiFetch(csrfToken, 'POST', APP_BASE + '/api/me/api-tokens', payload, null)
       .then(function (result) {
         clearSecrets();                     // 성공이든 실패든 비밀은 여기서 사라진다
         if (submit) { submit.disabled = false; }
@@ -6553,7 +6563,7 @@ function initShares(csrfToken) {
       return;
     }
     setText(msg, '');
-    fetch('/api/shares/' + encodeURIComponent(String(id)), {
+    fetch(APP_BASE + '/api/shares/' + encodeURIComponent(String(id)), {
       method: 'DELETE',
       headers: { 'X-CSRF-Token': csrfToken },
       credentials: 'same-origin',
@@ -6612,7 +6622,7 @@ function initShares(csrfToken) {
   }
 
   function load() {
-    fetch('/api/me/shares', { credentials: 'same-origin', cache: 'no-store' })
+    fetch(APP_BASE + '/api/me/shares', { credentials: 'same-origin', cache: 'no-store' })
       .then(function (response) {
         if (response.status === 401) {
           toLogin();
@@ -6792,7 +6802,7 @@ function initAdmin(csrfToken, me) {
   }
 
   function load() {
-    getJson('/api/admin/shares')
+    getJson(APP_BASE + '/api/admin/shares')
       .then(function (result) {
         if (result === null) {
           return null;
@@ -6808,7 +6818,7 @@ function initAdmin(csrfToken, me) {
         setText(msg, GENERIC_ERROR);
       });
 
-    getJson('/api/admin/alerts')
+    getJson(APP_BASE + '/api/admin/alerts')
       .then(function (result) {
         if (result === null) {
           return null;
@@ -6868,7 +6878,7 @@ function initAdmin(csrfToken, me) {
   }
 
   if (actForm) {
-    fillSelect(actTeam, '/api/teams', 'teams');
+    fillSelect(actTeam, APP_BASE + '/api/teams', 'teams');
 
     actForm.addEventListener('submit', function (event) {
       event.preventDefault();
@@ -6880,7 +6890,7 @@ function initAdmin(csrfToken, me) {
       if (actSubmit) {
         actSubmit.disabled = true;
       }
-      fetch('/api/me/act', {
+      fetch(APP_BASE + '/api/me/act', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken },
         body: JSON.stringify(payload),
@@ -7176,7 +7186,7 @@ function initAdminPermissions(csrfToken) {
   /* ── 읽기 ──────────────────────────────────────────────────── */
 
   function load() {
-    return getJson('/api/admin/permissions')
+    return getJson(APP_BASE + '/api/admin/permissions')
       .then(function (result) {
         if (result === null) {
           return null;
@@ -7213,7 +7223,7 @@ function initAdminPermissions(csrfToken) {
       if (submit) {
         submit.disabled = true;
       }
-      sendJson('PATCH', '/api/admin/permissions', {
+      sendJson('PATCH', APP_BASE + '/api/admin/permissions', {
         changes: changes,
         reason_text: reasonInput ? reasonInput.value : '',
         otp: otpInput ? otpInput.value : ''
@@ -7565,7 +7575,7 @@ function initAdminFetchHosts(csrfToken) {
   }
 
   function load() {
-    return getJson('/api/fetch-hosts')
+    return getJson(APP_BASE + '/api/fetch-hosts')
       .then(function (result) {
         if (result === null) {
           return null;
@@ -7685,7 +7695,7 @@ function initAdminFetchHosts(csrfToken) {
       if (submit) {
         submit.disabled = true;
       }
-      sendJson('POST', '/api/fetch-hosts', {
+      sendJson('POST', APP_BASE + '/api/fetch-hosts', {
         changes: changes,
         reason_text: reasonInput ? reasonInput.value : '',
         otp: otpInput ? otpInput.value : ''
@@ -7862,7 +7872,7 @@ function initShell(me, csrfToken) {
         return;
       }
       actStop.disabled = true;
-      fetch('/api/me/act', {
+      fetch(APP_BASE + '/api/me/act', {
         method: 'DELETE',
         headers: { 'X-CSRF-Token': csrfToken },
         credentials: 'same-origin',
@@ -7898,7 +7908,7 @@ function initShell(me, csrfToken) {
         return;
       }
       logout.disabled = true;
-      fetch('/api/logout', {
+      fetch(APP_BASE + '/api/logout', {
         method: 'POST',
         headers: { 'X-CSRF-Token': csrfToken },
         credentials: 'same-origin',
@@ -8016,7 +8026,7 @@ function initChangelogDialog() {
 function bootPage(page) {
   var msg = document.getElementById('msg');
 
-  fetch('/api/me', { credentials: 'same-origin', cache: 'no-store' })
+  fetch(APP_BASE + '/api/me', { credentials: 'same-origin', cache: 'no-store' })
     .then(function (response) {
       if (response.status === 401) {
         toLogin();
@@ -8208,7 +8218,7 @@ document.addEventListener('DOMContentLoaded', function () {
    */
   var reauthForm = document.getElementById('reauth-form');
   if (reauthForm) {
-    fetch('/api/me', { credentials: 'same-origin', cache: 'no-store' })
+    fetch(APP_BASE + '/api/me', { credentials: 'same-origin', cache: 'no-store' })
       .then(function (response) {
         if (response.status === 401) {
           toLogin();
@@ -8244,7 +8254,7 @@ document.addEventListener('DOMContentLoaded', function () {
     if (!document.getElementById('nav-files')) {
       return;   // 셸이 없는 화면 — 종전과 같이 아무것도 하지 않는다
     }
-    fetch('/api/me', { credentials: 'same-origin', cache: 'no-store' })
+    fetch(APP_BASE + '/api/me', { credentials: 'same-origin', cache: 'no-store' })
       .then(function (response) {
         if (response.status === 401) {
           toLogin();

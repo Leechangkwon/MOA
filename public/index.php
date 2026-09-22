@@ -556,10 +556,73 @@ if ($routeProblems !== []) {
     Http::error(500, '서버 오류');
 }
 
-// ─── [1] 라우트 매칭 ───────────────────────────────────────────
+/**
+ * ─── [1-0] 사이트 층 — 런처 · `/tbox` 접두 · 옛 주소 308 (Qaredi C, ARCH-launcher 2장) ───
+ *
+ * 관문([2]~[4]) **앞**에 한 층만 둔다. 아래 라우트 표(TBOX_ROUTES)의 경로·정책·핸들러는
+ * 한 글자도 바뀌지 않았다 — 이 층이 접두를 떼어 주고, 그 뒤는 전과 똑같은 코드다.
+ *
+ *   `/`            → Qaredi 런처 (GET·HEAD, 그 밖 405). 세션을 읽기만 하고 만들지 않는다.
+ *   `/tbox…`       → 접두를 떼고 **모듈 경로**로 기존 매칭. 아래 `$reqPath` 는 이때부터
+ *                    모듈 경로이며, `'/api/'` 접두로 갈리는 판단(401 JSON vs 302 로그인)도
+ *                    모듈 경로 기준이다. 감사 로그의 `route` 는 원래대로 라우트 **패턴**이다.
+ *   옛 t-box 경로  → 308 `Location: /tbox<REQUEST_URI 원문>` (메서드·본문 보존)
+ *   그 밖          → 404 (기존 판정 그대로)
+ *
+ * ★ 리다이렉트 대상은 **고정 접두 + 요청 경로·쿼리 원문**뿐이다. 요청 헤더(Host·Referer)나
+ *   쿼리 값으로 호스트·스킴을 만들지 않으므로 열린 리다이렉트가 생길 자리가 없다.
+ *   `REQUEST_URI` 는 `/` 로 시작해야 하고(`//` 로 시작하면 스킴 상대 주소가 된다) 길이
+ *   상한 2048 을 넘으면 리다이렉트하지 않고 404 다 (ARCH-launcher 1장).
+ */
 $reqMethod = Http::method();
 $reqPath   = Http::path();
 
+/** 접두 아래 요청이면 그 접두를 뗀 모듈 경로, 아니면 null */
+$modulePath = null;
+if ($reqPath === TBOX_BASE || strpos($reqPath, TBOX_BASE . '/') === 0) {
+    $modulePath = substr($reqPath, strlen(TBOX_BASE));
+    if ($modulePath === '' || $modulePath === false) {
+        $modulePath = '/';
+    }
+}
+
+if ($modulePath === null) {
+    if ($reqPath === '/') {
+        // 런처 — public 이고 세션을 **읽기만** 한다 (ARCH-launcher 5장).
+        if ($reqMethod !== 'GET' && $reqMethod !== 'HEAD') {
+            if (!headers_sent()) {
+                header('Allow: GET, HEAD');
+            }
+            Http::error(405, '허용되지 않는 메서드입니다');
+        }
+        require __DIR__ . '/../src/site/launcher_page.php';
+        exit;
+    }
+
+    // 옛 t-box 경로인가 — 라우트 표의 경로 패턴과만 견준다(메서드는 보지 않는다).
+    $wasTboxPath = false;
+    foreach (TBOX_ROUTES as $route) {
+        if (preg_match(tbox_pattern_to_regex($route[1]), $reqPath) === 1) {
+            $wasTboxPath = true;
+            break;
+        }
+    }
+
+    $reqUri = (string) ($_SERVER['REQUEST_URI'] ?? '');
+    if ($wasTboxPath
+        && $reqUri !== '' && $reqUri[0] === '/' && strncmp($reqUri, '//', 2) !== 0
+        && strlen($reqUri) <= 2048
+    ) {
+        Http::redirectPermanent(TBOX_BASE . $reqUri);
+    }
+
+    Http::error(404, Http::MSG_NOT_FOUND);
+}
+
+// 이 줄부터 `$reqPath` 는 **모듈 경로**다 (접두를 뗀 뒤의 경로).
+$reqPath = $modulePath;
+
+// ─── [1] 라우트 매칭 ───────────────────────────────────────────
 $matched       = null;    // [핸들러, 정책, 경로변수]
 $pathMatched   = false;   // 경로는 맞았는데 메서드가 달랐다 → 405
 $allowedMethods = [];
@@ -673,7 +736,7 @@ if ($policy !== Authz::POLICY_PUBLIC) {
     // 화면 경로에 감사 로그를 남기지 않는 이유 — 세션이 만료된 뒤의 첫 방문은 공격이 아니고,
     // 그런 요청까지 남기면 실제 공격 흔적이 묻힌다 (PRD S-07 취지).
     if (Auth::currentUser() === null && strpos($reqPath, '/api/') !== 0) {
-        Http::redirect(TBOX_LOGIN_PATH);
+        Http::redirect(Http::url(TBOX_LOGIN_PATH));   // 접두는 내보낼 때 붙인다 (ARCH-launcher 3장)
     }
     $user = Auth::requireLogin();          // 실패 시 401 + Audit::deny (Auth 안에서)
     Http::requireCsrf();                   // 상태 변경 요청의 토큰 검사 (PRD S-09-3)
@@ -717,7 +780,7 @@ if ($policy !== Authz::POLICY_PUBLIC) {
              * 화면 편의를 위해 API 의 계약을 바꾸지 않는다.
              */
             if (strpos($reqPath, '/api/') !== 0 && $reqPath !== TBOX_HOME_PATH) {
-                Http::redirect(TBOX_HOME_PATH);
+                Http::redirect(Http::url(TBOX_HOME_PATH));   // 접두는 내보낼 때 (ARCH-launcher 3장)
             }
             // 다른 403 과 달리 `next` 를 함께 준다 — 막힌 사람이 본인이고,
             // 자기 계정의 다음 걸음을 모르면 절차를 끝낼 수 없기 때문이다 (ARCH 4.0).
@@ -777,9 +840,9 @@ if ($policy !== Authz::POLICY_PUBLIC) {
          */
         if (strpos($reqPath, '/api/') !== 0) {
             $reauthKey = TBOX_REAUTH_RETURN[TBOX_ROUTE] ?? null;
-            Http::redirect(
+            Http::redirect(Http::url(
                 $reauthKey === null ? TBOX_REAUTH_PATH : TBOX_REAUTH_PATH . '?to=' . $reauthKey
-            );
+            ));
         }
 
         // API 는 강제 절차 관문과 **같은 모양**의 403 이다 — 화면이 한 가지 처리(모달)로

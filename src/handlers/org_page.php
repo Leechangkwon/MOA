@@ -163,7 +163,7 @@ require __DIR__ . '/../views/shell_top.php';
 
         <ul id="org-matrix-rules" class="notice__list muted"></ul>
 
-        <p class="muted">* 팀 등급은 같은 팀일 때만 적용됩니다 (Admin 은 모든 팀). 바꾸려면 <a href="/admin/permissions">관리자 페이지 → 권한 매트릭스 편집</a>.</p>
+        <p class="muted">* 팀 등급은 같은 팀일 때만 적용됩니다 (Admin 은 모든 팀). 바꾸려면 <a href="<?= Http::url('/admin/permissions') ?>">관리자 페이지 → 권한 매트릭스 편집</a>.</p>
       </div>
     </section>
   </div>

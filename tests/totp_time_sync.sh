@@ -27,7 +27,7 @@ set -u
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 OUT="${1:-$HOME/.claude/ui-shots/f42}"
-BASE="http://127.0.0.1:8082"
+BASE="http://127.0.0.1:8082/tbox"
 UA="tbox-review/$(date +%F)"
 DB="tbox_re"
 GEN="$ROOT/public/assets/totp-generator.html"
@@ -132,7 +132,7 @@ expect "MIN_PASS" "12" "$(sed -n 's/^min_pass=//p' "$WORK/static.txt")"
 expect "화면 문구의 구조 설명 키워드" "0" "$(sed -n 's/^screen_keyword_hits=//p' "$WORK/static.txt")"
 expect "잠금 문구 안내 문구" "1" "$(grep -c "자 이상이어야 합니다. 단어 2~3개를 권합니다." "$GEN")"
 expect "인라인 이벤트 속성(on…=) 0" "0" "$(grep -cE '<[^>]+ on[a-z]+=' "$GEN")"
-expect "생성기가 부르는 주소는 /api/time 하나" "1" "$(grep -c "fetch(base + '/api/time'" "$GEN")"
+expect "생성기가 부르는 주소는 api/time 하나" "1" "$(grep -c "fetch(openedAsFile() ? base + '/api/time' : '../api/time'" "$GEN")"
 expect "fetch 호출은 1곳뿐" "1" "$(grep -c 'fetch(' "$GEN")"
 expect "저장 키 tbox-totp-offset" "1" "$(grep -c "OFFSET_KEY = 'tbox-totp-offset'" "$GEN")"
 

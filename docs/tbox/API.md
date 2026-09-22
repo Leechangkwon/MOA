@@ -8,7 +8,7 @@ API 를 추가할 때마다 이 문서에 **이어서** 적는다(마지막 장�
 
 | 항목 | 내용 |
 |---|---|
-| 기본 주소 | 공개: `https://changkwon.mso.so` · 서버 안 검토용: `http://127.0.0.1:8082` |
+| 기본 주소 | 공개: `https://changkwon.mso.so/tbox` · 서버 안 검토용: `http://127.0.0.1:8082/tbox` — **2026-09-22 바뀌었다**(아래 「주소 변경」 절). 도메인 루트(`/`)는 Qaredi 런처다 |
 | 형식 | 요청·응답은 JSON (`Content-Type: application/json; charset=utf-8`). 파일 업로드만 `multipart/form-data` |
 | 인증 | 기본은 **세션 쿠키**(아래 「세션」)다. 헤더 `X-API-Token` 이 통하는 창구는 **열**이다 — `POST /api/upload`(7장) · `GET /api/files`(8장) · `GET /api/files/{id}/download`(9장) · `GET /api/whoami`(10장) · `GET /api/folders`·`POST /api/folders`·`PATCH /api/folders/{num}`(11장) · `PATCH /api/files/{id}`(12장, 폴더 이동만) · `DELETE /api/files/{id}`·`DELETE /api/folders/{num}`(14장, **개인 토큰만**). 업로드와 whoami 둘은 토큰 전용이고(세션 쿠키로는 부를 수 없다 — 헤더가 없으면 401), 나머지 여덟은 화면도 쓰는 창구라 **헤더를 보내면 토큰으로, 안 보내면 세션으로** 판정한다. 그 헤더는 **그 밖의 창구에서는 무시된다**(등급 변경·휴지통 복원·계정·감사 등은 읽지도 않는다). **토큰은 두 종류**다(13장): **본인이** 「내 계정」 화면에서 발급하는 **개인 토큰**(권장 — 누가 했는지 사람 단위로 남고 회수할 수 있다)과 서버 `.env` 의 **공용 토큰**(F-49, 이행용 — 삭제 창구는 쓸 수 없다) |
 | 범위·만료 (F-66) | 개인 토큰은 발급할 때 고른 **범위**(`read` · `read+upload` · `read+upload+delete`)만큼만 창구를 열고, 발급 시각 + **180일**에 만료된다. 범위 밖 창구 → `403 {"error":"이 토큰의 범위에 없는 창구입니다 — 범위가 더 넓은 토큰을 발급하세요"}` · 만료된 토큰 → `401 {"error":"만료된 API 토큰입니다 — 내 계정에서 새로 발급하세요"}`(틀린·회수된 토큰의 401 문구와 다르다). 범위는 창구를 좁힐 뿐이고 파일 한 건의 판정은 요청마다 그대로 한다 — 토큰이 계정보다 커질 수 없다. 공용 토큰은 범위·만료가 없고 `read+upload` 로 본다(이행용). 어느 장이 어느 범위인지는 각 장의 「범위(F-66)」 줄 |
@@ -18,6 +18,39 @@ API 를 추가할 때마다 이 문서에 **이어서** 적는다(마지막 장�
 | 속도 제한 | `POST /api/login` 은 IP 당 분당 30회(순간 10회까지 허용), 넘으면 429. 비밀번호 5회 실패 → 계정 10분 잠금(423) |
 | 캐시 | 모든 API 응답은 `Cache-Control: no-store` |
 | 도구 표식 | 사람이 아닌 프로그램이 부를 때는 `User-Agent` 를 알아볼 수 있게 붙이는 것을 권장한다(예: `-A "my-uploader/1.0"`). 감사 로그에 남아 사람의 조작과 구분된다 |
+
+### 주소 변경 2026-09-22 (Qaredi C — 28단계)
+
+t-box 의 **모든 주소 앞에 `/tbox` 가 붙었다.** 도메인 루트(`/`)에는 Qaredi 런처(앱 고르는 첫 화면)가 선다.
+
+| 무엇 | 전 | 후 |
+|---|---|---|
+| 기본 주소 (공개) | `https://changkwon.mso.so` | `https://changkwon.mso.so/tbox` |
+| 기본 주소 (서버 안 검토용) | `http://127.0.0.1:8082` | `http://127.0.0.1:8082/tbox` |
+| 상태 확인 | `…/api/health` | `…/tbox/api/health` |
+| 프로그램 업로드 | `…/api/upload` | `…/tbox/api/upload` |
+| 공유 링크 | `…/s/<토큰>` | `…/tbox/s/<토큰>` |
+| 2단계 코드 생성기 | `…/assets/totp-generator.html` | `…/tbox/assets/totp-generator.html` |
+
+**옛 주소는 308 로 새 주소로 보낸다.** 308(Permanent Redirect)은 **메서드와 본문을 보존**하므로,
+`POST /api/upload` 를 옛 주소로 보내도 리다이렉트를 따르는 클라이언트면 그대로 올라간다.
+쿼리스트링도 원문 그대로 이어진다(`/api/files?q=x` → `/tbox/api/files?q=x`).
+
+```bash
+# 옛 주소로 부르면 308 과 새 주소가 온다
+curl -sI https://changkwon.mso.so/api/health | head -2
+HTTP/1.1 308 Permanent Redirect
+Location: /tbox/api/health
+
+# curl 은 -L 을 붙여야 따라간다. POST 의 본문·메서드도 그대로 간다.
+curl -sL -w ' [%{http_code}]\n' https://changkwon.mso.so/api/health
+```
+
+**리다이렉트를 따르지 않는 프로그램은 주소를 바꾼다.** 설정에 적어 둔 주소의 호스트 뒤에 `/tbox` 를
+넣으면 된다(`https://changkwon.mso.so/api/upload` → `https://changkwon.mso.so/tbox/api/upload`).
+curl 은 `-L`, Python `requests` 는 기본으로 따라가지만 `allow_redirects=False` 로 쓰고 있으면 바꿔야 한다.
+
+t-box 안의 **판정·권한·감사·응답 형식은 한 글자도 바뀌지 않았다** — 바뀐 것은 주소뿐이다.
 
 ---
 
@@ -37,7 +70,7 @@ API 를 추가할 때마다 이 문서에 **이어서** 적는다(마지막 장�
 
 ```bash
 # 성공 예
-curl -s -w '\n[%{http_code}]\n' https://changkwon.mso.so/api/health
+curl -s -w '\n[%{http_code}]\n' https://changkwon.mso.so/tbox/api/health
 {"status":"ok","db":"ok","time":"2026-09-15T19:02:11+09:00"}
 [200]
 
@@ -46,7 +79,7 @@ curl -s -w '\n[%{http_code}]\n' https://changkwon.mso.so/api/health
 [503]
 ```
 
-한 줄 확인(상태 코드까지): `curl -s -w ' [%{http_code}]\n' https://changkwon.mso.so/api/health`
+한 줄 확인(상태 코드까지): `curl -s -w ' [%{http_code}]\n' https://changkwon.mso.so/tbox/api/health`
 
 ---
 
@@ -64,7 +97,7 @@ curl -s -w '\n[%{http_code}]\n' https://changkwon.mso.so/api/health
 ```bash
 curl -s -c jar -H 'Content-Type: application/json' \
   -d '{"username":"qa_employee01","password":"<비밀번호>","otp":"<6자리>"}' \
-  https://changkwon.mso.so/api/login
+  https://changkwon.mso.so/tbox/api/login
 {"ok":true,"next":null}
 ```
 
@@ -77,7 +110,7 @@ curl -s -c jar -H 'Content-Type: application/json' \
 | 실패 | `401 {"error":"로그인이 필요합니다"}` |
 
 ```bash
-curl -s -b jar https://changkwon.mso.so/api/me
+curl -s -b jar https://changkwon.mso.so/tbox/api/me
 {"username":"qa_employee01","role":"Employee","team_id":1,"csrf_token":"…","upload_levels":["public","internal","team"],"next":null, …}
 ```
 
@@ -92,10 +125,10 @@ curl -s -b jar https://changkwon.mso.so/api/me
 | 실패 | `400` — **사유마다 사람 문장**이다 (F-68, ARCHITECTURE 5.30 표가 원본): 확장자 `{"error":"허용되지 않는 확장자입니다 (허용: pdf docx xlsx pptx hwp hwpx txt csv md png jpg jpeg gif zip)"}` · 등급 `{"error":"level 값이 올바르지 않습니다 (public·internal·team·admin-only)"}` · 팀 `{"error":"team 등급은 team_id(활성 팀 번호)가 필요합니다"}` · 내용 검사 `{"error":"문서에 매크로가 들어 있어 올릴 수 없습니다"}` 등. **허용 키 밖·값의 형식 오류만** `{"error":"잘못된 요청입니다"}` · `403`(CSRF 없음 또는 그 등급·팀에 올릴 권한 없음 — Guest 는 업로드 불가) · `413`(크기) |
 
 ```bash
-CSRF=$(curl -s -b jar https://changkwon.mso.so/api/me | python3 -c 'import sys,json;print(json.load(sys.stdin)["csrf_token"])')
+CSRF=$(curl -s -b jar https://changkwon.mso.so/tbox/api/me | python3 -c 'import sys,json;print(json.load(sys.stdin)["csrf_token"])')
 curl -s -b jar -H "X-CSRF-Token: $CSRF" \
   -F 'file=@report.pdf' -F 'access_level=internal' -F 'description=9월 보고서' \
-  https://changkwon.mso.so/api/files
+  https://changkwon.mso.so/tbox/api/files
 {"id":"e7fecdea-e3f4-4133-9c1f-887408829e01","name":"report.pdf"}
 ```
 
@@ -108,7 +141,7 @@ curl -s -b jar -H "X-CSRF-Token: $CSRF" \
 | 실패 | `403`(남의 파일·권한 없음) · `404`(없는 id) |
 
 ```bash
-curl -s -b jar -H "X-CSRF-Token: $CSRF" -X DELETE https://changkwon.mso.so/api/files/<id>
+curl -s -b jar -H "X-CSRF-Token: $CSRF" -X DELETE https://changkwon.mso.so/tbox/api/files/<id>
 {"ok":true}
 ```
 
@@ -117,7 +150,7 @@ curl -s -b jar -H "X-CSRF-Token: $CSRF" -X DELETE https://changkwon.mso.so/api/f
 세션 쿠키 + `X-CSRF-Token`. 성공 `200 {"ok":true}`. 이후 `GET /api/me` 는 401.
 
 ```bash
-curl -s -b jar -H "X-CSRF-Token: $CSRF" -X POST https://changkwon.mso.so/api/logout
+curl -s -b jar -H "X-CSRF-Token: $CSRF" -X POST https://changkwon.mso.so/tbox/api/logout
 ```
 
 ## 7. 프로그램용 업로드 — `POST /api/upload` (multipart/form-data)
@@ -149,7 +182,7 @@ curl -s -w '\n[%{http_code}]\n' \
   -F 'file=@report.pdf' \
   -F 'description=9월 보고서' \
   -F 'level=internal' \
-  https://changkwon.mso.so/api/upload
+  https://changkwon.mso.so/tbox/api/upload
 ```
 
 실제 응답 — 2026-09-15 검토 포트 8082 에서 **검토 계정 `qa_employee01`(Employee) 을 귀속 계정으로 잠시 두고** 실측한 값이다(올린 시험 파일은 곧바로 휴지통으로 보냈고, 검토 뒤 귀속은 운영 계정으로 되돌렸다).
@@ -157,7 +190,7 @@ curl -s -w '\n[%{http_code}]\n' \
 ```bash
 # 성공 — level 을 생략하면 public 이 적용되고 응답에 그 값이 온다
 curl -s -w '\n[%{http_code}]\n' -H "X-API-Token: $API_TOKEN" \
-  -F 'file=@F49-token.txt' -F 'description=F-49 검토' http://127.0.0.1:8082/api/upload
+  -F 'file=@F49-token.txt' -F 'description=F-49 검토' http://127.0.0.1:8082/tbox/api/upload
 {"id":"f087f6d5-8248-4f74-b614-28dd2925d9d0","name":"F49-token.txt","level":"public"}
 [201]
 ```
@@ -216,22 +249,22 @@ curl -s -w '\n[%{http_code}]\n' -H "X-API-Token: $API_TOKEN" \
 export API_TOKEN='<서버 .env 의 값>'    # 값은 문서·채팅에 옮겨 적지 않는다
 
 curl -s -w '\n[%{http_code}]\n' -H "X-API-Token: $API_TOKEN" \
-  'https://changkwon.mso.so/api/files?q=보고서&limit=8'
+  'https://changkwon.mso.so/tbox/api/files?q=보고서&limit=8'
 ```
 
 실제 응답(200) — 2026-09-15 Fable 검토, 검토 포트 8082, 귀속을 검토 계정 `qa_employee01` 로 잠시 둔 상태.
 토큰으로 올린 `F50-doc.txt` 를 검색한 결과다(**최상위가 배열**, 원소 키 여섯). 검토 뒤 파일은 휴지통, 귀속은 운영 계정으로 되돌렸다.
 
 ```bash
-curl -s -H "X-API-Token: $API_TOKEN" 'https://changkwon.mso.so/api/files?q=F50-doc&limit=8'
+curl -s -H "X-API-Token: $API_TOKEN" 'https://changkwon.mso.so/tbox/api/files?q=F50-doc&limit=8'
 [{"id":"6faa43a5-9673-4224-96ea-b4b5d20bb01b","name":"F50-doc.txt","level":"public","size":22,"uploaded_at":"2026-09-15 21:06:58.855433+09","exec_content":false}]
 
 # 아무것도 안 걸리면 빈 배열이다(빈 객체 `{}` 가 아니다)
-curl -s -H "X-API-Token: $API_TOKEN" 'https://changkwon.mso.so/api/files?q=zzz-none-9f3a&limit=8'
+curl -s -H "X-API-Token: $API_TOKEN" 'https://changkwon.mso.so/tbox/api/files?q=zzz-none-9f3a&limit=8'
 []
 
 # 주입 시도는 글자 그대로 검색된다 — %' OR 1=1 -- 를 URL 인코딩해 보내면 그런 이름의 파일이 없으므로 빈 배열
-curl -s -H "X-API-Token: $API_TOKEN" 'https://changkwon.mso.so/api/files?q=%25%27%20OR%201%3D1%20--&limit=8'
+curl -s -H "X-API-Token: $API_TOKEN" 'https://changkwon.mso.so/tbox/api/files?q=%25%27%20OR%201%3D1%20--&limit=8'
 []
 ```
 
@@ -242,15 +275,15 @@ Employee 귀속 토큰의 검색에는 `admin-only` 파일이 **한 건도 오�
 
 ```bash
 # 헤더도 세션도 없이
-curl -s -w ' [%{http_code}]\n' 'http://127.0.0.1:8082/api/files?q=F50'
+curl -s -w ' [%{http_code}]\n' 'http://127.0.0.1:8082/tbox/api/files?q=F50'
 {"error":"로그인이 필요합니다"} [401]
 
 # 헤더를 보냈는데 토큰이 틀림 — 세션으로 되돌아가지 않는다
-curl -s -w ' [%{http_code}]\n' -H 'X-API-Token: <틀린 값>' 'http://127.0.0.1:8082/api/files?q=F50'
+curl -s -w ' [%{http_code}]\n' -H 'X-API-Token: <틀린 값>' 'http://127.0.0.1:8082/tbox/api/files?q=F50'
 {"error":"API 토큰이 올바르지 않습니다"} [401]
 
 # 세션(화면)으로 부르면 응답 모양은 지금까지와 똑같다 — 최상위가 객체다
-curl -s -b jar 'http://127.0.0.1:8082/api/files?q=F50'
+curl -s -b jar 'http://127.0.0.1:8082/tbox/api/files?q=F50'
 {"files":[…],"total":0,"page":1,"per_page":20,"scope":"all","folder":{…}}  [200]
 ```
 
@@ -276,13 +309,13 @@ curl -s -b jar 'http://127.0.0.1:8082/api/files?q=F50'
 ```bash
 # -OJ 는 Content-Disposition 의 원래 이름으로 저장한다
 curl -OJ -H "X-API-Token: $API_TOKEN" \
-  https://changkwon.mso.so/api/files/<UUID>/download
+  https://changkwon.mso.so/tbox/api/files/<UUID>/download
 ```
 
 실제 200 응답 — 2026-09-15 Fable 검토(8장과 같은 조건). 헤더에 **원래 이름**이 담기고 본문은 올린 파일과 바이트가 같다(`diff` 동일, T-62 (d) sha256 일치).
 
 ```bash
-curl -s -D - -o F50-doc.txt -H "X-API-Token: $API_TOKEN" https://changkwon.mso.so/api/files/6faa43a5-9673-4224-96ea-b4b5d20bb01b/download
+curl -s -D - -o F50-doc.txt -H "X-API-Token: $API_TOKEN" https://changkwon.mso.so/tbox/api/files/6faa43a5-9673-4224-96ea-b4b5d20bb01b/download
 HTTP/1.1 200 OK
 Content-Type: application/octet-stream
 X-Content-Type-Options: nosniff
@@ -299,16 +332,16 @@ Content-Disposition: attachment; filename="F50-doc.txt"; filename*=UTF-8''F50-do
 
 ```bash
 # UUID 형태가 아니면 라우트에 맞지 않아 404 다 — 인증보다 먼저 끝난다
-curl -s -w ' [%{http_code}]\n' 'http://127.0.0.1:8082/api/files/not-a-uuid/download'
+curl -s -w ' [%{http_code}]\n' 'http://127.0.0.1:8082/tbox/api/files/not-a-uuid/download'
 {"error":"찾을 수 없습니다"} [404]
 
 # 헤더도 세션도 없이
-curl -s -w ' [%{http_code}]\n' 'http://127.0.0.1:8082/api/files/00000000-0000-4000-8000-000000000000/download'
+curl -s -w ' [%{http_code}]\n' 'http://127.0.0.1:8082/tbox/api/files/00000000-0000-4000-8000-000000000000/download'
 {"error":"로그인이 필요합니다"} [401]
 
 # 틀린 토큰
 curl -s -w ' [%{http_code}]\n' -H 'X-API-Token: <틀린 값>' \
-  'http://127.0.0.1:8082/api/files/00000000-0000-4000-8000-000000000000/download'
+  'http://127.0.0.1:8082/tbox/api/files/00000000-0000-4000-8000-000000000000/download'
 {"error":"API 토큰이 올바르지 않습니다"} [401]
 ```
 
@@ -316,9 +349,9 @@ curl -s -w ' [%{http_code}]\n' -H 'X-API-Token: <틀린 값>' \
 
 ```bash
 curl -s -D - -o /dev/null -w '[%{http_code}]\n' -H "X-API-Token: $API_TOKEN" \
-  'http://127.0.0.1:8082/api/files/<UUID>/download'
+  'http://127.0.0.1:8082/tbox/api/files/<UUID>/download'
 # 실측 2026-09-16 15:1x — qa_employee01 세션, 검토 포트 8082. 올린 직후(scan_status=pending) 네 창구가 같은 답이다
-curl -s -D - -o body 'http://127.0.0.1:8082/api/files/<id>/download' | grep -E '^HTTP|^Retry-After'; cat body
+curl -s -D - -o body 'http://127.0.0.1:8082/tbox/api/files/<id>/download' | grep -E '^HTTP|^Retry-After'; cat body
 HTTP/1.1 423 Locked
 Retry-After: 30
 {"error":"검사 중입니다. 잠시 뒤 다시 시도하세요","retry_after":30}
@@ -362,7 +395,7 @@ HTTP/1.1 200 OK
 ```bash
 # 실측 2026-09-16 — 귀속을 검토 계정 qa_employee01(Employee, 팀 1)로 돌려 받은 값. 운영 귀속(admin01)이면 role=Admin, upload_levels 4개
 curl -s -w '\n[%{http_code}]\n' -H "X-API-Token: $API_TOKEN" \
-  https://changkwon.mso.so/api/whoami
+  https://changkwon.mso.so/tbox/api/whoami
 {"username":"qa_employee01","role":"Employee","team_id":1,"upload_levels":["public","internal","team"]}
 [200]
 ```
@@ -375,15 +408,15 @@ curl -s -w '\n[%{http_code}]\n' -H "X-API-Token: $API_TOKEN" \
 
 ```bash
 # 헤더 없음 — 세션 쿠키를 함께 보내도 같다(토큰 전용 창구)
-curl -s -w ' [%{http_code}]\n' 'http://127.0.0.1:8082/api/whoami'
+curl -s -w ' [%{http_code}]\n' 'http://127.0.0.1:8082/tbox/api/whoami'
 {"error":"X-API-Token 헤더가 없습니다"} [401]
 
 # 틀린 토큰
-curl -s -w ' [%{http_code}]\n' -H 'X-API-Token: <틀린 값>' 'http://127.0.0.1:8082/api/whoami'
+curl -s -w ' [%{http_code}]\n' -H 'X-API-Token: <틀린 값>' 'http://127.0.0.1:8082/tbox/api/whoami'
 {"error":"API 토큰이 올바르지 않습니다"} [401]
 
 # 세션 쿠키만 (qa_employee01 로 로그인한 상태) — 헤더가 없으므로 같은 401 이다
-curl -s -w ' [%{http_code}]\n' -b jar 'http://127.0.0.1:8082/api/whoami'
+curl -s -w ' [%{http_code}]\n' -b jar 'http://127.0.0.1:8082/tbox/api/whoami'
 {"error":"X-API-Token 헤더가 없습니다"} [401]
 ```
 
@@ -413,20 +446,20 @@ curl -s -w ' [%{http_code}]\n' -b jar 'http://127.0.0.1:8082/api/whoami'
 폴더 안의 **파일**은 8장의 검색에 `folder=<id>` 를 붙여 받는다: `GET /api/files?folder=<id>&limit=` (`q` 없이 `folder` 만 보내면 그 폴더 안 목록, `q` 도 보내면 그 폴더 안에서 검색).
 
 ```bash
-curl -s -H "X-API-Token: $API_TOKEN" 'https://changkwon.mso.so/api/folders'            # 루트
-curl -s -H "X-API-Token: $API_TOKEN" 'https://changkwon.mso.so/api/folders?parent=12'  # 12번 폴더의 자식
-curl -s -H "X-API-Token: $API_TOKEN" 'https://changkwon.mso.so/api/files?folder=12&limit=50'   # 12번 폴더 안 파일(8장 배열)
+curl -s -H "X-API-Token: $API_TOKEN" 'https://changkwon.mso.so/tbox/api/folders'            # 루트
+curl -s -H "X-API-Token: $API_TOKEN" 'https://changkwon.mso.so/tbox/api/folders?parent=12'  # 12번 폴더의 자식
+curl -s -H "X-API-Token: $API_TOKEN" 'https://changkwon.mso.so/tbox/api/files?folder=12&limit=50'   # 12번 폴더 안 파일(8장 배열)
 ```
 
 실측 2026-09-16 (검토 포트 8082, 귀속을 검토 계정 `qa_employee01`(Employee·팀 1)로 잠시 두고, `-A "tbox-review/2026-09-16"`). 시험이 만든 폴더는 곧바로 지웠고 파일은 휴지통으로 보냈다.
 
 ```bash
 # 루트 — 이 계정이 볼 수 있는 루트 폴더가 없던 시점. 같은 계정의 세션 응답과 JSON 문자열까지 동일했다
-curl -s -w ' [%{http_code}]\n' -H "X-API-Token: $API_TOKEN" 'http://127.0.0.1:8082/api/folders'
+curl -s -w ' [%{http_code}]\n' -H "X-API-Token: $API_TOKEN" 'http://127.0.0.1:8082/tbox/api/folders'
 {"folder":{"id":0,"name":null,"access_level":null,"breadcrumb":[]},"folders":[]} [200]
 
 # qa_admin01 이 만든 admin-only 폴더 S — Employee 귀속의 트리에는 없고, 번호로 직접 열어도 403
-curl -s -w ' [%{http_code}]\n' -H "X-API-Token: $API_TOKEN" 'http://127.0.0.1:8082/api/folders?parent=<S>'
+curl -s -w ' [%{http_code}]\n' -H "X-API-Token: $API_TOKEN" 'http://127.0.0.1:8082/tbox/api/folders?parent=<S>'
 {"error":"권한이 없습니다"} [403]
 ```
 
@@ -441,7 +474,7 @@ curl -s -w ' [%{http_code}]\n' -H "X-API-Token: $API_TOKEN" 'http://127.0.0.1:80
 
 ```bash
 curl -s -w '\n[%{http_code}]\n' -H "X-API-Token: $API_TOKEN" -H 'Content-Type: application/json' \
-  -d '{"name":"2026-09 보고서","access_level":"internal"}' https://changkwon.mso.so/api/folders
+  -d '{"name":"2026-09 보고서","access_level":"internal"}' https://changkwon.mso.so/tbox/api/folders
 ```
 
 실측 2026-09-16 (검토 포트 8082, 귀속을 검토 계정 `qa_employee01`(Employee·팀 1)로 잠시 두고, `-A "tbox-review/2026-09-16"`). 시험이 만든 폴더는 곧바로 지웠고 파일은 휴지통으로 보냈다.
@@ -468,9 +501,9 @@ curl -s -w '\n[%{http_code}]\n' -H "X-API-Token: $API_TOKEN" -H 'Content-Type: a
 
 ```bash
 curl -s -w '\n[%{http_code}]\n' -X PATCH -H "X-API-Token: $API_TOKEN" -H 'Content-Type: application/json' \
-  -d '{"name":"2026-09 월간 보고서"}' https://changkwon.mso.so/api/folders/12
+  -d '{"name":"2026-09 월간 보고서"}' https://changkwon.mso.so/tbox/api/folders/12
 curl -s -w '\n[%{http_code}]\n' -X PATCH -H "X-API-Token: $API_TOKEN" -H 'Content-Type: application/json' \
-  -d '{"parent_id":7}' https://changkwon.mso.so/api/folders/12
+  -d '{"parent_id":7}' https://changkwon.mso.so/tbox/api/folders/12
 ```
 
 실측 2026-09-16 (검토 포트 8082, 귀속을 검토 계정 `qa_employee01`(Employee·팀 1)로 잠시 두고, `-A "tbox-review/2026-09-16"`). 시험이 만든 폴더는 곧바로 지웠고 파일은 휴지통으로 보냈다.
@@ -509,7 +542,7 @@ curl -s -w '\n[%{http_code}]\n' -X PATCH -H "X-API-Token: $API_TOKEN" -H 'Conten
 
 ```bash
 curl -s -w '\n[%{http_code}]\n' -X PATCH -H "X-API-Token: $API_TOKEN" -H 'Content-Type: application/json' \
-  -d '{"folder_id":12}' https://changkwon.mso.so/api/files/<id>
+  -d '{"folder_id":12}' https://changkwon.mso.so/tbox/api/files/<id>
 ```
 
 실측 2026-09-16 (검토 포트 8082, 귀속을 검토 계정 `qa_employee01`(Employee·팀 1)로 잠시 두고, `-A "tbox-review/2026-09-16"`). 시험이 만든 폴더는 곧바로 지웠고 파일은 휴지통으로 보냈다.
@@ -554,11 +587,11 @@ F-66(2026-09-22)에서 세 가지가 바뀌었다.
 # 본인 세션(jar)으로 — CSRF 는 3장. 비밀번호와 지금의 2단계 코드를 **요청마다** 함께 보낸다.
 curl -s -b jar -H "X-CSRF-Token: $CSRF" -H 'Content-Type: application/json' \
   -d '{"name":"사무실 PC","purpose":"트레이 프로그램용","scope":"read+upload","password":"<현재 비밀번호>","otp":"123456"}' \
-  https://changkwon.mso.so/api/me/api-tokens
+  https://changkwon.mso.so/tbox/api/me/api-tokens
 
 # 목록 · 회수
-curl -s -b jar https://changkwon.mso.so/api/me/api-tokens
-curl -s -b jar -X DELETE -H "X-CSRF-Token: $CSRF" https://changkwon.mso.so/api/me/api-tokens/<tid>
+curl -s -b jar https://changkwon.mso.so/tbox/api/me/api-tokens
+curl -s -b jar -X DELETE -H "X-CSRF-Token: $CSRF" https://changkwon.mso.so/tbox/api/me/api-tokens/<tid>
 ```
 
 실측은 `tests/f66.sh`(T-78)가 남긴다 — 검토 계정 `qa_employee01`(본인 발급)·`qa_admin01`(관리자 목록·회수), `-A "tbox-review/<날짜>"`. 발급받은 토큰·비밀번호·코드는 규칙(S-09-11 · 7.7)대로 어디에도 기록하지 않는다 — 아래 `token` 자리는 모양만이다. 시험이 발급한 토큰은 전부 회수하고 파일은 휴지통, 폴더는 삭제한다.
@@ -609,15 +642,15 @@ curl -s -b jar -X DELETE -H "X-CSRF-Token: $CSRF" https://changkwon.mso.so/api/m
 | 감사 | `file.delete allow`·`folder.delete allow` 에 `detail.auth=api_token`·`token_kind=personal`·`token_id=<번호>` — 관리자가 13장 목록의 번호와 맞춰 「어느 PC 의 토큰」인지 안다 |
 
 ```bash
-curl -s -w '\n[%{http_code}]\n' -X DELETE -H "X-API-Token: $API_TOKEN" https://changkwon.mso.so/api/files/<id>
-curl -s -w '\n[%{http_code}]\n' -X DELETE -H "X-API-Token: $API_TOKEN" 'https://changkwon.mso.so/api/folders/<번호>?move_trashed=1'
+curl -s -w '\n[%{http_code}]\n' -X DELETE -H "X-API-Token: $API_TOKEN" https://changkwon.mso.so/tbox/api/files/<id>
+curl -s -w '\n[%{http_code}]\n' -X DELETE -H "X-API-Token: $API_TOKEN" 'https://changkwon.mso.so/tbox/api/folders/<번호>?move_trashed=1'
 ```
 
 실측 2026-09-16 (검토 포트 8082, 검토 계정 `qa_admin01`(발급자·재인증)·`qa_employee01`(대상), `-A "tbox-review/2026-09-16"`, `tests/api_tokens.sh`). 발급받은 토큰은 규칙(S-09-11)대로 어디에도 기록하지 않았다 — 아래 `token` 자리는 모양만이다. 시험이 발급한 토큰은 전부 회수했고 파일은 휴지통, 폴더는 삭제했다.
 
 ```bash
 # 개인 토큰(qa_employee01)으로 — whoami 가 그 사람을 가리킨다 (F-56 ⑤)
-curl -s -H "X-API-Token: $API_TOKEN" http://127.0.0.1:8082/api/whoami
+curl -s -H "X-API-Token: $API_TOKEN" http://127.0.0.1:8082/tbox/api/whoami
 {"username":"qa_employee01","role":"Employee","team_id":1,"upload_levels":["public","internal","team"]} [200]
 # 자기가 올린 파일 삭제 → 200, DB deleted_at 설정(휴지통)
 {"ok":true} [200]

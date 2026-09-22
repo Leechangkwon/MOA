@@ -4,7 +4,7 @@
 # 요구: python3 playwright(사용자 로컬 설치, 런타임 의존성 아님 — deploy/DEPENDENCIES.md 「검토 도구」). CLAUDE.md 3장: qa_ 계정 · UA tbox-review/<날짜>.
 set -u
 OUT="${1:?출력 폴더}"; WIDTH="${2:-1440}"
-BASE="http://127.0.0.1:8082"; UA="tbox-review/$(date +%F)"
+BASE="http://127.0.0.1:8082/tbox"; UA="tbox-review/$(date +%F)"
 HERE="$(cd "$(dirname "$0")" && pwd)"
 JAR="$(mktemp)"; trap 'rm -f "$JAR"' EXIT
 who=qa_admin01

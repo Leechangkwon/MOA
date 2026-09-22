@@ -36,7 +36,7 @@
 set -u
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-BASE="http://127.0.0.1:8082"
+BASE="http://127.0.0.1:8082/tbox"
 UA="tbox-review/$(date +%F)"
 DB="tbox_re"
 JAR_DIR="$(mktemp -d)"

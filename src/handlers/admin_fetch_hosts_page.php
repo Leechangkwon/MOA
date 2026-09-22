@@ -46,7 +46,7 @@ require __DIR__ . '/../views/shell_top.php';
     <header class="page-head">
       <div class="page-head__text">
         <h1 class="page-head__title">URL 가져오기 허용 사이트</h1>
-        <p class="page-head__sub">「URL 로 가져오기」가 접속할 수 있는 사이트를 정합니다. <a href="/admin">관리자 페이지로 돌아가기</a></p>
+        <p class="page-head__sub">「URL 로 가져오기」가 접속할 수 있는 사이트를 정합니다. <a href="<?= Http::url('/admin') ?>">관리자 페이지로 돌아가기</a></p>
       </div>
       <div class="page-head__actions">
         <button type="button" class="btn btn--quiet" data-help-open>

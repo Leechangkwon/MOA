@@ -226,7 +226,7 @@ try {
  */
 Http::json([
     'id'            => $shareId,
-    'url'           => Env::get('APP_URL') . '/s/' . $shareToken,
+    'url'           => Env::get('APP_URL') . Http::url('/s/' . $shareToken),
     'expires_at'    => $expires,
     'max_downloads' => $maxDownloads,
 ], 201);

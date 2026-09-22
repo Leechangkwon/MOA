@@ -133,16 +133,20 @@ if ($shellInitial === '') {
 }
 $shellInitial = htmlspecialchars($shellInitial, ENT_QUOTES, 'UTF-8');
 
-/* DESIGN.md 2.12 — 화면 밝기 취향. 쿠키 값은 허용 목록 두 개만 통과하고 그 밖은 속성 자체를 안 그린다.
-   (그러면 CSS 가 OS 설정 prefers-color-scheme 을 따른다.) 값은 어차피 상수 두 개라 이스케이프할 것이
-   없지만 규칙대로 htmlspecialchars 를 거친다 (PRD S-03). */
-$themeCookie = $_COOKIE['tbox_theme'] ?? '';
-$themeAttr   = in_array($themeCookie, ['dark', 'light'], true)
-    ? ' data-theme="' . htmlspecialchars($themeCookie, ENT_QUOTES, 'UTF-8') . '"'
-    : '';
+/* DESIGN.md 2.12 — 화면 밝기 취향. 규칙(허용 목록 두 개만 통과, 그 밖은 속성 자체를 안 그린다)은
+   셸·로그인·런처 세 화면이 같으므로 Http::themeAttr() 한 벌로 모았다 (ARCH-launcher 3장). */
+$themeAttr = Http::themeAttr();
 
 /** 자산 주소에 파일이 마지막으로 바뀐 시각(정수)을 붙여 옛 파일이 남지 않게 한다 (11단계) */
 $shellCssVersion = (int) filemtime(__DIR__ . '/../../public/assets/app.css');
+
+/*
+ * 앱 그리드 단추의 목록 (Qaredi C — ARCH-launcher 6장). 런처와 **같은 한 곳**에서 읽는다.
+ * 부트스트랩의 require 목록에 새 줄을 더하지 않고 쓰는 곳에서 읽어 온다(Changelog.php 와 같은 방식).
+ * 값은 저장소가 추적하는 `config/apps.json` 이고 요청 값이 한 글자도 섞이지 않는다.
+ */
+require_once __DIR__ . '/../Apps.php';
+$shellApps = Apps::all();
 
 /**
  * 25단계 — 화면이 더 싣는 스타일시트. **허용 목록 안의 이름만** 통과한다.
@@ -183,12 +187,12 @@ if (!headers_sent()) {
      파일을 새로 만들지 않고, CSP 의 `img-src 'self' data:` 안에서 끝난다. 고정 문자열이라
      동적 값이 한 글자도 들어가지 않는다. -->
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath fill='%2314213d' d='M12 2 4 5v6c0 5 3.4 9.4 8 11 4.6-1.6 8-6 8-11V5z'/%3E%3C/svg%3E">
-<link rel="stylesheet" href="/assets/app.css?v=<?= $shellCssVersion ?>">
+<link rel="stylesheet" href="<?= Http::url('/assets/app.css') ?>?v=<?= $shellCssVersion ?>">
 <?php foreach ($shellPageCss as $shellCssName): ?>
-<link rel="stylesheet" href="/assets/<?= $shellCssName ?>?v=<?= (int) filemtime(__DIR__ . '/../../public/assets/' . $shellCssName) ?>">
+<link rel="stylesheet" href="<?= Http::url('/assets/') ?><?= $shellCssName ?>?v=<?= (int) filemtime(__DIR__ . '/../../public/assets/' . $shellCssName) ?>">
 <?php endforeach; ?>
 </head>
-<body data-page="<?= $shellPage ?>">
+<body data-page="<?= $shellPage ?>" data-base="<?= TBOX_BASE ?>">
 <a class="skip" href="#main">본문으로 건너뛰기</a>
 <div class="app">
   <!-- 좁은 화면(960px 미만)에서만 보이는 상단 바. 메뉴 단추가 좌측 내비를 접었다 편다.
@@ -209,24 +213,52 @@ if (!headers_sent()) {
         <span class="brand__name">t-box</span>
         <span class="brand__sub">사내 파일 공유</span>
       </span>
+
+      <!-- ─── 앱 그리드 단추 (Qaredi C — DESIGN.md 2.9 「자리 정정 2026-09-22」, ARCH-launcher 6장) ───
+           자리는 **사이드바 브랜드 줄 오른쪽** 하나뿐이다 — `header.appbar` 는 넓은 화면(≥960px)에서
+           CSS 가 숨기므로 거기 두면 데스크톱에서 보이지 않는다. 좁은 화면에서는 사이드바 서랍을
+           열면 같은 자리에 보인다. 클래스 이름 `appbar__apps` 는 시험·문서가 쓰는 이름이라 유지한다.
+           스크립트 0 으로 열린다: `<details>` 의 기본 동작이고 인라인 style·on* 이 없다(CSP).
+           아이콘 단추에는 브라우저 `title` 을 달지 않는다 — CSS 툴팁이 aria-label 을 읽는다(D-3, 2.8).
+           목록은 런처(`/`)와 **같은** `Apps::all()` 이다 — 목록이 두 벌이면 언젠가 한쪽만 고쳐진다.
+           현재 앱에는 aria-current="page", 아직 없는 앱에는 배지 「준비 중」이 붙고 링크가 없다. -->
+      <details class="appbar__apps">
+        <summary class="btn btn--icon btn--plain" aria-label="앱">
+          <span class="icon" data-icon="grid"></span>
+        </summary>
+        <div class="panel">
+          <ul class="list">
+            <li class="list__item"><a href="/">Qaredi 홈</a></li>
+<?php foreach ($shellApps as $shellApp): ?>
+<?php   if (($shellApp['status'] ?? '') === 'soon'): ?>
+            <li class="list__item"><span class="muted"><?= htmlspecialchars((string) $shellApp['name'], ENT_QUOTES, 'UTF-8') ?></span> <span class="badge">준비 중</span></li>
+<?php   elseif ($shellApp['key'] === 'tbox'): ?>
+            <li class="list__item"><a href="<?= htmlspecialchars((string) $shellApp['path'], ENT_QUOTES, 'UTF-8') ?>" aria-current="page"><?= htmlspecialchars((string) $shellApp['name'], ENT_QUOTES, 'UTF-8') ?></a></li>
+<?php   else: ?>
+            <li class="list__item"><a href="<?= htmlspecialchars((string) $shellApp['path'], ENT_QUOTES, 'UTF-8') ?>"><?= htmlspecialchars((string) $shellApp['name'], ENT_QUOTES, 'UTF-8') ?></a></li>
+<?php   endif; ?>
+<?php endforeach; ?>
+          </ul>
+        </div>
+      </details>
     </div>
 
     <p class="nav-title">파일</p>
     <nav class="nav" aria-label="파일">
-      <a id="nav-files" class="<?= $shellNavClass('files') ?>" href="/">
+      <a id="nav-files" class="<?= $shellNavClass('files') ?>" href="<?= Http::url('/') ?>">
         <span class="icon" data-icon="files"></span><span>파일</span>
       </a>
     </nav>
 
     <p class="nav-title">설정</p>
     <nav class="nav" aria-label="설정">
-      <a id="nav-settings" class="<?= $shellNavClass('settings') ?>" href="/settings">
+      <a id="nav-settings" class="<?= $shellNavClass('settings') ?>" href="<?= Http::url('/settings') ?>">
         <span class="icon" data-icon="settings"></span><span>내 계정</span>
       </a>
       <!-- 「내 활동」은 15-1 에서 더한 항목이며 **모든 로그인 사용자에게 보인다** (PRD F-12).
            can_* 플래그로 여닫지 않는다 — 자기 이력은 역할과 무관하게 누구나 볼 수 있고,
            보이는 내용은 서버가 세션 본인으로 고정하기 때문이다 (ARCH 5.11). -->
-      <a id="nav-activity" class="<?= $shellNavClass('activity') ?>" href="/activity">
+      <a id="nav-activity" class="<?= $shellNavClass('activity') ?>" href="<?= Http::url('/activity') ?>">
         <span class="icon" data-icon="log"></span><span>내 활동</span>
       </a>
     </nav>
@@ -243,31 +275,31 @@ if (!headers_sent()) {
     <div id="nav-admin-group" hidden>
       <p class="nav-title">관리</p>
       <nav class="nav" aria-label="관리">
-        <a id="nav-admin" class="<?= $shellNavClass('admin') ?>" href="/admin" hidden>
+        <a id="nav-admin" class="<?= $shellNavClass('admin') ?>" href="<?= Http::url('/admin') ?>" hidden>
           <span class="icon" data-icon="lock"></span><span>관리자 페이지</span>
         </a>
-        <a id="nav-users" class="<?= $shellNavClass('users') ?>" href="/users" hidden>
+        <a id="nav-users" class="<?= $shellNavClass('users') ?>" href="<?= Http::url('/users') ?>" hidden>
           <span class="icon" data-icon="users"></span><span>계정 관리</span>
         </a>
-        <a id="nav-org" class="<?= $shellNavClass('org') ?>" href="/org" hidden>
+        <a id="nav-org" class="<?= $shellNavClass('org') ?>" href="<?= Http::url('/org') ?>" hidden>
           <span class="icon" data-icon="org"></span><span>조직 · 권한</span>
         </a>
-        <a id="nav-admin-permissions" class="nav__item" href="/admin/permissions" hidden>
+        <a id="nav-admin-permissions" class="nav__item" href="<?= Http::url('/admin/permissions') ?>" hidden>
           <span class="icon" data-icon="lock"></span><span>권한 매트릭스</span>
         </a>
         <!-- F-43 — URL 가져오기 허용 사이트 (PRD F-43, ARCH 5.22). 위 항목들과 **같은 값
              하나**(can_admin)로 함께 열린다. 항목을 개발자도구로 되살려도 /admin/fetch-hosts 는
              라우트 정책 role:Admin 과 재인증 관문이 다시 막는다 (PRD S-01, T-56). -->
-        <a id="nav-admin-fetch-hosts" class="nav__item" href="/admin/fetch-hosts" hidden>
+        <a id="nav-admin-fetch-hosts" class="nav__item" href="<?= Http::url('/admin/fetch-hosts') ?>" hidden>
           <span class="icon" data-icon="link"></span><span>가져오기 허용 사이트</span>
         </a>
-        <a id="nav-audit" class="<?= $shellNavClass('audit') ?>" href="/audit" hidden>
+        <a id="nav-audit" class="<?= $shellNavClass('audit') ?>" href="<?= Http::url('/audit') ?>" hidden>
           <span class="icon" data-icon="log"></span><span>감사 로그</span>
         </a>
-        <a id="nav-trash" class="<?= $shellNavClass('trash') ?>" href="/trash" hidden>
+        <a id="nav-trash" class="<?= $shellNavClass('trash') ?>" href="<?= Http::url('/trash') ?>" hidden>
           <span class="icon" data-icon="trash"></span><span>휴지통</span>
         </a>
-        <a id="nav-wiki" class="<?= $shellNavClass('wiki') ?>" href="/wiki" hidden>
+        <a id="nav-wiki" class="<?= $shellNavClass('wiki') ?>" href="<?= Http::url('/wiki') ?>" hidden>
           <span class="icon" data-icon="shield"></span><span>위키</span>
         </a>
       </nav>

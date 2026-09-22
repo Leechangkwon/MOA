@@ -165,9 +165,9 @@
     <h2>시각 확인</h2>
     <div id="utc" class="meta">—</div>
     <div class="row base-row" id="base-row" hidden>
-      <label for="base-url" class="meta">t-box 주소(예: https://tbox.회사)</label>
+      <label for="base-url" class="meta">t-box 주소(예: https://tbox.회사/tbox)</label>
       <input id="base-url" type="text" inputmode="url" autocomplete="off" spellcheck="false"
-        placeholder="https://tbox.회사">
+        placeholder="https://tbox.회사/tbox">
       <button id="base-save" type="button">시각 맞추기</button>
     </div>
     <div class="meta">코드가 계속 틀리면 PC 시계를 맞추세요. 한 번 쓴 코드는 다시 쓸 수 없습니다.</div>
@@ -531,7 +531,10 @@
     var base = serverBase();
     if (base === '') { showTimeStatus(); return Promise.resolve(false); }
     var t0 = Date.now();
-    return fetch(base + '/api/time', { cache: 'no-store' })
+    /* Qaredi C — 서버에서 열었으면 **상대 경로**로 부른다: 이 파일은 `/tbox/assets/` 에 있으므로
+       `../api/time` 이 곧 `/tbox/api/time` 이다. 접두를 글자로 적지 않으므로 주소가 또 바뀌어도
+       이 파일은 그대로다. 파일로 열었을 때만 적어 둔 주소(이제 `…/tbox`)에 이어 붙인다. */
+    return fetch(openedAsFile() ? base + '/api/time' : '../api/time', { cache: 'no-store' })
       .then(function (res) {
         if (!res.ok) { throw new Error('http'); }
         return res.json();

@@ -56,7 +56,7 @@ https://changkwon.mso.so/            Qaredi 런처 (Q:F-1)  — 로그인 전에
 | 단계 | 내용 |
 |---|---|
 | Q-0 기획 | **완료 2026-09-22** — 커뮤니티 ③~⑧(PRD v0.3) · 사이트 Q-A~Q-C 확정 → 이 PRD v1.0 |
-| Q-1 통합 | **T-Box_Re 저장소 안에서**(Q-A) — A 문서 재배치(✅ 2026-09-22) · **C 런처+`/tbox`(🔄 2026-09-22 착수, 지시서 `docs/launcher/c-launcher-basepath-directive.md`)** · B 모듈 폴더(t-box 자리 그대로, 커뮤니티 `src/community/`) · C 런처 + `/tbox` 경로(t-box 28단계, 이 세션 담당) · D DB·서버 정리(사용자 실행) · E 시험 통합 · 발행 **v2.0.0 「Qaredi」**. 계획 `docs/integration-plan.md` |
+| Q-1 통합 | **T-Box_Re 저장소 안에서**(Q-A) — A 문서 재배치(✅ 2026-09-22) · **C 런처+`/tbox`(✅ 2026-09-22, v2.0.0 — 관문 ③ Q:T-10 대기)** · B 모듈 폴더(t-box 자리 그대로, 커뮤니티 `src/community/`) · C 런처 + `/tbox` 경로(t-box 28단계, 이 세션 담당) · D DB·서버 정리(사용자 실행) · E 시험 통합 · 발행 **v2.0.0 「Qaredi」**. 계획 `docs/integration-plan.md` |
 | Q-2~ | 커뮤니티 3~7단계(`docs/community/PRD.md` 11장) 를 Qaredi 안에서 |
 
 ## 8. 열린 질문 (사이트 공통)
@@ -75,10 +75,10 @@ https://changkwon.mso.so/            Qaredi 런처 (Q:F-1)  — 로그인 전에
 
 | ID | 무엇 | 기대 |
 |---|---|---|
-| Q:T-1 | 런처 `GET /` | 200 HTML · 타일 t-box·커뮤니티(「준비 중」) · `<script` 0 · `Set-Cookie` 0 · 미로그인이면 사용자 칩 없음, 로그인(qa)이면 표시 이름만 · `POST /` 405 |
+| Q:T-1 | 런처 `GET /` | 200 HTML · 타일 t-box·커뮤니티(「준비 중」) · `<script` 0 · `Set-Cookie` 0 · 미로그인이면 사용자 칩 없음, 로그인(qa)이면 배지에 표시 이름·역할만 · `POST /` 405 |
 | Q:T-2 | t-box 회귀 — 주소만 바뀜 | `BASE=…/tbox` 로 `stage26.sh` 108/0 · `help_button.sh` 16/0 · `api_whoami.sh` 15/0 · `f68.sh` 109/0 · `api_read.sh`·`api_folders.sh`·`f66.sh` 통과 수 전과 동일 |
-| Q:T-3 | 옛 주소 308 | `GET /api/health` `GET /login` `POST /api/login` `GET /s/{token}` `GET /settings` `GET /assets/app.css` → 308 + `Location: /tbox<경로+쿼리 원문>` · POST 는 처리 0(감사 행 0·쿠키 0) · `/foo` `/api/nope` `/tbox/nope` `/community/` → 404(리다이렉트 아님) |
-| Q:T-4 | 링크 접두 | 렌더된 HTML(로그인·홈·설정·관리·위키)의 `href|src|action="/…"` 가 전부 `/tbox/` 로 시작(예외: 그리드 팝업·「Qaredi 홈」의 `/`, 커뮤니티 `/community/`) · `app.js` 에 `'/api/` 리터럴 0 |
+| Q:T-3 | 옛 주소 308 | `GET /api/health` `GET /login` `POST /api/login` `GET /s/{token}` `GET /settings` `GET /assets/app.css` → 308 + `Location: /tbox<경로+쿼리 원문>` · POST 는 처리 0(감사 행 0·쿠키 0) · `/foo` `/api/nope` `/tbox/nope` `/community/` → 404 JSON(기존 판정, 리다이렉트 아님) |
+| Q:T-4 | 링크 접두 | 렌더된 HTML(로그인·홈·설정·관리·위키)의 `href|src|action="/…"` 가 전부 `/tbox/` 로 시작(예외: 그리드 팝업·「Qaredi 홈」의 `/`, 커뮤니티 `/community/`) · `app.js` 의 절대 경로 리터럴 중 `APP_BASE +` 로 감싸이지 않은 것 0 |
 | Q:T-5 | 리다이렉트 경로 | 미로그인 `GET /tbox/settings` → 302 `/tbox/login` · 재인증 전 `GET /tbox/admin` → 302 `/tbox/reauth?to=admin` · 재인증 뒤 복귀 `/tbox/admin` |
 | Q:T-6 | 공유 링크 | `POST …/share` 응답 `url` 이 `APP_URL/tbox/s/` 로 시작 · 그 주소 GET 동작(stage26 포함) |
 | Q:T-7 | 쿠키·헤더 불변 | `Set-Cookie` `path=/; Secure; HttpOnly; SameSite=Lax` 전과 동일 · CSP 헤더 문자열 전후 동일(전역·생성기 둘) |

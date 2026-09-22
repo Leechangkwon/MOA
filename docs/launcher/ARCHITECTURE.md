@@ -12,7 +12,7 @@
 | `/tbox/<옛 경로>` | t-box 의 모든 화면·API·공유 링크·정적 자산 | t-box 라우트 표 그대로 |
 | `/<옛 t-box 경로>` (예 `/api/health` `/login` `/s/{token}` `/assets/app.css`) | **308 Permanent Redirect** → `/tbox/<옛 경로>?<쿼리 원문>` | — |
 | `/community/…` | 커뮤니티 모듈(다음 단계, 지금은 404) | — |
-| 그 밖 | 404(기존 판정 그대로 — `/api/` 접두면 JSON, 아니면 HTML) | — |
+| 그 밖 | 404 — 기존 `Http::error()` 그대로 **JSON** `{"error":"찾을 수 없습니다"}`(화면 경로도 같다. HTML 404 화면은 별도 결정) | — |
 
 - 308 은 **메서드와 본문을 보존**한다(301/302 는 POST 를 GET 으로 바꿀 수 있다). PC 업로드 프로그램·AI 비서가 `POST /api/upload` 를 옛 주소로 보내도 리다이렉트를 따르는 클라이언트면 그대로 된다. **따르지 않는 클라이언트는 주소를 바꿔야 한다** — `docs/tbox/API.md` 0장에 적고, 관문 ③에서 사용자가 자기 프로그램으로 확인한다(Q:T-10).
 - 리다이렉트 대상은 **고정 접두 + 요청 경로·쿼리 원문**만이다. 요청 값으로 호스트·스킴을 만들지 않으므로 열린 리다이렉트가 아니다. `REQUEST_URI` 는 `/` 로 시작해야 하고 길이 상한(2048)을 넘으면 404.
@@ -34,7 +34,7 @@ else
 
 - `TBOX_BASE = '/tbox'` 는 **코드 상수**(`src/bootstrap.php`)다. `.env` 값이 아니다 — 로컬(8082)과 공개(80)가 같은 주소 구조여야 시험이 곧 운영 검증이 된다.
 - 라우터 뒤의 `'/api/'` 접두 판단(401 JSON vs 302 로그인)은 **모듈 경로** 기준이다. 감사 로그가 요청 경로를 적는 자리가 있으면 **전체 경로**(`/tbox/...`)를 그대로 적는다(사실을 적는다).
-- 런처는 public 이지만 `Auth::currentUser()` 로 **세션을 읽기만** 한다(있으면 사용자 칩). 세션을 만들거나 연장하지 않고 쿠키를 보내지 않는다.
+- 런처는 public 이지만 `Auth::currentUser()` 로 **세션을 읽기만** 한다(있으면 사용자 배지). 세션을 만들지 않고 쿠키를 보내지 않는다. `Auth::currentUser()` 는 조회 뒤 `last_seen_at` 을 갱신하므로(SQL_TOUCH) 런처를 여는 것도 다른 화면처럼 유휴 시간을 되돌린다 — `Auth` 무변경 원칙을 우선한 결과이며, 로그인·세션 발행은 0 이다(구현 보고 2026-09-22 ⑥-3).
 
 ## 3. 주소를 만드는 자리 — 한 함수
 
@@ -52,11 +52,11 @@ else
 | `docs/tbox/API.md` 0장 | 기본 주소 `https://changkwon.mso.so` | `https://changkwon.mso.so/tbox` · 로컬 `http://127.0.0.1:8082/tbox` + 「옛 주소는 308」 절 |
 | 시험·도구 (`tests/*.sh` 18개 · `scripts/ui_snapshot.sh` · `scripts/check_baseline.sh` · `deploy/switch-site.sh` 상태 줄) | `BASE="http://127.0.0.1:8082"` | `BASE="http://127.0.0.1:8082/tbox"`(경로 조립 `$BASE/api/...` 은 그대로) |
 
-「전부 바꿨는가」는 grep 으로 증명한다(Q:T-4): 렌더된 HTML 의 `href|src|action="/…"` 값이 `/tbox/` 로 시작하지 않는 것은 그리드 팝업의 `/`·`/community/` 와 런처 링크뿐이어야 한다. `app.js` 에 `'/api/` `"/api/` 리터럴 0건.
+「전부 바꿨는가」는 grep 으로 증명한다(Q:T-4): 렌더된 HTML 의 `href|src|action="/…"` 값이 `/tbox/` 로 시작하지 않는 것은 그리드 팝업의 `/`·`/community/` 와 런처 링크뿐이어야 한다. `app.js` 의 절대 경로 리터럴은 전부 `APP_BASE + '…'` 뒤에만 있다(리터럴 자체는 남는다 — 「감싸이지 않은 절대 경로 0건」이 기준).
 
 ## 4. nginx (`deploy/sites/tbox-v2.conf` · `tbox-v2-local.conf`) — 정적 자산과 속도 제한만
 
-- `location /tbox/assets/ { alias /var/www/tbox-v2/public/assets/; try_files $uri =404; (기존 /assets/ 의 캐시·헤더 그대로) }`
+- `location /tbox/assets/ { alias /var/www/tbox-v2/public/assets/; (기존 /assets/ 의 캐시·헤더 그대로) }` — `alias` + `try_files` 는 nginx 가 경로를 어긋나게 잇는 알려진 결함이 있어 `try_files` 를 두지 않는다(없어도 파일이 없으면 그 블록이 404).
 - 생성기 두 location(`= /assets/totp-generator.html`·`.webmanifest`, 자체 CSP)은 `= /tbox/assets/…` 로 옮기고 `alias` 로 파일을 가리킨다. **CSP 문자열 무변경.**
 - 속도 제한 exact location(`= /api/login` 과 `/` 꼬리 짝, `/api/me/password`·`mfa/*`·`reauth`)은 `= /tbox/api/…` 로. `limit_req` 존·값 무변경.
 - 옛 `/assets/` 는 `location /assets/ { return 308 /tbox$request_uri; }` (PHP 에 자산 라우트가 없으므로 nginx 가 답한다). 그 밖의 옛 경로는 `location /` → `index.php` 가 308.
@@ -67,14 +67,14 @@ else
 
 - 핸들러 `src/site/launcher_page.php`, 화면 `src/views/launcher.php`. 셸(사이드바)을 쓰지 않는 **독립 화면** — 로그인 화면(DESIGN 2.10)과 같은 층. `<link>` 는 `Http::url('/assets/app.css')`(자산은 당분간 t-box 모듈 것을 공유). **`<script>` 0.**
 - 다크 모드: `tbox_theme` 쿠키 → `<html data-theme>` 은 셸·로그인과 같은 규칙(DESIGN 2.12). 세 곳에 같은 코드가 생기면 `Http::themeAttr(): string` 하나로 모은다. 해/달 토글 단추는 스크립트가 필요하므로 런처에는 **없다**(OS·쿠키만 따른다).
-- 내용: 머리(「Qaredi」 이름 + 한 줄), 타일 격자 `.card-grid` > `.card.card--link`(DESIGN 2.3) — 아이콘(36px)·이름·설명. `status: "soon"` 인 앱은 `<div>` 카드 + 배지 「준비 중」(2.2), 링크 없음. 로그인돼 있으면 머리 오른쪽에 사용자 칩(표시 이름·역할, 기존 `.chip`/배지 구성 요소). 로그아웃 단추는 **v1 에 없다** — CSRF 헤더가 필요해 스크립트 없이 안 되고, 로그아웃은 각 앱 안에 있다(사이트 PRD 4장 정정).
+- 내용: 머리(「Qaredi」 이름 + 한 줄), 타일 격자 `.card-grid` > `.card.card--link`(DESIGN 2.3) — 아이콘(36px)·이름·설명. `status: "soon"` 인 앱은 `<div>` 카드 + 배지 「준비 중」(2.2), 링크 없음. 로그인돼 있으면 머리 오른쪽 `.page-head__actions` 에 배지 `.badge` 하나(표시 이름 · 역할). 로그아웃 단추는 **v1 에 없다** — CSRF 헤더가 필요해 스크립트 없이 안 되고, 로그아웃은 각 앱 안에 있다(사이트 PRD 4장 정정).
 - 아이콘은 서버가 **인라인 SVG** 로 그린다(스크립트 0 이므로 `[data-icon]` 채움 JS 를 못 쓴다). 셸의 `<template>` 아이콘과 같은 path 데이터를 쓴다.
 - 앱 목록은 **`config/apps.json`**(저장소 추적) — `[{ "key", "name", "desc", "path", "icon", "order", "status"? }]`. 읽기는 `src/Apps.php` 한 곳(`Apps::all(): array`): JSON 파싱·모양 검증(키 누락·모르는 키·`path` 가 `/` 로 시작하지 않음·`status` 가 허용값 밖 → `RuntimeException` → 500, 조용히 건너뛰지 않는다 — 위키 `Wiki::validate` 와 같은 태도), `order` 정렬, 정적 캐시. 요청 값은 어디에도 섞이지 않는다.
 - 응답 헤더는 nginx 전역 보안 헤더(CSP `script-src 'self'` 등) 그대로. `Cache-Control: no-store`(사용자 칩 때문).
 
 ## 6. 셸 그리드 단추 (모든 t-box 화면)
 
-- `header.appbar` 오른쪽에 `<details class="appbar__apps">` — `<summary class="btn btn--icon btn--plain" title="앱">` + 아이콘 `data-icon="grid"`(새 `<template>` 아이콘 하나) → 펼침 패널 `.appbar__apps-panel`: 「Qaredi 홈」(`/`) + `Apps::all()` 의 앱 목록(현재 앱은 `aria-current="page"`, `soon` 은 배지 「준비 중」). 스크립트 0 으로 열리고, 바깥 클릭 닫힘은 두지 않는다(D-10 모달과 다른 것 — `<details>` 의 기본 동작).
+- 사이드바 `.brand` 줄 오른쪽에 `<details class="appbar__apps">`(`header.appbar` 는 ≥960px 에서 숨겨지므로 — DESIGN 2.9 정정 2026-09-22) — `<summary class="btn btn--icon btn--plain">` + CSS 툴팁 「앱」(DESIGN 2.8, 브라우저 `title` 금지 D-3) + 아이콘 `data-icon="grid"`(새 `<template>` 아이콘 하나) → 펼침 패널 `.appbar__apps-panel`: 「Qaredi 홈」(`/`) + `Apps::all()` 의 앱 목록(현재 앱은 `aria-current="page"`, `soon` 은 배지 「준비 중」). 스크립트 0 으로 열리고, 바깥 클릭 닫힘은 두지 않는다(D-10 모달과 다른 것 — `<details>` 의 기본 동작).
 - 로그인 화면 머리에는 「Qaredi 홈」 텍스트 링크(`/`) 하나만.
 - DESIGN 2.9(셸)·2.8(툴팁)·2.12(다크 모드) 를 따르고, 새 색값·새 간격을 만들지 않는다. 6장 체크리스트 그대로.
 

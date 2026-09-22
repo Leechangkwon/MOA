@@ -19,7 +19,7 @@
 #   출력 폴더 기본값은 ~/.claude/ui-shots/stage26 (루트 디스크를 쓰지 않는다).
 set -u
 
-BASE="http://127.0.0.1:8082"
+BASE="http://127.0.0.1:8082/tbox"
 UA="tbox-review/$(date +%F)"
 DB="tbox_re"
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -679,7 +679,7 @@ with sync_playwright() as p:
     pg.wait_for_timeout(900)
     out["url"] = pg.url
     out["next_from_me"] = pg.evaluate(
-        "() => fetch('/api/me',{credentials:'same-origin'}).then(r=>r.json()).then(j=>j.next)")
+        "() => fetch('/tbox/api/me',{credentials:'same-origin'}).then(r=>r.json()).then(j=>j.next)")
     el = pg.query_selector("#nav-admin")
     out["nav_admin_hidden"] = None if el is None else el.is_hidden()
     grp = pg.query_selector("#nav-admin-group")

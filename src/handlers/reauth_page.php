@@ -72,7 +72,7 @@ require __DIR__ . '/../views/shell_top.php';
     <section class="panel panel--narrow">
 
 
-      <form id="reauth-form" class="form" method="post" action="/api/me/reauth"
+      <form id="reauth-form" class="form" method="post" action="<?= Http::url('/api/me/reauth') ?>"
             autocomplete="off" data-to="<?= $reauthToAttr ?>">
         <label class="field">
           <span class="field__label">현재 비밀번호</span>

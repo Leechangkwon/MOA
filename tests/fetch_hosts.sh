@@ -30,7 +30,7 @@
 #   출력 폴더 기본값은 ~/.claude/ui-shots/f43 (루트 디스크를 쓰지 않는다).
 set -u
 
-BASE="http://127.0.0.1:8082"
+BASE="http://127.0.0.1:8082/tbox"
 UA="tbox-review/$(date +%F)"
 DB="tbox_re"
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"

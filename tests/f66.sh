@@ -60,7 +60,7 @@
 set -u
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-BASE="http://127.0.0.1:8082"
+BASE="http://127.0.0.1:8082/tbox"
 UA="tbox-review/$(date +%F)"
 DB="tbox_re"
 TMPDB="tbox_f66_fresh"
@@ -986,7 +986,7 @@ with sync_playwright() as p:
     page.wait_for_timeout(1200)
 
     me = page.evaluate("""async () => {
-        const r = await fetch('/api/me', {credentials: 'same-origin', cache: 'no-store'});
+        const r = await fetch('/tbox/api/me', {credentials: 'same-origin', cache: 'no-store'});
         return r.json();
     }""")
     out['me_scopes'] = me.get('token_scopes', [])

@@ -807,7 +807,7 @@ final class Wiki
 
         // ─ 머리말
         $h[] = '<header class="wiki-head">';
-        $h[] = '<p class="wiki-crumb"><a href="' . self::BASE_PATH . '">← 위키 차례</a></p>';
+        $h[] = '<p class="wiki-crumb"><a href="' . Http::url(self::BASE_PATH) . '">← 위키 차례</a></p>';
         $h[] = '<h1 class="wiki-title">' . self::esc((string) ($page['title'] ?? '')) . '</h1>';
         if (isset($page['summary']) && is_string($page['summary']) && $page['summary'] !== '') {
             $h[] = '<p class="wiki-summary">' . self::inline($page['summary']) . '</p>';
@@ -1000,7 +1000,7 @@ final class Wiki
                     : $slug;
                 // 차례에 있는 글만 링크가 된다. 없으면 **글자만** 남는다 (ARCH 5.10).
                 if (preg_match(self::SLUG_RE, $slug) === 1 && self::hasEntry($index, $slug)) {
-                    return '<p class="wiki-link"><a href="' . self::BASE_PATH . '/' . self::esc($slug) . '">'
+                    return '<p class="wiki-link"><a href="' . Http::url(self::BASE_PATH) . '/' . self::esc($slug) . '">'
                         . self::esc($label) . '</a></p>';
                 }
                 return '<p class="wiki-link wiki-link--plain">' . self::esc($label) . '</p>';
@@ -1044,12 +1044,12 @@ final class Wiki
         $h   = ['<nav class="wiki-nav" aria-label="이전·다음 글">'];
         $h[] = $prev === null
             ? '<span class="wiki-nav__gap"></span>'
-            : '<a class="wiki-nav__item" href="' . self::BASE_PATH . '/' . self::esc($prev['slug']) . '">'
+            : '<a class="wiki-nav__item" href="' . Http::url(self::BASE_PATH) . '/' . self::esc($prev['slug']) . '">'
                 . '<span class="wiki-nav__dir">← 이전</span>'
                 . '<span class="wiki-nav__title">' . self::esc((string) $prev['title']) . '</span></a>';
         $h[] = $next === null
             ? '<span class="wiki-nav__gap"></span>'
-            : '<a class="wiki-nav__item wiki-nav__item--next" href="' . self::BASE_PATH . '/' . self::esc($next['slug']) . '">'
+            : '<a class="wiki-nav__item wiki-nav__item--next" href="' . Http::url(self::BASE_PATH) . '/' . self::esc($next['slug']) . '">'
                 . '<span class="wiki-nav__dir">다음 →</span>'
                 . '<span class="wiki-nav__title">' . self::esc((string) $next['title']) . '</span></a>';
         $h[] = '</nav>';
@@ -1067,7 +1067,7 @@ final class Wiki
             return '<span class="wiki-guide__title wiki-guide__title--soon">' . $title
                 . ' <span class="badge badge--off">준비 중</span></span>';
         }
-        return '<a class="wiki-guide__title" href="' . self::BASE_PATH . '/' . self::esc((string) $entry['slug']) . '">'
+        return '<a class="wiki-guide__title" href="' . Http::url(self::BASE_PATH) . '/' . self::esc((string) $entry['slug']) . '">'
             . $title . '</a>';
     }
 
@@ -1105,7 +1105,7 @@ final class Wiki
         if ($soon) {
             return '<span class="card card--link card--soon">' . $in . '</span>';
         }
-        return '<a class="card card--link" href="' . self::BASE_PATH . '/' . self::esc((string) $entry['slug']) . '">'
+        return '<a class="card card--link" href="' . Http::url(self::BASE_PATH) . '/' . self::esc((string) $entry['slug']) . '">'
             . $in . '</a>';
     }
 
