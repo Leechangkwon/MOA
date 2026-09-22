@@ -180,6 +180,16 @@ Http::json([
         'position'    => (int) $row['position'],
         'created_at'  => (string) $row['created_at'],
         'updated_at'  => (string) $row['updated_at'],
+        /* 4-D 고정 속성 둘 (C:F-37). 둘 다 **없음(null)이 기본**이다.
+           담당자는 계정 id 가 아니라 **계정명·역할**로 나간다 — 화면이 id 를 이름으로
+           바꾸는 일이 없고, 순차 정수가 응답에 실리지도 않는다. */
+        'status'      => $row['status'] === null ? null : (string) $row['status'],
+        'assignee'    => $row['assignee_name'] === null ? null : [
+            'username' => (string) $row['assignee_name'],
+            'role'     => (string) $row['assignee_role'],
+            // 담당자였던 사람이 그 뒤 계정이 내려갔을 수 있다 — 그 사실을 숨기지 않는다.
+            'is_active' => $row['assignee_active'] === true,
+        ],
     ],
     // 공간 요약 (4-B) — 화면의 공간 고르개·배지가 「여기가 어느 공간인가」를 아는 값이다.
     'space' => [
@@ -193,6 +203,9 @@ Http::json([
     'can_edit'   => $mayChange,
     // 4-B — 「공개 범위」 단추를 보일지. 값은 위 판정의 결과이고 화면은 그대로 따른다.
     'can_set_visibility' => $maySetVisibility,
+    /* 4-D — 상태 배지·담당자 칩을 **누를 수 있게** 할지. 고칠 수 있는 사람과 같은 자격이다
+       (`decidePageChange`) — 창구 `PATCH …/properties` 가 같은 함수로 다시 막는다 (C:T-51). */
+    'can_set_properties' => $mayChange,
     'granted_by' => $readCode,
     // 4-A — 뿌리부터 자기 자신까지의 경로. 길이가 곧 깊이다(뿌리는 1).
     'breadcrumb' => $breadcrumb,

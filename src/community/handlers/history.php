@@ -8,12 +8,13 @@ declare(strict_types=1);
  * 요구사항: `C:F-19`·`C:F-20`(체크 이력)·`C:S-14`, `../../../../community/ARCHITECTURE.md` 16장,
  *           수락 기준 C:T-41 · C:T-42 · C:T-44.
  *
- * 「누가 언제 무엇을 바꿨나」를 **시간순 한 줄씩** 돌려준다. 줄의 종류는 둘이다.
+ * 「누가 언제 무엇을 바꿨나」를 **시간순 한 줄씩** 돌려준다. 줄의 종류는 셋이다.
  *   `version`  판이 하나 생겼다 — 판 번호 · 제목 · 사람 · 시각 · 블록 수 (되돌리기면 `restored_from`)
  *   `check`    체크 상자를 켜거나 껐다 — 블록 id · 켜짐/꺼짐 · 사람 · 시각
+ *   `property` 상태·담당자를 바꿨다 (4-D) — 어느 칸 · 이전값 → 새값 · 사람 · 시각
  *
- * ★ **감사 로그를 읽지 않는다** (지시서 「핸들러」). 이 창구가 보는 것은 우리 표 둘
- *   (`page_versions`·`checklist_events`)과 `pages` 의 지금 판뿐이다. 감사 로그는 관리자의
+ * ★ **감사 로그를 읽지 않는다** (지시서 「핸들러」). 이 창구가 보는 것은 우리 표 셋
+ *   (`page_versions`·`checklist_events`·`page_property_events`)과 `pages` 의 지금 판뿐이다. 감사 로그는 관리자의
  *   기록이지 페이지 주인의 화면이 아니고, 그것을 여기서 열면 열람 통로가 하나 더 생긴다.
  *
  * ★ **본문 글자가 한 자도 나가지 않는다** (C:T-44). 질의가 `doc` 을 고르지 않고, 체크 줄에는
@@ -30,8 +31,8 @@ $row  = $gate['row'];
 /** 한 번에 보이는 줄 수. 넘치면 오래된 것부터 잘린다(최근이 위다). */
 $limit = 200;
 
-/* 두 표를 **한 질의**로 모은다 — 시간순 정렬을 DB 가 한다. 칸 수를 맞추려고 쓰지 않는 칸에는
-   타입을 적은 NULL 을 둔다(`UNION ALL` 은 두 갈래의 타입이 같아야 한다). */
+/* 세 표를 **한 질의**로 모은다 — 시간순 정렬을 DB 가 한다. 칸 수를 맞추려고 쓰지 않는 칸에는
+   타입을 적은 NULL 을 둔다(`UNION ALL` 은 갈래들의 타입이 같아야 한다). */
 $sql = <<<'SQL'
     SELECT 'version'                        AS kind,
            v.version                        AS version,
@@ -42,15 +43,25 @@ $sql = <<<'SQL'
            NULL::boolean                    AS checked,
            v.summary                        AS summary,
            CASE WHEN jsonb_typeof(v.doc -> 'blocks') = 'array'
-                THEN jsonb_array_length(v.doc -> 'blocks') ELSE 0 END AS block_count
+                THEN jsonb_array_length(v.doc -> 'blocks') ELSE 0 END AS block_count,
+           NULL::text                       AS prop,
+           NULL::text                       AS from_value,
+           NULL::text                       AS to_value
       FROM community.page_versions v
       JOIN public.users u ON u.id = v.edited_by
      WHERE v.page_id = CAST(:pid AS bigint)
     UNION ALL
-    SELECT 'check', NULL::int, NULL::text, e.at, cu.username, e.block_id, e.checked, NULL::text, NULL::int
+    SELECT 'check', NULL::int, NULL::text, e.at, cu.username, e.block_id, e.checked, NULL::text, NULL::int,
+           NULL::text, NULL::text, NULL::text
       FROM community.checklist_events e
       JOIN public.users cu ON cu.id = e.by_user_id
      WHERE e.page_id = CAST(:pid2 AS bigint)
+    UNION ALL
+    SELECT 'property', NULL::int, NULL::text, pe.at, pu.username, NULL::uuid, NULL::boolean, NULL::text, NULL::int,
+           pe.prop, pe.from_value, pe.to_value
+      FROM community.page_property_events pe
+      JOIN public.users pu ON pu.id = pe.by_user_id
+     WHERE pe.page_id = CAST(:pid3 AS bigint)
      ORDER BY at DESC
      LIMIT CAST(:lim AS int)
     SQL;
@@ -58,6 +69,7 @@ $sql = <<<'SQL'
 $rows = Db::instance()->run($sql, [
     ':pid'  => (int) $row['id'],
     ':pid2' => (int) $row['id'],
+    ':pid3' => (int) $row['id'],
     ':lim'  => $limit,
 ])->fetchAll();
 
@@ -101,6 +113,20 @@ foreach ($rows as $r) {
         ];
         continue;
     }
+    if ((string) $r['kind'] === 'property') {
+        /* 4-D — 상태·담당자가 바뀐 줄. 값은 **기록에 적힌 글자 그대로**다(상태는 코드값,
+           담당자는 계정명). 화면이 한글 라벨로 바꾼다 — 서버가 글자를 지어내지 않는다.
+           본문은 여기에도 없다 (C:T-44 와 같은 규칙). */
+        $events[] = [
+            'kind'  => 'property',
+            'prop'  => (string) $r['prop'],
+            'from'  => $r['from_value'] === null ? null : (string) $r['from_value'],
+            'to'    => $r['to_value'] === null ? null : (string) $r['to_value'],
+            'by'    => (string) $r['by_name'],
+            'at'    => (string) $r['at'],
+        ];
+        continue;
+    }
     $events[] = [
         'kind'     => 'check',
         'block_id' => (string) $r['block_id'],
@@ -111,14 +137,24 @@ foreach ($rows as $r) {
 }
 
 /* 지금 판 한 줄을 끼워 넣었으므로 시간순을 한 번 더 맞춘다. PHP 8 의 정렬은 **안정**이라
-   같은 시각의 줄들은 위 순서(판 → 체크)를 그대로 지킨다. */
-usort($events, static function (array $a, array $b): int {
-    $ta = strtotime((string) $a['at']);
-    $tb = strtotime((string) $b['at']);
-    if ($ta === false || $tb === false || $ta === $tb) {
-        return 0;
+   같은 시각의 줄들은 위 순서(판 → 체크 → 속성)를 그대로 지킨다.
+
+   ★ **초 아래까지 본다** (4-D 에서 고침). `strtotime()` 은 초 단위라, 같은 1초 안에 일어난
+     일들(페이지를 만들자마자 상태를 고르는 것 — 실측 2026-09-23)이 전부 「같은 시각」이 되어
+     DB 가 맞춰 놓은 순서를 PHP 의 안정 정렬이 도로 흐트러뜨렸다. `page_versions`·
+     `checklist_events`·`page_property_events` 는 모두 `timestamptz` 를 마이크로초까지
+     들고 있으므로, 그 값을 그대로 견준다. 읽을 수 없는 값은 **맨 아래**로 보낸다
+     (지어낸 시각으로 끼워 넣지 않는다). */
+$stamp = static function (string $at): float {
+    try {
+        return (float) (new DateTimeImmutable($at))->format('U.u');
+    } catch (Throwable $e) {
+        return -INF;
     }
-    return $tb <=> $ta;
+};
+
+usort($events, static function (array $a, array $b) use ($stamp): int {
+    return $stamp((string) $b['at']) <=> $stamp((string) $a['at']);
 });
 
 if (count($events) > $limit) {

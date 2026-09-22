@@ -83,6 +83,22 @@ require __DIR__ . '/../../views/shell_top.php';
       </div>
     </header>
 
+    <!-- 속성 줄 (4-D, C:F-37) — 제목 바로 아래다.
+         배지 자체는 **누를 수 없다**(DESIGN 2.2 「눌러도 아무 일도 없다」) — 누르는 것은
+         배지를 담은 작은 단추이고, 고칠 수 없는 사람에게는 그 단추가 `disabled` 다.
+         값도 잠금도 전부 창구가 준 것(`status`·`assignee`·`can_set_properties`)이고,
+         화면에는 소유·역할을 따지는 코드가 없다 (PRD S-01, DESIGN 원칙 1). -->
+    <div id="page-props" class="page-props" hidden>
+      <span class="muted">상태</span>
+      <button id="page-status" class="btn btn--small btn--quiet" type="button" aria-haspopup="dialog">
+        <span id="page-status-badge" class="badge">없음</span>
+      </button>
+      <span class="muted">담당자</span>
+      <button id="page-assignee" class="btn btn--small btn--quiet" type="button" aria-haspopup="dialog">
+        <span id="page-assignee-name">없음</span>
+      </button>
+    </div>
+
     <p id="msg" class="msg" role="alert" aria-live="polite"></p>
 
     <!-- 제목 고치기 (편집 모드에서만 보인다) -->
@@ -320,6 +336,86 @@ require __DIR__ . '/../../views/shell_top.php';
       </div>
     </dialog>
 
+
+    <!-- 「상태」 창 (4-D, DESIGN 2.7 `.modal--form` 520px · 2.2 배지).
+         라디오 여섯 — 「없음」 + 다섯 값이다. 「없음」이 기본이고 맨 위에 있다:
+         모든 페이지가 업무는 아니다. 글자와 배지 색은 DESIGN 2.2 의 뜻 그대로이고
+         새 색값을 만들지 않았다(회색·파랑·보라·초록·노랑 토큰을 그대로 쓴다). -->
+    <dialog id="status-dialog" class="modal modal--form" aria-labelledby="status-title">
+      <div class="modal__head">
+        <h2 id="status-title" class="modal__title">상태</h2>
+        <button class="btn btn--icon btn--plain" type="button" data-status-close aria-label="닫기">
+          <span class="icon" data-icon="x"></span>
+        </button>
+      </div>
+      <div class="modal__body">
+        <p class="muted">이 페이지가 업무라면 지금 어디까지 왔는지 고릅니다. 업무가 아니면 「없음」으로 둡니다.</p>
+        <p id="status-msg" class="msg" role="alert" aria-live="polite"></p>
+
+        <label class="field field--full">
+          <span class="field__label">
+            <input type="radio" name="page-status" value="" checked> 없음 — 업무가 아닙니다
+          </span>
+        </label>
+        <label class="field field--full">
+          <span class="field__label">
+            <input type="radio" name="page-status" value="todo"> 할 일 — 아직 시작하지 않았습니다
+          </span>
+        </label>
+        <label class="field field--full">
+          <span class="field__label">
+            <input type="radio" name="page-status" value="doing"> 진행 — 하고 있습니다
+          </span>
+        </label>
+        <label class="field field--full">
+          <span class="field__label">
+            <input type="radio" name="page-status" value="review"> 검토 — 다 하고 확인을 기다립니다
+          </span>
+        </label>
+        <label class="field field--full">
+          <span class="field__label">
+            <input type="radio" name="page-status" value="done"> 완료 — 끝났습니다
+          </span>
+        </label>
+        <label class="field field--full">
+          <span class="field__label">
+            <input type="radio" name="page-status" value="hold"> 보류 — 멈춰 두었습니다
+          </span>
+        </label>
+      </div>
+      <div class="form-actions">
+        <button class="btn btn--quiet" type="button" data-status-close>그만두기</button>
+        <button id="status-save" class="btn" type="button">바꾸기</button>
+      </div>
+    </dialog>
+
+    <!-- 「담당자」 창 (4-D, DESIGN 2.7 `.modal--form` · 2.13 줄 목록).
+         후보는 창구 `GET /community/api/assignees?page=…&q=…` 가 주는 것만이다 —
+         화면에는 「누가 이 페이지를 볼 수 있나」를 따지는 코드가 한 줄도 없다.
+         「나에게」는 창구가 준 `can_assign_me` 가 참일 때만 눌린다. -->
+    <dialog id="assignee-dialog" class="modal modal--form" aria-labelledby="assignee-title">
+      <div class="modal__head">
+        <h2 id="assignee-title" class="modal__title">담당자</h2>
+        <button class="btn btn--icon btn--plain" type="button" data-assignee-close aria-label="닫기">
+          <span class="icon" data-icon="x"></span>
+        </button>
+      </div>
+      <div class="modal__body">
+        <p class="muted">이 페이지를 볼 수 있는 사람만 담당자가 될 수 있습니다.</p>
+        <p id="assignee-msg" class="msg" role="alert" aria-live="polite"></p>
+        <div class="toolbar">
+          <input id="assignee-search" type="search" placeholder="이름으로 찾기" maxlength="64"
+                 autocomplete="off" spellcheck="false" aria-label="담당자 찾기">
+          <button id="assignee-me" class="btn btn--quiet btn--small" type="button">나에게</button>
+          <button id="assignee-none" class="btn btn--quiet btn--small" type="button">담당자 없음</button>
+        </div>
+        <ul id="assignee-list" class="list list--scroll" aria-label="담당자 후보"></ul>
+        <p id="assignee-empty" class="muted" hidden>고를 수 있는 사람이 없습니다.</p>
+      </div>
+      <div class="form-actions">
+        <button class="btn btn--quiet" type="button" data-assignee-close>닫기</button>
+      </div>
+    </dialog>
 
     <!-- 페이지 id 를 전하는 자리. 값은 라우터가 UUID 로만 통과시킨 뒤 이스케이프한 것이다. -->
     <span id="page-meta" hidden data-page-id="<?= htmlspecialchars($viewPageId, ENT_QUOTES, 'UTF-8') ?>"></span>

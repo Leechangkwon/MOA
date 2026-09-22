@@ -11,9 +11,10 @@
 --     (v0.1 설계의 `community_app`·`comm_session` 은 폐기 — ARCH 21.2).
 --   · 「필요한 표에, 필요한 동작만」:
 --       spaces · pages · page_edit_sessions · page_blocks · page_links   SELECT·INSERT·UPDATE·DELETE
---       page_versions · checklist_events                                 SELECT·INSERT 만 ★
---   · ★ 두 표에 UPDATE·DELETE 를 주지 않는 것이 C:S-14 「지울 수 없는 기록」의 전부다.
---     코드에 결함이 있어도, 앱 계정을 얻은 사람도 판 이력과 체크 기록을 고치거나 지울 수 없다.
+--       page_versions · checklist_events · page_property_events          SELECT·INSERT 만 ★
+--   · ★ 이 **세 표**에 UPDATE·DELETE 를 주지 않는 것이 C:S-14 「지울 수 없는 기록」의 전부다.
+--     코드에 결함이 있어도, 앱 계정을 얻은 사람도 판 이력·체크 기록·상태/담당자 변경 기록을
+--     고치거나 지울 수 없다 (4-D 에 `page_property_events` 가 합류했다).
 --   · DROP / TRUNCATE / ALTER 는 어디에도 주지 않는다(표 소유자 tbox_owner 만).
 --   · 스키마 `community` 에 표를 만들 권한(CREATE)은 PUBLIC 에서 회수한다.
 --   · `tbox_backup` — t-box 백업이 DB 전체를 pg_dump 한다. 이 권한이 없으면 새 스키마에서
@@ -43,7 +44,8 @@ GRANT  USAGE  ON SCHEMA community TO tbox_backup;
 -- ─── 먼저 전부 회수한다(재실행 시 과거 권한이 남지 않게) ───
 REVOKE ALL ON community.spaces, community.pages, community.page_versions,
               community.page_blocks, community.page_links,
-              community.checklist_events, community.page_edit_sessions
+              community.checklist_events, community.page_edit_sessions,
+              community.page_property_events
        FROM tbox_app;
 
 -- ─── 표별 권한 (앱 런타임) ────────────────────────────────────
@@ -52,21 +54,24 @@ GRANT SELECT, INSERT, UPDATE, DELETE ON community.pages              TO tbox_app
 GRANT SELECT, INSERT, UPDATE, DELETE ON community.page_edit_sessions TO tbox_app;
 GRANT SELECT, INSERT, UPDATE, DELETE ON community.page_blocks        TO tbox_app;
 GRANT SELECT, INSERT, UPDATE, DELETE ON community.page_links         TO tbox_app;
--- ★ 기록 불변 (C:S-14) — 이 둘은 SELECT·INSERT 뿐이다.
-GRANT SELECT, INSERT                 ON community.page_versions      TO tbox_app;
-GRANT SELECT, INSERT                 ON community.checklist_events   TO tbox_app;
+-- ★ 기록 불변 (C:S-14) — 이 셋은 SELECT·INSERT 뿐이다.
+GRANT SELECT, INSERT                 ON community.page_versions        TO tbox_app;
+GRANT SELECT, INSERT                 ON community.checklist_events     TO tbox_app;
+GRANT SELECT, INSERT                 ON community.page_property_events TO tbox_app;
 
 -- ─── 시퀀스 (INSERT 하는 표의 id 발급) ────────────────────────
 GRANT USAGE, SELECT ON SEQUENCE community.spaces_id_seq            TO tbox_app;
 GRANT USAGE, SELECT ON SEQUENCE community.pages_id_seq             TO tbox_app;
 GRANT USAGE, SELECT ON SEQUENCE community.page_versions_id_seq     TO tbox_app;
 GRANT USAGE, SELECT ON SEQUENCE community.checklist_events_id_seq  TO tbox_app;
+GRANT USAGE, SELECT ON SEQUENCE community.page_property_events_id_seq TO tbox_app;
 -- page_blocks·page_links·page_edit_sessions 는 복합 기본키라 시퀀스가 없다.
 
 -- ─── tbox_backup (읽기 전용 백업 계정) ────────────────────────
 REVOKE ALL ON community.spaces, community.pages, community.page_versions,
               community.page_blocks, community.page_links,
-              community.checklist_events, community.page_edit_sessions
+              community.checklist_events, community.page_edit_sessions,
+              community.page_property_events
        FROM tbox_backup;
 
 GRANT SELECT ON ALL TABLES    IN SCHEMA community TO tbox_backup;   -- ★ SELECT 만

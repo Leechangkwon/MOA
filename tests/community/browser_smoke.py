@@ -1039,6 +1039,139 @@ with sync_playwright() as p:
     gone2 = page.request.get(COMMUNITY + "/api/pages/" + page_id)
     step("31 정리 — 다시 지웠다 (404)", gone2.status == 404, "HTTP %d" % gone2.status)
 
+    # ══════════════════════════════════════════════════════════════
+    # 32. 상태 · 담당자 칸 (4-D, stage4d-status-assignee-directive.md 「브라우저」 줄)
+    #   상태를 바꾸면 배지 색이 바뀌고 새로 고침 뒤에도 유지 · 담당자 찾기의 「나에게」 ·
+    #   목록 배지 · 「내가 담당인 페이지」 묶음
+    # 단언은 전부 「행동 → 결과」다. 결과는 화면의 배지/묶음과 **창구가 돌려준 JSON** 둘 다로 본다.
+    # ══════════════════════════════════════════════════════════════
+    print("── 32. 상태 · 담당자 칸 (4-D)")
+    page.goto(COMMUNITY + "/", wait_until="networkidle")
+    page.wait_for_selector("#community-tree .page-tree__row", timeout=10000)
+    page.click("#community-new")
+    page.wait_for_url(PAGE_RE, timeout=10000)
+    prop_id = page.url.rsplit("/", 1)[-1]
+    prop_url = page.url
+    page.wait_for_selector("#page-doc", timeout=10000)
+    page.wait_for_timeout(400)
+
+    def status_badge():
+        """상태 배지 — 글자와 색 클래스(그리고 `title` 의 원래 값)를 함께 본다."""
+        el = page.locator("#page-status-badge")
+        if el.count() == 0:
+            return ("", "", "")
+        return (el.first.inner_text().strip(),
+                el.first.get_attribute("class") or "",
+                el.first.get_attribute("title") or "")
+
+    def set_status(value):
+        """창을 열어 라디오를 고르고 「바꾸기」를 누른다. 창이 닫혔는지를 돌려준다."""
+        page.wait_for_selector("#page-status:not([disabled])", timeout=10000)
+        page.click("#page-status")
+        page.wait_for_selector("#status-dialog[open]", timeout=5000)
+        page.locator('#status-dialog input[name="page-status"][value="%s"]' % value).check()
+        page.click("#status-save")
+        page.wait_for_timeout(700)
+        return page.locator("#status-dialog[open]").count() == 0
+
+    step("32 속성 줄이 보이고 처음 상태는 「없음」이다",
+         page.locator("#page-props").is_visible() and status_badge()[0] == "없음",
+         "배지=%r" % (status_badge(),))
+    step("32 처음 담당자는 「없음」이다",
+         page.locator("#page-assignee-name").inner_text().strip() == "없음",
+         page.locator("#page-assignee-name").inner_text().strip())
+
+    step("32 「진행」으로 바꾸면 창이 닫힌다", set_status("doing"))
+    doing = status_badge()
+    step("32 배지 글자가 「진행」이고 색 클래스가 파랑(doing)으로 바뀐다",
+         doing[0] == "진행" and "badge--status-doing" in doing[1] and doing[2] == "doing",
+         "배지=%r" % (doing,))
+
+    step("32 「보류」로 바꾸면 색 클래스가 노랑(hold)으로 바뀐다",
+         set_status("hold") and "badge--status-hold" in status_badge()[1],
+         "배지=%r" % (status_badge(),))
+
+    page.reload(wait_until="networkidle")
+    page.wait_for_selector("#page-doc", timeout=10000)
+    page.wait_for_timeout(400)
+    step("32 새로 고침 뒤에도 「보류」가 유지된다",
+         status_badge()[0] == "보류", "배지=%r" % (status_badge(),))
+    step("32 창구가 준 값도 hold 다",
+         page.request.get(COMMUNITY + "/api/pages/" + prop_id).json()["page"]["status"] == "hold")
+
+    # ── 담당자 찾기 창 · 「나에게」 ────────────────────────────────
+    page.wait_for_selector("#page-assignee:not([disabled])", timeout=10000)
+    page.click("#page-assignee")
+    page.wait_for_selector("#assignee-dialog[open]", timeout=5000)
+    page.wait_for_timeout(700)
+    n_cand = page.locator("#assignee-list li").count()
+    step("32 담당자 창을 열면 후보가 채워진다", n_cand >= 1, "%d명" % n_cand)
+
+    who = page.request.get(COMMUNITY + "/api/assignees?page=" + prop_id).json()
+    me_name = who["me"]
+    step("32 후보는 창구가 준 명단과 같은 수다",
+         n_cand == len(who["assignees"]), "화면 %d · 창구 %d" % (n_cand, len(who["assignees"])))
+
+    page.click("#assignee-me")
+    page.wait_for_timeout(900)
+    step("32 「나에게」를 누르면 창이 닫힌다",
+         page.locator("#assignee-dialog[open]").count() == 0)
+    step("32 담당자 칸이 내 계정명으로 바뀐다",
+         page.locator("#page-assignee-name").inner_text().strip() == me_name,
+         page.locator("#page-assignee-name").inner_text().strip())
+    step("32 창구가 준 값도 나다",
+         page.request.get(COMMUNITY + "/api/pages/" + prop_id).json()["page"]["assignee"]["username"] == me_name)
+
+    # ── 목록 배지 · 「내가 담당인 페이지」 묶음 ────────────────────
+    page.goto(COMMUNITY + "/", wait_until="networkidle")
+    page.wait_for_selector("#community-tree .page-tree__row", timeout=10000)
+    page.wait_for_timeout(700)
+    step("32 「내가 담당인 페이지」 묶음이 보인다",
+         page.locator("#community-mine-wrap").is_visible(),
+         "숨김=%s" % (not page.locator("#community-mine-wrap").is_visible()))
+    mine_hrefs = page.locator("#community-mine a").evaluate_all(
+        "els => els.map(e => e.getAttribute('href'))")
+    step("32 그 묶음에 방금 담당이 된 페이지가 있다",
+         any(prop_id in (h or "") for h in mine_hrefs), "%r" % (mine_hrefs[:3],))
+    mine_total = page.request.get(COMMUNITY + "/api/pages?assignee=me").json()["total"]
+    step("32 묶음의 줄 수 = 창구가 센 수",
+         len(mine_hrefs) == mine_total, "화면 %d · 창구 %d" % (len(mine_hrefs), mine_total))
+    step("32 트리 줄에 상태 배지가 붙는다",
+         page.locator("#community-tree .badge--status-hold").count() >= 1,
+         "%d개" % page.locator("#community-tree .badge--status-hold").count())
+
+    # ── 상태 거르개 ───────────────────────────────────────────────
+    page.select_option("#community-status", "done")
+    page.wait_for_timeout(900)
+    n_after = page.locator("#community-tree .page-tree__row").count()
+    api_done = page.request.get(COMMUNITY + "/api/pages?tree=1&status=done").json()["total"]
+    step("32 상태 거르개로 「완료」를 고르면 창구가 센 수와 화면 줄 수가 같다",
+         n_after == api_done, "화면 %d · 창구 %d" % (n_after, api_done))
+    page.select_option("#community-status", "")
+    page.wait_for_timeout(700)
+
+    # ── 이력에 상태·담당자 줄이 섞여 나온다 (C:T-52) ──────────────
+    page.goto(prop_url, wait_until="networkidle")
+    page.wait_for_selector("#page-doc", timeout=10000)
+    page.click("#page-history")
+    page.wait_for_selector("#history-dialog[open]", timeout=5000)
+    page.click("#history-tab-events")
+    page.wait_for_timeout(700)
+    ev_text = page.locator("#history-events").inner_text()
+    step("32 「처리 이력」에 상태 줄이 있다", "상태:" in ev_text, ev_text[:120].replace("\n", " "))
+    step("32 「처리 이력」에 담당자 줄이 있다", "담당자:" in ev_text, ev_text[:120].replace("\n", " "))
+    page.keyboard.press("Escape")
+    page.wait_for_timeout(300)
+
+    # ── 정리 ──────────────────────────────────────────────────────
+    page.wait_for_selector("#page-delete:not([hidden])", timeout=10000)
+    page.click("#page-delete")
+    page.wait_for_selector("#delete-dialog[open]", timeout=5000)
+    page.click("#delete-confirm")
+    page.wait_for_timeout(1500)
+    gone3 = page.request.get(COMMUNITY + "/api/pages/" + prop_id)
+    step("32 정리 — 만든 페이지를 지웠다 (404)", gone3.status == 404, "HTTP %d" % gone3.status)
+
     # ── 19. 전 과정의 오류 ────────────────────────────────────────
     print("── 19. 브라우저가 본 오류 (처음부터 끝까지)")
     for name, items in (("pageerror", pageerrors), ("console error", console_errors),

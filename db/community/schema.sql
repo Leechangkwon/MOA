@@ -12,6 +12,8 @@
 -- 3단계에 **만들지 않는 것** (4단계 이후 마이그레이션이 더한다)
 --   · spaces: `board_kind`
 --   · pages : `cover_ref` · `published_space_id` · `published_at` · `database_id` · `properties`
+--             (4-D 에 `status`·`assignee_id` 가 더해졌다 — 새 설치는 이 파일 하나로 끝나고,
+--              이미 있는 DB 는 db/migrations/2026-09-23_community_page_properties.sql 이 같은 모양으로 만든다)
 --   · 표    : `boards`(→ spaces 로 합쳤다) · `tags` · `page_tags` · `space_tags` · `palettes` · `page_reads`
 --
 -- 멱등하지 않다(초기 구축 전용). gen_random_uuid() 는 PostgreSQL 13+ 내장 함수다 —
@@ -93,12 +95,19 @@ CREATE TABLE community.pages (
     deleted_by     BIGINT      REFERENCES public.users(id),
     purge_after    TIMESTAMPTZ,
     view_count     INT         NOT NULL DEFAULT 0,
-    CONSTRAINT pages_doc_is_object CHECK (jsonb_typeof(doc) = 'object')
+    -- 4-D 고정 속성 둘 (C:F-37). 둘 다 **NULL 이 기본**이다 — 모든 페이지가 업무는 아니다.
+    status         TEXT,
+    assignee_id    BIGINT,
+    CONSTRAINT pages_doc_is_object CHECK (jsonb_typeof(doc) = 'object'),
+    CONSTRAINT pages_status_check  CHECK (status IS NULL OR status IN ('todo','doing','review','done','hold')),
+    CONSTRAINT pages_assignee_id_fkey FOREIGN KEY (assignee_id) REFERENCES public.users(id)
 );
 
 CREATE INDEX pages_space_live_idx  ON community.pages (space_id, position, id) WHERE deleted_at IS NULL;
 CREATE INDEX pages_parent_idx      ON community.pages (parent_page_id)         WHERE deleted_at IS NULL;
 CREATE INDEX pages_search_tsv_idx  ON community.pages USING GIN (search_tsv);
+-- 「내가 담당인 페이지」 목록 (4-D)
+CREATE INDEX pages_assignee        ON community.pages (assignee_id)            WHERE deleted_at IS NULL;
 
 -- ─────────────────────────────────────────────────────────────
 -- page_versions — 저장마다 남는 스냅샷 (C:S-14 「기록 불변」)
@@ -151,6 +160,23 @@ CREATE TABLE community.checklist_events (
     at         TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 CREATE INDEX checklist_events_page_idx ON community.checklist_events (page_id, at DESC);
+
+-- ─────────────────────────────────────────────────────────────
+-- page_property_events — 상태·담당자를 바꾼 기록 (4-D, C:F-37, C:S-14)
+--   `from_value`·`to_value` 는 사람이 읽는 문자열이다 — 상태는 코드값(`todo`…),
+--   담당자는 **계정명**. 「값 없음」은 NULL 이다.
+--   지울 수 없다(앱 계정 SELECT·INSERT 만) — `checklist_events` 와 같은 취급.
+-- ─────────────────────────────────────────────────────────────
+CREATE TABLE community.page_property_events (
+    id         BIGSERIAL   PRIMARY KEY,
+    page_id    BIGINT      NOT NULL REFERENCES community.pages(id),
+    prop       TEXT        NOT NULL CHECK (prop IN ('status','assignee')),
+    from_value TEXT,
+    to_value   TEXT,
+    by_user_id BIGINT      NOT NULL REFERENCES public.users(id),
+    at         TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX page_property_events_page_at ON community.page_property_events (page_id, at DESC);
 
 -- ─────────────────────────────────────────────────────────────
 -- page_edit_sessions — 「지금 편집 중」 표시 (30초 heartbeat)

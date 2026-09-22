@@ -483,3 +483,34 @@ details.page-tree__node[open] > summary > .page-tree__row > .page-tree__caret { 
 #history-versions .table-wrap,
 #trash-dialog .table-wrap { max-height: 24rem; overflow-y: auto; }
 #history-preview-doc { max-height: 24rem; overflow-y: auto; }
+
+/* ─── 상태 · 담당자 (4-D, C:F-37 · DESIGN 2.2 배지) ───
+ *
+ * ★ **새 색값이 없다.** 다섯 줄은 전부 app.css 의 `:root` 토큰을 가리키고, 짝은 DESIGN 2.2
+ *   의 배지 뜻 그대로다: 회색=꺼짐(`.badge--off`) · 파랑=정보(`.badge--internal`) ·
+ *   보라=team 등급(`.badge--team`) · 초록=허용(`.badge--ok`) · 노랑=주의(`.badge--exec`).
+ *   왜 그 클래스들을 그대로 쓰지 않았나: 「할 일」에 `badge--off`, 「보류」에 `badge--exec`
+ *   가 붙으면 화면은 맞지만 **이름이 거짓말**이 된다(등급·실행 파일과 아무 상관이 없다).
+ *   색은 토큰 하나에서 나오므로 다크 모드도 함께 따라온다.
+ */
+.badge--status-todo   { background: var(--muted-bg);   color: var(--muted); }
+.badge--status-doing  { background: var(--accent-soft); color: var(--accent-dark); border-color: var(--accent-line); }
+.badge--status-review { background: var(--violet-bg);  color: var(--violet-fg);  border-color: var(--violet-line); }
+.badge--status-done   { background: var(--ok-bg);      color: var(--ok-fg);      border-color: var(--ok-line); }
+.badge--status-hold   { background: var(--warn-bg);    color: var(--warn-fg); }
+
+/* 속성 줄 — 제목 아래 한 줄. 배지를 담은 작은 단추 둘과 라벨 둘이다.
+   새 간격 토큰을 만들지 않았다(8px 는 도구줄과 같은 값). */
+.page-props {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 12px;
+}
+/* 고칠 수 없는 사람에게는 단추가 잠긴다 — 값은 그대로 보이고 눌리지 않는다. */
+.page-props .btn[disabled] { cursor: default; }
+
+/* 담당자 후보 줄 목록 — `.list` 위에 한 줄짜리 여백만 얹는다(새 클래스 0). */
+#assignee-list .list__item { padding: 4px 8px; }
+#assignee-list .btn { width: 100%; justify-content: flex-start; }

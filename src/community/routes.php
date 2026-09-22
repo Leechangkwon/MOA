@@ -80,7 +80,32 @@ const COMMUNITY_ROUTES = [
     ['GET',    '/api/pages/{id}/history',                'history.php',         'community.read'],
     ['GET',    '/api/me/trash',                          'trash_list.php',      'community.read'],
     ['POST',   '/api/pages/{id}/restore',                'page_restore.php',    'community.write'],
+
+    /* ── 상태 · 담당자 칸 (4-D, C:F-37) ──
+     * 바꾸는 창구는 `community.write` + 행 단위 `decidePageChange`(소유자·팀원만),
+     * 후보 목록은 `community.read` + **그 페이지의 `decidePageRead`** 다 —
+     * 「누구를 담당자로 고를 수 있나」는 「누가 그 페이지를 볼 수 있나」와 같은 물음이고,
+     * 후보 목록이 그보다 넓으면 볼 수 없는 사람의 계정명이 새어 나간다. */
+    ['PATCH',  '/api/pages/{id}/properties',             'pages_properties.php', 'community.write'],
+    ['GET',    '/api/assignees',                         'assignees_list.php',   'community.read'],
 ];
+
+/**
+ * 상태 다섯 값 (4-D, C:F-37). **NULL(없음)이 기본**이고 그것은 이 목록에 없다 —
+ * 「없음」은 값이 아니라 값이 없는 상태이므로 허용 목록에 넣지 않는다.
+ * 화면 글자는 `public/assets/community/editor.js` 의 `STATUS_LABELS` 가 들고 있다.
+ */
+const COMMUNITY_STATUSES = ['todo', 'doing', 'review', 'done', 'hold'];
+
+/**
+ * 담당자로 앉힐 수 없는 사람을 고른 일의 사유 글자 (4-D, C:T-48).
+ *
+ * 왜 `CommunityAuthz` 의 상수가 아닌가: 이것은 **판정 함수가 내는 코드가 아니다**.
+ * 판정 함수는 「그 후보가 이 페이지를 볼 수 있나」에 `not_owner`·`not_member` 같은 자기
+ * 코드로 답하고, 그것을 **담당자 지정의 거부 사유**로 옮겨 적는 것은 창구의 일이다.
+ * 한 곳에만 적어 두려고 여기 둔다 — 감사 문장 표(`src/Audit.php`)와 글자가 같아야 한다.
+ */
+const COMMUNITY_ASSIGNEE_NOT_PERMITTED = 'assignee_not_permitted';
 
 /** 핸들러 디렉터리. 코드 상수이며 요청 값이 경로에 한 글자도 들어가지 않는다. */
 const COMMUNITY_HANDLER_DIR = __DIR__ . '/handlers/';
@@ -234,11 +259,18 @@ function community_page_row(string $publicId): ?array
                owner.team_id   AS space_owner_team_id,
                -- 4-C: 지금 판을 **마지막으로 쓴 사람의 이름**. 이력 목록의 맨 윗줄(지금 판)이
                -- 이 값을 그대로 보인다 — 화면이 계정 id 를 이름으로 바꾸는 일이 없게 한다.
-               editor.username AS last_edited_by_name
+               editor.username AS last_edited_by_name,
+               -- 4-D: 고정 속성 둘과 담당자의 **계정명·역할·활성 여부**. 담당자 칩이 이 값을
+               -- 그대로 보이고, 계정 id 는 응답에 나가지 않는다.
+               p.status, p.assignee_id,
+               assignee.username  AS assignee_name,
+               assignee.role      AS assignee_role,
+               assignee.is_active AS assignee_active
           FROM community.pages p
           JOIN community.spaces s ON s.id = p.space_id
-          LEFT JOIN public.users owner  ON owner.id = s.owner_user_id
-          LEFT JOIN public.users editor ON editor.id = p.last_edited_by
+          LEFT JOIN public.users owner    ON owner.id    = s.owner_user_id
+          LEFT JOIN public.users editor   ON editor.id   = p.last_edited_by
+          LEFT JOIN public.users assignee ON assignee.id = p.assignee_id
          WHERE p.public_id = CAST(:pid AS uuid)
         SQL;
 
@@ -961,6 +993,223 @@ function community_restore_source(?string $summary): ?int
         return null;
     }
     return (int) $m[1];
+}
+
+/* ══════════════════════════════════════════════════════════════════
+ * 상태 · 담당자 (4-D, C:F-37)
+ *
+ * 규칙 둘.
+ *   ① **기록은 지울 수 없다** (C:S-14) — `page_property_events` 에는 앱 계정에 INSERT 와
+ *      SELECT 만 있다(`db/community/grants.sql`). 아래 함수도 그 둘만 쓴다.
+ *   ② **담당자 후보는 그 페이지를 볼 수 있는 사람뿐이다** — 「누구를 담당자로 고를 수
+ *      있나」와 「누가 그 페이지를 볼 수 있나」는 같은 물음이다. 후보 목록이 그보다 넓으면
+ *      볼 수 없는 사람의 계정명이 새고, 담당자로 앉히면 그 사람은 자기 이름이 붙은 페이지를
+ *      열 수 없다. 그래서 목록은 SQL 조건절로 좁히고(아래), 실제 지정은 판정 함수
+ *      `CommunityAuthz::decidePageRead` 가 **그 후보를 사용자로 놓고** 한 번 더 답한다.
+ * ══════════════════════════════════════════════════════════════════ */
+
+/**
+ * 역할 이름마다 `Authz` 에 물어 만든 두 묶음 — 「커뮤니티에 쓸 수 있는 역할」·「관리자 역할」.
+ *
+ * ★ 이 파일에는 역할 문자열(`'Admin'` 같은 것)이 **한 글자도 없다** (ARCH 4.1, CLAUDE 4장
+ *   금지 패턴 「역할 판단을 Authz 밖에서 직접 하는 코드」). 역할 **이름**은 DB 에 있는 것을
+ *   그대로 읽고, 「그 역할이 쓸 수 있나·관리자인가」의 판단은 전부 `Authz` 가 한다.
+ *   `community_visible_pages_where()` 가 지금 사용자 한 명에 대해 `Authz` 에 두 번 묻는 것과
+ *   같은 일을, 후보 목록에서는 **역할마다** 한 번씩 물어 두는 것뿐이다.
+ *
+ * @return array{write:list<string>,admin:list<string>}
+ */
+function community_role_sets(): array
+{
+    static $cache = null;
+    if (is_array($cache)) {
+        return $cache;
+    }
+
+    $sql = <<<'SQL'
+        SELECT DISTINCT u.role FROM public.users u WHERE u.is_active = true ORDER BY u.role
+        SQL;
+
+    $write = [];
+    $admin = [];
+    foreach (Db::instance()->run($sql)->fetchAll() as $r) {
+        $role = (string) $r['role'];
+        // 판단은 Authz 가 한다 — 여기서는 답만 받아 적는다.
+        if (Authz::canCommunityWrite(['role' => $role])) {
+            $write[] = $role;
+        }
+        if (Authz::canAdmin(['role' => $role])) {
+            $admin[] = $role;
+        }
+    }
+
+    $cache = ['write' => $write, 'admin' => $admin];
+    return $cache;
+}
+
+/**
+ * 담당자 후보에 붙일 **행 단위 조건절** (4-D, C:T-48).
+ *
+ * 돌려주는 조건절은 별칭 `u`(= `public.users`) 를 전제로 한다. 별칭은 SQL 식별자 자리라
+ * 바인딩할 수 없으므로 **코드에 적힌 리터럴**이다(`community_visible_pages_where` 와 같은 이유).
+ *
+ * 조건은 `CommunityAuthz::decidePageRead` 를 **보는 사람 쪽에서** 한 줄씩 옮긴 것이다:
+ *   공간 주인 / 팀 공간이면 그 팀원 / 개인 공간 `team` 이면 주인의 팀원 /
+ *   개인 공간 `internal` 이면 쓰기 자격이 있는 역할(Guest 는 그 목록에 없다) / Admin.
+ * `published` 는 어느 갈래에도 없다 — 5단계까지 판정이 닫힌 실패이기 때문이다.
+ *
+ * ★ 이 조건절은 **좁히는 그물**이고 마지막 판단이 아니다. 부르는 쪽은 결과 행마다
+ *   `decidePageRead` 를 한 번 더 통과시킨다 — 조건절과 판정 함수가 어긋나면 **좁은 쪽**이 이긴다.
+ *
+ * @param  array<string,mixed> $page `community_page_row()` 의 결과
+ * @return array{0:string,1:array<string,mixed>}
+ */
+function community_assignee_where(array $page): array
+{
+    $roles = community_role_sets();
+
+    /* `IN (…)` 의 자리표시자 이름은 **개수로 만든 코드 문자열**이다(`:cw0`, `:ca0` …).
+       요청 값이 SQL 에 한 글자도 들어가지 않는다 (PRD S-04, `pages_get.php` 와 같은 방식). */
+    $bind = [];
+    $mk = static function (array $list, string $prefix) use (&$bind): string {
+        if ($list === []) {
+            return 'false';
+        }
+        $names = [];
+        foreach ($list as $i => $role) {
+            $name          = ':' . $prefix . (string) $i;
+            $names[]       = $name;
+            $bind[$name]   = $role;
+        }
+        return 'u.role IN (' . implode(', ', $names) . ')';
+    };
+
+    $writeIn = $mk($roles['write'], 'cw');
+    $adminIn = $mk($roles['admin'], 'ca');
+
+    $kind       = (string) ($page['space_kind'] ?? '');
+    $visibility = (string) ($page['visibility'] ?? '');
+
+    $sql = <<<SQL
+(
+      u.id = CAST(:as_owner AS bigint)
+   OR (CAST(:as_team_space AS boolean)
+       AND u.team_id IS NOT NULL AND u.team_id = CAST(:as_space_team AS bigint))
+   OR (CAST(:as_owner_team AS boolean)
+       AND u.team_id IS NOT NULL AND u.team_id = CAST(:as_owner_team_id AS bigint))
+   OR (CAST(:as_internal AS boolean) AND {$writeIn})
+   OR {$adminIn}
+)
+SQL;
+
+    return [$sql, array_merge($bind, [
+        // 개인 공간의 주인. 팀 공간에는 주인이 없어 NULL 이고, NULL 과의 `=` 는 참이 되지 않는다.
+        ':as_owner'         => $page['space_owner_user_id'] === null ? null : (int) $page['space_owner_user_id'],
+        ':as_team_space'    => $kind === 'team' ? 'true' : 'false',
+        ':as_space_team'    => $page['space_team_id'] === null ? null : (int) $page['space_team_id'],
+        ':as_owner_team'    => ($kind === 'personal' && $visibility === 'team') ? 'true' : 'false',
+        ':as_owner_team_id' => $page['space_owner_team_id'] === null ? null : (int) $page['space_owner_team_id'],
+        ':as_internal'      => ($kind === 'personal' && $visibility === 'internal') ? 'true' : 'false',
+    ])];
+}
+
+/**
+ * 담당자 후보를 찾는다 (4-D). 돌려주는 것은 **계정명과 역할**뿐이다.
+ *
+ * @param  array<string,mixed> $page `community_page_row()` 의 결과
+ * @param  string              $q    이름 조각(빈 문자열이면 전원)
+ * @param  int                 $limit 최대 몇 명
+ * @return list<array{username:string,role:string}>
+ */
+function community_assignee_candidates(array $page, string $q, int $limit): array
+{
+    [$where, $bind] = community_assignee_where($page);
+
+    // `%`·`_`·`#` 은 ILIKE 의 뜻 있는 글자다. `#` 로 이스케이프하고 값은 바인딩한다 (PRD S-04).
+    $like = $q === '' ? '' : '%' . str_replace(['#', '%', '_'], ['##', '#%', '#_'], $q) . '%';
+
+    $sql = <<<SQL
+        SELECT u.id, u.username, u.role, u.team_id
+          FROM public.users u
+         WHERE u.is_active = true
+           AND (CAST(:qoff AS boolean) OR u.username ILIKE :like ESCAPE '#')
+           AND {$where}
+         ORDER BY u.username
+         LIMIT CAST(:lim AS int)
+        SQL;
+
+    $rows = Db::instance()->run($sql, array_merge($bind, [
+        ':qoff' => $q === '' ? 'true' : 'false',
+        ':like' => $like,
+        // 조건절과 판정 함수가 어긋나 몇 줄이 걸러지더라도 한 쪽을 채울 수 있게 넉넉히 읽는다.
+        ':lim'  => $limit * 5,
+    ]))->fetchAll();
+
+    $out = [];
+    foreach ($rows as $r) {
+        $candidate = [
+            'id'      => (int) $r['id'],
+            'role'    => (string) $r['role'],
+            'team_id' => $r['team_id'] === null ? null : (int) $r['team_id'],
+        ];
+        // ★ 마지막 판단은 조건절이 아니라 **판정 함수**다 (ARCH 4.1).
+        [$mayRead] = CommunityAuthz::decidePageRead($candidate, $page);
+        if (!$mayRead) {
+            continue;
+        }
+        $out[] = ['username' => (string) $r['username'], 'role' => (string) $r['role']];
+        if (count($out) >= $limit) {
+            break;
+        }
+    }
+    return $out;
+}
+
+/**
+ * 계정명 하나로 사람을 찾는다 (4-D 담당자 지정). 없으면 `null`.
+ *
+ * 비활성 계정도 **행을 돌려준다** — 「없는 사람」과 「내려간 계정」을 가르는 것은 부르는
+ * 쪽의 몫이다(둘 다 400 이지만, 기록에 남는 사유가 같아야 할 이유는 없다).
+ *
+ * @return array<string,mixed>|null
+ */
+function community_user_by_name(string $username): ?array
+{
+    $sql = <<<'SQL'
+        SELECT u.id, u.username, u.role, u.team_id, u.is_active
+          FROM public.users u
+         WHERE u.username = :name
+        SQL;
+
+    $row = Db::instance()->run($sql, [':name' => $username])->fetch();
+    return is_array($row) ? $row : null;
+}
+
+/**
+ * 상태·담당자가 바뀐 일을 **지울 수 없는 줄 하나**로 남긴다 (4-D, C:S-14).
+ *
+ * 반드시 부르는 쪽의 트랜잭션 안에서 부른다 — `pages` 갱신과 기록이 갈라지지 않게.
+ * `INSERT` 하나뿐이고, 앱 계정에는 이 표에 UPDATE·DELETE 가 없다.
+ */
+function community_insert_property_event(
+    int $pageId,
+    string $prop,
+    ?string $from,
+    ?string $to,
+    int $byUserId
+): void {
+    $sql = <<<'SQL'
+        INSERT INTO community.page_property_events (page_id, prop, from_value, to_value, by_user_id)
+        VALUES (CAST(:pid AS bigint), :prop, :from_value, :to_value, CAST(:by AS bigint))
+        SQL;
+
+    Db::instance()->run($sql, [
+        ':pid'        => $pageId,
+        ':prop'       => $prop,
+        ':from_value' => $from,
+        ':to_value'   => $to,
+        ':by'         => $byUserId,
+    ]);
 }
 
 /**

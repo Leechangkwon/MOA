@@ -60,8 +60,31 @@ require __DIR__ . '/../../views/shell_top.php';
       <select id="community-space" hidden aria-label="공간 고르기"></select>
       <input id="community-search" type="search" placeholder="제목·내용으로 찾기" maxlength="100"
              autocomplete="off" spellcheck="false">
+      <!-- 상태 거르개 (4-D). 거르는 일은 **서버가 SQL 로** 한다 — 이 칸은 창구에 붙일
+           꼬리표(`?status=`)를 고를 뿐이고, 화면이 목록에서 줄을 빼지 않는다 (C:S-02). -->
+      <label id="community-status-label" class="muted" for="community-status">상태</label>
+      <select id="community-status" aria-label="상태로 거르기">
+        <option value="">전체</option>
+        <option value="none">없음</option>
+        <option value="todo">할 일</option>
+        <option value="doing">진행</option>
+        <option value="review">검토</option>
+        <option value="done">완료</option>
+        <option value="hold">보류</option>
+      </select>
       <span id="community-count" class="muted"></span>
     </div>
+
+    <!-- 「내가 담당인 페이지」 (4-D, C:F-37). 남의 공간에 있는 페이지도 들어올 수 있으므로
+         줄마다 어느 공간인지를 함께 보인다. 목록은 창구 `GET /api/pages?assignee=me` 가
+         주는 것만이고, 「내가 담당인가」를 따지는 코드는 화면에 없다 (C:T-50). -->
+    <section id="community-mine-wrap" hidden>
+      <div class="toolbar">
+        <p class="nav-title">내가 담당인 페이지</p>
+        <span id="community-mine-count" class="muted"></span>
+      </div>
+      <div id="community-mine" class="card-grid"></div>
+    </section>
 
     <!-- 트리가 들어오는 자리 (4-A). editor.js 가 `createElement` 로만 채우고, 접기·펼치기는
          `<details>`/`<summary>` 가 **브라우저 기능으로** 한다 — 여닫는 스크립트가 없다.

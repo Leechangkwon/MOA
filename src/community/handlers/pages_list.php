@@ -14,6 +14,8 @@ declare(strict_types=1);
  *   q      제목·본문 찾기 (≤ 100자). `ILIKE` 는 `#` 로 이스케이프한 뒤 **바인딩**한다
  *   parent 하위 페이지만 (UUID)
  *   page   1부터. 한 쪽 20건
+ *   status 상태로 좁히기 (4-D) — 다섯 값 또는 `none`(상태 없음). 모르는 값이면 **빈 목록**이다
+ *   assignee `me` 면 **내가 담당인 페이지**(4-D). 이때만 공간을 가리지 않고 전부 본다 — 아래 ★
  *
  * ★ 범위는 **SQL 이 정한다** (C:S-02 · C:T-37). 관문이 둘이다:
  *     [공간] `community_space_gate()` — 남의 개인 공간은 통째로 403, 남의 팀 공간도 403.
@@ -28,6 +30,13 @@ declare(strict_types=1);
  *   문장에 끼워 넣는 조각은 조건절 상수 하나뿐이고, 그 안의 별칭 `p`·`s`·`owner` 도 코드에
  *   적힌 리터럴이다. 요청 값은 한 글자도 SQL 에 들어가지 않는다.
  *
+ * ★ `?assignee=me` 는 **공간 관문을 지나지 않는다** (4-D). 「내가 담당인 페이지」는 남의
+ *   개인 공간에 있을 수 있고(사내로 열어 둔 페이지의 담당자가 나인 경우), 공간을 하나씩
+ *   골라 가며 찾게 하면 그 묶음은 쓸 수 없다. 대신 **행 관문은 그대로**다 —
+ *   `community_visible_pages_where()` 가 붙으므로 볼 수 없는 페이지는 담당자가 나여도
+ *   결과에 없다. 「남의 공간 목차를 넘겨본다」(C:T-35 가 막는 일)와 다르다: 여기 들어오는
+ *   행은 **그 공간 주인이 나를 담당자로 앉힌 페이지**뿐이다.
+ *
  * 목록 조회는 감사에 남기지 않는다 (t-box 파일 목록과 같은 취급).
  *
  * @var array<string,mixed> $user   라우터가 넘긴 현재 사용자
@@ -36,6 +45,130 @@ declare(strict_types=1);
 
 $db = Db::instance();
 $me = (int) $user['id'];
+
+/* ─── [0] 상태 거르개 (4-D) ─────────────────────────────────────
+ *
+ * SQL 조각을 이어 붙이지 않는다 — 「걸렀나」·「없음을 골랐나」를 **바인딩한 참/거짓**으로
+ * 끈다 (`q`·`parent` 와 같은 방식, PRD S-04). 모르는 값은 세 갈래 모두 거짓이 되어
+ * 어떤 행과도 맞지 않는다: 이상한 값에 목록이 **넓어지는** 일이 없다.
+ */
+$statusRaw   = Http::queryText('status', 12);
+$statusOff   = $statusRaw === '';
+$statusNone  = $statusRaw === 'none';
+$statusValue = in_array($statusRaw, COMMUNITY_STATUSES, true) ? $statusRaw : '';
+
+$statusWhere = <<<'SQL'
+       AND (CAST(:soff AS boolean)
+            OR (CAST(:snone AS boolean) AND p.status IS NULL)
+            OR p.status = :svalue)
+SQL;
+$statusBind = [
+    ':soff'   => $statusOff ? 'true' : 'false',
+    ':snone'  => $statusNone ? 'true' : 'false',
+    // 빈 문자열은 CHECK 가 막는 값이라 어떤 행의 `status` 와도 같지 않다.
+    ':svalue' => $statusValue,
+];
+
+/* ─── [0-1] 「내가 담당인 페이지」 (4-D, C:T-50) ─────────────────
+ *
+ * 공간을 가리지 않는 **하나의 질의**다. 거르개는 전부 SQL `WHERE` 이고, 응답을 받은 뒤
+ * PHP 가 줄을 빼는 코드가 없다 (C:S-02). 「고칠 수 있나」만 행마다 판정 함수로 답한다 —
+ * 그 값은 **단추를 열지 말지**를 고르는 화면 편의 값이고 목록의 범위를 정하지 않는다.
+ */
+if (Http::queryText('assignee', 8) === 'me') {
+    [$visMine, $visMineBind] = community_visible_pages_where($user);
+
+    $perPageMine = 20;
+    $pageNoMine  = Http::queryInt('page', 1, 1, 100000);
+
+    $sqlMineCount = <<<SQL
+        SELECT count(*) AS n
+          FROM community.pages p
+          JOIN community.spaces s ON s.id = p.space_id
+          LEFT JOIN public.users owner ON owner.id = s.owner_user_id
+         WHERE p.deleted_at IS NULL
+           AND p.assignee_id = CAST(:me AS bigint)
+           AND {$visMine}
+        {$statusWhere}
+        SQL;
+
+    $sqlMine = <<<SQL
+        SELECT p.public_id, p.title, p.icon, p.block_count, p.doc_version,
+               p.created_at, p.updated_at, p.visibility, p.status,
+               s.id AS space_id, s.kind AS space_kind, s.name AS space_name,
+               s.owner_user_id AS space_owner_user_id, s.team_id AS space_team_id,
+               parent.public_id AS parent_public_id,
+               left(p.plain_text, 160) AS excerpt,
+               me.username AS assignee_name, me.role AS assignee_role
+          FROM community.pages p
+          JOIN community.spaces s ON s.id = p.space_id
+          LEFT JOIN public.users owner ON owner.id = s.owner_user_id
+          LEFT JOIN public.users me ON me.id = p.assignee_id
+          LEFT JOIN community.pages parent ON parent.id = p.parent_page_id
+         WHERE p.deleted_at IS NULL
+           AND p.assignee_id = CAST(:me AS bigint)
+           AND {$visMine}
+        {$statusWhere}
+         ORDER BY p.updated_at DESC, p.id DESC
+         LIMIT CAST(:lim AS int) OFFSET CAST(:off AS int)
+        SQL;
+
+    $mineBind = array_merge([':me' => $me], $visMineBind, $statusBind);
+
+    $mineCountRow = $db->run($sqlMineCount, $mineBind)->fetch();
+    $mineTotal    = is_array($mineCountRow) ? (int) $mineCountRow['n'] : 0;
+
+    $mineBind[':lim'] = $perPageMine;
+    $mineBind[':off'] = ($pageNoMine - 1) * $perPageMine;
+
+    $minePages = [];
+    foreach ($db->run($sqlMine, $mineBind)->fetchAll() as $r) {
+        // 행마다 「고칠 수 있나」 — 공간이 제각각이라 공간 하나당 한 번으로 끝나지 않는다.
+        [$canEditRow] = CommunityAuthz::decidePageChange($user, [
+            'deleted_at'          => null,
+            'space_kind'          => (string) $r['space_kind'],
+            'space_owner_user_id' => $r['space_owner_user_id'],
+            'space_team_id'       => $r['space_team_id'],
+        ]);
+        $minePages[] = [
+            'id'          => (string) $r['public_id'],
+            'title'       => (string) $r['title'],
+            'icon'        => $r['icon'] === null ? null : (string) $r['icon'],
+            'excerpt'     => (string) $r['excerpt'],
+            'block_count' => (int) $r['block_count'],
+            'doc_version' => (int) $r['doc_version'],
+            'visibility'  => (string) $r['visibility'],
+            'status'      => $r['status'] === null ? null : (string) $r['status'],
+            'assignee'    => $r['assignee_name'] === null ? null : [
+                'username' => (string) $r['assignee_name'],
+                'role'     => (string) $r['assignee_role'],
+            ],
+            'parent_id'   => $r['parent_public_id'] === null ? null : (string) $r['parent_public_id'],
+            'created_at'  => (string) $r['created_at'],
+            'updated_at'  => (string) $r['updated_at'],
+            'can_edit'    => $canEditRow,
+            // 어느 공간의 페이지인가 — 남의 개인 공간일 수 있으므로 화면이 그것을 말해야 한다.
+            'space'       => [
+                'id'   => (int) $r['space_id'],
+                'kind' => (string) $r['space_kind'],
+                'name' => (string) $r['space_name'],
+            ],
+        ];
+    }
+
+    Http::json([
+        'pages'    => $minePages,
+        'total'    => $mineTotal,
+        'page'     => $pageNoMine,
+        'per_page' => $perPageMine,
+        'q'        => '',
+        // 공간을 가리지 않는 목록이다 — 「지금 보고 있는 공간」이 없다.
+        'space'    => null,
+        'assignee' => 'me',
+        'status'   => $statusRaw,
+    ]);
+    exit;
+}
 
 /* ─── [1] 어느 공간인가 (4-B) ───────────────────────────────── */
 
@@ -105,22 +238,27 @@ $spaceSummary = [
  */
 if (Http::queryText('tree', 4) === '1') {
     $sqlTree = <<<SQL
-        SELECT p.public_id, p.title, p.icon, p.position, p.updated_at, p.visibility,
-               parent.public_id AS parent_public_id
+        SELECT p.public_id, p.title, p.icon, p.position, p.updated_at, p.visibility, p.status,
+               parent.public_id AS parent_public_id,
+               who.username AS assignee_name, who.role AS assignee_role
           FROM community.pages p
           JOIN community.spaces s ON s.id = p.space_id
           LEFT JOIN public.users owner ON owner.id = s.owner_user_id
+          LEFT JOIN public.users who ON who.id = p.assignee_id
           LEFT JOIN community.pages parent
                  ON parent.id = p.parent_page_id AND parent.deleted_at IS NULL
          WHERE p.space_id = CAST(:space AS bigint)
            AND p.deleted_at IS NULL
            AND {$visible}
+        {$statusWhere}
          ORDER BY p.position, p.id
          LIMIT 2000
         SQL;
 
+    $treeBind = array_merge([':space' => $spaceId], $visBind, $statusBind);
+
     $tree = [];
-    foreach ($db->run($sqlTree, array_merge([':space' => $spaceId], $visBind))->fetchAll() as $r) {
+    foreach ($db->run($sqlTree, $treeBind)->fetchAll() as $r) {
         $tree[] = [
             'id'         => (string) $r['public_id'],
             'parent_id'  => $r['parent_public_id'] === null ? null : (string) $r['parent_public_id'],
@@ -128,13 +266,20 @@ if (Http::queryText('tree', 4) === '1') {
             'title'      => (string) $r['title'],
             'icon'       => $r['icon'] === null ? null : (string) $r['icon'],
             'visibility' => (string) $r['visibility'],
+            // 4-D — 상태 배지·담당자. 둘 다 없음(null)이 기본이다.
+            'status'     => $r['status'] === null ? null : (string) $r['status'],
+            'assignee'   => $r['assignee_name'] === null ? null : [
+                'username' => (string) $r['assignee_name'],
+                'role'     => (string) $r['assignee_role'],
+            ],
             'updated_at' => (string) $r['updated_at'],
             // 공간 하나당 한 번 판단한 값이다 (DESIGN 원칙 1 — 화면은 판단하지 않는다).
             'can_edit'   => $canWrite,
         ];
     }
 
-    Http::json(['tree' => true, 'pages' => $tree, 'total' => count($tree), 'space' => $spaceSummary]);
+    Http::json(['tree' => true, 'pages' => $tree, 'total' => count($tree),
+                'space' => $spaceSummary, 'status' => $statusRaw]);
     exit;
 }
 
@@ -177,7 +322,7 @@ $bind = array_merge([
     // 부모를 안 골랐나 — 참이면 공간 전체를 본다.
     ':pall'   => $parentPicked ? 'false' : 'true',
     ':parent' => $parentId,
-], $visBind);
+], $visBind, $statusBind);
 
 $sqlCount = <<<SQL
     SELECT count(*) AS n
@@ -192,6 +337,7 @@ $sqlCount = <<<SQL
             OR p.plain_text ILIKE :like2 ESCAPE '#')
        AND (CAST(:pall AS boolean)
             OR p.parent_page_id IS NOT DISTINCT FROM CAST(:parent AS bigint))
+    {$statusWhere}
     SQL;
 
 $countRow = $db->run($sqlCount, $bind)->fetch();
@@ -199,12 +345,14 @@ $total    = is_array($countRow) ? (int) $countRow['n'] : 0;
 
 $sqlList = <<<SQL
     SELECT p.public_id, p.title, p.icon, p.block_count, p.doc_version,
-           p.created_at, p.updated_at, p.visibility,
+           p.created_at, p.updated_at, p.visibility, p.status,
            parent.public_id AS parent_public_id,
+           who.username AS assignee_name, who.role AS assignee_role,
            left(p.plain_text, 160) AS excerpt
       FROM community.pages p
       JOIN community.spaces s ON s.id = p.space_id
       LEFT JOIN public.users owner ON owner.id = s.owner_user_id
+      LEFT JOIN public.users who ON who.id = p.assignee_id
       LEFT JOIN community.pages parent ON parent.id = p.parent_page_id
      WHERE p.space_id = CAST(:space AS bigint)
        AND p.deleted_at IS NULL
@@ -214,6 +362,7 @@ $sqlList = <<<SQL
             OR p.plain_text ILIKE :like2 ESCAPE '#')
        AND (CAST(:pall AS boolean)
             OR p.parent_page_id IS NOT DISTINCT FROM CAST(:parent AS bigint))
+    {$statusWhere}
      ORDER BY p.updated_at DESC, p.id DESC
      LIMIT CAST(:lim AS int) OFFSET CAST(:off AS int)
     SQL;
@@ -233,6 +382,12 @@ foreach ($rows as $r) {
         'block_count' => (int) $r['block_count'],
         'doc_version' => (int) $r['doc_version'],
         'visibility'  => (string) $r['visibility'],
+        // 4-D — 상태 배지·담당자. 둘 다 없음(null)이 기본이다.
+        'status'      => $r['status'] === null ? null : (string) $r['status'],
+        'assignee'    => $r['assignee_name'] === null ? null : [
+            'username' => (string) $r['assignee_name'],
+            'role'     => (string) $r['assignee_role'],
+        ],
         'parent_id'   => $r['parent_public_id'] === null ? null : (string) $r['parent_public_id'],
         'created_at'  => (string) $r['created_at'],
         'updated_at'  => (string) $r['updated_at'],
@@ -249,4 +404,5 @@ Http::json([
     'per_page' => $perPage,
     'q'        => $q,
     'space'    => $spaceSummary,
+    'status'   => $statusRaw,
 ]);

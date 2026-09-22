@@ -117,8 +117,66 @@ const VISIBILITY_LABELS = {
 const VISIBILITY_REASONS = {
   children_wider: '하위 페이지가 더 넓게 열려 있습니다. 하위까지 함께 바꾸려면 아래를 켜세요',
   wider_than_parent: '상위 페이지보다 넓게 열 수 없습니다. 상위 페이지를 먼저 넓히세요',
-  space_governed: '팀 공간의 페이지는 공간 등급을 따릅니다'
+  space_governed: '팀 공간의 페이지는 공간 등급을 따릅니다',
+  assignee_not_permitted: '이 페이지를 볼 수 없는 사람은 담당자로 지정할 수 없습니다'
 };
+
+/* ─── 상태 (4-D, C:F-37) ─────────────────────────────────────────
+ *
+ * ★ 여기 있는 것은 **보이는 말과 색**뿐이다. 값이 다섯인지·무엇이 거부되는지는 서버가
+ *   정하고(`COMMUNITY_STATUSES`, DB CHECK), 화면은 그 답을 그린다 (DESIGN 원칙 1).
+ * ★ 색은 DESIGN 2.2 의 배지 뜻 그대로다 — 회색(꺼짐)·파랑(정보)·보라·초록(허용)·노랑(주의).
+ *   새 색값을 만들지 않았다: `community.css` 의 다섯 줄은 app.css 의 같은 토큰을 가리킨다.
+ */
+const STATUS_LABELS = {
+  todo: { text: '할 일', badge: 'badge--status-todo' },
+  doing: { text: '진행', badge: 'badge--status-doing' },
+  review: { text: '검토', badge: 'badge--status-review' },
+  done: { text: '완료', badge: 'badge--status-done' },
+  hold: { text: '보류', badge: 'badge--status-hold' }
+};
+
+/** 「상태 없음」 — 값이 아니라 값이 없는 상태다. 배지도 기본(회색) 하나뿐이다. */
+const STATUS_NONE_TEXT = '없음';
+
+/** 배지 한 칸을 상태로 채운다. 모르는 값이면 「없음」으로 둔다(지어내지 않는다). */
+function paintStatus(el, status) {
+  if (!el) { return; }
+  const entry = STATUS_LABELS[status];
+  el.className = 'badge' + (entry ? ' ' + entry.badge : '');
+  if (entry) { el.setAttribute('title', status); } else { el.removeAttribute('title'); }
+  setText(el, entry ? entry.text : STATUS_NONE_TEXT);
+}
+
+/** 목록 줄에 붙일 작은 상태 배지 하나. 상태가 없으면 아무것도 만들지 않는다. */
+function statusBadge(status) {
+  const entry = STATUS_LABELS[status];
+  if (!entry) { return null; }
+  const span = document.createElement('span');
+  span.className = 'badge ' + entry.badge;
+  span.setAttribute('title', status);
+  span.textContent = entry.text;
+  return span;
+}
+
+/** 목록 줄에 붙일 담당자 표시. 없으면 아무것도 만들지 않는다. */
+function assigneeMark(assignee) {
+  if (!assignee || typeof assignee.username !== 'string') { return null; }
+  const span = document.createElement('span');
+  span.className = 'muted';
+  span.textContent = '담당 ' + assignee.username;
+  return span;
+}
+
+/** 이력 줄의 속성 값 — 상태는 한글 라벨, 담당자는 계정명, 없음은 「없음」. */
+function propValueText(prop, value) {
+  if (value === null || value === undefined || value === '') { return STATUS_NONE_TEXT; }
+  if (prop === 'status') {
+    const entry = STATUS_LABELS[value];
+    return entry ? entry.text : String(value);
+  }
+  return String(value);
+}
 
 /**
  * 아이콘 한 칸. `app.js` 의 `makeIcon` 과 **같은 방식**이다 — SVG 마크업은 서버가 만든
@@ -230,13 +288,24 @@ function initHome() {
   const spaceLabel = document.getElementById('community-space-label');
   const headTitle = document.getElementById('community-space-title');
   const headSub = document.getElementById('community-space-sub');
+  const statusSelect = document.getElementById('community-status');
+  const mineWrap = document.getElementById('community-mine-wrap');
+  const mineBox = document.getElementById('community-mine');
+  const mineCount = document.getElementById('community-mine-count');
   const spaceId = currentSpaceId();
   let timer = null;
 
-  /** 목록 창구 주소 — 고른 공간을 꼬리표로 붙인다 (4-B). */
+  /** 지금 고른 상태 거르개. 값은 `<option>` 에 적힌 것뿐이고 화면이 지어내지 않는다 (4-D). */
+  function pickedStatus() {
+    return statusSelect ? statusSelect.value : '';
+  }
+
+  /** 목록 창구 주소 — 고른 공간과 상태를 꼬리표로 붙인다 (4-B · 4-D). */
   function listPath(extra) {
     const parts = [];
     if (spaceId !== '') { parts.push('space=' + encodeURIComponent(spaceId)); }
+    const status = pickedStatus();
+    if (status !== '') { parts.push('status=' + encodeURIComponent(status)); }
     if (extra) { parts.push(extra); }
     return '/api/pages' + (parts.length > 0 ? '?' + parts.join('&') : '');
   }
@@ -276,8 +345,54 @@ function initHome() {
     // 공개 범위 배지 (4-B). 팀 공간의 페이지에는 자기 범위가 없어 값이 와도 그리지 않는다.
     const mark = spaceKind === 'team' ? null : visibilityBadge(page.visibility);
     if (mark) { a.appendChild(mark); }
+    // 상태 배지·담당자 (4-D). 둘 다 창구가 준 값이고, 없으면 아무것도 붙지 않는다.
+    const st = statusBadge(page.status);
+    if (st) { a.appendChild(st); }
+    const who = assigneeMark(page.assignee);
+    if (who) { a.appendChild(who); }
     a.appendChild(when);
     return a;
+  }
+
+  /** 「내가 담당인 페이지」 줄 하나 — 어느 공간의 것인지를 함께 보인다 (4-D). */
+  function mineCard(page) {
+    const a = document.createElement('a');
+    a.className = 'card card--link';
+    a.setAttribute('href', COMMUNITY_BASE + '/p/' + page.id);
+
+    const title = document.createElement('span');
+    title.className = 'card__title';
+    title.textContent = (page.icon ? page.icon + ' ' : '') + page.title;
+    a.appendChild(title);
+
+    const where = document.createElement('span');
+    where.className = 'card__desc';
+    where.textContent = page.space && typeof page.space.name === 'string' ? page.space.name : '';
+    a.appendChild(where);
+
+    const st = statusBadge(page.status);
+    if (st) { a.appendChild(st); }
+
+    const when = document.createElement('span');
+    when.className = 'muted';
+    when.textContent = shortWhen(page.updated_at);
+    a.appendChild(when);
+    return a;
+  }
+
+  /** 내가 담당인 페이지 — 공간을 가리지 않는 하나의 창구 호출이다 (C:T-50). */
+  function loadMine() {
+    const status = pickedStatus();
+    const path = '/api/pages?assignee=me' + (status === '' ? '' : '&status=' + encodeURIComponent(status));
+    return api('GET', path).then((result) => {
+      if (result.status !== 200) { show(mineWrap, false); return; }
+      const pages = Array.isArray(result.data.pages) ? result.data.pages : [];
+      clear(mineBox);
+      for (const page of pages) { mineBox.appendChild(mineCard(page)); }
+      setText(mineCount, pages.length === 0 ? '' : String(result.data.total) + '개');
+      // 담당인 페이지가 하나도 없으면 묶음 자체를 보이지 않는다(빈 칸을 늘리지 않는다).
+      show(mineWrap, pages.length > 0);
+    }).catch(() => { show(mineWrap, false); });
   }
 
   /** 트리 한 줄 — 제목 링크 + 「하위 추가」. 하위가 있으면 `<details>` 안에 들어간다. */
@@ -324,6 +439,11 @@ function initHome() {
     row.appendChild(caret);
     row.appendChild(link);
     if (mark) { row.appendChild(mark); }
+    // 상태 배지·담당자 (4-D) — 창구가 준 값이고, 없으면 아무것도 붙지 않는다.
+    const st = statusBadge(node.status);
+    if (st) { row.appendChild(st); }
+    const who = assigneeMark(node.assignee);
+    if (who) { row.appendChild(who); }
     if (kidCount > 0) {
       const badge = document.createElement('span');
       badge.className = 'muted';
@@ -392,6 +512,8 @@ function initHome() {
   }
 
   function load(q) {
+    // 「내가 담당인 페이지」는 공간·찾기와 상관없이 늘 같은 자리에 있다 (4-D).
+    loadMine();
     // 찾기를 껐으면 트리로 돌아간다 — 트리 안에서 찾는 것은 뜻이 없다.
     if (!q || q === '') { return loadTree(); }
     return api('GET', listPath('q=' + encodeURIComponent(q))).then((result) => {
@@ -463,6 +585,13 @@ function initHome() {
     search.addEventListener('input', () => {
       window.clearTimeout(timer);
       timer = window.setTimeout(() => { load(search.value).catch(() => setText(msg, GENERIC_ERROR)); }, 300);
+    });
+  }
+
+  // 상태 거르개 (4-D) — 고르면 창구를 다시 부른다. 화면이 목록에서 줄을 빼지 않는다.
+  if (statusSelect) {
+    statusSelect.addEventListener('change', () => {
+      load(search ? search.value : '').catch(() => setText(msg, GENERIC_ERROR));
     });
   }
 
@@ -1207,13 +1336,21 @@ function initPage() {
   const conflictDialog = document.getElementById('conflict-dialog');
   const visibilityBadgeEl = document.getElementById('page-visibility');
   const visibilityButton = document.getElementById('page-visibility-edit');
+  // 4-D — 속성 줄
+  const propsRow = document.getElementById('page-props');
+  const statusButton = document.getElementById('page-status');
+  const statusBadgeEl = document.getElementById('page-status-badge');
+  const assigneeButton = document.getElementById('page-assignee');
+  const assigneeNameEl = document.getElementById('page-assignee-name');
 
   let state = {
     doc: null, version: 0, title: '', canEdit: false, editing: false,
     // 4-A — 창구가 준 「볼 수 있는 하위 페이지」 제목 지도. 렌더러 두 벌이 이것만 본다.
     childTitles: {},
     // 4-B — 지금의 공개 범위와 이 페이지가 든 공간. 둘 다 창구가 준 값이다.
-    visibility: 'private', space: null, canSetVisibility: false
+    visibility: 'private', space: null, canSetVisibility: false,
+    // 4-D — 고정 속성 둘. `status` 는 문자열 또는 null, `assignee` 는 {username, role} 또는 null.
+    status: null, assignee: null, canSetProperties: false
   };
   let view = null;
   let toolbar = null;
@@ -1328,7 +1465,11 @@ function initPage() {
       state.visibility = typeof page.visibility === 'string' ? page.visibility : 'private';
       state.space = result.data.space || null;
       state.canSetVisibility = result.data.can_set_visibility === true;
+      state.status = typeof page.status === 'string' ? page.status : null;
+      state.assignee = page.assignee && typeof page.assignee.username === 'string' ? page.assignee : null;
+      state.canSetProperties = result.data.can_set_properties === true;
       drawVisibility();
+      drawProps();
       setText(titleEl, page.title);
       document.title = page.title + ' · 커뮤니티';
       setText(subEl, page.parent ? '상위: ' + page.parent.title : '');
@@ -1360,6 +1501,160 @@ function initPage() {
       return;
     }
     paintVisibility(visibilityBadgeEl, state.visibility);
+  }
+
+  /* ── 속성 줄 (4-D, C:F-37) ──
+     상태 배지와 담당자 이름을 창구가 준 값으로 그린다. 고칠 수 없는 사람에게는 두 단추가
+     `disabled` 이고 값은 그대로 보인다 — 「볼 수는 있으나 바꿀 수 없다」가 화면에도 그대로
+     드러난다. 되살려 눌러도 `PATCH …/properties` 가 같은 함수로 다시 막는다 (C:T-51). */
+  function drawProps() {
+    if (!propsRow) { return; }
+    paintStatus(statusBadgeEl, state.status);
+    if (assigneeNameEl) {
+      setText(assigneeNameEl, state.assignee
+        ? state.assignee.username + (state.assignee.is_active === false ? ' (내려간 계정)' : '')
+        : '없음');
+    }
+    if (statusButton) { statusButton.disabled = !state.canSetProperties; }
+    if (assigneeButton) { assigneeButton.disabled = !state.canSetProperties; }
+    show(propsRow, true);
+  }
+
+  /* ── 「상태」 창 (4-D) ──
+     라디오 여섯(없음 + 다섯)이다. 「없음」의 값은 빈 문자열이고, 창구에는 `null` 로 보낸다 —
+     「값이 없다」와 「빈 글자」는 다른 것이고, DB 도 NULL 과 '' 를 다르게 본다. */
+  const statusDialog = document.getElementById('status-dialog');
+  const statusMsg = document.getElementById('status-msg');
+  const statusSave = document.getElementById('status-save');
+
+  function statusRadios() {
+    return statusDialog ? statusDialog.querySelectorAll('input[name="page-status"]') : [];
+  }
+
+  function openStatus() {
+    if (!statusDialog || typeof statusDialog.showModal !== 'function') { return; }
+    setText(statusMsg, '');
+    for (const radio of statusRadios()) {
+      radio.checked = radio.value === (state.status === null ? '' : state.status);
+    }
+    if (!statusDialog.open) { statusDialog.showModal(); }
+  }
+
+  function pickedStatusValue() {
+    for (const radio of statusRadios()) {
+      if (radio.checked) { return radio.value === '' ? null : radio.value; }
+    }
+    return null;
+  }
+
+  /** 속성 창구 한 번. 성공하면 화면을 **창구가 준 값으로** 다시 그린다. */
+  function patchProperties(payload, msgEl, onDone) {
+    return api('PATCH', '/api/pages/' + pageId + '/properties', payload)
+      .then((result) => {
+        if (result.status === 401) { toLogin(); return null; }
+        if (result.status === 200) { return load().then(() => onDone(result.data)); }
+        const reason = result.data && typeof result.data.reason === 'string' ? result.data.reason : '';
+        setText(msgEl, VISIBILITY_REASONS[reason] || errorMessage(result.data));
+        return null;
+      });
+  }
+
+  if (statusButton && statusDialog) {
+    statusButton.addEventListener('click', openStatus);
+    for (const close of statusDialog.querySelectorAll('[data-status-close]')) {
+      close.addEventListener('click', () => statusDialog.close());
+    }
+    if (statusSave) {
+      statusSave.addEventListener('click', () => {
+        statusSave.disabled = true;
+        patchProperties({ status: pickedStatusValue() }, statusMsg, () => { statusDialog.close(); })
+          .then(() => { statusSave.disabled = false; })
+          .catch(() => { statusSave.disabled = false; setText(statusMsg, GENERIC_ERROR); });
+      });
+    }
+  }
+
+  /* ── 「담당자」 창 (4-D, C:T-48) ──
+     후보는 창구 `GET /api/assignees?page=…&q=…` 가 주는 것뿐이다 — 이 파일에는 「누가 이
+     페이지를 볼 수 있나」를 따지는 코드가 없다. 「나에게」는 창구가 준 `can_assign_me` 를
+     따르고, 되살려 눌러도 서버가 다시 막는다. */
+  const assigneeDialog = document.getElementById('assignee-dialog');
+  const assigneeMsg = document.getElementById('assignee-msg');
+  const assigneeSearch = document.getElementById('assignee-search');
+  const assigneeList = document.getElementById('assignee-list');
+  const assigneeEmpty = document.getElementById('assignee-empty');
+  const assigneeMeButton = document.getElementById('assignee-me');
+  const assigneeNoneButton = document.getElementById('assignee-none');
+  let assigneeTimer = null;
+  /* 「나에게」가 보낼 계정명. **창구가 알려 준다**(`me`) — 화면이 내가 누구인지 따로 알고
+     있지 않다. 창구를 부르기 전에는 빈 값이고, 그때 단추는 눌려 있지 않다. */
+  let assigneeMeName = '';
+
+  function setAssignee(username) {
+    return patchProperties({ assignee: username }, assigneeMsg, () => { assigneeDialog.close(); })
+      .catch(() => setText(assigneeMsg, GENERIC_ERROR));
+  }
+
+  function assigneeItem(person) {
+    const li = document.createElement('li');
+    li.className = 'list__item';
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'btn btn--quiet btn--small';
+    button.textContent = person.username + ' · ' + person.role;
+    button.addEventListener('click', () => { setAssignee(person.username); });
+    li.appendChild(button);
+    return li;
+  }
+
+  function loadAssignees() {
+    const q = assigneeSearch ? assigneeSearch.value : '';
+    const path = '/api/assignees?page=' + encodeURIComponent(pageId)
+      + (q === '' ? '' : '&q=' + encodeURIComponent(q));
+    return api('GET', path).then((result) => {
+      if (result.status === 401) { toLogin(); return; }
+      if (result.status !== 200) { setText(assigneeMsg, errorMessage(result.data)); return; }
+      const people = Array.isArray(result.data.assignees) ? result.data.assignees : [];
+      clear(assigneeList);
+      for (const person of people) { assigneeList.appendChild(assigneeItem(person)); }
+      show(assigneeEmpty, people.length === 0);
+      assigneeMeName = typeof result.data.me === 'string' ? result.data.me : '';
+      if (assigneeMeButton) {
+        assigneeMeButton.disabled = result.data.can_assign_me !== true || assigneeMeName === '';
+      }
+    });
+  }
+
+  function openAssignee() {
+    if (!assigneeDialog || typeof assigneeDialog.showModal !== 'function') { return; }
+    setText(assigneeMsg, '');
+    if (assigneeSearch) { assigneeSearch.value = ''; }
+    if (!assigneeDialog.open) { assigneeDialog.showModal(); }
+    loadAssignees().catch(() => setText(assigneeMsg, GENERIC_ERROR));
+  }
+
+  if (assigneeButton && assigneeDialog) {
+    assigneeButton.addEventListener('click', openAssignee);
+    for (const close of assigneeDialog.querySelectorAll('[data-assignee-close]')) {
+      close.addEventListener('click', () => assigneeDialog.close());
+    }
+    if (assigneeSearch) {
+      assigneeSearch.addEventListener('input', () => {
+        window.clearTimeout(assigneeTimer);
+        assigneeTimer = window.setTimeout(() => {
+          loadAssignees().catch(() => setText(assigneeMsg, GENERIC_ERROR));
+        }, 300);
+      });
+    }
+    if (assigneeMeButton) {
+      assigneeMeButton.addEventListener('click', () => {
+        if (assigneeMeName === '') { return; }
+        setAssignee(assigneeMeName);
+      });
+    }
+    if (assigneeNoneButton) {
+      assigneeNoneButton.addEventListener('click', () => { setAssignee(null); });
+    }
   }
 
   /* ── 「공개 범위」 창 (4-B) ──
@@ -1564,7 +1859,11 @@ function initPage() {
     const head = document.createElement('div');
     head.className = 'list__head';
     const what = document.createElement('strong');
-    if (event.kind === 'check') {
+    if (event.kind === 'property') {
+      // 4-D — 「상태: 할 일 → 진행」·「담당자: 없음 → qa_employee01」
+      what.textContent = (event.prop === 'assignee' ? '담당자' : '상태') + ': '
+        + propValueText(event.prop, event.from) + ' → ' + propValueText(event.prop, event.to);
+    } else if (event.kind === 'check') {
       what.textContent = event.checked === true ? '할 일을 체크했습니다' : '체크를 풀었습니다';
     } else if (typeof event.restored_from === 'number') {
       what.textContent = '판 ' + String(event.version) + ' — 판 ' + String(event.restored_from) + ' 에서 되돌림';
@@ -1593,7 +1892,7 @@ function initPage() {
         now.textContent = '지금 판';
         body.appendChild(now);
       }
-    } else {
+    } else if (event.kind === 'check') {
       // 어느 칸인가는 블록 id 앞 8자로 가리킨다 — 할 일에 적힌 글자는 싣지 않는다.
       const which = document.createElement('span');
       which.textContent = '칸 ' + String(event.block_id).slice(0, 8);

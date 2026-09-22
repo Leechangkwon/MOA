@@ -174,6 +174,16 @@ final class Audit
          */
         'auth',
         /*
+         * 4-D 상태·담당자 칸 (커뮤니티 C:F-37, ARCH 7.5 등록부).
+         *   prop       바뀐 칸의 이름 — `status` 또는 `assignee` 둘뿐인 **고정 분류어**다.
+         *   from_value 이전 값 · to_value 새 값. 상태는 코드값(`todo`…), 담당자는 **계정명**이고,
+         *              「없음」은 null 이다. 계정명은 감사 표의 `actor_name` 과 같은 성격의
+         *              값이라 새로 여는 것이 없다. 본문 글자·계정 id 는 어느 쪽에도 들어가지 않는다.
+         * 셋 다 오늘의 FORBIDDEN_DETAIL_KEYS 부분 일치에는 걸리지 않지만, 등록부에 있는 키임을
+         * 코드에서도 드러내려고 여기 적는다(preview_kind·part 와 같은 이유).
+         */
+        'prop', 'from_value', 'to_value',
+        /*
          * F-59 사용자별 개인 토큰 (PRD F-59 ④ ⑦, ARCH 4.6 「감사」 · 7.5 등록부).
          * 세 키 모두 이름에 `token` 이 들어 FORBIDDEN_DETAIL_KEYS 의 **부분 일치**에 걸린다.
          * 값은 토큰이 아니라 분류어·번호·라벨이므로 **정확 일치 예외**로만 통과시킨다
@@ -747,6 +757,19 @@ final class Audit
          * 무게**이므로 여기서 보완한다 (4-C 지시서 「감사」). */
         'page.restore_version|allow'            => '{actor} 이(가) 페이지 「{target}」 을(를) 지난 판의 내용으로 되돌렸습니다 (되돌린 판·새 판 번호는 상세 기록)',
         'page.restore_version|deny|not_owner'   => '{actor} 이(가) 다른 사람의 페이지 「{target}」 을(를) 지난 판으로 되돌리려 해서 막았습니다',
+        /*
+         * 4-D 상태·담당자 칸 (커뮤니티 C:F-37).
+         *   allow                        무엇을 무엇으로 바꿨나는 상세(`prop`·`from_value`·`to_value`)에 있다.
+         *                                한 번의 요청에서 두 칸이 바뀌면 **줄도 두 개**다 —
+         *                                「무엇이 바뀌었나」를 한 줄에 뭉쳐 두면 나중에 되짚을 수 없다.
+         *   deny|not_owner               볼 수는 있어도 고칠 수 없는 사람이 눌렀다 (C:T-51).
+         *   deny|assignee_not_permitted  그 페이지를 볼 수 없는 사람을 담당자로 앉히려 했다 (C:T-48).
+         *                                없는 계정·내려간 계정도 같은 사유로 남는다 — 응답은
+         *                                셋을 가르지 않지만, 기록에는 고른 계정명이 남는다.
+         */
+        'page.property|allow'                   => '{actor} 이(가) 페이지 「{target}」 의 상태 또는 담당자를 바꿨습니다 (어느 칸·이전→새값은 상세 기록)',
+        'page.property|deny|not_owner'          => '{actor} 이(가) 다른 사람의 페이지 「{target}」 의 상태 또는 담당자를 바꾸려 해서 막았습니다',
+        'page.property|deny|assignee_not_permitted' => '{actor} 이(가) 페이지 「{target}」 을(를) 볼 수 없는 사람을 담당자로 지정하려 해서 거부했습니다 (고른 계정은 상세 기록)',
         'page.restore|allow'                    => '{actor} 이(가) 휴지통에서 페이지 「{target}」 을(를) 되살렸습니다 (함께 돌아온 하위 수는 상세 기록)',
         'page.restore|deny|not_owner'           => '{actor} 이(가) 다른 사람이 지운 페이지 「{target}」 을(를) 되살리려 해서 막았습니다',
         'page.delete|deny|not_owner'            => '{actor} 이(가) 다른 사람의 개인 페이지 「{target}」 을(를) 지우려 해서 막았습니다',
