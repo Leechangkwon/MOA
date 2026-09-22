@@ -2263,7 +2263,7 @@ HTTP 시험(T-77 (a)~(e))은 **미실행** — 운영 DB 에 `files.exec_content
 - [x] 쿠키 허용 목록 밖 값 → `<html>` 속성 없음, 본문에 `<script>` 0건 (S-03)
 - [x] `security_lint.sh` 0건 · 인라인 on*/style 0건 · Playwright 콘솔 0
 - [ ] 관문 ③ 사용자 자기 공격: 개발자도구에서 `document.cookie='tbox_theme="><img src=x onerror=alert(1)>'` 넣고 새로고침 → `<html lang="ko">` 만 나오고 알림창이 뜨지 않는지 — **대기**
-- [ ] 커밋 — F-65 세션 마무리 뒤 디자인 건만 따로 (대기)
+- [x] 커밋 `ae534de` (2026-09-22) · 발행 **v1.16.0** `4357fa6` — F-68(`df126a4`)과 묶어 한 번호로 (다른 세션과 합의). 지시서 d5·d6·d7·d7b, 견본 docs/design-guide.html
 
 학습 기록
 | 날짜 | 구분 | 내용 | 해소·근거 |
