@@ -680,6 +680,47 @@ function initReauthPage(form, csrfToken) {
   });
 }
 
+/**
+ * D-9 (DESIGN.md 2.7 · 7장 D-9, PRD F-23, ARCH 4.0 관문 [3-2]) — 관리 화면으로 가는 링크가
+ * 가리키는 곳이 재인증 대상인가. 라우터 고정 표(public/index.php 의 TBOX_REAUTH_RETURN)와
+ * **같은 목록**이고, 화면이 새 경로를 지어내지 않는다.
+ */
+function isAdminPath(href) {
+  return /^\/(admin(\/|$)|users$|org$|audit$|trash$|wiki(\/|$))/.test(href);
+}
+
+/**
+ * D-9 — 관리 화면으로 가는 링크를 누르면, 재인증이 필요할 때만 여기서 모달을 먼저 띄운다.
+ *
+ * 판단의 근거는 서버다: 모달을 건너뛰어도(주소 직접 입력·스크립트 차단) 서버 관문 [3-2]가
+ * 302 `/reauth` 로 보낸다. `reauth_fresh` 는 `/api/me` 가 준 **편의값**이고, 값을 고쳐도
+ * 서버가 요청마다 DB 를 다시 본다 (PRD S-01). 통과 뒤 이동도 `location.assign` 이라
+ * 그 요청을 서버가 다시 판정한다 — 모달이 권한을 만들지 않는다.
+ */
+function armReauthLinks(me) {
+  if (!me || me.reauth_fresh === true) {
+    return;   // 이미 확인된 세션 — 그냥 이동 (관리 화면 안에서 관리 화면으로 가는 링크가 이 경우다)
+  }
+  document.querySelectorAll('a.nav__item[href], a.card--link[href]').forEach(function (a) {
+    var href = a.getAttribute('href') || '';
+    if (!isAdminPath(href)) {
+      return;
+    }
+    a.addEventListener('click', function (ev) {
+      // 새 탭·새 창·다운로드 등 브라우저 기본 동작은 그대로 둔다(그 요청은 서버 관문이 302 로 받는다).
+      if (ev.defaultPrevented || ev.button !== 0 || ev.metaKey || ev.ctrlKey || ev.shiftKey || ev.altKey) {
+        return;
+      }
+      ev.preventDefault();
+      // 기존 모달 그대로 — 성공하면 onDone, 「닫기」면 아무 일 없음. <dialog> 가 없는 브라우저는
+      // openReauthModal 이 이미 `/reauth` 화면으로 보낸다(후퇴 경로).
+      openReauthModal(function () {
+        window.location.assign(href);   // href 는 마크업에 적힌 값 그대로
+      });
+    });
+  });
+}
+
 /** 크기 표시 — 숫자만 다룬다(서버 문자열을 그대로 쓰지 않는다) */
 function formatSize(bytes) {
   var n = typeof bytes === 'number' && isFinite(bytes) && bytes >= 0 ? bytes : 0;
@@ -7457,6 +7498,12 @@ function initShell(me, csrfToken) {
      /api/admin/* 를 직접 불러도 라우트 정책 role:Admin 과 재인증 관문이 막고
      authz.route|deny 로 남는다 (PRD S-01, T-38). */
   var canAdmin = me.can_admin === true;
+
+  /* D-9 (DESIGN.md 2.7, PRD F-23, ARCH 4.0) — 관리 화면 링크에 재인증 모달을 건다.
+     initShell 은 셸이 있는 **모든** 화면이 딱 한 번 부르고 이미 `/api/me` 의 me 를 갖고 있어,
+     화면 분기마다 걸지 않고 여기서 한 번 건다 — 새 요청은 0 이다. 무엇을 묻는지는 서버가 준
+     reauth_fresh 가 정하고, 막는 것은 여전히 서버 관문 [3-2] 다 (PRD S-01). */
+  armReauthLinks(me);
 
   function showNav(id, open) {
     var el = document.getElementById(id);
