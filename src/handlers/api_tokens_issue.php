@@ -69,10 +69,10 @@ $auditTarget = [
     'target_name' => (string) $target['username'],
 ];
 
-/** 거부 기록 후 400 으로 끝낸다 (문구는 언제나 통일 — 대상 정보를 담지 않는다) */
+/** 거부 기록 후 400 으로 끝낸다 (문장은 `Http::reasonMessage()` 표 — 대상 정보를 담지 않는다, F-68) */
 $reject = static function (string $reason) use ($auditTarget): void {
     Audit::deny('api_token.issue', $reason, $auditTarget);
-    Http::error(400, Http::MSG_BAD_REQUEST);
+    Http::error(400, Http::reasonMessage($reason));
 };
 
 // ─── [1] 허용 키 검사 (R-07 대량 할당 차단) ──────────────────────

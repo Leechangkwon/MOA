@@ -311,11 +311,18 @@ up() {   # $1 파일경로 → CODE·BODY·REASON·NEWID 설정 · 성공하면 
   [ -n "$NEWID" ] && UPLOADED="$UPLOADED $NEWID"
 }
 
+# F-68 (2026-09-22) — 사유 코드마다의 문장. **표를 베끼지 않고** 그 표를 부른다:
+# 문장의 원본은 ARCH 5.30 이고 `Http::reasonMessage()` 가 그것을 옮긴 것이라, 여기서
+# 문자열을 다시 적으면 세 벌이 되고 한 벌만 갱신되는 자리가 생긴다.
+reason_msg() {   # $1 사유 코드 → 문장
+  php -r 'require $argv[1]."/src/Http.php"; require $argv[1]."/src/Upload.php"; echo Http::reasonMessage($argv[2]);' "$ROOT" "$1"
+}
+
 deny() {   # $1 설명  $2 기대 사유 코드  $3 파일
   if [ "$HAVE_SESSION" -eq 0 ]; then skip "$1" "세션 없음"; return; fi
   up "$3"
   expect "$1 — 상태" "400" "$CODE"
-  expect "$1 — 응답 문구(통일)" '{"error":"잘못된 요청입니다"}' "$BODY"
+  expect "$1 — 응답 문구(F-68 · ARCH 5.30 표)" "{\"error\":\"$(reason_msg "$2")\"}" "$BODY"
   if [ "$HAVE_PSQL" -eq 1 ]; then expect "$1 — 감사 사유" "$2" "${REASON:-없음}"
   else skip "$1 감사 사유" "psql 없음"; fi
 }

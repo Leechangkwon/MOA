@@ -64,7 +64,9 @@ $auditTable = [
 ];
 
 /**
- * 거부 한 건 — 기록하고, 필요하면 실패로 세고, 같은 문구(400)로 끝낸다.
+ * 거부 한 건 — 기록하고, 필요하면 실패로 세고, 400 으로 끝낸다.
+ * 문장은 `Http::reasonMessage()` 표에서 온다 (F-68, ARCH 5.30) — `bad_code`·`code_reused` 는
+ * `REASON_UNIFORM` 이 지켜 「잘못된 요청입니다」 그대로다(오라클 차단, R-48·R-45).
  * `$countFailure` 가 참인 것은 **코드 추측**(bad_code·code_reused)뿐이다 (13단계 R-48 규칙).
  *
  * @param array<string,mixed> $detail
@@ -80,7 +82,7 @@ $reject = static function (string $reason, bool $countFailure = false, array $de
     if ($countFailure) {
         Auth::countFailureAndRevoke($userId);
     }
-    Http::error(400, Http::MSG_BAD_REQUEST);
+    Http::error(400, Http::reasonMessage($reason));
 };
 
 /* ─── ① 형식 — 허용 키 셋, 값의 모양 (R-07 과 같은 화이트리스트) ──────────────────── */

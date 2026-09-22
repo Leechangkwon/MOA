@@ -12,7 +12,8 @@
 #                 같은 코드 재사용 → 400 `code_reused`
 #   (b) 예외가 아닌 갈래 — qa_employee01(internal) · qa_admin01(internal) ·
 #                 qa_admin01 「역할로 보기」(Employee) 중 admin-only · 개인 토큰 `POST /api/upload`
-#                 → 전부 400 통일 문구이고 **응답에 `next` 가 없다** ; 정상 zip 은 확인 없이 201
+#                 → 전부 400 `zip_blocked_entry` 문장(F-68 · ARCH 5.30)이고 **응답에 `next` 가
+#                 없다**(확인 창은 열 수 있는 사람에게만) ; 정상 zip 은 확인 없이 201
 #   (c) 받기    — `GET …/download` 403 `next:"exec_ack"` · `…/preview` 403 ·
 #                 개인 토큰 GET download 403 `exec_content_token` · `POST …/share` 400 ·
 #                 `PATCH {access_level}` 400 · `PATCH {folder_id}` 200 ·
@@ -426,7 +427,7 @@ else
     M=$(mark)
     up_exec "$EMP_JAR" "$EMP_CSRF" "$EXEC_ZIP2" "internal"
     expect "(b) 직원 internal → 상태" "400" "$CODE"
-    expect "(b) 직원 internal → 통일 문구" "잘못된 요청입니다" "$(printf '%s' "$BODY" | jget "d.get('error','')")"
+    expect "(b) 직원 internal → zip_blocked_entry 문장 (F-68 · ARCH 5.30)" "압축본 안에 실행 파일이나 스크립트가 있어 올릴 수 없습니다" "$(printf '%s' "$BODY" | jget "d.get('error','')")"
     expect "(b) 직원 internal → next 없음" "0" "$(printf '%s' "$BODY" | grep -c 'next' || true)"
     if [ "$HAVE_PSQL" -eq 1 ]; then
       expect "(b) 감사 file.upload deny zip_blocked_entry" "1" \

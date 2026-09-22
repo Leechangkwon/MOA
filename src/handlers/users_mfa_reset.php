@@ -58,7 +58,7 @@ $auditTarget = [
 /** 거부 기록 후 400 으로 끝낸다 */
 $reject = static function (string $reason) use ($auditTarget): void {
     Audit::deny('user.mfa_reset', $reason, $auditTarget);
-    Http::error(400, Http::MSG_BAD_REQUEST);
+    Http::error(400, Http::reasonMessage($reason));
 };
 
 // ─── [1] 허용 키 검사 ───────────────────────────────────────────

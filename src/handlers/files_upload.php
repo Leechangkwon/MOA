@@ -38,23 +38,22 @@ declare(strict_types=1);
 require_once __DIR__ . '/_upload_common.php';
 
 /**
- * 웹의 거부 문구 — 사유는 감사 로그에만, 사용자에게는 통일된 문구만 (PRD S-09-5).
+ * 웹의 거부 문구 — 감사 사유 코드는 그대로 남기고, 400 의 문장은 한 표에서 가져온다.
  *
- * 세 가지뿐이고 **F-49 이전과 한 글자도 같다**:
- *   403                        「권한이 없습니다」          (등급·팀 권한)
- *   400 sensitive_level_required 「민감정보가 보여 …」        예외적으로 이유를 알려 주는 400
- *                                (막힌 사람이 올리는 본인이고, 이유를 모르면 어떤 등급으로
- *                                 다시 올려야 하는지 알 수 없다 — Http 상수 주석)
- *   그 밖의 400                 「잘못된 요청입니다」
+ * 세 가지뿐이다:
+ *   403          「권한이 없습니다」          (등급·팀 권한 — 대상 정보 미포함, PRD S-09-5)
+ *   400          `Http::reasonMessage($reason)` — 사유 코드마다의 사람 문장
+ *                (F-68, PRD S-09-12, ARCH 5.30 표가 원본). `sensitive_level_required` 도
+ *                그 표가 같은 상수(`MSG_SENSITIVE_LEVEL_REQUIRED`)를 가리키므로 문장은 불변이고,
+ *                표에 없는 코드·`REASON_UNIFORM` 의 코드는 「잘못된 요청입니다」로 떨어진다.
+ *   400 exec_ack_required  `next:"exec_ack"` + 차단 항목 이름 (아래 갈래)
  *
- * ★ F-65 (2026-09-21, ARCH 5.29 「올리기」 표) — 네 번째 갈래가 생겼다:
- *   `$exec['action']` 이 있으면 감사 action 이 `file.upload_exec` 이고, 그중
- *   `exec_ack_required` 하나만 **통일 문구가 아닌** 응답을 낸다
- *   (`next:"exec_ack"` + 차단 항목 이름 — 화면이 이 응답으로 확인 블록을 편다).
- *   나머지(`bad_credentials`·`bad_code`·`code_reused`)는 400 통일 문구이고,
- *   `mfa_not_enabled` 는 403 통일 문구다 — 「비밀번호가 틀렸나 코드가 틀렸나」를
- *   응답으로 갈라 주지 않는다 (로그인 창구와 같은 원칙, PRD S-09-5).
- *   `$exec` 가 비어 있으면 **F-49 이전과 한 글자도 같다**.
+ * ★ F-65 (2026-09-21, ARCH 5.29 「올리기」 표) — `$exec['action']` 이 있으면 감사 action 이
+ *   `file.upload_exec` 이고, 그중 `exec_ack_required` 하나만 **응답 모양이 다른** 400 이다
+ *   (`next`·`entries` — 화면이 이 응답으로 확인 블록을 편다).
+ *   `bad_credentials`·`bad_code`·`code_reused` 는 `Http::REASON_UNIFORM` 이 지켜 400 통일
+ *   문구 그대로이고, `mfa_not_enabled` 는 403 통일 문구다 — 「비밀번호가 틀렸나 코드가
+ *   틀렸나」를 응답으로 갈라 주지 않는다 (R-48·R-45, ARCH 5.30 예외 목록).
  *
  * @param array<string,mixed> $entry 감사 엔트리 (공통 함수가 만든 것을 그대로 남긴다)
  * @param array{action?:string,entries?:list<string>} $exec F-65 갈래에서만 채워진다
@@ -76,9 +75,7 @@ $reject = static function (string $reason, int $status, array $entry, array $exe
     if ($status === 403) {
         Http::error(403, Http::MSG_FORBIDDEN);
     }
-    Http::error($status, $reason === 'sensitive_level_required'
-        ? Http::MSG_SENSITIVE_LEVEL_REQUIRED
-        : Http::MSG_BAD_REQUEST);
+    Http::error($status, $status === 400 ? Http::reasonMessage($reason) : Http::MSG_FORBIDDEN);
 };
 
 // 웹은 등급 필드가 `access_level` 이고 **기본값이 없다** — 비어 있으면 지금까지처럼

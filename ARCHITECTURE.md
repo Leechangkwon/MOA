@@ -386,7 +386,7 @@ F-56 의 넷에 **폴더 관리 넷**을 더해 여덟이 됐다: `GET /api/fold
 사람의 절차가 붙은 결정을 프로그램 창구로 우회시키지 않는다. `cascade`(하위 일괄 좁히기)도 같은 이유다. `folders_list.php`·`folders_create.php` 는 **한 글자도 바뀌지 않는다**.
 
 **응답·문구는 세션과 같다.** F-50 의 검색은 정찰 재료(전체 건수·`can_*`·올린 사람)를 빼기 위해 투영을 갈랐지만, 폴더 트리 응답은 이미 그런 값이 없다(`id`·`name`·`depth`·`access_level`·`team_id`·`team_name`·`child_count`·`file_count`, 전부 호출자가 볼 수 있는 것만).
-오류는 화면과 같은 통일 문구(400·403·409)다 — F-49 업로드처럼 이유 문구를 주지 않는다. 프로그램이 이유를 알아야 하면 그때 사유 코드 응답을 별건으로 검토한다(지금은 감사 로그 `detail.auth=api_token` 행에 사유가 남는다).
+오류는 화면과 같은 문구(400·403·409)다 — **F-68(5.30, 2026-09-22)부터 400 은 화면과 같은 사유 문장**이 나가고(`depth_exceeded`·`cycle`·`parent_narrower`…), 허용 키 밖 `bad_request` 와 403·409 는 통일 문구 그대로다.
 
 **남는 표면(R-90).** 토큰이 처음으로 **「고치기」 계열**에 닿는다. 유출된 토큰은 귀속 계정 권한으로 폴더를 만들고 이름을 바꾸고 파일·폴더를 옮길 수 있다 — 삭제는 아니지만
 **복구 수단이 없다**(휴지통이 아니다, 옮긴 것은 감사 로그를 보고 사람이 되돌린다). 귀속이 Admin 이면 모든 폴더·파일이 대상이다. 완화는 4.2~4.4 와 같다(회전·TLS·감사 `auth=api_token`), 그리고
@@ -1289,7 +1289,7 @@ authentication failed for user "tbox_app"` 같은 형태다 — 호스트·포�
 
 **오탐과 한계(SECURITY R-86).** `/OpenAction` 은 정상 PDF 에도 「첫 페이지로 이동」 용도로 있다 — 거부하고 사유를 관리자가 감사에서 볼 수 있게 한다. 사용자가 「정상인데 막힌다」고 하면 그 파일은 zip 으로 싸서 올리는 우회가 있다(zip 속 pdf 는 이름만 본다) — 이것이 곧 이 검사의 한계이며 F-54 ClamAV 가 그 자리를 맡는다. 암호 zip 은 이름은 보이지만 내용은 못 본다(ClamAV 도 못 본다) — 그대로 통과하되 R-86 에 적는다.
 
-**바뀌지 않는 것.** 응답은 동일 문구 400, 사유는 감사 `file.upload deny <코드>` 에만(7.4 표에 다섯 줄 추가). `ALLOWED_EXT`·`BLOCKED_EXT`·MIME 표 불변.
+**바뀌지 않는 것.** ~~응답은 동일 문구 400, 사유는 감사 `file.upload deny <코드>` 에만~~ → **F-68(5.30, 2026-09-22)부터 8종 사유마다 문장이 나간다**(감사 `file.upload deny <코드>` 는 그대로, 7.4 표에 다섯 줄 추가). `ALLOWED_EXT`·`BLOCKED_EXT`·MIME 표 불변.
 
 ### 5.28 악성코드 검사 파이프라인 — `pending` → `scripts/scan_pending.php` → `clean`/`infected` (PRD F-54, 사용자 결정 2026-09-16)
 
@@ -1340,8 +1340,8 @@ authentication failed for user "tbox_app"` 같은 형태다 — 호스트·포�
 
 | 순서 | 조건 | 결과 |
 |---|---|---|
-| ① | 토큰 입구(`POST /api/upload`, `TBOX_AUTH_METHOD` 정의됨) · URL 가져오기(`files_fetch`) | 지금처럼 400 「잘못된 요청입니다」, 감사 `file.upload deny zip_blocked_entry` — 이 갈래는 **웹 세션에만** 있다 |
-| ② | `$user['real_role'] !== 'Admin'` 또는 「역할로 보기」 중(`acting`) 또는 등급이 `admin-only` 가 아님 | 지금처럼 400 통일 문구. **응답에 `next` 를 넣지 않는다** — Employee 에게 「실행 파일이 들어 있다」는 힌트를 주지 않는다 |
+| ① | 토큰 입구(`POST /api/upload`, `TBOX_AUTH_METHOD` 정의됨) · URL 가져오기(`files_fetch`) | 400 — 토큰 입구는 `zip_blocked_entry` 문장(F-68, 5.30), URL 가져오기는 「가져올 수 없습니다」 그대로(S-05 ⑩); 감사 `file.upload deny zip_blocked_entry` — 이 갈래는 **웹 세션에만** 있다 |
+| ② | `$user['real_role'] !== 'Admin'` 또는 「역할로 보기」 중(`acting`) 또는 등급이 `admin-only` 가 아님 | 400 `zip_blocked_entry` 문장(F-68, 5.30 — 2026-09-22 전에는 통일 문구). **응답에 `next` 를 넣지 않는다** — Employee 에게 「실행 파일이 들어 있다」는 힌트를 주지 않는다 |
 | ③ | Admin · admin-only · 세션인데 `exec_ack` 필드가 `"1"` 이 아님 | 400 `{error: MSG_EXEC_ACK_REQUIRED, next:"exec_ack", entries:[차단 항목 이름 ≤ 20]}`, 감사 `file.upload_exec deny exec_ack_required`(detail `exec_entry_count`). 화면이 이 응답으로 확인 창을 연다 |
 | ④ | `exec_ack="1"` | `Auth::verifyCurrentPassword($user, $password)` → 실패면 `file.upload_exec deny bad_credentials` + `countFailureAndRevoke` + 400 통일 문구. 이어서 `Auth::verifyOtpOnce($user, $otp)` → `mfa_not_enabled`(403) · `bad_code`·`code_reused`(400 + `countFailureAndRevoke`). **둘 다 요청마다**, 세션에 창을 남기지 않는다(`reauth_at` 을 놓지 않는다) |
 | ⑤ | 통과 | `Upload::validate($file, allowBlockedEntries: true)` 로 **다시** 검사 — 차단 이름은 모으기만 하고(`exec_entries`) 나머지 검사는 그대로 던진다. 이어 민감정보 검사(5.13) → INSERT(`exec_content = true`) → 감사 `file.upload_exec allow`(detail `exec_ack:true`·`otp_verified:true`·`exec_entry_count`·`exec_entries`(≤ 20 이름)) — 한 트랜잭션(5.2 [5]) |
@@ -1355,9 +1355,9 @@ authentication failed for user "tbox_app"` 같은 형태다 — 호스트·포�
 | `GET /api/files/{id}/download` (세션) | `decideRead` 뒤 · `scan_status` 관문 앞에서 403 `{error: MSG_EXEC_ACK_REQUIRED, next:"exec_ack"}`, 감사 `file.download deny exec_ack_required` |
 | `GET /api/files/{id}/download` (`X-API-Token`) | 403 `MSG_FORBIDDEN`, 감사 `file.download deny exec_content_token` — 토큰은 OTP 를 칠 수 없다 |
 | `GET …/preview` · `…/preview/raw` | 403 같은 사유(`exec_ack_required`) — zip 은 미리보기 종류가 없지만 관문을 같은 모양으로 둔다 |
-| `POST /api/files/{id}/share` | 400 통일 문구, 감사 `share.create deny exec_content` — 링크는 OTP 없이 받는 길이다 |
+| `POST /api/files/{id}/share` | 400 `exec_content` 문장(F-68, 5.30), 감사 `share.create deny exec_content` — 링크는 OTP 없이 받는 길이다 |
 | `GET /s/{token}` | 만들 수 없으니 닿을 일이 없지만, 5.12 의 검사 순서에 `exec_content` 를 넣어 404 (겹 방어) |
-| `PATCH /api/files/{id}` `access_level` | 400 통일 문구, 감사 `file.update deny exec_content` — 등급을 내리면 「Admin 만·OTP 필수」 전제가 깨진다. `description`·`folder_id` 는 그대로 |
+| `PATCH /api/files/{id}` `access_level` | 400 `exec_content` 문장(F-68, 5.30), 감사 `file.update deny exec_content` — 등급을 내리면 「Admin 만·OTP 필수」 전제가 깨진다. `description`·`folder_id` 는 그대로 |
 | **`POST /api/files/{id}/exec-download`** (정책 `file.read`, 세션만, CSRF) | JSON `{password, otp}` 허용 키 둘. 5.3 과 같은 순서(uuid → 행 → `decideRead` → ) 뒤 `exec_content` 가 거짓이면 400 · `verifyCurrentPassword` → `verifyOtpOnce`(위 ④ 와 같은 사유·집계) → `scan_status` 관문(5.28) → 무결성 → **본문으로 파일 전송**(`Content-Disposition: attachment`, 5.3 과 같은 헤더). 감사 `file.download_exec allow`(detail `otp_verified:true` + 5.3 의 키) |
 
 `decideRead` 가 앞에 있으므로 받는 사람은 **언제나 Admin** 이다(admin-only). Admin 은 F-52 로 2단계 인증이 필수라 `mfa_not_enabled` 갈래는 실제로는 닿지 않지만, 정책이 바뀌어도 코드가 지키도록 둔다.
@@ -1369,6 +1369,73 @@ authentication failed for user "tbox_app"` 같은 형태다 — 호스트·포�
 **검증 helper 두 개 (`src/Auth.php`).** `verifyCurrentPassword(array $user, string $password): bool` — `reauth()` 의 앞부분(`SQL_LOAD_BY_ID` + `password_verify`)과 같고 세션에 `reauth_at` 을 **놓지 않는다**. `verifyOtpOnce(array $user, string $otp): string` — `admin_permissions_update.php` ②의 규칙(`mfa_enabled` 필수 · `Totp::verifyStep` · `mfa_last_step` 1회성)과 같으며 `'ok'|'mfa_not_enabled'|'bad_code'|'code_reused'` 를 돌려주고 실패 집계는 호출자가 한다. `admin_permissions_update.php` 는 이번에 손대지 않는다 — 같은 규칙이 두 벌이 되는 것은 알고 있으며 다음 정리 대상이다(SECURITY R-94 비고).
 
 **바뀌지 않는 것.** `ALLOWED_EXT`·`BLOCKED_EXT`·이름 검사 자체 · 토큰·가져오기 입구의 거부 · ClamAV · 저장 구조 · admin-only 가 아닌 모든 업로드.
+
+
+### 5.30 400 거부의 이유 문장 — `Http::reasonMessage()` 한 표 (PRD F-68 · Q-27 · S-09-12, 사용자 요청 2026-09-21)
+
+**왜.** 「영업팀」 비활성화가 「잘못된 요청입니다」로 막혔다(2026-09-21). 서버는 이유(`team_has_members`, R-44)를 알고 감사에도 남겼지만 화면에는 숨겼다 — S-09-5 「동일 문구」를 400 에도 그대로 적용해 온 결과다. 그런데 400 은 대부분 **요청자 본인의 입력·업무 규칙 위반**이라, 이유를 말해도 공격자가 얻는 것이 없다(자기가 보낸 값이 왜 안 되는지는 자기가 가장 잘 안다). 실제로 예외가 이미 여럿이었다(`MSG_SENSITIVE_LEVEL_REQUIRED`·`MSG_FOLDER_*` 셋·`MSG_EXEC_ACK_REQUIRED`·F-49 의 프로그램 입구 표). 이번에 원칙을 뒤집는다 — **400 은 이유를 말하는 것이 기본**, 통일 문구는 아래 예외 목록으로 좁힌다.
+
+**어디서.** `Http::reasonMessage(string $reason): string` — 사유 코드 → 문장 표 **하나**. 표에 없는 코드는 `MSG_BAD_REQUEST`. 표와 별도로 **절대 문장을 붙이지 않는 코드 목록** `Http::REASON_UNIFORM`(`bad_request`·`bad_credentials`·`bad_code`·`code_reused`·`same_password`·`weak_password`)을 두고, 이 목록의 코드는 누가 표에 넣어도 `MSG_BAD_REQUEST` 로 떨어진다(오라클 차단이 실수로 풀리지 않게). 핸들러의 `$reject` 닫힘 함수는 `Http::error(400, Http::MSG_BAD_REQUEST)` 자리를 `Http::error(400, Http::reasonMessage($reason))` 로 바꿀 뿐이다 — **상태 코드·감사 `Audit::deny(action, reason, …)`·응답 모양 `{"error":…}` 은 바뀌지 않는다.** 403 자리는 그대로 `MSG_FORBIDDEN` 이다(같은 코드 `not_owner` 가 403 으로 나가는 자리는 건드리지 않는다). F-49 의 `api_upload.php` `$reasonTable` 은 **문장 열을 이 표로 넘기고 상태 코드(413·403) 열만** 남긴다 — 웹과 프로그램이 같은 문장을 쓴다. 403 두 줄(`role_not_permitted`·`team_mismatch` 「이 계정은 그 등급(팀)으로 올릴 권한이 없습니다」)은 `api_upload.php` 에 남는다(T-61 계약).
+
+**문장 규칙(S-09-12).** ① 「요청자가 방금 보낸 값의 어디가 규칙에 맞지 않나」만 ② 대상 이름·다른 사람·**개수**·서버 경로·SQL·예외 문구 금지(R-63 — 개수도 정보다) ③ 목록 값(허용 확장자)은 코드에서 만든다(`Upload::ALLOWED_EXT`), 손으로 베끼지 않는다 ④ **이 표가 원본**이고 `Http.php` 는 이 표를 옮긴 것이다 — 둘이 다르면 표를 먼저 고친다(T-81 이 글자 대조를 한다).
+
+| 사유 코드 | 나오는 자리 | 문장 |
+|---|---|---|
+| `team_has_members` | 팀 비활성화 (`org_team_update`) | 활성 구성원이 있는 팀은 비활성화할 수 없습니다 — 먼저 구성원을 다른 팀으로 옮기세요 |
+| `already_exists` | 계정 생성 (`users_create`, 400 그대로) | 이미 있는 아이디입니다 |
+| `self_change` | 계정 역할·상태 변경 · 비밀번호/2단계 초기화 (`users_update`·`users_mfa_reset`·`users_password_reset`) | 자기 자신에게는 쓸 수 없습니다 — 내 계정 화면을 이용하세요 |
+| `last_admin` | 계정 강등·비활성화 (`users_update`) | 마지막 활성 관리자는 강등하거나 비활성화할 수 없습니다 |
+| `depth_exceeded` | 폴더 생성·이동 (`folders_create`·`folders_update`) | 폴더는 5단계까지만 만들 수 있습니다 |
+| `cycle` | 폴더 이동 (`folders_update`) | 폴더를 자기 자신이나 그 하위 폴더 안으로 옮길 수 없습니다 |
+| `parent_narrower` | 폴더 생성·이동·등급, 파일 업로드·정보 변경 | 파일이나 폴더의 등급이 상위 폴더의 등급보다 넓을 수 없습니다 |
+| `children_exceed` | 폴더 등급 좁히기 (`folders_update`, cascade 없음 · cascade 상한 초과 둘 다) | 하위에 이 등급보다 넓은 폴더나 파일이 있습니다 — 「하위 항목도 함께」를 켜거나 먼저 정리하세요 |
+| `not_owner` (**400 자리만**) | 폴더 등급 cascade 중 내가 못 바꾸는 하위 (`folders_update`) | 하위에 내가 바꿀 수 없는 폴더나 파일이 있어 함께 좁힐 수 없습니다 |
+| `bad_encoding` | 업로드·파일 정보 | 파일 이름 또는 설명이 올바른 문자(UTF-8)가 아닙니다 |
+| `description_too_long` | 업로드·파일 정보 | 설명은 500자까지입니다 |
+| `bad_access_level` | 업로드·파일 정보 | level 값이 올바르지 않습니다 (public·internal·team·admin-only) |
+| `bad_team` | 업로드·파일 정보 | team 등급은 team_id(활성 팀 번호)가 필요합니다 |
+| `bad_folder` | 업로드·파일 정보 | folder_id 가 없거나 접근할 수 없는 폴더입니다 |
+| `no_change` | 파일 정보 (`files_update`) | 바뀐 내용이 없습니다 |
+| `exec_content` | 공유 링크 · 등급 변경 (`share_create`·`files_update`) | 실행 파일이 든 압축본은 공유 링크를 만들거나 등급을 바꿀 수 없습니다 |
+| `no_file` | 업로드 | file 필드에 파일이 없습니다 |
+| `upload_error` | 업로드 | 업로드 요청의 형식이 올바르지 않습니다 (multipart/form-data 로 file 하나를 보냅니다) |
+| `not_uploaded_file` | 업로드 | 정상적인 HTTP 업로드가 아닙니다 |
+| `empty_file` | 업로드 | 빈 파일(0바이트)은 올릴 수 없습니다 |
+| `size_unreadable` | 업로드 | 파일 크기를 읽을 수 없습니다 |
+| `hash_failed` | 업로드 | 파일의 무결성 값을 계산할 수 없습니다 |
+| `ext_not_allowed` | 업로드 | 허용되지 않는 확장자입니다 (허용: `implode(' ', Upload::ALLOWED_EXT)`) — 목록은 코드가 만든다 |
+| `double_extension` | 업로드 | 이중 확장자 파일은 올릴 수 없습니다 |
+| `mime_mismatch` | 업로드 | 파일 내용이 확장자와 다릅니다 |
+| `too_large` | 업로드 (웹 400 · 프로그램 413) | 파일이 100MB 를 넘습니다 |
+| `quota_exceeded` | 업로드 (웹 400 · 프로그램 413) | 오늘 업로드 총량(2GB)을 넘었습니다 |
+| `zip_blocked_entry` | 업로드 내용 검사 (F-53; F-65 갈래가 아닌 사람) | 압축본 안에 실행 파일이나 스크립트가 있어 올릴 수 없습니다 |
+| `zip_bad_path` | 업로드 내용 검사 | 압축본 안에 올바르지 않은 경로(상위 폴더로 나가는 경로·절대 경로)가 있습니다 |
+| `zip_bomb` | 업로드 내용 검사 | 압축본을 풀었을 때의 크기나 항목 수가 한도를 넘습니다 |
+| `zip_unreadable` | 업로드 내용 검사 | 압축본을 읽을 수 없습니다 — 손상됐거나 지원하지 않는 형식입니다 |
+| `nested_zip` | 업로드 내용 검사 | 압축본 안에 다른 압축본이 있어 올릴 수 없습니다 |
+| `macro_found` | 업로드 내용 검사 | 문서에 매크로가 들어 있어 올릴 수 없습니다 |
+| `pdf_active_content` | 업로드 내용 검사 | PDF 에 실행되는 내용(자바스크립트·자동 실행)이 있어 올릴 수 없습니다 |
+| `hwp_not_hwp` | 업로드 내용 검사 | HWP 형식이 아닌 파일입니다 |
+| `target_inactive` | 개인 토큰 발급 (`api_tokens_issue`) | 비활성이거나 만료된 계정에는 토큰을 만들 수 없습니다 |
+| `limit_exceeded` | 개인 토큰 발급 | 살아 있는 토큰이 상한에 이르렀습니다 — 먼저 하나를 회수하세요 |
+| `invariant` | 권한 매트릭스 · 허용 사이트 (`admin_permissions_update`·`fetch_hosts_update`) | 바꿀 수 없는 항목이거나 규칙에 어긋나는 값입니다 |
+| `already_enabled` | 2단계 등록 시작 (`mfa_enroll`) | 2단계 인증이 이미 켜져 있습니다 |
+| `sensitive_level_required` · `folder_has_children` · `folder_not_empty` · `folder_has_trashed` · `exec_ack_required` | (기존 상수) | 기존 `MSG_*` 그대로 — 표에서도 찾을 수 있게 같은 상수를 가리킨다 |
+
+**그대로 통일 문구 — 예외 목록(표에 넣지 않는다, `REASON_UNIFORM` 이 지킨다).**
+
+| 자리 | 문구 | 왜 |
+|---|---|---|
+| `bad_request` — 허용 키 밖·값의 형식·`Http::jsonBody` 파싱 | 잘못된 요청입니다 | 프로그램(또는 개발자도구)의 실수다. 무엇이 허용되는지는 `API.md` 가 말한다 |
+| `bad_credentials`·`bad_code`·`code_reused`·`same_password`·`weak_password` — `login`·`reauth`·`password_change`·`mfa_confirm`·`mfa_disable`·F-65 확인(`_upload_common` ④·`files_exec_download`)·매트릭스/허용 사이트 OTP | 잘못된 요청입니다 (로그인은 `MSG_LOGIN_FAILED`) | 「비밀번호는 맞았나」「코드는 맞았나」 오라클 차단 (R-48·R-45). `weak_password` 를 가르면 현재 비밀번호가 맞았다는 뜻이 된다 |
+| 403 전부 (`role_not_permitted`·`team_mismatch`·`not_owner`·`mfa_not_enabled`·`exec_content_token`…) | 권한이 없습니다 | S-09-5 — 대상 정보 미포함 |
+| 404 · `/s/{token}` (`not_found`·`revoked`·`expired`·`exhausted`·`file_gone`·`exec_content`) | 찾을 수 없습니다 | 존재 여부 오라클, 5.12 |
+| URL 가져오기 (`files_fetch` 전부, 400·403·429) | 가져올 수 없습니다 | S-05 ⑩ — 내부망 정찰 재료 |
+| 423 검사 중 · 429 속도 제한 | 그대로 | 5.28 · S-05 ⑪ |
+
+**바뀌지 않는 것.** 상태 코드 · 감사 사유 코드와 7.4 문장 · 응답 모양 · `Authz`·`Auth`·`Upload`·`Audit`·`index.php` · 화면 JS(`errorMessage()` 가 `error` 를 그대로 보인다) · 프로그램 입구의 403 두 문장.
+
+**5.27·5.29 의 「400 통일 문구」 문장은 이 절로 바뀐다.** 5.27 「응답은 동일 문구 400」 → F-53 8종은 위 표의 문장. 5.29 표 ①(토큰 입구)·②(Admin 이 아니거나 admin-only 가 아닌 사람)의 「400 통일 문구」 → `zip_blocked_entry` 문장 — 단 **`next` 는 여전히 없다**(확인 창은 열 수 있는 사람에게만). 5.29 받기 표의 `POST …/share`·`PATCH access_level` → `exec_content` 문장. 5.29 ④ 와 `exec-download` 의 `bad_credentials`·`bad_code`·`code_reused` 는 예외 목록대로 그대로.
 
 
 ## 6. 저장 위치 — 파일 정보 vs 실제 파일

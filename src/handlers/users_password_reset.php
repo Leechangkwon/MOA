@@ -59,7 +59,7 @@ $auditTarget = [
 /** 거부 기록 후 400 으로 끝낸다 */
 $reject = static function (string $reason) use ($auditTarget): void {
     Audit::deny('user.password_reset', $reason, $auditTarget);
-    Http::error(400, Http::MSG_BAD_REQUEST);
+    Http::error(400, Http::reasonMessage($reason));
 };
 
 // ─── [1] 허용 키 검사 (R-07 과 같은 원칙: 모르는 키가 하나라도 있으면 거부) ───

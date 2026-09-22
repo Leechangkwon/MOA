@@ -146,7 +146,7 @@ if (is_array($db->run($sqlExists, [':username' => $username])->fetch())) {
         'target_type' => 'user',
         'target_name' => $username,
     ]);
-    Http::error(400, Http::MSG_BAD_REQUEST);
+    Http::error(400, Http::reasonMessage('already_exists'));
 }
 
 // ─── [10] 저장 — 임시 비밀번호를 만들고 해시만 넣는다 (F-16 ①, PRD S-09-4, T-16) ───
@@ -203,7 +203,7 @@ try {
             'target_type' => 'user',
             'target_name' => $username,
         ]);
-        Http::error(400, Http::MSG_BAD_REQUEST);
+        Http::error(400, Http::reasonMessage('already_exists'));
     }
     throw $e;
 } catch (Throwable $e) {

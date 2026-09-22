@@ -154,7 +154,7 @@ if ($parentId !== null) {
     // ─── [불변 ①] 새 폴더가 부모보다 넓으면 안 된다 (ARCH 5.16) ───
     [$fits, $fitCode] = Authz::fitsUnderFolder($level, $teamId, $parentRow);
     if (!$fits) {
-        $reject($fitCode, 400, Http::MSG_BAD_REQUEST, $name, $level, [
+        $reject($fitCode, 400, Http::reasonMessage($fitCode), $name, $level, [
             'parent_id'   => $parentId,
             'target_team' => $teamId,
         ]);
@@ -166,7 +166,7 @@ if ($parentId !== null) {
 // ─── [5] 깊이 — parent.depth + 1 ≤ 5 (PRD F-26) ────────────────
 //        DB CHECK(folders_depth_range) 가 마지막 그물이지만, 앱이 먼저 보고 사유를 기록한다.
 if ($depth > 5) {
-    $reject('depth_exceeded', 400, Http::MSG_BAD_REQUEST, $name, $level, ['parent_id' => $parentId]);
+    $reject('depth_exceeded', 400, Http::reasonMessage('depth_exceeded'), $name, $level, ['parent_id' => $parentId]);
 }
 
 // ─── [6] 같은 부모 안 같은 이름 (409) ───────────────────────────

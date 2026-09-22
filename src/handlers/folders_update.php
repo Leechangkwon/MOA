@@ -290,13 +290,13 @@ if ($newParent !== null) {
     // 부모가 그대로라도 등급을 넓히면 여기서 걸린다 — 그래서 조건 없이 본다.
     [$fits, $fitCode] = Authz::fitsUnderFolder($newLevel, $newTeam, $parentRow);
     if (!$fits) {
-        $rejectAs($levelAction, $fitCode, 400, Http::MSG_BAD_REQUEST, $newLevel, [
+        $rejectAs($levelAction, $fitCode, 400, Http::reasonMessage($fitCode), $newLevel, [
             'parent_id' => $newParent,
         ]);
     }
 }
 if ($newDepth > 5) {
-    $reject('depth_exceeded', 400, Http::MSG_BAD_REQUEST);
+    $reject('depth_exceeded', 400, Http::reasonMessage('depth_exceeded'));
 }
 
 // ─── [5] 자기 자신·자손 아래로 이동 금지 + 하위 포함 깊이 ───────
@@ -327,11 +327,11 @@ if ($parentChanged) {
         throw new RuntimeException('폴더 트리를 확인하지 못했습니다');
     }
     if ((int) $statRow['hits'] > 0) {
-        $reject('cycle', 400, Http::MSG_BAD_REQUEST);
+        $reject('cycle', 400, Http::reasonMessage('cycle'));
     }
     // 옮긴 뒤 하위까지 포함한 최대 깊이 — 지금 가장 깊은 폴더는 (max_depth - currentDepth) 만큼 아래다.
     if ($newDepth + ((int) $statRow['max_depth'] - $currentDepth) > 5) {
-        $reject('depth_exceeded', 400, Http::MSG_BAD_REQUEST);
+        $reject('depth_exceeded', 400, Http::reasonMessage('depth_exceeded'));
     }
 }
 
@@ -446,14 +446,14 @@ $doCascade = $cascade && $narrowing && $violations !== [];
 
 if ($violations !== [] && !$doCascade) {
     // cascade 를 쓰지 않았거나(또는 넓히기라 쓸 수 없거나) 위반이 남았다 → 거부. 개수만 남긴다.
-    $rejectAs($levelAction, 'children_exceed', 400, Http::MSG_BAD_REQUEST, $newLevel, [
+    $rejectAs($levelAction, 'children_exceed', 400, Http::reasonMessage('children_exceed'), $newLevel, [
         'violations'    => count($violations),
         'folder_before' => ['access_level' => $currentLevel, 'team_id' => $currentTeam],
         'folder_after'  => ['access_level' => $newLevel,     'team_id' => $newTeam],
     ]);
 }
 if ($doCascade && count($violations) > TBOX_FOLDER_CASCADE_MAX) {
-    $rejectAs($levelAction, 'children_exceed', 400, Http::MSG_BAD_REQUEST, $newLevel, [
+    $rejectAs($levelAction, 'children_exceed', 400, Http::reasonMessage('children_exceed'), $newLevel, [
         'violations'    => count($violations),
         'folder_before' => ['access_level' => $currentLevel, 'team_id' => $currentTeam],
         'folder_after'  => ['access_level' => $newLevel,     'team_id' => $newTeam],
@@ -479,7 +479,7 @@ if ($doCascade) {
         $cascadeCodes[$i] = $childCode;
     }
     if ($denied > 0) {
-        $rejectAs($levelAction, 'not_owner', 400, Http::MSG_BAD_REQUEST, $newLevel, [
+        $rejectAs($levelAction, 'not_owner', 400, Http::reasonMessage('not_owner'), $newLevel, [
             'violations'    => count($violations),
             'cascade'       => true,
             'folder_before' => ['access_level' => $currentLevel, 'team_id' => $currentTeam],
@@ -600,7 +600,7 @@ try {
         $bad = $db->run($sqlIntegrity, [':id' => $folderId])->fetch();
         if (!is_array($bad) || (int) $bad['bad'] !== 0) {
             $db->rollback();
-            $rejectAs($levelAction, 'children_exceed', 400, Http::MSG_BAD_REQUEST, $newLevel, [
+            $rejectAs($levelAction, 'children_exceed', 400, Http::reasonMessage('children_exceed'), $newLevel, [
                 'violations'    => is_array($bad) ? (int) $bad['bad'] : -1,
                 'folder_before' => ['access_level' => $currentLevel, 'team_id' => $currentTeam],
                 'folder_after'  => ['access_level' => $newLevel,     'team_id' => $newTeam],

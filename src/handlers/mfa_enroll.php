@@ -56,7 +56,7 @@ if ($row['mfa_enabled'] === true) {
     // 이미 켜져 있다 — 비밀을 갈아 끼우면 옛 코드가 안 맞게 되어 계정이 잠긴다.
     // 끄고(disable) 다시 켠다. 거부도 기록한다 (ARCH 7.4 `auth.mfa_enroll|deny|already_enabled`).
     Audit::deny('auth.mfa_enroll', 'already_enabled', $auditTarget);
-    Http::error(400, Http::MSG_BAD_REQUEST);
+    Http::error(400, Http::reasonMessage('already_enabled'));
 }
 
 $secret = Totp::generateSecret();

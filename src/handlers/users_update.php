@@ -91,7 +91,7 @@ $auditTarget = [
 /** 거부 기록 후 400 으로 끝낸다 */
 $reject = static function (string $action, string $reason) use ($auditTarget): void {
     Audit::deny($action, $reason, $auditTarget);
-    Http::error(400, Http::MSG_BAD_REQUEST);
+    Http::error(400, Http::reasonMessage($reason));
 };
 
 // ─── [1] 허용 키 검사 ───────────────────────────────────────────
@@ -212,7 +212,7 @@ if ($activeChanged) {
 
 if (!$mayChange) {
     Audit::deny($authzDenyAction, $changeCode, $auditTarget);
-    Http::error(400, Http::MSG_BAD_REQUEST);
+    Http::error(400, Http::reasonMessage($changeCode));
 }
 
 // ─── [6] 적용 ───────────────────────────────────────────────────

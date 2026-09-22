@@ -8,6 +8,7 @@ declare(strict_types=1);
  * 특히 401/403/404 는 대상에 대한 어떤 정보도 담지 않는다
  * (파일이 있는데 권한이 없는 것인지, 아예 없는 것인지 구분되면 그것만으로 정보 유출이다).
  * 문구는 아래 상수뿐이다 — 예외 메시지·DB 오류·경로가 본문에 섞여 나가는 경로를 만들지 않는다.
+ * 400 의 사유 문장은 reasonMessage() 표(ARCH 5.30)에서만 나온다.
  */
 final class Http
 {
@@ -133,6 +134,86 @@ final class Http
      *   통일 문구 400 으로 끝난다 — 「실행 파일이 들어 있다」는 힌트조차 주지 않는다 (②).
      */
     public const MSG_EXEC_ACK_REQUIRED = '실행 파일이 든 압축본입니다 — 비밀번호와 2단계 인증 코드로 확인해야 합니다';
+
+    /**
+     * 어떤 사유 코드에도 절대 문장을 붙이지 않는다 — 오라클 차단 (ARCH 5.30 예외 목록, R-48·R-45).
+     * REASON_MESSAGES 에 누가 넣어도 이 목록이 이긴다.
+     */
+    public const REASON_UNIFORM = ['bad_request', 'bad_credentials', 'bad_code', 'code_reused', 'same_password', 'weak_password'];
+
+    /**
+     * 400 거부의 사유 코드 → 사람 문장 (PRD F-68 · S-09-12, ARCH 5.30 표가 원본).
+     *
+     * 표에 없는 코드는 MSG_BAD_REQUEST 로 떨어진다. 403·404·423·429 자리에서는 부르지 않는다
+     * (그 자리는 MSG_FORBIDDEN·MSG_NOT_FOUND·MSG_SCAN_* 동일 문구다 — S-09-5).
+     * 문장 규칙(S-09-12): 「요청자가 방금 보낸 값의 어디가 규칙에 맞지 않나」만 담고
+     * 대상 이름·다른 사람·개수·서버 경로·SQL·예외 문구는 담지 않는다 (R-63).
+     */
+    public static function reasonMessage(string $reason): string
+    {
+        if (in_array($reason, self::REASON_UNIFORM, true)) {
+            return self::MSG_BAD_REQUEST;
+        }
+        if ($reason === 'ext_not_allowed') {
+            // 허용 목록은 코드가 만든다 — 손으로 베끼면 목록이 바뀌는 날 어긋난다
+            return '허용되지 않는 확장자입니다 (허용: ' . implode(' ', Upload::ALLOWED_EXT) . ')';
+        }
+        return self::REASON_MESSAGES[$reason] ?? self::MSG_BAD_REQUEST;
+    }
+
+    /**
+     * ARCH 5.30 표 — 글자 그대로 옮긴 것이다. 원본은 그 표이고, 둘이 다르면 표를 먼저 고친다
+     * (T-81 (a) 가 이 표와 ARCH 5.30 을 글자 대조한다).
+     * 마지막 다섯 줄은 이미 있던 상수를 가리킨다 — 문구를 두 벌로 만들지 않는다.
+     *
+     * @var array<string,string>
+     */
+    private const REASON_MESSAGES = [
+        'team_has_members'     => '활성 구성원이 있는 팀은 비활성화할 수 없습니다 — 먼저 구성원을 다른 팀으로 옮기세요',
+        'already_exists'       => '이미 있는 아이디입니다',
+        'self_change'          => '자기 자신에게는 쓸 수 없습니다 — 내 계정 화면을 이용하세요',
+        'last_admin'           => '마지막 활성 관리자는 강등하거나 비활성화할 수 없습니다',
+        'depth_exceeded'       => '폴더는 5단계까지만 만들 수 있습니다',
+        'cycle'                => '폴더를 자기 자신이나 그 하위 폴더 안으로 옮길 수 없습니다',
+        'parent_narrower'      => '파일이나 폴더의 등급이 상위 폴더의 등급보다 넓을 수 없습니다',
+        'children_exceed'      => '하위에 이 등급보다 넓은 폴더나 파일이 있습니다 — 「하위 항목도 함께」를 켜거나 먼저 정리하세요',
+        'not_owner'            => '하위에 내가 바꿀 수 없는 폴더나 파일이 있어 함께 좁힐 수 없습니다',
+        'bad_encoding'         => '파일 이름 또는 설명이 올바른 문자(UTF-8)가 아닙니다',
+        'description_too_long' => '설명은 500자까지입니다',
+        'bad_access_level'     => 'level 값이 올바르지 않습니다 (public·internal·team·admin-only)',
+        'bad_team'             => 'team 등급은 team_id(활성 팀 번호)가 필요합니다',
+        'bad_folder'           => 'folder_id 가 없거나 접근할 수 없는 폴더입니다',
+        'no_change'            => '바뀐 내용이 없습니다',
+        'exec_content'         => '실행 파일이 든 압축본은 공유 링크를 만들거나 등급을 바꿀 수 없습니다',
+        'no_file'              => 'file 필드에 파일이 없습니다',
+        'upload_error'         => '업로드 요청의 형식이 올바르지 않습니다 (multipart/form-data 로 file 하나를 보냅니다)',
+        'not_uploaded_file'    => '정상적인 HTTP 업로드가 아닙니다',
+        'empty_file'           => '빈 파일(0바이트)은 올릴 수 없습니다',
+        'size_unreadable'      => '파일 크기를 읽을 수 없습니다',
+        'hash_failed'          => '파일의 무결성 값을 계산할 수 없습니다',
+        // 'ext_not_allowed' 는 reasonMessage() 안에서 Upload::ALLOWED_EXT 로 만든다 (ARCH 5.30 문장 규칙 ③)
+        'double_extension'     => '이중 확장자 파일은 올릴 수 없습니다',
+        'mime_mismatch'        => '파일 내용이 확장자와 다릅니다',
+        'too_large'            => '파일이 100MB 를 넘습니다',
+        'quota_exceeded'       => '오늘 업로드 총량(2GB)을 넘었습니다',
+        'zip_blocked_entry'    => '압축본 안에 실행 파일이나 스크립트가 있어 올릴 수 없습니다',
+        'zip_bad_path'         => '압축본 안에 올바르지 않은 경로(상위 폴더로 나가는 경로·절대 경로)가 있습니다',
+        'zip_bomb'             => '압축본을 풀었을 때의 크기나 항목 수가 한도를 넘습니다',
+        'zip_unreadable'       => '압축본을 읽을 수 없습니다 — 손상됐거나 지원하지 않는 형식입니다',
+        'nested_zip'           => '압축본 안에 다른 압축본이 있어 올릴 수 없습니다',
+        'macro_found'          => '문서에 매크로가 들어 있어 올릴 수 없습니다',
+        'pdf_active_content'   => 'PDF 에 실행되는 내용(자바스크립트·자동 실행)이 있어 올릴 수 없습니다',
+        'hwp_not_hwp'          => 'HWP 형식이 아닌 파일입니다',
+        'target_inactive'      => '비활성이거나 만료된 계정에는 토큰을 만들 수 없습니다',
+        'limit_exceeded'       => '살아 있는 토큰이 상한에 이르렀습니다 — 먼저 하나를 회수하세요',
+        'invariant'            => '바꿀 수 없는 항목이거나 규칙에 어긋나는 값입니다',
+        'already_enabled'      => '2단계 인증이 이미 켜져 있습니다',
+        'sensitive_level_required' => self::MSG_SENSITIVE_LEVEL_REQUIRED,
+        'folder_has_children'      => self::MSG_FOLDER_HAS_CHILDREN,
+        'folder_not_empty'         => self::MSG_FOLDER_NOT_EMPTY,
+        'folder_has_trashed'       => self::MSG_FOLDER_HAS_TRASHED,
+        'exec_ack_required'        => self::MSG_EXEC_ACK_REQUIRED,
+    ];
 
     /** JSON 본문 상한 — 로그인·삭제 같은 작은 요청만 JSON 으로 받는다 */
     private const MAX_JSON_BYTES = 65536;

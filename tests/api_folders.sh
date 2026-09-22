@@ -358,7 +358,7 @@ else
           -H 'Content-Type: application/json' -d "{\"parent_id\":$B_ID}" "$BASE/api/folders/$A_ID")
     echo "  A 를 자식 B 아래로(cycle) → [$(code_of "$OUT")] $(body_of "$OUT")"
     expect "cycle 상태" "400" "$(code_of "$OUT")"
-    expect "cycle 문구" '{"error":"잘못된 요청입니다"}' "$(body_of "$OUT")"
+    expect "cycle 문구(F-68 사유 문장 — ARCH 5.30)" '{"error":"폴더를 자기 자신이나 그 하위 폴더 안으로 옮길 수 없습니다"}' "$(body_of "$OUT")"
   fi
 
   OUT=$(curl -s -w '\n%{http_code}' -X PATCH -A "$UA" -H "X-API-Token: $API_TOKEN" \
@@ -433,7 +433,7 @@ else
             -H 'Content-Type: application/json' -d "{\"folder_id\":$S_ID}" "$BASE/api/files/$D_FILE")
       echo "  못 읽는 폴더로 이동 → [$(code_of "$OUT")] $(body_of "$OUT")"
       expect "못 읽는 폴더 상태(없는 폴더와 같은 bad_folder)" "400" "$(code_of "$OUT")"
-      expect "못 읽는 폴더 문구" '{"error":"잘못된 요청입니다"}' "$(body_of "$OUT")"
+      expect "못 읽는 폴더 문구(F-68 bad_folder 문장 — 없는 폴더와 같다)" '{"error":"folder_id 가 없거나 접근할 수 없는 폴더입니다"}' "$(body_of "$OUT")"
     fi
   fi
 fi

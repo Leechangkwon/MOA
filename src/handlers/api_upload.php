@@ -17,8 +17,9 @@ declare(strict_types=1);
  *            (PRD S-09-7: 예외·DB 오류 원문은 서버 로그의 request_id 로만).
  *
  * 검증·저장은 **한 글자도 따로 구현하지 않는다** — `_upload_common.php` 의 `tbox_upload_run()`
- * 하나이며 웹과 같은 함수다 (PRD F-49 ⑤, ARCH 4.2 「업로드 로직은 하나」). 여기 있는 것은
- * 사유 코드 → 이유 문구 매핑표 하나뿐이고, 그 표에 없는 코드는 「잘못된 요청입니다」로 떨어진다.
+ * 하나이며 웹과 같은 함수다 (PRD F-49 ⑤, ARCH 4.2 「업로드 로직은 하나」). 문구도 F-68 부터
+ * 웹과 같은 표(`Http::reasonMessage`, ARCH 5.30)에서 오고, 여기 남는 것은 상태 코드를 바꾸는
+ * 네 줄과 403 두 문장뿐이다.
  *
  * 요구사항: PRD F-49, S-01, S-06, S-09-7, S-09-11, 8장 API 표, ARCH 4.2 · 5.2, SECURITY R-82
  *
@@ -30,65 +31,27 @@ declare(strict_types=1);
 require_once __DIR__ . '/_upload_common.php';
 
 /**
- * 사유 코드 → [이유 문구, 상태 코드] (PRD F-49 ④).
+ * 사유 코드 → **상태 코드**만 (PRD F-49 ④, F-68 · ARCH 5.30).
  *
- * `const` 가 아니라 지역 배열이다 — 확장자 목록을 `Upload::ALLOWED_EXT` 에서 만들어 넣어야
- * 하는데(`implode`) PHP 의 `const` 표현식에는 함수 호출을 쓸 수 없기 때문이다.
- * 이 파일은 라우터가 요청당 한 번만 `require` 하므로 표는 요청당 한 번 만들어진다.
+ * ★ F-68 (2026-09-22) — 이 표에 있던 **문장 열을 지웠다.** 문장은 `Http::reasonMessage()`
+ *   한 표(ARCH 5.30)에서 온다 — 새 사유 코드를 만들면 그 표에 한 줄을 더한다. 웹 입구
+ *   (`POST /api/files`)와 이 입구가 같은 문장을 쓰게 되어, 표가 두 벌로 갈라져 한쪽만
+ *   갱신되는 자리가 없어졌다(2026-09-15 `ext_not_allowed` 누락 사고가 그 자리였다).
+ *   확장자 허용 목록도 그 함수가 `Upload::ALLOWED_EXT` 에서 만든다.
  *
- * ★ 2026-09-15 검토 재지시 — 아래 목록(주석)에는 있는데 **표에는 없던** 코드가 하나 있었다
- *   (`ext_not_allowed`). `.exe` 업로드가 감사에는 사유를 남기면서 응답은 통일 문구로 떨어져,
- *   「이유를 숨기지 않는다」는 계약을 어겼다. 주석과 표가 어긋날 수 있다는 것이 교훈이고,
- *   그래서 코드를 더할 때는 **표를 먼저 고치고** 주석을 맞춘다.
- *
- * 코드의 출처는 네 곳이고 **전부** 여기 들어 있다:
- *   · `_upload_common.php` 가 직접 내는 것 — no_file · bad_encoding · description_too_long ·
- *     bad_access_level · bad_team · bad_folder · sensitive_level_required
- *   · `Upload::validate()` — upload_error · not_uploaded_file · size_unreadable · empty_file ·
- *     too_large · hash_failed · ext_not_allowed · double_extension · mime_mismatch
- *   · `Upload::checkDailyQuota()` — quota_exceeded
- *   · `Authz::decideUploadAs()` / `Authz::fitsUnderFolder()` — role_not_permitted ·
- *     team_mismatch · parent_narrower
- *
- * 상태 코드는 **크기 두 가지만** 공통 함수가 준 400 에서 413 으로 올린다 — 강사 계약이
- * "크기 초과는 413" 이기 때문이다(nginx 의 413 과 같은 뜻으로 보이게 한다). 웹은 지금까지처럼
- * 둘 다 400 이고, 그 동작은 바뀌지 않는다(사유는 감사 로그에만).
- *
- * 문구에는 **대상·다른 사람·서버 내부에 대한 정보를 담지 않는다** — 담는 것은 "요청자가 방금
- * 보낸 값의 어디가 규칙에 맞지 않는가" 뿐이다 (PRD S-09-5 의 취지는 그대로다).
+ * 여기 남는 것은 **공통 함수가 준 상태 코드를 바꾸는 네 줄**뿐이다:
+ *   · 크기 둘(`too_large`·`quota_exceeded`)은 400 → **413** — 강사 계약이 「크기 초과는 413」
+ *     이기 때문이다(nginx 의 413 과 같은 뜻으로 보이게 한다). 웹은 지금까지처럼 둘 다 400 이다.
+ *   · 권한 둘(`role_not_permitted`·`team_mismatch`)은 **403** 이고 문장도 여기서 정한다 —
+ *     403 은 사유를 말하지 않는 자리이고(S-09-5), 프로그램 입구의 이 두 문장은 T-61 계약이다
+ *     (ARCH 5.30 「403 두 줄은 api_upload.php 에 남는다」).
+ *   표에 없는 코드는 공통 함수가 준 `$status` 그대로다.
  */
-$reasonTable = [
-    // 요청 형식
-    'no_file'                  => ['file 필드에 파일이 없습니다', 400],
-    'upload_error'             => ['업로드 요청의 형식이 올바르지 않습니다 (multipart/form-data 로 file 하나를 보냅니다)', 400],
-    'not_uploaded_file'        => ['정상적인 HTTP 업로드가 아닙니다', 400],
-    'bad_encoding'             => ['파일 이름 또는 설명이 올바른 문자(UTF-8)가 아닙니다', 400],
-    'description_too_long'     => ['설명은 500자까지입니다', 400],
-
-    // 등급·팀·폴더
-    'bad_access_level'         => ['level 값이 올바르지 않습니다 (public·internal·team·admin-only)', 400],
-    'bad_team'                 => ['team 등급은 team_id(활성 팀 번호)가 필요합니다', 400],
-    'bad_folder'               => ['folder_id 가 없거나 접근할 수 없는 폴더입니다', 400],
-    'parent_narrower'          => ['파일 등급이 폴더 등급보다 넓을 수 없습니다', 400],
-    'role_not_permitted'       => ['이 계정은 그 등급(팀)으로 올릴 권한이 없습니다', 403],
-    'team_mismatch'            => ['이 계정은 그 등급(팀)으로 올릴 권한이 없습니다', 403],
-
-    // 파일 내용·크기
-    'empty_file'               => ['빈 파일(0바이트)은 올릴 수 없습니다', 400],
-    'size_unreadable'          => ['파일 크기를 읽을 수 없습니다', 400],
-    'hash_failed'              => ['파일의 무결성 값을 계산할 수 없습니다', 400],
-    // 허용 목록은 **Upload::ALLOWED_EXT 에서 만든다** — 문구에 손으로 베껴 두면 목록이 바뀌는
-    // 날 문서와 응답이 조용히 어긋난다(고치는 사람이 두 곳을 기억해야 하는 구조를 만들지 않는다).
-    // 이 표가 `const` 가 아니라 지역 배열인 이유도 이것이다: const 안에서는 implode 를 못 쓴다.
-    'ext_not_allowed'          => ['허용되지 않는 확장자입니다 (허용: ' . implode(' ', Upload::ALLOWED_EXT) . ')', 400],
-    'double_extension'         => ['이중 확장자 파일은 올릴 수 없습니다', 400],
-    'mime_mismatch'            => ['파일 내용이 확장자와 다릅니다', 400],
-    // 크기 두 가지만 413 이다 (강사 계약)
-    'too_large'                => ['파일이 100MB 를 넘습니다', 413],
-    'quota_exceeded'           => ['오늘 업로드 총량(2GB)을 넘었습니다', 413],
-
-    // 민감정보 (웹과 같은 문구를 쓴다 — 이미 이유를 알려 주는 400 이다)
-    'sensitive_level_required' => [Http::MSG_SENSITIVE_LEVEL_REQUIRED, 400],
+$statusTable = [
+    'too_large'          => 413,
+    'quota_exceeded'     => 413,
+    'role_not_permitted' => 403,
+    'team_mismatch'      => 403,
 ];
 
 /**
@@ -100,17 +63,15 @@ $reasonTable = [
  *
  * @param array<string,mixed> $entry 감사 엔트리 (공통 함수가 만든 것을 그대로 남긴다)
  */
-$reject = static function (string $reason, int $status, array $entry) use ($reasonTable): void {
+$reject = static function (string $reason, int $status, array $entry) use ($statusTable): void {
     Audit::deny('file.upload', $reason, $entry);
 
-    // 표에 없는 코드는 조용히 넘어가지 않고 **통일 문구**로 떨어진다 — 새 사유 코드가
-    // 생겼는데 여기에 안 적힌 경우, 프로그램에는 「잘못된 요청입니다」가 가고
-    // 진짜 사유는 감사 로그에 그대로 남는다(정보가 사라지지 않는다).
-    // ★ 그 되돌림은 **그물이지 설계가 아니다** — 2026-09-15 검토에서 `ext_not_allowed` 가
-    //   표에서 빠진 채 이 그물로 떨어져, 감사에는 사유가 남는데 응답은 「잘못된 요청입니다」
-    //   하나였다(강사 계약 「이유를 숨기지 않는다」 위반). 사유 코드를 새로 만들면
-    //   위 표에 **반드시** 한 줄을 더한다.
-    [$message, $code] = $reasonTable[$reason] ?? [Http::MSG_BAD_REQUEST, $status];
+    // 문장은 `Http::reasonMessage` 한 표(ARCH 5.30)에서 온다 — 새 사유 코드를 만들면 그
+    // 표에 한 줄을 더한다. 표에 없는 코드·`REASON_UNIFORM` 의 코드는 「잘못된 요청입니다」로
+    // 떨어지고, 진짜 사유는 감사 로그에 그대로 남는다(정보가 사라지지 않는다).
+    // 403 두 문장만 여기 있다 — 그 자리는 사유를 말하지 않는다(S-09-5, T-61 계약).
+    $code    = $statusTable[$reason] ?? $status;
+    $message = $code === 403 ? '이 계정은 그 등급(팀)으로 올릴 권한이 없습니다' : Http::reasonMessage($reason);
 
     Http::error($code, $message);
 };

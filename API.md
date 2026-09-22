@@ -88,7 +88,7 @@ curl -s -b jar https://changkwon.mso.so/api/me
 | 필드 | `file`(파일, 필수) · `access_level`(필수: `public`·`internal`·`team`·`admin-only` — `upload_levels` 안의 값만) · `team_id`(`access_level=team` 일 때 필수, 양의 정수) · `description`(선택, 500자) · `folder_id`(선택, 폴더 번호) |
 | 제한 | 100MB · 허용 확장자 `pdf docx xlsx pptx hwp hwpx txt csv md png jpg jpeg gif zip` · 내용(MIME)이 확장자와 맞아야 함 · 이중 확장자(`a.php.txt`) 거부 |
 | 성공 | `201` `{"id":"<UUID>","name":"<원래 파일명>"}` — 이후 다운로드·삭제는 이 `id` 로 |
-| 실패 | `400 {"error":"잘못된 요청입니다"}`(형식·확장자·등급·팀 오류) · `403`(CSRF 없음 또는 그 등급·팀에 올릴 권한 없음 — Guest 는 업로드 불가) · `413`(크기) |
+| 실패 | `400` — **사유마다 사람 문장**이다 (F-68, ARCHITECTURE 5.30 표가 원본): 확장자 `{"error":"허용되지 않는 확장자입니다 (허용: pdf docx xlsx pptx hwp hwpx txt csv md png jpg jpeg gif zip)"}` · 등급 `{"error":"level 값이 올바르지 않습니다 (public·internal·team·admin-only)"}` · 팀 `{"error":"team 등급은 team_id(활성 팀 번호)가 필요합니다"}` · 내용 검사 `{"error":"문서에 매크로가 들어 있어 올릴 수 없습니다"}` 등. **허용 키 밖·값의 형식 오류만** `{"error":"잘못된 요청입니다"}` · `403`(CSRF 없음 또는 그 등급·팀에 올릴 권한 없음 — Guest 는 업로드 불가) · `413`(크기) |
 
 ```bash
 CSRF=$(curl -s -b jar https://changkwon.mso.so/api/me | python3 -c 'import sys,json;print(json.load(sys.stdin)["csrf_token"])')
@@ -426,7 +426,7 @@ curl -s -w ' [%{http_code}]\n' -H "X-API-Token: $API_TOKEN" 'http://127.0.0.1:80
 | 인증 | 헤더 **`X-API-Token`**. `X-CSRF-Token` 은 필요 없다 |
 | 요청 | JSON `{"name":"<1~50자>","access_level":"public|internal|team|admin-only","parent_id":<번호 또는 생략>,"team_id":<team 일 때 필수>}` — 허용 키는 이 넷뿐(화면과 같다) |
 | 성공 | `201` `{"folder":{"id":<정수>,"parent_id":…,"name":…,"depth":…,"access_level":…,"team_id":…,"child_count":0,"file_count":0,"created_at":…}}` — 화면 응답과 동일 |
-| 실패 | `400 {"error":"잘못된 요청입니다"}`(이름 규칙·깊이 6·부모보다 넓은 등급·허용 외 키) · `403 {"error":"권한이 없습니다"}`(그 등급·팀으로 만들 자격 없음 — 10장 `upload_levels` 밖 · 부모를 읽을 수 없음) · `409 {"error":"이미 있는 이름입니다"}`(같은 부모 안 같은 이름) |
+| 실패 | `400` — 깊이 `{"error":"폴더는 5단계까지만 만들 수 있습니다"}` · 부모보다 넓은 등급 `{"error":"파일이나 폴더의 등급이 상위 폴더의 등급보다 넓을 수 없습니다"}` (F-68, ARCHITECTURE 5.30) · 이름 규칙·허용 외 키는 `{"error":"잘못된 요청입니다"}` · `403 {"error":"권한이 없습니다"}`(그 등급·팀으로 만들 자격 없음 — 10장 `upload_levels` 밖 · 부모를 읽을 수 없음) · `409 {"error":"이미 있는 이름입니다"}`(같은 부모 안 같은 이름) |
 
 ```bash
 curl -s -w '\n[%{http_code}]\n' -H "X-API-Token: $API_TOKEN" -H 'Content-Type: application/json' \
@@ -469,8 +469,8 @@ curl -s -w '\n[%{http_code}]\n' -X PATCH -H "X-API-Token: $API_TOKEN" -H 'Conten
 {"folder":{"id":57,"parent_id":null,"name":"F58-a2-0916-1453127","depth":1,"access_level":"internal","team_id":null,"updated_at":"2026-09-16 17:15:20.046726+09"},"cascaded":0} [200]
 # 폴더 58 을 57 아래로 {"parent_id":57} → 200, depth 2
 {"folder":{"id":58,"parent_id":57,"name":"F58-b-0916-1453127","depth":2,"access_level":"internal","team_id":null,"updated_at":"2026-09-16 17:15:20.248046+09"},"cascaded":0} [200]
-# 57 을 자기 자식 58 아래로 → 400 (cycle)
-{"error":"잘못된 요청입니다"} [400]
+# 57 을 자기 자식 58 아래로 → 400 (cycle) — F-68 부터 사유 문장이다
+{"error":"폴더를 자기 자신이나 그 하위 폴더 안으로 옮길 수 없습니다"} [400]
 # {"access_level":"public"} — 토큰 허용 키 밖 → 400 (화면에서는 되는 요청이다)
 {"error":"잘못된 요청입니다"} [400]
 # {"name":"…","cascade":false} — 토큰 허용 키 밖 → 400
@@ -491,7 +491,7 @@ curl -s -w '\n[%{http_code}]\n' -X PATCH -H "X-API-Token: $API_TOKEN" -H 'Conten
 | 인증 | 헤더 **`X-API-Token`**. `X-CSRF-Token` 은 필요 없다 |
 | 요청 | JSON `{"folder_id":<폴더 번호>}` 또는 `{"folder_id":null}`(루트로). **다른 키가 하나라도 있으면 400** |
 | 성공 | `200 {"ok":true}` |
-| 실패 | `400 {"error":"잘못된 요청입니다"}`(허용 외 키 · 대상 폴더가 없거나 **읽을 수 없음**(둘을 구분하지 않는다) · 폴더보다 넓은 등급의 파일 · 바뀌는 것 없음) · `403 {"error":"권한이 없습니다"}`(귀속 계정이 고칠 수 없는 파일 — Employee 는 자기가 올린 것만) · `404`(없는 id) |
+| 실패 | `400` — 대상 폴더가 없거나 **읽을 수 없음**(둘을 구분하지 않는다) `{"error":"folder_id 가 없거나 접근할 수 없는 폴더입니다"}` · 폴더보다 넓은 등급의 파일 `{"error":"파일이나 폴더의 등급이 상위 폴더의 등급보다 넓을 수 없습니다"}` · 바뀌는 것 없음 `{"error":"바뀐 내용이 없습니다"}` (F-68, ARCHITECTURE 5.30) · 허용 외 키는 `{"error":"잘못된 요청입니다"}` · `403 {"error":"권한이 없습니다"}`(귀속 계정이 고칠 수 없는 파일 — Employee 는 자기가 올린 것만) · `404`(없는 id) |
 | 삭제는 | `DELETE /api/files/{id}` 는 토큰으로 열려 있지 않다(헤더 무시 → 401 「로그인이 필요합니다」) |
 
 ```bash
@@ -509,7 +509,7 @@ curl -s -w '\n[%{http_code}]\n' -X PATCH -H "X-API-Token: $API_TOKEN" -H 'Conten
 # {"description":"x"} — 토큰 허용 키 밖 → 400 (화면에서는 되는 요청이다)
 {"error":"잘못된 요청입니다"} [400]
 # 못 읽는(admin-only) 폴더 S 로 {"folder_id":<S>} → 400 (없는 폴더와 같은 응답 — 존재를 알리지 않는다)
-{"error":"잘못된 요청입니다"} [400]
+{"error":"folder_id 가 없거나 접근할 수 없는 폴더입니다"} [400]
 ```
 
 ## 13. 개인 프로그램 토큰 — 발급·목록·회수 (관리자 화면·세션)
@@ -523,7 +523,7 @@ curl -s -w '\n[%{http_code}]\n' -X PATCH -H "X-API-Token: $API_TOKEN" -H 'Conten
 | 목록 | `GET /api/users/{uid}/api-tokens` → `200 {"tokens":[{"id":<정수>,"name":"…","hint":"<앞 6자>","created_at":"…","last_used_at":"…|null","revoked_at":"…|null"}]}` — 토큰 값은 없다 |
 | 발급 | `POST /api/users/{uid}/api-tokens` JSON `{"name":"<1~50자>","reason_text":"<필수, 500자>"}` → `201 {"id":<정수>,"name":"…","hint":"…","token":"<48자>"}`. **`token` 은 이 응답에만 나온다** — 서버는 sha256 만 저장하므로 다시 보여 줄 수 없다. 잃으면 회수하고 새로 발급한다 |
 | 회수 | `DELETE /api/users/{uid}/api-tokens/{tid}` → `200 {"ok":true}`. 그 순간부터 그 토큰은 401 |
-| 실패 | `400`(허용 외 키 · 이름 규칙 · 사유 없음 · 살아 있는 토큰 5개 초과 · 대상 계정 비활성·만료 · 이미 회수됨) · `403`(Admin 아님 · 재인증 없음 · CSRF 없음) · `404`(없는 계정 · 그 계정의 토큰이 아님) |
+| 실패 | `400` — 살아 있는 토큰 5개 초과 `{"error":"살아 있는 토큰이 상한에 이르렀습니다 — 먼저 하나를 회수하세요"}` · 대상 계정 비활성·만료 `{"error":"비활성이거나 만료된 계정에는 토큰을 만들 수 없습니다"}` (F-68, ARCHITECTURE 5.30) · 허용 외 키·이름 규칙·사유 없음·이미 회수됨은 `{"error":"잘못된 요청입니다"}` · `403`(Admin 아님 · 재인증 없음 · CSRF 없음) · `404`(없는 계정 · 그 계정의 토큰이 아님) |
 | 넣지 않는 것 | 토큰 원문(발급 응답 한 번 밖에는 어디에도 — 목록·감사·로그) · 해시 |
 | 감사 | `api_token.issue allow`(detail `token_id`·`token_name`·`reason_text`) · `api_token.revoke allow` · 경보 **AL-20**(발급 1건 즉시) |
 
@@ -546,8 +546,8 @@ curl -s -b jar -H "X-CSRF-Token: $CSRF" -H 'Content-Type: application/json' \
 {"error":"잘못된 요청입니다"} [400]
 # Manager 세션 → 403 (발급·목록 둘 다)
 {"error":"권한이 없습니다"} [403]
-# 살아 있는 토큰 5개 뒤 6번째 → 400 (limit_exceeded)
-{"error":"잘못된 요청입니다"} [400]
+# 살아 있는 토큰 5개 뒤 6번째 → 400 (limit_exceeded) — F-68 부터 사유 문장이다
+{"error":"살아 있는 토큰이 상한에 이르렀습니다 — 먼저 하나를 회수하세요"} [400]
 # 회수 → 200 · 다시 회수 → 400 · 다른 계정의 tid → 404
 {"ok":true} [200]
 {"error":"잘못된 요청입니다"} [400]

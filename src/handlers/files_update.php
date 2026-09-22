@@ -138,14 +138,14 @@ if (!$mayEdit) {
  */
 if ($file['exec_content'] === true && array_key_exists('access_level', $body)) {
     Audit::deny('file.update', 'exec_content', $auditTarget + ['detail' => $auditWhat]);
-    Http::error(400, Http::MSG_BAD_REQUEST);
+    Http::error(400, Http::reasonMessage('exec_content'));
 }
 
 // ─── [4] 값 검증 — 업로드와 같은 규칙 ─────────────────────────
-/** 검증 실패: 사유는 감사 로그에만, 사용자에게는 동일한 400 문구만 (PRD S-09-5) */
+/** 검증 실패: 감사 사유 코드는 그대로 남고, 문장은 `Http::reasonMessage()` 표에서 온다 (F-68, ARCH 5.30) */
 $reject = static function (string $reason) use ($auditTarget, $auditWhat): void {
     Audit::deny('file.update', $reason, $auditTarget + ['detail' => $auditWhat]);
-    Http::error(400, Http::MSG_BAD_REQUEST);
+    Http::error(400, Http::reasonMessage($reason));
 };
 
 // 설명 — 문자열·UTF-8·제어문자 제거·500자 (DB CHECK 와 같은 한계를 앱에서도 본다)
@@ -216,7 +216,7 @@ if ($newLevel === 'team') {
  *
  * `folder_id` 는 **정수 또는 null**(루트로 빼기)이다. 폴더가 실제로 있고 **읽을 수 있어야**
  * 한다 — 못 읽는 폴더 안으로 파일을 밀어 넣을 수 있으면 그 폴더의 내용을 바꾸는 길이 된다.
- * 없는 폴더와 못 읽는 폴더는 **같은 400 동일 문구**이고 사유(`bad_folder`)는 로그에만 남는다.
+ * 없는 폴더와 못 읽는 폴더는 **같은 400 · 같은 사유(`bad_folder`) · 같은 문장**이다 — 어느 쪽인지 갈라 주지 않는다.
  *
  * 불변 규칙 ①(폴더보다 넓을 수 없다)은 등급 판정이 끝난 뒤 [4-5] 에서 **최종 등급**으로 본다.
  */

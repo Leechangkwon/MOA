@@ -121,7 +121,7 @@ if ($activeChanged && $newActive === false) {
         SQL;
     $countRow = $db->run($sqlMembers, [':id' => $teamId])->fetch();
     if (!is_array($countRow) || (int) $countRow['n'] !== 0) {
-        $reject('team_has_members', 400, Http::MSG_BAD_REQUEST);
+        $reject('team_has_members', 400, Http::reasonMessage('team_has_members'));
     }
 }
 

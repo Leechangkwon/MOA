@@ -10,7 +10,8 @@
 #   (c) 다른 라우트는 토큰을 **무시한다** — 틀린 토큰 헤더로 GET /api/users ·
 #       DELETE /api/files/{uuid} → 401 「API 토큰이 올바르지 않습니다」(F-59 뒤 토큰 창구) · `auth.token` 행 1.
 #   (d) 웹 업로드 회귀 — qa_employee01 세션으로 POST /api/files 정상 txt 201 {id,name}(키 정확히 둘) ·
-#       x.exe → 400 {"error":"잘못된 요청입니다"}(통일 문구 불변) · 감사 사유 코드 전과 같음 ·
+#       x.exe → 400 `ext_not_allowed` 문장(F-68 · ARCH 5.30, 허용 목록은 Upload::ALLOWED_EXT) ·
+#       감사 사유 코드 전과 같음 ·
 #       올린 파일은 같은 세션으로 DELETE 해 정리한다.
 #   (e) 102MB 를 /api/upload 에(헤더 없이) → 413 + JSON {"error":…} · Content-Type: application/json.
 #       ★ nginx reload 전이면 기본 HTML 413 이 나온다 — 그 경우 「reload 전 실측」으로 적고
@@ -238,7 +239,10 @@ else
         "$BASE/api/files")
   echo "  x.exe → $(body_of "$OUT")"
   expect ".exe 상태" "400" "$(code_of "$OUT")"
-  expect ".exe 문구(통일 문구 불변)" '{"error":"잘못된 요청입니다"}' "$(body_of "$OUT")"
+  # F-68 — 웹도 프로그램 입구와 **같은 문장**을 쓴다. 허용 목록은 손으로 베끼지 않고
+  # `Upload::ALLOWED_EXT` 에서 만든다 (ARCH 5.30 문장 규칙 ③).
+  EXT_MSG=$(php -r 'require $argv[1]."/src/Http.php"; require $argv[1]."/src/Upload.php"; echo Http::reasonMessage("ext_not_allowed");' "$ROOT")
+  expect ".exe 문구(F-68 ext_not_allowed 문장)" "{\"error\":\"$EXT_MSG\"}" "$(body_of "$OUT")"
 
   # 등급 필드가 비면 지금까지처럼 bad_access_level 400 이다 (기본값 public 은 API 입구에만 있다)
   OUT=$(curl -s -w '\n%{http_code}' -X POST -b "$JAR_DIR/qa_employee01.jar" -A "$UA" \

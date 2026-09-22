@@ -105,14 +105,14 @@ if (!$mayEdit) {
  * 공유 링크는 **로그인하지 않은 사람이 OTP 없이 받는 길**이다. 그 길을 열면 F-65 의 전제
  * (받는 사람은 언제나 Admin 이고 요청마다 2단계 코드를 친다)가 통째로 무너진다.
  * 자리는 `decideEdit` **뒤** — 그 파일을 고칠 수 없는 사람에게는 이 파일이 어떤 종류인지
- * 알려 주지 않는다(403 이 먼저 끝낸다). 응답은 400 통일 문구이고 사유는 감사에만 남는다.
+ * 알려 주지 않는다(403 이 먼저 끝낸다). 응답은 400 `exec_content` 문장이다 (F-68, ARCH 5.30).
  */
 if ($file['exec_content'] === true) {
     Audit::deny('share.create', 'exec_content', $auditTarget + ['detail' => $auditWhat]);
-    Http::error(400, Http::MSG_BAD_REQUEST);
+    Http::error(400, Http::reasonMessage('exec_content'));
 }
 
-// ─── [3] 값 검증 — 사유는 감사 로그에만, 사용자에게는 같은 400 문구 ───
+// ─── [3] 값 검증 — 사유는 `bad_request` 하나라 문구도 「잘못된 요청입니다」 그대로다 ───
 $reject = static function () use ($auditTarget, $auditWhat): void {
     Audit::deny('share.create', 'bad_request', $auditTarget + ['detail' => $auditWhat]);
     Http::error(400, Http::MSG_BAD_REQUEST);
