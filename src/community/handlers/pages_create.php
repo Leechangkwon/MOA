@@ -14,6 +14,10 @@ declare(strict_types=1);
  *   space_id  공간 번호 (선택, 4-B). 없으면 **내 개인 공간**. 팀 공간이면 그 팀원만
  *   database  `true` 면 **데이터베이스 페이지**로 만든다(6-A — `databases` 한 줄이 함께 생긴다). DB 페이지 아래에는 못 만든다
  *   properties 행의 속성 값(6-A, 선택). **부모가 DB 페이지일 때만** — 「DB 페이지 바로 아래 페이지 = 행」이다
+ *   template_id 템플릿(7-B, 선택, UUID). 제목(주지 않으면)·아이콘·본문을 템플릿으로 채운다 — `doc`·`database` 와 함께 주면 400.
+ *             DB 행 템플릿이면 부모는 **그 DB 페이지**다(주지 않으면 그리로, 다른 부모면 400) · 속성 값은 템플릿 값 위에 요청 값.
+ *             ★ 템플릿은 **자리와 범위를 정하지 않는다** — 아래 규칙 그대로(부모가 없으면 내 개인 공간 · 비공개).
+ *             남의 템플릿은 403 + `template.read deny`(`CommunityAuthz::decideTemplateRead`)
  *
  * ★ `visibility` 는 **허용 키가 아니다**(오면 400). 새 페이지의 범위는 요청이 정하지 않는다
  *   (4-B 지시서): 부모가 있으면 **부모와 같게**, 없으면 `private` 이다. 부모와 같게 시작해야
@@ -39,7 +43,7 @@ declare(strict_types=1);
  * @var list<string>        $params 경로 변수 없음
  */
 
-$allowedFields = ['title', 'doc', 'parent_id', 'space_id', 'database', 'properties'];
+$allowedFields = ['title', 'doc', 'parent_id', 'space_id', 'database', 'properties', 'template_id'];
 
 /*
  * 본문 상한 (관문 ② 실측 2026-09-22) — `Http::jsonBody()` 의 기본 상한은 64KB 인데 문서 스키마는
@@ -76,8 +80,46 @@ if (array_key_exists('database', $body)) {
     $makeDb = $body['database'];
 }
 
+// ─── [1-2] 템플릿 (7-B) — 본문을 채울 틀. 판정을 먼저 지나야 제목·본문을 읽는다 ─────────
+$tpl       = null;
+$tplDbPage = null;
+if (array_key_exists('template_id', $body) && $body['template_id'] !== null) {
+    $rawTpl = $body['template_id'];
+    if (!is_string($rawTpl)
+        || preg_match('/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/', $rawTpl) !== 1
+        || array_key_exists('doc', $body) || $makeDb
+    ) {
+        Http::error(400, Http::MSG_BAD_REQUEST);
+    }
+    $tpl = community_template_row($rawTpl);
+    if ($tpl === null || $tpl['deleted_at'] !== null) {
+        Http::error(404, Http::MSG_NOT_FOUND);
+    }
+    $tplDbPage = community_template_db_page($tpl, (int) $user['id']);
+    [$mayTpl, $tplCode] = CommunityAuthz::decideTemplateRead($user, $tpl, $tplDbPage);
+    if (!$mayTpl) {
+        if ($tplCode === CommunityAuthz::CODE_NOT_FOUND) {
+            Http::error(404, Http::MSG_NOT_FOUND);
+        }
+        community_template_refuse($tpl, $tplCode);
+    }
+    // DB 행 템플릿 — 부모는 그 DB 페이지 하나다
+    if ((string) $tpl['scope'] === 'database') {
+        $givenParent = $body['parent_id'] ?? null;
+        $givenSpace  = $body['space_id'] ?? null;
+        if (($givenParent !== null && $givenParent !== (string) $tplDbPage['public_id'])
+            || ($givenSpace !== null && (string) $givenSpace !== (string) $tplDbPage['space_id'])
+        ) {
+            // 다른 부모·다른 공간 — 판정 전에 모양으로 끊는다(공간 불일치 403 이 「남의 페이지」 감사로 남지 않게 — 독립 검토 L-2)
+            Http::json(['error' => '이 템플릿은 그 데이터베이스의 행으로만 만듭니다', 'reason' => 'template_db_mismatch'], 400);
+            exit;
+        }
+        $body['parent_id'] = (string) $tplDbPage['public_id'];
+    }
+}
+
 // ─── [2] 제목 ──────────────────────────────────────────────────
-$title = $makeDb ? '제목 없는 데이터베이스' : '제목 없는 페이지';
+$title = $makeDb ? '제목 없는 데이터베이스' : ($tpl !== null ? (string) $tpl['title'] : '제목 없는 페이지');
 if (array_key_exists('title', $body)) {
     $rawTitle = $body['title'];
     if (!is_string($rawTitle) || preg_match('//u', $rawTitle) !== 1) {
@@ -94,6 +136,16 @@ if (array_key_exists('title', $body)) {
 
 // ─── [3] 본문 — 없으면 빈 문단 하나로 시작한다 ─────────────────
 $doc = ['schema' => 1, 'blocks' => [['id' => Doc::uuid4(), 'type' => 'paragraph', 'text' => []]]];
+if ($tpl !== null) {
+    /* 7-B — 블록 id 는 **페이지마다 새로**(`Doc::freshIds`). 템플릿이 저장된 뒤 규칙이 바뀌었을 수 있으니
+       지금 단계의 검사를 다시 지난다 — 어긋나면 400(템플릿을 고쳐 저장해야 한다). */
+    $tplDoc = is_string($tpl['doc']) ? json_decode((string) $tpl['doc'], true) : $tpl['doc'];
+    $doc    = Doc::freshIds(is_array($tplDoc) ? $tplDoc : []);
+    if (!Doc::validate($doc, COMMUNITY_DOC_STAGE)['ok']) {
+        Http::json(['error' => '이 템플릿은 지금 규칙에 맞지 않아 쓸 수 없습니다', 'reason' => 'template_outdated'], 400);
+        exit;
+    }
+}
 if (array_key_exists('doc', $body)) {
     if (!is_array($body['doc'])) {
         Http::error(400, Http::MSG_BAD_REQUEST);
@@ -269,6 +321,11 @@ if ($parentIsDb) {
     if (!is_array($rawProps) || ($rawProps !== [] && array_is_list($rawProps)) || count($rawProps) > DbProps::MAX_PROPS) {
         Http::error(400, Http::MSG_BAD_REQUEST);
     }
+    /* 7-B — DB 행 템플릿의 값이 먼저, 요청 값이 그 위에. 템플릿 값은 **지금 스키마로 다시 거른다**
+       (그 사이 지운 속성·바뀐 선택지는 조용히 빠진다 — 사람·관계·파일은 처음부터 담지 않았다). */
+    if ($tpl !== null && (string) $tpl['scope'] === 'database' && (int) $tpl['database_id'] === $rowDbId) {
+        $rawProps = array_merge(community_template_props($schema, $tpl['properties']), $rawProps);
+    }
     foreach ($rawProps as $k => $v) {
         $prop = DbProps::find($schema, (string) $k);
         if ($prop === null) {
@@ -319,12 +376,12 @@ if ($parentVisibility !== null && in_array($parentVisibility, CommunityAuthz::VI
 $sqlInsert = <<<'SQL'
     INSERT INTO community.pages
         (space_id, parent_page_id, title, doc, doc_version, plain_text, search_tsv, block_count,
-         author_id, last_edited_by, visibility, position, database_id, properties)
+         author_id, last_edited_by, visibility, position, database_id, properties, icon)
     VALUES
         (CAST(:space AS bigint), CAST(:parent AS bigint), :title, CAST(:doc AS jsonb), 1, :plain,
          to_tsvector('simple', :tsv), CAST(:blocks AS int),
          CAST(:author AS bigint), CAST(:editor AS bigint), :vis, CAST(:pos AS int),
-         CAST(:dbid AS bigint), CAST(:props AS jsonb))
+         CAST(:dbid AS bigint), CAST(:props AS jsonb), :icon)
     RETURNING id, public_id, created_at, updated_at
     SQL;
 
@@ -356,6 +413,7 @@ try {
         ':editor' => $me,
         ':dbid'   => $rowDbId,
         ':props'  => $rowProps === null ? null : json_encode($rowProps === [] ? new stdClass() : $rowProps, JSON_UNESCAPED_UNICODE),
+        ':icon'   => $tpl !== null && $tpl['icon'] !== null ? (string) $tpl['icon'] : null,
     ])->fetch();
     if (!is_array($row)) {
         throw new RuntimeException('페이지를 만들지 못했습니다');
@@ -391,7 +449,11 @@ try {
             'page_title'  => community_target_title($title),
             'doc_version' => 1,
             'block_count' => count($extract['blocks']),
-        ],
+            // 7-B — 템플릿에서 만들었으면 그 이름·범위(없으면 두 키가 없다)
+        ] + ($tpl === null ? [] : [
+            'template_name'  => community_target_title((string) $tpl['name']),
+            'template_scope' => (string) $tpl['scope'],
+        ]),
     ]);
 
     $db->commit();

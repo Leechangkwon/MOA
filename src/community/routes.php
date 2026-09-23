@@ -102,6 +102,12 @@ const COMMUNITY_ROUTES = [
     ['GET',    '/api/databases',                         'databases_list.php',   'community.read'],
     ['PATCH',  '/api/databases/{id}/views',              'database_views.php',   'community.write'],
     ['GET',    '/api/databases/{id}/summary',            'database_summary.php', 'community.read'],
+    /* 7-B 템플릿 (C:F-31 · 결정 J-3) — 판정은 `CommunityAuthz::decideTemplate*`. 「템플릿에서 새 페이지」는
+       따로 창구가 없다: `POST /api/pages {template_id}` — 만든 페이지의 자리·범위는 그 창구의 규칙 그대로다. */
+    ['GET',    '/api/templates',                         'templates_list.php',   'community.read'],
+    ['POST',   '/api/templates',                         'templates_create.php', 'community.write'],
+    ['GET',    '/api/templates/{id}',                    'templates_get.php',    'community.read'],
+    ['DELETE', '/api/templates/{id}',                    'templates_delete.php', 'community.write'],
 
     /* ── 사람 지정 공유 · 인계 (5-A, PRD NG-8 해제 · F-28) ──
      * 목록은 `community.read` + 그 페이지의 `decidePageRead`, 바꾸는 셋은 `community.write` +
@@ -2533,4 +2539,160 @@ function community_db_row_files($propsJson, $schemaJson): array
         }
     }
     return $out;
+}
+
+/* ─── 7-B 템플릿 (C:F-31 · 결정 J-3) ─────────────────────────────
+ * 판정은 `CommunityAuthz::decideTemplate*` 한 곳이다. 여기는 읽기·모양 맞추기만 한다. */
+
+/** 범위마다 둘 수 있는 템플릿 수 (만든 사람 · 팀 · 사이트 · DB 하나) */
+const COMMUNITY_TEMPLATE_LIMITS = ['personal' => 50, 'team' => 100, 'site' => 50, 'database' => 20];
+
+/** DB 행 템플릿에 담는 속성 종류 — 사람·관계·파일은 **담지 않는다**(값마다 「볼 수 있는가」가 따로 있어,
+    템플릿을 쓰는 사람에게 맞는지 알 수 없다 — 좁은 쪽) */
+const COMMUNITY_TEMPLATE_PROP_TYPES = ['text', 'number', 'checkbox', 'url', 'email', 'phone', 'date', 'select', 'multi_select'];
+
+/**
+ * 템플릿 한 줄(지운 것 포함 — 판정이 `not_found` 로 가른다). 없으면 null.
+ *
+ * @return array<string,mixed>|null
+ */
+function community_template_row(string $publicId): ?array
+{
+    $sql = <<<'SQL'
+        SELECT t.id, t.public_id, t.scope, t.owner_user_id, t.team_id, t.database_id,
+               t.name, t.title, t.icon, t.doc, t.properties, t.seed_key,
+               t.created_by, t.created_at, t.deleted_at,
+               u.username      AS created_by_name,
+               u.display_name  AS created_by_display_name,
+               tm.name         AS team_name,
+               d.public_id     AS db_public_id,
+               dp.public_id    AS db_page_public_id
+          FROM community.templates t
+          LEFT JOIN public.users u       ON u.id  = t.created_by
+          LEFT JOIN public.teams tm      ON tm.id = t.team_id
+          LEFT JOIN community.databases d ON d.id = t.database_id
+          LEFT JOIN community.pages dp    ON dp.id = d.page_id
+         WHERE t.public_id = CAST(:id AS uuid)
+        SQL;
+    $row = Db::instance()->run($sql, [':id' => $publicId])->fetch();
+    return is_array($row) ? $row : null;
+}
+
+/**
+ * DB 행 템플릿이면 그 DB 페이지 행(보는 사람 몫), 아니면 null.
+ *
+ * @param  array<string,mixed> $tpl
+ * @return array<string,mixed>|null
+ */
+function community_template_db_page(array $tpl, int $viewerId): ?array
+{
+    if ((string) $tpl['scope'] !== 'database' || ($tpl['db_page_public_id'] ?? null) === null) {
+        return null;
+    }
+    return community_page_row((string) $tpl['db_page_public_id'], $viewerId);
+}
+
+/**
+ * 속성 값 → 템플릿에 담을 수 있는 것만(지금 스키마에 있고 · 담는 종류이고 · 모양이 맞는 값).
+ * 저장할 때도, 템플릿으로 행을 만들 때도(그 사이 스키마가 바뀌었을 수 있다) 이 함수를 지난다.
+ *
+ * @param  list<array<string,mixed>> $schema
+ * @param  mixed                     $props  JSON 글자 또는 배열
+ * @return array<string,mixed>
+ */
+function community_template_props(array $schema, $props): array
+{
+    $vals = is_string($props) ? json_decode($props, true) : (is_array($props) ? $props : null);
+    $out  = [];
+    foreach (is_array($vals) ? $vals : [] as $k => $v) {
+        $prop = DbProps::find($schema, (string) $k);
+        if ($prop === null || !in_array((string) $prop['type'], COMMUNITY_TEMPLATE_PROP_TYPES, true)) {
+            continue;
+        }
+        [$ok, $clean] = DbProps::cleanValue($prop, $v);
+        if ($ok && $clean !== null) {
+            $out[(string) $k] = $clean;
+        }
+    }
+    return $out;
+}
+
+/** 이 범위(그 주인)에 살아 있는 템플릿 수 — 한도 검사. 부르는 쪽 트랜잭션 안에서 잠근 뒤 다시 센다. */
+function community_template_count(string $scope, ?int $key): int
+{
+    $col = ['personal' => 'owner_user_id', 'team' => 'team_id', 'database' => 'database_id'][$scope] ?? null;
+    if ($scope === 'site') {
+        $sql = <<<'SQL'
+            SELECT count(*) AS n FROM community.templates t WHERE t.scope = 'site' AND t.deleted_at IS NULL
+            SQL;
+        $r = Db::instance()->run($sql)->fetch();
+        return is_array($r) ? (int) $r['n'] : 0;
+    }
+    if ($col === null || $key === null) {
+        return 0;
+    }
+    $sqls = [
+        'owner_user_id' => "SELECT count(*) AS n FROM community.templates t WHERE t.scope = 'personal' AND t.deleted_at IS NULL AND t.owner_user_id = CAST(:k AS bigint)",
+        'team_id'       => "SELECT count(*) AS n FROM community.templates t WHERE t.scope = 'team' AND t.deleted_at IS NULL AND t.team_id = CAST(:k AS bigint)",
+        'database_id'   => "SELECT count(*) AS n FROM community.templates t WHERE t.scope = 'database' AND t.deleted_at IS NULL AND t.database_id = CAST(:k AS bigint)",
+    ];
+    $r = Db::instance()->run($sqls[$col], [':k' => $key])->fetch();
+    return is_array($r) ? (int) $r['n'] : 0;
+}
+
+/**
+ * 템플릿 한 줄 → 응답 모양. 계정 id·팀 id·DB 내부 번호는 나가지 않는다.
+ *
+ * @param  array<string,mixed>      $tpl
+ * @param  array<string,mixed>      $u
+ * @param  array<string,mixed>|null $dbPage
+ * @return array<string,mixed>
+ */
+function community_template_out(array $tpl, array $u, ?array $dbPage, bool $withBody): array
+{
+    $by = null;
+    if (($tpl['created_by_name'] ?? null) !== null) {
+        $by = ['username' => (string) $tpl['created_by_name'],
+               'display_name' => $tpl['created_by_display_name'] === null ? null : (string) $tpl['created_by_display_name']];
+    }
+    $out = [
+        'id'         => (string) $tpl['public_id'],
+        'name'       => (string) $tpl['name'],
+        'title'      => (string) $tpl['title'],
+        'icon'       => $tpl['icon'] === null ? null : (string) $tpl['icon'],
+        'scope'      => (string) $tpl['scope'],
+        'team'       => (string) $tpl['scope'] === 'team' ? (string) ($tpl['team_name'] ?? '') : null,
+        'database'   => (string) $tpl['scope'] === 'database' ? (string) ($tpl['db_public_id'] ?? '') : null,
+        'created_by' => $by,
+        'created_at' => (string) $tpl['created_at'],
+        'can_delete' => CommunityAuthz::decideTemplateDelete($u, $tpl, $dbPage)[0],
+    ];
+    if ($withBody) {
+        $doc = is_string($tpl['doc']) ? json_decode((string) $tpl['doc'], true) : $tpl['doc'];
+        $out['doc'] = is_array($doc) ? $doc : ['schema' => 1, 'blocks' => []];
+        $props = is_string($tpl['properties']) ? json_decode((string) $tpl['properties'], true) : $tpl['properties'];
+        $out['properties'] = is_array($props) && $props !== [] ? $props : new stdClass();
+    }
+    return $out;
+}
+
+/**
+ * 볼 수 없는 템플릿에 닿은 일 — 403 + 감사 `template.read deny <code>` 한 줄 (템플릿 읽기·쓰기 창구가 같이 쓴다).
+ * 사유 코드는 문장 표에 있는 셋으로만 남긴다(DB 행 템플릿의 판정 코드는 `not_owner` 로 모은다).
+ *
+ * @param array<string,mixed> $tpl
+ */
+function community_template_refuse(array $tpl, string $code, string $action = 'template.read'): void
+{
+    $known = $action === 'template.delete'
+        ? [CommunityAuthz::CODE_NOT_OWNER, CommunityAuthz::CODE_ROLE_NOT_PERMITTED]
+        : [CommunityAuthz::CODE_NOT_OWNER, CommunityAuthz::CODE_NOT_MEMBER, CommunityAuthz::CODE_ROLE_NOT_PERMITTED];
+    $name = community_target_title((string) $tpl['name']);
+    Audit::deny($action, in_array($code, $known, true) ? $code : CommunityAuthz::CODE_NOT_OWNER, [
+        'target_type' => 'template',
+        'target_id'   => (int) $tpl['id'],
+        'target_name' => $name,
+        'detail'      => ['template_name' => $name, 'scope' => (string) $tpl['scope']],
+    ]);
+    Http::error(403, Http::MSG_FORBIDDEN);
 }

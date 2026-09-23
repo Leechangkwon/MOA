@@ -355,3 +355,48 @@ CREATE INDEX pages_properties_gin ON community.pages USING GIN (properties jsonb
 -- 7-A 휴지통 영구 삭제 표시 (db/migrations/2026-09-26_community_purge.sql 과 같은 열 — 정리 함수 community.purge_trash 는 그 파일이 만든다)
 ALTER TABLE community.pages ADD COLUMN purged_at TIMESTAMPTZ;
 CREATE INDEX pages_purge_due_idx ON community.pages (purge_after) WHERE deleted_at IS NOT NULL AND purged_at IS NULL;
+
+-- 7-B 템플릿 (db/migrations/2026-09-27_community_templates.sql 과 같은 모양 — 사이트 기본 셋 시드는 그 파일이 넣는다)
+CREATE TABLE community.templates (
+    id            BIGSERIAL   PRIMARY KEY,
+    public_id     UUID        NOT NULL UNIQUE DEFAULT gen_random_uuid(),
+    scope         TEXT        NOT NULL,
+    owner_user_id BIGINT      REFERENCES public.users(id),
+    team_id       BIGINT      REFERENCES public.teams(id),
+    database_id   BIGINT      REFERENCES community.databases(id),
+    name          TEXT        NOT NULL,
+    title         TEXT        NOT NULL,
+    icon          TEXT,
+    doc           JSONB       NOT NULL,
+    properties    JSONB       NOT NULL DEFAULT '{}'::jsonb,
+    seed_key      TEXT        UNIQUE,
+    created_by    BIGINT      REFERENCES public.users(id),
+    created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
+    deleted_at    TIMESTAMPTZ,
+    deleted_by    BIGINT      REFERENCES public.users(id),
+    CONSTRAINT templates_scope_check CHECK (scope IN ('personal', 'team', 'site', 'database')),
+    -- 범위마다 채우는 칸이 하나다 — 둘 이상 채워진 줄(범위가 모호한 줄)은 들어오지 못한다
+    CONSTRAINT templates_scope_shape CHECK (
+           (scope = 'personal' AND owner_user_id IS NOT NULL AND team_id IS NULL AND database_id IS NULL)
+        OR (scope = 'team'     AND team_id IS NOT NULL AND owner_user_id IS NULL AND database_id IS NULL)
+        OR (scope = 'site'     AND owner_user_id IS NULL AND team_id IS NULL AND database_id IS NULL)
+        OR (scope = 'database' AND database_id IS NOT NULL AND owner_user_id IS NULL AND team_id IS NULL)),
+    CONSTRAINT templates_name_len  CHECK (char_length(name) BETWEEN 1 AND 60),
+    CONSTRAINT templates_title_len CHECK (char_length(title) BETWEEN 1 AND 200),
+    CONSTRAINT templates_icon_len  CHECK (icon IS NULL OR char_length(icon) BETWEEN 1 AND 8),
+    CONSTRAINT templates_doc_shape CHECK (jsonb_typeof(doc) = 'object' AND jsonb_typeof(doc -> 'blocks') = 'array'),
+    -- jsonb 의 글자 모양은 `": "`·`", "` 로 공백이 붙어 앱의 1MB(빈칸 없는 JSON)보다 크다 — 앱이 먼저 1MB 로 400 을 주고, 여기는 두 배 여유
+    CONSTRAINT templates_doc_size  CHECK (octet_length(doc::text) <= 2097152),
+    CONSTRAINT templates_props_shape CHECK (jsonb_typeof(properties) = 'object'
+                                            AND (scope = 'database' OR properties = '{}'::jsonb)),
+    -- 시드만 만든 사람이 없다(사이트 기본). 사람이 만든 것은 누가 만들었는지 늘 남는다
+    CONSTRAINT templates_creator CHECK (created_by IS NOT NULL OR (scope = 'site' AND seed_key IS NOT NULL)),
+    CONSTRAINT templates_deleted_pair CHECK ((deleted_at IS NULL) = (deleted_by IS NULL))
+);
+
+CREATE INDEX templates_personal_idx ON community.templates (owner_user_id, created_at)
+    WHERE deleted_at IS NULL AND scope = 'personal';
+CREATE INDEX templates_team_idx ON community.templates (team_id, created_at)
+    WHERE deleted_at IS NULL AND scope = 'team';
+CREATE INDEX templates_database_idx ON community.templates (database_id, created_at)
+    WHERE deleted_at IS NULL AND scope = 'database';

@@ -1,0 +1,49 @@
+{
+ "slug": "stage-7-b",
+ "title": "7-B — 템플릿",
+ "summary": "페이지를 템플릿으로 저장하고, 템플릿에서 새 페이지를 만든다. 범위는 내 템플릿 · 팀 템플릿 · 사이트 기본(회의록 · 인수인계서 · 업무 체크리스트) · DB 행 템플릿 넷이고, 템플릿을 볼 사람은 원본을 볼 수 있는 사람보다 넓을 수 없다. 첨부 · 하위 페이지 · 댓글은 따라오지 않고, 만든 페이지는 「새 페이지」와 같은 규칙(내 공간 · 비공개)으로 시작한다.",
+ "group": "stage",
+ "stage": "7-B",
+ "updated": "2026-09-24",
+ "sections": [
+  {
+   "id": "why",
+   "heading": "왜 만들었나",
+   "blocks": [
+    {
+     "type": "p",
+     "text": "PRD F-31 「템플릿 갤러리 + 부서 기본 양식(인수인계서 · 업무 체크리스트)」과 N-23 회의록 템플릿. 결정 J-3(내 것 · 팀 · 사이트 기본 — 남의 개인 템플릿은 안 보임)과 7-B 확정 J-3a~J-3f 기본안."
+    }
+   ]
+  },
+  {
+   "id": "what",
+   "heading": "무엇을 만들었나",
+   "blocks": [
+    {
+     "type": "list",
+     "items": [
+      "마이그레이션 `2026-09-27_community_templates.sql` — 표 `community.templates`(범위 칸 하나만 채우는 CHECK · 논리 삭제) · 사이트 기본 셋 셋 시드.",
+      "창구: `GET /api/templates` · `GET /api/templates/{id}` · `POST /api/templates` · `DELETE /api/templates/{id}` · `POST /api/pages {template_id}`.",
+      "판정 `decideTemplateRead`·`decideTemplateDelete`·`decideTemplateSave` — 팀 템플릿은 내 팀 공간의 페이지로만, 사이트 기본은 Admin 이 사내 공개 페이지로만, DB 행 템플릿은 DB 와 같은 범위의 행으로만.",
+      "담는 것: 제목 · 아이콘 · 본문(그림 · 파일 · 하위 페이지 블록 빼고, 할 일 체크는 푼다) · DB 행이면 속성 값(사람 · 관계 · 파일 빼고). 블록 id 는 페이지마다 새로 매긴다.",
+      "화면: 홈 「템플릿에서」 창(목록 · 보기 · 만들기 · 지우기) · 페이지 「템플릿으로 저장」 창 · DB 새 행 고르개."
+     ]
+    }
+   ]
+  },
+  {
+   "id": "check",
+   "heading": "어떻게 확인했나",
+   "blocks": [
+    {
+     "type": "list",
+     "items": [
+      "`tests/community/stage7b.sh` — C:T-170 기본 셋 · C:T-171 저장(첨부 빼기 · 범위 규칙 · 한도) · C:T-172 쓰기(내 공간 · 비공개 · 남의 템플릿 403) · C:T-173 DB 행 템플릿 · C:T-174 지우기 · C:T-175 범위 목록 · C:T-176 권한 · C:T-177 브라우저.",
+      "`browser_7b.py` — 진짜 브라우저로 창 셋을 눌러 봄(오류 0, 390px 넘침 없음)."
+     ]
+    }
+   ]
+  }
+ ]
+}

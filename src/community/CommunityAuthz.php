@@ -1140,6 +1140,171 @@ final class CommunityAuthz
         return in_array($v, self::VISIBILITIES, true) ? $v : null;
     }
 
+    /* ─── 7-B 템플릿 (C:F-31 · 결정 J-3) ─────────────────────────────
+     *
+     * 템플릿은 **범위 하나**를 가진다(표의 CHECK 가 칸 하나만 채우게 한다):
+     *   personal  만든 사람만 — Admin 도 남의 개인 템플릿은 못 본다(J-3 「남의 개인 템플릿은 안 보임」)
+     *   team      그 팀원
+     *   site      커뮤니티에 쓸 수 있는 사람 모두(시드 · Admin 이 만든 것)
+     *   database  그 DB 에 **행을 더할 수 있는 사람**(DB 페이지의 `decidePageChange`) — DB 행 템플릿
+     * 템플릿을 「볼 수 있다」와 「쓸 수 있다(그것으로 페이지를 만든다)」는 같은 물음이다. 만든 페이지가
+     * **어디에 어떤 범위로** 생기는지는 템플릿이 아니라 `POST /api/pages` 의 기존 규칙(내 공간 · 비공개,
+     * 부모가 있으면 부모 판정)이 정한다 — 템플릿은 본문을 채울 뿐 자리를 넓히지 않는다.
+     */
+
+    /** 템플릿 범위 넷 — 표의 CHECK 와 같은 목록이다 */
+    public const TEMPLATE_SCOPES = ['personal', 'team', 'site', 'database'];
+
+    /**
+     * 이 템플릿을 볼(쓸) 수 있나 (7-B).
+     *
+     * @param  array<string,mixed>      $u
+     * @param  array<string,mixed>      $tpl    `community_template_row()` 의 한 줄
+     * @param  array<string,mixed>|null $dbPage DB 행 템플릿이면 그 DB 페이지 행(`community_page_row` — 보는 사람 몫)
+     * @return array{0:bool,1:string}
+     */
+    public static function decideTemplateRead(array $u, array $tpl, ?array $dbPage = null): array
+    {
+        if (($tpl['deleted_at'] ?? null) !== null) {
+            return [false, self::CODE_NOT_FOUND];
+        }
+        switch ((string) ($tpl['scope'] ?? '')) {
+            case 'personal':
+                $owner = $tpl['owner_user_id'] ?? null;
+                return $owner !== null && isset($u['id']) && (int) $owner === (int) $u['id']
+                    ? [true, self::CODE_OWNER] : [false, self::CODE_NOT_OWNER];
+            case 'team':
+                return self::isTeamMember($u, $tpl['team_id'] ?? null)
+                    ? [true, self::CODE_TEAM_MEMBER] : [false, self::CODE_NOT_MEMBER];
+            case 'site':
+                // 템플릿은 페이지를 **만드는** 데 쓴다 — 쓰기 자격이 없는 역할(Guest)에게는 쓸 곳이 없다
+                return Authz::canCommunityWrite($u)
+                    ? [true, self::CODE_MATRIX] : [false, self::CODE_ROLE_NOT_PERMITTED];
+            case 'database':
+                if ($dbPage === null) {
+                    return [false, self::CODE_NOT_FOUND];
+                }
+                return self::decidePageChange($u, $dbPage);
+        }
+        return [false, self::CODE_ROLE_NOT_PERMITTED];   // 모르는 범위는 막는다
+    }
+
+    /**
+     * 이 템플릿을 지울 수 있나 (7-B). 볼 수 있어도 지우는 것은 좁다.
+     *   personal  만든 사람(= 볼 수 있는 사람)
+     *   team      **그 팀원 누구나**(팀 공간의 페이지를 팀원이 함께 관리하는 것과 같다 — 만든 사람이 팀을 옮겨도
+     *             남은 팀원이 정리할 수 있다) · Admin(`admin_all` — 감사에 남는다)
+     *   site      Admin 만
+     *   database  행을 더할 수 있으면서 만든 사람 · 그 DB 페이지의 관리 자격(`decidePageManage`)
+     *
+     * @param  array<string,mixed>      $u
+     * @param  array<string,mixed>      $tpl
+     * @param  array<string,mixed>|null $dbPage
+     * @return array{0:bool,1:string}
+     */
+    public static function decideTemplateDelete(array $u, array $tpl, ?array $dbPage = null): array
+    {
+        if (($tpl['deleted_at'] ?? null) !== null) {
+            return [false, self::CODE_NOT_FOUND];
+        }
+        $mine = isset($u['id'], $tpl['created_by']) && $tpl['created_by'] !== null
+            && (int) $tpl['created_by'] === (int) $u['id'];
+        switch ((string) ($tpl['scope'] ?? '')) {
+            case 'personal':
+                return self::decideTemplateRead($u, $tpl);
+            case 'team':
+                if (self::isTeamMember($u, $tpl['team_id'] ?? null)) {
+                    return [true, $mine ? self::CODE_OWNER : self::CODE_TEAM_MEMBER];
+                }
+                return Authz::canAdmin($u) ? [true, self::CODE_ADMIN_ALL] : [false, self::CODE_NOT_OWNER];
+            case 'site':
+                return Authz::canAdmin($u) ? [true, self::CODE_ADMIN_ALL] : [false, self::CODE_ROLE_NOT_PERMITTED];
+            case 'database':
+                if ($dbPage === null) {
+                    return [false, self::CODE_NOT_FOUND];
+                }
+                if ($mine && self::decidePageChange($u, $dbPage)[0]) {
+                    return [true, self::CODE_OWNER];
+                }
+                return self::decidePageManage($u, $dbPage);
+        }
+        return [false, self::CODE_ROLE_NOT_PERMITTED];
+    }
+
+    /**
+     * 이 페이지를 이 범위의 템플릿으로 저장할 수 있나 (7-B).
+     *
+     * 원칙: **템플릿을 볼 사람 ⊆ 원본 페이지를 볼 수 있는 사람**. 템플릿이 원본보다 넓게 퍼지면
+     * 템플릿이 곧 「범위를 넓히는 뒷문」이 된다(비공개 페이지를 팀 템플릿으로 저장해 팀에 보이기).
+     *   [0] 원본을 볼 수 없다                          → `not_owner` (403 — `page.read deny`)
+     *   [0b] 쓰기 자격이 없는 역할(Guest)               → `role_not_permitted` (템플릿은 페이지를 만드는 데 쓴다)
+     *   [1] DB 페이지(행을 품은 쪽)                    → `db_page` (400 — DB 는 템플릿이 되지 않는다)
+     *   personal  볼 수 있으면 된다                    → 읽기 근거 코드(나만 보는 사본 — 복사와 같다)
+     *   team      원본이 **내 팀의 팀 공간** 페이지     → `team_member` · 다른 공간이면 `team_scope` (400)
+     *             팀 공간은 팀원 모두가 보는 그릇이라 템플릿의 범위(그 팀원)와 같다
+     *   site      Admin 만(`role_not_permitted` 403) · 원본이 사내 전체에 열려 있어야(`too_narrow` 400) —
+     *             **숨긴 글**(게시판 등급이 꺼진다)과 **특권으로만 읽는 원본**(`admin_all`·`board_moderator`)은 좁다
+     *             (독립 검토 M-1: `pageAudiences` 는 숨김을 보지 않아, 숨긴 게시 글이 사이트 템플릿으로 새어 나갈 뻔했다)
+     *   database  원본이 **그 DB 의 행**(`not_row` 400) · DB 에 행을 더할 수 있는 사람(`not_owner` 403) ·
+     *             행의 기준 범위가 DB 페이지와 같다(`too_narrow` 400 — 좁혀 둔 행은 범위로 읽는 DB 편집자가 보지 못한다.
+     *             편집 공유자는 상속으로 읽지만, 팀·사내로 DB 를 고치는 사람은 아니다 — 안전한 쪽으로 엄격하다)
+     *
+     * @param  array<string,mixed>      $u
+     * @param  array<string,mixed>      $row    원본 페이지(`community_page_row` — 보는 사람 몫)
+     * @param  array<string,mixed>|null $dbPage database 범위일 때 그 행이 속한 DB 페이지
+     * @return array{0:bool,1:string}
+     */
+    public static function decideTemplateSave(array $u, array $row, string $scope, ?array $dbPage = null): array
+    {
+        [$mayRead, $readCode] = self::decidePageRead($u, $row);
+        if (!$mayRead) {
+            return [false, $readCode === self::CODE_NOT_FOUND ? self::CODE_NOT_FOUND : self::CODE_NOT_OWNER];
+        }
+        if (!Authz::canCommunityWrite($u)) {
+            return [false, self::CODE_ROLE_NOT_PERMITTED];
+        }
+        if (($row['dbself_public_id'] ?? null) !== null) {
+            return [false, 'db_page'];
+        }
+        switch ($scope) {
+            case 'personal':
+                return [true, $readCode];
+            case 'team':
+                if ((string) ($row['space_kind'] ?? '') !== 'team') {
+                    return [false, self::CODE_TEAM_SCOPE];
+                }
+                return self::isTeamMember($u, $row['space_team_id'] ?? null)
+                    ? [true, self::CODE_TEAM_MEMBER] : [false, self::CODE_NOT_MEMBER];
+            case 'site':
+                if (!Authz::canAdmin($u)) {
+                    return [false, self::CODE_ROLE_NOT_PERMITTED];
+                }
+                if (($row['hidden_at'] ?? null) !== null
+                    || in_array($readCode, [self::CODE_ADMIN_ALL, self::CODE_BOARD_MODERATOR], true)) {
+                    return [false, 'too_narrow'];
+                }
+                foreach (self::pageAudiences($row) as $aud) {
+                    if (in_array($aud['level'], ['internal', 'public'], true)) {
+                        return [true, self::CODE_ADMIN_ALL];
+                    }
+                }
+                return [false, 'too_narrow'];
+            case 'database':
+                if (($row['database_id'] ?? null) === null || $dbPage === null) {
+                    return [false, 'not_row'];
+                }
+                if (!self::decidePageChange($u, $dbPage)[0]) {
+                    return [false, self::CODE_NOT_OWNER];
+                }
+                if ((string) ($row['space_kind'] ?? '') !== 'team'
+                    && self::baseVisibility($row) !== self::baseVisibility($dbPage)) {
+                    return [false, 'too_narrow'];
+                }
+                return [true, self::decidePageChange($u, $dbPage)[1]];
+        }
+        return [false, self::CODE_ROLE_NOT_PERMITTED];
+    }
+
     /**
      * 게시판 글을 **볼 수 있나** (5-C, `decidePageRead` [2]).
      *

@@ -108,7 +108,8 @@ with sync_playwright() as pw:
          and page.locator("#page-comments img").count() == 0)
     last.get_by_role("button", name="고치기").click()
     page.locator("#page-comments textarea").fill("C5D-브라우저 고친 댓글")
-    page.get_by_role("button", name="저장").click()
+    # 정확 일치 — 7-B 의 「템플릿으로 저장」 단추와 겹치지 않게
+    page.get_by_role("button", name="저장", exact=True).click()
     page.wait_for_function("() => document.getElementById('page-comments').textContent.includes('C5D-브라우저 고친 댓글')", timeout=8000)
     step("1 그 자리 고치기 → 저장", True)
     first = page.locator("#page-comments > li:not(.is-reply)").filter(

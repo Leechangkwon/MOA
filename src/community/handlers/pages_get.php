@@ -223,6 +223,20 @@ if ($names !== []) {
     }
 }
 
+/* 7-B — 이 페이지를 **어느 범위의 템플릿으로** 저장할 수 있나(「템플릿으로 저장」 창의 고르개). 판정은 저장 창구와 같은
+   `decideTemplateSave` 한 곳이고, 여기서는 되는 범위의 이름만 싣는다 — 화면이 역할·공간을 따지지 않는다. */
+$tplDbPage = null;
+if ($row['database_id'] !== null && $row['db_public_id'] !== null) {
+    $tplDbInfo = community_db_row((string) $row['db_public_id']);
+    $tplDbPage = $tplDbInfo === null ? null : community_page_row((string) $tplDbInfo['page_public_id'], $me);
+}
+$templateScopes = [];
+foreach (CommunityAuthz::TEMPLATE_SCOPES as $tplScope) {
+    if (CommunityAuthz::decideTemplateSave($user, $row, $tplScope, $tplDbPage)[0]) {
+        $templateScopes[] = $tplScope;
+    }
+}
+
 Http::json([
     'page' => [
         'id'          => (string) $row['public_id'],
@@ -347,4 +361,5 @@ Http::json([
     ],
     'can_comment'    => CommunityAuthz::decideCommentCreate($user, $row)[0],
     'can_view_reads' => CommunityAuthz::decideReadsView($user, $row)[0],
+    'template_scopes' => $templateScopes,
 ]);

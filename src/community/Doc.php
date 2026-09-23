@@ -964,6 +964,96 @@ final class Doc
         ];
     }
 
+    /**
+     * 템플릿에 담을 본문 (7-B, C:F-31 「본문·제목·속성 뼈대만, 첨부·댓글 없음」).
+     *
+     * 빼는 블록: `image`·`file`(첨부 — t-box 파일은 파일마다 범위가 있어, 템플릿을 쓰는 사람이 그 파일을
+     * 볼 수 있는지 알 수 없다) · `child_page`(원본의 하위 페이지를 가리킨다 — 새 페이지의 하위가 아니다).
+     * 댓글은 본문이 아니라 처음부터 따라오지 않는다. 링크(`link_to_page`·링크 마크)는 남긴다 — 제목은 보는
+     * 사람이 볼 수 있을 때만 그려진다(렌더러 두 벌이 이미 그렇게 한다).
+     * 할 일(`to_do`)은 **체크를 푼다** — 템플릿은 빈 양식이다(쓰던 체크리스트를 저장해도 새 페이지는 처음부터).
+     * 다 빼고 나서 뿌리가 비면 빈 문단 하나를 둔다(빈 문서는 없다).
+     *
+     * @param  array<string,mixed> $doc  검사를 지난 본문
+     * @return array{0:array<string,mixed>,1:int}  [거른 본문, 뺀 블록 수(하위 포함)]
+     */
+    public static function templateBody(array $doc): array
+    {
+        $dropped = 0;
+        $blocks  = self::stripForTemplate(is_array($doc['blocks'] ?? null) ? $doc['blocks'] : [], $dropped);
+        if ($blocks === []) {
+            $blocks = [['id' => self::uuid4(), 'type' => 'paragraph', 'text' => []]];
+        }
+        return [['schema' => 1, 'blocks' => $blocks], $dropped];
+    }
+
+    /** 템플릿에 담지 않는 블록 */
+    private const TEMPLATE_DROP = ['image', 'file', 'child_page'];
+
+    /**
+     * @param  list<mixed> $list
+     * @return list<array<string,mixed>>
+     */
+    private static function stripForTemplate(array $list, int &$dropped): array
+    {
+        $out = [];
+        foreach ($list as $block) {
+            if (!is_array($block)) {
+                continue;
+            }
+            if (in_array((string) ($block['type'] ?? ''), self::TEMPLATE_DROP, true)) {
+                $dropped += 1 + self::countBlocks($block['children'] ?? []);
+                continue;
+            }
+            if ((string) ($block['type'] ?? '') === 'to_do') {
+                $block['checked'] = false;
+            }
+            if (isset($block['children']) && is_array($block['children'])) {
+                $block['children'] = self::stripForTemplate($block['children'], $dropped);
+            }
+            $out[] = $block;
+        }
+        return $out;
+    }
+
+    /** @param mixed $list */
+    private static function countBlocks($list): int
+    {
+        $n = 0;
+        foreach (is_array($list) ? $list : [] as $b) {
+            if (is_array($b)) {
+                $n += 1 + self::countBlocks($b['children'] ?? []);
+            }
+        }
+        return $n;
+    }
+
+    /**
+     * 블록 id 를 **전부 새로** 매긴다 (7-B — 템플릿에서 만든 페이지마다). 같은 템플릿으로 만든 두 페이지가
+     * 블록 id 를 나누면 할 일 체크 기록(`checklist_events`)·블록 색인이 서로의 것처럼 보인다.
+     *
+     * @param  array<string,mixed> $doc
+     * @return array<string,mixed>
+     */
+    public static function freshIds(array $doc): array
+    {
+        $walk = static function (array $list) use (&$walk): array {
+            $out = [];
+            foreach ($list as $block) {
+                if (is_array($block)) {
+                    $block['id'] = self::uuid4();
+                    if (isset($block['children']) && is_array($block['children'])) {
+                        $block['children'] = $walk($block['children']);
+                    }
+                }
+                $out[] = $block;
+            }
+            return $out;
+        };
+        $doc['blocks'] = $walk(is_array($doc['blocks'] ?? null) ? $doc['blocks'] : []);
+        return $doc;
+    }
+
     /** 블록 id 용 UUIDv4 (서버가 만드는 자리는 여기 하나다) */
     public static function uuid4(): string
     {

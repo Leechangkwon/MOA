@@ -12,7 +12,9 @@
  *   · 값의 모양은 서버(`DbProps`)가 가른다. 화면은 입력 칸의 종류만 고른다.
  *
  * editor.js 가 `createDatabaseView(deps)` 로 한 번 만들고, 페이지를 읽을 때마다 `draw(data)` 를 부른다.
+ * 7-B — 새 행 고르개(「빈 행」 + 이 DB 의 행 템플릿 · 고른 템플릿 지우기)는 `templates.js` 의 `createRowTemplatePicker` 가 맡는다.
  */
+import { createRowTemplatePicker } from './templates.js';
 
 const TYPE_LABELS = {
   text: '글', number: '숫자', checkbox: '체크', url: '주소', email: '메일', phone: '전화',
@@ -52,6 +54,10 @@ export function createDatabaseView(deps) {
   const msgEl = $('db-msg');
   const addRowForm = $('db-add-row');
   const addRowTitle = $('db-add-row-title');
+  const addRowTemplate = $('db-add-row-template');
+  const rowTemplates = createRowTemplatePicker(
+    { api: api, show: show, clear: clear, setText: setText, errorMessage: errorMessage, genericError: genericError, toLogin: toLogin },
+    addRowTemplate, $('db-add-row-template-delete'), $('db-msg'));
   const addPropButton = $('db-add-prop');
   const fProp = $('db-f-prop');
   const fOp = $('db-f-op');
@@ -774,11 +780,17 @@ export function createDatabaseView(deps) {
   addRowForm.addEventListener('submit', (e) => {
     e.preventDefault();
     const title = addRowTitle.value.trim();
-    if (title === '') { addRowTitle.focus(); return; }
-    api('POST', '/api/pages', { parent_id: db.page_id, title: title }).then((r) => {
+    // 7-B — 행 템플릿을 고르면 제목은 비워도 된다(템플릿의 제목으로 시작한다)
+    const tplId = addRowTemplate && UUID_RE.test(addRowTemplate.value) ? addRowTemplate.value : '';
+    if (title === '' && tplId === '') { addRowTitle.focus(); return; }
+    const payload = { parent_id: db.page_id };
+    if (title !== '') { payload.title = title; }
+    if (tplId !== '') { payload.template_id = tplId; }
+    api('POST', '/api/pages', payload).then((r) => {
       if (r.status === 401) { toLogin(); return; }
       if (r.status !== 201) { setText(msgEl, errorMessage(r.data)); return; }
       addRowTitle.value = '';
+      rowTemplates.reset();
       setText(msgEl, '');
       loadRows();
     }).catch(() => setText(msgEl, genericError));
@@ -939,6 +951,7 @@ export function createDatabaseView(deps) {
         summary = null;
         show(wrap, true);
         loadRows();
+        if (db.can_add_rows) { rowTemplates.load(db.id); }
       } else {
         db = null;
         show(wrap, false);

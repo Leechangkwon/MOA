@@ -56,6 +56,10 @@ require __DIR__ . '/../../views/shell_top.php';
         <button id="page-move" class="btn btn--quiet" type="button" hidden>
           <span class="icon" data-icon="files"></span>옮기기
         </button>
+        <!-- 7-B — 「템플릿으로 저장」. 창구가 준 `template_scopes` 가 비어 있으면 숨은 채다. -->
+        <button id="page-save-template" class="btn btn--quiet" type="button" aria-haspopup="dialog" hidden>
+          <span class="icon" data-icon="download"></span>템플릿으로 저장
+        </button>
         <button id="page-edit" class="btn" type="button" hidden>
           <span class="icon" data-icon="edit"></span>편집
         </button>
@@ -238,6 +242,9 @@ require __DIR__ . '/../../views/shell_top.php';
       <ul id="db-list" class="list db-list" hidden></ul>
       <form id="db-add-row" class="toolbar" hidden>
         <input id="db-add-row-title" class="input" type="text" maxlength="200" autocomplete="off" placeholder="새 행 제목" aria-label="새 행 제목">
+        <!-- 7-B — 이 DB 의 행 템플릿(없으면 숨은 채). 고르면 제목은 비워도 된다 -->
+        <select id="db-add-row-template" aria-label="행 템플릿" hidden></select>
+        <button id="db-add-row-template-delete" class="btn btn--small btn--quiet btn--danger" type="button" hidden>템플릿 지우기</button>
         <button class="btn btn--small" type="submit">새 행</button>
       </form>
     </section>
@@ -494,6 +501,31 @@ require __DIR__ . '/../../views/shell_top.php';
            아니라 줄 목록이다 (DESIGN 2.13).
          내용은 전부 editor.js 가 createElement/textContent 로 채운다. 본문 글자는 「보기」를
          눌렀을 때만, 창구 `GET …/versions/{num}` 을 지나 들어온다 (C:T-44). -->
+    <!-- 「템플릿으로 저장」 창 (7-B, DESIGN 2.7 `.modal--form` — 공개 범위 창과 같은 라디오 줄 모양, 새 클래스 0).
+         범위 항목은 창구가 준 `template_scopes` 뿐이고, 저장 창구가 같은 판정(`decideTemplateSave`)으로 다시 막는다.
+         담는 것: 제목 · 아이콘 · 본문(첨부 · 하위 페이지 블록 빼고) · DB 행이면 속성 값(사람 · 관계 · 파일 빼고). -->
+    <dialog id="template-save-dialog" class="modal modal--form" aria-labelledby="template-save-title">
+      <div class="modal__head">
+        <h2 id="template-save-title" class="modal__title">템플릿으로 저장</h2>
+        <button class="btn btn--icon btn--plain" type="button" data-template-save-close aria-label="닫기">
+          <span class="icon" data-icon="x"></span>
+        </button>
+      </div>
+      <div class="modal__body">
+        <p id="template-save-msg" class="msg" role="alert" aria-live="polite"></p>
+        <label class="field field--full">
+          <span>템플릿 이름</span>
+          <input id="template-save-name" class="input" type="text" maxlength="60" autocomplete="off">
+        </label>
+        <div id="template-save-scopes"></div>
+        <p class="muted">첨부 파일 · 하위 페이지 · 댓글은 담지 않습니다. 템플릿을 지워도 이미 만든 페이지는 그대로입니다.</p>
+      </div>
+      <div class="form-actions">
+        <button class="btn btn--quiet" type="button" data-template-save-close>닫기</button>
+        <button id="template-save-confirm" class="btn" type="button">저장</button>
+      </div>
+    </dialog>
+
     <dialog id="history-dialog" class="modal" aria-labelledby="history-title">
       <div class="modal__head">
         <h2 id="history-title" class="modal__title">이력</h2>

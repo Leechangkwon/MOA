@@ -42,6 +42,7 @@ import { gapCursor } from './vendor/pm/prosemirror-gapcursor.js';
 
 import { renderDoc } from './doc-render.js';
 import { createDatabaseView } from './database.js';
+import { bindTemplateGallery, createTemplateSave } from './templates.js';
 import { schema, toDoc, fromDoc, uuid4, colorAllowed, schemeOkForEditor, COLORS, BLOCK_TYPES } from './editor-schema.js';
 
 /* ─── 주소와 공통 도우미 ─────────────────────────────────────── */
@@ -800,6 +801,11 @@ function initHome() {
 
   // 휴지통 (4-C) — 되살린 뒤에는 트리를 다시 받는다(화면이 카드를 지어내지 않는다).
   bindTrash(() => { load(search ? search.value : '').catch(() => setText(msg, GENERIC_ERROR)); });
+  // 7-B — 「템플릿에서」 창. 만든 페이지는 지금 보고 있는 공간에 생긴다(「새 페이지」와 같은 규칙 — 창구가 다시 판단한다)
+  bindTemplateGallery({
+    api: api, setText: setText, show: show, clear: clear, errorMessage: errorMessage,
+    genericError: GENERIC_ERROR, toLogin: toLogin, base: COMMUNITY_BASE, currentSpaceId: currentSpaceId
+  });
 }
 
 /* ─── 휴지통 (4-C, C:F-29) ─────────────────────────────────────
@@ -2671,6 +2677,11 @@ function initPage() {
     tboxBase: APP_BASE, spaceId: () => (state.space ? state.space.id : 0)
   });
   const moveButton = document.getElementById('page-move');
+  // 7-B — 「템플릿으로 저장」. 고를 수 있는 범위는 창구가 준 `template_scopes` 뿐이다.
+  const templateSave = createTemplateSave({
+    api: api, setText: setText, show: show, clear: clear, errorMessage: errorMessage,
+    genericError: GENERIC_ERROR, toLogin: toLogin
+  });
   const conflictDialog = document.getElementById('conflict-dialog');
   const visibilityBadgeEl = document.getElementById('page-visibility');
   const visibilityButton = document.getElementById('page-visibility-edit');
@@ -2977,6 +2988,7 @@ function initPage() {
       state.database = result.data.database || null;
       drawChildren(result.data.children);
       dbView.draw(pageId, result.data);
+      templateSave.draw(pageId, result.data);
       showEditors(result.data.editors);
       show(editButton, state.canEdit && !state.editing);
       // 5-A — 지우기·옮기기는 **관리**다. 편집 공유자에게는 `can_edit` 이 참이어도 이 둘이 없다.

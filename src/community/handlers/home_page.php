@@ -43,6 +43,10 @@ require __DIR__ . '/../../views/shell_top.php';
         <button id="community-trash" class="btn btn--quiet" type="button">
           <span class="icon" data-icon="trash"></span>휴지통
         </button>
+        <!-- 「템플릿에서」 (7-B, C:F-31) — 목록은 창구 `GET /api/templates` 가 주는 것만(내 것 · 내 팀 · 사이트 기본). -->
+        <button id="community-template-new" class="btn btn--quiet" type="button" aria-haspopup="dialog">
+          <span class="icon" data-icon="files"></span>템플릿에서
+        </button>
         <button id="community-new" class="btn" type="button">
           <span class="icon" data-icon="plus"></span>새 페이지
         </button>
@@ -122,6 +126,45 @@ require __DIR__ . '/../../views/shell_top.php';
       </div>
       <div class="form-actions">
         <button class="btn btn--quiet" type="button" data-trash-close>닫기</button>
+      </div>
+    </dialog>
+
+    <!-- 「템플릿에서 새 페이지」 창 (7-B, DESIGN 2.7 모달 · 2.4 표 — 이력 창과 같은 목록 + 미리보기 모양, 새 클래스 0).
+         만든 페이지는 **지금 보고 있는 공간**에 생기고, 개인 공간이면 비공개로 시작한다(창구 규칙).
+         「지우기」는 창구가 준 `can_delete` 가 참인 줄에만 있다. 내용은 templates.js 가 textContent 로 채운다. -->
+    <dialog id="template-dialog" class="modal" aria-labelledby="template-title">
+      <div class="modal__head">
+        <h2 id="template-title" class="modal__title">템플릿에서 새 페이지</h2>
+        <button class="btn btn--icon btn--plain" type="button" data-template-close aria-label="닫기">
+          <span class="icon" data-icon="x"></span>
+        </button>
+      </div>
+      <div class="modal__body">
+        <p id="template-msg" class="msg" role="alert" aria-live="polite"></p>
+        <section id="template-list-wrap">
+          <p class="muted">템플릿의 제목·본문으로 새 페이지를 만듭니다. 첨부 파일은 따라오지 않습니다.</p>
+          <div class="table-wrap">
+            <table class="files">
+              <thead>
+                <tr><th>이름</th><th>범위</th><th>만든 사람</th><th></th></tr>
+              </thead>
+              <tbody id="template-body"></tbody>
+            </table>
+          </div>
+          <p id="template-empty" class="muted" hidden>쓸 수 있는 템플릿이 없습니다.</p>
+        </section>
+        <!-- 「보기」로 연 템플릿의 본문 — 읽기 렌더러(`renderDoc`)가 그린다 -->
+        <section id="template-preview" hidden>
+          <div class="toolbar">
+            <p id="template-preview-title" class="nav-title"></p>
+            <button id="template-preview-back" class="btn btn--quiet" type="button">목록으로</button>
+            <button id="template-preview-use" class="btn" type="button">이 템플릿으로 만들기</button>
+          </div>
+          <article id="template-preview-doc" class="panel"></article>
+        </section>
+      </div>
+      <div class="form-actions">
+        <button class="btn btn--quiet" type="button" data-template-close>닫기</button>
       </div>
     </dialog>
 <?php

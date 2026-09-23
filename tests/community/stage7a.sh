@@ -196,7 +196,7 @@ echo "  · 임시 DB $DB — 계정 ${n_users}명 · 페이지 ${n_pages}장"
 sub "② 마이그레이션 + 권한 (임시 DB 에만) — 앞 단계(이미 있으면 그대로) · 5-C · 5-D (5-E 는 새 표가 없다)"
 for mig in 2026-09-23_community_page_properties.sql 2026-09-23_community_owner_share.sql \
            2026-09-23_users_display_name.sql 2026-09-24_community_boards.sql \
-           2026-09-24_community_discussion.sql 2026-09-25_community_databases.sql 2026-09-25_community_databases.sql 2026-09-26_community_purge.sql 2026-09-26_community_purge.sql; do
+           2026-09-24_community_discussion.sql 2026-09-25_community_databases.sql 2026-09-25_community_databases.sql 2026-09-26_community_purge.sql 2026-09-26_community_purge.sql 2026-09-27_community_templates.sql; do
   echo "    ▸ $mig"
   sudo -n -u postgres psql -d "$DB" -v ON_ERROR_STOP=1 -f - < "$ROOT/db/migrations/$mig" 2>&1 \
     | grep -v 'could not change directory' | sed 's/^/      /'
@@ -422,12 +422,14 @@ for p in "$PD" "$DBP" "$RW"; do psqlq "UPDATE community.pages SET purge_after = 
 
 # ════════════════════════════════════════════════════════════════
 hr "C:T-160  dry — 목록만, 바뀐 것 0"
+# 운영 사본에는 이미 영구 삭제된 페이지가 있을 수 있다(7-A 반영 때 휴지통을 비웠다) — 기준값과 견준다
+PURGED0=$(psqlq "SELECT count(*) FROM community.pages WHERE purged_at IS NOT NULL")
 DRY=$(sudo -n -u postgres psql -d "$DB" -q -t -A -c "SET ROLE tbox_owner; SELECT string_agg(page_public_id::text, ' ') FROM community.purge_trash(true, 500)" 2>&1 | tail -1)
 contains "dry 목록에 지울 페이지" "$PD" "$DRY"
 contains "  DB 의 행도(같이 지워진 하위)" "$RW" "$DRY"
 lacks "  30일 안 된 것은 목록에 없다" "$PK" "$DRY"
 lacks "  되살린 페이지는 목록에 없다" "$PRS" "$DRY"
-expect "  dry 뒤 영구 삭제 표시 0" "0" "$(psqlq "SELECT count(*) FROM community.pages WHERE purged_at IS NOT NULL")"
+expect "  dry 뒤 영구 삭제 표시 그대로(기준 $PURGED0)" "$PURGED0" "$(psqlq "SELECT count(*) FROM community.pages WHERE purged_at IS NOT NULL")"
 
 # ════════════════════════════════════════════════════════════════
 hr "C:T-161  정리 — 내용은 지우고 메타 기록은 남긴다"
