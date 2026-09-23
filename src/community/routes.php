@@ -112,6 +112,8 @@ const COMMUNITY_ROUTES = [
     ['GET',    '/api/embed-domains',                     'embed_domains_list.php',   'community.read'],
     ['POST',   '/api/embed-domains',                     'embed_domains_add.php',    'role:Admin'],
     ['DELETE', '/api/embed-domains/{num}',               'embed_domains_remove.php', 'role:Admin'],
+    /* 7-D1 많이 읽힌 문서 (N-34 · 결정 J-6) — 관리자만(재인증), 사내 전체에 열린 페이지만, 수만 */
+    ['GET',    '/api/admin/popular',                     'admin_popular.php',        'role:Admin'],
 
     /* ── 사람 지정 공유 · 인계 (5-A, PRD NG-8 해제 · F-28) ──
      * 목록은 `community.read` + 그 페이지의 `decidePageRead`, 바꾸는 셋은 `community.write` +

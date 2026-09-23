@@ -897,6 +897,8 @@ final class Audit
         'page.restore_version|deny|embed_not_allowed' => '{actor} 이(가) 페이지 「{target}」 을(를) 허용 목록 밖 임베드가 든 판으로 되돌리려 해서 거부했습니다',
         // 7-C 임베드 허용 목록 (Admin — {target} 은 호스트 이름)
         'embed.domain_add|allow'                => '{actor} 이(가) 임베드 허용 목록에 「{target}」 을(를) 더했습니다',
+        // 7-D1 많이 읽힌 문서 (관리자 — 수만, 누가 읽었는지는 없다)
+        'page.popular|allow'                    => '{actor} 이(가) 많이 읽힌 문서 목록(지난 30일 · 사내 공개 페이지만)을 봤습니다',
         'embed.domain_remove|allow'             => '{actor} 이(가) 임베드 허용 목록에서 「{target}」 을(를) 뺐습니다',
         'page.update|deny|file_ref'             => '{actor} 이(가) 페이지 「{target}」 에 붙일 수 없는 파일을 붙이려 해서 거부했습니다',
         'page.publish|deny|file_narrower'       => '{actor} 이(가) 페이지 「{target}」 을(를) 게시하려 했지만 게시판을 보는 사람이 볼 수 없는 파일이 붙어 있어 거부했습니다 (게시판은 상세 기록)',

@@ -889,6 +889,40 @@ final class Authz
         return self::canUploadAtAll($u);
     }
 
+    /**
+     * **쓰기 자격 있는 모든 역할**(`canUploadAtAll` — Guest 를 뺀 사내 사람들)이 읽는 등급 — 팀 등급 제외 (커뮤니티 7-D1).
+     * 「사내 전체에 열린」 게시판 등급을 코드에 박지 않고 매트릭스에 묻는다(F-25 로 표가 바뀌면 따라간다 — 독립 검토 7-D1 L-2).
+     * 역할 이름은 이 파일 안에서만 다룬다(CLAUDE.md 4장).
+     *
+     * @return list<string>
+     */
+    public static function levelsReadByAllWriters(): array
+    {
+        $writers = [];
+        foreach (self::ROLES as $role) {
+            foreach (['public', 'internal', 'team', 'admin-only'] as $level) {
+                if (self::flag($role, $level, 'upload')) {
+                    $writers[] = $role;
+                    break;
+                }
+            }
+        }
+        $out = [];
+        foreach (['public', 'internal', 'admin-only'] as $level) {
+            $all = $writers !== [];
+            foreach ($writers as $role) {
+                if (!self::flag($role, $level, 'read')) {
+                    $all = false;
+                    break;
+                }
+            }
+            if ($all) {
+                $out[] = $level;
+            }
+        }
+        return $out;
+    }
+
     /** 업로드 자체가 가능한 역할인가 (Guest 는 불가 — PRD 5.2) */
     public static function canUploadAtAll(array $u): bool
     {

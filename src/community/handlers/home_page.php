@@ -43,6 +43,10 @@ require __DIR__ . '/../../views/shell_top.php';
         <button id="community-trash" class="btn btn--quiet" type="button">
           <span class="icon" data-icon="trash"></span>휴지통
         </button>
+        <!-- 「많이 읽힌 문서」 (7-D1, N-34) — 창구 `GET /api/boards` 의 `can_manage` 가 참일 때만 보인다(Admin) -->
+        <button id="community-popular" class="btn btn--quiet" type="button" aria-haspopup="dialog" hidden>
+          <span class="icon" data-icon="log"></span>많이 읽힌 문서
+        </button>
         <!-- 「임베드 허용 목록」 (7-C, C:F-32) — 창구 `GET /api/embed-domains` 의 `can_manage` 가 참일 때만 보인다(Admin) -->
         <button id="community-embed-admin" class="btn btn--quiet" type="button" aria-haspopup="dialog" hidden>
           <span class="icon" data-icon="shield"></span>임베드 허용 목록
@@ -130,6 +134,33 @@ require __DIR__ . '/../../views/shell_top.php';
       </div>
       <div class="form-actions">
         <button class="btn btn--quiet" type="button" data-trash-close>닫기</button>
+      </div>
+    </dialog>
+
+    <!-- 「많이 읽힌 문서」 창 (7-D1, 결정 J-6 — 휴지통 창과 같은 모양, 새 클래스 0). 목록은 창구가 준 것뿐(사내 전체에 열린 페이지 · 수만).
+         내용은 popular.js 가 textContent 로 채운다. -->
+    <dialog id="popular-dialog" class="modal" aria-labelledby="popular-title">
+      <div class="modal__head">
+        <h2 id="popular-title" class="modal__title">많이 읽힌 문서</h2>
+        <p id="popular-meta" class="muted"></p>
+        <button class="btn btn--icon btn--plain" type="button" data-popular-close aria-label="닫기">
+          <span class="icon" data-icon="x"></span>
+        </button>
+      </div>
+      <div class="modal__body">
+        <p id="popular-msg" class="msg" role="alert" aria-live="polite"></p>
+        <div class="table-wrap">
+          <table class="files">
+            <thead>
+              <tr><th>순위</th><th>제목</th><th>공간</th><th>조회(사람 × 날)</th><th>읽은 사람</th></tr>
+            </thead>
+            <tbody id="popular-body"></tbody>
+          </table>
+        </div>
+        <p id="popular-empty" class="muted" hidden>지난 30일에 사내 공개 페이지를 읽은 기록이 없습니다.</p>
+      </div>
+      <div class="form-actions">
+        <button class="btn btn--quiet" type="button" data-popular-close>닫기</button>
       </div>
     </dialog>
 

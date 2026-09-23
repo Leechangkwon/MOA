@@ -44,6 +44,7 @@ import { renderDoc, embedHost } from './doc-render.js';
 import { createDatabaseView } from './database.js';
 import { bindTemplateGallery, createTemplateSave } from './templates.js';
 import { bindEmbedAdmin } from './embeds.js';
+import { bindPopular } from './popular.js';
 import { schema, toDoc, fromDoc, uuid4, colorAllowed, schemeOkForEditor, COLORS, BLOCK_TYPES } from './editor-schema.js';
 
 /* ─── 주소와 공통 도우미 ─────────────────────────────────────── */
@@ -811,6 +812,11 @@ function initHome() {
   bindEmbedAdmin({
     api: api, setText: setText, show: show, clear: clear, errorMessage: errorMessage,
     genericError: GENERIC_ERROR, toLogin: toLogin
+  });
+  // 7-D1 — 「많이 읽힌 문서」 창(단추는 관리자에게만)
+  bindPopular({
+    api: api, setText: setText, show: show, clear: clear, errorMessage: errorMessage,
+    genericError: GENERIC_ERROR, toLogin: toLogin, base: COMMUNITY_BASE
   });
 }
 
