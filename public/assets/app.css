@@ -1078,6 +1078,16 @@ table.matrix td.matrix__cell .icon { display: inline-flex; color: var(--ok-fg); 
 /* 폼을 담은 모달 — 12-2 미리보기 모달보다 좁다(입력 칸 몇 개뿐이다) */
 dialog.modal--form { width: min(520px, calc(100vw - 32px)); }
 dialog.modal--form .modal__body { display: grid; gap: 14px; background: var(--surface); }
+/* ★ 폼 모달은 머리·바닥을 고정하고 **본문만 스크롤**한다 (2026-09-23 사용자 지적 「소유자 넘기기에서 확인 단추가
+   짤려서 설정을 완료 못한 느낌」). `dialog.modal` 은 높이 상한(100vh − 64px) + `overflow: hidden` 이라, 본문이
+   길면 바닥 단추 줄이 통째로 잘려 보이지 않았다. `.modal--stack`(18-3 올리기)과 같은 방식이다. */
+dialog.modal--form[open] { display: flex; flex-direction: column; }
+dialog.modal--form > .modal__head,
+dialog.modal--form > .modal__foot,
+dialog.modal--form > .form-actions { flex: 0 0 auto; }
+dialog.modal--form > .modal__body { flex: 1 1 auto; min-height: 0; overflow-y: auto; grid-auto-rows: max-content; align-content: start; }
+/* ↑ `grid-auto-rows: max-content` — 본문 높이가 모자라면 격자가 스크롤 목록(`.list--scroll`, 최소 높이 0)을
+     먼저 2px 로 눌러 버렸다(390px 실측 — 넘기기 후보가 보이지 않았다). 줄은 제 내용 높이를 지키고 넘치는 만큼 본문이 스크롤한다. */
 
 /* ─── 18-3 올리기·가져오기 대화상자 ──────────────────────────────────────
  * 폼 모달을 **세로 flex** 로 만들어 머리·바닥을 고정하고 본문만 스크롤시킨다.
