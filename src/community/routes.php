@@ -58,6 +58,8 @@ const COMMUNITY_ROUTES = [
     ['GET',    '/api/spaces',                'spaces_list.php',     'community.read'],
     // 목록은 **한 공간 안**만 본다(`?space=`, 기본 내 개인 공간). 볼 수 없는 행은 SQL 이 거른다 (C:S-02).
     ['GET',    '/api/pages',                 'pages_list.php',      'community.read'],
+    // 5-B 검색 (2026-09-23) — 공간을 가리지 않고 행 관문(목록 조건절)만, 관리자 특권 갈래는 끈다
+    ['GET',    '/api/search',                'search.php',          'community.read'],
     ['POST',   '/api/pages',                 'pages_create.php',    'community.write'],
     ['GET',    '/api/pages/{id}',            'pages_get.php',       'community.read'],
     ['PATCH',  '/api/pages/{id}',            'pages_update.php',    'community.write'],

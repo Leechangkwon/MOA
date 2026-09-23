@@ -226,6 +226,7 @@ if (!headers_sent()) {
      모듈 스크립트를 싣는 자리다. CSP 는 `script-src 'self'` 그대로이고 import map 을 쓰지
      않는다(ProseMirror 는 저장소 안 상대 경로로 서로를 부른다). -->
 <script type="module" src="<?= Http::url('/assets/community/editor.js') ?>?v=<?= (int) filemtime(__DIR__ . '/../../public/assets/community/editor.js') ?>"></script>
+<script defer src="<?= Http::url('/assets/community/search.js') ?>?v=<?= (int) filemtime(__DIR__ . '/../../public/assets/community/search.js') ?>"></script>
 <?php endif; ?>
 </head>
 <body data-page="<?= $shellPage ?>" data-base="<?= TBOX_BASE ?>"<?= $shellMod === '' ? '' : ' data-community-base="' . COMMUNITY_BASE . '"' ?>>
@@ -306,6 +307,20 @@ if (!headers_sent()) {
          단추에도 같은 `.nav__item` 을 쓴다 — 화면 전용 클래스를 만들지 않는다(DESIGN 원칙 6).
          t-box 의 파일·설정·관리 묶음은 이 모드에서 **그리지 않는다**: 다른 앱의 내비이고,
          앱 사이 이동은 위 그리드 단추가 맡는다. -->
+    <!-- 검색 (5-B) — 누르거나 Ctrl+K(⌘K). 창과 동작은 search.js, 무엇이 나오나는 서버(search.php) -->
+    <button id="nav-community-search" class="nav__item nav-search" type="button" aria-haspopup="dialog">
+      <span class="icon" data-icon="search"></span><span>검색</span><kbd class="nav-search__key">Ctrl K</kbd>
+    </button>
+    <dialog id="search-dialog" class="modal modal--form search-dialog" aria-label="페이지 검색">
+      <div class="search-dialog__bar">
+        <span class="icon" data-icon="search"></span>
+        <input id="search-input" type="search" maxlength="100" autocomplete="off" spellcheck="false"
+               placeholder="페이지 찾기 — 제목·본문" aria-label="찾을 말" aria-controls="search-results">
+        <button class="btn btn--small btn--quiet" type="button" data-search-close>닫기</button>
+      </div>
+      <ul id="search-results" class="search-results" role="listbox" aria-label="검색 결과"></ul>
+      <p id="search-note" class="search-dialog__note muted" role="status"></p>
+    </dialog>
     <p class="nav-title">내 공간</p>
     <nav class="nav" aria-label="커뮤니티">
       <a id="nav-community-home" class="<?= $shellNavClass('community-home') ?>" href="<?= Http::communityUrl('/') ?>">
