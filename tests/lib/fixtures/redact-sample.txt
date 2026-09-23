@@ -1,0 +1,27 @@
+── 가림 견본 (값은 전부 지어낸 견본 문자열이다 — 실제 비밀 아님)
+> GET /tbox/api/whoami HTTP/1.1
+> X-CSRF-Token: FAKE0csrf0token0for0selftest
+> Cookie: tbox_session=fake0session0value0000
+< Set-Cookie: tbox_session=fake1session1value1111; Path=/; HttpOnly; SameSite=Strict
+> Authorization: Bearer FAKE-bearer-token-for-selftest
++ PGPASSWORD=fake-pg-password-selftest psql -h 127.0.0.1 -U example_role -c 'SELECT 1'
+  · 해시 견본: $argon2id$v=19$m=65536,t=4,p=1$ZmFrZXNhbHQ$ZmFrZWhhc2hmb3JzZWxmdGVzdA
+  · QR 원문: otpauth://totp/Qaredi:qa_admin01?secret=FAKEFAKEFAKEFAKE&issuer=Qaredi
+  · .env 줄: DB_PASS=fake-db-pass-selftest
+  · .env 줄: API_TOKEN="fake api token selftest"
+{"ok":true,"username":"qa_admin01","csrf_token":"fake2csrf2json2222"}
+127.0.0.1	FALSE	/	FALSE	0	tbox_session	fake3jar3session3333
+  ✔ 견본 항목 (qa_admin01 로그인 200)  (기대=200 실제=200)
+  · DB_NAME 은 가림 대상 이름이지만 이 줄에는 등호가 없어 그대로 남는다
+> X-API-Token: FAKEapitoken0selftest
++ curl -s -H 'x-api-token: FAKEapitoken1selftest' http://127.0.0.1/example
+  ✖ 발급 응답  (기대=1 실제={"ok":true,"token":"FAKEissuedtoken0selftest","expires_at":null})
+{"token": "FAKEissuedtoken1selftest"}
+<meta name="csrf-token" content="FAKEmetacsrf0selftest">
+{"username":"qa_admin01","password":"fake-json-password"}
+{"current_password":"fake-current-pw","new_password":"fake\"new\"pw"}
+{"ok":true,"secret": "FAKEjsonsecret0selftest"}
+  · .env 줄(빈칸): DB_PASS = fake-spaced-db-pass
+  · .env 줄(빈칸): APP_SECRET =  "fake spaced app secret"
+> GET /tbox/api/example?token=FAKEquerytoken0selftest&page=2 HTTP/1.1
+< Location: http://127.0.0.1/example/cb?state=ok&secret=FAKEquerysecret0selftest

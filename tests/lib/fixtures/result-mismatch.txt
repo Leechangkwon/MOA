@@ -1,0 +1,2 @@
+  통과 20 · 실패 2
+RESULT pass=22 fail=0 skip=0

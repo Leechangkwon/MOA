@@ -1,0 +1,5 @@
+== t-box security lint : /example/root ==
+✔ innerHTML / outerHTML / document.write 사용  [S-03]
+✔ 소켓 함수 (fsockopen 등)  [S-05]
+
+결과: 통과 (금지 패턴 0건)

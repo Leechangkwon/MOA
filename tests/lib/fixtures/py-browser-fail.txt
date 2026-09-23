@@ -1,0 +1,4 @@
+PASS 견본 책 목록이 보인다
+PASS 견본 390px 넘침 없음
+PASS 견본 다크 대비
+BROWSER_FAIL=0

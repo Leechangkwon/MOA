@@ -1,0 +1,15 @@
+── 잡음 견본 (요약에서만 빼고 원문엔 남긴다)
+NOTICE:  relation "example_table" already exists, skipping
+psql:/tmp/example.sql:3: NOTICE:  extension "pgcrypto" already exists, skipping
+BEGIN
+CREATE TABLE
+CREATE INDEX
+ALTER TABLE
+ALTER DEFAULT PRIVILEGES
+GRANT
+COMMIT
+  -   retrying click action, attempt #2
+  -   waiting 100ms
+  ✖ 견본 실패 줄은 남는다  (기대=1 실제=0)
+  · CREATE 라는 낱말이 든 설명 줄은 남는다
+통과 3 · 실패 1 · 건너뜀 0

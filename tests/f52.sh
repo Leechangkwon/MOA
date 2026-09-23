@@ -35,6 +35,7 @@ OUT="${1:-$HOME/.claude/ui-shots/f52}"
 JAR_DIR="$(mktemp -d)"
 PASS=0
 FAIL=0
+. "$ROOT/tests/lib/common.sh"   # result_line (점검 봇 1-A A-3) — 셸 설정을 바꾸지 않는다
 
 EMP="qa_employee01"
 ADM="qa_admin01"
@@ -655,4 +656,6 @@ rm -rf "$JAR_DIR"
 hr "결과"
 # ─────────────────────────────────────────────────────────────
 printf '  통과 %d · 실패 %d\n' "$PASS" "$FAIL"
+result_line "$PASS" "$FAIL" 0
 printf '  스크린샷·출력: %s\n' "$OUT"
+[ "$FAIL" -eq 0 ] || exit 1

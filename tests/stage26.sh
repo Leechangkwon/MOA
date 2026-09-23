@@ -30,6 +30,7 @@ JAR_DIR="$(mktemp -d)"
 WORK="$(mktemp -d)"
 PASS=0
 FAIL=0
+. "$ROOT/tests/lib/common.sh"   # result_line (점검 봇 1-A A-3) — 셸 설정·trap 을 바꾸지 않는다
 
 mkdir -p "$OUT"
 
@@ -148,6 +149,7 @@ census() {
 }
 
 cleanup() {
+  local trap_rc=$?   # trap 에 들어온 종료 코드(끝까지 옴 0 · 로그인 실패 exit 1 …) — 맨 끝에서 쓴다
   hr "정리 — **시험이 만든 것만** 되돌린다 (R-73 ②)"
   echo "  검토 계정 id: $QA_IDS — 이 계정이 만든 S26- 행만 지웁니다"
 
@@ -188,6 +190,10 @@ cleanup() {
   rm -rf "$JAR_DIR" "$WORK"
   hr "합계"
   printf '  통과 %s · 실패 %s\n' "$PASS" "$FAIL"
+  result_line "$PASS" "$FAIL" 0
+  # 실패가 있으면 rc 1. EXIT trap 안의 exit n 이 최종 코드가 된다. 이미 0 이 아닌 코드
+  # (로그인 실패 exit 1 · 신호 등)는 exit 하지 않고 그대로 둔다. R-73 exit 3 은 trap 설치 전이다.
+  if [ "$trap_rc" -eq 0 ] && [ "$FAIL" -ne 0 ]; then exit 1; fi
 }
 trap cleanup EXIT
 

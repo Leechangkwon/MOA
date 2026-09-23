@@ -1,0 +1,2149 @@
+{
+  "version": 1,
+  "generated": "2026-09-24",
+  "source": "docs/checkbot/stage1-directive.md A-5 — 조사표(checkbot-result.json understand:tests 44항목)와 스크립트 원문을 대조해 채움. 조사표와 원문이 다르면 원문을 따랐다.",
+  "fields": {
+    "env": "무엇을 치나(오늘 기준 사실): static=저장소 파일만 · prod=운영 8082 또는 운영 DB tbox_re 를 친다(임시 부분이 섞여도 8082 를 치면 prod) · temp-instance=운영 DB 를 pg_dump 로 읽어 만든 임시 DB 와 php -S 두 번째 인스턴스만 친다 · manual=사람이 준 SITE 를 친다",
+    "status": "required|advisory|known_fail|manual_only|helper(다른 시험이 부르는 도우미 — 단독 실행 불가)|orphan(부르는 셸 없음)",
+    "needs": "sudo=sudo -n 을 쓴다(없으면 SKIP·FAIL·exit 3 경로) · browser=playwright · nginx=운영 nginx 설정의 행동을 단언 · clamav=clamscan 이 실제로 돌아야 함 · network=바깥 인터넷 요청 · qrcode=python qrcode · totp_wait=정상 경로에서 다음 TOTP 30초 창을 기다림(로그인 재시도 대기만 있는 것은 넣지 않음)",
+    "writes_prod": "true = 앱 요청 경로 밖에서 운영 상태를 바꾼다(운영 tbox_re 에 psql 직접 쓰기 · /etc/tbox-v2 비밀 파일 교체 · 운영 .env 로 도는 앱 CLI 가 상태를 바꿈: scan_pending --force-enabled, dry-run 아닌 alerts.php). qa_ 계정이 앱 창구로 만들고 스스로 되돌리는 쓰기와 운영 클러스터의 임시 DB createdb/dropdb 는 false 이고 notes 에 적었다",
+    "covers": "원문에서 확실한 것만: (1) 스크립트가 이름으로 부르거나 검사하는 저장소 파일(머리 주석·코드, 있는 파일만, 디렉터리 전체 php -l 은 뺌) (2) 스크립트가 부르는 창구 경로를 public/index.php TBOX_ROUTES·src/community/routes.php COMMUNITY_ROUTES 로 찾은 핸들러(메서드가 적혀 있거나 경로의 라우트가 하나뿐일 때만). core 셋과 고아 둘(f-문자열 경로)은 손으로 — 고아 둘은 호출마다 메서드·경로를 라우트 표에 대조",
+    "requirements": "머리 주석에 적힌 수락 기준 ID(T-·C:T-·Q:T-)만. 범위(C:T-14 ~ C:T-20)는 펼쳤다. 「… 방식」 참조와 다른 번호 체계와 겹치는 옛 번호는 뺐고 notes 에 적음",
+    "risks": "머리 주석에 적힌 R-·C:R- ID 만",
+    "est_sec": "어림값(실측 아님): 로그인 수·TOTP 창 대기·브라우저·임시 DB 준비로 잡음. R-73 사용자 활동 대기(최대 20분)는 넣지 않음. 정적 둘만 복제본 실측",
+    "known_fail": "status=known_fail 일 때만 {reason, since, expires}(만료 30일)"
+  },
+  "tests": [
+    {
+      "id": "tbox.api_folders",
+      "cmd": "bash tests/api_folders.sh",
+      "module": "tbox",
+      "env": "prod",
+      "status": "required",
+      "needs": [
+        "sudo"
+      ],
+      "covers": [
+        "src/Audit.php",
+        "scripts/security_lint.sh",
+        "scripts/totp_code.php",
+        "public/index.php",
+        "src/handlers/folders_update.php",
+        "src/handlers/files_update.php",
+        "src/handlers/api_tokens_list.php",
+        "src/handlers/api_upload.php",
+        "src/handlers/api_whoami.php",
+        "src/handlers/files_delete.php",
+        "src/handlers/files_list.php",
+        "src/handlers/folders_create.php",
+        "src/handlers/folders_delete.php",
+        "src/handlers/folders_list.php",
+        "src/handlers/login.php",
+        "src/handlers/me.php",
+        "src/handlers/me_tokens_issue.php",
+        "src/handlers/users_list.php"
+      ],
+      "requirements": [
+        "T-70"
+      ],
+      "risks": [
+        "R-62",
+        "R-73",
+        "R-80"
+      ],
+      "est_sec": 120,
+      "writes_prod": false,
+      "notes": "F-58 폴더 API. 운영 8082 에 qa_ 계정으로 F58- 폴더·파일을 만들고 trap 에서도 앱 창구(세션 DELETE)로 되돌린다. psql 은 읽기만(R-73 사전 검사·감사 대조). .env 의 API_TOKEN_USER 가 qa_ 가 아니거나 sudo 가 없으면 해당 항목이 SKIP(rc 는 0 일 수 있음)."
+    },
+    {
+      "id": "tbox.api_read",
+      "cmd": "bash tests/api_read.sh",
+      "module": "tbox",
+      "env": "prod",
+      "status": "required",
+      "needs": [
+        "sudo"
+      ],
+      "covers": [
+        "scripts/security_lint.sh",
+        "scripts/totp_code.php",
+        "public/index.php",
+        "src/handlers/files_list.php",
+        "src/handlers/files_delete.php",
+        "src/handlers/files_download.php",
+        "src/handlers/files_update.php",
+        "src/handlers/login.php",
+        "src/handlers/me.php",
+        "src/handlers/users_list.php"
+      ],
+      "requirements": [
+        "T-62"
+      ],
+      "risks": [
+        "R-62",
+        "R-73",
+        "R-80"
+      ],
+      "est_sec": 90,
+      "writes_prod": false,
+      "notes": "F-50 읽기 API. 운영 8082 에 F50- 파일을 올리고 같은 세션 DELETE 로 휴지통. psql 읽기만. 토큰 귀속이 qa_ 가 아니면 (a)(b)(d)(e) SKIP. 로그인 실패 때 끝내지 않고 빈 CSRF 로 이어 간다."
+    },
+    {
+      "id": "tbox.api_tokens",
+      "cmd": "bash tests/api_tokens.sh",
+      "module": "tbox",
+      "env": "prod",
+      "status": "required",
+      "needs": [
+        "sudo",
+        "totp_wait"
+      ],
+      "covers": [
+        "scripts/security_lint.sh",
+        "db/migrations/2026-09-16_api_tokens.sql",
+        "scripts/totp_code.php",
+        "scripts/alerts.php",
+        "public/index.php",
+        "src/Auth.php",
+        "src/Http.php",
+        "src/Audit.php",
+        "src/handlers/api_tokens_list.php",
+        "src/handlers/api_tokens_revoke.php",
+        "src/handlers/me_tokens_list.php",
+        "src/handlers/me_tokens_issue.php",
+        "src/handlers/me_tokens_revoke.php",
+        "src/Authz.php",
+        "src/handlers/api_upload.php",
+        "src/handlers/api_whoami.php",
+        "src/handlers/files_delete.php",
+        "src/handlers/files_list.php",
+        "src/handlers/files_update.php",
+        "src/handlers/folders_delete.php",
+        "src/handlers/folders_list.php",
+        "src/handlers/login.php",
+        "src/handlers/me.php",
+        "src/handlers/reauth.php",
+        "src/handlers/users_list.php"
+      ],
+      "requirements": [
+        "T-71"
+      ],
+      "risks": [
+        "R-45",
+        "R-73",
+        "R-80",
+        "R-82",
+        "R-90",
+        "R-91"
+      ],
+      "est_sec": 480,
+      "writes_prod": false,
+      "notes": "F-59 개인 토큰. 운영 8082 에 F59- 토큰·파일·폴더를 만들고 trap 에서 회수·정리. 발급마다 다음 TOTP 30초 창을 기다린다(totp_next). sudo -n php scripts/alerts.php --rule AL-20 --dry-run --state <임시>(root 로 앱 CLI, dry-run 이라 운영 경보 기록 없음). 마이그레이션 2026-09-16_api_tokens.sql 미적용이면 exit 3."
+    },
+    {
+      "id": "tbox.api_upload",
+      "cmd": "bash tests/api_upload.sh",
+      "module": "tbox",
+      "env": "prod",
+      "status": "known_fail",
+      "needs": [
+        "sudo",
+        "nginx"
+      ],
+      "covers": [
+        "deploy/sites/tbox-v2-local.conf",
+        "scripts/security_lint.sh",
+        "scripts/totp_code.php",
+        "src/Http.php",
+        "src/Upload.php",
+        "public/index.php",
+        "src/Auth.php",
+        "src/Audit.php",
+        "src/handlers/_upload_common.php",
+        "src/handlers/files_upload.php",
+        "src/handlers/api_upload.php",
+        "scripts/api_token_rotate.sh",
+        "deploy/sites/tbox-v2.conf",
+        "src/handlers/files_delete.php",
+        "src/handlers/login.php",
+        "src/handlers/me.php",
+        "src/handlers/users_list.php"
+      ],
+      "requirements": [
+        "T-61"
+      ],
+      "risks": [
+        "R-62",
+        "R-73",
+        "R-80"
+      ],
+      "est_sec": 90,
+      "writes_prod": false,
+      "notes": "F-49 업로드 API. 운영 8082 에 F49- 파일을 올리고 세션 DELETE 로 되돌림. (e) 102MB JSON 413 은 nginx 설정 의존(8082 의 tbox-v2-local.conf 에는 블록이 없어 HTML 413 이면 미검증으로 적음), (f) sudo -n nginx -t · sudo -n diff /etc/nginx/sites-available/tbox-v2. .env 는 API_TOKEN 줄 개수만 센다(값 안 읽음).",
+      "known_fail": {
+        "reason": "임시 인스턴스 회귀 틀(stage5a2·5c·5d·5e·6a·6b·6c·7a 의 REGRESS=1)이 이 파일을 치환해 돌릴 때, 비주석 note 문구 「검토 포트 8082」가 가드(주석 뺀 줄의 8082)에 걸려 실행 없이 FAIL 1 로 셈 — 가드 오탐. 단독 실행(이 cmd)은 해당 없음(지시서 A-5).",
+        "since": "2026-09-24",
+        "expires": "2026-10-24"
+      }
+    },
+    {
+      "id": "tbox.api_whoami",
+      "cmd": "bash tests/api_whoami.sh",
+      "module": "tbox",
+      "env": "prod",
+      "status": "required",
+      "needs": [
+        "sudo"
+      ],
+      "covers": [
+        "scripts/security_lint.sh",
+        "public/index.php",
+        "src/handlers/api_whoami.php",
+        "scripts/totp_code.php",
+        "src/handlers/login.php",
+        "src/handlers/me.php",
+        "src/handlers/users_list.php"
+      ],
+      "requirements": [
+        "T-68"
+      ],
+      "risks": [
+        "R-62",
+        "R-73",
+        "R-80"
+      ],
+      "est_sec": 60,
+      "writes_prod": false,
+      "notes": "F-56 자기 확인 API. 운영 8082 GET 뿐(올리거나 지우는 것 없음). psql 읽기만. 토큰 귀속이 qa_ 가 아니면 (a)(b)(d 성공 쪽) SKIP."
+    },
+    {
+      "id": "tbox.changelog",
+      "cmd": "bash tests/changelog.sh",
+      "module": "tbox",
+      "env": "prod",
+      "status": "required",
+      "needs": [
+        "sudo",
+        "browser"
+      ],
+      "covers": [
+        "scripts/totp_code.php",
+        "src/Changelog.php",
+        "scripts/changelog_md.php",
+        "public/index.php",
+        "src/handlers/login_page.php",
+        "scripts/release.sh",
+        "src/views/shell_top.php",
+        "src/views/shell_bottom.php",
+        "scripts/security_lint.sh",
+        "public/assets/app.js",
+        "src/handlers/health.php",
+        "src/handlers/login.php",
+        "src/handlers/time.php",
+        "VERSION",
+        "CHANGELOG.json",
+        "CHANGELOG.md"
+      ],
+      "requirements": [
+        "T-59"
+      ],
+      "risks": [
+        "R-45"
+      ],
+      "est_sec": 300,
+      "writes_prod": false,
+      "notes": "F-47 버전·변경 이력. 운영 8082 에 qa_admin01 로 한 번 로그인, GET·정적 검사뿐(데이터 0). git clone \"$ROOT\" 한 임시 클론 안에서 release.sh --dry-run(.git 없는 복사본에서는 못 돎). 끝에 tests/help_button.sh 를 회귀로 부른다(→ scripts/ui_snapshot.sh, sudo). 출력 기본 ~/.claude/ui-shots/changelog. R-73·R-80 가드 없음."
+    },
+    {
+      "id": "tbox.f46",
+      "cmd": "bash tests/f46.sh",
+      "module": "tbox",
+      "env": "prod",
+      "status": "manual_only",
+      "needs": [
+        "sudo",
+        "browser",
+        "network"
+      ],
+      "covers": [
+        "scripts/totp_code.php",
+        "public/assets/totp-generator.html",
+        "src/help/screens.php",
+        "src/handlers/settings_page.php",
+        "deploy/sites/tbox-v2.conf",
+        "src/CloudLink.php",
+        "src/Fetch.php",
+        "src/handlers/files_fetch.php",
+        "src/Audit.php",
+        "scripts/security_lint.sh",
+        "src/handlers/files_delete.php",
+        "src/handlers/login.php",
+        "src/handlers/me.php"
+      ],
+      "requirements": [
+        "T-58"
+      ],
+      "risks": [
+        "R-62",
+        "R-73"
+      ],
+      "est_sec": 240,
+      "writes_prod": false,
+      "notes": "manual_only(지시서 A-5 초기값): (f) 가 바깥 요청 — SharePoint·구글 시트 공개 링크를 앱 서버가 1회씩 가져온다. 가져온 파일은 qa_manager01 이 휴지통으로만 보낸다(운영에 되살릴 수 있는 상태로 남음). fetch_hosts 불변. 매니페스트 Content-Type 은 nginx 배포본 의존이라 안내만(단언 아님). R-80 가드 없음."
+    },
+    {
+      "id": "tbox.f51",
+      "cmd": "bash tests/f51.sh",
+      "module": "tbox",
+      "env": "prod",
+      "status": "manual_only",
+      "needs": [
+        "sudo",
+        "browser",
+        "qrcode",
+        "totp_wait"
+      ],
+      "covers": [
+        "scripts/totp_code.php",
+        "src/Totp.php",
+        "src/Qr.php",
+        "public/assets/app.js",
+        "src/handlers/mfa_enroll.php",
+        "scripts/security_lint.sh",
+        "src/views/mfa_enroll.php",
+        "src/bootstrap.php",
+        "src/handlers/login.php",
+        "src/handlers/me.php",
+        "src/handlers/mfa_confirm.php",
+        "src/handlers/mfa_disable.php"
+      ],
+      "requirements": [
+        "T-63"
+      ],
+      "risks": [
+        "R-62",
+        "R-73"
+      ],
+      "est_sec": 360,
+      "writes_prod": true,
+      "notes": "manual_only(지시서 A-5 초기값): qa_employee01 의 2단계를 껐다 켜며 /etc/tbox-v2/qa-totp.txt 를 sudo -n install 로 교체한다(비밀 회전 — 이 파일로 로그인하는 다른 시험의 자격이 바뀜). python qrcode 필요. sudo -n grep 으로 /var/log/tbox-v2/app.log 확인. 다음 TOTP 창 대기(next_code) 여러 번. R-80 가드 없음."
+    },
+    {
+      "id": "tbox.f52",
+      "cmd": "bash tests/f52.sh",
+      "module": "tbox",
+      "env": "prod",
+      "status": "manual_only",
+      "needs": [
+        "sudo",
+        "browser",
+        "totp_wait"
+      ],
+      "covers": [
+        "scripts/totp_code.php",
+        "src/Auth.php",
+        "scripts/security_lint.sh",
+        "src/handlers/login.php",
+        "src/handlers/me.php",
+        "src/handlers/mfa_confirm.php",
+        "src/handlers/mfa_disable.php",
+        "src/handlers/users_mfa_reset.php",
+        "src/handlers/home.php",
+        "src/handlers/settings_page.php",
+        "src/help/screens.php",
+        "wiki/tbox/guide-risks.json",
+        "wiki/tbox/guide-what.json",
+        "wiki/tbox/stage-11.json",
+        "wiki/tbox/stage-02.json",
+        "public/assets/app.js",
+        "src/handlers/files_list.php",
+        "src/handlers/logout.php",
+        "src/handlers/mfa_enroll.php"
+      ],
+      "requirements": [
+        "T-64"
+      ],
+      "risks": [
+        "R-62",
+        "R-73"
+      ],
+      "est_sec": 300,
+      "writes_prod": true,
+      "notes": "manual_only(지시서 A-5 초기값): qa_employee01·qa_admin01 의 2단계를 껐다 켜며 qa-totp.txt 를 교체(비밀 회전). 원문은 마지막 줄이 printf 라 rc 가 늘 0(R-73 exit 3 만 예외) — A-3 에서 고치는 대상. R-80 가드 없음."
+    },
+    {
+      "id": "tbox.f53",
+      "cmd": "bash tests/f53.sh",
+      "module": "tbox",
+      "env": "prod",
+      "status": "required",
+      "needs": [
+        "sudo"
+      ],
+      "covers": [
+        "scripts/security_lint.sh",
+        "scripts/totp_code.php",
+        "src/Http.php",
+        "src/Upload.php",
+        "src/Audit.php",
+        "src/handlers/api_upload.php",
+        "src/handlers/files_delete.php",
+        "src/handlers/files_upload.php",
+        "src/handlers/login.php",
+        "src/handlers/me.php"
+      ],
+      "requirements": [
+        "T-65"
+      ],
+      "risks": [
+        "R-02",
+        "R-62",
+        "R-73",
+        "R-80"
+      ],
+      "est_sec": 240,
+      "writes_prod": false,
+      "notes": "F-53 업로드 내용 검사. 운영 8082 에 F53- 파일(100MB zip 포함)을 올리고 앱 창구로 휴지통, psql 로 지우지 않음. 진짜 HWP 표본이 없어 「정상 hwp」 두 항목은 늘 SKIP(→ required 의 SKIP>0 은 ③ skipped_by_test)."
+    },
+    {
+      "id": "tbox.f54",
+      "cmd": "bash tests/f54.sh",
+      "module": "tbox",
+      "env": "prod",
+      "status": "manual_only",
+      "needs": [
+        "sudo",
+        "clamav"
+      ],
+      "covers": [
+        "scripts/totp_code.php",
+        "scripts/scan_pending.php",
+        "scripts/alerts.php",
+        "deploy/cron.d/tbox-v2",
+        "scripts/check_baseline.sh",
+        "scripts/security_lint.sh",
+        "src/Http.php",
+        "src/Upload.php",
+        "src/Audit.php",
+        "src/handlers/_upload_common.php",
+        "src/handlers/files_fetch.php",
+        "src/handlers/files_download.php",
+        "src/handlers/files_preview.php",
+        "src/handlers/files_preview_raw.php",
+        "src/handlers/share_download.php",
+        "src/handlers/files_list.php",
+        "deploy/install.sh",
+        "src/handlers/files_delete.php",
+        "src/handlers/login.php",
+        "src/handlers/me.php"
+      ],
+      "requirements": [
+        "T-18",
+        "T-66",
+        "T-69"
+      ],
+      "risks": [
+        "R-02",
+        "R-73",
+        "R-80",
+        "R-86"
+      ],
+      "est_sec": 300,
+      "writes_prod": true,
+      "notes": "manual_only(지시서 A-5 초기값: 호스트 root·clamav): dpkg·systemctl·clamav 시그니처·sudo -n bash scripts/check_baseline.sh·격리 폴더 stat, 그리고 sudo -n -u tbox-php php scripts/scan_pending.php --force-enabled 로 운영의 검사 대기 파일을 실제로 검사·격리한다(EICAR 격리 파일은 증거로 남김). .env 의 SCAN_ENABLED=1 이 아니면 (a)(b)(f) SKIP. sudo -n php alerts.php AL-19 --dry-run."
+    },
+    {
+      "id": "tbox.f65",
+      "cmd": "bash tests/f65.sh",
+      "module": "tbox",
+      "env": "prod",
+      "status": "known_fail",
+      "needs": [
+        "sudo",
+        "browser",
+        "clamav",
+        "totp_wait"
+      ],
+      "covers": [
+        "scripts/totp_code.php",
+        "scripts/scan_pending.php",
+        "db/migrations/2026-09-21_files_exec_content.sql",
+        "scripts/alerts.php",
+        "scripts/security_lint.sh",
+        "src/Auth.php",
+        "src/Authz.php",
+        "src/Audit.php",
+        "src/Http.php",
+        "src/Upload.php",
+        "src/handlers/_upload_common.php",
+        "src/handlers/files_upload.php",
+        "src/handlers/files_download.php",
+        "src/handlers/files_preview.php",
+        "src/handlers/files_preview_raw.php",
+        "src/handlers/files_exec_download.php",
+        "src/handlers/share_create.php",
+        "src/handlers/share_download.php",
+        "src/handlers/files_update.php",
+        "src/handlers/files_list.php",
+        "src/handlers/home.php",
+        "public/index.php",
+        "db/schema.sql",
+        "src/handlers/api_tokens_list.php",
+        "src/handlers/api_tokens_revoke.php",
+        "src/handlers/api_upload.php",
+        "src/handlers/files_delete.php",
+        "src/handlers/login.php",
+        "src/handlers/me.php",
+        "src/handlers/me_act_start.php",
+        "src/handlers/reauth.php"
+      ],
+      "requirements": [
+        "T-77"
+      ],
+      "risks": [
+        "R-45",
+        "R-48",
+        "R-73",
+        "R-80",
+        "R-94"
+      ],
+      "est_sec": 480,
+      "writes_prod": true,
+      "notes": "운영 8082 + db/schema.sql 로 만든 빈 임시 DB tbox_f65_fresh(운영 클러스터에 createdb/dropdb, (g) 마이그레이션 멱등). wait_clean 이 sudo -n -u tbox-php php scripts/scan_pending.php --force-enabled 를 불러 운영의 검사 대기 파일 전부를 실제로 검사한다(writes_prod). 일부러 비밀번호·코드를 틀리고(R-48) 갈래마다 다시 로그인. files.exec_content 열이 없으면 (a)~(e) SKIP. 머리 주석의 「T-76 (f) 방식」은 방식 참조라 requirements 에 넣지 않음.",
+      "known_fail": {
+        "reason": "임시 인스턴스 회귀에서 업로드 검사가 끝나지 않아 9건이 423(community/STAGES.md 2026-09-24 「t-box f65 회귀 9건 423」 — clamav-daemon 은 설계상 없음). 조사표 추정: tbox-php 가 700 임시 폴더를 못 읽어 scan_pending 이 조용히 실패(미검증). DESIGN 「KF-1 샌드박스 검사 작업자 없음」, PRD C-3. 운영 단독 실행은 2026-09-22 86/0/1 기록(tbox-v2/STAGES.md F-68 절).",
+        "since": "2026-09-24",
+        "expires": "2026-10-24"
+      }
+    },
+    {
+      "id": "tbox.f66",
+      "cmd": "bash tests/f66.sh",
+      "module": "tbox",
+      "env": "prod",
+      "status": "required",
+      "needs": [
+        "sudo",
+        "browser",
+        "clamav",
+        "totp_wait"
+      ],
+      "covers": [
+        "src/Http.php",
+        "src/Upload.php",
+        "db/migrations/2026-09-22_api_tokens_scope_expiry.sql",
+        "scripts/totp_code.php",
+        "scripts/scan_pending.php",
+        "db/schema.sql",
+        "scripts/security_lint.sh",
+        "public/index.php",
+        "src/Auth.php",
+        "src/Authz.php",
+        "src/Audit.php",
+        "src/handlers/me.php",
+        "src/handlers/me_tokens_list.php",
+        "src/handlers/me_tokens_issue.php",
+        "src/handlers/me_tokens_revoke.php",
+        "src/handlers/api_tokens_list.php",
+        "src/handlers/api_tokens_revoke.php",
+        "src/handlers/settings_page.php",
+        "src/help/screens.php",
+        "scripts/alerts.php",
+        "src/handlers/api_upload.php",
+        "src/handlers/api_whoami.php",
+        "src/handlers/files_delete.php",
+        "src/handlers/files_download.php",
+        "src/handlers/files_list.php",
+        "src/handlers/files_update.php",
+        "src/handlers/folders_create.php",
+        "src/handlers/folders_delete.php",
+        "src/handlers/folders_list.php",
+        "src/handlers/folders_update.php",
+        "src/handlers/login.php",
+        "src/handlers/reauth.php",
+        "src/handlers/users_update.php"
+      ],
+      "requirements": [
+        "T-78"
+      ],
+      "risks": [
+        "R-45",
+        "R-48",
+        "R-73",
+        "R-80",
+        "R-91",
+        "R-97"
+      ],
+      "est_sec": 900,
+      "writes_prod": true,
+      "notes": "운영 tbox_re 에 sudo -n -u postgres psql 로 UPDATE api_tokens(시험이 방금 만든 F66- 토큰 두 행의 expires_at, name LIKE 'F66-%' + rowCount 확인)와 scan_pending --force-enabled(운영 대기 파일 검사)를 한다(writes_prod). 발급마다 30초 창 — 10분 넘게 걸림. db/schema.sql 로 빈 임시 DB tbox_f66_fresh(운영 클러스터). sudo -n php alerts.php AL-20 --dry-run. api_tokens.scope 열이 없으면 (a)~(g) SKIP."
+    },
+    {
+      "id": "tbox.f68",
+      "cmd": "bash tests/f68.sh",
+      "module": "tbox",
+      "env": "prod",
+      "status": "required",
+      "needs": [
+        "sudo",
+        "totp_wait"
+      ],
+      "covers": [
+        "scripts/security_lint.sh",
+        "src/Http.php",
+        "src/Upload.php",
+        "scripts/totp_code.php",
+        "src/handlers/org_team_update.php",
+        "src/handlers/folders_create.php",
+        "src/handlers/folders_update.php",
+        "src/handlers/files_update.php",
+        "src/handlers/users_update.php",
+        "src/handlers/users_create.php",
+        "src/handlers/users_mfa_reset.php",
+        "src/handlers/users_password_reset.php",
+        "src/handlers/me_tokens_list.php",
+        "src/handlers/me_tokens_issue.php",
+        "src/handlers/me_tokens_revoke.php",
+        "src/handlers/admin_permissions_update.php",
+        "src/handlers/fetch_hosts_update.php",
+        "src/handlers/mfa_enroll.php",
+        "src/handlers/share_create.php",
+        "src/handlers/files_upload.php",
+        "src/handlers/api_upload.php",
+        "src/handlers/api_tokens_revoke.php",
+        "src/handlers/files_download.php",
+        "src/handlers/files_fetch.php",
+        "src/handlers/health.php",
+        "src/handlers/login.php",
+        "src/handlers/me.php",
+        "src/handlers/mfa_disable.php",
+        "src/handlers/org_teams.php",
+        "src/handlers/password_change.php",
+        "src/handlers/reauth.php",
+        "src/handlers/users_list.php"
+      ],
+      "requirements": [
+        "T-81"
+      ],
+      "risks": [
+        "R-45",
+        "R-48",
+        "R-73",
+        "R-80",
+        "R-96"
+      ],
+      "est_sec": 300,
+      "writes_prod": false,
+      "notes": "F-68 400 사유 문장. 운영 8082 에 F68- 팀·폴더·파일·토큰을 앱 창구로 만들고 되돌림, psql 읽기만. (b) 2·3·7 은 일부러 1회 틀리고 곧 다시 로그인(R-48) — 같은 창 재로그인이라 TOTP 창 대기. (c) api_upload 회귀는 이 스크립트가 돌리지 않는다."
+    },
+    {
+      "id": "tbox.fetch_hosts",
+      "cmd": "bash tests/fetch_hosts.sh",
+      "module": "tbox",
+      "env": "prod",
+      "status": "required",
+      "needs": [
+        "sudo",
+        "browser",
+        "totp_wait"
+      ],
+      "covers": [
+        "scripts/totp_code.php",
+        "scripts/alerts.php",
+        "src/CloudLink.php",
+        "src/Fetch.php",
+        "scripts/security_lint.sh",
+        "src/Audit.php",
+        "src/handlers/files_fetch.php",
+        "src/handlers/me.php",
+        "src/handlers/fetch_hosts_list.php",
+        "src/handlers/fetch_hosts_update.php",
+        "src/handlers/admin_fetch_hosts_page.php",
+        "src/handlers/admin_page.php",
+        "src/views/shell_top.php",
+        "src/help/screens.php",
+        "public/index.php",
+        "src/handlers/login.php",
+        "src/handlers/reauth.php"
+      ],
+      "requirements": [
+        "T-56"
+      ],
+      "risks": [
+        "R-62",
+        "R-73"
+      ],
+      "est_sec": 420,
+      "writes_prod": true,
+      "notes": "F-43 허용 사이트. 운영 tbox_re 에 psqlc 로 DELETE FROM fetch_hosts WHERE host LIKE 's43-%.example.invalid'(시작·끝), sudo -n php scripts/alerts.php --rule AL-18 --state <임시>(dry-run 아님 → 운영 alerts.log 와 감사 alert.raised 기록) → writes_prod. .invalid 도메인이라 외부 요청 0. 코드 재사용 시험마다 다음 창 대기(wait_next_step). R-80 가드 없음."
+    },
+    {
+      "id": "tbox.health",
+      "cmd": "bash tests/health.sh",
+      "module": "tbox",
+      "env": "prod",
+      "status": "required",
+      "needs": [
+        "sudo"
+      ],
+      "covers": [
+        "scripts/security_lint.sh",
+        "src/handlers/health.php",
+        "src/Db.php",
+        "src/bootstrap.php",
+        "src/handlers/me.php"
+      ],
+      "requirements": [
+        "T-60"
+      ],
+      "risks": [],
+      "est_sec": 30,
+      "writes_prod": false,
+      "notes": "F-48 /api/health. 로그인 없음. (a) 운영 8082 GET, (b) src/·public/ 을 임시 폴더로 복사 + 가짜 .env(닿지 않는 DB) + php -S 127.0.0.1:18082(고정 포트)로 503 확인 — 조사표의 「mixed」. sudo psql 이 없으면 감사 0행 항목만 SKIP. R-73 가드 없음(GET)."
+    },
+    {
+      "id": "tbox.help_button",
+      "cmd": "bash tests/help_button.sh",
+      "module": "tbox",
+      "env": "prod",
+      "status": "required",
+      "needs": [
+        "sudo",
+        "browser"
+      ],
+      "covers": [
+        "scripts/ui_snapshot.sh",
+        "scripts/security_lint.sh",
+        "src/handlers/home.php",
+        "src/handlers/settings_page.php",
+        "src/handlers/activity_page.php",
+        "src/handlers/admin_page.php",
+        "src/handlers/users_page.php",
+        "src/handlers/org_page.php",
+        "src/handlers/admin_permissions_page.php",
+        "src/handlers/audit_page.php",
+        "src/handlers/trash_page.php",
+        "src/handlers/login_page.php",
+        "src/handlers/reauth_page.php",
+        "src/views/mfa_enroll.php",
+        "src/handlers/wiki_index.php",
+        "src/handlers/wiki_page.php",
+        "src/handlers/wiki_books.php",
+        "src/handlers/wiki_legacy.php",
+        "src/help/screens.php",
+        "src/views/shell_top.php",
+        "src/views/shell_bottom.php",
+        "public/assets/app.js"
+      ],
+      "requirements": [
+        "T-51"
+      ],
+      "risks": [],
+      "est_sec": 150,
+      "writes_prod": false,
+      "notes": "F-38 도움말 단추. 직접 sudo 는 없고 (d) 가 scripts/ui_snapshot.sh(qa_admin01, sudo 로 자격 읽기·8082 고정)를 UI_PAGES 로 부른다. 데이터 0. 판정 「1440px 결함 합계가 기존값 7건 이하」. 인자 없으면 ~/.claude/ui-shots/help-button 에 씀. R-73·R-80 가드 없음."
+    },
+    {
+      "id": "tbox.stage26",
+      "cmd": "bash tests/stage26.sh",
+      "module": "tbox",
+      "env": "prod",
+      "status": "required",
+      "needs": [
+        "sudo",
+        "browser"
+      ],
+      "covers": [
+        "scripts/totp_code.php",
+        "public/assets/app.js",
+        "src/handlers/users_page.php",
+        "src/handlers/files_delete.php",
+        "src/handlers/files_list.php",
+        "src/handlers/files_restore.php",
+        "src/handlers/files_trash.php",
+        "src/handlers/folders_create.php",
+        "src/handlers/folders_delete.php",
+        "src/handlers/login.php",
+        "src/handlers/me.php",
+        "src/handlers/me_act_start.php",
+        "src/handlers/me_act_stop.php",
+        "src/handlers/reauth.php",
+        "src/handlers/users_list.php"
+      ],
+      "requirements": [
+        "T-52",
+        "T-53",
+        "T-54"
+      ],
+      "risks": [
+        "R-62",
+        "R-73"
+      ],
+      "est_sec": 300,
+      "writes_prod": true,
+      "notes": "26단계(역할로 보기·관리 폼·폴더 삭제). 운영 tbox_re 에 psqlc 로 직접 쓴다: UPDATE users role(qa_admin01 Manager↔Admin, 끝에 원복)·UPDATE sessions act_*·reauth_at(qa 세션 시간 조작)·DELETE files/folders(qa 가 만든 S26- 만) + sudo -n rm 저장소 바이트 → writes_prod. 원문은 합계를 trap 안에서 찍고 마지막 줄이 echo 라 rc 가 늘 0 — A-3 에서 고치는 대상. 크로미움 경로 ~/.cache/ms-playwright/chromium-1234 고정. R-80 가드 없음."
+    },
+    {
+      "id": "tbox.totp_time_sync",
+      "cmd": "bash tests/totp_time_sync.sh",
+      "module": "tbox",
+      "env": "prod",
+      "status": "required",
+      "needs": [
+        "sudo",
+        "browser",
+        "nginx"
+      ],
+      "covers": [
+        "scripts/security_lint.sh",
+        "public/assets/totp-generator.html",
+        "src/handlers/time.php",
+        "public/index.php",
+        "src/handlers/health.php"
+      ],
+      "requirements": [
+        "T-55"
+      ],
+      "risks": [],
+      "est_sec": 180,
+      "writes_prod": false,
+      "notes": "F-42 생성기 시각 동기화. 로그인·데이터 0 — 공개 GET·정적 검사·브라우저(서버 페이지와 file://). (c)① 은 운영 nginx CSP(connect-src 'self')에 기대 「서버와 동기화됨」. sudo psql 로 /api/time 감사 행 0 을 보는데, sudo 가 없으면 SKIP 이 아니라 빈 값으로 FAIL. R-73·R-80 가드 없음."
+    },
+    {
+      "id": "tbox.wiki_books",
+      "cmd": "bash tests/wiki_books.sh",
+      "module": "tbox",
+      "env": "prod",
+      "status": "required",
+      "needs": [
+        "sudo",
+        "browser"
+      ],
+      "covers": [
+        "scripts/totp_code.php",
+        "src/Wiki.php",
+        "scripts/wiki_check.php",
+        "scripts/security_lint.sh",
+        "src/handlers/wiki_books.php",
+        "src/handlers/wiki_index.php",
+        "src/handlers/wiki_page.php",
+        "src/handlers/wiki_legacy.php",
+        "public/index.php",
+        "src/handlers/login.php",
+        "src/handlers/login_page.php",
+        "src/handlers/me.php",
+        "src/handlers/reauth.php",
+        "src/handlers/reauth_page.php"
+      ],
+      "requirements": [
+        "T-32"
+      ],
+      "risks": [
+        "R-56",
+        "R-73",
+        "R-80"
+      ],
+      "est_sec": 240,
+      "writes_prod": false,
+      "notes": "위키 책 셋(F-21). 운영 8082 에 qa_ 계정 순차 로그인, GET·재인증뿐(데이터 0 — XSS 글은 php 메모리 안에서만). (g) tests/wiki_books_browser.py, (h) php scripts/wiki_check.php·security_lint 를 부른다. qa_admin01 로그인 실패는 exit 2. 기본 스크린샷 ~/.claude/ui-shots/wiki-books."
+    },
+    {
+      "id": "tbox.wiki_books_browser",
+      "cmd": "python3 tests/wiki_books_browser.py",
+      "module": "tbox",
+      "env": "prod",
+      "status": "helper",
+      "needs": [
+        "browser"
+      ],
+      "covers": [
+        "src/handlers/wiki_books.php",
+        "src/handlers/wiki_page.php"
+      ],
+      "requirements": [],
+      "risks": [],
+      "est_sec": 90,
+      "writes_prod": false,
+      "notes": "부르는 셸: tbox.wiki_books ((g) — 인자 BASE UA COOKIES OUT, 재인증을 마친 qa_admin01 쿠키). 단독 실행 불가(인자 필요). 대상은 인자 BASE(지금은 8082 로만 불림). 결과 줄 BROWSER_FAIL=n."
+    },
+    {
+      "id": "launcher.q_launcher",
+      "cmd": "bash tests/q_launcher.sh",
+      "module": "launcher",
+      "env": "prod",
+      "status": "required",
+      "needs": [
+        "sudo",
+        "nginx"
+      ],
+      "covers": [
+        "scripts/totp_code.php",
+        "public/assets/app.js",
+        "src/community/handlers/pages_list.php",
+        "src/handlers/admin_page.php",
+        "src/handlers/files_list.php",
+        "src/handlers/health.php",
+        "src/handlers/login.php",
+        "src/handlers/login_page.php",
+        "src/handlers/me.php",
+        "src/handlers/reauth_page.php",
+        "src/handlers/settings_page.php",
+        "src/handlers/share_create.php",
+        "src/handlers/share_download.php",
+        "src/handlers/share_revoke.php"
+      ],
+      "requirements": [
+        "Q:T-1",
+        "Q:T-3",
+        "Q:T-4",
+        "Q:T-5",
+        "Q:T-6",
+        "Q:T-7",
+        "Q:T-8",
+        "Q:T-9"
+      ],
+      "risks": [
+        "R-73",
+        "R-80"
+      ],
+      "est_sec": 120,
+      "writes_prod": false,
+      "notes": "Qaredi 런처(Q:T-1·3~9). 운영 8082 의 사이트 루트·옛 주소 308·Set-Cookie 속성·CSP·정적 자산이 nginx 설정에 의존한다(머리 주석: PHP 내장 서버에서는 세션이 서지 않음) → php -S 임시 인스턴스로는 못 돎. 만든 공유 링크는 앱 창구로 회수, psql 읽기만."
+    },
+    {
+      "id": "community.stage3",
+      "cmd": "bash tests/community/stage3.sh",
+      "module": "community",
+      "env": "prod",
+      "status": "required",
+      "needs": [
+        "sudo",
+        "browser",
+        "network"
+      ],
+      "covers": [
+        "scripts/vendor_prosemirror.sh",
+        "scripts/security_lint.sh",
+        "db/migrations/2026-09-22_community_stage3.sql",
+        "scripts/totp_code.php",
+        "db/community/grants.sql",
+        "src/community/Doc.php",
+        "src/community/DocRender.php",
+        "public/assets/community/editor.js",
+        "public/assets/community/doc-schema.json",
+        "src/help/community.php",
+        "src/community/handlers/pages_create.php",
+        "src/community/handlers/pages_delete.php",
+        "src/community/handlers/pages_get.php",
+        "src/community/handlers/pages_list.php",
+        "src/community/handlers/pages_update.php",
+        "src/community/handlers/space_me.php",
+        "src/handlers/login.php",
+        "src/handlers/me.php"
+      ],
+      "requirements": [
+        "C:T-14",
+        "C:T-15",
+        "C:T-16",
+        "C:T-17",
+        "C:T-18",
+        "C:T-19",
+        "C:T-20",
+        "C:T-21"
+      ],
+      "risks": [
+        "R-73",
+        "R-80"
+      ],
+      "est_sec": 420,
+      "writes_prod": false,
+      "notes": "커뮤니티 3단계. 운영 8082(SITE·CBASE)에 qa_ 다섯, 만든 페이지는 앱 창구로 논리 삭제, psql 읽기만. C:T-20 의 scripts/vendor_prosemirror.sh --verify 가 registry.npmjs.org 에서 tarball 을 받는다(외부 요청 — 네트워크 없으면 FAIL). 저장소 밖 $ROOT/../community/doc-schema.json 과 diff. browser_smoke.py 1~20 을 부른다. 스키마 미적용(503)이면 exit 3."
+    },
+    {
+      "id": "community.stage4a",
+      "cmd": "bash tests/community/stage4a.sh",
+      "module": "community",
+      "env": "prod",
+      "status": "required",
+      "needs": [
+        "sudo",
+        "browser"
+      ],
+      "covers": [
+        "scripts/totp_code.php",
+        "public/assets/community/doc-schema.json",
+        "scripts/security_lint.sh",
+        "src/Audit.php",
+        "src/bootstrap.php",
+        "src/community/handlers/pages_create.php",
+        "src/community/handlers/pages_delete.php",
+        "src/community/handlers/pages_get.php",
+        "src/community/handlers/pages_list.php",
+        "src/community/handlers/pages_move.php",
+        "src/community/handlers/pages_update.php",
+        "src/community/handlers/space_me.php",
+        "src/handlers/login.php",
+        "src/handlers/me.php"
+      ],
+      "requirements": [
+        "C:T-22",
+        "C:T-23",
+        "C:T-24",
+        "C:T-25",
+        "C:T-26",
+        "C:T-27",
+        "C:T-28",
+        "C:T-29"
+      ],
+      "risks": [],
+      "est_sec": 300,
+      "writes_prod": false,
+      "notes": "4-A 트리. 운영 8082 에 qa_ 계정으로 페이지를 만들고 앱 창구로 논리 삭제, psql 읽기만. browser_smoke.py 4-A 항목. 저장소 밖 $ROOT/../community/doc-schema.json 과 diff."
+    },
+    {
+      "id": "community.stage4b",
+      "cmd": "bash tests/community/stage4b.sh",
+      "module": "community",
+      "env": "prod",
+      "status": "required",
+      "needs": [
+        "sudo",
+        "browser"
+      ],
+      "covers": [
+        "scripts/totp_code.php",
+        "src/community/routes.php",
+        "public/assets/community/doc-schema.json",
+        "scripts/security_lint.sh",
+        "src/Audit.php",
+        "src/views/shell_top.php",
+        "public/assets/community/editor.js",
+        "src/community/handlers/pages_create.php",
+        "src/community/handlers/pages_delete.php",
+        "src/community/handlers/pages_get.php",
+        "src/community/handlers/pages_list.php",
+        "src/community/handlers/pages_move.php",
+        "src/community/handlers/pages_update.php",
+        "src/community/handlers/pages_visibility.php",
+        "src/community/handlers/spaces_list.php",
+        "src/handlers/login.php",
+        "src/handlers/me.php"
+      ],
+      "requirements": [
+        "C:T-30",
+        "C:T-31",
+        "C:T-32",
+        "C:T-33",
+        "C:T-34",
+        "C:T-35",
+        "C:T-36",
+        "C:T-37"
+      ],
+      "risks": [],
+      "est_sec": 300,
+      "writes_prod": false,
+      "notes": "4-B 공개 범위. 운영 8082 에 페이지·팀 공간을 만든다 — 팀 공간은 지우는 창구가 없어 운영에 남는다. R-73 사용자 활동 가드 없음(R-80 만). 로그인 실패 exit 4. 저장소 밖 doc-schema diff."
+    },
+    {
+      "id": "community.stage4c",
+      "cmd": "bash tests/community/stage4c.sh",
+      "module": "community",
+      "env": "prod",
+      "status": "required",
+      "needs": [
+        "sudo",
+        "browser"
+      ],
+      "covers": [
+        "db/migrations/2026-09-23_community_version_squash.sql",
+        "scripts/totp_code.php",
+        "public/assets/community/doc-schema.json",
+        "scripts/security_lint.sh",
+        "src/Audit.php",
+        "public/assets/community/editor.js",
+        "src/community/handlers/history.php",
+        "src/community/handlers/page_restore.php",
+        "src/community/handlers/pages_create.php",
+        "src/community/handlers/pages_delete.php",
+        "src/community/handlers/pages_get.php",
+        "src/community/handlers/pages_list.php",
+        "src/community/handlers/pages_update.php",
+        "src/community/handlers/pages_visibility.php",
+        "src/community/handlers/trash_list.php",
+        "src/community/handlers/version_get.php",
+        "src/community/handlers/version_restore.php",
+        "src/community/handlers/versions_list.php",
+        "src/handlers/login.php",
+        "src/handlers/me.php"
+      ],
+      "requirements": [
+        "C:T-38",
+        "C:T-39",
+        "C:T-40",
+        "C:T-41",
+        "C:T-42",
+        "C:T-43",
+        "C:T-44",
+        "C:T-45"
+      ],
+      "risks": [],
+      "est_sec": 300,
+      "writes_prod": false,
+      "notes": "4-C 이력. 운영 8082. C:T-40 은 $ROOT/.env 의 앱 DB 자격(tbox_app, PGPASSWORD)으로 운영 tbox_re 에 UPDATE/DELETE … WHERE false 를 보내 42501 을 확인한다(쓰기 효과 0). R-73 사용자 활동 가드 없음. browser_smoke.py 30~31."
+    },
+    {
+      "id": "community.stage4d",
+      "cmd": "bash tests/community/stage4d.sh",
+      "module": "community",
+      "env": "temp-instance",
+      "status": "required",
+      "needs": [
+        "sudo",
+        "browser"
+      ],
+      "covers": [
+        "db/migrations/2026-09-23_community_page_properties.sql",
+        "db/community/grants.sql",
+        "scripts/totp_code.php",
+        "scripts/security_lint.sh",
+        "public/index.php",
+        "db/migrations/2026-09-23_community_owner_share.sql",
+        "db/migrations/2026-09-23_users_display_name.sql",
+        "db/migrations/2026-09-24_community_boards.sql",
+        "db/migrations/2026-09-24_community_discussion.sql",
+        "db/migrations/2026-09-25_community_databases.sql",
+        "db/migrations/2026-09-26_community_purge.sql",
+        "src/community/handlers/history.php",
+        "src/community/handlers/pages_create.php",
+        "src/community/handlers/pages_get.php",
+        "src/community/handlers/pages_list.php",
+        "src/community/handlers/pages_properties.php",
+        "src/community/handlers/pages_update.php",
+        "src/community/handlers/pages_visibility.php",
+        "src/handlers/login.php",
+        "src/handlers/me.php"
+      ],
+      "requirements": [
+        "C:T-46",
+        "C:T-47",
+        "C:T-48",
+        "C:T-49",
+        "C:T-50",
+        "C:T-51",
+        "C:T-52"
+      ],
+      "risks": [],
+      "est_sec": 480,
+      "writes_prod": false,
+      "notes": "임시 인스턴스: sudo -n -u postgres pg_dump tbox_re(읽기) → 운영 클러스터에 createdb -O tbox_owner tbox_4d_test → 복원·마이그레이션·grants.sql → 저장소 복사본 + 운영 .env 를 DB_NAME·STORAGE_DIR·AUDIT_LOG_FILE 만 바꿔 복사 → php -S 127.0.0.1:8083. 운영 8082 요청 0. 덤프 /tmp/tbox4d_dump.$$.sql(운영 전체 평문, 복원 뒤 sudo rm). REGRESS 없음. browser_smoke.py 32. 머리 주석의 C:T-56 은 stage5a 참조라 뺌."
+    },
+    {
+      "id": "community.stage5a",
+      "cmd": "REGRESS=0 bash tests/community/stage5a.sh",
+      "module": "community",
+      "env": "temp-instance",
+      "status": "required",
+      "needs": [
+        "sudo",
+        "browser"
+      ],
+      "covers": [
+        "db/migrations/2026-09-23_community_owner_share.sql",
+        "db/community/grants.sql",
+        "scripts/totp_code.php",
+        "scripts/lib/cli_bootstrap.php",
+        "src/community/routes.php",
+        "scripts/security_lint.sh",
+        "public/index.php",
+        "src/community/handlers/pages_shares_list.php",
+        "src/community/handlers/pages_share_put.php",
+        "src/community/handlers/pages_share_delete.php",
+        "src/community/handlers/share_candidates.php",
+        "src/community/handlers/pages_handover.php",
+        "db/migrations/2026-09-23_community_page_properties.sql",
+        "db/migrations/2026-09-23_users_display_name.sql",
+        "db/migrations/2026-09-24_community_boards.sql",
+        "db/migrations/2026-09-24_community_discussion.sql",
+        "db/migrations/2026-09-25_community_databases.sql",
+        "db/migrations/2026-09-26_community_purge.sql",
+        "src/community/handlers/history.php",
+        "src/community/handlers/page_restore.php",
+        "src/community/handlers/pages_create.php",
+        "src/community/handlers/pages_delete.php",
+        "src/community/handlers/pages_get.php",
+        "src/community/handlers/pages_heartbeat.php",
+        "src/community/handlers/pages_list.php",
+        "src/community/handlers/pages_move.php",
+        "src/community/handlers/pages_properties.php",
+        "src/community/handlers/pages_update.php",
+        "src/community/handlers/pages_visibility.php",
+        "src/community/handlers/space_me.php",
+        "src/community/handlers/version_restore.php",
+        "src/handlers/login.php",
+        "src/handlers/me.php",
+        "src/handlers/reauth.php"
+      ],
+      "requirements": [
+        "C:T-53",
+        "C:T-54",
+        "C:T-55",
+        "C:T-56",
+        "C:T-57",
+        "C:T-58",
+        "C:T-59",
+        "C:T-60"
+      ],
+      "risks": [],
+      "est_sec": 600,
+      "writes_prod": false,
+      "notes": "임시 인스턴스(stage4d 와 같은 틀): pg_dump tbox_re(읽기) → 운영 클러스터에 createdb -O tbox_owner tbox_5a_test → 복원·마이그레이션·grants.sql → 복사본 + 운영 .env 세 줄 치환 → php -S 127.0.0.1:8084. 운영 8082 요청 0. 덤프 /tmp/tbox5a_dump.$$.sql(운영 전체 평문, 복원 뒤 sudo rm). REGRESS 는 기본 0(${REGRESS:-0}) — cmd 에 REGRESS=0 을 박아 물려받은 환경 변수로 회귀(다른 시험을 8082→임시로 sed 치환해 돌림)가 켜지지 않게 한다. browser_smoke.py 33~35 를 부른다. 임시 DB 에만 psql 로 두 줄을 직접 넣는다(비활성 계정 공유·공간 없는 수신자). REGRESS=1 목록은 고정(stage3·4a·4b·4c·stage26), 가드가 주석 포함 전체 줄을 본다. 머리 주석의 「C:T-37 방식」은 방식 참조라 뺌."
+    },
+    {
+      "id": "community.stage5a2",
+      "cmd": "REGRESS=0 bash tests/community/stage5a2.sh",
+      "module": "community",
+      "env": "temp-instance",
+      "status": "required",
+      "needs": [
+        "sudo",
+        "browser"
+      ],
+      "covers": [
+        "db/migrations/2026-09-23_users_display_name.sql",
+        "scripts/totp_code.php",
+        "db/community/grants.sql",
+        "scripts/lib/cli_bootstrap.php",
+        "src/community/routes.php",
+        "scripts/security_lint.sh",
+        "public/index.php",
+        "db/migrations/2026-09-23_community_page_properties.sql",
+        "db/migrations/2026-09-23_community_owner_share.sql",
+        "db/migrations/2026-09-24_community_boards.sql",
+        "db/migrations/2026-09-24_community_discussion.sql",
+        "db/migrations/2026-09-25_community_databases.sql",
+        "db/migrations/2026-09-26_community_purge.sql",
+        "src/community/handlers/history.php",
+        "src/community/handlers/pages_create.php",
+        "src/community/handlers/pages_delete.php",
+        "src/community/handlers/pages_get.php",
+        "src/community/handlers/pages_handover.php",
+        "src/community/handlers/pages_heartbeat.php",
+        "src/community/handlers/pages_list.php",
+        "src/community/handlers/pages_move.php",
+        "src/community/handlers/pages_share_delete.php",
+        "src/community/handlers/pages_share_put.php",
+        "src/community/handlers/pages_shares_list.php",
+        "src/community/handlers/pages_update.php",
+        "src/community/handlers/pages_visibility.php",
+        "src/community/handlers/share_candidates.php",
+        "src/community/handlers/space_me.php",
+        "src/community/handlers/spaces_list.php",
+        "src/community/handlers/version_get.php",
+        "src/community/handlers/versions_list.php",
+        "src/handlers/login.php",
+        "src/handlers/me.php",
+        "src/handlers/reauth.php",
+        "src/handlers/settings_page.php",
+        "src/handlers/users_create.php",
+        "src/handlers/users_list.php",
+        "src/handlers/users_update.php"
+      ],
+      "requirements": [
+        "C:T-61",
+        "C:T-62",
+        "C:T-63",
+        "C:T-64",
+        "C:T-65",
+        "C:T-66"
+      ],
+      "risks": [],
+      "est_sec": 540,
+      "writes_prod": false,
+      "notes": "임시 인스턴스(stage4d 와 같은 틀): pg_dump tbox_re(읽기) → 운영 클러스터에 createdb -O tbox_owner tbox_5a2_test → 복원·마이그레이션·grants.sql → 복사본 + 운영 .env 세 줄 치환 → php -S 127.0.0.1:8085. 운영 8082 요청 0. 덤프 /tmp/tbox5a2_dump.$$.sql(운영 전체 평문, 복원 뒤 sudo rm). REGRESS 는 기본 0(${REGRESS:-0}) — cmd 에 REGRESS=0 을 박아 물려받은 환경 변수로 회귀(다른 시험을 8082→임시로 sed 치환해 돌림)가 켜지지 않게 한다. browser_5a2.py 를 부른다. 임시 DB 에서만 이름을 넣고 계정 하나를 만든다."
+    },
+    {
+      "id": "community.stage5c",
+      "cmd": "REGRESS=0 bash tests/community/stage5c.sh",
+      "module": "community",
+      "env": "temp-instance",
+      "status": "required",
+      "needs": [
+        "sudo",
+        "browser"
+      ],
+      "covers": [
+        "db/migrations/2026-09-24_community_boards.sql",
+        "scripts/totp_code.php",
+        "db/community/grants.sql",
+        "scripts/lib/cli_bootstrap.php",
+        "src/community/routes.php",
+        "scripts/security_lint.sh",
+        "public/index.php",
+        "db/migrations/2026-09-23_community_page_properties.sql",
+        "db/migrations/2026-09-23_community_owner_share.sql",
+        "db/migrations/2026-09-23_users_display_name.sql",
+        "db/migrations/2026-09-24_community_discussion.sql",
+        "db/migrations/2026-09-25_community_databases.sql",
+        "db/migrations/2026-09-26_community_purge.sql",
+        "src/community/handlers/board_pages_create.php",
+        "src/community/handlers/board_pages_list.php",
+        "src/community/handlers/board_tags.php",
+        "src/community/handlers/board_view.php",
+        "src/community/handlers/boards_create.php",
+        "src/community/handlers/boards_list.php",
+        "src/community/handlers/boards_update.php",
+        "src/community/handlers/history.php",
+        "src/community/handlers/pages_create.php",
+        "src/community/handlers/pages_delete.php",
+        "src/community/handlers/pages_get.php",
+        "src/community/handlers/pages_handover.php",
+        "src/community/handlers/pages_hide.php",
+        "src/community/handlers/pages_list.php",
+        "src/community/handlers/pages_move.php",
+        "src/community/handlers/pages_properties.php",
+        "src/community/handlers/pages_publish.php",
+        "src/community/handlers/pages_share_delete.php",
+        "src/community/handlers/pages_share_put.php",
+        "src/community/handlers/pages_tags_put.php",
+        "src/community/handlers/pages_unpublish.php",
+        "src/community/handlers/pages_update.php",
+        "src/community/handlers/pages_visibility.php",
+        "src/community/handlers/search.php",
+        "src/community/handlers/space_me.php",
+        "src/community/handlers/version_get.php",
+        "src/community/handlers/versions_list.php",
+        "src/handlers/login.php",
+        "src/handlers/me.php",
+        "src/handlers/reauth.php"
+      ],
+      "requirements": [
+        "C:T-80",
+        "C:T-81",
+        "C:T-82",
+        "C:T-83",
+        "C:T-84",
+        "C:T-85",
+        "C:T-86",
+        "C:T-87",
+        "C:T-88",
+        "C:T-89",
+        "C:T-90"
+      ],
+      "risks": [],
+      "est_sec": 600,
+      "writes_prod": false,
+      "notes": "임시 인스턴스(stage4d 와 같은 틀): pg_dump tbox_re(읽기) → 운영 클러스터에 createdb -O tbox_owner tbox_5c_test2 → 복원·마이그레이션·grants.sql → 복사본 + 운영 .env 세 줄 치환 → php -S 127.0.0.1:8087. 운영 8082 요청 0. 덤프 /tmp/tbox5c_dump.$$.sql(운영 전체 평문, 복원 뒤 sudo rm). REGRESS 는 기본 0(${REGRESS:-0}) — cmd 에 REGRESS=0 을 박아 물려받은 환경 변수로 회귀(다른 시험을 8082→임시로 sed 치환해 돌림)가 켜지지 않게 한다. browser_5c.py 를 부른다. 만드는 것은 C5- 접두."
+    },
+    {
+      "id": "community.stage5d",
+      "cmd": "REGRESS=0 bash tests/community/stage5d.sh",
+      "module": "community",
+      "env": "temp-instance",
+      "status": "required",
+      "needs": [
+        "sudo",
+        "browser"
+      ],
+      "covers": [
+        "scripts/totp_code.php",
+        "db/community/grants.sql",
+        "scripts/security_lint.sh",
+        "public/index.php",
+        "db/migrations/2026-09-23_community_page_properties.sql",
+        "db/migrations/2026-09-23_community_owner_share.sql",
+        "db/migrations/2026-09-23_users_display_name.sql",
+        "db/migrations/2026-09-24_community_boards.sql",
+        "db/migrations/2026-09-24_community_discussion.sql",
+        "db/migrations/2026-09-25_community_databases.sql",
+        "db/migrations/2026-09-26_community_purge.sql",
+        "src/community/handlers/board_pages_create.php",
+        "src/community/handlers/boards_create.php",
+        "src/community/handlers/boards_update.php",
+        "src/community/handlers/comment_delete.php",
+        "src/community/handlers/comment_helpful.php",
+        "src/community/handlers/comment_hide.php",
+        "src/community/handlers/comment_resolve.php",
+        "src/community/handlers/comment_update.php",
+        "src/community/handlers/comments_create.php",
+        "src/community/handlers/comments_list.php",
+        "src/community/handlers/mention_candidates.php",
+        "src/community/handlers/notifications_list.php",
+        "src/community/handlers/notifications_read.php",
+        "src/community/handlers/page_reads.php",
+        "src/community/handlers/pages_create.php",
+        "src/community/handlers/pages_get.php",
+        "src/community/handlers/pages_handover.php",
+        "src/community/handlers/pages_list.php",
+        "src/community/handlers/pages_publish.php",
+        "src/community/handlers/pages_share_delete.php",
+        "src/community/handlers/pages_share_put.php",
+        "src/community/handlers/pages_tags_put.php",
+        "src/community/handlers/pages_update.php",
+        "src/community/handlers/pages_visibility.php",
+        "src/community/handlers/space_me.php",
+        "src/handlers/login.php",
+        "src/handlers/me.php",
+        "src/handlers/reauth.php"
+      ],
+      "requirements": [
+        "C:T-100",
+        "C:T-101",
+        "C:T-102",
+        "C:T-103",
+        "C:T-104",
+        "C:T-105"
+      ],
+      "risks": [],
+      "est_sec": 480,
+      "writes_prod": false,
+      "notes": "임시 인스턴스(stage4d 와 같은 틀): pg_dump tbox_re(읽기) → 운영 클러스터에 createdb -O tbox_owner tbox_5d_test → 복원·마이그레이션·grants.sql → 복사본 + 운영 .env 세 줄 치환 → php -S 127.0.0.1:8088. 운영 8082 요청 0. 덤프 /tmp/tbox5d_dump.$$.sql(운영 전체 평문, 복원 뒤 sudo rm). REGRESS 는 기본 0(${REGRESS:-0}) — cmd 에 REGRESS=0 을 박아 물려받은 환경 변수로 회귀(다른 시험을 8082→임시로 sed 치환해 돌림)가 켜지지 않게 한다. browser_5d.py 를 부른다."
+    },
+    {
+      "id": "community.stage5e",
+      "cmd": "REGRESS=0 bash tests/community/stage5e.sh",
+      "module": "community",
+      "env": "temp-instance",
+      "status": "required",
+      "needs": [
+        "sudo",
+        "browser"
+      ],
+      "covers": [
+        "scripts/totp_code.php",
+        "db/community/grants.sql",
+        "src/Http.php",
+        "src/community/Doc.php",
+        "src/community/DocRender.php",
+        "public/assets/community/doc-schema.json",
+        "scripts/security_lint.sh",
+        "public/index.php",
+        "db/migrations/2026-09-23_community_page_properties.sql",
+        "db/migrations/2026-09-23_community_owner_share.sql",
+        "db/migrations/2026-09-23_users_display_name.sql",
+        "db/migrations/2026-09-24_community_boards.sql",
+        "db/migrations/2026-09-24_community_discussion.sql",
+        "db/migrations/2026-09-25_community_databases.sql",
+        "db/migrations/2026-09-26_community_purge.sql",
+        "src/community/handlers/board_pages_create.php",
+        "src/community/handlers/comments_create.php",
+        "src/community/handlers/pages_create.php",
+        "src/community/handlers/pages_get.php",
+        "src/community/handlers/pages_list.php",
+        "src/community/handlers/pages_publish.php",
+        "src/community/handlers/pages_share_delete.php",
+        "src/community/handlers/pages_share_put.php",
+        "src/community/handlers/pages_tags_put.php",
+        "src/community/handlers/pages_update.php",
+        "src/community/handlers/pages_visibility.php",
+        "src/community/handlers/space_me.php",
+        "src/community/handlers/version_restore.php",
+        "src/community/handlers/versions_list.php",
+        "src/handlers/files_preview_raw.php",
+        "src/handlers/login.php",
+        "src/handlers/me.php",
+        "src/handlers/reauth.php"
+      ],
+      "requirements": [
+        "C:T-110",
+        "C:T-111",
+        "C:T-112",
+        "C:T-113",
+        "C:T-114",
+        "C:T-115"
+      ],
+      "risks": [],
+      "est_sec": 540,
+      "writes_prod": false,
+      "notes": "임시 인스턴스(stage4d 와 같은 틀): pg_dump tbox_re(읽기) → 운영 클러스터에 createdb -O tbox_owner tbox_5e_test → 복원·마이그레이션·grants.sql → 복사본 + 운영 .env 세 줄 치환 → php -S 127.0.0.1:8089. 운영 8082 요청 0. 덤프 /tmp/tbox5e_dump.$$.sql(운영 전체 평문, 복원 뒤 sudo rm). REGRESS 는 기본 0(${REGRESS:-0}) — cmd 에 REGRESS=0 을 박아 물려받은 환경 변수로 회귀(다른 시험을 8082→임시로 sed 치환해 돌림)가 켜지지 않게 한다. browser_5e.py 를 부른다. PLAN_OVERRIDE 로 doc-schema 사본 폴더를 줄 수 있다(없으면 $ROOT/../community, 그것도 없으면 /var/www/qaredi/community). 임시 DB 의 files.scan_status 를 psql 로 clean 으로 둔다."
+    },
+    {
+      "id": "community.stage6a",
+      "cmd": "REGRESS=0 bash tests/community/stage6a.sh",
+      "module": "community",
+      "env": "temp-instance",
+      "status": "required",
+      "needs": [
+        "sudo",
+        "browser"
+      ],
+      "covers": [
+        "scripts/totp_code.php",
+        "db/community/grants.sql",
+        "scripts/security_lint.sh",
+        "public/index.php",
+        "db/migrations/2026-09-23_community_page_properties.sql",
+        "db/migrations/2026-09-23_community_owner_share.sql",
+        "db/migrations/2026-09-23_users_display_name.sql",
+        "db/migrations/2026-09-24_community_boards.sql",
+        "db/migrations/2026-09-24_community_discussion.sql",
+        "db/migrations/2026-09-25_community_databases.sql",
+        "db/migrations/2026-09-26_community_purge.sql",
+        "src/community/handlers/board_pages_create.php",
+        "src/community/handlers/comments_create.php",
+        "src/community/handlers/database_schema.php",
+        "src/community/handlers/page_values.php",
+        "src/community/handlers/pages_create.php",
+        "src/community/handlers/pages_get.php",
+        "src/community/handlers/pages_list.php",
+        "src/community/handlers/pages_move.php",
+        "src/community/handlers/pages_publish.php",
+        "src/community/handlers/pages_share_delete.php",
+        "src/community/handlers/pages_share_put.php",
+        "src/community/handlers/pages_tags_put.php",
+        "src/community/handlers/pages_update.php",
+        "src/community/handlers/pages_visibility.php",
+        "src/community/handlers/search.php",
+        "src/community/handlers/space_me.php",
+        "src/handlers/login.php",
+        "src/handlers/me.php",
+        "src/handlers/reauth.php"
+      ],
+      "requirements": [
+        "C:T-130",
+        "C:T-131",
+        "C:T-132",
+        "C:T-133",
+        "C:T-134",
+        "C:T-135",
+        "C:T-136",
+        "C:T-137"
+      ],
+      "risks": [],
+      "est_sec": 480,
+      "writes_prod": false,
+      "notes": "임시 인스턴스(stage4d 와 같은 틀): pg_dump tbox_re(읽기) → 운영 클러스터에 createdb -O tbox_owner tbox_6a_test → 복원·마이그레이션·grants.sql → 복사본 + 운영 .env 세 줄 치환 → php -S 127.0.0.1:8090. 운영 8082 요청 0. 덤프 /tmp/tbox6a_dump.$$.sql(운영 전체 평문, 복원 뒤 sudo rm). REGRESS 는 기본 0(${REGRESS:-0}) — cmd 에 REGRESS=0 을 박아 물려받은 환경 변수로 회귀(다른 시험을 8082→임시로 sed 치환해 돌림)가 켜지지 않게 한다. browser_6a.py 를 부른다. 머리 주석의 「C:T-133 (T-28)」의 T-28 은 커뮤니티 PRD 로드맵 6단계 줄의 번호(필터 인젝션)라 C:T-28(4-A child_page)과 겹쳐 requirements 에 넣지 않음."
+    },
+    {
+      "id": "community.stage6b",
+      "cmd": "REGRESS=0 bash tests/community/stage6b.sh",
+      "module": "community",
+      "env": "temp-instance",
+      "status": "required",
+      "needs": [
+        "sudo",
+        "browser"
+      ],
+      "covers": [
+        "scripts/totp_code.php",
+        "db/community/grants.sql",
+        "scripts/security_lint.sh",
+        "public/index.php",
+        "db/migrations/2026-09-23_community_page_properties.sql",
+        "db/migrations/2026-09-23_community_owner_share.sql",
+        "db/migrations/2026-09-23_users_display_name.sql",
+        "db/migrations/2026-09-24_community_boards.sql",
+        "db/migrations/2026-09-24_community_discussion.sql",
+        "db/migrations/2026-09-25_community_databases.sql",
+        "db/migrations/2026-09-26_community_purge.sql",
+        "src/community/handlers/board_pages_create.php",
+        "src/community/handlers/comments_create.php",
+        "src/community/handlers/database_rows.php",
+        "src/community/handlers/database_schema.php",
+        "src/community/handlers/database_views.php",
+        "src/community/handlers/databases_list.php",
+        "src/community/handlers/page_values.php",
+        "src/community/handlers/pages_create.php",
+        "src/community/handlers/pages_delete.php",
+        "src/community/handlers/pages_get.php",
+        "src/community/handlers/pages_list.php",
+        "src/community/handlers/pages_properties.php",
+        "src/community/handlers/pages_publish.php",
+        "src/community/handlers/pages_share_delete.php",
+        "src/community/handlers/pages_share_put.php",
+        "src/community/handlers/pages_tags_put.php",
+        "src/community/handlers/pages_update.php",
+        "src/community/handlers/pages_visibility.php",
+        "src/community/handlers/space_me.php",
+        "src/handlers/login.php",
+        "src/handlers/me.php",
+        "src/handlers/reauth.php"
+      ],
+      "requirements": [
+        "C:T-140",
+        "C:T-141",
+        "C:T-142",
+        "C:T-143",
+        "C:T-144",
+        "C:T-145"
+      ],
+      "risks": [],
+      "est_sec": 480,
+      "writes_prod": false,
+      "notes": "임시 인스턴스(stage4d 와 같은 틀): pg_dump tbox_re(읽기) → 운영 클러스터에 createdb -O tbox_owner tbox_6b_test → 복원·마이그레이션·grants.sql → 복사본 + 운영 .env 세 줄 치환 → php -S 127.0.0.1:8091. 운영 8082 요청 0. 덤프 /tmp/tbox6b_dump.$$.sql(운영 전체 평문, 복원 뒤 sudo rm). REGRESS 는 기본 0(${REGRESS:-0}) — cmd 에 REGRESS=0 을 박아 물려받은 환경 변수로 회귀(다른 시험을 8082→임시로 sed 치환해 돌림)가 켜지지 않게 한다. browser_6b.py 를 부른다. 조사표 뒤에 합쳐진 파일 — 원문으로 실음. 머리 주석의 「(T-29)」는 커뮤니티 PRD 로드맵 번호라 requirements 에 넣지 않음."
+    },
+    {
+      "id": "community.stage6c",
+      "cmd": "REGRESS=0 bash tests/community/stage6c.sh",
+      "module": "community",
+      "env": "temp-instance",
+      "status": "required",
+      "needs": [
+        "sudo",
+        "browser"
+      ],
+      "covers": [
+        "scripts/totp_code.php",
+        "db/community/grants.sql",
+        "src/Http.php",
+        "src/community/Doc.php",
+        "src/community/DocRender.php",
+        "public/assets/community/doc-schema.json",
+        "scripts/security_lint.sh",
+        "public/index.php",
+        "db/migrations/2026-09-23_community_page_properties.sql",
+        "db/migrations/2026-09-23_community_owner_share.sql",
+        "db/migrations/2026-09-23_users_display_name.sql",
+        "db/migrations/2026-09-24_community_boards.sql",
+        "db/migrations/2026-09-24_community_discussion.sql",
+        "db/migrations/2026-09-25_community_databases.sql",
+        "db/migrations/2026-09-26_community_purge.sql",
+        "src/community/handlers/board_pages_create.php",
+        "src/community/handlers/comments_create.php",
+        "src/community/handlers/pages_create.php",
+        "src/community/handlers/pages_get.php",
+        "src/community/handlers/pages_list.php",
+        "src/community/handlers/pages_publish.php",
+        "src/community/handlers/pages_share_delete.php",
+        "src/community/handlers/pages_share_put.php",
+        "src/community/handlers/pages_tags_put.php",
+        "src/community/handlers/pages_update.php",
+        "src/community/handlers/pages_visibility.php",
+        "src/community/handlers/search.php",
+        "src/community/handlers/space_me.php",
+        "src/handlers/login.php",
+        "src/handlers/me.php",
+        "src/handlers/reauth.php"
+      ],
+      "requirements": [
+        "C:T-150",
+        "C:T-151",
+        "C:T-152",
+        "C:T-153",
+        "C:T-154",
+        "C:T-155"
+      ],
+      "risks": [],
+      "est_sec": 420,
+      "writes_prod": false,
+      "notes": "임시 인스턴스(stage4d 와 같은 틀): pg_dump tbox_re(읽기) → 운영 클러스터에 createdb -O tbox_owner tbox_6c_test → 복원·마이그레이션·grants.sql → 복사본 + 운영 .env 세 줄 치환 → php -S 127.0.0.1:8093. 운영 8082 요청 0. 덤프 /tmp/tbox6c_dump.$$.sql(운영 전체 평문, 복원 뒤 sudo rm). REGRESS 는 기본 0(${REGRESS:-0}) — cmd 에 REGRESS=0 을 박아 물려받은 환경 변수로 회귀(다른 시험을 8082→임시로 sed 치환해 돌림)가 켜지지 않게 한다. browser_6c.py 를 부른다. 조사표 뒤에 합쳐진 파일 — 원문으로 실음. 사용 예는 PLAN_OVERRIDE=<새 doc-schema 사본 폴더>(없으면 기본 경로). 머리 주석의 「(T-30)」은 커뮤니티 PRD 로드맵 번호라 requirements 에 넣지 않음."
+    },
+    {
+      "id": "community.stage7a",
+      "cmd": "REGRESS=0 bash tests/community/stage7a.sh",
+      "module": "community",
+      "env": "temp-instance",
+      "status": "required",
+      "needs": [
+        "sudo"
+      ],
+      "covers": [
+        "scripts/totp_code.php",
+        "db/community/grants.sql",
+        "deploy/cron.d/tbox-v2",
+        "scripts/community_purge.php",
+        "scripts/security_lint.sh",
+        "public/index.php",
+        "db/migrations/2026-09-23_community_page_properties.sql",
+        "db/migrations/2026-09-23_community_owner_share.sql",
+        "db/migrations/2026-09-23_users_display_name.sql",
+        "db/migrations/2026-09-24_community_boards.sql",
+        "db/migrations/2026-09-24_community_discussion.sql",
+        "db/migrations/2026-09-25_community_databases.sql",
+        "db/migrations/2026-09-26_community_purge.sql",
+        "src/community/handlers/board_pages_create.php",
+        "src/community/handlers/comment_helpful.php",
+        "src/community/handlers/comments_create.php",
+        "src/community/handlers/database_schema.php",
+        "src/community/handlers/page_restore.php",
+        "src/community/handlers/page_values.php",
+        "src/community/handlers/pages_create.php",
+        "src/community/handlers/pages_delete.php",
+        "src/community/handlers/pages_get.php",
+        "src/community/handlers/pages_heartbeat.php",
+        "src/community/handlers/pages_list.php",
+        "src/community/handlers/pages_properties.php",
+        "src/community/handlers/pages_publish.php",
+        "src/community/handlers/pages_share_delete.php",
+        "src/community/handlers/pages_share_put.php",
+        "src/community/handlers/pages_tags_put.php",
+        "src/community/handlers/pages_update.php",
+        "src/community/handlers/pages_visibility.php",
+        "src/community/handlers/space_me.php",
+        "src/community/handlers/trash_list.php",
+        "src/handlers/login.php",
+        "src/handlers/me.php",
+        "src/handlers/reauth.php"
+      ],
+      "requirements": [
+        "C:T-160",
+        "C:T-161",
+        "C:T-162",
+        "C:T-163"
+      ],
+      "risks": [],
+      "est_sec": 360,
+      "writes_prod": false,
+      "notes": "임시 인스턴스(stage4d 와 같은 틀): pg_dump tbox_re(읽기) → 운영 클러스터에 createdb -O tbox_owner tbox_7a_test → 복원·마이그레이션·grants.sql → 복사본 + 운영 .env 세 줄 치환 → php -S 127.0.0.1:8094. 운영 8082 요청 0. 덤프 /tmp/tbox7a_dump.$$.sql(운영 전체 평문, 복원 뒤 sudo rm). REGRESS 는 기본 0(${REGRESS:-0}) — cmd 에 REGRESS=0 을 박아 물려받은 환경 변수로 회귀(다른 시험을 8082→임시로 sed 치환해 돌림)가 켜지지 않게 한다. 조사표 뒤에 합쳐진 파일 — 원문으로 실음. 브라우저 없음. 정리 함수를 임시 DB 에서 tbox_owner 역할로 부르고 scripts/community_purge.php 사용법 오류·deploy/cron.d/tbox-v2 의 정리 줄을 본다. 머리 주석의 「T-32」는 커뮤니티 PRD 번호(t-box T-32 위키와 번호가 겹침)라 requirements 에 넣지 않음."
+    },
+    {
+      "id": "community.stage7b",
+      "cmd": "REGRESS=0 bash tests/community/stage7b.sh",
+      "module": "community",
+      "env": "temp-instance",
+      "status": "required",
+      "needs": [
+        "sudo",
+        "browser"
+      ],
+      "covers": [
+        "scripts/totp_code.php",
+        "db/community/grants.sql",
+        "db/migrations/2026-09-27_community_templates.sql",
+        "scripts/security_lint.sh",
+        "public/index.php",
+        "db/migrations/2026-09-23_community_page_properties.sql",
+        "db/migrations/2026-09-23_community_owner_share.sql",
+        "db/migrations/2026-09-23_users_display_name.sql",
+        "db/migrations/2026-09-24_community_boards.sql",
+        "db/migrations/2026-09-24_community_discussion.sql",
+        "db/migrations/2026-09-25_community_databases.sql",
+        "db/migrations/2026-09-26_community_purge.sql",
+        "db/migrations/2026-09-28_community_embeds.sql",
+        "src/community/handlers/board_pages_create.php",
+        "src/community/handlers/comments_create.php",
+        "src/community/handlers/database_schema.php",
+        "src/community/handlers/page_values.php",
+        "src/community/handlers/pages_create.php",
+        "src/community/handlers/pages_get.php",
+        "src/community/handlers/pages_hide.php",
+        "src/community/handlers/pages_list.php",
+        "src/community/handlers/pages_publish.php",
+        "src/community/handlers/pages_share_delete.php",
+        "src/community/handlers/pages_share_put.php",
+        "src/community/handlers/pages_tags_put.php",
+        "src/community/handlers/pages_update.php",
+        "src/community/handlers/pages_visibility.php",
+        "src/community/handlers/space_me.php",
+        "src/community/handlers/spaces_list.php",
+        "src/community/handlers/templates_create.php",
+        "src/community/handlers/templates_delete.php",
+        "src/community/handlers/templates_get.php",
+        "src/community/handlers/templates_list.php",
+        "src/handlers/login.php",
+        "src/handlers/me.php",
+        "src/handlers/reauth.php"
+      ],
+      "requirements": [
+        "C:T-170",
+        "C:T-171",
+        "C:T-172",
+        "C:T-173",
+        "C:T-174",
+        "C:T-175",
+        "C:T-176",
+        "C:T-177"
+      ],
+      "risks": [],
+      "est_sec": 420,
+      "writes_prod": false,
+      "notes": "임시 인스턴스(stage4d 와 같은 틀): pg_dump tbox_re(읽기) → 운영 클러스터에 createdb -O tbox_owner tbox_7b_test → 복원·마이그레이션·grants.sql → 복사본 + 운영 .env 세 줄 치환 → php -S 127.0.0.1:8095. 운영 8082 요청 0. 덤프 /tmp/tbox7b_dump.$$.sql(운영 전체 평문, 복원 뒤 sudo rm) — cleanup 에 덤프 삭제가 없다(1-A A-4 목록 10개 밖, 1a-held-A4.patch 에 없음 — 7단계 뒤 A-4 를 합칠 때 함께). REGRESS 는 기본 0(${REGRESS:-0}) — cmd 에 REGRESS=0 을 박아 물려받은 환경 변수로 회귀(다른 시험을 8082→임시로 sed 치환해 돌림)가 켜지지 않게 한다. browser_7b.py 를 부른다(playwright 없으면 SKIP). qa_ 계정 다섯(qa_employee01·02·qa_manager01·qa_admin01·qa_guest01)으로 순차 로그인 — 자격은 sudo -n awk 로 /etc/tbox-v2 에서 읽는다. 임시 DB 에 psql 로 직접 쓰는 줄(템플릿 CHECK 확인 INSERT 등)은 임시 DB 뿐. 운영 HEAD 에 조사표·1-A 뒤에 들어온 파일 — 원문으로 실음."
+    },
+    {
+      "id": "community.stage7c",
+      "cmd": "REGRESS=0 bash tests/community/stage7c.sh",
+      "module": "community",
+      "env": "temp-instance",
+      "status": "required",
+      "needs": [
+        "sudo",
+        "browser"
+      ],
+      "covers": [
+        "scripts/totp_code.php",
+        "db/community/grants.sql",
+        "src/bootstrap.php",
+        "public/assets/community/doc-schema.json",
+        "scripts/security_lint.sh",
+        "public/index.php",
+        "db/migrations/2026-09-23_community_page_properties.sql",
+        "db/migrations/2026-09-23_community_owner_share.sql",
+        "db/migrations/2026-09-23_users_display_name.sql",
+        "db/migrations/2026-09-24_community_boards.sql",
+        "db/migrations/2026-09-24_community_discussion.sql",
+        "db/migrations/2026-09-25_community_databases.sql",
+        "db/migrations/2026-09-26_community_purge.sql",
+        "db/migrations/2026-09-27_community_templates.sql",
+        "db/migrations/2026-09-28_community_embeds.sql",
+        "src/community/routes.php",
+        "src/community/Doc.php",
+        "src/community/handlers/board_pages_create.php",
+        "src/community/handlers/comments_create.php",
+        "src/community/handlers/database_schema.php",
+        "src/community/handlers/embed_domains_add.php",
+        "src/community/handlers/embed_domains_list.php",
+        "src/community/handlers/embed_domains_remove.php",
+        "src/community/handlers/page_values.php",
+        "src/community/handlers/page_view.php",
+        "src/community/handlers/pages_create.php",
+        "src/community/handlers/pages_get.php",
+        "src/community/handlers/pages_list.php",
+        "src/community/handlers/pages_publish.php",
+        "src/community/handlers/pages_share_delete.php",
+        "src/community/handlers/pages_share_put.php",
+        "src/community/handlers/pages_tags_put.php",
+        "src/community/handlers/pages_update.php",
+        "src/community/handlers/pages_visibility.php",
+        "src/community/handlers/space_me.php",
+        "src/community/handlers/templates_create.php",
+        "src/community/handlers/version_restore.php",
+        "src/handlers/login.php",
+        "src/handlers/me.php",
+        "src/handlers/reauth.php"
+      ],
+      "requirements": [
+        "C:T-180",
+        "C:T-181",
+        "C:T-182",
+        "C:T-183",
+        "C:T-184",
+        "C:T-185",
+        "C:T-186"
+      ],
+      "risks": [],
+      "est_sec": 420,
+      "writes_prod": false,
+      "notes": "임시 인스턴스(stage4d 와 같은 틀): pg_dump tbox_re(읽기) → 운영 클러스터에 createdb -O tbox_owner tbox_7c_test → 복원·마이그레이션·grants.sql → 복사본 + 운영 .env 세 줄 치환 → php -S 127.0.0.1:8097. 운영 8082 요청 0. 덤프 /tmp/tbox7c_dump.$$.sql(운영 전체 평문, 복원 뒤 sudo rm) — cleanup 에 덤프 삭제가 없다(1-A A-4 목록 10개 밖, 1a-held-A4.patch 에 없음 — 7단계 뒤 A-4 를 합칠 때 함께). REGRESS 는 기본 0(${REGRESS:-0}) — cmd 에 REGRESS=0 을 박아 물려받은 환경 변수로 회귀(다른 시험을 8082→임시로 sed 치환해 돌림)가 켜지지 않게 한다. browser_7c.py 를 부른다(playwright 없으면 SKIP). claude_ 검토 계정 다섯(F-71: claude_employee01·02·claude_manager01·claude_admin01·claude_guest01)으로 순차 로그인 — 운영 DB 덤프에 그 계정이 있어야 한다. php -r 로 src/bootstrap.php·src/community/routes.php·src/community/Doc.php 를 직접 부른다(서버 렌더러·호스트 판정). C:T-184 는 **임시 복사본**의 src/bootstrap.php 상수를 sed -i 로 켰다 끈다(저장소·운영 파일은 그대로). 임베드 주소(youtube 등)는 저장·렌더 문자열로만 쓰고 바깥 요청은 없다(원문 판단 — 읽기 화면 틀은 기본 끔, JS 렌더러 시험은 문서에 붙이지 않은 div 안). covers 의 version_restore.php 는 derive 가 ${VNUM:-1} 경로를 못 읽어 손으로 더함(POST 명시·라우트 하나). 머리 주석의 「T-33」은 커뮤니티 PRD 로드맵 번호라 requirements 에 넣지 않음. 운영 HEAD 에 조사표·1-A 뒤에 들어온 파일 — 원문으로 실음."
+    },
+    {
+      "id": "community.browser_smoke",
+      "cmd": "python3 tests/community/browser_smoke.py",
+      "module": "community",
+      "env": "prod",
+      "status": "helper",
+      "needs": [
+        "browser"
+      ],
+      "covers": [
+        "src/community/handlers/home_page.php",
+        "src/community/handlers/page_view.php",
+        "src/community/handlers/pages_get.php",
+        "src/community/handlers/spaces_list.php",
+        "src/handlers/me.php"
+      ],
+      "requirements": [
+        "C:T-19",
+        "C:T-21"
+      ],
+      "risks": [],
+      "est_sec": 240,
+      "writes_prod": false,
+      "notes": "부르는 셸: community.stage3·stage4a·stage4b·stage4c(운영 8082 SITE)와 community.stage4d·stage5a(임시 SITE). 단독 실행 불가(인자 SITE UA 와 SMOKE_* 세션 환경 변수를 부르는 셸이 넘긴다). 결과 줄 SMOKE_FAIL=n. 만든 페이지는 앱 창구로 지운다. 인자 <SITE> <UA> <tbox_session> [samples php-render] — 뒤 두 인자로 C:T-19 JS 쪽 렌더러 동등성."
+    },
+    {
+      "id": "community.browser_5a2",
+      "cmd": "python3 tests/community/browser_5a2.py",
+      "module": "community",
+      "env": "temp-instance",
+      "status": "helper",
+      "needs": [
+        "browser"
+      ],
+      "covers": [
+        "src/community/handlers/page_view.php",
+        "src/handlers/home.php",
+        "src/handlers/settings_page.php",
+        "src/handlers/users_page.php"
+      ],
+      "requirements": [
+        "C:T-66"
+      ],
+      "risks": [],
+      "est_sec": 120,
+      "writes_prod": false,
+      "notes": "부르는 셸: community.stage5a2. 단독 실행 불가(인자 SITE UA 와 SMOKE_* 세션 환경 변수를 부르는 셸이 넘긴다). 결과 줄 SMOKE_FAIL=n. guest01 이름을 넣었다 지운다(임시 DB)."
+    },
+    {
+      "id": "community.browser_5c",
+      "cmd": "python3 tests/community/browser_5c.py",
+      "module": "community",
+      "env": "temp-instance",
+      "status": "helper",
+      "needs": [
+        "browser"
+      ],
+      "covers": [
+        "src/community/handlers/board_view.php",
+        "src/community/handlers/page_view.php",
+        "src/community/handlers/pages_create.php",
+        "src/community/handlers/pages_list.php",
+        "src/handlers/me.php"
+      ],
+      "requirements": [
+        "C:T-90"
+      ],
+      "risks": [],
+      "est_sec": 120,
+      "writes_prod": false,
+      "notes": "부르는 셸: community.stage5c. 단독 실행 불가(인자 SITE UA 와 SMOKE_* 세션 환경 변수를 부르는 셸이 넘긴다). 결과 줄 SMOKE_FAIL=n. C5- 접두."
+    },
+    {
+      "id": "community.browser_5d",
+      "cmd": "python3 tests/community/browser_5d.py",
+      "module": "community",
+      "env": "temp-instance",
+      "status": "helper",
+      "needs": [
+        "browser"
+      ],
+      "covers": [
+        "src/community/handlers/home_page.php",
+        "src/community/handlers/page_view.php"
+      ],
+      "requirements": [
+        "C:T-105"
+      ],
+      "risks": [],
+      "est_sec": 120,
+      "writes_prod": false,
+      "notes": "부르는 셸: community.stage5d. 단독 실행 불가(인자 SITE UA 와 SMOKE_* 세션 환경 변수를 부르는 셸이 넘긴다). 결과 줄 SMOKE_FAIL=n."
+    },
+    {
+      "id": "community.browser_5e",
+      "cmd": "python3 tests/community/browser_5e.py",
+      "module": "community",
+      "env": "temp-instance",
+      "status": "helper",
+      "needs": [
+        "browser"
+      ],
+      "covers": [
+        "src/community/handlers/page_view.php"
+      ],
+      "requirements": [
+        "C:T-114",
+        "C:T-115"
+      ],
+      "risks": [],
+      "est_sec": 120,
+      "writes_prod": false,
+      "notes": "부르는 셸: community.stage5e. 단독 실행 불가(인자 SITE UA 와 SMOKE_* 세션 환경 변수를 부르는 셸이 넘긴다). 결과 줄 SMOKE_FAIL=n."
+    },
+    {
+      "id": "community.browser_6a",
+      "cmd": "python3 tests/community/browser_6a.py",
+      "module": "community",
+      "env": "temp-instance",
+      "status": "helper",
+      "needs": [
+        "browser"
+      ],
+      "covers": [
+        "src/community/handlers/home_page.php",
+        "src/community/handlers/page_view.php"
+      ],
+      "requirements": [
+        "C:T-137"
+      ],
+      "risks": [],
+      "est_sec": 120,
+      "writes_prod": false,
+      "notes": "부르는 셸: community.stage6a. 단독 실행 불가(인자 SITE UA 와 SMOKE_* 세션 환경 변수를 부르는 셸이 넘긴다). 결과 줄 SMOKE_FAIL=n. 머리 주석의 「부르는 쪽: tests/community/stage5e.sh」는 오기 — 실제로는 stage6a.sh 가 부른다(grep)."
+    },
+    {
+      "id": "community.browser_6b",
+      "cmd": "python3 tests/community/browser_6b.py",
+      "module": "community",
+      "env": "temp-instance",
+      "status": "helper",
+      "needs": [
+        "browser"
+      ],
+      "covers": [
+        "src/community/handlers/page_view.php"
+      ],
+      "requirements": [
+        "C:T-145"
+      ],
+      "risks": [],
+      "est_sec": 120,
+      "writes_prod": false,
+      "notes": "부르는 셸: community.stage6b. 단독 실행 불가(인자 SITE UA 와 SMOKE_* 세션 환경 변수를 부르는 셸이 넘긴다). 결과 줄 SMOKE_FAIL=n. 조사표 뒤에 합쳐진 파일. 머리 주석의 「부르는 쪽: stage5e.sh」는 오기 — 실제로는 stage6b.sh 가 부른다(grep)."
+    },
+    {
+      "id": "community.browser_6c",
+      "cmd": "python3 tests/community/browser_6c.py",
+      "module": "community",
+      "env": "temp-instance",
+      "status": "helper",
+      "needs": [
+        "browser"
+      ],
+      "covers": [
+        "src/community/handlers/page_view.php"
+      ],
+      "requirements": [
+        "C:T-153",
+        "C:T-155"
+      ],
+      "risks": [],
+      "est_sec": 120,
+      "writes_prod": false,
+      "notes": "부르는 셸: community.stage6c. 단독 실행 불가(인자 SITE UA 와 SMOKE_* 세션 환경 변수를 부르는 셸이 넘긴다). 결과 줄 SMOKE_FAIL=n. 조사표 뒤에 합쳐진 파일. 머리 주석의 「부르는 쪽: stage5e.sh」는 오기 — 실제로는 stage6c.sh 가 부른다(grep)."
+    },
+    {
+      "id": "community.browser_7b",
+      "cmd": "python3 tests/community/browser_7b.py",
+      "module": "community",
+      "env": "temp-instance",
+      "status": "helper",
+      "needs": [
+        "browser"
+      ],
+      "covers": [
+        "src/community/handlers/home_page.php",
+        "src/community/handlers/page_view.php"
+      ],
+      "requirements": [
+        "C:T-177"
+      ],
+      "risks": [],
+      "est_sec": 120,
+      "writes_prod": false,
+      "notes": "부르는 셸: community.stage7b. 단독 실행 불가(인자 SITE UA 와 SMOKE_E1·SMOKE_PSRC·SMOKE_DBP·SMOKE_ROWTPL 환경 변수를 부르는 셸이 넘긴다). 결과 줄 SMOKE_FAIL=n. 운영 HEAD 에 조사표·1-A 뒤에 들어온 파일 — 원문으로 실음."
+    },
+    {
+      "id": "community.browser_7c",
+      "cmd": "python3 tests/community/browser_7c.py",
+      "module": "community",
+      "env": "temp-instance",
+      "status": "helper",
+      "needs": [
+        "browser"
+      ],
+      "covers": [
+        "public/assets/community/doc-render.js",
+        "src/community/handlers/home_page.php",
+        "src/community/handlers/page_view.php"
+      ],
+      "requirements": [
+        "C:T-185"
+      ],
+      "risks": [],
+      "est_sec": 120,
+      "writes_prod": false,
+      "notes": "부르는 셸: community.stage7c. 단독 실행 불가(인자 SITE UA 와 SMOKE_E1·SMOKE_A1·SMOKE_PE·SMOKE_RENDER 환경 변수를 부르는 셸이 넘긴다). 결과 줄 SMOKE_FAIL=n. 렌더러 JS(public/assets/community/doc-render.js 를 import)의 iframe 은 문서에 붙이지 않은 div 안에서만 만든다 — 바깥 요청 0(원문 판단). 운영 HEAD 에 조사표·1-A 뒤에 들어온 파일 — 원문으로 실음."
+    },
+    {
+      "id": "community.stage5a_handover_self",
+      "cmd": "python3 tests/community/stage5a_handover_self.py",
+      "module": "community",
+      "env": "manual",
+      "status": "orphan",
+      "needs": [],
+      "covers": [
+        "src/handlers/me.php",
+        "src/community/handlers/pages_create.php",
+        "src/community/handlers/pages_get.php",
+        "src/community/handlers/pages_handover.php",
+        "src/community/handlers/pages_delete.php"
+      ],
+      "requirements": [],
+      "risks": [
+        "C:R-05"
+      ],
+      "est_sec": 30,
+      "writes_prod": false,
+      "notes": "고아 — 어느 셸도 부르지 않는다(지시서 A-5). 수동 실행용: <SITE> <UA> <직원1 세션> <직원2 세션> <같은 팀 Manager 세션>, urllib 만(브라우저·sudo 없음). 대상은 인자 SITE — 운영을 주면 운영에 페이지를 만들고 새 주인이 창구로 지운다. 결과 줄 FAIL=n."
+    },
+    {
+      "id": "community.stage5b_search",
+      "cmd": "python3 tests/community/stage5b_search.py",
+      "module": "community",
+      "env": "manual",
+      "status": "orphan",
+      "needs": [],
+      "covers": [
+        "src/community/handlers/search.php",
+        "src/handlers/me.php",
+        "src/community/handlers/pages_create.php",
+        "src/community/handlers/pages_get.php",
+        "src/community/handlers/pages_update.php",
+        "src/community/handlers/pages_share_put.php",
+        "src/community/handlers/pages_share_delete.php",
+        "src/community/handlers/pages_visibility.php",
+        "src/community/handlers/pages_delete.php"
+      ],
+      "requirements": [
+        "C:T-70"
+      ],
+      "risks": [],
+      "est_sec": 30,
+      "writes_prod": false,
+      "notes": "고아 — 어느 셸도 부르지 않는다(5-B 는 stage 스크립트가 없어 어떤 회귀 목록에도 없음). 수동 실행용: <SITE> <UA> <직원1> <직원2> <관리자> 세션, urllib 만. 머리 주석은 「C:T-70 ~」(끝 번호 없음)이라 C:T-70 만 넣음. 결과 줄 SEARCH_FAIL=n."
+    },
+    {
+      "id": "core.security_lint",
+      "cmd": "bash scripts/security_lint.sh",
+      "module": "core",
+      "env": "static",
+      "status": "required",
+      "needs": [],
+      "covers": [
+        "src/**/*.php",
+        "public/index.php",
+        "public/assets/*.js",
+        "public/assets/*.html",
+        "public/assets/community/*.js",
+        "docs/*.html"
+      ],
+      "requirements": [],
+      "risks": [],
+      "est_sec": 5,
+      "writes_prod": false,
+      "notes": "금지 패턴 grep — 저장소 전체의 *.php·*.js·*.html·*.phtml(scripts/·vendor/·node_modules/·.git 제외). 결과 줄 「결과: 통과/실패」, rc 0/1. 복제본 실측 0.7초. 머리 주석에 T-·R- ID 없음(규칙마다 S-xx 만)."
+    },
+    {
+      "id": "core.wiki_check",
+      "cmd": "php scripts/wiki_check.php",
+      "module": "core",
+      "env": "static",
+      "status": "required",
+      "needs": [],
+      "covers": [
+        "wiki/**",
+        "src/Wiki.php",
+        "STAGES.md"
+      ],
+      "requirements": [],
+      "risks": [
+        "R-56"
+      ],
+      "est_sec": 5,
+      "writes_prod": false,
+      "notes": "wiki/<책>/*.json 구조·빠진 단계 글 검사. DB·부트스트랩 없이 src/Wiki.php 만. 저장소 밖 ../../community/STAGES.md·../../STAGES.md 를 읽고 없으면 문제로 올린다 → 두 저장소를 같은 배치로 둬야 한다. rc 0 통과·1 문제·2 실행 오류. 복제본 실측 0.1초."
+    },
+    {
+      "id": "core.ui_snapshot",
+      "cmd": "bash scripts/ui_snapshot.sh",
+      "module": "core",
+      "env": "prod",
+      "status": "helper",
+      "needs": [
+        "sudo",
+        "browser"
+      ],
+      "covers": [
+        "scripts/ui_snapshot.py",
+        "scripts/totp_code.php",
+        "src/handlers/login.php",
+        "src/handlers/me.php",
+        "src/handlers/reauth.php"
+      ],
+      "requirements": [],
+      "risks": [],
+      "est_sec": 90,
+      "writes_prod": false,
+      "notes": "부르는 셸: tbox.help_button((d), UI_PAGES 환경 변수). 인자 <출력 폴더> [폭] 필수(없으면 즉시 끝남). BASE 8082 고정, sudo -n awk 로 qa_admin01 자격을 읽고 재인증, scripts/ui_snapshot.py(playwright)가 report.json·「합계 N건」. 임시 틀 REGRESS=1 은 복사본의 이 파일을 sed -i 로 고친다."
+    }
+  ]
+}
