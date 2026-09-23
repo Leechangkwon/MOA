@@ -1,5 +1,16 @@
 [
     {
+        "version": "2.18.0",
+        "level": "minor",
+        "released_at": "2026-09-24 02:45",
+        "title": "t-box F-71 — 검토 계정 claude_",
+        "changes": [
+            "새 시험은 claude_ 검토 계정 5개로(qa_ 는 옛 시험용으로 남음)",
+            "감사 로그 「누가」 칸에 배지 「Claude」 — 검토 계정과 검토 표식이 둘 다 맞을 때만",
+            "시험의 「검토 계정」 판정을 한 곳(tests/lib/review_accounts.sh)으로"
+        ]
+    },
+    {
         "version": "2.17.0",
         "level": "minor",
         "released_at": "2026-09-24 02:08",
