@@ -219,7 +219,7 @@ export const schema = new Schema({
       atom: true,
       selectable: true,
       attrs: { id: { default: null } },
-      toDOM: () => ['div', { class: 'doc-toc', contenteditable: 'false' }, '목차 (읽기 모드에서 제목이 채워집니다)']
+      toDOM: () => ['div', { class: 'doc-toc', contenteditable: 'false' }, '목차']
     },
 
     /*
@@ -524,30 +524,41 @@ export function toDoc(pmDoc) {
  *   `attrs`  넣을 때 블록에 얹을 속성(제목의 `level` 처럼)
  *
  * 3단계의 블록 10종(ARCH 21.3) + 제목 3단계를 따로 세어 12줄이다.
+ *
+ * 단축키 (2026-09-23 사용자 요청 — 「블록 추가」 창에서 보이고, 편집기에서 그대로 된다)
+ *   `md`  줄 맨 앞에서 치는 글자(마크다운 단축, `buildInputRules` 가 실제로 바꾼다).
+ *         본문만 `'Enter'` — 줄을 바꾸면 새 줄은 본문이다(목록·할 일은 같은 종류로 이어진다).
+ *   `key` 지금 블록을 그 종류로 바꾸는 키(`prosemirror-keymap` 이름, Mod = Ctrl / ⌘).
+ *         번호는 노션과 같다 — 0 본문 · 1~3 제목 · 4 할 일 · 5 글머리 · 6 번호 · 8 코드. 7 인용 · 9 강조 상자.
  */
 export const BLOCK_TYPES = [
   {
     type: 'paragraph', label: '본문',
+    md: 'Enter', key: 'Mod-Alt-0',
     desc: '보통 글입니다. 가장 많이 쓰는 블록입니다.',
     sample: { schema: 1, blocks: [{ type: 'paragraph', text: [{ t: '보통 글을 쓰는 자리입니다.', m: {} }] }] }
   },
   {
     type: 'heading', attrs: { level: 1 }, label: '제목 1',
+    md: '# ', key: 'Mod-Alt-1',
     desc: '가장 큰 제목입니다. 문서를 큰 단락으로 나눕니다.',
     sample: { schema: 1, blocks: [{ type: 'heading', level: 1, text: [{ t: '제목 1', m: {} }] }] }
   },
   {
     type: 'heading', attrs: { level: 2 }, label: '제목 2',
+    md: '## ', key: 'Mod-Alt-2',
     desc: '중간 제목입니다. 제목 1 아래를 나눕니다.',
     sample: { schema: 1, blocks: [{ type: 'heading', level: 2, text: [{ t: '제목 2', m: {} }] }] }
   },
   {
     type: 'heading', attrs: { level: 3 }, label: '제목 3',
+    md: '### ', key: 'Mod-Alt-3',
     desc: '작은 제목입니다. 제목 2 아래를 나눕니다.',
     sample: { schema: 1, blocks: [{ type: 'heading', level: 3, text: [{ t: '제목 3', m: {} }] }] }
   },
   {
     type: 'bulleted', label: '글머리 목록',
+    md: '- ', key: 'Mod-Alt-5',
     desc: '점으로 늘어놓습니다. 줄 끝에서 Enter 를 누르면 다음 항목이 이어집니다.',
     sample: { schema: 1, blocks: [
       { type: 'bulleted', text: [{ t: '첫째 항목', m: {} }] },
@@ -556,6 +567,7 @@ export const BLOCK_TYPES = [
   },
   {
     type: 'numbered', label: '번호 목록',
+    md: '1. ', key: 'Mod-Alt-6',
     desc: '번호로 늘어놓습니다. 줄 끝에서 Enter 를 누르면 다음 번호가 이어집니다.',
     sample: { schema: 1, blocks: [
       { type: 'numbered', text: [{ t: '첫째 항목', m: {} }] },
@@ -564,6 +576,7 @@ export const BLOCK_TYPES = [
   },
   {
     type: 'to_do', attrs: { checked: false }, label: '할 일',
+    md: '[] ', key: 'Mod-Alt-4',
     desc: '체크 상자가 앞에 붙습니다. 끝낸 일은 취소선으로 보입니다.',
     sample: { schema: 1, blocks: [
       { type: 'to_do', checked: false, text: [{ t: '아직 못 한 일', m: {} }] },
@@ -572,16 +585,19 @@ export const BLOCK_TYPES = [
   },
   {
     type: 'quote', label: '인용',
+    md: '> ', key: 'Mod-Alt-7',
     desc: '왼쪽에 선이 붙습니다. 다른 글을 옮겨 적을 때 씁니다.',
     sample: { schema: 1, blocks: [{ type: 'quote', text: [{ t: '옮겨 적은 문장입니다.', m: {} }] }] }
   },
   {
     type: 'callout', attrs: { icon: '💡' }, label: '강조 상자',
+    key: 'Mod-Alt-9',
     desc: '아이콘과 배경이 붙는 상자입니다. 눈에 띄게 알릴 때 씁니다.',
     sample: { schema: 1, blocks: [{ type: 'callout', icon: '💡', text: [{ t: '눈에 띄게 알릴 내용입니다.', m: {} }] }] }
   },
   {
     type: 'divider', label: '구분선',
+    md: '---',
     desc: '가로줄 하나로 위아래를 나눕니다. 글자는 담지 않습니다.',
     sample: { schema: 1, blocks: [
       { type: 'paragraph', text: [{ t: '위쪽 글', m: {} }] },
@@ -591,12 +607,13 @@ export const BLOCK_TYPES = [
   },
   {
     type: 'code_block', label: '코드',
+    md: '```', key: 'Mod-Alt-8',
     desc: '고정폭 글꼴로 그대로 보여 줍니다. 안에서 Enter 는 줄바꿈입니다.',
     sample: { schema: 1, blocks: [{ type: 'code', language: 'plain', code: 'echo "안녕"' }] }
   },
   {
     type: 'toc', label: '목차',
-    desc: '이 페이지의 제목들을 모아 보여 줍니다. 읽기 모드에서 채워집니다.',
+    desc: '이 페이지의 제목(제목 1·2·3)을 모아 차례를 만듭니다. 제목을 쓰거나 고치면 바로 따라 바뀌고, 누르면 그 제목으로 갑니다.',
     sample: { schema: 1, blocks: [
       { id: '00000000-0000-4000-8000-000000000001', type: 'heading', level: 1, text: [{ t: '제목 1', m: {} }] },
       { id: '00000000-0000-4000-8000-000000000002', type: 'heading', level: 2, text: [{ t: '제목 2', m: {} }] },

@@ -916,6 +916,100 @@ const blockHandles = new Plugin({
   }
 });
 
+/**
+ * 할 일 상자 누르기 — 체크를 켜고 끈다 (2026-09-23 사용자 지적 「체크가 안 됨」).
+ * 상자는 `contenteditable=false` 인 장식이라 눌러도 PM 이 아무 일도 하지 않았다. 바뀐 체크는
+ * 보통 저장으로 나가고, 서버가 이전 문서와 견주어 「처리 이력」에 남긴다(`community_check_changes`).
+ */
+const todoToggle = new Plugin({
+  props: {
+    handleDOMEvents: {
+      mousedown(view, event) {
+        const box = event.target instanceof Element ? event.target.closest('.doc-todo__box') : null;
+        if (!box || !view.dom.contains(box)) { return false; }
+        const text = box.parentNode ? box.parentNode.querySelector('.doc-todo__text') : null;
+        if (!text) { return false; }
+        event.preventDefault();
+        const $pos = view.state.doc.resolve(view.posAtDOM(text, 0));
+        const node = $pos.parent;
+        if (node.type !== schema.nodes.to_do) { return false; }
+        view.dispatch(view.state.tr.setNodeMarkup($pos.before(), undefined,
+          Object.assign({}, node.attrs, { checked: !node.attrs.checked })));
+        return true;
+      }
+    }
+  }
+});
+
+/**
+ * 목차를 **편집하는 동안에도** 채운다 (2026-09-23 사용자 결정 — 전에는 「읽기 모드에서 채워집니다」
+ * 자리표시뿐이라 넣은 블록이 무엇인지 알 수 없었다). 모양은 읽기 렌더러의 목차와 같다
+ * (`nav.doc-toc > ul > li.doc-toc__item--N > a`). 누르면 그 제목으로 옮겨 간다.
+ * 문서가 바뀔 때마다 편집기 안의 목차를 전부 다시 그린다 — 목차는 제목 몇 줄이라 가볍다.
+ */
+function drawLiveToc(dom, view) {
+  clear(dom);
+  const items = [];
+  view.state.doc.forEach((node, offset) => {
+    if (node.type === schema.nodes.heading && node.textContent.trim() !== '') {
+      items.push({ level: node.attrs.level, text: node.textContent, pos: offset, size: node.nodeSize });
+    }
+  });
+  if (items.length === 0) {
+    const p = document.createElement('p');
+    p.className = 'muted';
+    p.textContent = '제목이 아직 없습니다 — 「제목 1·2·3」 블록을 넣으면 여기에 모입니다';
+    dom.appendChild(p);
+    return;
+  }
+  const ul = document.createElement('ul');
+  for (const h of items) {
+    const li = document.createElement('li');
+    li.className = 'doc-toc__item doc-toc__item--' + String(h.level);
+    const a = document.createElement('a');
+    a.setAttribute('href', '#');
+    a.textContent = h.text;
+    a.addEventListener('mousedown', (event) => {
+      event.preventDefault();
+      const end = Math.min(h.pos + h.size - 1, view.state.doc.content.size);
+      view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, end)).scrollIntoView());
+      view.focus();
+    });
+    a.addEventListener('click', (event) => { event.preventDefault(); });
+    li.appendChild(a);
+    ul.appendChild(li);
+  }
+  dom.appendChild(ul);
+}
+
+const liveToc = new Plugin({
+  props: {
+    nodeViews: {
+      toc(node, view) {
+        const dom = document.createElement('nav');
+        dom.className = 'doc-toc';
+        dom.setAttribute('contenteditable', 'false');
+        dom.setAttribute('data-live-toc', '');
+        drawLiveToc(dom, view);
+        return {
+          dom: dom,
+          update: (next) => next.type === schema.nodes.toc,
+          stopEvent: () => true,
+          ignoreMutation: () => true
+        };
+      }
+    }
+  },
+  view() {
+    return {
+      update(view, prevState) {
+        if (view.state.doc.eq(prevState.doc)) { return; }
+        for (const dom of view.dom.querySelectorAll('[data-live-toc]')) { drawLiveToc(dom, view); }
+      }
+    };
+  }
+});
+
 function buildInputRules() {
   const rules = [];
 
@@ -948,6 +1042,43 @@ function buildInputRules() {
   return inputRules({ rules: rules });
 }
 
+/* ─── 단축키 글자 (「블록 추가」 창과 빈 페이지 안내가 같이 쓴다) ─── */
+
+const IS_MAC = /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent || '');
+
+/** `Mod-Alt-1` → 「Ctrl+Alt+1」 / 맥은 「⌘⌥1」 */
+function keyLabel(key) {
+  if (typeof key !== 'string' || key === '') { return ''; }
+  const parts = key.split('-');
+  const last = parts.pop();
+  const names = parts.map((m) => {
+    if (m === 'Mod') { return IS_MAC ? '⌘' : 'Ctrl'; }
+    if (m === 'Alt') { return IS_MAC ? '⌥' : 'Alt'; }
+    if (m === 'Shift') { return IS_MAC ? '⇧' : 'Shift'; }
+    return m;
+  });
+  return IS_MAC ? names.join('') + last : names.concat([last]).join('+');
+}
+
+/** 줄 맨 앞에서 치는 글자 — 끝의 빈칸은 「빈칸」이라고 적는다(보이지 않으니까) */
+function mdLabel(md) {
+  if (typeof md !== 'string' || md === '') { return ''; }
+  if (md === 'Enter') { return 'Enter'; }
+  return /\s$/.test(md) ? md.trim() + ' 빈칸' : md;
+}
+
+/** 창 오른쪽 설명 줄 — 이 종류를 만드는 길을 전부 적는다 */
+function shortcutSentence(entry) {
+  const out = [];
+  if (entry.md === 'Enter') {
+    out.push('줄 끝에서 Enter — 새 줄은 본문입니다');
+  } else if (entry.md) {
+    out.push('줄 맨 앞에서 「' + mdLabel(entry.md) + '」');
+  }
+  if (entry.key) { out.push(keyLabel(entry.key) + ' — 지금 블록을 이 종류로'); }
+  return out.length === 0 ? '단축키 없음 — 이 창에서 넣습니다' : '단축키: ' + out.join(' · ');
+}
+
 /* ─── 「블록 추가」 창 (지시서 2장 — `/` 슬래시 메뉴를 대신한다) ─── */
 
 function createBlockDialog(getView, hooks) {
@@ -956,6 +1087,7 @@ function createBlockDialog(getView, hooks) {
   const titleEl = document.getElementById('block-dialog-title');
   const nameEl = document.getElementById('block-preview-name');
   const descEl = document.getElementById('block-desc');
+  const keysEl = document.getElementById('block-keys');
   const sampleEl = document.getElementById('block-sample');
   const insertButton = document.getElementById('block-insert');
   if (!dialog || !listEl || !sampleEl || !insertButton) { return null; }
@@ -981,6 +1113,13 @@ function createBlockDialog(getView, hooks) {
     const strong = document.createElement('strong');
     strong.textContent = entry.label;
     button.appendChild(strong);
+    const hint = mdLabel(entry.md) || keyLabel(entry.key);
+    if (hint) {
+      const keys = document.createElement('span');
+      keys.className = 'block-pick__keys';
+      keys.textContent = hint;
+      button.appendChild(keys);
+    }
     button.addEventListener('click', () => { select(i); });
 
     li.appendChild(button);
@@ -998,6 +1137,7 @@ function createBlockDialog(getView, hooks) {
     const entry = BLOCK_TYPES[index];
     setText(nameEl, entry.label);
     setText(descEl, entry.desc);
+    setText(keysEl, shortcutSentence(entry));
     clear(sampleEl);
     // 미리보기도 읽기 렌더러로 그린다. 4단계의 「하위 페이지」는 제목 지도(`sampleCtx`)가 있다.
     sampleEl.appendChild(renderDoc(entry.sample, entry.sampleCtx || {}));
@@ -1109,7 +1249,12 @@ function createBlockDialog(getView, hooks) {
   }
 
   select(0);
-  return { open: open, close: () => { if (dialog.open) { dialog.close(); } } };
+  return {
+    open: open,
+    close: () => { if (dialog.open) { dialog.close(); } },
+    // 단축키(Ctrl+Alt+숫자)가 창을 열지 않고 같은 「바꾸기」를 부른다 — 규칙을 두 벌로 두지 않는다.
+    changeTo: (entry, pos) => { const view = getView(); if (view) { changeBlock(view, entry, pos); } }
+  };
 }
 
 /* ─── 인라인 툴바 — 「색」 「배경」 「링크」 셋 (지시서 1장) ───── */
@@ -1399,7 +1544,93 @@ function initPage() {
     if (state.doc) {
       docEl.appendChild(renderDoc(state.doc, { child_titles: state.childTitles, base: COMMUNITY_BASE }));
     }
+    armTodos();
   }
+
+  /* ── 읽기 화면의 할 일 상자 (2026-09-23 사용자 지적 「편집 끝 상태에서 체크가 안 됨」) ──
+   *
+   * 렌더러(`doc-render.js`)는 서버 렌더러와 **같은 모양**이어야 하므로(C:T-19) 건드리지 않고,
+   * 그린 뒤에 여기서 상자에 누를 수 있는 성질만 붙인다. 고칠 수 있는 사람(`can_edit`)에게만이다 —
+   * 눌러 봐야 서버가 다시 막지만, 못 하는 일을 할 수 있는 것처럼 보이게 하지 않는다.
+   * 누르면 문서의 그 할 일만 뒤집어 **보통 저장 창구로 곧바로** 보낸다. 체크 기록은 서버가
+   * 이전 문서와 견주어 남긴다(「처리 이력」). 상자와 할 일 블록은 그린 순서로 짝짓는다.
+   */
+  function todoBlocks(doc) {
+    const out = [];
+    (function walk(blocks) {
+      for (const b of Array.isArray(blocks) ? blocks : []) {
+        if (b && b.type === 'to_do') { out.push(b); }
+        if (b && Array.isArray(b.children)) { walk(b.children); }
+      }
+    })(doc && doc.blocks);
+    return out;
+  }
+
+  function armTodos() {
+    docEl.classList.toggle('doc--checkable', state.canEdit);
+    if (!state.canEdit) { return; }
+    docEl.querySelectorAll('.doc-todo__box').forEach((box, i) => {
+      box.removeAttribute('aria-hidden');
+      box.setAttribute('role', 'checkbox');
+      box.setAttribute('tabindex', '0');
+      box.setAttribute('aria-checked', box.parentNode.classList.contains('is-done') ? 'true' : 'false');
+      box.setAttribute('aria-label', '할 일 체크');
+      box.setAttribute('data-todo-index', String(i));
+    });
+  }
+
+  let todoBusy = false;
+  function toggleTodo(index) {
+    if (todoBusy || !state.canEdit || state.editing || !state.doc) { return; }
+    const doc = JSON.parse(JSON.stringify(state.doc));
+    const target = todoBlocks(doc)[index];
+    if (!target) { return; }
+    target.checked = target.checked !== true;
+    todoBusy = true;
+    badge('저장 중…', '');
+    api('PATCH', '/api/pages/' + pageId, { doc_version: state.version, doc: doc, title: state.title })
+      .then((result) => {
+        todoBusy = false;
+        if (result.status === 401) { toLogin(); return; }
+        if (result.status === 200) {
+          state.version = result.data.doc_version;
+          state.doc = doc;
+          drawRead();
+          const again = docEl.querySelector('[data-todo-index="' + String(index) + '"]');
+          if (again) { again.focus(); }
+          badge('저장됨', 'badge--ok');
+          return;
+        }
+        if (result.status === 409) {
+          badge('', '');
+          setText(msg, '다른 곳에서 먼저 고쳐져 새로 불러왔습니다. 다시 눌러 주세요.');
+          load();
+          return;
+        }
+        badge('저장 못 함', 'badge--admin-only');
+        setText(msg, errorMessage(result.data));
+      })
+      .catch(() => {
+        todoBusy = false;
+        badge('저장 못 함', 'badge--admin-only');
+        setText(msg, GENERIC_ERROR);
+      });
+  }
+
+  function todoIndexOf(target) {
+    const box = target instanceof Element ? target.closest('.doc-todo__box[data-todo-index]') : null;
+    return box && docEl.contains(box) ? Number(box.getAttribute('data-todo-index')) : -1;
+  }
+
+  docEl.addEventListener('click', (event) => {
+    const i = todoIndexOf(event.target);
+    if (i >= 0) { event.preventDefault(); toggleTodo(i); }
+  });
+  docEl.addEventListener('keydown', (event) => {
+    if (event.key !== ' ' && event.key !== 'Enter') { return; }
+    const i = todoIndexOf(event.target);
+    if (i >= 0) { event.preventDefault(); toggleTodo(i); }
+  });
 
   /** 경로(breadcrumb) — 「내 공간 › 부모 › 이 페이지」. 마지막 칸만 링크가 아니다. */
   function drawCrumb(breadcrumb) {
@@ -2042,6 +2273,77 @@ function initPage() {
 
   /* ── 편집 모드 ── */
 
+  /* ── 빈 페이지 안내 · 기본 구성 (2026-09-23) ── */
+
+  const starterEl = document.getElementById('editor-starter');
+  const starterKeys = document.getElementById('editor-starter-keys');
+  const starterApply = document.getElementById('editor-starter-apply');
+
+  // 안내에 보일 블록 — 처음 쓰는 사람이 알아야 할 것만. 단축키 글자는 창과 같은 곳(BLOCK_TYPES)에서 온다.
+  const STARTER_PICKS = [['paragraph'], ['heading', 1], ['heading', 2], ['bulleted'], ['numbered'], ['to_do'], ['toc']];
+  if (starterKeys) {
+    for (const [type, level] of STARTER_PICKS) {
+      const entry = BLOCK_TYPES.find((e) => e.type === type && (level === undefined || (e.attrs && e.attrs.level === level)));
+      if (!entry) { continue; }
+      const li = document.createElement('li');
+      const name = document.createElement('strong');
+      name.textContent = entry.label;
+      const keys = document.createElement('span');
+      keys.className = 'block-pick__keys';
+      keys.textContent = mdLabel(entry.md) || '「블록 추가」에서';
+      li.appendChild(name);
+      li.appendChild(keys);
+      starterKeys.appendChild(li);
+    }
+  }
+
+  function docIsEmpty() {
+    if (!view) { return false; }
+    const d = view.state.doc;
+    return d.childCount === 1 && d.firstChild.type === schema.nodes.paragraph && d.firstChild.content.size === 0;
+  }
+
+  function drawStarter() { show(starterEl, docIsEmpty()); }
+
+  /** 기본 구성 — 빈 문서일 때만 통째로 넣는다(쓴 글을 덮지 않는다). 되돌리기(Ctrl+Z)로 뺄 수 있다. */
+  function applyStarter() {
+    if (!view || !docIsEmpty()) { return; }
+    const n = schema.nodes;
+    const text = (t) => (t === '' ? null : schema.text(t));
+    const blocks = [
+      n.heading.create({ id: uuid4(), level: 1 }, text('제목')),
+      n.toc.create({ id: uuid4() }),
+      n.heading.create({ id: uuid4(), level: 2 }, text('개요')),
+      n.paragraph.create({ id: uuid4() }, text('무엇에 관한 글인지 한두 줄로 적습니다.')),
+      n.heading.create({ id: uuid4(), level: 2 }, text('할 일')),
+      n.to_do.create({ id: uuid4(), checked: false }, text('첫 번째 할 일')),
+      n.heading.create({ id: uuid4(), level: 2 }, text('메모')),
+      n.paragraph.create({ id: uuid4() })
+    ];
+    const tr = view.state.tr.replaceWith(0, view.state.doc.content.size, blocks);
+    // 커서는 맨 위 「제목」 끝 — 바로 고쳐 쓰게.
+    tr.setSelection(TextSelection.create(tr.doc, 1 + '제목'.length));
+    view.dispatch(tr.scrollIntoView());
+    view.focus();
+  }
+
+  if (starterApply) { starterApply.addEventListener('click', applyStarter); }
+
+  /** Ctrl+Alt+숫자 — 커서가 있는 블록을 그 종류로 바꾼다(`BLOCK_TYPES[].key`, 창의 「바꾸기」와 같다) */
+  function blockKeymap() {
+    const bindings = {};
+    for (const entry of BLOCK_TYPES) {
+      if (!entry.key || entry.makesPage) { continue; }
+      bindings[entry.key] = (pmState) => {
+        const $from = pmState.selection.$from;
+        if ($from.depth < 1 || !blockDialog) { return false; }
+        blockDialog.changeTo(entry, $from.before(1));
+        return true;
+      };
+    }
+    return keymap(bindings);
+  }
+
   function startEditing() {
     // ★ 편집기는 **한 번만** 만든다 (지시서 4장) — 두 벌이 겹치면 친 글자가 사라진다.
     if (state.editing || view !== null) { return; }
@@ -2060,6 +2362,7 @@ function initPage() {
       doc: schema.nodeFromJSON(pmDoc),
       plugins: [
         buildInputRules(),
+        blockKeymap(),
         // ★ 우리 명령을 `baseKeymap` **앞에** 둔다 (지시서 3장).
         //   Ctrl+B·I·U 는 등록하지 않는다 — 문자 꾸미기를 만들지 않기로 했다.
         keymap({
@@ -2078,7 +2381,9 @@ function initPage() {
         dropCursor(),
         gapCursor(),
         uniqueBlockIds,
-        blockHandles
+        blockHandles,
+        todoToggle,
+        liveToc
       ]
     });
 
@@ -2089,11 +2394,12 @@ function initPage() {
         const next = view.state.apply(tr);
         view.updateState(next);
         if (toolbar) { toolbar.refresh(); }
-        if (tr.docChanged) { markDirty(); }
+        if (tr.docChanged) { markDirty(); drawStarter(); }
       }
     });
 
     toolbar = createToolbar(view);
+    drawStarter();
 
     show(docEl, false);
     show(editorEl, true);
@@ -2115,6 +2421,7 @@ function initPage() {
     flushSave().then(() => {
       if (blockDialog) { blockDialog.close(); }
       if (toolbar) { toolbar.hide(); toolbar = null; }
+      show(starterEl, false);
       if (view) { view.destroy(); view = null; }
       clear(editorEl);
       stopHeartbeat();

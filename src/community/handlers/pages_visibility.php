@@ -11,7 +11,8 @@ declare(strict_types=1);
  * 받는 값 (JSON, **허용 키 밖이 하나라도 있으면 400**)
  *   visibility  `private` · `team` · `internal` **셋뿐**. `published` 를 보내면 400 이다 —
  *               게시판 공간(`kind='board'`)이 아직 없어 「게시」가 갈 곳이 없다(5단계).
- *   cascade     선택. 참이면 **하위 전부**를 같은 값 이하로 함께 좁힌다(항목마다 감사).
+ *   cascade     선택. 참이면 **하위 전부**를 같은 값으로 맞춘다 — 넓힐 때도 좁힐 때도(항목마다 감사).
+ *               2026-09-23 정정: 전에는 좁힐 때만 적용돼 넓힐 때 켜도 하위가 그대로였다.
  *
  * 검사 순서
  *   [1] 허용 키·값 → [2] 행+공간 → 404
@@ -22,6 +23,7 @@ declare(strict_types=1);
  *   [5] **좁히기** — 하위에 더 넓은 것이 있으면
  *         `cascade` 없이   → 400 `children_wider` + 감사 + DB 불변
  *         `cascade: true`  → 하위 전부를 새 값으로 내리고 **항목마다** 감사 (C:T-34)
+ *       넓힐 때 `cascade: true` → 하위 전부를 새 값으로 올린다 (C:T-34b)
  *   [6] 트랜잭션: 자기 갱신 → (필요하면) 하위 갱신 → 감사 `page.visibility allow` → 200
  *
  * ★ 값이 그대로여도 400 이 아니다 — 같은 값으로 다시 누르면 아무것도 바뀌지 않고 200 이다
@@ -187,7 +189,9 @@ $sqlSet = <<<'SQL'
        AND deleted_at IS NULL
     SQL;
 
-$cascaded = $cascade ? count($wider) : 0;
+// 켜져 있으면 넓히든 좁히든 **값이 다른 하위 전부**를 같은 값으로 (더 넓은 것 ⊂ 다른 것).
+$targets  = $cascade ? community_descendants_differ($pageId, $want) : [];
+$cascaded = count($targets);
 
 $db->begin();
 try {
@@ -203,7 +207,7 @@ try {
        `cascaded` 는 이 한 번의 작업에서 함께 바뀐 하위 수이고, 부모 행과 자식 행이 같은
        값을 갖는다 — 같은 작업에서 나온 행들을 그 수로 묶어 볼 수 있다. */
     if ($cascade) {
-        foreach ($wider as $child) {
+        foreach ($targets as $child) {
             $db->run($sqlSet, [':vis' => $want, ':me' => $me, ':pid' => $child['id']]);
 
             $childTitle = community_target_title($child['title']);

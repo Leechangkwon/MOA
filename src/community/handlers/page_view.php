@@ -48,10 +48,6 @@ require __DIR__ . '/../../views/shell_top.php';
         <button type="button" class="btn btn--quiet" data-help-open>
           <span class="icon" data-icon="help"></span><span>사용 방법</span>
         </button>
-        <!-- 공개 범위 배지 (4-B, DESIGN 2.2) — 한글 라벨을 보이고 원래 값은 `title` 에 둔다.
-             색은 t-box 등급 배지의 뜻 그대로다: 비공개=`--admin-only`(빨강, 가장 좁다) ·
-             팀=`--team`(보라) · 사내=`--internal`(파랑). 새 색값을 만들지 않았다. -->
-        <span id="page-visibility" class="badge" hidden></span>
         <span id="page-editors" class="badge" hidden></span>
         <span id="page-save-state" class="badge" hidden></span>
         <button id="page-delete" class="btn btn--quiet btn--danger" type="button" hidden>
@@ -59,17 +55,6 @@ require __DIR__ . '/../../views/shell_top.php';
         </button>
         <button id="page-move" class="btn btn--quiet" type="button" hidden>
           <span class="icon" data-icon="files"></span>옮기기
-        </button>
-        <!-- 「공개 범위」 (4-B). 창구가 준 `can_set_visibility` 가 참일 때만 보인다 —
-             화면이 소유·역할을 따지지 않는다. 되살려 눌러도 서버가 다시 막는다 (PRD S-01). -->
-        <button id="page-visibility-edit" class="btn btn--quiet" type="button" hidden>
-          <span class="icon" data-icon="shield"></span>공개 범위
-        </button>
-        <!-- 「이력」 (4-C). 이 페이지를 **볼 수 있는 사람이면 누구나** 연다 — 읽기 판정과 같은
-             자격이고(`decidePageRead`), 되돌리기 단추만 고칠 수 있는 사람에게 보인다.
-             내용은 창구가 준 값으로 editor.js 가 채운다. -->
-        <button id="page-history" class="btn btn--quiet" type="button">
-          <span class="icon" data-icon="log"></span>이력
         </button>
         <button id="page-edit" class="btn" type="button" hidden>
           <span class="icon" data-icon="edit"></span>편집
@@ -86,13 +71,37 @@ require __DIR__ . '/../../views/shell_top.php';
          값도 잠금도 전부 창구가 준 것(`status`·`assignee`·`can_set_properties`)이고,
          화면에는 소유·역할을 따지는 코드가 없다 (PRD S-01, DESIGN 원칙 1). -->
     <div id="page-props" class="page-props" hidden>
-      <span class="muted">상태</span>
-      <button id="page-status" class="btn btn--small btn--quiet" type="button" aria-haspopup="dialog">
-        <span id="page-status-badge" class="badge">없음</span>
-      </button>
-      <span class="muted">담당자</span>
-      <button id="page-assignee" class="btn btn--small btn--quiet" type="button" aria-haspopup="dialog">
-        <span id="page-assignee-name">없음</span>
+      <span class="page-props__group">
+        <span class="muted">상태</span>
+        <button id="page-status" class="btn btn--small btn--quiet" type="button" aria-haspopup="dialog">
+          <span id="page-status-badge" class="badge">없음</span>
+        </button>
+      </span>
+      <span class="page-props__group">
+        <span class="muted">담당자</span>
+        <button id="page-assignee" class="btn btn--small btn--quiet" type="button" aria-haspopup="dialog">
+          <span id="page-assignee-name">없음</span>
+        </button>
+      </span>
+      <!-- 공개 범위·이력은 머리글에서 이 줄로 옮겼다 (사용자 지시 2026-09-23 — 문서의 속성끼리 한 줄에).
+           공개 범위 배지 (4-B, DESIGN 2.2) — 한글 라벨을 보이고 원래 값은 `title` 에 둔다.
+           색은 t-box 등급 배지의 뜻 그대로다: 비공개=`--admin-only`(빨강, 가장 좁다) ·
+           팀=`--team`(보라) · 사내=`--internal`(파랑). 새 색값을 만들지 않았다.
+           「바꾸기」는 창구가 준 `can_set_visibility` 가 참일 때만 보인다 — 화면이 소유·역할을
+           따지지 않는다. 되살려 눌러도 서버가 다시 막는다 (PRD S-01). -->
+      <span class="page-props__sep" aria-hidden="true"></span>
+      <span class="page-props__group">
+        <span class="muted">공개 범위</span>
+        <span id="page-visibility" class="badge" hidden></span>
+        <button id="page-visibility-edit" class="btn btn--small btn--quiet" type="button" aria-haspopup="dialog" hidden>
+          <span class="icon" data-icon="shield"></span>바꾸기
+        </button>
+      </span>
+      <!-- 「이력」 (4-C). 이 페이지를 **볼 수 있는 사람이면 누구나** 연다 — 읽기 판정과 같은
+           자격이고(`decidePageRead`), 되돌리기 단추만 고칠 수 있는 사람에게 보인다. -->
+      <span class="page-props__sep" aria-hidden="true"></span>
+      <button id="page-history" class="btn btn--small btn--quiet" type="button" aria-haspopup="dialog">
+        <span class="icon" data-icon="log"></span>이력
       </button>
     </div>
 
@@ -120,6 +129,21 @@ require __DIR__ . '/../../views/shell_top.php';
 
     <!-- 편집 모드의 본문이 들어오는 자리 (ProseMirror 가 자기 DOM 을 그린다) -->
     <div id="page-editor" class="panel" hidden></div>
+
+    <!-- 빈 페이지 안내 (2026-09-23 사용자 요청 「제목·목차를 모르면 못 쓴다 — 기본 블록 구성을 보여 주자」).
+         문서가 비어 있을 때만 편집기 **아래**에 보인다 — 위에 두면 첫 글자를 칠 때 사라지며 본문이 밀린다.
+         단축키 줄은 editor.js 가 `BLOCK_TYPES` 에서 채운다(창의 표시와 한 곳에서 나온다). -->
+    <section id="editor-starter" class="panel editor-starter" hidden aria-labelledby="editor-starter-title">
+      <p id="editor-starter-title" class="panel__title">빈 페이지입니다 — 줄마다 블록 하나로 씁니다</p>
+      <p class="muted">자주 쓰는 블록은 줄 맨 앞에서 글자를 치면 바뀝니다. 나머지는 위 「블록 추가」에서 고릅니다.</p>
+      <ul id="editor-starter-keys" class="editor-starter__keys"></ul>
+      <div class="editor-starter__actions">
+        <button id="editor-starter-apply" class="btn" type="button">
+          <span class="icon" data-icon="plus"></span>기본 구성 넣기
+        </button>
+        <span class="muted">제목 · 목차 · 개요 · 할 일 · 메모 뼈대를 넣습니다. 글자는 고쳐 쓰면 됩니다.</span>
+      </div>
+    </section>
 
     <!-- 하위 페이지 (4-A). 「하위 페이지 만들기」는 언제나 보이고(고칠 수 있을 때),
          목록은 있을 때만 보인다. 카드는 editor.js 가 `.card--link` 로 만든다. -->
@@ -234,7 +258,7 @@ require __DIR__ . '/../../views/shell_top.php';
         <label class="field field--full">
           <span class="field__label">
             <input id="visibility-cascade" type="checkbox">
-            하위 페이지까지 함께 (더 넓게 열린 하위만 같이 좁힙니다)
+            하위 페이지까지 함께 (하위 페이지 전부를 같은 공개 범위로 맞춥니다)
           </span>
         </label>
 
@@ -331,6 +355,7 @@ require __DIR__ . '/../../views/shell_top.php';
         <div class="block-picker__detail">
           <p id="block-preview-name" class="panel__title"></p>
           <p id="block-desc" class="muted"></p>
+          <p id="block-keys" class="block-picker__keys"></p>
           <div id="block-sample" class="block-picker__sample"></div>
         </div>
       </div>

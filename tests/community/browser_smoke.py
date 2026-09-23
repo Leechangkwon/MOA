@@ -610,6 +610,68 @@ with sync_playwright() as p:
     page.set_viewport_size({"width": 1440, "height": 900})
     page.wait_for_timeout(300)
 
+    # ── 16-4. 할 일 체크 · 목차 · 단축키 · 빈 페이지 안내 (2026-09-23 사용자 요청) ──
+    print("── 16-4. 빈 페이지 안내 → 기본 구성 · 목차 · 할 일 체크 · Ctrl+Alt+숫자")
+    reset_doc()
+    page.wait_for_timeout(200)
+    step("빈 문서면 편집기 아래에 안내가 보인다", page.locator("#editor-starter").is_visible())
+    page.click("#editor-starter-apply")
+    page.wait_for_timeout(300)
+    step("「기본 구성 넣기」 → 제목·목차·개요·할 일·메모 뼈대",
+         kinds() == ["h1", "toc", "h2", "p", "h2", "to_do", "h2", "p"], "블록=%r" % kinds())
+    step("글이 생기면 안내가 사라진다", not page.locator("#editor-starter").is_visible())
+    toc_text = page.locator(".ProseMirror .doc-toc").inner_text().split("\n")
+    step("편집 중에도 목차가 제목으로 채워진다", toc_text == ["제목", "개요", "할 일", "메모"], "목차=%r" % toc_text)
+    page.keyboard.type(" 고침")
+    page.wait_for_timeout(200)
+    toc_first = page.locator(".ProseMirror .doc-toc li").first.inner_text()
+    step("제목을 고치면 목차가 바로 따라 바뀐다", toc_first == "제목 고침", "첫 줄=%r" % toc_first)
+
+    page.locator(".ProseMirror .doc-todo__box").first.click()
+    page.wait_for_timeout(200)
+    step("편집 중 할 일 상자를 누르면 체크된다",
+         page.locator(".ProseMirror .doc-todo").first.get_attribute("class").find("is-done") >= 0)
+    wait_saved()
+    todos = [b for b in saved_doc(page_id)["blocks"] if b["type"] == "to_do"]
+    step("저장 JSON 의 할 일이 checked=true", len(todos) == 1 and todos[0].get("checked") is True, "todos=%r" % todos)
+
+    page.locator(".ProseMirror > *").last.click()
+    page.keyboard.type("단축키")
+    got = []
+    for combo in ["Control+Alt+1", "Control+Alt+4", "Control+Alt+5", "Control+Alt+0"]:
+        page.keyboard.press(combo)
+        page.wait_for_timeout(120)
+        got.append(kinds()[-1])
+    step("Ctrl+Alt+1·4·5·0 → 제목 1 · 할 일 · 글머리 · 본문", got == ["h1", "to_do", "bulleted", "p"], "차례=%r" % got)
+    step("종류를 바꿔도 글자는 그대로", page.locator(".ProseMirror > *").last.inner_text().strip().endswith("단축키"))
+
+    page.click("#page-add-block")
+    page.wait_for_selector("#block-dialog[open]", timeout=5000)
+    hint0 = page.locator("#block-list .block-pick__keys").first.inner_text().strip()
+    keys0 = page.locator("#block-keys").inner_text().strip()
+    step("「블록 추가」 창 — 본문 줄에 Enter, 설명에 단축키", hint0 == "Enter" and "Enter" in keys0 and "Ctrl+Alt+0" in keys0,
+         "줄=%r 설명=%r" % (hint0, keys0))
+    page.keyboard.press("Escape")
+    page.wait_for_timeout(200)
+
+    # 읽기 화면(편집 끝)에서도 체크된다 — 누르면 곧바로 저장된다
+    wait_saved()
+    page.click("#page-done")
+    page.wait_for_selector("#page-edit:not([hidden])", timeout=10000)
+    page.wait_for_timeout(300)
+    read_boxes = page.locator("#page-doc .doc-todo__box[role=checkbox]")
+    step("읽기 화면의 할 일 상자는 누를 수 있다(role=checkbox)", read_boxes.count() == 1, "%d개" % read_boxes.count())
+    read_boxes.first.click()
+    page.wait_for_timeout(1500)
+    todos = [b for b in saved_doc(page_id)["blocks"] if b["type"] == "to_do"]
+    step("읽기 화면에서 누르면 저장 JSON 의 체크가 풀린다", len(todos) == 1 and todos[0].get("checked") is False, "todos=%r" % todos)
+    page.keyboard.press("Space")
+    page.wait_for_timeout(1500)
+    todos = [b for b in saved_doc(page_id)["blocks"] if b["type"] == "to_do"]
+    step("키보드(스페이스)로도 켜진다", len(todos) == 1 and todos[0].get("checked") is True, "todos=%r" % todos)
+    page.click("#page-edit")
+    page.wait_for_selector(".ProseMirror", timeout=10000)
+
     print("── 17. 빠른 타자 — delay=0 으로 200자 + 줄바꿈 10회")
     reset_doc()
     chunks = ["FAST%02dabcdefghijklmn" % i for i in range(10)]

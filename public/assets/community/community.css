@@ -164,6 +164,10 @@
 .doc-todo.is-done .doc-todo__box { background: var(--ok-bg); border-color: var(--ok-line); }
 .doc-todo.is-done .doc-todo__text { color: var(--muted); text-decoration: line-through; }
 .doc-todo__text { min-width: 0; }
+/* 누를 수 있는 할 일 상자 — 편집기 안, 그리고 고칠 수 있는 사람의 읽기 화면(`.doc--checkable`) */
+.editor .doc-todo__box,
+.doc--checkable .doc-todo__box { cursor: pointer; }
+.doc--checkable .doc-todo__box:focus-visible { outline: none; border-color: var(--ring); box-shadow: 0 0 0 3px var(--ring-soft); }
 
 .doc-quote {
   margin: 0;
@@ -312,6 +316,27 @@
   text-align: left;
   cursor: pointer;
 }
+/* 빈 페이지 안내 (2026-09-23) — 편집기 아래, 문서가 비었을 때만 */
+.editor-starter { gap: 10px; padding: 16px 20px; box-shadow: none; }
+/* 안내가 보이는 동안(빈 문서)은 편집 칸을 낮춰 안내가 첫 화면에 들어오게 한다. 글을 치면 안내가
+   사라지고 칸은 **아래로** 자란다 — 위의 것은 움직이지 않는다. */
+.panel:has(+ .editor-starter:not([hidden])) > .editor { min-height: 5rem; }
+.editor-starter__keys {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(11rem, 1fr));
+  gap: 6px 16px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: 13px;
+}
+.editor-starter__keys li { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+.editor-starter__actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; }
+
+/* 목록 줄 오른쪽의 단축키 · 창 오른쪽의 단축키 설명 (2026-09-23) */
+.block-pick { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+.block-pick__keys { flex: 0 0 auto; color: var(--muted); font-family: var(--mono); font-size: 11px; }
+.block-picker__keys { margin: 0; color: var(--fg-2); font-size: 13px; }
 .block-picker__detail { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
 .block-picker__sample {
   padding: 16px;
@@ -549,6 +574,10 @@ details.page-tree__node[open] > summary > .page-tree__row > .page-tree__caret { 
   gap: 8px;
   margin: 0 0 12px;
 }
+/* 상태·담당자 | 공개 범위 | 이력 사이의 세로줄 (2026-09-23 머리글에서 옮겨 옴) */
+/* 라벨과 그 값은 한 덩어리 — 좁은 화면에서 줄이 꺾여도 「공개 범위」와 배지가 떨어지지 않는다 */
+.page-props__group { display: inline-flex; align-items: center; gap: 8px; }
+.page-props__sep { align-self: stretch; width: 1px; margin: 4px 4px; background: var(--line); }
 /* 고칠 수 없는 사람에게는 단추가 잠긴다 — 값은 그대로 보이고 눌리지 않는다. */
 .page-props .btn[disabled] { cursor: default; }
 

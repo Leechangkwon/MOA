@@ -411,6 +411,20 @@ if [ "$HAVE_PSQL" = "1" ]; then
            FROM audit_logs WHERE id > ${T34B_MARK} AND action='page.visibility' AND result='allow' ORDER BY id"
 fi
 
+# 2026-09-23 정정(사용자 지적 「하위까지 함께를 체크해도 적용되지 않음」): 넓힐 때 켜도 하위가 따라와야 한다.
+T34C_MARK=$(mark)
+CODE=$(set_vis qa_employee01 "$ROOT_PAGE" internal true)
+expect "C:T-34c  cascade:true 로 부모를 internal 로 **넓히면**" "200" "$CODE"
+contains "함께 바뀐 하위 수가 2" '"cascaded":2' "$(cat "$WORK/b")"
+if [ "$HAVE_PSQL" = "1" ]; then
+  expect "자식도 internal"  "internal" "$(vis_of "$CHILD")"
+  expect "손자도 internal"  "internal" "$(vis_of "$GRAND")"
+  expect "감사 page.visibility allow 3건 (**항목마다**)" "3" \
+    "$(psqlq "SELECT count(*) FROM audit_logs WHERE id > ${T34C_MARK} AND action='page.visibility' AND result='allow'")"
+fi
+CODE=$(set_vis qa_employee01 "$ROOT_PAGE" private true)
+expect "되돌리기 — cascade:true 로 전부 private" "200" "$CODE"
+
 # ════════════════════════════════════════════════════════════════
 hr "C:T-35  목록 격리 — 남의 개인 공간은 통째로 닫혀 있다"
 

@@ -685,6 +685,52 @@ SQL;
 }
 
 /**
+ * 이 페이지 아래에서 **범위가 새 값과 다른** 페이지 전부 (「하위 페이지까지 함께」, 2026-09-23 정정).
+ *
+ * 전에는 cascade 가 「더 넓은 하위를 좁히기」에만 쓰여, 넓힐 때 켜도 하위가 그대로였다
+ * (사용자 지적 「하위까지 함께를 체크해도 적용되지 않음」). 이제 켜면 넓히든 좁히든 하위 전부가
+ * 같은 값이 된다 — 전부 부모와 같으므로 「자식은 부모보다 넓을 수 없다」도 그대로 지켜진다.
+ *
+ * @return list<array{id:int,public_id:string,title:string,visibility:string}>
+ */
+function community_descendants_differ(int $pageId, string $newVisibility): array
+{
+    $sql = <<<'SQL'
+        WITH RECURSIVE down AS (
+            SELECT p.id FROM community.pages p
+             WHERE p.id = CAST(:pid AS bigint) AND p.deleted_at IS NULL
+            UNION ALL
+            SELECT c.id FROM community.pages c
+              JOIN down d ON c.parent_page_id = d.id
+             WHERE c.deleted_at IS NULL
+        )
+        SELECT p.id, p.public_id, p.title, p.visibility
+          FROM community.pages p
+          JOIN down ON down.id = p.id
+         WHERE p.id <> CAST(:pid2 AS bigint)
+           AND p.deleted_at IS NULL
+           AND p.visibility <> :vis
+         ORDER BY p.id
+         LIMIT 2000
+        SQL;
+
+    if (CommunityAuthz::visibilityRank($newVisibility) === null) {
+        return [];
+    }
+
+    $out = [];
+    foreach (Db::instance()->run($sql, [':pid' => $pageId, ':pid2' => $pageId, ':vis' => $newVisibility])->fetchAll() as $r) {
+        $out[] = [
+            'id'         => (int) $r['id'],
+            'public_id'  => (string) $r['public_id'],
+            'title'      => (string) $r['title'],
+            'visibility' => (string) $r['visibility'],
+        ];
+    }
+    return $out;
+}
+
+/**
  * 이 페이지 **아래에서 더 넓은** 페이지들 (4-B `children_wider` · `cascade`).
  *
  * 재귀 CTE **한 번**으로 후손 전부를 모으고, 새 범위보다 넓은 것만 돌려준다.
