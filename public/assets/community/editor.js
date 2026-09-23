@@ -2058,7 +2058,7 @@ function createBlockDialog(getView, hooks) {
  * 그대로 부른다. 고른 이름은 `remember*` 로 제목 지도에 넣어 둔다 — 읽기 화면이 저장 뒤 곧바로 이름을 그리게.
  * 등급 규칙(파일이 페이지를 읽는 범위보다 좁으면 안 된다)은 **서버가 저장할 때** 판정한다 — 여기서 걸러 보이지 않는다.
  */
-const ATOM_TYPES = ['toggle', 'table', 'link_to_page', 'image', 'file'];
+const ATOM_TYPES = ['toggle', 'table', 'link_to_page', 'image', 'file', 'columns'];
 const TABLE_MAX_ROWS = 200;
 const TABLE_MAX_COLS = 20;
 
@@ -2069,7 +2069,7 @@ function createAtomDialog(getView, hooks) {
   const titleEl = $('atom-dialog-title');
   const msgEl = $('atom-msg');
   const commitButton = $('atom-commit');
-  const panes = { toggle: $('atom-toggle'), table: $('atom-table'), link_to_page: $('atom-link'), image: $('atom-file'), file: $('atom-file') };
+  const panes = { toggle: $('atom-toggle'), table: $('atom-table'), link_to_page: $('atom-link'), image: $('atom-file'), file: $('atom-file'), columns: $('atom-columns') };
   const toggleSummary = $('atom-toggle-summary');
   const toggleBody = $('atom-toggle-body');
   const hRow = $('atom-table-hrow');
@@ -2091,6 +2091,8 @@ function createAtomDialog(getView, hooks) {
   let pos = null;
   let cur = {};
   let rows = [['']];
+  let spans = {};          // 6-C 합친 칸 {'행,열': [세로, 가로]}
+  let picked = null;       // 6-C 고른 칸 [행, 열]
   let searchTimer = null;
   let searchSerial = 0;
 
@@ -2102,21 +2104,49 @@ function createAtomDialog(getView, hooks) {
     }
     if (out.length > 0) { rows = out; }
   }
+  /** 6-C — 합친 칸이 덮는 자리('행,열') */
+  function coveredSet() {
+    const out = new Set();
+    for (const key of Object.keys(spans)) {
+      const [r0, c0] = key.split(',').map(Number);
+      const [rs, cs] = spans[key];
+      for (let y = r0; y < r0 + rs; y++) { for (let x = c0; x < c0 + cs; x++) { if (y !== r0 || x !== c0) { out.add(y + ',' + x); } } }
+    }
+    return out;
+  }
   function drawGrid() {
     clear(grid);
+    // 표 모양이 바뀌어 표 밖으로 나가는 합침은 버린다
+    for (const key of Object.keys(spans)) {
+      const [r0, c0] = key.split(',').map(Number);
+      if (r0 + spans[key][0] > rows.length || c0 + spans[key][1] > (rows[0] || []).length) { delete spans[key]; }
+    }
+    const covered = coveredSet();
     for (let r = 0; r < rows.length; r++) {
       const tr = document.createElement('tr');
       for (let c = 0; c < rows[r].length; c++) {
         const td = document.createElement('td');
-        td.className = 'doc-table__cell';
+        td.className = 'doc-table__cell' + (picked && picked[0] === r && picked[1] === c ? ' is-picked' : '');
         const inp = document.createElement('input');
         inp.type = 'text';
         inp.className = 'input';
         inp.maxLength = 2000;
         inp.autocomplete = 'off';
         inp.spellcheck = false;
-        inp.value = rows[r][c];
-        inp.setAttribute('aria-label', String(r + 1) + '행 ' + String(c + 1) + '열');
+        inp.setAttribute('data-r', String(r));
+        inp.setAttribute('data-c', String(c));
+        const sp = spans[r + ',' + c];
+        if (covered.has(r + ',' + c)) {
+          // 덮인 칸 — 비우고 막는다(합친 칸의 일부)
+          inp.value = '';
+          rows[r][c] = '';
+          inp.disabled = true;
+          inp.placeholder = '(합침)';
+        } else {
+          inp.value = rows[r][c];
+        }
+        inp.setAttribute('aria-label', String(r + 1) + '행 ' + String(c + 1) + '열' + (sp ? ' — 합친 칸 ' + sp[0] + '×' + sp[1] : ''));
+        inp.addEventListener('focus', () => { picked = [r, c]; for (const x of grid.querySelectorAll('.is-picked')) { x.classList.remove('is-picked'); } td.classList.add('is-picked'); });
         td.appendChild(inp);
         tr.appendChild(td);
       }
@@ -2124,6 +2154,49 @@ function createAtomDialog(getView, hooks) {
     }
   }
   function reshape(fn) { readGrid(); fn(); drawGrid(); }
+  /* 6-C 칸 합치기 — 고른 칸부터 가로·세로 몇 칸. 덮일 칸에 글자가 있거나 다른 합침과 겹치면 합치지 않는다 */
+  $('atom-merge').addEventListener('click', () => {
+    readGrid();
+    if (!picked) { setText(msgEl, '합칠 첫 칸을 먼저 누르세요.'); return; }
+    const [r0, c0] = picked;
+    const cs = Math.max(1, Math.min(20, parseInt($('atom-merge-cols').value, 10) || 1));
+    const rs = Math.max(1, Math.min(20, parseInt($('atom-merge-rows').value, 10) || 1));
+    if (r0 + rs > rows.length || c0 + cs > rows[0].length) { setText(msgEl, '표 밖으로 나갑니다.'); return; }
+    // 이미 합친 칸의 크기를 바꿀 때는 자기 합침을 빼고 센다(독립 검토 6-C L5)
+    const own = spans[r0 + ',' + c0];
+    delete spans[r0 + ',' + c0];
+    const covered = coveredSet();
+    if (own) { spans[r0 + ',' + c0] = own; }
+    for (let y = r0; y < r0 + rs; y++) {
+      for (let x = c0; x < c0 + cs; x++) {
+        if (y === r0 && x === c0) { continue; }
+        if (covered.has(y + ',' + x) || spans[y + ',' + x] || String(rows[y][x]).trim() !== '') {
+          setText(msgEl, '합칠 칸이 비어 있어야 합니다(다른 합침과도 겹치면 안 됩니다).');
+          return;
+        }
+      }
+    }
+    if (covered.has(r0 + ',' + c0)) { setText(msgEl, '이미 합쳐진 칸 안입니다.'); return; }
+    setText(msgEl, '');
+    if (rs === 1 && cs === 1) { delete spans[r0 + ',' + c0]; } else { spans[r0 + ',' + c0] = [rs, cs]; }
+    drawGrid();
+  });
+  $('atom-unmerge').addEventListener('click', () => {
+    if (!picked) { setText(msgEl, '풀 칸을 먼저 누르세요.'); return; }
+    readGrid();
+    delete spans[picked[0] + ',' + picked[1]];
+    setText(msgEl, '');
+    drawGrid();
+  });
+
+  /* 6-C 단 나누기 — 단 수에 따라 셋째 칸을 보이고 감춘다 */
+  const colsN = $('atom-columns-n');
+  const syncCols = () => {
+    show($('atom-col-2-field'), colsN.value === '3');
+    // 3단 → 2단: 셋째 단 글은 넣을 때 버려진다 — 말없이 버리지 않게 알린다(독립 검토 6-C L3)
+    setText(msgEl, colsN.value === '2' && $('atom-col-2').value.trim() !== '' ? '2단으로 줄이면 셋째 단의 글은 저장되지 않습니다.' : '');
+  };
+  colsN.addEventListener('change', syncCols);
   $('atom-row-add').addEventListener('click', () => reshape(() => {
     if (rows.length < TABLE_MAX_ROWS) { rows.push(rows[0].map(() => '')); }
   }));
@@ -2223,7 +2296,7 @@ function createAtomDialog(getView, hooks) {
   fileQ.addEventListener('input', debounce(searchFiles));
   $('atom-file-refresh').addEventListener('click', searchFiles);
 
-  const LABELS = { toggle: '토글', table: '표', link_to_page: '페이지 링크', image: '그림', file: '파일' };
+  const LABELS = { toggle: '토글', table: '표', link_to_page: '페이지 링크', image: '그림', file: '파일', columns: '단 나누기' };
 
   function open(nextType, attrs, nextPos) {
     if (ATOM_TYPES.indexOf(nextType) === -1) { return; }
@@ -2243,7 +2316,16 @@ function createAtomDialog(getView, hooks) {
       rows = Array.isArray(cur.rows) && cur.rows.length > 0 ? cur.rows.map((r) => r.slice()) : [['', ''], ['', '']];
       hRow.checked = attrs ? cur.header_row === true : true;
       hCol.checked = cur.header_col === true;
+      spans = cur.spans && typeof cur.spans === 'object' ? JSON.parse(JSON.stringify(cur.spans)) : {};
+      picked = null;
       drawGrid();
+    } else if (type === 'columns') {
+      const cols = Array.isArray(cur.cols) && cur.cols.length >= 2 ? cur.cols : [{ kids: [] }, { kids: [] }];
+      colsN.value = cols.length === 3 ? '3' : '2';
+      for (let i = 0; i < 3; i++) {
+        $('atom-col-' + i).value = cols[i] ? (cols[i].kids || []).map((k) => (k && k.text) || '').join('\n') : '';
+      }
+      syncCols();
     } else if (type === 'link_to_page') {
       linkQ.value = '';
       clear(linkList);
@@ -2269,7 +2351,19 @@ function createAtomDialog(getView, hooks) {
     }
     if (type === 'table') {
       readGrid();
-      return { id: id, header_row: hRow.checked, header_col: hCol.checked, rows: rows.map((r) => r.slice()) };
+      return { id: id, header_row: hRow.checked, header_col: hCol.checked, rows: rows.map((r) => r.slice()), spans: JSON.parse(JSON.stringify(spans)) };
+    }
+    if (type === 'columns') {
+      const n = colsN.value === '3' ? 3 : 2;
+      const old = Array.isArray(cur.cols) ? cur.cols : [];
+      const cols = [];
+      for (let i = 0; i < n; i++) {
+        const oldKids = old[i] && Array.isArray(old[i].kids) ? old[i].kids : [];
+        const lines = $('atom-col-' + i).value.split('\n');
+        // 줄 순서대로 예전 문단 id 를 물려준다(댓글 앵커가 가능한 한 살아 있게)
+        cols.push({ id: old[i] && old[i].id ? old[i].id : null, kids: lines.map((t, k) => ({ id: oldKids[k] && oldKids[k].id ? oldKids[k].id : null, text: t })) });
+      }
+      return { id: id, cols: cols };
     }
     if (type === 'link_to_page') {
       if (!cur.page_id) { setText(msgEl, '걸 페이지를 먼저 고르세요.'); return null; }
@@ -2310,7 +2404,8 @@ function createAtomDialog(getView, hooks) {
   // 한 줄 칸에서 Enter = 넣기 (여러 줄 칸·단추·검색 칸은 제외)
   dialog.addEventListener('keydown', (event) => {
     const t = event.target;
-    if (event.key !== 'Enter' || !t || t.tagName !== 'INPUT' || t.type === 'search' || t.type === 'checkbox') { return; }
+    // 칸 수 입력(number)에서 Enter 는 창을 확정하지 않는다(독립 검토 6-C L4)
+    if (event.key !== 'Enter' || !t || t.tagName !== 'INPUT' || t.type === 'search' || t.type === 'checkbox' || t.type === 'number') { return; }
     event.preventDefault();
     commit();
   });

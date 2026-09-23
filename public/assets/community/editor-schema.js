@@ -257,10 +257,19 @@ export const schema = new Schema({
     },
     table: {
       group: 'block', atom: true, selectable: true,
-      attrs: { id: { default: null }, header_row: { default: true }, header_col: { default: false }, rows: { default: [['', ''], ['', '']] } },
+      // 6-C — spans: 합친 칸 {'행,열': [세로, 가로]} (시작 칸만). 덮이는 칸은 비어 있다.
+      attrs: { id: { default: null }, header_row: { default: true }, header_col: { default: false }, rows: { default: [['', ''], ['', '']] }, spans: { default: {} } },
       toDOM: (node) => ['div', { class: 'card card--link doc-atom', contenteditable: 'false', 'data-atom': 'table' },
         ['span', { class: 'card__title' }, '표 ' + String((node.attrs.rows || []).length) + '×' + String(((node.attrs.rows || [])[0] || []).length)],
         ['span', { class: 'card__meta' }, (((node.attrs.rows || [])[0] || []).join(' · ') || '빈 표') + ' · 두 번 눌러 고치기']]
+    },
+    /* 6-C 단 나누기 — 덩어리 + 창(결정 I-2). cols = [{id, kids:[{id, text}]}] 2~3개, 단 안은 평문 문단만. */
+    columns: {
+      group: 'block', atom: true, selectable: true,
+      attrs: { id: { default: null }, cols: { default: [] } },
+      toDOM: (node) => ['div', { class: 'card card--link doc-atom', contenteditable: 'false', 'data-atom': 'columns' },
+        ['span', { class: 'card__title' }, '단 나누기 ' + String((node.attrs.cols || []).length) + '단'],
+        ['span', { class: 'card__meta' }, (node.attrs.cols || []).map((c) => ((c.kids || [])[0] || {}).text || '빈 단').join(' | ') + ' · 두 번 눌러 고치기']]
     },
     link_to_page: {
       group: 'block', atom: true, selectable: true,
@@ -422,6 +431,15 @@ function atomIsPlain(b) {
   return true;
 }
 
+/**
+ * 평문 창을 거쳐도 **그대로** 돌아오는 글인가(독립 검토 6-C L2) — 줄바꿈이 없고 2,000자 이하이며 앞뒤 공백이 없다.
+ * 아니면 창을 거치며 모양이 바뀌므로(줄바꿈 → 빈칸, 긴 글 합치기 → too_long) 편집기를 열지 않는다.
+ */
+function plainRoundTrips(text) {
+  const t = plainOf(text);
+  return t.indexOf('\n') === -1 && t.length <= 2000 && t === t.trim();
+}
+
 /** 평문 → 리치 텍스트 한 조각(비면 빈 배열). 제어 문자는 빈칸으로 — 서버가 400 을 주지 않게 편집기 출력을 다듬는다. */
 function richOf(plain) {
   const t = String(plain || '').replace(/[\u0000-\u001f\u007f]/g, ' ').trim();
@@ -438,7 +456,7 @@ export function fromDoc(doc, ctx) {
     if (!b || typeof b.type !== 'string') {
       throw new Error('모르는 블록이 들어 있습니다');
     }
-    if (Array.isArray(b.children) && b.children.length > 0 && b.type !== 'toggle') {
+    if (Array.isArray(b.children) && b.children.length > 0 && b.type !== 'toggle' && b.type !== 'column_list') {
       throw new Error('하위 블록이 들어 있는 문서는 아직 편집할 수 없습니다');
     }
     const attrs = {
@@ -467,14 +485,36 @@ export function fromDoc(doc, ctx) {
       continue;
     }
     /* ── 5-E 덩어리 다섯 ── 창은 평문만 다룬다. 꾸밈이 든 것은 편집기를 열지 않는다(말없이 지우지 않게 — M2). */
+    if (b.type === 'column_list') {
+      // 6-C — 단마다 평문 문단만 든 단 나누기만 편집기가 다룬다(다른 블록·꾸밈이 있으면 편집기를 열지 않는다 — 말없이 지우지 않게)
+      const cols = [];
+      for (const c of Array.isArray(b.children) ? b.children : []) {
+        // 단 자체의 비율·색·정렬·크기도 창이 다루지 않는다 — 있으면 편집기를 열지 않는다(독립 검토 6-C M1)
+        if (!c || c.type !== 'column' || !blockIsPlain(c) || c.ratio !== undefined) {
+          throw new Error('비율·꾸밈이 든 단 나누기는 아직 편집기에서 고칠 수 없습니다');
+        }
+        const kids = [];
+        for (const k of Array.isArray(c.children) ? c.children : []) {
+          if (!k || k.type !== 'paragraph' || (Array.isArray(k.children) && k.children.length > 0) || !blockIsPlain(k) || !richIsPlain(k.text)
+              || !plainRoundTrips(k.text)) {
+            throw new Error('문단이 아닌 블록이나 꾸밈이 든 단 나누기는 아직 편집기에서 고칠 수 없습니다');
+          }
+          kids.push({ id: typeof k.id === 'string' ? k.id : null, text: plainOf(k.text) });
+        }
+        cols.push({ id: c && typeof c.id === 'string' ? c.id : null, kids: kids });
+      }
+      if (!blockIsPlain(b)) { throw new Error('꾸밈이 든 단 나누기는 아직 편집기에서 고칠 수 없습니다'); }
+      content.push({ type: 'columns', attrs: { id: attrs.id, cols: cols } });
+      continue;
+    }
     if (['toggle', 'table', 'image', 'file', 'link_to_page'].indexOf(b.type) !== -1 && !atomIsPlain(b)) {
       throw new Error('꾸밈(색·링크·열 폭 등)이 든 토글·표·설명은 아직 편집기에서 고칠 수 없습니다');
     }
     if (b.type === 'toggle') {
       const kids = [];
       for (const k of Array.isArray(b.children) ? b.children : []) {
-        if (!k || k.type !== 'paragraph' || (Array.isArray(k.children) && k.children.length > 0)) {
-          throw new Error('문단이 아닌 블록이 든 토글은 아직 편집할 수 없습니다');
+        if (!k || k.type !== 'paragraph' || (Array.isArray(k.children) && k.children.length > 0) || !plainRoundTrips(k.text)) {
+          throw new Error('문단이 아닌 블록(또는 여러 줄 문단)이 든 토글은 아직 편집할 수 없습니다');
         }
         kids.push({ id: typeof k.id === 'string' ? k.id : null, text: plainOf(k.text) });
       }
@@ -483,10 +523,17 @@ export function fromDoc(doc, ctx) {
     }
     if (b.type === 'table') {
       const rows = [];
-      for (const r of Array.isArray(b.rows) ? b.rows : []) {
-        rows.push((r && Array.isArray(r.cells) ? r.cells : []).map((c) => plainOf(c && c.text)));
-      }
-      content.push({ type: 'table', attrs: { id: attrs.id, header_row: b.header_row === true, header_col: b.header_col === true, rows: rows } });
+      const spans = {};
+      (Array.isArray(b.rows) ? b.rows : []).forEach((r, ri) => {
+        const cells = r && Array.isArray(r.cells) ? r.cells : [];
+        cells.forEach((c, ci) => {
+          const rs = c && Number.isInteger(c.rowspan) ? c.rowspan : 1;
+          const cs = c && Number.isInteger(c.colspan) ? c.colspan : 1;
+          if (rs > 1 || cs > 1) { spans[ri + ',' + ci] = [rs, cs]; }
+        });
+        rows.push(cells.map((c) => plainOf(c && c.text)));
+      });
+      content.push({ type: 'table', attrs: { id: attrs.id, header_row: b.header_row === true, header_col: b.header_col === true, rows: rows, spans: spans } });
       continue;
     }
     if (b.type === 'link_to_page') {
@@ -597,7 +644,21 @@ export function toDoc(pmDoc) {
     const block = { id: typeof a.id === 'string' && a.id !== '' ? a.id : uuid4(), type: ourType };
 
     // 글자를 담지 않는 덩어리에는 꾸밈 세 가지를 얹지 않는다.
-    const isAtom = ['divider', 'toc', 'child_page', 'toggle', 'table', 'link_to_page', 'image', 'file'].indexOf(ourType) !== -1;
+    const isAtom = ['divider', 'toc', 'child_page', 'toggle', 'table', 'link_to_page', 'image', 'file', 'columns'].indexOf(ourType) !== -1;
+    // 6-C — 편집기의 `columns` 덩어리 → 문서의 column_list > column > 문단들
+    if (ourType === 'columns') {
+      block.type = 'column_list';
+      const cols = Array.isArray(a.cols) && a.cols.length >= 2 ? a.cols.slice(0, 3) : [{ kids: [] }, { kids: [] }];
+      block.children = cols.map((c) => ({
+        id: c && typeof c.id === 'string' && c.id !== '' ? c.id : uuid4(),
+        type: 'column',
+        children: (c && Array.isArray(c.kids) && c.kids.length > 0 ? c.kids : [{ id: null, text: '' }]).map((k) => ({
+          id: k && typeof k.id === 'string' && k.id !== '' ? k.id : uuid4(), type: 'paragraph', text: richOf(k && k.text)
+        }))
+      }));
+      blocks.push(block);
+      continue;
+    }
 
     if (!isAtom) {
       if (colorAllowed(a.color)) { block.color = a.color; }
@@ -627,7 +688,21 @@ export function toDoc(pmDoc) {
       const width = Math.max(1, ...rows.map((r) => (Array.isArray(r) ? r.length : 0)));
       block.header_row = a.header_row === true;
       block.header_col = a.header_col === true;
-      block.rows = rows.map((r) => ({ cells: Array.from({ length: width }, (_, i) => ({ text: richOf(Array.isArray(r) ? r[i] : '') })) }));
+      // 6-C 합친 칸 — 시작 칸에 rowspan·colspan, 덮이는 칸은 비운다(검증기가 같은 규칙으로 본다)
+      const spans = a.spans && typeof a.spans === 'object' ? a.spans : {};
+      const covered = new Set();
+      for (const key of Object.keys(spans)) {
+        const [r0, c0] = key.split(',').map(Number);
+        const [rs, cs] = spans[key];
+        for (let y = r0; y < r0 + rs; y++) { for (let x = c0; x < c0 + cs; x++) { if (y !== r0 || x !== c0) { covered.add(y + ',' + x); } } }
+      }
+      block.rows = rows.map((r, ri) => ({ cells: Array.from({ length: width }, (_, i) => {
+        const cell = { text: covered.has(ri + ',' + i) ? [] : richOf(Array.isArray(r) ? r[i] : '') };
+        const sp = spans[ri + ',' + i];
+        if (sp && sp[0] > 1) { cell.rowspan = sp[0]; }
+        if (sp && sp[1] > 1) { cell.colspan = sp[1]; }
+        return cell;
+      }) }));
       blocks.push(block);
       continue;
     }
@@ -672,6 +747,18 @@ export function toDoc(pmDoc) {
     block.text = pmToRich(node.content);
     blocks.push(block);
   }
+
+  /* 문서 전체에서 id 가 겹치면 뒤의 것을 새로 만든다(독립 검토 6-C L1 — 덩어리 카드를 복사하면 안쪽 문단·단 id 가
+     그대로 따라와 서버가 duplicate_id 로 저장을 막는다. 최상위 id 는 uniqueBlockIds 가 이미 맞춘다). */
+  const seen = new Set();
+  const dedupe = (list) => {
+    for (const b of list) {
+      if (seen.has(b.id)) { b.id = uuid4(); }
+      seen.add(b.id);
+      if (Array.isArray(b.children)) { dedupe(b.children); }
+    }
+  };
+  dedupe(blocks);
 
   return { schema: 1, blocks: blocks };
 }
@@ -810,6 +897,13 @@ export const BLOCK_TYPES = [
     sample: { schema: 1, blocks: [{ id: '00000000-0000-4000-8000-0000000000c3', type: 'table', header_row: true, header_col: false, rows: [
       { cells: [{ text: [{ t: '항목', m: {} }] }, { text: [{ t: '담당', m: {} }] }] },
       { cells: [{ text: [{ t: '계획서', m: {} }] }, { text: [{ t: '김하나', m: {} }] }] }] }] }
+  },
+  {
+    type: 'columns', label: '단 나누기', editsAtom: true,
+    desc: '본문을 2단·3단으로 나란히 씁니다. 단마다 문단을 적습니다(꾸밈 없이). 좁은 화면에서는 위아래로 쌓입니다.',
+    sample: { schema: 1, blocks: [{ id: '00000000-0000-4000-8000-0000000000d1', type: 'column_list', children: [
+      { id: '00000000-0000-4000-8000-0000000000d2', type: 'column', children: [{ id: '00000000-0000-4000-8000-0000000000d3', type: 'paragraph', text: [{ t: '왼쪽 단', m: {} }] }] },
+      { id: '00000000-0000-4000-8000-0000000000d4', type: 'column', children: [{ id: '00000000-0000-4000-8000-0000000000d5', type: 'paragraph', text: [{ t: '오른쪽 단', m: {} }] }] }] }] }
   },
   {
     type: 'link_to_page', label: '페이지 링크', editsAtom: true,

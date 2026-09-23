@@ -653,7 +653,27 @@ require __DIR__ . '/../../views/shell_top.php';
             <button id="atom-col-add" class="btn btn--quiet btn--small" type="button">열 더하기</button>
             <button id="atom-col-del" class="btn btn--quiet btn--small" type="button">마지막 열 빼기</button>
           </div>
-          <p class="help">칸 합치기는 아직 없습니다. 칸 글자에는 꾸밈이 붙지 않습니다.</p>
+          <!-- 6-C 칸 합치기 — 칸 하나를 눌러 고른 뒤, 그 칸부터 오른쪽·아래로 몇 칸을 합칠지 -->
+          <div class="toolbar atom-merge">
+            <label class="atom-merge__field">가로 <input id="atom-merge-cols" class="input" type="number" min="1" max="20" value="2"></label>
+            <label class="atom-merge__field">세로 <input id="atom-merge-rows" class="input" type="number" min="1" max="20" value="1"></label>
+            <button id="atom-merge" class="btn btn--quiet btn--small" type="button">고른 칸부터 합치기</button>
+            <button id="atom-unmerge" class="btn btn--quiet btn--small" type="button">고른 칸 풀기</button>
+          </div>
+          <p class="help">합칠 칸이 비어 있어야 합칩니다. 칸 글자에는 꾸밈이 붙지 않습니다.</p>
+        </div>
+
+        <!-- 6-C 단 나누기 — 단 수(2·3)와 단마다의 문단(한 줄이 한 문단) -->
+        <div id="atom-columns" class="atom-pane" hidden>
+          <label class="field">
+            <span class="field__label">단 수</span>
+            <select id="atom-columns-n"><option value="2">2단</option><option value="3">3단</option></select>
+          </label>
+          <div class="atom-columns">
+            <label class="field"><span class="field__label">1단</span><textarea id="atom-col-0" rows="6" spellcheck="false"></textarea></label>
+            <label class="field"><span class="field__label">2단</span><textarea id="atom-col-1" rows="6" spellcheck="false"></textarea></label>
+            <label id="atom-col-2-field" class="field"><span class="field__label">3단</span><textarea id="atom-col-2" rows="6" spellcheck="false"></textarea></label>
+          </div>
         </div>
 
         <div id="atom-link" class="atom-pane" hidden>

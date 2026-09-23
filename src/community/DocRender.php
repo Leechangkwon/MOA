@@ -36,6 +36,35 @@ final class DocRender
     /** 5-E — 보는 사람이 t-box 에서 볼 수 없는(또는 없는) 파일 자리. 클라이언트 렌더러와 같은 문구(C:T-19) */
     private const FILE_UNREADABLE = '볼 수 없는 파일';
 
+    /**
+     * 6-C — 합친 칸이 덮는 자리 `[행][열] => true`. doc-render.js `coveredCells` 와 같은 규칙(행 순서로 훑어 시작 칸만 덮는다).
+     *
+     * @param list<mixed> $rows
+     * @return array<int,array<int,bool>>
+     */
+    private static function coveredCells(array $rows): array
+    {
+        $covered = [];
+        foreach ($rows as $ri => $row) {
+            $cells = is_array($row) && isset($row['cells']) && is_array($row['cells']) ? $row['cells'] : [];
+            foreach ($cells as $ci => $cell) {
+                if (isset($covered[$ri][$ci]) || !is_array($cell)) {
+                    continue;
+                }
+                $rs = is_int($cell['rowspan'] ?? null) ? max(1, min(20, (int) $cell['rowspan'])) : 1;
+                $cs = is_int($cell['colspan'] ?? null) ? max(1, min(20, (int) $cell['colspan'])) : 1;
+                for ($y = $ri; $y < $ri + $rs; $y++) {
+                    for ($x = $ci; $x < $ci + $cs; $x++) {
+                        if ($y !== $ri || $x !== $ci) {
+                            $covered[$y][$x] = true;
+                        }
+                    }
+                }
+            }
+        }
+        return $covered;
+    }
+
     /** 5-E — 주소에 넣는 페이지·파일 id 의 모양 (doc-render.js 의 UUID_RE 와 같다) */
     private const UUID_RE = '/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/';
 
@@ -206,20 +235,33 @@ final class DocRender
                      . '<summary class="doc-toggle__summary">' . $text . '</summary>'
                      . '<div class="doc-toggle__body">' . $kids . '</div></details>';
 
-            // 표 — 머리 행·머리 열은 `<th>`. 칸 병합은 6단계라 없다. 넓으면 감싼 칸이 가로로 굴린다.
+            // 6-C 단 나누기 — 단 목록은 단 수를 클래스로(2·3), 단 안은 보통 블록. 좁은 화면에서는 CSS 가 세로로 쌓는다.
+            case 'column_list':
+                $n = isset($block['children']) && is_array($block['children']) ? count($block['children']) : 0;
+                return '<div class="doc-columns doc-columns--' . ($n === 3 ? '3' : '2') . '"' . $idAttr . '>' . $kids . '</div>';
+            case 'column':
+                return '<div class="doc-column"' . $idAttr . '>' . $kids . '</div>';
+
+            // 표 — 머리 행·머리 열은 `<th>`. 6-C 칸 병합: 합친 칸은 rowspan·colspan(정수, 1 이면 쓰지 않음), 덮인 칸은 그리지 않는다.
             case 'table':
                 $rows    = isset($block['rows']) && is_array($block['rows']) ? $block['rows'] : [];
                 $headRow = ($block['header_row'] ?? false) === true;
                 $headCol = ($block['header_col'] ?? false) === true;
                 $html    = '<div class="doc-table-wrap"' . $idAttr . '><table class="doc-table"><tbody>';
+                $covered = self::coveredCells($rows);
                 foreach ($rows as $ri => $row) {
                     $rowCls = is_array($row) && isset($row['color']) && is_string($row['color']) ? self::colorClass($row['color']) : null;
                     $html  .= '<tr' . ($rowCls === null ? '' : ' class="' . self::esc($rowCls) . '"') . '>';
                     $cells  = is_array($row) && isset($row['cells']) && is_array($row['cells']) ? $row['cells'] : [];
                     foreach ($cells as $ci => $cell) {
+                        if (isset($covered[$ri][$ci])) {
+                            continue;
+                        }
                         $tag     = ($headRow && $ri === 0) || ($headCol && $ci === 0) ? 'th' : 'td';
                         $cellCls = is_array($cell) && isset($cell['color']) && is_string($cell['color']) ? self::colorClass($cell['color']) : null;
-                        $html   .= '<' . $tag . ' class="doc-table__cell' . ($cellCls === null ? '' : ' ' . self::esc($cellCls)) . '">'
+                        $rs      = is_array($cell) && is_int($cell['rowspan'] ?? null) && $cell['rowspan'] > 1 ? ' rowspan="' . (int) $cell['rowspan'] . '"' : '';
+                        $cs      = is_array($cell) && is_int($cell['colspan'] ?? null) && $cell['colspan'] > 1 ? ' colspan="' . (int) $cell['colspan'] . '"' : '';
+                        $html   .= '<' . $tag . $rs . $cs . ' class="doc-table__cell' . ($cellCls === null ? '' : ' ' . self::esc($cellCls)) . '">'
                                  . (is_array($cell) && isset($cell['text']) && is_array($cell['text']) ? self::rich($cell['text']) : '')
                                  . '</' . $tag . '>';
                     }

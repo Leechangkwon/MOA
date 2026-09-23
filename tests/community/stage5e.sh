@@ -3,7 +3,7 @@
 #                              (../../../community/stage5e-attach-blocks-directive.md 「완료 기준」)
 #
 #   C:T-110 검증       모르는 모양·`tbox:` 형태 아님·병합 칸·행마다 칸 수 다름·201행·21열·열 폭 범위 밖 400 ·
-#                      `column_list` 는 아직 type_not_in_stage · 새 블록 다섯이 든 문서 200 · 새 페이지에 파일 400
+#                      `embed` 는 아직 type_not_in_stage(6-C 부터 column_list 는 열림) · 새 블록 다섯이 든 문서 200 · 새 페이지에 파일 400
 #   C:T-111 첨부 규칙  없는 파일과 못 보는 파일은 **같은 400**(응답 원문 동일) · 사내 페이지에 팀 파일 400 ·
 #                      비공개 페이지엔 내 팀 파일 200 · 넓히기(범위·하위까지 함께·게시) 때 좁은 파일 400 · 판 되살리기도 같은 규칙
 #   C:T-112 그리기     파일 이름은 볼 수 있는 사람에게만(다른 팀 사원 응답 원문에 이름 0) · 그림 주소는 t-box 창구
@@ -435,7 +435,7 @@ expect "  저장된 본문에 토글 하위 문단 둘" "2" "$(psqlq "SELECT jso
 expect "file_ref 가 tbox: 형태가 아님(http) → 400" "400" "$(put_doc qa_employee01 "$P0" "[IMG('http://evil.example/x.png')]")"
 contains "  사유 bad_ref" "bad_ref" "$(errs)"
 expect "file_ref 가 tbox:UUID 아님 → 400" "400" "$(put_doc qa_employee01 "$P0" "[FIL('tbox:../../etc/passwd')]")"
-expect "표 칸 병합(rowspan 2) → 400" "400" "$(put_doc qa_employee01 "$P0" "[{**TAB([['a','b'],['c','d']]), 'rows':[{'cells':[{'text':[],'rowspan':2},{'text':[]}]},{'cells':[{'text':[]},{'text':[]}]}]}]")"
+expect "표 칸 병합이 글자 든 칸을 덮음(6-C 부터 병합은 되지만 덮이는 칸은 비어야) → 400" "400" "$(put_doc qa_employee01 "$P0" "[{**TAB([['a','b'],['c','d']]), 'rows':[{'cells':[{'text':[],'rowspan':2},{'text':[]}]},{'cells':[{'text':[{'t':'c','m':{}}]},{'text':[]}]}]}]")"
 expect "행마다 칸 수가 다름 → 400" "400" "$(put_doc qa_employee01 "$P0" "[TAB([['a','b'],['c']])]")"
 contains "  사유 ragged_row" "ragged_row" "$(errs)"
 expect "201행 → 400" "400" "$(put_doc qa_employee01 "$P0" "[TAB([['x']]*201)]")"
@@ -447,7 +447,7 @@ expect "모르는 칸(표에 onclick) → 400" "400" "$(put_doc qa_employee01 "$
 expect "토글에 하위가 없다 → 400" "400" "$(put_doc qa_employee01 "$P0" "[{**TOG('s',[]), 'children': None}]")"
 expect "link_to_page 가 UUID 아님 → 400" "400" "$(put_doc qa_employee01 "$P0" "[{**LNK('$PL'), 'page_id':'x'}]")"
 expect "그림 폭이 목록 밖 → 400" "400" "$(put_doc qa_employee01 "$P0" "[IMG('$F_IMG','huge')]")"
-expect "column_list 는 아직 → 400" "400" "$(put_doc qa_employee01 "$P0" "[{'id':'$(python3 -c 'import uuid;print(uuid.uuid4())')','type':'column_list','children':[]}]")"
+expect "embed 는 아직(7단계) → 400" "400" "$(put_doc qa_employee01 "$P0" "[{'id':'$(python3 -c 'import uuid;print(uuid.uuid4())')','type':'embed','url':'https://example.com/'}]")"
 contains "  사유 type_not_in_stage" "type_not_in_stage" "$(errs)"
 jbody "{'title':'C5E-새 페이지 파일','doc':{'schema':1,'blocks':[{'id':'$(python3 -c 'import uuid;print(uuid.uuid4())')','type':'file','file_ref':'tbox:$F_INT'}]}}"
 st=$(capi POST /api/pages qa_employee01 "$WORK/body.json")

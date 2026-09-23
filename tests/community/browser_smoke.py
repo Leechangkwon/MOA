@@ -385,7 +385,7 @@ with sync_playwright() as p:
     labels = []
     # 5-E 덩어리 다섯(토글·표·페이지 링크·그림·파일)은 넣기 전에 「블록 고치기」 창이 먼저 열린다 —
     # 여기서는 건너뛰고 browser_5e.py 가 창까지 눌러 본다.
-    atom_types = ("toggle", "table", "link_to_page", "image", "file")
+    atom_types = ("toggle", "table", "link_to_page", "image", "file", "columns")
     for i in range(n_items):
         if page.locator('#block-list .block-pick[data-block-index="%d"]' % i).get_attribute("data-block-type") in atom_types:
             continue

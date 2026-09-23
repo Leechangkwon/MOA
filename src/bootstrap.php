@@ -141,8 +141,10 @@ const COMMUNITY_BASE = '/community';
  * 아직 그리지 못하는 블록을 단계 안에 두지 않는다.
  * 5-E(2026-09-23)에 **5** 로 올렸다 — `toggle`·`table`·`image`·`file`·`link_to_page` 다섯이 열린다.
  * `column_list`·`column`·`mention` 마크는 같은 까닭으로 6단계로 옮겼다(편집기 중첩 구조가 먼저 — 결정 E-1).
+ * 6-C(2026-09-23)에 **6** 으로 올렸다 — `column_list`·`column`(단 나누기)과 표 칸 병합이 열린다.
+ * `mention` 마크는 렌더러·검증기가 아직 그리지 못하므로 **7단계로** 옮겼다(결정 I-5, 좁은 쪽).
  */
-const COMMUNITY_DOC_STAGE = 5;
+const COMMUNITY_DOC_STAGE = 6;
 
 // ─── 3) 예외·치명적 오류 은닉 (PRD S-09-7, SECURITY 1.7) ───────
 // 어떤 예외도 스택 트레이스·DB 오류 문구·파일 경로를 응답에 넣지 않는다.

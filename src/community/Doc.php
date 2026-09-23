@@ -229,6 +229,22 @@ final class Doc
                 continue;
             }
 
+            /* 6-C 단 나누기 — `column` 은 `column_list` 의 자식으로만, `column_list` 의 자식은 `column` 만,
+               단 안에 또 단은 두지 않는다(결정 I-1). 부모 타입은 children 을 걸을 때 state 에 얹힌다. */
+            $parentType = $state['parent_type'] ?? null;
+            if ($type === 'column' && $parentType !== 'column_list') {
+                $add($p . '.type', 'column_outside_list');
+                continue;
+            }
+            if ($parentType === 'column_list' && $type !== 'column') {
+                $add($p . '.type', 'column_list_child');
+                continue;
+            }
+            if ($type === 'column_list' && ($state['in_column'] ?? 0) > 0) {
+                $add($p . '.type', 'nested_columns');
+                continue;
+            }
+
             $spec = $s['blocks'][$type];
 
             // ── 키 집합 정확히 (공통 키 + 그 타입의 키) ──
@@ -311,7 +327,17 @@ final class Doc
     {
         // children — 가질 수 있는 블록만 가진다
         if ($field === 'children') {
-            if (!in_array($type, $s['children_allowed'], true)) {
+            // 6-C — `column_list` 의 자식 모양은 「단들」(2~3개)이다. 단마다의 모양은 walk 가 부모 타입으로 가른다.
+            if ($type === 'column_list') {
+                if (!self::isList($value)) {
+                    $add($p, 'not_array');
+                    return;
+                }
+                if (count($value) < 2 || count($value) > 3) {
+                    $add($p, 'bad_value');
+                    return;
+                }
+            } elseif (!in_array($type, $s['children_allowed'], true)) {
                 $add($p, 'children_not_allowed');
                 return;
             }
@@ -319,7 +345,16 @@ final class Doc
                 $add($p, 'not_array');
                 return;
             }
+            $prevParent          = $state['parent_type'] ?? null;
+            $state['parent_type'] = $type;
+            if ($type === 'column') {
+                $state['in_column'] = ($state['in_column'] ?? 0) + 1;
+            }
             self::walk($value, $p, $depth + 1, $stage, $state, $add, $limits, $s);
+            if ($type === 'column') {
+                $state['in_column']--;
+            }
+            $state['parent_type'] = $prevParent;
             return;
         }
 
@@ -462,7 +497,7 @@ final class Doc
 
     /**
      * 5-E 표의 행들 — 1~`table_rows` 행, 행마다 `{cells, color?}`, 칸마다 `{text, color?, rowspan?, colspan?}`.
-     *   · 칸 병합은 6단계(F-27)다 — `rowspan`·`colspan` 이 있으면 **1 만** 받는다(모르는 값은 막는다).
+     *   · 칸 병합 — 문서 단계 5 는 `rowspan`·`colspan` **1 만**, 6(6-C)부터 1~20 + 덮임 규칙(아래 끝).
      *   · 행마다 칸 수가 같고 1~`table_cols` 열.
      *   · 칸 글자는 보통 리치 텍스트 규칙 그대로(`richtext`).
      *
@@ -476,6 +511,7 @@ final class Doc
             return;
         }
         $width = null;
+        $spans = [];
         foreach ($value as $r => $row) {
             $rp = $p . '[' . $r . ']';
             if (!self::isObjectish($row) || !array_key_exists('cells', $row)
@@ -505,16 +541,65 @@ final class Doc
                     $add($cp, 'bad_value');
                     return;
                 }
+                /* 6-C 칸 병합 — 문서 단계 6 부터 1~20. 그 아래 단계에서는 1 만(5-E 그대로).
+                   덮이는 칸의 규칙은 행을 다 본 뒤 한 번에 가른다(아래 `$spans`). */
                 foreach (['rowspan', 'colspan'] as $span) {
-                    if (array_key_exists($span, $cell) && $cell[$span] !== 1) {
+                    if (!array_key_exists($span, $cell) || $cell[$span] === 1) {
+                        continue;
+                    }
+                    if ($stage < 6) {
                         $add($cp . '.' . $span, 'merge_not_in_stage');
+                    } elseif (!is_int($cell[$span]) || $cell[$span] < 1 || $cell[$span] > 20) {
+                        $add($cp . '.' . $span, 'bad_value');
                     }
                 }
+                $spans[$r][$c] = [
+                    is_int($cell['rowspan'] ?? 1) ? (int) ($cell['rowspan'] ?? 1) : 1,
+                    is_int($cell['colspan'] ?? 1) ? (int) ($cell['colspan'] ?? 1) : 1,
+                    is_array($cell['text'] ?? null) && $cell['text'] === [],
+                ];
                 if (array_key_exists('color', $cell) && $cell['color'] !== null
                     && (!is_string($cell['color']) || !in_array($cell['color'], $state['colors'], true))) {
                     $add($cp . '.color', 'not_in_palette');
                 }
                 self::richtext($cell['text'], $cp . '.text', $stage, $state, $add, $limits, $s);
+            }
+        }
+
+        /* 6-C 덮임 규칙 — 합친 칸은 표 안에 들어가야 하고(`merge_out_of_table`), 덮이는 칸은 비어 있고 스스로
+           합치지 않아야 한다(`merge_overlap`). 렌더러 두 벌은 이 모양을 믿고 덮인 칸을 건너뛴다. */
+        if ($stage >= 6 && $width !== null) {
+            $rowsN   = count($spans);
+            $covered = [];
+            foreach ($spans as $r => $cells) {
+                foreach ($cells as $c => [$rs, $cs, $empty]) {
+                    if (isset($covered[$r][$c])) {
+                        if (!$empty || $rs !== 1 || $cs !== 1) {
+                            $add($p . '[' . $r . '].cells[' . $c . ']', 'merge_overlap');
+                            return;
+                        }
+                        continue;
+                    }
+                    if ($rs === 1 && $cs === 1) {
+                        continue;
+                    }
+                    if ($r + $rs > $rowsN || $c + $cs > $width) {
+                        $add($p . '[' . $r . '].cells[' . $c . ']', 'merge_out_of_table');
+                        return;
+                    }
+                    for ($y = $r; $y < $r + $rs; $y++) {
+                        for ($x = $c; $x < $c + $cs; $x++) {
+                            if ($y === $r && $x === $c) {
+                                continue;
+                            }
+                            if (isset($covered[$y][$x])) {
+                                $add($p . '[' . $r . '].cells[' . $c . ']', 'merge_overlap');
+                                return;
+                            }
+                            $covered[$y][$x] = true;
+                        }
+                    }
+                }
             }
         }
     }

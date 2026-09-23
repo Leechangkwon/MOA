@@ -133,7 +133,26 @@ function renderFileBlock(block, id, ctx) {
   return wrap;
 }
 
-/** 5-E 표 — 머리 행·머리 열은 `<th>`(칸 병합 없음). 서버 렌더러와 같은 모양 */
+/** 5-E 표 — 머리 행·머리 열은 `<th>`. 6-C 칸 병합은 rowspan·colspan, 덮인 칸은 그리지 않는다. 서버 렌더러와 같은 모양 */
+/** 6-C — 합친 칸이 덮는 자리 집합('행,열'). DocRender::coveredCells 와 같은 규칙 */
+function coveredCells(rows) {
+  const covered = new Set();
+  rows.forEach((row, ri) => {
+    const cells = row && Array.isArray(row.cells) ? row.cells : [];
+    cells.forEach((cell, ci) => {
+      if (covered.has(ri + ',' + ci) || !cell || typeof cell !== 'object') { return; }
+      const rs = Number.isInteger(cell.rowspan) ? Math.max(1, Math.min(20, cell.rowspan)) : 1;
+      const cs = Number.isInteger(cell.colspan) ? Math.max(1, Math.min(20, cell.colspan)) : 1;
+      for (let y = ri; y < ri + rs; y++) {
+        for (let x = ci; x < ci + cs; x++) {
+          if (y !== ri || x !== ci) { covered.add(y + ',' + x); }
+        }
+      }
+    });
+  });
+  return covered;
+}
+
 function renderTable(block, id) {
   const wrap = document.createElement('div');
   wrap.className = 'doc-table-wrap';
@@ -142,14 +161,18 @@ function renderTable(block, id) {
   table.className = 'doc-table';
   const tbody = document.createElement('tbody');
   const rows = Array.isArray(block.rows) ? block.rows : [];
+  const covered = coveredCells(rows);
   rows.forEach((row, ri) => {
     const tr = document.createElement('tr');
     const rc = row && typeof row === 'object' ? colorClass(row.color) : null;
     if (rc) { tr.className = rc; }
     const cells = row && Array.isArray(row.cells) ? row.cells : [];
     cells.forEach((cell, ci) => {
+      if (covered.has(ri + ',' + ci)) { return; }
       const head = (block.header_row === true && ri === 0) || (block.header_col === true && ci === 0);
       const el = document.createElement(head ? 'th' : 'td');
+      if (cell && Number.isInteger(cell.rowspan) && cell.rowspan > 1) { el.setAttribute('rowspan', String(cell.rowspan)); }
+      if (cell && Number.isInteger(cell.colspan) && cell.colspan > 1) { el.setAttribute('colspan', String(cell.colspan)); }
       const cc = cell && typeof cell === 'object' ? colorClass(cell.color) : null;
       el.className = 'doc-table__cell' + (cc ? ' ' + cc : '');
       appendRich(el, cell && Array.isArray(cell.text) ? cell.text : []);
@@ -462,6 +485,21 @@ function renderBlock(block, rootBlocks, ctx) {
     det.appendChild(sum);
     det.appendChild(inner);
     nodes.push(det);
+    return nodes;
+  } else if (type === 'column_list') {
+    // 6-C 단 나누기 — 서버 렌더러와 같은 모양(단 수 클래스 · 단 안은 보통 블록)
+    const box = document.createElement('div');
+    box.className = 'doc-columns doc-columns--' + ((Array.isArray(block.children) ? block.children.length : 0) === 3 ? '3' : '2');
+    setId(box);
+    if (kids) { box.appendChild(kids); }
+    nodes.push(box);
+    return nodes;
+  } else if (type === 'column') {
+    const colEl = document.createElement('div');
+    colEl.className = 'doc-column';
+    setId(colEl);
+    if (kids) { colEl.appendChild(kids); }
+    nodes.push(colEl);
     return nodes;
   } else if (type === 'table') {
     nodes.push(renderTable(block, id));

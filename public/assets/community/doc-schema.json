@@ -70,7 +70,7 @@
   },
   "stage_marks": {
     "3": ["bold", "italic", "underline", "strike", "code", "color", "link"],
-    "6": ["mention"]
+    "7": ["mention"]
   },
   "languages": [
     "plain", "bash", "c", "cpp", "csharp", "css", "diff", "dockerfile", "go", "graphql",
@@ -82,6 +82,7 @@
     "too_large", "bad_schema", "not_object", "not_array", "too_many_blocks", "too_deep",
     "unknown_type", "type_not_in_stage", "unknown_key", "missing_key", "bad_type", "bad_value",
     "bad_id", "duplicate_id", "too_long", "too_many_segments", "unknown_mark", "mark_not_in_stage",
-    "not_in_palette", "bad_scheme", "control_char", "children_not_allowed", "bad_encoding", "bad_ref", "ragged_row", "merge_not_in_stage"
+    "not_in_palette", "bad_scheme", "control_char", "children_not_allowed", "bad_encoding", "bad_ref", "ragged_row", "merge_not_in_stage",
+    "column_outside_list", "column_list_child", "nested_columns", "merge_overlap", "merge_out_of_table"
   ]
 }
