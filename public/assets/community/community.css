@@ -584,3 +584,55 @@ details.page-tree__node[open] > summary > .page-tree__row > .page-tree__caret { 
 /* 담당자 후보 줄 목록 — `.list` 위에 한 줄짜리 여백만 얹는다(새 클래스 0). */
 #assignee-list .list__item { padding: 4px 8px; }
 #assignee-list .btn { width: 100%; justify-content: flex-start; }
+
+/* ─── 사이드바 페이지 트리 (5-A′, 2026-09-23) — 내 공간 · 팀 공간 · 공유받은 페이지 ───
+   `.nav__item` 과 같은 결의 줄(28px). 들여쓰기는 목록이 겹칠 때마다 12px — 인라인 style 0.
+   긴 제목은 한 줄에서 말줄임. 색·간격·모서리는 app.css 토큰만(새 색값 0). */
+.nav-tree { display: flex; flex-direction: column; gap: 1px; margin: 0; padding: 0; list-style: none; }
+.nav-tree .nav-tree { padding-left: 12px; }
+.nav-tree__row {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  height: 28px;
+  padding-right: 8px;
+  border-radius: var(--r-sm);
+}
+.nav-tree__row:hover { background: var(--muted-bg); }
+.nav-tree__row.is-active { background: var(--muted-bg); }
+.nav-tree__row--space { height: 32px; }
+.nav-tree__toggle {
+  flex: 0 0 20px;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--r-sm);
+  background: none;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 20px;
+  cursor: pointer;
+  transition: transform .12s ease;
+}
+.nav-tree__toggle:hover:not(:disabled) { color: var(--fg); background: var(--line); }
+.nav-tree__toggle:disabled { cursor: default; }
+.nav-tree__toggle.is-open { transform: rotate(90deg); }
+.nav-tree__link {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--fg-2);
+  font-size: 13px;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.nav-tree__row--space .nav-tree__link { font-size: 14px; font-weight: 500; }
+.nav-tree__link > span:last-child { overflow: hidden; text-overflow: ellipsis; }
+.nav-tree__link .icon { display: inline-flex; flex-shrink: 0; color: var(--muted); }
+.nav-tree__link:hover { color: var(--fg); text-decoration: none; }
+.nav-tree__row.is-active .nav-tree__link { color: var(--fg); font-weight: 600; }
+.nav-tree-box:empty { display: none; }

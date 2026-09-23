@@ -717,7 +717,11 @@ function initReauthPage(form, csrfToken) {
  * **같은 목록**이고, 화면이 새 경로를 지어내지 않는다.
  */
 function isAdminPath(href) {
-  return /^\/(admin(\/|$)|users$|org$|audit$|trash$|wiki(\/|$))/.test(href);
+  /* 28단계부터 링크는 `APP_BASE`(`/tbox`) 를 달고 나온다(`Http::url`). 앞머리를 떼고 본다 —
+     떼지 않아 28단계 이후 재인증 **모달**이 한 번도 걸리지 않고 늘 `/reauth` 화면으로 넘어갔다
+     (2026-09-23 커뮤니티 앱 메뉴에서 발견). 막는 것은 여전히 서버 관문 [3-2] 다. */
+  var path = href.indexOf(APP_BASE + '/') === 0 ? href.slice(APP_BASE.length) : href;
+  return /^\/(admin(\/|$)|users$|org$|audit$|trash$|wiki(\/|$))/.test(path);
 }
 
 /**

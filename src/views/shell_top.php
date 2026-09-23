@@ -311,6 +311,8 @@ if (!headers_sent()) {
       <a id="nav-community-home" class="<?= $shellNavClass('community-home') ?>" href="<?= Http::communityUrl('/') ?>">
         <span class="icon" data-icon="files"></span><span>내 공간</span>
       </a>
+      <!-- 내 페이지 트리 (5-A′) — editor.js 가 `?tree=1` 의 답으로 채운다 -->
+      <div id="nav-community-tree" class="nav-tree-box"></div>
       <button id="nav-community-new" class="nav__item" type="button">
         <span class="icon" data-icon="plus"></span><span>새 페이지</span>
       </button>
@@ -321,6 +323,9 @@ if (!headers_sent()) {
     </nav>
     <p id="nav-community-team-title" class="nav-title" hidden>팀 공간</p>
     <nav id="nav-community-teams" class="nav" aria-label="팀 공간" hidden></nav>
+    <!-- 공유받은 페이지 (5-A · 5-A′) — 있을 때만 제목째 보인다 -->
+    <p id="nav-community-shared-title" class="nav-title" hidden>공유받은 페이지</p>
+    <nav id="nav-community-shared" class="nav" aria-label="공유받은 페이지" hidden></nav>
 <?php else: ?>
     <p class="nav-title">파일</p>
     <nav class="nav" aria-label="파일">

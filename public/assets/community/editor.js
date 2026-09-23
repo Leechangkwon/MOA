@@ -253,18 +253,7 @@ function fillSpaceNav(spaces) {
   if (!box) { return; }
   clear(box);
   const teams = (Array.isArray(spaces) ? spaces : []).filter((s) => s && s.kind === 'team');
-  const here = currentSpaceId();
-  for (const space of teams) {
-    const a = document.createElement('a');
-    a.className = 'nav__item' + (here === String(space.id) ? ' is-active' : '');
-    a.setAttribute('href', spaceHref(space.id, space.kind));
-    const icon = makeIcon('users');
-    const label = document.createElement('span');
-    label.textContent = space.name;
-    a.appendChild(icon);
-    a.appendChild(label);
-    box.appendChild(a);
-  }
+  // 팀마다의 줄과 트리는 `fillSidebarTrees` 가 그린다(5-A′). 여기서는 묶음을 열고 닫기만 한다.
   show(box, teams.length > 0);
   show(title, teams.length > 0);
 }
@@ -278,8 +267,196 @@ function loadSpaces() {
     if (result.status !== 200) { return []; }
     const spaces = Array.isArray(result.data.spaces) ? result.data.spaces : [];
     fillSpaceNav(spaces);
+    fillSidebarTrees(spaces);
     return spaces;
   }).catch(() => []);
+}
+
+/* ─── 사이드바 페이지 트리 (5-A′, 사용자 지적 2026-09-23) ─────────────
+ *
+ * 「사이드바에 내 공간·+ 새 페이지가 있는데 그 아래 페이지가 보여야 할 것 같다」 — 4-A 지시서의
+ * 목표 문장(「왼쪽 내 공간이 트리로」)이 구현에서 빠졌던 것을 채운다.
+ *   · 내 공간 · 팀 공간마다 · 공유받은 페이지 — 항목은 **창구가 준 것만**(`?tree=1` 은 행 관문을
+ *     지난 목록이다). 이 파일에는 누가 무엇을 볼 수 있나를 아는 코드가 없다 (PRD S-01).
+ *   · 접기·펼치기는 ▸ 단추. 지금 페이지와 그 윗줄들만 펼쳐 두고 지금 페이지를 강조한다.
+ *   · 들여쓰기는 목록이 겹칠 때마다 CSS 가 준다 — 인라인 style 0 (DESIGN 0장 2).
+ */
+function currentPageId() {
+  const meta = document.getElementById('page-meta');
+  return meta ? (meta.getAttribute('data-page-id') || '') : '';
+}
+
+/** 펼침 단추 하나 — 하위가 없으면 자리만 차지하는 빈 칸이다(제목 왼쪽 끝을 가지런히) */
+function navToggle(label, kids, expanded) {
+  const toggle = document.createElement('button');
+  toggle.type = 'button';
+  toggle.className = 'nav-tree__toggle';
+  if (!kids) {
+    toggle.disabled = true;
+    toggle.tabIndex = -1;
+    toggle.setAttribute('aria-hidden', 'true');
+    return toggle;
+  }
+  toggle.textContent = '▸';
+  toggle.setAttribute('aria-label', label + ' 하위 ' + (expanded ? '접기' : '펼치기'));
+  toggle.setAttribute('aria-expanded', expanded ? 'true' : 'false');
+  if (expanded) { toggle.classList.add('is-open'); }
+  toggle.addEventListener('click', () => {
+    const box = toggle.parentNode && toggle.parentNode.nextElementSibling;
+    if (!box) { return; }
+    const open = box.hidden;
+    box.hidden = !open;
+    toggle.classList.toggle('is-open', open);
+    toggle.setAttribute('aria-expanded', open ? 'true' : 'false');
+    toggle.setAttribute('aria-label', label + ' 하위 ' + (open ? '접기' : '펼치기'));
+  });
+  return toggle;
+}
+
+/** 평평한 목록(`?tree=1`) → 사이드바 트리. `found` 는 지금 페이지가 이 트리에 있었나 */
+function navTree(pages, activeId) {
+  const byParent = new Map();
+  const byId = new Map();
+  for (const page of pages) {
+    byId.set(page.id, page);
+    const key = typeof page.parent_id === 'string' ? page.parent_id : '';
+    if (!byParent.has(key)) { byParent.set(key, []); }
+    byParent.get(key).push(page);
+  }
+  // 지금 페이지의 윗줄들은 펼친다(깊이 8 — 16 에서 멈추는 것은 자료가 어긋났을 때의 안전장치)
+  const openIds = new Set();
+  let cursor = byId.get(activeId);
+  for (let guard = 0; cursor && guard < 16; guard++) {
+    const up = typeof cursor.parent_id === 'string' ? cursor.parent_id : '';
+    if (up === '') { break; }
+    openIds.add(up);
+    cursor = byId.get(up);
+  }
+
+  function level(key, depth) {
+    const ul = document.createElement('ul');
+    ul.className = 'nav-tree';
+    for (const node of byParent.get(key) || []) {
+      const kids = depth < 12 ? (byParent.get(node.id) || []) : [];
+      const expanded = openIds.has(node.id) || node.id === activeId;
+      const title = (node.icon ? node.icon + ' ' : '') + node.title;
+      const li = document.createElement('li');
+      const row = document.createElement('div');
+      row.className = 'nav-tree__row' + (node.id === activeId ? ' is-active' : '');
+      const link = document.createElement('a');
+      link.className = 'nav-tree__link';
+      link.setAttribute('href', COMMUNITY_BASE + '/p/' + node.id);
+      link.textContent = title;
+      if (node.id === activeId) { link.setAttribute('aria-current', 'page'); }
+      row.appendChild(navToggle(title, kids.length > 0, expanded));
+      row.appendChild(link);
+      li.appendChild(row);
+      if (kids.length > 0) {
+        const sub = level(node.id, depth + 1);
+        sub.hidden = !expanded;
+        li.appendChild(sub);
+      }
+      ul.appendChild(li);
+    }
+    return ul;
+  }
+  return { el: level('', 0), found: byId.has(activeId) };
+}
+
+function spaceTree(space) {
+  const tail = space.kind === 'personal' ? '' : '&space=' + encodeURIComponent(String(space.id));
+  return api('GET', '/api/pages?tree=1' + tail).then((result) => (
+    result.status === 200 && Array.isArray(result.data.pages) ? result.data.pages : []
+  )).catch(() => []);
+}
+
+function fillSidebarTrees(spaces) {
+  const mineBox = document.getElementById('nav-community-tree');
+  const teamBox = document.getElementById('nav-community-teams');
+  const sharedBox = document.getElementById('nav-community-shared');
+  const sharedTitle = document.getElementById('nav-community-shared-title');
+  const activeId = currentPageId();
+  const hereSpace = currentSpaceId();
+  const list = Array.isArray(spaces) ? spaces : [];
+
+  const personal = list.find((s) => s && s.kind === 'personal');
+  if (mineBox && personal) {
+    spaceTree(personal).then((pages) => {
+      clear(mineBox);
+      mineBox.appendChild(navTree(pages, activeId).el);
+      markActiveVisible(mineBox);
+    });
+  }
+
+  // 팀 공간 — 팀 이름 줄(공간으로 가는 링크) 밑에 그 팀의 트리. 지금 페이지가 그 안에 있거나
+  // 그 공간을 보는 중이면 펼친다.
+  if (teamBox) {
+    clear(teamBox);
+    for (const space of list.filter((s) => s && s.kind === 'team')) {
+      const group = document.createElement('div');
+      const row = document.createElement('div');
+      row.className = 'nav-tree__row nav-tree__row--space' + (hereSpace === String(space.id) && activeId === '' ? ' is-active' : '');
+      const link = document.createElement('a');
+      link.className = 'nav-tree__link';
+      link.setAttribute('href', spaceHref(space.id, space.kind));
+      link.appendChild(makeIcon('users'));
+      const name = document.createElement('span');
+      name.textContent = space.name;
+      link.appendChild(name);
+      group.appendChild(row);
+      teamBox.appendChild(group);
+      spaceTree(space).then((pages) => {
+        const tree = navTree(pages, activeId);
+        const expanded = tree.found || hereSpace === String(space.id);
+        row.appendChild(navToggle(space.name, pages.length > 0, expanded));
+        row.appendChild(link);
+        if (pages.length > 0) {
+          tree.el.hidden = !expanded;
+          group.appendChild(tree.el);
+        }
+        markActiveVisible(group);
+      });
+    }
+  }
+
+  // 공유받은 페이지 (5-A) — 공간을 가리지 않는 한 번의 창구 호출. 없으면 제목째 숨는다.
+  if (sharedBox) {
+    api('GET', '/api/pages?shared=me').then((result) => {
+      const pages = result.status === 200 && Array.isArray(result.data.pages) ? result.data.pages : [];
+      clear(sharedBox);
+      const ul = document.createElement('ul');
+      ul.className = 'nav-tree';
+      for (const page of pages) {
+        const li = document.createElement('li');
+        const row = document.createElement('div');
+        row.className = 'nav-tree__row' + (page.id === activeId ? ' is-active' : '');
+        row.appendChild(navToggle('', false, false));
+        const link = document.createElement('a');
+        link.className = 'nav-tree__link';
+        link.setAttribute('href', COMMUNITY_BASE + '/p/' + page.id);
+        link.textContent = (page.icon ? page.icon + ' ' : '') + page.title;
+        if (page.id === activeId) { link.setAttribute('aria-current', 'page'); }
+        row.appendChild(link);
+        li.appendChild(row);
+        ul.appendChild(li);
+      }
+      sharedBox.appendChild(ul);
+      show(sharedBox, pages.length > 0);
+      show(sharedTitle, pages.length > 0);
+    }).catch(() => {});
+  }
+}
+
+/** 지금 페이지 줄이 사이드바 칸 밖이면 그 칸 안에서만 보이게 굴린다(본문은 움직이지 않는다) */
+function markActiveVisible(box) {
+  const row = box.querySelector('.nav-tree__row.is-active');
+  const side = document.getElementById('sidebar');
+  if (!row || !side) { return; }
+  const r = row.getBoundingClientRect();
+  const b = side.getBoundingClientRect();
+  if (r.top < b.top || r.bottom > b.bottom) {
+    side.scrollTop += r.top - b.top - b.height / 3;
+  }
 }
 
 /* ─── 내 공간 (community-home) ───────────────────────────────── */
@@ -2776,6 +2953,9 @@ function initPage() {
           state.doc = doc;
           savedSerial = mySerial;
           setText(titleEl, state.title);
+          // 사이드바 트리의 지금 페이지 줄도 새 제목으로 (5-A′) — 다시 불러오지 않는다
+          const navHere = document.querySelector('.nav-tree__row.is-active .nav-tree__link');
+          if (navHere) { navHere.textContent = state.title; }
           if (serial !== savedSerial) {
             // 보내는 사이에 또 고쳐졌다 — 아직 「저장됨」이 아니다.
             badge('저장 중…', '');
