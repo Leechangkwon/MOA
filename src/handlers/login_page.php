@@ -53,13 +53,23 @@ $themeAttr = Http::themeAttr();
 $loginToAllowed = ['tbox', 'community'];
 $loginToRaw     = $_GET['to'] ?? '';
 $loginTo        = is_string($loginToRaw) && in_array($loginToRaw, $loginToAllowed, true) ? $loginToRaw : '';
+
+/* 들어가려는 앱에 맞춘 왼쪽 판 (사용자 지적 2026-09-23 「t-box·커뮤니티 둘 다 눌렀을 때 전부 t-box 로
+   접근된다」). 로그인은 사이트 하나(계정·세션 공유)라 한 곳이 맞지만, 화면이 늘 「t-box」라고만 적어
+   커뮤니티 타일을 누른 사람도 t-box 로 가는 줄 알았다. 글자는 **고정 표**에서만 고른다 — 요청 값은
+   위 허용 목록을 지난 키뿐이다. */
+$loginApps = [
+    'tbox'      => ['name' => 't-box',  'into' => 't-box 로',  'sub' => '사내 파일 공유',                  'icon' => 'shield'],
+    'community' => ['name' => '커뮤니티', 'into' => '커뮤니티로', 'sub' => '개인 업무 공간 · 게시판 · 인계', 'icon' => 'grid'],
+];
+$loginApp = $loginApps[$loginTo === '' ? 'tbox' : $loginTo];
 ?>
 <!doctype html>
 <html lang="ko"<?= $themeAttr ?>>
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>로그인 · t-box</title>
+<title>로그인 · <?= htmlspecialchars($loginApp['name'], ENT_QUOTES, 'UTF-8') ?> · Qaredi</title>
 <link rel="stylesheet" href="<?= Http::url('/assets/app.css') ?>?v=<?= $loginCssVersion ?>">
 </head>
 <body data-page="login" data-base="<?= TBOX_BASE ?>" data-community-base="<?= COMMUNITY_BASE ?>"<?= $loginTo === '' ? '' : ' data-to="' . htmlspecialchars($loginTo, ENT_QUOTES, 'UTF-8') . '"' ?>>
@@ -73,14 +83,15 @@ $loginTo        = is_string($loginToRaw) && in_array($loginToRaw, $loginToAllowe
 
   <section class="login__brand">
     <div class="login__brand-top">
-      <span class="login__mark"><span class="icon" data-icon="shield"></span></span>
+      <span class="login__mark"><span class="icon" data-icon="<?= $loginApp['icon'] ?>"></span></span>
       <span class="brand__text">
-        <span class="login__brand-name">t-box</span>
-        <span class="login__brand-sub">사내 파일 공유 서비스</span>
+        <span class="login__brand-name"><?= htmlspecialchars($loginApp['name'], ENT_QUOTES, 'UTF-8') ?></span>
+        <span class="login__brand-sub">Qaredi</span>
       </span>
     </div>
     <div>
-      <h2 class="login__lead">사내 파일 공유</h2>
+      <h2 class="login__lead"><?= htmlspecialchars($loginApp['sub'], ENT_QUOTES, 'UTF-8') ?></h2>
+      <p class="login__brand-sub">Qaredi 계정 하나로 t-box 와 커뮤니티를 함께 씁니다. 한 번 로그인하면 둘 다 열립니다.</p>
     </div>
     <!-- Qaredi C — 로그인 화면에는 「Qaredi 홈」 텍스트 링크 하나만 (ARCH-launcher 6장).
          런처는 로그인 전에도 열리므로 이 링크가 막다른 화면을 만들지 않는다. 주소는
@@ -93,7 +104,7 @@ $loginTo        = is_string($loginToRaw) && in_array($loginToRaw, $loginToAllowe
       <form id="login-form" class="form" method="post" action="<?= Http::url('/api/login') ?>" autocomplete="off">
         <div class="page-head__text">
           <h1 class="page-head__title">로그인</h1>
-          <p class="page-head__sub">아이디와 비밀번호를 입력하세요.</p>
+          <p class="page-head__sub">아이디와 비밀번호를 입력하세요. 로그인하면 <b><?= htmlspecialchars($loginApp['into'], ENT_QUOTES, 'UTF-8') ?></b> 들어갑니다.</p>
         </div>
 
         <label class="field">
@@ -132,6 +143,7 @@ $loginTo        = is_string($loginToRaw) && in_array($loginToRaw, $loginToAllowe
 
 <!-- 아이콘 모음 — app.js 가 [data-icon] 자리에 clone 해서 넣는다 (문자열 → HTML 변환 0, CSP). -->
 <template id="tpl-icon-shield"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 2 4 5v6c0 5 3.4 9.4 8 11 4.6-1.6 8-6 8-11V5z"/></svg></template>
+<template id="tpl-icon-grid"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="5" height="5" rx="1.2"/><rect x="9.5" y="3" width="5" height="5" rx="1.2"/><rect x="16" y="3" width="5" height="5" rx="1.2"/><rect x="3" y="9.5" width="5" height="5" rx="1.2"/><rect x="9.5" y="9.5" width="5" height="5" rx="1.2"/><rect x="16" y="9.5" width="5" height="5" rx="1.2"/><rect x="3" y="16" width="5" height="5" rx="1.2"/><rect x="9.5" y="16" width="5" height="5" rx="1.2"/><rect x="16" y="16" width="5" height="5" rx="1.2"/></svg></template>
 <template id="tpl-icon-check"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m5 12 5 5L20 7"/></svg></template>
 <template id="tpl-icon-lock"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg></template>
 <!-- D-5 해/달 (DESIGN.md 2.11 · 2.12) — 셸의 <template> 모음과 같은 규격·같은 이름 -->
