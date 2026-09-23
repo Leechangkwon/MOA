@@ -36,6 +36,7 @@ declare(strict_types=1);
 require_once __DIR__ . '/Doc.php';
 require_once __DIR__ . '/DocRender.php';
 require_once __DIR__ . '/CommunityAuthz.php';
+require_once __DIR__ . '/DbProps.php';
 
 /**
  * 라우트 표 — [메서드, **모듈 경로** 패턴, 핸들러 파일명, 정책]
@@ -88,6 +89,15 @@ const COMMUNITY_ROUTES = [
      * 5-A — **담당자 지정은 멈췄다**(사용자 결정: 담당자 = 소유자, 바꾸는 일은 인계다).
      * 그래서 `GET /api/assignees` 는 표에서 빠졌고, 이 창구는 `status` 한 칸만 받는다. */
     ['PATCH',  '/api/pages/{id}/properties',             'pages_properties.php', 'community.write'],
+
+    /* ── 데이터베이스 (6-A, PRD F-27) ──
+     * DB 는 `POST /api/pages {database:true}` 로 만든다(DB 페이지 + `databases` 한 줄). 「DB 페이지 바로 아래
+     * 페이지 = 행」이라 새 행도 `POST /api/pages {parent_id: DB 페이지, properties}` 다 — 만들기 판정은 한 곳이다.
+     * 행 목록은 **목록 조건절 안에서만**(볼 수 없는 행은 SQL 이 거른다), 거르기·정렬은 `DbProps` 허용 목록.
+     * 스키마 고치기는 DB 페이지의 `decidePageManage`, 행 값 고치기는 그 행의 `decidePageChange`. */
+    ['GET',    '/api/databases/{id}/rows',               'database_rows.php',    'community.read'],
+    ['PATCH',  '/api/databases/{id}/schema',             'database_schema.php',  'community.write'],
+    ['PATCH',  '/api/pages/{id}/values',                 'page_values.php',      'community.write'],
 
     /* ── 사람 지정 공유 · 인계 (5-A, PRD NG-8 해제 · F-28) ──
      * 목록은 `community.read` + 그 페이지의 `decidePageRead`, 바꾸는 셋은 `community.write` +
@@ -432,7 +442,13 @@ function community_page_row(string $publicId, int $viewerId = 0): ?array
                pb.access_level AS pub_access_level,
                pb.team_id      AS pub_team_id,
                pb.is_active    AS pub_is_active,
-               pb.board_kind   AS pub_board_kind
+               pb.board_kind   AS pub_board_kind,
+               -- 6-A: 이 페이지가 **DB 페이지**면 그 DB(dbself_*), **행**이면 속한 DB(p.database_id + 스키마)
+               dbself.public_id AS dbself_public_id,
+               dbself.schema    AS dbself_schema,
+               p.database_id, p.properties,
+               dbrow.public_id  AS db_public_id,
+               dbrow.schema     AS db_schema
           FROM community.pages p
           JOIN community.spaces s ON s.id = p.space_id
           LEFT JOIN public.users owner    ON owner.id    = s.owner_user_id
@@ -440,6 +456,8 @@ function community_page_row(string $publicId, int $viewerId = 0): ?array
           LEFT JOIN public.users assignee ON assignee.id = p.assignee_id
           LEFT JOIN public.users author   ON author.id   = p.author_id
           LEFT JOIN community.spaces pb   ON pb.id       = p.published_board_id
+          LEFT JOIN community.databases dbself ON dbself.page_id = p.id
+          LEFT JOIN community.databases dbrow  ON dbrow.id       = p.database_id
          WHERE p.public_id = CAST(:pid AS uuid)
         SQL;
 
@@ -616,9 +634,11 @@ function community_children(int $pageId, array $u): array
           JOIN community.spaces s ON s.id = p.space_id
           LEFT JOIN public.users owner ON owner.id = s.owner_user_id
           LEFT JOIN community.pages g
-                 ON g.parent_page_id = p.id AND g.deleted_at IS NULL
+                 ON g.parent_page_id = p.id AND g.deleted_at IS NULL AND g.database_id IS NULL
          WHERE p.parent_page_id = CAST(:pid AS bigint)
            AND p.deleted_at IS NULL
+           -- 6-A: DB 의 행은 하위 페이지 목록이 아니라 DB 표에 보인다
+           AND p.database_id IS NULL
            AND {$visible}
          GROUP BY p.id, p.public_id, p.title, p.icon, p.position, p.updated_at
          ORDER BY p.position, p.id
@@ -2260,4 +2280,127 @@ function community_dispatch(string $modulePath, string $method): void
         require $file;
     })($user, $params, COMMUNITY_HANDLER_DIR . $handlerFile);
     exit;
+}
+
+/* ───────────── 6-A 데이터베이스 도우미 ───────────── */
+
+/**
+ * JSON 글자(스키마 칸) → 속성 목록. 모르는 모양의 줄은 버린다(판정·거르기는 `DbProps` 가 아는 줄만 다룬다).
+ *
+ * @return list<array<string,mixed>>
+ */
+function community_db_schema_of($json): array
+{
+    $list = is_string($json) ? json_decode($json, true) : (is_array($json) ? $json : null);
+    if (!is_array($list)) {
+        return [];
+    }
+    return array_values(array_filter($list, static fn ($p): bool => DbProps::propShapeOk($p)));
+}
+
+/**
+ * 행 값(`properties` 칸) → 지금 스키마에 있는 키만. 지운 속성의 값은 칸에 남아 있어도(결정 G-4) 내보내지 않는다.
+ *
+ * @return array<string,mixed>|stdClass
+ */
+function community_db_values_out(array $schema, $propsJson)
+{
+    $vals = is_string($propsJson) ? json_decode($propsJson, true) : (is_array($propsJson) ? $propsJson : null);
+    $out  = [];
+    if (is_array($vals)) {
+        foreach ($schema as $p) {
+            $k = (string) $p['key'];
+            if (array_key_exists($k, $vals) && $vals[$k] !== null) {
+                $out[$k] = $vals[$k];
+            }
+        }
+    }
+    return $out === [] ? new stdClass() : $out;
+}
+
+/**
+ * 사람 속성 값으로 넣을 수 있나 — 있는 활성 계정이고 **그 페이지를 볼 수 있어야** 한다(특권만으로 보는 사람 제외 —
+ * 4-D 담당자·5-D 멘션과 같은 `decideMentionTarget`). 없는 사람과 못 보는 사람은 같은 답(거짓)이다.
+ */
+function community_db_person_ok(string $username, string $pagePublicId): bool
+{
+    $t = community_user_by_name($username);
+    if ($t === null || ($t['is_active'] ?? false) !== true) {
+        return false;
+    }
+    $rowFor = community_page_row($pagePublicId, (int) $t['id']);
+    return $rowFor !== null && CommunityAuthz::decideMentionTarget($t, $rowFor)[0];
+}
+
+/**
+ * DB 한 줄 + 그 DB 페이지의 public_id. 없으면 null.
+ *
+ * @return array<string,mixed>|null
+ */
+function community_db_row(string $dbPublicId): ?array
+{
+    $sql = <<<'SQL'
+        SELECT d.id, d.public_id, d.page_id, d.schema, d.updated_at, p.public_id AS page_public_id
+          FROM community.databases d
+          JOIN community.pages p ON p.id = d.page_id
+         WHERE d.public_id = CAST(:id AS uuid)
+        SQL;
+    $row = Db::instance()->run($sql, [':id' => $dbPublicId])->fetch();
+    return is_array($row) ? $row : null;
+}
+
+/** 이 DB 의 살아 있는 행 수 (한도 G-11) */
+function community_db_row_count(int $dbId): int
+{
+    $sql = <<<'SQL'
+        SELECT count(*) AS n FROM community.pages p WHERE p.database_id = CAST(:db AS bigint) AND p.deleted_at IS NULL
+        SQL;
+    $r = Db::instance()->run($sql, [':db' => $dbId])->fetch();
+    return is_array($r) ? (int) $r['n'] : 0;
+}
+
+/**
+ * 「DB 페이지 바로 아래 = 행」을 맞춘다 — 옮기기·되살리기·인계가 부모를 바꾼 뒤 부른다(부르는 쪽 트랜잭션 안).
+ * 새 부모가 DB 페이지면 그 DB 의 행(값이 없으면 빈 객체), 아니면 행이 아니다(값은 버린다 — 결정 G-3,
+ * 버린 값은 처리 이력에 한 줄씩 남는다).
+ */
+function community_db_sync_row(int $pageId, int $byUserId): void
+{
+    $sql = <<<'SQL'
+        SELECT p.database_id, p.properties, d.id AS want_db, d.schema AS old_schema
+          FROM community.pages p
+          LEFT JOIN community.databases d ON d.page_id = p.parent_page_id
+         WHERE p.id = CAST(:pid AS bigint)
+        SQL;
+    $r = Db::instance()->run($sql, [':pid' => $pageId])->fetch();
+    if (!is_array($r)) {
+        return;
+    }
+    $have = $r['database_id'] === null ? null : (int) $r['database_id'];
+    $want = $r['want_db'] === null ? null : (int) $r['want_db'];
+    if ($have === $want) {
+        return;
+    }
+    if ($have !== null) {
+        // 옛 DB 의 값은 버린다 — 무엇이 사라졌는지는 이력에 남긴다
+        $oldSchemaSql = <<<'SQL'
+            SELECT schema FROM community.databases WHERE id = CAST(:db AS bigint)
+            SQL;
+        $os     = Db::instance()->run($oldSchemaSql, [':db' => $have])->fetch();
+        $schema = community_db_schema_of(is_array($os) ? $os['schema'] : null);
+        $vals   = json_decode((string) $r['properties'], true);
+        foreach ($schema as $p) {
+            $k = (string) $p['key'];
+            if (is_array($vals) && array_key_exists($k, $vals) && $vals[$k] !== null) {
+                community_insert_property_event($pageId, 'db:' . $k, DbProps::display($p, $vals[$k]), null, $byUserId);
+            }
+        }
+    }
+    $upd = <<<'SQL'
+        UPDATE community.pages
+           SET database_id = CAST(:db AS bigint),
+               properties  = CASE WHEN CAST(:db2 AS bigint) IS NULL THEN NULL ELSE '{}'::jsonb END
+         WHERE id = CAST(:pid AS bigint)
+        SQL;
+    Db::instance()->run($upd, [':db' => $want, ':db2' => $want, ':pid' => $pageId]);
 }

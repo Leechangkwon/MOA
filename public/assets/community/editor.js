@@ -41,6 +41,7 @@ import { dropCursor } from './vendor/pm/prosemirror-dropcursor.js';
 import { gapCursor } from './vendor/pm/prosemirror-gapcursor.js';
 
 import { renderDoc } from './doc-render.js';
+import { createDatabaseView } from './database.js';
 import { schema, toDoc, fromDoc, uuid4, colorAllowed, schemeOkForEditor, COLORS, BLOCK_TYPES } from './editor-schema.js';
 
 /* ─── 주소와 공통 도우미 ─────────────────────────────────────── */
@@ -2567,6 +2568,12 @@ function initPage() {
   const childrenCount = document.getElementById('page-children-count');
   const childrenEmpty = document.getElementById('page-children-empty');
   const newChildButton = document.getElementById('page-new-child');
+  const newDbButton = document.getElementById('page-new-db');
+  // 6-A — DB 표·행 속성 줄. 도우미는 이 파일의 것을 그대로 넘긴다(두 벌로 두지 않는다).
+  const dbView = createDatabaseView({
+    api: api, setText: setText, show: show, clear: clear, errorMessage: errorMessage,
+    base: COMMUNITY_BASE, statusLabels: STATUS_LABELS, genericError: GENERIC_ERROR, toLogin: toLogin
+  });
   const moveButton = document.getElementById('page-move');
   const conflictDialog = document.getElementById('conflict-dialog');
   const visibilityBadgeEl = document.getElementById('page-visibility');
@@ -2811,8 +2818,11 @@ function initPage() {
     // 하위가 없어도 「하위 페이지 만들기」가 있어야 하므로, 고칠 수 있으면 칸을 연다.
     // 5-C — 게시판 글에는 하위 페이지가 없다(한 줄 목록 — 창구도 400 `space_governed`).
     const flat = !!state.board && state.board.kind === 'post';
-    show(childrenWrap, list.length > 0 || (state.canEdit && !flat));
-    show(newChildButton, state.canEdit && !flat);
+    // 6-A — DB 페이지 아래 페이지는 **행**이다(표의 「새 행」으로 만든다) — 하위 만들기 단추 둘을 감춘다.
+    const isDb = !!state.database;
+    show(childrenWrap, list.length > 0 || (state.canEdit && !flat && !isDb));
+    show(newChildButton, state.canEdit && !flat && !isDb);
+    show(newDbButton, state.canEdit && !flat && !isDb);
   }
 
   function load() {
@@ -2868,7 +2878,9 @@ function initPage() {
       setText(subEl, page.parent ? '상위: ' + page.parent.title : '');
       drawCrumb(result.data.breadcrumb);
       drawRead();
+      state.database = result.data.database || null;
       drawChildren(result.data.children);
+      dbView.draw(pageId, result.data);
       showEditors(result.data.editors);
       show(editButton, state.canEdit && !state.editing);
       // 5-A — 지우기·옮기기는 **관리**다. 편집 공유자에게는 `can_edit` 이 참이어도 이 둘이 없다.
@@ -4564,6 +4576,21 @@ function initPage() {
           return load();
         })
         .catch(() => { newChildButton.disabled = false; setText(msg, GENERIC_ERROR); });
+    });
+  }
+
+  /* ── 「하위 데이터베이스 만들기」 (6-A) — 만든 뒤 그 DB 페이지로 간다(표·속성은 거기서) ── */
+  if (newDbButton) {
+    newDbButton.addEventListener('click', () => {
+      newDbButton.disabled = true;
+      api('POST', '/api/pages', { parent_id: pageId, database: true })
+        .then((result) => {
+          newDbButton.disabled = false;
+          if (result.status === 401) { toLogin(); return; }
+          if (result.status !== 201 || !result.data.page) { setText(msg, errorMessage(result.data)); return; }
+          window.location.assign(COMMUNITY_BASE + '/p/' + result.data.page.id);
+        })
+        .catch(() => { newDbButton.disabled = false; setText(msg, GENERIC_ERROR); });
     });
   }
 

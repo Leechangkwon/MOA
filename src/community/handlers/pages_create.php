@@ -12,6 +12,8 @@ declare(strict_types=1);
  *   doc       첫 본문 (선택). 없으면 빈 문단 하나. 있으면 `Doc::validate` 를 그대로 지난다
  *   parent_id 부모 페이지 (선택, UUID). **그 공간 안**의 살아 있는 페이지여야 한다
  *   space_id  공간 번호 (선택, 4-B). 없으면 **내 개인 공간**. 팀 공간이면 그 팀원만
+ *   database  `true` 면 **데이터베이스 페이지**로 만든다(6-A — `databases` 한 줄이 함께 생긴다). DB 페이지 아래에는 못 만든다
+ *   properties 행의 속성 값(6-A, 선택). **부모가 DB 페이지일 때만** — 「DB 페이지 바로 아래 페이지 = 행」이다
  *
  * ★ `visibility` 는 **허용 키가 아니다**(오면 400). 새 페이지의 범위는 요청이 정하지 않는다
  *   (4-B 지시서): 부모가 있으면 **부모와 같게**, 없으면 `private` 이다. 부모와 같게 시작해야
@@ -37,7 +39,7 @@ declare(strict_types=1);
  * @var list<string>        $params 경로 변수 없음
  */
 
-$allowedFields = ['title', 'doc', 'parent_id', 'space_id'];
+$allowedFields = ['title', 'doc', 'parent_id', 'space_id', 'database', 'properties'];
 
 /*
  * 본문 상한 (관문 ② 실측 2026-09-22) — `Http::jsonBody()` 의 기본 상한은 64KB 인데 문서 스키마는
@@ -65,8 +67,17 @@ if (array_diff(array_keys($body), $allowedFields) !== []) {
     Http::error(400, Http::MSG_BAD_REQUEST);
 }
 
+// 6-A — DB 로 만들기(참·거짓만)
+$makeDb = false;
+if (array_key_exists('database', $body)) {
+    if (!is_bool($body['database'])) {
+        Http::error(400, Http::MSG_BAD_REQUEST);
+    }
+    $makeDb = $body['database'];
+}
+
 // ─── [2] 제목 ──────────────────────────────────────────────────
-$title = '제목 없는 페이지';
+$title = $makeDb ? '제목 없는 데이터베이스' : '제목 없는 페이지';
 if (array_key_exists('title', $body)) {
     $rawTitle = $body['title'];
     if (!is_string($rawTitle) || preg_match('//u', $rawTitle) !== 1) {
@@ -232,6 +243,58 @@ if ($parentRow !== null) {
     $createCode = $spaceCode;
 }
 
+/* 6-A — (부모 판정을 **지난 뒤** — 독립 검토 M-1: 못 쓰는 사람이 DB 여부·속성 이름·행 수를 떠보지 못하게)
+   부모가 DB 페이지면 새 페이지는 **행**이다. 값은 그 DB 의 스키마로 검사하고, 사람 값은 **부모를 볼 수 있는
+   사람**만(새 행은 부모와 같은 범위로 시작한다 — 아래 [5] 뒤). DB 페이지 아래에 또 DB 는 만들지 않는다. */
+$rowDbId  = null;
+$rowProps = null;
+$parentIsDb = $parentRow !== null && $parentRow['dbself_public_id'] !== null;
+if ($parentIsDb && $makeDb) {
+    Http::json(['error' => '데이터베이스의 행으로 데이터베이스를 만들 수 없습니다', 'reason' => 'db_in_db'], 400);
+    exit;
+}
+if (array_key_exists('properties', $body) && !$parentIsDb) {
+    Http::json(['error' => '속성 값은 데이터베이스의 행에만 있습니다', 'reason' => 'not_row'], 400);
+    exit;
+}
+if ($parentIsDb) {
+    $dbInfo = community_db_row((string) $parentRow['dbself_public_id']);
+    if ($dbInfo === null) {
+        Http::error(404, Http::MSG_NOT_FOUND);
+    }
+    $rowDbId  = (int) $dbInfo['id'];
+    $schema   = community_db_schema_of($dbInfo['schema']);
+    $rowProps = [];
+    $rawProps = $body['properties'] ?? [];
+    if (!is_array($rawProps) || ($rawProps !== [] && array_is_list($rawProps)) || count($rawProps) > DbProps::MAX_PROPS) {
+        Http::error(400, Http::MSG_BAD_REQUEST);
+    }
+    foreach ($rawProps as $k => $v) {
+        $prop = DbProps::find($schema, (string) $k);
+        if ($prop === null) {
+            Http::json(['error' => '없는 속성입니다', 'reason' => 'unknown_prop'], 400);
+            exit;
+        }
+        [$okV, $clean] = DbProps::cleanValue($prop, $v);
+        if (!$okV) {
+            Http::json(['error' => '「' . (string) $prop['name'] . '」 값의 모양이 맞지 않습니다', 'reason' => 'bad_value'], 400);
+            exit;
+        }
+        if ($clean !== null && (string) $prop['type'] === 'person'
+            && !community_db_person_ok((string) $clean, (string) $parentRow['public_id'])) {
+            Http::json(['error' => '이 데이터베이스를 볼 수 없는 사람은 넣을 수 없습니다', 'reason' => 'person_not_permitted'], 400);
+            exit;
+        }
+        if ($clean !== null) {
+            $rowProps[(string) $k] = $clean;
+        }
+    }
+    if (community_db_row_count($rowDbId) >= DbProps::MAX_ROWS) {
+        Http::json(['error' => '한 데이터베이스에는 행을 ' . DbProps::MAX_ROWS . '개까지 둡니다', 'reason' => 'too_many_rows'], 400);
+        exit;
+    }
+}
+
 /* 새 페이지는 형제의 **맨 뒤**에 붙는다 (4-A). 3단계는 언제나 0 이었다 — 형제가 없었기
    때문인데, 트리가 생긴 지금 0 을 그대로 쓰면 새로 만든 것이 형제 사이에 끼어든다. */
 $position = community_next_position($spaceId, $parentId);
@@ -250,16 +313,29 @@ if ($parentVisibility !== null && in_array($parentVisibility, CommunityAuthz::VI
 $sqlInsert = <<<'SQL'
     INSERT INTO community.pages
         (space_id, parent_page_id, title, doc, doc_version, plain_text, search_tsv, block_count,
-         author_id, last_edited_by, visibility, position)
+         author_id, last_edited_by, visibility, position, database_id, properties)
     VALUES
         (CAST(:space AS bigint), CAST(:parent AS bigint), :title, CAST(:doc AS jsonb), 1, :plain,
          to_tsvector('simple', :tsv), CAST(:blocks AS int),
-         CAST(:author AS bigint), CAST(:editor AS bigint), :vis, CAST(:pos AS int))
+         CAST(:author AS bigint), CAST(:editor AS bigint), :vis, CAST(:pos AS int),
+         CAST(:dbid AS bigint), CAST(:props AS jsonb))
     RETURNING id, public_id, created_at, updated_at
     SQL;
 
 $db->begin();
 try {
+    // 6-A — 행 한도를 **잠근 뒤 다시** 센다(동시에 만들어 5,000 을 넘지 않게 — 독립 검토 L-1)
+    if ($rowDbId !== null) {
+        $lockDb = <<<'SQL'
+            SELECT id FROM community.databases WHERE id = CAST(:db AS bigint) FOR UPDATE
+            SQL;
+        $db->run($lockDb, [':db' => $rowDbId]);
+        if (community_db_row_count($rowDbId) >= DbProps::MAX_ROWS) {
+            $db->rollback();
+            Http::json(['error' => '한 데이터베이스에는 행을 ' . DbProps::MAX_ROWS . '개까지 둡니다', 'reason' => 'too_many_rows'], 400);
+            exit;
+        }
+    }
     $row = $db->run($sqlInsert, [
         ':space'  => $spaceId,
         ':parent' => $parentId,
@@ -272,6 +348,8 @@ try {
         ':blocks' => count($extract['blocks']),
         ':author' => $me,
         ':editor' => $me,
+        ':dbid'   => $rowDbId,
+        ':props'  => $rowProps === null ? null : json_encode($rowProps === [] ? new stdClass() : $rowProps, JSON_UNESCAPED_UNICODE),
     ])->fetch();
     if (!is_array($row)) {
         throw new RuntimeException('페이지를 만들지 못했습니다');
@@ -279,6 +357,23 @@ try {
     $pageId = (int) $row['id'];
 
     community_rewrite_derived($pageId, $extract);
+
+    // 6-A — DB 페이지면 `databases` 한 줄(빈 스키마 — 기본 열 제목·상태·소유자는 늘 있다)
+    $newDb = null;
+    if ($makeDb) {
+        $sqlDb = <<<'SQL'
+            INSERT INTO community.databases (page_id, schema, created_by)
+            VALUES (CAST(:pid AS bigint), '[]'::jsonb, CAST(:me AS bigint))
+            RETURNING public_id
+            SQL;
+        $newDb = $db->run($sqlDb, [':pid' => $pageId, ':me' => $me])->fetch();
+        Audit::allow('database.create', [
+            'target_type' => 'page',
+            'target_id'   => $pageId,
+            'target_name' => community_target_title($title),
+            'detail'      => ['page_title' => community_target_title($title), 'granted_by' => $createCode],
+        ]);
+    }
 
     Audit::allow('page.create', [
         'target_type' => 'page',
@@ -318,5 +413,8 @@ Http::json([
         'created_at'  => (string) $row['created_at'],
         'updated_at'  => (string) $row['updated_at'],
         'url'         => Http::communityUrl('/p/' . (string) $row['public_id']),
+        // 6-A — 만든 DB(없으면 null) · 행이면 그 값
+        'database'    => is_array($newDb ?? null) ? ['id' => (string) $newDb['public_id']] : null,
+        'values'      => $rowProps === null ? null : ($rowProps === [] ? new stdClass() : $rowProps),
     ],
 ], 201);

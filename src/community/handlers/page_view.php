@@ -153,6 +153,13 @@ require __DIR__ . '/../../views/shell_top.php';
       <input id="page-title-input" type="text" maxlength="200" autocomplete="off" spellcheck="false">
     </label>
 
+    <!-- 6-A 행 페이지의 속성 줄 — 이 페이지가 데이터베이스의 행이면 속성 이름과 값(고칠 수 있으면 눌러서 그 자리 편집).
+         그리기는 database.js 가 createElement/textContent 로 한다. -->
+    <section id="row-props-wrap" class="panel" aria-label="속성" hidden>
+      <p id="row-props-msg" class="msg" role="alert" aria-live="polite"></p>
+      <dl id="row-props" class="db-props"></dl>
+    </section>
+
     <!-- 읽기 모드의 본문이 들어오는 자리 (renderDoc 의 결과) -->
     <article id="page-doc" class="panel" aria-live="polite"></article>
 
@@ -187,12 +194,48 @@ require __DIR__ . '/../../views/shell_top.php';
 
     <!-- 하위 페이지 (4-A). 「하위 페이지 만들기」는 언제나 보이고(고칠 수 있을 때),
          목록은 있을 때만 보인다. 카드는 editor.js 가 `.card--link` 로 만든다. -->
+    <!-- 6-A 데이터베이스 표 — DB 페이지에서만 보인다. 열 = 제목·상태·속성들·소유자, 칸을 누르면 그 자리에서 고친다.
+         거르기는 조건 하나(창구는 열까지 받는다) · 정렬 하나. 속성 더하기·고치기는 아래 창(관리 자격만). -->
+    <section id="db-wrap" class="panel" aria-labelledby="db-title" hidden>
+      <div class="toolbar">
+        <p id="db-title" class="nav-title">데이터베이스</p>
+        <span id="db-count" class="muted"></span>
+        <button id="db-add-prop" class="btn btn--quiet btn--small" type="button" hidden>
+          <span class="icon" data-icon="plus"></span>속성 더하기
+        </button>
+      </div>
+      <div class="toolbar db-filter">
+        <select id="db-f-prop" class="input" aria-label="거를 속성"></select>
+        <select id="db-f-op" class="input" aria-label="조건"></select>
+        <span class="db-filter__value"><input id="db-f-val" class="input" type="text" aria-label="거를 값"></span>
+        <button id="db-f-apply" class="btn btn--quiet btn--small" type="button">거르기</button>
+        <button id="db-f-clear" class="btn btn--quiet btn--small" type="button" hidden>거르기 풀기</button>
+        <select id="db-sort" class="input" aria-label="정렬"></select>
+        <select id="db-sort-dir" class="input" aria-label="정렬 방향">
+          <option value="asc">오름차순</option>
+          <option value="desc">내림차순</option>
+        </select>
+      </div>
+      <p id="db-msg" class="msg" role="alert" aria-live="polite"></p>
+      <div class="doc-table-wrap">
+        <table id="db-table" class="doc-table db-table"></table>
+      </div>
+      <form id="db-add-row" class="toolbar" hidden>
+        <input id="db-add-row-title" class="input" type="text" maxlength="200" autocomplete="off" placeholder="새 행 제목" aria-label="새 행 제목">
+        <button class="btn btn--small" type="submit">새 행</button>
+      </form>
+    </section>
+
     <section id="page-children-wrap" hidden>
       <div class="toolbar">
         <p class="nav-title">하위 페이지</p>
         <span id="page-children-count" class="muted"></span>
         <button id="page-new-child" class="btn btn--quiet" type="button" hidden>
           <span class="icon" data-icon="plus"></span>하위 페이지 만들기
+        </button>
+        <!-- 6-A — 표 모양의 하위 데이터베이스. 만든 뒤 그 DB 페이지로 간다(행은 DB 표 안에서 만든다) -->
+        <button id="page-new-db" class="btn btn--quiet" type="button" hidden>
+          <span class="icon" data-icon="plus"></span>하위 데이터베이스 만들기
         </button>
       </div>
       <div id="page-children" class="card-grid"></div>
@@ -516,6 +559,36 @@ require __DIR__ . '/../../views/shell_top.php';
       <div class="form-actions">
         <button class="btn btn--quiet" type="button" data-block-close>닫기</button>
         <button id="block-insert" class="btn" type="button">넣기</button>
+      </div>
+    </dialog>
+
+    <!-- 6-A 「속성 더하기·고치기」 창. 종류는 더할 때만 고른다(바꾸기는 지우고 더하기). 지우기는 두 번 눌러야 한다. -->
+    <dialog id="db-prop-dialog" class="modal modal--form" aria-labelledby="db-prop-title">
+      <div class="modal__head">
+        <h2 id="db-prop-title" class="modal__title">속성 더하기</h2>
+        <button class="btn btn--icon btn--plain" type="button" data-db-prop-close aria-label="닫기">
+          <span class="icon" data-icon="x"></span>
+        </button>
+      </div>
+      <div class="modal__body form">
+        <p id="db-prop-msg" class="msg" role="alert" aria-live="polite"></p>
+        <label class="field field--full">
+          <span class="field__label">이름</span>
+          <input id="db-prop-name" type="text" maxlength="50" autocomplete="off" spellcheck="false">
+        </label>
+        <label id="db-prop-type-field" class="field field--full">
+          <span class="field__label">종류</span>
+          <select id="db-prop-type"></select>
+        </label>
+        <label id="db-prop-options-field" class="field field--full" hidden>
+          <span class="field__label">선택지 — 한 줄에 하나</span>
+          <textarea id="db-prop-options" rows="5" spellcheck="false"></textarea>
+        </label>
+      </div>
+      <div class="form-actions">
+        <button id="db-prop-remove" class="btn btn--quiet btn--danger" type="button" hidden>지우기</button>
+        <button class="btn btn--quiet" type="button" data-db-prop-close>닫기</button>
+        <button id="db-prop-save" class="btn" type="button">더하기</button>
       </div>
     </dialog>
 

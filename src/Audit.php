@@ -784,6 +784,12 @@ final class Audit
          *                                없는 계정·내려간 계정도 같은 사유로 남는다 — 응답은
          *                                셋을 가르지 않지만, 기록에는 고른 계정명이 남는다.
          */
+        // 6-A 데이터베이스
+        'database.create|allow'                 => '{actor} 이(가) 데이터베이스 「{target}」 을(를) 만들었습니다',
+        'database.schema|allow'                 => '{actor} 이(가) 데이터베이스 「{target}」 의 속성을 바꿨습니다 (무엇을 어떻게는 상세 기록)',
+        'database.schema|deny|not_owner'        => '{actor} 이(가) 관리 자격이 없는 데이터베이스 「{target}」 의 속성을 바꾸려 해서 막았습니다',
+        'page.values|allow'                     => '{actor} 이(가) 데이터베이스 행 「{target}」 의 속성 값을 바꿨습니다 (어느 속성·이전→새값은 상세 기록)',
+        'page.values|deny|not_owner'            => '{actor} 이(가) 고칠 수 없는 데이터베이스 행 「{target}」 의 속성 값을 바꾸려 해서 막았습니다',
         'page.property|allow'                   => '{actor} 이(가) 페이지 「{target}」 의 상태 또는 담당자를 바꿨습니다 (어느 칸·이전→새값은 상세 기록)',
         'page.property|deny|not_owner'          => '{actor} 이(가) 다른 사람의 페이지 「{target}」 의 상태 또는 담당자를 바꾸려 해서 막았습니다',
         'page.property|deny|assignee_not_permitted' => '{actor} 이(가) 페이지 「{target}」 을(를) 볼 수 없는 사람을 담당자로 지정하려 해서 거부했습니다 (고른 계정은 상세 기록)',

@@ -746,3 +746,21 @@ th.doc-table__cell { background: var(--surface-2); font-weight: 600; }
 .atom-pane { display: flex; flex-direction: column; gap: 10px; }
 .atom-grid td { padding: 2px; border: 0; }
 .atom-grid .input { width: 100%; min-width: 6rem; }
+
+/* ── 6-A 데이터베이스 (DESIGN 2.14 — 새 색값 0, 토큰만) ──────────────────── */
+.db-table { min-width: 100%; }
+.db-table .doc-table__cell { white-space: nowrap; }
+.db-col { border: 0; background: none; padding: 0; font: inherit; font-weight: 600; color: var(--fg); cursor: pointer; }
+.db-col:hover { text-decoration: underline; }
+.db-cell { cursor: pointer; }
+.db-cell__show { display: block; width: 100%; min-height: 1.6em; border: 0; background: none; padding: 0; font: inherit; color: inherit; text-align: left; cursor: pointer; }
+.db-cell__show:hover { background: var(--surface-2); }
+.db-cell .input, .db-props__value .input { min-width: 8rem; height: 30px; }
+.db-status { height: 30px; }
+.db-chips { display: inline-flex; flex-wrap: wrap; gap: 4px; }
+.db-multi { display: flex; flex-direction: column; gap: 4px; }
+.db-filter { flex-wrap: wrap; gap: 6px; }
+.db-filter .input { height: 32px; }
+.db-props { display: grid; grid-template-columns: minmax(6rem, 12rem) 1fr; gap: 6px 16px; margin: 0; align-items: center; }
+.db-props__name { color: var(--muted); font-size: 14px; }
+.db-props__value { margin: 0; min-width: 0; }

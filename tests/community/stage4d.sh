@@ -212,7 +212,7 @@ sub "② 마이그레이션 + 권한 (임시 DB 에만) — 4-D · 5-A"
 for mig in 2026-09-23_community_page_properties.sql 2026-09-23_community_owner_share.sql \
            2026-09-23_users_display_name.sql \
            2026-09-24_community_boards.sql \
-           2026-09-24_community_discussion.sql; do   # 5-C·5-D — 코드가 새 칸·표를 읽는다
+           2026-09-24_community_discussion.sql 2026-09-25_community_databases.sql; do   # 5-C·5-D — 코드가 새 칸·표를 읽는다
   sudo -n -u postgres psql -d "$DB" -v ON_ERROR_STOP=1 \
     -f - < "$ROOT/db/migrations/$mig" 2>&1 \
     | grep -v 'could not change directory' | sed 's/^/    /'

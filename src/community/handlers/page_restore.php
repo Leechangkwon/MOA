@@ -197,6 +197,8 @@ try {
             ':pos' => community_next_position((int) $row['space_id'], null),
             ':pid' => $pageId,
         ]);
+        // 6-A — 부모(DB 페이지)가 없어져 뿌리로 돌아왔으면 행이 아니다
+        community_db_sync_row($pageId, (int) $user['id']);
     }
 
     Audit::allow('page.restore', [

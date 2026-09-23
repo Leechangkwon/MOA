@@ -238,6 +238,8 @@ try {
         ':pos' => community_next_position($newSpaceId, null),
         ':pid' => $pageId,
     ]);
+    // 6-A — 넘긴 뿌리가 DB 의 행이었다면 이제 뿌리라 행이 아니다(값은 이력에 남기고 버린다 — G-3)
+    community_db_sync_row($pageId, (int) $user['id']);
 
     // ③ 떠나온 자리의 형제를 0..n-1 로 다시 매긴다(옮기기 `pages_move.php` 와 같은 규칙).
     foreach ($db->run($sqlOldSiblings, [':space' => $oldSpaceId, ':parent' => $oldParentId])->fetchAll() as $i => $sib) {

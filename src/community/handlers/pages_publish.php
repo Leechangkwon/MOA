@@ -47,6 +47,12 @@ $row       = $gate['row'];
 $pageId    = (int) $row['id'];
 $pageTitle = community_target_title((string) $row['title']);
 
+// ─── [1-1] 데이터베이스 (6-A, 결정 G-10) — DB 페이지와 그 행은 게시하지 않는다(게시판 등급과 행 범위가 엇갈린다) ───
+if ($row['dbself_public_id'] !== null || $row['database_id'] !== null) {
+    Http::json(['error' => '데이터베이스와 그 행은 게시판에 게시할 수 없습니다', 'reason' => 'database'], 400);
+    exit;
+}
+
 // ─── [권한 ✔ B] 이 페이지를 게시할 수 있나 ─────────────────────
 [$mayPublish, $publishCode] = CommunityAuthz::decidePublish($user, $row);
 if (!$mayPublish) {

@@ -462,6 +462,8 @@ if [ "$HAVE_PSQL" = "1" ]; then
         CROSS JOIN (SELECT id, role, team_id FROM users WHERE username = '$1') me
        WHERE p.space_id = $2
          AND p.deleted_at IS NULL
+         -- 6-A: DB 의 행은 트리·목록에 들지 않는다(DB 표 안에서만 보인다)
+         AND p.database_id IS NULL
          AND (
                (s.kind = 'personal' AND s.owner_user_id = me.id)
             OR (s.kind = 'personal' AND p.visibility = 'internal' AND me.role <> 'Guest')

@@ -179,6 +179,31 @@ if (!$mayMove) {
     Http::error(403, Http::MSG_FORBIDDEN);
 }
 
+/* ─── [4-1] 데이터베이스 (6-A) — 「DB 페이지 바로 아래 = 행」.
+   DB 페이지 아래로 옮기면 그 DB 의 행이 되고(값은 비어 시작), 밖으로 옮기면 행이 아니게 된다(값은 버리고 이력에 남는다 —
+   결정 G-3). DB 페이지를 다른 DB 의 행으로 넣지는 않는다(만들 때와 같은 규칙). ─── */
+$targetDb = null;
+if ($parentRow !== null) {
+    $sqlTargetDb = <<<'SQL'
+        SELECT id FROM community.databases WHERE page_id = CAST(:pid AS bigint)
+        SQL;
+    $targetDb = $db->run($sqlTargetDb, [':pid' => (int) $parentRow['id']])->fetch() ?: null;
+}
+if ($targetDb !== null && $row['dbself_public_id'] !== null) {
+    Http::json(['error' => '데이터베이스를 다른 데이터베이스의 행으로 옮길 수 없습니다', 'reason' => 'db_in_db'], 400);
+    exit;
+}
+// 게시 중인 페이지는 행이 되지 않는다(G-10 — 게시판 독자가 행 값을 보게 되는 길을 막는다, 독립 검토 L-2)
+if ($targetDb !== null && (string) $row['visibility'] === 'published') {
+    Http::json(['error' => '게시 중인 페이지는 데이터베이스 안으로 옮길 수 없습니다. 먼저 게시를 해제하세요', 'reason' => 'database'], 400);
+    exit;
+}
+if ($targetDb !== null && (int) $targetDb['id'] !== (int) ($row['database_id'] ?? 0)
+    && community_db_row_count((int) $targetDb['id']) >= DbProps::MAX_ROWS) {
+    Http::json(['error' => '한 데이터베이스에는 행을 ' . DbProps::MAX_ROWS . '개까지 둡니다', 'reason' => 'too_many_rows'], 400);
+    exit;
+}
+
 // ─── [5] 옮기기 ───────────────────────────────────────────────
 $oldParentId = $row['parent_page_id'] === null ? null : (int) $row['parent_page_id'];
 $newParentId = $parentRow === null ? null : (int) $parentRow['id'];
@@ -213,6 +238,18 @@ $sqlMove = <<<'SQL'
 
 $db->begin();
 try {
+    // 6-A — 다른 DB 로 들어가면 그 DB 를 잠그고 한도를 다시 센다(L-1)
+    if ($targetDb !== null && (int) $targetDb['id'] !== (int) ($row['database_id'] ?? 0)) {
+        $lockDb = <<<'SQL'
+            SELECT id FROM community.databases WHERE id = CAST(:db AS bigint) FOR UPDATE
+            SQL;
+        $db->run($lockDb, [':db' => (int) $targetDb['id']]);
+        if (community_db_row_count((int) $targetDb['id']) >= DbProps::MAX_ROWS) {
+            $db->rollback();
+            Http::json(['error' => '한 데이터베이스에는 행을 ' . DbProps::MAX_ROWS . '개까지 둡니다', 'reason' => 'too_many_rows'], 400);
+            exit;
+        }
+    }
     $siblings = [];
     foreach ($db->run($sqlSiblings, [':space' => $spaceId, ':parent' => $newParentId, ':me' => $pageId])->fetchAll() as $s) {
         $siblings[] = (int) $s['id'];
@@ -231,6 +268,11 @@ try {
             continue;
         }
         $db->run($sqlPosition, [':pos' => $index, ':pid' => $sibId]);
+    }
+
+    // 6-A — 부모가 바뀌었으면 행 여부를 맞춘다
+    if ($oldParentId !== $newParentId) {
+        community_db_sync_row($pageId, $me);
     }
 
     /* 떠나온 자리도 0..n-1 로 다시 매긴다 — 빈 번호를 남기면 다음 이동이 그 틈을 두고

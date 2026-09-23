@@ -318,7 +318,7 @@ Http::json([
     'view_count'     => community_view_count((int) $row['id']),
     'resolved'       => ($row['resolved'] ?? false) === true,
     'can_tag'        => $mayChange,
-    'can_publish'    => $mayPublish && (string) $row['visibility'] !== 'published',
+    'can_publish'    => $mayPublish && (string) $row['visibility'] !== 'published' && $row['dbself_public_id'] === null && $row['database_id'] === null,
     'can_unpublish'  => $mayUnpublish,
     'can_hide'       => $mayHide,
     'can_resolve'    => $mayResolve,
@@ -328,6 +328,20 @@ Http::json([
     'link_titles' => ($lt = community_link_titles(array_map(static fn (array $l): string => $l['to_page_id'], $docExtract['links']), $user)) === [] ? new stdClass() : $lt,
     'backlinks'   => community_backlinks((string) $row['public_id'], (int) $row['id'], $user),
     // 5-D — 댓글을 쓸 수 있나 · 공지 「읽은 사람 n/N」을 볼 수 있나(둘 다 창구가 같은 함수로 다시 막는다)
+    /* 6-A — DB 페이지면 `database`(스키마·자격 — 행 목록은 `GET /api/databases/{id}/rows`),
+       행이면 `row`(속한 DB · 스키마 · 값 · 고칠 수 있나). 둘 다 아니면 null. */
+    'database' => $row['dbself_public_id'] === null ? null : [
+        'id'                => (string) $row['dbself_public_id'],
+        'schema'            => community_db_schema_of($row['dbself_schema']),
+        'can_add_rows'      => $mayChange,
+        'can_manage_schema' => $mayManage,
+    ],
+    'row' => $row['database_id'] === null ? null : [
+        'database_id' => (string) $row['db_public_id'],
+        'schema'      => ($rowSchema = community_db_schema_of($row['db_schema'])),
+        'values'      => community_db_values_out($rowSchema, $row['properties']),
+        'can_edit'    => $mayChange,
+    ],
     'can_comment'    => CommunityAuthz::decideCommentCreate($user, $row)[0],
     'can_view_reads' => CommunityAuthz::decideReadsView($user, $row)[0],
 ]);

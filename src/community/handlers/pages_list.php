@@ -265,6 +265,7 @@ if (Http::queryText('tree', 4) === '1') {
                  ON parent.id = p.parent_page_id AND parent.deleted_at IS NULL
          WHERE p.space_id = CAST(:space AS bigint)
            AND p.deleted_at IS NULL
+           AND p.database_id IS NULL
            AND {$visible}
         {$statusWhere}
          ORDER BY p.position, p.id
@@ -347,6 +348,7 @@ $sqlCount = <<<SQL
       LEFT JOIN public.users owner ON owner.id = s.owner_user_id
      WHERE p.space_id = CAST(:space AS bigint)
        AND p.deleted_at IS NULL
+       AND p.database_id IS NULL
        AND {$visible}
        AND (CAST(:qoff AS boolean)
             OR p.title ILIKE :like1 ESCAPE '#'
@@ -372,6 +374,7 @@ $sqlList = <<<SQL
       LEFT JOIN community.pages parent ON parent.id = p.parent_page_id
      WHERE p.space_id = CAST(:space AS bigint)
        AND p.deleted_at IS NULL
+       AND p.database_id IS NULL
        AND {$visible}
        AND (CAST(:qoff AS boolean)
             OR p.title ILIKE :like1 ESCAPE '#'

@@ -190,7 +190,7 @@ CREATE TABLE community.page_property_events (
     id         BIGSERIAL   PRIMARY KEY,
     page_id    BIGINT      NOT NULL REFERENCES community.pages(id),
     prop       TEXT        NOT NULL CONSTRAINT page_property_events_prop_check
-                           CHECK (prop IN ('status','assignee','publish','hide','resolved')),
+                           CHECK (prop IN ('status','assignee','publish','hide','resolved') OR prop ~ '^db:[a-z0-9_]{1,30}$'),
     from_value TEXT,
     to_value   TEXT,
     by_user_id BIGINT      NOT NULL REFERENCES public.users(id),
@@ -325,3 +325,29 @@ CREATE TABLE community.page_reads (
     last_read_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
     PRIMARY KEY (page_id, user_id)
 );
+
+-- ─────────────────────────────────────────────────────────────
+-- 6-A 데이터베이스 (db/migrations/2026-09-25_community_databases.sql 과 같은 모양)
+--   DB 한 개 = DB 페이지 하나. 「DB 페이지 바로 아래 페이지 = 행」 — 행은 database_id·properties 를 가진다.
+-- ─────────────────────────────────────────────────────────────
+CREATE TABLE community.databases (
+    id         BIGSERIAL   PRIMARY KEY,
+    public_id  UUID        NOT NULL UNIQUE DEFAULT gen_random_uuid(),
+    page_id    BIGINT      NOT NULL UNIQUE REFERENCES community.pages(id),
+    schema     JSONB       NOT NULL DEFAULT '[]'::jsonb,
+    views      JSONB       NOT NULL DEFAULT '[]'::jsonb,
+    created_by BIGINT      NOT NULL REFERENCES public.users(id),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    CONSTRAINT databases_schema_is_array CHECK (jsonb_typeof(schema) = 'array'),
+    CONSTRAINT databases_views_is_array  CHECK (jsonb_typeof(views) = 'array')
+);
+ALTER TABLE community.pages ADD COLUMN database_id BIGINT REFERENCES community.databases(id);
+ALTER TABLE community.pages ADD COLUMN properties  JSONB;
+ALTER TABLE community.pages ADD CONSTRAINT pages_properties_shape
+    CHECK ((database_id IS NULL AND properties IS NULL)
+        OR (database_id IS NOT NULL AND properties IS NOT NULL AND jsonb_typeof(properties) = 'object'));
+CREATE INDEX pages_database_idx ON community.pages (database_id, position, id)
+    WHERE deleted_at IS NULL AND database_id IS NOT NULL;
+CREATE INDEX pages_properties_gin ON community.pages USING GIN (properties jsonb_path_ops)
+    WHERE database_id IS NOT NULL;
