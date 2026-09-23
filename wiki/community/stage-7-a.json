@@ -1,0 +1,49 @@
+{
+ "slug": "stage-7-a",
+ "title": "7-A — 휴지통 30일 정리",
+ "summary": "휴지통에 30일 넘게 있던 페이지를 영구 삭제한다. 내용(본문·판 이력·댓글·파생 표·공유·태그·조회·DB 값 이력)은 지우고, 체크·상태·인계·감사 같은 메타 기록과 페이지 번호는 남긴다. 정리는 표 소유자 계정만 부를 수 있는 DB 함수가 하고, 앱 계정은 부를 수 없다.",
+ "group": "stage",
+ "stage": "7-A",
+ "updated": "2026-09-24",
+ "sections": [
+  {
+   "id": "why",
+   "heading": "왜 만들었나",
+   "blocks": [
+    {
+     "type": "p",
+     "text": "PRD F-29 「30일 보관 · 배치 정리」, 시험 T-32. 5-C·6-A 독립 검토가 남긴 「영구 삭제 때 FK 순서」 숙제도 여기서 푼다. 결정 J-1·J-2 기본안."
+    }
+   ]
+  },
+  {
+   "id": "what",
+   "heading": "무엇을 만들었나",
+   "blocks": [
+    {
+     "type": "list",
+     "items": [
+      "마이그레이션 `2026-09-26_community_purge.sql` — `pages.purged_at` · 함수 `community.purge_trash(dry, max)`(기본 dry, 한 번 500) · EXECUTE 는 PUBLIC 에서 회수.",
+      "지우는 것: 판 이력 · 댓글(+반응·알림) · page_blocks · 나가는 page_links · 편집 중 표시 · 공유 · 태그 · 조회 · 읽음 · DB 값 이력(`db:*`). DB 페이지는 스키마·뷰를 비운다.",
+      "남기는 것: 페이지 행(제목 「영구 삭제된 페이지」, 본문 비움) · 체크 기록 · 상태·게시·숨김·해결됨 기록 · 인계 · 감사.",
+      "앱: 휴지통 목록에서 빠지고 되살리기·읽기는 404.",
+      "cron 예시 `deploy/cron/community-purge.cron`(매일 03:30) — 설치는 사용자(설정 파일)."
+     ]
+    }
+   ]
+  },
+  {
+   "id": "check",
+   "heading": "어떻게 확인했나",
+   "blocks": [
+    {
+     "type": "list",
+     "items": [
+      "`tests/community/stage7a.sh` — C:T-160 dry · C:T-161 정리(표마다 지운 것·남긴 것) · C:T-162 앱에서 404 · C:T-163 앱 계정 42501.",
+      "운영 사본 임시 DB 에서 직접 — dry 는 바꾼 것 0, 실제 5건, 두 번째 0, 앱 계정 permission denied."
+     ]
+    }
+   ]
+  }
+ ]
+}

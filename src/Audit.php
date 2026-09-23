@@ -785,6 +785,9 @@ final class Audit
          *                                셋을 가르지 않지만, 기록에는 고른 계정명이 남는다.
          */
         // 6-A 데이터베이스
+        // 7-A 휴지통 정리(배치 — 행위자 없음)
+        'page.purge|allow'                      => '휴지통에 30일 넘게 있던 커뮤니티 페이지를 배치가 영구 삭제했습니다 (건수·페이지 번호는 상세 기록)',
+        'page.purge|error|purge_failed'         => '커뮤니티 휴지통 영구 삭제 중 오류가 나서 멈췄습니다 (점검 필요)',
         'database.create|allow'                 => '{actor} 이(가) 데이터베이스 「{target}」 을(를) 만들었습니다',
         'database.schema|allow'                 => '{actor} 이(가) 데이터베이스 「{target}」 의 속성을 바꿨습니다 (무엇을 어떻게는 상세 기록)',
         'database.schema|deny|not_owner'        => '{actor} 이(가) 관리 자격이 없는 데이터베이스 「{target}」 의 속성을 바꾸려 해서 막았습니다',

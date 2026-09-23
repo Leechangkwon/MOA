@@ -451,6 +451,7 @@ function community_page_row(string $publicId, int $viewerId = 0): ?array
                dbself.public_id AS dbself_public_id,
                dbself.schema    AS dbself_schema,
                p.database_id, p.properties,
+               p.purged_at,
                dbrow.public_id  AS db_public_id,
                dbrow.schema     AS db_schema
           FROM community.pages p

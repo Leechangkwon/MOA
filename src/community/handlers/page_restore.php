@@ -57,6 +57,18 @@ $pageTitle = community_target_title((string) $row['title']);
 if ($row['deleted_at'] === null) {
     Http::error(404, Http::MSG_NOT_FOUND);
 }
+// 7-A — 영구 삭제된 페이지는 되살릴 것이 없다(내용이 비었다) — 없는 것과 같다
+if (($row['purged_at'] ?? null) !== null) {
+    Http::error(404, Http::MSG_NOT_FOUND);
+}
+// 7-A — 정리 시각이 지난 것은 정리 대상이다(휴지통 목록과 같은 기준) — 정리와 겨루지 않게 되살리지 않는다(독립 검토 M-1)
+$sqlDue = <<<'SQL'
+    SELECT (purge_after IS NOT NULL AND purge_after <= now()) AS due FROM community.pages WHERE id = CAST(:pid AS bigint)
+    SQL;
+$dueRow = Db::instance()->run($sqlDue, [':pid' => (int) $row['id']])->fetch();
+if (is_array($dueRow) && $dueRow['due'] === true) {
+    Http::error(404, Http::MSG_NOT_FOUND);
+}
 
 // ─── [권한 ✔] 되살릴 수 있나 ──────────────────────────────────
 [$mayRestore, $restoreCode] = CommunityAuthz::decidePageRestore($user, $row);
@@ -158,12 +170,13 @@ $sqlRestore = <<<'SQL'
     WITH RECURSIVE down AS (
         SELECT p.id, p.deleted_at
           FROM community.pages p
-         WHERE p.id = CAST(:pid AS bigint) AND p.deleted_at IS NOT NULL
+         WHERE p.id = CAST(:pid AS bigint) AND p.deleted_at IS NOT NULL AND p.purged_at IS NULL
         UNION ALL
         SELECT c.id, d.deleted_at
           FROM community.pages c
           JOIN down d ON c.parent_page_id = d.id
          WHERE c.deleted_at = d.deleted_at
+           AND c.purged_at IS NULL          -- 7-A: 영구 삭제된 하위는 되살리지 않는다(독립 검토 M-1)
     )
     UPDATE community.pages
        SET deleted_at = NULL,
@@ -171,6 +184,7 @@ $sqlRestore = <<<'SQL'
            purge_after = NULL,
            updated_at = now()
      WHERE id IN (SELECT id FROM down)
+       AND purged_at IS NULL
     SQL;
 
 $sqlToRoot = <<<'SQL'

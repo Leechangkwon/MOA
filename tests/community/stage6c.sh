@@ -201,7 +201,7 @@ echo "  · 임시 DB $DB — 계정 ${n_users}명 · 페이지 ${n_pages}장"
 sub "② 마이그레이션 + 권한 (임시 DB 에만) — 앞 단계(이미 있으면 그대로) · 5-C · 5-D (5-E 는 새 표가 없다)"
 for mig in 2026-09-23_community_page_properties.sql 2026-09-23_community_owner_share.sql \
            2026-09-23_users_display_name.sql 2026-09-24_community_boards.sql \
-           2026-09-24_community_discussion.sql 2026-09-25_community_databases.sql 2026-09-25_community_databases.sql; do
+           2026-09-24_community_discussion.sql 2026-09-25_community_databases.sql 2026-09-25_community_databases.sql 2026-09-26_community_purge.sql; do
   echo "    ▸ $mig"
   sudo -n -u postgres psql -d "$DB" -v ON_ERROR_STOP=1 -f - < "$ROOT/db/migrations/$mig" 2>&1 \
     | grep -v 'could not change directory' | sed 's/^/      /'

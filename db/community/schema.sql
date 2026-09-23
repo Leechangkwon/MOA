@@ -351,3 +351,7 @@ CREATE INDEX pages_database_idx ON community.pages (database_id, position, id)
     WHERE deleted_at IS NULL AND database_id IS NOT NULL;
 CREATE INDEX pages_properties_gin ON community.pages USING GIN (properties jsonb_path_ops)
     WHERE database_id IS NOT NULL;
+
+-- 7-A 휴지통 영구 삭제 표시 (db/migrations/2026-09-26_community_purge.sql 과 같은 열 — 정리 함수 community.purge_trash 는 그 파일이 만든다)
+ALTER TABLE community.pages ADD COLUMN purged_at TIMESTAMPTZ;
+CREATE INDEX pages_purge_due_idx ON community.pages (purge_after) WHERE deleted_at IS NOT NULL AND purged_at IS NULL;

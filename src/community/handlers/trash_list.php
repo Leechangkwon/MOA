@@ -39,6 +39,7 @@ $sql = <<<SQL
           LEFT JOIN public.users owner ON owner.id = s.owner_user_id
           LEFT JOIN community.pages par ON par.id = p.parent_page_id
          WHERE p.deleted_at IS NOT NULL
+           AND p.purged_at IS NULL          -- 7-A: 영구 삭제된 것은 휴지통에도 없다
            AND p.deleted_by = CAST(:me AS bigint)
            AND p.deleted_at > now() - interval '30 days'
            AND (p.parent_page_id IS NULL OR par.deleted_at IS NULL)
