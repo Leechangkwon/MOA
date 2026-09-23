@@ -28,7 +28,7 @@ $db  = Db::instance();
 $me  = (int) $user['id'];
 $pid = (string) $params[0];
 
-$row = community_page_row($pid);
+$row = community_page_row($pid, (int) $user['id']);
 if ($row === null) {
     Http::error(404, Http::MSG_NOT_FOUND);
 }
@@ -74,19 +74,28 @@ if ($readCode === CommunityAuthz::CODE_ADMIN_ALL || $readCode === CommunityAuthz
 }
 
 [$mayChange, $changeCode] = CommunityAuthz::decidePageChange($user, $row);
+/* 5-A — 「관리」(삭제·옮기기·공개 범위·공유)는 따로 묻는다. 편집 공유자는 `can_edit` 은 참이어도
+   여기가 거짓이다 — 화면이 삭제·옮기기·공개 범위 단추를 그 값으로 가린다. */
+[$mayManage, $manageCode] = CommunityAuthz::decidePageManage($user, $row);
+// 인계를 시작할 수 있나 — 소유자 · 자기 팀원 것의 Manager · Admin(재인증은 창구가 다시 묻는다).
+[$mayHandover] = CommunityAuthz::decidePageHandover($user, $row);
 
 /* 「공개 범위」 단추를 열지 말지 고르는 값 (4-B). 개인 공간의 **주인**일 때만 참이다 —
    팀 공간의 페이지는 자기 범위가 없고(공간 등급을 따른다), 남의 페이지는 볼 수 있어도
    범위를 바꾸지 못한다. 판단 근거가 아니라 **서버가 이미 한 판단의 결과**다: 단추를
    개발자도구로 되살려 창구를 불러도 `pages_visibility.php` 가 같은 함수로 다시 막는다. */
-$maySetVisibility = $mayChange
-    && $changeCode === CommunityAuthz::CODE_OWNER
+$maySetVisibility = $mayManage
+    && $manageCode === CommunityAuthz::CODE_OWNER
     && (string) $row['space_kind'] === 'personal';
 
+/* 5-A 인계 창의 「하위 페이지 n개도 함께 옮겨 갑니다」 — 넘길 수 있는 사람에게만 센다.
+   재귀 CTE 한 번(`community_subtree_live_ids`)이고, 자기 자신을 뺀 수다. */
+$subtreeCount = $mayHandover ? max(0, count(community_subtree_live_ids((int) $row['id'])) - 1) : null;
+
 /* 경로(breadcrumb) — 뿌리부터 **자기 자신까지**. 재귀 CTE **한 번**이다 (4-A).
-   조상은 전부 같은 개인 공간의 행이라 이 페이지와 판정이 같다 — 볼 수 있는 페이지의 조상은
-   볼 수 있다. 지워진 조상에서 CTE 가 멈추므로 그 너머는 경로에 나오지 않는다. */
-$breadcrumb = community_breadcrumb((int) $row['id'], (int) $row['space_id']);
+   5-A — 공유받은 사람은 조상을 못 볼 수 있다(비공개 부모 아래의 페이지 하나만 받았을 때).
+   그래서 보는 사람을 넘겨 **볼 수 있는 조상까지만** 잇는다 — 공유하지 않은 제목이 새지 않는다. */
+$breadcrumb = community_breadcrumb((int) $row['id'], (int) $row['space_id'], $user);
 
 // 바로 위 하나 — 3단계부터 쓰던 칸이라 그대로 둔다(경로의 끝에서 둘째와 같은 값이다).
 $parent = count($breadcrumb) >= 2
@@ -184,6 +193,16 @@ Http::json([
            담당자는 계정 id 가 아니라 **계정명·역할**로 나간다 — 화면이 id 를 이름으로
            바꾸는 일이 없고, 순차 정수가 응답에 실리지도 않는다. */
         'status'      => $row['status'] === null ? null : (string) $row['status'],
+        /* 5-A 「소유자」 — 이 페이지가 든 **공간의 주인**이다(새 칸이 아니다). 팀 공간은 사람이
+           아니라 「팀」이 주인이므로 `kind: team` 과 공간 이름만 보인다. 계정 id 는 나가지 않는다. */
+        'owner'       => (string) $row['space_kind'] === 'personal'
+            ? [
+                'kind'      => 'personal',
+                'username'  => (string) $row['space_owner_name'],
+                'is_active' => $row['space_owner_active'] === true,
+            ]
+            : ['kind' => (string) $row['space_kind'], 'name' => (string) $row['space_name']],
+        // 4-D 담당자 칸의 **옛 값**(읽기만). 5-A 부터 새로 지정하지 않는다 — 화면은 이 값을 그리지 않는다.
         'assignee'    => $row['assignee_name'] === null ? null : [
             'username' => (string) $row['assignee_name'],
             'role'     => (string) $row['assignee_role'],
@@ -206,6 +225,15 @@ Http::json([
     /* 4-D — 상태 배지·담당자 칩을 **누를 수 있게** 할지. 고칠 수 있는 사람과 같은 자격이다
        (`decidePageChange`) — 창구 `PATCH …/properties` 가 같은 함수로 다시 막는다 (C:T-51). */
     'can_set_properties' => $mayChange,
+    /* 5-A — 「관리」 단추(삭제·옮기기)·「사람 추가」·「넘기기」를 보일지. 셋 다 서버가 이미 한
+       판단의 결과이고, 되살려 눌러도 창구가 같은 함수로 다시 막는다 (C:T-53). */
+    'can_manage'   => $mayManage,
+    'can_share'    => $mayManage && (string) $row['space_kind'] === 'personal',
+    'can_handover' => $mayHandover,
+    // 인계 창의 안내 — 함께 옮겨 갈 하위 페이지 수(넘길 수 없는 사람에게는 null).
+    'subtree_count' => $subtreeCount,
+    // 나에게 준 공유 등급(`view`·`edit`, 이 페이지나 조상에서 가장 강한 것). 없으면 null.
+    'share_level'  => CommunityAuthz::shareLevelFor($user, $row),
     'granted_by' => $readCode,
     // 4-A — 뿌리부터 자기 자신까지의 경로. 길이가 곧 깊이다(뿌리는 1).
     'breadcrumb' => $breadcrumb,

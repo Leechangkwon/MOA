@@ -250,6 +250,18 @@ final class Audit
          * 코드에서도 드러내려고 여기 적는다 (preview_kind·part 와 같은 이유).
          */
         'restored_from', 'moved_to_root',
+        /*
+         * 커뮤니티 5-A — 사람 지정 공유 · 인계 (5-A 지시서 「감사」, PRD NG-8 해제 · F-28).
+         *   share_user  — 공유를 받은(받으려던·뺀) 사람의 **계정명**. `actor_name` 과 같은 성격의 값
+         *   share_level — 새 등급(`view`·`edit`), 뺐으면 null
+         *   share_from  — 이전 등급(`view`·`edit`), 새로 준 것이면 null
+         *   from_user · to_user — 인계의 옛 주인·새 주인 계정명
+         *   page_count  — 인계로 함께 옮겨 간 페이지 수(뿌리 포함, 정수)
+         *   kept_level  — 옛 주인에게 남긴 권한(`view`·`edit`), 없음이면 null(거부 행에는 요청이 고른 값)
+         * 본문 글자·계정 id 는 어느 쪽에도 들어가지 않는다. 여섯 키 모두 FORBIDDEN_DETAIL_KEYS
+         * 부분 일치에 걸리지 않지만, 등록부에 있는 키임을 코드에서도 드러내려고 여기 적는다.
+         */
+        'share_user', 'share_level', 'share_from', 'from_user', 'to_user', 'page_count', 'kept_level',
     ];
 
     private const RESULT_ALLOW = 'allow';
@@ -773,6 +785,33 @@ final class Audit
         'page.restore|allow'                    => '{actor} 이(가) 휴지통에서 페이지 「{target}」 을(를) 되살렸습니다 (함께 돌아온 하위 수는 상세 기록)',
         'page.restore|deny|not_owner'           => '{actor} 이(가) 다른 사람이 지운 페이지 「{target}」 을(를) 되살리려 해서 막았습니다',
         'page.delete|deny|not_owner'            => '{actor} 이(가) 다른 사람의 개인 페이지 「{target}」 을(를) 지우려 해서 막았습니다',
+
+        /* ── 커뮤니티 5-A — 사람 지정 공유 · 인계 (5-A 지시서 「감사」) ──
+         *
+         * `page.share|allow` — 공유를 주거나·등급을 바꾸거나·뺀 일. 무엇을 무엇으로는 상세의
+         *   `share_user`·`share_from`→`share_level` 에 있다(뺐으면 `share_level` 이 null).
+         *   **바뀐 일만** 남는다 — 같은 등급을 다시 보내면 행이 늘지 않는다.
+         * `page.share|deny|not_owner` — 관리 자격 없이(편집 공유자 포함) 공유를 바꾸려 했다.
+         * `page.share|deny|target_not_permitted` — 없는·내려간 계정, 또는 주인 자신에게 주려 했다.
+         *
+         * `page.handover|allow` — 소유자 본인의 인계. `|allow|admin_all`(관리자, 재인증 뒤) ·
+         *   `|allow|team_scope`(Manager 가 자기 팀원의 페이지를)는 **근거가 문장에 드러나게**
+         *   줄을 나눈다 — 남의 페이지를 넘긴 일은 본인이 넘긴 일과 같은 무게가 아니다.
+         * `page.handover|deny|…` — 자격 없음(편집 공유자 포함) · 받는 사람 부적격(Guest·비활성·
+         *   주인 자신) · 팀 공간 · 관리자의 재인증 없음.
+         * `space.create|allow|handover` — 인계를 받는 사람에게 개인 공간이 없어 **대신 만든** 일.
+         *   `space.create|allow` 는 「자기 개인 업무 공간」 문장이라 돌려쓰지 않는다. */
+        'page.share|allow'                      => '{actor} 이(가) 페이지 「{target}」 의 사람 지정 공유를 바꿨습니다 (누구·이전→새 등급은 상세 기록)',
+        'page.share|deny|not_owner'             => '{actor} 이(가) 관리 자격 없이 페이지 「{target}」 의 공유를 바꾸려 해서 막았습니다',
+        'page.share|deny|target_not_permitted'  => '{actor} 이(가) 페이지 「{target}」 을(를) 공유할 수 없는 사람에게 주려 해서 거부했습니다 (고른 계정은 상세 기록)',
+        'page.handover|allow'                   => '{actor} 이(가) 페이지 「{target}」 을(를) 다른 사람에게 넘겼습니다 (받은 사람·쪽수·남긴 권한은 상세 기록)',
+        'page.handover|allow|admin_all'         => '{actor} 이(가) 관리자 권한으로 다른 사람의 페이지 「{target}」 을(를) 넘겼습니다 (옛 주인·받은 사람·쪽수·남긴 권한은 상세 기록)',
+        'page.handover|allow|team_scope'        => '{actor} 이(가) 팀 관리자 권한으로 팀원의 페이지 「{target}」 을(를) 넘겼습니다 (옛 주인·받은 사람·쪽수·남긴 권한은 상세 기록)',
+        'page.handover|deny|not_owner'          => '{actor} 이(가) 넘길 자격 없이 페이지 「{target}」 을(를) 다른 사람에게 넘기려 해서 막았습니다',
+        'page.handover|deny|target_not_permitted' => '{actor} 이(가) 페이지 「{target}」 을(를) 넘겨받을 수 없는 사람에게 넘기려 해서 거부했습니다 (고른 계정은 상세 기록)',
+        'page.handover|deny|space_governed'     => '{actor} 이(가) 팀 공간의 페이지 「{target}」 을(를) 넘기려 해서 거부했습니다 (팀 공간은 팀이 주인입니다)',
+        'page.handover|deny|reauth_required'    => '{actor} 이(가) 비밀번호를 다시 확인하지 않고 관리자 권한으로 페이지 「{target}」 을(를) 넘기려 해서 막았습니다',
+        'space.create|allow|handover'           => '{actor} 이(가) 인계를 받을 사람의 개인 업무 공간 「{target}」 을(를) 만들었습니다',
     ];
 
     /** 자리표시자에 넣을 값이 없을 때 (ARCH 7.4) */

@@ -15,7 +15,7 @@ declare(strict_types=1);
  *   parent 하위 페이지만 (UUID)
  *   page   1부터. 한 쪽 20건
  *   status 상태로 좁히기 (4-D) — 다섯 값 또는 `none`(상태 없음). 모르는 값이면 **빈 목록**이다
- *   assignee `me` 면 **내가 담당인 페이지**(4-D). 이때만 공간을 가리지 않고 전부 본다 — 아래 ★
+ *   shared `me` 면 **공유받은 페이지**(5-A — 4-D 의 `assignee=me` 자리). 이때만 공간을 가리지 않는다 — 아래 ★
  *
  * ★ 범위는 **SQL 이 정한다** (C:S-02 · C:T-37). 관문이 둘이다:
  *     [공간] `community_space_gate()` — 남의 개인 공간은 통째로 403, 남의 팀 공간도 403.
@@ -30,12 +30,14 @@ declare(strict_types=1);
  *   문장에 끼워 넣는 조각은 조건절 상수 하나뿐이고, 그 안의 별칭 `p`·`s`·`owner` 도 코드에
  *   적힌 리터럴이다. 요청 값은 한 글자도 SQL 에 들어가지 않는다.
  *
- * ★ `?assignee=me` 는 **공간 관문을 지나지 않는다** (4-D). 「내가 담당인 페이지」는 남의
- *   개인 공간에 있을 수 있고(사내로 열어 둔 페이지의 담당자가 나인 경우), 공간을 하나씩
- *   골라 가며 찾게 하면 그 묶음은 쓸 수 없다. 대신 **행 관문은 그대로**다 —
- *   `community_visible_pages_where()` 가 붙으므로 볼 수 없는 페이지는 담당자가 나여도
- *   결과에 없다. 「남의 공간 목차를 넘겨본다」(C:T-35 가 막는 일)와 다르다: 여기 들어오는
- *   행은 **그 공간 주인이 나를 담당자로 앉힌 페이지**뿐이다.
+ * ★ `?shared=me` 는 **공간 관문을 지나지 않는다** (5-A). 「공유받은 페이지」는 언제나 남의
+ *   개인 공간에 있고, 공간을 하나씩 골라 가며 찾게 하면 그 묶음은 쓸 수 없다. 대신 **행 관문은
+ *   그대로**다 — `community_visible_pages_where()` 가 붙으므로 공유 줄이 있어도 효력이 없는 것
+ *   (내 계정이 비활성·`published` 범위)은 결과에 없다. 「남의 공간 목차를 넘겨본다」(C:T-35 가
+ *   막는 일)와 다르다: 여기 들어오는 행은 **그 주인이 이름을 대고 나에게 준 페이지**뿐이다
+ *   (공유 줄이 **직접** 달린 페이지 — 그 아래 하위는 그 페이지를 열어 하위 목록으로 간다).
+ * ★ 4-D 의 `?assignee=me` 는 없어졌다(담당자 지정을 멈췄다). 그 꼬리표는 이제 뜻이 없어
+ *   **무시된다** — 다른 모르는 꼬리표와 같이 기본 목록(내 개인 공간)이 나간다.
  *
  * 목록 조회는 감사에 남기지 않는다 (t-box 파일 목록과 같은 취급).
  *
@@ -69,68 +71,76 @@ $statusBind = [
     ':svalue' => $statusValue,
 ];
 
-/* ─── [0-1] 「내가 담당인 페이지」 (4-D, C:T-50) ─────────────────
+/* ─── [0-1] 「공유받은 페이지」 (5-A — 4-D 「내가 담당인 페이지」 자리) ──────
  *
  * 공간을 가리지 않는 **하나의 질의**다. 거르개는 전부 SQL `WHERE` 이고, 응답을 받은 뒤
  * PHP 가 줄을 빼는 코드가 없다 (C:S-02). 「고칠 수 있나」만 행마다 판정 함수로 답한다 —
  * 그 값은 **단추를 열지 말지**를 고르는 화면 편의 값이고 목록의 범위를 정하지 않는다.
+ * 행마다 판정에 필요한 공유 등급은 **같은 SQL 조각**(`community_share_rank_sql`)이 센다.
  */
-if (Http::queryText('assignee', 8) === 'me') {
-    [$visMine, $visMineBind] = community_visible_pages_where($user);
+if (Http::queryText('shared', 8) === 'me') {
+    [$visShared, $visSharedBind] = community_visible_pages_where($user);
+    $rankShared = community_share_rank_sql('p.id', ':me_rank');
 
-    $perPageMine = 20;
-    $pageNoMine  = Http::queryInt('page', 1, 1, 100000);
+    $perPageShared = 20;
+    $pageNoShared  = Http::queryInt('page', 1, 1, 100000);
 
-    $sqlMineCount = <<<SQL
+    $sqlSharedCount = <<<SQL
         SELECT count(*) AS n
           FROM community.pages p
           JOIN community.spaces s ON s.id = p.space_id
           LEFT JOIN public.users owner ON owner.id = s.owner_user_id
+          JOIN community.page_shares sh ON sh.page_id = p.id AND sh.user_id = CAST(:me AS bigint)
          WHERE p.deleted_at IS NULL
-           AND p.assignee_id = CAST(:me AS bigint)
-           AND {$visMine}
+           AND {$visShared}
         {$statusWhere}
         SQL;
 
-    $sqlMine = <<<SQL
+    $sqlShared = <<<SQL
         SELECT p.public_id, p.title, p.icon, p.block_count, p.doc_version,
                p.created_at, p.updated_at, p.visibility, p.status,
                s.id AS space_id, s.kind AS space_kind, s.name AS space_name,
                s.owner_user_id AS space_owner_user_id, s.team_id AS space_team_id,
+               owner.username AS owner_name,
                parent.public_id AS parent_public_id,
                left(p.plain_text, 160) AS excerpt,
-               me.username AS assignee_name, me.role AS assignee_role
+               sh.level AS direct_level,
+               {$rankShared} AS share_rank
           FROM community.pages p
           JOIN community.spaces s ON s.id = p.space_id
           LEFT JOIN public.users owner ON owner.id = s.owner_user_id
-          LEFT JOIN public.users me ON me.id = p.assignee_id
+          JOIN community.page_shares sh ON sh.page_id = p.id AND sh.user_id = CAST(:me AS bigint)
           LEFT JOIN community.pages parent ON parent.id = p.parent_page_id
          WHERE p.deleted_at IS NULL
-           AND p.assignee_id = CAST(:me AS bigint)
-           AND {$visMine}
+           AND {$visShared}
         {$statusWhere}
          ORDER BY p.updated_at DESC, p.id DESC
          LIMIT CAST(:lim AS int) OFFSET CAST(:off AS int)
         SQL;
 
-    $mineBind = array_merge([':me' => $me], $visMineBind, $statusBind);
+    $sharedBind = array_merge([':me' => $me], $visSharedBind, $statusBind);
 
-    $mineCountRow = $db->run($sqlMineCount, $mineBind)->fetch();
-    $mineTotal    = is_array($mineCountRow) ? (int) $mineCountRow['n'] : 0;
+    $sharedCountRow = $db->run($sqlSharedCount, $sharedBind)->fetch();
+    $sharedTotal    = is_array($sharedCountRow) ? (int) $sharedCountRow['n'] : 0;
 
-    $mineBind[':lim'] = $perPageMine;
-    $mineBind[':off'] = ($pageNoMine - 1) * $perPageMine;
+    $sharedBind[':lim']     = $perPageShared;
+    $sharedBind[':off']     = ($pageNoShared - 1) * $perPageShared;
+    $sharedBind[':me_rank'] = $me;
 
-    $minePages = [];
-    foreach ($db->run($sqlMine, $mineBind)->fetchAll() as $r) {
-        // 행마다 「고칠 수 있나」 — 공간이 제각각이라 공간 하나당 한 번으로 끝나지 않는다.
+    $sharedPages = [];
+    foreach ($db->run($sqlShared, $sharedBind)->fetchAll() as $r) {
+        $level = community_share_level_name($r['share_rank']);
+        // 행마다 「고칠 수 있나」 — 공간·등급이 제각각이라 한 번으로 끝나지 않는다.
         [$canEditRow] = CommunityAuthz::decidePageChange($user, [
             'deleted_at'          => null,
+            'visibility'          => (string) $r['visibility'],
             'space_kind'          => (string) $r['space_kind'],
             'space_owner_user_id' => $r['space_owner_user_id'],
             'space_team_id'       => $r['space_team_id'],
+            'share_level'         => $level,
+            'share_user_id'       => $me,
         ]);
-        $minePages[] = [
+        $sharedPages[] = [
             'id'          => (string) $r['public_id'],
             'title'       => (string) $r['title'],
             'icon'        => $r['icon'] === null ? null : (string) $r['icon'],
@@ -139,15 +149,15 @@ if (Http::queryText('assignee', 8) === 'me') {
             'doc_version' => (int) $r['doc_version'],
             'visibility'  => (string) $r['visibility'],
             'status'      => $r['status'] === null ? null : (string) $r['status'],
-            'assignee'    => $r['assignee_name'] === null ? null : [
-                'username' => (string) $r['assignee_name'],
-                'role'     => (string) $r['assignee_role'],
-            ],
+            // 이 페이지에 직접 준 등급과, 조상까지 따진 가장 강한 등급(판정이 쓰는 값).
+            'share_level' => $level,
+            'direct_level' => (string) $r['direct_level'],
+            'owner'       => $r['owner_name'] === null ? null : ['username' => (string) $r['owner_name']],
             'parent_id'   => $r['parent_public_id'] === null ? null : (string) $r['parent_public_id'],
             'created_at'  => (string) $r['created_at'],
             'updated_at'  => (string) $r['updated_at'],
             'can_edit'    => $canEditRow,
-            // 어느 공간의 페이지인가 — 남의 개인 공간일 수 있으므로 화면이 그것을 말해야 한다.
+            // 어느 공간의 페이지인가 — 언제나 남의 공간이므로 화면이 그것을 말해야 한다.
             'space'       => [
                 'id'   => (int) $r['space_id'],
                 'kind' => (string) $r['space_kind'],
@@ -157,14 +167,14 @@ if (Http::queryText('assignee', 8) === 'me') {
     }
 
     Http::json([
-        'pages'    => $minePages,
-        'total'    => $mineTotal,
-        'page'     => $pageNoMine,
-        'per_page' => $perPageMine,
+        'pages'    => $sharedPages,
+        'total'    => $sharedTotal,
+        'page'     => $pageNoShared,
+        'per_page' => $perPageShared,
         'q'        => '',
         // 공간을 가리지 않는 목록이다 — 「지금 보고 있는 공간」이 없다.
         'space'    => null,
-        'assignee' => 'me',
+        'shared'   => 'me',
         'status'   => $statusRaw,
     ]);
     exit;

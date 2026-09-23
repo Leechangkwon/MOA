@@ -33,12 +33,6 @@ $sqlFind = <<<'SQL'
      WHERE kind = 'personal' AND owner_user_id = CAST(:uid AS bigint)
     SQL;
 
-$sqlInsertSpace = <<<'SQL'
-    INSERT INTO community.spaces (kind, owner_user_id, name, description, access_level, created_by)
-    VALUES ('personal', CAST(:uid AS bigint), :name, :description, 'admin-only', CAST(:by AS bigint))
-    RETURNING id, name, kind, created_at
-    SQL;
-
 $sqlInsertPage = <<<'SQL'
     INSERT INTO community.pages
         (space_id, title, doc, doc_version, plain_text, search_tsv, block_count,
@@ -55,13 +49,8 @@ $created = false;
 $startPage = null;
 
 if (!is_array($row)) {
-    /* 공간 이름은 계정 이름에서 만든다. 표의 상한이 50자라 앞 40자만 쓴다 —
-       여기서 자르지 않으면 이름이 긴 계정의 첫 방문이 DB 제약에 걸려 500 이 된다. */
-    $ownerName = (string) $user['username'];
-    if (iconv_strlen($ownerName, 'UTF-8') > 40) {
-        $ownerName = (string) iconv_substr($ownerName, 0, 40, 'UTF-8');
-    }
-    $spaceName = $ownerName . ' 의 공간';
+    /* 공간 그릇은 `community_create_personal_space()` 가 만든다 (5-A 로 뽑아냈다 — 인계가 받는
+       사람의 공간을 만들 때 **같은 문장**을 쓴다). 이름 규칙(계정명 40자 + 「 의 공간」)도 거기 있다. */
 
     // 본문은 코드에 적힌 고정 문서다(요청 값 0). 저장 전에 **우리 검증기를 그대로** 지난다 —
     // 서버가 만든 문서라고 검사를 건너뛰면, 검증기와 생성기가 어긋나는 날을 알아채지 못한다.
@@ -80,49 +69,52 @@ if (!is_array($row)) {
 
     $db->begin();
     try {
-        $spaceRow = $db->run($sqlInsertSpace, [
-            ':uid'         => $me,
-            ':name'        => $spaceName,
-            ':description' => '나만 보는 개인 업무 공간입니다.',
-            ':by'          => $me,
-        ])->fetch();
-        if (!is_array($spaceRow)) {
-            throw new RuntimeException('개인 공간을 만들지 못했습니다');
+        $spaceRow = community_create_personal_space($me, (string) $user['username'], $me);
+        if ($spaceRow === null) {
+            /* 같은 사람이 창 둘을 거의 동시에 열었다(또는 그 사이 인계가 공간을 먼저 만들었다) —
+               먼저 만든 쪽이 이겼을 뿐이므로, 되돌리고 다시 읽어서 그 공간을 돌려준다. */
+            $db->rollback();
+            $row = $db->run($sqlFind, [':uid' => $me])->fetch();
+            if (!is_array($row)) {
+                throw new RuntimeException('개인 공간을 만들지 못했습니다');
+            }
+        } else {
+            $spaceId   = (int) $spaceRow['id'];
+            $spaceName = (string) $spaceRow['name'];
+
+            $pageRow = $db->run($sqlInsertPage, [
+                ':space'  => $spaceId,
+                ':title'  => $pageTitle,
+                ':doc'    => $docJson,
+                ':plain'  => $extract['plain_text'],
+                ':tsv'    => $pageTitle . ' ' . $extract['plain_text'],
+                ':blocks' => count($extract['blocks']),
+                ':author' => $me,
+                ':editor' => $me,
+            ])->fetch();
+            if (!is_array($pageRow)) {
+                throw new RuntimeException('「시작하기」 페이지를 만들지 못했습니다');
+            }
+
+            community_rewrite_derived((int) $pageRow['id'], $extract);
+
+            // 기록이 실패하면 공간도 페이지도 남지 않는다 (PRD S-07, 같은 트랜잭션).
+            Audit::allow('space.create', [
+                'target_type' => 'space',
+                'target_id'   => $spaceId,
+                'target_name' => $spaceName,
+                'detail'      => [
+                    'granted_by' => CommunityAuthz::CODE_OWNER,
+                    'page_title' => $pageTitle,
+                ],
+            ]);
+
+            $db->commit();
+
+            $row       = $spaceRow;
+            $created   = true;
+            $startPage = ['id' => (string) $pageRow['public_id'], 'title' => $pageTitle];
         }
-        $spaceId = (int) $spaceRow['id'];
-
-        $pageRow = $db->run($sqlInsertPage, [
-            ':space'  => $spaceId,
-            ':title'  => $pageTitle,
-            ':doc'    => $docJson,
-            ':plain'  => $extract['plain_text'],
-            ':tsv'    => $pageTitle . ' ' . $extract['plain_text'],
-            ':blocks' => count($extract['blocks']),
-            ':author' => $me,
-            ':editor' => $me,
-        ])->fetch();
-        if (!is_array($pageRow)) {
-            throw new RuntimeException('「시작하기」 페이지를 만들지 못했습니다');
-        }
-
-        community_rewrite_derived((int) $pageRow['id'], $extract);
-
-        // 기록이 실패하면 공간도 페이지도 남지 않는다 (PRD S-07, 같은 트랜잭션).
-        Audit::allow('space.create', [
-            'target_type' => 'space',
-            'target_id'   => $spaceId,
-            'target_name' => $spaceName,
-            'detail'      => [
-                'granted_by' => CommunityAuthz::CODE_OWNER,
-                'page_title' => $pageTitle,
-            ],
-        ]);
-
-        $db->commit();
-
-        $row       = $spaceRow;
-        $created   = true;
-        $startPage = ['id' => (string) $pageRow['public_id'], 'title' => $pageTitle];
     } catch (PDOException $e) {
         $db->rollback();
         // 23505 = unique_violation — 같은 사람이 창 둘을 거의 동시에 열었다.

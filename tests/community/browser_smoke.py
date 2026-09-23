@@ -48,6 +48,13 @@ SESSION = sys.argv[3]
 SAMPLES = sys.argv[4] if len(sys.argv) > 4 else None
 PHP_RENDER = sys.argv[5] if len(sys.argv) > 5 else None
 
+# 5-A (33~35) — 공유·인계는 **두 사람**이 있어야 행동→결과를 볼 수 있다. 부르는 쪽(stage5a.sh)이
+# 둘째 검토 계정의 세션과 계정명을 환경 변수로 넘긴다. 없으면 33~35 는 건너뛴다(앞 항목은 그대로).
+import os
+SESSION2 = os.environ.get("SMOKE_SESSION2", "")
+USER2 = os.environ.get("SMOKE_USER2", "")
+SHOTS = os.environ.get("SMOKE_SHOTS", "")
+
 COMMUNITY = SITE + "/community"
 PAGE_RE = re.compile(r"/community/p/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$")
 MARK = "SMOKE-%d" % int(time.time())
@@ -1248,9 +1255,11 @@ with sync_playwright() as p:
     step("32 속성 줄이 보이고 처음 상태는 「없음」이다",
          page.locator("#page-props").is_visible() and status_badge()[0] == "없음",
          "배지=%r" % (status_badge(),))
-    step("32 처음 담당자는 「없음」이다",
-         page.locator("#page-assignee-name").inner_text().strip() == "없음",
-         page.locator("#page-assignee-name").inner_text().strip())
+    # 5-A — 「담당자」 칸은 「소유자」가 됐다. 새 페이지의 소유자는 나(공간의 주인)다 — 창구가 준 값과 같은지 본다.
+    me_owner = page.request.get(COMMUNITY + "/api/pages/" + prop_id).json()["page"]["owner"]["username"]
+    step("32 속성 줄의 소유자 칸이 창구가 준 소유자와 같다",
+         page.locator("#page-owner-name").inner_text().strip() == me_owner,
+         "화면 %r · 창구 %r" % (page.locator("#page-owner-name").inner_text().strip(), me_owner))
 
     step("32 「진행」으로 바꾸면 창이 닫힌다", set_status("doing"))
     doing = status_badge()
@@ -1270,46 +1279,16 @@ with sync_playwright() as p:
     step("32 창구가 준 값도 hold 다",
          page.request.get(COMMUNITY + "/api/pages/" + prop_id).json()["page"]["status"] == "hold")
 
-    # ── 담당자 찾기 창 · 「나에게」 ────────────────────────────────
-    page.wait_for_selector("#page-assignee:not([disabled])", timeout=10000)
-    page.click("#page-assignee")
-    page.wait_for_selector("#assignee-dialog[open]", timeout=5000)
-    page.wait_for_timeout(700)
-    n_cand = page.locator("#assignee-list li").count()
-    step("32 담당자 창을 열면 후보가 채워진다", n_cand >= 1, "%d명" % n_cand)
-
-    who = page.request.get(COMMUNITY + "/api/assignees?page=" + prop_id).json()
-    me_name = who["me"]
-    step("32 후보는 창구가 준 명단과 같은 수다",
-         n_cand == len(who["assignees"]), "화면 %d · 창구 %d" % (n_cand, len(who["assignees"])))
-
-    page.click("#assignee-me")
-    page.wait_for_timeout(900)
-    step("32 「나에게」를 누르면 창이 닫힌다",
-         page.locator("#assignee-dialog[open]").count() == 0)
-    step("32 담당자 칸이 내 계정명으로 바뀐다",
-         page.locator("#page-assignee-name").inner_text().strip() == me_name,
-         page.locator("#page-assignee-name").inner_text().strip())
-    step("32 창구가 준 값도 나다",
-         page.request.get(COMMUNITY + "/api/pages/" + prop_id).json()["page"]["assignee"]["username"] == me_name)
-
-    # ── 목록 배지 · 「내가 담당인 페이지」 묶음 ────────────────────
+    # ── 목록 배지 ─────────────────────────────────────────────────
+    # 4-D 의 「담당자 찾기 · 나에게 · 내가 담당인 페이지」는 5-A 에서 멈췄다(담당자 = 소유자).
     page.goto(COMMUNITY + "/", wait_until="networkidle")
     page.wait_for_selector("#community-tree .page-tree__row", timeout=10000)
     page.wait_for_timeout(700)
-    step("32 「내가 담당인 페이지」 묶음이 보인다",
-         page.locator("#community-mine-wrap").is_visible(),
-         "숨김=%s" % (not page.locator("#community-mine-wrap").is_visible()))
-    mine_hrefs = page.locator("#community-mine a").evaluate_all(
-        "els => els.map(e => e.getAttribute('href'))")
-    step("32 그 묶음에 방금 담당이 된 페이지가 있다",
-         any(prop_id in (h or "") for h in mine_hrefs), "%r" % (mine_hrefs[:3],))
-    mine_total = page.request.get(COMMUNITY + "/api/pages?assignee=me").json()["total"]
-    step("32 묶음의 줄 수 = 창구가 센 수",
-         len(mine_hrefs) == mine_total, "화면 %d · 창구 %d" % (len(mine_hrefs), mine_total))
     step("32 트리 줄에 상태 배지가 붙는다",
          page.locator("#community-tree .badge--status-hold").count() >= 1,
          "%d개" % page.locator("#community-tree .badge--status-hold").count())
+    step("32 담당자 창구는 없다 (404)",
+         page.request.get(COMMUNITY + "/api/assignees?page=" + prop_id).status == 404)
 
     # ── 상태 거르개 ───────────────────────────────────────────────
     page.select_option("#community-status", "done")
@@ -1330,7 +1309,6 @@ with sync_playwright() as p:
     page.wait_for_timeout(700)
     ev_text = page.locator("#history-events").inner_text()
     step("32 「처리 이력」에 상태 줄이 있다", "상태:" in ev_text, ev_text[:120].replace("\n", " "))
-    step("32 「처리 이력」에 담당자 줄이 있다", "담당자:" in ev_text, ev_text[:120].replace("\n", " "))
     page.keyboard.press("Escape")
     page.wait_for_timeout(300)
 
@@ -1342,6 +1320,221 @@ with sync_playwright() as p:
     page.wait_for_timeout(1500)
     gone3 = page.request.get(COMMUNITY + "/api/pages/" + prop_id)
     step("32 정리 — 만든 페이지를 지웠다 (404)", gone3.status == 404, "HTTP %d" % gone3.status)
+
+    # ══════════════════════════════════════════════════════════════
+    # 33~35. 사람 지정 공유 · 인계 (5-A, stage5a-owner-share-directive.md 「브라우저」 줄)
+    #   단언은 전부 「행동 → 결과」다. 결과는 **창구가 돌려준 JSON**(공유 목록·페이지·이력)으로 본다.
+    #   둘째 계정(USER2)의 화면은 **별도 브라우저 문맥**(쿠키가 다른 창)에서 연다.
+    # ══════════════════════════════════════════════════════════════
+    def shot(name, target=None):
+        """스크린샷 — SHOTS 폴더가 있을 때만. 라이트·다크·390px 는 부르는 쪽이 고른다."""
+        if not SHOTS:
+            return
+        path = os.path.join(SHOTS, name + ".png")
+        try:
+            (target or page).screenshot(path=path, full_page=False)
+            print("   (스크린샷) " + path)
+        except Exception as e:  # 스크린샷 실패는 시험 실패가 아니다 — 줄 수만 알린다
+            print("   (스크린샷 실패) %s — %s" % (path, e))
+
+    def set_theme(pg, theme):
+        """해/달 전환과 같은 효과 — `<html data-theme>` 만 바꾼다(쿠키·서버 값은 건드리지 않는다)."""
+        pg.evaluate("t => document.documentElement.setAttribute('data-theme', t)", theme)
+        pg.wait_for_timeout(200)
+
+    def shares_of(pid):
+        return page.request.get(COMMUNITY + "/api/pages/" + pid + "/shares").json()
+
+    if not SESSION2 or not USER2:
+        print("── 33~35. 공유·인계 — 둘째 계정 세션이 없어 건너뛴다 (SMOKE_SESSION2·SMOKE_USER2)")
+    else:
+        # ── 33. 공개 범위 창의 「사람 추가」 ────────────────────────────
+        print("── 33. 「사람 추가」 — 찾기 → 보기로 추가 → 편집으로 바꾸기 → 빼기 → 다시 보기로")
+        csrf = page.evaluate("() => fetch(document.body.getAttribute('data-base') + '/api/me', {credentials:'same-origin'}).then(r => r.json()).then(j => j.csrf_token)")
+        hdr = {"X-CSRF-Token": csrf, "Content-Type": "application/json"}
+        made = page.request.post(COMMUNITY + "/api/pages", data=json.dumps({"title": MARK + "-공유"}), headers=hdr).json()
+        sh_id = made["page"]["id"]
+        todo_block = "9c1f3c2e-5a00-4a00-8a00-00000000a%03d" % (int(time.time()) % 1000)
+        doc = {"schema": 1, "blocks": [{"id": todo_block, "type": "to_do", "checked": False,
+                                        "text": [{"t": "공유 할 일", "m": {}}]}]}
+        page.request.patch(COMMUNITY + "/api/pages/" + sh_id, data=json.dumps({"doc_version": 1, "doc": doc}), headers=hdr)
+        page.goto(COMMUNITY + "/p/" + sh_id, wait_until="networkidle")
+        page.wait_for_selector("#page-visibility-edit:not([hidden])", timeout=10000)
+        page.click("#page-visibility-edit")
+        page.wait_for_selector("#visibility-dialog[open]", timeout=5000)
+        page.wait_for_timeout(500)
+        step("33 창을 열면 「사람 추가」 칸이 있고 처음 목록은 비어 있다 (창구 count=0)",
+             page.locator("#share-add").is_visible() and shares_of(sh_id)["count"] == 0,
+             "count=%r" % shares_of(sh_id)["count"])
+        page.select_option("#share-level", "view")
+        page.fill("#share-search", USER2)
+        page.wait_for_selector('#share-candidates [data-candidate="%s"]' % USER2, timeout=5000)
+        shot("33-share-light")
+        set_theme(page, "dark")
+        shot("33-share-dark")
+        set_theme(page, "light")
+        page.click('#share-candidates [data-candidate="%s"]' % USER2)
+        page.wait_for_selector('#share-list [data-share-user="%s"]' % USER2, timeout=5000)
+        got = shares_of(sh_id)["shares"]
+        step("33 후보를 누르면 **보기**로 추가된다 (창구 목록)",
+             any(x["username"] == USER2 and x["level"] == "view" and not x["inherited"] for x in got), "%r" % got)
+        page.select_option('#share-list select[data-share-level="%s"]' % USER2, "edit")
+        page.wait_for_timeout(900)
+        got = shares_of(sh_id)["shares"]
+        step("33 등급 고르개를 「편집」으로 바꾸면 창구 값도 edit",
+             any(x["username"] == USER2 and x["level"] == "edit" for x in got), "%r" % got)
+        page.click('#share-list [data-share-remove="%s"]' % USER2)
+        page.wait_for_timeout(900)
+        step("33 「빼기」를 누르면 창구 목록에서 사라진다",
+             shares_of(sh_id)["count"] == 0 and page.locator('#share-list [data-share-user="%s"]' % USER2).count() == 0,
+             "count=%r" % shares_of(sh_id)["count"])
+        # 34 를 위해 다시 보기로 준다(화면으로).
+        page.fill("#share-search", USER2)
+        page.wait_for_selector('#share-candidates [data-candidate="%s"]' % USER2, timeout=5000)
+        page.select_option("#share-level", "view")
+        page.click('#share-candidates [data-candidate="%s"]' % USER2)
+        page.wait_for_timeout(900)
+        step("33 다시 보기로 추가 (창구 값 view)",
+             any(x["username"] == USER2 and x["level"] == "view" for x in (shares_of(sh_id)["shares"] or [])))
+        page.set_viewport_size({"width": 390, "height": 844})
+        page.wait_for_timeout(300)
+        shot("33-share-390")
+        page.set_viewport_size({"width": 1440, "height": 900})
+        page.keyboard.press("Escape")
+        page.wait_for_timeout(300)
+
+        # ── 34. 보기 공유자의 화면 (둘째 계정, 별도 문맥) ─────────────────
+        print("── 34. 보기 공유자 — 「공유받은 페이지」 묶음 → 열기 → 편집·체크가 안 된다 → 내 공유 빼기")
+        ctx2 = browser.new_context(user_agent=UA, viewport={"width": 1440, "height": 900})
+        ctx2.add_cookies([{"name": "tbox_session", "value": SESSION2, "domain": host_of(SITE).split(":")[0],
+                           "path": "/", "httpOnly": True, "secure": False, "sameSite": "Lax"}])
+        p2 = ctx2.new_page()
+        p2_errors = []
+        p2.on("pageerror", lambda e: p2_errors.append(str(e)))
+        p2_expected = []
+        def p2_console(m):
+            if m.type != "error" or CSP_STYLE_RE.search(m.text):
+                return
+            # 「내 공유 빼기」 뒤에 화면이 「아직 볼 수 있나」를 창구에 한 번 묻는다 — 그 403 은
+            # 이 시험이 **요구한 결과**다(4-B 28번과 같은 취급: 숨기지 않고 따로 센다).
+            if "403" in m.text and p2_left["on"]:
+                p2_expected.append(m.text)
+                return
+            p2_errors.append(m.text)
+        p2_left = {"on": False}
+        p2.on("console", p2_console)
+        p2_patch = []
+        p2.on("request", lambda r: p2_patch.append(r.url) if r.method == "PATCH" else None)
+        p2.goto(COMMUNITY + "/", wait_until="networkidle")
+        p2.wait_for_timeout(900)
+        shared_hrefs = p2.locator("#community-shared a").evaluate_all("els => els.map(e => e.getAttribute('href'))")
+        api_shared = p2.request.get(COMMUNITY + "/api/pages?shared=me").json()
+        step("34 「공유받은 페이지」 묶음의 줄 수 = 창구(?shared=me)가 센 수",
+             len(shared_hrefs) == api_shared["total"], "화면 %d · 창구 %d" % (len(shared_hrefs), api_shared["total"]))
+        step("34 묶음에 방금 받은 페이지가 있다", any(sh_id in (h or "") for h in shared_hrefs), "%r" % shared_hrefs[:3])
+        shot("34-shared-group", p2)
+        p2.click('#community-shared a[href$="%s"]' % sh_id)
+        p2.wait_for_url(re.compile(sh_id + "$"), timeout=10000)
+        p2.wait_for_selector("#page-doc .doc-todo__box", timeout=10000)
+        p2.wait_for_timeout(400)
+        before = p2.request.get(COMMUNITY + "/api/pages/" + sh_id).json()
+        step("34 창구가 준 값 — can_edit=False · share_level=view",
+             before["can_edit"] is False and before["share_level"] == "view", "%r/%r" % (before["can_edit"], before["share_level"]))
+        p2.click("#page-doc .doc-todo__box")
+        p2.wait_for_timeout(900)
+        after = p2.request.get(COMMUNITY + "/api/pages/" + sh_id).json()
+        step("34 할 일 상자를 눌러도 저장 요청이 나가지 않고 문서가 그대로다",
+             len(p2_patch) == 0 and after["page"]["doc_version"] == before["page"]["doc_version"]
+             and after["page"]["doc"]["blocks"][0]["checked"] is False,
+             "PATCH %d건 · 판 %r→%r" % (len(p2_patch), before["page"]["doc_version"], after["page"]["doc_version"]))
+        step("34 편집 단추를 눌러 볼 수 없다 (편집 모드로 들어가지 않는다)",
+             p2.locator("#page-edit:not([hidden])").count() == 0 and p2.locator(".ProseMirror").count() == 0)
+        step("34 속성 줄의 소유자는 주인 계정명 (창구 값)",
+             p2.locator("#page-owner-name").inner_text().strip() == before["page"]["owner"]["username"],
+             p2.locator("#page-owner-name").inner_text().strip())
+        shot("34-viewer-page", p2)
+        # 내 공유 빼기 — 창을 열어 누르면 창구가 줄을 지우고, 다시는 열리지 않는다(403 → 내 공간으로).
+        p2.wait_for_selector("#page-share-open:not([hidden])", timeout=5000)
+        p2.click("#page-share-open")
+        p2.wait_for_selector("#visibility-dialog[open]", timeout=5000)
+        p2.wait_for_selector("#share-leave:not([hidden])", timeout=5000)
+        step("34 보기 공유자에게는 범위 고르기와 「사람 추가」가 없다 (창구 can_manage=False)",
+             p2.locator("#visibility-choices").is_hidden() and p2.locator("#share-add").is_hidden()
+             and p2.request.get(COMMUNITY + "/api/pages/" + sh_id + "/shares").json()["can_manage"] is False)
+        shot("34-viewer-share-dialog", p2)
+        p2_left["on"] = True
+        p2.click("#share-leave")
+        try:
+            p2.wait_for_url(re.compile(r"/community/$"), timeout=10000)
+            left_home = True
+        except Exception:
+            left_home = False
+        gone = p2.request.get(COMMUNITY + "/api/pages/" + sh_id)
+        step("34 「내 공유 빼기」 → 내 공간으로 돌아가고 그 페이지는 403", left_home and gone.status == 403,
+             "url=%s · HTTP %d" % (p2.url, gone.status))
+        print("   둘째 창 — 요구한 403 확인 %d건 (따로 센다)" % len(p2_expected))
+        step("34 둘째 창의 콘솔·페이지 오류 0", len(p2_errors) == 0, " | ".join(p2_errors[:2]))
+        ctx2.close()
+
+        # ── 35. 인계 창 ───────────────────────────────────────────────
+        print("── 35. 「넘기기」 — 받는 사람 고르기 · 남길 권한 기본 없음 · 넘긴 뒤 소유자 바뀜")
+        ho = page.request.post(COMMUNITY + "/api/pages", data=json.dumps({"title": MARK + "-인계"}), headers=hdr).json()["page"]["id"]
+        page.request.post(COMMUNITY + "/api/pages", data=json.dumps({"title": MARK + "-인계-하위", "parent_id": ho}), headers=hdr)
+        page.goto(COMMUNITY + "/p/" + ho, wait_until="networkidle")
+        page.wait_for_selector("#page-handover:not([hidden])", timeout=10000)
+        page.click("#page-handover")
+        page.wait_for_selector("#handover-dialog[open]", timeout=5000)
+        page.wait_for_timeout(600)
+        radios_checked = page.locator('#handover-dialog input[name="handover-keep"]:checked').count()
+        step("35 창을 열면 「남길 권한」 라디오에 **기본 선택이 없다**", radios_checked == 0, "%d개 선택됨" % radios_checked)
+        step("35 하위 수 안내가 창구 값(subtree_count)과 같다",
+             ("하위 페이지 %d개" % page.request.get(COMMUNITY + "/api/pages/" + ho).json()["subtree_count"])
+             in page.locator("#handover-lead").inner_text(), page.locator("#handover-lead").inner_text())
+        page.fill("#handover-search", USER2)
+        page.wait_for_selector('#handover-candidates [data-candidate="%s"]' % USER2, timeout=5000)
+        page.click('#handover-candidates [data-candidate="%s"]' % USER2)
+        page.wait_for_timeout(200)
+        step("35 받는 사람만 고르면 「넘기기」는 아직 눌리지 않는다", page.locator("#handover-confirm").is_disabled())
+        # 눌리지 않는 단추를 강제로 눌러도 요청이 나가지 않는다 — 창구 이력으로 확인한다.
+        page.locator("#handover-confirm").dispatch_event("click")
+        page.wait_for_timeout(500)
+        still = page.request.get(COMMUNITY + "/api/pages/" + ho).json()
+        step("35 그 상태로 눌러도 넘어가지 않는다 (소유자 그대로)", still["page"]["owner"]["username"] == me_owner,
+             still["page"]["owner"]["username"])
+        page.check('#handover-dialog input[name="handover-keep"][value="view"]')
+        page.wait_for_timeout(200)
+        step("35 남길 권한까지 고르면 「넘기기」가 눌린다", page.locator("#handover-confirm").is_enabled())
+        shot("35-handover-light")
+        set_theme(page, "dark")
+        shot("35-handover-dark")
+        set_theme(page, "light")
+        page.set_viewport_size({"width": 390, "height": 844})
+        page.wait_for_timeout(300)
+        shot("35-handover-390")
+        page.set_viewport_size({"width": 1440, "height": 900})
+        page.wait_for_timeout(200)
+        page.click("#handover-confirm")
+        page.wait_for_timeout(1500)
+        now = page.request.get(COMMUNITY + "/api/pages/" + ho).json()
+        step("35 넘긴 뒤 창구의 소유자는 받는 사람이다", now["page"]["owner"]["username"] == USER2,
+             now["page"]["owner"]["username"])
+        step("35 옛 주인(나)은 보기로 남았다 — can_edit=False · share_level=view",
+             now["can_edit"] is False and now["share_level"] == "view", "%r/%r" % (now["can_edit"], now["share_level"]))
+        step("35 화면의 소유자 칸도 받는 사람으로 바뀌었다",
+             page.locator("#page-owner-name").inner_text().strip() == USER2, page.locator("#page-owner-name").inner_text().strip())
+        hist = page.request.get(COMMUNITY + "/api/pages/" + ho + "/history").json()
+        step("35 「처리 이력」 창구에 인계 줄 하나 (2쪽 · 남긴 권한 view)",
+             sum(1 for e in hist["events"] if e["kind"] == "handover" and e["page_count"] == 2 and e["kept"] == "view") == 1)
+        tree_mine = page.request.get(COMMUNITY + "/api/pages?tree=1").json()
+        step("35 내 공간 트리에서 사라졌다", all(x["id"] != ho for x in tree_mine["pages"]))
+        page.click("#page-history")
+        page.wait_for_selector("#history-dialog[open]", timeout=5000)
+        page.click("#history-tab-events")
+        page.wait_for_timeout(700)
+        step("35 이력 창의 「처리 이력」 탭에 「소유자: 나 → 받는 사람」 줄이 보인다",
+             ("소유자: %s → %s" % (me_owner, USER2)) in page.locator("#history-events").inner_text())
+        page.keyboard.press("Escape")
+        page.wait_for_timeout(300)
 
     # ── 19. 전 과정의 오류 ────────────────────────────────────────
     print("── 19. 브라우저가 본 오류 (처음부터 끝까지)")

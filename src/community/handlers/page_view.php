@@ -68,7 +68,7 @@ require __DIR__ . '/../../views/shell_top.php';
     <!-- 속성 줄 (4-D, C:F-37) — 제목 바로 아래다.
          배지 자체는 **누를 수 없다**(DESIGN 2.2 「눌러도 아무 일도 없다」) — 누르는 것은
          배지를 담은 작은 단추이고, 고칠 수 없는 사람에게는 그 단추가 `disabled` 다.
-         값도 잠금도 전부 창구가 준 것(`status`·`assignee`·`can_set_properties`)이고,
+         값도 잠금도 전부 창구가 준 것(`status`·`owner`·`can_set_properties`·`can_handover`)이고,
          화면에는 소유·역할을 따지는 코드가 없다 (PRD S-01, DESIGN 원칙 1). -->
     <div id="page-props" class="page-props" hidden>
       <span class="page-props__group">
@@ -77,10 +77,14 @@ require __DIR__ . '/../../views/shell_top.php';
           <span id="page-status-badge" class="badge">없음</span>
         </button>
       </span>
+      <!-- 「소유자」 (5-A — 4-D 의 「담당자」 자리). 이 페이지가 든 **공간의 주인**이고, 팀 공간이면
+           「팀 공간」이다. 「넘기기」는 창구가 준 `can_handover` 가 참일 때만 보인다 — 화면이
+           소유·역할을 따지지 않는다. 되살려 눌러도 `POST …/handover` 가 같은 함수로 다시 막는다. -->
       <span class="page-props__group">
-        <span class="muted">담당자</span>
-        <button id="page-assignee" class="btn btn--small btn--quiet" type="button" aria-haspopup="dialog">
-          <span id="page-assignee-name">없음</span>
+        <span class="muted">소유자</span>
+        <span id="page-owner-name">…</span>
+        <button id="page-handover" class="btn btn--small btn--quiet" type="button" aria-haspopup="dialog" hidden>
+          <span class="icon" data-icon="users"></span>넘기기
         </button>
       </span>
       <!-- 공개 범위·이력은 머리글에서 이 줄로 옮겼다 (사용자 지시 2026-09-23 — 문서의 속성끼리 한 줄에).
@@ -95,6 +99,11 @@ require __DIR__ . '/../../views/shell_top.php';
         <span id="page-visibility" class="badge" hidden></span>
         <button id="page-visibility-edit" class="btn btn--small btn--quiet" type="button" aria-haspopup="dialog" hidden>
           <span class="icon" data-icon="shield"></span>바꾸기
+        </button>
+        <!-- 5-A — 공유받은 사람에게는 받은 권한이 보이고, 같은 창(공유 부분만)을 열어 자기 공유를 뺄 수 있다. -->
+        <span id="page-share-mine" class="badge" hidden></span>
+        <button id="page-share-open" class="btn btn--small btn--quiet" type="button" aria-haspopup="dialog" hidden>
+          <span class="icon" data-icon="users"></span>공유 보기
         </button>
       </span>
       <!-- 「이력」 (4-C). 이 페이지를 **볼 수 있는 사람이면 누구나** 연다 — 읽기 판정과 같은
@@ -233,7 +242,8 @@ require __DIR__ . '/../../views/shell_top.php';
         </button>
       </div>
       <div class="modal__body">
-        <p class="muted">이 페이지를 누가 볼 수 있는지 고릅니다. 고치는 사람은 언제나 나 하나입니다.</p>
+        <div id="visibility-choices">
+        <p class="muted">이 페이지를 누가 볼 수 있는지 고릅니다. 고치는 사람은 나와, 아래에서 「편집」으로 고른 사람입니다.</p>
         <p id="visibility-msg" class="msg" role="alert" aria-live="polite"></p>
 
         <label class="field field--full">
@@ -263,10 +273,84 @@ require __DIR__ . '/../../views/shell_top.php';
         </label>
 
         <p class="muted">하위 페이지는 상위보다 넓게 열 수 없습니다.</p>
+        </div>
+
+        <!-- 「사람 추가」 (5-A, PRD NG-8 해제). 공개 범위 위에 **더하는** 권한이다 — 아이디로 찾아
+             보기·편집을 고른다. 후보는 창구 `GET /api/share-candidates` 가, 목록은
+             `GET /api/pages/{id}/shares` 가 준 것만 그린다(화면이 누가 볼 수 있는지 따지지 않는다).
+             추가·등급 바꾸기·빼기는 **누르는 즉시** 창구로 간다(아래 「바꾸기」는 공개 범위만 바꾼다).
+             새 클래스 0 — `.field`·`.toolbar`·`.list`·`.badge` 는 DESIGN 2장의 구성 요소다. -->
+        <section id="share-section" aria-labelledby="share-title">
+          <p id="share-title" class="field__label">사람 추가</p>
+          <p id="share-msg" class="msg" role="alert" aria-live="polite"></p>
+          <div id="share-add" class="toolbar">
+            <input id="share-search" type="search" placeholder="아이디로 찾기" maxlength="64"
+                   autocomplete="off" spellcheck="false" aria-label="공유할 사람 찾기">
+            <select id="share-level" aria-label="줄 권한">
+              <option value="view">보기</option>
+              <option value="edit">편집</option>
+            </select>
+          </div>
+          <ul id="share-candidates" class="list list--scroll" aria-label="찾은 사람" hidden></ul>
+          <p id="share-count" class="muted"></p>
+          <ul id="share-list" class="list" aria-label="공유한 사람"></ul>
+          <p class="muted">공유는 하위 페이지에도 미칩니다. 「편집」으로 받은 사람도 지우기·옮기기·공개 범위·공유·넘기기는 못 합니다.</p>
+          <p>
+            <button id="share-leave" class="btn btn--quiet btn--small btn--danger" type="button" hidden>내 공유 빼기</button>
+          </p>
+        </section>
       </div>
       <div class="form-actions">
-        <button class="btn btn--quiet" type="button" data-visibility-close>그만두기</button>
+        <button class="btn btn--quiet" type="button" data-visibility-close>닫기</button>
         <button id="visibility-save" class="btn" type="button">바꾸기</button>
+      </div>
+    </dialog>
+
+    <!-- 「소유자 넘기기」 창 (5-A 인계, DESIGN 2.7 `.modal--form` · PRD 4.1 「인계(F-28)」).
+         받는 사람 찾기 + 「기존 소유자에게 남길 권한」 라디오 셋. **라디오에 기본 선택이 없다**
+         (사용자 결정 2) — 받는 사람과 남길 권한을 둘 다 고르기 전에는 「넘기기」가 눌리지 않는다.
+         후보는 창구 `GET /api/share-candidates?for=handover` 가 준 것만이고(손님·쓰지 않는 계정 제외),
+         서버가 다시 판단한다(`decidePageHandover`·`decideHandoverTarget`). -->
+    <dialog id="handover-dialog" class="modal modal--form" aria-labelledby="handover-title">
+      <div class="modal__head">
+        <h2 id="handover-title" class="modal__title">소유자 넘기기</h2>
+        <button class="btn btn--icon btn--plain" type="button" data-handover-close aria-label="닫기">
+          <span class="icon" data-icon="x"></span>
+        </button>
+      </div>
+      <div class="modal__body">
+        <p id="handover-lead" class="muted">이 페이지와 하위 페이지가 받는 사람의 공간 맨 위로 옮겨 갑니다.</p>
+        <p id="handover-msg" class="msg" role="alert" aria-live="polite"></p>
+
+        <label class="field field--full">
+          <span class="field__label">받는 사람</span>
+          <input id="handover-search" type="search" placeholder="아이디로 찾기" maxlength="64"
+                 autocomplete="off" spellcheck="false">
+        </label>
+        <ul id="handover-candidates" class="list list--scroll" aria-label="받을 수 있는 사람"></ul>
+        <p id="handover-picked" class="muted">받는 사람을 아직 고르지 않았습니다.</p>
+
+        <p class="field__label">기존 소유자에게 남길 권한</p>
+        <label class="field field--full">
+          <span class="field__label">
+            <input type="radio" name="handover-keep" value="none"> 없음 — 넘긴 뒤에는 볼 수 없습니다
+          </span>
+        </label>
+        <label class="field field--full">
+          <span class="field__label">
+            <input type="radio" name="handover-keep" value="view"> 보기 — 「공유받은 페이지」에서 읽기만 합니다
+          </span>
+        </label>
+        <label class="field field--full">
+          <span class="field__label">
+            <input type="radio" name="handover-keep" value="edit"> 편집 — 내용을 계속 고칠 수 있습니다
+          </span>
+        </label>
+        <p class="muted">내용·이력·체크 기록·작성자 이름은 그대로 따라갑니다.</p>
+      </div>
+      <div class="form-actions">
+        <button class="btn btn--quiet" type="button" data-handover-close>그만두기</button>
+        <button id="handover-confirm" class="btn btn--danger" type="button" disabled>넘기기</button>
       </div>
     </dialog>
 
@@ -415,34 +499,6 @@ require __DIR__ . '/../../views/shell_top.php';
       <div class="form-actions">
         <button class="btn btn--quiet" type="button" data-status-close>그만두기</button>
         <button id="status-save" class="btn" type="button">바꾸기</button>
-      </div>
-    </dialog>
-
-    <!-- 「담당자」 창 (4-D, DESIGN 2.7 `.modal--form` · 2.13 줄 목록).
-         후보는 창구 `GET /community/api/assignees?page=…&q=…` 가 주는 것만이다 —
-         화면에는 「누가 이 페이지를 볼 수 있나」를 따지는 코드가 한 줄도 없다.
-         「나에게」는 창구가 준 `can_assign_me` 가 참일 때만 눌린다. -->
-    <dialog id="assignee-dialog" class="modal modal--form" aria-labelledby="assignee-title">
-      <div class="modal__head">
-        <h2 id="assignee-title" class="modal__title">담당자</h2>
-        <button class="btn btn--icon btn--plain" type="button" data-assignee-close aria-label="닫기">
-          <span class="icon" data-icon="x"></span>
-        </button>
-      </div>
-      <div class="modal__body">
-        <p class="muted">이 페이지를 볼 수 있는 사람만 담당자가 될 수 있습니다.</p>
-        <p id="assignee-msg" class="msg" role="alert" aria-live="polite"></p>
-        <div class="toolbar">
-          <input id="assignee-search" type="search" placeholder="이름으로 찾기" maxlength="64"
-                 autocomplete="off" spellcheck="false" aria-label="담당자 찾기">
-          <button id="assignee-me" class="btn btn--quiet btn--small" type="button">나에게</button>
-          <button id="assignee-none" class="btn btn--quiet btn--small" type="button">담당자 없음</button>
-        </div>
-        <ul id="assignee-list" class="list list--scroll" aria-label="담당자 후보"></ul>
-        <p id="assignee-empty" class="muted" hidden>고를 수 있는 사람이 없습니다.</p>
-      </div>
-      <div class="form-actions">
-        <button class="btn btn--quiet" type="button" data-assignee-close>닫기</button>
       </div>
     </dialog>
 

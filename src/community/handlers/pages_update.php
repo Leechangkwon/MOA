@@ -73,7 +73,7 @@ if (!array_key_exists('title', $body) && !array_key_exists('doc', $body)) {
 }
 
 // ─── [2] 행 + 공간 ────────────────────────────────────────────
-$row = community_page_row($pid);
+$row = community_page_row($pid, (int) $user['id']);
 if ($row === null) {
     Http::error(404, Http::MSG_NOT_FOUND);
 }
@@ -257,7 +257,7 @@ try {
         /* 읽고 나서 여기 오기까지 사이에 다른 요청이 먼저 저장했다. 되돌리고 409 로 답한다 —
            위 [3] 과 같은 결론이고, 그 틈을 DB 가 막았다는 증거다. */
         $db->rollback();
-        $fresh    = community_page_row($pid);
+        $fresh    = community_page_row($pid, (int) $user['id']);
         $freshDoc = $fresh === null ? $currentDoc : json_decode((string) $fresh['doc'], true);
         $reject('version_conflict', 409, [
             'error'           => '다른 곳에서 먼저 저장되었습니다',

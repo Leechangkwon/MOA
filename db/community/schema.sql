@@ -179,6 +179,40 @@ CREATE TABLE community.page_property_events (
 CREATE INDEX page_property_events_page_at ON community.page_property_events (page_id, at DESC);
 
 -- ─────────────────────────────────────────────────────────────
+-- page_shares — 사람 지정 공유 (5-A, PRD NG-8 해제)
+--   페이지 하나를 한 사람에게 `view`(보기) 또는 `edit`(편집)으로 준다. **하위 페이지에도
+--   미친다** — 판정이 조상을 따라 오른다(`community_share_rank_sql`). 비활성 계정의 줄은
+--   효력 0 이다. 바뀌는 값이라 앱 계정에 SIUD 가 있고, 바뀐 일은 감사가 남긴다.
+-- ─────────────────────────────────────────────────────────────
+CREATE TABLE community.page_shares (
+    id         BIGSERIAL   PRIMARY KEY,
+    page_id    BIGINT      NOT NULL REFERENCES community.pages(id),
+    user_id    BIGINT      NOT NULL REFERENCES public.users(id),
+    level      TEXT        NOT NULL CHECK (level IN ('view','edit')),
+    granted_by BIGINT      NOT NULL REFERENCES public.users(id),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    UNIQUE (page_id, user_id)
+);
+CREATE INDEX page_shares_user ON community.page_shares (user_id);
+
+-- ─────────────────────────────────────────────────────────────
+-- handovers — 인계 기록 (5-A, C:F-28, C:S-14)
+--   페이지(와 하위)가 새 주인의 개인 공간으로 옮겨 간 일. 지울 수 없다(앱 계정 SELECT·INSERT 만).
+--   `kept_level` — 옛 주인에게 남긴 권한(`view`·`edit`), 없음이면 NULL.
+-- ─────────────────────────────────────────────────────────────
+CREATE TABLE community.handovers (
+    id           BIGSERIAL   PRIMARY KEY,
+    root_page_id BIGINT      NOT NULL REFERENCES community.pages(id),
+    from_user_id BIGINT      NOT NULL REFERENCES public.users(id),
+    to_user_id   BIGINT      NOT NULL REFERENCES public.users(id),
+    by_user_id   BIGINT      NOT NULL REFERENCES public.users(id),
+    page_count   INT         NOT NULL,
+    kept_level   TEXT        CHECK (kept_level IN ('view','edit')),
+    at           TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX handovers_root_at ON community.handovers (root_page_id, at DESC);
+
+-- ─────────────────────────────────────────────────────────────
 -- page_edit_sessions — 「지금 편집 중」 표시 (30초 heartbeat)
 --   값이 사라져도 잃는 것이 없는 표라 앱 계정에 DELETE 가 있다.
 -- ─────────────────────────────────────────────────────────────

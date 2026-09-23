@@ -5,13 +5,16 @@
 #   C:T-46 상태 5값 + 없음   각각 200 · `GET` 에 반영 · `page_property_events` 가 한 줄씩 늘고
 #                            `from_value`→`to_value` 가 맞다
 #   C:T-47 허용 밖 값        `status:"urgent"` 400 · 허용 키 밖(`{due}`) 400 · 빈 몸통 400 · DB 불변
-#   C:T-48 담당자            볼 수 있는 사람 200 · **볼 수 없는 사람** 400 `assignee_not_permitted`
-#                            + 감사 · 비활성 계정 400 · 후보 목록에 Guest·비활성·볼 수 없는 사람 0
+#   C:T-48 담당자 (5-A 로 바뀜) **지정을 멈췄다** — `{assignee}` 는 누구든 400 · DB 불변 · 감사 0 ·
+#                            후보 창구 `GET /api/assignees` 404. (4-D 때는 「볼 수 있는 사람 200 · 볼 수
+#                            없는 사람 400 assignee_not_permitted」였다 — 5-A 지시서 「4-D 담당자」 줄)
 #   C:T-49 기록 불변         **앱 계정(tbox_app)으로** `UPDATE`·`DELETE`·`TRUNCATE` → 전부 42501
-#   C:T-50 내가 담당인 페이지 employee01 이 employee02 의 사내 페이지 담당이 되면 employee02 화면에도
-#                            담당자가 보이고, employee01 의 `?assignee=me` 응답 수 = psql 로 센 수
+#   C:T-50 (5-A 로 바뀜)     「내가 담당인 페이지」 → 「공유받은 페이지」. `?assignee=me` 는 **무시되는
+#                            꼬리표**가 됐다(기본 목록이 나간다) · 이미 든 담당자 값은 DB 에 그대로 남고
+#                            창구는 읽기 전용 옛 값으로만 싣는다. 새 묶음 `?shared=me` 는 stage5a.sh C:T-56
 #   C:T-51 남이 바꾸기       소유자가 아닌 사람의 `PATCH …/properties` → 403 (사내 공개여도 · Admin 도)
-#   C:T-52 이력 합치기       「처리 이력」에 버전·체크·상태·담당자가 한 줄씩 **시간순**으로 섞여 나온다
+#   C:T-52 이력 합치기       「처리 이력」에 버전·체크·상태·(옛)담당자가 한 줄씩 **시간순**으로 섞여 나온다
+#                            (5-A — 담당자 줄은 창구로 만들 수 없어 **임시 DB 에 한 줄 넣어** 옛 기록을 흉내 낸다)
 #   브라우저                 browser_smoke.py 32 (상태 배지·새로 고침 유지·「나에게」·목록 배지·묶음)
 #   회귀                     security_lint 0 · php -l · bash -n
 #
@@ -19,7 +22,8 @@
 # ★ 이 시험은 **운영 DB 를 한 글자도 건드리지 않는다.**
 #
 #   4-D 코드는 마이그레이션(`db/migrations/2026-09-23_community_page_properties.sql`)이
-#   만든 칸을 **읽고 쓴다** — 4-C 와 달리 「적용 전에도 결과가 같다」가 아니다. 그런데 구현
+#   만든 칸을 **읽고 쓴다**(5-A 부터는 `2026-09-23_community_owner_share.sql` 의 표도 읽는다 —
+#   페이지 한 건을 읽는 질의가 `page_shares` 를 본다. 그래서 ② 에서 둘 다 적용한다) — 4-C 와 달리 「적용 전에도 결과가 같다」가 아니다. 그런데 구현
 #   에이전트는 운영 DB 에 DDL 을 돌리지 않는다(CLAUDE.md 4장). 그래서 이 스크립트는
 #
 #     ① 운영 DB(`tbox_re`)를 **읽어서**(pg_dump) 임시 DB `tbox_4d_test` 를 만들고
@@ -203,11 +207,14 @@ n_pages=$(psqlq "SELECT count(*) FROM community.pages")
   || { echo "임시 DB 로 옮기지 못했다 — $(head -2 "$WORK/restore.err")"; exit 3; }
 echo "  · 임시 DB $DB — 계정 ${n_users}명 · 페이지 ${n_pages}장"
 
-sub "② 마이그레이션 + 권한 (임시 DB 에만)"
-sudo -n -u postgres psql -d "$DB" -v ON_ERROR_STOP=1 \
-  -f "$ROOT/db/migrations/2026-09-23_community_page_properties.sql" 2>&1 \
-  | grep -v 'could not change directory' | sed 's/^/    /'
-sudo -n -u postgres psql -q -d "$DB" -v ON_ERROR_STOP=1 -f "$ROOT/db/community/grants.sql" 2>&1 \
+sub "② 마이그레이션 + 권한 (임시 DB 에만) — 4-D · 5-A"
+for mig in 2026-09-23_community_page_properties.sql 2026-09-23_community_owner_share.sql; do
+  sudo -n -u postgres psql -d "$DB" -v ON_ERROR_STOP=1 \
+    -f - < "$ROOT/db/migrations/$mig" 2>&1 \
+    | grep -v 'could not change directory' | sed 's/^/    /'
+done
+# 파일은 **표준 입력으로** 넘긴다 — postgres 계정이 저장소 폴더를 읽지 못해도(권한 700) 된다.
+sudo -n -u postgres psql -q -d "$DB" -v ON_ERROR_STOP=1 -f - < "$ROOT/db/community/grants.sql" 2>&1 \
   | grep -v 'could not change directory' | sed 's/^/    /'
 echo "  · 기록 표의 앱 계정 권한 (C:S-14 — r=SELECT · a=INSERT 만이어야 한다)"
 psqlq "SELECT c.relname || ' : ' || coalesce(array_to_string(c.relacl, ' '), '(없음)')
@@ -219,7 +226,7 @@ psqlq "SELECT c.relname || ' : ' || coalesce(array_to_string(c.relacl, ' '), '(�
 sub "③④ 저장소를 임시 폴더로 복사하고 두 번째 인스턴스를 띄운다"
 INST="$(mktemp -d)"
 mkdir -p "$INST/app" "$INST/storage" "$INST/log"
-tar -C "$ROOT" -cf - --exclude=.git --exclude=jar --exclude=api-test.txt . | tar -C "$INST/app" -xf -
+tar -C "$ROOT" -cf - --exclude=.git --exclude=jar --exclude=api-test.txt --exclude=./.env . | tar -C "$INST/app" -xf -
 # 임시 `.env` — 운영 `.env` 에서 **DB 이름·저장 경로·로그 경로만** 바꾼다. 값은 출력하지 않는다.
 sed -e "s#^DB_NAME=.*#DB_NAME=$DB#" \
     -e "s#^STORAGE_DIR=.*#STORAGE_DIR=$INST/storage#" \
@@ -345,70 +352,28 @@ expect "기록도 늘지 않았다" "$events_before" "$(ev_count "$P1")"
 
 sub "DB 도 마지막 그물을 갖고 있다 (CHECK — 앱을 지나지 않아도 막힌다)"
 out=$(sudo -n -u postgres psql -d "$DB" -t -A -v VERBOSITY=terse \
-        -c "UPDATE community.pages SET status='urgent' WHERE public_id='$P1'" 2>&1 | head -1)
+        -c "UPDATE community.pages SET status='urgent' WHERE public_id='$P1'" 2>&1 | grep -v 'could not change directory' | head -1)
 contains "psql 로 직접 넣어도 CHECK 가 막는다" "pages_status_check" "$out"
 
 # ════════════════════════════════════════════════════════════════
-hr "C:T-48  담당자 — 볼 수 있는 사람만"
+hr "C:T-48  담당자 — **지정을 멈췄다** (5-A: 담당자 = 소유자, 바꾸는 일은 인계)"
 
-sub "후보 목록 (비공개 페이지 — 소유자와 Admin 뿐이어야 한다)"
-code=$(capi GET "/api/assignees?page=$P1" qa_employee01)
-expect "후보 목록 200" "200" "$code"
-cand=$(jget "','.join(sorted(a['username'] for a in d['assignees']))" < "$WORK/b")
-note "후보: $cand"
-contains "  소유자(qa_employee01)가 있다" "qa_employee01" "$cand"
-lacks   "  다른 팀 사람(qa_employee02)은 없다" "qa_employee02" "$cand"
-lacks   "  손님(qa_guest01)은 없다" "qa_guest01" "$cand"
-expect "  후보 수 = psql 로 센 수 (활성 + 소유자·Admin)" \
-  "$(psqlq "SELECT count(*) FROM public.users u
-             WHERE u.is_active AND (u.username='qa_employee01' OR u.role='Admin')")" \
-  "$(jget "d['total']" < "$WORK/b")"
-
-sub "지정 — 볼 수 있는 사람(소유자 자신)"
-body '{"assignee":"qa_employee01"}'
-code=$(capi PATCH "/api/pages/$P1/properties" qa_employee01 "$WORK/body.json")
-expect "나에게 지정 → 200" "200" "$code"
-expect "  응답의 담당자" "qa_employee01" "$(jget "d['page']['assignee']['username']" < "$WORK/b")"
-expect "  기록의 이전→새값" "NULL→qa_employee01" \
-  "$(psqlq "SELECT coalesce(from_value,'NULL') || '→' || coalesce(to_value,'NULL')
-              FROM community.page_property_events e JOIN community.pages p ON p.id = e.page_id
-             WHERE p.public_id='$P1' AND e.prop='assignee' ORDER BY e.id DESC LIMIT 1")"
-
-sub "지정 — **볼 수 없는 사람**(다른 팀, 비공개 페이지) → 400 assignee_not_permitted + 감사"
 A0=$(mark)
-body '{"assignee":"qa_employee02"}'
-code=$(capi PATCH "/api/pages/$P1/properties" qa_employee01 "$WORK/body.json")
-expect "볼 수 없는 사람 지정 → 400" "400" "$code"
-expect "  사유" "assignee_not_permitted" "$(jget "d['reason']" < "$WORK/b")"
-expect "  담당자는 그대로다" "qa_employee01" \
-  "$(psqlq "SELECT u.username FROM community.pages p JOIN public.users u ON u.id = p.assignee_id WHERE p.public_id='$P1'")"
-expect "  감사에 deny 한 줄" "1" \
-  "$(psqlq "SELECT count(*) FROM audit_logs WHERE id > ${A0:-0} AND action='page.property' AND result='deny' AND reason='assignee_not_permitted'")"
-contains "  감사 문장" "볼 수 없는 사람을 담당자로" \
-  "$(psqlq "SELECT summary FROM audit_logs WHERE id > ${A0:-0} AND action='page.property' AND result='deny' ORDER BY id DESC LIMIT 1")"
-
-sub "지정 — 손님(Guest) · 없는 계정 · **비활성 계정** → 전부 400"
 DEAD=$(psqlq "SELECT username FROM public.users WHERE is_active = false ORDER BY id LIMIT 1")
-for who in qa_guest01 "없는계정_$$" "$DEAD"; do
-  [ -n "$who" ] || { skip "비활성 계정" "임시 DB 에 비활성 계정이 없다"; continue; }
+for who in qa_employee01 qa_employee02 qa_guest01 "없는계정_$$" ${DEAD:+"$DEAD"}; do
   body "{\"assignee\":\"$who\"}"
   code=$(capi PATCH "/api/pages/$P1/properties" qa_employee01 "$WORK/body.json")
-  expect "$who 지정 → 400" "400" "$code"
-  expect "  사유" "assignee_not_permitted" "$(jget "d['reason']" < "$WORK/b")"
+  expect "{assignee: $who} → 400 (허용 키가 아니다)" "400" "$code"
 done
-[ -n "$DEAD" ] && note "비활성 계정으로 쓴 계정: $DEAD"
-expect "담당자는 끝까지 그대로다" "qa_employee01" \
-  "$(psqlq "SELECT u.username FROM community.pages p JOIN public.users u ON u.id = p.assignee_id WHERE p.public_id='$P1'")"
-
-sub "「없음」으로 되돌리기"
 body '{"assignee":null}'
-code=$(capi PATCH "/api/pages/$P1/properties" qa_employee01 "$WORK/body.json")
-expect "담당자 없음 → 200" "200" "$code"
-expect "  DB 의 assignee_id 가 NULL" "t" "$(psqlq "SELECT assignee_id IS NULL FROM community.pages WHERE public_id='$P1'")"
-
-sub "후보 목록도 **남의 페이지**에는 닫혀 있다"
-code=$(capi GET "/api/assignees?page=$P1" qa_employee02)
-expect "employee02 가 남의 비공개 페이지 후보를 물으면 403" "403" "$code"
+expect "{assignee: null} 도 400" "400" "$(capi PATCH "/api/pages/$P1/properties" qa_employee01 "$WORK/body.json")"
+body '{"status":"todo","assignee":"qa_employee01"}'
+expect "상태와 함께 보내도 400 — 상태도 바뀌지 않는다" "400|doing" \
+  "$(capi PATCH "/api/pages/$P1/properties" qa_employee01 "$WORK/body.json")|$(psqlq "SELECT coalesce(status,'NULL') FROM community.pages WHERE public_id='$P1'")"
+expect "DB 의 assignee_id 는 그대로 NULL" "t" "$(psqlq "SELECT assignee_id IS NULL FROM community.pages WHERE public_id='$P1'")"
+expect "형식 거부라 감사는 남지 않는다" "0" \
+  "$(psqlq "SELECT count(*) FROM audit_logs WHERE id > ${A0:-0} AND action='page.property'")"
+expect "후보 창구 GET /api/assignees → 404 (창구가 없다)" "404" "$(capi GET "/api/assignees?page=$P1" qa_employee01)"
 
 # ════════════════════════════════════════════════════════════════
 hr "C:T-49  기록 불변 — 앱 계정으로는 고칠 수도 지울 수도 없다"
@@ -425,67 +390,24 @@ expect "INSERT 는 있다 (앱이 기록을 남긴다)" "t" \
   "$(appq "SELECT has_table_privilege('community.page_property_events','INSERT')" | tr -d ' ')"
 
 # ════════════════════════════════════════════════════════════════
-hr "C:T-50  「내가 담당인 페이지」 — SQL WHERE 로 (응답 수 = psql 로 센 수)"
+hr "C:T-50  (5-A) 「내가 담당인 페이지」 자리 — 옛 담당자 값은 남고, 꼬리표는 무시된다"
 
 P2=$(make_page qa_employee02 "4-D 영업팀의 사내 페이지")
 [ -n "$P2" ] || { echo "employee02 의 페이지를 만들지 못했다 — 중단"; exit 4; }
 body '{"visibility":"internal"}'
 expect "employee02 가 자기 페이지를 「사내」로 연다" "200" \
   "$(capi PATCH "/api/pages/$P2/visibility" qa_employee02 "$WORK/body.json")"
-
-code=$(capi GET "/api/assignees?page=$P2" qa_employee02)
-cand=$(jget "','.join(sorted(a['username'] for a in d['assignees']))" < "$WORK/b")
-contains "사내 페이지의 후보에 다른 팀 사람이 들어온다" "qa_employee01" "$cand"
-lacks   "그래도 손님은 없다" "qa_guest01" "$cand"
-
-body '{"assignee":"qa_employee01","status":"review"}'
-code=$(capi PATCH "/api/pages/$P2/properties" qa_employee02 "$WORK/body.json")
-expect "employee02 가 employee01 을 담당자로 → 200" "200" "$code"
-expect "  한 번에 두 칸이 바뀌었다" "2" "$(jget "len(d['changed'])" < "$WORK/b")"
-expect "  기록도 두 줄" "2" "$(ev_count "$P2")"
-
+body '{"status":"review"}'
+expect "employee02 가 상태를 검토로 → 200" "200" "$(capi PATCH "/api/pages/$P2/properties" qa_employee02 "$WORK/body.json")"
+# 4-D 때 지정해 둔 담당자를 흉내 낸다 — 임시 DB 에만 한 칸.
+psqlq "UPDATE community.pages SET assignee_id = (SELECT id FROM users WHERE username='qa_employee01') WHERE public_id='$P2'" >/dev/null
 code=$(capi GET "/api/pages/$P2" qa_employee02)
-expect "employee02 **자기 화면**에도 담당자가 보인다" "qa_employee01" \
-  "$(jget "d['page']['assignee']['username']" < "$WORK/b")"
-expect "  상태도 보인다" "review" "$(jget "d['page']['status']" < "$WORK/b")"
-
-sub "employee01 의 ?assignee=me — 응답 수 = psql 로 센 수"
+expect "옛 담당자 값은 창구에 **읽기 전용**으로 남는다" "qa_employee01" "$(jget "d['page']['assignee']['username']" < "$WORK/b")"
+expect "  속성 줄의 소유자는 공간 주인(employee02)" "qa_employee02" "$(jget "d['page']['owner']['username']" < "$WORK/b")"
 code=$(capi GET "/api/pages?assignee=me" qa_employee01)
-expect "목록 200" "200" "$code"
-api_total=$(jget "d['total']" < "$WORK/b")
-api_ids=$(jget "','.join(sorted(p['id'] for p in d['pages']))" < "$WORK/b")
-db_total=$(psqlq "SELECT count(*) FROM community.pages p
-                    JOIN community.spaces s ON s.id = p.space_id
-                   WHERE p.deleted_at IS NULL
-                     AND p.assignee_id = (SELECT id FROM public.users WHERE username='qa_employee01')")
-expect "응답 수 = psql 로 센 수" "$db_total" "$api_total"
-contains "  남의 공간(employee02)의 그 페이지가 들어 있다" "$P2" "$api_ids"
-expect "  그 줄의 공간 이름이 employee02 의 공간이다" "qa_employee02 의 공간" \
-  "$(jget "[p['space']['name'] for p in d['pages'] if p['id']=='$P2'][0]" < "$WORK/b")"
-expect "  그 줄은 고칠 수 없다고 나온다 (남의 개인 공간)" "False" \
-  "$(jget "[p['can_edit'] for p in d['pages'] if p['id']=='$P2'][0]" < "$WORK/b")"
-
-sub "거르개를 겹쳐도 SQL 이 센다"
-code=$(capi GET "/api/pages?assignee=me&status=review" qa_employee01)
-expect "?assignee=me&status=review 수 = psql" \
-  "$(psqlq "SELECT count(*) FROM community.pages p
-              WHERE p.deleted_at IS NULL AND p.status='review'
-                AND p.assignee_id = (SELECT id FROM public.users WHERE username='qa_employee01')")" \
-  "$(jget "d['total']" < "$WORK/b")"
-code=$(capi GET "/api/pages?assignee=me&status=urgent" qa_employee01)
-expect "모르는 상태로 거르면 **빈 목록**이다 (넓어지지 않는다)" "0" "$(jget "d['total']" < "$WORK/b")"
-
-sub "담당이어도 **볼 수 없게 되면** 목록에서 사라진다 (행 관문은 그대로다)"
-body '{"visibility":"private"}'
-expect "employee02 가 그 페이지를 다시 「비공개」로" "200" \
-  "$(capi PATCH "/api/pages/$P2/visibility" qa_employee02 "$WORK/body.json")"
-code=$(capi GET "/api/pages?assignee=me" qa_employee01)
-ids=$(jget "','.join(p['id'] for p in d['pages'])" < "$WORK/b")
-lacks "employee01 의 목록에서 그 페이지가 빠졌다" "$P2" "$ids"
-expect "  그런데 DB 의 담당자는 그대로다 (지우지 않았다)" "qa_employee01" \
-  "$(psqlq "SELECT u.username FROM community.pages p JOIN public.users u ON u.id = p.assignee_id WHERE p.public_id='$P2'")"
-body '{"visibility":"internal"}'
-capi PATCH "/api/pages/$P2/visibility" qa_employee02 "$WORK/body.json" > /dev/null
+expect "?assignee=me 는 무시되는 꼬리표 — 기본 목록(내 개인 공간)이 나간다" "200|personal" \
+  "$code|$(jget "d['space']['kind']" < "$WORK/b")"
+lacks "  그 목록에 남의 공간 페이지는 없다" "$P2" "$(cat "$WORK/b")"
 
 # ════════════════════════════════════════════════════════════════
 hr "C:T-51  남이 바꾸기 — 403 (사내 공개여도 · Admin 도)"
@@ -531,8 +453,12 @@ PY
 expect "체크를 켠다(판 2 → 3)" "200" "$(capi PATCH "/api/pages/$P3" qa_employee01 "$WORK/todo2.json")"
 body '{"status":"doing"}'
 expect "상태를 진행으로" "200" "$(capi PATCH "/api/pages/$P3/properties" qa_employee01 "$WORK/body.json")"
-body '{"assignee":"qa_employee01"}'
-expect "담당자를 나로" "200" "$(capi PATCH "/api/pages/$P3/properties" qa_employee01 "$WORK/body.json")"
+# 5-A — 담당자 줄은 창구로 만들 수 없다. 4-D 때 남은 옛 기록을 **임시 DB 에 한 줄** 흉내 낸다.
+psqlq "INSERT INTO community.page_property_events (page_id, prop, from_value, to_value, by_user_id)
+       SELECT p.id, 'assignee', NULL, 'qa_employee01', (SELECT id FROM users WHERE username='qa_employee01')
+         FROM community.pages p WHERE p.public_id='$P3'" >/dev/null
+expect "(임시 DB) 옛 담당자 줄 하나" "1" \
+  "$(psqlq "SELECT count(*) FROM community.page_property_events e JOIN community.pages p ON p.id=e.page_id WHERE p.public_id='$P3' AND e.prop='assignee'")"
 
 code=$(capi GET "/api/pages/$P3/history" qa_employee01)
 expect "처리 이력 200" "200" "$code"

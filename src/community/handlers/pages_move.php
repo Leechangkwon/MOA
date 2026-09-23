@@ -14,7 +14,7 @@ declare(strict_types=1);
  *              0..n 안으로 좁힌다 (t-box ARCH 5.1 — 목록 파라미터와 같은 결).
  *
  * 검사 순서
- *   [1] 허용 키 → [2] 행+공간 → 404 → [권한 ✔ A] `decidePageRead` → [권한 ✔ B] `decidePageChange`
+ *   [1] 허용 키 → [2] 행+공간 → 404 → [권한 ✔ A] `decidePageRead` → [권한 ✔ B] **`decidePageManage`** (5-A)
  *   [3] 새 부모 찾기 — 없는 UUID 404 · 남의 것 403(+감사 `page.read deny not_owner`)
  *   [4] 트리 모양을 **재귀 CTE 한 번**으로 (`community_move_shape`)
  *   [권한 ✔ C] `CommunityAuthz::decidePageMove` — `cycle` · `depth_exceeded` ·
@@ -60,7 +60,7 @@ if (array_key_exists('position', $body) && $body['position'] !== null) {
 }
 
 // ─── [2] 행 + 공간 ────────────────────────────────────────────
-$row = community_page_row($pid);
+$row = community_page_row($pid, (int) $user['id']);
 if ($row === null) {
     Http::error(404, Http::MSG_NOT_FOUND);
 }
@@ -88,10 +88,12 @@ if (!$mayRead) {
     Http::error(403, Http::MSG_FORBIDDEN);
 }
 
-// ─── [권한 ✔ B] 고칠 수 있나 (옮기기도 고치기다) ───────────────
-[$mayChange, $changeCode] = CommunityAuthz::decidePageChange($user, $row);
+// ─── [권한 ✔ B] 관리할 수 있나 (옮기기는 관리다 — 5-A) ─────────
+/* 편집 공유자는 내용을 고칠 수 있어도 **옮기지 못한다** — 옮기면 그 페이지가 주인의 트리에서
+   어디 있는지가 주인 모르게 바뀐다. 판정은 `decidePageMove` [1] 과 같은 `decidePageManage` 다. */
+[$mayChange, $changeCode] = CommunityAuthz::decidePageManage($user, $row);
 if (!$mayChange) {
-    /* 볼 수는 있으나 고칠 수 없는 사람 — 지금은 Admin 이다. 그 사실은 바로 위
+    /* 볼 수는 있으나 관리할 수 없는 사람 — Admin · 공유받은 사람(5-A). 그 사실은 바로 위
        `page.read allow admin_all` 행에 남지 않는다(여기서는 자기 페이지가 아닐 때만 읽기
        감사가 찍힌다). 이동 거부에 붙일 문장은 표에 `cycle`·`depth_exceeded` 둘뿐이므로,
        문장 없는 기록으로 요청을 500 으로 끝내는 대신 서버 로그에 남기고 403 으로 답한다. */
@@ -277,5 +279,5 @@ Http::json([
         'parent_id' => $rawParent,
         'position'  => $at,
     ],
-    'breadcrumb' => community_breadcrumb($pageId, $spaceId),
+    'breadcrumb' => community_breadcrumb($pageId, $spaceId, $user),
 ]);

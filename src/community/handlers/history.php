@@ -12,9 +12,10 @@ declare(strict_types=1);
  *   `version`  판이 하나 생겼다 — 판 번호 · 제목 · 사람 · 시각 · 블록 수 (되돌리기면 `restored_from`)
  *   `check`    체크 상자를 켜거나 껐다 — 블록 id · 켜짐/꺼짐 · 사람 · 시각
  *   `property` 상태·담당자를 바꿨다 (4-D) — 어느 칸 · 이전값 → 새값 · 사람 · 시각
+ *   `handover` 이 페이지(와 하위)를 넘겼다 (5-A) — 누구에서 누구에게 · 몇 쪽 · 옛 주인에게 남긴 권한
  *
  * ★ **감사 로그를 읽지 않는다** (지시서 「핸들러」). 이 창구가 보는 것은 우리 표 셋
- *   (`page_versions`·`checklist_events`·`page_property_events`)과 `pages` 의 지금 판뿐이다. 감사 로그는 관리자의
+ *   (`page_versions`·`checklist_events`·`page_property_events`·`handovers`)과 `pages` 의 지금 판뿐이다. 감사 로그는 관리자의
  *   기록이지 페이지 주인의 화면이 아니고, 그것을 여기서 열면 열람 통로가 하나 더 생긴다.
  *
  * ★ **본문 글자가 한 자도 나가지 않는다** (C:T-44). 질의가 `doc` 을 고르지 않고, 체크 줄에는
@@ -62,6 +63,15 @@ $sql = <<<'SQL'
       FROM community.page_property_events pe
       JOIN public.users pu ON pu.id = pe.by_user_id
      WHERE pe.page_id = CAST(:pid3 AS bigint)
+    UNION ALL
+    -- 5-A 인계 — 이 페이지를 뿌리로 넘긴 일. 누가·누구에서 누구에게·몇 쪽·남긴 권한(`summary` 칸).
+    SELECT 'handover', NULL::int, NULL::text, h.at, hb.username, NULL::uuid, NULL::boolean, h.kept_level,
+           h.page_count, NULL::text, hf.username, ht.username
+      FROM community.handovers h
+      JOIN public.users hb ON hb.id = h.by_user_id
+      JOIN public.users hf ON hf.id = h.from_user_id
+      JOIN public.users ht ON ht.id = h.to_user_id
+     WHERE h.root_page_id = CAST(:pid4 AS bigint)
      ORDER BY at DESC
      LIMIT CAST(:lim AS int)
     SQL;
@@ -70,6 +80,7 @@ $rows = Db::instance()->run($sql, [
     ':pid'  => (int) $row['id'],
     ':pid2' => (int) $row['id'],
     ':pid3' => (int) $row['id'],
+    ':pid4' => (int) $row['id'],
     ':lim'  => $limit,
 ])->fetchAll();
 
@@ -124,6 +135,19 @@ foreach ($rows as $r) {
             'to'    => $r['to_value'] === null ? null : (string) $r['to_value'],
             'by'    => (string) $r['by_name'],
             'at'    => (string) $r['at'],
+        ];
+        continue;
+    }
+    if ((string) $r['kind'] === 'handover') {
+        /* 5-A — 인계 한 번. 계정명은 기록에 적힌 그대로이고, 남긴 권한은 `view`·`edit`·null(없음). */
+        $events[] = [
+            'kind'       => 'handover',
+            'from'       => (string) $r['from_value'],
+            'to'         => (string) $r['to_value'],
+            'kept'       => $r['summary'] === null ? null : (string) $r['summary'],
+            'page_count' => (int) $r['block_count'],
+            'by'         => (string) $r['by_name'],
+            'at'         => (string) $r['at'],
         ];
         continue;
     }

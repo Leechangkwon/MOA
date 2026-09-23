@@ -22,7 +22,8 @@ declare(strict_types=1);
  *   채우되 **판정은 공간으로** 한다 (`CommunityAuthz::decidePageRead` 의 `team` 갈래).
  *
  * 검사 순서
- *   [1] 허용 키 → [2] 제목 규칙 → [3] 본문 검사 → [4] 공간(기본: 내 개인 공간) → [5] 부모 →
+ *   [1] 허용 키 → [2] 제목 규칙 → [3] 본문 검사 → [4] 부모 → [5] 공간(부모의 공간, 없으면 내 개인 공간)
+ *   → [권한 ✔] 부모가 있으면 부모 행의 `decidePageChange`(5-A — 편집 공유자도 된다), 없으면 공간 →
  *   [6] 트랜잭션(INSERT + 파생 표 + 감사 `page.create allow`) → 201
  *
  * 왜 형식 거부에 감사가 없나: 여기서 나오는 400 은 전부 **요청 형식**의 문제다(허용 키 밖·
@@ -104,11 +105,33 @@ if ($docJson === false) {
 $db = Db::instance();
 $me = (int) $user['id'];
 
-// ─── [4] 공간 (4-B) ────────────────────────────────────────────
-/* 기본은 세션 본인의 개인 공간이다. `space_id` 를 주면 그 공간이 되지만, **그 공간에
-   쓸 수 있는 사람인지는 서버가 판단한다** (`decidePageChange` — 개인 공간이면 주인만,
-   팀 공간이면 그 팀원만). 번호를 바꿔 넣어도 남의 공간에는 한 줄도 들어가지 않는다. */
-if (array_key_exists('space_id', $body) && $body['space_id'] !== null) {
+// ─── [4] 부모 (먼저 읽는다 — 5-A) ─────────────────────────────
+/* 5-A — 하위 페이지 만들기는 **권한대로**다(사용자 결정 3): 편집 공유를 받은 사람은 그 페이지
+   아래에 하위를 만들 수 있고, 보기 공유면 안 된다. 그래서 부모가 있으면 판정은 **부모 행**에
+   대한 `decidePageChange`(소유자·편집 공유자·팀원)이고, 공간은 **부모의 공간**이다 — 만든
+   페이지의 소유자는 그 공간의 주인이다(공유받은 사람의 공간으로 가지 않는다).
+   부모가 없으면 전과 같다: 공간(기본 내 개인 공간)에 쓸 수 있는 사람인가를 묻는다. */
+$parentRow = null;
+if (array_key_exists('parent_id', $body) && $body['parent_id'] !== null) {
+    $rawParent = $body['parent_id'];
+    if (!is_string($rawParent)
+        || preg_match('/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/', $rawParent) !== 1
+    ) {
+        Http::error(400, Http::MSG_BAD_REQUEST);
+    }
+    $parentRow = community_page_row($rawParent, $me);
+    if ($parentRow === null || $parentRow['deleted_at'] !== null) {
+        // 아무 공간에도 없는 UUID(또는 지워진 페이지) — 「없다」로 답한다 (4-A 규칙).
+        Http::error(404, Http::MSG_NOT_FOUND);
+    }
+}
+
+// ─── [5] 공간 (4-B) ────────────────────────────────────────────
+/* 기본은 세션 본인의 개인 공간이다 — 부모를 주면 **부모의 공간**이다(5-A). `space_id` 를 주면
+   그 공간이 되지만, **그 공간에 쓸 수 있는 사람인지는 서버가 판단한다**. 번호를 바꿔 넣어도
+   남의 공간에는 한 줄도 들어가지 않는다. */
+$spaceGiven = array_key_exists('space_id', $body) && $body['space_id'] !== null;
+if ($spaceGiven) {
     $rawSpace = $body['space_id'];
     if (is_int($rawSpace)) {
         $rawSpace = (string) $rawSpace;
@@ -117,6 +140,11 @@ if (array_key_exists('space_id', $body) && $body['space_id'] !== null) {
         Http::error(400, Http::MSG_BAD_REQUEST);
     }
     $spaceRow = community_space_row((int) $rawSpace);
+    if ($spaceRow === null) {
+        Http::error(404, Http::MSG_NOT_FOUND);
+    }
+} elseif ($parentRow !== null) {
+    $spaceRow = community_space_row((int) $parentRow['space_id']);
     if ($spaceRow === null) {
         Http::error(404, Http::MSG_NOT_FOUND);
     }
@@ -129,55 +157,34 @@ if (array_key_exists('space_id', $body) && $body['space_id'] !== null) {
 }
 $spaceId = (int) $spaceRow['id'];
 
-[$maySpaceWrite, $spaceCode] = CommunityAuthz::decidePageChange($user, [
-    'deleted_at'          => null,
-    'space_kind'          => (string) $spaceRow['kind'],
-    'space_owner_user_id' => $spaceRow['owner_user_id'] ?? null,
-    'space_team_id'       => $spaceRow['team_id'] ?? null,
-]);
-if (!$maySpaceWrite) {
-    /* 남의 개인 공간·다른 팀의 공간이다 (C:T-36 「다른 팀은 403」). 만들기 거부에 붙일
-       감사 문장이 표에 없으므로(문장 없는 기록은 요청을 500 으로 끝낸다) 서버 로그에
-       남기고 403 동일 문구로 답한다 — `pages_delete.php` 와 같은 자리다. */
-    error_log('[tbox] request_id=' . TBOX_REQUEST_ID
-        . ' community page.create deny code=' . $spaceCode . ' space_id=' . (string) $spaceId);
+/** 남의 부모에 닿으려 한 일 — 403 + `page.read deny not_owner` (4-A 부터의 같은 줄). */
+$refuseParent = static function (array $parent): void {
+    $parentTitle = community_target_title((string) $parent['title']);
+    Audit::deny('page.read', CommunityAuthz::CODE_NOT_OWNER, [
+        'target_type' => 'page',
+        'target_id'   => (int) $parent['id'],
+        'target_name' => $parentTitle,
+        'detail'      => ['page_title' => $parentTitle],
+    ]);
     Http::error(403, Http::MSG_FORBIDDEN);
-}
+};
 
-// ─── [5] 부모 ─────────────────────────────────────────────────
 $parentId         = null;
 $parentVisibility = null;
-if (array_key_exists('parent_id', $body) && $body['parent_id'] !== null) {
-    $rawParent = $body['parent_id'];
-    if (!is_string($rawParent)
-        || preg_match('/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/', $rawParent) !== 1
-    ) {
-        Http::error(400, Http::MSG_BAD_REQUEST);
-    }
-    $sqlParent = <<<'SQL'
-        SELECT p.id, p.space_id, p.title, p.visibility
-          FROM community.pages p
-         WHERE p.public_id = CAST(:pid AS uuid)
-           AND p.deleted_at IS NULL
-        SQL;
-    $parentRow = $db->run($sqlParent, [':pid' => $rawParent])->fetch();
-    if (!is_array($parentRow)) {
-        // 아무 공간에도 없는 UUID — 「없다」로 답한다 (4-A 규칙).
-        Http::error(404, Http::MSG_NOT_FOUND);
-    }
+$createCode       = CommunityAuthz::CODE_OWNER;
+
+if ($parentRow !== null) {
     if ((int) $parentRow['space_id'] !== $spaceId) {
-        /* 있지만 남의 공간이다 — **403**, 그리고 남의 개인 페이지에 닿으려 한 일을 남긴다.
-           「없다」로 답하지 않는 이유는 `pages_get.php` 와 같다: 주소가 UUID 라 존재 여부가
-           새어도 얻을 것이 없고, 「막혔다」와 「없다」를 가르는 편이 정직하다 (ARCH 13.2). */
-        $parentTitle = community_target_title((string) $parentRow['title']);
-        Audit::deny('page.read', CommunityAuthz::CODE_NOT_OWNER, [
-            'target_type' => 'page',
-            'target_id'   => (int) $parentRow['id'],
-            'target_name' => $parentTitle,
-            'detail'      => ['page_title' => $parentTitle],
-        ]);
-        Http::error(403, Http::MSG_FORBIDDEN);
+        /* 공간 번호와 부모가 어긋난다 — **403**, 그리고 남의 페이지에 닿으려 한 일을 남긴다.
+           「없다」로 답하지 않는 이유는 `pages_get.php` 와 같다 (ARCH 13.2). */
+        $refuseParent($parentRow);
     }
+    // ★ 부모 행에 대한 **내용 고치기** 판정 — 소유자 · 편집 공유자 · 팀 공간 팀원 (5-A).
+    [$mayChild, $childCode] = CommunityAuthz::decidePageChange($user, $parentRow);
+    if (!$mayChild) {
+        $refuseParent($parentRow);
+    }
+    $createCode       = $childCode;
     $parentId         = (int) $parentRow['id'];
     $parentVisibility = (string) $parentRow['visibility'];
 
@@ -189,6 +196,22 @@ if (array_key_exists('parent_id', $body) && $body['parent_id'] !== null) {
         ], 400);
         exit;
     }
+} else {
+    [$maySpaceWrite, $spaceCode] = CommunityAuthz::decidePageChange($user, [
+        'deleted_at'          => null,
+        'space_kind'          => (string) $spaceRow['kind'],
+        'space_owner_user_id' => $spaceRow['owner_user_id'] ?? null,
+        'space_team_id'       => $spaceRow['team_id'] ?? null,
+    ]);
+    if (!$maySpaceWrite) {
+        /* 남의 개인 공간·다른 팀의 공간이다 (C:T-36 「다른 팀은 403」). 만들기 거부에 붙일
+           감사 문장이 표에 없으므로(문장 없는 기록은 요청을 500 으로 끝낸다) 서버 로그에
+           남기고 403 동일 문구로 답한다 — `pages_delete.php` 와 같은 자리다. */
+        error_log('[tbox] request_id=' . TBOX_REQUEST_ID
+            . ' community page.create deny code=' . $spaceCode . ' space_id=' . (string) $spaceId);
+        Http::error(403, Http::MSG_FORBIDDEN);
+    }
+    $createCode = $spaceCode;
 }
 
 /* 새 페이지는 형제의 **맨 뒤**에 붙는다 (4-A). 3단계는 언제나 0 이었다 — 형제가 없었기
@@ -244,7 +267,8 @@ try {
         'target_id'   => $pageId,
         'target_name' => community_target_title($title),
         'detail'      => [
-            'granted_by'  => CommunityAuthz::CODE_OWNER,
+            // 무엇을 근거로 만들었나 — `owner`·`team_member`·`shared_edit`(편집 공유자의 하위 페이지, 5-A)
+            'granted_by'  => $createCode,
             'page_title'  => community_target_title($title),
             'doc_version' => 1,
             'block_count' => count($extract['blocks']),

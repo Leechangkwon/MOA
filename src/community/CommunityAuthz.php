@@ -28,6 +28,21 @@ declare(strict_types=1);
  *     다른 물음이다 (C:T-32).
  *   · 트리 불변 규칙: 자식의 범위는 부모보다 **넓을 수 없다**(`fitsUnderParent`).
  *
+ * 5-A (2026-09-23 사용자 결정 — PRD NG-8 해제) — **물음이 셋으로 갈린다**
+ *   · `decidePageRead`   볼 수 있나. 개인 공간에 **공유 갈래**(`shared`)가 하나 더 붙었다 —
+ *                        이 페이지나 그 조상에 **나에게 준** 공유 줄이 있고, 내 계정이 활성이면 참.
+ *   · `decidePageChange` 내용을 고칠 수 있나(저장·할 일 체크·상태·하위 페이지 만들기·되돌리기).
+ *                        소유자 · **편집 공유**(`shared_edit`, 쓰기 자격 있는 역할만) · 팀 공간 팀원.
+ *   · `decidePageManage` 관리할 수 있나(삭제·옮기기·되살리기·공개 범위·공유·인계). 소유자 ·
+ *                        팀 공간 팀원뿐이다 — **편집 공유로는 안 된다**. 공유받은 사람이 페이지를
+ *                        지우거나 남에게 다시 열어 주면 주인은 자기 글이 어디로 갔는지 모른다.
+ *   · `decidePageHandover` 인계를 시작할 수 있나 — 소유자 · 자기 팀원 것의 Manager · Admin(재인증).
+ *   공유 등급은 판정 함수가 DB 를 읽어 찾지 않는다. `community_page_row()` 가 재귀 CTE 로
+ *   **그 사람 몫의 가장 강한 등급**을 `share_level` 에, **누구 몫인지**를 `share_user_id` 에
+ *   실어 오고, 판정은 두 값이 지금 묻는 사람과 맞을 때만 쓴다(다른 사람을 사용자 자리에 놓고
+ *   물어도 남의 공유가 새지 않는다). 목록 SQL `community_visible_pages_where()` 는 **같은 SQL
+ *   조각**(`community_share_rank_sql()`)으로 같은 갈래를 한 줄 더한다 (C:T-37 방식).
+ *
  * ★ 역할 비교는 여전히 이 파일에 없다. 팀 판정은 **역할이 아니라 id 비교**이고, 값은 전부
  *   세션(`$u['team_id']` — `Auth` 가 「역할로 보기」까지 반영해 만든 유효 팀)과 DB 행에서 온다.
  *   요청이 정하는 값은 한 칸도 없다 (PRD S-01).
@@ -57,6 +72,25 @@ final class CommunityAuthz
     public const CODE_TEAM_MEMBER = 'team_member';
     /** 거부 코드 — 그 팀 공간의 팀원이 아니다 (4-B) */
     public const CODE_NOT_MEMBER = 'not_member';
+
+    /** 허용 코드 — 이 페이지나 조상에 **나에게 준 공유**가 있다 (5-A, 보기·편집 어느 쪽이든) */
+    public const CODE_SHARED = 'shared';
+    /** 허용 코드 — **편집 공유**로 내용을 고친다 (5-A). 관리(삭제·옮기기·공유·인계)는 열리지 않는다 */
+    public const CODE_SHARED_EDIT = 'shared_edit';
+    /** 허용 코드 — Manager 가 **자기 팀원**의 페이지를 인계한다 (5-A, t-box `team_scope` 와 같은 뜻) */
+    public const CODE_TEAM_SCOPE = 'team_scope';
+    /** 거부 코드 — 팀 공간의 페이지다. 공개 범위·공유·인계는 공간 등급을 따른다 (5-A) */
+    public const CODE_SPACE_GOVERNED = 'space_governed';
+    /** 거부 코드 — 공유·인계 대상으로 고를 수 없는 사람이다(없음·비활성·Guest·지금 주인) (5-A) */
+    public const CODE_TARGET_NOT_PERMITTED = 'target_not_permitted';
+
+    /**
+     * 공유 등급 둘 (5-A). DB CHECK 과 같은 값이고, **넓이 순서**는 view < edit 이다.
+     * 모르는 값은 등급이 아니다 — 판정은 이 목록에 정확히 있는 값만 쓴다.
+     *
+     * @var list<string>
+     */
+    public const SHARE_LEVELS = ['view', 'edit'];
 
     /** 거부 코드 — 새 범위가 **부모보다 넓다** (4-B, 트리 불변 규칙) */
     public const CODE_WIDER_THAN_PARENT = 'wider_than_parent';
@@ -116,6 +150,7 @@ final class CommunityAuthz
      *   [2] 개인 공간이 아니면(게시판)           → `role_not_permitted` (5단계)
      *   [3] 내 페이지                            → `owner`
      *   [4] `published`                          → `role_not_permitted` (게시판 공간이 없다 — 닫힌 실패)
+     *   [4b] 이 페이지나 조상에 나에게 준 공유    → `shared`   (5-A — 보기·편집 어느 쪽이든 읽기는 열린다)
      *   [5] `internal` + 쓰기 자격 있는 역할     → `matrix`   (Guest 는 여기서 끝난다)
      *   [6] `team` + 주인과 같은 팀              → `same_team`
      *   [7] Admin                                → `admin_all` (감사에 남는다)
@@ -123,6 +158,9 @@ final class CommunityAuthz
      *
      * ★ `internal` 을 `canCommunityWrite` 로 판정하는 이유: 「로그인 전원, Guest 제외」는
      *   t-box 권한 매트릭스의 **쓰기 자격과 같은 표**다(PRD 4장 각주). 표를 새로 만들지 않는다.
+     * ★ 공유 갈래 [4b] 가 소유자 [3] 바로 뒤가 아니라 [4] 뒤에 있는 이유: `published`·모르는 범위는
+     *   공유가 있어도 **닫힌 실패**로 남겨야 목록 SQL(세 범위만 받는다)과 한 줄씩 짝이 맞는다.
+     *   Guest 도 공유를 받으면 **읽기는** 열린다 — 쓰기는 `decidePageChange` 가 다시 막는다.
      *
      * @param  array<string,mixed> $u
      * @param  array<string,mixed> $row
@@ -168,6 +206,12 @@ final class CommunityAuthz
             return [false, self::CODE_ROLE_NOT_PERMITTED];
         }
 
+        /* [4b] 사람 지정 공유 (5-A). 등급은 `community_page_row()` 가 **이 사람 몫으로** 읽어 온
+           값이다 — 행에 실린 `share_user_id` 가 지금 묻는 사람과 다르면 그 등급은 없는 것이다. */
+        if (self::shareLevelFor($u, $row) !== null) {
+            return [true, self::CODE_SHARED];
+        }
+
         if ($visibility === 'internal' && Authz::canCommunityWrite($u)) {
             return [true, self::CODE_MATRIX];
         }
@@ -187,14 +231,22 @@ final class CommunityAuthz
     }
 
     /**
-     * 이 사람이 이 페이지를 **고칠 수 있나**(저장·삭제·옮기기) (ARCH 13.2 `decidePageChange`).
+     * 이 사람이 이 페이지의 **내용을 고칠 수 있나** (ARCH 13.2 `decidePageChange`, 5-A 로 좁혀졌다).
      *
-     * 개인 공간에서는 **범위와 무관하게 소유자만**이다 (C:T-32). 팀·사내로 열어 둔 페이지도
-     * 고치는 사람은 주인 하나다 — 「볼 수 있다」와 「고칠 수 있다」는 다른 물음이고, 관리자나
-     * 팀원이 남의 기록을 소리 없이 바꿀 수 있으면 그 기록은 더 이상 증거가 아니다
-     * (PRD 4.1 표의 「누가 고치나」 칸).
+     * 「내용」의 범위 (5-A 지시서 표): 본문·제목 저장 · 할 일 체크 · 상태 · **하위 페이지 만들기** ·
+     * 지난 판으로 되돌리기 · 「편집 중」 신호. 삭제·옮기기·되살리기·공개 범위·공유·인계는 여기가
+     * 아니라 `decidePageManage` 다 — 편집 공유가 생긴 뒤로 둘은 **다른 물음**이다.
      *
-     * 팀 공간에서는 **그 팀원 누구나** 고친다 — 함께 쓰라고 만든 그릇이기 때문이다.
+     * 개인 공간
+     *   소유자                                        → `owner`
+     *   이 페이지나 조상에 나에게 준 **편집** 공유    → `shared_edit` — 단 **쓰기 자격 있는 역할만**
+     *     (Guest 는 편집 공유를 받아도 보기만이다. 판단은 `Authz::canCommunityWrite` — 역할 문자열 0)
+     *   그 밖 (보기 공유·팀·사내로 보고 있는 사람·Admin) → `not_owner`
+     * 팀 공간 — **그 팀원 누구나** 고친다(함께 쓰라고 만든 그릇이다).
+     *
+     * 「볼 수 있다」와 「고칠 수 있다」는 여전히 다른 물음이다 (C:T-32). 팀·사내로 열어 둔 페이지를
+     * 관리자나 팀원이 소리 없이 바꿀 수 있으면 그 기록은 더 이상 증거가 아니다 — 고칠 사람은 주인이
+     * **이름을 대고 고른 사람**(편집 공유)까지다.
      *
      * @param  array<string,mixed> $u
      * @param  array<string,mixed> $row
@@ -219,14 +271,155 @@ final class CommunityAuthz
         if (self::isOwner($u, $row)) {
             return [true, self::CODE_OWNER];
         }
+        /* 편집 공유 (5-A). 읽기 판정과 같은 규칙으로 `published`·모르는 범위는 닫는다 —
+           읽을 수 없는 페이지를 고칠 수 있는 조합이 생기지 않게 한다. */
+        if (in_array((string) ($row['visibility'] ?? ''), self::VISIBILITIES, true)
+            && self::shareLevelFor($u, $row) === 'edit'
+            && Authz::canCommunityWrite($u)
+        ) {
+            return [true, self::CODE_SHARED_EDIT];
+        }
         return [false, self::CODE_NOT_OWNER];
+    }
+
+    /**
+     * 이 사람이 이 페이지를 **관리할 수 있나** (5-A 새 함수).
+     *
+     * 관리 = 삭제 · 옮기기 · 되살리기 · 공개 범위 · 공유 추가·바꾸기·빼기 · 인계.
+     * 자격은 **소유자**와 **팀 공간 팀원**뿐이다. 편집 공유는 여기서 **거짓**이다 —
+     * 내용을 함께 고치라고 연 문을 「지우기·옮기기·남에게 다시 열어 주기」까지 넓히면, 주인은
+     * 자기 글이 어디로 갔는지·누가 보는지 알 수 없게 된다(지시서 「판정 — 한 곳에서」 ★).
+     *
+     * 규칙을 `decidePageChange` 에서 빌리지 않고 **따로 적는다**: 두 물음이 같은 함수의 참·거짓을
+     * 나눠 쓰면 편집 공유 갈래가 Change 에 붙는 순간 Manage 에도 새어 들어간다(이번 라운드가 막는
+     * 바로 그 사고). 둘은 공유 갈래 하나만 다르다.
+     *
+     * @param  array<string,mixed> $u
+     * @param  array<string,mixed> $row
+     * @return array{0:bool,1:string}
+     */
+    public static function decidePageManage(array $u, array $row): array
+    {
+        if (($row['deleted_at'] ?? null) !== null) {
+            return [false, self::CODE_NOT_FOUND];
+        }
+
+        $kind = (string) ($row['space_kind'] ?? '');
+
+        if ($kind === 'team') {
+            return self::isTeamMember($u, $row['space_team_id'] ?? null)
+                ? [true, self::CODE_TEAM_MEMBER]
+                : [false, self::CODE_NOT_MEMBER];
+        }
+        if ($kind !== 'personal') {
+            return [false, self::CODE_ROLE_NOT_PERMITTED];
+        }
+        return self::isOwner($u, $row)
+            ? [true, self::CODE_OWNER]
+            : [false, self::CODE_NOT_OWNER];
+    }
+
+    /**
+     * 이 사람이 이 페이지의 **인계를 시작할 수 있나** (5-A, PRD 4.1 「인계(F-28)」 · 11-1 ⑦).
+     *
+     * 판정 순서 (하나라도 맞으면 거기서 끝난다)
+     *   [0] 지워진 페이지                              → `not_found`
+     *   [1] 팀 공간의 페이지                           → `space_governed` (소유자가 「팀」이다 — 인계 대상 아님)
+     *   [2] 개인 공간이 아니면                         → `role_not_permitted`
+     *   [3] 공간의 주인                                → `owner`
+     *   [4] Admin                                      → `admin_all` — **재인증**은 부르는 쪽이 세션 값으로 본다
+     *   [5] Manager 이고 주인이 **내 팀원**            → `team_scope` (내용은 보지 않는다 — 비열람)
+     *   [6] 그 밖(편집 공유자 포함)                    → `not_owner`
+     *
+     * 「Manager 인가」는 역할 문자열을 비교하지 않고 **라우트 정책의 답**을 빌린다 —
+     * `Authz::authorize('role:Manager+', $u)` 는 「Manager 이상인가」이고, Admin 은 [4] 에서 이미
+     * 끝났으므로 여기 닿는 참은 Manager 뿐이다 (ARCH 4.1 「역할 판단은 Authz 한 곳」).
+     *
+     * @param  array<string,mixed> $u
+     * @param  array<string,mixed> $row
+     * @return array{0:bool,1:string}
+     */
+    public static function decidePageHandover(array $u, array $row): array
+    {
+        if (($row['deleted_at'] ?? null) !== null) {
+            return [false, self::CODE_NOT_FOUND];
+        }
+        $kind = (string) ($row['space_kind'] ?? '');
+        if ($kind === 'team') {
+            return [false, self::CODE_SPACE_GOVERNED];
+        }
+        if ($kind !== 'personal') {
+            return [false, self::CODE_ROLE_NOT_PERMITTED];
+        }
+        if (self::isOwner($u, $row)) {
+            return [true, self::CODE_OWNER];
+        }
+        if (Authz::canAdmin($u)) {
+            return [true, self::CODE_ADMIN_ALL];
+        }
+        if (Authz::authorize('role:Manager+', $u)
+            && self::isTeamMember($u, $row['space_owner_team_id'] ?? null)
+        ) {
+            return [true, self::CODE_TEAM_SCOPE];
+        }
+        return [false, self::CODE_NOT_OWNER];
+    }
+
+    /**
+     * 이 사람에게 이 페이지를 **넘길 수 있나** — 받는 사람 쪽 조건 (5-A 인계 규칙 표).
+     *
+     * `$target` 은 `public.users` 한 줄(`id`·`role`·`team_id`·`is_active`)이고, 없으면 `null` 이다.
+     *   · 없는 계정 · 비활성 계정 · **쓰기 자격 없는 역할**(Guest) → `target_not_permitted`
+     *   · 지금의 주인 자신                                           → `target_not_permitted`
+     * 같은 팀일 필요는 없다(사용자 결정 1 — 팀이 해체되면 다른 팀·상급자에게도 넘긴다).
+     *
+     * @param  array<string,mixed>|null $target
+     * @param  array<string,mixed>      $row
+     * @return array{0:bool,1:string}
+     */
+    public static function decideHandoverTarget(?array $target, array $row): array
+    {
+        if ($target === null || ($target['is_active'] ?? false) !== true) {
+            return [false, self::CODE_TARGET_NOT_PERMITTED];
+        }
+        if (!Authz::canCommunityWrite(['role' => (string) ($target['role'] ?? '')])) {
+            return [false, self::CODE_TARGET_NOT_PERMITTED];
+        }
+        $owner = $row['space_owner_user_id'] ?? null;
+        if ($owner !== null && (int) $owner === (int) ($target['id'] ?? 0)) {
+            return [false, self::CODE_TARGET_NOT_PERMITTED];
+        }
+        return [true, self::CODE_OWNER];
+    }
+
+    /**
+     * 이 사람을 **공유 대상으로 고를 수 있나** (5-A `PUT …/shares/{username}`).
+     *
+     * 활성 계정이면 누구나 된다 — Guest 도 받을 수 있다(편집을 주어도 판정이 보기로만 연다,
+     * `decidePageChange`). 주인 자신에게 주는 공유는 뜻이 없으므로 거부한다.
+     *
+     * @param  array<string,mixed>|null $target
+     * @param  array<string,mixed>      $row
+     * @return array{0:bool,1:string}
+     */
+    public static function decideShareTarget(?array $target, array $row): array
+    {
+        if ($target === null || ($target['is_active'] ?? false) !== true) {
+            return [false, self::CODE_TARGET_NOT_PERMITTED];
+        }
+        $owner = $row['space_owner_user_id'] ?? null;
+        if ($owner !== null && (int) $owner === (int) ($target['id'] ?? 0)) {
+            return [false, self::CODE_TARGET_NOT_PERMITTED];
+        }
+        return [true, self::CODE_OWNER];
     }
 
     /**
      * 이 사람이 **지워진 페이지를 되살릴 수 있나** (4-C, C:F-29 휴지통).
      *
-     * 자격은 `decidePageChange` 와 **같다** — 되살리기는 고치기의 한 갈래이고, 지운 사람과
-     * 되살릴 수 있는 사람이 다르면 「내가 지운 것을 남이 도로 꺼낸다」가 된다.
+     * 자격은 `decidePageManage` 와 **같다** (5-A — 되살리기는 관리다. 전에는 `decidePageChange`
+     * 를 불렀는데, 편집 공유가 생긴 뒤 그대로 두면 편집 공유자가 휴지통을 뒤질 수 있게 된다).
+     * 지운 사람과 되살릴 수 있는 사람이 다르면 「내가 지운 것을 남이 도로 꺼낸다」가 된다.
      * 다른 점은 **딱 하나**: 판정의 대상이 `deleted_at` 이 놓인 행이라 그 갈래를 건너뛴다.
      * 그래서 규칙을 다시 적지 않고 같은 함수를 부른다 — 두 벌이 되면 한쪽만 고쳐진다.
      *
@@ -240,7 +433,7 @@ final class CommunityAuthz
     public static function decidePageRestore(array $u, array $row): array
     {
         $row['deleted_at'] = null;
-        return self::decidePageChange($u, $row);
+        return self::decidePageManage($u, $row);
     }
 
     /**
@@ -292,8 +485,8 @@ final class CommunityAuthz
      *   `ancestor_ids`   새 부모 자신과 그 위 조상들의 `pages.id` 목록
      *
      * 판정 순서 (하나라도 걸리면 거기서 끝난다)
-     *   [1] 옮기는 사람이 그 페이지를 고칠 수 있나     → `decidePageChange` 그대로
-     *       (개인 공간이면 주인만, 팀 공간이면 그 팀원 누구나 — 판정이 두 벌이 되지 않게 그 함수를 부른다)
+     *   [1] 옮기는 사람이 그 페이지를 **관리**할 수 있나 → `decidePageManage` 그대로 (5-A)
+     *       (개인 공간이면 주인만, 팀 공간이면 그 팀원 누구나 — **편집 공유로는 옮기지 못한다**)
      *   [2] 새 부모가 **같은 공간**인가                → 아니면 `not_owner`
      *       (다른 사람 공간의 페이지를 부모로 주면 여기서 막힌다. 존재 여부는 알려 주지 않는다)
      *   [3] 새 부모가 자기 자신이거나 자기 후손인가    → `cycle`
@@ -309,7 +502,7 @@ final class CommunityAuthz
      */
     public static function decidePageMove(array $u, array $page, ?array $parent): array
     {
-        [$mayChange, $changeCode] = self::decidePageChange($u, $page);
+        [$mayChange, $changeCode] = self::decidePageManage($u, $page);
         if (!$mayChange) {
             return [false, $changeCode];
         }
@@ -362,12 +555,28 @@ final class CommunityAuthz
     }
 
     /**
-     * 이 사람이 그 공간의 주인인가. 값은 세션이 들고 있는 계정 id 와 DB 에서 읽은 공간의
-     * 소유자 id 뿐이고, 요청이 정하지 않는다 (PRD S-01).
+     * 이 행에 실린 공유 등급이 **이 사람 몫**이면 그 등급(`view`·`edit`), 아니면 `null` (5-A).
+     *
+     * `community_page_row($id, $viewerId)` 는 등급과 함께 **누구 몫으로 센 값인지**
+     * (`share_user_id`)를 싣는다. 둘이 어긋나면 — 다른 사람을 사용자 자리에 놓고 같은 행으로
+     * 물을 때 — 등급은 없는 것으로 본다. 모르는 등급 글자도 없는 것이다(모르면 막는다).
      *
      * @param array<string,mixed> $u
      * @param array<string,mixed> $row
      */
+    public static function shareLevelFor(array $u, array $row): ?string
+    {
+        $level = $row['share_level'] ?? null;
+        $for   = $row['share_user_id'] ?? null;
+        if (!is_string($level) || !in_array($level, self::SHARE_LEVELS, true)) {
+            return null;
+        }
+        if ($for === null || !isset($u['id']) || (int) $for !== (int) $u['id'] || (int) $for <= 0) {
+            return null;
+        }
+        return $level;
+    }
+
     /**
      * 이 사람이 **그 팀**의 팀원인가 (4-B).
      *
@@ -388,6 +597,13 @@ final class CommunityAuthz
         return (int) $teamId === (int) $mine;
     }
 
+    /**
+     * 이 사람이 그 공간의 주인인가. 값은 세션이 들고 있는 계정 id 와 DB 에서 읽은 공간의
+     * 소유자 id 뿐이고, 요청이 정하지 않는다 (PRD S-01).
+     *
+     * @param array<string,mixed> $u
+     * @param array<string,mixed> $row
+     */
     private static function isOwner(array $u, array $row): bool
     {
         $owner = $row['space_owner_user_id'] ?? null;

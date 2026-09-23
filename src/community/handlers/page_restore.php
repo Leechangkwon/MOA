@@ -26,7 +26,7 @@ declare(strict_types=1);
  *
  * 검사 순서
  *   [1] 빈 본문 → [2] 행+공간 → 404 → [3] 지워진 상태인가 → 아니면 404(되살릴 것이 없다)
- *   [권한 ✔] `decidePageRestore`(= `decidePageChange` 와 같은 자격) 실패 →
+ *   [권한 ✔] `decidePageRestore`(= `decidePageManage` 와 같은 자격 — 5-A, 편집 공유로는 안 된다) 실패 →
  *            **403** + 감사 `page.restore deny not_owner`
  *   [4] 트랜잭션: 가지 되살리기 → (필요하면) 뿌리로 올리기 → 감사 `page.restore allow` → 200
  *
@@ -44,7 +44,7 @@ $me  = (int) $user['id'];
 $pid = (string) $params[0];
 
 // ─── [2] 행 + 공간 ────────────────────────────────────────────
-$row = community_page_row($pid);
+$row = community_page_row($pid, (int) $user['id']);
 if ($row === null) {
     Http::error(404, Http::MSG_NOT_FOUND);
 }

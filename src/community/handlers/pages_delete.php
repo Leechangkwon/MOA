@@ -16,7 +16,7 @@ declare(strict_types=1);
  *     그때 함께 들어온다(그래서 지금은 **지워지지 않는다** — 보이지 않을 뿐이다).
  *
  * 검사 순서
- *   [1] 행+공간 → 404 → [권한 ✔ A] `decidePageRead` → [권한 ✔ B] `decidePageChange`
+ *   [1] 행+공간 → 404 → [권한 ✔ A] `decidePageRead` → [권한 ✔ B] **`decidePageManage`** (5-A)
  *   [2] 트랜잭션: 하위까지 `deleted_at` → 감사 `page.delete allow` → 200
  *
  * @var array<string,mixed> $user   라우터가 넘긴 현재 사용자
@@ -27,7 +27,7 @@ $db  = Db::instance();
 $me  = (int) $user['id'];
 $pid = (string) $params[0];
 
-$row = community_page_row($pid);
+$row = community_page_row($pid, (int) $user['id']);
 if ($row === null) {
     Http::error(404, Http::MSG_NOT_FOUND);
 }
@@ -54,11 +54,13 @@ if (!$mayRead) {
     Http::error(403, Http::MSG_FORBIDDEN);
 }
 
-// ─── [권한 ✔ B] 고칠 수 있나 (지우기도 고치기다) ───────────────
-[$mayChange, $changeCode] = CommunityAuthz::decidePageChange($user, $row);
+// ─── [권한 ✔ B] 관리할 수 있나 (지우기는 관리다 — 5-A) ─────────
+/* 5-A 전에는 `decidePageChange` 였다. 편집 공유가 생긴 뒤 그대로 두면 **편집 공유자가 남의
+   페이지를 지울 수 있게 된다** — 그래서 소유자·팀 공간 팀원만 답하는 `decidePageManage` 다. */
+[$mayChange, $changeCode] = CommunityAuthz::decidePageManage($user, $row);
 if (!$mayChange) {
-    /* 여기서 막히는 사람은 「볼 수는 있으나 고칠 수 없는 사람」이다 — 관리자, 또는 남의
-       페이지를 팀·사내 범위로 보고 있는 사람.
+    /* 여기서 막히는 사람은 「볼 수는 있으나 관리할 수 없는 사람」이다 — 관리자, 남의
+       페이지를 팀·사내 범위로 보고 있는 사람, 그리고 보기·편집 공유를 받은 사람(5-A).
        ★ 4-C 에서 **감사로 바꿨다**(3단계 주석의 약속 그대로). 남의 페이지를 지우려 한 시도는
          읽기·고치기 시도와 같은 무게인데 그때는 서버 로그에만 남아, 감사 화면에서는 보이지
          않았다. 문장 `page.delete|deny|not_owner` 를 `src/Audit.php` 에 더하고 여기서 쓴다. */

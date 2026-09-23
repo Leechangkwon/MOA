@@ -30,7 +30,7 @@ if ($body !== []) {
     Http::error(400, Http::MSG_BAD_REQUEST);
 }
 
-$row = community_page_row($pid);
+$row = community_page_row($pid, (int) $user['id']);
 if ($row === null) {
     Http::error(404, Http::MSG_NOT_FOUND);
 }

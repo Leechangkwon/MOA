@@ -81,14 +81,67 @@ const COMMUNITY_ROUTES = [
     ['GET',    '/api/me/trash',                          'trash_list.php',      'community.read'],
     ['POST',   '/api/pages/{id}/restore',                'page_restore.php',    'community.write'],
 
-    /* ── 상태 · 담당자 칸 (4-D, C:F-37) ──
-     * 바꾸는 창구는 `community.write` + 행 단위 `decidePageChange`(소유자·팀원만),
-     * 후보 목록은 `community.read` + **그 페이지의 `decidePageRead`** 다 —
-     * 「누구를 담당자로 고를 수 있나」는 「누가 그 페이지를 볼 수 있나」와 같은 물음이고,
-     * 후보 목록이 그보다 넓으면 볼 수 없는 사람의 계정명이 새어 나간다. */
+    /* ── 상태 칸 (4-D, C:F-37) ──
+     * 바꾸는 창구는 `community.write` + 행 단위 `decidePageChange`(소유자·편집 공유자·팀원).
+     * 5-A — **담당자 지정은 멈췄다**(사용자 결정: 담당자 = 소유자, 바꾸는 일은 인계다).
+     * 그래서 `GET /api/assignees` 는 표에서 빠졌고, 이 창구는 `status` 한 칸만 받는다. */
     ['PATCH',  '/api/pages/{id}/properties',             'pages_properties.php', 'community.write'],
-    ['GET',    '/api/assignees',                         'assignees_list.php',   'community.read'],
+
+    /* ── 사람 지정 공유 · 인계 (5-A, PRD NG-8 해제 · F-28) ──
+     * 목록은 `community.read` + 그 페이지의 `decidePageRead`, 바꾸는 셋은 `community.write` +
+     * **`decidePageManage`**(소유자·팀 공간 팀원 — 편집 공유로는 안 된다). 예외 하나: 공유받은
+     * 사람이 **자기 공유를 빼는 일**은 관리 자격 없이 된다(`pages_share_delete.php`).
+     * 인계의 자격은 따로 있다(`decidePageHandover` — 소유자·자기 팀원 것의 Manager·Admin).
+     * Admin 의 인계는 **재인증**이 필요하다 — 라우트 정책이 아니라 판정 결과(`admin_all`)에
+     * 걸리므로 핸들러가 세션의 `reauth_fresh` 를 본다(소유자 본인의 인계를 15분마다 끊지 않는다).
+     * `{username}` 은 `Auth::USERNAME_RE` 와 같은 글자 집합이다(`COMMUNITY_PATH_PATTERNS`). */
+    ['GET',    '/api/pages/{id}/shares',                 'pages_shares_list.php',  'community.read'],
+    ['PUT',    '/api/pages/{id}/shares/{username}',      'pages_share_put.php',    'community.write'],
+    ['DELETE', '/api/pages/{id}/shares/{username}',      'pages_share_delete.php', 'community.read'],
+    ['GET',    '/api/share-candidates',                  'share_candidates.php',   'community.read'],
+    ['POST',   '/api/pages/{id}/handover',               'pages_handover.php',     'community.write'],
 ];
+
+/**
+ * 커뮤니티 라우트에만 있는 경로 자리표시자 (5-A).
+ *
+ * `{username}` — 계정명. `Auth::USERNAME_RE`(`[a-z0-9_.-]{3,64}`)와 **같은 글자 집합**이다.
+ * t-box 표(`TBOX_PATH_PATTERNS`, `public/index.php`)를 고치지 않고 여기에 둔다 — 그 자리를
+ * 쓰는 라우트가 커뮤니티에만 있다. 값은 핸들러에서 **바인딩 값**으로만 쓰이고(계정 찾기),
+ * 파일 경로·SQL 조각이 되지 않는다. 형태가 다르면 라우트에 맞지 않아 404 다.
+ */
+const COMMUNITY_PATH_PATTERNS = [
+    '{username}' => '[a-z0-9_.-]{3,64}',
+];
+
+/** 자리표시자 하나의 정규식 — t-box 표 먼저, 없으면 커뮤니티 표. 둘 다 없으면 `null`. */
+function community_path_pattern(string $token): ?string
+{
+    return TBOX_PATH_PATTERNS[$token] ?? COMMUNITY_PATH_PATTERNS[$token] ?? null;
+}
+
+/**
+ * 커뮤니티 라우트 패턴 → 정규식 (t-box `tbox_pattern_to_regex()` 와 같은 방식, 자리표시자 표만 넓다).
+ * 표에 없는 자리표시자는 「무엇과도 맞지 않는다」(`(?!)`)로 바뀐다 — 검사를 건너뛴 경로가
+ * 「무엇이든 매칭」이 되지 않게 한다.
+ */
+function community_pattern_to_regex(string $path): string
+{
+    $regex = '';
+    $rest  = $path;
+    while ($rest !== '') {
+        if (preg_match('/\{[a-z]+\}/', $rest, $m, PREG_OFFSET_CAPTURE) !== 1) {
+            $regex .= preg_quote($rest, '#');
+            break;
+        }
+        $token  = $m[0][0];
+        $at     = (int) $m[0][1];
+        $regex .= preg_quote(substr($rest, 0, $at), '#');
+        $regex .= '(' . (community_path_pattern($token) ?? '(?!)') . ')';
+        $rest   = substr($rest, $at + strlen($token));
+    }
+    return '#^' . $regex . '$#';
+}
 
 /**
  * 상태 다섯 값 (4-D, C:F-37). **NULL(없음)이 기본**이고 그것은 이 목록에 없다 —
@@ -96,16 +149,6 @@ const COMMUNITY_ROUTES = [
  * 화면 글자는 `public/assets/community/editor.js` 의 `STATUS_LABELS` 가 들고 있다.
  */
 const COMMUNITY_STATUSES = ['todo', 'doing', 'review', 'done', 'hold'];
-
-/**
- * 담당자로 앉힐 수 없는 사람을 고른 일의 사유 글자 (4-D, C:T-48).
- *
- * 왜 `CommunityAuthz` 의 상수가 아닌가: 이것은 **판정 함수가 내는 코드가 아니다**.
- * 판정 함수는 「그 후보가 이 페이지를 볼 수 있나」에 `not_owner`·`not_member` 같은 자기
- * 코드로 답하고, 그것을 **담당자 지정의 거부 사유**로 옮겨 적는 것은 창구의 일이다.
- * 한 곳에만 적어 두려고 여기 둔다 — 감사 문장 표(`src/Audit.php`)와 글자가 같아야 한다.
- */
-const COMMUNITY_ASSIGNEE_NOT_PERMITTED = 'assignee_not_permitted';
 
 /** 핸들러 디렉터리. 코드 상수이며 요청 값이 경로에 한 글자도 들어가지 않는다. */
 const COMMUNITY_HANDLER_DIR = __DIR__ . '/handlers/';
@@ -141,7 +184,7 @@ function community_validate_routes(): array
             $problems[] = $where . ': 경로 패턴이 허용 형태가 아니다';
         } elseif (preg_match_all('/\{[a-z]+\}/', $path, $found) > 0) {
             foreach ($found[0] as $token) {
-                if (!array_key_exists($token, TBOX_PATH_PATTERNS)) {
+                if (community_path_pattern($token) === null) {
                     $problems[] = $where . ': 모르는 경로 자리표시자 ' . $token;
                 }
             }
@@ -234,15 +277,76 @@ function community_not_ready(bool $isApi): void
  * ═══════════════════════════════════════════════════════════════ */
 
 /**
+ * 공유 등급을 세는 **SQL 조각 하나** (5-A) — 판정과 목록이 **글자 그대로 같은 조각**을 쓴다.
+ *
+ * 돌려주는 것은 스칼라 부질의다: 페이지 `$pageExpr`(바깥 질의의 열, 예: `p.id`) **와 그 조상**에
+ * 바인딩 `$userParam` 의 사람에게 준 공유 중 **가장 강한 등급**의 번호(`edit`=2 · `view`=1),
+ * 없으면 NULL.
+ *   · 조상은 **같은 공간 안**에서만, **살아 있는 것**만 따라 오른다(지워진 조상 너머의 공유는
+ *     효력이 없다 — 경로 줄 `community_breadcrumb()` 가 멈추는 자리와 같다). 깊이는 16 에서
+ *     멈춘다(트리 한도 8 의 두 배 — 자료가 어긋나도 질의가 끝없이 돌지 않는다).
+ *   · 공유받은 계정이 **비활성**이면 그 줄은 효력 0 이다(`su.is_active = true`).
+ *
+ * `$pageExpr`·`$userParam` 은 **코드에 적힌 리터럴**만 온다(부르는 곳 — 이 파일의
+ * `community_page_row`·`community_visible_pages_where`, 그리고 `pages_list.php` 의 「공유받은 페이지」). 요청 값이 한
+ * 글자도 이 조각에 들어가지 않는다 — 들어가는 값은 전부 바인딩이다 (PRD S-04).
+ */
+const COMMUNITY_SHARE_RANK_SQL = <<<'SQL'
+(SELECT max(CASE sh.level WHEN 'edit' THEN 2 WHEN 'view' THEN 1 END)
+   FROM (WITH RECURSIVE up(id, parent_page_id, space_id, lvl) AS (
+             SELECT a.id, a.parent_page_id, a.space_id, 1
+               FROM community.pages a
+              WHERE a.id = @PAGE@
+             UNION ALL
+             SELECT b.id, b.parent_page_id, b.space_id, up.lvl + 1
+               FROM community.pages b
+               JOIN up ON b.id = up.parent_page_id
+              WHERE b.space_id = up.space_id
+                AND b.deleted_at IS NULL
+                AND up.lvl < 16
+         )
+         SELECT id FROM up) chain
+   JOIN community.page_shares sh ON sh.page_id = chain.id
+   JOIN public.users su ON su.id = sh.user_id AND su.is_active = true
+  WHERE sh.user_id = CAST(@USER@ AS bigint))
+SQL;
+
+function community_share_rank_sql(string $pageExpr, string $userParam): string
+{
+    // 코드 리터럴만 받는다는 약속을 코드로도 지킨다 — 모양이 다르면 부르는 쪽의 실수다.
+    if (preg_match('/^[a-z]+\.id$/', $pageExpr) !== 1 || preg_match('/^:[a-z_]+$/', $userParam) !== 1) {
+        throw new RuntimeException('community_share_rank_sql: 허용되지 않는 식별자');
+    }
+    // 조각은 위 nowdoc 상수 **한 벌**이고, 바뀌는 것은 별칭·자리표시자 이름 두 칸뿐이다.
+    return strtr(COMMUNITY_SHARE_RANK_SQL, ['@PAGE@' => $pageExpr, '@USER@' => $userParam]);
+}
+
+/** 공유 등급 번호 → 이름. 모르는 번호는 `null`(등급 없음)이다 — 모르면 막는다. */
+function community_share_level_name($rank): ?string
+{
+    if ($rank === null) {
+        return null;
+    }
+    $n = (int) $rank;
+    return $n === 2 ? 'edit' : ($n === 1 ? 'view' : null);
+}
+
+/**
  * 페이지 한 건 + 그 공간을 **한 번에** 읽는다 (ARCH 13.2 가 판정에 요구하는 칸을 전부 싣는다).
  *
  * 지워진 페이지도 돌려준다 — 「없음(404)」과 「지워짐」을 가르는 것은 판정 함수의 몫이다.
  *
+ * 5-A — `$viewerId` 를 받는다. 그 사람 몫의 **가장 강한 공유 등급**(이 페이지 + 조상, 활성 계정만)을
+ * `share_level` 에, 누구 몫으로 센 값인지를 `share_user_id` 에 싣는다. 판정 함수는 두 값이
+ * 지금 묻는 사람과 맞을 때만 그 등급을 쓴다(`CommunityAuthz::shareLevelFor`). 주지 않으면(0)
+ * 공유 갈래는 통째로 꺼진다 — 잊은 호출은 **좁은 쪽**으로 틀린다.
+ *
  * @return array<string,mixed>|null 없으면 null
  */
-function community_page_row(string $publicId): ?array
+function community_page_row(string $publicId, int $viewerId = 0): ?array
 {
-    $sql = <<<'SQL'
+    $shareRank = community_share_rank_sql('p.id', ':viewer');
+    $sql = <<<SQL
         SELECT p.id, p.public_id, p.space_id, p.parent_page_id, p.position,
                p.title, p.icon, p.font, p.small_text, p.full_width, p.visibility,
                p.doc, p.doc_version, p.block_count,
@@ -257,15 +361,19 @@ function community_page_row(string $publicId): ?array
                -- 보는 사람의 팀을 견준다(PRD 4.1 「소유자의 t-box 팀」). 팀 판정을 위해
                -- t-box 사용자 표를 읽는 자리는 여기 하나다 — 핸들러가 따로 묻지 않는다.
                owner.team_id   AS space_owner_team_id,
+               -- 5-A: 속성 줄의 「소유자」 — 공간 주인의 계정명·활성 여부. 계정 id 는 응답에 나가지 않는다.
+               owner.username  AS space_owner_name,
+               owner.is_active AS space_owner_active,
                -- 4-C: 지금 판을 **마지막으로 쓴 사람의 이름**. 이력 목록의 맨 윗줄(지금 판)이
                -- 이 값을 그대로 보인다 — 화면이 계정 id 를 이름으로 바꾸는 일이 없게 한다.
                editor.username AS last_edited_by_name,
-               -- 4-D: 고정 속성 둘과 담당자의 **계정명·역할·활성 여부**. 담당자 칩이 이 값을
-               -- 그대로 보이고, 계정 id 는 응답에 나가지 않는다.
+               -- 4-D: 상태 칸 + (멈춘) 담당자 칸의 옛 값. 5-A 부터 담당자는 **읽기만** 한다.
                p.status, p.assignee_id,
                assignee.username  AS assignee_name,
                assignee.role      AS assignee_role,
-               assignee.is_active AS assignee_active
+               assignee.is_active AS assignee_active,
+               -- 5-A: 이 사람 몫의 가장 강한 공유 등급(번호). 아래에서 이름으로 바꾼다.
+               {$shareRank} AS share_rank
           FROM community.pages p
           JOIN community.spaces s ON s.id = p.space_id
           LEFT JOIN public.users owner    ON owner.id    = s.owner_user_id
@@ -274,8 +382,14 @@ function community_page_row(string $publicId): ?array
          WHERE p.public_id = CAST(:pid AS uuid)
         SQL;
 
-    $row = Db::instance()->run($sql, [':pid' => $publicId])->fetch();
-    return is_array($row) ? $row : null;
+    $row = Db::instance()->run($sql, [':pid' => $publicId, ':viewer' => $viewerId])->fetch();
+    if (!is_array($row)) {
+        return null;
+    }
+    $row['share_level']   = community_share_level_name($row['share_rank']);
+    $row['share_user_id'] = $viewerId > 0 ? $viewerId : null;
+    unset($row['share_rank']);
+    return $row;
 }
 
 /**
@@ -360,14 +474,20 @@ function community_target_title(string $title): string
  * 곧 깊이다(C:T-22 가 1·2·3 을 본다). 끊긴 조상(지워진 페이지)은 CTE 의 `deleted_at IS NULL`
  * 이 걸러 내므로 거기서 멈춘다 — 지워진 부모 너머는 보이지 않는다.
  *
- * 볼 수 있는 것만: 조상은 전부 **같은 개인 공간**의 행이라 페이지 자체와 판정이 같다.
- * 그래서 조상마다 다시 판정하지 않고 같은 공간인 것만 CTE 안에서 확인한다.
+ * ★ 5-A — **볼 수 있는 조상까지만** 보인다. 공유는 한 페이지(와 그 아래)에만 준다: 비공개
+ *   부모 아래의 페이지 하나를 공유받은 사람에게 경로 줄이 부모 제목을 보여 주면, 공유하지 않은
+ *   페이지의 제목이 새어 나간다. 그래서 `$u` 를 주면 조상마다 **목록과 같은 조건절**
+ *   (`community_visible_pages_where`)로 보이는지를 함께 묻고, 자기에서 위로 올라가다 처음
+ *   보이지 않는 조상에서 **자른다**(그 위는 보이더라도 잇지 않는다 — 끊긴 경로를 만들지 않는다).
  *
+ * @param  array<string,mixed> $u 보는 사람
  * @return list<array{id:string,title:string,icon:?string}>
  */
-function community_breadcrumb(int $pageId, int $spaceId): array
+function community_breadcrumb(int $pageId, int $spaceId, array $u): array
 {
-    $sql = <<<'SQL'
+    [$where, $visBind] = community_visible_pages_where($u);
+
+    $sql = <<<SQL
         WITH RECURSIVE up AS (
             SELECT p.id, p.parent_page_id, p.public_id, p.title, p.icon, 0 AS lvl
               FROM community.pages p
@@ -381,18 +501,33 @@ function community_breadcrumb(int $pageId, int $spaceId): array
              WHERE parent.space_id = CAST(:space2 AS bigint)
                AND parent.deleted_at IS NULL
         )
-        SELECT public_id, title, icon FROM up ORDER BY lvl DESC
+        SELECT up.public_id, up.title, up.icon, up.lvl,
+               EXISTS (SELECT 1 FROM community.pages p
+                         JOIN community.spaces s ON s.id = p.space_id
+                         LEFT JOIN public.users owner ON owner.id = s.owner_user_id
+                        WHERE p.id = up.id
+                          AND {$where}) AS visible
+          FROM up ORDER BY up.lvl ASC
         SQL;
 
-    $out = [];
-    foreach (Db::instance()->run($sql, [':pid' => $pageId, ':space' => $spaceId, ':space2' => $spaceId])->fetchAll() as $r) {
-        $out[] = [
+    $rows = Db::instance()->run($sql, array_merge(
+        [':pid' => $pageId, ':space' => $spaceId, ':space2' => $spaceId],
+        $visBind
+    ))->fetchAll();
+
+    // 자기(lvl 0)에서 위로 — 처음 보이지 않는 조상에서 멈춘다. 자기 자신은 이미 읽기 판정을 지났다.
+    $chain = [];
+    foreach ($rows as $r) {
+        if ((int) $r['lvl'] > 0 && $r['visible'] !== true) {
+            break;
+        }
+        $chain[] = [
             'id'    => (string) $r['public_id'],
             'title' => (string) $r['title'],
             'icon'  => $r['icon'] === null ? null : (string) $r['icon'],
         ];
     }
-    return $out;
+    return array_reverse($chain);
 }
 
 /**
@@ -652,7 +787,8 @@ function community_space_gate(array $u, array $space): array
  * (t-box `Authz::visibleWhere` 의 허용 목록과 같은 이유).
  *
  * 조건은 `CommunityAuthz::decidePageRead` 를 한 줄씩 옮긴 것이다:
- *   내 개인 공간 전부 / `internal` + 쓰기 자격 / `team` + 주인과 같은 팀 / Admin / 내 팀 공간.
+ *   내 개인 공간 전부 / **나에게 준 공유(이 페이지·조상, 활성 계정, 세 범위만 — 5-A)** /
+ *   `internal` + 쓰기 자격 / `team` + 주인과 같은 팀 / Admin / 내 팀 공간.
  * `published` 는 어느 갈래에도 없다 — 5단계까지는 목록에도 없다.
  *
  * @param  array<string,mixed> $u
@@ -660,9 +796,13 @@ function community_space_gate(array $u, array $space): array
  */
 function community_visible_pages_where(array $u): array
 {
-    $sql = <<<'SQL'
+    // 5-A 공유 갈래 — `community_page_row()` 가 판정에 싣는 값과 **같은 조각**이다.
+    $shared = community_share_rank_sql('p.id', ':vis_share');
+    $sql = <<<SQL
 (
       (s.kind = 'personal' AND s.owner_user_id = CAST(:vis_me AS bigint))
+   OR (s.kind = 'personal' AND p.visibility IN ('private','team','internal')
+       AND {$shared} IS NOT NULL)
    OR (s.kind = 'personal' AND p.visibility = 'internal' AND CAST(:vis_write AS boolean))
    OR (s.kind = 'personal' AND p.visibility = 'team'
        AND owner.team_id IS NOT NULL AND owner.team_id = CAST(:vis_team AS bigint))
@@ -675,6 +815,7 @@ SQL;
 
     return [$sql, [
         ':vis_me'    => (int) $u['id'],
+        ':vis_share' => (int) $u['id'],
         // 「쓰기 자격이 있는 역할인가」·「Admin 인가」의 판단은 `Authz` 가 한다 — 이 파일에
         // 역할 문자열 비교가 생기지 않게 참·거짓만 받아 바인딩한다 (ARCH 4.1).
         ':vis_write' => Authz::canCommunityWrite($u) ? 'true' : 'false',
@@ -974,7 +1115,7 @@ function community_insert_check_events(int $pageId, array $changes, int $byUserI
  */
 function community_history_gate(array $u, string $publicId): array
 {
-    $row = community_page_row($publicId);
+    $row = community_page_row($publicId, (int) $u['id']);
     if ($row === null) {
         Http::error(404, Http::MSG_NOT_FOUND);
     }
@@ -1042,16 +1183,16 @@ function community_restore_source(?string $summary): ?int
 }
 
 /* ══════════════════════════════════════════════════════════════════
- * 상태 · 담당자 (4-D, C:F-37)
+ * 상태 (4-D, C:F-37) · 공유와 인계 (5-A)
  *
- * 규칙 둘.
- *   ① **기록은 지울 수 없다** (C:S-14) — `page_property_events` 에는 앱 계정에 INSERT 와
- *      SELECT 만 있다(`db/community/grants.sql`). 아래 함수도 그 둘만 쓴다.
- *   ② **담당자 후보는 그 페이지를 볼 수 있는 사람뿐이다** — 「누구를 담당자로 고를 수
- *      있나」와 「누가 그 페이지를 볼 수 있나」는 같은 물음이다. 후보 목록이 그보다 넓으면
- *      볼 수 없는 사람의 계정명이 새고, 담당자로 앉히면 그 사람은 자기 이름이 붙은 페이지를
- *      열 수 없다. 그래서 목록은 SQL 조건절로 좁히고(아래), 실제 지정은 판정 함수
- *      `CommunityAuthz::decidePageRead` 가 **그 후보를 사용자로 놓고** 한 번 더 답한다.
+ * 규칙 셋.
+ *   ① **기록은 지울 수 없다** (C:S-14) — `page_property_events`·`handovers` 에는 앱 계정에
+ *      INSERT 와 SELECT 만 있다(`db/community/grants.sql`). 아래 함수도 그 둘만 쓴다.
+ *      `page_shares` 는 **바뀌는 값**이라 SIUD 이고, 바뀐 일은 감사(`page.share`)가 남긴다.
+ *   ② 역할 문자열은 이 파일에 없다 — 「쓰기 자격 있는 역할」은 `community_role_sets()` 가
+ *      역할마다 `Authz` 에 물어 만든다(4-D 교훈).
+ *   ③ 4-D 의 담당자 후보 질의(`community_assignee_where`·`community_assignee_candidates`)는
+ *      지정을 멈추면서 지웠다. 담당자 칸의 옛 값과 기록은 **읽기만** 한다.
  * ══════════════════════════════════════════════════════════════════ */
 
 /**
@@ -1060,8 +1201,6 @@ function community_restore_source(?string $summary): ?int
  * ★ 이 파일에는 역할 문자열(`'Admin'` 같은 것)이 **한 글자도 없다** (ARCH 4.1, CLAUDE 4장
  *   금지 패턴 「역할 판단을 Authz 밖에서 직접 하는 코드」). 역할 **이름**은 DB 에 있는 것을
  *   그대로 읽고, 「그 역할이 쓸 수 있나·관리자인가」의 판단은 전부 `Authz` 가 한다.
- *   `community_visible_pages_where()` 가 지금 사용자 한 명에 대해 `Authz` 에 두 번 묻는 것과
- *   같은 일을, 후보 목록에서는 **역할마다** 한 번씩 물어 두는 것뿐이다.
  *
  * @return array{write:list<string>,admin:list<string>}
  */
@@ -1094,128 +1233,60 @@ function community_role_sets(): array
 }
 
 /**
- * 담당자 후보에 붙일 **행 단위 조건절** (4-D, C:T-48).
+ * 공유·인계 받는 사람 **후보**를 찾는다 (5-A `GET /api/share-candidates`).
+ * 돌려주는 것은 **계정명과 역할**뿐이다(팀·활성 여부·만료일 같은 것은 고르는 데 필요 없다).
  *
- * 돌려주는 조건절은 별칭 `u`(= `public.users`) 를 전제로 한다. 별칭은 SQL 식별자 자리라
- * 바인딩할 수 없으므로 **코드에 적힌 리터럴**이다(`community_visible_pages_where` 와 같은 이유).
+ *   · 활성 계정만 — 비활성 계정에게 준 공유는 효력이 없고, 넘길 수도 없다.
+ *   · `$writeOnly` 가 참이면(인계) **쓰기 자격 있는 역할만** — Guest 는 넘겨받을 수 없다.
+ *     역할 목록은 `community_role_sets()` 가 `Authz` 에 물어 만든 것이고, `IN (…)` 의 자리표시자
+ *     이름은 **개수로 만든 코드 문자열**(`:cw0` …)이다 — 요청 값이 SQL 에 들어가지 않는다.
+ *   · `$excludeId` — 후보에서 뺄 한 사람(그 페이지의 주인. 주인에게 공유·인계는 뜻이 없다).
  *
- * 조건은 `CommunityAuthz::decidePageRead` 를 **보는 사람 쪽에서** 한 줄씩 옮긴 것이다:
- *   공간 주인 / 팀 공간이면 그 팀원 / 개인 공간 `team` 이면 주인의 팀원 /
- *   개인 공간 `internal` 이면 쓰기 자격이 있는 역할(Guest 는 그 목록에 없다) / Admin.
- * `published` 는 어느 갈래에도 없다 — 5단계까지 판정이 닫힌 실패이기 때문이다.
- *
- * ★ 이 조건절은 **좁히는 그물**이고 마지막 판단이 아니다. 부르는 쪽은 결과 행마다
- *   `decidePageRead` 를 한 번 더 통과시킨다 — 조건절과 판정 함수가 어긋나면 **좁은 쪽**이 이긴다.
- *
- * @param  array<string,mixed> $page `community_page_row()` 의 결과
- * @return array{0:string,1:array<string,mixed>}
- */
-function community_assignee_where(array $page): array
-{
-    $roles = community_role_sets();
-
-    /* `IN (…)` 의 자리표시자 이름은 **개수로 만든 코드 문자열**이다(`:cw0`, `:ca0` …).
-       요청 값이 SQL 에 한 글자도 들어가지 않는다 (PRD S-04, `pages_get.php` 와 같은 방식). */
-    $bind = [];
-    $mk = static function (array $list, string $prefix) use (&$bind): string {
-        if ($list === []) {
-            return 'false';
-        }
-        $names = [];
-        foreach ($list as $i => $role) {
-            $name          = ':' . $prefix . (string) $i;
-            $names[]       = $name;
-            $bind[$name]   = $role;
-        }
-        return 'u.role IN (' . implode(', ', $names) . ')';
-    };
-
-    $writeIn = $mk($roles['write'], 'cw');
-    $adminIn = $mk($roles['admin'], 'ca');
-
-    $kind       = (string) ($page['space_kind'] ?? '');
-    $visibility = (string) ($page['visibility'] ?? '');
-
-    $sql = <<<SQL
-(
-      u.id = CAST(:as_owner AS bigint)
-   OR (CAST(:as_team_space AS boolean)
-       AND u.team_id IS NOT NULL AND u.team_id = CAST(:as_space_team AS bigint))
-   OR (CAST(:as_owner_team AS boolean)
-       AND u.team_id IS NOT NULL AND u.team_id = CAST(:as_owner_team_id AS bigint))
-   OR (CAST(:as_internal AS boolean) AND {$writeIn})
-   OR {$adminIn}
-)
-SQL;
-
-    return [$sql, array_merge($bind, [
-        // 개인 공간의 주인. 팀 공간에는 주인이 없어 NULL 이고, NULL 과의 `=` 는 참이 되지 않는다.
-        ':as_owner'         => $page['space_owner_user_id'] === null ? null : (int) $page['space_owner_user_id'],
-        ':as_team_space'    => $kind === 'team' ? 'true' : 'false',
-        ':as_space_team'    => $page['space_team_id'] === null ? null : (int) $page['space_team_id'],
-        ':as_owner_team'    => ($kind === 'personal' && $visibility === 'team') ? 'true' : 'false',
-        ':as_owner_team_id' => $page['space_owner_team_id'] === null ? null : (int) $page['space_owner_team_id'],
-        ':as_internal'      => ($kind === 'personal' && $visibility === 'internal') ? 'true' : 'false',
-    ])];
-}
-
-/**
- * 담당자 후보를 찾는다 (4-D). 돌려주는 것은 **계정명과 역할**뿐이다.
- *
- * @param  array<string,mixed> $page `community_page_row()` 의 결과
- * @param  string              $q    이름 조각(빈 문자열이면 전원)
- * @param  int                 $limit 최대 몇 명
  * @return list<array{username:string,role:string}>
  */
-function community_assignee_candidates(array $page, string $q, int $limit): array
+function community_share_candidates(string $q, int $limit, ?int $excludeId, bool $writeOnly): array
 {
-    [$where, $bind] = community_assignee_where($page);
+    $bind  = [];
+    $names = [];
+    foreach (community_role_sets()['write'] as $i => $role) {
+        $name        = ':cw' . (string) $i;
+        $names[]     = $name;
+        $bind[$name] = $role;
+    }
+    $roleSql = $names === [] ? 'false' : 'u.role IN (' . implode(', ', $names) . ')';
 
     // `%`·`_`·`#` 은 ILIKE 의 뜻 있는 글자다. `#` 로 이스케이프하고 값은 바인딩한다 (PRD S-04).
     $like = $q === '' ? '' : '%' . str_replace(['#', '%', '_'], ['##', '#%', '#_'], $q) . '%';
 
     $sql = <<<SQL
-        SELECT u.id, u.username, u.role, u.team_id
+        SELECT u.username, u.role
           FROM public.users u
          WHERE u.is_active = true
            AND (CAST(:qoff AS boolean) OR u.username ILIKE :like ESCAPE '#')
-           AND {$where}
+           AND u.id IS DISTINCT FROM CAST(:exclude AS bigint)
+           AND (NOT CAST(:write_only AS boolean) OR {$roleSql})
          ORDER BY u.username
          LIMIT CAST(:lim AS int)
         SQL;
 
-    $rows = Db::instance()->run($sql, array_merge($bind, [
-        ':qoff' => $q === '' ? 'true' : 'false',
-        ':like' => $like,
-        // 조건절과 판정 함수가 어긋나 몇 줄이 걸러지더라도 한 쪽을 채울 수 있게 넉넉히 읽는다.
-        ':lim'  => $limit * 5,
-    ]))->fetchAll();
-
     $out = [];
-    foreach ($rows as $r) {
-        $candidate = [
-            'id'      => (int) $r['id'],
-            'role'    => (string) $r['role'],
-            'team_id' => $r['team_id'] === null ? null : (int) $r['team_id'],
-        ];
-        // ★ 마지막 판단은 조건절이 아니라 **판정 함수**다 (ARCH 4.1).
-        [$mayRead] = CommunityAuthz::decidePageRead($candidate, $page);
-        if (!$mayRead) {
-            continue;
-        }
+    foreach (Db::instance()->run($sql, array_merge($bind, [
+        ':qoff'       => $q === '' ? 'true' : 'false',
+        ':like'       => $like,
+        ':exclude'    => $excludeId,
+        ':write_only' => $writeOnly ? 'true' : 'false',
+        ':lim'        => $limit,
+    ]))->fetchAll() as $r) {
         $out[] = ['username' => (string) $r['username'], 'role' => (string) $r['role']];
-        if (count($out) >= $limit) {
-            break;
-        }
     }
     return $out;
 }
 
 /**
- * 계정명 하나로 사람을 찾는다 (4-D 담당자 지정). 없으면 `null`.
+ * 계정명 하나로 사람을 찾는다 (5-A 공유·인계 대상). 없으면 `null`.
  *
- * 비활성 계정도 **행을 돌려준다** — 「없는 사람」과 「내려간 계정」을 가르는 것은 부르는
- * 쪽의 몫이다(둘 다 400 이지만, 기록에 남는 사유가 같아야 할 이유는 없다).
+ * 비활성 계정도 **행을 돌려준다** — 「없는 사람」과 「내려간 계정」을 가르는 것은 판정 함수
+ * (`CommunityAuthz::decideShareTarget`·`decideHandoverTarget`)의 몫이다.
  *
  * @return array<string,mixed>|null
  */
@@ -1232,7 +1303,126 @@ function community_user_by_name(string $username): ?array
 }
 
 /**
- * 상태·담당자가 바뀐 일을 **지울 수 없는 줄 하나**로 남긴다 (4-D, C:S-14).
+ * 한 페이지의 공유 줄 — **이 페이지에 직접 준 것**과 **조상에게서 물려받은 것** (5-A).
+ *
+ * 조상 쪽은 `community_share_rank_sql()` 과 같은 길(같은 공간·살아 있는 조상)로 오른다.
+ * 비활성 계정의 줄도 돌려준다 — 화면이 「(내려간 계정)」이라고 보이고 뺄 수 있어야 한다.
+ * 효력이 없다는 사실은 판정이 이미 알고 있다(`su.is_active = true`).
+ *
+ * @return list<array{username:string,role:string,is_active:bool,level:string,granted_by:?string,
+ *                    created_at:string,inherited:bool,from_id:?string,from_title:?string}>
+ */
+function community_page_shares(int $pageId): array
+{
+    $sql = <<<'SQL'
+        WITH RECURSIVE up(id, parent_page_id, space_id, lvl) AS (
+            SELECT a.id, a.parent_page_id, a.space_id, 0
+              FROM community.pages a WHERE a.id = CAST(:pid AS bigint)
+            UNION ALL
+            SELECT b.id, b.parent_page_id, b.space_id, up.lvl + 1
+              FROM community.pages b JOIN up ON b.id = up.parent_page_id
+             WHERE b.space_id = up.space_id AND b.deleted_at IS NULL AND up.lvl < 16
+        )
+        SELECT u.username, u.role, u.is_active, sh.level, gb.username AS granted_by_name,
+               sh.created_at, up.lvl, src.public_id AS from_id, src.title AS from_title
+          FROM up
+          JOIN community.page_shares sh ON sh.page_id = up.id
+          JOIN public.users u ON u.id = sh.user_id
+          JOIN community.pages src ON src.id = up.id
+          LEFT JOIN public.users gb ON gb.id = sh.granted_by
+         ORDER BY up.lvl ASC, u.username ASC
+         LIMIT 500
+        SQL;
+
+    $out = [];
+    foreach (Db::instance()->run($sql, [':pid' => $pageId])->fetchAll() as $r) {
+        $inherited = (int) $r['lvl'] > 0;
+        $out[] = [
+            'username'   => (string) $r['username'],
+            'role'       => (string) $r['role'],
+            'is_active'  => $r['is_active'] === true,
+            'level'      => (string) $r['level'],
+            'granted_by' => $r['granted_by_name'] === null ? null : (string) $r['granted_by_name'],
+            'created_at' => (string) $r['created_at'],
+            'inherited'  => $inherited,
+            'from_id'    => $inherited ? (string) $r['from_id'] : null,
+            'from_title' => $inherited ? (string) $r['from_title'] : null,
+        ];
+    }
+    return $out;
+}
+
+/**
+ * 이 페이지와 **살아 있는 하위 전부**의 `pages.id` (5-A 인계 — 무엇이 옮겨 가나).
+ * 재귀 CTE 한 번이고, 자기 자신이 맨 앞이다. 지워진 하위는 옮기지 않는다 — 옛 공간의
+ * 휴지통에 남아, 지운 사람이 거기서 되살린다(되살리면 부모가 없어 뿌리로 올라간다, 4-C).
+ *
+ * @return list<int>
+ */
+function community_subtree_live_ids(int $pageId): array
+{
+    $sql = <<<'SQL'
+        WITH RECURSIVE down AS (
+            SELECT p.id, 0 AS lvl FROM community.pages p
+             WHERE p.id = CAST(:pid AS bigint) AND p.deleted_at IS NULL
+            UNION ALL
+            SELECT c.id, d.lvl + 1 FROM community.pages c
+              JOIN down d ON c.parent_page_id = d.id
+             WHERE c.deleted_at IS NULL AND d.lvl < 16
+        )
+        SELECT id FROM down ORDER BY lvl, id LIMIT 5000
+        SQL;
+
+    $ids = [];
+    foreach (Db::instance()->run($sql, [':pid' => $pageId])->fetchAll() as $r) {
+        $ids[] = (int) $r['id'];
+    }
+    return $ids;
+}
+
+/**
+ * 이 사람의 개인 공간 **그릇 한 줄**을 만든다 — 이미 있으면 아무것도 하지 않는다 (5-A 로 뽑아냈다).
+ *
+ * `GET /api/me/space`(첫 방문)와 인계(받는 사람에게 아직 공간이 없을 때)가 **같은 문장**을 쓴다 —
+ * 공간 이름 규칙(계정명 40자 + 「 의 공간」)과 초기값이 두 벌이 되지 않게 하려는 것이다.
+ * 동시에 두 요청이 만들려 하면 부분 UNIQUE 인덱스(`spaces_personal_owner_uidx`)가 한쪽을
+ * 걸러 낸다(`ON CONFLICT … DO NOTHING`) — 그때는 `null` 을 돌려주고, 부르는 쪽이 다시 읽는다.
+ * 반드시 부르는 쪽의 트랜잭션 안에서 부른다.
+ *
+ * @return array{id:int,name:string,kind:string,created_at:string}|null 새로 만들었으면 그 줄, 이미 있었으면 null
+ */
+function community_create_personal_space(int $ownerId, string $ownerName, int $byUserId): ?array
+{
+    // 표의 상한이 50자라 앞 40자만 쓴다 — 여기서 자르지 않으면 이름이 긴 계정이 DB 제약에 걸린다.
+    if (iconv_strlen($ownerName, 'UTF-8') > 40) {
+        $ownerName = (string) iconv_substr($ownerName, 0, 40, 'UTF-8');
+    }
+    $sql = <<<'SQL'
+        INSERT INTO community.spaces (kind, owner_user_id, name, description, access_level, created_by)
+        VALUES ('personal', CAST(:uid AS bigint), :name, :description, 'admin-only', CAST(:by AS bigint))
+        ON CONFLICT (owner_user_id) WHERE kind = 'personal' DO NOTHING
+        RETURNING id, name, kind, created_at
+        SQL;
+
+    $row = Db::instance()->run($sql, [
+        ':uid'         => $ownerId,
+        ':name'        => $ownerName . ' 의 공간',
+        ':description' => '나만 보는 개인 업무 공간입니다.',
+        ':by'          => $byUserId,
+    ])->fetch();
+    if (!is_array($row)) {
+        return null;
+    }
+    return [
+        'id'         => (int) $row['id'],
+        'name'       => (string) $row['name'],
+        'kind'       => (string) $row['kind'],
+        'created_at' => (string) $row['created_at'],
+    ];
+}
+
+/**
+ * 상태가 바뀐 일을 **지울 수 없는 줄 하나**로 남긴다 (4-D, C:S-14). 5-A 부터 담당자 줄은 새로 생기지 않는다.
  *
  * 반드시 부르는 쪽의 트랜잭션 안에서 부른다 — `pages` 갱신과 기록이 갈라지지 않게.
  * `INSERT` 하나뿐이고, 앱 계정에는 이 표에 UPDATE·DELETE 가 없다.
@@ -1281,7 +1471,7 @@ function community_dispatch(string $modulePath, string $method): void
 
     foreach (COMMUNITY_ROUTES as $route) {
         [$routeMethod, $path, $handler, $policy] = $route;
-        if (preg_match(tbox_pattern_to_regex($path), $modulePath, $m) !== 1) {
+        if (preg_match(community_pattern_to_regex($path), $modulePath, $m) !== 1) {
             continue;
         }
         $pathMatched      = true;

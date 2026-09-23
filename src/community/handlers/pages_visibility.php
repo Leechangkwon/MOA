@@ -17,7 +17,8 @@ declare(strict_types=1);
  * 검사 순서
  *   [1] 허용 키·값 → [2] 행+공간 → 404
  *   [권한 ✔ A] `decidePageRead` — 못 보는 페이지는 여기서 끝난다(403·404)
- *   [권한 ✔ B] **소유자만** — 볼 수 있어도 남의 페이지 범위는 바꾸지 못한다 (C:T-32)
+ *   [권한 ✔ B] **소유자만** — `decidePageManage`(5-A). 볼 수 있어도, **편집 공유를 받았어도**
+ *              남의 페이지 범위는 바꾸지 못한다 (C:T-32)
  *   [3] 팀 공간의 페이지는 자기 범위가 없다(공간 등급을 따른다) → 400
  *   [4] **넓히기** — 부모보다 넓으면 400 `wider_than_parent` + 감사 + DB 불변 (C:T-33)
  *   [5] **좁히기** — 하위에 더 넓은 것이 있으면
@@ -62,7 +63,7 @@ if (array_key_exists('cascade', $body)) {
 }
 
 // ─── [2] 행 + 공간 ────────────────────────────────────────────
-$row = community_page_row($pid);
+$row = community_page_row($pid, (int) $user['id']);
 if ($row === null) {
     Http::error(404, Http::MSG_NOT_FOUND);
 }
@@ -94,7 +95,7 @@ if (!$mayRead) {
 /* 범위를 바꾸는 일은 **고치기**이고, 개인 공간에서 고치는 사람은 주인 하나다.
    팀·사내로 열어 둔 페이지를 본 사람이 그 범위를 더 넓히거나 닫을 수 있으면, 주인은
    자기 글이 어디까지 퍼졌는지 알 수 없게 된다 (C:T-32). */
-[$mayChange, $changeCode] = CommunityAuthz::decidePageChange($user, $row);
+[$mayChange, $changeCode] = CommunityAuthz::decidePageManage($user, $row);
 $isOwnerOfPersonal = $mayChange && $changeCode === CommunityAuthz::CODE_OWNER;
 if (!$isOwnerOfPersonal) {
     Audit::deny('page.visibility', CommunityAuthz::CODE_NOT_OWNER, [

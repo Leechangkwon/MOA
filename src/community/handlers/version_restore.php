@@ -165,7 +165,7 @@ try {
         /* 읽고 나서 여기 오기까지 사이에 다른 요청이 먼저 저장했다(또는 지웠다). 되돌리고
            409 로 답한다 — 되돌리기가 남의 저장을 소리 없이 덮어쓰지 않게 하는 자리다. */
         $db->rollback();
-        $fresh = community_page_row($pid);
+        $fresh = community_page_row($pid, (int) $user['id']);
         Http::json([
             'error'           => '다른 곳에서 먼저 저장되었습니다',
             'current_version' => $fresh === null ? $currentVersion : (int) $fresh['doc_version'],

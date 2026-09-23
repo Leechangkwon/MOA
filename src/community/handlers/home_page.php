@@ -75,15 +75,16 @@ require __DIR__ . '/../../views/shell_top.php';
       <span id="community-count" class="muted"></span>
     </div>
 
-    <!-- 「내가 담당인 페이지」 (4-D, C:F-37). 남의 공간에 있는 페이지도 들어올 수 있으므로
-         줄마다 어느 공간인지를 함께 보인다. 목록은 창구 `GET /api/pages?assignee=me` 가
-         주는 것만이고, 「내가 담당인가」를 따지는 코드는 화면에 없다 (C:T-50). -->
-    <section id="community-mine-wrap" hidden>
+    <!-- 「공유받은 페이지」 (5-A — 4-D 「내가 담당인 페이지」 자리). 다른 사람이 나에게 보기·편집으로
+         준 페이지다. 언제나 남의 공간에 있으므로 줄마다 어느 공간인지와 받은 권한을 함께 보인다.
+         목록은 창구 `GET /api/pages?shared=me` 가 **SQL WHERE 로** 준 것만이고, 「나에게 공유됐나」를
+         따지는 코드는 화면에 없다. -->
+    <section id="community-shared-wrap" hidden>
       <div class="toolbar">
-        <p class="nav-title">내가 담당인 페이지</p>
-        <span id="community-mine-count" class="muted"></span>
+        <p class="nav-title">공유받은 페이지</p>
+        <span id="community-shared-count" class="muted"></span>
       </div>
-      <div id="community-mine" class="card-grid"></div>
+      <div id="community-shared" class="card-grid"></div>
     </section>
 
     <!-- 트리가 들어오는 자리 (4-A). editor.js 가 `createElement` 로만 채우고, 접기·펼치기는

@@ -45,7 +45,8 @@ GRANT  USAGE  ON SCHEMA community TO tbox_backup;
 REVOKE ALL ON community.spaces, community.pages, community.page_versions,
               community.page_blocks, community.page_links,
               community.checklist_events, community.page_edit_sessions,
-              community.page_property_events
+              community.page_property_events,
+              community.page_shares, community.handovers
        FROM tbox_app;
 
 -- ─── 표별 권한 (앱 런타임) ────────────────────────────────────
@@ -54,10 +55,14 @@ GRANT SELECT, INSERT, UPDATE, DELETE ON community.pages              TO tbox_app
 GRANT SELECT, INSERT, UPDATE, DELETE ON community.page_edit_sessions TO tbox_app;
 GRANT SELECT, INSERT, UPDATE, DELETE ON community.page_blocks        TO tbox_app;
 GRANT SELECT, INSERT, UPDATE, DELETE ON community.page_links         TO tbox_app;
+-- 5-A 사람 지정 공유 — **바뀌는 값**이다(등급 바꾸기·빼기). 바뀐 일은 감사 `page.share` 가 남긴다.
+GRANT SELECT, INSERT, UPDATE, DELETE ON community.page_shares        TO tbox_app;
 -- ★ 기록 불변 (C:S-14) — 이 셋은 SELECT·INSERT 뿐이다.
 GRANT SELECT, INSERT                 ON community.page_versions        TO tbox_app;
 GRANT SELECT, INSERT                 ON community.checklist_events     TO tbox_app;
 GRANT SELECT, INSERT                 ON community.page_property_events TO tbox_app;
+-- 5-A 인계 기록 (C:S-14) — 한 번 남은 인계는 고치지도 지우지도 못한다.
+GRANT SELECT, INSERT                 ON community.handovers            TO tbox_app;
 
 -- ─── 시퀀스 (INSERT 하는 표의 id 발급) ────────────────────────
 GRANT USAGE, SELECT ON SEQUENCE community.spaces_id_seq            TO tbox_app;
@@ -65,13 +70,16 @@ GRANT USAGE, SELECT ON SEQUENCE community.pages_id_seq             TO tbox_app;
 GRANT USAGE, SELECT ON SEQUENCE community.page_versions_id_seq     TO tbox_app;
 GRANT USAGE, SELECT ON SEQUENCE community.checklist_events_id_seq  TO tbox_app;
 GRANT USAGE, SELECT ON SEQUENCE community.page_property_events_id_seq TO tbox_app;
+GRANT USAGE, SELECT ON SEQUENCE community.page_shares_id_seq       TO tbox_app;
+GRANT USAGE, SELECT ON SEQUENCE community.handovers_id_seq         TO tbox_app;
 -- page_blocks·page_links·page_edit_sessions 는 복합 기본키라 시퀀스가 없다.
 
 -- ─── tbox_backup (읽기 전용 백업 계정) ────────────────────────
 REVOKE ALL ON community.spaces, community.pages, community.page_versions,
               community.page_blocks, community.page_links,
               community.checklist_events, community.page_edit_sessions,
-              community.page_property_events
+              community.page_property_events,
+              community.page_shares, community.handovers
        FROM tbox_backup;
 
 GRANT SELECT ON ALL TABLES    IN SCHEMA community TO tbox_backup;   -- ★ SELECT 만
