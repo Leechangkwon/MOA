@@ -102,6 +102,7 @@ if (Http::queryText('shared', 8) === 'me') {
                s.id AS space_id, s.kind AS space_kind, s.name AS space_name,
                s.owner_user_id AS space_owner_user_id, s.team_id AS space_team_id,
                owner.username AS owner_name,
+               owner.display_name AS owner_display_name,
                parent.public_id AS parent_public_id,
                left(p.plain_text, 160) AS excerpt,
                sh.level AS direct_level,
@@ -152,7 +153,11 @@ if (Http::queryText('shared', 8) === 'me') {
             // 이 페이지에 직접 준 등급과, 조상까지 따진 가장 강한 등급(판정이 쓰는 값).
             'share_level' => $level,
             'direct_level' => (string) $r['direct_level'],
-            'owner'       => $r['owner_name'] === null ? null : ['username' => (string) $r['owner_name']],
+            'owner'       => $r['owner_name'] === null ? null : [
+                'username'     => (string) $r['owner_name'],
+                // 5-A″ — 이름은 따로(없으면 null)
+                'display_name' => $r['owner_display_name'] === null ? null : (string) $r['owner_display_name'],
+            ],
             'parent_id'   => $r['parent_public_id'] === null ? null : (string) $r['parent_public_id'],
             'created_at'  => (string) $r['created_at'],
             'updated_at'  => (string) $r['updated_at'],

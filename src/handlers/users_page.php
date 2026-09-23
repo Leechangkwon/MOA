@@ -37,7 +37,7 @@ require __DIR__ . '/../views/shell_top.php';
     <header class="page-head">
       <div class="page-head__text">
         <h1 class="page-head__title">계정 관리</h1>
-        <p class="page-head__sub">계정 생성 · 역할·팀·만료 변경 · 임시 비밀번호 재발급 · 2단계 인증 초기화</p>
+        <p class="page-head__sub">계정 생성 · 이름·역할·팀·만료 변경 · 임시 비밀번호 재발급 · 2단계 인증 초기화</p>
       </div>
       <div class="page-head__actions">
         <button type="button" class="btn btn--quiet" data-help-open>
@@ -78,6 +78,12 @@ require __DIR__ . '/../views/shell_top.php';
           <span class="field__label">아이디 (소문자·숫자·<code>_ . -</code>, 3~64자)</span>
           <input id="u-username" type="text" maxlength="64" inputmode="latin"
                  autocapitalize="none" autocorrect="off" spellcheck="false" required>
+        </label>
+        <!-- 5-A″ — 이름(선택). 사이트 어디서나 「이름 (아이디)」로 보인다. 규칙은 서버 한 곳
+             (`tbox_clean_display_name` — 앞뒤 공백 제거 뒤 1~40자, 제어·서식 문자 거부)이 정한다. -->
+        <label class="field">
+          <span class="field__label">이름 (선택 · 40자까지)</span>
+          <input id="u-name" type="text" maxlength="40" autocomplete="off" spellcheck="false">
         </label>
         <!-- 11단계 (PRD F-16): 비밀번호 칸이 없다. 서버가 임시 비밀번호를 만들어 생성 응답에 한 번만 돌려주고,
              본인이 첫 로그인에서 바꾼다. Admin 이 비밀번호를 정하면 Admin 이 그 값을 계속 아는 상태가 남기 때문이다(R-39). -->
@@ -121,7 +127,7 @@ require __DIR__ . '/../views/shell_top.php';
         <thead>
           <tr>
             <th scope="col">id</th>
-            <th scope="col">아이디</th>
+            <th scope="col">이름 (아이디)</th>
             <th scope="col">역할</th>
             <th scope="col">팀</th>
             <th scope="col">활성</th>
@@ -161,6 +167,11 @@ require __DIR__ . '/../views/shell_top.php';
         <h2 class="modal__title" id="ue-title">계정 변경</h2>
       </div>
       <div class="modal__body">
+        <!-- 5-A″ — 이름. 비우고 저장하면 이름이 지워진다(아이디만 보인다). -->
+        <label class="field">
+          <span class="field__label">이름 (40자까지 · 비우면 아이디만)</span>
+          <input id="ue-name" type="text" maxlength="40" autocomplete="off" spellcheck="false">
+        </label>
         <label class="field">
           <span class="field__label">역할</span>
           <select id="ue-role">

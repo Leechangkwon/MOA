@@ -513,6 +513,11 @@ final class Audit
         'user.activate|allow'                     => '{actor} 이(가) 계정 「{target}」 을(를) 다시 활성화했습니다 (사유는 상세 기록)',
         'user.activate|deny|bad_request'          => '{actor} 이(가) 계정 「{target}」 재활성화를 잘못된 형식(사유 없음 등)으로 요청해서 거부했습니다',
         'user.expiry_change|allow'                => '{actor} 이(가) 계정 「{target}」 의 만료일을 바꿨습니다 (이전 → 새 값·사유는 상세 기록)',
+        // 5-A″ (2026-09-23) — 계정 **이름**만 바꾼 일. 이름의 값은 문장에도 상세에도 남기지 않는다
+        // (바뀐 칸 이름 `changed_fields` 만 — users_update.php 머리글 「감사 처리」).
+        'user.update|allow'                       => '{actor} 이(가) 계정 「{target}」 의 이름을 바꿨습니다 (바뀐 칸·사유는 상세 기록)',
+        'user.update|deny|bad_request'            => '{actor} 이(가) 계정 「{target}」 의 이름을 잘못된 형식(길이·제어 문자·사유 없음)으로 바꾸려 해서 거부했습니다',
+        'user.update|deny|self_change'            => '{actor} 이(가) 자기 자신의 계정 이름을 바꾸려 해서 거부했습니다 (본인은 보기만)',
 
         // ── Guest 만료 (10단계 — SECURITY R-12) ──
         // 두 자리에서 막는다: 로그인 시도(guest_expired)와 **이미 살아 있던 세션**(session_expired).
@@ -785,6 +790,9 @@ final class Audit
         'page.restore|allow'                    => '{actor} 이(가) 휴지통에서 페이지 「{target}」 을(를) 되살렸습니다 (함께 돌아온 하위 수는 상세 기록)',
         'page.restore|deny|not_owner'           => '{actor} 이(가) 다른 사람이 지운 페이지 「{target}」 을(를) 되살리려 해서 막았습니다',
         'page.delete|deny|not_owner'            => '{actor} 이(가) 다른 사람의 개인 페이지 「{target}」 을(를) 지우려 해서 막았습니다',
+        // 5-A″ — 팀 공간 페이지를 **공유로** 볼 수 있게 된 팀 밖 사람이 지우려 한 일. 전에는 팀 밖 사람이
+        // 이 자리까지 올 수 없어(읽기에서 끝났다) 서버 로그로만 남겼다.
+        'page.delete|deny|not_member'           => '{actor} 이(가) 자기 팀이 아닌 팀 공간의 페이지 「{target}」 을(를) 지우려 해서 막았습니다',
 
         /* ── 커뮤니티 5-A — 사람 지정 공유 · 인계 (5-A 지시서 「감사」) ──
          *

@@ -1256,10 +1256,14 @@ with sync_playwright() as p:
          page.locator("#page-props").is_visible() and status_badge()[0] == "없음",
          "배지=%r" % (status_badge(),))
     # 5-A — 「담당자」 칸은 「소유자」가 됐다. 새 페이지의 소유자는 나(공간의 주인)다 — 창구가 준 값과 같은지 본다.
-    me_owner = page.request.get(COMMUNITY + "/api/pages/" + prop_id).json()["page"]["owner"]["username"]
+    _owner32 = page.request.get(COMMUNITY + "/api/pages/" + prop_id).json()["page"]["owner"]
+    me_owner = _owner32["username"]
+    # 5-A″ — 화면은 「이름 (아이디)」(이름이 없으면 아이디). 창구 값 둘로 기대값을 만든다.
+    _d32 = (_owner32.get("display_name") or "").strip()
+    me_owner_label = me_owner if _d32 == "" else "%s (%s)" % (_d32, me_owner)
     step("32 속성 줄의 소유자 칸이 창구가 준 소유자와 같다",
-         page.locator("#page-owner-name").inner_text().strip() == me_owner,
-         "화면 %r · 창구 %r" % (page.locator("#page-owner-name").inner_text().strip(), me_owner))
+         page.locator("#page-owner-name").inner_text().strip() == me_owner_label,
+         "화면 %r · 창구 %r" % (page.locator("#page-owner-name").inner_text().strip(), me_owner_label))
 
     step("32 「진행」으로 바꾸면 창이 닫힌다", set_status("doing"))
     doing = status_badge()
@@ -1449,8 +1453,11 @@ with sync_playwright() as p:
              "PATCH %d건 · 판 %r→%r" % (len(p2_patch), before["page"]["doc_version"], after["page"]["doc_version"]))
         step("34 편집 단추를 눌러 볼 수 없다 (편집 모드로 들어가지 않는다)",
              p2.locator("#page-edit:not([hidden])").count() == 0 and p2.locator(".ProseMirror").count() == 0)
-        step("34 속성 줄의 소유자는 주인 계정명 (창구 값)",
-             p2.locator("#page-owner-name").inner_text().strip() == before["page"]["owner"]["username"],
+        # 5-A″ — 「이름 (아이디)」, 이름이 없으면 아이디. 창구 값(username·display_name)으로 기대값을 만든다.
+        _o = before["page"]["owner"]
+        _d = (_o.get("display_name") or "").strip()
+        step("34 속성 줄의 소유자는 주인 (창구 값 — 이름 (아이디))",
+             p2.locator("#page-owner-name").inner_text().strip() == (_o["username"] if _d == "" else "%s (%s)" % (_d, _o["username"])),
              p2.locator("#page-owner-name").inner_text().strip())
         shot("34-viewer-page", p2)
         # 내 공유 빼기 — 창을 열어 누르면 창구가 줄을 지우고, 다시는 열리지 않는다(403 → 내 공간으로).
@@ -1520,8 +1527,13 @@ with sync_playwright() as p:
              now["page"]["owner"]["username"])
         step("35 옛 주인(나)은 보기로 남았다 — can_edit=False · share_level=view",
              now["can_edit"] is False and now["share_level"] == "view", "%r/%r" % (now["can_edit"], now["share_level"]))
+        # 5-A″ — 소유자 칸은 「이름 (아이디)」(이름이 없으면 아이디). 창구가 준 이름으로 기대값을 만든다.
+        def person(d, u):
+            d = (d or "").strip()
+            return u if d == "" else "%s (%s)" % (d, u)
+        owner_label = person(now["page"]["owner"].get("display_name"), USER2)
         step("35 화면의 소유자 칸도 받는 사람으로 바뀌었다",
-             page.locator("#page-owner-name").inner_text().strip() == USER2, page.locator("#page-owner-name").inner_text().strip())
+             page.locator("#page-owner-name").inner_text().strip() == owner_label, page.locator("#page-owner-name").inner_text().strip())
         hist = page.request.get(COMMUNITY + "/api/pages/" + ho + "/history").json()
         step("35 「처리 이력」 창구에 인계 줄 하나 (2쪽 · 남긴 권한 view)",
              sum(1 for e in hist["events"] if e["kind"] == "handover" and e["page_count"] == 2 and e["kept"] == "view") == 1)
@@ -1531,8 +1543,10 @@ with sync_playwright() as p:
         page.wait_for_selector("#history-dialog[open]", timeout=5000)
         page.click("#history-tab-events")
         page.wait_for_timeout(700)
+        ho_ev = [e for e in hist["events"] if e["kind"] == "handover"][0]
         step("35 이력 창의 「처리 이력」 탭에 「소유자: 나 → 받는 사람」 줄이 보인다",
-             ("소유자: %s → %s" % (me_owner, USER2)) in page.locator("#history-events").inner_text())
+             ("소유자: %s → %s" % (person(ho_ev.get("from_display_name"), me_owner),
+                                   person(ho_ev.get("to_display_name"), USER2))) in page.locator("#history-events").inner_text())
         page.keyboard.press("Escape")
         page.wait_for_timeout(300)
 

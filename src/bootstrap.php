@@ -52,6 +52,61 @@ function tbox_uuid_v4(): string
          . '-' . substr($h, 16, 4) . '-' . substr($h, 20, 12);
 }
 
+/**
+ * 5-A″ — 계정 **이름**(`users.display_name`)으로 받은 값을 좁힌다. 계정 만들기·바꾸기 두 창구가
+ * 이 함수 하나를 쓴다(규칙이 두 벌이 되지 않게).
+ *
+ * 돌려주는 것: `[true, 이름]` · `[true, null]`(비우기 — null 이나 공백뿐인 글자) · `[false, null]`(거부).
+ *   · 문자열이 아니거나 UTF-8 이 아니면 거부
+ *   · 앞뒤 공백(유니코드 공백 포함)은 **지운다**
+ *   · 제어 문자(`\p{Cc}`)·**서식 문자**(`\p{Cf}` — 방향 바꾸기 U+202E·폭 없는 공백 U+200B 같은 것)·
+ *     줄·문단 구분(`\p{Zl}`·`\p{Zp}`)이 하나라도 있으면 거부. 서식 문자를 막는 이유: 「이름 (아이디)」
+ *     로 나란히 보일 때 방향 바꾸기 글자 하나로 **옆의 아이디를 거꾸로 보이게** 할 수 있다.
+ *   · 지운 뒤 1~40자(코드 포인트)가 아니면 거부
+ * DB CHECK `users_display_name_shape` 이 같은 모양을 한 번 더 막는다(뒷받침).
+ *
+ * @param mixed $raw
+ * @return array{0:bool,1:?string}
+ */
+function tbox_clean_display_name($raw): array
+{
+    if ($raw === null) {
+        return [true, null];
+    }
+    if (!is_string($raw) || preg_match('//u', $raw) !== 1) {
+        return [false, null];
+    }
+    $v = preg_replace('/^[\s\p{Z}]+|[\s\p{Z}]+$/u', '', $raw);
+    if (!is_string($v)) {
+        return [false, null];
+    }
+    if ($v === '') {
+        return [true, null];
+    }
+    if (preg_match('/[\p{Cc}\p{Cf}\p{Zl}\p{Zp}]/u', $v) === 1) {
+        return [false, null];
+    }
+    $len = iconv_strlen($v, 'UTF-8');
+    if ($len === false || $len < 1 || $len > 40) {
+        return [false, null];
+    }
+    return [true, $v];
+}
+
+/**
+ * 5-A″ — 사람을 보이는 모양 **한 벌**: 「이름 (아이디)」, 이름이 없으면 「아이디」.
+ *
+ * 서버가 그리는 화면(셸의 사용자 칸·앱 메뉴·런처·「내 계정」)만 이 함수를 쓴다. **창구(JSON)는
+ * 이 문자열을 주지 않는다** — `display_name` 과 `username` 을 따로 주고 화면 스크립트가 같은 모양을
+ * `personLabel()`(app.js) 한 함수로 만든다. 돌려주는 값은 **이스케이프 전 글자**다 — 부르는 쪽이
+ * `htmlspecialchars` 를 거친다(PRD S-03).
+ */
+function tbox_person_label(?string $displayName, string $username): string
+{
+    $name = $displayName === null ? '' : trim($displayName);
+    return $name === '' ? $username : $name . ' (' . $username . ')';
+}
+
 if (!defined('TBOX_REQUEST_ID')) {
     define('TBOX_REQUEST_ID', tbox_uuid_v4());
 }

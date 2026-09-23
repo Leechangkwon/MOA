@@ -76,7 +76,11 @@ $shellBrandIcon = $shellMod === 'community' ? 'grid' : 'shield';
 $shellCurrentApp = $shellMod === 'community' ? 'community' : 'tbox';
 
 $shellUser   = isset($user) && is_array($user) ? $user : [];
-$shellName   = htmlspecialchars((string) ($shellUser['username'] ?? ''), ENT_QUOTES, 'UTF-8');
+// 5-A″ — 「이름 (아이디)」, 이름이 없으면 「아이디」(모양은 bootstrap `tbox_person_label` 한 벌).
+$shellName   = htmlspecialchars(tbox_person_label(
+    isset($shellUser['display_name']) && is_string($shellUser['display_name']) ? $shellUser['display_name'] : null,
+    (string) ($shellUser['username'] ?? '')
+), ENT_QUOTES, 'UTF-8');
 
 /*
  * F-47 버전 (PRD F-47, ARCH 5.23) — 사이드바 아래에 보이는 `v1.0.0` 한 줄.
@@ -148,7 +152,9 @@ $shellPage   = htmlspecialchars($shellPage, ENT_QUOTES, 'UTF-8');
  * 이스케이프한 문자열을 자르면 `&amp;` 같은 엔티티가 중간에서 잘릴 수 있다.
  * 값은 여전히 사용자명 하나에서 나온다(새 동적 값이 아니다).
  */
-$shellRawName = (string) ($shellUser['username'] ?? '');
+$shellRawName = isset($shellUser['display_name']) && is_string($shellUser['display_name']) && $shellUser['display_name'] !== ''
+    ? $shellUser['display_name']   // 5-A″ — 이름이 있으면 이름의 첫 글자
+    : (string) ($shellUser['username'] ?? '');
 $shellInitial = preg_match('/^./u', $shellRawName, $shellFirst) === 1 ? $shellFirst[0] : '';
 if ($shellInitial === '') {
     $shellInitial = '?';

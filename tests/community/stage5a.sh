@@ -231,7 +231,9 @@ n_pages=$(psqlq "SELECT count(*) FROM community.pages")
 echo "  · 임시 DB $DB — 계정 ${n_users}명 · 페이지 ${n_pages}장"
 
 sub "② 마이그레이션 + 권한 (임시 DB 에만) — 4-D(이미 있으면 그대로) · 5-A 를 **두 번** 돌려 멱등을 본다"
-for mig in 2026-09-23_community_page_properties.sql 2026-09-23_community_owner_share.sql 2026-09-23_community_owner_share.sql; do
+# 5-A″ — 이름 칸(`users.display_name`)도 먼저 적용한다. 5-A″ 이후의 코드는 세션 질의부터 그 칸을 읽는다.
+for mig in 2026-09-23_community_page_properties.sql 2026-09-23_community_owner_share.sql 2026-09-23_community_owner_share.sql \
+           2026-09-23_users_display_name.sql; do
   echo "    ▸ $mig"
   sudo -n -u postgres psql -d "$DB" -v ON_ERROR_STOP=1 -f - < "$ROOT/db/migrations/$mig" 2>&1 \
     | grep -v 'could not change directory' | sed 's/^/      /'
@@ -754,8 +756,10 @@ if [ -n "$TSPACE" ]; then
   expect "팀 공간 페이지 인계 → 400 space_governed" "400|space_governed" \
     "$(capi POST "/api/pages/$HT/handover" qa_employee01 "$WORK/body.json")|$(jget "d['reason']" < "$WORK/b")"
   body '{"level":"view"}'
-  expect "팀 공간 페이지 공유 → 400 space_governed" "400|space_governed" \
-    "$(capi PUT "/api/pages/$HT/shares/qa_employee02" qa_employee01 "$WORK/body.json")|$(jget "d['reason']" < "$WORK/b")"
+  # 5-A″ (사용자 결정 2026-09-23 「팀 공간 페이지도 공유」) — 5-A 의 400 space_governed 가 풀렸다.
+  #   자세한 갈래는 tests/community/stage5a2.sh C:T-64 가 본다. 여기서는 팀원이 줄 수 있다는 것만.
+  expect "팀 공간 페이지 공유 → 200 (5-A″ 에서 열림)" "200" \
+    "$(capi PUT "/api/pages/$HT/shares/qa_employee02" qa_employee01 "$WORK/body.json")"
   expect "  팀 공간 페이지의 소유자 표시는 「팀」" "team" \
     "$(capi GET "/api/pages/$HT" qa_employee01 >/dev/null; jget "d['page']['owner']['kind']" < "$WORK/b")"
 else

@@ -43,6 +43,7 @@ $sql = <<<'SQL'
            v.edited_at,
            v.summary,
            u.username AS edited_by_name,
+           u.display_name AS edited_by_display_name,
            CASE WHEN jsonb_typeof(v.doc -> 'blocks') = 'array'
                 THEN jsonb_array_length(v.doc -> 'blocks') ELSE 0 END AS block_count
       FROM community.page_versions v
@@ -70,6 +71,8 @@ $versions = [[
     'is_current'    => true,
     'title'         => (string) $row['title'],
     'by'            => $row['last_edited_by_name'] === null ? '' : (string) $row['last_edited_by_name'],
+    // 5-A″ — 바꾼 사람의 이름(없으면 null). 화면이 「이름 (아이디)」로 잇는다.
+    'by_display_name' => $row['last_edited_by_display_name'] === null ? null : (string) $row['last_edited_by_display_name'],
     'at'            => (string) $row['updated_at'],
     'block_count'   => (int) $row['block_count'],
     'restored_from' => $restoredInto[(int) $row['doc_version']] ?? null,
@@ -81,6 +84,7 @@ foreach ($rows as $r) {
         'is_current'    => false,
         'title'         => (string) $r['title'],
         'by'            => (string) $r['edited_by_name'],
+        'by_display_name' => $r['edited_by_display_name'] === null ? null : (string) $r['edited_by_display_name'],
         'at'            => (string) $r['edited_at'],
         'block_count'   => (int) $r['block_count'],
         'restored_from' => $restoredInto[(int) $r['version']] ?? null,

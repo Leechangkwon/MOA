@@ -365,10 +365,13 @@ function community_page_row(string $publicId, int $viewerId = 0): ?array
                owner.team_id   AS space_owner_team_id,
                -- 5-A: 속성 줄의 「소유자」 — 공간 주인의 계정명·활성 여부. 계정 id 는 응답에 나가지 않는다.
                owner.username  AS space_owner_name,
+               -- 5-A″: 이름(없으면 NULL). 「이름 (아이디)」로 잇는 일은 화면이 한다.
+               owner.display_name AS space_owner_display_name,
                owner.is_active AS space_owner_active,
                -- 4-C: 지금 판을 **마지막으로 쓴 사람의 이름**. 이력 목록의 맨 윗줄(지금 판)이
                -- 이 값을 그대로 보인다 — 화면이 계정 id 를 이름으로 바꾸는 일이 없게 한다.
                editor.username AS last_edited_by_name,
+               editor.display_name AS last_edited_by_display_name,
                -- 4-D: 상태 칸 + (멈춘) 담당자 칸의 옛 값. 5-A 부터 담당자는 **읽기만** 한다.
                p.status, p.assignee_id,
                assignee.username  AS assignee_name,
@@ -789,8 +792,10 @@ function community_space_gate(array $u, array $space): array
  * (t-box `Authz::visibleWhere` 의 허용 목록과 같은 이유).
  *
  * 조건은 `CommunityAuthz::decidePageRead` 를 한 줄씩 옮긴 것이다:
- *   내 개인 공간 전부 / **나에게 준 공유(이 페이지·조상, 활성 계정, 세 범위만 — 5-A)** /
- *   `internal` + 쓰기 자격 / `team` + 주인과 같은 팀 / Admin / 내 팀 공간.
+ *   내 개인 공간 전부 / **나에게 준 공유(이 페이지·조상, 활성 계정 — 개인 공간은 세 범위만(5-A),
+ *   팀 공간은 범위 없이(5-A″))** / `internal` + 쓰기 자격 / `team` + 주인과 같은 팀 / Admin / 내 팀 공간.
+ * 공유 갈래는 **한 줄**에 두 공간 종류를 함께 적는다 — 같은 조각(`community_share_rank_sql`)을 두 번
+ * 넣으면 자리표시자 이름이 겹친다(서버측 prepare 는 같은 이름을 두 번 받지 않는다 — `Db.php`).
  * `published` 는 어느 갈래에도 없다 — 5단계까지는 목록에도 없다.
  *
  * @param  array<string,mixed> $u
@@ -803,7 +808,8 @@ function community_visible_pages_where(array $u): array
     $sql = <<<SQL
 (
       (s.kind = 'personal' AND s.owner_user_id = CAST(:vis_me AS bigint))
-   OR (s.kind = 'personal' AND p.visibility IN ('private','team','internal')
+   OR (    (   (s.kind = 'personal' AND p.visibility IN ('private','team','internal'))
+            OR s.kind = 'team')
        AND {$shared} IS NOT NULL)
    OR (s.kind = 'personal' AND p.visibility = 'internal' AND CAST(:vis_write AS boolean))
    OR (s.kind = 'personal' AND p.visibility = 'team'
@@ -1236,7 +1242,11 @@ function community_role_sets(): array
 
 /**
  * 공유·인계 받는 사람 **후보**를 찾는다 (5-A `GET /api/share-candidates`).
- * 돌려주는 것은 **계정명과 역할**뿐이다(팀·활성 여부·만료일 같은 것은 고르는 데 필요 없다).
+ * 돌려주는 것은 **계정명·이름·역할**뿐이다(팀·활성 여부·만료일 같은 것은 고르는 데 필요 없다).
+ *
+ *   · 5-A″ — `$q` 가 **비어 있으면 빈 목록**이다(한 글자부터 찾는다 — 사용자 결정 2026-09-23).
+ *     찾기는 **아이디와 이름 둘 다**(ILIKE, 값은 바인딩, `%`·`_`·`#` 이스케이프). 이름이 없는
+ *     계정은 이름 쪽이 NULL 이라 아이디로만 걸린다.
  *
  *   · 활성 계정만 — 비활성 계정에게 준 공유는 효력이 없고, 넘길 수도 없다.
  *   · `$writeOnly` 가 참이면(인계) **쓰기 자격 있는 역할만** — Guest 는 넘겨받을 수 없다.
@@ -1244,10 +1254,13 @@ function community_role_sets(): array
  *     이름은 **개수로 만든 코드 문자열**(`:cw0` …)이다 — 요청 값이 SQL 에 들어가지 않는다.
  *   · `$excludeId` — 후보에서 뺄 한 사람(그 페이지의 주인. 주인에게 공유·인계는 뜻이 없다).
  *
- * @return list<array{username:string,role:string}>
+ * @return list<array{username:string,display_name:?string,role:string}>
  */
 function community_share_candidates(string $q, int $limit, ?int $excludeId, bool $writeOnly): array
 {
+    if ($q === '') {
+        return [];
+    }
     $bind  = [];
     $names = [];
     foreach (community_role_sets()['write'] as $i => $role) {
@@ -1258,13 +1271,13 @@ function community_share_candidates(string $q, int $limit, ?int $excludeId, bool
     $roleSql = $names === [] ? 'false' : 'u.role IN (' . implode(', ', $names) . ')';
 
     // `%`·`_`·`#` 은 ILIKE 의 뜻 있는 글자다. `#` 로 이스케이프하고 값은 바인딩한다 (PRD S-04).
-    $like = $q === '' ? '' : '%' . str_replace(['#', '%', '_'], ['##', '#%', '#_'], $q) . '%';
+    $like = '%' . str_replace(['#', '%', '_'], ['##', '#%', '#_'], $q) . '%';
 
     $sql = <<<SQL
-        SELECT u.username, u.role
+        SELECT u.username, u.display_name, u.role
           FROM public.users u
          WHERE u.is_active = true
-           AND (CAST(:qoff AS boolean) OR u.username ILIKE :like ESCAPE '#')
+           AND (u.username ILIKE :like ESCAPE '#' OR u.display_name ILIKE :like_name ESCAPE '#')
            AND u.id IS DISTINCT FROM CAST(:exclude AS bigint)
            AND (NOT CAST(:write_only AS boolean) OR {$roleSql})
          ORDER BY u.username
@@ -1273,13 +1286,17 @@ function community_share_candidates(string $q, int $limit, ?int $excludeId, bool
 
     $out = [];
     foreach (Db::instance()->run($sql, array_merge($bind, [
-        ':qoff'       => $q === '' ? 'true' : 'false',
         ':like'       => $like,
+        ':like_name'  => $like,
         ':exclude'    => $excludeId,
         ':write_only' => $writeOnly ? 'true' : 'false',
         ':lim'        => $limit,
     ]))->fetchAll() as $r) {
-        $out[] = ['username' => (string) $r['username'], 'role' => (string) $r['role']];
+        $out[] = [
+            'username'     => (string) $r['username'],
+            'display_name' => $r['display_name'] === null ? null : (string) $r['display_name'],
+            'role'         => (string) $r['role'],
+        ];
     }
     return $out;
 }
@@ -1295,7 +1312,7 @@ function community_share_candidates(string $q, int $limit, ?int $excludeId, bool
 function community_user_by_name(string $username): ?array
 {
     $sql = <<<'SQL'
-        SELECT u.id, u.username, u.role, u.team_id, u.is_active
+        SELECT u.id, u.username, u.display_name, u.role, u.team_id, u.is_active
           FROM public.users u
          WHERE u.username = :name
         SQL;
@@ -1311,7 +1328,7 @@ function community_user_by_name(string $username): ?array
  * 비활성 계정의 줄도 돌려준다 — 화면이 「(내려간 계정)」이라고 보이고 뺄 수 있어야 한다.
  * 효력이 없다는 사실은 판정이 이미 알고 있다(`su.is_active = true`).
  *
- * @return list<array{username:string,role:string,is_active:bool,level:string,granted_by:?string,
+ * @return list<array{username:string,display_name:?string,role:string,is_active:bool,level:string,granted_by:?string,
  *                    created_at:string,inherited:bool,from_id:?string,from_title:?string}>
  */
 function community_page_shares(int $pageId): array
@@ -1325,7 +1342,8 @@ function community_page_shares(int $pageId): array
               FROM community.pages b JOIN up ON b.id = up.parent_page_id
              WHERE b.space_id = up.space_id AND b.deleted_at IS NULL AND up.lvl < 16
         )
-        SELECT u.username, u.role, u.is_active, sh.level, gb.username AS granted_by_name,
+        SELECT u.username, u.display_name, u.role, u.is_active, sh.level, gb.username AS granted_by_name,
+               gb.display_name AS granted_by_display_name,
                sh.created_at, up.lvl, src.public_id AS from_id, src.title AS from_title
           FROM up
           JOIN community.page_shares sh ON sh.page_id = up.id
@@ -1341,10 +1359,12 @@ function community_page_shares(int $pageId): array
         $inherited = (int) $r['lvl'] > 0;
         $out[] = [
             'username'   => (string) $r['username'],
+            'display_name' => $r['display_name'] === null ? null : (string) $r['display_name'],
             'role'       => (string) $r['role'],
             'is_active'  => $r['is_active'] === true,
             'level'      => (string) $r['level'],
             'granted_by' => $r['granted_by_name'] === null ? null : (string) $r['granted_by_name'],
+            'granted_by_display_name' => $r['granted_by_display_name'] === null ? null : (string) $r['granted_by_display_name'],
             'created_at' => (string) $r['created_at'],
             'inherited'  => $inherited,
             'from_id'    => $inherited ? (string) $r['from_id'] : null,

@@ -113,7 +113,7 @@ $children = community_children((int) $row['id'], $user);
 /* 「지금 이 페이지를 편집 중인 사람」 — 30초 heartbeat 가 민 시각이 2분 안이면 보인다.
    나 자신은 빼고 보여 준다(내가 열어 둔 것은 알려 줄 일이 아니다). */
 $sqlEditors = <<<'SQL'
-    SELECT u.username, e.last_seen_at
+    SELECT u.username, u.display_name, e.last_seen_at
       FROM community.page_edit_sessions e
       JOIN public.users u ON u.id = e.user_id
      WHERE e.page_id = CAST(:pid AS bigint)
@@ -124,7 +124,11 @@ $sqlEditors = <<<'SQL'
     SQL;
 $editors = [];
 foreach ($db->run($sqlEditors, [':pid' => (int) $row['id'], ':me' => $me])->fetchAll() as $e) {
-    $editors[] = ['username' => (string) $e['username'], 'last_seen_at' => (string) $e['last_seen_at']];
+    $editors[] = [
+        'username'     => (string) $e['username'],
+        'display_name' => $e['display_name'] === null ? null : (string) $e['display_name'],
+        'last_seen_at' => (string) $e['last_seen_at'],
+    ];
 }
 
 // `doc` 은 jsonb 라 PDO 가 문자열로 돌려준다. 응답 본문에 **객체 그대로** 싣기 위해 한 번 푼다.
@@ -199,6 +203,8 @@ Http::json([
             ? [
                 'kind'      => 'personal',
                 'username'  => (string) $row['space_owner_name'],
+                // 5-A″ — 이름(없으면 null). 「이름 (아이디)」는 화면이 만든다.
+                'display_name' => $row['space_owner_display_name'] === null ? null : (string) $row['space_owner_display_name'],
                 'is_active' => $row['space_owner_active'] === true,
             ]
             : ['kind' => (string) $row['space_kind'], 'name' => (string) $row['space_name']],
@@ -228,7 +234,8 @@ Http::json([
     /* 5-A — 「관리」 단추(삭제·옮기기)·「사람 추가」·「넘기기」를 보일지. 셋 다 서버가 이미 한
        판단의 결과이고, 되살려 눌러도 창구가 같은 함수로 다시 막는다 (C:T-53). */
     'can_manage'   => $mayManage,
-    'can_share'    => $mayManage && (string) $row['space_kind'] === 'personal',
+    // 5-A″ — 팀 공간도 공유한다(관리 자격 = 그 팀원). 공개 범위는 여전히 개인 공간만이다.
+    'can_share'    => $mayManage,
     'can_handover' => $mayHandover,
     // 인계 창의 안내 — 함께 옮겨 갈 하위 페이지 수(넘길 수 없는 사람에게는 null).
     'subtree_count' => $subtreeCount,

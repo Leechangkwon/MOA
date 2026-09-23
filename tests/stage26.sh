@@ -568,7 +568,9 @@ with sync_playwright() as p:
     target = None
     for r in rows:
         tds = r.query_selector_all("td")
-        if len(tds) > 1 and tds[1].inner_text().strip() == "qa_employee02":
+        # 5-A″ — 칸은 「이름 (아이디)」(이름이 없으면 아이디)다. 어느 쪽이든 그 계정의 줄을 고른다.
+        cell = tds[1].inner_text().strip() if len(tds) > 1 else ""
+        if cell == "qa_employee02" or cell.endswith("(qa_employee02)"):
             target = r
             break
     # 표는 가로 스크롤 상자(.table-wrap) 안이라 좌표 클릭이 막힐 수 있다 → DOM 클릭을 쓴다.
@@ -644,6 +646,8 @@ if python3 "$WORK/shots.py" "$BASE" "$UA" "$(jar_cookies "$JAR_DIR/qa_admin01.ja
   expect "PATCH 본문에 reason_text 있음"   1 "$(printf '%s' "$PB" | grep -c '"reason_text"')"
   expect "PATCH 본문에 team_id 없음"       0 "$(printf '%s' "$PB" | grep -c '"team_id"')"
   expect "PATCH 본문에 expires_at 없음"    0 "$(printf '%s' "$PB" | grep -c '"expires_at"')"
+  # 5-A″ — 이름 칸을 건드리지 않았으면 이름도 보내지 않는다(바뀐 칸만).
+  expect "PATCH 본문에 display_name 없음"  0 "$(printf '%s' "$PB" | grep -c '"display_name"')"
 else
   echo "  ! Playwright 확인을 실행하지 못했습니다 — 아래 오류를 보고에 적습니다 (미검증)"
   sed -n '1,20p' "$OUT/shots.err"

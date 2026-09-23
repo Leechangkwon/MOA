@@ -17,6 +17,9 @@ declare(strict_types=1);
  *   expires_at  만료일 `YYYY-MM-DD` 또는 `YYYY-MM-DDTHH:MM`. **Guest 는 필수** (SECURITY R-12).
  *               DB CHECK(guest_requires_expires_at)가 마지막 그물이다
  *   reason_text 왜 이 계정을 만드는가 — **필수**, 500자 (PRD S-07 "관리자 행동 사유")
+ *   display_name 사람이 알아보는 **이름** (5-A″, 선택). 규칙은 `tbox_clean_display_name()` 한 벌 —
+ *               앞뒤 공백 제거 뒤 1~40자, 제어·서식 문자 거부. 비우면(없음·빈 글자) 이름 없음(null).
+ *               감사에는 **값이 아니라** 「이름을 넣었나」(`display_name_set`)만 남는다 — users_update 머리글 ★
  *
  * 11단계 (PRD F-16 ①, ARCH 4.0) — **비밀번호를 받지 않는다.**
  *   Admin 이 비밀번호를 정하면 그 값을 Admin 이 계속 알고 있는 상태가 이어진다(SECURITY R-39).
@@ -37,7 +40,7 @@ declare(strict_types=1);
  */
 
 /** 허용 키 — 여기 없는 키가 오면 요청 전체를 거부한다 (SECURITY R-07 과 같은 원칙) */
-$allowedFields = ['username', 'role', 'team_id', 'expires_at', 'reason_text'];
+$allowedFields = ['username', 'role', 'team_id', 'expires_at', 'reason_text', 'display_name'];
 
 $body = Http::jsonBody();
 
@@ -122,6 +125,12 @@ if ($reason === '' || iconv_strlen($reason, 'UTF-8') > 500) {
     $rejectBadRequest($body);
 }
 
+// ─── [7b] 이름 (5-A″, 선택) — 규칙은 bootstrap 의 한 함수 ───────
+[$nameOk, $displayName] = tbox_clean_display_name($body['display_name'] ?? null);
+if (!$nameOk) {
+    $rejectBadRequest($body);
+}
+
 $db = Db::instance();
 
 // ─── [8] 팀이 실제로 있나 ──────────────────────────────────────
@@ -159,9 +168,9 @@ if (!is_string($hash)) {
 
 $sqlInsert = <<<'SQL'
     INSERT INTO users (username, password_hash, role, team_id, expires_at,
-                       must_change_password, mfa_setup_required)
+                       must_change_password, mfa_setup_required, display_name)
     VALUES (:username, :hash, :role, :team_id, CAST(:expires AS timestamptz),
-            true, true)
+            true, true, :display_name)
     RETURNING id
     SQL;
 
@@ -173,6 +182,7 @@ try {
         ':role'     => $role,
         ':team_id'  => $teamId,
         ':expires'  => $expiresAt,
+        ':display_name' => $displayName,
     ])->fetch();
     if (!is_array($row)) {
         throw new RuntimeException('계정을 만들지 못했습니다');
@@ -190,6 +200,8 @@ try {
             'target_team'   => $teamId,
             'expires_at'    => $expiresAt,
             'reason_text'   => $reason,
+            // 5-A″ — 이름은 **넣었는지만**(값은 남기지 않는다 — users_update 머리글 ★)
+            'display_name_set' => $displayName !== null,
             // 값이 아니라 **사실**만 (ARCH 7.5 temp_password_issued, SECURITY R-39)
             'temp_password_issued' => true,
         ],
@@ -219,6 +231,7 @@ try {
 Http::json([
     'id'            => $newId,
     'username'      => $username,
+    'display_name'  => $displayName,
     'role'          => $role,
     'team_id'       => $teamId,
     'expires_at'    => $expiresAt,

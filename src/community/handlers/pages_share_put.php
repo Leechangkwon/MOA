@@ -20,7 +20,8 @@ declare(strict_types=1);
  *   [1] 허용 키·값 → [권한 ✔ A] `community_history_gate`(행 404 · 읽기 403 + 감사)
  *   [권한 ✔ B] **`decidePageManage`** — 소유자·팀 공간 팀원만. 편집 공유자는 **남에게 다시 열어
  *              주지 못한다** → 403 + 감사 `page.share deny not_owner` (C:T-53)
- *   [2] 팀 공간의 페이지는 공간 등급을 따른다 → 400 `space_governed` (공유 없음 — 지시서 밖)
+ *   [2] (5-A″ 에서 없앰) 팀 공간의 페이지도 공유한다 — 관리 자격(`decidePageManage` = 그 팀원)만 있으면
+ *       된다. 전에는 400 `space_governed` 였다(사용자 결정 2026-09-23 「팀 공간 페이지도 공유」).
  *   [3] 받는 사람 — 없음·비활성·주인 자신 → 400 `target_not_permitted` + 감사.
  *       Guest 는 **받을 수 있다** — 편집을 주어도 판정이 보기로만 연다(`decidePageChange`).
  *   [4] 트랜잭션: `INSERT … ON CONFLICT DO UPDATE` + 감사 `page.share allow` → 200
@@ -65,15 +66,6 @@ if (!$mayManage) {
         'detail'      => ['page_title' => $pageTitle, 'share_user' => $name, 'share_level' => $want],
     ]);
     Http::error(403, Http::MSG_FORBIDDEN);
-}
-
-// ─── [2] 팀 공간의 페이지는 공유가 없다 ────────────────────────
-if ((string) $row['space_kind'] !== 'personal') {
-    Http::json([
-        'error'  => '팀 공간의 페이지는 공간 등급을 따릅니다',
-        'reason' => CommunityAuthz::CODE_SPACE_GOVERNED,
-    ], 400);
-    exit;
 }
 
 // ─── [3] 받는 사람 ────────────────────────────────────────────
@@ -139,6 +131,7 @@ try {
 Http::json([
     'share' => [
         'username' => (string) $target['username'],
+        'display_name' => $target['display_name'] === null ? null : (string) $target['display_name'],
         'role'     => (string) $target['role'],
         'level'    => $want,
     ],

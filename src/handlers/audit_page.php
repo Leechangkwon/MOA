@@ -108,6 +108,7 @@ require __DIR__ . '/../views/shell_top.php';
           <option value="user.create">user.create</option>
           <option value="user.role_change">user.role_change</option>
           <option value="user.expiry_change">user.expiry_change</option>
+          <option value="user.update">user.update</option>
           <option value="user.deactivate">user.deactivate</option>
           <option value="user.activate">user.activate</option>
           <option value="user.expired">user.expired</option>

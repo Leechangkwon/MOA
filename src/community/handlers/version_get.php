@@ -40,6 +40,7 @@ if ($want === (int) $row['doc_version']) {
             'is_current'  => true,
             'title'       => (string) $row['title'],
             'by'          => $row['last_edited_by_name'] === null ? '' : (string) $row['last_edited_by_name'],
+            'by_display_name' => $row['last_edited_by_display_name'] === null ? null : (string) $row['last_edited_by_display_name'],
             'at'          => (string) $row['updated_at'],
             'doc'         => $doc,
             'block_count' => (int) $row['block_count'],
@@ -50,7 +51,8 @@ if ($want === (int) $row['doc_version']) {
 
 // ─── 지난 판 ──────────────────────────────────────────────────
 $sql = <<<'SQL'
-    SELECT v.version, v.title, v.doc, v.edited_at, u.username AS edited_by_name
+    SELECT v.version, v.title, v.doc, v.edited_at, u.username AS edited_by_name,
+           u.display_name AS edited_by_display_name
       FROM community.page_versions v
       JOIN public.users u ON u.id = v.edited_by
      WHERE v.page_id = CAST(:pid AS bigint)
@@ -73,6 +75,7 @@ Http::json([
         'is_current'  => false,
         'title'       => (string) $found['title'],
         'by'          => (string) $found['edited_by_name'],
+        'by_display_name' => $found['edited_by_display_name'] === null ? null : (string) $found['edited_by_display_name'],
         'at'          => (string) $found['edited_at'],
         'doc'         => $doc,
         'block_count' => is_array($doc['blocks'] ?? null) ? count($doc['blocks']) : 0,

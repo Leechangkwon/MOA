@@ -64,8 +64,9 @@ if (!$mayChange) {
        ★ 4-C 에서 **감사로 바꿨다**(3단계 주석의 약속 그대로). 남의 페이지를 지우려 한 시도는
          읽기·고치기 시도와 같은 무게인데 그때는 서버 로그에만 남아, 감사 화면에서는 보이지
          않았다. 문장 `page.delete|deny|not_owner` 를 `src/Audit.php` 에 더하고 여기서 쓴다. */
-    if ($changeCode === CommunityAuthz::CODE_NOT_OWNER) {
-        Audit::deny('page.delete', CommunityAuthz::CODE_NOT_OWNER, [
+    /* 5-A″ — 팀 공간 페이지를 공유로 보는 팀 밖 사람(`not_member`)도 여기까지 온다. 같은 무게로 감사에 남긴다. */
+    if ($changeCode === CommunityAuthz::CODE_NOT_OWNER || $changeCode === CommunityAuthz::CODE_NOT_MEMBER) {
+        Audit::deny('page.delete', $changeCode, [
             'target_type' => 'page',
             'target_id'   => $pageId,
             'target_name' => $pageTitle,

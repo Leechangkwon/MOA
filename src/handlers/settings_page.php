@@ -29,6 +29,10 @@ declare(strict_types=1);
 
 $displayName = htmlspecialchars((string) $user['username'], ENT_QUOTES, 'UTF-8');
 $displayRole = htmlspecialchars((string) $user['role'], ENT_QUOTES, 'UTF-8');
+/* 5-A″ — 이름은 **보기만**(바꾸는 창구는 Admin 의 계정 관리뿐). 없으면 「—」와 안내 한 줄. */
+$myDisplayName = isset($user['display_name']) && is_string($user['display_name']) && $user['display_name'] !== ''
+    ? htmlspecialchars($user['display_name'], ENT_QUOTES, 'UTF-8')
+    : '';
 
 $pageTitle = '내 계정';
 $activeNav = 'settings';
@@ -59,6 +63,10 @@ require __DIR__ . '/../views/shell_top.php';
           <div class="info-item">
             <span class="field__label">아이디</span>
             <span class="info-item__value"><?= $displayName ?></span>
+          </div>
+          <div class="info-item">
+            <span class="field__label">이름</span>
+            <span class="info-item__value"><?= $myDisplayName === '' ? '— (관리자가 정합니다)' : $myDisplayName ?></span>
           </div>
           <div class="info-item">
             <span class="field__label">역할</span>

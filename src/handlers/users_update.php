@@ -15,6 +15,21 @@ declare(strict_types=1);
  *   is_active    false = 비활성화(모든 세션 즉시 종료) · true = 재활성화
  *   expires_at   만료일. Guest 는 반드시 있어야 한다
  *   reason_text  **필수** 500자 — 사유 없는 관리자 행동은 400 (PRD S-07, SECURITY R-20)
+ *   display_name 사람이 알아보는 **이름** (5-A″). `null`·빈 글자면 이름을 지운다. 규칙은
+ *                `tbox_clean_display_name()` 한 벌(앞뒤 공백 제거 뒤 1~40자, 제어·서식 문자 거부 → 400)
+ *
+ * 5-A″ 이름 — 감사 처리 (2026-09-23 지시서 「감사 user.update 에 바뀐 칸 이름만」)
+ *   · 이름**만** 바꾸면 action 은 새 줄 `user.update`(「이름을 바꿨습니다」)다. 다른 칸과 함께 바뀌면
+ *     그 칸의 action(role_change·activate·deactivate·expiry_change)이 그대로이고, 어느 쪽이든
+ *     detail 의 `changed_fields` 에 **바뀐 칸 이름**이 모두 적힌다(`display_name` 포함).
+ *   ★ **이름의 값은 감사에 남기지 않는다** — `before`/`after` 에도 없다. 판단 근거:
+ *     ① 기존 규칙(ARCH 7.5)은 before/after 를 **권한에 닿는 칸**(역할·팀·활성·만료)에만 둔다 —
+ *        그 값이 있어야 「누가 누구의 권한을 어떻게 바꿨나」를 재구성할 수 있기 때문이다.
+ *        이름은 권한에 닿지 않는다(판정은 id·역할·팀만 본다).
+ *     ② 감사 표는 append-only 다(PRD S-07). 사람의 이름은 개인정보라, 한 번 적히면 본인이
+ *        고쳐 달라고 해도 지울 수 없다. 지금 값은 계정 표에 있고, 「언제 누가 바꿨나」는 이 줄이 남긴다.
+ *   · 자기 자신의 이름도 이 창구로는 못 바꾼다(`self_change` — 역할과 같은 규칙). 본인은 「내 계정」에서
+ *     **보기만** 한다(지시서). Employee·Manager 는 정책 `user.manage` 가 403 으로 먼저 막는다.
  *
  * 이 핸들러가 반드시 막는 두 가지 (판단은 Authz::decideUserChange 안에서만 한다)
  *   · `self_change` — 자기 자신을 고치는 요청. 자기 역할 올리기·자기 비활성화가 전부 여기서 끝난다.
@@ -28,7 +43,7 @@ declare(strict_types=1);
  * @var list<string>        $params $params[0] = users.id (정수 문자열)
  */
 
-$allowedFields = ['role', 'team_id', 'is_active', 'expires_at', 'reason_text'];
+$allowedFields = ['role', 'team_id', 'is_active', 'expires_at', 'reason_text', 'display_name'];
 
 $uidRaw = $params[0] ?? '';
 if (!is_string($uidRaw) || preg_match('/^[0-9]{1,9}$/', $uidRaw) !== 1) {
@@ -42,7 +57,7 @@ $db = Db::instance();
 
 // ─── [0] 대상 계정을 먼저 읽는다 (없으면 404 동일 문구) ──────────
 $sqlFind = <<<'SQL'
-    SELECT id, username, role, team_id, is_active, expires_at
+    SELECT id, username, role, team_id, is_active, expires_at, display_name
       FROM users
      WHERE id = :id
     SQL;
@@ -53,6 +68,8 @@ if (!is_array($target)) {
 }
 
 $targetName = (string) $target['username'];
+// 5-A″ — 이름은 `$current` 에 넣지 않는다: `$current` 는 감사 `before` 로 그대로 나가고, 이름의 값은 감사에 남기지 않는다(머리글 ★).
+$currentDisplayName = $target['display_name'] === null ? null : (string) $target['display_name'];
 $current = [
     'role'       => (string) $target['role'],
     'team_id'    => $target['team_id'] === null ? null : (int) $target['team_id'],
@@ -71,6 +88,11 @@ if (array_key_exists('is_active', $body) && $body['is_active'] === false) {
     $denyAction = 'user.deactivate';
 } elseif (array_key_exists('is_active', $body) && $body['is_active'] === true) {
     $denyAction = 'user.activate';
+} elseif (array_key_exists('display_name', $body)
+    && array_intersect(array_keys($body), ['role', 'team_id', 'is_active', 'expires_at']) === []
+) {
+    // 5-A″ — 이름만 바꾸려는 요청. 「역할 변경을 …」 문장이 남지 않게 따로 둔다.
+    $denyAction = 'user.update';
 }
 
 /**
@@ -81,6 +103,10 @@ if (array_key_exists('is_active', $body) && $body['is_active'] === false) {
  * (실제로 그 조합은 "켜면서 역할도 바꾸는" 요청에서만 생긴다.)
  */
 $authzDenyAction = $denyAction === 'user.deactivate' ? 'user.deactivate' : 'user.role_change';
+if ($denyAction === 'user.update') {
+    // 이름만 바꾸는 요청의 권한 거부는 self_change 하나뿐이다(last_admin 은 역할·활성에서만 생긴다).
+    $authzDenyAction = 'user.update';
+}
 
 $auditTarget = [
     'target_type' => 'user',
@@ -163,6 +189,16 @@ if (array_key_exists('expires_at', $body)) {
     $expiresChanged = true;
 }
 
+// 5-A″ 이름 — 규칙은 bootstrap 의 한 함수(`tbox_clean_display_name`). 없으면 그대로 둔다.
+$newDisplayName = $currentDisplayName;
+if (array_key_exists('display_name', $body)) {
+    [$nameOk, $cleanName] = tbox_clean_display_name($body['display_name']);
+    if (!$nameOk) {
+        $reject($denyAction, 'bad_request');
+    }
+    $newDisplayName = $cleanName;
+}
+
 // 역할이 정하는 규칙 (판단은 Authz 안에서) — Guest 는 팀 없음 · 만료일 필수
 if ($newTeam !== null && !Authz::allowsTeam($newRole)) {
     $reject($denyAction, 'bad_request');
@@ -189,9 +225,10 @@ if ($newTeam !== null && $newTeam !== $current['team_id']) {
 $roleChanged = $newRole !== $current['role'];
 $teamChanged = $newTeam !== $current['team_id'];
 $activeChanged = $newActive !== $current['is_active'];
+$nameChanged   = $newDisplayName !== $currentDisplayName;
 // 만료일은 문자열 형식이 DB 출력과 달라 단순 비교가 통하지 않는다 —
 // "요청에 expires_at 이 있었나" 로만 변경 여부를 본다.
-if (!$roleChanged && !$teamChanged && !$activeChanged && !$expiresChanged) {
+if (!$roleChanged && !$teamChanged && !$activeChanged && !$expiresChanged && !$nameChanged) {
     $reject($denyAction, 'bad_request');
 }
 
@@ -223,6 +260,7 @@ $sqlUpdate = <<<'SQL'
            team_id    = :team_id,
            is_active  = CAST(:is_active AS boolean),
            expires_at = CAST(:expires_at AS timestamptz),
+           display_name = :display_name,
            updated_at = now()
      WHERE id = :id
     SQL;
@@ -235,8 +273,25 @@ $sqlUpdate = <<<'SQL'
 $action = 'user.role_change';
 if ($activeChanged) {
     $action = $newActive ? 'user.activate' : 'user.deactivate';
+} elseif ($nameChanged && !$expiresChanged && !$roleChanged && !$teamChanged) {
+    // 5-A″ — 바뀐 것이 이름뿐이다 (머리글 「감사 처리」)
+    $action = 'user.update';
 } elseif ($expiresChanged && !$roleChanged && !$teamChanged) {
     $action = 'user.expiry_change';
+}
+
+/* 5-A″ — 바뀐 **칸 이름**(값이 아니다). 이름의 값은 감사 어디에도 없다(머리글 ★). */
+$changedFields = [];
+foreach ([
+    'role'         => $roleChanged,
+    'team_id'      => $teamChanged,
+    'is_active'    => $activeChanged,
+    'expires_at'   => $expiresChanged,
+    'display_name' => $nameChanged,
+] as $field => $did) {
+    if ($did) {
+        $changedFields[] = $field;
+    }
 }
 
 $db->begin();
@@ -246,6 +301,7 @@ try {
         ':team_id'    => $newTeam,
         ':is_active'  => $newActive ? 'true' : 'false',
         ':expires_at' => $newExpires,
+        ':display_name' => $newDisplayName,
         ':id'         => $uid,
     ]);
 
@@ -268,6 +324,7 @@ try {
             'target_active'    => $newActive,
             'sessions_revoked' => $revoked,
             'reason_text'      => $reason,
+            'changed_fields'   => $changedFields,
         ],
     ]);
 
@@ -280,6 +337,7 @@ try {
 Http::json([
     'id'               => $uid,
     'username'         => $targetName,
+    'display_name'     => $newDisplayName,
     'role'             => $newRole,
     'team_id'          => $newTeam,
     'is_active'        => $newActive,

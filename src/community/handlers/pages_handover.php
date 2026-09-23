@@ -284,6 +284,8 @@ Http::json([
     'page'       => ['id' => $pid, 'title' => (string) $row['title']],
     'from'       => $fromName,
     'to'         => $toName,
+    // 5-A″ — 받는 사람의 이름(없으면 null). 화면이 「이름 (아이디)」로 잇는다.
+    'to_display_name' => $target['display_name'] === null ? null : (string) $target['display_name'],
     'page_count' => $moved,
     'kept'       => $keptLevel,
 ]);

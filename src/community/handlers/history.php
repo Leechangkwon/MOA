@@ -40,6 +40,7 @@ $sql = <<<'SQL'
            v.title                          AS title,
            v.edited_at                      AS at,
            u.username                       AS by_name,
+           u.display_name                   AS by_display,
            NULL::uuid                       AS block_id,
            NULL::boolean                    AS checked,
            v.summary                        AS summary,
@@ -47,26 +48,28 @@ $sql = <<<'SQL'
                 THEN jsonb_array_length(v.doc -> 'blocks') ELSE 0 END AS block_count,
            NULL::text                       AS prop,
            NULL::text                       AS from_value,
-           NULL::text                       AS to_value
+           NULL::text                       AS to_value,
+           NULL::text                       AS from_display,
+           NULL::text                       AS to_display
       FROM community.page_versions v
       JOIN public.users u ON u.id = v.edited_by
      WHERE v.page_id = CAST(:pid AS bigint)
     UNION ALL
-    SELECT 'check', NULL::int, NULL::text, e.at, cu.username, e.block_id, e.checked, NULL::text, NULL::int,
-           NULL::text, NULL::text, NULL::text
+    SELECT 'check', NULL::int, NULL::text, e.at, cu.username, cu.display_name, e.block_id, e.checked, NULL::text, NULL::int,
+           NULL::text, NULL::text, NULL::text, NULL::text, NULL::text
       FROM community.checklist_events e
       JOIN public.users cu ON cu.id = e.by_user_id
      WHERE e.page_id = CAST(:pid2 AS bigint)
     UNION ALL
-    SELECT 'property', NULL::int, NULL::text, pe.at, pu.username, NULL::uuid, NULL::boolean, NULL::text, NULL::int,
-           pe.prop, pe.from_value, pe.to_value
+    SELECT 'property', NULL::int, NULL::text, pe.at, pu.username, pu.display_name, NULL::uuid, NULL::boolean, NULL::text, NULL::int,
+           pe.prop, pe.from_value, pe.to_value, NULL::text, NULL::text
       FROM community.page_property_events pe
       JOIN public.users pu ON pu.id = pe.by_user_id
      WHERE pe.page_id = CAST(:pid3 AS bigint)
     UNION ALL
     -- 5-A 인계 — 이 페이지를 뿌리로 넘긴 일. 누가·누구에서 누구에게·몇 쪽·남긴 권한(`summary` 칸).
-    SELECT 'handover', NULL::int, NULL::text, h.at, hb.username, NULL::uuid, NULL::boolean, h.kept_level,
-           h.page_count, NULL::text, hf.username, ht.username
+    SELECT 'handover', NULL::int, NULL::text, h.at, hb.username, hb.display_name, NULL::uuid, NULL::boolean, h.kept_level,
+           h.page_count, NULL::text, hf.username, ht.username, hf.display_name, ht.display_name
       FROM community.handovers h
       JOIN public.users hb ON hb.id = h.by_user_id
       JOIN public.users hf ON hf.id = h.from_user_id
@@ -98,6 +101,11 @@ foreach ($rows as $r) {
 
 $events = [];
 
+/** 5-A″ — 이름 칸(없으면 null). 계정명(`by`·`from`·`to`)과 **따로** 나간다 — 잇는 일은 화면이 한다. */
+$dn = static function ($v): ?string {
+    return $v === null ? null : (string) $v;
+};
+
 // 지금 판 — `pages` 에 있고 `page_versions` 에는 없다(아직 교체되지 않았다).
 $events[] = [
     'kind'          => 'version',
@@ -105,6 +113,8 @@ $events[] = [
     'is_current'    => true,
     'title'         => (string) $row['title'],
     'by'            => $row['last_edited_by_name'] === null ? '' : (string) $row['last_edited_by_name'],
+    // 5-A″ — 이름은 따로(없으면 null). 「이름 (아이디)」는 화면이 만든다.
+    'by_display_name' => $row['last_edited_by_display_name'] === null ? null : (string) $row['last_edited_by_display_name'],
     'at'            => (string) $row['updated_at'],
     'block_count'   => (int) $row['block_count'],
     'restored_from' => $restoredInto[(int) $row['doc_version']] ?? null,
@@ -118,6 +128,7 @@ foreach ($rows as $r) {
             'is_current'    => false,
             'title'         => (string) $r['title'],
             'by'            => (string) $r['by_name'],
+            'by_display_name' => $dn($r['by_display']),
             'at'            => (string) $r['at'],
             'block_count'   => (int) $r['block_count'],
             'restored_from' => $restoredInto[(int) $r['version']] ?? null,
@@ -134,6 +145,7 @@ foreach ($rows as $r) {
             'from'  => $r['from_value'] === null ? null : (string) $r['from_value'],
             'to'    => $r['to_value'] === null ? null : (string) $r['to_value'],
             'by'    => (string) $r['by_name'],
+            'by_display_name' => $dn($r['by_display']),
             'at'    => (string) $r['at'],
         ];
         continue;
@@ -144,9 +156,12 @@ foreach ($rows as $r) {
             'kind'       => 'handover',
             'from'       => (string) $r['from_value'],
             'to'         => (string) $r['to_value'],
+            'from_display_name' => $dn($r['from_display']),
+            'to_display_name'   => $dn($r['to_display']),
             'kept'       => $r['summary'] === null ? null : (string) $r['summary'],
             'page_count' => (int) $r['block_count'],
             'by'         => (string) $r['by_name'],
+            'by_display_name' => $dn($r['by_display']),
             'at'         => (string) $r['at'],
         ];
         continue;
@@ -156,6 +171,7 @@ foreach ($rows as $r) {
         'block_id' => (string) $r['block_id'],
         'checked'  => $r['checked'] === true,
         'by'       => (string) $r['by_name'],
+        'by_display_name' => $dn($r['by_display']),
         'at'       => (string) $r['at'],
     ];
 }

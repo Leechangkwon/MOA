@@ -26,6 +26,7 @@ $page    = Http::queryInt('page', 1, 1, 100000);
 $sqlList = <<<'SQL'
     SELECT u.id,
            u.username,
+           u.display_name,
            u.role,
            u.team_id,
            t.name      AS team_name,
@@ -62,6 +63,8 @@ foreach ($rows as $row) {
     $users[] = [
         'id'          => (int) $row['id'],
         'username'    => (string) $row['username'],
+        // 5-A″ — 이름(없으면 null). 「이름 (아이디)」로 잇는 일은 화면(`personLabel`)이 한다.
+        'display_name' => $row['display_name'] === null ? null : (string) $row['display_name'],
         'role'        => (string) $row['role'],
         'team_id'     => $row['team_id'] === null ? null : (int) $row['team_id'],
         'team_name'   => $row['team_name'] === null ? null : (string) $row['team_name'],

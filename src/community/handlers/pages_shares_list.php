@@ -58,7 +58,8 @@ Http::json([
     'shares'      => $mayNames ? $all : null,
     'my_level'    => $myLevel,
     'share_level' => CommunityAuthz::shareLevelFor($user, $row),
-    'can_manage'  => $mayManage && (string) $row['space_kind'] === 'personal',
+    // 5-A″ — 팀 공간도 관리 자격(그 팀원)이면 사람을 더하고 뺀다.
+    'can_manage'  => $mayManage,
     // 「내 공유 빼기」가 보낼 계정명 — 화면이 내가 누구인지 따로 알고 있지 않다.
     'me'          => (string) $user['username'],
 ]);

@@ -43,6 +43,14 @@ declare(strict_types=1);
  *   물어도 남의 공유가 새지 않는다). 목록 SQL `community_visible_pages_where()` 는 **같은 SQL
  *   조각**(`community_share_rank_sql()`)으로 같은 갈래를 한 줄 더한다 (C:T-37 방식).
  *
+ * 5-A″ (2026-09-23 사용자 결정 「팀 공간 페이지도 공유 — ㅇㅇ」) — **팀 공간에도 공유 갈래**
+ *   · 팀 공간 페이지의 사람 지정 공유가 열린다. 관리(주기·빼기) 자격은 `decidePageManage` 그대로 —
+ *     그 팀원이다. 읽기·고치기의 공유 갈래는 개인 공간과 **같은 `shareLevelFor`** 이고, 팀 공간 [1]
+ *     갈래 안에서 **팀원 판정 뒤**에 온다(팀원이면 공유와 무관하게 이미 읽고 쓴다).
+ *   · 공개 범위는 팀 공간에 여전히 없다(공간 등급을 따른다) — 그래서 개인 공간의 「세 범위만」
+ *     조건이 팀 공간 갈래에는 없다. 목록 조건절도 같은 모양이다(`community_visible_pages_where`).
+ *   · 인계는 여전히 팀 공간 대상이 아니다(`decidePageHandover` [1] `space_governed`).
+ *
  * ★ 역할 비교는 여전히 이 파일에 없다. 팀 판정은 **역할이 아니라 id 비교**이고, 값은 전부
  *   세션(`$u['team_id']` — `Auth` 가 「역할로 보기」까지 반영해 만든 유효 팀)과 DB 행에서 온다.
  *   요청이 정하는 값은 한 칸도 없다 (PRD S-01).
@@ -79,7 +87,7 @@ final class CommunityAuthz
     public const CODE_SHARED_EDIT = 'shared_edit';
     /** 허용 코드 — Manager 가 **자기 팀원**의 페이지를 인계한다 (5-A, t-box `team_scope` 와 같은 뜻) */
     public const CODE_TEAM_SCOPE = 'team_scope';
-    /** 거부 코드 — 팀 공간의 페이지다. 공개 범위·공유·인계는 공간 등급을 따른다 (5-A) */
+    /** 거부 코드 — 팀 공간의 페이지다. 공개 범위·인계는 공간 등급을 따른다 (5-A. 공유는 5-A″ 에서 열렸다) */
     public const CODE_SPACE_GOVERNED = 'space_governed';
     /** 거부 코드 — 공유·인계 대상으로 고를 수 없는 사람이다(없음·비활성·Guest·지금 주인) (5-A) */
     public const CODE_TARGET_NOT_PERMITTED = 'target_not_permitted';
@@ -146,7 +154,8 @@ final class CommunityAuthz
      *
      * 판정 순서 (하나라도 맞으면 거기서 끝난다)
      *   [0] 지워진 페이지                        → `not_found`
-     *   [1] 팀 공간                              → 그 팀원 `team_member` / Admin `admin_all` / 그 밖 `not_member`
+     *   [1] 팀 공간                              → 그 팀원 `team_member` / **나에게 준 공유 `shared`**(5-A″) /
+     *                                               Admin `admin_all` / 그 밖 `not_member`
      *   [2] 개인 공간이 아니면(게시판)           → `role_not_permitted` (5단계)
      *   [3] 내 페이지                            → `owner`
      *   [4] `published`                          → `role_not_permitted` (게시판 공간이 없다 — 닫힌 실패)
@@ -178,6 +187,12 @@ final class CommunityAuthz
         if ($kind === 'team') {
             if (self::isTeamMember($u, $row['space_team_id'] ?? null)) {
                 return [true, self::CODE_TEAM_MEMBER];
+            }
+            /* 5-A″ — 팀 밖 사람에게 준 공유(이 페이지나 조상). 팀원 판정 **뒤**, Admin 앞이다 —
+               개인 공간 [4b] 가 Admin [7] 앞인 것과 같은 순서라, 공유받은 관리자의 열람은
+               `admin_all` 이 아니라 `shared` 로 남는다. 팀 공간에는 범위가 없으므로 범위 조건이 없다. */
+            if (self::shareLevelFor($u, $row) !== null) {
+                return [true, self::CODE_SHARED];
             }
             if (Authz::canAdmin($u)) {
                 return [true, self::CODE_ADMIN_ALL];
@@ -242,7 +257,8 @@ final class CommunityAuthz
      *   이 페이지나 조상에 나에게 준 **편집** 공유    → `shared_edit` — 단 **쓰기 자격 있는 역할만**
      *     (Guest 는 편집 공유를 받아도 보기만이다. 판단은 `Authz::canCommunityWrite` — 역할 문자열 0)
      *   그 밖 (보기 공유·팀·사내로 보고 있는 사람·Admin) → `not_owner`
-     * 팀 공간 — **그 팀원 누구나** 고친다(함께 쓰라고 만든 그릇이다).
+     * 팀 공간 — **그 팀원 누구나** 고친다(함께 쓰라고 만든 그릇이다). 5-A″ — 팀 밖 사람은
+     *   **편집** 공유를 받았고 쓰기 자격 있는 역할이면 `shared_edit`(개인 공간과 같은 규칙).
      *
      * 「볼 수 있다」와 「고칠 수 있다」는 여전히 다른 물음이다 (C:T-32). 팀·사내로 열어 둔 페이지를
      * 관리자나 팀원이 소리 없이 바꿀 수 있으면 그 기록은 더 이상 증거가 아니다 — 고칠 사람은 주인이
@@ -261,9 +277,14 @@ final class CommunityAuthz
         $kind = (string) ($row['space_kind'] ?? '');
 
         if ($kind === 'team') {
-            return self::isTeamMember($u, $row['space_team_id'] ?? null)
-                ? [true, self::CODE_TEAM_MEMBER]
-                : [false, self::CODE_NOT_MEMBER];
+            if (self::isTeamMember($u, $row['space_team_id'] ?? null)) {
+                return [true, self::CODE_TEAM_MEMBER];
+            }
+            // 5-A″ — 팀원 판정 뒤의 편집 공유 갈래. 읽기 판정 [1] 과 같은 자리·같은 함수다.
+            if (self::shareLevelFor($u, $row) === 'edit' && Authz::canCommunityWrite($u)) {
+                return [true, self::CODE_SHARED_EDIT];
+            }
+            return [false, self::CODE_NOT_MEMBER];
         }
         if ($kind !== 'personal') {
             return [false, self::CODE_ROLE_NOT_PERMITTED];
@@ -397,6 +418,9 @@ final class CommunityAuthz
      *
      * 활성 계정이면 누구나 된다 — Guest 도 받을 수 있다(편집을 주어도 판정이 보기로만 연다,
      * `decidePageChange`). 주인 자신에게 주는 공유는 뜻이 없으므로 거부한다.
+     * 팀 공간(5-A″)에는 사람 주인이 없다(`space_owner_user_id` 가 NULL) — 그 팀원에게 준 공유는
+     * 판정에서 팀원 갈래가 먼저 맞아 **효력이 없을 뿐** 해가 없으므로 따로 막지 않는다
+     * (그 사람이 팀을 떠나면 그때부터 공유가 효력을 갖는다 — 준 사람이 고른 그대로다).
      *
      * @param  array<string,mixed>|null $target
      * @param  array<string,mixed>      $row

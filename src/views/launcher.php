@@ -40,7 +40,11 @@ $launcherCssVersion = (int) filemtime(__DIR__ . '/../../public/assets/app.css');
  */
 $launcherWho = '';
 if (is_array($launcherUser)) {
-    $launcherNameRaw = (string) ($launcherUser['username'] ?? '');
+    // 5-A″ — 「이름 (아이디)」, 이름이 없으면 「아이디」(bootstrap `tbox_person_label` 한 벌)
+    $launcherNameRaw = tbox_person_label(
+        isset($launcherUser['display_name']) && is_string($launcherUser['display_name']) ? $launcherUser['display_name'] : null,
+        (string) ($launcherUser['username'] ?? '')
+    );
     $launcherRoleRaw = (string) ($launcherUser['role'] ?? '');
     if ($launcherNameRaw !== '') {
         $launcherWho = $launcherEsc(

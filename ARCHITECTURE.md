@@ -1820,6 +1820,9 @@ GRANT  USAGE, SELECT  ON SEQUENCE audit_logs_id_seq TO tbox_app;
 | `user.activate|allow` | `{actor} 이(가) 계정 「{target}」 을(를) 다시 활성화했습니다 (사유는 상세 기록)` | 10단계 |
 | `user.activate|deny|bad_request` | `{actor} 이(가) 계정 「{target}」 재활성화를 잘못된 형식(사유 없음 등)으로 요청해서 거부했습니다` | 10단계 (검토 보완 A) |
 | `user.expiry_change|allow` | `{actor} 이(가) 계정 「{target}」 의 만료일을 바꿨습니다 (이전 → 새 값·사유는 상세 기록)` | 10단계 — 역할·활성이 아니라 `expires_at` 만 바뀐 경우 (검토 보완 C) |
+| `user.update|allow` | `{actor} 이(가) 계정 「{target}」 의 이름을 바꿨습니다 (바뀐 칸·사유는 상세 기록)` | 5-A″ — 이름(`display_name`)만 바뀐 경우. **이름의 값은 남기지 않는다**(`changed_fields` 만) |
+| `user.update|deny|bad_request` | `{actor} 이(가) 계정 「{target}」 의 이름을 잘못된 형식(길이·제어 문자·사유 없음)으로 바꾸려 해서 거부했습니다` | 5-A″ — 41자 이상·제어·서식 문자·사유 없음 |
+| `user.update|deny|self_change` | `{actor} 이(가) 자기 자신의 계정 이름을 바꾸려 해서 거부했습니다 (본인은 보기만)` | 5-A″ — 역할과 같은 `self_change` 규칙 |
 | `user.expired|deny|session_expired` | `{actor} 의 Guest 계정이 만료되어 살아 있던 세션을 끊었습니다` | 10단계 재지시 — `Auth::currentUser()` 가 만료된 Guest 의 세션을 즉시 파기 (R-12) |
 | `auth.mfa_enroll|deny|bad_code` | `{actor} 이(가) 2단계 인증을 켜려 했지만 확인 코드가 틀렸습니다` | 10단계 (검토 보완 B) |
 | `auth.gate|deny|password_change_required` | `{target} 이(가) 비밀번호를 아직 바꾸지 않은 상태로 다른 기능을 요청해서 거부했습니다` | 11단계 관문 (target = 본인, route 패턴은 상세) |
@@ -2057,6 +2060,8 @@ GRANT  USAGE, SELECT  ON SEQUENCE audit_logs_id_seq TO tbox_app;
 | `expires_at` | 무엇을 | 계정 만료일(Guest 필수). 생성·변경 행에 값 그대로 | 핸들러 | `user.create`·`user.expiry_change`·`user.role_change` (10단계) |
 | `policy` | 어떻게 | 라우트에 붙은 정책 이름 | 라우터 | `authz.route` deny |
 | `reason_text` | 왜 | 관리자가 입력한 사유 (500자) | 핸들러 | 역할 변경·비활성화·강제 삭제·레벨 하향 (10단계) |
+| `changed_fields` | 무엇을 | 바뀐 **칸 이름** 목록(`role`·`team_id`·`is_active`·`expires_at`·`display_name`). 이름의 **값**은 어디에도 남기지 않는다(개인정보 · append-only) | 핸들러 | `user.update`·`user.role_change`·`user.activate`·`user.deactivate`·`user.expiry_change` (5-A″) |
+| `display_name_set` | 무엇을 | `true`/`false` — 계정을 만들 때 이름을 넣었나(값은 남기지 않는다) | 핸들러 | `user.create` (5-A″) |
 | `owner_id` | 무엇을 | 파일을 올린 사용자 id — 삭제·다운로드 판정에 쓰인 값 | 핸들러 | `file.delete`·`file.download` |
 | `target_team` | 무엇을 | 파일의 `team_id` (team 레벨이 아니면 null) — `actor_team` 과 나란히 놓으면 `same_team`·`team_mismatch` 판정을 로그만으로 재검산할 수 있다 | 핸들러 | `file.download`·`file.delete`·`file.upload` |
 | `ext` · `mime` | 무엇을 | 저장 확장자와 finfo 로 판별한 실제 MIME (DB `files.ext`·`files.mime` 과 같은 값) — 파일명이 아니라 내용 종류를 남긴다 (R-16) | 핸들러 | `file.upload`(allow) |

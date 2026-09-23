@@ -100,10 +100,12 @@ require __DIR__ . '/../../views/shell_top.php';
         <button id="page-visibility-edit" class="btn btn--small btn--quiet" type="button" aria-haspopup="dialog" hidden>
           <span class="icon" data-icon="shield"></span>바꾸기
         </button>
-        <!-- 5-A — 공유받은 사람에게는 받은 권한이 보이고, 같은 창(공유 부분만)을 열어 자기 공유를 뺄 수 있다. -->
+        <!-- 5-A — 공유받은 사람에게는 받은 권한이 보이고, 같은 창(공유 부분만)을 열어 자기 공유를 뺄 수 있다.
+             5-A″ — 팀 공간의 페이지에서는 관리할 수 있는 팀원에게 같은 단추가 「사람 추가」로 보인다
+             (팀 공간에는 공개 범위가 없다 — 창에는 공유 부분만 열린다). 글자는 editor.js 가 고른다. -->
         <span id="page-share-mine" class="badge" hidden></span>
         <button id="page-share-open" class="btn btn--small btn--quiet" type="button" aria-haspopup="dialog" hidden>
-          <span class="icon" data-icon="users"></span>공유 보기
+          <span class="icon" data-icon="users"></span><span id="page-share-open-label">공유 보기</span>
         </button>
       </span>
       <!-- 「이력」 (4-C). 이 페이지를 **볼 수 있는 사람이면 누구나** 연다 — 읽기 판정과 같은
@@ -284,13 +286,15 @@ require __DIR__ . '/../../views/shell_top.php';
           <p id="share-title" class="field__label">사람 추가</p>
           <p id="share-msg" class="msg" role="alert" aria-live="polite"></p>
           <div id="share-add" class="toolbar">
-            <input id="share-search" type="search" placeholder="아이디로 찾기" maxlength="64"
+            <input id="share-search" type="search" placeholder="아이디나 이름으로 찾기" maxlength="64"
                    autocomplete="off" spellcheck="false" aria-label="공유할 사람 찾기">
             <select id="share-level" aria-label="줄 권한">
               <option value="view">보기</option>
               <option value="edit">편집</option>
             </select>
           </div>
+          <!-- 5-A″ — 후보는 한 글자부터 나온다(창구도 빈 입력에는 빈 목록). 치기 전에는 이 안내만 보인다. -->
+          <p id="share-hint" class="muted" hidden>아이디나 이름을 입력하세요</p>
           <ul id="share-candidates" class="list list--scroll" aria-label="찾은 사람" hidden></ul>
           <p id="share-count" class="muted"></p>
           <ul id="share-list" class="list" aria-label="공유한 사람"></ul>
@@ -324,9 +328,11 @@ require __DIR__ . '/../../views/shell_top.php';
 
         <label class="field field--full">
           <span class="field__label">받는 사람</span>
-          <input id="handover-search" type="search" placeholder="아이디로 찾기" maxlength="64"
+          <input id="handover-search" type="search" placeholder="아이디나 이름으로 찾기" maxlength="64"
                  autocomplete="off" spellcheck="false">
         </label>
+        <!-- 5-A″ — 받는 사람도 한 글자부터 찾는다(창을 열자마자 사람 목록을 통째로 보이지 않는다). -->
+        <p id="handover-hint" class="muted">아이디나 이름을 입력하세요</p>
         <ul id="handover-candidates" class="list list--scroll" aria-label="받을 수 있는 사람"></ul>
         <p id="handover-picked" class="muted">받는 사람을 아직 고르지 않았습니다.</p>
 

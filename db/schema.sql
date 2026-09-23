@@ -66,6 +66,16 @@ CREATE TABLE users (
     must_change_password BOOLEAN NOT NULL DEFAULT false,
     mfa_setup_required   BOOLEAN NOT NULL DEFAULT false,
     password_changed_at  TIMESTAMPTZ,
+    -- 5-A″ (2026-09-23, migrations/2026-09-23_users_display_name.sql) — 사람이 알아보는 **이름**.
+    --   NULL 이 기본(이름 없으면 화면은 아이디만). 유일하지 않다(동명이인) — 화면은 언제나 아이디를 함께 보인다.
+    --   쓰기는 Admin 의 계정 관리 창구뿐. 아래 CHECK 은 앱 검증(1~40자·앞뒤 공백·제어 문자)의 뒷받침이다.
+    display_name         TEXT,
+    CONSTRAINT users_display_name_shape CHECK (
+        display_name IS NULL
+        OR (    char_length(display_name) BETWEEN 1 AND 40
+            AND display_name = btrim(display_name)
+            AND display_name !~ '[[:cntrl:]]')
+    ),
     -- Guest 는 만료일 필수 (PRD 3장 Guest 생명주기, SECURITY R-12).
     -- 앱 코드가 한 군데라도 검사를 빠뜨려도 만료 없는 Guest 행은 존재할 수 없다.
     CONSTRAINT guest_requires_expires_at

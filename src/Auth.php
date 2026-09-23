@@ -108,6 +108,8 @@ final class Auth
                s.expires_at    AS expires_at,
                u.id            AS id,
                u.username      AS username,
+               -- 5-A″ — 사람이 알아보는 이름(없으면 NULL). 셸의 사용자 칸이 보인다. 권한 판단에 쓰지 않는다.
+               u.display_name  AS display_name,
                u.role          AS role,
                u.team_id       AS team_id,
                u.is_active     AS is_active,
@@ -422,6 +424,8 @@ final class Auth
         self::$user = [
             'id'         => (int) $row['id'],
             'username'   => (string) $row['username'],
+            // 5-A″ — 표시용 이름(없으면 null). **권한이 아니다** — 판정은 id·역할·팀만 본다.
+            'display_name' => $row['display_name'] === null ? null : (string) $row['display_name'],
             // 유효 역할 — 보는 중이면 보는 값, 아니면 실제 값. 아래 real_* 가 언제나 실제 값이다.
             'role'       => $actValid ? $actRole : (string) $row['role'],
             'team_id'    => $actValid

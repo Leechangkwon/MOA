@@ -178,6 +178,20 @@ function setText(el, value) {
   }
 }
 
+/**
+ * 5-A″ — 사람을 보이는 모양 **한 벌**: 「이름 (아이디)」, 이름이 없으면 「아이디」.
+ * 창구는 `display_name` 과 `username` 을 **따로** 주고, 잇는 일은 화면에서 이 함수 하나만 한다
+ * (서버가 그리는 셸은 PHP `tbox_person_label` — 같은 모양). 돌려주는 것은 **글자**이고
+ * 넣는 쪽은 언제나 `textContent`(setText)다 — `<script>` 라는 이름도 글자 그대로 보인다 (PRD S-03).
+ * 커뮤니티 모듈 스크립트(editor.js)도 이 함수를 쓴다 — 아래 `window.qarediPersonLabel`.
+ */
+function personLabel(displayName, username) {
+  var id = username === null || username === undefined ? '' : String(username);
+  var name = typeof displayName === 'string' ? displayName.trim() : '';
+  return name === '' ? id : name + ' (' + id + ')';
+}
+window.qarediPersonLabel = personLabel;
+
 /* DESIGN.md 2.4 · 5장 — 시각은 「YYYY-MM-DD HH:MM:SS」 까지만 보이고 마이크로초·시간대는 title 로 옮긴다.
    서버 값(PostgreSQL timestamptz 문자열, 예 2026-09-21 14:27:21.850281+09)은 바꾸지 않는다 — 표시만 자른다.
    형식이 다르면(빈 값·'—'·이미 짧은 값·날짜만) 그대로 둔다. */
@@ -4374,6 +4388,7 @@ function initUsers(csrfToken) {
   var next = document.getElementById('page-next');
   var form = document.getElementById('user-create-form');
   var fUsername = document.getElementById('u-username');
+  var fName = document.getElementById('u-name');
   var fPassword = document.getElementById('u-password');
   var fRole = document.getElementById('u-role');
   var fTeam = document.getElementById('u-team');
@@ -4580,6 +4595,7 @@ function initUsers(csrfToken) {
   var ueRole = document.getElementById('ue-role');
   var ueTeam = document.getElementById('ue-team');
   var ueExpires = document.getElementById('ue-expires');
+  var ueName = document.getElementById('ue-name');
   var ueReason = document.getElementById('ue-reason');
   var ueMsg = document.getElementById('ue-msg');
   var ueCancel = document.getElementById('ue-cancel');
@@ -4683,8 +4699,12 @@ function initUsers(csrfToken) {
       return;
     }
     setText(msg, '');
-    setText(ueTitle, '계정 「' + item.username + '」 변경');
+    setText(ueTitle, '계정 「' + personLabel(item.display_name, item.username) + '」 변경');
     setText(ueMsg, '');
+    if (ueName) {
+      // 5-A″ — 지금 이름(없으면 빈 칸). 바꾸지 않으면 보내지 않는다.
+      ueName.value = typeof item.display_name === 'string' ? item.display_name : '';
+    }
     selectValue(ueRole, item.role);
     selectValue(ueTeam, item.team_id);
     if (ueExpires) {
@@ -4943,6 +4963,14 @@ function initUsers(csrfToken) {
       var payload = {};
       var before = editItem || {};
 
+      // 5-A″ 이름 — 앞뒤 공백을 뺀 값이 지금과 다를 때만 보낸다. 비우면 null(이름 지우기).
+      // 길이·글자 규칙은 서버(`tbox_clean_display_name`)가 정한다 — 화면은 maxlength 만 둔다.
+      var beforeName = typeof before.display_name === 'string' ? before.display_name : '';
+      var nameValue = ueName ? ueName.value.trim() : beforeName;
+      if (ueName && nameValue !== beforeName) {
+        payload.display_name = nameValue === '' ? null : nameValue;
+      }
+
       if (ueRole && ueRole.value !== String(before.role)) {
         payload.role = ueRole.value;
       }
@@ -5002,7 +5030,7 @@ function initUsers(csrfToken) {
     var roleButton = document.createElement('button');
     roleButton.type = 'button';
     roleButton.className = 'btn btn--quiet btn--small';
-    setText(roleButton, '역할·팀·만료');
+    setText(roleButton, '이름·역할·팀·만료');
     // 26단계 — `window.prompt` 여섯 번이 모달 하나가 됐다 (PRD F-40). 취소·무변경·실패는
     // 전부 #msg 로 말한다(조용한 return 금지). 바뀐 칸만 payload 에 들어간다.
     roleButton.addEventListener('click', function () {
@@ -5121,7 +5149,7 @@ function initUsers(csrfToken) {
     users.forEach(function (item) {
       var row = document.createElement('tr');
       addCell(row, item.id);
-      addCell(row, item.username);
+      addCell(row, personLabel(item.display_name, item.username));
       addCell(row, item.role);
       addCell(row, item.team_name);
       addCell(row, item.is_active === true ? '활성' : '비활성');
@@ -5227,6 +5255,10 @@ function initUsers(csrfToken) {
         role: fRole.value,
         reason_text: fReason.value
       };
+      // 5-A″ — 이름은 선택이다. 비어 있으면 보내지 않는다(이름 없음).
+      if (fName && fName.value.trim() !== '') {
+        payload.display_name = fName.value;
+      }
       if (fTeam && fTeam.value !== '') {
         payload.team_id = fTeam.value;
       }

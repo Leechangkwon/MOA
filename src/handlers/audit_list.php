@@ -45,7 +45,7 @@ $allowedActions = [
     // 문장 표(Audit::SUMMARY_TEMPLATES)와 이 목록은 **함께** 늘어난다 — 표에만 넣고 여기를
     // 빠뜨리면 그 행동이 조회 화면의 「어떻게」 필터에서 사라진다.
     'file.restore',
-    'user.create', 'user.role_change', 'user.expiry_change',
+    'user.create', 'user.role_change', 'user.expiry_change', 'user.update',
     'user.deactivate', 'user.activate', 'user.expired',
     'auth.password_change', 'auth.mfa_enroll', 'auth.mfa_disable', 'auth.mfa',
     // 11단계 최초 로그인 강제 절차 (F-16) — 관문 거부와 Admin 의 재발급·초기화.

@@ -55,7 +55,7 @@ $sqlTouch = <<<'SQL'
     SQL;
 
 $sqlOthers = <<<'SQL'
-    SELECT u.username, e.last_seen_at
+    SELECT u.username, u.display_name, e.last_seen_at
       FROM community.page_edit_sessions e
       JOIN public.users u ON u.id = e.user_id
      WHERE e.page_id = CAST(:pid AS bigint)
@@ -69,7 +69,11 @@ $db->run($sqlTouch, [':pid' => $pageId, ':me' => $me]);
 
 $editors = [];
 foreach ($db->run($sqlOthers, [':pid' => $pageId, ':me' => $me])->fetchAll() as $e) {
-    $editors[] = ['username' => (string) $e['username'], 'last_seen_at' => (string) $e['last_seen_at']];
+    $editors[] = [
+        'username'     => (string) $e['username'],
+        'display_name' => $e['display_name'] === null ? null : (string) $e['display_name'],
+        'last_seen_at' => (string) $e['last_seen_at'],
+    ];
 }
 
 Http::json(['editors' => $editors]);

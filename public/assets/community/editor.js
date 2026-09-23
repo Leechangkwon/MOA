@@ -73,6 +73,17 @@ function readJson(response) {
   });
 }
 
+/**
+ * 5-A″ — 사람을 보이는 모양 「이름 (아이디)」(이름이 없으면 「아이디」). **모양은 한 벌**이다 —
+ * t-box 셸 스크립트(app.js)의 `personLabel` 을 빌린다(셸이 이 파일보다 먼저 실행된다: app.js 는
+ * `<body>` 끝의 일반 스크립트, 이 파일은 지연 실행되는 모듈). 없으면 아이디만 보인다 — 모양을
+ * 여기서 다시 짓지 않는다. 넣는 쪽은 언제나 `textContent` 다.
+ */
+function personLabel(displayName, username) {
+  const shared = typeof window.qarediPersonLabel === 'function' ? window.qarediPersonLabel : null;
+  return shared ? shared(displayName, username) : String(username === null || username === undefined ? '' : username);
+}
+
 function errorMessage(data) {
   return data && typeof data.error === 'string' && data.error !== '' ? data.error : GENERIC_ERROR;
 }
@@ -1939,7 +1950,11 @@ function initPage() {
         setText(shareMineEl, label ? '받은 권한: ' + label : '');
         show(shareMineEl, !!label && !state.canShare);
       }
-      show(shareOpenButton, !!SHARE_LABELS[state.shareLevel] && !state.canShare);
+      /* 5-A″ — 팀 공간의 페이지에는 공개 범위가 없다(공간 등급을 따른다). 관리할 수 있는 팀원에게는
+         같은 창의 **공유 부분만** 여는 「사람 추가」가 보인다. 판단은 창구가 준 `can_share` 뿐이다. */
+      const teamShare = state.canShare && !!state.space && state.space.kind === 'team';
+      setText(shareOpenLabel, teamShare ? '사람 추가' : '공유 보기');
+      show(shareOpenButton, (!!SHARE_LABELS[state.shareLevel] && !state.canShare) || teamShare);
       setText(msg, '');
     });
   }
@@ -1973,7 +1988,8 @@ function initPage() {
     if (ownerNameEl) {
       let text = '—';
       if (state.owner && state.owner.kind === 'personal' && typeof state.owner.username === 'string') {
-        text = state.owner.username + (state.owner.is_active === false ? ' (쓰지 않는 계정)' : '');
+        text = personLabel(state.owner.display_name, state.owner.username)
+          + (state.owner.is_active === false ? ' (쓰지 않는 계정)' : '');
       } else if (state.owner && state.owner.kind === 'team') {
         text = '팀 공간';
       }
@@ -2067,6 +2083,9 @@ function initPage() {
   const shareList = document.getElementById('share-list');
   const shareLeave = document.getElementById('share-leave');
   const shareTitle = document.getElementById('share-title');
+  const shareHint = document.getElementById('share-hint');
+  const visibilityTitle = document.getElementById('visibility-title');
+  const shareOpenLabel = document.getElementById('page-share-open-label');
   let shareTimer = null;
   let shareMyLevel = null;
   // 「내 공유 빼기」가 보낼 계정명 — **창구가 알려 준다**(`me`). 화면이 내가 누구인지 따로 알지 않는다.
@@ -2089,7 +2108,8 @@ function initPage() {
     const head = document.createElement('div');
     head.className = 'list__head';
     const who = document.createElement('strong');
-    who.textContent = share.username + ' · ' + share.role + (share.is_active === false ? ' (쓰지 않는 계정)' : '');
+    who.textContent = personLabel(share.display_name, share.username) + ' · ' + share.role
+      + (share.is_active === false ? ' (쓰지 않는 계정)' : '');
     head.appendChild(who);
     const level = shareBadge(share.level);
     if (level) { head.appendChild(level); }
@@ -2104,7 +2124,7 @@ function initPage() {
       body.appendChild(from);
     } else if (canManage) {
       const pick = document.createElement('select');
-      pick.setAttribute('aria-label', share.username + ' 의 권한');
+      pick.setAttribute('aria-label', personLabel(share.display_name, share.username) + ' 의 권한');
       pick.setAttribute('data-share-level', share.username);
       for (const value of ['view', 'edit']) {
         const option = document.createElement('option');
@@ -2147,6 +2167,8 @@ function initPage() {
       const n = typeof result.data.count === 'number' ? result.data.count : 0;
       setText(shareCount, n === 0 ? '아직 공유한 사람이 없습니다.' : '공유받은 사람 ' + String(n) + '명');
       show(shareAdd, canManage);
+      // 5-A″ — 「아이디나 이름을 입력하세요」는 찾을 수 있는 사람(관리 자격)에게만, 아직 안 쳤을 때만.
+      show(shareHint, canManage && (!shareSearch || shareSearch.value.trim() === ''));
       setText(shareTitle, canManage ? '사람 추가' : '공유');
       show(shareLeave, shareMyLevel !== null && shareMe !== '');
     });
@@ -2177,7 +2199,7 @@ function initPage() {
     button.type = 'button';
     button.className = 'btn btn--quiet btn--small';
     button.setAttribute('data-candidate', person.username);
-    button.textContent = person.username + ' · ' + person.role + (label ? ' — ' + label : '');
+    button.textContent = personLabel(person.display_name, person.username) + ' · ' + person.role + (label ? ' — ' + label : '');
     button.addEventListener('click', () => onPick(person, button));
     li.appendChild(button);
     return li;
@@ -2185,7 +2207,9 @@ function initPage() {
 
   function loadShareCandidates() {
     const q = shareSearch ? shareSearch.value.trim() : '';
-    if (q === '') { clear(shareCandidates); show(shareCandidates, false); return Promise.resolve(); }
+    // 5-A″ — 한 글자도 없으면 찾지 않는다(창구도 빈 목록을 준다). 대신 무엇을 칠지 알려 준다.
+    show(shareHint, q === '');
+    if (q === '') { clear(shareCandidates); show(shareCandidates, false); setText(shareMsg, ''); return Promise.resolve(); }
     return api('GET', '/api/share-candidates?page=' + encodeURIComponent(pageId) + '&q=' + encodeURIComponent(q))
       .then((result) => {
         if (result.status === 401) { toLogin(); return; }
@@ -2205,7 +2229,7 @@ function initPage() {
           }, '추가'));
         }
         show(shareCandidates, people.length > 0);
-        if (people.length === 0) { setText(shareMsg, '찾는 아이디가 없습니다'); } else { setText(shareMsg, ''); }
+        if (people.length === 0) { setText(shareMsg, '그런 아이디나 이름이 없습니다'); } else { setText(shareMsg, ''); }
       });
   }
 
@@ -2252,6 +2276,9 @@ function initPage() {
     }
     show(choicesBox, !shareOnly);
     show(visibilitySave, !shareOnly);
+    // 5-A″ — 공유 부분만 여는 창(공유받은 사람 · 팀 공간)은 제목도 「공유」다. 팀 공간에는 공개 범위가 없다.
+    setText(visibilityTitle, shareOnly ? '공유' : '공개 범위');
+    show(shareHint, true);
     if (shareSearch) { shareSearch.value = ''; }
     clear(shareCandidates);
     show(shareCandidates, false);
@@ -2311,7 +2338,9 @@ function initPage() {
   const handoverPicked = document.getElementById('handover-picked');
   const handoverConfirm = document.getElementById('handover-confirm');
   let handoverTo = '';
+  let handoverToLabel = '';
   let handoverTimer = null;
+  const handoverHint = document.getElementById('handover-hint');
 
   function handoverRadios() {
     return handoverDialog ? handoverDialog.querySelectorAll('input[name="handover-keep"]') : [];
@@ -2330,8 +2359,11 @@ function initPage() {
 
   function loadHandoverCandidates() {
     const q = handoverSearch ? handoverSearch.value.trim() : '';
+    // 5-A″ — 한 글자부터 찾는다. 비었으면 목록을 비우고 무엇을 칠지 알려 준다(창구도 빈 목록을 준다).
+    show(handoverHint, q === '');
+    if (q === '') { clear(handoverList); setText(handoverMsg, ''); return Promise.resolve(); }
     return api('GET', '/api/share-candidates?for=handover&page=' + encodeURIComponent(pageId)
-      + (q === '' ? '' : '&q=' + encodeURIComponent(q)))
+      + '&q=' + encodeURIComponent(q))
       .then((result) => {
         if (result.status === 401) { toLogin(); return; }
         if (result.status !== 200) { setText(handoverMsg, errorMessage(result.data)); return; }
@@ -2340,20 +2372,24 @@ function initPage() {
         for (const person of people) {
           handoverList.appendChild(candidateItem(person, (who) => {
             handoverTo = who.username;
-            setText(handoverPicked, '받는 사람: ' + who.username + ' · ' + who.role);
+            handoverToLabel = personLabel(who.display_name, who.username);
+            setText(handoverPicked, '받는 사람: ' + handoverToLabel + ' · ' + who.role);
             for (const b of handoverList.querySelectorAll('[data-candidate]')) {
               b.setAttribute('aria-pressed', b.getAttribute('data-candidate') === who.username ? 'true' : 'false');
             }
             handoverArm();
           }, ''));
         }
-        if (people.length === 0) { setText(handoverMsg, '넘겨받을 수 있는 사람이 없습니다'); } else { setText(handoverMsg, ''); }
+        if (people.length === 0) { setText(handoverMsg, '그런 아이디나 이름으로 넘겨받을 수 있는 사람이 없습니다'); } else { setText(handoverMsg, ''); }
       });
   }
 
   function openHandover() {
     if (!handoverDialog || typeof handoverDialog.showModal !== 'function') { return; }
     handoverTo = '';
+    handoverToLabel = '';
+    clear(handoverList);
+    show(handoverHint, true);
     setText(handoverMsg, '');
     setText(handoverPicked, '받는 사람을 아직 고르지 않았습니다.');
     // ★ 기본값을 두지 않는다 — 열 때마다 라디오를 모두 비운다(사용자 결정 2).
@@ -2365,7 +2401,6 @@ function initPage() {
       : '이 페이지가 받는 사람의 공간 맨 위로 옮겨 갑니다.');
     handoverArm();
     if (!handoverDialog.open) { handoverDialog.showModal(); }
-    loadHandoverCandidates().catch(() => setText(handoverMsg, GENERIC_ERROR));
   }
 
   if (handoverButton && handoverDialog) {
@@ -2395,7 +2430,8 @@ function initPage() {
               // 넘긴 뒤에도 볼 수 있는지는 서버가 다시 판단한다 — 못 보면 내 공간으로 돌아간다.
               return api('GET', '/api/pages/' + pageId).then((again) => {
                 if (again.status === 200) {
-                  return load().then(() => setText(msg, '넘겼습니다. 새 소유자: ' + String(result.data.to)));
+                  return load().then(() => setText(msg, '넘겼습니다. 새 소유자: '
+                    + personLabel(result.data.to_display_name, result.data.to)));
                 }
                 window.location.assign(COMMUNITY_BASE + '/');
                 return null;
@@ -2490,7 +2526,7 @@ function initPage() {
     tr.appendChild(title);
 
     const who = document.createElement('td');
-    who.textContent = entry.by === '' ? '—' : entry.by;
+    who.textContent = entry.by === '' ? '—' : personLabel(entry.by_display_name, entry.by);
     tr.appendChild(who);
 
     const when = document.createElement('td');
@@ -2561,7 +2597,8 @@ function initPage() {
         + propValueText(event.prop, event.from) + ' → ' + propValueText(event.prop, event.to);
     } else if (event.kind === 'handover') {
       // 5-A — 「소유자: qa_employee01 → qa_employee02」
-      what.textContent = '소유자: ' + String(event.from) + ' → ' + String(event.to);
+      what.textContent = '소유자: ' + personLabel(event.from_display_name, event.from)
+        + ' → ' + personLabel(event.to_display_name, event.to);
     } else if (event.kind === 'check') {
       what.textContent = event.checked === true ? '할 일을 체크했습니다' : '체크를 풀었습니다';
     } else if (typeof event.restored_from === 'number') {
@@ -2580,7 +2617,7 @@ function initPage() {
     const body = document.createElement('div');
     body.className = 'list__body';
     const who = document.createElement('span');
-    who.textContent = (event.by === '' ? '—' : event.by) + ' 님';
+    who.textContent = (event.by === '' ? '—' : personLabel(event.by_display_name, event.by)) + ' 님';
     body.appendChild(who);
     if (event.kind === 'version') {
       const blocks = document.createElement('span');
@@ -2703,7 +2740,7 @@ function initPage() {
   function showEditors(editors) {
     const list = Array.isArray(editors) ? editors : [];
     if (list.length === 0) { show(editorsBadge, false); return; }
-    const names = list.map((e) => e.username).join(', ');
+    const names = list.map((e) => personLabel(e.display_name, e.username)).join(', ');
     setText(editorsBadge, names + ' 님도 보는 중');
     show(editorsBadge, true);
   }
