@@ -7,7 +7,8 @@ declare(strict_types=1);
  * 요구사항: 커뮤니티 PRD F-27, 지시서 `stage6a-database-directive.md` 「창구」 · 결정 G-4(지운 속성의 값은 남긴다).
  *
  * 받는 값 (JSON — 아래 넷 중 **정확히 하나**, 허용 키 밖이면 400)
- *   add      {name, type, options?}   속성 더하기 — key 는 서버가 만든다. 30개까지
+ *   add      {name, type, options?, target?}   속성 더하기 — key 는 서버가 만든다. 30개까지.
+ *            관계(6-B)는 `target` = **같은 공간**의 DB(UUID) — 고치는 사람이 그 DB 페이지를 읽을 수 있어야(없는·못 보는 것 같은 400)
  *   rename   {key, name}              이름 바꾸기
  *   options  {key, options}           선택지 바꾸기(select·multi_select 만). 빠진 선택지를 쓰던 행 값은 그대로 남는다
  *   remove   {key}                    지우기 — 스키마에서만 뺀다. 행의 값은 칸에 남고 화면·창구에서 사라진다(G-4)
@@ -75,7 +76,7 @@ $findIndex = static function (array $schema, $key): ?int {
 $propName = '';
 switch ($op) {
     case 'add':
-        if (array_diff(array_keys($arg), ['name', 'type', 'options']) !== []) {
+        if (array_diff(array_keys($arg), ['name', 'type', 'options', 'target']) !== []) {
             Http::error(400, Http::MSG_BAD_REQUEST);
         }
         if (count($schema) >= DbProps::MAX_PROPS) {
@@ -101,6 +102,19 @@ switch ($op) {
             $new['options'] = $opts;
         } elseif (array_key_exists('options', $arg)) {
             $bad('선택지는 선택·다중 선택 속성에만 있습니다', 'bad_options');
+        }
+        if ($type === 'relation') {
+            $target = $arg['target'] ?? null;
+            $tDb    = is_string($target) && preg_match('/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/', $target) === 1
+                ? community_db_row($target) : null;
+            $tPage  = $tDb === null ? null : community_page_row((string) $tDb['page_public_id'], (int) $user['id']);
+            if ($tPage === null || $tPage['deleted_at'] !== null || (int) $tPage['space_id'] !== (int) $dbPage['space_id']
+                || !CommunityAuthz::decidePageRead($user, $tPage)[0]) {
+                $bad('관계는 같은 공간의, 내가 볼 수 있는 데이터베이스와만 맺습니다', 'bad_target');
+            }
+            $new['target'] = (string) $tDb['public_id'];
+        } elseif (array_key_exists('target', $arg)) {
+            $bad('대상은 관계 속성에만 있습니다', 'bad_target');
         }
         $schema[] = $new;
         $propName = $name;

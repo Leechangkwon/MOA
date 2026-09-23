@@ -196,6 +196,10 @@ if ($wider !== [] && !$cascade) {
    **넓어지는** 하위 페이지의 파일을 함께 견준다(하위는 같은 공간이라 새 범위의 읽는 사람이 같다 —
    게시 중인 하위의 게시판 쪽은 게시할 때 이미 견주었다). 좁히는 쪽은 언제나 안전하다. ─── */
 $visFiles  = Doc::extract(json_decode((string) $row['doc'], true) ?: [])['files'];
+// 6-B — 이 페이지가 DB 의 행이면 파일 속성 값도 같은 규칙으로 본다
+if ($row['database_id'] !== null) {
+    $visFiles = array_merge($visFiles, community_db_row_files($row['properties'], $row['db_schema']));
+}
 if ($cascade) {
     $wantRank = CommunityAuthz::visibilityRank($want);
     $widened  = [];
@@ -207,17 +211,34 @@ if ($cascade) {
     }
     if ($widened !== []) {
         $sqlKidDocs = <<<'SQL'
-            SELECT p.doc FROM community.pages p
+            SELECT p.doc, p.properties, d.schema AS db_schema FROM community.pages p
+              LEFT JOIN community.databases d ON d.id = p.database_id
              WHERE p.id = ANY (CAST(:ids AS bigint[])) AND p.deleted_at IS NULL
             SQL;
         foreach ($db->run($sqlKidDocs, [':ids' => '{' . implode(',', $widened) . '}'])->fetchAll() as $k) {
             $visFiles = array_merge($visFiles, Doc::extract(json_decode((string) $k['doc'], true) ?: [])['files']);
+            // 6-B — 넓어지는 하위가 DB 의 행이면 파일 속성도
+            if ($k['db_schema'] !== null) {
+                $visFiles = array_merge($visFiles, community_db_row_files($k['properties'], $k['db_schema']));
+            }
         }
         $visFiles = array_values(array_unique($visFiles));
     }
 }
+$visFiles  = array_values(array_unique($visFiles));
 $visRow    = array_merge($row, ['visibility' => $want]);
-if (!community_file_refs_ok($visFiles, CommunityAuthz::pageAudiences($visRow), $user)) {
+/* 파일이 많으면(DB 페이지를 행 수천 개와 함께 넓히는 경우) 200개씩 나눠 본다 — 5,000 을 넘으면 따로 알린다(독립 검토 6-B M-3) */
+if (count($visFiles) > 5000) {
+    $refuse('too_many_files', '붙은 파일이 너무 많아 한 번에 넓힐 수 없습니다. 하위 페이지를 나눠서 넓히세요', []);
+}
+$visOk = true;
+foreach (array_chunk($visFiles, 200) as $chunk) {
+    if (!community_file_refs_ok($chunk, CommunityAuthz::pageAudiences($visRow), $user)) {
+        $visOk = false;
+        break;
+    }
+}
+if (!$visOk) {
     $refuse('file_narrower', '새 범위의 사람이 볼 수 없는 파일이 붙어 있습니다. 파일 등급을 넓히거나 빼고 바꾸세요', []);
 }
 

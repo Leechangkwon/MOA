@@ -285,6 +285,12 @@ if ($parentIsDb) {
             Http::json(['error' => '이 데이터베이스를 볼 수 없는 사람은 넣을 수 없습니다', 'reason' => 'person_not_permitted'], 400);
             exit;
         }
+        // 6-B 관계·파일 — 새 행은 부모(DB 페이지)와 같은 범위로 시작하므로 부모의 읽는 범위로 견준다
+        if ($clean !== null && in_array((string) $prop['type'], ['relation', 'file'], true)
+            && !community_db_refs_ok($prop, $clean, null, CommunityAuthz::pageAudiences($parentRow), $user)) {
+            Http::json(['error' => '넣을 수 없는 행이나 파일이 있습니다', 'reason' => 'bad_ref'], 400);
+            exit;
+        }
         if ($clean !== null) {
             $rowProps[(string) $k] = $clean;
         }

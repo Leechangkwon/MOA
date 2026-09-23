@@ -204,6 +204,18 @@ require __DIR__ . '/../../views/shell_top.php';
           <span class="icon" data-icon="plus"></span>속성 더하기
         </button>
       </div>
+      <!-- 6-B 뷰 줄 — 보는 모양 셋(표·보드·리스트) + 저장한 뷰 + 지금 거르기·정렬을 뷰로 저장(고칠 수 있는 사람) -->
+      <div class="toolbar db-viewbar" role="group" aria-label="보는 모양">
+        <button class="btn btn--quiet btn--small db-type is-active" type="button" data-db-type="table" aria-pressed="true">표</button>
+        <button class="btn btn--quiet btn--small db-type" type="button" data-db-type="board" aria-pressed="false">보드</button>
+        <button class="btn btn--quiet btn--small db-type" type="button" data-db-type="list" aria-pressed="false">리스트</button>
+        <span class="editor-toolbar__sep" aria-hidden="true"></span>
+        <span id="db-saved" class="db-saved"></span>
+        <form id="db-view-form" class="db-view-form" hidden>
+          <input id="db-view-name" class="input" type="text" maxlength="50" autocomplete="off" placeholder="뷰 이름" aria-label="뷰 이름">
+          <button class="btn btn--quiet btn--small" type="submit">뷰 저장</button>
+        </form>
+      </div>
       <div class="toolbar db-filter">
         <select id="db-f-prop" class="input" aria-label="거를 속성"></select>
         <select id="db-f-op" class="input" aria-label="조건"></select>
@@ -217,9 +229,13 @@ require __DIR__ . '/../../views/shell_top.php';
         </select>
       </div>
       <p id="db-msg" class="msg" role="alert" aria-live="polite"></p>
-      <div class="doc-table-wrap">
+      <div id="db-table-wrap" class="doc-table-wrap">
         <table id="db-table" class="doc-table db-table"></table>
       </div>
+      <!-- 6-B 보드 — 상태 열(없음 + 다섯). 카드를 다른 열로 끌거나, 카드를 골라 ← → 로 옮기면 상태가 바뀐다 -->
+      <div id="db-board" class="db-board" hidden></div>
+      <!-- 6-B 리스트 — 한 줄 = 제목 + 속성 칩 -->
+      <ul id="db-list" class="list db-list" hidden></ul>
       <form id="db-add-row" class="toolbar" hidden>
         <input id="db-add-row-title" class="input" type="text" maxlength="200" autocomplete="off" placeholder="새 행 제목" aria-label="새 행 제목">
         <button class="btn btn--small" type="submit">새 행</button>
@@ -579,6 +595,10 @@ require __DIR__ . '/../../views/shell_top.php';
         <label id="db-prop-type-field" class="field field--full">
           <span class="field__label">종류</span>
           <select id="db-prop-type"></select>
+        </label>
+        <label id="db-prop-target-field" class="field field--full" hidden>
+          <span class="field__label">관계 맺을 데이터베이스 (같은 공간)</span>
+          <select id="db-prop-target"></select>
         </label>
         <label id="db-prop-options-field" class="field field--full" hidden>
           <span class="field__label">선택지 — 한 줄에 하나</span>

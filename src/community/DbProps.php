@@ -19,7 +19,7 @@ declare(strict_types=1);
  */
 final class DbProps
 {
-    public const TYPES = ['text', 'number', 'checkbox', 'url', 'email', 'phone', 'date', 'select', 'multi_select', 'person'];
+    public const TYPES = ['text', 'number', 'checkbox', 'url', 'email', 'phone', 'date', 'select', 'multi_select', 'person', 'relation', 'file'];
     /** 스키마에 없는, 모든 DB 에 있는 기본 열 — 거르기·정렬에서 이 이름으로 부른다 */
     public const BUILTINS = ['title', 'status', 'owner', 'created', 'updated'];
     public const RESERVED_NAMES = ['제목', '상태', '소유자', '만든 때', '고친 때'];
@@ -32,6 +32,12 @@ final class DbProps
     public const MAX_ROWS    = 5000;
     public const MAX_FILTERS = 10;
     public const MAX_SORTS   = 3;
+    /** 6-B */
+    public const MAX_RELATION = 20;
+    public const MAX_FILES    = 10;
+    public const MAX_VIEWS    = 10;
+    public const VIEW_TYPES   = ['table', 'board', 'list'];
+    private const UUID_RE     = '/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/';
 
     private const KEY_RE  = '/^p[0-9a-f]{8}$/';
     private const DATE_RE = '/^(\d{4})-(\d{2})-(\d{2})(T([01]\d|2[0-3]):[0-5]\d)?$/';
@@ -192,6 +198,35 @@ final class DbProps
                 }
                 return [true, $out === [] ? null : $out];
 
+            case 'relation':
+                // 행 id(UUID) 목록 ≤20 — 그 행이 대상 DB 의 행이고 고치는 사람이 볼 수 있는지는 핸들러가 본다(6-B)
+                if (!is_array($value) || !array_is_list($value) || count($value) > self::MAX_RELATION) {
+                    return [false, null];
+                }
+                $out = [];
+                foreach ($value as $v) {
+                    if (!is_string($v) || preg_match(self::UUID_RE, $v) !== 1 || in_array($v, $out, true)) {
+                        return [false, null];
+                    }
+                    $out[] = $v;
+                }
+                return [true, $out === [] ? null : $out];
+
+            case 'file':
+                // `tbox:UUID` 목록 ≤10 — 볼 수 있고 행을 읽는 범위보다 좁지 않은지는 핸들러가 5-E 규칙으로 본다
+                if (!is_array($value) || !array_is_list($value) || count($value) > self::MAX_FILES) {
+                    return [false, null];
+                }
+                $out = [];
+                foreach ($value as $v) {
+                    if (!is_string($v) || strncmp($v, 'tbox:', 5) !== 0 || preg_match(self::UUID_RE, substr($v, 5)) !== 1
+                        || in_array($v, $out, true)) {
+                        return [false, null];
+                    }
+                    $out[] = $v;
+                }
+                return [true, $out === [] ? null : $out];
+
             case 'person':
                 // 계정명 모양만 본다 — 그 사람이 있고 이 행을 볼 수 있는지는 핸들러가 판정한다(4-D 담당자와 같은 규칙).
                 if (!is_string($value) || preg_match('/^[A-Za-z0-9_.\-]{1,64}$/', $value) !== 1) {
@@ -215,6 +250,11 @@ final class DbProps
                 return (string) ($value['start'] ?? '') . (isset($value['end']) ? ' ~ ' . (string) $value['end'] : '');
             case 'multi_select':
                 return implode(', ', array_map('strval', (array) $value));
+            case 'relation':
+                // 행 제목·id 는 이력에 남기지 않는다(나중에 못 보게 된 사람에게 새지 않게) — 개수만
+                return '행 ' . count((array) $value) . '개';
+            case 'file':
+                return '파일 ' . count((array) $value) . '개';
             case 'number':
                 return is_float($value) ? rtrim(rtrim(sprintf('%.6F', $value), '0'), '.') : (string) $value;
         }
@@ -236,6 +276,8 @@ final class DbProps
         'select'       => ['eq', 'ne', 'empty', 'not_empty'],
         'multi_select' => ['has', 'not_has', 'empty', 'not_empty'],
         'person'       => ['eq', 'empty', 'not_empty'],
+        'relation'     => ['has', 'empty', 'not_empty'],
+        'file'         => ['empty', 'not_empty'],
         // 기본 열
         'title'        => ['contains', 'not_contains', 'eq'],
         'status'       => ['eq', 'ne', 'empty', 'not_empty'],
@@ -268,6 +310,7 @@ final class DbProps
         'select.ne'          => "coalesce(p.properties->>CAST({k} AS text), '') <> CAST({v} AS text)",
         'multi_select.has'   => "jsonb_exists(coalesce(p.properties->CAST({k} AS text), '[]'::jsonb), CAST({v} AS text))",
         'multi_select.not_has' => "NOT jsonb_exists(coalesce(p.properties->CAST({k} AS text), '[]'::jsonb), CAST({v} AS text))",
+        'relation.has'       => "jsonb_exists(coalesce(p.properties->CAST({k} AS text), '[]'::jsonb), CAST({v} AS text))",
         'person.eq'          => "p.properties->>CAST({k} AS text) = CAST({v} AS text)",
         'title.contains'     => "strpos(lower(p.title), lower(CAST({v} AS text))) > 0",
         'title.not_contains' => "strpos(lower(p.title), lower(CAST({v} AS text))) = 0",
@@ -357,6 +400,11 @@ final class DbProps
                 return $d;
             case 'status':
                 if (!is_string($v) || !in_array($v, COMMUNITY_STATUSES, true)) {
+                    throw new InvalidArgumentException('value');
+                }
+                return $v;
+            case 'relation':
+                if (!is_string($v) || preg_match(self::UUID_RE, $v) !== 1) {
                     throw new InvalidArgumentException('value');
                 }
                 return $v;
@@ -456,7 +504,117 @@ final class DbProps
         if ($needsOptions !== array_key_exists('options', $p)) {
             return false;
         }
+        // 6-B 관계는 대상 DB(UUID)를 가진다 — 다른 종류는 가지지 않는다
+        $isRel = $p['type'] === 'relation';
+        if ($isRel !== array_key_exists('target', $p) || ($isRel && preg_match(self::UUID_RE, (string) $p['target']) !== 1)) {
+            return false;
+        }
         return !$needsOptions || self::cleanOptions($p['options']) !== null;
+    }
+
+    /* ───────────── 6-B 뷰 ───────────── */
+
+    public static function newViewId(): string
+    {
+        return 'v' . bin2hex(random_bytes(4));
+    }
+
+    /**
+     * 뷰 한 줄 `{name, type, filter?, sort?, hidden?}` 을 검사한다 — 거르기·정렬은 **지금 스키마로 컴파일이 되는지**까지 본다.
+     * 틀리면 null. `id` 는 부르는 쪽이 붙인다.
+     *
+     * @return array<string,mixed>|null
+     */
+    public static function cleanView($raw, array $schema): ?array
+    {
+        if (!is_array($raw) || array_diff(array_keys($raw), ['name', 'type', 'filter', 'sort', 'hidden']) !== []) {
+            return null;
+        }
+        $name = self::cleanName($raw['name'] ?? null);
+        if ($name === null || !in_array($raw['type'] ?? null, self::VIEW_TYPES, true)) {
+            return null;
+        }
+        $out = ['name' => $name, 'type' => $raw['type']];
+        try {
+            /* 검사를 지난 모양으로 **다시 만들어** 저장한다(독립 검토 6-B M-1) — 값이 필요 없는 연산자(empty 등)에 딸려 온
+               `value` 나 모르는 덩어리가 뷰에 쌓여 모든 독자의 응답을 부풀리지 않게. 값은 filterValue 가 받은 스칼라뿐이다. */
+            if (isset($raw['filter']) && $raw['filter'] !== null && $raw['filter'] !== []) {
+                self::compileFilter($raw['filter'], $schema);
+                $conds = [];
+                foreach ($raw['filter']['and'] as $c) {
+                    $one = ['prop' => (string) $c['prop'], 'op' => (string) $c['op']];
+                    if (!in_array($c['op'], ['empty', 'not_empty'], true) && array_key_exists('value', $c) && is_scalar($c['value'])) {
+                        $one['value'] = $c['value'];
+                    }
+                    $conds[] = $one;
+                }
+                $out['filter'] = ['and' => $conds];
+            }
+            if (isset($raw['sort']) && $raw['sort'] !== null && $raw['sort'] !== []) {
+                self::compileSort($raw['sort'], $schema);
+                $out['sort'] = array_map(static fn (array $s): array => ['prop' => (string) $s['prop'], 'dir' => (string) ($s['dir'] ?? 'asc')], $raw['sort']);
+            }
+        } catch (InvalidArgumentException $e) {
+            return null;
+        }
+        if (isset($raw['hidden'])) {
+            if (!is_array($raw['hidden']) || !array_is_list($raw['hidden']) || count($raw['hidden']) > self::MAX_PROPS) {
+                return null;
+            }
+            foreach ($raw['hidden'] as $k) {
+                if (!is_string($k) || self::find($schema, $k) === null) {
+                    return null;
+                }
+            }
+            $out['hidden'] = array_values(array_unique($raw['hidden']));
+        }
+        // 뷰 하나는 4KB 까지(이름 50자 · 조건 10 · 정렬 3 · 숨김 30 이면 넉넉하다)
+        if (strlen((string) json_encode($out, JSON_UNESCAPED_UNICODE)) > 4096) {
+            return null;
+        }
+        return $out;
+    }
+
+    /* ───────────── 6-B 계산 (T-29 — 보이는 행만) ───────────── */
+
+    /** 계산 조각 — `{k}` 속성 key 바인딩, `{a}` 결과 이름(숫자 번호로만 만든다) */
+    private const AGG = [
+        'filled'  => "count(p.properties->CAST({k} AS text)) AS {a}_filled",
+        'sum'     => "sum(CASE WHEN jsonb_typeof(p.properties->CAST({k} AS text)) = 'number' THEN (p.properties->>CAST({k} AS text))::numeric END) AS {a}_sum",
+        'avg'     => "avg(CASE WHEN jsonb_typeof(p.properties->CAST({k} AS text)) = 'number' THEN (p.properties->>CAST({k} AS text))::numeric END) AS {a}_avg",
+        'checked' => "count(*) FILTER (WHERE p.properties->>CAST({k} AS text) = 'true') AS {a}_checked",
+        'next'    => "min(left(p.properties->CAST({k} AS text)->>'start', 10)) FILTER (WHERE left(p.properties->CAST({k} AS text)->>'start', 10) >= CAST(:today AS text)) AS {a}_next",
+    ];
+
+    /**
+     * 스키마 → 계산 SELECT 목록 조각 + 바인딩 + 결과 읽는 법. 결과는 **수**뿐이다(행 제목·값 목록 없음).
+     *
+     * @return array{0:string,1:array<string,mixed>,2:list<array{key:string,alias:string,kinds:list<string>}>}
+     */
+    public static function compileSummary(array $schema): array
+    {
+        $parts = [];
+        $bind  = [];
+        $meta  = [];
+        foreach (array_values($schema) as $i => $p) {
+            $kinds = ['filled'];
+            if ($p['type'] === 'number') {
+                $kinds[] = 'sum';
+                $kinds[] = 'avg';
+            } elseif ($p['type'] === 'checkbox') {
+                $kinds = ['checked'];
+            } elseif ($p['type'] === 'date') {
+                $kinds[] = 'next';
+            }
+            $kName = ':ak' . $i;
+            $alias = 'a' . $i;
+            foreach ($kinds as $kind) {
+                $parts[] = strtr(self::AGG[$kind], ['{k}' => $kName, '{a}' => $alias]);
+            }
+            $bind[$kName] = (string) $p['key'];
+            $meta[]       = ['key' => (string) $p['key'], 'alias' => $alias, 'kinds' => $kinds];
+        }
+        return [$parts === [] ? '' : ', ' . implode(', ', $parts), $bind, $meta];
     }
 
     /** `YYYY-MM-DD` 또는 `YYYY-MM-DDTHH:MM` — 달력에 있는 날만 */

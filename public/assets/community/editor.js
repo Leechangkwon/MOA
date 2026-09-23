@@ -2572,7 +2572,8 @@ function initPage() {
   // 6-A — DB 표·행 속성 줄. 도우미는 이 파일의 것을 그대로 넘긴다(두 벌로 두지 않는다).
   const dbView = createDatabaseView({
     api: api, setText: setText, show: show, clear: clear, errorMessage: errorMessage,
-    base: COMMUNITY_BASE, statusLabels: STATUS_LABELS, genericError: GENERIC_ERROR, toLogin: toLogin
+    base: COMMUNITY_BASE, statusLabels: STATUS_LABELS, genericError: GENERIC_ERROR, toLogin: toLogin,
+    tboxBase: APP_BASE, spaceId: () => (state.space ? state.space.id : 0)
   });
   const moveButton = document.getElementById('page-move');
   const conflictDialog = document.getElementById('conflict-dialog');

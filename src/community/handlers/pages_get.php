@@ -339,8 +339,11 @@ Http::json([
     'row' => $row['database_id'] === null ? null : [
         'database_id' => (string) $row['db_public_id'],
         'schema'      => ($rowSchema = community_db_schema_of($row['db_schema'])),
-        'values'      => community_db_values_out($rowSchema, $row['properties']),
+        'values'      => ($rowVals = community_db_values_out($rowSchema, $row['properties'])),
         'can_edit'    => $mayChange,
+        // 6-B — 관계·파일 값의 제목(보는 사람 권한으로 거른 것만)
+        'relation_titles' => (($rt = community_db_ref_titles($rowSchema, [$rowVals], $user))[0] === [] ? new stdClass() : $rt[0]),
+        'file_titles'     => ($rt[1] === [] ? new stdClass() : $rt[1]),
     ],
     'can_comment'    => CommunityAuthz::decideCommentCreate($user, $row)[0],
     'can_view_reads' => CommunityAuthz::decideReadsView($user, $row)[0],

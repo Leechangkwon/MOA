@@ -10,6 +10,7 @@ declare(strict_types=1);
  *   filter  JSON `{"and":[{"prop","op","value"}]}` (≤10, 선택) — `DbProps::compileFilter` 허용 목록
  *   sort    JSON `[{"prop","dir"}]` (≤3, 선택) — `DbProps::compileSort`
  *   page    쪽 번호(1부터, 한 쪽 100행)
+ *   view    저장한 뷰 id(6-B, 선택) — 뷰의 거르기에 요청 거르기를 AND 로 더하고, 정렬은 요청이 있으면 요청
  *
  * 관문: **DB 페이지를 볼 수 있어야** 한다(`community_history_gate` — 못 보면 403·404, 감사는 그 관문이).
  * 행은 **목록 조건절 안에서만** 센다 — 못 보는 행은 목록·수·거르기 결과 어디에도 없다(T-29 의 전제).
@@ -43,9 +44,24 @@ $decode = static function (string $name) {
     return $v;
 };
 
+$views  = community_db_views_of($dbRow['views'], $schema);
+$viewId = Http::queryText('view', 20);
+$view   = null;
+if ($viewId !== '') {
+    foreach ($views as $v) {
+        if ($v['id'] === $viewId) {
+            $view = $v;
+        }
+    }
+    if ($view === null) {
+        Http::json(['error' => '없는 뷰입니다', 'reason' => 'bad_filter'], 400);
+        exit;
+    }
+}
 try {
-    [$filterSql, $filterBind] = DbProps::compileFilter($decode('filter'), $schema);
-    [$orderSql, $orderBind]   = DbProps::compileSort($decode('sort'), $schema);
+    [$useFilter, $useSort]    = community_db_effective($view, $decode('filter'), $decode('sort'));
+    [$filterSql, $filterBind] = DbProps::compileFilter($useFilter, $schema);
+    [$orderSql, $orderBind]   = DbProps::compileSort($useSort, $schema);
 } catch (InvalidArgumentException $e) {
     Http::json(['error' => '거르기·정렬 모양이 맞지 않습니다', 'reason' => 'bad_filter'], 400);
     exit;
@@ -102,8 +118,15 @@ foreach (Db::instance()->run($sqlList, $listBind)->fetchAll() as $r) {
     ];
 }
 
+// 6-B — 관계·파일 값의 제목은 **보는 사람 권한으로** 거른 지도로만(못 보는 행·파일은 지도에 없다)
+[$relTitles, $fileTitles] = community_db_ref_titles($schema, array_map(static fn (array $r) => $r['values'], $rows), $user);
+
 // 화면 편의 값 — 행마다 판정하지 않고 DB 페이지의 판정을 보인다(행 값 창구가 행마다 다시 막는다).
 Http::json([
+    'views'           => $views,
+    'view'            => $view === null ? null : $view['id'],
+    'relation_titles' => $relTitles === [] ? new stdClass() : $relTitles,
+    'file_titles'     => $fileTitles === [] ? new stdClass() : $fileTitles,
     'database' => [
         'id'      => (string) $dbRow['public_id'],
         'page_id' => (string) $dbRow['page_public_id'],

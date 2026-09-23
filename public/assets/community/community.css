@@ -764,3 +764,25 @@ th.doc-table__cell { background: var(--surface-2); font-weight: 600; }
 .db-props { display: grid; grid-template-columns: minmax(6rem, 12rem) 1fr; gap: 6px 16px; margin: 0; align-items: center; }
 .db-props__name { color: var(--muted); font-size: 14px; }
 .db-props__value { margin: 0; min-width: 0; }
+
+/* ── 6-B 뷰 · 보드 · 리스트 · 계산 · 관계/파일 고르기 (새 색값 0) ───────────── */
+.db-viewbar { flex-wrap: wrap; gap: 6px; }
+.db-type.is-active { background: var(--muted-bg); color: var(--fg); font-weight: 600; }
+.db-saved { display: inline-flex; flex-wrap: wrap; gap: 6px; }
+.db-view-form { display: inline-flex; gap: 6px; }
+.db-view-form .input { height: 30px; width: 10rem; }
+.db-board { display: flex; gap: 12px; overflow-x: auto; padding-bottom: 6px; }
+.db-board__col { flex: 0 0 15rem; display: flex; flex-direction: column; gap: 8px; padding: 10px; border: 1px solid var(--line); border-radius: var(--r-ctl); background: var(--surface-2); min-height: 6rem; }
+.db-board__col.is-over { border-color: var(--ring); }
+.db-board__head { margin: 0; font-size: 13px; font-weight: 600; color: var(--muted); }
+.db-card { display: flex; flex-direction: column; gap: 4px; padding: 8px 10px; cursor: grab; }
+.db-card:focus-visible { outline: none; border-color: var(--ring); box-shadow: 0 0 0 3px var(--ring-soft); }
+.db-card__title { font-weight: 600; color: var(--fg); text-decoration: none; }
+.db-card__title:hover { text-decoration: underline; }
+.db-card__prop { font-size: 13px; }
+.db-list__item { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.db-list__prop { font-size: 13px; display: inline-flex; align-items: center; gap: 4px; }
+.db-sum { color: var(--muted); font-size: 13px; background: var(--surface-2); }
+.db-picker { display: flex; flex-direction: column; gap: 6px; min-width: 14rem; }
+.db-picker__list { max-height: 12rem; overflow-y: auto; }
+.block-pick[aria-pressed="true"] { background: var(--muted-bg); font-weight: 600; }

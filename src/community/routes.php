@@ -98,6 +98,10 @@ const COMMUNITY_ROUTES = [
     ['GET',    '/api/databases/{id}/rows',               'database_rows.php',    'community.read'],
     ['PATCH',  '/api/databases/{id}/schema',             'database_schema.php',  'community.write'],
     ['PATCH',  '/api/pages/{id}/values',                 'page_values.php',      'community.write'],
+    // 6-B — 저장한 뷰(공용) · 계산(보이는 행만, 수만) · 관계 대상 고르기(같은 공간의 볼 수 있는 DB)
+    ['GET',    '/api/databases',                         'databases_list.php',   'community.read'],
+    ['PATCH',  '/api/databases/{id}/views',              'database_views.php',   'community.write'],
+    ['GET',    '/api/databases/{id}/summary',            'database_summary.php', 'community.read'],
 
     /* ── 사람 지정 공유 · 인계 (5-A, PRD NG-8 해제 · F-28) ──
      * 목록은 `community.read` + 그 페이지의 `decidePageRead`, 바꾸는 셋은 `community.write` +
@@ -2340,7 +2344,7 @@ function community_db_person_ok(string $username, string $pagePublicId): bool
 function community_db_row(string $dbPublicId): ?array
 {
     $sql = <<<'SQL'
-        SELECT d.id, d.public_id, d.page_id, d.schema, d.updated_at, p.public_id AS page_public_id
+        SELECT d.id, d.public_id, d.page_id, d.schema, d.views, d.updated_at, p.public_id AS page_public_id
           FROM community.databases d
           JOIN community.pages p ON p.id = d.page_id
          WHERE d.public_id = CAST(:id AS uuid)
@@ -2403,4 +2407,129 @@ function community_db_sync_row(int $pageId, int $byUserId): void
          WHERE id = CAST(:pid AS bigint)
         SQL;
     Db::instance()->run($upd, [':db' => $want, ':db2' => $want, ':pid' => $pageId]);
+}
+
+/* ───────────── 6-B 관계 · 파일 속성 도우미 ───────────── */
+
+/**
+ * DB 의 저장한 뷰 목록(모양이 틀린 줄은 버린다 — 스키마가 바뀌어 거르기가 더는 맞지 않는 뷰도 뺀다).
+ *
+ * @return list<array<string,mixed>>
+ */
+function community_db_views_of($json, array $schema): array
+{
+    $list = is_string($json) ? json_decode($json, true) : (is_array($json) ? $json : null);
+    $out  = [];
+    foreach (is_array($list) ? $list : [] as $v) {
+        if (!is_array($v) || !is_string($v['id'] ?? null) || preg_match('/^v[0-9a-f]{8}$/', $v['id']) !== 1) {
+            continue;
+        }
+        $clean = DbProps::cleanView(array_diff_key($v, ['id' => 1]), $schema);
+        if ($clean !== null) {
+            $out[] = ['id' => $v['id']] + $clean;
+        }
+    }
+    return $out;
+}
+
+/**
+ * 뷰 + 요청의 거르기·정렬 → 실제로 쓸 거르기·정렬. 거르기는 AND 로 잇고(합쳐 ≤ 10), 정렬은 요청이 있으면 요청.
+ *
+ * @return array{0:mixed,1:mixed}
+ */
+function community_db_effective(?array $view, $reqFilter, $reqSort): array
+{
+    $filter = $reqFilter;
+    if ($view !== null && isset($view['filter'])) {
+        $a = $view['filter']['and'] ?? [];
+        $b = is_array($reqFilter) && isset($reqFilter['and']) && is_array($reqFilter['and']) ? $reqFilter['and'] : [];
+        if ($reqFilter !== null && (!is_array($reqFilter) || array_keys($reqFilter) !== ['and'])) {
+            throw new InvalidArgumentException('filter shape');
+        }
+        $filter = ['and' => array_merge($a, $b)];
+    }
+    $sort = $reqSort !== null ? $reqSort : ($view['sort'] ?? null);
+    return [$filter, $sort];
+}
+
+/**
+ * 관계·파일 값이 들어갈 수 있나 — 넣는 사람 기준. 틀리면 거짓(없는·못 보는·좁은 것은 **같은 답**).
+ *   관계: 값의 행마다 — 있고 지워지지 않았고 **대상 DB 의 행**이고 넣는 사람이 읽을 수 있다
+ *   파일: **새로 붙인** 파일만 5-E 첨부 규칙(`community_file_refs_ok`) — 넣는 사람이 볼 수 있고 `$audiences` 보다 좁지 않다
+ *
+ * @param array<string,mixed> $prop       속성 한 줄
+ * @param mixed               $value      `DbProps::cleanValue` 를 지난 값(null 아님)
+ * @param mixed               $before     지금 값(파일은 새로 붙인 것만 본다)
+ * @param list<array>         $audiences  행을 읽는 범위(`CommunityAuthz::pageAudiences`)
+ */
+function community_db_refs_ok(array $prop, $value, $before, array $audiences, array $u): bool
+{
+    if ($prop['type'] === 'relation') {
+        // 새로 넣은 행만 본다(독립 검토 6-B L-3 — 이미 있던 대상이 나중에 지워지거나 못 보게 돼도 칸의 다른 값은 고칠 수 있게)
+        foreach (array_diff((array) $value, is_array($before) ? $before : []) as $rid) {
+            $r = community_page_row((string) $rid, (int) $u['id']);
+            if ($r === null || $r['deleted_at'] !== null || (string) ($r['db_public_id'] ?? '') !== (string) $prop['target']
+                || !CommunityAuthz::decidePageRead($u, $r)[0]) {
+                return false;
+            }
+        }
+        return true;
+    }
+    if ($prop['type'] === 'file') {
+        $new = array_values(array_diff((array) $value, is_array($before) ? $before : []));
+        $ids = array_map(static fn (string $f): string => substr($f, 5), $new);
+        return community_file_refs_ok($ids, $audiences, $u);
+    }
+    return true;
+}
+
+/**
+ * 행들의 관계·파일 값 → 보는 사람 권한으로 거른 제목 지도 둘(`relation_titles` · `file_titles`).
+ * 못 보는 행·파일은 지도에 없다 — 화면이 「볼 수 없는 행/파일」로 그린다.
+ *
+ * @param list<array<string,mixed>> $schema
+ * @param list<mixed>               $valuesList 행마다의 값 객체
+ * @return array{0:array<string,mixed>,1:array<string,mixed>}
+ */
+function community_db_ref_titles(array $schema, array $valuesList, array $u): array
+{
+    $rel   = [];
+    $files = [];
+    foreach ($schema as $p) {
+        if ($p['type'] !== 'relation' && $p['type'] !== 'file') {
+            continue;
+        }
+        foreach ($valuesList as $vals) {
+            $v = is_array($vals) ? ($vals[$p['key']] ?? null) : (is_object($vals) ? ($vals->{$p['key']} ?? null) : null);
+            foreach (is_array($v) ? $v : [] as $x) {
+                if ($p['type'] === 'relation') {
+                    $rel[] = (string) $x;
+                } else {
+                    $files[] = substr((string) $x, 5);
+                }
+            }
+        }
+    }
+    return [community_link_titles(array_slice(array_values(array_unique($rel)), 0, 200), $u),
+            community_file_titles(array_slice(array_values(array_unique($files)), 0, 200), $u)];
+}
+
+/**
+ * 행 하나의 파일 속성 값 전부(첨부 규칙 재검사용 — 범위 넓히기). `tbox:` 를 뗀 UUID 목록.
+ *
+ * @return list<string>
+ */
+function community_db_row_files($propsJson, $schemaJson): array
+{
+    $schema = community_db_schema_of($schemaJson);
+    $vals   = is_string($propsJson) ? json_decode($propsJson, true) : (is_array($propsJson) ? $propsJson : null);
+    $out    = [];
+    foreach ($schema as $p) {
+        if ($p['type'] === 'file' && is_array($vals) && is_array($vals[$p['key']] ?? null)) {
+            foreach ($vals[$p['key']] as $f) {
+                $out[] = substr((string) $f, 5);
+            }
+        }
+    }
+    return $out;
 }

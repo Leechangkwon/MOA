@@ -73,6 +73,14 @@ foreach ($body['values'] as $k => $v) {
         Http::json(['error' => '이 행을 볼 수 없는 사람은 넣을 수 없습니다', 'reason' => 'person_not_permitted'], 400);
         exit;
     }
+    // 6-B 관계·파일 — 넣는 사람이 볼 수 있어야 하고(관계: 대상 DB 의 행) 파일은 행을 읽는 범위보다 좁지 않아야(5-E) — 같은 400
+    if ($clean !== null && in_array((string) $prop['type'], ['relation', 'file'], true)) {
+        $curVals = json_decode((string) ($row['properties'] ?? '{}'), true) ?: [];
+        if (!community_db_refs_ok($prop, $clean, $curVals[(string) $k] ?? null, CommunityAuthz::pageAudiences($row), $user)) {
+            Http::json(['error' => '넣을 수 없는 행이나 파일이 있습니다. 내가 볼 수 있고, 이 행을 읽는 사람도 볼 수 있는 것만 넣습니다', 'reason' => 'bad_ref'], 400);
+            exit;
+        }
+    }
     $props[(string) $k] = $prop;
     if ($clean === null) {
         $del[] = (string) $k;
@@ -92,6 +100,17 @@ $sqlSet = <<<'SQL'
      WHERE id = CAST(:pid AS bigint)
     RETURNING properties
     SQL;
+
+/** 값 → 키 순서를 맞춘 JSON 글자 (같은 값 판정용) */
+$canon = static function ($v) use (&$canon): string {
+    if (is_array($v) && !array_is_list($v)) {
+        ksort($v);
+    }
+    if (is_array($v)) {
+        return '[' . implode(',', array_map(static fn ($k, $x): string => json_encode($k) . ':' . $canon($x), array_keys($v), $v)) . ']';
+    }
+    return (string) json_encode($v, JSON_UNESCAPED_UNICODE);
+};
 
 $changed = [];
 $db->begin();
@@ -113,12 +132,12 @@ try {
     foreach ($props as $k => $prop) {
         $from = array_key_exists($k, $before) ? $before[$k] : null;
         $to   = $set[$k] ?? null;
-        // 같은 값이면 남기지 않는다 — 기록은 「바뀐 일」의 장부다. jsonb 는 객체 키 순서를 바꾸므로 사람 말로 견준다
-        $fromText = DbProps::display($prop, $from);
-        $toText   = DbProps::display($prop, $to);
-        if ($fromText === $toText) {
+        // 같은 값이면 남기지 않는다 — 기록은 「바뀐 일」의 장부다. jsonb 는 객체 키 순서를 바꾸므로 키를 맞춘 JSON 으로 견준다
+        if ($canon($from) === $canon($to)) {
             continue;
         }
+        $fromText = DbProps::display($prop, $from);
+        $toText   = DbProps::display($prop, $to);
         community_insert_property_event($pageId, 'db:' . $k, $fromText, $toText, $me);
         $changed[] = (string) $prop['name'];
     }

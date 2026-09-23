@@ -788,6 +788,8 @@ final class Audit
         'database.create|allow'                 => '{actor} 이(가) 데이터베이스 「{target}」 을(를) 만들었습니다',
         'database.schema|allow'                 => '{actor} 이(가) 데이터베이스 「{target}」 의 속성을 바꿨습니다 (무엇을 어떻게는 상세 기록)',
         'database.schema|deny|not_owner'        => '{actor} 이(가) 관리 자격이 없는 데이터베이스 「{target}」 의 속성을 바꾸려 해서 막았습니다',
+        'database.views|allow'                  => '{actor} 이(가) 데이터베이스 「{target}」 의 뷰를 바꿨습니다 (무엇을 어떻게는 상세 기록)',
+        'database.views|deny|not_owner'         => '{actor} 이(가) 고칠 수 없는 데이터베이스 「{target}」 의 뷰를 바꾸려 해서 막았습니다',
         'page.values|allow'                     => '{actor} 이(가) 데이터베이스 행 「{target}」 의 속성 값을 바꿨습니다 (어느 속성·이전→새값은 상세 기록)',
         'page.values|deny|not_owner'            => '{actor} 이(가) 고칠 수 없는 데이터베이스 행 「{target}」 의 속성 값을 바꾸려 해서 막았습니다',
         'page.property|allow'                   => '{actor} 이(가) 페이지 「{target}」 의 상태 또는 담당자를 바꿨습니다 (어느 칸·이전→새값은 상세 기록)',
@@ -879,6 +881,7 @@ final class Audit
         'page.update|deny|file_ref'             => '{actor} 이(가) 페이지 「{target}」 에 붙일 수 없는 파일을 붙이려 해서 거부했습니다',
         'page.publish|deny|file_narrower'       => '{actor} 이(가) 페이지 「{target}」 을(를) 게시하려 했지만 게시판을 보는 사람이 볼 수 없는 파일이 붙어 있어 거부했습니다 (게시판은 상세 기록)',
         'page.restore_version|deny|file_ref'    => '{actor} 이(가) 페이지 「{target}」 을(를) 지금 붙일 수 없는 파일이 든 판으로 되돌리려 해서 거부했습니다',
+        'page.visibility|deny|too_many_files'   => '{actor} 이(가) 페이지 「{target}」 를 넓히려 했지만 붙은 파일이 너무 많아 한 번에 견줄 수 없어 거부했습니다',
         'page.visibility|deny|file_narrower'    => '{actor} 이(가) 페이지 「{target}」 를 넓히려 했지만 새 범위의 사람이 볼 수 없는 파일이 붙어 있어 거부했습니다',
         'page.delete|deny|not_author'           => '{actor} 이(가) 다른 사람이 쓴 게시판 글 「{target}」 을(를) 지우려 해서 막았습니다',
     ];
