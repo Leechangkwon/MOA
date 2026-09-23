@@ -244,37 +244,57 @@ if (!headers_sent()) {
 
   <aside id="sidebar" class="sidebar" hidden>
     <div class="brand">
-      <span class="brand__mark"><span class="icon" data-icon="<?= htmlspecialchars($shellBrandIcon, ENT_QUOTES, 'UTF-8') ?>"></span></span>
-      <span class="brand__text">
-        <span class="brand__name"><?= htmlspecialchars($shellBrandName, ENT_QUOTES, 'UTF-8') ?></span>
-        <span class="brand__sub"><?= htmlspecialchars($shellBrandSub, ENT_QUOTES, 'UTF-8') ?></span>
-      </span>
-
-      <!-- ─── 앱 그리드 단추 (Qaredi C — DESIGN.md 2.9 「자리 정정 2026-09-22」, ARCH-launcher 6장) ───
-           자리는 **사이드바 브랜드 줄 오른쪽** 하나뿐이다 — `header.appbar` 는 넓은 화면(≥960px)에서
-           CSS 가 숨기므로 거기 두면 데스크톱에서 보이지 않는다. 좁은 화면에서는 사이드바 서랍을
-           열면 같은 자리에 보인다. 클래스 이름 `appbar__apps` 는 시험·문서가 쓰는 이름이라 유지한다.
-           스크립트 0 으로 열린다: `<details>` 의 기본 동작이고 인라인 style·on* 이 없다(CSP).
-           아이콘 단추에는 브라우저 `title` 을 달지 않는다 — CSS 툴팁이 aria-label 을 읽는다(D-3, 2.8).
-           목록은 런처(`/`)와 **같은** `Apps::all()` 이다 — 목록이 두 벌이면 언젠가 한쪽만 고쳐진다.
-           현재 앱에는 aria-current="page", 아직 없는 앱에는 배지 「준비 중」이 붙고 링크가 없다. -->
+      <!-- ─── 앱 메뉴 (사용자 지시 2026-09-23) ───────────────────────────────────
+           「로그아웃은 Qaredi 홈·t-box·커뮤니티로 전환하는 곳에 — 관리자 페이지·설정도 거기에 —
+           박스가 조그매서 눈에 안 띄니 더 직관적이고 큰 것으로」. 전에는 브랜드 줄 오른쪽의 작은
+           그리드 단추(⋮⋮⋮)가 앱 목록만 열었고, 로그아웃은 사이드바 맨 아래 아이콘이라 툴팁이
+           칸을 밀었다. 이제 **브랜드 덩어리 전체가 단추**이고 한 메뉴에 앱 · 계정 · 관리 · 로그아웃.
+           스크립트 0 으로 열린다(`<details>`), 인라인 style·on* 0 (CSP). 클래스 `appbar__apps` 는
+           시험(Q:T-8)·문서가 쓰는 이름이라 유지한다. 앱 목록은 런처와 **같은** `Apps::all()` 이다.
+           관리자 페이지 줄의 열고 닫음은 사이드바 관리 링크와 같은 표시용 값(`can_admin`)을
+           app.js 가 쓰고, 막는 것은 여전히 라우트 정책·재인증 관문이다 (PRD S-01). -->
       <details class="appbar__apps">
-        <summary class="btn btn--icon btn--plain" aria-label="앱">
-          <span class="icon" data-icon="grid"></span>
+        <summary class="brand__switch" aria-label="앱 전환과 계정 메뉴">
+          <span class="brand__mark"><span class="icon" data-icon="<?= htmlspecialchars($shellBrandIcon, ENT_QUOTES, 'UTF-8') ?>"></span></span>
+          <span class="brand__text">
+            <span class="brand__name"><?= htmlspecialchars($shellBrandName, ENT_QUOTES, 'UTF-8') ?></span>
+            <span class="brand__sub"><?= htmlspecialchars($shellBrandSub, ENT_QUOTES, 'UTF-8') ?></span>
+          </span>
+          <span class="brand__chev icon" data-icon="chevron"></span>
         </summary>
-        <div class="panel">
-          <ul class="list">
-            <li class="list__item"><a href="/">Qaredi 홈</a></li>
+        <div class="panel app-menu">
+          <p class="app-menu__label">앱</p>
+          <ul class="app-menu__apps">
+            <li><a class="app-menu__app" href="/"><span class="app-menu__icon icon" data-icon="home"></span><span class="app-menu__text"><span class="app-menu__name">Qaredi 홈</span><span class="app-menu__desc">앱 고르는 첫 화면</span></span></a></li>
 <?php foreach ($shellApps as $shellApp): ?>
+<?php   $shellAppName = htmlspecialchars((string) $shellApp['name'], ENT_QUOTES, 'UTF-8'); ?>
+<?php   $shellAppDesc = htmlspecialchars((string) ($shellApp['desc'] ?? ''), ENT_QUOTES, 'UTF-8'); ?>
+<?php   $shellAppIcon = htmlspecialchars((string) ($shellApp['icon'] ?? 'grid'), ENT_QUOTES, 'UTF-8'); ?>
 <?php   if (($shellApp['status'] ?? '') === 'soon'): ?>
-            <li class="list__item"><span class="muted"><?= htmlspecialchars((string) $shellApp['name'], ENT_QUOTES, 'UTF-8') ?></span> <span class="badge">준비 중</span></li>
+            <li><span class="app-menu__app is-soon"><span class="app-menu__icon icon" data-icon="<?= $shellAppIcon ?>"></span><span class="app-menu__text"><span class="app-menu__name"><?= $shellAppName ?> <span class="badge">준비 중</span></span><span class="app-menu__desc"><?= $shellAppDesc ?></span></span></span></li>
 <?php   elseif ($shellApp['key'] === $shellCurrentApp): ?>
-            <li class="list__item"><a href="<?= htmlspecialchars((string) $shellApp['path'], ENT_QUOTES, 'UTF-8') ?>" aria-current="page"><?= htmlspecialchars((string) $shellApp['name'], ENT_QUOTES, 'UTF-8') ?></a></li>
+            <li><a class="app-menu__app" href="<?= htmlspecialchars((string) $shellApp['path'], ENT_QUOTES, 'UTF-8') ?>" aria-current="page"><span class="app-menu__icon icon" data-icon="<?= $shellAppIcon ?>"></span><span class="app-menu__text"><span class="app-menu__name"><?= $shellAppName ?></span><span class="app-menu__desc"><?= $shellAppDesc ?></span></span><span class="app-menu__check icon" data-icon="check"></span></a></li>
 <?php   else: ?>
-            <li class="list__item"><a href="<?= htmlspecialchars((string) $shellApp['path'], ENT_QUOTES, 'UTF-8') ?>"><?= htmlspecialchars((string) $shellApp['name'], ENT_QUOTES, 'UTF-8') ?></a></li>
+            <li><a class="app-menu__app" href="<?= htmlspecialchars((string) $shellApp['path'], ENT_QUOTES, 'UTF-8') ?>"><span class="app-menu__icon icon" data-icon="<?= $shellAppIcon ?>"></span><span class="app-menu__text"><span class="app-menu__name"><?= $shellAppName ?></span><span class="app-menu__desc"><?= $shellAppDesc ?></span></span></a></li>
 <?php   endif; ?>
 <?php endforeach; ?>
           </ul>
+          <p class="app-menu__label">계정</p>
+          <!-- 사이드바 아래 `.userchip` 과 클래스를 나눠 쓴다 — 같은 클래스가 두 벌이면 시험·스크립트가
+               닫힌 메뉴 쪽을 먼저 읽는다(stage26 「원래대로 뒤 칩 역할」 실측 2026-09-23). -->
+          <div class="app-menu__me">
+            <span class="app-menu__avatar" aria-hidden="true"><?= $shellInitial ?></span>
+            <span class="app-menu__text">
+              <span class="app-menu__name"><?= $shellName ?></span>
+              <span class="app-menu__desc"><?= $shellRole ?></span>
+            </span>
+          </div>
+          <nav class="nav" aria-label="계정">
+            <a id="menu-settings" class="nav__item" href="<?= Http::url('/settings') ?>"><span class="icon" data-icon="settings"></span><span>내 계정 설정</span></a>
+            <a id="menu-activity" class="nav__item" href="<?= Http::url('/activity') ?>"><span class="icon" data-icon="log"></span><span>내 활동</span></a>
+            <a id="menu-admin" class="nav__item" href="<?= Http::url('/admin') ?>" hidden><span class="icon" data-icon="lock"></span><span>관리자 페이지</span></a>
+            <button id="logout" class="nav__item app-menu__logout" type="button"><span class="icon" data-icon="logout"></span><span>로그아웃</span></button>
+          </nav>
         </div>
       </details>
     </div>
@@ -388,9 +408,6 @@ if (!headers_sent()) {
         <span class="userchip__name"><?= $shellName ?></span>
         <span class="userchip__role"><?= $shellRole ?></span>
       </span>
-      <button id="logout" class="btn btn--icon btn--plain" type="button" aria-label="로그아웃">
-        <span class="icon" data-icon="logout"></span>
-      </button>
     </div>
   </aside>
 

@@ -7862,12 +7862,15 @@ function initShell(me, csrfToken) {
   // 15-1 — 「내 활동」은 모든 로그인 사용자에게 열린다(권한 플래그가 없다, PRD F-12).
   // 강제 절차(F-16) 중에는 다른 항목과 함께 닫힌다 — showNav 가 inGate 를 먼저 본다.
   showNav('nav-activity', true);
+  // 앱 메뉴(브랜드 단추)의 계정 줄 — 사이드바 「설정」 묶음과 같은 규칙이다 (2026-09-23).
+  showNav('menu-settings', true);
+  showNav('menu-activity', true);
   /* 26단계 (PRD F-40) — 「관리」 묶음의 링크 **7개를 같은 값 하나로** 함께 연다.
      화면이 역할별로 더 감추기 시작하면 그것이 곧 화면에 심은 권한 판단이 된다. 항목을 개발자도구로 되살려도
      각 경로의 라우트 정책(user.manage·org.manage·audit.read·role:Admin)과 재인증 관문이
      서버에서 다시 막는다 (PRD S-01, T-38·T-53). */
   ['nav-admin', 'nav-users', 'nav-org', 'nav-admin-permissions', 'nav-admin-fetch-hosts',
-   'nav-audit', 'nav-trash', 'nav-wiki'].forEach(function (id) {
+   'nav-audit', 'nav-trash', 'nav-wiki', 'menu-admin'].forEach(function (id) {
     showNav(id, canAdmin);
   });
 

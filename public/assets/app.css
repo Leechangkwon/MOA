@@ -449,6 +449,31 @@ table.files tbody tr:hover .btn--icon[aria-label="삭제"] { color: var(--danger
 td.actions .btn--icon:last-child::after,
 .modal__head .btn--icon::after { left: auto; right: 0; transform: none; }
 
+/* ★ 툴팁이 칸을 밀던 것 (사용자 지적 2026-09-23 「로그아웃에 올리면 아래에 이름이 뜨는데 스크롤해야
+   보이고 칸이 밀린다」 · 「t-box 미리보기도 하단에 설명이 뜨며 같은 일이 생긴다」).
+   위의 툴팁은 단추에 붙은 absolute 조각이라, 스크롤이 있는 칸(사이드바·표 감싸개) 안 맨 아래
+   단추에서는 그 조각만큼 **칸의 스크롤 영역이 늘었다**. 앵커 위치 지정을 아는 브라우저에서는
+   툴팁을 **화면 기준(fixed)** 으로 띄우고 자리만 단추에 맞춘다 — fixed 는 어느 칸의 스크롤 영역에도
+   들어가지 않고 칸에 잘리지도 않는다. 아래에 자리가 없으면 위로 뒤집는다(flip-block).
+   `anchor-scope` 가 단추마다 이름을 가둬, 같은 이름을 쓰는 단추 수백 개가 서로 섞이지 않는다.
+   모르는 브라우저는 위 규칙 그대로다. 스크립트·인라인 style 0 (CSP). */
+@supports (anchor-name: --tip) and (anchor-scope: --tip) {
+  .btn--icon[aria-label] { anchor-name: --tip; anchor-scope: --tip; }
+  .btn--icon[aria-label]::after,
+  td.actions .btn--icon:last-child::after,
+  .modal__head .btn--icon::after {
+    position: fixed;
+    position-anchor: --tip;
+    inset: auto;
+    transform: none;
+    margin: 6px 0;
+    /* 단추 바로 아래 가운데. 화면 가장자리면 안쪽으로 비키고, 아래가 모자라면 위로 */
+    position-area: bottom;
+    position-try-fallbacks: bottom span-right, bottom span-left, top, top span-right, top span-left;
+    z-index: 1000;
+  }
+}
+
 .btn--small { height: 32px; padding: 0 12px; font-size: 13px; border-radius: var(--r-sm); }
 .btn--block { width: 100%; }   /* 독립 화면의 칸 하나~셋짜리 폼(로그인·재인증)의 제출 단추 */
 
@@ -1689,18 +1714,91 @@ dialog.token-modal { width: min(720px, calc(100vw - 32px)); }
    `<details>` 의 기본 동작으로 스크립트 0 으로 열린다. 여기서 정하는 것은 **자리와 배치**뿐이고,
    색·간격·모서리는 `.btn--icon.btn--plain`·`.panel`·`.list` 와 `:root` 토큰이 그대로 낸다
    (원칙 6 — 화면 전용 색·간격을 만들지 않는다. 다크 모드도 토큰이 따라온다 — 2.12). */
-.appbar__apps { position: relative; margin-left: auto; }
-/* summary 의 기본 삼각형 표식을 지운다 — 단추 모양은 .btn--icon 이 낸다 */
+/* 2026-09-23 — 브랜드 덩어리 **전체**가 단추다(사용자 지시 「박스가 조그매서 눈에 안 띈다」).
+   메뉴 하나에 앱 전환 · 계정(내 계정 설정·내 활동) · 관리자 페이지 · 로그아웃. 색·간격·모서리는
+   `:root` 토큰뿐이고 다크 모드도 토큰이 따라온다 (원칙 6 · 2.12). */
+.appbar__apps { position: relative; flex: 1 1 auto; min-width: 0; }
 .appbar__apps > summary { list-style: none; cursor: pointer; }
 .appbar__apps > summary::-webkit-details-marker { display: none; }
-/* 펼침 패널은 브랜드 줄 **아래**로, 오른끝을 맞춰 편다. 폭 상한은 사이드바(240px) 안쪽이라
-   가로 스크롤이 생기지 않는다. 사이드바에는 z-index 가 없으므로 이 한 칸이면 내비 위에 선다. */
-.appbar__apps > .panel {
+.brand__switch {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 8px;
+  margin: -6px -8px;
+  border-radius: var(--r-ctl);
+}
+.brand__switch:hover,
+.appbar__apps[open] > .brand__switch { background: var(--muted-bg); }
+.brand__switch:focus-visible { outline: none; box-shadow: 0 0 0 3px var(--ring-soft); }
+.brand__switch .brand__text { flex: 1 1 auto; }
+.brand__chev { display: inline-flex; flex-shrink: 0; color: var(--muted); transition: transform .15s ease; }
+.appbar__apps[open] .brand__chev { transform: rotate(180deg); }
+/* 펼침 메뉴는 브랜드 줄 **아래**로, 사이드바 폭 안에서 편다(가로 스크롤 0). 사이드바에는 z-index 가 없어 이 한 칸이면 내비 위에 선다. */
+.app-menu {
   position: absolute;
-  top: calc(100% + 6px);
-  right: 0;
+  top: calc(100% + 10px);
+  left: -8px;
+  right: -8px;
   z-index: 30;
-  width: max-content;
-  min-width: 11rem;
-  max-width: 12.5rem;
+  gap: 4px;
+  padding: 8px;
+  box-shadow: var(--shadow-lg);
+}
+/* 좁은 화면(960px 미만)에서는 사이드바가 서랍이라 떠 있는 메뉴가 서랍 칸에 잘린다 — 서랍 안에서 아래로 편다 */
+@media (max-width: 959.98px) {
+  .app-menu { position: static; margin: 12px -8px 0; box-shadow: none; }
+}
+.app-menu__label { margin: 6px 8px 2px; font-size: 12px; font-weight: 500; color: var(--muted); }
+.app-menu__apps { display: flex; flex-direction: column; gap: 2px; margin: 0; padding: 0; list-style: none; }
+.app-menu__app {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px;
+  border-radius: var(--r-sm);
+  color: var(--fg);
+}
+a.app-menu__app:hover { background: var(--muted-bg); text-decoration: none; }
+.app-menu__app[aria-current="page"] { background: var(--muted-bg); }
+.app-menu__app.is-soon { color: var(--muted); }
+.app-menu__icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 32px;
+  height: 32px;
+  border-radius: var(--r-ctl);
+  border: 1px solid var(--line);
+  background: var(--surface);
+}
+.app-menu__text { display: flex; flex-direction: column; flex: 1 1 auto; min-width: 0; }
+.app-menu__name { font-size: 14px; font-weight: 600; line-height: 1.3; }
+.app-menu__desc { font-size: 12px; color: var(--muted); line-height: 1.3; }
+.app-menu__check { display: inline-flex; flex-shrink: 0; color: var(--fg); }
+.app-menu__me { display: flex; align-items: center; gap: 10px; padding: 4px 8px 6px; }
+.app-menu__avatar {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 32px;
+  height: 32px;
+  border-radius: var(--r-ctl);
+  border: 1px solid var(--line);
+  background: var(--surface);
+  font-size: 13px;
+  font-weight: 600;
+}
+.app-menu__logout {
+  width: 100%;
+  margin-top: 4px;
+  border: 0;
+  border-top: 1px solid var(--line);
+  border-radius: 0 0 var(--r-sm) var(--r-sm);
+  background: none;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
 }
