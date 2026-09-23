@@ -224,7 +224,8 @@ echo "  · 임시 DB $DB — 계정 ${n_users}명 · 페이지 ${n_pages}장"
 
 sub "② 마이그레이션 + 권한 (임시 DB 에만) — 앞 단계(이미 있으면 그대로) · **5-C 게시판을 두 번** 돌려 멱등을 본다"
 for mig in 2026-09-23_community_page_properties.sql 2026-09-23_community_owner_share.sql \
-           2026-09-23_users_display_name.sql 2026-09-24_community_boards.sql 2026-09-24_community_boards.sql; do
+           2026-09-23_users_display_name.sql 2026-09-24_community_boards.sql 2026-09-24_community_boards.sql \
+           2026-09-24_community_discussion.sql; do   # 5-D — 5-D 코드가 댓글·알림 표를 읽는다
   echo "    ▸ $mig"
   sudo -n -u postgres psql -d "$DB" -v ON_ERROR_STOP=1 -f - < "$ROOT/db/migrations/$mig" 2>&1 \
     | grep -v 'could not change directory' | sed 's/^/      /'

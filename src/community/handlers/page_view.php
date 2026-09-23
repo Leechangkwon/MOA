@@ -119,6 +119,8 @@ require __DIR__ . '/../../views/shell_top.php';
         <a id="page-board-link" href="#">게시판</a>
         <span id="page-board-hidden" class="badge badge--off" hidden>숨김</span>
         <span id="page-resolved-badge" class="badge" hidden>미해결</span>
+        <!-- 5-D 공지 「읽은 사람 n/N」 — 창구가 준 `can_view_reads` 가 참일 때만(쓴 사람·Admin). 수만 보인다(결정 D-8). -->
+        <span id="page-reads" class="badge" hidden></span>
       </span>
       <button id="page-publish" class="btn btn--small btn--quiet" type="button" aria-haspopup="dialog" hidden>
         <span class="icon" data-icon="upload"></span>게시
@@ -195,6 +197,34 @@ require __DIR__ . '/../../views/shell_top.php';
       </div>
       <div id="page-children" class="card-grid"></div>
       <p id="page-children-empty" class="muted" hidden>아직 하위 페이지가 없습니다.</p>
+    </section>
+
+    <!-- 댓글 (5-D, PRD F-21). 목록·입력은 editor.js 가 창구(`GET/POST …/comments`)의 답으로 createElement/textContent 로
+         그린다 — 본문은 평문이고 `white-space: pre-wrap` 으로만 보인다(결정 D-1). 답글은 1단, 블록 앵커는 읽기 화면에서
+         글자를 고른 뒤 「고른 문구 인용」. `@` 를 치면 아래에 후보가 **칸 안에서** 펼쳐진다(떠 있지 않다 — DESIGN 2.8 ★). -->
+    <section id="page-comments-wrap" class="panel" aria-labelledby="page-comments-title" hidden>
+      <div class="toolbar">
+        <p id="page-comments-title" class="nav-title">댓글</p>
+        <span id="page-comments-count" class="muted"></span>
+      </div>
+      <p id="comments-msg" class="msg" role="alert" aria-live="polite"></p>
+      <ul id="page-comments" class="list" aria-label="댓글"></ul>
+      <p id="page-comments-empty" class="muted" hidden>아직 댓글이 없습니다.</p>
+      <form id="comment-form" class="form" hidden>
+        <p id="comment-reply-to" class="help" hidden></p>
+        <p id="comment-quote" class="help" hidden></p>
+        <label class="field field--full">
+          <span class="field__label">댓글</span>
+          <textarea id="comment-input" rows="3" maxlength="2000" spellcheck="false"
+                    placeholder="@아이디 로 사람을 부를 수 있습니다"></textarea>
+        </label>
+        <ul id="comment-mentions" class="list" aria-label="부를 사람" hidden></ul>
+        <div class="form-actions">
+          <button id="comment-quote-pick" class="btn btn--quiet btn--small" type="button">고른 문구 인용</button>
+          <button id="comment-cancel" class="btn btn--quiet btn--small" type="button" hidden>답글·인용 그만두기</button>
+          <button id="comment-submit" class="btn" type="submit">댓글 달기</button>
+        </div>
+      </form>
     </section>
 
     <!-- 409 모달 (ARCH 14.3 「다른 곳에서 수정됨」). 내용은 고정 문구뿐이다. -->

@@ -319,6 +319,31 @@ if (!headers_sent()) {
     <button id="nav-community-search" class="nav__item nav-search" type="button" aria-haspopup="dialog">
       <span class="icon" data-icon="search"></span><span>검색</span><kbd class="nav-search__key">Ctrl K</kbd>
     </button>
+    <!-- 알림 (5-D, PRD F-22) — 종 아이콘 + 안 읽은 수. 30초마다 `GET /community/api/notifications?unread=1`.
+         누르면 알림 창 — 목록은 창구가 **지금도 볼 수 있는 페이지만** 제목을 준다(아니면 「볼 수 없는 페이지」). -->
+    <nav class="nav" aria-label="알림">
+      <button id="nav-community-bell" class="nav__item" type="button" aria-haspopup="dialog">
+        <span class="icon" data-icon="bell"></span><span>알림</span>
+        <span id="nav-community-bell-count" class="badge badge--internal" hidden></span>
+      </button>
+    </nav>
+    <dialog id="notify-dialog" class="modal modal--form modal--stack" aria-labelledby="notify-title">
+      <div class="modal__head">
+        <h2 id="notify-title" class="modal__title">알림</h2>
+        <button class="btn btn--icon btn--plain" type="button" data-notify-close aria-label="닫기">
+          <span class="icon" data-icon="x"></span>
+        </button>
+      </div>
+      <div class="modal__body">
+        <p id="notify-msg" class="msg" role="alert" aria-live="polite"></p>
+        <ul id="notify-list" class="list" aria-label="알림 목록"></ul>
+        <p id="notify-empty" class="muted" hidden>알림이 없습니다.</p>
+      </div>
+      <div class="form-actions">
+        <button class="btn btn--quiet" type="button" data-notify-close>닫기</button>
+        <button id="notify-all-read" class="btn" type="button">모두 읽음</button>
+      </div>
+    </dialog>
     <dialog id="search-dialog" class="modal modal--form search-dialog" aria-label="페이지 검색">
       <div class="search-dialog__bar">
         <span class="icon" data-icon="search"></span>

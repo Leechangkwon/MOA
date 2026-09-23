@@ -855,6 +855,20 @@ final class Audit
         'page.update|deny|not_author'           => '{actor} 이(가) 다른 사람이 쓴 게시판 글 「{target}」 을(를) 고치려 해서 막았습니다',
         'page.read|allow|board_moderator'       => '{actor} 이(가) 게시판 관리자로서 숨긴 게시 페이지 「{target}」 을(를) 열어 봤습니다',
         'page.handover|deny|board_post'         => '{actor} 이(가) 게시판 글 「{target}」 을(를) 넘기려 해서 거부했습니다 (게시판 글은 게시판이 주인입니다)',
+        /* ── 커뮤니티 5-D — 댓글 (`{target}` = 페이지 제목. 댓글 번호·답글·앵커 여부는 상세 기록, 본문 글자는 남기지 않는다) ── */
+        'comment.create|allow'                  => '{actor} 이(가) 페이지 「{target}」 에 댓글을 달았습니다 (답글·앵커·알림 수는 상세 기록)',
+        'comment.update|allow'                  => '{actor} 이(가) 페이지 「{target}」 의 자기 댓글을 고쳤습니다',
+        'comment.update|deny|not_author'        => '{actor} 이(가) 페이지 「{target}」 의 다른 사람 댓글(또는 숨긴 댓글)을 고치려 해서 막았습니다',
+        'comment.delete|allow'                  => '{actor} 이(가) 페이지 「{target}」 의 자기 댓글을 지웠습니다',
+        'comment.delete|deny|not_author'        => '{actor} 이(가) 페이지 「{target}」 의 다른 사람 댓글을 지우려 해서 막았습니다',
+        'comment.resolve|allow'                 => '{actor} 이(가) 페이지 「{target}」 의 댓글 스레드를 해결됨으로 표시했습니다',
+        'comment.resolve|deny|not_owner'        => '{actor} 이(가) 자격 없이 페이지 「{target}」 의 댓글 스레드를 해결됨으로 표시하려 해서 막았습니다',
+        'comment.unresolve|allow'               => '{actor} 이(가) 페이지 「{target}」 의 댓글 스레드 해결됨 표시를 뺐습니다',
+        'comment.unresolve|deny|not_owner'      => '{actor} 이(가) 자격 없이 페이지 「{target}」 의 해결됨 표시를 빼려 해서 막았습니다',
+        'comment.hide|allow'                    => '{actor} 이(가) 페이지 「{target}」 의 댓글을 숨겼습니다 (본문은 보존, 근거는 상세 기록)',
+        'comment.hide|deny|not_owner'           => '{actor} 이(가) 관리 자격 없이 페이지 「{target}」 의 댓글을 숨기려 해서 막았습니다',
+        'comment.unhide|allow'                  => '{actor} 이(가) 페이지 「{target}」 의 숨긴 댓글을 다시 보이게 했습니다',
+        'comment.unhide|deny|not_owner'         => '{actor} 이(가) 관리 자격 없이 페이지 「{target}」 의 숨긴 댓글을 보이게 하려 해서 막았습니다',
         'page.delete|deny|not_author'           => '{actor} 이(가) 다른 사람이 쓴 게시판 글 「{target}」 을(를) 지우려 해서 막았습니다',
     ];
 

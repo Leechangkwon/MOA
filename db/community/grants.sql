@@ -47,7 +47,8 @@ REVOKE ALL ON community.spaces, community.pages, community.page_versions,
               community.checklist_events, community.page_edit_sessions,
               community.page_property_events,
               community.page_shares, community.handovers,
-              community.page_tags, community.page_views
+              community.page_tags, community.page_views,
+              community.comments, community.comment_reactions, community.notifications, community.page_reads
        FROM tbox_app;
 
 -- ─── 표별 권한 (앱 런타임) ────────────────────────────────────
@@ -68,6 +69,14 @@ GRANT SELECT, INSERT                 ON community.page_property_events TO tbox_a
 GRANT SELECT, INSERT                 ON community.handovers            TO tbox_app;
 -- 5-C 조회 기록 — 한 사람 하루 한 줄(`ON CONFLICT DO NOTHING`). 고치지도 지우지도 않는다.
 GRANT SELECT, INSERT                 ON community.page_views           TO tbox_app;
+-- 5-D 댓글 — 지우기는 논리 삭제(`deleted_at`)라 DELETE 가 없다. 고치기·해결됨·숨김은 UPDATE.
+GRANT SELECT, INSERT, UPDATE         ON community.comments             TO tbox_app;
+-- 5-D 「도움됐어요」 — 누르고 빼는 값이라 DELETE 가 있다.
+GRANT SELECT, INSERT, DELETE         ON community.comment_reactions    TO tbox_app;
+-- 5-D 알림 — 읽음 표시만 고친다(DELETE 없음, 정리 배치는 소유자 계정으로).
+GRANT SELECT, INSERT, UPDATE         ON community.notifications        TO tbox_app;
+-- 5-D 공지 읽음 (C:S-14) — 한 줄을 고쳐 「마지막 읽은 때」만 민다. 지울 수 없다.
+GRANT SELECT, INSERT, UPDATE         ON community.page_reads           TO tbox_app;
 
 -- ─── 시퀀스 (INSERT 하는 표의 id 발급) ────────────────────────
 GRANT USAGE, SELECT ON SEQUENCE community.spaces_id_seq            TO tbox_app;
@@ -77,6 +86,8 @@ GRANT USAGE, SELECT ON SEQUENCE community.checklist_events_id_seq  TO tbox_app;
 GRANT USAGE, SELECT ON SEQUENCE community.page_property_events_id_seq TO tbox_app;
 GRANT USAGE, SELECT ON SEQUENCE community.page_shares_id_seq       TO tbox_app;
 GRANT USAGE, SELECT ON SEQUENCE community.handovers_id_seq         TO tbox_app;
+GRANT USAGE, SELECT ON SEQUENCE community.comments_id_seq          TO tbox_app;
+GRANT USAGE, SELECT ON SEQUENCE community.notifications_id_seq     TO tbox_app;
 -- page_blocks·page_links·page_edit_sessions·page_tags·page_views 는 복합 기본키라 시퀀스가 없다.
 
 -- ─── tbox_backup (읽기 전용 백업 계정) ────────────────────────
@@ -85,7 +96,8 @@ REVOKE ALL ON community.spaces, community.pages, community.page_versions,
               community.checklist_events, community.page_edit_sessions,
               community.page_property_events,
               community.page_shares, community.handovers,
-              community.page_tags, community.page_views
+              community.page_tags, community.page_views,
+              community.comments, community.comment_reactions, community.notifications, community.page_reads
        FROM tbox_backup;
 
 GRANT SELECT ON ALL TABLES    IN SCHEMA community TO tbox_backup;   -- ★ SELECT 만

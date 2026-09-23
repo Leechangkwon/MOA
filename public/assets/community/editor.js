@@ -1421,6 +1421,103 @@ function bindBoardManage(button, onChanged) {
   if (save) { save.addEventListener('click', submit); }
 }
 
+/* ─── 알림 (5-D, PRD F-22) — 사이드바 종 · 30초 폴링 · 알림 창 ─────────
+ * ★ 알림 목록의 제목은 창구가 **지금도 볼 수 있는 페이지만** 준다(아니면 `page: null` → 「볼 수 없는 페이지」).
+ *   이 파일은 누가 무엇을 볼 수 있나를 모른다.
+ */
+const NOTIFY_TEXT = {
+  mention: '님이 댓글에서 나를 불렀습니다',
+  reply: '님이 내 댓글에 답글을 달았습니다',
+  comment_on_my_page: '님이 내 페이지에 댓글을 달았습니다',
+  handover: '님이 페이지를 나에게 넘겼습니다'
+};
+
+function initNotifications() {
+  const bell = document.getElementById('nav-community-bell');
+  const count = document.getElementById('nav-community-bell-count');
+  const dialog = document.getElementById('notify-dialog');
+  if (!bell || !dialog) { return; }
+  // 좁은 화면에서는 사이드바가 숨는다 — 창을 `body` 끝으로 옮겨 둔다(검색 창과 같은 까닭, 5-B).
+  document.body.appendChild(dialog);
+  const list = document.getElementById('notify-list');
+  const empty = document.getElementById('notify-empty');
+  const msg = document.getElementById('notify-msg');
+  const allRead = document.getElementById('notify-all-read');
+
+  function paintCount(n) {
+    setText(count, n > 99 ? '99+' : String(n));
+    show(count, n > 0);
+    bell.setAttribute('aria-label', n > 0 ? '알림 — 안 읽은 것 ' + String(n) + '개' : '알림');
+  }
+  function poll() {
+    api('GET', '/api/notifications?unread=1').then((result) => {
+      if (result.status === 200) { paintCount(Number(result.data.unread) || 0); }
+    }).catch(() => {});
+  }
+  function item(n) {
+    const li = document.createElement('li');
+    li.className = 'list__item';
+    const head = document.createElement('div');
+    head.className = 'list__head';
+    const what = document.createElement(n.page ? 'a' : 'span');
+    const who = n.actor ? personLabel(n.actor.display_name, n.actor.username) : '누군가';
+    what.textContent = who + ' ' + (NOTIFY_TEXT[n.kind] || '님의 알림');
+    if (n.page) {
+      what.setAttribute('href', COMMUNITY_BASE + '/p/' + n.page.id + (n.comment_id ? '#comment-' + n.comment_id : ''));
+      what.addEventListener('click', () => {
+        api('POST', '/api/notifications/read', { ids: [n.id] }).catch(() => {});
+      });
+    }
+    head.appendChild(what);
+    if (!n.read) {
+      const b = document.createElement('span');
+      b.className = 'badge badge--internal';
+      b.textContent = '새 알림';
+      head.appendChild(b);
+    }
+    li.appendChild(head);
+    const body = document.createElement('div');
+    body.className = 'list__body';
+    const page = document.createElement('span');
+    page.textContent = n.page ? '「' + n.page.title + '」' : '볼 수 없는 페이지';
+    const when = document.createElement('span');
+    when.className = 'muted';
+    when.textContent = shortWhen(n.at);
+    body.appendChild(page);
+    body.appendChild(when);
+    li.appendChild(body);
+    return li;
+  }
+  function open() {
+    setText(msg, '');
+    api('GET', '/api/notifications').then((result) => {
+      if (result.status === 401) { toLogin(); return; }
+      if (result.status !== 200) { setText(msg, errorMessage(result.data)); return; }
+      clear(list);
+      const items = Array.isArray(result.data.notifications) ? result.data.notifications : [];
+      for (const n of items) { list.appendChild(item(n)); }
+      show(empty, items.length === 0);
+      paintCount(Number(result.data.unread) || 0);
+    }).catch(() => setText(msg, GENERIC_ERROR));
+    if (typeof dialog.showModal === 'function' && !dialog.open) { dialog.showModal(); }
+  }
+  bell.addEventListener('click', open);
+  for (const close of dialog.querySelectorAll('[data-notify-close]')) {
+    close.addEventListener('click', () => dialog.close());
+  }
+  if (allRead) {
+    allRead.addEventListener('click', () => {
+      allRead.disabled = true;
+      api('POST', '/api/notifications/read', { all: true }).then(() => {
+        allRead.disabled = false;
+        open();
+      }).catch(() => { allRead.disabled = false; setText(msg, GENERIC_ERROR); });
+    });
+  }
+  poll();
+  setInterval(poll, 30000);
+}
+
 /* ─── 블록 공통 ──────────────────────────────────────────────── */
 
 /** Enter 가 「같은 종류로 이어 가는」 블록들. 빈 줄에서 Enter 면 문단으로 빠져나온다. */
@@ -2209,7 +2306,9 @@ function initPage() {
     shareLevel: null, subtreeCount: null,
     // 5-C — 걸린 게시판 · 쓴 사람 · 태그 · 조회수 · 해결됨과 단추 다섯의 값. 전부 창구가 준 값이다.
     board: null, writer: null, tags: [], viewCount: 0, resolved: false,
-    canTag: false, canPublish: false, canUnpublish: false, canHide: false, canResolve: false
+    canTag: false, canPublish: false, canUnpublish: false, canHide: false, canResolve: false,
+    // 5-D — 댓글을 쓸 수 있나 · 공지 「읽은 사람」을 볼 수 있나(창구가 준 값)
+    canComment: false, canViewReads: false
   };
   let view = null;
   let toolbar = null;
@@ -2436,10 +2535,14 @@ function initPage() {
       state.canUnpublish = result.data.can_unpublish === true;
       state.canHide = result.data.can_hide === true;
       state.canResolve = result.data.can_resolve === true;
+      state.canComment = result.data.can_comment === true;
+      state.canViewReads = result.data.can_view_reads === true;
       drawVisibility();
       drawProps();
       drawBoard();
       drawTags();
+      loadComments();
+      loadReads();
       setText(titleEl, page.title);
       document.title = page.title + ' · 커뮤니티';
       setText(subEl, page.parent ? '상위: ' + page.parent.title : '');
@@ -2731,6 +2834,288 @@ function initPage() {
     tagInput.addEventListener('input', () => {
       if (state.board) { fillTagOptions(tagOptions, state.board.id, tagInput.value.trim()); }
     });
+  }
+
+  /* ── 댓글 (5-D, PRD F-21 · F-22) ──
+     목록·단추는 창구가 준 값(`can_edit`·`can_hide`·`can_resolve`·`can_comment`)만 따른다. 본문은 평문 —
+     `textContent` 로만 넣고 CSS 가 줄바꿈을 보인다(결정 D-1). 누를 때마다 창구를 부르고 **다시 받아** 그린다. */
+  const commentsWrap = document.getElementById('page-comments-wrap');
+  const commentsList = document.getElementById('page-comments');
+  const commentsEmpty = document.getElementById('page-comments-empty');
+  const commentsCount = document.getElementById('page-comments-count');
+  const commentsMsg = document.getElementById('comments-msg');
+  const commentForm = document.getElementById('comment-form');
+  const commentInput = document.getElementById('comment-input');
+  const commentQuoteEl = document.getElementById('comment-quote');
+  const commentReplyEl = document.getElementById('comment-reply-to');
+  const commentQuotePick = document.getElementById('comment-quote-pick');
+  const commentCancel = document.getElementById('comment-cancel');
+  const commentSubmit = document.getElementById('comment-submit');
+  const mentionList = document.getElementById('comment-mentions');
+  const readsEl = document.getElementById('page-reads');
+  let replyTo = null;      // {id, who}
+  let anchor = null;       // {block_id, quote}
+  let mentionTimer = null;
+
+  function commentButton(text, onClick) {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'btn btn--small btn--quiet';
+    b.textContent = text;
+    b.addEventListener('click', onClick);
+    return b;
+  }
+
+  function commentCall(method, path, payload) {
+    setText(commentsMsg, '');
+    return api(method, path, payload).then((result) => {
+      if (result.status === 401) { toLogin(); return false; }
+      if (result.status === 200 || result.status === 201) { loadComments(); return true; }
+      const reason = result.data && typeof result.data.reason === 'string' ? result.data.reason : '';
+      setText(commentsMsg, reason === 'reply_depth' ? '답글에는 답글을 달 수 없습니다.'
+        : (BOARD_REASONS[reason] || errorMessage(result.data)));
+      return false;
+    }).catch(() => { setText(commentsMsg, GENERIC_ERROR); return false; });
+  }
+
+  function commentItem(c) {
+    const li = document.createElement('li');
+    li.className = 'list__item' + (c.parent_id ? ' is-reply' : '');
+    li.id = 'comment-' + c.id;
+    const head = document.createElement('div');
+    head.className = 'list__head';
+    const who = document.createElement('strong');
+    who.textContent = c.author ? personLabel(c.author.display_name, c.author.username) : '—';
+    head.appendChild(who);
+    const when = document.createElement('span');
+    when.className = 'muted';
+    when.textContent = shortWhen(c.created_at) + (c.edited ? ' · 고침' : '');
+    head.appendChild(when);
+    if (c.resolved) {
+      const r = document.createElement('span');
+      r.className = 'badge badge--ok';
+      r.textContent = '해결됨';
+      head.appendChild(r);
+    }
+    if (c.hidden) {
+      const h = document.createElement('span');
+      h.className = 'badge badge--off';
+      h.textContent = '숨김';
+      head.appendChild(h);
+    }
+    li.appendChild(head);
+    if (c.quote) {
+      const q = document.createElement('p');
+      q.className = 'help';
+      q.textContent = '「' + c.quote + '」';
+      if (c.block_id) {
+        const go = document.createElement('a');
+        go.setAttribute('href', '#block-' + c.block_id);
+        go.textContent = ' 본문에서 보기';
+        q.appendChild(go);
+      }
+      li.appendChild(q);
+    }
+    const body = document.createElement('div');
+    body.className = 'list__body';
+    if (c.deleted) { body.textContent = '지운 댓글입니다.'; body.classList.add('muted'); }
+    else if (c.body === null) { body.textContent = '숨긴 댓글입니다.'; body.classList.add('muted'); }
+    else { body.textContent = c.body; }
+    li.appendChild(body);
+
+    if (!c.deleted) {
+      const actions = document.createElement('div');
+      actions.className = 'toolbar';
+      if (state.canComment && !c.parent_id) {
+        actions.appendChild(commentButton('답글', () => {
+          replyTo = { id: c.id, who: who.textContent };
+          drawComposer();
+          if (commentInput) { commentInput.focus(); }
+        }));
+      }
+      if (!c.hidden && c.body !== null) {
+        const help = commentButton((c.helped ? '도움됐어요 취소' : '도움됐어요') + ' ' + String(c.helpful), () => {
+          commentCall(c.helped ? 'DELETE' : 'POST', '/api/comments/' + c.id + '/helpful');
+        });
+        help.disabled = !state.canComment;
+        actions.appendChild(help);
+      }
+      if (c.can_resolve) {
+        actions.appendChild(commentButton(c.resolved ? '해결됨 빼기' : '해결됨', () => {
+          commentCall(c.resolved ? 'DELETE' : 'POST', '/api/comments/' + c.id + '/resolve');
+        }));
+      }
+      if (c.can_edit) {
+        // 고치기 — 그 자리에서 입력 칸으로 바뀐다(모달을 띄우지 않는다). 「저장」 을 누르면 창구로.
+        actions.appendChild(commentButton('고치기', () => {
+          const box = document.createElement('div');
+          box.className = 'field field--full';
+          const area = document.createElement('textarea');
+          area.rows = 3;
+          area.maxLength = 2000;
+          area.value = c.body || '';
+          area.setAttribute('aria-label', '댓글 고치기');
+          box.appendChild(area);
+          const row = document.createElement('div');
+          row.className = 'toolbar';
+          row.appendChild(commentButton('저장', () => {
+            if (area.value.trim() !== '') { commentCall('PATCH', '/api/comments/' + c.id, { body: area.value }); }
+          }));
+          row.appendChild(commentButton('그만두기', () => loadComments()));
+          box.appendChild(row);
+          body.replaceWith(box);
+          actions.hidden = true;
+          area.focus();
+        }));
+        // 지우기 — 되돌릴 수 없는 동작이라 한 번 더 누르게 한다(DESIGN 4장 「위험 동작 → 확인」).
+        const del = commentButton('지우기', () => {
+          if (del.dataset.armed === '1') { commentCall('DELETE', '/api/comments/' + c.id); return; }
+          del.dataset.armed = '1';
+          del.textContent = '정말 지우기';
+        });
+        del.classList.add('btn--danger');
+        actions.appendChild(del);
+      }
+      if (c.can_hide) {
+        actions.appendChild(commentButton(c.hidden ? '숨김 풀기' : '숨기기', () => {
+          commentCall(c.hidden ? 'DELETE' : 'POST', '/api/comments/' + c.id + '/hide');
+        }));
+      }
+      if (actions.firstChild) { li.appendChild(actions); }
+    }
+    return li;
+  }
+
+  function loadComments() {
+    return api('GET', '/api/pages/' + pageId + '/comments').then((result) => {
+      if (result.status !== 200) { show(commentsWrap, false); return; }
+      const all = Array.isArray(result.data.comments) ? result.data.comments : [];
+      clear(commentsList);
+      // 첫 댓글 → 그 아래 답글 순으로(창구는 시각 순으로 준다)
+      const replies = new Map();
+      for (const c of all) {
+        if (c.parent_id) {
+          if (!replies.has(c.parent_id)) { replies.set(c.parent_id, []); }
+          replies.get(c.parent_id).push(c);
+        }
+      }
+      for (const c of all.filter((x) => !x.parent_id)) {
+        commentsList.appendChild(commentItem(c));
+        for (const r of replies.get(c.id) || []) { commentsList.appendChild(commentItem(r)); }
+      }
+      setText(commentsCount, String(result.data.count || 0) + '개');
+      show(commentsEmpty, all.length === 0);
+      state.canComment = result.data.can_comment === true;
+      show(commentForm, state.canComment);
+      show(commentsWrap, true);
+      if (window.location.hash.indexOf('#comment-') === 0) {
+        const target = document.getElementById(window.location.hash.slice(1));
+        if (target) { target.scrollIntoView({ block: 'center' }); }
+      }
+    }).catch(() => {});
+  }
+
+  function drawComposer() {
+    setText(commentReplyEl, replyTo ? replyTo.who + ' 님 댓글에 답글' : '');
+    show(commentReplyEl, !!replyTo);
+    setText(commentQuoteEl, anchor ? '인용: 「' + anchor.quote + '」' : '');
+    show(commentQuoteEl, !!anchor);
+    show(commentCancel, !!replyTo || !!anchor);
+  }
+
+  /* 블록 앵커 — 읽기 화면에서 고른 글자와 그 글자가 든 블록(렌더러가 붙인 `id="block-<uuid>"`) */
+  if (commentQuotePick) {
+    commentQuotePick.addEventListener('click', () => {
+      const sel = window.getSelection ? window.getSelection() : null;
+      const text = sel ? String(sel).replace(/\s+/g, ' ').trim() : '';
+      const node = sel && sel.anchorNode ? (sel.anchorNode.nodeType === 1 ? sel.anchorNode : sel.anchorNode.parentElement) : null;
+      const block = node && docEl.contains(node) ? node.closest('[id^="block-"]') : null;
+      if (text === '' || !block) {
+        setText(commentsMsg, '먼저 본문(읽기 화면)에서 인용할 글자를 끌어서 고르세요.');
+        return;
+      }
+      // 글자(코드 포인트) 단위로 300자 · 제어 문자는 빈칸으로 — 서버 규칙(`community_clean_plain`)과 같게
+      const clean = Array.from(text.replace(/[\u0000-\u001f\u007f]/g, ' ')).slice(0, 300).join('').trim();
+      anchor = { block_id: block.id.slice('block-'.length), quote: clean };
+      setText(commentsMsg, '');
+      drawComposer();
+    });
+  }
+  if (commentCancel) {
+    commentCancel.addEventListener('click', () => { replyTo = null; anchor = null; drawComposer(); });
+  }
+
+  /* `@` 멘션 후보 — 입력 칸 **아래 칸 안에서** 펼친다(떠 있는 목록이 아니다). 후보는 창구가
+     「그 페이지를 볼 수 있는 사람」만 준다(11-1 ⑥). 눌러서 넣는다. */
+  function mentionQuery() {
+    if (!commentInput) { return ''; }
+    const before = commentInput.value.slice(0, commentInput.selectionStart || 0);
+    const m = before.match(/(^|[^a-z0-9_.@-])@([a-z0-9_.-]{1,64})$/);
+    return m ? m[2] : '';
+  }
+  function drawMentions() {
+    const q = mentionQuery();
+    if (q === '') { clear(mentionList); show(mentionList, false); return; }
+    api('GET', '/api/mention-candidates?page=' + encodeURIComponent(pageId) + '&q=' + encodeURIComponent(q))
+      .then((result) => {
+        clear(mentionList);
+        const people = result.status === 200 && Array.isArray(result.data.candidates) ? result.data.candidates : [];
+        for (const p of people) {
+          const li = document.createElement('li');
+          li.className = 'list__item';
+          const b = commentButton(personLabel(p.display_name, p.username), () => {
+            const pos = commentInput.selectionStart || 0;
+            const before = commentInput.value.slice(0, pos).replace(/@[a-z0-9_.-]{1,64}$/, '@' + p.username + ' ');
+            commentInput.value = before + commentInput.value.slice(pos);
+            commentInput.focus();
+            commentInput.setSelectionRange(before.length, before.length);
+            clear(mentionList);
+            show(mentionList, false);
+          });
+          b.setAttribute('data-mention', p.username);
+          li.appendChild(b);
+          mentionList.appendChild(li);
+        }
+        show(mentionList, people.length > 0);
+      }).catch(() => {});
+  }
+  if (commentInput) {
+    commentInput.addEventListener('input', () => {
+      if (mentionTimer !== null) { clearTimeout(mentionTimer); }
+      mentionTimer = setTimeout(drawMentions, 200);
+    });
+  }
+  if (commentForm) {
+    commentForm.addEventListener('submit', (event) => {
+      event.preventDefault();
+      const text = commentInput ? commentInput.value : '';
+      if (text.trim() === '') { setText(commentsMsg, '댓글을 적어 주세요.'); return; }
+      const payload = { body: text };
+      if (replyTo) { payload.parent_id = replyTo.id; }
+      if (anchor) { payload.block_id = anchor.block_id; payload.quote = anchor.quote; }
+      commentSubmit.disabled = true;
+      commentCall('POST', '/api/pages/' + pageId + '/comments', payload).then((ok) => {
+        commentSubmit.disabled = false;
+        if (ok) {
+          commentInput.value = '';
+          replyTo = null;
+          anchor = null;
+          drawComposer();
+          show(mentionList, false);
+        }
+      });
+    });
+  }
+
+  /* 공지 「읽은 사람 n/N」 — 쓴 사람·Admin 에게만(창구 `can_view_reads`). 수만 보인다(결정 D-8). */
+  function loadReads() {
+    if (!readsEl) { return; }
+    if (!state.canViewReads) { show(readsEl, false); return; }
+    api('GET', '/api/pages/' + pageId + '/reads').then((result) => {
+      if (result.status !== 200) { show(readsEl, false); return; }
+      setText(readsEl, '읽은 사람 ' + String(result.data.reads.read) + ' / ' + String(result.data.reads.total));
+      show(readsEl, true);
+    }).catch(() => {});
   }
 
   /* ── 「상태」 창 (4-D) ──
@@ -4038,6 +4423,8 @@ function boot() {
         }
         // 5-C — 사이드바 「게시판」 묶음(세 화면 공통). 게시판 화면은 관리 창이 같은 답을 다시 쓴다.
         if (page !== 'community-board') { loadBoards(); }
+        // 5-D — 사이드바 알림 종(세 화면 공통, 30초 폴링)
+        initNotifications();
         return null;
       });
     })

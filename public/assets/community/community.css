@@ -689,3 +689,22 @@ dialog.search-dialog { width: min(640px, calc(100vw - 32px)); margin-top: 12vh; 
 #board-body td:nth-child(1) { min-width: 12rem; overflow-wrap: anywhere; }
 #board-body td:nth-child(2) { min-width: 7rem; overflow-wrap: anywhere; }
 #board-body td:nth-child(4) { min-width: 8rem; }
+
+/* ─── 댓글 (5-D) — 입력 칸은 `.field input` 과 **같은 토큰**(여러 줄이라 높이만 자란다) · 본문은 평문 줄바꿈 그대로 ─── */
+.field textarea {
+  padding: 8px 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-ctl);
+  background: var(--surface);
+  color: var(--fg);
+  font: inherit;
+  font-size: 14px;
+  min-width: 0;
+  resize: vertical;
+  box-shadow: var(--shadow-xs);
+}
+.field textarea::placeholder { color: var(--muted); }
+#page-comments .list__body { white-space: pre-wrap; overflow-wrap: anywhere; }
+/* 답글 한 단 — 목록 안에서 들여쓰기 한 번(인라인 style 0) */
+#page-comments .list__item.is-reply { padding-left: 32px; }
+#page-comments-wrap { margin-top: 20px; }

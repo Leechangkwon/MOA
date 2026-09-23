@@ -122,6 +122,24 @@ const COMMUNITY_ROUTES = [
     ['POST',   '/api/pages/{id}/hide',                   'pages_hide.php',         'community.write'],
     ['DELETE', '/api/pages/{id}/hide',                   'pages_hide.php',         'community.write'],
     ['PUT',    '/api/pages/{id}/tags',                   'pages_tags_put.php',     'community.write'],
+
+    /* ── 댓글 · 멘션 · 알림 · 공지 읽음 (5-D, PRD F-21 · F-22 · F-30, ARCH 15장) ──
+     * 댓글은 **페이지를 따른다** — 창구마다 페이지 관문(`community_history_gate`)을 먼저 지나고, 댓글 창구는
+     * `{id}` 가 **댓글의** UUID 다(페이지를 찾아 같은 관문). 알림은 **내 것만**(SQL `user_id = 나`). */
+    ['GET',    '/api/pages/{id}/comments',               'comments_list.php',      'community.read'],
+    ['POST',   '/api/pages/{id}/comments',               'comments_create.php',    'community.write'],
+    ['PATCH',  '/api/comments/{id}',                     'comment_update.php',     'community.write'],
+    ['DELETE', '/api/comments/{id}',                     'comment_delete.php',     'community.write'],
+    ['POST',   '/api/comments/{id}/resolve',             'comment_resolve.php',    'community.write'],
+    ['DELETE', '/api/comments/{id}/resolve',             'comment_resolve.php',    'community.write'],
+    ['POST',   '/api/comments/{id}/helpful',             'comment_helpful.php',    'community.write'],
+    ['DELETE', '/api/comments/{id}/helpful',             'comment_helpful.php',    'community.write'],
+    ['POST',   '/api/comments/{id}/hide',                'comment_hide.php',       'community.write'],
+    ['DELETE', '/api/comments/{id}/hide',                'comment_hide.php',       'community.write'],
+    ['GET',    '/api/mention-candidates',                'mention_candidates.php', 'community.read'],
+    ['GET',    '/api/notifications',                     'notifications_list.php', 'community.read'],
+    ['POST',   '/api/notifications/read',                'notifications_read.php', 'community.read'],
+    ['GET',    '/api/pages/{id}/reads',                  'page_reads.php',         'community.read'],
 ];
 
 /**
@@ -1794,6 +1812,157 @@ function community_page_row_or_404(string $publicId, int $viewerId): array
         Http::error(404, Http::MSG_NOT_FOUND);
     }
     return $row;
+}
+
+/* ══════════════════════════════════════════════════════════════════
+ * 댓글 · 멘션 · 알림 (5-D)
+ * ══════════════════════════════════════════════════════════════════ */
+
+/** 댓글 본문 · 인용의 글자 수 상한 (DB CHECK 과 같은 값) */
+const COMMUNITY_COMMENT_MAX_CHARS = 2000;
+const COMMUNITY_QUOTE_MAX_CHARS   = 300;
+/** 댓글 하나에서 알림을 만드는 멘션 수 상한 — 한 번에 전사 알림을 뿌리지 못하게 */
+const COMMUNITY_MENTION_MAX = 10;
+
+/**
+ * 평문 한 칸 검사 (결정 D-1 — 댓글은 **평문**). 어긋나면 `null`.
+ *   `\r` 은 지운다 · 줄바꿈(`\n`) 말고 제어·서식 문자(`\p{C}`)는 거부 · 앞뒤 공백 제거 뒤 1~$max 자.
+ *
+ * @param mixed $raw
+ */
+function community_clean_plain($raw, int $max): ?string
+{
+    if (!is_string($raw) || preg_match('//u', $raw) !== 1) {
+        return null;
+    }
+    $t = str_replace("\r", '', $raw);
+    $t = (string) preg_replace('/^[\s\p{Z}]+|[\s\p{Z}]+$/u', '', $t);
+    $n = iconv_strlen($t, 'UTF-8');
+    if ($t === '' || $n === false || $n > $max) {
+        return null;
+    }
+    if (preg_match('/[^\P{C}\n]/u', $t) === 1) {
+        return null;
+    }
+    return $t;
+}
+
+/**
+ * 본문의 `@계정명` — 앞이 계정명 글자가 아닌 자리의 `@` 뒤 3~64자(`Auth::USERNAME_RE` 글자 집합).
+ * 중복을 빼고 앞에서부터 최대 `COMMUNITY_MENTION_MAX` 개. 대상 판정은 부르는 쪽이 한다.
+ *
+ * @return list<string>
+ */
+function community_mentions_in(string $body): array
+{
+    if (preg_match_all('/(?<![a-z0-9_.@-])@([a-z0-9_.-]{3,64})/', $body, $m) === false) {
+        return [];
+    }
+    $out = [];
+    foreach ($m[1] as $name) {
+        $name = rtrim($name, '.');   // 문장 끝 마침표
+        if (strlen($name) >= 3 && !in_array($name, $out, true)) {
+            $out[] = $name;
+        }
+        if (count($out) >= COMMUNITY_MENTION_MAX) {
+            break;
+        }
+    }
+    return $out;
+}
+
+/**
+ * 댓글 한 건 + 그 페이지의 public_id. 없으면 `null`(지운 것도 돌려준다 — 판정이 가른다).
+ *
+ * @return array<string,mixed>|null
+ */
+function community_comment_row(string $publicId): ?array
+{
+    $sql = <<<'SQL'
+        SELECT c.id, c.public_id, c.page_id, c.parent_comment_id, c.block_id, c.quote, c.body,
+               c.author_id, c.created_at, c.updated_at, c.resolved_at, c.hidden_at, c.deleted_at,
+               p.public_id AS page_public_id
+          FROM community.comments c
+          JOIN community.pages p ON p.id = c.page_id
+         WHERE c.public_id = CAST(:cid AS uuid)
+        SQL;
+    $row = Db::instance()->run($sql, [':cid' => $publicId])->fetch();
+    return is_array($row) ? $row : null;
+}
+
+/**
+ * 댓글 창구의 공통 관문 — 댓글을 찾고, **그 페이지의 읽기 관문**(`community_history_gate`)을 지나고,
+ * 게시판 독자에게 게시 전 댓글은 없는 것으로 다룬다(5-C #9 와 같은 자르기). 실패하면 돌아오지 않는다.
+ *
+ * @param  array<string,mixed> $u
+ * @return array{comment:array<string,mixed>,gate:array<string,mixed>}
+ */
+function community_comment_gate(array $u, string $commentPublicId): array
+{
+    $comment = community_comment_row($commentPublicId);
+    if ($comment === null || $comment['deleted_at'] !== null) {
+        Http::error(404, Http::MSG_NOT_FOUND);
+    }
+    $gate = community_history_gate($u, (string) $comment['page_public_id']);
+    if ($gate['since'] !== null && strtotime((string) $comment['created_at']) < strtotime((string) $gate['since'])) {
+        Http::error(404, Http::MSG_NOT_FOUND);
+    }
+    return ['comment' => $comment, 'gate' => $gate];
+}
+
+/**
+ * 알림 한 줄 — 받는 사람이 **그 페이지를 볼 수 있을 때만** 만든다(볼 수 없는 페이지의 제목이 알림으로 새지 않게).
+ * 자기 자신에게는 만들지 않는다. 부르는 쪽의 트랜잭션 안에서 부른다. 만들었으면 참.
+ *
+ * @param array<string,mixed> $pageRow 아무 사람 몫의 페이지 행(공유 등급은 여기서 받는 사람 몫으로 다시 읽는다)
+ */
+function community_notify(int $userId, string $kind, array $pageRow, ?int $commentId, int $actorId): bool
+{
+    if ($userId === $actorId || $userId <= 0) {
+        return false;
+    }
+    $target = community_user_by_id($userId);
+    $row    = community_page_row((string) $pageRow['public_id'], $userId);
+    if ($row === null || !CommunityAuthz::decideMentionTarget($target, $row)[0]) {
+        return false;
+    }
+    $sql = <<<'SQL'
+        INSERT INTO community.notifications (user_id, kind, page_id, comment_id, actor_id)
+        VALUES (CAST(:uid AS bigint), :kind, CAST(:pid AS bigint), CAST(:cid AS bigint), CAST(:aid AS bigint))
+        SQL;
+    Db::instance()->run($sql, [
+        ':uid' => $userId, ':kind' => $kind, ':pid' => (int) $row['id'], ':cid' => $commentId, ':aid' => $actorId,
+    ]);
+    return true;
+}
+
+/**
+ * 계정 번호로 사람 한 줄(`community_user_by_name` 과 같은 칸). 없으면 `null`.
+ *
+ * @return array<string,mixed>|null
+ */
+function community_user_by_id(int $userId): ?array
+{
+    $sql = <<<'SQL'
+        SELECT u.id, u.username, u.display_name, u.role, u.team_id, u.is_active
+          FROM public.users u
+         WHERE u.id = CAST(:id AS bigint)
+        SQL;
+    $row = Db::instance()->run($sql, [':id' => $userId])->fetch();
+    return is_array($row) ? $row : null;
+}
+
+/**
+ * 공지 읽음 한 번 — 사람마다 한 줄(처음 읽은 때는 그대로, 마지막 읽은 때만 민다). 읽기 판정을 지난 뒤에만 부른다.
+ */
+function community_record_read(int $pageId, int $userId): void
+{
+    $sql = <<<'SQL'
+        INSERT INTO community.page_reads (page_id, user_id)
+        VALUES (CAST(:pid AS bigint), CAST(:uid AS bigint))
+        ON CONFLICT (page_id, user_id) DO UPDATE SET last_read_at = now()
+        SQL;
+    Db::instance()->run($sql, [':pid' => $pageId, ':uid' => $userId]);
 }
 
 /**

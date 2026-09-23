@@ -858,6 +858,159 @@ final class CommunityAuthz
         return $ok ? [true, $code] : [false, self::CODE_NOT_OWNER];
     }
 
+    /* ══════════════════════════════════════════════════════════════════
+     * 댓글 · 멘션 · 공지 읽음 (5-D) — 댓글은 **페이지를 따른다**
+     *
+     * 읽기는 따로 없다: 그 페이지를 볼 수 있으면(`decidePageRead`) 댓글도 본다. 부르는 쪽은 언제나
+     * 페이지 관문(`community_history_gate`)을 먼저 지난 뒤에 아래 함수를 부른다.
+     * 「댓글 행」 모양 — `author_id`·`deleted_at`·`parent_comment_id` (DB 한 줄 그대로).
+     * ══════════════════════════════════════════════════════════════════ */
+
+    /**
+     * 이 페이지에 **댓글을 쓸 수 있나** (5-D, PRD F-08 전례 — 공지 게시판도 댓글은 된다, 결정 D-2).
+     *   페이지를 읽을 수 있다(부르는 쪽이 이미 확인) + 쓰기 자격(Guest 제외) + 보관 중인 게시판이 아니다.
+     *
+     * @param  array<string,mixed> $u
+     * @param  array<string,mixed> $row 페이지 행
+     * @return array{0:bool,1:string}
+     */
+    public static function decideCommentCreate(array $u, array $row): array
+    {
+        if (($row['deleted_at'] ?? null) !== null) {
+            return [false, self::CODE_NOT_FOUND];
+        }
+        if (!Authz::canCommunityWrite($u)) {
+            return [false, self::CODE_ROLE_NOT_PERMITTED];
+        }
+        $board = self::boardOfRow($row);
+        if ($board !== null && ($board['is_active'] ?? false) !== true) {
+            return [false, self::CODE_BOARD_INACTIVE];
+        }
+        return [true, self::CODE_MATRIX];
+    }
+
+    /**
+     * 이 댓글을 **고치거나 지울 수 있나** — 쓴 사람만(결정 D-4 기본안: 관리자는 숨김만). 지운 댓글은 없는 것.
+     *
+     * @param  array<string,mixed> $u
+     * @param  array<string,mixed> $comment
+     * @return array{0:bool,1:string}
+     */
+    public static function decideCommentChange(array $u, array $comment): array
+    {
+        if (($comment['deleted_at'] ?? null) !== null) {
+            return [false, self::CODE_NOT_FOUND];
+        }
+        if (!self::isAuthor($u, $comment)) {
+            return [false, self::CODE_NOT_AUTHOR];
+        }
+        if (!Authz::canCommunityWrite($u)) {
+            return [false, self::CODE_ROLE_NOT_PERMITTED];
+        }
+        return [true, self::CODE_OWNER];
+    }
+
+    /**
+     * 이 페이지의 댓글을 **숨길 수 있나** (결정 D-4 기본안 — Admin + 그 게시판의 관리자). 보존·감사.
+     *
+     * @param  array<string,mixed> $u
+     * @param  array<string,mixed> $row 페이지 행
+     * @return array{0:bool,1:string}
+     */
+    public static function decideCommentHide(array $u, array $row): array
+    {
+        if (Authz::canAdmin($u)) {
+            return [true, self::CODE_ADMIN_ALL];
+        }
+        $board = self::boardOfRow($row);
+        if ($board !== null) {
+            [$ok, $code] = self::decideBoardModerate($u, $board);
+            if ($ok) {
+                return [true, $code];
+            }
+        }
+        return [false, self::CODE_NOT_OWNER];
+    }
+
+    /**
+     * 이 스레드에 **「해결됨」을 켜고 끌 수 있나** (결정 D-5 기본안) — 스레드 첫 댓글을 쓴 사람 ·
+     * 페이지를 관리하는 사람(개인 공간 주인 · 팀 공간 팀원 · 게시판 글의 쓴 사람).
+     *
+     * @param  array<string,mixed> $u
+     * @param  array<string,mixed> $row  페이지 행
+     * @param  array<string,mixed> $root 스레드 첫 댓글
+     * @return array{0:bool,1:string}
+     */
+    public static function decideCommentResolve(array $u, array $row, array $root): array
+    {
+        if (($root['deleted_at'] ?? null) !== null || ($root['parent_comment_id'] ?? null) !== null) {
+            return [false, self::CODE_NOT_FOUND];
+        }
+        if (!Authz::canCommunityWrite($u)) {
+            return [false, self::CODE_ROLE_NOT_PERMITTED];
+        }
+        if (self::isAuthor($u, $root)) {
+            return [true, self::CODE_OWNER];
+        }
+        [$may, $code] = self::decidePageManage($u, $row);
+        return $may ? [true, $code] : [false, self::CODE_NOT_OWNER];
+    }
+
+    /**
+     * 공지의 **「읽은 사람 n/N」을 볼 수 있나** (C:F-30) — 공지 게시판에 걸린 글의 쓴 사람(게시판 글이면 작성자,
+     * 게시된 개인 페이지면 주인) · Admin. 공지가 아니면 `space_governed`.
+     *
+     * @param  array<string,mixed> $u
+     * @param  array<string,mixed> $row
+     * @return array{0:bool,1:string}
+     */
+    public static function decideReadsView(array $u, array $row): array
+    {
+        $board = self::boardOfRow($row);
+        if ($board === null || (string) ($board['board_kind'] ?? '') !== 'notice') {
+            return [false, self::CODE_SPACE_GOVERNED];
+        }
+        if (Authz::canAdmin($u)) {
+            return [true, self::CODE_ADMIN_ALL];
+        }
+        $kind = (string) ($row['space_kind'] ?? '');
+        if (($kind === 'board' && self::isAuthor($u, $row)) || ($kind === 'personal' && self::isOwner($u, $row))) {
+            return [true, self::CODE_OWNER];
+        }
+        return [false, self::CODE_NOT_OWNER];
+    }
+
+    /**
+     * 이 사람을 **멘션·알림 대상으로 삼을 수 있나** (C:F-22, 11-1 ⑥ 확정 — 그 페이지를 볼 수 있는 활성 사용자 전체,
+     * Guest 제외). `$rowForTarget` 은 **그 사람 몫으로** 읽은 페이지 행이다(`community_page_row($id, 대상 id)`) —
+     * 공유 등급이 그 사람 몫이어야 판정이 맞는다. 볼 수 없는 사람에게는 알림을 만들지 않는다(제목이 새지 않게).
+     *
+     * @param  array<string,mixed>|null $target `public.users` 한 줄(`id`·`role`·`team_id`·`is_active`)
+     * @param  array<string,mixed>      $rowForTarget
+     * @return array{0:bool,1:string}
+     */
+    public static function decideMentionTarget(?array $target, array $rowForTarget): array
+    {
+        if ($target === null || ($target['is_active'] ?? false) !== true) {
+            return [false, self::CODE_TARGET_NOT_PERMITTED];
+        }
+        $tu = [
+            'id'      => (int) $target['id'],
+            'role'    => (string) $target['role'],
+            'team_id' => $target['team_id'] === null ? null : (int) $target['team_id'],
+        ];
+        if (!Authz::canCommunityWrite($tu)) {
+            return [false, self::CODE_TARGET_NOT_PERMITTED];
+        }
+        [$ok, $code] = self::decidePageRead($tu, $rowForTarget);
+        /* 관리자 특권 갈래(`admin_all`)·숨긴 글 관리자 갈래(`board_moderator`)로만 볼 수 있는 사람은 **대상이 아니다**
+           — 검색(5-B)과 같은 좁은 쪽. 남의 비공개 페이지 제목이 멘션 한 번으로 관리자 알림함에 쌓이지 않게. */
+        if (!$ok || $code === self::CODE_ADMIN_ALL || $code === self::CODE_BOARD_MODERATOR) {
+            return [false, self::CODE_TARGET_NOT_PERMITTED];
+        }
+        return [true, $code];
+    }
+
     /**
      * 이 페이지가 **걸린 게시판** — 게시판 글이면 그 공간, 게시된 개인 페이지면 게시한 게시판, 아니면 `null` (5-C).
      *

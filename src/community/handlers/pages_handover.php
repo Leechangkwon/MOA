@@ -282,6 +282,17 @@ try {
     throw $e;   // bootstrap 예외 핸들러 → 500 + {"error":"서버 오류"}
 }
 
+/* 5-D — 받은 사람에게 알림 「인계 받음」 — 인계가 끝난 **뒤에** 따로(알림이 실패해도 인계는 되돌려지지 않는다).
+   옮겨 간 뒤의 행으로 판정한다(받은 사람은 이제 주인이다). */
+try {
+    $movedRow = community_page_row((string) $row['public_id'], (int) $target['id']);
+    if ($movedRow !== null) {
+        community_notify((int) $target['id'], 'handover', $movedRow, null, (int) $user['id']);
+    }
+} catch (Throwable $e) {
+    error_log('[tbox] request_id=' . TBOX_REQUEST_ID . ' community handover notify failed: ' . get_class($e));
+}
+
 Http::json([
     'page'       => ['id' => $pid, 'title' => (string) $row['title']],
     'from'       => $fromName,

@@ -84,6 +84,17 @@ try {
     error_log('[tbox] request_id=' . TBOX_REQUEST_ID . ' community page view count failed: ' . get_class($e));
 }
 
+/* 5-D 공지 읽음 — 공지 게시판에 걸린 글을 연 일(한 사람 한 줄, 마지막 읽은 때만 민다). 숨긴 글을 관리자가
+   여는 것은 「읽음」이 아니다(게시판 등급으로 연 사람만 센다). 실패해도 읽기는 막지 않는다. */
+$noticeBoard = CommunityAuthz::boardOfRow($row);
+if ($noticeBoard !== null && (string) $noticeBoard['board_kind'] === 'notice' && $row['hidden_at'] === null) {
+    try {
+        community_record_read((int) $row['id'], $me);
+    } catch (Throwable $e) {
+        error_log('[tbox] request_id=' . TBOX_REQUEST_ID . ' community page read receipt failed: ' . get_class($e));
+    }
+}
+
 [$mayChange, $changeCode] = CommunityAuthz::decidePageChange($user, $row);
 /* 5-A — 「관리」(삭제·옮기기·공개 범위·공유)는 따로 묻는다. 편집 공유자는 `can_edit` 은 참이어도
    여기가 거짓이다 — 화면이 삭제·옮기기·공개 범위 단추를 그 값으로 가린다. */
@@ -310,4 +321,7 @@ Http::json([
     'can_unpublish'  => $mayUnpublish,
     'can_hide'       => $mayHide,
     'can_resolve'    => $mayResolve,
+    // 5-D — 댓글을 쓸 수 있나 · 공지 「읽은 사람 n/N」을 볼 수 있나(둘 다 창구가 같은 함수로 다시 막는다)
+    'can_comment'    => CommunityAuthz::decideCommentCreate($user, $row)[0],
+    'can_view_reads' => CommunityAuthz::decideReadsView($user, $row)[0],
 ]);

@@ -266,3 +266,62 @@ CREATE TABLE community.page_views (
 );
 CREATE INDEX pages_published_board_idx ON community.pages (published_board_id)
     WHERE deleted_at IS NULL AND published_board_id IS NOT NULL;
+
+-- ─────────────────────────────────────────────────────────────
+-- 5-D 댓글 · 반응 · 알림 · 공지 읽음 (db/migrations/2026-09-24_community_discussion.sql 과 같은 모양)
+-- ─────────────────────────────────────────────────────────────
+CREATE TABLE community.comments (
+    id                BIGSERIAL   PRIMARY KEY,
+    public_id         UUID        NOT NULL UNIQUE DEFAULT gen_random_uuid(),
+    page_id           BIGINT      NOT NULL REFERENCES community.pages(id),
+    -- 답글은 **1단**: 부모는 부모가 없는 댓글이어야 한다(앱이 보고, 아래 트리거 없이 판정에서 400).
+    parent_comment_id BIGINT      REFERENCES community.comments(id),
+    -- 블록 앵커: 그 블록 id(본문 JSON 의 블록) + 고른 문구 인용(≤300자, 평문)
+    block_id          UUID,
+    quote             TEXT        CHECK (quote IS NULL OR length(quote) BETWEEN 1 AND 300),
+    body              TEXT        NOT NULL CHECK (length(body) BETWEEN 1 AND 2000),
+    author_id         BIGINT      NOT NULL REFERENCES public.users(id),
+    created_at        TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at        TIMESTAMPTZ NOT NULL DEFAULT now(),
+    resolved_at       TIMESTAMPTZ,
+    resolved_by       BIGINT      REFERENCES public.users(id),
+    hidden_at         TIMESTAMPTZ,
+    hidden_by         BIGINT      REFERENCES public.users(id),
+    deleted_at        TIMESTAMPTZ,
+    deleted_by        BIGINT      REFERENCES public.users(id),
+    CONSTRAINT comments_resolved_shape CHECK ((resolved_at IS NULL) = (resolved_by IS NULL)),
+    CONSTRAINT comments_hidden_shape   CHECK ((hidden_at IS NULL) = (hidden_by IS NULL)),
+    CONSTRAINT comments_deleted_shape  CHECK ((deleted_at IS NULL) = (deleted_by IS NULL)),
+    CONSTRAINT comments_not_self_parent CHECK (parent_comment_id IS NULL OR parent_comment_id <> id)
+);
+CREATE INDEX comments_page_idx   ON community.comments (page_id, created_at) WHERE deleted_at IS NULL;
+CREATE INDEX comments_parent_idx ON community.comments (parent_comment_id) WHERE parent_comment_id IS NOT NULL;
+
+CREATE TABLE community.comment_reactions (
+    comment_id BIGINT      NOT NULL REFERENCES community.comments(id),
+    user_id    BIGINT      NOT NULL REFERENCES public.users(id),
+    kind       TEXT        NOT NULL CHECK (kind IN ('helpful')),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    PRIMARY KEY (comment_id, user_id, kind)
+);
+
+CREATE TABLE community.notifications (
+    id         BIGSERIAL   PRIMARY KEY,
+    user_id    BIGINT      NOT NULL REFERENCES public.users(id),
+    kind       TEXT        NOT NULL CHECK (kind IN ('mention','reply','comment_on_my_page','handover')),
+    page_id    BIGINT      REFERENCES community.pages(id),
+    comment_id BIGINT      REFERENCES community.comments(id),
+    actor_id   BIGINT      REFERENCES public.users(id),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    read_at    TIMESTAMPTZ
+);
+CREATE INDEX notifications_user_idx ON community.notifications (user_id, created_at DESC);
+CREATE INDEX notifications_unread_idx ON community.notifications (user_id) WHERE read_at IS NULL;
+
+CREATE TABLE community.page_reads (
+    page_id       BIGINT      NOT NULL REFERENCES community.pages(id),
+    user_id       BIGINT      NOT NULL REFERENCES public.users(id),
+    first_read_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    last_read_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+    PRIMARY KEY (page_id, user_id)
+);
