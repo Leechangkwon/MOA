@@ -29,6 +29,8 @@ BASE="http://127.0.0.1:8082/tbox"
 UA="tbox-review/$(date +%F)"
 DB="tbox_re"
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+# 검토 계정 판정 한 벌(qa_·claude_ — F-71 C). 못 읽으면 사전 검사가 빈 값으로 열리므로 시작하지 않는다.
+. "$ROOT/tests/lib/review_accounts.sh" || { echo "tests/lib/review_accounts.sh 를 읽지 못했다 — 시험을 시작하지 않는다 (R-73)"; exit 3; }
 OUT="${1:-$HOME/.claude/ui-shots/f52}"
 JAR_DIR="$(mktemp -d)"
 PASS=0
@@ -191,7 +193,7 @@ disable_mfa() {  # $1 계정  $2 csrf
 hr "0. 시험 안전 점검 (SECURITY R-73)"
 # ─────────────────────────────────────────────────────────────
 T0=$(psqlq "SELECT now();")
-NONQA_BEFORE=$(psqlq "SELECT count(*) FROM audit_logs WHERE happened_at > now() - interval '10 minutes' AND actor_name IS NOT NULL AND actor_name NOT LIKE 'qa\\_%'")
+NONQA_BEFORE=$(psqlq "SELECT count(*) FROM audit_logs WHERE happened_at > now() - interval '10 minutes' AND actor_name IS NOT NULL AND $REVIEW_NOT_SQL")
 echo "  최근 10분 비-qa 감사 행: $NONQA_BEFORE"
 if [ "${NONQA_BEFORE:-1}" != "0" ]; then
   echo "  ✖ 사용자가 지금 서비스를 쓰고 있다 — 시험을 시작하지 않는다 (종료 3)"
@@ -640,7 +642,7 @@ expect "wiki JSON 4파일 파싱 실패 0" 0 "$JSON_FAIL"
 JSBAD=$(grep -cE 'innerHTML|outerHTML|document\.write' "$ROOT/public/assets/app.js"); JSBAD=${JSBAD:-0}
 expect "app.js 에 innerHTML·document.write 0건" 0 "$JSBAD"
 
-NONQA_AFTER=$(psqlq "SELECT count(*) FROM audit_logs WHERE happened_at > '$T0'::timestamptz AND actor_name IS NOT NULL AND actor_name NOT LIKE 'qa\\_%'")
+NONQA_AFTER=$(psqlq "SELECT count(*) FROM audit_logs WHERE happened_at > '$T0'::timestamptz AND actor_name IS NOT NULL AND $REVIEW_NOT_SQL")
 echo "  이 실행 중 비-qa 감사 행: $NONQA_AFTER (0 이어야 정상)"
 expect "비-qa 감사 행 0" 0 "$NONQA_AFTER"
 

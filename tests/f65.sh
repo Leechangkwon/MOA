@@ -56,6 +56,8 @@
 set -u
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+# 검토 계정 판정 한 벌(qa_·claude_ — F-71 C). 못 읽으면 사전 검사가 빈 값으로 열리므로 시작하지 않는다.
+. "$ROOT/tests/lib/review_accounts.sh" || { echo "tests/lib/review_accounts.sh 를 읽지 못했다 — 시험을 시작하지 않는다 (R-73)"; exit 3; }
 BASE="http://127.0.0.1:8082/tbox"
 UA="tbox-review/$(date +%F)"
 DB="tbox_re"
@@ -215,7 +217,7 @@ if psqlq "SELECT 1" >/dev/null 2>&1; then HAVE_PSQL=1; fi
 if [ "$HAVE_PSQL" -eq 1 ]; then
   TRY=1
   while :; do
-    BUSY=$(psqlq "SELECT count(*) FROM audit_logs WHERE happened_at > now() - interval '10 minutes' AND actor_name IS NOT NULL AND actor_name NOT LIKE 'qa\_%'")
+    BUSY=$(psqlq "SELECT count(*) FROM audit_logs WHERE happened_at > now() - interval '10 minutes' AND actor_name IS NOT NULL AND $REVIEW_NOT_SQL")
     echo "최근 10분 비-qa 감사 행: ${BUSY:-?} (시도 ${TRY}/10)"
     [ "${BUSY:-0}" -gt 0 ] 2>/dev/null || break
     if [ "$TRY" -ge 10 ]; then
@@ -244,7 +246,7 @@ fi
 
 # 비-qa **사람** 감사 행 수 — 끝에서 같은 값인지 본다 (stage26 방식, 사용자 데이터 불변 증거).
 #
-# ★ 조건은 위 R-73 관문(188행)과 **같아야** 한다: `actor_name IS NOT NULL AND … NOT LIKE 'qa\_%'`.
+# ★ 조건은 위 R-73 관문(188행)과 **같아야** 한다: `actor_name IS NOT NULL AND $REVIEW_NOT_SQL`(검토 계정 qa_·claude_).
 #   `COALESCE(actor_name, target_name)` 로 쓰면 **시스템 행**(actor 가 없는 배치 기록)이
 #   「사용자 행」으로 잡힌다 — 2026-09-21 실측에서 시험이 만든 `file.scan allow F65-exec.zip`
 #   과 `alert.raised AL-21` 둘이 그렇게 잡혀 2418→2420 으로 보였다. 둘 다 이 시험이 **의도해서**
@@ -254,7 +256,7 @@ NONQA_BEFORE=""
 SYS_BEFORE=""
 AUDIT_START=0
 if [ "$HAVE_PSQL" -eq 1 ]; then
-  NONQA_BEFORE=$(psqlq "SELECT count(*) FROM audit_logs WHERE actor_name IS NOT NULL AND actor_name NOT LIKE 'qa\_%'")
+  NONQA_BEFORE=$(psqlq "SELECT count(*) FROM audit_logs WHERE actor_name IS NOT NULL AND $REVIEW_NOT_SQL")
   SYS_BEFORE=$(psqlq "SELECT count(*) FROM audit_logs WHERE actor_name IS NULL")
   AUDIT_START=$(mark)
 fi
@@ -963,7 +965,7 @@ hr "(h) 정리 — 시험 파일은 휴지통으로 · 토큰 회수 · 폴더 �
 if [ "$HAVE_PSQL" -eq 1 ]; then
   SWEEP=$(psqlq "SELECT f.public_id FROM files f JOIN users u ON u.id = f.uploaded_by
                   WHERE f.original_name LIKE 'F65-%' AND f.deleted_at IS NULL
-                    AND u.username LIKE 'qa\_%'")
+                    AND $(review_like_sql u.username)")
   for s in $SWEEP; do
     case " $UPLOADED " in *" $s "*) ;; *) UPLOADED="$UPLOADED $s" ;; esac
   done
@@ -1019,10 +1021,10 @@ if [ "$HAVE_PSQL" -eq 1 ] && [ -n "$NONQA_BEFORE" ]; then
   expect "시험 요청이 만든 비-qa 행 0건 (검토 UA 기준 — 사용자 데이터 불변)" "0" \
     "$(psqlq "SELECT count(*) FROM audit_logs
                 WHERE id > ${AUDIT_START:-0}
-                  AND actor_name IS NOT NULL AND actor_name NOT LIKE 'qa\_%'
+                  AND actor_name IS NOT NULL AND $REVIEW_NOT_SQL
                   AND COALESCE(user_agent, '') LIKE 'tbox-review/%'")"
   # 사용자가 같은 시간에 만든 행은 **판정하지 않고** 숫자로만 남긴다 (증거용).
-  NONQA_AFTER=$(psqlq "SELECT count(*) FROM audit_logs WHERE actor_name IS NOT NULL AND actor_name NOT LIKE 'qa\_%'")
+  NONQA_AFTER=$(psqlq "SELECT count(*) FROM audit_logs WHERE actor_name IS NOT NULL AND $REVIEW_NOT_SQL")
   note "시험이 도는 동안 사용자가 만든 비-qa 행: $((${NONQA_AFTER:-0} - ${NONQA_BEFORE:-0}))건 (판정 대상 아님)"
   # 시스템 행(actor 없음)은 **늘어나는 것이 정상**이다 — 이 시험이 ClamAV 배치와 AL-21 을
   # 일부러 돌리기 때문이다. 몇 건이 왜 늘었는지를 숫자와 목록으로 남긴다(판정하지 않는다).

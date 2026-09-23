@@ -60,6 +60,8 @@
 set -u
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+# 검토 계정 판정 한 벌(qa_·claude_ — F-71 C). 못 읽으면 사전 검사가 빈 값으로 열리므로 시작하지 않는다.
+. "$ROOT/tests/lib/review_accounts.sh" || { echo "tests/lib/review_accounts.sh 를 읽지 못했다 — 시험을 시작하지 않는다 (R-73)"; exit 3; }
 BASE="http://127.0.0.1:8082/tbox"
 UA="tbox-review/$(date +%F)"
 DB="tbox_re"
@@ -180,7 +182,7 @@ echo "루트 파티션 여유: $(df -Ph / | awk 'NR==2{print $4}') (${avail_kb}K
 HAVE_PSQL=0
 if psqlq "SELECT 1" >/dev/null 2>&1; then HAVE_PSQL=1; fi
 if [ "$HAVE_PSQL" -eq 1 ]; then
-  BUSY=$(psqlq "SELECT count(*) FROM audit_logs WHERE happened_at > now() - interval '10 minutes' AND actor_name IS NOT NULL AND actor_name NOT LIKE 'qa\_%'")
+  BUSY=$(psqlq "SELECT count(*) FROM audit_logs WHERE happened_at > now() - interval '10 minutes' AND actor_name IS NOT NULL AND $REVIEW_NOT_SQL")
   echo "최근 10분 비-qa 감사 행: ${BUSY:-?}"
   if [ "${BUSY:-0}" -gt 0 ] 2>/dev/null; then
     echo "사용자가 지금 서비스를 쓰고 있다 — 시험을 시작하지 않는다 (SECURITY R-73 ①)"; exit 3
@@ -209,7 +211,7 @@ SHARED_USER=$(grep -oE '^API_TOKEN_USER=.*' "$ROOT/.env" 2>/dev/null | cut -d= -
 SHARED_SET=$(grep -c '^API_TOKEN=..*$' "$ROOT/.env" 2>/dev/null); SHARED_SET=${SHARED_SET:-0}
 USE_SHARED=0
 case "${SHARED_USER:-}" in
-  qa_*) [ "$SHARED_SET" -eq 1 ] && USE_SHARED=1 ;;
+  qa_*|claude_*) [ "$SHARED_SET" -eq 1 ] && USE_SHARED=1 ;;
 esac
 if [ "$USE_SHARED" -eq 1 ]; then
   SHARED_TOKEN=$(grep -oE '^API_TOKEN=.*' "$ROOT/.env" | cut -d= -f2- | tr -d '"'"'"' \r')

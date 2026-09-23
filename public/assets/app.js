@@ -348,6 +348,34 @@ function scanBadgeFor(scanStatus) {
 }
 
 /*
+ * F-71 ④ (2026-09-24) — 「누가 일으켰나」 배지. 화면은 서버가 판정한 `origin`·`origin_hint`
+ * **두 값만** 본다(판정은 src/Origin.php 한 곳 — 계정 qa_·claude_ **그리고** UA tbox-review/).
+ * 계정 이름·UA 를 여기서 다시 보지 않는다. 보여 주기 전용이고 권한과 무관하다.
+ * 색은 DESIGN 2.2 의 뜻대로 기존 변형만 쓴다 — 「Claude」 파랑(정보), 「확인 필요」 흰 바탕(아직 모른다).
+ * F-69 의 경보 목록도 같은 표를 쓰도록 함수 하나로 둔다.
+ *
+ * 돌려주는 것: `claude-*` → 「Claude」, partial → 「확인 필요」, 그 밖 null.
+ * DESIGN 2.2 규칙대로 한글 라벨을 보이고 원래 값(origin·origin_hint)은 title 앞머리에 둔다.
+ */
+function originBadgeFor(origin, hint) {
+  if (typeof origin === 'string' && origin.indexOf('claude-') === 0) {
+    return {
+      label: 'Claude',
+      cls: 'badge badge--internal',
+      title: origin + ' — 검토 계정과 검토 표식(User-Agent)이 둘 다 맞는 Claude 의 검토·시험 행동입니다'
+    };
+  }
+  if (hint === 'partial') {
+    return {
+      label: '확인 필요',
+      cls: 'badge badge--scan-pending',
+      title: 'partial — 검토 계정과 검토 표식(User-Agent) 중 하나만 맞습니다. 사람의 행동으로 셉니다'
+    };
+  }
+  return null;
+}
+
+/*
  * F-65 (PRD F-65 ③, ARCH 5.29 「목록·화면」) — 「실행 파일 포함」 배지.
  *
  * 화면은 서버가 준 `exec_content` 불리언 **하나만** 본다. 파일명·확장자를 보고 스스로
@@ -3534,6 +3562,24 @@ function initAudit() {
     return td;
   }
 
+  /**
+   * 「누가」 칸 — 계정명 + origin 배지(F-71 ④). 배지는 서버 값으로만 고르고(originBadgeFor),
+   * 글자는 전부 textContent 로 넣는다 — 계정명도 공격자가 정할 수 있는 문자열이다.
+   */
+  function addActorCell(row, data) {
+    var td = addCell(row, data.actor_name);
+    var badge = originBadgeFor(data.origin, data.origin_hint);
+    if (badge !== null) {
+      var span = document.createElement('span');
+      span.className = badge.cls;
+      span.setAttribute('title', badge.title);
+      setText(span, badge.label);
+      td.appendChild(document.createTextNode(' '));
+      td.appendChild(span);
+    }
+    return td;
+  }
+
   /** 표에 넣지 않은 나머지 항목(요청 id · user_agent · detail)을 한 덩어리 글자로 만든다. */
   function detailText(row) {
     var detail = '';
@@ -3593,7 +3639,7 @@ function initAudit() {
     rows.forEach(function (item) {
       var row = document.createElement('tr');
       addWhenCell(row, item.happened_at);
-      addCell(row, item.actor_name);
+      addActorCell(row, item);
       addCell(row, item.actor_role);
       addCell(row, item.action);
       addCell(row, targetOf(item));

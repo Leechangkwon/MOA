@@ -39,6 +39,8 @@
 set -u
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+# 검토 계정 판정 한 벌(qa_·claude_ — F-71 C). 못 읽으면 사전 검사가 빈 값으로 열리므로 시작하지 않는다.
+. "$ROOT/tests/lib/review_accounts.sh" || { echo "tests/lib/review_accounts.sh 를 읽지 못했다 — 시험을 시작하지 않는다 (R-73)"; exit 3; }
 BASE="http://127.0.0.1:8082/tbox"
 UA="tbox-review/$(date +%F)"
 DB="tbox_re"
@@ -90,7 +92,7 @@ if psqlq "SELECT 1" >/dev/null 2>&1; then HAVE_PSQL=1; fi
 if [ "$HAVE_PSQL" -eq 1 ]; then
   TRY=1
   while :; do
-    BUSY=$(psqlq "SELECT count(*) FROM audit_logs WHERE happened_at > now() - interval '10 minutes' AND actor_name IS NOT NULL AND actor_name NOT LIKE 'qa\_%'")
+    BUSY=$(psqlq "SELECT count(*) FROM audit_logs WHERE happened_at > now() - interval '10 minutes' AND actor_name IS NOT NULL AND $REVIEW_NOT_SQL")
     echo "최근 10분 비-qa 감사 행: ${BUSY:-?} (시도 ${TRY}/10)"
     [ "${BUSY:-0}" -gt 0 ] 2>/dev/null || break
     if [ "$TRY" -ge 10 ]; then

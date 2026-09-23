@@ -64,6 +64,7 @@
 | F-66 | 프로그램 토큰 본인 발급 — 내 계정 화면·요청마다 비밀번호+OTP·범위(역할이 정함)·만료 180일 (T-78 · Q-24 · R-97) | ✅ | ✅ 2026-09-22 | ✅ 2026-09-22 (T-78 129/0/2) | ⚠ 사용자 확인 대기 | `8f6afa7` · 발행 v1.17.0 `06f6ba4`(디자인 다듬기 문장 포함) |
 | **28** | t-box 를 `/tbox/` 아래로(base-path) + 루트 `/` Qaredi 런처 + 옛 주소 308 — 강사 지시 2026-09-21 · 사용자 결정 2026-09-22(Qaredi C). 설계 `../launcher/ARCHITECTURE.md` | ✅ 구현 2026-09-22 (Opus, 재지시 1회) | ✅ 2026-09-22 | ✅ 2026-09-22 (Q:T-1~9 · 회귀 7종 통과 수 불변 · SECURITY 7장) | ⚠ 사용자 확인 대기 (Q:T-10 PC 프로그램·브라우저) | `7d9362a` · 발행 **v2.0.0** `ecb7e30` |
 | **F-65** | 실행 파일이 든 압축본의 관리자 확인 업로드·확인 다운로드 — 요청마다 비밀번호+OTP(올릴 때·받을 때)·확인 문구·경고 배지·공유/토큰/등급 변경 금지·AL-21 (Q-23, 사용자 결정 2026-09-21) | ✅ 구현·검토 | ✅ 2026-09-21 (Opus 2단계, 후속 1회) | ✅ 2026-09-21 (T-77 Fable 재실행 106/0/0 · f54 61/0/2 · api_upload 27/0/0) | ⚠ 대기(브라우저로 `x.php` 든 zip 업로드) | `777ffe1` · v1.15.0 `dadcc03` |
+| F-71 | 검토·시험 계정을 `claude_` 이름으로 — 계정 5개(`seed_users.php --claude-only`) · 첫 로그인 절차를 창구로 마치는 CLI(`scripts/review_account_setup.php`) · 「검토 계정」 판정 `qa_` **또는** `claude_` 한 벌(`tests/lib/review_accounts.sh`, 시험 19개) · 감사 화면 「Claude」 배지(`src/Origin.php`, 계정 **그리고** UA) — 사용자 결정 2026-09-24 | ◐ 구현(복제본) | ✅ 2026-09-24 (claude, 복제본 — 정적 검사만) | ⚠ 대기 | ⚠ 대기 | 커밋 전 |
 
 ---
 
@@ -2396,6 +2397,33 @@ HTTP 시험(T-77 (a)~(e))은 **미실행** — 운영 DB 에 `files.exec_content
 
 **커밋·발행**: 커밋 `Qaredi C: …` → `scripts/release.sh major "Qaredi — 앱 런처와 새 주소" "…"` = **v2.0.0**(사용자 결정 Q-G). 해시는 사이트 `../STAGES.md` 2장.
 
+
+
+### F-71 — 검토·시험 계정을 `claude_` 이름으로 (T: 지시서 D 표 F71-T1~T9) — 착수 2026-09-24
+
+> 지시서: `docs/f71-claude-accounts-directive.md`(확정 2026-09-24, 결정 K-1~K-4). 근거: PRD **F-71** ①~④ · S-07 「검토 요청 표식」 · ARCH 4.0 · SECURITY R-73 · R-33 · R-48 · F-69 지시서 A-1·A-2(`src/Origin.php` 공유 — F-71 이 먼저 만들었다).
+> 순서: **코드(판정 넓히기) → 운영 적용(계정 5개 + 첫 로그인 절차)**. 판정이 먼저 넓어져야 claude_ 계정의 행동을 옛 판정의 시험이 「사람」으로 세어 멈추지 않는다(지시서 C 머리).
+
+**개발 사항 (① 구현 — claude, 복제본 2026-09-24)**
+- [x] `scripts/seed_users.php` — `$claudeAccounts` 표(qa_ 와 같은 역할·팀) · 정확 일치 인자 `--claude-only`(이 5개만, 시드·qa 는 조회도 안 함) · `--no-qa` 는 qa·claude 둘 다 안 만듦 · 모르는 인자는 DB 에 붙기 전 사용법 오류(종료 2) · 머리 주석(C-6)
+- [x] `scripts/review_account_setup.php`(새) — 지시서 B 1~6 을 창구로(로그인 → 비밀번호 변경 → 2단계 등록·확정 → 로그아웃 → 다음 30초 창 → 파일 값으로 다시 로그인 → `/api/me` 역할·팀·플래그 · Guest 는 목록이 public 만) · 127.0.0.1:8082·경로 7개·파일 경로는 코드 상수 · 인자는 claude_ 5개 표 안의 이름만 · 비밀은 인자·출력 0 · 실패하면 그 계정에서 멈춤(재시도 0) · 파일은 같은 폴더 임시(0600) + rename · 다시 돌리면 이어서
+- [x] `tests/lib/review_accounts.sh`(새) — `REVIEW_NOT_SQL` · `review_not_sql`·`review_like_sql <열>` · `review_account` · source 때 자체 점검(이스케이프)
+- [x] 시험 19개 — **판정 줄 40개(+ 조건 설명 주석 1)만**, 계정 이름은 그대로. 각 파일은 ROOT 바로 뒤에서 lib 를 source 하고 못 읽으면 종료 3(회귀용 `$INST/app/tests/…temp.sh` 사본에서도 같은 경로)
+- [x] `src/Origin.php`(새, 앱 행동 판정만 — F-69 가 서버 층·배치 갈래를 더할 자리 표시) · `audit_list.php` 행마다 `origin`·`origin_hint` · `app.js` 「누가」 칸 배지 「Claude」(`.badge--internal`)·「확인 필요」(`.badge--scan-pending`), 새 클래스·색 0 · `audit_page.php` placeholder `claude_employee01`
+- [x] 문서 — ARCH 4.0 · PRD S-07 · SECURITY R-73 + 7장 · README(설치 7절·검토 계정) · 위키 `guide-review`
+- [ ] 운영 적용 스크립트 — **초안만**(복제본 루트 `APPLY-DRAFT.sh`). 실제 자리 `/var/www/qaredi/scripts/apply-f71-claude-accounts-<날짜>.sh` 는 메인 세션이 옮긴다
+- [ ] 지침 파일(공통 `CLAUDE.md` 3장 · t-box `CLAUDE.md` · `HANDOFF.md` 7장 8 · 커뮤니티 PRD 10장) — **사용자 몫**(C-8). 바꿀 문구는 구현 보고서에
+
+**체크 (② 검토 — 지시서 D 표)**
+- [ ] F71-T1~T4 — 운영 적용 뒤(적용 스크립트 6단계가 찍는다)
+- [ ] F71-T5 — 임시 DB 로 `--claude-only` 두 번째 실행 새 줄 0 · `--no-qa` → qa·claude 0. (사용법 오류 갈래 `--claude`·`--no-qa --claude-only`·`--NO-QA` → 종료 2 는 구현자가 DB 없이 확인)
+- [ ] F71-T6 — 임시 DB 판정(claude_ 행 → 0, 사람 행 → 1) · 바꾸기 전후 같은 쿼리 결과 수(운영 사본). 구현자는 DB 없이 bash 가 펼친 SQL 전후 대조 40/40 + LIKE 흉내 대조만
+- [ ] F71-T7 회귀 통과 수 전과 같음 · F71-T8 감사 화면 헤드리스(라이트·다크·390px 스크린샷) · F71-T9 정적(구현자 통과 — SECURITY 7장)
+
+**주의**
+- `claude_guest01` 만료 = 만든 때 + 90일 — **적용한 날 이 절에 날짜를 적고** 2주 전에 알린다(K-2). 연장은 Admin 창구(F-10), 사유와 함께.
+- `qa_f64_1789961456` 은 건드리지 않는다 — 보고만(K-3).
+- `seed_users.php` 는 감사 기록을 남기지 않는다 → F71-T2 의 「계정 생성」 행은 0 이 정상(지시서 A 의 대안 — Admin 창구로 만들면 남는다 — 과 다른 점).
 
 ## 2-1. 10단계 뒤 일괄 자기 공격 — 진행 순서 (관문 ③, 사용자)
 

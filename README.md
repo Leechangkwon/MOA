@@ -643,9 +643,11 @@ sudo systemctl reload php8.1-fpm     # 고친 뒤 반영
 
 ### 시드 계정 (2단계)
 
-`install.sh` 는 `users` 가 **비어 있을 때만** `scripts/seed_users.php` 를 실행해 아래 5계정을 만듭니다.
+`install.sh` 7절은 `scripts/seed_users.php` 를 실행해 아래 5계정과 **검토 계정 10개**(`claude_` 5 · `qa_` 5 — 아래 「검토 계정」 절)를 만듭니다.
+계정별로 **없는 것만** 만들고(이미 있는 계정의 비밀번호는 바꾸지 않습니다), 새로 만든 줄만 파일에 덧붙입니다.
 비밀번호는 계정마다 무작위 16자로 생성되며, **저장소·README 에는 적지 않습니다**(`PRD.md` S-09-6).
 평문은 `/etc/tbox-v2/seed-accounts.txt`(`0600 root`) 한 곳에만 있습니다.
+인자는 정확히 일치하는 하나만 받습니다 — 없음(시드 + 검토) · `--no-qa`(시드만, 운영 배포) · `--claude-only`(`claude_` 5개만). 그 밖의 글자는 사용법 오류로 끝납니다.
 
 | 아이디 | 역할 | 팀 |
 |---|---|---|
@@ -1263,19 +1265,23 @@ sudo -u postgres psql -d tbox_re -c "
 
 ### ★ 내 행동과 AI 검토 행동 가르기
 
-AI(Fable·Opus)의 검토 요청은 **두 겹**으로 표시됩니다 (`PRD.md` S-07 "검토 요청 표식").
+AI(Claude)의 검토 요청은 **두 겹**으로 표시됩니다 (`PRD.md` S-07 "검토 요청 표식").
 
-1. 계정이 `qa_` 로 시작합니다 (`qa_admin01`·`qa_manager01`·`qa_employee01`·`qa_employee02`·`qa_guest01`)
+1. 계정이 `claude_` 로 시작합니다 (`claude_admin01`·`claude_manager01`·`claude_employee01`·`claude_employee02`·`claude_guest01` — 2026-09-24 부터의 새 시험) — 또는 `qa_` 로 시작합니다 (`qa_admin01` …`qa_guest01` — 옛 시험)
 2. `User-Agent` 가 `tbox-review/<날짜>` 입니다
 
-둘 다 아니면 사용자(또는 침입자)의 행동입니다.
+둘 다 아니면 사용자(또는 침입자)의 행동입니다. 감사 로그 화면(`/tbox/audit`)은 둘 다 맞는 행의 「누가」 칸에 배지 **「Claude」** 를, 한쪽만 맞는 행에 **「확인 필요」** 를 붙입니다(판정은 서버 `src/Origin.php` — 표식은 흉내 낼 수 있어서 둘 다 맞을 때만 Claude 로 봅니다).
 
 ```sql
--- 사용자 행동만 보기 (검토 계정·검토 UA 제외)
-SELECT happened_at, actor_name, ip, action, result, summary
+-- 사용자 행동만 보기 — 「검토 계정 **그리고** 검토 UA」인 행만 뺀다(화면 배지와 같은 규칙 · src/Origin.php)
+-- 한쪽만 맞는 행(UA 만 흉내 낸 사람 · 남의 검토 계정 이름을 댄 로그인 실패)은 **남는다** — 그것이 볼 것이다
+SELECT happened_at, actor_name, target_name, ip, action, result, summary
   FROM audit_logs
- WHERE COALESCE(actor_name, target_name) NOT LIKE 'qa\_%'
-   AND COALESCE(user_agent, '') NOT LIKE 'tbox-review/%'
+ WHERE NOT (
+         (COALESCE(actor_name, '') LIKE 'qa\_%' OR COALESCE(actor_name, '') LIKE 'claude\_%'
+          OR (actor_name IS NULL AND action = 'auth.login' AND result = 'allow'
+              AND (COALESCE(target_name, '') LIKE 'qa\_%' OR COALESCE(target_name, '') LIKE 'claude\_%')))
+         AND COALESCE(user_agent, '') LIKE 'tbox-review/%')   -- COALESCE: NULL 이 섞이면 NOT(…) 이 NULL 이 되어 행이 사라진다
  ORDER BY id DESC LIMIT 20;
 ```
 
@@ -1344,19 +1350,35 @@ sudo php scripts/audit_chain.php --verify              # 다시 검산해 통과
 로그에 절대 넣지 않는 것: 비밀번호, 세션 토큰·쿠키, 파일 본문 (`src/Audit.php` 의 `scrub()` 이 비밀 키 이름을 `[제거됨]` 으로 바꿉니다).
 파일 내용은 남기지 않고 `detail.sha256` 으로만 가리킵니다.
 
-## 검토 계정 (`qa_*`) — 운영 배포에서는 만들지 않습니다
+## 검토 계정 (`claude_*` · `qa_*`) — 운영 배포에서는 만들지 않습니다
 
-`scripts/seed_users.php` 는 기본으로 시드 계정 5개와 **검토 계정 5개**(`qa_` 접두)를 함께 만듭니다.
+`scripts/seed_users.php` 는 기본으로 시드 계정 5개와 **검토 계정 10개**를 함께 만듭니다(역할·팀은 같은 이름의 시드 계정과 같습니다).
+
+| 접두 | 계정 | 쓰임 |
+|---|---|---|
+| `claude_` | `claude_admin01` · `claude_manager01` · `claude_employee01` · `claude_employee02` · `claude_guest01` | **새로 쓰거나 고치는 시험** (2026-09-24, `PRD.md` F-71) |
+| `qa_` | `qa_admin01` · `qa_manager01` · `qa_employee01` · `qa_employee02` · `qa_guest01` | 옛 시험 — 지우지 않습니다(옛 기록 확인용) |
+
 검토 계정은 AI 검토(관문 ②)가 남기는 행을 사용자의 행동과 갈라 놓기 위한 것이며, **과제 환경 전용**입니다.
+`claude_guest01` 은 만들 때부터 **90일 뒤 만료**됩니다(Guest 규칙, `SECURITY.md` R-12) — 연장은 계정 관리 화면에서 사유와 함께 합니다.
 
 ```bash
-php scripts/seed_users.php --no-qa      # 검토 계정을 만들지 않는다 (운영 배포)
+php scripts/seed_users.php --no-qa        # 검토 계정(qa·claude 둘 다)을 만들지 않는다 (운영 배포)
+php scripts/seed_users.php --claude-only  # claude_ 5개만 (시드·qa 는 보지도 않는다)
+
+# 새 claude_ 계정의 첫 로그인 절차(비밀번호 변경 → 2단계 등록)는 창구를 그대로 타는 CLI 로 마칩니다.
+# 비밀번호·2단계 비밀은 명령 인자·화면에 나오지 않고 /etc/tbox-v2 의 두 파일(0600 root)에만 적힙니다.
+sudo php scripts/review_account_setup.php claude_admin01 claude_manager01 claude_employee01 claude_employee02 claude_guest01
 
 # 이미 만들어진 검토 계정을 막으려면: 지우지 말고 **비활성화**합니다.
 # users 를 지우면 files·audit_logs 의 참조가 깨집니다 (감사 추적이 끊어집니다).
-sudo -u postgres psql -d tbox_re -c "UPDATE users SET is_active=false WHERE username LIKE 'qa\_%'"
-sudo -u postgres psql -d tbox_re -c "DELETE FROM sessions WHERE user_id IN (SELECT id FROM users WHERE username LIKE 'qa\_%')"
+# 한두 개면 계정 관리 화면(/tbox/users, F-10)에서 사유와 함께 — 누가 왜 막았는지 감사에 남습니다.
+# 아래 psql 은 운영 배포 전 일괄 정리용(사용자 몫)이고 감사에 남지 않습니다.
+sudo -u postgres psql -d tbox_re -c "UPDATE users SET is_active=false WHERE username LIKE 'qa\_%' OR username LIKE 'claude\_%'"
+sudo -u postgres psql -d tbox_re -c "DELETE FROM sessions WHERE user_id IN (SELECT id FROM users WHERE username LIKE 'qa\_%' OR username LIKE 'claude\_%')"
 ```
+
+시험 스크립트의 「사용자가 지금 쓰는 중인가」 검사(`SECURITY.md` R-73)는 두 접두를 모두 검토 계정으로 셉니다 — 판정 조각은 `tests/lib/review_accounts.sh` 한 곳입니다.
 
 ## 보안 자체점검
 

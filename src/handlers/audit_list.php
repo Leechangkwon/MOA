@@ -20,10 +20,16 @@ declare(strict_types=1);
  *   · 응답은 JSON 이며, 화면은 이 값을 `textContent` 로만 그린다.
  *     `summary`·`target_name`·`user_agent`·`detail` 은 공격자가 만들 수 있는 문자열이다
  *     (SECURITY 1.4, ARCH 7.4 "파일명이 문장을 흉내"). 서버는 HTML 을 만들지 않는다.
+ *   · F-71 ④ (2026-09-24) — 행마다 `origin`·`origin_hint` 를 붙인다. 판정은 **서버**가 `src/Origin.php`
+ *     한 곳에서 한다(계정 `qa_`·`claude_` **그리고** UA `tbox-review/` → `claude-review`, 하나만 맞으면
+ *     `human` + `partial`). 화면은 그 값으로 「Claude」·「확인 필요」 배지만 고른다 — 계정 이름·UA 를
+ *     화면이 다시 판정하지 않는다. **보여 주기 전용**이며 조회 조건·권한·감사 기록에는 쓰지 않는다.
  *
  * @var array<string,mixed> $user   라우터가 넘긴 현재 사용자 (요청 파라미터가 아니다)
  * @var list<string>        $params 경로 변수 없음
  */
+
+require_once dirname(__DIR__) . '/Origin.php';
 
 $perPage = 20;
 
@@ -253,6 +259,15 @@ foreach ($rows as $row) {
         $detail  = is_array($decoded) ? $decoded : null;
     }
 
+    // F-71 ④ — 저장된 칸으로만 판정한다(요청 값이 아니다). 보여 주기 전용. 로그인 성공 행만 대상 계정을 본다(Origin::ofAuditRow).
+    $origin = Origin::ofAuditRow(
+        $row['actor_name'] === null ? null : (string) $row['actor_name'],
+        $row['user_agent'] === null ? null : (string) $row['user_agent'],
+        (string) $row['action'],
+        $row['result'] === null ? null : (string) $row['result'],
+        $row['target_name'] === null ? null : (string) $row['target_name']
+    );
+
     $out[] = [
         'id'           => (int) $row['id'],
         'happened_at'  => (string) $row['happened_at'],
@@ -269,6 +284,8 @@ foreach ($rows as $row) {
         'request_id'   => (string) $row['request_id'],
         'detail'       => $detail,
         'summary'      => (string) $row['summary'],
+        'origin'       => $origin['origin'],
+        'origin_hint'  => $origin['origin_hint'],
     ];
 }
 

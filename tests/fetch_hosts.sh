@@ -34,6 +34,8 @@ BASE="http://127.0.0.1:8082/tbox"
 UA="tbox-review/$(date +%F)"
 DB="tbox_re"
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+# 검토 계정 판정 한 벌(qa_·claude_ — F-71 C). 못 읽으면 사전 검사가 빈 값으로 열리므로 시작하지 않는다.
+. "$ROOT/tests/lib/review_accounts.sh" || { echo "tests/lib/review_accounts.sh 를 읽지 못했다 — 시험을 시작하지 않는다 (R-73)"; exit 3; }
 OUT="${1:-$HOME/.claude/ui-shots/f43}"
 JAR_DIR="$(mktemp -d)"
 WORK="$(mktemp -d)"
@@ -132,7 +134,7 @@ hr "0. 시험 안전 점검 (SECURITY R-73)"
 # ─────────────────────────────────────────────────────────────
 # 2026-09-15 Fable: 감사 단언은 「이 실행 시작 이후」만 센다 — 고정 창(2·10분)은 연속 실행 때 앞 실행의 행을 함께 세어 오탐했다
 T0=$(psqlq "SELECT now();")
-NONQA_BEFORE=$(psqlq "SELECT count(*) FROM audit_logs WHERE happened_at > now() - interval '10 minutes' AND actor_name IS NOT NULL AND actor_name NOT LIKE 'qa\\_%'")
+NONQA_BEFORE=$(psqlq "SELECT count(*) FROM audit_logs WHERE happened_at > now() - interval '10 minutes' AND actor_name IS NOT NULL AND $REVIEW_NOT_SQL")
 echo "  최근 10분 비-qa 감사 행: $NONQA_BEFORE"
 if [ "${NONQA_BEFORE:-1}" != "0" ]; then
   echo "  ✖ 사용자가 지금 서비스를 쓰고 있다 — 시험을 시작하지 않는다 (종료 3)"
@@ -504,7 +506,7 @@ AFTER_DEL=$(psqlq "SELECT count(*) FROM fetch_hosts")
 echo "  fetch_hosts: $BEFORE_DEL → $AFTER_DEL (픽스처 2행 제거)"
 expect "정리 뒤 s43- 행 0" 0 "$(psqlq "SELECT count(*) FROM fetch_hosts WHERE host LIKE 's43-%'")"
 
-NONQA_AFTER=$(psqlq "SELECT count(*) FROM audit_logs WHERE happened_at > now() - interval '30 minutes' AND actor_name IS NOT NULL AND actor_name NOT LIKE 'qa\\_%'")
+NONQA_AFTER=$(psqlq "SELECT count(*) FROM audit_logs WHERE happened_at > now() - interval '30 minutes' AND actor_name IS NOT NULL AND $REVIEW_NOT_SQL")
 echo "  최근 30분 비-qa 감사 행: 시작 $NONQA_BEFORE → 지금 $NONQA_AFTER (0 이어야 정상)"
 
 rm -rf "$JAR_DIR" "$WORK"

@@ -50,6 +50,8 @@
 set -u
 
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
+# 검토 계정 판정 한 벌(qa_·claude_ — F-71 C). 못 읽으면 사전 검사가 빈 값으로 열리므로 시작하지 않는다.
+. "$ROOT/tests/lib/review_accounts.sh" || { echo "tests/lib/review_accounts.sh 를 읽지 못했다 — 시험을 시작하지 않는다 (R-73)"; exit 3; }
 SITE="http://127.0.0.1:8082"
 BASE="$SITE/tbox"                 # t-box 모듈 (로그인·CSRF 토큰을 받는 자리)
 CBASE="$SITE/community"           # 커뮤니티 모듈
@@ -177,7 +179,7 @@ fi
 if [ "$HAVE_PSQL" -eq 1 ]; then
   TRY=1
   while :; do
-    BUSY=$(psqlq "SELECT count(*) FROM audit_logs WHERE happened_at > now() - interval '10 minutes' AND actor_name IS NOT NULL AND actor_name NOT LIKE 'qa\_%'")
+    BUSY=$(psqlq "SELECT count(*) FROM audit_logs WHERE happened_at > now() - interval '10 minutes' AND actor_name IS NOT NULL AND $REVIEW_NOT_SQL")
     echo "최근 10분 비-qa 감사 행: ${BUSY:-?} (시도 ${TRY}/10)"
     [ "${BUSY:-0}" -gt 0 ] 2>/dev/null || break
     if [ "$TRY" -ge 10 ]; then
@@ -730,10 +732,10 @@ if [ "$HAVE_PSQL" -eq 1 ]; then
   expect "시험이 만든 비-qa 행 0건 (검토 UA 기준 — 사용자 데이터 불변)" "0" \
     "$(psqlq "SELECT count(*) FROM audit_logs
                 WHERE id > ${AUDIT_START:-0}
-                  AND actor_name IS NOT NULL AND actor_name NOT LIKE 'qa\_%'
+                  AND actor_name IS NOT NULL AND $REVIEW_NOT_SQL
                   AND COALESCE(user_agent, '') LIKE 'tbox-review/%'")"
   note "시험이 만든 감사 행(전체): $(psqlq "SELECT count(*) FROM audit_logs WHERE id > ${AUDIT_START:-0}")건"
-  note "남은 qa 페이지: $(psqlq "SELECT count(*) FROM community.pages p JOIN community.spaces s ON s.id=p.space_id JOIN users u ON u.id=s.owner_user_id WHERE u.username LIKE 'qa\_%' AND p.deleted_at IS NULL")건 (「시작하기」 페이지는 남는다)"
+  note "남은 qa 페이지: $(psqlq "SELECT count(*) FROM community.pages p JOIN community.spaces s ON s.id=p.space_id JOIN users u ON u.id=s.owner_user_id WHERE $(review_like_sql u.username) AND p.deleted_at IS NULL")건 (「시작하기」 페이지는 남는다)"
 else
   skip "비-qa 행 0건" "psql 없음"
 fi

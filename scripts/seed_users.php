@@ -2,17 +2,29 @@
 declare(strict_types=1);
 
 /**
- * scripts/seed_users.php — 시드 계정 5개 + 검토 계정 5개 (ARCH 4.0, PRD S-07 · S-09-4 · S-09-6)
+ * scripts/seed_users.php — 시드 계정 5개 + 검토 계정 10개(qa_ 5 · claude_ 5)
+ *                           (ARCH 4.0, PRD S-07 · S-09-4 · S-09-6 · F-71)
  *
- * 실행: sudo php scripts/seed_users.php            (deploy/install.sh 7절이 자동으로 부른다)
- *       sudo php scripts/seed_users.php --no-qa    (운영 배포 — 검토 계정을 만들지 않는다)
+ * 실행: sudo php scripts/seed_users.php                (deploy/install.sh 7절이 자동으로 부른다 — 시드 + qa + claude)
+ *       sudo php scripts/seed_users.php --no-qa        (운영 배포 — 검토 계정을 **하나도** 만들지 않는다: qa·claude 둘 다)
+ *       sudo php scripts/seed_users.php --claude-only  (F-71 — claude_ 5개만. 시드·qa 계정은 보지도 않는다)
+ *
+ * 인자는 위 둘 중 **하나**만, **정확히 일치할 때만** 인정한다. 그 밖의 글자(`--claude`·`--noqa`·
+ * 인자 두 개 …)는 사용법 오류로 끝난다(종료 코드 2, DB 에 붙기 전). 부분 일치·약어를 받아 주면
+ * 오타 하나로 검토 계정이 운영에 만들어지거나, 거꾸로 만들 줄 알았던 계정이 조용히 빠진다.
  *
  * 계정은 세 갈래다 (PRD 3장 · S-07 "검토 요청 표식")
- *   · 시드 계정 `admin01` 등 5개  — 사용자의 자기 공격·시연 전용
- *   · 검토 계정 `qa_` 접두 5개    — Fable·Opus 의 자동 검토 전용 (같은 역할·팀)
- *   · 실사용 계정                  — 운영 배포 후 1인 1개 (여기서 만들지 않는다)
- * 감사 로그에서 `actor_name LIKE 'qa\_%'` 이면 검토 행동, 아니면 사용자 행동이다.
- * 운영 배포에서는 `--no-qa` 로 검토 계정을 만들지 않는다.
+ *   · 시드 계정 `admin01` 등 5개      — 사용자의 자기 공격·시연 전용
+ *   · 검토 계정 `claude_` 접두 5개    — Claude 의 자동 검토·시험 전용, **새 시험은 이것을 쓴다** (F-71, 2026-09-24)
+ *              `qa_` 접두 5개        — 옛 시험(2026-09-10~)의 검토 계정. 지우지 않는다(옛 기록 확인용)
+ *              둘 다 같은 이름의 시드 계정과 역할·팀이 같다
+ *   · 실사용 계정                      — 운영 배포 후 1인 1개 (여기서 만들지 않는다)
+ * 감사 로그에서 `actor_name LIKE 'qa\_%'` **또는** `actor_name LIKE 'claude\_%'` 이면 검토 행동,
+ * 아니면 사용자 행동이다 (시험의 판정 조각은 tests/lib/review_accounts.sh 한 벌 — F-71 C-1).
+ * 운영 배포에서는 `--no-qa` 로 검토 계정(qa·claude)을 만들지 않는다.
+ *
+ * 새로 만든 계정은 첫 로그인 절차(F-16)가 켜진 채로 나온다. claude_ 계정의 첫 로그인은
+ * scripts/review_account_setup.php 가 창구를 그대로 타서 마친다(F-71 B — DB 를 직접 고치지 않는다).
  *
  * 멱등성: **계정별**로 판단한다. 이미 있는 username 은 건드리지 않고(비밀번호를 바꾸지 않는다),
  * 없는 것만 만든다. 그래서 5계정이 이미 있는 DB 에 검토 계정 5개만 덧붙일 수 있다.
@@ -37,6 +49,25 @@ if (PHP_SAPI !== 'cli') {
     exit(1);
 }
 
+/**
+ * 인자 — **DB 에 붙기 전에** 읽는다. 사용법 오류로 끝날 실행이 DB 연결·팀 조회를 먼저 하지 않게.
+ * 받는 것은 셋 중 하나: 없음(새 설치) · `--no-qa` · `--claude-only`. 정확히 일치할 때만 인정한다.
+ */
+$seedArgs = array_slice($_SERVER['argv'] ?? [], 1);
+$seedMode = 'all';
+if ($seedArgs === ['--no-qa']) {
+    $seedMode = 'no-qa';
+} elseif ($seedArgs === ['--claude-only']) {
+    $seedMode = 'claude-only';
+} elseif ($seedArgs !== []) {
+    // 받은 글자는 되찍지 않는다 — 사용법만 알린다(인자에 무엇이 섞여 들어왔든 화면에 남기지 않는다).
+    fwrite(STDERR, "[사용법 오류] 모르는 인자입니다 (정확히 일치하는 인자 하나만 받습니다)\n");
+    fwrite(STDERR, "사용법: sudo php scripts/seed_users.php                 시드 + 검토 계정(qa_·claude_)\n");
+    fwrite(STDERR, "        sudo php scripts/seed_users.php --no-qa         시드만 (운영 배포 — 검토 계정 0)\n");
+    fwrite(STDERR, "        sudo php scripts/seed_users.php --claude-only   claude_ 검토 계정 5개만\n");
+    exit(2);
+}
+
 $repoDir = dirname(__DIR__);
 require_once $repoDir . '/src/Env.php';
 require_once $repoDir . '/src/Db.php';
@@ -55,12 +86,6 @@ Db::boot(
 
 $db = Db::instance();
 
-/**
- * 인자는 `--no-qa` 하나뿐이고 **정확히 일치할 때만** 인정한다
- * (부분 일치·약어를 허용하면 오타 하나로 검토 계정이 운영에 만들어질 수 있다).
- */
-$makeQa = !in_array('--no-qa', array_slice($argv, 1), true);
-
 /** 팀 id 는 이름으로 찾는다 (db/seed.sql 이 '개발팀','영업팀' 2행을 넣었다). */
 function tbox_team_id(Db $db, string $name): int
 {
@@ -78,7 +103,8 @@ $salesTeam = tbox_team_id($db, '영업팀');
 
 /**
  * ARCH 4.0 계정 표 그대로. 검토 계정은 같은 이름의 시드 계정과 역할·팀이 같다
- * (`qa_` 접두는 users.username CHECK `^[a-z0-9_.-]+$` 를 통과한다).
+ * (`qa_`·`claude_` 접두는 users.username CHECK `^[a-z0-9_.-]+$` 를 통과한다).
+ * 역할 문자열은 이 표(코드 상수)에서만 온다 — 요청 값이 아니다.
  */
 $accounts = [
     ['admin01',       'Admin',    null],
@@ -94,6 +120,16 @@ $qaAccounts = [
     ['qa_employee02', 'Employee', $salesTeam],
     ['qa_guest01',    'Guest',    null],
 ];
+// F-71 (2026-09-24) — 새 시험의 검토 계정. qa_ 표와 **같은 역할·팀**(지시서 A 표).
+// Guest 는 아래 $guestDays(90일) 만료가 만들 때부터 붙는다 — 그 뒤 시험이 깨지므로 연장은
+// Admin 창구(F-10)에서 사유와 함께 한다(지시서 K-2).
+$claudeAccounts = [
+    ['claude_admin01',    'Admin',    null],
+    ['claude_manager01',  'Manager',  $devTeam],
+    ['claude_employee01', 'Employee', $devTeam],
+    ['claude_employee02', 'Employee', $salesTeam],
+    ['claude_guest01',    'Guest',    null],
+];
 
 /**
  * 10단계 (SECURITY R-12, PRD 3장 "Guest 생명주기") — **Guest 계정은 만료일이 필수**다.
@@ -102,9 +138,19 @@ $qaAccounts = [
  * 늘리고 줄이는 것은 계정 관리 화면(F-10)에서 사유와 함께 한다.
  */
 $guestDays = 90;
-if ($makeQa) {
-    $accounts = array_merge($accounts, $qaAccounts);
+
+/*
+ * 무엇을 만들까 — 인자 셋(위 $seedMode)을 표 조합 하나로 옮긴다.
+ *   all          시드 + qa + claude (새 설치 — 인자 없음)
+ *   no-qa        시드만 (운영 배포 — 검토 계정 **전부** 안 만든다: qa 도 claude 도)
+ *   claude-only  claude 5개만 — 시드·qa 는 이 표에 넣지 않으므로 존재 여부조차 묻지 않는다
+ */
+if ($seedMode === 'claude-only') {
+    $accounts = $claudeAccounts;
+} elseif ($seedMode === 'all') {
+    $accounts = array_merge($accounts, $qaAccounts, $claudeAccounts);
 }
+// 'no-qa' 는 시드 표 그대로다.
 
 $sqlExists = <<<'SQL'
     SELECT 1 AS one FROM users WHERE username = :username

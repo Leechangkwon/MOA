@@ -50,7 +50,7 @@ require __DIR__ . '/../views/shell_top.php';
     <form id="audit-filter" class="form form--grid" autocomplete="off">
       <label class="field">
         <span class="field__label">누가 — 계정명 또는 로그인 회차(12자)</span>
-        <input id="f-actor" type="text" maxlength="64" placeholder="qa_employee01 · 3f2a1b0c9d8e">
+        <input id="f-actor" type="text" maxlength="64" placeholder="claude_employee01 · 3f2a1b0c9d8e">
       </label>
       <label class="field">
         <span class="field__label">언제 — 시작</span>

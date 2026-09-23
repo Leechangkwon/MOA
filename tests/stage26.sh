@@ -23,6 +23,8 @@ BASE="http://127.0.0.1:8082/tbox"
 UA="tbox-review/$(date +%F)"
 DB="tbox_re"
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+# 검토 계정 판정 한 벌(qa_·claude_ — F-71 C). 못 읽으면 사전 검사가 빈 값으로 열리므로 시작하지 않는다.
+. "$ROOT/tests/lib/review_accounts.sh" || { echo "tests/lib/review_accounts.sh 를 읽지 못했다 — 시험을 시작하지 않는다 (R-73)"; exit 3; }
 OUT="${1:-$HOME/.claude/ui-shots/stage26}"
 JAR_DIR="$(mktemp -d)"
 WORK="$(mktemp -d)"
@@ -119,7 +121,7 @@ uuid_of() { printf '%s' "$1" | sed -n 's/.*"id":"\([0-9a-f-]\{36\}\)".*/\1/p' | 
 # ─────────────────────────────────────────────────────────────
 BUSY=$(psqlq "SELECT count(*) FROM audit_logs
                WHERE happened_at > now() - interval '10 minutes'
-                 AND actor_name NOT LIKE 'qa\\_%';")
+                 AND $REVIEW_NOT_SQL;")
 if [ "${BUSY:-1}" != "0" ]; then
   echo "■ 최근 10분 감사 로그에 비-qa actor 가 ${BUSY}건 있습니다 — 사용자가 작업 중입니다."
   echo "■ 데이터를 남기는 시험을 시작하지 않고 끝냅니다 (SECURITY R-73 ②). 종료 코드 3."
@@ -128,7 +130,7 @@ if [ "${BUSY:-1}" != "0" ]; then
 fi
 echo "■ 최근 10분 비-qa 활동 0건 — 시험을 시작합니다."
 
-QA_IDS=$(psqlq "SELECT coalesce(string_agg(id::text, ','), '0') FROM users WHERE username LIKE 'qa\\_%';")
+QA_IDS=$(psqlq "SELECT coalesce(string_agg(id::text, ','), '0') FROM users WHERE $(review_like_sql username);")
 CENSUS_BEFORE=""
 CENSUS_SUM=0
 
