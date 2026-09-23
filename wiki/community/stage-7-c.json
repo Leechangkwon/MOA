@@ -1,0 +1,50 @@
+{
+ "slug": "stage-7-c",
+ "title": "7-C — 임베드 허용 목록",
+ "summary": "관리자가 등록한 사이트(https, 호스트 이름 정확히, 20개까지)의 주소만 페이지에 임베드한다. 목록 밖의 새 임베드는 저장되지 않고, 목록에서 뺀 사이트의 옛 임베드는 저장을 막지 않는다. 사이트가 CSP 로 틀을 열기 전까지 모든 임베드는 「허용 대기」 카드로 보이고, 열린 뒤에도 권한 없는 sandbox 틀로만 그린다.",
+ "group": "stage",
+ "stage": "7-C",
+ "updated": "2026-09-24",
+ "sections": [
+  {
+   "id": "why",
+   "heading": "왜 만들었나",
+   "blocks": [
+    {
+     "type": "p",
+     "text": "PRD F-32 「임베드는 허용 목록 도메인만」, 시험 T-33. 결정 J-4(스크립트 없는 임베드만 — 좁은 쪽)와 7-C 확정 K-1~K-6 기본안."
+    }
+   ]
+  },
+  {
+   "id": "what",
+   "heading": "무엇을 만들었나",
+   "blocks": [
+    {
+     "type": "list",
+     "items": [
+      "마이그레이션 `2026-09-28_community_embeds.sql` — 표 `community.embed_domains`(빼기는 removed_at · 살아 있는 호스트 하나 · 모양 CHECK).",
+      "창구: `GET /api/embed-domains`(누구나 — 호스트만) · `POST`·`DELETE`(Admin, 재인증). 감사 `embed.domain_add`·`embed.domain_remove`.",
+      "문서 단계 6 → 7(`embed` 열림). 검증기는 https 모양만, 허용 목록 검사는 저장 창구 셋(만들기 · 고치기 · 되돌리기)이 **새로 넣은** 임베드만 한다. 글 안 mention 마크는 7-D 까지 8단계.",
+      "렌더러 두 벌: 목록 안 + 틀 열림 → `<iframe sandbox=\"\">` · 목록 안 → 「허용 대기」 카드 + 새 탭 링크 · 목록 밖 → 링크 없는 카드.",
+      "CSP: 코드 상수 `COMMUNITY_EMBED_FRAMES`(기본 끔)를 켜면 페이지 화면만 허용 목록 호스트로 `frame-src` 를 더한다. nginx 의 CSP 머리글도 같이 바꿔야 한다(사용자 설정).",
+      "화면: 블록 추가 「임베드」 창(허용된 사이트 안내) · 홈 「임베드 허용 목록」 관리 창(Admin)."
+     ]
+    }
+   ]
+  },
+  {
+   "id": "check",
+   "heading": "어떻게 확인했나",
+   "blocks": [
+    {
+     "type": "list",
+     "items": [
+      "`tests/community/stage7c.sh` — C:T-180 허용 목록 · C:T-181 저장 · C:T-182 옛 임베드 · C:T-183 그리기 · C:T-184 CSP 스위치 · C:T-185 브라우저 · C:T-186 권한·단계.",
+      "`browser_7c.py` — 편집기 임베드 창 · 읽기 카드 · 관리자 창 · 렌더러 JS 세 갈래."
+     ]
+    }
+   ]
+  }
+ ]
+}

@@ -40,9 +40,10 @@ import { inputRules, textblockTypeInputRule, InputRule } from './vendor/pm/prose
 import { dropCursor } from './vendor/pm/prosemirror-dropcursor.js';
 import { gapCursor } from './vendor/pm/prosemirror-gapcursor.js';
 
-import { renderDoc } from './doc-render.js';
+import { renderDoc, embedHost } from './doc-render.js';
 import { createDatabaseView } from './database.js';
 import { bindTemplateGallery, createTemplateSave } from './templates.js';
+import { bindEmbedAdmin } from './embeds.js';
 import { schema, toDoc, fromDoc, uuid4, colorAllowed, schemeOkForEditor, COLORS, BLOCK_TYPES } from './editor-schema.js';
 
 /* ─── 주소와 공통 도우미 ─────────────────────────────────────── */
@@ -805,6 +806,11 @@ function initHome() {
   bindTemplateGallery({
     api: api, setText: setText, show: show, clear: clear, errorMessage: errorMessage,
     genericError: GENERIC_ERROR, toLogin: toLogin, base: COMMUNITY_BASE, currentSpaceId: currentSpaceId
+  });
+  // 7-C — 「임베드 허용 목록」 창(단추는 창구가 준 `can_manage` 일 때만)
+  bindEmbedAdmin({
+    api: api, setText: setText, show: show, clear: clear, errorMessage: errorMessage,
+    genericError: GENERIC_ERROR, toLogin: toLogin
   });
 }
 
@@ -2064,7 +2070,7 @@ function createBlockDialog(getView, hooks) {
  * 그대로 부른다. 고른 이름은 `remember*` 로 제목 지도에 넣어 둔다 — 읽기 화면이 저장 뒤 곧바로 이름을 그리게.
  * 등급 규칙(파일이 페이지를 읽는 범위보다 좁으면 안 된다)은 **서버가 저장할 때** 판정한다 — 여기서 걸러 보이지 않는다.
  */
-const ATOM_TYPES = ['toggle', 'table', 'link_to_page', 'image', 'file', 'columns'];
+const ATOM_TYPES = ['toggle', 'table', 'link_to_page', 'image', 'file', 'columns', 'embed'];
 const TABLE_MAX_ROWS = 200;
 const TABLE_MAX_COLS = 20;
 
@@ -2075,7 +2081,11 @@ function createAtomDialog(getView, hooks) {
   const titleEl = $('atom-dialog-title');
   const msgEl = $('atom-msg');
   const commitButton = $('atom-commit');
-  const panes = { toggle: $('atom-toggle'), table: $('atom-table'), link_to_page: $('atom-link'), image: $('atom-file'), file: $('atom-file'), columns: $('atom-columns') };
+  const panes = { toggle: $('atom-toggle'), table: $('atom-table'), link_to_page: $('atom-link'), image: $('atom-file'), file: $('atom-file'), columns: $('atom-columns'), embed: $('atom-embed') };
+  // 7-C 임베드 — 주소 · 설명 · 허용된 사이트 안내(창구 `GET /api/embed-domains` 가 준 목록 그대로)
+  const embedUrl = $('atom-embed-url');
+  const embedCaption = $('atom-embed-caption');
+  const embedHosts = $('atom-embed-hosts');
   const toggleSummary = $('atom-toggle-summary');
   const toggleBody = $('atom-toggle-body');
   const hRow = $('atom-table-hrow');
@@ -2302,7 +2312,23 @@ function createAtomDialog(getView, hooks) {
   fileQ.addEventListener('input', debounce(searchFiles));
   $('atom-file-refresh').addEventListener('click', searchFiles);
 
-  const LABELS = { toggle: '토글', table: '표', link_to_page: '페이지 링크', image: '그림', file: '파일', columns: '단 나누기' };
+  const LABELS = { toggle: '토글', table: '표', link_to_page: '페이지 링크', image: '그림', file: '파일', columns: '단 나누기', embed: '임베드' };
+
+  /** 7-C — 허용된 사이트 안내. 판단은 서버가 저장할 때 한다 — 여기서는 무엇을 넣을 수 있는지 알려 주고, 받은 목록 밖이면
+      넣기 전에 알린다(목록 밖을 넣으면 그 뒤 자동 저장이 전부 400 이 된다 — 독립 검토 7-C L-5). 목록을 못 받으면 서버에 맡긴다. */
+  let embedAllowed = null;
+  function loadEmbedHosts() {
+    setText(embedHosts, '허용된 사이트를 읽는 중…');
+    embedAllowed = null;
+    api('GET', '/api/embed-domains').then((result) => {
+      if (result.status !== 200) { setText(embedHosts, ''); return; }
+      const hosts = (Array.isArray(result.data.domains) ? result.data.domains : []).map((d) => d.host);
+      embedAllowed = hosts;
+      setText(embedHosts, hosts.length === 0
+        ? '관리자가 아직 허용한 사이트가 없습니다 — 지금은 임베드를 넣을 수 없습니다.'
+        : '허용된 사이트: ' + hosts.join(', ') + (result.data.frames === true ? '' : ' · 사이트가 틀을 열기 전까지는 「허용 대기」 카드로 보입니다'));
+    }).catch(() => setText(embedHosts, ''));
+  }
 
   function open(nextType, attrs, nextPos) {
     if (ATOM_TYPES.indexOf(nextType) === -1) { return; }
@@ -2335,6 +2361,10 @@ function createAtomDialog(getView, hooks) {
     } else if (type === 'link_to_page') {
       linkQ.value = '';
       clear(linkList);
+    } else if (type === 'embed') {
+      embedUrl.value = cur.url || '';
+      embedCaption.value = cur.caption || '';
+      loadEmbedHosts();
     } else {
       fileQ.value = '';
       fileCaption.value = cur.caption || '';
@@ -2370,6 +2400,19 @@ function createAtomDialog(getView, hooks) {
         cols.push({ id: old[i] && old[i].id ? old[i].id : null, kids: lines.map((t, k) => ({ id: oldKids[k] && oldKids[k].id ? oldKids[k].id : null, text: t })) });
       }
       return { id: id, cols: cols };
+    }
+    if (type === 'embed') {
+      /* 주소는 브라우저의 URL 규칙으로 맞춰 보낸다 — 호스트 소문자·국제 도메인 punycode·경로의 비 ASCII 퍼센트 인코딩.
+         모양 검사는 서버와 같은 `embedHost`, 목록 검사는 받은 목록으로 한 번 · 최종 판단은 서버가 저장할 때 한다. */
+      let raw = embedUrl.value.trim();
+      try { const u = new URL(raw); if (u.protocol === 'https:') { raw = u.href; } } catch (e) { /* 모양이 아니면 아래에서 알린다 */ }
+      const host = embedHost(raw);
+      if (host === null) { setText(msgEl, 'https:// 로 시작하는 주소를 넣으세요(포트·IP 주소는 안 됩니다).'); return null; }
+      if (Array.isArray(embedAllowed) && embedAllowed.indexOf(host) === -1) {
+        setText(msgEl, host + ' 은(는) 허용 목록에 없습니다. 관리자에게 등록을 요청하세요.');
+        return null;
+      }
+      return { id: id, url: raw, caption: embedCaption.value };
     }
     if (type === 'link_to_page') {
       if (!cur.page_id) { setText(msgEl, '걸 페이지를 먼저 고르세요.'); return null; }
@@ -2700,7 +2743,7 @@ function initPage() {
     // 4-A — 창구가 준 「볼 수 있는 하위 페이지」 제목 지도. 렌더러 두 벌이 이것만 본다.
     childTitles: {},
     // 5-E — 페이지 링크 · 붙인 파일의 제목 지도(창구가 **보는 사람 권한으로** 거른 것).
-    linkTitles: {}, fileTitles: {},
+    linkTitles: {}, fileTitles: {}, embeds: { hosts: [], frames: false },
     // 4-B — 지금의 공개 범위와 이 페이지가 든 공간. 둘 다 창구가 준 값이다.
     visibility: 'private', space: null, canSetVisibility: false,
     // 4-D — 상태. 문자열 또는 null.
@@ -2742,7 +2785,7 @@ function initPage() {
   function readCtx() {
     return {
       child_titles: state.childTitles, link_titles: state.linkTitles, file_titles: state.fileTitles,
-      base: COMMUNITY_BASE, tbox_base: APP_BASE
+      embeds: state.embeds, base: COMMUNITY_BASE, tbox_base: APP_BASE
     };
   }
 
@@ -2950,6 +2993,8 @@ function initPage() {
         : {};
       state.linkTitles = result.data.link_titles && typeof result.data.link_titles === 'object' ? result.data.link_titles : {};
       state.fileTitles = result.data.file_titles && typeof result.data.file_titles === 'object' ? result.data.file_titles : {};
+      // 7-C — 임베드 재료(허용 목록 · 틀을 여는가). 판단은 서버가 준 값뿐이다
+      state.embeds = result.data.embeds && typeof result.data.embeds === 'object' ? result.data.embeds : { hosts: [], frames: false };
       drawBacklinks(Array.isArray(result.data.backlinks) ? result.data.backlinks : []);
       state.visibility = typeof page.visibility === 'string' ? page.visibility : 'private';
       state.space = result.data.space || null;

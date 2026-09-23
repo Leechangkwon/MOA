@@ -362,4 +362,6 @@ Http::json([
     'can_comment'    => CommunityAuthz::decideCommentCreate($user, $row)[0],
     'can_view_reads' => CommunityAuthz::decideReadsView($user, $row)[0],
     'template_scopes' => $templateScopes,
+    // 7-C — 렌더러 두 벌의 임베드 재료: 지금 허용 목록 · 틀을 여는가(코드 상수 — 끄면 모든 임베드가 「허용 대기」)
+    'embeds' => community_embed_ctx(),
 ]);

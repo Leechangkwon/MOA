@@ -166,6 +166,12 @@ if ($extract['files'] !== []) {
     Http::json(['error' => '파일은 페이지를 만든 뒤 붙입니다', 'reason' => 'file_ref'], 400);
     exit;
 }
+/* 7-C — 첫 본문의 임베드는 모두 새것이다 — 허용 목록 안이어야 한다(K-3). 템플릿 본문은 **담을 때** 이미 견주었으므로
+   그 뒤에 호스트가 빠져도 막지 않는다(옛 임베드와 같다 — 렌더러가 「허용 목록 밖」 카드로 그린다, 독립 검토 7-C L-1). */
+if ($tpl === null && !community_embeds_ok($extract['embeds'])) {
+    Http::json(['error' => COMMUNITY_EMBED_REFUSED, 'reason' => 'embed_not_allowed'], 400);
+    exit;
+}
 $docJson = json_encode($doc, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
 if ($docJson === false) {
     Http::error(400, Http::MSG_BAD_REQUEST);

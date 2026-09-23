@@ -143,8 +143,22 @@ const COMMUNITY_BASE = '/community';
  * `column_list`·`column`·`mention` 마크는 같은 까닭으로 6단계로 옮겼다(편집기 중첩 구조가 먼저 — 결정 E-1).
  * 6-C(2026-09-23)에 **6** 으로 올렸다 — `column_list`·`column`(단 나누기)과 표 칸 병합이 열린다.
  * `mention` 마크는 렌더러·검증기가 아직 그리지 못하므로 **7단계로** 옮겼다(결정 I-5, 좁은 쪽).
+ * 7-C(2026-09-24)에 **7** 로 올렸다 — `embed`(허용 목록 도메인만)가 열린다. 글 안 `mention` 마크는 7-D 까지
+ * **8단계로** 미뤘다(같은 까닭 — 그리지 못하는 마크를 열지 않는다, 결정 K-6).
  */
-const COMMUNITY_DOC_STAGE = 6;
+const COMMUNITY_DOC_STAGE = 7;
+
+/**
+ * 임베드를 **틀(iframe)로 그릴지** (7-C 결정 K-5). **코드 상수, 기본 끔.**
+ *
+ * 켜면 커뮤니티 페이지 화면(`page_view.php`)이 CSP 에 `frame-src` 로 **허용 목록의 호스트만** 더해 보내고, 렌더러 두 벌이
+ * 허용 목록 안의 임베드를 `<iframe sandbox>`(권한 토큰 0 — J-4)로 그린다. 끄면 모든 임베드가 「허용 대기」 카드다.
+ * 켜는 것은 사이트의 콘텐츠 보안 정책을 넓히는 일이라 **사용자 확인 뒤**에 한다(HANDOFF 2장 — CSP 는 사용자). 절차는 **두 단계**:
+ *   ① 이 상수를 true 로(코드) ② nginx(`/etc/nginx/sites-enabled/tbox-v2`)의 `location = /index.php` 에서 CSP 를 뺀 보안 머리글을 다시 적어
+ *   CSP 가 앱 것 하나만 남게(설정 — 사용자). ② 없이 ① 만 하면 nginx 의 CSP 가 틀을 막아 **빈 틀**이 된다(독립 검토 7-C M-1).
+ * ★ `sandbox=""`(스크립트 없음, J-4)라 스크립트가 필요한 임베드(YouTube·지도 등)는 틀을 열어도 비어 보일 수 있다 — USER-CHECKS 7-C.
+ */
+const COMMUNITY_EMBED_FRAMES = false;
 
 // ─── 3) 예외·치명적 오류 은닉 (PRD S-09-7, SECURITY 1.7) ───────
 // 어떤 예외도 스택 트레이스·DB 오류 문구·파일 경로를 응답에 넣지 않는다.

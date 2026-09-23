@@ -730,7 +730,14 @@ th.doc-table__cell { background: var(--surface-2); font-weight: 600; }
 .doc-image--full { width: 100%; }
 .doc-image__img { display: block; width: 100%; height: auto; border: 1px solid var(--line); border-radius: var(--r-ctl); background: var(--surface-2); }
 .doc-image__caption,
-.doc-file__caption { margin: 6px 0 0; color: var(--muted); font-size: 13px; }
+.doc-file__caption,
+.doc-embed__caption { margin: 6px 0 0; color: var(--muted); font-size: 13px; }
+
+/* 7-C 임베드 — 틀은 폭을 채우고 16:9. 카드는 파일 카드와 같은 한 줄 모양 */
+.doc-embed { margin: 8px 0; max-width: 100%; }
+.doc-embed__frame { display: block; width: 100%; aspect-ratio: 16 / 9; border: 1px solid var(--line); border-radius: var(--r-ctl); background: var(--surface-2); }
+.doc-embed .card { display: flex; align-items: center; gap: 8px; margin: 8px 0; padding: 12px 16px; }
+.doc-embed .card__meta { margin-left: auto; }
 
 /* 파일 카드 · 페이지 링크 카드 — `.card` 위에 하위 페이지 카드와 같은 한 줄 모양 */
 .doc-file { margin: 8px 0; }

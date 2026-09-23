@@ -400,3 +400,19 @@ CREATE INDEX templates_team_idx ON community.templates (team_id, created_at)
     WHERE deleted_at IS NULL AND scope = 'team';
 CREATE INDEX templates_database_idx ON community.templates (database_id, created_at)
     WHERE deleted_at IS NULL AND scope = 'database';
+
+-- 7-C 임베드 허용 목록 (db/migrations/2026-09-28_community_embeds.sql 과 같은 모양)
+CREATE TABLE community.embed_domains (
+    id         BIGSERIAL   PRIMARY KEY,
+    host       TEXT        NOT NULL,
+    added_by   BIGINT      NOT NULL REFERENCES public.users(id),
+    added_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
+    removed_at TIMESTAMPTZ,
+    removed_by BIGINT      REFERENCES public.users(id),
+    CONSTRAINT embed_domains_host_shape CHECK (
+        char_length(host) BETWEEN 4 AND 253
+        AND host ~ '^([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]([a-z0-9-]{0,61}[a-z0-9])?$'),
+    CONSTRAINT embed_domains_removed_pair CHECK ((removed_at IS NULL) = (removed_by IS NULL))
+);
+-- 살아 있는 줄에서 호스트는 하나 — 뺐다가 다시 넣으면 새 줄(누가 언제 넣고 뺐는지가 줄마다 남는다)
+CREATE UNIQUE INDEX embed_domains_live_host ON community.embed_domains (host) WHERE removed_at IS NULL;

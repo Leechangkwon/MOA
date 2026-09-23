@@ -291,6 +291,14 @@ export const schema = new Schema({
       toDOM: (node) => ['div', { class: 'card card--link doc-atom', contenteditable: 'false', 'data-atom': 'file' },
         ['span', { class: 'card__title' }, '📎 ' + (node.attrs.name || '파일')],
         ['span', { class: 'card__meta' }, (node.attrs.caption || '설명 없음') + ' · 두 번 눌러 고치기']]
+    },
+    // 7-C 임베드 — 편집기 안에서는 요약 카드(주소는 글자로만 보인다 — 편집 중에는 틀을 열지 않는다)
+    embed: {
+      group: 'block', atom: true, selectable: true,
+      attrs: { id: { default: null }, url: { default: '' }, caption: { default: '' } },
+      toDOM: (node) => ['div', { class: 'card card--link doc-atom', contenteditable: 'false', 'data-atom': 'embed' },
+        ['span', { class: 'card__title' }, '🧩 임베드 — ' + (node.attrs.url || '주소 없음')],
+        ['span', { class: 'card__meta' }, (node.attrs.caption || '설명 없음') + ' · 두 번 눌러 고치기']]
     }
   },
 
@@ -507,7 +515,7 @@ export function fromDoc(doc, ctx) {
       content.push({ type: 'columns', attrs: { id: attrs.id, cols: cols } });
       continue;
     }
-    if (['toggle', 'table', 'image', 'file', 'link_to_page'].indexOf(b.type) !== -1 && !atomIsPlain(b)) {
+    if (['toggle', 'table', 'image', 'file', 'link_to_page', 'embed'].indexOf(b.type) !== -1 && !atomIsPlain(b)) {
       throw new Error('꾸밈(색·링크·열 폭 등)이 든 토글·표·설명은 아직 편집기에서 고칠 수 없습니다');
     }
     if (b.type === 'toggle') {
@@ -541,6 +549,10 @@ export function fromDoc(doc, ctx) {
       const pid = typeof b.page_id === 'string' ? b.page_id : null;
       const ent = pid && Object.prototype.hasOwnProperty.call(lmap, pid) ? lmap[pid] : null;
       content.push({ type: 'link_to_page', attrs: { id: attrs.id, page_id: pid, title: ent && typeof ent.title === 'string' ? ent.title : '볼 수 없는 페이지' } });
+      continue;
+    }
+    if (b.type === 'embed') {
+      content.push({ type: 'embed', attrs: { id: attrs.id, url: typeof b.url === 'string' ? b.url : '', caption: plainOf(b.caption) } });
       continue;
     }
     if (b.type === 'image' || b.type === 'file') {
@@ -644,7 +656,7 @@ export function toDoc(pmDoc) {
     const block = { id: typeof a.id === 'string' && a.id !== '' ? a.id : uuid4(), type: ourType };
 
     // 글자를 담지 않는 덩어리에는 꾸밈 세 가지를 얹지 않는다.
-    const isAtom = ['divider', 'toc', 'child_page', 'toggle', 'table', 'link_to_page', 'image', 'file', 'columns'].indexOf(ourType) !== -1;
+    const isAtom = ['divider', 'toc', 'child_page', 'toggle', 'table', 'link_to_page', 'image', 'file', 'columns', 'embed'].indexOf(ourType) !== -1;
     // 6-C — 편집기의 `columns` 덩어리 → 문서의 column_list > column > 문단들
     if (ourType === 'columns') {
       block.type = 'column_list';
@@ -709,6 +721,14 @@ export function toDoc(pmDoc) {
     if (ourType === 'link_to_page') {
       if (typeof a.page_id !== 'string' || a.page_id === '') { continue; }
       block.page_id = a.page_id;
+      blocks.push(block);
+      continue;
+    }
+    if (ourType === 'embed') {
+      if (typeof a.url !== 'string' || a.url === '') { continue; }
+      block.url = a.url;
+      const ecap = richOf(a.caption);
+      if (ecap.length > 0) { block.caption = ecap; }
       blocks.push(block);
       continue;
     }
@@ -922,5 +942,11 @@ export const BLOCK_TYPES = [
     desc: 't-box 에 올린 파일을 카드로 겁니다. 누르면 t-box 가 자기 권한으로 내려줍니다.',
     sample: { schema: 1, blocks: [{ id: '00000000-0000-4000-8000-0000000000c8', type: 'file', file_ref: 'tbox:00000000-0000-4000-8000-0000000000c9' }] },
     sampleCtx: { base: '', tbox_base: '', file_titles: { '00000000-0000-4000-8000-0000000000c9': { name: '보고서.pdf', size: 1887436, image: false } } }
+  },
+  {
+    type: 'embed', label: '임베드', editsAtom: true,
+    desc: '관리자가 허용한 사이트(https)의 주소를 페이지 안에 끼워 보여 줍니다. 허용 목록 밖의 주소는 저장되지 않습니다.',
+    sample: { schema: 1, blocks: [{ id: '00000000-0000-4000-8000-0000000000e1', type: 'embed', url: 'https://www.example.com/', caption: [{ t: '예시 임베드', m: {} }] }] },
+    sampleCtx: { embeds: { hosts: ['www.example.com'], frames: false } }
   }
 ];

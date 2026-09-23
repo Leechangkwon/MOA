@@ -487,8 +487,39 @@ final class Doc
                 }
                 return;
 
+            /*
+             * `url` — 7-C `embed.url`. **https 만**(J-4 · K-2) · 호스트는 `isEmbedHost` 모양 · 길이는 링크와 같은 상한.
+             * ★ 형태만 본다 — 그 호스트가 **허용 목록에 있는지**는 창구가 DB 를 읽어 가른다(`tbox-ref` 와 같은 까닭:
+             *   검증기는 DB 를 읽지 않는 자리이고, 목록에서 빠진 호스트의 옛 임베드 때문에 페이지가 잠기면 안 된다 — K-3).
+             */
+            case 'url':
+                if (!is_string($value)) {
+                    $add($p, 'bad_type');
+                    return;
+                }
+                if (preg_match('//u', $value) !== 1) {
+                    $add($p, 'bad_encoding');
+                    return;
+                }
+                if (strlen($value) > (int) $limits['href_chars']) {
+                    $add($p, 'too_long');
+                    return;
+                }
+                if (preg_match('/[\x00-\x20\x7f]/', $value) === 1) {
+                    $add($p, 'control_char');
+                    return;
+                }
+                if (strncmp($value, 'https://', 8) !== 0) {
+                    $add($p, 'bad_scheme');
+                    return;
+                }
+                if (self::embedHost($value) === null) {
+                    $add($p, 'bad_host');
+                }
+                return;
+
             default:
-                // 이 단계에 없는 모양(`url`·단 나누기 …)은 그 블록 타입이
+                // 이 단계에 없는 모양(단 나누기 …)은 그 블록 타입이
                 // 이 단계에 없다는 뜻이라 여기까지 오지 않는다. 그래도 닫힌 실패로 둔다.
                 $add($p, 'bad_value');
                 return;
@@ -787,7 +818,7 @@ final class Doc
      */
     public static function extract(array $doc): array
     {
-        $out = ['plain_text' => '', 'blocks' => [], 'links' => [], 'child_pages' => [], 'todos' => [], 'files' => []];
+        $out = ['plain_text' => '', 'blocks' => [], 'links' => [], 'child_pages' => [], 'todos' => [], 'files' => [], 'embeds' => []];
         $ord = 0;
         $parts = [];
         self::collect(is_array($doc['blocks'] ?? null) ? $doc['blocks'] : [], $ord, $parts, $out);
@@ -913,10 +944,39 @@ final class Doc
                 }
             }
 
+            // 7-C 임베드 — 주소 그대로(허용 목록 검사·「새로 넣은 임베드」 가르기는 창구가 한다)
+            if ($type === 'embed' && isset($block['url']) && is_string($block['url'])) {
+                $out['embeds'][] = $block['url'];
+            }
+
             if (isset($block['children']) && is_array($block['children'])) {
                 self::collect($block['children'], $ord, $parts, $out);
             }
         }
+    }
+
+    /**
+     * 임베드 호스트로 쓸 수 있는 이름인가 (7-C 결정 K-2 — 허용 목록 등록과 `embed.url` 검사가 같은 함수).
+     * 소문자 ASCII 라벨(1~63자, 앞뒤 `-` 없음) · 점 하나 이상 · 마지막 라벨은 글자로 시작(IP 주소 막기) · 253자까지.
+     * 포트·사용자 정보·와일드카드는 이 모양에 들어갈 자리가 없다. 국제 도메인은 punycode(`xn--`)로 등록한다.
+     */
+    public static function isEmbedHost(string $host): bool
+    {
+        return strlen($host) >= 4 && strlen($host) <= 253
+            && preg_match('/^([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]([a-z0-9-]{0,61}[a-z0-9])?$/D', $host) === 1;
+    }
+
+    /**
+     * `https://호스트[/경로·?·#…]` 에서 호스트. 모양이 아니면 null (포트·사용자 정보·대문자 호스트는 모양이 아니다).
+     * 경로에는 빈칸과 `"` `'` `<` `>` `\` `^` `` ` `` `{` `|` `}` 가 올 수 없다 — 속성 값을 끊고 나오는 글자는 모양 단계에서 막는다(렌더러가 이스케이프하지만 한 겹 더).
+     * 경로는 **ASCII 인쇄 가능 글자만**(비 ASCII 는 퍼센트 인코딩 — 편집기가 `URL` 로 맞춰 보낸다). 두 렌더러의 `\s` 가 유니코드 공백에서 갈리지 않게(독립 검토 7-C L-2), 끝 줄바꿈은 `D`(L-3).
+     */
+    public static function embedHost(string $url): ?string
+    {
+        if (preg_match('#^https://([^/?\#\x00-\x20\x7f-\xff]+)(?:[/?\#][^\x00-\x20\x7f-\xff"\'<>\\\\^`{|}]*)?$#D', $url, $m) !== 1) {
+            return null;
+        }
+        return self::isEmbedHost($m[1]) ? $m[1] : null;
     }
 
     /** 리치 텍스트를 평문 한 줄로 (마크는 버린다) */

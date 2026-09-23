@@ -893,6 +893,11 @@ final class Audit
         'comment.unhide|allow'                  => '{actor} 이(가) 페이지 「{target}」 의 숨긴 댓글을 다시 보이게 했습니다',
         'comment.unhide|deny|not_owner'         => '{actor} 이(가) 관리 자격 없이 페이지 「{target}」 의 숨긴 댓글을 보이게 하려 해서 막았습니다',
         /* ── 커뮤니티 5-E — 첨부(t-box 파일). 본문에 붙일 수 없는 파일(없음·못 봄·페이지보다 좁음 — 어느 쪽인지 가르지 않는다) ── */
+        'page.update|deny|embed_not_allowed'    => '{actor} 이(가) 페이지 「{target}」 에 허용 목록 밖의 주소를 임베드하려 해서 거부했습니다',
+        'page.restore_version|deny|embed_not_allowed' => '{actor} 이(가) 페이지 「{target}」 을(를) 허용 목록 밖 임베드가 든 판으로 되돌리려 해서 거부했습니다',
+        // 7-C 임베드 허용 목록 (Admin — {target} 은 호스트 이름)
+        'embed.domain_add|allow'                => '{actor} 이(가) 임베드 허용 목록에 「{target}」 을(를) 더했습니다',
+        'embed.domain_remove|allow'             => '{actor} 이(가) 임베드 허용 목록에서 「{target}」 을(를) 뺐습니다',
         'page.update|deny|file_ref'             => '{actor} 이(가) 페이지 「{target}」 에 붙일 수 없는 파일을 붙이려 해서 거부했습니다',
         'page.publish|deny|file_narrower'       => '{actor} 이(가) 페이지 「{target}」 을(를) 게시하려 했지만 게시판을 보는 사람이 볼 수 없는 파일이 붙어 있어 거부했습니다 (게시판은 상세 기록)',
         'page.restore_version|deny|file_ref'    => '{actor} 이(가) 페이지 「{target}」 을(를) 지금 붙일 수 없는 파일이 든 판으로 되돌리려 해서 거부했습니다',

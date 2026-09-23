@@ -102,6 +102,11 @@ if (!$check['ok'] || Doc::extract($tplDoc)['files'] !== []) {
     Http::json(['error' => '이 페이지의 본문은 템플릿으로 담을 수 없습니다', 'reason' => 'bad_doc'], 400);
     exit;
 }
+// 7-C — 템플릿에 담는 임베드는 **담을 때** 허용 목록과 견준다(쓸 때는 옛 임베드처럼 막지 않는다 — 독립 검토 7-C L-1)
+if (!community_embeds_ok(Doc::extract($tplDoc)['embeds'])) {
+    Http::json(['error' => COMMUNITY_EMBED_REFUSED, 'reason' => 'embed_not_allowed'], 400);
+    exit;
+}
 $docJson = json_encode($tplDoc, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
 // 본문 상한은 페이지와 같은 기준(빈칸 없는 JSON 바이트)으로 **앱이 먼저** 잰다 — DB CHECK 에 닿아 500 이 되지 않게(독립 검토 L-1)
 if ($docJson !== false && strlen($docJson) > Doc::limit('doc_bytes')) {

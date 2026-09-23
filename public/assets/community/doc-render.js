@@ -31,6 +31,18 @@ const MARK_TAG = {
 const CHILD_PAGE_UNREADABLE = '볼 수 없는 페이지';
 /** 5-E — 볼 수 없는(또는 없는) 파일 자리. 서버 렌더러 `DocRender::FILE_UNREADABLE` 과 같은 문구(C:T-19) */
 const FILE_UNREADABLE = '볼 수 없는 파일';
+/** 7-C — 임베드 카드 문구. 서버 렌더러 `DocRender::EMBED_*` 와 같은 문구(C:T-19) */
+const EMBED_WAITING = '허용 대기 · 새 탭에서 열기';
+const EMBED_BLOCKED = '허용 목록 밖의 임베드';
+/** 7-C — `Doc::embedHost` 와 같은 규칙(https · 소문자 ASCII 라벨 · 점 하나 이상 · IP·포트·사용자 정보 없음) */
+// 경로는 ASCII 인쇄 가능 글자만 — 서버(`Doc::embedHost`)와 같은 규칙(유니코드 공백에서 갈리지 않게, 독립 검토 7-C L-2)
+const EMBED_URL_RE = /^https:\/\/([^/?#\u0000-\u0020\u007f-\uffff]+)(?:[/?#][^\u0000-\u0020\u007f-\uffff"'<>\\^`{|}]*)?$/;
+const EMBED_HOST_RE = /^([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]([a-z0-9-]{0,61}[a-z0-9])?$/;
+export function embedHost(url) {
+  const m = typeof url === 'string' ? url.match(EMBED_URL_RE) : null;
+  if (!m || m[1].length < 4 || m[1].length > 253 || !EMBED_HOST_RE.test(m[1])) { return null; }
+  return m[1];
+}
 
 /** 파일 크기 글자 — 서버 렌더러 `sizeText` 와 **같은 정수 계산**(C:T-19) */
 function sizeText(bytes) {
@@ -66,6 +78,79 @@ function renderLinkPage(block, id, ctx) {
   span.textContent = (typeof entry.icon === 'string' && entry.icon !== '' ? entry.icon + ' ' : '') + (typeof entry.title === 'string' ? entry.title : '');
   a.appendChild(span);
   return a;
+}
+
+/**
+ * 7-C 임베드 (K-4) — `ctx.embeds` = {hosts, frames}. 서버 렌더러와 같은 세 갈래:
+ * 목록 안 + 틀 열림 → `<iframe sandbox="">`(권한 토큰 0) · 목록 안 → 「허용 대기」 카드 + 새 탭 링크 · 목록 밖 → 링크 없는 카드.
+ */
+function renderEmbed(block, id, ctx) {
+  const url = typeof block.url === 'string' ? block.url : '';
+  const host = embedHost(url);
+  const emb = ctx && ctx.embeds && typeof ctx.embeds === 'object' ? ctx.embeds : {};
+  const hosts = Array.isArray(emb.hosts) ? emb.hosts : [];
+  const listed = host !== null && hosts.indexOf(host) !== -1;
+  const hasCap = Array.isArray(block.caption) && block.caption.length > 0;
+  if (listed && emb.frames === true) {
+    const fig = document.createElement('figure');
+    fig.className = 'doc-embed';
+    if (id) { fig.id = 'block-' + id; }
+    const frame = document.createElement('iframe');
+    frame.className = 'doc-embed__frame';
+    frame.setAttribute('sandbox', '');
+    frame.setAttribute('referrerpolicy', 'no-referrer');
+    frame.setAttribute('loading', 'lazy');
+    frame.setAttribute('title', '임베드 — ' + host);
+    frame.setAttribute('src', url);
+    fig.appendChild(frame);
+    if (hasCap) {
+      const cap = document.createElement('figcaption');
+      cap.className = 'doc-embed__caption';
+      appendRich(cap, block.caption);
+      fig.appendChild(cap);
+    }
+    return fig;
+  }
+  const wrap = document.createElement('div');
+  wrap.className = 'doc-embed';
+  if (id) { wrap.id = 'block-' + id; }
+  if (listed) {
+    const a = document.createElement('a');
+    a.className = 'card card--link';
+    a.setAttribute('href', url);
+    a.setAttribute('target', '_blank');
+    a.setAttribute('rel', 'noopener noreferrer');
+    const t = document.createElement('span');
+    t.className = 'card__title';
+    t.textContent = '임베드 — ' + host;
+    const meta = document.createElement('span');
+    meta.className = 'card__meta';
+    meta.textContent = EMBED_WAITING;
+    a.appendChild(t);
+    a.appendChild(meta);
+    wrap.appendChild(a);
+    if (hasCap) {
+      const p = document.createElement('p');
+      p.className = 'doc-embed__caption';
+      appendRich(p, block.caption);
+      wrap.appendChild(p);
+    }
+    return wrap;
+  }
+  const card = document.createElement('div');
+  card.className = 'card card--soon';
+  const t = document.createElement('span');
+  t.className = 'card__title';
+  t.textContent = EMBED_BLOCKED;
+  card.appendChild(t);
+  if (host !== null) {
+    const meta = document.createElement('span');
+    meta.className = 'card__meta';
+    meta.textContent = host;
+    card.appendChild(meta);
+  }
+  wrap.appendChild(card);
+  return wrap;
 }
 
 /** 5-E 그림·파일 — 지도(`ctx.file_titles`, 보는 사람이 t-box 에서 볼 수 있는 것만)에 있을 때만. 주소는 t-box 창구(`ctx.tbox_base`) */
@@ -509,6 +594,9 @@ function renderBlock(block, rootBlocks, ctx) {
     return nodes;
   } else if (type === 'image' || type === 'file') {
     nodes.push(renderFileBlock(block, id, ctx));
+    return nodes;
+  } else if (type === 'embed') {
+    nodes.push(renderEmbed(block, id, ctx));
     return nodes;
   } else {
     nodes.push(unsupported());

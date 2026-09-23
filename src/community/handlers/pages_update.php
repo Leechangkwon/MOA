@@ -199,6 +199,11 @@ if (array_key_exists('doc', $body)) {
             'reason' => 'file_ref',
         ], []);
     }
+    /* 7-C — **새로 넣은** 임베드만 허용 목록과 견준다(K-3 — 목록에서 빠진 호스트의 옛 임베드는 저장을 막지 않는다). */
+    $newEmbeds = array_values(array_diff(Doc::extract($doc)['embeds'], Doc::extract($currentDoc)['embeds']));
+    if (!community_embeds_ok($newEmbeds)) {
+        $reject('embed_not_allowed', 400, ['error' => COMMUNITY_EMBED_REFUSED, 'reason' => 'embed_not_allowed'], []);
+    }
 }
 
 $extract = Doc::extract($doc);

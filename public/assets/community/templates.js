@@ -73,16 +73,28 @@ export function bindTemplateGallery(d) {
     }).catch(() => { d.setText(msg, d.genericError); btn.disabled = false; });
   }
 
+  /* 7-C — 미리보기의 임베드 재료(허용 목록 · 틀을 여는가). 한 번 받아 둔다 — 없으면 모든 임베드가 「허용 목록 밖」으로 보인다(독립 검토 7-C L-6) */
+  let embedCtx = null;
+  function loadEmbedCtx() {
+    if (embedCtx) { return Promise.resolve(embedCtx); }
+    return d.api('GET', '/api/embed-domains').then((r) => {
+      embedCtx = r.status === 200 && r.data
+        ? { hosts: (Array.isArray(r.data.domains) ? r.data.domains : []).map((x) => x.host), frames: r.data.frames === true }
+        : { hosts: [], frames: false };
+      return embedCtx;
+    }).catch(() => ({ hosts: [], frames: false }));
+  }
+
   function openPreview(t) {
     d.setText(msg, '');
-    d.api('GET', '/api/templates/' + t.id).then((r) => {
+    Promise.all([d.api('GET', '/api/templates/' + t.id), loadEmbedCtx()]).then(([r, emb]) => {
       if (r.status === 401) { d.toLogin(); return; }
       if (r.status !== 200 || !r.data.template) { d.setText(msg, d.errorMessage(r.data)); return; }
       previewing = r.data.template;
       d.setText(previewTitle, (previewing.icon ? previewing.icon + ' ' : '') + previewing.name + ' — 제목: ' + previewing.title);
       d.clear(previewDoc);
       // 템플릿에는 첨부·하위 페이지가 없다 — 링크 제목 지도가 비어 있으면 렌더러가 「볼 수 없는 페이지」로 그린다
-      previewDoc.appendChild(renderDoc(previewing.doc, {}));
+      previewDoc.appendChild(renderDoc(previewing.doc, { embeds: emb }));
       d.show(listWrap, false);
       d.show(preview, true);
       previewUse.disabled = false;

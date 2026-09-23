@@ -127,6 +127,18 @@ if (!community_file_refs_ok($restoreNewFiles, CommunityAuthz::pageAudiences($row
     Http::json(['error' => '그 판에는 지금 붙일 수 없는 파일이 있습니다', 'reason' => 'file_ref'], 400);
     exit;
 }
+/* 7-C — 되돌리는 판에 지금 본문에 없는 임베드가 있으면 넣는 것과 같다 — 허용 목록과 견준다(K-3). */
+$restoreNewEmbeds = array_values(array_diff(Doc::extract($oldDoc)['embeds'], Doc::extract(json_decode((string) $row['doc'], true) ?: [])['embeds']));
+if (!community_embeds_ok($restoreNewEmbeds)) {
+    Audit::deny('page.restore_version', 'embed_not_allowed', [
+        'target_type' => 'page',
+        'target_id'   => $pageId,
+        'target_name' => $pageTitle,
+        'detail'      => ['page_title' => $pageTitle, 'restored_from' => $want],
+    ]);
+    Http::json(['error' => COMMUNITY_EMBED_REFUSED, 'reason' => 'embed_not_allowed'], 400);
+    exit;
+}
 
 $extract = Doc::extract($oldDoc);
 $docJson = json_encode($oldDoc, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);

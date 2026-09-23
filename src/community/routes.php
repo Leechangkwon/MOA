@@ -108,6 +108,10 @@ const COMMUNITY_ROUTES = [
     ['POST',   '/api/templates',                         'templates_create.php', 'community.write'],
     ['GET',    '/api/templates/{id}',                    'templates_get.php',    'community.read'],
     ['DELETE', '/api/templates/{id}',                    'templates_delete.php', 'community.write'],
+    /* 7-C 임베드 허용 목록 (C:F-32 · T-33) — 읽기는 누구나(쓰는 사람이 무엇을 넣을 수 있는지 안다), 바꾸기는 Admin(재인증) */
+    ['GET',    '/api/embed-domains',                     'embed_domains_list.php',   'community.read'],
+    ['POST',   '/api/embed-domains',                     'embed_domains_add.php',    'role:Admin'],
+    ['DELETE', '/api/embed-domains/{num}',               'embed_domains_remove.php', 'role:Admin'],
 
     /* ── 사람 지정 공유 · 인계 (5-A, PRD NG-8 해제 · F-28) ──
      * 목록은 `community.read` + 그 페이지의 `decidePageRead`, 바꾸는 셋은 `community.write` +
@@ -2695,4 +2699,101 @@ function community_template_refuse(array $tpl, string $code, string $action = 't
         'detail'      => ['template_name' => $name, 'scope' => (string) $tpl['scope']],
     ]);
     Http::error(403, Http::MSG_FORBIDDEN);
+}
+
+/* ─── 7-C 임베드 허용 목록 (C:F-32 · T-33 · 결정 J-4 · K-1~K-6) ─────────────── */
+
+/** 살아 있는 허용 호스트 수의 상한 (K-1) */
+const COMMUNITY_EMBED_MAX_DOMAINS = 20;
+
+/**
+ * 지금 허용 목록의 호스트들(정렬). 한 요청 안에서는 한 번만 읽는다.
+ *
+ * @return list<string>
+ */
+function community_embed_hosts(): array
+{
+    static $hosts = null;
+    if ($hosts === null) {
+        $sql = <<<'SQL'
+            SELECT e.host FROM community.embed_domains e WHERE e.removed_at IS NULL ORDER BY e.host
+            SQL;
+        /* 표를 읽지 못하면(마이그레이션·권한이 코드보다 늦은 반영 등) **빈 목록**으로 닫는다 — 페이지 열기가 500 이 되지 않고,
+           모든 임베드가 「허용 목록 밖」 카드 · 새 임베드는 400 이다(독립 검토 7-C M-2). 부르는 쪽 트랜잭션 밖에서만 읽힌다. */
+        try {
+            $hosts = array_map(static fn (array $r): string => (string) $r['host'], Db::instance()->run($sql)->fetchAll());
+        } catch (Throwable $e) {
+            error_log('[tbox] request_id=' . TBOX_REQUEST_ID . ' community embed_domains unreadable — 빈 목록으로 닫음');
+            $hosts = [];
+        }
+    }
+    return $hosts;
+}
+
+/**
+ * 이 임베드 주소들이 모두 허용 목록 안인가 (K-3 — **새로 넣은** 임베드만 넘긴다: 목록에서 빠진 호스트의 옛 임베드 때문에
+ * 자기 페이지를 못 고치게 되지 않게). 주소의 모양은 검증기가 이미 보았다.
+ *
+ * @param list<string> $urls
+ */
+function community_embeds_ok(array $urls): bool
+{
+    if ($urls === []) {
+        return true;
+    }
+    $allowed = community_embed_hosts();
+    foreach ($urls as $u) {
+        $host = Doc::embedHost((string) $u);
+        if ($host === null || !in_array($host, $allowed, true)) {
+            return false;
+        }
+    }
+    return true;
+}
+
+/**
+ * 렌더러 두 벌에 넘기는 임베드 재료 — 지금 허용 목록과 「틀을 여는가」(코드 상수 `COMMUNITY_EMBED_FRAMES`).
+ *
+ * @return array{hosts:list<string>,frames:bool}
+ */
+function community_embed_ctx(): array
+{
+    return ['hosts' => community_embed_hosts(), 'frames' => COMMUNITY_EMBED_FRAMES];
+}
+
+/** 400 — 목록 밖 임베드 (창구 셋이 같은 문구) */
+const COMMUNITY_EMBED_REFUSED = '허용 목록에 없는 주소는 임베드할 수 없습니다. 관리자가 등록한 사이트(https)만 넣을 수 있습니다';
+
+/**
+ * 틀을 여는 스위치(`COMMUNITY_EMBED_FRAMES`)가 켜졌을 때만 — 이 응답의 CSP 에 **허용 목록 호스트만** `frame-src` 로 더한다 (K-5).
+ * 사이트 기본 CSP(`bootstrap.php`)는 그대로 두고, 이미 나간 머리글을 읽어 뒤에 한 조각을 붙여 **이 응답만** 바꾼다.
+ * 호스트는 DB CHECK · `Doc::isEmbedHost`(끝 줄바꿈까지 막는 `D`) · `header()` 의 CR/LF 거부 세 겹을 지난다. 목록이 비면 아무것도 하지 않는다.
+ * ★ **nginx 도 CSP 머리글을 따로 붙인다**(`/etc/nginx/sites-enabled/tbox-v2` server 블록) — 브라우저는 두 정책을 모두 적용하므로,
+ *   이 함수만으로는 틀이 열리지 않는다. 켜는 절차는 상수 + nginx 두 단계다(USER-CHECKS 7-C · 독립 검토 7-C M-1).
+ */
+function community_embed_csp(): void
+{
+    if (!COMMUNITY_EMBED_FRAMES || headers_sent()) {
+        return;
+    }
+    $hosts = array_values(array_filter(community_embed_hosts(), static fn (string $h): bool => Doc::isEmbedHost($h)));
+    if ($hosts === []) {
+        return;
+    }
+    $base = null;
+    foreach (headers_list() as $h) {
+        if (stripos($h, 'Content-Security-Policy:') === 0) {
+            $base = trim(substr($h, strlen('Content-Security-Policy:')));
+        }
+    }
+    if ($base === null || stripos($base, 'frame-src') !== false) {
+        return;   // 기본 정책을 모르면(또는 이미 있으면) 넓히지 않는다 — 닫힌 쪽
+    }
+    $value = $base . '; frame-src ' . implode(' ', array_map(static fn (string $h): string => 'https://' . $h, $hosts));
+    /* nginx 의 FastCGI 머리글 버퍼(기본 4KB)를 넘기면 502 가 된다 — 너무 길면 넓히지 않는다(독립 검토 7-C L-4, 닫힌 쪽) */
+    if (strlen($value) > 3000) {
+        error_log('[tbox] request_id=' . TBOX_REQUEST_ID . ' community embed csp too long — frame-src 를 더하지 않음');
+        return;
+    }
+    header('Content-Security-Policy: ' . $value);
 }

@@ -26,6 +26,9 @@ declare(strict_types=1);
 
 $viewPageId = (string) $params[0];
 
+// 7-C 결정 K-5 — 틀을 여는 스위치(코드 상수, 기본 끔)가 켜졌을 때만 이 화면의 CSP 에 허용 목록 호스트를 `frame-src` 로 더한다.
+community_embed_csp();
+
 $pageTitle   = '페이지';
 $activeNav   = 'community-page';
 $pageKey     = 'community-page';
@@ -514,7 +517,7 @@ require __DIR__ . '/../../views/shell_top.php';
       <div class="modal__body">
         <p id="template-save-msg" class="msg" role="alert" aria-live="polite"></p>
         <label class="field field--full">
-          <span>템플릿 이름</span>
+          <span class="field__label">템플릿 이름</span>
           <input id="template-save-name" class="input" type="text" maxlength="60" autocomplete="off">
         </label>
         <div id="template-save-scopes"></div>
@@ -715,6 +718,20 @@ require __DIR__ . '/../../views/shell_top.php';
           </label>
           <p id="atom-link-chosen" class="help"></p>
           <ul id="atom-link-list" class="list" aria-label="찾은 페이지"></ul>
+        </div>
+
+        <!-- 7-C 임베드 — 주소(https)와 설명. 허용된 사이트 안내는 창구 `GET /api/embed-domains` 가 준 목록 그대로이고,
+             목록 밖 주소는 **서버가 저장할 때** 400 으로 막는다(여기서 걸러 보이지 않는다). -->
+        <div id="atom-embed" class="atom-pane" hidden>
+          <label class="field field--full">
+            <span class="field__label">주소 (https)</span>
+            <input id="atom-embed-url" class="input" type="url" maxlength="2048" autocomplete="off" spellcheck="false" placeholder="https://">
+          </label>
+          <p id="atom-embed-hosts" class="help"></p>
+          <label class="field field--full">
+            <span class="field__label">설명 (선택)</span>
+            <input id="atom-embed-caption" class="input" type="text" maxlength="2000" autocomplete="off">
+          </label>
         </div>
 
         <div id="atom-file" class="atom-pane" hidden>

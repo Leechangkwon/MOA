@@ -43,6 +43,10 @@ require __DIR__ . '/../../views/shell_top.php';
         <button id="community-trash" class="btn btn--quiet" type="button">
           <span class="icon" data-icon="trash"></span>휴지통
         </button>
+        <!-- 「임베드 허용 목록」 (7-C, C:F-32) — 창구 `GET /api/embed-domains` 의 `can_manage` 가 참일 때만 보인다(Admin) -->
+        <button id="community-embed-admin" class="btn btn--quiet" type="button" aria-haspopup="dialog" hidden>
+          <span class="icon" data-icon="shield"></span>임베드 허용 목록
+        </button>
         <!-- 「템플릿에서」 (7-B, C:F-31) — 목록은 창구 `GET /api/templates` 가 주는 것만(내 것 · 내 팀 · 사이트 기본). -->
         <button id="community-template-new" class="btn btn--quiet" type="button" aria-haspopup="dialog">
           <span class="icon" data-icon="files"></span>템플릿에서
@@ -126,6 +130,39 @@ require __DIR__ . '/../../views/shell_top.php';
       </div>
       <div class="form-actions">
         <button class="btn btn--quiet" type="button" data-trash-close>닫기</button>
+      </div>
+    </dialog>
+
+    <!-- 「임베드 허용 목록」 창 (7-C, DESIGN 2.7 모달 · 2.4 표 — 휴지통 창과 같은 모양, 새 클래스 0).
+         호스트 이름만 적는다(https·경로·포트·IP·와일드카드 없이) — 모양·한도(20)·재인증은 서버가 막는다.
+         내용은 embeds.js 가 textContent 로 채운다. -->
+    <dialog id="embed-dialog" class="modal" aria-labelledby="embed-title">
+      <div class="modal__head">
+        <h2 id="embed-title" class="modal__title">임베드 허용 목록</h2>
+        <p id="embed-meta" class="muted"></p>
+        <button class="btn btn--icon btn--plain" type="button" data-embed-close aria-label="닫기">
+          <span class="icon" data-icon="x"></span>
+        </button>
+      </div>
+      <div class="modal__body">
+        <p id="embed-msg" class="msg" role="alert" aria-live="polite"></p>
+        <div class="toolbar">
+          <label class="muted" for="embed-host">호스트</label>
+          <input id="embed-host" class="input" type="text" maxlength="253" autocomplete="off" spellcheck="false" placeholder="www.youtube.com">
+          <button id="embed-add" class="btn btn--small" type="button">더하기</button>
+        </div>
+        <div class="table-wrap">
+          <table class="files">
+            <thead>
+              <tr><th>호스트</th><th>더한 사람</th><th>더한 때</th><th></th></tr>
+            </thead>
+            <tbody id="embed-body"></tbody>
+          </table>
+        </div>
+        <p id="embed-empty" class="muted" hidden>허용한 사이트가 없습니다. 임베드를 넣을 수 없습니다.</p>
+      </div>
+      <div class="form-actions">
+        <button class="btn btn--quiet" type="button" data-embed-close>닫기</button>
       </div>
     </dialog>
 

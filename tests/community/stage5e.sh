@@ -3,7 +3,7 @@
 #                              (../../../community/stage5e-attach-blocks-directive.md 「완료 기준」)
 #
 #   C:T-110 검증       모르는 모양·`tbox:` 형태 아님·병합 칸·행마다 칸 수 다름·201행·21열·열 폭 범위 밖 400 ·
-#                      `embed` 는 아직 type_not_in_stage(6-C 부터 column_list 는 열림) · 새 블록 다섯이 든 문서 200 · 새 페이지에 파일 400
+#                      `embed` 는 허용 목록 밖이면 400 embed_not_allowed(7-C 부터 열림) · 새 블록 다섯이 든 문서 200 · 새 페이지에 파일 400
 #   C:T-111 첨부 규칙  없는 파일과 못 보는 파일은 **같은 400**(응답 원문 동일) · 사내 페이지에 팀 파일 400 ·
 #                      비공개 페이지엔 내 팀 파일 200 · 넓히기(범위·하위까지 함께·게시) 때 좁은 파일 400 · 판 되살리기도 같은 규칙
 #   C:T-112 그리기     파일 이름은 볼 수 있는 사람에게만(다른 팀 사원 응답 원문에 이름 0) · 그림 주소는 t-box 창구
@@ -205,7 +205,7 @@ echo "  · 임시 DB $DB — 계정 ${n_users}명 · 페이지 ${n_pages}장"
 sub "② 마이그레이션 + 권한 (임시 DB 에만) — 앞 단계(이미 있으면 그대로) · 5-C · 5-D (5-E 는 새 표가 없다)"
 for mig in 2026-09-23_community_page_properties.sql 2026-09-23_community_owner_share.sql \
            2026-09-23_users_display_name.sql 2026-09-24_community_boards.sql \
-           2026-09-24_community_discussion.sql 2026-09-25_community_databases.sql 2026-09-26_community_purge.sql 2026-09-27_community_templates.sql; do
+           2026-09-24_community_discussion.sql 2026-09-25_community_databases.sql 2026-09-26_community_purge.sql 2026-09-27_community_templates.sql 2026-09-28_community_embeds.sql; do
   echo "    ▸ $mig"
   sudo -n -u postgres psql -d "$DB" -v ON_ERROR_STOP=1 -f - < "$ROOT/db/migrations/$mig" 2>&1 \
     | grep -v 'could not change directory' | sed 's/^/      /'
@@ -447,8 +447,8 @@ expect "모르는 칸(표에 onclick) → 400" "400" "$(put_doc qa_employee01 "$
 expect "토글에 하위가 없다 → 400" "400" "$(put_doc qa_employee01 "$P0" "[{**TOG('s',[]), 'children': None}]")"
 expect "link_to_page 가 UUID 아님 → 400" "400" "$(put_doc qa_employee01 "$P0" "[{**LNK('$PL'), 'page_id':'x'}]")"
 expect "그림 폭이 목록 밖 → 400" "400" "$(put_doc qa_employee01 "$P0" "[IMG('$F_IMG','huge')]")"
-expect "embed 는 아직(7단계) → 400" "400" "$(put_doc qa_employee01 "$P0" "[{'id':'$(python3 -c 'import uuid;print(uuid.uuid4())')','type':'embed','url':'https://example.com/'}]")"
-contains "  사유 type_not_in_stage" "type_not_in_stage" "$(errs)"
+expect "허용 목록 밖 embed → 400(7-C)" "400" "$(put_doc qa_employee01 "$P0" "[{'id':'$(python3 -c 'import uuid;print(uuid.uuid4())')','type':'embed','url':'https://example.com/'}]")"
+contains "  사유 embed_not_allowed" "embed_not_allowed" "$(jget "d.get('reason','')" < "$WORK/b")"
 jbody "{'title':'C5E-새 페이지 파일','doc':{'schema':1,'blocks':[{'id':'$(python3 -c 'import uuid;print(uuid.uuid4())')','type':'file','file_ref':'tbox:$F_INT'}]}}"
 st=$(capi POST /api/pages qa_employee01 "$WORK/body.json")
 expect "새 페이지 만들 때 본문에 파일 → 400 (만든 뒤 편집으로 붙인다)" "400" "$st"

@@ -49,7 +49,7 @@ REVOKE ALL ON community.spaces, community.pages, community.page_versions,
               community.page_shares, community.handovers,
               community.page_tags, community.page_views,
               community.comments, community.comment_reactions, community.notifications, community.page_reads,
-              community.databases, community.templates
+              community.databases, community.templates, community.embed_domains
        FROM tbox_app;
 
 -- ─── 표별 권한 (앱 런타임) ────────────────────────────────────
@@ -82,6 +82,8 @@ GRANT SELECT, INSERT, UPDATE         ON community.page_reads           TO tbox_a
 GRANT SELECT, INSERT, UPDATE         ON community.databases            TO tbox_app;
 -- 7-B 템플릿 — 지우기는 논리 삭제(`deleted_at`)라 DELETE 가 없다. 만든 일·지운 일은 감사 `template.*` 가 남긴다.
 GRANT SELECT, INSERT, UPDATE         ON community.templates            TO tbox_app;
+-- 7-C 임베드 허용 목록 — 빼기는 removed_at(DELETE 없음). 더한 일·뺀 일은 감사 `embed.domain` 이 남긴다.
+GRANT SELECT, INSERT, UPDATE         ON community.embed_domains        TO tbox_app;
 
 -- ─── 시퀀스 (INSERT 하는 표의 id 발급) ────────────────────────
 GRANT USAGE, SELECT ON SEQUENCE community.spaces_id_seq            TO tbox_app;
@@ -95,6 +97,7 @@ GRANT USAGE, SELECT ON SEQUENCE community.comments_id_seq          TO tbox_app;
 GRANT USAGE, SELECT ON SEQUENCE community.notifications_id_seq     TO tbox_app;
 GRANT USAGE, SELECT ON SEQUENCE community.databases_id_seq         TO tbox_app;
 GRANT USAGE, SELECT ON SEQUENCE community.templates_id_seq         TO tbox_app;
+GRANT USAGE, SELECT ON SEQUENCE community.embed_domains_id_seq     TO tbox_app;
 -- page_blocks·page_links·page_edit_sessions·page_tags·page_views 는 복합 기본키라 시퀀스가 없다.
 
 -- ─── tbox_backup (읽기 전용 백업 계정) ────────────────────────
@@ -105,7 +108,7 @@ REVOKE ALL ON community.spaces, community.pages, community.page_versions,
               community.page_shares, community.handovers,
               community.page_tags, community.page_views,
               community.comments, community.comment_reactions, community.notifications, community.page_reads,
-              community.databases, community.templates
+              community.databases, community.templates, community.embed_domains
        FROM tbox_backup;
 
 GRANT SELECT ON ALL TABLES    IN SCHEMA community TO tbox_backup;   -- ★ SELECT 만

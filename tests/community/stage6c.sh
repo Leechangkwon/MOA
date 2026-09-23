@@ -201,7 +201,7 @@ echo "  · 임시 DB $DB — 계정 ${n_users}명 · 페이지 ${n_pages}장"
 sub "② 마이그레이션 + 권한 (임시 DB 에만) — 앞 단계(이미 있으면 그대로) · 5-C · 5-D (5-E 는 새 표가 없다)"
 for mig in 2026-09-23_community_page_properties.sql 2026-09-23_community_owner_share.sql \
            2026-09-23_users_display_name.sql 2026-09-24_community_boards.sql \
-           2026-09-24_community_discussion.sql 2026-09-25_community_databases.sql 2026-09-25_community_databases.sql 2026-09-26_community_purge.sql 2026-09-27_community_templates.sql; do
+           2026-09-24_community_discussion.sql 2026-09-25_community_databases.sql 2026-09-25_community_databases.sql 2026-09-26_community_purge.sql 2026-09-27_community_templates.sql 2026-09-28_community_embeds.sql; do
   echo "    ▸ $mig"
   sudo -n -u postgres psql -d "$DB" -v ON_ERROR_STOP=1 -f - < "$ROOT/db/migrations/$mig" 2>&1 \
     | grep -v 'could not change directory' | sed 's/^/      /'
@@ -414,7 +414,7 @@ contains "  사유 merge_out_of_table" "merge_out_of_table" "$(errs)"
 expect "병합끼리 겹침 → 400" "400" "$(put_doc qa_employee01 "$P0" "[$TABM_PY([[('a',2,1),('b',2,1)],[('',1,2),('',1,1)]])]")"
 expect "colspan 21 → 400" "400" "$(put_doc qa_employee01 "$P0" "[$TABM_PY([[('a',1,21)] + [('',1,1)]*20])]")"
 expect "colspan 문자열 → 400" "400" "$(put_doc qa_employee01 "$P0" "[{'id': u(), 'type': 'table', 'header_row': False, 'header_col': False, 'rows': [{'cells': [{'text': [], 'colspan': '2'}, {'text': []}]}]}]")"
-expect "mention 마크는 아직(7단계) → 400" "400" "$(put_doc qa_employee01 "$P0" "[{'id': u(), 'type': 'paragraph', 'text': [{'t': 'x', 'm': {'mention': {'kind': 'user', 'id': 1}}}]}]")"
+expect "mention 마크는 아직(7-D 까지 8단계) → 400" "400" "$(put_doc qa_employee01 "$P0" "[{'id': u(), 'type': 'paragraph', 'text': [{'t': 'x', 'm': {'mention': {'kind': 'user', 'id': 1}}}]}]")"
 contains "  사유 mark_not_in_stage" "mark_not_in_stage" "$(errs)"
 
 # ════════════════════════════════════════════════════════════════

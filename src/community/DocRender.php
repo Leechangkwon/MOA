@@ -35,6 +35,9 @@ final class DocRender
     private const CHILD_PAGE_UNREADABLE = '볼 수 없는 페이지';
     /** 5-E — 보는 사람이 t-box 에서 볼 수 없는(또는 없는) 파일 자리. 클라이언트 렌더러와 같은 문구(C:T-19) */
     private const FILE_UNREADABLE = '볼 수 없는 파일';
+    /** 7-C — 임베드 카드 문구. 클라이언트 렌더러와 같은 문구(C:T-19) */
+    private const EMBED_WAITING = '허용 대기 · 새 탭에서 열기';
+    private const EMBED_BLOCKED = '허용 목록 밖의 임베드';
 
     /**
      * 6-C — 합친 칸이 덮는 자리 `[행][열] => true`. doc-render.js `coveredCells` 와 같은 규칙(행 순서로 훑어 시작 칸만 덮는다).
@@ -315,6 +318,36 @@ final class DocRender
                      . '<span class="card__meta">' . self::esc(self::sizeText((int) ($fent['size'] ?? 0))) . '</span></a>'
                      . ($cap === '' ? '' : '<p class="doc-file__caption">' . $cap . '</p>')
                      . '</div>';
+
+            /* 7-C 임베드 (K-4) — `$ctx['embeds']` = {hosts: 지금 허용 목록, frames: 사이트가 틀을 여는가}.
+               목록 안 + 틀 열림 → `<iframe sandbox="">`(권한 토큰 0 — 스크립트·같은 출처·팝업 없음, J-4) · 목록 안 → 「허용 대기」 카드 +
+               새 탭 링크 · 목록 밖(빠진 호스트 포함) → 링크 없는 카드. 주소는 검증기가 본 https 모양이고 여기서도 호스트를 다시 뽑는다. */
+            case 'embed':
+                $eurl   = isset($block['url']) && is_string($block['url']) ? $block['url'] : '';
+                $ehost  = Doc::embedHost($eurl);
+                $emb    = is_array($ctx['embeds'] ?? null) ? $ctx['embeds'] : [];
+                $ehosts = is_array($emb['hosts'] ?? null) ? $emb['hosts'] : [];
+                $listed = $ehost !== null && in_array($ehost, $ehosts, true);
+                $ecap   = isset($block['caption']) && is_array($block['caption']) ? self::rich($block['caption']) : '';
+                if ($listed && ($emb['frames'] ?? false) === true) {
+                    return '<figure class="doc-embed"' . $idAttr . '>'
+                         . '<iframe class="doc-embed__frame" src="' . self::esc($eurl) . '" sandbox="" referrerpolicy="no-referrer" loading="lazy"'
+                         . ' title="' . self::esc('임베드 — ' . $ehost) . '"></iframe>'
+                         . ($ecap === '' ? '' : '<figcaption class="doc-embed__caption">' . $ecap . '</figcaption>')
+                         . '</figure>';
+                }
+                if ($listed) {
+                    return '<div class="doc-embed"' . $idAttr . '>'
+                         . '<a class="card card--link" href="' . self::esc($eurl) . '" target="_blank" rel="noopener noreferrer">'
+                         . '<span class="card__title">' . self::esc('임베드 — ' . $ehost) . '</span>'
+                         . '<span class="card__meta">' . self::EMBED_WAITING . '</span></a>'
+                         . ($ecap === '' ? '' : '<p class="doc-embed__caption">' . $ecap . '</p>')
+                         . '</div>';
+                }
+                return '<div class="doc-embed"' . $idAttr . '><div class="card card--soon">'
+                     . '<span class="card__title">' . self::EMBED_BLOCKED . '</span>'
+                     . ($ehost === null ? '' : '<span class="card__meta">' . self::esc($ehost) . '</span>')
+                     . '</div></div>';
 
             default:
                 return '<div class="block-unsupported">지원하지 않는 블록</div>';
