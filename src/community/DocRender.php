@@ -33,6 +33,11 @@ final class DocRender
      * **클라이언트 렌더러(`doc-render.js`)의 같은 상수와 한 글자도 다르면 안 된다** — C:T-19.
      */
     private const CHILD_PAGE_UNREADABLE = '볼 수 없는 페이지';
+    /** 5-E — 보는 사람이 t-box 에서 볼 수 없는(또는 없는) 파일 자리. 클라이언트 렌더러와 같은 문구(C:T-19) */
+    private const FILE_UNREADABLE = '볼 수 없는 파일';
+
+    /** 5-E — 주소에 넣는 페이지·파일 id 의 모양 (doc-render.js 의 UUID_RE 와 같다) */
+    private const UUID_RE = '/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/';
 
     /** 마크 이름 → 태그 (색은 span + 클래스, 링크는 a) */
     private const MARK_TAG = [
@@ -193,6 +198,82 @@ final class DocRender
                      . ' href="' . self::esc(Http::communityUrl('/p/' . $childId)) . '"' . $idAttr . '>'
                      . '<span class="card__title">' . self::esc($childLabel) . '</span></a>';
 
+            /* ── 5-E 블록 다섯 — 클라이언트 렌더러(`doc-render.js`)와 **같은 태그·클래스·문구**(C:T-19) ── */
+
+            // 토글 — 펼치고 접는 것은 `<details>` 가 한다(스크립트 0). 하위 블록은 **안에** 들어간다.
+            case 'toggle':
+                return '<details class="' . self::cls('doc-toggle', $block) . '"' . $idAttr . '>'
+                     . '<summary class="doc-toggle__summary">' . $text . '</summary>'
+                     . '<div class="doc-toggle__body">' . $kids . '</div></details>';
+
+            // 표 — 머리 행·머리 열은 `<th>`. 칸 병합은 6단계라 없다. 넓으면 감싼 칸이 가로로 굴린다.
+            case 'table':
+                $rows    = isset($block['rows']) && is_array($block['rows']) ? $block['rows'] : [];
+                $headRow = ($block['header_row'] ?? false) === true;
+                $headCol = ($block['header_col'] ?? false) === true;
+                $html    = '<div class="doc-table-wrap"' . $idAttr . '><table class="doc-table"><tbody>';
+                foreach ($rows as $ri => $row) {
+                    $rowCls = is_array($row) && isset($row['color']) && is_string($row['color']) ? self::colorClass($row['color']) : null;
+                    $html  .= '<tr' . ($rowCls === null ? '' : ' class="' . self::esc($rowCls) . '"') . '>';
+                    $cells  = is_array($row) && isset($row['cells']) && is_array($row['cells']) ? $row['cells'] : [];
+                    foreach ($cells as $ci => $cell) {
+                        $tag     = ($headRow && $ri === 0) || ($headCol && $ci === 0) ? 'th' : 'td';
+                        $cellCls = is_array($cell) && isset($cell['color']) && is_string($cell['color']) ? self::colorClass($cell['color']) : null;
+                        $html   .= '<' . $tag . ' class="doc-table__cell' . ($cellCls === null ? '' : ' ' . self::esc($cellCls)) . '">'
+                                 . (is_array($cell) && isset($cell['text']) && is_array($cell['text']) ? self::rich($cell['text']) : '')
+                                 . '</' . $tag . '>';
+                    }
+                    $html .= '</tr>';
+                }
+                return $html . '</tbody></table></div>';
+
+            // 페이지 링크 — 하위 페이지 카드와 같은 모양, 제목은 `$ctx['link_titles']`(볼 수 있는 것만)
+            case 'link_to_page':
+                // UUID 형태만 주소에 넣는다(지도 키가 DB 값이라 이미 안전하지만 한 겹 더 — 독립 검토 L6)
+                $linkId = isset($block['page_id']) && is_string($block['page_id']) && preg_match(self::UUID_RE, $block['page_id']) === 1
+                    ? $block['page_id'] : '';
+                $lmap   = is_array($ctx['link_titles'] ?? null) ? $ctx['link_titles'] : [];
+                $lent   = is_array($lmap[$linkId] ?? null) ? $lmap[$linkId] : null;
+                if ($lent === null) {
+                    return '<div class="card card--soon doc-link-page"' . $idAttr . '>'
+                         . '<span class="card__title">' . self::CHILD_PAGE_UNREADABLE . '</span></div>';
+                }
+                $licon = isset($lent['icon']) && is_string($lent['icon']) && $lent['icon'] !== '' ? $lent['icon'] . ' ' : '';
+                return '<a class="card card--link doc-link-page"'
+                     . ' href="' . self::esc(Http::communityUrl('/p/' . $linkId)) . '"' . $idAttr . '>'
+                     . '<span class="card__title">' . self::esc($licon . (string) ($lent['title'] ?? '')) . '</span></a>';
+
+            // 그림·파일 — 파일 지도(`$ctx['file_titles']`, 보는 사람이 t-box 에서 볼 수 있는 것만)에 있을 때만 그린다.
+            // 그림 주소는 t-box 창구 — 가져가는 순간에도 t-box 가 자기 권한으로 다시 판단한다.
+            case 'image':
+            case 'file':
+                $ref   = isset($block['file_ref']) && is_string($block['file_ref']) && strncmp($block['file_ref'], 'tbox:', 5) === 0
+                    && preg_match(self::UUID_RE, substr($block['file_ref'], 5)) === 1
+                    ? substr($block['file_ref'], 5) : '';
+                $fmap  = is_array($ctx['file_titles'] ?? null) ? $ctx['file_titles'] : [];
+                $fent  = is_array($fmap[$ref] ?? null) ? $fmap[$ref] : null;
+                $cap   = isset($block['caption']) && is_array($block['caption']) ? self::rich($block['caption']) : '';
+                if ($fent === null) {
+                    return '<div class="doc-file"' . $idAttr . '><div class="card card--soon">'
+                         . '<span class="card__title">' . self::FILE_UNREADABLE . '</span></div></div>';
+                }
+                $fname = (string) ($fent['name'] ?? '');
+                if ($type === 'image' && ($fent['image'] ?? false) === true) {
+                    $width = isset($block['width']) && in_array($block['width'], ['full', 'wide', 'normal', 'small'], true)
+                        ? $block['width'] : 'normal';
+                    return '<figure class="doc-image doc-image--' . $width . '"' . $idAttr . '>'
+                         . '<img class="doc-image__img" src="' . self::esc(Http::url('/api/files/' . $ref . '/preview/raw'))
+                         . '" alt="' . self::esc($fname) . '" loading="lazy">'
+                         . ($cap === '' ? '' : '<figcaption class="doc-image__caption">' . $cap . '</figcaption>')
+                         . '</figure>';
+                }
+                return '<div class="doc-file"' . $idAttr . '>'
+                     . '<a class="card card--link" href="' . self::esc(Http::url('/api/files/' . $ref . '/download')) . '">'
+                     . '<span class="card__title">' . self::esc($fname) . '</span>'
+                     . '<span class="card__meta">' . self::esc(self::sizeText((int) ($fent['size'] ?? 0))) . '</span></a>'
+                     . ($cap === '' ? '' : '<p class="doc-file__caption">' . $cap . '</p>')
+                     . '</div>';
+
             default:
                 return '<div class="block-unsupported">지원하지 않는 블록</div>';
         }
@@ -248,6 +329,22 @@ final class DocRender
      *
      * @param array<string,mixed> $block
      */
+    /**
+     * 파일 크기 글자 — 「1.8 MB」 (DESIGN 5장 — 단위 앞 한 칸). **정수 계산만** 써서 클라이언트 렌더러와 같은 값을 낸다(C:T-19).
+     */
+    private static function sizeText(int $bytes): string
+    {
+        if ($bytes < 1024) {
+            return (string) $bytes . ' B';
+        }
+        if ($bytes < 1048576) {
+            $t = intdiv($bytes * 10 + 512, 1024);
+            return intdiv($t, 10) . '.' . ($t % 10) . ' KB';
+        }
+        $t = intdiv($bytes * 10 + 524288, 1048576);
+        return intdiv($t, 10) . '.' . ($t % 10) . ' MB';
+    }
+
     private static function cls(string $base, array $block): string
     {
         $out = [$base];

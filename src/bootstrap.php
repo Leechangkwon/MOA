@@ -139,8 +139,10 @@ const COMMUNITY_BASE = '/community';
  * 4단계가 여는 블록은 `child_page` **하나**다(`community/doc-schema.json` 의 `stage` 표).
  * `toggle`·`table` 은 5단계로 옮겼다 — 단계 표가 곧 활성 목록이어야 하므로, 화면·에디터가
  * 아직 그리지 못하는 블록을 단계 안에 두지 않는다.
+ * 5-E(2026-09-23)에 **5** 로 올렸다 — `toggle`·`table`·`image`·`file`·`link_to_page` 다섯이 열린다.
+ * `column_list`·`column`·`mention` 마크는 같은 까닭으로 6단계로 옮겼다(편집기 중첩 구조가 먼저 — 결정 E-1).
  */
-const COMMUNITY_DOC_STAGE = 4;
+const COMMUNITY_DOC_STAGE = 5;
 
 // ─── 3) 예외·치명적 오류 은닉 (PRD S-09-7, SECURITY 1.7) ───────
 // 어떤 예외도 스택 트레이스·DB 오류 문구·파일 경로를 응답에 넣지 않는다.

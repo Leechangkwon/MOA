@@ -115,6 +115,18 @@ if (!$check['ok']) {
     ], 400);
     exit;
 }
+/* 5-E — 되돌리는 판에 **지금 본문에 없는** 파일이 있으면 붙이는 것과 같다 — 같은 규칙으로 견준다. */
+$restoreNewFiles = array_values(array_diff(Doc::extract($oldDoc)['files'], Doc::extract(json_decode((string) $row['doc'], true) ?: [])['files']));
+if (!community_file_refs_ok($restoreNewFiles, CommunityAuthz::pageAudiences($row), $user)) {
+    Audit::deny('page.restore_version', 'file_ref', [
+        'target_type' => 'page',
+        'target_id'   => $pageId,
+        'target_name' => $pageTitle,
+        'detail'      => ['page_title' => $pageTitle, 'restored_from' => $want],
+    ]);
+    Http::json(['error' => '그 판에는 지금 붙일 수 없는 파일이 있습니다', 'reason' => 'file_ref'], 400);
+    exit;
+}
 
 $extract = Doc::extract($oldDoc);
 $docJson = json_encode($oldDoc, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);

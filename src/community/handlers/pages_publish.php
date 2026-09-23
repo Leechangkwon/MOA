@@ -94,6 +94,21 @@ if (!$mayWrite) {
     Http::error(403, Http::MSG_FORBIDDEN);
 }
 
+/* ─── [4-1] 첨부 (5-E) — 게시하면 게시판을 보는 사람이 모두 읽는다. 붙인 파일이 게시판 등급보다 좁으면 400 ───
+   (그림이 게시판 독자에게 깨져 보이지 않게 — 결정 E-3. 없는·못 보는 파일과 같은 답) */
+$pubFiles = Doc::extract(json_decode((string) $row['doc'], true) ?: [])['files'];
+if (!community_file_refs_ok($pubFiles, CommunityAuthz::pageAudiences($row, $board + ['kind' => 'board']), $user)) {
+    // 감사 detail 에 파일 id 는 넣지 않는다(결정 E-5 — 어느 파일인지가 새지 않게)
+    Audit::deny('page.publish', 'file_narrower', [
+        'target_type' => 'page',
+        'target_id'   => $pageId,
+        'target_name' => $pageTitle,
+        'detail'      => ['page_title' => $pageTitle, 'board_id' => $boardId],
+    ]);
+    Http::json(['error' => '이 게시판을 보는 사람이 볼 수 없는 파일이 붙어 있습니다. 파일 등급을 넓히거나 빼고 게시하세요', 'reason' => 'file_narrower'], 400);
+    exit;
+}
+
 // ─── [5] 저장 ─────────────────────────────────────────────────
 $sqlSet = <<<'SQL'
     UPDATE community.pages
@@ -110,12 +125,14 @@ $sqlSet = <<<'SQL'
        -- 읽은 뒤 사이에 범위가 바뀌었으면(부모 cascade 등) 게시하지 않는다 — 옛 범위가 `published_from` 에
        -- 남으면 해제한 날 자식이 부모보다 넓어진다(독립 검토 2026-09-23).
        AND visibility = :from2
+       -- 5-E — 첨부를 견준 그 판일 때만 게시한다(사이에 파일이 붙었으면 409 — 독립 검토 L1)
+       AND doc_version = CAST(:dv AS int)
     RETURNING published_at
     SQL;
 
 $db->begin();
 try {
-    $done = $db->run($sqlSet, [':from' => $from, ':from2' => $from, ':bid' => $boardId, ':me' => $me, ':pid' => $pageId])->fetch();
+    $done = $db->run($sqlSet, [':from' => $from, ':from2' => $from, ':bid' => $boardId, ':me' => $me, ':pid' => $pageId, ':dv' => (int) $row['doc_version']])->fetch();
     if (!is_array($done)) {
         // 읽은 뒤 사이에 다른 요청이 먼저 게시했거나 지웠다.
         $db->rollback();

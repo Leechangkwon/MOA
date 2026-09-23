@@ -240,6 +240,48 @@ export const schema = new Schema({
         { class: 'card card--soon doc-child-page', contenteditable: 'false' },
         ['span', { class: 'card__title' }, '📄 ' + (node.attrs.title || '하위 페이지')]
       ]
+    },
+
+    /*
+     * 5-E 새 블록 다섯 — 전부 **덩어리(atom)** 이고 편집기 안에서는 요약 카드로 보인다.
+     * 값은 창(editor.js 「블록 고치기」)에서 고치고, 카드를 **두 번 누르면** 창이 다시 열린다(결정 E-2).
+     * 편집기가 평평한 블록 구조라 하위 블록을 가진 토글은 「평문 문단들」로만 다룬다(`kids`).
+     * 보여 주기용 속성(`title`·`name`)은 `toDoc` 이 버린다 — 진실은 그 페이지·그 파일 행이다.
+     */
+    toggle: {
+      group: 'block', atom: true, selectable: true,
+      attrs: { id: { default: null }, summary: { default: '' }, kids: { default: [] } },
+      toDOM: (node) => ['div', { class: 'card card--link doc-atom', contenteditable: 'false', 'data-atom': 'toggle' },
+        ['span', { class: 'card__title' }, '▸ ' + (node.attrs.summary || '토글')],
+        ['span', { class: 'card__meta' }, '문단 ' + String((node.attrs.kids || []).length) + '개 · 두 번 눌러 고치기']]
+    },
+    table: {
+      group: 'block', atom: true, selectable: true,
+      attrs: { id: { default: null }, header_row: { default: true }, header_col: { default: false }, rows: { default: [['', ''], ['', '']] } },
+      toDOM: (node) => ['div', { class: 'card card--link doc-atom', contenteditable: 'false', 'data-atom': 'table' },
+        ['span', { class: 'card__title' }, '표 ' + String((node.attrs.rows || []).length) + '×' + String(((node.attrs.rows || [])[0] || []).length)],
+        ['span', { class: 'card__meta' }, (((node.attrs.rows || [])[0] || []).join(' · ') || '빈 표') + ' · 두 번 눌러 고치기']]
+    },
+    link_to_page: {
+      group: 'block', atom: true, selectable: true,
+      attrs: { id: { default: null }, page_id: { default: null }, title: { default: '' } },
+      toDOM: (node) => ['div', { class: 'card card--link doc-atom', contenteditable: 'false', 'data-atom': 'link_to_page' },
+        ['span', { class: 'card__title' }, '🔗 ' + (node.attrs.title || '페이지 링크')],
+        ['span', { class: 'card__meta' }, '두 번 눌러 바꾸기']]
+    },
+    image: {
+      group: 'block', atom: true, selectable: true,
+      attrs: { id: { default: null }, file_ref: { default: null }, caption: { default: '' }, width: { default: 'normal' }, name: { default: '' } },
+      toDOM: (node) => ['div', { class: 'card card--link doc-atom', contenteditable: 'false', 'data-atom': 'image' },
+        ['span', { class: 'card__title' }, '🖼 ' + (node.attrs.name || '그림')],
+        ['span', { class: 'card__meta' }, (node.attrs.caption || '설명 없음') + ' · 두 번 눌러 고치기']]
+    },
+    file: {
+      group: 'block', atom: true, selectable: true,
+      attrs: { id: { default: null }, file_ref: { default: null }, caption: { default: '' }, name: { default: '' } },
+      toDOM: (node) => ['div', { class: 'card card--link doc-atom', contenteditable: 'false', 'data-atom': 'file' },
+        ['span', { class: 'card__title' }, '📎 ' + (node.attrs.name || '파일')],
+        ['span', { class: 'card__meta' }, (node.attrs.caption || '설명 없음') + ' · 두 번 눌러 고치기']]
     }
   },
 
@@ -338,6 +380,54 @@ function richToPM(text) {
  * 편집기가 다룰 수 없는 것을 만나면 **예외**다. 부르는 쪽(editor.js)이 그것을 잡아
  * 「이 문서는 아직 편집할 수 없습니다」로 안내하고 읽기 모드에 머문다.
  */
+/** 리치 텍스트 → 평문(5-E 덩어리 편집용). 줄바꿈이 아닌 제어 문자는 지운다. */
+function plainOf(text) {
+  let out = '';
+  for (const seg of Array.isArray(text) ? text : []) {
+    if (seg && typeof seg.t === 'string') { out += seg.t; }
+  }
+  return out;
+}
+
+/**
+ * 5-E 덩어리가 **평문 창으로 손실 없이** 다룰 수 있는 블록인가 (독립 검토 M2).
+ * 꾸밈(글자 마크·블록 색·정렬·크기·행/칸 색·열 폭)이 하나라도 있으면 거짓 — 그때 `fromDoc` 이 던져 편집기를 열지 않는다.
+ * 창을 거치며 꾸밈이 **말없이 지워지는** 것보다, 편집을 막고 읽기 전용으로 두는 쪽이 낫다(API 로 만든 문서 보호).
+ */
+function richIsPlain(text) {
+  for (const seg of Array.isArray(text) ? text : []) {
+    if (seg && seg.m && typeof seg.m === 'object' && Object.keys(seg.m).length > 0) { return false; }
+  }
+  return true;
+}
+function blockIsPlain(b) {
+  return (b.color === undefined || b.color === null)
+    && (b.align === undefined || b.align === 'left')
+    && (b.size === undefined || b.size === 'normal');
+}
+function atomIsPlain(b) {
+  if (!blockIsPlain(b) || !richIsPlain(b.text) || !richIsPlain(b.caption)) { return false; }
+  if (b.type === 'toggle') {
+    return (Array.isArray(b.children) ? b.children : []).every((k) => k && blockIsPlain(k) && richIsPlain(k.text));
+  }
+  if (b.type === 'table') {
+    if (b.col_widths !== undefined) { return false; }
+    for (const r of Array.isArray(b.rows) ? b.rows : []) {
+      if (!r || (r.color !== undefined && r.color !== null)) { return false; }
+      for (const c of Array.isArray(r.cells) ? r.cells : []) {
+        if (!c || (c.color !== undefined && c.color !== null) || !richIsPlain(c.text)) { return false; }
+      }
+    }
+  }
+  return true;
+}
+
+/** 평문 → 리치 텍스트 한 조각(비면 빈 배열). 제어 문자는 빈칸으로 — 서버가 400 을 주지 않게 편집기 출력을 다듬는다. */
+function richOf(plain) {
+  const t = String(plain || '').replace(/[\u0000-\u001f\u007f]/g, ' ').trim();
+  return t === '' ? [] : [{ t: t, m: {} }];
+}
+
 export function fromDoc(doc, ctx) {
   const blocks = doc && Array.isArray(doc.blocks) ? doc.blocks : [];
   const content = [];
@@ -348,7 +438,7 @@ export function fromDoc(doc, ctx) {
     if (!b || typeof b.type !== 'string') {
       throw new Error('모르는 블록이 들어 있습니다');
     }
-    if (Array.isArray(b.children) && b.children.length > 0) {
+    if (Array.isArray(b.children) && b.children.length > 0 && b.type !== 'toggle') {
       throw new Error('하위 블록이 들어 있는 문서는 아직 편집할 수 없습니다');
     }
     const attrs = {
@@ -374,6 +464,46 @@ export function fromDoc(doc, ctx) {
           title: entry && typeof entry.title === 'string' ? entry.title : '볼 수 없는 페이지'
         }
       });
+      continue;
+    }
+    /* ── 5-E 덩어리 다섯 ── 창은 평문만 다룬다. 꾸밈이 든 것은 편집기를 열지 않는다(말없이 지우지 않게 — M2). */
+    if (['toggle', 'table', 'image', 'file', 'link_to_page'].indexOf(b.type) !== -1 && !atomIsPlain(b)) {
+      throw new Error('꾸밈(색·링크·열 폭 등)이 든 토글·표·설명은 아직 편집기에서 고칠 수 없습니다');
+    }
+    if (b.type === 'toggle') {
+      const kids = [];
+      for (const k of Array.isArray(b.children) ? b.children : []) {
+        if (!k || k.type !== 'paragraph' || (Array.isArray(k.children) && k.children.length > 0)) {
+          throw new Error('문단이 아닌 블록이 든 토글은 아직 편집할 수 없습니다');
+        }
+        kids.push({ id: typeof k.id === 'string' ? k.id : null, text: plainOf(k.text) });
+      }
+      content.push({ type: 'toggle', attrs: { id: attrs.id, summary: plainOf(b.text), kids: kids } });
+      continue;
+    }
+    if (b.type === 'table') {
+      const rows = [];
+      for (const r of Array.isArray(b.rows) ? b.rows : []) {
+        rows.push((r && Array.isArray(r.cells) ? r.cells : []).map((c) => plainOf(c && c.text)));
+      }
+      content.push({ type: 'table', attrs: { id: attrs.id, header_row: b.header_row === true, header_col: b.header_col === true, rows: rows } });
+      continue;
+    }
+    if (b.type === 'link_to_page') {
+      const lmap = ctx && ctx.link_titles && typeof ctx.link_titles === 'object' ? ctx.link_titles : {};
+      const pid = typeof b.page_id === 'string' ? b.page_id : null;
+      const ent = pid && Object.prototype.hasOwnProperty.call(lmap, pid) ? lmap[pid] : null;
+      content.push({ type: 'link_to_page', attrs: { id: attrs.id, page_id: pid, title: ent && typeof ent.title === 'string' ? ent.title : '볼 수 없는 페이지' } });
+      continue;
+    }
+    if (b.type === 'image' || b.type === 'file') {
+      const fmap = ctx && ctx.file_titles && typeof ctx.file_titles === 'object' ? ctx.file_titles : {};
+      const ref = typeof b.file_ref === 'string' ? b.file_ref : null;
+      const fid = ref && ref.slice(0, 5) === 'tbox:' ? ref.slice(5) : '';
+      const ent = Object.prototype.hasOwnProperty.call(fmap, fid) ? fmap[fid] : null;
+      const a2 = { id: attrs.id, file_ref: ref, caption: plainOf(b.caption), name: ent && typeof ent.name === 'string' ? ent.name : '볼 수 없는 파일' };
+      if (b.type === 'image') { a2.width = ['full', 'wide', 'normal', 'small'].indexOf(b.width) !== -1 ? b.width : 'normal'; }
+      content.push({ type: b.type, attrs: a2 });
       continue;
     }
     if (b.type === 'code') {
@@ -467,7 +597,7 @@ export function toDoc(pmDoc) {
     const block = { id: typeof a.id === 'string' && a.id !== '' ? a.id : uuid4(), type: ourType };
 
     // 글자를 담지 않는 덩어리에는 꾸밈 세 가지를 얹지 않는다.
-    const isAtom = ourType === 'divider' || ourType === 'toc' || ourType === 'child_page';
+    const isAtom = ['divider', 'toc', 'child_page', 'toggle', 'table', 'link_to_page', 'image', 'file'].indexOf(ourType) !== -1;
 
     if (!isAtom) {
       if (colorAllowed(a.color)) { block.color = a.color; }
@@ -479,6 +609,40 @@ export function toDoc(pmDoc) {
       // `title` 은 편집기 안에서만 쓰는 값이라 **저장하지 않는다**(제목의 진실은 그 페이지 행).
       if (typeof a.page_id !== 'string' || a.page_id === '') { continue; }
       block.page_id = a.page_id;
+      blocks.push(block);
+      continue;
+    }
+    /* 5-E 덩어리 — 보여 주기용 속성(`title`·`name`)은 버린다. 가리킬 곳이 없는 카드는 저장하지 않는다. */
+    if (ourType === 'toggle') {
+      block.text = richOf(a.summary);
+      const kids = Array.isArray(a.kids) && a.kids.length > 0 ? a.kids : [{ id: null, text: '' }];
+      block.children = kids.map((k) => ({
+        id: k && typeof k.id === 'string' && k.id !== '' ? k.id : uuid4(), type: 'paragraph', text: richOf(k && k.text)
+      }));
+      blocks.push(block);
+      continue;
+    }
+    if (ourType === 'table') {
+      const rows = Array.isArray(a.rows) && a.rows.length > 0 ? a.rows : [['']];
+      const width = Math.max(1, ...rows.map((r) => (Array.isArray(r) ? r.length : 0)));
+      block.header_row = a.header_row === true;
+      block.header_col = a.header_col === true;
+      block.rows = rows.map((r) => ({ cells: Array.from({ length: width }, (_, i) => ({ text: richOf(Array.isArray(r) ? r[i] : '') })) }));
+      blocks.push(block);
+      continue;
+    }
+    if (ourType === 'link_to_page') {
+      if (typeof a.page_id !== 'string' || a.page_id === '') { continue; }
+      block.page_id = a.page_id;
+      blocks.push(block);
+      continue;
+    }
+    if (ourType === 'image' || ourType === 'file') {
+      if (typeof a.file_ref !== 'string' || a.file_ref.slice(0, 5) !== 'tbox:') { continue; }
+      block.file_ref = a.file_ref;
+      const cap = richOf(a.caption);
+      if (cap.length > 0) { block.caption = cap; }
+      if (ourType === 'image') { block.width = ['full', 'wide', 'normal', 'small'].indexOf(a.width) !== -1 ? a.width : 'normal'; }
       blocks.push(block);
       continue;
     }
@@ -632,5 +796,37 @@ export const BLOCK_TYPES = [
     ] },
     // 미리보기도 읽기 렌더러로 그린다 — 제목 지도를 여기서 흉내 낸다(견본과 실제가 같은 코드).
     sampleCtx: { base: '', child_titles: { '00000000-0000-4000-8000-0000000000bb': { title: '새 하위 페이지', icon: null } } }
+  },
+  /* ── 5-E — 넣으면 **창이 먼저 열린다**(`editsAtom`). 값을 정한 뒤에 블록이 들어가고, 두 번 누르면 다시 고친다. ── */
+  {
+    type: 'toggle', label: '토글', editsAtom: true,
+    desc: '한 줄 제목을 누르면 아래 내용이 펼쳐집니다. 긴 설명·자주 묻는 것을 접어 둘 때 씁니다.',
+    sample: { schema: 1, blocks: [{ id: '00000000-0000-4000-8000-0000000000c1', type: 'toggle', text: [{ t: '눌러서 펼치기', m: {} }],
+      children: [{ id: '00000000-0000-4000-8000-0000000000c2', type: 'paragraph', text: [{ t: '접혀 있던 내용입니다.', m: {} }] }] }] }
+  },
+  {
+    type: 'table', label: '표', editsAtom: true,
+    desc: '행과 열로 늘어놓습니다. 첫 행(또는 첫 열)을 머리로 굵게 둘 수 있습니다. 칸 합치기는 아직 없습니다.',
+    sample: { schema: 1, blocks: [{ id: '00000000-0000-4000-8000-0000000000c3', type: 'table', header_row: true, header_col: false, rows: [
+      { cells: [{ text: [{ t: '항목', m: {} }] }, { text: [{ t: '담당', m: {} }] }] },
+      { cells: [{ text: [{ t: '계획서', m: {} }] }, { text: [{ t: '김하나', m: {} }] }] }] }] }
+  },
+  {
+    type: 'link_to_page', label: '페이지 링크', editsAtom: true,
+    desc: '다른 페이지를 카드로 걸어 둡니다. 걸린 페이지 아래 「이 페이지를 참조한 곳」에도 나옵니다(볼 수 있는 사람에게만).',
+    sample: { schema: 1, blocks: [{ id: '00000000-0000-4000-8000-0000000000c4', type: 'link_to_page', page_id: '00000000-0000-4000-8000-0000000000c5' }] },
+    sampleCtx: { base: '', link_titles: { '00000000-0000-4000-8000-0000000000c5': { title: '회의록', icon: null } } }
+  },
+  {
+    type: 'image', label: '그림', editsAtom: true,
+    desc: 't-box 에 올린 그림을 보여 줍니다. 페이지를 읽는 사람이 모두 볼 수 있는 등급의 파일만 붙습니다.',
+    sample: { schema: 1, blocks: [{ id: '00000000-0000-4000-8000-0000000000c6', type: 'file', file_ref: 'tbox:00000000-0000-4000-8000-0000000000c7' }] },
+    sampleCtx: { base: '', tbox_base: '', file_titles: { '00000000-0000-4000-8000-0000000000c7': { name: '그림.png', size: 184320, image: false } } }
+  },
+  {
+    type: 'file', label: '파일', editsAtom: true,
+    desc: 't-box 에 올린 파일을 카드로 겁니다. 누르면 t-box 가 자기 권한으로 내려줍니다.',
+    sample: { schema: 1, blocks: [{ id: '00000000-0000-4000-8000-0000000000c8', type: 'file', file_ref: 'tbox:00000000-0000-4000-8000-0000000000c9' }] },
+    sampleCtx: { base: '', tbox_base: '', file_titles: { '00000000-0000-4000-8000-0000000000c9': { name: '보고서.pdf', size: 1887436, image: false } } }
   }
 ];

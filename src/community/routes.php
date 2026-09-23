@@ -1965,6 +1965,172 @@ function community_record_read(int $pageId, int $userId): void
     Db::instance()->run($sql, [':pid' => $pageId, ':uid' => $userId]);
 }
 
+/* ══════════════════════════════════════════════════════════════════
+ * 첨부 · 페이지 링크 · 역참조 (5-E)
+ * ══════════════════════════════════════════════════════════════════ */
+
+/**
+ * 본문의 t-box 파일 참조가 **모두 붙일 수 있는 것인가** (5-E, 결정 E-3·E-5). 아니면 거짓 — 창구가 400 `file_ref` 로 답한다.
+ *   파일마다: 지워지지 않았고 · **저장하는 사람이 t-box 에서 볼 수 있고**(`Authz::decideRead`) · 읽는 범위 전부에 들어맞는다.
+ *   없는 파일·못 보는 파일·좁은 파일은 **같은 거짓**이다(어느 쪽인지 응답이 가르지 않는다 — 파일 UUID 탐지기가 되지 않게).
+ *
+ * @param list<string>                              $fileIds   UUID 들(`Doc::extract()['files']`)
+ * @param list<array{level:string,team_id:?int}>    $audiences `CommunityAuthz::pageAudiences()`
+ * @param array<string,mixed>                       $u
+ */
+function community_file_refs_ok(array $fileIds, array $audiences, array $u): bool
+{
+    if ($fileIds === []) {
+        return true;
+    }
+    if (count($fileIds) > 200) {
+        return false;
+    }
+    $names = [];
+    $bind  = [];
+    foreach (array_values($fileIds) as $i => $fid) {
+        if (preg_match('/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/', (string) $fid) !== 1) {
+            return false;
+        }
+        $names[]           = 'CAST(:f' . $i . ' AS uuid)';
+        $bind[':f' . $i]   = (string) $fid;
+    }
+    $in  = implode(', ', $names);   // 개수로 만든 자리표시자 이름뿐 — 값은 전부 바인딩
+    $sql = <<<SQL
+        SELECT f.public_id, f.access_level, f.team_id
+          FROM public.files f
+         WHERE f.deleted_at IS NULL
+           AND f.public_id IN ({$in})
+        SQL;
+    $found = [];
+    foreach (Db::instance()->run($sql, $bind)->fetchAll() as $f) {
+        $found[(string) $f['public_id']] = $f;
+    }
+    foreach ($fileIds as $fid) {
+        $f = $found[(string) $fid] ?? null;
+        if ($f === null || !Authz::decideRead($u, $f)[0]) {
+            return false;
+        }
+        foreach ($audiences as $aud) {
+            if (!CommunityAuthz::fitsFileRef($f, $aud)) {
+                return false;
+            }
+        }
+    }
+    return true;
+}
+
+/**
+ * 본문의 그림·파일 카드에 쓸 **파일 지도** — 보는 사람이 t-box 에서 볼 수 있는 파일만(`Authz::visibleFilesWhere`).
+ * 지도에 없으면 렌더러가 「볼 수 없는 파일」을 그린다. 이름·크기·그림인가·검사 상태만(올린 사람·등급은 싣지 않는다 — E-8).
+ *
+ * @param  list<string>        $fileIds
+ * @param  array<string,mixed> $u
+ * @return array<string,array{name:string,size:int,image:bool}>
+ */
+function community_file_titles(array $fileIds, array $u): array
+{
+    $fileIds = array_values(array_filter($fileIds, static fn ($f): bool =>
+        preg_match('/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/', (string) $f) === 1));
+    if ($fileIds === []) {
+        return [];
+    }
+    [$vis, $visBind] = Authz::visibleFilesWhere($u);
+    $names = [];
+    $bind  = $visBind;
+    foreach (array_slice($fileIds, 0, 200) as $i => $fid) {
+        $names[]              = 'CAST(:ft' . $i . ' AS uuid)';
+        $bind[':ft' . $i]     = (string) $fid;
+    }
+    $in  = implode(', ', $names);
+    $sql = <<<SQL
+        SELECT f.public_id, f.original_name, f.size_bytes, f.mime, f.scan_status, f.exec_content
+          FROM files f
+         WHERE
+               {$vis}
+           AND f.public_id IN ({$in})
+        SQL;
+    $out = [];
+    foreach (Db::instance()->run($sql, $bind)->fetchAll() as $f) {
+        $out[(string) $f['public_id']] = [
+            'name'  => (string) $f['original_name'],
+            'size'  => (int) $f['size_bytes'],
+            // 그림으로 그릴 수 있나 — 검사를 마친(깨끗한) 그림 파일만
+            // 실행 내용이 든 파일은 미리보기가 403 이다(F-65) — 그림으로 그리지 않고 카드로
+            'image' => strncmp((string) $f['mime'], 'image/', 6) === 0 && (string) $f['scan_status'] === 'clean' && $f['exec_content'] !== true,
+        ];
+    }
+    return $out;
+}
+
+/**
+ * 페이지 링크 블록(`link_to_page`)의 제목 지도 — **볼 수 있는 페이지만**(목록 조건절). 없는 id 는 「볼 수 없는 페이지」.
+ *
+ * @param  list<string>        $pageIds
+ * @param  array<string,mixed> $u
+ * @return array<string,array{title:string,icon:?string}>
+ */
+function community_link_titles(array $pageIds, array $u): array
+{
+    $pageIds = array_values(array_unique(array_filter($pageIds, static fn ($p): bool =>
+        preg_match('/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/', (string) $p) === 1)));
+    if ($pageIds === []) {
+        return [];
+    }
+    [$visible, $visBind] = community_visible_pages_where($u);
+    $names = [];
+    $bind  = $visBind;
+    foreach (array_slice($pageIds, 0, 200) as $i => $pid) {
+        $names[]          = 'CAST(:lp' . $i . ' AS uuid)';
+        $bind[':lp' . $i] = (string) $pid;
+    }
+    $in  = implode(', ', $names);
+    $sql = <<<SQL
+        SELECT p.public_id, p.title, p.icon
+          FROM community.pages p
+          JOIN community.spaces s ON s.id = p.space_id
+          LEFT JOIN public.users owner ON owner.id = s.owner_user_id
+         WHERE p.deleted_at IS NULL
+           AND {$visible}
+           AND p.public_id IN ({$in})
+        SQL;
+    $out = [];
+    foreach (Db::instance()->run($sql, $bind)->fetchAll() as $t) {
+        $out[(string) $t['public_id']] = ['title' => (string) $t['title'], 'icon' => $t['icon'] === null ? null : (string) $t['icon']];
+    }
+    return $out;
+}
+
+/**
+ * 역참조 (F-23) — 이 페이지를 가리키는(링크 마크 `page:` · `link_to_page`) **볼 수 있는** 페이지들. 최대 50, 최근 고친 순.
+ * 볼 수 없는 것은 목록에 없고, 몇 개가 가려졌는지도 말하지 않는다(결정 E-7).
+ *
+ * @param  array<string,mixed> $u
+ * @return list<array{id:string,title:string,icon:?string}>
+ */
+function community_backlinks(string $pagePublicId, int $pageId, array $u): array
+{
+    [$visible, $visBind] = community_visible_pages_where($u);
+    $sql = <<<SQL
+        SELECT DISTINCT p.public_id, p.title, p.icon, p.updated_at
+          FROM community.page_links l
+          JOIN community.pages p ON p.id = l.from_page_id
+          JOIN community.spaces s ON s.id = p.space_id
+          LEFT JOIN public.users owner ON owner.id = s.owner_user_id
+         WHERE l.to_page_id = CAST(:target AS uuid)
+           AND p.id <> CAST(:self AS bigint)
+           AND p.deleted_at IS NULL
+           AND {$visible}
+         ORDER BY p.updated_at DESC
+         LIMIT 50
+        SQL;
+    $out = [];
+    foreach (Db::instance()->run($sql, array_merge([':target' => $pagePublicId, ':self' => $pageId], $visBind))->fetchAll() as $r) {
+        $out[] = ['id' => (string) $r['public_id'], 'title' => (string) $r['title'], 'icon' => $r['icon'] === null ? null : (string) $r['icon']];
+    }
+    return $out;
+}
+
 /**
  * 커뮤니티 요청 하나를 처리한다. 돌아오지 않는다(언제나 응답을 내보내고 끝난다).
  *

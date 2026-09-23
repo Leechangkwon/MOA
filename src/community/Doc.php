@@ -290,6 +290,13 @@ final class Doc
                 }
                 self::field($block[$name], $p . '.' . $name, (string) $field, $shape, $type, $depth, $stage, $state, $add, $limits, $s);
             }
+
+            // 5-E 표 — 열 폭(`col_widths`)은 열 수와 **같은 길이**다(행 모양은 위에서 이미 보았다).
+            if ($type === 'table' && isset($block['col_widths'], $block['rows'][0]['cells'])
+                && is_array($block['col_widths']) && is_array($block['rows'][0]['cells'])
+                && count($block['col_widths']) !== count($block['rows'][0]['cells'])) {
+                $add($p . '.col_widths', 'bad_value');
+            }
         }
     }
 
@@ -313,6 +320,13 @@ final class Doc
                 return;
             }
             self::walk($value, $p, $depth + 1, $stage, $state, $add, $limits, $s);
+            return;
+        }
+
+        /* 5-E 표의 행 — 스키마에는 「행 한 줄의 모양」이 배열 안 객체로 적혀 있다(값 목록이 아니다).
+           값 목록 갈래보다 먼저 가른다. */
+        if ($field === 'rows' && $type === 'table') {
+            self::tableRows($value, $p, $stage, $state, $add, $limits, $s);
             return;
         }
 
@@ -409,11 +423,99 @@ final class Doc
                 }
                 return;
 
+            /*
+             * `tbox-ref` — 5-E 그림·파일 블록의 `file_ref`. `tbox:` + t-box 파일 UUID.
+             * ★ **형태만 본다** — 그 파일이 있는지·저장하는 사람이 볼 수 있는지·페이지보다 좁지 않은지는
+             *   핸들러가 DB 를 읽어 `CommunityAuthz::fitsFileRef` 로 가른다(검증기는 DB 를 읽지 않는 자리 — `uuid` 와 같은 까닭).
+             */
+            case 'tbox-ref':
+                if (!is_string($value)) {
+                    $add($p, 'bad_type');
+                    return;
+                }
+                if (preg_match('/^tbox:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/', $value) !== 1) {
+                    $add($p, 'bad_ref');
+                }
+                return;
+
+            // `int[]` — 5-E 표의 `col_widths`. 열 수와 같은 길이인지는 블록을 다 본 뒤(위 `walk`) 가른다.
+            case 'int[]':
+                if (!self::isList($value) || count($value) > (int) $limits['table_cols']) {
+                    $add($p, 'bad_value');
+                    return;
+                }
+                foreach ($value as $w) {
+                    if (!is_int($w) || $w < 40 || $w > 2000) {
+                        $add($p, 'bad_value');
+                        return;
+                    }
+                }
+                return;
+
             default:
-                // 3단계에 없는 모양(`tbox-ref`·`uuid`·`url`·표의 행 배열 …)은 그 블록 타입이
+                // 이 단계에 없는 모양(`url`·단 나누기 …)은 그 블록 타입이
                 // 이 단계에 없다는 뜻이라 여기까지 오지 않는다. 그래도 닫힌 실패로 둔다.
                 $add($p, 'bad_value');
                 return;
+        }
+    }
+
+    /**
+     * 5-E 표의 행들 — 1~`table_rows` 행, 행마다 `{cells, color?}`, 칸마다 `{text, color?, rowspan?, colspan?}`.
+     *   · 칸 병합은 6단계(F-27)다 — `rowspan`·`colspan` 이 있으면 **1 만** 받는다(모르는 값은 막는다).
+     *   · 행마다 칸 수가 같고 1~`table_cols` 열.
+     *   · 칸 글자는 보통 리치 텍스트 규칙 그대로(`richtext`).
+     *
+     * @param mixed               $value
+     * @param array<string,mixed> $state
+     */
+    private static function tableRows($value, string $p, int $stage, array &$state, callable $add, array $limits, array $s): void
+    {
+        if (!self::isList($value) || $value === [] || count($value) > (int) $limits['table_rows']) {
+            $add($p, 'bad_value');
+            return;
+        }
+        $width = null;
+        foreach ($value as $r => $row) {
+            $rp = $p . '[' . $r . ']';
+            if (!self::isObjectish($row) || !array_key_exists('cells', $row)
+                || array_diff(array_keys($row), ['cells', 'color']) !== []) {
+                $add($rp, 'bad_value');
+                return;
+            }
+            if (array_key_exists('color', $row) && $row['color'] !== null
+                && (!is_string($row['color']) || !in_array($row['color'], $state['colors'], true))) {
+                $add($rp . '.color', 'not_in_palette');
+            }
+            $cells = $row['cells'];
+            if (!self::isList($cells) || $cells === [] || count($cells) > (int) $limits['table_cols']) {
+                $add($rp . '.cells', 'bad_value');
+                return;
+            }
+            if ($width === null) {
+                $width = count($cells);
+            } elseif (count($cells) !== $width) {
+                $add($rp . '.cells', 'ragged_row');
+                return;
+            }
+            foreach ($cells as $c => $cell) {
+                $cp = $rp . '.cells[' . $c . ']';
+                if (!self::isObjectish($cell) || !array_key_exists('text', $cell)
+                    || array_diff(array_keys($cell), ['text', 'color', 'rowspan', 'colspan']) !== []) {
+                    $add($cp, 'bad_value');
+                    return;
+                }
+                foreach (['rowspan', 'colspan'] as $span) {
+                    if (array_key_exists($span, $cell) && $cell[$span] !== 1) {
+                        $add($cp . '.' . $span, 'merge_not_in_stage');
+                    }
+                }
+                if (array_key_exists('color', $cell) && $cell['color'] !== null
+                    && (!is_string($cell['color']) || !in_array($cell['color'], $state['colors'], true))) {
+                    $add($cp . '.color', 'not_in_palette');
+                }
+                self::richtext($cell['text'], $cp . '.text', $stage, $state, $add, $limits, $s);
+            }
         }
     }
 
@@ -600,7 +702,7 @@ final class Doc
      */
     public static function extract(array $doc): array
     {
-        $out = ['plain_text' => '', 'blocks' => [], 'links' => [], 'child_pages' => [], 'todos' => []];
+        $out = ['plain_text' => '', 'blocks' => [], 'links' => [], 'child_pages' => [], 'todos' => [], 'files' => []];
         $ord = 0;
         $parts = [];
         self::collect(is_array($doc['blocks'] ?? null) ? $doc['blocks'] : [], $ord, $parts, $out);
@@ -632,6 +734,23 @@ final class Doc
             if ($type === 'code' && isset($block['code']) && is_string($block['code'])) {
                 $text = $block['code'];
             }
+            // 5-E 표 — 칸 글자를 탭·줄로 이어 찾기·발췌에 넣는다
+            if ($type === 'table' && isset($block['rows']) && is_array($block['rows'])) {
+                $lines = [];
+                foreach ($block['rows'] as $row) {
+                    $cells = is_array($row) && isset($row['cells']) && is_array($row['cells']) ? $row['cells'] : [];
+                    $line  = [];
+                    foreach ($cells as $cell) {
+                        $line[] = is_array($cell) && isset($cell['text']) && is_array($cell['text']) ? self::plain($cell['text']) : '';
+                    }
+                    $lines[] = implode("\t", $line);
+                }
+                $text = implode("\n", $lines);
+            }
+            // 5-E 그림·파일 — 설명 글을 찾기에 넣는다
+            if (($type === 'image' || $type === 'file') && isset($block['caption']) && is_array($block['caption'])) {
+                $text = self::plain($block['caption']);
+            }
             if ($text !== '') {
                 $parts[] = $text;
             }
@@ -657,6 +776,17 @@ final class Doc
                 $out['child_pages'][] = $block['page_id'];
             }
 
+            // 5-E — 페이지 링크 블록도 역참조(`page_links`)에 들어간다 · 그림·파일은 참조 목록(`files`)에
+            if ($type === 'link_to_page' && isset($block['page_id']) && is_string($block['page_id'])) {
+                $out['links'][] = ['from_block_id' => $id, 'to_page_id' => $block['page_id']];
+            }
+            if (($type === 'image' || $type === 'file') && isset($block['file_ref']) && is_string($block['file_ref'])
+                && strncmp($block['file_ref'], 'tbox:', 5) === 0
+                && !in_array(substr($block['file_ref'], 5), $out['files'], true)
+            ) {
+                $out['files'][] = substr($block['file_ref'], 5);
+            }
+
             if ($type === 'to_do') {
                 $out['todos'][] = [
                     'block_id' => $id,
@@ -665,8 +795,24 @@ final class Doc
                 ];
             }
 
-            if (isset($block['text']) && is_array($block['text'])) {
-                foreach ($block['text'] as $seg) {
+            /* 링크 마크(`page:`)가 들 수 있는 글 — 본문 글 · 5-E 그림·파일 설명 · 표 칸(독립 검토 L4 — 칸·설명의 링크도 역참조에) */
+            $richs = [];
+            foreach (['text', 'caption'] as $k) {
+                if (isset($block[$k]) && is_array($block[$k])) {
+                    $richs[] = $block[$k];
+                }
+            }
+            if ($type === 'table' && isset($block['rows']) && is_array($block['rows'])) {
+                foreach ($block['rows'] as $row) {
+                    foreach (is_array($row) && isset($row['cells']) && is_array($row['cells']) ? $row['cells'] : [] as $cell) {
+                        if (is_array($cell) && isset($cell['text']) && is_array($cell['text'])) {
+                            $richs[] = $cell['text'];
+                        }
+                    }
+                }
+            }
+            foreach ($richs as $rich) {
+                foreach ($rich as $seg) {
                     if (!is_array($seg) || !isset($seg['m']) || !is_array($seg['m'])) {
                         continue;
                     }

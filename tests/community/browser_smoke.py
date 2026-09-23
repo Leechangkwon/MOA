@@ -383,7 +383,12 @@ with sync_playwright() as p:
     print("── 9. 창에서 종류를 **하나씩 전부** 골라 넣는다")
     reset_doc()
     labels = []
+    # 5-E 덩어리 다섯(토글·표·페이지 링크·그림·파일)은 넣기 전에 「블록 고치기」 창이 먼저 열린다 —
+    # 여기서는 건너뛰고 browser_5e.py 가 창까지 눌러 본다.
+    atom_types = ("toggle", "table", "link_to_page", "image", "file")
     for i in range(n_items):
+        if page.locator('#block-list .block-pick[data-block-index="%d"]' % i).get_attribute("data-block-type") in atom_types:
+            continue
         page.click("#page-add-block")
         page.wait_for_selector("#block-dialog[open]", timeout=5000)
         page.locator('#block-list .block-pick[data-block-index="%d"]' % i).click()
@@ -1032,7 +1037,12 @@ with sync_playwright() as p:
         except Exception:
             switched = False
         step("고르면 그 공간으로 **주소가 바뀌며** 이동한다", switched, page.url)
-        page.wait_for_timeout(500)
+        # 머리 글자는 공간 창구의 답을 받은 뒤 바뀐다 — 고정 대기 대신 바뀔 때까지(최대 8초) 기다린다(부하에 흔들림, 2026-09-23)
+        try:
+            page.wait_for_function("n => (document.getElementById('community-space-title') || {}).textContent.trim() === n",
+                                   arg=team_space["name"], timeout=8000)
+        except Exception:
+            pass
         step("화면 머리가 팀 이름으로 바뀐다",
              page.locator("#community-space-title").inner_text().strip() == team_space["name"],
              "머리=%r" % page.locator("#community-space-title").inner_text().strip())

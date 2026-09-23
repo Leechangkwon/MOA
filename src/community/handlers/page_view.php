@@ -202,6 +202,13 @@ require __DIR__ . '/../../views/shell_top.php';
     <!-- 댓글 (5-D, PRD F-21). 목록·입력은 editor.js 가 창구(`GET/POST …/comments`)의 답으로 createElement/textContent 로
          그린다 — 본문은 평문이고 `white-space: pre-wrap` 으로만 보인다(결정 D-1). 답글은 1단, 블록 앵커는 읽기 화면에서
          글자를 고른 뒤 「고른 문구 인용」. `@` 를 치면 아래에 후보가 **칸 안에서** 펼쳐진다(떠 있지 않다 — DESIGN 2.8 ★). -->
+    <!-- 「이 페이지를 참조한 곳」 (5-E, PRD F-23). 창구 `backlinks` 는 **보는 사람이 볼 수 있는 페이지만** 준다 —
+         가려진 것이 몇 개인지도 말하지 않는다(결정 E-7). 비면 절 전체를 숨긴다. -->
+    <section id="page-backlinks-wrap" class="panel" aria-labelledby="page-backlinks-title" hidden>
+      <p id="page-backlinks-title" class="nav-title">이 페이지를 참조한 곳</p>
+      <ul id="page-backlinks" class="list" aria-label="이 페이지를 참조한 곳"></ul>
+    </section>
+
     <section id="page-comments-wrap" class="panel" aria-labelledby="page-comments-title" hidden>
       <div class="toolbar">
         <p id="page-comments-title" class="nav-title">댓글</p>
@@ -509,6 +516,92 @@ require __DIR__ . '/../../views/shell_top.php';
       <div class="form-actions">
         <button class="btn btn--quiet" type="button" data-block-close>닫기</button>
         <button id="block-insert" class="btn" type="button">넣기</button>
+      </div>
+    </dialog>
+
+    <!-- 「블록 고치기」 창 (5-E, 결정 E-2). 토글·표·페이지 링크·그림·파일은 편집기 안에서 **덩어리**이고
+         값은 이 창에서 고친다 — 넣을 때 먼저 열리고, 편집기에서 카드를 두 번 누르거나(또는 골라서 Enter) 다시 연다.
+         다섯 칸 중 그 종류의 칸만 보인다. 표 칸은 진짜 <table> 안의 입력 칸이라 열 수가 바뀌어도 인라인 style 이 없다.
+         파일 목록은 t-box 창구 `GET /tbox/api/files`(내 권한 목록)를 그대로 쓴다 — 커뮤니티 창구를 새로 두지 않는다. -->
+    <dialog id="atom-dialog" class="modal modal--form" aria-labelledby="atom-dialog-title">
+      <div class="modal__head">
+        <h2 id="atom-dialog-title" class="modal__title">블록 고치기</h2>
+        <button class="btn btn--icon btn--plain" type="button" data-atom-close aria-label="닫기">
+          <span class="icon" data-icon="x"></span>
+        </button>
+      </div>
+      <div class="modal__body form">
+        <p id="atom-msg" class="msg" role="alert" aria-live="polite"></p>
+
+        <div id="atom-toggle" class="atom-pane" hidden>
+          <label class="field field--full">
+            <span class="field__label">제목 줄 (누르면 펼쳐진다)</span>
+            <input id="atom-toggle-summary" type="text" maxlength="500" autocomplete="off" spellcheck="false">
+          </label>
+          <label class="field field--full">
+            <span class="field__label">펼치면 보이는 내용 — 한 줄이 한 문단</span>
+            <textarea id="atom-toggle-body" rows="6" spellcheck="false"></textarea>
+          </label>
+        </div>
+
+        <div id="atom-table" class="atom-pane" hidden>
+          <label class="field field--full">
+            <span class="field__label"><input id="atom-table-hrow" type="checkbox"> 첫 행을 머리로</span>
+          </label>
+          <label class="field field--full">
+            <span class="field__label"><input id="atom-table-hcol" type="checkbox"> 첫 열을 머리로</span>
+          </label>
+          <div class="doc-table-wrap">
+            <table class="doc-table atom-grid"><tbody id="atom-table-grid"></tbody></table>
+          </div>
+          <div class="toolbar">
+            <button id="atom-row-add" class="btn btn--quiet btn--small" type="button">행 더하기</button>
+            <button id="atom-row-del" class="btn btn--quiet btn--small" type="button">마지막 행 빼기</button>
+            <button id="atom-col-add" class="btn btn--quiet btn--small" type="button">열 더하기</button>
+            <button id="atom-col-del" class="btn btn--quiet btn--small" type="button">마지막 열 빼기</button>
+          </div>
+          <p class="help">칸 합치기는 아직 없습니다. 칸 글자에는 꾸밈이 붙지 않습니다.</p>
+        </div>
+
+        <div id="atom-link" class="atom-pane" hidden>
+          <label class="field field--full">
+            <span class="field__label">걸 페이지 찾기</span>
+            <input id="atom-link-q" type="search" maxlength="200" autocomplete="off" spellcheck="false" placeholder="제목이나 본문의 낱말">
+          </label>
+          <p id="atom-link-chosen" class="help"></p>
+          <ul id="atom-link-list" class="list" aria-label="찾은 페이지"></ul>
+        </div>
+
+        <div id="atom-file" class="atom-pane" hidden>
+          <label class="field field--full">
+            <span class="field__label">내 t-box 파일에서 고르기</span>
+            <input id="atom-file-q" type="search" maxlength="200" autocomplete="off" spellcheck="false" placeholder="파일 이름 (비우면 맨 위 폴더)">
+          </label>
+          <p id="atom-file-chosen" class="help"></p>
+          <ul id="atom-file-list" class="list" aria-label="고를 수 있는 파일"></ul>
+          <div class="toolbar">
+            <a id="atom-file-upload" class="btn btn--quiet btn--small" href="#" target="_blank" rel="noopener">t-box 에 올리기</a>
+            <button id="atom-file-refresh" class="btn btn--quiet btn--small" type="button">목록 새로 고침</button>
+          </div>
+          <p class="help">페이지를 읽는 사람이 모두 볼 수 있는 등급의 파일만 붙습니다. 좁으면 저장할 때 알려 드립니다.</p>
+          <label class="field field--full">
+            <span class="field__label">설명 (선택)</span>
+            <input id="atom-file-caption" type="text" maxlength="500" autocomplete="off" spellcheck="false">
+          </label>
+          <label id="atom-image-width-field" class="field">
+            <span class="field__label">그림 폭</span>
+            <select id="atom-image-width">
+              <option value="small">작게</option>
+              <option value="normal">보통</option>
+              <option value="wide">넓게</option>
+              <option value="full">꽉 차게</option>
+            </select>
+          </label>
+        </div>
+      </div>
+      <div class="form-actions">
+        <button class="btn btn--quiet" type="button" data-atom-close>닫기</button>
+        <button id="atom-commit" class="btn" type="button">넣기</button>
       </div>
     </dialog>
 

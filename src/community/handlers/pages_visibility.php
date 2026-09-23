@@ -192,6 +192,35 @@ if ($wider !== [] && !$cascade) {
     );
 }
 
+/* ─── [5-1] 첨부 (5-E) — 넓히면 붙인 파일이 새 범위보다 좁아질 수 있다. 이 페이지와, 「하위까지 함께」로
+   **넓어지는** 하위 페이지의 파일을 함께 견준다(하위는 같은 공간이라 새 범위의 읽는 사람이 같다 —
+   게시 중인 하위의 게시판 쪽은 게시할 때 이미 견주었다). 좁히는 쪽은 언제나 안전하다. ─── */
+$visFiles  = Doc::extract(json_decode((string) $row['doc'], true) ?: [])['files'];
+if ($cascade) {
+    $wantRank = CommunityAuthz::visibilityRank($want);
+    $widened  = [];
+    foreach (community_descendants_differ($pageId, $want) as $t) {
+        $r = CommunityAuthz::visibilityRank((string) $t['visibility']);
+        if ($wantRank !== null && $r !== null && $r < $wantRank) {
+            $widened[] = (int) $t['id'];
+        }
+    }
+    if ($widened !== []) {
+        $sqlKidDocs = <<<'SQL'
+            SELECT p.doc FROM community.pages p
+             WHERE p.id = ANY (CAST(:ids AS bigint[])) AND p.deleted_at IS NULL
+            SQL;
+        foreach ($db->run($sqlKidDocs, [':ids' => '{' . implode(',', $widened) . '}'])->fetchAll() as $k) {
+            $visFiles = array_merge($visFiles, Doc::extract(json_decode((string) $k['doc'], true) ?: [])['files']);
+        }
+        $visFiles = array_values(array_unique($visFiles));
+    }
+}
+$visRow    = array_merge($row, ['visibility' => $want]);
+if (!community_file_refs_ok($visFiles, CommunityAuthz::pageAudiences($visRow), $user)) {
+    $refuse('file_narrower', '새 범위의 사람이 볼 수 없는 파일이 붙어 있습니다. 파일 등급을 넓히거나 빼고 바꾸세요', []);
+}
+
 // ─── [6] 저장 ─────────────────────────────────────────────────
 $sqlSet = <<<'SQL'
     UPDATE community.pages
@@ -201,6 +230,16 @@ $sqlSet = <<<'SQL'
      WHERE id = CAST(:pid AS bigint)
        AND deleted_at IS NULL
     SQL;
+// 이 페이지 자신은 **첨부를 견준 그 판**일 때만 바꾼다 — 사이에 본문이 저장됐으면 409 (5-E 독립 검토 L1)
+$sqlSetSelf = <<<'SQL'
+    UPDATE community.pages
+       SET visibility = :vis,
+           updated_at = now(),
+           last_edited_by = CAST(:me AS bigint)
+     WHERE id = CAST(:pid AS bigint)
+       AND deleted_at IS NULL
+       AND doc_version = CAST(:dv AS int)
+    SQL;
 
 // 켜져 있으면 넓히든 좁히든 **값이 다른 하위 전부**를 같은 값으로 (더 넓은 것 ⊂ 다른 것).
 $targets  = $cascade ? community_descendants_differ($pageId, $want) : [];
@@ -208,10 +247,14 @@ $cascaded = count($targets);
 
 $db->begin();
 try {
-    $changed = $db->run($sqlSet, [':vis' => $want, ':me' => $me, ':pid' => $pageId])->rowCount();
+    $changed = $db->run($sqlSetSelf, [':vis' => $want, ':me' => $me, ':pid' => $pageId, ':dv' => (int) $row['doc_version']])->rowCount();
     if ($changed < 1) {
-        // 읽고 나서 여기 오기까지 사이에 다른 요청이 먼저 지웠다 — 없는 것과 같다.
+        // 읽고 나서 여기 오기까지 사이에 다른 요청이 먼저 지웠거나(→ 없는 것과 같다) 본문을 저장했다(→ 409 다시 시도).
         $db->rollback();
+        if (community_page_row((string) $row['public_id'], $me) !== null) {
+            Http::json(['error' => '그 사이 이 페이지가 바뀌었습니다. 새로 고친 뒤 다시 바꾸세요', 'reason' => 'changed'], 409);
+            exit;
+        }
         Http::error(404, Http::MSG_NOT_FOUND);
     }
 

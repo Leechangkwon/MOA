@@ -29,6 +29,138 @@ const MARK_TAG = {
  * **서버 렌더러 `DocRender::CHILD_PAGE_UNREADABLE` 과 한 글자도 다르면 안 된다** — C:T-19.
  */
 const CHILD_PAGE_UNREADABLE = '볼 수 없는 페이지';
+/** 5-E — 볼 수 없는(또는 없는) 파일 자리. 서버 렌더러 `DocRender::FILE_UNREADABLE` 과 같은 문구(C:T-19) */
+const FILE_UNREADABLE = '볼 수 없는 파일';
+
+/** 파일 크기 글자 — 서버 렌더러 `sizeText` 와 **같은 정수 계산**(C:T-19) */
+function sizeText(bytes) {
+  const b = Math.max(0, Math.floor(Number(bytes) || 0));
+  if (b < 1024) { return String(b) + ' B'; }
+  if (b < 1048576) { const t = Math.floor((b * 10 + 512) / 1024); return String(Math.floor(t / 10)) + '.' + String(t % 10) + ' KB'; }
+  const t = Math.floor((b * 10 + 524288) / 1048576);
+  return String(Math.floor(t / 10)) + '.' + String(t % 10) + ' MB';
+}
+
+/** 5-E — 주소에 넣는 페이지·파일 id 의 모양 (DocRender.php 의 UUID_RE 와 같다) */
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+
+/** 5-E 페이지 링크 카드 — 하위 페이지 카드와 같은 모양, 지도는 `ctx.link_titles`(볼 수 있는 것만) */
+function renderLinkPage(block, id, ctx) {
+  const map = ctx && ctx.link_titles && typeof ctx.link_titles === 'object' ? ctx.link_titles : {};
+  const pageId = typeof block.page_id === 'string' && UUID_RE.test(block.page_id) ? block.page_id : '';
+  const entry = Object.prototype.hasOwnProperty.call(map, pageId) ? map[pageId] : null;
+  const span = document.createElement('span');
+  span.className = 'card__title';
+  if (!entry || typeof entry !== 'object') {
+    const div = document.createElement('div');
+    div.className = 'card card--soon doc-link-page';
+    if (id) { div.id = 'block-' + id; }
+    span.textContent = CHILD_PAGE_UNREADABLE;
+    div.appendChild(span);
+    return div;
+  }
+  const a = document.createElement('a');
+  a.className = 'card card--link doc-link-page';
+  a.setAttribute('href', (ctx && typeof ctx.base === 'string' ? ctx.base : '') + '/p/' + pageId);
+  if (id) { a.id = 'block-' + id; }
+  span.textContent = (typeof entry.icon === 'string' && entry.icon !== '' ? entry.icon + ' ' : '') + (typeof entry.title === 'string' ? entry.title : '');
+  a.appendChild(span);
+  return a;
+}
+
+/** 5-E 그림·파일 — 지도(`ctx.file_titles`, 보는 사람이 t-box 에서 볼 수 있는 것만)에 있을 때만. 주소는 t-box 창구(`ctx.tbox_base`) */
+function renderFileBlock(block, id, ctx) {
+  const map = ctx && ctx.file_titles && typeof ctx.file_titles === 'object' ? ctx.file_titles : {};
+  const tbox = ctx && typeof ctx.tbox_base === 'string' ? ctx.tbox_base : '';
+  const ref = typeof block.file_ref === 'string' && block.file_ref.slice(0, 5) === 'tbox:' && UUID_RE.test(block.file_ref.slice(5))
+    ? block.file_ref.slice(5) : '';
+  const entry = Object.prototype.hasOwnProperty.call(map, ref) ? map[ref] : null;
+  const hasCap = Array.isArray(block.caption) && block.caption.length > 0;
+  if (!entry || typeof entry !== 'object') {
+    const wrap = document.createElement('div');
+    wrap.className = 'doc-file';
+    if (id) { wrap.id = 'block-' + id; }
+    const card = document.createElement('div');
+    card.className = 'card card--soon';
+    const t = document.createElement('span');
+    t.className = 'card__title';
+    t.textContent = FILE_UNREADABLE;
+    card.appendChild(t);
+    wrap.appendChild(card);
+    return wrap;
+  }
+  const name = typeof entry.name === 'string' ? entry.name : '';
+  if (block.type === 'image' && entry.image === true) {
+    const fig = document.createElement('figure');
+    const width = ['full', 'wide', 'normal', 'small'].indexOf(block.width) !== -1 ? block.width : 'normal';
+    fig.className = 'doc-image doc-image--' + width;
+    if (id) { fig.id = 'block-' + id; }
+    const img = document.createElement('img');
+    img.className = 'doc-image__img';
+    img.setAttribute('src', tbox + '/api/files/' + ref + '/preview/raw');
+    img.setAttribute('alt', name);
+    img.setAttribute('loading', 'lazy');
+    fig.appendChild(img);
+    if (hasCap) {
+      const cap = document.createElement('figcaption');
+      cap.className = 'doc-image__caption';
+      appendRich(cap, block.caption);
+      fig.appendChild(cap);
+    }
+    return fig;
+  }
+  const wrap = document.createElement('div');
+  wrap.className = 'doc-file';
+  if (id) { wrap.id = 'block-' + id; }
+  const a = document.createElement('a');
+  a.className = 'card card--link';
+  a.setAttribute('href', tbox + '/api/files/' + ref + '/download');
+  const t = document.createElement('span');
+  t.className = 'card__title';
+  t.textContent = name;
+  const m = document.createElement('span');
+  m.className = 'card__meta';
+  m.textContent = sizeText(entry.size);
+  a.appendChild(t);
+  a.appendChild(m);
+  wrap.appendChild(a);
+  if (hasCap) {
+    const p = document.createElement('p');
+    p.className = 'doc-file__caption';
+    appendRich(p, block.caption);
+    wrap.appendChild(p);
+  }
+  return wrap;
+}
+
+/** 5-E 표 — 머리 행·머리 열은 `<th>`(칸 병합 없음). 서버 렌더러와 같은 모양 */
+function renderTable(block, id) {
+  const wrap = document.createElement('div');
+  wrap.className = 'doc-table-wrap';
+  if (id) { wrap.id = 'block-' + id; }
+  const table = document.createElement('table');
+  table.className = 'doc-table';
+  const tbody = document.createElement('tbody');
+  const rows = Array.isArray(block.rows) ? block.rows : [];
+  rows.forEach((row, ri) => {
+    const tr = document.createElement('tr');
+    const rc = row && typeof row === 'object' ? colorClass(row.color) : null;
+    if (rc) { tr.className = rc; }
+    const cells = row && Array.isArray(row.cells) ? row.cells : [];
+    cells.forEach((cell, ci) => {
+      const head = (block.header_row === true && ri === 0) || (block.header_col === true && ci === 0);
+      const el = document.createElement(head ? 'th' : 'td');
+      const cc = cell && typeof cell === 'object' ? colorClass(cell.color) : null;
+      el.className = 'doc-table__cell' + (cc ? ' ' + cc : '');
+      appendRich(el, cell && Array.isArray(cell.text) ? cell.text : []);
+      tr.appendChild(el);
+    });
+    tbody.appendChild(tr);
+  });
+  table.appendChild(tbody);
+  wrap.appendChild(table);
+  return wrap;
+}
 
 /** 기본 색 9 — 배경은 `_bg` 를 붙인 값이다 (doc-schema.json `colors`·`color_suffix_bg`). */
 const COLORS = ['gray', 'brown', 'orange', 'yellow', 'green', 'blue', 'purple', 'pink', 'red'];
@@ -315,6 +447,30 @@ function renderBlock(block, rootBlocks, ctx) {
     return nodes;
   } else if (type === 'child_page') {
     nodes.push(renderChildPage(block, id, ctx));
+    return nodes;
+  } else if (type === 'toggle') {
+    // 5-E 토글 — 펼치고 접는 것은 `<details>`(스크립트 0). 하위 블록은 **안에** 들어간다(서버 렌더러와 같다).
+    const det = document.createElement('details');
+    det.className = blockClass('doc-toggle', block);
+    setId(det);
+    const sum = document.createElement('summary');
+    sum.className = 'doc-toggle__summary';
+    appendRich(sum, block.text);
+    const inner = document.createElement('div');
+    inner.className = 'doc-toggle__body';
+    if (kids) { inner.appendChild(kids); }
+    det.appendChild(sum);
+    det.appendChild(inner);
+    nodes.push(det);
+    return nodes;
+  } else if (type === 'table') {
+    nodes.push(renderTable(block, id));
+    return nodes;
+  } else if (type === 'link_to_page') {
+    nodes.push(renderLinkPage(block, id, ctx));
+    return nodes;
+  } else if (type === 'image' || type === 'file') {
+    nodes.push(renderFileBlock(block, id, ctx));
     return nodes;
   } else {
     nodes.push(unsupported());

@@ -31,7 +31,7 @@
  *     서버 `Doc::validate` 가 다시 검사한다(서버 검증이 진실이다).
  */
 
-import { EditorState, TextSelection, Plugin } from './vendor/pm/prosemirror-state.js';
+import { EditorState, TextSelection, NodeSelection, Plugin } from './vendor/pm/prosemirror-state.js';
 import { EditorView, Decoration, DecorationSet } from './vendor/pm/prosemirror-view.js';
 import { keymap } from './vendor/pm/prosemirror-keymap.js';
 import { history, undo, redo } from './vendor/pm/prosemirror-history.js';
@@ -1961,6 +1961,14 @@ function createBlockDialog(getView, hooks) {
       return;
     }
 
+    /* 5-E 덩어리 다섯 — 값을 먼저 정해야 하므로 「블록 고치기」 창으로 넘긴다(결정 E-2).
+       「바꾸기」 자리에서 골랐어도 **넣는다** — 글자 블록을 표로 「바꾸면」 글자가 사라지기 때문이다. */
+    if (entry.editsAtom) {
+      dialog.close();
+      if (hooks && typeof hooks.editAtom === 'function') { hooks.editAtom(entry.type, null, null); }
+      return;
+    }
+
     if (mode === 'change') { changeBlock(view, entry, targetPos); } else { insertBlock(view, entry); }
     dialog.close();
     view.focus();
@@ -2039,6 +2047,286 @@ function createBlockDialog(getView, hooks) {
     // 단축키(Ctrl+Alt+숫자)가 창을 열지 않고 같은 「바꾸기」를 부른다 — 규칙을 두 벌로 두지 않는다.
     changeTo: (entry, pos) => { const view = getView(); if (view) { changeBlock(view, entry, pos); } }
   };
+}
+
+/* ─── 「블록 고치기」 창 — 5-E 덩어리 다섯 (결정 E-2) ─────────────
+ *
+ * 토글·표·페이지 링크·그림·파일은 편집기 안에서 요약 카드(덩어리)이고 값은 여기서 고친다.
+ * `open(type, attrs, pos)` — attrs 가 null 이면 새로 넣기, pos 가 수이면 그 자리의 블록을 고친다.
+ * 페이지 찾기는 커뮤니티 검색 창구(볼 수 있는 것만), 파일 찾기는 **t-box 창구 `GET /api/files`** (내 권한 목록)를
+ * 그대로 부른다. 고른 이름은 `remember*` 로 제목 지도에 넣어 둔다 — 읽기 화면이 저장 뒤 곧바로 이름을 그리게.
+ * 등급 규칙(파일이 페이지를 읽는 범위보다 좁으면 안 된다)은 **서버가 저장할 때** 판정한다 — 여기서 걸러 보이지 않는다.
+ */
+const ATOM_TYPES = ['toggle', 'table', 'link_to_page', 'image', 'file'];
+const TABLE_MAX_ROWS = 200;
+const TABLE_MAX_COLS = 20;
+
+function createAtomDialog(getView, hooks) {
+  const dialog = document.getElementById('atom-dialog');
+  if (!dialog) { return null; }
+  const $ = (id) => document.getElementById(id);
+  const titleEl = $('atom-dialog-title');
+  const msgEl = $('atom-msg');
+  const commitButton = $('atom-commit');
+  const panes = { toggle: $('atom-toggle'), table: $('atom-table'), link_to_page: $('atom-link'), image: $('atom-file'), file: $('atom-file') };
+  const toggleSummary = $('atom-toggle-summary');
+  const toggleBody = $('atom-toggle-body');
+  const hRow = $('atom-table-hrow');
+  const hCol = $('atom-table-hcol');
+  const grid = $('atom-table-grid');
+  const linkQ = $('atom-link-q');
+  const linkList = $('atom-link-list');
+  const linkChosen = $('atom-link-chosen');
+  const fileQ = $('atom-file-q');
+  const fileList = $('atom-file-list');
+  const fileChosen = $('atom-file-chosen');
+  const fileCaption = $('atom-file-caption');
+  const widthField = $('atom-image-width-field');
+  const widthSelect = $('atom-image-width');
+  const uploadLink = $('atom-file-upload');
+  if (uploadLink) { uploadLink.setAttribute('href', APP_BASE + '/'); }
+
+  let type = null;
+  let pos = null;
+  let cur = {};
+  let rows = [['']];
+  let searchTimer = null;
+  let searchSerial = 0;
+
+  /* ── 표 칸 격자 — 진짜 <table> 안의 입력 칸(열 수가 바뀌어도 인라인 style 없음) ── */
+  function readGrid() {
+    const out = [];
+    for (const tr of grid.querySelectorAll('tr')) {
+      out.push([...tr.querySelectorAll('input')].map((inp) => inp.value));
+    }
+    if (out.length > 0) { rows = out; }
+  }
+  function drawGrid() {
+    clear(grid);
+    for (let r = 0; r < rows.length; r++) {
+      const tr = document.createElement('tr');
+      for (let c = 0; c < rows[r].length; c++) {
+        const td = document.createElement('td');
+        td.className = 'doc-table__cell';
+        const inp = document.createElement('input');
+        inp.type = 'text';
+        inp.className = 'input';
+        inp.maxLength = 2000;
+        inp.autocomplete = 'off';
+        inp.spellcheck = false;
+        inp.value = rows[r][c];
+        inp.setAttribute('aria-label', String(r + 1) + '행 ' + String(c + 1) + '열');
+        td.appendChild(inp);
+        tr.appendChild(td);
+      }
+      grid.appendChild(tr);
+    }
+  }
+  function reshape(fn) { readGrid(); fn(); drawGrid(); }
+  $('atom-row-add').addEventListener('click', () => reshape(() => {
+    if (rows.length < TABLE_MAX_ROWS) { rows.push(rows[0].map(() => '')); }
+  }));
+  $('atom-row-del').addEventListener('click', () => reshape(() => { if (rows.length > 1) { rows.pop(); } }));
+  $('atom-col-add').addEventListener('click', () => reshape(() => {
+    if (rows[0].length < TABLE_MAX_COLS) { for (const r of rows) { r.push(''); } }
+  }));
+  $('atom-col-del').addEventListener('click', () => reshape(() => {
+    if (rows[0].length > 1) { for (const r of rows) { r.pop(); } }
+  }));
+
+  /* ── 페이지 찾기 (커뮤니티 검색 — 볼 수 있는 페이지만) ── */
+  function drawChosen() {
+    if (type === 'link_to_page') {
+      setText(linkChosen, cur.page_id ? '고른 페이지: ' + (cur.title || '제목 없는 페이지') : '아직 고르지 않았습니다.');
+    } else if (type === 'image' || type === 'file') {
+      setText(fileChosen, cur.file_ref ? '고른 파일: ' + (cur.name || '이름 없음') : '아직 고르지 않았습니다.');
+    }
+  }
+  function pickButton(label, meta, onPick) {
+    const li = document.createElement('li');
+    li.className = 'list__item';
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'block-pick';
+    const strong = document.createElement('strong');
+    strong.textContent = label;
+    b.appendChild(strong);
+    if (meta) {
+      const span = document.createElement('span');
+      span.className = 'block-pick__keys';
+      span.textContent = meta;
+      b.appendChild(span);
+    }
+    b.addEventListener('click', onPick);
+    li.appendChild(b);
+    return li;
+  }
+  function searchPages() {
+    const q = linkQ.value.trim();
+    const serial = ++searchSerial;
+    clear(linkList);
+    if (q === '') { return; }
+    api('GET', '/api/search?q=' + encodeURIComponent(q)).then((result) => {
+      if (serial !== searchSerial) { return; }
+      if (result.status !== 200) { setText(msgEl, errorMessage(result.data)); return; }
+      for (const r of Array.isArray(result.data.results) ? result.data.results : []) {
+        if (!r || typeof r.id !== 'string' || r.id === hooks.selfId()) { continue; }
+        linkList.appendChild(pickButton(r.title || '제목 없는 페이지', r.space && r.space.name ? r.space.name : '', () => {
+          cur.page_id = r.id;
+          cur.title = r.title || '';
+          hooks.rememberLink(r.id, { title: r.title || '', icon: r.icon || null });
+          drawChosen();
+        }));
+      }
+      if (!linkList.firstChild) { linkList.appendChild(pickButton('찾은 페이지가 없습니다', '', () => {})); }
+    }).catch(() => setText(msgEl, GENERIC_ERROR));
+  }
+
+  /* ── 파일 찾기 (t-box 창구 — 내 권한으로 볼 수 있는 파일만) ── */
+  function searchFiles() {
+    const q = fileQ.value.trim();
+    const serial = ++searchSerial;
+    clear(fileList);
+    fetch(APP_BASE + '/api/files' + (q === '' ? '' : '?q=' + encodeURIComponent(q)), { credentials: 'same-origin', cache: 'no-store' })
+      .then((response) => readJson(response).then((data) => ({ status: response.status, data: data })))
+      .then((result) => {
+        if (serial !== searchSerial) { return; }
+        if (result.status !== 200) { setText(msgEl, errorMessage(result.data)); return; }
+        for (const f of Array.isArray(result.data.files) ? result.data.files : []) {
+          if (!f || typeof f.id !== 'string') { continue; }
+          const isImage = f.preview_kind === 'image' && f.scan_status === 'clean';
+          if (type === 'image' && !isImage) { continue; }
+          fileList.appendChild(pickButton(f.name || '이름 없음', sizeLabel(f.size_bytes), () => {
+            cur.file_ref = 'tbox:' + f.id;
+            cur.name = f.name || '';
+            hooks.rememberFile(f.id, { name: f.name || '', size: typeof f.size_bytes === 'number' ? f.size_bytes : 0, image: isImage });
+            drawChosen();
+          }));
+        }
+        if (!fileList.firstChild) {
+          fileList.appendChild(pickButton(type === 'image' ? '고를 수 있는 그림이 없습니다' : '고를 수 있는 파일이 없습니다', '', () => {}));
+        }
+      })
+      .catch(() => setText(msgEl, GENERIC_ERROR));
+  }
+  function sizeLabel(n) {
+    if (typeof n !== 'number' || n < 0) { return ''; }
+    if (n < 1024) { return String(n) + ' B'; }
+    if (n < 1048576) { return String(Math.round(n / 1024)) + ' KB'; }
+    return String(Math.round(n / 104857.6) / 10) + ' MB';
+  }
+  function debounce(fn) {
+    return () => { if (searchTimer) { clearTimeout(searchTimer); } searchTimer = setTimeout(fn, 250); };
+  }
+  linkQ.addEventListener('input', debounce(searchPages));
+  fileQ.addEventListener('input', debounce(searchFiles));
+  $('atom-file-refresh').addEventListener('click', searchFiles);
+
+  const LABELS = { toggle: '토글', table: '표', link_to_page: '페이지 링크', image: '그림', file: '파일' };
+
+  function open(nextType, attrs, nextPos) {
+    if (ATOM_TYPES.indexOf(nextType) === -1) { return; }
+    type = nextType;
+    pos = typeof nextPos === 'number' ? nextPos : null;
+    cur = Object.assign({}, attrs || {});
+    setText(msgEl, '');
+    setText(titleEl, LABELS[type] + (pos === null ? ' 넣기' : ' 고치기'));
+    setText(commitButton, pos === null ? '넣기' : '고치기');
+    for (const k of Object.keys(panes)) { show(panes[k], false); }
+    show(panes[type], true);
+
+    if (type === 'toggle') {
+      toggleSummary.value = cur.summary || '';
+      toggleBody.value = (Array.isArray(cur.kids) ? cur.kids : []).map((k) => (k && k.text) || '').join('\n');
+    } else if (type === 'table') {
+      rows = Array.isArray(cur.rows) && cur.rows.length > 0 ? cur.rows.map((r) => r.slice()) : [['', ''], ['', '']];
+      hRow.checked = attrs ? cur.header_row === true : true;
+      hCol.checked = cur.header_col === true;
+      drawGrid();
+    } else if (type === 'link_to_page') {
+      linkQ.value = '';
+      clear(linkList);
+    } else {
+      fileQ.value = '';
+      fileCaption.value = cur.caption || '';
+      show(widthField, type === 'image');
+      widthSelect.value = cur.width || 'normal';
+      searchFiles();
+    }
+    drawChosen();
+    if (typeof dialog.showModal === 'function' && !dialog.open) { dialog.showModal(); }
+  }
+
+  /** 창의 값 → 노드 속성. 고르지 않은 링크·파일은 넣지 않는다(가리킬 곳 없는 카드를 만들지 않는다). */
+  function collect() {
+    const id = typeof cur.id === 'string' && cur.id !== '' ? cur.id : uuid4();
+    if (type === 'toggle') {
+      const old = Array.isArray(cur.kids) ? cur.kids : [];
+      const lines = toggleBody.value.split('\n');
+      // 줄 순서대로 예전 문단 id 를 물려준다 — 댓글 앵커가 가능한 한 살아 있게.
+      return { id: id, summary: toggleSummary.value, kids: lines.map((t, i) => ({ id: old[i] && old[i].id ? old[i].id : null, text: t })) };
+    }
+    if (type === 'table') {
+      readGrid();
+      return { id: id, header_row: hRow.checked, header_col: hCol.checked, rows: rows.map((r) => r.slice()) };
+    }
+    if (type === 'link_to_page') {
+      if (!cur.page_id) { setText(msgEl, '걸 페이지를 먼저 고르세요.'); return null; }
+      return { id: id, page_id: cur.page_id, title: cur.title || '' };
+    }
+    if (!cur.file_ref) { setText(msgEl, (type === 'image' ? '그림' : '파일') + '을 먼저 고르세요.'); return null; }
+    const out = { id: id, file_ref: cur.file_ref, caption: fileCaption.value, name: cur.name || '' };
+    if (type === 'image') { out.width = widthSelect.value; }
+    return out;
+  }
+
+  function commit() {
+    const view = getView();
+    if (!view || !type) { dialog.close(); return; }
+    const attrs = collect();
+    if (!attrs) { return; }
+    const node = schema.nodes[type].create(attrs);
+    const current = pos === null ? null : view.state.doc.nodeAt(pos);
+    if (current && current.type.name === type) {
+      view.dispatch(view.state.tr.setNodeMarkup(pos, null, attrs).scrollIntoView());
+    } else {
+      const $from = view.state.selection.$from;
+      const at = $from.depth >= 1 ? $from.after(1) : view.state.doc.content.size;
+      const tr = view.state.tr.insert(at, node);
+      const para = schema.nodes.paragraph.create(blockBaseAttrs(null, uuid4()));
+      tr.insert(at + node.nodeSize, para);
+      tr.setSelection(TextSelection.create(tr.doc, at + node.nodeSize + 1));
+      view.dispatch(tr.scrollIntoView());
+    }
+    dialog.close();
+    view.focus();
+  }
+
+  commitButton.addEventListener('click', commit);
+  for (const close of dialog.querySelectorAll('[data-atom-close]')) {
+    close.addEventListener('click', () => dialog.close());
+  }
+  // 한 줄 칸에서 Enter = 넣기 (여러 줄 칸·단추·검색 칸은 제외)
+  dialog.addEventListener('keydown', (event) => {
+    const t = event.target;
+    if (event.key !== 'Enter' || !t || t.tagName !== 'INPUT' || t.type === 'search' || t.type === 'checkbox') { return; }
+    event.preventDefault();
+    commit();
+  });
+
+  return {
+    open: open,
+    close: () => { if (dialog.open) { dialog.close(); } }
+  };
+}
+
+/** 편집기에서 덩어리 카드를 두 번 누르거나, 골라 둔 채 Enter → 「블록 고치기」 창 */
+function atomAt(state) {
+  const sel = state.selection;
+  if (sel instanceof NodeSelection && ATOM_TYPES.indexOf(sel.node.type.name) !== -1) {
+    return { node: sel.node, pos: sel.from };
+  }
+  return null;
 }
 
 /* ─── 인라인 툴바 — 「색」 「배경」 「링크」 셋 (지시서 1장) ───── */
@@ -2297,6 +2585,8 @@ function initPage() {
     doc: null, version: 0, title: '', canEdit: false, editing: false,
     // 4-A — 창구가 준 「볼 수 있는 하위 페이지」 제목 지도. 렌더러 두 벌이 이것만 본다.
     childTitles: {},
+    // 5-E — 페이지 링크 · 붙인 파일의 제목 지도(창구가 **보는 사람 권한으로** 거른 것).
+    linkTitles: {}, fileTitles: {},
     // 4-B — 지금의 공개 범위와 이 페이지가 든 공간. 둘 다 창구가 준 값이다.
     visibility: 'private', space: null, canSetVisibility: false,
     // 4-D — 상태. 문자열 또는 null.
@@ -2334,10 +2624,37 @@ function initPage() {
     show(saveState, text !== '');
   }
 
+  /** 읽기 렌더러에 넘길 지도 — 하위 페이지(4-A) · 페이지 링크 · 파일(5-E, 셋 다 보는 사람이 볼 수 있는 것만) */
+  function readCtx() {
+    return {
+      child_titles: state.childTitles, link_titles: state.linkTitles, file_titles: state.fileTitles,
+      base: COMMUNITY_BASE, tbox_base: APP_BASE
+    };
+  }
+
+  /** 「이 페이지를 참조한 곳」 (5-E, F-23) — 창구가 준 목록(볼 수 있는 페이지만)을 그대로. 비면 절을 숨긴다. */
+  const backlinksWrap = document.getElementById('page-backlinks-wrap');
+  const backlinksEl = document.getElementById('page-backlinks');
+  function drawBacklinks(items) {
+    if (!backlinksWrap || !backlinksEl) { return; }
+    clear(backlinksEl);
+    for (const b of items) {
+      if (!b || typeof b.id !== 'string') { continue; }
+      const li = document.createElement('li');
+      li.className = 'list__item';
+      const a = document.createElement('a');
+      a.href = COMMUNITY_BASE + '/p/' + encodeURIComponent(b.id);
+      a.textContent = (b.title && b.title !== '' ? b.title : '제목 없는 페이지');
+      li.appendChild(a);
+      backlinksEl.appendChild(li);
+    }
+    show(backlinksWrap, backlinksEl.firstChild !== null);
+  }
+
   function drawRead() {
     clear(docEl);
     if (state.doc) {
-      docEl.appendChild(renderDoc(state.doc, { child_titles: state.childTitles, base: COMMUNITY_BASE }));
+      docEl.appendChild(renderDoc(state.doc, readCtx()));
     }
     armTodos();
   }
@@ -2514,6 +2831,9 @@ function initPage() {
       state.childTitles = result.data.child_titles && typeof result.data.child_titles === 'object'
         ? result.data.child_titles
         : {};
+      state.linkTitles = result.data.link_titles && typeof result.data.link_titles === 'object' ? result.data.link_titles : {};
+      state.fileTitles = result.data.file_titles && typeof result.data.file_titles === 'object' ? result.data.file_titles : {};
+      drawBacklinks(Array.isArray(result.data.backlinks) ? result.data.backlinks : []);
       state.visibility = typeof page.visibility === 'string' ? page.visibility : 'private';
       state.space = result.data.space || null;
       state.canSetVisibility = result.data.can_set_visibility === true;
@@ -3795,9 +4115,7 @@ function initPage() {
         clear(historyPreviewDoc);
         /* 하위 페이지 카드의 제목 지도는 **지금 문서의 것**이다 — 지난 판이 가리키던 페이지가
            그 뒤에 지워졌다면 지도에 없고, 렌더러가 「볼 수 없는 페이지」로 그린다. */
-        historyPreviewDoc.appendChild(renderDoc(got.doc, {
-          child_titles: state.childTitles, base: COMMUNITY_BASE
-        }));
+        historyPreviewDoc.appendChild(renderDoc(got.doc, readCtx()));
         show(historyVersions, false);
         show(historyEvents, false);
         show(historyPreview, true);
@@ -3888,7 +4206,22 @@ function initPage() {
     });
   }
 
-  const blockDialog = createBlockDialog(() => view, { createChildPage: createChildPage });
+  /* 5-E — 고른 페이지·파일의 이름을 제목 지도에 넣어 두면 저장 뒤 읽기 화면이 곧바로 이름을 그린다.
+     지도는 다음 `load()` 에서 서버 것으로 바뀐다(서버가 **보는 사람 권한으로** 다시 거른다). */
+  const atomDialog = createAtomDialog(() => view, {
+    selfId: () => pageId,
+    rememberLink: (id, entry) => { state.linkTitles[id] = entry; },
+    rememberFile: (id, entry) => { state.fileTitles[id] = entry; }
+  });
+  function editAtom(type, attrs, pos) { if (atomDialog) { atomDialog.open(type, attrs, pos); } }
+  function commandAtomEdit(pmState) {
+    const hit = atomAt(pmState);
+    if (!hit) { return false; }
+    editAtom(hit.node.type.name, hit.node.attrs, hit.pos);
+    return true;
+  }
+
+  const blockDialog = createBlockDialog(() => view, { createChildPage: createChildPage, editAtom: editAtom });
 
   /* ── 편집 모드 ── */
 
@@ -3970,7 +4303,7 @@ function initPage() {
     let pmDoc;
     try {
       // 하위 페이지 카드에 제목을 보여 주려고 지도를 함께 넘긴다 (4-A).
-      pmDoc = fromDoc(state.doc, { child_titles: state.childTitles });
+      pmDoc = fromDoc(state.doc, { child_titles: state.childTitles, link_titles: state.linkTitles, file_titles: state.fileTitles });
     } catch (e) {
       setText(msg, e && e.message ? e.message : GENERIC_ERROR);
       return;
@@ -3988,7 +4321,7 @@ function initPage() {
           'Mod-z': undo,
           'Mod-y': redo,
           'Shift-Mod-z': redo,
-          Enter: chainCommands(commandCodeEnter, commandEnter),
+          Enter: chainCommands(commandAtomEdit, commandCodeEnter, commandEnter),
           'Shift-Enter': commandShiftEnter,
           Backspace: commandBackspace,
           // 3단계에는 들여쓰기가 없다. 탭으로 초점이 새어 나가지 않게 여기서 멈춘다.
@@ -4009,6 +4342,11 @@ function initPage() {
     view = new EditorView(editorEl, {
       state: editorState,
       attributes: { class: 'doc editor' },
+      handleDoubleClickOn(v, p, node, nodePos, event, direct) {
+        if (!direct || ATOM_TYPES.indexOf(node.type.name) === -1) { return false; }
+        editAtom(node.type.name, node.attrs, nodePos);
+        return true;
+      },
       dispatchTransaction(tr) {
         const next = view.state.apply(tr);
         view.updateState(next);
@@ -4039,6 +4377,7 @@ function initPage() {
   function stopEditing() {
     flushSave().then(() => {
       if (blockDialog) { blockDialog.close(); }
+      if (atomDialog) { atomDialog.close(); }
       if (toolbar) { toolbar.hide(); toolbar = null; }
       show(starterEl, false);
       if (view) { view.destroy(); view = null; }

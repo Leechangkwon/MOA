@@ -64,12 +64,13 @@
   "stage": {
     "3": ["paragraph", "heading", "bulleted", "numbered", "to_do", "quote", "callout", "divider", "code", "toc"],
     "4": ["child_page"],
-    "5": ["toggle", "table", "image", "file", "column_list", "column", "link_to_page"],
+    "5": ["toggle", "table", "image", "file", "link_to_page"],
+    "6": ["column_list", "column"],
     "7": ["embed"]
   },
   "stage_marks": {
     "3": ["bold", "italic", "underline", "strike", "code", "color", "link"],
-    "5": ["mention"]
+    "6": ["mention"]
   },
   "languages": [
     "plain", "bash", "c", "cpp", "csharp", "css", "diff", "dockerfile", "go", "graphql",
@@ -81,6 +82,6 @@
     "too_large", "bad_schema", "not_object", "not_array", "too_many_blocks", "too_deep",
     "unknown_type", "type_not_in_stage", "unknown_key", "missing_key", "bad_type", "bad_value",
     "bad_id", "duplicate_id", "too_long", "too_many_segments", "unknown_mark", "mark_not_in_stage",
-    "not_in_palette", "bad_scheme", "control_char", "children_not_allowed", "bad_encoding"
+    "not_in_palette", "bad_scheme", "control_char", "children_not_allowed", "bad_encoding", "bad_ref", "ragged_row", "merge_not_in_stage"
   ]
 }

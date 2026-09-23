@@ -190,6 +190,15 @@ if (array_key_exists('doc', $body)) {
             'errors' => $check['errors'],
         ], ['error_path' => (string) $first['path'] . ' : ' . (string) $first['reason']]);
     }
+    /* 5-E 첨부 — **새로 붙인** t-box 파일만 견준다(이미 붙어 있던 것은 붙일 때·범위를 넓힐 때 견주었다 —
+       편집 공유자가 자기가 못 보는 남의 첨부 때문에 저장하지 못하는 일이 없게). 없는·못 보는·좁은 파일은 같은 400. */
+    $newFiles = array_values(array_diff(Doc::extract($doc)['files'], Doc::extract($currentDoc)['files']));
+    if (!community_file_refs_ok($newFiles, CommunityAuthz::pageAudiences($row), $user)) {
+        $reject('file_ref', 400, [
+            'error'  => '붙일 수 없는 파일이 있습니다. 내가 볼 수 있고, 이 페이지를 읽는 사람도 모두 볼 수 있는 파일만 붙입니다',
+            'reason' => 'file_ref',
+        ], []);
+    }
 }
 
 $extract = Doc::extract($doc);
@@ -233,6 +242,9 @@ $sqlUpdate = <<<'SQL'
      WHERE id = CAST(:pid AS bigint)
        AND doc_version = CAST(:oldv AS int)
        AND deleted_at IS NULL
+       -- 5-E — 첨부를 견준 범위가 그 사이 바뀌었으면(넓히기·게시) 저장하지 않는다 → 409 (독립 검토 L1)
+       AND visibility = :vis_read
+       AND coalesce(published_board_id, 0) = CAST(:pb_read AS bigint)
     SQL;
 
 $newVersion = $currentVersion + 1;
@@ -255,6 +267,8 @@ try {
         ':editor' => $me,
         ':pid'    => $pageId,
         ':oldv'   => $currentVersion,
+        ':vis_read' => (string) $row['visibility'],
+        ':pb_read'  => $row['published_board_id'] === null ? 0 : (int) $row['published_board_id'],
     ]);
 
     if ($st->rowCount() !== 1) {

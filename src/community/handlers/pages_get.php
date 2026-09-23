@@ -192,6 +192,7 @@ if (!is_array($doc)) {
  *   한 글자도 들어가지 않는다. 값은 전부 바인딩된다 (PRD S-04).
  */
 [$visibleWhere, $visibleBind] = community_visible_pages_where($user);
+$docExtract = Doc::extract($doc);   // 5-E — 파일·링크 지도에 쓴다(아래 하위 페이지 지도와 같은 한 번의 추출)
 
 $childTitles = [];
 $names       = [];
@@ -321,6 +322,11 @@ Http::json([
     'can_unpublish'  => $mayUnpublish,
     'can_hide'       => $mayHide,
     'can_resolve'    => $mayResolve,
+    /* 5-E — 본문의 그림·파일 지도(보는 사람이 t-box 에서 볼 수 있는 파일만) · 페이지 링크 제목 지도(볼 수 있는 페이지만) ·
+       역참조(이 페이지를 가리키는 볼 수 있는 페이지). 지도에 없는 것은 렌더러가 「볼 수 없는 …」 한 장으로 그린다. */
+    'file_titles' => ($ft = community_file_titles($docExtract['files'], $user)) === [] ? new stdClass() : $ft,
+    'link_titles' => ($lt = community_link_titles(array_map(static fn (array $l): string => $l['to_page_id'], $docExtract['links']), $user)) === [] ? new stdClass() : $lt,
+    'backlinks'   => community_backlinks((string) $row['public_id'], (int) $row['id'], $user),
     // 5-D — 댓글을 쓸 수 있나 · 공지 「읽은 사람 n/N」을 볼 수 있나(둘 다 창구가 같은 함수로 다시 막는다)
     'can_comment'    => CommunityAuthz::decideCommentCreate($user, $row)[0],
     'can_view_reads' => CommunityAuthz::decideReadsView($user, $row)[0],

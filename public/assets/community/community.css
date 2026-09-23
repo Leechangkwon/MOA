@@ -708,3 +708,41 @@ dialog.search-dialog { width: min(640px, calc(100vw - 32px)); margin-top: 12vh; 
 /* 답글 한 단 — 목록 안에서 들여쓰기 한 번(인라인 style 0) */
 #page-comments .list__item.is-reply { padding-left: 32px; }
 #page-comments-wrap { margin-top: 20px; }
+
+/* ── 5-E 새 블록 (DESIGN 2.14 — 새 색값 0, 토큰만) ─────────────────────────── */
+
+/* 토글 — <details>/<summary>. 펼치면 문단들이 한 단 들여 보인다 */
+.doc-toggle { margin: 4px 0; }
+.doc-toggle__summary { cursor: pointer; font-weight: 600; padding: 2px 0; }
+.doc-toggle__body { margin-top: 4px; padding-left: 20px; display: flex; flex-direction: column; gap: 4px; }
+
+/* 표 — 넓으면 표만 가로로 밀린다(화면 전체는 넘치지 않는다 — 390px 규칙) */
+.doc-table-wrap { max-width: 100%; overflow-x: auto; margin: 8px 0; }
+.doc-table { border-collapse: collapse; min-width: 50%; font-size: 14px; }
+.doc-table__cell { border: 1px solid var(--line); padding: 6px 10px; text-align: left; vertical-align: top; }
+th.doc-table__cell { background: var(--surface-2); font-weight: 600; }
+
+/* 그림 — 폭 넷. 그림 주소는 t-box 창구이고 못 보는 사람에게 t-box 가 403 을 준다 */
+.doc-image { margin: 8px 0; max-width: 100%; }
+.doc-image--small { width: 240px; }
+.doc-image--normal { width: 480px; }
+.doc-image--wide { width: 720px; }
+.doc-image--full { width: 100%; }
+.doc-image__img { display: block; width: 100%; height: auto; border: 1px solid var(--line); border-radius: var(--r-ctl); background: var(--surface-2); }
+.doc-image__caption,
+.doc-file__caption { margin: 6px 0 0; color: var(--muted); font-size: 13px; }
+
+/* 파일 카드 · 페이지 링크 카드 — `.card` 위에 하위 페이지 카드와 같은 한 줄 모양 */
+.doc-file { margin: 8px 0; }
+.doc-file .card,
+.doc-link-page { display: flex; align-items: center; gap: 8px; margin: 8px 0; padding: 12px 16px; }
+.doc-file .card__meta { margin-left: auto; }
+
+/* 편집기 안의 덩어리 카드 — 두 번 누르면 「블록 고치기」 창 */
+.doc-atom { display: flex; flex-direction: column; gap: 2px; margin: 8px 0; padding: 10px 14px; cursor: pointer; user-select: none; }
+.ProseMirror-selectednode.doc-atom { outline: 2px solid var(--ring); outline-offset: 2px; }
+
+/* 「블록 고치기」 창 */
+.atom-pane { display: flex; flex-direction: column; gap: 10px; }
+.atom-grid td { padding: 2px; border: 0; }
+.atom-grid .input { width: 100%; min-width: 6rem; }

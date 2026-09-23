@@ -12,7 +12,7 @@
 #   C:T-27 부모 삭제         하위 전부 deleted_at · 목록에서 사라짐 · 감사 `cascaded` 건수 일치
 #   C:T-28 child_page 저장   저장 JSON 에 child_page · GET 의 child_titles 에 제목 ·
 #                            남의 페이지 id 는 **400 이 아니고** child_titles 에 없다(화면은 「볼 수 없는 페이지」)
-#   C:T-29 단계 밖 블록      toggle·table 저장 → 400 `type_not_in_stage` (5단계로 옮겼다)
+#   C:T-29 단계 밖 블록      column_list 저장 → 400 `type_not_in_stage` (6단계 — toggle·table 은 5-E 에서 열렸다)
 #   브라우저                 browser_smoke.py 의 4-A 항목(하위 페이지 만들기 → 카드 클릭 → 이동 →
 #                            경로 → 뒤로 · 트리 접기·펼치기 · 옮기기 창)
 #   회귀                     doc-schema 사본 diff 0 · security_lint 0 · php -l · bash -n
@@ -463,7 +463,7 @@ expect "UUID 형태가 아닌 page_id → 400" "400" "$CODE"
 expect "어긋난 자리를 알려 준다" "blocks[0].page_id" "$(jget "d['errors'][0]['path']" < "$WORK/b")"
 
 # ════════════════════════════════════════════════════════════════
-hr "C:T-29 — 4단계 밖 블록 (toggle·table 은 5단계)"
+hr "C:T-29 — 지금 단계 밖 블록 (column_list 는 6단계 · toggle·table 은 5-E 에서 열림)"
 
 CODE=$(capi GET "/api/pages/$T28P" qa_employee01)
 VER=$(jget "d['page']['doc_version']" < "$WORK/b")
@@ -473,23 +473,23 @@ import json, sys, uuid
 work, ver = sys.argv[1], int(sys.argv[2])
 def u(): return str(uuid.uuid4())
 json.dump({"doc_version": ver, "doc": {"schema": 1, "blocks": [
-    {"id": u(), "type": "toggle", "text": [{"t": "접는 블록", "m": {}}], "children": []}]}},
+    {"id": u(), "type": "column_list", "children": []}]}},
     open(work + "/t29_toggle.json", "w"), ensure_ascii=False)
 json.dump({"doc_version": ver, "doc": {"schema": 1, "blocks": [
-    {"id": u(), "type": "table", "header_row": True, "header_col": False, "rows": []}]}},
+    {"id": u(), "type": "column", "children": []}]}},
     open(work + "/t29_table.json", "w"), ensure_ascii=False)
 PY
 
 CODE=$(capi PATCH "/api/pages/$T28P" qa_employee01 "$WORK/t29_toggle.json")
-expect "toggle 저장 → 400" "400" "$CODE"
+expect "column_list 저장 → 400" "400" "$CODE"
 expect "사유가 type_not_in_stage" "type_not_in_stage" "$(jget "d['errors'][0]['reason']" < "$WORK/b")"
 
 CODE=$(capi PATCH "/api/pages/$T28P" qa_employee01 "$WORK/t29_table.json")
-expect "table 저장 → 400" "400" "$CODE"
+expect "column 저장 → 400" "400" "$CODE"
 expect "사유가 type_not_in_stage" "type_not_in_stage" "$(jget "d['errors'][0]['reason']" < "$WORK/b")"
 
 note "단계 표: $(python3 -c "import json;print(json.load(open('$ROOT/public/assets/community/doc-schema.json'))['stage'])")"
-expect "COMMUNITY_DOC_STAGE 가 4" "4" \
+expect "COMMUNITY_DOC_STAGE 가 5 (5-E)" "5" \
   "$(php -r 'require "'"$ROOT"'/src/bootstrap.php"; echo COMMUNITY_DOC_STAGE;' 2>/dev/null)"
 
 # ════════════════════════════════════════════════════════════════

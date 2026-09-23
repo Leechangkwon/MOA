@@ -1011,6 +1011,68 @@ final class CommunityAuthz
         return [true, $code];
     }
 
+    /* ══════════════════════════════════════════════════════════════════
+     * 첨부 (5-E, PRD F-24 · ARCH 13.2 `fitsFileRef`) — 붙인 t-box 파일은 **페이지를 읽는 사람이 모두 볼 수 있어야** 한다
+     * ══════════════════════════════════════════════════════════════════ */
+
+    /**
+     * 이 페이지를 **읽는 범위들** (5-E) — 첨부 파일이 들어맞아야 할 t-box 등급 모양(`level`·`team_id`) 목록.
+     * 비어 있으면 「주인(과 관리자)만」이라 어떤 파일이든 된다. 여럿이면 **모두**에 들어맞아야 한다(게시 중이면 원래 범위 +
+     * 게시판 등급). 사람 지정 공유는 넣지 않는다 — 파일은 t-box 가 사람마다 다시 판정한다(E-3).
+     *
+     * @param  array<string,mixed> $row
+     * @param  array<string,mixed>|null $extraBoard 게시하려는 게시판(게시 창구가 미리 견줄 때)
+     * @return list<array{level:string,team_id:?int}>
+     */
+    public static function pageAudiences(array $row, ?array $extraBoard = null): array
+    {
+        $out  = [];
+        $kind = (string) ($row['space_kind'] ?? '');
+        if ($kind === 'team') {
+            $out[] = ['level' => 'team', 'team_id' => $row['space_team_id'] === null ? null : (int) $row['space_team_id']];
+        } elseif ($kind === 'board') {
+            $b = self::boardOfRow($row);
+            if ($b !== null) {
+                $out[] = ['level' => (string) $b['access_level'], 'team_id' => $b['team_id'] === null ? null : (int) $b['team_id']];
+            }
+        } else {
+            $base = self::baseVisibility($row);
+            if ($base === 'team') {
+                $out[] = ['level' => 'team', 'team_id' => ($row['space_owner_team_id'] ?? null) === null ? null : (int) $row['space_owner_team_id']];
+            } elseif ($base === 'internal') {
+                $out[] = ['level' => 'internal', 'team_id' => null];
+            }
+            $pub = (string) ($row['visibility'] ?? '') === 'published' ? self::publishedBoardOf($row) : null;
+            foreach ([$pub, $extraBoard] as $b) {
+                if ($b !== null) {
+                    $out[] = ['level' => (string) $b['access_level'], 'team_id' => ($b['team_id'] ?? null) === null ? null : (int) $b['team_id']];
+                }
+            }
+        }
+        return $out;
+    }
+
+    /**
+     * 이 파일이 이 **읽는 범위**에 들어맞나 (5-E `fitsFileRef`) — 파일이 범위보다 **좁지 않아야** 한다.
+     *   t-box `LEVEL_RANK`(public 0 < internal 1 < team 2 < admin-only 3)에서 파일 ≤ 범위.
+     *   파일이 팀 등급이면 범위도 **같은 팀** 이어야 한다(관리자 범위는 모든 팀을 보므로 된다). 모르는 등급은 거짓.
+     *
+     * @param array{access_level:string,team_id:mixed} $file
+     * @param array{level:string,team_id:?int}          $aud
+     */
+    public static function fitsFileRef(array $file, array $aud): bool
+    {
+        $f = Authz::LEVEL_RANK[(string) ($file['access_level'] ?? '')] ?? null;
+        $a = Authz::LEVEL_RANK[(string) ($aud['level'] ?? '')] ?? null;
+        if ($f === null || $a === null || $f > $a) {
+            return false;
+        }
+        if ((string) $file['access_level'] === 'team' && (string) $aud['level'] === 'team') {
+            return $file['team_id'] !== null && $aud['team_id'] !== null && (int) $file['team_id'] === (int) $aud['team_id'];
+        }
+        return true;
+    }
+
     /**
      * 이 페이지가 **걸린 게시판** — 게시판 글이면 그 공간, 게시된 개인 페이지면 게시한 게시판, 아니면 `null` (5-C).
      *
