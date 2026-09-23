@@ -820,6 +820,42 @@ final class Audit
         'page.handover|deny|space_governed'     => '{actor} 이(가) 팀 공간의 페이지 「{target}」 을(를) 넘기려 해서 거부했습니다 (팀 공간은 팀이 주인입니다)',
         'page.handover|deny|reauth_required'    => '{actor} 이(가) 비밀번호를 다시 확인하지 않고 관리자 권한으로 페이지 「{target}」 을(를) 넘기려 해서 막았습니다',
         'space.create|allow|handover'           => '{actor} 이(가) 인계를 받을 사람의 개인 업무 공간 「{target}」 을(를) 만들었습니다',
+
+        /* ── 커뮤니티 5-C — 게시판 · 새 글 · 게시 · 숨김 · 태그 (5-C 지시서, PRD 4장 · F-09 · F-18) ──
+         *
+         * `{target}` 은 페이지 제목(30자)이고, `board.*` 줄만 **게시판 이름**이다. `{level}` 은 게시판 등급.
+         * `board.create|allow`·`board.update|allow` — 관리자(재인증 뒤)가 게시판을 만들거나 고친 일.
+         *   무엇이 바뀌었나는 상세의 `changed`(칸 이름)·`board_before`→`board_after` 에 있다.
+         * `page.create|deny|…` — 게시판에 새 글을 쓸 수 없는 사람(Guest·공지 게시판의 비관리자·못 읽는
+         *   게시판)이 쓰려 한 일. 비활성 게시판은 형식 문제(400)라 남기지 않는다.
+         * `page.publish|…` — 개인 페이지를 게시판에 건 일. 원래 범위·게시판은 상세 기록.
+         * `page.unpublish|allow` — 게시를 푼 일(쓴 사람 또는 게시판 관리자 — 근거는 `granted_by`).
+         * `page.hide|…`·`page.unhide|…` — 게시판 관리자가 목록에서 내리거나 되돌린 일(원본 무변경).
+         * `page.tags|…` — 태그를 바꾼 일(전·후 태그는 상세 기록).
+         * `page.update|deny|not_author`·`page.delete|deny|not_author` — 남이 쓴 **게시판 글**을
+         *   고치거나 지우려 한 일(게시판 Manager·Admin 도 내용은 못 고친다 — 숨김만). */
+        'board.create|allow'                    => '{actor} 이(가) 게시판 「{target}」 을(를) {level} 등급으로 만들었습니다 (종류·팀은 상세 기록)',
+        'board.create|deny|conflict'            => '{actor} 이(가) 이미 있는 이름 「{target}」 으로 게시판을 만들려 해서 거부했습니다',
+        'board.update|allow'                    => '{actor} 이(가) 게시판 「{target}」 의 이름·설명·활성 여부를 바꿨습니다 (이전값→새값은 상세 기록)',
+        'board.update|deny|conflict'            => '{actor} 이(가) 게시판 「{target}」 의 이름을 이미 있는 이름으로 바꾸려 해서 거부했습니다',
+        'page.create|deny|role_not_permitted'   => '{actor} 이(가) 글을 쓸 수 없는 게시판 「{target}」 에 새 글을 쓰려 해서 막았습니다',
+        'page.create|deny|team_mismatch'        => '{actor} 이(가) 다른 팀의 게시판 「{target}」 에 새 글을 쓰려 해서 막았습니다',
+        'page.publish|allow'                    => '{actor} 이(가) 페이지 「{target}」 을(를) 게시판에 게시했습니다 (게시판·원래 범위는 상세 기록)',
+        'page.publish|deny|not_owner'           => '{actor} 이(가) 자기 것이 아닌 페이지 「{target}」 을(를) 게시판에 게시하려 해서 막았습니다',
+        'page.publish|deny|role_not_permitted'  => '{actor} 이(가) 페이지 「{target}」 을(를) 글을 쓸 수 없는 게시판에 게시하려 해서 막았습니다 (게시판은 상세 기록)',
+        'page.publish|deny|team_mismatch'       => '{actor} 이(가) 페이지 「{target}」 을(를) 다른 팀의 게시판에 게시하려 해서 막았습니다 (게시판은 상세 기록)',
+        'page.unpublish|allow'                  => '{actor} 이(가) 페이지 「{target}」 의 게시를 해제했습니다 (게시판·돌아간 범위·근거는 상세 기록)',
+        'page.unpublish|deny|not_owner'         => '{actor} 이(가) 해제할 자격 없이 페이지 「{target}」 의 게시를 해제하려 해서 막았습니다',
+        'page.hide|allow'                       => '{actor} 이(가) 게시판에서 글 「{target}」 을(를) 숨겼습니다 (원본은 그대로, 게시판·근거는 상세 기록)',
+        'page.hide|deny|not_owner'              => '{actor} 이(가) 게시판 관리 자격 없이 글 「{target}」 을(를) 숨기려 해서 막았습니다',
+        'page.unhide|allow'                     => '{actor} 이(가) 게시판에서 숨긴 글 「{target}」 을(를) 다시 보이게 했습니다',
+        'page.unhide|deny|not_owner'            => '{actor} 이(가) 게시판 관리 자격 없이 숨긴 글 「{target}」 을(를) 다시 보이게 하려 해서 막았습니다',
+        'page.tags|allow'                       => '{actor} 이(가) 페이지 「{target}」 의 태그를 바꿨습니다 (이전→새 태그는 상세 기록)',
+        'page.tags|deny|not_owner'              => '{actor} 이(가) 고칠 수 없는 페이지 「{target}」 의 태그를 바꾸려 해서 막았습니다',
+        'page.update|deny|not_author'           => '{actor} 이(가) 다른 사람이 쓴 게시판 글 「{target}」 을(를) 고치려 해서 막았습니다',
+        'page.read|allow|board_moderator'       => '{actor} 이(가) 게시판 관리자로서 숨긴 게시 페이지 「{target}」 을(를) 열어 봤습니다',
+        'page.handover|deny|board_post'         => '{actor} 이(가) 게시판 글 「{target}」 을(를) 넘기려 해서 거부했습니다 (게시판 글은 게시판이 주인입니다)',
+        'page.delete|deny|not_author'           => '{actor} 이(가) 다른 사람이 쓴 게시판 글 「{target}」 을(를) 지우려 해서 막았습니다',
     ];
 
     /** 자리표시자에 넣을 값이 없을 때 (ARCH 7.4) */

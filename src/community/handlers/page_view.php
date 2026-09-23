@@ -81,7 +81,8 @@ require __DIR__ . '/../../views/shell_top.php';
            「팀 공간」이다. 「넘기기」는 창구가 준 `can_handover` 가 참일 때만 보인다 — 화면이
            소유·역할을 따지지 않는다. 되살려 눌러도 `POST …/handover` 가 같은 함수로 다시 막는다. -->
       <span class="page-props__group">
-        <span class="muted">소유자</span>
+        <!-- 5-C — 게시판 글에서는 「쓴 사람」으로 바뀐다(글자는 editor.js 가 창구의 `writer` 로 고른다) -->
+        <span id="page-owner-label" class="muted">소유자</span>
         <span id="page-owner-name">…</span>
         <button id="page-handover" class="btn btn--small btn--quiet" type="button" aria-haspopup="dialog" hidden>
           <span class="icon" data-icon="users"></span>넘기기
@@ -110,6 +111,32 @@ require __DIR__ . '/../../views/shell_top.php';
       </span>
       <!-- 「이력」 (4-C). 이 페이지를 **볼 수 있는 사람이면 누구나** 연다 — 읽기 판정과 같은
            자격이고(`decidePageRead`), 되돌리기 단추만 고칠 수 있는 사람에게 보인다. -->
+      <!-- 게시판 (5-C) — 이 페이지가 걸린 게시판(게시판 글이면 그 게시판, 게시했으면 게시한 게시판).
+           「게시」·「게시 해제」·「숨기기」·「숨김 풀기」·「해결됨」은 창구가 준 `can_publish`·`can_unpublish`·
+           `can_hide`·`can_resolve` 가 참일 때만 보인다 — 화면이 소유·역할을 따지지 않는다(PRD S-01). -->
+      <span class="page-props__group" id="page-board-group" hidden>
+        <span class="muted">게시판</span>
+        <a id="page-board-link" href="#">게시판</a>
+        <span id="page-board-hidden" class="badge badge--off" hidden>숨김</span>
+        <span id="page-resolved-badge" class="badge" hidden>미해결</span>
+      </span>
+      <button id="page-publish" class="btn btn--small btn--quiet" type="button" aria-haspopup="dialog" hidden>
+        <span class="icon" data-icon="upload"></span>게시
+      </button>
+      <button id="page-unpublish" class="btn btn--small btn--quiet" type="button" hidden>게시 해제</button>
+      <button id="page-hide" class="btn btn--small btn--quiet" type="button" hidden>숨기기</button>
+      <button id="page-resolve" class="btn btn--small btn--quiet" type="button" hidden>해결됨으로 표시</button>
+      <!-- 태그 (5-C) — 칩 + 입력 칸. 추천은 `<datalist>`(브라우저 기능 — 떠 있는 목록을 새로 만들지 않는다,
+           DESIGN 2.8 ★). 칩의 ✕ 와 입력 칸은 창구가 준 `can_tag` 가 참일 때만 보인다. -->
+      <span class="page-props__sep" aria-hidden="true"></span>
+      <span class="page-props__group" id="page-tags-group">
+        <span class="muted">태그</span>
+        <span id="page-tags"></span>
+        <input id="page-tag-input" type="text" maxlength="30" autocomplete="off" spellcheck="false"
+               list="page-tag-options" placeholder="태그 추가" aria-label="태그 추가 — Enter 로 붙입니다" hidden>
+        <datalist id="page-tag-options"></datalist>
+      </span>
+      <span id="page-views" class="muted" hidden></span>
       <span class="page-props__sep" aria-hidden="true"></span>
       <button id="page-history" class="btn btn--small btn--quiet" type="button" aria-haspopup="dialog">
         <span class="icon" data-icon="log"></span>이력
@@ -232,8 +259,8 @@ require __DIR__ . '/../../views/shell_top.php';
     </dialog>
 
     <!-- 「공개 범위」 창 (4-B, DESIGN 2.7 `.modal--form` 520px · PRD 4.1).
-         세 줄 라디오 + 「하위 페이지까지 함께」 체크 + 설명 한 줄이다. 값은 셋뿐이고
-         「게시」는 없다 — 게시판 공간이 아직 없기 때문이다(5단계).
+         세 줄 라디오 + 「하위 페이지까지 함께」 체크 + 설명 한 줄이다. 값은 셋뿐이다 —
+         게시(5-C)는 이 창이 아니라 속성 줄의 「게시」 단추(게시판 고르기)로 한다.
          t-box 의 「폴더 등급 바꾸기」 창(`src/handlers/home.php`)과 **같은 모양**을 쓴다:
          `.field field--full` 안에 입력을 넣고 설명을 라벨에 붙이는 방식이라 새 클래스가 0 이다. -->
     <dialog id="visibility-dialog" class="modal modal--form" aria-labelledby="visibility-title">
@@ -505,6 +532,28 @@ require __DIR__ . '/../../views/shell_top.php';
       <div class="form-actions">
         <button class="btn btn--quiet" type="button" data-status-close>그만두기</button>
         <button id="status-save" class="btn" type="button">바꾸기</button>
+      </div>
+    </dialog>
+
+    <!-- 「게시판에 게시」 창 (5-C, DESIGN 2.7 `.modal--form`). 고를 수 있는 게시판은 창구 `GET /api/boards` 가
+         `can_write` 로 답한 것만이다(화면이 등급을 따지지 않는다). 창구가 다시 판단한다(`decideBoardWrite`). -->
+    <dialog id="publish-dialog" class="modal modal--form" aria-labelledby="publish-title">
+      <div class="modal__head">
+        <h2 id="publish-title" class="modal__title">게시판에 게시</h2>
+        <button class="btn btn--icon btn--plain" type="button" data-publish-close aria-label="닫기">
+          <span class="icon" data-icon="x"></span>
+        </button>
+      </div>
+      <div class="modal__body">
+        <p class="muted">이 페이지를 고른 게시판 목록에 겁니다. 원본은 내 공간에 그대로 있고, 고치면 게시판에도 그대로 보입니다.
+           게시하는 동안은 그 게시판을 볼 수 있는 사람이 이 페이지를 봅니다. 하위 페이지는 따라가지 않습니다.</p>
+        <p id="publish-msg" class="msg" role="alert" aria-live="polite"></p>
+        <div id="publish-choices"></div>
+        <p id="publish-empty" class="muted" hidden>글을 쓸 수 있는 게시판이 없습니다.</p>
+      </div>
+      <div class="form-actions">
+        <button class="btn btn--quiet" type="button" data-publish-close>닫기</button>
+        <button id="publish-save" class="btn" type="button" disabled>게시</button>
       </div>
     </dialog>
 

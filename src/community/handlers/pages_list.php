@@ -98,7 +98,7 @@ if (Http::queryText('shared', 8) === 'me') {
 
     $sqlShared = <<<SQL
         SELECT p.public_id, p.title, p.icon, p.block_count, p.doc_version,
-               p.created_at, p.updated_at, p.visibility, p.status,
+               p.created_at, p.updated_at, p.visibility, p.status, p.published_from,
                s.id AS space_id, s.kind AS space_kind, s.name AS space_name,
                s.owner_user_id AS space_owner_user_id, s.team_id AS space_team_id,
                owner.username AS owner_name,
@@ -135,6 +135,7 @@ if (Http::queryText('shared', 8) === 'me') {
         [$canEditRow] = CommunityAuthz::decidePageChange($user, [
             'deleted_at'          => null,
             'visibility'          => (string) $r['visibility'],
+            'published_from'      => $r['published_from'],
             'space_kind'          => (string) $r['space_kind'],
             'space_owner_user_id' => $r['space_owner_user_id'],
             'space_team_id'       => $r['space_team_id'],

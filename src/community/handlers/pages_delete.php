@@ -65,7 +65,9 @@ if (!$mayChange) {
          읽기·고치기 시도와 같은 무게인데 그때는 서버 로그에만 남아, 감사 화면에서는 보이지
          않았다. 문장 `page.delete|deny|not_owner` 를 `src/Audit.php` 에 더하고 여기서 쓴다. */
     /* 5-A″ — 팀 공간 페이지를 공유로 보는 팀 밖 사람(`not_member`)도 여기까지 온다. 같은 무게로 감사에 남긴다. */
-    if ($changeCode === CommunityAuthz::CODE_NOT_OWNER || $changeCode === CommunityAuthz::CODE_NOT_MEMBER) {
+    // 5-C — 남이 쓴 게시판 글(`not_author`)도 같은 무게로 남긴다. 관리자는 지우지 않고 숨긴다.
+    if ($changeCode === CommunityAuthz::CODE_NOT_OWNER || $changeCode === CommunityAuthz::CODE_NOT_MEMBER
+        || $changeCode === CommunityAuthz::CODE_NOT_AUTHOR) {
         Audit::deny('page.delete', $changeCode, [
             'target_type' => 'page',
             'target_id'   => $pageId,

@@ -51,6 +51,18 @@ declare(strict_types=1);
  *     조건이 팀 공간 갈래에는 없다. 목록 조건절도 같은 모양이다(`community_visible_pages_where`).
  *   · 인계는 여전히 팀 공간 대상이 아니다(`decidePageHandover` [1] `space_governed`).
  *
+ * 5-C (2026-09-23 사용자 결정 — 게시판에서 바로 쓰기 + 개인 페이지 게시, 지시서 `stage5c-board-publish-directive.md`)
+ *   · 게시판 공간(`kind='board'`)이 열렸다. 등급은 t-box 파일·폴더와 **같은 네 값**이고 읽기 판정은
+ *     t-box `Authz::decideRead` 를 **그대로** 부른다(`decideBoardRead`) — 표를 새로 만들지 않는다.
+ *   · 게시판 글(게시판 공간의 페이지): 읽기 = 게시판 등급(`board`) · 쓴 사람(`owner`) ·
+ *     숨긴 글은 쓴 사람과 게시판 관리자(`board_moderator`)만. 고치기·지우기 = **쓴 사람만**
+ *     (게시판 Manager·Admin 도 내용은 못 고친다 — 사용자 결정, PRD F-18). 비활성 게시판은 읽기 전용.
+ *   · 게시된 개인 페이지(`visibility='published'`): 게시판 등급(`board`)과 **원래 범위**
+ *     (`published_from`) 중 넓은 쪽 — 게시는 여는 일이다. 숨기면 게시판 갈래만 꺼진다.
+ *     원래 범위를 「기준 범위」(`baseVisibility`)라 부르고, 트리 불변 규칙도 이 값으로 견준다.
+ *   · 새 물음 넷: `decideBoardRead` · `decideBoardWrite`(새 글·게시) · `decideBoardModerate`
+ *     (게시 해제·숨김 — 팀 게시판의 그 팀 Manager · Admin) · `decideUnpublish`(쓴 사람 또는 관리자).
+ *
  * ★ 역할 비교는 여전히 이 파일에 없다. 팀 판정은 **역할이 아니라 id 비교**이고, 값은 전부
  *   세션(`$u['team_id']` — `Auth` 가 「역할로 보기」까지 반영해 만든 유효 팀)과 DB 행에서 온다.
  *   요청이 정하는 값은 한 칸도 없다 (PRD S-01).
@@ -99,6 +111,22 @@ final class CommunityAuthz
      * @var list<string>
      */
     public const SHARE_LEVELS = ['view', 'edit'];
+
+    /** 허용 코드 — **게시판 등급**으로 읽는다(게시판 글 · 게시된 개인 페이지, 5-C). 감사에 남기지 않는다 */
+    public const CODE_BOARD = 'board';
+    /** 허용 코드 — 숨긴 글을 **게시판 관리자**(그 팀 Manager · Admin)로서 읽는다 (5-C) */
+    public const CODE_BOARD_MODERATOR = 'board_moderator';
+    /** 거부 코드 — 게시판 글을 **쓴 사람이 아니다**(고치기·지우기, 5-C). 게시판 관리자도 여기서 막힌다 */
+    public const CODE_NOT_AUTHOR = 'not_author';
+    /** 거부 코드 — 비활성(보관) 게시판이다. 새 글·게시·고치기가 막힌다 (5-C, 400) */
+    public const CODE_BOARD_INACTIVE = 'board_inactive';
+
+    /**
+     * 게시판 종류 셋 (5-C, PRD 11-1 ④). DB CHECK(`spaces_board_kind_check`)과 같은 값이다.
+     *
+     * @var list<string>
+     */
+    public const BOARD_KINDS = ['notice', 'discussion', 'qa'];
 
     /** 거부 코드 — 새 범위가 **부모보다 넓다** (4-B, 트리 불변 규칙) */
     public const CODE_WIDER_THAN_PARENT = 'wider_than_parent';
@@ -156,19 +184,23 @@ final class CommunityAuthz
      *   [0] 지워진 페이지                        → `not_found`
      *   [1] 팀 공간                              → 그 팀원 `team_member` / **나에게 준 공유 `shared`**(5-A″) /
      *                                               Admin `admin_all` / 그 밖 `not_member`
-     *   [2] 개인 공간이 아니면(게시판)           → `role_not_permitted` (5단계)
+     *   [2] 게시판 글 (5-C)                      → 쓴 사람 `owner` / 숨긴 글은 관리자 `board_moderator` /
+     *                                               게시판 등급 `board`(t-box `decideRead`) / 그 밖 t-box 코드
+     *   [2b] 개인 공간도 게시판도 아니면          → `role_not_permitted`
      *   [3] 내 페이지                            → `owner`
-     *   [4] `published`                          → `role_not_permitted` (게시판 공간이 없다 — 닫힌 실패)
+     *   [4] 기준 범위(게시 중이면 게시 전 범위)가 셋 밖 → `role_not_permitted` (모르면 막는다)
+     *   [4a] 게시 중 + 숨기지 않음 + 게시판을 읽을 수 있다 → `board` (5-C — 원래 범위와 넓은 쪽)
      *   [4b] 이 페이지나 조상에 나에게 준 공유    → `shared`   (5-A — 보기·편집 어느 쪽이든 읽기는 열린다)
-     *   [5] `internal` + 쓰기 자격 있는 역할     → `matrix`   (Guest 는 여기서 끝난다)
-     *   [6] `team` + 주인과 같은 팀              → `same_team`
+     *   [5] 기준 범위 `internal` + 쓰기 자격 있는 역할 → `matrix`   (Guest 는 여기서 끝난다)
+     *   [6] 기준 범위 `team` + 주인과 같은 팀    → `same_team`
      *   [7] Admin                                → `admin_all` (감사에 남는다)
+     *   [7b] 게시 중 + 숨김 + 그 게시판의 관리자 → `board_moderator` (5-C — 다른 갈래로 못 볼 때만)
      *   [8] 그 밖                                → `not_owner`
      *
      * ★ `internal` 을 `canCommunityWrite` 로 판정하는 이유: 「로그인 전원, Guest 제외」는
      *   t-box 권한 매트릭스의 **쓰기 자격과 같은 표**다(PRD 4장 각주). 표를 새로 만들지 않는다.
-     * ★ 공유 갈래 [4b] 가 소유자 [3] 바로 뒤가 아니라 [4] 뒤에 있는 이유: `published`·모르는 범위는
-     *   공유가 있어도 **닫힌 실패**로 남겨야 목록 SQL(세 범위만 받는다)과 한 줄씩 짝이 맞는다.
+     * ★ 공유 갈래 [4b] 가 소유자 [3] 바로 뒤가 아니라 [4] 뒤에 있는 이유: 모르는 범위는 공유가 있어도
+     *   **닫힌 실패**로 남겨야 목록 SQL(기준 범위 셋만 받는다)과 한 줄씩 짝이 맞는다.
      *   Guest 도 공유를 받으면 **읽기는** 열린다 — 쓰기는 `decidePageChange` 가 다시 막는다.
      *
      * @param  array<string,mixed> $u
@@ -200,7 +232,11 @@ final class CommunityAuthz
             return [false, self::CODE_NOT_MEMBER];
         }
 
-        // [2] 게시판 공간(`board`)은 5단계다. 모르는 조합은 막는다.
+        // [2] 게시판 공간의 글 (5-C) — 게시판 등급 · 쓴 사람 · 숨긴 글.
+        if ($kind === 'board') {
+            return self::decideBoardPostRead($u, $row);
+        }
+        // 모르는 공간 종류는 막는다.
         if ($kind !== 'personal') {
             return [false, self::CODE_ROLE_NOT_PERMITTED];
         }
@@ -209,17 +245,21 @@ final class CommunityAuthz
             return [true, self::CODE_OWNER];
         }
 
-        $visibility = (string) ($row['visibility'] ?? '');
+        /* [4] 기준 범위 (5-C). 게시 중이면 **게시 전 범위**(`published_from`)이고, 아니면 범위 그대로다.
+           셋 밖의 값(게시판 없는 `published` 포함)은 모르는 조합이다 — 모르면 막는다. */
+        $base = self::baseVisibility($row);
+        if ($base === null) {
+            return [false, self::CODE_ROLE_NOT_PERMITTED];
+        }
 
-        /* [4] 게시는 5단계다. 게시판 공간이 없는데 「게시됨」을 열어 주면 아무 등급에도
-           기대지 않은 열람이 되므로 **닫힌 실패**로 둔다 (지시서 「범위 밖」). */
-        if ($visibility === 'published') {
-            return [false, self::CODE_ROLE_NOT_PERMITTED];
+        /* [4a] 게시판 갈래 (5-C). 게시된 페이지는 **게시판 등급대로** 열린다 — 원래 범위보다 넓으면
+           그만큼 넓어진다(게시는 여는 일이다). 숨기면 이 갈래가 꺼지고 원래 범위만 남는다 —
+           그 게시판의 관리자가 숨긴 것을 계속 보는 갈래는 **맨 뒤 [7b]** 다(아래 ★). */
+        $pub = (string) ($row['visibility'] ?? '') === 'published' ? self::publishedBoardOf($row) : null;
+        if ($pub !== null && ($row['hidden_at'] ?? null) === null && self::decideBoardRead($u, $pub)[0]) {
+            return [true, self::CODE_BOARD];
         }
-        // 셋 밖의 값이 DB 에 있다면 그것도 모르는 조합이다 — 모르면 막는다.
-        if (!in_array($visibility, self::VISIBILITIES, true)) {
-            return [false, self::CODE_ROLE_NOT_PERMITTED];
-        }
+        $visibility = $base;
 
         /* [4b] 사람 지정 공유 (5-A). 등급은 `community_page_row()` 가 **이 사람 몫으로** 읽어 온
            값이다 — 행에 실린 `share_user_id` 가 지금 묻는 사람과 다르면 그 등급은 없는 것이다. */
@@ -240,6 +280,14 @@ final class CommunityAuthz
            감사에 남는다. Manager 에게는 특권이 없다 — 같은 팀이어도 `private` 은 보이지 않는다. */
         if (Authz::canAdmin($u)) {
             return [true, self::CODE_ADMIN_ALL];
+        }
+
+        /* [7b] 숨긴 게시 페이지 + 그 게시판의 관리자(팀 게시판의 그 팀 Manager) → `board_moderator` (5-C).
+           ★ 맨 뒤에 두는 이유: 이 갈래가 앞에 있으면 같은 팀·사내로 이미 열리는 사람의 근거가
+             `same_team` 대신 이것으로 남고(같은 팀 열람 감사가 빠진다), 관리자가 남의 비공개 원본을 여는
+             일이 `admin_all` 감사 없이 지나간다. 다른 갈래로 못 볼 때만 여기까지 온다. */
+        if ($pub !== null && ($row['hidden_at'] ?? null) !== null && self::decideBoardModerate($u, $pub)[0]) {
+            return [true, self::CODE_BOARD_MODERATOR];
         }
 
         return [false, self::CODE_NOT_OWNER];
@@ -286,15 +334,36 @@ final class CommunityAuthz
             }
             return [false, self::CODE_NOT_MEMBER];
         }
+        /* 5-C 게시판 글 — 고치는 사람은 **쓴 사람 하나**다. 게시판 Manager·Admin 은 게시 해제·숨김만
+           할 수 있고 내용은 고치지 못한다(사용자 결정, PRD F-18). 비활성(보관) 게시판은 읽기 전용이다. */
+        if ($kind === 'board') {
+            if (!self::isAuthor($u, $row)) {
+                return [false, self::CODE_NOT_AUTHOR];
+            }
+            if (!Authz::canCommunityWrite($u)) {
+                return [false, self::CODE_ROLE_NOT_PERMITTED];
+            }
+            // 보관 중인 게시판은 읽기 전용이다 — 칸이 없으면(모르면) 막는다.
+            if (($row['space_is_active'] ?? false) !== true) {
+                return [false, self::CODE_BOARD_INACTIVE];
+            }
+            /* 게시판을 더는 읽을 수 없게 된 쓴 사람(팀을 옮겼다·등급 밖 역할)은 **읽기만** 한다 —
+               자기 글이라 열어 보는 것은 되지만(`decidePageRead` [2]), 볼 수 없는 게시판에 글을 고쳐 싣지 않는다. */
+            $board = self::boardOfRow($row);
+            if ($board === null || !self::decideBoardRead($u, $board)[0]) {
+                return [false, self::CODE_ROLE_NOT_PERMITTED];
+            }
+            return [true, self::CODE_OWNER];
+        }
         if ($kind !== 'personal') {
             return [false, self::CODE_ROLE_NOT_PERMITTED];
         }
         if (self::isOwner($u, $row)) {
             return [true, self::CODE_OWNER];
         }
-        /* 편집 공유 (5-A). 읽기 판정과 같은 규칙으로 `published`·모르는 범위는 닫는다 —
-           읽을 수 없는 페이지를 고칠 수 있는 조합이 생기지 않게 한다. */
-        if (in_array((string) ($row['visibility'] ?? ''), self::VISIBILITIES, true)
+        /* 편집 공유 (5-A). 읽기 판정과 같은 규칙으로 모르는 범위는 닫는다 — 읽을 수 없는 페이지를
+           고칠 수 있는 조합이 생기지 않게 한다. 5-C — 게시 중이면 기준 범위(게시 전 범위)로 본다. */
+        if (self::baseVisibility($row) !== null
             && self::shareLevelFor($u, $row) === 'edit'
             && Authz::canCommunityWrite($u)
         ) {
@@ -332,12 +401,43 @@ final class CommunityAuthz
                 ? [true, self::CODE_TEAM_MEMBER]
                 : [false, self::CODE_NOT_MEMBER];
         }
+        /* 5-C 게시판 글 — 지우기·되살리기는 **쓴 사람만**(지시서 「삭제는 쓴 사람만」). 옮기기·공개 범위·
+           공유·인계는 게시판 글에 뜻이 없다 — 창구들이 공간 종류로 따로 막는다(`space_governed`). */
+        if ($kind === 'board') {
+            if (!self::isAuthor($u, $row)) {
+                return [false, self::CODE_NOT_AUTHOR];
+            }
+            // 보관 중인 게시판은 읽기 전용 — 지우기·되살리기·해결됨도 막는다(독립 검토 2026-09-23).
+            if (($row['space_is_active'] ?? false) !== true) {
+                return [false, self::CODE_BOARD_INACTIVE];
+            }
+            return [true, self::CODE_OWNER];
+        }
         if ($kind !== 'personal') {
             return [false, self::CODE_ROLE_NOT_PERMITTED];
         }
         return self::isOwner($u, $row)
             ? [true, self::CODE_OWNER]
             : [false, self::CODE_NOT_OWNER];
+    }
+
+    /**
+     * 이 사람이 이 페이지의 **사람 지정 공유를 바꿀 수 있나** (5-C 에서 `decidePageManage` 와 갈랐다).
+     *
+     * 자격은 관리와 같다(소유자 · 팀 공간 팀원). 다른 것은 **게시판 글**뿐이다 — 게시판 글은 게시판
+     * 등급이 곧 범위라, 쓴 사람이 사람을 골라 더 열어 주는 갈래가 없다(`space_governed`). 판정·목록
+     * SQL 어디에도 게시판 글의 공유 갈래가 없으므로, 줄을 받아 두면 효력 없는 줄만 쌓인다.
+     *
+     * @param  array<string,mixed> $u
+     * @param  array<string,mixed> $row
+     * @return array{0:bool,1:string}
+     */
+    public static function decidePageShare(array $u, array $row): array
+    {
+        if ((string) ($row['space_kind'] ?? '') === 'board') {
+            return [false, self::CODE_SPACE_GOVERNED];
+        }
+        return self::decidePageManage($u, $row);
     }
 
     /**
@@ -366,7 +466,8 @@ final class CommunityAuthz
             return [false, self::CODE_NOT_FOUND];
         }
         $kind = (string) ($row['space_kind'] ?? '');
-        if ($kind === 'team') {
+        // 5-C — 게시판 글도 공간이 주인이다(쓴 사람이 바뀌는 일이 아니다).
+        if ($kind === 'team' || $kind === 'board') {
             return [false, self::CODE_SPACE_GOVERNED];
         }
         if ($kind !== 'personal') {
@@ -530,6 +631,10 @@ final class CommunityAuthz
         if (!$mayChange) {
             return [false, $changeCode];
         }
+        // 5-C — 게시판 글은 트리가 없다(한 줄 목록). 옮길 자리가 없는 공간이다.
+        if ((string) ($page['space_kind'] ?? '') === 'board') {
+            return [false, self::CODE_SPACE_GOVERNED];
+        }
 
         $height = (int) ($page['subtree_height'] ?? 1);
         if ($height < 1) {
@@ -569,13 +674,300 @@ final class CommunityAuthz
         /* [5] 트리 불변 규칙 (4-B). 팀 공간은 페이지에 자기 범위가 없으므로(공간 등급을
            따른다) 이 비교를 하지 않는다 — 같은 공간 안의 이동이라 넓이가 바뀌지 않는다. */
         if ((string) ($page['space_kind'] ?? '') === 'personal') {
-            $widest = (string) ($page['subtree_widest'] ?? ($page['visibility'] ?? ''));
-            if (!self::fitsUnderParent($widest, (string) ($parent['visibility'] ?? ''))) {
+            // 5-C — 게시 중인 페이지는 **기준 범위**(게시 전 범위)로 견준다. 가지의 넓이도 SQL 이 같은 값으로 센다.
+            $widest = (string) ($page['subtree_widest'] ?? (self::baseVisibility($page) ?? 'published'));
+            if (!self::fitsUnderParent($widest, (string) (self::baseVisibility($parent) ?? ''))) {
                 return [false, self::CODE_WIDER_THAN_PARENT];
             }
         }
 
         return [true, $changeCode];
+    }
+
+    /* ══════════════════════════════════════════════════════════════════
+     * 게시판 (5-C) — 등급은 t-box 파일·폴더와 같은 네 값이고 읽기 판정은 t-box 함수 그대로다
+     *
+     * 「게시판 행」 모양 — `id`·`kind`·`access_level`·`team_id`·`is_active`·`board_kind`.
+     * 게시판 글의 행에서는 `space_*` 칸으로(`boardOfSpace`), 게시된 개인 페이지의 행에서는
+     * `pub_*` 칸으로(`publishedBoardOf`) 만든다 — 둘 다 `community_page_row()` 가 싣는 값이다.
+     * ══════════════════════════════════════════════════════════════════ */
+
+    /**
+     * 이 사람이 **그 게시판을 읽을 수 있나** (5-C, PRD 4장 「게시판 목록 · 글 읽기 · 검색」).
+     *
+     * 판정은 t-box `Authz::decideRead(user, 게시판 등급)` **그대로**다 — 역할 × 등급 표(`permissions`)
+     * 와 팀 규칙을 새로 적지 않는다. 표가 바뀌면(t-box F-25) 게시판도 그대로 따라간다.
+     * 비활성(보관) 게시판도 **읽기는 된다**(PRD F-03 「읽기 전용」). 게시판이 아니면 닫는다.
+     *
+     * @param  array<string,mixed> $u
+     * @param  array<string,mixed> $board
+     * @return array{0:bool,1:string} 허용이면 `board`, 거부면 t-box 코드(`role_not_permitted`·`team_mismatch`)
+     */
+    public static function decideBoardRead(array $u, array $board): array
+    {
+        if ((string) ($board['kind'] ?? '') !== 'board') {
+            return [false, self::CODE_ROLE_NOT_PERMITTED];
+        }
+        [$ok, $code] = Authz::decideRead($u, [
+            'access_level' => (string) ($board['access_level'] ?? ''),
+            'team_id'      => $board['team_id'] ?? null,
+        ]);
+        return $ok ? [true, self::CODE_BOARD] : [false, $code];
+    }
+
+    /**
+     * 이 사람이 **그 게시판에 새 글을 쓰거나 페이지를 게시할 수 있나** (5-C `decideBoardWrite`).
+     *
+     * 판정 순서 (하나라도 걸리면 거기서 끝난다)
+     *   [1] 읽을 수 있나                 → 아니면 t-box 코드(403) — 못 읽는 게시판이 있다는 것도 알려 주지 않는다
+     *   [2] 쓰기 자격 있는 역할인가      → 아니면 `role_not_permitted` (Guest — PRD 4장)
+     *   [3] 공지 게시판이면 Admin 인가   → 아니면 `role_not_permitted` (PRD 4장 「공지 게시판 Admin 만」)
+     *   [4] 활성 게시판인가              → 아니면 `board_inactive` (창구가 **400** 으로 답한다)
+     * 비활성 검사를 맨 뒤에 두는 이유: 쓸 자격이 없는 사람에게는 「보관 중」이라는 사실보다 「권한 없음」이
+     * 먼저다(400 과 403 이 섞이면 자격 없는 사람이 게시판 상태를 떠볼 수 있다).
+     *
+     * @param  array<string,mixed> $u
+     * @param  array<string,mixed> $board
+     * @return array{0:bool,1:string}
+     */
+    public static function decideBoardWrite(array $u, array $board): array
+    {
+        [$mayRead, $readCode] = self::decideBoardRead($u, $board);
+        if (!$mayRead) {
+            return [false, $readCode];
+        }
+        if (!Authz::canCommunityWrite($u)) {
+            return [false, self::CODE_ROLE_NOT_PERMITTED];
+        }
+        if ((string) ($board['board_kind'] ?? '') === 'notice' && !Authz::canAdmin($u)) {
+            return [false, self::CODE_ROLE_NOT_PERMITTED];
+        }
+        if (($board['is_active'] ?? false) !== true) {
+            return [false, self::CODE_BOARD_INACTIVE];
+        }
+        return [true, self::CODE_BOARD];
+    }
+
+    /**
+     * 이 사람이 **그 게시판의 관리자**인가 — 게시 해제 · 숨김 · 숨김 풀기 (5-C `decideBoardModerate`, PRD F-18).
+     *
+     *   Admin                                         → `admin_all`
+     *   Manager 이고 **팀 등급** 게시판의 그 팀원     → `team_scope` (t-box 파일 5.3 과 같은 뜻)
+     *   그 밖                                         → `role_not_permitted`
+     * 관리자도 **내용은 고치지 못한다** — 이 함수는 목록에서 내리는 일만 연다(`decidePageChange` 는 따로다).
+     * 「Manager 인가」는 역할 문자열이 아니라 라우트 정책의 답을 빌린다(`decidePageHandover` 와 같은 방식).
+     *
+     * @param  array<string,mixed> $u
+     * @param  array<string,mixed> $board
+     * @return array{0:bool,1:string}
+     */
+    public static function decideBoardModerate(array $u, array $board): array
+    {
+        if ((string) ($board['kind'] ?? '') !== 'board') {
+            return [false, self::CODE_ROLE_NOT_PERMITTED];
+        }
+        if (Authz::canAdmin($u)) {
+            return [true, self::CODE_ADMIN_ALL];
+        }
+        if (Authz::authorize('role:Manager+', $u)
+            && (string) ($board['access_level'] ?? '') === 'team'
+            && self::isTeamMember($u, $board['team_id'] ?? null)
+        ) {
+            return [true, self::CODE_TEAM_SCOPE];
+        }
+        return [false, self::CODE_ROLE_NOT_PERMITTED];
+    }
+
+    /**
+     * 이 사람이 이 페이지를 **게시판에 게시할 수 있나** (5-C `POST …/publish`) — 페이지 쪽 물음.
+     *
+     * 개인 공간의 **주인**만이다(`decidePageManage` 의 `owner`) — 편집 공유자는 못 한다(게시는 여는 일이고,
+     * 여는 일은 5-A 부터 관리다). 팀 공간·게시판 글은 공간이 주인이라 `space_governed`.
+     * 게시판 쪽 물음(`decideBoardWrite`)은 창구가 따로 묻는다 — 둘 다 참이어야 게시된다.
+     *
+     * @param  array<string,mixed> $u
+     * @param  array<string,mixed> $row
+     * @return array{0:bool,1:string}
+     */
+    public static function decidePublish(array $u, array $row): array
+    {
+        if (($row['deleted_at'] ?? null) !== null) {
+            return [false, self::CODE_NOT_FOUND];
+        }
+        $kind = (string) ($row['space_kind'] ?? '');
+        if ($kind === 'team' || $kind === 'board') {
+            return [false, self::CODE_SPACE_GOVERNED];
+        }
+        [$may, $code] = self::decidePageManage($u, $row);
+        if (!$may || $code !== self::CODE_OWNER) {
+            return [false, $may ? self::CODE_NOT_OWNER : $code];
+        }
+        return [true, self::CODE_OWNER];
+    }
+
+    /**
+     * 이 사람이 이 페이지의 **게시를 풀 수 있나** (5-C `DELETE …/publish`).
+     *
+     *   개인 공간의 주인(쓴 사람)            → `owner`
+     *   게시한 게시판의 관리자                → `admin_all` · `team_scope` (`decideBoardModerate`)
+     *   그 밖                                 → `not_owner`
+     *
+     * @param  array<string,mixed> $u
+     * @param  array<string,mixed> $row
+     * @return array{0:bool,1:string}
+     */
+    public static function decideUnpublish(array $u, array $row): array
+    {
+        if (($row['deleted_at'] ?? null) !== null) {
+            return [false, self::CODE_NOT_FOUND];
+        }
+        if ((string) ($row['space_kind'] ?? '') === 'personal' && self::isOwner($u, $row)) {
+            return [true, self::CODE_OWNER];
+        }
+        $pub = self::publishedBoardOf($row);
+        if ($pub !== null) {
+            [$ok, $code] = self::decideBoardModerate($u, $pub);
+            if ($ok) {
+                return [true, $code];
+            }
+        }
+        return [false, self::CODE_NOT_OWNER];
+    }
+
+    /**
+     * 이 사람이 이 글을 **게시판 목록에서 숨기거나 되돌릴 수 있나** (5-C `POST/DELETE …/hide`).
+     *
+     * 게시판 글이면 그 게시판의, 게시된 개인 페이지면 게시한 게시판의 **관리자**만이다
+     * (쓴 사람이 아닌 Employee 는 403 — 지시서 완료 기준). 쓴 사람은 숨기지 않고 지우거나 게시를 푼다.
+     * 게시판에 걸려 있지 않은 페이지는 숨길 목록이 없다 — `space_governed`.
+     *
+     * @param  array<string,mixed> $u
+     * @param  array<string,mixed> $row
+     * @return array{0:bool,1:string}
+     */
+    public static function decideHide(array $u, array $row): array
+    {
+        if (($row['deleted_at'] ?? null) !== null) {
+            return [false, self::CODE_NOT_FOUND];
+        }
+        $board = self::boardOfRow($row);
+        if ($board === null) {
+            return [false, self::CODE_SPACE_GOVERNED];
+        }
+        [$ok, $code] = self::decideBoardModerate($u, $board);
+        return $ok ? [true, $code] : [false, self::CODE_NOT_OWNER];
+    }
+
+    /**
+     * 이 페이지가 **걸린 게시판** — 게시판 글이면 그 공간, 게시된 개인 페이지면 게시한 게시판, 아니면 `null` (5-C).
+     *
+     * @param  array<string,mixed> $row `community_page_row()` 의 행
+     * @return array<string,mixed>|null 「게시판 행」 모양
+     */
+    public static function boardOfRow(array $row): ?array
+    {
+        if ((string) ($row['space_kind'] ?? '') === 'board') {
+            return [
+                'id'           => $row['space_id'] ?? null,
+                'kind'         => 'board',
+                'access_level' => (string) ($row['space_access_level'] ?? ''),
+                'team_id'      => $row['space_team_id'] ?? null,
+                'is_active'    => ($row['space_is_active'] ?? false) === true,
+                'board_kind'   => (string) ($row['space_board_kind'] ?? ''),
+            ];
+        }
+        if ((string) ($row['visibility'] ?? '') === 'published') {
+            return self::publishedBoardOf($row);
+        }
+        return null;
+    }
+
+    /**
+     * 게시된 개인 페이지가 걸린 게시판 (`pub_*` 칸). 게시판이 아니거나 없으면 `null` — 그러면 게시판 갈래는
+     * 통째로 꺼진다(모르면 막는다).
+     *
+     * @param  array<string,mixed> $row
+     * @return array<string,mixed>|null
+     */
+    public static function publishedBoardOf(array $row): ?array
+    {
+        if (($row['published_board_id'] ?? null) === null || (string) ($row['pub_kind'] ?? '') !== 'board') {
+            return null;
+        }
+        return [
+            'id'           => $row['published_board_id'],
+            'kind'         => 'board',
+            'access_level' => (string) ($row['pub_access_level'] ?? ''),
+            'team_id'      => $row['pub_team_id'] ?? null,
+            'is_active'    => ($row['pub_is_active'] ?? false) === true,
+            'board_kind'   => (string) ($row['pub_board_kind'] ?? ''),
+        ];
+    }
+
+    /**
+     * 이 페이지의 **기준 범위** (5-C) — 게시 중이면 게시 전 범위(`published_from`), 아니면 범위 그대로.
+     *
+     * 트리 불변 규칙(자식 ≤ 부모)·새 하위 페이지의 범위·편집 공유·원래 범위 갈래가 전부 이 값을 본다.
+     * 게시는 트리 위의 자리가 아니라 **게시판에 거는 일**이라서, 게시한다고 하위의 규칙이 넓어지지 않는다
+     * (지시서 「published 는 가장 넓다 — 하위는 따라가지 않는다」). 셋 밖의 값이면 `null` — 모르면 막는다.
+     *
+     * @param array<string,mixed>|null $row
+     */
+    public static function baseVisibility(?array $row): ?string
+    {
+        if ($row === null) {
+            return null;
+        }
+        $v = (string) ($row['visibility'] ?? '');
+        if ($v === 'published') {
+            $v = (string) ($row['published_from'] ?? '');
+        }
+        return in_array($v, self::VISIBILITIES, true) ? $v : null;
+    }
+
+    /**
+     * 게시판 글을 **볼 수 있나** (5-C, `decidePageRead` [2]).
+     *
+     *   쓴 사람                                   → `owner` (게시판 등급이 바뀌어도·팀을 옮겨도 자기 글은 본다)
+     *   숨긴 글 + 그 게시판의 관리자              → `board_moderator`
+     *   숨긴 글 + 그 밖                           → `role_not_permitted`
+     *   게시판을 읽을 수 있다                     → `board`
+     *   그 밖                                     → t-box 코드
+     *
+     * @param  array<string,mixed> $u
+     * @param  array<string,mixed> $row
+     * @return array{0:bool,1:string}
+     */
+    private static function decideBoardPostRead(array $u, array $row): array
+    {
+        if (self::isAuthor($u, $row)) {
+            return [true, self::CODE_OWNER];
+        }
+        $board = self::boardOfRow($row);
+        if ($board === null) {
+            return [false, self::CODE_ROLE_NOT_PERMITTED];
+        }
+        if (($row['hidden_at'] ?? null) !== null) {
+            return self::decideBoardModerate($u, $board)[0]
+                ? [true, self::CODE_BOARD_MODERATOR]
+                : [false, self::CODE_ROLE_NOT_PERMITTED];
+        }
+        return self::decideBoardRead($u, $board);
+    }
+
+    /**
+     * 이 사람이 그 페이지를 **쓴 사람**인가 (5-C 게시판 글). 값은 세션 계정 id 와 DB 의 `author_id` 뿐이다.
+     *
+     * @param array<string,mixed> $u
+     * @param array<string,mixed> $row
+     */
+    private static function isAuthor(array $u, array $row): bool
+    {
+        $author = $row['author_id'] ?? null;
+        if ($author === null || !isset($u['id'])) {
+            return false;
+        }
+        return (int) $author === (int) $u['id'];
     }
 
     /**

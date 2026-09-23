@@ -49,11 +49,13 @@ $sql = <<<'SQL'
       FROM community.page_versions v
       JOIN public.users u ON u.id = v.edited_by
      WHERE v.page_id = CAST(:pid AS bigint)
+       -- 5-C: 게시판 등급으로만 보는 사람에게는 게시 뒤에 넘어간 판만(`community_history_gate` 의 since)
+       AND v.edited_at >= coalesce(CAST(:since AS timestamptz), '-infinity'::timestamptz)
      ORDER BY v.version DESC
      LIMIT CAST(:lim AS int)
     SQL;
 
-$rows = Db::instance()->run($sql, [':pid' => (int) $row['id'], ':lim' => $limit])->fetchAll();
+$rows = Db::instance()->run($sql, [':pid' => (int) $row['id'], ':since' => $gate['since'], ':lim' => $limit])->fetchAll();
 
 /* `summary` 를 **다음 판**으로 옮겨 붙인다 (머리글 ★). 판 번호를 열쇠로 쓰므로 5분 합치기로
    스냅샷이 없는 번호가 있어도 엉뚱한 줄에 붙지 않는다 — 없으면 그냥 붙지 않는다. */

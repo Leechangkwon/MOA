@@ -142,11 +142,22 @@ $refuse = static function (string $reason, string $message, array $extra) use ($
     exit;
 };
 
+/* ─── [3-1] 게시 중인 페이지 (5-C) ──────────────────────────────
+   게시 중에는 범위를 바꾸지 않는다 — 게시를 먼저 푼다. 게시판에 걸린 채로 원래 범위가 바뀌면
+   「게시판에서 이 글을 누가 보나」와 「풀면 누가 보나」가 동시에 바뀌어 주인이 따라가기 어렵다. */
+if ((string) $row['visibility'] === 'published') {
+    Http::json([
+        'error'  => '게시 중인 페이지입니다. 공개 범위를 바꾸려면 먼저 게시를 해제하세요',
+        'reason' => 'published',
+    ], 400);
+    exit;
+}
+
 // ─── [4] 넓히기 — 부모보다 넓을 수 없다 (C:T-33) ──────────────
 $parentVisibility = null;
 if ($row['parent_page_id'] !== null) {
     $sqlParent = <<<'SQL'
-        SELECT p.visibility
+        SELECT p.visibility, p.published_from
           FROM community.pages p
          WHERE p.id = CAST(:pid AS bigint)
            AND p.space_id = CAST(:space AS bigint)
@@ -158,7 +169,8 @@ if ($row['parent_page_id'] !== null) {
     ])->fetch();
     // 부모가 지워졌으면 견줄 상대가 없다 — 뿌리와 같이 다룬다(경로도 거기서 끊긴다).
     if (is_array($parentRow)) {
-        $parentVisibility = (string) $parentRow['visibility'];
+        // 5-C — 게시 중인 부모는 **기준 범위**(게시 전 범위)로 견준다. 게시는 하위를 넓히지 않는다.
+        $parentVisibility = CommunityAuthz::baseVisibility($parentRow) ?? 'private';
     }
 }
 
@@ -208,8 +220,20 @@ try {
        `cascaded` 는 이 한 번의 작업에서 함께 바뀐 하위 수이고, 부모 행과 자식 행이 같은
        값을 갖는다 — 같은 작업에서 나온 행들을 그 수로 묶어 볼 수 있다. */
     if ($cascade) {
+        /* 5-C — 게시 중인 하위는 게시를 그대로 두고 **기준 범위**(게시 전 범위)만 맞춘다.
+           게시판에 걸린 글을 부모 범위를 바꾸다가 말없이 내리지 않는다(내리는 일은 게시 해제 한 곳). */
+        $sqlSetBase = <<<'SQL'
+            UPDATE community.pages
+               SET published_from = :vis,
+                   updated_at = now(),
+                   last_edited_by = CAST(:me AS bigint)
+             WHERE id = CAST(:pid AS bigint)
+               AND deleted_at IS NULL
+               AND visibility = 'published'
+            SQL;
         foreach ($targets as $child) {
-            $db->run($sqlSet, [':vis' => $want, ':me' => $me, ':pid' => $child['id']]);
+            $db->run(($child['is_published'] ?? false) ? $sqlSetBase : $sqlSet,
+                [':vis' => $want, ':me' => $me, ':pid' => $child['id']]);
 
             $childTitle = community_target_title($child['title']);
             Audit::allow('page.visibility', [

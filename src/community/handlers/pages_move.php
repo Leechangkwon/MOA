@@ -106,7 +106,7 @@ if (!$mayChange) {
 $parentRow = null;
 if ($rawParent !== null) {
     $sqlParent = <<<'SQL'
-        SELECT p.id, p.space_id, p.title, p.deleted_at, p.visibility,
+        SELECT p.id, p.space_id, p.title, p.deleted_at, p.visibility, p.published_from,
                s.kind          AS space_kind,
                s.owner_user_id AS space_owner_user_id,
                s.team_id       AS space_team_id
@@ -161,7 +161,8 @@ if (!$mayMove) {
         }
         if ($moveCode === CommunityAuthz::CODE_WIDER_THAN_PARENT) {
             $detail['visibility_from'] = (string) $row['subtree_widest'];
-            $detail['visibility_to']   = (string) ($parentRow['visibility'] ?? '');
+            // 5-C — 견준 값은 부모의 기준 범위(게시 중이면 게시 전 범위)다.
+            $detail['visibility_to']   = (string) (CommunityAuthz::baseVisibility($parentRow) ?? '');
         }
         Audit::deny('page.move', $moveCode, [
             'target_type' => 'page',

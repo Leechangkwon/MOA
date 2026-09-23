@@ -36,7 +36,7 @@ declare(strict_types=1);
 $gate = community_history_gate($user, (string) $params[0]);
 $row  = $gate['row'];
 
-[$mayManage] = CommunityAuthz::decidePageManage($user, $row);
+[$mayManage] = CommunityAuthz::decidePageShare($user, $row);
 $mayNames    = $gate['may_change'] === true;
 
 $all = community_page_shares((int) $row['id']);

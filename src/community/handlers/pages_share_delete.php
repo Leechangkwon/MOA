@@ -44,7 +44,7 @@ $pageTitle = community_target_title((string) $row['title']);
 
 // ─── [권한 ✔ B] 관리자이거나 자기 줄인가 ───────────────────────
 $self = $name === (string) $user['username'];
-[$mayManage, $manageCode] = CommunityAuthz::decidePageManage($user, $row);
+[$mayManage, $manageCode] = CommunityAuthz::decidePageShare($user, $row);
 if (!$mayManage && !$self) {
     Audit::deny('page.share', CommunityAuthz::CODE_NOT_OWNER, [
         'target_type' => 'page',

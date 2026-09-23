@@ -103,7 +103,7 @@ $movedToRoot  = false;
 $movedReason  = null;
 if ($row['parent_page_id'] !== null) {
     $sqlParent = <<<'SQL'
-        SELECT p.id, p.visibility
+        SELECT p.id, p.visibility, p.published_from
           FROM community.pages p
          WHERE p.id = CAST(:pid AS bigint)
            AND p.space_id = CAST(:space AS bigint)
@@ -122,11 +122,14 @@ if ($row['parent_page_id'] !== null) {
            방식). 팀 공간의 페이지에는 자기 범위가 없으므로 이 비교를 하지 않는다. */
         $sqlWidest = <<<'SQL'
             WITH RECURSIVE down AS (
-                SELECT p.id, p.visibility, p.deleted_at
+                -- 5-C: 넓이는 기준 범위(게시 중이면 게시 전 범위)로 센다 — `community_move_shape` 와 같다.
+                SELECT p.id, (CASE WHEN p.visibility = 'published' THEN p.published_from ELSE p.visibility END) AS visibility,
+                       p.deleted_at
                   FROM community.pages p
                  WHERE p.id = CAST(:pid AS bigint) AND p.deleted_at IS NOT NULL
                 UNION ALL
-                SELECT c.id, c.visibility, c.deleted_at
+                SELECT c.id, (CASE WHEN c.visibility = 'published' THEN c.published_from ELSE c.visibility END),
+                       c.deleted_at
                   FROM community.pages c
                   JOIN down d ON c.parent_page_id = d.id
                  WHERE c.deleted_at = d.deleted_at
@@ -141,7 +144,7 @@ if ($row['parent_page_id'] !== null) {
         $rank   = is_array($widestRow) && $widestRow['widest_rank'] !== null ? (int) $widestRow['widest_rank'] : 0;
         $widest = $names[$rank] ?? 'published';
 
-        if (!CommunityAuthz::fitsUnderParent($widest, (string) $parent['visibility'])) {
+        if (!CommunityAuthz::fitsUnderParent($widest, (string) (CommunityAuthz::baseVisibility($parent) ?? ''))) {
             $movedToRoot = true;
             $movedReason = 'parent_narrower';
         }

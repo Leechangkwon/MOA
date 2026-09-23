@@ -57,9 +57,11 @@ $sql = <<<'SQL'
       JOIN public.users u ON u.id = v.edited_by
      WHERE v.page_id = CAST(:pid AS bigint)
        AND v.version = CAST(:ver AS int)
+       -- 5-C: 게시 전 판은 게시판 등급으로만 보는 사람에게 「없다」(404) — 목록과 같은 자르기
+       AND v.edited_at >= coalesce(CAST(:since AS timestamptz), '-infinity'::timestamptz)
     SQL;
 
-$found = Db::instance()->run($sql, [':pid' => (int) $row['id'], ':ver' => $want])->fetch();
+$found = Db::instance()->run($sql, [':pid' => (int) $row['id'], ':ver' => $want, ':since' => $gate['since']])->fetch();
 if (!is_array($found)) {
     Http::error(404, Http::MSG_NOT_FOUND);
 }

@@ -46,18 +46,25 @@ CREATE TABLE community.spaces (
     description   TEXT        NOT NULL DEFAULT '' CHECK (length(description) <= 200),
     access_level  TEXT        NOT NULL CHECK (access_level IN ('public','internal','team','admin-only')),
     notice        BOOLEAN     NOT NULL DEFAULT false,
+    -- 5-C 게시판 종류(notice·discussion·qa). 게시판만 값이 있고 `notice` 와 짝이다.
+    board_kind    TEXT        CHECK (board_kind IS NULL OR board_kind IN ('notice','discussion','qa')),
     is_active     BOOLEAN     NOT NULL DEFAULT true,
     created_by    BIGINT      REFERENCES public.users(id),
     created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
     CONSTRAINT spaces_personal_needs_owner CHECK (kind <> 'personal' OR owner_user_id IS NOT NULL),
-    CONSTRAINT spaces_team_needs_team      CHECK (kind <> 'team'     OR team_id       IS NOT NULL)
+    CONSTRAINT spaces_team_needs_team      CHECK (kind <> 'team'     OR team_id       IS NOT NULL),
+    -- 5-C (db/migrations/2026-09-24_community_boards.sql 와 같은 모양)
+    CONSTRAINT spaces_board_shape CHECK ((kind =  'board' AND board_kind IS NOT NULL AND notice = (board_kind = 'notice'))
+                                      OR (kind <> 'board' AND board_kind IS NULL)),
+    CONSTRAINT spaces_board_team  CHECK (kind <> 'board' OR access_level <> 'team' OR team_id IS NOT NULL)
 );
 
 -- 사람마다 개인 공간은 **하나**다. `GET /api/me/space` 가 없으면 만드는데, 같은 사람이 두 창을
 -- 동시에 열어도 두 벌이 생기지 않게 하는 것은 앱의 순서가 아니라 이 인덱스다.
 CREATE UNIQUE INDEX spaces_personal_owner_uidx ON community.spaces (owner_user_id) WHERE kind = 'personal';
 CREATE UNIQUE INDEX spaces_team_uidx           ON community.spaces (team_id)       WHERE kind = 'team';
+CREATE UNIQUE INDEX spaces_board_name_uidx     ON community.spaces (lower(name))   WHERE kind = 'board';
 
 -- ─────────────────────────────────────────────────────────────
 -- pages — 페이지 하나 = 블록 JSON 하나 (ARCH 12.1 · 13.1)
@@ -98,6 +105,18 @@ CREATE TABLE community.pages (
     -- 4-D 고정 속성 둘 (C:F-37). 둘 다 **NULL 이 기본**이다 — 모든 페이지가 업무는 아니다.
     status         TEXT,
     assignee_id    BIGINT,
+    -- 5-C 게시 · 숨김 · 해결됨 (db/migrations/2026-09-24_community_boards.sql)
+    published_board_id BIGINT REFERENCES community.spaces(id),
+    published_from TEXT CHECK (published_from IS NULL OR published_from IN ('private','team','internal')),
+    published_at   TIMESTAMPTZ,
+    published_by   BIGINT REFERENCES public.users(id),
+    hidden_at      TIMESTAMPTZ,
+    hidden_by      BIGINT REFERENCES public.users(id),
+    resolved       BOOLEAN     NOT NULL DEFAULT false,
+    CONSTRAINT pages_published_shape CHECK ((visibility =  'published' AND published_board_id IS NOT NULL
+                                                                       AND published_from IS NOT NULL AND published_at IS NOT NULL)
+                                         OR (visibility <> 'published' AND published_board_id IS NULL AND published_from IS NULL)),
+    CONSTRAINT pages_hidden_shape CHECK ((hidden_at IS NULL) = (hidden_by IS NULL)),
     CONSTRAINT pages_doc_is_object CHECK (jsonb_typeof(doc) = 'object'),
     CONSTRAINT pages_status_check  CHECK (status IS NULL OR status IN ('todo','doing','review','done','hold')),
     CONSTRAINT pages_assignee_id_fkey FOREIGN KEY (assignee_id) REFERENCES public.users(id)
@@ -170,7 +189,8 @@ CREATE INDEX checklist_events_page_idx ON community.checklist_events (page_id, a
 CREATE TABLE community.page_property_events (
     id         BIGSERIAL   PRIMARY KEY,
     page_id    BIGINT      NOT NULL REFERENCES community.pages(id),
-    prop       TEXT        NOT NULL CHECK (prop IN ('status','assignee')),
+    prop       TEXT        NOT NULL CONSTRAINT page_property_events_prop_check
+                           CHECK (prop IN ('status','assignee','publish','hide','resolved')),
     from_value TEXT,
     to_value   TEXT,
     by_user_id BIGINT      NOT NULL REFERENCES public.users(id),
@@ -222,3 +242,27 @@ CREATE TABLE community.page_edit_sessions (
     last_seen_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     PRIMARY KEY (page_id, user_id)
 );
+
+-- ─────────────────────────────────────────────────────────────
+-- page_tags · page_views — 태그 · 조회 (5-C, db/migrations/2026-09-24_community_boards.sql)
+--   태그는 바뀌는 값(앱 SIUD), 조회는 한 사람 하루 한 줄(앱 SELECT·INSERT 만).
+-- ─────────────────────────────────────────────────────────────
+CREATE TABLE community.page_tags (
+    page_id    BIGINT      NOT NULL REFERENCES community.pages(id),
+    tag        TEXT        NOT NULL CHECK (length(tag) BETWEEN 1 AND 30 AND tag = btrim(tag)),
+    tag_norm   TEXT        NOT NULL,
+    created_by BIGINT      NOT NULL REFERENCES public.users(id),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    PRIMARY KEY (page_id, tag_norm),
+    CONSTRAINT page_tags_norm_check CHECK (tag_norm = lower(tag))
+);
+CREATE INDEX page_tags_norm_idx ON community.page_tags (tag_norm);
+
+CREATE TABLE community.page_views (
+    page_id BIGINT NOT NULL REFERENCES community.pages(id),
+    user_id BIGINT NOT NULL REFERENCES public.users(id),
+    day     DATE   NOT NULL DEFAULT current_date,
+    PRIMARY KEY (page_id, user_id, day)
+);
+CREATE INDEX pages_published_board_idx ON community.pages (published_board_id)
+    WHERE deleted_at IS NULL AND published_board_id IS NOT NULL;

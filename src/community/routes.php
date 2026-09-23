@@ -102,6 +102,26 @@ const COMMUNITY_ROUTES = [
     ['DELETE', '/api/pages/{id}/shares/{username}',      'pages_share_delete.php', 'community.read'],
     ['GET',    '/api/share-candidates',                  'share_candidates.php',   'community.read'],
     ['POST',   '/api/pages/{id}/handover',               'pages_handover.php',     'community.write'],
+
+    /* ── 게시판 · 새 글 · 게시 · 태그 · 조회수 (5-C, PRD 4장 · F-18 · F-26 · F-35) ──
+     * 게시판 번호는 `{num}`(숫자 9자리까지)이다 — 게시판은 관리자가 만드는 몇 개뿐이라 UUID 로 숨길
+     * 까닭이 없고, 볼 수 없는 번호는 **403 동일 문구**라 번호를 넘겨짚어도 얻는 것이 없다(PRD F-04).
+     * 만들기·고치기는 `role:Admin` — 이미 `Authz::REAUTH_POLICIES` 에 있으므로 **재인증이 저절로**
+     * 따라붙는다(PRD F-09 「재인증」, 새 정책 이름을 만들지 않는다 — `Authz.php` 무변경).
+     * 게시·해제·숨김의 자격은 행 단위로 따로 묻는다(`decidePublish`·`decideBoardWrite`·
+     * `decideUnpublish`·`decideHide`). 조회수는 `GET /api/pages/{id}` 가 올린다(한 사람 하루 한 번). */
+    ['GET',    '/b/{num}',                               'board_view.php',         'community.read'],
+    ['GET',    '/api/boards',                            'boards_list.php',        'community.read'],
+    ['POST',   '/api/boards',                            'boards_create.php',      'role:Admin'],
+    ['PATCH',  '/api/boards/{num}',                      'boards_update.php',      'role:Admin'],
+    ['GET',    '/api/boards/{num}/pages',                'board_pages_list.php',   'community.read'],
+    ['POST',   '/api/boards/{num}/pages',                'board_pages_create.php', 'community.write'],
+    ['GET',    '/api/boards/{num}/tags',                 'board_tags.php',         'community.read'],
+    ['POST',   '/api/pages/{id}/publish',                'pages_publish.php',      'community.write'],
+    ['DELETE', '/api/pages/{id}/publish',                'pages_unpublish.php',    'community.write'],
+    ['POST',   '/api/pages/{id}/hide',                   'pages_hide.php',         'community.write'],
+    ['DELETE', '/api/pages/{id}/hide',                   'pages_hide.php',         'community.write'],
+    ['PUT',    '/api/pages/{id}/tags',                   'pages_tags_put.php',     'community.write'],
 ];
 
 /**
@@ -378,12 +398,30 @@ function community_page_row(string $publicId, int $viewerId = 0): ?array
                assignee.role      AS assignee_role,
                assignee.is_active AS assignee_active,
                -- 5-A: 이 사람 몫의 가장 강한 공유 등급(번호). 아래에서 이름으로 바꾼다.
-               {$shareRank} AS share_rank
+               {$shareRank} AS share_rank,
+               -- 5-C: 게시판 공간이면 그 게시판의 활성·종류(게시판 글의 판정 재료)
+               s.is_active     AS space_is_active,
+               s.board_kind    AS space_board_kind,
+               -- 5-C: 쓴 사람(게시판 글의 「쓴 사람」 — 판정은 `author_id`, 이름은 화면용)
+               author.username     AS author_name,
+               author.display_name AS author_display_name,
+               -- 5-C: 게시 · 숨김 · 해결됨
+               p.published_board_id, p.published_from, p.published_at, p.published_by,
+               p.hidden_at, p.hidden_by, p.resolved,
+               -- 5-C: 게시한 게시판(없으면 전부 NULL). 판정은 `pub_*` 칸으로 게시판 등급을 본다.
+               pb.kind         AS pub_kind,
+               pb.name         AS pub_name,
+               pb.access_level AS pub_access_level,
+               pb.team_id      AS pub_team_id,
+               pb.is_active    AS pub_is_active,
+               pb.board_kind   AS pub_board_kind
           FROM community.pages p
           JOIN community.spaces s ON s.id = p.space_id
           LEFT JOIN public.users owner    ON owner.id    = s.owner_user_id
           LEFT JOIN public.users editor   ON editor.id   = p.last_edited_by
           LEFT JOIN public.users assignee ON assignee.id = p.assignee_id
+          LEFT JOIN public.users author   ON author.id   = p.author_id
+          LEFT JOIN community.spaces pb   ON pb.id       = p.published_board_id
          WHERE p.public_id = CAST(:pid AS uuid)
         SQL;
 
@@ -645,10 +683,13 @@ function community_move_shape(int $pageId, ?int $parentId): array
 {
     $sql = <<<'SQL'
         WITH RECURSIVE down AS (
-            SELECT p.id, p.visibility, 1 AS lvl FROM community.pages p
+            -- 5-C: 넓이는 **기준 범위**로 센다(게시 중이면 게시 전 범위 — `CommunityAuthz::baseVisibility`).
+            SELECT p.id, (CASE WHEN p.visibility = 'published' THEN p.published_from ELSE p.visibility END) AS visibility,
+                   1 AS lvl FROM community.pages p
              WHERE p.id = CAST(:pid AS bigint) AND p.deleted_at IS NULL
             UNION ALL
-            SELECT c.id, c.visibility, d.lvl + 1 FROM community.pages c
+            SELECT c.id, (CASE WHEN c.visibility = 'published' THEN c.published_from ELSE c.visibility END),
+                   d.lvl + 1 FROM community.pages c
               JOIN down d ON c.parent_page_id = d.id
              WHERE c.deleted_at IS NULL
         ), up AS (
@@ -707,7 +748,7 @@ function community_space_row(int $spaceId): ?array
 {
     $sql = <<<'SQL'
         SELECT s.id, s.kind, s.name, s.description, s.access_level, s.team_id,
-               s.owner_user_id, s.is_active, s.created_at,
+               s.owner_user_id, s.is_active, s.created_at, s.board_kind,
                owner.team_id AS owner_team_id,
                t.name        AS team_name,
                t.is_active   AS team_is_active
@@ -778,7 +819,12 @@ function community_space_gate(array $u, array $space): array
         ]);
     }
 
-    // 게시판 공간(`board`)은 5단계다.
+    /* 5-C 게시판 — 게시판 등급대로(t-box `decideRead`). 목록 창구의 행 관문은 그대로 붙으므로
+       숨긴 글·못 보는 글이 목록에 새지 않는다. */
+    if ($kind === 'board') {
+        return CommunityAuthz::decideBoardRead($u, $space);
+    }
+
     return [false, CommunityAuthz::CODE_ROLE_NOT_PERMITTED];
 }
 
@@ -789,14 +835,20 @@ function community_space_gate(array $u, array $space): array
  * `FROM community.pages p JOIN community.spaces s ON s.id = p.space_id
  *  LEFT JOIN public.users owner ON owner.id = s.owner_user_id` 여야 한다.
  * 별칭은 SQL 식별자 자리라 바인딩할 수 없으므로 **코드에 적힌 리터럴 셋**으로 고정한다
- * (t-box `Authz::visibleWhere` 의 허용 목록과 같은 이유).
+ * (t-box `Authz::visibleWhere` 의 허용 목록과 같은 이유). 게시한 게시판(`pb`)은 조건절 **안의**
+ * `EXISTS` 가 스스로 읽는다 — 부르는 SQL 에 별칭을 하나 더 요구하지 않는다(5-C).
  *
  * 조건은 `CommunityAuthz::decidePageRead` 를 한 줄씩 옮긴 것이다:
- *   내 개인 공간 전부 / **나에게 준 공유(이 페이지·조상, 활성 계정 — 개인 공간은 세 범위만(5-A),
- *   팀 공간은 범위 없이(5-A″))** / `internal` + 쓰기 자격 / `team` + 주인과 같은 팀 / Admin / 내 팀 공간.
+ *   내 개인 공간 전부 / **나에게 준 공유(이 페이지·조상, 활성 계정 — 개인 공간은 기준 범위 셋만(5-A),
+ *   팀 공간은 범위 없이(5-A″))** / 기준 범위 `internal` + 쓰기 자격 / 기준 범위 `team` + 주인과 같은 팀 /
+ *   Admin / 내 팀 공간 /
+ *   **5-C** 게시된 개인 페이지 — 숨기지 않았고 게시판을 읽을 수 있다(`[4a]`) · 숨겼고 그 게시판의 관리자다 /
+ *          게시판 글 — 쓴 사람 · 숨기지 않았고 게시판을 읽을 수 있다 · 숨겼고 그 게시판의 관리자다.
+ * 「기준 범위」 = 게시 중이면 게시 전 범위(`published_from`), 아니면 범위 그대로(`CommunityAuthz::baseVisibility`).
+ * 게시판 등급 판정은 `community_board_read_sql()`(t-box `decideRead` 를 등급마다 물어 만든 값),
+ * 관리자 판정은 `community_board_moderate_sql()`(`decideBoardModerate` 와 짝)이 만든다.
  * 공유 갈래는 **한 줄**에 두 공간 종류를 함께 적는다 — 같은 조각(`community_share_rank_sql`)을 두 번
  * 넣으면 자리표시자 이름이 겹친다(서버측 prepare 는 같은 이름을 두 번 받지 않는다 — `Db.php`).
- * `published` 는 어느 갈래에도 없다 — 5단계까지는 목록에도 없다.
  *
  * @param  array<string,mixed> $u
  * @return array{0:string,1:array<string,mixed>}
@@ -805,32 +857,138 @@ function community_visible_pages_where(array $u): array
 {
     // 5-A 공유 갈래 — `community_page_row()` 가 판정에 싣는 값과 **같은 조각**이다.
     $shared = community_share_rank_sql('p.id', ':vis_share');
+    // 5-C — 게시판 등급 두 벌(게시판 글의 공간 `s` · 게시한 게시판 `pb`). 자리표시자 이름은 번호로 가른다.
+    [$boardS, $boardSBind]   = community_board_read_sql('s', 1, $u);
+    [$boardPb, $boardPbBind] = community_board_read_sql('pb', 2, $u);
+    [$modS, $modSBind]       = community_board_moderate_sql('s', 1, $u);
+    [$modPb, $modPbBind]     = community_board_moderate_sql('pb', 2, $u);
+    $base = COMMUNITY_BASE_VISIBILITY_SQL;
+
     $sql = <<<SQL
 (
       (s.kind = 'personal' AND s.owner_user_id = CAST(:vis_me AS bigint))
-   OR (    (   (s.kind = 'personal' AND p.visibility IN ('private','team','internal'))
+   OR (    (   (s.kind = 'personal' AND {$base} IN ('private','team','internal'))
             OR s.kind = 'team')
        AND {$shared} IS NOT NULL)
-   OR (s.kind = 'personal' AND p.visibility = 'internal' AND CAST(:vis_write AS boolean))
-   OR (s.kind = 'personal' AND p.visibility = 'team'
+   OR (s.kind = 'personal' AND {$base} = 'internal' AND CAST(:vis_write AS boolean))
+   OR (s.kind = 'personal' AND {$base} = 'team'
        AND owner.team_id IS NOT NULL AND owner.team_id = CAST(:vis_team AS bigint))
-   OR (s.kind = 'personal' AND p.visibility IN ('private','team','internal')
+   OR (s.kind = 'personal' AND {$base} IN ('private','team','internal')
        AND CAST(:vis_admin AS boolean))
    OR (s.kind = 'team' AND s.team_id IS NOT NULL AND s.team_id = CAST(:vis_team AS bigint))
    OR (s.kind = 'team' AND CAST(:vis_admin AS boolean))
+   OR (s.kind = 'personal' AND p.visibility = 'published' AND {$base} IN ('private','team','internal')
+       AND EXISTS (SELECT 1 FROM community.spaces pb
+                    WHERE pb.id = p.published_board_id AND pb.kind = 'board'
+                      AND (   (p.hidden_at IS NULL     AND {$boardPb})
+                           OR (p.hidden_at IS NOT NULL AND {$modPb}))))
+   OR (s.kind = 'board' AND p.author_id = CAST(:vis_author AS bigint))
+   OR (s.kind = 'board' AND p.hidden_at IS NULL     AND {$boardS})
+   OR (s.kind = 'board' AND p.hidden_at IS NOT NULL AND {$modS})
 )
 SQL;
 
-    return [$sql, [
-        ':vis_me'    => (int) $u['id'],
-        ':vis_share' => (int) $u['id'],
+    return [$sql, array_merge([
+        ':vis_me'     => (int) $u['id'],
+        ':vis_share'  => (int) $u['id'],
+        ':vis_author' => (int) $u['id'],
         // 「쓰기 자격이 있는 역할인가」·「Admin 인가」의 판단은 `Authz` 가 한다 — 이 파일에
         // 역할 문자열 비교가 생기지 않게 참·거짓만 받아 바인딩한다 (ARCH 4.1).
         ':vis_write' => Authz::canCommunityWrite($u) ? 'true' : 'false',
         ':vis_admin' => Authz::canAdmin($u) ? 'true' : 'false',
         // 팀이 없으면 NULL 이고, NULL 과의 `=` 는 참이 되지 않는다(팀 갈래가 통째로 꺼진다).
         ':vis_team'  => $u['team_id'] === null ? null : (int) $u['team_id'],
+    ], $boardSBind, $boardPbBind, $modSBind, $modPbBind)];
+}
+
+/**
+ * 「기준 범위」 SQL 식 (5-C) — 별칭 `p` 의 페이지가 게시 중이면 게시 전 범위, 아니면 범위 그대로.
+ * `CommunityAuthz::baseVisibility()` 와 같은 뜻이다(판정 ↔ SQL 짝). 요청 값이 들어가는 자리가 없다.
+ */
+const COMMUNITY_BASE_VISIBILITY_SQL = "(CASE WHEN p.visibility = 'published' THEN p.published_from ELSE p.visibility END)";
+
+/**
+ * 게시판 등급 조건 (5-C) — 별칭 `$alias` 의 공간(게시판)을 이 사람이 **읽을 수 있나**를 SQL 로.
+ *
+ * 역할 × 등급 표를 새로 적지 않는다: 등급 넷을 하나씩 t-box `Authz::decideRead` 에 **물어서** 답을
+ * 바인딩 값으로 만든다(`CommunityAuthz::decideBoardRead` 가 부르는 바로 그 함수 — 판정 ↔ SQL 짝).
+ *   · 팀이 아닌 등급(public·internal·admin-only) — 읽을 수 있는 것만 쉼표로 이은 글자(`:vis_blv<n>`)
+ *   · 팀 등급 — 「모든 팀」(`all_teams`, 있을 수 없는 팀 번호로 물어 참이면) · 「내 팀만」(`same_team`)
+ * 이 파일에는 역할 문자열이 한 글자도 없다(ARCH 4.1). 등급 이름 넷은 DB CHECK 의 고정 목록이다.
+ *
+ * @param  string $alias `s`(게시판 글의 공간) 또는 `pb`(게시한 게시판) — 코드 리터럴만
+ * @param  int    $n     자리표시자 번호(한 문장에 두 벌이 들어가므로 이름을 가른다)
+ * @param  array<string,mixed> $u
+ * @return array{0:string,1:array<string,mixed>}
+ */
+function community_board_read_sql(string $alias, int $n, array $u): array
+{
+    if (!in_array($alias, ['s', 'pb', 'b'], true) || $n < 1 || $n > 9) {
+        throw new RuntimeException('community_board_read_sql: 허용되지 않는 식별자');
+    }
+    $plain = [];
+    foreach (['public', 'internal', 'admin-only'] as $level) {
+        if (Authz::decideRead($u, ['access_level' => $level, 'team_id' => null])[0]) {
+            $plain[] = $level;
+        }
+    }
+    // 있을 수 없는 팀 번호(-1)로 물어 참이면 「모든 팀의 팀 등급을 읽는 역할」이다(t-box `all_teams`).
+    $teamAll = Authz::decideRead($u, ['access_level' => 'team', 'team_id' => -1])[0];
+    $myTeam  = $u['team_id'] ?? null;
+    $teamOwn = !$teamAll && $myTeam !== null
+        && Authz::decideRead($u, ['access_level' => 'team', 'team_id' => (int) $myTeam])[0];
+
+    $sql = "({$alias}.access_level = ANY(string_to_array(CAST(:vis_blv{$n} AS text), ','))"
+         . " OR ({$alias}.access_level = 'team' AND CAST(:vis_ball{$n} AS boolean))"
+         . " OR ({$alias}.access_level = 'team' AND {$alias}.team_id = CAST(:vis_bteam{$n} AS bigint)))";
+    return [$sql, [
+        ':vis_blv' . $n   => implode(',', $plain),
+        ':vis_ball' . $n  => $teamAll ? 'true' : 'false',
+        ':vis_bteam' . $n => $teamOwn ? (int) $myTeam : null,
     ]];
+}
+
+/**
+ * 게시판 **관리자** 조건 (5-C) — `CommunityAuthz::decideBoardModerate` 와 짝.
+ *   Admin 이면 참 · Manager 이고 팀 등급 게시판의 그 팀이면 참.
+ *
+ * @param  string $alias `s` 또는 `pb` — 코드 리터럴만
+ * @param  array<string,mixed> $u
+ * @return array{0:string,1:array<string,mixed>}
+ */
+function community_board_moderate_sql(string $alias, int $n, array $u): array
+{
+    if (!in_array($alias, ['s', 'pb', 'b'], true) || $n < 1 || $n > 9) {
+        throw new RuntimeException('community_board_moderate_sql: 허용되지 않는 식별자');
+    }
+    $admin   = Authz::canAdmin($u);
+    $modTeam = !$admin && Authz::authorize('role:Manager+', $u) && ($u['team_id'] ?? null) !== null
+        ? (int) $u['team_id'] : null;
+    $sql = "(CAST(:vis_madm{$n} AS boolean)"
+         . " OR ({$alias}.access_level = 'team' AND {$alias}.team_id = CAST(:vis_mteam{$n} AS bigint)))";
+    return [$sql, [
+        ':vis_madm' . $n  => $admin ? 'true' : 'false',
+        ':vis_mteam' . $n => $modTeam,
+    ]];
+}
+
+/**
+ * 검색(5-B)이 쓰는 조건절 — 목록 조건절과 같되 **특권 갈래를 끈다** (5-C 에서 한 곳으로 모았다).
+ *   · 관리자 특권 갈래(`admin_all`) — 남의 비공개 글이 검색 한 번에 한꺼번에 드러나지 않게(5-B)
+ *   · 게시판 관리자 갈래(`board_moderator`) — 숨긴 글은 **검색에도 없다**(지시서 완료 기준)
+ *
+ * @param  array<string,mixed> $u
+ * @return array{0:string,1:array<string,mixed>}
+ */
+function community_search_pages_where(array $u): array
+{
+    [$sql, $bind] = community_visible_pages_where($u);
+    $bind[':vis_admin'] = 'false';
+    foreach ([1, 2] as $n) {
+        $bind[':vis_madm' . $n]  = 'false';
+        $bind[':vis_mteam' . $n] = null;
+    }
+    return [$sql, $bind];
 }
 
 /**
@@ -853,12 +1011,14 @@ function community_descendants_differ(int $pageId, string $newVisibility): array
               JOIN down d ON c.parent_page_id = d.id
              WHERE c.deleted_at IS NULL
         )
-        SELECT p.id, p.public_id, p.title, p.visibility
+        SELECT p.id, p.public_id, p.title,
+               (CASE WHEN p.visibility = 'published' THEN p.published_from ELSE p.visibility END) AS visibility,
+               (p.visibility = 'published') AS is_published
           FROM community.pages p
           JOIN down ON down.id = p.id
          WHERE p.id <> CAST(:pid2 AS bigint)
            AND p.deleted_at IS NULL
-           AND p.visibility <> :vis
+           AND (CASE WHEN p.visibility = 'published' THEN p.published_from ELSE p.visibility END) <> :vis
          ORDER BY p.id
          LIMIT 2000
         SQL;
@@ -873,7 +1033,9 @@ function community_descendants_differ(int $pageId, string $newVisibility): array
             'id'         => (int) $r['id'],
             'public_id'  => (string) $r['public_id'],
             'title'      => (string) $r['title'],
+            // 5-C — 기준 범위(게시 중이면 게시 전 범위). 게시 중인 하위는 게시를 그대로 두고 이 값만 바뀐다.
             'visibility' => (string) $r['visibility'],
+            'is_published' => $r['is_published'] === true,
         ];
     }
     return $out;
@@ -898,13 +1060,15 @@ function community_descendants_wider(int $pageId, string $newVisibility): array
               JOIN down d ON c.parent_page_id = d.id
              WHERE c.deleted_at IS NULL
         )
-        SELECT p.id, p.public_id, p.title, p.visibility
+        SELECT p.id, p.public_id, p.title,
+               (CASE WHEN p.visibility = 'published' THEN p.published_from ELSE p.visibility END) AS visibility
           FROM community.pages p
           JOIN down ON down.id = p.id
          WHERE p.id <> CAST(:pid2 AS bigint)
            AND p.deleted_at IS NULL
-           AND (CASE p.visibility WHEN 'private' THEN 0 WHEN 'team' THEN 1
-                                  WHEN 'internal' THEN 2 WHEN 'published' THEN 3 END)
+           -- 5-C: 기준 범위로 견준다(게시는 트리의 넓이가 아니다 — `CommunityAuthz::baseVisibility`)
+           AND (CASE (CASE WHEN p.visibility = 'published' THEN p.published_from ELSE p.visibility END)
+                     WHEN 'private' THEN 0 WHEN 'team' THEN 1 WHEN 'internal' THEN 2 END)
                > CAST(:rank AS int)
          ORDER BY p.id
          LIMIT 2000
@@ -1119,7 +1283,7 @@ function community_insert_check_events(int $pageId, array $changes, int $byUserI
  * 실패하면 **돌아오지 않는다**(응답을 내보내고 끝난다).
  *
  * @param  array<string,mixed> $u
- * @return array{row:array<string,mixed>,read_code:string,may_change:bool,change_code:string}
+ * @return array{row:array<string,mixed>,read_code:string,may_change:bool,change_code:string,since:?string}
  */
 function community_history_gate(array $u, string $publicId): array
 {
@@ -1154,7 +1318,8 @@ function community_history_gate(array $u, string $publicId): array
     /* 남의 개인 페이지를 **무엇을 근거로** 열었나 (PRD 4.1, S-07). 이력도 그 페이지의 내용에
        딸린 기록이므로 본문을 여는 것과 같은 무게로 남긴다. 자기 페이지·사내 공개는 남기지
        않는다 — 그것까지 남기면 진짜 사건이 묻힌다. */
-    if ($readCode === CommunityAuthz::CODE_ADMIN_ALL || $readCode === CommunityAuthz::CODE_SAME_TEAM) {
+    if ($readCode === CommunityAuthz::CODE_ADMIN_ALL || $readCode === CommunityAuthz::CODE_SAME_TEAM
+        || ($readCode === CommunityAuthz::CODE_BOARD_MODERATOR && (string) $row['space_kind'] === 'personal')) {
         Audit::allow('page.read', [
             'target_type' => 'page',
             'target_id'   => (int) $row['id'],
@@ -1165,11 +1330,23 @@ function community_history_gate(array $u, string $publicId): array
 
     [$mayChange, $changeCode] = CommunityAuthz::decidePageChange($u, $row);
 
+    /* 5-C (사용자 기본안 — USER-CHECKS 5-C #9, 2026-09-23): **게시판 등급으로만** 보는 사람(`board`)에게는
+       게시한 뒤의 기록만 보인다. 게시 전(비공개 시절) 판·체크·속성 기록은 게시와 함께 드러나지 않는다 —
+       초안이 공개되면 되돌릴 수 없으므로 좁은 쪽. 원래 범위·공유·주인·관리자는 전과 같이 전부 본다.
+       게시판 글(게시판 공간)은 처음부터 게시판에 있었으므로 자르지 않는다. */
+    $since = null;
+    if ($readCode === CommunityAuthz::CODE_BOARD && (string) $row['space_kind'] === 'personal'
+        && (string) $row['visibility'] === 'published' && $row['published_at'] !== null) {
+        $since = (string) $row['published_at'];
+    }
+
     return [
         'row'         => $row,
         'read_code'   => $readCode,
         'may_change'  => $mayChange,
         'change_code' => $changeCode,
+        // 이 시각 **이전** 기록은 보이지 않는다(null 이면 자르지 않는다)
+        'since'       => $since,
     ];
 }
 
@@ -1468,6 +1645,155 @@ function community_insert_property_event(
         ':to_value'   => $to,
         ':by'         => $byUserId,
     ]);
+}
+
+/* ══════════════════════════════════════════════════════════════════
+ * 게시판 · 태그 · 조회수 (5-C)
+ *
+ * 규칙 셋.
+ *   ① 게시판 등급 판정은 `CommunityAuthz::decideBoardRead`(→ t-box `Authz::decideRead`) 하나이고,
+ *      목록은 그 판정을 SQL 로 옮긴 `community_board_read_sql()` 로 거른다(C:S-02).
+ *   ② 태그는 **바뀌는 값**이다(앱 SIUD). 조회는 **한 사람 하루 한 줄**이고 고치지도 지우지도 않는다(SI).
+ *   ③ 게시·해제·숨김·해결됨은 `page_property_events` 에 한 줄씩 남는다(지울 수 없는 처리 이력).
+ * ══════════════════════════════════════════════════════════════════ */
+
+/** 한 페이지의 태그 수 상한 · 태그 한 개의 글자 수 상한 (지시서 「태그」) */
+const COMMUNITY_TAG_MAX_COUNT = 10;
+const COMMUNITY_TAG_MAX_CHARS = 30;
+
+/**
+ * 게시판 한 건(+ 팀 이름). 게시판이 아니거나 없으면 `null`.
+ *
+ * @return array<string,mixed>|null 「게시판 행」 모양 + `name`·`description`·`team_name`·`notice`
+ */
+function community_board_row(int $boardId): ?array
+{
+    $sql = <<<'SQL'
+        SELECT b.id, b.kind, b.name, b.description, b.access_level, b.team_id, b.notice,
+               b.board_kind, b.is_active, b.created_at, t.name AS team_name
+          FROM community.spaces b
+          LEFT JOIN public.teams t ON t.id = b.team_id
+         WHERE b.id = CAST(:bid AS bigint) AND b.kind = 'board'
+        SQL;
+    $row = Db::instance()->run($sql, [':bid' => $boardId])->fetch();
+    return is_array($row) ? $row : null;
+}
+
+/**
+ * 창구가 내보내는 게시판 요약 — 판정 결과(`can_write`·`can_moderate`)를 함께 싣는다.
+ * 두 값은 **단추를 보일지** 고르는 화면 편의 값이고, 창구가 같은 함수로 다시 막는다(DESIGN 원칙 1).
+ *
+ * @param  array<string,mixed> $b `community_board_row()` 모양
+ * @param  array<string,mixed> $u
+ * @return array<string,mixed>
+ */
+function community_board_summary(array $b, array $u): array
+{
+    [$canWrite, $writeCode] = CommunityAuthz::decideBoardWrite($u, $b);
+    [$canModerate]          = CommunityAuthz::decideBoardModerate($u, $b);
+    return [
+        'id'           => (int) $b['id'],
+        'name'         => (string) $b['name'],
+        'description'  => (string) $b['description'],
+        'access_level' => (string) $b['access_level'],
+        'team_id'      => $b['team_id'] === null ? null : (int) $b['team_id'],
+        'team_name'    => ($b['team_name'] ?? null) === null ? null : (string) $b['team_name'],
+        'board_kind'   => (string) $b['board_kind'],
+        'is_active'    => $b['is_active'] === true,
+        'can_write'    => $canWrite,
+        // 쓸 수 없는 까닭 중 「보관 중」만 화면에 알린다(권한 없음은 단추를 숨기는 것으로 충분하다).
+        'inactive'     => $writeCode === CommunityAuthz::CODE_BOARD_INACTIVE || $b['is_active'] !== true,
+        'can_moderate' => $canModerate,
+    ];
+}
+
+/**
+ * 요청 본문의 태그 목록을 검사한다 (5-C 지시서 「태그」). 어긋나면 `null` — 창구가 400 으로 답한다.
+ *   · 배열이고 각 값은 문자열 · 앞뒤 공백을 뗀 뒤 1~30자 · 제어·서식 문자(`\p{C}`) 없음
+ *   · 개수는 **보낸 그대로** 10개까지(같은 글자를 겹쳐 보내 상한을 넘기면 그것도 400 이다)
+ * 대소문자만 다른 태그는 **한 번**만 남는다 — 그 판단은 DB 의 `lower()` 가 한다(`tag_norm`,
+ * mbstring 이 없어 PHP 로는 한글 밖 글자의 대소문자를 고르게 다루지 못한다 — 5-B 실측).
+ *
+ * @param  mixed $raw
+ * @return list<string>|null
+ */
+function community_parse_tags($raw): ?array
+{
+    if (!is_array($raw) || !array_is_list($raw) || count($raw) > COMMUNITY_TAG_MAX_COUNT) {
+        return null;
+    }
+    $out = [];
+    foreach ($raw as $t) {
+        if (!is_string($t) || preg_match('//u', $t) !== 1) {
+            return null;
+        }
+        $t = (string) preg_replace('/^[\s\p{Z}]+|[\s\p{Z}]+$/u', '', $t);
+        $n = iconv_strlen($t, 'UTF-8');
+        if ($t === '' || $n === false || $n > COMMUNITY_TAG_MAX_CHARS || preg_match('/\p{C}/u', $t) === 1) {
+            return null;
+        }
+        $out[] = $t;
+    }
+    return $out;
+}
+
+/**
+ * 한 페이지의 태그(보이는 글자, 가나다·abc 순). 없으면 빈 배열.
+ *
+ * @return list<string>
+ */
+function community_page_tags(int $pageId): array
+{
+    $sql = <<<'SQL'
+        SELECT t.tag FROM community.page_tags t
+         WHERE t.page_id = CAST(:pid AS bigint)
+         ORDER BY t.tag_norm
+         LIMIT 20
+        SQL;
+    $out = [];
+    foreach (Db::instance()->run($sql, [':pid' => $pageId])->fetchAll() as $r) {
+        $out[] = (string) $r['tag'];
+    }
+    return $out;
+}
+
+/**
+ * 조회 한 번 — **한 사람 하루 한 줄**(`ON CONFLICT DO NOTHING`). 새 줄이 생겼으면 참.
+ * 날짜는 DB 의 오늘(`current_date` 기본값)이다. 읽기 판정을 **지난 뒤에만** 부른다.
+ */
+function community_record_view(int $pageId, int $userId): bool
+{
+    $sql = <<<'SQL'
+        INSERT INTO community.page_views (page_id, user_id)
+        VALUES (CAST(:pid AS bigint), CAST(:uid AS bigint))
+        ON CONFLICT DO NOTHING
+        SQL;
+    return Db::instance()->run($sql, [':pid' => $pageId, ':uid' => $userId])->rowCount() > 0;
+}
+
+/** 조회수 = 조회 기록 줄 수(사람 × 날). 누가 봤는지는 돌려주지 않는다. */
+function community_view_count(int $pageId): int
+{
+    $sql = <<<'SQL'
+        SELECT count(*) AS n FROM community.page_views WHERE page_id = CAST(:pid AS bigint)
+        SQL;
+    $row = Db::instance()->run($sql, [':pid' => $pageId])->fetch();
+    return is_array($row) ? (int) $row['n'] : 0;
+}
+
+/**
+ * 게시·숨김 창구 넷(`publish`·`unpublish`·`hide`)의 **공통 관문** — 행을 읽고 없거나 지워졌으면 404.
+ * 읽기 판정은 부르는 쪽이 목적에 맞게 따로 한다(게시판 관리자는 원래 범위로는 못 보는 글도 내린다).
+ *
+ * @return array<string,mixed>
+ */
+function community_page_row_or_404(string $publicId, int $viewerId): array
+{
+    $row = community_page_row($publicId, $viewerId);
+    if ($row === null || $row['deleted_at'] !== null) {
+        Http::error(404, Http::MSG_NOT_FOUND);
+    }
+    return $row;
 }
 
 /**

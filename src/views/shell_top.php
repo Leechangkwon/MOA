@@ -53,6 +53,8 @@ $shellKeys = [
     // 커뮤니티 3단계 (커뮤니티 ARCHITECTURE.md 21.3) — 모듈 모드의 화면 둘.
     // app.js 는 이 두 키를 만나면 셸만 그리고 물러난다(t-box 화면 JS 가 돌지 않는다).
     'community-home', 'community-page',
+    // 커뮤니티 5-C — 게시판 화면
+    'community-board',
 ];
 
 /**
@@ -344,6 +346,11 @@ if (!headers_sent()) {
     </nav>
     <p id="nav-community-team-title" class="nav-title" hidden>팀 공간</p>
     <nav id="nav-community-teams" class="nav" aria-label="팀 공간" hidden></nav>
+    <!-- 게시판 (5-C) — 항목은 editor.js 가 창구 `GET /community/api/boards` 의 답(볼 수 있는 게시판만)으로
+         채운다. 종류마다 아이콘(공지·토론·질문답변)이 다르고, 보관 중인 게시판에는 「보관」이 붙는다.
+         볼 수 있는 게시판이 하나도 없으면 제목째 숨는다. 이 파일에는 게시판 판단이 없다. -->
+    <p id="nav-community-board-title" class="nav-title" hidden>게시판</p>
+    <nav id="nav-community-boards" class="nav" aria-label="게시판" hidden></nav>
     <!-- 공유받은 페이지 (5-A · 5-A′) — 있을 때만 제목째 보인다 -->
     <p id="nav-community-shared-title" class="nav-title" hidden>공유받은 페이지</p>
     <nav id="nav-community-shared" class="nav" aria-label="공유받은 페이지" hidden></nav>

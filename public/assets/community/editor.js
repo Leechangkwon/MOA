@@ -936,6 +936,491 @@ function bindNewPage() {
   }
 }
 
+/* ─── 게시판 (5-C) ─────────────────────────────────────────────
+ *
+ * 사이드바 「게시판」 묶음 · 게시판 화면(community-board) · 페이지 화면의 게시 창이 쓴다.
+ * ★ 무엇이 보이고 무엇을 할 수 있나는 창구가 준 값(`boards`·`can_write`·`can_moderate`·`can_manage`)뿐이다.
+ *   이 파일에는 등급·역할을 따지는 코드가 없다 (DESIGN 원칙 1, PRD S-01).
+ * ★ 등급 배지의 색은 t-box 파일 등급 배지 그대로다(DESIGN 2.2 — 새 색값 0).
+ */
+const BOARD_LEVEL_LABELS = {
+  public: { text: '공개', badge: 'badge--public' },
+  internal: { text: '사내', badge: 'badge--internal' },
+  team: { text: '팀', badge: 'badge--team' },
+  'admin-only': { text: '관리자', badge: 'badge--admin-only' }
+};
+const BOARD_KIND_LABELS = {
+  notice: { text: '공지', icon: 'log' },
+  discussion: { text: '토론', icon: 'users' },
+  qa: { text: '질문답변', icon: 'help' }
+};
+/** 게시판 창구가 돌려주는 거부 사유 → 사람 문장. 없으면 서버가 준 문구를 그대로 쓴다. */
+const BOARD_REASONS = {
+  board_inactive: '보관 중인 게시판입니다. 읽기만 됩니다',
+  already_published: '이미 게시 중입니다. 다른 게시판에 걸려면 먼저 게시를 해제하세요',
+  not_published: '게시 중인 페이지가 아닙니다',
+  published: '게시 중에는 공개 범위를 바꿀 수 없습니다. 먼저 게시를 해제하세요',
+  not_qa: '질문과 답변 게시판의 글만 「해결됨」을 켤 수 있습니다'
+};
+
+/** 게시판 한 줄의 배지(등급). 모르는 값이면 만들지 않는다(지어내지 않는다). */
+function boardLevelBadge(level) {
+  const entry = BOARD_LEVEL_LABELS[level];
+  if (!entry) { return null; }
+  const span = document.createElement('span');
+  span.className = 'badge ' + entry.badge;
+  span.setAttribute('title', level);
+  span.textContent = entry.text;
+  return span;
+}
+
+/** 이 화면이 보고 있는 게시판 번호 (게시판 화면에서만). 숫자가 아니면 빈 글자. */
+function currentBoardId() {
+  const meta = document.getElementById('board-meta');
+  const raw = meta ? (meta.getAttribute('data-board-id') || '') : '';
+  return /^[1-9][0-9]{0,8}$/.test(raw) ? raw : '';
+}
+
+/**
+ * 사이드바 「게시판」 묶음 — 창구 `GET /api/boards` 가 준 **볼 수 있는 게시판만**.
+ * 돌려주는 값은 창구의 답 전체(게시 창·관리 창이 다시 쓴다). 실패하면 묶음은 숨은 채다.
+ */
+let boardsCache = null;
+function loadBoards() {
+  return api('GET', '/api/boards').then((result) => {
+    if (result.status !== 200 || !Array.isArray(result.data.boards)) { return null; }
+    boardsCache = result.data;
+    const box = document.getElementById('nav-community-boards');
+    const title = document.getElementById('nav-community-board-title');
+    if (box) {
+      clear(box);
+      const here = currentBoardId();
+      for (const board of result.data.boards) {
+        const a = document.createElement('a');
+        a.className = 'nav__item' + (String(board.id) === here ? ' is-active' : '');
+        a.setAttribute('href', COMMUNITY_BASE + '/b/' + String(board.id));
+        if (String(board.id) === here) { a.setAttribute('aria-current', 'page'); }
+        const kind = BOARD_KIND_LABELS[board.board_kind];
+        a.appendChild(makeIcon(kind ? kind.icon : 'files'));
+        const name = document.createElement('span');
+        name.textContent = board.name + (board.is_active ? '' : ' (보관)');
+        a.appendChild(name);
+        box.appendChild(a);
+      }
+      show(box, result.data.boards.length > 0);
+      show(title, result.data.boards.length > 0);
+    }
+    return result.data;
+  }).catch(() => null);
+}
+
+/** 쉼표로 나눈 태그 글자 → 목록(앞뒤 공백을 떼고 빈 것은 뺀다). 검사는 창구가 한다. */
+function splitTags(raw) {
+  return String(raw || '').split(/[,，]/).map((t) => t.trim()).filter((t) => t !== '');
+}
+
+/** 게시판 한 곳에서 쓰인 태그(자동완성) → `<datalist>` 를 채운다. 창구가 볼 수 있는 글의 태그만 준다. */
+function fillTagOptions(listEl, boardId, q) {
+  if (!listEl || !boardId) { return Promise.resolve([]); }
+  const path = '/api/boards/' + String(boardId) + '/tags' + (q ? '?q=' + encodeURIComponent(q) : '');
+  return api('GET', path).then((result) => {
+    const tags = result.status === 200 && Array.isArray(result.data.tags) ? result.data.tags : [];
+    clear(listEl);
+    for (const t of tags) {
+      const option = document.createElement('option');
+      option.value = t.tag;
+      listEl.appendChild(option);
+    }
+    return tags;
+  }).catch(() => []);
+}
+
+/* ─── 게시판 화면 (community-board) ──────────────────────────── */
+
+function initBoard() {
+  const boardId = currentBoardId();
+  if (boardId === '') { return; }
+  const msg = document.getElementById('msg');
+  const titleEl = document.getElementById('board-title');
+  const subEl = document.getElementById('board-sub');
+  const levelEl = document.getElementById('board-level');
+  const kindEl = document.getElementById('board-kind');
+  const inactiveEl = document.getElementById('board-inactive');
+  const newButton = document.getElementById('board-new');
+  const manageButton = document.getElementById('board-manage');
+  const searchEl = document.getElementById('board-search');
+  const tagEl = document.getElementById('board-tag');
+  const tagOptions = document.getElementById('board-tag-options');
+  const tagsBox = document.getElementById('board-tags');
+  const sortEl = document.getElementById('board-sort');
+  const countEl = document.getElementById('board-count');
+  const bodyEl = document.getElementById('board-body');
+  const emptyEl = document.getElementById('board-empty');
+  const pageInfo = document.getElementById('board-page-info');
+  const prevButton = document.getElementById('board-prev');
+  const nextButton = document.getElementById('board-next');
+
+  let pageNo = 1;
+  let timer = null;
+  let board = null;
+
+  function listPath() {
+    const params = new URLSearchParams();
+    const q = searchEl ? searchEl.value.trim() : '';
+    const tag = tagEl ? tagEl.value.trim() : '';
+    if (q !== '') { params.set('q', q); }
+    if (tag !== '') { params.set('tag', tag); }
+    if (sortEl && sortEl.value !== 'new') { params.set('sort', sortEl.value); }
+    if (pageNo > 1) { params.set('page', String(pageNo)); }
+    const tail = params.toString();
+    return '/api/boards/' + boardId + '/pages' + (tail === '' ? '' : '?' + tail);
+  }
+
+  function drawHead(b) {
+    board = b;
+    setText(titleEl, b.name);
+    document.title = b.name + ' · 커뮤니티';
+    setText(subEl, b.description);
+    const level = BOARD_LEVEL_LABELS[b.access_level];
+    if (levelEl && level) {
+      levelEl.className = 'badge ' + level.badge;
+      levelEl.setAttribute('title', b.access_level);
+      setText(levelEl, level.text + (b.team_name ? ' · ' + b.team_name : ''));
+      show(levelEl, true);
+    }
+    const kind = BOARD_KIND_LABELS[b.board_kind];
+    if (kindEl && kind) {
+      kindEl.setAttribute('title', b.board_kind);
+      setText(kindEl, kind.text);
+      show(kindEl, true);
+    }
+    show(inactiveEl, b.is_active !== true);
+    show(newButton, b.can_write === true);
+  }
+
+  function row(item) {
+    const tr = document.createElement('tr');
+    const titleCell = document.createElement('td');
+    const a = document.createElement('a');
+    a.setAttribute('href', COMMUNITY_BASE + '/p/' + item.id);
+    a.textContent = (item.icon ? item.icon + ' ' : '') + item.title;
+    titleCell.appendChild(a);
+    if (item.resolved === true && board && board.board_kind === 'qa') {
+      const done = document.createElement('span');
+      done.className = 'badge badge--ok';
+      done.textContent = '해결됨';
+      titleCell.appendChild(document.createTextNode(' '));
+      titleCell.appendChild(done);
+    }
+    if (item.kind === 'published') {
+      const pub = document.createElement('span');
+      pub.className = 'badge';
+      pub.setAttribute('title', '개인 공간의 페이지를 게시한 것입니다');
+      pub.textContent = '게시됨';
+      titleCell.appendChild(document.createTextNode(' '));
+      titleCell.appendChild(pub);
+    }
+    tr.appendChild(titleCell);
+
+    const who = document.createElement('td');
+    who.textContent = item.writer ? personLabel(item.writer.display_name, item.writer.username) : '—';
+    tr.appendChild(who);
+
+    const when = document.createElement('td');
+    when.textContent = shortWhen(item.posted_at);
+    when.setAttribute('title', String(item.posted_at));
+    tr.appendChild(when);
+
+    const tags = document.createElement('td');
+    const list = Array.isArray(item.tags) ? item.tags : [];
+    if (list.length === 0) { tags.textContent = '—'; }
+    for (const t of list) {
+      const chip = document.createElement('button');
+      chip.type = 'button';
+      chip.className = 'btn btn--small btn--quiet';
+      chip.textContent = '#' + t;
+      chip.setAttribute('aria-label', '태그 ' + t + ' 로 거르기');
+      chip.addEventListener('click', () => { if (tagEl) { tagEl.value = t; } pageNo = 1; load(); });
+      if (tags.firstChild) { tags.appendChild(document.createTextNode(' ')); }
+      tags.appendChild(chip);
+    }
+    tr.appendChild(tags);
+
+    const views = document.createElement('td');
+    views.textContent = String(item.views);
+    tr.appendChild(views);
+    return tr;
+  }
+
+  function drawPopularTags() {
+    if (!tagsBox) { return; }
+    fillTagOptions(tagOptions, boardId, '').then((tags) => {
+      clear(tagsBox);
+      for (const t of tags) {
+        const chip = document.createElement('button');
+        chip.type = 'button';
+        chip.className = 'btn btn--small btn--quiet';
+        chip.textContent = '#' + t.tag + ' ' + String(t.count);
+        chip.setAttribute('aria-label', '태그 ' + t.tag + ' 로 거르기');
+        chip.addEventListener('click', () => { if (tagEl) { tagEl.value = t.tag; } pageNo = 1; load(); });
+        tagsBox.appendChild(chip);
+      }
+      show(tagsBox, tags.length > 0);
+    });
+  }
+
+  function load() {
+    return api('GET', listPath()).then((result) => {
+      if (result.status === 401) { toLogin(); return; }
+      if (result.status !== 200) {
+        setText(msg, errorMessage(result.data));
+        show(emptyEl, false);
+        return false;
+      }
+      drawHead(result.data.board);
+      clear(bodyEl);
+      const pages = Array.isArray(result.data.pages) ? result.data.pages : [];
+      for (const item of pages) { bodyEl.appendChild(row(item)); }
+      const total = Number(result.data.total) || 0;
+      const per = Number(result.data.per_page) || 20;
+      const last = Math.max(1, Math.ceil(total / per));
+      setText(countEl, '전체 ' + String(total) + '건');
+      setText(pageInfo, String(pageNo) + ' / ' + String(last) + ' 페이지 · 전체 ' + String(total) + '건');
+      if (prevButton) { prevButton.disabled = pageNo <= 1; }
+      if (nextButton) { nextButton.disabled = pageNo >= last; }
+      const filtered = (searchEl && searchEl.value.trim() !== '') || (tagEl && tagEl.value.trim() !== '');
+      setText(emptyEl, filtered ? '조건에 맞는 글이 없습니다.' : '아직 글이 없습니다.');
+      show(emptyEl, pages.length === 0);
+      setText(msg, '');
+      return true;
+    }).catch(() => { setText(msg, GENERIC_ERROR); return false; });
+  }
+
+  function later() {
+    if (timer !== null) { clearTimeout(timer); }
+    timer = setTimeout(() => { timer = null; pageNo = 1; load(); }, 250);
+  }
+  if (searchEl) { searchEl.addEventListener('input', later); }
+  if (tagEl) {
+    tagEl.addEventListener('input', () => {
+      fillTagOptions(tagOptions, boardId, tagEl.value.trim());
+      later();
+    });
+  }
+  if (sortEl) { sortEl.addEventListener('change', () => { pageNo = 1; load(); }); }
+  if (prevButton) { prevButton.addEventListener('click', () => { if (pageNo > 1) { pageNo -= 1; load(); } }); }
+  if (nextButton) { nextButton.addEventListener('click', () => { pageNo += 1; load(); }); }
+
+  /* ── 「새 글」 창 — 제목·태그만 받고, 만든 뒤 그 글을 편집 모드로 연다 ── */
+  const newDialog = document.getElementById('board-new-dialog');
+  const newInput = document.getElementById('board-new-input');
+  const newTags = document.getElementById('board-new-tags');
+  const newMsg = document.getElementById('board-new-msg');
+  const newSave = document.getElementById('board-new-save');
+  if (newButton && newDialog && typeof newDialog.showModal === 'function') {
+    newButton.addEventListener('click', () => {
+      setText(newMsg, '');
+      if (newInput) { newInput.value = ''; }
+      if (newTags) { newTags.value = ''; }
+      newDialog.showModal();
+      if (newInput) { newInput.focus(); }
+    });
+    for (const close of newDialog.querySelectorAll('[data-board-new-close]')) {
+      close.addEventListener('click', () => newDialog.close());
+    }
+    const create = () => {
+      const title = newInput ? newInput.value.trim() : '';
+      if (title === '') { setText(newMsg, '제목을 적어 주세요.'); return; }
+      newSave.disabled = true;
+      api('POST', '/api/boards/' + boardId + '/pages', { title: title, tags: splitTags(newTags ? newTags.value : '') })
+        .then((result) => {
+          newSave.disabled = false;
+          if (result.status === 401) { toLogin(); return; }
+          if (result.status === 201 && result.data.page && typeof result.data.page.id === 'string') {
+            window.location.assign(COMMUNITY_BASE + '/p/' + result.data.page.id + '?edit=1');
+            return;
+          }
+          const reason = result.data && typeof result.data.reason === 'string' ? result.data.reason : '';
+          setText(newMsg, BOARD_REASONS[reason] || errorMessage(result.data));
+        })
+        .catch(() => { newSave.disabled = false; setText(newMsg, GENERIC_ERROR); });
+    };
+    if (newSave) { newSave.addEventListener('click', create); }
+    if (newInput) {
+      newInput.addEventListener('keydown', (event) => {
+        if (event.key === 'Enter' && !event.isComposing) { event.preventDefault(); create(); }
+      });
+    }
+  }
+
+  bindBoardManage(manageButton, () => { loadBoards(); load(); });
+  // 태그 단추 줄은 목록을 **볼 수 있을 때만** 부른다(못 보는 게시판에 창구를 한 번 더 두드리지 않는다).
+  load().then((ok) => { if (ok) { drawPopularTags(); } });
+}
+
+/**
+ * 「게시판 관리」 창 (관리자) — 만들기 · 이름 · 설명 · 보관. 등급·팀·종류는 만들 때만 고른다.
+ * 단추는 창구가 준 `can_manage` 가 참일 때만 보인다. 창구는 `role:Admin` + 재인증이 다시 막고,
+ * 재인증이 필요하면 셸의 **같은 재인증 창**(`window.qarediHandleReauth`)을 띄운 뒤 다시 보낸다.
+ */
+function bindBoardManage(button, onChanged) {
+  const dialog = document.getElementById('board-manage-dialog');
+  if (!button || !dialog || typeof dialog.showModal !== 'function') { return; }
+  const msg = document.getElementById('board-manage-msg');
+  const list = document.getElementById('board-manage-list');
+  const mode = document.getElementById('board-manage-mode');
+  const nameEl = document.getElementById('board-manage-name');
+  const descEl = document.getElementById('board-manage-desc');
+  const levelEl = document.getElementById('board-manage-level');
+  const teamEl = document.getElementById('board-manage-team');
+  const kindEl = document.getElementById('board-manage-kind');
+  const activeEl = document.getElementById('board-manage-active');
+  const levelField = document.getElementById('board-manage-level-field');
+  const teamField = document.getElementById('board-manage-team-field');
+  const kindField = document.getElementById('board-manage-kind-field');
+  const activeField = document.getElementById('board-manage-active-field');
+  const save = document.getElementById('board-manage-save');
+  const reset = document.getElementById('board-manage-reset');
+  let editing = null;   // 고치는 중인 게시판(창구가 준 줄) — null 이면 만들기
+  let teamsLoaded = false;
+
+  function showButton(data) {
+    show(button, !!data && data.can_manage === true);
+  }
+  if (boardsCache) { showButton(boardsCache); }
+  loadBoards().then(showButton);
+
+  function drawMode() {
+    const isNew = editing === null;
+    setText(mode, isNew ? '새 게시판 만들기' : '「' + editing.name + '」 고치기');
+    setText(save, isNew ? '만들기' : '바꾸기');
+    show(levelField, isNew);
+    show(kindField, isNew);
+    show(teamField, isNew && levelEl && levelEl.value === 'team');
+    show(activeField, !isNew);
+    show(reset, !isNew);
+    if (nameEl) { nameEl.value = isNew ? '' : editing.name; }
+    if (descEl) { descEl.value = isNew ? '' : editing.description; }
+    if (activeEl) { activeEl.checked = isNew ? true : editing.is_active === true; }
+  }
+
+  function drawList() {
+    clear(list);
+    const boards = boardsCache && Array.isArray(boardsCache.boards) ? boardsCache.boards : [];
+    for (const b of boards) {
+      const li = document.createElement('li');
+      li.className = 'list__item';
+      const head = document.createElement('div');
+      head.className = 'list__head';
+      const pick = document.createElement('button');
+      pick.type = 'button';
+      pick.className = 'btn btn--small btn--quiet';
+      pick.textContent = b.name;
+      pick.setAttribute('aria-label', '게시판 ' + b.name + ' 고치기');
+      pick.addEventListener('click', () => { editing = b; setText(msg, ''); drawMode(); });
+      head.appendChild(pick);
+      const badge = boardLevelBadge(b.access_level);
+      if (badge) { head.appendChild(badge); }
+      const kind = BOARD_KIND_LABELS[b.board_kind];
+      if (kind) {
+        const k = document.createElement('span');
+        k.className = 'badge';
+        k.textContent = kind.text;
+        head.appendChild(k);
+      }
+      if (b.is_active !== true) {
+        const off = document.createElement('span');
+        off.className = 'badge badge--off';
+        off.textContent = '보관';
+        head.appendChild(off);
+      }
+      li.appendChild(head);
+      list.appendChild(li);
+    }
+  }
+
+  function loadTeams() {
+    if (teamsLoaded || !teamEl) { return; }
+    teamsLoaded = true;
+    fetch(APP_BASE + '/api/teams', { credentials: 'same-origin', cache: 'no-store' })
+      .then((response) => (response.ok ? readJson(response) : { teams: [] }))
+      .then((data) => {
+        clear(teamEl);
+        for (const t of Array.isArray(data.teams) ? data.teams : []) {
+          const option = document.createElement('option');
+          option.value = String(t.id);
+          option.textContent = t.name;
+          teamEl.appendChild(option);
+        }
+      })
+      .catch(() => {});
+  }
+
+  if (levelEl) {
+    levelEl.addEventListener('change', () => {
+      show(teamField, editing === null && levelEl.value === 'team');
+      if (levelEl.value === 'team') { loadTeams(); }
+    });
+  }
+
+  button.addEventListener('click', () => {
+    editing = null;
+    setText(msg, '');
+    drawList();
+    drawMode();
+    dialog.showModal();
+  });
+  for (const close of dialog.querySelectorAll('[data-board-manage-close]')) {
+    close.addEventListener('click', () => dialog.close());
+  }
+  if (reset) { reset.addEventListener('click', () => { editing = null; setText(msg, ''); drawMode(); }); }
+
+  function submit() {
+    let method = 'POST';
+    let path = '/api/boards';
+    let payload;
+    if (editing === null) {
+      payload = {
+        name: nameEl ? nameEl.value : '',
+        description: descEl ? descEl.value : '',
+        access_level: levelEl ? levelEl.value : '',
+        board_kind: kindEl ? kindEl.value : ''
+      };
+      if (payload.access_level === 'team') { payload.team_id = teamEl ? Number(teamEl.value) : 0; }
+    } else {
+      method = 'PATCH';
+      path = '/api/boards/' + String(editing.id);
+      payload = {
+        name: nameEl ? nameEl.value : '',
+        description: descEl ? descEl.value : '',
+        is_active: activeEl ? activeEl.checked : true
+      };
+    }
+    save.disabled = true;
+    api(method, path, payload).then((result) => {
+      save.disabled = false;
+      if (result.status === 401) { toLogin(); return; }
+      if (result.status === 200 || result.status === 201) {
+        setText(msg, '');
+        editing = null;
+        loadBoards().then(() => { drawList(); drawMode(); });
+        if (typeof onChanged === 'function') { onChanged(); }
+        return;
+      }
+      /* 재인증 — 셸의 같은 창을 띄우고, 통과하면 이 창을 다시 열어 요청을 그대로 다시 보낸다(막는 것은
+         서버다). 모달 안에 모달을 열지 않도록(DESIGN 2.7) 이 창을 먼저 닫는다 — 적은 값은 칸에 남는다. */
+      if (result.status === 403 && result.data && result.data.next === 'reauth'
+          && typeof window.qarediHandleReauth === 'function') {
+        dialog.close();
+        window.qarediHandleReauth({ status: 403 }, result.data, () => { dialog.showModal(); submit(); });
+        return;
+      }
+      setText(msg, result.status === 409 ? '이미 있는 이름입니다. 다른 이름을 적어 주세요.' : errorMessage(result.data));
+    }).catch(() => { save.disabled = false; setText(msg, GENERIC_ERROR); });
+  }
+  if (save) { save.addEventListener('click', submit); }
+}
+
 /* ─── 블록 공통 ──────────────────────────────────────────────── */
 
 /** Enter 가 「같은 종류로 이어 가는」 블록들. 빈 줄에서 Enter 면 문단으로 빠져나온다. */
@@ -1721,7 +2206,10 @@ function initPage() {
     status: null, canSetProperties: false,
     // 5-A — 소유자(`{kind, username|name, is_active}`) · 관리 자격 · 공유 · 인계. 전부 창구가 준 값이다.
     owner: null, canManage: false, canShare: false, canHandover: false,
-    shareLevel: null, subtreeCount: null
+    shareLevel: null, subtreeCount: null,
+    // 5-C — 걸린 게시판 · 쓴 사람 · 태그 · 조회수 · 해결됨과 단추 다섯의 값. 전부 창구가 준 값이다.
+    board: null, writer: null, tags: [], viewCount: 0, resolved: false,
+    canTag: false, canPublish: false, canUnpublish: false, canHide: false, canResolve: false
   };
   let view = null;
   let toolbar = null;
@@ -1848,8 +2336,14 @@ function initPage() {
 
     const home = document.createElement('a');
     home.className = 'crumb__item';
-    home.setAttribute('href', COMMUNITY_BASE + '/');
-    home.textContent = '내 공간';
+    // 5-C — 게시판 글의 경로는 그 게시판에서 시작한다.
+    if (state.board && state.board.kind === 'post') {
+      home.setAttribute('href', COMMUNITY_BASE + '/b/' + String(state.board.id));
+      home.textContent = state.board.name;
+    } else {
+      home.setAttribute('href', COMMUNITY_BASE + '/');
+      home.textContent = '내 공간';
+    }
     crumbEl.appendChild(home);
 
     for (let i = 0; i < trail.length; i++) {
@@ -1899,8 +2393,10 @@ function initPage() {
     setText(childrenCount, list.length === 0 ? '' : String(list.length) + '개');
     show(childrenEmpty, list.length === 0);
     // 하위가 없어도 「하위 페이지 만들기」가 있어야 하므로, 고칠 수 있으면 칸을 연다.
-    show(childrenWrap, list.length > 0 || state.canEdit);
-    show(newChildButton, state.canEdit);
+    // 5-C — 게시판 글에는 하위 페이지가 없다(한 줄 목록 — 창구도 400 `space_governed`).
+    const flat = !!state.board && state.board.kind === 'post';
+    show(childrenWrap, list.length > 0 || (state.canEdit && !flat));
+    show(newChildButton, state.canEdit && !flat);
   }
 
   function load() {
@@ -1930,8 +2426,20 @@ function initPage() {
       state.canHandover = result.data.can_handover === true;
       state.shareLevel = typeof result.data.share_level === 'string' ? result.data.share_level : null;
       state.subtreeCount = typeof result.data.subtree_count === 'number' ? result.data.subtree_count : null;
+      state.board = result.data.board && typeof result.data.board === 'object' ? result.data.board : null;
+      state.writer = result.data.writer && typeof result.data.writer === 'object' ? result.data.writer : null;
+      state.tags = Array.isArray(result.data.tags) ? result.data.tags : [];
+      state.viewCount = typeof result.data.view_count === 'number' ? result.data.view_count : 0;
+      state.resolved = result.data.resolved === true;
+      state.canTag = result.data.can_tag === true;
+      state.canPublish = result.data.can_publish === true;
+      state.canUnpublish = result.data.can_unpublish === true;
+      state.canHide = result.data.can_hide === true;
+      state.canResolve = result.data.can_resolve === true;
       drawVisibility();
       drawProps();
+      drawBoard();
+      drawTags();
       setText(titleEl, page.title);
       document.title = page.title + ' · 커뮤니티';
       setText(subEl, page.parent ? '상위: ' + page.parent.title : '');
@@ -1942,7 +2450,8 @@ function initPage() {
       show(editButton, state.canEdit && !state.editing);
       // 5-A — 지우기·옮기기는 **관리**다. 편집 공유자에게는 `can_edit` 이 참이어도 이 둘이 없다.
       show(deleteButton, state.canManage);
-      show(moveButton, state.canManage);
+      // 5-C — 게시판 글은 트리가 없어 옮길 자리가 없다(창구도 `space_governed`). 지우기는 쓴 사람이 한다.
+      show(moveButton, state.canManage && !(state.board && state.board.kind === 'post'));
       show(visibilityButton, state.canSetVisibility);
       // 공유받은 사람 — 받은 권한 배지와 「공유 보기」(자기 공유 빼기). 관리할 수 있는 사람은 「바꾸기」로 연다.
       if (shareMineEl) {
@@ -1965,6 +2474,27 @@ function initPage() {
    * 보인다. 어느 쪽이든 **창구가 준 값**이고 화면이 판단해서 고르지 않는다.
    */
   function drawVisibility() {
+    /* 5-C — 게시판 글은 게시판 등급을 따른다(자기 범위가 없다) · 게시된 페이지는 「게시됨」.
+       어느 쪽이든 창구가 준 값(`board.access_level`·`visibility`)이고 화면이 판단하지 않는다. */
+    if (state.board && state.board.kind === 'post') {
+      const level = BOARD_LEVEL_LABELS[state.board.access_level];
+      if (visibilityBadgeEl && level) {
+        visibilityBadgeEl.className = 'badge ' + level.badge;
+        visibilityBadgeEl.setAttribute('title', state.board.access_level);
+        setText(visibilityBadgeEl, '게시판 등급 · ' + level.text);
+        show(visibilityBadgeEl, true);
+      }
+      return;
+    }
+    if (state.visibility === 'published') {
+      if (visibilityBadgeEl) {
+        visibilityBadgeEl.className = 'badge badge--ok';
+        visibilityBadgeEl.setAttribute('title', 'published');
+        setText(visibilityBadgeEl, '게시됨');
+        show(visibilityBadgeEl, true);
+      }
+      return;
+    }
     if (state.space && state.space.kind === 'team') {
       if (visibilityBadgeEl) {
         visibilityBadgeEl.className = 'badge badge--team';
@@ -1985,7 +2515,11 @@ function initPage() {
     if (!propsRow) { return; }
     paintStatus(statusBadgeEl, state.status);
     // 5-A 「소유자」 — 공간의 주인. 팀 공간은 「팀 공간」이다. 글자는 창구가 준 값 그대로다.
-    if (ownerNameEl) {
+    // 5-C — 게시판 글은 「쓴 사람」이다(공간의 주인이 사람이 아니다).
+    setText(document.getElementById('page-owner-label'), state.writer ? '쓴 사람' : '소유자');
+    if (ownerNameEl && state.writer) {
+      setText(ownerNameEl, personLabel(state.writer.display_name, state.writer.username));
+    } else if (ownerNameEl) {
       let text = '—';
       if (state.owner && state.owner.kind === 'personal' && typeof state.owner.username === 'string') {
         text = personLabel(state.owner.display_name, state.owner.username)
@@ -1998,6 +2532,205 @@ function initPage() {
     if (statusButton) { statusButton.disabled = !state.canSetProperties; }
     show(handoverButton, state.canHandover);
     show(propsRow, true);
+  }
+
+  /* ── 게시판 · 게시 · 숨김 · 해결됨 (5-C) ──
+     단추 다섯은 창구가 준 `can_*` 로만 보인다. 누르면 창구를 부르고, 끝나면 **다시 받아** 그린다 —
+     화면이 결과를 지어내지 않는다. 되살려 눌러도 창구가 같은 함수로 다시 막는다(DESIGN 원칙 1). */
+  const boardGroup = document.getElementById('page-board-group');
+  const boardLink = document.getElementById('page-board-link');
+  const boardHidden = document.getElementById('page-board-hidden');
+  const resolvedBadge = document.getElementById('page-resolved-badge');
+  const publishButton = document.getElementById('page-publish');
+  const unpublishButton = document.getElementById('page-unpublish');
+  const hideButton = document.getElementById('page-hide');
+  const resolveButton = document.getElementById('page-resolve');
+  const viewsEl = document.getElementById('page-views');
+
+  function drawBoard() {
+    const b = state.board;
+    show(boardGroup, !!b);
+    if (b) {
+      if (boardLink) {
+        boardLink.setAttribute('href', COMMUNITY_BASE + '/b/' + String(b.id));
+        setText(boardLink, b.name);
+      }
+      show(boardHidden, b.hidden === true);
+      const qa = b.board_kind === 'qa';
+      if (resolvedBadge) {
+        resolvedBadge.className = 'badge' + (state.resolved ? ' badge--ok' : '');
+        setText(resolvedBadge, state.resolved ? '해결됨' : '미해결');
+      }
+      show(resolvedBadge, qa);
+      setText(resolveButton, state.resolved ? '해결됨 빼기' : '해결됨으로 표시');
+    }
+    show(publishButton, state.canPublish);
+    show(unpublishButton, state.canUnpublish);
+    show(hideButton, state.canHide);
+    setText(hideButton, b && b.hidden === true ? '숨김 풀기' : '숨기기');
+    show(resolveButton, state.canResolve);
+    setText(viewsEl, '조회 ' + String(state.viewCount));
+    show(viewsEl, !!b);
+  }
+
+  /** 단추 하나 = 창구 한 번. 성공하면 다시 받아 그리고(배지·단추가 바뀌는 것이 곧 알림 — DESIGN 4장),
+      실패하면 서버 문구(또는 사유 표)를 `#msg`(오류 줄)에 보인다. */
+  function boardAction(button, method, path, payload, okText) {
+    if (!button) { return; }
+    button.disabled = true;
+    api(method, path, payload).then((result) => {
+      button.disabled = false;
+      if (result.status === 401) { toLogin(); return null; }
+      if (result.status === 200) {
+        return api('GET', '/api/pages/' + pageId).then((again) => {
+          if (again.status === 200) { return load().then(() => setText(msg, okText)); }
+          // 해제·숨김 뒤 더는 볼 수 없으면(게시판 등급으로만 보던 관리자) 게시판으로 돌아간다.
+          window.location.assign(state.board ? COMMUNITY_BASE + '/b/' + String(state.board.id) : COMMUNITY_BASE + '/');
+          return null;
+        });
+      }
+      const reason = result.data && typeof result.data.reason === 'string' ? result.data.reason : '';
+      setText(msg, BOARD_REASONS[reason] || errorMessage(result.data));
+      return null;
+    }).catch(() => { button.disabled = false; setText(msg, GENERIC_ERROR); });
+  }
+
+  if (unpublishButton) {
+    unpublishButton.addEventListener('click', () => boardAction(unpublishButton, 'DELETE',
+      '/api/pages/' + pageId + '/publish', undefined, ''));
+  }
+  if (hideButton) {
+    hideButton.addEventListener('click', () => {
+      const hidden = !!state.board && state.board.hidden === true;
+      boardAction(hideButton, hidden ? 'DELETE' : 'POST', '/api/pages/' + pageId + '/hide', undefined,
+        '');
+    });
+  }
+  if (resolveButton) {
+    resolveButton.addEventListener('click', () => boardAction(resolveButton, 'PATCH',
+      '/api/pages/' + pageId + '/properties', { resolved: !state.resolved }, ''));
+  }
+
+  /* 「게시판에 게시」 창 — 고를 수 있는 게시판은 창구가 `can_write` 로 답한 것만. */
+  const publishDialog = document.getElementById('publish-dialog');
+  const publishChoices = document.getElementById('publish-choices');
+  const publishEmpty = document.getElementById('publish-empty');
+  const publishMsg = document.getElementById('publish-msg');
+  const publishSave = document.getElementById('publish-save');
+  if (publishButton && publishDialog && typeof publishDialog.showModal === 'function') {
+    publishButton.addEventListener('click', () => {
+      setText(publishMsg, '');
+      clear(publishChoices);
+      if (publishSave) { publishSave.disabled = true; }
+      loadBoards().then((data) => {
+        const writable = data && Array.isArray(data.boards) ? data.boards.filter((b) => b.can_write === true) : [];
+        for (const b of writable) {
+          const label = document.createElement('label');
+          label.className = 'field field--full';
+          const line = document.createElement('span');
+          line.className = 'field__label';
+          const radio = document.createElement('input');
+          radio.type = 'radio';
+          radio.name = 'publish-board';
+          radio.value = String(b.id);
+          radio.addEventListener('change', () => { if (publishSave) { publishSave.disabled = false; } });
+          line.appendChild(radio);
+          line.appendChild(document.createTextNode(' ' + b.name + ' '));
+          const badge = boardLevelBadge(b.access_level);
+          if (badge) { line.appendChild(badge); }
+          label.appendChild(line);
+          if (b.description) {
+            const help = document.createElement('span');
+            help.className = 'help';
+            help.textContent = b.description;
+            label.appendChild(help);
+          }
+          publishChoices.appendChild(label);
+        }
+        show(publishEmpty, writable.length === 0);
+      });
+      publishDialog.showModal();
+    });
+    for (const close of publishDialog.querySelectorAll('[data-publish-close]')) {
+      close.addEventListener('click', () => publishDialog.close());
+    }
+    if (publishSave) {
+      publishSave.addEventListener('click', () => {
+        const picked = publishDialog.querySelector('input[name="publish-board"]:checked');
+        if (!picked) { return; }
+        publishSave.disabled = true;
+        api('POST', '/api/pages/' + pageId + '/publish', { board_id: Number(picked.value) }).then((result) => {
+          publishSave.disabled = false;
+          if (result.status === 401) { toLogin(); return null; }
+          if (result.status === 200) {
+            publishDialog.close();
+            // 성공은 화면이 곧바로 바뀌는 것으로 알린다(배지 「게시됨」 — DESIGN 4장 「성공」). `#msg` 는 오류 줄이다.
+            return load();
+          }
+          const reason = result.data && typeof result.data.reason === 'string' ? result.data.reason : '';
+          setText(publishMsg, BOARD_REASONS[reason] || errorMessage(result.data));
+          return null;
+        }).catch(() => { publishSave.disabled = false; setText(publishMsg, GENERIC_ERROR); });
+      });
+    }
+  }
+
+  /* ── 태그 (5-C) — 칩 + 입력 칸. 보내는 것은 언제나 **새 태그 전부**(`PUT …/tags`) ── */
+  const tagsEl = document.getElementById('page-tags');
+  const tagInput = document.getElementById('page-tag-input');
+  const tagOptions = document.getElementById('page-tag-options');
+
+  function drawTags() {
+    clear(tagsEl);
+    if (state.tags.length === 0 && !state.canTag) { setText(tagsEl, '—'); }
+    for (const t of state.tags) {
+      if (state.canTag) {
+        const chip = document.createElement('button');
+        chip.type = 'button';
+        chip.className = 'btn btn--small btn--quiet';
+        chip.setAttribute('aria-label', '태그 ' + t + ' 빼기');
+        chip.appendChild(document.createTextNode('#' + t + ' '));
+        chip.appendChild(makeIcon('x'));
+        chip.addEventListener('click', () => putTags(state.tags.filter((x) => x !== t)));
+        tagsEl.appendChild(chip);
+      } else {
+        const badge = document.createElement('span');
+        badge.className = 'badge';
+        badge.textContent = '#' + t;
+        tagsEl.appendChild(badge);
+      }
+    }
+    show(tagInput, state.canTag);
+    if (state.canTag && state.board) { fillTagOptions(tagOptions, state.board.id, ''); }
+  }
+
+  function putTags(list) {
+    return api('PUT', '/api/pages/' + pageId + '/tags', { tags: list }).then((result) => {
+      if (result.status === 401) { toLogin(); return; }
+      if (result.status === 200) {
+        state.tags = Array.isArray(result.data.page.tags) ? result.data.page.tags : [];
+        drawTags();
+        setText(msg, '');
+        return;
+      }
+      setText(msg, result.status === 400
+        ? '태그는 10개까지, 하나에 30자까지 붙일 수 있습니다(줄바꿈·제어 문자는 안 됩니다).'
+        : errorMessage(result.data));
+    }).catch(() => setText(msg, GENERIC_ERROR));
+  }
+
+  if (tagInput) {
+    tagInput.addEventListener('keydown', (event) => {
+      if (event.key !== 'Enter' || event.isComposing) { return; }
+      event.preventDefault();
+      const add = splitTags(tagInput.value);
+      if (add.length === 0) { return; }
+      tagInput.value = '';
+      putTags(state.tags.concat(add));
+    });
+    tagInput.addEventListener('input', () => {
+      if (state.board) { fillTagOptions(tagOptions, state.board.id, tagInput.value.trim()); }
+    });
   }
 
   /* ── 「상태」 창 (4-D) ──
@@ -2591,7 +3324,14 @@ function initPage() {
     const head = document.createElement('div');
     head.className = 'list__head';
     const what = document.createElement('strong');
-    if (event.kind === 'property') {
+    if (event.kind === 'property' && event.prop === 'publish') {
+      // 5-C — 「게시: 자유게시판」·「게시 해제: 자유게시판」(값은 게시판 이름 — 창구가 준 글자 그대로)
+      what.textContent = event.to ? '게시: ' + String(event.to) : '게시 해제: ' + String(event.from || '');
+    } else if (event.kind === 'property' && event.prop === 'hide') {
+      what.textContent = event.to === 'hidden' ? '게시판에서 숨김' : '숨김 풀림';
+    } else if (event.kind === 'property' && event.prop === 'resolved') {
+      what.textContent = event.to === 'resolved' ? '해결됨으로 표시' : '해결됨 표시를 뺌';
+    } else if (event.kind === 'property') {
       // 4-D — 「상태: 할 일 → 진행」·「담당자: 없음 → qa_employee01」(담당자는 5-A 전의 옛 기록)
       what.textContent = (event.prop === 'assignee' ? '담당자' : '상태') + ': '
         + propValueText(event.prop, event.from) + ' → ' + propValueText(event.prop, event.to);
@@ -3253,7 +3993,15 @@ function initPage() {
     if (document.visibilityState === 'hidden' && state.editing) { flushSave(); }
   });
 
-  load().catch(() => setText(msg, GENERIC_ERROR));
+  /* 5-C — 게시판 「새 글」은 `?edit=1` 로 열린다: 고칠 수 있으면(창구의 `can_edit`) 곧바로 편집 모드.
+     꼬리표는 주소에서 지운다(새로 고침·뒤로 가기에 다시 편집 모드로 들어가지 않게). */
+  load().then(() => {
+    let wantEdit = false;
+    try { wantEdit = new URLSearchParams(window.location.search).get('edit') === '1'; } catch (e) { wantEdit = false; }
+    if (!wantEdit) { return; }
+    try { window.history.replaceState(null, '', window.location.pathname); } catch (e) { /* 주소 정리는 편의일 뿐 */ }
+    if (state.canEdit && !state.editing) { startEditing(); }
+  }).catch(() => setText(msg, GENERIC_ERROR));
 }
 
 /* ─── 시작 ───────────────────────────────────────────────────── */
@@ -3265,7 +4013,7 @@ function boot() {
   booted = true;
 
   const page = body && body.dataset ? body.dataset.page : '';
-  if (page !== 'community-home' && page !== 'community-page') { return; }
+  if (page !== 'community-home' && page !== 'community-page' && page !== 'community-board') { return; }
   if (COMMUNITY_BASE === '' || APP_BASE === '') { return; }
 
   // CSRF 토큰은 t-box 창구가 준다 — 한 앱·한 세션이라 같은 토큰이 커뮤니티 창구에도 통한다.
@@ -3279,11 +4027,17 @@ function boot() {
         bindNewPage();
         if (page === 'community-home') {
           initHome();
+        } else if (page === 'community-board') {
+          // 5-C — 게시판 화면. 사이드바의 공간·게시판 묶음은 여기서 함께 채운다.
+          loadSpaces();
+          initBoard();
         } else {
           // 4-B — 페이지 화면에서도 셸 왼쪽의 「팀 공간」 묶음을 채운다(홈은 initHome 이 한다).
           loadSpaces();
           initPage();
         }
+        // 5-C — 사이드바 「게시판」 묶음(세 화면 공통). 게시판 화면은 관리 창이 같은 답을 다시 쓴다.
+        if (page !== 'community-board') { loadBoards(); }
         return null;
       });
     })

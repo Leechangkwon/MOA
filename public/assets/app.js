@@ -516,6 +516,11 @@ function handleReauth(response, data, retry) {
   return true;
 }
 
+/* 커뮤니티 5-C — 게시판 관리 창(editor.js, 모듈 스크립트)도 **같은 재인증 창**을 쓴다(DESIGN 2.7 D-9 —
+   「15분 창이 닫혀 API 가 403 을 돌려줄 때 뜨는 모달과 같은 모달」). 모듈은 이 파일의 함수를 이름으로
+   부를 수 없어 `personLabel` 과 같은 방식으로 하나만 내놓는다. 막는 것은 여전히 서버다. */
+window.qarediHandleReauth = handleReauth;
+
 /** 모달 하나를 만들어 띄운다. 성공하면 onDone() 을 부르고 닫는다. */
 function openReauthModal(onDone) {
   if (reauthOpen) {
@@ -8132,7 +8137,7 @@ function bootPage(page) {
            (type="module") 가 맡는다. 이 두 키를 여기서 무시하지 않으면 아래 갈래가 없는 채로
            흘러가므로 지금도 아무 일이 없지만, 나중에 t-box 화면 키가 늘 때 섞이지 않도록
            **뜻을 코드에 적어 둔다**. */
-        if (page === 'community-home' || page === 'community-page') {
+        if (page === 'community-home' || page === 'community-page' || page === 'community-board') {
           return null;
         }
 

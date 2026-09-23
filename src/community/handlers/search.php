@@ -42,8 +42,9 @@ if ($q === '') {
 // `%`·`_`·`#` 은 ILIKE 의 뜻 있는 글자다. `#` 로 이스케이프하고 값은 바인딩한다 (PRD S-04).
 $like = '%' . str_replace(['#', '%', '_'], ['##', '#%', '#_'], $q) . '%';
 
-[$visible, $visBind] = community_visible_pages_where($user);
-$visBind[':vis_admin'] = 'false';   // ★ 위 머리글 — 검색은 관리자 특권 갈래를 쓰지 않는다
+/* ★ 위 머리글 — 검색은 관리자 특권 갈래를 쓰지 않는다. 5-C 부터 같은 일을 한 함수가 한다:
+   관리자 갈래(`admin_all`)와 게시판 관리자 갈래(`board_moderator` — 숨긴 글)를 함께 끈다. */
+[$visible, $visBind] = community_search_pages_where($user);
 
 $sql = <<<SQL
     SELECT p.id, p.public_id, p.title, p.icon, p.space_id,
@@ -55,6 +56,8 @@ $sql = <<<SQL
       LEFT JOIN public.users owner ON owner.id = s.owner_user_id
      WHERE p.deleted_at IS NULL
        AND {$visible}
+       -- 5-C — 숨긴 게시판 글은 검색에도 없다(쓴 사람에게도 — 숨긴 글은 주소로만 연다)
+       AND NOT (s.kind = 'board' AND p.hidden_at IS NOT NULL)
        AND (p.title ILIKE :like2 ESCAPE '#' OR p.plain_text ILIKE :like3 ESCAPE '#')
      ORDER BY (p.title ILIKE :like4 ESCAPE '#') DESC, p.updated_at DESC, p.id DESC
      LIMIT 20

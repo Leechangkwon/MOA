@@ -124,6 +124,12 @@ if (array_key_exists('parent_id', $body) && $body['parent_id'] !== null) {
         // 아무 공간에도 없는 UUID(또는 지워진 페이지) — 「없다」로 답한다 (4-A 규칙).
         Http::error(404, Http::MSG_NOT_FOUND);
     }
+    /* 5-C — 게시판 글에는 하위 페이지가 없다(게시판은 한 줄 목록이다). 게시판에 새 글을 쓰는 창구는
+       `POST /api/boards/{num}/pages` 하나다. */
+    if ((string) $parentRow['space_kind'] === 'board') {
+        Http::json(['error' => '게시판 글 아래에는 하위 페이지를 만들 수 없습니다', 'reason' => 'space_governed'], 400);
+        exit;
+    }
 }
 
 // ─── [5] 공간 (4-B) ────────────────────────────────────────────
@@ -142,6 +148,11 @@ if ($spaceGiven) {
     $spaceRow = community_space_row((int) $rawSpace);
     if ($spaceRow === null) {
         Http::error(404, Http::MSG_NOT_FOUND);
+    }
+    // 5-C — 게시판 공간에는 이 창구로 쓰지 않는다(새 글은 `POST /api/boards/{num}/pages`).
+    if ((string) $spaceRow['kind'] === 'board') {
+        Http::json(['error' => '게시판에는 「새 글」로 씁니다', 'reason' => 'space_governed'], 400);
+        exit;
     }
 } elseif ($parentRow !== null) {
     $spaceRow = community_space_row((int) $parentRow['space_id']);
@@ -186,7 +197,8 @@ if ($parentRow !== null) {
     }
     $createCode       = $childCode;
     $parentId         = (int) $parentRow['id'];
-    $parentVisibility = (string) $parentRow['visibility'];
+    // 5-C — 게시 중인 부모의 하위는 **기준 범위**(게시 전 범위)로 시작한다. 게시는 하위로 번지지 않는다.
+    $parentVisibility = CommunityAuthz::baseVisibility($parentRow);
 
     // 깊이는 뿌리를 1 로 세어 8 까지. 부모가 8 이면 그 아래는 9 다 (4-A 규칙).
     if (community_page_depth($parentId) + 1 > CommunityAuthz::MAX_DEPTH) {

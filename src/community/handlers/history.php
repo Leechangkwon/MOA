@@ -54,18 +54,21 @@ $sql = <<<'SQL'
       FROM community.page_versions v
       JOIN public.users u ON u.id = v.edited_by
      WHERE v.page_id = CAST(:pid AS bigint)
+       AND v.edited_at >= coalesce(CAST(:since1 AS timestamptz), '-infinity'::timestamptz)
     UNION ALL
     SELECT 'check', NULL::int, NULL::text, e.at, cu.username, cu.display_name, e.block_id, e.checked, NULL::text, NULL::int,
            NULL::text, NULL::text, NULL::text, NULL::text, NULL::text
       FROM community.checklist_events e
       JOIN public.users cu ON cu.id = e.by_user_id
      WHERE e.page_id = CAST(:pid2 AS bigint)
+       AND e.at >= coalesce(CAST(:since2 AS timestamptz), '-infinity'::timestamptz)
     UNION ALL
     SELECT 'property', NULL::int, NULL::text, pe.at, pu.username, pu.display_name, NULL::uuid, NULL::boolean, NULL::text, NULL::int,
            pe.prop, pe.from_value, pe.to_value, NULL::text, NULL::text
       FROM community.page_property_events pe
       JOIN public.users pu ON pu.id = pe.by_user_id
      WHERE pe.page_id = CAST(:pid3 AS bigint)
+       AND pe.at >= coalesce(CAST(:since3 AS timestamptz), '-infinity'::timestamptz)
     UNION ALL
     -- 5-A 인계 — 이 페이지를 뿌리로 넘긴 일. 누가·누구에서 누구에게·몇 쪽·남긴 권한(`summary` 칸).
     SELECT 'handover', NULL::int, NULL::text, h.at, hb.username, hb.display_name, NULL::uuid, NULL::boolean, h.kept_level,
@@ -75,6 +78,7 @@ $sql = <<<'SQL'
       JOIN public.users hf ON hf.id = h.from_user_id
       JOIN public.users ht ON ht.id = h.to_user_id
      WHERE h.root_page_id = CAST(:pid4 AS bigint)
+       AND h.at >= coalesce(CAST(:since4 AS timestamptz), '-infinity'::timestamptz)
      ORDER BY at DESC
      LIMIT CAST(:lim AS int)
     SQL;
@@ -84,6 +88,8 @@ $rows = Db::instance()->run($sql, [
     ':pid2' => (int) $row['id'],
     ':pid3' => (int) $row['id'],
     ':pid4' => (int) $row['id'],
+    // 5-C — 게시판 등급으로만 보는 사람에게는 게시 뒤 기록만(`community_history_gate` 의 since, USER-CHECKS 5-C #9)
+    ':since1' => $gate['since'], ':since2' => $gate['since'], ':since3' => $gate['since'], ':since4' => $gate['since'],
     ':lim'  => $limit,
 ])->fetchAll();
 

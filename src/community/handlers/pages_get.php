@@ -61,7 +61,9 @@ if (!$mayRead) {
      `same_team` 주인과 같은 팀이라서 (4-B)
    자기 페이지를 여는 것은 일상이라 남기지 않는다 — 그것까지 남기면 진짜 사건이 묻힌다.
    `matrix`(사내 공개)도 남기지 않는다: 사내 전원이 대상이라 모든 열람이 행이 된다. */
-if ($readCode === CommunityAuthz::CODE_ADMIN_ALL || $readCode === CommunityAuthz::CODE_SAME_TEAM) {
+/* 5-C — 게시판 관리자가 **숨긴 게시 페이지**(원래 범위로는 못 보는 남의 개인 페이지)를 연 일도 남긴다. */
+if ($readCode === CommunityAuthz::CODE_ADMIN_ALL || $readCode === CommunityAuthz::CODE_SAME_TEAM
+    || ($readCode === CommunityAuthz::CODE_BOARD_MODERATOR && (string) $row['space_kind'] === 'personal')) {
     Audit::allow('page.read', [
         'target_type' => 'page',
         'target_id'   => (int) $row['id'],
@@ -71,6 +73,15 @@ if ($readCode === CommunityAuthz::CODE_ADMIN_ALL || $readCode === CommunityAuthz
             'page_title' => community_target_title((string) $row['title']),
         ],
     ], $readCode);
+}
+
+/* 5-C 조회수 — 읽기 판정을 **지난 뒤에만** 센다(못 보는 사람의 시도는 세지 않는다). 한 사람 하루 한 줄
+   (`page_views` 기본키) — 같은 날 여러 번 열어도 1 이다. 세는 일이 실패해도 읽기는 막지 않는다 —
+   조회수는 곁가지 수치이고, 그 때문에 페이지를 못 여는 것이 더 나쁘다(서버 로그에만 남긴다). */
+try {
+    community_record_view((int) $row['id'], $me);
+} catch (Throwable $e) {
+    error_log('[tbox] request_id=' . TBOX_REQUEST_ID . ' community page view count failed: ' . get_class($e));
 }
 
 [$mayChange, $changeCode] = CommunityAuthz::decidePageChange($user, $row);
@@ -86,7 +97,30 @@ if ($readCode === CommunityAuthz::CODE_ADMIN_ALL || $readCode === CommunityAuthz
    개발자도구로 되살려 창구를 불러도 `pages_visibility.php` 가 같은 함수로 다시 막는다. */
 $maySetVisibility = $mayManage
     && $manageCode === CommunityAuthz::CODE_OWNER
-    && (string) $row['space_kind'] === 'personal';
+    && (string) $row['space_kind'] === 'personal'
+    // 5-C — 게시 중에는 범위를 바꾸지 않는다(먼저 해제 — `pages_visibility.php` [3-1]).
+    && (string) $row['visibility'] !== 'published';
+
+/* 5-C 게시판 — 이 페이지가 걸린 게시판(게시판 글이면 그 공간, 게시된 개인 페이지면 게시한 게시판)과
+   화면 단추 네 개의 값. 전부 서버가 이미 한 판단의 결과이고, 창구가 같은 함수로 다시 막는다. */
+$boardOfPage   = CommunityAuthz::boardOfRow($row);
+/* 게시판 이름·등급·번호는 **그 게시판을 볼 수 있는 사람**(또는 쓴 사람·주인·그 게시판 관리자)에게만 싣는다 —
+   원래 범위나 공유로 게시된 페이지를 여는 사람에게 못 읽는 게시판의 이름이 새지 않게(독립 검토 2026-09-23). */
+if ($boardOfPage !== null
+    && !CommunityAuthz::decideBoardRead($user, $boardOfPage)[0]
+    && !CommunityAuthz::decideBoardModerate($user, $boardOfPage)[0]
+    && !CommunityAuthz::decideUnpublish($user, $row)[0]
+    && $readCode !== CommunityAuthz::CODE_OWNER
+) {
+    $boardOfPage = null;
+}
+[$mayPublish]  = CommunityAuthz::decidePublish($user, $row);
+[$mayUnpublish] = (string) $row['visibility'] === 'published'
+    ? CommunityAuthz::decideUnpublish($user, $row) : [false, ''];
+[$mayHide]     = $boardOfPage === null ? [false, ''] : CommunityAuthz::decideHide($user, $row);
+$isQa          = $boardOfPage !== null && (string) $boardOfPage['board_kind'] === 'qa';
+[$mayResolveBase, $resolveCode] = CommunityAuthz::decidePageManage($user, $row);
+$mayResolve    = $isQa && $mayResolveBase && $resolveCode === CommunityAuthz::CODE_OWNER;
 
 /* 5-A 인계 창의 「하위 페이지 n개도 함께 옮겨 갑니다」 — 넘길 수 있는 사람에게만 센다.
    재귀 CTE 한 번(`community_subtree_live_ids`)이고, 자기 자신을 뺀 수다. */
@@ -235,7 +269,8 @@ Http::json([
        판단의 결과이고, 되살려 눌러도 창구가 같은 함수로 다시 막는다 (C:T-53). */
     'can_manage'   => $mayManage,
     // 5-A″ — 팀 공간도 공유한다(관리 자격 = 그 팀원). 공개 범위는 여전히 개인 공간만이다.
-    'can_share'    => $mayManage,
+    // 5-C — 게시판 글은 공유가 없다(`decidePageShare` — 게시판 등급이 곧 범위).
+    'can_share'    => CommunityAuthz::decidePageShare($user, $row)[0],
     'can_handover' => $mayHandover,
     // 인계 창의 안내 — 함께 옮겨 갈 하위 페이지 수(넘길 수 없는 사람에게는 null).
     'subtree_count' => $subtreeCount,
@@ -249,4 +284,30 @@ Http::json([
        여기에 없는 id 는 렌더러가 「볼 수 없는 페이지」로 그린다 (C:T-28). */
     'child_titles' => $childTitles === [] ? new stdClass() : $childTitles,
     'editors'    => $editors,
+    /* 5-C 게시판 · 태그 · 조회수.
+       `board` — 이 페이지가 걸린 게시판(없으면 null). `kind` 는 `post`(게시판에서 쓴 글)·`published`(게시한 개인 페이지).
+       `writer` — 게시판 글의 쓴 사람(아이디·이름). 개인 페이지는 `page.owner` 가 곧 쓴 사람이다. */
+    'board' => $boardOfPage === null ? null : [
+        'id'           => (int) $boardOfPage['id'],
+        'name'         => (string) $row['space_kind'] === 'board' ? (string) $row['space_name'] : (string) ($row['pub_name'] ?? ''),
+        'access_level' => (string) $boardOfPage['access_level'],
+        'board_kind'   => (string) $boardOfPage['board_kind'],
+        'is_active'    => $boardOfPage['is_active'] === true,
+        'kind'         => (string) $row['space_kind'] === 'board' ? 'post' : 'published',
+        'published_at' => $row['published_at'] === null ? null : (string) $row['published_at'],
+        'hidden'       => $row['hidden_at'] !== null,
+    ],
+    'writer' => (string) $row['space_kind'] === 'board' && $row['author_name'] !== null ? [
+        'username'     => (string) $row['author_name'],
+        'display_name' => $row['author_display_name'] === null ? null : (string) $row['author_display_name'],
+    ] : null,
+    'published_from' => $row['published_from'] === null ? null : (string) $row['published_from'],
+    'tags'           => community_page_tags((int) $row['id']),
+    'view_count'     => community_view_count((int) $row['id']),
+    'resolved'       => ($row['resolved'] ?? false) === true,
+    'can_tag'        => $mayChange,
+    'can_publish'    => $mayPublish && (string) $row['visibility'] !== 'published',
+    'can_unpublish'  => $mayUnpublish,
+    'can_hide'       => $mayHide,
+    'can_resolve'    => $mayResolve,
 ]);

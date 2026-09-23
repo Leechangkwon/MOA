@@ -46,7 +46,7 @@ if ($row === null || $row['deleted_at'] !== null) {
 
 [$may, $code] = $purpose === 'handover'
     ? CommunityAuthz::decidePageHandover($user, $row)
-    : CommunityAuthz::decidePageManage($user, $row);
+    : CommunityAuthz::decidePageShare($user, $row);
 /* 5-A″ — 팀 공간도 공유 후보를 찾는다(관리 자격 = 그 팀원). 인계는 여전히 개인 공간만이다 —
    `decidePageHandover` 가 팀 공간을 `space_governed` 로 거짓을 주므로 위 판정이 이미 막는다. */
 if (!$may) {

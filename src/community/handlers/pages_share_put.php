@@ -57,7 +57,12 @@ $pageId    = (int) $row['id'];
 $pageTitle = community_target_title((string) $row['title']);
 
 // ─── [권한 ✔ B] 관리할 수 있나 (5-A) ──────────────────────────
-[$mayManage, $manageCode] = CommunityAuthz::decidePageManage($user, $row);
+[$mayManage, $manageCode] = CommunityAuthz::decidePageShare($user, $row);
+if (!$mayManage && $manageCode === CommunityAuthz::CODE_SPACE_GOVERNED) {
+    // 5-C — 게시판 글은 게시판 등급이 곧 범위다(사람 지정 공유가 없다). 권한이 아니라 모양의 문제라 400.
+    Http::json(['error' => '게시판 글은 게시판 등급을 따릅니다', 'reason' => 'space_governed'], 400);
+    exit;
+}
 if (!$mayManage) {
     Audit::deny('page.share', CommunityAuthz::CODE_NOT_OWNER, [
         'target_type' => 'page',

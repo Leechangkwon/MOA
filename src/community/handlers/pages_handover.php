@@ -84,14 +84,16 @@ if (!$may) {
         Http::error(404, Http::MSG_NOT_FOUND);
     }
     if ($code === CommunityAuthz::CODE_SPACE_GOVERNED) {
-        Audit::deny('page.handover', CommunityAuthz::CODE_SPACE_GOVERNED, [
+        // 5-C — 게시판 글은 문장·문구를 따로 둔다(「팀 공간」이라 적지 않게 — 독립 검토 2026-09-23).
+        $isBoardPost = (string) $row['space_kind'] === 'board';
+        Audit::deny('page.handover', $isBoardPost ? 'board_post' : CommunityAuthz::CODE_SPACE_GOVERNED, [
             'target_type' => 'page',
             'target_id'   => $pageId,
             'target_name' => $pageTitle,
             'detail'      => $denyDetail,
         ]);
         Http::json([
-            'error'  => '팀 공간의 페이지는 팀이 주인이라 넘길 수 없습니다',
+            'error'  => $isBoardPost ? '게시판 글은 넘길 수 없습니다' : '팀 공간의 페이지는 팀이 주인이라 넘길 수 없습니다',
             'reason' => CommunityAuthz::CODE_SPACE_GOVERNED,
         ], 400);
         exit;

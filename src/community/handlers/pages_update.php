@@ -122,6 +122,10 @@ if (!$mayChange) {
     if ($changeCode === CommunityAuthz::CODE_NOT_OWNER) {
         $reject(CommunityAuthz::CODE_NOT_OWNER, 403, ['error' => Http::MSG_FORBIDDEN], []);
     }
+    // 5-C — 남이 쓴 게시판 글(게시판 Manager·Admin 포함 — 내용은 쓴 사람만 고친다, PRD F-18).
+    if ($changeCode === CommunityAuthz::CODE_NOT_AUTHOR) {
+        $reject(CommunityAuthz::CODE_NOT_AUTHOR, 403, ['error' => Http::MSG_FORBIDDEN], []);
+    }
     error_log('[tbox] request_id=' . TBOX_REQUEST_ID
         . ' community page.update deny code=' . $changeCode . ' (3단계에 없는 조합)');
     Http::error(403, Http::MSG_FORBIDDEN);
