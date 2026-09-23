@@ -74,9 +74,6 @@ require __DIR__ . '/../../views/shell_top.php';
         <button id="page-edit" class="btn" type="button" hidden>
           <span class="icon" data-icon="edit"></span>편집
         </button>
-        <button id="page-add-block" class="btn btn--quiet" type="button" hidden>
-          <span class="icon" data-icon="plus"></span>블록 추가
-        </button>
         <button id="page-done" class="btn" type="button" hidden>
           <span class="icon" data-icon="check"></span>편집 끝
         </button>
@@ -110,9 +107,16 @@ require __DIR__ . '/../../views/shell_top.php';
     <!-- 읽기 모드의 본문이 들어오는 자리 (renderDoc 의 결과) -->
     <article id="page-doc" class="panel" aria-live="polite"></article>
 
-    <!-- 글자를 고르면 뜨는 줄 — 「색」 「배경」 「링크」 셋뿐이다 (지시서 1장).
-         굵게·기울임·밑줄·취소선·인라인 코드는 만들지 않는다(사용자 결정 2026-09-23). -->
-    <div id="inline-toolbar" class="panel editor-toolbar" hidden role="toolbar" aria-label="글자 색과 링크"></div>
+    <!-- 편집하는 동안 본문 위에 붙어 있는 줄 — 「블록 추가」 + 「색」 「배경」 「링크」 (지시서 1장).
+         굵게·기울임·밑줄·취소선·인라인 코드는 만들지 않는다(사용자 결정 2026-09-23).
+         「블록 추가」가 머리글이 아니라 여기 있는 것은 긴 글에서 위로 오르내리지 않게 하려는 것이다
+         (사용자 지적 2026-09-23). 줄은 sticky 라 스크롤해도 화면 위에 남는다. 단추는 editor.js 가
+         줄의 맨 앞으로 옮긴다. -->
+    <div id="inline-toolbar" class="panel editor-toolbar" hidden role="toolbar" aria-label="블록 추가와 글자 꾸미기">
+      <button id="page-add-block" class="btn btn--small btn--quiet" type="button" hidden>
+        <span class="icon" data-icon="plus"></span>블록 추가
+      </button>
+    </div>
 
     <!-- 편집 모드의 본문이 들어오는 자리 (ProseMirror 가 자기 DOM 을 그린다) -->
     <div id="page-editor" class="panel" hidden></div>

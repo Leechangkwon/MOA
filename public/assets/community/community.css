@@ -239,7 +239,14 @@
 .editor:focus { outline: none; }
 .editor [data-kind] { position: relative; padding-left: 1.4rem; }
 .editor [data-kind="bulleted"]::before { content: "•"; position: absolute; left: .45rem; color: var(--muted); }
-.editor [data-kind="numbered"]::before { content: "1."; position: absolute; left: .1rem; color: var(--muted); font-size: 13px; }
+/* 번호 목록은 평평한 블록이라 번호를 CSS 카운터로 센다. 이어진 항목의 **첫 줄**에서 다시
+   1부터 — 읽기 화면(`DocRender` 가 이어진 항목만 `<ol>` 하나로 묶는다)과 같다.
+   ★ 끊는 블록 쪽에 counter-reset 을 두면 Chromium 151 에서 번호가 이어졌다(2026-09-23 실측).
+   번호는 오른쪽 끝을 맞춰 두 자리(「10.」)가 되면 왼쪽 여백으로 자란다. */
+.editor > [data-kind="numbered"]:first-child,
+.editor > :not([data-kind="numbered"]) + [data-kind="numbered"] { counter-reset: doc-num; }
+.editor [data-kind="numbered"] { counter-increment: doc-num; }
+.editor [data-kind="numbered"]::before { content: counter(doc-num) "."; position: absolute; right: calc(100% - 1.15rem); white-space: nowrap; color: var(--muted); font-size: 13px; }
 .editor .doc-toc { color: var(--muted); font-size: 13px; }
 
 /* ProseMirror 가 스스로 붙이는 클래스 두 개(빈 자리 표시·가짜 커서). 색은 토큰만 쓴다. */
@@ -318,7 +325,9 @@
 }
 
 /* ─── 인라인 툴바 — 「색」 「배경」 「링크」 셋 (DESIGN 2.14) ───
-   닫힌 상태는 한 줄·세 단추이고 폭은 내용만큼이다(320px 을 넘지 않는다). */
+   닫힌 상태는 한 줄·세 단추이고 폭은 내용만큼이다(320px 을 넘지 않는다).
+   편집하는 동안 **늘 같은 자리에 있다** — 글자를 고르지 않으면 단추만 흐려진다(disabled).
+   고를 때마다 나타났다 사라지면 그 높이만큼 본문이 오르내렸다. */
 
 .editor-toolbar {
   position: sticky;
@@ -331,11 +340,28 @@
   box-shadow: var(--shadow-lg);
 }
 .editor-toolbar__row { display: flex; align-items: center; gap: 4px; }
+.editor-toolbar__sep { align-self: stretch; width: 1px; margin: 4px 2px; background: var(--line); }
 .editor-toolbar .btn--icon { font-weight: 600; }
 .editor-toolbar .muted { font-size: 12px; }
 
 .editor-palette { padding: 8px; gap: 6px; box-shadow: none; }
 .editor-palette__row { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; }
+/* 팔레트·링크 줄은 툴바 **오른쪽 같은 줄에 떠서** 열린다 — 문서 흐름에서 빠지므로 본문이
+   밀리지 않고, 고른 글자도 가리지 않는다(2026-09-23 사용자 지적 「칸이 밀리면서 사용감이
+   불편」). 툴바가 sticky 라 여기 기준점이 된다. 좁은 화면에서는 툴바 아래로 뜬다(아래). */
+.editor-toolbar > .editor-palette__row {
+  position: absolute;
+  top: -1px;
+  left: calc(100% + 6px);
+  flex-wrap: nowrap;
+  width: max-content;
+  min-height: calc(100% + 2px);
+  padding: 4px 8px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--r-ctl);
+  box-shadow: var(--shadow-lg);
+}
 .editor-palette__row > .muted { flex: 0 0 3.5rem; }
 .editor-palette__row input[type="text"] {
   flex: 1 1 14rem;
@@ -364,6 +390,21 @@
 /* 좁은 화면 — 문서는 그대로 흐르고 툴바만 화면 폭에 맞춘다 */
 @media (max-width: 640px) {
   .editor-toolbar { max-width: 100%; }
+}
+/* 좁은 화면(960px 미만)은 셸 상단 바 `.appbar`(높이 52px, sticky)가 위에 붙어 있다 — 툴바가 그
+   뒤로 숨지 않게 그 아래에 붙인다(2026-09-23 휴대폰 폭 실측). */
+@media (max-width: 959.98px) {
+  .editor-toolbar { top: 60px; }
+}
+@media (max-width: 900px) {
+  .editor-toolbar > .editor-palette__row {
+    top: calc(100% + 4px);
+    left: 0;
+    flex-wrap: wrap;
+    width: min(26rem, calc(100vw - 32px));
+    min-height: 0;
+    padding: 8px;
+  }
 }
 
 /* ─── 페이지 트리 · 경로 · 하위 페이지 카드 · 옮기기 창 (4-A, DESIGN 2.14) ───

@@ -1117,6 +1117,9 @@ function createBlockDialog(getView, hooks) {
 function createToolbar(view) {
   const wrap = document.getElementById('inline-toolbar');
   if (!wrap) { return null; }
+  // 「블록 추가」는 마크업에서 이 줄 안에 있다. 비우기 전에 붙잡아 두었다가 줄 맨 앞에 다시 놓는다
+  // (단추의 click 은 initPage 가 걸어 두었으므로 요소를 새로 만들지 않는다).
+  const addBlock = document.getElementById('page-add-block');
 
   clear(wrap);
   let fgPanel = null;
@@ -1285,20 +1288,35 @@ function createToolbar(view) {
 
   const row = document.createElement('div');
   row.className = 'editor-toolbar__row';
-  row.appendChild(labelButton('tool-color', '색', () => togglePanel('fg')));
-  row.appendChild(labelButton('tool-bg', '배경', () => togglePanel('bg')));
-  row.appendChild(labelButton('tool-link', '링크', () => togglePanel('link')));
+  const tools = [
+    labelButton('tool-color', '색', () => togglePanel('fg')),
+    labelButton('tool-bg', '배경', () => togglePanel('bg')),
+    labelButton('tool-link', '링크', () => togglePanel('link'))
+  ];
+  if (addBlock) {
+    row.appendChild(addBlock);
+    const sep = document.createElement('span');
+    sep.className = 'editor-toolbar__sep';
+    sep.setAttribute('aria-hidden', 'true');
+    row.appendChild(sep);
+  }
+  for (const tool of tools) { row.appendChild(tool); }
   wrap.appendChild(row);
 
-  /* 자리는 **CSS 가 정한다**(편집 영역 위에 붙는 줄). 좌표를 JS 로 써 넣지 않는다
-     (DESIGN 0장 2 — 인라인 style 0). 보이고 안 보이고만 여기서 정한다.
+  /* 자리는 **CSS 가 정한다**(편집 영역 위에 붙는 줄, 팔레트는 그 아래로 뜬다). 좌표를 JS 로
+     써 넣지 않는다(DESIGN 0장 2 — 인라인 style 0). 툴바는 편집하는 동안 늘 보이고, 여기서는
+     단추를 쓸 수 있나만 정한다 — 보였다 숨었다 하면 본문이 밀렸다(2026-09-23 사용자 지적).
      ★ `view.hasFocus()` 는 보지 않는다 — 링크 입력칸을 누르는 순간 편집기가 초점을 잃어
-       툴바가 사라지던 것이 관문 ③ 의 「링크가 안 걸린다」였다. */
+       툴바가 사라지던 것이 관문 ③ 의 「링크가 안 걸린다」였다. 입력칸에 초점이 가도
+       편집기의 선택은 그대로라 여기 판단이 바뀌지 않는다. */
   function refresh() {
-    if (anyPanelOpen()) { show(wrap, true); return; }
-    if (view.state.selection.empty) { show(wrap, false); return; }
-    show(wrap, true);
+    const empty = view.state.selection.empty;
+    if (empty && anyPanelOpen()) { closePanels(); }
+    for (const tool of tools) { tool.disabled = empty; }
   }
+
+  show(wrap, true);
+  refresh();
 
   return {
     refresh: refresh,

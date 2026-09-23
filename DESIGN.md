@@ -252,18 +252,18 @@
 | 정렬 | `.al-left`(기본) `.al-center` `.al-right` | `text-align` |
 | 블록 요소 | `.doc` 안 `.doc-h1~3` `.doc-p` `.doc-ul` `.doc-ol` `.doc-todo`(체크 상자 + 완료 시 취소선·`--muted`) `.doc-quote`(왼 테두리 3px `--line`) `.doc-callout`(배경 `--nt-gray-bg` + 아이콘 칸, 색 있으면 그 `-bg`) `.doc-divider` `.doc-code`(고정폭·`--panel` 배경·언어 라벨) `.doc-toc` | 간격·반경은 기존 토큰(`--space-*`·`--radius`)만 |
 | 인라인 마크 | `<strong>` `<em>` `<u>` `<s>` `<code class="doc-inline-code">` `<a>`(외부는 `rel="noopener noreferrer"`) | 기존 글자 토큰 |
-| 에디터 | `.editor`(PM 루트, `.doc` 와 같은 규칙으로 보이게) · `.editor-toolbar`(글자를 고르면 뜨는 줄 — **「색」 「배경」 「링크」 셋뿐**, `.btn.btn--small.btn--quiet`) · `.block-handle`(블록 왼쪽 손잡이 ⋮⋮) · 저장 상태 배지 `.badge`(「저장 중…」「저장됨」「저장 못 함」 **셋**) | 새 색·간격 0. 다크는 토큰이 따라온다 |
+| 에디터 | `.editor`(PM 루트, `.doc` 와 같은 규칙으로 보이게) · `.editor-toolbar`(편집하는 동안 본문 위에 sticky 로 붙어 있는 줄 — **「블록 추가」 + 「색」 「배경」 「링크」**, `.btn.btn--small.btn--quiet`, 글자를 고르지 않으면 꾸미기 셋은 `disabled`) · `.block-handle`(블록 왼쪽 손잡이 ⋮⋮) · 저장 상태 배지 `.badge`(「저장 중…」「저장됨」「저장 못 함」 **셋**) | 새 색·간격 0. 다크는 토큰이 따라온다 |
 | 「블록 추가」 창 (2026-09-23 등록) | `dialog.modal`(2.7 의 960px) 안에 `.block-picker`(왼쪽 `.list` 종류 목록 15rem + 오른쪽 상세) · `.block-pick`(목록의 단추) · `.block-picker__detail` · `.block-picker__sample`(미리보기를 **읽기 렌더러 `renderDoc` 으로** 그린다) | 격자·간격은 기존 토큰만. 720px 미만에서 한 열 |
 | 페이지 트리 (커뮤니티 4-A, 2026-09-23 등록) | `.page-tree`(내 공간 목록 상자, `.panel` 위에) > `.page-tree__node`(하위가 있으면 **`<details>`**, 없으면 `<div>`) > `.page-tree__row`(한 줄 = `.page-tree__caret` 삼각형 + `.page-tree__link` 제목 + `.page-tree__add` 「하위 추가」) · `.page-tree__kids`(한 층 들여쓰고 왼쪽에 `--line` 선) | 새 색·간격 0. **접기·펼치기는 `<details>` 가 한다** — 여닫는 JS 가 한 줄도 없고 키보드로도 열린다. 줄의 요소는 `<a>`·`<button>` 이라 Tab 으로 닿는다 (4장) |
 | 경로(breadcrumb) (4-A) | `.crumb`(`<nav aria-label="페이지 경로">`) > `.crumb__item`(마지막 칸은 `.is-current` + `aria-current="page"`, 링크가 아니다) · `.crumb__sep`(`›`, `aria-hidden`) | 13px `--muted`. 화면 머리 **위**에 한 줄 |
 | 본문의 하위 페이지 카드 (4-A `child_page`) | 볼 수 있으면 `a.card.card--link.doc-child-page` > `.card__title`, 볼 수 없으면 `div.card.card--soon.doc-child-page` > `.card__title` 「볼 수 없는 페이지」 | 2.3 의 규칙대로 — **눌러도 아무 일 없는 카드에 `.card--link` 를 쓰지 않는다.** 서버·클라이언트 렌더러가 **같은 문구·같은 클래스**여야 한다 (C:T-19) |
 | 「옮기기」 창 (4-A) | `dialog.modal` 안 `.move-tree`(`role="listbox"`) > `.move-tree__node` > `.move-tree__pick`(고른 것은 `.is-selected`) · `.move-tree__kids` | 들여쓰기는 중첩 상자로 한다 — 인라인 `style` 0 |
 
-| 하위 요소(BEM, 구현 2026-09-22 등록) | `.doc-li[data-kind]`(편집기 안 목록 항목 — 편집기 DOM 은 평평한 블록, 읽기 렌더러가 `<ul>`·`<ol>` 로 묶는다) · `.doc-link` · `.doc-todo__box` `.doc-todo__text` · `.doc-callout__icon` `.doc-callout__text` · `.doc-code__lang` `.doc-code__caption` · `.doc-toc__item` · `.block-unsupported`(모르는 블록 자리표시, ARCH 12.4) · `.editor-palette`(색 고르기) · `.editor-toolbar__row` | 부모 블록의 토큰을 그대로 |
+| 하위 요소(BEM, 구현 2026-09-22 등록) | `.doc-li[data-kind]`(편집기 안 목록 항목 — 편집기 DOM 은 평평한 블록, 읽기 렌더러가 `<ul>`·`<ol>` 로 묶는다) · `.doc-link` · `.doc-todo__box` `.doc-todo__text` · `.doc-callout__icon` `.doc-callout__text` · `.doc-code__lang` `.doc-code__caption` · `.doc-toc__item` · `.block-unsupported`(모르는 블록 자리표시, ARCH 12.4) · `.editor-palette`(색 고르기) · `.editor-toolbar__row` · `.editor-toolbar__sep`(「블록 추가」와 꾸미기 셋 사이 세로줄) | 부모 블록의 토큰을 그대로 |
 
 원칙 6(화면 전용 CSS 금지)의 예외 아님 — 위 클래스는 **문서 렌더 구성 요소**로 여기 등록된 것이며, `community.css` 한 파일에만 둔다. 인라인 툴바는 좌표를 JS 로 찍지 않고(인라인 style 0) 편집 영역 위의 sticky 줄로 CSS 가 자리를 정하고, 블록 손잡이도 `.editor > *` 를 기준으로 CSS 가 왼쪽 바깥에 놓는다.
 
-**툴바 구성(사용자 결정 2026-09-23)** — 글자 꾸미기(굵게·기울임·밑줄·취소선·인라인 코드)는 **만들지 않는다**. 툴바는 한 줄(`.editor-toolbar__row` **하나**)에 단추 셋 「색」 「배경」 「링크」 뿐이고 닫힌 폭은 320px 이하다. 팔레트(9색 + 「없앰」)와 링크 입력칸은 그 단추를 눌렀을 때만 `.editor-palette__row` 로 펼쳐진다. 링크 입력칸의 **Enter = 「걸기」**, Esc = 닫기이고, 허용 스킴 밖이라는 안내는 화면 위 `#msg` 가 아니라 **그 줄 안에서** 한 줄로 알린다. 블록 넣기는 `/` 슬래시 메뉴가 아니라 위의 「블록 추가」 창이다(`/` 는 그냥 글자).
+**툴바 구성(사용자 결정 2026-09-23)** — 글자 꾸미기(굵게·기울임·밑줄·취소선·인라인 코드)는 **만들지 않는다**. 툴바는 한 줄(`.editor-toolbar__row` **하나**)에 「블록 추가」와 꾸미기 단추 셋 「색」 「배경」 「링크」 뿐이고 닫힌 폭은 320px 이하다. 편집하는 동안 **늘 같은 자리에 있다**(보였다 숨었다 하면 본문이 밀렸다 — 사용자 지적 2026-09-23). 팔레트(9색 + 「없앰」)와 링크 입력칸은 그 단추를 눌렀을 때만 `.editor-palette__row` 로 **떠서** 열린다 — 넓은 화면은 툴바 오른쪽 같은 줄, 900px 이하는 툴바 아래. 문서 흐름에서 빠지므로 본문이 밀리지 않는다. 링크 입력칸의 **Enter = 「걸기」**, Esc = 닫기이고, 허용 스킴 밖이라는 안내는 화면 위 `#msg` 가 아니라 **그 줄 안에서** 한 줄로 알린다. 블록 넣기는 `/` 슬래시 메뉴가 아니라 툴바 맨 앞 「블록 추가」 창이다(`/` 는 그냥 글자). 머리글이 아니라 sticky 툴바에 두어 긴 글에서도 위로 오르내리지 않는다(사용자 지적 2026-09-23).
 
 ## 3. 화면 배치 규칙
 

@@ -262,6 +262,29 @@ with sync_playwright() as p:
     wait_saved()
     types = [b["type"] for b in saved_doc(page_id)["blocks"]]
     step("저장 JSON 의 두 블록이 모두 numbered", types == ["numbered", "numbered"], "types=%r" % types)
+    # 번호는 CSS 카운터가 그린다(2026-09-23 사용자 지적: 블록 종류는 맞았는데 전부 「1.」이었다).
+    # Chromium 은 카운터가 만든 글자를 DOM·접근성 트리 어디에도 내놓지 않아서, 블록마다
+    # **계산된 카운터 규칙**을 읽는다 — 번호 목록은 늘리고, 이어진 항목의 첫 줄에서 다시 1 부터.
+    # ★ 규칙이 걸려 있어도 번호가 틀릴 수 있다: 끊는 블록 쪽에 reset 을 두었을 때 이 단언은
+    #   통과했는데 화면은 11·12 로 이어졌다(스크린샷으로 확인). 규칙을 바꾸면 화면을 한 번 찍어 본다.
+    page.keyboard.press("Enter")
+    page.keyboard.type("셋")
+    page.keyboard.press("Enter")
+    page.keyboard.press("Enter")
+    page.keyboard.type("끊김")
+    page.keyboard.press("Enter")
+    page.keyboard.type("1. 새 목록")
+    page.wait_for_timeout(150)
+    counters = page.evaluate("""() => Array.from(document.querySelectorAll('.ProseMirror > *')).map((el) => {
+      const s = getComputedStyle(el);
+      return [el.dataset.kind || el.tagName.toLowerCase(), s.counterIncrement, s.counterReset,
+              getComputedStyle(el, '::before').content];
+    })""")
+    first = ["numbered", "doc-num 1", "doc-num 0", 'counter(doc-num) "."']
+    rest = ["numbered", "doc-num 1", "none", 'counter(doc-num) "."']
+    want = [first, rest, rest, ["p", "none", "none", "none"], first]
+    step("번호 목록은 카운터를 늘리고, 끊긴 뒤 첫 항목은 다시 1 부터 센다",
+         counters == want, "카운터=%r" % counters)
 
     # ── 4. 할 일 Enter ────────────────────────────────────────────
     print("── 4. `[] 할 일` → Enter → `다음 할 일`")
@@ -501,6 +524,92 @@ with sync_playwright() as p:
     page.wait_for_timeout(150)
 
     # ── 17. 빠른 타자 (delay=0) ───────────────────────────────────
+    # ── 16-2. 툴바가 본문을 밀지 않는다 ───────────────────────────
+    # 2026-09-23 사용자 지적: 글자를 고를 때 툴바가 나타나고, 색·링크를 누르면 줄이 펼쳐지며
+    # 본문이 아래로 밀렸다. 본문 첫 블록의 화면 위치를 재어 「그대로인가」로만 본다.
+    print("── 16-2. 글자 고르기 · 팔레트 · 링크 칸 — 본문이 밀리지 않는가")
+    reset_doc()
+    page.keyboard.type("밀림시험")
+    page.wait_for_timeout(200)
+
+    def body_top():
+        return round(page.locator(".ProseMirror > *").first.bounding_box()["y"], 1)
+
+    def tools_disabled():
+        return page.evaluate("""() => ['tool-color', 'tool-bg', 'tool-link']
+          .map((id) => document.getElementById(id).disabled)""")
+
+    top0 = body_top()
+    step("글자를 고르지 않았을 때 툴바는 보이고 단추 셋은 쓸 수 없다",
+         page.locator("#inline-toolbar").is_visible() and tools_disabled() == [True, True, True],
+         "보임=%r disabled=%r" % (page.locator("#inline-toolbar").is_visible(), tools_disabled()))
+    page.keyboard.press("Shift+Home")
+    page.wait_for_timeout(200)
+    top1 = body_top()
+    step("글자를 고르면 단추 셋을 쓸 수 있다", tools_disabled() == [False, False, False],
+         "disabled=%r" % tools_disabled())
+    page.click("#tool-color")
+    page.wait_for_timeout(150)
+    top2 = body_top()
+    page.click("#tool-link")
+    page.wait_for_selector("#link-input", timeout=3000)
+    top3 = body_top()
+    step("글자 고르기·「색」·「링크」를 눌러도 본문 위치가 그대로다",
+         top0 == top1 == top2 == top3, "y=%r → %r → %r → %r" % (top0, top1, top2, top3))
+    page.keyboard.press("Escape")
+    page.click(".ProseMirror > *:nth-child(1)")
+    page.keyboard.press("End")
+    page.wait_for_timeout(150)
+    step("선택을 풀면 열린 줄이 닫힌다",
+         page.locator("#link-input").is_visible() is False and tools_disabled() == [True, True, True],
+         "링크칸 보임=%r disabled=%r" % (page.locator("#link-input").is_visible(), tools_disabled()))
+
+    # ── 16-3. 긴 글 맨 아래에서 「블록 추가」 ──────────────────────
+    # 2026-09-23 사용자 지적: 「블록 추가」가 머리글에 있어 긴 글에서는 위로 올라갔다 내려와야
+    # 했다. 지금은 sticky 툴바 안에 있다 — 맨 아래까지 내려간 채로 화면 안에 있고, 누르면
+    # 커서 자리(맨 아래)에 들어가야 한다.
+    print("── 16-3. 60줄 글의 맨 아래에서 「블록 추가」")
+    reset_doc()
+    for i in range(60):
+        page.keyboard.type("긴글%02d" % i, delay=0)
+        page.keyboard.press("Enter")
+    page.keyboard.type("마지막 줄")
+    page.wait_for_timeout(300)
+    page.locator(".ProseMirror > *").last.scroll_into_view_if_needed()
+    page.wait_for_timeout(200)
+    in_view = page.evaluate("""() => {
+      const r = document.getElementById('page-add-block').getBoundingClientRect();
+      return r.width > 0 && r.top >= 0 && r.bottom <= window.innerHeight;
+    }""")
+    scrolled = page.evaluate("() => window.scrollY")
+    step("맨 아래로 내려가도 「블록 추가」가 화면 안에 있다", in_view and scrolled > 400,
+         "화면 안=%r scrollY=%r" % (in_view, scrolled))
+    page.click("#page-add-block")
+    page.wait_for_selector("#block-dialog[open]", timeout=5000)
+    page.locator("#block-list .block-pick", has_text="구분선").first.click()
+    page.click("#block-insert")
+    page.wait_for_timeout(300)
+    scrolled_after = page.evaluate("() => window.scrollY")
+    k = kinds()
+    step("누르면 맨 아래(커서 자리)에 들어가고 화면이 위로 튀지 않는다",
+         "divider" in k[-3:] and scrolled_after > 400,
+         "끝 블록=%r scrollY=%r" % (k[-3:], scrolled_after))
+    # 좁은 화면은 셸 상단 바(sticky)가 위에 있다 — 툴바가 그 뒤에 숨으면 「보이는」 것이 아니다.
+    # 단추 한가운데 점을 **실제로 덮고 있는 요소**가 단추 자신인지 본다.
+    page.set_viewport_size({"width": 390, "height": 800})
+    page.wait_for_timeout(300)
+    page.locator(".ProseMirror > *").last.scroll_into_view_if_needed()
+    page.wait_for_timeout(200)
+    on_top = page.evaluate("""() => {
+      const b = document.getElementById('page-add-block');
+      const r = b.getBoundingClientRect();
+      const hit = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+      return !!hit && b.contains(hit);
+    }""")
+    step("390px 폭 맨 아래에서도 「블록 추가」가 상단 바에 가리지 않는다", on_top, "맨 위 요소가 단추=%r" % on_top)
+    page.set_viewport_size({"width": 1440, "height": 900})
+    page.wait_for_timeout(300)
+
     print("── 17. 빠른 타자 — delay=0 으로 200자 + 줄바꿈 10회")
     reset_doc()
     chunks = ["FAST%02dabcdefghijklmn" % i for i in range(10)]
