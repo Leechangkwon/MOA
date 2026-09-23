@@ -125,6 +125,13 @@ if ($code === CommunityAuthz::CODE_ADMIN_ALL && ($user['reauth_fresh'] ?? false)
 // ─── [3] 받는 사람 ────────────────────────────────────────────
 $target = community_user_by_name($to);
 [$targetOk] = CommunityAuthz::decideHandoverTarget($target, $row);
+/* ★ Manager 는 팀원 페이지를 **내용을 보지 않고** 넘길 뿐이다(PRD 11-1 ⑦ 확정). 자기 자신에게 넘기면
+   소유자가 되어 내용을 읽게 되므로 「비열람」이 인계 한 번으로 풀린다 — 문서 정리 중 코드를 읽다가 찾았다
+   (2026-09-23, SECURITY C:R-05 ②). 팀 권한(`team_scope`)으로 넘길 때 받는 사람이 자기면 거절한다.
+   소유자 본인은 이미 「지금 주인」으로 막히고, Admin 은 원래 내용을 볼 수 있어 해당 없다. */
+if ($targetOk && $code === CommunityAuthz::CODE_TEAM_SCOPE && (int) $target['id'] === (int) $user['id']) {
+    $targetOk = false;
+}
 if (!$targetOk) {
     Audit::deny('page.handover', CommunityAuthz::CODE_TARGET_NOT_PERMITTED, [
         'target_type' => 'page',
