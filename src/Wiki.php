@@ -2,7 +2,7 @@
 declare(strict_types=1);
 
 /**
- * src/Wiki.php — 위키 글(`wiki/*.json`)을 읽고, 검사하고, **이스케이프해서** 그린다
+ * src/Wiki.php — 위키 글(`wiki/<책>/*.json`)을 읽고, 검사하고, **이스케이프해서** 그린다
  *                (14단계 F-21 · ARCHITECTURE 5.10 · SECURITY R-56 · PRD S-03)
  *
  * 무엇인가
@@ -10,6 +10,14 @@ declare(strict_types=1);
  *   보여 주기 위한 렌더러다. 원문 마크다운을 파싱하지 않는다 — 마크다운 파서는 HTML 을
  *   통과시키는 통로가 되기 쉽고(저장형 XSS), 외부 라이브러리도 쓰지 않기 때문이다
  *   (의존성 0 원칙, PRD S-10-C).
+ *
+ * 책 셋 (2026-09-23, 사용자 지시 「위키 접속 시 Qaredi · T-box · Community 셋을 보여 주고 골라 들어가게」)
+ *   글은 **책**(`BOOKS`)으로 나뉜다 — `qaredi`(사이트 공통) · `tbox`(파일 공유) · `community`(커뮤니티).
+ *   파일은 `wiki/<책>/<slug>.json`, 차례는 `wiki/<책>/index.json` 이다. 책 이름은 **고정 목록과
+ *   정확히 같은지**로만 받고(`bookKey`), 경로에는 요청 문자열이 아니라 목록에 적힌 키를 쓴다.
+ *   단계 번호의 모양은 책마다 다르다(`validStage`) — t-box 는 정수 1~28, 커뮤니티는 `3`·`3-B`·
+ *   `4-A`·`4+`(그 단계 뒤 보정), 사이트는 `Q-0`. 전에는 t-box 정수만 받아서 커뮤니티 단계가
+ *   들어갈 자리가 없었다(사이트 STAGES 2장 2026-09-23 「이건 왜 위키에 기록이 안 되니」).
  *
  * 이 파일이 지키는 세 가지
  *   ① **본문에 HTML 이 없다.** 글은 구조화된 JSON(문단·목록·표·코드·말풍선…)이고,
@@ -21,9 +29,10 @@ declare(strict_types=1);
  *      예외이고, 부트스트랩의 예외 처리기가 500 으로 끝낸다 (ARCH 5.10). 조용히 건너뛰면
  *      글이 반쪽만 나오고도 아무도 모른다. 커밋 전에 `scripts/wiki_check.php` 로 전 글을
  *      검사하는 이유가 이것이다.
- *   ③ **파일 경로에 사용자 입력이 그대로 들어가지 않는다.** slug 는 라우터 자리표시자
- *      정규식을 통과한 뒤 여기서 한 번 더 `SLUG_RE` 로 검사하고, 만들어진 경로가
- *      `realpath` 로 `wiki/` 안인지 다시 본다 (Storage::pathFor 와 같은 방식, ARCH 5.10).
+ *   ③ **파일 경로에 사용자 입력이 그대로 들어가지 않는다.** 책 이름은 고정 목록(`BOOKS`)의
+ *      키와 정확히 같아야 하고 경로에는 **목록 쪽 문자열**이 들어간다. slug 는 라우터 자리표시자
+ *      정규식을 통과한 뒤 여기서 한 번 더 `SLUG_RE` 로 검사한다. 책 디렉터리와 글 파일 둘 다
+ *      `realpath` 로 풀어 `wiki/` · `wiki/<책>/` 안인지 다시 본다 (Storage::pathFor 와 같은 방식, ARCH 5.10).
  *
  * 이 파일은 DB·세션·부트스트랩에 기대지 않는다 — `scripts/wiki_check.php`(CLI)가
  * 이 클래스 하나만 읽어서 전 글을 검사할 수 있게 하기 위해서다. 권한 판단도 하지 않는다:
@@ -40,12 +49,69 @@ final class Wiki
     /** `updated` 는 날짜 한 형식만 (YYYY-MM-DD) */
     public const DATE_RE = '/^[0-9]{4}-[0-9]{2}-[0-9]{2}$/';
 
-    /** 글 묶음 — 안내 글(guide) 과 단계 글(stage) 둘뿐이다 */
+    /** 글 묶음 — 안내 글(guide) 과 단계 글(stage) 둘뿐이다 (책마다 같다) */
     public const GROUPS = ['guide', 'stage'];
 
-    /** 단계 글의 번호 범위 (PRD 13장의 1~13단계) */
+    /**
+     * 책의 **고정 목록** — 순서가 곧 책 고르기 화면의 순서다 (2026-09-23).
+     *
+     * 키는 디렉터리 이름이자 주소 한 칸(`/wiki/{book}`)이다. 라우터 자리표시자 `{book}` 의 정규식
+     * (`public/index.php` TBOX_PATH_PATTERNS)이 이 키 셋과 **같은 글자**여야 한다 — 늘리려면 둘을
+     * 함께 고친다. 그러지 않으면 새 책은 라우트에 맞지 않아 404 로 남는다(열리는 쪽이 아니라
+     * 닫히는 쪽으로 어긋난다).
+     *
+     * 이름·설명·묶음 부제는 화면 문구다. 글(JSON)이 아니라 코드가 정한다 — 책의 이름이 글쓴이
+     * 마음대로 바뀌지 않게(checklist 표시를 코드 상수로 둔 것과 같은 이유).
+     *
+     * @var array<string,array{name:string,desc:string,guide_sub:string,stage_sub:string,icon:string}>
+     */
+    public const BOOKS = [
+        'qaredi' => [
+            'name'      => 'Qaredi',
+            'desc'      => '사이트 전체 — 이름·런처·폴더 구조, 두 앱의 관계와 통합 기록',
+            'guide_sub' => '사이트가 무엇이고 어떻게 나뉘어 있는지부터 봅니다.',
+            'stage_sub' => '기획(Q-0)과 통합(Q-1)을 차례로 적었습니다.',
+            'icon'      => 'Q',
+        ],
+        'tbox' => [
+            'name'      => 't-box',
+            'desc'      => '사내 파일 공유 — 단계마다 무엇을 만들고 무엇을 막았나',
+            'guide_sub' => '이 서비스가 무엇이고 어떤 말을 쓰는지부터 봅니다.',
+            'stage_sub' => '1단계부터 차례로 무엇을 만들고 무엇을 막았는지 적었습니다.',
+            'icon'      => 'T',
+        ],
+        'community' => [
+            'name'      => '커뮤니티',
+            'desc'      => '개인 업무 공간 — 블록 문서·공개 범위·이력·상태',
+            'guide_sub' => '커뮤니티가 무엇이고 누가 무엇을 볼 수 있는지부터 봅니다.',
+            'stage_sub' => '3단계부터 차례로 무엇을 만들고 무엇을 막았는지 적었습니다.',
+            'icon'      => 'C',
+        ],
+    ];
+
+    /** 글 이름으로 쓸 수 없는 slug — 책 디렉터리 안의 차례 파일(`index.json`) 이름 */
+    public const RESERVED_SLUGS = ['index'];
+
+    /** 옛 주소 `/wiki/{slug}` 가 가리키던 책 — 책이 나뉘기 전의 글은 전부 t-box 것이었다 */
+    public const LEGACY_BOOK = 'tbox';
+
+    /**
+     * t-box 단계 글의 번호 범위 — 정수. `STAGE_MAX` 는 t-box PRD 13장 로드맵 끝과 같게 둔다
+     * (CLAUDE.md 9장). 28단계 = `/tbox/` base-path · 런처 · 옛 주소 308.
+     */
     public const STAGE_MIN = 1;
-    public const STAGE_MAX = 27;   // PRD 13장 로드맵 끝(27단계)
+    public const STAGE_MAX = 28;   // t-box PRD 13장 로드맵 끝(28단계)
+
+    /**
+     * 커뮤니티 단계 번호 — 문자열. `3` · `3-B` · `4-A` 처럼 **숫자 + 선택 조각 글자 하나**, 또는
+     * `4+` 처럼 **숫자 + 「+」**(그 단계가 끝난 뒤의 보정 묶음 — t-box STAGES 0장 표의 `3+` 행과
+     * 같은 표기). `post-4` 같은 낱말 모양을 받지 않은 이유: 정렬 규칙이 하나로 서지 않고(낱말마다
+     * 자리를 따로 정해야 한다) 표기가 늘어날수록 오타가 조용히 새 번호가 된다.
+     */
+    public const COMMUNITY_STAGE_RE = '/^[0-9]{1,2}(-[A-Z]|\+)?$/';
+
+    /** 사이트(Qaredi) 단계 번호 — 문자열 `Q-0` · `Q-1` … (사이트 STAGES 0장 표의 표기 그대로) */
+    public const QAREDI_STAGE_RE = '/^Q-[0-9]{1,2}$/';
 
     /** 본문 블록의 전체 목록. 여기 없는 type 은 예외다 (ARCH 5.10) */
     public const BLOCK_TYPES = ['p', 'list', 'steps', 'table', 'code', 'callout', 'terms', 'refs', 'link', 'checklist'];
@@ -78,11 +144,15 @@ final class Wiki
     /** 말풍선 종류 6가지. 접두 글자(왜·어떻게·확인·위험·해보기·용어)는 app.css 가 붙인다 */
     public const CALLOUT_KINDS = ['why', 'how', 'check', 'risk', 'try', 'term'];
 
-    /** 「원문 위치」가 가리킬 수 있는 문서 6가지 (ARCH 5.10) */
-    public const REF_DOCS = ['PRD', 'ARCH', 'SECURITY', 'STAGES', 'README', 'CLAUDE'];
+    /**
+     * 「원문 위치」가 가리킬 수 있는 문서 (ARCH 5.10). 처음 여섯에 둘을 더했다(2026-09-23) —
+     * 커뮤니티·사이트 글은 단계 지시서(`DIRECTIVE`)와 통합 계획(`PLAN`)을 근거로 드는 일이 많다.
+     * 어느 모듈의 문서인지는 `where` 에 경로로 적는다(예: `community/PRD.md 4.1`).
+     */
+    public const REF_DOCS = ['PRD', 'ARCH', 'SECURITY', 'STAGES', 'README', 'CLAUDE', 'DIRECTIVE', 'PLAN'];
 
     /**
-     * 차례(`wiki/index.json`)에서 글 목록을 담을 수 있는 열쇠 이름들.
+     * 차례(`wiki/<책>/index.json`)에서 글 목록을 담을 수 있는 열쇠 이름들.
      *
      * 차례 파일의 바깥 모양은 ARCH 5.10 이 글 파일만큼 못박아 두지 않았다(글 구조가 계약이다).
      * 그래서 **흔한 모양을 모두 받아들인다**: 최상위가 배열이거나, 아래 열쇠 중 하나(또는 여럿)에
@@ -105,18 +175,50 @@ final class Wiki
         'stages' => 'stage',
     ];
 
-    /** 이 화면들의 주소. 링크를 만들 때 slug 는 SLUG_RE 를 통과한 값만 붙인다 */
+    /** 이 화면들의 주소. 링크를 만들 때 책은 BOOKS 의 키, slug 는 SLUG_RE 를 통과한 값만 붙인다 */
     private const BASE_PATH = '/wiki';
+
+    /* ─── 책 ─────────────────────────────────────────────────── */
+
+    /**
+     * 요청에서 온 책 이름을 **고정 목록의 키**로 바꾼다. 목록에 없으면 null.
+     *
+     * 돌려주는 값은 요청 문자열이 아니라 `BOOKS` 에 적힌 문자열이다 — 둘이 글자로 같더라도
+     * 경로를 만드는 쪽에는 언제나 코드 상수가 들어간다(오픈 리다이렉트 표를 `TBOX_REAUTH_PATHS`
+     * 로 묶은 것과 같은 방식). 대소문자·앞뒤 공백·`.` 은 같지 않으므로 전부 null 이다.
+     */
+    public static function bookKey(string $book): ?string
+    {
+        foreach (array_keys(self::BOOKS) as $key) {
+            if ($key === $book) {
+                return $key;
+            }
+        }
+        return null;
+    }
+
+    /** 고정 목록에 있는 책인가 */
+    public static function isBook(string $book): bool
+    {
+        return self::bookKey($book) !== null;
+    }
+
+    /** 책의 화면 이름 (모르는 책이면 빈 문자열 — 호출한 쪽이 이미 bookKey 로 걸렀다) */
+    public static function bookName(string $book): string
+    {
+        $key = self::bookKey($book);
+        return $key === null ? '' : self::BOOKS[$key]['name'];
+    }
 
     /* ─── 경로 ───────────────────────────────────────────────── */
 
     /**
-     * 글이 있는 디렉터리의 **실제 경로**. 저장소 루트의 `wiki/` 이며 `public/` 밖이라
-     * URL 로 직접 닿지 않는다 (ARCH 3장·5.10).
+     * 위키 전체의 뿌리 디렉터리 **실제 경로**. 저장소 루트의 `wiki/` 이며 `public/` 밖이라
+     * URL 로 직접 닿지 않는다 (ARCH 3장·5.10). 글은 이 아래 책 디렉터리에만 있다.
      *
      * @throws RuntimeException 디렉터리가 없을 때
      */
-    public static function dir(): string
+    public static function rootDir(): string
     {
         $dir = realpath(dirname(__DIR__) . '/wiki');
         if ($dir === false || !is_dir($dir)) {
@@ -126,25 +228,59 @@ final class Wiki
     }
 
     /**
-     * slug 하나로 글 파일의 실제 경로를 만든다. **사용자 입력이 경로에 들어가는 유일한 자리**다.
+     * 책 하나의 디렉터리 **실제 경로** (`wiki/<책>/`).
      *
-     *   [1] SLUG_RE 정확 일치 — `.`·`/`·대문자·%인코딩이 한 글자도 통과하지 못한다.
+     *   [1] 책 이름은 고정 목록 비교(`bookKey`)만 통과한다 — 경로에는 목록의 키가 들어간다.
+     *   [2] 만들어진 경로를 realpath 로 풀어 **정확히** `wiki/<책>` 인지 확인한다 — 책 디렉터리를
+     *       심볼릭 링크로 바꿔 밖을 가리키게 해도 여기서 걸린다(글 파일에 하는 검사를 한 층 위에도).
+     *
+     * @throws InvalidArgumentException 목록에 없는 책 (코드의 버그이지 사용자의 요청이 아니다 — 라우터가 먼저 거른다)
+     * @throws RuntimeException         디렉터리가 없거나 wiki/ 밖을 가리킬 때
+     */
+    public static function dir(string $book): string
+    {
+        $key = self::bookKey($book);
+        if ($key === null) {
+            throw new InvalidArgumentException('허용되지 않는 책입니다');
+        }
+        $root = self::rootDir();
+        $want = $root . '/' . $key;
+        $real = realpath($want);
+        if ($real === false || !is_dir($real)) {
+            throw new RuntimeException('위키 책 디렉터리를 찾을 수 없습니다');
+        }
+        if ($real !== $want) {
+            throw new RuntimeException('위키 디렉터리 밖의 경로입니다');
+        }
+        return $real;
+    }
+
+    /**
+     * 책 + slug 로 글 파일의 실제 경로를 만든다. **사용자 입력이 경로에 들어가는 유일한 자리**다.
+     *
+     *   [1] 책은 `dir()` 이 고정 목록 + realpath 로 본다.
+     *   [2] SLUG_RE 정확 일치 — `.`·`/`·대문자·%인코딩이 한 글자도 통과하지 못한다.
      *       (라우터 `{slug}` 자리표시자가 이미 같은 검사를 하지만, 이 클래스를 CLI 에서도
      *        쓰므로 여기서 다시 본다. 검사는 값을 쓰는 쪽에 있어야 한다.)
-     *   [2] 만들어진 경로를 realpath 로 풀어 `wiki/` 안인지 확인 — 심볼릭 링크로 밖을
+     *   [3] 만들어진 경로를 realpath 로 풀어 `wiki/<책>/` 안인지 확인 — 심볼릭 링크로 밖을
      *       가리키는 파일이 있어도 여기서 걸린다 (Storage::pathFor 와 같은 방식).
      *
      * 파일이 없으면 null 을 돌려준다(호출한 쪽이 404 로 끝낸다).
      *
-     * @throws InvalidArgumentException slug 형태가 아닐 때 (코드의 버그이지 사용자의 요청이 아니다)
-     * @throws RuntimeException         경로가 wiki/ 밖을 가리킬 때
+     * @throws InvalidArgumentException 책·slug 형태가 아닐 때 (코드의 버그이지 사용자의 요청이 아니다)
+     * @throws RuntimeException         경로가 wiki/<책>/ 밖을 가리킬 때
      */
-    public static function pathFor(string $slug): ?string
+    public static function pathFor(string $book, string $slug): ?string
     {
         if (preg_match(self::SLUG_RE, $slug) !== 1) {
             throw new InvalidArgumentException('허용되지 않는 글 이름입니다');
         }
-        $base = self::dir();
+        // `index` 는 차례 파일의 이름이다 — 글로 읽으면 구조 오류로 500 이 된다(2026-09-23 시험이 잡음).
+        // 글이 아니므로 「없는 글」과 같이 null(→ 404 동일 문구).
+        if (in_array($slug, self::RESERVED_SLUGS, true)) {
+            return null;
+        }
+        $base = self::dir($book);
         $path = $base . '/' . $slug . '.json';
 
         if (!is_file($path)) {
@@ -157,32 +293,124 @@ final class Wiki
         return $real;
     }
 
-    /** 그 slug 의 글 파일이 있나 (차례에서 "준비 중" 을 가려내는 데 쓴다) */
-    public static function pageExists(string $slug): bool
+    /** 그 책에 그 slug 의 글 파일이 있나 (차례에서 "준비 중" 을 가려내는 데 쓴다) */
+    public static function pageExists(string $book, string $slug): bool
     {
-        if (preg_match(self::SLUG_RE, $slug) !== 1) {
+        if (!self::isBook($book) || preg_match(self::SLUG_RE, $slug) !== 1) {
             return false;
         }
-        return self::pathFor($slug) !== null;
+        return self::pathFor($book, $slug) !== null;
+    }
+
+    /* ─── 단계 번호 (책마다 모양이 다르다) ───────────────────────── */
+
+    /**
+     * 그 책의 단계 번호로 맞는 값인가.
+     *   tbox       정수 STAGE_MIN~STAGE_MAX
+     *   community  문자열 COMMUNITY_STAGE_RE (`3` · `3-B` · `4-A` · `4+`)
+     *   qaredi     문자열 QAREDI_STAGE_RE (`Q-0`)
+     * 책마다 **한 가지 자료형**만 받는다 — t-box 에 `"27"`(문자열)을, 커뮤니티에 `3`(정수)을 적으면
+     * 틀린 것이다. 섞어 받으면 정렬·이웃 글·빠진 글 검사가 같은 단계를 두 번 세게 된다.
+     *
+     * @param mixed $stage
+     */
+    public static function validStage(string $book, $stage): bool
+    {
+        switch (self::bookKey($book)) {
+            case 'tbox':
+                return is_int($stage) && $stage >= self::STAGE_MIN && $stage <= self::STAGE_MAX;
+            case 'community':
+                return is_string($stage) && preg_match(self::COMMUNITY_STAGE_RE, $stage) === 1;
+            case 'qaredi':
+                return is_string($stage) && preg_match(self::QAREDI_STAGE_RE, $stage) === 1;
+        }
+        return false;
+    }
+
+    /** 검사 문제 목록에 적을 「이 책의 단계 번호는 이런 모양」 설명 */
+    public static function stageRule(string $book): string
+    {
+        switch (self::bookKey($book)) {
+            case 'tbox':
+                return self::STAGE_MIN . '~' . self::STAGE_MAX . ' 범위의 정수여야 한다';
+            case 'community':
+                return '문자열 `3`·`3-B`·`4-A`·`4+` 모양이어야 한다 (' . self::COMMUNITY_STAGE_RE . ')';
+            case 'qaredi':
+                return '문자열 `Q-0` 모양이어야 한다 (' . self::QAREDI_STAGE_RE . ')';
+        }
+        return '모르는 책이다';
+    }
+
+    /**
+     * 정렬 열쇠 — 세 칸짜리 정수 배열이라 `<=>` 로 칸마다 견준다.
+     *   [숫자, 조각, 0] : `4` → [4,0,0] · `4-A` → [4,1,0] · `4-D` → [4,4,0] · `4+` → [4,27,0]
+     * 그래서 커뮤니티는 3 → 3-B → 4-A → … → 4-D → 4+ 순이다(「+」는 그 번호의 조각들 뒤).
+     * 맞지 않는 값(null 포함)은 맨 뒤.
+     *
+     * @param mixed $stage
+     * @return array{0:int,1:int,2:int}
+     */
+    public static function stageSortKey(string $book, $stage): array
+    {
+        if (!self::validStage($book, $stage)) {
+            return [PHP_INT_MAX, 0, 0];
+        }
+        if (is_int($stage)) {
+            return [$stage, 0, 0];
+        }
+        $s = (string) $stage;
+        if (strncmp($s, 'Q-', 2) === 0) {
+            return [(int) substr($s, 2), 0, 0];
+        }
+        if (substr($s, -1) === '+') {
+            return [(int) substr($s, 0, -1), 27, 0];
+        }
+        $dash = strpos($s, '-');
+        if ($dash === false) {
+            return [(int) $s, 0, 0];
+        }
+        return [(int) substr($s, 0, $dash), ord($s[$dash + 1]) - ord('A') + 1, 0];
+    }
+
+    /**
+     * 화면에 나가는 단계 이름 — `27단계` · `4-A단계` · `4단계 뒤` · `Q-0`.
+     * 이 값도 esc() 를 거쳐 나간다(모양은 validStage 가 이미 좁혔다).
+     *
+     * @param mixed $stage
+     */
+    public static function stageLabel(string $book, $stage): string
+    {
+        if (!self::validStage($book, $stage)) {
+            return '단계';
+        }
+        $s = (string) $stage;
+        if (self::bookKey($book) === 'qaredi') {
+            return $s;
+        }
+        if (substr($s, -1) === '+') {
+            return substr($s, 0, -1) . '단계 뒤';
+        }
+        return $s . '단계';
     }
 
     /* ─── 읽기 ───────────────────────────────────────────────── */
 
     /**
-     * 차례(`wiki/index.json`)를 읽는다. **파일이 없으면 null** — 아직 글을 쓰지 않은 상태는
-     * 오류가 아니다(화면이 "아직 글이 없습니다" 를 보여 준다). 파일이 있는데 모양이 틀렸으면 예외다.
+     * 책의 차례(`wiki/<책>/index.json`)를 읽는다. **파일이 없으면 null** — 아직 글을 쓰지 않은
+     * 상태는 오류가 아니다(화면이 "아직 글이 없습니다" 를 보여 준다). 파일이 있는데 모양이
+     * 틀렸으면 예외다.
      *
      * @throws RuntimeException
      */
-    public static function loadIndex(): ?array
+    public static function loadIndex(string $book): ?array
     {
-        $path = self::dir() . '/index.json';
+        $path = self::dir($book) . '/index.json';
         if (!is_file($path)) {
             return null;
         }
         $index = self::readJsonObject($path);
 
-        $problems = self::validateIndex($index);
+        $problems = self::validateIndex($index, $book);
         if ($problems !== []) {
             throw new RuntimeException('index.json 구조 오류: ' . implode(' | ', $problems));
         }
@@ -197,15 +425,15 @@ final class Wiki
      *
      * @throws RuntimeException
      */
-    public static function loadPage(string $slug): ?array
+    public static function loadPage(string $book, string $slug): ?array
     {
-        $path = self::pathFor($slug);
+        $path = self::pathFor($book, $slug);
         if ($path === null) {
             return null;
         }
         $page = self::readJsonObject($path);
 
-        $problems = self::validate($page);
+        $problems = self::validate($page, $book);
         if (($page['slug'] ?? null) !== $slug) {
             $problems[] = 'slug: 파일 이름(' . $slug . ')과 글 안의 slug 가 다르다';
         }
@@ -216,13 +444,13 @@ final class Wiki
     }
 
     /**
-     * `wiki/*.json` 파일 이름(slug)을 전부 모은다 — CLI 검사용. index.json 은 뺀다.
+     * 책 하나의 `wiki/<책>/*.json` 파일 이름(slug)을 전부 모은다 — CLI 검사용. index.json 은 뺀다.
      *
      * @return list<string>
      */
-    public static function allSlugs(): array
+    public static function allSlugs(string $book): array
     {
-        $found = glob(self::dir() . '/*.json');
+        $found = glob(self::dir($book) . '/*.json');
         $slugs = [];
         foreach ($found === false ? [] : $found as $path) {
             $name = basename($path, '.json');
@@ -266,14 +494,25 @@ final class Wiki
      * 모르는 열쇠(여기서 다루지 않는 여분의 필드)는 무시한다 — 글에 메모를 덧붙이는 것까지
      * 막지는 않는다. 막는 것은 **모르는 블록 type·빠진 필드·범위 밖 값** 셋이다 (ARCH 5.10).
      *
+     * 단계 번호의 모양은 **책마다** 다르므로 어느 책의 글인지 함께 받는다(`validStage`).
+     *
      * @return list<string>
      */
-    public static function validate(array $page): array
+    public static function validate(array $page, string $book): array
     {
         $p = [];
 
+        if (!self::isBook($book)) {
+            return ['(책): 모르는 책이다'];
+        }
+
         if (!self::isFilledString($page['slug'] ?? null) || preg_match(self::SLUG_RE, (string) $page['slug']) !== 1) {
             $p[] = 'slug: 없거나 형태가 아니다 (^[a-z0-9][a-z0-9-]{0,39}$)';
+        } elseif (in_array((string) $page['slug'], self::RESERVED_SLUGS, true)) {
+            $p[] = 'slug: ' . implode('·', self::RESERVED_SLUGS) . ' 는 차례 파일 이름이라 글 이름으로 쓸 수 없다';
+        } elseif (self::isBook((string) $page['slug'])) {
+            // `/wiki/tbox` 는 책 차례 주소다. 책 이름과 같은 slug 는 옛 주소 308 과 겹쳐 닿을 수 없다.
+            $p[] = 'slug: 책 이름(' . implode('·', array_keys(self::BOOKS)) . ')과 같은 이름은 쓸 수 없다';
         }
         if (!self::isFilledString($page['title'] ?? null)) {
             $p[] = 'title: 비어 있지 않은 문자열이어야 한다';
@@ -290,9 +529,8 @@ final class Wiki
         if (!is_string($group) || !in_array($group, self::GROUPS, true)) {
             $p[] = 'group: guide 또는 stage 여야 한다';
         } elseif ($group === 'stage') {
-            $stage = $page['stage'] ?? null;
-            if (!is_int($stage) || $stage < self::STAGE_MIN || $stage > self::STAGE_MAX) {
-                $p[] = 'stage: ' . self::STAGE_MIN . '~' . self::STAGE_MAX . ' 범위의 정수여야 한다';
+            if (!self::validStage($book, $page['stage'] ?? null)) {
+                $p[] = 'stage: ' . self::stageRule($book);
             }
         } elseif (array_key_exists('stage', $page) && $page['stage'] !== null) {
             $p[] = 'stage: group 이 guide 인 글에는 단계 번호를 두지 않는다';
@@ -329,7 +567,7 @@ final class Wiki
                 continue;
             }
             foreach ($blocks as $j => $block) {
-                foreach (self::validateBlock($block, $at . '.blocks[' . $j . ']') as $one) {
+                foreach (self::validateBlock($block, $at . '.blocks[' . $j . ']', $book) as $one) {
                     $p[] = $one;
                 }
             }
@@ -345,7 +583,7 @@ final class Wiki
      * @param mixed $block
      * @return list<string>
      */
-    private static function validateBlock($block, string $at): array
+    private static function validateBlock($block, string $at, string $book): array
     {
         $p = [];
 
@@ -534,6 +772,11 @@ final class Wiki
                 if (array_key_exists('label', $block) && !is_string($block['label'])) {
                     $p[] = $at . '.label: 문자열이어야 한다';
                 }
+                // (선택) 다른 책의 글로 가는 링크. 없으면 **같은 책**이다. 값은 고정 목록 안이어야 한다.
+                if (array_key_exists('book', $block)
+                    && (!is_string($block['book']) || !self::isBook($block['book']))) {
+                    $p[] = $at . '.book: ' . implode('·', array_keys(self::BOOKS)) . ' 중 하나여야 한다';
+                }
                 break;
         }
 
@@ -546,7 +789,7 @@ final class Wiki
      *
      * @return list<string>
      */
-    public static function validateIndex(array $index): array
+    public static function validateIndex(array $index, string $book): array
     {
         $p = [];
 
@@ -595,8 +838,8 @@ final class Wiki
                 $p[] = $at . '.group: guide 또는 stage 여야 한다';
             }
             if (array_key_exists('stage', $row) && $row['stage'] !== null
-                && (!is_int($row['stage']) || $row['stage'] < self::STAGE_MIN || $row['stage'] > self::STAGE_MAX)) {
-                $p[] = $at . '.stage: ' . self::STAGE_MIN . '~' . self::STAGE_MAX . ' 범위의 정수여야 한다';
+                && !self::validStage($book, $row['stage'])) {
+                $p[] = $at . '.stage: ' . self::stageRule($book);
             }
         }
 
@@ -642,9 +885,11 @@ final class Wiki
      * `group` 이 적혀 있지 않으면 `stage` 번호가 있는지, 없으면 slug 가 `stage-` 로
      * 시작하는지로 짐작한다 — 짐작은 **표시 순서**에만 영향을 주고 권한·경로와는 무관하다.
      *
+     * `stage` 는 책의 모양(`validStage`)을 통과한 값만 남긴다 — t-box 는 정수, 나머지는 문자열.
+     *
      * @return list<array<string,mixed>>
      */
-    public static function entries(array $index): array
+    public static function entries(array $index, string $book): array
     {
         $rows = self::rawIndexRows($index);
         $out  = [];
@@ -657,7 +902,7 @@ final class Wiki
             }
             $r = is_array($row) ? $row : [];
 
-            $stage = isset($r['stage']) && is_int($r['stage']) ? $r['stage'] : null;
+            $stage = isset($r['stage']) && self::validStage($book, $r['stage']) ? $r['stage'] : null;
             $group = isset($r['group']) && is_string($r['group']) && in_array($r['group'], self::GROUPS, true)
                 ? $r['group']
                 : ($hint
@@ -670,24 +915,51 @@ final class Wiki
                 'group'   => $group,
                 'stage'   => $stage,
                 'updated' => isset($r['updated']) && is_string($r['updated']) ? $r['updated'] : '',
-                'exists'  => self::pageExists($slug),
+                'exists'  => self::pageExists($book, $slug),
             ];
         }
 
         return $out;
     }
 
+    /** 단계 글을 단계 번호 순으로 (차례 화면·이전/다음이 같은 규칙을 쓴다) */
+    private static function sortStages(array &$stages, string $book): void
+    {
+        usort($stages, static function (array $a, array $b) use ($book): int {
+            return self::stageSortKey($book, $a['stage']) <=> self::stageSortKey($book, $b['stage']);
+        });
+    }
+
     /**
      * 차례에 있는 slug 인가. `link` 블록이 링크가 될지 글자가 될지를 가르는 값이다 (ARCH 5.10).
+     * 차례 항목의 slug 만 보므로 책은 필요 없다 — 어느 책의 차례인지는 넘기는 쪽이 정한다.
      */
     public static function hasEntry(array $index, string $slug): bool
     {
-        foreach (self::entries($index) as $entry) {
-            if ($entry['slug'] === $slug) {
+        $rows = self::rawIndexRows($index);
+        foreach ($rows ?? [] as $pair) {
+            $row = $pair[0];
+            if ((is_string($row) ? $row : (is_array($row) ? ($row['slug'] ?? null) : null)) === $slug) {
                 return true;
             }
         }
         return false;
+    }
+
+    /**
+     * 차례 화면·글 화면에 나가는 주소. 책은 BOOKS 의 키, slug 는 SLUG_RE 를 통과한 값만 붙는다.
+     * 둘 다 맞지 않으면 책 고르기(`/wiki`)로 — 요청에서 온 글자가 주소에 들어갈 자리를 만들지 않는다.
+     */
+    private static function href(string $book, ?string $slug = null): string
+    {
+        $key = self::bookKey($book);
+        if ($key === null) {
+            return Http::url(self::BASE_PATH);
+        }
+        if ($slug === null || preg_match(self::SLUG_RE, $slug) !== 1) {
+            return Http::url(self::BASE_PATH . '/' . $key);
+        }
+        return Http::url(self::BASE_PATH . '/' . $key . '/' . $slug);
     }
 
     /* ─── 이스케이프 ─────────────────────────────────────────── */
@@ -731,14 +1003,50 @@ final class Wiki
     /* ─── 그리기 ─────────────────────────────────────────────── */
 
     /**
-     * 차례 화면(`/wiki`)의 본문을 만든다. 안내 글 목록 + 단계 카드 1~13.
+     * 책 고르기 화면(`/wiki`)의 본문 — 책 셋의 타일(이름·한 줄 설명·글 수).
+     *
+     * 모양은 런처(`src/views/launcher.php`)·관리자 허브와 **같은 부품**이다: `.card-grid` >
+     * `a.card.card--link` > `.card__icon` + `.card__body`(`.card__title`·`.card__desc`·`.card__meta`).
+     * 화면 전용 클래스를 만들지 않는다(DESIGN 원칙 6). 스크립트 없이 링크만으로 동작한다.
+     *
+     * 글 수는 차례에 적혀 있고 **파일도 있는** 글이다(「준비 중」은 세지 않는다). 차례 파일이
+     * 없는 책은 0편으로 보이고, 들어가면 "아직 글이 없습니다" 가 나온다. 차례가 깨진 책은
+     * 조용히 0 으로 두지 않는다 — loadIndex 가 예외를 던져 500 이 된다(ARCH 5.10 원칙 ②).
+     */
+    public static function renderBooks(): string
+    {
+        $h   = ['<section class="card-grid">'];
+        foreach (self::BOOKS as $key => $book) {
+            $index = self::loadIndex($key);
+            $count = 0;
+            foreach ($index === null ? [] : self::entries($index, $key) as $entry) {
+                if ($entry['exists'] === true) {
+                    $count++;
+                }
+            }
+            $h[] = '<a class="card card--link" href="' . self::esc(self::href($key)) . '">'
+                . '<span class="card__icon">' . self::esc($book['icon']) . '</span>'
+                . '<span class="card__body">'
+                . '<strong class="card__title">' . self::esc($book['name']) . '</strong>'
+                . '<span class="card__desc">' . self::esc($book['desc']) . '</span>'
+                . '<span class="card__meta">글 ' . self::esc((string) $count) . '편</span>'
+                . '</span></a>';
+        }
+        $h[] = '</section>';
+
+        return implode("\n", $h);
+    }
+
+    /**
+     * 책 하나의 차례 화면(`/wiki/{book}`) 본문을 만든다. 안내 글 목록 + 단계 카드.
      *
      * 글 파일이 아직 없는 항목은 링크 대신 「준비 중」으로 그린다 — 눌러서 404 를 만나는 것보다
      * 낫고, 글을 쓰는 사람과 화면을 만드는 사람이 동시에 일할 수 있다.
      */
-    public static function renderIndex(array $index): string
+    public static function renderIndex(string $book, array $index): string
     {
-        $entries = self::entries($index);
+        $key     = self::bookKey($book) ?? self::LEGACY_BOOK;
+        $entries = self::entries($index, $key);
         $guides  = [];
         $stages  = [];
         foreach ($entries as $entry) {
@@ -748,23 +1056,21 @@ final class Wiki
                 $guides[] = $entry;
             }
         }
-        usort($stages, static function (array $a, array $b): int {
-            return ($a['stage'] ?? PHP_INT_MAX) <=> ($b['stage'] ?? PHP_INT_MAX);
-        });
+        self::sortStages($stages, $key);
 
         $h = [];
 
         $h[] = '<section class="panel wiki-group">';
         $h[] = '<div class="panel__head">';
         $h[] = '<h2 class="panel__title">안내</h2>';
-        $h[] = '<p class="panel__sub">이 서비스가 무엇이고 어떤 말을 쓰는지부터 봅니다.</p>';
+        $h[] = '<p class="panel__sub">' . self::esc(self::BOOKS[$key]['guide_sub']) . '</p>';
         $h[] = '</div>';
         if ($guides === []) {
             $h[] = '<p class="muted">안내 글이 아직 없습니다.</p>';
         } else {
             $h[] = '<ul class="wiki-guides">';
             foreach ($guides as $entry) {
-                $h[] = '<li class="wiki-guide">' . self::entryLink($entry) . self::entryMeta($entry) . '</li>';
+                $h[] = '<li class="wiki-guide">' . self::entryLink($key, $entry) . self::entryMeta($entry) . '</li>';
             }
             $h[] = '</ul>';
         }
@@ -773,14 +1079,14 @@ final class Wiki
         $h[] = '<section class="panel wiki-group">';
         $h[] = '<div class="panel__head">';
         $h[] = '<h2 class="panel__title">단계</h2>';
-        $h[] = '<p class="panel__sub">1단계부터 차례로 무엇을 만들고 무엇을 막았는지 적었습니다.</p>';
+        $h[] = '<p class="panel__sub">' . self::esc(self::BOOKS[$key]['stage_sub']) . '</p>';
         $h[] = '</div>';
         if ($stages === []) {
             $h[] = '<p class="muted">단계 글이 아직 없습니다.</p>';
         } else {
             $h[] = '<div class="card-grid">';
             foreach ($stages as $entry) {
-                $h[] = self::stageCard($entry);
+                $h[] = self::stageCard($key, $entry);
             }
             $h[] = '</div>';
         }
@@ -790,31 +1096,34 @@ final class Wiki
     }
 
     /**
-     * 글 화면(`/wiki/{slug}`)의 본문을 만든다.
+     * 글 화면(`/wiki/{book}/{slug}`)의 본문을 만든다.
      * 제목·요약 → 절 차례(앵커) → 절마다 블록 → 이전/다음 글.
      *
-     * $index 는 링크 판단(`link.slug` 가 차례에 있나)·이전/다음에만 쓴다.
+     * $index 는 **같은 책**의 차례이고 링크 판단(`link.slug` 가 차례에 있나)·이전/다음에만 쓴다.
      * 차례가 없어도(빈 배열) 글은 그려진다.
      */
-    public static function renderPage(array $page, array $index): string
+    public static function renderPage(string $book, array $page, array $index): string
     {
         $h = [];
 
+        $key   = self::bookKey($book) ?? self::LEGACY_BOOK;
         $group = (string) ($page['group'] ?? 'guide');
-        $stage = isset($page['stage']) && is_int($page['stage']) ? $page['stage'] : null;
+        $stage = isset($page['stage']) && self::validStage($key, $page['stage']) ? $page['stage'] : null;
 
         $h[] = '<article class="wiki-article">';
 
-        // ─ 머리말
+        // ─ 머리말 — 경로는 「위키 › 책 차례」 두 칸이다. 둘 다 코드가 만든 주소다.
         $h[] = '<header class="wiki-head">';
-        $h[] = '<p class="wiki-crumb"><a href="' . Http::url(self::BASE_PATH) . '">← 위키 차례</a></p>';
+        $h[] = '<p class="wiki-crumb"><a href="' . self::esc(Http::url(self::BASE_PATH)) . '">위키</a>'
+            . ' › <a href="' . self::esc(self::href($key)) . '">' . self::esc(self::BOOKS[$key]['name']) . ' 차례</a></p>';
         $h[] = '<h1 class="wiki-title">' . self::esc((string) ($page['title'] ?? '')) . '</h1>';
         if (isset($page['summary']) && is_string($page['summary']) && $page['summary'] !== '') {
             $h[] = '<p class="wiki-summary">' . self::inline($page['summary']) . '</p>';
         }
         $h[] = '<p class="wiki-meta">';
+        $h[] = '<span class="badge badge--off">' . self::esc(self::BOOKS[$key]['name']) . '</span>';
         $h[] = $stage !== null
-            ? '<span class="badge badge--internal">' . self::esc((string) $stage) . '단계</span>'
+            ? '<span class="badge badge--internal">' . self::esc(self::stageLabel($key, $stage)) . '</span>'
             : '<span class="badge badge--off">' . ($group === 'stage' ? '단계' : '안내') . '</span>';
         if (isset($page['updated']) && is_string($page['updated']) && $page['updated'] !== '') {
             $h[] = '<span class="muted">고친 날 ' . self::esc($page['updated']) . '</span>';
@@ -845,13 +1154,13 @@ final class Wiki
             $h[]    = '<section class="wiki-section" id="' . $anchor . '">';
             $h[]    = '<h2 class="wiki-h2">' . self::esc((string) ($section['heading'] ?? '')) . '</h2>';
             foreach (is_array($section['blocks'] ?? null) ? $section['blocks'] : [] as $block) {
-                $h[] = self::renderBlock(is_array($block) ? $block : [], $index);
+                $h[] = self::renderBlock($key, is_array($block) ? $block : [], $index);
             }
             $h[] = '</section>';
         }
 
         // ─ 이전/다음 (차례 순)
-        $h[] = self::renderNeighbors($index, (string) ($page['slug'] ?? ''), $group);
+        $h[] = self::renderNeighbors($key, $index, (string) ($page['slug'] ?? ''), $group);
 
         $h[] = '</article>';
 
@@ -862,7 +1171,7 @@ final class Wiki
      * 블록 하나를 그린다. 여기 오는 글은 validate() 를 통과한 것이지만,
      * 그리는 쪽도 값의 모양을 다시 본다 — 검사와 출력 사이에 빈틈을 두지 않는다.
      */
-    private static function renderBlock(array $block, array $index): string
+    private static function renderBlock(string $book, array $block, array $index): string
     {
         $type = (string) ($block['type'] ?? '');
 
@@ -998,9 +1307,12 @@ final class Wiki
                 $label = isset($block['label']) && is_string($block['label']) && $block['label'] !== ''
                     ? $block['label']
                     : $slug;
+                // 가는 책 — 적혀 있지 않으면 같은 책. 다른 책이면 **그 책의 차례**로 판단한다.
+                $target      = isset($block['book']) && is_string($block['book']) ? self::bookKey($block['book']) : $book;
+                $targetIndex = $target === null ? [] : ($target === $book ? $index : (self::loadIndex($target) ?? []));
                 // 차례에 있는 글만 링크가 된다. 없으면 **글자만** 남는다 (ARCH 5.10).
-                if (preg_match(self::SLUG_RE, $slug) === 1 && self::hasEntry($index, $slug)) {
-                    return '<p class="wiki-link"><a href="' . Http::url(self::BASE_PATH) . '/' . self::esc($slug) . '">'
+                if ($target !== null && preg_match(self::SLUG_RE, $slug) === 1 && self::hasEntry($targetIndex, $slug)) {
+                    return '<p class="wiki-link"><a href="' . self::esc(self::href($target, $slug)) . '">'
                         . self::esc($label) . '</a></p>';
                 }
                 return '<p class="wiki-link wiki-link--plain">' . self::esc($label) . '</p>';
@@ -1010,19 +1322,17 @@ final class Wiki
         throw new RuntimeException('모르는 블록 종류입니다');
     }
 
-    /** 이전/다음 글 — 단계 글은 단계 번호 순, 안내 글은 차례에 적힌 순서 */
-    private static function renderNeighbors(array $index, string $slug, string $group): string
+    /** 이전/다음 글 — 같은 책 안에서. 단계 글은 단계 번호 순(`stageSortKey`), 안내 글은 차례에 적힌 순서 */
+    private static function renderNeighbors(string $book, array $index, string $slug, string $group): string
     {
         $siblings = [];
-        foreach (self::entries($index) as $entry) {
+        foreach (self::entries($index, $book) as $entry) {
             if ($entry['group'] === $group && $entry['exists']) {
                 $siblings[] = $entry;
             }
         }
         if ($group === 'stage') {
-            usort($siblings, static function (array $a, array $b): int {
-                return ($a['stage'] ?? PHP_INT_MAX) <=> ($b['stage'] ?? PHP_INT_MAX);
-            });
+            self::sortStages($siblings, $book);
         }
 
         $at = null;
@@ -1044,12 +1354,12 @@ final class Wiki
         $h   = ['<nav class="wiki-nav" aria-label="이전·다음 글">'];
         $h[] = $prev === null
             ? '<span class="wiki-nav__gap"></span>'
-            : '<a class="wiki-nav__item" href="' . Http::url(self::BASE_PATH) . '/' . self::esc($prev['slug']) . '">'
+            : '<a class="wiki-nav__item" href="' . self::esc(self::href($book, (string) $prev['slug'])) . '">'
                 . '<span class="wiki-nav__dir">← 이전</span>'
                 . '<span class="wiki-nav__title">' . self::esc((string) $prev['title']) . '</span></a>';
         $h[] = $next === null
             ? '<span class="wiki-nav__gap"></span>'
-            : '<a class="wiki-nav__item wiki-nav__item--next" href="' . Http::url(self::BASE_PATH) . '/' . self::esc($next['slug']) . '">'
+            : '<a class="wiki-nav__item wiki-nav__item--next" href="' . self::esc(self::href($book, (string) $next['slug'])) . '">'
                 . '<span class="wiki-nav__dir">다음 →</span>'
                 . '<span class="wiki-nav__title">' . self::esc((string) $next['title']) . '</span></a>';
         $h[] = '</nav>';
@@ -1060,14 +1370,14 @@ final class Wiki
     /* ─── 작은 도우미 ────────────────────────────────────────── */
 
     /** 차례 항목 한 줄의 제목(링크 또는 글자) */
-    private static function entryLink(array $entry): string
+    private static function entryLink(string $book, array $entry): string
     {
         $title = self::esc((string) $entry['title']);
         if ($entry['exists'] !== true) {
             return '<span class="wiki-guide__title wiki-guide__title--soon">' . $title
                 . ' <span class="badge badge--off">준비 중</span></span>';
         }
-        return '<a class="wiki-guide__title" href="' . Http::url(self::BASE_PATH) . '/' . self::esc((string) $entry['slug']) . '">'
+        return '<a class="wiki-guide__title" href="' . self::esc(self::href($book, (string) $entry['slug'])) . '">'
             . $title . '</a>';
     }
 
@@ -1085,8 +1395,9 @@ final class Wiki
     }
 
     /** 단계 카드 하나 */
-    private static function stageCard(array $entry): string
+    private static function stageCard(string $book, array $entry): string
     {
+        // 아이콘 칸에는 번호만(`27` · `4-A` · `4+` · `Q-0`) — 「단계」 말은 제목에 이미 있다.
         $num  = $entry['stage'] === null ? '·' : self::esc((string) $entry['stage']);
         /* 「준비 중」 배지는 카드 끝이 아니라 제목 옆(.card__head)에 붙는다 (DESIGN 2.3, C-7). */
         $soon = $entry['exists'] !== true;
@@ -1105,7 +1416,7 @@ final class Wiki
         if ($soon) {
             return '<span class="card card--link card--soon">' . $in . '</span>';
         }
-        return '<a class="card card--link" href="' . Http::url(self::BASE_PATH) . '/' . self::esc((string) $entry['slug']) . '">'
+        return '<a class="card card--link" href="' . self::esc(self::href($book, (string) $entry['slug'])) . '">'
             . $in . '</a>';
     }
 

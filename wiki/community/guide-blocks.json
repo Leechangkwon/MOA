@@ -1,0 +1,169 @@
+{
+  "slug": "guide-blocks",
+  "title": "블록 문서 모델 — 본문은 HTML 이 아니라 JSON",
+  "summary": "페이지 본문은 블록 JSON 하나로 저장된다. 허용 목록 파일(`doc-schema.json`) 하나가 검증기·편집기·렌더러의 공통 진실이고, 모르는 것은 조용히 바꾸지 않고 400 이다.",
+  "group": "guide",
+  "updated": "2026-09-23",
+  "sections": [
+    {
+      "id": "why",
+      "heading": "왜 HTML 로 저장하지 않나",
+      "blocks": [
+        {
+          "type": "p",
+          "text": "브라우저가 만든 HTML 을 그대로 저장하는 편집기는 저장형 XSS 의 정문이다(커뮤니티 PRD NG-1). 한편 사용자는 「꾸밈은 글 쓸 때 꼭 필요한 요소라 넣어야 해」라고 짚었다(2026-09-22)."
+        },
+        {
+          "type": "callout",
+          "kind": "how",
+          "text": "막아야 했던 것은 꾸밈이 아니라 HTML 저장이었다. 그래서 색·배경·크기·정렬 같은 꾸밈을 전부 블록 JSON 의 속성으로 넣었다 — 속성 값은 허용 목록 안의 이름이고, 화면에서는 CSS 클래스가 된다.",
+          "title": "둘 다 잡는 법"
+        }
+      ]
+    },
+    {
+      "id": "shape",
+      "heading": "모양",
+      "blocks": [
+        {
+          "type": "p",
+          "text": "본문은 `{\"schema\":1, \"blocks\":[…]}` 이고 블록마다 `id`(UUID)·`type`·그 종류의 칸을 갖는다. 글자는 세그먼트 배열 `[{\"t\":\"문자열\",\"m\":{꾸밈}}]` 이다. `m` 은 꾸밈이 없어도 빈 객체로 있어야 한다."
+        },
+        {
+          "type": "code",
+          "text": "{\n  \"schema\": 1,\n  \"blocks\": [\n    { \"id\": \"…uuid…\", \"type\": \"heading\", \"level\": 2,\n      \"text\": [{ \"t\": \"오늘 할 일\", \"m\": {} }] },\n    { \"id\": \"…uuid…\", \"type\": \"to_do\", \"checked\": false,\n      \"text\": [{ \"t\": \"보고서 올리기\", \"m\": { \"color\": \"red\" } }] }\n  ]\n}"
+        },
+        {
+          "type": "table",
+          "header": [
+            "단계",
+            "쓸 수 있게 된 블록"
+          ],
+          "rows": [
+            [
+              "3",
+              "문단 · 제목(1~3) · 글머리 목록 · 번호 목록 · 할 일 · 인용 · 강조 상자 · 구분선 · 코드 · 목차"
+            ],
+            [
+              "4",
+              "하위 페이지(`child_page`) — 토글·표는 5단계로 미뤘다"
+            ],
+            [
+              "5",
+              "이미지 · 파일 · 단 나누기 · 페이지 링크 (계획)"
+            ],
+            [
+              "7",
+              "외부 임베드(허용 도메인만, 계획)"
+            ]
+          ]
+        },
+        {
+          "type": "p",
+          "text": "단계 표가 곧 「지금 쓸 수 있는 블록」이다. 단계에 없는 블록을 보내면 400 이다 — 화면과 편집기가 아직 그리지 못하는 블록을 저장하게 두지 않는다(4-A 결정)."
+        }
+      ]
+    },
+    {
+      "id": "validator",
+      "heading": "검증기 — 모르는 것은 400",
+      "blocks": [
+        {
+          "type": "table",
+          "header": [
+            "상한",
+            "값"
+          ],
+          "rows": [
+            [
+              "블록 수",
+              "3,000"
+            ],
+            [
+              "깊이",
+              "10"
+            ],
+            [
+              "세그먼트 한 개",
+              "2,000자"
+            ],
+            [
+              "문서 크기",
+              "1MB"
+            ],
+            [
+              "코드 블록",
+              "50,000자"
+            ]
+          ]
+        },
+        {
+          "type": "list",
+          "items": [
+            "모르는 키·모르는 종류·목록 밖 값은 400 이다. 모르는 언어를 `plain` 으로 바꿔 주는 식의 조용한 변환도 없다.",
+            "링크는 `https`·`http`·`mailto`·`page` 스킴만 받는다. `javascript:`·`data:` 는 400 이다.",
+            "블록 `id` 는 UUID v4 이고 한 문서 안에서 겹치면 400 이다.",
+            "검증기(`src/community/Doc.php`)는 저장 창구에서 서버가 돌린다. 편집기가 저장 전에 같은 검사를 한 번 돌려 400 을 미리 막지만, 진실은 서버 검증이다."
+          ]
+        },
+        {
+          "type": "callout",
+          "kind": "check",
+          "text": "`community/doc-schema.json` 이 진실이고 웹에 나가는 사본(`public/assets/community/doc-schema.json`)이 따로 있다. 시험이 두 파일의 `diff` 가 0 인지 매번 확인한다. 4-C 때 진실 쪽 파일이 git 추적에서 빠져 있던 것을 찾아 넣었다.",
+          "title": "파일 두 벌이 어긋나지 않게"
+        }
+      ]
+    },
+    {
+      "id": "render",
+      "heading": "렌더러 두 벌과 편집기",
+      "blocks": [
+        {
+          "type": "list",
+          "items": [
+            "화면 렌더러 `doc-render.js` — 블록마다 `createElement`, 글자는 `textContent`. `innerHTML` 은 0 이다(린트가 본다).",
+            "서버 렌더러 `DocRender.php` — 같은 규칙으로 HTML 문자열을 만들고 모든 값이 `htmlspecialchars` 를 거친다.",
+            "두 렌더러의 출력이 같은지 표본 문서 20개로 비교한다(C:T-19) — 헤드리스 브라우저로 JS 쪽까지 실측한다.",
+            "편집기는 ProseMirror 다. 의존성 0 원칙의 첫 예외라(C:S-12) 14 패키지를 고정 버전·sha256 으로 저장소 안에 두고(node·CDN 없음) `scripts/vendor_prosemirror.sh --verify` 로 대조한다.",
+            "편집기 구조와 우리 JSON 사이의 변환은 `toDoc`·`fromDoc` 두 함수가 유일한 통로다."
+          ]
+        },
+        {
+          "type": "callout",
+          "kind": "risk",
+          "text": "3-B 에서 사용자 결정으로 굵게·기울임·밑줄·취소선·인라인 코드를 편집기에서 뺐다. 저장 형식의 그 마크는 그대로 남아 이미 그 꾸밈이 든 글은 읽기에서 전과 같이 보이지만, 그 글을 편집해서 저장하면 그 꾸밈은 사라질 수 있다.",
+          "title": "꾸밈을 뺀 뒤의 호환"
+        },
+        {
+          "type": "p",
+          "text": "저장할 때 서버가 파생값을 뽑는다 — 검색용 글자(`plain_text`) · 블록 목록(`page_blocks`) · 링크(`page_links`) · 할 일 체크 변화(`checklist_events`). 파생 표는 본문에서 언제든 다시 만들 수 있다."
+        },
+        {
+          "type": "refs",
+          "items": [
+            {
+              "doc": "PRD",
+              "where": "`community/PRD.md` F-15 · F-16 · S-11 · S-12",
+              "what": "블록 본문·편집기·스키마 검증·공급망 요구"
+            },
+            {
+              "doc": "ARCH",
+              "where": "`community/ARCHITECTURE.md` 12 · 14장",
+              "what": "문서 모델·검증기·렌더러·편집기 설계"
+            },
+            {
+              "doc": "DIRECTIVE",
+              "where": "`community/stage3b-editor-rework-directive.md`",
+              "what": "꾸밈을 줄인 결정과 편집기 재작업"
+            }
+          ]
+        },
+        {
+          "type": "link",
+          "slug": "stage-3",
+          "label": "3단계 단계 글 — 블록 본문과 편집기가 처음 선 단계"
+        }
+      ]
+    }
+  ]
+}

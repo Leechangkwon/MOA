@@ -1,0 +1,166 @@
+{
+  "slug": "stage-3",
+  "title": "3단계 — 블록 본문·편집기·개인 공간, 커뮤니티가 처음 열렸다",
+  "summary": "런처의 커뮤니티 타일이 눌리게 됐다. 로그인한 사람은 `/community/` 에서 자기 개인 공간에 페이지를 만들고 블록 편집기로 쓰고 저장한다. 본문은 블록 JSON 만 저장되고, 남의 페이지는 403(Admin 은 200 + 감사)이다.",
+  "group": "stage",
+  "stage": "3",
+  "updated": "2026-09-23",
+  "sections": [
+    {
+      "id": "why",
+      "heading": "무엇을 목표로 했나",
+      "blocks": [
+        {
+          "type": "p",
+          "text": "지시서 목표 그대로: 런처의 커뮤니티 타일이 눌리고, 로그인한 사용자가 `/community/` 에서 자기 개인 공간에 페이지를 만들고 노션식 블록 편집기로 쓰고 저장하고 다시 볼 수 있다. 본문은 블록 JSON 만(HTML 0). 다른 사용자의 페이지는 403, Admin 은 200 + 감사. t-box 의 동작·시험 통과 수는 전과 같다."
+        },
+        {
+          "type": "p",
+          "text": "옛 별도 앱의 1·2단계 게시판 코드는 사용자 결정으로 버렸고, 이 단계부터 Qaredi 한 앱 안에서 처음부터 만든다."
+        }
+      ]
+    },
+    {
+      "id": "what",
+      "heading": "무엇을 만들었나",
+      "blocks": [
+        {
+          "type": "table",
+          "header": [
+            "갈래",
+            "무엇"
+          ],
+          "rows": [
+            [
+              "스키마",
+              "스키마 `community` 새로: 공간·페이지·판 기록·블록 목록·링크·체크 기록·편집 중 표시 — 7표. 판 기록과 체크 기록은 앱 계정에 SELECT·INSERT 만"
+            ],
+            [
+              "문서 모델",
+              "`doc-schema.json`(진실) + 웹 사본 · 검증기 `Doc.php` · 렌더러 두 벌(`DocRender.php`·`doc-render.js`)"
+            ],
+            [
+              "라우터·권한",
+              "`public/index.php` 에 `/community` 갈래 하나 · 자기 라우트 표 `COMMUNITY_ROUTES` · 정책 `community.read`·`community.write`(Guest 는 쓰기 불가) · 판정 `CommunityAuthz`"
+            ],
+            [
+              "화면",
+              "홈(내 공간) · 페이지 화면(읽기 = 렌더러, 「편집」 = 같은 화면에서 편집기) · 셸 모듈 모드 · 로그인 뒤 `?to=community` 로 돌아오기"
+            ],
+            [
+              "API",
+              "내 공간 · 페이지 목록 · 만들기 · 읽기 · 고치기(어긋나면 409) · 지우기 · 편집 중 표시 — 7개"
+            ],
+            [
+              "편집기",
+              "ProseMirror 14 패키지를 node 없이 저장소 안에 고정(sha256) · 마크다운 단축 · 툴바 · 색 · 자동 저장 · 409 창"
+            ],
+            [
+              "그 밖",
+              "런처 타일 열기(`config/apps.json`) · 감사 문장 9개 · 시험 `tests/community/stage3.sh`"
+            ]
+          ]
+        },
+        {
+          "type": "callout",
+          "kind": "how",
+          "text": "이 단계에는 개인 공간만 있다. 그래서 읽기 = 주인 또는 Admin(열람은 `page.read allow admin_all` 로 감사), 고치기 = 주인만이다. 공개 범위 칸은 만들어 두되 값은 비공개로 고정했다(4-B 에서 연다).",
+          "title": "3단계의 권한"
+        }
+      ]
+    },
+    {
+      "id": "check",
+      "heading": "어떻게 확인했나",
+      "blocks": [
+        {
+          "type": "list",
+          "items": [
+            "수락 시험 `tests/community/stage3.sh` 검토자 재실행 82 통과 · 0 실패 · 1 미검증(JS 렌더러 동등성 — 그때는 서버에 브라우저가 없었다).",
+            "C:T-14 스키마 퍼징 12종이 전부 검증기에 닿아 400 · C:T-15 XSS 문자열이 글자 그대로(`<img`·`<script` 0) · C:T-16 같은 판 번호로 두 번 고치면 두 번째가 409 · C:T-17 남의 페이지 403, Admin 읽기 200 + 감사 · C:T-18 Guest 쓰기 403, CSRF 토큰 없으면 403.",
+            "t-box 회귀 `stage26` 108/0 · `help_button` 16/0 · `q_launcher` 90/0/1 — 통과 수 불변.",
+            "스키마는 임시 DB 에서 확인한 뒤 운영에 적용했다(`scripts/apply-community-stage3-2026-09-22.sh`)."
+          ]
+        },
+        {
+          "type": "callout",
+          "kind": "risk",
+          "text": "t-box 의 요청 본문 상한 64KB·JSON 깊이 8 이 커뮤니티 본문에도 그대로 걸려, 긴 문서와 링크가 든 문서가 전부 400 이었다. 상한을 인자로 받게 하고 커뮤니티 저장 창구 둘만 문서 한도(1MB+64KB·깊이 29)를 넘기게 했다 — t-box 창구의 기본값은 그대로다.",
+          "title": "검토가 잡은 앱 결함"
+        }
+      ]
+    },
+    {
+      "id": "fix",
+      "heading": "보정 — 「새 페이지 단추가 작동 안 함」 (2026-09-22)",
+      "blocks": [
+        {
+          "type": "p",
+          "text": "관문 ③ 에서 사용자가 처음 누른 단추가 죽어 있었다. 서버에 헤드리스 Chromium(Playwright)을 설치해 재현하니 편집기 모듈이 뜨는 순간 예외(`code can not be both a node and a mark`)로 멈추고 있었다 — 코드 블록 노드와 인라인 코드 마크의 이름이 같았다. 모듈이 통째로 죽으니 단추·목록·편집기 전부가 죽었고, 서버 요청이 0건이라 로그에도 흔적이 없었다."
+        },
+        {
+          "type": "list",
+          "items": [
+            "노드 이름을 `code_block` 으로(우리 JSON 의 종류 이름은 `code` 그대로, 변환은 `toDoc`·`fromDoc` 두 곳).",
+            "두 번째 결함: 자동 저장이 진행 중일 때 들어온 변경을 버리고 배지는 「저장됨」이 됐다 → 미뤄 뒀다가 끝나는 즉시 다시 보낸다.",
+            "수락 기준에 C:T-21 브라우저 스모크(`tests/community/browser_smoke.py`)를 새로 넣었다 — 페이지 오류·콘솔 오류·실패 요청·HTTP 400 이상이 0 이어야 통과."
+          ]
+        },
+        {
+          "type": "p",
+          "text": "검증: 메인의 독립 스크립트 21/0 · `stage3.sh` 89/0/0 · 회귀 불변. 커밋 `74d394f` · 발행 v2.1.0 `0ef5f4c`, 보정 `3d8ac59` · v2.1.1 `4bbe51a`."
+        },
+        {
+          "type": "callout",
+          "kind": "check",
+          "text": "화면·JS 가 있는 단계에서 브라우저로 눌러 보지 않은 채 「통과」로 넘기면 안 된다. 두 결함 다 시험은 초록이었고 사용자가 첫 클릭에서 만났다.",
+          "title": "교훈"
+        }
+      ]
+    },
+    {
+      "id": "try",
+      "heading": "직접 해보기 (관문 ③ — 아직 대기)",
+      "blocks": [
+        {
+          "type": "steps",
+          "items": [
+            "런처 → 커뮤니티 타일 → 로그인 → 내 공간 → 새 페이지 → 블록으로 쓰기(제목·목록·체크·강조 상자·코드·색) → 저장 → 새로 고침 뒤 그대로인지 본다.",
+            "다른 계정으로 그 페이지 주소를 열어 403 인지 본다. 본문에 `<script>alert(1)</script>` 를 써서 글자 그대로 보이는지 본다.",
+            "두 탭에서 같은 페이지를 고쳐, 두 번째가 「다른 곳에서 수정됨」 안내를 받는지 본다."
+          ]
+        },
+        {
+          "type": "refs",
+          "items": [
+            {
+              "doc": "DIRECTIVE",
+              "where": "`community/stage3-directive.md`",
+              "what": "이 단계의 구현 지시서"
+            },
+            {
+              "doc": "ARCH",
+              "where": "`community/ARCHITECTURE.md` 21.1~21.4",
+              "what": "자리·계정·범위·수락 기준 C:T-14~C:T-20"
+            },
+            {
+              "doc": "SECURITY",
+              "where": "`tbox-v2/SECURITY.md` 7장 「커뮤니티 3단계 검토」·「3단계 보정 검토」",
+              "what": "검토 원문"
+            },
+            {
+              "doc": "STAGES",
+              "where": "`community/STAGES.md` 3단계",
+              "what": "개발 사항·학습 기록"
+            }
+          ]
+        },
+        {
+          "type": "link",
+          "slug": "guide-blocks",
+          "label": "블록 문서 모델 안내"
+        }
+      ]
+    }
+  ]
+}

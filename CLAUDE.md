@@ -22,7 +22,7 @@
 
 - **보안 핵심 파일**(지시서 「수정 파일」에 있을 때만): `src/Authz.php` `src/Auth.php` `src/Db.php` `src/Http.php` `src/Storage.php` `src/Upload.php` `src/Audit.php` `db/**` `deploy/**` `public/index.php`.
 - **일괄 진행 모드**(사용자 결정 2026-09-11): ① 구현 → ② 검토 → ④ 커밋으로 이어 가고 관문 ③(사용자 자기 공격)은 뒤에 일괄. ② 통과가 커밋 조건, ③ 결과는 커밋 뒤 `SECURITY.md` 7장·`STAGES.md` 에 추가.
-- **위키**: t-box 단계가 끝나는 커밋에는 `wiki/stage-NN.json`·`index.json` 갱신과 `php scripts/wiki_check.php` 0건 포함(2026-09-13 사고). `Wiki::STAGE_MAX` 는 PRD 로드맵 끝과 같게.
+- **위키**: t-box·커뮤니티·사이트 단계가 끝나는 커밋에는 해당 책의 `wiki/<책>/stage-*.json`·`index.json` 갱신과 `php scripts/wiki_check.php` 0건 포함(2026-09-13 사고, 2026-09-23 책 셋 — 검사가 STAGES 0장 ✅ 단계와 글을 대조해 빠진 글을 실패로 잡는다). `Wiki::STAGE_MAX` 는 PRD 로드맵 끝과 같게.
 - **검토 표식**: 검토 요청 UA `tbox-review/<날짜>`, 계정 `qa_` 접두 5개(`/etc/tbox-v2/seed-accounts.txt`·`qa-totp.txt`). 시드 계정(`admin01` …)은 사용자 몫.
 - **시험**: `tests/*.sh`, BASE `http://127.0.0.1:8082/tbox`. 회귀 기본 묶음 `stage26.sh`(108/0)·`help_button.sh`(16/0)·`api_whoami.sh`·`api_read.sh`·`api_folders.sh`·`f66.sh`·`f68.sh`·`q_launcher.sh`. 다른 모듈을 고쳐도 이 묶음을 돌린다(전부 이어 돌리면 20분 넘게 걸린다 — 먼저 예상 시간을 말한다).
 - **주소**: t-box 안의 절대 경로는 서버 `Http::url('/…')`, JS `APP_BASE + '/…'` 로만 만든다(`TBOX_BASE = '/tbox'`, `../docs/launcher/ARCHITECTURE.md` 3장). 옛 주소는 308.

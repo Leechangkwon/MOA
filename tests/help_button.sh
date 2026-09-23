@@ -43,7 +43,8 @@ trash:trash_page.php:src/handlers/trash_page.php
 
 # 대상이 **아닌** 화면 — 로그인·재인증·2단계 등록·위키
 NOT_TARGETS="src/handlers/login_page.php src/handlers/reauth_page.php src/views/mfa_enroll.php
-             src/handlers/wiki_index.php src/handlers/wiki_page.php"
+             src/handlers/wiki_index.php src/handlers/wiki_page.php
+             src/handlers/wiki_books.php src/handlers/wiki_legacy.php"
 
 # 이번 작업이 바꾼 파일 (php -l · 정적 검사 대상)
 CHANGED_PHP="src/help/screens.php src/views/shell_top.php src/views/shell_bottom.php"

@@ -1,0 +1,189 @@
+{
+  "slug": "guide-site",
+  "title": "Qaredi 는 무엇인가 — 이름·런처·폴더·두 앱",
+  "summary": "사내 구성원이 계정 하나로 로그인해 첫 화면 앱 런처에서 기능을 골라 들어가는 사이트다. 지금 앱은 둘 — t-box(파일 공유)와 커뮤니티(개인 업무 공간). 한 앱·한 로그인·한 DB 이고, 폴더와 문서는 공통과 모듈로 나뉜다.",
+  "group": "guide",
+  "updated": "2026-09-23",
+  "sections": [
+    {
+      "id": "name",
+      "heading": "이름",
+      "blocks": [
+        {
+          "type": "p",
+          "text": "Qaredi 는 사용자(이창권)의 이름을 암호화했을 때 나온 문자열이다. 「내 것」이라는 워터마크이고, 사용자 결정(2026-09-22) 「더 이상 T-BOX 가 아니고 커뮤니티가 합쳐져서」 사이트 이름이 됐다."
+        },
+        {
+          "type": "p",
+          "text": "원래 이 저장소는 t-box 과제 저장소(`T-Box_Re`)였다. 사용자 결정 Q-A 「저장소 유지」로 새 저장소를 만들지 않고 그 안에서 Qaredi 로 자라는 중이다."
+        }
+      ]
+    },
+    {
+      "id": "launcher",
+      "heading": "런처와 주소",
+      "blocks": [
+        {
+          "type": "table",
+          "header": [
+            "주소",
+            "무엇"
+          ],
+          "rows": [
+            [
+              "`/`",
+              "Qaredi 런처 — 로그인 전에도 보이는 앱 타일(사용자 결정 Q-B 「타일 먼저로 하자」)"
+            ],
+            [
+              "`/tbox/`",
+              "t-box — 사내 파일 공유(t-box 28단계에서 이 주소로 옮겼다)"
+            ],
+            [
+              "`/community/`",
+              "커뮤니티 — 블록으로 쓰는 개인 업무 공간"
+            ],
+            [
+              "옛 t-box 주소",
+              "308 로 `/tbox/…` 를 알려 준다(메서드·본문 보존)"
+            ]
+          ]
+        },
+        {
+          "type": "list",
+          "items": [
+            "타일 목록은 `config/apps.json` 한 파일이고(이름·설명·경로·아이콘·순서·상태), 읽기는 `src/Apps.php` 한 곳이다.",
+            "런처는 데이터를 하나도 내려 주지 않는다 — 스크립트 0 · 쿠키 발행 0. 로그인돼 있으면 표시 이름과 역할 배지만 더해진다. 아직 없는 앱은 「준비 중」 배지이고 링크가 없다.",
+            "타일을 누르면 그 앱으로 가고, 로그인이 필요하면 그 앱의 로그인 화면이 먼저 나온다. 각 앱 셸에는 같은 목록을 여는 그리드 단추(⋮⋮⋮)가 있다."
+          ]
+        },
+        {
+          "type": "callout",
+          "kind": "risk",
+          "text": "앱 목록이 로그인 전에도 보이는 것은 사용자가 받아들인 위험이다(R-98) — 사내망 안이고 이름·설명·아이콘뿐이다. 「로그인 없이는 아무것도 안 보인다」 원칙은 각 앱 안에서 그대로다.",
+          "title": "로그인 전에 보이는 것"
+        }
+      ]
+    },
+    {
+      "id": "folders",
+      "heading": "폴더 구조",
+      "blocks": [
+        {
+          "type": "p",
+          "text": "사용자 결정(2026-09-22): 「qaredi 폴더 안에 tbox-v2, community 를 만들고 tbox-v2 는 기존 폴더를 그냥 옮겨 넣는 게 끝. 공통 기획 문서만 qaredi 에, t-box 기획안은 tbox-v2 에, community 기획안은 community 에, 공통 지침만 메인 폴더에」."
+        },
+        {
+          "type": "code",
+          "text": "/var/www/qaredi/\n  CLAUDE.md  PRD.md  STAGES.md  README.md   사이트 공통 지침·기획·기록\n  docs/                                     통합 계획 · 런처 설계와 지시서\n  scripts/                                  서버 정리·적용 스크립트\n  tbox-v2/     t-box 모듈이자 웹 앱 본체 (원격 T-Box_Re, 자기 git)\n    src/  public/  db/  tests/  wiki/  …    코드 — 커뮤니티 코드도 여기 안에 격리\n  community/   커뮤니티 기획·설계·기록 (코드는 tbox-v2 안)"
+        },
+        {
+          "type": "list",
+          "items": [
+            "커뮤니티 코드는 웹 앱 본체 안에 격리돼 있다: `src/community/` · `public/assets/community/` · `db/community/` · `tests/community/` · `src/help/community.php`.",
+            "옛 경로 `/var/www/tbox-v2` 는 새 자리를 가리키는 링크로 남았다.",
+            "`SECURITY.md`(검토 이력 7장 포함)·`DESIGN.md` 는 사이트 공통이지만 코드와 함께 `tbox-v2/` 에 둔다. 커뮤니티 위험은 `C:R-xx` 접두로 같은 문서에 합류한다."
+          ]
+        }
+      ]
+    },
+    {
+      "id": "relation",
+      "heading": "두 앱의 관계",
+      "blocks": [
+        {
+          "type": "table",
+          "header": [
+            "무엇",
+            "어떻게"
+          ],
+          "rows": [
+            [
+              "앱",
+              "한 PHP 앱. 모듈은 `src/<모듈>/` 로 나눠 코드·시험·문서를 격리한다"
+            ],
+            [
+              "로그인·세션",
+              "한 로그인 · 한 세션 쿠키(`tbox_session`, `path=/`). 커뮤니티도 t-box 의 로그인·CSRF·재인증·감사를 그대로 쓴다"
+            ],
+            [
+              "계정·권한",
+              "t-box 의 계정·팀·권한 표(역할 4종 × 등급 4종)가 사이트 공통이다. 커뮤니티 공간·페이지도 같은 표로 판단한다"
+            ],
+            [
+              "DB",
+              "한 DB `tbox_re` — 계정·파일은 `public`, 커뮤니티 표는 스키마 `community`"
+            ],
+            [
+              "라우터",
+              "`public/index.php` 한 입구. 관문 앞 한 층이 `/`(런처) · `/tbox` · `/community` 로 가른다. 커뮤니티는 자기 라우트 표(`COMMUNITY_ROUTES`)를 t-box 와 같은 매칭·정책·인증 코드로 돈다"
+            ],
+            [
+              "권한 판정",
+              "라우트 정책 `community.read`·`community.write` 는 `Authz` 가, 페이지 한 건의 판정은 `CommunityAuthz` 가 한다"
+            ],
+            [
+              "발행 번호",
+              "사이트 하나의 번호(`VERSION`·`CHANGELOG.json`) — 런처가 뜬 커밋이 v2.0.0 이었다"
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "id": "common",
+      "heading": "공통 설정과 관리",
+      "blocks": [
+        {
+          "type": "list",
+          "items": [
+            "계정·조직·권한 매트릭스·감사 로그·휴지통·위키 같은 관리 기능은 t-box 의 관리자 영역(`/tbox/admin`)에 있고, 전부 `role:Admin` + 15분 재인증이다.",
+            "사용자 결정(2026-09-23) 「사이드바의 설정 및 관리는 공통 사항」 — 커뮤니티 화면에서 설정·관리 묶음이 통째로 숨어 있던 것을 5-A′ 에서 앱별 위쪽 + 공통 아래쪽(설정 · 관리)으로 나눈다. 가져오기 허용 사이트·파일 휴지통은 t-box 전용이다. (이 글을 쓴 2026-09-23 현재 진행 전)",
+            "위키도 사이트 공통이다 — 이 책(Qaredi) · t-box · 커뮤니티 세 권으로 나뉘고, 위키 첫 화면에서 책을 고른다."
+          ]
+        },
+        {
+          "type": "refs",
+          "items": [
+            {
+              "doc": "PRD",
+              "where": "사이트 `PRD.md` 1~4장 · 8장 Q-A~Q-G",
+              "what": "이름·구조·런처와 사이트 공통 결정"
+            },
+            {
+              "doc": "CLAUDE",
+              "where": "사이트 `CLAUDE.md` 머리말 · 0장",
+              "what": "폴더 구조와 기준 문서 표"
+            },
+            {
+              "doc": "ARCH",
+              "where": "`docs/launcher/ARCHITECTURE.md` 1~2장",
+              "what": "주소 지도와 라우터 한 층"
+            },
+            {
+              "doc": "README",
+              "where": "사이트 `README.md`",
+              "what": "문서 지도와 주소"
+            },
+            {
+              "doc": "STAGES",
+              "where": "사이트 `STAGES.md` 1~2장",
+              "what": "결정이 나온 대화의 기록"
+            }
+          ]
+        },
+        {
+          "type": "link",
+          "slug": "guide-what",
+          "label": "t-box 안내 — 이 서비스는 무엇인가",
+          "book": "tbox"
+        },
+        {
+          "type": "link",
+          "slug": "guide-what",
+          "label": "커뮤니티 안내 — 커뮤니티는 무엇인가",
+          "book": "community"
+        }
+      ]
+    }
+  ]
+}

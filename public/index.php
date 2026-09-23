@@ -197,8 +197,16 @@ const TBOX_ROUTES = [
     //   `{slug}` 는 글 이름이며 파일 이름이 되는 값이다. 자리표시자 정규식이 1차 관문이고,
     //   Wiki::pathFor() 가 같은 정규식 + realpath 로 한 번 더 본다 (ARCH 5.10).
     //   감사 기록은 남기지 않는다 (PRD F-21) — 문서 열람은 보안 사건이 아니다.
-    ['GET',    '/wiki',                          'wiki_index.php',       'role:Admin'],
-    ['GET',    '/wiki/{slug}',                   'wiki_page.php',        'role:Admin'],
+    //   2026-09-23 — 책 셋(`qaredi`·`tbox`·`community`)으로 나눴다: `/wiki` = 책 고르기,
+    //   `/wiki/{book}` = 그 책 차례, `/wiki/{book}/{slug}` = 글. 넷 다 **같은 정책** role:Admin 이다.
+    //   ★ 순서가 뜻을 갖는다: 매칭은 위에서부터 첫 줄이 이긴다. `{book}` 은 `{slug}` 정규식에도
+    //     맞으므로 `/wiki/{book}` 줄이 **옛 주소 줄보다 위**에 있어야 `/wiki/tbox` 가 차례로 간다.
+    //   옛 주소 `/wiki/{slug}`(책이 나뉘기 전) 는 t-box 책에 그 글이 있으면 `/wiki/tbox/{slug}` 로 308,
+    //   없으면 404 다 (wiki_legacy.php).
+    ['GET',    '/wiki',                          'wiki_books.php',       'role:Admin'],
+    ['GET',    '/wiki/{book}',                   'wiki_index.php',       'role:Admin'],
+    ['GET',    '/wiki/{book}/{slug}',            'wiki_page.php',        'role:Admin'],
+    ['GET',    '/wiki/{slug}',                   'wiki_legacy.php',      'role:Admin'],
 
     // 15-1 — 내 활동 (PRD F-12 · 8장 `/activity` 행, ARCH 5.11).
     //   정책은 `authenticated` 다. "누구의 활동인가" 는 권한이 아니라 **대상**의 문제이고,
@@ -321,6 +329,10 @@ const TBOX_REAUTH_RETURN = [
     'GET /trash'       => 'trash',
     'GET /wiki'        => 'wiki',
     'GET /wiki/{slug}' => 'wiki',
+    // 2026-09-23 — 위키 책 차례와 글. 화면이 늘어도 키는 `wiki` 하나이고, 확인이 끝나면
+    // **책 고르기**(`/wiki`)로 돌아온다 (키를 늘리지 않는 이유는 `admin` 과 같다).
+    'GET /wiki/{book}'        => 'wiki',
+    'GET /wiki/{book}/{slug}' => 'wiki',
     // 17-1 — 관리자 영역 (PRD F-24, ARCH 5.14). 허브와 매트릭스 편집 화면 둘 다 키는 `admin`
     // 하나이고, 확인이 끝나면 **허브**(`/admin`)로 돌아온다. 화면이 하나 더 늘어도 키를 늘리지
     // 않는 이유는 오픈 리다이렉트 표면을 키 목록만큼으로 묶어 두기 위해서다 — 돌아갈 경로는
@@ -388,6 +400,10 @@ const TBOX_PATH_PATTERNS = [
     // 통과하지 못한다 — `/wiki/../x` 나 `/wiki/ZZ` 는 라우트에 맞지 않아 404 다.
     // Wiki::pathFor() 가 같은 정규식을 다시 보고 realpath 로 wiki/ 안인지 확인한다.
     '{slug}' => '[a-z0-9][a-z0-9-]{0,39}',
+    // 2026-09-23 — 위키 책 이름. **고정 목록 셋**뿐이고 `Wiki::BOOKS` 의 키와 같은 글자여야 한다
+    // (늘리려면 둘을 함께 — 한쪽만 늘면 새 책은 404 로 남는다, 닫히는 쪽으로 어긋난다).
+    // 핸들러가 `Wiki::bookKey()` 로 목록 쪽 문자열로 한 번 더 바꿔 쓴다(Wiki.php 머리의 ③).
+    '{book}' => '(?:qaredi|tbox|community)',
     // 15-2 — 공유 링크 토큰 (F-13, ARCH 5.12). random_bytes(32) 를 base64url 로 옮긴 43자다.
     // 패딩(`=`)은 떼고 만들므로 여기에도 없다. 길이·문자가 한 글자라도 다르면 라우트에 맞지
     // 않아 **404** 이고, 맞더라도 DB 에는 sha256 만 있어 대조에 실패하면 역시 404 다.

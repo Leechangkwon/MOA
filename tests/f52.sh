@@ -631,7 +631,8 @@ done
 expect "php -l 실패 0" 0 "$LINT_FAIL"
 
 JSON_FAIL=0
-for f in wiki/guide-risks.json wiki/guide-what.json wiki/stage-11.json wiki/stage-02.json; do
+# 2026-09-23 — 위키가 책 셋으로 나뉘어 t-box 글은 `wiki/tbox/` 로 옮겼다(git mv, 내용 무변경).
+for f in wiki/tbox/guide-risks.json wiki/tbox/guide-what.json wiki/tbox/stage-11.json wiki/tbox/stage-02.json; do
   python3 -m json.tool "$ROOT/$f" > /dev/null 2>&1 || { echo "    ✖ $f 파싱 실패"; JSON_FAIL=$((JSON_FAIL+1)); }
 done
 expect "wiki JSON 4파일 파싱 실패 0" 0 "$JSON_FAIL"
