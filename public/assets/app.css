@@ -526,6 +526,27 @@ a:focus-visible, .nav__item:focus-visible, summary:focus-visible { border-radius
 }
 .field input::placeholder,
 .toolbar input::placeholder { color: var(--muted); }
+/* 라디오·체크박스는 입력 칸이 아니다 — 위 규칙(높이 36px·테두리·그림자)이 걸리면 동그라미가 36px 상자
+   위쪽에 떠서 설명 글자와 한 줄로 맞지 않았다(2026-09-23 공개 범위·인계 모달 실측). 글자 앞에 한 줄로 둔다. */
+.field input[type="radio"],
+.field input[type="checkbox"] {
+  width: auto;
+  height: auto;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  box-shadow: none;
+  flex-shrink: 0;
+  accent-color: var(--primary);
+}
+.field__label:has(> input[type="radio"]),
+.field__label:has(> input[type="checkbox"]) {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 400;
+  cursor: pointer;
+}
 .field input:disabled,
 .field select:disabled { opacity: .5; cursor: not-allowed; }
 .field input[type="file"] {
@@ -809,6 +830,9 @@ dialog.modal::backdrop { background: rgba(0, 0, 0, .5); }
   padding: 16px 24px;
   border-top: 1px solid var(--line);
 }
+/* 모달 바로 아래에 놓인 `.form-actions` 는 바닥 줄이다 — `.modal__foot` 과 같은 여백·구분선을 준다.
+   커뮤니티 모달들이 이 꼴이라 단추가 창 테두리에 붙어 있었다(2026-09-23). */
+dialog.modal > .form-actions { padding: 16px 24px; border-top: 1px solid var(--line); }
 
 /* ─── 미리보기 (12-2, F-18) — 모달 본문 + 우측 정보 패널 ─────────── */
 .preview__mark {
