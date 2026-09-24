@@ -11,7 +11,7 @@ declare(strict_types=1);
  *
  * 사용법
  *   sudo php scripts/alerts.php [--dry-run] [--rule AL-1] [--auth-log <경로>] [--state <경로>]
- *     --dry-run   : 판정만 하고 경보를 남기지 않는다 (규칙을 고친 뒤 확인용)
+ *     --dry-run   : 판정만 — 경보도 상태 파일(중복 억제·ssh_seen·auth.log 읽기 위치)도 남기지 않는다 (규칙을 고친 뒤 확인용 · 대기열 2c)
  *     --rule      : 한 규칙만 돌린다
  *     --auth-log  : /var/log/auth.log 대신 **그 파일**을 읽는다 (16-2 시험용).
  *                   이때는 읽기 오프셋을 상태 파일에 **쓰지 않는다** — 시험이 운영의
@@ -936,7 +936,9 @@ if ($want('AL-3') || $want('AL-9')) {
             }
         }
 
-        if ($read['advance']
+        // 읽기 위치는 **실제로 판정을 남기는 실행에서만** 앞으로 민다. dry-run 이 밀면 그 사이 줄을 다음 cron 이
+        // 건너뛴다(AL-3·AL-9 누락 — 개발 대기열 2c, 점검 봇 발견 2026-09-24). ssh_seen 의 !$dryRun 과 같은 규칙.
+        if (!$dryRun && $read['advance']
             && ($read['inode'] !== $authPos['inode'] || $read['offset'] !== $authPos['offset'])
         ) {
             $authPos['inode']  = $read['inode'];
@@ -950,7 +952,7 @@ if ($want('AL-3') || $want('AL-9')) {
             count($read['lines']),
             $sshNew,
             $sudoHit,
-            $read['advance'] ? '' : ' (시험 모드: 오프셋을 저장하지 않는다)'
+            !$read['advance'] ? ' (시험 모드: 오프셋을 저장하지 않는다)' : ($dryRun ? ' (dry-run: 오프셋을 저장하지 않는다)' : '')
         ));
     }
 }

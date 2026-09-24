@@ -1049,7 +1049,7 @@ cat /etc/cron.d/tbox-v2                 # 일정 확인 (cron.d 는 6번째 칸�
 sudo bash scripts/backup_db.sh          # 손으로 한 번 돌려보기
 sudo bash scripts/verify_backup.sh
 sudo php  scripts/consistency_check.php
-sudo php  scripts/alerts.php --dry-run  # 판정만 하고 경보는 남기지 않는다
+sudo php  scripts/alerts.php --dry-run  # 판정만 — 경보도 상태 파일(중복 억제·ssh_seen·auth.log 읽기 위치)도 남기지 않는다(대기열 2c)
 # 서버 층 규칙(AL-3·AL-9)은 auth.log 를 읽으므로 **root** 여야 합니다. 사본으로 시험하려면:
 sudo php  scripts/alerts.php --auth-log /tmp/auth-sample.log --dry-run
 #   --auth-log 를 주면 읽기 오프셋을 저장하지 않습니다(운영 읽기 위치를 밀지 않습니다).
