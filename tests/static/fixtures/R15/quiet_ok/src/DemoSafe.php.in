@@ -1,0 +1,8 @@
+<?php
+// 가짜 견본: 비밀은 파이프·환경으로, 명령에는 길이만
+function demo_safe(string $secret, string $password): void
+{
+    $p = proc_open(['demo-tool', '-'], [0 => ['pipe', 'r']], $pipes, null, ['APP_SECRET' => $secret]);
+    fwrite($pipes[0], $secret);
+    exec('demo-tool --len ' . strlen($password), $out);
+}

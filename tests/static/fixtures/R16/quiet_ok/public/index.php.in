@@ -1,0 +1,5 @@
+<?php
+require_once __DIR__ . '/../src/Board.php';
+$b = new Board();
+$b->copy('http://192.0.2.9/');       // 메서드 호출 — 전역 copy() 가 아니다
+echo Board::load($_GET['n'] ?? 'x');

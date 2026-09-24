@@ -1,0 +1,10 @@
+<?php
+// S-05 가 정한 자리 — 여기는 보지 않는다
+final class Fetch
+{
+    public static function probe(): void
+    {
+        $s = fsockopen('192.0.2.10', 443);
+        $raw = file_get_contents('https://weather.example.test/api');
+    }
+}

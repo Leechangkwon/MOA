@@ -1,0 +1,6 @@
+:root { --ink: #222; }
+.a { font-size: 13px; color: var(--ink); }
+.b { font-size: 17px; }
+.c { font-weight: 600; }
+.e { font: 500 15px sans-serif; }
+.d { color: var(--missing-ink); }

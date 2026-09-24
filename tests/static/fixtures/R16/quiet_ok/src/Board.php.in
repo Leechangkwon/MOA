@@ -1,0 +1,25 @@
+<?php
+declare(strict_types=1);
+// 날씨판 — 파일·표준 입력·로컬 소켓만 연다. 주석 속 file_get_contents('http://192.0.2.1:80/') 는 코드가 아니다.
+final class Board
+{
+    private const DATA_DIR = __DIR__ . '/../data';
+    private const HELP_URL = 'https://docs.example.test/help';   // 화면에 보이는 링크 글자일 뿐
+
+    public static function load(string $name): string
+    {
+        $path = self::DATA_DIR . '/' . basename($name);
+        $raw = @file_get_contents($path);
+        $body = file_get_contents('php://input');
+        $fh = fopen(sys_get_temp_dir() . '/board.lock', 'c');
+        readfile(dirname(__DIR__) . '/static/board.txt');
+        copy($path, self::DATA_DIR . '/backup.txt');
+        $sock = stream_socket_client('unix:///run/board/board.sock');
+        $obj = new SplFileObject(self::DATA_DIR . '/rows.csv');
+        $note = 'see http://192.0.2.44:8080/ for the old board';   // 호출 인자가 아니다
+        header('Link: <' . self::HELP_URL . '>');
+        return (string) $raw;
+    }
+
+    public function copy(string $a): void {}   // 같은 이름의 메서드 정의는 호출이 아니다
+}

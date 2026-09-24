@@ -1,0 +1,2 @@
+{ "kinds": { "para": {}, "title": {}, "quote": {}, "table": {} },
+  "levels": { "1": ["para", "title"], "2": ["quote"], "9": ["table"] } }

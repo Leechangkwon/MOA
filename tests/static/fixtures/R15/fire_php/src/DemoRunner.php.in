@@ -1,0 +1,11 @@
+<?php
+// 가짜 견본: 비밀을 셸 명령 문자열·배열 인자로 넘긴다
+final class DemoRunner
+{
+    public function run(string $apiKey, array $row): void
+    {
+        exec('demo-tool --key ' . escapeshellarg($apiKey), $out, $rc);
+        $cmd = ['demo-tool', '--seed', $row['mfa_secret']];
+        $p = proc_open($cmd, [0 => ['pipe', 'r']], $pipes);
+    }
+}

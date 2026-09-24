@@ -1,0 +1,3 @@
+<?php
+// 배치 스크립트도 대상 밖 (src/·public/ 만)
+file_get_contents('http://127.0.0.1:8082/warm');

@@ -1,0 +1,15 @@
+# R15 견본별 기대값 — 형식: <견본 폴더> rc=<종료 코드> findings=<FINDING 줄 수>
+# 부르는 법: python3 tests/static/r15_secret_args.py --root tests/static/fixtures/R15/<견본 폴더>
+#   (견본 폴더는 git 작업 트리의 맨 위가 아니라서 디렉터리 전체의 tests·scripts·src 를 본다)
+# 견본은 전부 새로 지은 가짜 코드다(정답지·저장소 본문 복사 없음, 주소는 example.invalid).
+# 통합 단계: 견본 PHP 는 `.php.in` 으로 둔다(일부러 넣은 exec·proc_open·소켓·원격 URL 이 저장소에서
+#   scripts/security_lint.sh S-05·S-09 에 걸리지 않게). selftest.sh 가 임시 폴더에 풀며 `.in` 을 뗀다.
+#   손으로 돌릴 때: bash tests/static/selftest.sh R15 (또는 견본을 복사해 `.in` 을 떼고 --root 로 준다)
+fire_sh_direct rc=1 findings=1
+fire_sh_taint_path rc=1 findings=1
+fire_sh_func_param rc=1 findings=1
+fire_sh_sudo rc=1 findings=1
+fire_php rc=1 findings=2
+fire_py rc=1 findings=2
+fire_heredoc_script rc=1 findings=1
+quiet_ok rc=0 findings=0

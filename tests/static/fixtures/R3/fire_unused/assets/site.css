@@ -1,0 +1,7 @@
+.live { display: block; }
+.ghost-panel { color: #ff0000; }
+.ghost-panel__title { font-weight: 600; }
+.live .ghost-panel__title,
+.live > .gone-row { margin: 0; }
+.skin-ocean { opacity: .9; }
+.live:not(.never-there) { padding: 0; }

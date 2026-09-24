@@ -1,0 +1,9 @@
+# R2 견본별 기대값 — 통합 단계 selftest.sh 가 읽는다
+# 형식: <견본 폴더> rc=<기대 rc> findings=<기대 FINDING 줄 수>
+# 실행: python3 tests/static/r2_audit_crosscheck.py --root tests/static/fixtures/R2/<견본 폴더>
+quiet_ok rc=0 findings=0
+ring_c1_call_missing rc=1 findings=1
+ring_c2_doc_missing rc=1 findings=1
+ring_c3_doc_mismatch rc=1 findings=2
+ring_c4_deny_unaudited rc=1 findings=2
+broken_no_table rc=2 findings=0

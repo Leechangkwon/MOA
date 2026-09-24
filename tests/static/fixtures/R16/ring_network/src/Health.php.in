@@ -1,0 +1,20 @@
+<?php
+declare(strict_types=1);
+final class Health
+{
+    private const PROBE = 'http://127.0.0.1:9090/ping';
+    private const MIRROR_HOST = 'mirror.example.test';
+
+    public static function run(string $host): array
+    {
+        $a = @file_get_contents(self::PROBE);                                   // 1 상수 · 루프백
+        $b = fopen('tcp://198.51.100.7:7000', 'r');                              // 2 tcp 스킴
+        $dst = 'udp://' . $host . ':514';
+        copy('/var/tmp/x.log', $dst);                                            // 3 같은 함수에서 앞서 넣은 값
+        $c = fsockopen($host, 25);                                               // 4 소켓 전용 함수(인자 무관)
+        $d = new SplFileObject('ftp://' . self::MIRROR_HOST . '/list.txt');      // 5 SplFileObject + ftp
+        $e = get_headers(sprintf('https://%s/status', $host));                  // 6 sprintf 형식 앞부분
+        $f = stream_socket_client('203.0.113.5:6379');                           // 7 IP:포트 모양
+        return [$a, $b, $c, $d, $e, $f];
+    }
+}

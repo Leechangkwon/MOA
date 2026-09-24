@@ -1,0 +1,14 @@
+# R1 견본별 기대값 — 형식: <견본 폴더> rc=<종료 코드> findings=<FINDING 줄 수>
+# 부르는 법: python3 tests/static/r1_encoding.py --root tests/static/fixtures/R1/<견본 폴더>
+#   (견본 폴더는 git 작업 트리의 맨 위가 아니라서 디렉터리 전체를 본다)
+# 견본은 전부 새로 지은 가짜 글이다(정답지·저장소 본문 복사 없음).
+fire_invalid_utf8 rc=1 findings=1
+fire_fffd_corrupt rc=1 findings=1
+fire_fffd_mention rc=1 findings=1
+fire_utf16 rc=1 findings=1
+fire_c1_latin1 rc=1 findings=1
+fire_mojibake_cp1252 rc=1 findings=1
+fire_mojibake_cp949 rc=1 findings=1
+fire_ps1_nobom rc=1 findings=1
+fire_bom_harmful rc=1 findings=3
+quiet_clean rc=0 findings=0

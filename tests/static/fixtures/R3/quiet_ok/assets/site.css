@@ -1,0 +1,26 @@
+/* 견본 CSS — 토큰 */
+:root {
+  --ink: #1b1d22;
+  --paper: #fdfcf9;
+  --gap-s: 6px;
+  --shade: rgb(0 0 0 / .2);
+}
+:root[data-theme="dark"] { --ink: #eceae4; --paper: #121315; }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) { --ink: #eceae4; }
+}
+body { color: var(--ink); background: var(--paper); font-size: 15px; font-weight: 400; }
+h1.title { font: 700 20px/1.3 var(--face, sans-serif); }
+.note { font-size: 11px; color: var(--ink); }
+.dial { font-size: 28px; }
+.chip { padding: var(--gap-s); box-shadow: 0 1px 2px rgba(0, 0, 0, .25); }
+.chip--calm { background: var(--paper); }
+.chip--loud { font-weight: 700; }
+.chip--tone-sea,
+.chip--tone-sand { border-color: var(--ink); }
+/* 도장은 어떤 테마에서도 같은 빨강이어야 해서 색 토큰을 쓰지 않는다. */
+.stamp { color: #b3261e; }
+.badge-x:not(.never-used) { color: var(--ink); }
+.legacy-hook { outline-color: #123456; } /* qcheck-allow: R3 — 바깥 위젯의 고정 색 */
+@media (max-width: 600px) { .note { font-size: 15px; } }
+@keyframes pulse { from { opacity: 0; } to { opacity: 1; } }

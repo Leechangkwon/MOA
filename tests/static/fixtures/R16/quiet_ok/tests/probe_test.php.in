@@ -1,0 +1,4 @@
+<?php
+// 시험의 루프백 주소는 정상 — tests/ 는 대상 밖
+$s = fsockopen('127.0.0.1', 8082);
+echo file_get_contents('http://127.0.0.1:8082/health');

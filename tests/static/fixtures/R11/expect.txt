@@ -1,0 +1,13 @@
+# R11 견본별 기대값 — 통합 단계 selftest.sh 가 읽는다
+# 형식: <견본 경로> rc=<기대 rc> findings=<기대 FINDING 줄 수>
+# 실행: python3 tests/static/r11_wiki_stage_scope.py --root tests/static/fixtures/R11/<견본 경로>
+#   · 견본 경로에 빗금이 든 것(fire_books/site/app 등)은 바깥 배치를 흉내 낸 중첩 견본이다.
+#     --root 는 가장 안쪽 폴더이고, 규칙이 기본값으로 <root>/.. (STAGES.md 가 있음)를 바깥 배치로 읽는다.
+#     따로 --outer 를 주지 않는다.
+#   · 견본은 전부 새로 지은 가짜 장부·가짜 위키 글이다(정답지·저장소 본문 복사 없음).
+fire_flat_missing rc=1 findings=1
+fire_books/site/app rc=1 findings=3
+fire_cover/hub/core rc=1 findings=1
+quiet_ok rc=0 findings=0
+broken_no_wiki rc=2 findings=0
+broken_bad_table rc=2 findings=0

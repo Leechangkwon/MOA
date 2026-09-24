@@ -1,0 +1,9 @@
+{
+  "slug": "stage-01",
+  "title": "가짜 글 stage-01",
+  "summary": "견본용으로 지은 글이다.",
+  "group": "stage",
+  "stage": 1,
+  "updated": "2000-01-01",
+  "sections": []
+}

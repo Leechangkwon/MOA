@@ -1,0 +1,22 @@
+# R6 견본별 기대값 — 통합 단계 selftest.sh 가 읽는다
+# 형식: <견본 폴더> rc=<기대 rc> findings=<기대 FINDING 줄 수>
+# 실행: bash tests/static/fixtures/R6/run_case.sh tests/static/fixtures/R6/<견본 폴더>
+#   R6 는 커밋 범위를 입력으로 받으므로 견본은 트리 한 벌이 아니라 base/(첫 커밋) · tip/(덮어쓰기) · delete.txt(지울 파일)
+#   · mode(commit|worktree|badrange) · directive.md(있으면 --directive) 로 되어 있다. run_case.sh 가 TMPDIR 아래
+#   임시 저장소를 만들어 돌리고 지운다(프로젝트 저장소에는 쓰지 않는다). 견본은 전부 새로 지은 가짜 앱이다.
+#   quiet_ok         : 지시서 안 변경(`<번호>` 자리표시 글롭) · 참조 추적됨 · `$$ … $$` 안 BEGIN 은 세지 않음 · 변수 이름 TODO 는 표시 아님 · 예시 줄은 안 봄
+#   fire_scope       : K1 목록 밖 새 파일 1(중간) · 「만들지 않는 것」 경로 변경 1(높음)
+#   fire_untracked   : K2a 추적 문서가 가리키는 파일이 작업 트리에만 있음 1
+#   fire_dangling    : K2c 범위가 더한 마이그레이션이 트리에 없는 정리 스크립트를 가리킴 1
+#   fire_unfinished  : K3 빈 마이그레이션 1 · 닫히지 않은 BEGIN 1 · 주석의 미완성 표시 1 · 빈 새 파일 1
+#   fire_stale       : K2b 지운 파일을 다른 문서가 여전히 가리킴 1
+#   broken_range     : 없는 범위 → 검사 못 함(rc 2)
+#   broken_directive : 「수정 파일」 절 없는 지시서 → 검사 못 함(rc 2)
+quiet_ok rc=0 findings=0
+fire_scope rc=1 findings=2
+fire_untracked rc=1 findings=1
+fire_dangling rc=1 findings=1
+fire_unfinished rc=1 findings=4
+fire_stale rc=1 findings=1
+broken_range rc=2 findings=0
+broken_directive rc=2 findings=0

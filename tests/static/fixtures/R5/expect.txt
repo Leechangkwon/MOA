@@ -1,0 +1,11 @@
+# R5 견본별 기대값 — 통합 단계 selftest.sh 가 읽는다
+# 형식: <견본 폴더> rc=<기대 rc> findings=<기대 FINDING 줄 수>
+# 실행: python3 tests/static/r5_path_crosscheck.py --root tests/static/fixtures/R5/<견본 폴더>
+#   (견본 폴더는 git 작업 트리의 맨 위가 아니라서 디렉터리 전체를 보고, .gitignore 는 뿌리의 것을 단순 패턴으로 읽는다)
+# 견본은 전부 새로 지은 가짜 앱(/shop · 라우트 넷 · 가짜 nginx 설정)이다(정답지·저장소 본문 복사 없음).
+fire_base_missing rc=1 findings=2
+fire_no_route rc=1 findings=2
+fire_doc rc=1 findings=1
+fire_file_ref rc=1 findings=3
+quiet_ok rc=0 findings=0
+broken_no_tables rc=2 findings=0

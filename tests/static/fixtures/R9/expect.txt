@@ -1,0 +1,22 @@
+# R9 견본별 기대값 — 통합 단계 selftest.sh 가 읽는다
+# 형식: <견본 폴더> rc=<기대 rc> findings=<기대 FINDING 줄 수>
+# 실행: python3 tests/static/r9_feature_list.py --root tests/static/fixtures/R9/<견본 폴더>   (git 맨 위가 아니라서 바깥 배치는 보지 않는다)
+# 견본은 전부 새로 지은 가짜 메모 앱이다(정답지·저장소 본문 복사 없음).
+#   quiet_ok      : 입력 규칙(++·~~~)·단추 이름·나열(셋입니다)·단축키(Ctrl+Z·Ctrl+Shift+Z·Ctrl+Alt+1·keydown 의 Ctrl+J)
+#                   다 맞음 · 브라우저 기본(Ctrl+C)·부정문(「…」는 없습니다)·주석 속 이름은 보지 않음 ·
+#                   .replace(/…/) 정규식은 입력 규칙이 아님 · 단계 2 까지 렌더러가 다룸(9단계는 아직) · 제거 지시서 이행됨
+#   fire_trigger  : H1 도움말의 「//」 입력 규칙이 코드에 없음 1
+#   fire_label    : H3 「내보내기」 단추 없음 1 (주석에만 있는 옛 이름)
+#   fire_combo    : H2 Ctrl+Shift+H 등록 없음 1
+#   fire_enum     : H4 늘어놓은 넷 가운데 「글자 뒤집기」 없음 1
+#   fire_schema   : S1 정의 표에 없는 이름(tabel) 1 · 열린 단계 3 의 table 을 렌더러가 모름 1
+#   fire_removal  : S2 삭제 대상 폴더에 파일이 남음 1 · 이동 표 옛 경로가 남음 1 (새로 만드는 파일은 뺌)
+#   broken_empty  : 도움말·스키마·제거 지시서가 없음 → 검사 못 함(rc 2)
+quiet_ok rc=0 findings=0
+fire_trigger rc=1 findings=1
+fire_label rc=1 findings=1
+fire_combo rc=1 findings=1
+fire_enum rc=1 findings=1
+fire_schema rc=1 findings=2
+fire_removal rc=1 findings=2
+broken_empty rc=2 findings=0

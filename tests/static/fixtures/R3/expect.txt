@@ -1,0 +1,18 @@
+# R3 견본별 기대값 — 통합 단계 selftest.sh 가 읽는다
+# 형식: <견본 폴더> rc=<기대 rc> findings=<기대 FINDING 줄 수>
+# 실행: python3 tests/static/r3_design_tokens.py --root tests/static/fixtures/R3/<견본 폴더>
+# 견본은 전부 새로 지은 가짜 문서·CSS·마크업이다(정답지·저장소 본문 복사 없음).
+#   quiet_ok       : 사다리·굵기·토큰 안, 이어 붙인 클래스(`chip--<?= ?>`·`${}`), 이유 주석·qcheck-allow 색, 투명 검정 그림자, 이력 절의 옛 이름
+#   fire_tokens    : T1 금지 값 1 · 사다리 밖 1, T2 굵기 2, T4 정의 없는 var 1 · 문서 토큰 1
+#   fire_colors    : T3 html 일반 속성 1 · hex 1 · 색 이름 1 · hsl 1 (투명 흰 그림자·rgb(var()/a) 는 조용)
+#   fire_unused    : U1 3 (이어 붙인 skin- 은 skip, 죽은 규칙의 색은 U1 한 줄로만)
+#   fire_doc       : D1 문서에 없는 변형 1 · D2 문서의 옛 클래스 1 (「지웠다」 줄은 조용)
+#   fire_no_design : 문서 없음 — T1 고유 크기 10종 > 상한 8 요약 1
+#   broken_css     : 닫히지 않은 CSS 뿐 — 검사 못 함
+quiet_ok rc=0 findings=0
+fire_tokens rc=1 findings=6
+fire_colors rc=1 findings=4
+fire_unused rc=1 findings=3
+fire_doc rc=1 findings=2
+fire_no_design rc=1 findings=1
+broken_css rc=2 findings=0
