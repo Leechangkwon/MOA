@@ -1,0 +1,14 @@
+<?php
+declare(strict_types=1);
+// 가짜 CLI 도우미 — 견본 전용
+function demo_flag(array $argv, string $name): bool
+{
+    return in_array('--' . $name, $argv, true);
+}
+
+function demo_save_state(string $path, string $body): void
+{
+    $tmp = $path . '.part';
+    file_put_contents($tmp, $body);
+    rename($tmp, $path);
+}

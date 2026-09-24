@@ -13,3 +13,11 @@ fire_php rc=1 findings=2
 fire_py rc=1 findings=2
 fire_heredoc_script rc=1 findings=1
 quiet_ok rc=0 findings=0
+# 묶음 X (세션 쿠키 · 환경 대입) — answers BF-0006 · HO-HF0-005 · FP-0001
+fire_cookie_name rc=1 findings=2
+fire_cookie_shape rc=1 findings=5
+fire_cookie_jar rc=1 findings=2
+fire_cookie_php_py rc=1 findings=4
+fire_env_prefix rc=1 findings=2
+quiet_env_prefix rc=0 findings=0
+quiet_cookie rc=0 findings=0

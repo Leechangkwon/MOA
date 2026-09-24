@@ -1,0 +1,27 @@
+# R19 견본별 기대값 — 형식: <견본 폴더> rc=<종료 코드> findings=<FINDING 줄 수>
+# 부르는 법: bash tests/static/selftest.sh R19
+#   (견본 폴더는 git 작업 트리의 맨 위가 아니라서 디렉터리 전체의 tests 와 db 를 본다)
+# 견본은 전부 새로 지은 가짜 코드다(정답지·저장소 본문 복사 없음, 주소는 example.invalid).
+# 기록 표 사전은 견본마다 db/schema.sql·db/grants.sql 에서 뽑는다(audit_logs·demo_events 는 이름,
+# demo_snapshots 는 SELECT·INSERT 만인 권한으로 — 손으로 적은 목록 없음).
+#   fire_order_limit    expect 인자 안의 ORDER BY … LIMIT 1 (1)
+#   fire_var_flow       여러 줄 SQL 을 변수에 담아 expect (1, FROM 기록 표 줄)
+#   fire_count_test     [ "$(count)" -ge 1 ] 비교 (1)
+#   fire_helper_func    SQL 이 함수 몸에 있고 부르는 자리가 단언 (1)
+#   fire_setter         db_read_var 처럼 첫 인자 변수에 넣는 도우미 → expect (1)
+#   fire_append_only    이름이 아니라 추가 전용 권한으로 기록 표인 것의 max(…) (1)
+#   fire_account_eq     계정 id(actor_id) 와 맞추는 것은 경계가 아니다 (1)
+#   quiet_bounded       id>표시·시각·now()-interval·이번에 만든 개체·실행 고유 값·전후 대조·표시 재기·
+#                       -z 확인 — 0 (전역 불변식 1건은 skip 으로)
+#   quiet_not_asserted  note·echo 로만 찍기 · 기록 표 아님 · php -r 속 글자 — 0
+#   broken_no_db        db/** 가 없음 → 검사 못 함 rc 2
+fire_order_limit rc=1 findings=1
+fire_var_flow rc=1 findings=1
+fire_count_test rc=1 findings=1
+fire_helper_func rc=1 findings=1
+fire_setter rc=1 findings=1
+fire_append_only rc=1 findings=1
+fire_account_eq rc=1 findings=1
+quiet_bounded rc=0 findings=0
+quiet_not_asserted rc=0 findings=0
+broken_no_db rc=2 findings=0

@@ -3,9 +3,16 @@
 # 실행: python3 tests/static/r5_path_crosscheck.py --root tests/static/fixtures/R5/<견본 폴더>
 #   (견본 폴더는 git 작업 트리의 맨 위가 아니라서 디렉터리 전체를 보고, .gitignore 는 뿌리의 것을 단순 패턴으로 읽는다)
 # 견본은 전부 새로 지은 가짜 앱(/shop · 라우트 넷 · 가짜 nginx 설정)이다(정답지·저장소 본문 복사 없음).
+# (2026-09-24 보강) fire_site_layer_bound 에 write_via_site.sh(사이트 뿌리로 보낸 POST — ② 는 읽기 요청만)·legacy_word.sh(낱말만으로 빼지 않음) 두 건을 더해 9.
+# 사이트 층 예외(FP-0002~0004 부류): quiet_site_layer 는 일부러 옛 주소를 보는 요청 다섯(① 결과를 받는 곁 줄 셋 ·
+#   ① 측정 뒤 단언 하나 · ② 사이트 뿌리 변수 측정 하나 — 바꾸기 전 판은 다섯 모두 울림)이 조용해야 하고,
+#   fire_site_layer_bound 는 예외가 넓지 않은지 — 곁 줄에 308 이 있어도 결과를 받지 않는 줄·다른 원점의 접두 변수·
+#   표시 없는 파일·결과를 받는 사이트 뿌리 변수 요청 일곱이 울려야 한다(같은 폴더의 조용한 둘은 skip).
 fire_base_missing rc=1 findings=2
 fire_no_route rc=1 findings=2
 fire_doc rc=1 findings=1
 fire_file_ref rc=1 findings=3
 quiet_ok rc=0 findings=0
 broken_no_tables rc=2 findings=0
+quiet_site_layer rc=0 findings=0
+fire_site_layer_bound rc=1 findings=9

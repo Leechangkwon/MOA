@@ -1,0 +1,7 @@
+<?php
+// 가짜 견본(묶음 X ④-b): PHP 에서 쿠키 값을 셸 명령 글에 끼운다
+function demo_probe(string $v, string $x): void
+{
+    exec("curl -s -b 'demo_session=$v' https://demo.example.invalid/api/me");
+    shell_exec('curl -s -H ' . escapeshellarg('Cookie: demo_session=' . $x) . ' https://demo.example.invalid/');
+}

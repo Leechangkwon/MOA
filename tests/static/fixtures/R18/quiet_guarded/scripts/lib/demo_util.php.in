@@ -1,0 +1,6 @@
+<?php
+declare(strict_types=1);
+function demo_write(string $path, string $body): void
+{
+    file_put_contents($path, $body, LOCK_EX);
+}

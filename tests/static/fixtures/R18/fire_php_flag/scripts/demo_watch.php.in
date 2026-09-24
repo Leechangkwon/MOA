@@ -1,0 +1,28 @@
+<?php
+declare(strict_types=1);
+// 견본: 감시 배치 — --dry-run 이면 판정만
+require_once __DIR__ . '/lib/demo_cli.php';
+
+$argv   = $_SERVER['argv'];
+$dryRun = demo_flag($argv, 'dry-run');
+$state  = ['seen' => [], 'cursor' => 0];
+$seenChanged   = false;
+$cursorChanged = false;
+
+foreach (['a', 'b'] as $item) {
+    $state['seen'][$item] = time();
+    if (!$dryRun) {
+        $seenChanged = true;
+    }
+}
+
+$next = 42;
+if ($next !== $state['cursor']) {
+    $state['cursor'] = $next;
+    $cursorChanged   = true;          // ← dry-run 조건 없음
+}
+
+if ($seenChanged || $cursorChanged) {
+    demo_save_state('/var/lib/demo-watch/state.json', json_encode($state) . "\n");
+}
+echo $dryRun ? "(dry-run)\n" : "done\n";

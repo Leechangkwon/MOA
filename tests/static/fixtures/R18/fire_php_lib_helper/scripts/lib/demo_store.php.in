@@ -1,0 +1,17 @@
+<?php
+declare(strict_types=1);
+final class DemoStore
+{
+    public static function put(string $name, string $body): void
+    {
+        self::atomic('/var/lib/demo-store/' . basename($name), $body);
+    }
+
+    private static function atomic(string $path, string $body): void
+    {
+        $fh = fopen($path . '.tmp', 'wb');
+        fwrite($fh, $body);
+        fclose($fh);
+        rename($path . '.tmp', $path);
+    }
+}

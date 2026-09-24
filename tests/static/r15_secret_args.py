@@ -3,7 +3,8 @@
 """
 R15 비밀 인자 (secrets on the command line) — 1-F 정적 규칙, python3 stdlib 만, 파일은 읽기만.
 
-answers: (없음 — F-71 채점 뒤 train 번호를 단다)
+answers: BF-0002 · BF-0003(처음 부류 — TOTP 비밀·비밀번호) · BF-0006 · HO-HF0-005(세션 쿠키 — 묶음 X 보강)
+         · FP-0001(오탐 정정 — 줄 이어짐으로 나뉜 환경 변수 접두)
 
 무엇을 부류로 잡나:
   명령 인자(argv)는 같은 호스트의 다른 사용자에게 `ps`·/proc/<pid>/cmdline 으로 보이고, sudo 를 거치면
@@ -18,9 +19,22 @@ answers: (없음 — F-71 채점 뒤 train 번호를 단다)
       ② 그런 값을 대입받은 변수(파일 안 흐름, 순서 무시), 이름이 비밀을 가리키는 함수·명령의 출력
       `$(qa_secret …)`, 비밀 이름이 적힌 파일·열을 읽는 명령 치환 `$(… totp … )`.
       ③ 셸 함수의 위치 인자(`$1`)는 호출하는 쪽에서 비밀을 넘길 때만 비밀로 친다(함수 사이 전파 포함).
+      ④ 세션 쿠키(묶음 X) — 로그인 세션 값은 비밀번호와 같은 자격이다(가진 사람이 그 계정으로 요청한다).
+        (a) 이름: 토큰 COOKIE(S)·SESSION·SESS·SID(…SESSID) 가 든 변수·함수·속성. 「자리」(…_FILE·_PATH·
+            _DIR·JAR)·이름·개수·여부(HAVE_SESSION)는 ① 과 같은 방식으로 뺀다. PHP `$_SESSION`(서버 쪽
+            저장소)·파이썬 `Session()` 같은 그릇 만들기는 값이 아니라서 뺀다.
+        (b) 모양(이름과 상관없이): `curl -b "이름=$변수"`·`--cookie "…=$…"`(-b 뒤 변수 하나면 그 변수에
+            `이름=$값` 모양이 대입될 때), `Cookie:` 머리 글자 뒤에 확장이 붙은 단어(`-H "Cookie: …$…"`·
+            대입 `H="Cookie: …$…"` 도 흐름으로). `Set-Cookie:`(응답 머리 — 찾는 무늬)는 뺀다.
+        (c) 쿠키 jar·세션 파일에서 값을 뽑는 명령 치환(`$(awk … "$JAR")`·`$(cat x.session)` — 글 뽑는
+            명령이 jar 변수(이름 끝 JAR)·`.jar` 경로·쿠키/세션 이름의 파일을 읽음)은 ② 의 흐름으로 친다.
+        CSRF 토큰(X-CSRF-Token)은 세션 없이는 못 쓰므로 이 규칙 범위가 아니다.
+      이름으로 비밀인 셸 변수라도 대입되는 값이 전부 id 칸 읽기(`SELECT id FROM …`·`d.get('id')`·jq `.id`)면
+      식별자로 보고 뺀다(이름에 ID 가 붙으면 빼는 것과 같은 뜻 — 값 쪽에서 본 것).
     외부 명령의 인자 — 셸: 빌트인(echo·printf·read·test·local·export…)과 셸 함수가 아닌 명령의 인자
       단어, sudo·env 류 뒤의 `VAR=값` 도 인자다. 표준입력(`<<<`·heredoc·파이프)·리다이렉트 대상·
-      명령 앞 `VAR=값`(환경)은 통과. PHP: exec·shell_exec·system·passthru·popen·proc_open·pcntl_exec 의
+      명령 앞 `VAR=값`(환경 — 여러 개가 줄 이어짐 `\` 로 나뉘어도 첫 대입 아닌 단어가 명령)은 통과.
+      PHP: exec·shell_exec·system·passthru·popen·proc_open·pcntl_exec 의
       명령 인자와 백틱. 파이썬: subprocess.*·os.system·os.popen·os.exec*·os.spawn*·asyncio 하위 프로세스의
       명령 인자(`input=`·`env=`·`stdin=` 은 통과). strlen·hash 류로 감싼 값은 비밀이 아니다.
     heredoc 으로 만드는 스크립트(셔뱅·대상 확장자·`python3 -` 로 판단)도 같은 방법으로 본다.
@@ -33,7 +47,9 @@ answers: (없음 — F-71 채점 뒤 train 번호를 단다)
       설명에는 변수 이름만 적고 값은 적지 않는다.
 rc:   0 발견 없음 · 1 발견 있음 · 2 실행 오류(뿌리 없음·git 목록 실패 = 검사 못 함)
 한계: 셸 분석은 bash 문법의 부분 집합이다(case 안의 `$(…)`·eval·xargs·동적 명령 이름·배열 원소별 추적은
-      못 본다). 세션 쿠키처럼 이름에 위 토큰이 없는 비밀은 흐름으로만 잡는다.
+      못 본다). `printf -v 변수` 로 만든 값은 흐름에 넣지 않는다. 이름에도 모양에도 표시가 없는 쿠키 값
+      (예: 응답 머리를 다른 이름으로 받아 그대로 넘김)은 못 잡는다. 이름 SID 가 세션이 아닌 것(공유 id 등)을
+      뜻하면 값이 id 칸 읽기일 때만 빠진다.
 """
 import argparse
 import ast
@@ -48,8 +64,10 @@ DEFAULT_DIRS = ('tests', 'scripts', 'src')
 DEFAULT_EXCLUDES = ['tests/static/fixtures/*']
 
 # ─── 이름 판정 ────────────────────────────────────────────────────────────
+# 세션 쿠키(묶음 X ④-a): 로그인 세션 값. 복수 SESSIONS 는 표·목록 이름으로 흔해서 넣지 않는다
+COOKIE_TOK = {'cookie', 'cookies', 'session', 'sess', 'sid', 'sessid', 'sessionid', 'phpsessid', 'jsessionid'}
 STRONG = {'secret', 'secrets', 'totp', 'password', 'passwords', 'passwd', 'passphrase', 'credential',
-          'credentials', 'apikey', 'privkey', 'secretkey', 'accesskey', 'appkey', 'token', 'tokens', 'pw'}
+          'credentials', 'apikey', 'privkey', 'secretkey', 'accesskey', 'appkey', 'token', 'tokens', 'pw'} | COOKIE_TOK
 KEY_QUAL = {'api', 'app', 'private', 'priv', 'secret', 'secure', 'signing', 'sign', 'hmac', 'master', 'access',
             'auth', 'session', 'jwt', 'totp', 'mfa', 'otp', 'enc', 'encryption', 'crypt', 'crypto', 'cipher',
             'aes', 'license', 'client', 'service', 'db'}
@@ -64,14 +82,15 @@ POST_EXEMPT = {'file', 'files', 'path', 'paths', 'dir', 'dirs', 'name', 'names',
                'table', 'scope', 'scopes', 'role', 'input', 'selector', 'sel', 'button', 'btn', 'box', 'help',
                'prompt', 'attempts', 'tries', 'lock', 'locked', 'strength', 'reset', 'env', 'var', 'vars', 'user',
                'users', 'owner', 'account', 'accounts', 'email', 'who', 'host', 'port', 'group', 'state', 'mask',
-               'masked', 'redact', 'redacted', 'placeholder', 'example', 'sample'}
+               'masked', 'redact', 'redacted', 'placeholder', 'example', 'sample', 'jar', 'jars'}
 # 비밀 토큰 **앞**에 오면 「가짜·개수·여부」(BAD_TOKEN · N_TOKENS · HAS_PASSWORD)
 PRE_EXEMPT = {'bad', 'fake', 'wrong', 'invalid', 'bogus', 'dummy', 'garbage', 'junk', 'revoked', 'expired',
               'example', 'placeholder', 'sample', 'mock', 'stub', 'n', 'num', 'count', 'cnt', 'len', 'length',
-              'max', 'min', 'is', 'has', 'no', 'need', 'needs', 'use', 'show', 'hide', 'mask', 'masked', 'redact',
-              'redacted'}
+              'max', 'min', 'is', 'has', 'have', 'no', 'need', 'needs', 'use', 'show', 'hide', 'mask', 'masked',
+              'redact', 'redacted'}
+# 글자(파일 경로·SQL 조각) 안의 낱말로 「비밀을 담은 곳」을 알아보는 토큰. 쿠키·세션 파일(x.session · cookie.hdr)도
 STRONG_TEXT = {'secret', 'secrets', 'totp', 'password', 'passwords', 'passwd', 'passphrase', 'credential',
-               'credentials'}
+               'credentials', 'cookie', 'cookies', 'session'}
 NONREVEAL = {'strlen', 'mb_strlen', 'len', 'hash', 'hash_hmac', 'hash_equals', 'md5', 'sha1', 'crc32',
              'password_hash', 'password_verify', 'password_needs_rehash', 'isset', 'empty', 'is_null', 'is_string',
              'count', 'preg_match', 'str_starts_with', 'str_ends_with', 'str_contains', 'strcmp', 'in_array',
@@ -151,6 +170,42 @@ def file_var_secret(name):
     rest = toks[idx + 1:]
     return bool(rest) and rest[0] in ('file', 'files', 'path', 'paths') and \
         not any(t in PRE_EXEMPT for t in toks[:idx])
+
+
+# ─── 세션 쿠키 모양(묶음 X ④-b·c) ───────────────────────────────────────────
+# 요청 머리 `Cookie:` — 앞이 글자·`-` 면 아니다(`Set-Cookie:` 는 응답 머리 · 찾는 무늬)
+_COOKIE_HDR_RE = re.compile(r'(?i)(?<![A-Za-z0-9_-])cookie[ \t]*:')
+# 글자 끝이 「-b / --cookie 뒤 이름=」 인 조각(PHP·파이썬 문자열 잇기에서 값이 바로 뒤에 붙는 자리)
+_COOKIE_OPT_OPEN_RE = re.compile(r'''(?:^|\s)(?:-b|--cookie)(?:\s+|=)['"]?[A-Za-z0-9_.!#%&*+^|~-]+=[^\s'"]*$''')
+_COOKIE_HDR_OPEN_RE = re.compile(r'''(?i)(?<![A-Za-z0-9_-])cookie[ \t]*:[^'"\n]*$''')
+# 글자 안(PHP 큰따옴표·백틱)에서 -b/--cookie 의 이름=값 이나 Cookie: 머리 뒤에 변수가 끼는 모양
+_COOKIE_INTERP_RE = re.compile(r'''(?:(?:^|\s)(?:-b|--cookie)(?:\s+|=)['"]?[A-Za-z0-9_.!#%&*+^|~-]+=[^\s'"$]*|'''
+                               r'''(?i:(?<![A-Za-z0-9_-])cookie[ \t]*:[^'"\n$]*))\{?\$\{?([A-Za-z_][A-Za-z0-9_]*)''')
+
+
+def jar_var(name):
+    """쿠키 jar 를 가리키는 변수 — 이름 끝이 JAR(JAR · ADM_JAR · EJAR · cookie_jar). JAR_DIR 같은 폴더는 아니다."""
+    return name.lower().endswith('jar')
+
+
+def lit_jar_path(lit):
+    """글자가 쿠키 jar 파일 경로 조각인가(… .jar)."""
+    return bool(re.search(r'\.jar(?![A-Za-z0-9_])', lit))
+
+
+_ID_READ_RES = (
+    re.compile(r'(?is)\bselect\s+(?:distinct\s+)?(?:[a-z_][a-z0-9_]*\.)?(?:id|[a-z_][a-z0-9_]*_id)\s+from\b'),
+    re.compile(r'''\.get\(\s*(['"])(?:id|[A-Za-z_][A-Za-z0-9_]*_id)\1'''),
+    re.compile(r'''\[\s*(['"])(?:id|[A-Za-z_][A-Za-z0-9_]*_id)\1\s*\]'''),
+    re.compile(r'''(?:^|[\s|'"(,])\.(?:id|[A-Za-z_][A-Za-z0-9_]*_id)(?![A-Za-z0-9_.(\[])'''),
+)
+
+
+def text_reads_id_only(text):
+    """명령 치환 글이 id 칸(식별자)만 읽나 — SELECT id FROM · d.get('id') · x["id"] · jq .id (비밀 칸 읽기는 아님)."""
+    if lit_reads_secret_field(text, jq=True):
+        return False
+    return any(r.search(text) for r in _ID_READ_RES)
 
 
 class Finding(object):
@@ -639,11 +694,13 @@ class ShellParser(object):
                     cmd.kind = 'header'
                 if raw == '[[':
                     dbr = True
-                if ASSIGN_RE.match(raw) and cmd.kind == 'simple':
-                    cmd.assigns.append(w)
-                    continue
             elif dbr and raw == ']]':
                 dbr = False
+            if not cmd.words and cmd.kind == 'simple' and ASSIGN_RE.match(raw):
+                # 명령 앞 VAR=값 은 몇 개든(줄 이어짐 `\` 로 나뉘어도) 환경 대입이다 — 첫 대입 아닌 단어가 명령
+                # (FP-0001: 두 번째 대입부터 명령 이름·인자로 잘못 나누던 것)
+                cmd.assigns.append(w)
+                continue
             cmd.words.append(w)
         return out
 
@@ -677,7 +734,14 @@ class ShellFile(object):
         self.assign_kinds = {}     # 이름 → {'lit','num','dyn'}
         self.assign_vals = {}      # 이름 → [값 조각들]
         self.func_alias = {}       # (함수, 지역 이름) → 위치 번호
+        self.loop_vals = {}        # for 반복 변수 → [값 조각들] (id 출처 판정용)
         for cmd in self.cmds:
+            if cmd.kind == 'header' and len(cmd.words) >= 3 and cmd.words[0].lit() in ('for', 'select') and \
+                    cmd.words[2].lit() == 'in' and re.fullmatch(r'[A-Za-z_][A-Za-z0-9_]*', cmd.words[1].raw):
+                # for 이름 in 단어… — 반복 변수의 값 출처. id 출처 판정(id_only)에만 쓴다(비밀 흐름에는 넣지 않음)
+                for w in cmd.words[3:]:
+                    self.loop_vals.setdefault(cmd.words[1].raw, []).append(list(w.parts))
+                continue
             decl_words = []
             if cmd.words and not cmd.assigns:
                 n0 = cmd.words[0].lit()
@@ -706,6 +770,50 @@ class ShellFile(object):
             nm = m.group(1) or m.group(3)
             self.assign_kinds.setdefault(nm, set()).add('num')
 
+    def id_only(self, name, _stack=()):
+        """대입되는 확장 값이 전부 id 칸 읽기인가(SID=$(… SELECT id FROM …) — 식별자). 그런 변수만 모아 둔
+        변수(IDS="$IDS $SID")와 그 반복 변수(for sid in $IDS)도 같다."""
+        if name in _stack:
+            return None     # 자기 자신을 잇는 대입(IDS="$IDS …")은 판단에 넣지 않는다
+        seen = False
+        for parts in self.assign_vals.get(name, []) + self.loop_vals.get(name, []):
+            dyn = [p for p in parts if p[0] not in ('lit', 'arith', 'len')]
+            if not dyn:
+                continue
+            for p in dyn:
+                if p[0] == 'sub' and text_reads_id_only(p[1].text):
+                    seen = True
+                    continue
+                if p[0] == 'var':
+                    r = self.id_only(p[1], _stack + (name,))
+                    if r is None:
+                        continue
+                    if r:
+                        seen = True
+                        continue
+                return False
+        return seen
+
+    def cookie_pair_var(self, name):
+        """변수에 `이름=$값` 모양(쿠키 한 쌍)이 대입되나 — `curl -b "$변수"` 가 쿠키 글로 쓰는 경우."""
+        for parts in self.assign_vals.get(name, []):
+            if cookie_dyn_parts(parts, pair=True):
+                return True
+        return False
+
+
+def cookie_dyn_parts(parts, pair=False, hdr=True):
+    """단어 조각에서 쿠키 값 자리의 확장 조각들. hdr: `Cookie:` 머리 글자 뒤 · pair: `이름=` 글자 뒤."""
+    out, open_ = [], False
+    for p in parts:
+        if p[0] == 'lit':
+            if (hdr and _COOKIE_HDR_RE.search(p[1])) or (pair and '=' in p[1]):
+                open_ = True
+            continue
+        if open_ and p[0] in ('var', 'pos', 'sub'):
+            out.append(p)
+    return out
+
 
 class ShellAnalyzer(object):
     def __init__(self, files, globals_num):
@@ -728,7 +836,27 @@ class ShellAnalyzer(object):
             return False            # 글자·숫자만 대입(가짜 값·카운터)
         if not kinds and name in self.globals_num:
             return False
+        if sf.id_only(name):
+            return False            # 값이 id 칸 읽기뿐(공유 id · 세션 표의 해시 키) — 식별자
         return True
+
+    def dyn_label(self, sf, p, tainted):
+        """쿠키 모양 자리의 확장 조각 → 보고용 이름(글자만 대입되는 변수 = 가짜 값이면 None)."""
+        if p[0] == 'var':
+            kinds = sf.assign_kinds.get(p[1], set())
+            if p[1] not in tainted and kinds and 'dyn' not in kinds:
+                return None
+            return '$' + p[1]
+        if p[0] == 'pos':
+            return '$' + str(p[1])
+        if p[0] == 'sub':
+            first = p[1].text.strip().split()
+            return '$(%s …)' % (first[0] if first else '')
+        return None
+
+    def cookie_refs(self, sf, parts, tainted, pair=False):
+        labels = [self.dyn_label(sf, p, tainted) for p in cookie_dyn_parts(parts, pair=pair)]
+        return ['Cookie 값 %s' % x for x in labels if x]
 
     def sub_secret(self, sf, sub, tainted):
         """명령 치환의 **출력**이 비밀인가: (i) 비밀 이름의 함수·명령 (ii) 비밀 파일·열을 읽음
@@ -751,6 +879,9 @@ class ShellAnalyzer(object):
         for c, n0, ws in eff:
             for w in ws[1:] + [x for op, x in c.redirs if op == '<']:
                 for p in w.parts:
+                    if reads and n0 in READERS and ((p[0] == 'var' and jar_var(p[1])) or
+                                                    (p[0] == 'lit' and lit_jar_path(p[1]))):
+                        return True     # 쿠키 jar 에서 값을 뽑음(묶음 X ④-c)
                     if p[0] == 'lit' and reads and lit_mentions_secret(p[1]):
                         return True
                     if p[0] == 'lit' and lit_reads_secret_field(p[1], jq=(n0 == 'jq')):
@@ -776,7 +907,40 @@ class ShellAnalyzer(object):
                 if self.sub_secret(sf, p[1], tainted):
                     first = p[1].text.strip().split()
                     refs.append('$(%s …)' % (first[0] if first else ''))
+        # `Cookie:` 머리 글자 뒤의 확장은 이름과 상관없이 쿠키 값(묶음 X ④-b)
+        for x in self.cookie_refs(sf, w.parts, tainted):
+            if not any(x.endswith(' ' + r) for r in refs):
+                refs.append(x)
         return refs, poss
+
+    def arg_refs(self, sf, args, tainted, func):
+        """명령 인자 단어마다 (단어, 비밀 참조, 위치 인자). `-b`·`--cookie` 뒤 단어는 쿠키 쌍 모양도 본다."""
+        out = []
+        after_b = False
+        for w in args:
+            refs, poss = self.word_refs(sf, w, tainted, func)
+            lit = w.lit()
+            parts = w.parts
+            opt = False
+            if after_b:
+                opt = True
+            elif lit is None and parts and parts[0][0] == 'lit':
+                s0 = parts[0][1]
+                m = re.match(r'--cookie=|-b(?!-)', s0)
+                if m:
+                    opt = True       # --cookie=이름=$값 · -b이름=$값 · -b"이름=$값"(붙여 씀)
+                    parts = [('lit', s0[m.end():])] + list(parts[1:])
+            if opt:
+                extra = self.cookie_refs(sf, parts, tainted, pair=True)
+                if not extra and len(parts) == 1 and parts[0][0] == 'var' and \
+                        sf.cookie_pair_var(parts[0][1]):
+                    extra = ['Cookie 값 $' + parts[0][1]]     # -b "$CK" (CK="이름=$값")
+                for x in extra:
+                    if x not in refs and not any(x.endswith(' ' + r) for r in refs):
+                        refs.append(x)
+            after_b = lit in ('-b', '--cookie')
+            out.append((w, refs, poss))
+        return out
 
     def taint(self, sf):
         tainted = set()
@@ -882,8 +1046,8 @@ class ShellAnalyzer(object):
                 sev = '높음' if logged else '중간'
                 if kind in ('ext', 'wrap'):
                     names = []
-                    for w in args:
-                        refs, poss = self.word_refs(sf, w, tainted, cmd.func)
+                    ar = self.arg_refs(sf, args, tainted, cmd.func)
+                    for w, refs, poss in ar:
                         names.extend(refs)
                         if cmd.func:
                             for k in poss:
@@ -892,7 +1056,7 @@ class ShellAnalyzer(object):
                         for k in list(range(1, 10)) + ['@']:
                             sinks.setdefault((rel, cmd.func, k), []).append((cmd.line, sev, '"$@"'))
                     if names:
-                        line = min(w.line for w in args if self.word_refs(sf, w, tainted, cmd.func)[0])
+                        line = min(w.line for w, refs, _ in ar if refs)
                         self.add(sev, rel, line, '비밀로 보이는 값(%s)이 %s 명령 인자로 들어감%s — 표준입력·파일·'
                                  '환경 변수로 넘길 것' % (', '.join(dict.fromkeys(names)), os.path.basename(cname),
                                                    ' (sudo 기록에 남음)' if logged else ''))
@@ -930,8 +1094,7 @@ class ShellAnalyzer(object):
         # 3) 호출하는 쪽에서 비밀을 넘기는 곳
         for sf, cmd, ff, fname, args in calls:
             tainted = taints[sf.rel]
-            for idx, w in enumerate(args, 1):
-                refs, _ = self.word_refs(sf, w, tainted, cmd.func)
+            for idx, (w, refs, _) in enumerate(self.arg_refs(sf, args, tainted, cmd.func), 1):
                 if not refs:
                     continue
                 for (srel, sline, sev, scname) in reach((ff.rel, fname, idx), frozenset()):
@@ -1048,6 +1211,11 @@ class PhpFile(object):
                 continue
             if any(s in NONREVEAL for s in stack):
                 continue
+            if k in ('sq', 'dq') and i + 2 < len(toks) and toks[i + 1][1] == '.' and \
+                    toks[i + 2][0] in ('var', 'id'):
+                body = v[1:-1] if v[:1] in ('"', "'") else v
+                if _COOKIE_HDR_OPEN_RE.search(body) or _COOKIE_OPT_OPEN_RE.search(body):
+                    refs.append('Cookie 값 ' + toks[i + 2][1])     # 'Cookie: sid=' . $x (묶음 X ④-b)
             if k == 'var':
                 nm = v[1:]
                 nxt = toks[i + 1] if i + 1 < len(toks) else None
@@ -1056,20 +1224,24 @@ class PhpFile(object):
                     acc = '->' + toks[i + 2][1]
                 elif nxt and nxt[1] == '[' and i + 2 < len(toks) and toks[i + 2][0] in ('sq', 'dq'):
                     acc = '[' + toks[i + 2][1] + ']'
-                if nm in tainted or (nm != 'this' and is_secret_name(nm)):
-                    refs.append('$' + nm)
+                if nm in tainted or (nm not in ('this', '_SESSION') and is_secret_name(nm)):
+                    refs.append('$' + nm)     # $_SESSION 은 서버 쪽 저장소(쿠키 값 아님) — 칸 이름으로만 본다
                 else:
                     a = php_accessor_secret(acc)
                     if a:
                         refs.append('$%s…%s' % (nm, a))
             elif k in ('dq', 'bt'):
-                for nm, acc in php_str_refs(v[1:-1] if k != 'dq' or v.startswith('"') else v):
-                    if nm in tainted or is_secret_name(nm):
+                body = v[1:-1] if k != 'dq' or v.startswith('"') else v
+                for nm, acc in php_str_refs(body):
+                    if nm in tainted or (nm != '_SESSION' and is_secret_name(nm)):
                         refs.append('$' + nm)
                     else:
                         a = php_accessor_secret(acc)
                         if a:
                             refs.append('$%s…%s' % (nm, a))
+                for m in _COOKIE_INTERP_RE.finditer(body):
+                    if '$' + m.group(1) not in refs:
+                        refs.append('Cookie 값 $' + m.group(1))
             elif k == 'id':
                 nxt = toks[i + 1] if i + 1 < len(toks) else None
                 prev = toks[i - 1] if i > 0 else None
@@ -1177,6 +1349,49 @@ def _py_dotted(node):
     return None
 
 
+def _py_str(node):
+    return node.value if isinstance(node, ast.Constant) and isinstance(node.value, str) else None
+
+
+def _py_dyn_name(node):
+    if _py_str(node) is not None:
+        return None
+    return _py_dotted(node) or node.__class__.__name__
+
+
+def py_cookie_shape(n):
+    """파이썬 식이 쿠키 값을 끼워 만드는 모양인가 — 'Cookie: sid=' + x · f'Cookie: {x}' · 'Cookie: %s' % x ·
+    'Cookie: {}'.format(x) · ['-b', 'sid=' + x] (묶음 X ④-b). 보고용 이름이나 None."""
+    if isinstance(n, ast.JoinedStr):
+        opened = None
+        for v in n.values:
+            s = _py_str(v)
+            if s is not None:
+                if _COOKIE_HDR_RE.search(s):
+                    opened = True
+            elif opened and isinstance(v, ast.FormattedValue):
+                return 'Cookie 값 {%s}' % _py_dyn_name(v.value)
+    if isinstance(n, ast.BinOp):
+        s = _py_str(n.left)
+        if s is not None and isinstance(n.op, ast.Add) and _py_dyn_name(n.right) and \
+                (_COOKIE_HDR_OPEN_RE.search(s) or _COOKIE_OPT_OPEN_RE.search(s)):
+            return 'Cookie 값 ' + _py_dyn_name(n.right)
+        if s is not None and isinstance(n.op, ast.Mod) and re.search(r'(?i)(?<![A-Za-z0-9_-])cookie[ \t]*:[^\n]*%', s):
+            return 'Cookie 값 ' + (_py_dyn_name(n.right) or '')
+    if isinstance(n, ast.Call) and isinstance(n.func, ast.Attribute) and n.func.attr == 'format':
+        s = _py_str(n.func.value)
+        if s is not None and re.search(r'(?i)(?<![A-Za-z0-9_-])cookie[ \t]*:[^\n]*\{', s) and (n.args or n.keywords):
+            return 'Cookie 값 .format()'
+    if isinstance(n, (ast.List, ast.Tuple)):
+        for a, b in zip(n.elts, n.elts[1:]):
+            if _py_str(a) in ('-b', '--cookie') and _py_str(b) is None:
+                if isinstance(b, ast.BinOp) and '=' in (_py_str(b.left) or ''):
+                    return 'Cookie 값 ' + (_py_dyn_name(b.right) or '')
+                if isinstance(b, ast.JoinedStr) and any('=' in (_py_str(v) or '') for v in b.values):
+                    return 'Cookie 값 f-글'
+    return None
+
+
 class PyFile(object):
     def __init__(self, rel, text, line0=1):
         self.rel = rel
@@ -1203,12 +1418,19 @@ class PyFile(object):
         out = []
 
         def visit(n):
+            shape = py_cookie_shape(n)
+            if shape:
+                out.append(shape)
             if isinstance(n, ast.Call):
                 fname = _py_dotted(n.func) or ''
-                last = fname.split('.')[-1].lower()
+                last0 = fname.split('.')[-1]
+                last = last0.lower()
                 if last in NONREVEAL or fname.split('.')[0] in ('hashlib', 'hmac'):
                     return
-                if last and is_secret_name(fname.split('.')[-1]):
+                if last0[:1].isupper() and secret_index(name_tokens(last0)) >= 0 and \
+                        name_tokens(last0)[secret_index(name_tokens(last0))] in COOKIE_TOK:
+                    return      # Session() · SimpleCookie() — 세션·쿠키 그릇을 만드는 것(값이 아님)
+                if last and is_secret_name(last0):
                     out.append(fname + '()')
             if isinstance(n, ast.Name) and (n.id in tainted or is_secret_name(n.id)):
                 out.append(n.id)

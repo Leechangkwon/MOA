@@ -1,0 +1,8 @@
+<?php
+// 가짜 견본(묶음 X): $_SESSION 은 서버 쪽 저장소 — 칸 이름이 비밀이 아니면 값이 아니다
+function demo_report(): void
+{
+    $uid = (int)($_SESSION['uid'] ?? 0);
+    exec('demo-report --user ' . escapeshellarg((string)$uid));
+    exec('demo-report --lang ' . escapeshellarg($_SESSION['lang'] ?? 'ko'));
+}

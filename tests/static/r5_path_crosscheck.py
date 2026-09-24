@@ -3,7 +3,7 @@
 """
 R5 경로 대조 (path cross-check) — 1-F 정적 규칙, python3 stdlib 만, 파일은 읽기만.
 
-answers: AK-0067 · AK-0068
+answers: AK-0067 · AK-0068 · FP-0002 · FP-0003 · FP-0004(오탐 → 아래 「사이트 층 예외」)
 
 무엇을 부류로 잡나:
   앱의 주소 구조(모듈 접두 base-path, 라우트 표)나 저장소의 파일 배치가 바뀌었는데, 스크립트·시험·문서에
@@ -23,6 +23,17 @@ answers: AK-0067 · AK-0068
        · 일부러 옛 주소·없는 주소를 치는 줄은 뺀다: 같은 논리 줄이나 바로 위 주석 줄에 30x·404·410·
          「옛 주소」·redirect 류 표시가 있음, curl `-L`(따라가기), 같은 줄에 접두 붙은 새 경로가 함께 있음(대응표).
          405 는 뺄 표시가 아니다 — 「있는 경로에 틀린 메서드」 시험이라 경로 자체는 맞아야 한다.
+       · 사이트 층 예외(base-path 빠짐에만, 셈은 skip): 사이트 층(옛 주소 308 · 옛 주소 요청이 세션·DB 에 닿지
+         않음)을 **일부러** 보는 요청이다. 「곁 줄」은 줄 수가 아니라 그 요청의 결과가 가는 곳으로 정한다.
+         ① 그 요청의 결과를 받는 곁 줄 — 결과를 담은 변수(`X=$(curl …)`)·파일(`-D`·`-o`·`>` 대상)을 쓰는 뒤쪽
+           논리 줄(빈 줄을 넘지 않고, 주석 빼고 셋까지) — 이 30x·Location 머리·「옛 주소」를 기대한다. 응답을
+           버리는 측정 요청(`>/dev/null`)이면 그 뒤 첫 단언 줄(expect·assert·check·`[ ]`·test …)이 그렇다.
+           곁 줄에 308 이 있어도 **그 요청의 결과를 받지 않는** 줄이면 빼지 않는다.
+         ② base-path 없는 사이트 뿌리 변수(모든 값이 앱 원점 `http://…:포트` 로만 풀리고 경로가 없는 변수)로 보내고
+           응답을 버리는 측정 — 단 같은 파일에 같은 원점 + 모듈 접두로 풀리는 변수(`BASE="$SITE/tbox"`)가 따로
+           있고(층을 나눠 쓴다는 근거) 파일 어딘가에 30x·Location·「옛 주소」 표시가 있을 때만(셸·문서 코드 블록).
+         그래서 임시 서버를 접두 없는 글자 URL·다른 원점의 접두 변수로 치고 503·500 을 기대하는 시험(결과를 받는
+         줄에 308 이 없음)은 여전히 울린다.
        · 대상: 스크립트·시험(scripts/·tests/·deploy/ 의 .sh·.py·.php·셔뱅) 과 문서(.md, 문서 안 코드 블록
          포함). 시점이 박힌 기록 문서(STAGES*·CHANGELOG*·이름에 날짜가 든 문서)와 wiki/ 글은 그때의 기록이라
          보지 않는다. 앱 코드(src/·public/)의 주소 조립은 R5 대상이 아니다.
@@ -40,6 +51,8 @@ answers: AK-0067 · AK-0068
       --exclude GLOB(여러 번, 기본 tests/static/fixtures/*)
 출력: FINDING R5 <심각도> <파일:줄> <설명> · 끝 줄 RESULT pass=<판정한 참조 - 발견> fail=<발견 수> skip=<풀지 못한 참조 수>
 rc:   0 발견 없음 · 1 발견 있음 · 2 실행 오류(뿌리 없음·목록 실패, 또는 라우트 표를 하나도 못 읽고 파일 참조도 0 = 검사 못 함)
+한계: 사이트 층 예외의 결과 흐름은 셸 문법의 부분 집합이다(함수 안으로 넘긴 변수·배열·eval 은 못 따라간다).
+      파이썬·PHP 는 ① 의 「결과를 담은 변수」만 보고 ② 는 보지 않는다(필요하면 `qcheck-allow: R5`).
 """
 import argparse
 import fnmatch
@@ -62,6 +75,23 @@ NEG_CTX_RE = re.compile(
     r'|없는\s*(주소|경로|라우트)|존재하지\s*않는|not[ _-]?found', re.I)
 FOLLOW_RE = re.compile(r'(^|\s)(-[A-Za-z]*L[A-Za-z]*|--location)(\s|$)')
 WILD_CH = set('$`{}<>*%…')
+# 사이트 층 예외 — 결과를 받는 곁 줄·측정 뒤 단언·파일 전체에서 찾는 「옛 주소를 일부러 본다」 표시.
+# 404·410 은 넣지 않는다(없는 주소 기대는 같은 줄 표시로만 뺀다 — 곁 줄까지 넓히면 진짜 결함을 가린다).
+# legacy·redirect·리다이렉트 같은 낱말만으로는 빼지 않는다 — 「legacy 필드 없음」 같은 단언이 진짜 결함을 가렸다(규칙 v2 독립 검토 ②-1 C).
+REDIRECT_CTX_RE = re.compile(r'(?<![\d.:])30[1278](?![\d])|\bLocation\b|\blocation\s*:|옛\s*(?:주소|경로)|이전\s*주소')
+# ② 는 읽기 요청(GET·HEAD)만 — 사이트 뿌리로 보낸 쓰기 요청의 접두 빠짐은 옛 주소 측정이 아니라 결함이다(같은 검토 ②-1 A).
+WRITE_REQ_RE = re.compile(r'(?:^|\s)(?:-X\s*|--request(?:=|\s+))["\']?(?:POST|PUT|PATCH|DELETE)\b'
+                          r'|(?:^|\s)(?:-d|--data(?:-[a-z]+)?|-F|--form(?:-string)?|-T|--upload-file|--json)(?:=|\s|$)', re.I)
+SH_LEAD_RE = re.compile(r'^\s*(?:(?:do|then|else|elif|if|while|until|time|!|\{|\()\s*)*')
+SH_CAPTURE_RE = re.compile(r'^(?:local\s+|export\s+|readonly\s+|declare\s+(?:-\w+\s+)*)?([A-Za-z_][A-Za-z0-9_]*)\+?=')
+SH_OUTFILE_RE = re.compile(
+    r'(?:^|\s)(?:-D|--dump-header|-o|--output|-c|--cookie-jar)(?:=|\s*)("[^"]*"|\'[^\']*\'|[^\s;|&<>]+)'
+    r'|(?:^|\s)(?:1|&)?>>?\s*("[^"]*"|\'[^\']*\'|[^\s;|&<>]+)')
+SH_STDOUT_NULL_RE = re.compile(r'(?:^|\s)(?:1|&)?>>?\s*["\']?/dev/null\b')
+SH_ONULL_RE = re.compile(r'(?:^|\s)(?:-o|--output)(?:=|\s*)["\']?/dev/null\b')
+SH_WRITEOUT_RE = re.compile(r'(?:^|\s)(?:-w|--write-out)(?:=|\s)')
+ASSERT_WORD_RE = re.compile(r'^(?:expect\w*|assert\w*|check\w*|ok|is|isnt|must\w*|verify\w*|should\w*|test|\[\[?)$')
+NULL_TARGETS = {'/dev/null', '-', '/dev/stdout', '/dev/stderr'}
 
 
 def note(msg):
@@ -582,12 +612,13 @@ def prev_comments(lines, i, kind):
 
 
 def url_refs(kind, lines, vs, code_mask):
-    """→ [(줄 번호 0-기준, 원문 조각, 풀린 URL 후보 목록)]."""
+    """→ [(줄 번호 0-기준, 원문 조각, 풀린 URL 후보 목록, 원점 변수 이름 또는 None, 줄 안 열)]."""
     refs = []
     for i, ln in enumerate(lines):
         in_code = code_mask[i]
         for m in URL_RE.finditer(ln):
-            refs.append((i, m.group(0), expand(m.group(0), vs) if (kind != 'md' or in_code) else [m.group(0)]))
+            refs.append((i, m.group(0), expand(m.group(0), vs) if (kind != 'md' or in_code) else [m.group(0)],
+                         None, m.start()))
         if kind == 'md' and not in_code:
             continue
         if kind in ('sh', 'md', 'php'):
@@ -596,29 +627,256 @@ def url_refs(kind, lines, vs, code_mask):
             for m in re.finditer(pat, ln):
                 if ln[max(0, m.start() - 3):m.start()].endswith('://'):
                     continue
-                add_var_ref(refs, i, m.group(0), m.group(1), m.group(2), vs)
+                add_var_ref(refs, i, m.group(0), m.group(1), m.group(2), vs, m.start())
         if kind == 'py':
             for m in re.finditer(r'\b([A-Za-z_][A-Za-z0-9_]*)\s*\+\s*[rbu]*(["\'])(/[^"\']*)\2', ln):
-                add_var_ref(refs, i, m.group(0), m.group(1), m.group(3), vs)
+                add_var_ref(refs, i, m.group(0), m.group(1), m.group(3), vs, m.start())
             for m in re.finditer(r'\{([A-Za-z_][A-Za-z0-9_]*)\}(/[^"\'{}\s]*)', ln):
                 if not re.search(r'\bf["\']', ln[:m.start()]):
                     continue
-                add_var_ref(refs, i, m.group(0), m.group(1), m.group(2), vs)
+                add_var_ref(refs, i, m.group(0), m.group(1), m.group(2), vs, m.start())
     return refs
 
 
-def add_var_ref(refs, i, frag, name, suffix, vs):
+def add_var_ref(refs, i, frag, name, suffix, vs, col):
     """변수 + '/경로' 참조. 값이 URL 로 풀리면 판정 대상, 풀리지 않는데 이름이 URL 모양이면 skip 대상,
     URL 이 아닌 값(파일 경로 등)이면 URL 참조가 아니다."""
     if name not in vs:
         if URLISH_RE.search(name):
-            refs.append((i, frag, None))
+            refs.append((i, frag, None, name, col))
         return
     exp = expand('${%s}' % name, vs)
     if any('://' in c for c in exp):
-        refs.append((i, frag, ['%s%s' % (c, suffix) for c in exp]))
+        refs.append((i, frag, ['%s%s' % (c, suffix) for c in exp], name, col))
     elif URLISH_RE.search(name) and any('$' in c or '\x00' in c for c in exp):
-        refs.append((i, frag, None))
+        refs.append((i, frag, None, name, col))
+
+
+# ─── 사이트 층 예외 — 요청 결과가 가는 곳 ─────────────────────────────────────
+def logical_spans(lines, kind):
+    """→ (구간 목록 [(첫 줄, 끝 줄, 이은 원문, 줄마다 시작 위치)], 물리 줄 → 구간 번호). 셸·문서는 끝 백슬래시 잇기."""
+    spans, idx, i = [], [0] * len(lines), 0
+    while i < len(lines):
+        j = i
+        if kind in ('sh', 'md'):
+            while lines[j].rstrip().endswith('\\') and j + 1 < len(lines):
+                j += 1
+        parts, offs, pos = [], [], 0
+        for k in range(i, j + 1):
+            p = lines[k].rstrip().rstrip('\\') if kind in ('sh', 'md') and k < j else lines[k]
+            offs.append(pos)
+            parts.append(p)
+            pos += len(p) + 1
+        for k in range(i, j + 1):
+            idx[k] = len(spans)
+        spans.append((i, j, ' '.join(parts), offs))
+        i = j + 1
+    return spans, idx
+
+
+def sh_scan(t, pos):
+    """셸 논리 줄 → (맨 위 층 단순 명령 구간 [(시작, 끝, 뒤 구분자)], pos 에서의 여닫이 쌓임).
+    따옴표·$( )·( )·백틱 안의 ; && || | & 는 구분자가 아니다. 리다이렉트의 & (>&2 · &>) 도 아니다."""
+    out, st, a, i, n, at = [], [], 0, 0, len(t), None
+    while i < n:
+        if at is None and i >= pos:
+            at = list(st)
+        c = t[i]
+        top = st[-1] if st else None
+        if top == "'":
+            if c == "'":
+                st.pop()
+            i += 1
+            continue
+        if c == '\\':
+            i += 2
+            continue
+        if top == '`':
+            if c == '`':
+                st.pop()
+            i += 1
+            continue
+        if top == '"':
+            if c == '"':
+                st.pop()
+            elif t.startswith('$(', i):
+                st.append('$(')
+                i += 2
+                continue
+            elif c == '`':
+                st.append('`')
+            i += 1
+            continue
+        if c == '#' and (i == 0 or t[i - 1] in ' \t;'):
+            break
+        if c in '"\'`':
+            st.append(c)
+            i += 1
+            continue
+        if t.startswith('$(', i):
+            st.append('$(')
+            i += 2
+            continue
+        if c == '(':
+            st.append('(')
+            i += 1
+            continue
+        if c == ')':
+            if st:
+                st.pop()
+            i += 1
+            continue
+        if not st:
+            hit = None
+            for sep in ('&&', '||', ';;', '|&', ';', '|', '&'):
+                if t.startswith(sep, i):
+                    if sep == '&' and (t[i - 1:i] in ('>', '<') or t[i + 1:i + 2] == '>'):
+                        break
+                    hit = sep
+                    break
+            if hit:
+                out.append((a, i, hit))
+                i += len(hit)
+                a = i
+                continue
+        i += 1
+    out.append((a, n, ''))
+    return out, (at if at is not None else list(st))
+
+
+def sh_targets(seg):
+    """셸 명령 한 구간의 출력 파일 조각(-D·-o·-c 인자, > · >> 대상). /dev/null·& 대상은 뺀다."""
+    out = set()
+    for m in SH_OUTFILE_RE.finditer(seg):
+        v = unquote_sh(m.group(1) or m.group(2) or '')
+        if v and v not in NULL_TARGETS and not v.startswith('&'):
+            out.add(v)
+    return out
+
+
+def request_output(kind, text, pos):
+    """요청(원문 text 의 pos 자리 URL)의 결과가 어디로 가나 → {'vars','files','discarded'}.
+    discarded: 결과를 담지도 파이프로 넘기지도 않고 표준 출력을 /dev/null 로 버린다(부수 효과만 재는 측정)."""
+    res = {'vars': set(), 'files': set(), 'discarded': False}
+    if kind == 'py':
+        m = re.match(r'^\s*([A-Za-z_][A-Za-z0-9_]*)\s*=(?!=)', text)
+        if m:
+            res['vars'].add(m.group(1))
+        return res
+    if kind == 'php':
+        m = re.match(r'^\s*\$([A-Za-z_][A-Za-z0-9_]*)\s*=(?!=)', text)
+        if m:
+            res['vars'].add(m.group(1))
+        return res
+    segs, st = sh_scan(text, pos)
+    for a, b, sep in segs:
+        if not (a <= pos < b):
+            continue
+        seg = text[a:b]
+        head = seg[SH_LEAD_RE.match(seg).end():]
+        res['files'] = sh_targets(seg)
+        if '$(' in st or '`' in st:
+            m = SH_CAPTURE_RE.match(head)
+            if m:
+                res['vars'].add(m.group(1))
+            return res
+        if sep in ('|', '|&'):
+            return res
+        null_out = SH_STDOUT_NULL_RE.search(seg) or (SH_ONULL_RE.search(seg) and not SH_WRITEOUT_RE.search(seg))
+        res['discarded'] = bool(null_out) and not res['files']
+        return res
+    return res
+
+
+def is_comment(kind, s):
+    s = s.strip()
+    if kind == 'php':
+        return s.startswith('//') or s.startswith('*') or s.startswith('#')
+    return s.startswith('#')
+
+
+def next_spans(kind, spans, si, limit=3):
+    """구간 si 뒤의 곁 줄 — 빈 줄·문서 코드 울타리에서 멈추고, 주석 줄은 세지 않고 넘는다."""
+    out, j = [], si + 1
+    while j < len(spans) and len(out) < limit:
+        t = spans[j][2]
+        if not t.strip() or re.match(r'^\s*(```|~~~)', t):
+            break
+        if not is_comment(kind, t):
+            out.append(t)
+        j += 1
+    return out
+
+
+def is_assert(kind, t):
+    if kind == 'py':
+        return bool(re.match(r'^\s*(?:assert\b|self\.assert\w*\()', t))
+    if kind == 'php':
+        return bool(re.match(r'^\s*(?:\$this->)?(?:assert\w*|expect\w*|check\w*)\s*\(', t))
+    head = t[SH_LEAD_RE.match(t).end():]
+    w = head.split(None, 1)[0] if head.split() else ''
+    return bool(ASSERT_WORD_RE.match(w))
+
+
+def uses(kind, t, name):
+    pat = r'\b%s\b' % re.escape(name) if kind == 'py' else r'\$\{?%s\b' % re.escape(name)
+    return re.search(pat, t) is not None
+
+
+def norm_origin(scheme, host, port):
+    return (scheme, host.lower(), port if port is not None else (443 if scheme == 'https' else 80))
+
+
+def var_urls(name, vs):
+    """변수의 모든 값 → [(원점, 경로)] 또는 None(URL 하나로만 풀리지 않는 값이 있음)."""
+    exp = expand('${%s}' % name, vs)
+    out = []
+    for c in exp:
+        c = c.strip()
+        if '\x00' in c or not URL_RE.fullmatch(c):
+            return None
+        sp = split_url(c)
+        if sp is None:
+            return None
+        out.append((norm_origin(*sp[:3]), sp[3]))
+    return out or None
+
+
+def site_layer_reason(kind, spans, si, pos, var, vs, app, served, file_marked):
+    """base-path 빠짐 경고를 사이트 층 예외로 뺄 까닭(설명) 또는 None."""
+    text = spans[si][2]
+    out = request_output(kind, text, pos)
+    # ① 그 요청의 결과를 받는 곁 줄
+    if out['vars'] or out['files']:
+        for t in next_spans(kind, spans, si):
+            if any(uses(kind, t, v) for v in out['vars']) or any(f in t for f in out['files']):
+                if REDIRECT_CTX_RE.search(t):
+                    return '결과를 받는 곁 줄이 30x·Location·옛 주소를 기대'
+    elif out['discarded']:
+        for t in next_spans(kind, spans, si):
+            if is_assert(kind, t):
+                if REDIRECT_CTX_RE.search(t):
+                    return '응답을 버리는 측정 뒤 첫 단언이 옛 주소·30x 를 말함'
+                break
+    # ② 사이트 뿌리 변수로 보내는 측정 — 읽기 요청(GET·HEAD)만
+    if kind not in ('sh', 'md') or not var or not out['discarded'] or not file_marked:
+        return None
+    if WRITE_REQ_RE.search(text):
+        return None
+    roots = var_urls(var, vs)
+    if not roots or any(p.rstrip('/') != '' for _, p in roots):
+        return None
+    if not all(app.is_app_origin(o[0], o[1], o[2], served) for o, _ in roots):
+        return None
+    origins = {o for o, _ in roots}
+    mods = {b.rstrip('/') for b in app.bases.values() if b.rstrip('/')}
+    for w in sorted(vs):
+        if w == var:
+            continue
+        wu = var_urls(w, vs)
+        if wu and all(o in origins and p.rstrip('/') in mods for o, p in wu):
+            return '사이트 뿌리 변수 %s 로 보내고 응답을 버리는 측정 — 같은 원점의 접두 변수 %s 가 따로 있다' % (var, w)
+    return None
 
 
 # ─── F: 파일 경로 참조 ───────────────────────────────────────────────────────
@@ -827,7 +1085,9 @@ def main(argv=None):
         vs = collect_vars(kind, [ln for ln, c in zip(lines, code_mask) if c])
         served = served_ports(lines, vs)
         logical = logical_groups(lines) if kind in ('sh', 'md') else lines
-        for i, frag, cands in url_refs(kind, lines, vs, code_mask):
+        spans, span_idx = logical_spans(lines, kind)
+        file_marked = bool(REDIRECT_CTX_RE.search(text))
+        for i, frag, cands, var, col in url_refs(kind, lines, vs, code_mask):
             ln = lines[i]
             if ALLOW_RE.search(ln):
                 continue
@@ -877,6 +1137,15 @@ def main(argv=None):
                     continue
                 m = re.search(r'앱 경로 (\S+) 에 base-path (\S+) ', descs[verdict])
                 if m and (m.group(2) + m.group(1)) in (logical[i] or ln):
+                    continue
+                si = span_idx[i]
+                pos = spans[si][3][i - spans[si][0]] + col
+                why = site_layer_reason(kind, spans, si, pos, var, vs, app, served, file_marked)
+                if why:
+                    judged -= 1
+                    skipped += 1
+                    if verbose:
+                        note('skip(사이트 층 — %s) %s:%d %s' % (why, rel, i + 1, frag))
                     continue
             findings[(rel, i + 1, frag)] = ('낮음', descs[verdict])
 

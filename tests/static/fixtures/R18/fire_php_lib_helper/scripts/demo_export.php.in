@@ -1,0 +1,11 @@
+<?php
+declare(strict_types=1);
+require_once __DIR__ . '/lib/demo_store.php';
+
+$dryRun = in_array('--dry-run', $_SERVER['argv'], true);
+$rows   = [['id' => 1], ['id' => 2]];
+$body   = json_encode($rows);
+if ($dryRun) {
+    echo "rows: " . count($rows) . "\n";
+}
+DemoStore::put('export.json', (string) $body);   // ← dry-run 에서도 닿는다

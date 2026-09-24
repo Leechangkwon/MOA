@@ -1,0 +1,40 @@
+<?php
+declare(strict_types=1);
+require_once __DIR__ . '/lib/demo_util.php';
+
+$argv    = $_SERVER['argv'];
+$dryRun  = in_array('--dry-run', $argv, true);
+$changed = false;
+$lock    = fopen('/run/demo-batch.lock', 'c');
+flock($lock, LOCK_EX);
+$tmp = tempnam(sys_get_temp_dir(), 'demo');
+file_put_contents($tmp, 'scratch');
+
+$mark = function (string $k) use (&$changed, $dryRun): void {
+    if ($dryRun) {
+        echo "[dry] $k\n";
+        return;
+    }
+    $changed = true;
+};
+$mark('a');
+
+if ($dryRun) {
+    echo "plan only\n";
+} elseif (count($argv) > 5) {
+    demo_write('/var/lib/demo-batch/many', 'x');
+} else {
+    demo_write('/var/lib/demo-batch/few', 'y');
+}
+
+if ($changed) {
+    demo_write('/var/lib/demo-batch/state.json', '{}');
+}
+
+if ($dryRun) {
+    fwrite(STDOUT, "done (dry-run)\n");
+    exit(0);
+}
+unlink('/var/lib/demo-batch/old');
+$db = new PDO('sqlite::memory:');
+$db->exec('DELETE FROM demo_queue WHERE done = 1');

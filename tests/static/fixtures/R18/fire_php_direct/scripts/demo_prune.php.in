@@ -1,0 +1,21 @@
+<?php
+declare(strict_types=1);
+// 견본: 정리 배치
+$opts = getopt('', ['dry-run', 'dir:']);
+$dry  = isset($opts['dry-run']);
+$dir  = $opts['dir'] ?? '/var/lib/demo-prune';
+
+foreach (glob($dir . '/*.old') ?: [] as $f) {
+    if ($dry) {
+        fwrite(STDOUT, "would remove $f\n");
+        continue;
+    }
+    unlink($f);
+}
+if (!$dry && is_file($dir . '/a')) {
+    rename($dir . '/a', $dir . '/b');
+}
+$dry || touch($dir . '/stamp');
+$r = $dry ? null : copy($dir . '/x', $dir . '/y');
+fwrite(STDERR, "report\n");
+file_put_contents($dir . '/last-run.txt', date('c') . "\n");   // ← dry-run 에서도 쓴다
