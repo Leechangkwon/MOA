@@ -27,12 +27,14 @@
 #   이름을 넣는 것도 계정을 하나 만드는 것도 **임시 DB 에서만**이다.
 # ══════════════════════════════════════════════════════════════════════════
 #
-# 규칙 (CLAUDE.md 3장) — 검토 계정 `qa_` 다섯뿐(로그인은 순차) · 모든 요청에 `-A "tbox-review/<날짜>"` ·
-#   `sudo -n` 은 읽기(pg_dump · seed 파일)와 임시 DB 에만.
+# 규칙 (CLAUDE.md 3장) — 검토 계정 `claude_` 다섯뿐(로그인은 순차) · 모든 요청에 `-A "tbox-review/<날짜>"` ·
+#   `sudo -n` 은 읽기(pg_dump · seed 파일)와 임시 DB 에만 ·
+#   비밀(TOTP 비밀·검토 계정 비밀번호)은 명령 인자에 싣지 않는다 — 표준입력으로만 (R-62 · tests/lib/secrets.sh).
 # 사용: sudo -v && bash tests/community/stage5a2.sh     (REGRESS=1 이면 회귀까지, SHOTS=<폴더> 면 스크린샷)
 set -u
 
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
+. "$ROOT/tests/lib/secrets.sh" || { echo "tests/lib/secrets.sh 를 읽지 못했다 — 시험을 시작하지 않는다 (R-62)"; exit 3; }
 PORT=8085
 SITE="http://127.0.0.1:$PORT"
 BASE="$SITE/tbox"
@@ -111,19 +113,20 @@ qa_password() { sudo -n awk -v u="$1" '$1==u{print $3}' /etc/tbox-v2/seed-accoun
 qa_secret()   { sudo -n awk -v u="$1" '$1==u{print $2}' /etc/tbox-v2/qa-totp.txt 2>/dev/null; }
 
 login() {
-  local who="$1" jar="$JAR_DIR/$1.jar" pw sec raw code left out try
+  local who="$1" jar="$JAR_DIR/$1.jar" pw sec raw code left out try login_body
   pw=$(qa_password "$who")
   sec=$(qa_secret "$who")
   [ -n "$pw" ] || return 2
   for try in 1 2 3; do
+    # 비밀은 변수 이름으로 넘기고 값은 표준입력으로만 간다(secrets.sh) — 보내는 본문 바이트는 전과 같다(printf '%s', 끝 줄바꿈 없음)
     if [ -n "$sec" ]; then
-      raw=$(php "$ROOT/scripts/totp_code.php" "$sec" 2>/dev/null)
+      raw=$(totp_now sec 2>/dev/null)
       code=${raw%%$'\n'*}
-      out=$(curl -s -c "$jar" -A "$UA" -H 'Content-Type: application/json' \
-            -d "{\"username\":\"$who\",\"password\":\"$pw\",\"otp\":\"$code\"}" "$BASE/api/login")
+      printf -v login_body '{"username":"%s","password":"%s","otp":"%s"}' "$who" "$pw" "$code"
+      out=$(curl_json_secret login_body -s -c "$jar" -A "$UA" -H 'Content-Type: application/json' "$BASE/api/login")
     else
-      out=$(curl -s -c "$jar" -A "$UA" -H 'Content-Type: application/json' \
-            -d "{\"username\":\"$who\",\"password\":\"$pw\"}" "$BASE/api/login")
+      printf -v login_body '{"username":"%s","password":"%s"}' "$who" "$pw"
+      out=$(curl_json_secret login_body -s -c "$jar" -A "$UA" -H 'Content-Type: application/json' "$BASE/api/login")
     fi
     case "$out" in
       *'"ok":true'*)
@@ -242,9 +245,9 @@ contains "앱 계정(tbox_app)은 표 단위 SELECT·INSERT·UPDATE (arw) — �
 expect "열 단위 GRANT 는 없다 (display_name 에 따로 줄 권한 없음)" "0" \
   "$(psqlq "SELECT count(*) FROM information_schema.column_privileges WHERE table_schema='public' AND table_name='users' AND grantee='tbox_app' AND column_name='display_name' AND privilege_type NOT IN ('SELECT','INSERT','UPDATE','REFERENCES')")"
 expect "DB CHECK — 앞 공백 이름은 DB 가 막는다 (23514)" "23514" \
-  "$(sudo -n -u postgres psql -d "$DB" -v VERBOSITY=verbose -t -A -c "UPDATE users SET display_name=' x' WHERE username='qa_guest01'" 2>&1 | sed -n 's/.*ERROR: *\([0-9A-Z]\{5\}\).*/\1/p' | head -1)"
+  "$(sudo -n -u postgres psql -d "$DB" -v VERBOSITY=verbose -t -A -c "UPDATE users SET display_name=' x' WHERE username='claude_guest01'" 2>&1 | sed -n 's/.*ERROR: *\([0-9A-Z]\{5\}\).*/\1/p' | head -1)"
 expect "DB CHECK — 41자 이름은 DB 가 막는다 (23514)" "23514" \
-  "$(sudo -n -u postgres psql -d "$DB" -v VERBOSITY=verbose -t -A -c "UPDATE users SET display_name=repeat('가',41) WHERE username='qa_guest01'" 2>&1 | sed -n 's/.*ERROR: *\([0-9A-Z]\{5\}\).*/\1/p' | head -1)"
+  "$(sudo -n -u postgres psql -d "$DB" -v VERBOSITY=verbose -t -A -c "UPDATE users SET display_name=repeat('가',41) WHERE username='claude_guest01'" 2>&1 | sed -n 's/.*ERROR: *\([0-9A-Z]\{5\}\).*/\1/p' | head -1)"
 
 sub "③④ 저장소를 임시 폴더로 복사하고 두 번째 인스턴스를 띄운다"
 INST="$(mktemp -d)"
@@ -300,18 +303,18 @@ done
 expect "임시 인스턴스가 떴다 (미로그인 커뮤니티 창구 401)" "401" "$READY"
 [ "$READY" = "401" ] || { echo "인스턴스를 띄우지 못했다 — 중단"; tail -5 "$INST/server.log"; exit 4; }
 
-sub "로그인 (qa 계정 다섯 — **순차**)"
-for who in qa_employee01 qa_employee02 qa_manager01 qa_admin01 qa_guest01; do
+sub "로그인 (claude 계정 다섯 — **순차**)"
+for who in claude_employee01 claude_employee02 claude_manager01 claude_admin01 claude_guest01; do
   tok=$(login "$who")
   if [ -z "$tok" ]; then echo "  ✖ $who 로그인 실패 — 중단"; exit 4; fi
   eval "CSRF_${who}='$tok'"
   echo "  ✔ $who"
 done
 # 개인 공간을 연다(없으면 만든다) — 그 뒤의 목록·인계가 공간을 전제로 한다.
-for who in qa_employee01 qa_employee02 qa_manager01; do capi GET /api/me/space "$who" > /dev/null; done
-TEAM1=$(psqlq "SELECT team_id FROM users WHERE username='qa_employee01'")
-TEAM2=$(psqlq "SELECT team_id FROM users WHERE username='qa_employee02'")
-note "팀: qa_employee01·qa_manager01=$TEAM1 · qa_employee02=$TEAM2"
+for who in claude_employee01 claude_employee02 claude_manager01; do capi GET /api/me/space "$who" > /dev/null; done
+TEAM1=$(psqlq "SELECT team_id FROM users WHERE username='claude_employee01'")
+TEAM2=$(psqlq "SELECT team_id FROM users WHERE username='claude_employee02'")
+note "팀: claude_employee01·claude_manager01=$TEAM1 · claude_employee02=$TEAM2"
 DEAD=$(psqlq "SELECT username FROM public.users WHERE is_active = false ORDER BY id LIMIT 1")
 note "비활성 계정: ${DEAD:-없음}"
 
@@ -341,16 +344,17 @@ uid() { psqlq "SELECT id FROM users WHERE username='$1'"; }
 name_body() {   # $1 이름(파이썬 식 — 예: "'이둘'" · "None" · "'가'*41")
   python3 -c "import json;print(json.dumps({'display_name': $1, 'reason_text': '5-A″ 이름 시험'}, ensure_ascii=False))" > "$WORK/name.json"
 }
-set_name() {    # $1 대상 계정 $2 파이썬 식 → 상태 코드 (qa_admin01 이 보낸다)
+set_name() {    # $1 대상 계정 $2 파이썬 식 → 상태 코드 (claude_admin01 이 보낸다)
   name_body "$2"
-  tapi PATCH "/api/users/$(uid "$1")" qa_admin01 "$WORK/name.json"
+  tapi PATCH "/api/users/$(uid "$1")" claude_admin01 "$WORK/name.json"
 }
 reauth_admin() {
   local pw rc
-  pw=$(qa_password qa_admin01)
-  python3 -c "import json,sys;print(json.dumps({'password':sys.argv[1]}))" "$pw" > "$WORK/reauth.json"
-  rc=$(curl -s -o /dev/null -w '%{http_code}' -b "$JAR_DIR/qa_admin01.jar" -A "$UA" -H 'Content-Type: application/json' \
-        -H "X-CSRF-Token: $CSRF_qa_admin01" --data-binary "@$WORK/reauth.json" "$BASE/api/me/reauth")
+  pw=$(qa_password claude_admin01)
+  # 비밀번호는 표준입력으로만 파이썬에 간다(R-62) — 만드는 JSON 바이트는 전과 같다(json.dumps 기본 · 끝 줄바꿈)
+  py_secret pw -- python3 -c 'import json,sys; pw=sys.stdin.readline().rstrip("\n"); print(json.dumps({"password":pw}))' > "$WORK/reauth.json"
+  rc=$(curl -s -o /dev/null -w '%{http_code}' -b "$JAR_DIR/claude_admin01.jar" -A "$UA" -H 'Content-Type: application/json' \
+        -H "X-CSRF-Token: $CSRF_claude_admin01" --data-binary "@$WORK/reauth.json" "$BASE/api/me/reauth")
   rm -f "$WORK/reauth.json"
   printf '%s' "$rc"
 }
@@ -364,122 +368,122 @@ hr "C:T-61 (나)  이름 쓰기는 Admin 만 · 검증 · 감사(바뀐 칸 이�
 
 sub "Employee·Manager 는 창구로 이름을 바꿀 수 없다 → 403"
 name_body "'$N2'"
-expect "employee01 → PATCH /api/users/{employee02} → 403" "403" "$(tapi PATCH "/api/users/$(uid qa_employee02)" qa_employee01 "$WORK/name.json")"
-expect "employee02 → PATCH /api/users/{자기} → 403" "403" "$(tapi PATCH "/api/users/$(uid qa_employee02)" qa_employee02 "$WORK/name.json")"
-expect "manager01 → PATCH /api/users/{employee01} → 403" "403" "$(tapi PATCH "/api/users/$(uid qa_employee01)" qa_manager01 "$WORK/name.json")"
+expect "employee01 → PATCH /api/users/{employee02} → 403" "403" "$(tapi PATCH "/api/users/$(uid claude_employee02)" claude_employee01 "$WORK/name.json")"
+expect "employee02 → PATCH /api/users/{자기} → 403" "403" "$(tapi PATCH "/api/users/$(uid claude_employee02)" claude_employee02 "$WORK/name.json")"
+expect "manager01 → PATCH /api/users/{employee01} → 403" "403" "$(tapi PATCH "/api/users/$(uid claude_employee01)" claude_manager01 "$WORK/name.json")"
 python3 -c "import json;print(json.dumps({'username':'t5a2_x','role':'Employee','display_name':'새사람','reason_text':'x'}, ensure_ascii=False))" > "$WORK/cu.json"
-expect "manager01 → POST /api/users {display_name} → 403" "403" "$(tapi POST /api/users qa_manager01 "$WORK/cu.json")"
-expect "  DB: employee02 이름은 그대로 NULL" "t" "$(psqlq "SELECT display_name IS NULL FROM users WHERE username='qa_employee02'")"
+expect "manager01 → POST /api/users {display_name} → 403" "403" "$(tapi POST /api/users claude_manager01 "$WORK/cu.json")"
+expect "  DB: employee02 이름은 그대로 NULL" "t" "$(psqlq "SELECT display_name IS NULL FROM users WHERE username='claude_employee02'")"
 
 sub "Admin — 재인증 관문 그대로"
 expect "재인증 없이 PATCH → 403 next=reauth" "403|reauth" \
-  "$(set_name qa_employee02 "'$N2'")|$(jget "d.get('next')" < "$WORK/b")"
+  "$(set_name claude_employee02 "'$N2'")|$(jget "d.get('next')" < "$WORK/b")"
 expect "재인증 → 200" "200" "$(reauth_admin)"
 
 A0=$(mark)
-expect "employee02 에게 「$N2」 → 200" "200" "$(set_name qa_employee02 "'$N2'")"
-expect "  응답은 username·display_name 을 **따로** 준다" "qa_employee02|$N2" \
+expect "employee02 에게 「$N2」 → 200" "200" "$(set_name claude_employee02 "'$N2'")"
+expect "  응답은 username·display_name 을 **따로** 준다" "claude_employee02|$N2" \
   "$(jget "d['username'] + '|' + d['display_name']" < "$WORK/b")"
-expect "  DB 값" "$N2" "$(psqlq "SELECT display_name FROM users WHERE username='qa_employee02'")"
+expect "  DB 값" "$N2" "$(psqlq "SELECT display_name FROM users WHERE username='claude_employee02'")"
 expect "  감사 user.update allow 1줄" "1" "$(audit_n "$A0" user.update allow '')"
 expect "  감사 detail.changed_fields = [\"display_name\"]" '["display_name"]' \
   "$(psqlq "SELECT detail->'changed_fields' FROM audit_logs WHERE id > $A0 AND action='user.update' ORDER BY id DESC LIMIT 1")"
 expect "  감사 어디에도 이름의 **값**이 없다 (detail·summary)" "0" \
   "$(psqlq "SELECT count(*) FROM audit_logs WHERE id > $A0 AND (detail::text LIKE '%$N2%' OR summary LIKE '%$N2%')")"
-expect "  세션은 끊지 않는다 (이름은 권한이 아니다) — employee02 GET /api/me 200" "200" "$(tapi GET /api/me qa_employee02)"
+expect "  세션은 끊지 않는다 (이름은 권한이 아니다) — employee02 GET /api/me 200" "200" "$(tapi GET /api/me claude_employee02)"
 
 A1=$(mark)
-expect "41자 → 400" "400" "$(set_name qa_employee02 "'가'*41")"
+expect "41자 → 400" "400" "$(set_name claude_employee02 "'가'*41")"
 expect "  감사 user.update deny bad_request" "1" "$(audit_n "$A1" user.update deny bad_request)"
-expect "제어 문자(\\u0007) → 400" "400" "$(set_name qa_employee02 "'이\\u0007둘'")"
-expect "방향 바꾸기(\\u202E) → 400" "400" "$(set_name qa_employee02 "'이\\u202e둘'")"
-expect "폭 없는 공백(\\u200B) → 400" "400" "$(set_name qa_employee02 "'이\\u200b둘'")"
-expect "줄바꿈 → 400" "400" "$(set_name qa_employee02 "'이\\n둘'")"
-expect "숫자(문자열 아님) → 400" "400" "$(set_name qa_employee02 "12")"
-expect "  DB 값은 그대로" "$N2" "$(psqlq "SELECT display_name FROM users WHERE username='qa_employee02'")"
-expect "40자 → 200 (경계)" "200" "$(set_name qa_employee02 "'가'*40")"
-expect "  다시 「$N2」 → 200" "200" "$(set_name qa_employee02 "'$N2'")"
-expect "같은 이름을 다시 → 400 (바뀐 것 없음)" "400" "$(set_name qa_employee02 "'$N2'")"
-expect "앞뒤 공백(전각 포함)은 지운다 — manager01 「　 $NM  」 → 200" "200" "$(set_name qa_manager01 "'\\u3000 $NM  '")"
-expect "  DB 값은 「$NM」" "$NM" "$(psqlq "SELECT display_name FROM users WHERE username='qa_manager01'")"
-expect "employee01 에게 「$N1」(<script> 포함 28자) → 200" "200" "$(set_name qa_employee01 "'$N1'")"
-expect "  DB 값은 글자 그대로" "$N1" "$(psqlq "SELECT display_name FROM users WHERE username='qa_employee01'")"
-expect "guest01 에게 「임시」 → 200" "200" "$(set_name qa_guest01 "'임시'")"
-expect "  null 로 지우기 → 200 · DB NULL" "200|t" "$(set_name qa_guest01 "None")|$(psqlq "SELECT display_name IS NULL FROM users WHERE username='qa_guest01'")"
-expect "  공백뿐이면 지우기와 같다 — 이미 NULL 이라 400(바뀐 것 없음)" "400" "$(set_name qa_guest01 "'   '")"
+expect "제어 문자(\\u0007) → 400" "400" "$(set_name claude_employee02 "'이\\u0007둘'")"
+expect "방향 바꾸기(\\u202E) → 400" "400" "$(set_name claude_employee02 "'이\\u202e둘'")"
+expect "폭 없는 공백(\\u200B) → 400" "400" "$(set_name claude_employee02 "'이\\u200b둘'")"
+expect "줄바꿈 → 400" "400" "$(set_name claude_employee02 "'이\\n둘'")"
+expect "숫자(문자열 아님) → 400" "400" "$(set_name claude_employee02 "12")"
+expect "  DB 값은 그대로" "$N2" "$(psqlq "SELECT display_name FROM users WHERE username='claude_employee02'")"
+expect "40자 → 200 (경계)" "200" "$(set_name claude_employee02 "'가'*40")"
+expect "  다시 「$N2」 → 200" "200" "$(set_name claude_employee02 "'$N2'")"
+expect "같은 이름을 다시 → 400 (바뀐 것 없음)" "400" "$(set_name claude_employee02 "'$N2'")"
+expect "앞뒤 공백(전각 포함)은 지운다 — manager01 「　 $NM  」 → 200" "200" "$(set_name claude_manager01 "'\\u3000 $NM  '")"
+expect "  DB 값은 「$NM」" "$NM" "$(psqlq "SELECT display_name FROM users WHERE username='claude_manager01'")"
+expect "employee01 에게 「$N1」(<script> 포함 28자) → 200" "200" "$(set_name claude_employee01 "'$N1'")"
+expect "  DB 값은 글자 그대로" "$N1" "$(psqlq "SELECT display_name FROM users WHERE username='claude_employee01'")"
+expect "guest01 에게 「임시」 → 200" "200" "$(set_name claude_guest01 "'임시'")"
+expect "  null 로 지우기 → 200 · DB NULL" "200|t" "$(set_name claude_guest01 "None")|$(psqlq "SELECT display_name IS NULL FROM users WHERE username='claude_guest01'")"
+expect "  공백뿐이면 지우기와 같다 — 이미 NULL 이라 400(바뀐 것 없음)" "400" "$(set_name claude_guest01 "'   '")"
 
 A2=$(mark)
-expect "Admin 이 **자기** 이름 → 400 (self_change — 본인은 보기만)" "400" "$(set_name qa_admin01 "'관리자'")"
+expect "Admin 이 **자기** 이름 → 400 (self_change — 본인은 보기만)" "400" "$(set_name claude_admin01 "'관리자'")"
 expect "  감사 user.update deny self_change" "1" "$(audit_n "$A2" user.update deny self_change)"
 
 sub "함께 바뀌면 그 칸의 action 이고 changed_fields 에 둘 다 — manager01 만료일 + 이름"
 python3 -c "import json;print(json.dumps({'display_name':'박관리자','expires_at':'2030-12-31','reason_text':'5-A″ 함께'}, ensure_ascii=False))" > "$WORK/both.json"
 A3=$(mark)
-expect "PATCH {display_name, expires_at} → 200" "200" "$(tapi PATCH "/api/users/$(uid qa_manager01)" qa_admin01 "$WORK/both.json")"
+expect "PATCH {display_name, expires_at} → 200" "200" "$(tapi PATCH "/api/users/$(uid claude_manager01)" claude_admin01 "$WORK/both.json")"
 expect "  감사 user.expiry_change · changed_fields = expires_at,display_name" "user.expiry_change|expires_at,display_name" \
   "$(psqlq "SELECT action || '|' || (SELECT string_agg(x, ',') FROM jsonb_array_elements_text(detail->'changed_fields') x) FROM audit_logs WHERE id > $A3 AND action LIKE 'user.%' ORDER BY id DESC LIMIT 1")"
 python3 -c "import json;print(json.dumps({'display_name':'$NM','expires_at':None,'reason_text':'5-A″ 되돌림'}, ensure_ascii=False))" > "$WORK/both.json"
-expect "  되돌림 → 200" "200" "$(tapi PATCH "/api/users/$(uid qa_manager01)" qa_admin01 "$WORK/both.json")"
+expect "  되돌림 → 200" "200" "$(tapi PATCH "/api/users/$(uid claude_manager01)" claude_admin01 "$WORK/both.json")"
 
 sub "계정 만들기의 이름 (임시 DB 에만 계정이 생긴다)"
 python3 -c "import json;print(json.dumps({'username':'t5a2_long','role':'Employee','display_name':'나'*41,'reason_text':'5-A″'}, ensure_ascii=False))" > "$WORK/cu.json"
 expect "POST /api/users 이름 41자 → 400 · 계정 없음" "400|0" \
-  "$(tapi POST /api/users qa_admin01 "$WORK/cu.json")|$(psqlq "SELECT count(*) FROM users WHERE username='t5a2_long'")"
+  "$(tapi POST /api/users claude_admin01 "$WORK/cu.json")|$(psqlq "SELECT count(*) FROM users WHERE username='t5a2_long'")"
 python3 -c "import json;print(json.dumps({'username':'t5a2_new','role':'Employee','display_name':' 새사람 ','reason_text':'5-A″'}, ensure_ascii=False))" > "$WORK/cu.json"
 A4=$(mark)
 expect "POST /api/users 이름 「 새사람 」 → 201 · 응답 display_name=새사람" "201|새사람" \
-  "$(tapi POST /api/users qa_admin01 "$WORK/cu.json")|$(jget "d['display_name']" < "$WORK/b")"
+  "$(tapi POST /api/users claude_admin01 "$WORK/cu.json")|$(jget "d['display_name']" < "$WORK/b")"
 expect "  감사 user.create detail.display_name_set = true · 값 없음" "true|0" \
   "$(psqlq "SELECT detail->>'display_name_set' FROM audit_logs WHERE id > $A4 AND action='user.create' ORDER BY id DESC LIMIT 1")|$(psqlq "SELECT count(*) FROM audit_logs WHERE id > $A4 AND detail::text LIKE '%새사람%'")"
 
 sub "계정 관리 목록 — 이름은 따로, 이름 없는 계정은 null"
-expect "GET /api/users → 200" "200" "$(tapi GET /api/users qa_admin01)"
+expect "GET /api/users → 200" "200" "$(tapi GET /api/users claude_admin01)"
 expect "  employee02 → display_name=$N2 · guest01 → None" "$N2|None" \
-  "$(jget "'|'.join(str(next(x['display_name'] for x in d['users'] if x['username']==n)) for n in ('qa_employee02','qa_guest01'))" < "$WORK/b")"
-lacks "  목록 응답에 「이름 (아이디)」로 이은 글자가 없다" "$N2 (qa_employee02)" "$(cat "$WORK/b")"
+  "$(jget "'|'.join(str(next(x['display_name'] for x in d['users'] if x['username']==n)) for n in ('claude_employee02','claude_guest01'))" < "$WORK/b")"
+lacks "  목록 응답에 「이름 (아이디)」로 이은 글자가 없다" "$N2 (claude_employee02)" "$(cat "$WORK/b")"
 
 # ════════════════════════════════════════════════════════════════
 hr "C:T-62  보이는 자리 — 창구는 따로 주고, 서버가 그리는 화면은 「이름 (아이디)」"
 
 sub "셸·런처·「내 계정」 (서버가 그린다 — htmlspecialchars)"
-expect "employee02 t-box 홈 → 200" "200" "$(page_html /tbox/ qa_employee02)"
-contains "  사용자 칸 「$N2 (qa_employee02)」" "$N2 (qa_employee02)" "$(cat "$WORK/html")"
-expect "employee01 t-box 홈 → 200" "200" "$(page_html /tbox/ qa_employee01)"
-contains "  <script> 이름은 이스케이프되어 글자로 나간다" "김하나&lt;script&gt;alert(1)&lt;/script&gt; (qa_employee01)" "$(cat "$WORK/html")"
+expect "employee02 t-box 홈 → 200" "200" "$(page_html /tbox/ claude_employee02)"
+contains "  사용자 칸 「$N2 (claude_employee02)」" "$N2 (claude_employee02)" "$(cat "$WORK/html")"
+expect "employee01 t-box 홈 → 200" "200" "$(page_html /tbox/ claude_employee01)"
+contains "  <script> 이름은 이스케이프되어 글자로 나간다" "김하나&lt;script&gt;alert(1)&lt;/script&gt; (claude_employee01)" "$(cat "$WORK/html")"
 lacks "  날 <script>alert(1) 이 HTML 에 없다" "<script>alert(1)" "$(cat "$WORK/html")"
 expect "  머리글자는 이름의 첫 글자(김)" "2" "$(grep -c 'avatar" aria-hidden="true">김<' "$WORK/html")"
-expect "guest01(이름 없음) t-box 홈 → 200" "200" "$(page_html /tbox/ qa_guest01)"
-contains "  아이디만" 'userchip__name">qa_guest01<' "$(cat "$WORK/html")"
-lacks "  「(qa_guest01)」 괄호가 없다" "(qa_guest01)" "$(cat "$WORK/html")"
-expect "employee02 런처(/) → 200" "200" "$(page_html / qa_employee02)"
-contains "  런처의 「이름 (아이디) · 역할」" "$N2 (qa_employee02) · Employee" "$(cat "$WORK/html")"
-expect "employee02 「내 계정」 → 200" "200" "$(page_html /tbox/settings qa_employee02)"
+expect "guest01(이름 없음) t-box 홈 → 200" "200" "$(page_html /tbox/ claude_guest01)"
+contains "  아이디만" 'userchip__name">claude_guest01<' "$(cat "$WORK/html")"
+lacks "  「(claude_guest01)」 괄호가 없다" "(claude_guest01)" "$(cat "$WORK/html")"
+expect "employee02 런처(/) → 200" "200" "$(page_html / claude_employee02)"
+contains "  런처의 「이름 (아이디) · 역할」" "$N2 (claude_employee02) · Employee" "$(cat "$WORK/html")"
+expect "employee02 「내 계정」 → 200" "200" "$(page_html /tbox/settings claude_employee02)"
 contains "  이름 칸(보기만)" ">$N2<" "$(cat "$WORK/html")"
-page_html /tbox/settings qa_guest01 > /dev/null
+page_html /tbox/settings claude_guest01 > /dev/null
 contains "  이름 없는 guest 는 안내 한 줄" "관리자가 정합니다" "$(cat "$WORK/html")"
 lacks "  「내 계정」에 이름을 바꾸는 입력이 없다" 'id="me-name"' "$(cat "$WORK/html")"
-expect "employee02 커뮤니티 홈 → 200" "200" "$(page_html /community/ qa_employee02)"
-contains "  커뮤니티 셸도 같은 모양" "$N2 (qa_employee02)" "$(cat "$WORK/html")"
+expect "employee02 커뮤니티 홈 → 200" "200" "$(page_html /community/ claude_employee02)"
+contains "  커뮤니티 셸도 같은 모양" "$N2 (claude_employee02)" "$(cat "$WORK/html")"
 
 sub "커뮤니티 창구 — 소유자 · 공유한 사람 · 후보 · 이력 · 판 · 편집 중 · 공유받은 목록"
-P=$(make_page qa_employee01 "5A2-이름")
+P=$(make_page claude_employee01 "5A2-이름")
 [ -n "$P" ] || { echo "시험 페이지를 만들지 못했다 — 중단"; exit 4; }
-expect "employee02 에게 편집 공유 → 200" "200" "$(share qa_employee01 "$P" qa_employee02 edit)"
+expect "employee02 에게 편집 공유 → 200" "200" "$(share claude_employee01 "$P" claude_employee02 edit)"
 expect "  PUT 응답의 share.display_name" "$N2" "$(jget "d['share']['display_name']" < "$WORK/b")"
-expect "GET 페이지 (employee02) → 200" "200" "$(capi GET "/api/pages/$P" qa_employee02)"
-expect "  owner = qa_employee01 · display_name 글자 그대로" "qa_employee01|$N1" \
+expect "GET 페이지 (employee02) → 200" "200" "$(capi GET "/api/pages/$P" claude_employee02)"
+expect "  owner = claude_employee01 · display_name 글자 그대로" "claude_employee01|$N1" \
   "$(jget "d['page']['owner']['username'] + '|' + d['page']['owner']['display_name']" < "$WORK/b")"
-lacks "  창구가 이어 붙인 글자를 주지 않는다" "(qa_employee01)" "$(cat "$WORK/b")"
+lacks "  창구가 이어 붙인 글자를 주지 않는다" "(claude_employee01)" "$(cat "$WORK/b")"
 expect "공유 목록 (employee01) → 200 · display_name" "200|$N2" \
-  "$(capi GET "/api/pages/$P/shares" qa_employee01)|$(jget "d['shares'][0]['display_name']" < "$WORK/b")"
-expect "후보를 **이름**으로 찾는다 q=둘 → qa_employee02" "200|qa_employee02|$N2" \
-  "$(capi GET "/api/share-candidates?page=$P&q=%EB%91%98" qa_employee01)|$(jget "','.join(c['username'] for c in d['candidates'])" < "$WORK/b")|$(jget "d['candidates'][0]['display_name']" < "$WORK/b")"
-expect "  q=관리 → qa_manager01 (이름으로)" "qa_manager01" \
-  "$(capi GET "/api/share-candidates?page=$P&q=%EA%B4%80%EB%A6%AC" qa_employee01 >/dev/null; jget "','.join(c['username'] for c in d['candidates'])" < "$WORK/b")"
-expect "  이름 없는 계정은 아이디로 찾힌다 q=qa_guest → qa_guest01 · display_name None" "qa_guest01|None" \
-  "$(capi GET "/api/share-candidates?page=$P&q=qa_guest" qa_employee01 >/dev/null; jget "','.join(c['username'] for c in d['candidates']) + '|' + str(d['candidates'][0]['display_name'])" < "$WORK/b")"
+  "$(capi GET "/api/pages/$P/shares" claude_employee01)|$(jget "d['shares'][0]['display_name']" < "$WORK/b")"
+expect "후보를 **이름**으로 찾는다 q=둘 → claude_employee02" "200|claude_employee02|$N2" \
+  "$(capi GET "/api/share-candidates?page=$P&q=%EB%91%98" claude_employee01)|$(jget "','.join(c['username'] for c in d['candidates'])" < "$WORK/b")|$(jget "d['candidates'][0]['display_name']" < "$WORK/b")"
+expect "  q=관리 → claude_manager01 (이름으로)" "claude_manager01" \
+  "$(capi GET "/api/share-candidates?page=$P&q=%EA%B4%80%EB%A6%AC" claude_employee01 >/dev/null; jget "','.join(c['username'] for c in d['candidates'])" < "$WORK/b")"
+expect "  이름 없는 계정은 아이디로 찾힌다 q=claude_guest → claude_guest01 · display_name None" "claude_guest01|None" \
+  "$(capi GET "/api/share-candidates?page=$P&q=claude_guest" claude_employee01 >/dev/null; jget "','.join(c['username'] for c in d['candidates']) + '|' + str(d['candidates'][0]['display_name'])" < "$WORK/b")"
 expect "  q=<script> 로 찾아도 주인(employee01)은 후보에 없다" "0" \
-  "$(capi GET "/api/share-candidates?page=$P&q=%3Cscript%3E" qa_employee01 >/dev/null; jget "len(d['candidates'])" < "$WORK/b")"
+  "$(capi GET "/api/share-candidates?page=$P&q=%3Cscript%3E" claude_employee01 >/dev/null; jget "len(d['candidates'])" < "$WORK/b")"
 
 BLK=$(python3 -c 'import uuid;print(uuid.uuid4())')
 python3 - "$BLK" "$(pg_page "$P" "p.doc_version")" > "$WORK/doc.json" <<'PY'
@@ -487,112 +491,117 @@ import json, sys
 doc = {"schema": 1, "blocks": [{"id": sys.argv[1], "type": "to_do", "checked": True, "text": [{"t": "5A2 할 일", "m": {}}]}]}
 print(json.dumps({"doc_version": int(sys.argv[2]), "doc": doc}, ensure_ascii=False))
 PY
-expect "employee02 가 저장(체크) → 200" "200" "$(capi PATCH "/api/pages/$P" qa_employee02 "$WORK/doc.json")"
-expect "판 목록 — 지금 판의 바꾼 사람 qa_employee02 · $N2" "200|qa_employee02|$N2" \
-  "$(capi GET "/api/pages/$P/versions" qa_employee01)|$(jget "d['versions'][0]['by'] + '|' + d['versions'][0]['by_display_name']" < "$WORK/b")"
-expect "  지난 판(1)의 바꾼 사람 qa_employee01 · 이름" "qa_employee01|$N1" \
+expect "employee02 가 저장(체크) → 200" "200" "$(capi PATCH "/api/pages/$P" claude_employee02 "$WORK/doc.json")"
+expect "판 목록 — 지금 판의 바꾼 사람 claude_employee02 · $N2" "200|claude_employee02|$N2" \
+  "$(capi GET "/api/pages/$P/versions" claude_employee01)|$(jget "d['versions'][0]['by'] + '|' + d['versions'][0]['by_display_name']" < "$WORK/b")"
+expect "  지난 판(1)의 바꾼 사람 claude_employee01 · 이름" "claude_employee01|$N1" \
   "$(jget "d['versions'][1]['by'] + '|' + d['versions'][1]['by_display_name']" < "$WORK/b")"
 expect "판 하나 (1) → by_display_name" "200|$N1" \
-  "$(capi GET "/api/pages/$P/versions/1" qa_employee01)|$(jget "d['version']['by_display_name']" < "$WORK/b")"
-expect "처리 이력 — 체크 줄의 by·by_display_name" "200|qa_employee02|$N2" \
-  "$(capi GET "/api/pages/$P/history" qa_employee01)|$(jget "[e for e in d['events'] if e['kind']=='check'][0]['by'] + '|' + [e for e in d['events'] if e['kind']=='check'][0]['by_display_name']" < "$WORK/b")"
+  "$(capi GET "/api/pages/$P/versions/1" claude_employee01)|$(jget "d['version']['by_display_name']" < "$WORK/b")"
+expect "처리 이력 — 체크 줄의 by·by_display_name" "200|claude_employee02|$N2" \
+  "$(capi GET "/api/pages/$P/history" claude_employee01)|$(jget "[e for e in d['events'] if e['kind']=='check'][0]['by'] + '|' + [e for e in d['events'] if e['kind']=='check'][0]['by_display_name']" < "$WORK/b")"
 body '{}'
-expect "employee02 편집 중 신호 → 200" "200" "$(capi POST "/api/pages/$P/heartbeat" qa_employee02 "$WORK/body.json")"
-expect "  employee01 이 보는 editors[0] = qa_employee02 · $N2" "qa_employee02|$N2" \
-  "$(capi GET "/api/pages/$P" qa_employee01 >/dev/null; jget "d['editors'][0]['username'] + '|' + d['editors'][0]['display_name']" < "$WORK/b")"
+expect "employee02 편집 중 신호 → 200" "200" "$(capi POST "/api/pages/$P/heartbeat" claude_employee02 "$WORK/body.json")"
+expect "  employee01 이 보는 editors[0] = claude_employee02 · $N2" "claude_employee02|$N2" \
+  "$(capi GET "/api/pages/$P" claude_employee01 >/dev/null; jget "d['editors'][0]['username'] + '|' + d['editors'][0]['display_name']" < "$WORK/b")"
 expect "공유받은 페이지 목록(employee02)의 owner.display_name" "$N1" \
-  "$(capi GET "/api/pages?shared=me" qa_employee02 >/dev/null; jget "[x for x in d['pages'] if x['id']=='$P'][0]['owner']['display_name']" < "$WORK/b")"
+  "$(capi GET "/api/pages?shared=me" claude_employee02 >/dev/null; jget "[x for x in d['pages'] if x['id']=='$P'][0]['owner']['display_name']" < "$WORK/b")"
 
-H=$(make_page qa_employee01 "5A2-인계-이름")
-body '{"to":"qa_employee02","keep":"none"}'
+H=$(make_page claude_employee01 "5A2-인계-이름")
+body '{"to":"claude_employee02","keep":"none"}'
 expect "인계 → 200 · 응답 to_display_name" "200|$N2" \
-  "$(capi POST "/api/pages/$H/handover" qa_employee01 "$WORK/body.json")|$(jget "d['to_display_name']" < "$WORK/b")"
-expect "  이력 인계 줄 — from/to 와 이름" "qa_employee01|$N1|qa_employee02|$N2" \
-  "$(capi GET "/api/pages/$H/history" qa_employee02 >/dev/null; jget "(lambda e: '|'.join([e['from'], e['from_display_name'], e['to'], e['to_display_name']]))([x for x in d['events'] if x['kind']=='handover'][0])" < "$WORK/b")"
+  "$(capi POST "/api/pages/$H/handover" claude_employee01 "$WORK/body.json")|$(jget "d['to_display_name']" < "$WORK/b")"
+expect "  이력 인계 줄 — from/to 와 이름" "claude_employee01|$N1|claude_employee02|$N2" \
+  "$(capi GET "/api/pages/$H/history" claude_employee02 >/dev/null; jget "(lambda e: '|'.join([e['from'], e['from_display_name'], e['to'], e['to_display_name']]))([x for x in d['events'] if x['kind']=='handover'][0])" < "$WORK/b")"
 
 # ════════════════════════════════════════════════════════════════
 hr "C:T-63  후보는 한 글자부터 — 빈 값·공백은 빈 목록(200)"
 
 for q in "" "%20%20%20" "%E3%80%80" "%09"; do
   expect "q='$q' → 200 · candidates []" "200|0" \
-    "$(capi GET "/api/share-candidates?page=$P&q=$q" qa_employee01)|$(jget "len(d['candidates'])" < "$WORK/b")"
+    "$(capi GET "/api/share-candidates?page=$P&q=$q" claude_employee01)|$(jget "len(d['candidates'])" < "$WORK/b")"
 done
-expect "q 없음 → 200 · []" "200|0" "$(capi GET "/api/share-candidates?page=$P" qa_employee01)|$(jget "len(d['candidates'])" < "$WORK/b")"
+expect "q 없음 → 200 · []" "200|0" "$(capi GET "/api/share-candidates?page=$P" claude_employee01)|$(jget "len(d['candidates'])" < "$WORK/b")"
 expect "인계 후보 q 없음 → 200 · []" "200|0" \
-  "$(capi GET "/api/share-candidates?for=handover&page=$P" qa_employee01)|$(jget "len(d['candidates'])" < "$WORK/b")"
-N_Q=$(capi GET "/api/share-candidates?page=$P&q=q" qa_employee01 >/dev/null; jget "len(d['candidates'])" < "$WORK/b")
-expect "한 글자 q=q → 결과가 있다" "yes" "$([ "${N_Q:-0}" -gt 0 ] && echo yes || echo no)"
-expect "  %·_ 는 글자로만 — q=% → 0" "0" "$(capi GET "/api/share-candidates?page=$P&q=%25" qa_employee01 >/dev/null; jget "len(d['candidates'])" < "$WORK/b")"
+  "$(capi GET "/api/share-candidates?for=handover&page=$P" claude_employee01)|$(jget "len(d['candidates'])" < "$WORK/b")"
+# 한 글자 검색 — 예전 글자 「q」 는 운영에서 qa_ 계정에만 있어 qa_ 를 끄면 헛실패한다(1-B-3 독립 검토). 「c」 는 claude_ 검토
+# 계정 다섯 모두에 있다 — 「한 글자부터 찾는다」 는 뜻은 그대로다.
+N_Q=$(capi GET "/api/share-candidates?page=$P&q=c" claude_employee01 >/dev/null; jget "len(d['candidates'])" < "$WORK/b")
+expect "한 글자 q=c → 결과가 있다" "yes" "$([ "${N_Q:-0}" -gt 0 ] && echo yes || echo no)"
+expect "  %·_ 는 글자로만 — q=% → 0" "0" "$(capi GET "/api/share-candidates?page=$P&q=%25" claude_employee01 >/dev/null; jget "len(d['candidates'])" < "$WORK/b")"
 expect "  q=_ 의 결과는 전부 아이디나 이름에 「_」 가 있다" "True" \
-  "$(capi GET "/api/share-candidates?page=$P&q=_" qa_employee01 >/dev/null; jget "all('_' in c['username'] or '_' in (c['display_name'] or '') for c in d['candidates'])" < "$WORK/b")"
+  "$(capi GET "/api/share-candidates?page=$P&q=_" claude_employee01 >/dev/null; jget "all('_' in c['username'] or '_' in (c['display_name'] or '') for c in d['candidates'])" < "$WORK/b")"
 
 # ════════════════════════════════════════════════════════════════
 hr "C:T-64  팀 공간 페이지 공유 — 팀원이 팀 밖 사람에게"
 
-capi GET /api/spaces qa_employee01 > /dev/null
+capi GET /api/spaces claude_employee01 > /dev/null
 TEAM_SPACE=$(jget "[s['id'] for s in d['spaces'] if s['kind']=='team'][0]" < "$WORK/b")
 note "employee01 의 팀 공간 번호: ${TEAM_SPACE:-없음} (employee02 는 다른 팀 $TEAM2)"
 [ -n "$TEAM_SPACE" ] || { echo "팀 공간을 찾지 못했다 — 중단"; exit 4; }
-TP=$(make_page qa_employee01 "5A2-팀-뿌리" "" "$TEAM_SPACE")
-TPC=$(make_page qa_employee01 "5A2-팀-하위" "$TP")
+TP=$(make_page claude_employee01 "5A2-팀-뿌리" "" "$TEAM_SPACE")
+TPC=$(make_page claude_employee01 "5A2-팀-하위" "$TP")
 [ -n "$TP" ] && [ -n "$TPC" ] || { echo "팀 공간 페이지를 만들지 못했다 — 중단"; exit 4; }
 note "TP=$TP · TPC=$TPC"
-expect "공유 전 employee02(팀 밖) GET → 403" "403" "$(capi GET "/api/pages/$TP" qa_employee02)"
+expect "공유 전 employee02(팀 밖) GET → 403" "403" "$(capi GET "/api/pages/$TP" claude_employee02)"
 expect "팀원 employee01 의 GET — can_share=True · can_set_visibility=False · can_handover=False" "200|True|False|False" \
-  "$(capi GET "/api/pages/$TP" qa_employee01)|$(jget "'%s|%s|%s' % (d['can_share'], d['can_set_visibility'], d['can_handover'])" < "$WORK/b")"
-expect "  공유 목록 can_manage=True" "200|True" "$(capi GET "/api/pages/$TP/shares" qa_employee01)|$(jget "d['can_manage']" < "$WORK/b")"
-expect "  팀원의 후보 찾기 q=둘 → 200 · qa_employee02" "200|qa_employee02" \
-  "$(capi GET "/api/share-candidates?page=$TP&q=%EB%91%98" qa_employee01)|$(jget "','.join(c['username'] for c in d['candidates'])" < "$WORK/b")"
+  "$(capi GET "/api/pages/$TP" claude_employee01)|$(jget "'%s|%s|%s' % (d['can_share'], d['can_set_visibility'], d['can_handover'])" < "$WORK/b")"
+expect "  공유 목록 can_manage=True" "200|True" "$(capi GET "/api/pages/$TP/shares" claude_employee01)|$(jget "d['can_manage']" < "$WORK/b")"
+expect "  팀원의 후보 찾기 q=둘 → 200 · claude_employee02" "200|claude_employee02" \
+  "$(capi GET "/api/share-candidates?page=$TP&q=%EB%91%98" claude_employee01)|$(jget "','.join(c['username'] for c in d['candidates'])" < "$WORK/b")"
 
 A5=$(mark)
-expect "팀원이 employee02 에게 **보기** → 200 (5-A 의 400 space_governed 가 풀렸다)" "200" "$(share qa_employee01 "$TP" qa_employee02 view)"
+expect "팀원이 employee02 에게 **보기** → 200 (5-A 의 400 space_governed 가 풀렸다)" "200" "$(share claude_employee01 "$TP" claude_employee02 view)"
 expect "  감사 page.share allow (granted_by=team_member)" "1|team_member" \
   "$(audit_n "$A5" page.share allow '')|$(psqlq "SELECT detail->>'granted_by' FROM audit_logs WHERE id > $A5 AND action='page.share' ORDER BY id DESC LIMIT 1")"
 expect "employee02 GET → 200 · granted_by=shared · can_edit=False · can_share=False" "200|shared|False|False" \
-  "$(capi GET "/api/pages/$TP" qa_employee02)|$(jget "'%s|%s|%s' % (d['granted_by'], d['can_edit'], d['can_share'])" < "$WORK/b")"
-expect "  하위 TPC 도 → 200 (물려받음)" "200" "$(capi GET "/api/pages/$TPC" qa_employee02)"
+  "$(capi GET "/api/pages/$TP" claude_employee02)|$(jget "'%s|%s|%s' % (d['granted_by'], d['can_edit'], d['can_share'])" < "$WORK/b")"
+expect "  하위 TPC 도 → 200 (물려받음)" "200" "$(capi GET "/api/pages/$TPC" claude_employee02)"
 V=$(pg_page "$TP" "p.doc_version")
 python3 - "$BLK" "$V" > "$WORK/doc.json" <<'PY'
 import json, sys
 doc = {"schema": 1, "blocks": [{"id": sys.argv[1], "type": "paragraph", "text": [{"t": "팀 공유 저장", "m": {}}]}]}
 print(json.dumps({"doc_version": int(sys.argv[2]), "doc": doc}, ensure_ascii=False))
 PY
-expect "  보기 공유자 저장 PATCH → 403" "403" "$(capi PATCH "/api/pages/$TP" qa_employee02 "$WORK/doc.json")"
+expect "  보기 공유자 저장 PATCH → 403" "403" "$(capi PATCH "/api/pages/$TP" claude_employee02 "$WORK/doc.json")"
 expect "  공유받은 페이지 목록에 TP 가 있다" "1" \
-  "$(capi GET "/api/pages?shared=me" qa_employee02 >/dev/null; jget "sum(1 for x in d['pages'] if x['id']=='$TP')" < "$WORK/b")"
+  "$(capi GET "/api/pages?shared=me" claude_employee02 >/dev/null; jget "sum(1 for x in d['pages'] if x['id']=='$TP')" < "$WORK/b")"
 
-expect "등급을 **편집**으로 → 200" "200" "$(share qa_employee01 "$TP" qa_employee02 edit)"
-expect "  편집 공유자 저장 → 200" "200" "$(capi PATCH "/api/pages/$TP" qa_employee02 "$WORK/doc.json")"
+expect "등급을 **편집**으로 → 200" "200" "$(share claude_employee01 "$TP" claude_employee02 edit)"
+# BF-0009 — 아래 감사 page.update 대조는 이 저장이 남긴 행만 본다(옛 실행·운영 사본의 행으로 통과하지 않게).
+#   경계는 그 행을 남기는 저장 요청 바로 앞에서 잰다(바로 위 등급 바꾸기는 page.share 라 page.update 가 아니다).
+UPD_MARK=$(mark)
+expect "  편집 공유자 저장 → 200" "200" "$(capi PATCH "/api/pages/$TP" claude_employee02 "$WORK/doc.json")"
 expect "  감사 page.update granted_by=shared_edit" "shared_edit" \
-  "$(psqlq "SELECT detail->>'granted_by' FROM audit_logs WHERE action='page.update' AND result='allow' ORDER BY id DESC LIMIT 1")"
-K2=$(make_page qa_employee02 "5A2-팀-공유자가-만든-하위" "$TP")
+  "$(psqlq "SELECT detail->>'granted_by' FROM audit_logs WHERE action='page.update' AND result='allow' AND id > ${UPD_MARK:-0} ORDER BY id DESC LIMIT 1")"
+K2=$(make_page claude_employee02 "5A2-팀-공유자가-만든-하위" "$TP")
 expect "  편집 공유자가 하위 만들기 → 201 · 그 하위는 팀 공간에 있다" "201|team" \
   "$(status_of "$WORK/h")|$(psqlq "SELECT s.kind FROM community.pages p JOIN community.spaces s ON s.id=p.space_id WHERE p.public_id='$K2'")"
 A6=$(mark)
-expect "  편집 공유자 삭제 DELETE → 403" "403" "$(capi DELETE "/api/pages/$TP" qa_employee02)"
+expect "  편집 공유자 삭제 DELETE → 403" "403" "$(capi DELETE "/api/pages/$TP" claude_employee02)"
 expect "    DB: TP 살아 있다" "t" "$(pg_page "$TP" "p.deleted_at IS NULL")"
 body '{"parent_id":null}'
 Q10_MV=$(mark)
-expect "  편집 공유자 옮기기(TPC 를 뿌리로) → 403" "403" "$(capi PATCH "/api/pages/$TPC/move" qa_employee02 "$WORK/body.json")"
+expect "  편집 공유자 옮기기(TPC 를 뿌리로) → 403" "403" "$(capi PATCH "/api/pages/$TPC/move" claude_employee02 "$WORK/body.json")"
 # 대기열 10번 A.1(2026-09-24) — 관리할 수 없는 페이지 옮기기 거부가 감사에 남는다(전에는 서버 로그만)
 expect "    감사 page.move deny 1행(not_owner·not_member 중 하나)" "1" \
   "$(psqlq "SELECT count(*) FROM audit_logs WHERE id > ${Q10_MV} AND action='page.move' AND result='deny' AND reason IN ('not_owner','not_member')")"
-expect "  편집 공유자가 남에게 다시 공유 → 403" "403" "$(share qa_employee02 "$TP" qa_guest01 view)"
-expect "  편집 공유자의 후보 찾기 → 403" "403" "$(capi GET "/api/share-candidates?page=$TP&q=q" qa_employee02)"
+expect "  편집 공유자가 남에게 다시 공유 → 403" "403" "$(share claude_employee02 "$TP" claude_guest01 view)"
+expect "  편집 공유자의 후보 찾기 → 403" "403" "$(capi GET "/api/share-candidates?page=$TP&q=q" claude_employee02)"
 body '{"visibility":"internal"}'
-V_CODE=$(capi PATCH "/api/pages/$TP/visibility" qa_employee02 "$WORK/body.json")
+V_CODE=$(capi PATCH "/api/pages/$TP/visibility" claude_employee02 "$WORK/body.json")
 expect "  편집 공유자 공개 범위 → 거부(4xx)" "yes" "$(case "$V_CODE" in 4*) echo yes;; *) echo "no:$V_CODE";; esac)"
-body '{"to":"qa_manager01","keep":"none"}'
-H_CODE=$(capi POST "/api/pages/$TP/handover" qa_employee02 "$WORK/body.json")
+body '{"to":"claude_manager01","keep":"none"}'
+H_CODE=$(capi POST "/api/pages/$TP/handover" claude_employee02 "$WORK/body.json")
 expect "  편집 공유자 인계 → 거부(4xx) · 팀 공간은 인계 대상 아님" "yes" "$(case "$H_CODE" in 4*) echo yes;; *) echo "no:$H_CODE";; esac)"
 expect "  감사 page.delete deny not_member(팀 밖 — 5-A″ 새 줄) · page.share deny not_owner" "1|1" \
   "$(audit_n "$A6" page.delete deny not_member)|$(audit_n "$A6" page.share deny not_owner)"
 
 sub "팀원 아닌 사람이 공유 주기 → 403"
-expect "guest01(팀 밖·공유 없음) PUT → 403" "403" "$(share qa_guest01 "$TP" qa_manager01 view)"
-expect "admin01(팀 밖 — 볼 수는 있다) PUT → 403" "403" "$(share qa_admin01 "$TP" qa_guest01 view)"
-expect "  admin01 GET 은 200 (admin_all)" "200|admin_all" "$(capi GET "/api/pages/$TP" qa_admin01)|$(jget "d['granted_by']" < "$WORK/b")"
-expect "팀원 manager01 은 PUT → 200 (관리 자격 = 그 팀원)" "200" "$(share qa_manager01 "$TP" qa_guest01 edit)"
+expect "guest01(팀 밖·공유 없음) PUT → 403" "403" "$(share claude_guest01 "$TP" claude_manager01 view)"
+expect "admin01(팀 밖 — 볼 수는 있다) PUT → 403" "403" "$(share claude_admin01 "$TP" claude_guest01 view)"
+expect "  admin01 GET 은 200 (admin_all)" "200|admin_all" "$(capi GET "/api/pages/$TP" claude_admin01)|$(jget "d['granted_by']" < "$WORK/b")"
+expect "팀원 manager01 은 PUT → 200 (관리 자격 = 그 팀원)" "200" "$(share claude_manager01 "$TP" claude_guest01 edit)"
 V=$(pg_page "$TP" "p.doc_version")
 python3 - "$BLK" "$V" > "$WORK/doc2.json" <<'PY'
 import json, sys
@@ -600,12 +609,12 @@ doc = {"schema": 1, "blocks": [{"id": sys.argv[1], "type": "paragraph", "text": 
 print(json.dumps({"doc_version": int(sys.argv[2]), "doc": doc}, ensure_ascii=False))
 PY
 expect "  Guest 는 편집 공유를 받아도 GET 200 · 저장 403" "200|403" \
-  "$(capi GET "/api/pages/$TP" qa_guest01)|$(capi PATCH "/api/pages/$TP" qa_guest01 "$WORK/doc2.json")"
+  "$(capi GET "/api/pages/$TP" claude_guest01)|$(capi PATCH "/api/pages/$TP" claude_guest01 "$WORK/doc2.json")"
 
 sub "빼면 그 자리에서 403"
-expect "팀원이 employee02 공유를 뺀다 → 200" "200" "$(unshare qa_employee01 "$TP" qa_employee02)"
-expect "  employee02 GET TP · TPC → 403 · 403" "403|403" "$(capi GET "/api/pages/$TP" qa_employee02)|$(capi GET "/api/pages/$TPC" qa_employee02)"
-expect "대조용으로 다시 보기 → 200" "200" "$(share qa_employee01 "$TP" qa_employee02 view)"
+expect "팀원이 employee02 공유를 뺀다 → 200" "200" "$(unshare claude_employee01 "$TP" claude_employee02)"
+expect "  employee02 GET TP · TPC → 403 · 403" "403|403" "$(capi GET "/api/pages/$TP" claude_employee02)|$(capi GET "/api/pages/$TPC" claude_employee02)"
+expect "대조용으로 다시 보기 → 200" "200" "$(share claude_employee01 "$TP" claude_employee02 view)"
 
 # ════════════════════════════════════════════════════════════════
 hr "C:T-65  판정 함수 = 목록 SQL — 전 계정 × 전 페이지 (팀 공간 공유 포함)"
@@ -655,7 +664,7 @@ PHP
 
 if [ -n "$DEAD" ]; then
   psqlq "INSERT INTO community.page_shares (page_id, user_id, level, granted_by)
-         SELECT p.id, (SELECT id FROM users WHERE username='$DEAD'), 'edit', (SELECT id FROM users WHERE username='qa_employee01')
+         SELECT p.id, (SELECT id FROM users WHERE username='$DEAD'), 'edit', (SELECT id FROM users WHERE username='claude_employee01')
            FROM community.pages p WHERE p.public_id='$TP'" >/dev/null
   note "(임시 DB) 비활성 계정 $DEAD 에게 팀 페이지 편집 줄 1개 — 효력 0 이어야 한다"
 fi
@@ -688,7 +697,7 @@ if ! python3 -c 'import playwright' 2>/dev/null; then
   skip "브라우저" "playwright 가 없다"
 else
   expect "브라우저 앞 Admin 재인증 → 200" "200" "$(reauth_admin)"
-  SA=$(cookie_of qa_admin01); S1=$(cookie_of qa_employee01); S2=$(cookie_of qa_employee02)
+  SA=$(cookie_of claude_admin01); S1=$(cookie_of claude_employee01); S2=$(cookie_of claude_employee02)
   SMOKE_ADMIN="$SA" SMOKE_E1="$S1" SMOKE_E2="$S2" SMOKE_P="$P" SMOKE_TP="$TP" SMOKE_N1="$N1" SMOKE_N2="$N2" \
   SMOKE_SHOTS="${SHOTS:-}" python3 "$ROOT/tests/community/browser_5a2.py" "$SITE" "$UA" > "$WORK/smoke.txt" 2>&1
   sed 's/^/    /' "$WORK/smoke.txt"

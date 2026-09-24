@@ -9,6 +9,7 @@
 #
 # ★ 운영 DB 를 건드리지 않는다 — stage6c.sh 와 같은 틀(임시 DB `tbox_7a_test`, 포트 8094). 정리 함수는 임시 DB 에서 tbox_owner 역할로 부른다.
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
+. "$ROOT/tests/lib/secrets.sh" || { echo "tests/lib/secrets.sh 를 읽지 못했다 — 시험을 시작하지 않는다 (R-62)"; exit 3; }
 PORT=8094
 SITE="http://127.0.0.1:$PORT"
 BASE="$SITE/tbox"
@@ -87,19 +88,20 @@ qa_password() { sudo -n awk -v u="$1" '$1==u{print $3}' /etc/tbox-v2/seed-accoun
 qa_secret()   { sudo -n awk -v u="$1" '$1==u{print $2}' /etc/tbox-v2/qa-totp.txt 2>/dev/null; }
 
 login() {
-  local who="$1" jar="$JAR_DIR/$1.jar" pw sec raw code left out try
+  local who="$1" jar="$JAR_DIR/$1.jar" pw sec raw code left out try body
   pw=$(qa_password "$who")
   sec=$(qa_secret "$who")
   [ -n "$pw" ] || return 2
   for try in 1 2 3; do
     if [ -n "$sec" ]; then
-      raw=$(php "$ROOT/scripts/totp_code.php" "$sec" 2>/dev/null)
+      raw=$(totp_now sec 2>/dev/null)
       code=${raw%%$'\n'*}
-      out=$(curl -s -c "$jar" -A "$UA" -H 'Content-Type: application/json' \
-            -d "{\"username\":\"$who\",\"password\":\"$pw\",\"otp\":\"$code\"}" "$BASE/api/login")
+      # 비밀번호가 든 본문은 인자가 아니라 표준입력으로 보낸다(R-62 · tests/lib/secrets.sh). 보내는 바이트는 같다.
+      printf -v body '{"username":"%s","password":"%s","otp":"%s"}' "$who" "$pw" "$code"
+      out=$(curl_json_secret body -s -c "$jar" -A "$UA" -H 'Content-Type: application/json' "$BASE/api/login")
     else
-      out=$(curl -s -c "$jar" -A "$UA" -H 'Content-Type: application/json' \
-            -d "{\"username\":\"$who\",\"password\":\"$pw\"}" "$BASE/api/login")
+      printf -v body '{"username":"%s","password":"%s"}' "$who" "$pw"
+      out=$(curl_json_secret body -s -c "$jar" -A "$UA" -H 'Content-Type: application/json' "$BASE/api/login")
     fi
     case "$out" in
       *'"ok":true'*)
@@ -258,18 +260,18 @@ done
 expect "임시 인스턴스가 떴다 (미로그인 커뮤니티 창구 401)" "401" "$READY"
 [ "$READY" = "401" ] || { echo "인스턴스를 띄우지 못했다 — 중단"; tail -5 "$INST/server.log"; exit 4; }
 
-sub "로그인 (qa 계정 다섯 — **순차**)"
-for who in qa_employee01 qa_employee02 qa_manager01 qa_admin01 qa_guest01; do
+sub "로그인 (claude_ 검토 계정 다섯 — **순차**, F-71)"
+for who in claude_employee01 claude_employee02 claude_manager01 claude_admin01 claude_guest01; do
   tok=$(login "$who")
   if [ -z "$tok" ]; then echo "  ✖ $who 로그인 실패 — 중단"; exit 4; fi
   eval "CSRF_${who}='$tok'"
   echo "  ✔ $who"
 done
 # 개인 공간을 연다(없으면 만든다) — 그 뒤의 목록·인계가 공간을 전제로 한다.
-for who in qa_employee01 qa_employee02 qa_manager01 qa_admin01; do capi GET /api/me/space "$who" > /dev/null; done
-TEAM1=$(psqlq "SELECT team_id FROM users WHERE username='qa_employee01'")
-TEAM2=$(psqlq "SELECT team_id FROM users WHERE username='qa_employee02'")
-note "팀: qa_employee01·qa_manager01=$TEAM1 · qa_employee02=$TEAM2"
+for who in claude_employee01 claude_employee02 claude_manager01 claude_admin01; do capi GET /api/me/space "$who" > /dev/null; done
+TEAM1=$(psqlq "SELECT team_id FROM users WHERE username='claude_employee01'")
+TEAM2=$(psqlq "SELECT team_id FROM users WHERE username='claude_employee02'")
+note "팀: claude_employee01·claude_manager01=$TEAM1 · claude_employee02=$TEAM2"
 DEAD=$(psqlq "SELECT username FROM public.users WHERE is_active = false ORDER BY id LIMIT 1")
 note "비활성 계정: ${DEAD:-없음}"
 
@@ -297,11 +299,12 @@ page_html() {   # $1 주소(SITE 기준 경로) $2 계정
 uid() { psqlq "SELECT id FROM users WHERE username='$1'"; }
 reauth_admin() {
   local pw rc
-  pw=$(qa_password qa_admin01)
-  python3 -c "import json,sys;print(json.dumps({'password':sys.argv[1]}))" "$pw" > "$WORK/reauth.json"
-  rc=$(curl -s -o /dev/null -w '%{http_code}' -b "$JAR_DIR/qa_admin01.jar" -A "$UA" -H 'Content-Type: application/json' \
-        -H "X-CSRF-Token: $CSRF_qa_admin01" --data-binary "@$WORK/reauth.json" "$BASE/api/me/reauth")
-  rm -f "$WORK/reauth.json"
+  pw=$(qa_password claude_admin01)
+  # 비밀번호는 표준입력 첫 줄로 파이썬에(py_secret) — 명령 인자에 싣지 않는다(R-62). 파이썬이 만든 본문(끝 줄바꿈까지)은
+  # 파일을 거치지 않고 파이프로 curl 의 --data-binary @- 에 간다 — 옛 「파일 → @파일」 과 보내는 바이트가 같다.
+  rc=$(py_secret pw -- python3 -c "import json,sys;print(json.dumps({'password':sys.stdin.readline().rstrip('\n')}))" \
+       | curl -s -o /dev/null -w '%{http_code}' -b "$JAR_DIR/claude_admin01.jar" -A "$UA" -H 'Content-Type: application/json' \
+        -H "X-CSRF-Token: $CSRF_claude_admin01" --data-binary @- "$BASE/api/me/reauth")
   printf '%s' "$rc"
 }
 
@@ -387,27 +390,27 @@ purge() { sudo -n -u postgres psql -d "$DB" -q -t -A -c "SET ROLE tbox_owner; SE
 pid_of() { psqlq "SELECT id FROM community.pages WHERE public_id='$1'"; }
 
 # ─── 준비: 내용이 든 페이지(판 둘·댓글·답글·반응·태그·조회·공유·편집 중·상태) + DB 하나를 지우고 30일 전으로 당긴다 ───
-PD=$(make_page qa_employee01 'C7A-지울 페이지')
-set_vis qa_employee01 "$PD" internal
-patch_title qa_employee01 "$PD" 'C7A-지울 페이지 2' > /dev/null
+PD=$(make_page claude_employee01 'C7A-지울 페이지')
+set_vis claude_employee01 "$PD" internal
+patch_title claude_employee01 "$PD" 'C7A-지울 페이지 2' > /dev/null
 psqlq "UPDATE community.page_versions v SET edited_at = edited_at - interval '10 minutes' FROM community.pages p WHERE p.id=v.page_id AND p.public_id='$PD'" > /dev/null
-patch_title qa_employee01 "$PD" 'C7A-지울 페이지 3' > /dev/null
-comment qa_employee02 "$PD" "{'body':'C7A-댓글 @qa_employee01'}" > /dev/null; C0=$(cid)
-comment qa_employee01 "$PD" "{'body':'C7A-답글','parent_id':'$C0'}" > /dev/null
-capi POST "/api/comments/$C0/helpful" qa_employee01 > /dev/null
-capi POST "/api/pages/$PD/heartbeat" qa_employee01 <(printf '{}') > /dev/null
-put_tags qa_employee01 "$PD" "['c7a']" > /dev/null
-capi GET "/api/pages/$PD" qa_employee02 > /dev/null
-share qa_employee01 "$PD" qa_manager01 view > /dev/null
-capi PATCH "/api/pages/$PD/properties" qa_employee01 <(printf '{"status":"doing"}') > /dev/null
-read DBP DBI <<< "$(mkdb qa_employee01 'C7A-지울 표')"
-K=$(addprop qa_employee01 "$DBI" '금액' number)
-newrow qa_employee01 "$DBP" 'C7A-행' "{'$K': 5}" > /dev/null; RW=$(rid)
-setv qa_employee01 "$RW" "{'$K': 7}" > /dev/null
-PK=$(make_page qa_employee01 'C7A-남길 페이지(최근 삭제)')
-PRS=$(make_page qa_employee01 'C7A-되살린 페이지')
-capi DELETE "/api/pages/$PRS" qa_employee01 > /dev/null
-expect "지웠다가 바로 되살림(정리 시각 전) → 200" "200" "$(capi POST "/api/pages/$PRS/restore" qa_employee01 <(printf '{}'))"
+patch_title claude_employee01 "$PD" 'C7A-지울 페이지 3' > /dev/null
+comment claude_employee02 "$PD" "{'body':'C7A-댓글 @claude_employee01'}" > /dev/null; C0=$(cid)
+comment claude_employee01 "$PD" "{'body':'C7A-답글','parent_id':'$C0'}" > /dev/null
+capi POST "/api/comments/$C0/helpful" claude_employee01 > /dev/null
+capi POST "/api/pages/$PD/heartbeat" claude_employee01 <(printf '{}') > /dev/null
+put_tags claude_employee01 "$PD" "['c7a']" > /dev/null
+capi GET "/api/pages/$PD" claude_employee02 > /dev/null
+share claude_employee01 "$PD" claude_manager01 view > /dev/null
+capi PATCH "/api/pages/$PD/properties" claude_employee01 <(printf '{"status":"doing"}') > /dev/null
+read DBP DBI <<< "$(mkdb claude_employee01 'C7A-지울 표')"
+K=$(addprop claude_employee01 "$DBI" '금액' number)
+newrow claude_employee01 "$DBP" 'C7A-행' "{'$K': 5}" > /dev/null; RW=$(rid)
+setv claude_employee01 "$RW" "{'$K': 7}" > /dev/null
+PK=$(make_page claude_employee01 'C7A-남길 페이지(최근 삭제)')
+PRS=$(make_page claude_employee01 'C7A-되살린 페이지')
+capi DELETE "/api/pages/$PRS" claude_employee01 > /dev/null
+expect "지웠다가 바로 되살림(정리 시각 전) → 200" "200" "$(capi POST "/api/pages/$PRS/restore" claude_employee01 <(printf '{}'))"
 ID_PD=$(pid_of "$PD"); ID_RW=$(pid_of "$RW")
 expect "준비 — DB 행의 값 이력이 있다" "yes" "$([ "$(psqlq "SELECT count(*) FROM community.page_property_events WHERE page_id=$ID_RW AND prop LIKE 'db:%'")" -ge 1 ] && echo yes || echo no)"
 # 정리 전에 지울 표마다 줄이 **있는지** 먼저 본다(없던 것을 「0」으로 증명하지 않게 — 독립 검토)
@@ -417,7 +420,7 @@ done
 expect "정리 전 답글·도움됐어요도 있다" "yes" "$([ "$(psqlq "SELECT count(*) FROM community.comment_reactions r JOIN community.comments c ON c.id=r.comment_id WHERE c.page_id=$ID_PD")" -ge 1 ] && [ "$(psqlq "SELECT count(*) FROM community.comments WHERE page_id=$ID_PD AND parent_comment_id IS NOT NULL")" -ge 1 ] && echo yes || echo no)"
 N_ST=$(psqlq "SELECT count(*) FROM community.page_property_events WHERE page_id=$ID_PD AND prop='status'")
 expect "정리 전 상태 기록 1" "1" "$N_ST"
-for p in "$PD" "$DBP" "$PK"; do capi DELETE "/api/pages/$p" qa_employee01 > /dev/null; done
+for p in "$PD" "$DBP" "$PK"; do capi DELETE "/api/pages/$p" claude_employee01 > /dev/null; done
 for p in "$PD" "$DBP" "$RW"; do psqlq "UPDATE community.pages SET purge_after = now() - interval '1 hour' WHERE public_id = '$p'" > /dev/null; done
 
 # ════════════════════════════════════════════════════════════════
@@ -456,16 +459,16 @@ expect "p_max 5001 → 오류" "yes" "$(perr 5001 | grep -q 'p_max' && echo yes)
 
 # ════════════════════════════════════════════════════════════════
 hr "C:T-162  앱에서 — 목록·되살리기·읽기"
-capi GET /api/me/trash qa_employee01 > /dev/null
+capi GET /api/me/trash claude_employee01 > /dev/null
 lacks "휴지통 목록에 정리한 페이지 없음" "$PD" "$(cat "$WORK/b")"
 contains "  30일 안 된 페이지는 휴지통에 있다" "$PK" "$(cat "$WORK/b")"
-expect "정리한 페이지 되살리기 → 404" "404" "$(capi POST "/api/pages/$PD/restore" qa_employee01 <(printf '{}'))"
-expect "정리한 페이지 읽기 → 404" "404" "$(capi GET "/api/pages/$PD" qa_employee01)"
-PDUE=$(make_page qa_employee01 'C7A-정리 시각 지난 페이지')
-capi DELETE "/api/pages/$PDUE" qa_employee01 > /dev/null
+expect "정리한 페이지 되살리기 → 404" "404" "$(capi POST "/api/pages/$PD/restore" claude_employee01 <(printf '{}'))"
+expect "정리한 페이지 읽기 → 404" "404" "$(capi GET "/api/pages/$PD" claude_employee01)"
+PDUE=$(make_page claude_employee01 'C7A-정리 시각 지난 페이지')
+capi DELETE "/api/pages/$PDUE" claude_employee01 > /dev/null
 psqlq "UPDATE community.pages SET purge_after = now() - interval '1 minute' WHERE public_id='$PDUE'" > /dev/null
-expect "정리 시각이 지났지만 아직 정리 전 → 되살리기 404(정리와 겨루지 않는다 — M-1)" "404" "$(capi POST "/api/pages/$PDUE/restore" qa_employee01 <(printf '{}'))"
-expect "30일 안 된 페이지 되살리기 → 200" "200" "$(capi POST "/api/pages/$PK/restore" qa_employee01 <(printf '{}'))"
+expect "정리 시각이 지났지만 아직 정리 전 → 되살리기 404(정리와 겨루지 않는다 — M-1)" "404" "$(capi POST "/api/pages/$PDUE/restore" claude_employee01 <(printf '{}'))"
+expect "30일 안 된 페이지 되살리기 → 200" "200" "$(capi POST "/api/pages/$PK/restore" claude_employee01 <(printf '{}'))"
 
 # ════════════════════════════════════════════════════════════════
 hr "C:T-163  권한 — 앱 계정은 부를 수 없다"

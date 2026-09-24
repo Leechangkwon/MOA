@@ -2,17 +2,17 @@
 # tests/community/stage4b.sh — 커뮤니티 4-B 수락 기준 C:T-30 ~ C:T-37 실행
 #                              (../../../community/stage4b-visibility-directive.md 「완료 기준」)
 #
-#   C:T-30 팀 범위       qa_employee01 이 페이지를 `team` 으로 → 200 ·
-#                        같은 팀 qa_manager01 200 읽기(감사 `page.read allow same_team`) ·
-#                        다른 팀 qa_employee02 403 · qa_guest01 403
-#   C:T-31 사내 범위     `internal` 로 → qa_employee02 200 · qa_guest01 403(Guest 제외) · Admin 200
+#   C:T-30 팀 범위       claude_employee01 이 페이지를 `team` 으로 → 200 ·
+#                        같은 팀 claude_manager01 200 읽기(감사 `page.read allow same_team`) ·
+#                        다른 팀 claude_employee02 403 · claude_guest01 403
+#   C:T-31 사내 범위     `internal` 로 → claude_employee02 200 · claude_guest01 403(Guest 제외) · Admin 200
 #   C:T-32 남이 고치기   `team`·`internal` 이어도 소유자 아닌 사람의 PATCH 는 403
 #                        (본문 PATCH · 공개 범위 PATCH 둘 다)
 #   C:T-33 넓히기        부모 `private`, 자식을 `internal` 로 → 400 `wider_than_parent` · 감사 · DB 불변
 #   C:T-34 좁히기        부모 `internal`→`private`, 하위에 `internal` 존재 →
 #                        cascade 없이 400 `children_wider` / `cascade:true` 면 200 + 하위 전부 `private`
 #                        + **항목마다 감사**
-#   C:T-35 목록 격리     qa_employee02 의 `GET /api/pages?space=<employee01 개인공간>` → 403 ·
+#   C:T-35 목록 격리     claude_employee02 의 `GET /api/pages?space=<employee01 개인공간>` → 403 ·
 #                        employee02 의 개인 공간 목록 원문에 employee01 의 제목 0건 ·
 #                        `internal` 페이지는 직접 읽기로는 제목이 보인다
 #   C:T-36 팀 공간       `GET /api/spaces` 가 내 팀 공간을 만들어 돌려준다(두 번째는 만들지 않는다 —
@@ -22,7 +22,7 @@
 #   회귀                 security_lint 0 · php -l · bash -n · doc-schema 사본 diff 0
 #
 # 규칙 (CLAUDE.md 3장) — stage3.sh·stage4a.sh 와 같다
-#   · 검토 계정 `qa_` 다섯뿐. 시드 계정은 사용자 몫.
+#   · 검토 계정 `claude_` 다섯뿐. 시드 계정은 사용자 몫.
 #   · 모든 요청에 `-A "tbox-review/<날짜>"`.
 #   · 운영 DB 에 DDL·DML 을 실행하지 않는다 (psql 은 **읽기**만).
 #   · 만든 페이지는 **앱 창구로만** 되돌린다(논리 삭제). 만들어진 팀 공간은 남는다 —
@@ -36,6 +36,7 @@
 set -u
 
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
+. "$ROOT/tests/lib/secrets.sh" || { echo "tests/lib/secrets.sh 를 읽지 못했다 — 시험을 시작하지 않는다 (R-62)"; exit 3; }
 SITE="http://127.0.0.1:8082"
 BASE="$SITE/tbox"
 CBASE="$SITE/community"
@@ -97,19 +98,19 @@ qa_password() { sudo -n awk -v u="$1" '$1==u{print $3}' /etc/tbox-v2/seed-accoun
 qa_secret()   { sudo -n awk -v u="$1" '$1==u{print $2}' /etc/tbox-v2/qa-totp.txt 2>/dev/null; }
 
 login() {
-  local who="$1" jar="$JAR_DIR/$1.jar" pw sec raw code left out try
+  local who="$1" jar="$JAR_DIR/$1.jar" pw sec raw code left out try body
   pw=$(qa_password "$who")
   sec=$(qa_secret "$who")
   [ -n "$pw" ] || return 2
   for try in 1 2 3; do
     if [ -n "$sec" ]; then
-      raw=$(php "$ROOT/scripts/totp_code.php" "$sec" 2>/dev/null)
+      raw=$(totp_now sec 2>/dev/null)
       code=${raw%%$'\n'*}
-      out=$(curl -s -c "$jar" -A "$UA" -H 'Content-Type: application/json' \
-            -d "{\"username\":\"$who\",\"password\":\"$pw\",\"otp\":\"$code\"}" "$BASE/api/login")
+      printf -v body '{"username":"%s","password":"%s","otp":"%s"}' "$who" "$pw" "$code"
+      out=$(curl_json_secret body -s -c "$jar" -A "$UA" -H 'Content-Type: application/json' "$BASE/api/login")
     else
-      out=$(curl -s -c "$jar" -A "$UA" -H 'Content-Type: application/json' \
-            -d "{\"username\":\"$who\",\"password\":\"$pw\"}" "$BASE/api/login")
+      printf -v body '{"username":"%s","password":"%s"}' "$who" "$pw"
+      out=$(curl_json_secret body -s -c "$jar" -A "$UA" -H 'Content-Type: application/json' "$BASE/api/login")
     fi
     case "$out" in
       *'"ok":true'*)
@@ -191,7 +192,7 @@ if [ "$HAVE_PSQL" = "1" ]; then
   echo "· qa 계정의 팀 구성 (판정의 전제 — 이 표 위에서 시험을 짠다)"
   psqlq "SELECT u.username || ' / ' || u.role || ' / ' || coalesce(t.name,'(팀 없음)')
            FROM users u LEFT JOIN teams t ON t.id = u.team_id
-          WHERE u.username IN ('qa_admin01','qa_manager01','qa_employee01','qa_employee02','qa_guest01')
+          WHERE u.username IN ('claude_admin01','claude_manager01','claude_employee01','claude_employee02','claude_guest01')
           ORDER BY u.id" | sed 's/^/    /'
 else
   echo "psql 을 쓸 수 없다 — DB·감사 확인 항목은 SKIP 된다"
@@ -200,7 +201,7 @@ fi
 AUDIT_START=$(mark); AUDIT_START=${AUDIT_START:-0}
 
 sub "로그인 (qa 계정 다섯)"
-for who in qa_admin01 qa_manager01 qa_employee01 qa_employee02 qa_guest01; do
+for who in claude_admin01 claude_manager01 claude_employee01 claude_employee02 claude_guest01; do
   tok=$(login "$who")
   if [ -z "$tok" ]; then echo "  ✖ $who 로그인 실패 — 중단"; exit 4; fi
   eval "CSRF_${who}='$tok'"
@@ -212,8 +213,8 @@ hr "C:T-36  팀 공간 — 없으면 만든다 · 두 번째는 만들지 않는
 
 SPACES_BEFORE=$(psqlq "SELECT count(*) FROM community.spaces WHERE kind='team'")
 
-CODE=$(capi GET /api/spaces qa_employee01)
-expect "GET /api/spaces (qa_employee01)" "200" "$CODE"
+CODE=$(capi GET /api/spaces claude_employee01)
+expect "GET /api/spaces (claude_employee01)" "200" "$CODE"
 SP_RAW1=$(cat "$WORK/b")
 note "응답: $SP_RAW1"
 TEAM_SPACE=$(jget "[s['id'] for s in d['spaces'] if s['kind']=='team'][0]" < "$WORK/b")
@@ -221,14 +222,14 @@ MY_SPACE=$(jget "[s['id'] for s in d['spaces'] if s['kind']=='personal'][0]" < "
 contains "내 팀 공간(개발팀)이 목록에 있다" '"kind":"team"' "$SP_RAW1"
 note "팀 공간 번호=$TEAM_SPACE · 내 개인 공간 번호=$MY_SPACE"
 
-CODE=$(capi GET /api/spaces qa_employee01)
+CODE=$(capi GET /api/spaces claude_employee01)
 SP_RAW2=$(cat "$WORK/b")
 expect "두 번째 호출도 200" "200" "$CODE"
 contains "두 번째 호출은 만들지 않았다 (created=false)" '"created":false' "$SP_RAW2"
 
 if [ "$HAVE_PSQL" = "1" ]; then
   # 같은 팀의 다른 사람이 불러도 행이 늘지 않는다.
-  capi GET /api/spaces qa_manager01 >/dev/null
+  capi GET /api/spaces claude_manager01 >/dev/null
   SPACES_AFTER=$(psqlq "SELECT count(*) FROM community.spaces WHERE kind='team' AND team_id=1")
   expect "개발팀의 팀 공간은 정확히 1행 (UNIQUE(team_id) WHERE kind='team')" "1" "$SPACES_AFTER"
   note "시험 전 팀 공간 수=$SPACES_BEFORE · 지금(개발팀)=$SPACES_AFTER"
@@ -238,59 +239,59 @@ else
 fi
 
 sub "팀원은 그 공간에 페이지를 만들고 고칠 수 있다"
-RES=$(make_page qa_employee01 "팀공간-4B-원본" "" "$TEAM_SPACE")
+RES=$(make_page claude_employee01 "팀공간-4B-원본" "" "$TEAM_SPACE")
 TEAM_PAGE=${RES#*|}
-expect "qa_employee01 이 팀 공간에 페이지 만들기" "201" "${RES%%|*}"
+expect "claude_employee01 이 팀 공간에 페이지 만들기" "201" "${RES%%|*}"
 MADE_PAGES="$MADE_PAGES $TEAM_PAGE"
 
-CODE=$(capi GET "/api/pages/$TEAM_PAGE" qa_manager01)
-expect "같은 팀 qa_manager01 이 그 페이지를 읽는다" "200" "$CODE"
+CODE=$(capi GET "/api/pages/$TEAM_PAGE" claude_manager01)
+expect "같은 팀 claude_manager01 이 그 페이지를 읽는다" "200" "$CODE"
 contains "granted_by=team_member" '"granted_by":"team_member"' "$(cat "$WORK/b")"
 contains "can_edit=true (팀원은 함께 고친다)" '"can_edit":true' "$(cat "$WORK/b")"
 
 printf '{"doc_version":1,"title":"팀공간-4B-원본(매니저가 고침)"}' > "$WORK/p.json"
-CODE=$(capi PATCH "/api/pages/$TEAM_PAGE" qa_manager01 "$WORK/p.json")
-expect "같은 팀 qa_manager01 이 그 페이지를 고친다" "200" "$CODE"
+CODE=$(capi PATCH "/api/pages/$TEAM_PAGE" claude_manager01 "$WORK/p.json")
+expect "같은 팀 claude_manager01 이 그 페이지를 고친다" "200" "$CODE"
 
-CODE=$(capi GET "/api/pages/$TEAM_PAGE" qa_employee02)
-expect "다른 팀 qa_employee02 는 그 페이지를 못 읽는다" "403" "$CODE"
-CODE=$(capi GET "/api/pages?space=$TEAM_SPACE" qa_employee02)
-expect "다른 팀 qa_employee02 의 팀 공간 목록 요청" "403" "$CODE"
+CODE=$(capi GET "/api/pages/$TEAM_PAGE" claude_employee02)
+expect "다른 팀 claude_employee02 는 그 페이지를 못 읽는다" "403" "$CODE"
+CODE=$(capi GET "/api/pages?space=$TEAM_SPACE" claude_employee02)
+expect "다른 팀 claude_employee02 의 팀 공간 목록 요청" "403" "$CODE"
 [ "$HAVE_PSQL" -eq 1 ] && Q10_MARK=$(mark) || Q10_MARK=0
-RES=$(make_page qa_employee02 "남의-팀공간에-만들기" "" "$TEAM_SPACE")
-expect "다른 팀 qa_employee02 가 그 공간에 만들기" "403" "${RES%%|*}"
+RES=$(make_page claude_employee02 "남의-팀공간에-만들기" "" "$TEAM_SPACE")
+expect "다른 팀 claude_employee02 가 그 공간에 만들기" "403" "${RES%%|*}"
 # 대기열 10번 A.1(2026-09-24) — 전에는 서버 로그만 남던 거부가 감사에 남는다
 [ "$HAVE_PSQL" -eq 1 ] && expect "  감사 page.create deny not_member 1행" "1" \
   "$(psqlq "SELECT count(*) FROM audit_logs WHERE id > ${Q10_MARK} AND action='page.create' AND result='deny' AND reason='not_member'")"
 
-CODE=$(capi GET "/api/pages?space=$TEAM_SPACE" qa_manager01)
-expect "같은 팀 qa_manager01 의 팀 공간 목록 요청" "200" "$CODE"
+CODE=$(capi GET "/api/pages?space=$TEAM_SPACE" claude_manager01)
+expect "같은 팀 claude_manager01 의 팀 공간 목록 요청" "200" "$CODE"
 contains "팀 공간 요약이 응답에 있다" '"kind":"team"' "$(cat "$WORK/b")"
 
 # ════════════════════════════════════════════════════════════════
 hr "C:T-30  「team」 범위 — 같은 팀만 본다"
 
-RES=$(make_page qa_employee01 "4B-범위시험-부모")
+RES=$(make_page claude_employee01 "4B-범위시험-부모")
 ROOT_PAGE=${RES#*|}
 expect "개인 공간에 페이지 만들기" "201" "${RES%%|*}"
 MADE_PAGES="$MADE_PAGES $ROOT_PAGE"
 contains "새 페이지는 비공개로 시작한다" '"visibility":"private"' "$(cat "$WORK/b")"
 
 T30_MARK=$(mark)
-CODE=$(set_vis qa_employee01 "$ROOT_PAGE" team)
+CODE=$(set_vis claude_employee01 "$ROOT_PAGE" team)
 expect "소유자가 team 으로 바꾼다" "200" "$CODE"
 note "응답: $(cat "$WORK/b")"
 [ "$HAVE_PSQL" = "1" ] && expect "DB 의 visibility" "team" "$(vis_of "$ROOT_PAGE")"
 
-CODE=$(capi GET "/api/pages/$ROOT_PAGE" qa_manager01)
-expect "같은 팀 qa_manager01 읽기" "200" "$CODE"
+CODE=$(capi GET "/api/pages/$ROOT_PAGE" claude_manager01)
+expect "같은 팀 claude_manager01 읽기" "200" "$CODE"
 contains "granted_by=same_team" '"granted_by":"same_team"' "$(cat "$WORK/b")"
 contains "can_edit=false (보는 것과 고치는 것은 다르다)" '"can_edit":false' "$(cat "$WORK/b")"
 
-CODE=$(capi GET "/api/pages/$ROOT_PAGE" qa_employee02)
-expect "다른 팀 qa_employee02 읽기" "403" "$CODE"
-CODE=$(capi GET "/api/pages/$ROOT_PAGE" qa_guest01)
-expect "qa_guest01 읽기" "403" "$CODE"
+CODE=$(capi GET "/api/pages/$ROOT_PAGE" claude_employee02)
+expect "다른 팀 claude_employee02 읽기" "403" "$CODE"
+CODE=$(capi GET "/api/pages/$ROOT_PAGE" claude_guest01)
+expect "claude_guest01 읽기" "403" "$CODE"
 
 if [ "$HAVE_PSQL" = "1" ]; then
   expect "감사 page.read allow same_team 1건" "1" \
@@ -304,41 +305,41 @@ fi
 # ════════════════════════════════════════════════════════════════
 hr "C:T-31  「internal」 범위 — 로그인 전원, Guest 제외"
 
-CODE=$(set_vis qa_employee01 "$ROOT_PAGE" internal)
+CODE=$(set_vis claude_employee01 "$ROOT_PAGE" internal)
 expect "소유자가 internal 로 바꾼다" "200" "$CODE"
 [ "$HAVE_PSQL" = "1" ] && expect "DB 의 visibility" "internal" "$(vis_of "$ROOT_PAGE")"
 
-CODE=$(capi GET "/api/pages/$ROOT_PAGE" qa_employee02)
-expect "다른 팀 qa_employee02 읽기" "200" "$CODE"
+CODE=$(capi GET "/api/pages/$ROOT_PAGE" claude_employee02)
+expect "다른 팀 claude_employee02 읽기" "200" "$CODE"
 INTERNAL_BODY=$(cat "$WORK/b")
 contains "granted_by=matrix" '"granted_by":"matrix"' "$INTERNAL_BODY"
 contains "제목이 응답 원문에 보인다" '4B-범위시험-부모' "$INTERNAL_BODY"
 
-CODE=$(capi GET "/api/pages/$ROOT_PAGE" qa_guest01)
-expect "qa_guest01 읽기 (Guest 제외)" "403" "$CODE"
-CODE=$(capi GET "/api/pages/$ROOT_PAGE" qa_admin01)
-expect "qa_admin01 읽기" "200" "$CODE"
+CODE=$(capi GET "/api/pages/$ROOT_PAGE" claude_guest01)
+expect "claude_guest01 읽기 (Guest 제외)" "403" "$CODE"
+CODE=$(capi GET "/api/pages/$ROOT_PAGE" claude_admin01)
+expect "claude_admin01 읽기" "200" "$CODE"
 
-CODE=$(set_vis qa_employee01 "$ROOT_PAGE" published)
+CODE=$(set_vis claude_employee01 "$ROOT_PAGE" published)
 expect "published 는 화면·API 가 받지 않는다 (5단계)" "400" "$CODE"
 
 # ════════════════════════════════════════════════════════════════
 hr "C:T-32  남이 고치기 — 보이는 것과 고치는 것은 다르다"
 
 printf '{"doc_version":1,"title":"남이 고친 제목"}' > "$WORK/p.json"
-CODE=$(capi PATCH "/api/pages/$ROOT_PAGE" qa_employee02 "$WORK/p.json")
-expect "internal 페이지를 남(qa_employee02)이 본문 PATCH" "403" "$CODE"
-CODE=$(capi PATCH "/api/pages/$ROOT_PAGE" qa_manager01 "$WORK/p.json")
-expect "internal 페이지를 같은 팀 qa_manager01 이 본문 PATCH" "403" "$CODE"
-CODE=$(capi PATCH "/api/pages/$ROOT_PAGE" qa_admin01 "$WORK/p.json")
+CODE=$(capi PATCH "/api/pages/$ROOT_PAGE" claude_employee02 "$WORK/p.json")
+expect "internal 페이지를 남(claude_employee02)이 본문 PATCH" "403" "$CODE"
+CODE=$(capi PATCH "/api/pages/$ROOT_PAGE" claude_manager01 "$WORK/p.json")
+expect "internal 페이지를 같은 팀 claude_manager01 이 본문 PATCH" "403" "$CODE"
+CODE=$(capi PATCH "/api/pages/$ROOT_PAGE" claude_admin01 "$WORK/p.json")
 expect "internal 페이지를 Admin 이 본문 PATCH" "403" "$CODE"
 
 T32_MARK=$(mark)
-CODE=$(set_vis qa_employee02 "$ROOT_PAGE" private)
-expect "남(qa_employee02)이 공개 범위 PATCH" "403" "$CODE"
-CODE=$(set_vis qa_manager01 "$ROOT_PAGE" private)
-expect "같은 팀 qa_manager01 이 공개 범위 PATCH" "403" "$CODE"
-CODE=$(set_vis qa_admin01 "$ROOT_PAGE" private)
+CODE=$(set_vis claude_employee02 "$ROOT_PAGE" private)
+expect "남(claude_employee02)이 공개 범위 PATCH" "403" "$CODE"
+CODE=$(set_vis claude_manager01 "$ROOT_PAGE" private)
+expect "같은 팀 claude_manager01 이 공개 범위 PATCH" "403" "$CODE"
+CODE=$(set_vis claude_admin01 "$ROOT_PAGE" private)
 expect "Admin 이 공개 범위 PATCH" "403" "$CODE"
 [ "$HAVE_PSQL" = "1" ] && expect "DB 는 그대로 internal" "internal" "$(vis_of "$ROOT_PAGE")"
 if [ "$HAVE_PSQL" = "1" ]; then
@@ -351,16 +352,16 @@ fi
 hr "C:T-33  넓히기 — 자식은 부모보다 넓을 수 없다"
 
 # 부모를 private 로 되돌리고(하위가 없으므로 cascade 불필요) 자식을 만든다.
-CODE=$(set_vis qa_employee01 "$ROOT_PAGE" private)
+CODE=$(set_vis claude_employee01 "$ROOT_PAGE" private)
 expect "부모를 private 로 되돌린다" "200" "$CODE"
 
-RES=$(make_page qa_employee01 "4B-범위시험-자식" "$ROOT_PAGE")
+RES=$(make_page claude_employee01 "4B-범위시험-자식" "$ROOT_PAGE")
 CHILD=${RES#*|}
 expect "자식 만들기" "201" "${RES%%|*}"
 contains "새 자식은 **부모와 같은 범위**로 시작한다" '"visibility":"private"' "$(cat "$WORK/b")"
 
 T33_MARK=$(mark)
-CODE=$(set_vis qa_employee01 "$CHILD" internal)
+CODE=$(set_vis claude_employee01 "$CHILD" internal)
 expect "부모 private 아래 자식을 internal 로" "400" "$CODE"
 T33_BODY=$(cat "$WORK/b")
 contains "사유 wider_than_parent" '"reason":"wider_than_parent"' "$T33_BODY"
@@ -377,17 +378,17 @@ fi
 # ════════════════════════════════════════════════════════════════
 hr "C:T-34  좁히기 — 하위가 더 넓으면 cascade 없이는 막는다"
 
-CODE=$(set_vis qa_employee01 "$ROOT_PAGE" internal)
+CODE=$(set_vis claude_employee01 "$ROOT_PAGE" internal)
 expect "부모를 internal 로" "200" "$CODE"
-CODE=$(set_vis qa_employee01 "$CHILD" internal)
+CODE=$(set_vis claude_employee01 "$CHILD" internal)
 expect "자식도 internal 로 (이제 부모가 넓다)" "200" "$CODE"
-RES=$(make_page qa_employee01 "4B-범위시험-손자" "$CHILD")
+RES=$(make_page claude_employee01 "4B-범위시험-손자" "$CHILD")
 GRAND=${RES#*|}
 expect "손자 만들기 (부모와 같은 internal 로 시작)" "201" "${RES%%|*}"
 contains "손자도 internal" '"visibility":"internal"' "$(cat "$WORK/b")"
 
 T34_MARK=$(mark)
-CODE=$(set_vis qa_employee01 "$ROOT_PAGE" private)
+CODE=$(set_vis claude_employee01 "$ROOT_PAGE" private)
 expect "cascade 없이 부모를 private 로" "400" "$CODE"
 T34_BODY=$(cat "$WORK/b")
 contains "사유 children_wider" '"reason":"children_wider"' "$T34_BODY"
@@ -400,7 +401,7 @@ if [ "$HAVE_PSQL" = "1" ]; then
 fi
 
 T34B_MARK=$(mark)
-CODE=$(set_vis qa_employee01 "$ROOT_PAGE" private true)
+CODE=$(set_vis claude_employee01 "$ROOT_PAGE" private true)
 expect "cascade:true 로 부모를 private 로" "200" "$CODE"
 note "응답: $(cat "$WORK/b")"
 contains "함께 바뀐 하위 수가 2" '"cascaded":2' "$(cat "$WORK/b")"
@@ -417,7 +418,7 @@ fi
 
 # 2026-09-23 정정(사용자 지적 「하위까지 함께를 체크해도 적용되지 않음」): 넓힐 때 켜도 하위가 따라와야 한다.
 T34C_MARK=$(mark)
-CODE=$(set_vis qa_employee01 "$ROOT_PAGE" internal true)
+CODE=$(set_vis claude_employee01 "$ROOT_PAGE" internal true)
 expect "C:T-34c  cascade:true 로 부모를 internal 로 **넓히면**" "200" "$CODE"
 contains "함께 바뀐 하위 수가 2" '"cascaded":2' "$(cat "$WORK/b")"
 if [ "$HAVE_PSQL" = "1" ]; then
@@ -426,30 +427,30 @@ if [ "$HAVE_PSQL" = "1" ]; then
   expect "감사 page.visibility allow 3건 (**항목마다**)" "3" \
     "$(psqlq "SELECT count(*) FROM audit_logs WHERE id > ${T34C_MARK} AND action='page.visibility' AND result='allow'")"
 fi
-CODE=$(set_vis qa_employee01 "$ROOT_PAGE" private true)
+CODE=$(set_vis claude_employee01 "$ROOT_PAGE" private true)
 expect "되돌리기 — cascade:true 로 전부 private" "200" "$CODE"
 
 # ════════════════════════════════════════════════════════════════
 hr "C:T-35  목록 격리 — 남의 개인 공간은 통째로 닫혀 있다"
 
 # 다시 internal 로 열어 둔다(격리 시험의 전제: 「볼 수 있는 페이지가 남의 공간에 있다」).
-set_vis qa_employee01 "$ROOT_PAGE" internal >/dev/null
+set_vis claude_employee01 "$ROOT_PAGE" internal >/dev/null
 
-CODE=$(capi GET "/api/pages?space=$MY_SPACE" qa_employee02)
-expect "qa_employee02 의 GET /api/pages?space=<employee01 개인공간>" "403" "$CODE"
+CODE=$(capi GET "/api/pages?space=$MY_SPACE" claude_employee02)
+expect "claude_employee02 의 GET /api/pages?space=<employee01 개인공간>" "403" "$CODE"
 note "응답 원문: $(cat "$WORK/b")"
 
-CODE=$(capi GET "/api/pages" qa_employee02)
-expect "qa_employee02 의 자기 개인 공간 목록" "200" "$CODE"
+CODE=$(capi GET "/api/pages" claude_employee02)
+expect "claude_employee02 의 자기 개인 공간 목록" "200" "$CODE"
 E02_LIST=$(cat "$WORK/b")
 lacks "employee01 의 internal 페이지 제목이 그 목록에 없다 (공간이 다르다)" '4B-범위시험-부모' "$E02_LIST"
 note "응답 원문: $E02_LIST"
 
-CODE=$(capi GET "/api/pages/$ROOT_PAGE" qa_employee02)
+CODE=$(capi GET "/api/pages/$ROOT_PAGE" claude_employee02)
 expect "그러나 직접 읽기는 200 — 제목이 보인다" "200" "$CODE"
 contains "제목이 응답 원문에 있다" '4B-범위시험-부모' "$(cat "$WORK/b")"
 
-CODE=$(capi GET "/api/pages?space=$MY_SPACE" qa_admin01)
+CODE=$(capi GET "/api/pages?space=$MY_SPACE" claude_admin01)
 expect "Admin 도 남의 개인 공간 목록은 403 (페이지 한 건은 admin_all 로 읽는다)" "403" "$CODE"
 
 # ════════════════════════════════════════════════════════════════
@@ -479,7 +480,7 @@ if [ "$HAVE_PSQL" = "1" ]; then
          )"
   }
 
-  for pair in "qa_employee01:$MY_SPACE" "qa_employee01:$TEAM_SPACE" "qa_manager01:$TEAM_SPACE"; do
+  for pair in "claude_employee01:$MY_SPACE" "claude_employee01:$TEAM_SPACE" "claude_manager01:$TEAM_SPACE"; do
     who=${pair%%:*}; sp=${pair##*:}
     CODE=$(capi GET "/api/pages?space=$sp&tree=1" "$who")
     api_n=$(jget "d['total']" < "$WORK/b")
@@ -491,7 +492,7 @@ if [ "$HAVE_PSQL" = "1" ]; then
   sed -n '/^($/,/^)$/p' "$ROOT/src/community/routes.php" | sed 's/^/      /'
 
   # 응답 원문에 볼 수 없는 제목이 0건인가 — employee02 의 모든 목록을 훑는다.
-  capi GET "/api/pages?tree=1" qa_employee02 >/dev/null
+  capi GET "/api/pages?tree=1" claude_employee02 >/dev/null
   lacks "employee02 의 트리 원문에 employee01 의 제목 0건" '4B-범위시험' "$(cat "$WORK/b")"
 else
   skip "psql 대조" "psql 없음 — **미검증**"
@@ -500,14 +501,14 @@ fi
 # ════════════════════════════════════════════════════════════════
 hr "옮기기도 트리 불변 규칙을 지킨다 (4-B, pages_move)"
 
-RES=$(make_page qa_employee01 "4B-이동-좁은부모")
+RES=$(make_page claude_employee01 "4B-이동-좁은부모")
 NARROW=${RES#*|}
 MADE_PAGES="$MADE_PAGES $NARROW"
 expect "private 뿌리 하나 더 만들기" "201" "${RES%%|*}"
 
 MOVE_MARK=$(mark)
 printf '{"parent_id":"%s"}' "$NARROW" > "$WORK/mv.json"
-CODE=$(capi PATCH "/api/pages/$ROOT_PAGE/move" qa_employee01 "$WORK/mv.json")
+CODE=$(capi PATCH "/api/pages/$ROOT_PAGE/move" claude_employee01 "$WORK/mv.json")
 expect "internal 가지를 private 부모 아래로 옮기기" "400" "$CODE"
 contains "사유 wider_than_parent" '"reason":"wider_than_parent"' "$(cat "$WORK/b")"
 if [ "$HAVE_PSQL" = "1" ]; then
@@ -519,17 +520,18 @@ fi
 hr "브라우저 — 4-B 항목 (진짜 브라우저로 눌러 본다)"
 
 SMOKE_OUT="$WORK/smoke.txt"
-SESSION_VALUE=$(awk '$6=="tbox_session"{print $7}' "$JAR_DIR/qa_employee01.jar" 2>/dev/null)
+SESSION_VALUE=$(awk '$6=="tbox_session"{print $7}' "$JAR_DIR/claude_employee01.jar" 2>/dev/null)
 
 if ! python3 -c "import playwright" >/dev/null 2>&1; then
   skip "브라우저 스모크" "Playwright 가 없다 — **미검증**"
 elif [ -z "$SESSION_VALUE" ]; then
-  skip "브라우저 스모크" "qa_employee01 세션 쿠키를 얻지 못했다 — **미검증**"
+  skip "브라우저 스모크" "claude_employee01 세션 쿠키를 얻지 못했다 — **미검증**"
 else
   # browser_smoke.py 는 3-B(1~19)·4-A(21~26) 에 이어 4-B 항목(27~29)을 같은 창에서 돈다.
   # 창을 두 번 띄우지 않으려고 나누지 않았다 — 아래 출력은 4-B 구간부터 보인다.
+  # 세션 값은 표준입력 첫 줄로 넘긴다(명령 인자에 싣지 않는다 — tests/lib/secrets.sh py_secret · R-62)
   PATH="$HOME/.local/bin:$PATH" \
-    python3 "$ROOT/tests/community/browser_smoke.py" "$SITE" "$UA" "$SESSION_VALUE" \
+    py_secret SESSION_VALUE -- python3 "$ROOT/tests/community/browser_smoke.py" "$SITE" "$UA" \
     > "$SMOKE_OUT" 2>&1
   if grep -q '^SMOKE_FAIL=' "$SMOKE_OUT"; then
     sed -n '/^── 27\./,$p' "$SMOKE_OUT" | head -80
@@ -580,7 +582,7 @@ hr "정리 — 만든 페이지를 앱 창구로 되돌린다 (논리 삭제)"
 
 for pid in $MADE_PAGES; do
   [ -n "$pid" ] || continue
-  owner=qa_employee01
+  owner=claude_employee01
   CODE=$(capi DELETE "/api/pages/$pid" "$owner")
   printf '  · %s → %s\n' "$pid" "$CODE"
 done

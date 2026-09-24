@@ -252,7 +252,7 @@
       ],
       "est_sec": 300,
       "writes_prod": false,
-      "notes": "F-47 버전·변경 이력. 운영 8082 에 qa_admin01 로 한 번 로그인, GET·정적 검사뿐(데이터 0). git clone \"$ROOT\" 한 임시 클론 안에서 release.sh --dry-run(.git 없는 복사본에서는 못 돎). 끝에 tests/help_button.sh 를 회귀로 부른다(→ scripts/ui_snapshot.sh, sudo). 출력 기본 ~/.claude/ui-shots/changelog. R-73·R-80 가드 없음."
+      "notes": "F-47 버전·변경 이력. 운영 8082 에 claude_admin01 로 한 번 로그인, GET·정적 검사뿐(데이터 0). git clone \"$ROOT\" 한 임시 클론 안에서 release.sh --dry-run(.git 없는 복사본에서는 못 돎). 끝에 tests/help_button.sh 를 회귀로 부른다(→ scripts/ui_snapshot.sh, sudo). 출력 기본 ~/.claude/ui-shots/changelog. R-73·R-80 가드 없음. (1-B-1 9dcd2e7 뒤 검토 계정 claude_ — 자격 파일 이름 qa-totp.txt·seed-accounts.txt 는 그대로)"
     },
     {
       "id": "tbox.f46",
@@ -289,7 +289,7 @@
       ],
       "est_sec": 240,
       "writes_prod": false,
-      "notes": "manual_only(지시서 A-5 초기값): (f) 가 바깥 요청 — SharePoint·구글 시트 공개 링크를 앱 서버가 1회씩 가져온다. 가져온 파일은 qa_manager01 이 휴지통으로만 보낸다(운영에 되살릴 수 있는 상태로 남음). fetch_hosts 불변. 매니페스트 Content-Type 은 nginx 배포본 의존이라 안내만(단언 아님). R-80 가드 없음."
+      "notes": "manual_only(지시서 A-5 초기값): (f) 가 바깥 요청 — SharePoint·구글 시트 공개 링크를 앱 서버가 1회씩 가져온다. 가져온 파일은 claude_manager01 이 휴지통으로만 보낸다(운영에 되살릴 수 있는 상태로 남음). fetch_hosts 불변. 매니페스트 Content-Type 은 nginx 배포본 의존이라 안내만(단언 아님). R-80 가드 없음. (1-B-1 9dcd2e7 뒤 검토 계정 claude_ — 자격 파일 이름 qa-totp.txt·seed-accounts.txt 는 그대로)"
     },
     {
       "id": "tbox.f51",
@@ -326,7 +326,7 @@
       ],
       "est_sec": 360,
       "writes_prod": true,
-      "notes": "manual_only(지시서 A-5 초기값): qa_employee01 의 2단계를 껐다 켜며 /etc/tbox-v2/qa-totp.txt 를 sudo -n install 로 교체한다(비밀 회전 — 이 파일로 로그인하는 다른 시험의 자격이 바뀜). python qrcode 필요. sudo -n grep 으로 /var/log/tbox-v2/app.log 확인. 다음 TOTP 창 대기(next_code) 여러 번. R-80 가드 없음."
+      "notes": "manual_only(지시서 A-5 초기값): claude_employee01 의 2단계를 껐다 켜며 /etc/tbox-v2/qa-totp.txt 를 sudo -n install 로 교체한다(비밀 회전 — 이 파일로 로그인하는 다른 시험의 자격이 바뀜). python qrcode 필요. sudo -n grep 으로 /var/log/tbox-v2/app.log 확인. 다음 TOTP 창 대기(next_code) 여러 번. R-80 가드 없음. (1-B-1 9dcd2e7 뒤 검토 계정 claude_ — 자격 파일 이름 qa-totp.txt·seed-accounts.txt 는 그대로)"
     },
     {
       "id": "tbox.f52",
@@ -369,7 +369,7 @@
       ],
       "est_sec": 300,
       "writes_prod": true,
-      "notes": "manual_only(지시서 A-5 초기값): qa_employee01·qa_admin01 의 2단계를 껐다 켜며 qa-totp.txt 를 교체(비밀 회전). 원문은 마지막 줄이 printf 라 rc 가 늘 0(R-73 exit 3 만 예외) — A-3 에서 고치는 대상. R-80 가드 없음."
+      "notes": "manual_only(지시서 A-5 초기값): claude_employee01·claude_admin01 의 2단계를 껐다 켜며 qa-totp.txt 를 교체(비밀 회전). 원문은 마지막 줄이 printf 라 rc 가 늘 0(R-73 exit 3 만 예외) — A-3 에서 고치는 대상. R-80 가드 없음. (1-B-1 9dcd2e7 뒤 검토 계정 claude_ — 자격 파일 이름 qa-totp.txt·seed-accounts.txt 는 그대로)"
     },
     {
       "id": "tbox.f53",
@@ -713,7 +713,7 @@
       ],
       "est_sec": 420,
       "writes_prod": true,
-      "notes": "F-43 허용 사이트. 운영 tbox_re 에 psqlc 로 DELETE FROM fetch_hosts WHERE host LIKE 's43-%.example.invalid'(시작·끝), sudo -n php scripts/alerts.php --rule AL-18 --state <임시>(dry-run 아님 → 운영 alerts.log 와 감사 alert.raised 기록) → writes_prod. .invalid 도메인이라 외부 요청 0. 코드 재사용 시험마다 다음 창 대기(wait_next_step). R-80 가드 없음."
+      "notes": "F-43 허용 사이트. 운영 tbox_re 에 psqlc 로 DELETE FROM fetch_hosts WHERE host LIKE 's43-%.example.invalid'(시작·끝), sudo -n php scripts/alerts.php --rule AL-18 --state <임시>(dry-run 아님 → 운영 alerts.log 와 감사 alert.raised 기록) → writes_prod. .invalid 도메인이라 외부 요청 0. 코드 재사용 시험마다 다음 창 대기(wait_next_step). R-80 가드 없음. 1-B-3(점검 봇): file.fetch deny 감사 단언에 실행 경계(FETCH_MARK) · 빈 사유를 통과시키던 판정을 [ -n … ] && 로 더 엄격하게 — BF-0009."
     },
     {
       "id": "tbox.health",
@@ -779,7 +779,7 @@
       "risks": [],
       "est_sec": 150,
       "writes_prod": false,
-      "notes": "F-38 도움말 단추. 직접 sudo 는 없고 (d) 가 scripts/ui_snapshot.sh(qa_admin01, sudo 로 자격 읽기·8082 고정)를 UI_PAGES 로 부른다. 데이터 0. 판정 「1440px 결함 합계가 기존값 7건 이하」. 인자 없으면 ~/.claude/ui-shots/help-button 에 씀. R-73·R-80 가드 없음."
+      "notes": "F-38 도움말 단추. 직접 sudo 는 없고 (d) 가 scripts/ui_snapshot.sh(claude_admin01, sudo 로 자격 읽기·8082 고정)를 UI_PAGES 로 부른다. 데이터 0. 판정 「1440px 결함 합계가 기존값 7건 이하」. 인자 없으면 ~/.claude/ui-shots/help-button 에 씀. R-73·R-80 가드 없음. (1-B-1 9dcd2e7 뒤 검토 계정 claude_ — 자격 파일 이름 qa-totp.txt·seed-accounts.txt 는 그대로)"
     },
     {
       "id": "tbox.stage26",
@@ -819,7 +819,7 @@
       ],
       "est_sec": 300,
       "writes_prod": true,
-      "notes": "26단계(역할로 보기·관리 폼·폴더 삭제). 운영 tbox_re 에 psqlc 로 직접 쓴다: UPDATE users role(qa_admin01 Manager↔Admin, 끝에 원복)·UPDATE sessions act_*·reauth_at(qa 세션 시간 조작)·DELETE files/folders(qa 가 만든 S26- 만) + sudo -n rm 저장소 바이트 → writes_prod. 원문은 합계를 trap 안에서 찍고 마지막 줄이 echo 라 rc 가 늘 0 — A-3 에서 고치는 대상. 크로미움 경로 ~/.cache/ms-playwright/chromium-1234 고정. R-80 가드 없음."
+      "notes": "26단계(역할로 보기·관리 폼·폴더 삭제). 운영 tbox_re 에 psqlc 로 직접 쓴다: UPDATE users role(claude_admin01 Manager↔Admin, 끝에 원복)·UPDATE sessions act_*·reauth_at(qa 세션 시간 조작)·DELETE files/folders(qa 가 만든 S26- 만) + sudo -n rm 저장소 바이트 → writes_prod. 원문은 합계를 trap 안에서 찍고 마지막 줄이 echo 라 rc 가 늘 0 — A-3 에서 고치는 대상. 크로미움 경로 ~/.cache/ms-playwright/chromium-1234 고정. R-80 가드 없음. Q:F-4 U-2b(75f57a9) 뒤 기대값: Employee 의 /trash 는 403 이 아니라 200 「내 휴지통」(제목·표 속성·열 구성 세 줄로 확인 — 공통 셸 글자로 늘 참이던 확인을 고침). 1-B-3(점검 봇): 감사 단언 4곳(T-52(i) file.upload · (g) act.expire · (h) role_lost · move_trashed folder.delete)에 이번 실행 경계(id > *_MARK) — BF-0009. (1-B-1 9dcd2e7 뒤 검토 계정 claude_ — 자격 파일 이름 qa-totp.txt·seed-accounts.txt 는 그대로)"
     },
     {
       "id": "tbox.totp_time_sync",
@@ -883,7 +883,7 @@
       ],
       "est_sec": 240,
       "writes_prod": false,
-      "notes": "위키 책 셋(F-21). 운영 8082 에 qa_ 계정 순차 로그인, GET·재인증뿐(데이터 0 — XSS 글은 php 메모리 안에서만). (g) tests/wiki_books_browser.py, (h) php scripts/wiki_check.php·security_lint 를 부른다. qa_admin01 로그인 실패는 exit 2. 기본 스크린샷 ~/.claude/ui-shots/wiki-books."
+      "notes": "위키 책 셋(F-21). 운영 8082 에 qa_ 계정 순차 로그인, GET·재인증뿐(데이터 0 — XSS 글은 php 메모리 안에서만). (g) tests/wiki_books_browser.py, (h) php scripts/wiki_check.php·security_lint 를 부른다. claude_admin01 로그인 실패는 exit 2. 기본 스크린샷 ~/.claude/ui-shots/wiki-books. (1-B-1 9dcd2e7 뒤 검토 계정 claude_ — 자격 파일 이름 qa-totp.txt·seed-accounts.txt 는 그대로)"
     },
     {
       "id": "tbox.wiki_books_browser",
@@ -902,7 +902,7 @@
       "risks": [],
       "est_sec": 90,
       "writes_prod": false,
-      "notes": "부르는 셸: tbox.wiki_books ((g) — 인자 BASE UA COOKIES OUT, 재인증을 마친 qa_admin01 쿠키). 단독 실행 불가(인자 필요). 대상은 인자 BASE(지금은 8082 로만 불림). 결과 줄 BROWSER_FAIL=n."
+      "notes": "부르는 셸: tbox.wiki_books ((g) — 인자 BASE UA COOKIES OUT, 재인증을 마친 claude_admin01 쿠키). 단독 실행 불가(인자 필요). 대상은 인자 BASE(지금은 8082 로만 불림). 결과 줄 BROWSER_FAIL=n. (1-B-1 9dcd2e7 뒤 검토 계정 claude_ — 자격 파일 이름 qa-totp.txt·seed-accounts.txt 는 그대로)"
     },
     {
       "id": "launcher.q_launcher",
@@ -995,7 +995,7 @@
       ],
       "est_sec": 420,
       "writes_prod": false,
-      "notes": "커뮤니티 3단계. 운영 8082(SITE·CBASE)에 qa_ 다섯, 만든 페이지는 앱 창구로 논리 삭제, psql 읽기만. C:T-20 의 scripts/vendor_prosemirror.sh --verify 가 registry.npmjs.org 에서 tarball 을 받는다(외부 요청 — 네트워크 없으면 FAIL). 저장소 밖 $ROOT/../community/doc-schema.json 과 diff. browser_smoke.py 1~20 을 부른다. 스키마 미적용(503)이면 exit 3."
+      "notes": "커뮤니티 3단계. 운영 8082(SITE·CBASE)에 claude_ 다섯, 만든 페이지는 앱 창구로 논리 삭제, psql 읽기만. C:T-20 의 scripts/vendor_prosemirror.sh --verify 가 registry.npmjs.org 에서 tarball 을 받는다(외부 요청 — 네트워크 없으면 FAIL). 저장소 밖 $ROOT/../community/doc-schema.json 과 diff. browser_smoke.py 1~20 을 부른다. 스키마 미적용(503)이면 exit 3. (1-B-3: 검토 계정 claude_ 로 옮김)"
     },
     {
       "id": "community.stage4a",
@@ -1036,7 +1036,7 @@
       "risks": [],
       "est_sec": 300,
       "writes_prod": false,
-      "notes": "4-A 트리. 운영 8082 에 qa_ 계정으로 페이지를 만들고 앱 창구로 논리 삭제, psql 읽기만. browser_smoke.py 4-A 항목. 저장소 밖 $ROOT/../community/doc-schema.json 과 diff."
+      "notes": "4-A 트리. 운영 8082 에 claude_ 계정으로 페이지를 만들고 앱 창구로 논리 삭제, psql 읽기만. browser_smoke.py 4-A 항목. 저장소 밖 $ROOT/../community/doc-schema.json 과 diff. (1-B-3: 검토 계정 claude_ 로 옮김)"
     },
     {
       "id": "community.stage4b",
@@ -1784,7 +1784,7 @@
       "risks": [],
       "est_sec": 420,
       "writes_prod": false,
-      "notes": "임시 인스턴스(stage4d 와 같은 틀): pg_dump tbox_re(읽기) → 운영 클러스터에 createdb -O tbox_owner tbox_7b_test → 복원·마이그레이션·grants.sql → 복사본 + 운영 .env 세 줄 치환 → php -S 127.0.0.1:8095. 운영 8082 요청 0. 덤프 /tmp/tbox7b_dump.$$.sql(운영 전체 평문, 복원 뒤 sudo rm) — cleanup 에 덤프 삭제가 없다(1-A A-4 목록 10개 밖, 1a-held-A4.patch 에 없음 — 7단계 뒤 A-4 를 합칠 때 함께). REGRESS 는 기본 0(${REGRESS:-0}) — cmd 에 REGRESS=0 을 박아 물려받은 환경 변수로 회귀(다른 시험을 8082→임시로 sed 치환해 돌림)가 켜지지 않게 한다. browser_7b.py 를 부른다(playwright 없으면 SKIP). qa_ 계정 다섯(qa_employee01·02·qa_manager01·qa_admin01·qa_guest01)으로 순차 로그인 — 자격은 sudo -n awk 로 /etc/tbox-v2 에서 읽는다. 임시 DB 에 psql 로 직접 쓰는 줄(템플릿 CHECK 확인 INSERT 등)은 임시 DB 뿐. 운영 HEAD 에 조사표·1-A 뒤에 들어온 파일 — 원문으로 실음."
+      "notes": "임시 인스턴스(stage4d 와 같은 틀): pg_dump tbox_re(읽기) → 운영 클러스터에 createdb -O tbox_owner tbox_7b_test → 복원·마이그레이션·grants.sql → 복사본 + 운영 .env 세 줄 치환 → php -S 127.0.0.1:8095. 운영 8082 요청 0. 덤프 /tmp/tbox7b_dump.$$.sql(운영 전체 평문, 복원 뒤 sudo rm) — cleanup 에 덤프 삭제가 없다(1-A A-4 목록 10개 밖, 1a-held-A4.patch 에 없음 — 7단계 뒤 A-4 를 합칠 때 함께). REGRESS 는 기본 0(${REGRESS:-0}) — cmd 에 REGRESS=0 을 박아 물려받은 환경 변수로 회귀(다른 시험을 8082→임시로 sed 치환해 돌림)가 켜지지 않게 한다. browser_7b.py 를 부른다(playwright 없으면 SKIP). 검토 계정 다섯(claude_employee01·02·claude_manager01·claude_admin01·claude_guest01)으로 순차 로그인 — 자격은 sudo -n awk 로 /etc/tbox-v2 에서 읽는다. 임시 DB 에 psql 로 직접 쓰는 줄(템플릿 CHECK 확인 INSERT 등)은 임시 DB 뿐. 운영 HEAD 에 조사표·1-A 뒤에 들어온 파일 — 원문으로 실음. (1-B-3: 검토 계정 claude_ 로 옮김)"
     },
     {
       "id": "community.stage7c",
@@ -1904,7 +1904,7 @@
       "risks": [],
       "est_sec": 420,
       "writes_prod": false,
-      "notes": "7-D1 많이 읽힌 문서(관리자). 임시 인스턴스(stage7c 와 같은 틀): pg_dump tbox_re(읽기) → 운영 클러스터에 createdb -O tbox_owner tbox_7d1_test → 복원·마이그레이션(목록 10줄에 2026-09-25_community_databases.sql 이 두 번 — 파일은 9개)·grants.sql → 복사본 + 운영 .env 세 줄 치환 → php -S 127.0.0.1:8099(tbox.f69 와 같은 포트 — run.sh 는 한 번에 하나라 겹치지 않음). 운영 8082 요청 0. 덤프 /tmp/tbox7d1_dump.$$.sql(운영 전체 평문, 복원 뒤 sudo rm) — cleanup 에 덤프 삭제가 없다(1-A A-4 목록 밖). REGRESS 는 기본 0(${REGRESS:-0}) — cmd 에 REGRESS=0 을 박아 물려받은 환경 변수로 회귀(다른 시험을 8082→임시로 sed 치환해 돌림)가 켜지지 않게 한다. claude_ 검토 계정 다섯(claude_employee01·02·claude_manager01·claude_admin01·claude_guest01)으로 순차 로그인(자격 sudo -n awk /etc/tbox-v2) + 브라우저 단계에서 claude_admin01 을 한 번 더(재인증 안 한 세션 — 셸 재인증 창 흐름). browser_7d1.py 를 부른다(playwright 없으면 SKIP) — 관리자 비밀번호를 SMOKE_A1_PW 환경 변수로 넘긴다. 임시 DB 에만 psql 로 직접 쓴다: community.page_views INSERT(사람 employee01 의 날짜별 조회 · qa_employee01 조회) · users UPDATE(employee02 → qaxemployee02 — 밑줄 이스케이프 확인). src/Origin.php 의 REVIEW_ACCOUNT_PREFIXES 와 admin_popular.php 의 NOT LIKE 두 줄을 grep 으로 대조(검토 계정 판정 한 곳). appq()(앱 계정 psql, 「C:T-59 전용」)·tapi·page_html·share·comment·mkdb·rows 등 앞 단계 도우미는 정의만 있고 부르지 않는다 — covers 에 넣지 않음. 머리 주석의 「N-34」·「J-6」은 커뮤니티 PRD 요구·결정 번호라 requirements 에 넣지 않음. 운영 HEAD 에 조사표·1-A 뒤에 들어온 파일 — 원문으로 실음."
+      "notes": "7-D1 많이 읽힌 문서(관리자). 임시 인스턴스(stage7c 와 같은 틀): pg_dump tbox_re(읽기) → 운영 클러스터에 createdb -O tbox_owner tbox_7d1_test → 복원·마이그레이션(목록 10줄에 2026-09-25_community_databases.sql 이 두 번 — 파일은 9개)·grants.sql → 복사본 + 운영 .env 세 줄 치환 → php -S 127.0.0.1:8099(tbox.f69 와 같은 포트 — run.sh 는 한 번에 하나라 겹치지 않음). 운영 8082 요청 0. 덤프 /tmp/tbox7d1_dump.$$.sql(운영 전체 평문, 복원 뒤 sudo rm) — cleanup 에 덤프 삭제가 없다(1-A A-4 목록 밖). REGRESS 는 기본 0(${REGRESS:-0}) — cmd 에 REGRESS=0 을 박아 물려받은 환경 변수로 회귀(다른 시험을 8082→임시로 sed 치환해 돌림)가 켜지지 않게 한다. claude_ 검토 계정 다섯(claude_employee01·02·claude_manager01·claude_admin01·claude_guest01)으로 순차 로그인(자격 sudo -n awk /etc/tbox-v2) + 브라우저 단계에서 claude_admin01 을 한 번 더(재인증 안 한 세션 — 셸 재인증 창 흐름). browser_7d1.py 를 부른다(playwright 없으면 SKIP) — 관리자 비밀번호를 SMOKE_A1_PW 환경 변수로 넘긴다. 임시 DB 에만 psql 로 직접 쓴다: community.page_views INSERT(사람 employee01 의 날짜별 조회 · claude_employee01 조회) · users UPDATE(employee02 → qaxemployee02 — 밑줄 이스케이프 확인). src/Origin.php 의 REVIEW_ACCOUNT_PREFIXES 와 admin_popular.php 의 NOT LIKE 두 줄을 grep 으로 대조(검토 계정 판정 한 곳). appq()(앱 계정 psql, 「C:T-59 전용」)·tapi·page_html·share·comment·mkdb·rows 등 앞 단계 도우미는 정의만 있고 부르지 않는다 — covers 에 넣지 않음. 머리 주석의 「N-34」·「J-6」은 커뮤니티 PRD 요구·결정 번호라 requirements 에 넣지 않음. 운영 HEAD 에 조사표·1-A 뒤에 들어온 파일 — 원문으로 실음. (1-B-3: 검토 계정 claude_ 로 옮김)"
     },
     {
       "id": "community.browser_smoke",
@@ -1929,7 +1929,7 @@
       "risks": [],
       "est_sec": 240,
       "writes_prod": false,
-      "notes": "부르는 셸: community.stage3·stage4a·stage4b·stage4c(운영 8082 SITE)와 community.stage4d·stage5a(임시 SITE). 단독 실행 불가(인자 SITE UA 와 SMOKE_* 세션 환경 변수를 부르는 셸이 넘긴다). 결과 줄 SMOKE_FAIL=n. 만든 페이지는 앱 창구로 지운다. 인자 <SITE> <UA> <tbox_session> [samples php-render] — 뒤 두 인자로 C:T-19 JS 쪽 렌더러 동등성."
+      "notes": "부르는 셸: community.stage3·stage4a·stage4b·stage4c(운영 8082 SITE)와 community.stage4d·stage5a(임시 SITE). 단독 실행 불가(인자 SITE UA 와 SMOKE_* 세션 환경 변수를 부르는 셸이 넘긴다). 결과 줄 SMOKE_FAIL=n. 만든 페이지는 앱 창구로 지운다. 인자 <SITE> <UA> <tbox_session> [samples php-render] — 뒤 두 인자로 C:T-19 JS 쪽 렌더러 동등성. 1-B-3(점검 봇): 세션은 인자가 아니라 **표준입력 첫 줄**로 받는다(argv 는 SITE UA [samples php-render] — 한 칸 당김). 부르는 셸 6곳은 py_secret 로 넘긴다. 빈 세션이면 rc 2 로 멈춘다."
     },
     {
       "id": "community.browser_5a2",
@@ -2166,7 +2166,7 @@
       ],
       "est_sec": 30,
       "writes_prod": false,
-      "notes": "고아 — 어느 셸도 부르지 않는다(지시서 A-5). 수동 실행용: <SITE> <UA> <직원1 세션> <직원2 세션> <같은 팀 Manager 세션>, urllib 만(브라우저·sudo 없음). 대상은 인자 SITE — 운영을 주면 운영에 페이지를 만들고 새 주인이 창구로 지운다. 결과 줄 FAIL=n."
+      "notes": "고아 — 어느 셸도 부르지 않는다(지시서 A-5). 수동 실행용: <SITE> <UA> <직원1 세션> <직원2 세션> <같은 팀 Manager 세션>, urllib 만(브라우저·sudo 없음). 대상은 인자 SITE — 운영을 주면 운영에 페이지를 만들고 새 주인이 창구로 지운다. 결과 줄 FAIL=n. 1-B-3(점검 봇): 세션 셋은 인자가 아니라 표준입력으로 한 줄씩(py_secret S_E1 S_E2 S_M -- python3 … <SITE> <UA>) — 셋보다 적으면 rc 2."
     },
     {
       "id": "community.stage5b_search",
@@ -2192,7 +2192,7 @@
       "risks": [],
       "est_sec": 30,
       "writes_prod": false,
-      "notes": "고아 — 어느 셸도 부르지 않는다(5-B 는 stage 스크립트가 없어 어떤 회귀 목록에도 없음). 수동 실행용: <SITE> <UA> <직원1> <직원2> <관리자> 세션, urllib 만. 머리 주석은 「C:T-70 ~」(끝 번호 없음)이라 C:T-70 만 넣음. 결과 줄 SEARCH_FAIL=n."
+      "notes": "고아 — 어느 셸도 부르지 않는다(5-B 는 stage 스크립트가 없어 어떤 회귀 목록에도 없음). 수동 실행용: <SITE> <UA> <직원1> <직원2> <관리자> 세션, urllib 만. 머리 주석은 「C:T-70 ~」(끝 번호 없음)이라 C:T-70 만 넣음. 결과 줄 SEARCH_FAIL=n. 1-B-3(점검 봇): 세션 셋은 인자가 아니라 표준입력으로 한 줄씩(py_secret S_E1 S_E2 S_M -- python3 … <SITE> <UA>) — 셋보다 적으면 rc 2."
     },
     {
       "id": "core.security_lint",
@@ -2405,6 +2405,96 @@
       "est_sec": 10,
       "writes_prod": false,
       "notes": "개발 대기열 2c(9c20065) 회귀 — 점검 봇 발견 BF-0001: alerts.php --dry-run 이 운영 auth.log 를 읽을 때 읽기 위치(inode·offset)를 상태 파일에 저장하던 결함. 오프셋 0 인 임시 상태 파일(--state, mktemp)로 root 가 --rule AL-9 --dry-run 을 돌린 뒤 파일이 한 바이트도 안 바뀌었는지 본다. 운영에 닿는 것은 읽기 둘(/var/log/auth.log · 부트스트랩 DB 연결)이고 경보·감사를 남기지 않는다. ★ 저장소 .env 가 있어야 한다 — .env 없는 복제본에서는 부트스트랩 예외(설정 파일을 읽을 수 없음)로 3건 실패(rc 1, 준비물 없음 rc 3 이 아님 — 1-B-2 실측). 운영 트리에서 돌린다."
+    },
+    {
+      "id": "tbox.qf4_restore_owner",
+      "cmd": "bash tests/qf4_restore_owner.sh",
+      "module": "tbox",
+      "env": "temp-instance",
+      "status": "required",
+      "needs": [
+        "sudo",
+        "browser"
+      ],
+      "covers": [
+        "tests/browser/qf4_restore_owner.py"
+      ],
+      "requirements": [],
+      "risks": [],
+      "est_sec": 420,
+      "writes_prod": false,
+      "notes": "Q:F-4 U-2b 「본인이 지운 파일은 본인이 되살린다」 수락 ①~⑦ + 화면. 임시 인스턴스: pg_dump tbox_re(읽기) | psql → 임시 DB tbox_qf4u2b_test(파일 0) · 포트 8101 · 임시 폴더. 계정 claude_ 만. 비밀은 파이썬 한 프로세스의 환경 변수·재인증은 curl_json_secret(표준입력)·세션·CSRF 는 600 헤더 파일. 스크린샷 폴더를 주지 않으면 mktemp 로 만들고 지우지 않는다(사람이 본다). 운영 8082 요청 0. 나가는 값 0·1·3·4. 첫 반영 75f57a9(시험 101/0)."
+    },
+    {
+      "id": "tbox.qf4_restore_owner_browser",
+      "cmd": "python3 tests/browser/qf4_restore_owner.py",
+      "module": "tbox",
+      "env": "temp-instance",
+      "status": "helper",
+      "needs": [
+        "browser"
+      ],
+      "covers": [],
+      "requirements": [],
+      "risks": [],
+      "est_sec": 120,
+      "writes_prod": false,
+      "notes": "부르는 셸: tbox.qf4_restore_owner. 단독 실행 불가(인자 SITE UA 와 SMOKE_E1·SMOKE_A1·OWN_ID·OWN_NAME·OTHER_NAME·SHOTS 환경 변수). 세션은 환경 변수로만. 결과 줄 SMOKE_FAIL=n. 운영 8082 요청 0(머리 주석)."
+    },
+    {
+      "id": "tbox.scan_pending_dryrun",
+      "cmd": "bash tests/scan_pending_dryrun.sh",
+      "module": "tbox",
+      "env": "temp-instance",
+      "status": "required",
+      "needs": [
+        "sudo"
+      ],
+      "covers": [
+        "scripts/scan_pending.php"
+      ],
+      "requirements": [],
+      "risks": [],
+      "est_sec": 60,
+      "writes_prod": false,
+      "notes": "개발 대기열 2e(242dece) 회귀 — 점검 봇 발견 BF-0008: scan_pending.php --dry-run 이 복구 갈래·scan_fail 에서 DB·감사를 쓰던 결함. 임시 DB tbox_scandry_test(pg_dump | psql 파이프)·임시 저장소·격리 폴더로 두 갈래를 만들고 A --dry-run 이면 files 해시·audit_logs 최대 id·행 수·감사 파일이 그대로 · B 대조군(dry-run 없이)은 infected 로 바뀌고 감사가 는다. 배치는 일반 사용자로 임시 사본을 돈다. 스캐너(clamscan)는 띄우지 않는다. 나가는 값 0·1·3."
+    },
+    {
+      "id": "tbox.qf4b1",
+      "cmd": "bash tests/qf4b1.sh",
+      "module": "tbox",
+      "env": "temp-instance",
+      "status": "required",
+      "needs": [
+        "sudo",
+        "browser"
+      ],
+      "covers": [
+        "tests/browser/qf4b1_heartbeat.py"
+      ],
+      "requirements": [],
+      "risks": [
+        "R-101"
+      ],
+      "est_sec": 600,
+      "writes_prod": false,
+      "notes": "Q:F-4 라운드 B1 수락(P-2 DB 연결 재사용 ①~⑤ · P-5c 필요할 때 연결 ①~⑤ · P-4b heartbeat 가볍게 ①~③). 임시 인스턴스: pg_dump tbox_re(읽기) → 임시 DB tbox_qf4b1_test · 저장소 복사 PHP 내장 서버 127.0.0.1:8100(한 프로세스 = 워커 1). 전 = BEFORE_REF(머리 주석 기본 9c20065 — 운영 기준과 어긋남, 검토 L-5·규칙 후보 R21) 코드 · 후 = 작업 트리, 같은 포트를 차례로. 연결 끊기(④)는 임시 DB 의 앱 계정 연결만 겨눈다. 시험 전용 경로 /__qf4b/* 는 임시 router.php 에만. 비밀은 파이썬 한 프로세스의 환경 변수·세션·CSRF 는 600 헤더 파일. 409·429·694 행은 사이트 층(옛 주소 308·옛 주소가 DB 에 붙지 않음)을 일부러 본다(FP-0002~0004 — v2 R5 는 조용). 운영 8082 요청 0. 첫 반영 3d1c050."
+    },
+    {
+      "id": "tbox.qf4b1_heartbeat",
+      "cmd": "python3 tests/browser/qf4b1_heartbeat.py",
+      "module": "tbox",
+      "env": "temp-instance",
+      "status": "helper",
+      "needs": [
+        "browser"
+      ],
+      "covers": [],
+      "requirements": [],
+      "risks": [],
+      "est_sec": 90,
+      "writes_prod": false,
+      "notes": "부르는 셸: tbox.qf4b1(P-4b). 단독 실행 불가(인자 SITE UA <페이지 UUID> <B 아이디> 와 SMOKE_E1·SMOKE_E2 환경 변수 — 쿠키는 환경 변수로만). 본문은 고치지 않는다(편집 모드에 들어갔다 완료만). 결과 줄 SMOKE_FAIL=n."
     }
   ]
 }

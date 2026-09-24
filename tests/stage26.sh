@@ -310,12 +310,14 @@ expect "Admin 화면 막힘(403 또는 302)" 1 \
 hr "T-52 (i) 보는 중 한 행동의 감사 — actor_role 은 실제 역할"
 # ═════════════════════════════════════════════════════════════
 printf 'S26 acting upload\n' > "$WORK/S26-acting.txt"
+# 감사는 이번 업로드가 남긴 행만 본다(BF-0009 — T-52(f) STOP_MARK 와 같은 모양): 요청 바로 앞에서 경계를 잰다
+ACT_MARK=$(psqlq "SELECT coalesce(max(id),0) FROM audit_logs;")
 R=$(upload claude_admin01 "$TOK_ADMIN" "$WORK/S26-acting.txt" internal)
 echo "  보는 중 업로드 → HTTP $(code_of "$R")"
 expect "보는 중에도 Employee 자격으로 업로드 200/201" 201 "$(code_of "$R")"
 ACTROW=$(psqlq "SELECT actor_role||'|'||coalesce(detail->'acting_as'->>'role','-')||'|'||coalesce(detail->>'real_role','-')
                   FROM audit_logs
-                 WHERE actor_name='claude_admin01' AND action='file.upload'
+                 WHERE actor_name='claude_admin01' AND action='file.upload' AND id > ${ACT_MARK:-0}
                  ORDER BY id DESC LIMIT 1;")
 echo "  감사 행: actor_role|acting_as.role|real_role = $ACTROW"
 expect "actor_role=Admin · acting_as.role=Employee" "Admin|Employee|Admin" "$ACTROW"
@@ -346,12 +348,13 @@ expect "29분 전 → 여전히 acting" 1 "$(body_of "$R" | grep -c '"acting":tr
 
 sub "31분 전이면 자동 해제된다 (idle)"
 psqlc "UPDATE sessions SET act_last_seen_at = now() - interval '31 minutes' WHERE id = '$SID_ADMIN';"
+IDLE_MARK=$(psqlq "SELECT coalesce(max(id),0) FROM audit_logs;")   # 이번 요청이 남기는 act.expire 만 본다(BF-0009)
 R=$(call claude_admin01 GET /api/me "$TOK_ADMIN")
 ME="$(body_of "$R")"
 expect "31분 전 → role 이 Admin 으로 돌아옴" "Admin" "$(field role "$ME")"
 expect "31분 전 → acting false" 1 "$(printf '%s' "$ME" | grep -c '"acting":false')"
 EXPIRE=$(psqlq "SELECT result||'|'||coalesce(detail->>'reason','-')||'|'||actor_role
-                  FROM audit_logs WHERE action='act.expire' AND actor_name='claude_admin01'
+                  FROM audit_logs WHERE action='act.expire' AND actor_name='claude_admin01' AND id > ${IDLE_MARK:-0}
                   ORDER BY id DESC LIMIT 1;")
 echo "  감사 act.expire: $EXPIRE"
 expect "act.expire allow · reason=idle · actor_role=Admin" "allow|idle|Admin" "$EXPIRE"
@@ -365,13 +368,14 @@ R=$(call claude_admin01 POST /api/me/act "$TOK_ADMIN" '{"role":"Employee"}')
 expect "다시 켜기 200" 200 "$(code_of "$R")"
 psqlc "UPDATE users SET role = 'Manager' WHERE username = 'claude_admin01';"
 echo "  psql 로 claude_admin01 을 Manager 로 강등 (시험 뒤 원복)"
+LOST_MARK=$(psqlq "SELECT coalesce(max(id),0) FROM audit_logs;")   # 이번 요청이 남기는 act.expire 만 본다(BF-0009)
 R=$(call claude_admin01 GET /api/me "$TOK_ADMIN")
 ME="$(body_of "$R")"
 echo "  $ME" | head -c 200; echo
 expect "강등 뒤 acting false" 1 "$(printf '%s' "$ME" | grep -c '"acting":false')"
 expect "강등 뒤 role 은 실제 역할 Manager" "Manager" "$(field role "$ME")"
 EXPIRE=$(psqlq "SELECT coalesce(detail->>'reason','-')||'|'||actor_role FROM audit_logs
-                 WHERE action='act.expire' AND actor_name='claude_admin01' ORDER BY id DESC LIMIT 1;")
+                 WHERE action='act.expire' AND actor_name='claude_admin01' AND id > ${LOST_MARK:-0} ORDER BY id DESC LIMIT 1;")
 echo "  감사 act.expire: $EXPIRE"
 expect "reason=role_lost · actor_role=Manager(그때의 실제 역할)" "role_lost|Manager" "$EXPIRE"
 psqlc "UPDATE users SET role = 'Admin' WHERE username = 'claude_admin01';"
@@ -469,6 +473,7 @@ expect "Admin 응답엔 두 이름 모두" 2 \
 expect "Admin 응답 others:false" 1 "$(printf '%s' "$BODY_ADM" | grep -c '"others":false')"
 
 sub "?move_trashed=1 — 확인하면 루트로 옮기고 폴더를 지운다"
+MOVE_MARK=$(psqlq "SELECT coalesce(max(id),0) FROM audit_logs;")   # 이번 삭제가 남기는 folder.delete 만 본다(BF-0009)
 R=$(call claude_admin01 DELETE "/api/folders/$F_TRASH?move_trashed=1" "$TOK_ADMIN")
 echo "  HTTP $(code_of "$R")"; echo "  $(body_of "$R")"
 expect "확인 뒤 200" 200 "$(code_of "$R")"
@@ -478,7 +483,7 @@ MOVED=$(psqlq "SELECT count(*) FROM files WHERE public_id IN ('$FILE_MINE','$FIL
 expect "두 파일 모두 folder_id NULL · deleted_at 유지" 2 "$MOVED"
 AUD=$(psqlq "SELECT (detail->>'moved_trashed')||'|'||jsonb_array_length(detail->'moved_file_ids')
                FROM audit_logs WHERE action='folder.delete' AND result='allow'
-                AND actor_name='claude_admin01' ORDER BY id DESC LIMIT 1;")
+                AND actor_name='claude_admin01' AND id > ${MOVE_MARK:-0} ORDER BY id DESC LIMIT 1;")
 echo "  감사 folder.delete detail: moved_trashed|moved_file_ids 개수 = $AUD"
 expect "감사 detail moved_trashed=2 · id 2개" "2|2" "$AUD"
 

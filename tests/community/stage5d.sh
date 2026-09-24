@@ -18,6 +18,7 @@
 set -u
 
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
+. "$ROOT/tests/lib/secrets.sh" || { echo "tests/lib/secrets.sh 를 읽지 못했다 — 시험을 시작하지 않는다 (R-62)"; exit 3; }
 PORT=8088
 SITE="http://127.0.0.1:$PORT"
 BASE="$SITE/tbox"
@@ -96,19 +97,20 @@ qa_password() { sudo -n awk -v u="$1" '$1==u{print $3}' /etc/tbox-v2/seed-accoun
 qa_secret()   { sudo -n awk -v u="$1" '$1==u{print $2}' /etc/tbox-v2/qa-totp.txt 2>/dev/null; }
 
 login() {
-  local who="$1" jar="$JAR_DIR/$1.jar" pw sec raw code left out try
+  local who="$1" jar="$JAR_DIR/$1.jar" pw sec raw code left out try body
   pw=$(qa_password "$who")
   sec=$(qa_secret "$who")
   [ -n "$pw" ] || return 2
   for try in 1 2 3; do
     if [ -n "$sec" ]; then
-      raw=$(php "$ROOT/scripts/totp_code.php" "$sec" 2>/dev/null)
+      raw=$(totp_now sec 2>/dev/null)
       code=${raw%%$'\n'*}
-      out=$(curl -s -c "$jar" -A "$UA" -H 'Content-Type: application/json' \
-            -d "{\"username\":\"$who\",\"password\":\"$pw\",\"otp\":\"$code\"}" "$BASE/api/login")
+      # 비밀번호가 든 본문은 인자가 아니라 표준입력으로 보낸다(R-62 · tests/lib/secrets.sh). 보내는 바이트는 같다.
+      printf -v body '{"username":"%s","password":"%s","otp":"%s"}' "$who" "$pw" "$code"
+      out=$(curl_json_secret body -s -c "$jar" -A "$UA" -H 'Content-Type: application/json' "$BASE/api/login")
     else
-      out=$(curl -s -c "$jar" -A "$UA" -H 'Content-Type: application/json' \
-            -d "{\"username\":\"$who\",\"password\":\"$pw\"}" "$BASE/api/login")
+      printf -v body '{"username":"%s","password":"%s"}' "$who" "$pw"
+      out=$(curl_json_secret body -s -c "$jar" -A "$UA" -H 'Content-Type: application/json' "$BASE/api/login")
     fi
     case "$out" in
       *'"ok":true'*)
@@ -267,18 +269,18 @@ done
 expect "임시 인스턴스가 떴다 (미로그인 커뮤니티 창구 401)" "401" "$READY"
 [ "$READY" = "401" ] || { echo "인스턴스를 띄우지 못했다 — 중단"; tail -5 "$INST/server.log"; exit 4; }
 
-sub "로그인 (qa 계정 다섯 — **순차**)"
-for who in qa_employee01 qa_employee02 qa_manager01 qa_admin01 qa_guest01; do
+sub "로그인 (검토 계정 claude_ 다섯 — **순차**)"
+for who in claude_employee01 claude_employee02 claude_manager01 claude_admin01 claude_guest01; do
   tok=$(login "$who")
   if [ -z "$tok" ]; then echo "  ✖ $who 로그인 실패 — 중단"; exit 4; fi
   eval "CSRF_${who}='$tok'"
   echo "  ✔ $who"
 done
 # 개인 공간을 연다(없으면 만든다) — 그 뒤의 목록·인계가 공간을 전제로 한다.
-for who in qa_employee01 qa_employee02 qa_manager01; do capi GET /api/me/space "$who" > /dev/null; done
-TEAM1=$(psqlq "SELECT team_id FROM users WHERE username='qa_employee01'")
-TEAM2=$(psqlq "SELECT team_id FROM users WHERE username='qa_employee02'")
-note "팀: qa_employee01·qa_manager01=$TEAM1 · qa_employee02=$TEAM2"
+for who in claude_employee01 claude_employee02 claude_manager01; do capi GET /api/me/space "$who" > /dev/null; done
+TEAM1=$(psqlq "SELECT team_id FROM users WHERE username='claude_employee01'")
+TEAM2=$(psqlq "SELECT team_id FROM users WHERE username='claude_employee02'")
+note "팀: claude_employee01·claude_manager01=$TEAM1 · claude_employee02=$TEAM2"
 DEAD=$(psqlq "SELECT username FROM public.users WHERE is_active = false ORDER BY id LIMIT 1")
 note "비활성 계정: ${DEAD:-없음}"
 
@@ -306,10 +308,11 @@ page_html() {   # $1 주소(SITE 기준 경로) $2 계정
 uid() { psqlq "SELECT id FROM users WHERE username='$1'"; }
 reauth_admin() {
   local pw rc
-  pw=$(qa_password qa_admin01)
-  python3 -c "import json,sys;print(json.dumps({'password':sys.argv[1]}))" "$pw" > "$WORK/reauth.json"
-  rc=$(curl -s -o /dev/null -w '%{http_code}' -b "$JAR_DIR/qa_admin01.jar" -A "$UA" -H 'Content-Type: application/json' \
-        -H "X-CSRF-Token: $CSRF_qa_admin01" --data-binary "@$WORK/reauth.json" "$BASE/api/me/reauth")
+  pw=$(qa_password claude_admin01)
+  # 비밀번호는 인자가 아니라 표준입력 첫 줄로(R-62 · py_secret). 파일에 쓰는 바이트(json.dumps + 줄바꿈)는 같다.
+  py_secret pw -- python3 -c 'import json,sys; pw=sys.stdin.readline().rstrip("\n"); print(json.dumps({"password":pw}))' > "$WORK/reauth.json"
+  rc=$(curl -s -o /dev/null -w '%{http_code}' -b "$JAR_DIR/claude_admin01.jar" -A "$UA" -H 'Content-Type: application/json' \
+        -H "X-CSRF-Token: $CSRF_claude_admin01" --data-binary "@$WORK/reauth.json" "$BASE/api/me/reauth")
   rm -f "$WORK/reauth.json"
   printf '%s' "$rc"
 }
@@ -358,162 +361,162 @@ B_NOTICE=$(bid '공지사항'); B_FREE=$(bid '자유게시판')
 
 # ════════════════════════════════════════════════════════════════
 hr "C:T-100  댓글 — 페이지를 따른다 · 평문 · 답글 1단 · 앵커 · 쓴 사람만 고치기"
-PP=$(make_page qa_employee01 'C5D-비공개 페이지')
-PI=$(make_page qa_employee01 'C5D-사내 페이지'); set_vis qa_employee01 "$PI" internal
-expect "비공개 페이지 — 남 GET 댓글 403" "403" "$(capi GET "/api/pages/$PP/comments" qa_employee02)"
-expect "비공개 페이지 — 남 POST 댓글 403" "403" "$(comment qa_employee02 "$PP" "{'body':'C5D-침입'}")"
-expect "주인 댓글 → 201" "201" "$(comment qa_employee01 "$PP" "{'body':'C5D-주인 메모'}")"
-expect "Admin 이 남의 비공개 페이지 댓글 GET → 200 (admin_all, 감사)" "200" "$(capi GET "/api/pages/$PP/comments" qa_admin01)"
-expect "Guest 댓글 → 403 (라우트 정책)" "403" "$(comment qa_guest01 "$PI" "{'body':'C5D-손님'}")"
-expect "Guest 가 사내 페이지 댓글 GET → 403" "403" "$(capi GET "/api/pages/$PI/comments" qa_guest01)"
-expect "사내 페이지 — 다른 사원 댓글 201" "201" "$(comment qa_employee02 "$PI" "{'body':'C5D-첫 댓글\n둘째 줄'}")"
+PP=$(make_page claude_employee01 'C5D-비공개 페이지')
+PI=$(make_page claude_employee01 'C5D-사내 페이지'); set_vis claude_employee01 "$PI" internal
+expect "비공개 페이지 — 남 GET 댓글 403" "403" "$(capi GET "/api/pages/$PP/comments" claude_employee02)"
+expect "비공개 페이지 — 남 POST 댓글 403" "403" "$(comment claude_employee02 "$PP" "{'body':'C5D-침입'}")"
+expect "주인 댓글 → 201" "201" "$(comment claude_employee01 "$PP" "{'body':'C5D-주인 메모'}")"
+expect "Admin 이 남의 비공개 페이지 댓글 GET → 200 (admin_all, 감사)" "200" "$(capi GET "/api/pages/$PP/comments" claude_admin01)"
+expect "Guest 댓글 → 403 (라우트 정책)" "403" "$(comment claude_guest01 "$PI" "{'body':'C5D-손님'}")"
+expect "Guest 가 사내 페이지 댓글 GET → 403" "403" "$(capi GET "/api/pages/$PI/comments" claude_guest01)"
+expect "사내 페이지 — 다른 사원 댓글 201" "201" "$(comment claude_employee02 "$PI" "{'body':'C5D-첫 댓글\n둘째 줄'}")"
 C1=$(cid)
 expect "  줄바꿈은 그대로 저장" "2" "$(psqlq "SELECT array_length(string_to_array(body, E'\n'),1) FROM community.comments WHERE public_id='$C1'")"
-expect "2,001자 → 400" "400" "$(comment qa_employee02 "$PI" "{'body':'가'*2001}")"
-expect "빈 본문(공백만) → 400" "400" "$(comment qa_employee02 "$PI" "{'body':'   '}")"
-expect "제어 문자 → 400" "400" "$(comment qa_employee02 "$PI" "{'body':'a\u0007b'}")"
-expect "서식 문자(U+202E) → 400" "400" "$(comment qa_employee02 "$PI" "{'body':'a‮b'}")"
-expect "허용 키 밖 → 400" "400" "$(comment qa_employee02 "$PI" "{'body':'x','html':'<b>'}")"
-expect "스크립트 모양 본문 → 201 · 글자 그대로 저장" "201" "$(comment qa_employee02 "$PI" "{'body':'<script>alert(1)</script>'}")"
-capi GET "/api/pages/$PI/comments" qa_employee01 > /dev/null
+expect "2,001자 → 400" "400" "$(comment claude_employee02 "$PI" "{'body':'가'*2001}")"
+expect "빈 본문(공백만) → 400" "400" "$(comment claude_employee02 "$PI" "{'body':'   '}")"
+expect "제어 문자 → 400" "400" "$(comment claude_employee02 "$PI" "{'body':'a\u0007b'}")"
+expect "서식 문자(U+202E) → 400" "400" "$(comment claude_employee02 "$PI" "{'body':'a‮b'}")"
+expect "허용 키 밖 → 400" "400" "$(comment claude_employee02 "$PI" "{'body':'x','html':'<b>'}")"
+expect "스크립트 모양 본문 → 201 · 글자 그대로 저장" "201" "$(comment claude_employee02 "$PI" "{'body':'<script>alert(1)</script>'}")"
+capi GET "/api/pages/$PI/comments" claude_employee01 > /dev/null
 contains "  목록 JSON 에 글자 그대로(문자열 — 화면은 textContent 로만 넣는다)" '<script>alert(1)</script>' "$(cat "$WORK/b")"
-expect "답글(첫 댓글에) → 201" "201" "$(comment qa_employee01 "$PI" "{'body':'C5D-답글','parent_id':'$C1'}")"
+expect "답글(첫 댓글에) → 201" "201" "$(comment claude_employee01 "$PI" "{'body':'C5D-답글','parent_id':'$C1'}")"
 R1=$(cid)
-expect "답글의 답글 → 400 reply_depth" "400|reply_depth" "$(comment qa_employee02 "$PI" "{'body':'x','parent_id':'$R1'}")|$(jget "d.get('reason','')" < "$WORK/b")"
-comment qa_employee01 "$PP" "{'body':'C5D-다른 페이지 댓글'}" > /dev/null; OTHER=$(cid)
-expect "다른 페이지 댓글을 부모로 → 400" "400" "$(comment qa_employee02 "$PI" "{'body':'x','parent_id':'$OTHER'}")"
+expect "답글의 답글 → 400 reply_depth" "400|reply_depth" "$(comment claude_employee02 "$PI" "{'body':'x','parent_id':'$R1'}")|$(jget "d.get('reason','')" < "$WORK/b")"
+comment claude_employee01 "$PP" "{'body':'C5D-다른 페이지 댓글'}" > /dev/null; OTHER=$(cid)
+expect "다른 페이지 댓글을 부모로 → 400" "400" "$(comment claude_employee02 "$PI" "{'body':'x','parent_id':'$OTHER'}")"
 BLK=$(psqlq "SELECT b.block_id FROM community.page_blocks b JOIN community.pages p ON p.id=b.page_id WHERE p.public_id='$PI' LIMIT 1")
-expect "블록 앵커 + 인용 → 201" "201" "$(comment qa_employee02 "$PI" "{'body':'C5D-이 줄','block_id':'$BLK','quote':'인용 문구'}")"
-expect "인용만(블록 없이) → 400" "400" "$(comment qa_employee02 "$PI" "{'body':'x','quote':'q'}")"
-expect "이 페이지에 없는 블록 → 400" "400" "$(comment qa_employee02 "$PI" "{'body':'x','block_id':'00000000-0000-4000-8000-000000000000'}")"
-expect "301자 인용 → 400" "400" "$(comment qa_employee02 "$PI" "{'body':'x','block_id':'$BLK','quote':'가'*301}")"
+expect "블록 앵커 + 인용 → 201" "201" "$(comment claude_employee02 "$PI" "{'body':'C5D-이 줄','block_id':'$BLK','quote':'인용 문구'}")"
+expect "인용만(블록 없이) → 400" "400" "$(comment claude_employee02 "$PI" "{'body':'x','quote':'q'}")"
+expect "이 페이지에 없는 블록 → 400" "400" "$(comment claude_employee02 "$PI" "{'body':'x','block_id':'00000000-0000-4000-8000-000000000000'}")"
+expect "301자 인용 → 400" "400" "$(comment claude_employee02 "$PI" "{'body':'x','block_id':'$BLK','quote':'가'*301}")"
 A0=$(mark)
-expect "남이 고치기 → 403" "403" "$(capi PATCH "/api/comments/$C1" qa_employee01 <(printf '{"body":"C5D-탈취"}'))"
-expect "남이 지우기 → 403" "403" "$(capi DELETE "/api/comments/$C1" qa_employee01)"
+expect "남이 고치기 → 403" "403" "$(capi PATCH "/api/comments/$C1" claude_employee01 <(printf '{"body":"C5D-탈취"}'))"
+expect "남이 지우기 → 403" "403" "$(capi DELETE "/api/comments/$C1" claude_employee01)"
 expect "  감사 comment.update·delete deny not_author" "1|1" "$(audit_n "$A0" comment.update deny not_author)|$(audit_n "$A0" comment.delete deny not_author)"
-expect "Admin 도 고치기 → 403 (숨김만)" "403" "$(capi PATCH "/api/comments/$C1" qa_admin01 <(printf '{"body":"C5D-탈취"}'))"
-expect "쓴 사람 고치기 → 200" "200" "$(capi PATCH "/api/comments/$C1" qa_employee02 <(printf '{"body":"C5D-첫 댓글 (고침)"}'))"
+expect "Admin 도 고치기 → 403 (숨김만)" "403" "$(capi PATCH "/api/comments/$C1" claude_admin01 <(printf '{"body":"C5D-탈취"}'))"
+expect "쓴 사람 고치기 → 200" "200" "$(capi PATCH "/api/comments/$C1" claude_employee02 <(printf '{"body":"C5D-첫 댓글 (고침)"}'))"
 expect "쓴 사람 지우기 → 200 · 행은 남는다(논리 삭제)" "200|1" \
-  "$(capi DELETE "/api/comments/$C1" qa_employee02)|$(psqlq "SELECT count(*) FROM community.comments WHERE public_id='$C1' AND deleted_at IS NOT NULL")"
-capi GET "/api/pages/$PI/comments" qa_employee02 > /dev/null
+  "$(capi DELETE "/api/comments/$C1" claude_employee02)|$(psqlq "SELECT count(*) FROM community.comments WHERE public_id='$C1' AND deleted_at IS NOT NULL")"
+capi GET "/api/pages/$PI/comments" claude_employee02 > /dev/null
 expect "  답글이 달린 첫 댓글 — 「지운 댓글」 자리(본문 없음) · 답글은 보인다" "True|None" \
   "$(jget "[c for c in d['comments'] if c['id']=='$C1'][0]['deleted']" < "$WORK/b")|$(jget "repr([c for c in d['comments'] if c['id']=='$C1'][0]['body'])" < "$WORK/b")"
 lacks "  지운 본문은 응답에 없다" "C5D-첫 댓글 (고침)" "$(cat "$WORK/b")"
 expect "지운 댓글 다시 지우기·고치기 → 404" "404|404" \
-  "$(capi DELETE "/api/comments/$C1" qa_employee02)|$(capi PATCH "/api/comments/$C1" qa_employee02 <(printf '{"body":"x"}'))"
+  "$(capi DELETE "/api/comments/$C1" claude_employee02)|$(capi PATCH "/api/comments/$C1" claude_employee02 <(printf '{"body":"x"}'))"
 
 sub "숨김 · 해결됨 · 도움됐어요"
-comment qa_employee02 "$PI" "{'body':'C5D-숨길 댓글'}" > /dev/null; CH=$(cid)
-expect "쓴 사람이 아닌 사원 숨기기 → 403" "403" "$(capi POST "/api/comments/$CH/hide" qa_employee01)"
-expect "Admin 숨기기 → 200 admin_all" "200|admin_all" "$(capi POST "/api/comments/$CH/hide" qa_admin01)|$(jget "d['granted_by']" < "$WORK/b")"
-capi GET "/api/pages/$PI/comments" qa_employee01 > /dev/null
+comment claude_employee02 "$PI" "{'body':'C5D-숨길 댓글'}" > /dev/null; CH=$(cid)
+expect "쓴 사람이 아닌 사원 숨기기 → 403" "403" "$(capi POST "/api/comments/$CH/hide" claude_employee01)"
+expect "Admin 숨기기 → 200 admin_all" "200|admin_all" "$(capi POST "/api/comments/$CH/hide" claude_admin01)|$(jget "d['granted_by']" < "$WORK/b")"
+capi GET "/api/pages/$PI/comments" claude_employee01 > /dev/null
 expect "  다른 사람에게 본문 없음 · hidden" "None|True" \
   "$(jget "repr([c for c in d['comments'] if c['id']=='$CH'][0]['body'])" < "$WORK/b")|$(jget "[c for c in d['comments'] if c['id']=='$CH'][0]['hidden']" < "$WORK/b")"
 lacks "  원문에 숨긴 본문 없음" "C5D-숨길 댓글" "$(cat "$WORK/b")"
 expect "  숨긴 댓글은 쓴 사람·앵커도 없다(한 줄만 — 독립 검토)" "None" "$(jget "repr([c for c in d['comments'] if c['id']=='$CH'][0]['author'])" < "$WORK/b")"
-capi GET "/api/pages/$PI/comments" qa_employee02 > /dev/null
+capi GET "/api/pages/$PI/comments" claude_employee02 > /dev/null
 contains "  쓴 사람은 본문을 본다" "C5D-숨길 댓글" "$(cat "$WORK/b")"
 expect "  DB 본문 보존" "C5D-숨길 댓글" "$(psqlq "SELECT body FROM community.comments WHERE public_id='$CH'")"
-expect "  숨긴 댓글은 쓴 사람도 고치지 못한다 → 403" "403" "$(capi PATCH "/api/comments/$CH" qa_employee02 <(printf '{"body":"되살리기"}'))"
-comment qa_employee02 "$PI" "{'body':'C5D-질문 스레드'}" > /dev/null; CQ=$(cid)
-expect "스레드 첫 댓글 쓴 사람 해결됨 → 200" "200" "$(capi POST "/api/comments/$CQ/resolve" qa_employee02)"
-expect "관리 자격 없는 Admin 해결됨 빼기 → 403" "403" "$(capi DELETE "/api/comments/$CQ/resolve" qa_admin01)"
-expect "페이지 주인 해결됨 빼기 → 200" "200" "$(capi DELETE "/api/comments/$CQ/resolve" qa_employee01)"
-expect "답글에 해결됨 → 404" "404" "$(capi POST "/api/comments/$R1/resolve" qa_employee01)"
+expect "  숨긴 댓글은 쓴 사람도 고치지 못한다 → 403" "403" "$(capi PATCH "/api/comments/$CH" claude_employee02 <(printf '{"body":"되살리기"}'))"
+comment claude_employee02 "$PI" "{'body':'C5D-질문 스레드'}" > /dev/null; CQ=$(cid)
+expect "스레드 첫 댓글 쓴 사람 해결됨 → 200" "200" "$(capi POST "/api/comments/$CQ/resolve" claude_employee02)"
+expect "관리 자격 없는 Admin 해결됨 빼기 → 403" "403" "$(capi DELETE "/api/comments/$CQ/resolve" claude_admin01)"
+expect "페이지 주인 해결됨 빼기 → 200" "200" "$(capi DELETE "/api/comments/$CQ/resolve" claude_employee01)"
+expect "답글에 해결됨 → 404" "404" "$(capi POST "/api/comments/$R1/resolve" claude_employee01)"
 expect "도움됐어요 → 1 · 두 번 눌러도 1 · 빼면 0" "1|1|0" \
-  "$(capi POST "/api/comments/$CQ/helpful" qa_employee01 >/dev/null; jget "d['comment']['helpful']" < "$WORK/b")|$(capi POST "/api/comments/$CQ/helpful" qa_employee01 >/dev/null; jget "d['comment']['helpful']" < "$WORK/b")|$(capi DELETE "/api/comments/$CQ/helpful" qa_employee01 >/dev/null; jget "d['comment']['helpful']" < "$WORK/b")"
+  "$(capi POST "/api/comments/$CQ/helpful" claude_employee01 >/dev/null; jget "d['comment']['helpful']" < "$WORK/b")|$(capi POST "/api/comments/$CQ/helpful" claude_employee01 >/dev/null; jget "d['comment']['helpful']" < "$WORK/b")|$(capi DELETE "/api/comments/$CQ/helpful" claude_employee01 >/dev/null; jget "d['comment']['helpful']" < "$WORK/b")"
 
 sub "게시판 — 게시판 관리자 숨김 · 보관 게시판 · 공지 댓글"
 jbody "{'name': 'C5D-팀게시판', 'access_level': 'team', 'team_id': $TEAM1, 'board_kind': 'discussion'}"
-reauth_admin > /dev/null; capi POST /api/boards qa_admin01 "$WORK/body.json" > /dev/null; B_TEAM=$(jget "d['board']['id']" < "$WORK/b")
-TP=$(new_post qa_employee01 "$B_TEAM" 'C5D-팀 게시판 글')
-comment qa_employee01 "$TP" "{'body':'C5D-팀 글 댓글'}" > /dev/null; TC=$(cid)
-expect "팀 게시판 Manager(그 팀) 댓글 숨기기 → 200 team_scope" "200|team_scope" "$(capi POST "/api/comments/$TC/hide" qa_manager01)|$(jget "d['granted_by']" < "$WORK/b")"
-NP=$(new_post qa_admin01 "$B_NOTICE" 'C5D-공지 하나')
-expect "공지 게시판 글에 사원 댓글 → 201 (결정 D-2)" "201" "$(comment qa_employee01 "$NP" "{'body':'C5D-공지 댓글'}")"
+reauth_admin > /dev/null; capi POST /api/boards claude_admin01 "$WORK/body.json" > /dev/null; B_TEAM=$(jget "d['board']['id']" < "$WORK/b")
+TP=$(new_post claude_employee01 "$B_TEAM" 'C5D-팀 게시판 글')
+comment claude_employee01 "$TP" "{'body':'C5D-팀 글 댓글'}" > /dev/null; TC=$(cid)
+expect "팀 게시판 Manager(그 팀) 댓글 숨기기 → 200 team_scope" "200|team_scope" "$(capi POST "/api/comments/$TC/hide" claude_manager01)|$(jget "d['granted_by']" < "$WORK/b")"
+NP=$(new_post claude_admin01 "$B_NOTICE" 'C5D-공지 하나')
+expect "공지 게시판 글에 사원 댓글 → 201 (결정 D-2)" "201" "$(comment claude_employee01 "$NP" "{'body':'C5D-공지 댓글'}")"
 jbody "{'name': 'C5D-보관', 'access_level': 'internal', 'board_kind': 'discussion'}"
-capi POST /api/boards qa_admin01 "$WORK/body.json" > /dev/null; B_OLD=$(jget "d['board']['id']" < "$WORK/b")
-OP=$(new_post qa_employee01 "$B_OLD" 'C5D-보관될 글')
-jbody "{'is_active': False}"; capi PATCH "/api/boards/$B_OLD" qa_admin01 "$WORK/body.json" > /dev/null
-expect "보관 게시판 글에 댓글 → 400" "400" "$(comment qa_employee02 "$OP" "{'body':'x'}")"
+capi POST /api/boards claude_admin01 "$WORK/body.json" > /dev/null; B_OLD=$(jget "d['board']['id']" < "$WORK/b")
+OP=$(new_post claude_employee01 "$B_OLD" 'C5D-보관될 글')
+jbody "{'is_active': False}"; capi PATCH "/api/boards/$B_OLD" claude_admin01 "$WORK/body.json" > /dev/null
+expect "보관 게시판 글에 댓글 → 400" "400" "$(comment claude_employee02 "$OP" "{'body':'x'}")"
 
 # ════════════════════════════════════════════════════════════════
 hr "C:T-101  멘션 · 알림 — 볼 수 있는 사람에게만"
-N2=$(notes_of qa_employee02); NM=$(notes_of qa_manager01); NA=$(notes_of qa_admin01)
-expect "비공개 페이지에서 @ 부르기 → 201" "201" "$(comment qa_employee01 "$PP" "{'body':'@qa_employee02 @qa_manager01 @qa_admin01 봐 주세요'}")"
+N2=$(notes_of claude_employee02); NM=$(notes_of claude_manager01); NA=$(notes_of claude_admin01)
+expect "비공개 페이지에서 @ 부르기 → 201" "201" "$(comment claude_employee01 "$PP" "{'body':'@claude_employee02 @claude_manager01 @claude_admin01 봐 주세요'}")"
 expect "  못 보는 사람(다른 팀 사원·같은 팀 Manager·특권만 있는 Admin)에게 알림 0" "$N2|$NM|$NA" \
-  "$(notes_of qa_employee02)|$(notes_of qa_manager01)|$(notes_of qa_admin01)"
+  "$(notes_of claude_employee02)|$(notes_of claude_manager01)|$(notes_of claude_admin01)"
 lacks "  응답에 알림 수·대상 없음" "notified" "$(cat "$WORK/b")"
-capi GET "/api/mention-candidates?page=$PP&q=qa_" qa_employee01 > /dev/null; MC=$(cat "$WORK/b")
-lacks "후보(비공개) — 다른 팀 사원 없음" "qa_employee02" "$MC"
-lacks "후보(비공개) — 같은 팀 Manager 없음" "qa_manager01" "$MC"
-lacks "후보(비공개) — Admin 없음(특권만)" "qa_admin01" "$MC"
-lacks "후보 — 자기 자신 없음" "qa_employee01" "$MC"
-share qa_employee01 "$PP" qa_employee02 view > /dev/null
-capi GET "/api/mention-candidates?page=$PP&q=qa_" qa_employee01 > /dev/null
-contains "공유받은 사람은 후보에 나온다" "qa_employee02" "$(cat "$WORK/b")"
-lacks "  Guest 는 후보가 아니다" "qa_guest01" "$(cat "$WORK/b")"
-expect "  빈 q → 빈 목록" "[]" "$(capi GET "/api/mention-candidates?page=$PP&q=%20" qa_employee01 >/dev/null; jget "d['candidates']" < "$WORK/b")"
-expect "못 보는 페이지의 후보 → 403" "403" "$(capi GET "/api/mention-candidates?page=$PP&q=qa" qa_manager01)"
+capi GET "/api/mention-candidates?page=$PP&q=claude_" claude_employee01 > /dev/null; MC=$(cat "$WORK/b")
+lacks "후보(비공개) — 다른 팀 사원 없음" "claude_employee02" "$MC"
+lacks "후보(비공개) — 같은 팀 Manager 없음" "claude_manager01" "$MC"
+lacks "후보(비공개) — Admin 없음(특권만)" "claude_admin01" "$MC"
+lacks "후보 — 자기 자신 없음" "claude_employee01" "$MC"
+share claude_employee01 "$PP" claude_employee02 view > /dev/null
+capi GET "/api/mention-candidates?page=$PP&q=claude_" claude_employee01 > /dev/null
+contains "공유받은 사람은 후보에 나온다" "claude_employee02" "$(cat "$WORK/b")"
+lacks "  Guest 는 후보가 아니다" "claude_guest01" "$(cat "$WORK/b")"
+expect "  빈 q → 빈 목록" "[]" "$(capi GET "/api/mention-candidates?page=$PP&q=%20" claude_employee01 >/dev/null; jget "d['candidates']" < "$WORK/b")"
+expect "못 보는 페이지의 후보 → 403" "403" "$(capi GET "/api/mention-candidates?page=$PP&q=claude" claude_manager01)"
 expect "공유받은 사람 @ → 알림 1 (mention)" "1" \
-  "$(comment qa_employee01 "$PP" "{'body':'@qa_employee02 다시 봐 주세요'}" >/dev/null; notes_of qa_employee02 mention)"
-capi GET /api/notifications qa_employee02 > /dev/null
+  "$(comment claude_employee01 "$PP" "{'body':'@claude_employee02 다시 봐 주세요'}" >/dev/null; notes_of claude_employee02 mention)"
+capi GET /api/notifications claude_employee02 > /dev/null
 contains "알림 목록에 페이지 제목" "C5D-비공개 페이지" "$(cat "$WORK/b")"
-unshare qa_employee01 "$PP" qa_employee02 > /dev/null
-capi GET /api/notifications qa_employee02 > /dev/null
+unshare claude_employee01 "$PP" claude_employee02 > /dev/null
+capi GET /api/notifications claude_employee02 > /dev/null
 lacks "공유를 빼면 알림에서 제목이 사라진다(읽을 때 다시 판정)" "C5D-비공개 페이지" "$(cat "$WORK/b")"
 contains "  그 줄은 page=null" '"page":null' "$(cat "$WORK/b")"
-share qa_employee01 "$PP" qa_admin01 view > /dev/null
-comment qa_employee01 "$PP" "{'body':'@qa_admin01 관리자 확인 부탁'}" > /dev/null
-expect "공유받은 Admin 은 멘션 알림 1" "1" "$(notes_of qa_admin01 mention)"
-unshare qa_employee01 "$PP" qa_admin01 > /dev/null
-capi GET /api/notifications qa_admin01 > /dev/null
+share claude_employee01 "$PP" claude_admin01 view > /dev/null
+comment claude_employee01 "$PP" "{'body':'@claude_admin01 관리자 확인 부탁'}" > /dev/null
+expect "공유받은 Admin 은 멘션 알림 1" "1" "$(notes_of claude_admin01 mention)"
+unshare claude_employee01 "$PP" claude_admin01 > /dev/null
+capi GET /api/notifications claude_admin01 > /dev/null
 lacks "공유를 빼면 Admin 알림에서도 제목이 사라진다(관리자 특권으로 다시 보이지 않는다 — 독립 검토)" "C5D-비공개 페이지" "$(cat "$WORK/b")"
-N1=$(notes_of qa_employee01 comment_on_my_page)
-comment qa_employee02 "$PI" "{'body':'C5D-주인에게 알릴 댓글'}" > /dev/null; C2=$(cid)
-expect "내 페이지에 댓글 → 주인 알림 +1" "$((N1+1))" "$(notes_of qa_employee01 comment_on_my_page)"
-R2N=$(notes_of qa_employee02 reply)
-comment qa_employee01 "$PI" "{'body':'C5D-답글 알림','parent_id':'$C2'}" > /dev/null
-expect "답글 → 첫 댓글 쓴 사람 알림 +1" "$((R2N+1))" "$(notes_of qa_employee02 reply)"
-expect "자기 페이지에 자기 댓글 → 자기 알림 없음" "$((N1+1))" "$(notes_of qa_employee01 comment_on_my_page)"
-E1N=$(psqlq "SELECT min(n.id) FROM community.notifications n JOIN users u ON u.id=n.user_id WHERE u.username='qa_employee01'")
+N1=$(notes_of claude_employee01 comment_on_my_page)
+comment claude_employee02 "$PI" "{'body':'C5D-주인에게 알릴 댓글'}" > /dev/null; C2=$(cid)
+expect "내 페이지에 댓글 → 주인 알림 +1" "$((N1+1))" "$(notes_of claude_employee01 comment_on_my_page)"
+R2N=$(notes_of claude_employee02 reply)
+comment claude_employee01 "$PI" "{'body':'C5D-답글 알림','parent_id':'$C2'}" > /dev/null
+expect "답글 → 첫 댓글 쓴 사람 알림 +1" "$((R2N+1))" "$(notes_of claude_employee02 reply)"
+expect "자기 페이지에 자기 댓글 → 자기 알림 없음" "$((N1+1))" "$(notes_of claude_employee01 comment_on_my_page)"
+E1N=$(psqlq "SELECT min(n.id) FROM community.notifications n JOIN users u ON u.id=n.user_id WHERE u.username='claude_employee01'")
 jbody "{'ids': [$E1N]}"
-expect "남의 알림 읽음 표시 → 200 · 바뀐 것 0" "200|0" "$(capi POST /api/notifications/read qa_employee02 "$WORK/body.json")|$(jget "d['changed']" < "$WORK/b")"
+expect "남의 알림 읽음 표시 → 200 · 바뀐 것 0" "200|0" "$(capi POST /api/notifications/read claude_employee02 "$WORK/body.json")|$(jget "d['changed']" < "$WORK/b")"
 jbody "{'ids': ['1']}"
-expect "번호가 아닌 값 → 400" "400" "$(capi POST /api/notifications/read qa_employee02 "$WORK/body.json")"
+expect "번호가 아닌 값 → 400" "400" "$(capi POST /api/notifications/read claude_employee02 "$WORK/body.json")"
 jbody "{'all': True}"
-capi POST /api/notifications/read qa_employee02 "$WORK/body.json" > /dev/null
-expect "모두 읽음 → 안 읽은 수 0" "0" "$(capi GET '/api/notifications?unread=1' qa_employee02 >/dev/null; jget "d['unread']" < "$WORK/b")"
-HP=$(make_page qa_employee01 'C5D-넘길 페이지')
-jbody "{'to': 'qa_employee02', 'keep': 'none'}"
-expect "인계 → 받는 사람 알림 handover 1" "200|1" "$(capi POST "/api/pages/$HP/handover" qa_employee01 "$WORK/body.json")|$(notes_of qa_employee02 handover)"
+capi POST /api/notifications/read claude_employee02 "$WORK/body.json" > /dev/null
+expect "모두 읽음 → 안 읽은 수 0" "0" "$(capi GET '/api/notifications?unread=1' claude_employee02 >/dev/null; jget "d['unread']" < "$WORK/b")"
+HP=$(make_page claude_employee01 'C5D-넘길 페이지')
+jbody "{'to': 'claude_employee02', 'keep': 'none'}"
+expect "인계 → 받는 사람 알림 handover 1" "200|1" "$(capi POST "/api/pages/$HP/handover" claude_employee01 "$WORK/body.json")|$(notes_of claude_employee02 handover)"
 
 # ════════════════════════════════════════════════════════════════
 hr "C:T-102  공지 읽음 — 수만 · 쓴 사람·Admin 만"
-capi GET "/api/pages/$NP" qa_employee01 > /dev/null; capi GET "/api/pages/$NP" qa_employee01 > /dev/null
-capi GET "/api/pages/$NP" qa_employee02 > /dev/null; capi GET "/api/pages/$NP" qa_guest01 > /dev/null
+capi GET "/api/pages/$NP" claude_employee01 > /dev/null; capi GET "/api/pages/$NP" claude_employee01 > /dev/null
+capi GET "/api/pages/$NP" claude_employee02 > /dev/null; capi GET "/api/pages/$NP" claude_guest01 > /dev/null
 expect "읽음 기록 — 같은 사람 두 번 → 한 줄 · 셋이 열어 세 줄" "3" \
   "$(psqlq "SELECT count(*) FROM community.page_reads r JOIN community.pages p ON p.id=r.page_id WHERE p.public_id='$NP'")"
-AUD=$(psqlq "SELECT count(*) FROM users WHERE is_active AND username <> 'qa_admin01'")
+AUD=$(psqlq "SELECT count(*) FROM users WHERE is_active AND username <> 'claude_admin01'")
 expect "Admin(쓴 사람) GET reads → 200 · 3/활성 사용자 수(쓴 사람 뺌)" "200|3|$AUD" \
-  "$(capi GET "/api/pages/$NP/reads" qa_admin01)|$(jget "d['reads']['read']" < "$WORK/b")|$(jget "d['reads']['total']" < "$WORK/b")"
-lacks "  이름 목록은 없다 (결정 D-8 — 수만)" "qa_employee01" "$(cat "$WORK/b")"
-expect "Employee GET reads → 403" "403" "$(capi GET "/api/pages/$NP/reads" qa_employee01)"
-expect "공지가 아닌 글 reads → 400" "400" "$(capi GET "/api/pages/$PI/reads" qa_admin01)"
-capi GET "/api/pages/$NP" qa_admin01 > /dev/null
+  "$(capi GET "/api/pages/$NP/reads" claude_admin01)|$(jget "d['reads']['read']" < "$WORK/b")|$(jget "d['reads']['total']" < "$WORK/b")"
+lacks "  이름 목록은 없다 (결정 D-8 — 수만)" "claude_employee01" "$(cat "$WORK/b")"
+expect "Employee GET reads → 403" "403" "$(capi GET "/api/pages/$NP/reads" claude_employee01)"
+expect "공지가 아닌 글 reads → 400" "400" "$(capi GET "/api/pages/$PI/reads" claude_admin01)"
+capi GET "/api/pages/$NP" claude_admin01 > /dev/null
 expect "  페이지 창구 can_view_reads — Admin 참" "True" "$(jget "d['can_view_reads']" < "$WORK/b")"
 
 # ════════════════════════════════════════════════════════════════
 hr "C:T-103  게시 전 댓글은 게시판 독자에게 없다 (5-C #9 와 같은 자르기)"
-PB=$(make_page qa_employee01 'C5D-게시할 페이지')
-comment qa_employee01 "$PB" "{'body':'C5D-게시 전 비밀 메모'}" > /dev/null; OLD=$(cid)
+PB=$(make_page claude_employee01 'C5D-게시할 페이지')
+comment claude_employee01 "$PB" "{'body':'C5D-게시 전 비밀 메모'}" > /dev/null; OLD=$(cid)
 sleep 1
-publish qa_employee01 "$PB" "$B_FREE" > /dev/null
-capi GET "/api/pages/$PB/comments" qa_employee02 > /dev/null
+publish claude_employee01 "$PB" "$B_FREE" > /dev/null
+capi GET "/api/pages/$PB/comments" claude_employee02 > /dev/null
 lacks "게시판 독자의 댓글 목록에 게시 전 댓글 없음" "C5D-게시 전 비밀 메모" "$(cat "$WORK/b")"
-expect "  그 댓글에 직접 도움됐어요 → 404" "404" "$(capi POST "/api/comments/$OLD/helpful" qa_employee02)"
-expect "게시 뒤 댓글은 보인다" "201" "$(comment qa_employee02 "$PB" "{'body':'C5D-게시 뒤 댓글'}")"
-capi GET "/api/pages/$PB/comments" qa_employee01 > /dev/null
+expect "  그 댓글에 직접 도움됐어요 → 404" "404" "$(capi POST "/api/comments/$OLD/helpful" claude_employee02)"
+expect "게시 뒤 댓글은 보인다" "201" "$(comment claude_employee02 "$PB" "{'body':'C5D-게시 뒤 댓글'}")"
+capi GET "/api/pages/$PB/comments" claude_employee01 > /dev/null
 contains "  주인은 게시 전 댓글도 본다" "C5D-게시 전 비밀 메모" "$(cat "$WORK/b")"
 
 # ════════════════════════════════════════════════════════════════
@@ -539,7 +542,7 @@ PY2
 if ! python3 -c 'import playwright' 2>/dev/null; then
   skip "브라우저" "playwright 가 없다"
 else
-  SMOKE_E1="$(cookie_of qa_employee01)" SMOKE_E2="$(cookie_of qa_employee02)" SMOKE_ADMIN="$(cookie_of qa_admin01)" \
+  SMOKE_E1="$(cookie_of claude_employee01)" SMOKE_E2="$(cookie_of claude_employee02)" SMOKE_ADMIN="$(cookie_of claude_admin01)" \
   SMOKE_PI="$PI" SMOKE_NP="$NP" SMOKE_SHOTS="${SHOTS:-}" \
     python3 "$ROOT/tests/community/browser_5d.py" "$SITE" "$UA" > "$WORK/smoke.txt" 2>&1
   sed 's/^/    /' "$WORK/smoke.txt"

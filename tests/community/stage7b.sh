@@ -12,6 +12,7 @@
 #
 # ★ 운영 DB 를 건드리지 않는다 — stage7a.sh 와 같은 틀(임시 DB `tbox_7b_test`, 포트 8095).
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
+. "$ROOT/tests/lib/secrets.sh" || { echo "tests/lib/secrets.sh 를 읽지 못했다 — 시험을 시작하지 않는다 (R-62)"; exit 3; }
 PORT=8095
 SITE="http://127.0.0.1:$PORT"
 BASE="$SITE/tbox"
@@ -90,19 +91,20 @@ qa_password() { sudo -n awk -v u="$1" '$1==u{print $3}' /etc/tbox-v2/seed-accoun
 qa_secret()   { sudo -n awk -v u="$1" '$1==u{print $2}' /etc/tbox-v2/qa-totp.txt 2>/dev/null; }
 
 login() {
-  local who="$1" jar="$JAR_DIR/$1.jar" pw sec raw code left out try
+  local who="$1" jar="$JAR_DIR/$1.jar" pw sec raw code left out try body
   pw=$(qa_password "$who")
   sec=$(qa_secret "$who")
   [ -n "$pw" ] || return 2
   for try in 1 2 3; do
     if [ -n "$sec" ]; then
-      raw=$(php "$ROOT/scripts/totp_code.php" "$sec" 2>/dev/null)
+      raw=$(totp_now sec 2>/dev/null)
       code=${raw%%$'\n'*}
-      out=$(curl -s -c "$jar" -A "$UA" -H 'Content-Type: application/json' \
-            -d "{\"username\":\"$who\",\"password\":\"$pw\",\"otp\":\"$code\"}" "$BASE/api/login")
+      # 비밀번호가 든 본문은 인자가 아니라 표준입력으로 보낸다(R-62 · tests/lib/secrets.sh). 보내는 바이트는 같다.
+      printf -v body '{"username":"%s","password":"%s","otp":"%s"}' "$who" "$pw" "$code"
+      out=$(curl_json_secret body -s -c "$jar" -A "$UA" -H 'Content-Type: application/json' "$BASE/api/login")
     else
-      out=$(curl -s -c "$jar" -A "$UA" -H 'Content-Type: application/json' \
-            -d "{\"username\":\"$who\",\"password\":\"$pw\"}" "$BASE/api/login")
+      printf -v body '{"username":"%s","password":"%s"}' "$who" "$pw"
+      out=$(curl_json_secret body -s -c "$jar" -A "$UA" -H 'Content-Type: application/json' "$BASE/api/login")
     fi
     case "$out" in
       *'"ok":true'*)
@@ -261,18 +263,18 @@ done
 expect "임시 인스턴스가 떴다 (미로그인 커뮤니티 창구 401)" "401" "$READY"
 [ "$READY" = "401" ] || { echo "인스턴스를 띄우지 못했다 — 중단"; tail -5 "$INST/server.log"; exit 4; }
 
-sub "로그인 (qa 계정 다섯 — **순차**)"
-for who in qa_employee01 qa_employee02 qa_manager01 qa_admin01 qa_guest01; do
+sub "로그인 (claude_ 검토 계정 다섯 — **순차**, F-71)"
+for who in claude_employee01 claude_employee02 claude_manager01 claude_admin01 claude_guest01; do
   tok=$(login "$who")
   if [ -z "$tok" ]; then echo "  ✖ $who 로그인 실패 — 중단"; exit 4; fi
   eval "CSRF_${who}='$tok'"
   echo "  ✔ $who"
 done
 # 개인 공간을 연다(없으면 만든다) — 그 뒤의 목록·인계가 공간을 전제로 한다.
-for who in qa_employee01 qa_employee02 qa_manager01 qa_admin01; do capi GET /api/me/space "$who" > /dev/null; done
-TEAM1=$(psqlq "SELECT team_id FROM users WHERE username='qa_employee01'")
-TEAM2=$(psqlq "SELECT team_id FROM users WHERE username='qa_employee02'")
-note "팀: qa_employee01·qa_manager01=$TEAM1 · qa_employee02=$TEAM2"
+for who in claude_employee01 claude_employee02 claude_manager01 claude_admin01; do capi GET /api/me/space "$who" > /dev/null; done
+TEAM1=$(psqlq "SELECT team_id FROM users WHERE username='claude_employee01'")
+TEAM2=$(psqlq "SELECT team_id FROM users WHERE username='claude_employee02'")
+note "팀: claude_employee01·claude_manager01=$TEAM1 · claude_employee02=$TEAM2"
 DEAD=$(psqlq "SELECT username FROM public.users WHERE is_active = false ORDER BY id LIMIT 1")
 note "비활성 계정: ${DEAD:-없음}"
 
@@ -300,11 +302,12 @@ page_html() {   # $1 주소(SITE 기준 경로) $2 계정
 uid() { psqlq "SELECT id FROM users WHERE username='$1'"; }
 reauth_admin() {
   local pw rc
-  pw=$(qa_password qa_admin01)
-  python3 -c "import json,sys;print(json.dumps({'password':sys.argv[1]}))" "$pw" > "$WORK/reauth.json"
-  rc=$(curl -s -o /dev/null -w '%{http_code}' -b "$JAR_DIR/qa_admin01.jar" -A "$UA" -H 'Content-Type: application/json' \
-        -H "X-CSRF-Token: $CSRF_qa_admin01" --data-binary "@$WORK/reauth.json" "$BASE/api/me/reauth")
-  rm -f "$WORK/reauth.json"
+  pw=$(qa_password claude_admin01)
+  # 비밀번호는 표준입력 첫 줄로 파이썬에(py_secret) — 명령 인자에 싣지 않는다(R-62). 파이썬이 만든 본문(끝 줄바꿈까지)은
+  # 파일을 거치지 않고 파이프로 curl 의 --data-binary @- 에 간다 — 옛 「파일 → @파일」 과 보내는 바이트가 같다.
+  rc=$(py_secret pw -- python3 -c "import json,sys;print(json.dumps({'password':sys.stdin.readline().rstrip('\n')}))" \
+       | curl -s -o /dev/null -w '%{http_code}' -b "$JAR_DIR/claude_admin01.jar" -A "$UA" -H 'Content-Type: application/json' \
+        -H "X-CSRF-Token: $CSRF_claude_admin01" --data-binary @- "$BASE/api/me/reauth")
   printf '%s' "$rc"
 }
 
@@ -412,9 +415,9 @@ detail_n() {    # $1 기준 id $2 action $3 detail 키 $4 값
   psqlq "SELECT count(*) FROM audit_logs WHERE id > ${1:-0} AND action='$2' AND detail->>'$3' = '$4'"
 }
 
-capi GET /api/spaces qa_employee01 > /dev/null
+capi GET /api/spaces claude_employee01 > /dev/null
 TS1=$(psqlq "SELECT id FROM community.spaces WHERE kind='team' AND team_id=${TEAM1:-0}")
-note "팀 공간(qa_employee01 팀): ${TS1:-없음}"
+note "팀 공간(claude_employee01 팀): ${TS1:-없음}"
 MEET=$(psqlq "SELECT public_id FROM community.templates WHERE seed_key='meeting'")
 HAND=$(psqlq "SELECT public_id FROM community.templates WHERE seed_key='handover'")
 CHKL=$(psqlq "SELECT public_id FROM community.templates WHERE seed_key='checklist'")
@@ -424,21 +427,21 @@ hr "C:T-170  사이트 기본 셋"
 expect "시드 셋 — 마이그레이션 두 번 돌린 뒤에도 셋" "3" "$(psqlq "SELECT count(*) FROM community.templates WHERE seed_key IS NOT NULL")"
 expect "  이름" "업무 체크리스트,인수인계서,회의록" "$(psqlq "SELECT string_agg(name, ',' ORDER BY seed_key) FROM community.templates WHERE seed_key IS NOT NULL")"
 expect "  셋 다 사이트 범위 · 만든 사람 없음" "3" "$(psqlq "SELECT count(*) FROM community.templates WHERE seed_key IS NOT NULL AND scope='site' AND created_by IS NULL")"
-expect "직원 목록 → 200" "200" "$(tlist qa_employee01)"
+expect "직원 목록 → 200" "200" "$(tlist claude_employee01)"
 contains "  회의록이 있다" "$MEET" "$(cat "$WORK/b")"
 contains "  인수인계서가 있다" "$HAND" "$(cat "$WORK/b")"
 contains "  기본 셋은 만든 사람이 없다(null)" '"created_by":null' "$(cat "$WORK/b")"
 expect "  기본 셋은 직원이 지울 수 없다(can_delete 거짓)" "False" "$(jget "[t['can_delete'] for t in d['templates'] if t['id']=='$MEET'][0]" < "$WORK/b")"
-expect "Guest 목록 → 200 · 0건(쓸 곳이 없다)" "200 0" "$(tlist qa_guest01) $(jget "len(d['templates'])" < "$WORK/b")"
+expect "Guest 목록 → 200 · 0건(쓸 곳이 없다)" "200 0" "$(tlist claude_guest01) $(jget "len(d['templates'])" < "$WORK/b")"
 expect "기본 셋 본문이 지금 규칙을 지난다 — 셋 다 페이지로 만들 수 있다" "201 201 201" \
-  "$(tuse qa_employee01 "$MEET") $(tuse qa_employee01 "$HAND") $(tuse qa_employee01 "$CHKL")"
+  "$(tuse claude_employee01 "$MEET") $(tuse claude_employee01 "$HAND") $(tuse claude_employee01 "$CHKL")"
 NCH=$(np)
 expect "  체크리스트로 만든 페이지 — 할 일 블록 7" "7" "$(psqlq "SELECT count(*) FROM community.page_blocks b JOIN community.pages p ON p.id=b.page_id WHERE p.public_id='$NCH' AND b.block_type='to_do'")"
 
 # ════════════════════════════════════════════════════════════════
 hr "C:T-171  저장 — 첨부·하위 페이지는 담지 않는다 · 범위 규칙"
-P1=$(make_page qa_employee01 'C7B-원본 페이지')
-CHILD=$(make_page qa_employee01 'C7B-하위' "$P1")
+P1=$(make_page claude_employee01 'C7B-원본 페이지')
+CHILD=$(make_page claude_employee01 'C7B-하위' "$P1")
 psqlq "UPDATE community.pages SET icon='🧪', doc = '$(python3 - "$CHILD" <<'PY'
 import json, sys, uuid
 u = lambda: str(uuid.uuid4())
@@ -457,7 +460,7 @@ print(json.dumps(doc, ensure_ascii=False))
 PY
 )'::jsonb WHERE public_id='$P1'" > /dev/null
 m0=$(mark)
-expect "내 템플릿으로 저장 → 201" "201" "$(tsave qa_employee01 "$P1" 'C7B-내 틀' personal)"
+expect "내 템플릿으로 저장 → 201" "201" "$(tsave claude_employee01 "$P1" 'C7B-내 틀' personal)"
 TP=$(tid)
 expect "  뺀 블록 4(그림·파일·하위 페이지·접기 안의 그림)" "4" "$(jget "d['dropped_blocks']" < "$WORK/b")"
 expect "  템플릿 본문에 첨부·하위 페이지 없음" "0" "$(tpl_col "$TP" "(doc::text LIKE '%file_ref%')::int + (doc::text LIKE '%child_page%')::int")"
@@ -465,193 +468,193 @@ expect "  글·접기 안의 글은 남았다" "t" "$(tpl_col "$TP" "(doc::text 
 expect "  할 일 체크를 풀었다(빈 양식)" "f" "$(tpl_col "$TP" "(doc::text LIKE '%\"checked\": true%')")"
 expect "  제목·아이콘을 담았다" "C7B-원본 페이지 🧪" "$(tpl_col "$TP" "title || ' ' || icon")"
 expect "  감사 template.create allow 1(범위 personal)" "1" "$(detail_n "$m0" template.create scope personal)"
-expect "이름 빈 글자 → 400" "400" "$(tsave qa_employee01 "$P1" ' ' personal)"
-expect "이름 61자 → 400" "400" "$(tsave qa_employee01 "$P1" "$(python3 -c "print('가'*61)")" personal)"
-expect "모르는 범위 → 400" "400" "$(tsave qa_employee01 "$P1" 'x' everyone)"
+expect "이름 빈 글자 → 400" "400" "$(tsave claude_employee01 "$P1" ' ' personal)"
+expect "이름 61자 → 400" "400" "$(tsave claude_employee01 "$P1" "$(python3 -c "print('가'*61)")" personal)"
+expect "모르는 범위 → 400" "400" "$(tsave claude_employee01 "$P1" 'x' everyone)"
 jbody "{'page_id': '$P1', 'name': 'x', 'scope': 'personal', 'owner_user_id': 1}"
-expect "허용 키 밖(owner_user_id) → 400" "400" "$(capi POST /api/templates qa_employee01 "$WORK/body.json")"
+expect "허용 키 밖(owner_user_id) → 400" "400" "$(capi POST /api/templates claude_employee01 "$WORK/body.json")"
 m0=$(mark)
-expect "남의 비공개 페이지를 저장 → 403" "403" "$(tsave qa_employee02 "$P1" 'C7B-훔친 틀' personal)"
+expect "남의 비공개 페이지를 저장 → 403" "403" "$(tsave claude_employee02 "$P1" 'C7B-훔친 틀' personal)"
 expect "  감사 page.read deny not_owner 1" "1" "$(audit_n "$m0" page.read deny not_owner)"
 expect "  템플릿이 생기지 않았다" "0" "$(psqlq "SELECT count(*) FROM community.templates WHERE name='C7B-훔친 틀'")"
-share qa_employee01 "$P1" qa_employee02 view > /dev/null
-expect "보기 공유를 받은 사람은 내 템플릿으로 저장할 수 있다(복사와 같다) → 201" "201" "$(tsave qa_employee02 "$P1" 'C7B-공유받아 저장' personal)"
+share claude_employee01 "$P1" claude_employee02 view > /dev/null
+expect "보기 공유를 받은 사람은 내 템플릿으로 저장할 수 있다(복사와 같다) → 201" "201" "$(tsave claude_employee02 "$P1" 'C7B-공유받아 저장' personal)"
 TP2=$(tid)
-expect "  그러나 팀 템플릿으로는 안 된다(개인 공간 페이지) → 400 team_scope" "400 team_scope" "$(tsave qa_employee02 "$P1" 'x' team) $(reason_of)"
+expect "  그러나 팀 템플릿으로는 안 된다(개인 공간 페이지) → 400 team_scope" "400 team_scope" "$(tsave claude_employee02 "$P1" 'x' team) $(reason_of)"
 m0=$(mark)
-expect "직원이 사이트 기본으로 저장 → 403" "403" "$(tsave qa_employee01 "$P1" 'x' site)"
+expect "직원이 사이트 기본으로 저장 → 403" "403" "$(tsave claude_employee01 "$P1" 'x' site)"
 expect "  감사 template.create deny role_not_permitted 1" "1" "$(audit_n "$m0" template.create deny role_not_permitted)"
-PA=$(make_page qa_admin01 'C7B-관리자 비공개')
-expect "관리자 — 비공개 페이지를 사이트 기본으로 → 400 too_narrow" "400 too_narrow" "$(tsave qa_admin01 "$PA" 'x' site) $(reason_of)"
-PAI=$(make_page qa_admin01 'C7B-관리자 사내 공개')
-set_vis qa_admin01 "$PAI" internal
-expect "관리자 — 사내 공개 페이지를 사이트 기본으로 → 201" "201" "$(tsave qa_admin01 "$PAI" 'C7B-사이트 틀' site)"
+PA=$(make_page claude_admin01 'C7B-관리자 비공개')
+expect "관리자 — 비공개 페이지를 사이트 기본으로 → 400 too_narrow" "400 too_narrow" "$(tsave claude_admin01 "$PA" 'x' site) $(reason_of)"
+PAI=$(make_page claude_admin01 'C7B-관리자 사내 공개')
+set_vis claude_admin01 "$PAI" internal
+expect "관리자 — 사내 공개 페이지를 사이트 기본으로 → 201" "201" "$(tsave claude_admin01 "$PAI" 'C7B-사이트 틀' site)"
 TS=$(tid)
-tlist qa_employee02 > /dev/null
+tlist claude_employee02 > /dev/null
 contains "  다른 팀 직원 목록에도 보인다" "$TS" "$(cat "$WORK/b")"
 # 독립 검토 M-1 — 숨긴 게시판 글은 원본을 읽는 사람이 좁다(쓴 사람·관리자) → 사이트 템플릿이 되면 뒷문이다
-BP=$(new_post qa_employee01 "$B_FREE" 'C7B-숨길 글')
-expect "사내 게시판 글(숨기기 전) — 관리자 범위 목록에 site" "personal,site" "$(scopes_of qa_admin01 "$BP")"
-expect "관리자가 그 글을 숨김 → 200" "200" "$(capi POST "/api/pages/$BP/hide" qa_admin01)"
-expect "숨긴 글을 사이트 기본으로 → 400 too_narrow(M-1)" "400 too_narrow" "$(tsave qa_admin01 "$BP" 'x' site) $(reason_of)"
-expect "  숨긴 글의 범위 목록에 site 없음" "personal" "$(scopes_of qa_admin01 "$BP")"
-PAO=$(make_page qa_employee01 'C7B-남의 비공개(관리자 특권으로만 읽힘)')
-expect "특권(admin_all)으로만 읽는 원본을 사이트 기본으로 → 400 too_narrow" "400 too_narrow" "$(tsave qa_admin01 "$PAO" 'x' site) $(reason_of)"
+BP=$(new_post claude_employee01 "$B_FREE" 'C7B-숨길 글')
+expect "사내 게시판 글(숨기기 전) — 관리자 범위 목록에 site" "personal,site" "$(scopes_of claude_admin01 "$BP")"
+expect "관리자가 그 글을 숨김 → 200" "200" "$(capi POST "/api/pages/$BP/hide" claude_admin01)"
+expect "숨긴 글을 사이트 기본으로 → 400 too_narrow(M-1)" "400 too_narrow" "$(tsave claude_admin01 "$BP" 'x' site) $(reason_of)"
+expect "  숨긴 글의 범위 목록에 site 없음" "personal" "$(scopes_of claude_admin01 "$BP")"
+PAO=$(make_page claude_employee01 'C7B-남의 비공개(관리자 특권으로만 읽힘)')
+expect "특권(admin_all)으로만 읽는 원본을 사이트 기본으로 → 400 too_narrow" "400 too_narrow" "$(tsave claude_admin01 "$PAO" 'x' site) $(reason_of)"
 if [ -n "$TS1" ]; then
-  PT=$(make_page qa_employee01 'C7B-팀 페이지' '' "$TS1")
-  expect "팀 공간 페이지를 팀 템플릿으로 → 201" "201" "$(tsave qa_employee01 "$PT" 'C7B-팀 틀' team)"
+  PT=$(make_page claude_employee01 'C7B-팀 페이지' '' "$TS1")
+  expect "팀 공간 페이지를 팀 템플릿으로 → 201" "201" "$(tsave claude_employee01 "$PT" 'C7B-팀 틀' team)"
   TT=$(tid)
-  tlist qa_manager01 > /dev/null
+  tlist claude_manager01 > /dev/null
   contains "  같은 팀 매니저 목록에 있다" "$TT" "$(cat "$WORK/b")"
-  tlist qa_employee02 > /dev/null
+  tlist claude_employee02 > /dev/null
   lacks "  다른 팀 직원 목록에는 없다" "$TT" "$(cat "$WORK/b")"
-  share qa_employee01 "$PT" qa_employee02 view > /dev/null
+  share claude_employee01 "$PT" claude_employee02 view > /dev/null
   m0=$(mark)
-  expect "팀 밖 사람(보기 공유)이 팀 템플릿으로 저장 → 403" "403" "$(tsave qa_employee02 "$PT" 'x' team)"
+  expect "팀 밖 사람(보기 공유)이 팀 템플릿으로 저장 → 403" "403" "$(tsave claude_employee02 "$PT" 'x' team)"
   expect "  감사 template.create deny not_member 1" "1" "$(audit_n "$m0" template.create deny not_member)"
 else
-  skip "팀 템플릿" "qa_employee01 팀 공간 없음"
+  skip "팀 템플릿" "claude_employee01 팀 공간 없음"
 fi
-read DBP DBI <<< "$(mkdb qa_employee01 'C7B-표')"
-expect "DB 페이지 자체는 템플릿이 되지 않는다 → 400 db_page" "400 db_page" "$(tsave qa_employee01 "$DBP" 'x' personal) $(reason_of)"
-expect "DB 행이 아닌 페이지를 행 템플릿으로 → 400 not_row" "400 not_row" "$(tsave qa_employee01 "$P1" 'x' database) $(reason_of)"
-tlist qa_employee01 > /dev/null
+read DBP DBI <<< "$(mkdb claude_employee01 'C7B-표')"
+expect "DB 페이지 자체는 템플릿이 되지 않는다 → 400 db_page" "400 db_page" "$(tsave claude_employee01 "$DBP" 'x' personal) $(reason_of)"
+expect "DB 행이 아닌 페이지를 행 템플릿으로 → 400 not_row" "400 not_row" "$(tsave claude_employee01 "$P1" 'x' database) $(reason_of)"
+tlist claude_employee01 > /dev/null
 lacks "내 목록에 남의 개인 템플릿(공유받아 저장한 것)은 없다" "$TP2" "$(cat "$WORK/b")"
-# 한도 — qa_employee02 의 개인 템플릿을 50 까지 채운다(임시 DB)
-E2=$(uid qa_employee02)
+# 한도 — claude_employee02 의 개인 템플릿을 50 까지 채운다(임시 DB)
+E2=$(uid claude_employee02)
 psqlq "INSERT INTO community.templates (scope, owner_user_id, name, title, doc, created_by)
        SELECT 'personal', $E2, 'C7B-채움 ' || g, 't', '{\"schema\":1,\"blocks\":[]}'::jsonb, $E2
          FROM generate_series(1, 50 - (SELECT count(*) FROM community.templates WHERE scope='personal' AND owner_user_id=$E2 AND deleted_at IS NULL)) g" > /dev/null
-expect "한도(개인 50) — 51번째 → 400 too_many_templates" "400 too_many_templates" "$(tsave qa_employee02 "$P1" 'C7B-넘침' personal) $(reason_of)"
+expect "한도(개인 50) — 51번째 → 400 too_many_templates" "400 too_many_templates" "$(tsave claude_employee02 "$P1" 'C7B-넘침' personal) $(reason_of)"
 
 # ════════════════════════════════════════════════════════════════
 hr "C:T-172  쓰기 — 만든 사람 공간 · 비공개 · 새 블록 id · 남의 템플릿 403"
 m0=$(mark)
-expect "회의록으로 새 페이지 → 201" "201" "$(tuse qa_employee01 "$MEET")"
+expect "회의록으로 새 페이지 → 201" "201" "$(tuse claude_employee01 "$MEET")"
 N1=$(np)
-expect "  내 개인 공간" "personal:qa_employee01" "$(psqlq "SELECT s.kind || ':' || u.username FROM community.pages p JOIN community.spaces s ON s.id=p.space_id JOIN users u ON u.id=s.owner_user_id WHERE p.public_id='$N1'")"
+expect "  내 개인 공간" "personal:claude_employee01" "$(psqlq "SELECT s.kind || ':' || u.username FROM community.pages p JOIN community.spaces s ON s.id=p.space_id JOIN users u ON u.id=s.owner_user_id WHERE p.public_id='$N1'")"
 expect "  비공개로 시작" "private" "$(pg_page "$N1" "p.visibility")"
 expect "  제목·아이콘은 템플릿 것" "회의록 📝" "$(pg_page "$N1" "p.title || ' ' || p.icon")"
 expect "  블록 수는 템플릿과 같다" "$(psqlq "SELECT jsonb_array_length(doc->'blocks') FROM community.templates WHERE seed_key='meeting'")" "$(pg_page "$N1" "jsonb_array_length(p.doc->'blocks')")"
 expect "  블록 id 는 모두 새것(템플릿과 겹침 0)" "0" "$(psqlq "SELECT count(*) FROM jsonb_array_elements((SELECT doc->'blocks' FROM community.pages WHERE public_id='$N1')) a JOIN jsonb_array_elements((SELECT doc->'blocks' FROM community.templates WHERE seed_key='meeting')) b ON a->>'id' = b->>'id'")"
-tuse qa_employee01 "$MEET" > /dev/null; N1B=$(np)
+tuse claude_employee01 "$MEET" > /dev/null; N1B=$(np)
 expect "  같은 템플릿으로 만든 두 페이지도 블록 id 겹침 0" "0" "$(psqlq "SELECT count(*) FROM jsonb_array_elements((SELECT doc->'blocks' FROM community.pages WHERE public_id='$N1')) a JOIN jsonb_array_elements((SELECT doc->'blocks' FROM community.pages WHERE public_id='$N1B')) b ON a->>'id' = b->>'id'")"
 expect "  블록 색인도 만들었다(page_blocks > 0)" "yes" "$([ "$(psqlq "SELECT count(*) FROM community.page_blocks b JOIN community.pages p ON p.id=b.page_id WHERE p.public_id='$N1'")" -gt 0 ] && echo yes)"
 expect "  감사 page.create 에 템플릿 이름" "yes" "$([ "$(detail_n "$m0" page.create template_name 회의록)" -ge 1 ] && echo yes)"
-expect "제목을 주면 그 제목 → 201 · 제목" "201 C7B-주간 회의" "$(tuse qa_employee01 "$MEET" "'title': 'C7B-주간 회의'") $(pg_page "$(np)" "p.title")"
-expect "첨부를 뺀 내 템플릿으로 → 201" "201" "$(tuse qa_employee01 "$TP")"
+expect "제목을 주면 그 제목 → 201 · 제목" "201 C7B-주간 회의" "$(tuse claude_employee01 "$MEET" "'title': 'C7B-주간 회의'") $(pg_page "$(np)" "p.title")"
+expect "첨부를 뺀 내 템플릿으로 → 201" "201" "$(tuse claude_employee01 "$TP")"
 N2=$(np)
 expect "  새 페이지에 첨부·하위 페이지 없음" "0" "$(pg_page "$N2" "(p.doc::text LIKE '%file_ref%')::int + (p.doc::text LIKE '%child_page%')::int")"
 expect "  하위 페이지 0" "0" "$(psqlq "SELECT count(*) FROM community.pages c JOIN community.pages p ON p.id=c.parent_page_id WHERE p.public_id='$N2'")"
 if [ -n "$TS1" ]; then
-  expect "팀 공간을 주면 팀 공간에 → 201 · team" "201 team" "$(tuse qa_employee01 "$TT" "'space_id': $TS1") $(psqlq "SELECT s.kind FROM community.pages p JOIN community.spaces s ON s.id=p.space_id WHERE p.public_id='$(np)'")"
-  expect "같은 팀 매니저가 팀 템플릿으로 → 201(자기 개인 공간)" "201 personal:qa_manager01" "$(tuse qa_manager01 "$TT") $(psqlq "SELECT s.kind || ':' || u.username FROM community.pages p JOIN community.spaces s ON s.id=p.space_id JOIN users u ON u.id=s.owner_user_id WHERE p.public_id='$(np)'")"
+  expect "팀 공간을 주면 팀 공간에 → 201 · team" "201 team" "$(tuse claude_employee01 "$TT" "'space_id': $TS1") $(psqlq "SELECT s.kind FROM community.pages p JOIN community.spaces s ON s.id=p.space_id WHERE p.public_id='$(np)'")"
+  expect "같은 팀 매니저가 팀 템플릿으로 → 201(자기 개인 공간)" "201 personal:claude_manager01" "$(tuse claude_manager01 "$TT") $(psqlq "SELECT s.kind || ':' || u.username FROM community.pages p JOIN community.spaces s ON s.id=p.space_id JOIN users u ON u.id=s.owner_user_id WHERE p.public_id='$(np)'")"
   m0=$(mark)
-  expect "다른 팀 직원이 팀 템플릿으로 → 403" "403" "$(tuse qa_employee02 "$TT")"
+  expect "다른 팀 직원이 팀 템플릿으로 → 403" "403" "$(tuse claude_employee02 "$TT")"
   expect "  감사 template.read deny not_member 1" "1" "$(audit_n "$m0" template.read deny not_member)"
 fi
 n_before=$(psqlq "SELECT count(*) FROM community.pages WHERE author_id=$E2")
 m0=$(mark)
-expect "남의 개인 템플릿으로 → 403" "403" "$(tuse qa_employee02 "$TP")"
+expect "남의 개인 템플릿으로 → 403" "403" "$(tuse claude_employee02 "$TP")"
 expect "  감사 template.read deny not_owner 1" "1" "$(audit_n "$m0" template.read deny not_owner)"
 expect "  페이지가 생기지 않았다" "$n_before" "$(psqlq "SELECT count(*) FROM community.pages WHERE author_id=$E2")"
-expect "  남의 개인 템플릿 읽기도 403" "403" "$(capi GET "/api/templates/$TP" qa_employee02)"
+expect "  남의 개인 템플릿 읽기도 403" "403" "$(capi GET "/api/templates/$TP" claude_employee02)"
 lacks "  403 응답에 템플릿 이름이 없다" "C7B-내 틀" "$(cat "$WORK/b")"
-expect "관리자도 남의 개인 템플릿은 못 쓴다(J-3) → 403" "403" "$(tuse qa_admin01 "$TP")"
-expect "관리자도 남의 개인 템플릿은 못 읽는다 → 403" "403" "$(capi GET "/api/templates/$TP" qa_admin01)"
-expect "내 템플릿 읽기 → 200 · 본문 있음" "200 yes" "$(capi GET "/api/templates/$TP" qa_employee01) $(jget "'yes' if d['template']['doc']['blocks'] else 'no'" < "$WORK/b")"
+expect "관리자도 남의 개인 템플릿은 못 쓴다(J-3) → 403" "403" "$(tuse claude_admin01 "$TP")"
+expect "관리자도 남의 개인 템플릿은 못 읽는다 → 403" "403" "$(capi GET "/api/templates/$TP" claude_admin01)"
+expect "내 템플릿 읽기 → 200 · 본문 있음" "200 yes" "$(capi GET "/api/templates/$TP" claude_employee01) $(jget "'yes' if d['template']['doc']['blocks'] else 'no'" < "$WORK/b")"
 jbody "{'template_id': '$MEET', 'doc': {'schema': 1, 'blocks': []}}"
-expect "template_id + doc → 400" "400" "$(capi POST /api/pages qa_employee01 "$WORK/body.json")"
+expect "template_id + doc → 400" "400" "$(capi POST /api/pages claude_employee01 "$WORK/body.json")"
 jbody "{'template_id': '$MEET', 'database': True}"
-expect "template_id + database → 400" "400" "$(capi POST /api/pages qa_employee01 "$WORK/body.json")"
+expect "template_id + database → 400" "400" "$(capi POST /api/pages claude_employee01 "$WORK/body.json")"
 jbody "{'template_id': 'abc'}"
-expect "template_id 형식 오류 → 400" "400" "$(capi POST /api/pages qa_employee01 "$WORK/body.json")"
-expect "없는 템플릿 → 404" "404" "$(tuse qa_employee01 "$(python3 -c 'import uuid;print(uuid.uuid4())')")"
-expect "Guest 가 기본 셋으로 → 403(쓰기 정책)" "403" "$(tuse qa_guest01 "$MEET")"
+expect "template_id 형식 오류 → 400" "400" "$(capi POST /api/pages claude_employee01 "$WORK/body.json")"
+expect "없는 템플릿 → 404" "404" "$(tuse claude_employee01 "$(python3 -c 'import uuid;print(uuid.uuid4())')")"
+expect "Guest 가 기본 셋으로 → 403(쓰기 정책)" "403" "$(tuse claude_guest01 "$MEET")"
 
 # ════════════════════════════════════════════════════════════════
 hr "C:T-173  DB 행 템플릿"
-KT=$(addprop qa_employee01 "$DBI" '메모' text)
-KS=$(addprop qa_employee01 "$DBI" '분류' select "['가','나']")
-KP=$(addprop qa_employee01 "$DBI" '담당' person)
-newrow qa_employee01 "$DBP" 'C7B-행' "{'$KT': '글값', '$KS': '가', '$KP': 'qa_employee01'}" > /dev/null; RW=$(rid)
-expect "행을 행 템플릿으로 → 201" "201" "$(tsave qa_employee01 "$RW" 'C7B-행 틀' database)"
+KT=$(addprop claude_employee01 "$DBI" '메모' text)
+KS=$(addprop claude_employee01 "$DBI" '분류' select "['가','나']")
+KP=$(addprop claude_employee01 "$DBI" '담당' person)
+newrow claude_employee01 "$DBP" 'C7B-행' "{'$KT': '글값', '$KS': '가', '$KP': 'claude_employee01'}" > /dev/null; RW=$(rid)
+expect "행을 행 템플릿으로 → 201" "201" "$(tsave claude_employee01 "$RW" 'C7B-행 틀' database)"
 TR=$(tid)
 expect "  담은 값 — 글·선택(사람은 뺀다)" "글값 가 false" "$(tpl_col "$TR" "(properties->>'$KT') || ' ' || (properties->>'$KS') || ' ' || (properties ? '$KP')")"
-expect "행을 내 템플릿으로 → 201 · 속성 값은 담지 않는다" "201 {}" "$(tsave qa_employee01 "$RW" 'C7B-행 개인 틀' personal) $(tpl_col "$(tid)" "properties::text")"
-expect "DB 목록 → 200 · 행 템플릿 있음" "200 yes" "$(tlist qa_employee01 "$DBI") $(jget "'yes' if any(t['id']=='$TR' for t in d['templates']) else 'no'" < "$WORK/b")"
-tlist qa_employee01 > /dev/null
+expect "행을 내 템플릿으로 → 201 · 속성 값은 담지 않는다" "201 {}" "$(tsave claude_employee01 "$RW" 'C7B-행 개인 틀' personal) $(tpl_col "$(tid)" "properties::text")"
+expect "DB 목록 → 200 · 행 템플릿 있음" "200 yes" "$(tlist claude_employee01 "$DBI") $(jget "'yes' if any(t['id']=='$TR' for t in d['templates']) else 'no'" < "$WORK/b")"
+tlist claude_employee01 > /dev/null
 lacks "  일반 목록에는 행 템플릿이 없다" "$TR" "$(cat "$WORK/b")"
-expect "DB 를 못 보는 사람의 DB 목록 → 404" "404" "$(tlist qa_employee02 "$DBI")"
-share qa_employee01 "$DBP" qa_employee02 view > /dev/null
+expect "DB 를 못 보는 사람의 DB 목록 → 404" "404" "$(tlist claude_employee02 "$DBI")"
+share claude_employee01 "$DBP" claude_employee02 view > /dev/null
 m0=$(mark)
-expect "보기만 하는 사람의 DB 목록 → 403" "403" "$(tlist qa_employee02 "$DBI")"
+expect "보기만 하는 사람의 DB 목록 → 403" "403" "$(tlist claude_employee02 "$DBI")"
 expect "  감사 template.list deny not_owner 1(목록 전용 문장 — 검토 L-3)" "1" "$(audit_n "$m0" template.list deny not_owner)"
-expect "보기만 하는 사람이 행 템플릿으로 → 403" "403" "$(tuse qa_employee02 "$TR")"
-expect "행 템플릿으로(부모 없이) → 201 · 부모는 그 DB 페이지" "201 $DBP" "$(tuse qa_employee01 "$TR") $(psqlq "SELECT par.public_id FROM community.pages p JOIN community.pages par ON par.id=p.parent_page_id WHERE p.public_id='$(np)'")"
+expect "보기만 하는 사람이 행 템플릿으로 → 403" "403" "$(tuse claude_employee02 "$TR")"
+expect "행 템플릿으로(부모 없이) → 201 · 부모는 그 DB 페이지" "201 $DBP" "$(tuse claude_employee01 "$TR") $(psqlq "SELECT par.public_id FROM community.pages p JOIN community.pages par ON par.id=p.parent_page_id WHERE p.public_id='$(np)'")"
 R2=$(np)
 expect "  행의 값 = 템플릿 값" "글값 가" "$(pg_page "$R2" "(p.properties->>'$KT') || ' ' || (p.properties->>'$KS')")"
 expect "  사람 값은 따라오지 않았다" "f" "$(pg_page "$R2" "p.properties ? '$KP'")"
-expect "요청 값이 템플릿 값 위에 → 201 · 나" "201 나" "$(tuse qa_employee01 "$TR" "'properties': {'$KS': '나'}") $(pg_page "$(np)" "p.properties->>'$KS'")"
-OTHER=$(make_page qa_employee01 'C7B-다른 부모')
+expect "요청 값이 템플릿 값 위에 → 201 · 나" "201 나" "$(tuse claude_employee01 "$TR" "'properties': {'$KS': '나'}") $(pg_page "$(np)" "p.properties->>'$KS'")"
+OTHER=$(make_page claude_employee01 'C7B-다른 부모')
 m0=$(mark)
-expect "행 템플릿 + 다른 공간(space_id) → 400 template_db_mismatch(검토 L-2)" "400 template_db_mismatch" "$(tuse qa_employee01 "$TR" "'space_id': ${TS1:-999999}") $(reason_of)"
+expect "행 템플릿 + 다른 공간(space_id) → 400 template_db_mismatch(검토 L-2)" "400 template_db_mismatch" "$(tuse claude_employee01 "$TR" "'space_id': ${TS1:-999999}") $(reason_of)"
 expect "  「남의 페이지」 감사가 남지 않았다" "0" "$(audit_n "$m0" page.read deny not_owner)"
-expect "다른 부모를 주면 → 400 template_db_mismatch" "400 template_db_mismatch" "$(tuse qa_employee01 "$TR" "'parent_id': '$OTHER'") $(reason_of)"
-schema qa_employee01 "$DBI" "{'remove': {'key': '$KS'}}" > /dev/null
-expect "스키마에서 분류를 지운 뒤 → 201 · 분류 값 없음" "201 f" "$(tuse qa_employee01 "$TR") $(pg_page "$(np)" "p.properties ? '$KS'")"
-set_vis qa_employee01 "$DBP" internal
-newrow qa_employee01 "$DBP" 'C7B-좁힌 행' > /dev/null; RN=$(rid)
-set_vis qa_employee01 "$RN" private
-expect "DB 보다 좁게 닫은 행 → 400 too_narrow" "400 too_narrow" "$(tsave qa_employee01 "$RN" 'x' database) $(reason_of)"
-newrow qa_employee01 "$DBP" 'C7B-같은 범위 행' > /dev/null; RS=$(rid)
-expect "DB 와 같은 범위의 행 → 201" "201" "$(tsave qa_employee01 "$RS" 'C7B-행 틀 2' database)"
+expect "다른 부모를 주면 → 400 template_db_mismatch" "400 template_db_mismatch" "$(tuse claude_employee01 "$TR" "'parent_id': '$OTHER'") $(reason_of)"
+schema claude_employee01 "$DBI" "{'remove': {'key': '$KS'}}" > /dev/null
+expect "스키마에서 분류를 지운 뒤 → 201 · 분류 값 없음" "201 f" "$(tuse claude_employee01 "$TR") $(pg_page "$(np)" "p.properties ? '$KS'")"
+set_vis claude_employee01 "$DBP" internal
+newrow claude_employee01 "$DBP" 'C7B-좁힌 행' > /dev/null; RN=$(rid)
+set_vis claude_employee01 "$RN" private
+expect "DB 보다 좁게 닫은 행 → 400 too_narrow" "400 too_narrow" "$(tsave claude_employee01 "$RN" 'x' database) $(reason_of)"
+newrow claude_employee01 "$DBP" 'C7B-같은 범위 행' > /dev/null; RS=$(rid)
+expect "DB 와 같은 범위의 행 → 201" "201" "$(tsave claude_employee01 "$RS" 'C7B-행 틀 2' database)"
 
 # ════════════════════════════════════════════════════════════════
 hr "C:T-174  지우기"
 m0=$(mark)
-expect "남의 개인 템플릿 지우기 → 403" "403" "$(capi DELETE "/api/templates/$TP" qa_employee02)"
+expect "남의 개인 템플릿 지우기 → 403" "403" "$(capi DELETE "/api/templates/$TP" claude_employee02)"
 expect "  감사 template.read deny 1(볼 수도 없다)" "1" "$(audit_n "$m0" template.read deny not_owner)"
 if [ -n "$TS1" ]; then
   m0=$(mark)
-  expect "팀 템플릿 — 팀 밖 사람(보기 공유)이 지우기 → 403" "403" "$(capi DELETE "/api/templates/$TT" qa_employee02)"
+  expect "팀 템플릿 — 팀 밖 사람(보기 공유)이 지우기 → 403" "403" "$(capi DELETE "/api/templates/$TT" claude_employee02)"
   expect "  감사 template.read deny not_member 1(볼 수도 없다)" "1" "$(audit_n "$m0" template.read deny not_member)"
 fi
-expect "보기 공유만 받은 사람이 행 템플릿 지우기 → 403" "403" "$(capi DELETE "/api/templates/$TR" qa_employee02)"
+expect "보기 공유만 받은 사람이 행 템플릿 지우기 → 403" "403" "$(capi DELETE "/api/templates/$TR" claude_employee02)"
 m0=$(mark)
-expect "기본 셋을 직원이 지우기 → 403" "403" "$(capi DELETE "/api/templates/$CHKL" qa_employee01)"
+expect "기본 셋을 직원이 지우기 → 403" "403" "$(capi DELETE "/api/templates/$CHKL" claude_employee01)"
 expect "  감사 template.delete deny role_not_permitted 1" "1" "$(audit_n "$m0" template.delete deny role_not_permitted)"
 m0=$(mark)
-expect "내 템플릿 지우기 → 200" "200" "$(capi DELETE "/api/templates/$TP" qa_employee01)"
+expect "내 템플릿 지우기 → 200" "200" "$(capi DELETE "/api/templates/$TP" claude_employee01)"
 expect "  감사 template.delete allow 1" "1" "$(audit_n "$m0" template.delete allow)"
-expect "  지운 뒤 읽기 404 · 쓰기 404" "404 404" "$(capi GET "/api/templates/$TP" qa_employee01) $(tuse qa_employee01 "$TP")"
-expect "  그 템플릿으로 만든 페이지는 그대로" "200" "$(capi GET "/api/pages/$N2" qa_employee01)"
-expect "  두 번 지우기 → 404" "404" "$(capi DELETE "/api/templates/$TP" qa_employee01)"
-expect "  줄은 남고 지운 사람이 적혔다" "t" "$(tpl_col "$TP" "(deleted_at IS NOT NULL AND deleted_by = $(uid qa_employee01))")"
-share qa_employee01 "$DBP" qa_manager01 edit > /dev/null
+expect "  지운 뒤 읽기 404 · 쓰기 404" "404 404" "$(capi GET "/api/templates/$TP" claude_employee01) $(tuse claude_employee01 "$TP")"
+expect "  그 템플릿으로 만든 페이지는 그대로" "200" "$(capi GET "/api/pages/$N2" claude_employee01)"
+expect "  두 번 지우기 → 404" "404" "$(capi DELETE "/api/templates/$TP" claude_employee01)"
+expect "  줄은 남고 지운 사람이 적혔다" "t" "$(tpl_col "$TP" "(deleted_at IS NOT NULL AND deleted_by = $(uid claude_employee01))")"
+share claude_employee01 "$DBP" claude_manager01 edit > /dev/null
 m0=$(mark)
-expect "행 템플릿 — 편집 공유자(행은 더하지만 만들지도 관리하지도 않음)가 지우기 → 403" "403" "$(capi DELETE "/api/templates/$TR" qa_manager01)"
+expect "행 템플릿 — 편집 공유자(행은 더하지만 만들지도 관리하지도 않음)가 지우기 → 403" "403" "$(capi DELETE "/api/templates/$TR" claude_manager01)"
 expect "  감사 template.delete deny not_owner 1" "1" "$(audit_n "$m0" template.delete deny not_owner)"
-expect "행 템플릿 — 만든 사람이 지우기 → 200" "200" "$(capi DELETE "/api/templates/$TR" qa_employee01)"
+expect "행 템플릿 — 만든 사람이 지우기 → 200" "200" "$(capi DELETE "/api/templates/$TR" claude_employee01)"
 if [ -n "$TS1" ]; then
-  expect "팀 템플릿 — 만들지 않은 팀원(매니저)도 지울 수 있다 → 200(검토 L-4: 만든 사람이 팀을 옮겨도 정리된다)" "200" "$(capi DELETE "/api/templates/$TT" qa_manager01)"
+  expect "팀 템플릿 — 만들지 않은 팀원(매니저)도 지울 수 있다 → 200(검토 L-4: 만든 사람이 팀을 옮겨도 정리된다)" "200" "$(capi DELETE "/api/templates/$TT" claude_manager01)"
 fi
-expect "기본 셋을 관리자가 지우기 → 200" "200" "$(capi DELETE "/api/templates/$CHKL" qa_admin01)"
+expect "기본 셋을 관리자가 지우기 → 200" "200" "$(capi DELETE "/api/templates/$CHKL" claude_admin01)"
 sudo -n -u postgres psql -d "$DB" -q -v ON_ERROR_STOP=1 -f - < "$ROOT/db/migrations/2026-09-27_community_templates.sql" > /dev/null 2>&1
 expect "  마이그레이션을 다시 돌려도 지운 기본 템플릿은 살아나지 않는다(살아 있는 셋 2)" "2" "$(psqlq "SELECT count(*) FROM community.templates WHERE seed_key IS NOT NULL AND deleted_at IS NULL")"
 
 # ════════════════════════════════════════════════════════════════
 hr "C:T-175  페이지 응답의 template_scopes = 저장 창구 판정"
-expect "내 비공개 페이지 → personal" "personal" "$(scopes_of qa_employee01 "$P1")"
-expect "보기 공유받은 사람 → personal" "personal" "$(scopes_of qa_employee02 "$P1")"
-share qa_employee01 "$P1" qa_guest01 view > /dev/null
-expect "보기 공유받은 Guest → (없음 — 쓸 수 없는 역할, 검토 L-5)" "" "$(scopes_of qa_guest01 "$P1")"
-[ -n "$TS1" ] && expect "팀 공간 페이지(팀원) → personal,team" "personal,team" "$(scopes_of qa_manager01 "$PT")"
-expect "관리자의 사내 공개 페이지 → personal,site" "personal,site" "$(scopes_of qa_admin01 "$PAI")"
-expect "관리자의 비공개 페이지 → personal" "personal" "$(scopes_of qa_admin01 "$PA")"
-expect "DB 페이지 → (없음)" "" "$(scopes_of qa_employee01 "$DBP")"
-expect "DB 행(같은 범위) → personal,database" "personal,database" "$(scopes_of qa_employee01 "$RS")"
-expect "DB 보다 좁힌 행 → personal" "personal" "$(scopes_of qa_employee01 "$RN")"
+expect "내 비공개 페이지 → personal" "personal" "$(scopes_of claude_employee01 "$P1")"
+expect "보기 공유받은 사람 → personal" "personal" "$(scopes_of claude_employee02 "$P1")"
+share claude_employee01 "$P1" claude_guest01 view > /dev/null
+expect "보기 공유받은 Guest → (없음 — 쓸 수 없는 역할, 검토 L-5)" "" "$(scopes_of claude_guest01 "$P1")"
+[ -n "$TS1" ] && expect "팀 공간 페이지(팀원) → personal,team" "personal,team" "$(scopes_of claude_manager01 "$PT")"
+expect "관리자의 사내 공개 페이지 → personal,site" "personal,site" "$(scopes_of claude_admin01 "$PAI")"
+expect "관리자의 비공개 페이지 → personal" "personal" "$(scopes_of claude_admin01 "$PA")"
+expect "DB 페이지 → (없음)" "" "$(scopes_of claude_employee01 "$DBP")"
+expect "DB 행(같은 범위) → personal,database" "personal,database" "$(scopes_of claude_employee01 "$RS")"
+expect "DB 보다 좁힌 행 → personal" "personal" "$(scopes_of claude_employee01 "$RN")"
 
 # ════════════════════════════════════════════════════════════════
 hr "C:T-176  권한 · 모양"
@@ -660,7 +663,7 @@ bad=$(sudo -n -u postgres psql -d "$DB" -tAc "INSERT INTO community.templates (s
 contains "범위 모양 CHECK — 개인인데 팀도 채운 줄은 들어가지 못한다" "templates_scope_shape" "$bad"
 bad=$(sudo -n -u postgres psql -d "$DB" -tAc "INSERT INTO community.templates (scope, name, title, doc) VALUES ('site', 'x', 'x', '{\"blocks\":[]}')" 2>&1)
 contains "만든 사람 CHECK — 시드가 아닌 사이트 템플릿은 만든 사람이 있어야 한다" "templates_creator" "$bad"
-tlist qa_employee01 > /dev/null
+tlist claude_employee01 > /dev/null
 for k in owner_user_id team_id database_id seed_key; do
   lacks "목록 응답에 내부 칸($k)이 없다" "\"$k\"" "$(cat "$WORK/b")"
 done
@@ -681,13 +684,13 @@ PY2
 if ! python3 -c 'import playwright' 2>/dev/null; then
   skip "브라우저" "playwright 가 없다"
 else
-  PSRC=$(make_page qa_employee01 'C7B-브라우저 원본')
-  read BDBP BDBI <<< "$(mkdb qa_employee01 'C7B-브라우저 표')"
-  BK=$(addprop qa_employee01 "$BDBI" '메모' text)
-  newrow qa_employee01 "$BDBP" 'C7B-브라우저 행' "{'$BK': '틀 값'}" > /dev/null
-  tsave qa_employee01 "$(rid)" 'C7B-브라우저 행 틀' database > /dev/null
+  PSRC=$(make_page claude_employee01 'C7B-브라우저 원본')
+  read BDBP BDBI <<< "$(mkdb claude_employee01 'C7B-브라우저 표')"
+  BK=$(addprop claude_employee01 "$BDBI" '메모' text)
+  newrow claude_employee01 "$BDBP" 'C7B-브라우저 행' "{'$BK': '틀 값'}" > /dev/null
+  tsave claude_employee01 "$(rid)" 'C7B-브라우저 행 틀' database > /dev/null
   m0=$(mark)
-  SMOKE_E1="$(cookie_of qa_employee01)" SMOKE_PSRC="$PSRC" SMOKE_DBP="$BDBP" SMOKE_ROWTPL='C7B-브라우저 행 틀' SMOKE_SHOTS="${SHOTS:-}" \
+  SMOKE_E1="$(cookie_of claude_employee01)" SMOKE_PSRC="$PSRC" SMOKE_DBP="$BDBP" SMOKE_ROWTPL='C7B-브라우저 행 틀' SMOKE_SHOTS="${SHOTS:-}" \
     python3 "$ROOT/tests/community/browser_7b.py" "$SITE" "$UA" > "$WORK/smoke.txt" 2>&1
   sed 's/^/    /' "$WORK/smoke.txt"
   expect "브라우저 실패 0" "0" "$(sed -n 's/^SMOKE_FAIL=//p' "$WORK/smoke.txt" | tail -1)"

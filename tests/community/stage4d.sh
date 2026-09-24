@@ -36,7 +36,7 @@
 # ══════════════════════════════════════════════════════════════════════════
 #
 # 규칙 (CLAUDE.md 3장) — stage3.sh·stage4a.sh·stage4b.sh·stage4c.sh 와 같다
-#   · 검토 계정 `qa_` 다섯뿐. 시드 계정은 사용자 몫.
+#   · 검토 계정 `claude_` 다섯뿐. 시드 계정은 사용자 몫.
 #   · 모든 요청에 `-A "tbox-review/<날짜>"`.
 #   · 운영 DB 에 DDL 을 실행하지 않는다. `sudo` 는 **읽기**(pg_dump·seed 파일)와 **임시 DB** 에만.
 #   · 만든 페이지는 임시 DB 와 함께 통째로 사라진다 — 운영에 남는 것이 없다.
@@ -46,6 +46,7 @@
 set -u
 
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
+. "$ROOT/tests/lib/secrets.sh" || { echo "tests/lib/secrets.sh 를 읽지 못했다 — 시험을 시작하지 않는다 (R-62)"; exit 3; }
 PORT=8083
 SITE="http://127.0.0.1:$PORT"
 BASE="$SITE/tbox"
@@ -124,19 +125,19 @@ qa_password() { sudo -n awk -v u="$1" '$1==u{print $3}' /etc/tbox-v2/seed-accoun
 qa_secret()   { sudo -n awk -v u="$1" '$1==u{print $2}' /etc/tbox-v2/qa-totp.txt 2>/dev/null; }
 
 login() {
-  local who="$1" jar="$JAR_DIR/$1.jar" pw sec raw code left out try
+  local who="$1" jar="$JAR_DIR/$1.jar" pw sec raw code left out try body
   pw=$(qa_password "$who")
   sec=$(qa_secret "$who")
   [ -n "$pw" ] || return 2
   for try in 1 2 3; do
     if [ -n "$sec" ]; then
-      raw=$(php "$ROOT/scripts/totp_code.php" "$sec" 2>/dev/null)
+      raw=$(totp_now sec 2>/dev/null)
       code=${raw%%$'\n'*}
-      out=$(curl -s -c "$jar" -A "$UA" -H 'Content-Type: application/json' \
-            -d "{\"username\":\"$who\",\"password\":\"$pw\",\"otp\":\"$code\"}" "$BASE/api/login")
+      printf -v body '{"username":"%s","password":"%s","otp":"%s"}' "$who" "$pw" "$code"
+      out=$(curl_json_secret body -s -c "$jar" -A "$UA" -H 'Content-Type: application/json' "$BASE/api/login")
     else
-      out=$(curl -s -c "$jar" -A "$UA" -H 'Content-Type: application/json' \
-            -d "{\"username\":\"$who\",\"password\":\"$pw\"}" "$BASE/api/login")
+      printf -v body '{"username":"%s","password":"%s"}' "$who" "$pw"
+      out=$(curl_json_secret body -s -c "$jar" -A "$UA" -H 'Content-Type: application/json' "$BASE/api/login")
     fi
     case "$out" in
       *'"ok":true'*)
@@ -282,14 +283,14 @@ expect "임시 인스턴스가 떴다 (미로그인 커뮤니티 창구 401)" "4
 AUDIT_START=$(mark); AUDIT_START=${AUDIT_START:-0}
 
 sub "로그인 (qa 계정 넷 — 주인 · 남 · 관리자 · 손님)"
-for who in qa_employee01 qa_employee02 qa_admin01 qa_guest01; do
+for who in claude_employee01 claude_employee02 claude_admin01 claude_guest01; do
   tok=$(login "$who")
   if [ -z "$tok" ]; then echo "  ✖ $who 로그인 실패 — 중단"; exit 4; fi
   eval "CSRF_${who}='$tok'"
   echo "  ✔ $who"
 done
 
-P1=$(make_page qa_employee01 "4-D 상태 시험")
+P1=$(make_page claude_employee01 "4-D 상태 시험")
 [ -n "$P1" ] || { echo "시험용 페이지를 만들지 못했다 — 중단"; exit 4; }
 note "시험 페이지(비공개, employee01) = $P1"
 
@@ -301,10 +302,10 @@ n0=$(ev_count "$P1")
 i=0
 for st in todo doing review done hold; do
   body "{\"status\":\"$st\"}"
-  code=$(capi PATCH "/api/pages/$P1/properties" qa_employee01 "$WORK/body.json")
+  code=$(capi PATCH "/api/pages/$P1/properties" claude_employee01 "$WORK/body.json")
   expect "상태를 $st 로 → 200" "200" "$code"
   expect "  응답의 status 가 $st" "$st" "$(jget "d['page']['status']" < "$WORK/b")"
-  code=$(capi GET "/api/pages/$P1" qa_employee01)
+  code=$(capi GET "/api/pages/$P1" claude_employee01)
   expect "  GET 에도 $st 로 반영" "$st" "$(jget "d['page']['status']" < "$WORK/b")"
   i=$((i+1))
   expect "  page_property_events 가 한 줄 늘었다" "$((n0+i))" "$(ev_count "$P1")"
@@ -316,7 +317,7 @@ for st in todo doing review done hold; do
 done
 
 body '{"status":null}'
-code=$(capi PATCH "/api/pages/$P1/properties" qa_employee01 "$WORK/body.json")
+code=$(capi PATCH "/api/pages/$P1/properties" claude_employee01 "$WORK/body.json")
 expect "상태를 「없음」으로 → 200" "200" "$code"
 expect "  응답의 status 가 비어 있다" "" "$(jget "d['page']['status']" < "$WORK/b")"
 expect "  DB 의 status 가 NULL 이다" "t" "$(psqlq "SELECT status IS NULL FROM community.pages WHERE public_id='$P1'")"
@@ -330,7 +331,7 @@ expect "  마지막 줄이 hold→NULL 이다" "hold→NULL" \
 sub "같은 값을 다시 보내면 200 이지만 **기록은 늘지 않는다** (장부는 「바뀐 일」만 적는다)"
 before=$(ev_count "$P1")
 body '{"status":null}'
-code=$(capi PATCH "/api/pages/$P1/properties" qa_employee01 "$WORK/body.json")
+code=$(capi PATCH "/api/pages/$P1/properties" claude_employee01 "$WORK/body.json")
 expect "같은 값 다시 → 200" "200" "$code"
 expect "  기록 수 그대로" "$before" "$(ev_count "$P1")"
 expect "  changed 가 빈 목록" "0" "$(jget "len(d['changed'])" < "$WORK/b")"
@@ -339,14 +340,14 @@ expect "  changed 가 빈 목록" "0" "$(jget "len(d['changed'])" < "$WORK/b")"
 hr "C:T-47  허용 밖 값 — 400 · DB 불변"
 
 body '{"status":"doing"}'
-capi PATCH "/api/pages/$P1/properties" qa_employee01 "$WORK/body.json" > /dev/null
+capi PATCH "/api/pages/$P1/properties" claude_employee01 "$WORK/body.json" > /dev/null
 snapshot=$(psqlq "SELECT coalesce(status,'NULL') || '|' || coalesce(assignee_id::text,'NULL') FROM community.pages WHERE public_id='$P1'")
 events_before=$(ev_count "$P1")
 
 for bad in '{"status":"urgent"}' '{"status":"TODO"}' '{"status":123}' '{"due":"2026-10-01"}' \
            '{"status":"doing","due":"x"}' '{}' '{"assignee":""}' '{"assignee":123}' ; do
   body "$bad"
-  code=$(capi PATCH "/api/pages/$P1/properties" qa_employee01 "$WORK/body.json")
+  code=$(capi PATCH "/api/pages/$P1/properties" claude_employee01 "$WORK/body.json")
   expect "$bad → 400" "400" "$code"
 done
 
@@ -364,20 +365,20 @@ hr "C:T-48  담당자 — **지정을 멈췄다** (5-A: 담당자 = 소유자, �
 
 A0=$(mark)
 DEAD=$(psqlq "SELECT username FROM public.users WHERE is_active = false ORDER BY id LIMIT 1")
-for who in qa_employee01 qa_employee02 qa_guest01 "없는계정_$$" ${DEAD:+"$DEAD"}; do
+for who in claude_employee01 claude_employee02 claude_guest01 "없는계정_$$" ${DEAD:+"$DEAD"}; do
   body "{\"assignee\":\"$who\"}"
-  code=$(capi PATCH "/api/pages/$P1/properties" qa_employee01 "$WORK/body.json")
+  code=$(capi PATCH "/api/pages/$P1/properties" claude_employee01 "$WORK/body.json")
   expect "{assignee: $who} → 400 (허용 키가 아니다)" "400" "$code"
 done
 body '{"assignee":null}'
-expect "{assignee: null} 도 400" "400" "$(capi PATCH "/api/pages/$P1/properties" qa_employee01 "$WORK/body.json")"
-body '{"status":"todo","assignee":"qa_employee01"}'
+expect "{assignee: null} 도 400" "400" "$(capi PATCH "/api/pages/$P1/properties" claude_employee01 "$WORK/body.json")"
+body '{"status":"todo","assignee":"claude_employee01"}'
 expect "상태와 함께 보내도 400 — 상태도 바뀌지 않는다" "400|doing" \
-  "$(capi PATCH "/api/pages/$P1/properties" qa_employee01 "$WORK/body.json")|$(psqlq "SELECT coalesce(status,'NULL') FROM community.pages WHERE public_id='$P1'")"
+  "$(capi PATCH "/api/pages/$P1/properties" claude_employee01 "$WORK/body.json")|$(psqlq "SELECT coalesce(status,'NULL') FROM community.pages WHERE public_id='$P1'")"
 expect "DB 의 assignee_id 는 그대로 NULL" "t" "$(psqlq "SELECT assignee_id IS NULL FROM community.pages WHERE public_id='$P1'")"
 expect "형식 거부라 감사는 남지 않는다" "0" \
   "$(psqlq "SELECT count(*) FROM audit_logs WHERE id > ${A0:-0} AND action='page.property'")"
-expect "후보 창구 GET /api/assignees → 404 (창구가 없다)" "404" "$(capi GET "/api/assignees?page=$P1" qa_employee01)"
+expect "후보 창구 GET /api/assignees → 404 (창구가 없다)" "404" "$(capi GET "/api/assignees?page=$P1" claude_employee01)"
 
 # ════════════════════════════════════════════════════════════════
 hr "C:T-49  기록 불변 — 앱 계정으로는 고칠 수도 지울 수도 없다"
@@ -396,19 +397,19 @@ expect "INSERT 는 있다 (앱이 기록을 남긴다)" "t" \
 # ════════════════════════════════════════════════════════════════
 hr "C:T-50  (5-A) 「내가 담당인 페이지」 자리 — 옛 담당자 값은 남고, 꼬리표는 무시된다"
 
-P2=$(make_page qa_employee02 "4-D 영업팀의 사내 페이지")
+P2=$(make_page claude_employee02 "4-D 영업팀의 사내 페이지")
 [ -n "$P2" ] || { echo "employee02 의 페이지를 만들지 못했다 — 중단"; exit 4; }
 body '{"visibility":"internal"}'
 expect "employee02 가 자기 페이지를 「사내」로 연다" "200" \
-  "$(capi PATCH "/api/pages/$P2/visibility" qa_employee02 "$WORK/body.json")"
+  "$(capi PATCH "/api/pages/$P2/visibility" claude_employee02 "$WORK/body.json")"
 body '{"status":"review"}'
-expect "employee02 가 상태를 검토로 → 200" "200" "$(capi PATCH "/api/pages/$P2/properties" qa_employee02 "$WORK/body.json")"
+expect "employee02 가 상태를 검토로 → 200" "200" "$(capi PATCH "/api/pages/$P2/properties" claude_employee02 "$WORK/body.json")"
 # 4-D 때 지정해 둔 담당자를 흉내 낸다 — 임시 DB 에만 한 칸.
-psqlq "UPDATE community.pages SET assignee_id = (SELECT id FROM users WHERE username='qa_employee01') WHERE public_id='$P2'" >/dev/null
-code=$(capi GET "/api/pages/$P2" qa_employee02)
-expect "옛 담당자 값은 창구에 **읽기 전용**으로 남는다" "qa_employee01" "$(jget "d['page']['assignee']['username']" < "$WORK/b")"
-expect "  속성 줄의 소유자는 공간 주인(employee02)" "qa_employee02" "$(jget "d['page']['owner']['username']" < "$WORK/b")"
-code=$(capi GET "/api/pages?assignee=me" qa_employee01)
+psqlq "UPDATE community.pages SET assignee_id = (SELECT id FROM users WHERE username='claude_employee01') WHERE public_id='$P2'" >/dev/null
+code=$(capi GET "/api/pages/$P2" claude_employee02)
+expect "옛 담당자 값은 창구에 **읽기 전용**으로 남는다" "claude_employee01" "$(jget "d['page']['assignee']['username']" < "$WORK/b")"
+expect "  속성 줄의 소유자는 공간 주인(employee02)" "claude_employee02" "$(jget "d['page']['owner']['username']" < "$WORK/b")"
+code=$(capi GET "/api/pages?assignee=me" claude_employee01)
 expect "?assignee=me 는 무시되는 꼬리표 — 기본 목록(내 개인 공간)이 나간다" "200|personal" \
   "$code|$(jget "d['space']['kind']" < "$WORK/b")"
 lacks "  그 목록에 남의 공간 페이지는 없다" "$P2" "$(cat "$WORK/b")"
@@ -419,16 +420,16 @@ hr "C:T-51  남이 바꾸기 — 403 (사내 공개여도 · Admin 도)"
 A0=$(mark)
 body '{"status":"done"}'
 expect "employee01 이 employee02 의 **사내** 페이지 상태를 → 403" "403" \
-  "$(capi PATCH "/api/pages/$P2/properties" qa_employee01 "$WORK/body.json")"
+  "$(capi PATCH "/api/pages/$P2/properties" claude_employee01 "$WORK/body.json")"
 expect "Admin 이 남의 개인 페이지 상태를 → 403 (볼 수는 있어도 고치지 못한다)" "403" \
-  "$(capi PATCH "/api/pages/$P2/properties" qa_admin01 "$WORK/body.json")"
+  "$(capi PATCH "/api/pages/$P2/properties" claude_admin01 "$WORK/body.json")"
 expect "  DB 의 상태는 그대로다" "review" "$(psqlq "SELECT status FROM community.pages WHERE public_id='$P2'")"
 expect "  감사에 deny not_owner 두 줄" "2" \
   "$(psqlq "SELECT count(*) FROM audit_logs WHERE id > ${A0:-0} AND action='page.property' AND result='deny' AND reason='not_owner'")"
 
 sub "볼 수도 없는 사람은 403 이고, 그 줄은 page.read 로 남는다"
 expect "employee01 이 employee02 의 **비공개** 페이지 상태를 → 403" "403" \
-  "$(capi PATCH "/api/pages/$P1/properties" qa_employee02 "$WORK/body.json")"
+  "$(capi PATCH "/api/pages/$P1/properties" claude_employee02 "$WORK/body.json")"
 
 # ════════════════════════════════════════════════════════════════
 hr "C:T-52  이력 합치기 — 버전 · 체크 · 상태 · 담당자가 한 줄씩 시간순"
@@ -441,8 +442,8 @@ doc = {"schema": 1, "blocks": [{"id": sys.argv[1], "type": "to_do", "checked": F
                                 "text": [{"t": "보고서 마무리", "m": {}}]}]}
 print(json.dumps({"doc_version": 1, "doc": doc}, ensure_ascii=False))
 PY
-P3=$(make_page qa_employee01 "4-D 이력 합치기")
-expect "본문 저장(판 1 → 2)" "200" "$(capi PATCH "/api/pages/$P3" qa_employee01 "$WORK/todo.json")"
+P3=$(make_page claude_employee01 "4-D 이력 합치기")
+expect "본문 저장(판 1 → 2)" "200" "$(capi PATCH "/api/pages/$P3" claude_employee01 "$WORK/todo.json")"
 python3 - "$BLK" > "$WORK/check.json" <<'PY'
 import json, sys
 print(json.dumps({"block_id": sys.argv[1], "checked": True}))
@@ -454,17 +455,17 @@ doc = {"schema": 1, "blocks": [{"id": sys.argv[1], "type": "to_do", "checked": T
                                 "text": [{"t": "보고서 마무리", "m": {}}]}]}
 print(json.dumps({"doc_version": 2, "doc": doc}, ensure_ascii=False))
 PY
-expect "체크를 켠다(판 2 → 3)" "200" "$(capi PATCH "/api/pages/$P3" qa_employee01 "$WORK/todo2.json")"
+expect "체크를 켠다(판 2 → 3)" "200" "$(capi PATCH "/api/pages/$P3" claude_employee01 "$WORK/todo2.json")"
 body '{"status":"doing"}'
-expect "상태를 진행으로" "200" "$(capi PATCH "/api/pages/$P3/properties" qa_employee01 "$WORK/body.json")"
+expect "상태를 진행으로" "200" "$(capi PATCH "/api/pages/$P3/properties" claude_employee01 "$WORK/body.json")"
 # 5-A — 담당자 줄은 창구로 만들 수 없다. 4-D 때 남은 옛 기록을 **임시 DB 에 한 줄** 흉내 낸다.
 psqlq "INSERT INTO community.page_property_events (page_id, prop, from_value, to_value, by_user_id)
-       SELECT p.id, 'assignee', NULL, 'qa_employee01', (SELECT id FROM users WHERE username='qa_employee01')
+       SELECT p.id, 'assignee', NULL, 'claude_employee01', (SELECT id FROM users WHERE username='claude_employee01')
          FROM community.pages p WHERE p.public_id='$P3'" >/dev/null
 expect "(임시 DB) 옛 담당자 줄 하나" "1" \
   "$(psqlq "SELECT count(*) FROM community.page_property_events e JOIN community.pages p ON p.id=e.page_id WHERE p.public_id='$P3' AND e.prop='assignee'")"
 
-code=$(capi GET "/api/pages/$P3/history" qa_employee01)
+code=$(capi GET "/api/pages/$P3/history" claude_employee01)
 expect "처리 이력 200" "200" "$code"
 kinds=$(jget "','.join(e['kind'] for e in d['events'])" < "$WORK/b")
 note "줄 종류(새 것부터): $kinds"
@@ -481,7 +482,7 @@ lacks "  이력에 본문 글자가 새지 않는다" "보고서 마무리" "$(c
 
 sub "이력은 볼 수 있는 사람만 (4-C 규칙 그대로)"
 expect "employee02 가 남의 비공개 페이지 이력을 → 403" "403" \
-  "$(capi GET "/api/pages/$P3/history" qa_employee02)"
+  "$(capi GET "/api/pages/$P3/history" claude_employee02)"
 
 # ════════════════════════════════════════════════════════════════
 hr "브라우저 — browser_smoke.py 32 (상태 배지 · 「나에게」 · 목록 배지 · 묶음)"
@@ -490,7 +491,7 @@ export PATH="$HOME/.local/bin:$PATH"
 if ! python3 -c 'import playwright' 2>/dev/null; then
   skip "브라우저 스모크" "playwright 가 없다"
 else
-  SESSION=$(python3 - "$JAR_DIR/qa_employee01.jar" <<'PY'
+  SESSION=$(python3 - "$JAR_DIR/claude_employee01.jar" <<'PY'
 import sys
 for line in open(sys.argv[1], encoding='utf-8', errors='replace'):
     parts = line.rstrip('\n').split('\t')
@@ -502,7 +503,8 @@ PY
   if [ -z "$SESSION" ]; then
     skip "브라우저 스모크" "세션 쿠키를 꺼내지 못했다"
   else
-    python3 "$ROOT/tests/community/browser_smoke.py" "$SITE" "$UA" "$SESSION" > "$WORK/smoke.txt" 2>&1
+    # 세션 값은 표준입력 첫 줄로 넘긴다(명령 인자에 싣지 않는다 — tests/lib/secrets.sh py_secret · R-62)
+    py_secret SESSION -- python3 "$ROOT/tests/community/browser_smoke.py" "$SITE" "$UA" > "$WORK/smoke.txt" 2>&1
     sed -n '/── 32\./,$p' "$WORK/smoke.txt" | sed 's/^/    /'
     SMOKE_FAIL=$(sed -n 's/^SMOKE_FAIL=//p' "$WORK/smoke.txt" | tail -1)
     expect "브라우저 스모크 실패 0" "0" "${SMOKE_FAIL:-없음}"

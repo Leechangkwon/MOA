@@ -17,6 +17,7 @@
 set -u
 
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
+. "$ROOT/tests/lib/secrets.sh" || { echo "tests/lib/secrets.sh 를 읽지 못했다 — 시험을 시작하지 않는다 (R-62)"; exit 3; }
 PORT=8090
 SITE="http://127.0.0.1:$PORT"
 BASE="$SITE/tbox"
@@ -95,19 +96,20 @@ qa_password() { sudo -n awk -v u="$1" '$1==u{print $3}' /etc/tbox-v2/seed-accoun
 qa_secret()   { sudo -n awk -v u="$1" '$1==u{print $2}' /etc/tbox-v2/qa-totp.txt 2>/dev/null; }
 
 login() {
-  local who="$1" jar="$JAR_DIR/$1.jar" pw sec raw code left out try
+  local who="$1" jar="$JAR_DIR/$1.jar" pw sec raw code left out try body
   pw=$(qa_password "$who")
   sec=$(qa_secret "$who")
   [ -n "$pw" ] || return 2
   for try in 1 2 3; do
     if [ -n "$sec" ]; then
-      raw=$(php "$ROOT/scripts/totp_code.php" "$sec" 2>/dev/null)
+      raw=$(totp_now sec 2>/dev/null)
       code=${raw%%$'\n'*}
-      out=$(curl -s -c "$jar" -A "$UA" -H 'Content-Type: application/json' \
-            -d "{\"username\":\"$who\",\"password\":\"$pw\",\"otp\":\"$code\"}" "$BASE/api/login")
+      # 비밀번호가 든 본문은 인자가 아니라 표준입력으로 보낸다(R-62 · tests/lib/secrets.sh). 보내는 바이트는 같다.
+      printf -v body '{"username":"%s","password":"%s","otp":"%s"}' "$who" "$pw" "$code"
+      out=$(curl_json_secret body -s -c "$jar" -A "$UA" -H 'Content-Type: application/json' "$BASE/api/login")
     else
-      out=$(curl -s -c "$jar" -A "$UA" -H 'Content-Type: application/json' \
-            -d "{\"username\":\"$who\",\"password\":\"$pw\"}" "$BASE/api/login")
+      printf -v body '{"username":"%s","password":"%s"}' "$who" "$pw"
+      out=$(curl_json_secret body -s -c "$jar" -A "$UA" -H 'Content-Type: application/json' "$BASE/api/login")
     fi
     case "$out" in
       *'"ok":true'*)
@@ -266,18 +268,18 @@ done
 expect "임시 인스턴스가 떴다 (미로그인 커뮤니티 창구 401)" "401" "$READY"
 [ "$READY" = "401" ] || { echo "인스턴스를 띄우지 못했다 — 중단"; tail -5 "$INST/server.log"; exit 4; }
 
-sub "로그인 (qa 계정 다섯 — **순차**)"
-for who in qa_employee01 qa_employee02 qa_manager01 qa_admin01 qa_guest01; do
+sub "로그인 (claude_ 검토 계정 다섯 — **순차**, F-71)"
+for who in claude_employee01 claude_employee02 claude_manager01 claude_admin01 claude_guest01; do
   tok=$(login "$who")
   if [ -z "$tok" ]; then echo "  ✖ $who 로그인 실패 — 중단"; exit 4; fi
   eval "CSRF_${who}='$tok'"
   echo "  ✔ $who"
 done
 # 개인 공간을 연다(없으면 만든다) — 그 뒤의 목록·인계가 공간을 전제로 한다.
-for who in qa_employee01 qa_employee02 qa_manager01 qa_admin01; do capi GET /api/me/space "$who" > /dev/null; done
-TEAM1=$(psqlq "SELECT team_id FROM users WHERE username='qa_employee01'")
-TEAM2=$(psqlq "SELECT team_id FROM users WHERE username='qa_employee02'")
-note "팀: qa_employee01·qa_manager01=$TEAM1 · qa_employee02=$TEAM2"
+for who in claude_employee01 claude_employee02 claude_manager01 claude_admin01; do capi GET /api/me/space "$who" > /dev/null; done
+TEAM1=$(psqlq "SELECT team_id FROM users WHERE username='claude_employee01'")
+TEAM2=$(psqlq "SELECT team_id FROM users WHERE username='claude_employee02'")
+note "팀: claude_employee01·claude_manager01=$TEAM1 · claude_employee02=$TEAM2"
 DEAD=$(psqlq "SELECT username FROM public.users WHERE is_active = false ORDER BY id LIMIT 1")
 note "비활성 계정: ${DEAD:-없음}"
 
@@ -305,11 +307,12 @@ page_html() {   # $1 주소(SITE 기준 경로) $2 계정
 uid() { psqlq "SELECT id FROM users WHERE username='$1'"; }
 reauth_admin() {
   local pw rc
-  pw=$(qa_password qa_admin01)
-  python3 -c "import json,sys;print(json.dumps({'password':sys.argv[1]}))" "$pw" > "$WORK/reauth.json"
-  rc=$(curl -s -o /dev/null -w '%{http_code}' -b "$JAR_DIR/qa_admin01.jar" -A "$UA" -H 'Content-Type: application/json' \
-        -H "X-CSRF-Token: $CSRF_qa_admin01" --data-binary "@$WORK/reauth.json" "$BASE/api/me/reauth")
-  rm -f "$WORK/reauth.json"
+  pw=$(qa_password claude_admin01)
+  # 비밀번호는 표준입력 첫 줄로 파이썬에(py_secret) — 명령 인자에 싣지 않는다(R-62). 파이썬이 만든 본문(끝 줄바꿈까지)은
+  # 파일을 거치지 않고 파이프로 curl 의 --data-binary @- 에 간다 — 옛 「파일 → @파일」 과 보내는 바이트가 같다.
+  rc=$(py_secret pw -- python3 -c "import json,sys;print(json.dumps({'password':sys.stdin.readline().rstrip('\n')}))" \
+       | curl -s -o /dev/null -w '%{http_code}' -b "$JAR_DIR/claude_admin01.jar" -A "$UA" -H 'Content-Type: application/json' \
+        -H "X-CSRF-Token: $CSRF_claude_admin01" --data-binary @- "$BASE/api/me/reauth")
   printf '%s' "$rc"
 }
 
@@ -391,118 +394,121 @@ events_db() { psqlq "SELECT count(*) FROM community.page_property_events e JOIN 
 
 # ════════════════════════════════════════════════════════════════
 hr "C:T-130  스키마 — 속성 더하기·이름·선택지·지우기 · 관리 자격"
-read D1P D1 <<< "$(mkdb qa_employee01 'C6A-업무 표')"
+read D1P D1 <<< "$(mkdb claude_employee01 'C6A-업무 표')"
 expect "DB 만들기 → 201" "201" "$(cat "$WORK/st")"
 note "DB 페이지 $D1P · DB $D1"
 expect "  databases 한 줄" "1" "$(psqlq "SELECT count(*) FROM community.databases d JOIN community.pages p ON p.id=d.page_id WHERE p.public_id='$D1P'")"
-capi GET "/api/pages/$D1P" qa_employee01 > /dev/null
+capi GET "/api/pages/$D1P" claude_employee01 > /dev/null
 expect "  페이지 창구에 database(스키마 빈 목록)" "0" "$(jget "len(d['database']['schema'])" < "$WORK/b")"
-K_NUM=$(addprop qa_employee01 "$D1" '금액' number)
-K_SEL=$(addprop qa_employee01 "$D1" '분류' select "['A','B','C']")
-K_MUL=$(addprop qa_employee01 "$D1" '태그' multi_select "['x','y','z']")
-K_PER=$(addprop qa_employee01 "$D1" '담당' person)
-K_DATE=$(addprop qa_employee01 "$D1" '마감' date)
-K_CHK=$(addprop qa_employee01 "$D1" '완료' checkbox)
-K_TXT=$(addprop qa_employee01 "$D1" '메모' text)
-K_URL=$(addprop qa_employee01 "$D1" '링크' url)
+# BF-0009 — 아래 「database.schema allow ≥ 10」 은 이번 실행의 행만 센다. 그 행을 남기는 첫 요청(속성 더하기) **바로 앞**에서 잰다
+# (임시 DB 는 운영 사본이라 옛 행이 이미 있다 — 경계가 없으면 이번 요청이 기록을 남기지 않아도 통과한다).
+SCHEMA_MARK=$(mark)
+K_NUM=$(addprop claude_employee01 "$D1" '금액' number)
+K_SEL=$(addprop claude_employee01 "$D1" '분류' select "['A','B','C']")
+K_MUL=$(addprop claude_employee01 "$D1" '태그' multi_select "['x','y','z']")
+K_PER=$(addprop claude_employee01 "$D1" '담당' person)
+K_DATE=$(addprop claude_employee01 "$D1" '마감' date)
+K_CHK=$(addprop claude_employee01 "$D1" '완료' checkbox)
+K_TXT=$(addprop claude_employee01 "$D1" '메모' text)
+K_URL=$(addprop claude_employee01 "$D1" '링크' url)
 expect "속성 여덟 — key 는 서버가 만든 모양(p + 8hex)" "8" \
   "$(for k in $K_NUM $K_SEL $K_MUL $K_PER $K_DATE $K_CHK $K_TXT $K_URL; do [[ "$k" =~ ^p[0-9a-f]{8}$ ]] && echo ok; done | wc -l | tr -d ' ')"
-expect "모르는 종류(formula) → 400" "400" "$(schema qa_employee01 "$D1" "{'add': {'name': '수식', 'type': 'formula'}}")"
-expect "기본 열 이름(상태) → 400" "400" "$(schema qa_employee01 "$D1" "{'add': {'name': '상태', 'type': 'text'}}")"
-expect "같은 이름(금액) → 400" "400" "$(schema qa_employee01 "$D1" "{'add': {'name': '금액', 'type': 'text'}}")"
-expect "빈 이름 → 400" "400" "$(schema qa_employee01 "$D1" "{'add': {'name': '  ', 'type': 'text'}}")"
-expect "선택지 없는 select → 400" "400" "$(schema qa_employee01 "$D1" "{'add': {'name': '선택2', 'type': 'select'}}")"
-expect "text 에 선택지 → 400" "400" "$(schema qa_employee01 "$D1" "{'add': {'name': '글2', 'type': 'text', 'options': ['a']}}")"
-expect "겹치는 선택지 → 400" "400" "$(schema qa_employee01 "$D1" "{'add': {'name': '선택3', 'type': 'select', 'options': ['a','a']}}")"
-expect "요청이 key 를 정하려 함(허용 키 밖) → 400" "400" "$(schema qa_employee01 "$D1" "{'add': {'name': '키', 'type': 'text', 'key': 'x'}}")"
-expect "두 가지를 한꺼번에 → 400" "400" "$(schema qa_employee01 "$D1" "{'add': {'name': '둘', 'type': 'text'}, 'remove': {'key': '$K_TXT'}}")"
-expect "이름 바꾸기 → 200" "200" "$(schema qa_employee01 "$D1" "{'rename': {'key': '$K_NUM', 'name': '금액(원)'}}")"
-expect "선택지 바꾸기 → 200" "200" "$(schema qa_employee01 "$D1" "{'options': {'key': '$K_SEL', 'options': ['A','B','C','D']}}")"
+expect "모르는 종류(formula) → 400" "400" "$(schema claude_employee01 "$D1" "{'add': {'name': '수식', 'type': 'formula'}}")"
+expect "기본 열 이름(상태) → 400" "400" "$(schema claude_employee01 "$D1" "{'add': {'name': '상태', 'type': 'text'}}")"
+expect "같은 이름(금액) → 400" "400" "$(schema claude_employee01 "$D1" "{'add': {'name': '금액', 'type': 'text'}}")"
+expect "빈 이름 → 400" "400" "$(schema claude_employee01 "$D1" "{'add': {'name': '  ', 'type': 'text'}}")"
+expect "선택지 없는 select → 400" "400" "$(schema claude_employee01 "$D1" "{'add': {'name': '선택2', 'type': 'select'}}")"
+expect "text 에 선택지 → 400" "400" "$(schema claude_employee01 "$D1" "{'add': {'name': '글2', 'type': 'text', 'options': ['a']}}")"
+expect "겹치는 선택지 → 400" "400" "$(schema claude_employee01 "$D1" "{'add': {'name': '선택3', 'type': 'select', 'options': ['a','a']}}")"
+expect "요청이 key 를 정하려 함(허용 키 밖) → 400" "400" "$(schema claude_employee01 "$D1" "{'add': {'name': '키', 'type': 'text', 'key': 'x'}}")"
+expect "두 가지를 한꺼번에 → 400" "400" "$(schema claude_employee01 "$D1" "{'add': {'name': '둘', 'type': 'text'}, 'remove': {'key': '$K_TXT'}}")"
+expect "이름 바꾸기 → 200" "200" "$(schema claude_employee01 "$D1" "{'rename': {'key': '$K_NUM', 'name': '금액(원)'}}")"
+expect "선택지 바꾸기 → 200" "200" "$(schema claude_employee01 "$D1" "{'options': {'key': '$K_SEL', 'options': ['A','B','C','D']}}")"
 expect "  선택지 넷" "4" "$(jget "len([p for p in d['database']['schema'] if p['key']=='$K_SEL'][0]['options'])" < "$WORK/b")"
-expect "없는 key 지우기 → 400" "400" "$(schema qa_employee01 "$D1" "{'remove': {'key': 'p00000000'}}")"
+expect "없는 key 지우기 → 400" "400" "$(schema claude_employee01 "$D1" "{'remove': {'key': 'p00000000'}}")"
 m0=$(mark)
-expect "남(볼 수 없음) 스키마 고치기 → 403" "403" "$(schema qa_employee02 "$D1" "{'add': {'name': '침입', 'type': 'text'}}")"
-share qa_employee01 "$D1P" qa_employee02 edit > /dev/null
-expect "편집 공유자 스키마 고치기 → 403 (관리 자격만)" "403" "$(schema qa_employee02 "$D1" "{'add': {'name': '침입', 'type': 'text'}}")"
+expect "남(볼 수 없음) 스키마 고치기 → 403" "403" "$(schema claude_employee02 "$D1" "{'add': {'name': '침입', 'type': 'text'}}")"
+share claude_employee01 "$D1P" claude_employee02 edit > /dev/null
+expect "편집 공유자 스키마 고치기 → 403 (관리 자격만)" "403" "$(schema claude_employee02 "$D1" "{'add': {'name': '침입', 'type': 'text'}}")"
 expect "  감사 database.schema deny not_owner" "1" "$(audit_n "$m0" database.schema deny not_owner)"
-expect "  감사 database.schema allow ≥ 10" "yes" "$([ "$(psqlq "SELECT count(*) FROM audit_logs WHERE action='database.schema' AND result='allow'")" -ge 10 ] && echo yes || echo no)"
+expect "  감사 database.schema allow ≥ 10" "yes" "$([ "$(psqlq "SELECT count(*) FROM audit_logs WHERE id > ${SCHEMA_MARK:-0} AND action='database.schema' AND result='allow'")" -ge 10 ] && echo yes || echo no)"
 # 속성 30개 한도 — 따로 DB
-read D2P D2 <<< "$(mkdb qa_employee01 'C6A-한도 표')"
-for i in $(seq 1 30); do schema qa_employee01 "$D2" "{'add': {'name': '칸$i', 'type': 'text'}}" > /dev/null; done
-expect "31번째 속성 → 400" "400" "$(schema qa_employee01 "$D2" "{'add': {'name': '칸31', 'type': 'text'}}")"
+read D2P D2 <<< "$(mkdb claude_employee01 'C6A-한도 표')"
+for i in $(seq 1 30); do schema claude_employee01 "$D2" "{'add': {'name': '칸$i', 'type': 'text'}}" > /dev/null; done
+expect "31번째 속성 → 400" "400" "$(schema claude_employee01 "$D2" "{'add': {'name': '칸31', 'type': 'text'}}")"
 # 경합 — 읽은 판이 옛것이면 409
-capi GET "/api/pages/$D1P" qa_employee01 > /dev/null
+capi GET "/api/pages/$D1P" claude_employee01 > /dev/null
 OLDV=$(psqlq "SELECT updated_at FROM community.databases WHERE public_id='$D1'")
-schema qa_employee01 "$D1" "{'rename': {'key': '$K_TXT', 'name': '메모 1'}}" > /dev/null
-expect "스키마 옛 판(version)으로 고치기 → 409 (C:T-136)" "409" "$(schema qa_employee01 "$D1" "{'rename': {'key': '$K_TXT', 'name': '메모 2'}, 'version': '$OLDV'}")"
+schema claude_employee01 "$D1" "{'rename': {'key': '$K_TXT', 'name': '메모 1'}}" > /dev/null
+expect "스키마 옛 판(version)으로 고치기 → 409 (C:T-136)" "409" "$(schema claude_employee01 "$D1" "{'rename': {'key': '$K_TXT', 'name': '메모 2'}, 'version': '$OLDV'}")"
 
 # ════════════════════════════════════════════════════════════════
 hr "C:T-131  값 — 모양 · 사람 · 처리 이력"
-expect "새 행(값 둘) → 201" "201" "$(newrow qa_employee01 "$D1P" 'C6A-행1' "{'$K_NUM': 1200, '$K_SEL': 'A'}")"; R1=$(rid)
+expect "새 행(값 둘) → 201" "201" "$(newrow claude_employee01 "$D1P" 'C6A-행1' "{'$K_NUM': 1200, '$K_SEL': 'A'}")"; R1=$(rid)
 expect "  행 값 확인" "1200 A" "$(jget "str(d['page']['values']['$K_NUM'])+' '+d['page']['values']['$K_SEL']" < "$WORK/b")"
 expect "  행은 database_id 를 가진다" "t" "$(pg_page "$R1" "(p.database_id IS NOT NULL)")"
 for bad in "{'$K_NUM': 'abc'}" "{'$K_NUM': 1e300}" "{'$K_SEL': 'Z'}" "{'$K_MUL': ['x','x']}" "{'$K_MUL': 'x'}" \
            "{'$K_DATE': {'start': '2026-02-30'}}" "{'$K_DATE': {'start': '2026-03-02', 'end': '2026-03-01'}}" \
            "{'$K_DATE': {'start': '2026-03-01', 'x': 1}}" "{'$K_URL': 'javascript:alert(1)'}" "{'$K_TXT': 'a\u0007b'}" \
            "{'$K_CHK': 'yes'}" "{'p00000000': 1}" "{'title': 'x'}"; do
-  expect "잘못된 값 $bad → 400" "400" "$(setv qa_employee01 "$R1" "$bad")"
+  expect "잘못된 값 $bad → 400" "400" "$(setv claude_employee01 "$R1" "$bad")"
 done
-st1=$(setv qa_employee01 "$R1" "{'$K_PER': 'qa_employee02'}"); b1=$(cat "$WORK/b")
+st1=$(setv claude_employee01 "$R1" "{'$K_PER': 'claude_employee02'}"); b1=$(cat "$WORK/b")
 expect "사람 값 — 이 행을 볼 수 없는 사람(공유 전 employee02는 DB 편집 공유라 봄 → manager 로)" "200" "$st1"
-st2=$(setv qa_employee01 "$R1" "{'$K_PER': 'qa_guest01'}"); b2=$(cat "$WORK/b")
-st3=$(setv qa_employee01 "$R1" "{'$K_PER': 'qa_nobody_zz'}"); b3=$(cat "$WORK/b")
-expect "사람 값 — 못 보는 사람(qa_guest01) → 400" "400" "$st2"
+st2=$(setv claude_employee01 "$R1" "{'$K_PER': 'claude_guest01'}"); b2=$(cat "$WORK/b")
+st3=$(setv claude_employee01 "$R1" "{'$K_PER': 'claude_nobody_zz'}"); b3=$(cat "$WORK/b")
+expect "사람 값 — 못 보는 사람(claude_guest01) → 400" "400" "$st2"
 expect "사람 값 — 없는 사람 → 400" "400" "$st3"
 expect "  두 응답 원문이 같다" "$b2" "$b3"
 e0=$(events_db "$R1")
-expect "여러 값 한꺼번에 → 200" "200" "$(setv qa_employee01 "$R1" "{'$K_MUL': ['x','z'], '$K_DATE': {'start': '2026-10-01', 'end': '2026-10-05'}, '$K_CHK': True, '$K_TXT': '첫 줄\n둘째 줄', '$K_URL': 'https://example.com/a?b=1'}")"
+expect "여러 값 한꺼번에 → 200" "200" "$(setv claude_employee01 "$R1" "{'$K_MUL': ['x','z'], '$K_DATE': {'start': '2026-10-01', 'end': '2026-10-05'}, '$K_CHK': True, '$K_TXT': '첫 줄\n둘째 줄', '$K_URL': 'https://example.com/a?b=1'}")"
 expect "  처리 이력 다섯 줄 늘었다" "$((e0+5))" "$(events_db "$R1")"
-setv qa_employee01 "$R1" "{'$K_DATE': {'end': '2026-10-05', 'start': '2026-10-01'}}" > /dev/null
+setv claude_employee01 "$R1" "{'$K_DATE': {'end': '2026-10-05', 'start': '2026-10-01'}}" > /dev/null
 expect "  같은 값을 다시(키 순서만 다름) → 이력 그대로" "$((e0+5))" "$(events_db "$R1")"
-expect "값 지우기(null) → 200 · 키 사라짐" "200 False" "$(setv qa_employee01 "$R1" "{'$K_CHK': None}") $(jget "'$K_CHK' in d['values']" < "$WORK/b")"
+expect "값 지우기(null) → 200 · 키 사라짐" "200 False" "$(setv claude_employee01 "$R1" "{'$K_CHK': None}") $(jget "'$K_CHK' in d['values']" < "$WORK/b")"
 expect "  이력 한 줄(예 → 없음)" "1" "$(psqlq "SELECT count(*) FROM community.page_property_events e JOIN community.pages p ON p.id=e.page_id WHERE p.public_id='$R1' AND e.prop='db:$K_CHK' AND e.from_value='예' AND e.to_value IS NULL")"
-expect "행이 아닌 페이지 값 → 400" "400" "$(setv qa_employee01 "$D1P" "{'$K_NUM': 1}")"
-PN=$(make_page qa_employee01 'C6A-그냥 페이지')
-expect "DB 가 아닌 부모 아래 새 페이지에 properties → 400" "400" "$(jbody "{'title':'x','parent_id':'$PN','properties':{}}"; capi POST /api/pages qa_employee01 "$WORK/body.json")"
-share qa_employee01 "$D1P" qa_manager01 view > /dev/null
+expect "행이 아닌 페이지 값 → 400" "400" "$(setv claude_employee01 "$D1P" "{'$K_NUM': 1}")"
+PN=$(make_page claude_employee01 'C6A-그냥 페이지')
+expect "DB 가 아닌 부모 아래 새 페이지에 properties → 400" "400" "$(jbody "{'title':'x','parent_id':'$PN','properties':{}}"; capi POST /api/pages claude_employee01 "$WORK/body.json")"
+share claude_employee01 "$D1P" claude_manager01 view > /dev/null
 m1=$(mark)
-expect "보기 공유자 값 바꾸기 → 403" "403" "$(setv qa_manager01 "$R1" "{'$K_NUM': 1}")"
+expect "보기 공유자 값 바꾸기 → 403" "403" "$(setv claude_manager01 "$R1" "{'$K_NUM': 1}")"
 expect "  감사 page.values deny not_owner" "1" "$(audit_n "$m1" page.values deny not_owner)"
-expect "편집 공유자(employee02) 값 바꾸기 → 200" "200" "$(setv qa_employee02 "$R1" "{'$K_NUM': 1500}")"
+expect "편집 공유자(employee02) 값 바꾸기 → 200" "200" "$(setv claude_employee02 "$R1" "{'$K_NUM': 1500}")"
 expect "처리 이력(page_property_events) DELETE (tbox_app) → 42501" "42501" "$(appq "DELETE FROM community.page_property_events" | sed -n 's/.*ERROR: *\([0-9A-Z]\{5\}\).*/\1/p')"
 expect "databases DELETE (tbox_app) → 42501" "42501" "$(appq "DELETE FROM community.databases" | sed -n 's/.*ERROR: *\([0-9A-Z]\{5\}\).*/\1/p')"
 
 # ════════════════════════════════════════════════════════════════
 hr "C:T-132  행 = 페이지 — 트리·목록·검색·행 목록"
-capi GET "/api/pages?tree=1" qa_employee01 > /dev/null
+capi GET "/api/pages?tree=1" claude_employee01 > /dev/null
 lacks "트리에 행 없음" "C6A-행1" "$(cat "$WORK/b")"
 contains "  트리에 DB 페이지는 있음" "C6A-업무 표" "$(cat "$WORK/b")"
-capi GET "/api/pages/$D1P" qa_employee01 > /dev/null
+capi GET "/api/pages/$D1P" claude_employee01 > /dev/null
 lacks "DB 페이지의 하위 목록에 행 없음" "C6A-행1" "$(jget "json.dumps(d['children'],ensure_ascii=False)" < "$WORK/b")"
-expect "행 목록(주인) → 200 · 1행" "200 1" "$(rows qa_employee01 "$D1") $(jget "d['total']" < "$WORK/b")"
-unshare qa_employee01 "$D1P" qa_manager01 > /dev/null
-expect "볼 수 없는 사람(manager01, 공유 뺌) 행 목록 → 403" "403" "$(rows qa_manager01 "$D1")"
-expect "없는 DB → 404" "404" "$(rows qa_employee01 "00000000-0000-4000-8000-000000000000")"
-capi GET "/api/search?q=C6A-%ED%96%891" qa_manager01 > /dev/null
+expect "행 목록(주인) → 200 · 1행" "200 1" "$(rows claude_employee01 "$D1") $(jget "d['total']" < "$WORK/b")"
+unshare claude_employee01 "$D1P" claude_manager01 > /dev/null
+expect "볼 수 없는 사람(manager01, 공유 뺌) 행 목록 → 403" "403" "$(rows claude_manager01 "$D1")"
+expect "없는 DB → 404" "404" "$(rows claude_employee01 "00000000-0000-4000-8000-000000000000")"
+capi GET "/api/search?q=C6A-%ED%96%891" claude_manager01 > /dev/null
 lacks "  검색 결과에도 없음" "C6A-행1" "$(jget "json.dumps(d['results'],ensure_ascii=False)" < "$WORK/b")"
 # 사내 DB + 좁힌 행 하나
-read D3P D3 <<< "$(mkdb qa_employee01 'C6A-사내 표')"
-set_vis qa_employee01 "$D3P" internal
-newrow qa_employee01 "$D3P" 'C6A-사내 행' > /dev/null; R_PUB=$(rid)
-newrow qa_employee01 "$D3P" 'C6A-비밀 행' > /dev/null; R_PRIV=$(rid)
+read D3P D3 <<< "$(mkdb claude_employee01 'C6A-사내 표')"
+set_vis claude_employee01 "$D3P" internal
+newrow claude_employee01 "$D3P" 'C6A-사내 행' > /dev/null; R_PUB=$(rid)
+newrow claude_employee01 "$D3P" 'C6A-비밀 행' > /dev/null; R_PRIV=$(rid)
 expect "  새 행은 DB 와 같은 범위로 시작(internal)" "internal" "$(pg_page "$R_PUB" "p.visibility")"
-set_vis qa_employee01 "$R_PRIV" private
-rows qa_manager01 "$D3" > /dev/null
+set_vis claude_employee01 "$R_PRIV" private
+rows claude_manager01 "$D3" > /dev/null
 expect "다른 사원 — 사내 행만 · 수도 1" "1" "$(jget "d['total']" < "$WORK/b")"
 lacks "  비밀 행 제목 없음" "C6A-비밀 행" "$(cat "$WORK/b")"
 expect "  can_add_rows 거짓(남의 DB)" "False" "$(jget "d['can_add_rows']" < "$WORK/b")"
-expect "남의 DB 에 새 행 → 403" "403" "$(newrow qa_manager01 "$D3P" 'C6A-침입 행')"
+expect "남의 DB 에 새 행 → 403" "403" "$(newrow claude_manager01 "$D3P" 'C6A-침입 행')"
 
 # ════════════════════════════════════════════════════════════════
 hr "C:T-133  거르기·정렬 (T-28) — 허용 목록 · 정확한 결과 · 주입 400"
-newrow qa_employee01 "$D1P" 'C6A-행2' "{'$K_NUM': 300, '$K_SEL': 'B', '$K_MUL': ['y'], '$K_CHK': True, '$K_DATE': {'start': '2026-09-01'}}" > /dev/null; R2=$(rid)
-newrow qa_employee01 "$D1P" 'C6A-행3' "{'$K_NUM': 5000, '$K_SEL': 'A', '$K_MUL': ['x','y'], '$K_DATE': {'start': '2026-12-25'}}" > /dev/null; R3=$(rid)
-fcount() { rows qa_employee01 "$D1" "$1" "${2:-}" > /dev/null; jget "d['total']" < "$WORK/b"; }
+newrow claude_employee01 "$D1P" 'C6A-행2' "{'$K_NUM': 300, '$K_SEL': 'B', '$K_MUL': ['y'], '$K_CHK': True, '$K_DATE': {'start': '2026-09-01'}}" > /dev/null; R2=$(rid)
+newrow claude_employee01 "$D1P" 'C6A-행3' "{'$K_NUM': 5000, '$K_SEL': 'A', '$K_MUL': ['x','y'], '$K_DATE': {'start': '2026-12-25'}}" > /dev/null; R3=$(rid)
+fcount() { rows claude_employee01 "$D1" "$1" "${2:-}" > /dev/null; jget "d['total']" < "$WORK/b"; }
 expect "금액 > 1000 → 2행(1500·5000)" "2" "$(fcount "{\"and\":[{\"prop\":\"$K_NUM\",\"op\":\"gt\",\"value\":1000}]}")"
 expect "분류 = A → 2행" "2" "$(fcount "{\"and\":[{\"prop\":\"$K_SEL\",\"op\":\"eq\",\"value\":\"A\"}]}")"
 expect "태그에 y → 2행" "2" "$(fcount "{\"and\":[{\"prop\":\"$K_MUL\",\"op\":\"has\",\"value\":\"y\"}]}")"
@@ -511,9 +517,9 @@ expect "마감 < 2026-10-01 → 1행" "1" "$(fcount "{\"and\":[{\"prop\":\"$K_DA
 expect "제목에 '행3' → 1행" "1" "$(fcount "{\"and\":[{\"prop\":\"title\",\"op\":\"contains\",\"value\":\"행3\"}]}")"
 expect "메모 비어 있음 → 2행" "2" "$(fcount "{\"and\":[{\"prop\":\"$K_TXT\",\"op\":\"empty\"}]}")"
 expect "조건 둘(AND) — A 이고 > 2000 → 1행" "1" "$(fcount "{\"and\":[{\"prop\":\"$K_SEL\",\"op\":\"eq\",\"value\":\"A\"},{\"prop\":\"$K_NUM\",\"op\":\"gt\",\"value\":2000}]}")"
-rows qa_employee01 "$D1" "" "[{\"prop\":\"$K_NUM\",\"dir\":\"desc\"}]" > /dev/null
+rows claude_employee01 "$D1" "" "[{\"prop\":\"$K_NUM\",\"dir\":\"desc\"}]" > /dev/null
 expect "금액 내림차순" "C6A-행3 C6A-행1 C6A-행2" "$(jget "' '.join(r['title'] for r in d['rows'])" < "$WORK/b")"
-rows qa_employee01 "$D1" "" "[{\"prop\":\"title\",\"dir\":\"asc\"}]" > /dev/null
+rows claude_employee01 "$D1" "" "[{\"prop\":\"title\",\"dir\":\"asc\"}]" > /dev/null
 expect "제목 오름차순" "C6A-행1 C6A-행2 C6A-행3" "$(jget "' '.join(r['title'] for r in d['rows'])" < "$WORK/b")"
 for badf in "{\"and\":[{\"prop\":\"p'; DROP TABLE community.pages;--\",\"op\":\"eq\",\"value\":\"x\"}]}" \
             "{\"and\":[{\"prop\":\"$K_NUM\",\"op\":\"gt OR 1=1\",\"value\":1}]}" \
@@ -524,11 +530,11 @@ for badf in "{\"and\":[{\"prop\":\"p'; DROP TABLE community.pages;--\",\"op\":\"
             "{\"and\":[{\"prop\":\"$K_SEL\",\"op\":\"eq\",\"value\":\"없는 선택지\"}]}" \
             "{\"and\":[{\"prop\":\"$K_NUM\",\"op\":\"contains\",\"value\":\"1\"}]}" \
             "{\"and\":[{\"prop\":\"p00000000\",\"op\":\"empty\"}]}"; do
-  expect "거르기 거부 ${badf:0:60} → 400" "400" "$(rows qa_employee01 "$D1" "$badf")"
+  expect "거르기 거부 ${badf:0:60} → 400" "400" "$(rows claude_employee01 "$D1" "$badf")"
 done
-expect "조건 11개 → 400" "400" "$(rows qa_employee01 "$D1" "$(python3 -c "import json;print(json.dumps({'and':[{'prop':'title','op':'contains','value':'a'}]*11}))")")"
+expect "조건 11개 → 400" "400" "$(rows claude_employee01 "$D1" "$(python3 -c "import json;print(json.dumps({'and':[{'prop':'title','op':'contains','value':'a'}]*11}))")")"
 for bads in "[{\"prop\":\"$K_NUM\",\"dir\":\"sideways\"}]" "[{\"prop\":\"$K_NUM; DROP\",\"dir\":\"asc\"}]" "{\"prop\":\"title\"}"; do
-  expect "정렬 거부 ${bads:0:40} → 400" "400" "$(rows qa_employee01 "$D1" "" "$bads")"
+  expect "정렬 거부 ${bads:0:40} → 400" "400" "$(rows claude_employee01 "$D1" "" "$bads")"
 done
 expect "주입 뒤에도 pages 표는 그대로" "yes" "$([ "$(psqlq "SELECT count(*) FROM community.pages")" -gt 0 ] && echo yes)"
 lacks "서버 기록에 SQL 오류 없음" "SQLSTATE" "$(tail -n 200 "$INST/server.log" 2>/dev/null)"
@@ -536,44 +542,44 @@ lacks "서버 기록에 SQL 오류 없음" "SQLSTATE" "$(tail -n 200 "$INST/serv
 # ════════════════════════════════════════════════════════════════
 hr "C:T-134  옮기기 · DB 안 DB · 게시"
 e1=$(events_db "$R3")
-expect "행을 DB 밖(뿌리)으로 옮기기 → 200" "200" "$(capi PATCH "/api/pages/$R3/move" qa_employee01 <(printf '{"parent_id":null}'))"
+expect "행을 DB 밖(뿌리)으로 옮기기 → 200" "200" "$(capi PATCH "/api/pages/$R3/move" claude_employee01 <(printf '{"parent_id":null}'))"
 expect "  이제 행이 아니다(database_id·properties 비움)" "t" "$(pg_page "$R3" "(p.database_id IS NULL AND p.properties IS NULL)")"
 expect "  버린 값 넷이 이력에(→ 없음)" "$((e1+4))" "$(events_db "$R3")"
-expect "  DB 행 목록에서 빠졌다" "2" "$(rows qa_employee01 "$D1" > /dev/null; jget "d['total']" < "$WORK/b")"
-expect "다시 DB 안으로 → 200 · 행(빈 값)" "200 {}" "$(capi PATCH "/api/pages/$R3/move" qa_employee01 <(printf '{"parent_id":"%s"}' "$D1P")) $(pg_page "$R3" "p.properties")"
-expect "DB 페이지 아래에 DB 만들기 → 400" "400" "$(mkdb qa_employee01 'C6A-안쪽 DB' "$D1P" > /dev/null; cat "$WORK/st")"
-expect "DB 를 다른 DB 안으로 옮기기 → 400" "400" "$(capi PATCH "/api/pages/$D2P/move" qa_employee01 <(printf '{"parent_id":"%s"}' "$D1P"))"
+expect "  DB 행 목록에서 빠졌다" "2" "$(rows claude_employee01 "$D1" > /dev/null; jget "d['total']" < "$WORK/b")"
+expect "다시 DB 안으로 → 200 · 행(빈 값)" "200 {}" "$(capi PATCH "/api/pages/$R3/move" claude_employee01 <(printf '{"parent_id":"%s"}' "$D1P")) $(pg_page "$R3" "p.properties")"
+expect "DB 페이지 아래에 DB 만들기 → 400" "400" "$(mkdb claude_employee01 'C6A-안쪽 DB' "$D1P" > /dev/null; cat "$WORK/st")"
+expect "DB 를 다른 DB 안으로 옮기기 → 400" "400" "$(capi PATCH "/api/pages/$D2P/move" claude_employee01 <(printf '{"parent_id":"%s"}' "$D1P"))"
 # 독립 검토 M-1 — 못 쓰는 사람에게는 DB 여부·속성·행 수가 새지 않는다(부모 판정이 먼저 403)
-expect "남(manager01)이 남의 DB 를 부모로 DB 만들기 → 403 (db_in_db 400 아님)" "403" "$(mkdb qa_manager01 'C6A-떠보기' "$D1P" > /dev/null; cat "$WORK/st")"
-expect "남이 남의 DB 에 속성 값 든 새 행 → 403 (bad_value 400 아님)" "403" "$(newrow qa_manager01 "$D1P" 'C6A-떠보기 행' "{'$K_NUM': 'x'}")"
+expect "남(manager01)이 남의 DB 를 부모로 DB 만들기 → 403 (db_in_db 400 아님)" "403" "$(mkdb claude_manager01 'C6A-떠보기' "$D1P" > /dev/null; cat "$WORK/st")"
+expect "남이 남의 DB 에 속성 값 든 새 행 → 403 (bad_value 400 아님)" "403" "$(newrow claude_manager01 "$D1P" 'C6A-떠보기 행' "{'$K_NUM': 'x'}")"
 lacks "  응답에 속성 이름 없음" "금액" "$(cat "$WORK/b")"
 # 독립 검토 L-2 — 게시 중인 페이지는 DB 안으로 옮길 수 없다
-PPUB=$(make_page qa_employee01 'C6A-게시 페이지'); set_vis qa_employee01 "$PPUB" internal
-publish qa_employee01 "$PPUB" "$B_FREE" > /dev/null
-expect "게시 중인 페이지를 DB 안으로 옮기기 → 400" "400" "$(capi PATCH "/api/pages/$PPUB/move" qa_employee01 <(printf '{"parent_id":"%s"}' "$D3P"))"
-expect "DB 페이지 게시 → 400" "400" "$(publish qa_employee01 "$D1P" "$B_FREE")"
-expect "행 게시 → 400" "400" "$(publish qa_employee01 "$R1" "$B_FREE")"
-capi GET "/api/pages/$D1P" qa_employee01 > /dev/null
+PPUB=$(make_page claude_employee01 'C6A-게시 페이지'); set_vis claude_employee01 "$PPUB" internal
+publish claude_employee01 "$PPUB" "$B_FREE" > /dev/null
+expect "게시 중인 페이지를 DB 안으로 옮기기 → 400" "400" "$(capi PATCH "/api/pages/$PPUB/move" claude_employee01 <(printf '{"parent_id":"%s"}' "$D3P"))"
+expect "DB 페이지 게시 → 400" "400" "$(publish claude_employee01 "$D1P" "$B_FREE")"
+expect "행 게시 → 400" "400" "$(publish claude_employee01 "$R1" "$B_FREE")"
+capi GET "/api/pages/$D1P" claude_employee01 > /dev/null
 expect "  페이지 창구 can_publish 거짓" "False" "$(jget "d['can_publish']" < "$WORK/b")"
 
 # ════════════════════════════════════════════════════════════════
 hr "C:T-135  한도 · C:T-136 값 합치기"
 MANY=$(python3 -c "print([str(i) for i in range(25)])")
-K_M2=$(addprop qa_employee01 "$D1" '많은 태그' multi_select "$MANY")
-expect "다중 선택 21개 → 400" "400" "$(setv qa_employee01 "$R1" "{'$K_M2': [str(i) for i in range(21)]}")"
-expect "다중 선택 20개 → 200" "200" "$(setv qa_employee01 "$R1" "{'$K_M2': [str(i) for i in range(20)]}")"
+K_M2=$(addprop claude_employee01 "$D1" '많은 태그' multi_select "$MANY")
+expect "다중 선택 21개 → 400" "400" "$(setv claude_employee01 "$R1" "{'$K_M2': [str(i) for i in range(21)]}")"
+expect "다중 선택 20개 → 200" "200" "$(setv claude_employee01 "$R1" "{'$K_M2': [str(i) for i in range(20)]}")"
 psqlq "INSERT INTO community.pages (space_id, parent_page_id, title, doc, author_id, last_edited_by, visibility, position, database_id, properties)
        SELECT p.space_id, p.id, 'C6A-채움 '||g, '{\"schema\":1,\"blocks\":[]}'::jsonb, p.author_id, p.author_id, 'private', g, d.id, '{}'::jsonb
          FROM community.pages p JOIN community.databases d ON d.page_id = p.id, generate_series(1, 5000) g
         WHERE p.public_id = '$D2P'" > /dev/null
-expect "행 5,000개 찬 DB 에 새 행 → 400 (임시 DB 에서 채움)" "400" "$(newrow qa_employee01 "$D2P" 'C6A-5001')"
-rows qa_employee01 "$D2" "{\"and\":[{\"prop\":\"title\",\"op\":\"contains\",\"value\":\"4999\"}]}" > /dev/null
+expect "행 5,000개 찬 DB 에 새 행 → 400 (임시 DB 에서 채움)" "400" "$(newrow claude_employee01 "$D2P" 'C6A-5001')"
+rows claude_employee01 "$D2" "{\"and\":[{\"prop\":\"title\",\"op\":\"contains\",\"value\":\"4999\"}]}" > /dev/null
 expect "  5,000행에서 거르기 → 1행" "1" "$(jget "d['total']" < "$WORK/b")"
-t0=$(date +%s%N); rows qa_employee01 "$D2" "" "[{\"prop\":\"title\",\"dir\":\"desc\"}]" > /dev/null; t1=$(date +%s%N)
+t0=$(date +%s%N); rows claude_employee01 "$D2" "" "[{\"prop\":\"title\",\"dir\":\"desc\"}]" > /dev/null; t1=$(date +%s%N)
 note "5,000행 정렬 한 쪽 응답 $(( (t1-t0)/1000000 ))ms"
 expect "  5,000행 정렬 응답 < 1500ms(임시 인스턴스)" "yes" "$([ $(( (t1-t0)/1000000 )) -lt 1500 ] && echo yes || echo no)"
-setv qa_employee01 "$R2" "{'$K_TXT': '가'}" > /dev/null
-setv qa_employee02 "$R2" "{'$K_NUM': 777}" > /dev/null
+setv claude_employee01 "$R2" "{'$K_TXT': '가'}" > /dev/null
+setv claude_employee02 "$R2" "{'$K_NUM': 777}" > /dev/null
 expect "다른 사람이 다른 칸을 고쳐도 둘 다 남는다" "가 777" "$(pg_page "$R2" "(p.properties->>'$K_TXT')||' '||(p.properties->>'$K_NUM')")"
 
 # ════════════════════════════════════════════════════════════════
@@ -593,7 +599,7 @@ if [ ! -f "$ROOT/tests/community/browser_6a.py" ]; then
 elif ! python3 -c 'import playwright' 2>/dev/null; then
   skip "브라우저" "playwright 가 없다"
 else
-  SMOKE_E1="$(cookie_of qa_employee01)" SMOKE_PARENT="$PN" SMOKE_SHOTS="${SHOTS:-}" \
+  SMOKE_E1="$(cookie_of claude_employee01)" SMOKE_PARENT="$PN" SMOKE_SHOTS="${SHOTS:-}" \
     python3 "$ROOT/tests/community/browser_6a.py" "$SITE" "$UA" > "$WORK/smoke.txt" 2>&1
   sed 's/^/    /' "$WORK/smoke.txt"
   expect "브라우저 실패 0" "0" "$(sed -n 's/^SMOKE_FAIL=//p' "$WORK/smoke.txt" | tail -1)"

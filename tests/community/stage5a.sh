@@ -35,7 +35,8 @@
 # ══════════════════════════════════════════════════════════════════════════
 #
 # 규칙 (CLAUDE.md 3장) — stage4d.sh 와 같다
-#   · 검토 계정 `qa_` 다섯뿐(로그인은 **순차** — TOTP 30초 창). 시드 계정은 사용자 몫.
+#   · 검토 계정 `claude_` 다섯뿐(로그인은 **순차** — TOTP 30초 창). 시드 계정은 사용자 몫.
+#   · 비밀(TOTP 비밀·검토 계정 비밀번호·세션 쿠키)은 명령 인자에 싣지 않는다 — 표준입력으로만 (R-62 · tests/lib/secrets.sh)
 #   · 모든 요청에 `-A "tbox-review/<날짜>"`.
 #   · `sudo -n` 은 **읽기**(pg_dump · seed 파일)와 **임시 DB** 에만 쓴다.
 #   · 임시 DB 에만 psql 로 직접 넣는 줄이 둘 있다 — 비활성 계정의 공유 줄(C:T-57, 창구가 막으므로)과
@@ -46,6 +47,7 @@
 set -u
 
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
+. "$ROOT/tests/lib/secrets.sh" || { echo "tests/lib/secrets.sh 를 읽지 못했다 — 시험을 시작하지 않는다 (R-62)"; exit 3; }
 PORT=8084
 SITE="http://127.0.0.1:$PORT"
 BASE="$SITE/tbox"
@@ -124,19 +126,20 @@ qa_password() { sudo -n awk -v u="$1" '$1==u{print $3}' /etc/tbox-v2/seed-accoun
 qa_secret()   { sudo -n awk -v u="$1" '$1==u{print $2}' /etc/tbox-v2/qa-totp.txt 2>/dev/null; }
 
 login() {
-  local who="$1" jar="$JAR_DIR/$1.jar" pw sec raw code left out try
+  local who="$1" jar="$JAR_DIR/$1.jar" pw sec raw code left out try login_body
   pw=$(qa_password "$who")
   sec=$(qa_secret "$who")
   [ -n "$pw" ] || return 2
   for try in 1 2 3; do
+    # 비밀은 변수 이름으로 넘기고 값은 표준입력으로만 간다(secrets.sh) — 보내는 본문 바이트는 전과 같다(printf '%s', 끝 줄바꿈 없음)
     if [ -n "$sec" ]; then
-      raw=$(php "$ROOT/scripts/totp_code.php" "$sec" 2>/dev/null)
+      raw=$(totp_now sec 2>/dev/null)
       code=${raw%%$'\n'*}
-      out=$(curl -s -c "$jar" -A "$UA" -H 'Content-Type: application/json' \
-            -d "{\"username\":\"$who\",\"password\":\"$pw\",\"otp\":\"$code\"}" "$BASE/api/login")
+      printf -v login_body '{"username":"%s","password":"%s","otp":"%s"}' "$who" "$pw" "$code"
+      out=$(curl_json_secret login_body -s -c "$jar" -A "$UA" -H 'Content-Type: application/json' "$BASE/api/login")
     else
-      out=$(curl -s -c "$jar" -A "$UA" -H 'Content-Type: application/json' \
-            -d "{\"username\":\"$who\",\"password\":\"$pw\"}" "$BASE/api/login")
+      printf -v login_body '{"username":"%s","password":"%s"}' "$who" "$pw"
+      out=$(curl_json_secret login_body -s -c "$jar" -A "$UA" -H 'Content-Type: application/json' "$BASE/api/login")
     fi
     case "$out" in
       *'"ok":true'*)
@@ -307,104 +310,104 @@ done
 expect "임시 인스턴스가 떴다 (미로그인 커뮤니티 창구 401)" "401" "$READY"
 [ "$READY" = "401" ] || { echo "인스턴스를 띄우지 못했다 — 중단"; tail -5 "$INST/server.log"; exit 4; }
 
-sub "로그인 (qa 계정 다섯 — **순차**)"
-for who in qa_employee01 qa_employee02 qa_manager01 qa_admin01 qa_guest01; do
+sub "로그인 (claude 계정 다섯 — **순차**)"
+for who in claude_employee01 claude_employee02 claude_manager01 claude_admin01 claude_guest01; do
   tok=$(login "$who")
   if [ -z "$tok" ]; then echo "  ✖ $who 로그인 실패 — 중단"; exit 4; fi
   eval "CSRF_${who}='$tok'"
   echo "  ✔ $who"
 done
 # 개인 공간을 연다(없으면 만든다) — 그 뒤의 목록·인계가 공간을 전제로 한다.
-for who in qa_employee01 qa_employee02 qa_manager01; do capi GET /api/me/space "$who" > /dev/null; done
-TEAM1=$(psqlq "SELECT team_id FROM users WHERE username='qa_employee01'")
-TEAM2=$(psqlq "SELECT team_id FROM users WHERE username='qa_employee02'")
-note "팀: qa_employee01·qa_manager01=$TEAM1 · qa_employee02=$TEAM2"
+for who in claude_employee01 claude_employee02 claude_manager01; do capi GET /api/me/space "$who" > /dev/null; done
+TEAM1=$(psqlq "SELECT team_id FROM users WHERE username='claude_employee01'")
+TEAM2=$(psqlq "SELECT team_id FROM users WHERE username='claude_employee02'")
+note "팀: claude_employee01·claude_manager01=$TEAM1 · claude_employee02=$TEAM2"
 DEAD=$(psqlq "SELECT username FROM public.users WHERE is_active = false ORDER BY id LIMIT 1")
 note "비활성 계정: ${DEAD:-없음}"
 
 # ════════════════════════════════════════════════════════════════
 hr "준비 — employee01 의 비공개 가지 R › C › G 와 편집 공유 (R → employee02 edit)"
 
-R=$(make_page qa_employee01 "5A-뿌리")
-C=$(make_page qa_employee01 "5A-자식" "$R")
-G=$(make_page qa_employee01 "5A-손자" "$C")
+R=$(make_page claude_employee01 "5A-뿌리")
+C=$(make_page claude_employee01 "5A-자식" "$R")
+G=$(make_page claude_employee01 "5A-손자" "$C")
 [ -n "$R" ] && [ -n "$C" ] && [ -n "$G" ] || { echo "시험 페이지를 만들지 못했다 — 중단"; exit 4; }
 note "R=$R · C=$C · G=$G (셋 다 비공개)"
-expect "공유 전 employee02 는 R 을 못 본다 (403)" "403" "$(capi GET "/api/pages/$R" qa_employee02)"
+expect "공유 전 employee02 는 R 을 못 본다 (403)" "403" "$(capi GET "/api/pages/$R" claude_employee02)"
 
 A0=$(mark)
-expect "employee01 이 R 을 employee02 에게 **편집**으로 → 200" "200" "$(share qa_employee01 "$R" qa_employee02 edit)"
+expect "employee01 이 R 을 employee02 에게 **편집**으로 → 200" "200" "$(share claude_employee01 "$R" claude_employee02 edit)"
 expect "  응답 changed=True" "True" "$(jget "d['changed']" < "$WORK/b")"
 expect "  감사 page.share allow 한 줄" "1" "$(audit_n "$A0" page.share allow '')"
 expect "  같은 등급을 다시 보내면 200 · changed=False" "200|False" \
-  "$(share qa_employee01 "$R" qa_employee02 edit)|$(jget "d['changed']" < "$WORK/b")"
+  "$(share claude_employee01 "$R" claude_employee02 edit)|$(jget "d['changed']" < "$WORK/b")"
 expect "  감사도 늘지 않는다" "1" "$(audit_n "$A0" page.share allow '')"
-expect "employee01 이 R 을 guest 에게 보기로 (남의 줄 빼기 시험용)" "200" "$(share qa_employee01 "$R" qa_guest01 view)"
+expect "employee01 이 R 을 guest 에게 보기로 (남의 줄 빼기 시험용)" "200" "$(share claude_employee01 "$R" claude_guest01 view)"
 
 for bad in '{"level":"admin"}' '{"level":"VIEW"}' '{}' '{"level":"view","x":1}' '{"level":1}'; do
   body "$bad"
-  expect "공유 허용 밖 값 $bad → 400" "400" "$(capi PUT "/api/pages/$R/shares/qa_manager01" qa_employee01 "$WORK/body.json")"
+  expect "공유 허용 밖 값 $bad → 400" "400" "$(capi PUT "/api/pages/$R/shares/claude_manager01" claude_employee01 "$WORK/body.json")"
 done
-expect "주인 자신에게 공유 → 400" "400" "$(share qa_employee01 "$R" qa_employee01 view)"
+expect "주인 자신에게 공유 → 400" "400" "$(share claude_employee01 "$R" claude_employee01 view)"
 expect "  사유 target_not_permitted" "target_not_permitted" "$(jget "d['reason']" < "$WORK/b")"
-expect "없는 계정에게 공유 → 400" "400" "$(share qa_employee01 "$R" "nobody_$$" view)"
-expect "형태가 아닌 계정명(대문자) → 라우트 밖 404" "404" "$(share qa_employee01 "$R" "QA_EMP" view)"
+expect "없는 계정에게 공유 → 400" "400" "$(share claude_employee01 "$R" "nobody_$$" view)"
+expect "형태가 아닌 계정명(대문자) → 라우트 밖 404" "404" "$(share claude_employee01 "$R" "QA_EMP" view)"
 
 # ════════════════════════════════════════════════════════════════
 hr "C:T-53  편집 공유자의 **관리** — 핸들러마다 403 · DB 불변"
 
-expect "편집 공유자 employee02 가 R 을 읽는다 → 200" "200" "$(capi GET "/api/pages/$R" qa_employee02)"
+expect "편집 공유자 employee02 가 R 을 읽는다 → 200" "200" "$(capi GET "/api/pages/$R" claude_employee02)"
 expect "  granted_by = shared" "shared" "$(jget "d['granted_by']" < "$WORK/b")"
 expect "  can_edit=True · can_manage=False · can_share=False · can_handover=False" "True|False|False|False" \
   "$(jget "'%s|%s|%s|%s' % (d['can_edit'], d['can_manage'], d['can_share'], d['can_handover'])" < "$WORK/b")"
 expect "  share_level = edit" "edit" "$(jget "d['share_level']" < "$WORK/b")"
-expect "  소유자는 employee01" "qa_employee01" "$(jget "d['page']['owner']['username']" < "$WORK/b")"
+expect "  소유자는 employee01" "claude_employee01" "$(jget "d['page']['owner']['username']" < "$WORK/b")"
 
 A1=$(mark)
-expect "① 삭제 DELETE → 403" "403" "$(capi DELETE "/api/pages/$R" qa_employee02)"
+expect "① 삭제 DELETE → 403" "403" "$(capi DELETE "/api/pages/$R" claude_employee02)"
 expect "   DB 에서 R 이 살아 있다" "t" "$(pg_page "$R" "p.deleted_at IS NULL")"
 expect "   감사 page.delete deny not_owner" "1" "$(audit_n "$A1" page.delete deny not_owner)"
 
 body '{"parent_id":null}'
-expect "② 옮기기(C 를 뿌리로) → 403" "403" "$(capi PATCH "/api/pages/$C/move" qa_employee02 "$WORK/body.json")"
+expect "② 옮기기(C 를 뿌리로) → 403" "403" "$(capi PATCH "/api/pages/$C/move" claude_employee02 "$WORK/body.json")"
 expect "   C 의 부모는 그대로 R" "$R" "$(psqlq "SELECT par.public_id FROM community.pages p JOIN community.pages par ON par.id = p.parent_page_id WHERE p.public_id='$C'")"
 
 # 되살리기 — employee01 이 지운 하위를 employee02 가 되살리려 한다.
-X=$(make_page qa_employee01 "5A-지울-하위" "$R")
-expect "   (준비) 주인이 하위 X 를 지운다 → 200" "200" "$(capi DELETE "/api/pages/$X" qa_employee01)"
+X=$(make_page claude_employee01 "5A-지울-하위" "$R")
+expect "   (준비) 주인이 하위 X 를 지운다 → 200" "200" "$(capi DELETE "/api/pages/$X" claude_employee01)"
 body '{}'
-expect "③ 되살리기 POST …/restore → 403" "403" "$(capi POST "/api/pages/$X/restore" qa_employee02 "$WORK/body.json")"
+expect "③ 되살리기 POST …/restore → 403" "403" "$(capi POST "/api/pages/$X/restore" claude_employee02 "$WORK/body.json")"
 expect "   X 는 아직 휴지통에 있다" "t" "$(pg_page "$X" "p.deleted_at IS NOT NULL")"
 expect "   감사 page.restore deny not_owner" "1" "$(audit_n "$A1" page.restore deny not_owner)"
 
 body '{"visibility":"internal"}'
-expect "④ 공개 범위 PATCH → 403" "403" "$(capi PATCH "/api/pages/$R/visibility" qa_employee02 "$WORK/body.json")"
+expect "④ 공개 범위 PATCH → 403" "403" "$(capi PATCH "/api/pages/$R/visibility" claude_employee02 "$WORK/body.json")"
 expect "   범위는 그대로 private" "private" "$(pg_page "$R" "p.visibility")"
 expect "   감사 page.visibility deny not_owner" "1" "$(audit_n "$A1" page.visibility deny not_owner)"
 
-expect "⑤ 공유 추가(남에게 다시 열어 주기) PUT → 403" "403" "$(share qa_employee02 "$R" qa_manager01 view)"
+expect "⑤ 공유 추가(남에게 다시 열어 주기) PUT → 403" "403" "$(share claude_employee02 "$R" claude_manager01 view)"
 expect "   manager01 줄이 생기지 않았다" "0" \
-  "$(psqlq "SELECT count(*) FROM community.page_shares sh JOIN users u ON u.id=sh.user_id JOIN community.pages p ON p.id=sh.page_id WHERE p.public_id='$R' AND u.username='qa_manager01'")"
-expect "⑤' 공유 등급 올리기(자기 줄 edit→edit 도 관리다) PUT → 403" "403" "$(share qa_employee02 "$R" qa_employee02 edit)"
-expect "⑤'' 남의 공유 빼기 DELETE …/shares/qa_guest01 → 403" "403" "$(unshare qa_employee02 "$R" qa_guest01)"
+  "$(psqlq "SELECT count(*) FROM community.page_shares sh JOIN users u ON u.id=sh.user_id JOIN community.pages p ON p.id=sh.page_id WHERE p.public_id='$R' AND u.username='claude_manager01'")"
+expect "⑤' 공유 등급 올리기(자기 줄 edit→edit 도 관리다) PUT → 403" "403" "$(share claude_employee02 "$R" claude_employee02 edit)"
+expect "⑤'' 남의 공유 빼기 DELETE …/shares/claude_guest01 → 403" "403" "$(unshare claude_employee02 "$R" claude_guest01)"
 expect "   guest 줄은 그대로" "1" \
-  "$(psqlq "SELECT count(*) FROM community.page_shares sh JOIN users u ON u.id=sh.user_id JOIN community.pages p ON p.id=sh.page_id WHERE p.public_id='$R' AND u.username='qa_guest01'")"
+  "$(psqlq "SELECT count(*) FROM community.page_shares sh JOIN users u ON u.id=sh.user_id JOIN community.pages p ON p.id=sh.page_id WHERE p.public_id='$R' AND u.username='claude_guest01'")"
 expect "   감사 page.share deny not_owner 세 줄" "3" "$(audit_n "$A1" page.share deny not_owner)"
 
-body '{"to":"qa_manager01","keep":"none"}'
-expect "⑥ 인계 POST …/handover → 403" "403" "$(capi POST "/api/pages/$R/handover" qa_employee02 "$WORK/body.json")"
-expect "   R 의 공간은 그대로 employee01 의 것" "qa_employee01" \
+body '{"to":"claude_manager01","keep":"none"}'
+expect "⑥ 인계 POST …/handover → 403" "403" "$(capi POST "/api/pages/$R/handover" claude_employee02 "$WORK/body.json")"
+expect "   R 의 공간은 그대로 employee01 의 것" "claude_employee01" \
   "$(psqlq "SELECT u.username FROM community.pages p JOIN community.spaces s ON s.id=p.space_id JOIN users u ON u.id=s.owner_user_id WHERE p.public_id='$R'")"
 expect "   감사 page.handover deny not_owner" "1" "$(audit_n "$A1" page.handover deny not_owner)"
-expect "⑦ 공유 후보 목록 → 403" "403" "$(capi GET "/api/share-candidates?page=$R&q=qa" qa_employee02)"
-expect "⑦' 인계 후보 목록 → 403" "403" "$(capi GET "/api/share-candidates?for=handover&page=$R" qa_employee02)"
+expect "⑦ 공유 후보 목록 → 403" "403" "$(capi GET "/api/share-candidates?page=$R&q=qa" claude_employee02)"
+expect "⑦' 인계 후보 목록 → 403" "403" "$(capi GET "/api/share-candidates?for=handover&page=$R" claude_employee02)"
 
 sub "편집 공유자의 **하위 페이지 만들기**는 권한대로 된다 (사용자 결정 3) — 주인은 공간의 주인"
-K=$(make_page qa_employee02 "5A-공유자가-만든-하위" "$R")
+K=$(make_page claude_employee02 "5A-공유자가-만든-하위" "$R")
 expect "employee02 가 R 아래에 하위를 만든다 → 201" "201" "$(status_of "$WORK/h")"
-expect "  그 하위는 employee01 의 공간에 있다" "qa_employee01" \
+expect "  그 하위는 employee01 의 공간에 있다" "claude_employee01" \
   "$(psqlq "SELECT u.username FROM community.pages p JOIN community.spaces s ON s.id=p.space_id JOIN users u ON u.id=s.owner_user_id WHERE p.public_id='$K'")"
-expect "  작성자는 employee02" "qa_employee02" \
+expect "  작성자는 employee02" "claude_employee02" \
   "$(psqlq "SELECT u.username FROM community.pages p JOIN users u ON u.id=p.author_id WHERE p.public_id='$K'")"
 expect "  범위는 부모와 같다(private)" "private" "$(pg_page "$K" "p.visibility")"
 expect "  감사 page.create 의 granted_by = shared_edit" "shared_edit" \
@@ -413,7 +416,7 @@ expect "  감사 page.create 의 granted_by = shared_edit" "shared_edit" \
 # ════════════════════════════════════════════════════════════════
 hr "C:T-54  내용 고치기 — 보기 403 · 편집 200 · Guest 편집 공유도 저장 403"
 
-P2=$(make_page qa_employee01 "5A-보기-편집-시험")
+P2=$(make_page claude_employee01 "5A-보기-편집-시험")
 BLK=$(python3 -c 'import uuid;print(uuid.uuid4())')
 doc_body() {   # $1 doc_version $2 checked(true|false)
   python3 - "$BLK" "$1" "$2" > "$WORK/doc.json" <<'PY'
@@ -424,83 +427,89 @@ print(json.dumps({"doc_version": int(sys.argv[2]), "doc": doc}, ensure_ascii=Fal
 PY
 }
 doc_body 1 false
-expect "주인이 할 일 한 줄로 저장 (판 1→2)" "200" "$(capi PATCH "/api/pages/$P2" qa_employee01 "$WORK/doc.json")"
-expect "manager01 에게 **보기** 공유 → 200" "200" "$(share qa_employee01 "$P2" qa_manager01 view)"
-expect "employee02 에게 **편집** 공유 → 200" "200" "$(share qa_employee01 "$P2" qa_employee02 edit)"
-expect "guest 에게 **편집** 공유 → 200 (받을 수는 있다)" "200" "$(share qa_employee01 "$P2" qa_guest01 edit)"
+expect "주인이 할 일 한 줄로 저장 (판 1→2)" "200" "$(capi PATCH "/api/pages/$P2" claude_employee01 "$WORK/doc.json")"
+expect "manager01 에게 **보기** 공유 → 200" "200" "$(share claude_employee01 "$P2" claude_manager01 view)"
+expect "employee02 에게 **편집** 공유 → 200" "200" "$(share claude_employee01 "$P2" claude_employee02 edit)"
+expect "guest 에게 **편집** 공유 → 200 (받을 수는 있다)" "200" "$(share claude_employee01 "$P2" claude_guest01 edit)"
 
 sub "보기 공유자 (manager01 — 주인과 같은 팀이지만 페이지는 비공개)"
 expect "GET → 200 · can_edit=False · granted_by=shared" "200|False|shared" \
-  "$(capi GET "/api/pages/$P2" qa_manager01)|$(jget "d['can_edit']" < "$WORK/b")|$(jget "d['granted_by']" < "$WORK/b")"
+  "$(capi GET "/api/pages/$P2" claude_manager01)|$(jget "d['can_edit']" < "$WORK/b")|$(jget "d['granted_by']" < "$WORK/b")"
 V0=$(pg_page "$P2" "p.doc_version")
 doc_body "$V0" true
-expect "저장(할 일 체크) PATCH → 403" "403" "$(capi PATCH "/api/pages/$P2" qa_manager01 "$WORK/doc.json")"
+expect "저장(할 일 체크) PATCH → 403" "403" "$(capi PATCH "/api/pages/$P2" claude_manager01 "$WORK/doc.json")"
 body '{"status":"doing"}'
-expect "상태 PATCH …/properties → 403" "403" "$(capi PATCH "/api/pages/$P2/properties" qa_manager01 "$WORK/body.json")"
+expect "상태 PATCH …/properties → 403" "403" "$(capi PATCH "/api/pages/$P2/properties" claude_manager01 "$WORK/body.json")"
 python3 -c "import json;print(json.dumps({'title':'보기-하위','parent_id':'$P2'}))" > "$WORK/new.json"
-expect "하위 만들기 POST → 403" "403" "$(capi POST /api/pages qa_manager01 "$WORK/new.json")"
+expect "하위 만들기 POST → 403" "403" "$(capi POST /api/pages claude_manager01 "$WORK/new.json")"
 body '{}'
-expect "편집 중 신호 POST …/heartbeat → 403" "403" "$(capi POST "/api/pages/$P2/heartbeat" qa_manager01 "$WORK/body.json")"
-expect "지난 판 되돌리기 POST …/versions/1/restore → 403" "403" "$(capi POST "/api/pages/$P2/versions/1/restore" qa_manager01 "$WORK/body.json")"
+expect "편집 중 신호 POST …/heartbeat → 403" "403" "$(capi POST "/api/pages/$P2/heartbeat" claude_manager01 "$WORK/body.json")"
+expect "지난 판 되돌리기 POST …/versions/1/restore → 403" "403" "$(capi POST "/api/pages/$P2/versions/1/restore" claude_manager01 "$WORK/body.json")"
 expect "  DB: 판 번호·체크·상태 불변" "$V0|false|" \
   "$(pg_page "$P2" "p.doc_version")|$(psqlq "SELECT (p.doc->'blocks'->0->>'checked') FROM community.pages p WHERE p.public_id='$P2'")|$(pg_page "$P2" "coalesce(p.status,'')")"
 
 sub "편집 공유자 (employee02)"
 doc_body "$V0" true
-expect "저장(할 일 체크) PATCH → 200" "200" "$(capi PATCH "/api/pages/$P2" qa_employee02 "$WORK/doc.json")"
-expect "  체크 기록이 employee02 이름으로 남았다" "qa_employee02" \
+# BF-0009 — 아래 감사 page.update 대조는 **이번 저장이 남긴 행**만 본다(옛 실행·운영 사본의 행으로 통과하지 않게).
+#   경계는 그 행을 남기는 저장 요청 바로 앞에서 잰다. 사이의 상태·편집 중 신호·판 되돌리기는 page.property·
+#   page.restore_version 등 다른 action 이라 page.update 행을 남기지 않는다.
+UPD_MARK=$(mark)
+expect "저장(할 일 체크) PATCH → 200" "200" "$(capi PATCH "/api/pages/$P2" claude_employee02 "$WORK/doc.json")"
+expect "  체크 기록이 employee02 이름으로 남았다" "claude_employee02" \
   "$(psqlq "SELECT u.username FROM community.checklist_events e JOIN users u ON u.id=e.by_user_id JOIN community.pages p ON p.id=e.page_id WHERE p.public_id='$P2' ORDER BY e.id DESC LIMIT 1")"
 body '{"status":"review"}'
-expect "상태 PATCH → 200" "200" "$(capi PATCH "/api/pages/$P2/properties" qa_employee02 "$WORK/body.json")"
+expect "상태 PATCH → 200" "200" "$(capi PATCH "/api/pages/$P2/properties" claude_employee02 "$WORK/body.json")"
 body '{}'
-expect "편집 중 신호 → 200" "200" "$(capi POST "/api/pages/$P2/heartbeat" qa_employee02 "$WORK/body.json")"
-expect "지난 판 되돌리기(판 1) → 200" "200" "$(capi POST "/api/pages/$P2/versions/1/restore" qa_employee02 "$WORK/body.json")"
+expect "편집 중 신호 → 200" "200" "$(capi POST "/api/pages/$P2/heartbeat" claude_employee02 "$WORK/body.json")"
+expect "지난 판 되돌리기(판 1) → 200" "200" "$(capi POST "/api/pages/$P2/versions/1/restore" claude_employee02 "$WORK/body.json")"
 expect "감사 page.update 의 granted_by = shared_edit" "shared_edit" \
-  "$(psqlq "SELECT detail->>'granted_by' FROM audit_logs WHERE action='page.update' AND result='allow' ORDER BY id DESC LIMIT 1")"
+  "$(psqlq "SELECT detail->>'granted_by' FROM audit_logs WHERE action='page.update' AND result='allow' AND id > ${UPD_MARK:-0} ORDER BY id DESC LIMIT 1")"
 
 sub "Guest 는 편집 공유를 받아도 **보기만** (쓰기 자격 없는 역할)"
 expect "guest GET → 200 · can_edit=False" "200|False" \
-  "$(capi GET "/api/pages/$P2" qa_guest01)|$(jget "d['can_edit']" < "$WORK/b")"
+  "$(capi GET "/api/pages/$P2" claude_guest01)|$(jget "d['can_edit']" < "$WORK/b")"
 V1=$(pg_page "$P2" "p.doc_version")
 doc_body "$V1" false
-expect "guest 저장 PATCH → 403" "403" "$(capi PATCH "/api/pages/$P2" qa_guest01 "$WORK/doc.json")"
+expect "guest 저장 PATCH → 403" "403" "$(capi PATCH "/api/pages/$P2" claude_guest01 "$WORK/doc.json")"
 expect "  판 번호 불변" "$V1" "$(pg_page "$P2" "p.doc_version")"
 
 # ════════════════════════════════════════════════════════════════
 hr "C:T-55  공유는 하위에 미친다 — 부모에 준 보기 → 손자 200 · 빼면 그 자리에서 403"
 
-expect "공유 전 manager01 은 손자 G 를 못 본다" "403" "$(capi GET "/api/pages/$G" qa_manager01)"
-expect "R 을 manager01 에게 보기로 → 200" "200" "$(share qa_employee01 "$R" qa_manager01 view)"
-expect "  손자 G GET → 200 (조상에서 물려받음)" "200" "$(capi GET "/api/pages/$G" qa_manager01)"
+expect "공유 전 manager01 은 손자 G 를 못 본다" "403" "$(capi GET "/api/pages/$G" claude_manager01)"
+expect "R 을 manager01 에게 보기로 → 200" "200" "$(share claude_employee01 "$R" claude_manager01 view)"
+expect "  손자 G GET → 200 (조상에서 물려받음)" "200" "$(capi GET "/api/pages/$G" claude_manager01)"
 expect "  G 의 share_level = view · can_edit=False" "view|False" "$(jget "'%s|%s' % (d['share_level'], d['can_edit'])" < "$WORK/b")"
-code=$(capi GET "/api/pages/$G/shares" qa_manager01)
+code=$(capi GET "/api/pages/$G/shares" claude_manager01)
 expect "  G 의 공유 목록 — 보기 공유자에게는 **수만** (shares=None · count≥1)" "200|True|True" \
   "$code|$(jget "d['shares'] is None" < "$WORK/b")|$(jget "d['count'] >= 1" < "$WORK/b")"
 expect "  주인에게는 물려받은 줄까지 이름이 보인다" "True" \
-  "$(capi GET "/api/pages/$G/shares" qa_employee01 >/dev/null; jget "any(s['username']=='qa_manager01' and s['inherited'] for s in d['shares'])" < "$WORK/b")"
+  "$(capi GET "/api/pages/$G/shares" claude_employee01 >/dev/null; jget "any(s['username']=='claude_manager01' and s['inherited'] for s in d['shares'])" < "$WORK/b")"
 
 sub "경로 줄 — 공유받은 조상까지만 (공유하지 않은 제목이 새지 않는다)"
 expect "employee02(R 편집 공유)가 G 를 열면 경로는 R › C › G 셋" "3" \
-  "$(capi GET "/api/pages/$G" qa_employee02 >/dev/null; jget "len(d['breadcrumb'])" < "$WORK/b")"
-H0=$(make_page qa_employee01 "5A-비밀-부모")
-H0C=$(make_page qa_employee01 "5A-공유-자식" "$H0")
-expect "자식만 employee02 에게 보기 공유 → 200" "200" "$(share qa_employee01 "$H0C" qa_employee02 view)"
-expect "  자식 GET → 200" "200" "$(capi GET "/api/pages/$H0C" qa_employee02)"
+  "$(capi GET "/api/pages/$G" claude_employee02 >/dev/null; jget "len(d['breadcrumb'])" < "$WORK/b")"
+H0=$(make_page claude_employee01 "5A-비밀-부모")
+H0C=$(make_page claude_employee01 "5A-공유-자식" "$H0")
+expect "자식만 employee02 에게 보기 공유 → 200" "200" "$(share claude_employee01 "$H0C" claude_employee02 view)"
+expect "  자식 GET → 200" "200" "$(capi GET "/api/pages/$H0C" claude_employee02)"
 expect "  경로 줄은 자기 하나뿐" "1" "$(jget "len(d['breadcrumb'])" < "$WORK/b")"
 lacks  "  응답 원문에 비공개 부모 제목 0" "5A-비밀-부모" "$(cat "$WORK/b")"
-expect "  부모 GET 은 여전히 403" "403" "$(capi GET "/api/pages/$H0" qa_employee02)"
+expect "  부모 GET 은 여전히 403" "403" "$(capi GET "/api/pages/$H0" claude_employee02)"
 
 sub "공유를 빼면 **그 자리에서** 403"
-expect "주인이 R 의 manager01 공유를 뺀다 → 200" "200" "$(unshare qa_employee01 "$R" qa_manager01)"
-expect "  손자 G GET → 403" "403" "$(capi GET "/api/pages/$G" qa_manager01)"
-expect "  R GET → 403" "403" "$(capi GET "/api/pages/$R" qa_manager01)"
+# BF-0009 — 아래 감사 page.share(뺀 줄) 대조는 이 빼기 요청이 남긴 행만 본다. 경계는 그 요청 바로 앞.
+UNSHARE_MARK=$(mark)
+expect "주인이 R 의 manager01 공유를 뺀다 → 200" "200" "$(unshare claude_employee01 "$R" claude_manager01)"
+expect "  손자 G GET → 403" "403" "$(capi GET "/api/pages/$G" claude_manager01)"
+expect "  R GET → 403" "403" "$(capi GET "/api/pages/$R" claude_manager01)"
 expect "  감사 page.share allow 에 뺀 줄(share_level null)" "view|" \
-  "$(psqlq "SELECT (detail->>'share_from') || '|' || coalesce(detail->>'share_level','') FROM audit_logs WHERE action='page.share' AND result='allow' ORDER BY id DESC LIMIT 1")"
+  "$(psqlq "SELECT (detail->>'share_from') || '|' || coalesce(detail->>'share_level','') FROM audit_logs WHERE action='page.share' AND result='allow' AND id > ${UNSHARE_MARK:-0} ORDER BY id DESC LIMIT 1")"
 
 sub "받은 사람이 **자기 공유**를 뺀다 (관리 자격 없이)"
-expect "guest 가 P2 의 자기 공유를 뺀다 → 200" "200" "$(unshare qa_guest01 "$P2" qa_guest01)"
-expect "  guest P2 GET → 403" "403" "$(capi GET "/api/pages/$P2" qa_guest01)"
-expect "  다시 빼면 404 (뺄 줄이 없다)" "404" "$(unshare qa_employee01 "$P2" qa_guest01)"
+expect "guest 가 P2 의 자기 공유를 뺀다 → 200" "200" "$(unshare claude_guest01 "$P2" claude_guest01)"
+expect "  guest P2 GET → 403" "403" "$(capi GET "/api/pages/$P2" claude_guest01)"
+expect "  다시 빼면 404 (뺄 줄이 없다)" "404" "$(unshare claude_employee01 "$P2" claude_guest01)"
 
 # ════════════════════════════════════════════════════════════════
 hr "C:T-56  판정 함수 = 목록 SQL — 전 계정 × 전 페이지 전수 대조 (C:T-37 방식)"
@@ -547,9 +556,9 @@ PHP
 
 sub "비활성 계정에게 준 공유는 효력 0 (C:T-57 을 대조에 넣는다 — 임시 DB 에 한 줄 직접 넣는다)"
 if [ -n "$DEAD" ]; then
-  expect "창구로는 비활성 계정에게 줄 수 없다 → 400" "400" "$(share qa_employee01 "$R" "$DEAD" view)"
+  expect "창구로는 비활성 계정에게 줄 수 없다 → 400" "400" "$(share claude_employee01 "$R" "$DEAD" view)"
   psqlq "INSERT INTO community.page_shares (page_id, user_id, level, granted_by)
-         SELECT p.id, (SELECT id FROM users WHERE username='$DEAD'), 'edit', (SELECT id FROM users WHERE username='qa_employee01')
+         SELECT p.id, (SELECT id FROM users WHERE username='$DEAD'), 'edit', (SELECT id FROM users WHERE username='claude_employee01')
            FROM community.pages p WHERE p.public_id='$R'" >/dev/null
   expect "  (임시 DB) 비활성 계정의 편집 줄 1개가 있다" "1" \
     "$(psqlq "SELECT count(*) FROM community.page_shares sh JOIN users u ON u.id=sh.user_id WHERE u.username='$DEAD'")"
@@ -582,7 +591,7 @@ PHP
 fi
 
 sub "`?shared=me` — 응답 수 = psql 로 센 수 (SQL WHERE)"
-for who in qa_employee02 qa_manager01 qa_guest01; do
+for who in claude_employee02 claude_manager01 claude_guest01; do
   capi GET "/api/pages?shared=me" "$who" > /dev/null
   api_n=$(jget "d['total']" < "$WORK/b")
   db_n=$(psqlq "SELECT count(*) FROM community.page_shares sh
@@ -592,33 +601,33 @@ for who in qa_employee02 qa_manager01 qa_guest01; do
                    AND p.visibility IN ('private','team','internal')")
   expect "$who 의 공유받은 페이지 수 = psql" "$db_n" "$api_n"
 done
-capi GET "/api/pages?shared=me" qa_employee02 > /dev/null
+capi GET "/api/pages?shared=me" claude_employee02 > /dev/null
 contains "  employee02 의 묶음에 R 이 있다" "$R" "$(jget "','.join(p['id'] for p in d['pages'])" < "$WORK/b")"
-expect "  R 의 줄은 편집 공유 · can_edit=True · 공간 이름은 employee01 의 공간" "edit|True|qa_employee01 의 공간" \
+expect "  R 의 줄은 편집 공유 · can_edit=True · 공간 이름은 employee01 의 공간" "edit|True|claude_employee01 의 공간" \
   "$(jget "[ '%s|%s|%s' % (p['share_level'], p['can_edit'], p['space']['name']) for p in d['pages'] if p['id']=='$R'][0]" < "$WORK/b")"
 expect "  H0C 의 줄은 보기 공유 · can_edit=False" "view|False" \
   "$(jget "[ '%s|%s' % (p['share_level'], p['can_edit']) for p in d['pages'] if p['id']=='$H0C'][0]" < "$WORK/b")"
 lacks "  묶음 원문에 공유하지 않은 부모 제목 0" "5A-비밀-부모" "$(cat "$WORK/b")"
 
 sub "하위 목록 — 공유받은 사람이 R 을 열면 볼 수 있는 하위만 (psql 과 같은 수)"
-capi GET "/api/pages/$R" qa_employee02 > /dev/null
+capi GET "/api/pages/$R" claude_employee02 > /dev/null
 expect "  employee02 가 받은 R 의 하위 수 = psql (지운 X 제외)" \
   "$(psqlq "SELECT count(*) FROM community.pages c JOIN community.pages p ON p.id=c.parent_page_id WHERE p.public_id='$R' AND c.deleted_at IS NULL")" \
   "$(jget "len(d['children'])" < "$WORK/b")"
 expect "공유받은 사람도 남의 **공간 목록**은 여전히 403 (C:T-35 그대로)" "403" \
-  "$(capi GET "/api/pages?space=$(psqlq "SELECT space_id FROM community.pages WHERE public_id='$R'")&tree=1" qa_employee02)"
+  "$(capi GET "/api/pages?space=$(psqlq "SELECT space_id FROM community.pages WHERE public_id='$R'")&tree=1" claude_employee02)"
 
 # ════════════════════════════════════════════════════════════════
 hr "C:T-58  인계 — 다른 팀 · 하위까지 · 남길 권한 · 이력 불변"
 
-HV=$(make_page qa_employee01 "5A-인계-보기")
-HV1=$(make_page qa_employee01 "5A-인계-보기-하위" "$HV")
+HV=$(make_page claude_employee01 "5A-인계-보기")
+HV1=$(make_page claude_employee01 "5A-인계-보기-하위" "$HV")
 doc_body 1 false
-capi PATCH "/api/pages/$HV" qa_employee01 "$WORK/doc.json" > /dev/null
+capi PATCH "/api/pages/$HV" claude_employee01 "$WORK/doc.json" > /dev/null
 doc_body 2 true
-capi PATCH "/api/pages/$HV" qa_employee01 "$WORK/doc.json" > /dev/null
+capi PATCH "/api/pages/$HV" claude_employee01 "$WORK/doc.json" > /dev/null
 body '{"status":"doing"}'
-capi PATCH "/api/pages/$HV/properties" qa_employee01 "$WORK/body.json" > /dev/null
+capi PATCH "/api/pages/$HV/properties" claude_employee01 "$WORK/body.json" > /dev/null
 count_hist() { psqlq "SELECT (SELECT count(*) FROM community.page_versions v JOIN community.pages p ON p.id=v.page_id WHERE p.public_id='$1')
                         || '|' || (SELECT count(*) FROM community.checklist_events e JOIN community.pages p ON p.id=e.page_id WHERE p.public_id='$1')
                         || '|' || (SELECT count(*) FROM community.page_property_events e JOIN community.pages p ON p.id=e.page_id WHERE p.public_id='$1')
@@ -627,143 +636,144 @@ HIST0=$(count_hist "$HV")
 note "인계 전 기록(판|체크|속성|작성자) = $HIST0"
 
 sub "형식 — 남길 권한은 **필수**, 기본값 없음"
-for bad in '{"to":"qa_employee02"}' '{"to":"qa_employee02","keep":"all"}' '{"to":"qa_employee02","keep":null}' \
-           '{"keep":"view"}' '{"to":"qa_employee02","keep":"view","x":1}' '{}'; do
+for bad in '{"to":"claude_employee02"}' '{"to":"claude_employee02","keep":"all"}' '{"to":"claude_employee02","keep":null}' \
+           '{"keep":"view"}' '{"to":"claude_employee02","keep":"view","x":1}' '{}'; do
   body "$bad"
-  expect "$bad → 400" "400" "$(capi POST "/api/pages/$HV/handover" qa_employee01 "$WORK/body.json")"
+  expect "$bad → 400" "400" "$(capi POST "/api/pages/$HV/handover" claude_employee01 "$WORK/body.json")"
 done
 
 sub "받는 사람 — Guest · 비활성 · 주인 자신 · 없는 계정 → 400 + 감사"
 A2=$(mark)
-for who in qa_guest01 ${DEAD:+"$DEAD"} qa_employee01 "nobody_$$"; do
+for who in claude_guest01 ${DEAD:+"$DEAD"} claude_employee01 "nobody_$$"; do
   body "{\"to\":\"$who\",\"keep\":\"view\"}"
   expect "→ $who : 400 target_not_permitted" "400|target_not_permitted" \
-    "$(capi POST "/api/pages/$HV/handover" qa_employee01 "$WORK/body.json")|$(jget "d['reason']" < "$WORK/b")"
+    "$(capi POST "/api/pages/$HV/handover" claude_employee01 "$WORK/body.json")|$(jget "d['reason']" < "$WORK/b")"
 done
 expect "  감사 page.handover deny target_not_permitted" "$([ -n "$DEAD" ] && echo 4 || echo 3)" "$(audit_n "$A2" page.handover deny target_not_permitted)"
-expect "  페이지는 그대로 employee01 공간" "qa_employee01" \
+expect "  페이지는 그대로 employee01 공간" "claude_employee01" \
   "$(psqlq "SELECT u.username FROM community.pages p JOIN community.spaces s ON s.id=p.space_id JOIN users u ON u.id=s.owner_user_id WHERE p.public_id='$HV'")"
 
 sub "다른 팀(employee02)에게 「보기」를 남기고 넘긴다"
-share qa_employee01 "$HV1" qa_employee02 edit > /dev/null   # 받는 사람이 미리 받아 둔 공유 — 인계 뒤 지워져야 한다
+share claude_employee01 "$HV1" claude_employee02 edit > /dev/null   # 받는 사람이 미리 받아 둔 공유 — 인계 뒤 지워져야 한다
 A3=$(mark)
-body '{"to":"qa_employee02","keep":"view"}'
-expect "인계 → 200" "200" "$(capi POST "/api/pages/$HV/handover" qa_employee01 "$WORK/body.json")"
+body '{"to":"claude_employee02","keep":"view"}'
+expect "인계 → 200" "200" "$(capi POST "/api/pages/$HV/handover" claude_employee01 "$WORK/body.json")"
 expect "  응답 page_count=2 · kept=view" "2|view" "$(jget "'%s|%s' % (d['page_count'], d['kept'])" < "$WORK/b")"
-E2SPACE=$(psqlq "SELECT id FROM community.spaces WHERE kind='personal' AND owner_user_id=(SELECT id FROM users WHERE username='qa_employee02')")
+E2SPACE=$(psqlq "SELECT id FROM community.spaces WHERE kind='personal' AND owner_user_id=(SELECT id FROM users WHERE username='claude_employee02')")
 expect "  뿌리 HV 는 employee02 공간의 **뿌리**" "$E2SPACE|t" "$(pg_page "$HV" "p.space_id")|$(pg_page "$HV" "p.parent_page_id IS NULL")"
 expect "  하위 HV1 도 employee02 공간 · 부모는 HV" "$E2SPACE|$HV" \
   "$(psqlq "SELECT p.space_id || '|' || par.public_id FROM community.pages p JOIN community.pages par ON par.id=p.parent_page_id WHERE p.public_id='$HV1'")"
 expect "  기록(판|체크|속성|작성자)이 그대로" "$HIST0" "$(count_hist "$HV")"
 expect "  받는 사람의 옛 공유 줄은 지워졌다" "0" \
-  "$(psqlq "SELECT count(*) FROM community.page_shares sh JOIN users u ON u.id=sh.user_id JOIN community.pages p ON p.id=sh.page_id WHERE u.username='qa_employee02' AND p.public_id IN ('$HV','$HV1')")"
+  "$(psqlq "SELECT count(*) FROM community.page_shares sh JOIN users u ON u.id=sh.user_id JOIN community.pages p ON p.id=sh.page_id WHERE u.username='claude_employee02' AND p.public_id IN ('$HV','$HV1')")"
 expect "  옛 주인에게 보기 한 줄(뿌리에)" "view" \
-  "$(psqlq "SELECT sh.level FROM community.page_shares sh JOIN users u ON u.id=sh.user_id JOIN community.pages p ON p.id=sh.page_id WHERE u.username='qa_employee01' AND p.public_id='$HV'")"
-expect "  handovers 한 줄 (옛→새·누가·쪽수·남긴 권한)" "qa_employee01|qa_employee02|qa_employee01|2|view" \
+  "$(psqlq "SELECT sh.level FROM community.page_shares sh JOIN users u ON u.id=sh.user_id JOIN community.pages p ON p.id=sh.page_id WHERE u.username='claude_employee01' AND p.public_id='$HV'")"
+expect "  handovers 한 줄 (옛→새·누가·쪽수·남긴 권한)" "claude_employee01|claude_employee02|claude_employee01|2|view" \
   "$(psqlq "SELECT f.username||'|'||t.username||'|'||b.username||'|'||h.page_count||'|'||coalesce(h.kept_level,'') FROM community.handovers h JOIN users f ON f.id=h.from_user_id JOIN users t ON t.id=h.to_user_id JOIN users b ON b.id=h.by_user_id JOIN community.pages p ON p.id=h.root_page_id WHERE p.public_id='$HV' ORDER BY h.id DESC LIMIT 1")"
 expect "  감사 page.handover allow 한 줄" "1" "$(audit_n "$A3" page.handover allow '')"
 
-capi GET "/api/pages?tree=1" qa_employee01 > /dev/null
+capi GET "/api/pages?tree=1" claude_employee01 > /dev/null
 lacks "  옛 공간(employee01) 트리에서 HV 가 사라졌다" "$HV" "$(cat "$WORK/b")"
 lacks "  옛 공간 트리에서 HV1 도 사라졌다" "$HV1" "$(cat "$WORK/b")"
-capi GET "/api/pages?tree=1" qa_employee02 > /dev/null
+capi GET "/api/pages?tree=1" claude_employee02 > /dev/null
 contains "  새 공간(employee02) 트리에 HV 가 있다" "$HV" "$(cat "$WORK/b")"
 expect "옛 주인 GET HV → 200 (보기로 남겼다)" "200|shared|False" \
-  "$(capi GET "/api/pages/$HV" qa_employee01)|$(jget "d['granted_by']" < "$WORK/b")|$(jget "d['can_edit']" < "$WORK/b")"
-expect "  소유자는 이제 employee02" "qa_employee02" "$(jget "d['page']['owner']['username']" < "$WORK/b")"
+  "$(capi GET "/api/pages/$HV" claude_employee01)|$(jget "d['granted_by']" < "$WORK/b")|$(jget "d['can_edit']" < "$WORK/b")"
+expect "  소유자는 이제 employee02" "claude_employee02" "$(jget "d['page']['owner']['username']" < "$WORK/b")"
 V2=$(pg_page "$HV" "p.doc_version")
 doc_body "$V2" false
-expect "옛 주인 PATCH HV → 403" "403" "$(capi PATCH "/api/pages/$HV" qa_employee01 "$WORK/doc.json")"
-expect "옛 주인 GET 하위 HV1 → 200 (물려받은 보기)" "200" "$(capi GET "/api/pages/$HV1" qa_employee01)"
+expect "옛 주인 PATCH HV → 403" "403" "$(capi PATCH "/api/pages/$HV" claude_employee01 "$WORK/doc.json")"
+expect "옛 주인 GET 하위 HV1 → 200 (물려받은 보기)" "200" "$(capi GET "/api/pages/$HV1" claude_employee01)"
 expect "옛 주인은 이제 넘기지 못한다 → 403" "403" \
-  "$(body '{"to":"qa_manager01","keep":"none"}'; capi POST "/api/pages/$HV/handover" qa_employee01 "$WORK/body.json")"
-code=$(capi GET "/api/pages/$HV/history" qa_employee02)
+  "$(body '{"to":"claude_manager01","keep":"none"}'; capi POST "/api/pages/$HV/handover" claude_employee01 "$WORK/body.json")"
+code=$(capi GET "/api/pages/$HV/history" claude_employee02)
 expect "새 주인의 「처리 이력」에 인계 줄" "1" "$(jget "sum(1 for e in d['events'] if e['kind']=='handover')" < "$WORK/b")"
-expect "  인계 줄의 내용(옛→새·남긴 권한)" "qa_employee01|qa_employee02|view" \
+expect "  인계 줄의 내용(옛→새·남긴 권한)" "claude_employee01|claude_employee02|view" \
   "$(jget "[ '%s|%s|%s' % (e['from'], e['to'], e['kept']) for e in d['events'] if e['kind']=='handover'][0]" < "$WORK/b")"
 
 sub "「없음」으로 넘기면 옛 주인은 볼 수 없다"
-HN=$(make_page qa_employee01 "5A-인계-없음")
-body '{"to":"qa_employee02","keep":"none"}'
-expect "인계(keep=none) → 200" "200" "$(capi POST "/api/pages/$HN/handover" qa_employee01 "$WORK/body.json")"
-expect "  옛 주인 GET → 403" "403" "$(capi GET "/api/pages/$HN" qa_employee01)"
+HN=$(make_page claude_employee01 "5A-인계-없음")
+body '{"to":"claude_employee02","keep":"none"}'
+expect "인계(keep=none) → 200" "200" "$(capi POST "/api/pages/$HN/handover" claude_employee01 "$WORK/body.json")"
+expect "  옛 주인 GET → 403" "403" "$(capi GET "/api/pages/$HN" claude_employee01)"
 expect "  handovers 의 kept_level 은 NULL" "t" \
   "$(psqlq "SELECT h.kept_level IS NULL FROM community.handovers h JOIN community.pages p ON p.id=h.root_page_id WHERE p.public_id='$HN'")"
 
 sub "하위 페이지 하나만 넘기면 — 옛 부모는 옛 공간에 남는다"
-HP=$(make_page qa_employee01 "5A-남는-부모")
-HPC=$(make_page qa_employee01 "5A-떠나는-하위" "$HP")
-body '{"to":"qa_employee02","keep":"edit"}'
-expect "하위만 인계(keep=edit) → 200" "200" "$(capi POST "/api/pages/$HPC/handover" qa_employee01 "$WORK/body.json")"
-expect "  옛 부모는 employee01 공간에 그대로" "qa_employee01" \
+HP=$(make_page claude_employee01 "5A-남는-부모")
+HPC=$(make_page claude_employee01 "5A-떠나는-하위" "$HP")
+body '{"to":"claude_employee02","keep":"edit"}'
+expect "하위만 인계(keep=edit) → 200" "200" "$(capi POST "/api/pages/$HPC/handover" claude_employee01 "$WORK/body.json")"
+expect "  옛 부모는 employee01 공간에 그대로" "claude_employee01" \
   "$(psqlq "SELECT u.username FROM community.pages p JOIN community.spaces s ON s.id=p.space_id JOIN users u ON u.id=s.owner_user_id WHERE p.public_id='$HP'")"
 expect "  떠난 하위는 새 공간의 뿌리" "t" "$(pg_page "$HPC" "p.parent_page_id IS NULL")"
 doc_body "$(pg_page "$HPC" "p.doc_version")" false
-expect "  옛 주인은 편집으로 남았다 — PATCH 200" "200" "$(capi PATCH "/api/pages/$HPC" qa_employee01 "$WORK/doc.json")"
-expect "  그래도 옛 주인은 지우지 못한다 — DELETE 403" "403" "$(capi DELETE "/api/pages/$HPC" qa_employee01)"
+expect "  옛 주인은 편집으로 남았다 — PATCH 200" "200" "$(capi PATCH "/api/pages/$HPC" claude_employee01 "$WORK/doc.json")"
+expect "  그래도 옛 주인은 지우지 못한다 — DELETE 403" "403" "$(capi DELETE "/api/pages/$HPC" claude_employee01)"
 
 sub "받는 사람에게 개인 공간이 없으면 만든다 (임시 DB 에 수신 전용 계정 하나)"
 psqlq "INSERT INTO public.users (username, password_hash, role, team_id, is_active)
-       VALUES ('qa_tmp5a_recv', 'x-not-a-login', 'Employee', $TEAM2, true)" >/dev/null
+       VALUES ('claude_tmp5a_recv', 'x-not-a-login', 'Employee', $TEAM2, true)" >/dev/null
 expect "  (임시 DB) 그 계정에게는 공간이 없다" "0" \
-  "$(psqlq "SELECT count(*) FROM community.spaces WHERE owner_user_id=(SELECT id FROM users WHERE username='qa_tmp5a_recv')")"
-HS=$(make_page qa_employee01 "5A-새공간으로")
+  "$(psqlq "SELECT count(*) FROM community.spaces WHERE owner_user_id=(SELECT id FROM users WHERE username='claude_tmp5a_recv')")"
+HS=$(make_page claude_employee01 "5A-새공간으로")
 A4=$(mark)
-body '{"to":"qa_tmp5a_recv","keep":"none"}'
-expect "인계 → 200" "200" "$(capi POST "/api/pages/$HS/handover" qa_employee01 "$WORK/body.json")"
+body '{"to":"claude_tmp5a_recv","keep":"none"}'
+expect "인계 → 200" "200" "$(capi POST "/api/pages/$HS/handover" claude_employee01 "$WORK/body.json")"
 expect "  개인 공간이 하나 생겼고 페이지가 그 안에 있다" "1|t" \
-  "$(psqlq "SELECT count(*) FROM community.spaces WHERE kind='personal' AND owner_user_id=(SELECT id FROM users WHERE username='qa_tmp5a_recv')")|$(psqlq "SELECT s.owner_user_id = (SELECT id FROM users WHERE username='qa_tmp5a_recv') FROM community.pages p JOIN community.spaces s ON s.id=p.space_id WHERE p.public_id='$HS'")"
+  "$(psqlq "SELECT count(*) FROM community.spaces WHERE kind='personal' AND owner_user_id=(SELECT id FROM users WHERE username='claude_tmp5a_recv')")|$(psqlq "SELECT s.owner_user_id = (SELECT id FROM users WHERE username='claude_tmp5a_recv') FROM community.pages p JOIN community.spaces s ON s.id=p.space_id WHERE p.public_id='$HS'")"
 expect "  감사 space.create allow handover" "1" "$(audit_n "$A4" space.create allow handover)"
 
 sub "Manager — 자기 팀원의 페이지만 (내용은 보지 않는다)"
-HM=$(make_page qa_employee01 "5A-팀장이-넘김")
-expect "manager01 은 그 비공개 페이지를 읽지 못한다 (비열람)" "403" "$(capi GET "/api/pages/$HM" qa_manager01)"
+HM=$(make_page claude_employee01 "5A-팀장이-넘김")
+expect "manager01 은 그 비공개 페이지를 읽지 못한다 (비열람)" "403" "$(capi GET "/api/pages/$HM" claude_manager01)"
 expect "manager01 의 인계 후보 목록 → 200 · 손님 없음" "200|False" \
-  "$(capi GET "/api/share-candidates?for=handover&page=$HM&q=qa_" qa_manager01)|$(jget "any(c['username']=='qa_guest01' for c in d['candidates'])" < "$WORK/b")"
+  "$(capi GET "/api/share-candidates?for=handover&page=$HM&q=claude_" claude_manager01)|$(jget "any(c['username']=='claude_guest01' for c in d['candidates'])" < "$WORK/b")"
 A5=$(mark)
-body '{"to":"qa_employee02","keep":"none"}'
-expect "manager01 이 팀원(employee01)의 페이지를 넘긴다 → 200" "200" "$(capi POST "/api/pages/$HM/handover" qa_manager01 "$WORK/body.json")"
+body '{"to":"claude_employee02","keep":"none"}'
+expect "manager01 이 팀원(employee01)의 페이지를 넘긴다 → 200" "200" "$(capi POST "/api/pages/$HM/handover" claude_manager01 "$WORK/body.json")"
 lacks  "  응답에 본문이 없다" '"doc"' "$(cat "$WORK/b")"
 expect "  감사 page.handover allow team_scope" "1" "$(audit_n "$A5" page.handover allow team_scope)"
-HO=$(make_page qa_employee02 "5A-다른팀-페이지")
-body '{"to":"qa_employee01","keep":"none"}'
-expect "manager01 이 다른 팀(employee02)의 페이지를 → 403" "403" "$(capi POST "/api/pages/$HO/handover" qa_manager01 "$WORK/body.json")"
+HO=$(make_page claude_employee02 "5A-다른팀-페이지")
+body '{"to":"claude_employee01","keep":"none"}'
+expect "manager01 이 다른 팀(employee02)의 페이지를 → 403" "403" "$(capi POST "/api/pages/$HO/handover" claude_manager01 "$WORK/body.json")"
 
 sub "Admin — 재인증 없이 403, 재인증 뒤 200 (감사 admin_all)"
-HA=$(make_page qa_employee01 "5A-관리자가-넘김")
+HA=$(make_page claude_employee01 "5A-관리자가-넘김")
 A6=$(mark)
-body '{"to":"qa_employee02","keep":"view"}'
+body '{"to":"claude_employee02","keep":"view"}'
 expect "admin 이 재인증 없이 → 403 next=reauth" "403|reauth" \
-  "$(capi POST "/api/pages/$HA/handover" qa_admin01 "$WORK/body.json")|$(jget "d['next']" < "$WORK/b")"
+  "$(capi POST "/api/pages/$HA/handover" claude_admin01 "$WORK/body.json")|$(jget "d['next']" < "$WORK/b")"
 expect "  감사 page.handover deny reauth_required" "1" "$(audit_n "$A6" page.handover deny reauth_required)"
-expect "  페이지는 그대로" "qa_employee01" \
+expect "  페이지는 그대로" "claude_employee01" \
   "$(psqlq "SELECT u.username FROM community.pages p JOIN community.spaces s ON s.id=p.space_id JOIN users u ON u.id=s.owner_user_id WHERE p.public_id='$HA'")"
-PW=$(qa_password qa_admin01)
-python3 -c "import json,sys;print(json.dumps({'password':sys.argv[1]}))" "$PW" > "$WORK/reauth.json"
-RA=$(curl -s -o /dev/null -w '%{http_code}' -b "$JAR_DIR/qa_admin01.jar" -A "$UA" -H 'Content-Type: application/json' \
-      -H "X-CSRF-Token: $CSRF_qa_admin01" --data-binary "@$WORK/reauth.json" "$BASE/api/me/reauth")
+PW=$(qa_password claude_admin01)
+# 비밀번호는 표준입력으로만 파이썬에 간다(R-62) — 만드는 JSON 바이트는 전과 같다(json.dumps 기본 · 끝 줄바꿈)
+py_secret PW -- python3 -c 'import json,sys; pw=sys.stdin.readline().rstrip("\n"); print(json.dumps({"password":pw}))' > "$WORK/reauth.json"
+RA=$(curl -s -o /dev/null -w '%{http_code}' -b "$JAR_DIR/claude_admin01.jar" -A "$UA" -H 'Content-Type: application/json' \
+      -H "X-CSRF-Token: $CSRF_claude_admin01" --data-binary "@$WORK/reauth.json" "$BASE/api/me/reauth")
 rm -f "$WORK/reauth.json"
 expect "  admin 재인증 (t-box 창구 /api/me/reauth) → 200" "200" "$RA"
-body '{"to":"qa_employee02","keep":"view"}'
-expect "admin 이 재인증 뒤 → 200" "200" "$(capi POST "/api/pages/$HA/handover" qa_admin01 "$WORK/body.json")"
+body '{"to":"claude_employee02","keep":"view"}'
+expect "admin 이 재인증 뒤 → 200" "200" "$(capi POST "/api/pages/$HA/handover" claude_admin01 "$WORK/body.json")"
 expect "  감사 page.handover allow admin_all" "1" "$(audit_n "$A6" page.handover allow admin_all)"
 expect "  옛 주인(employee01)에게 보기가 남았다" "view" \
-  "$(psqlq "SELECT sh.level FROM community.page_shares sh JOIN users u ON u.id=sh.user_id JOIN community.pages p ON p.id=sh.page_id WHERE u.username='qa_employee01' AND p.public_id='$HA'")"
+  "$(psqlq "SELECT sh.level FROM community.page_shares sh JOIN users u ON u.id=sh.user_id JOIN community.pages p ON p.id=sh.page_id WHERE u.username='claude_employee01' AND p.public_id='$HA'")"
 
 sub "팀 공간의 페이지는 인계 대상이 아니다"
 TSPACE=$(psqlq "SELECT id FROM community.spaces WHERE kind='team' AND team_id=$TEAM1")
 if [ -n "$TSPACE" ]; then
-  HT=$(make_page qa_employee01 "5A-팀공간-페이지" "" "$TSPACE")
-  body '{"to":"qa_employee02","keep":"none"}'
+  HT=$(make_page claude_employee01 "5A-팀공간-페이지" "" "$TSPACE")
+  body '{"to":"claude_employee02","keep":"none"}'
   expect "팀 공간 페이지 인계 → 400 space_governed" "400|space_governed" \
-    "$(capi POST "/api/pages/$HT/handover" qa_employee01 "$WORK/body.json")|$(jget "d['reason']" < "$WORK/b")"
+    "$(capi POST "/api/pages/$HT/handover" claude_employee01 "$WORK/body.json")|$(jget "d['reason']" < "$WORK/b")"
   body '{"level":"view"}'
   # 5-A″ (사용자 결정 2026-09-23 「팀 공간 페이지도 공유」) — 5-A 의 400 space_governed 가 풀렸다.
   #   자세한 갈래는 tests/community/stage5a2.sh C:T-64 가 본다. 여기서는 팀원이 줄 수 있다는 것만.
   expect "팀 공간 페이지 공유 → 200 (5-A″ 에서 열림)" "200" \
-    "$(capi PUT "/api/pages/$HT/shares/qa_employee02" qa_employee01 "$WORK/body.json")"
+    "$(capi PUT "/api/pages/$HT/shares/claude_employee02" claude_employee01 "$WORK/body.json")"
   expect "  팀 공간 페이지의 소유자 표시는 「팀」" "team" \
-    "$(capi GET "/api/pages/$HT" qa_employee01 >/dev/null; jget "d['page']['owner']['kind']" < "$WORK/b")"
+    "$(capi GET "/api/pages/$HT" claude_employee01 >/dev/null; jget "d['page']['owner']['kind']" < "$WORK/b")"
 else
   skip "팀 공간" "임시 DB 에 팀 공간이 없다"
 fi
@@ -793,17 +803,17 @@ expect "page_shares CHECK — 모르는 등급은 DB 도 막는다" "23514" \
 # ════════════════════════════════════════════════════════════════
 hr "C:T-60  담당자 지정 멈춤 — 창구 400·404 · 옛 기록은 이력에 남는다"
 
-body '{"assignee":"qa_employee01"}'
-expect "PATCH …/properties {assignee} → 400" "400" "$(capi PATCH "/api/pages/$P2/properties" qa_employee01 "$WORK/body.json")"
+body '{"assignee":"claude_employee01"}'
+expect "PATCH …/properties {assignee} → 400" "400" "$(capi PATCH "/api/pages/$P2/properties" claude_employee01 "$WORK/body.json")"
 body '{"status":"done","assignee":null}'
 expect "PATCH …/properties {status, assignee} → 400 (status 도 바뀌지 않는다)" "400|review" \
-  "$(capi PATCH "/api/pages/$P2/properties" qa_employee01 "$WORK/body.json")|$(pg_page "$P2" "coalesce(p.status,'')")"
-expect "GET /api/assignees → 404 (창구가 없다)" "404" "$(capi GET "/api/assignees?page=$P2" qa_employee01)"
+  "$(capi PATCH "/api/pages/$P2/properties" claude_employee01 "$WORK/body.json")|$(pg_page "$P2" "coalesce(p.status,'')")"
+expect "GET /api/assignees → 404 (창구가 없다)" "404" "$(capi GET "/api/assignees?page=$P2" claude_employee01)"
 # 4-D 때 남은 기록을 흉내 낸다 — 임시 DB 에만 한 줄.
 psqlq "INSERT INTO community.page_property_events (page_id, prop, from_value, to_value, by_user_id)
-       SELECT p.id, 'assignee', NULL, 'qa_employee01', (SELECT id FROM users WHERE username='qa_employee01')
+       SELECT p.id, 'assignee', NULL, 'claude_employee01', (SELECT id FROM users WHERE username='claude_employee01')
          FROM community.pages p WHERE p.public_id='$P2'" >/dev/null
-capi GET "/api/pages/$P2/history" qa_employee01 > /dev/null
+capi GET "/api/pages/$P2/history" claude_employee01 > /dev/null
 expect "옛 담당자 줄이 「처리 이력」에 그대로 나온다" "1" \
   "$(jget "sum(1 for e in d['events'] if e['kind']=='property' and e['prop']=='assignee')" < "$WORK/b")"
 
@@ -823,12 +833,13 @@ PY
 if ! python3 -c 'import playwright' 2>/dev/null; then
   skip "브라우저 스모크" "playwright 가 없다"
 else
-  S1=$(cookie_of qa_employee01); S2=$(cookie_of qa_employee02)
+  S1=$(cookie_of claude_employee01); S2=$(cookie_of claude_employee02)
   if [ -z "$S1" ] || [ -z "$S2" ]; then
     skip "브라우저 스모크" "세션 쿠키를 꺼내지 못했다"
   else
-    SMOKE_SESSION2="$S2" SMOKE_USER2=qa_employee02 SMOKE_SHOTS="${SHOTS:-}" \
-      python3 "$ROOT/tests/community/browser_smoke.py" "$SITE" "$UA" "$S1" > "$WORK/smoke.txt" 2>&1
+    # 세션(S1)은 표준입력 첫 줄로(browser_smoke.py 새 인터페이스 — argv 는 SITE UA). 둘째 세션은 환경 변수 그대로
+    SMOKE_SESSION2="$S2" SMOKE_USER2=claude_employee02 SMOKE_SHOTS="${SHOTS:-}" \
+      py_secret S1 -- python3 "$ROOT/tests/community/browser_smoke.py" "$SITE" "$UA" > "$WORK/smoke.txt" 2>&1
     sed -n '/── 32\./,$p' "$WORK/smoke.txt" | sed 's/^/    /'
     SMOKE_FAIL=$(sed -n 's/^SMOKE_FAIL=//p' "$WORK/smoke.txt" | tail -1)
     expect "브라우저 스모크 실패 0 (1~35 전부)" "0" "${SMOKE_FAIL:-없음}"

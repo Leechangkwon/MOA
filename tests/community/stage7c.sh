@@ -11,6 +11,7 @@
 #
 # ★ 운영 DB 를 건드리지 않는다 — stage7b.sh 와 같은 틀(임시 DB `tbox_7c_test`, 포트 8097).
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
+. "$ROOT/tests/lib/secrets.sh" || { echo "tests/lib/secrets.sh 를 읽지 못했다 — 시험을 시작하지 않는다 (R-62)"; exit 3; }
 PORT=8097
 SITE="http://127.0.0.1:$PORT"
 BASE="$SITE/tbox"
@@ -89,19 +90,20 @@ review_password() { sudo -n awk -v u="$1" '$1==u{print $3}' /etc/tbox-v2/seed-ac
 review_secret()   { sudo -n awk -v u="$1" '$1==u{print $2}' /etc/tbox-v2/qa-totp.txt 2>/dev/null; }
 
 login() {
-  local who="$1" jar="$JAR_DIR/$1.jar" pw sec raw code left out try
+  local who="$1" jar="$JAR_DIR/$1.jar" pw sec raw code left out try body
   pw=$(review_password "$who")
   sec=$(review_secret "$who")
   [ -n "$pw" ] || return 2
   for try in 1 2 3; do
     if [ -n "$sec" ]; then
-      raw=$(php "$ROOT/scripts/totp_code.php" "$sec" 2>/dev/null)
+      raw=$(totp_now sec 2>/dev/null)
       code=${raw%%$'\n'*}
-      out=$(curl -s -c "$jar" -A "$UA" -H 'Content-Type: application/json' \
-            -d "{\"username\":\"$who\",\"password\":\"$pw\",\"otp\":\"$code\"}" "$BASE/api/login")
+      # 비밀번호가 든 본문은 인자가 아니라 표준입력으로 보낸다(R-62 · tests/lib/secrets.sh). 보내는 바이트는 같다.
+      printf -v body '{"username":"%s","password":"%s","otp":"%s"}' "$who" "$pw" "$code"
+      out=$(curl_json_secret body -s -c "$jar" -A "$UA" -H 'Content-Type: application/json' "$BASE/api/login")
     else
-      out=$(curl -s -c "$jar" -A "$UA" -H 'Content-Type: application/json' \
-            -d "{\"username\":\"$who\",\"password\":\"$pw\"}" "$BASE/api/login")
+      printf -v body '{"username":"%s","password":"%s"}' "$who" "$pw"
+      out=$(curl_json_secret body -s -c "$jar" -A "$UA" -H 'Content-Type: application/json' "$BASE/api/login")
     fi
     case "$out" in
       *'"ok":true'*)
@@ -300,10 +302,11 @@ uid() { psqlq "SELECT id FROM users WHERE username='$1'"; }
 reauth_admin() {
   local pw rc
   pw=$(review_password claude_admin01)
-  python3 -c "import json,sys;print(json.dumps({'password':sys.argv[1]}))" "$pw" > "$WORK/reauth.json"
-  rc=$(curl -s -o /dev/null -w '%{http_code}' -b "$JAR_DIR/claude_admin01.jar" -A "$UA" -H 'Content-Type: application/json' \
-        -H "X-CSRF-Token: $CSRF_claude_admin01" --data-binary "@$WORK/reauth.json" "$BASE/api/me/reauth")
-  rm -f "$WORK/reauth.json"
+  # 비밀번호는 표준입력 첫 줄로 파이썬에(py_secret) — 명령 인자에 싣지 않는다(R-62). 파이썬이 만든 본문(끝 줄바꿈까지)은
+  # 파일을 거치지 않고 파이프로 curl 의 --data-binary @- 에 간다 — 옛 「파일 → @파일」 과 보내는 바이트가 같다.
+  rc=$(py_secret pw -- python3 -c "import json,sys;print(json.dumps({'password':sys.stdin.readline().rstrip('\n')}))" \
+       | curl -s -o /dev/null -w '%{http_code}' -b "$JAR_DIR/claude_admin01.jar" -A "$UA" -H 'Content-Type: application/json' \
+        -H "X-CSRF-Token: $CSRF_claude_admin01" --data-binary @- "$BASE/api/me/reauth")
   printf '%s' "$rc"
 }
 
@@ -417,16 +420,18 @@ hr "C:T-180  허용 목록 — Admin 만 · 재인증 · 호스트 모양 · 한
 expect "직원 목록 → 200 · 비어 있음 · 관리 못 함 · 틀 닫힘" "200 0 False False" \
   "$(capi GET /api/embed-domains claude_employee01) $(jget "len(d['domains'])" < "$WORK/b") $(jget "d['can_manage']" < "$WORK/b") $(jget "d['frames']" < "$WORK/b")"
 expect "직원이 더하기 → 403(정책 role:Admin)" "403" "$(dom_add claude_employee01 www.youtube.com)"
+# BF-0009 — 아래 「감사 embed.domain_add allow」 는 이번 실행의 행만 센다. 경계 m0 는 그 행을 남기는 관리자 더하기(아래 두 st=…)
+# **앞**에서 잰다(옛 자리는 더하기 **뒤**라 SQL 에 쓰면 기대하는 행을 빠뜨렸고, 그래서 쓰이지 않은 채 남아 있었다).
+m0=$(mark)
 st=$(dom_add claude_admin01 www.youtube.com)
 if [ "$st" = "403" ]; then
   expect "관리자 — 재인증 전에는 403 next=reauth" "reauth" "$(jget "d.get('next','')" < "$WORK/b")"
   expect "  재인증 → 200" "200" "$(reauth_admin)"
   st=$(dom_add claude_admin01 www.youtube.com)
 fi
-m0=$(mark)
 expect "관리자 — www.youtube.com 더하기 → 201" "201" "$st"
 D_YT=$(did)
-expect "  감사 embed.domain_add allow" "yes" "$([ "$(psqlq "SELECT count(*) FROM audit_logs WHERE action='embed.domain_add' AND result='allow' AND target_name='www.youtube.com'")" -ge 1 ] && echo yes)"
+expect "  감사 embed.domain_add allow" "yes" "$([ "$(psqlq "SELECT count(*) FROM audit_logs WHERE id > ${m0:-0} AND action='embed.domain_add' AND result='allow' AND target_name='www.youtube.com'")" -ge 1 ] && echo yes)"
 expect "앞뒤 빈칸·대문자는 소문자로 맞춘다 → 201 · www.example.com" "201 www.example.com" "$(dom_add claude_admin01 '  WWW.Example.COM ') $(jget "d['domain']['host']" < "$WORK/b")"
 D_EX=$(did)
 expect "같은 호스트 또 → 400 exists" "400 exists" "$(dom_add claude_admin01 www.youtube.com) $(reason_of)"

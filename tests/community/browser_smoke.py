@@ -11,9 +11,12 @@
 #   전부 「눌렀더니 되는가」로만 잡힌다 — 요소가 있는지 보는 것으로는 잡히지 않았다.
 #
 # 쓰는 법 (tests/community/stage3.sh 가 부른다)
-#   python3 tests/community/browser_smoke.py <SITE> <UA> <tbox_session 값> [<samples.json> <php-render.json>]
+#   printf '%s\n' "$SESSION" | python3 tests/community/browser_smoke.py <SITE> <UA> [<samples.json> <php-render.json>]
+#   (시험은 tests/lib/secrets.sh 의 `py_secret SESSION -- python3 …/browser_smoke.py "$SITE" "$UA" …` 로 부른다)
 #     · SITE            http://127.0.0.1:8082 (커뮤니티는 SITE + /community)
-#     · tbox_session    qa 계정으로 로그인한 쿠키 값 (scripts/ui_snapshot.sh 와 같은 방식)
+#     · 표준입력 첫 줄  검토 계정으로 로그인한 tbox_session 쿠키 값 (scripts/ui_snapshot.sh 와 같은 방식).
+#                       **명령 인자로 받지 않는다** — 인자는 ps·/proc/<pid>/cmdline 으로 같은 호스트의 다른
+#                       계정도 읽는다(점검 봇 1-B-3 · SECURITY R-62 · 봇 규칙 R15). 표준입력은 이 한 줄 말고 쓰지 않는다.
 #     · 뒤 두 인자를 주면 C:T-19 의 **JS 쪽 렌더러 동등성**까지 같은 브라우저에서 잰다.
 #
 # 규칙
@@ -38,15 +41,19 @@ import time
 
 from playwright.sync_api import sync_playwright
 
-if len(sys.argv) < 4:
-    print("쓰는 법: browser_smoke.py <SITE> <UA> <SESSION> [<samples.json> <php-render.json>]")
+if len(sys.argv) < 3:
+    print("쓰는 법: browser_smoke.py <SITE> <UA> [<samples.json> <php-render.json>]  (세션 값은 표준입력 첫 줄)")
     sys.exit(2)
 
 SITE = sys.argv[1].rstrip("/")
 UA = sys.argv[2]
-SESSION = sys.argv[3]
-SAMPLES = sys.argv[4] if len(sys.argv) > 4 else None
-PHP_RENDER = sys.argv[5] if len(sys.argv) > 5 else None
+# 세션 값은 표준입력 첫 줄 — 인자에 싣지 않는다(머리글 「쓰는 법」). 비었으면 브라우저를 열지 않는다.
+SESSION = sys.stdin.readline().rstrip("\n")
+if not SESSION:
+    print("browser_smoke.py: 표준입력 첫 줄에서 세션 값을 받지 못했다 — 브라우저를 열지 않는다")
+    sys.exit(2)
+SAMPLES = sys.argv[3] if len(sys.argv) > 3 else None
+PHP_RENDER = sys.argv[4] if len(sys.argv) > 4 else None
 
 # 5-A (33~35) — 공유·인계는 **두 사람**이 있어야 행동→결과를 볼 수 있다. 부르는 쪽(stage5a.sh)이
 # 둘째 검토 계정의 세션과 계정명을 환경 변수로 넘긴다. 없으면 33~35 는 건너뛴다(앞 항목은 그대로).
@@ -113,7 +120,7 @@ KINDS_JS = """
 with sync_playwright() as p:
     browser = p.chromium.launch()
     ctx = browser.new_context(user_agent=UA, viewport={"width": 1440, "height": 900})
-    # 쿠키는 부르는 쪽이 qa 계정으로 받아 넘겨 준 것이다. 로컬은 http 라 secure=False 로 넣는다
+    # 쿠키는 부르는 쪽이 검토 계정으로 받아 표준입력으로 넘겨 준 것이다. 로컬은 http 라 secure=False 로 넣는다
     # (운영에서는 서버가 Secure 로 발급한다 — 이 시험은 127.0.0.1 전용이다).
     ctx.add_cookies([{
         "name": "tbox_session",

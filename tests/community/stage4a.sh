@@ -6,7 +6,7 @@
 #   C:T-23 깊이 9 시도       400 `depth_exceeded` · DB 불변(페이지 수가 늘지 않는다)
 #   C:T-24 순환              자기 자신·자기 후손을 부모로 → 둘 다 400 `cycle` ·
 #                            감사 `page.move deny cycle` 2건 · 트리 불변
-#   C:T-25 남의 페이지       qa_employee02 의 페이지를 부모로 → 403 + 감사 `page.read deny not_owner` ·
+#   C:T-25 남의 페이지       claude_employee02 의 페이지를 부모로 → 403 + 감사 `page.read deny not_owner` ·
 #                            없는 UUID → 404
 #   C:T-26 옮기기 + 순서     position 이 형제 안에서 0..n-1 로 다시 매겨진다 · 순서가 기대대로
 #   C:T-27 부모 삭제         하위 전부 deleted_at · 목록에서 사라짐 · 감사 `cascaded` 건수 일치
@@ -18,7 +18,7 @@
 #   회귀                     doc-schema 사본 diff 0 · security_lint 0 · php -l · bash -n
 #
 # 규칙 (CLAUDE.md 3장) — stage3.sh 와 같다
-#   · 검토 계정 `qa_` 다섯뿐. 시드 계정은 사용자 몫.
+#   · 검토 계정 `claude_` 다섯뿐. 시드 계정은 사용자 몫.
 #   · 모든 요청에 `-A "tbox-review/<날짜>"`.
 #   · 운영 DB 에 DDL·DML 을 실행하지 않는다 (psql 은 **읽기**만).
 #   · 만든 페이지는 **앱 창구로만** 되돌린다(논리 삭제).
@@ -32,6 +32,8 @@ set -u
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 # 검토 계정 판정 한 벌(qa_·claude_ — F-71 C). 못 읽으면 사전 검사가 빈 값으로 열리므로 시작하지 않는다.
 . "$ROOT/tests/lib/review_accounts.sh" || { echo "tests/lib/review_accounts.sh 를 읽지 못했다 — 시험을 시작하지 않는다 (R-73)"; exit 3; }
+. "$ROOT/tests/lib/secrets.sh" || { echo "tests/lib/secrets.sh 를 읽지 못했다 — 시험을 시작하지 않는다 (R-62)"; exit 3; }
+. "$ROOT/tests/lib/db_read.sh" || { echo "tests/lib/db_read.sh 를 읽지 못했다 — 시험을 시작하지 않는다 (R-73)"; exit 3; }
 SITE="http://127.0.0.1:8082"
 BASE="$SITE/tbox"
 CBASE="$SITE/community"
@@ -87,19 +89,19 @@ qa_password() { sudo -n awk -v u="$1" '$1==u{print $3}' /etc/tbox-v2/seed-accoun
 qa_secret()   { sudo -n awk -v u="$1" '$1==u{print $2}' /etc/tbox-v2/qa-totp.txt 2>/dev/null; }
 
 login() {
-  local who="$1" jar="$JAR_DIR/$1.jar" pw sec raw code left out try
+  local who="$1" jar="$JAR_DIR/$1.jar" pw sec raw code left out try body
   pw=$(qa_password "$who")
   sec=$(qa_secret "$who")
   [ -n "$pw" ] || return 2
   for try in 1 2 3; do
     if [ -n "$sec" ]; then
-      raw=$(php "$ROOT/scripts/totp_code.php" "$sec" 2>/dev/null)
+      raw=$(totp_now sec 2>/dev/null)
       code=${raw%%$'\n'*}
-      out=$(curl -s -c "$jar" -A "$UA" -H 'Content-Type: application/json' \
-            -d "{\"username\":\"$who\",\"password\":\"$pw\",\"otp\":\"$code\"}" "$BASE/api/login")
+      printf -v body '{"username":"%s","password":"%s","otp":"%s"}' "$who" "$pw" "$code"
+      out=$(curl_json_secret body -s -c "$jar" -A "$UA" -H 'Content-Type: application/json' "$BASE/api/login")
     else
-      out=$(curl -s -c "$jar" -A "$UA" -H 'Content-Type: application/json' \
-            -d "{\"username\":\"$who\",\"password\":\"$pw\"}" "$BASE/api/login")
+      printf -v body '{"username":"%s","password":"%s"}' "$who" "$pw"
+      out=$(curl_json_secret body -s -c "$jar" -A "$UA" -H 'Content-Type: application/json' "$BASE/api/login")
     fi
     case "$out" in
       *'"ok":true'*)
@@ -163,8 +165,9 @@ fi
 if [ "$HAVE_PSQL" -eq 1 ]; then
   TRY=1
   while :; do
-    BUSY=$(psqlq "SELECT count(*) FROM audit_logs WHERE happened_at > now() - interval '10 minutes' AND actor_name IS NOT NULL AND $REVIEW_NOT_SQL")
-    echo "최근 10분 비-qa 감사 행: ${BUSY:-?} (시도 ${TRY}/10)"
+    db_read_var BUSY "$DB" "SELECT count(*) FROM audit_logs WHERE happened_at > now() - interval '10 minutes' AND actor_name IS NOT NULL AND $REVIEW_NOT_SQL" \
+      || { echo "운영 DB 를 읽지 못했다 — 시험을 시작하지 않는다 (R-73 · db_read rc 3)"; exit 3; }
+    echo "최근 10분 비-qa 감사 행: ${BUSY:-?} (시도 ${TRY}/10) (읽기 경로 ${DB_READ_VIA})"
     [ "${BUSY:-0}" -gt 0 ] 2>/dev/null || break
     if [ "$TRY" -ge 10 ]; then
       echo "10회(약 20분) 기다렸지만 사용자의 활동이 이어진다 — 시험을 시작하지 않는다 (SECURITY R-73 ①)"
@@ -179,40 +182,44 @@ else
 fi
 
 AUDIT_START=0
-[ "$HAVE_PSQL" -eq 1 ] && AUDIT_START=$(mark)
+# 끝의 「시험이 만든 비-qa 행 0건」 대조의 시작 값 — 읽지 못하면 시작하지 않는다(R-73 · db_read)
+if [ "$HAVE_PSQL" -eq 1 ]; then
+  db_read_var AUDIT_START "$DB" "SELECT coalesce(max(id),0) FROM audit_logs" \
+    || { echo "운영 DB 를 읽지 못했다 — 시험을 시작하지 않는다 (R-73 · db_read rc 3)"; exit 3; }
+fi
 
 sub "검토 계정 로그인"
-for who in qa_employee01 qa_employee02; do
+for who in claude_employee01 claude_employee02; do
   token=$(login "$who") || token=""
   eval "CSRF_${who}=\"\$token\""
   if [ -n "$token" ]; then note "$who 로그인 OK"; else note "$who 로그인 실패 — 관련 항목 SKIP"; fi
 done
 
-CODE=$(capi GET /api/me/space qa_employee01)
-expect "qa_employee01 개인 공간" "200" "$CODE"
-CODE=$(capi GET /api/me/space qa_employee02)
-expect "qa_employee02 개인 공간" "200" "$CODE"
+CODE=$(capi GET /api/me/space claude_employee01)
+expect "claude_employee01 개인 공간" "200" "$CODE"
+CODE=$(capi GET /api/me/space claude_employee02)
+expect "claude_employee02 개인 공간" "200" "$CODE"
 
 # ════════════════════════════════════════════════════════════════
 hr "C:T-22 — 하위 페이지 3단 (breadcrumb 1·2·3)"
 
-R=$(make_page qa_employee01 "T22-1층");  expect "1층 만들기 201" "201" "${R%%|*}"; P1="${R##*|}"
+R=$(make_page claude_employee01 "T22-1층");  expect "1층 만들기 201" "201" "${R%%|*}"; P1="${R##*|}"
 [ -n "$P1" ] && MADE_PAGES="$MADE_PAGES $P1"
-R=$(make_page qa_employee01 "T22-2층" "$P1"); expect "2층 만들기 201" "201" "${R%%|*}"; P2="${R##*|}"
-R=$(make_page qa_employee01 "T22-3층" "$P2"); expect "3층 만들기 201" "201" "${R%%|*}"; P3="${R##*|}"
+R=$(make_page claude_employee01 "T22-2층" "$P1"); expect "2층 만들기 201" "201" "${R%%|*}"; P2="${R##*|}"
+R=$(make_page claude_employee01 "T22-3층" "$P2"); expect "3층 만들기 201" "201" "${R%%|*}"; P3="${R##*|}"
 note "P1=$P1 P2=$P2 P3=$P3"
 
 for pair in "1:$P1" "2:$P2" "3:$P3"; do
   want="${pair%%:*}"; pid="${pair##*:}"
-  CODE=$(capi GET "/api/pages/$pid" qa_employee01)
+  CODE=$(capi GET "/api/pages/$pid" claude_employee01)
   expect "$want층 GET 200" "200" "$CODE"
   expect "$want층 breadcrumb 길이" "$want" "$(jget "len(d['breadcrumb'])" < "$WORK/b")"
 done
 
-CODE=$(capi GET "/api/pages/$P1" qa_employee01)
+CODE=$(capi GET "/api/pages/$P1" claude_employee01)
 expect "1층의 children 수" "1" "$(jget "len(d['children'])" < "$WORK/b")"
 expect "1층 children[0] 의 하위 수(손자 1)" "1" "$(jget "d['children'][0]['child_count']" < "$WORK/b")"
-CODE=$(capi GET "/api/pages/$P3" qa_employee01)
+CODE=$(capi GET "/api/pages/$P3" claude_employee01)
 expect "3층의 children 수" "0" "$(jget "len(d['children'])" < "$WORK/b")"
 expect "3층 breadcrumb 의 맨 앞은 1층" "T22-1층" "$(jget "d['breadcrumb'][0]['title']" < "$WORK/b")"
 expect "3층 breadcrumb 의 맨 뒤는 자기 자신" "T22-3층" "$(jget "d['breadcrumb'][-1]['title']" < "$WORK/b")"
@@ -229,13 +236,13 @@ fi
 DEEP="$P3"
 OK_DEEP=1
 for lvl in 4 5 6 7 8; do
-  R=$(make_page qa_employee01 "T23-${lvl}층" "$DEEP")
+  R=$(make_page claude_employee01 "T23-${lvl}층" "$DEEP")
   [ "${R%%|*}" = "201" ] || { expect "${lvl}층 만들기 201" "201" "${R%%|*}"; OK_DEEP=0; break; }
   DEEP="${R##*|}"
 done
 expect "8층까지 이어 만들기" "1" "$OK_DEEP"
 
-R=$(make_page qa_employee01 "T23-9층" "$DEEP")
+R=$(make_page claude_employee01 "T23-9층" "$DEEP")
 expect "9층 만들기 → 400" "400" "${R%%|*}"
 expect "사유가 depth_exceeded" "depth_exceeded" "$(jget "d['reason']" < "$WORK/b")"
 
@@ -248,13 +255,13 @@ else
 fi
 
 # 깊이 8짜리 가지(P1…)를 다른 가지 아래로 옮기면 9가 된다 → 같은 거부
-R=$(make_page qa_employee01 "T23-옆가지"); expect "옆가지 만들기 201" "201" "${R%%|*}"; SIDE="${R##*|}"
+R=$(make_page claude_employee01 "T23-옆가지"); expect "옆가지 만들기 201" "201" "${R%%|*}"; SIDE="${R##*|}"
 [ -n "$SIDE" ] && MADE_PAGES="$MADE_PAGES $SIDE"
 printf '{"parent_id":"%s"}' "$SIDE" > "$WORK/mv.json"
-CODE=$(capi PATCH "/api/pages/$P1/move" qa_employee01 "$WORK/mv.json")
+CODE=$(capi PATCH "/api/pages/$P1/move" claude_employee01 "$WORK/mv.json")
 expect "깊이 8 가지를 한 겹 더 깊이 옮기기 → 400" "400" "$CODE"
 expect "사유가 depth_exceeded" "depth_exceeded" "$(jget "d['reason']" < "$WORK/b")"
-CODE=$(capi GET "/api/pages/$P1" qa_employee01)
+CODE=$(capi GET "/api/pages/$P1" claude_employee01)
 expect "거부 뒤 1층은 그대로 뿌리다 (breadcrumb 길이 1)" "1" "$(jget "len(d['breadcrumb'])" < "$WORK/b")"
 
 # ════════════════════════════════════════════════════════════════
@@ -263,16 +270,16 @@ hr "C:T-24 — 순환 (자기 자신 · 자기 후손)"
 [ "$HAVE_PSQL" -eq 1 ] && CYCLE_MARK=$(mark) || CYCLE_MARK=0
 
 printf '{"parent_id":"%s"}' "$P1" > "$WORK/mv.json"
-CODE=$(capi PATCH "/api/pages/$P1/move" qa_employee01 "$WORK/mv.json")
+CODE=$(capi PATCH "/api/pages/$P1/move" claude_employee01 "$WORK/mv.json")
 expect "자기 자신을 부모로 → 400" "400" "$CODE"
 expect "사유가 cycle" "cycle" "$(jget "d['reason']" < "$WORK/b")"
 
 printf '{"parent_id":"%s"}' "$P3" > "$WORK/mv.json"
-CODE=$(capi PATCH "/api/pages/$P1/move" qa_employee01 "$WORK/mv.json")
+CODE=$(capi PATCH "/api/pages/$P1/move" claude_employee01 "$WORK/mv.json")
 expect "자기 후손(3층)을 부모로 → 400" "400" "$CODE"
 expect "사유가 cycle" "cycle" "$(jget "d['reason']" < "$WORK/b")"
 
-CODE=$(capi GET "/api/pages/$P3" qa_employee01)
+CODE=$(capi GET "/api/pages/$P3" claude_employee01)
 expect "트리 불변 — 3층 breadcrumb 길이 그대로" "3" "$(jget "len(d['breadcrumb'])" < "$WORK/b")"
 
 if [ "$HAVE_PSQL" -eq 1 ]; then
@@ -286,27 +293,27 @@ fi
 # ════════════════════════════════════════════════════════════════
 hr "C:T-25 — 남의 페이지를 부모로 · 없는 UUID"
 
-R=$(make_page qa_employee02 "T25-남의 페이지")
-expect "qa_employee02 페이지 만들기 201" "201" "${R%%|*}"
+R=$(make_page claude_employee02 "T25-남의 페이지")
+expect "claude_employee02 페이지 만들기 201" "201" "${R%%|*}"
 OTHER="${R##*|}"
 note "남의 페이지 id=$OTHER"
 
 [ "$HAVE_PSQL" -eq 1 ] && OTHER_MARK=$(mark) || OTHER_MARK=0
 
 printf '{"parent_id":"%s"}' "$OTHER" > "$WORK/mv.json"
-CODE=$(capi PATCH "/api/pages/$P1/move" qa_employee01 "$WORK/mv.json")
+CODE=$(capi PATCH "/api/pages/$P1/move" claude_employee01 "$WORK/mv.json")
 expect "남의 페이지를 부모로(옮기기) → 403" "403" "$CODE"
 
 printf '{"title":"T25-남의 것 아래","parent_id":"%s"}' "$OTHER" > "$WORK/new2.json"
-CODE=$(capi POST /api/pages qa_employee01 "$WORK/new2.json")
+CODE=$(capi POST /api/pages claude_employee01 "$WORK/new2.json")
 expect "남의 페이지를 부모로(만들기) → 403" "403" "$CODE"
 
 printf '{"parent_id":"00000000-0000-4000-8000-00000000dead"}' > "$WORK/mv.json"
-CODE=$(capi PATCH "/api/pages/$P1/move" qa_employee01 "$WORK/mv.json")
+CODE=$(capi PATCH "/api/pages/$P1/move" claude_employee01 "$WORK/mv.json")
 expect "없는 UUID 를 부모로(옮기기) → 404" "404" "$CODE"
 
 printf '{"title":"T25-없는 부모","parent_id":"00000000-0000-4000-8000-00000000dead"}' > "$WORK/new2.json"
-CODE=$(capi POST /api/pages qa_employee01 "$WORK/new2.json")
+CODE=$(capi POST /api/pages claude_employee01 "$WORK/new2.json")
 expect "없는 UUID 를 부모로(만들기) → 404" "404" "$CODE"
 
 if [ "$HAVE_PSQL" -eq 1 ]; then
@@ -321,18 +328,18 @@ fi
 # ════════════════════════════════════════════════════════════════
 hr "C:T-26 — 옮기기 + 순서 (position 0..n-1)"
 
-R=$(make_page qa_employee01 "T26-상자"); expect "상자 만들기 201" "201" "${R%%|*}"; BOX="${R##*|}"
+R=$(make_page claude_employee01 "T26-상자"); expect "상자 만들기 201" "201" "${R%%|*}"; BOX="${R##*|}"
 [ -n "$BOX" ] && MADE_PAGES="$MADE_PAGES $BOX"
-R=$(make_page qa_employee01 "T26-가" "$BOX"); C1="${R##*|}"; expect "가 201" "201" "${R%%|*}"
-R=$(make_page qa_employee01 "T26-나" "$BOX"); C2="${R##*|}"; expect "나 201" "201" "${R%%|*}"
-R=$(make_page qa_employee01 "T26-다" "$BOX"); C3="${R##*|}"; expect "다 201" "201" "${R%%|*}"
+R=$(make_page claude_employee01 "T26-가" "$BOX"); C1="${R##*|}"; expect "가 201" "201" "${R%%|*}"
+R=$(make_page claude_employee01 "T26-나" "$BOX"); C2="${R##*|}"; expect "나 201" "201" "${R%%|*}"
+R=$(make_page claude_employee01 "T26-다" "$BOX"); C3="${R##*|}"; expect "다 201" "201" "${R%%|*}"
 
 order_of() {   # 상자의 하위 제목을 position 순으로 한 줄에
-  capi GET "/api/pages/$BOX" qa_employee01 >/dev/null
+  capi GET "/api/pages/$BOX" claude_employee01 >/dev/null
   jget "','.join(c['title'] for c in d['children'])" < "$WORK/b"
 }
 pos_of() {
-  capi GET "/api/pages/$BOX" qa_employee01 >/dev/null
+  capi GET "/api/pages/$BOX" claude_employee01 >/dev/null
   jget "','.join(str(c['position']) for c in d['children'])" < "$WORK/b"
 }
 
@@ -340,45 +347,45 @@ expect "만든 차례대로 가·나·다" "T26-가,T26-나,T26-다" "$(order_of
 expect "position 이 0,1,2" "0,1,2" "$(pos_of)"
 
 printf '{"parent_id":"%s","position":0}' "$BOX" > "$WORK/mv.json"
-CODE=$(capi PATCH "/api/pages/$C3/move" qa_employee01 "$WORK/mv.json")
+CODE=$(capi PATCH "/api/pages/$C3/move" claude_employee01 "$WORK/mv.json")
 expect "「다」를 맨 앞(0)으로 → 200" "200" "$CODE"
 expect "차례가 다·가·나" "T26-다,T26-가,T26-나" "$(order_of)"
 expect "position 이 0,1,2 로 다시 매겨졌다" "0,1,2" "$(pos_of)"
 
 printf '{"parent_id":"%s","position":99}' "$BOX" > "$WORK/mv.json"
-CODE=$(capi PATCH "/api/pages/$C3/move" qa_employee01 "$WORK/mv.json")
+CODE=$(capi PATCH "/api/pages/$C3/move" claude_employee01 "$WORK/mv.json")
 expect "범위 밖 position 99 → 거부하지 않고 맨 뒤" "200" "$CODE"
 expect "차례가 가·나·다" "T26-가,T26-나,T26-다" "$(order_of)"
 expect "position 이 여전히 0,1,2" "0,1,2" "$(pos_of)"
 
 printf '{"parent_id":null}' > "$WORK/mv.json"
-CODE=$(capi PATCH "/api/pages/$C2/move" qa_employee01 "$WORK/mv.json")
+CODE=$(capi PATCH "/api/pages/$C2/move" claude_employee01 "$WORK/mv.json")
 expect "「나」를 뿌리로 → 200" "200" "$CODE"
 [ -n "$C2" ] && MADE_PAGES="$MADE_PAGES $C2"
 expect "떠난 자리의 형제가 가·다 로 다시 매겨졌다" "T26-가,T26-다" "$(order_of)"
 expect "그 자리 position 이 0,1" "0,1" "$(pos_of)"
-CODE=$(capi GET "/api/pages/$C2" qa_employee01)
+CODE=$(capi GET "/api/pages/$C2" claude_employee01)
 expect "「나」의 breadcrumb 길이 1 (뿌리다)" "1" "$(jget "len(d['breadcrumb'])" < "$WORK/b")"
 
 # ════════════════════════════════════════════════════════════════
 hr "C:T-27 — 부모 삭제 (하위까지 함께)"
 
-R=$(make_page qa_employee01 "T27-뿌리"); DEL="${R##*|}"; expect "뿌리 만들기 201" "201" "${R%%|*}"
-R=$(make_page qa_employee01 "T27-아들" "$DEL"); DSON="${R##*|}"; expect "아들 201" "201" "${R%%|*}"
-R=$(make_page qa_employee01 "T27-손자" "$DSON"); DGSON="${R##*|}"; expect "손자 201" "201" "${R%%|*}"
+R=$(make_page claude_employee01 "T27-뿌리"); DEL="${R##*|}"; expect "뿌리 만들기 201" "201" "${R%%|*}"
+R=$(make_page claude_employee01 "T27-아들" "$DEL"); DSON="${R##*|}"; expect "아들 201" "201" "${R%%|*}"
+R=$(make_page claude_employee01 "T27-손자" "$DSON"); DGSON="${R##*|}"; expect "손자 201" "201" "${R%%|*}"
 
 [ "$HAVE_PSQL" -eq 1 ] && DEL_MARK=$(mark) || DEL_MARK=0
 
-CODE=$(capi DELETE "/api/pages/$DEL" qa_employee01)
+CODE=$(capi DELETE "/api/pages/$DEL" claude_employee01)
 expect "부모 삭제 200" "200" "$CODE"
 expect "지운 건수 3" "3" "$(jget "d['deleted']" < "$WORK/b")"
 
 for pid in "$DEL" "$DSON" "$DGSON"; do
-  CODE=$(capi GET "/api/pages/$pid" qa_employee01)
+  CODE=$(capi GET "/api/pages/$pid" claude_employee01)
   expect "지운 뒤 GET → 404 ($pid)" "404" "$CODE"
 done
 
-CODE=$(capi GET "/api/pages?tree=1" qa_employee01)
+CODE=$(capi GET "/api/pages?tree=1" claude_employee01)
 expect "트리 목록 200" "200" "$CODE"
 expect "트리에 T27- 이 하나도 없다" "0" \
   "$(jget "sum(1 for p in d['pages'] if p['title'].startswith('T27-'))" < "$WORK/b")"
@@ -395,11 +402,11 @@ fi
 # ════════════════════════════════════════════════════════════════
 hr "C:T-28 — child_page 블록 저장 · child_titles"
 
-R=$(make_page qa_employee01 "T28-부모"); T28P="${R##*|}"; expect "부모 만들기 201" "201" "${R%%|*}"
+R=$(make_page claude_employee01 "T28-부모"); T28P="${R##*|}"; expect "부모 만들기 201" "201" "${R%%|*}"
 [ -n "$T28P" ] && MADE_PAGES="$MADE_PAGES $T28P"
-R=$(make_page qa_employee01 "T28-자식" "$T28P"); T28C="${R##*|}"; expect "자식 만들기 201" "201" "${R%%|*}"
+R=$(make_page claude_employee01 "T28-자식" "$T28P"); T28C="${R##*|}"; expect "자식 만들기 201" "201" "${R%%|*}"
 
-CODE=$(capi GET "/api/pages/$T28P" qa_employee01)
+CODE=$(capi GET "/api/pages/$T28P" claude_employee01)
 VER=$(jget "d['page']['doc_version']" < "$WORK/b")
 
 python3 - "$WORK" "$VER" "$T28C" "$OTHER" <<'PY'
@@ -427,16 +434,16 @@ doc3 = {"schema": 1, "blocks": [
 json.dump({"doc_version": ver + 2, "doc": doc3}, open(work + "/t28_bad.json", "w"), ensure_ascii=False)
 PY
 
-CODE=$(capi PATCH "/api/pages/$T28P" qa_employee01 "$WORK/t28_mine.json")
+CODE=$(capi PATCH "/api/pages/$T28P" claude_employee01 "$WORK/t28_mine.json")
 expect "child_page 저장 200" "200" "$CODE"
-CODE=$(capi GET "/api/pages/$T28P" qa_employee01)
+CODE=$(capi GET "/api/pages/$T28P" claude_employee01)
 expect "저장 JSON 의 둘째 블록이 child_page" "child_page" "$(jget "d['page']['doc']['blocks'][1]['type']" < "$WORK/b")"
 expect "그 블록의 page_id 가 자식 id" "$T28C" "$(jget "d['page']['doc']['blocks'][1]['page_id']" < "$WORK/b")"
 expect "child_titles 에 자식 제목이 있다" "T28-자식" "$(jget "d['child_titles']['$T28C']['title']" < "$WORK/b")"
 
-CODE=$(capi PATCH "/api/pages/$T28P" qa_employee01 "$WORK/t28_other.json")
+CODE=$(capi PATCH "/api/pages/$T28P" claude_employee01 "$WORK/t28_other.json")
 expect "남의 페이지 id 를 넣은 저장 → 400 이 아니다" "200" "$CODE"
-CODE=$(capi GET "/api/pages/$T28P" qa_employee01)
+CODE=$(capi GET "/api/pages/$T28P" claude_employee01)
 expect "그래도 child_titles 는 비어 있다 (화면은 「볼 수 없는 페이지」)" "0" \
   "$(jget "len(d['child_titles'])" < "$WORK/b")"
 note "렌더러 두 벌의 문구 확인:"
@@ -460,14 +467,14 @@ expect "제목 지도를 주면 카드가 링크가 된다" "1" \
     echo (strpos($html, "보이는 제목") !== false && strpos($html, "card--link") !== false) ? "1" : "0";
   ' 2>/dev/null)"
 
-CODE=$(capi PATCH "/api/pages/$T28P" qa_employee01 "$WORK/t28_bad.json")
+CODE=$(capi PATCH "/api/pages/$T28P" claude_employee01 "$WORK/t28_bad.json")
 expect "UUID 형태가 아닌 page_id → 400" "400" "$CODE"
 expect "어긋난 자리를 알려 준다" "blocks[0].page_id" "$(jget "d['errors'][0]['path']" < "$WORK/b")"
 
 # ════════════════════════════════════════════════════════════════
 hr "C:T-29 — 단계 밖 (7-C: 블록은 모두 열림 — 허용 목록 밖 embed · 8단계 mention 마크)"
 
-CODE=$(capi GET "/api/pages/$T28P" qa_employee01)
+CODE=$(capi GET "/api/pages/$T28P" claude_employee01)
 VER=$(jget "d['page']['doc_version']" < "$WORK/b")
 
 python3 - "$WORK" "$VER" <<'PY'
@@ -482,11 +489,11 @@ json.dump({"doc_version": ver, "doc": {"schema": 1, "blocks": [
     open(work + "/t29_table.json", "w"), ensure_ascii=False)
 PY
 
-CODE=$(capi PATCH "/api/pages/$T28P" qa_employee01 "$WORK/t29_toggle.json")
+CODE=$(capi PATCH "/api/pages/$T28P" claude_employee01 "$WORK/t29_toggle.json")
 expect "허용 목록 밖 embed 저장 → 400" "400" "$CODE"
 expect "사유가 embed_not_allowed" "embed_not_allowed" "$(jget "d['reason']" < "$WORK/b")"
 
-CODE=$(capi PATCH "/api/pages/$T28P" qa_employee01 "$WORK/t29_table.json")
+CODE=$(capi PATCH "/api/pages/$T28P" claude_employee01 "$WORK/t29_table.json")
 expect "단계 밖 마크(mention — 8단계) 저장 → 400" "400" "$CODE"
 expect "사유가 mark_not_in_stage" "mark_not_in_stage" "$(jget "d['errors'][0]['reason']" < "$WORK/b")"
 
@@ -498,17 +505,18 @@ expect "COMMUNITY_DOC_STAGE 가 7 (7-C)" "7" \
 hr "브라우저 — 4-A 항목 (진짜 브라우저로 눌러 본다)"
 
 SMOKE_OUT="$WORK/smoke.txt"
-SESSION_VALUE=$(awk '$6=="tbox_session"{print $7}' "$JAR_DIR/qa_employee01.jar" 2>/dev/null)
+SESSION_VALUE=$(awk '$6=="tbox_session"{print $7}' "$JAR_DIR/claude_employee01.jar" 2>/dev/null)
 
 if ! python3 -c "import playwright" >/dev/null 2>&1; then
   skip "브라우저 스모크" "Playwright 가 없다 — **미검증**"
 elif [ -z "$SESSION_VALUE" ]; then
-  skip "브라우저 스모크" "qa_employee01 세션 쿠키를 얻지 못했다 — **미검증**"
+  skip "브라우저 스모크" "claude_employee01 세션 쿠키를 얻지 못했다 — **미검증**"
 else
   # browser_smoke.py 는 3-B 항목(1~19)에 이어 4-A 항목(21~26)을 같은 창에서 돈다.
   # 창을 두 번 띄우지 않으려고 나누지 않았다 — 아래 출력은 4-A 구간부터 보인다.
+  # 세션 값은 표준입력 첫 줄로 넘긴다(명령 인자에 싣지 않는다 — tests/lib/secrets.sh py_secret · R-62)
   PATH="$HOME/.local/bin:$PATH" \
-    python3 "$ROOT/tests/community/browser_smoke.py" "$SITE" "$UA" "$SESSION_VALUE" \
+    py_secret SESSION_VALUE -- python3 "$ROOT/tests/community/browser_smoke.py" "$SITE" "$UA" \
     > "$SMOKE_OUT" 2>&1
   if grep -q '^SMOKE_FAIL=' "$SMOKE_OUT"; then
     sed -n '/^── 21\./,$p' "$SMOKE_OUT" | head -80
@@ -547,17 +555,17 @@ python3 -c 'import sys; compile(open(sys.argv[1], encoding="utf-8").read(), sys.
 # ─── 정리 ───────────────────────────────────────────────────────
 hr "정리 — 만든 페이지는 앱 창구로 되돌린다 (하위는 함께 내려간다)"
 for pid in $MADE_PAGES; do
-  CODE=$(capi DELETE "/api/pages/$pid" qa_employee01)
+  CODE=$(capi DELETE "/api/pages/$pid" claude_employee01)
   printf '  · 페이지 %s 논리 삭제 [%s]\n' "$pid" "$CODE"
 done
 if [ -n "${OTHER:-}" ]; then
-  CODE=$(capi DELETE "/api/pages/$OTHER" qa_employee02)
-  printf '  · qa_employee02 페이지 %s 논리 삭제 [%s]\n' "$OTHER" "$CODE"
+  CODE=$(capi DELETE "/api/pages/$OTHER" claude_employee02)
+  printf '  · claude_employee02 페이지 %s 논리 삭제 [%s]\n' "$OTHER" "$CODE"
 fi
 
 if [ "$HAVE_PSQL" -eq 1 ]; then
   expect "시험이 만든 비-qa 행 0건 (검토 UA 기준 — 사용자 데이터 불변)" "0" \
-    "$(psqlq "SELECT count(*) FROM audit_logs
+    "$(db_read "$DB" "SELECT count(*) FROM audit_logs
                 WHERE id > ${AUDIT_START:-0}
                   AND actor_name IS NOT NULL AND $REVIEW_NOT_SQL
                   AND COALESCE(user_agent, '') LIKE 'tbox-review/%'")"

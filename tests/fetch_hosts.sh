@@ -149,6 +149,14 @@ echo "  그 중 s43- 접두(이전 시험 잔재): $(psqlq "SELECT count(*) FROM
 # 이전 시험 잔재를 먼저 치운다 — **접두가 정확히 맞는 행만** (운영 행은 건드리지 않는다)
 psqlc "DELETE FROM fetch_hosts WHERE host LIKE 's43-%.example.invalid'"
 
+# 시작 상태 — 관리자가 넣은 운영 허용 사이트가 있을 수 있다(2026-09-24: 3개). 「목록이 0건」을 전제하지 않고
+# **시작 상태와의 전후 대조**로 단언한다(점검 봇 1-B-3 · 취합 결정). 시작 상태가 0건이면 예전 판정과 똑같다.
+START_ROWS=$(psqlq "SELECT count(*) FROM fetch_hosts")
+START_ACTIVE=$(psqlq "SELECT count(*) FROM fetch_hosts WHERE is_active")
+case "$START_ROWS|$START_ACTIVE" in *[!0-9\|]*|'|'*|*'|') echo "  ✖ 시작 상태(fetch_hosts 행 수)를 읽지 못했다 — 시험을 시작하지 않는다 (종료 3)"; exit 3 ;; esac
+if [ "$START_ACTIVE" -gt 0 ]; then START_FE=true; else START_FE=false; fi
+echo "  시작 상태: fetch_hosts ${START_ROWS}행(활성 ${START_ACTIVE}) → fetch_enabled 기대 ${START_FE} (운영 행은 건드리지 않는다)"
+
 # ─────────────────────────────────────────────────────────────
 hr "로그인 (claude_admin01 · claude_manager01 · claude_employee01)"
 # ─────────────────────────────────────────────────────────────
@@ -158,11 +166,11 @@ TOK_EMP=$(login claude_employee01)  || exit 1
 echo "  csrf 토큰 3개 확보"
 
 # ─────────────────────────────────────────────────────────────
-hr "(c-1) /api/me — 목록이 0건일 때 (fetch_enabled=false)"
+hr "(c-1) /api/me — 시험 행을 넣기 전(시작 상태: 활성 ${START_ACTIVE}행 → fetch_enabled=${START_FE})"
 # ─────────────────────────────────────────────────────────────
 ME_MGR=$(curl -s -b "$JAR_DIR/claude_manager01.jar" -A "$UA" "$BASE/api/me")
 expect "claude_manager01 can_fetch=true"      1 "$(printf '%s' "$ME_MGR" | grep -c '"can_fetch":true')"
-expect "claude_manager01 fetch_enabled=false" 1 "$(printf '%s' "$ME_MGR" | grep -c '"fetch_enabled":false')"
+expect "claude_manager01 fetch_enabled=${START_FE}(시작 상태)" 1 "$(printf '%s' "$ME_MGR" | grep -c "\"fetch_enabled\":${START_FE}")"
 expect "claude_manager01 fetch_hosts_public 키 있음" 1 "$(printf '%s' "$ME_MGR" | grep -c 'fetch_hosts_public')"
 
 ME_EMP=$(curl -s -b "$JAR_DIR/claude_employee01.jar" -A "$UA" "$BASE/api/me")
@@ -188,7 +196,12 @@ echo "  재인증: claude_admin01 → $(reauth claude_admin01 "$TOK_ADMIN")"
 
 R=$(call claude_admin01 GET /api/fetch-hosts "$TOK_ADMIN")
 expect "재인증 뒤 GET → 200" 200 "$(code_of "$R")"
-expect "빈 목록"              1 "$(body_of "$R" | grep -c '"hosts":\[\]')"
+# 목록 = 시작 상태의 운영 행 그대로(시험 행 0) — 시작 상태가 0건이면 예전 「빈 목록」과 같다
+expect "목록 = 시작 상태 ${START_ROWS}행 · 시험 행 0" "${START_ROWS}|0" \
+  "$(body_of "$R" | python3 -c 'import json,sys
+try:
+    h=json.load(sys.stdin)["hosts"]; print("%d|%d" % (len(h), sum(1 for x in h if str(x.get("host","")).startswith("s43-"))))
+except Exception: print("파싱실패")' 2>/dev/null)"
 
 sub "사유 없음 · 코드 없음 · 코드 틀림 (전부 400)"
 R=$(call claude_admin01 POST /api/fetch-hosts "$TOK_ADMIN" '{"changes":[{"host":"'"$H1"'","is_active":true}],"otp":"123456"}')
@@ -248,13 +261,13 @@ R=$(call claude_admin01 DELETE /api/fetch-hosts "$TOK_ADMIN")
 expect "DELETE /api/fetch-hosts → 405" 405 "$(code_of "$R")"
 
 # ─────────────────────────────────────────────────────────────
-hr "(c-2) /api/me — 목록이 활성 2건일 때 · 비활성화하면 다시 false"
+hr "(c-2) /api/me — 시험 행 활성 2건을 더했을 때 · 비활성화하면 시작 상태(${START_FE})로"
 # ─────────────────────────────────────────────────────────────
 ME_MGR=$(curl -s -b "$JAR_DIR/claude_manager01.jar" -A "$UA" "$BASE/api/me")
 expect "fetch_enabled=true" 1 "$(printf '%s' "$ME_MGR" | grep -c '"fetch_enabled":true')"
 expect "fetch_hosts_public 에 픽스처 2개" 2 "$(printf '%s' "$ME_MGR" | grep -o 's43-[12]\.example\.invalid' | wc -l)"
 
-sub "두 사이트를 비활성화 → 다시 false"
+sub "두 사이트를 비활성화 → 시작 상태(fetch_enabled=${START_FE})로"
 wait_next_step claude_admin01
 OTP2=$(otp_now claude_admin01)
 R=$(call claude_admin01 POST /api/fetch-hosts "$TOK_ADMIN" \
@@ -263,7 +276,9 @@ expect "비활성화 POST → 200" 200 "$(code_of "$R")"
 expect "행은 그대로 2행 (지워지지 않음)" 2 "$(psqlq "SELECT count(*) FROM fetch_hosts WHERE host LIKE 's43-%'")"
 expect "활성 0행" 0 "$(psqlq "SELECT count(*) FROM fetch_hosts WHERE host LIKE 's43-%' AND is_active")"
 ME_MGR=$(curl -s -b "$JAR_DIR/claude_manager01.jar" -A "$UA" "$BASE/api/me")
-expect "fetch_enabled 다시 false" 1 "$(printf '%s' "$ME_MGR" | grep -c '"fetch_enabled":false')"
+expect "fetch_enabled 시작 상태로(${START_FE})" 1 "$(printf '%s' "$ME_MGR" | grep -c "\"fetch_enabled\":${START_FE}")"
+expect "운영 행 수·활성 수가 시작 상태 그대로(시험 행 빼고)" "${START_ROWS}|${START_ACTIVE}" \
+  "$(psqlq "SELECT count(*) FROM fetch_hosts WHERE host NOT LIKE 's43-%'")|$(psqlq "SELECT count(*) FROM fetch_hosts WHERE is_active AND host NOT LIKE 's43-%'")"
 
 sub "바뀌는 것이 없는 요청은 거부 (사유만 남기는 기록을 만들지 않는다)"
 wait_next_step claude_admin01
@@ -286,10 +301,13 @@ OTP4=$(otp_now claude_admin01)
 R=$(call claude_admin01 POST /api/fetch-hosts "$TOK_ADMIN" \
    '{"changes":[{"host":"'"$H1"'","is_active":true}],"reason_text":"가져오기 경로 시험","otp":"'"$OTP4"'"}')
 expect "재활성 POST → 200" 200 "$(code_of "$R")"
+# 이번 가져오기가 남긴 행만 본다(BF-0009 — stage26 T-52(f) STOP_MARK 모양): 요청 바로 앞에서 경계를 잰다.
+# 경계 뒤 행이 없으면(빈 값) 「host_not_allowed 가 아니다」로 통과하지 않게 빈 값도 실패로 센다(더 엄격하게만).
+FETCH_MARK=$(psqlq "SELECT coalesce(max(id),0) FROM audit_logs;")
 R=$(call claude_manager01 POST /api/files/fetch "$TOK_MGR" '{"url":"https://'"$H1"'/a.csv","access_level":"internal"}')
 expect "가져오기 → 400 (DNS 없음)" 400 "$(code_of "$R")"
-LASTREASON=$(psqlq "SELECT reason FROM audit_logs WHERE action='file.fetch' AND result='deny' AND actor_name='claude_manager01' ORDER BY id DESC LIMIT 1")
-expect "사유가 host_not_allowed 가 아니다 (허용 목록을 통과했다)" "yes" "$([ "$LASTREASON" != "host_not_allowed" ] && echo yes || echo "no($LASTREASON)")"
+LASTREASON=$(psqlq "SELECT reason FROM audit_logs WHERE action='file.fetch' AND result='deny' AND actor_name='claude_manager01' AND id > ${FETCH_MARK:-0} ORDER BY id DESC LIMIT 1")
+expect "사유가 host_not_allowed 가 아니다 (허용 목록을 통과했다)" "yes" "$([ -n "$LASTREASON" ] && [ "$LASTREASON" != "host_not_allowed" ] && echo yes || echo "no(${LASTREASON:-이번 요청의 행 없음})")"
 echo "    마지막 사유: $LASTREASON"
 
 sub "SharePoint 링크 → download=1 로 변환(F-46) · 허용 목록에 없는 테넌트는 host_not_allowed (바깥으로 나가지 않는다)"
@@ -508,6 +526,8 @@ psqlc "DELETE FROM fetch_hosts WHERE host LIKE 's43-%.example.invalid'"
 AFTER_DEL=$(psqlq "SELECT count(*) FROM fetch_hosts")
 echo "  fetch_hosts: $BEFORE_DEL → $AFTER_DEL (픽스처 2행 제거)"
 expect "정리 뒤 s43- 행 0" 0 "$(psqlq "SELECT count(*) FROM fetch_hosts WHERE host LIKE 's43-%'")"
+expect "정리 뒤 운영 행·활성 = 시작 상태" "${START_ROWS}|${START_ACTIVE}" \
+  "$(psqlq "SELECT count(*) FROM fetch_hosts")|$(psqlq "SELECT count(*) FROM fetch_hosts WHERE is_active")"
 
 NONQA_AFTER=$(db_read "$DB" "SELECT count(*) FROM audit_logs WHERE happened_at > now() - interval '30 minutes' AND actor_name IS NOT NULL AND $REVIEW_NOT_SQL")
 echo "  최근 30분 비-qa 감사 행: 시작 $NONQA_BEFORE → 지금 $NONQA_AFTER (0 이어야 정상)"

@@ -10,9 +10,9 @@
 #                          → 창구 JSON 은 **원문 그대로**, `DocRender.php` 출력에 `<img`·`<script` 0
 #   C:T-16 낙관적 잠금     같은 `doc_version` 으로 두 번 PATCH → 둘째 409 `{error,current_version,doc}`
 #                          + 감사 `version_conflict` · 첫째 저장 유지
-#   C:T-17 개인 공간 격리  qa_employee02 가 employee01 페이지 GET·PATCH·DELETE → 403 `not_owner` ·
-#                          qa_manager01(같은 팀) GET → 403 · qa_admin01 GET → 200 + 감사 `admin_all`
-#   C:T-18 쓰기 자격·CSRF  qa_guest01 `POST /api/pages` → 403 `authz.route deny` ·
+#   C:T-17 개인 공간 격리  claude_employee02 가 employee01 페이지 GET·PATCH·DELETE → 403 `not_owner` ·
+#                          claude_manager01(같은 팀) GET → 403 · claude_admin01 GET → 200 + 감사 `admin_all`
+#   C:T-18 쓰기 자격·CSRF  claude_guest01 `POST /api/pages` → 403 `authz.route deny` ·
 #                          쿠키만 보내고 `X-CSRF-Token` 없이 PATCH → 403 `csrf`
 #   C:T-19 렌더러 동등성   표본 문서 20개를 `DocRender.php` 와 `doc-render.js` 로 그려
 #                          **텍스트 노드 열·클래스 집합**을 견준다. PHP 쪽은 여기서, JS 쪽은
@@ -34,7 +34,7 @@
 #   회귀                   `scripts/security_lint.sh` 0건 · 바뀐 PHP `php -l` · 이 파일 `bash -n`
 #
 # 규칙 (CLAUDE.md 3장)
-#   · 검토 계정은 `qa_employee01`·`qa_employee02`·`qa_manager01`·`qa_admin01`·`qa_guest01` 뿐이다.
+#   · 검토 계정은 `claude_employee01`·`claude_employee02`·`claude_manager01`·`claude_admin01`·`claude_guest01` 뿐이다.
 #     시드 계정(admin01 …)은 사용자 몫이다.
 #   · 모든 요청에 `-A "tbox-review/<날짜>"` — 감사 로그에서 사람의 행동과 갈라 보려는 것.
 #   · 운영 데이터에 손대지 않는다. 만든 페이지는 **앱 창구로만** 되돌린다(논리 삭제).
@@ -52,6 +52,8 @@ set -u
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 # 검토 계정 판정 한 벌(qa_·claude_ — F-71 C). 못 읽으면 사전 검사가 빈 값으로 열리므로 시작하지 않는다.
 . "$ROOT/tests/lib/review_accounts.sh" || { echo "tests/lib/review_accounts.sh 를 읽지 못했다 — 시험을 시작하지 않는다 (R-73)"; exit 3; }
+. "$ROOT/tests/lib/secrets.sh" || { echo "tests/lib/secrets.sh 를 읽지 못했다 — 시험을 시작하지 않는다 (R-62)"; exit 3; }
+. "$ROOT/tests/lib/db_read.sh" || { echo "tests/lib/db_read.sh 를 읽지 못했다 — 시험을 시작하지 않는다 (R-73)"; exit 3; }
 SITE="http://127.0.0.1:8082"
 BASE="$SITE/tbox"                 # t-box 모듈 (로그인·CSRF 토큰을 받는 자리)
 CBASE="$SITE/community"           # 커뮤니티 모듈
@@ -112,19 +114,19 @@ qa_password() { sudo -n awk -v u="$1" '$1==u{print $3}' /etc/tbox-v2/seed-accoun
 qa_secret()   { sudo -n awk -v u="$1" '$1==u{print $2}' /etc/tbox-v2/qa-totp.txt 2>/dev/null; }
 
 login() {   # $1 계정 → 성공하면 표준출력에 csrf 토큰
-  local who="$1" jar="$JAR_DIR/$1.jar" pw sec raw code left out try
+  local who="$1" jar="$JAR_DIR/$1.jar" pw sec raw code left out try body
   pw=$(qa_password "$who")
   sec=$(qa_secret "$who")
   [ -n "$pw" ] || return 2
   for try in 1 2 3; do
     if [ -n "$sec" ]; then
-      raw=$(php "$ROOT/scripts/totp_code.php" "$sec" 2>/dev/null)
+      raw=$(totp_now sec 2>/dev/null)
       code=${raw%%$'\n'*}
-      out=$(curl -s -c "$jar" -A "$UA" -H 'Content-Type: application/json' \
-            -d "{\"username\":\"$who\",\"password\":\"$pw\",\"otp\":\"$code\"}" "$BASE/api/login")
+      printf -v body '{"username":"%s","password":"%s","otp":"%s"}' "$who" "$pw" "$code"
+      out=$(curl_json_secret body -s -c "$jar" -A "$UA" -H 'Content-Type: application/json' "$BASE/api/login")
     else
-      out=$(curl -s -c "$jar" -A "$UA" -H 'Content-Type: application/json' \
-            -d "{\"username\":\"$who\",\"password\":\"$pw\"}" "$BASE/api/login")
+      printf -v body '{"username":"%s","password":"%s"}' "$who" "$pw"
+      out=$(curl_json_secret body -s -c "$jar" -A "$UA" -H 'Content-Type: application/json' "$BASE/api/login")
     fi
     case "$out" in
       *'"ok":true'*)
@@ -179,8 +181,9 @@ fi
 if [ "$HAVE_PSQL" -eq 1 ]; then
   TRY=1
   while :; do
-    BUSY=$(psqlq "SELECT count(*) FROM audit_logs WHERE happened_at > now() - interval '10 minutes' AND actor_name IS NOT NULL AND $REVIEW_NOT_SQL")
-    echo "최근 10분 비-qa 감사 행: ${BUSY:-?} (시도 ${TRY}/10)"
+    db_read_var BUSY "$DB" "SELECT count(*) FROM audit_logs WHERE happened_at > now() - interval '10 minutes' AND actor_name IS NOT NULL AND $REVIEW_NOT_SQL" \
+      || { echo "운영 DB 를 읽지 못했다 — 시험을 시작하지 않는다 (R-73 · db_read rc 3)"; exit 3; }
+    echo "최근 10분 비-qa 감사 행: ${BUSY:-?} (시도 ${TRY}/10) (읽기 경로 ${DB_READ_VIA})"
     [ "${BUSY:-0}" -gt 0 ] 2>/dev/null || break
     if [ "$TRY" -ge 10 ]; then
       echo "10회(약 20분) 기다렸지만 사용자의 활동이 이어진다 — 시험을 시작하지 않는다 (SECURITY R-73 ①)"
@@ -195,10 +198,14 @@ else
 fi
 
 AUDIT_START=0
-[ "$HAVE_PSQL" -eq 1 ] && AUDIT_START=$(mark)
+# 끝의 「시험이 만든 비-qa 행 0건」 대조의 시작 값 — 읽지 못하면 시작하지 않는다(R-73 · db_read)
+if [ "$HAVE_PSQL" -eq 1 ]; then
+  db_read_var AUDIT_START "$DB" "SELECT coalesce(max(id),0) FROM audit_logs" \
+    || { echo "운영 DB 를 읽지 못했다 — 시험을 시작하지 않는다 (R-73 · db_read rc 3)"; exit 3; }
+fi
 
 sub "검토 계정 로그인"
-for who in qa_employee01 qa_employee02 qa_manager01 qa_admin01 qa_guest01; do
+for who in claude_employee01 claude_employee02 claude_manager01 claude_admin01 claude_guest01; do
   token=$(login "$who") || token=""
   eval "CSRF_${who}=\"\$token\""
   if [ -n "$token" ]; then note "$who 로그인 OK"; else note "$who 로그인 실패 — 관련 항목 SKIP"; fi
@@ -206,15 +213,15 @@ done
 
 # 개인 공간을 연다(첫 방문이면 서버가 「시작하기」 페이지와 함께 만든다)
 sub "개인 공간 열기 — GET /community/api/me/space"
-CODE=$(capi GET /api/me/space qa_employee01)
-expect "qa_employee01 개인 공간" "200" "$CODE"
+CODE=$(capi GET /api/me/space claude_employee01)
+expect "claude_employee01 개인 공간" "200" "$CODE"
 note "created=$(jget "d['created']" < "$WORK/b") page_count=$(jget "d['space']['page_count']" < "$WORK/b")"
-CODE=$(capi GET /api/me/space qa_employee02)
-expect "qa_employee02 개인 공간" "200" "$CODE"
+CODE=$(capi GET /api/me/space claude_employee02)
+expect "claude_employee02 개인 공간" "200" "$CODE"
 
 # 시험용 페이지 하나 (employee01 소유)
 printf '{"title":"C3-시험 페이지"}' > "$WORK/new.json"
-CODE=$(capi POST /api/pages qa_employee01 "$WORK/new.json")
+CODE=$(capi POST /api/pages claude_employee01 "$WORK/new.json")
 expect "페이지 만들기 201" "201" "$CODE"
 PAGE=$(jget "d['page']['id']" < "$WORK/b")
 VER=$(jget "d['page']['doc_version']" < "$WORK/b")
@@ -289,7 +296,7 @@ VALIDATED=0
 EARLY=""
 for f in "$WORK"/fuzz_*.json; do
   name=$(basename "$f" .json)
-  CODE=$(capi PATCH "/api/pages/$PAGE" qa_employee01 "$f")
+  CODE=$(capi PATCH "/api/pages/$PAGE" claude_employee01 "$f")
   path=$(jget "d['errors'][0]['path']" < "$WORK/b")
   reason=$(jget "d['errors'][0]['reason']" < "$WORK/b")
   expect "$name → 400" "400" "$CODE"
@@ -308,7 +315,7 @@ note "입구에서 잘린 케이스:${EARLY:- (없음)}"
 sub "200KB 정상 문서 저장 — 스키마 한도 안이면 들어간다 (관문 ② 보정 2026-09-22)"
 # 전에는 `Http::jsonBody()` 의 64KB 상한이 먼저 막아, 스키마가 허용하는 크기의 문서도 저장이
 # 되지 않았다. 지금은 본문 저장 창구 둘만 「스키마 상한 + 껍데기 여유」를 쓴다.
-CODE=$(capi PATCH "/api/pages/$PAGE" qa_employee01 "$WORK/ok_200kb.json")
+CODE=$(capi PATCH "/api/pages/$PAGE" claude_employee01 "$WORK/ok_200kb.json")
 expect "200KB 문서 PATCH 200" "200" "$CODE"
 BIGVER=$(jget "d['doc_version']" < "$WORK/b")
 if [ -n "$BIGVER" ]; then
@@ -320,7 +327,7 @@ else
 fi
 
 sub "DB 불변 — 퍼징이 판 번호를 올리지 않았다"
-CODE=$(capi GET "/api/pages/$PAGE" qa_employee01)
+CODE=$(capi GET "/api/pages/$PAGE" claude_employee01)
 NOWVER=$(jget "d['page']['doc_version']" < "$WORK/b")
 expect "doc_version 이 저장 한 번(200KB)만큼만 올랐다" "$VER" "$NOWVER"
 
@@ -366,7 +373,7 @@ with open(os.path.join(work, "xss_doc.json"), "w", encoding="utf-8") as f:
     json.dump(doc, f, ensure_ascii=False)
 XSSPY
 
-CODE=$(capi PATCH "/api/pages/$PAGE" qa_employee01 "$WORK/xss.json")
+CODE=$(capi PATCH "/api/pages/$PAGE" claude_employee01 "$WORK/xss.json")
 expect "XSS 페이로드 저장 200 (형식은 맞다 — 글자일 뿐이다)" "200" "$CODE"
 NEWVER=$(jget "d['doc_version']" < "$WORK/b")
 if [ -n "$NEWVER" ]; then
@@ -379,7 +386,7 @@ else
   FAIL=$((FAIL+1)); SKIP_REST=1
 fi
 
-CODE=$(capi GET "/api/pages/$PAGE" qa_employee01)
+CODE=$(capi GET "/api/pages/$PAGE" claude_employee01)
 expect "GET 200" "200" "$CODE"
 # 창구는 **글자를 그대로** 돌려준다(HTML 로 바꾸지 않는다). 그리는 일은 렌더러의 몫이고,
 # 렌더러가 안전한지는 바로 아래에서 본다.
@@ -433,7 +440,7 @@ for name, href in hrefs.items():
         json.dump({"doc_version": ver, "doc": doc}, f, ensure_ascii=False)
 BADPY
 for name in badlink_quote badlink_js badlink_data; do
-  CODE=$(capi PATCH "/api/pages/$PAGE" qa_employee01 "$WORK/$name.json")
+  CODE=$(capi PATCH "/api/pages/$PAGE" claude_employee01 "$WORK/$name.json")
   expect "$name → 400" "400" "$CODE"
   expect "$name → bad_scheme" "bad_scheme" "$(jget "d['errors'][0]['reason']" < "$WORK/b")"
 done
@@ -454,16 +461,16 @@ for n in ("a", "b"):
         json.dump({"doc_version": ver, "doc": doc}, f, ensure_ascii=False)
 PY
 
-CODE=$(capi PATCH "/api/pages/$PAGE" qa_employee01 "$WORK/lock_a.json")
+CODE=$(capi PATCH "/api/pages/$PAGE" claude_employee01 "$WORK/lock_a.json")
 expect "첫 번째 저장 200" "200" "$CODE"
 VER2=$(jget "d['doc_version']" < "$WORK/b")
 
-CODE=$(capi PATCH "/api/pages/$PAGE" qa_employee01 "$WORK/lock_b.json")
+CODE=$(capi PATCH "/api/pages/$PAGE" claude_employee01 "$WORK/lock_b.json")
 expect "두 번째(옛 판 번호) 409" "409" "$CODE"
 expect "409 본문에 current_version" "$VER2" "$(jget "d['current_version']" < "$WORK/b")"
 expect "409 본문에 doc (지금 서버의 것)" "저장 a" "$(jget "d['doc']['blocks'][0]['text'][0]['t']" < "$WORK/b")"
 
-CODE=$(capi GET "/api/pages/$PAGE" qa_employee01)
+CODE=$(capi GET "/api/pages/$PAGE" claude_employee01)
 expect "첫 번째 저장이 유지된다" "저장 a" "$(jget "d['page']['doc']['blocks'][0]['text'][0]['t']" < "$WORK/b")"
 VER=$VER2
 
@@ -485,30 +492,30 @@ else
 
 printf '{"doc_version":%s,"title":"남의 페이지를 고침"}' "$VER" > "$WORK/steal.json"
 
-sub "qa_employee02 (다른 사람)"
-CODE=$(capi GET "/api/pages/$PAGE" qa_employee02)
+sub "claude_employee02 (다른 사람)"
+CODE=$(capi GET "/api/pages/$PAGE" claude_employee02)
 expect "GET 403 (404 가 아니다)" "403" "$CODE"
 expect "403 동일 문구" "권한이 없습니다" "$(jget "d['error']" < "$WORK/b")"
-CODE=$(capi PATCH "/api/pages/$PAGE" qa_employee02 "$WORK/steal.json")
+CODE=$(capi PATCH "/api/pages/$PAGE" claude_employee02 "$WORK/steal.json")
 expect "PATCH 403" "403" "$CODE"
-CODE=$(capi DELETE "/api/pages/$PAGE" qa_employee02)
+CODE=$(capi DELETE "/api/pages/$PAGE" claude_employee02)
 expect "DELETE 403" "403" "$CODE"
 
-sub "qa_manager01 (같은 팀 Manager — 특권 없음)"
-CODE=$(capi GET "/api/pages/$PAGE" qa_manager01)
+sub "claude_manager01 (같은 팀 Manager — 특권 없음)"
+CODE=$(capi GET "/api/pages/$PAGE" claude_manager01)
 expect "GET 403" "403" "$CODE"
 
-sub "qa_admin01 (Admin — 볼 수는 있다)"
-CODE=$(capi GET "/api/pages/$PAGE" qa_admin01)
+sub "claude_admin01 (Admin — 볼 수는 있다)"
+CODE=$(capi GET "/api/pages/$PAGE" claude_admin01)
 expect "GET 200" "200" "$CODE"
 expect "granted_by = admin_all" "admin_all" "$(jget "d['granted_by']" < "$WORK/b")"
 expect "can_edit = False (관리자도 고치지 못한다)" "False" "$(jget "d['can_edit']" < "$WORK/b")"
-CODE=$(capi PATCH "/api/pages/$PAGE" qa_admin01 "$WORK/steal.json")
+CODE=$(capi PATCH "/api/pages/$PAGE" claude_admin01 "$WORK/steal.json")
 expect "Admin PATCH 403 (보기는 되고 고치기는 안 된다)" "403" "$CODE"
 
 sub "목록은 남의 공간을 보여 주지 않는다 (C:S-02)"
-CODE=$(capi GET "/api/pages" qa_employee02)
-expect "qa_employee02 목록 200" "200" "$CODE"
+CODE=$(capi GET "/api/pages" claude_employee02)
+expect "claude_employee02 목록 200" "200" "$CODE"
 expect "그 목록에 employee01 의 페이지가 없다" "0" \
   "$(grep -c "$PAGE" "$WORK/b" | tr -d ' ')"
 
@@ -531,9 +538,9 @@ if [ "$SKIP_REST" = "1" ]; then
 else
 
 
-sub "qa_guest01 — 쓰기 자격 없음 (라우트 정책 community.write)"
+sub "claude_guest01 — 쓰기 자격 없음 (라우트 정책 community.write)"
 printf '{"title":"게스트가 만든 페이지"}' > "$WORK/guest.json"
-CODE=$(capi POST /api/pages qa_guest01 "$WORK/guest.json")
+CODE=$(capi POST /api/pages claude_guest01 "$WORK/guest.json")
 expect "POST 403" "403" "$CODE"
 expect "403 동일 문구" "권한이 없습니다" "$(jget "d['error']" < "$WORK/b")"
 if [ "$HAVE_PSQL" -eq 1 ]; then
@@ -544,7 +551,7 @@ else
 fi
 
 sub "쿠키만 보내고 X-CSRF-Token 없이 PATCH"
-curl -s -D "$WORK/h" -o "$WORK/b" -A "$UA" -b "$JAR_DIR/qa_employee01.jar" -X PATCH \
+curl -s -D "$WORK/h" -o "$WORK/b" -A "$UA" -b "$JAR_DIR/claude_employee01.jar" -X PATCH \
   -H 'Content-Type: application/json' --data-binary "@$WORK/steal.json" "$CBASE/api/pages/$PAGE"
 expect "CSRF 없는 PATCH 403" "403" "$(status_of "$WORK/h")"
 if [ "$HAVE_PSQL" -eq 1 ]; then
@@ -555,7 +562,7 @@ else
 fi
 
 sub "게스트의 화면 요청도 막힌다"
-curl -s -D "$WORK/h" -o /dev/null -A "$UA" -b "$JAR_DIR/qa_guest01.jar" "$CBASE/"
+curl -s -D "$WORK/h" -o /dev/null -A "$UA" -b "$JAR_DIR/claude_guest01.jar" "$CBASE/"
 expect "GET /community/ (Guest) 200 — 화면은 열리고 쓰기만 막힌다" "200" "$(status_of "$WORK/h")"
 
 fi
@@ -667,17 +674,18 @@ hr "C:T-21 — 브라우저 스모크 (진짜 브라우저로 눌러 본다)"
 #   C:T-19 의 JS 쪽 동등성도 같은 브라우저에서 함께 잰다(창을 두 번 띄우지 않는다).
 
 SMOKE_OUT="$WORK/smoke.txt"
-SESSION_VALUE=$(awk '$6=="tbox_session"{print $7}' "$JAR_DIR/qa_employee01.jar" 2>/dev/null)
+SESSION_VALUE=$(awk '$6=="tbox_session"{print $7}' "$JAR_DIR/claude_employee01.jar" 2>/dev/null)
 
 if ! python3 -c "import playwright" >/dev/null 2>&1; then
   skip "브라우저 스모크" "Playwright 가 없다 — **미검증**"
   skip "doc-render.js 쪽 동등성 (C:T-19)" "같은 이유 — **미검증**"
 elif [ -z "$SESSION_VALUE" ]; then
-  skip "브라우저 스모크" "qa_employee01 세션 쿠키를 얻지 못했다 — **미검증**"
+  skip "브라우저 스모크" "claude_employee01 세션 쿠키를 얻지 못했다 — **미검증**"
   skip "doc-render.js 쪽 동등성 (C:T-19)" "같은 이유 — **미검증**"
 else
-  PATH="$HOME/.local/bin:$PATH" python3 "$ROOT/tests/community/browser_smoke.py" \
-    "$SITE" "$UA" "$SESSION_VALUE" "$WORK/samples.json" "$WORK/php-render.json" \
+  # 세션 값은 표준입력 첫 줄로 넘긴다(명령 인자에 싣지 않는다 — tests/lib/secrets.sh py_secret · R-62)
+  PATH="$HOME/.local/bin:$PATH" py_secret SESSION_VALUE -- python3 "$ROOT/tests/community/browser_smoke.py" \
+    "$SITE" "$UA" "$WORK/samples.json" "$WORK/php-render.json" \
     > "$SMOKE_OUT" 2>&1
   if grep -q '^SMOKE_FAIL=' "$SMOKE_OUT"; then
     sed -n '1,/^── 브라우저가 본 오류/p' "$SMOKE_OUT"
@@ -724,13 +732,13 @@ python3 -c 'import sys; compile(open(sys.argv[1], encoding="utf-8").read(), sys.
 # ─── 정리 ───────────────────────────────────────────────────────
 hr "정리 — 만든 페이지는 앱 창구로 되돌린다"
 for pid in $MADE_PAGES; do
-  CODE=$(capi DELETE "/api/pages/$pid" qa_employee01)
+  CODE=$(capi DELETE "/api/pages/$pid" claude_employee01)
   printf '  · 페이지 %s 논리 삭제 [%s]\n' "$pid" "$CODE"
 done
 
 if [ "$HAVE_PSQL" -eq 1 ]; then
   expect "시험이 만든 비-qa 행 0건 (검토 UA 기준 — 사용자 데이터 불변)" "0" \
-    "$(psqlq "SELECT count(*) FROM audit_logs
+    "$(db_read "$DB" "SELECT count(*) FROM audit_logs
                 WHERE id > ${AUDIT_START:-0}
                   AND actor_name IS NOT NULL AND $REVIEW_NOT_SQL
                   AND COALESCE(user_agent, '') LIKE 'tbox-review/%'")"

@@ -32,12 +32,13 @@
 #   ⑤ 끝나면 서버를 내리고 임시 DB 와 임시 폴더를 **지운다**.
 # ══════════════════════════════════════════════════════════════════════════
 #
-# 규칙 (CLAUDE.md 3장) — 검토 계정 `qa_` 다섯뿐(로그인은 순차) · 모든 요청에 `-A "tbox-review/<날짜>"` ·
+# 규칙 (CLAUDE.md 3장) — 검토 계정 `claude_` 다섯뿐(로그인은 순차) · 모든 요청에 `-A "tbox-review/<날짜>"` ·
 #   `sudo -n` 은 읽기(pg_dump · seed 파일)와 임시 DB 에만. 만드는 것은 전부 `C5-` 접두.
 # 사용: sudo -v && bash tests/community/stage5c.sh     (REGRESS=1 이면 회귀까지, SHOTS=<폴더> 면 스크린샷)
 set -u
 
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
+. "$ROOT/tests/lib/secrets.sh" || { echo "tests/lib/secrets.sh 를 읽지 못했다 — 시험을 시작하지 않는다 (R-62)"; exit 3; }
 PORT=8087
 SITE="http://127.0.0.1:$PORT"
 BASE="$SITE/tbox"
@@ -116,19 +117,20 @@ qa_password() { sudo -n awk -v u="$1" '$1==u{print $3}' /etc/tbox-v2/seed-accoun
 qa_secret()   { sudo -n awk -v u="$1" '$1==u{print $2}' /etc/tbox-v2/qa-totp.txt 2>/dev/null; }
 
 login() {
-  local who="$1" jar="$JAR_DIR/$1.jar" pw sec raw code left out try
+  local who="$1" jar="$JAR_DIR/$1.jar" pw sec raw code left out try body
   pw=$(qa_password "$who")
   sec=$(qa_secret "$who")
   [ -n "$pw" ] || return 2
   for try in 1 2 3; do
     if [ -n "$sec" ]; then
-      raw=$(php "$ROOT/scripts/totp_code.php" "$sec" 2>/dev/null)
+      raw=$(totp_now sec 2>/dev/null)
       code=${raw%%$'\n'*}
-      out=$(curl -s -c "$jar" -A "$UA" -H 'Content-Type: application/json' \
-            -d "{\"username\":\"$who\",\"password\":\"$pw\",\"otp\":\"$code\"}" "$BASE/api/login")
+      # 비밀번호가 든 본문은 인자가 아니라 표준입력으로 보낸다(R-62 · tests/lib/secrets.sh). 보내는 바이트는 같다.
+      printf -v body '{"username":"%s","password":"%s","otp":"%s"}' "$who" "$pw" "$code"
+      out=$(curl_json_secret body -s -c "$jar" -A "$UA" -H 'Content-Type: application/json' "$BASE/api/login")
     else
-      out=$(curl -s -c "$jar" -A "$UA" -H 'Content-Type: application/json' \
-            -d "{\"username\":\"$who\",\"password\":\"$pw\"}" "$BASE/api/login")
+      printf -v body '{"username":"%s","password":"%s"}' "$who" "$pw"
+      out=$(curl_json_secret body -s -c "$jar" -A "$UA" -H 'Content-Type: application/json' "$BASE/api/login")
     fi
     case "$out" in
       *'"ok":true'*)
@@ -287,18 +289,18 @@ done
 expect "임시 인스턴스가 떴다 (미로그인 커뮤니티 창구 401)" "401" "$READY"
 [ "$READY" = "401" ] || { echo "인스턴스를 띄우지 못했다 — 중단"; tail -5 "$INST/server.log"; exit 4; }
 
-sub "로그인 (qa 계정 다섯 — **순차**)"
-for who in qa_employee01 qa_employee02 qa_manager01 qa_admin01 qa_guest01; do
+sub "로그인 (검토 계정 claude_ 다섯 — **순차**)"
+for who in claude_employee01 claude_employee02 claude_manager01 claude_admin01 claude_guest01; do
   tok=$(login "$who")
   if [ -z "$tok" ]; then echo "  ✖ $who 로그인 실패 — 중단"; exit 4; fi
   eval "CSRF_${who}='$tok'"
   echo "  ✔ $who"
 done
 # 개인 공간을 연다(없으면 만든다) — 그 뒤의 목록·인계가 공간을 전제로 한다.
-for who in qa_employee01 qa_employee02 qa_manager01; do capi GET /api/me/space "$who" > /dev/null; done
-TEAM1=$(psqlq "SELECT team_id FROM users WHERE username='qa_employee01'")
-TEAM2=$(psqlq "SELECT team_id FROM users WHERE username='qa_employee02'")
-note "팀: qa_employee01·qa_manager01=$TEAM1 · qa_employee02=$TEAM2"
+for who in claude_employee01 claude_employee02 claude_manager01; do capi GET /api/me/space "$who" > /dev/null; done
+TEAM1=$(psqlq "SELECT team_id FROM users WHERE username='claude_employee01'")
+TEAM2=$(psqlq "SELECT team_id FROM users WHERE username='claude_employee02'")
+note "팀: claude_employee01·claude_manager01=$TEAM1 · claude_employee02=$TEAM2"
 DEAD=$(psqlq "SELECT username FROM public.users WHERE is_active = false ORDER BY id LIMIT 1")
 note "비활성 계정: ${DEAD:-없음}"
 
@@ -326,10 +328,11 @@ page_html() {   # $1 주소(SITE 기준 경로) $2 계정
 uid() { psqlq "SELECT id FROM users WHERE username='$1'"; }
 reauth_admin() {
   local pw rc
-  pw=$(qa_password qa_admin01)
-  python3 -c "import json,sys;print(json.dumps({'password':sys.argv[1]}))" "$pw" > "$WORK/reauth.json"
-  rc=$(curl -s -o /dev/null -w '%{http_code}' -b "$JAR_DIR/qa_admin01.jar" -A "$UA" -H 'Content-Type: application/json' \
-        -H "X-CSRF-Token: $CSRF_qa_admin01" --data-binary "@$WORK/reauth.json" "$BASE/api/me/reauth")
+  pw=$(qa_password claude_admin01)
+  # 비밀번호는 인자가 아니라 표준입력 첫 줄로(R-62 · py_secret). 파일에 쓰는 바이트(json.dumps + 줄바꿈)는 같다.
+  py_secret pw -- python3 -c 'import json,sys; pw=sys.stdin.readline().rstrip("\n"); print(json.dumps({"password":pw}))' > "$WORK/reauth.json"
+  rc=$(curl -s -o /dev/null -w '%{http_code}' -b "$JAR_DIR/claude_admin01.jar" -A "$UA" -H 'Content-Type: application/json' \
+        -H "X-CSRF-Token: $CSRF_claude_admin01" --data-binary "@$WORK/reauth.json" "$BASE/api/me/reauth")
   rm -f "$WORK/reauth.json"
   printf '%s' "$rc"
 }
@@ -373,301 +376,307 @@ hr "C:T-80  게시판 노출 · 쓰기 자격 · 게시판 관리"
 sub "게시판 관리 — 재인증 · 자격 · 등급 고정 · 이름 중복"
 jbody "{'name': 'C5-팀게시판', 'access_level': 'team', 'team_id': $TEAM1, 'board_kind': 'discussion', 'description': '5-C 시험'}"
 expect "Admin 이 재인증 없이 게시판 만들기 → 403 next=reauth" "403|reauth" \
-  "$(capi POST /api/boards qa_admin01 "$WORK/body.json")|$(jget "d.get('next','')" < "$WORK/b")"
-expect "Employee 가 게시판 만들기 → 403 (라우트 정책 role:Admin)" "403" "$(capi POST /api/boards qa_employee01 "$WORK/body.json")"
+  "$(capi POST /api/boards claude_admin01 "$WORK/body.json")|$(jget "d.get('next','')" < "$WORK/b")"
+expect "Employee 가 게시판 만들기 → 403 (라우트 정책 role:Admin)" "403" "$(capi POST /api/boards claude_employee01 "$WORK/body.json")"
 expect "Admin 재인증 (t-box 창구) → 200" "200" "$(reauth_admin)"
-expect "Admin 이 팀 게시판(팀 $TEAM1) 만들기 → 201" "201" "$(capi POST /api/boards qa_admin01 "$WORK/body.json")"
+expect "Admin 이 팀 게시판(팀 $TEAM1) 만들기 → 201" "201" "$(capi POST /api/boards claude_admin01 "$WORK/body.json")"
 B_TEAM=$(jget "d['board']['id']" < "$WORK/b")
 jbody "{'name': 'C5-관리자게시판', 'access_level': 'admin-only', 'board_kind': 'discussion'}"
-expect "Admin 이 관리자 게시판 만들기 → 201" "201" "$(capi POST /api/boards qa_admin01 "$WORK/body.json")"
+expect "Admin 이 관리자 게시판 만들기 → 201" "201" "$(capi POST /api/boards claude_admin01 "$WORK/body.json")"
 B_ADM=$(jget "d['board']['id']" < "$WORK/b")
 jbody "{'name': 'C5-보관게시판', 'access_level': 'internal', 'board_kind': 'qa'}"
-capi POST /api/boards qa_admin01 "$WORK/body.json" > /dev/null
+capi POST /api/boards claude_admin01 "$WORK/body.json" > /dev/null
 B_OLD=$(jget "d['board']['id']" < "$WORK/b")
 jbody "{'name': 'c5-팀게시판', 'access_level': 'internal', 'board_kind': 'discussion'}"
-expect "같은 이름(대소문자만 다름) → 409" "409" "$(capi POST /api/boards qa_admin01 "$WORK/body.json")"
+# 실행 경계(BF-0009) — 아래 「deny conflict 1」 이 기대하는 감사 행은 바로 다음 409 요청이 남긴다. 그 앞에서 잰다
+# (임시 DB 는 운영 사본이라 운영의 옛 conflict 행이 섞일 수 있다).
+CONFLICT_MARK=$(mark)
+expect "같은 이름(대소문자만 다름) → 409" "409" "$(capi POST /api/boards claude_admin01 "$WORK/body.json")"
 jbody "{'name': 'C5-y', 'access_level': 'team', 'board_kind': 'discussion'}"
-expect "팀 등급인데 팀이 없음 → 400" "400" "$(capi POST /api/boards qa_admin01 "$WORK/body.json")"
+expect "팀 등급인데 팀이 없음 → 400" "400" "$(capi POST /api/boards claude_admin01 "$WORK/body.json")"
 jbody "{'name': 'C5-y', 'access_level': 'internal', 'board_kind': 'wiki'}"
-expect "모르는 종류 → 400" "400" "$(capi POST /api/boards qa_admin01 "$WORK/body.json")"
+expect "모르는 종류 → 400" "400" "$(capi POST /api/boards claude_admin01 "$WORK/body.json")"
 jbody "{'name': 'C5-y', 'access_level': 'internal', 'board_kind': 'discussion', 'role': 'Admin'}"
-expect "허용 키 밖 → 400" "400" "$(capi POST /api/boards qa_admin01 "$WORK/body.json")"
+expect "허용 키 밖 → 400" "400" "$(capi POST /api/boards claude_admin01 "$WORK/body.json")"
 jbody "{'access_level': 'public'}"
-expect "게시판 등급 바꾸기(PATCH access_level) → 400 (만든 뒤 고정)" "400" "$(capi PATCH "/api/boards/$B_TEAM" qa_admin01 "$WORK/body.json")"
+expect "게시판 등급 바꾸기(PATCH access_level) → 400 (만든 뒤 고정)" "400" "$(capi PATCH "/api/boards/$B_TEAM" claude_admin01 "$WORK/body.json")"
 jbody "{'is_active': False}"
-expect "보관(비활성)으로 → 200" "200" "$(capi PATCH "/api/boards/$B_OLD" qa_admin01 "$WORK/body.json")"
+expect "보관(비활성)으로 → 200" "200" "$(capi PATCH "/api/boards/$B_OLD" claude_admin01 "$WORK/body.json")"
 expect "  감사 board.create allow 3 · board.update allow 1" "3|1" \
   "$(psqlq "SELECT count(*) FROM audit_logs WHERE action='board.create' AND result='allow' AND target_name LIKE 'C5-%'")|$(psqlq "SELECT count(*) FROM audit_logs WHERE action='board.update' AND result='allow' AND target_name LIKE 'C5-%'")"
-expect "  감사 board.create deny conflict 1" "1" "$(psqlq "SELECT count(*) FROM audit_logs WHERE action='board.create' AND reason='conflict'")"
+expect "  감사 board.create deny conflict 1" "1" "$(psqlq "SELECT count(*) FROM audit_logs WHERE id > ${CONFLICT_MARK:-0} AND action='board.create' AND reason='conflict'")"
 
 sub "목록 — 못 보는 게시판은 응답에 없다 (원문 grep)"
-capi GET /api/boards qa_guest01 > /dev/null; G=$(cat "$WORK/b")
+capi GET /api/boards claude_guest01 > /dev/null; G=$(cat "$WORK/b")
 contains "Guest — 공지사항(public) 보임" "공지사항" "$G"
 lacks "Guest — 자유게시판(internal) 없음" "자유게시판" "$G"
 lacks "Guest — 팀 게시판 없음" "C5-팀게시판" "$G"
 lacks "Guest — 관리자 게시판 없음" "C5-관리자" "$G"
 lacks "Guest — 팀 게시판 번호도 없음" "\"id\":$B_TEAM," "$G"
-capi GET /api/boards qa_employee02 > /dev/null; E2=$(cat "$WORK/b")
+capi GET /api/boards claude_employee02 > /dev/null; E2=$(cat "$WORK/b")
 contains "다른 팀 Employee — 자유게시판 보임" "자유게시판" "$E2"
 lacks "다른 팀 Employee — 팀 $TEAM1 게시판 없음" "C5-팀게시판" "$E2"
 lacks "Employee — 관리자 게시판 없음" "C5-관리자" "$E2"
 contains "Employee — 보관 게시판은 보인다(읽기 전용)" "C5-보관게시판" "$E2"
-capi GET /api/boards qa_employee01 > /dev/null
+capi GET /api/boards claude_employee01 > /dev/null
 contains "같은 팀 Employee — 팀 게시판 보임" "C5-팀게시판" "$(cat "$WORK/b")"
-capi GET /api/boards qa_admin01 > /dev/null
+capi GET /api/boards claude_admin01 > /dev/null
 contains "Admin — 관리자 게시판 보임" "C5-관리자게시판" "$(cat "$WORK/b")"
 expect "  목록 창구의 can_manage — Admin 참 · Employee 거짓" "True|False" \
-  "$(jget "d['can_manage']" < "$WORK/b")|$(capi GET /api/boards qa_employee01 >/dev/null; jget "d['can_manage']" < "$WORK/b")"
+  "$(jget "d['can_manage']" < "$WORK/b")|$(capi GET /api/boards claude_employee01 >/dev/null; jget "d['can_manage']" < "$WORK/b")"
 
 sub "주소 직접 — 403 동일 문구"
-expect "다른 팀 Employee → 팀 게시판 목록 403" "403" "$(capi GET "/api/boards/$B_TEAM/pages" qa_employee02)"
-expect "Guest → 자유게시판 목록 403" "403" "$(capi GET "/api/boards/$B_FREE/pages" qa_guest01)"
-expect "Employee → 관리자 게시판 목록 403" "403" "$(capi GET "/api/boards/$B_ADM/pages" qa_employee01)"
-expect "없는 번호 → 403 (404 로 가르지 않는다)" "403" "$(capi GET "/api/boards/999999/pages" qa_employee01)"
-expect "Guest → 공지사항 목록 200" "200" "$(capi GET "/api/boards/$B_NOTICE/pages" qa_guest01)"
-expect "게시판 화면 /b/{num} 은 셸만 — 200 (자료는 창구가 준다)" "200" "$(page_html "/community/b/$B_TEAM" qa_employee02)"
+expect "다른 팀 Employee → 팀 게시판 목록 403" "403" "$(capi GET "/api/boards/$B_TEAM/pages" claude_employee02)"
+expect "Guest → 자유게시판 목록 403" "403" "$(capi GET "/api/boards/$B_FREE/pages" claude_guest01)"
+expect "Employee → 관리자 게시판 목록 403" "403" "$(capi GET "/api/boards/$B_ADM/pages" claude_employee01)"
+expect "없는 번호 → 403 (404 로 가르지 않는다)" "403" "$(capi GET "/api/boards/999999/pages" claude_employee01)"
+expect "Guest → 공지사항 목록 200" "200" "$(capi GET "/api/boards/$B_NOTICE/pages" claude_guest01)"
+expect "게시판 화면 /b/{num} 은 셸만 — 200 (자료는 창구가 준다)" "200" "$(page_html "/community/b/$B_TEAM" claude_employee02)"
 lacks "  못 보는 게시판 화면 HTML 에 그 이름이 없다" "C5-팀게시판" "$(cat "$WORK/html")"
 
 sub "보관 게시판은 읽기 전용 — 쓴 사람의 지우기·고치기도 막힌다 (독립 검토)"
-jbody "{'is_active': True}"; capi PATCH "/api/boards/$B_OLD" qa_admin01 "$WORK/body.json" > /dev/null
-OP=$(new_post qa_employee01 "$B_OLD" 'C5-보관될 글')
-jbody "{'is_active': False}"; capi PATCH "/api/boards/$B_OLD" qa_admin01 "$WORK/body.json" > /dev/null
-expect "보관 뒤 쓴 사람 PATCH → 403" "403" "$(patch_title qa_employee01 "$OP" 'C5-보관 뒤 고침')"
-expect "보관 뒤 쓴 사람 DELETE → 403" "403" "$(capi DELETE "/api/pages/$OP" qa_employee01)"
-expect "보관 뒤 해결됨 → 403" "403" "$(capi PATCH "/api/pages/$OP/properties" qa_employee01 <(printf '{"resolved":true}'))"
-expect "보관 뒤에도 읽기 → 200" "200" "$(capi GET "/api/pages/$OP" qa_employee02)"
+jbody "{'is_active': True}"; capi PATCH "/api/boards/$B_OLD" claude_admin01 "$WORK/body.json" > /dev/null
+OP=$(new_post claude_employee01 "$B_OLD" 'C5-보관될 글')
+jbody "{'is_active': False}"; capi PATCH "/api/boards/$B_OLD" claude_admin01 "$WORK/body.json" > /dev/null
+expect "보관 뒤 쓴 사람 PATCH → 403" "403" "$(patch_title claude_employee01 "$OP" 'C5-보관 뒤 고침')"
+expect "보관 뒤 쓴 사람 DELETE → 403" "403" "$(capi DELETE "/api/pages/$OP" claude_employee01)"
+expect "보관 뒤 해결됨 → 403" "403" "$(capi PATCH "/api/pages/$OP/properties" claude_employee01 <(printf '{"resolved":true}'))"
+expect "보관 뒤에도 읽기 → 200" "200" "$(capi GET "/api/pages/$OP" claude_employee02)"
 
 sub "새 글 쓰기 자격"
 A0=$(mark)
-expect "Employee → 공지사항 새 글 403" "403" "$(capi POST "/api/boards/$B_NOTICE/pages" qa_employee01 <(printf '{"title":"C5-공지 시도"}'))"
+expect "Employee → 공지사항 새 글 403" "403" "$(capi POST "/api/boards/$B_NOTICE/pages" claude_employee01 <(printf '{"title":"C5-공지 시도"}'))"
 expect "  감사 page.create deny role_not_permitted 1" "1" "$(audit_n "$A0" page.create deny role_not_permitted)"
-expect "Guest → 공지사항 새 글 403 (라우트 정책 community.write)" "403" "$(capi POST "/api/boards/$B_NOTICE/pages" qa_guest01 <(printf '{"title":"C5-x"}'))"
-expect "다른 팀 Employee → 팀 게시판 새 글 403" "403" "$(capi POST "/api/boards/$B_TEAM/pages" qa_employee02 <(printf '{"title":"C5-x"}'))"
+expect "Guest → 공지사항 새 글 403 (라우트 정책 community.write)" "403" "$(capi POST "/api/boards/$B_NOTICE/pages" claude_guest01 <(printf '{"title":"C5-x"}'))"
+expect "다른 팀 Employee → 팀 게시판 새 글 403" "403" "$(capi POST "/api/boards/$B_TEAM/pages" claude_employee02 <(printf '{"title":"C5-x"}'))"
 expect "Employee → 보관 게시판 새 글 400 board_inactive" "400|board_inactive" \
-  "$(capi POST "/api/boards/$B_OLD/pages" qa_employee01 <(printf '{"title":"C5-x"}'))|$(jget "d.get('reason','')" < "$WORK/b")"
-NP=$(new_post qa_admin01 "$B_NOTICE" 'C5-공지 하나')
+  "$(capi POST "/api/boards/$B_OLD/pages" claude_employee01 <(printf '{"title":"C5-x"}'))|$(jget "d.get('reason','')" < "$WORK/b")"
+NP=$(new_post claude_admin01 "$B_NOTICE" 'C5-공지 하나')
 expect "Admin → 공지사항 새 글 201" "201" "$(cat "$WORK/st")"
-FP1=$(new_post qa_employee01 "$B_FREE" 'C5-자유 첫 글' "['안내','Alpha']")
+FP1=$(new_post claude_employee01 "$B_FREE" 'C5-자유 첫 글' "['안내','Alpha']")
 expect "Employee → 자유게시판 새 글 201" "201" "$(cat "$WORK/st")"
-TP1=$(new_post qa_employee01 "$B_TEAM" 'C5-팀 글 비밀제목')
+TP1=$(new_post claude_employee01 "$B_TEAM" 'C5-팀 글 비밀제목')
 expect "같은 팀 Employee → 팀 게시판 새 글 201" "201" "$(cat "$WORK/st")"
-expect "  새 글의 쓴 사람 = author_id (qa_employee01)" "qa_employee01" \
+expect "  새 글의 쓴 사람 = author_id (claude_employee01)" "claude_employee01" \
   "$(psqlq "SELECT u.username FROM community.pages p JOIN users u ON u.id=p.author_id WHERE p.public_id='$FP1'")"
 expect "  새 글은 게시판 공간에 있다" "board" "$(psqlq "SELECT s.kind FROM community.pages p JOIN community.spaces s ON s.id=p.space_id WHERE p.public_id='$FP1'")"
 
 sub "글 읽기 — 못 보는 글은 403"
-expect "다른 팀 Employee → 팀 게시판 글 GET 403" "403" "$(capi GET "/api/pages/$TP1" qa_employee02)"
-expect "Guest → 자유게시판 글 GET 403" "403" "$(capi GET "/api/pages/$FP1" qa_guest01)"
-expect "Guest → 공지 글 GET 200" "200" "$(capi GET "/api/pages/$NP" qa_guest01)"
+expect "다른 팀 Employee → 팀 게시판 글 GET 403" "403" "$(capi GET "/api/pages/$TP1" claude_employee02)"
+expect "Guest → 자유게시판 글 GET 403" "403" "$(capi GET "/api/pages/$FP1" claude_guest01)"
+expect "Guest → 공지 글 GET 200" "200" "$(capi GET "/api/pages/$NP" claude_guest01)"
 expect "다른 팀 Employee → 자유게시판 글 GET 200 · board.kind=post" "200|post" \
-  "$(capi GET "/api/pages/$FP1" qa_employee02)|$(jget "d['board']['kind']" < "$WORK/b")"
-capi GET "/api/boards/$B_TEAM/pages" qa_employee01 > /dev/null
+  "$(capi GET "/api/pages/$FP1" claude_employee02)|$(jget "d['board']['kind']" < "$WORK/b")"
+capi GET "/api/boards/$B_TEAM/pages" claude_employee01 > /dev/null
 contains "같은 팀 — 팀 게시판 목록에 그 글" "C5-팀 글 비밀제목" "$(cat "$WORK/b")"
-capi GET "/api/boards/$B_FREE/pages" qa_employee02 > /dev/null
+capi GET "/api/boards/$B_FREE/pages" claude_employee02 > /dev/null
 lacks "다른 팀 — 자유게시판 목록에 팀 글 제목이 섞이지 않는다" "비밀제목" "$(cat "$WORK/b")"
 
 # ════════════════════════════════════════════════════════════════
 hr "C:T-81  새 글 — 고치기·지우기는 쓴 사람만"
 A1=$(mark)
-expect "쓴 사람 PATCH → 200" "200" "$(patch_title qa_employee01 "$FP1" 'C5-자유 첫 글 (고침)')"
-expect "남(다른 Employee) PATCH → 403" "403" "$(patch_title qa_employee02 "$FP1" 'C5-탈취')"
-expect "같은 팀 Manager 가 팀 게시판 글 PATCH → 403" "403" "$(patch_title qa_manager01 "$TP1" 'C5-탈취')"
-expect "Admin PATCH → 403 (관리자도 내용은 못 고친다)" "403" "$(patch_title qa_admin01 "$FP1" 'C5-탈취')"
+expect "쓴 사람 PATCH → 200" "200" "$(patch_title claude_employee01 "$FP1" 'C5-자유 첫 글 (고침)')"
+expect "남(다른 Employee) PATCH → 403" "403" "$(patch_title claude_employee02 "$FP1" 'C5-탈취')"
+expect "같은 팀 Manager 가 팀 게시판 글 PATCH → 403" "403" "$(patch_title claude_manager01 "$TP1" 'C5-탈취')"
+expect "Admin PATCH → 403 (관리자도 내용은 못 고친다)" "403" "$(patch_title claude_admin01 "$FP1" 'C5-탈취')"
 expect "  감사 page.update deny not_author 3" "3" "$(audit_n "$A1" page.update deny not_author)"
 expect "  제목 무변경" "C5-자유 첫 글 (고침)" "$(pg_page "$FP1" "p.title")"
-DP=$(new_post qa_employee01 "$B_FREE" 'C5-지울 글')
-expect "남이 DELETE → 403" "403" "$(capi DELETE "/api/pages/$DP" qa_employee02)"
-expect "Admin 이 DELETE → 403 (숨김은 된다 — C:T-83)" "403" "$(capi DELETE "/api/pages/$DP" qa_admin01)"
+DP=$(new_post claude_employee01 "$B_FREE" 'C5-지울 글')
+expect "남이 DELETE → 403" "403" "$(capi DELETE "/api/pages/$DP" claude_employee02)"
+expect "Admin 이 DELETE → 403 (숨김은 된다 — C:T-83)" "403" "$(capi DELETE "/api/pages/$DP" claude_admin01)"
 expect "  감사 page.delete deny not_author 2" "2" "$(audit_n "$A1" page.delete deny not_author)"
-expect "쓴 사람 DELETE → 200" "200" "$(capi DELETE "/api/pages/$DP" qa_employee01)"
+expect "쓴 사람 DELETE → 200" "200" "$(capi DELETE "/api/pages/$DP" claude_employee01)"
 jbody "{'title': 'C5-하위', 'parent_id': '$FP1'}"
 expect "게시판 글 아래 하위 페이지 → 400 space_governed" "400|space_governed" \
-  "$(capi POST /api/pages qa_employee01 "$WORK/body.json")|$(jget "d.get('reason','')" < "$WORK/b")"
+  "$(capi POST /api/pages claude_employee01 "$WORK/body.json")|$(jget "d.get('reason','')" < "$WORK/b")"
 jbody "{'title': 'C5-게시판에 직접', 'space_id': $B_FREE}"
-expect "개인 창구로 게시판 공간에 쓰기 → 400" "400" "$(capi POST /api/pages qa_employee01 "$WORK/body.json")"
-expect "게시판 글 공유 → 400 space_governed" "400" "$(share qa_employee01 "$FP1" qa_employee02 edit)"
+expect "개인 창구로 게시판 공간에 쓰기 → 400" "400" "$(capi POST /api/pages claude_employee01 "$WORK/body.json")"
+expect "게시판 글 공유 → 400 space_governed" "400" "$(share claude_employee01 "$FP1" claude_employee02 edit)"
 expect "게시판 글 옮기기·공개 범위·넘기기 → 거부(403·400)" "yes" \
-  "$(a=$(capi PATCH "/api/pages/$FP1/move" qa_employee01 <(printf '{"parent_id":null,"position":0}')); b=$(capi PATCH "/api/pages/$FP1/visibility" qa_employee01 <(printf '{"visibility":"internal"}')); c=$(capi POST "/api/pages/$FP1/handover" qa_employee01 <(printf '{"to":"qa_employee02","keep":"none"}')); [ "$a" != 200 ] && [ "$b" != 200 ] && [ "$c" != 200 ] && echo yes || echo "no $a $b $c")"
+  "$(a=$(capi PATCH "/api/pages/$FP1/move" claude_employee01 <(printf '{"parent_id":null,"position":0}')); b=$(capi PATCH "/api/pages/$FP1/visibility" claude_employee01 <(printf '{"visibility":"internal"}')); c=$(capi POST "/api/pages/$FP1/handover" claude_employee01 <(printf '{"to":"claude_employee02","keep":"none"}')); [ "$a" != 200 ] && [ "$b" != 200 ] && [ "$c" != 200 ] && echo yes || echo "no $a $b $c")"
 
 # ════════════════════════════════════════════════════════════════
 hr "C:T-82  게시 — 개인 페이지를 게시판에 건다"
-P1=$(make_page qa_employee01 'C5-개인 비공개 글')
-expect "게시 전 다른 사원 GET 403 (비공개)" "403" "$(capi GET "/api/pages/$P1" qa_employee02)"
+P1=$(make_page claude_employee01 'C5-개인 비공개 글')
+expect "게시 전 다른 사원 GET 403 (비공개)" "403" "$(capi GET "/api/pages/$P1" claude_employee02)"
 A2=$(mark)
-expect "못 쓰는 게시판(공지)에 게시 → 403" "403" "$(publish qa_employee01 "$P1" "$B_NOTICE")"
+expect "못 쓰는 게시판(공지)에 게시 → 403" "403" "$(publish claude_employee01 "$P1" "$B_NOTICE")"
 expect "  감사 page.publish deny role_not_permitted 1" "1" "$(audit_n "$A2" page.publish deny role_not_permitted)"
-expect "못 보는 게시판(관리자)에 게시 → 403" "403" "$(publish qa_employee01 "$P1" "$B_ADM")"
-expect "없는 게시판에 게시 → 403" "403" "$(publish qa_employee01 "$P1" 999999)"
-expect "보관 게시판에 게시 → 400" "400" "$(publish qa_employee01 "$P1" "$B_OLD")"
-expect "남(볼 수 없는 사람)이 게시 → 403" "403" "$(publish qa_employee02 "$P1" "$B_FREE")"
-share qa_employee01 "$P1" qa_employee02 edit > /dev/null
-expect "편집 공유자가 게시 → 403 (게시는 주인만)" "403" "$(publish qa_employee02 "$P1" "$B_FREE")"
+expect "못 보는 게시판(관리자)에 게시 → 403" "403" "$(publish claude_employee01 "$P1" "$B_ADM")"
+expect "없는 게시판에 게시 → 403" "403" "$(publish claude_employee01 "$P1" 999999)"
+expect "보관 게시판에 게시 → 400" "400" "$(publish claude_employee01 "$P1" "$B_OLD")"
+expect "남(볼 수 없는 사람)이 게시 → 403" "403" "$(publish claude_employee02 "$P1" "$B_FREE")"
+share claude_employee01 "$P1" claude_employee02 edit > /dev/null
+expect "편집 공유자가 게시 → 403 (게시는 주인만)" "403" "$(publish claude_employee02 "$P1" "$B_FREE")"
 expect "  감사 page.publish deny not_owner 1" "1" "$(audit_n "$A2" page.publish deny not_owner)"
-unshare qa_employee01 "$P1" qa_employee02 > /dev/null
-expect "주인이 자유게시판(internal)에 게시 → 200" "200" "$(publish qa_employee01 "$P1" "$B_FREE")"
+unshare claude_employee01 "$P1" claude_employee02 > /dev/null
+# 실행 경계(BF-0009) — C:T-88 「처리 이력에 publish·hide·resolved」 가 기대하는 줄 가운데 이 실행의 **첫 줄**은 바로 다음
+# 게시(200)가 남긴다(위의 게시 시도는 전부 거부라 줄이 없다 · hide 는 C:T-83 · resolved 는 C:T-89 — 모두 이 뒤). 그 앞에서 잰다.
+PPE_MARK=$(psqlq "SELECT coalesce(max(id),0) FROM community.page_property_events")
+expect "주인이 자유게시판(internal)에 게시 → 200" "200" "$(publish claude_employee01 "$P1" "$B_FREE")"
 expect "  DB: published · 원래 범위 private · 게시판 번호" "published|private|$B_FREE" \
   "$(pg_page "$P1" "p.visibility||'|'||p.published_from||'|'||p.published_board_id")"
 expect "다른 사원 GET → 200 (게시판 등급으로)" "200|board" \
-  "$(capi GET "/api/pages/$P1" qa_employee02)|$(jget "d['granted_by']" < "$WORK/b")"
-capi GET "/api/boards/$B_FREE/pages" qa_employee02 > /dev/null
+  "$(capi GET "/api/pages/$P1" claude_employee02)|$(jget "d['granted_by']" < "$WORK/b")"
+capi GET "/api/boards/$B_FREE/pages" claude_employee02 > /dev/null
 contains "  자유게시판 목록에 보임 · kind=published" "C5-개인 비공개 글" "$(cat "$WORK/b")"
 contains "  kind published" '"kind":"published"' "$(cat "$WORK/b")"
-expect "Guest GET → 403 (internal 게시판)" "403" "$(capi GET "/api/pages/$P1" qa_guest01)"
+expect "Guest GET → 403 (internal 게시판)" "403" "$(capi GET "/api/pages/$P1" claude_guest01)"
 expect "이미 게시 중 → 400 already_published" "400|already_published" \
-  "$(publish qa_employee01 "$P1" "$B_QA")|$(jget "d.get('reason','')" < "$WORK/b")"
+  "$(publish claude_employee01 "$P1" "$B_QA")|$(jget "d.get('reason','')" < "$WORK/b")"
 expect "게시 중 공개 범위 바꾸기 → 400 published" "400|published" \
-  "$(capi PATCH "/api/pages/$P1/visibility" qa_employee01 <(printf '{"visibility":"team"}'))|$(jget "d.get('reason','')" < "$WORK/b")"
-expect "게시 중 원본 고치기 → 200" "200" "$(patch_title qa_employee01 "$P1" 'C5-개인 비공개 글 (고친 제목)')"
-capi GET "/api/boards/$B_FREE/pages" qa_employee02 > /dev/null
+  "$(capi PATCH "/api/pages/$P1/visibility" claude_employee01 <(printf '{"visibility":"team"}'))|$(jget "d.get('reason','')" < "$WORK/b")"
+expect "게시 중 원본 고치기 → 200" "200" "$(patch_title claude_employee01 "$P1" 'C5-개인 비공개 글 (고친 제목)')"
+capi GET "/api/boards/$B_FREE/pages" claude_employee02 > /dev/null
 contains "  게시판 목록에 고친 제목이 그대로 (한 벌)" "C5-개인 비공개 글 (고친 제목)" "$(cat "$WORK/b")"
-share qa_employee01 "$P1" qa_manager01 view > /dev/null
-capi GET "/api/pages/$P1" qa_manager01 > /dev/null
+share claude_employee01 "$P1" claude_manager01 view > /dev/null
+capi GET "/api/pages/$P1" claude_manager01 > /dev/null
 expect "공유로 보는 사람에게 게시판 칸이 실린다(그 게시판을 읽을 수 있으므로)" "자유게시판" "$(jget "d['board']['name']" < "$WORK/b")"
-unshare qa_employee01 "$P1" qa_manager01 > /dev/null
-CH=$(make_page qa_employee01 'C5-게시글의 하위' "$P1")
+unshare claude_employee01 "$P1" claude_manager01 > /dev/null
+CH=$(make_page claude_employee01 'C5-게시글의 하위' "$P1")
 expect "게시된 페이지의 하위는 기준 범위(private)로 시작 — 다른 사원 GET 403" "private|403" \
-  "$(pg_page "$CH" "p.visibility")|$(capi GET "/api/pages/$CH" qa_employee02)"
-expect "남(다른 사원)이 게시 해제 → 403" "403" "$(capi DELETE "/api/pages/$P1/publish" qa_employee02)"
+  "$(pg_page "$CH" "p.visibility")|$(capi GET "/api/pages/$CH" claude_employee02)"
+expect "남(다른 사원)이 게시 해제 → 403" "403" "$(capi DELETE "/api/pages/$P1/publish" claude_employee02)"
 expect "  감사 page.unpublish deny not_owner 1" "1" "$(audit_n "$A2" page.unpublish deny not_owner)"
-expect "주인이 게시 해제 → 200" "200" "$(capi DELETE "/api/pages/$P1/publish" qa_employee01)"
+expect "주인이 게시 해제 → 200" "200" "$(capi DELETE "/api/pages/$P1/publish" claude_employee01)"
 expect "  DB: private 으로 복원 · 게시 칸 비움" "private||" \
   "$(pg_page "$P1" "p.visibility||'|'||coalesce(p.published_from,'')||'|'||coalesce(p.published_board_id::text,'')")"
-expect "해제 뒤 다른 사원 GET → 403 (원래 범위 복원)" "403" "$(capi GET "/api/pages/$P1" qa_employee02)"
-capi GET "/api/boards/$B_FREE/pages" qa_employee02 > /dev/null
+expect "해제 뒤 다른 사원 GET → 403 (원래 범위 복원)" "403" "$(capi GET "/api/pages/$P1" claude_employee02)"
+capi GET "/api/boards/$B_FREE/pages" claude_employee02 > /dev/null
 lacks "  게시판 목록에서 사라짐" "C5-개인 비공개 글" "$(cat "$WORK/b")"
-expect "해제 뒤 다시 해제 → 400 not_published" "400" "$(capi DELETE "/api/pages/$P1/publish" qa_employee01)"
+expect "해제 뒤 다시 해제 → 400 not_published" "400" "$(capi DELETE "/api/pages/$P1/publish" claude_employee01)"
 expect "처리 이력 — publish 두 줄(게시·해제)" "2" \
   "$(psqlq "SELECT count(*) FROM community.page_property_events e JOIN community.pages p ON p.id=e.page_id WHERE p.public_id='$P1' AND e.prop='publish'")"
-capi GET "/api/pages/$P1/history" qa_employee01 > /dev/null
+capi GET "/api/pages/$P1/history" claude_employee01 > /dev/null
 contains "  「처리 이력」 창구에 publish 줄" '"prop":"publish"' "$(cat "$WORK/b")"
 sub "게시 전 판은 게시판 독자에게 보이지 않는다 (USER-CHECKS 5-C #9 — 기본안: 게시 뒤 판만)"
-P5=$(make_page qa_employee01 'C5-초안 있는 글')
-patch_title qa_employee01 "$P5" 'C5-초안 비밀 제목' > /dev/null
+P5=$(make_page claude_employee01 'C5-초안 있는 글')
+patch_title claude_employee01 "$P5" 'C5-초안 비밀 제목' > /dev/null
 expect "  게시 전 판 스냅샷이 있다" "1" "$(psqlq "SELECT count(*) FROM community.page_versions v JOIN community.pages p ON p.id=v.page_id WHERE p.public_id='$P5'")"
-publish qa_employee01 "$P5" "$B_FREE" > /dev/null
-capi GET "/api/pages/$P5/versions" qa_employee02 > /dev/null
+publish claude_employee01 "$P5" "$B_FREE" > /dev/null
+capi GET "/api/pages/$P5/versions" claude_employee02 > /dev/null
 lacks "  게시판 독자의 판 목록에 게시 전 판(초안 제목) 없음" "C5-초안 있는 글" "$(cat "$WORK/b")"
-expect "  게시판 독자가 게시 전 판 직접 → 404" "404" "$(capi GET "/api/pages/$P5/versions/1" qa_employee02)"
-capi GET "/api/pages/$P5/history" qa_employee02 > /dev/null
+expect "  게시판 독자가 게시 전 판 직접 → 404" "404" "$(capi GET "/api/pages/$P5/versions/1" claude_employee02)"
+capi GET "/api/pages/$P5/history" claude_employee02 > /dev/null
 lacks "  처리 이력에도 게시 전 판(판 1) 없음 — 지금 판 줄만" '"version":1,' "$(cat "$WORK/b")"
-expect "  주인은 게시 전 판을 본다 → 200" "200" "$(capi GET "/api/pages/$P5/versions/1" qa_employee01)"
-capi DELETE "/api/pages/$P5/publish" qa_employee01 > /dev/null
-TPP=$(make_page qa_employee01 'C5-팀공간 글' '' "$(psqlq "SELECT id FROM community.spaces WHERE kind='team' AND team_id=$TEAM1")")
-expect "팀 공간 페이지 게시 → 400 space_governed" "400" "$(publish qa_employee01 "$TPP" "$B_FREE")"
+expect "  주인은 게시 전 판을 본다 → 200" "200" "$(capi GET "/api/pages/$P5/versions/1" claude_employee01)"
+capi DELETE "/api/pages/$P5/publish" claude_employee01 > /dev/null
+TPP=$(make_page claude_employee01 'C5-팀공간 글' '' "$(psqlq "SELECT id FROM community.spaces WHERE kind='team' AND team_id=$TEAM1")")
+expect "팀 공간 페이지 게시 → 400 space_governed" "400" "$(publish claude_employee01 "$TPP" "$B_FREE")"
 
 # ════════════════════════════════════════════════════════════════
 hr "C:T-83  숨김 — 게시판 관리자만, 원본 무변경"
-TP2=$(new_post qa_employee01 "$B_TEAM" 'C5-팀 숨길 글' "['숨김태그Z']")
+TP2=$(new_post claude_employee01 "$B_TEAM" 'C5-팀 숨길 글' "['숨김태그Z']")
 V_TP2=$(pg_page "$TP2" "p.doc_version")
 A3=$(mark)
-expect "쓴 사람(관리자가 아님)이 자기 글 숨기기 → 403" "403" "$(capi POST "/api/pages/$TP2/hide" qa_employee01)"
-expect "쓴 사람이 아닌 Employee 가 남의 글 숨기기 → 403" "403" "$(capi POST "/api/pages/$FP1/hide" qa_employee02)"
+expect "쓴 사람(관리자가 아님)이 자기 글 숨기기 → 403" "403" "$(capi POST "/api/pages/$TP2/hide" claude_employee01)"
+expect "쓴 사람이 아닌 Employee 가 남의 글 숨기기 → 403" "403" "$(capi POST "/api/pages/$FP1/hide" claude_employee02)"
 expect "  감사 page.hide deny not_owner ≥1" "yes" "$([ "$(audit_n "$A3" page.hide deny not_owner)" -ge 1 ] && echo yes || echo no)"
-expect "Manager 가 다른 게시판(internal 자유게시판) 글 숨기기 → 403" "403" "$(capi POST "/api/pages/$FP1/hide" qa_manager01)"
+expect "Manager 가 다른 게시판(internal 자유게시판) 글 숨기기 → 403" "403" "$(capi POST "/api/pages/$FP1/hide" claude_manager01)"
 expect "Manager(그 팀)가 팀 게시판 글 숨기기 → 200 team_scope" "200|team_scope" \
-  "$(capi POST "/api/pages/$TP2/hide" qa_manager01)|$(jget "d['granted_by']" < "$WORK/b")"
+  "$(capi POST "/api/pages/$TP2/hide" claude_manager01)|$(jget "d['granted_by']" < "$WORK/b")"
 expect "  감사 page.hide allow 1" "1" "$(audit_n "$A3" page.hide allow '')"
 expect "  원본 무변경 (doc_version 그대로)" "$V_TP2" "$(pg_page "$TP2" "p.doc_version")"
-capi GET "/api/boards/$B_TEAM/pages" qa_employee01 > /dev/null
+capi GET "/api/boards/$B_TEAM/pages" claude_employee01 > /dev/null
 lacks "  숨긴 뒤 목록에 없다 (쓴 사람에게도)" "C5-팀 숨길 글" "$(cat "$WORK/b")"
-expect "  주소로 — 쓴 사람 200" "200" "$(capi GET "/api/pages/$TP2" qa_employee01)"
+expect "  주소로 — 쓴 사람 200" "200" "$(capi GET "/api/pages/$TP2" claude_employee01)"
 expect "  주소로 — 게시판 관리자(Manager) 200 board_moderator" "200|board_moderator" \
-  "$(capi GET "/api/pages/$TP2" qa_manager01)|$(jget "d['granted_by']" < "$WORK/b")"
-expect "  주소로 — Admin 200" "200" "$(capi GET "/api/pages/$TP2" qa_admin01)"
+  "$(capi GET "/api/pages/$TP2" claude_manager01)|$(jget "d['granted_by']" < "$WORK/b")"
+expect "  주소로 — Admin 200" "200" "$(capi GET "/api/pages/$TP2" claude_admin01)"
 expect "Admin 이 자유게시판 글 숨기기 → 200 admin_all" "200|admin_all" \
-  "$(capi POST "/api/pages/$FP1/hide" qa_admin01)|$(jget "d['granted_by']" < "$WORK/b")"
-expect "  숨긴 자유게시판 글 — 다른 사원 GET 403" "403" "$(capi GET "/api/pages/$FP1" qa_employee02)"
+  "$(capi POST "/api/pages/$FP1/hide" claude_admin01)|$(jget "d['granted_by']" < "$WORK/b")"
+expect "  숨긴 자유게시판 글 — 다른 사원 GET 403" "403" "$(capi GET "/api/pages/$FP1" claude_employee02)"
 expect "  다시 숨기기 → 200 changed=false (기록 늘지 않음)" "200|False" \
-  "$(capi POST "/api/pages/$FP1/hide" qa_admin01)|$(jget "d['changed']" < "$WORK/b")"
+  "$(capi POST "/api/pages/$FP1/hide" claude_admin01)|$(jget "d['changed']" < "$WORK/b")"
 expect "숨김 풀기 → 200 · 다른 사원 다시 200" "200|200" \
-  "$(capi DELETE "/api/pages/$FP1/hide" qa_admin01)|$(capi GET "/api/pages/$FP1" qa_employee02)"
-expect "개인(게시 안 된) 페이지 숨기기 → 400" "400" "$(capi POST "/api/pages/$P1/hide" qa_admin01)"
+  "$(capi DELETE "/api/pages/$FP1/hide" claude_admin01)|$(capi GET "/api/pages/$FP1" claude_employee02)"
+expect "개인(게시 안 된) 페이지 숨기기 → 400" "400" "$(capi POST "/api/pages/$P1/hide" claude_admin01)"
 sub "게시된 개인 페이지의 숨김 · 관리자의 게시 해제"
-publish qa_employee01 "$P1" "$B_FREE" > /dev/null
-expect "Admin 이 게시된 페이지 숨기기 → 200" "200" "$(capi POST "/api/pages/$P1/hide" qa_admin01)"
-expect "  숨긴 뒤 다른 사원 GET 403 (원래 범위 private)" "403" "$(capi GET "/api/pages/$P1" qa_employee02)"
-expect "  주인은 200" "200" "$(capi GET "/api/pages/$P1" qa_employee01)"
-capi GET "/api/boards/$B_FREE/pages" qa_admin01 > /dev/null
+publish claude_employee01 "$P1" "$B_FREE" > /dev/null
+expect "Admin 이 게시된 페이지 숨기기 → 200" "200" "$(capi POST "/api/pages/$P1/hide" claude_admin01)"
+expect "  숨긴 뒤 다른 사원 GET 403 (원래 범위 private)" "403" "$(capi GET "/api/pages/$P1" claude_employee02)"
+expect "  주인은 200" "200" "$(capi GET "/api/pages/$P1" claude_employee01)"
+capi GET "/api/boards/$B_FREE/pages" claude_admin01 > /dev/null
 lacks "  게시판 목록에 없다 (관리자에게도)" "C5-개인 비공개 글" "$(cat "$WORK/b")"
 expect "Admin 이 게시 해제 → 200 admin_all" "200|admin_all" \
-  "$(capi DELETE "/api/pages/$P1/publish" qa_admin01)|$(jget "d['granted_by']" < "$WORK/b")"
+  "$(capi DELETE "/api/pages/$P1/publish" claude_admin01)|$(jget "d['granted_by']" < "$WORK/b")"
 expect "  해제해도 숨김은 남는다 · 범위 private (독립 검토 — 해제→재게시로 숨김 우회 금지)" "private|true" "$(pg_page "$P1" "p.visibility||'|'||(p.hidden_at IS NOT NULL)")"
-expect "주인이 다시 게시 → 200 · 그래도 숨김 그대로" "200|t" "$(publish qa_employee01 "$P1" "$B_FREE")|$(pg_page "$P1" "(p.hidden_at IS NOT NULL)")"
-capi GET "/api/boards/$B_FREE/pages" qa_employee02 > /dev/null
+expect "주인이 다시 게시 → 200 · 그래도 숨김 그대로" "200|t" "$(publish claude_employee01 "$P1" "$B_FREE")|$(pg_page "$P1" "(p.hidden_at IS NOT NULL)")"
+capi GET "/api/boards/$B_FREE/pages" claude_employee02 > /dev/null
 lacks "  재게시해도 게시판 목록에 없다" "C5-개인 비공개 글" "$(cat "$WORK/b")"
 expect "  숨김 풀기(관리자) → 목록에 보인다 · 정리로 다시 해제" "200|200" \
-  "$(capi DELETE "/api/pages/$P1/hide" qa_admin01)|$(capi DELETE "/api/pages/$P1/publish" qa_employee01)"
+  "$(capi DELETE "/api/pages/$P1/hide" claude_admin01)|$(capi DELETE "/api/pages/$P1/publish" claude_employee01)"
 
 # ════════════════════════════════════════════════════════════════
 hr "C:T-84  태그"
-expect "11개 → 400" "400" "$(put_tags qa_employee01 "$FP1" "['t%d'%i for i in range(11)]")"
-expect "31자 → 400" "400" "$(put_tags qa_employee01 "$FP1" "['가'*31]")"
-expect "30자 → 200" "200" "$(put_tags qa_employee01 "$FP1" "['가'*30]")"
-expect "제어 문자 → 400" "400" "$(put_tags qa_employee01 "$FP1" "['a\\u0007b']")"
-expect "줄바꿈 → 400" "400" "$(put_tags qa_employee01 "$FP1" "['a\\nb']")"
-expect "빈 태그(공백만) → 400" "400" "$(put_tags qa_employee01 "$FP1" "['   ']")"
-expect "목록 아님 → 400" "400" "$(put_tags qa_employee01 "$FP1" "'abc'")"
+expect "11개 → 400" "400" "$(put_tags claude_employee01 "$FP1" "['t%d'%i for i in range(11)]")"
+expect "31자 → 400" "400" "$(put_tags claude_employee01 "$FP1" "['가'*31]")"
+expect "30자 → 200" "200" "$(put_tags claude_employee01 "$FP1" "['가'*30]")"
+expect "제어 문자 → 400" "400" "$(put_tags claude_employee01 "$FP1" "['a\\u0007b']")"
+expect "줄바꿈 → 400" "400" "$(put_tags claude_employee01 "$FP1" "['a\\nb']")"
+expect "빈 태그(공백만) → 400" "400" "$(put_tags claude_employee01 "$FP1" "['   ']")"
+expect "목록 아님 → 400" "400" "$(put_tags claude_employee01 "$FP1" "'abc'")"
 expect "대소문자 같은 태그 셋 → 200 · 한 번만" "200|1" \
-  "$(put_tags qa_employee01 "$FP1" "['Alpha','alpha','ALPHA',' 공개태그Y ']")|$(psqlq "SELECT count(*) FROM community.page_tags t JOIN community.pages p ON p.id=t.page_id WHERE p.public_id='$FP1' AND t.tag_norm='alpha'")"
+  "$(put_tags claude_employee01 "$FP1" "['Alpha','alpha','ALPHA',' 공개태그Y ']")|$(psqlq "SELECT count(*) FROM community.page_tags t JOIN community.pages p ON p.id=t.page_id WHERE p.public_id='$FP1' AND t.tag_norm='alpha'")"
 expect "  앞뒤 공백 제거" "1" "$(psqlq "SELECT count(*) FROM community.page_tags t JOIN community.pages p ON p.id=t.page_id WHERE p.public_id='$FP1' AND t.tag='공개태그Y'")"
 A4=$(mark)
-expect "남이 태그 바꾸기 → 403" "403" "$(put_tags qa_employee02 "$FP1" "['탈취']")"
+expect "남이 태그 바꾸기 → 403" "403" "$(put_tags claude_employee02 "$FP1" "['탈취']")"
 expect "  감사 page.tags deny not_owner 1" "1" "$(audit_n "$A4" page.tags deny not_owner)"
-expect "Admin(게시판 관리자)도 태그 → 403 (내용 고치기와 같은 자격)" "403" "$(put_tags qa_admin01 "$FP1" "['탈취']")"
-P2=$(make_page qa_employee01 'C5-비밀 태그 페이지')
-put_tags qa_employee01 "$P2" "['비밀태그X']" > /dev/null
-HP=$(new_post qa_employee01 "$B_FREE" 'C5-숨길 태그 글' "['숨김태그W']")
-capi POST "/api/pages/$HP/hide" qa_admin01 > /dev/null
-capi GET "/api/boards/$B_FREE/tags?q=%ED%83%9C%EA%B7%B8" qa_employee02 > /dev/null; T=$(cat "$WORK/b")
+expect "Admin(게시판 관리자)도 태그 → 403 (내용 고치기와 같은 자격)" "403" "$(put_tags claude_admin01 "$FP1" "['탈취']")"
+P2=$(make_page claude_employee01 'C5-비밀 태그 페이지')
+put_tags claude_employee01 "$P2" "['비밀태그X']" > /dev/null
+HP=$(new_post claude_employee01 "$B_FREE" 'C5-숨길 태그 글' "['숨김태그W']")
+capi POST "/api/pages/$HP/hide" claude_admin01 > /dev/null
+capi GET "/api/boards/$B_FREE/tags?q=%ED%83%9C%EA%B7%B8" claude_employee02 > /dev/null; T=$(cat "$WORK/b")
 contains "자동완성(q=태그) — 게시판 글의 태그" "공개태그Y" "$T"
 lacks "  남의 비공개 페이지 태그는 없다" "비밀태그X" "$T"
 lacks "  숨긴 글의 태그는 없다" "숨김태그W" "$T"
-capi GET "/api/boards/$B_FREE/tags" qa_employee02 > /dev/null
+capi GET "/api/boards/$B_FREE/tags" claude_employee02 > /dev/null
 contains "자동완성(빈 q) — 많이 쓰인 순" "alpha" "$(cat "$WORK/b" | tr 'A-Z' 'a-z')"
 expect "  다른 게시판의 태그(팀 게시판)는 없다" "no" "$(grep -q '숨김태그Z' "$WORK/b" && echo yes || echo no)"
-expect "못 보는 게시판의 자동완성 → 403" "403" "$(capi GET "/api/boards/$B_TEAM/tags" qa_employee02)"
-capi GET "/api/boards/$B_FREE/pages?tag=ALPHA" qa_employee02 > /dev/null
+expect "못 보는 게시판의 자동완성 → 403" "403" "$(capi GET "/api/boards/$B_TEAM/tags" claude_employee02)"
+capi GET "/api/boards/$B_FREE/pages?tag=ALPHA" claude_employee02 > /dev/null
 expect "태그 거르개(대소문자 무시) — 1건" "1" "$(jget "d['total']" < "$WORK/b")"
-capi GET "/api/boards/$B_FREE/pages?q=%27%20OR%20%271%27%3D%271&sort=id;DROP&tag=%25" qa_employee02 > /dev/null
+capi GET "/api/boards/$B_FREE/pages?q=%27%20OR%20%271%27%3D%271&sort=id;DROP&tag=%25" claude_employee02 > /dev/null
 expect "인젝션 모양 q·sort·tag → 200 정상 모양 · 0건" "0" "$(jget "d['total']" < "$WORK/b")"
 
 # ════════════════════════════════════════════════════════════════
 hr "C:T-85  조회수 — 한 사람 하루 한 번"
-VP=$(new_post qa_employee01 "$B_FREE" 'C5-조회 글')
-for _ in 1 2 3; do capi GET "/api/pages/$VP" qa_employee01 > /dev/null; done
+VP=$(new_post claude_employee01 "$B_FREE" 'C5-조회 글')
+for _ in 1 2 3; do capi GET "/api/pages/$VP" claude_employee01 > /dev/null; done
 expect "같은 사람 세 번 GET → 1" "1" "$(views_of "$VP")"
-capi GET "/api/pages/$VP" qa_employee02 > /dev/null
+capi GET "/api/pages/$VP" claude_employee02 > /dev/null
 expect "다른 사람 GET → 2 · 응답 view_count 2" "2|2" "$(views_of "$VP")|$(jget "d['view_count']" < "$WORK/b")"
-expect "못 보는 사람의 GET 은 세지 않는다 (Guest 403)" "403|2" "$(capi GET "/api/pages/$VP" qa_guest01)|$(views_of "$VP")"
-capi GET "/api/boards/$B_FREE/pages?sort=views" qa_employee02 > /dev/null
+expect "못 보는 사람의 GET 은 세지 않는다 (Guest 403)" "403|2" "$(capi GET "/api/pages/$VP" claude_guest01)|$(views_of "$VP")"
+capi GET "/api/boards/$B_FREE/pages?sort=views" claude_employee02 > /dev/null
 expect "게시판 목록 — 조회수 순 첫 줄이 그 글 · views=2" "C5-조회 글|2" "$(jget "d['pages'][0]['title']" < "$WORK/b")|$(jget "d['pages'][0]['views']" < "$WORK/b")"
-lacks "  누가 봤는지는 목록에 없다" "qa_employee02" "$(jget "d['pages'][0]" < "$WORK/b")"
+lacks "  누가 봤는지는 목록에 없다" "claude_employee02" "$(jget "d['pages'][0]" < "$WORK/b")"
 
 # ════════════════════════════════════════════════════════════════
 hr "C:T-86  검색(5-B) — 게시판 글이 등급대로 · 숨긴 글은 없다"
-capi GET "/api/search?q=C5-%EC%9E%90%EC%9C%A0" qa_employee02 > /dev/null
+capi GET "/api/search?q=C5-%EC%9E%90%EC%9C%A0" claude_employee02 > /dev/null
 contains "다른 팀 사원 — 자유게시판 글이 검색된다" "C5-자유 첫 글" "$(cat "$WORK/b")"
 # 응답에는 찾은 말(`q`)이 되돌아오므로, 원문 grep 은 **결과 목록**(`results`)에만 한다.
-capi GET "/api/search?q=%EB%B9%84%EB%B0%80%EC%A0%9C%EB%AA%A9" qa_employee02 > /dev/null
+capi GET "/api/search?q=%EB%B9%84%EB%B0%80%EC%A0%9C%EB%AA%A9" claude_employee02 > /dev/null
 lacks "다른 팀 사원 — 팀 게시판 글은 검색에 없다" "비밀제목" "$(jget "d['results']" < "$WORK/b")"
-capi GET "/api/search?q=%EB%B9%84%EB%B0%80%EC%A0%9C%EB%AA%A9" qa_employee01 > /dev/null
+capi GET "/api/search?q=%EB%B9%84%EB%B0%80%EC%A0%9C%EB%AA%A9" claude_employee01 > /dev/null
 contains "같은 팀 사원 — 팀 게시판 글이 검색된다" "비밀제목" "$(jget "d['results']" < "$WORK/b")"
-for who in qa_employee01 qa_manager01 qa_admin01; do
+for who in claude_employee01 claude_manager01 claude_admin01; do
   capi GET "/api/search?q=C5-%ED%8C%80%20%EC%88%A8%EA%B8%B8" "$who" > /dev/null
   lacks "숨긴 글은 검색에 없다 — $who" "C5-팀 숨길 글" "$(jget "d['results']" < "$WORK/b")"
 done
-capi GET "/api/search?q=C5-%EA%B3%B5%EC%A7%80" qa_guest01 > /dev/null
+capi GET "/api/search?q=C5-%EA%B3%B5%EC%A7%80" claude_guest01 > /dev/null
 contains "Guest — 공개 게시판 글은 검색된다" "C5-공지 하나" "$(cat "$WORK/b")"
 
 # ════════════════════════════════════════════════════════════════
 hr "C:T-89  해결됨 — 질문답변 게시판의 쓴 사람만"
-QP=$(new_post qa_employee01 "$B_QA" 'C5-질문 하나')
-expect "쓴 사람 resolved=true → 200" "200" "$(capi PATCH "/api/pages/$QP/properties" qa_employee01 <(printf '{"resolved":true}'))"
-expect "남 → 403" "403" "$(capi PATCH "/api/pages/$QP/properties" qa_employee02 <(printf '{"resolved":false}'))"
-expect "Admin(게시판 관리자) → 403" "403" "$(capi PATCH "/api/pages/$QP/properties" qa_admin01 <(printf '{"resolved":false}'))"
-expect "질문답변이 아닌 글 → 400 not_qa" "400" "$(capi PATCH "/api/pages/$FP1/properties" qa_employee01 <(printf '{"resolved":true}'))"
-expect "resolved 가 참·거짓이 아님 → 400" "400" "$(capi PATCH "/api/pages/$QP/properties" qa_employee01 <(printf '{"resolved":"yes"}'))"
-capi GET "/api/boards/$B_QA/pages" qa_employee02 > /dev/null
+QP=$(new_post claude_employee01 "$B_QA" 'C5-질문 하나')
+expect "쓴 사람 resolved=true → 200" "200" "$(capi PATCH "/api/pages/$QP/properties" claude_employee01 <(printf '{"resolved":true}'))"
+expect "남 → 403" "403" "$(capi PATCH "/api/pages/$QP/properties" claude_employee02 <(printf '{"resolved":false}'))"
+expect "Admin(게시판 관리자) → 403" "403" "$(capi PATCH "/api/pages/$QP/properties" claude_admin01 <(printf '{"resolved":false}'))"
+expect "질문답변이 아닌 글 → 400 not_qa" "400" "$(capi PATCH "/api/pages/$FP1/properties" claude_employee01 <(printf '{"resolved":true}'))"
+expect "resolved 가 참·거짓이 아님 → 400" "400" "$(capi PATCH "/api/pages/$QP/properties" claude_employee01 <(printf '{"resolved":"yes"}'))"
+capi GET "/api/boards/$B_QA/pages" claude_employee02 > /dev/null
 contains "  목록에 resolved=true" '"resolved":true' "$(cat "$WORK/b")"
 expect "  상태 칸은 그대로 (resolved 만 보낸 요청)" "" "$(pg_page "$QP" "coalesce(p.status,'')")"
 
@@ -677,29 +686,29 @@ expect "page_views UPDATE (tbox_app) → 42501" "42501" "$(appq "UPDATE communit
 expect "page_views DELETE (tbox_app) → 42501" "42501" "$(appq "DELETE FROM community.page_views" | sed -n 's/.*ERROR: *\([0-9A-Z]\{5\}\).*/\1/p')"
 expect "page_property_events DELETE (tbox_app) → 42501" "42501" "$(appq "DELETE FROM community.page_property_events" | sed -n 's/.*ERROR: *\([0-9A-Z]\{5\}\).*/\1/p')"
 expect "처리 이력에 publish·hide·resolved 줄이 있다" "yes" \
-  "$([ "$(psqlq "SELECT count(DISTINCT prop) FROM community.page_property_events WHERE prop IN ('publish','hide','resolved')")" = 3 ] && echo yes || echo no)"
+  "$([ "$(psqlq "SELECT count(DISTINCT prop) FROM community.page_property_events WHERE id > ${PPE_MARK:-0} AND prop IN ('publish','hide','resolved')")" = 3 ] && echo yes || echo no)"
 
 # ════════════════════════════════════════════════════════════════
 hr "C:T-87  판정 함수 = 목록 SQL — 전 계정 × 전 페이지 (게시판 글 · 게시 · 숨김 포함)"
 
 # 게시·숨김 조합을 하나 더 만들어 둔다 — 숨긴 채 게시된 페이지(주인 e1, 원래 범위 team)와 게시 중인 페이지.
-P3=$(make_page qa_employee01 'C5-팀범위 게시 숨김')
-capi PATCH "/api/pages/$P3/visibility" qa_employee01 <(printf '{"visibility":"team"}') > /dev/null
-publish qa_employee01 "$P3" "$B_TEAM" > /dev/null
-capi POST "/api/pages/$P3/hide" qa_manager01 > /dev/null
-capi DELETE "/api/pages/$P3/hide" qa_manager01 > /dev/null
-share qa_employee01 "$P3" qa_employee02 view > /dev/null
-capi GET "/api/pages/$P3" qa_employee02 > /dev/null
+P3=$(make_page claude_employee01 'C5-팀범위 게시 숨김')
+capi PATCH "/api/pages/$P3/visibility" claude_employee01 <(printf '{"visibility":"team"}') > /dev/null
+publish claude_employee01 "$P3" "$B_TEAM" > /dev/null
+capi POST "/api/pages/$P3/hide" claude_manager01 > /dev/null
+capi DELETE "/api/pages/$P3/hide" claude_manager01 > /dev/null
+share claude_employee01 "$P3" claude_employee02 view > /dev/null
+capi GET "/api/pages/$P3" claude_employee02 > /dev/null
 expect "못 읽는 게시판(다른 팀)에 걸린 페이지를 공유로 볼 때 — 게시판 칸 없음 (이름 새지 않음, 독립 검토)" "200|" \
   "$(status_of "$WORK/h")|$(jget "d['board']" < "$WORK/b")"
 lacks "  응답 원문에 팀 게시판 이름 없음" "C5-팀게시판" "$(cat "$WORK/b")"
-unshare qa_employee01 "$P3" qa_employee02 > /dev/null
-capi POST "/api/pages/$P3/hide" qa_manager01 > /dev/null
+unshare claude_employee01 "$P3" claude_employee02 > /dev/null
+capi POST "/api/pages/$P3/hide" claude_manager01 > /dev/null
 A9=$(mark)
-capi GET "/api/pages/$P3" qa_admin01 > /dev/null
+capi GET "/api/pages/$P3" claude_admin01 > /dev/null
 expect "숨긴 게시 페이지를 Admin 이 열면 admin_all 감사 (판정 순서)" "1" "$(audit_n "$A9" page.read allow admin_all)"
-P4=$(make_page qa_employee02 'C5-다른팀 게시 중')
-publish qa_employee02 "$P4" "$B_FREE" > /dev/null
+P4=$(make_page claude_employee02 'C5-다른팀 게시 중')
+publish claude_employee02 "$P4" "$B_FREE" > /dev/null
 note "게시 숨김(팀 게시판): $(pg_page "$P3" "p.visibility||'/'||p.published_from||'/'||(p.hidden_at IS NOT NULL)") · 게시 중(자유): $(pg_page "$P4" "p.visibility")"
 
 cat > "$WORK/matrix.php" <<'PHP'
@@ -773,7 +782,7 @@ if ! python3 -c 'import playwright' 2>/dev/null; then
   skip "브라우저" "playwright 가 없다"
 else
   expect "브라우저 앞 Admin 재인증 → 200" "200" "$(reauth_admin)"
-  SA=$(cookie_of qa_admin01); S1=$(cookie_of qa_employee01); S2=$(cookie_of qa_employee02); SM=$(cookie_of qa_manager01)
+  SA=$(cookie_of claude_admin01); S1=$(cookie_of claude_employee01); S2=$(cookie_of claude_employee02); SM=$(cookie_of claude_manager01)
   SMOKE_ADMIN="$SA" SMOKE_E1="$S1" SMOKE_E2="$S2" SMOKE_M1="$SM" SMOKE_FREE="$B_FREE" SMOKE_TEAM="$B_TEAM" \
   SMOKE_QA="$B_QA" SMOKE_SHOTS="${SHOTS:-}" python3 "$ROOT/tests/community/browser_5c.py" "$SITE" "$UA" > "$WORK/smoke.txt" 2>&1
   sed 's/^/    /' "$WORK/smoke.txt"

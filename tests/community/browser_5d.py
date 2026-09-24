@@ -85,14 +85,14 @@ with sync_playwright() as pw:
     page.wait_for_selector("#page-comments-wrap:not([hidden])", timeout=10000)
     step("1 댓글 절 · 입력 칸", page.locator("#comment-form").is_visible())
     before = page.locator("#page-comments > li").count()
-    page.fill("#comment-input", XSS + " @qa_employee0")
+    page.fill("#comment-input", XSS + " @claude_employee0")
     page.locator("#comment-input").press("End")
     page.keyboard.type("1")
-    page.wait_for_selector('#comment-mentions [data-mention="qa_employee01"]', timeout=5000)
+    page.wait_for_selector('#comment-mentions [data-mention="claude_employee01"]', timeout=5000)
     step("1 @ 후보에 페이지 주인 · 칸 안에서 펼침(떠 있지 않음)",
          page.evaluate("() => getComputedStyle(document.getElementById('comment-mentions')).position") == "static")
-    page.click('#comment-mentions [data-mention="qa_employee01"]')
-    step("1 후보를 누르면 @아이디 가 들어간다", "@qa_employee01 " in page.input_value("#comment-input"))
+    page.click('#comment-mentions [data-mention="claude_employee01"]')
+    step("1 후보를 누르면 @아이디 가 들어간다", "@claude_employee01 " in page.input_value("#comment-input"))
     # 인용 — 본문 첫 블록의 글자를 고른다
     has_text = page.evaluate("""() => { const el = document.querySelector('#page-doc [id^="block-"]');
         if (!el || !el.firstChild) return false; const r = document.createRange(); r.selectNodeContents(el);

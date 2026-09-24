@@ -5,7 +5,7 @@
 # 부르는 쪽: tests/community/stage5a2.sh (임시 인스턴스 · 임시 DB — 운영에는 닿지 않는다)
 #
 # 쓰는 법
-#   SMOKE_ADMIN=<qa_admin01 세션(재인증 뒤)> SMOKE_E1=<qa_employee01> SMOKE_E2=<qa_employee02>
+#   SMOKE_ADMIN=<claude_admin01 세션(재인증 뒤)> SMOKE_E1=<claude_employee01> SMOKE_E2=<claude_employee02>
 #   SMOKE_P=<개인 페이지 id> SMOKE_TP=<팀 공간 페이지 id> SMOKE_N1=<employee01 이름> SMOKE_N2=<employee02 이름>
 #   [SMOKE_SHOTS=<스크린샷 폴더>] python3 browser_5a2.py <SITE> <UA>
 #
@@ -123,12 +123,12 @@ with sync_playwright() as pw:
     page.goto(TBOX + "/users", wait_until="networkidle")
     page.wait_for_selector("#users-body tr", timeout=10000)
     body_text = page.locator("#users-body").inner_text()
-    step("1 목록에 「%s」" % label(N2, "qa_employee02"), label(N2, "qa_employee02") in body_text)
-    step("1 <script> 이름이 글자 그대로 「%s」" % label(N1, "qa_employee01"), label(N1, "qa_employee01") in body_text)
+    step("1 목록에 「%s」" % label(N2, "claude_employee02"), label(N2, "claude_employee02") in body_text)
+    step("1 <script> 이름이 글자 그대로 「%s」" % label(N1, "claude_employee01"), label(N1, "claude_employee01") in body_text)
     step("1 <script> 이 DOM 요소가 되지 않았다 (목록 안 script 요소 0)",
          page.locator("#users-body script").count() == 0)
-    step("1 이름 없는 계정은 아이디만 (qa_guest01 칸 = 「qa_guest01」)",
-         page.locator("#users-body td", has_text=re.compile(r"^qa_guest01$")).count() == 1)
+    step("1 이름 없는 계정은 아이디만 (claude_guest01 칸 = 「claude_guest01」)",
+         page.locator("#users-body td", has_text=re.compile(r"^claude_guest01$")).count() == 1)
     step("1 머리 칸 「이름 (아이디)」", page.locator("th", has_text="이름 (아이디)").count() == 1)
     page.click("#user-create-open")
     page.wait_for_selector("#user-create-dialog[open]", timeout=5000)
@@ -136,7 +136,7 @@ with sync_playwright() as pw:
          and page.get_attribute("#u-name", "maxlength") == "40")
     shots(page, "1-users-create")
     page.click("#user-create-dialog-close")
-    row = page.locator("#users-body tr", has=page.locator("td", has_text=re.compile(r"^qa_guest01$")))
+    row = page.locator("#users-body tr", has=page.locator("td", has_text=re.compile(r"^claude_guest01$")))
     row.locator("button", has_text="이름·역할·팀·만료").click()
     page.wait_for_selector("#user-edit[open]", timeout=5000)
     step("1 편집 창의 이름 칸이 비어 있다 (guest01 은 이름 없음)", page.input_value("#ue-name") == "")
@@ -144,13 +144,13 @@ with sync_playwright() as pw:
     page.fill("#ue-reason", "5-A″ 브라우저 시험")
     shots(page, "1-users-edit")
     page.click("#ue-submit")
-    page.wait_for_function("() => document.getElementById('users-body').innerText.includes('(qa_guest01)')", timeout=8000)
-    step("1 저장 뒤 목록 「손님<b>굵게</b> (qa_guest01)」 글자 그대로",
-         "손님<b>굵게</b> (qa_guest01)" in page.locator("#users-body").inner_text()
+    page.wait_for_function("() => document.getElementById('users-body').innerText.includes('(claude_guest01)')", timeout=8000)
+    step("1 저장 뒤 목록 「손님<b>굵게</b> (claude_guest01)」 글자 그대로",
+         "손님<b>굵게</b> (claude_guest01)" in page.locator("#users-body").inner_text()
          and page.locator("#users-body b").count() == 0)
     shots(page, "1-users-list")
     no_hscroll(page, "1 계정 관리")
-    row = page.locator("#users-body tr", has=page.locator("td", has_text="(qa_guest01)"))
+    row = page.locator("#users-body tr", has=page.locator("td", has_text="(claude_guest01)"))
     row.locator("button", has_text="이름·역할·팀·만료").click()
     page.wait_for_selector("#user-edit[open]", timeout=5000)
     step("1 다시 열면 이름 칸에 지금 값", page.input_value("#ue-name") == "손님<b>굵게</b>")
@@ -158,7 +158,7 @@ with sync_playwright() as pw:
     page.fill("#ue-reason", "5-A″ 되돌림")
     page.click("#ue-submit")
     page.wait_for_function(
-        "() => Array.from(document.querySelectorAll('#users-body td')).some((td) => td.textContent === 'qa_guest01')",
+        "() => Array.from(document.querySelectorAll('#users-body td')).some((td) => td.textContent === 'claude_guest01')",
         timeout=8000)
     step("1 이름을 비우고 저장하면 아이디만", True)
     ctx.close()
@@ -168,12 +168,12 @@ with sync_playwright() as pw:
     ctx, page = context(browser, E2)
     page.goto(TBOX + "/", wait_until="networkidle")
     chip = page.locator(".userchip__name").inner_text().strip()
-    step("2 사이드바 사용자 칸 = 「%s」" % label(N2, "qa_employee02"), chip == label(N2, "qa_employee02"), chip)
+    step("2 사이드바 사용자 칸 = 「%s」" % label(N2, "claude_employee02"), chip == label(N2, "claude_employee02"), chip)
     page.click(".appbar__apps > summary")
     page.wait_for_timeout(300)
     menu_name = page.locator(".app-menu__me .app-menu__name").first.inner_text().strip()
-    step("2 앱 메뉴(눌러 연 뒤) 계정 줄 = 「%s」" % label(N2, "qa_employee02"),
-         menu_name == label(N2, "qa_employee02"), menu_name)
+    step("2 앱 메뉴(눌러 연 뒤) 계정 줄 = 「%s」" % label(N2, "claude_employee02"),
+         menu_name == label(N2, "claude_employee02"), menu_name)
     shots(page, "2-shell-menu")
     page.click(".appbar__apps > summary")
     page.wait_for_timeout(200)
@@ -189,20 +189,20 @@ with sync_playwright() as pw:
     page.goto(COMMUNITY + "/p/" + P, wait_until="networkidle")
     page.wait_for_selector("#page-props:not([hidden])", timeout=10000)
     owner = page.locator("#page-owner-name").inner_text().strip()
-    step("3 소유자 칸 = 「%s」 (글자 그대로)" % label(N1, "qa_employee01"), owner == label(N1, "qa_employee01"), owner)
+    step("3 소유자 칸 = 「%s」 (글자 그대로)" % label(N1, "claude_employee01"), owner == label(N1, "claude_employee01"), owner)
     step("3 소유자 칸 안에 요소가 생기지 않았다 (script 0)", page.locator("#page-owner-name *").count() == 0)
     page.click("#page-visibility-edit")
     page.wait_for_selector("#visibility-dialog[open]", timeout=5000)
     page.wait_for_timeout(600)
     step("3 치기 전 안내 「아이디나 이름을 입력하세요」 보임 · 후보 목록 숨김",
          page.locator("#share-hint").is_visible() and not page.locator("#share-candidates").is_visible())
-    step("3 공유한 사람 줄 = 「%s · Employee」" % label(N2, "qa_employee02"),
-         (label(N2, "qa_employee02") + " · Employee") in page.locator("#share-list").inner_text(),
+    step("3 공유한 사람 줄 = 「%s · Employee」" % label(N2, "claude_employee02"),
+         (label(N2, "claude_employee02") + " · Employee") in page.locator("#share-list").inner_text(),
          page.locator("#share-list").inner_text()[:80])
     page.fill("#share-search", "관리")
-    page.wait_for_selector('#share-candidates [data-candidate="qa_manager01"]', timeout=5000)
-    cand = page.locator('#share-candidates [data-candidate="qa_manager01"]').inner_text()
-    step("3 **이름**으로 찾은 후보 「박관리 (qa_manager01) · Manager — 추가」", cand.startswith("박관리 (qa_manager01) · Manager"), cand)
+    page.wait_for_selector('#share-candidates [data-candidate="claude_manager01"]', timeout=5000)
+    cand = page.locator('#share-candidates [data-candidate="claude_manager01"]').inner_text()
+    step("3 **이름**으로 찾은 후보 「박관리 (claude_manager01) · Manager — 추가」", cand.startswith("박관리 (claude_manager01) · Manager"), cand)
     step("3 치면 안내가 사라진다", not page.locator("#share-hint").is_visible())
     shots(page, "3-share-dialog")
     page.fill("#share-search", " ")
@@ -217,12 +217,12 @@ with sync_playwright() as pw:
     step("3 인계 창을 열면 후보 0 · 안내 보임 (한 글자부터)",
          page.locator("#handover-candidates li").count() == 0 and page.locator("#handover-hint").is_visible())
     page.fill("#handover-search", "둘")
-    page.wait_for_selector('#handover-candidates [data-candidate="qa_employee02"]', timeout=5000)
-    page.click('#handover-candidates [data-candidate="qa_employee02"]')
+    page.wait_for_selector('#handover-candidates [data-candidate="claude_employee02"]', timeout=5000)
+    page.click('#handover-candidates [data-candidate="claude_employee02"]')
     page.wait_for_timeout(200)
     picked = page.locator("#handover-picked").inner_text()
-    step("3 고른 받는 사람 「받는 사람: %s · Employee」" % label(N2, "qa_employee02"),
-         picked == "받는 사람: %s · Employee" % label(N2, "qa_employee02"), picked)
+    step("3 고른 받는 사람 「받는 사람: %s · Employee」" % label(N2, "claude_employee02"),
+         picked == "받는 사람: %s · Employee" % label(N2, "claude_employee02"), picked)
     shots(page, "3-handover")
     page.locator("#handover-dialog [data-handover-close]").first.click()
     page.wait_for_timeout(300)
@@ -231,8 +231,8 @@ with sync_playwright() as pw:
     page.wait_for_selector("#history-dialog[open]", timeout=5000)
     page.wait_for_timeout(800)
     hv = page.locator("#history-dialog").inner_text()
-    step("3 이력(판) 표의 바꾼 사람 「%s」" % label(N2, "qa_employee02"), label(N2, "qa_employee02") in hv)
-    step("3 이력(판) 표에 「%s」 글자 그대로" % label(N1, "qa_employee01"), label(N1, "qa_employee01") in hv)
+    step("3 이력(판) 표의 바꾼 사람 「%s」" % label(N2, "claude_employee02"), label(N2, "claude_employee02") in hv)
+    step("3 이력(판) 표에 「%s」 글자 그대로" % label(N1, "claude_employee01"), label(N1, "claude_employee01") in hv)
     shots(page, "3-history")
     page.locator("#history-dialog [data-history-close]").first.click()
     page.wait_for_timeout(300)
@@ -255,9 +255,9 @@ with sync_playwright() as pw:
     step("4 공개 범위 라디오·「바꾸기」 숨김",
          not page.locator("#visibility-choices").is_visible() and not page.locator("#visibility-save").is_visible())
     step("4 「사람 추가」 입력이 보인다", page.locator("#share-add").is_visible())
-    step("4 공유한 사람 줄에 「%s」" % label(N2, "qa_employee02"), label(N2, "qa_employee02") in page.locator("#share-list").inner_text())
+    step("4 공유한 사람 줄에 「%s」" % label(N2, "claude_employee02"), label(N2, "claude_employee02") in page.locator("#share-list").inner_text())
     page.fill("#share-search", "manager")
-    page.wait_for_selector('#share-candidates [data-candidate="qa_manager01"]', timeout=5000)
+    page.wait_for_selector('#share-candidates [data-candidate="claude_manager01"]', timeout=5000)
     shots(page, "4-team-share")
     page.locator("#visibility-dialog [data-visibility-close]").first.click()
     page.wait_for_timeout(300)

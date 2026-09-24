@@ -18,6 +18,7 @@
 set -u
 
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
+. "$ROOT/tests/lib/secrets.sh" || { echo "tests/lib/secrets.sh 를 읽지 못했다 — 시험을 시작하지 않는다 (R-62)"; exit 3; }
 PORT=8089
 SITE="http://127.0.0.1:$PORT"
 BASE="$SITE/tbox"
@@ -96,19 +97,19 @@ qa_password() { sudo -n awk -v u="$1" '$1==u{print $3}' /etc/tbox-v2/seed-accoun
 qa_secret()   { sudo -n awk -v u="$1" '$1==u{print $2}' /etc/tbox-v2/qa-totp.txt 2>/dev/null; }
 
 login() {
-  local who="$1" jar="$JAR_DIR/$1.jar" pw sec raw code left out try
+  local who="$1" jar="$JAR_DIR/$1.jar" pw sec raw code left out try body
   pw=$(qa_password "$who")
   sec=$(qa_secret "$who")
   [ -n "$pw" ] || return 2
   for try in 1 2 3; do
     if [ -n "$sec" ]; then
-      raw=$(php "$ROOT/scripts/totp_code.php" "$sec" 2>/dev/null)
+      raw=$(totp_now sec 2>/dev/null)
       code=${raw%%$'\n'*}
-      out=$(curl -s -c "$jar" -A "$UA" -H 'Content-Type: application/json' \
-            -d "{\"username\":\"$who\",\"password\":\"$pw\",\"otp\":\"$code\"}" "$BASE/api/login")
+      printf -v body '{"username":"%s","password":"%s","otp":"%s"}' "$who" "$pw" "$code"
+      out=$(curl_json_secret body -s -c "$jar" -A "$UA" -H 'Content-Type: application/json' "$BASE/api/login")
     else
-      out=$(curl -s -c "$jar" -A "$UA" -H 'Content-Type: application/json' \
-            -d "{\"username\":\"$who\",\"password\":\"$pw\"}" "$BASE/api/login")
+      printf -v body '{"username":"%s","password":"%s"}' "$who" "$pw"
+      out=$(curl_json_secret body -s -c "$jar" -A "$UA" -H 'Content-Type: application/json' "$BASE/api/login")
     fi
     case "$out" in
       *'"ok":true'*)
@@ -268,17 +269,17 @@ expect "임시 인스턴스가 떴다 (미로그인 커뮤니티 창구 401)" "4
 [ "$READY" = "401" ] || { echo "인스턴스를 띄우지 못했다 — 중단"; tail -5 "$INST/server.log"; exit 4; }
 
 sub "로그인 (qa 계정 다섯 — **순차**)"
-for who in qa_employee01 qa_employee02 qa_manager01 qa_admin01 qa_guest01; do
+for who in claude_employee01 claude_employee02 claude_manager01 claude_admin01 claude_guest01; do
   tok=$(login "$who")
   if [ -z "$tok" ]; then echo "  ✖ $who 로그인 실패 — 중단"; exit 4; fi
   eval "CSRF_${who}='$tok'"
   echo "  ✔ $who"
 done
 # 개인 공간을 연다(없으면 만든다) — 그 뒤의 목록·인계가 공간을 전제로 한다.
-for who in qa_employee01 qa_employee02 qa_manager01 qa_admin01; do capi GET /api/me/space "$who" > /dev/null; done
-TEAM1=$(psqlq "SELECT team_id FROM users WHERE username='qa_employee01'")
-TEAM2=$(psqlq "SELECT team_id FROM users WHERE username='qa_employee02'")
-note "팀: qa_employee01·qa_manager01=$TEAM1 · qa_employee02=$TEAM2"
+for who in claude_employee01 claude_employee02 claude_manager01 claude_admin01; do capi GET /api/me/space "$who" > /dev/null; done
+TEAM1=$(psqlq "SELECT team_id FROM users WHERE username='claude_employee01'")
+TEAM2=$(psqlq "SELECT team_id FROM users WHERE username='claude_employee02'")
+note "팀: claude_employee01·claude_manager01=$TEAM1 · claude_employee02=$TEAM2"
 DEAD=$(psqlq "SELECT username FROM public.users WHERE is_active = false ORDER BY id LIMIT 1")
 note "비활성 계정: ${DEAD:-없음}"
 
@@ -305,12 +306,12 @@ page_html() {   # $1 주소(SITE 기준 경로) $2 계정
 }
 uid() { psqlq "SELECT id FROM users WHERE username='$1'"; }
 reauth_admin() {
-  local pw rc
-  pw=$(qa_password qa_admin01)
-  python3 -c "import json,sys;print(json.dumps({'password':sys.argv[1]}))" "$pw" > "$WORK/reauth.json"
-  rc=$(curl -s -o /dev/null -w '%{http_code}' -b "$JAR_DIR/qa_admin01.jar" -A "$UA" -H 'Content-Type: application/json' \
-        -H "X-CSRF-Token: $CSRF_qa_admin01" --data-binary "@$WORK/reauth.json" "$BASE/api/me/reauth")
-  rm -f "$WORK/reauth.json"
+  local pw rc body
+  pw=$(qa_password claude_admin01)
+  # 비밀번호는 파이썬에 표준입력으로, 본문은 curl 에 표준입력으로 — 명령 인자·임시 파일에 싣지 않는다(R-62)
+  body=$(py_secret pw -- python3 -c 'import json,sys; pw=sys.stdin.readline().rstrip("\n"); print(json.dumps({"password":pw}))')
+  rc=$(curl_json_secret body -s -o /dev/null -w '%{http_code}' -b "$JAR_DIR/claude_admin01.jar" -A "$UA" -H 'Content-Type: application/json' \
+        -H "X-CSRF-Token: $CSRF_claude_admin01" "$BASE/api/me/reauth")
   printf '%s' "$rc"
 }
 
@@ -412,11 +413,11 @@ errs() { jget "' '.join(e['reason'] for e in d.get('errors', []))" < "$WORK/b"; 
 space_of() { psqlq "SELECT s.id FROM community.spaces s WHERE s.kind='team' AND s.team_id=$1 ORDER BY s.id LIMIT 1"; }
 
 # ─── 시험 파일 (t-box 창구로 올린다 — 임시 인스턴스의 임시 저장소) ───
-F_INT=$(upload qa_employee01 'C5E-사내파일.txt' internal)
-F_T1=$(upload qa_employee01 'C5E-팀1파일.txt' team "$TEAM1")
-F_T2=$(upload qa_employee02 'C5E-팀2파일.txt' team "$TEAM2")
-F_ADM=$(upload qa_admin01 'C5E-관리자파일.txt' admin-only)
-F_IMG=$(upload qa_employee01 'C5E-그림.png' internal)
+F_INT=$(upload claude_employee01 'C5E-사내파일.txt' internal)
+F_T1=$(upload claude_employee01 'C5E-팀1파일.txt' team "$TEAM1")
+F_T2=$(upload claude_employee02 'C5E-팀2파일.txt' team "$TEAM2")
+F_ADM=$(upload claude_admin01 'C5E-관리자파일.txt' admin-only)
+F_IMG=$(upload claude_employee01 'C5E-그림.png' internal)
 for f in F_INT F_T1 F_T2 F_ADM F_IMG; do
   eval "v=\$$f"
   [ -n "$v" ] && echo "  ✔ $f 올림" || { echo "  ✖ $f 업로드 실패 — $(cat "$WORK/up.json")"; exit 4; }
@@ -427,86 +428,86 @@ NOFILE=$(python3 -c 'import uuid;print(uuid.uuid4())')
 
 # ════════════════════════════════════════════════════════════════
 hr "C:T-110  검증 — 새 블록 다섯의 모양"
-P0=$(make_page qa_employee01 'C5E-검증 페이지')
-PL=$(make_page qa_employee01 'C5E-링크 대상')
+P0=$(make_page claude_employee01 'C5E-검증 페이지')
+PL=$(make_page claude_employee01 'C5E-링크 대상')
 expect "새 블록 다섯(토글·표·링크·그림·파일)이 든 문서 → 200" "200" \
-  "$(put_doc qa_employee01 "$P0" "[TOG('펼치기',['안쪽 하나','안쪽 둘']), TAB([['항목','담당'],['계획','김']]), LNK('$PL'), IMG('$F_IMG','wide','설명'), FIL('$F_INT','첨부')]")"
+  "$(put_doc claude_employee01 "$P0" "[TOG('펼치기',['안쪽 하나','안쪽 둘']), TAB([['항목','담당'],['계획','김']]), LNK('$PL'), IMG('$F_IMG','wide','설명'), FIL('$F_INT','첨부')]")"
 expect "  저장된 본문에 토글 하위 문단 둘" "2" "$(psqlq "SELECT jsonb_array_length(doc->'blocks'->0->'children') FROM community.pages WHERE public_id='$P0'")"
-expect "file_ref 가 tbox: 형태가 아님(http) → 400" "400" "$(put_doc qa_employee01 "$P0" "[IMG('http://evil.example/x.png')]")"
+expect "file_ref 가 tbox: 형태가 아님(http) → 400" "400" "$(put_doc claude_employee01 "$P0" "[IMG('http://evil.example/x.png')]")"
 contains "  사유 bad_ref" "bad_ref" "$(errs)"
-expect "file_ref 가 tbox:UUID 아님 → 400" "400" "$(put_doc qa_employee01 "$P0" "[FIL('tbox:../../etc/passwd')]")"
-expect "표 칸 병합이 글자 든 칸을 덮음(6-C 부터 병합은 되지만 덮이는 칸은 비어야) → 400" "400" "$(put_doc qa_employee01 "$P0" "[{**TAB([['a','b'],['c','d']]), 'rows':[{'cells':[{'text':[],'rowspan':2},{'text':[]}]},{'cells':[{'text':[{'t':'c','m':{}}]},{'text':[]}]}]}]")"
-expect "행마다 칸 수가 다름 → 400" "400" "$(put_doc qa_employee01 "$P0" "[TAB([['a','b'],['c']])]")"
+expect "file_ref 가 tbox:UUID 아님 → 400" "400" "$(put_doc claude_employee01 "$P0" "[FIL('tbox:../../etc/passwd')]")"
+expect "표 칸 병합이 글자 든 칸을 덮음(6-C 부터 병합은 되지만 덮이는 칸은 비어야) → 400" "400" "$(put_doc claude_employee01 "$P0" "[{**TAB([['a','b'],['c','d']]), 'rows':[{'cells':[{'text':[],'rowspan':2},{'text':[]}]},{'cells':[{'text':[{'t':'c','m':{}}]},{'text':[]}]}]}]")"
+expect "행마다 칸 수가 다름 → 400" "400" "$(put_doc claude_employee01 "$P0" "[TAB([['a','b'],['c']])]")"
 contains "  사유 ragged_row" "ragged_row" "$(errs)"
-expect "201행 → 400" "400" "$(put_doc qa_employee01 "$P0" "[TAB([['x']]*201)]")"
-expect "21열 → 400" "400" "$(put_doc qa_employee01 "$P0" "[TAB([['x']*21])]")"
-expect "200행 × 1열 → 200 (한도 안)" "200" "$(put_doc qa_employee01 "$P0" "[TAB([['x']]*200)]")"
-expect "열 폭 39px → 400" "400" "$(put_doc qa_employee01 "$P0" "[TAB([['a','b']], col_widths=[39,100])]")"
-expect "열 폭 수가 열 수보다 많음 → 400" "400" "$(put_doc qa_employee01 "$P0" "[TAB([['a','b']], col_widths=[100,100,100])]")"
-expect "모르는 칸(표에 onclick) → 400" "400" "$(put_doc qa_employee01 "$P0" "[TAB([['a']], onclick='x')]")"
-expect "토글에 하위가 없다 → 400" "400" "$(put_doc qa_employee01 "$P0" "[{**TOG('s',[]), 'children': None}]")"
-expect "link_to_page 가 UUID 아님 → 400" "400" "$(put_doc qa_employee01 "$P0" "[{**LNK('$PL'), 'page_id':'x'}]")"
-expect "그림 폭이 목록 밖 → 400" "400" "$(put_doc qa_employee01 "$P0" "[IMG('$F_IMG','huge')]")"
-expect "허용 목록 밖 embed → 400(7-C)" "400" "$(put_doc qa_employee01 "$P0" "[{'id':'$(python3 -c 'import uuid;print(uuid.uuid4())')','type':'embed','url':'https://example.com/'}]")"
+expect "201행 → 400" "400" "$(put_doc claude_employee01 "$P0" "[TAB([['x']]*201)]")"
+expect "21열 → 400" "400" "$(put_doc claude_employee01 "$P0" "[TAB([['x']*21])]")"
+expect "200행 × 1열 → 200 (한도 안)" "200" "$(put_doc claude_employee01 "$P0" "[TAB([['x']]*200)]")"
+expect "열 폭 39px → 400" "400" "$(put_doc claude_employee01 "$P0" "[TAB([['a','b']], col_widths=[39,100])]")"
+expect "열 폭 수가 열 수보다 많음 → 400" "400" "$(put_doc claude_employee01 "$P0" "[TAB([['a','b']], col_widths=[100,100,100])]")"
+expect "모르는 칸(표에 onclick) → 400" "400" "$(put_doc claude_employee01 "$P0" "[TAB([['a']], onclick='x')]")"
+expect "토글에 하위가 없다 → 400" "400" "$(put_doc claude_employee01 "$P0" "[{**TOG('s',[]), 'children': None}]")"
+expect "link_to_page 가 UUID 아님 → 400" "400" "$(put_doc claude_employee01 "$P0" "[{**LNK('$PL'), 'page_id':'x'}]")"
+expect "그림 폭이 목록 밖 → 400" "400" "$(put_doc claude_employee01 "$P0" "[IMG('$F_IMG','huge')]")"
+expect "허용 목록 밖 embed → 400(7-C)" "400" "$(put_doc claude_employee01 "$P0" "[{'id':'$(python3 -c 'import uuid;print(uuid.uuid4())')','type':'embed','url':'https://example.com/'}]")"
 contains "  사유 embed_not_allowed" "embed_not_allowed" "$(jget "d.get('reason','')" < "$WORK/b")"
 jbody "{'title':'C5E-새 페이지 파일','doc':{'schema':1,'blocks':[{'id':'$(python3 -c 'import uuid;print(uuid.uuid4())')','type':'file','file_ref':'tbox:$F_INT'}]}}"
-st=$(capi POST /api/pages qa_employee01 "$WORK/body.json")
+st=$(capi POST /api/pages claude_employee01 "$WORK/body.json")
 expect "새 페이지 만들 때 본문에 파일 → 400 (만든 뒤 편집으로 붙인다)" "400" "$st"
 
 # ════════════════════════════════════════════════════════════════
 hr "C:T-111  첨부 규칙 — 같은 400 · 범위보다 좁은 파일 400"
-PP=$(make_page qa_employee01 'C5E-비공개 페이지')
+PP=$(make_page claude_employee01 'C5E-비공개 페이지')
 m0=$(mark)
-st1=$(put_doc qa_employee01 "$PP" "[FIL('$NOFILE')]"); b1=$(cat "$WORK/b")
-st2=$(put_doc qa_employee01 "$PP" "[FIL('$F_T2')]");   b2=$(cat "$WORK/b")
+st1=$(put_doc claude_employee01 "$PP" "[FIL('$NOFILE')]"); b1=$(cat "$WORK/b")
+st2=$(put_doc claude_employee01 "$PP" "[FIL('$F_T2')]");   b2=$(cat "$WORK/b")
 expect "없는 파일 → 400" "400" "$st1"
 expect "남의 팀 파일(못 봄) → 400" "400" "$st2"
 expect "  두 응답 원문이 한 글자도 다르지 않다(결정 E-5)" "$b1" "$b2"
 expect "  감사 page.update deny file_ref 2건" "2" "$(audit_n "$m0" page.update deny file_ref)"
 lacks "  감사 detail 에 파일 UUID 가 없다" "$F_T2" "$(psqlq "SELECT string_agg(coalesce(detail::text,''),' ') FROM audit_logs WHERE id > $m0")"
-expect "비공개 페이지에 내 팀 파일 → 200" "200" "$(put_doc qa_employee01 "$PP" "[FIL('$F_T1'), P('본문')]")"
-expect "  그 페이지를 사내로 넓히기 → 400 file_narrower" "400" "$(capi PATCH "/api/pages/$PP/visibility" qa_employee01 <(printf '{"visibility":"internal"}'))"
+expect "비공개 페이지에 내 팀 파일 → 200" "200" "$(put_doc claude_employee01 "$PP" "[FIL('$F_T1'), P('본문')]")"
+expect "  그 페이지를 사내로 넓히기 → 400 file_narrower" "400" "$(capi PATCH "/api/pages/$PP/visibility" claude_employee01 <(printf '{"visibility":"internal"}'))"
 contains "  사유 file_narrower" "file_narrower" "$(cat "$WORK/b")"
-expect "  팀으로 넓히기(내 팀 = 파일 팀) → 200" "200" "$(capi PATCH "/api/pages/$PP/visibility" qa_employee01 <(printf '{"visibility":"team"}'))"
-expect "  팀 범위 페이지에 남의 팀 파일은 여전히 400" "400" "$(put_doc qa_employee01 "$PP" "[FIL('$F_T1'), FIL('$F_T2')]")"
-PI=$(make_page qa_employee01 'C5E-사내 페이지'); set_vis qa_employee01 "$PI" internal
-expect "사내 페이지에 팀 파일 → 400" "400" "$(put_doc qa_employee01 "$PI" "[FIL('$F_T1')]")"
-expect "사내 페이지에 사내 파일 → 200" "200" "$(put_doc qa_employee01 "$PI" "[FIL('$F_INT','사내 첨부'), IMG('$F_IMG','normal','그림 설명')]")"
+expect "  팀으로 넓히기(내 팀 = 파일 팀) → 200" "200" "$(capi PATCH "/api/pages/$PP/visibility" claude_employee01 <(printf '{"visibility":"team"}'))"
+expect "  팀 범위 페이지에 남의 팀 파일은 여전히 400" "400" "$(put_doc claude_employee01 "$PP" "[FIL('$F_T1'), FIL('$F_T2')]")"
+PI=$(make_page claude_employee01 'C5E-사내 페이지'); set_vis claude_employee01 "$PI" internal
+expect "사내 페이지에 팀 파일 → 400" "400" "$(put_doc claude_employee01 "$PI" "[FIL('$F_T1')]")"
+expect "사내 페이지에 사내 파일 → 200" "200" "$(put_doc claude_employee01 "$PI" "[FIL('$F_INT','사내 첨부'), IMG('$F_IMG','normal','그림 설명')]")"
 expect "관리자 전용 파일은 관리자도 비공개 페이지에만" "400" \
-  "$(PA=$(make_page qa_admin01 'C5E-관리자 사내'); set_vis qa_admin01 "$PA" internal; put_doc qa_admin01 "$PA" "[FIL('$F_ADM')]")"
-PAP=$(make_page qa_admin01 'C5E-관리자 비공개')
-expect "  관리자 비공개 페이지에 관리자 전용 파일 → 200" "200" "$(put_doc qa_admin01 "$PAP" "[FIL('$F_ADM')]")"
-expect "사원이 관리자 전용 파일(못 봄) → 400" "400" "$(put_doc qa_employee01 "$PP" "[FIL('$F_T1'), FIL('$F_ADM')]")"
+  "$(PA=$(make_page claude_admin01 'C5E-관리자 사내'); set_vis claude_admin01 "$PA" internal; put_doc claude_admin01 "$PA" "[FIL('$F_ADM')]")"
+PAP=$(make_page claude_admin01 'C5E-관리자 비공개')
+expect "  관리자 비공개 페이지에 관리자 전용 파일 → 200" "200" "$(put_doc claude_admin01 "$PAP" "[FIL('$F_ADM')]")"
+expect "사원이 관리자 전용 파일(못 봄) → 400" "400" "$(put_doc claude_employee01 "$PP" "[FIL('$F_T1'), FIL('$F_ADM')]")"
 # 하위까지 함께 넓히기 — 하위의 좁은 파일도 본다
-PR=$(make_page qa_employee01 'C5E-부모'); PK=$(make_page qa_employee01 'C5E-자식' "$PR")
-put_doc qa_employee01 "$PK" "[FIL('$F_T1')]" > /dev/null
+PR=$(make_page claude_employee01 'C5E-부모'); PK=$(make_page claude_employee01 'C5E-자식' "$PR")
+put_doc claude_employee01 "$PK" "[FIL('$F_T1')]" > /dev/null
 expect "하위까지 함께 사내로 — 자식의 팀 파일 때문에 400" "400" \
-  "$(capi PATCH "/api/pages/$PR/visibility" qa_employee01 <(printf '{"visibility":"internal","cascade":true}'))"
+  "$(capi PATCH "/api/pages/$PR/visibility" claude_employee01 <(printf '{"visibility":"internal","cascade":true}'))"
 expect "  부모는 그대로 비공개" "private" "$(pg_page "$PR" "p.visibility")"
 expect "하위까지 함께 팀으로(같은 팀 파일) → 200" "200" \
-  "$(capi PATCH "/api/pages/$PR/visibility" qa_employee01 <(printf '{"visibility":"team","cascade":true}'))"
+  "$(capi PATCH "/api/pages/$PR/visibility" claude_employee01 <(printf '{"visibility":"team","cascade":true}'))"
 # 게시 — 자유게시판(사내)에 팀 파일이 붙은 페이지
-PB=$(make_page qa_employee01 'C5E-게시할 페이지')
-put_doc qa_employee01 "$PB" "[FIL('$F_T1')]" > /dev/null
+PB=$(make_page claude_employee01 'C5E-게시할 페이지')
+put_doc claude_employee01 "$PB" "[FIL('$F_T1')]" > /dev/null
 m1=$(mark)
-expect "게시(자유게시판)하려는데 팀 파일 → 400" "400" "$(publish qa_employee01 "$PB" "$B_FREE")"
+expect "게시(자유게시판)하려는데 팀 파일 → 400" "400" "$(publish claude_employee01 "$PB" "$B_FREE")"
 contains "  사유 file_narrower" "file_narrower" "$(cat "$WORK/b")"
 expect "  감사 page.publish deny file_narrower 1건" "1" "$(audit_n "$m1" page.publish deny file_narrower)"
 expect "  페이지는 게시되지 않았다" "private" "$(pg_page "$PB" "p.visibility")"
-put_doc qa_employee01 "$PB" "[FIL('$F_INT')]" > /dev/null
-expect "사내 파일로 바꾸면 게시 → 200" "200" "$(publish qa_employee01 "$PB" "$B_FREE")"
-expect "게시 중 페이지에 팀 파일을 새로 붙이기 → 400" "400" "$(put_doc qa_employee01 "$PB" "[FIL('$F_INT'), FIL('$F_T1')]")"
+put_doc claude_employee01 "$PB" "[FIL('$F_INT')]" > /dev/null
+expect "사내 파일로 바꾸면 게시 → 200" "200" "$(publish claude_employee01 "$PB" "$B_FREE")"
+expect "게시 중 페이지에 팀 파일을 새로 붙이기 → 400" "400" "$(put_doc claude_employee01 "$PB" "[FIL('$F_INT'), FIL('$F_T1')]")"
 # 판 되살리기 — 예전 판에 팀 파일, 지금은 사내
-PV=$(make_page qa_employee01 'C5E-되살리기')
-put_doc qa_employee01 "$PV" "[FIL('$F_T1')]" > /dev/null
+PV=$(make_page claude_employee01 'C5E-되살리기')
+put_doc claude_employee01 "$PV" "[FIL('$F_T1')]" > /dev/null
 # 같은 사람이 5분 안에 고치면 판을 합친다 — **임시 DB 에서만** 마지막 판 시각을 10분 앞으로 당겨 새 판이 남게 한다.
 psqlq "UPDATE community.page_versions v SET edited_at = v.edited_at - interval '10 minutes' FROM community.pages p WHERE p.id=v.page_id AND p.public_id='$PV'" > /dev/null
-put_doc qa_employee01 "$PV" "[P('파일 뺌')]" > /dev/null
-set_vis qa_employee01 "$PV" internal
+put_doc claude_employee01 "$PV" "[P('파일 뺌')]" > /dev/null
+set_vis claude_employee01 "$PV" internal
 VN=$(psqlq "SELECT v.version FROM community.page_versions v JOIN community.pages p ON p.id=v.page_id WHERE p.public_id='$PV' AND v.doc::text LIKE '%$F_T1%' ORDER BY v.version DESC LIMIT 1")
 if [ -n "$VN" ]; then
   m2=$(mark)
-  expect "사내 페이지에 팀 파일이 든 예전 판 되살리기 → 400" "400" "$(capi POST "/api/pages/$PV/versions/$VN/restore" qa_employee01 <(printf '{}'))"
+  expect "사내 페이지에 팀 파일이 든 예전 판 되살리기 → 400" "400" "$(capi POST "/api/pages/$PV/versions/$VN/restore" claude_employee01 <(printf '{}'))"
   expect "  감사 page.restore_version deny file_ref 1건" "1" "$(audit_n "$m2" page.restore_version deny file_ref)"
 else
   skip "판 되살리기" "팀 파일이 든 판을 찾지 못했다(판 저장 간격)"
@@ -514,49 +515,49 @@ fi
 
 # ════════════════════════════════════════════════════════════════
 hr "C:T-112  그리기 — 파일 이름은 볼 수 있는 사람에게만 · 그림은 t-box 창구"
-capi GET "/api/pages/$PI" qa_employee02 > /dev/null
+capi GET "/api/pages/$PI" claude_employee02 > /dev/null
 contains "사내 페이지 — 다른 팀 사원도 사내 파일 이름을 본다" "C5E-사내파일.txt" "$(cat "$WORK/b")"
 expect "  file_titles 의 그림 표시(image) 참" "True" "$(jget "d['file_titles']['$F_IMG']['image']" < "$WORK/b")"
-expect "  그림 원본 — t-box 창구가 employee02 에게 200" "200" "$(tapi GET "/api/files/$F_IMG/preview/raw" qa_employee02)"
+expect "  그림 원본 — t-box 창구가 employee02 에게 200" "200" "$(tapi GET "/api/files/$F_IMG/preview/raw" claude_employee02)"
 # 비공개 페이지 + 팀 파일 + 다른 팀 사원에게 보기 공유 → 페이지는 보지만 파일 이름은 0
-PS=$(make_page qa_employee01 'C5E-공유 페이지')
-put_doc qa_employee01 "$PS" "[FIL('$F_T1','팀 첨부'), IMG('$F_T1')]" > /dev/null
-share qa_employee01 "$PS" qa_employee02 view > /dev/null
-expect "공유받은 다른 팀 사원이 페이지 GET → 200" "200" "$(capi GET "/api/pages/$PS" qa_employee02)"
+PS=$(make_page claude_employee01 'C5E-공유 페이지')
+put_doc claude_employee01 "$PS" "[FIL('$F_T1','팀 첨부'), IMG('$F_T1')]" > /dev/null
+share claude_employee01 "$PS" claude_employee02 view > /dev/null
+expect "공유받은 다른 팀 사원이 페이지 GET → 200" "200" "$(capi GET "/api/pages/$PS" claude_employee02)"
 lacks "  응답 원문에 팀 파일 이름 없음" "C5E-팀1파일" "$(cat "$WORK/b")"
 expect "  file_titles 는 빈 지도" "0" "$(jget "len(d['file_titles'])" < "$WORK/b")"
-code=$(tapi GET "/api/files/$F_T1/preview/raw" qa_employee02)
+code=$(tapi GET "/api/files/$F_T1/preview/raw" claude_employee02)
 expect "  그 파일 원본을 직접 부르면 t-box 가 막는다(403)" "403" "$code"
-capi GET "/api/pages/$PS" qa_employee01 > /dev/null
+capi GET "/api/pages/$PS" claude_employee01 > /dev/null
 contains "주인에게는 이름이 보인다" "C5E-팀1파일.txt" "$(cat "$WORK/b")"
 # 판 이력 응답도 이름을 흘리지 않는다
-capi GET "/api/pages/$PS/versions" qa_employee02 > /dev/null
+capi GET "/api/pages/$PS/versions" claude_employee02 > /dev/null
 lacks "  판 목록에 팀 파일 이름 없음" "C5E-팀1파일" "$(cat "$WORK/b")"
 
 # ════════════════════════════════════════════════════════════════
 hr "C:T-113  역참조 — 볼 수 있는 페이지만"
-PT=$(make_page qa_employee01 'C5E-참조받는 페이지'); set_vis qa_employee01 "$PT" internal
-PX=$(make_page qa_employee01 'C5E-비밀 참조 페이지')
-put_doc qa_employee01 "$PX" "[LNK('$PT')]" > /dev/null
-PY_=$(make_page qa_employee02 'C5E-공개 참조 페이지'); set_vis qa_employee02 "$PY_" internal
-put_doc qa_employee02 "$PY_" "[P('링크 마크 말고 카드로'), LNK('$PT')]" > /dev/null
-capi GET "/api/pages/$PT" qa_employee02 > /dev/null
+PT=$(make_page claude_employee01 'C5E-참조받는 페이지'); set_vis claude_employee01 "$PT" internal
+PX=$(make_page claude_employee01 'C5E-비밀 참조 페이지')
+put_doc claude_employee01 "$PX" "[LNK('$PT')]" > /dev/null
+PY_=$(make_page claude_employee02 'C5E-공개 참조 페이지'); set_vis claude_employee02 "$PY_" internal
+put_doc claude_employee02 "$PY_" "[P('링크 마크 말고 카드로'), LNK('$PT')]" > /dev/null
+capi GET "/api/pages/$PT" claude_employee02 > /dev/null
 contains "다른 사원 — 사내 참조 페이지는 보인다" "C5E-공개 참조 페이지" "$(cat "$WORK/b")"
 lacks "  비공개 참조 페이지 제목은 없다" "C5E-비밀 참조 페이지" "$(cat "$WORK/b")"
 expect "  역참조 수 1 (가려진 수를 말하지 않는다)" "1" "$(jget "len(d['backlinks'])" < "$WORK/b")"
-capi GET "/api/pages/$PT" qa_employee01 > /dev/null
+capi GET "/api/pages/$PT" claude_employee01 > /dev/null
 contains "주인 — 자기 비공개 참조 페이지도 본다" "C5E-비밀 참조 페이지" "$(cat "$WORK/b")"
 # 링크 카드 제목: 사내 페이지가 비공개 페이지를 가리키면 남에게 제목 없음
-PZ=$(make_page qa_employee01 'C5E-링크 카드 페이지'); set_vis qa_employee01 "$PZ" internal
-put_doc qa_employee01 "$PZ" "[LNK('$PX'), LNK('$PT')]" > /dev/null
-capi GET "/api/pages/$PZ" qa_employee02 > /dev/null
+PZ=$(make_page claude_employee01 'C5E-링크 카드 페이지'); set_vis claude_employee01 "$PZ" internal
+put_doc claude_employee01 "$PZ" "[LNK('$PX'), LNK('$PT')]" > /dev/null
+capi GET "/api/pages/$PZ" claude_employee02 > /dev/null
 lacks "링크 카드 — 못 보는 페이지 제목 없음" "C5E-비밀 참조 페이지" "$(cat "$WORK/b")"
 contains "  볼 수 있는 페이지 제목은 있다" "C5E-참조받는 페이지" "$(cat "$WORK/b")"
-PCELL=$(make_page qa_employee02 'C5E-표 칸 링크 페이지'); set_vis qa_employee02 "$PCELL" internal
-put_doc qa_employee02 "$PCELL" "[{**TAB([['a']]), 'rows':[{'cells':[{'text':[{'t':'칸 링크','m':{'link':{'href':'page:$PT'}}}]}]}]}]" > /dev/null
-capi GET "/api/pages/$PT" qa_employee01 > /dev/null
+PCELL=$(make_page claude_employee02 'C5E-표 칸 링크 페이지'); set_vis claude_employee02 "$PCELL" internal
+put_doc claude_employee02 "$PCELL" "[{**TAB([['a']]), 'rows':[{'cells':[{'text':[{'t':'칸 링크','m':{'link':{'href':'page:$PT'}}}]}]}]}]" > /dev/null
+capi GET "/api/pages/$PT" claude_employee01 > /dev/null
 contains "표 칸 안의 페이지 링크도 역참조에 (독립 검토 L4)" "C5E-표 칸 링크 페이지" "$(cat "$WORK/b")"
-capi GET "/api/pages/$PZ" qa_employee02 > /dev/null
+capi GET "/api/pages/$PZ" claude_employee02 > /dev/null
 lacks "  역참조 목록에 자기 자신은 없다" "\"id\":\"$PZ\"" "$(jget "json.dumps(d['backlinks'])" < "$WORK/b")"
 
 # ════════════════════════════════════════════════════════════════
@@ -630,10 +631,10 @@ PY2
 if ! python3 -c 'import playwright' 2>/dev/null; then
   skip "브라우저" "playwright 가 없다"
 else
-  PE=$(make_page qa_employee01 'C5E-브라우저 페이지'); set_vis qa_employee01 "$PE" internal
-  PCOL=$(make_page qa_employee01 'C5E-꾸민 표')
-  put_doc qa_employee01 "$PCOL" "[{**TAB([['색 칸']]), 'rows':[{'cells':[{'text':[{'t':'색 칸','m':{}}],'color':'red'}]}]}]" > /dev/null
-  SMOKE_PCOL="$PCOL" SMOKE_E1="$(cookie_of qa_employee01)" SMOKE_E2="$(cookie_of qa_employee02)" \
+  PE=$(make_page claude_employee01 'C5E-브라우저 페이지'); set_vis claude_employee01 "$PE" internal
+  PCOL=$(make_page claude_employee01 'C5E-꾸민 표')
+  put_doc claude_employee01 "$PCOL" "[{**TAB([['색 칸']]), 'rows':[{'cells':[{'text':[{'t':'색 칸','m':{}}],'color':'red'}]}]}]" > /dev/null
+  SMOKE_PCOL="$PCOL" SMOKE_E1="$(cookie_of claude_employee01)" SMOKE_E2="$(cookie_of claude_employee02)" \
   SMOKE_PE="$PE" SMOKE_PT="$PT" SMOKE_PI="$PI" SMOKE_FILE_NAME='C5E-사내파일.txt' SMOKE_IMG_NAME='C5E-그림.png' \
   SMOKE_SAMPLES="$WORK/samples5e.json" SMOKE_CTX="$WORK/ctx5e.json" SMOKE_PHP="$WORK/php5e.json" SMOKE_SHOTS="${SHOTS:-}" \
     python3 "$ROOT/tests/community/browser_5e.py" "$SITE" "$UA" > "$WORK/smoke.txt" 2>&1

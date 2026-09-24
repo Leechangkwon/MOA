@@ -9,7 +9,7 @@
 #   C:T-40 기록 불변    **앱 계정(tbox_app)으로** `UPDATE`·`DELETE` ×4 → 전부 42501
 #   C:T-41 체크 이력    켜고 끄고 다시 켜기 → `checklist_events` 3행 · 「처리 이력」 3줄 ·
 #                       누가·언제가 맞다
-#   C:T-42 남의 이력    qa_employee02 의 `versions`·`history`·`versions/{n}`·`restore` → 403 ·
+#   C:T-42 남의 이력    claude_employee02 의 `versions`·`history`·`versions/{n}`·`restore` → 403 ·
 #                       없는 판 번호 404 · 볼 수는 있으나 고칠 수 없는 사람(Admin)의 되돌리기 403
 #   C:T-43 휴지통       하위까지 삭제 → 휴지통에 보임 → 되살리면 하위까지 함께 ·
 #                       부모가 아직 지워져 있으면 뿌리로 올라오고 응답에 `moved_to_root: true`
@@ -19,7 +19,7 @@
 #   회귀                security_lint 0 · php -l · bash -n · doc-schema 사본 diff 0
 #
 # 규칙 (CLAUDE.md 3장) — stage3.sh·stage4a.sh·stage4b.sh 와 같다
-#   · 검토 계정 `qa_` 다섯뿐. 시드 계정은 사용자 몫.
+#   · 검토 계정 `claude_` 다섯뿐. 시드 계정은 사용자 몫.
 #   · 모든 요청에 `-A "tbox-review/<날짜>"`.
 #   · 운영 DB 에 **DDL 을 실행하지 않는다.** psql 은 읽기 확인과 C:T-40(권한이 막는 것을
 #     확인하는 실패하는 문장, `WHERE false`)에만 쓴다.
@@ -35,6 +35,7 @@
 set -u
 
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
+. "$ROOT/tests/lib/secrets.sh" || { echo "tests/lib/secrets.sh 를 읽지 못했다 — 시험을 시작하지 않는다 (R-62)"; exit 3; }
 SITE="http://127.0.0.1:8082"
 BASE="$SITE/tbox"
 CBASE="$SITE/community"
@@ -105,19 +106,19 @@ qa_password() { sudo -n awk -v u="$1" '$1==u{print $3}' /etc/tbox-v2/seed-accoun
 qa_secret()   { sudo -n awk -v u="$1" '$1==u{print $2}' /etc/tbox-v2/qa-totp.txt 2>/dev/null; }
 
 login() {
-  local who="$1" jar="$JAR_DIR/$1.jar" pw sec raw code left out try
+  local who="$1" jar="$JAR_DIR/$1.jar" pw sec raw code left out try body
   pw=$(qa_password "$who")
   sec=$(qa_secret "$who")
   [ -n "$pw" ] || return 2
   for try in 1 2 3; do
     if [ -n "$sec" ]; then
-      raw=$(php "$ROOT/scripts/totp_code.php" "$sec" 2>/dev/null)
+      raw=$(totp_now sec 2>/dev/null)
       code=${raw%%$'\n'*}
-      out=$(curl -s -c "$jar" -A "$UA" -H 'Content-Type: application/json' \
-            -d "{\"username\":\"$who\",\"password\":\"$pw\",\"otp\":\"$code\"}" "$BASE/api/login")
+      printf -v body '{"username":"%s","password":"%s","otp":"%s"}' "$who" "$pw" "$code"
+      out=$(curl_json_secret body -s -c "$jar" -A "$UA" -H 'Content-Type: application/json' "$BASE/api/login")
     else
-      out=$(curl -s -c "$jar" -A "$UA" -H 'Content-Type: application/json' \
-            -d "{\"username\":\"$who\",\"password\":\"$pw\"}" "$BASE/api/login")
+      printf -v body '{"username":"%s","password":"%s"}' "$who" "$pw"
+      out=$(curl_json_secret body -s -c "$jar" -A "$UA" -H 'Content-Type: application/json' "$BASE/api/login")
     fi
     case "$out" in
       *'"ok":true'*)
@@ -223,7 +224,7 @@ fi
 AUDIT_START=$(mark); AUDIT_START=${AUDIT_START:-0}
 
 sub "로그인 (qa 계정 셋 — 주인 · 남 · 관리자)"
-for who in qa_employee01 qa_employee02 qa_admin01; do
+for who in claude_employee01 claude_employee02 claude_admin01; do
   tok=$(login "$who")
   if [ -z "$tok" ]; then echo "  ✖ $who 로그인 실패 — 중단"; exit 4; fi
   eval "CSRF_${who}='$tok'"
@@ -260,7 +261,7 @@ sed -n '/^    /p' "$WORK/squash.txt"
 expect "5분 합치기 판정 8가지 전부 기대대로" "SQUASH_BAD=0" "$(grep '^SQUASH_BAD=' "$WORK/squash.txt")"
 
 sub "연속 저장 3회 — 스냅샷은 1개만 늘고 판 번호는 3 오른다"
-RES=$(make_page qa_employee01 "4C-합치기")
+RES=$(make_page claude_employee01 "4C-합치기")
 SQ=${RES#*|}
 expect "페이지 만들기" "201" "${RES%%|*}"
 MADE_PAGES="$MADE_PAGES $SQ"
@@ -270,7 +271,7 @@ if [ "$HAVE_PSQL" = "1" ]; then
   note "저장 전 — 스냅샷 ${SNAP0}개 · 판 ${VER0}"
   V=$VER0
   for n in 1 2 3; do
-    CODE=$(save_text qa_employee01 "$SQ" "$V" "연속 저장 $n 회차")
+    CODE=$(save_text claude_employee01 "$SQ" "$V" "연속 저장 $n 회차")
     expect "저장 $n 회차" "200" "$CODE"
     V=$((V+1))
   done
@@ -286,27 +287,27 @@ fi
 # ════════════════════════════════════════════════════════════════
 hr "C:T-39 · C:T-45  되돌리기 — 새 판으로 복사 · 과거는 그대로 · 파생 표"
 
-RES=$(make_page qa_employee01 "4C-되돌리기")
+RES=$(make_page claude_employee01 "4C-되돌리기")
 RP=${RES#*|}
 expect "페이지 만들기" "201" "${RES%%|*}"
 MADE_PAGES="$MADE_PAGES $RP"
 
 V=$(jget "d['page']['doc_version']" < "$WORK/b")
-CODE=$(save_text qa_employee01 "$RP" "$V" "첫 번째 내용")
+CODE=$(save_text claude_employee01 "$RP" "$V" "첫 번째 내용")
 expect "첫 저장" "200" "$CODE"
 V=$(jget "d['doc_version']" < "$WORK/b")
 
 # 다른 사람이 끼어들지 않으면 두 번째 저장은 합쳐진다 — 되돌릴 판을 만들려면 그 사이에
 # **스냅샷이 남는 저장**이 있어야 한다. 그래서 되돌릴 대상은 「첫 저장이 남긴 판」이다.
 sub "판 목록"
-CODE=$(capi GET "/api/pages/$RP/versions" qa_employee01)
+CODE=$(capi GET "/api/pages/$RP/versions" claude_employee01)
 expect "GET …/versions" "200" "$CODE"
 VLIST=$(cat "$WORK/b")
 note "응답: $VLIST"
 TARGET=$(jget "[v['version'] for v in d['versions'] if not v['is_current']][0]" < "$WORK/b")
 note "되돌릴 판 = $TARGET"
 
-CODE=$(capi GET "/api/pages/$RP/versions/$TARGET" qa_employee01)
+CODE=$(capi GET "/api/pages/$RP/versions/$TARGET" claude_employee01)
 expect "GET …/versions/$TARGET (그 판의 본문)" "200" "$CODE"
 OLDDOC=$(jget "d['version']['doc']" < "$WORK/b")
 note "그 판의 doc: $OLDDOC"
@@ -318,12 +319,12 @@ fi
 VERB=$(jget "d['page']['doc_version']" < /dev/null; echo "")
 VERB=$(docver "$RP")
 
-CODE=$(capi POST "/api/pages/$RP/versions/$TARGET/restore" qa_employee01 "$WORK/empty.json")
+CODE=$(capi POST "/api/pages/$RP/versions/$TARGET/restore" claude_employee01 "$WORK/empty.json")
 expect "POST …/versions/$TARGET/restore" "200" "$CODE"
 note "응답: $(cat "$WORK/b")"
 NEWV=$(jget "d['page']['doc_version']" < "$WORK/b")
 
-CODE=$(capi GET "/api/pages/$RP" qa_employee01)
+CODE=$(capi GET "/api/pages/$RP" claude_employee01)
 NOWDOC=$(jget "d['page']['doc']" < "$WORK/b")
 expect "되돌린 내용이 지금 내용이 됐다" "$OLDDOC" "$NOWDOC"
 
@@ -341,7 +342,7 @@ if [ "$HAVE_PSQL" = "1" ]; then
 
   sub "C:T-45  파생 표가 되돌린 내용과 맞다"
   DB_BLOCKS=$(psqlq "SELECT string_agg(b.block_id::text || ':' || b.block_type, ' ' ORDER BY b.ord) FROM community.page_blocks b JOIN community.pages p ON p.id=b.page_id WHERE p.public_id='$RP'")
-  DOC_BLOCKS=$(capi GET "/api/pages/$RP" qa_employee01 >/dev/null; jget "' '.join(b['id']+':'+b['type'] for b in d['page']['doc']['blocks'])" < "$WORK/b")
+  DOC_BLOCKS=$(capi GET "/api/pages/$RP" claude_employee01 >/dev/null; jget "' '.join(b['id']+':'+b['type'] for b in d['page']['doc']['blocks'])" < "$WORK/b")
   expect "page_blocks 가 되돌린 doc 과 같다" "$DOC_BLOCKS" "$DB_BLOCKS"
   expect "page_links 는 되돌린 내용대로 0건" "0" \
     "$(psqlq "SELECT count(*) FROM community.page_links l JOIN community.pages p ON p.id=l.from_page_id WHERE p.public_id='$RP'")"
@@ -352,14 +353,14 @@ else
 fi
 
 sub "되돌리기 표시가 **다음 판**에 붙는다"
-CODE=$(capi GET "/api/pages/$RP/versions" qa_employee01)
+CODE=$(capi GET "/api/pages/$RP/versions" claude_employee01)
 contains "새 판에 restored_from=$TARGET" "\"restored_from\":$TARGET" "$(cat "$WORK/b")"
 
 sub "같은 판을 다시 되돌리기(지금 판) · 없는 판"
-CODE=$(capi POST "/api/pages/$RP/versions/$NEWV/restore" qa_employee01 "$WORK/empty.json")
+CODE=$(capi POST "/api/pages/$RP/versions/$NEWV/restore" claude_employee01 "$WORK/empty.json")
 expect "지금 판으로 되돌리기 → 400 already_current" "400" "$CODE"
 contains "사유 already_current" '"reason":"already_current"' "$(cat "$WORK/b")"
-CODE=$(capi POST "/api/pages/$RP/versions/999999/restore" qa_employee01 "$WORK/empty.json")
+CODE=$(capi POST "/api/pages/$RP/versions/999999/restore" claude_employee01 "$WORK/empty.json")
 expect "없는 판으로 되돌리기 → 404" "404" "$CODE"
 
 # ════════════════════════════════════════════════════════════════
@@ -389,7 +390,7 @@ fi
 # ════════════════════════════════════════════════════════════════
 hr "C:T-41  체크 이력 — 켜고 끄고 다시 켜기"
 
-RES=$(make_page qa_employee01 "4C-체크")
+RES=$(make_page claude_employee01 "4C-체크")
 CP=${RES#*|}
 expect "페이지 만들기" "201" "${RES%%|*}"
 MADE_PAGES="$MADE_PAGES $CP"
@@ -397,7 +398,7 @@ BID="22222222-2222-4222-8222-222222222222"
 
 V=$(jget "d['page']['doc_version']" < "$WORK/b")
 for st in false true false true; do
-  CODE=$(save_todo qa_employee01 "$CP" "$V" "$st" "$BID")
+  CODE=$(save_todo claude_employee01 "$CP" "$V" "$st" "$BID")
   expect "checked=$st 로 저장" "200" "$CODE"
   V=$(jget "d['doc_version']" < "$WORK/b")
 done
@@ -407,56 +408,56 @@ if [ "$HAVE_PSQL" = "1" ]; then
     "$(psqlq "SELECT count(*) FROM community.checklist_events e JOIN community.pages p ON p.id=e.page_id WHERE p.public_id='$CP'")"
   expect "순서가 true,false,true" "t,f,t" \
     "$(psqlq "SELECT string_agg(CASE WHEN e.checked THEN 't' ELSE 'f' END, ',' ORDER BY e.at) FROM community.checklist_events e JOIN community.pages p ON p.id=e.page_id WHERE p.public_id='$CP'")"
-  expect "누른 사람이 모두 qa_employee01" "qa_employee01" \
+  expect "누른 사람이 모두 claude_employee01" "claude_employee01" \
     "$(psqlq "SELECT DISTINCT u.username FROM community.checklist_events e JOIN community.pages p ON p.id=e.page_id JOIN users u ON u.id=e.by_user_id WHERE p.public_id='$CP'")"
   note "기록: $(psqlq "SELECT string_agg(e.checked::text || '@' || to_char(e.at,'HH24:MI:SS'), ' → ' ORDER BY e.at) FROM community.checklist_events e JOIN community.pages p ON p.id=e.page_id WHERE p.public_id='$CP'")"
 else
   skip "checklist_events 행 수" "psql 없음 — **미검증**"
 fi
 
-CODE=$(capi GET "/api/pages/$CP/history" qa_employee01)
+CODE=$(capi GET "/api/pages/$CP/history" claude_employee01)
 expect "GET …/history" "200" "$CODE"
 HIST=$(cat "$WORK/b")
 expect "「처리 이력」에 체크 줄 3개" "3" "$(jget "len([e for e in d['events'] if e['kind']=='check'])" < "$WORK/b")"
 expect "시간순(내림차순)으로 온다" "True" \
   "$(jget "[e['at'] for e in d['events']] == sorted([e['at'] for e in d['events']], reverse=True)" < "$WORK/b")"
-contains "누가 눌렀나가 줄마다 있다" '"by":"qa_employee01"' "$HIST"
+contains "누가 눌렀나가 줄마다 있다" '"by":"claude_employee01"' "$HIST"
 
 # ════════════════════════════════════════════════════════════════
 hr "C:T-44  이력 응답에 본문 글자가 새지 않는가"
 
 # 본문에만 있는 글자다 — 제목에도, 블록 id 에도 없다.
-lacks "versions 응답에 본문 글자 없음" "보고서 마무리" "$(capi GET "/api/pages/$CP/versions" qa_employee01 >/dev/null; cat "$WORK/b")"
+lacks "versions 응답에 본문 글자 없음" "보고서 마무리" "$(capi GET "/api/pages/$CP/versions" claude_employee01 >/dev/null; cat "$WORK/b")"
 lacks "history 응답에 본문 글자 없음" "보고서 마무리" "$HIST"
-lacks "versions 응답에 doc 통째가 없음" '"doc"' "$(capi GET "/api/pages/$CP/versions" qa_employee01 >/dev/null; cat "$WORK/b")"
+lacks "versions 응답에 doc 통째가 없음" '"doc"' "$(capi GET "/api/pages/$CP/versions" claude_employee01 >/dev/null; cat "$WORK/b")"
 lacks "history 응답에 doc 통째가 없음" '"doc"' "$HIST"
 # 할 일이 든 판은 **지금 판**이다(판 1 은 페이지를 만들 때의 빈 문단이다).
 NOWV=$(jget "d['page']['doc_version']" < "$WORK/b")
-CODE=$(capi GET "/api/pages/$CP/versions/$NOWV" qa_employee01)
+CODE=$(capi GET "/api/pages/$CP/versions/$NOWV" claude_employee01)
 expect "본문은 versions/{num} 에서만 (200)" "200" "$CODE"
 contains "그 창구에는 본문이 있다" "보고서 마무리" "$(cat "$WORK/b")"
-note "versions 응답 원문: $(capi GET "/api/pages/$CP/versions" qa_employee01 >/dev/null; cat "$WORK/b")"
+note "versions 응답 원문: $(capi GET "/api/pages/$CP/versions" claude_employee01 >/dev/null; cat "$WORK/b")"
 
 # ════════════════════════════════════════════════════════════════
 hr "C:T-42  남의 이력 · 없는 판 번호 · 볼 수는 있으나 고칠 수 없는 사람"
 
-sub "다른 팀 사람(qa_employee02) — 비공개 페이지의 이력"
+sub "다른 팀 사람(claude_employee02) — 비공개 페이지의 이력"
 for path in "/api/pages/$CP/versions" "/api/pages/$CP/history" "/api/pages/$CP/versions/1"; do
-  expect "GET $path → 403" "403" "$(capi GET "$path" qa_employee02)"
+  expect "GET $path → 403" "403" "$(capi GET "$path" claude_employee02)"
 done
 expect "POST …/versions/1/restore → 403" "403" \
-  "$(capi POST "/api/pages/$CP/versions/1/restore" qa_employee02 "$WORK/empty.json")"
+  "$(capi POST "/api/pages/$CP/versions/1/restore" claude_employee02 "$WORK/empty.json")"
 lacks "거부 응답에 제목이 새지 않는다" "4C-체크" "$(cat "$WORK/b")"
 
 sub "없는 판 번호"
-expect "GET …/versions/999999 → 404" "404" "$(capi GET "/api/pages/$CP/versions/999999" qa_employee01)"
-expect "라우트에 맞지 않는 판 번호(글자) → 404" "404" "$(capi GET "/api/pages/$CP/versions/abc" qa_employee01)"
+expect "GET …/versions/999999 → 404" "404" "$(capi GET "/api/pages/$CP/versions/999999" claude_employee01)"
+expect "라우트에 맞지 않는 판 번호(글자) → 404" "404" "$(capi GET "/api/pages/$CP/versions/abc" claude_employee01)"
 
 sub "관리자 — 볼 수는 있으나(admin_all) 되돌리지는 못한다"
-CODE=$(capi GET "/api/pages/$CP/versions" qa_admin01)
+CODE=$(capi GET "/api/pages/$CP/versions" claude_admin01)
 expect "관리자는 이력을 본다 (200)" "200" "$CODE"
 contains "되돌리기 단추를 열지 않는다 (can_edit=false)" '"can_edit":false' "$(cat "$WORK/b")"
-CODE=$(capi POST "/api/pages/$CP/versions/1/restore" qa_admin01 "$WORK/empty.json")
+CODE=$(capi POST "/api/pages/$CP/versions/1/restore" claude_admin01 "$WORK/empty.json")
 expect "관리자의 되돌리기 → 403" "403" "$CODE"
 if [ "$HAVE_PSQL" = "1" ]; then
   expect "감사 page.restore_version deny not_owner 1건" "1" \
@@ -466,11 +467,11 @@ if [ "$HAVE_PSQL" = "1" ]; then
 fi
 
 sub "볼 수는 있으나 고칠 수 없는 사람의 삭제 — 3단계에 빠졌던 감사를 4-C 에서 보완했다"
-# qa_employee02 는 이 페이지를 **보지도 못하므로** 읽기 관문에서 끝난다(`page.read deny not_owner`).
+# claude_employee02 는 이 페이지를 **보지도 못하므로** 읽기 관문에서 끝난다(`page.read deny not_owner`).
 # 「삭제 거부」 줄에 닿는 사람은 볼 수는 있으나 고칠 수 없는 사람 — 여기서는 관리자다.
-expect "qa_employee02 의 DELETE → 403 (읽기에서 막힌다)" "403" "$(capi DELETE "/api/pages/$CP" qa_employee02)"
-CODE=$(capi DELETE "/api/pages/$CP" qa_admin01)
-expect "qa_admin01 의 DELETE → 403" "403" "$CODE"
+expect "claude_employee02 의 DELETE → 403 (읽기에서 막힌다)" "403" "$(capi DELETE "/api/pages/$CP" claude_employee02)"
+CODE=$(capi DELETE "/api/pages/$CP" claude_admin01)
+expect "claude_admin01 의 DELETE → 403" "403" "$CODE"
 if [ "$HAVE_PSQL" = "1" ]; then
   expect "감사 page.delete deny not_owner 1건" "1" \
     "$(psqlq "SELECT count(*) FROM audit_logs WHERE id > ${AUDIT_START} AND action='page.delete' AND result='deny' AND reason='not_owner'")"
@@ -480,20 +481,20 @@ fi
 # ════════════════════════════════════════════════════════════════
 hr "C:T-43  휴지통 — 하위까지 함께 · 부모가 지워져 있으면 뿌리로"
 
-RES=$(make_page qa_employee01 "4C-부모"); TA=${RES#*|}
+RES=$(make_page claude_employee01 "4C-부모"); TA=${RES#*|}
 expect "부모 만들기" "201" "${RES%%|*}"
-RES=$(make_page qa_employee01 "4C-자식" "$TA"); TB=${RES#*|}
+RES=$(make_page claude_employee01 "4C-자식" "$TA"); TB=${RES#*|}
 expect "자식 만들기" "201" "${RES%%|*}"
-RES=$(make_page qa_employee01 "4C-손자" "$TB"); TC=${RES#*|}
+RES=$(make_page claude_employee01 "4C-손자" "$TB"); TC=${RES#*|}
 expect "손자 만들기" "201" "${RES%%|*}"
 MADE_PAGES="$MADE_PAGES $TA"
 
-CODE=$(capi DELETE "/api/pages/$TA" qa_employee01)
+CODE=$(capi DELETE "/api/pages/$TA" claude_employee01)
 expect "부모를 지우면 하위까지 3건" "200" "$CODE"
 contains "응답에 deleted=3" '"deleted":3' "$(cat "$WORK/b")"
 
 sub "휴지통에 보인다"
-CODE=$(capi GET /api/me/trash qa_employee01)
+CODE=$(capi GET /api/me/trash claude_employee01)
 expect "GET /api/me/trash" "200" "$CODE"
 expect "지운 뿌리가 목록에 있다" "1" \
   "$(jget "len([p for p in d['pages'] if p['id']=='$TA'])" < "$WORK/b")"
@@ -505,7 +506,7 @@ lacks "휴지통 응답에 본문이 없다" '"doc"' "$(cat "$WORK/b")"
 note "그 줄: $(jget "[p for p in d['pages'] if p['id']=='$TA'][0]" < "$WORK/b")"
 
 sub "부모가 아직 지워져 있는데 자식만 되살리면 — 뿌리로 올라온다"
-CODE=$(capi POST "/api/pages/$TB/restore" qa_employee01 "$WORK/empty.json")
+CODE=$(capi POST "/api/pages/$TB/restore" claude_employee01 "$WORK/empty.json")
 expect "POST …/restore (자식)" "200" "$CODE"
 contains "응답에 moved_to_root: true" '"moved_to_root":true' "$(cat "$WORK/b")"
 contains "손자까지 함께 돌아왔다 (restored=2)" '"restored":2' "$(cat "$WORK/b")"
@@ -520,35 +521,35 @@ if [ "$HAVE_PSQL" = "1" ]; then
 fi
 
 sub "부모도 되살린다"
-CODE=$(capi POST "/api/pages/$TA/restore" qa_employee01 "$WORK/empty.json")
+CODE=$(capi POST "/api/pages/$TA/restore" claude_employee01 "$WORK/empty.json")
 expect "POST …/restore (부모)" "200" "$CODE"
 contains "혼자 돌아온다 (restored=1 — 하위는 이미 살아 있다)" '"restored":1' "$(cat "$WORK/b")"
 contains "뿌리로 옮기지 않았다" '"moved_to_root":false' "$(cat "$WORK/b")"
-expect "되살린 페이지를 다시 읽을 수 있다" "200" "$(capi GET "/api/pages/$TA" qa_employee01)"
+expect "되살린 페이지를 다시 읽을 수 있다" "200" "$(capi GET "/api/pages/$TA" claude_employee01)"
 
 sub "남이 지운 것은 내 휴지통에 없고, 되살리지도 못한다"
-CODE=$(capi DELETE "/api/pages/$TA" qa_employee01)
+CODE=$(capi DELETE "/api/pages/$TA" claude_employee01)
 expect "다시 지우기" "200" "$CODE"
-CODE=$(capi GET /api/me/trash qa_employee02)
-expect "qa_employee02 의 휴지통은 200" "200" "$CODE"
+CODE=$(capi GET /api/me/trash claude_employee02)
+expect "claude_employee02 의 휴지통은 200" "200" "$CODE"
 expect "그 안에 남의 페이지가 없다" "0" "$(jget "len([p for p in d['pages'] if p['id']=='$TA'])" < "$WORK/b")"
 expect "남의 페이지 되살리기 → 403" "403" \
-  "$(capi POST "/api/pages/$TA/restore" qa_employee02 "$WORK/empty.json")"
-CODE=$(capi POST "/api/pages/$TA/restore" qa_employee01 "$WORK/empty.json")
+  "$(capi POST "/api/pages/$TA/restore" claude_employee02 "$WORK/empty.json")"
+CODE=$(capi POST "/api/pages/$TA/restore" claude_employee01 "$WORK/empty.json")
 expect "주인이 다시 되살린다" "200" "$CODE"
 
 sub "상위가 그 사이 **좁아졌으면** 뿌리로 올린다 (4-B 트리 불변 규칙을 되살리기가 깨지 않는다)"
 # 부모를 사내로 열고 자식도 사내로 연 뒤, 자식을 지우고 부모를 비공개로 좁힌다.
 # 좁히기 검사는 **살아 있는 하위만** 보므로 지워진 자식은 `internal` 을 들고 휴지통에 남는다.
-RES=$(make_page qa_employee01 "4C-좁아진부모"); NA=${RES#*|}
-RES=$(make_page qa_employee01 "4C-넓은자식" "$NA"); NB=${RES#*|}
+RES=$(make_page claude_employee01 "4C-좁아진부모"); NA=${RES#*|}
+RES=$(make_page claude_employee01 "4C-넓은자식" "$NA"); NB=${RES#*|}
 MADE_PAGES="$MADE_PAGES $NA"
-expect "부모를 사내로" "200" "$(printf '{"visibility":"internal"}' > "$WORK/vis.json"; capi PATCH "/api/pages/$NA/visibility" qa_employee01 "$WORK/vis.json")"
-expect "자식을 사내로" "200" "$(printf '{"visibility":"internal"}' > "$WORK/vis.json"; capi PATCH "/api/pages/$NB/visibility" qa_employee01 "$WORK/vis.json")"
-expect "자식을 지운다" "200" "$(capi DELETE "/api/pages/$NB" qa_employee01)"
+expect "부모를 사내로" "200" "$(printf '{"visibility":"internal"}' > "$WORK/vis.json"; capi PATCH "/api/pages/$NA/visibility" claude_employee01 "$WORK/vis.json")"
+expect "자식을 사내로" "200" "$(printf '{"visibility":"internal"}' > "$WORK/vis.json"; capi PATCH "/api/pages/$NB/visibility" claude_employee01 "$WORK/vis.json")"
+expect "자식을 지운다" "200" "$(capi DELETE "/api/pages/$NB" claude_employee01)"
 expect "부모를 비공개로 좁힌다 (지워진 자식은 검사에 걸리지 않는다)" "200" \
-  "$(printf '{"visibility":"private"}' > "$WORK/vis.json"; capi PATCH "/api/pages/$NA/visibility" qa_employee01 "$WORK/vis.json")"
-CODE=$(capi POST "/api/pages/$NB/restore" qa_employee01 "$WORK/empty.json")
+  "$(printf '{"visibility":"private"}' > "$WORK/vis.json"; capi PATCH "/api/pages/$NA/visibility" claude_employee01 "$WORK/vis.json")"
+CODE=$(capi POST "/api/pages/$NB/restore" claude_employee01 "$WORK/empty.json")
 expect "자식을 되살린다" "200" "$CODE"
 contains "뿌리로 올렸다" '"moved_to_root":true' "$(cat "$WORK/b")"
 contains "까닭이 parent_narrower" '"moved_reason":"parent_narrower"' "$(cat "$WORK/b")"
@@ -562,18 +563,19 @@ MADE_PAGES="$MADE_PAGES $NB"
 
 sub "지워지지 않은 페이지에 되살리기 → 404"
 expect "POST …/restore (살아 있는 페이지)" "404" \
-  "$(capi POST "/api/pages/$TA/restore" qa_employee01 "$WORK/empty.json")"
+  "$(capi POST "/api/pages/$TA/restore" claude_employee01 "$WORK/empty.json")"
 
 # ════════════════════════════════════════════════════════════════
 hr "브라우저 — 이력 창(탭 둘 · 보기 · 되돌리기) · 휴지통 되살리기"
 
 SMOKE_OUT="$WORK/smoke.txt"
-SESSION=$(awk '$6=="tbox_session"{print $7}' "$JAR_DIR/qa_employee01.jar" 2>/dev/null)
+SESSION=$(awk '$6=="tbox_session"{print $7}' "$JAR_DIR/claude_employee01.jar" 2>/dev/null)
 if [ -z "$SESSION" ]; then
   skip "브라우저 스모크" "세션 쿠키를 읽지 못했다 — **미검증**"
 else
-  PATH="$HOME/.local/bin:$PATH" python3 "$ROOT/tests/community/browser_smoke.py" \
-    "$SITE" "$UA" "$SESSION" > "$SMOKE_OUT" 2>&1
+  # 세션 값은 표준입력 첫 줄로 넘긴다(명령 인자에 싣지 않는다 — tests/lib/secrets.sh py_secret · R-62)
+  PATH="$HOME/.local/bin:$PATH" py_secret SESSION -- python3 "$ROOT/tests/community/browser_smoke.py" \
+    "$SITE" "$UA" > "$SMOKE_OUT" 2>&1
   SMOKE_RC=$?
   sed -n '/── 30\./,/── 19\./p' "$SMOKE_OUT" | sed 's/^/  /'
   if grep -q '^SMOKE_FAIL=' "$SMOKE_OUT"; then
@@ -623,7 +625,7 @@ hr "정리 — 만든 페이지를 앱 창구로 되돌린다 (논리 삭제)"
 
 for pid in $MADE_PAGES; do
   [ -n "$pid" ] || continue
-  CODE=$(capi DELETE "/api/pages/$pid" qa_employee01)
+  CODE=$(capi DELETE "/api/pages/$pid" claude_employee01)
   printf '  · %s → %s\n' "$pid" "$CODE"
 done
 

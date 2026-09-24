@@ -14,6 +14,7 @@
 # 사용: sudo -v && PLAN_OVERRIDE=<새 doc-schema 사본 폴더> bash tests/community/stage6c.sh
 
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
+. "$ROOT/tests/lib/secrets.sh" || { echo "tests/lib/secrets.sh 를 읽지 못했다 — 시험을 시작하지 않는다 (R-62)"; exit 3; }
 PORT=8093
 SITE="http://127.0.0.1:$PORT"
 BASE="$SITE/tbox"
@@ -92,19 +93,20 @@ qa_password() { sudo -n awk -v u="$1" '$1==u{print $3}' /etc/tbox-v2/seed-accoun
 qa_secret()   { sudo -n awk -v u="$1" '$1==u{print $2}' /etc/tbox-v2/qa-totp.txt 2>/dev/null; }
 
 login() {
-  local who="$1" jar="$JAR_DIR/$1.jar" pw sec raw code left out try
+  local who="$1" jar="$JAR_DIR/$1.jar" pw sec raw code left out try body
   pw=$(qa_password "$who")
   sec=$(qa_secret "$who")
   [ -n "$pw" ] || return 2
   for try in 1 2 3; do
     if [ -n "$sec" ]; then
-      raw=$(php "$ROOT/scripts/totp_code.php" "$sec" 2>/dev/null)
+      raw=$(totp_now sec 2>/dev/null)
       code=${raw%%$'\n'*}
-      out=$(curl -s -c "$jar" -A "$UA" -H 'Content-Type: application/json' \
-            -d "{\"username\":\"$who\",\"password\":\"$pw\",\"otp\":\"$code\"}" "$BASE/api/login")
+      # 비밀번호가 든 본문은 인자가 아니라 표준입력으로 보낸다(R-62 · tests/lib/secrets.sh). 보내는 바이트는 같다.
+      printf -v body '{"username":"%s","password":"%s","otp":"%s"}' "$who" "$pw" "$code"
+      out=$(curl_json_secret body -s -c "$jar" -A "$UA" -H 'Content-Type: application/json' "$BASE/api/login")
     else
-      out=$(curl -s -c "$jar" -A "$UA" -H 'Content-Type: application/json' \
-            -d "{\"username\":\"$who\",\"password\":\"$pw\"}" "$BASE/api/login")
+      printf -v body '{"username":"%s","password":"%s"}' "$who" "$pw"
+      out=$(curl_json_secret body -s -c "$jar" -A "$UA" -H 'Content-Type: application/json' "$BASE/api/login")
     fi
     case "$out" in
       *'"ok":true'*)
@@ -263,18 +265,18 @@ done
 expect "임시 인스턴스가 떴다 (미로그인 커뮤니티 창구 401)" "401" "$READY"
 [ "$READY" = "401" ] || { echo "인스턴스를 띄우지 못했다 — 중단"; tail -5 "$INST/server.log"; exit 4; }
 
-sub "로그인 (qa 계정 다섯 — **순차**)"
-for who in qa_employee01 qa_employee02 qa_manager01 qa_admin01 qa_guest01; do
+sub "로그인 (claude_ 검토 계정 다섯 — **순차**, F-71)"
+for who in claude_employee01 claude_employee02 claude_manager01 claude_admin01 claude_guest01; do
   tok=$(login "$who")
   if [ -z "$tok" ]; then echo "  ✖ $who 로그인 실패 — 중단"; exit 4; fi
   eval "CSRF_${who}='$tok'"
   echo "  ✔ $who"
 done
 # 개인 공간을 연다(없으면 만든다) — 그 뒤의 목록·인계가 공간을 전제로 한다.
-for who in qa_employee01 qa_employee02 qa_manager01 qa_admin01; do capi GET /api/me/space "$who" > /dev/null; done
-TEAM1=$(psqlq "SELECT team_id FROM users WHERE username='qa_employee01'")
-TEAM2=$(psqlq "SELECT team_id FROM users WHERE username='qa_employee02'")
-note "팀: qa_employee01·qa_manager01=$TEAM1 · qa_employee02=$TEAM2"
+for who in claude_employee01 claude_employee02 claude_manager01 claude_admin01; do capi GET /api/me/space "$who" > /dev/null; done
+TEAM1=$(psqlq "SELECT team_id FROM users WHERE username='claude_employee01'")
+TEAM2=$(psqlq "SELECT team_id FROM users WHERE username='claude_employee02'")
+note "팀: claude_employee01·claude_manager01=$TEAM1 · claude_employee02=$TEAM2"
 DEAD=$(psqlq "SELECT username FROM public.users WHERE is_active = false ORDER BY id LIMIT 1")
 note "비활성 계정: ${DEAD:-없음}"
 
@@ -302,11 +304,12 @@ page_html() {   # $1 주소(SITE 기준 경로) $2 계정
 uid() { psqlq "SELECT id FROM users WHERE username='$1'"; }
 reauth_admin() {
   local pw rc
-  pw=$(qa_password qa_admin01)
-  python3 -c "import json,sys;print(json.dumps({'password':sys.argv[1]}))" "$pw" > "$WORK/reauth.json"
-  rc=$(curl -s -o /dev/null -w '%{http_code}' -b "$JAR_DIR/qa_admin01.jar" -A "$UA" -H 'Content-Type: application/json' \
-        -H "X-CSRF-Token: $CSRF_qa_admin01" --data-binary "@$WORK/reauth.json" "$BASE/api/me/reauth")
-  rm -f "$WORK/reauth.json"
+  pw=$(qa_password claude_admin01)
+  # 비밀번호는 표준입력 첫 줄로 파이썬에(py_secret) — 명령 인자에 싣지 않는다(R-62). 파이썬이 만든 본문(끝 줄바꿈까지)은
+  # 파일을 거치지 않고 파이프로 curl 의 --data-binary @- 에 간다 — 옛 「파일 → @파일」 과 보내는 바이트가 같다.
+  rc=$(py_secret pw -- python3 -c "import json,sys;print(json.dumps({'password':sys.stdin.readline().rstrip('\n')}))" \
+       | curl -s -o /dev/null -w '%{http_code}' -b "$JAR_DIR/claude_admin01.jar" -A "$UA" -H 'Content-Type: application/json' \
+        -H "X-CSRF-Token: $CSRF_claude_admin01" --data-binary @- "$BASE/api/me/reauth")
   printf '%s' "$rc"
 }
 
@@ -388,43 +391,43 @@ TABM_PY="(lambda rows: {'id': u(), 'type': 'table', 'header_row': False, 'header
 
 # ════════════════════════════════════════════════════════════════
 hr "C:T-150  단 나누기 — 모양"
-P0=$(make_page qa_employee01 'C6C-단 페이지')
-expect "2단 → 200" "200" "$(put_doc qa_employee01 "$P0" "[$COLS_PY(2, [['왼쪽 한'], ['오른쪽 둘']])]")"
-expect "3단 → 200" "200" "$(put_doc qa_employee01 "$P0" "[$COLS_PY(3, [['a'], ['b'], ['c']])]")"
-expect "1단 → 400" "400" "$(put_doc qa_employee01 "$P0" "[$COLS_PY(1, [['a']])]")"
-expect "4단 → 400" "400" "$(put_doc qa_employee01 "$P0" "[$COLS_PY(4, [['a'], ['b'], ['c'], ['d']])]")"
-expect "column 단독 → 400" "400" "$(put_doc qa_employee01 "$P0" "[{'id': u(), 'type': 'column', 'children': [P('a')]}]")"
+P0=$(make_page claude_employee01 'C6C-단 페이지')
+expect "2단 → 200" "200" "$(put_doc claude_employee01 "$P0" "[$COLS_PY(2, [['왼쪽 한'], ['오른쪽 둘']])]")"
+expect "3단 → 200" "200" "$(put_doc claude_employee01 "$P0" "[$COLS_PY(3, [['a'], ['b'], ['c']])]")"
+expect "1단 → 400" "400" "$(put_doc claude_employee01 "$P0" "[$COLS_PY(1, [['a']])]")"
+expect "4단 → 400" "400" "$(put_doc claude_employee01 "$P0" "[$COLS_PY(4, [['a'], ['b'], ['c'], ['d']])]")"
+expect "column 단독 → 400" "400" "$(put_doc claude_employee01 "$P0" "[{'id': u(), 'type': 'column', 'children': [P('a')]}]")"
 contains "  사유 column_outside_list" "column_outside_list" "$(errs)"
-expect "단 목록에 문단 → 400" "400" "$(put_doc qa_employee01 "$P0" "[{'id': u(), 'type': 'column_list', 'children': [{'id': u(), 'type': 'column', 'children': [P('a')]}, P('b')]}]")"
+expect "단 목록에 문단 → 400" "400" "$(put_doc claude_employee01 "$P0" "[{'id': u(), 'type': 'column_list', 'children': [{'id': u(), 'type': 'column', 'children': [P('a')]}, P('b')]}]")"
 contains "  사유 column_list_child" "column_list_child" "$(errs)"
-expect "단 안의 단 → 400" "400" "$(put_doc qa_employee01 "$P0" "[{'id': u(), 'type': 'column_list', 'children': [{'id': u(), 'type': 'column', 'children': [$COLS_PY(2, [['x'], ['y']])]}, {'id': u(), 'type': 'column', 'children': [P('b')]}]}]")"
+expect "단 안의 단 → 400" "400" "$(put_doc claude_employee01 "$P0" "[{'id': u(), 'type': 'column_list', 'children': [{'id': u(), 'type': 'column', 'children': [$COLS_PY(2, [['x'], ['y']])]}, {'id': u(), 'type': 'column', 'children': [P('b')]}]}]")"
 contains "  사유 nested_columns" "nested_columns" "$(errs)"
-expect "단 안에 토글·할 일 → 200(보통 블록)" "200" "$(put_doc qa_employee01 "$P0" "[{'id': u(), 'type': 'column_list', 'children': [{'id': u(), 'type': 'column', 'children': [TOG('접기', ['안'])]}, {'id': u(), 'type': 'column', 'children': [{'id': u(), 'type': 'to_do', 'checked': False, 'text': seg('할 일')}]}]}]")"
-expect "단에 ratio 음수 → 400" "400" "$(put_doc qa_employee01 "$P0" "[{'id': u(), 'type': 'column_list', 'children': [{'id': u(), 'type': 'column', 'ratio': -1, 'children': [P('a')]}, {'id': u(), 'type': 'column', 'children': [P('b')]}]}]")"
+expect "단 안에 토글·할 일 → 200(보통 블록)" "200" "$(put_doc claude_employee01 "$P0" "[{'id': u(), 'type': 'column_list', 'children': [{'id': u(), 'type': 'column', 'children': [TOG('접기', ['안'])]}, {'id': u(), 'type': 'column', 'children': [{'id': u(), 'type': 'to_do', 'checked': False, 'text': seg('할 일')}]}]}]")"
+expect "단에 ratio 음수 → 400" "400" "$(put_doc claude_employee01 "$P0" "[{'id': u(), 'type': 'column_list', 'children': [{'id': u(), 'type': 'column', 'ratio': -1, 'children': [P('a')]}, {'id': u(), 'type': 'column', 'children': [P('b')]}]}]")"
 
 # ════════════════════════════════════════════════════════════════
 hr "C:T-151  표 칸 병합 (T-30)"
-expect "가로 병합(첫 행 2칸) → 200" "200" "$(put_doc qa_employee01 "$P0" "[$TABM_PY([[('머리',1,2),('',1,1)],[('a',1,1),('b',1,1)]])]")"
-expect "세로 병합(첫 열 2행) → 200" "200" "$(put_doc qa_employee01 "$P0" "[$TABM_PY([[('세로',2,1),('x',1,1)],[('',1,1),('y',1,1)]])]")"
-expect "2×2 전부 병합 → 200" "200" "$(put_doc qa_employee01 "$P0" "[$TABM_PY([[('전부',2,2),('',1,1)],[('',1,1),('',1,1)]])]")"
-expect "덮인 칸에 글자 → 400" "400" "$(put_doc qa_employee01 "$P0" "[$TABM_PY([[('a',1,2),('숨김',1,1)],[('b',1,1),('c',1,1)]])]")"
+expect "가로 병합(첫 행 2칸) → 200" "200" "$(put_doc claude_employee01 "$P0" "[$TABM_PY([[('머리',1,2),('',1,1)],[('a',1,1),('b',1,1)]])]")"
+expect "세로 병합(첫 열 2행) → 200" "200" "$(put_doc claude_employee01 "$P0" "[$TABM_PY([[('세로',2,1),('x',1,1)],[('',1,1),('y',1,1)]])]")"
+expect "2×2 전부 병합 → 200" "200" "$(put_doc claude_employee01 "$P0" "[$TABM_PY([[('전부',2,2),('',1,1)],[('',1,1),('',1,1)]])]")"
+expect "덮인 칸에 글자 → 400" "400" "$(put_doc claude_employee01 "$P0" "[$TABM_PY([[('a',1,2),('숨김',1,1)],[('b',1,1),('c',1,1)]])]")"
 contains "  사유 merge_overlap" "merge_overlap" "$(errs)"
-expect "표 밖으로 → 400" "400" "$(put_doc qa_employee01 "$P0" "[$TABM_PY([[('a',1,3),('',1,1)],[('b',1,1),('c',1,1)]])]")"
+expect "표 밖으로 → 400" "400" "$(put_doc claude_employee01 "$P0" "[$TABM_PY([[('a',1,3),('',1,1)],[('b',1,1),('c',1,1)]])]")"
 contains "  사유 merge_out_of_table" "merge_out_of_table" "$(errs)"
-expect "병합끼리 겹침 → 400" "400" "$(put_doc qa_employee01 "$P0" "[$TABM_PY([[('a',2,1),('b',2,1)],[('',1,2),('',1,1)]])]")"
-expect "colspan 21 → 400" "400" "$(put_doc qa_employee01 "$P0" "[$TABM_PY([[('a',1,21)] + [('',1,1)]*20])]")"
-expect "colspan 문자열 → 400" "400" "$(put_doc qa_employee01 "$P0" "[{'id': u(), 'type': 'table', 'header_row': False, 'header_col': False, 'rows': [{'cells': [{'text': [], 'colspan': '2'}, {'text': []}]}]}]")"
-expect "mention 마크는 아직(7-D 까지 8단계) → 400" "400" "$(put_doc qa_employee01 "$P0" "[{'id': u(), 'type': 'paragraph', 'text': [{'t': 'x', 'm': {'mention': {'kind': 'user', 'id': 1}}}]}]")"
+expect "병합끼리 겹침 → 400" "400" "$(put_doc claude_employee01 "$P0" "[$TABM_PY([[('a',2,1),('b',2,1)],[('',1,2),('',1,1)]])]")"
+expect "colspan 21 → 400" "400" "$(put_doc claude_employee01 "$P0" "[$TABM_PY([[('a',1,21)] + [('',1,1)]*20])]")"
+expect "colspan 문자열 → 400" "400" "$(put_doc claude_employee01 "$P0" "[{'id': u(), 'type': 'table', 'header_row': False, 'header_col': False, 'rows': [{'cells': [{'text': [], 'colspan': '2'}, {'text': []}]}]}]")"
+expect "mention 마크는 아직(7-D 까지 8단계) → 400" "400" "$(put_doc claude_employee01 "$P0" "[{'id': u(), 'type': 'paragraph', 'text': [{'t': 'x', 'm': {'mention': {'kind': 'user', 'id': 1}}}]}]")"
 contains "  사유 mark_not_in_stage" "mark_not_in_stage" "$(errs)"
 
 # ════════════════════════════════════════════════════════════════
 hr "C:T-152  파생값 — 단 안의 글·링크"
-PT=$(make_page qa_employee01 'C6C-참조받는'); set_vis qa_employee01 "$PT" internal
-set_vis qa_employee01 "$P0" internal
-put_doc qa_employee01 "$P0" "[$COLS_PY(2, [['단안의낱말쿼카'], ['오른쪽']]), {'id': u(), 'type': 'column_list', 'children': [{'id': u(), 'type': 'column', 'children': [LNK('$PT')]}, {'id': u(), 'type': 'column', 'children': [P('b')]}]}]" > /dev/null
-capi GET "/api/search?q=%EB%8B%A8%EC%95%88%EC%9D%98%EB%82%B1%EB%A7%90%EC%BF%BC%EC%B9%B4" qa_employee02 > /dev/null
+PT=$(make_page claude_employee01 'C6C-참조받는'); set_vis claude_employee01 "$PT" internal
+set_vis claude_employee01 "$P0" internal
+put_doc claude_employee01 "$P0" "[$COLS_PY(2, [['단안의낱말쿼카'], ['오른쪽']]), {'id': u(), 'type': 'column_list', 'children': [{'id': u(), 'type': 'column', 'children': [LNK('$PT')]}, {'id': u(), 'type': 'column', 'children': [P('b')]}]}]" > /dev/null
+capi GET "/api/search?q=%EB%8B%A8%EC%95%88%EC%9D%98%EB%82%B1%EB%A7%90%EC%BF%BC%EC%B9%B4" claude_employee02 > /dev/null
 contains "단 안의 낱말로 찾기(다른 사원)" "C6C-단 페이지" "$(jget "json.dumps(d['results'],ensure_ascii=False)" < "$WORK/b")"
-capi GET "/api/pages/$PT" qa_employee02 > /dev/null
+capi GET "/api/pages/$PT" claude_employee02 > /dev/null
 contains "단 안의 페이지 링크도 역참조에" "C6C-단 페이지" "$(jget "json.dumps(d['backlinks'],ensure_ascii=False)" < "$WORK/b")"
 
 # ════════════════════════════════════════════════════════════════
@@ -494,10 +497,10 @@ PY2
 if ! python3 -c 'import playwright' 2>/dev/null; then
   skip "브라우저" "playwright 가 없다"
 else
-  PE=$(make_page qa_employee01 'C6C-브라우저 페이지')
-  PR=$(make_page qa_employee01 'C6C-비율 단')
-  put_doc qa_employee01 "$PR" "[{'id': u(), 'type': 'column_list', 'children': [{'id': u(), 'type': 'column', 'ratio': 2, 'children': [P('a')]}, {'id': u(), 'type': 'column', 'children': [P('b')]}]}]" > /dev/null
-  SMOKE_PRATIO="$PR" SMOKE_E1="$(cookie_of qa_employee01)" SMOKE_PE="$PE" SMOKE_SAMPLES="$WORK/samples6c.json" SMOKE_PHP="$WORK/php6c.json" SMOKE_SHOTS="${SHOTS:-}" \
+  PE=$(make_page claude_employee01 'C6C-브라우저 페이지')
+  PR=$(make_page claude_employee01 'C6C-비율 단')
+  put_doc claude_employee01 "$PR" "[{'id': u(), 'type': 'column_list', 'children': [{'id': u(), 'type': 'column', 'ratio': 2, 'children': [P('a')]}, {'id': u(), 'type': 'column', 'children': [P('b')]}]}]" > /dev/null
+  SMOKE_PRATIO="$PR" SMOKE_E1="$(cookie_of claude_employee01)" SMOKE_PE="$PE" SMOKE_SAMPLES="$WORK/samples6c.json" SMOKE_PHP="$WORK/php6c.json" SMOKE_SHOTS="${SHOTS:-}" \
     python3 "$ROOT/tests/community/browser_6c.py" "$SITE" "$UA" > "$WORK/smoke.txt" 2>&1
   sed 's/^/    /' "$WORK/smoke.txt"
   expect "브라우저 실패 0" "0" "$(sed -n 's/^SMOKE_FAIL=//p' "$WORK/smoke.txt" | tail -1)"

@@ -6,7 +6,7 @@
 # 부르는 쪽: tests/community/stage5c.sh (임시 인스턴스 · 임시 DB — 운영에는 닿지 않는다)
 #
 # 쓰는 법
-#   SMOKE_ADMIN=<qa_admin01 세션(재인증 뒤)> SMOKE_E1=<qa_employee01> SMOKE_E2=<qa_employee02> SMOKE_M1=<qa_manager01>
+#   SMOKE_ADMIN=<claude_admin01 세션(재인증 뒤)> SMOKE_E1=<claude_employee01> SMOKE_E2=<claude_employee02> SMOKE_M1=<claude_manager01>
 #   SMOKE_FREE=<자유게시판 번호> SMOKE_TEAM=<팀 게시판 번호> SMOKE_QA=<질문과 답변 번호>
 #   [SMOKE_SHOTS=<스크린샷 폴더>] python3 browser_5c.py <SITE> <UA>
 #
