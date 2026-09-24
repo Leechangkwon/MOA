@@ -242,6 +242,7 @@ sub "저장소를 임시 폴더로 복사하고 두 번째 인스턴스를 띄�
 INST="$(mktemp -d)"
 mkdir -p "$INST/app" "$INST/storage" "$INST/log"
 tar -C "$ROOT" -cf - --exclude=.git --exclude=jar --exclude=api-test.txt --exclude=./.env . | tar -C "$INST/app" -xf -
+# qcheck-allow: R20 — 임시 인스턴스용 사본(0700·0600 · trap 정리) · kill -9 뒤 남는 창은 받아들인 위험(HO-B1-004)
 sed -e "s#^DB_NAME=.*#DB_NAME=$DB#" \
     -e "s#^STORAGE_DIR=.*#STORAGE_DIR=$INST/storage#" \
     -e "s#^AUDIT_LOG_FILE=.*#AUDIT_LOG_FILE=$INST/log/audit.log#" \
@@ -250,6 +251,7 @@ sed -e "s#^DB_NAME=.*#DB_NAME=$DB#" \
 chmod 600 "$INST/app/.env"
 grep -q "^DB_NAME=$DB\$" "$INST/app/.env" || { echo "임시 .env 에 임시 DB 이름이 들어가지 않았다 — 중단"; exit 4; }
 expect "임시 .env 의 무활동 창 = ${IDLE_MIN}분 (원본 .env 는 읽기만)" "1" "$(grep -c "^SESSION_IDLE_MIN=$IDLE_MIN\$" "$INST/app/.env")"
+# qcheck-allow: R20 — 임시 인스턴스용 사본(0700·0600 · trap 정리) · kill -9 뒤 남는 창은 받아들인 위험(HO-B1-004)
 cp -p "$INST/app/.env" "$WORK/env.good"
 PLAN_DIR="$(cd "$ROOT/.." && pwd)/community"
 [ -f "$PLAN_DIR/doc-schema.json" ] || PLAN_DIR=/var/www/qaredi/community

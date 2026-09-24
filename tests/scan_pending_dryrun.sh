@@ -39,6 +39,7 @@ sudo -n -u postgres pg_dump -d "$SRC_DB" 2>/dev/null | sudo -n -u postgres psql 
 set +o pipefail
 mkdir -p "$INST/app" "$INST/data/storage" "$INST/data/quarantine" "$INST/log"
 tar -C "$ROOT" -cf - --exclude=.git --exclude=jar --exclude=api-test.txt --exclude=./.env scripts src | tar -C "$INST/app" -xf -
+# qcheck-allow: R20 — 임시 인스턴스용 사본(0700·0600 · trap 정리) · kill -9 뒤 남는 창은 받아들인 위험(HO-B1-004)
 sed -e "s#^DB_NAME=.*#DB_NAME=$DB#" -e "s#^STORAGE_DIR=.*#STORAGE_DIR=$INST/data/storage#" \
     -e "s#^AUDIT_LOG_FILE=.*#AUDIT_LOG_FILE=$INST/log/audit.log#" -e '/^SCAN_ENABLED=/d' "$ROOT/.env" > "$INST/app/.env"
 echo "SCAN_ENABLED=1" >> "$INST/app/.env"

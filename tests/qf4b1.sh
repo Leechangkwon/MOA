@@ -85,6 +85,7 @@ make_inst() {
   else
     git -C "$ROOT" archive "$BEFORE_REF" | tar -C "$dir/app" -xf - || return 1
   fi
+  # qcheck-allow: R20 — 임시 인스턴스용 사본(0700·0600 · trap 정리) · kill -9 뒤 남는 창은 받아들인 위험(HO-B1-004)
   sed -e "s#^DB_NAME=.*#DB_NAME=$DB#" \
       -e "s#^STORAGE_DIR=.*#STORAGE_DIR=$dir/storage#" \
       -e "s#^AUDIT_LOG_FILE=.*#AUDIT_LOG_FILE=$dir/log/audit.log#" \
@@ -615,7 +616,8 @@ for m in api-exception raw-exception api-exit raw-exit api-fatal raw-fatal; do
   expect "$m (응답 $c) → idle in transaction · 다음 요청(상태|같은 연결|물려받은 xid|트랜잭션 중)" "0|200|same|None|False" "$it|$got"
 done
 PREP1=$(curl -s -A "$UA" "$SITE/__qf4b/probe" | python3 -c 'import json,sys; print(json.load(sys.stdin)["prepared"])')
-expect "세션의 서버 prepare 가 늘지 않는다 (트랜잭션 안 예외 두 번 뒤 — DEALLOCATE 가 거부된 문장도 넘겨받을 때 DISCARD ALL 이 지운다)" "$PREP0" "$PREP1"
+expect "탐침의 prepared 값 둘이 숫자다(빈 값끼리 같다고 늘 참이 되지 않게 — 점검 봇 R23 · BF-0012)" "yes" "$([[ "$PREP0" =~ ^[0-9]+$ && "$PREP1" =~ ^[0-9]+$ ]] && echo yes || echo no)"
+expect "세션의 서버 prepare 가 늘지 않는다 (트랜잭션 안 예외 두 번 뒤 — DEALLOCATE 가 거부된 문장도 넘겨받을 때 DISCARD ALL 이 지운다)" "$PREP0" "${PREP1:-없음}"
 
 sub "P-2 ② 세션 상태 — 앞 요청이 남긴 세션 설정·임시 표·세션 advisory lock 을 다음 요청이 물려받지 않는다 (시험 전용 갈래)"
 S=$(curl -s -A "$UA" "$SITE/__qf4b/state")

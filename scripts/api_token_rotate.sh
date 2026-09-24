@@ -53,7 +53,12 @@ command -v openssl >/dev/null 2>&1 || { echo "오류: openssl 이 없습니다."
 TOKEN="$(openssl rand -base64 64 | tr -dc 'A-Za-z0-9' | head -c 48)"
 [ "${#TOKEN}" -eq 48 ] || { echo "오류: 토큰을 만들지 못했습니다." >&2; exit 1; }
 
-TMP="$(mktemp)"
+# 임시 사본은 /tmp 가 아니라 .env 와 **같은 폴더**에 둔다(같은 소유자·같은 신뢰 경계). 쓰기와 덮어쓰기 사이에
+# kill -9·전원 문제가 나도 새 토큰·DB 자격이 든 사본이 /tmp 에 남지 않고, 다음 실행이 아래에서 치운다(점검 봇 R20 · BF-0010).
+ENV_DIR="$(dirname "$ENV_FILE")"
+#   10분이 넘은 것만 지운다 — 거의 같은 때 돈 다른 회전의 사본을 지우면 그쪽의 `cat "$TMP" > .env` 가 .env 를 비운다(독립 검토 2026-09-25)
+find "$ENV_DIR" -maxdepth 1 -type f -name '.env.rotate.*' -mmin +10 -delete
+TMP="$(mktemp -p "$ENV_DIR" .env.rotate.XXXXXX)"
 trap 'rm -f "$TMP"' EXIT
 
 # 값은 인자(argv)가 아니라 **환경 변수**로 awk 에 넘긴다 — `ps` 로 실행 중인 명령줄을 보는

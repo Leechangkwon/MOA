@@ -36,8 +36,10 @@ FAIL=0
 
 mkdir -p "$OUT"
 
-psqlq() { sudo -n -u postgres psql -d "$DB" -t -A -c "$1"; }
-psqlc() { sudo -n -u postgres psql -d "$DB" -v ON_ERROR_STOP=1 -q -c "$1"; }
+# SQL 은 명령 인자가 아니라 **표준입력**으로 넘긴다 — 세션 키(SID_ADMIN = sessions.id)가 sudo 인증 로그(auth.log COMMAND=)·
+# 프로세스 목록에 남지 않게(점검 봇 R15 · BF-0013, 2026-09-25). printf 는 bash 내장이라 새 프로세스의 인자에 실리지 않는다.
+psqlq() { printf '%s\n' "$1" | sudo -n -u postgres psql -X -d "$DB" -t -A -f -; }
+psqlc() { printf '%s\n' "$1" | sudo -n -u postgres psql -X -d "$DB" -v ON_ERROR_STOP=1 -q -f -; }
 
 hr()  { printf '\n════════════════════════════════════════════════════════════\n%s\n════════════════════════════════════════════════════════════\n' "$1"; }
 sub() { printf '\n── %s\n' "$1"; }

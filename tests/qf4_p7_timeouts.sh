@@ -33,7 +33,9 @@ WHO=claude_employee01
 MIG="$ROOT/db/migrations/2026-09-29_app_role_timeouts.sql"
 POOL_SRC="$ROOT/deploy/php-fpm-pool.conf"
 # 반영 스크립트 자리 — 복제본(검토 중)은 review-scripts/, 운영은 Qaredi 저장소 scripts/(트리 형제). 앞에 있는 것을 쓴다
-SH_DIR="$ROOT/review-scripts"; [ -d "$SH_DIR" ] || SH_DIR="$(dirname "$ROOT")/scripts"
+#   폴더가 있는지가 아니라 **P-7 스크립트가 있는 자리**를 고른다 — 다른 항목의 복제본에도 review-scripts/ 가 있을 수 있다(대기열 11 에서 발견)
+SH_DIR="$(dirname "$ROOT")/scripts"
+[ -f "$ROOT/review-scripts/apply-fpm-p7-2026-09-24.sh" ] && SH_DIR="$ROOT/review-scripts"
 FPM_SH="$SH_DIR/apply-fpm-p7-2026-09-24.sh"
 DB_SH="$SH_DIR/apply-db-p7-2026-09-24.sh"
 FPM_BIN=/usr/sbin/php-fpm8.1
@@ -110,6 +112,7 @@ note "임시 DB $DB — 사용자 ${n_users}명 · audit_logs $(psqlq "SELECT co
 make_app() {  # $1 폴더 $2 DB 이름
   mkdir -p "$1/app" "$1/data/storage" "$1/data/quarantine" "$1/data/tmp" "$1/log" "$1/sess"
   tar -C "$ROOT" -cf - --exclude=.git --exclude=jar --exclude=api-test.txt --exclude=./.env . | tar -C "$1/app" -xf -
+  # qcheck-allow: R20 — 임시 인스턴스용 사본(0700·0600 · trap 정리) · kill -9 뒤 남는 창은 받아들인 위험(HO-B1-004)
   sed -e "s#^DB_NAME=.*#DB_NAME=$2#" -e "s#^STORAGE_DIR=.*#STORAGE_DIR=$1/data/storage#" \
       -e "s#^AUDIT_LOG_FILE=.*#AUDIT_LOG_FILE=$1/log/audit.log#" "$ROOT/.env" > "$1/app/.env"
   chmod 600 "$1/app/.env"
