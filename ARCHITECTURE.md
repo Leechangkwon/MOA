@@ -143,7 +143,7 @@
 ```
 요청 도착 (public/index.php)
    │
-   ├─ [0] bootstrap.php     설정 로드, DB 연결, 보안 헤더(CSP 등) 출력
+   ├─ [0] bootstrap.php     설정 로드, DB 접속 정보(연결은 첫 질의 때 · 워커마다 재사용 — 5.31), 보안 헤더(CSP 등) 출력
    │
    ├─ [1] Auth::requireLogin()        ─── 세션에 user_id 없음 → 401, 끝
    │        세션의 user_id로 DB에서 role, team_id를 **다시 읽음**
@@ -1253,7 +1253,7 @@ PHP 까지 살아 있다는 뜻일 뿐, 2026-09-15 16:45 사고(디스크 0 → 
 | 상황 | 상태 | 본문 | 비고 |
 |---|---|---|---|
 | DB 가 답함 | 200 | `{"status":"ok","db":"ok","time":"2026-09-15T19:02:11+09:00"}` | `time` 은 `DATE_ATOM`(ISO 8601, 서버 시간대 Asia/Seoul). 시각은 `/api/time`·`Date` 헤더로 이미 나가는 값 |
-| 연결 자체가 안 됨 | 503 | `{"status":"fail","db":"connect_failed"}` | 부팅의 `Db::boot` 가 실패한 경우 |
+| 연결 자체가 안 됨 | 503 | `{"status":"fail","db":"connect_failed"}` | 연결이 실패한 경우(Q:F-4 P-5c 부터 연결은 부팅이 아니라 health 의 `Db::ready()` 에서 연다 — 5.31) |
 | 연결은 됐는데 질의 실패 | 503 | `{"status":"fail","db":"query_failed"}` | `run('SELECT 1')` 이 던진 경우 |
 
 **부팅 순서의 변화 — `Db::boot` 는 실패를 삼키고 기억한다.** 전에는 bootstrap 5) 의 `Db::boot` 가 `new PDO` 실패로 예외를 던져
@@ -1262,6 +1262,9 @@ PHP 까지 살아 있다는 뜻일 뿐, 2026-09-15 16:45 사고(디스크 0 → 
 표식이 있으면 `RuntimeException` 을 던진다 → health 를 뺀 나머지 창구는 **전과 똑같이** 500 이다(`Auth::requireLogin` 의 첫 질의에서).
 DB 없이 렌더되는 것은 `/login` 화면·`/api/time`·404/405 정도이고, 이들은 DB 를 읽지 않으므로 달라지는 것이 없다.
 예외 처리기의 `Db::instance()->rollback()` 은 표식이 있으면 부르지 않는다(`Db::ready()`) — 로그에 「rollback failed」 잡음을 남기지 않기 위해서다.
+**(Q:F-4 P-5c, 2026-09-24)** 연결 시도가 부팅에서 **첫 질의**로 옮겨졌다(5.31). 표식은 그대로 「이 요청에서 연결 실패」이고(`connectFailed`),
+실패 뒤의 결과(health 503 · 나머지 500 · 원문은 서버 로그만)도 같다. 달라진 것은 두 가지다 — `Db::ready()` 는 아직 연결하지 않았으면 **연결을 시도**하고,
+예외 처리기는 연결을 **열지 않고** 묻는 `Db::connected()` 로 롤백 여부를 가른다(롤백하려고 새로 연결하지 않는다).
 
 **왜 `db` 가 고정 분류어인가 (S-09-7).** PDO 의 오류 문구는 `connection to server at "127.0.0.1", port 5432 failed: FATAL: password
 authentication failed for user "tbox_app"` 같은 형태다 — 호스트·포트·계정 이름이 들어 있다. 사용자 요청의 「에러 요약」은 응답에는
@@ -1269,7 +1272,7 @@ authentication failed for user "tbox_app"` 같은 형태다 — 호스트·포�
 정찰 재료가 되는 값(버전·서버 이름·설정)은 F-47 ④ 그대로 넣지 않고, CORS 헤더도 F-42 그대로 없다.
 
 **남는 위험(SECURITY R-81).** 로그인 없이 부를 수 있는 창구가 요청마다 DB 질의 하나를 하게 됐다. `SELECT 1` 은 표를 읽지 않고
-연결 풀도 없으므로(요청당 연결 1) 비용은 연결 한 번과 같고, 이미 모든 로그인 화면 요청이 같은 비용을 낸다. IP 속도 제한 존을 따로
+연결 풀도 없으므로(요청당 연결 1 — Q:F-4 P-2 뒤로는 **워커당** 연결 1, 5.31) 비용은 연결 한 번과 같고, 이미 모든 로그인 화면 요청이 같은 비용을 낸다. IP 속도 제한 존을 따로
 붙이지 않았다 — 필요해지면 `tbox_login` 과 같은 방식으로 `location = /api/health` 에 붙인다.
 
 **API 문서 `API.md`.** 저장소 루트에 둔다(README 와 같은 자리). `public/` 이 nginx 루트라 그 안의 `.md` 는 로그인 없이 내려받힌다 —
@@ -1488,6 +1491,60 @@ authentication failed for user "tbox_app"` 같은 형태다 — 호스트·포�
 
 **5.27·5.29 의 「400 통일 문구」 문장은 이 절로 바뀐다.** 5.27 「응답은 동일 문구 400」 → F-53 8종은 위 표의 문장. 5.29 표 ①(토큰 입구)·②(Admin 이 아니거나 admin-only 가 아닌 사람)의 「400 통일 문구」 → `zip_blocked_entry` 문장 — 단 **`next` 는 여전히 없다**(확인 창은 열 수 있는 사람에게만). 5.29 받기 표의 `POST …/share`·`PATCH access_level` → `exec_content` 문장. 5.29 ④ 와 `exec-download` 의 `bad_credentials`·`bad_code`·`code_reused` 는 예외 목록대로 그대로.
 
+
+### 5.31 DB 연결 — 첫 질의 때 열고, 워커마다 다시 쓴다 (Q:F-4 P-2 · P-5c · P-4b, 2026-09-24)
+
+**왜.** 요청마다 새 PostgreSQL 연결(루프백 TLS + SCRAM, 실측 약 21ms)을 열었다 — 8.3일 461,027 세션, 평균 수명 75ms 중 쿼리는 1.1ms
+(`pg_stat_database`, 리서치 P-2). 앞단 헬스체크는 2초마다 `/`(DB 가 필요 없는 런처)를 부르는데 그때도 연결했다(P-5c).
+
+| | 전 | 후 |
+|---|---|---|
+| 연결을 여는 때 | bootstrap 5) `Db::boot` — **모든 요청**(런처·308·404 포함) | **첫 `run()`·`begin()`**(health 는 `Db::ready()`) — DB 가 필요 없는 요청은 0 |
+| 연결의 수명 | 요청 하나(끝나면 닫힘) | **FPM 워커 하나**(`PDO::ATTR_PERSISTENT`, 앱 롤 `tbox_app` 만) |
+| `Db::perm()`(`tbox_perm`, 5.15) | 지연 · 비영속 | **그대로**(부르는 순간 연결 · 요청이 끝나면 닫힘) — 쓰기 자격이 붙은 연결이 워커에 남지 않게 |
+| DB 가 죽었을 때 쿠키 없는 런처 | 200(부팅 실패를 삼켰다, 5.24) | 200 — 연결을 시도하지도 않는다 |
+
+**요청 사이 상태 누수 막기(SECURITY R-101).** 영속 연결은 요청이 끝나도 닫히지 않으므로, 앞 요청이 연결에 남긴 것이 다음 요청(다른 사람)에게
+이어질 수 있다. 가장 위험한 것은 **열린 트랜잭션**이다 — 다음 사람의 쓰기가 앞 사람의 트랜잭션 안에서 커밋·롤백되거나 잠금이 풀리지 않는다.
+그래서 연결을 **돌려줄 때**와 **넘겨받을 때** 두 번 정리한다.
+
+| 자리 | 하는 일 | 비용 |
+|---|---|---|
+| 요청 끝 — `Db::endRequest()`(bootstrap 의 종료 함수, 치명적 오류 은닉 함수 **뒤**에 등록) | 이 요청이 연 연결에 트랜잭션이 남았으면 되돌리고 서버 로그에 한 줄(`open transaction rolled back at request end (depth=n)` — 값 없음). 트랜잭션 안의 `Http::error()`·`exit`, 예외 처리기가 돌지 않는 치명적 오류, `Db::begin` 을 거치지 않은 트랜잭션까지. 전에는 연결이 닫히며 저절로 되던 일이다 | 트랜잭션이 남았을 때만 왕복 1 |
+| 넘겨받을 때 — `adopt()`(영속 연결을 이 요청이 처음 쓸 때) | ① 남은 트랜잭션이 있으면 되돌린다(요청 끝 정리가 못 돈 경우의 그물 — `inTransaction()` 은 libpq 상태를 읽을 뿐 왕복 없음) ② **`DISCARD ALL`** — 세션 설정·`SET ROLE`·임시 표·세션 advisory lock·`LISTEN`·커서·서버 prepare 를 비워 **처음 상태**로 돌리고(역할 기본값 `ALTER ROLE … SET` 은 처음 상태에 들어 있어 그대로), 같은 왕복으로 살아 있는지 확인한다. 실패하면 **한 번만** 다시 연결 — 실제 질의는 다시 보내지 않는다(이미 반영됐는지 알 수 없다). `DISCARD ALL` 은 트랜잭션 안에서 돌 수 없어 ① 뒤다 | 요청마다 왕복 1(이름 없는 문장 — `PGSQL_ATTR_DISABLE_PREPARES`, 값 없음. 실측 p50 약 0.24ms — `SELECT 1` 과 같다) |
+| PHP 자체 | PHP 8.1 PDO 는 PDO 객체가 풀릴 때 열린 트랜잭션을 되돌린다(SQL `BEGIN`·치명적 오류 포함 — 2026-09-24 실측). 위 둘은 그 동작에 기대지 않고 **명시하고 기록**하는 그물이다 | — |
+
+- **연결에 세션 상태를 남기는 SQL 0**: `SET`(세션)·`SET ROLE`·`set_config`·세션 advisory lock·임시 표·`LISTEN`·`WITH HOLD` 커서를 쓰지 않는다
+  (`tests/qf4b1.sh` 가 grep). advisory lock 은 `pg_advisory_xact_lock` 두 곳(`embed_domains_add`·`templates_create`)뿐이고 **트랜잭션 범위**라
+  커밋·롤백과 함께 풀린다. 쓰더라도 다음 요청은 `DISCARD ALL` 뒤라 물려받지 않지만, 요청과 요청 **사이**(워커가 쉬는 동안) 세션 잠금·임시 표가
+  남아 있게 되므로 이 목록을 새로 쓰는 코드는 이 절과 R-101 을 먼저 고친다.
+- **트랜잭션 제어는 `Db::begin/commit/rollback` 만**: SQL 문자열로 `BEGIN`·`COMMIT`·`ROLLBACK`·`SAVEPOINT` 를 보내는 곳 0, PDO 의
+  `beginTransaction`·`commit`·`rollBack` 을 부르는 파일은 `src/Db.php` 하나(`tests/qf4b1.sh` P-2 ③ 이 grep 으로 확인).
+- **서버 prepare**: 이름은 연결마다 늘어나는 번호(`pdo_stmt_…`)라 요청 사이에 겹치지 않고, 문장이 풀릴 때 `DEALLOCATE` 된다. 트랜잭션 안에서
+  SQL 오류가 난 뒤에는 그 `DEALLOCATE` 가 거부돼 문장이 세션에 남는데(실측), 다음 요청이 넘겨받을 때의 `DISCARD ALL` 이 지운다 — 늘어나지 않는다.
+- **끊긴 연결**: DB 가 재시작되거나 연결이 끊기면 PDO 의 자체 확인(PQconsumeInput)은 끊김을 늘 알아채지 못해, 확인이 없으면 워커마다 첫 요청 하나가
+  500 이었다(`pg_terminate_backend` 실측). `adopt()` ② 의 `DISCARD ALL` 이 실패하면 그 요청을 다시 연결로 돌린다. **실제 PostgreSQL 재시작은 미검증**(시험 DB 가 운영과 같은
+  클러스터) — 운영 반영 뒤 첫 DB 재시작 때 확인한다(사이트 STAGES).
+- **연결 수**: 워커 수만큼 연결이 **늘 열려 있다**(지금 풀 `pm = ondemand` · `max_children = 5` · 유휴 30초에 워커 종료 → 연결도 닫힘) + `perm` 을 쓰는
+  요청 동안 1. 풀을 바꾸면(P-7) 그 수가 곧 상시 연결 수다. 트랜잭션이 남는 경우의 DB 쪽 안전망 `idle_in_transaction_session_timeout` 은 P-7(역할 설정).
+
+**health 와 연결 실패(5.24).** `Db::ready()` 가 아직 연결하지 않았으면 연결을 **시도**한다 — 연결 실패는 `connect_failed`, 질의 실패는
+`query_failed` 로 전과 같이 갈린다. bootstrap 예외 처리기는 연결을 열지 않는 `Db::connected()` 로 롤백 여부를 본다. 연결 실패의 원문(호스트·포트·계정)은
+전처럼 서버 로그에만 `request_id` 와 함께 남는다(S-09-7). 한 요청 안에서 연결을 두 번 시도하지 않는다.
+
+**편집 중 신호는 본문을 읽지 않는다(P-4b).** `POST /community/api/pages/{id}/heartbeat` 는 30초마다 오고 판정만 한다. 판정용 행은
+`community_page_row_nodoc()` — `community_page_row()` 와 **같은 SQL 한 벌**(`community_page_row_sql($withDoc)`)에서 본문 칸 `p.doc` 하나만 뺀다
+(실측 최대 99KB). 판정 칸을 따로 고르지 않으므로 판정 함수(`CommunityAuthz`, 본문을 읽지 않는다)가 받는 칸은 `doc` 을 뺀 전부가 같고, 행에는 `doc` 키가
+없다(실수로 읽으면 경고 → 예외 → 500). 쿼리 계획에 `p.doc` 이 없는 것과 전 사용자 × 전 페이지 행·판정 동일을 `tests/qf4b1.sh` 가 본다.
+
+**시험.** `tests/qf4b1.sh` — 임시 DB(`tbox_qf4b1_test`) · 전(`BEFORE_REF`)·후 두 인스턴스를 같은 포트에서 차례로(PHP 내장 서버 = 워커 1).
+P-5c(쿠키 없는 `/`·308·404 세션 증가 0 · 쿠키 런처 동일 · DB 없을 때 런처 200·health 503) · P-2(100 요청 세션 증가 ≤ 1 · 트랜잭션 누수 여섯 갈래 ·
+세션 상태(설정·임시 표·advisory lock)·서버 prepare 를 물려받지 않음 · grep · 끊긴 연결) · P-4b(HTTP 전수 · 행 전수 · 쿼리 계획 · 편집기 브라우저) · 전후 p50. 시험 전용 경로 `/__qf4b/*` 는 그 시험이 만드는 임시 인스턴스의 router 에만 있다.
+
+**운영 규칙 세 가지 (독립 검토 L-1·L-4·M-1, 2026-09-24)**
+- **자격을 바꾸면 php-fpm 을 reload 한다.** 영속 연결의 풀 키에 비밀번호가 들어 있어, `.env` 의 `DB_PASS` 를 바꿔도 옛 연결은 워커가 재활용(유휴·요청 수 한도)될 때까지 남는다. 자격 회전 절차의 마지막 줄은 `systemctl reload php8.1-fpm` 이다.
+- **첫 질의 전에 부작용을 두지 않는다.** 연결 실패는 이제 부팅이 아니라 첫 질의에서 드러난다. 그래서 핸들러는 DB 를 처음 읽기 전에 파일 쓰기·외부 요청 같은 되돌릴 수 없는 일을 하지 않는다(2026-09-24 현재 그런 창구 없음 — 새 창구도 이 순서를 지킨다).
+- **재접속은 비영속으로 연다(M-1).** 넘겨받은 영속 연결의 정리(`ROLLBACK`·`DISCARD ALL`)가 실패하면, 이 요청은 풀 핸들 대신 이 요청만 쓰는 비영속 연결을 새로 연다.
 
 ## 6. 저장 위치 — 파일 정보 vs 실제 파일
 
@@ -2250,7 +2307,7 @@ php_admin_value[disable_functions]   = fsockopen,pfsockopen,stream_socket_client
 | `tbox_owner` | 스키마 생성·마이그레이션 (배포 시에만) | 테이블 소유 |
 | `tbox_app` | PHP 앱 런타임 | `users teams files`: SELECT/INSERT/UPDATE · `sessions`: SELECT/INSERT/UPDATE/DELETE · `permissions`: **SELECT 만** · `audit_logs`: SELECT/INSERT 만 · DROP 없음 |
 | `tbox_backup` | 백업 스크립트 | 전체 SELECT (읽기 전용) |
-| `tbox_perm` | 권한 매트릭스 편집 핸들러 **하나**(`admin_permissions_update.php`, 17단계 F-25) | `permissions`: SELECT/UPDATE 만 · 다른 표 0 · INSERT/DELETE 없음(16행 고정). `.env` `DB_PERM_USER/PASS`, `Db::perm()` 지연 연결 |
+| `tbox_perm` | 권한 매트릭스 편집 핸들러 **하나**(`admin_permissions_update.php`, 17단계 F-25) | `permissions`: SELECT/UPDATE 만 · 다른 표 0 · INSERT/DELETE 없음(16행 고정). `.env` `DB_PERM_USER/PASS`, `Db::perm()` 지연 연결 · **비영속**(앱 연결 `tbox_app` 만 워커마다 재사용 — 5.31) |
 
 > 파일 삭제가 논리 삭제(UPDATE)이므로 앱 계정에 `DELETE` 권한 자체가 필요 없다. 30일 실제 정리는 `tbox_owner` 권한의 배치 스크립트가 수행한다.
 

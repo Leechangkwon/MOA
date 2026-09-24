@@ -6,7 +6,8 @@ declare(strict_types=1);
  *
  * 하는 일 네 가지
  *   1) 오류를 화면에 절대 내보내지 않는다 (PRD S-09-7). 상세는 error_log 로만.
- *   2) 저장소 루트 .env 를 읽어 DB 에 연결한다 (PRD S-09-6). 값이 없으면 부팅 실패 — 조용한 기본값은 없다.
+ *   2) 저장소 루트 .env 를 읽어 DB 접속 정보를 넘긴다 (PRD S-09-6). 값이 없으면 부팅 실패 — 조용한 기본값은 없다.
+ *      연결 자체는 첫 질의 때 열린다(Q:F-4 P-5c — `Db::boot` 주석).
  *   3) 요청 하나를 식별하는 request_id(UUIDv4) 를 만든다 (PRD S-07: 감사 로그 ↔ 서버 로그 연결).
  *   4) 보안 헤더를 출력한다 (PRD S-09-9). nginx 와 이중으로 나가도 무해하다 —
  *      nginx 설정이 실수로 빠져도 앱이 스스로 붙이는 편이 안전하다.
@@ -173,9 +174,10 @@ set_exception_handler(static function (Throwable $e): void {
         $e->getLine()
     ));
     try {
-        // Db::ready() — 부팅에서 연결이 실패했으면 부르지 않는다 (F-48, ARCH 5.24).
-        // 없는 연결에 rollback 을 걸어 로그에 「rollback failed」 잡음을 남기지 않기 위해서다.
-        if (class_exists('Db', false) && Db::ready()) {
+        // Db::connected() — 이 요청이 연결을 연 적이 없으면(연결 실패 포함) 부르지 않는다 (F-48, ARCH 5.24).
+        // 없는 연결에 rollback 을 걸어 로그에 「rollback failed」 잡음을 남기지 않고, 롤백하려고 연결을
+        // **새로 열지도** 않는다(Q:F-4 P-5c — 연결은 첫 질의 때 열리므로 ready() 는 연결을 시도한다).
+        if (class_exists('Db', false) && Db::connected()) {
             Db::instance()->rollback();
         }
     } catch (Throwable $ignored) {
@@ -227,7 +229,7 @@ if (!headers_sent()) {
     header('Referrer-Policy: no-referrer');
 }
 
-// ─── 5) 설정 로드 + DB 연결 ────────────────────────────────────
+// ─── 5) 설정 로드 + DB 접속 정보 ───────────────────────────────
 // 설정 파일은 저장소 루트 .env 한 곳뿐이다 (PRD S-09-6. ARCH 3장).
 // 왜 여기인가
 //   · public/ 밖이라 URL 로 보이지 않고, .gitignore 로 Git 에도 들어가지 않는다.
@@ -237,6 +239,8 @@ if (!headers_sent()) {
 // (운영 전환 시 /etc/tbox/tbox.env 로 이전 검토 — 심층 방어. PRD S-09-6)
 Env::load(dirname(__DIR__) . '/.env');
 
+// 접속 정보만 넘긴다 — 연결은 첫 질의 때 (Q:F-4 P-5c). 그래서 쿠키 없는 런처 `/`·옛 주소 308·404 는
+// PostgreSQL 에 붙지 않고, DB 가 내려가 있어도 그 화면들은 전과 같다. health 는 `Db::ready()` 로 연결을 시도한다.
 Db::boot(
     Env::get('DB_HOST'),
     Env::get('DB_PORT'),
@@ -244,3 +248,10 @@ Db::boot(
     Env::get('DB_USER'),
     Env::get('DB_PASS')
 );
+
+// 요청 끝 정리 (Q:F-4 P-2, SECURITY R-101) — 앱 연결은 워커마다 재사용되므로(영속) 요청이 끝나도 닫히지
+// 않는다. 트랜잭션이 열린 채 끝난 요청(치명적 오류·트랜잭션 안의 exit 등)이면 여기서 되돌려, 다음 요청이
+// 그 트랜잭션을 물려받지 않게 한다. 위 3) 의 종료 함수(치명적 오류 은닉) **뒤에** 등록한다 — 등록 순서대로 돈다.
+register_shutdown_function(static function (): void {
+    Db::endRequest();
+});

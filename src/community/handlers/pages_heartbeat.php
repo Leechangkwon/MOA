@@ -30,7 +30,9 @@ if ($body !== []) {
     Http::error(400, Http::MSG_BAD_REQUEST);
 }
 
-$row = community_page_row($pid, (int) $user['id']);
+// Q:F-4 P-4b — 본문(`doc`)을 뺀 같은 행. 판정 칸은 `community_page_row()` 와 한 SQL 에서 온다(본문만 빠진다).
+// 30초마다 오는 신호가 본문 jsonb 전체를 읽지 않게 한다. 판정 함수는 그대로다.
+$row = community_page_row_nodoc($pid, (int) $user['id']);
 if ($row === null) {
     Http::error(404, Http::MSG_NOT_FOUND);
 }

@@ -26,7 +26,7 @@ declare(strict_types=1);
  */
 
 if (!Db::ready()) {
-    // 부팅의 Db::boot 이 연결에 실패한 경우. 예외 문구는 이미 Db::boot 이 로그에 남겼다.
+    // 이 요청에서 앱 연결을 열지 못한 경우(Q:F-4 P-5c 부터 연결은 첫 질의·ready() 때 연다). 원문은 Db 가 이미 서버 로그에 남겼다.
     error_log('[tbox] request_id=' . TBOX_REQUEST_ID . ' health: connect_failed');
     Http::json(['status' => 'fail', 'db' => 'connect_failed'], 503);
     return;

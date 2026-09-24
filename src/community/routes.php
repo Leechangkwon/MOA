@@ -411,11 +411,58 @@ function community_share_level_name($rank): ?string
  */
 function community_page_row(string $publicId, int $viewerId = 0): ?array
 {
+    return community_page_row_read($publicId, $viewerId, true);
+}
+
+/**
+ * `community_page_row()` 에서 **본문(`p.doc`) 한 칸만 뺀** 같은 행 (Q:F-4 P-4b).
+ *
+ * 편집 중 신호(`pages_heartbeat.php`)처럼 판정만 하고 본문을 쓰지 않는 창구가 30초마다 본문 jsonb 전체
+ * (실측 최대 99KB)를 읽지 않게 한다. **SQL 은 한 벌**이다(`community_page_row_sql()`) — 판정 칸을 따로
+ * 고르지 않고 본문 칸 하나만 빼므로, 판정 함수(`CommunityAuthz`)가 받는 칸은 `doc` 을 뺀 전부가 글자 그대로
+ * 같다. 판정 재료가 이 함수에만 빠지는 일이 생기지 않는다(판정은 본문을 보지 않는다 — `CommunityAuthz`
+ * 에 `doc` 을 읽는 줄 0). 돌려주는 행에는 `doc` 키가 **없다** — 실수로 읽으면 경고가 예외로 바뀌어 500
+ * 으로 드러난다(빈 본문으로 조용히 넘어가지 않는다).
+ *
+ * @return array<string,mixed>|null 없으면 null
+ */
+function community_page_row_nodoc(string $publicId, int $viewerId): ?array
+{
+    return community_page_row_read($publicId, $viewerId, false);
+}
+
+/**
+ * 위 두 함수의 몸통 — 질의·후처리가 한 벌이다.
+ *
+ * @return array<string,mixed>|null
+ */
+function community_page_row_read(string $publicId, int $viewerId, bool $withDoc): ?array
+{
+    $row = Db::instance()->run(community_page_row_sql($withDoc), [':pid' => $publicId, ':viewer' => $viewerId])->fetch();
+    if (!is_array($row)) {
+        return null;
+    }
+    $row['share_level']   = community_share_level_name($row['share_rank']);
+    $row['share_user_id'] = $viewerId > 0 ? $viewerId : null;
+    unset($row['share_rank']);
+    return $row;
+}
+
+/**
+ * 페이지 한 건 질의 **한 벌** (ARCH 13.2 판정 칸 전부). 바뀌는 것은 본문 칸 하나다 (Q:F-4 P-4b).
+ *
+ * `$withDoc` 이 거짓이면 `p.doc` 을 SELECT 목록에서 뺀다. 끼워 넣는 조각은 코드에 적힌 리터럴 두 값
+ * (`'p.doc, '`·`''`)과 공유 등급 조각(위 상수)뿐이다 — 요청 값이 한 글자도 SQL 에 들어가지 않는다 (PRD S-04).
+ * 시험(`tests/qf4b1.sh`)이 이 함수의 결과로 쿼리 계획을 떠 `doc` 열이 없는지 본다.
+ */
+function community_page_row_sql(bool $withDoc): string
+{
     $shareRank = community_share_rank_sql('p.id', ':viewer');
-    $sql = <<<SQL
+    $docCol    = $withDoc ? 'p.doc, ' : '';
+    return <<<SQL
         SELECT p.id, p.public_id, p.space_id, p.parent_page_id, p.position,
                p.title, p.icon, p.font, p.small_text, p.full_width, p.visibility,
-               p.doc, p.doc_version, p.block_count,
+               {$docCol}p.doc_version, p.block_count,
                p.author_id, p.last_edited_by, p.created_at, p.updated_at,
                p.deleted_at, p.deleted_by,
                s.kind          AS space_kind,
@@ -477,15 +524,6 @@ function community_page_row(string $publicId, int $viewerId = 0): ?array
           LEFT JOIN community.databases dbrow  ON dbrow.id       = p.database_id
          WHERE p.public_id = CAST(:pid AS uuid)
         SQL;
-
-    $row = Db::instance()->run($sql, [':pid' => $publicId, ':viewer' => $viewerId])->fetch();
-    if (!is_array($row)) {
-        return null;
-    }
-    $row['share_level']   = community_share_level_name($row['share_rank']);
-    $row['share_user_id'] = $viewerId > 0 ? $viewerId : null;
-    unset($row['share_rank']);
-    return $row;
 }
 
 /**
