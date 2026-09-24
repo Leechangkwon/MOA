@@ -328,15 +328,16 @@ echo "  HTTP $(code_of "$R") $(body_of "$R")"
 expect "보는 중 POST /api/me/act → 403" 403 "$(code_of "$R")"
 
 # ═════════════════════════════════════════════════════════════
-hr "T-52 (g) 활동 갱신 — 요청마다 act_last_seen_at 이 밀린다"
+hr "T-52 (g) 활동 갱신 — 60초가 지난 뒤의 요청이 act_last_seen_at 을 민다 (Q:F-4 P-3 — 60초에 한 번)"
 # ═════════════════════════════════════════════════════════════
+# P-3(2026-09-24) 부터 세션 갱신은 마지막 갱신이 60초보다 오래됐을 때만 한다 — 두 열을 61초 전으로 돌려 둔다
+psqlc "UPDATE sessions SET last_seen_at = last_seen_at - interval '61 seconds', act_last_seen_at = act_last_seen_at - interval '61 seconds' WHERE id = '$SID_ADMIN';"
 T1=$(psqlq "SELECT act_last_seen_at FROM sessions WHERE id = '$SID_ADMIN';")
-sleep 1
 call claude_admin01 GET /api/me "$TOK_ADMIN" > /dev/null
 T2=$(psqlq "SELECT act_last_seen_at FROM sessions WHERE id = '$SID_ADMIN';")
 echo "  요청 전: $T1"
 echo "  요청 후: $T2"
-expect "요청마다 act_last_seen_at 갱신" 1 "$([ "$T1" != "$T2" ] && echo 1 || echo 0)"
+expect "60초 지난 뒤 요청에 act_last_seen_at 갱신" 1 "$([ "$T1" != "$T2" ] && echo 1 || echo 0)"
 
 sub "29분 전이면 유지된다"
 psqlc "UPDATE sessions SET act_last_seen_at = now() - interval '29 minutes' WHERE id = '$SID_ADMIN';"
@@ -381,6 +382,12 @@ expect "원복 뒤 role=Admin" "Admin" "$(field role "$(body_of "$R")")"
 # ═════════════════════════════════════════════════════════════
 hr "T-52 (f) 끄기 — 원래대로"
 # ═════════════════════════════════════════════════════════════
+# (h) 의 강등으로 역할 보기는 이미 풀렸다 — 「끄기」를 시험하려면 먼저 다시 켠다. 감사는 이번에 생긴 행만 본다.
+# (2026-09-24 취합: 옛 시험은 운영 사본에 남은 예전 act.stop 행(qa_admin01 49건)을 읽어 우연히 통과했다 —
+#  1-B-1 에서 claude_admin01 로 바뀌며 드러남)
+R=$(call claude_admin01 POST /api/me/act "$TOK_ADMIN" '{"role":"Employee"}')
+expect "끄기 전에 다시 켜기 → 200" 200 "$(code_of "$R")"
+STOP_MARK=$(psqlq "SELECT coalesce(max(id),0) FROM audit_logs;")
 R=$(call claude_admin01 DELETE /api/me/act "$TOK_ADMIN")
 ME="$(body_of "$R")"
 echo "  HTTP $(code_of "$R")"; echo "  $ME" | head -c 300; echo
@@ -388,7 +395,7 @@ expect "DELETE /api/me/act → 200" 200 "$(code_of "$R")"
 expect "role 이 Admin 으로 돌아옴" "Admin" "$(field role "$ME")"
 expect "acting=false" 1 "$(printf '%s' "$ME" | grep -c '"acting":false')"
 STOP=$(psqlq "SELECT result||'|'||actor_role||'|'||coalesce(detail->'acting_as'->>'role','-')
-                FROM audit_logs WHERE action='act.stop' AND actor_name='claude_admin01'
+                FROM audit_logs WHERE action='act.stop' AND actor_name='claude_admin01' AND id > ${STOP_MARK:-0}
                ORDER BY id DESC LIMIT 1;")
 echo "  감사 act.stop: $STOP"
 expect "act.stop allow · actor_role=Admin · acting_as.role=Employee" "allow|Admin|Employee" "$STOP"

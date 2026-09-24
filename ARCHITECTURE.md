@@ -1003,6 +1003,10 @@ SQL_LOOKUP  →  act_role, act_* 값 + DB 가 계산한 두 불린
 
 **만료는 「활동 없는 30분」.** 요청마다 `act_last_seen_at` 을 미는 문장은 기존
 `UPDATE sessions SET last_seen_at = now()` 에 한 열을 더한 것이라 **쿼리 수가 늘지 않는다**.
+**Q:F-4 P-3(2026-09-24)** — 이 문장은 이제 **60초에 한 번만** 쓴다(`WHERE … AND last_seen_at < now() - interval '60 seconds'`).
+요청마다 UPDATE 하던 것을 줄인 것이고, 두 열(`last_seen_at`·`act_last_seen_at`)은 같은 문장이라 함께 움직인다.
+대가로 기록이 실제 마지막 활동보다 최대 60초 늦을 수 있어, 무활동 만료·역할로 보기 만료가 실제 무활동보다 **최대 60초 일찍** 닫힐 수 있다(늦게 닫히는 길은 없다 — SECURITY 7장 수용 근거). 자동 요청이 세션을
+연장하지 않는 U-3 은 쓰던 글 임시저장(B1-2)과 같은 발행으로 따로 들어간다.
 만료·강등을 발견한 요청이 그 자리에서 여섯 열을 NULL 로 되돌리고 `act.expire allow`(reason `idle`·
 `role_lost`)를 한 줄 남긴다 — 배치를 두지 않는 이유는 reauth 창과 같다(지났는데 아직 열려 있는 틈을
 만들지 않는다). 「시작 뒤 30분」이 아니다: 쓰는 중에 끊기면 관리자는 자기가 무엇을 보는지 알 수 없다.
@@ -1663,7 +1667,7 @@ CREATE TABLE sessions (
 CREATE INDEX sessions_user_idx ON sessions (user_id);
 ```
 
-흐름: 로그인 성공 → `random_bytes(32)` → 쿠키에 hex 토큰(HttpOnly·Secure·SameSite=Lax) → DB 에는 `hash('sha256', 토큰)`. 요청마다 해시로 조회 → `expires_at` 확인 → `last_seen_at` 갱신. 로그아웃은 행 삭제.
+흐름: 로그인 성공 → `random_bytes(32)` → 쿠키에 hex 토큰(HttpOnly·Secure·SameSite=Lax) → DB 에는 `hash('sha256', 토큰)`. 요청마다 해시로 조회 → `expires_at` 확인 → `last_seen_at` 갱신(Q:F-4 P-3 부터 60초보다 오래됐을 때만). 로그아웃은 행 삭제.
 DB 가 유출돼도 해시만 있으므로 세션을 위조할 수 없다.
 
 ### 6.2-5 `api_tokens` 테이블 — 사용자별 프로그램 토큰 (F-59, PRD F-59, ARCH 4.6)

@@ -676,6 +676,26 @@ sleep 0.3
 expect "CLI 가 끝난 뒤 임시 DB 에 perm 계정 연결 0" "0" \
   "$(psqlq "SELECT count(*) FROM pg_stat_activity WHERE datname = '$DB' AND usename = '$PERM_DB_USER'")"
 
+sub "P-3 세션 갱신은 60초에 한 번 — 사람 요청 두 번(5초 간격) → 갱신 1번 · 61초 지난 뒤 → 다시 갱신"
+# 세션 행은 계정으로 찾는다(쿠키 값·세션 id 는 찍지 않는다). 시각은 DB 가 준 값끼리만 견준다.
+P3_SQL="SELECT to_char(s.last_seen_at, 'YYYY-MM-DD HH24:MI:SS.US') FROM sessions s JOIN users u ON u.id = s.user_id WHERE u.username = 'claude_employee01' ORDER BY s.last_seen_at DESC LIMIT 1"
+psqlq "UPDATE sessions SET last_seen_at = last_seen_at - interval '61 seconds' WHERE user_id = (SELECT id FROM users WHERE username = 'claude_employee01')" >/dev/null
+T0=$(psqlq "$P3_SQL")
+code_of -H @"$E1C" "$BASE/api/me" >/dev/null
+T1=$(psqlq "$P3_SQL")
+expect "61초 지난 세션 → 사람 요청 한 번에 갱신됨" "yes" "$([ -n "$T1" ] && [ "$T1" != "$T0" ] && echo yes || echo no)"
+sleep 5
+code_of -H @"$E1C" "$BASE/api/me" >/dev/null
+T2=$(psqlq "$P3_SQL")
+expect "5초 뒤 사람 요청 → 갱신 안 함(60초 안)" "same" "$([ "$T2" = "$T1" ] && echo same || echo changed)"
+code_of -H @"$E1C" "$BASE/api/me" >/dev/null
+expect "  그래도 로그인은 그대로(/tbox/api/me 200)" "200" "$(code_of -H @"$E1C" "$BASE/api/me")"
+psqlq "UPDATE sessions SET last_seen_at = last_seen_at - interval '61 seconds' WHERE user_id = (SELECT id FROM users WHERE username = 'claude_employee01')" >/dev/null
+T3=$(psqlq "$P3_SQL")
+code_of -H @"$E1C" "$BASE/api/me" >/dev/null
+T4=$(psqlq "$P3_SQL")
+expect "다시 61초 지난 뒤 → 갱신됨" "yes" "$([ -n "$T4" ] && [ "$T4" != "$T3" ] && echo yes || echo no)"
+
 sub "후 인스턴스 로그 — 뜻하지 않은 오류 0"
 expect "uncaught 는 누수 시험이 일부러 낸 두 예외뿐" "2" "$(grep -c 'uncaught' "$INST_NEW/server.log" | tr -d ' ')"
 expect "fatal 은 누수 시험이 일부러 낸 두 치명적 오류뿐" "2" "$(grep -c 'request_id=[^ ]* fatal:' "$INST_NEW/server.log" | tr -d ' ')"

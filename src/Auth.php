@@ -83,7 +83,7 @@ final class Auth
     /**
      * 「역할로 보기」가 저절로 풀리는 **활동 없는** 시간 — 분 (26단계, PRD F-39, ARCH 5.20).
      *
-     * 「시작 뒤 30분」이 아니다. 요청마다 `sessions.act_last_seen_at` 을 밀고(SQL_TOUCH),
+     * 「시작 뒤 30분」이 아니다. 요청이 오면 `sessions.act_last_seen_at` 을 밀고(SQL_TOUCH — Q:F-4 P-3 부터 60초에 한 번),
      * 그 값이 이 창보다 오래됐을 때만 해제한다 — 쓰는 중에 화면이 갑자기 원래 역할로 돌아가면
      * 관리자는 자기가 무엇을 보고 있는지 알 수 없게 된다 (사용자 결정 2026-09-15 ③).
      * 판정은 SQL_LOOKUP 의 `act_fresh` 가 **DB 시계 하나**로 한다 (reauth_fresh 와 같다).
@@ -152,12 +152,19 @@ final class Auth
      * 세션(`act_role IS NOT NULL`)은 여기서 `act_last_seen_at` 도 함께 민다. 기존 문장에 한 열을
      * 더한 것이라 **쿼리 수가 늘지 않는다**. 보는 중이 아니면 NULL 그대로 둔다 — 값이 있는 것
      * 자체가 "보는 중" 의 흔적이 되면 안 된다.
+     *
+     * Q:F-4 P-3 (2026-09-24) — **60초에 한 번만** 쓴다(`last_seen_at` 이 60초보다 오래됐을 때만).
+     * 전에는 인증된 요청마다 UPDATE 했다(폴링·heartbeat 까지). 조건은 SQL 에만 있고 요청 값은 0이다.
+     * 대가: 기록(`last_seen_at`)이 실제 마지막 활동보다 최대 60초 늦을 수 있어, 무활동 만료(30분)와 역할로 보기 만료(30분)가
+     * 실제 무활동보다 **최대 60초 일찍** 닫힐 수 있다(늦게 닫히는 길은 없다 — 보수적. SECURITY 수용 근거, 독립 검토 P-3 Low-1).
+     * 두 열은 같은 문장이라 함께 움직인다 — 역할로 보기를 시작하는 문장이 act_last_seen_at 을 따로 채운다.
      */
     private const SQL_TOUCH = <<<'SQL'
         UPDATE sessions
            SET last_seen_at     = now(),
                act_last_seen_at = CASE WHEN act_role IS NULL THEN NULL ELSE now() END
          WHERE id = :id
+           AND last_seen_at < now() - interval '60 seconds'
         SQL;
 
     /**
