@@ -971,6 +971,7 @@
         "public/assets/community/doc-schema.json",
         "src/help/community.php",
         "src/community/handlers/pages_create.php",
+        "src/community/handlers/pages_list.php",
         "src/community/handlers/pages_delete.php",
         "src/community/handlers/pages_get.php",
         "src/community/handlers/pages_list.php",
@@ -1014,6 +1015,7 @@
         "src/Audit.php",
         "src/bootstrap.php",
         "src/community/handlers/pages_create.php",
+        "src/community/handlers/pages_list.php",
         "src/community/handlers/pages_delete.php",
         "src/community/handlers/pages_get.php",
         "src/community/handlers/pages_list.php",
@@ -1057,6 +1059,7 @@
         "src/views/shell_top.php",
         "public/assets/community/editor.js",
         "src/community/handlers/pages_create.php",
+        "src/community/handlers/pages_list.php",
         "src/community/handlers/pages_delete.php",
         "src/community/handlers/pages_get.php",
         "src/community/handlers/pages_list.php",
@@ -1102,6 +1105,7 @@
         "src/community/handlers/history.php",
         "src/community/handlers/page_restore.php",
         "src/community/handlers/pages_create.php",
+        "src/community/handlers/pages_list.php",
         "src/community/handlers/pages_delete.php",
         "src/community/handlers/pages_get.php",
         "src/community/handlers/pages_list.php",
@@ -1207,6 +1211,7 @@
         "src/community/handlers/history.php",
         "src/community/handlers/page_restore.php",
         "src/community/handlers/pages_create.php",
+        "src/community/handlers/pages_list.php",
         "src/community/handlers/pages_delete.php",
         "src/community/handlers/pages_get.php",
         "src/community/handlers/pages_heartbeat.php",
@@ -1262,6 +1267,7 @@
         "db/migrations/2026-09-26_community_purge.sql",
         "src/community/handlers/history.php",
         "src/community/handlers/pages_create.php",
+        "src/community/handlers/pages_list.php",
         "src/community/handlers/pages_delete.php",
         "src/community/handlers/pages_get.php",
         "src/community/handlers/pages_handover.php",
@@ -1332,6 +1338,7 @@
         "src/community/handlers/boards_update.php",
         "src/community/handlers/history.php",
         "src/community/handlers/pages_create.php",
+        "src/community/handlers/pages_list.php",
         "src/community/handlers/pages_delete.php",
         "src/community/handlers/pages_get.php",
         "src/community/handlers/pages_handover.php",
@@ -1581,6 +1588,7 @@
         "src/community/handlers/databases_list.php",
         "src/community/handlers/page_values.php",
         "src/community/handlers/pages_create.php",
+        "src/community/handlers/pages_list.php",
         "src/community/handlers/pages_delete.php",
         "src/community/handlers/pages_get.php",
         "src/community/handlers/pages_list.php",
@@ -1695,6 +1703,7 @@
         "src/community/handlers/page_restore.php",
         "src/community/handlers/page_values.php",
         "src/community/handlers/pages_create.php",
+        "src/community/handlers/pages_list.php",
         "src/community/handlers/pages_delete.php",
         "src/community/handlers/pages_get.php",
         "src/community/handlers/pages_heartbeat.php",
@@ -1882,6 +1891,7 @@
         "src/community/handlers/boards_create.php",
         "src/community/handlers/boards_update.php",
         "src/community/handlers/pages_create.php",
+        "src/community/handlers/pages_list.php",
         "src/community/handlers/pages_delete.php",
         "src/community/handlers/pages_get.php",
         "src/community/handlers/pages_hide.php",
@@ -2158,6 +2168,7 @@
         "src/community/handlers/pages_create.php",
         "src/community/handlers/pages_get.php",
         "src/community/handlers/pages_handover.php",
+        "src/community/handlers/pages_list.php",
         "src/community/handlers/pages_delete.php"
       ],
       "requirements": [],
@@ -2184,6 +2195,7 @@
         "src/community/handlers/pages_share_put.php",
         "src/community/handlers/pages_share_delete.php",
         "src/community/handlers/pages_visibility.php",
+        "src/community/handlers/pages_list.php",
         "src/community/handlers/pages_delete.php"
       ],
       "requirements": [
@@ -2315,6 +2327,50 @@
       "est_sec": 90,
       "writes_prod": false,
       "notes": "부르는 셸: community.stale_modules. 단독 실행 불가(인자 SITE UA 와 SMOKE_E1·OLD_DIR·APP_VER 환경 변수를 부르는 셸이 넘긴다). 「지금 부품 버전이 붙지 않은 부품 주소」를 옛 파일로 답하는 route 로 7일 캐시를 흉내 낸다."
+    },
+    {
+      "id": "upgrade.smoke",
+      "cmd": "bash tests/upgrade_smoke.sh",
+      "module": "core",
+      "env": "temp-instance",
+      "status": "advisory",
+      "needs": [
+        "sudo",
+        "browser"
+      ],
+      "covers": [
+        "tests/upgrade/flows.json",
+        "tests/upgrade/browser_upgrade.py",
+        "deploy/sites/tbox-v2.conf",
+        "db/community/grants.sql",
+        "src/handlers/login.php",
+        "src/handlers/me.php",
+        "src/community/handlers/pages_list.php",
+        "src/community/handlers/pages_delete.php"
+      ],
+      "requirements": [],
+      "risks": [],
+      "est_sec": 300,
+      "writes_prod": false,
+      "notes": "업그레이드 스모크(docs/checkbot/upgrade-smoke-design.md A 방식 · PRD 13.7 항목 4 동적 짝 · UR-0001). 같은 포트에 N-1 태그 트리를 띄워 프로필 브라우저로 캐시를 채우고, 서버만 N(작업 트리 또는 N_REF)으로 바꿔 같은 프로필로 flows.json 동선을 누른다 + 새 문맥 대조. 라우터가 운영 nginx 자산 캐시 머리(deploy/sites 의 expires 를 읽음·검증자)를 흉내 — route 흉내 0. 임시 인스턴스: pg_dump tbox_re(읽기) | psql → 임시 DB tbox_upgrade_test(파일 없는 파이프) · php -S 127.0.0.1:8104 · 검토 계정 claude_employee01. 비밀·세션 쿠키는 py_secret(표준입력). 운영 8082 요청 0. D-2 처음 두 단계는 경고만이라 advisory. 결과 RESULT_ITEM flow= fresh= upgrade= reason=. 나가는 값 0·1·3(준비물)·4(인스턴스). est_sec 어림값. 동선이 부르는 창구(휴지통·알림·새 페이지·파일 목록)는 브라우저가 부르므로 flows.json 이 기준이고 covers 에는 셸이 직접 부르는 창구만 넣었다(검토 L3). fresh 대조 실패·캐시 양성 대조 0·캐시 채우기 실패도 실패로 끝난다(검토 H1·H2·M1)."
+    },
+    {
+      "id": "upgrade.browser_upgrade",
+      "cmd": "python3 tests/upgrade/browser_upgrade.py",
+      "module": "core",
+      "env": "temp-instance",
+      "status": "helper",
+      "needs": [
+        "browser"
+      ],
+      "covers": [
+        "tests/upgrade/flows.json"
+      ],
+      "requirements": [],
+      "risks": [],
+      "est_sec": 120,
+      "writes_prod": false,
+      "notes": "부르는 셸: upgrade.smoke. 단독 실행 불가(인자 SITE UA 단계 프로필 flows 자산기록 · 쿠키는 표준입력). fill·upgrade 는 launch_persistent_context 의 진짜 디스크 캐시, fresh 는 새 문맥. 사고 모양(모듈 연결 오류·기대 요청 0)만 fail."
     },
     {
       "id": "core.qf4a",

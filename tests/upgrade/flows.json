@@ -1,0 +1,35 @@
+{
+  "version": 1,
+  "about": "업그레이드 스모크 동선 목록 — docs/checkbot/upgrade-smoke-design.md 4장. 화면을 만드는 개발 단계가 한 줄씩 더한다(D-4 · 관문 ② 체크리스트). 주소는 사이트 뿌리 기준. click 은 CSS 선택자(390px 폭 — 옆 메뉴 안 단추는 먼저 #nav-toggle 을 누른다, expect 없는 click 은 준비 동작), expect 는 그 동작이 내보내야 하는 요청(method + path 접두). on_load 는 화면을 열기만 해도 나가야 하는 요청. creates=community_page 는 만든 페이지 id 를 CREATED= 로 찍어 부르는 셸이 앱 창구(DELETE)로 지운다.",
+  "flows": [
+    {
+      "id": "community.trash",
+      "url": "/community/",
+      "steps": [
+        { "click": "#community-trash", "expect": { "method": "GET", "path": "/community/api/me/trash" } }
+      ]
+    },
+    {
+      "id": "community.bell",
+      "url": "/community/",
+      "steps": [
+        { "click": "#nav-toggle" },
+        { "click": "#nav-community-bell", "expect": { "method": "GET", "path": "/community/api/notifications" } }
+      ]
+    },
+    {
+      "id": "community.new_page",
+      "url": "/community/",
+      "creates": "community_page",
+      "steps": [
+        { "click": "#community-new", "expect": { "method": "POST", "path": "/community/api/pages" } }
+      ]
+    },
+    {
+      "id": "tbox.files",
+      "url": "/tbox/",
+      "on_load": { "method": "GET", "path": "/tbox/api/files" },
+      "steps": []
+    }
+  ]
+}
