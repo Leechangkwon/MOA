@@ -1,0 +1,11 @@
+<?php
+// 견본 공통 셸 윗부분 — 모든 화면이 싣는다
+?>
+<!doctype html>
+<html lang="ko"><body>
+<nav class="demo-nav">
+  <a href="/demo/">홈</a>
+  <a href="/demo/box" hidden>내 보관함</a>
+  <a href="/demo/admin/box" hidden>전체 보관함</a>
+</nav>
+<main>

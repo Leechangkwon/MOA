@@ -1,0 +1,12 @@
+# R28 견본별 기대값 — 형식: <견본 폴더> rc=<종료 코드> findings=<FINDING 줄 수>
+# 부르는 법: bash tests/static/selftest.sh R28  (run_case.sh 가 견본 폴더를 --root 로, 안의 outer/ 를 --outer 로 넘긴다)
+# 견본은 전부 새로 지은 가짜 코드다(정답지·저장소 본문 복사 없음).
+#   fire_lookup      set -euo pipefail 아래 id -u "$U" · getent … | cut(pipefail) · readlink -e 대입(3) — HO-P7-007 모양
+#   fire_shebang     셔뱅 `bash -e` 아래 pgrep · command -v 대입(2)
+#   fire_outer       바깥 반영 스크립트(--outer)의 set -e + id -u "$OWNER"(1)
+#   quiet_ok         || { … } · if ! · 앞선 같은 조회 확인 · local · id -u(자기) · set +e 구간 · readlink -f ·
+#                    치환 안 || true · pipefail 없이 파이프 앞자리 · set -e 없는 파일 · 표식 — 0
+fire_lookup rc=1 findings=3
+fire_shebang rc=1 findings=2
+fire_outer rc=1 findings=1
+quiet_ok rc=0 findings=0

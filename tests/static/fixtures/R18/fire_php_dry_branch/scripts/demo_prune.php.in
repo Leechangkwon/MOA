@@ -1,0 +1,11 @@
+<?php
+// 가짜 견본(대조) — dry-run 참 갈래라도 반복 대상이 임시 밖(/var/lib/…)이면 울린다(1).
+declare(strict_types=1);
+$dryRun = in_array('--dry-run', $argv, true);
+if ($dryRun) {
+    $t = tempnam(sys_get_temp_dir(), 'demo');
+    foreach ([$t . '.a', '/var/lib/demo/state.json'] as $f) {
+        touch($f);
+    }
+    exit(0);
+}

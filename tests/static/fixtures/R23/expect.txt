@@ -1,0 +1,21 @@
+# R23 견본별 기대값 — 형식: <견본 폴더> rc=<종료 코드> findings=<FINDING 줄 수>
+# 부르는 법: bash tests/static/selftest.sh R23  (run_case.sh 가 견본 폴더를 --root 로, 안의 outer/ 를 --outer 로 넘긴다)
+# 견본은 전부 새로 지은 가짜 코드다(정답지·저장소 본문 복사 없음, 주소는 example.invalid).
+# 견본 PHP(공통 셸 판정용)는 `.php.in` 으로 둔다 — selftest.sh 가 임시 폴더에 풀며 `.in` 을 뗀다.
+#   fire_record       ① 뒤로 돌린 기록기 서버를 띄우고 머리 확인 curl 뒤 기록을 비우지 않은 채 「1건 이상」(1) — 1l 모양
+#   fire_shell_text   ② 화면 응답에서 찾는 글자가 공통 셸(세 화면이 require 하는 틀)의 내비에도 있음(grep -c · <<<)(2) — HO-U2B-001 모양
+#   fire_prep         ③ 만들기 결과를 확인 없이 「없음」 단언에 넘김(1) · ③′ [ -n ] && 로 단언이 말없이 빠짐(1) — HO-7D1-009 모양
+#   fire_empty_eq     ④ 바깥 반영 스크립트(--outer): 요청 전·후 머리 해시를 빈 값 확인 없이 비교(1) — HO-C-005 모양
+#   quiet_record      ① 머리 확인 curl 뒤 기록을 다시 비움(고친 1l 모양) · 요청 없이 세기 — 0
+#   quiet_shell_text  ② 그 화면에만 있는 표식(제목 요소) · 없어야 하는 글자(기대 0) · 창구 JSON 응답 — 0
+#   quiet_prep        ③ 이름 목록을 돌며 ${!v} 로 빈 id 확인 · 긍정 단언에도 쓴 준비 값 · [ -n ] || exit ·
+#                     else 로 건너뜀을 알림 · 긍정 확인만 빠지는 [ -n ] && — 0
+#   quiet_empty_eq    ④ 확인된 입력의 해시 · 대체 값 「(none)」을 내는 도우미 · 한쪽이 글자 · 표식(skip 1) — 0
+fire_record rc=1 findings=1
+fire_shell_text rc=1 findings=2
+fire_prep rc=1 findings=2
+fire_empty_eq rc=1 findings=1
+quiet_record rc=0 findings=0
+quiet_shell_text rc=0 findings=0
+quiet_prep rc=0 findings=0
+quiet_empty_eq rc=0 findings=0

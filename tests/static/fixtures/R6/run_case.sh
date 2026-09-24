@@ -28,6 +28,22 @@ case "$mode" in
   badrange) range=no-such-ref..HEAD ;;
   *) echo "모르는 mode: $mode" >&2; exit 2 ;;
 esac
-args=(--root "$repo" --range "$range" --outer none)
-[ -f "$case_dir/directive.md" ] && args+=(--directive "$case_dir/directive.md")
+# (v3 묶음 K) 바깥 저장소 견본: outer_base/ 를 뿌리 범위 시작 커밋보다 앞선 시각에, outer_tip/ 을 뒤 시각에 커밋한
+# 임시 바깥 저장소를 만들어 --outer 로 넘긴다(K4 바깥 판정). 없으면 전처럼 --outer none. frag 파일이 있으면 지시서#절.
+outer=none
+if [ -d "$case_dir/outer_base" ]; then
+  outer="$tmp/outer"; mkdir -p "$outer"
+  og() { git -C "$outer" -c user.name=fixture -c user.email=fixture@example.invalid -c commit.gpgsign=false "$@"; }
+  bt=$(g log -1 --format=%ct "$(g rev-list --max-parents=0 HEAD | tail -1)")
+  og init -q
+  cp -a "$case_dir/outer_base/." "$outer/"
+  og add -A >/dev/null && GIT_AUTHOR_DATE="@$((bt - 1000)) +0900" GIT_COMMITTER_DATE="@$((bt - 1000)) +0900" og commit -qm base || exit 2
+  if [ -d "$case_dir/outer_tip" ]; then
+    cp -R --no-preserve=timestamps "$case_dir/outer_tip/." "$outer/"
+    og add -A >/dev/null && GIT_AUTHOR_DATE="@$((bt + 1000)) +0900" GIT_COMMITTER_DATE="@$((bt + 1000)) +0900" og commit -qm tip || exit 2
+  fi
+fi
+args=(--root "$repo" --range "$range" --outer "$outer")
+dfrag=""; [ -f "$case_dir/frag" ] && dfrag="#$(tr -d '\n' < "$case_dir/frag")"
+[ -f "$case_dir/directive.md" ] && args+=(--directive "$case_dir/directive.md$dfrag")
 PYTHONDONTWRITEBYTECODE=1 python3 "$rule" "${args[@]}"

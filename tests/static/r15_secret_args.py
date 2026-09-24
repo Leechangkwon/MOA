@@ -5,6 +5,8 @@ R15 비밀 인자 (secrets on the command line) — 1-F 정적 규칙, python3 s
 
 answers: BF-0002 · BF-0003(처음 부류 — TOTP 비밀·비밀번호) · BF-0006 · HO-HF0-005(세션 쿠키 — 묶음 X 보강)
          · FP-0001(오탐 정정 — 줄 이어짐으로 나뉜 환경 변수 접두)
+         · v3 묶음 K: HO-B2-011(세션 해시 키 · 한 싱크의 출처 전부) · FP-0006(sed 로 뽑은 설정 값) · v2 한계(*_id 예외 ·
+           secrets.sh `len(` 오탐 — bot-v2-static.md) · 바깥 저장소 반영 스크립트(--outer)
 
 무엇을 부류로 잡나:
   명령 인자(argv)는 같은 호스트의 다른 사용자에게 `ps`·/proc/<pid>/cmdline 으로 보이고, sudo 를 거치면
@@ -30,7 +32,13 @@ answers: BF-0002 · BF-0003(처음 부류 — TOTP 비밀·비밀번호) · BF-0
             명령이 jar 변수(이름 끝 JAR)·`.jar` 경로·쿠키/세션 이름의 파일을 읽음)은 ② 의 흐름으로 친다.
         CSRF 토큰(X-CSRF-Token)은 세션 없이는 못 쓰므로 이 규칙 범위가 아니다.
       이름으로 비밀인 셸 변수라도 대입되는 값이 전부 id 칸 읽기(`SELECT id FROM …`·`d.get('id')`·jq `.id`)면
-      식별자로 보고 뺀다(이름에 ID 가 붙으면 빼는 것과 같은 뜻 — 값 쪽에서 본 것).
+      식별자로 보고 뺀다(이름에 ID 가 붙으면 빼는 것과 같은 뜻 — 값 쪽에서 본 것). 대입되는 값이 전부 경로 모양
+      (`TOTP="$CONF/qa-totp.txt"` — 비밀 파일의 자리)이어도 뺀다.
+      ⑤ 세션 키(v3 ③): 세션 토큰 뒤의 ID(session_id · SESSION_ID)·세션 표의 id 칸(`SELECT id FROM sessions`)·
+        `session_id` 칸 읽기는 식별자 예외에 넣지 않는다 — 이 저장소의 sessions.id 는 sha256(세션 토큰)인 세션 키다.
+      ⑥ 값을 드러내지 않는 모양은 뺀다(v3 ④): len(…)·any(…)·sum(…) 안의 칸 읽기, 끝이 `| length` 인 jq 식,
+        sed `s/…\(<숫자 틀>\)…/\1/`·`grep -o '<숫자 틀>'` 로 숫자(+단위)만 뽑는 치환(설정 값 「60s」 — FP-0006),
+        이름 끝의 시간 설정 말(timeout·idle·lifetime·interval … — idle_in_transaction_session_timeout).
     외부 명령의 인자 — 셸: 빌트인(echo·printf·read·test·local·export…)과 셸 함수가 아닌 명령의 인자
       단어, sudo·env 류 뒤의 `VAR=값` 도 인자다. 표준입력(`<<<`·heredoc·파이프)·리다이렉트 대상·
       명령 앞 `VAR=값`(환경 — 여러 개가 줄 이어짐 `\` 로 나뉘어도 첫 대입 아닌 단어가 명령)은 통과.
@@ -38,11 +46,18 @@ answers: BF-0002 · BF-0003(처음 부류 — TOTP 비밀·비밀번호) · BF-0
       명령 인자와 백틱. 파이썬: subprocess.*·os.system·os.popen·os.exec*·os.spawn*·asyncio 하위 프로세스의
       명령 인자(`input=`·`env=`·`stdin=` 은 통과). strlen·hash 류로 감싼 값은 비밀이 아니다.
     heredoc 으로 만드는 스크립트(셔뱅·대상 확장자·`python3 -` 로 판단)도 같은 방법으로 본다.
-  심각도: sudo·doas 를 거치면 높음(기록에 남음), 아니면 중간.
+  심각도: sudo·doas 를 거치면 높음(기록에 남음), 아니면 중간. 싱크에 닿는 값이 **전부** 세션 해시 키(sha256(토큰) 류 —
+    이름 sid·session_id, 해시기 출력을 받아 쓴 파일(`… | sha256sum > "$W/x.sid"`)을 읽은 값, 세션 표의 id 칸)이면
+    한 단계 낮춘다(v3 ② — 토큰 자체가 아니라 되돌릴 수 없는 키, HO-B2-011 판정).
+  한 싱크(함수 안의 명령 인자)에 여러 호출 자리가 비밀을 넘기면 출처를 **모두** 한 줄에 적는다(v3 ① — 같은 이름을 넘기는
+    줄은 `파일:190·191·478` 으로 묶고, 8곳이 넘으면 「외 n곳」).
+  같은 줄에 `qcheck-allow: R15` 가 있으면 뺀다(skip 으로 센다).
 
 대상: --root 아래 --dirs(기본 tests·scripts·src)의 셸(*.sh·*.bash·셸 셔뱅)·PHP(*.php·*.phtml·php 셔뱅)·
       파이썬(*.py·python 셔뱅). --root 가 git 작업 트리의 맨 위이면 `git ls-files --cached --others
       --exclude-standard`, 아니면 디렉터리 전체. 기본으로 `tests/static/fixtures/*` 는 뺀다(--exclude 로 바꿈).
+      --outer <바깥 배치>: 그 아래 scripts/ 의 셸·PHP·파이썬도 본다(보고 경로 ../scripts/…, 셸 함수는 뿌리 안
+      파일과 섞지 않고 따로 푼다). 없거나 none 이면 바깥은 보지 않는다(v3 ⑤).
 출력: FINDING R15 <심각도> <파일:줄> <설명> · 끝 줄 RESULT pass=<대상 - 발견 파일> fail=<발견 수> skip=<못 읽음·구문 오류>
       설명에는 변수 이름만 적고 값은 적지 않는다.
 rc:   0 발견 없음 · 1 발견 있음 · 2 실행 오류(뿌리 없음·git 목록 실패 = 검사 못 함)
@@ -82,7 +97,11 @@ POST_EXEMPT = {'file', 'files', 'path', 'paths', 'dir', 'dirs', 'name', 'names',
                'table', 'scope', 'scopes', 'role', 'input', 'selector', 'sel', 'button', 'btn', 'box', 'help',
                'prompt', 'attempts', 'tries', 'lock', 'locked', 'strength', 'reset', 'env', 'var', 'vars', 'user',
                'users', 'owner', 'account', 'accounts', 'email', 'who', 'host', 'port', 'group', 'state', 'mask',
-               'masked', 'redact', 'redacted', 'placeholder', 'example', 'sample', 'jar', 'jars'}
+               'masked', 'redact', 'redacted', 'placeholder', 'example', 'sample', 'jar', 'jars',
+               # 시간 설정 이름(idle_in_transaction_session_timeout · SESSION_IDLE_MIN) — 값은 길이·시간이다(FP-0006)
+               'timeout', 'timeouts', 'idle', 'lifetime', 'duration', 'interval', 'delay', 'timer'}
+# 세션 토큰 뒤의 ID 는 「자리」가 아니라 세션 행의 키다(session_id · SESSION_ID — v3 ③). 비밀로 치되 심각도를 낮춘다(v3 ②)
+SESSION_KEY_TOK = {'session', 'sess'}
 # 비밀 토큰 **앞**에 오면 「가짜·개수·여부」(BAD_TOKEN · N_TOKENS · HAS_PASSWORD)
 PRE_EXEMPT = {'bad', 'fake', 'wrong', 'invalid', 'bogus', 'dummy', 'garbage', 'junk', 'revoked', 'expired',
               'example', 'placeholder', 'sample', 'mock', 'stub', 'n', 'num', 'count', 'cnt', 'len', 'length',
@@ -120,11 +139,26 @@ def is_secret_name(name):
     idx = secret_index(toks)
     if idx < 0:
         return False
-    if any(t in POST_EXEMPT for t in toks[idx + 1:]):
+    post = toks[idx + 1:]
+    if toks[idx] in SESSION_KEY_TOK and post[:1] in (['id'], ['ids']):
+        post = post[1:]      # session_id — 세션 행 키(해시 키)는 식별자가 아니다(v3 ③)
+    if any(t in POST_EXEMPT for t in post):
         return False
     if any(t in PRE_EXEMPT for t in toks[:idx]):
         return False
     return True
+
+
+def is_hashkey_name(name):
+    """세션 행의 키를 뜻하는 이름(sid · session_id · SESSION_ID) — 토큰 자체가 아니라 그 sha256 해시 키(v3 ②).
+    이 저장소의 sessions.id 는 sha256(세션 토큰)이다 — 되돌려 쿠키로 쓸 수 없다(HO-B2-011 판정)."""
+    toks = name_tokens(name)
+    idx = secret_index(toks)
+    if idx < 0:
+        return False
+    if toks[idx] == 'sid':
+        return True
+    return toks[idx] in SESSION_KEY_TOK and toks[idx + 1:idx + 2] in (['id'], ['ids'])
 
 
 HASHERS = {'sha256sum', 'sha1sum', 'sha512sum', 'sha224sum', 'sha384sum', 'md5sum', 'b2sum', 'cksum', 'sum', 'wc'}
@@ -148,8 +182,40 @@ _FIELD_READ_RE = re.compile(r"""\[\s*(['"])([A-Za-z_][A-Za-z0-9_]*)\1\s*\]|\.get
 _JQ_PATH_RE = re.compile(r'(?:^|[\s|(,])\.([A-Za-z_][A-Za-z0-9_]*)')
 
 
+# 값을 드러내지 않는 감싸기(개수·여부·길이) — len(d.get('tokens')) 는 토큰이 아니라 개수다(v3 ④ secrets.sh `len(` 오탐)
+_NONREVEAL_CALL_RE = re.compile(r'\b(?:len|sum|any|all|bool|int|float|isinstance|hasattr|type|count|max|min)\s*\(')
+_JQ_NONREVEAL_TAIL_RE = re.compile(r'\|\s*(?:length|any|all|type|keys|has\([^)]*\)|not)\s*[)\]"\']*\s*$')
+
+
+def _strip_nonreveal(lit):
+    """len(…)·sum(…)·any(…) 같은 감싸기 안쪽을 지운 글자."""
+    out, i = [], 0
+    while True:
+        m = _NONREVEAL_CALL_RE.search(lit, i)
+        if not m:
+            out.append(lit[i:])
+            break
+        out.append(lit[i:m.start()])
+        depth, j = 0, m.end() - 1
+        while j < len(lit):
+            if lit[j] == '(':
+                depth += 1
+            elif lit[j] == ')':
+                depth -= 1
+                if depth == 0:
+                    break
+            j += 1
+        out.append(' ')
+        i = j + 1
+    return ''.join(out)
+
+
 def lit_reads_secret_field(lit, jq=False):
-    """글자 안에서 비밀 이름의 칸을 **읽는** 모양: x["secret"] · d.get('token') · (jq) .password"""
+    """글자 안에서 비밀 이름의 칸을 **읽는** 모양: x["secret"] · d.get('token') · (jq) .password
+    (len(…)·any(…) 같은 개수·여부 감싸기 안쪽과, 끝이 `| length` 인 jq 식은 값을 드러내지 않으므로 뺀다)"""
+    if jq and _JQ_NONREVEAL_TAIL_RE.search(lit):
+        return False
+    lit = _strip_nonreveal(lit)
     for m in _FIELD_READ_RE.finditer(lit):
         key = m.group(2) or m.group(4)
         if key and is_secret_name(key):
@@ -183,6 +249,46 @@ _COOKIE_INTERP_RE = re.compile(r'''(?:(?:^|\s)(?:-b|--cookie)(?:\s+|=)['"]?[A-Za
                                r'''(?i:(?<![A-Za-z0-9_-])cookie[ \t]*:[^'"\n$]*))\{?\$\{?([A-Za-z_][A-Za-z0-9_]*)''')
 
 
+_NUM_CLASS_RE = re.compile(r'^(?:\[(?:0-9|\\d|0-9\.|\.0-9|0-9,|0-9_)\]|\\d|[0-9])(?:[*+?]|\{\d*,?\d*\})?'
+                           r'(?:(?:\\?\.)?(?:\[(?:0-9|\\d)\]|\\d)(?:[*+?]|\{\d*,?\d*\})?)*'
+                           r'(?:ms|s|m|h|d|min|sec|kb|mb|gb|k|%)?$', re.I)
+
+
+NUM_FILTERS = {'head', 'tail', 'sort', 'uniq', 'tr', 'cut', 'tac'}
+
+
+def _numeric_stage(ws):
+    n0 = os.path.basename(ws[0].lit() or '')
+    lits = [w.lit() for w in ws[1:]]
+    if n0 == 'sed':
+        for lt in lits:
+            if not lt:
+                continue
+            m = re.match(r'^s(.)(.*)\1(\\[0-9])\1[gpI0-9]*$', lt, re.S)
+            if m:
+                groups = re.findall(r'\\\((.*?)\\\)', m.group(2))
+                k = int(m.group(3)[1:])
+                if 0 < k <= len(groups) and _NUM_CLASS_RE.match(groups[k - 1]):
+                    return True
+        return False
+    if n0 == 'grep' and any(lt and re.fullmatch(r'-[A-Za-z]*o[A-Za-z]*', lt) for lt in lits):
+        pats = [lt for lt in lits if lt and not lt.startswith('-')]
+        return bool(pats) and _NUM_CLASS_RE.match(pats[0]) is not None
+    return False
+
+
+def numeric_extract(sub):
+    """명령 치환이 글자에서 숫자(+단위)만 뽑는가 — `sed -n 's/…\\([0-9]*s\\)…/\\1/p'` · `grep -oE '[0-9]+'`
+    (뒤에 head·tail·sort·uniq·tr·cut 만 이어져도 같다). 그 출력은 길이·시간 같은 설정 값이라 비밀이 아니다.
+    뽑는 틀이 숫자뿐일 때만 뺀다."""
+    stages = [effective_words(c.words) for c in sub.cmds]
+    stages = [ws for ws in stages if ws]
+    for k, ws in enumerate(stages):
+        if _numeric_stage(ws) and all(os.path.basename(w[0].lit() or '') in NUM_FILTERS for w in stages[k + 1:]):
+            return True
+    return False
+
+
 def jar_var(name):
     """쿠키 jar 를 가리키는 변수 — 이름 끝이 JAR(JAR · ADM_JAR · EJAR · cookie_jar). JAR_DIR 같은 폴더는 아니다."""
     return name.lower().endswith('jar')
@@ -194,18 +300,62 @@ def lit_jar_path(lit):
 
 
 _ID_READ_RES = (
-    re.compile(r'(?is)\bselect\s+(?:distinct\s+)?(?:[a-z_][a-z0-9_]*\.)?(?:id|[a-z_][a-z0-9_]*_id)\s+from\b'),
-    re.compile(r'''\.get\(\s*(['"])(?:id|[A-Za-z_][A-Za-z0-9_]*_id)\1'''),
-    re.compile(r'''\[\s*(['"])(?:id|[A-Za-z_][A-Za-z0-9_]*_id)\1\s*\]'''),
-    re.compile(r'''(?:^|[\s|'"(,])\.(?:id|[A-Za-z_][A-Za-z0-9_]*_id)(?![A-Za-z0-9_.(\[])'''),
+    re.compile(r'(?is)\bselect\s+(?:distinct\s+)?(?:[a-z_][a-z0-9_]*\.)?(?P<c>id|[a-z_][a-z0-9_]*_id)\s+from\b'),
+    re.compile(r'''\.get\(\s*(['"])(?P<c>id|[A-Za-z_][A-Za-z0-9_]*_id)\1'''),
+    re.compile(r'''\[\s*(['"])(?P<c>id|[A-Za-z_][A-Za-z0-9_]*_id)\1\s*\]'''),
+    re.compile(r'''(?:^|[\s|'"(,])\.(?P<c>id|[A-Za-z_][A-Za-z0-9_]*_id)(?![A-Za-z0-9_.(\[])'''),
 )
+
+# 세션 표(sessions · user_sessions)의 id — 이 저장소에서 sessions.id 는 sha256(세션 토큰)인 세션 키다(v3 ③)
+_SESSION_TABLE_ID_RE = re.compile(r'(?is)\bselect\s+(?:distinct\s+)?(?:[a-z_][a-z0-9_]*\.)?id\s+from\s+'
+                                  r'(?:[a-z_][a-z0-9_]*\.)?"?([a-z_][a-z0-9_]*)')
+
+
+def _id_col_is_session_key(col):
+    toks = name_tokens(col)
+    return bool(toks) and toks[-1] in ('id', 'ids') and any(t in SESSION_KEY_TOK or t == 'sid' for t in toks[:-1])
 
 
 def text_reads_id_only(text):
-    """명령 치환 글이 id 칸(식별자)만 읽나 — SELECT id FROM · d.get('id') · x["id"] · jq .id (비밀 칸 읽기는 아님)."""
+    """명령 치환 글이 id 칸(식별자)만 읽나 — SELECT id FROM · d.get('id') · x["id"] · jq .id (비밀 칸 읽기는 아님).
+    세션 키(session_id 칸 · 세션 표의 id)는 식별자로 보지 않는다(v3 ③ — 비밀로 치고 심각도만 낮춘다)."""
     if lit_reads_secret_field(text, jq=True):
         return False
+    for m in _SESSION_TABLE_ID_RE.finditer(text):
+        tbl = m.group(1)
+        if any(t in ('session', 'sessions', 'sess') for t in name_tokens(tbl)):
+            return False
+    for r in _ID_READ_RES:
+        for m in r.finditer(text):
+            if _id_col_is_session_key(m.group('c')):
+                return False
     return any(r.search(text) for r in _ID_READ_RES)
+
+
+SEV_DOWN = {'높음': '중간', '중간': '낮음', '낮음': '낮음'}
+SEV_RANK = {'낮음': 1, '중간': 2, '높음': 3}
+ALLOW_RE = re.compile(r'qcheck-allow\s*[:=]?\s*(?:[A-Za-z0-9_-]+\s*,\s*)*R15\b')
+HASH_NOTE = ' — 값이 세션 해시 키(sha256(토큰) 류)라 한 단계 낮춤'
+MAX_SOURCES = 8
+
+
+def lower(sev):
+    return SEV_DOWN.get(sev, sev)
+
+
+def refs_all_hashkey(refs):
+    """PHP·파이썬 보고용 이름들이 전부 세션 해시 키 이름인가($sessionId · session_id · ['session_id'])."""
+    if not refs:
+        return False
+    for r in refs:
+        if r.startswith('Cookie 값'):
+            return False
+        nm = re.sub(r'^\$|\(\)$', '', r)
+        nm = re.sub(r"^\[['\"]?|['\"]?\]$", '', nm)
+        nm = re.split(r'[.…]', nm)[-1]
+        if not is_hashkey_name(nm):
+            return False
+    return True
 
 
 class Finding(object):
@@ -724,6 +874,10 @@ def parts_literal(parts):
     return all(p[0] in ('lit', 'arith', 'len') for p in parts)
 
 
+_HASHED_WRITE_RE = re.compile(r'\b(?:sha(?:1|224|256|384|512)sum|md5sum|b2sum|shasum|openssl\s+dgst)\b[^\n;&]*?>\s*'
+                              r'("[^"\n]+"|\S+)')
+
+
 class ShellFile(object):
     def __init__(self, rel, text, line0=1):
         self.rel = rel
@@ -735,6 +889,13 @@ class ShellFile(object):
         self.assign_vals = {}      # 이름 → [값 조각들]
         self.func_alias = {}       # (함수, 지역 이름) → 위치 번호
         self.loop_vals = {}        # for 반복 변수 → [값 조각들] (id 출처 판정용)
+        # 해시기(sha256sum …) 출력을 받아 쓴 파일의 이름 끝(`… | sha256sum … > "$W/$t.sid"` → .sid) — 그 파일을 읽은
+        # 값은 토큰이 아니라 해시 키다(v3 ② — 심각도 한 단계 낮춤)
+        self.hashed_suffixes = set()
+        for m in _HASHED_WRITE_RE.finditer(text):
+            tail = re.split(r'\$\{?[A-Za-z_0-9@*#?]+\}?', m.group(1).strip('"\''))[-1]
+            if len(tail) >= 2 and '.' in tail and '/' not in tail:
+                self.hashed_suffixes.add(tail)
         for cmd in self.cmds:
             if cmd.kind == 'header' and len(cmd.words) >= 3 and cmd.words[0].lit() in ('for', 'select') and \
                     cmd.words[2].lit() == 'in' and re.fullmatch(r'[A-Za-z_][A-Za-z0-9_]*', cmd.words[1].raw):
@@ -794,6 +955,22 @@ class ShellFile(object):
                 return False
         return seen
 
+    def path_only(self, name):
+        """대입되는 값이 전부 경로 모양인가(`TOTP="$CONF/qa-totp.txt"` — 비밀 파일의 **자리**, 값이 아니다).
+        변수·글자만으로 된 값에서 글자에 `/` 가 있고 끝이 경로 조각이며 `=`·`:`·`?`·빈칸이 없을 때(v3 ⑤ 바깥 입력)."""
+        vals = self.assign_vals.get(name, [])
+        if not vals:
+            return False
+        for parts in vals:
+            if any(p[0] not in ('lit', 'var') for p in parts):
+                return False
+            lit = ''.join(p[1] for p in parts if p[0] == 'lit')
+            if '/' not in lit or re.search(r'[=:?\s&;|<>]', lit):
+                return False
+            if parts[-1][0] != 'lit' or not re.search(r'/[\w.@+-]+$', parts[-1][1]):
+                return False
+        return True
+
     def cookie_pair_var(self, name):
         """변수에 `이름=$값` 모양(쿠키 한 쌍)이 대입되나 — `curl -b "$변수"` 가 쿠키 글로 쓰는 경우."""
         for parts in self.assign_vals.get(name, []):
@@ -824,8 +1001,60 @@ class ShellAnalyzer(object):
             for f in sf.funcs:
                 self.gfuncs.setdefault(f, []).append(sf)
         self.findings = {}                  # (rel, line) → Finding
+        self.hash_refs = set()              # (파일, 보고용 이름) — 세션 해시 키로 판정된 참조(v3 ②)
+        self.hashvars = {}                  # 파일 → 해시 키 값만 받는 변수들
 
     # ── 값 판정 ──
+    def sub_hash(self, sf, sub):
+        """명령 치환의 출력이 세션 해시 키인가 — 이름(sid · session_id) · 해시기 출력을 쓴 파일(.sid) 읽기 ·
+        세션 표의 id 칸 읽기(v3 ②)."""
+        for c in sub.cmds:
+            ws = effective_words(c.words)
+            if ws:
+                n0 = os.path.basename(ws[0].lit() or '')
+                if n0 and is_secret_name(n0) and is_hashkey_name(n0):
+                    return True
+            for w in list(c.words) + [x for _, x in c.redirs]:
+                txt = w.raw.rstrip('"\'')
+                if any(txt.endswith(suf) for suf in sf.hashed_suffixes):
+                    return True
+        for m in _SESSION_TABLE_ID_RE.finditer(sub.text):
+            if any(t in ('session', 'sessions', 'sess') for t in name_tokens(m.group(1))):
+                return True
+        for r in _ID_READ_RES:
+            for m in r.finditer(sub.text):
+                if _id_col_is_session_key(m.group('c')):
+                    return True
+        return False
+
+    def compute_hashvars(self, sf, tainted):
+        hv = set()
+        changed = True
+        while changed:
+            changed = False
+            for name in sorted(set(tainted) | set(sf.assign_vals)):
+                if name in hv:
+                    continue
+                if is_hashkey_name(name) and (name in tainted or is_secret_name(name)):
+                    hv.add(name)
+                    changed = True
+                    continue
+                if name not in tainted:
+                    continue
+                ok = None
+                for parts in sf.assign_vals.get(name, []):
+                    for p in parts:
+                        if p[0] == 'var' and p[1] != name and self.var_secret(sf, p[1], tainted):
+                            ok = (ok is not False) and (is_hashkey_name(p[1]) or p[1] in hv)
+                        elif p[0] == 'sub' and self.sub_secret(sf, p[1], tainted):
+                            ok = (ok is not False) and self.sub_hash(sf, p[1])
+                if ok:
+                    hv.add(name)
+                    changed = True
+        return hv
+
+    def is_hash_ref(self, sf, ref):
+        return (sf.rel, ref) in self.hash_refs
     def var_secret(self, sf, name, tainted):
         if name in tainted:
             return True
@@ -837,7 +1066,9 @@ class ShellAnalyzer(object):
         if not kinds and name in self.globals_num:
             return False
         if sf.id_only(name):
-            return False            # 값이 id 칸 읽기뿐(공유 id · 세션 표의 해시 키) — 식별자
+            return False            # 값이 id 칸 읽기뿐(공유 id) — 식별자
+        if sf.path_only(name):
+            return False            # 값이 전부 경로 — 비밀 파일의 자리(…_FILE 과 같은 뜻)
         return True
 
     def dyn_label(self, sf, p, tainted):
@@ -872,6 +1103,8 @@ class ShellAnalyzer(object):
             return False
         if re.search(r'\bcount\s*\(|\bgrep\s+(-[a-zA-Z]*c|--count)\b', sub.text):
             return False
+        if numeric_extract(sub):
+            return False    # sed·grep 로 숫자(+단위)만 뽑는 치환 — 설정 값이다(v3 ④ FP-0006)
         for n0 in names:
             if is_secret_name(n0) and any(t in STRONG and t != 'totp' for t in name_tokens(n0)):
                 return True     # qa_secret · get_token (totp_* 만 있는 이름은 코드를 계산하는 쪽이라 뺀다)
@@ -901,12 +1134,16 @@ class ShellAnalyzer(object):
                     poss.append(sf.func_alias[(func, p[1])])
                 elif self.var_secret(sf, p[1], tainted):
                     refs.append('$' + p[1])
+                    if is_hashkey_name(p[1]) or p[1] in self.hashvars.get(sf.rel, ()):
+                        self.hash_refs.add((sf.rel, refs[-1]))
             elif p[0] == 'pos':
                 poss.append(p[1])
             elif p[0] == 'sub':
                 if self.sub_secret(sf, p[1], tainted):
                     first = p[1].text.strip().split()
                     refs.append('$(%s …)' % (first[0] if first else ''))
+                    if self.sub_hash(sf, p[1]):
+                        self.hash_refs.add((sf.rel, refs[-1]))
         # `Cookie:` 머리 글자 뒤의 확장은 이름과 상관없이 쿠키 값(묶음 X ④-b)
         for x in self.cookie_refs(sf, w.parts, tainted):
             if not any(x.endswith(' ' + r) for r in refs):
@@ -1028,7 +1265,7 @@ class ShellAnalyzer(object):
     def add(self, sev, rel, line, msg):
         key = (rel, line)
         old = self.findings.get(key)
-        if old is None or (old.sev != '높음' and sev == '높음'):
+        if old is None or SEV_RANK.get(sev, 0) > SEV_RANK.get(old.sev, 0):
             self.findings[key] = Finding(sev, rel, line, msg)
 
     def run(self):
@@ -1036,6 +1273,8 @@ class ShellAnalyzer(object):
         sinks = {}    # (파일, 함수, 번호) → [(줄, 심각도, 명령)]
         edges = {}    # (파일, 함수, 번호) → [(파일, 함수, 번호)]
         taints = {rel: self.taint(sf) for rel, sf in self.files.items()}
+        for rel, sf in self.files.items():
+            self.hashvars[rel] = self.compute_hashvars(sf, taints[rel])
         calls = []    # (sf, cmd, 함수 파일, 함수 이름, 인자 단어들)
         for rel, sf in self.files.items():
             tainted = taints[rel]
@@ -1057,9 +1296,11 @@ class ShellAnalyzer(object):
                             sinks.setdefault((rel, cmd.func, k), []).append((cmd.line, sev, '"$@"'))
                     if names:
                         line = min(w.line for w, refs, _ in ar if refs)
-                        self.add(sev, rel, line, '비밀로 보이는 값(%s)이 %s 명령 인자로 들어감%s — 표준입력·파일·'
+                        hk = all(self.is_hash_ref(sf, n) for n in names)
+                        self.add(lower(sev) if hk else sev, rel, line,
+                                 '비밀로 보이는 값(%s)이 %s 명령 인자로 들어감%s%s — 표준입력·파일·'
                                  '환경 변수로 넘길 것' % (', '.join(dict.fromkeys(names)), os.path.basename(cname),
-                                                   ' (sudo 기록에 남음)' if logged else ''))
+                                                   ' (sudo 기록에 남음)' if logged else '', HASH_NOTE if hk else ''))
                 elif kind == 'func':
                     ff = self.func_file(sf, cname)
                     if ff is None:
@@ -1091,17 +1332,40 @@ class ShellAnalyzer(object):
             reach_cache[key] = out
             return out
 
-        # 3) 호출하는 쪽에서 비밀을 넘기는 곳
+        # 3) 호출하는 쪽에서 비밀을 넘기는 곳 — 한 싱크에 닿는 출처를 모두 모아 한 줄에 적는다(v3 ①)
+        agg = {}      # (싱크 파일, 줄) → {'sev', 'cname', 'src': [(함수, 번호, 파일, 줄, 이름들, 해시 키?)]}
         for sf, cmd, ff, fname, args in calls:
             tainted = taints[sf.rel]
             for idx, (w, refs, _) in enumerate(self.arg_refs(sf, args, tainted, cmd.func), 1):
                 if not refs:
                     continue
+                hk = all(self.is_hash_ref(sf, r) for r in refs)
                 for (srel, sline, sev, scname) in reach((ff.rel, fname, idx), frozenset()):
-                    self.add(sev, srel, sline, '비밀로 보이는 값(함수 %s 의 $%d ← %s:%d 의 %s)이 %s 명령 인자로 들어감%s '
-                             '— 표준입력·파일·환경 변수로 넘길 것'
-                             % (fname, idx, sf.rel, w.line, ', '.join(dict.fromkeys(refs)),
-                                os.path.basename(scname), ' (sudo 기록에 남음)' if sev == '높음' else ''))
+                    g = agg.setdefault((srel, sline), {'sev': sev, 'cname': scname, 'src': []})
+                    if sev == '높음':
+                        g['sev'] = '높음'
+                    src = (fname, idx, sf.rel, w.line, tuple(dict.fromkeys(refs)), hk)
+                    if src not in g['src']:
+                        g['src'].append(src)
+        for (srel, sline), g in sorted(agg.items()):
+            srcs = sorted(g['src'], key=lambda x: (x[2], x[3], x[1]))
+            hk = all(x[5] for x in srcs)
+            groups = {}      # (함수, 번호, 파일, 이름들) → [줄] — 같은 이름을 넘기는 줄은 한 묶음으로
+            for fname, idx, rel, line, refs, _ in srcs:
+                groups.setdefault((fname, idx, rel, refs), []).append(line)
+            shown, n = [], 0
+            for (fname, idx, rel, refs), lines in groups.items():
+                if n >= MAX_SOURCES:
+                    break
+                ls = lines[:MAX_SOURCES - n]
+                n += len(ls)
+                shown.append('함수 %s 의 $%d ← %s:%s 의 %s' % (fname, idx, rel, '·'.join(str(x) for x in ls),
+                                                        ', '.join(refs)))
+            more = '' if len(srcs) <= n else ' 외 %d곳' % (len(srcs) - n)
+            self.add(lower(g['sev']) if hk else g['sev'], srel, sline,
+                     '비밀로 보이는 값(%s%s)이 %s 명령 인자로 들어감%s%s — 표준입력·파일·환경 변수로 넘길 것'
+                     % (' · '.join(shown), more, os.path.basename(g['cname']),
+                        ' (sudo 기록에 남음)' if g['sev'] == '높음' else '', HASH_NOTE if hk else ''))
         return list(self.findings.values())
 
 
@@ -1292,9 +1556,11 @@ class PhpFile(object):
             if k == 'bt':
                 refs = self.refs_in([(k, v, ln)], tainted)
                 if refs:
-                    out.append(Finding('높음' if re.search(r'\bsudo\b', v) else '중간', self.rel, ln + self.line0 - 1,
-                                       '비밀로 보이는 값(%s)이 백틱 셸 명령 인자로 들어감 — 표준입력·파일·환경 변수로 넘길 것'
-                                       % ', '.join(dict.fromkeys(refs))))
+                    hk = refs_all_hashkey(refs)
+                    sev = '높음' if re.search(r'\bsudo\b', v) else '중간'
+                    out.append(Finding(lower(sev) if hk else sev, self.rel, ln + self.line0 - 1,
+                                       '비밀로 보이는 값(%s)이 백틱 셸 명령 인자로 들어감%s — 표준입력·파일·환경 변수로 넘길 것'
+                                       % (', '.join(dict.fromkeys(refs)), HASH_NOTE if hk else '')))
                 continue
             if k != 'id' or v.lower().lstrip('\\') not in PHP_SINKS:
                 continue
@@ -1317,10 +1583,12 @@ class PhpFile(object):
             refs = self.refs_in(arg, tainted)
             if refs:
                 logged = any(t[0] in ('sq', 'dq') and re.search(r'(^|[\s\'"])sudo\b', t[1]) for t in arg)
-                out.append(Finding('높음' if logged else '중간', self.rel, ln + self.line0 - 1,
-                                   '비밀로 보이는 값(%s)이 %s() 명령 인자로 들어감%s — 표준입력(proc_open 파이프)·파일·'
+                hk = refs_all_hashkey(refs)
+                sev = '높음' if logged else '중간'
+                out.append(Finding(lower(sev) if hk else sev, self.rel, ln + self.line0 - 1,
+                                   '비밀로 보이는 값(%s)이 %s() 명령 인자로 들어감%s%s — 표준입력(proc_open 파이프)·파일·'
                                    '환경 변수로 넘길 것' % (', '.join(dict.fromkeys(refs)), v.lstrip('\\'),
-                                                     ' (sudo 기록에 남음)' if logged else '')))
+                                                     ' (sudo 기록에 남음)' if logged else '', HASH_NOTE if hk else '')))
         return out
 
 
@@ -1496,9 +1764,12 @@ class PyFile(object):
             if refs:
                 logged = any(isinstance(n, ast.Constant) and isinstance(n.value, str) and
                              re.match(r'\s*(sudo|doas)\b', n.value) for a in args for n in ast.walk(a))
-                out.append(Finding('높음' if logged else '중간', self.rel, node.lineno + self.line0 - 1,
-                                   '비밀로 보이는 값(%s)이 %s 명령 인자로 들어감%s — input=·파일·env= 로 넘길 것'
-                                   % (', '.join(dict.fromkeys(refs)), full, ' (sudo 기록에 남음)' if logged else '')))
+                hk = refs_all_hashkey(refs)
+                sev = '높음' if logged else '중간'
+                out.append(Finding(lower(sev) if hk else sev, self.rel, node.lineno + self.line0 - 1,
+                                   '비밀로 보이는 값(%s)이 %s 명령 인자로 들어감%s%s — input=·파일·env= 로 넘길 것'
+                                   % (', '.join(dict.fromkeys(refs)), full, ' (sudo 기록에 남음)' if logged else '',
+                                      HASH_NOTE if hk else '')))
         return out
 
 
@@ -1556,7 +1827,7 @@ def heredoc_lang(cmd, body):
 
 def list_files(root, use_git):
     if use_git:
-        r = subprocess.run(['git', '-C', root, '-c', 'core.quotepath=off', 'ls-files', '-z', '--cached', '--others',
+        r = subprocess.run(['git', '--no-optional-locks', '-C', root, '-c', 'core.quotepath=off', 'ls-files', '-z', '--cached', '--others',
                             '--exclude-standard'], stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=300)
         if r.returncode != 0:
             raise RuntimeError('git ls-files 실패: ' + r.stderr.decode('utf-8', 'replace').strip())
@@ -1571,7 +1842,7 @@ def list_files(root, use_git):
 
 def repo_top(root):
     try:
-        r = subprocess.run(['git', '-C', root, 'rev-parse', '--show-toplevel'], stdout=subprocess.PIPE,
+        r = subprocess.run(['git', '--no-optional-locks', '-C', root, 'rev-parse', '--show-toplevel'], stdout=subprocess.PIPE,
                            stderr=subprocess.DEVNULL, timeout=60)
     except (OSError, subprocess.SubprocessError):
         return None
@@ -1589,6 +1860,8 @@ def main(argv=None):
     ap.add_argument('--exclude', action='append', default=None,
                     help='뺄 경로 glob(여러 번). 주면 기본값(tests/static/fixtures/*)을 대신한다')
     ap.add_argument('--walk', action='store_true', help='git 목록 대신 디렉터리 전체를 본다')
+    ap.add_argument('--outer', default=None,
+                    help='바깥 배치(qaredi) — 그 아래 scripts/ 의 셸·PHP·파이썬도 본다(경로는 ../scripts/…). 없거나 none 이면 끔')
     args = ap.parse_args(argv)
 
     root = os.path.realpath(args.root)
@@ -1605,6 +1878,14 @@ def main(argv=None):
         sys.stderr.write('R15: 대상 목록을 만들지 못함: %s\n' % e)
         print('RESULT pass=0 fail=0 skip=1')
         return 2
+
+    outer = None
+    if args.outer and args.outer.lower() != 'none':
+        outer = os.path.realpath(args.outer)
+        if not os.path.isdir(outer):
+            sys.stderr.write('R15: 바깥 배치가 디렉터리가 아님: %s\n' % args.outer)
+            print('RESULT pass=0 fail=0 skip=1')
+            return 2
 
     targets, skipped = [], 0
     for rel in rels:
@@ -1626,16 +1907,41 @@ def main(argv=None):
         lang = file_lang(rel, text[:200])
         if lang:
             targets.append((rel, lang, text))
+    # 바깥 저장소 반영 스크립트(v3 ⑤) — 뿌리 안 파일과 함수 이름이 섞이지 않게 따로 분석한다
+    outer_rels = set()
+    if outer is not None:
+        od = os.path.join(outer, 'scripts')
+        if os.path.isdir(od) and os.path.realpath(od) != os.path.realpath(os.path.join(root, 'scripts')):
+            for d, dd, files in os.walk(od):
+                dd[:] = sorted(x for x in dd if x != '.git')
+                for f in sorted(files):
+                    full = os.path.join(d, f)
+                    if os.path.islink(full) or not os.path.isfile(full):
+                        continue
+                    orel = '../' + os.path.relpath(full, outer).replace(os.sep, '/')
+                    try:
+                        with open(full, 'rb') as fh:
+                            text = fh.read().decode('utf-8', 'replace').lstrip(chr(0xFEFF))
+                    except OSError as e:
+                        sys.stderr.write('R15: 읽지 못함: %s (%s)\n' % (orel, e.strerror))
+                        skipped += 1
+                        continue
+                    lang = file_lang(orel, text[:200])
+                    if lang:
+                        targets.append((orel, lang, text))
+                        outer_rels.add(orel)
+    texts = {rel: text for rel, _, text in targets}
 
     findings = []
     sh_files = {}
+    outer_sh = {}
     globals_num = set()
     parsed = 0
     for rel, lang, text in targets:
         try:
             if lang == 'sh':
                 sf = ShellFile(rel, text)
-                sh_files[rel] = sf
+                (outer_sh if rel in outer_rels else sh_files)[rel] = sf
                 for nm, kinds in sf.assign_kinds.items():
                     if 'num' in kinds:
                         globals_num.add(nm)
@@ -1650,7 +1956,7 @@ def main(argv=None):
 
     # 셸 안 heredoc 으로 만드는 스크립트
     embedded_sh = {}
-    for rel, sf in list(sh_files.items()):
+    for rel, sf in list(sh_files.items()) + list(outer_sh.items()):
         for cmd in sf.cmds:
             for body, line0, quoted in cmd.heredocs:
                 lang = heredoc_lang(cmd, body)
@@ -1669,6 +1975,8 @@ def main(argv=None):
                     pass
     sa = ShellAnalyzer(sh_files, globals_num)
     findings.extend(sa.run())
+    if outer_sh:
+        findings.extend(ShellAnalyzer(outer_sh, globals_num).run())
     for key, emb in embedded_sh.items():
         ea = ShellAnalyzer({key: emb}, globals_num)
         for f in ea.run():
@@ -1678,9 +1986,16 @@ def main(argv=None):
     uniq = {}
     for f in findings:
         k = (f.path, f.line)
-        if k not in uniq or (uniq[k].sev != '높음' and f.sev == '높음'):
+        if k not in uniq or SEV_RANK.get(f.sev, 0) > SEV_RANK.get(uniq[k].sev, 0):
             uniq[k] = f
-    findings = sorted(uniq.values(), key=lambda f: (f.path, f.line))
+    kept = []
+    for f in sorted(uniq.values(), key=lambda f: (f.path, f.line)):
+        lines = texts.get(f.path, '').split('\n')
+        if 0 < f.line <= len(lines) and ALLOW_RE.search(lines[f.line - 1]):
+            skipped += 1     # 줄 표식 `qcheck-allow: R15` — 받아들인 위험
+            continue
+        kept.append(f)
+    findings = kept
     for f in findings:
         print('FINDING %s %s %s:%d %s' % (RULE, f.sev, f.path, f.line, f.msg))
     bad = len(set(f.path for f in findings))

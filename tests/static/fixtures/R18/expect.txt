@@ -21,3 +21,12 @@ fire_sh_sql rc=1 findings=1
 fire_py rc=1 findings=1
 quiet_guarded rc=0 findings=0
 quiet_not_dryrun rc=0 findings=0
+# 묶음 K (v3) — answers FP-0005 · BF-0001(퇴행 없음)
+#   quiet_dry_temp_copy    dry-run 참 갈래가 mktemp 사본 아래에만 씀(for 반복 변수 링크 포함) — 0
+#   fire_dry_branch_etc    같은 갈래라도 /etc 로 cp — 1
+#   quiet_php_foreach_temp PHP dry-run 갈래의 tempnam · "$t.report" · foreach 반복 변수 — 0
+#   fire_php_dry_branch    foreach 대상에 임시 밖 경로가 섞임 — 1
+quiet_dry_temp_copy rc=0 findings=0
+fire_dry_branch_etc rc=1 findings=1
+quiet_php_foreach_temp rc=0 findings=0
+fire_php_dry_branch rc=1 findings=1

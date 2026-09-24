@@ -1,0 +1,14 @@
+# R25 견본별 기대값 — 형식: <견본 폴더> rc=<종료 코드> findings=<FINDING 줄 수>
+# 부르는 법: bash tests/static/selftest.sh R25  (run_case.sh 가 견본 폴더를 --root 로, 안의 outer/ 를 --outer 로 넘긴다)
+# 견본은 전부 새로 지은 가짜 코드다(정답지·저장소 본문 복사 없음, 주소는 example.invalid). 학습 근거 HO-C-001 의
+#   결함 판은 git 밖이라(train 사본만) 같은 모양을 새로 지었다.
+#   fire_tail_overlap  "${@:2}" 를 넘기면서 $3 을 따로 읽는 머리 확인 도우미(A 1) + set -u 에서 인자 둘로 부름(B 2)
+#   fire_few_args      set -u 파일이 읽는 도우미 파일의 함수를 모자라게 부름(B 중간 1) · set -u 없는 파일(B 낮음 1)
+#   fire_outer         바깥 반영 스크립트(--outer)의 같은 A 모양(1)
+#   quiet_tail         A 고친 모양 — 이름은 마지막 인자(${!#})·꼬리 길이 · "$@" 전체 넘기기 + $1 — 0
+#   quiet_args         B 고르는 인자 — $# · ${3:-} · [ -n "${3:-}" ] · ${3:+ … $3} · shift · "$@" 로 부름 · 표식(skip 1) — 0
+fire_tail_overlap rc=1 findings=3
+fire_few_args rc=1 findings=2
+fire_outer rc=1 findings=1
+quiet_tail rc=0 findings=0
+quiet_args rc=0 findings=0

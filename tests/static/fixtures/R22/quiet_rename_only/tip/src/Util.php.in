@@ -1,0 +1,18 @@
+<?php
+declare(strict_types=1);
+
+// Util::normalizeLabel 은 앞뒤 빈칸을 없앤다. (옛 Util::run 은 2026-01-01 에 지웠다)
+final class Util
+{
+    public static function normalizeLabel(string $s): string
+    {
+        // 앞뒤 빈칸(가운데 빈칸은 둔다)
+        return trim($s);
+    }
+
+    public static function run(): void
+    {
+        demo_tick(2);
+    }
+}
+// run() 은 이 파일 밖에서 부르지 않는다

@@ -1,0 +1,5 @@
+#!/bin/bash -e
+# 견본: 셔뱅의 -e 로 errexit
+WORKER_PID=$(pgrep -f demo-worker)
+PHP_BIN=$(command -v php8.1)
+echo "$WORKER_PID $PHP_BIN"

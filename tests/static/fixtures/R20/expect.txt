@@ -1,0 +1,13 @@
+# R20 견본별 기대값 — 형식: <견본 폴더> rc=<종료 코드> findings=<FINDING 줄 수>
+# 부르는 법: bash tests/static/selftest.sh R20  (run_case.sh 가 견본 폴더를 --root 로, 안의 outer/ 를 --outer 로 넘긴다)
+# 견본은 전부 새로 지은 가짜 코드다(정답지·저장소 본문 복사 없음). 견본에 진짜 .env 파일은 없다(스크립트 글만).
+#   fire_env_copy    mktemp 인스턴스로 .env 를 sed·cp(같은 뿌리 한 줄로 모음 · EXIT trap 뿐)(1) ·
+#                    함수 위치 인자로 넘긴 임시 폴더에 .env 복사(trap 없음)(1) — HO-B1-004 · 1l 모양
+#   fire_etc_secret  /etc/tbox-v2 아래 파일을 mktemp 파일로 걸러 옮김(1) · pgpass 를 /tmp 고정 경로로 install(1)
+#   fire_outer       바깥 반영 스크립트(--outer)의 .env 사본(1)
+#   quiet_cleanup    다음 실행의 옛 폴더 청소(find -name 틀 + rm -rf · rm -rf 글롭) · 복사 전에 비우는 고정 경로 ·
+#                    tmpfs 위 받아들인 위험 표식 · 비밀 아닌 파일(.env.example·설정) · 임시 밖으로 복사 — 0
+fire_env_copy rc=1 findings=2
+fire_etc_secret rc=1 findings=2
+fire_outer rc=1 findings=1
+quiet_cleanup rc=0 findings=0

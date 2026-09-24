@@ -1,0 +1,13 @@
+<?php
+// 가짜 견본 — dry-run 참 갈래에서 tempnam 결과와 그 아래(끼운 글자 · foreach 반복 변수)에만 쓴다 → 조용.
+declare(strict_types=1);
+$dryRun = in_array('--dry-run', $argv, true);
+if ($dryRun) {
+    $t = tempnam(sys_get_temp_dir(), 'demo');
+    $p = "$t.report";
+    file_put_contents($p, "dry\n");
+    foreach ([$t . '.a', "{$t}.b"] as $f) {
+        touch($f);
+    }
+    exit(0);
+}

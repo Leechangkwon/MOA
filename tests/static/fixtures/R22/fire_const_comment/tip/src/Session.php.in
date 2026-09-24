@@ -1,0 +1,20 @@
+<?php
+declare(strict_types=1);
+
+/**
+ * 가짜 세션 — 보는 중 만료는 요청마다 `last_seen_at` 을 밀고(SQL_BUMP) 30분 지나면 닫힌다.
+ */
+final class Session
+{
+    private const SQL_BUMP = <<<'SQL'
+        UPDATE demo_sessions SET last_seen_at = now()
+         WHERE id = :id
+           AND last_seen_at < now() - interval '60 seconds'
+        SQL;
+
+    public static function touch(string $id): void
+    {
+        // 인증된 요청마다 한 번
+        DemoDb::run(self::SQL_BUMP, [':id' => $id]);
+    }
+}

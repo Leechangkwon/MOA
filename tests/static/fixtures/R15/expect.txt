@@ -21,3 +21,20 @@ fire_cookie_php_py rc=1 findings=4
 fire_env_prefix rc=1 findings=2
 quiet_env_prefix rc=0 findings=0
 quiet_cookie rc=0 findings=0
+# 묶음 K (v3) — answers HO-B2-011 · FP-0006 · v2 한계(*_id · len() · 바깥 반영 스크립트(--outer, run_case.sh)
+#   fire_multi_source    한 싱크에 세 자리가 비밀을 넘김 — FINDING 한 줄(출처 전부)
+#   fire_session_key     jq .session_id · .get("session_id") 를 인자로 — 둘 다 울림, user_id 는 조용
+#   fire_hash_key_low    sha256 을 쓴 .sid 파일 · 세션 표 id 를 sudo psql 인자로 — 두 싱크 모두 울리되 한 단계 낮음
+#   quiet_nonreveal      len(…) · jq '… | length' 로 센 개수 — 조용
+#   quiet_config_extract sed·grep 로 뽑은 숫자+단위 설정 값(FP-0006 모양 두 줄) — 조용
+#   fire_config_secret   sed 로 뽑은 비밀 글자(session_secret=…) — 울림
+#   fire_outer_script    바깥 scripts/ 의 반영 스크립트(-p"$DB_PASSWORD") 울림 · 비밀 파일 자리(TOTP="$CONF/…") 조용
+#   quiet_allow_mark     같은 줄 `qcheck-allow: R15` — 조용(skip)
+fire_multi_source rc=1 findings=1
+fire_session_key rc=1 findings=2
+fire_hash_key_low rc=1 findings=2
+quiet_nonreveal rc=0 findings=0
+quiet_config_extract rc=0 findings=0
+fire_config_secret rc=1 findings=1
+fire_outer_script rc=1 findings=1
+quiet_allow_mark rc=0 findings=0

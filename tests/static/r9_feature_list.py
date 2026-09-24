@@ -62,7 +62,7 @@ def note(msg):
 
 # ─── 파일 목록 ────────────────────────────────────────────────────────────────
 def git(root, *args):
-    return subprocess.run(['git', '-C', root] + list(args), stdout=subprocess.PIPE,
+    return subprocess.run(['git', '--no-optional-locks', '-C', root] + list(args), stdout=subprocess.PIPE,
                           stderr=subprocess.PIPE, timeout=120)
 
 

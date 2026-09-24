@@ -166,7 +166,7 @@ class Finding(object):
 
 def repo_top(root):
     try:
-        r = subprocess.run(['git', '-C', root, 'rev-parse', '--show-toplevel'],
+        r = subprocess.run(['git', '--no-optional-locks', '-C', root, 'rev-parse', '--show-toplevel'],
                            stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, timeout=60)
     except (OSError, subprocess.SubprocessError):
         return None
@@ -176,7 +176,7 @@ def repo_top(root):
 
 
 def list_git(root):
-    r = subprocess.run(['git', '-C', root, '-c', 'core.quotepath=off', 'ls-files', '-z',
+    r = subprocess.run(['git', '--no-optional-locks', '-C', root, '-c', 'core.quotepath=off', 'ls-files', '-z',
                         '--cached', '--others', '--exclude-standard'],
                        stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=300)
     if r.returncode != 0:
@@ -197,7 +197,7 @@ def git_binary_attr(root, rels):
     if not rels:
         return set()
     try:
-        r = subprocess.run(['git', '-C', root, 'check-attr', '-z', '--stdin', 'text'],
+        r = subprocess.run(['git', '--no-optional-locks', '-C', root, 'check-attr', '-z', '--stdin', 'text'],
                            input=b'\0'.join(os.fsencode(x) for x in rels) + b'\0',
                            stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, timeout=300)
     except (OSError, subprocess.SubprocessError):

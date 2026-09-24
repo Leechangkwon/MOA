@@ -1,0 +1,8 @@
+<?php
+declare(strict_types=1);
+
+if (!demo_ready()) {
+    // 부팅의 Store::boot 이 연결에 실패한 경우 — 예외 문구는 Store::boot 이 이미 남겼다
+    demo_json(['status' => 'fail'], 503);
+    return;
+}

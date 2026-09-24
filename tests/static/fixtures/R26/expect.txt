@@ -1,0 +1,11 @@
+# R26 견본별 기대값 — 형식: <견본 폴더> rc=<종료 코드> findings=<FINDING 줄 수>
+# 부르는 법: bash tests/static/selftest.sh R26  (run_case.sh 가 견본 폴더를 --root 로, 안의 outer/ 를 --outer 로 넘긴다)
+# 견본은 전부 새로 지은 가짜 코드다(정답지·저장소 본문 복사 없음, 주소는 example.invalid).
+#   fire_dquote      큰따옴표 grep 무늬 안의 nginx 내장 $arg_… 과 deploy/sites 의 map 이 만든 변수(2) — HO-C-006 모양
+#   fire_expand      풀리는 heredoc 본문의 $uri · 따옴표 없는 $request_uri · php -r "…" 의 $_SERVER(3)
+#   fire_outer       바깥 반영 스크립트(--outer)의 큰따옴표 $http_…(1)
+#   quiet_ok         작은따옴표 · \$ · 따옴표 친 heredoc · 셸이 대입한 같은 이름(uri·host·status) · 표식 — 0
+fire_dquote rc=1 findings=2
+fire_expand rc=1 findings=3
+fire_outer rc=1 findings=1
+quiet_ok rc=0 findings=0

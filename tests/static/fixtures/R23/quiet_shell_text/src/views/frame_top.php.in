@@ -1,0 +1,3 @@
+<?php
+?>
+<nav class="demo-nav"><a href="/demo/box" hidden>내 보관함</a><a href="/demo/admin" hidden>관리</a></nav>

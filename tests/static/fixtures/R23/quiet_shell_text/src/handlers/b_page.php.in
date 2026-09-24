@@ -1,0 +1,4 @@
+<?php
+require __DIR__ . '/../views/frame_top.php';
+?>
+<h1 class="demo-title">화면</h1>

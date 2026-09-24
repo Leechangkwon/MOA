@@ -1,0 +1,13 @@
+<?php
+declare(strict_types=1);
+
+final class Store
+{
+    private static ?object $conn = null;
+
+    /** 부팅 때 연결을 연다. */
+    public static function boot(string $dsn): void
+    {
+        self::$conn = demo_connect($dsn);
+    }
+}

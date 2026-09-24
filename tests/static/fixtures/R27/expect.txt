@@ -1,0 +1,58 @@
+# R27 견본별 기대값 — 형식: <견본 폴더> rc=<종료 코드> findings=<FINDING 줄 수>
+# 부르는 법: bash tests/static/selftest.sh R27   (손으로: python3 tests/static/r27_nginx_conf.py --root tests/static/fixtures/R27/<견본>)
+# 견본은 전부 새로 지은 가짜 nginx·php-fpm 설정이다(정답지·저장소 본문 복사 없음, 주소는 example.invalid).
+#   각 견본은 <견본>/deploy/sites/*.conf(+ deploy/ 아래 php-fpm 풀 파일). server 없는 파일 = http 단 공통(conf.d 자리).
+#   fire_n1_static        정적 location 이 CSP 만 다시 적음 — 나머지 셋 빠짐(1)
+#   fire_n1_include_if    deploy/sites 조각 include 에 헤더 하나 빠짐(1) · if 안 add_header 하나로 넷 다 끊김(1)
+#   fire_n1_hidden_always 앱으로 넘기지만 CSP 를 fastcgi_hide_header 로 숨김(1) · always 빠진 다시 적기(낮음 1)
+#   quiet_n1              전부 다시 적기 · 조각 include · 앱으로 넘기는 블록(skip) · 보안 헤더 없는 server — 0
+#   fire_n2_undef         정의 없는 변수 — 글자 틀린 map 이름 · 어디에도 없는 변수(2)
+#   fire_n2_map_shape     http 단 두 번 정의(1) · expires 가 못 읽는 map 값(1) · default 없는 map(1)
+#   quiet_n2              내장 · 공통 map · set · 이름/번호 캡처 · 정규식 끝 `$` · expires 값 모양 모음 — 0
+#   fire_n3               http 단 gzip_types 의 application/json(1) · location 의 application/problem+json(1)
+#   fire_n3_star          `http { … }` 로 감싼 파일 — server 단 text/json(1) · location 의 `*`(1)
+#   quiet_n3              정적 자산 형식만(manifest+json 포함) · 같은 블록 gzip off — 0
+#   fire_n4_regex         정규식 alias 가 `(.+)` · `(?<name>[^?]*)` 캡처를 이음(2)
+#   fire_n4_slash         접두 location 끝 / 없음 × alias 끝 /(1)
+#   quiet_n4              좁은 캡처 · 끝 / 짝 · ^~ · 정확 일치 · 캡처 안 쓰는 정규식 alias — 0
+#   fire_n5               상대 return 301 · rewrite permanent 에 absolute_redirect off 없음(2)
+#   fire_n5_inherit       location 이 on 으로 되돌림(1) · off 없는 둘째 server 의 $request_uri(1) · 형제 location 은 server off 상속(0)
+#   quiet_n5              server 단 off 상속 · 절대 주소 · $scheme · rewrite last · ssl 만 듣는 server — 0
+#   fire_n6               공개용·로컬용: expires 값 다름(1) · limit_req 로컬에 없음(1) · 끝 슬래시 블록 공개에만(1)
+#   fire_n6_server        server 단 client_max_body_size(1) · X-Frame-Options(1) · location 의 internal(1) — HSTS 는 비교 밖
+#   quiet_n6              루프백 평문 로컬의 HSTS 없음 · access_log·listen 차이 · qcheck-allow 표식 — 0
+#   fire_n7_slash         끝 슬래시 변형 없음(1) · 변형의 zone 다름(1)
+#   fire_n7_zone          정의 없는 limit_conn zone(1) · limit_req zone(1)
+#   quiet_n7              정의된 zone · 같은 zone 변형(중첩 location 안 포함) · 정규식 location — 0
+#   fire_n8_long          풀 300s > nginx 60s(기본·명시)(1)
+#   fire_n8_short         deploy/php/pool.d 풀 [demo] 20s < 60s·2m(1) · TCP upstream 풀 [batch] 5m > 60s(1)
+#   quiet_n8              같음 · 0(끔) · 없음 · nginx 가 쓰지 않는 풀 — 0
+#   broken_no_sites       deploy/sites 없음 → 검사 못 함(rc 2)
+#   broken_unparsable     설정 파일을 하나도 못 풂 → 검사 못 함(rc 2)
+fire_n1_static rc=1 findings=1
+fire_n1_include_if rc=1 findings=2
+fire_n1_hidden_always rc=1 findings=2
+quiet_n1 rc=0 findings=0
+fire_n2_undef rc=1 findings=2
+fire_n2_map_shape rc=1 findings=3
+quiet_n2 rc=0 findings=0
+fire_n3 rc=1 findings=2
+fire_n3_star rc=1 findings=2
+quiet_n3 rc=0 findings=0
+fire_n4_regex rc=1 findings=2
+fire_n4_slash rc=1 findings=1
+quiet_n4 rc=0 findings=0
+fire_n5 rc=1 findings=2
+fire_n5_inherit rc=1 findings=2
+quiet_n5 rc=0 findings=0
+fire_n6 rc=1 findings=3
+fire_n6_server rc=1 findings=3
+quiet_n6 rc=0 findings=0
+fire_n7_slash rc=1 findings=2
+fire_n7_zone rc=1 findings=2
+quiet_n7 rc=0 findings=0
+fire_n8_long rc=1 findings=1
+fire_n8_short rc=1 findings=2
+quiet_n8 rc=0 findings=0
+broken_no_sites rc=2 findings=0
+broken_unparsable rc=2 findings=0

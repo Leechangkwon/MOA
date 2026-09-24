@@ -20,3 +20,17 @@ fire_unfinished rc=1 findings=4
 fire_stale rc=1 findings=1
 broken_range rc=2 findings=0
 broken_directive rc=2 findings=0
+# 묶음 K (v3) — answers HO-B2-005 · HO-U2B-002 · train-backlog R6 K4
+#   fire_k4_bullet       글머리 `- **수정 파일**:` · `tbox-v2/` 접두 — 안내서가 안 바뀜(K4 1) · 조건부 「…면」 조각은 뺌
+#   fire_k4_outer        `/var/www/qaredi/…` 바깥 문서가 범위 시작 뒤 바깥 커밋에서 안 바뀜(K4 1) · `qaredi/…` 는 바뀜
+#   quiet_k4_outer_done  바깥 두 문서 모두 범위 시작 뒤 바뀜 — 0
+#   fire_core_file       지시서 밖 보안 핵심 파일(CLAUDE.md 목록)의 주석 한 줄 — K1 높음 1
+#   quiet_multi_item     여러 항목 지시서 — 이 절에만 있는 파일을 바꾼 절만 K4(A-1) · 공유 파일만 겹친 절(A-2)·
+#                        스스로 취소한 절(A-3)은 뺌 · `?v=` 만 다시 찍힌 파일은 K1 에서 뺌 — 0
+#   fire_multi_item_frag 같은 지시서를 `#A-2` 로 고름 — K4 2(src/b.php · docs/b.md) + K1 1(src/a.php 는 A-2 목록 밖)
+fire_k4_bullet rc=1 findings=1
+fire_k4_outer rc=1 findings=1
+quiet_k4_outer_done rc=0 findings=0
+fire_core_file rc=1 findings=1
+quiet_multi_item rc=0 findings=0
+fire_multi_item_frag rc=1 findings=3

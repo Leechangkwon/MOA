@@ -1,0 +1,17 @@
+# R21 견본별 기대값 — 형식: <견본 폴더> rc=<종료 코드> findings=<FINDING 줄 수>
+# 부르는 법: bash tests/static/selftest.sh R21  (run_case.sh 가 c1 → c2(범위 시작) → tip(후보) 세 커밋 임시 저장소를 만든다)
+# 견본은 전부 새로 지은 가짜 코드다(정답지·저장소 본문 복사 없음). answers: HO-B1-007
+#   fire_stale_hex        BEFORE_REF 기본값이 C1(범위 시작 C2 보다 앞, 그 사이 src 바뀜) · git archive 트리 전체 — 1
+#   quiet_parent_hex      기본값 = 범위 시작 판 — 0
+#   quiet_pinned_comment  같은 기본값이지만 같은 줄 주석에 일부러 고정한 까닭 — 0(skip)
+#   fire_stale_tag        기본 태그 뒤로 git show 가 꺼내는 public/assets/ 가 바뀜 — 1
+#   quiet_tag_other_path  기본 태그 뒤로 바뀐 것이 꺼내는 경로 밖(src/) — 0
+#   quiet_untouched_line  범위가 그 파일의 다른 줄만 고침(기본값 줄은 범위 밖에서 들어옴) — 0
+#   fire_python_default   os.environ.get('BASE_REF', '<C1>') — 1
+fire_stale_hex rc=1 findings=1
+quiet_parent_hex rc=0 findings=0
+quiet_pinned_comment rc=0 findings=0
+fire_stale_tag rc=1 findings=1
+quiet_tag_other_path rc=0 findings=0
+quiet_untouched_line rc=0 findings=0
+fire_python_default rc=1 findings=1

@@ -1477,7 +1477,7 @@ def file_lang(rel, head):
 
 def list_files(root, use_git):
     if use_git:
-        r = subprocess.run(['git', '-C', root, '-c', 'core.quotepath=off', 'ls-files', '-z', '--cached', '--others',
+        r = subprocess.run(['git', '--no-optional-locks', '-C', root, '-c', 'core.quotepath=off', 'ls-files', '-z', '--cached', '--others',
                             '--exclude-standard'], stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=300)
         if r.returncode != 0:
             raise RuntimeError('git ls-files 실패: ' + r.stderr.decode('utf-8', 'replace').strip())
@@ -1492,7 +1492,7 @@ def list_files(root, use_git):
 
 def repo_top(root):
     try:
-        r = subprocess.run(['git', '-C', root, 'rev-parse', '--show-toplevel'], stdout=subprocess.PIPE,
+        r = subprocess.run(['git', '--no-optional-locks', '-C', root, 'rev-parse', '--show-toplevel'], stdout=subprocess.PIPE,
                            stderr=subprocess.DEVNULL, timeout=60)
     except (OSError, subprocess.SubprocessError):
         return None

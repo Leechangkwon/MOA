@@ -1,0 +1,14 @@
+<?php
+declare(strict_types=1);
+
+final class Store
+{
+    private static ?object $conn = null;
+    private static string $dsn = '';
+
+    /** 부팅 때는 접속 정보만 둔다 — 연결은 첫 질의 때. */
+    public static function boot(string $dsn): void
+    {
+        self::$dsn = $dsn;
+    }
+}

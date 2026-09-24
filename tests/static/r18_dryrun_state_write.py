@@ -3,7 +3,7 @@
 """
 R18 dry-run 이 상태를 쓴다 (dry-run reaches a state write) — 1-F 정적 규칙, python3 stdlib 만, 파일은 읽기만.
 
-answers: BF-0001
+answers: BF-0001 · FP-0005(v3 묶음 K — dry-run 참 갈래가 mktemp 임시 사본 아래 링크를 돌리는 것을 「조건 없는 쓰기」로 읽던 오탐)
 
 무엇을 부류로 잡나:
   dry-run 류 플래그(`--dry-run`·`dry_run`·`DRY_RUN`·`$dryRun`·`$dry`·`noop` …)를 **받는** 스크립트(PHP·셸·파이썬)는
@@ -19,6 +19,11 @@ answers: BF-0001
       「쓰기 도우미」 — 몸에 막히지 않은 쓰기가 있는 함수(같은 파일 · require 한 파일 · src/ 의 클래스 정적 메서드 ·
       source 한 셸 파일, 여러 단계)를 부르는 것도 쓰기다. 같은 파일 도우미면 그 안의 쓰기 줄을, 다른 파일이면 부르는 줄을 적는다.
       mktemp·tempnam·sys_get_temp_dir·/tmp·$TMPDIR 에서 온 경로(이번 실행의 임시 자리)와 표준 출력·오류는 상태가 아니라 뺀다.
+      임시 자리는 변수 흐름으로 따라간다: 대입(`X="$T/a"` · PHP `$p = "$t/x"`)과 반복 변수 한 단계(v3 — 셸
+      `for l in "$T"/nginx/sites-enabled/*` · PHP `foreach ([$t . '.a', …] as $f)` · `foreach (glob($t . '/*') as $f)` 처럼
+      반복 대상이 전부 임시 자리면 반복 변수도 그 아래). 그래서 dry-run **참** 갈래가 같은 갈래의 mktemp 사본 아래에
+      쓰는 준비(nginx -t 를 사본으로 돌리기 등)는 조용하고, 같은 갈래라도 임시 밖(/etc 등)에 쓰면 여전히 울린다.
+      같은 줄에 `qcheck-allow: R18` 가 있으면 뺀다(skip 으로 센다).
     막힘 — 쓰기 문장을 감싸는 if 의 조건이 「dry-run 아님」을 뜻하거나(`!$dryRun && …`·`[ "$DRY" -eq 0 ]`·`not args.dry_run`),
       dry-run 조건 갈래의 else·뒤 elseif 이거나, 같은 블록·바깥 블록의 앞선 문장이 `if (dry-run) { … return|exit|continue|
       break|throw; }`(셸 `[ "$DRY" = 1 ] && exit`, 끝내는 함수 호출 포함)이거나, 식 안에서 `$dry || w()`·`$dry ? … : w()` 이면.
@@ -46,6 +51,7 @@ import subprocess
 import sys
 
 RULE = 'R18'
+ALLOW_RE = re.compile(r'qcheck-allow\s*[:=]?\s*(?:[A-Za-z0-9_-]+\s*,\s*)*R18\b')
 DEFAULT_DIRS = ('scripts', 'tests')
 LIB_DIRS = ('src', 'scripts', 'tests')
 DEFAULT_EXCLUDES = ['tests/static/fixtures/*']
@@ -1132,6 +1138,7 @@ class ShIR(object):
 
     def _scan(self):
         assigns = []
+        loops = []          # (반복 변수, 반복 단어들) — 임시 자리 흐름 한 단계(FP-0005)
         self.lock_fds = set()
         self.dry_pairs = {}
         for nd in sh_iter(self.tree):
@@ -1159,6 +1166,8 @@ class ShIR(object):
                     for x in lits[lits.index('flock') + 1:]:
                         if re.fullmatch(r'[0-9]+', x):
                             self.lock_fds.add(x)
+            if nd.kind == 'for' and nd.var and nd.iter:
+                loops.append((nd.var, nd.iter))
             if nd.kind == 'case':
                 for pats, body in nd.arms:
                     if any(DRY_FLAG_RE.fullmatch((p.lit() or '').strip()) for p in pats):
@@ -1183,6 +1192,12 @@ class ShIR(object):
                 if name in self.temp_vars:
                     continue
                 if self.word_temp(val) or any(self._sub_mktemp(s) for s in val.subs()):
+                    self.temp_vars.add(name)
+                    changed = True
+            # `for l in "$T"/nginx/sites-enabled/*` — 반복 단어가 전부 이번 실행의 임시 자리(mktemp 결과 아래)면
+            # 반복 변수도 그 아래다. dry-run 참 갈래가 임시 사본을 만드는 준비(nginx -t 를 사본으로)가 이 모양이다
+            for name, ws in loops:
+                if name not in self.temp_vars and all(self.word_temp(w) for w in ws):
                     self.temp_vars.add(name)
                     changed = True
 
@@ -1935,10 +1950,23 @@ class PhpIR(object):
                 assigns.append((t.val, k + 2, j))
                 if j > k + 2 and T[k + 2].kind == 'ident' and T[k + 2].val.lower() == 'fopen':
                     self.fopen_vars.add(t.val)
+        # foreach (<임시 자리들> as [$k =>] $v) — 반복 대상이 전부 임시 자리면 $v 도 그 아래다(FP-0005 · 흐름 한 단계)
+        loops = []
+        for k, t in enumerate(T):
+            if t.kind == 'ident' and t.val.lower() == 'foreach' and k + 1 < len(T) and T[k + 1].val == '(' and \
+                    (k + 1) in self.pairs:
+                lo, hi = k + 2, self.pairs[k + 1]
+                as_at = next((j for j in range(lo, hi) if T[j].kind == 'ident' and T[j].val.lower() == 'as'), None)
+                if as_at is not None and T[hi - 1].kind == 'var':
+                    loops.append((T[hi - 1].val, lo, as_at))
         while changed:
             changed = False
             for name, lo, hi in assigns:
                 if name not in self.temp_vars and self.range_temp(lo, hi):
+                    self.temp_vars.add(name)
+                    changed = True
+            for name, lo, hi in loops:
+                if name not in self.temp_vars and self.iter_temp(lo, hi):
                     self.temp_vars.add(name)
                     changed = True
 
@@ -1950,9 +1978,28 @@ class PhpIR(object):
                 return True
             if t.kind in ('str', 'istr') and k == lo and (TEMP_LIT_RE.match(t.val) or PHP_STD_STREAM_RE.match(t.val)):
                 return True
+            if t.kind == 'istr' and k == lo and self.istr_temp(t.val):
+                return True
             if t.kind == 'var' and k == lo and t.val in self.temp_vars:
                 return True
         return False
+
+    def istr_temp(self, val):
+        """\"$t/x\" · \"{$t}.b\" — 끼운 글자가 임시 자리 변수로 시작한다."""
+        m = re.match(r'^\{?\$([A-Za-z_][A-Za-z0-9_]*)', val)
+        return bool(m) and m.group(1) in self.temp_vars
+
+    def iter_temp(self, lo, hi):
+        """foreach 반복 대상(lo..hi)이 전부 임시 자리인가 — 배열 글자면 원소마다, 아니면 식 하나로."""
+        T = self.toks
+        if lo < hi and T[lo].kind == 'op' and T[lo].val in ('[',) and self.pairs.get(lo) == hi - 1:
+            elems = split_args(T, lo + 1, hi - 1)
+            return bool(elems) and all(self.range_temp(a, b) for a, b in elems)
+        if lo < hi and T[lo].kind == 'ident' and T[lo].val.lower() in ('glob', 'scandir') and \
+                lo + 1 < hi and T[lo + 1].val == '(' and (lo + 1) in self.pairs:
+            args = split_args(T, lo + 2, self.pairs[lo + 1])
+            return bool(args) and self.range_temp(*args[0])
+        return self.range_temp(lo, hi)
 
     def range_std(self, lo, hi):
         T = self.toks
@@ -2829,7 +2876,7 @@ def file_lang(rel, head):
 
 def list_files(root, use_git):
     if use_git:
-        r = subprocess.run(['git', '-C', root, '-c', 'core.quotepath=off', 'ls-files', '-z', '--cached', '--others',
+        r = subprocess.run(['git', '--no-optional-locks', '-C', root, '-c', 'core.quotepath=off', 'ls-files', '-z', '--cached', '--others',
                             '--exclude-standard'], stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=300)
         if r.returncode != 0:
             raise RuntimeError('git ls-files 실패: ' + r.stderr.decode('utf-8', 'replace').strip())
@@ -2844,7 +2891,7 @@ def list_files(root, use_git):
 
 def repo_top(root):
     try:
-        r = subprocess.run(['git', '-C', root, 'rev-parse', '--show-toplevel'], stdout=subprocess.PIPE,
+        r = subprocess.run(['git', '--no-optional-locks', '-C', root, 'rev-parse', '--show-toplevel'], stdout=subprocess.PIPE,
                            stderr=subprocess.DEVNULL, timeout=60)
     except (OSError, subprocess.SubprocessError):
         return None
@@ -3087,6 +3134,15 @@ def main(argv=None):
             g['e'] = e
     out = sorted((make_finding(g['rel'], g['e'], g['vias'], g['why'], g['ext']) for g in groups.values()),
                  key=lambda f: (f[1], f[2]))
+    texts = {rel: text for rel, _, text, _ in loaded}
+    kept = []
+    for f in out:
+        lines = texts.get(f[1], '').split('\n')
+        if 0 < f[2] <= len(lines) and ALLOW_RE.search(lines[f[2] - 1]):
+            skipped += 1         # 줄 표식 `qcheck-allow: R18` — 받아들인 쓰기
+            continue
+        kept.append(f)
+    out = kept
     for sev, path, line, msg in out:
         print('FINDING %s %s %s:%d %s' % (RULE, sev, path, line, msg))
     bad = len(set(f[1] for f in out))
