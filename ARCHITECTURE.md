@@ -252,6 +252,8 @@ final class Authz
 public static function decideRead(array $u, array $file): array;             // 5.1
 public static function decideUploadAs(array $u, string $level, ?int $teamId): array;  // 5.2
 public static function decideDelete(array $u, array $file): array;           // 5.3 (canRead 를 먼저 통과했다는 전제)
+public static function decideRestore(array $u, array $file): array;          // 5.4 복구 — Admin 전부(admin_all) · 올리고 지운 본인(owner), 그 밖은 not_found_in_trash (Q:F-4 U-2b)
+public static function restorableFilesWhere(array $u): array;                // 휴지통 목록의 SQL WHERE 조각 [조건, 바인딩, 범위] — decideRestore 와 짝
 public static function canRead(array $u, array $file): bool { return self::decideRead($u, $file)[0]; }  // 나머지도 같은 꼴
 ```
 
@@ -1859,8 +1861,8 @@ GRANT  USAGE, SELECT  ON SEQUENCE audit_logs_id_seq TO tbox_app;
 | `file.fetch|deny|team_mismatch` | `{actor} 이(가) 파일 「{target}」 을(를) 자기 팀이 아닌 팀의 team 등급으로 가져오려 해서 막았습니다` | 7단계 decideUploadAs 재사용 |
 | `file.fetch|error|fetch_failed` | `{actor} 이(가) 외부 주소에서 가져온 파일 「{target}」 을(를) 저장하는 중 서버 오류가 나서 되돌렸습니다` | 7단계 files_fetch 트랜잭션 실패 |
 | `audit.view|allow` | `{actor} 이(가) 감사 로그를 조회했습니다 (필터는 상세 기록)` | 8단계 audit_list (조회 자체를 기록, PRD 7.7) |
-| `file.restore|allow` | `{actor} 이(가) 휴지통의 {level} 등급 파일 「{target}」 을(를) 복구했습니다` | 10단계 files_restore (Admin) |
-| `file.restore|deny|not_found_in_trash` | `{actor} 이(가) 휴지통에 없는 파일을 복구하려 해서 거부했습니다` | 10단계 files_restore |
+| `file.restore|allow` | `{actor} 이(가) 휴지통의 {level} 등급 파일 「{target}」 을(를) 복구했습니다` | 10단계 files_restore (Admin). **Q:F-4 U-2b(2026-09-24)** — 올린 사람 본인도 복구한다. 허용 근거는 `detail.granted_by`: `admin_all`(Admin, 모든 파일) · `owner`(본인이 올리고 본인이 지운 파일). 코드는 `Authz::decideRestore` 가 준 값 그대로 |
+| `file.restore|deny|not_found_in_trash` | `{actor} 이(가) 휴지통에 없는 파일을 복구하려 해서 거부했습니다` | 10단계 files_restore. **Q:F-4 U-2b** — 남의 파일(남이 올렸거나 남이 지운 것)·올릴 수 없는 역할의 복구 시도도 **이 문장 하나**다: 응답은 없는 파일과 같은 404 문구, 기록도 같은 `reason`·같은 대상 칸(`target_name` 없음). 「내 활동」(F-12)이 본인 행의 `target_name`·`summary` 를 보여 주므로 여기서 이름·사유를 가르면 그것이 곧 「그 UUID 의 파일이 휴지통에 있다」는 신호가 된다 — 있다·없다를 가르지 않는다. 역할 판정은 `Authz::decideRestore` 가 이 코드를 돌려준다 |
 | `file.purge|allow` | `휴지통에 30일 넘게 있던 {level} 등급 파일 「{target}」 을(를) 배치가 영구 삭제했습니다` | 9단계 scripts/purge_trash.php (actor 없음 = 시스템) |
 | `file.purge|error|purge_failed` | `휴지통 파일 「{target}」 영구 삭제 중 오류가 나서 건너뛰었습니다 (점검 필요)` | 9단계 purge_trash |
 | `file.download|deny|scan_pending` | `{actor} 이(가) 아직 검사 중인 파일 「{target}」 을(를) 내려받으려 해서 막았습니다` | F-54 읽기 창구 [4] (ARCH 5.28) |
@@ -1901,7 +1903,7 @@ GRANT  USAGE, SELECT  ON SEQUENCE audit_logs_id_seq TO tbox_app;
 | `auth.mfa_enroll|deny|bad_code` | `{actor} 이(가) 2단계 인증을 켜려 했지만 확인 코드가 틀렸습니다` | 10단계 (검토 보완 B) |
 | `auth.gate|deny|password_change_required` | `{target} 이(가) 비밀번호를 아직 바꾸지 않은 상태로 다른 기능을 요청해서 거부했습니다` | 11단계 관문 (target = 본인, route 패턴은 상세) |
 | `auth.gate|deny|mfa_setup_required` | `{target} 이(가) 2단계 인증을 아직 설정하지 않은 상태로 다른 기능을 요청해서 거부했습니다` | 11단계 관문 |
-| `auth.gate|deny|reauth_required` | `{target} 이(가) 비밀번호를 다시 확인하지 않은 채 관리 기능을 요청해서 거부했습니다` | 16-1 관문 [3-2] (target = 본인, route 패턴·`next`·`policy` 는 상세) |
+| `auth.gate|deny|reauth_required` | `{target} 이(가) 비밀번호를 다시 확인하지 않은 채 관리 기능을 요청해서 거부했습니다` | 16-1 관문 [3-2] (target = 본인, route 패턴·`next`·`policy` 는 상세). **Q:F-4 U-2b** — 휴지통 셋(`GET /trash` · `GET /api/files/trash` · `POST /api/files/{id}/restore`)은 라우트 정책이 `authenticated` 라 관문 [3-2] 를 타지 않는다. 대신 **핸들러**가 복구 범위(`Authz::restorableFilesWhere` 의 셋째 값)가 `admin_all` 일 때만 같은 문장·같은 모양(target = 본인, `next`, `policy` = 라우트 정책 `authenticated`)으로 남기고 403 `next:"reauth"`(화면은 302 `/reauth?to=trash`) — Admin 의 전체 휴지통은 전과 같이 재인증, 본인 휴지통은 묻지 않는다 |
 | `auth.reauth|allow` | `{actor} 이(가) 관리 기능을 쓰려고 비밀번호를 다시 확인했습니다` | 16-1 `POST /api/me/reauth` (Auth::reauth, `detail.window_minutes`) |
 | `act.start|allow` | `{actor} 이(가) 다른 역할로 보기를 시작했습니다 (역할·팀은 상세 기록)` | 26단계 `POST /api/me/act` (F-39). `detail` 에 고른 role·team_id |
 | `act.start|deny|bad_request` | `{actor} 이(가) 역할로 보기를 허용되지 않는 형식(모르는 항목·역할·팀)으로 요청해서 거부했습니다` | 26단계. Admin 으로 보기·없는 팀·모르는 키 |

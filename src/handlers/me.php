@@ -88,10 +88,11 @@ $mePayload = [
     // can_fetch·can_view_audit 과 똑같은 **화면 편의 값**이다. 링크를 되살려 /users 나
     // /api/users·/api/files/trash 를 직접 불러도 라우터 정책이 다시 막는다 (PRD S-01).
     'can_manage_users' => Authz::canManageUsers($user),
-    // 12단계 — 좌측 내비의 「휴지통」 항목을 보일지 여부 (F-11 · F-20, Admin 만, PRD 5.4).
+    // 12단계 — 좌측 내비(관리 묶음)의 「휴지통」(전체) 항목을 보일지 여부 (F-11 · F-20, Admin 만, PRD 5.4).
+    // Q:F-4 U-2b(2026-09-24) — 비관리자의 「내 휴지통」 링크는 이 값이 아니라 upload_levels 로 화면이 정한다(app.js).
     // 휴지통은 계정 관리와 **같은 자격**(Authz::canManageUsers = Admin)으로 열린다 —
     // 새 판단 규칙을 만들지 않았다(Authz 에 새 메서드를 추가하지 않는다). 항목을 되살려도
-    // /trash 와 /api/files/trash 는 라우터 정책 role:Admin 이 다시 막는다 (PRD S-01).
+    // U-2b 뒤로 /trash 와 /api/files/trash 는 authenticated 이고, 범위는 핸들러가 Authz::restorableFilesWhere 로 SQL WHERE 에 붙인다 (PRD S-01·S-02).
     'can_view_trash'   => Authz::canManageUsers($user),
     // 12-3 — 좌측 내비의 「조직·권한」 항목을 보일지 여부 (F-19, Admin 만, PRD 5.4 · 10장).
     // can_manage_users 와 **다른 판정 함수**를 쓴다 — 자격은 지금 같지만 라우트 정책 이름이

@@ -893,7 +893,9 @@ function armReauthLinks(me) {
   }
   document.querySelectorAll('a.nav__item[href], a.card--link[href]').forEach(function (a) {
     var href = a.getAttribute('href') || '';
-    if (!isAdminPath(href)) {
+    /* Q:F-4 U-2b — 「내 휴지통」(`data-no-reauth`)은 관리 화면과 같은 주소(`/trash`)지만 본인 자료라
+       재인증을 묻지 않는다. 막는 판단은 여전히 서버다: 전체 범위(Admin)면 서버가 302 `/reauth` 로 보낸다. */
+    if (!isAdminPath(href) || a.hasAttribute('data-no-reauth')) {
       return;
     }
     a.addEventListener('click', function (ev) {
@@ -1418,7 +1420,8 @@ function initFiles(csrfToken, uploadLevels, canFetch, myTeamId) {
     openConfirm({
       title: '파일을 휴지통으로 옮길까요?',
       lead: '「' + name + '」을(를) 휴지통으로 옮깁니다 — 30일 안에 되살릴 수 있습니다.',
-      note: '되살리기는 관리자에게 요청하세요. 30일이 지나면 완전히 지워집니다.',
+      /* Q:F-4 U-2b — 내가 올린 파일을 내가 지우면 「내 휴지통」에서 되살린다. 남의 파일은 관리자가 되살린다. */
+      note: '내가 올린 파일은 「내 휴지통」에서 되살릴 수 있고, 다른 사람의 파일은 관리자가 되살립니다. 30일이 지나면 완전히 지워집니다.',
       okLabel: '휴지통으로 옮기기'
     }, function () {
       sendDelete(file.id, name);
@@ -4376,15 +4379,27 @@ function initAccount(csrfToken, mfaEnabled, onMfaEnabled, mfaRequired) {
   showMfa(mfaEnabled === true);
 }
 
-/* ─── 휴지통 (10단계 F-11 — Admin 만) ────────────────────────────
+/* ─── 휴지통 (10단계 F-11 · Q:F-4 U-2b) ─────────────────────────
  *
- * 패널을 여는 것은 서버가 준 can_manage_users 뿐이다(화면이 역할을 보지 않는다).
- * 되살려서 직접 호출해도 GET /api/files/trash · POST …/restore 는 정책 role:Admin 이 다시 막는다.
+ * Admin 에게는 「휴지통」(전체), 그 밖에는 「내 휴지통」(내가 올리고 내가 지운 파일)이다.
+ * 어느 쪽인지는 서버가 그린 표(`#trash-body` 의 `data-trash-own`)로만 안다 — 화면이 역할을 보지 않는다.
+ * 그 표시는 열 구성(올린 사람·지운 사람 칸을 뺀다)에만 쓰이고, 어떤 행이 오느냐는 서버 SQL WHERE 가
+ * 정한다. 남의 파일 UUID 로 POST …/restore 를 직접 불러도 없는 파일과 같은 404 다 (PRD 5.4 각주 ¹, S-02).
  */
 function initTrash(csrfToken, onRestored) {
   var msg = document.getElementById('msg');
   var body = document.getElementById('trash-body');
   var empty = document.getElementById('trash-empty');
+  var okNote = document.getElementById('trash-ok');   // 되살린 뒤 결과 한 줄(.ok-note, 기본 hidden)
+  var ownOnly = body.hasAttribute('data-trash-own');
+
+  function showDone(text) {
+    if (!okNote) {
+      return;
+    }
+    setText(okNote, text);
+    okNote.hidden = text === '';
+  }
 
   function clearRows() {
     while (body.firstChild) {
@@ -4399,12 +4414,13 @@ function initTrash(csrfToken, onRestored) {
     return td;
   }
 
-  function restore(id) {
+  function restore(id, name) {
     if (!UUID_RE.test(id)) {
       setText(msg, GENERIC_ERROR);
       return;
     }
     setText(msg, '');
+    showDone('');
     fetch(APP_BASE + '/api/files/' + id + '/restore', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken },
@@ -4418,6 +4434,7 @@ function initTrash(csrfToken, onRestored) {
           return null;
         }
         if (response.status === 200) {
+          showDone('「' + name + '」을(를) 되살렸습니다 — 원래 폴더로 돌아갔습니다(그 폴더가 지워졌다면 맨 위).');
           load();
           if (typeof onRestored === 'function') {
             onRestored();
@@ -4426,7 +4443,7 @@ function initTrash(csrfToken, onRestored) {
         }
         return readJson(response).then(function (data) {
           // 16-1 — 창이 닫혀 막혔으면 모달로 다시 묻고, 성공하면 이 복구 요청을 다시 보낸다
-          if (handleReauth(response, data, function () { restore(id); })) {
+          if (handleReauth(response, data, function () { restore(id, name); })) {
             return null;
           }
           setText(msg, errorMessage(data));
@@ -4446,15 +4463,19 @@ function initTrash(csrfToken, onRestored) {
       addCell(row, file.name);
       addCell(row, formatSize(file.size_bytes));
       addLevelCell(row, file.access_level);
-      addCell(row, file.uploaded_by);
-      addCell(row, file.deleted_by);
+      if (!ownOnly) {
+        // 「내 휴지통」에서는 두 칸이 언제나 나 자신이라 표에서 뺀다(서버 thead 도 같은 구성).
+        addCell(row, file.uploaded_by);
+        addCell(row, file.deleted_by);
+      }
       addWhenCell(row, file.deleted_at);
       var td = document.createElement('td');
       td.className = 'actions';
       if (UUID_RE.test(file.id)) {
         var button = makeIconButton('restore', '복구');
+        var fileName = String(file.name === null || file.name === undefined ? '' : file.name);
         button.addEventListener('click', function () {
-          restore(file.id);
+          restore(file.id, fileName);
         });
         td.appendChild(button);
       }
@@ -8239,6 +8260,12 @@ function initShell(me, csrfToken) {
    'nav-audit', 'nav-trash', 'nav-wiki', 'menu-admin'].forEach(function (id) {
     showNav(id, canAdmin);
   });
+  /* Q:F-4 U-2b (PRD 5.4 각주 ¹) — 「파일」 묶음의 「내 휴지통」. 관리 묶음의 「휴지통」(전체)이 열리는
+     사람(can_view_trash)에게는 같은 주소가 전체 휴지통이라 열지 않고, 올릴 수 있는 등급이 하나도 없는
+     사람(upload_levels 비어 있음 — 되살릴 내 파일이 생길 수 없다)에게도 열지 않는다.
+     둘 다 서버가 준 **표시용** 값이다 — 항목을 되살려도 보이는 행은 서버 SQL WHERE 가 정한다 (PRD S-01·S-02). */
+  showNav('nav-my-trash', me.can_view_trash !== true
+    && Array.isArray(me.upload_levels) && me.upload_levels.length > 0);
 
   // 「관리」 묶음은 그 안의 항목이 열릴 때만 제목째 보인다.
   var adminGroup = document.getElementById('nav-admin-group');
@@ -8492,7 +8519,7 @@ function bootPage(page) {
           return null;
         }
         if (page === 'trash') {
-          // 이 화면에 들어왔다는 것 자체가 라우트 정책 role:Admin 을 통과했다는 뜻이다.
+          // Q:F-4 U-2b — 정책은 authenticated 이고, 전체(Admin)·내 휴지통 중 무엇인지는 서버가 그린 표가 말한다.
           if (document.getElementById('trash-body')) {
             initTrash(csrfToken);
           }

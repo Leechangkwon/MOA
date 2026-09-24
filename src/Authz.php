@@ -64,7 +64,10 @@ final class Authz
      *   user.manage  계정 관리 (`/users`, `/api/users*`)
      *   org.manage   조직·권한 (`/org`, `/api/org/*`)
      *   audit.read   감사 로그 (`/audit`, `/api/audit`)
-     *   role:Admin   휴지통·위키 (`/trash`, `/api/files/trash`, `/api/files/{id}/restore`, `/wiki*`)
+     *   role:Admin   위키·관리자 영역 등 (`/wiki*`, `/admin*`, 커뮤니티 관리 창구)
+     *   (휴지통 셋 `/trash`·`/api/files/trash`·`/api/files/{id}/restore` 는 Q:F-4 U-2b 부터 정책이
+     *    `authenticated` 다 — Admin 의 **전체** 휴지통 재인증은 핸들러가 `restorableFilesWhere` 의
+     *    범위 코드 `admin_all` 을 보고 같은 모양으로 묻는다. 본인 휴지통은 묻지 않는다.)
      *
      * 목록이 **정책 이름**인 이유: 경로 목록으로 두면 라우트를 하나 더할 때마다 두 곳을
      * 고쳐야 하고 언젠가 한쪽을 빠뜨린다. 정책은 라우트 표에 이미 하나씩 붙어 있으므로,
@@ -107,6 +110,12 @@ final class Authz
     /** 10단계 — 계정 관리(F-10) 거부 코드 (ARCH 7.4 `user.*|deny|…` 행) */
     public const CODE_SELF_CHANGE = 'self_change';   // 자기 역할 변경·자기 비활성화
     public const CODE_LAST_ADMIN  = 'last_admin';    // 마지막 활성 Admin 을 낮추거나 끄기
+    /**
+     * Q:F-4 U-2b — 휴지통 복구의 **유일한** 거부 코드 (ARCH 7.4 `file.restore|deny|not_found_in_trash`).
+     * 남이 올린 파일 · 남이 지운 내 파일 · 올릴 수 없는 역할 — 전부 「휴지통에 없는 파일」과 같은 코드다.
+     * 거부 사유를 가르면 「내 활동」(F-12)에서 그 UUID 의 파일이 휴지통에 **있다**는 신호가 된다.
+     */
+    public const CODE_NOT_FOUND_IN_TRASH = 'not_found_in_trash';
 
     /**
      * 10단계 — 계정에 줄 수 있는 역할 (PRD 3장 4종, db/schema.sql users_role_check 와 같은 값).
@@ -683,6 +692,94 @@ final class Authz
             return [true, self::CODE_OWNER];
         }
         return [false, self::CODE_NOT_OWNER];
+    }
+
+    /* ─── Q:F-4 U-2b: 휴지통 복구 — 본인이 지운 본인 파일 (PRD 5.4 각주 ¹ · F-11 · 8장) ─── */
+
+    /**
+     * 휴지통의 **모든** 파일을 보고 되살리는 역할인가 (PRD 5.4 「Admin ✅ 모든 파일」).
+     * 휴지통 판정의 역할 비교는 이 한 줄뿐이다 — decideRestore·restorableFilesWhere 가 함께 쓴다.
+     */
+    private static function restoresAll(string $role): bool
+    {
+        return $role === 'Admin';
+    }
+
+    /**
+     * 휴지통 목록의 SQL 조건 + 복구 범위 코드 (PRD 5.4 각주 ¹ · 8장 `GET /api/files/trash` 행, S-02).
+     *
+     * `decideRestore` 와 **같은 규칙**을 목록 SQL 로 옮긴 것이다 — 목록은 애플리케이션에서 나중에
+     * 거르지 않고 DB 가 애초에 남의 행을 돌려주지 않는다(visibleFilesWhere 와 같은 원칙).
+     *
+     *   Admin                  → `TRUE`                                              · `admin_all`
+     *   올릴 수 있는 역할       → `(f.uploaded_by = :rs_me_up AND f.deleted_by = :rs_me_del)` · `owner`
+     *   그 밖(Guest)           → `FALSE`                                             · `not_found_in_trash`
+     *
+     * 셋째 값(범위 코드)은 핸들러가 **재인증**을 물을지 고르는 데 쓴다: `admin_all` 이면 전과 같이
+     * 15분 재인증(PRD F-23), `owner` 면 묻지 않는다(본인 자료 — 커뮤니티 휴지통과 같다).
+     * 핸들러는 역할을 보지 않고 이 코드만 견준다(커뮤니티 인계의 `admin_all` 재인증과 같은 모양).
+     *
+     * 휴지통 조건(`deleted_at IS NOT NULL AND purged_at IS NULL`)은 부르는 SQL 이 따로 적는다 —
+     * 이 조각은 「누구의 것인가」만 본다. 별칭 `f` 를 전제로 하고(`FROM files f`), 요청 값이 들어갈
+     * 자리는 없다(바인딩 값은 세션 사용자의 id 뿐). 같은 이름의 자리표시자를 두 번 쓰지 않는다.
+     *
+     * 「올릴 수 있는 역할」을 역할 이름이 아니라 권한 표로 본다(canUploadAtAll) — Guest 는 표에서
+     * 올리기가 전부 거짓이다. 예전에 Employee 로 올리고 지운 뒤 Guest 로 바뀐 계정도 여기서 0건이다
+     * (PRD 5.4 「Guest ❌」).
+     *
+     * @param array<string,mixed> $u 현재 사용자 (세션에서 읽은 값 — 요청 값이 아니다)
+     * @return array{0:string,1:array<string,mixed>,2:string} [조건절, 바인딩, 범위 코드]
+     */
+    public static function restorableFilesWhere(array $u): array
+    {
+        if (self::restoresAll(self::roleOf($u))) {
+            return ['TRUE', [], self::CODE_ADMIN_ALL];
+        }
+        if (!self::canUploadAtAll($u)) {
+            return ['FALSE', [], self::CODE_NOT_FOUND_IN_TRASH];
+        }
+        $me = (int) $u['id'];
+        return [
+            '(f.uploaded_by = :rs_me_up AND f.deleted_by = :rs_me_del)',
+            [':rs_me_up' => $me, ':rs_me_del' => $me],
+            self::CODE_OWNER,
+        ];
+    }
+
+    /**
+     * 휴지통의 파일 한 건을 되살릴 수 있나 + 근거 코드 (PRD 5.4 각주 ¹ · F-11, ARCH 7.4).
+     *
+     * 규칙은 **좁은 쪽**이다(사용자 확정 2026-09-24):
+     *   Admin                                           → 허용 `admin_all` (모든 파일)
+     *   올릴 수 없는 역할(Guest)                          → 거부 `not_found_in_trash`
+     *   `uploaded_by = 나` **그리고** `deleted_by = 나`   → 허용 `owner`
+     *   그 밖(남이 올린 파일 · 남이 지운 내 파일)          → 거부 `not_found_in_trash`
+     * Manager 의 팀원 파일 복구는 없다 — 남이 지운 것은 누가 왜 지웠는지 판단이 필요해 Admin 만 한다.
+     *
+     * **휴지통에 있는 행이라는 전제**다(`deleted_at IS NOT NULL AND purged_at IS NULL` 는 부르는 SQL 이
+     * 본다). 그래도 `deleted_by` 가 비어 있으면(살아 있는 행이 잘못 넘어온 경우) 본인 복구로 치지 않는다.
+     * 거부 코드는 하나뿐이다 — 없는 파일과 갈리지 않게(CODE_NOT_FOUND_IN_TRASH 주석).
+     *
+     * @param array<string,mixed> $u    현재 사용자 (세션에서 읽은 값)
+     * @param array<string,mixed> $file files 행 (uploaded_by · deleted_by 필수)
+     * @return array{0:bool,1:string} [허용 여부, 코드]
+     */
+    public static function decideRestore(array $u, array $file): array
+    {
+        if (self::restoresAll(self::roleOf($u))) {
+            return [true, self::CODE_ADMIN_ALL];
+        }
+        if (!self::canUploadAtAll($u)) {
+            return [false, self::CODE_NOT_FOUND_IN_TRASH];
+        }
+        $me        = (int) $u['id'];
+        $owner     = (int) $file['uploaded_by'];
+        $deletedBy = ($file['deleted_by'] ?? null) === null ? null : (int) $file['deleted_by'];
+
+        if ($owner === $me && $deletedBy !== null && $deletedBy === $me) {
+            return [true, self::CODE_OWNER];
+        }
+        return [false, self::CODE_NOT_FOUND_IN_TRASH];
     }
 
     /**

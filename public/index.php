@@ -156,18 +156,28 @@ const TBOX_ROUTES = [
     ['POST',   '/api/me/api-tokens',         'me_tokens_issue.php',  Authz::POLICY_AUTHENTICATED],
     ['DELETE', '/api/me/api-tokens/{num}',   'me_tokens_revoke.php', Authz::POLICY_AUTHENTICATED],
 
-    // 휴지통 — Admin 만 (PRD 5.4 "삭제된 파일 복구(30일 내)", F-11).
+    // 휴지통 (PRD 5.4 "삭제된 파일 복구(30일 내)" 각주 ¹, F-11).
     // `/api/files/trash` 는 `{id}`(UUID 36자)와 형태가 달라 `/api/files/{id}` 계열과 충돌하지 않지만,
     // 의도를 드러내려고 위에 둔다(7단계 `/api/files/fetch` 와 같은 이유).
-    ['GET',    '/api/files/trash',          'files_trash.php',   'role:Admin'],
-    ['POST',   '/api/files/{id}/restore',   'files_restore.php', 'role:Admin'],
+    // Q:F-4 U-2b (2026-09-24) — 정책 `role:Admin` → `authenticated`. 올린 사람이 **자기가 지운 자기 파일**을
+    //   되살린다. 라우터는 「로그인했나」까지만 보고, 누구의 무엇을 되살릴 수 있나는 핸들러가
+    //   `Authz::restorableFilesWhere`(목록 SQL WHERE)·`Authz::decideRestore`(한 건)로 판정한다 —
+    //   file.read 가 목록은 SQL WHERE, 다운로드는 decideRead 로 거르는 것과 같은 구조다 (PRD S-02).
+    //   ★ 재인증: 정책이 REAUTH_POLICIES 밖이 되어 관문 [3-2] 를 타지 않는다. Admin 의 **전체** 휴지통은
+    //     핸들러가 범위 코드 `admin_all` 을 보고 관문과 같은 모양(403 next:reauth · 화면 302)으로 묻는다.
+    //     본인 휴지통은 묻지 않는다(본인 자료 — 커뮤니티 휴지통과 같다).
+    //   토큰 창구 집합(TBOX_API_TOKEN_ROUTES)에는 넣지 않는다 — 세션으로만 부른다.
+    ['GET',    '/api/files/trash',          'files_trash.php',   Authz::POLICY_AUTHENTICATED],
+    ['POST',   '/api/files/{id}/restore',   'files_restore.php', Authz::POLICY_AUTHENTICATED],
 
     // 12단계 — 기능별 화면 분리 (PRD F-20, 8장 「화면(HTML)」 행, 10장 화면 요구사항).
     //   한 페이지에 쌓여 있던 기능을 화면 단위로 나눈 것이며 **권한 규칙은 그대로**다:
-    //   휴지통 화면은 데이터(`GET /api/files/trash`)와 **같은 정책** role:Admin 을 쓰고,
+    //   휴지통 화면은 데이터(`GET /api/files/trash`)와 **같은 정책**을 쓰고,
     //   「내 계정」 화면은 본인 계정 API 와 같은 authenticated 를 쓴다.
     //   화면만 열어 두고 API 를 막지 않거나 그 반대면 그것이 곧 우회 경로다 (PRD S-01).
-    ['GET',    '/trash',                    'trash_page.php',    'role:Admin'],
+    //   Q:F-4 U-2b — 데이터 창구를 따라 `authenticated` 로 바뀌었다. Admin 에게는 「휴지통」(전체,
+    //   재인증 302 는 핸들러가), 그 밖에는 「내 휴지통」(본인이 올리고 본인이 지운 파일)이다.
+    ['GET',    '/trash',                    'trash_page.php',    Authz::POLICY_AUTHENTICATED],
     ['GET',    '/settings',                 'settings_page.php', Authz::POLICY_AUTHENTICATED],
 
     // 12-3 — 조직·권한 (PRD F-19 · 5.4 · 8장 `/api/org/*` 행, ARCH 5.9).
@@ -317,6 +327,7 @@ const TBOX_ROUTES = [
  * 재인증 관문이 화면 요청을 돌려보낼 때 쓰는 **고정 표** (16-1, PRD F-23, ARCH 4.0).
  *
  * 왼쪽은 라우트 패턴(= TBOX_ROUTE 와 같은 표기), 오른쪽은 `/reauth?to=` 에 붙일 키다.
+ * `GET /trash` 는 Q:F-4 U-2b 부터 관문 [3-2] 가 아니라 trash_page.php 가 이 표를 읽는다(Admin 전체 범위일 때만).
  * 요청에서 온 문자열은 이 표의 **키를 고르는 데만** 쓰이고 Location 헤더에는 표에 적힌
  * 다섯 글자(`users`·`org`·`audit`·`trash`·`wiki`) 중 하나만 들어간다 — 오픈 리다이렉트가
  * 생길 자리가 없다. 표에 없는 관리 라우트(예: `PATCH /api/users/{num}`)는 API 이거나

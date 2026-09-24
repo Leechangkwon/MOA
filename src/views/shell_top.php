@@ -13,7 +13,8 @@ declare(strict_types=1);
  *   · $activeNav string  지금 켜 둘 내비 항목 — files|settings|activity|admin
  *                        (trash·users·org·audit·wiki 는 17-1 에서 내비에서 빠졌지만, 그 화면들이
  *                         여전히 값을 넘기므로 허용 목록에는 남겨 둔다 — 맞는 항목이 없으면
- *                         아무 항목도 켜지지 않을 뿐이다)
+ *                         아무 항목도 켜지지 않을 뿐이다. `trash` 는 Q:F-4 U-2b 부터 「파일」 묶음의
+ *                         「내 휴지통」과 「관리」 묶음의 「휴지통」이 함께 쓴다 — 둘 중 하나만 열린다)
  *   · $pageKey   string  <body data-page> — app.js 가 어떤 화면인지 고르는 열쇠
  *   · $pageCss   array   이 화면이 더 싣는 스타일시트 이름들 (25단계). **head 에서** 내보낸다 —
  *                        본문 한가운데에서 <link> 를 부르면 첫 그림이 스타일 없이 보였다가
@@ -387,6 +388,15 @@ if (!headers_sent()) {
     <nav class="nav" aria-label="파일">
       <a id="nav-files" class="<?= $shellNavClass('files') ?>" href="<?= Http::url('/') ?>">
         <span class="icon" data-icon="files"></span><span>파일</span>
+      </a>
+      <!-- Q:F-4 U-2b (PRD 5.4 각주 ¹) — 「내 휴지통」: 내가 올리고 내가 지운 파일을 30일 안에 되살린다.
+           기본은 hidden 이고 app.js 가 `/api/me` 의 값으로 연다 — 관리 묶음의 「휴지통」(전체)이 열리는
+           사람(can_view_trash)에게는 열지 않고, 올릴 수 있는 등급이 없는 사람(upload_levels 비어 있음)에게도
+           열지 않는다. **이 파일에는 역할 비교가 없다.** 되살려 열어도 보이는 행은 데이터 창구의
+           SQL WHERE(Authz::restorableFilesWhere)가 정한다 (PRD S-01·S-02).
+           `data-no-reauth` — 본인 휴지통은 재인증 대상이 아니므로 D-9 재인증 모달(armReauthLinks)을 걸지 않는다. -->
+      <a id="nav-my-trash" class="<?= $shellNavClass('trash') ?>" href="<?= Http::url('/trash') ?>" data-no-reauth hidden>
+        <span class="icon" data-icon="trash"></span><span>내 휴지통</span>
       </a>
     </nav>
 

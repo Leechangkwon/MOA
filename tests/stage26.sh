@@ -516,10 +516,18 @@ expect "사유 모달 마크업 있음"      1 "$(grep -c 'id="reason-dialog"' "
 # ═════════════════════════════════════════════════════════════
 hr "T-53 (d) 회귀 T-26 — 화면 분리 뒤에도 권한은 서버가"
 # ═════════════════════════════════════════════════════════════
-for p in /trash /users /org /audit; do
+for p in /users /org /audit; do
   R=$(call claude_employee01 GET "$p" "$TOK_EMP1")
   expect "Employee $p → 403" 403 "$(code_of "$R")"
 done
+# Q:F-4 U-2b(2026-09-24) — /trash 는 이제 누구나 열리고, 비관리자에게는 **자기가 지운 자기 파일만** 보이는 「내 휴지통」이다.
+# 범위는 서버가 SQL WHERE 로 정한다(tests/qf4_restore_owner.sh 가 남의 파일 0건·복구 404 를 본다). 여기서는 화면이 관리자용이 아닌지만 본다.
+R=$(call claude_employee01 GET /trash "$TOK_EMP1")
+expect "Employee /trash → 200 (「내 휴지통」 — U-2b)" 200 "$(code_of "$R")"
+# 「내 휴지통」 글자는 모든 화면의 내비에 있으므로(hidden) 글자만으로는 가르지 못한다 — 제목·표 속성·열 구성으로 본다(독립 검토 U-2b Low-1)
+expect "Employee /trash 제목이 「내 휴지통」" "1" "$(printf '%s' "$R" | grep -c '<h1 class="page-head__title">내 휴지통</h1>')"
+expect "Employee /trash 표가 본인 휴지통(data-trash-own)" "1" "$(printf '%s' "$R" | grep -c 'id="trash-body" data-trash-own')"
+expect "Employee /trash 표에 「올린 사람」 칸 없음(관리자 표가 아님)" "0" "$(printf '%s' "$R" | grep -c '<th scope="col">올린 사람</th>')"
 R=$(call claude_employee01 GET /settings "$TOK_EMP1")
 expect "Employee /settings → 200" 200 "$(code_of "$R")"
 
