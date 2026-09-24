@@ -110,6 +110,36 @@ else
   API_TOKEN=''
   echo "→ 귀속이 검토 계정(qa_·claude_)이 아니다 — (a)(b)·(d) 성공 쪽은 **SKIP**. Fable 이 검토에서 귀속을 바꿔 돌린다."
 fi
+# ─── 시험 전용 토큰 — .env 의 토큰이 사람 계정 것이면 이쪽을 쓴다 (사용자 결정 2026-09-24 「시험 전용 토큰 만들기」) ───
+#   claude_ 검토 계정이 **본인 창구**(POST /api/me/api-tokens, 비밀번호 + 2단계)로 발급한 읽기 전용 토큰이다.
+#   .env 의 사람 토큰은 건드리지 않는다. 파일은 한 줄 「<계정> <토큰>」 이고, 값은 변수에만 담고 출력하지 않는다.
+#   자리: ① /etc/tbox-v2/claude-api-token.txt (root 600 — seed-accounts.txt 와 같은 방식, sudo -n 으로 읽음)
+#         ② 없으면 ~/.local/share/qaredi-dev/secrets/claude-api-token.txt (600 이어야 읽는다 — ① 로 옮기기 전 자리)
+#   귀속이 claude_ 접두가 아니면 쓰지 않는다(시드·사람 계정으로 요청을 보내지 않는다 — CLAUDE.md 3장).
+TT_PATH_ETC=/etc/tbox-v2/claude-api-token.txt
+TT_PATH_HOME="$HOME/.local/share/qaredi-dev/secrets/claude-api-token.txt"
+if [ "$USE_TOKEN" -eq 0 ]; then
+  tt_user=''; tt_src=''
+  if sudo -n test -r "$TT_PATH_ETC" 2>/dev/null; then
+    tt_user=$(sudo -n awk 'NR==1{print $1}' "$TT_PATH_ETC" 2>/dev/null); tt_src=etc
+  elif [ -r "$TT_PATH_HOME" ] && [ "$(stat -c %a "$TT_PATH_HOME" 2>/dev/null)" = "600" ]; then
+    tt_user=$(awk 'NR==1{print $1}' "$TT_PATH_HOME"); tt_src=home
+  fi
+  case "$tt_user" in
+    claude_*)
+      if [ "$tt_src" = etc ]; then
+        API_TOKEN=$(sudo -n awk 'NR==1{print $2}' "$TT_PATH_ETC" 2>/dev/null)
+      else
+        API_TOKEN=$(awk 'NR==1{print $2}' "$TT_PATH_HOME")
+      fi
+      if [ -n "$API_TOKEN" ]; then
+        TOKEN_USER="$tt_user"; USE_TOKEN=1
+        echo "→ 시험 전용 토큰 파일($tt_src)을 쓴다 — 귀속 $TOKEN_USER. (a)(b) 와 (d) 성공 쪽을 실행한다. (토큰 값은 출력하지 않는다)"
+      fi ;;
+    '') [ -n "$tt_src" ] && echo "→ 시험 전용 토큰 파일($tt_src)이 비었다 — SKIP 그대로" ;;
+    *)  echo "→ 시험 전용 토큰 파일의 귀속이 claude_ 가 아니다 — 쓰지 않는다(SKIP 그대로)" ;;
+  esac
+fi
 # 어떤 서버에서도 맞을 수 없는 고정 문자열. (c) 의 「틀린 토큰」과 (e) 에서 쓴다.
 WRONG_TOKEN='wrong-token-0000000000000000000000000000000000'
 
@@ -172,7 +202,7 @@ else
     "$(jq_py '",".join(sorted(d.keys()))' < "$WORK/a.json")"
   expect "키 순서(문서와 같은 순서)" "username,role,team_id,upload_levels" \
     "$(jq_py '",".join(d.keys())' < "$WORK/a.json")"
-  expect "username == .env API_TOKEN_USER" "$TOKEN_USER" "$(jq_py 'd["username"]' < "$WORK/a.json")"
+  expect "username == 토큰 귀속 계정(.env API_TOKEN_USER 또는 시험 전용 토큰 파일)" "$TOKEN_USER" "$(jq_py 'd["username"]' < "$WORK/a.json")"
   note "role=$(jq_py 'd["role"]' < "$WORK/a.json")  team_id=$(jq_py 'd["team_id"]' < "$WORK/a.json")  upload_levels=$(jq_py 'json.dumps(d["upload_levels"])' < "$WORK/a.json")"
 
   # (d) 성공 쪽 — 조회는 감사 행을 남기지 않는다.
