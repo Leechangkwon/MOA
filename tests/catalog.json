@@ -2616,6 +2616,31 @@
       "notes": "Q:F-4 라운드 B1 수락(P-2 DB 연결 재사용 ①~⑤ · P-5c 필요할 때 연결 ①~⑤ · P-4b heartbeat 가볍게 ①~③). 임시 인스턴스: pg_dump tbox_re(읽기) → 임시 DB tbox_qf4b1_test · 저장소 복사 PHP 내장 서버 127.0.0.1:8100(한 프로세스 = 워커 1). 전 = BEFORE_REF(머리 주석 기본 9c20065 — 운영 기준과 어긋남, 검토 L-5·규칙 후보 R21) 코드 · 후 = 작업 트리, 같은 포트를 차례로. 연결 끊기(④)는 임시 DB 의 앱 계정 연결만 겨눈다. 시험 전용 경로 /__qf4b/* 는 임시 router.php 에만. 비밀은 파이썬 한 프로세스의 환경 변수·세션·CSRF 는 600 헤더 파일. 409·429·694 행은 사이트 층(옛 주소 308·옛 주소가 DB 에 붙지 않음)을 일부러 본다(FP-0002~0004 — v2 R5 는 조용). 운영 8082 요청 0. 첫 반영 3d1c050."
     },
     {
+      "id": "tbox.qf4_p7_timeouts",
+      "cmd": "bash tests/qf4_p7_timeouts.sh",
+      "module": "tbox",
+      "env": "temp-instance",
+      "status": "required",
+      "needs": [
+        "sudo"
+      ],
+      "covers": [
+        "deploy/php-fpm-pool.conf",
+        "db/migrations/2026-09-29_app_role_timeouts.sql",
+        "review-scripts/apply-fpm-p7-2026-09-24.sh",
+        "review-scripts/apply-db-p7-2026-09-24.sh",
+        "src/Db.php"
+      ],
+      "requirements": [],
+      "risks": [
+        "R-103",
+        "R-101"
+      ],
+      "est_sec": 180,
+      "writes_prod": false,
+      "notes": "Q:F-4 P-7 수락(① 마이그레이션 값 대조 ② pg_sleep(20) 15초 취소 ③ SHOW 역할별 ④ B1 영속 연결 × idle_in_transaction(임시 DB 한정 3초, php-fpm 워커 1) ⑤ php-fpm -t -y 새 풀 설정 ⑥ request_terminate_timeout(시험 풀만 2초) ⑦ 반영 스크립트 두 벌 — 경로만 바꾼 사본으로 dry-run·실패 경로·되돌림). 임시 인스턴스: pg_dump tbox_re(읽기) | psql → 임시 DB tbox_qf4p7_test + 빈 임시 DB tbox_qf4p7_dbh · 역할 설정은 ALTER ROLE tbox_app IN DATABASE <임시> 로만(전역 ALTER ROLE 0) · 비root php-fpm 둘 + nginx(운영 사이트 사본, 127.0.0.1:18580·18582·18584). /etc 는 읽기만. 로그인은 claude_employee01 — 비밀은 표준입력(py_secret), 쿠키는 600 헤더 파일. 시험 전용 탐침 p7_probe.php·sleep.php 는 임시 앱 폴더에만. 운영 8082 요청 0."
+    },
+    {
       "id": "tbox.qf4b1_heartbeat",
       "cmd": "python3 tests/browser/qf4b1_heartbeat.py",
       "module": "tbox",

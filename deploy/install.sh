@@ -356,6 +356,12 @@ for _mig in "summary|audit_logs|2026-09-10_audit_summary.sql" \
     info "★ 마이그레이션 필요: ${_tbl}.${_col} — sudo -u postgres psql -d ${DB_NAME} -v ON_ERROR_STOP=1 -f db/migrations/${_file}"
   fi
 done
+# 역할 시간 제한(Q:F-4 P-7) — 표 칸이 아니라 역할 설정이라 위 목록 방식으로 볼 수 없다. rolconfig 로 따로 알린다(적용하지 않는다).
+_rc="$(psql_su -d "$DB_NAME" -Atc "SELECT coalesce(array_to_string(rolconfig, ','), '') FROM pg_roles WHERE rolname = 'tbox_app'")"
+case ",${_rc}," in
+  *,statement_timeout=15s,*) info "마이그레이션 적용됨: tbox_app 역할 시간 제한 (${_rc})" ;;
+  *) info "★ 마이그레이션 필요: tbox_app 역할 시간 제한 — sudo -u postgres psql -d ${DB_NAME} -v ON_ERROR_STOP=1 -f db/migrations/2026-09-29_app_role_timeouts.sql (운영은 scripts/apply-db-p7-2026-09-24.sh)" ;;
+esac
 
 # 4-5. 권한 — 항상 적용한다(파일 자체가 REVOKE 후 GRANT 이므로 멱등)
 info "권한 적용: db/grants.sql (postgres 로 실행)"
@@ -527,7 +533,7 @@ step "서비스 재적용"
 systemctl reload-or-restart "$FPM_SERVICE"
 systemctl reload-or-restart nginx
 info "php-fpm: $(systemctl is-active "$FPM_SERVICE") / nginx: $(systemctl is-active nginx)"
-# ondemand 풀은 첫 요청 때 소켓이 만들어진다. 최대 5초 기다린다.
+# 풀 소켓은 마스터가 reload·restart 뒤 곧 만든다(Q:F-4 P-7 뒤 풀은 dynamic — 쉬는 워커 2개로 시작). 최대 5초 기다린다.
 for _ in 1 2 3 4 5; do
   [ -S /run/php/php8.1-fpm-tbox.sock ] && break
   sleep 1

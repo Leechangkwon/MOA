@@ -11,6 +11,10 @@
 --   · DROP / TRUNCATE / ALTER 는 어디에도 주지 않는다(테이블 소유자 tbox_owner 만 가능).
 --   · 스키마에 표를 만들 권한(CREATE)과 이 DB 에 접속할 권한(CONNECT)은 PUBLIC 에서 회수하고
 --     필요한 역할에만 준다(아래 ①~③).
+--   · 역할의 **시간 제한**은 이 파일이 아니라 마이그레이션이 건다(권한이 아니라 역할 설정이다 — Q:F-4 P-7):
+--     tbox_app 만 statement_timeout 15s · idle_in_transaction_session_timeout 60s
+--     (db/migrations/2026-09-29_app_role_timeouts.sql, 확인 `SELECT rolname, rolconfig FROM pg_roles WHERE rolname LIKE 'tbox\_%'`).
+--     tbox_owner · tbox_backup · tbox_perm 에는 걸지 않는다 — 마이그레이션·백업 pg_dump·권한 매트릭스 쓰기는 제한 밖이다.
 
 \set ON_ERROR_STOP on
 

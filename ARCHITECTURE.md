@@ -1532,8 +1532,12 @@ authentication failed for user "tbox_app"` 같은 형태다 — 호스트·포�
 - **끊긴 연결**: DB 가 재시작되거나 연결이 끊기면 PDO 의 자체 확인(PQconsumeInput)은 끊김을 늘 알아채지 못해, 확인이 없으면 워커마다 첫 요청 하나가
   500 이었다(`pg_terminate_backend` 실측). `adopt()` ② 의 `DISCARD ALL` 이 실패하면 그 요청을 다시 연결로 돌린다. **실제 PostgreSQL 재시작은 미검증**(시험 DB 가 운영과 같은
   클러스터) — 운영 반영 뒤 첫 DB 재시작 때 확인한다(사이트 STAGES).
-- **연결 수**: 워커 수만큼 연결이 **늘 열려 있다**(지금 풀 `pm = ondemand` · `max_children = 5` · 유휴 30초에 워커 종료 → 연결도 닫힘) + `perm` 을 쓰는
-  요청 동안 1. 풀을 바꾸면(P-7) 그 수가 곧 상시 연결 수다. 트랜잭션이 남는 경우의 DB 쪽 안전망 `idle_in_transaction_session_timeout` 은 P-7(역할 설정).
+- **연결 수**: 워커 수만큼 연결이 **늘 열려 있다** + `perm` 을 쓰는 요청 동안 1. P-7(9.1) 뒤 풀은 `pm = dynamic` — 쉬는 워커 2~4 · 최대 8 이라 상시 연결 2~8
+  (전: `ondemand` · 최대 5 · 유휴 30초에 워커 종료 → 연결도 닫힘). 트랜잭션이 남는 경우의 DB 쪽 안전망은 `tbox_app` 역할의 `idle_in_transaction_session_timeout = 60s`(10장).
+  서버가 그 시간에 연결을 끊으면(요청 안에서 트랜잭션을 연 채 60초 넘게 쉬는 경우) 그 요청은 다음 질의에서 500 으로 끝나고(질의가 없으면 요청 끝 정리의 롤백이
+  실패를 로그 한 줄 `request-end rollback failed` 로만 남긴다), **다음 요청은 200** 이다 — PHP 의 영속 연결 확인이 끊긴 핸들(CONNECTION_BAD)을 다시 연결하고
+  (PQreset — 2026-09-24 실측 경로), 그것이 놓친 경우는 `adopt()` 의 `DISCARD ALL` 실패가 비영속 재연결로 돌린다. 트랜잭션 안에서 문장이 `statement_timeout` 에
+  취소돼도 연결은 끊기지 않고 다음 요청이 같은 연결을 그대로 쓴다(`tests/qf4_p7_timeouts.sh` ④ — php-fpm 워커 1개, 임시 DB 에서만 3초).
 
 **health 와 연결 실패(5.24).** `Db::ready()` 가 아직 연결하지 않았으면 연결을 **시도**한다 — 연결 실패는 `connect_failed`, 질의 실패는
 `query_failed` 로 전과 같이 갈린다. bootstrap 예외 처리기는 연결을 열지 않는 `Db::connected()` 로 롤백 여부를 본다. 연결 실패의 원문(호스트·포트·계정)은
@@ -2334,6 +2338,36 @@ php_admin_value[disable_functions]   = fsockopen,pfsockopen,stream_socket_client
 ```
 
 > `allow_url_fopen = Off` 와 `open_basedir` 는 "실수로 SSRF·경로 탈출 코드를 짜도" 실행 단계에서 한 번 더 막아주는 안전망이다.
+> 위 블록은 요지다 — 실제 파일은 `deploy/php-fpm-pool.conf`(운영 `/etc/php/8.1/fpm/pool.d/tbox.conf` 와 바이트까지 같게 둔다. 경로는 `/var/www/qaredi/tbox-v2` · `/var/lib/tbox-v2` · `/var/log/tbox-v2` · `/etc/tbox-v2`).
+
+### 9.1 워커 수 · 요청 시간 제한 · DB 문장 시간 제한 (Q:F-4 P-7, 2026-09-24 — SECURITY R-103)
+
+**왜.** 풀이 `pm = ondemand` · 최대 5개였고 요청 시간에 끝이 없었다(`request_terminate_timeout` 없음, DB `statement_timeout = 0`). 큰 업로드·URL 가져오기 몇 건이
+워커 다섯을 붙잡으면 다른 요청은 전부 줄을 섰고, 어딘가에서 멈춘 요청·쿼리는 워커를 영영 쥐고 있었다. ondemand 는 30초 쉬면 워커를 내려 P-2(5.31)의 연결 재사용이
+한가할 때 사라졌다.
+
+| 값 | 전 | 후 | 근거 (2026-09-24 실측 — 비root 임시 풀·임시 nginx(검토 포트 사이트 사본)·운영 복사 임시 DB, PHP 쪽 시간은 FPM 접근 로그) |
+|---|---|---|---|
+| `pm` | `ondemand` · 유휴 30초 | **`dynamic`** · 시작 2 · 쉬는 워커 2~4 | 쉬는 워커가 연결(P-2)을 들고 기다린다. 부하 뒤 쉬는 워커가 4 를 넘으면 1초에 하나씩 내린다(8 → 4, 12초) |
+| `pm.max_children` | 5 | **8** | 워커 RSS 20~32MB, 8개 합 RSS 약 205MB · PSS 약 49MB(마스터 7MB). 운영 5개 합 RSS 약 97MB · `free` 사용 1.5GB/3.9GB. 이론 최악 8 × `memory_limit` 128M = 1GB. 같은 FPM 마스터의 **www 풀**(`www.conf` 기본값 dynamic · 최대 5, 옛 판 `tbox-v1-local` 이 쓴다)까지 더하면 (8 + 5) × 128M ≈ 1.6GB, 여기에 clamscan(최대 991MB, R-86) · PostgreSQL(실측 RSS 합 약 270MB, `shared_buffers` 128MB)을 겹쳐도 3GB 대 — RAM 3.9GB + 스왑 2GB 안이지만 빠듯해 더 늘리지 않는다. DB 상시 연결 = 워커 수(최대 8, + `perm` 1) |
+| `request_terminate_timeout` | 없음 | **90s** | 가장 긴 정상 요청: URL 가져오기 리다이렉트 3번 × 9초 + 100MB **29.4초**, 최악(리다이렉트 3번 × 9.5초 + 10초에 끊기는 느린 본문) **38.7초 → 400**(Fetch 는 단계마다 연결 3초·전체 10초, 최대 4단계 — 약 40초 + 검증). 100MB 업로드 1.8~2.8초 · 미리보기 1.1~1.8초 · 다운로드 1.5~1.9초. nginx `fastcgi_read_timeout 60s` 보다 길게(nginx 가 기다리는 요청을 FPM 이 먼저 끊지 않게) · 가져오기 상한(약 40초)의 두 배 이상 · 60초를 넘는 정상 경로 없음. 504 뒤에도 워커를 쥐는 시간 최대 30초(독립 검토 L-1 — 처음 제안 120s 는 60초) |
+| DB `statement_timeout` (역할 `tbox_app`) | 0 | **15s** | 10장 표 — tbox_app 으로 도는 cron 전부 스크립트 전체 1초 안 · 가장 긴 문장 64ms(첫 연결 포함) |
+| DB `idle_in_transaction_session_timeout` (역할 `tbox_app`) | 0 | **60s** | 5.31 요청 끝 롤백·넘겨받을 때 정리가 못 돈 경우의 DB 쪽 안전망. 앱 트랜잭션 안에는 네트워크·스캐너 대기가 없다(내려받기·검증·clamscan 은 트랜잭션 밖) |
+
+- **업로드는 nginx 가 본문을 다 받은 뒤 넘긴다**(`fastcgi_request_buffering` 기본 on). 느린 손님(10MB/s)의 100MB 업로드: 손님 12.9초 · nginx 12.8초 · **PHP 2.8초**.
+- **다운로드는 X-Accel-Redirect 가 아니다** — `Storage::stream` 의 `readfile()`(6단계 결정, R-34). 그래도 PHP 가 오래 쥐지 않는 것은 nginx 가 FastCGI 응답을
+  버퍼·임시 파일로 받아 두기 때문이다(`fastcgi_buffering` 기본 on · `fastcgi_max_temp_file_size` 기본 1024m — 설정에 두 값을 바꾸는 줄 없음). 느린 손님(5MB/s)의 100MB:
+  손님 20.0초 · nginx 18.4초 · **PHP 1.7초**. 대가: 느린 손님 한 명당 nginx 임시 공간 최대 100MB(`/var/lib/nginx/fastcgi`).
+- **시간이 다 되면**: FPM 마스터가 워커를 죽이고(로그 `execution timed out … terminating`) nginx 는 502 를 낸다. 워커가 들고 있던 DB 연결이 끊기며 열린 트랜잭션은
+  서버가 되돌린다. 60초 뒤 nginx 가 먼저 504 를 낸 요청도 PHP 는 90초까지 돌 수 있다(그 사이 30초 동안 워커 하나를 쓴다).
+- `max_execution_time`(php.ini 30초)은 리눅스에서 **CPU 시간**이라 네트워크·잠 대기를 세지 않는다 — 벽시계 상한은 `request_terminate_timeout` 하나다.
+- **reload 로 적용한다**(`systemctl reload php8.1-fpm` = SIGUSR2 — 마스터가 설정을 다시 읽고 워커를 새로 띄운다. `pm` 종류 변경도 reload 로 된다). 적용 스크립트
+  `review-scripts/apply-fpm-p7-2026-09-24.sh`(검토 뒤 `/var/www/qaredi/scripts/`). DB 쪽은 `review-scripts/apply-db-p7-2026-09-24.sh` — **DB 를 먼저** 적용하면
+  뒤의 FPM reload 가 워커(와 영속 연결)를 새로 띄워 새 역할 설정이 바로 모든 워커에 걸린다(역할 설정은 새 연결에만 걸린다).
+  FPM 스크립트는 /etc 가 이미 새 판이면 reload 하지 않고 확인만 한다.
+- **reload 때 진행 중 요청이 끊긴다** — `php-fpm.conf` 의 `process_control_timeout` 이 기본 0 이라 reload 가 처리 중인 워커를 기다리지 않는다(큰 업로드 등).
+  이 값은 이번 범위 밖이다(별 건). 그래서 사용자가 사이트를 쓰는 중이면 reload 를 미룬다(HANDOFF 7장 8).
+- 시험 `tests/qf4_p7_timeouts.sh`(임시 DB · 임시 nginx + php-fpm, 운영에 쓰지 않음).
 
 ---
 
@@ -2347,6 +2381,28 @@ php_admin_value[disable_functions]   = fsockopen,pfsockopen,stream_socket_client
 | `tbox_perm` | 권한 매트릭스 편집 핸들러 **하나**(`admin_permissions_update.php`, 17단계 F-25) | `permissions`: SELECT/UPDATE 만 · 다른 표 0 · INSERT/DELETE 없음(16행 고정). `.env` `DB_PERM_USER/PASS`, `Db::perm()` 지연 연결 · **비영속**(앱 연결 `tbox_app` 만 워커마다 재사용 — 5.31) |
 
 > 파일 삭제가 논리 삭제(UPDATE)이므로 앱 계정에 `DELETE` 권한 자체가 필요 없다. 30일 실제 정리는 `tbox_owner` 권한의 배치 스크립트가 수행한다.
+> (2026-09-24 코드 확인: t-box 휴지통 정리 `purge_trash.php` 는 **`tbox_app`** 으로 붙어 `files.purged_at` 만 UPDATE 하고 바이트는 파일 시스템에서 지운다 — 행은 남는다.
+> `tbox_owner` 로 붙는 배치는 커뮤니티 휴지통 정리 `community_purge.php` 하나다(아래 표).)
+
+**역할 시간 제한 (Q:F-4 P-7, 9.1 · SECURITY R-103).** `tbox_app` **만** `statement_timeout = 15s` · `idle_in_transaction_session_timeout = 60s`
+(`db/migrations/2026-09-29_app_role_timeouts.sql`, 역할 설정 `ALTER ROLE … SET` — 새 연결부터). `tbox_owner` · `tbox_backup` · `tbox_perm` 은 제한 없음(서버 기본 0),
+시험 전용 읽기 역할 `tbox_testread` 는 자체 설정(`statement_timeout 10s` · `lock_timeout 1s` · `idle_in_transaction_session_timeout 30s` · `default_transaction_read_only on`) 그대로다.
+
+| cron(`/etc/cron.d/tbox-v2`) · 실행 계정 | 스크립트 | DB 역할 (경로) | 15s 에 걸리나 — 실측(2026-09-24, 운영 복사 임시 DB, 역할 설정은 `IN DATABASE <임시>` 로만) |
+|---|---|---|---|
+| 00:05 root | `audit_chain.php --yesterday` | `tbox_app` — `cli_bootstrap` → `Db::boot(DB_USER)`. DB 는 감사 한 줄(INSERT)뿐, 나머지는 파일 해시 | 전체 0.13초 · 문장 1개 |
+| 02:00 root | `consistency_check.php --quiet` | `tbox_app` — files 전체 SELECT 1 + 감사·경보 INSERT. 파일 sha256 은 트랜잭션 **밖** PHP 에서 | 전체 0.12~0.17초 · 가장 긴 문장 63ms(첫 연결 포함) |
+| 03:00 root | `backup_db.sh` | `pg_dump` = **`tbox_backup`**(`backup.pgpass`) · 감사 한 줄은 `audit_cli.php` = `tbox_app` | pg_dump 는 제한 밖 · 감사 0.11초 |
+| 03:30 root | `backup_files.sh` | DB 는 `audit_cli.php` 감사 한 줄 = `tbox_app`(tar·rsync 는 DB 없음) | 0.11초 |
+| 04:00 root | `purge_trash.php` | `tbox_app` — 대상 SELECT 1 + 행마다 UPDATE·감사(짧은 트랜잭션) | 0.11초(대상 0) · 부하 50행 0.26초(문장 101개) |
+| 04:10 root | `community_purge.php --run --max 500` | `community.purge_trash()` = **`tbox_owner`**(`owner.pgpass` — 함수가 소유자 전용) · 감사 한 줄은 `tbox_app` | 소유자 연결은 제한 밖(이번에 재지 않음) |
+| 04:30 root | `verify_backup.sh` | DB 는 `audit_cli.php` 감사(`tbox_app`)뿐 — `pg_restore -l` 은 DB 에 붙지 않는다 | 0.11초 |
+| 5분 root | `alerts.php` | `tbox_app` — `audit_logs` 판정 SQL 10개 | 0.52~0.71초 · 가장 긴 문장 53ms |
+| 1분 tbox-php | `scan_pending.php` | `tbox_app` — 대기 SELECT 1 + 파일마다 짧은 트랜잭션. clamscan(최대 22초)은 트랜잭션 **밖** | 0.10~0.15초(대기 0 · 30건 dry-run) |
+| (웹 일부) | 권한 매트릭스 쓰기 `Db::perm()` | **`tbox_perm`** (비영속) | 제한 밖 |
+
+스크립트 **전체**가 15초 안이면 그 안의 어떤 문장도 15초를 넘지 않는다 — 모두 1초 안이라 스크립트별 `SET statement_timeout` 은 두지 않았다(필요해지면 그 스크립트의
+연결에서만 늘린다). 큰 표 행 수(운영 사본): `audit_logs` 23,312 · `files` 960 · `community.pages` 838.
 
 ---
 
