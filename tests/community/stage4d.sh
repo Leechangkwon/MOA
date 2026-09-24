@@ -193,14 +193,14 @@ sudo -n -u postgres psql -d "$SRC_DB" -tAc "SELECT 1" >/dev/null 2>&1 \
 
 sub "① 운영 DB 를 **읽어** 임시 DB 를 만든다"
 # 덤프 파일은 **postgres 가 만든다** — 미리 만들어 두면(mktemp, 모드 600) 그 계정이 쓰지 못한다.
-DUMP="/tmp/tbox4d_dump.$$.sql"
 sudo -n -u postgres dropdb --if-exists "$DB" >/dev/null 2>&1
 sudo -n -u postgres createdb -O tbox_owner "$DB" >/dev/null 2>&1 \
   || { echo "임시 DB 를 만들 수 없다"; exit 3; }
-sudo -n -u postgres pg_dump -d "$SRC_DB" -f "$DUMP" 2>/dev/null \
-  || { echo "운영 DB 를 읽지 못했다 (pg_dump)"; exit 3; }
-sudo -n -u postgres psql -q -d "$DB" -v ON_ERROR_STOP=0 -f "$DUMP" >/dev/null 2>"$WORK/restore.err"
-sudo -n rm -f "$DUMP"
+# 대기열 2d(2026-09-24) — 운영 사본을 /tmp 파일로 두지 않고 파이프로 바로 넣는다(파일이 잠시라도 남지 않게)
+sudo -n -u postgres pg_dump -d "$SRC_DB" 2>/dev/null \
+  | sudo -n -u postgres psql -q -d "$DB" -v ON_ERROR_STOP=0 >/dev/null 2>"$WORK/restore.err"
+DUMP_PS=("${PIPESTATUS[@]}")
+[ "${DUMP_PS[0]}" -eq 0 ] || { echo "운영 DB 를 읽지 못했다 (pg_dump)"; exit 3; }
 n_users=$(psqlq "SELECT count(*) FROM public.users")
 n_pages=$(psqlq "SELECT count(*) FROM community.pages")
 [ -n "$n_users" ] && [ -n "$n_pages" ] \
