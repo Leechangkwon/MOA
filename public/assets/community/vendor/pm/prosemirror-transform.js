@@ -1,4 +1,4 @@
-import { ReplaceError, Slice, Fragment, MarkType, Mark } from './prosemirror-model.js';
+import { ReplaceError, Slice, Fragment, MarkType, Mark } from './prosemirror-model.js?v=5823578fa61a';
 
 // Recovery values encode a range index and an offset. They are
 // represented as numbers, because tons of them will be created when

@@ -1,6 +1,6 @@
-import { findWrapping, ReplaceAroundStep, canSplit, liftTarget, canJoin } from './prosemirror-transform.js';
-import { NodeRange, Fragment, Slice } from './prosemirror-model.js';
-import { Selection } from './prosemirror-state.js';
+import { findWrapping, ReplaceAroundStep, canSplit, liftTarget, canJoin } from './prosemirror-transform.js?v=5823578fa61a';
+import { NodeRange, Fragment, Slice } from './prosemirror-model.js?v=5823578fa61a';
+import { Selection } from './prosemirror-state.js?v=5823578fa61a';
 
 const olDOM = ["ol", 0], ulDOM = ["ul", 0], liDOM = ["li", 0];
 /**

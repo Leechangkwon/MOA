@@ -1,7 +1,7 @@
-import { keydownHandler } from './prosemirror-keymap.js';
-import { Selection, NodeSelection, TextSelection, Plugin } from './prosemirror-state.js';
-import { Slice, Fragment } from './prosemirror-model.js';
-import { DecorationSet, Decoration } from './prosemirror-view.js';
+import { keydownHandler } from './prosemirror-keymap.js?v=5823578fa61a';
+import { Selection, NodeSelection, TextSelection, Plugin } from './prosemirror-state.js?v=5823578fa61a';
+import { Slice, Fragment } from './prosemirror-model.js?v=5823578fa61a';
+import { DecorationSet, Decoration } from './prosemirror-view.js?v=5823578fa61a';
 
 /**
 Gap cursor selections are represented using this class. Its

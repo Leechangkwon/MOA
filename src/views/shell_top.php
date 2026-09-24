@@ -232,7 +232,10 @@ if (!headers_sent()) {
 <!-- 커뮤니티 화면의 동작 한 벌 (커뮤니티 ARCHITECTURE.md 21.3). `type="module"` 은 기본이
      defer 라 <head> 에 두어도 본문이 다 그려진 뒤 돌아간다 — shell_bottom 을 고치지 않고
      모듈 스크립트를 싣는 자리다. CSP 는 `script-src 'self'` 그대로이고 import map 을 쓰지
-     않는다(ProseMirror 는 저장소 안 상대 경로로 서로를 부른다). -->
+     않는다(ProseMirror 는 저장소 안 상대 경로로 서로를 부른다).
+     ★ 여기서는 진입 파일만 `?v=<파일 시각>` 을 단다. editor.js 가 부르는 부품(우리 것·vendor/pm)은
+     import 문 자체에 `?v=<버전>` 이 찍혀 있다 — `scripts/community_asset_version.php`. 진입 파일만
+     버전을 달던 때는 7일 캐시된 옛 부품과 새 editor.js 가 섞여 모듈 연결이 실패했다(2026-09-24 핫픽스). -->
 <script type="module" src="<?= Http::url('/assets/community/editor.js') ?>?v=<?= (int) filemtime(__DIR__ . '/../../public/assets/community/editor.js') ?>"></script>
 <script defer src="<?= Http::url('/assets/community/search.js') ?>?v=<?= (int) filemtime(__DIR__ . '/../../public/assets/community/search.js') ?>"></script>
 <?php endif; ?>

@@ -7,6 +7,8 @@
 # 하는 일 (ARCH 5.23 차례 그대로)
 #   ⓪ 작업 트리가 지저분하면(커밋하지 않은 수정·스테이징) 거부한다 — 기능 커밋을 먼저 하고 발행한다.
 #      추적되지 않는 파일(??)은 허용한다.
+#      커뮤니티 JS 부품의 import 버전 표시가 지금 내용과 다르면 거부한다
+#      (`scripts/community_asset_version.php --check` — 옛 부품 캐시 핫픽스 2026-09-24).
 #   ① VERSION 을 읽어 다음 번호를 계산하고, 같은 이름의 태그가 이미 있으면 거부한다.
 #   ② CHANGELOG.json 맨 앞에 항목을 넣는다.
 #   ③ VERSION 을 갱신하고 CHANGELOG.md 를 다시 만든다.
@@ -102,6 +104,16 @@ if [ -n "$DIRTY" ]; then
   printf '커밋하지 않은 변경이 있습니다 — 먼저 커밋하세요:\n' >&2
   printf '%s\n' "$DIRTY" >&2
   exit 1
+fi
+
+# 캐시된 옛 부품과 새 부품이 섞이면 커뮤니티 JS 가 한 줄도 돌지 않는다(2026-09-24 사용자가 폰에서 겪음).
+# 부품을 고치고 버전 표시를 다시 찍지 않은 채로는 발행하지 않는다.
+if [ -f "$ROOT/scripts/community_asset_version.php" ]; then
+  if ! AV_OUT="$(php "$ROOT/scripts/community_asset_version.php" --check --root "$ROOT" 2>&1)"; then
+    printf '커뮤니티 JS 부품의 import 버전 표시가 지금 내용과 다릅니다 — 다시 찍고 기능 커밋에 넣으세요:\n' >&2
+    printf '%s\n' "$AV_OUT" >&2
+    exit 1
+  fi
 fi
 
 # ── ① 다음 번호 · 태그 중복 ──────────────────────────────────

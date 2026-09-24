@@ -1,5 +1,5 @@
-import { Plugin } from './prosemirror-state.js';
-import { dropPoint } from './prosemirror-transform.js';
+import { Plugin } from './prosemirror-state.js?v=5823578fa61a';
+import { dropPoint } from './prosemirror-transform.js?v=5823578fa61a';
 
 /**
 Create a plugin that, when added to a ProseMirror instance,

@@ -31,21 +31,21 @@
  *     서버 `Doc::validate` 가 다시 검사한다(서버 검증이 진실이다).
  */
 
-import { EditorState, TextSelection, NodeSelection, Plugin } from './vendor/pm/prosemirror-state.js';
-import { EditorView, Decoration, DecorationSet } from './vendor/pm/prosemirror-view.js';
-import { keymap } from './vendor/pm/prosemirror-keymap.js';
-import { history, undo, redo } from './vendor/pm/prosemirror-history.js';
-import { baseKeymap, chainCommands } from './vendor/pm/prosemirror-commands.js';
-import { inputRules, textblockTypeInputRule, InputRule } from './vendor/pm/prosemirror-inputrules.js';
-import { dropCursor } from './vendor/pm/prosemirror-dropcursor.js';
-import { gapCursor } from './vendor/pm/prosemirror-gapcursor.js';
+import { EditorState, TextSelection, NodeSelection, Plugin } from './vendor/pm/prosemirror-state.js?v=5823578fa61a';
+import { EditorView, Decoration, DecorationSet } from './vendor/pm/prosemirror-view.js?v=5823578fa61a';
+import { keymap } from './vendor/pm/prosemirror-keymap.js?v=5823578fa61a';
+import { history, undo, redo } from './vendor/pm/prosemirror-history.js?v=5823578fa61a';
+import { baseKeymap, chainCommands } from './vendor/pm/prosemirror-commands.js?v=5823578fa61a';
+import { inputRules, textblockTypeInputRule, InputRule } from './vendor/pm/prosemirror-inputrules.js?v=5823578fa61a';
+import { dropCursor } from './vendor/pm/prosemirror-dropcursor.js?v=5823578fa61a';
+import { gapCursor } from './vendor/pm/prosemirror-gapcursor.js?v=5823578fa61a';
 
-import { renderDoc, embedHost } from './doc-render.js';
-import { createDatabaseView } from './database.js';
-import { bindTemplateGallery, createTemplateSave } from './templates.js';
-import { bindEmbedAdmin } from './embeds.js';
-import { bindPopular } from './popular.js';
-import { schema, toDoc, fromDoc, uuid4, colorAllowed, schemeOkForEditor, COLORS, BLOCK_TYPES } from './editor-schema.js';
+import { renderDoc, embedHost } from './doc-render.js?v=89bcb87ed2be';
+import { createDatabaseView } from './database.js?v=89bcb87ed2be';
+import { bindTemplateGallery, createTemplateSave } from './templates.js?v=89bcb87ed2be';
+import { bindEmbedAdmin } from './embeds.js?v=89bcb87ed2be';
+import { bindPopular } from './popular.js?v=89bcb87ed2be';
+import { schema, toDoc, fromDoc, uuid4, colorAllowed, schemeOkForEditor, COLORS, BLOCK_TYPES } from './editor-schema.js?v=89bcb87ed2be';
 
 /* ─── 주소와 공통 도우미 ─────────────────────────────────────── */
 

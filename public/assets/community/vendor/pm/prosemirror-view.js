@@ -1,6 +1,6 @@
-import { TextSelection, NodeSelection, AllSelection, Selection } from './prosemirror-state.js';
-import { DOMSerializer, Fragment, Mark, Slice, DOMParser } from './prosemirror-model.js';
-import { dropPoint } from './prosemirror-transform.js';
+import { TextSelection, NodeSelection, AllSelection, Selection } from './prosemirror-state.js?v=5823578fa61a';
+import { DOMSerializer, Fragment, Mark, Slice, DOMParser } from './prosemirror-model.js?v=5823578fa61a';
+import { dropPoint } from './prosemirror-transform.js?v=5823578fa61a';
 
 const domIndex = function (node) {
     for (var index = 0;; index++) {

@@ -11,6 +11,9 @@
 #   ④ 그 안의 **bare import** 를 상대 경로로 바꾼다 — `from "prosemirror-model"`
 #      → `from "./prosemirror-model.js"`
 #   ⑤ `public/assets/community/vendor/pm/<패키지>.js` 로 둔다
+#   ⑥ `scripts/community_asset_version.php` 로 import 에 버전 표시(`?v=…`)를 찍는다 — 새 판을 들이면
+#      주소가 바뀌어 브라우저가 7일 캐시한 옛 판과 섞이지 않는다(2026-09-24 핫픽스).
+#      `--verify` 는 그 표시만 지우고 바이트를 견준다.
 #
 # 왜 이렇게 하나
 #   · 이 VM 에 **node 를 설치하지 않는다**(공급망 표면·운영 부담). 그래서 번들러를 쓰지 않고
@@ -164,7 +167,7 @@ for spec in $PKGS; do
     if [ ! -f "$dest" ]; then
       echo "   ✖ 산출물이 없다: ${dest#"$ROOT/"}"
       fail=1
-    elif cmp -s "$work" "$dest"; then
+    elif sed -E "s#(['\"]\./[^'\"?]+\.js)\?v=[0-9a-f]+(['\"])#\1\2#g" "$dest" | cmp -s "$work" -; then
       printf '   산출물   : ✔ 지금 만든 것과 저장소의 파일이 **바이트까지 같다**\n'
     else
       echo "   ✖ 산출물이 다르다 — 저장소의 파일이 손으로 고쳐졌거나 절차가 바뀌었다"
@@ -176,6 +179,14 @@ for spec in $PKGS; do
 "
   echo
 done
+
+# ─── ⑥ import 버전 표시 (write 모드에서만 — 새 판이면 주소가 바뀐다) ───
+if [ "$MODE" = "write" ] && [ "$fail" = "0" ]; then
+  echo "── import 버전 표시"
+  php "$ROOT/scripts/community_asset_version.php" > "$TMP/stamp.txt" 2>&1 || fail=1
+  sed 's/^/   /' "$TMP/stamp.txt"
+  echo
+fi
 
 # ─── bare import 0건 (산출물 전체) ──────────────────────────────
 echo "── 산출물 점검"

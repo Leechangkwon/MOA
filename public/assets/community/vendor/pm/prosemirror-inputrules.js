@@ -1,5 +1,5 @@
-import { Plugin } from './prosemirror-state.js';
-import { findWrapping, canJoin } from './prosemirror-transform.js';
+import { Plugin } from './prosemirror-state.js?v=5823578fa61a';
+import { findWrapping, canJoin } from './prosemirror-transform.js?v=5823578fa61a';
 
 /**
 Input rules are regular expressions describing a piece of text

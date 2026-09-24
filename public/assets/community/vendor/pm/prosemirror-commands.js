@@ -1,6 +1,6 @@
-import { liftTarget, replaceStep, ReplaceStep, canJoin, joinPoint, canSplit, ReplaceAroundStep, findWrapping } from './prosemirror-transform.js';
-import { Slice, Fragment } from './prosemirror-model.js';
-import { NodeSelection, Selection, TextSelection, AllSelection, SelectionRange } from './prosemirror-state.js';
+import { liftTarget, replaceStep, ReplaceStep, canJoin, joinPoint, canSplit, ReplaceAroundStep, findWrapping } from './prosemirror-transform.js?v=5823578fa61a';
+import { Slice, Fragment } from './prosemirror-model.js?v=5823578fa61a';
+import { NodeSelection, Selection, TextSelection, AllSelection, SelectionRange } from './prosemirror-state.js?v=5823578fa61a';
 
 /**
 Delete the selection, if there is one.

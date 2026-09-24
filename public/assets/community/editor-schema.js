@@ -25,7 +25,7 @@
  *   사용자가 쓴 구조가 말없이 사라진다.
  */
 
-import { Schema } from './vendor/pm/prosemirror-model.js';
+import { Schema } from './vendor/pm/prosemirror-model.js?v=5823578fa61a';
 
 /** 기본 색 9 — 배경은 `_bg` 를 붙인 값이다 (doc-schema.json 과 같은 목록) */
 export const COLORS = ['gray', 'brown', 'orange', 'yellow', 'green', 'blue', 'purple', 'pink', 'red'];

@@ -1,5 +1,5 @@
-import { keyName, base } from './w3c-keyname.js';
-import { Plugin } from './prosemirror-state.js';
+import { keyName, base } from './w3c-keyname.js?v=5823578fa61a';
+import { Plugin } from './prosemirror-state.js?v=5823578fa61a';
 
 const mac = typeof navigator != "undefined" && /Mac|iP(hone|[oa]d)/.test(navigator.platform);
 const windows = typeof navigator != "undefined" && /Win/.test(navigator.platform);

@@ -1,4 +1,4 @@
-import OrderedMap from './orderedmap.js';
+import OrderedMap from './orderedmap.js?v=5823578fa61a';
 
 function findDiffStart(a, b, pos) {
     for (let i = 0;; i++) {
