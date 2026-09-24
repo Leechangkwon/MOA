@@ -2279,6 +2279,30 @@ server { listen 80; server_name tbox.internal; return 301 https://$host$request_
 | `location ~ \.php$ { return 404; }` | 단일 입구 강제 → 검사 우회 경로 없음 |
 | `internal;` | 실제 파일 URL 직접 접근 차단 |
 | CSP 등 헤더 | S-03 XSS 완화 |
+| `gzip_types`(JSON 제외) · `map $arg_v` · `location = /api/health` 308 | Q:F-4 P-1 · U-4′ · P-5b — 아래 8.1 |
+
+### 8.1 압축 · 자산 캐시 · 옛 헬스 주소 (Q:F-4 라운드 C, 2026-09-24)
+
+- **압축(P-1)** — http 단 `deploy/sites/tbox-common.conf`(운영 `/etc/nginx/conf.d/`): `gzip_types` 는 CSS·JS·SVG·웹 매니페스트뿐이고
+  `gzip_vary on` · `gzip_proxied any` · `gzip_comp_level 5` · `gzip_min_length 1024` 다. `/etc/nginx/nginx.conf` 는 배포판 파일이라 고치지 않는다(`gzip on` 만 켜져 있다).
+  **`application/json` 은 넣지 않는다** — 창구 응답에 CSRF 토큰이 있어 BREACH 재료가 된다. JSON 응답에는 `Vary` 가 없는 것으로 확인한다.
+  text/html 은 nginx 기본값이라 전부터 압축돼 나갔다. 화면 HTML 에는 토큰·세션 값이 없고, 되비추는 요청 값은 허용 목록의 키뿐이다.
+  **http 단이라 같은 nginx 의 `tbox-v1-local`(8081, 취약점 보존 실습 사이트)에도 CSS·JS 압축과 `Vary` 가 생긴다.**
+  보존하는 취약점과 무관한 전송 방식이라 그대로 둔다.
+- **자산 캐시(U-4′)** — `map $arg_v $tbox_asset_expires { default 7d; "~^[0-9a-z]{6,40}$" 1y; }`. 두 사이트의 `location /tbox/assets/` 는
+  `expires $tbox_asset_expires;` 한 줄만 쓰고 add_header 는 두지 않는다. 그래서 server 단 보안 헤더 상속이 그대로다.
+  `immutable` 은 없다 — add_header 가 필요해서다. 새로 고침 때 304 확인 요청은 남는다.
+  **전제**: 커뮤니티 부품 import 의 `?v=<내용 해시>` 는 `scripts/community_asset_version.php` 로 찍는다. 찍기를 잊으면 옛 부품이
+  7일이 아니라 1년 브라우저에 갇힌다. 그래서 `release.sh` 와 nginx 반영 스크립트가 `--check` 를 하고, 점검 봇 주기 점검에도 둔다.
+  셸이 붙이는 `?v=<파일 시각>`(app.js·app.css 등)은 checkout·직접 편집 모두 시각이 바뀌어 이 위험이 없다.
+- **옛 헬스 주소(P-5b)** — `location = /api/health { absolute_redirect off; return 308 /tbox$request_uri; }`. 사용자 모니터 프로그램
+  (`tbox-buddy/3.0`)이 옛 주소를 하루 약 7,500번 부르는데, 전에는 그때마다 PHP 워커가 돌고 DB 에 붙은 뒤 308 을 줬다.
+  이제 nginx 가 바로 308 을 준다(본문은 nginx 기본 쪽 · 쿼리 원문 보존 · POST 도 처리 0 — Q:T-3 그대로).
+  **access.log 에는 여전히 하루 약 7,500줄 남는다** — 모니터 프로그램이 새 주소(`/tbox/api/health`)로 바뀌어 옛 주소 사용이 언제
+  끝나는지 보려고 일부러 둔다. 끝난 뒤 이 location 에 `access_log off;` 를 둘지 정한다.
+- **반영** — 저장소 쪽은 `deploy/sites` 세 파일이다. /etc 는 사용자 sudo 로
+  `scripts/apply-nginx-qf4c-2026-09-24.sh`(Qaredi 저장소)를 돌린다. 이 스크립트는 지금 /etc 세 파일이 알려진 판이고 원본이
+  검토 통과 판(sha256)과 같을 때만 설치한다. 그 뒤 확인이 하나라도 틀리면 백업으로 되돌린다.
 
 ---
 
