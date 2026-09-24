@@ -61,6 +61,7 @@
               · 웹 요청 처리 중 외부 요청(시험 알림도 대기표만) · 구독 주소(endpoint)·auth 비밀·VAPID 비밀 키를 감사 detail·로그·응답에 남기기
               · 서비스 워커에 fetch 처리기(캐시)를 두기 — 로그인한 화면을 기기에 남기지 않는다 · 알림 내용에 계정명·IP·파일명·명령
               · 서비스 워커·앱에 인라인 스크립트(CSP script-src 'self' 그대로) · fetch_hosts 표로 푸시 호스트를 넓히기
+              · `--dry-run`·시험 모드에서 alerts.log 읽기 위치(오프셋)·상태 파일을 저장하기 — dry-run 은 읽기만 한다(alerts.php 대기열 2c 9c20065 와 같은 규칙)
 
 완료 기준   : 아래 G장 F70-T1 ~ F70-T10 전부
 
@@ -151,7 +152,7 @@
 | F70-T2 | 받기 등록 검사(`claude_admin01`, 임시 인스턴스) | 허용 밖 호스트·http·`:8443`·IP 리터럴·`user@host`·1,025자·p256dh 64바이트/곡선 밖 점·auth 15바이트·허용 밖 키 → 400 · 4번째 기기 400 · 재인증 없이 → 재인증 흐름 · `claude_manager01` 403 · 감사 detail 에 endpoint·키 원문 0 |
 | F70-T3 | 웹은 밖으로 안 나간다 | `security_lint.sh` 0(curl 은 Fetch.php 만) · 새 핸들러 5개에 `Fetch::` 호출 0(grep) · 시험 알림 요청 뒤 응답까지 php-fpm 의 443 연결 0(`ss -tnp` 표본) |
 | F70-T4 | `Fetch::pushSend` 거부 | PUSH_HOSTS 밖 · 사설 IP 로 풀리는 이름(기존 fetch_hosts 시험의 방식) · 3xx → 실패 · 응답 본문 8KB 넘으면 끊음 |
-| F70-T5 | 배치 가르기(`--dry-run`, 임시 alerts.log) | 처음 켤 때 옛 줄 0건 · human·system·origin 없는 줄 → 즉시 · claude-* → 요약 칸 · 시간당 11번째 → 「외 n건」 · 요약은 L-2 시각에 한 번, 0건이면 안 보냄 |
+| F70-T5 | 배치 가르기(`--dry-run`, 임시 alerts.log) | 처음 켤 때 옛 줄 0건 · human·system·origin 없는 줄 → 즉시 · claude-* → 요약 칸 · 시간당 11번째 → 「외 n건」 · 요약은 L-2 시각에 한 번, 0건이면 안 보냄 · **dry-run 전후 상태 파일(오프셋) sha256 불변**(alerts.php 2c 와 같은 규칙) |
 | F70-T6 | 받는 사람 다시 확인 | 받기가 있는 Admin 을 비활성 → 다음 실행에 보내지 않고 `not_admin` 해지 · 역할을 Manager 로 → 같음 · 410 응답(가짜 결과 주입) → `gone` 해지 |
 | F70-T7 | 비밀 키 격리 · 보내는 계정 범위 | `/etc/tbox-v2/vapid-private.pem` 이 보내는 계정 0600 · `sudo -u tbox-php cat` 실패 · 감사·로그·`auth.log` 에 키·auth 원문 0 · `id tbox-push` 에 `adm`·`sudo` 없음 · `sudo -u tbox-push cat /var/log/tbox-v2/app.log` 실패 · `… alerts.log` 성공(L-3) |
 | F70-T8 | 앱·서비스 워커 | 매니페스트 유효(아이콘 PNG 192·512) · `alerts-sw.js` 에 `fetch` 처리기 0 · 알림 누르면 `/tbox/admin` 고정 · 다른 화면의 CSP 문자열 전후 동일(Q:T-7) · 헤드리스로 `/tbox/alerts-app` 라이트·다크·390px 스크린샷을 직접 본다 |
