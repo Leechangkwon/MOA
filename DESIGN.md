@@ -389,6 +389,7 @@ CSS 에 **추가되는 것**은 구성 요소 넷(`.card--link` 한 벌 · `.car
 
 | 날짜 | 내용 |
 |---|---|
+| 2026-09-24 | **지우기 전 확인 창 하나** (Q:F-4 U-2a, 4장 「위험 동작 → 확인 모달」) — 새 클래스·색 0. t-box 파일 행의 휴지통 단추와 폴더 「삭제」가 **같은 창**을 쓴다(폴더의 `window.confirm` 을 걷음 — 확인 방식 하나): `dialog.modal.modal--form#confirm-dialog` > `.modal__head`(제목 + ✕ `makeIconButton`) · `.modal__body`(문장 + `.muted` 한 줄) · `.modal__foot`(「닫기」 `.btn--quiet` + 「휴지통으로 옮기기」/「폴더 지우기」 `.btn--danger`). 처음 초점은 「닫기」, Esc·✕·닫기는 요청 0. 결과는 표 위 `.ok-note` 한 줄(`#files-ok`, `role="status"`) + 목록 갱신 — 성공 모달 없음. 휴지통 파일만 남은 폴더의 되묻기(목록을 보여 주는 창)는 그대로 |
 | 2026-09-24 | **출처(origin) 배지 쓰임 등록** (F-71 감사 화면 · F-69 관리자 경보 목록) — 새 클래스·색 0, 기존 변형에 뜻을 더함: 「Claude」 `.badge--internal` · 「시스템」 `.badge--team`(빌려 씀 — D-14 사용자 확인 대기) · 「출처 표기 전」 `.badge--off` · 「확인 필요」 `.badge--scan-pending`. 배지는 규칙 번호 옆, 제목(`[Claude] …`)은 그 옆 — 전부 `textContent` |
 | 2026-09-22 | D-10 적용 — 펼쳐진 폼 다섯(사이트 추가·계정 만들기·토큰 발급·2단계 끄기·권한 적용)을 단추 → 모달로. 모달 머리 규칙(`.modal__head > .preview__headtext`)·바닥 문구 정렬을 구성 요소 차원에서 보정 |
 | 2026-09-22 | D-9 적용 — 내비·허브 카드에서 관리 화면으로 갈 때 재인증 모달을 먼저(app.js). PRD F-23·ARCH 4.0 문구 보충 |

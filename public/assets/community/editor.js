@@ -40,12 +40,12 @@ import { inputRules, textblockTypeInputRule, InputRule } from './vendor/pm/prose
 import { dropCursor } from './vendor/pm/prosemirror-dropcursor.js?v=5823578fa61a';
 import { gapCursor } from './vendor/pm/prosemirror-gapcursor.js?v=5823578fa61a';
 
-import { renderDoc, embedHost } from './doc-render.js?v=89bcb87ed2be';
-import { createDatabaseView } from './database.js?v=89bcb87ed2be';
-import { bindTemplateGallery, createTemplateSave } from './templates.js?v=89bcb87ed2be';
-import { bindEmbedAdmin } from './embeds.js?v=89bcb87ed2be';
-import { bindPopular } from './popular.js?v=89bcb87ed2be';
-import { schema, toDoc, fromDoc, uuid4, colorAllowed, schemeOkForEditor, COLORS, BLOCK_TYPES } from './editor-schema.js?v=89bcb87ed2be';
+import { renderDoc, embedHost } from './doc-render.js?v=0403bdbcc45a';
+import { createDatabaseView } from './database.js?v=0403bdbcc45a';
+import { bindTemplateGallery, createTemplateSave } from './templates.js?v=0403bdbcc45a';
+import { bindEmbedAdmin } from './embeds.js?v=0403bdbcc45a';
+import { bindPopular } from './popular.js?v=0403bdbcc45a';
+import { schema, toDoc, fromDoc, uuid4, colorAllowed, schemeOkForEditor, COLORS, BLOCK_TYPES } from './editor-schema.js?v=0403bdbcc45a';
 
 /* ─── 주소와 공통 도우미 ─────────────────────────────────────── */
 
@@ -113,6 +113,42 @@ function api(method, path, payload) {
 
 function toLogin() {
   window.location.assign(APP_BASE + '/login?to=community');
+}
+
+/**
+ * Q:F-4 P-4a — **탭이 보일 때만** 도는 주기 작업(알림 폴링 · 편집 heartbeat).
+ *
+ * 숨은 탭(`document.hidden`)에서는 타이머를 걷어 요청을 0 으로 만들고, 다시 보이면 **곧바로 한 번** 부른 뒤
+ * 원래 주기로 돌아간다. `start()` 가 불리지 않았거나 `stop()` 뒤에는 보임·숨김이 바뀌어도 아무것도 하지 않는다.
+ * 주기 값은 부르는 쪽이 코드에 적은 상수다 — 시험용 분기·전역 손잡이 없음.
+ * (숨김 동안 편집 저장 flush 는 이것과 따로, 페이지의 `visibilitychange` 가 전처럼 한다.)
+ *
+ * @param {Function} fn  부를 일(요청 하나)
+ * @param {number}   ms  주기(밀리초)
+ * @return {{start: Function, stop: Function}}
+ */
+function whileVisible(fn, ms) {
+  let timer = null;
+  let running = false;
+  const arm = () => { if (timer === null) { timer = window.setInterval(fn, ms); } };
+  const disarm = () => { if (timer !== null) { window.clearInterval(timer); timer = null; } };
+  document.addEventListener('visibilitychange', () => {
+    if (!running) { return; }
+    if (document.hidden) { disarm(); return; }
+    if (timer === null) { fn(); arm(); }
+  });
+  return {
+    start() {
+      running = true;
+      disarm();
+      // 숨은 채로 열린 탭(배경 탭으로 연 링크)은 보일 때까지 부르지 않는다 — 보이는 순간 한 번 부른다.
+      if (!document.hidden) { fn(); arm(); }
+    },
+    stop() {
+      running = false;
+      disarm();
+    }
+  };
 }
 
 /* ─── 공개 범위 (4-B) ────────────────────────────────────────────
@@ -1533,8 +1569,8 @@ function initNotifications() {
       }).catch(() => { allRead.disabled = false; setText(msg, GENERIC_ERROR); });
     });
   }
-  poll();
-  setInterval(poll, 30000);
+  // P-4a — 30초 폴링은 탭이 보일 때만(숨으면 멈추고, 다시 보이면 곧바로 한 번).
+  whileVisible(poll, 30000).start();
 }
 
 /* ─── 블록 공통 ──────────────────────────────────────────────── */
@@ -4696,19 +4732,22 @@ function initPage() {
 
   /* ── 편집 중 표시 (30초) ── */
 
+  /* P-4a — 편집 중 heartbeat 도 탭이 보일 때만 돈다(숨으면 멈추고, 다시 보이면 곧바로 한 번).
+     숨어 있는 동안 서버의 「편집 중」 표시는 기존 만료 규칙(마지막 신호 뒤 2분, pages_heartbeat.php)대로
+     다른 사람 화면에서 사라질 수 있다 — 받아들인 동작이다(지시서 P-4a ④). */
   function startHeartbeat() {
-    stopHeartbeat();
-    const beat = () => {
-      api('POST', '/api/pages/' + pageId + '/heartbeat', {})
-        .then((result) => { if (result.status === 200) { showEditors(result.data.editors); } })
-        .catch(() => {});
-    };
-    beat();
-    heartbeat = window.setInterval(beat, 30000);
+    if (heartbeat === null) {
+      heartbeat = whileVisible(() => {
+        api('POST', '/api/pages/' + pageId + '/heartbeat', {})
+          .then((result) => { if (result.status === 200) { showEditors(result.data.editors); } })
+          .catch(() => {});
+      }, 30000);
+    }
+    heartbeat.start();
   }
 
   function stopHeartbeat() {
-    if (heartbeat !== null) { window.clearInterval(heartbeat); heartbeat = null; }
+    if (heartbeat !== null) { heartbeat.stop(); }
   }
 
   /* ── 단추 ── */
@@ -4916,6 +4955,21 @@ function initPage() {
 
 /* ─── 시작 ───────────────────────────────────────────────────── */
 
+/**
+ * P-5a — `GET /api/me` 는 한 화면에 한 번. 셸 스크립트(app.js — 이 모듈보다 먼저 실행된다)가 내놓은
+ * `window.qarediMe` 가 첫 호출의 Promise 를 나눠 준다. 셸이 없는 날(파일이 빠진 배포 등)에만 전처럼 직접 부른다.
+ *
+ * @return Promise<{status:number, me:(Object|null)}>
+ */
+function loadMe() {
+  if (typeof window.qarediMe === 'function') { return window.qarediMe(); }
+  return fetch(APP_BASE + '/api/me', { credentials: 'same-origin', cache: 'no-store' })
+    .then((response) => {
+      if (!response.ok) { return { status: response.status, me: null }; }
+      return readJson(response).then((me) => ({ status: response.status, me: me }));
+    });
+}
+
 let booted = false;
 
 function boot() {
@@ -4927,11 +4981,12 @@ function boot() {
   if (COMMUNITY_BASE === '' || APP_BASE === '') { return; }
 
   // CSRF 토큰은 t-box 창구가 준다 — 한 앱·한 세션이라 같은 토큰이 커뮤니티 창구에도 통한다.
-  fetch(APP_BASE + '/api/me', { credentials: 'same-origin', cache: 'no-store' })
-    .then((response) => {
-      if (response.status === 401) { toLogin(); return null; }
-      if (!response.ok) { return null; }
-      return readJson(response).then((me) => {
+  // P-5a — 셸(app.js)과 **같은 한 번**을 나눠 쓴다(`window.qarediMe`, 화면 수명 동안만 · no-store).
+  loadMe()
+    .then((result) => {
+      if (result.status === 401) { toLogin(); return null; }
+      if (result.me === null) { return null; }
+      return Promise.resolve(result.me).then((me) => {
         if (typeof me.csrf_token !== 'string') { return null; }
         csrfToken = me.csrf_token;
         bindNewPage();

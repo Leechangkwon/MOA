@@ -72,12 +72,14 @@ sudo -n -u postgres psql -d "$SRC_DB" -tAc "SELECT 1" >/dev/null 2>&1 \
   || { echo "psql(postgres) 을 쓸 수 없다 — 이 시험은 임시 DB 가 없으면 성립하지 않는다"; exit 3; }
 
 sub "운영 DB 를 **읽어** 임시 DB 를 만든다"
-DUMP="/tmp/tboxstalejs_dump.$$.sql"
 sudo -n -u postgres dropdb --if-exists "$DB" >/dev/null 2>&1
 sudo -n -u postgres createdb -O tbox_owner "$DB" >/dev/null 2>&1 || { echo "임시 DB 를 만들 수 없다"; exit 3; }
-sudo -n -u postgres pg_dump -d "$SRC_DB" -f "$DUMP" 2>/dev/null || { echo "운영 DB 를 읽지 못했다 (pg_dump)"; exit 3; }
-sudo -n -u postgres psql -q -d "$DB" -v ON_ERROR_STOP=0 -f "$DUMP" >/dev/null 2>"$WORK/restore.err"
-sudo -n rm -f "$DUMP"
+# 평문 덤프를 디스크(/tmp)에 두지 않는다 — 파이프로 곧바로 임시 DB 에(scripts/backup_db.sh 원칙 · 독립 검토 Q:F-4 A M-1)
+set -o pipefail
+sudo -n -u postgres pg_dump -d "$SRC_DB" 2>/dev/null \
+  | sudo -n -u postgres psql -q -d "$DB" -v ON_ERROR_STOP=0 >/dev/null 2>"$WORK/restore.err" \
+  || { set +o pipefail; echo "운영 DB 를 읽어 임시 DB 로 옮기지 못했다 (pg_dump | psql)"; exit 3; }
+set +o pipefail
 sudo -n -u postgres psql -q -d "$DB" -v ON_ERROR_STOP=1 -f - < "$ROOT/db/community/grants.sql" 2>&1 \
   | grep -v 'could not change directory' | sed 's/^/    /'
 n_pages=$(psqlq "SELECT count(*) FROM community.pages")

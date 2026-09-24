@@ -14,7 +14,7 @@
  * editor.js 가 `createDatabaseView(deps)` 로 한 번 만들고, 페이지를 읽을 때마다 `draw(data)` 를 부른다.
  * 7-B — 새 행 고르개(「빈 행」 + 이 DB 의 행 템플릿 · 고른 템플릿 지우기)는 `templates.js` 의 `createRowTemplatePicker` 가 맡는다.
  */
-import { createRowTemplatePicker } from './templates.js?v=89bcb87ed2be';
+import { createRowTemplatePicker } from './templates.js?v=0403bdbcc45a';
 
 const TYPE_LABELS = {
   text: '글', number: '숫자', checkbox: '체크', url: '주소', email: '메일', phone: '전화',

@@ -756,6 +756,13 @@ with sync_playwright() as p:
     out["delete_button_found"] = btn is not None and btn.is_visible()
     if btn and btn.is_visible():
         btn.click()
+        pg.wait_for_timeout(600)
+        # Q:F-4 U-2a — 첫 확인이 window.confirm 이 아니라 앱의 확인 창(「폴더 지우기」)이 됐다. 그 단추를 눌러야
+        # DELETE 가 나가고, 휴지통 파일만 남았으면 서버 답에 따라 두 번째 창(#folder-trashed-dialog)이 뜬다.
+        ok = pg.query_selector("dialog[open] button:has-text('폴더 지우기')")
+        out["first_confirm_is_app_dialog"] = ok is not None
+        if ok:
+            ok.click()
         pg.wait_for_timeout(1200)
         dlg = pg.query_selector("#folder-trashed-dialog")
         out["dialog_open"] = bool(dlg and dlg.is_visible())

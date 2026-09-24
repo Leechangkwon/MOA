@@ -504,8 +504,80 @@ function readJson(response) {
 }
 
 function toLogin() {
+  forgetMe();   // P-5a — 로그인 화면으로 가기 전에 나눠 쓰던 `/api/me` 답을 버린다(다음 화면은 새로 묻는다)
   window.location.assign(LOGIN_PATH);
 }
+
+/* ─── `GET /api/me` 는 한 화면에 한 번 (Q:F-4 P-5a) ─────────────────────────
+ *
+ * 커뮤니티 화면은 이 셸 스크립트(bootPage)와 모듈 `editor.js`(boot)가 각자 `/api/me` 를 불러
+ * 화면 한 번 이동에 두 번 나갔다. 이제 **첫 호출의 Promise 하나**를 이 화면이 사는 동안 나눠 쓴다.
+ *
+ *   · 나눠 쓰는 것은 응답 **글자(raw)** 다. 부르는 쪽마다 `JSON.parse` 로 새 객체를 받으므로 한쪽이
+ *     값을 고쳐도 다른 쪽에 번지지 않는다. `cache: 'no-store'` 는 그대로다(브라우저·중간 캐시 0).
+ *   · 붙잡아 두는 것은 **200 이고 JSON 객체인 응답만**이다. 401·그 밖의 실패·깨진 본문·네트워크 오류는 버린다 — 다음에 부르는
+ *     쪽이 다시 묻고, 401 이면 지금처럼 로그인 화면으로 간다.
+ *   · 저장소(localStorage·쿠키)에 넣지 않는다 — 메모리에만, 화면을 떠나면 사라진다.
+ *   · 다시 물어야 하는 흐름은 `fresh === true` 로 부르거나 `forgetMe()` 로 버린다: 재인증 성공 뒤
+ *     (`reauth_fresh` 가 바뀐다) · 강제 절차의 「다음 걸음」 · 로그인 화면으로 갈 때(`toLogin`).
+ *     CSRF 토큰은 세션 id 에 묶여 있어 재인증으로는 바뀌지 않는다(Auth::csrfToken) — 그래도 한 번
+ *     버려 두어, 그 뒤에 묻는 쪽은 서버의 지금 값을 받는다.
+ *   · 권한은 여전히 서버가 요청마다 정한다. 이 값은 화면을 그리는 편의값이다 (PRD S-01).
+ *
+ * @return Promise<{status:number, me:(Object|null)}>  `me` 는 200 이고 JSON 객체일 때만, 아니면 null
+ */
+var meShared = null;
+
+function forgetMe() {
+  meShared = null;
+}
+
+function fetchMe(fresh) {
+  if (fresh === true || meShared === null) {
+    var request = fetch(APP_BASE + '/api/me', { credentials: 'same-origin', cache: 'no-store' })
+      .then(function (response) {
+        return response.text().then(
+          function (raw) { return { status: response.status, raw: raw }; },
+          function () { return { status: response.status, raw: '' }; }
+        );
+      });
+    meShared = request;
+    request.then(function (result) {
+      // 붙잡는 것은 200 이고 JSON 객체인 답만 — 깨진 본문을 화면 내내 쓰지 않게(독립 검토 Q:F-4 A L-3)
+      var keep = result.status === 200;
+      if (keep) {
+        try {
+          var parsed = JSON.parse(result.raw);
+          keep = parsed !== null && typeof parsed === 'object';
+        } catch (e) {
+          keep = false;
+        }
+      }
+      if (!keep && meShared === request) {
+        meShared = null;
+      }
+    }, function () {
+      if (meShared === request) {
+        meShared = null;
+      }
+    });
+  }
+  return meShared.then(function (result) {
+    var me = null;
+    if (result.status === 200) {
+      try {
+        me = JSON.parse(result.raw);
+      } catch (e) {
+        me = null;
+      }
+    }
+    return { status: result.status, me: me && typeof me === 'object' ? me : null };
+  });
+}
+
+/* 커뮤니티 모듈(editor.js)도 같은 한 번을 쓴다 — `qarediHandleReauth` 와 같은 방식으로 이름 하나만 내놓는다.
+   이 스크립트(`<body>` 끝의 일반 스크립트)가 모듈보다 먼저 실행되므로 모듈이 부를 때는 이미 있다. */
+window.qarediMe = fetchMe;
 
 /**
  * 최초 로그인 강제 절차 관문이 막은 응답인가 (11단계 — PRD F-16, ARCH 4.0).
@@ -702,6 +774,7 @@ function openReauthModal(onDone) {
       input.value = '';
       if (result.ok) {
         close();
+        forgetMe();   // P-5a — `reauth_fresh` 가 바뀌었다. 이 뒤에 `/api/me` 를 묻는 쪽은 새로 받는다
         if (typeof onDone === 'function') {
           onDone();
         }
@@ -1096,10 +1169,124 @@ function folderMeta(folder) {
   return meta;
 }
 
+/* ─── 확인 창 — 지우기 전에 한 번 묻는다 (Q:F-4 U-2a, DESIGN 4장 「위험 동작 → 확인 모달」 · 2.7) ──
+ *
+ * 파일 행의 휴지통 단추는 누르자마자 `DELETE` 를 보냈고, 폴더 삭제만 `window.confirm` 으로 물었다.
+ * 이제 둘 다 **이 창 하나**로 묻는다(확인 방식 하나 — 리서치 X-14). 창이 떠 있는 동안 요청은 0 이고,
+ * 「닫기」·✕·Esc 는 아무것도 보내지 않는다. 빨간 단추(`.btn--danger`)를 눌러야 onYes 가 불린다.
+ *
+ * 구성은 기존 구성 요소만(새 클래스 0): `dialog.modal.modal--form`(520px, 머리·바닥 고정 · 본문만 스크롤 —
+ * 390px 에서도 단추가 잘리지 않는다) > `.modal__head`(제목 + ✕) · `.modal__body`(문장 + `.muted` 한 줄) ·
+ * `.modal__foot`(「닫기」 `.btn--quiet` + 확인 `.btn--danger`). 요소로 만들고 글자는 전부 textContent 다
+ * (문자열 → HTML 변환 0, 인라인 style 0 — PRD S-03). 창은 한 번 만들어 두고 다시 쓴다.
+ *
+ * 화면이 판단하는 것은 없다 — 지울 수 있는지는 단추를 보이게 한 `can_delete` 와 요청을 받은 서버가 정한다.
+ *
+ * @param opts  { title, lead, note(선택), okLabel } — 코드에 적힌 문장 + 서버가 준 이름(textContent)
+ * @param onYes 확인 단추를 눌렀을 때만 한 번 불린다
+ */
+var confirmBox = null;
+
+function buildConfirmBox() {
+  if (confirmBox) {
+    return confirmBox;
+  }
+  var dialog = document.createElement('dialog');
+  dialog.id = 'confirm-dialog';
+  dialog.className = 'modal modal--form';
+  dialog.setAttribute('aria-labelledby', 'confirm-dialog-title');
+
+  var head = document.createElement('div');
+  head.className = 'modal__head';
+  var title = document.createElement('h2');
+  title.className = 'modal__title';
+  title.id = 'confirm-dialog-title';
+  head.appendChild(title);
+  var x = makeIconButton('x', '닫기');
+  head.appendChild(x);
+  dialog.appendChild(head);
+
+  /* 본문은 문단 **하나**(문장 + 줄바꿈 + `.muted` 한 줄) — 폼 모달 본문은 격자라 문단 둘이면 문단 여백과
+     격자 간격이 겹쳐 두 줄 사이가 벌어진다(390px 스크린샷 확인). 새 CSS 없이 한 문단으로 묶는다. */
+  var bodyBox = document.createElement('div');
+  bodyBox.className = 'modal__body';
+  var para = document.createElement('p');
+  var lead = document.createElement('span');
+  para.appendChild(lead);
+  var br = document.createElement('br');
+  para.appendChild(br);
+  var note = document.createElement('span');
+  note.className = 'muted';
+  para.appendChild(note);
+  bodyBox.appendChild(para);
+  dialog.appendChild(bodyBox);
+
+  var foot = document.createElement('div');
+  foot.className = 'modal__foot';
+  var cancel = document.createElement('button');
+  cancel.type = 'button';
+  cancel.className = 'btn btn--quiet';
+  setText(cancel, '닫기');
+  foot.appendChild(cancel);
+  var ok = document.createElement('button');
+  ok.type = 'button';
+  ok.className = 'btn btn--danger';
+  foot.appendChild(ok);
+  dialog.appendChild(foot);
+
+  var box = { dialog: dialog, title: title, lead: lead, br: br, note: note, cancel: cancel, ok: ok, onYes: null };
+
+  function dismiss() {
+    box.onYes = null;
+    if (dialog.open) {
+      dialog.close();
+    }
+  }
+  x.addEventListener('click', dismiss);
+  cancel.addEventListener('click', dismiss);
+  // Esc(cancel 이벤트)는 브라우저가 창을 닫는다 — 닫히는 모든 길에서 대기 중인 동작을 버린다.
+  dialog.addEventListener('close', function () {
+    box.onYes = null;
+  });
+  ok.addEventListener('click', function () {
+    var fn = box.onYes;
+    box.onYes = null;
+    if (dialog.open) {
+      dialog.close();
+    }
+    if (typeof fn === 'function') {
+      fn();
+    }
+  });
+
+  document.body.appendChild(dialog);
+  confirmBox = box;
+  return box;
+}
+
+function openConfirm(opts, onYes) {
+  var box = buildConfirmBox();
+  if (box.dialog.open) {
+    return;   // 모달 안에 모달을 열지 않는다 (DESIGN 2.7)
+  }
+  setText(box.title, opts.title);
+  setText(box.lead, opts.lead);
+  var note = typeof opts.note === 'string' ? opts.note : '';
+  setText(box.note, note);
+  box.note.hidden = note === '';
+  box.br.hidden = note === '';
+  setText(box.ok, opts.okLabel);
+  box.onYes = typeof onYes === 'function' ? onYes : null;
+  box.dialog.showModal();
+  // 처음 초점은 「닫기」 — Enter 를 잘못 눌러도 지워지지 않는다.
+  box.cancel.focus();
+}
+
 function initFiles(csrfToken, uploadLevels, canFetch, myTeamId) {
   var msg = document.getElementById('msg');
   var body = document.getElementById('files-body');
   var empty = document.getElementById('files-empty');
+  var filesOk = document.getElementById('files-ok');   // U-2a — 지운 뒤 결과 한 줄(.ok-note)
   var pageInfo = document.getElementById('page-info');
   var prev = document.getElementById('page-prev');
   var next = document.getElementById('page-next');
@@ -1208,11 +1395,37 @@ function initFiles(csrfToken, uploadLevels, canFetch, myTeamId) {
     return td;
   }
 
-  function deleteFile(id) {
-    if (!UUID_RE.test(id)) {
+  /* U-2a — 지운 뒤 결과 한 줄(DESIGN 4장 「성공」 = `.ok-note` 한 줄 + 목록이 곧바로 바뀜).
+     자리는 서버 HTML 의 `#files-ok`(기본 hidden)이고 글자는 textContent 다. 다음 동작을 시작하면 지운다. */
+  function showDone(text) {
+    if (!filesOk) {
+      return;
+    }
+    setText(filesOk, text);
+    filesOk.hidden = text === '';
+  }
+
+  /* U-2a — 휴지통 단추는 곧바로 지우지 않고 확인 창(openConfirm)을 먼저 띄운다. 창이 떠 있는 동안
+     요청 0 · 「닫기」·Esc 도 요청 0. 「휴지통으로 옮기기」를 눌러야 `DELETE /api/files/{id}` 한 건이 나간다.
+     거부(403·404 …)는 전과 같이 서버 문구를 그대로 `#msg` 에 보인다. */
+  function deleteFile(file) {
+    if (!file || !UUID_RE.test(file.id)) {
       setText(msg, GENERIC_ERROR);
       return;
     }
+    var name = String(file.name === null || file.name === undefined ? '' : file.name);
+    showDone('');
+    openConfirm({
+      title: '파일을 휴지통으로 옮길까요?',
+      lead: '「' + name + '」을(를) 휴지통으로 옮깁니다 — 30일 안에 되살릴 수 있습니다.',
+      note: '되살리기는 관리자에게 요청하세요. 30일이 지나면 완전히 지워집니다.',
+      okLabel: '휴지통으로 옮기기'
+    }, function () {
+      sendDelete(file.id, name);
+    });
+  }
+
+  function sendDelete(id, name) {
     setText(msg, '');
     fetch(APP_BASE + '/api/files/' + id, {
       method: 'DELETE',
@@ -1226,6 +1439,7 @@ function initFiles(csrfToken, uploadLevels, canFetch, myTeamId) {
           return null;
         }
         if (response.status === 200) {
+          showDone('「' + name + '」을(를) 휴지통으로 옮겼습니다.');
           loadFiles();
           return null;
         }
@@ -2102,7 +2316,7 @@ function initFiles(csrfToken, uploadLevels, canFetch, myTeamId) {
       if (file.can_delete === true) {
         var button = makeIconButton('trash', '삭제');
         button.addEventListener('click', function () {
-          deleteFile(file.id);
+          deleteFile(file);   // U-2a — 확인 창을 먼저 띄운다(요청은 확인 뒤에만)
         });
         td.appendChild(button);
       }
@@ -2351,6 +2565,7 @@ function initFiles(csrfToken, uploadLevels, canFetch, myTeamId) {
     state.folder = typeof id === 'number' && id >= 0 ? id : 0;
     state.page = 1;
     setText(msg, '');
+    showDone('');   // U-2a — 다른 폴더로 가면 지난 결과 한 줄을 거둔다
     loadFiles();
     loadTree();
   }
@@ -2689,6 +2904,7 @@ function initFiles(csrfToken, uploadLevels, canFetch, myTeamId) {
           }
           if (response.status === 200) {
             goToFolder(parentId);
+            showDone('폴더 「' + here + '」을(를) 지웠습니다.');
             return null;
           }
           return readJson(response).then(function (data) {
@@ -2708,11 +2924,18 @@ function initFiles(csrfToken, uploadLevels, canFetch, myTeamId) {
         });
     }
 
-    var here = state.folderInfo && state.folderInfo.name ? state.folderInfo.name : '';
-    if (!window.confirm('폴더 「' + here + '」 을(를) 지웁니다. 안에 살아 있는 파일·하위 폴더가 없어야 지워집니다.')) {
-      return;
-    }
-    send(false);
+    var here = state.folderInfo && state.folderInfo.name ? String(state.folderInfo.name) : '';
+    /* U-2a — `window.confirm` 대신 파일 삭제와 **같은 확인 창**(openConfirm). 「닫기」·Esc 면 요청 0.
+       휴지통 파일만 남은 경우의 되묻기(askTrashed — 목록을 보여 주는 창)는 서버가 그 코드를 준 뒤라 그대로다. */
+    showDone('');
+    openConfirm({
+      title: '폴더를 지울까요?',
+      lead: '폴더 「' + here + '」을(를) 지웁니다.',
+      note: '안에 살아 있는 파일·하위 폴더가 없어야 지워집니다. 휴지통에 있는 파일만 남았다면 어떤 파일인지 보여 주고 한 번 더 묻습니다.',
+      okLabel: '폴더 지우기'
+    }, function () {
+      send(false);
+    });
   }
 
   /* ─── 파일 이동 모달 ─────────────────────────────────────────────────
@@ -6242,16 +6465,16 @@ function initForcedGate(csrfToken, firstStep, mfaEnabled, mfaRequired) {
 
   /** 서버에 "다음은 무엇인가" 를 다시 묻는다 — 판단은 언제나 서버가 한다 */
   function refresh() {
-    fetch(APP_BASE + '/api/me', { credentials: 'same-origin', cache: 'no-store' })
-      .then(function (response) {
-        if (response.status === 401) {
+    // P-5a — 걸음이 끝나 상태가 바뀌었으니 나눠 쓰던 답이 아니라 **새로** 묻는다(fresh).
+    fetchMe(true)
+      .then(function (result) {
+        if (result.status === 401) {
           toLogin();
           return null;
         }
-        return readJson(response).then(function (body) {
-          show(typeof body.next === 'string' ? body.next : null);
-          return null;
-        });
+        var body = result.me || {};
+        show(typeof body.next === 'string' ? body.next : null);
+        return null;
       })
       .catch(function () {
         setText(msg, GENERIC_ERROR);
@@ -8202,16 +8425,17 @@ function initChangelogDialog() {
 function bootPage(page) {
   var msg = document.getElementById('msg');
 
-  fetch(APP_BASE + '/api/me', { credentials: 'same-origin', cache: 'no-store' })
-    .then(function (response) {
-      if (response.status === 401) {
+  // P-5a — 커뮤니티 화면에서는 editor.js 가 먼저 부른 같은 한 번을 받는다(fetchMe).
+  fetchMe()
+    .then(function (result) {
+      if (result.status === 401) {
         toLogin();
         return null;
       }
-      if (!response.ok) {
+      if (result.me === null) {
         return null;
       }
-      return readJson(response).then(function (me) {
+      return Promise.resolve(result.me).then(function (me) {
         if (typeof me.csrf_token !== 'string') {
           return null;
         }
@@ -8404,13 +8628,13 @@ document.addEventListener('DOMContentLoaded', function () {
    */
   var reauthForm = document.getElementById('reauth-form');
   if (reauthForm) {
-    fetch(APP_BASE + '/api/me', { credentials: 'same-origin', cache: 'no-store' })
-      .then(function (response) {
-        if (response.status === 401) {
+    fetchMe()
+      .then(function (result) {
+        if (result.status === 401) {
           toLogin();
           return null;
         }
-        return readJson(response).then(function (me) {
+        return Promise.resolve(result.me || {}).then(function (me) {
           if (typeof me.csrf_token !== 'string') {
             return null;
           }
@@ -8440,16 +8664,16 @@ document.addEventListener('DOMContentLoaded', function () {
     if (!document.getElementById('nav-files')) {
       return;   // 셸이 없는 화면 — 종전과 같이 아무것도 하지 않는다
     }
-    fetch(APP_BASE + '/api/me', { credentials: 'same-origin', cache: 'no-store' })
-      .then(function (response) {
-        if (response.status === 401) {
+    fetchMe()
+      .then(function (result) {
+        if (result.status === 401) {
           toLogin();
           return null;
         }
-        if (!response.ok) {
+        if (result.me === null) {
           return null;   // 내비는 기본 상태(닫힘) 그대로 — 화면이 권한을 추측하지 않는다
         }
-        return readJson(response).then(function (me) {
+        return Promise.resolve(result.me).then(function (me) {
           if (typeof me.csrf_token !== 'string') {
             return null;
           }

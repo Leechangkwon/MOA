@@ -136,6 +136,10 @@ require __DIR__ . '/../views/shell_top.php';
       </aside>
 
       <div class="workspace__main">
+    <!-- Q:F-4 U-2a — 지운 뒤 결과 한 줄(DESIGN 4장 「성공」 = `.ok-note`). 기본 hidden 이고,
+         app.js 가 확인 창을 거쳐 서버가 200 을 준 뒤에만 textContent 로 채워 연다.
+         `<p>` 가 아니라 `<div>` — 문단 기본 여백이 열 간격에 더해져 옆 폴더 카드와 윗줄이 어긋났다(스크린샷 확인). -->
+    <div id="files-ok" class="ok-note" role="status" aria-live="polite" hidden></div>
     <form id="search-form" class="toolbar" autocomplete="off">
       <input id="search-q" type="search" maxlength="200" placeholder="파일명 · 설명 검색">
       <select id="search-sort" aria-label="정렬 기준">
