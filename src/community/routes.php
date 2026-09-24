@@ -55,6 +55,7 @@ const COMMUNITY_ROUTES = [
     // ── API ──────────────────────────────────────────────────
     // 개인 공간 — 없으면 만든다(「시작하기」 페이지와 함께). ARCH 13.3 의 설계 그대로다.
     ['GET',    '/api/me/space',              'space_me.php',        'community.read'],
+    ['GET',    '/api/me/draft-key',          'draft_key.php',       'community.read'],   // Q:F-4 B1-2 — 쓰던 글 임시저장 열쇠(본인 것만, 감사 없음)
     // 내가 볼 수 있는 공간들 — 내 개인 공간 + 내 팀 공간(없으면 그 자리에서 만든다, 4-B).
     ['GET',    '/api/spaces',                'spaces_list.php',     'community.read'],
     // 목록은 **한 공간 안**만 본다(`?space=`, 기본 내 개인 공간). 볼 수 없는 행은 SQL 이 거른다 (C:S-02).

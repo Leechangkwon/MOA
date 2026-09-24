@@ -83,13 +83,27 @@ final class Auth
     /**
      * 「역할로 보기」가 저절로 풀리는 **활동 없는** 시간 — 분 (26단계, PRD F-39, ARCH 5.20).
      *
-     * 「시작 뒤 30분」이 아니다. 요청이 오면 `sessions.act_last_seen_at` 을 밀고(SQL_TOUCH — Q:F-4 P-3 부터 60초에 한 번),
+     * 「시작 뒤 30분」이 아니다. 요청이 오면 `sessions.act_last_seen_at` 을 밀고(SQL_TOUCH — Q:F-4 P-3 부터 60초에 한 번,
+     * U-3 부터 사람이 누른 요청만 — 자동 요청 `BACKGROUND_HEADER` 는 밀지 않는다),
      * 그 값이 이 창보다 오래됐을 때만 해제한다 — 쓰는 중에 화면이 갑자기 원래 역할로 돌아가면
      * 관리자는 자기가 무엇을 보고 있는지 알 수 없게 된다 (사용자 결정 2026-09-15 ③).
      * 판정은 SQL_LOOKUP 의 `act_fresh` 가 **DB 시계 하나**로 한다 (reauth_fresh 와 같다).
      * 늘리는 요청 파라미터·연장 API 는 만들지 않는다 (R-59 와 같은 원칙).
      */
     public const ACT_IDLE_MINUTES = 30;
+
+    /**
+     * 「사람이 누르지 않은 주기 요청」의 표식 — 헤더 이름과 값 (Q:F-4 U-3, 2026-09-24, ARCH 4.0 · 5.20).
+     *
+     * 알림 폴링·편집 heartbeat 처럼 화면이 **저절로** 보내는 요청은 이 헤더를 단다(`editor.js`).
+     * 그 요청은 세션을 **확인만** 하고 `last_seen_at`·`act_last_seen_at` 을 밀지 않는다(SQL_TOUCH 를 건너뛴다) —
+     * 그래야 켜 둔 탭이 「활동 없는 30분 로그아웃」·「역할로 보기 30분」을 끝없이 늘리지 않는다.
+     * 헤더를 **빼는** 것은 자기 세션을 늘리는 것뿐이라(사람이 누른 요청과 같다) 권한 상승이 아니고,
+     * **다는** 것은 자기 세션을 줄이는 것뿐이다. 값은 이 두 상수와만 견주고 SQL 에 들어가지 않는다.
+     * 쓰기 요청(저장·댓글)은 화면이 이 헤더를 달지 않으므로 늘 연장된다(사람 행동).
+     */
+    public const BACKGROUND_HEADER = 'X-Qaredi-Background';
+    public const BACKGROUND_VALUE  = '1';
 
     /** 감사 `act.expire` 의 사유 — 활동 없는 창이 지남 / 실제 역할이 Admin 이 아니게 됨 */
     private const ACT_EXPIRE_IDLE      = 'idle';
@@ -158,6 +172,9 @@ final class Auth
      * 대가: 기록(`last_seen_at`)이 실제 마지막 활동보다 최대 60초 늦을 수 있어, 무활동 만료(30분)와 역할로 보기 만료(30분)가
      * 실제 무활동보다 **최대 60초 일찍** 닫힐 수 있다(늦게 닫히는 길은 없다 — 보수적. SECURITY 수용 근거, 독립 검토 P-3 Low-1).
      * 두 열은 같은 문장이라 함께 움직인다 — 역할로 보기를 시작하는 문장이 act_last_seen_at 을 따로 채운다.
+     *
+     * Q:F-4 U-3 (2026-09-24) — **자동 요청**(`BACKGROUND_HEADER`)은 이 문장을 아예 부르지 않는다(currentUser).
+     * 세션 판정(SQL_LOOKUP)은 그대로라 무활동 창이 지난 세션은 자동 요청에도 401 이다.
      */
     private const SQL_TOUCH = <<<'SQL'
         UPDATE sessions
@@ -406,7 +423,10 @@ final class Auth
             return null;
         }
 
-        $db->run(self::SQL_TOUCH, [':id' => $id]);
+        // Q:F-4 U-3 — 자동 요청은 확인만 한다(두 활동 시각을 밀지 않는다). 사람이 누른 요청만 60초 규칙으로 민다.
+        if (!self::isBackgroundRequest()) {
+            $db->run(self::SQL_TOUCH, [':id' => $id]);
+        }
 
         /*
          * ── 26단계 「역할로 보기」 (PRD F-39, ARCH 5.20, SECURITY R-74) ─────────────────
@@ -1273,6 +1293,20 @@ final class Auth
             return null;
         }
         return hash('sha256', $token);
+    }
+
+    /**
+     * 이 요청이 「사람이 누르지 않은 주기 요청」인가 (Q:F-4 U-3) — `BACKGROUND_HEADER` 가 정확히 `BACKGROUND_VALUE` 일 때만.
+     *
+     * 헤더 이름은 위 상수 한 곳이고, PHP 가 넘겨주는 `$_SERVER` 이름(`HTTP_X_QAREDI_BACKGROUND`)은 그 상수에서 만든다.
+     * 값은 상수와 `===` 로만 견준다 — SQL·로그·감사 어디에도 들어가지 않는다. 다른 값·빈 값·배열은 「사람 요청」이다
+     * (연장되는 쪽 — 판정은 언제나 SQL_LOOKUP 이 하므로 어느 쪽이든 권한이 늘지 않는다).
+     */
+    private static function isBackgroundRequest(): bool
+    {
+        $serverKey = 'HTTP_' . strtoupper(str_replace('-', '_', self::BACKGROUND_HEADER));
+        $sent      = $_SERVER[$serverKey] ?? null;
+        return is_string($sent) && $sent === self::BACKGROUND_VALUE;
     }
 
     /**

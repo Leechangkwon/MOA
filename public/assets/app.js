@@ -8207,6 +8207,39 @@ function renderFetchHostsHelp(me) {
   body.appendChild(list);
 }
 
+/* ─── 로그아웃 때 그 사람의 「쓰던 글 임시저장」을 지운다 (Q:F-4 B1-2 설계 4, 결정 W-3) ──────────
+ *
+ * 커뮤니티(`community/drafts.js`)는 저장 안 된 글을 이 브라우저의 localStorage 에 **암호화해서** 남긴다 —
+ * 열쇠 이름 `qaredi-draft:v1:<아이디>:…`. 로그아웃 단추(와 그 단추를 누르는 「강제 로그아웃」 링크)를 누르면
+ * **그 사람 몫만** 지운다. 모듈(drafts.js)을 부르지 않는다 — t-box 화면에는 그 모듈이 없고, 여기서 하는 일은
+ * 접두가 맞는 이름을 지우는 것뿐이다(값을 읽지 않는다 · 다른 사람 접두는 건드리지 않는다).
+ * 아이디는 `/api/me` 의 username(역할로 보기 중에도 실제 계정)이고 글자 집합에 `:` 가 없어 접두가 겹치지 않는다.
+ * 저장소를 쓸 수 없는 브라우저(사생활 모드 등)는 지울 것도 없다 — 조용히 넘어간다.
+ */
+var DRAFT_PREFIX = 'qaredi-draft:v1:';
+
+function clearMyDrafts(owner) {
+  if (typeof owner !== 'string' || !/^[a-z0-9_.-]{3,64}$/.test(owner)) {
+    return;
+  }
+  var mine = DRAFT_PREFIX + owner + ':';
+  try {
+    var store = window.localStorage;
+    var doomed = [];
+    for (var i = 0; i < store.length; i++) {
+      var name = store.key(i);
+      if (typeof name === 'string' && name.indexOf(mine) === 0) {
+        doomed.push(name);
+      }
+    }
+    doomed.forEach(function (n) {
+      store.removeItem(n);
+    });
+  } catch (e) {
+    // 막힌 저장소 — 남은 것이 없다
+  }
+}
+
 function initShell(me, csrfToken) {
   var msg = document.getElementById('msg');
   var sidebar = document.getElementById('sidebar');
@@ -8342,6 +8375,10 @@ function initShell(me, csrfToken) {
       })
         .then(function (response) {
           if (response.status === 200 || response.status === 401) {
+            // Q:F-4 B1-2 — 로그아웃했다: 이 사람의 쓰던 글 임시저장(암호문)을 이 브라우저에서 지운다.
+            // 지우기 **전에** 커뮤니티 편집기에 알려 떠나는 길이 사본을 다시 쓰지 않게 한다(독립 검토 M-1).
+            try { document.dispatchEvent(new CustomEvent('qaredi:logout')); } catch (e) { /* 옛 브라우저 — 지우기는 그대로 */ }
+            clearMyDrafts(me.username);
             toLogin();
             return null;
           }

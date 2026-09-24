@@ -40,12 +40,13 @@ import { inputRules, textblockTypeInputRule, InputRule } from './vendor/pm/prose
 import { dropCursor } from './vendor/pm/prosemirror-dropcursor.js?v=5823578fa61a';
 import { gapCursor } from './vendor/pm/prosemirror-gapcursor.js?v=5823578fa61a';
 
-import { renderDoc, embedHost } from './doc-render.js?v=0403bdbcc45a';
-import { createDatabaseView } from './database.js?v=0403bdbcc45a';
-import { bindTemplateGallery, createTemplateSave } from './templates.js?v=0403bdbcc45a';
-import { bindEmbedAdmin } from './embeds.js?v=0403bdbcc45a';
-import { bindPopular } from './popular.js?v=0403bdbcc45a';
-import { schema, toDoc, fromDoc, uuid4, colorAllowed, schemeOkForEditor, COLORS, BLOCK_TYPES } from './editor-schema.js?v=0403bdbcc45a';
+import { renderDoc, embedHost } from './doc-render.js?v=3c7ca551d4f8';
+import { createDatabaseView } from './database.js?v=3c7ca551d4f8';
+import { bindTemplateGallery, createTemplateSave } from './templates.js?v=3c7ca551d4f8';
+import { bindEmbedAdmin } from './embeds.js?v=3c7ca551d4f8';
+import { bindPopular } from './popular.js?v=3c7ca551d4f8';
+import { schema, toDoc, fromDoc, uuid4, colorAllowed, schemeOkForEditor, COLORS, BLOCK_TYPES } from './editor-schema.js?v=3c7ca551d4f8';
+import { createDrafts } from './drafts.js?v=3c7ca551d4f8';
 
 /* ─── 주소와 공통 도우미 ─────────────────────────────────────── */
 
@@ -92,27 +93,84 @@ function errorMessage(data) {
   return data && typeof data.error === 'string' && data.error !== '' ? data.error : GENERIC_ERROR;
 }
 
-/** 커뮤니티 창구 부르기. 경로는 코드에 적힌 모듈 경로이고 접두는 여기서 한 번만 붙는다. */
-function api(method, path, payload) {
+/**
+ * Q:F-4 U-3 — **사람이 누르지 않은 주기 요청**(알림 폴링·편집 heartbeat)에 다는 표식. 서버 `Auth::BACKGROUND_HEADER`·
+ * `BACKGROUND_VALUE` 와 같은 이름·값이고, 이 파일에서는 여기 한 곳이다. 이 표식이 달린 요청은 세션을 **확인만** 하고
+ * 늘리지 않는다 — 켜 둔 탭이 「활동 없는 30분 로그아웃」을 끝없이 미루지 않게. 저장·댓글 같은 쓰기에는 달지 않는다(늘 연장).
+ */
+const BACKGROUND_HEADER = 'X-Qaredi-Background';
+const BACKGROUND_VALUE = '1';
+
+/** 창을 닫을 때 보내는 저장(`keepalive`)의 본문 상한 — 브라우저가 keepalive 요청에 64KiB 까지만 허락한다. 넘으면 평소대로 보낸다. */
+const KEEPALIVE_MAX_BYTES = 60000;
+
+/**
+ * 커뮤니티 창구 부르기. 경로는 코드에 적힌 모듈 경로이고 접두는 여기서 한 번만 붙는다.
+ *
+ * @param {Object} [opts]  `{background: true}` — 자동 요청 표식(U-3) · `{keepalive: true}` — 창을 닫는 중에도 끝까지 보낸다(B1-2 설계 7)
+ */
+function api(method, path, payload, opts) {
   const options = {
     method: method,
     credentials: 'same-origin',
     cache: 'no-store',
     headers: {}
   };
+  if (opts && opts.background === true) { options.headers[BACKGROUND_HEADER] = BACKGROUND_VALUE; }
   if (method !== 'GET' && method !== 'HEAD') {
     if (csrfToken === null) { return Promise.reject(new Error('no-csrf')); }
     options.headers['X-CSRF-Token'] = csrfToken;
     options.headers['Content-Type'] = 'application/json';
     options.body = JSON.stringify(payload === undefined ? {} : payload);
+    if (opts && opts.keepalive === true && new TextEncoder().encode(options.body).length <= KEEPALIVE_MAX_BYTES) {
+      options.keepalive = true;
+    }
   }
   return fetch(COMMUNITY_BASE + path, options).then((response) =>
     readJson(response).then((data) => ({ status: response.status, data: data }))
   );
 }
 
+/**
+ * Q:F-4 B1-2 — 로그인 화면으로 **가기 전에** 부를 일(쓰던 글 임시저장). 페이지 화면이 등록한다.
+ * 401 을 받은 그 순간 열쇠는 이미 메모리에 있다 — 암호화해 쓴 뒤에 떠난다(늦어도 1.5초 뒤에는 떠난다).
+ */
+const leaveHooks = [];
+/** 일부러 떠나는 중인가 — 이때는 「저장 안 된 변경」 닫기 경고를 띄우지 않는다(임시저장이 이미 남았다) */
+let leavingOnPurpose = false;
+
 function toLogin() {
-  window.location.assign(APP_BASE + '/login?to=community');
+  if (leavingOnPurpose) { return; }
+  leavingOnPurpose = true;
+  const jobs = leaveHooks.map((fn) => {
+    try { return Promise.resolve(fn()).catch(() => null); } catch (e) { return Promise.resolve(null); }
+  });
+  const late = new Promise((resolve) => { window.setTimeout(resolve, 1500); });
+  Promise.race([Promise.all(jobs), late]).then(() => {
+    window.location.assign(APP_BASE + '/login?to=community');
+  });
+}
+
+/**
+ * Q:F-4 B1-2 — 이 화면의 임시저장 창구(`drafts.js`). `boot` 가 `/api/me` 의 **진짜 사용자** 아이디로 만든다.
+ * 열쇠는 그 모듈 안에만 있다(이 파일에 열쇠를 담는 변수가 없다).
+ */
+let drafts = null;
+
+/** 임시저장 열쇠 받기 — `drafts.js` 가 한 화면에 한 번만 부른다. 값은 곧바로 그 모듈에 넘어가고 여기 남지 않는다. */
+function loadDraftKey() {
+  return api('GET', '/api/me/draft-key').then((result) => (
+    result.status === 200 && result.data && result.data.v === 1 && typeof result.data.key === 'string'
+      ? result.data.key : null
+  ));
+}
+
+/** 이 브라우저에서 잰 시각(ms) → 「2026-09-24 15:12」 (DESIGN 5장 날짜 모양 — 임시저장은 서버 시각이 없다) */
+function localWhen(ms) {
+  const d = new Date(ms);
+  if (isNaN(d.getTime())) { return ''; }
+  const two = (n) => (n < 10 ? '0' : '') + String(n);
+  return d.getFullYear() + '-' + two(d.getMonth() + 1) + '-' + two(d.getDate()) + ' ' + two(d.getHours()) + ':' + two(d.getMinutes());
 }
 
 /**
@@ -854,6 +912,62 @@ function initHome() {
     api: api, setText: setText, show: show, clear: clear, errorMessage: errorMessage,
     genericError: GENERIC_ERROR, toLogin: toLogin, base: COMMUNITY_BASE
   });
+  // B1-2 — 「저장 안 된 글 n개」(B1-1 이 없어도 그 페이지로 찾아가게)
+  drawHomeDrafts(msg);
+}
+
+/**
+ * Q:F-4 B1-2 설계 5 — 첫 화면의 「저장 안 된 글 n개」 줄. **이 사람 몫만**(`drafts.entries` 가 내 접두만 훑는다).
+ *
+ * 항목이 있을 때만 열쇠를 받고(한 번), 풀리는 것만 센다 — 풀리지 않는 것(열쇠가 바뀜·손상)은 `read` 가 조용히 지운다.
+ * 줄마다 그 페이지 링크이고 글자는 푼 제목(댓글은 앞 40자)이다 — 전부 `textContent`. 구성 요소는 DESIGN 2.6 `.notice`
+ * (주황 — 「알고 하라」) 그대로다(새 클래스 0). 열쇠를 못 받으면(503 등) 줄을 그리지 않는다 — 셀 수 없는 것을 세지 않는다.
+ *
+ * @param {Element|null} anchor  이 요소 **뒤**에 줄을 넣는다(`#msg`)
+ */
+function drawHomeDrafts(anchor) {
+  if (!drafts || !drafts.available() || !anchor || !anchor.parentNode) { return; }
+  const list = drafts.entries();
+  if (list.length === 0) { return; }
+  drafts.ready().then((ok) => {
+    if (!ok) { return null; }
+    return Promise.all(list.map((e) => drafts.read(e.key).then((got) => (got ? { entry: e, data: got.data } : null))));
+  }).then((items) => {
+    const found = (items || []).filter((x) => x !== null)
+      .sort((a, b) => b.entry.savedAt - a.entry.savedAt);
+    if (found.length === 0) { return; }
+    const box = document.createElement('section');
+    box.className = 'notice';
+    box.setAttribute('role', 'status');
+    box.setAttribute('data-drafts-home', '');
+    const title = document.createElement('p');
+    title.className = 'notice__title';
+    title.textContent = '저장 안 된 글 ' + String(found.length) + '개 — 이 브라우저에 암호화해 남아 있습니다. 페이지를 열어 불러오거나 버리세요.';
+    box.appendChild(title);
+    const ul = document.createElement('ul');
+    ul.className = 'notice__list';
+    for (const x of found) {
+      const li = document.createElement('li');
+      const a = document.createElement('a');
+      a.setAttribute('href', COMMUNITY_BASE + '/p/' + x.entry.pageId);
+      if (x.entry.kind === 'page') {
+        const t = typeof x.data.title === 'string' && x.data.title.trim() !== '' ? x.data.title : '제목 없는 페이지';
+        a.textContent = t;
+      } else {
+        const b = typeof x.data.body === 'string' ? x.data.body.replace(/\s+/g, ' ').trim() : '';
+        const cut = Array.from(b).slice(0, 40).join('');
+        a.textContent = (x.entry.target === 'new' ? '댓글: 「' : '답글: 「') + cut + (Array.from(b).length > 40 ? '…」' : '」');
+      }
+      li.appendChild(a);
+      const when = document.createElement('span');
+      when.className = 'muted';
+      when.textContent = ' · ' + localWhen(x.entry.savedAt);
+      li.appendChild(when);
+      ul.appendChild(li);
+    }
+    box.appendChild(ul);
+    anchor.parentNode.insertBefore(box, anchor.nextSibling);
+  }).catch(() => { /* 임시저장은 편의 — 첫 화면을 막지 않는다 */ });
 }
 
 /* ─── 휴지통 (4-C, C:F-29) ─────────────────────────────────────
@@ -1504,8 +1618,9 @@ function initNotifications() {
     show(count, n > 0);
     bell.setAttribute('aria-label', n > 0 ? '알림 — 안 읽은 것 ' + String(n) + '개' : '알림');
   }
+  // U-3 — 30초 폴링은 사람이 누른 것이 아니다: 표식을 달아 세션을 늘리지 않는다(창을 열어 목록을 보는 open() 은 사람 요청).
   function poll() {
-    api('GET', '/api/notifications?unread=1').then((result) => {
+    api('GET', '/api/notifications?unread=1', undefined, { background: true }).then((result) => {
       if (result.status === 200) { paintCount(Number(result.data.unread) || 0); }
     }).catch(() => {});
   }
@@ -2823,6 +2938,68 @@ function initPage() {
     show(saveState, text !== '');
   }
 
+  /* ── 쓰던 글 임시저장 (Q:F-4 B1-2 설계 3·4·6) ──
+     저장이 안 된 변경이 있는 동안만, 그 사본을 이 브라우저에 **암호화해서** 남긴다(`drafts.js`).
+       쓰는 때   변경마다(1초 묶음) · 401 을 받은 그 순간(`leaveHooks` — 로그인 화면으로 가기 전) · 창 닫기·탭 숨김
+       지우는 때 그 판이 200 으로 저장된 뒤(`serial === savedSerial`) · 「버리기」 · 409 창의 「새로 고침」
+     열쇠를 못 받았으면 쓰지 않는다(평문 대체 0) — 그때와 쓰기가 실패했을 때는 배지 「임시저장 못 함」. 저장(서버)은 그대로다. */
+  const draftPageKey = drafts ? drafts.pageKey(pageId) : null;
+  let draftTimer = null;
+  let draftSeq = 0;          // 더 새 쓰기가 시작되면 앞선 쓰기는 암호화가 끝나도 쓰지 않는다
+  let draftBadge = null;
+  let commentsLoaded = Promise.resolve();
+
+  /** 배지 「임시저장 못 함」(회색 — 꺼짐, DESIGN 2.2). 저장 상태 배지 옆에 한 번만 만든다. */
+  function draftOff(on) {
+    const want = on !== false;
+    if (!want && draftBadge === null) { return; }
+    if (draftBadge === null) {
+      if (!saveState || !saveState.parentNode) { return; }
+      draftBadge = document.createElement('span');
+      draftBadge.className = 'badge badge--off';
+      draftBadge.setAttribute('data-draft-off', '');
+      draftBadge.textContent = '임시저장 못 함';
+      draftBadge.setAttribute('title', '쓰던 글을 이 브라우저에 남기지 못했습니다. 서버 저장은 그대로 됩니다');
+      saveState.parentNode.insertBefore(draftBadge, saveState.nextSibling);
+    }
+    show(draftBadge, want);
+  }
+
+  function titleNow() {
+    return titleInput && titleInput.value.trim() !== '' ? titleInput.value.trim() : state.title;
+  }
+
+  /** 지금 편집기의 저장 안 된 사본을 쓴다. 쓸 것이 없으면(저장됨·편집 중 아님·열쇠 없음) 아무것도 하지 않는다. */
+  function writePageDraft() {
+    if (!drafts || draftPageKey === null || !state.editing || view === null || serial === savedSerial || !drafts.hasKey()) {
+      return Promise.resolve();
+    }
+    const mySerial = serial;
+    draftSeq += 1;
+    const mySeq = draftSeq;
+    let payload;
+    try {
+      payload = { base_version: state.version, title: titleNow(), doc: currentDoc() };
+    } catch (e) {
+      return Promise.resolve();
+    }
+    return drafts.write(draftPageKey, payload, () => mySeq === draftSeq && savedSerial < mySerial)
+      .then((ok) => { draftOff(!ok); });
+  }
+
+  function scheduleDraft() {
+    if (!drafts || draftPageKey === null || draftTimer !== null) { return; }
+    draftTimer = window.setTimeout(() => { draftTimer = null; writePageDraft(); }, 1000);
+  }
+
+  /** 서버에 저장됐다 — 사본을 지우고, 날아가 있는 쓰기도 무르게 한다(번호를 올린다). */
+  function clearPageDraft() {
+    window.clearTimeout(draftTimer);
+    draftTimer = null;
+    draftSeq += 1;
+    if (drafts && draftPageKey !== null) { drafts.remove(draftPageKey); }
+  }
+
   /** 읽기 렌더러에 넘길 지도 — 하위 페이지(4-A) · 페이지 링크 · 파일(5-E, 셋 다 보는 사람이 볼 수 있는 것만) */
   function readCtx() {
     return {
@@ -3065,7 +3242,7 @@ function initPage() {
       drawProps();
       drawBoard();
       drawTags();
-      loadComments();
+      commentsLoaded = loadComments();   // B1-2 — 답글 사본을 되살릴 때 대상 댓글이 그려진 뒤에 찾는다
       loadReads();
       setText(titleEl, page.title);
       document.title = page.title + ' · 커뮤니티';
@@ -3384,6 +3561,47 @@ function initPage() {
   let anchor = null;       // {block_id, quote}
   let mentionTimer = null;
 
+  /* B1-2 — 댓글·답글 쓰기 칸의 임시저장(W-4). 쓰기 칸에는 자동 저장이 없어, 로그인이 끊긴 채 「댓글 달기」를 누르면
+     쓴 글 전체가 사라지던 자리다. 열쇠는 `…:comment:<페이지>:<답글 대상 uuid 또는 new>` — 지금 쓰기 칸의 대상이 곧 열쇠이고,
+     대상이 바뀌면(「답글」·「그만두기」) 사본도 새 열쇠로 옮긴다. 열쇠는 처음 입력할 때 받는다(한 화면에 한 번). */
+  let commentKeyNow = null;
+  let commentDraftTimer = null;
+  let commentSeq = 0;
+
+  function composerKey() {
+    return drafts ? drafts.commentKey(pageId, replyTo ? replyTo.id : 'new') : null;
+  }
+
+  function writeCommentDraft() {
+    if (!drafts || !commentInput || !drafts.hasKey()) { return Promise.resolve(); }
+    window.clearTimeout(commentDraftTimer);
+    commentDraftTimer = null;
+    const k = composerKey();
+    if (k === null) { return Promise.resolve(); }
+    if (commentKeyNow !== null && commentKeyNow !== k) { drafts.remove(commentKeyNow); }
+    commentKeyNow = k;
+    commentSeq += 1;
+    const mySeq = commentSeq;
+    const text = commentInput.value;
+    if (text.trim() === '') { drafts.remove(k); return Promise.resolve(); }
+    return drafts.write(k, { body: text }, () => mySeq === commentSeq).then((ok) => { draftOff(!ok); });
+  }
+
+  function scheduleCommentDraft() {
+    if (commentDraftTimer !== null) { return; }
+    commentDraftTimer = window.setTimeout(() => { commentDraftTimer = null; writeCommentDraft(); }, 1000);
+  }
+
+  /** 보내졌다 — 그 사본을 지우고 날아가 있는 쓰기를 무른다 */
+  function clearCommentDraft(k) {
+    window.clearTimeout(commentDraftTimer);
+    commentDraftTimer = null;
+    commentSeq += 1;
+    if (drafts && k) { drafts.remove(k); }
+    if (drafts && commentKeyNow && commentKeyNow !== k) { drafts.remove(commentKeyNow); }
+    commentKeyNow = null;
+  }
+
   function commentButton(text, onClick) {
     const b = document.createElement('button');
     b.type = 'button';
@@ -3548,6 +3766,8 @@ function initPage() {
     setText(commentQuoteEl, anchor ? '인용: 「' + anchor.quote + '」' : '');
     show(commentQuoteEl, !!anchor);
     show(commentCancel, !!replyTo || !!anchor);
+    // B1-2 — 답글 대상이 바뀌었으면 임시저장 사본도 그 열쇠로 옮긴다
+    if (drafts && drafts.hasKey() && commentKeyNow !== null && commentKeyNow !== composerKey()) { writeCommentDraft(); }
   }
 
   /* 블록 앵커 — 읽기 화면에서 고른 글자와 그 글자가 든 블록(렌더러가 붙인 `id="block-<uuid>"`) */
@@ -3610,6 +3830,11 @@ function initPage() {
     commentInput.addEventListener('input', () => {
       if (mentionTimer !== null) { clearTimeout(mentionTimer); }
       mentionTimer = setTimeout(drawMentions, 200);
+      // B1-2 — 처음 입력할 때 열쇠를 받고(한 번), 그 뒤 1초 묶음으로 사본을 쓴다. 못 받으면 쓰지 않는다(평문 대체 0).
+      if (drafts) {
+        if (!drafts.available()) { draftOff(true); return; }
+        drafts.ready().then((ok) => { if (ok) { scheduleCommentDraft(); } else { draftOff(true); } });
+      }
     });
   }
   if (commentForm) {
@@ -3621,9 +3846,12 @@ function initPage() {
       if (replyTo) { payload.parent_id = replyTo.id; }
       if (anchor) { payload.block_id = anchor.block_id; payload.quote = anchor.quote; }
       commentSubmit.disabled = true;
+      const sentKey = composerKey();
+      // 401 이면 commentCall → toLogin 이 떠나기 전에 이 칸의 사본을 암호화해 남긴다(leaveHooks). 되살릴 때 자동 전송 0.
       commentCall('POST', '/api/pages/' + pageId + '/comments', payload).then((ok) => {
         commentSubmit.disabled = false;
         if (ok) {
+          clearCommentDraft(sentKey);   // B1-2 설계 4 — 보내졌다
           commentInput.value = '';
           replyTo = null;
           anchor = null;
@@ -4579,6 +4807,147 @@ function initPage() {
     badge('저장됨', 'badge--ok');
     view.focus();
     startHeartbeat();
+    // B1-2 — 편집 모드에 들어갈 때 임시저장 열쇠를 받는다(한 화면에 한 번). 못 받으면(503·막힌 브라우저) 쓰지 않고 배지로 알린다.
+    if (drafts) {
+      if (!drafts.available()) {
+        draftOff(true);
+      } else {
+        drafts.ready().then((ok) => { if (!ok && state.editing) { draftOff(true); } });
+      }
+    }
+  }
+
+  /* ── 임시저장 되살리기 (B1-2 설계 5) ──
+     페이지를 열 때 **이 사람·이 페이지** 항목이 있으면 열쇠를 받아(한 번) 풀어 보고, 풀리는 것만 알림 줄로 묻는다.
+     불러오기 → 본문은 편집 모드에 넣고 **평소 저장 경로**로 보낸다(보낼 판 번호는 임시저장 때의 `base_version` —
+     그사이 서버 판이 바뀌었으면 기존 409 충돌 창이 뜬다, 새 병합 코드 0). 되살린 본문은 `fromDoc`(스키마 통로)을 지나고
+     서버 `Doc::validate` 가 다시 본다. 댓글은 쓰기 칸에 **넣기만** 한다(보내지 않는다). 자동 실행 0 — 사람이 누를 때만. */
+  let draftNotice = null;
+
+  function applyPageDraft(data) {
+    let node;
+    try {
+      const pmDoc = fromDoc(data.doc, { child_titles: state.childTitles, link_titles: state.linkTitles, file_titles: state.fileTitles });
+      node = schema.nodeFromJSON(pmDoc);
+    } catch (e) {
+      return false;
+    }
+    if (!state.editing) { startEditing(); }
+    if (view === null) { return false; }
+    if (titleInput) { titleInput.value = typeof data.title === 'string' && data.title.trim() !== '' ? data.title : state.title; }
+    state.version = data.base_version;
+    // 문서 전체를 사본으로 바꾸는 편집 한 번 → dispatchTransaction 이 markDirty → 평소 저장. Ctrl+Z 로 서버 판으로 되돌릴 수 있다.
+    view.dispatch(view.state.tr.replaceWith(0, view.state.doc.content.size, node.content).scrollIntoView());
+    return true;
+  }
+
+  function applyCommentDraft(c) {
+    return commentsLoaded.then(() => {
+      if (!commentInput || !state.canComment) { return; }
+      replyTo = null;
+      if (c.target !== 'new') {
+        const li = document.getElementById('comment-' + c.target);
+        const who = li ? li.querySelector('.list__head strong') : null;
+        if (li && !li.classList.contains('is-reply')) { replyTo = { id: c.target, who: who ? who.textContent : '' }; }
+      }
+      commentInput.value = c.body;
+      commentKeyNow = c.key;
+      drawComposer();   // 대상 댓글이 사라졌으면 새 댓글 열쇠로 옮겨 쓴다(drawComposer 안)
+    });
+  }
+
+  function drawDraftNotice(pageDraft, commentDraft) {
+    if (!msg || !msg.parentNode) { return; }
+    if (draftNotice !== null) { draftNotice.remove(); }
+    const box = document.createElement('section');
+    box.className = 'notice';
+    box.setAttribute('role', 'status');
+    box.setAttribute('data-draft-notice', '');
+    const newest = Math.max(pageDraft ? pageDraft.savedAt : 0, commentDraft ? commentDraft.savedAt : 0);
+    const what = [];
+    if (pageDraft) { what.push('본문'); }
+    if (commentDraft) { what.push(commentDraft.target === 'new' ? '댓글' : '답글'); }
+    const title = document.createElement('p');
+    title.className = 'notice__title';
+    title.textContent = '저장 안 된 내용이 있습니다 (' + localWhen(newest) + ' · ' + what.join(' · ') + ')';
+    box.appendChild(title);
+    const note = document.createElement('p');
+    note.textContent = '로그인이 끊기기 전에 쓰던 것을 이 브라우저에 암호화해 남겨 두었습니다. 불러오면 본문은 편집 모드로 넣어 저장하고, 댓글은 쓰기 칸에 넣기만 합니다.';
+    box.appendChild(note);
+    const actions = document.createElement('div');
+    actions.className = 'toolbar notice__actions';
+    const loadButton = document.createElement('button');
+    loadButton.type = 'button';
+    loadButton.className = 'btn btn--quiet btn--small';
+    loadButton.setAttribute('data-draft-load', '');
+    loadButton.textContent = '불러오기';
+    const dropButton = document.createElement('button');
+    dropButton.type = 'button';
+    dropButton.className = 'btn btn--quiet btn--small';
+    dropButton.setAttribute('data-draft-drop', '');
+    dropButton.textContent = '버리기';
+    actions.appendChild(loadButton);
+    actions.appendChild(dropButton);
+    box.appendChild(actions);
+
+    const close = () => { box.remove(); if (draftNotice === box) { draftNotice = null; } };
+    loadButton.addEventListener('click', () => {
+      loadButton.disabled = true;
+      dropButton.disabled = true;
+      if (pageDraft && !applyPageDraft(pageDraft.data)) {
+        drafts.remove(pageDraft.key);
+        setText(msg, '임시저장된 본문을 불러오지 못해 버렸습니다(모양이 맞지 않습니다).');
+      }
+      (commentDraft ? applyCommentDraft(commentDraft) : Promise.resolve()).then(close, close);
+    });
+    dropButton.addEventListener('click', () => {
+      // 서버 요청 0 — 이 브라우저의 사본만 지운다. 그사이 새로 쓰기 시작한 것(지금 지키는 중인 사본)은 건드리지 않는다.
+      if (pageDraft && !(state.editing && serial !== savedSerial)) { drafts.remove(pageDraft.key); }
+      if (commentDraft && !(commentInput && commentInput.value.trim() !== '' && commentKeyNow === commentDraft.key)) {
+        drafts.remove(commentDraft.key);
+      }
+      close();
+    });
+    msg.parentNode.insertBefore(box, msg.nextSibling);
+    draftNotice = box;
+  }
+
+  function offerDrafts() {
+    if (!drafts || !drafts.available()) { return; }
+    const here = drafts.entries().filter((e) => e.pageId === pageId);
+    if (here.length === 0) { return; }
+    drafts.ready().then((ok) => {
+      if (!ok) { return null; }
+      const pageEntry = here.find((e) => e.kind === 'page') || null;
+      const commentEntry = here.filter((e) => e.kind === 'comment').sort((a, b) => b.savedAt - a.savedAt)[0] || null;
+      return Promise.all([
+        pageEntry ? drafts.read(pageEntry.key) : null,
+        commentEntry ? drafts.read(commentEntry.key) : null
+      ]).then((got) => {
+        const p = got[0];
+        const c = got[1];
+        let pageDraft = null;
+        let commentDraft = null;
+        if (p) {
+          if (typeof p.data.base_version === 'number' && p.data.doc !== null && typeof p.data.doc === 'object') {
+            pageDraft = { key: pageEntry.key, data: p.data, savedAt: p.savedAt };
+          } else {
+            drafts.remove(pageEntry.key);   // 풀렸지만 모양이 아니다 — 되살릴 수 없는 사본은 남기지 않는다
+          }
+        }
+        if (c) {
+          if (typeof c.data.body === 'string' && c.data.body.trim() !== '') {
+            commentDraft = { key: commentEntry.key, target: commentEntry.target, body: c.data.body, savedAt: c.savedAt };
+          } else {
+            drafts.remove(commentEntry.key);
+          }
+        }
+        // 고칠 수 없게 된 페이지의 본문·댓글을 쓸 수 없게 된 페이지의 댓글은 묻지 않는다(사본은 7일 뒤 정리된다).
+        if (pageDraft && !state.canEdit) { pageDraft = null; }
+        if (commentDraft && !state.canComment) { commentDraft = null; }
+        if (pageDraft || commentDraft) { drawDraftNotice(pageDraft, commentDraft); }
+      });
+    }).catch(() => { /* 임시저장은 편의 — 페이지를 막지 않는다 */ });
   }
 
   function stopEditing() {
@@ -4614,18 +4983,22 @@ function initPage() {
     window.clearTimeout(saveTimer);
     const wait = now - firstDirtyAt >= 10000 ? 0 : 1500;
     saveTimer = window.setTimeout(() => { save(); }, wait);
+    scheduleDraft();   // B1-2 — 1초 묶음으로 이 브라우저에 암호화 사본
   }
 
   function currentDoc() {
     return view ? toDoc(view.state.doc.toJSON()) : state.doc;
   }
 
-  /** 남은 것을 지금 보낸다. 보내는 중이었다면 **그 뒤에 이어지는 저장까지** 기다린다. */
-  function flushSave() {
+  /**
+   * 남은 것을 지금 보낸다. 보내는 중이었다면 **그 뒤에 이어지는 저장까지** 기다린다.
+   * @param {boolean} [closing] 창을 닫거나 탭이 숨는 중 — 요청에 `keepalive` 를 단다(B1-2 설계 7, 닫히면서 취소되지 않게)
+   */
+  function flushSave(closing) {
     window.clearTimeout(saveTimer);
     if (saving) { return inFlight || Promise.resolve(); }
     if (serial === savedSerial) { return Promise.resolve(); }
-    return Promise.resolve(save());
+    return Promise.resolve(save(closing === true));
   }
 
   /**
@@ -4638,7 +5011,7 @@ function initPage() {
    *     ② 200 이 와도 `serial` 이 그보다 크면 「저장됨」을 **보이지 않고** 곧바로 한 번 더 보낸다.
    *   409(충돌)일 때는 이어서 보내지 않는다 — 무엇을 할지는 사람이 모달에서 고른다.
    */
-  function save() {
+  function save(closing) {
     if (saving) { return inFlight || Promise.resolve(); }
     saving = true;
 
@@ -4651,9 +5024,10 @@ function initPage() {
       doc_version: state.version,
       doc: doc,
       title: title
-    })
+    }, { keepalive: closing === true })
       .then((result) => {
         saving = false;
+        // B1-2 — 로그인이 끊겼다: `toLogin` 이 떠나기 **전에** 이 판의 사본을 암호화해 남긴다(leaveHooks).
         if (result.status === 401) { toLogin(); return; }
         if (result.status === 200) {
           state.version = result.data.doc_version;
@@ -4671,6 +5045,7 @@ function initPage() {
           }
           firstDirtyAt = 0;
           badge('저장됨', 'badge--ok');
+          clearPageDraft();   // B1-2 설계 4 — 이 판이 서버에 있다. 사본은 필요 없다
           return;
         }
         if (result.status === 409) {
@@ -4712,6 +5087,9 @@ function initPage() {
     if (reload) {
       reload.addEventListener('click', () => {
         conflictDialog.close();
+        // B1-2 — 「새로 고침」은 이 창에서 쓴 내용을 버리는 선택이다(창의 안내문). 임시저장 사본도 함께 버린다.
+        clearPageDraft();
+        leavingOnPurpose = true;
         window.location.reload();
       });
     }
@@ -4737,8 +5115,9 @@ function initPage() {
      다른 사람 화면에서 사라질 수 있다 — 받아들인 동작이다(지시서 P-4a ④). */
   function startHeartbeat() {
     if (heartbeat === null) {
+      // U-3 — heartbeat 도 자동 요청이다(표식). 편집 모드로 켜 두기만 한 탭은 30분 뒤 로그아웃되고, 쓰던 글은 임시저장이 지킨다.
       heartbeat = whileVisible(() => {
-        api('POST', '/api/pages/' + pageId + '/heartbeat', {})
+        api('POST', '/api/pages/' + pageId + '/heartbeat', {}, { background: true })
           .then((result) => { if (result.status === 200) { showEditors(result.data.editors); } })
           .catch(() => {});
       }, 30000);
@@ -4934,17 +5313,42 @@ function initPage() {
     }
   }
 
+  // B1-2 — 로그인 화면으로 떠나기 전(401 그 순간)에 이 화면의 저장 안 된 본문·쓰기 칸을 암호화해 남긴다.
+  leaveHooks.push(() => Promise.all([writePageDraft(), writeCommentDraft()]));
+
+  // 독립 검토 M-1(2026-09-24) — 로그아웃 단추(app.js)가 사본을 지우기 **직전**에 알린다. 그 뒤로는
+  // 떠나는 길(beforeunload·visibilitychange·401 → leaveHooks)이 사본을 다시 쓰지 않는다.
+  document.addEventListener('qaredi:logout', () => {
+    leavingOnPurpose = true;
+    // 끄면 hasKey() 가 false 가 되어 writePageDraft·writeCommentDraft(1초 묶음 타이머 포함)가 곧바로 빠진다
+    if (drafts) { drafts.shutdown(); }
+  });
+
   // 창을 닫거나 다른 탭으로 옮겨 갈 때 남은 변경을 보낸다 (지시서 4장).
-  window.addEventListener('beforeunload', () => {
-    if (state.editing) { flushSave(); }
+  // B1-2 설계 7 — 그 요청에 `keepalive`(닫히면서 취소되지 않게) · 임시저장 사본도 한 번 더 ·
+  // 저장 안 된 변경이 남았으면 브라우저 기본 닫기 경고(문구는 브라우저가 정한다 — 일부러 떠나는 중이면 묻지 않는다).
+  window.addEventListener('beforeunload', (event) => {
+    if (state.editing) {
+      flushSave(true);
+      writePageDraft();
+      if (!leavingOnPurpose && serial !== savedSerial) {
+        event.preventDefault();
+        event.returnValue = '';
+      }
+    }
+    writeCommentDraft();
   });
   document.addEventListener('visibilitychange', () => {
-    if (document.visibilityState === 'hidden' && state.editing) { flushSave(); }
+    if (document.visibilityState !== 'hidden') { return; }
+    if (state.editing) { flushSave(true); writePageDraft(); }
+    writeCommentDraft();
   });
 
   /* 5-C — 게시판 「새 글」은 `?edit=1` 로 열린다: 고칠 수 있으면(창구의 `can_edit`) 곧바로 편집 모드.
      꼬리표는 주소에서 지운다(새로 고침·뒤로 가기에 다시 편집 모드로 들어가지 않게). */
   load().then(() => {
+    // B1-2 설계 5 — 이 사람·이 페이지의 임시저장이 있으면 알림 줄로 묻는다(불러오기는 사람이 누를 때만)
+    offerDrafts();
     let wantEdit = false;
     try { wantEdit = new URLSearchParams(window.location.search).get('edit') === '1'; } catch (e) { wantEdit = false; }
     if (!wantEdit) { return; }
@@ -4989,6 +5393,10 @@ function boot() {
       return Promise.resolve(result.me).then((me) => {
         if (typeof me.csrf_token !== 'string') { return null; }
         csrfToken = me.csrf_token;
+        // B1-2 — 임시저장 창구(진짜 사용자 아이디 — 역할로 보기 중이어도 `username` 은 실제 계정). 열쇠는 아직 받지 않는다.
+        // 7일이 지난 내 항목은 커뮤니티 화면을 열 때마다 정리한다(`saved_at` 은 평문이라 열쇠가 필요 없다).
+        drafts = createDrafts(typeof me.username === 'string' ? me.username : '', loadDraftKey);
+        drafts.sweep();
         bindNewPage();
         if (page === 'community-home') {
           initHome();
