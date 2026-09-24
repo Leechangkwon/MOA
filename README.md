@@ -334,9 +334,9 @@ PC 프로그램(업로드 도구, 로컬 비서 등)이 t-box 를 부를 때 쓰
 
 ```bash
 # 직접 확인 (Admin 계정으로 로그인한 뒤)
-curl -s -b jar http://127.0.0.1:8082/api/users
+curl -s -b jar http://127.0.0.1:8082/tbox/api/users
 # → 403 {"error":"관리 기능을 쓰려면 비밀번호를 다시 확인해야 합니다","next":"reauth"}
-curl -s -o /dev/null -w '%{http_code} %{redirect_url}\n' -b jar http://127.0.0.1:8082/users
+curl -s -o /dev/null -w '%{http_code} %{redirect_url}\n' -b jar http://127.0.0.1:8082/tbox/users
 # → 302 /reauth?to=users     (돌아갈 곳은 고정 표의 키 다섯 개뿐입니다 — 주소를 요청 값으로 받지 않습니다)
 ```
 
@@ -388,19 +388,19 @@ API 요청은 예전과 같이 **403 `{"next":…}`** 입니다.
 ```bash
 # 관리자 세션 (재인증을 마친 뒤)
 curl -s -X POST -b jar-admin -H 'Content-Type: application/json' -H "X-CSRF-Token: $TOK" \
-     -d '{"role":"Employee","team_id":1}' http://127.0.0.1:8082/api/me/act
+     -d '{"role":"Employee","team_id":1}' http://127.0.0.1:8082/tbox/api/me/act
 # → 200, 응답은 /api/me 와 같은 모양 ("role":"Employee","acting":true,"real_role":"Admin")
 curl -s -X POST -b jar-admin -H 'Content-Type: application/json' -H "X-CSRF-Token: $TOK" \
-     -d '{"role":"Admin"}' http://127.0.0.1:8082/api/me/act      # → 400 (위로는 갈 수 없습니다)
-curl -s -X DELETE -b jar-admin -H "X-CSRF-Token: $TOK" http://127.0.0.1:8082/api/me/act   # → 원래대로
+     -d '{"role":"Admin"}' http://127.0.0.1:8082/tbox/api/me/act      # → 400 (위로는 갈 수 없습니다)
+curl -s -X DELETE -b jar-admin -H "X-CSRF-Token: $TOK" http://127.0.0.1:8082/tbox/api/me/act   # → 원래대로
 ```
 
 ```bash
 # 비관리자 세션
-curl -s -b jar-employee http://127.0.0.1:8082/admin           # → 403 {"error":"권한이 없습니다"}
-curl -s -b jar-employee http://127.0.0.1:8082/api/admin/shares # → 403 (시도는 authz.route|deny 로 남습니다)
+curl -s -b jar-employee http://127.0.0.1:8082/tbox/admin           # → 403 {"error":"권한이 없습니다"}
+curl -s -b jar-employee http://127.0.0.1:8082/tbox/api/admin/shares # → 403 (시도는 authz.route|deny 로 남습니다)
 # 관리자 세션, 재인증 전
-curl -s -o /dev/null -w '%{http_code} %{redirect_url}\n' -b jar-admin http://127.0.0.1:8082/admin
+curl -s -o /dev/null -w '%{http_code} %{redirect_url}\n' -b jar-admin http://127.0.0.1:8082/tbox/admin
 # → 302 /reauth?to=admin
 ```
 
@@ -590,7 +590,7 @@ sudo bash deploy/switch-site.sh v2       # 도메인에 재구축 사이트를 �
 
 ```bash
 # 1) 애플리케이션이 살아 있나
-curl -s http://127.0.0.1:8082/api/health   # {"status":"ok","db":"ok","time":"…"} — DB 가 죽었으면 503 (F-48, API.md 1장)
+curl -s http://127.0.0.1:8082/tbox/api/health   # {"status":"ok","db":"ok","time":"…"} — DB 가 죽었으면 503 (F-48, API.md 1장)
 
 # 2) 소스·설정·DB 파일이 URL 로 보이지 않나 (전부 404)
 curl -s -o /dev/null -w '%{http_code}\n' http://127.0.0.1:8082/.env
@@ -603,7 +603,7 @@ curl -s -o /dev/null -w '%{http_code}\n' http://127.0.0.1:8082/foo.php
 curl -s -o /dev/null -w '%{http_code}\n' http://127.0.0.1:8081/index.php
 
 # 4) 도메인 경유(v2 공개 중일 때): 200 + HSTS + CSP
-curl -s -D - -o /dev/null https://changkwon.mso.so/api/health
+curl -s -D - -o /dev/null https://changkwon.mso.so/tbox/api/health
 
 # 5) 실제 접속 IP 가 로그에 남나 ($remote_addr "$realip_remote_addr" "$http_x_forwarded_for" …)
 sudo tail -5 /var/log/nginx/tbox-v2.access.log
@@ -795,31 +795,31 @@ Admin 만 `/users` 화면과 `GET/POST /api/users`, `PATCH /api/users/{uid}` 를
 
 ```bash
 # 목록 (Admin 세션 필요. 비밀번호 해시·TOTP 비밀은 응답에 없습니다)
-curl -s -b jar https://changkwon.mso.so/api/users
+curl -s -b jar https://changkwon.mso.so/tbox/api/users
 
 # 계정 만들기 — 비밀번호는 보내지 않습니다. 201 응답의 temp_password 가 한 번만 나옵니다
 curl -s -b jar -X POST -H 'Content-Type: application/json' -H "X-CSRF-Token: $TOKEN" \
   --data-binary '{"username":"hong.gildong","role":"Employee",
                   "team_id":1,"reason_text":"2026-09-11 입사 (인사팀 요청)"}' \
-  https://changkwon.mso.so/api/users
+  https://changkwon.mso.so/tbox/api/users
 # → {"id":25,"username":"hong.gildong",…,"temp_password":"…16자…"}
 #   이 값은 **다시 볼 수 없습니다.** 안전한 경로로 본인에게만 전달하고, 본인은 첫 로그인에서 바꿉니다.
 
 # 임시 비밀번호 재발급 · 2단계 인증 초기화 (사유 필수 · 자기 자신 금지 · 대상 세션 전부 종료)
 curl -s -b jar -X POST -H 'Content-Type: application/json' -H "X-CSRF-Token: $TOKEN" \
   --data-binary '{"reason_text":"본인 확인 후 비밀번호 분실 재발급 (2026-09-11)"}' \
-  https://changkwon.mso.so/api/users/25/password/reset
+  https://changkwon.mso.so/tbox/api/users/25/password/reset
 curl -s -b jar -X POST -H 'Content-Type: application/json' -H "X-CSRF-Token: $TOKEN" \
   --data-binary '{"reason_text":"휴대폰 분실 — 인증 앱 재등록 필요 (2026-09-11)"}' \
-  https://changkwon.mso.so/api/users/25/mfa/reset
+  https://changkwon.mso.so/tbox/api/users/25/mfa/reset
 
 # 역할 변경 · 비활성화 (사유 필수)
 curl -s -b jar -X PATCH -H 'Content-Type: application/json' -H "X-CSRF-Token: $TOKEN" \
   --data-binary '{"role":"Manager","reason_text":"팀장 발령 (2026-09-11)"}' \
-  https://changkwon.mso.so/api/users/12
+  https://changkwon.mso.so/tbox/api/users/12
 curl -s -b jar -X PATCH -H 'Content-Type: application/json' -H "X-CSRF-Token: $TOKEN" \
   --data-binary '{"is_active":false,"reason_text":"퇴사 (2026-09-30)"}' \
-  https://changkwon.mso.so/api/users/12
+  https://changkwon.mso.so/tbox/api/users/12
 ```
 
 ### 삭제된 파일 복구 — 휴지통 (10단계 · F-11)
@@ -829,9 +829,9 @@ curl -s -b jar -X PATCH -H 'Content-Type: application/json' -H "X-CSRF-Token: $T
 목록에 나오지 않고 복구도 되지 않습니다(`purged_at` 이 채워진 행).
 
 ```bash
-curl -s -b jar https://changkwon.mso.so/api/files/trash
+curl -s -b jar https://changkwon.mso.so/tbox/api/files/trash
 curl -s -b jar -X POST -H 'Content-Type: application/json' -H "X-CSRF-Token: $TOKEN" \
-  https://changkwon.mso.so/api/files/<파일UUID>/restore
+  https://changkwon.mso.so/tbox/api/files/<파일UUID>/restore
 ```
 
 ## 2단계 인증 (TOTP) — 10단계 · `SECURITY.md` R-05 · R-85
@@ -928,7 +928,7 @@ HTML 파일 **한 개**로, 브라우저에서 열어 비밀 키를 붙이면 6�
 
 ```bash
 # (가) SSH 터널을 열어 둔 상태에서 브라우저로 열고 "다른 이름으로 저장"
-http://localhost:8082/assets/totp-generator.html
+http://localhost:8082/tbox/assets/totp-generator.html
 
 # (나) 파일을 직접 복사
 scp changkwon@192.168.105.44:/var/www/tbox-v2/public/assets/totp-generator.html .
@@ -1005,20 +1005,20 @@ php -r 'require "src/Totp.php"; foreach ([59,1111111109,1111111111,1234567890,20
 
 ```bash
 # 1) 로그인 없이 API → 401 / 화면 → 302 /login
-curl -s -o /dev/null -w '%{http_code}\n' https://changkwon.mso.so/api/me          # 401
+curl -s -o /dev/null -w '%{http_code}\n' https://changkwon.mso.so/tbox/api/me          # 401
 curl -s -D - -o /dev/null https://changkwon.mso.so/ | grep -i '^location'           # /login
 
 # 2) 로그인 (비밀번호는 파일에서 셸 변수로만 읽습니다 — 화면·히스토리에 남기지 않기 위해)
 P=$(sudo awk '$1=="employee01"{print $NF}' /etc/tbox-v2/seed-accounts.txt)
 curl -s -c jar -X POST -H 'Content-Type: application/json' \
      --data-binary "$(printf '{"username":"employee01","password":"%s"}' "$P")" \
-     https://changkwon.mso.so/api/login                                             # {"ok":true}
+     https://changkwon.mso.so/tbox/api/login                                             # {"ok":true}
 
 # 3) 내 정보 + CSRF 토큰 (쿠키는 HttpOnly·Secure·SameSite=Lax, 만료 없음 — 수명은 DB 가 판단)
-curl -s -b jar https://changkwon.mso.so/api/me
+curl -s -b jar https://changkwon.mso.so/tbox/api/me
 
 # 4) CSRF 헤더 없이 로그아웃 → 403
-curl -s -b jar -X POST https://changkwon.mso.so/api/logout                          # 권한이 없습니다
+curl -s -b jar -X POST https://changkwon.mso.so/tbox/api/logout                          # 권한이 없습니다
 ```
 
 ## 운영 — 백업 · 복구 · 감시
@@ -1249,7 +1249,7 @@ Admin 만 볼 수 있습니다 (`PRD.md` Q-8). 화면은 `/audit`, API 는 `GET 
 
 ```bash
 # 화면·API
-curl -s -b jar 'http://127.0.0.1:8082/api/audit?action=auth.login&result=deny&target=employee01'
+curl -s -b jar 'http://127.0.0.1:8082/tbox/api/audit?action=auth.login&result=deny&target=employee01'
 
 # psql 로 직접
 sudo -u postgres psql -d tbox_re -c "

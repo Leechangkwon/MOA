@@ -63,6 +63,18 @@ if (!$may) {
         Http::json(['error' => '보관 중인 게시판입니다. 읽기만 됩니다', 'reason' => $code], 400);
         exit;
     }
+    // 대기열 10번 A.1(2026-09-24) — 전에는 서버 로그도 없이 403 이었다. 역할 거부는 감사로 남긴다.
+    // **방어용**: 라우트 정책(`community.write`)이 Guest 를 먼저 막으므로 보통은 여기까지 오지 않는다.
+    if ($code === CommunityAuthz::CODE_ROLE_NOT_PERMITTED) {
+        Audit::deny('comment.create', $code, [
+            'target_type' => 'page',
+            'target_id'   => $pageId,
+            'target_name' => $pageTitle,
+        ]);
+    } else {
+        error_log('[tbox] request_id=' . TBOX_REQUEST_ID
+            . ' community comment.create deny code=' . $code . ' page_id=' . (string) $pageId);
+    }
     Http::error(403, Http::MSG_FORBIDDEN);
 }
 

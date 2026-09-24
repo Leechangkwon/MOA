@@ -1039,6 +1039,40 @@ final class Doc
     }
 
     /**
+     * 읽기만 하는 계정(Guest)의 「시작하기」 본문 (대기열 10번 A.5, 2026-09-24).
+     *
+     * Guest 는 커뮤니티에 쓸 수 없다(`Authz::canCommunityWrite`). 쓰는 사람용 welcomeDoc() 의 편집·게시·공유
+     * 안내가 맞지 않으므로 **읽는 방법만** 적는다. 값은 전부 코드에 적힌 고정 문자열이고, 블록 종류는
+     * welcomeDoc() 과 같은 3단계 것(heading·paragraph·bulleted·callout)이다. 새로 만들어지는 페이지에만 쓰인다.
+     *
+     * @return array<string,mixed>
+     */
+    public static function welcomeDocReadOnly(): array
+    {
+        $b = static function (string $type, array $extra = []) : array {
+            return array_merge(['id' => self::uuid4(), 'type' => $type], $extra);
+        };
+        $t = static function (string $s, array $marks = []) : array {
+            return [['t' => $s, 'm' => $marks]];
+        };
+
+        return [
+            'schema' => 1,
+            'blocks' => [
+                $b('heading', ['level' => 1, 'text' => $t('시작하기')]),
+                $b('paragraph', ['text' => $t('이 계정은 손님 계정이라 커뮤니티에서 읽기만 할 수 있습니다. 페이지를 만들거나 고치거나 댓글을 쓸 수는 없습니다.')]),
+                $b('heading', ['level' => 2, 'text' => $t('볼 수 있는 곳')]),
+                $b('bulleted', ['text' => $t('왼쪽 「게시판」에서 볼 수 있는 게시판의 글을 읽습니다.')]),
+                $b('bulleted', ['text' => $t('다른 사람이 나에게 보여 준 페이지는 왼쪽 「공유받은 페이지」에 나옵니다.')]),
+                $b('heading', ['level' => 2, 'text' => $t('찾기와 알림')]),
+                $b('bulleted', ['text' => $t('왼쪽 「검색」을 누르거나 Ctrl+K 를 누르면 내가 볼 수 있는 페이지를 찾습니다.')]),
+                $b('bulleted', ['text' => $t('새로 알릴 일이 있으면 왼쪽 「알림」 종에 수가 뜹니다.')]),
+                $b('callout', ['icon' => '💡', 'text' => $t('더 많은 기능이 필요하면 관리자에게 계정 역할을 물어보세요.')]),
+            ],
+        ];
+    }
+
+    /**
      * 템플릿에 담을 본문 (7-B, C:F-31 「본문·제목·속성 뼈대만, 첨부·댓글 없음」).
      *
      * 빼는 블록: `image`·`file`(첨부 — t-box 파일은 파일마다 범위가 있어, 템플릿을 쓰는 사람이 그 파일을

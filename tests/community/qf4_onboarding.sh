@@ -102,6 +102,24 @@ echo ($code["ok"] ? "ok" : "bad") . "|" . ($db["ok"] ? "ok" : "bad");
 expect "코드의 welcomeDoc() · DB 에 저장된 본문 모두 통과" "ok|ok" "$res"
 expect "저장된 판 번호는 1(새로 만든 것)" "1" "$(psqlq "SELECT doc_version FROM community.pages WHERE public_id = '$START'")"
 
+echo "── ②-손님 읽기만 하는 계정의 「시작하기」(대기열 10번 A.5, 2026-09-24)"
+res=$(php -r '
+require $argv[1] . "/src/community/Doc.php";
+$d = Doc::welcomeDocReadOnly();
+$ok = Doc::validate($d, (int) $argv[2])["ok"] ? "ok" : "bad";
+$text = Doc::extract($d)["plain_text"] ?? "";
+if ($text === "") { foreach ($d["blocks"] as $b) { foreach (($b["text"] ?? []) as $r) { $text .= ($r["t"] ?? "") . "\n"; } } }
+file_put_contents($argv[3], $text);
+echo $ok;
+' "$ROOT" "$STAGE" "$WORK/guest.txt" 2>&1)
+expect "welcomeDocReadOnly() 가 Doc::validate 통과" "ok" "$res"
+for bad in "「편집」" "「게시」" "새 페이지를" "공개 범위" "블록 추가"; do
+  expect "  손님 판에 「$bad」 0건" "0" "$(grep -c -F -- "$bad" "$WORK/guest.txt")"
+done
+expect "  손님 판에 「읽기만」 안내 있음" "yes" "$(grep -q -F -- "읽기만" "$WORK/guest.txt" && echo yes || echo no)"
+expect "  space_me.php 가 쓸 수 없는 계정에 손님 판을 고른다" "1" \
+  "$(grep -c 'Authz::canCommunityWrite($user) ? Doc::welcomeDoc() : Doc::welcomeDocReadOnly()' "$ROOT/src/community/handlers/space_me.php")"
+
 echo "── ③ 이미 공간이 있는 계정(claude_employee01)이 다시 들어와도 새로 만들지 않는다"
 code=$(curl -s -o "$WORK/old.json" -w '%{http_code}' -A "$UA" -H @"$QF4_OLD_HDR" "$CBASE/api/me/space")
 expect "GET /community/api/me/space → 200 · created=false" "200|False" "$code|$(jget "d['created']" < "$WORK/old.json")"

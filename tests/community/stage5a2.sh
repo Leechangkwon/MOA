@@ -572,7 +572,11 @@ A6=$(mark)
 expect "  편집 공유자 삭제 DELETE → 403" "403" "$(capi DELETE "/api/pages/$TP" qa_employee02)"
 expect "    DB: TP 살아 있다" "t" "$(pg_page "$TP" "p.deleted_at IS NULL")"
 body '{"parent_id":null}'
+Q10_MV=$(mark)
 expect "  편집 공유자 옮기기(TPC 를 뿌리로) → 403" "403" "$(capi PATCH "/api/pages/$TPC/move" qa_employee02 "$WORK/body.json")"
+# 대기열 10번 A.1(2026-09-24) — 관리할 수 없는 페이지 옮기기 거부가 감사에 남는다(전에는 서버 로그만)
+expect "    감사 page.move deny 1행(not_owner·not_member 중 하나)" "1" \
+  "$(psqlq "SELECT count(*) FROM audit_logs WHERE id > ${Q10_MV} AND action='page.move' AND result='deny' AND reason IN ('not_owner','not_member')")"
 expect "  편집 공유자가 남에게 다시 공유 → 403" "403" "$(share qa_employee02 "$TP" qa_guest01 view)"
 expect "  편집 공유자의 후보 찾기 → 403" "403" "$(capi GET "/api/share-candidates?page=$TP&q=q" qa_employee02)"
 body '{"visibility":"internal"}'

@@ -291,9 +291,18 @@ if ($parentRow !== null) {
         'space_team_id'       => $spaceRow['team_id'] ?? null,
     ]);
     if (!$maySpaceWrite) {
-        /* 남의 개인 공간·다른 팀의 공간이다 (C:T-36 「다른 팀은 403」). 만들기 거부에 붙일
-           감사 문장이 표에 없으므로(문장 없는 기록은 요청을 500 으로 끝낸다) 서버 로그에
-           남기고 403 동일 문구로 답한다 — `pages_delete.php` 와 같은 자리다. */
+        /* 남의 개인 공간·다른 팀의 공간이다 (C:T-36 「다른 팀은 403」). 대기열 10번 A.1(2026-09-24):
+           `not_owner`·`not_member` 는 감사로 남긴다 — `pages_delete.php` 와 같은 무게. 문장이 없는
+           나머지 조합만 전처럼 서버 로그에 남긴다(문장 없는 기록은 요청을 500 으로 끝낸다). */
+        if ($spaceCode === CommunityAuthz::CODE_NOT_OWNER || $spaceCode === CommunityAuthz::CODE_NOT_MEMBER) {
+            Audit::deny('page.create', $spaceCode, [
+                'target_type' => 'space',
+                'target_id'   => (int) $spaceId,
+                'target_name' => community_target_title((string) ($spaceRow['name'] ?? '')),
+                'detail'      => ['space_kind' => (string) $spaceRow['kind']],
+            ]);
+            Http::error(403, Http::MSG_FORBIDDEN);
+        }
         error_log('[tbox] request_id=' . TBOX_REQUEST_ID
             . ' community page.create deny code=' . $spaceCode . ' space_id=' . (string) $spaceId);
         Http::error(403, Http::MSG_FORBIDDEN);

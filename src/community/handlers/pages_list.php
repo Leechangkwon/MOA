@@ -215,8 +215,10 @@ $spaceId = (int) $space['id'];
 /* ─── [공간 관문] 이 그릇을 열어 볼 수 있나 (C:T-35 · C:T-36) ─── */
 [$mayOpen, $spaceCode] = community_space_gate($user, $space);
 if (!$mayOpen) {
-    /* 403 동일 문구다. 목록 조회는 t-box 파일 목록과 같이 감사 대상이 아니므로(그 창구에
-       붙는 감사 문장이 없다) 서버 로그에만 남긴다. 어느 공간을 열려 했는지는 그 줄에 있다. */
+    /* 403 동일 문구다. t-box 파일 목록은 폴더 거부를 `folder.read deny` 로 감사에 남기지만
+       (files_list.php), 공간 목록 거부에는 아직 감사 문장이 없어 서버 로그에만 남긴다 — 어느
+       공간을 열려 했는지는 그 줄에 있다. 감사로 옮기는 일은 후속 후보다(대기열 10번 A.2 에서
+       주석만 사실대로 고침, 2026-09-24). */
     error_log('[tbox] request_id=' . TBOX_REQUEST_ID
         . ' community space list deny code=' . $spaceCode . ' space_id=' . (string) $spaceId);
     Http::error(403, Http::MSG_FORBIDDEN);

@@ -989,10 +989,6 @@ dialog.modal > .form-actions { padding: 16px 24px; border-top: 1px solid var(--l
 .login__brand-name { font-size: 16px; font-weight: 600; }
 .login__brand-sub { font-size: 13px; color: #a1a1aa; }
 .login__lead { margin: 0; font-size: 32px; line-height: 1.2; font-weight: 600; letter-spacing: -.03em; }
-.login__copy { margin: 0; max-width: 26rem; color: #a1a1aa; font-size: 14px; line-height: 1.65; }
-.login__points { display: flex; flex-direction: column; gap: 10px; margin-top: 8px; }
-.login__point { display: flex; align-items: center; gap: 10px; color: #d4d4d8; font-size: 14px; }
-.login__point .icon { color: #a1a1aa; flex-shrink: 0; display: inline-flex; }
 .login__foot { margin: 0; font-size: 13px; color: #71717a; }
 
 .login__pane {
@@ -1020,7 +1016,6 @@ dialog.modal > .form-actions { padding: 16px 24px; border-top: 1px solid var(--l
   letter-spacing: .35em;
   text-align: center;
 }
-.otp-hint { margin: 0; font-size: 12px; color: var(--muted); }
 
 /* ─── 조직·권한 (12-3, F-19) — 좌측 팀 카드 · 우측 상세 + 매트릭스 ───
  *
@@ -1279,7 +1274,6 @@ dialog.modal--upload .upload-status { font-size: 14px; }
   }
   .login__lead { font-size: 24px; }
   .login .panel { border: 0; box-shadow: none; padding: 24px 16px; }
-  .login__points { display: none; }
   /* 매트릭스 두 표는 좁은 화면에서 위아래로 쌓는다 (12-3) */
   .matrix-grid { grid-template-columns: minmax(0, 1fr); }
   /* 위키 단계 카드·이전다음도 좁은 화면에서는 한 줄씩 쌓는다 (14단계) */
@@ -1628,14 +1622,6 @@ dialog.changelog-dialog .modal__body { max-height: 70vh; }
 dialog.token-modal { width: min(720px, calc(100vw - 32px)); }
 .token-box { display: flex; flex-direction: column; gap: 12px; margin: 0; }
 .token-box__table { width: 100%; font-size: 13px; }
-.token-box__form {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  align-items: center;
-  margin: 10px 0 0;
-}
-.token-box__form input { flex: 1 1 160px; height: var(--h-input); padding: 0 10px; }
 
 /* ─── 다크 모드 (DESIGN.md 2.12, D-5 결정 2026-09-21) ─────────────────────────
  * 색은 전부 토큰이라 여기서 값만 바꾼다. 화면 CSS 는 손대지 않는다.

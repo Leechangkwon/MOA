@@ -54,7 +54,8 @@ if (!is_array($row)) {
 
     // 본문은 코드에 적힌 고정 문서다(요청 값 0). 저장 전에 **우리 검증기를 그대로** 지난다 —
     // 서버가 만든 문서라고 검사를 건너뛰면, 검증기와 생성기가 어긋나는 날을 알아채지 못한다.
-    $doc = Doc::welcomeDoc();
+    // 대기열 10번 A.5(2026-09-24) — 쓸 수 없는 계정(Guest)에는 읽는 방법만 적은 판을 준다.
+    $doc = Authz::canCommunityWrite($user) ? Doc::welcomeDoc() : Doc::welcomeDocReadOnly();
     $check = Doc::validate($doc, COMMUNITY_DOC_STAGE);
     if (!$check['ok']) {
         throw new RuntimeException('「시작하기」 문서가 스키마를 통과하지 못했습니다');

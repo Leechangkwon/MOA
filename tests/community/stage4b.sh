@@ -256,8 +256,12 @@ CODE=$(capi GET "/api/pages/$TEAM_PAGE" qa_employee02)
 expect "다른 팀 qa_employee02 는 그 페이지를 못 읽는다" "403" "$CODE"
 CODE=$(capi GET "/api/pages?space=$TEAM_SPACE" qa_employee02)
 expect "다른 팀 qa_employee02 의 팀 공간 목록 요청" "403" "$CODE"
+[ "$HAVE_PSQL" -eq 1 ] && Q10_MARK=$(mark) || Q10_MARK=0
 RES=$(make_page qa_employee02 "남의-팀공간에-만들기" "" "$TEAM_SPACE")
 expect "다른 팀 qa_employee02 가 그 공간에 만들기" "403" "${RES%%|*}"
+# 대기열 10번 A.1(2026-09-24) — 전에는 서버 로그만 남던 거부가 감사에 남는다
+[ "$HAVE_PSQL" -eq 1 ] && expect "  감사 page.create deny not_member 1행" "1" \
+  "$(psqlq "SELECT count(*) FROM audit_logs WHERE id > ${Q10_MARK} AND action='page.create' AND result='deny' AND reason='not_member'")"
 
 CODE=$(capi GET "/api/pages?space=$TEAM_SPACE" qa_manager01)
 expect "같은 팀 qa_manager01 의 팀 공간 목록 요청" "200" "$CODE"

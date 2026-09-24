@@ -96,7 +96,19 @@ if (!$mayChange) {
     /* 볼 수는 있으나 관리할 수 없는 사람 — Admin · 공유받은 사람(5-A). 그 사실은 바로 위
        `page.read allow admin_all` 행에 남지 않는다(여기서는 자기 페이지가 아닐 때만 읽기
        감사가 찍힌다). 이동 거부에 붙일 문장은 표에 `cycle`·`depth_exceeded` 둘뿐이므로,
-       문장 없는 기록으로 요청을 500 으로 끝내는 대신 서버 로그에 남기고 403 으로 답한다. */
+       문장 없는 기록으로 요청을 500 으로 끝내는 대신 서버 로그에 남기고 403 으로 답한다.
+       대기열 10번 A.1(2026-09-24): `not_owner`·`not_member`·`not_author` 는 `pages_delete.php` 처럼
+       감사로 남긴다. 나머지 조합만 서버 로그에. */
+    if ($changeCode === CommunityAuthz::CODE_NOT_OWNER || $changeCode === CommunityAuthz::CODE_NOT_MEMBER
+        || $changeCode === CommunityAuthz::CODE_NOT_AUTHOR) {
+        Audit::deny('page.move', $changeCode, [
+            'target_type' => 'page',
+            'target_id'   => $pageId,
+            'target_name' => $pageTitle,
+            'detail'      => ['page_title' => $pageTitle],
+        ]);
+        Http::error(403, Http::MSG_FORBIDDEN);
+    }
     error_log('[tbox] request_id=' . TBOX_REQUEST_ID
         . ' community page.move deny code=' . $changeCode . ' page_id=' . (string) $pageId);
     Http::error(403, Http::MSG_FORBIDDEN);

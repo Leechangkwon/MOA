@@ -67,7 +67,7 @@
 |---|---|
 | 고정 버전 | 아래 표의 버전 그대로. 범위 표기(`^`·`~`)가 들어갈 자리가 없다(`package.json` 자체가 없다) |
 | 저장소 안 고정 | `public/assets/community/vendor/pm/<패키지>.js` — **CDN 0**, CSP 는 `script-src 'self'` 그대로 |
-| 무결성 | tarball 의 sha256 을 아래 표에 적고, `bash scripts/vendor_prosemirror.sh --verify` 가 **다시 받아 대조**한다. 산출물도 바이트까지 견준다 |
+| 무결성 | tarball 의 sha256 을 아래 표에 적고, `bash scripts/vendor_prosemirror.sh --verify` 가 **다시 받아 대조**한다. 산출물도 바이트까지 견준다 — 단, 커뮤니티 핫픽스(2026-09-24) 뒤로는 배포 때 `scripts/community_asset_version.php` 가 파일 안 import 에 버전 표시(`?v=…`)를 찍으므로, `--verify` 는 **그 표시만 지운 뒤** 바이트를 견준다(표시 외의 한 바이트라도 다르면 실패) |
 | 서버 실행 0 | 서버(PHP)는 이 파일들을 **열지도 않는다**. 브라우저에만 나가는 정적 자산이다 |
 | node 0 | 번들러를 쓰지 않는다. 각 패키지의 ESM 진입 파일 하나를 꺼내 **bare import 를 상대 경로로 바꿔** 두고, 브라우저가 서로를 불러 쓰게 한다(import map 도 쓰지 않는다 — 인라인 스크립트가 필요해 CSP 에 걸린다) |
 | 라이선스 | 14개 전부 **MIT** |

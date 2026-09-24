@@ -865,6 +865,13 @@ final class Audit
         'board.update|deny|conflict'            => '{actor} 이(가) 게시판 「{target}」 의 이름을 이미 있는 이름으로 바꾸려 해서 거부했습니다',
         'page.create|deny|role_not_permitted'   => '{actor} 이(가) 글을 쓸 수 없는 게시판 「{target}」 에 새 글을 쓰려 해서 막았습니다',
         'page.create|deny|team_mismatch'        => '{actor} 이(가) 다른 팀의 게시판 「{target}」 에 새 글을 쓰려 해서 막았습니다',
+        // 대기열 10번 A.1(점검 봇 발견, 2026-09-24) — 서버 로그로만 남던 거부를 감사로
+        'page.create|deny|not_owner'            => '{actor} 이(가) 다른 사람의 개인 공간 「{target}」 에 새 페이지를 만들려 해서 막았습니다',
+        'page.create|deny|not_member'           => '{actor} 이(가) 자기 팀이 아닌 팀 공간 「{target}」 에 새 페이지를 만들려 해서 막았습니다',
+        'page.move|deny|not_owner'              => '{actor} 이(가) 다른 사람의 개인 페이지 「{target}」 을(를) 옮기려 해서 막았습니다',
+        'page.move|deny|not_member'             => '{actor} 이(가) 자기 팀이 아닌 팀 공간의 페이지 「{target}」 을(를) 옮기려 해서 막았습니다',
+        'page.move|deny|not_author'             => '{actor} 이(가) 다른 사람이 쓴 게시판 글 「{target}」 을(를) 옮기려 해서 막았습니다',
+        'comment.create|deny|role_not_permitted' => '{actor} 이(가) 댓글을 쓸 수 없는 역할로 페이지 「{target}」 에 댓글을 쓰려 해서 막았습니다',
         'page.publish|allow'                    => '{actor} 이(가) 페이지 「{target}」 을(를) 게시판에 게시했습니다 (게시판·원래 범위는 상세 기록)',
         'page.publish|deny|not_owner'           => '{actor} 이(가) 자기 것이 아닌 페이지 「{target}」 을(를) 게시판에 게시하려 해서 막았습니다',
         'page.publish|deny|role_not_permitted'  => '{actor} 이(가) 페이지 「{target}」 을(를) 글을 쓸 수 없는 게시판에 게시하려 해서 막았습니다 (게시판은 상세 기록)',

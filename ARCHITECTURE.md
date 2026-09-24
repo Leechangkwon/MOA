@@ -2062,6 +2062,7 @@ GRANT  USAGE, SELECT  ON SEQUENCE audit_logs_id_seq TO tbox_app;
 | `file.fetch|deny|hwp_not_hwp` | `{actor} 이(가) 가져온 파일 「{target}」 이(가) 한글 문서 형식이 아닌데 .hwp 이름이라(위장 의심) 저장하지 않았습니다` | F-53 `Upload::inspectContent` (ARCH 5.27) |
 | `file.fetch|deny|bad_folder` | `{actor} 이(가) 가져온 파일을 없는 폴더 또는 볼 수 없는 폴더에 저장하려 해서 거부했습니다` | 18-1 files_fetch (응답은 기존 fetch 문구 하나) |
 | `file.fetch|deny|parent_narrower` | `{actor} 이(가) 가져온 파일을 폴더보다 넓은 {level} 등급으로 저장하려 해서 거부했습니다` | 18-1 |
+| `file.fetch|deny|needs_login` | `{actor} 이(가) 로그인이 필요한 클라우드 문서를 가져오려 해서 막았습니다 (공개 링크만 가져올 수 있습니다)` | 7단계 files_fetch — 공개 링크가 아닌 클라우드 문서(F-43, 5.22) |
 | `file.update|deny|bad_folder` | `{actor} 이(가) 파일 「{target}」 을(를) 없는 폴더 또는 볼 수 없는 폴더로 옮기려 해서 거부했습니다` | 18-1 files_update |
 | `file.update|deny|parent_narrower` | `{actor} 이(가) 파일 「{target}」 을(를) 자기보다 좁은 등급의 폴더로 옮기려 해서 거부했습니다` | 18-1 |
 | `file.level_change|deny|parent_narrower` | `{actor} 이(가) 파일 「{target}」 의 접근 등급을 그 파일이 든 폴더보다 넓은 {level} 등급으로 바꾸려 해서 거부했습니다` | 18-1 |
@@ -2080,6 +2081,10 @@ GRANT  USAGE, SELECT  ON SEQUENCE audit_logs_id_seq TO tbox_app;
 | `auth.token|deny|scope_not_permitted` | `개인 토큰의 범위에 없는 창구 {target} 을(를) 부르려 해서 막았습니다` | F-66 |
 | `auth.token|deny|user_disabled` | `{target} 의 개인 토큰은 맞았지만 그 계정이 비활성·만료·절차 중이어서 막았습니다` | F-59 |
 | `auth.token|deny|shared_token_not_permitted` | `공용 토큰으로 개인 토큰 전용 창구 {target} 을(를) 부르려 해서 막았습니다` | F-59 |
+| `auth.token|deny|not_configured` | `{target} 을(를) 불렀지만 이 서버에 프로그램용 API 토큰이 설정되어 있지 않아 막았습니다 (설정 전에는 아무도 쓸 수 없습니다)` | 프로그램용 API 토큰 검사 requireApiToken (4장 API 토큰 절) |
+| `auth.token|deny|missing_header` | `API 토큰 없이 {target} 을(를) 부르려 해서 막았습니다` | 프로그램용 API 토큰 검사 requireApiToken (4장 API 토큰 절) |
+| `auth.token|deny|bad_token` | `틀린 API 토큰으로 {target} 을(를) 부르려 해서 막았습니다` | 프로그램용 API 토큰 검사 requireApiToken (4장 API 토큰 절) |
+| `auth.token|deny|user_invalid` | `{target} 의 API 토큰은 맞았지만 그 토큰에 연결된 계정이 없거나 쓸 수 없는 상태여서 막았습니다 (서버 설정 점검 필요)` | 프로그램용 API 토큰 검사 requireApiToken (4장 API 토큰 절) |
 
 > 7·8·9단계(URL 가져오기·감사 로그 조회·백업)의 행동은 그 단계 지시서에서 이 표에 행을 먼저 추가한 뒤 구현한다.
 
@@ -2160,6 +2165,7 @@ GRANT  USAGE, SELECT  ON SEQUENCE audit_logs_id_seq TO tbox_app;
 | `token_id` | 어떻게 | 개인 토큰의 **행 번호**(정수, `api_tokens.id`). 토큰 값·hint 가 아니다 — 「어느 토큰으로」 를 사람이 목록에서 되짚는 열쇠. 정확 일치 예외 | `Audit::autoDetail`(개인 토큰 경로) · `api_token.issue`·`api_token.revoke` 핸들러 | F-59 |
 | `token_name` | 무엇을 | 발급·회수한 토큰의 **라벨**(「사무실 PC」). 사람이 붙인 이름이고 비밀이 아니다. 정확 일치 예외 | 핸들러 | `api_token.issue`·`api_token.revoke` (F-59) |
 | `token_scope` | 어떻게 | 토큰의 **범위** 분류어(`read`·`read+upload`·`read+upload+delete`). 코드가 정한 세 값 중 하나. `autoDetail()` 이 토큰 경로의 모든 행에, 발급·범위 거부 행에는 핸들러/Auth 가 붙인다. 이름에 `token` 이 들어 부분 일치 금지에 걸리므로 정확 일치 예외 | Audit·핸들러 | F-66 (ARCH 4.7) |
+| `space_kind` | 어디서 | 커뮤니티 공간 종류 `personal`·`team`·`board` — 이름·아이디는 넣지 않는다 | 핸들러 | `page.create deny not_owner·not_member`(대기열 10번 A.1, 2026-09-24) |
 
 **검토 행동과 사용자 행동 가르기** — 두 조건 중 하나면 검토다. 둘 다 아니면 사용자(또는 침입자)다.
 
