@@ -3,7 +3,7 @@
 #   T-52 「역할로 보기」(F-39) · T-53 관리 내비·계정 폼(F-40) · T-54 폴더 삭제(F-41)
 #
 # 규칙 (CLAUDE.md 3장)
-#   · **검토 계정(qa_ 접두)만** 쓴다. 시드 계정(admin01 …)은 사용자의 자기 공격 전용이다.
+#   · **검토 계정(claude_ 접두)만** 쓴다. 시드 계정(admin01 …)은 사용자의 자기 공격 전용이다.
 #   · 모든 요청에 `-A "tbox-review/<날짜>"` 를 붙인다 — 감사 로그에서 사람의 행동과 갈라 보려는 것.
 #   · 비밀번호·TOTP 비밀은 **필요한 필드만 awk 로** 뽑고 변수에만 담는다 (SECURITY R-62).
 #
@@ -25,6 +25,8 @@ DB="tbox_re"
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 # 검토 계정 판정 한 벌(qa_·claude_ — F-71 C). 못 읽으면 사전 검사가 빈 값으로 열리므로 시작하지 않는다.
 . "$ROOT/tests/lib/review_accounts.sh" || { echo "tests/lib/review_accounts.sh 를 읽지 못했다 — 시험을 시작하지 않는다 (R-73)"; exit 3; }
+. "$ROOT/tests/lib/secrets.sh" || { echo "tests/lib/secrets.sh 를 읽지 못했다 — 시험을 시작하지 않는다 (R-62)"; exit 3; }
+. "$ROOT/tests/lib/db_read.sh" || { echo "tests/lib/db_read.sh 를 읽지 못했다 — 시험을 시작하지 않는다 (R-73)"; exit 3; }
 OUT="${1:-$HOME/.claude/ui-shots/stage26}"
 JAR_DIR="$(mktemp -d)"
 WORK="$(mktemp -d)"
@@ -52,14 +54,14 @@ expect() {
 # ── 로그인 ────────────────────────────────────────────────────
 # TOTP 코드는 1회성이다(R-45) — 같은 창에서 두 번 쓰면 거부되는 것이 **정상**이라 기다렸다 다시 한다.
 login() {
-  local who="$1" jar="$JAR_DIR/$1.jar" pw sec raw code left out try
+  local who="$1" jar="$JAR_DIR/$1.jar" pw sec raw code left out try body
   pw=$(sudo -n awk -v u="$who" '$1==u{print $3}' /etc/tbox-v2/seed-accounts.txt)
   sec=$(sudo -n awk -v u="$who" '$1==u{print $2}' /etc/tbox-v2/qa-totp.txt)
   for try in 1 2 3; do
-    raw=$(php "$ROOT/scripts/totp_code.php" "$sec")
+    raw=$(totp_now sec)
     code=${raw%%$'\n'*}
-    out=$(curl -s -c "$jar" -A "$UA" -H 'Content-Type: application/json' \
-          -d "{\"username\":\"$who\",\"password\":\"$pw\",\"otp\":\"$code\"}" "$BASE/api/login")
+    printf -v body '{"username":"%s","password":"%s","otp":"%s"}' "$who" "$pw" "$code"
+    out=$(curl_json_secret body -s -c "$jar" -A "$UA" -H 'Content-Type: application/json' "$BASE/api/login")
     case "$out" in
       *'"ok":true'*)
         curl -s -b "$jar" -A "$UA" "$BASE/api/me" \
@@ -76,11 +78,11 @@ login() {
 }
 
 reauth() {
-  local who="$1" token="$2" pw
+  local who="$1" token="$2" pw body
   pw=$(sudo -n awk -v u="$who" '$1==u{print $3}' /etc/tbox-v2/seed-accounts.txt)
-  curl -s -o /dev/null -w '%{http_code}' -b "$JAR_DIR/$who.jar" -A "$UA" \
-    -H 'Content-Type: application/json' -H "X-CSRF-Token: $token" \
-    -d "{\"password\":\"$pw\"}" "$BASE/api/me/reauth"
+  printf -v body '{"password":"%s"}' "$pw"
+  curl_json_secret body -s -o /dev/null -w '%{http_code}' -b "$JAR_DIR/$who.jar" -A "$UA" \
+    -H 'Content-Type: application/json' -H "X-CSRF-Token: $token" "$BASE/api/me/reauth"
 }
 
 # $1 계정 $2 메서드 $3 경로 $4 토큰 $5 본문(선택) → "본문\nHTTP코드"
@@ -120,33 +122,44 @@ uuid_of() { printf '%s' "$1" | sed -n 's/.*"id":"\([0-9a-f-]\{36\}\)".*/\1/p' | 
 # ─────────────────────────────────────────────────────────────
 # ① 사용자 활동 확인 — SECURITY R-73 ②
 # ─────────────────────────────────────────────────────────────
-BUSY=$(psqlq "SELECT count(*) FROM audit_logs
+db_read_var BUSY "$DB" "SELECT count(*) FROM audit_logs
                WHERE happened_at > now() - interval '10 minutes'
-                 AND $REVIEW_NOT_SQL;")
+                 AND $REVIEW_NOT_SQL;" \
+  || { echo "운영 DB 를 읽지 못했다 — 시험을 시작하지 않는다 (R-73 · db_read rc 3)"; rm -rf "$JAR_DIR" "$WORK"; exit 3; }
 if [ "${BUSY:-1}" != "0" ]; then
   echo "■ 최근 10분 감사 로그에 비-qa actor 가 ${BUSY}건 있습니다 — 사용자가 작업 중입니다."
   echo "■ 데이터를 남기는 시험을 시작하지 않고 끝냅니다 (SECURITY R-73 ②). 종료 코드 3."
   rm -rf "$JAR_DIR" "$WORK"
   exit 3
 fi
-echo "■ 최근 10분 비-qa 활동 0건 — 시험을 시작합니다."
+echo "■ 최근 10분 비-qa 활동 0건 — 시험을 시작합니다. (읽기 경로 ${DB_READ_VIA})"
 
 QA_IDS=$(psqlq "SELECT coalesce(string_agg(id::text, ','), '0') FROM users WHERE $(review_like_sql username);")
 CENSUS_BEFORE=""
 CENSUS_SUM=0
 
+# 행 수 대조(R-73 ③) — 읽기만 하므로 db_read(읽기 전용 역할, 없으면 sudo). 하나라도 못 읽으면 rc 3 을
+# 돌려준다(값은 원래처럼 빈 값). 시작 전(census before)은 그 rc 로 시작을 막고, 끝(cleanup)은 원래대로 비교만 한다.
 census() {
-  local when="$1" t total nonqa sum=0
+  local when="$1" t total nonqa sum=0 rc=0
   printf '  %-18s %8s %10s\n' "표" "전체" "비-qa"
-  total=$(psqlq "SELECT count(*) FROM folders;")
-  nonqa=$(psqlq "SELECT count(*) FROM folders WHERE created_by NOT IN ($QA_IDS);")
+  db_read_var total "$DB" "SELECT count(*) FROM folders;" || rc=3
+  db_read_var nonqa "$DB" "SELECT count(*) FROM folders WHERE created_by NOT IN ($QA_IDS);" || rc=3
   printf '  %-18s %8s %10s\n' "folders" "$total" "$nonqa"; sum=$((sum + nonqa))
-  total=$(psqlq "SELECT count(*) FROM files;")
-  nonqa=$(psqlq "SELECT count(*) FROM files WHERE uploaded_by NOT IN ($QA_IDS);")
+  db_read_var total "$DB" "SELECT count(*) FROM files;" || rc=3
+  db_read_var nonqa "$DB" "SELECT count(*) FROM files WHERE uploaded_by NOT IN ($QA_IDS);" || rc=3
   printf '  %-18s %8s %10s\n' "files" "$total" "$nonqa"; sum=$((sum + nonqa))
   printf '  %-18s %8s %10s   ← 사용자(비-qa)가 만든 행 합계 (%s)\n' "합계" "-" "$sum" "$when"
   CENSUS_SUM="$sum"
+  return "$rc"
 }
+
+hr "0-0. 시작 전 인구조사 (R-73 ③)"
+echo "  검토 계정 id: $QA_IDS"
+# 시작 전 대조값 — 못 읽으면 시작하지 않는다. trap 을 걸기 **전**이라(위 ① 관문과 같이) 임시 폴더를 직접 지운다.
+# (trap 뒤에서 끝내면 cleanup 의 「정리 뒤 인구조사」가 빈 시작 값과 비교해 「행 수가 달라졌다」 거짓 경보를 낸다)
+census before || { echo "운영 DB 를 읽지 못했다 — 시험을 시작하지 않는다 (R-73 · db_read rc 3)"; rm -rf "$JAR_DIR" "$WORK"; exit 3; }
+CENSUS_BEFORE="$CENSUS_SUM"
 
 cleanup() {
   local trap_rc=$?   # trap 에 들어온 종료 코드(끝까지 옴 0 · 로그인 실패 exit 1 …) — 맨 끝에서 쓴다
@@ -154,8 +167,8 @@ cleanup() {
   echo "  검토 계정 id: $QA_IDS — 이 계정이 만든 S26- 행만 지웁니다"
 
   # ④ qa 계정에 심었던 값 원복 (계정 행 자체는 지우지 않는다)
-  psqlc "UPDATE users SET role = 'Admin'    WHERE username = 'qa_admin01' AND role <> 'Admin';" \
-    && echo "  qa_admin01 실제 역할 Admin 확인·원복"
+  psqlc "UPDATE users SET role = 'Admin'    WHERE username = 'claude_admin01' AND role <> 'Admin';" \
+    && echo "  claude_admin01 실제 역할 Admin 확인·원복"
   psqlc "UPDATE sessions SET act_role = NULL, act_team_id = NULL,
                              act_started_at = NULL, act_last_seen_at = NULL
           WHERE user_id IN ($QA_IDS);" \
@@ -197,18 +210,13 @@ cleanup() {
 }
 trap cleanup EXIT
 
-hr "0-0. 시작 전 인구조사 (R-73 ③)"
-echo "  검토 계정 id: $QA_IDS"
-census before
-CENSUS_BEFORE="$CENSUS_SUM"
-
 hr "0. 준비 — 검토 계정 로그인"
-TOK_ADMIN=$(login qa_admin01)   || exit 1
-TOK_EMP1=$(login qa_employee01) || exit 1
-TOK_MGR=$(login qa_manager01)   || exit 1
+TOK_ADMIN=$(login claude_admin01)   || exit 1
+TOK_EMP1=$(login claude_employee01) || exit 1
+TOK_MGR=$(login claude_manager01)   || exit 1
 echo "  로그인 3계정 완료"
 
-SID_ADMIN=$(psqlq "SELECT id FROM sessions WHERE user_id = (SELECT id FROM users WHERE username='qa_admin01')
+SID_ADMIN=$(psqlq "SELECT id FROM sessions WHERE user_id = (SELECT id FROM users WHERE username='claude_admin01')
                     ORDER BY created_at DESC LIMIT 1;")
 TEAM_ID=$(psqlq "SELECT id FROM teams WHERE is_active ORDER BY id LIMIT 1;")
 TEAM_NAME=$(psqlq "SELECT name FROM teams WHERE id = $TEAM_ID;")
@@ -217,21 +225,21 @@ echo "  시험에 쓸 팀: id=$TEAM_ID name=$TEAM_NAME"
 # ═════════════════════════════════════════════════════════════
 hr "T-52 (b) 재인증 관문 — 재인증 없이 「역할로 보기」를 켤 수 없다"
 # ═════════════════════════════════════════════════════════════
-R=$(call qa_admin01 POST /api/me/act "$TOK_ADMIN" '{"role":"Employee"}')
+R=$(call claude_admin01 POST /api/me/act "$TOK_ADMIN" '{"role":"Employee"}')
 echo "  HTTP $(code_of "$R")"; echo "  $(body_of "$R")"
 expect "재인증 없이 POST /api/me/act → 403" 403 "$(code_of "$R")"
 expect "본문에 next:reauth" 1 "$(body_of "$R" | grep -c '"next":"reauth"')"
 
-echo "  재인증: qa_admin01 → $(reauth qa_admin01 "$TOK_ADMIN")"
+echo "  재인증: claude_admin01 → $(reauth claude_admin01 "$TOK_ADMIN")"
 
 # ═════════════════════════════════════════════════════════════
 hr "T-52 (a) 비관리자는 켤 수 없다"
 # ═════════════════════════════════════════════════════════════
-R=$(call qa_employee01 POST /api/me/act "$TOK_EMP1" '{"role":"Guest"}')
+R=$(call claude_employee01 POST /api/me/act "$TOK_EMP1" '{"role":"Guest"}')
 echo "  HTTP $(code_of "$R")"; echo "  $(body_of "$R")"
-expect "qa_employee01 POST /api/me/act → 403" 403 "$(code_of "$R")"
+expect "claude_employee01 POST /api/me/act → 403" 403 "$(code_of "$R")"
 DENY=$(psqlq "SELECT count(*) FROM audit_logs
-               WHERE actor_name='qa_employee01' AND result='deny'
+               WHERE actor_name='claude_employee01' AND result='deny'
                  AND detail->>'route' = 'POST /api/me/act'
                  AND happened_at > now() - interval '2 minutes';")
 expect "감사에 deny 1건 이상" 1 "$([ "${DENY:-0}" -ge 1 ] && echo 1 || echo 0)"
@@ -239,15 +247,15 @@ expect "감사에 deny 1건 이상" 1 "$([ "${DENY:-0}" -ge 1 ] && echo 1 || ech
 # ═════════════════════════════════════════════════════════════
 hr "T-52 (j) 값 검사 — 위로 가는 조합 · 없어진 키 · 없는 팀 · 모르는 키"
 # ═════════════════════════════════════════════════════════════
-R=$(call qa_admin01 POST /api/me/act "$TOK_ADMIN" '{"role":"Admin"}')
+R=$(call claude_admin01 POST /api/me/act "$TOK_ADMIN" '{"role":"Admin"}')
 echo "  {role:Admin} → HTTP $(code_of "$R") $(body_of "$R")"
 expect "{role:'Admin'} → 400 (위로 갈 수 없다)" 400 "$(code_of "$R")"
 
-R=$(call qa_admin01 POST /api/me/act "$TOK_ADMIN" '{"role":"Employee","team_id":999999999}')
+R=$(call claude_admin01 POST /api/me/act "$TOK_ADMIN" '{"role":"Employee","team_id":999999999}')
 echo "  {team_id:999999999} → HTTP $(code_of "$R")"
 expect "없는 팀 → 400" 400 "$(code_of "$R")"
 
-R=$(call qa_admin01 POST /api/me/act "$TOK_ADMIN" '{"role":"Employee","nope":1}')
+R=$(call claude_admin01 POST /api/me/act "$TOK_ADMIN" '{"role":"Employee","nope":1}')
 expect "모르는 키 → 400" 400 "$(code_of "$R")"
 
 # ═════════════════════════════════════════════════════════════
@@ -255,23 +263,23 @@ hr "T-52 준비 — admin-only 파일 하나 (보는 중 목록에서 빠지는�
 # ═════════════════════════════════════════════════════════════
 printf 'S26 admin-only fixture\n' > "$WORK/S26-adminonly.txt"
 printf 'S26 internal fixture\n'   > "$WORK/S26-internal.txt"
-R=$(upload qa_admin01 "$TOK_ADMIN" "$WORK/S26-adminonly.txt" admin-only)
+R=$(upload claude_admin01 "$TOK_ADMIN" "$WORK/S26-adminonly.txt" admin-only)
 FILE_ADMIN=$(uuid_of "$(body_of "$R")")
 expect "admin-only 파일 업로드" 201 "$(code_of "$R")"
 # 「남의 파일」 은 **다른 계정**이 올린 것이어야 한다 — 같은 계정이면 보는 중에도 owner 라 지울 수 있다
-R=$(upload qa_manager01 "$TOK_MGR" "$WORK/S26-internal.txt" internal)
+R=$(upload claude_manager01 "$TOK_MGR" "$WORK/S26-internal.txt" internal)
 FILE_INTERNAL=$(uuid_of "$(body_of "$R")")
-expect "internal 파일 업로드(qa_manager01 = 남의 파일)" 201 "$(code_of "$R")"
+expect "internal 파일 업로드(claude_manager01 = 남의 파일)" 201 "$(code_of "$R")"
 echo "  admin-only public_id=$FILE_ADMIN · internal public_id=$FILE_INTERNAL"
 
 # ═════════════════════════════════════════════════════════════
 hr "T-52 (b) 켜기 — {role:Employee, team_id:$TEAM_ID}"
 # ═════════════════════════════════════════════════════════════
-R=$(call qa_admin01 POST /api/me/act "$TOK_ADMIN" "{\"role\":\"Employee\",\"team_id\":$TEAM_ID}")
+R=$(call claude_admin01 POST /api/me/act "$TOK_ADMIN" "{\"role\":\"Employee\",\"team_id\":$TEAM_ID}")
 echo "  HTTP $(code_of "$R")"; echo "  $(body_of "$R")"
 expect "POST /api/me/act → 200" 200 "$(code_of "$R")"
 
-R=$(call qa_admin01 GET /api/me "$TOK_ADMIN")
+R=$(call claude_admin01 GET /api/me "$TOK_ADMIN")
 ME="$(body_of "$R")"
 echo "  $ME"
 expect "/api/me role=Employee"        "Employee" "$(field role "$ME")"
@@ -284,16 +292,16 @@ expect "/api/me team_id=$TEAM_ID"     1 "$(printf '%s' "$ME" | grep -c "\"team_i
 # ═════════════════════════════════════════════════════════════
 hr "T-52 (c) 그 세션의 **서버 판정**이 Employee 다"
 # ═════════════════════════════════════════════════════════════
-R=$(call qa_admin01 GET "/api/files?q=S26-" "$TOK_ADMIN")
+R=$(call claude_admin01 GET "/api/files?q=S26-" "$TOK_ADMIN")
 echo "  $(body_of "$R" | head -c 400)"
 expect "보는 중 목록에 admin-only 파일 0건" 0 "$(body_of "$R" | grep -c "S26-adminonly")"
 expect "보는 중 목록에 internal 파일은 보임" 1 "$(body_of "$R" | grep -c "S26-internal")"
 
-R=$(call qa_admin01 DELETE "/api/files/$FILE_INTERNAL" "$TOK_ADMIN")
+R=$(call claude_admin01 DELETE "/api/files/$FILE_INTERNAL" "$TOK_ADMIN")
 echo "  남의 internal 파일 DELETE → HTTP $(code_of "$R") $(body_of "$R")"
 expect "남의 파일 삭제 403" 403 "$(code_of "$R")"
 
-R=$(call qa_admin01 GET /users "$TOK_ADMIN")
+R=$(call claude_admin01 GET /users "$TOK_ADMIN")
 echo "  GET /users → HTTP $(code_of "$R")"
 expect "Admin 화면 막힘(403 또는 302)" 1 \
   "$([ "$(code_of "$R")" = "403" ] || [ "$(code_of "$R")" = "302" ] && echo 1 || echo 0)"
@@ -302,12 +310,12 @@ expect "Admin 화면 막힘(403 또는 302)" 1 \
 hr "T-52 (i) 보는 중 한 행동의 감사 — actor_role 은 실제 역할"
 # ═════════════════════════════════════════════════════════════
 printf 'S26 acting upload\n' > "$WORK/S26-acting.txt"
-R=$(upload qa_admin01 "$TOK_ADMIN" "$WORK/S26-acting.txt" internal)
+R=$(upload claude_admin01 "$TOK_ADMIN" "$WORK/S26-acting.txt" internal)
 echo "  보는 중 업로드 → HTTP $(code_of "$R")"
 expect "보는 중에도 Employee 자격으로 업로드 200/201" 201 "$(code_of "$R")"
 ACTROW=$(psqlq "SELECT actor_role||'|'||coalesce(detail->'acting_as'->>'role','-')||'|'||coalesce(detail->>'real_role','-')
                   FROM audit_logs
-                 WHERE actor_name='qa_admin01' AND action='file.upload'
+                 WHERE actor_name='claude_admin01' AND action='file.upload'
                  ORDER BY id DESC LIMIT 1;")
 echo "  감사 행: actor_role|acting_as.role|real_role = $ACTROW"
 expect "actor_role=Admin · acting_as.role=Employee" "Admin|Employee|Admin" "$ACTROW"
@@ -315,7 +323,7 @@ expect "actor_role=Admin · acting_as.role=Employee" "Admin|Employee|Admin" "$AC
 # ═════════════════════════════════════════════════════════════
 hr "T-52 (e) 보는 중 다시 켜기 금지"
 # ═════════════════════════════════════════════════════════════
-R=$(call qa_admin01 POST /api/me/act "$TOK_ADMIN" '{"role":"Guest"}')
+R=$(call claude_admin01 POST /api/me/act "$TOK_ADMIN" '{"role":"Guest"}')
 echo "  HTTP $(code_of "$R") $(body_of "$R")"
 expect "보는 중 POST /api/me/act → 403" 403 "$(code_of "$R")"
 
@@ -324,7 +332,7 @@ hr "T-52 (g) 활동 갱신 — 요청마다 act_last_seen_at 이 밀린다"
 # ═════════════════════════════════════════════════════════════
 T1=$(psqlq "SELECT act_last_seen_at FROM sessions WHERE id = '$SID_ADMIN';")
 sleep 1
-call qa_admin01 GET /api/me "$TOK_ADMIN" > /dev/null
+call claude_admin01 GET /api/me "$TOK_ADMIN" > /dev/null
 T2=$(psqlq "SELECT act_last_seen_at FROM sessions WHERE id = '$SID_ADMIN';")
 echo "  요청 전: $T1"
 echo "  요청 후: $T2"
@@ -332,17 +340,17 @@ expect "요청마다 act_last_seen_at 갱신" 1 "$([ "$T1" != "$T2" ] && echo 1 
 
 sub "29분 전이면 유지된다"
 psqlc "UPDATE sessions SET act_last_seen_at = now() - interval '29 minutes' WHERE id = '$SID_ADMIN';"
-R=$(call qa_admin01 GET /api/me "$TOK_ADMIN")
+R=$(call claude_admin01 GET /api/me "$TOK_ADMIN")
 expect "29분 전 → 여전히 acting" 1 "$(body_of "$R" | grep -c '"acting":true')"
 
 sub "31분 전이면 자동 해제된다 (idle)"
 psqlc "UPDATE sessions SET act_last_seen_at = now() - interval '31 minutes' WHERE id = '$SID_ADMIN';"
-R=$(call qa_admin01 GET /api/me "$TOK_ADMIN")
+R=$(call claude_admin01 GET /api/me "$TOK_ADMIN")
 ME="$(body_of "$R")"
 expect "31분 전 → role 이 Admin 으로 돌아옴" "Admin" "$(field role "$ME")"
 expect "31분 전 → acting false" 1 "$(printf '%s' "$ME" | grep -c '"acting":false')"
 EXPIRE=$(psqlq "SELECT result||'|'||coalesce(detail->>'reason','-')||'|'||actor_role
-                  FROM audit_logs WHERE action='act.expire' AND actor_name='qa_admin01'
+                  FROM audit_logs WHERE action='act.expire' AND actor_name='claude_admin01'
                   ORDER BY id DESC LIMIT 1;")
 echo "  감사 act.expire: $EXPIRE"
 expect "act.expire allow · reason=idle · actor_role=Admin" "allow|idle|Admin" "$EXPIRE"
@@ -352,40 +360,40 @@ expect "세션의 act_* 가 NULL 로 돌아감" 1 "$ACTNULL"
 # ═════════════════════════════════════════════════════════════
 hr "T-52 (h) 강등되면 그 자리에서 풀린다 (role_lost)"
 # ═════════════════════════════════════════════════════════════
-R=$(call qa_admin01 POST /api/me/act "$TOK_ADMIN" '{"role":"Employee"}')
+R=$(call claude_admin01 POST /api/me/act "$TOK_ADMIN" '{"role":"Employee"}')
 expect "다시 켜기 200" 200 "$(code_of "$R")"
-psqlc "UPDATE users SET role = 'Manager' WHERE username = 'qa_admin01';"
-echo "  psql 로 qa_admin01 을 Manager 로 강등 (시험 뒤 원복)"
-R=$(call qa_admin01 GET /api/me "$TOK_ADMIN")
+psqlc "UPDATE users SET role = 'Manager' WHERE username = 'claude_admin01';"
+echo "  psql 로 claude_admin01 을 Manager 로 강등 (시험 뒤 원복)"
+R=$(call claude_admin01 GET /api/me "$TOK_ADMIN")
 ME="$(body_of "$R")"
 echo "  $ME" | head -c 200; echo
 expect "강등 뒤 acting false" 1 "$(printf '%s' "$ME" | grep -c '"acting":false')"
 expect "강등 뒤 role 은 실제 역할 Manager" "Manager" "$(field role "$ME")"
 EXPIRE=$(psqlq "SELECT coalesce(detail->>'reason','-')||'|'||actor_role FROM audit_logs
-                 WHERE action='act.expire' AND actor_name='qa_admin01' ORDER BY id DESC LIMIT 1;")
+                 WHERE action='act.expire' AND actor_name='claude_admin01' ORDER BY id DESC LIMIT 1;")
 echo "  감사 act.expire: $EXPIRE"
 expect "reason=role_lost · actor_role=Manager(그때의 실제 역할)" "role_lost|Manager" "$EXPIRE"
-psqlc "UPDATE users SET role = 'Admin' WHERE username = 'qa_admin01';"
-echo "  qa_admin01 실제 역할 Admin 으로 원복"
-R=$(call qa_admin01 GET /api/me "$TOK_ADMIN")
+psqlc "UPDATE users SET role = 'Admin' WHERE username = 'claude_admin01';"
+echo "  claude_admin01 실제 역할 Admin 으로 원복"
+R=$(call claude_admin01 GET /api/me "$TOK_ADMIN")
 expect "원복 뒤 role=Admin" "Admin" "$(field role "$(body_of "$R")")"
 
 # ═════════════════════════════════════════════════════════════
 hr "T-52 (f) 끄기 — 원래대로"
 # ═════════════════════════════════════════════════════════════
-R=$(call qa_admin01 DELETE /api/me/act "$TOK_ADMIN")
+R=$(call claude_admin01 DELETE /api/me/act "$TOK_ADMIN")
 ME="$(body_of "$R")"
 echo "  HTTP $(code_of "$R")"; echo "  $ME" | head -c 300; echo
 expect "DELETE /api/me/act → 200" 200 "$(code_of "$R")"
 expect "role 이 Admin 으로 돌아옴" "Admin" "$(field role "$ME")"
 expect "acting=false" 1 "$(printf '%s' "$ME" | grep -c '"acting":false')"
 STOP=$(psqlq "SELECT result||'|'||actor_role||'|'||coalesce(detail->'acting_as'->>'role','-')
-                FROM audit_logs WHERE action='act.stop' AND actor_name='qa_admin01'
+                FROM audit_logs WHERE action='act.stop' AND actor_name='claude_admin01'
                ORDER BY id DESC LIMIT 1;")
 echo "  감사 act.stop: $STOP"
 expect "act.stop allow · actor_role=Admin · acting_as.role=Employee" "allow|Admin|Employee" "$STOP"
 
-R=$(call qa_admin01 GET /api/me "$TOK_ADMIN")
+R=$(call claude_admin01 GET /api/me "$TOK_ADMIN")
 expect "끈 뒤 can_admin=true" 1 "$(body_of "$R" | grep -c '"can_admin":true')"
 
 # ═════════════════════════════════════════════════════════════
@@ -399,11 +407,11 @@ mkfolder() {  # $1 계정 $2 토큰 $3 이름 $4 등급 $5 parent(선택)
 }
 
 sub "(a) 하위 폴더가 있는 폴더"
-R=$(mkfolder qa_employee01 "$TOK_EMP1" "S26-parent" internal)
+R=$(mkfolder claude_employee01 "$TOK_EMP1" "S26-parent" internal)
 F_PARENT=$(new_id "$(body_of "$R")"); expect "부모 폴더 생성" 201 "$(code_of "$R")"
-R=$(mkfolder qa_employee01 "$TOK_EMP1" "S26-child" internal "$F_PARENT")
+R=$(mkfolder claude_employee01 "$TOK_EMP1" "S26-child" internal "$F_PARENT")
 F_CHILD=$(new_id "$(body_of "$R")"); expect "하위 폴더 생성" 201 "$(code_of "$R")"
-R=$(call qa_employee01 DELETE "/api/folders/$F_PARENT" "$TOK_EMP1")
+R=$(call claude_employee01 DELETE "/api/folders/$F_PARENT" "$TOK_EMP1")
 echo "  HTTP $(code_of "$R")"; echo "  $(body_of "$R")"
 expect "하위 폴더 있음 → 400" 400 "$(code_of "$R")"
 expect "코드 folder_has_children" 1 "$(body_of "$R" | grep -c 'folder_has_children')"
@@ -411,50 +419,50 @@ expect "응답에 이름 없음(S26-child 0회)" 0 "$(body_of "$R" | grep -c 'S2
 expect "응답에 개수 없음(trashed 키 0회)" 0 "$(body_of "$R" | grep -c '"trashed"')"
 
 sub "(b) 살아 있는 파일이 있는 폴더"
-R=$(mkfolder qa_employee01 "$TOK_EMP1" "S26-alive" internal)
+R=$(mkfolder claude_employee01 "$TOK_EMP1" "S26-alive" internal)
 F_ALIVE=$(new_id "$(body_of "$R")"); expect "폴더 생성" 201 "$(code_of "$R")"
 printf 'S26 alive\n' > "$WORK/S26-alive.txt"
-R=$(upload qa_employee01 "$TOK_EMP1" "$WORK/S26-alive.txt" internal "$F_ALIVE")
+R=$(upload claude_employee01 "$TOK_EMP1" "$WORK/S26-alive.txt" internal "$F_ALIVE")
 expect "살아 있는 파일 업로드" 201 "$(code_of "$R")"
-R=$(call qa_employee01 DELETE "/api/folders/$F_ALIVE" "$TOK_EMP1")
+R=$(call claude_employee01 DELETE "/api/folders/$F_ALIVE" "$TOK_EMP1")
 echo "  HTTP $(code_of "$R")"; echo "  $(body_of "$R")"
 expect "살아 있는 파일 → 400" 400 "$(code_of "$R")"
 expect "코드 folder_not_empty" 1 "$(body_of "$R" | grep -c 'folder_not_empty')"
 expect "응답에 파일 이름 없음" 0 "$(body_of "$R" | grep -c 'S26-alive.txt')"
 
 sub "(c) 휴지통 파일만 남은 폴더 — 목록을 보여 주고 되묻는다"
-R=$(mkfolder qa_employee01 "$TOK_EMP1" "S26-trash" internal)
+R=$(mkfolder claude_employee01 "$TOK_EMP1" "S26-trash" internal)
 F_TRASH=$(new_id "$(body_of "$R")"); expect "폴더 생성" 201 "$(code_of "$R")"
 printf 'S26 mine\n' > "$WORK/S26-mine.txt"
-R=$(upload qa_employee01 "$TOK_EMP1" "$WORK/S26-mine.txt" internal "$F_TRASH")
+R=$(upload claude_employee01 "$TOK_EMP1" "$WORK/S26-mine.txt" internal "$F_TRASH")
 FILE_MINE=$(uuid_of "$(body_of "$R")"); expect "내 파일 업로드" 201 "$(code_of "$R")"
 printf 'S26 hidden\n' > "$WORK/S26-hidden.txt"
-R=$(upload qa_admin01 "$TOK_ADMIN" "$WORK/S26-hidden.txt" admin-only "$F_TRASH")
+R=$(upload claude_admin01 "$TOK_ADMIN" "$WORK/S26-hidden.txt" admin-only "$F_TRASH")
 FILE_HIDDEN=$(uuid_of "$(body_of "$R")"); expect "안 보이는(admin-only) 파일 업로드" 201 "$(code_of "$R")"
-R=$(call qa_employee01 DELETE "/api/files/$FILE_MINE" "$TOK_EMP1")
+R=$(call claude_employee01 DELETE "/api/files/$FILE_MINE" "$TOK_EMP1")
 expect "내 파일 휴지통으로" 200 "$(code_of "$R")"
-R=$(call qa_admin01 DELETE "/api/files/$FILE_HIDDEN" "$TOK_ADMIN")
+R=$(call claude_admin01 DELETE "/api/files/$FILE_HIDDEN" "$TOK_ADMIN")
 expect "admin-only 파일 휴지통으로" 200 "$(code_of "$R")"
 
-R=$(call qa_employee01 DELETE "/api/folders/$F_TRASH" "$TOK_EMP1")
+R=$(call claude_employee01 DELETE "/api/folders/$F_TRASH" "$TOK_EMP1")
 BODY_EMP="$(body_of "$R")"
-echo "  [qa_employee01] HTTP $(code_of "$R")"; echo "  $BODY_EMP"
+echo "  [claude_employee01] HTTP $(code_of "$R")"; echo "  $BODY_EMP"
 expect "휴지통 파일만 남음 → 400" 400 "$(code_of "$R")"
 expect "코드 folder_has_trashed" 1 "$(printf '%s' "$BODY_EMP" | grep -c 'folder_has_trashed')"
 expect "볼 수 있는 파일 이름은 있다" 1 "$(printf '%s' "$BODY_EMP" | grep -c 'S26-mine.txt')"
 expect "볼 수 없는 파일 이름은 없다" 0 "$(printf '%s' "$BODY_EMP" | grep -c 'S26-hidden.txt')"
 expect "others:true" 1 "$(printf '%s' "$BODY_EMP" | grep -c '"others":true')"
 
-R=$(call qa_admin01 DELETE "/api/folders/$F_TRASH" "$TOK_ADMIN")
+R=$(call claude_admin01 DELETE "/api/folders/$F_TRASH" "$TOK_ADMIN")
 BODY_ADM="$(body_of "$R")"
-echo "  [qa_admin01] HTTP $(code_of "$R")"; echo "  $BODY_ADM"
+echo "  [claude_admin01] HTTP $(code_of "$R")"; echo "  $BODY_ADM"
 expect "Admin 에게도 400(확인 없이는 안 지운다)" 400 "$(code_of "$R")"
 expect "Admin 응답엔 두 이름 모두" 2 \
   "$(( $(printf '%s' "$BODY_ADM" | grep -c 'S26-mine.txt') + $(printf '%s' "$BODY_ADM" | grep -c 'S26-hidden.txt') ))"
 expect "Admin 응답 others:false" 1 "$(printf '%s' "$BODY_ADM" | grep -c '"others":false')"
 
 sub "?move_trashed=1 — 확인하면 루트로 옮기고 폴더를 지운다"
-R=$(call qa_admin01 DELETE "/api/folders/$F_TRASH?move_trashed=1" "$TOK_ADMIN")
+R=$(call claude_admin01 DELETE "/api/folders/$F_TRASH?move_trashed=1" "$TOK_ADMIN")
 echo "  HTTP $(code_of "$R")"; echo "  $(body_of "$R")"
 expect "확인 뒤 200" 200 "$(code_of "$R")"
 expect "폴더가 사라짐" 0 "$(psqlq "SELECT count(*) FROM folders WHERE id = $F_TRASH;")"
@@ -463,15 +471,15 @@ MOVED=$(psqlq "SELECT count(*) FROM files WHERE public_id IN ('$FILE_MINE','$FIL
 expect "두 파일 모두 folder_id NULL · deleted_at 유지" 2 "$MOVED"
 AUD=$(psqlq "SELECT (detail->>'moved_trashed')||'|'||jsonb_array_length(detail->'moved_file_ids')
                FROM audit_logs WHERE action='folder.delete' AND result='allow'
-                AND actor_name='qa_admin01' ORDER BY id DESC LIMIT 1;")
+                AND actor_name='claude_admin01' ORDER BY id DESC LIMIT 1;")
 echo "  감사 folder.delete detail: moved_trashed|moved_file_ids 개수 = $AUD"
 expect "감사 detail moved_trashed=2 · id 2개" "2|2" "$AUD"
 
-R=$(call qa_admin01 GET /api/files/trash "$TOK_ADMIN")
+R=$(call claude_admin01 GET /api/files/trash "$TOK_ADMIN")
 expect "휴지통 목록에 그대로 있다" 1 "$(body_of "$R" | grep -c 'S26-mine.txt')"
 
 sub "(d) 복구 — 루트로 되살아난다"
-R=$(call qa_admin01 POST "/api/files/$FILE_MINE/restore" "$TOK_ADMIN")
+R=$(call claude_admin01 POST "/api/files/$FILE_MINE/restore" "$TOK_ADMIN")
 echo "  HTTP $(code_of "$R")"
 expect "복구 200" 200 "$(code_of "$R")"
 RESTORED=$(psqlq "SELECT coalesce(folder_id::text,'NULL')||'|'||coalesce(deleted_at::text,'NULL')
@@ -502,10 +510,10 @@ expect "사유 모달 마크업 있음"      1 "$(grep -c 'id="reason-dialog"' "
 hr "T-53 (d) 회귀 T-26 — 화면 분리 뒤에도 권한은 서버가"
 # ═════════════════════════════════════════════════════════════
 for p in /trash /users /org /audit; do
-  R=$(call qa_employee01 GET "$p" "$TOK_EMP1")
+  R=$(call claude_employee01 GET "$p" "$TOK_EMP1")
   expect "Employee $p → 403" 403 "$(code_of "$R")"
 done
-R=$(call qa_employee01 GET /settings "$TOK_EMP1")
+R=$(call claude_employee01 GET /settings "$TOK_EMP1")
 expect "Employee /settings → 200" 200 "$(code_of "$R")"
 
 # ═════════════════════════════════════════════════════════════
@@ -514,14 +522,17 @@ hr "T-52 (k) · T-53 (a)(b)(c) — 화면 확인 (Playwright)"
 jar_cookies() { awk '(!/^#/ || /^#HttpOnly_/) && NF>=7 {printf "%s=%s;", $6, $7}' "$1"; }
 
 # 띠를 찍으려면 보는 중이어야 한다.
-R=$(call qa_admin01 POST /api/me/act "$TOK_ADMIN" \
+R=$(call claude_admin01 POST /api/me/act "$TOK_ADMIN" \
   "{\"role\":\"Employee\",\"team_id\":$TEAM_ID}")
 expect "화면 확인용으로 다시 켜기 200" 200 "$(code_of "$R")"
 
 cat > "$WORK/shots.py" <<'PYEOF'
 import json, os, sys
 from playwright.sync_api import sync_playwright
-BASE, UA, CK_ADMIN, CK_EMP, OUT = sys.argv[1:6]
+BASE, UA, OUT = sys.argv[1:4]
+# 세션 쿠키 둘은 표준입력에서 차례로 한 줄씩 — 인자는 ps 에 보인다(R-62 · py_secret)
+CK_ADMIN = sys.stdin.readline().rstrip('\n')
+CK_EMP = sys.stdin.readline().rstrip('\n')
 EXE = os.path.expanduser("~/.cache/ms-playwright/chromium-1234/chrome-linux64/chrome")
 out = {}
 
@@ -578,7 +589,7 @@ with sync_playwright() as p:
         tds = r.query_selector_all("td")
         # 5-A″ — 칸은 「이름 (아이디)」(이름이 없으면 아이디)다. 어느 쪽이든 그 계정의 줄을 고른다.
         cell = tds[1].inner_text().strip() if len(tds) > 1 else ""
-        if cell == "qa_employee02" or cell.endswith("(qa_employee02)"):
+        if cell == "claude_employee02" or cell.endswith("(claude_employee02)"):
             target = r
             break
     # 표는 가로 스크롤 상자(.table-wrap) 안이라 좌표 클릭이 막힐 수 있다 → DOM 클릭을 쓴다.
@@ -612,7 +623,7 @@ with sync_playwright() as p:
         pg.wait_for_timeout(400)
         out["cancel_msg"] = (pg.inner_text("#msg") or "").strip()
     else:
-        out["patch_body"] = "qa_employee02 행을 찾지 못함"
+        out["patch_body"] = "claude_employee02 행을 찾지 못함"
 
     # ── T-53 (b) Employee 에게는 관리 묶음이 닫힌다 ──────────────
     ids = ["nav-admin", "nav-users", "nav-org", "nav-admin-permissions",
@@ -630,13 +641,13 @@ print(json.dumps(out, ensure_ascii=False, indent=2))
 PYEOF
 
 export PATH="$HOME/.local/bin:$PATH"
-if python3 "$WORK/shots.py" "$BASE" "$UA" "$(jar_cookies "$JAR_DIR/qa_admin01.jar")" \
-     "$(jar_cookies "$JAR_DIR/qa_employee01.jar")" "$OUT" > "$OUT/shots.json" 2>"$OUT/shots.err"; then
+CK_ADMIN=$(jar_cookies "$JAR_DIR/claude_admin01.jar"); CK_EMP=$(jar_cookies "$JAR_DIR/claude_employee01.jar")
+if py_secret CK_ADMIN CK_EMP -- python3 "$WORK/shots.py" "$BASE" "$UA" "$OUT" > "$OUT/shots.json" 2>"$OUT/shots.err"; then
   cat "$OUT/shots.json"
   jget() { python3 -c "import json;d=json.load(open('$OUT/shots.json'));v=d.get('$1');print('' if v is None else (json.dumps(v,ensure_ascii=False) if isinstance(v,(dict,list)) else v))"; }
   BANNER="$(jget banner_text)"
   expect "띠에 「으로 보는 중」"          1 "$(printf '%s' "$BANNER" | grep -c '으로 보는 중')"
-  expect "띠에 실제 계정 표시"            1 "$(printf '%s' "$BANNER" | grep -c 'qa_admin01(Admin)')"
+  expect "띠에 실제 계정 표시"            1 "$(printf '%s' "$BANNER" | grep -c 'claude_admin01(Admin)')"
   expect "띠에 「원래대로」 단추"          "True" "$(jget banner_has_button)"
   expect "보는 중 콘솔 오류 0건"          "[]"   "$(jget console_errors_acting)"
   expect "보는 중 관리 묶음 닫힘"          "True" "$(jget acting_admin_group_hidden)"
@@ -667,14 +678,15 @@ hr "T-53 (a) 재인증이 만료돼도 사이드바가 닫히지 않는다"
 # ═════════════════════════════════════════════════════════════
 # 재인증 창을 psql 로 20분 전으로 돌린다 (T-36 이 쓰는 것과 **같은 방법** — 검토 계정의 세션 행만)
 psqlc "UPDATE sessions SET reauth_at = now() - interval '20 minutes' WHERE id = '$SID_ADMIN';"
-echo "  qa_admin01 세션의 reauth_at 을 20분 전으로 (재인증 만료 상태)"
-R=$(call qa_admin01 GET /api/users "$TOK_ADMIN")
+echo "  claude_admin01 세션의 reauth_at 을 20분 전으로 (재인증 만료 상태)"
+R=$(call claude_admin01 GET /api/users "$TOK_ADMIN")
 expect "만료 확인: /api/users → 403 next:reauth" 1 "$(body_of "$R" | grep -c '"next":"reauth"')"
 
 cat > "$WORK/nav.py" <<'PYEOF'
 import json, os, sys
 from playwright.sync_api import sync_playwright
-BASE, UA, CK, OUT = sys.argv[1:5]
+BASE, UA, OUT = sys.argv[1:4]
+CK = sys.stdin.readline().rstrip('\n')   # 세션 쿠키는 표준입력 첫 줄(R-62 · py_secret)
 EXE = os.path.expanduser("~/.cache/ms-playwright/chromium-1234/chrome-linux64/chrome")
 ids = ["nav-admin", "nav-users", "nav-org", "nav-admin-permissions",
        "nav-audit", "nav-trash", "nav-wiki"]
@@ -704,7 +716,8 @@ with sync_playwright() as p:
 print(json.dumps(out, ensure_ascii=False, indent=2))
 PYEOF
 
-if python3 "$WORK/nav.py" "$BASE" "$UA" "$(jar_cookies "$JAR_DIR/qa_admin01.jar")" "$OUT" > "$OUT/nav.json" 2>"$OUT/nav.err"; then
+CK_ADMIN=$(jar_cookies "$JAR_DIR/claude_admin01.jar")
+if py_secret CK_ADMIN -- python3 "$WORK/nav.py" "$BASE" "$UA" "$OUT" > "$OUT/nav.json" 2>"$OUT/nav.err"; then
   cat "$OUT/nav.json"
   njget() { python3 -c "import json;d=json.load(open('$OUT/nav.json'));v=d.get('$1');print('' if v is None else (json.dumps(v,ensure_ascii=False) if isinstance(v,(dict,list)) else v))"; }
   expect "재인증 만료 상태에서도 #nav-admin 열림" "False" "$(njget nav_admin_hidden)"
@@ -720,18 +733,19 @@ fi
 # ═════════════════════════════════════════════════════════════
 hr "T-54 (e) 폴더 삭제 경고 모달 — 목록이 보이나 (Playwright)"
 # ═════════════════════════════════════════════════════════════
-R=$(mkfolder qa_employee01 "$TOK_EMP1" "S26-modal" internal)
+R=$(mkfolder claude_employee01 "$TOK_EMP1" "S26-modal" internal)
 F_MODAL=$(new_id "$(body_of "$R")"); expect "모달 확인용 폴더 생성" 201 "$(code_of "$R")"
 printf 'S26 modal file\n' > "$WORK/S26-modalfile.txt"
-R=$(upload qa_employee01 "$TOK_EMP1" "$WORK/S26-modalfile.txt" internal "$F_MODAL")
+R=$(upload claude_employee01 "$TOK_EMP1" "$WORK/S26-modalfile.txt" internal "$F_MODAL")
 FILE_MODAL=$(uuid_of "$(body_of "$R")"); expect "파일 업로드" 201 "$(code_of "$R")"
-R=$(call qa_employee01 DELETE "/api/files/$FILE_MODAL" "$TOK_EMP1")
+R=$(call claude_employee01 DELETE "/api/files/$FILE_MODAL" "$TOK_EMP1")
 expect "휴지통으로" 200 "$(code_of "$R")"
 
 cat > "$WORK/folder_modal.py" <<'PYEOF'
 import json, os, sys
 from playwright.sync_api import sync_playwright
-BASE, UA, CK, OUT, FOLDER = sys.argv[1:6]   # FOLDER 는 보고용
+BASE, UA, OUT, FOLDER = sys.argv[1:5]   # FOLDER 는 보고용
+CK = sys.stdin.readline().rstrip('\n')   # 세션 쿠키는 표준입력 첫 줄(R-62 · py_secret)
 EXE = os.path.expanduser("~/.cache/ms-playwright/chromium-1234/chrome-linux64/chrome")
 out = {}
 with sync_playwright() as p:
@@ -772,8 +786,8 @@ with sync_playwright() as p:
 print(json.dumps(out, ensure_ascii=False, indent=2))
 PYEOF
 
-COOKIES_EMP=$(awk '(!/^#/ || /^#HttpOnly_/) && NF>=7 {printf "%s=%s;", $6, $7}' "$JAR_DIR/qa_employee01.jar")
-if python3 "$WORK/folder_modal.py" "$BASE" "$UA" "$COOKIES_EMP" "$OUT" "$F_MODAL" > "$OUT/folder_modal.json" 2>"$OUT/folder_modal.err"; then
+COOKIES_EMP=$(awk '(!/^#/ || /^#HttpOnly_/) && NF>=7 {printf "%s=%s;", $6, $7}' "$JAR_DIR/claude_employee01.jar")
+if py_secret COOKIES_EMP -- python3 "$WORK/folder_modal.py" "$BASE" "$UA" "$OUT" "$F_MODAL" > "$OUT/folder_modal.json" 2>"$OUT/folder_modal.err"; then
   cat "$OUT/folder_modal.json"
   DT=$(python3 -c "import json;d=json.load(open('$OUT/folder_modal.json'));print(d.get('dialog_text') or '')")
   expect "경고 모달이 열림" 1 "$(printf '%s' "$DT" | grep -c '휴지통에 있는 파일이 남아 있습니다')"

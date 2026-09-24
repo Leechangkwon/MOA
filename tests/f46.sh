@@ -8,15 +8,16 @@
 #   (g) 린트 · php -l
 #
 # 규칙 (CLAUDE.md 3장)
-#   · **검토 계정(qa_ 접두)만** 쓴다. 시드 계정(admin01 …)은 사용자의 자기 공격 전용이다.
+#   · **검토 계정(claude_ 접두)만** 쓴다. 시드 계정(admin01 …)은 사용자의 자기 공격 전용이다.
 #   · 모든 요청에 `-A "tbox-review/<날짜>"` 를 붙인다.
 #   · 비밀번호·TOTP 비밀은 **필요한 필드만** awk 로 뽑고 변수에만 담는다 (SECURITY R-62).
+#     명령 인자에도 싣지 않는다 — 표준입력으로만 넘긴다(tests/lib/secrets.sh · 점검 봇 R15).
 #
 # ★ 시험 안전 (SECURITY R-73)
 #   ① 최근 10분 감사 로그에 비-qa actor 가 하나라도 있으면 **시작하지 않는다**(종료 코드 3).
 #   ② (f) 는 **바깥으로 나가는 유일한 부분**이다. 주소는 사용자가 실제로 쓰다 막힌 두 개뿐이고
 #      (SharePoint·구글 시트), 각각 **1회씩만** 가져온다. 허용 목록은 이미 관리자가 넣어 두었다.
-#   ③ (f) 가 저장한 파일은 qa_manager01 이 **휴지통으로만** 보낸다. psql 로 지우지 않는다
+#   ③ (f) 가 저장한 파일은 claude_manager01 이 **휴지통으로만** 보낸다. psql 로 지우지 않는다
 #      (30일 보존 규칙, R-73). 되살릴 수 있는 상태로 남는 것이 정상이다.
 #   ④ `fetch_hosts` 표를 한 줄도 바꾸지 않는다.
 #
@@ -32,6 +33,8 @@ DB="tbox_re"
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 # 검토 계정 판정 한 벌(qa_·claude_ — F-71 C). 못 읽으면 사전 검사가 빈 값으로 열리므로 시작하지 않는다.
 . "$ROOT/tests/lib/review_accounts.sh" || { echo "tests/lib/review_accounts.sh 를 읽지 못했다 — 시험을 시작하지 않는다 (R-73)"; exit 3; }
+. "$ROOT/tests/lib/secrets.sh" || { echo "tests/lib/secrets.sh 를 읽지 못했다 — 시험을 시작하지 않는다 (R-62)"; exit 3; }
+. "$ROOT/tests/lib/db_read.sh" || { echo "tests/lib/db_read.sh 를 읽지 못했다 — 시험을 시작하지 않는다 (R-73)"; exit 3; }
 OUT="${1:-$HOME/.claude/ui-shots/f46}"
 JAR_DIR="$(mktemp -d)"
 PASS=0
@@ -65,14 +68,14 @@ expect() {
 # ── 로그인 ────────────────────────────────────────────────────
 # TOTP 코드는 1회성이다(R-45) — 같은 창에서 두 번 쓰면 거부되는 것이 **정상**이라 기다렸다 다시 한다.
 login() {
-  local who="$1" jar="$JAR_DIR/$1.jar" pw sec raw code left out try
+  local who="$1" jar="$JAR_DIR/$1.jar" pw sec raw code left out try body
   pw=$(sudo -n awk -v u="$who" '$1==u{print $3}' /etc/tbox-v2/seed-accounts.txt)
   sec=$(sudo -n awk -v u="$who" '$1==u{print $2}' /etc/tbox-v2/qa-totp.txt)
   for try in 1 2 3; do
-    raw=$(php "$ROOT/scripts/totp_code.php" "$sec")
+    raw=$(totp_now sec)
     code=${raw%%$'\n'*}
-    out=$(curl -s -c "$jar" -A "$UA" -H 'Content-Type: application/json' \
-          -d "{\"username\":\"$who\",\"password\":\"$pw\",\"otp\":\"$code\"}" "$BASE/api/login")
+    printf -v body '{"username":"%s","password":"%s","otp":"%s"}' "$who" "$pw" "$code"
+    out=$(curl_json_secret body -s -c "$jar" -A "$UA" -H 'Content-Type: application/json' "$BASE/api/login")
     case "$out" in
       *'"ok":true'*)
         curl -s -b "$jar" -A "$UA" "$BASE/api/me" \
@@ -95,8 +98,9 @@ body_of() { printf '%s' "$1" | sed '$d'; }
 hr "0. 시험 안전 점검 (SECURITY R-73)"
 # ─────────────────────────────────────────────────────────────
 T0=$(psqlq "SELECT now();")
-NONQA_BEFORE=$(psqlq "SELECT count(*) FROM audit_logs WHERE happened_at > now() - interval '10 minutes' AND actor_name IS NOT NULL AND $REVIEW_NOT_SQL")
-echo "  최근 10분 비-qa 감사 행: $NONQA_BEFORE"
+db_read_var NONQA_BEFORE "$DB" "SELECT count(*) FROM audit_logs WHERE happened_at > now() - interval '10 minutes' AND actor_name IS NOT NULL AND $REVIEW_NOT_SQL" \
+  || { echo "  ✖ 운영 DB 를 읽지 못했다 — 시험을 시작하지 않는다 (R-73 · db_read rc 3)"; exit 3; }
+echo "  최근 10분 비-qa 감사 행: $NONQA_BEFORE (읽기 경로 ${DB_READ_VIA})"
 if [ "${NONQA_BEFORE:-1}" != "0" ]; then
   echo "  ✖ 사용자가 지금 서비스를 쓰고 있다 — 시험을 시작하지 않는다 (종료 3)"
   exit 3
@@ -405,23 +409,23 @@ expect "감사 detail 에 cookie_hops 한 줄"      1 "$(grep -c "'cookie_hops' 
 expect "Audit 예외 목록에 cookie_hops(정수) 등록"  1 "$(grep -c "^        'cookie_hops'," "$ROOT/src/Audit.php")"
 
 # ─────────────────────────────────────────────────────────────
-hr "(f) 실링크 — SharePoint · 구글 시트 (qa_manager01, 각 1회)"
+hr "(f) 실링크 — SharePoint · 구글 시트 (claude_manager01, 각 1회)"
 # ─────────────────────────────────────────────────────────────
-TOK_MGR=$(login qa_manager01) || exit 1
-echo "  qa_manager01 로그인 · csrf 토큰 확보"
+TOK_MGR=$(login claude_manager01) || exit 1
+echo "  claude_manager01 로그인 · csrf 토큰 확보"
 
 FETCHED_IDS=""
 
 # $1 이름 $2 URL → 본문+HTTP 코드를 전역 R 에 담는다
 do_fetch() {
-  curl -s -w '\n%{http_code}' -X POST -b "$JAR_DIR/qa_manager01.jar" -A "$UA" \
+  curl -s -w '\n%{http_code}' -X POST -b "$JAR_DIR/claude_manager01.jar" -A "$UA" \
     -H 'Content-Type: application/json' -H "X-CSRF-Token: $TOK_MGR" \
     -d "{\"url\":\"$1\",\"access_level\":\"team\",\"team_id\":1,\"description\":\"F-46 시험\"}" \
     "$BASE/api/files/fetch"
 }
 
 audit_detail() {
-  psqlq "SELECT detail::text FROM audit_logs WHERE action='file.fetch' AND actor_name='qa_manager01' AND happened_at > '$T0'::timestamptz ORDER BY happened_at DESC LIMIT 1"
+  psqlq "SELECT detail::text FROM audit_logs WHERE action='file.fetch' AND actor_name='claude_manager01' AND happened_at > '$T0'::timestamptz ORDER BY happened_at DESC LIMIT 1"
 }
 
 sub "① SharePoint 「링크가 있는 모든 사용자」 링크 (?e= 붙은 원본)"
@@ -452,7 +456,7 @@ R=$(do_fetch "$SP_URL_FAKE")
 echo "    HTTP $(code_of "$R")"
 echo "    본문 원문: $(body_of "$R")"
 expect "가짜 id → 400" 400 "$(code_of "$R")"
-FAKE_REASON=$(psqlq "SELECT reason FROM audit_logs WHERE action='file.fetch' AND result<>'allow' AND actor_name='qa_manager01' AND happened_at > '$T0'::timestamptz ORDER BY happened_at DESC LIMIT 1")
+FAKE_REASON=$(psqlq "SELECT reason FROM audit_logs WHERE action='file.fetch' AND result<>'allow' AND actor_name='claude_manager01' AND happened_at > '$T0'::timestamptz ORDER BY happened_at DESC LIMIT 1")
 echo "    감사 reason: $FAKE_REASON"
 expect "사유가 needs_login 또는 fetch_failed" 1 \
   "$(case "$FAKE_REASON" in needs_login|fetch_failed) echo 1;; *) echo 0;; esac)"
@@ -475,12 +479,12 @@ printf '%s' "$D" | python3 -c "import json,sys;print('    hops:', json.load(sys.
 hr "정리 — 가져온 파일은 **휴지통으로만** (R-73 · 30일 보존)"
 # ─────────────────────────────────────────────────────────────
 for fid in $FETCHED_IDS; do
-  C=$(curl -s -o /dev/null -w '%{http_code}' -X DELETE -b "$JAR_DIR/qa_manager01.jar" -A "$UA" \
+  C=$(curl -s -o /dev/null -w '%{http_code}' -X DELETE -b "$JAR_DIR/claude_manager01.jar" -A "$UA" \
       -H "X-CSRF-Token: $TOK_MGR" "$BASE/api/files/$fid")
   echo "  DELETE /api/files/$fid → $C"
 done
 expect "가져온 파일이 모두 휴지통에 있다" 0 \
-  "$(psqlq "SELECT count(*) FROM files WHERE uploaded_by=(SELECT id FROM users WHERE username='qa_manager01') AND deleted_at IS NULL AND created_at > '$T0'::timestamptz")"
+  "$(psqlq "SELECT count(*) FROM files WHERE uploaded_by=(SELECT id FROM users WHERE username='claude_manager01') AND deleted_at IS NULL AND created_at > '$T0'::timestamptz")"
 echo "  (psql 로 지우지 않는다 — 휴지통에 남는 것이 정상이다)"
 
 # ─────────────────────────────────────────────────────────────
@@ -501,7 +505,7 @@ for f in $CHANGED; do
 done
 expect "php -l 실패 0" 0 "$LINT_FAIL"
 
-NONQA_AFTER=$(psqlq "SELECT count(*) FROM audit_logs WHERE happened_at > '$T0'::timestamptz AND actor_name IS NOT NULL AND $REVIEW_NOT_SQL")
+NONQA_AFTER=$(db_read "$DB" "SELECT count(*) FROM audit_logs WHERE happened_at > '$T0'::timestamptz AND actor_name IS NOT NULL AND $REVIEW_NOT_SQL")
 echo "  이 실행 중 비-qa 감사 행: $NONQA_AFTER (0 이어야 정상)"
 
 rm -rf "$JAR_DIR"

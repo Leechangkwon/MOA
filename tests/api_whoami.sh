@@ -16,13 +16,13 @@
 #       php -l (public/index.php · src/handlers/api_whoami.php) · bash -n.
 #
 # ★ 토큰 항목의 조건 (a)(b)(d 성공 쪽)
-#   진짜 토큰은 `.env` 의 `API_TOKEN_USER` 계정으로 동작한다. 그 귀속이 **검토 계정(qa_)이
+#   진짜 토큰은 `.env` 의 `API_TOKEN_USER` 계정으로 동작한다. 그 귀속이 **검토 계정(qa_·claude_)이
 #   아니면** 이 항목들을 돌리지 않는다(SKIP) — 시드·운영 계정으로 요청을 보내면 감사 로그에서
 #   사용자의 자기 공격과 검토 요청이 갈라지지 않는다(CLAUDE.md 3장).
 #   토큰 값은 변수로만 다루고 **어디에도 출력하지 않는다**(SECURITY R-62 · PRD S-09-11).
 #
 # 규칙 (CLAUDE.md 3장) — tests/api_read.sh 와 같다
-#   · 검토 계정(qa_ 접두)만. 시드 계정(admin01 …)은 사용자의 자기 공격 전용이다.
+#   · 검토 계정(claude_ 접두)만. 시드 계정(admin01 …)은 사용자의 자기 공격 전용이다.
 #   · 모든 요청에 `-A "tbox-review/<날짜>"`.
 #   · 운영 DB·.env·nginx·php-fpm 에 손대지 않는다. .env 에서 읽는 것은 API_TOKEN_USER **계정 이름**과
 #     API_TOKEN **값(변수로만)** 뿐이고, 고치지 않는다.
@@ -39,6 +39,8 @@ set -u
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 # 검토 계정 판정 한 벌(qa_·claude_ — F-71 C). 못 읽으면 사전 검사가 빈 값으로 열리므로 시작하지 않는다.
 . "$ROOT/tests/lib/review_accounts.sh" || { echo "tests/lib/review_accounts.sh 를 읽지 못했다 — 시험을 시작하지 않는다 (R-73)"; exit 3; }
+. "$ROOT/tests/lib/secrets.sh" || { echo "tests/lib/secrets.sh 를 읽지 못했다 — 시험을 시작하지 않는다 (R-62)"; exit 3; }
+. "$ROOT/tests/lib/db_read.sh" || { echo "tests/lib/db_read.sh 를 읽지 못했다 — 시험을 시작하지 않는다 (R-73)"; exit 3; }
 BASE="http://127.0.0.1:8082/tbox"
 UA="tbox-review/$(date +%F)"
 DB="tbox_re"
@@ -81,8 +83,9 @@ echo "루트 파티션 여유: $(df -Ph / | awk 'NR==2{print $4}') (${avail_kb}K
 HAVE_PSQL=0
 if psqlq "SELECT 1" >/dev/null 2>&1; then HAVE_PSQL=1; fi
 if [ "$HAVE_PSQL" -eq 1 ]; then
-  BUSY=$(psqlq "SELECT count(*) FROM audit_logs WHERE happened_at > now() - interval '10 minutes' AND actor_name IS NOT NULL AND $REVIEW_NOT_SQL")
-  echo "최근 10분 비-qa 감사 행: ${BUSY:-?}"
+  db_read_var BUSY "$DB" "SELECT count(*) FROM audit_logs WHERE happened_at > now() - interval '10 minutes' AND actor_name IS NOT NULL AND $REVIEW_NOT_SQL" \
+    || { echo "운영 DB 를 읽지 못했다 — 시험을 시작하지 않는다 (R-73 · db_read rc 3)"; exit 3; }
+  echo "최근 10분 비-qa 감사 행: ${BUSY:-?} (읽기 경로 ${DB_READ_VIA})"
   if [ "${BUSY:-0}" -gt 0 ] 2>/dev/null; then
     echo "사용자가 지금 서비스를 쓰고 있다 — 시험을 시작하지 않는다 (SECURITY R-73 ①)"; exit 3
   fi
@@ -105,22 +108,23 @@ if [ "$USE_TOKEN" -eq 1 ]; then
   echo "→ 귀속이 검토 계정이다. (a)(b) 와 (d) 성공 쪽을 실행한다. (토큰 값은 출력하지 않는다)"
 else
   API_TOKEN=''
-  echo "→ 귀속이 검토 계정(qa_)이 아니다 — (a)(b)·(d) 성공 쪽은 **SKIP**. Fable 이 검토에서 귀속을 바꿔 돌린다."
+  echo "→ 귀속이 검토 계정(qa_·claude_)이 아니다 — (a)(b)·(d) 성공 쪽은 **SKIP**. Fable 이 검토에서 귀속을 바꿔 돌린다."
 fi
 # 어떤 서버에서도 맞을 수 없는 고정 문자열. (c) 의 「틀린 토큰」과 (e) 에서 쓴다.
 WRONG_TOKEN='wrong-token-0000000000000000000000000000000000'
 
 # ─── 로그인 헬퍼 (tests/api_read.sh 와 같다) ─────────────────────
 login() {
-  local who="$1" jar="$JAR_DIR/$1.jar" pw sec raw code left out try
+  local who="$1" jar="$JAR_DIR/$1.jar" pw sec raw code left out try body
   pw=$(sudo -n awk -v u="$who" '$1==u{print $3}' /etc/tbox-v2/seed-accounts.txt 2>/dev/null)
   sec=$(sudo -n awk -v u="$who" '$1==u{print $2}' /etc/tbox-v2/qa-totp.txt 2>/dev/null)
   [ -n "$pw" ] && [ -n "$sec" ] || return 2
   for try in 1 2 3; do
-    raw=$(php "$ROOT/scripts/totp_code.php" "$sec")
+    raw=$(totp_now sec)
     code=${raw%%$'\n'*}
-    out=$(curl -s -c "$jar" -A "$UA" -H 'Content-Type: application/json' \
-          -d "{\"username\":\"$who\",\"password\":\"$pw\",\"otp\":\"$code\"}" "$BASE/api/login")
+    # 비밀번호가 든 본문은 인자가 아니라 표준입력으로 보낸다(R-62 · tests/lib/secrets.sh). 보내는 바이트는 같다.
+    printf -v body '{"username":"%s","password":"%s","otp":"%s"}' "$who" "$pw" "$code"
+    out=$(curl_json_secret body -s -c "$jar" -A "$UA" -H 'Content-Type: application/json' "$BASE/api/login")
     case "$out" in
       *'"ok":true'*)
         curl -s -b "$jar" -A "$UA" "$BASE/api/me" \
@@ -138,13 +142,13 @@ login() {
 # ─── 준비: 세션 하나 (c)(e) 용, 그리고 귀속 계정 세션 (b) 용 ─────
 hr "준비 — 검토 계정 세션"
 
-EMP_CSRF=$(login qa_employee01)
-if [ -n "${EMP_CSRF:-}" ]; then note "qa_employee01 세션 확보"; else note "qa_employee01 로그인 실패 — (c) 세션 항목·(e) /api/me 회귀는 SKIP 된다"; fi
+EMP_CSRF=$(login claude_employee01)
+if [ -n "${EMP_CSRF:-}" ]; then note "claude_employee01 세션 확보"; else note "claude_employee01 로그인 실패 — (c) 세션 항목·(e) /api/me 회귀는 SKIP 된다"; fi
 
 # (b) 는 **토큰 귀속 계정 그 자신**의 세션이어야 한다.
 OWN_CSRF=''
 if [ "$USE_TOKEN" -eq 1 ]; then
-  if [ "$TOKEN_USER" = "qa_employee01" ]; then
+  if [ "$TOKEN_USER" = "claude_employee01" ]; then
     OWN_CSRF="${EMP_CSRF:-}"
   else
     OWN_CSRF=$(login "$TOKEN_USER")
@@ -155,10 +159,10 @@ fi
 # ─── (a) 토큰으로 whoami — 키가 정확히 넷 ────────────────────────
 hr "(a) 토큰으로 GET /api/whoami"
 if [ "$USE_TOKEN" -eq 0 ]; then
-  skip "(a)" "토큰 귀속이 검토 계정(qa_)이 아님 — 값은 읽지 않았다"
+  skip "(a)" "토큰 귀속이 검토 계정(qa_·claude_)이 아님 — 값은 읽지 않았다"
 else
   T0=$(mark)
-  OUT=$(curl -s -w '\n%{http_code}' -A "$UA" -H "X-API-Token: $API_TOKEN" "$BASE/api/whoami")
+  OUT=$(curl_hdr_secret X-API-Token API_TOKEN -s -w '\n%{http_code}' -A "$UA" "$BASE/api/whoami")
   CODE=$(code_of "$OUT"); BODY=$(body_of "$OUT")
   printf '%s' "$BODY" > "$WORK/a.json"
   echo "  응답: $BODY"
@@ -183,7 +187,7 @@ fi
 # ─── (b) upload_levels 는 /api/me 와 같은 함수다 ─────────────────
 hr "(b) upload_levels == 같은 계정 세션 GET /api/me 의 값 (원소·순서)"
 if [ "$USE_TOKEN" -eq 0 ]; then
-  skip "(b)" "토큰 귀속이 검토 계정(qa_)이 아님"
+  skip "(b)" "토큰 귀속이 검토 계정(qa_·claude_)이 아님"
 elif [ -z "${OWN_CSRF:-}" ]; then
   skip "(b)" "귀속 계정($TOKEN_USER) 세션 없음"
 else
@@ -205,10 +209,10 @@ expect "헤더 없음 상태" "401" "$(code_of "$OUT")"
 expect "헤더 없음 문구" '{"error":"X-API-Token 헤더가 없습니다"}' "$(body_of "$OUT")"
 
 if [ -z "${EMP_CSRF:-}" ]; then
-  skip "(c) 세션 쿠키만" "qa_employee01 세션 없음"
+  skip "(c) 세션 쿠키만" "claude_employee01 세션 없음"
   SESSION_TRIED=0
 else
-  OUT=$(curl -s -w '\n%{http_code}' -b "$JAR_DIR/qa_employee01.jar" -A "$UA" "$BASE/api/whoami")
+  OUT=$(curl -s -w '\n%{http_code}' -b "$JAR_DIR/claude_employee01.jar" -A "$UA" "$BASE/api/whoami")
   echo "  세션 쿠키만 → [$(code_of "$OUT")] $(body_of "$OUT")"
   expect "세션 쿠키만 상태(토큰 전용이라 세션으로 열리지 않는다)" "401" "$(code_of "$OUT")"
   expect "세션 쿠키만 문구" '{"error":"X-API-Token 헤더가 없습니다"}' "$(body_of "$OUT")"
@@ -239,9 +243,9 @@ fi
 # ─── (e) 회귀 ────────────────────────────────────────────────────
 hr "(e) 회귀 — /api/me 불변 · 토큰은 다른 창구를 열지 못한다 · 린트"
 if [ -z "${EMP_CSRF:-}" ]; then
-  skip "(e) /api/me 키 집합" "qa_employee01 세션 없음"
+  skip "(e) /api/me 키 집합" "claude_employee01 세션 없음"
 else
-  curl -s -b "$JAR_DIR/qa_employee01.jar" -A "$UA" "$BASE/api/me" > "$WORK/e_me.json"
+  curl -s -b "$JAR_DIR/claude_employee01.jar" -A "$UA" "$BASE/api/me" > "$WORK/e_me.json"
   # Employee 세션 기준 키 집합 — can_fetch 가 false 라 fetch_hosts_public 는 애초에 없다.
   # F-66 (2026-09-22) 으로 `can_issue_tokens`·`token_scopes` 둘이 늘었다 (ARCH 4.7 「GET /api/me」).
   expect "세션 /api/me 키 집합 (F-66: can_issue_tokens·token_scopes 추가)" \
@@ -253,7 +257,7 @@ if [ "$USE_TOKEN" -eq 1 ]; then TOK="$API_TOKEN"; note "진짜 토큰으로 확�
 else TOK="$WRONG_TOKEN"; note "귀속이 검토 계정이 아니라 **틀린 토큰**으로 확인한다 — 이 항목이 보는 것은 「헤더를 아예 읽지 않는가」다"; fi
 
 T1=$(mark)
-OUT=$(curl -s -w '\n%{http_code}' -A "$UA" -H "X-API-Token: $TOK" "$BASE/api/users")
+OUT=$(curl_hdr_secret X-API-Token TOK -s -w '\n%{http_code}' -A "$UA" "$BASE/api/users")
 echo "  GET /api/users → [$(code_of "$OUT")] $(body_of "$OUT")"
 expect "GET /api/users 상태" "401" "$(code_of "$OUT")"
 expect "GET /api/users 문구(세션 경로 — 헤더를 읽지 않는다)" '{"error":"로그인이 필요합니다"}' "$(body_of "$OUT")"
@@ -281,7 +285,7 @@ expect "bash -n (시험 스크립트 둘)" "0" "$SHBAD"
 hr "결과"
 printf '통과 %d · 실패 %d · 건너뜀/미검증 %d\n' "$PASS" "$FAIL" "$SKIP"
 if [ "$USE_TOKEN" -eq 0 ]; then
-  echo "(a)(b) 와 (d) 성공 쪽은 토큰 귀속이 검토 계정(qa_)이 아니라 실행하지 않았다 — **미검증**이다."
+  echo "(a)(b) 와 (d) 성공 쪽은 토큰 귀속이 검토 계정(qa_·claude_)이 아니라 실행하지 않았다 — **미검증**이다."
 fi
 [ "$FAIL" -eq 0 ] || exit 1
 exit 0

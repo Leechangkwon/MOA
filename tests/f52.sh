@@ -1,16 +1,17 @@
 #!/usr/bin/env bash
 # tests/f52.sh — F-52 수락 기준 실행 (PRD 12.2 T-64)
 #   (a) 단위   — Auth::nextStep · mfaRequired · mfaRecommended 를 배열 입력으로 (역할 4종 × 켜짐/꺼짐)
-#   (b) 직원   — qa_employee01 을 끈 상태로: next null · /api/files 200 · 홈 권장 카드 · 「나중에」 · /settings 문구
-#   (c) 관리자 — qa_admin01 을 끈 상태로: next mfa_setup · /api/files 403 · 감사 auth.gate · 홈 강제 상자
+#   (b) 직원   — claude_employee01 을 끈 상태로: next null · /api/files 200 · 홈 권장 카드 · 「나중에」 · /settings 문구
+#   (c) 관리자 — claude_admin01 을 끈 상태로: next mfa_setup · /api/files 403 · 감사 auth.gate · 홈 강제 상자
 #   (d) 순차 2단계 — 끄면 코드 없이 로그인 200, 켜면 코드 없이 401 mfa_required ((b) 앞뒤에서)
 #   (e) 문구   — 화면·도움말·README·위키에 「모든 역할」 0건
 #   (f) 정적   — 린트 0 · php -l · wiki JSON 파싱 · 비-qa 감사 0 · 끝난 뒤 두 계정 mfa_enabled = t
 #
 # 규칙 (CLAUDE.md 3장)
-#   · **검토 계정은 qa_employee01 · qa_admin01 둘만** 쓴다. 시드 계정(admin01 …)은 사용자의 자기 공격 전용이다.
+#   · **검토 계정은 claude_employee01 · claude_admin01 둘만** 쓴다. 시드 계정(admin01 …)은 사용자의 자기 공격 전용이다.
 #   · 모든 요청에 `-A "tbox-review/<날짜>"` 를 붙인다.
 #   · 비밀번호·TOTP 비밀은 **변수에만** 담는다 — 화면·파일에 찍지 않는다 (SECURITY R-62).
+#     명령 인자에도 싣지 않는다 — 표준입력·0600 임시 파일로만 넘긴다(tests/lib/secrets.sh · 점검 봇 R15 · C①).
 #
 # ★ 시험 안전 (SECURITY R-73)
 #   ① 최근 10분 감사 로그에 비-qa actor 가 하나라도 있으면 **시작하지 않는다**(종료 코드 3).
@@ -31,14 +32,18 @@ DB="tbox_re"
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 # 검토 계정 판정 한 벌(qa_·claude_ — F-71 C). 못 읽으면 사전 검사가 빈 값으로 열리므로 시작하지 않는다.
 . "$ROOT/tests/lib/review_accounts.sh" || { echo "tests/lib/review_accounts.sh 를 읽지 못했다 — 시험을 시작하지 않는다 (R-73)"; exit 3; }
+. "$ROOT/tests/lib/secrets.sh" || { echo "tests/lib/secrets.sh 를 읽지 못했다 — 시험을 시작하지 않는다 (R-62)"; exit 3; }
+. "$ROOT/tests/lib/db_read.sh" || { echo "tests/lib/db_read.sh 를 읽지 못했다 — 시험을 시작하지 않는다 (R-73)"; exit 3; }
 OUT="${1:-$HOME/.claude/ui-shots/f52}"
 JAR_DIR="$(mktemp -d)"
+# JAR_DIR(0700)은 쿠키 jar 폴더다 — 어떻게 끝나도 지운다(trap 에 exit 가 없어 종료 코드는 그대로)
+trap 'rm -rf "$JAR_DIR"' EXIT
 PASS=0
 FAIL=0
 . "$ROOT/tests/lib/common.sh"   # result_line (점검 봇 1-A A-3) — 셸 설정을 바꾸지 않는다
 
-EMP="qa_employee01"
-ADM="qa_admin01"
+EMP="claude_employee01"
+ADM="claude_admin01"
 TOTP_FILE="/etc/tbox-v2/qa-totp.txt"
 SEED_FILE="/etc/tbox-v2/seed-accounts.txt"
 
@@ -78,34 +83,41 @@ mfa_on() { psqlq "SELECT mfa_enabled FROM users WHERE username='$1'"; }
 
 # 지금 코드 — 남은 시간이 3초 미만이면 다음 창까지 기다린다
 now_code() {
-  local raw left
-  raw=$(php "$ROOT/scripts/totp_code.php" "$1")
+  local raw left s1="$1"
+  raw=$(totp_now s1)
   left=$(printf '%s' "$raw" | sed -n 's/^남은 시간: \([0-9]*\)초.*/\1/p')
   [ -n "$left" ] || left=30
   if [ "$left" -lt 3 ]; then
     sleep $((left + 1))
-    raw=$(php "$ROOT/scripts/totp_code.php" "$1")
+    raw=$(totp_now s1)
   fi
   printf '%s\n' "$raw" | head -1
 }
 
 # 다음 창의 코드 — TOTP 코드는 1회성(R-45)이라 같은 창에서 두 번 쓰면 거부되는 것이 **정상**이다
 next_code() {
-  local raw left
-  raw=$(php "$ROOT/scripts/totp_code.php" "$1")
+  local raw left s1="$1"
+  raw=$(totp_now s1)
   left=$(printf '%s' "$raw" | sed -n 's/^남은 시간: \([0-9]*\)초.*/\1/p')
   [ -n "$left" ] || left=30
   printf '  · 다음 코드 창까지 %s초 기다림 (코드 1회성 R-45)\n' "$left" >&2
   sleep $((left + 1))
-  raw=$(php "$ROOT/scripts/totp_code.php" "$1")
+  raw=$(totp_now s1)
   printf '%s\n' "$raw" | head -1
 }
 
 # qa-totp.txt 의 한 계정 비밀을 새 값으로 (다른 시험이 이 파일로 로그인한다)
-save_secret() {  # $1 계정  $2 새 비밀
+#   $2 = 새 비밀이 든 **변수 이름**(값이 아니다). 값은 py_secret 이 표준입력으로만 sudo awk 에 준다 —
+#   `awk -v s=값` 이면 ps 와 auth.log 의 COMMAND= 에 새 비밀이 남는다(점검 봇 C① · R-62).
+#   빈 값·줄바꿈(py_secret rc 90)·base32 가 아닌 값(awk rc 2)·대상 계정 줄이 1개가 아님(awk rc 3)이면
+#   install 을 부르지 않는다 — 빈 값으로 qa-totp.txt 를 덮어쓰는 사고를 막는다.
+save_secret() {  # $1 계정  $2 새 비밀이 든 변수 이름
   local tmp
   tmp=$(mktemp)
-  if sudo -n awk -v u="$1" -v s="$2" '$1==u{$2=s} {print}' "$TOTP_FILE" > "$tmp" \
+  if py_secret "$2" -- sudo -n awk -v u="$1" '
+        BEGIN { if ((getline s < "/dev/stdin") <= 0 || s !~ /^[A-Z2-7]+$/) { bad = 1; exit 2 } }
+        $1 == u { $2 = s; n++ } { print }
+        END { if (bad) exit 2; if (n != 1) exit 3 }' "$TOTP_FILE" > "$tmp" \
      && sudo -n install -o root -g root -m 600 "$tmp" "$TOTP_FILE"; then
     rm -f "$tmp"
     echo "  · $TOTP_FILE 의 $1 비밀을 새 값으로 갱신했다 (값은 찍지 않는다)"
@@ -118,11 +130,11 @@ save_secret() {  # $1 계정  $2 새 비밀
 
 # 로그인 → csrf 토큰을 찍는다. 그 계정의 2단계 인증이 **꺼져 있으면 코드 없이** 보낸다.
 login() {  # $1 계정
-  local who="$1" jar="$JAR_DIR/$1.jar" pw sec code out try
+  local who="$1" jar="$JAR_DIR/$1.jar" pw sec code out try body
   pw=$(qa_password "$who")
   if [ "$(mfa_on "$who")" != "t" ]; then
-    out=$(curl -s -c "$jar" -A "$UA" -H 'Content-Type: application/json' \
-          -d "{\"username\":\"$who\",\"password\":\"$pw\"}" "$BASE/api/login")
+    printf -v body '{"username":"%s","password":"%s"}' "$who" "$pw"
+    out=$(curl_json_secret body -s -c "$jar" -A "$UA" -H 'Content-Type: application/json' "$BASE/api/login")
     case "$out" in
       *'"ok":true'*)
         curl -s -b "$jar" -A "$UA" "$BASE/api/me" \
@@ -135,8 +147,8 @@ login() {  # $1 계정
   sec=$(qa_secret "$who")
   for try in 1 2 3; do
     code=$(now_code "$sec")
-    out=$(curl -s -c "$jar" -A "$UA" -H 'Content-Type: application/json' \
-          -d "{\"username\":\"$who\",\"password\":\"$pw\",\"otp\":\"$code\"}" "$BASE/api/login")
+    printf -v body '{"username":"%s","password":"%s","otp":"%s"}' "$who" "$pw" "$code"
+    out=$(curl_json_secret body -s -c "$jar" -A "$UA" -H 'Content-Type: application/json' "$BASE/api/login")
     case "$out" in
       *'"ok":true'*)
         curl -s -b "$jar" -A "$UA" "$BASE/api/me" \
@@ -144,8 +156,8 @@ login() {  # $1 계정
         return 0 ;;
     esac
     code=$(next_code "$sec")
-    out=$(curl -s -c "$jar" -A "$UA" -H 'Content-Type: application/json' \
-          -d "{\"username\":\"$who\",\"password\":\"$pw\",\"otp\":\"$code\"}" "$BASE/api/login")
+    printf -v body '{"username":"%s","password":"%s","otp":"%s"}' "$who" "$pw" "$code"
+    out=$(curl_json_secret body -s -c "$jar" -A "$UA" -H 'Content-Type: application/json' "$BASE/api/login")
     case "$out" in
       *'"ok":true'*)
         curl -s -b "$jar" -A "$UA" "$BASE/api/me" \
@@ -175,27 +187,28 @@ reenable_mfa() {  # $1 계정
     echo "  ! $who confirm 실패: HTTP $(code_of "$out") $(body_of "$out")"
     return 1
   fi
-  save_secret "$who" "$new" || return 1
+  save_secret "$who" new || return 1
   echo "  · $who 의 2단계 인증을 다시 켰다 (HTTP 200)"
   return 0
 }
 
 # 2단계 인증을 **끈다** — 현재 비밀번호 + 지금 코드
 disable_mfa() {  # $1 계정  $2 csrf
-  local who="$1" tok="$2" jar="$JAR_DIR/$1.jar" pw sec code
+  local who="$1" tok="$2" jar="$JAR_DIR/$1.jar" pw sec code body
   pw=$(qa_password "$who"); sec=$(qa_secret "$who")
   code=$(next_code "$sec")
-  curl -s -w '\n%{http_code}' -b "$jar" -A "$UA" -H 'Content-Type: application/json' \
-    -H "X-CSRF-Token: $tok" -d "{\"current_password\":\"$pw\",\"otp\":\"$code\"}" \
-    "$BASE/api/me/mfa/disable"
+  printf -v body '{"current_password":"%s","otp":"%s"}' "$pw" "$code"
+  curl_json_secret body -s -w '\n%{http_code}' -b "$jar" -A "$UA" -H 'Content-Type: application/json' \
+    -H "X-CSRF-Token: $tok" "$BASE/api/me/mfa/disable"
 }
 
 # ─────────────────────────────────────────────────────────────
 hr "0. 시험 안전 점검 (SECURITY R-73)"
 # ─────────────────────────────────────────────────────────────
 T0=$(psqlq "SELECT now();")
-NONQA_BEFORE=$(psqlq "SELECT count(*) FROM audit_logs WHERE happened_at > now() - interval '10 minutes' AND actor_name IS NOT NULL AND $REVIEW_NOT_SQL")
-echo "  최근 10분 비-qa 감사 행: $NONQA_BEFORE"
+db_read_var NONQA_BEFORE "$DB" "SELECT count(*) FROM audit_logs WHERE happened_at > now() - interval '10 minutes' AND actor_name IS NOT NULL AND $REVIEW_NOT_SQL" \
+  || { echo "  ✖ 운영 DB 를 읽지 못했다 — 시험을 시작하지 않는다 (R-73 · db_read rc 3)"; exit 3; }
+echo "  최근 10분 비-qa 감사 행: $NONQA_BEFORE (읽기 경로 ${DB_READ_VIA})"
 if [ "${NONQA_BEFORE:-1}" != "0" ]; then
   echo "  ✖ 사용자가 지금 서비스를 쓰고 있다 — 시험을 시작하지 않는다 (종료 3)"
   exit 3
@@ -261,8 +274,8 @@ ETOK=$(login "$EMP") || { echo "  ✖ $EMP 로그인 실패 — (b) 를 건너�
 if [ -n "$ETOK" ]; then
   sub "① (d) 2단계 인증이 **켜진** 상태에서 코드 없이 로그인 → 401 mfa_required"
   PW=$(qa_password "$EMP")
-  R=$(curl -s -w '\n%{http_code}' -A "$UA" -H 'Content-Type: application/json' \
-      -d "{\"username\":\"$EMP\",\"password\":\"$PW\"}" "$BASE/api/login")
+  printf -v LBODY '{"username":"%s","password":"%s"}' "$EMP" "$PW"
+  R=$(curl_json_secret LBODY -s -w '\n%{http_code}' -A "$UA" -H 'Content-Type: application/json' "$BASE/api/login")
   expect "켜진 상태 · 코드 없는 로그인 401" 401 "$(code_of "$R")"
   expect "본문 mfa_required true" "true" "$(body_of "$R" | jget mfa_required)"
 
@@ -286,8 +299,8 @@ if [ -n "$ETOK" ]; then
 
   sub "⑤ (d) 끈 뒤 코드 **없이** 로그인 200 + 응답에 mfa_recommended"
   curl -s -o /dev/null -b "$EJAR" -A "$UA" -X POST -H "X-CSRF-Token: $ETOK" "$BASE/api/logout"
-  R=$(curl -s -w '\n%{http_code}' -c "$EJAR" -A "$UA" -H 'Content-Type: application/json' \
-      -d "{\"username\":\"$EMP\",\"password\":\"$PW\"}" "$BASE/api/login")
+  printf -v LBODY '{"username":"%s","password":"%s"}' "$EMP" "$PW"
+  R=$(curl_json_secret LBODY -s -w '\n%{http_code}' -c "$EJAR" -A "$UA" -H 'Content-Type: application/json' "$BASE/api/login")
   expect "코드 없는 로그인 200"          200     "$(code_of "$R")"
   expect "로그인 응답 next = null"       "null"  "$(body_of "$R" | jget next)"
   expect "로그인 응답 mfa_required false" "false" "$(body_of "$R" | jget mfa_required)"
@@ -302,7 +315,8 @@ export PATH="$HOME/.local/bin:$PATH"
 
 cat > "$OUT/b-screens.py" <<'PY'
 import json, sys
-base, ua, who, pw, otp, shots = sys.argv[1:7]
+base, ua, who, otp, shots = sys.argv[1:6]
+pw = sys.stdin.readline().rstrip('\n')   # 비밀번호는 표준입력 첫 줄(py_secret) — 명령 인자에 싣지 않는다(R-62)
 try:
     from playwright.sync_api import sync_playwright
 except Exception as e:
@@ -398,7 +412,8 @@ PY
 
 SKIP_B_SCREENS=0
 if [ -n "${ETOK:-}" ]; then
-  python3 "$OUT/b-screens.py" "$BASE" "$UA" "$EMP" "$(qa_password "$EMP")" "-" "$OUT/shots" > "$OUT/b-screens.json" 2>&1
+  EMP_PW=$(qa_password "$EMP")
+  py_secret EMP_PW -- python3 "$OUT/b-screens.py" "$BASE" "$UA" "$EMP" "-" "$OUT/shots" > "$OUT/b-screens.json" 2>&1
   sed 's/^/    /' "$OUT/b-screens.json"
   if grep -q PLAYWRIGHT_MISSING "$OUT/b-screens.json"; then
     echo "  ! playwright 가 없어 (b) 화면을 실행하지 못했다 — 미검증"
@@ -450,7 +465,8 @@ fi
 
 cat > "$OUT/b-after.py" <<'PY'
 import json, sys
-base, ua, who, pw, otp, shots = sys.argv[1:7]
+base, ua, who, otp, shots = sys.argv[1:6]
+pw = sys.stdin.readline().rstrip('\n')   # 비밀번호는 표준입력 첫 줄(py_secret) — 명령 인자에 싣지 않는다(R-62)
 try:
     from playwright.sync_api import sync_playwright
 except Exception as e:
@@ -482,8 +498,10 @@ PY
 
 if [ "$SKIP_B_SCREENS" = "0" ]; then
   sub "켠 뒤 홈에 카드가 없다 (Playwright)"
-  ACODE=$(next_code "$(qa_secret "$EMP")")
-  python3 "$OUT/b-after.py" "$BASE" "$UA" "$EMP" "$(qa_password "$EMP")" "$ACODE" "$OUT/shots" > "$OUT/b-after.json" 2>&1
+  EMP_SEC=$(qa_secret "$EMP")
+  ACODE=$(next_code "$EMP_SEC")
+  EMP_PW=$(qa_password "$EMP")
+  py_secret EMP_PW -- python3 "$OUT/b-after.py" "$BASE" "$UA" "$EMP" "$ACODE" "$OUT/shots" > "$OUT/b-after.json" 2>&1
   sed 's/^/    /' "$OUT/b-after.json"
   AV=$(python3 -c "
 import json
@@ -527,7 +545,8 @@ hr "(c) 화면 — 홈에 강제 상자, 권장 카드는 없다 (Playwright 390
 # ─────────────────────────────────────────────────────────────
 cat > "$OUT/c-screens.py" <<'PY'
 import json, sys
-base, ua, who, pw, shots = sys.argv[1:6]
+base, ua, who, shots = sys.argv[1:5]
+pw = sys.stdin.readline().rstrip('\n')   # 비밀번호는 표준입력 첫 줄(py_secret) — 명령 인자에 싣지 않는다(R-62)
 try:
     from playwright.sync_api import sync_playwright
 except Exception as e:
@@ -570,7 +589,8 @@ with sync_playwright() as p:
 PY
 
 if [ -n "${ATOK:-}" ] && [ "$SKIP_B_SCREENS" = "0" ]; then
-  python3 "$OUT/c-screens.py" "$BASE" "$UA" "$ADM" "$(qa_password "$ADM")" "$OUT/shots" > "$OUT/c-screens.json" 2>&1
+  ADM_PW=$(qa_password "$ADM")
+  py_secret ADM_PW -- python3 "$OUT/c-screens.py" "$BASE" "$UA" "$ADM" "$OUT/shots" > "$OUT/c-screens.json" 2>&1
   sed 's/^/    /' "$OUT/c-screens.json"
   cq() { python3 -c "
 import json,sys
@@ -643,7 +663,7 @@ expect "wiki JSON 4파일 파싱 실패 0" 0 "$JSON_FAIL"
 JSBAD=$(grep -cE 'innerHTML|outerHTML|document\.write' "$ROOT/public/assets/app.js"); JSBAD=${JSBAD:-0}
 expect "app.js 에 innerHTML·document.write 0건" 0 "$JSBAD"
 
-NONQA_AFTER=$(psqlq "SELECT count(*) FROM audit_logs WHERE happened_at > '$T0'::timestamptz AND actor_name IS NOT NULL AND $REVIEW_NOT_SQL")
+NONQA_AFTER=$(db_read "$DB" "SELECT count(*) FROM audit_logs WHERE happened_at > '$T0'::timestamptz AND actor_name IS NOT NULL AND $REVIEW_NOT_SQL")
 echo "  이 실행 중 비-qa 감사 행: $NONQA_AFTER (0 이어야 정상)"
 expect "비-qa 감사 행 0" 0 "$NONQA_AFTER"
 

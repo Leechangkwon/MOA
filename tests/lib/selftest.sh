@@ -5,6 +5,9 @@
 #   ① 한국어 합계 다섯 변형   ② 파이썬 네 형식   ③ 정적 「결과:」·RESULT 줄
 #   ④ rc 와 합계가 어긋나면 더 나쁜 쪽(실패) + 형식 위반   ⑤ ③ 미검증(필수 SKIP·rc 3·4·known_fail)
 #   ⑥ 가림·잡음 견본   ⑦ common.sh 함수   ⑧ run.sh 흉내 저장소(임시 폴더, 흉내 git — 실제 커밋 0)
+#   ⑨ secrets.sh — 가짜 비밀이 명령 인자·/proc/*/cmdline 에 0, 표준입력으로만 감(가짜 curl·php·python3 심)
+#   ⑩ db_read.sh — ro → sudo 폴백 → rc 3, 실패를 0 으로 읽지 않음, 두 경로 모두 READ ONLY 세션 먼저, 한 문장만(가짜 psql·sudo 심)
+#   ⑨·⑩ 은 PATH 앞에 둔 가짜 명령만 부른다 — 진짜 curl·psql·sudo 는 한 번도 불리지 않는다(네트워크·DB 0).
 # 임시 파일은 ${TMPDIR:-/tmp} 아래 한 폴더에만 만들고 끝나면 지운다. 저장소 안에는 쓰지 않는다.
 # 나가는 값: 0 전부 통과 · 1 실패 있음. 끝에 한국어 합계 줄과 RESULT 줄.
 set -u
@@ -416,6 +419,197 @@ PY
   done
   expect "QCHECK_CHILD_UMASK 는 시험 자식 환경에 넘기지 않음" "child-var=none" \
     "$(grep '^child-var=' "$RUNS/$last/raw/e2e.umask.log" 2>/dev/null)"
+fi
+
+# ════════════════════════════════════════════════════════════════
+hr "⑨ secrets.sh — 비밀은 표준입력으로만 (1-B-1 B1-2 · R15)"
+# ════════════════════════════════════════════════════════════════
+if [ -z "$T" ]; then
+  bad "임시 폴더가 없어 ⑨ 를 못 함"
+elif ! . "$HERE/secrets.sh"; then
+  bad "secrets.sh 를 source 하지 못함"
+else
+  SX="$T/secrets"; mkdir -p "$SX/bin"
+  # 가짜 명령: 인자(한 줄에 하나)·표준입력을 기록하고, 0.4초 살아 있어 /proc 훑기가 볼 수 있게 한다
+  for c in curl php python3; do
+    cat > "$SX/bin/$c" <<SHIM
+#!/bin/sh
+for a in "\$@"; do printf '%s\n' "\$a"; done > "$SX/argv.$c"
+cat > "$SX/stdin.$c"
+sleep 0.4
+exit 0
+SHIM
+    chmod 700 "$SX/bin/$c"
+  done
+  FAKE_SECRET="qchk-FAKE-$$-ZZ7Q"          # 가짜 비밀 — 진짜 계정 값이 아니다
+  PW_FAKE="$FAKE_SECRET"
+  # /proc 훑기 — 파이썬으로 1.2초 동안 쉬지 않고 모든 프로세스 인자를 본다(셸 루프는 한 바퀴에 3초가 넘어
+  # 0.4초 사는 가짜 명령을 못 본다 — 1-B-1 독립 검토 ②-4). 아래 「양성 대조」가 이 훑기의 눈을 확인한다.
+  proc_scan() { # → 가짜 비밀이 인자에 보인 (pid, 인자) 쌍 수
+    python3 - "$FAKE_SECRET" <<'PY'
+import os, sys, time
+needle = sys.argv[1].encode(); me = str(os.getpid()); seen = set(); end = time.time() + 1.2
+while time.time() < end:
+    for pid in os.listdir('/proc'):
+        if not pid.isdigit() or pid == me:
+            continue
+        try:
+            raw = open('/proc/%s/cmdline' % pid, 'rb').read()
+        except OSError:
+            continue
+        if needle in raw and not raw.startswith(b'python3\0-\0'):
+            seen.add((pid, raw))
+print(len(seen), end='')
+PY
+  }
+  sx_run() { # $1 가짜 명령 이름  나머지 = 부를 도우미와 인자. 결과: "인자에 비밀 n · 표준입력에 비밀 n · /proc n"
+    local c="$1" hits; shift
+    rm -f "$SX/argv.$c" "$SX/stdin.$c"
+    proc_scan > "$SX/scan" & local sp=$!
+    sleep 0.2                                    # 훑기가 먼저 돌기 시작하게
+    PATH="$SX/bin:$PATH" "$@" >/dev/null 2>&1
+    wait "$sp"; hits=$(cat "$SX/scan")
+    local na=x ns=x
+    [ -f "$SX/argv.$c" ] && na=$(grep -cF -- "$FAKE_SECRET" "$SX/argv.$c")
+    [ -f "$SX/stdin.$c" ] && ns=$(grep -cF -- "$FAKE_SECRET" "$SX/stdin.$c")
+    printf '인자 %s · 표준입력 %s · proc %s' "$na" "$ns" "$hits"
+  }
+  # 양성 대조 — 가짜 비밀을 **인자로** 받은 가짜 명령을 훑기가 본다(보지 못하면 아래 「proc 0」은 증거가 아니다)
+  expect "양성 대조: 비밀을 인자로 받은 가짜 curl 을 /proc 훑기가 본다" "인자 1 · 표준입력 0 · proc 1" \
+    "$(sx_run curl curl -s "$FAKE_SECRET" </dev/null)"
+  printf -v BODY_FAKE '{"username":"claude_x","password":"%s","otp":"000000"}' "$FAKE_SECRET"
+  URL_FAKE="http://127.0.0.1:9/s/$FAKE_SECRET"
+  expect "totp_now — php 인자에 비밀 0 · 표준입력 1" "인자 0 · 표준입력 1 · proc 0" "$(sx_run php totp_now PW_FAKE)"
+  expect "totp_now — php 인자는 [totp_code.php 경로, -]" "$QSX_ROOT/scripts/totp_code.php|-" "$(paste -sd'|' "$SX/argv.php")"
+  expect "curl_json_secret — 본문은 표준입력" "인자 0 · 표준입력 1 · proc 0" "$(sx_run curl curl_json_secret BODY_FAKE -s -H 'Content-Type: application/json' http://127.0.0.1:9/api/login)"
+  contains "curl_json_secret — --data-binary @- 로 부름" "@-" "$(cat "$SX/argv.curl")"
+  expect "curl_json_secret — 표준입력 = 본문 바이트 그대로(끝 줄바꿈 없음)" "${BODY_FAKE}x" "$(cat "$SX/stdin.curl"; printf x)"
+  expect "curl_hdr_secret — 헤더는 표준입력" "인자 0 · 표준입력 1 · proc 0" "$(sx_run curl curl_hdr_secret X-API-Token PW_FAKE -s http://127.0.0.1:9/api/whoami)"
+  expect "curl_hdr_secret — 표준입력 한 줄 = 「X-API-Token: 값」" "X-API-Token: $FAKE_SECRET" "$(cat "$SX/stdin.curl")"
+  expect "curl_url_secret — 주소는 --config - 로" "인자 0 · 표준입력 1 · proc 0" "$(sx_run curl curl_url_secret URL_FAKE -s -o /dev/null)"
+  expect "curl_url_secret — 표준입력 = url = \"…\"" "url = \"$URL_FAKE\"" "$(cat "$SX/stdin.curl")"
+  expect "curl_form_secret — 필드 값은 표준입력(-F 이름=<-)" "인자 0 · 표준입력 1 · proc 0" "$(sx_run curl curl_form_secret password PW_FAKE -s -F otp=1 http://127.0.0.1:9/api/files)"
+  contains "curl_form_secret — -F password=<- 로 부름" "password=<-" "$(cat "$SX/argv.curl")"
+  A2_FAKE="second-$FAKE_SECRET"
+  expect "py_secret — 두 값을 한 줄씩 표준입력으로" "인자 0 · 표준입력 2 · proc 0" "$(sx_run python3 py_secret PW_FAKE A2_FAKE -- python3 -c pass x)"
+  expect "py_secret — 표준입력 순서 그대로" "$FAKE_SECRET|second-$FAKE_SECRET" "$(paste -sd'|' "$SX/stdin.python3")"
+  sub "거부 — 보내지 않고 rc 90 (가짜 명령이 불리지 않음)"
+  EMPTY_FAKE=''; NL_FAKE=$'a\nb'
+  for spec in "빈 값|curl_hdr_secret X-API-Token EMPTY_FAKE -s x" "줄바꿈 섞임|curl_json_secret NL_FAKE -s x" \
+              "변수 이름 모양 아님|curl_json_secret 'BAD NAME' -s x" "헤더 이름에 콜론|curl_hdr_secret X:Y PW_FAKE -s x" \
+              "없는 변수|totp_now NO_SUCH_VAR_1B1" "py_secret -- 없음|py_secret PW_FAKE python3 -c pass"; do
+    what=${spec%%|*}; cmd=${spec#*|}; rm -f "$SX/argv.curl" "$SX/argv.php" "$SX/argv.python3"
+    (PATH="$SX/bin:$PATH" eval "$cmd") >/dev/null 2>&1; rc=$?
+    called=0; for c in curl php python3; do [ -f "$SX/argv.$c" ] && called=1; done
+    expect "거부: $what → rc 90 · 부름 0" "90:0" "$rc:$called"
+  done
+  sub "secret_file — 0600 · 0700 폴더만"
+  SD=$(mktemp -d "$T/sd.XXXXXX"); sf=$(secret_file PW_FAKE "$SD"); rc=$?
+  expect "secret_file rc 0 · 파일 0600" "0:600" "$rc:$(stat -c %a "$sf" 2>/dev/null)"
+  expect "secret_file 내용 = 값 한 줄" "$FAKE_SECRET" "$(cat "$sf" 2>/dev/null)"
+  expect "secret_file 로 grep -F -f 대조" "1" "$(printf 'x %s y\n' "$FAKE_SECRET" | grep -cF -f "$sf")"
+  mkdir -p "$T/open755" && chmod 755 "$T/open755"
+  secret_file PW_FAKE "$T/open755" >/dev/null 2>&1; rc=$?
+  expect "secret_file — 0700 이 아닌 폴더 거부 rc 90 · 파일 0" "90:0" "$rc:$(ls -A "$T/open755" | wc -l | tr -d ' ')"
+  sub "동적 범위 — 받을 변수 이름이 도우미 지역 이름과 같아도 값이 간다(__v 사고 재발 방지)"
+  # 옛 지역 이름(__v·__s·__b·__h)을 비밀 변수 이름으로 넘겨도 값이 간다 · 도우미 몫 접두(_sx_·_sg_)는 거부
+  __v="$FAKE_SECRET"; __s="$FAKE_SECRET"; __b="$FAKE_SECRET"; __h="$FAKE_SECRET"
+  expect "curl_hdr_secret 에 __v 를 넘겨도 값이 감" "X-API-Token: $FAKE_SECRET" "$(sx_run curl curl_hdr_secret X-API-Token __v -s x >/dev/null; cat "$SX/stdin.curl" 2>/dev/null)"
+  expect "totp_now 에 __s 를 넘겨도 값이 감" "$FAKE_SECRET" "$(sx_run php totp_now __s >/dev/null; cat "$SX/stdin.php" 2>/dev/null)"
+  expect "curl_json_secret 에 __b 를 넘겨도 값이 감" "$FAKE_SECRET" "$(sx_run curl curl_json_secret __b -s x >/dev/null; cat "$SX/stdin.curl" 2>/dev/null)"
+  _sx_v="$FAKE_SECRET"; _sg_v="$FAKE_SECRET"
+  (PATH="$SX/bin:$PATH"; rm -f "$SX/argv.curl"; curl_hdr_secret X-API-Token _sx_v -s x) >/dev/null 2>&1; rc=$?
+  expect "비밀 변수 이름 _sx_… 거부 rc 90 · 부름 0" "90:0" "$rc:$([ -f "$SX/argv.curl" ] && echo 1 || echo 0)"
+  (PATH="$SX/bin:$PATH"; rm -f "$SX/argv.curl"; curl_json_secret _sg_v -s x) >/dev/null 2>&1; rc=$?
+  expect "비밀 변수 이름 _sg_… 거부 rc 90 · 부름 0" "90:0" "$rc:$([ -f "$SX/argv.curl" ] && echo 1 || echo 0)"
+  unset __v __s __b __h _sx_v _sg_v
+  sub "진짜 php — totp_now = totp_code.php <인자> (공개 견본 비밀, 네트워크·DB 0)"
+  RFC_FAKE=JBSWY3DPEHPK3PXP
+  if command -v php >/dev/null 2>&1; then
+    a=$(php "$QSX_ROOT/scripts/totp_code.php" "$RFC_FAKE" 2>/dev/null | head -1)
+    b=$(totp_now RFC_FAKE 2>/dev/null | head -1)
+    expect "같은 창의 코드가 같다(6자리)" "ok" "$([ -n "$a" ] && [ "$a" = "$b" ] && [ "${#a}" -eq 6 ] && echo ok || echo "a=$a b=$b")"
+  else
+    bad "php 가 없다 — totp_now 진짜 대조 못 함"
+  fi
+fi
+
+# ════════════════════════════════════════════════════════════════
+hr "⑩ db_read.sh — ro → sudo 폴백 → rc 3 (1-E E1·E3·E5 흉내)"
+# ════════════════════════════════════════════════════════════════
+if [ -z "$T" ]; then
+  bad "임시 폴더가 없어 ⑩ 을 못 함"
+elif ! . "$HERE/db_read.sh"; then
+  bad "db_read.sh 를 source 하지 못함"
+else
+  DX="$T/dbread"; mkdir -p "$DX/bin"
+  # 가짜 psql: -U tbox_testread 면 FAKE_RO, 아니면 FAKE_SUDO_PSQL 대로. 인자·표준입력·PG* 환경을 기록한다
+  cat > "$DX/bin/psql" <<SHIM
+#!/bin/sh
+for a in "\$@"; do printf '%s\n' "\$a"; done > "$DX/argv.psql.\$\$"
+printf 'PGOPTIONS=%s\nPGAPPNAME=%s\nPGPASSFILE=%s\nPGPORT=%s\nPGHOST=%s\n' "\$PGOPTIONS" "\$PGAPPNAME" "\$PGPASSFILE" "\$PGPORT" "\$PGHOST" > "$DX/env.psql.\$\$"
+case " \$* " in *" tbox_testread "*) mode="\${FAKE_RO:-ok}" ;; *) mode="\${FAKE_SUDO_PSQL:-ok}" ;; esac
+[ "\$mode" = ok ] || { echo "ERROR: permission denied (가짜)" >&2; exit 1; }
+echo 7
+SHIM
+  cat > "$DX/bin/sudo" <<SHIM
+#!/bin/sh
+echo called >> "$DX/sudo.calls"
+[ "\${FAKE_SUDO:-ok}" = ok ] || exit 1
+while [ "\$#" -gt 0 ]; do case "\$1" in -n) shift ;; -u) shift 2 ;; *) break ;; esac; done
+exec "\$@"
+SHIM
+  chmod 700 "$DX/bin/psql" "$DX/bin/sudo"
+  PF="$DX/pgpass"; printf '127.0.0.1:5432:tbox_re:tbox_testread:qchk-FAKEPW\n' > "$PF"; chmod 600 "$PF"
+  dr() { # 환경 조합으로 db_read_var 한 번 → "rc|값|경로|sudo 부름 수"
+    rm -f "$DX"/argv.psql.* "$DX"/env.psql.* "$DX/sudo.calls"
+    local rc; ( PATH="$DX/bin:$PATH"; export FAKE_RO="$1" FAKE_SUDO="$2" FAKE_SUDO_PSQL="${3:-ok}" PGPASSFILE="${4:-$PF}"
+      db_read_var DRV tbox_re "SELECT count(*) FROM audit_logs WHERE actor_name = 'qchk-sql-marker'" 2>"$DX/err"; rc=$?
+      printf '%s|%s|%s|%s' "$rc" "$DRV" "$DB_READ_VIA" "$( { [ -f "$DX/sudo.calls" ] && wc -l < "$DX/sudo.calls"; } || echo 0)" )
+  }
+  expect "E2 흉내: ro 성공 → 값 · via=ro · sudo 0" "0|7|ro|0" "$(dr ok ok)"
+  expect "ro 경로 PGOPTIONS 에 default_transaction_read_only=on" "PGOPTIONS=-c default_transaction_read_only=on" "$(grep -h '^PGOPTIONS=' "$DX"/env.psql.* 2>/dev/null)"
+  expect "ro 경로 application_name=tbox-testread" "PGAPPNAME=tbox-testread" "$(grep -h '^PGAPPNAME=' "$DX"/env.psql.* 2>/dev/null)"
+  expect "SQL 은 -c 인자 하나로(표준입력 아님 — 메타 명령이 섞이지 않는다)" "1" "$(cat "$DX"/argv.psql.* | grep -cF qchk-sql-marker)"
+  expect "ro 경로: -c 순서 = standard_conforming_strings → READ ONLY → SQL" "SET standard_conforming_strings = on|SET SESSION CHARACTERISTICS AS TRANSACTION READ ONLY|SELECT count(*) FROM audit_logs WHERE actor_name = 'qchk-sql-marker'" \
+    "$(cat "$DX"/argv.psql.* | awk 'p{print; p=0} /^-c$/{p=1}' | paste -sd'|')"
+  expect "ro 경로: 주소를 127.0.0.1:5432 로 못 박음" "-h 127.0.0.1|-p 5432" "$(cat "$DX"/argv.psql.* | awk '/^-[hp]$/{o=$0; getline; print o " " $0}' | paste -sd'|')"
+  o=$( (export PGPORT=55432 PGHOST=/nonexist; dr ok ok >/dev/null; cat "$DX"/env.psql.* | grep -E '^PG(PORT|HOST)=' | paste -sd'|') )
+  expect "ro 경로: 부른 쪽 PGPORT·PGHOST 를 따르지 않음(독립 검토 ②-3)" "PGPORT=|PGHOST=" "$o"
+  expect "비밀번호는 인자·환경에 없음(.pgpass 경로만)" "0" "$(cat "$DX"/argv.psql.* "$DX"/env.psql.* | grep -cF qchk-FAKEPW)"
+  expect "E1: ro 실패 → sudo 폴백 · 값 · via=sudo · sudo 1" "0|7|sudo|1" "$(dr fail ok)"
+  expect "sudo 경로도 READ ONLY 세션 -c 가 먼저(ro 거부 → 슈퍼유저 쓰기 길 막음 · 독립 검토 ②-2)" "2" \
+    "$(cat "$DX"/argv.psql.* | grep -cxF 'SET SESSION CHARACTERISTICS AS TRANSACTION READ ONLY')"
+  expect "sudo 경로: -c 순서 = SET ROLE pg_read_all_data → standard_conforming_strings → READ ONLY → SQL(재검토 ②)" \
+    "SET ROLE pg_read_all_data|SET standard_conforming_strings = on|SET SESSION CHARACTERISTICS AS TRANSACTION READ ONLY|SELECT count(*) FROM audit_logs WHERE actor_name = 'qchk-sql-marker'" \
+    "$(grep -lx 'SET ROLE pg_read_all_data' "$DX"/argv.psql.* 2>/dev/null | head -1 | xargs -r cat | awk 'p{print; p=0} /^-c$/{p=1}' | paste -sd'|')"
+  contains "E1: 폴백 경고 한 줄" "읽기 전용 경로 실패" "$(cat "$DX/err")"
+  expect "E1: .pgpass 없음 → 조용히 sudo" "0|7|sudo|1" "$(dr ok ok ok "$DX/none")"
+  chmod 644 "$PF"
+  expect ".pgpass 0644 → 쓰지 않고 sudo" "0|7|sudo|1" "$(dr ok ok)"
+  contains ".pgpass 0644 경고" "0600 일반 파일이 아니다" "$(cat "$DX/err")"
+  chmod 600 "$PF"
+  expect "E3: ro 실패 + sudo 실패 → rc 3 · 값 빈칸 · via=none" "3||none|1" "$(dr fail fail)"
+  expect "E3: ro 실패 + sudo 는 되나 psql 실패 → rc 3" "3||none|1" "$(dr fail ok fail)"
+  contains "E3: 0 으로 읽지 않는다는 문구" "0 으로 읽지 않는다" "$(cat "$DX/err")"
+  o=$( (PATH="$DX/bin:$PATH"; FAKE_RO=fail FAKE_SUDO=fail PGPASSFILE="$PF"; export FAKE_RO FAKE_SUDO PGPASSFILE; db_read tbox_re "SELECT 1") 2>/dev/null); rc=$?
+  expect "db_read(서브셸 형태) 둘 다 실패 → rc 3 · 출력 0" "3:" "$rc:$o"
+  o=$( (PATH="$DX/bin:$PATH"; rm -f "$DX/sudo.calls"; PGPASSFILE="$PF"; export PGPASSFILE
+        db_read_var X tbox_re "DELETE FROM audit_logs"; echo "rc=$?"; db_read_var X tbox_re "update users set role='x'"; echo "rc=$?"
+        db_read_var X tbox_re "  ( select 1 )"; echo "rc=$? X=$X"; [ -f "$DX/sudo.calls" ] && echo sudo-called || echo sudo-none) 2>/dev/null)
+  expect "쓰기 문장 거부 rc 2 ×2 · 괄호 SELECT 는 보냄 · sudo 0" "rc=2|rc=2|rc=0 X=7|sudo-none" "$(printf '%s' "$o" | paste -sd'|')"
+  o=$( (PATH="$DX/bin:$PATH"; rm -f "$DX/sudo.calls"; PGPASSFILE="$PF"; export PGPASSFILE
+        for q in "SELECT 1; DELETE FROM audit_logs" "SELECT 1;;" 'SELECT $$x$$' "SELECT 'open" "SELECT 1 -- ; x" \
+                 "SELECT 1 -- '"$'\n'"; BEGIN READ WRITE; DELETE FROM t" "SELECT 1 /* ' */ ; DELETE FROM t" "SELECT E'\\''; DELETE FROM t; SELECT ''" \
+                 'SELECT $a$x$a$' "SELECT pg_create_physical_replication_slot('x')" "SELECT set_config('default_transaction_read_only','off',false)" \
+                 "WITH d AS (DELETE FROM t) SELECT 1" "SELECT 1 INTO t2" "SELECT U&'x'" 'SELECT "a" FROM t' \
+                 "SELECT public.count(*) FROM t" "SELECT x . count (1)" $'\u00a0SELECT 1' $'SELECT cou\u00f1t(1)' $'SELECT 1\x01'; do db_read_var X tbox_re "$q"; printf 'rc=%s ' "$?"; done
+        for q in "SELECT 1;" "SELECT 'a;b'" "SELECT 'it''s;'" "SELECT count(*) FROM t WHERE actor_name NOT LIKE 'qa\\_%' AND actor_name NOT LIKE 'claude\\_%';"; do db_read_var X tbox_re "$q"; printf 'rc=%s ' "$?"; done
+        [ -f "$DX/sudo.calls" ] && echo sudo-called || echo sudo-none) 2>/dev/null)
+  expect "허용 목록: 다중 문장·;;·달러 따옴표·안 닫힌 따옴표·주석·주석 속 따옴표·E'…'·\$tag\$·부수효과 함수·set_config·CTE DML·INTO·U&'·큰따옴표·스키마 한정 함수·NBSP·비-ASCII·제어 문자 → rc 2 · 끝 ;·따옴표 속 ;·판정 조각은 보냄" \
+    "rc=2 rc=2 rc=2 rc=2 rc=2 rc=2 rc=2 rc=2 rc=2 rc=2 rc=2 rc=2 rc=2 rc=2 rc=2 rc=2 rc=2 rc=2 rc=2 rc=2 rc=0 rc=0 rc=0 rc=0 sudo-none" "$o"
+  o=$( (db_read_var 'BAD NAME' tbox_re "SELECT 1"; echo "rc=$?"; db_read_var OK 'tbox;re' "SELECT 1"; echo "rc=$?") 2>/dev/null | paste -sd'|')
+  expect "변수·DB 이름 모양 아니면 rc 2" "rc=2|rc=2" "$o"
 fi
 
 # ════════════════════════════════════════════════════════════════

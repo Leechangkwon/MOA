@@ -9,7 +9,7 @@
 #       (미설정이면 위와 같은 이유로 503 not_configured).
 #   (c) 다른 라우트는 토큰을 **무시한다** — 틀린 토큰 헤더로 GET /api/users ·
 #       DELETE /api/files/{uuid} → 401 「API 토큰이 올바르지 않습니다」(F-59 뒤 토큰 창구) · `auth.token` 행 1.
-#   (d) 웹 업로드 회귀 — qa_employee01 세션으로 POST /api/files 정상 txt 201 {id,name}(키 정확히 둘) ·
+#   (d) 웹 업로드 회귀 — claude_employee01 세션으로 POST /api/files 정상 txt 201 {id,name}(키 정확히 둘) ·
 #       x.exe → 400 `ext_not_allowed` 문장(F-68 · ARCH 5.30, 허용 목록은 Upload::ALLOWED_EXT) ·
 #       감사 사유 코드 전과 같음 ·
 #       올린 파일은 같은 세션으로 DELETE 해 정리한다.
@@ -26,7 +26,7 @@
 #       → 관문 ③에서 사용자가 실행하고 결과를 STAGES.md 에 적는다.
 #
 # 규칙 (CLAUDE.md 3장)
-#   · **검토 계정(qa_ 접두)만** 쓴다. 시드 계정(admin01 …)은 사용자의 자기 공격 전용이다.
+#   · **검토 계정(claude_ 접두)만** 쓴다. 시드 계정(admin01 …)은 사용자의 자기 공격 전용이다.
 #   · 모든 요청에 `-A "tbox-review/<날짜>"` 를 붙인다 — 감사 로그에서 사람의 행동과 갈라 보려는 것.
 #   · 비밀번호·TOTP 비밀은 필요한 필드만 awk 로 뽑아 변수에만 담는다 (SECURITY R-62).
 #   · **운영 DB·.env·nginx·php-fpm 에 손대지 않는다.** 실제 .env 는 읽지도 복사하지도 않는다
@@ -44,6 +44,8 @@ set -u
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 # 검토 계정 판정 한 벌(qa_·claude_ — F-71 C). 못 읽으면 사전 검사가 빈 값으로 열리므로 시작하지 않는다.
 . "$ROOT/tests/lib/review_accounts.sh" || { echo "tests/lib/review_accounts.sh 를 읽지 못했다 — 시험을 시작하지 않는다 (R-73)"; exit 3; }
+. "$ROOT/tests/lib/secrets.sh" || { echo "tests/lib/secrets.sh 를 읽지 못했다 — 시험을 시작하지 않는다 (R-62)"; exit 3; }
+. "$ROOT/tests/lib/db_read.sh" || { echo "tests/lib/db_read.sh 를 읽지 못했다 — 시험을 시작하지 않는다 (R-73)"; exit 3; }
 BASE="http://127.0.0.1:8082/tbox"
 UA="tbox-review/$(date +%F)"
 DB="tbox_re"
@@ -94,8 +96,9 @@ echo "루트 파티션 여유: $(df -Ph / | awk 'NR==2{print $4}') (${avail_kb}K
 HAVE_PSQL=0
 if psqlq "SELECT 1" >/dev/null 2>&1; then HAVE_PSQL=1; fi
 if [ "$HAVE_PSQL" -eq 1 ]; then
-  BUSY=$(psqlq "SELECT count(*) FROM audit_logs WHERE happened_at > now() - interval '10 minutes' AND actor_name IS NOT NULL AND $REVIEW_NOT_SQL")
-  echo "최근 10분 비-qa 감사 행: ${BUSY:-?}"
+  db_read_var BUSY "$DB" "SELECT count(*) FROM audit_logs WHERE happened_at > now() - interval '10 minutes' AND actor_name IS NOT NULL AND $REVIEW_NOT_SQL" \
+    || { echo "운영 DB 를 읽지 못했다 — 시험을 시작하지 않는다 (R-73 · db_read rc 3)"; exit 3; }
+  echo "최근 10분 비-qa 감사 행: ${BUSY:-?} (읽기 경로 ${DB_READ_VIA})"
   if [ "${BUSY:-0}" -gt 0 ] 2>/dev/null; then
     echo "사용자가 지금 서비스를 쓰고 있다 — 시험을 시작하지 않는다 (SECURITY R-73 ①)"; exit 3
   fi
@@ -192,15 +195,16 @@ hr "(d) 웹 업로드 회귀 — POST /api/files 동작 불변"
 
 # TOTP 코드는 1회성이다(R-45) — 같은 창에서 두 번 쓰면 거부되는 것이 정상이라 기다렸다 다시 한다.
 login() {
-  local who="$1" jar="$JAR_DIR/$1.jar" pw sec raw code left out try
+  local who="$1" jar="$JAR_DIR/$1.jar" pw sec raw code left out try body
   pw=$(sudo -n awk -v u="$who" '$1==u{print $3}' /etc/tbox-v2/seed-accounts.txt 2>/dev/null)
   sec=$(sudo -n awk -v u="$who" '$1==u{print $2}' /etc/tbox-v2/qa-totp.txt 2>/dev/null)
   [ -n "$pw" ] && [ -n "$sec" ] || return 2
   for try in 1 2 3; do
-    raw=$(php "$ROOT/scripts/totp_code.php" "$sec")
+    raw=$(totp_now sec)
     code=${raw%%$'\n'*}
-    out=$(curl -s -c "$jar" -A "$UA" -H 'Content-Type: application/json' \
-          -d "{\"username\":\"$who\",\"password\":\"$pw\",\"otp\":\"$code\"}" "$BASE/api/login")
+    # 비밀번호가 든 본문은 인자가 아니라 표준입력으로 보낸다(R-62 · tests/lib/secrets.sh). 보내는 바이트는 같다.
+    printf -v body '{"username":"%s","password":"%s","otp":"%s"}' "$who" "$pw" "$code"
+    out=$(curl_json_secret body -s -c "$jar" -A "$UA" -H 'Content-Type: application/json' "$BASE/api/login")
     case "$out" in
       *'"ok":true'*)
         curl -s -b "$jar" -A "$UA" "$BASE/api/me" \
@@ -215,12 +219,12 @@ login() {
   return 1
 }
 
-CSRF=$(login qa_employee01)
+CSRF=$(login claude_employee01)
 if [ -z "${CSRF:-}" ]; then
-  skip "(d) 웹 업로드 회귀" "qa_employee01 로그인 실패 또는 sudo 로 계정 파일을 읽을 수 없음"
+  skip "(d) 웹 업로드 회귀" "claude_employee01 로그인 실패 또는 sudo 로 계정 파일을 읽을 수 없음"
 else
   T0=$(mark)
-  OUT=$(curl -s -w '\n%{http_code}' -X POST -b "$JAR_DIR/qa_employee01.jar" -A "$UA" \
+  OUT=$(curl -s -w '\n%{http_code}' -X POST -b "$JAR_DIR/claude_employee01.jar" -A "$UA" \
         -H "X-CSRF-Token: $CSRF" -F "file=@$WORK/F49-ok.txt" -F 'access_level=internal' \
         "$BASE/api/files")
   CODE=$(code_of "$OUT"); BODY=$(body_of "$OUT")
@@ -231,12 +235,12 @@ else
 
   NEWID=$(uuid_of "$BODY")
   if [ -n "$NEWID" ]; then
-    DEL=$(curl -s -o /dev/null -w '%{http_code}' -X DELETE -b "$JAR_DIR/qa_employee01.jar" -A "$UA" \
+    DEL=$(curl -s -o /dev/null -w '%{http_code}' -X DELETE -b "$JAR_DIR/claude_employee01.jar" -A "$UA" \
           -H "X-CSRF-Token: $CSRF" "$BASE/api/files/$NEWID")
     expect "올린 시험 파일 정리(휴지통)" "200" "$DEL"
   fi
 
-  OUT=$(curl -s -w '\n%{http_code}' -X POST -b "$JAR_DIR/qa_employee01.jar" -A "$UA" \
+  OUT=$(curl -s -w '\n%{http_code}' -X POST -b "$JAR_DIR/claude_employee01.jar" -A "$UA" \
         -H "X-CSRF-Token: $CSRF" -F "file=@$WORK/F49-bad.exe" -F 'access_level=internal' \
         "$BASE/api/files")
   echo "  x.exe → $(body_of "$OUT")"
@@ -247,7 +251,7 @@ else
   expect ".exe 문구(F-68 ext_not_allowed 문장)" "{\"error\":\"$EXT_MSG\"}" "$(body_of "$OUT")"
 
   # 등급 필드가 비면 지금까지처럼 bad_access_level 400 이다 (기본값 public 은 API 입구에만 있다)
-  OUT=$(curl -s -w '\n%{http_code}' -X POST -b "$JAR_DIR/qa_employee01.jar" -A "$UA" \
+  OUT=$(curl -s -w '\n%{http_code}' -X POST -b "$JAR_DIR/claude_employee01.jar" -A "$UA" \
         -H "X-CSRF-Token: $CSRF" -F "file=@$WORK/F49-ok.txt" "$BASE/api/files")
   echo "  access_level 없음 → $(body_of "$OUT")"
   expect "등급 없는 웹 업로드 상태(기본값이 생기지 않았나)" "400" "$(code_of "$OUT")"

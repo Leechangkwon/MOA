@@ -3,11 +3,11 @@
 #                       (PRD 12.2 T-71, F-59, ARCH 4.6 · 6.2-5, SECURITY R-82 · R-90 · R-91)
 #
 #   (a) 발급  **F-66 갱신(2026-09-22)**: 발급은 관리자 창구가 아니라 **본인 창구**다 —
-#       qa_employee01 이 `POST /api/me/api-tokens`(이름·용도·범위·비밀번호·2단계 코드)로
+#       claude_employee01 이 `POST /api/me/api-tokens`(이름·용도·범위·비밀번호·2단계 코드)로
 #       만든다. 옛 관리자 발급 창구 `POST /api/users/{uid}/api-tokens` 는 **404**(라우트 제거).
 #       → 201(토큰 48자 `[A-Za-z0-9]` · hint == 토큰 앞 6자) · 목록에 그 행(`hint`·`scope`·
 #       `expires_at` 있음 · `token` 키 **없음**) · 용도 없음 400 · 이름 51자 400 ·
-#       모르는 키 400 · qa_manager01 **목록** 403(관리자 창구는 그대로 user.manage) ·
+#       모르는 키 400 · claude_manager01 **목록** 403(관리자 창구는 그대로 user.manage) ·
 #       살아 있는 5개 뒤 6번째 400(limit_exceeded) · 감사 `api_token.issue allow` 의 detail
 #       (`token_id`·`token_name`·`token_scope`·`reason_text`·`otp_verified`) ·
 #       **DB 어디에도 토큰 원문 없음** · `api_tokens.token_hash` == 토큰의 sha256.
@@ -17,12 +17,12 @@
 #       `token_kind=personal` · `token_id=<id>` · `api_tokens.last_used_at` 갱신.
 #   (c) 개인 토큰으로 삭제  자기 파일 DELETE /api/files/{id} → 200 `{ok:true}`(휴지통,
 #       `deleted_at` 설정) · 자기 빈 폴더 DELETE /api/folders/{num} → 200 · 파일이 든 폴더 → 400
-#       「파일이 있는 폴더는 지울 수 없습니다」 · 남의(qa_admin01) 파일 → 403 · 없는 파일 id → 404 · 없는 폴더 번호 → 403(동일 문구) ·
+#       「파일이 있는 폴더는 지울 수 없습니다」 · 남의(claude_admin01) 파일 → 403 · 없는 파일 id → 404 · 없는 폴더 번호 → 403(동일 문구) ·
 #       감사 `file.delete allow`·`folder.delete allow` 에 `auth=api_token`·`token_id`.
 #   (d) 공용 토큰 게이트  공용 토큰으로 DELETE /api/files/{id} → **403** 「이 창구는 개인
 #       토큰으로만 쓸 수 있습니다」 + `auth.token deny shared_token_not_permitted` ·
 #       공용 토큰으로 GET /api/files 는 여전히 200(`token_kind=shared` · `token_id` 없음).
-#       ★ `.env` 의 귀속(API_TOKEN_USER)이 **검토 계정(qa_)일 때만** 돌린다. 아니면 SKIP.
+#       ★ `.env` 의 귀속(API_TOKEN_USER)이 **검토 계정(qa_·claude_)일 때만** 돌린다. 아니면 SKIP.
 #   (e) 회수  DELETE …/api-tokens/{tid} → 200 · 그 토큰으로 GET /api/whoami → **401**
 #       「API 토큰이 올바르지 않습니다」 · 다시 회수 → 400 · 다른 계정의 tid → 404 ·
 #       목록에 `revoked_at` 채워짐 · 감사 `api_token.revoke allow`.
@@ -41,7 +41,7 @@
 #   psql·grep 에 토큰을 **인자로 넘기지 않는다**(`ps` 로 보인다) — 패턴 파일·파이프로만 준다.
 #
 # 규칙 (CLAUDE.md 3장) — tests/api_folders.sh · tests/fetch_hosts.sh 와 같다
-#   · 검토 계정(qa_ 접두)만. 시드 계정(admin01 …)은 사용자의 자기 공격 전용이다.
+#   · 검토 계정(claude_ 접두)만. 시드 계정(admin01 …)은 사용자의 자기 공격 전용이다.
 #   · 모든 요청에 `-A "tbox-review/<날짜>"`.
 #   · 운영 DB·.env·nginx·php-fpm 에 손대지 않는다. `.env` 에서 읽는 것은 API_TOKEN_USER
 #     **계정 이름**과 API_TOKEN **값(변수로만)** 뿐이고, 고치지 않는다.
@@ -62,6 +62,8 @@ set -u
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 # 검토 계정 판정 한 벌(qa_·claude_ — F-71 C). 못 읽으면 사전 검사가 빈 값으로 열리므로 시작하지 않는다.
 . "$ROOT/tests/lib/review_accounts.sh" || { echo "tests/lib/review_accounts.sh 를 읽지 못했다 — 시험을 시작하지 않는다 (R-73)"; exit 3; }
+. "$ROOT/tests/lib/secrets.sh" || { echo "tests/lib/secrets.sh 를 읽지 못했다 — 시험을 시작하지 않는다 (R-62)"; exit 3; }
+. "$ROOT/tests/lib/db_read.sh" || { echo "tests/lib/db_read.sh 를 읽지 못했다 — 시험을 시작하지 않는다 (R-73)"; exit 3; }
 BASE="http://127.0.0.1:8082/tbox"
 UA="tbox-review/$(date +%F)"
 DB="tbox_re"
@@ -102,9 +104,9 @@ print(eval(sys.argv[1]))' "$1" 2>/dev/null; }
 del_file() {
   local id="$1" c
   [ -n "$id" ] || return 0
-  for who in qa_employee01 qa_admin01; do
+  for who in claude_employee01 claude_admin01; do
     local csrf=''
-    [ "$who" = "qa_admin01" ] && csrf="${ADM_CSRF:-}" || csrf="${EMP_CSRF:-}"
+    [ "$who" = "claude_admin01" ] && csrf="${ADM_CSRF:-}" || csrf="${EMP_CSRF:-}"
     [ -n "$csrf" ] || continue
     c=$(curl -s -o /dev/null -w '%{http_code}' -X DELETE -b "$JAR_DIR/$who.jar" -A "$UA" \
         -H "X-CSRF-Token: $csrf" "$BASE/api/files/$id")
@@ -117,9 +119,9 @@ del_file() {
 del_folder() {
   local num="$1" c
   [ -n "$num" ] || return 0
-  for who in qa_employee01 qa_admin01; do
+  for who in claude_employee01 claude_admin01; do
     local csrf=''
-    [ "$who" = "qa_admin01" ] && csrf="${ADM_CSRF:-}" || csrf="${EMP_CSRF:-}"
+    [ "$who" = "claude_admin01" ] && csrf="${ADM_CSRF:-}" || csrf="${EMP_CSRF:-}"
     [ -n "$csrf" ] || continue
     c=$(curl -s -o /dev/null -w '%{http_code}' -X DELETE -b "$JAR_DIR/$who.jar" -A "$UA" \
         -H "X-CSRF-Token: $csrf" "$BASE/api/folders/$num")
@@ -139,7 +141,7 @@ revoke_token() {
   uid=${pair%%:*}; tid=${pair##*:}
   [ -n "$uid" ] && [ -n "$tid" ] || return 0
   [ -n "${ADM_CSRF:-}" ] || { printf '  ! 토큰 %s 를 회수하지 못했다 — 관리자 세션 없음\n' "$tid"; return 0; }
-  c=$(curl -s -o /dev/null -w '%{http_code}' -X DELETE -b "$JAR_DIR/qa_admin01.jar" -A "$UA" \
+  c=$(curl -s -o /dev/null -w '%{http_code}' -X DELETE -b "$JAR_DIR/claude_admin01.jar" -A "$UA" \
       -H "X-CSRF-Token: $ADM_CSRF" "$BASE/api/users/$uid/api-tokens/$tid")
   printf '  · 토큰 #%s 회수 [%s]\n' "$tid" "$c"
 }
@@ -154,7 +156,7 @@ sweep_tokens() {
     ids=$(psqlq "SELECT id FROM api_tokens WHERE user_id = $uid AND name LIKE 'F59-%' AND revoked_at IS NULL")
   fi
   if [ -z "$ids" ] && [ -n "${ADM_CSRF:-}" ]; then
-    curl -s -b "$JAR_DIR/qa_admin01.jar" -A "$UA" "$BASE/api/users/$uid/api-tokens" > "$WORK/sweep.json"
+    curl -s -b "$JAR_DIR/claude_admin01.jar" -A "$UA" "$BASE/api/users/$uid/api-tokens" > "$WORK/sweep.json"
     ids=$(jq_py "' '.join(str(t['id']) for t in d.get('tokens',[]) if not t.get('revoked_at') and str(t.get('name','')).startswith('F59-'))" < "$WORK/sweep.json")
   fi
   for id in $ids; do revoke_token "$uid:$id"; done
@@ -165,7 +167,7 @@ cleanup_artifacts() {
   [ -n "$MADE_TOKENS$MADE_FILES$MADE_FOLDERS${EMP_UID:-}${ADM_UID:-}" ] || return 0
   hr "정리 — 시험이 만든 것 되돌리기 (토큰 회수 · 파일 휴지통 · 폴더 삭제)"
   # 회수는 재인증 창이 필요하다 — 창이 닫혔을 수 있으므로 한 번 더 연다.
-  [ -n "${ADM_CSRF:-}" ] && reauth qa_admin01 "$ADM_CSRF" >/dev/null 2>&1
+  [ -n "${ADM_CSRF:-}" ] && reauth claude_admin01 "$ADM_CSRF" >/dev/null 2>&1
   for t in $MADE_TOKENS; do revoke_token "$t"; done
   # 목록에 없던 것까지 이름으로 훑는다 (두 계정 다 — 자기 자신 대상 발급도 있을 수 있다)
   sweep_tokens "${EMP_UID:-}"
@@ -186,8 +188,9 @@ echo "루트 파티션 여유: $(df -Ph / | awk 'NR==2{print $4}') (${avail_kb}K
 HAVE_PSQL=0
 if psqlq "SELECT 1" >/dev/null 2>&1; then HAVE_PSQL=1; fi
 if [ "$HAVE_PSQL" -eq 1 ]; then
-  BUSY=$(psqlq "SELECT count(*) FROM audit_logs WHERE happened_at > now() - interval '10 minutes' AND actor_name IS NOT NULL AND $REVIEW_NOT_SQL")
-  echo "최근 10분 비-qa 감사 행: ${BUSY:-?}"
+  db_read_var BUSY "$DB" "SELECT count(*) FROM audit_logs WHERE happened_at > now() - interval '10 minutes' AND actor_name IS NOT NULL AND $REVIEW_NOT_SQL" \
+    || { echo "운영 DB 를 읽지 못했다 — 시험을 시작하지 않는다 (R-73 · db_read rc 3)"; exit 3; }
+  echo "최근 10분 비-qa 감사 행: ${BUSY:-?} (읽기 경로 ${DB_READ_VIA})"
   if [ "${BUSY:-0}" -gt 0 ] 2>/dev/null; then
     echo "사용자가 지금 서비스를 쓰고 있다 — 시험을 시작하지 않는다 (SECURITY R-73 ①)"; exit 3
   fi
@@ -214,22 +217,23 @@ if [ "$USE_SHARED" -eq 1 ]; then
   echo "→ 공용 토큰 귀속이 검토 계정이다. (d) 를 실행한다. (값은 출력하지 않는다)"
 else
   SHARED_TOKEN=''
-  echo "→ 공용 토큰 귀속이 검토 계정(qa_)이 아니다 — (d) 는 **SKIP**."
+  echo "→ 공용 토큰 귀속이 검토 계정(qa_·claude_)이 아니다 — (d) 는 **SKIP**."
 fi
 # 어떤 서버에서도 맞을 수 없는 고정 문자열 — (f) 「틀린 토큰」에 쓴다.
 WRONG_TOKEN='wrong-token-0000000000000000000000000000000000'
 
 # ─── 로그인·재인증 헬퍼 (tests/fetch_hosts.sh 와 같다) ───────────
 login() {
-  local who="$1" jar="$JAR_DIR/$1.jar" pw sec raw code left out try
+  local who="$1" jar="$JAR_DIR/$1.jar" pw sec raw code left out try body
   pw=$(sudo -n awk -v u="$who" '$1==u{print $3}' /etc/tbox-v2/seed-accounts.txt 2>/dev/null)
   sec=$(sudo -n awk -v u="$who" '$1==u{print $2}' /etc/tbox-v2/qa-totp.txt 2>/dev/null)
   [ -n "$pw" ] && [ -n "$sec" ] || return 2
   for try in 1 2 3; do
-    raw=$(php "$ROOT/scripts/totp_code.php" "$sec")
+    raw=$(totp_now sec)
     code=${raw%%$'\n'*}
-    out=$(curl -s -c "$jar" -A "$UA" -H 'Content-Type: application/json' \
-          -d "{\"username\":\"$who\",\"password\":\"$pw\",\"otp\":\"$code\"}" "$BASE/api/login")
+    # 비밀번호가 든 본문은 인자가 아니라 표준입력으로 보낸다(R-62 · tests/lib/secrets.sh). 보내는 바이트는 같다.
+    printf -v body '{"username":"%s","password":"%s","otp":"%s"}' "$who" "$pw" "$code"
+    out=$(curl_json_secret body -s -c "$jar" -A "$UA" -H 'Content-Type: application/json' "$BASE/api/login")
     case "$out" in
       *'"ok":true'*)
         curl -s -b "$jar" -A "$UA" "$BASE/api/me" \
@@ -245,11 +249,13 @@ login() {
 }
 
 reauth() {
-  local who="$1" token="$2" pw
+  local who="$1" token="$2" pw body
   pw=$(sudo -n awk -v u="$who" '$1==u{print $3}' /etc/tbox-v2/seed-accounts.txt 2>/dev/null)
-  curl -s -o /dev/null -w '%{http_code}' -b "$JAR_DIR/$who.jar" -A "$UA" \
+  # 비밀번호가 든 본문은 표준입력으로(R-62 · tests/lib/secrets.sh) — 보내는 바이트는 `-d` 때와 같다.
+  printf -v body '{"password":"%s"}' "$pw"
+  curl_json_secret body -s -o /dev/null -w '%{http_code}' -b "$JAR_DIR/$who.jar" -A "$UA" \
     -H 'Content-Type: application/json' -H "X-CSRF-Token: $token" \
-    -d "{\"password\":\"$pw\"}" "$BASE/api/me/reauth"
+    "$BASE/api/me/reauth"
 }
 
 # 아이디 → users.id.
@@ -270,7 +276,7 @@ uid_of() {
   fi
 
   while [ "$page" -le 10 ]; do
-    curl -s -b "$JAR_DIR/qa_admin01.jar" -A "$UA" "$BASE/api/users?page=$page" > "$WORK/users.json" || break
+    curl -s -b "$JAR_DIR/claude_admin01.jar" -A "$UA" "$BASE/api/users?page=$page" > "$WORK/users.json" || break
     found=$(jq_py "next((str(u['id']) for u in d.get('users',[]) if u['username']=='$who'), '')" < "$WORK/users.json")
     [ -n "$found" ] && { printf '%s' "$found"; return 0; }
     local total per
@@ -301,12 +307,12 @@ totp_next() {   # $1 계정 → 코드만 (표준출력)
   local who="$1" sec raw left
   sec=$(sudo -n awk -v u="$who" '$1==u{print $2}' /etc/tbox-v2/qa-totp.txt 2>/dev/null)
   [ -n "$sec" ] || return 1
-  raw=$(php "$ROOT/scripts/totp_code.php" "$sec" 2>/dev/null) || return 1
+  raw=$(totp_now sec 2>/dev/null) || return 1
   left=$(printf '%s' "$raw" | sed -n 's/^남은 시간: \([0-9]*\)초.*/\1/p')
   [ -n "$left" ] || left=31
   printf '  · %s 다음 2단계 코드 창까지 %s초 기다린다 (R-45 1회성)\n' "$who" "$left" >&2
   sleep $((left + 1))
-  raw=$(php "$ROOT/scripts/totp_code.php" "$sec" 2>/dev/null) || return 1
+  raw=$(totp_now sec 2>/dev/null) || return 1
   printf '%s\n' "${raw%%$'\n'*}"
 }
 
@@ -315,14 +321,16 @@ totp_next() {   # $1 계정 → 코드만 (표준출력)
 issue_token() {
   local name="$1" purpose="$2" scope="${3:-read+upload+delete}" pw code body
   ISSUED_TOKEN=''; ISSUED_ID=''; ISSUED_HINT=''; ISSUED_CODE=''; ISSUED_SCOPE=''; ISSUED_EXPIRES=''
-  pw=$(sudo -n awk -v u=qa_employee01 '$1==u{print $3}' /etc/tbox-v2/seed-accounts.txt 2>/dev/null)
-  code=$(totp_next qa_employee01) || { ISSUED_CODE='코드없음'; return 0; }
+  pw=$(sudo -n awk -v u=claude_employee01 '$1==u{print $3}' /etc/tbox-v2/seed-accounts.txt 2>/dev/null)
+  code=$(totp_next claude_employee01) || { ISSUED_CODE='코드없음'; return 0; }
   [ -n "$pw" ] || { ISSUED_CODE='비밀번호없음'; return 0; }
-  body=$(python3 -c 'import json,sys; print(json.dumps({"name":sys.argv[1],"purpose":sys.argv[2],"scope":sys.argv[3],"password":sys.argv[4],"otp":sys.argv[5]}))' \
-         "$name" "$purpose" "$scope" "$pw" "$code")
-  ISSUED_CODE=$(curl -s -o "$WORK/issue.json" -w '%{http_code}' -X POST -b "$JAR_DIR/qa_employee01.jar" -A "$UA" \
+  # 비밀번호는 파이썬 인자가 아니라 표준입력 한 줄로 주고(R-g), 그것이 든 본문도 표준입력으로 보낸다(R-c).
+  # 본문 바이트는 전과 같다 — json.dumps 는 같은 값을 받고, $(…) 가 끝 줄바꿈을 떼며, curl_json_secret 은 printf '%s'.
+  body=$(py_secret pw -- python3 -c 'import json,sys; pw=sys.stdin.readline().rstrip("\n"); print(json.dumps({"name":sys.argv[1],"purpose":sys.argv[2],"scope":sys.argv[3],"password":pw,"otp":sys.argv[4]}))' \
+         "$name" "$purpose" "$scope" "$code")
+  ISSUED_CODE=$(curl_json_secret body -s -o "$WORK/issue.json" -w '%{http_code}' -X POST -b "$JAR_DIR/claude_employee01.jar" -A "$UA" \
          -H "X-CSRF-Token: $EMP_CSRF" -H 'Content-Type: application/json' \
-         -d "$body" "$BASE/api/me/api-tokens")
+         "$BASE/api/me/api-tokens")
   if [ "$ISSUED_CODE" = "201" ]; then
     ISSUED_TOKEN=$(jq_py "d.get('token','')" < "$WORK/issue.json")
     ISSUED_ID=$(jq_py "str(d.get('id',''))" < "$WORK/issue.json")
@@ -335,10 +343,10 @@ issue_token() {
 }
 
 # ─── 준비: 세션 셋 ───────────────────────────────────────────────
-hr "준비 — 검토 계정 세션 (qa_admin01 · qa_employee01 · qa_manager01)"
-ADM_CSRF=$(login qa_admin01)     || { echo "qa_admin01 로그인 실패 — 시험을 시작할 수 없다"; exit 1; }
-EMP_CSRF=$(login qa_employee01)  || { echo "qa_employee01 로그인 실패 — 시험을 시작할 수 없다"; exit 1; }
-MGR_CSRF=$(login qa_manager01)   || { echo "qa_manager01 로그인 실패 — (a) 권한 항목은 SKIP 된다"; MGR_CSRF=''; }
+hr "준비 — 검토 계정 세션 (claude_admin01 · claude_employee01 · claude_manager01)"
+ADM_CSRF=$(login claude_admin01)     || { echo "claude_admin01 로그인 실패 — 시험을 시작할 수 없다"; exit 1; }
+EMP_CSRF=$(login claude_employee01)  || { echo "claude_employee01 로그인 실패 — 시험을 시작할 수 없다"; exit 1; }
+MGR_CSRF=$(login claude_manager01)   || { echo "claude_manager01 로그인 실패 — (a) 권한 항목은 SKIP 된다"; MGR_CSRF=''; }
 note "csrf 토큰 확보"
 
 # 폴백(psql 없음)은 `GET /api/users` 를 쓰므로 재인증 창이 먼저 열려 있어야 한다.
@@ -347,13 +355,13 @@ UID_VIA_API=0
 if [ "$HAVE_PSQL" -eq 0 ]; then
   UID_VIA_API=1
   note "psql 을 쓸 수 없다 — 계정 id 를 GET /api/users 로 찾는다 (정책 user.manage → 재인증 필요)"
-  note "준비 재인증: qa_admin01 → $(reauth qa_admin01 "$ADM_CSRF")"
+  note "준비 재인증: claude_admin01 → $(reauth claude_admin01 "$ADM_CSRF")"
   note "→ 재인증 창이 열렸으므로 (a) 「재인증 없는 Admin → 403」 두 항목은 SKIP 한다"
 fi
 
-EMP_UID=$(uid_of qa_employee01) || EMP_UID=''
-ADM_UID=$(uid_of qa_admin01)    || ADM_UID=''
-note "qa_employee01 uid=${EMP_UID:-?} · qa_admin01 uid=${ADM_UID:-?}"
+EMP_UID=$(uid_of claude_employee01) || EMP_UID=''
+ADM_UID=$(uid_of claude_admin01)    || ADM_UID=''
+note "claude_employee01 uid=${EMP_UID:-?} · claude_admin01 uid=${ADM_UID:-?}"
 [ -n "$EMP_UID" ] || { echo "대상 계정 id 를 찾지 못했다 — 시험을 시작할 수 없다"; exit 1; }
 
 T0=$(psqlq "SELECT now();")
@@ -364,14 +372,14 @@ hr "(a) POST /api/users/{uid}/api-tokens — 발급"
 # F-66 — 관리자 발급 창구(POST)는 **라우트에서 사라졌다**. 같은 경로의 목록(GET)이 남아
 # 있으므로 라우터 [1] 의 「경로는 맞고 메서드만 다르다」 갈래가 먼저 잡아 **405** 다
 # (재인증 창과 무관하다 — 인증·인가에 닿지도 않는다).
-R=$(curl -s -w '\n%{http_code}' -X POST -b "$JAR_DIR/qa_admin01.jar" -A "$UA" \
+R=$(curl -s -w '\n%{http_code}' -X POST -b "$JAR_DIR/claude_admin01.jar" -A "$UA" \
     -H "X-CSRF-Token: $ADM_CSRF" -H 'Content-Type: application/json' \
     -d '{"name":"F59-admin","reason_text":"관리자 발급 창구 확인"}' "$BASE/api/users/$EMP_UID/api-tokens")
 echo "  관리자 발급 창구 → [$(code_of "$R")] $(body_of "$R")"
 expect "관리자 발급 창구 → 405 (F-66 으로 POST 만 제거)" "405" "$(code_of "$R")"
 expect "관리자 발급 창구 문구" '{"error":"허용되지 않는 메서드입니다"}' "$(body_of "$R")"
 
-note "재인증: qa_admin01 → $(reauth qa_admin01 "$ADM_CSRF")"
+note "재인증: claude_admin01 → $(reauth claude_admin01 "$ADM_CSRF")"
 
 issue_token "F59-pc-$TAG" "T-71 시험 — 개인 토큰 발급"
 CODE="$ISSUED_CODE"
@@ -388,7 +396,7 @@ else
   expect "hint == 토큰 앞 6자 (값은 출력하지 않는다)" "같음" "다름"
 fi
 
-R=$(curl -s -w '\n%{http_code}' -b "$JAR_DIR/qa_admin01.jar" -A "$UA" "$BASE/api/users/$EMP_UID/api-tokens")
+R=$(curl -s -w '\n%{http_code}' -b "$JAR_DIR/claude_admin01.jar" -A "$UA" "$BASE/api/users/$EMP_UID/api-tokens")
 CODE=$(code_of "$R"); printf '%s' "$(body_of "$R")" > "$WORK/list.json"
 expect "목록 상태" "200" "$CODE"
 expect "목록에 방금 발급한 행" "1" "$(jq_py "sum(1 for t in d['tokens'] if str(t['id'])=='$TID')" < "$WORK/list.json")"
@@ -399,10 +407,10 @@ expect "목록에 token 키 없음" "0" "$(grep -c '"token"' "$WORK/list.json")"
 # 형식 거부 셋 — 본인 창구다. 비밀번호·코드가 **맞아도** 형식에서 먼저 끝나므로
 # (핸들러 [1]~[5] 가 인증보다 앞이다) 여기서는 코드 창을 쓰지 않는다(값은 아무것이나).
 bad_issue() {   # $1 = JSON 본문 → 상태 코드
-  curl -s -o /dev/null -w '%{http_code}' -X POST -b "$JAR_DIR/qa_employee01.jar" -A "$UA" \
+  curl -s -o /dev/null -w '%{http_code}' -X POST -b "$JAR_DIR/claude_employee01.jar" -A "$UA" \
     -H "X-CSRF-Token: $EMP_CSRF" -H 'Content-Type: application/json' -d "$1" "$BASE/api/me/api-tokens"
 }
-R=$(curl -s -w '\n%{http_code}' -X POST -b "$JAR_DIR/qa_employee01.jar" -A "$UA" \
+R=$(curl -s -w '\n%{http_code}' -X POST -b "$JAR_DIR/claude_employee01.jar" -A "$UA" \
     -H "X-CSRF-Token: $EMP_CSRF" -H 'Content-Type: application/json' \
     -d '{"name":"F59-nopurpose","scope":"read","password":"x","otp":"000000"}' "$BASE/api/me/api-tokens")
 expect "용도 없음 → 400" "400" "$(code_of "$R")"
@@ -416,9 +424,9 @@ expect "모르는 키 → 400 (R-07)" "400" \
   "$(bad_issue '{"name":"F59-x","purpose":"모르는 키","scope":"read","password":"x","otp":"000000","user_id":1}')"
 
 if [ -z "$MGR_CSRF" ]; then
-  skip "(a) Manager 목록 403" "qa_manager01 세션 없음"
+  skip "(a) Manager 목록 403" "claude_manager01 세션 없음"
 else
-  R=$(curl -s -w '\n%{http_code}' -b "$JAR_DIR/qa_manager01.jar" -A "$UA" "$BASE/api/users/$EMP_UID/api-tokens")
+  R=$(curl -s -w '\n%{http_code}' -b "$JAR_DIR/claude_manager01.jar" -A "$UA" "$BASE/api/users/$EMP_UID/api-tokens")
   expect "Manager 가 남의 목록 → 403 (user.manage 그대로)" "403" "$(code_of "$R")"
 fi
 
@@ -436,7 +444,7 @@ if [ "$HAVE_PSQL" -eq 0 ]; then
   skip "(a) 감사·해시·원문 확인" "psql 을 쓸 수 없다"
 else
   expect "감사 api_token.issue allow (발급자 = 대상 = 본인)" "t" \
-    "$(psqlq "SELECT count(*) > 0 FROM audit_logs WHERE action='api_token.issue' AND result='allow' AND actor_name='qa_employee01' AND target_name='qa_employee01' AND happened_at > '$T0'::timestamptz")"
+    "$(psqlq "SELECT count(*) > 0 FROM audit_logs WHERE action='api_token.issue' AND result='allow' AND actor_name='claude_employee01' AND target_name='claude_employee01' AND happened_at > '$T0'::timestamptz")"
   expect "감사 detail 에 token_id·token_name·token_scope·reason_text·otp_verified (F-66)" "t" \
     "$(psqlq "SELECT count(*) > 0 FROM audit_logs WHERE action='api_token.issue' AND result='allow' AND happened_at > '$T0'::timestamptz AND detail ? 'token_id' AND detail ? 'token_name' AND detail ? 'token_scope' AND detail ? 'reason_text' AND detail ? 'otp_verified'")"
   expect "감사 detail 에 hint·token 원문 키 없음" "t" \
@@ -445,7 +453,7 @@ else
     "$(psqlq "SELECT count(*) > 0 FROM audit_logs WHERE action='api_token.issue' AND result='deny' AND reason='limit_exceeded' AND happened_at > '$T0'::timestamptz")"
 
   # ★ DB 어디에도 토큰 원문이 없다 — 토큰은 **패턴 파일**로만 넘긴다(명령줄 노출 금지)
-  printf '%s' "$TOK" > "$WORK/pat.txt"
+  (umask 077; printf '%s' "$TOK" > "$WORK/pat.txt")   # 0600 (0700 폴더 안) — 내용·바이트는 전과 같다
   psqlq "SELECT coalesce(summary,'') || ' ' || coalesce(detail::text,'') FROM audit_logs WHERE happened_at > '$T0'::timestamptz" > "$WORK/dump.txt"
   psqlq "SELECT id || ' ' || name || ' ' || token_hash || ' ' || hint || ' ' || coalesce(reason_text,'') FROM api_tokens" >> "$WORK/dump.txt"
   expect "audit_logs·api_tokens 에 토큰 원문 0건" "0" "$(grep -c -F -f "$WORK/pat.txt" "$WORK/dump.txt")"
@@ -465,34 +473,34 @@ T1=$(psqlq "SELECT now();")
 if [ -z "$TOK" ]; then
   skip "(b)" "토큰이 없다"
 else
-  R=$(curl -s -w '\n%{http_code}' -A "$UA" -H "X-API-Token: $TOK" "$BASE/api/whoami")
+  R=$(curl_hdr_secret X-API-Token TOK -s -w '\n%{http_code}' -A "$UA" "$BASE/api/whoami")
   echo "  whoami → [$(code_of "$R")] $(body_of "$R")"
   expect "whoami 상태" "200" "$(code_of "$R")"
-  expect "whoami username" "qa_employee01" \
+  expect "whoami username" "claude_employee01" \
     "$(printf '%s' "$(body_of "$R")" | sed -n 's/.*"username":"\([^"]*\)".*/\1/p')"
   expect "whoami 키 넷 (T-68 불변)" "role,team_id,upload_levels,username" \
     "$(printf '%s' "$(body_of "$R")" | jq_py "','.join(sorted(d.keys()))")"
 
-  R=$(curl -s -w '\n%{http_code}' -A "$UA" -H "X-API-Token: $TOK" "$BASE/api/files?limit=5")
+  R=$(curl_hdr_secret X-API-Token TOK -s -w '\n%{http_code}' -A "$UA" "$BASE/api/files?limit=5")
   expect "GET /api/files 상태" "200" "$(code_of "$R")"
   expect "GET /api/files 배열" "1" "$(printf '%s' "$(body_of "$R")" | grep -c '^\[')"
 
   printf 'F-59 시험용 파일입니다. %s\n' "$TAG" > "$WORK/F59-b-$TAG.txt"
-  R=$(curl -s -w '\n%{http_code}' -X POST -A "$UA" -H "X-API-Token: $TOK" \
+  R=$(curl_hdr_secret X-API-Token TOK -s -w '\n%{http_code}' -X POST -A "$UA" \
       -F "file=@$WORK/F59-b-$TAG.txt" -F 'level=internal' "$BASE/api/upload")
   echo "  업로드 → [$(code_of "$R")] $(body_of "$R")"
   expect "POST /api/upload 상태" "201" "$(code_of "$R")"
   B_FILE=$(uuid_of "$(body_of "$R")")
   [ -n "$B_FILE" ] && MADE_FILES="$MADE_FILES $B_FILE"
 
-  R=$(curl -s -w '\n%{http_code}' -A "$UA" -H "X-API-Token: $TOK" "$BASE/api/folders")
+  R=$(curl_hdr_secret X-API-Token TOK -s -w '\n%{http_code}' -A "$UA" "$BASE/api/folders")
   expect "GET /api/folders 상태" "200" "$(code_of "$R")"
 
   if [ "$HAVE_PSQL" -eq 0 ]; then
     skip "(b) 감사·last_used_at" "psql 을 쓸 수 없다"
   else
     expect "감사 file.upload allow 에 auth=api_token" "t" \
-      "$(psqlq "SELECT count(*) > 0 FROM audit_logs WHERE action='file.upload' AND result='allow' AND actor_name='qa_employee01' AND happened_at > '$T1'::timestamptz AND detail->>'auth' = 'api_token'")"
+      "$(psqlq "SELECT count(*) > 0 FROM audit_logs WHERE action='file.upload' AND result='allow' AND actor_name='claude_employee01' AND happened_at > '$T1'::timestamptz AND detail->>'auth' = 'api_token'")"
     expect "감사 token_kind=personal" "t" \
       "$(psqlq "SELECT count(*) > 0 FROM audit_logs WHERE happened_at > '$T1'::timestamptz AND detail->>'token_kind' = 'personal'")"
     expect "감사 token_id = 발급한 토큰 번호" "t" \
@@ -510,13 +518,13 @@ if [ -z "$TOK" ]; then
 else
   # 지울 파일 하나 (토큰으로 올린 것 = 자기 파일)
   printf 'F-59 삭제 시험 파일입니다. %s\n' "$TAG" > "$WORK/F59-c-$TAG.txt"
-  R=$(curl -s -w '\n%{http_code}' -X POST -A "$UA" -H "X-API-Token: $TOK" \
+  R=$(curl_hdr_secret X-API-Token TOK -s -w '\n%{http_code}' -X POST -A "$UA" \
       -F "file=@$WORK/F59-c-$TAG.txt" -F 'level=internal' "$BASE/api/upload")
   C_FILE=$(uuid_of "$(body_of "$R")")
   if [ -z "$C_FILE" ]; then
     skip "(c) 파일 삭제" "업로드가 id 를 주지 않았다"
   else
-    R=$(curl -s -w '\n%{http_code}' -X DELETE -A "$UA" -H "X-API-Token: $TOK" "$BASE/api/files/$C_FILE")
+    R=$(curl_hdr_secret X-API-Token TOK -s -w '\n%{http_code}' -X DELETE -A "$UA" "$BASE/api/files/$C_FILE")
     echo "  파일 삭제 → [$(code_of "$R")] $(body_of "$R")"
     expect "파일 삭제 상태" "200" "$(code_of "$R")"
     expect "파일 삭제 본문" '{"ok":true}' "$(body_of "$R")"
@@ -529,7 +537,7 @@ else
   fi
 
   # 빈 폴더 하나 → 삭제
-  R=$(curl -s -w '\n%{http_code}' -X POST -A "$UA" -H "X-API-Token: $TOK" \
+  R=$(curl_hdr_secret X-API-Token TOK -s -w '\n%{http_code}' -X POST -A "$UA" \
       -H 'Content-Type: application/json' \
       -d "{\"name\":\"F59-empty-$TAG\",\"access_level\":\"internal\"}" "$BASE/api/folders")
   C_EMPTY=$(fid_of "$(body_of "$R")")
@@ -537,13 +545,13 @@ else
     skip "(c) 빈 폴더 삭제" "폴더를 만들지 못했다"
   else
     MADE_FOLDERS="$MADE_FOLDERS $C_EMPTY"
-    R=$(curl -s -w '\n%{http_code}' -X DELETE -A "$UA" -H "X-API-Token: $TOK" "$BASE/api/folders/$C_EMPTY")
+    R=$(curl_hdr_secret X-API-Token TOK -s -w '\n%{http_code}' -X DELETE -A "$UA" "$BASE/api/folders/$C_EMPTY")
     echo "  빈 폴더 삭제 → [$(code_of "$R")] $(body_of "$R")"
     expect "빈 폴더 삭제 상태" "200" "$(code_of "$R")"
   fi
 
   # 파일이 든 폴더 → 400
-  R=$(curl -s -w '\n%{http_code}' -X POST -A "$UA" -H "X-API-Token: $TOK" \
+  R=$(curl_hdr_secret X-API-Token TOK -s -w '\n%{http_code}' -X POST -A "$UA" \
       -H 'Content-Type: application/json' \
       -d "{\"name\":\"F59-full-$TAG\",\"access_level\":\"internal\"}" "$BASE/api/folders")
   C_FULL=$(fid_of "$(body_of "$R")")
@@ -551,9 +559,9 @@ else
     skip "(c) 파일 든 폴더 400" "폴더 또는 파일이 없다"
   else
     MADE_FOLDERS="$MADE_FOLDERS $C_FULL"
-    curl -s -o /dev/null -X PATCH -A "$UA" -H "X-API-Token: $TOK" -H 'Content-Type: application/json' \
+    curl_hdr_secret X-API-Token TOK -s -o /dev/null -X PATCH -A "$UA" -H 'Content-Type: application/json' \
       -d "{\"folder_id\":$C_FULL}" "$BASE/api/files/$B_FILE"
-    R=$(curl -s -w '\n%{http_code}' -X DELETE -A "$UA" -H "X-API-Token: $TOK" "$BASE/api/folders/$C_FULL")
+    R=$(curl_hdr_secret X-API-Token TOK -s -w '\n%{http_code}' -X DELETE -A "$UA" "$BASE/api/folders/$C_FULL")
     echo "  파일 든 폴더 삭제 → [$(code_of "$R")] $(body_of "$R")"
     expect "파일 든 폴더 → 400" "400" "$(code_of "$R")"
     # 폴더 삭제 400 은 F-41 이후 `code` 키를 함께 준다(기존 동작) — 본문 전체가 아니라
@@ -562,9 +570,9 @@ else
       "$(printf '%s' "$(body_of "$R")" | jq_py "d['error']")"
   fi
 
-  # 남의 파일(qa_admin01 이 올린 것) → 403
+  # 남의 파일(claude_admin01 이 올린 것) → 403
   printf 'F-59 관리자 파일입니다. %s\n' "$TAG" > "$WORK/F59-adm-$TAG.txt"
-  R=$(curl -s -w '\n%{http_code}' -X POST -b "$JAR_DIR/qa_admin01.jar" -A "$UA" \
+  R=$(curl -s -w '\n%{http_code}' -X POST -b "$JAR_DIR/claude_admin01.jar" -A "$UA" \
       -H "X-CSRF-Token: $ADM_CSRF" -F "file=@$WORK/F59-adm-$TAG.txt" -F 'access_level=internal' \
       "$BASE/api/files")
   A_FILE=$(uuid_of "$(body_of "$R")")
@@ -572,18 +580,18 @@ else
     skip "(c) 남의 파일 403" "관리자 업로드가 id 를 주지 않았다 [$(code_of "$R")]"
   else
     MADE_FILES="$MADE_FILES $A_FILE"
-    R=$(curl -s -w '\n%{http_code}' -X DELETE -A "$UA" -H "X-API-Token: $TOK" "$BASE/api/files/$A_FILE")
+    R=$(curl_hdr_secret X-API-Token TOK -s -w '\n%{http_code}' -X DELETE -A "$UA" "$BASE/api/files/$A_FILE")
     echo "  남의 파일 삭제 → [$(code_of "$R")] $(body_of "$R")"
     expect "남의 파일 → 403" "403" "$(code_of "$R")"
     expect "남의 파일 문구" '{"error":"권한이 없습니다"}' "$(body_of "$R")"
   fi
 
-  R=$(curl -s -w '\n%{http_code}' -X DELETE -A "$UA" -H "X-API-Token: $TOK" \
+  R=$(curl_hdr_secret X-API-Token TOK -s -w '\n%{http_code}' -X DELETE -A "$UA" \
       "$BASE/api/files/00000000-0000-4000-8000-000000000000")
   expect "없는 파일 id → 404" "404" "$(code_of "$R")"
   # 폴더 번호는 **순차 정수**라 「없음(404)」과 「권한 없음(403)」이 갈리면 그 차이가 곧
   # 개수 열거가 된다 → folders_delete.php 는 둘 다 403 동일 문구다(핸들러 [1], 파일 UUID 와 다름).
-  R=$(curl -s -w '\n%{http_code}' -X DELETE -A "$UA" -H "X-API-Token: $TOK" "$BASE/api/folders/999999")
+  R=$(curl_hdr_secret X-API-Token TOK -s -w '\n%{http_code}' -X DELETE -A "$UA" "$BASE/api/folders/999999")
   expect "없는 폴더 번호 → 403 (동일 문구)" "403" "$(code_of "$R")"
 
   if [ "$HAVE_PSQL" -eq 0 ]; then
@@ -600,10 +608,10 @@ fi
 hr "(d) 공용 토큰은 삭제 창구를 쓸 수 없다"
 T3=$(psqlq "SELECT now();")
 if [ "$USE_SHARED" -eq 0 ]; then
-  skip "(d)" "공용 토큰 귀속이 검토 계정(qa_)이 아님 — 값은 읽지 않았다"
+  skip "(d)" "공용 토큰 귀속이 검토 계정(qa_·claude_)이 아님 — 값은 읽지 않았다"
 else
   printf 'F-59 공용 토큰 시험 파일입니다. %s\n' "$TAG" > "$WORK/F59-d-$TAG.txt"
-  R=$(curl -s -w '\n%{http_code}' -X POST -A "$UA" -H "X-API-Token: $SHARED_TOKEN" \
+  R=$(curl_hdr_secret X-API-Token SHARED_TOKEN -s -w '\n%{http_code}' -X POST -A "$UA" \
       -F "file=@$WORK/F59-d-$TAG.txt" -F 'level=internal' "$BASE/api/upload")
   D_FILE=$(uuid_of "$(body_of "$R")")
   [ -n "$D_FILE" ] && MADE_FILES="$MADE_FILES $D_FILE"
@@ -611,16 +619,16 @@ else
   if [ -z "$D_FILE" ]; then
     skip "(d) 삭제 403" "공용 토큰 업로드가 id 를 주지 않았다 [$(code_of "$R")]"
   else
-    R=$(curl -s -w '\n%{http_code}' -X DELETE -A "$UA" -H "X-API-Token: $SHARED_TOKEN" "$BASE/api/files/$D_FILE")
+    R=$(curl_hdr_secret X-API-Token SHARED_TOKEN -s -w '\n%{http_code}' -X DELETE -A "$UA" "$BASE/api/files/$D_FILE")
     echo "  공용 토큰 파일 삭제 → [$(code_of "$R")] $(body_of "$R")"
     expect "공용 토큰 DELETE /api/files → 403" "403" "$(code_of "$R")"
     expect "공용 토큰 DELETE 문구" '{"error":"이 창구는 개인 토큰으로만 쓸 수 있습니다"}' "$(body_of "$R")"
   fi
 
-  R=$(curl -s -w '\n%{http_code}' -X DELETE -A "$UA" -H "X-API-Token: $SHARED_TOKEN" "$BASE/api/folders/999999")
+  R=$(curl_hdr_secret X-API-Token SHARED_TOKEN -s -w '\n%{http_code}' -X DELETE -A "$UA" "$BASE/api/folders/999999")
   expect "공용 토큰 DELETE /api/folders → 403" "403" "$(code_of "$R")"
 
-  R=$(curl -s -w '\n%{http_code}' -A "$UA" -H "X-API-Token: $SHARED_TOKEN" "$BASE/api/files?limit=5")
+  R=$(curl_hdr_secret X-API-Token SHARED_TOKEN -s -w '\n%{http_code}' -A "$UA" "$BASE/api/files?limit=5")
   expect "공용 토큰 GET /api/files → 200 (불변)" "200" "$(code_of "$R")"
 
   if [ "$HAVE_PSQL" -eq 0 ]; then
@@ -641,32 +649,32 @@ T4=$(psqlq "SELECT now();")
 if [ -z "$TID" ]; then
   skip "(e)" "회수할 토큰이 없다"
 else
-  note "재인증: qa_admin01 → $(reauth qa_admin01 "$ADM_CSRF")"
-  R=$(curl -s -w '\n%{http_code}' -X DELETE -b "$JAR_DIR/qa_admin01.jar" -A "$UA" \
+  note "재인증: claude_admin01 → $(reauth claude_admin01 "$ADM_CSRF")"
+  R=$(curl -s -w '\n%{http_code}' -X DELETE -b "$JAR_DIR/claude_admin01.jar" -A "$UA" \
       -H "X-CSRF-Token: $ADM_CSRF" "$BASE/api/users/$EMP_UID/api-tokens/$TID")
   echo "  회수 → [$(code_of "$R")] $(body_of "$R")"
   expect "회수 상태" "200" "$(code_of "$R")"
   expect "회수 본문" '{"ok":true}' "$(body_of "$R")"
 
-  R=$(curl -s -w '\n%{http_code}' -A "$UA" -H "X-API-Token: $TOK" "$BASE/api/whoami")
+  R=$(curl_hdr_secret X-API-Token TOK -s -w '\n%{http_code}' -A "$UA" "$BASE/api/whoami")
   echo "  회수된 토큰으로 whoami → [$(code_of "$R")] $(body_of "$R")"
   expect "회수된 토큰 → 401" "401" "$(code_of "$R")"
   expect "회수된 토큰 문구 (회수 사실을 알리지 않는다)" '{"error":"API 토큰이 올바르지 않습니다"}' "$(body_of "$R")"
 
-  R=$(curl -s -w '\n%{http_code}' -X DELETE -b "$JAR_DIR/qa_admin01.jar" -A "$UA" \
+  R=$(curl -s -w '\n%{http_code}' -X DELETE -b "$JAR_DIR/claude_admin01.jar" -A "$UA" \
       -H "X-CSRF-Token: $ADM_CSRF" "$BASE/api/users/$EMP_UID/api-tokens/$TID")
   expect "다시 회수 → 400" "400" "$(code_of "$R")"
 
   if [ -z "$ADM_UID" ]; then
-    skip "(e) 다른 계정의 tid 404" "qa_admin01 uid 를 찾지 못했다"
+    skip "(e) 다른 계정의 tid 404" "claude_admin01 uid 를 찾지 못했다"
   else
-    R=$(curl -s -w '\n%{http_code}' -X DELETE -b "$JAR_DIR/qa_admin01.jar" -A "$UA" \
+    R=$(curl -s -w '\n%{http_code}' -X DELETE -b "$JAR_DIR/claude_admin01.jar" -A "$UA" \
         -H "X-CSRF-Token: $ADM_CSRF" "$BASE/api/users/$ADM_UID/api-tokens/$TID")
     echo "  다른 계정의 tid → [$(code_of "$R")] $(body_of "$R")"
     expect "다른 계정의 tid → 404" "404" "$(code_of "$R")"
   fi
 
-  R=$(curl -s -w '\n%{http_code}' -b "$JAR_DIR/qa_admin01.jar" -A "$UA" "$BASE/api/users/$EMP_UID/api-tokens")
+  R=$(curl -s -w '\n%{http_code}' -b "$JAR_DIR/claude_admin01.jar" -A "$UA" "$BASE/api/users/$EMP_UID/api-tokens")
   printf '%s' "$(body_of "$R")" > "$WORK/list2.json"
   expect "목록의 그 행에 revoked_at 채워짐" "1" \
     "$(jq_py "sum(1 for t in d['tokens'] if str(t['id'])=='$TID' and t['revoked_at'])" < "$WORK/list2.json")"
@@ -694,7 +702,7 @@ R=$(curl -s -w '\n%{http_code}' -A "$UA" -H "X-API-Token: $WRONG_TOKEN" "$BASE/a
 expect "틀린 토큰 → 401" "401" "$(code_of "$R")"
 expect "틀린 토큰 문구" '{"error":"API 토큰이 올바르지 않습니다"}' "$(body_of "$R")"
 if [ -n "$TOK" ] && [ -n "$TID" ]; then
-  R=$(curl -s -w '\n%{http_code}' -A "$UA" -H "X-API-Token: $TOK" "$BASE/api/files?limit=1")
+  R=$(curl_hdr_secret X-API-Token TOK -s -w '\n%{http_code}' -A "$UA" "$BASE/api/files?limit=1")
   expect "회수된 토큰으로 검색 → 401" "401" "$(code_of "$R")"
 else
   skip "(f) 회수된 토큰 401" "토큰이 없다"
@@ -707,7 +715,7 @@ if [ -z "$TOK" ]; then
 else
   # 회수됐어도 **라우트 집합 밖**이라는 사실은 그대로 확인된다(세션 경로 401).
   # F-66 — 이제 발급 창구는 본인 창구 하나이고, 그것도 토큰 집합 밖이다(토큰이 토큰을 낳지 않는다).
-  R=$(curl -s -w '\n%{http_code}' -X POST -A "$UA" -H "X-API-Token: $TOK" \
+  R=$(curl_hdr_secret X-API-Token TOK -s -w '\n%{http_code}' -X POST -A "$UA" \
       -H 'Content-Type: application/json' \
       -d '{"name":"F59-x","purpose":"닫힘 시험","scope":"read","password":"x","otp":"000000"}' \
       "$BASE/api/me/api-tokens")
@@ -720,7 +728,7 @@ if [ -z "${B_FILE:-}" ]; then
   skip "(g) PATCH 허용 키·세션 CSRF" "시험 파일이 없다"
 else
   if [ "$USE_SHARED" -eq 1 ]; then
-    R=$(curl -s -w '\n%{http_code}' -X PATCH -A "$UA" -H "X-API-Token: $SHARED_TOKEN" \
+    R=$(curl_hdr_secret X-API-Token SHARED_TOKEN -s -w '\n%{http_code}' -X PATCH -A "$UA" \
         -H 'Content-Type: application/json' -d '{"access_level":"public"}' "$BASE/api/files/$B_FILE")
     echo "  토큰 PATCH {access_level} → [$(code_of "$R")] $(body_of "$R")"
     expect "토큰 PATCH {access_level} → 400 (불변)" "400" "$(code_of "$R")"
@@ -728,7 +736,7 @@ else
     skip "(g) 토큰 PATCH {access_level}" "쓸 수 있는 토큰이 없다(개인 토큰은 회수됨·공용은 검토 계정 아님)"
   fi
 
-  R=$(curl -s -w '\n%{http_code}' -X DELETE -b "$JAR_DIR/qa_employee01.jar" -A "$UA" "$BASE/api/files/$B_FILE")
+  R=$(curl -s -w '\n%{http_code}' -X DELETE -b "$JAR_DIR/claude_employee01.jar" -A "$UA" "$BASE/api/files/$B_FILE")
   echo "  세션 + CSRF 없음 → [$(code_of "$R")] $(body_of "$R")"
   expect "세션 DELETE, CSRF 없음 → 403 (웹 불변)" "403" "$(code_of "$R")"
 fi
@@ -779,7 +787,7 @@ expect "bash -n (시험 스크립트 셋)" "0" "$SHBAD"
 hr "결과"
 printf '통과 %d · 실패 %d · 건너뜀/미검증 %d\n' "$PASS" "$FAIL" "$SKIP"
 if [ "$USE_SHARED" -eq 0 ]; then
-  echo "(d) 는 공용 토큰 귀속이 검토 계정(qa_)이 아니라 실행하지 않았다 — **미검증**이다."
+  echo "(d) 는 공용 토큰 귀속이 검토 계정(qa_·claude_)이 아니라 실행하지 않았다 — **미검증**이다."
 fi
 echo "(f) 계정 비활성 갈래는 코드 읽기로 대체했다 — **미검증**이다."
 [ "$FAIL" -eq 0 ] || exit 1

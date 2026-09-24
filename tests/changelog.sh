@@ -10,7 +10,7 @@
 #   (e) 린트·문법 — security_lint 0건 · 바뀐 PHP php -l · bash -n · tests/help_button.sh 회귀
 #
 # 규칙 (CLAUDE.md 3장)
-#   · 검토 계정(qa_ 접두)만 쓴다. 시드 계정(admin01 …)은 사용자의 자기 공격 전용이다.
+#   · 검토 계정(claude_ 접두)만 쓴다. 시드 계정(admin01 …)은 사용자의 자기 공격 전용이다.
 #   · 모든 요청에 `-A "tbox-review/<날짜>"` 를 붙인다.
 #   · **데이터를 하나도 만들지 않는다** — 정적 검사와 GET 뿐이라 지울 것도 되돌릴 것도 없다.
 #   · 로그인은 이 시험 안에서 **한 번만** 한다 (같은 30초 창의 OTP 재사용은 거부되는 것이 정상 — R-45).
@@ -25,9 +25,10 @@ set -u
 BASE="http://127.0.0.1:8082/tbox"
 UA="tbox-review/$(date +%F)"
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+. "$ROOT/tests/lib/secrets.sh" || { echo "tests/lib/secrets.sh 를 읽지 못했다 — 시험을 시작하지 않는다 (R-62)"; exit 3; }
 OUT="${1:-$HOME/.claude/ui-shots/changelog}"
 WORK="$(mktemp -d)"
-JAR="$WORK/qa_admin01.jar"
+JAR="$WORK/claude_admin01.jar"
 PASS=0
 FAIL=0
 
@@ -50,14 +51,14 @@ expect() {
 # ── 로그인 (한 번만) ──────────────────────────────────────────
 # TOTP 는 1회성이라(R-45) 같은 창에서 두 번 쓰면 거부되는 것이 정상 — 다음 창까지 기다렸다 다시 한다.
 login_once() {
-  local who="$1" pw sec raw code left out try
+  local who="$1" pw sec raw code left out try body
   pw=$(sudo -n awk -v u="$who" '$1==u{print $3}' /etc/tbox-v2/seed-accounts.txt)
   sec=$(sudo -n awk -v u="$who" '$1==u{print $2}' /etc/tbox-v2/qa-totp.txt)
   for try in 1 2 3; do
-    raw=$(php "$ROOT/scripts/totp_code.php" "$sec")
+    raw=$(totp_now sec)
     code=${raw%%$'\n'*}
-    out=$(curl -s -c "$JAR" -A "$UA" -H 'Content-Type: application/json' \
-          -d "{\"username\":\"$who\",\"password\":\"$pw\",\"otp\":\"$code\"}" "$BASE/api/login")
+    printf -v body '{"username":"%s","password":"%s","otp":"%s"}' "$who" "$pw" "$code"
+    out=$(curl_json_secret body -s -c "$JAR" -A "$UA" -H 'Content-Type: application/json' "$BASE/api/login")
     case "$out" in *'"ok":true'*) return 0 ;; esac
     left=$(printf '%s' "$raw" | sed -n 's/^남은 시간: \([0-9]*\)초.*/\1/p')
     [ -n "$left" ] || left=31
@@ -133,8 +134,8 @@ expect "두 번 출력이 같음" 0 "$(cmp -s "$WORK/md1" "$WORK/md2" && echo 0 
 # ─────────────────────────────────────────────────────────────
 hr "(b) 화면 — 로그인한 셸 · 로그인 전 · health · time"
 # ─────────────────────────────────────────────────────────────
-sub "qa_admin01 로그인 (이 시험에서 한 번만)"
-if login_once qa_admin01; then
+sub "claude_admin01 로그인 (이 시험에서 한 번만)"
+if login_once claude_admin01; then
   expect "로그인 성공" 0 0
 else
   expect "로그인 성공" 0 1
@@ -244,7 +245,8 @@ cat > "$WORK/shot.py" <<'PY'
 import json, sys
 from playwright.sync_api import sync_playwright
 
-BASE, UA, COOKIES, OUT, VER, TITLE = sys.argv[1:7]
+BASE, UA, OUT, VER, TITLE = sys.argv[1:6]
+COOKIES = sys.stdin.readline().rstrip('\n')   # 세션 쿠키는 표준입력 첫 줄 — 인자는 ps 에 보인다(R-62 · py_secret)
 res = {}
 with sync_playwright() as p:
     b = p.chromium.launch(channel='chromium')   # headless_shell 대신 정식 빌드(디스크 절약)
@@ -291,7 +293,7 @@ with sync_playwright() as p:
 print(json.dumps(res, ensure_ascii=False))
 PY
 export PATH="$HOME/.local/bin:$PATH"
-if python3 "$WORK/shot.py" "$BASE" "$UA" "$COOKIES" "$OUT" "$VER" "$FIRST_TITLE" > "$WORK/d.json" 2>"$WORK/d.err"; then
+if py_secret COOKIES -- python3 "$WORK/shot.py" "$BASE" "$UA" "$OUT" "$VER" "$FIRST_TITLE" > "$WORK/d.json" 2>"$WORK/d.err"; then
   cat "$WORK/d.json"; echo
   jget() { php -r '$j = json_decode(file_get_contents($argv[1]), true); $v = $j[$argv[2]] ?? null; echo is_bool($v) ? ($v ? "true" : "false") : (is_array($v) ? count($v) : (string) $v);' "$WORK/d.json" "$1"; }
   expect "버전 단추 1개"              1        "$(jget btn_count)"

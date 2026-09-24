@@ -16,7 +16,7 @@
 #   (h) 정적            wiki_check 0 · security_lint 0 · php -l
 #
 # 규칙 (CLAUDE.md 3장)
-#   · 검토 계정(qa_ 접두)만 쓴다. 모든 요청에 `-A "tbox-review/<날짜>"`.
+#   · 검토 계정(claude_ 접두)만 쓴다. 모든 요청에 `-A "tbox-review/<날짜>"`.
 #   · 이 시험은 **데이터를 만들지 않는다** — GET 과 재인증뿐이다. (f) 의 XSS 글은 파일로 쓰지 않고
 #     `php` 메모리 안에서만 만들어 렌더러에 넘긴다(작업 트리·운영 화면에 아무것도 놓이지 않는다).
 #   · 운영 DB 는 **읽기**(psql SELECT)만.
@@ -31,6 +31,8 @@ set -u
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 # 검토 계정 판정 한 벌(qa_·claude_ — F-71 C). 못 읽으면 사전 검사가 빈 값으로 열리므로 시작하지 않는다.
 . "$ROOT/tests/lib/review_accounts.sh" || { echo "tests/lib/review_accounts.sh 를 읽지 못했다 — 시험을 시작하지 않는다 (R-73)"; exit 3; }
+. "$ROOT/tests/lib/secrets.sh" || { echo "tests/lib/secrets.sh 를 읽지 못했다 — 시험을 시작하지 않는다 (R-62)"; exit 3; }
+. "$ROOT/tests/lib/db_read.sh" || { echo "tests/lib/db_read.sh 를 읽지 못했다 — 시험을 시작하지 않는다 (R-73)"; exit 3; }
 SITE="http://127.0.0.1:8082"
 BASE="$SITE/tbox"
 UA="tbox-review/$(date +%F)"
@@ -66,13 +68,13 @@ qa_password() { sudo -n awk -v u="$1" '$1==u{print $3}' /etc/tbox-v2/seed-accoun
 qa_secret()   { sudo -n awk -v u="$1" '$1==u{print $2}' /etc/tbox-v2/qa-totp.txt 2>/dev/null; }
 
 login() {   # $1 계정 → 성공하면 표준출력에 csrf 토큰
-  local who="$1" jar="$JAR_DIR/$1.jar" pw sec raw code left out try
+  local who="$1" jar="$JAR_DIR/$1.jar" pw sec raw code left out try body
   pw=$(qa_password "$who"); sec=$(qa_secret "$who")
   [ -n "$pw" ] && [ -n "$sec" ] || return 2
   for try in 1 2 3; do
-    raw=$(php "$ROOT/scripts/totp_code.php" "$sec"); code=${raw%%$'\n'*}
-    out=$(curl -s -c "$jar" -A "$UA" -H 'Content-Type: application/json' \
-          -d "{\"username\":\"$who\",\"password\":\"$pw\",\"otp\":\"$code\"}" "$BASE/api/login")
+    raw=$(totp_now sec); code=${raw%%$'\n'*}
+    printf -v body '{"username":"%s","password":"%s","otp":"%s"}' "$who" "$pw" "$code"
+    out=$(curl_json_secret body -s -c "$jar" -A "$UA" -H 'Content-Type: application/json' "$BASE/api/login")
     case "$out" in
       *'"ok":true'*)
         curl -s -b "$jar" -A "$UA" "$BASE/api/me" | sed -n 's/.*"csrf_token":"\([0-9a-f]*\)".*/\1/p'
@@ -86,9 +88,11 @@ login() {   # $1 계정 → 성공하면 표준출력에 csrf 토큰
 }
 
 reauth() {   # $1 계정 $2 토큰 → HTTP 코드
-  curl -s -o /dev/null -w '%{http_code}' -b "$JAR_DIR/$1.jar" -c "$JAR_DIR/$1.jar" -A "$UA" \
-    -H 'Content-Type: application/json' -H "X-CSRF-Token: $2" \
-    -d "{\"password\":\"$(qa_password "$1")\"}" "$BASE/api/me/reauth"
+  local pw body
+  pw=$(qa_password "$1")
+  printf -v body '{"password":"%s"}' "$pw"
+  curl_json_secret body -s -o /dev/null -w '%{http_code}' -b "$JAR_DIR/$1.jar" -c "$JAR_DIR/$1.jar" -A "$UA" \
+    -H 'Content-Type: application/json' -H "X-CSRF-Token: $2" "$BASE/api/me/reauth"
 }
 
 get() {   # $1 jar 이름(빈 문자열 = 쿠키 없음)  $2 경로(모듈 기준)  $3 저장 이름 → 머리·본문 파일
@@ -112,8 +116,9 @@ psqlq "SELECT 1" >/dev/null 2>&1 && HAVE_PSQL=1
 if [ "$HAVE_PSQL" -eq 1 ]; then
   TRY=1
   while :; do
-    BUSY=$(psqlq "SELECT count(*) FROM audit_logs WHERE happened_at > now() - interval '10 minutes' AND actor_name IS NOT NULL AND $REVIEW_NOT_SQL")
-    echo "최근 10분 비-qa 감사 행: ${BUSY:-?} (시도 ${TRY}/10)"
+    db_read_var BUSY "$DB" "SELECT count(*) FROM audit_logs WHERE happened_at > now() - interval '10 minutes' AND actor_name IS NOT NULL AND $REVIEW_NOT_SQL" \
+      || { echo "운영 DB 를 읽지 못했다 — 시험을 시작하지 않는다 (R-73 · db_read rc 3)"; exit 3; }
+    echo "최근 10분 비-qa 감사 행: ${BUSY:-?} (시도 ${TRY}/10) (읽기 경로 ${DB_READ_VIA})"
     [ "${BUSY:-0}" -gt 0 ] 2>/dev/null || break
     if [ "$TRY" -ge 10 ]; then
       echo "10회(약 20분) 기다렸지만 사용자의 활동이 이어진다 — 시작하지 않는다 (SECURITY R-73 ①)"; exit 3
@@ -143,19 +148,19 @@ done
 
 # ════════════════════════════════════════════════════════════════
 hr "(b) Admin 재인증 전 — 302 /tbox/reauth?to=wiki"
-TOK_ADMIN=$(login qa_admin01) || { echo "qa_admin01 로그인 실패 — 중단"; exit 2; }
-echo "  qa_admin01 로그인 ok"
+TOK_ADMIN=$(login claude_admin01) || { echo "claude_admin01 로그인 실패 — 중단"; exit 2; }
+echo "  claude_admin01 로그인 ok"
 for p in $PATHS4; do
-  get qa_admin01 "$p" pre
+  get claude_admin01 "$p" pre
   expect "GET $p 상태" "302" "$(status_of "$WORK/pre.head")"
   expect "GET $p → 재인증(꼬리표 wiki)" "/tbox/reauth?to=wiki" "$(hdr Location "$WORK/pre.head" | sed "s#^$SITE##")"
 done
-expect "재인증 POST /api/me/reauth" "200" "$(reauth qa_admin01 "$TOK_ADMIN")"
+expect "재인증 POST /api/me/reauth" "200" "$(reauth claude_admin01 "$TOK_ADMIN")"
 
 # ════════════════════════════════════════════════════════════════
 hr "(c) Admin — 책 고르기 · 차례 · 글"
 sub "GET /wiki — 타일 셋"
-get qa_admin01 /wiki books
+get claude_admin01 /wiki books
 expect "상태" "200" "$(status_of "$WORK/books.head")"
 contains "Content-Type HTML" "text/html" "$WORK/books.head"
 expect "타일(a.card.card--link) 3개" "3" "$(grep -o '<a class="card card--link"' "$WORK/books.body" | wc -l | tr -d ' ')"
@@ -177,21 +182,21 @@ expect "화면 전용 새 클래스 wiki-book 0" "0" "$(grep -c 'wiki-book' "$WO
 
 sub "세 책 차례"
 for b in qaredi tbox community; do
-  get qa_admin01 "/wiki/$b" "idx-$b"
+  get claude_admin01 "/wiki/$b" "idx-$b"
   expect "GET /wiki/$b 상태" "200" "$(status_of "$WORK/idx-$b.head")"
   contains "/wiki/$b 경로 줄 ← 위키 책 고르기" 'href="/tbox/wiki">← 위키 책 고르기' "$WORK/idx-$b.body"
   st=$(grep -c "^$b .* stage$" "$WORK/expected.txt")
   expect "/wiki/$b 단계 카드 수 = 차례의 단계 글 수" "$st" \
     "$(grep -o "<a class=\"card card--link\" href=\"/tbox/wiki/$b/[^\"]*\"" "$WORK/idx-$b.body" | wc -l | tr -d ' ')"
 done
-get qa_admin01 /wiki/tbox/ idx-slash
+get claude_admin01 /wiki/tbox/ idx-slash
 expect "끝 슬래시 /wiki/tbox/ 도 200" "200" "$(status_of "$WORK/idx-slash.head")"
 
 sub "차례에 있는 모든 글 200"
 bad=0; n=0
 while read -r b s g; do
   n=$((n+1))
-  get qa_admin01 "/wiki/$b/$s" one
+  get claude_admin01 "/wiki/$b/$s" one
   c=$(status_of "$WORK/one.head")
   if [ "$c" != "200" ]; then echo "    ✖ /wiki/$b/$s → $c"; bad=$((bad+1)); continue; fi
   # 경로 줄 「위키 › <책> 차례」 가 그 책을 가리키는가
@@ -205,18 +210,18 @@ expect "글 ${n}편 전부 200 · 경로 줄 · 본문 <script 0" "0" "$bad"
 # ════════════════════════════════════════════════════════════════
 hr "(d) 주소 경계 — 옛 주소 308 · 나머지 404"
 for s in stage-14 guide-what stage-28; do
-  get qa_admin01 "/wiki/$s" old
+  get claude_admin01 "/wiki/$s" old
   expect "옛 /wiki/$s 상태" "308" "$(status_of "$WORK/old.head")"
   expect "옛 /wiki/$s Location" "/tbox/wiki/tbox/$s" "$(hdr Location "$WORK/old.head")"
 done
-get qa_admin01 "/wiki/stage-14?x=1" oldq
+get claude_admin01 "/wiki/stage-14?x=1" oldq
 expect "옛 주소의 쿼리는 버린다 (Location 은 코드가 만든 것뿐)" "/tbox/wiki/tbox/stage-14" "$(hdr Location "$WORK/oldq.head")"
 # 모르는 책 `/wiki/zzz` 는 옛 주소 줄에 잡히지만 t-box 에 그 글이 없으므로 **바로 404** (308 뒤 404 가 아니다)
 for p in /wiki/zzz /wiki/zzz/stage-01 /wiki/TBOX /wiki/Tbox/stage-01 /wiki/tbox/STAGE-01 \
          /wiki/tbox/stage-01.json /wiki/tbox/nope /wiki/community/stage-01 /wiki/qaredi/stage-26 \
          /wiki/tbox/stage-01/x /wiki/../../etc/passwd /wiki/tbox/../../etc/passwd \
          /wiki/tbox/..%2f..%2fetc%2fpasswd /wiki/%2e%2e/tbox /wiki/tbox%2fstage-01 /wiki/index /wiki/tbox/index; do
-  get qa_admin01 "$p" edge
+  get claude_admin01 "$p" edge
   c=$(status_of "$WORK/edge.head")
   case "$c" in
     404|400) expect "GET $p → 404/400 (리다이렉트·200 아님)" "ok" "ok" ;;
@@ -228,7 +233,7 @@ done
 hr "(e) 역할 — Manager · Employee · Guest 는 403"
 MARK=0
 [ "$HAVE_PSQL" -eq 1 ] && MARK=$(psqlq "SELECT coalesce(max(id),0) FROM audit_logs")
-for who in qa_manager01 qa_employee01 qa_guest01; do
+for who in claude_manager01 claude_employee01 claude_guest01; do
   if ! login "$who" > /dev/null; then skip "$who 네 주소 403" "로그인 실패"; continue; fi
   for p in $PATHS4 /wiki/community /wiki/qaredi/guide-site; do
     get "$who" "$p" role
@@ -237,7 +242,7 @@ for who in qa_manager01 qa_employee01 qa_guest01; do
 done
 if [ "$HAVE_PSQL" -eq 1 ]; then
   DENY=$(psqlq "SELECT count(*) FROM audit_logs WHERE id > $MARK AND action='authz.route' AND result='deny'
-                  AND actor_name IN ('qa_manager01','qa_employee01','qa_guest01')
+                  AND actor_name IN ('claude_manager01','claude_employee01','claude_guest01')
                   AND detail->>'route' IN ('GET /wiki','GET /wiki/{book}','GET /wiki/{book}/{slug}','GET /wiki/{slug}')")
   expect "감사 authz.route deny — 3계정 × 6요청 = 18" "18" "${DENY:-?}"
   ROUTES=$(psqlq "SELECT string_agg(DISTINCT detail->>'route', ', ' ORDER BY detail->>'route') FROM audit_logs WHERE id > $MARK AND action='authz.route' AND $(review_like_sql actor_name)")
@@ -301,22 +306,22 @@ expect "tbox 28 · community 4+ 통과" "2" "$(grep -cE '^(tbox 28|community 4\+
 expect "책 이름과 같은 slug 거부" "1" "$(grep -c '^slug=책이름=거부$' "$WORK/stage.txt")"
 
 sub "HTTP — 이웃 글과 다른 책 링크"
-get qa_admin01 /wiki/community/stage-4-d n4d
+get claude_admin01 /wiki/community/stage-4-d n4d
 contains "4-D 「이전」 = 4-C" 'href="/tbox/wiki/community/stage-4-c"><span class="wiki-nav__dir">← 이전' "$WORK/n4d.body"
 contains "4-D 「다음」 = 4단계 뒤(4+)" 'href="/tbox/wiki/community/stage-4-after"><span class="wiki-nav__dir">다음 →' "$WORK/n4d.body"
-get qa_admin01 /wiki/tbox/stage-27 n27
+get claude_admin01 /wiki/tbox/stage-27 n27
 contains "t-box 27 「다음」 = 28" 'href="/tbox/wiki/tbox/stage-28"><span class="wiki-nav__dir">다음 →' "$WORK/n27.body"
-get qa_admin01 /wiki/qaredi/guide-site gsite
+get claude_admin01 /wiki/qaredi/guide-site gsite
 contains "Qaredi 안내 → t-box 책 링크" 'href="/tbox/wiki/tbox/guide-what"' "$WORK/gsite.body"
 contains "Qaredi 안내 → 커뮤니티 책 링크" 'href="/tbox/wiki/community/guide-what"' "$WORK/gsite.body"
 
 # ════════════════════════════════════════════════════════════════
 hr "(g) 브라우저 — 눌러 보기 · 스크린샷(라이트 · 다크 · 390px)"
 mkdir -p "$SHOTS"
-COOKIES=$(awk '(!/^#/ || /^#HttpOnly_/) && NF>=7 {printf "%s=%s;", $6, $7}' "$JAR_DIR/qa_admin01.jar")
+COOKIES=$(awk '(!/^#/ || /^#HttpOnly_/) && NF>=7 {printf "%s=%s;", $6, $7}' "$JAR_DIR/claude_admin01.jar")
 export PATH="$HOME/.local/bin:$PATH"
 if python3 -c 'import playwright' 2>/dev/null; then
-  python3 "$ROOT/tests/wiki_books_browser.py" "$BASE" "$UA" "$COOKIES" "$SHOTS" > "$WORK/browser.txt" 2>&1
+  py_secret COOKIES -- python3 "$ROOT/tests/wiki_books_browser.py" "$BASE" "$UA" "$SHOTS" > "$WORK/browser.txt" 2>&1
   sed 's/^/  · /' "$WORK/browser.txt"
   expect "브라우저 항목 실패 0" "0" "$(sed -n 's/^BROWSER_FAIL=//p' "$WORK/browser.txt")"
   echo "  스크린샷: $SHOTS ($(ls "$SHOTS"/*.png 2>/dev/null | wc -l)장)"

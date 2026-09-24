@@ -18,7 +18,7 @@
 #                              매니페스트 `start_url` `/tbox/…` · 옛 `/assets/app.css` → 308
 #
 # 규칙 (CLAUDE.md 3장)
-#   · 검토 계정은 `qa_employee01`·`qa_admin01` 뿐이다. 시드 계정(admin01 …)은 사용자 몫이다.
+#   · 검토 계정은 `claude_employee01`·`claude_admin01` 뿐이다. 시드 계정(admin01 …)은 사용자 몫이다.
 #   · 모든 요청에 `-A "tbox-review/<날짜>"` — 감사 로그에서 사람의 행동과 갈라 보려는 것.
 #   · 운영 데이터에 손대지 않는다. 만든 것(공유 링크)은 앱 창구로만 되돌린다.
 #   · 운영 DB 에 DDL·DML 을 실행하지 않는다 (psql 은 **읽기**만).
@@ -34,6 +34,8 @@ set -u
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 # 검토 계정 판정 한 벌(qa_·claude_ — F-71 C). 못 읽으면 사전 검사가 빈 값으로 열리므로 시작하지 않는다.
 . "$ROOT/tests/lib/review_accounts.sh" || { echo "tests/lib/review_accounts.sh 를 읽지 못했다 — 시험을 시작하지 않는다 (R-73)"; exit 3; }
+. "$ROOT/tests/lib/secrets.sh" || { echo "tests/lib/secrets.sh 를 읽지 못했다 — 시험을 시작하지 않는다 (R-62)"; exit 3; }
+. "$ROOT/tests/lib/db_read.sh" || { echo "tests/lib/db_read.sh 를 읽지 못했다 — 시험을 시작하지 않는다 (R-73)"; exit 3; }
 SITE="http://127.0.0.1:8082"          # 사이트 루트 — 런처와 옛 주소 308 을 보는 자리
 BASE="$SITE/tbox"                     # t-box 모듈 (다른 시험의 BASE 와 같은 값)
 UA="tbox-review/$(date +%F)"
@@ -95,15 +97,15 @@ qa_password() { sudo -n awk -v u="$1" '$1==u{print $3}' /etc/tbox-v2/seed-accoun
 qa_secret()   { sudo -n awk -v u="$1" '$1==u{print $2}' /etc/tbox-v2/qa-totp.txt 2>/dev/null; }
 
 login() {   # $1 계정 → 성공하면 표준출력에 csrf 토큰
-  local who="$1" jar="$JAR_DIR/$1.jar" pw sec raw code left out try
+  local who="$1" jar="$JAR_DIR/$1.jar" pw sec raw code left out try body
   pw=$(qa_password "$who")
   sec=$(qa_secret "$who")
   [ -n "$pw" ] && [ -n "$sec" ] || return 2
   for try in 1 2 3; do
-    raw=$(php "$ROOT/scripts/totp_code.php" "$sec")
+    raw=$(totp_now sec)
     code=${raw%%$'\n'*}
-    out=$(curl -s -c "$jar" -A "$UA" -H 'Content-Type: application/json' \
-          -d "{\"username\":\"$who\",\"password\":\"$pw\",\"otp\":\"$code\"}" "$BASE/api/login")
+    printf -v body '{"username":"%s","password":"%s","otp":"%s"}' "$who" "$pw" "$code"
+    out=$(curl_json_secret body -s -c "$jar" -A "$UA" -H 'Content-Type: application/json' "$BASE/api/login")
     case "$out" in
       *'"ok":true'*)
         curl -s -b "$jar" -A "$UA" "$BASE/api/me" \
@@ -142,8 +144,9 @@ if psqlq "SELECT 1" >/dev/null 2>&1; then HAVE_PSQL=1; fi
 if [ "$HAVE_PSQL" -eq 1 ]; then
   TRY=1
   while :; do
-    BUSY=$(psqlq "SELECT count(*) FROM audit_logs WHERE happened_at > now() - interval '10 minutes' AND actor_name IS NOT NULL AND $REVIEW_NOT_SQL")
-    echo "최근 10분 비-qa 감사 행: ${BUSY:-?} (시도 ${TRY}/10)"
+    db_read_var BUSY "$DB" "SELECT count(*) FROM audit_logs WHERE happened_at > now() - interval '10 minutes' AND actor_name IS NOT NULL AND $REVIEW_NOT_SQL" \
+      || { echo "운영 DB 를 읽지 못했다 — 시험을 시작하지 않는다 (R-73 · db_read rc 3)"; exit 3; }
+    echo "최근 10분 비-qa 감사 행: ${BUSY:-?} (시도 ${TRY}/10) (읽기 경로 ${DB_READ_VIA})"
     [ "${BUSY:-0}" -gt 0 ] 2>/dev/null || break
     if [ "$TRY" -ge 10 ]; then
       echo "10회(약 20분) 기다렸지만 사용자의 활동이 이어진다 — 시험을 시작하지 않는다 (SECURITY R-73 ①)"
@@ -158,7 +161,11 @@ else
 fi
 
 AUDIT_START=0
-[ "$HAVE_PSQL" -eq 1 ] && AUDIT_START=$(mark)
+# 끝의 「시험 요청이 만든 비-qa 행 0건」 대조의 시작 값 — 읽지 못하면 시작하지 않는다(R-73 · db_read)
+if [ "$HAVE_PSQL" -eq 1 ]; then
+  db_read_var AUDIT_START "$DB" "SELECT coalesce(max(id),0) FROM audit_logs" \
+    || { echo "운영 DB 를 읽지 못했다 — 시험을 시작하지 않는다 (R-73 · db_read rc 3)"; exit 3; }
+fi
 
 # ════════════════════════════════════════════════════════════════
 hr "Q:T-1 — 런처 GET /"
@@ -284,18 +291,20 @@ contains "로그인 화면에 Qaredi 홈 링크" 'href="/"' "$(cat "$WORK/login.
 contains "로그인 폼 action 접두" 'action="/tbox/api/login"' "$(cat "$WORK/login.html")"
 
 EMP_CSRF=""; ADM_CSRF=""
-EMP_CSRF=$(login qa_employee01) || EMP_CSRF=""
-ADM_CSRF=$(login qa_admin01)    || ADM_CSRF=""
-[ -n "$EMP_CSRF" ] && note "qa_employee01 로그인 OK" || note "qa_employee01 로그인 실패 — 관련 항목 SKIP"
-[ -n "$ADM_CSRF" ] && note "qa_admin01 로그인 OK"    || note "qa_admin01 로그인 실패 — 관련 항목 SKIP"
-EMP_JAR="$JAR_DIR/qa_employee01.jar"
-ADM_JAR="$JAR_DIR/qa_admin01.jar"
+EMP_CSRF=$(login claude_employee01) || EMP_CSRF=""
+ADM_CSRF=$(login claude_admin01)    || ADM_CSRF=""
+[ -n "$EMP_CSRF" ] && note "claude_employee01 로그인 OK" || note "claude_employee01 로그인 실패 — 관련 항목 SKIP"
+[ -n "$ADM_CSRF" ] && note "claude_admin01 로그인 OK"    || note "claude_admin01 로그인 실패 — 관련 항목 SKIP"
+EMP_JAR="$JAR_DIR/claude_employee01.jar"
+ADM_JAR="$JAR_DIR/claude_admin01.jar"
 
 if [ -n "$EMP_CSRF" ]; then
   sub "Q:T-7 — 쿠키 속성·전역 CSP 불변"
-  curl -s -D "$WORK/cookie.head" -o /dev/null -A "$UA" -c "$WORK/throwaway.jar" \
-    -H 'Content-Type: application/json' \
-    -d "{\"username\":\"qa_employee01\",\"password\":\"$(qa_password qa_employee01)\"}" "$BASE/api/login" || true
+  T7_PW=$(qa_password claude_employee01)
+  printf -v body '{"username":"claude_employee01","password":"%s"}' "$T7_PW"
+  curl_json_secret body -s -D "$WORK/cookie.head" -o /dev/null -A "$UA" -c "$WORK/throwaway.jar" \
+    -H 'Content-Type: application/json' "$BASE/api/login" || true
+  T7_PW=""; body=""
   SC=$(hdr Set-Cookie "$WORK/cookie.head")
   if [ -n "$SC" ]; then
     contains "쿠키 Path=/"      "Path=/"        "$SC"
@@ -338,7 +347,8 @@ if [ -n "$EMP_CSRF" ]; then
     esac
     TOKEN="${URL##*/}"
     if [ -n "$TOKEN" ]; then
-      SCODE=$(curl -s -o /dev/null -w '%{http_code}' -A "$UA" "$BASE/s/$TOKEN")
+      SHARE_URL_S="$BASE/s/$TOKEN"   # 공유 링크 토큰이 든 주소 — 인자가 아니라 표준입력(--config -)으로 (R-62)
+      SCODE=$(curl_url_secret SHARE_URL_S -s -o /dev/null -w '%{http_code}' -A "$UA")
       expect "새 주소로 공유 파일 받기" "200" "$SCODE"
     fi
   else
@@ -357,7 +367,7 @@ if [ -n "$ADM_CSRF" ]; then
   expect "로그인 상태 런처 상태" "200" "$(status_of "$WORK/root2.head")"
   expect "로그인 상태 런처에 사용자 배지 (page-head__actions 1)" "1" "$(grep -c 'page-head__actions' "$WORK/root2.html" | tr -d ' ')"
   expect "로그인 상태 런처에도 userchip 0건" "0" "$(grep -c 'userchip' "$WORK/root2.html" | tr -d ' ')"
-  contains "칩에 표시 이름" "qa_admin01" "$(cat "$WORK/root2.html")"
+  contains "칩에 표시 이름" "claude_admin01" "$(cat "$WORK/root2.html")"
   expect "로그인 상태 런처에도 <script 0건" "0" "$(grep -c '<script' "$WORK/root2.html" | tr -d ' ')"
 fi
 
@@ -371,7 +381,7 @@ done
 
 if [ "$HAVE_PSQL" -eq 1 ]; then
   expect "시험 요청이 만든 비-qa 행 0건 (검토 UA 기준 — 사용자 데이터 불변)" "0" \
-    "$(psqlq "SELECT count(*) FROM audit_logs
+    "$(db_read "$DB" "SELECT count(*) FROM audit_logs
                 WHERE id > ${AUDIT_START:-0}
                   AND actor_name IS NOT NULL AND $REVIEW_NOT_SQL
                   AND COALESCE(user_agent, '') LIKE 'tbox-review/%'")"

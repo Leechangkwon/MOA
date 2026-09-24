@@ -2,7 +2,7 @@
 # tests/f65.sh — F-65 「실행 파일이 든 압축본의 관리자 확인 업로드·확인 다운로드」
 #                수락 기준 실행 (PRD 12.2 T-77, F-65, S-06, S-01, S-07, R-45, R-94, ARCH 5.29)
 #
-#   (a) 올리기  — qa_admin01 · admin-only · 확인 없이 → 400 `{next:"exec_ack",entries:[…]}` +
+#   (a) 올리기  — claude_admin01 · admin-only · 확인 없이 → 400 `{next:"exec_ack",entries:[…]}` +
 #                 감사 `file.upload_exec deny exec_ack_required`(detail.exec_entry_count=2) ;
 #                 `exec_ack=1` + 틀린 비밀번호 → 400 통일 문구 + `bad_credentials` +
 #                 `users.failed_count` 증가 ; 맞는 비밀번호 + 틀린 코드 → 400 `bad_code` ;
@@ -10,8 +10,8 @@
 #                 감사 `file.upload_exec allow`(`exec_ack`·`otp_verified`·`exec_entry_count`·
 #                 `exec_entries`) · **비밀번호·코드 문자열이 감사 detail·app.log 에 0건** ;
 #                 같은 코드 재사용 → 400 `code_reused`
-#   (b) 예외가 아닌 갈래 — qa_employee01(internal) · qa_admin01(internal) ·
-#                 qa_admin01 「역할로 보기」(Employee) 중 admin-only · 개인 토큰 `POST /api/upload`
+#   (b) 예외가 아닌 갈래 — claude_employee01(internal) · claude_admin01(internal) ·
+#                 claude_admin01 「역할로 보기」(Employee) 중 admin-only · 개인 토큰 `POST /api/upload`
 #                 → 전부 400 `zip_blocked_entry` 문장(F-68 · ARCH 5.30)이고 **응답에 `next` 가
 #                 없다**(확인 창은 열 수 있는 사람에게만) ; 정상 zip 은 확인 없이 201
 #   (c) 받기    — `GET …/download` 403 `next:"exec_ack"` · `…/preview` 403 ·
@@ -22,7 +22,7 @@
 #                 `exec_content=false` 파일에 exec-download → 400 `bad_request`
 #   (d) AL-21   — `alerts.php --rule AL-21 --dry-run --state <임시>` 1건, evidence 에
 #                 파일명·계정·항목 수, 비밀번호 0건
-#   (e) 화면    — Playwright(qa_admin01): 확인 블록(항목 이름 2개·체크·비밀번호·코드) ·
+#   (e) 화면    — Playwright(claude_admin01): 확인 블록(항목 이름 2개·체크·비밀번호·코드) ·
 #                 체크 없이 누르면 요청 0건 · 채우면 201 · 배지 · 확인 다운로드 창 ·
 #                 공유 단추 없음 · 콘솔 오류 0
 #   (f) 회귀    — security_lint 0건 · 바뀐 PHP `php -l` · `bash -n`
@@ -35,7 +35,7 @@
 #   SKIP 하고 (f)(g) 만 돈다. 실행 명령은 아래 (g) 절이 찍어 준다.
 #
 # 규칙 (CLAUDE.md 3장)
-#   · 검토 계정은 `qa_admin01`·`qa_employee01` 뿐이다. 시드 계정(admin01 …)은 사용자 몫이다.
+#   · 검토 계정은 `claude_admin01`·`claude_employee01` 뿐이다. 시드 계정(admin01 …)은 사용자 몫이다.
 #   · 모든 요청에 `-A "tbox-review/<날짜>"` — 감사 로그에서 사람의 행동과 갈라 보려는 것.
 #   · 운영 데이터에 손대지 않는다. 올린 파일은 앱 창구(`DELETE /api/files/{id}`)로만 되돌린다.
 #   · 운영 DB 에 DDL·DML 을 실행하지 않는다. 마이그레이션은 **임시 DB** 에만 적용한다.
@@ -58,6 +58,8 @@ set -u
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 # 검토 계정 판정 한 벌(qa_·claude_ — F-71 C). 못 읽으면 사전 검사가 빈 값으로 열리므로 시작하지 않는다.
 . "$ROOT/tests/lib/review_accounts.sh" || { echo "tests/lib/review_accounts.sh 를 읽지 못했다 — 시험을 시작하지 않는다 (R-73)"; exit 3; }
+. "$ROOT/tests/lib/secrets.sh" || { echo "tests/lib/secrets.sh 를 읽지 못했다 — 시험을 시작하지 않는다 (R-62)"; exit 3; }
+. "$ROOT/tests/lib/db_read.sh" || { echo "tests/lib/db_read.sh 를 읽지 못했다 — 시험을 시작하지 않는다 (R-73)"; exit 3; }
 BASE="http://127.0.0.1:8082/tbox"
 UA="tbox-review/$(date +%F)"
 DB="tbox_re"
@@ -120,11 +122,12 @@ qa_password() { sudo -n awk -v u="$1" '$1==u{print $3}' /etc/tbox-v2/seed-accoun
 qa_secret()   { sudo -n awk -v u="$1" '$1==u{print $2}' /etc/tbox-v2/qa-totp.txt 2>/dev/null; }
 
 # 지금 창의 코드와 남은 초 — "코드 남은초" 한 줄
-totp_now() {   # $1 = 계정
+# (이름 totp_pair — tests/lib/secrets.sh 의 totp_now <변수 이름> 과 겹치지 않게. 비밀은 표준입력으로 php 에)
+totp_pair() {   # $1 = 계정
   local sec raw
   sec=$(qa_secret "$1")
   [ -n "$sec" ] || return 1
-  raw=$(php "$ROOT/scripts/totp_code.php" "$sec" 2>/dev/null) || return 1
+  raw=$(totp_now sec 2>/dev/null) || return 1
   printf '%s %s\n' \
     "$(printf '%s' "$raw" | head -1)" \
     "$(printf '%s' "$raw" | sed -n 's/^남은 시간: \([0-9]*\)초.*/\1/p')"
@@ -134,25 +137,25 @@ totp_now() {   # $1 = 계정
 # (R-45), 새 코드가 필요한 자리에서는 창이 바뀔 때까지 기다린다 (stage26.sh login 과 같은 방식).
 totp_fresh() {   # $1 = 계정  → 코드만
   local pair left
-  pair=$(totp_now "$1") || return 1
+  pair=$(totp_pair "$1") || return 1
   left=${pair##* }
   [ -n "$left" ] || left=31
   printf '  · %s 다음 2단계 코드 창까지 %s초 기다린다 (R-45 1회성)\n' "$1" "$left" >&2
   sleep $((left + 1))
-  pair=$(totp_now "$1") || return 1
+  pair=$(totp_pair "$1") || return 1
   printf '%s\n' "${pair%% *}"
 }
 
 login() {   # $1 = 계정 → 성공하면 표준출력에 csrf 토큰
-  local who="$1" jar="$JAR_DIR/$1.jar" pw sec raw code left out try
+  local who="$1" jar="$JAR_DIR/$1.jar" pw sec raw code left out try body
   pw=$(qa_password "$who")
   sec=$(qa_secret "$who")
   [ -n "$pw" ] && [ -n "$sec" ] || return 2
   for try in 1 2 3; do
-    raw=$(php "$ROOT/scripts/totp_code.php" "$sec")
+    raw=$(totp_now sec)
     code=${raw%%$'\n'*}
-    out=$(curl -s -c "$jar" -A "$UA" -H 'Content-Type: application/json' \
-          -d "{\"username\":\"$who\",\"password\":\"$pw\",\"otp\":\"$code\"}" "$BASE/api/login")
+    printf -v body '{"username":"%s","password":"%s","otp":"%s"}' "$who" "$pw" "$code"
+    out=$(curl_json_secret body -s -c "$jar" -A "$UA" -H 'Content-Type: application/json' "$BASE/api/login")
     case "$out" in
       *'"ok":true'*)
         curl -s -b "$jar" -A "$UA" "$BASE/api/me" \
@@ -169,9 +172,11 @@ login() {   # $1 = 계정 → 성공하면 표준출력에 csrf 토큰
 }
 
 reauth() {   # $1 계정  $2 csrf → HTTP 코드
-  curl -s -o /dev/null -w '%{http_code}' -b "$JAR_DIR/$1.jar" -A "$UA" \
-    -H 'Content-Type: application/json' -H "X-CSRF-Token: $2" \
-    -d "{\"password\":\"$(qa_password "$1")\"}" "$BASE/api/me/reauth"
+  local pw body
+  pw=$(qa_password "$1")
+  printf -v body '{"password":"%s"}' "$pw"
+  curl_json_secret body -s -o /dev/null -w '%{http_code}' -b "$JAR_DIR/$1.jar" -A "$UA" \
+    -H 'Content-Type: application/json' -H "X-CSRF-Token: $2" "$BASE/api/me/reauth"
 }
 
 # 악성코드 검사가 끝나기를 기다린다 — `.env` 의 SCAN_ENABLED=1 이면 올린 직후는 `pending` 이고,
@@ -217,8 +222,9 @@ if psqlq "SELECT 1" >/dev/null 2>&1; then HAVE_PSQL=1; fi
 if [ "$HAVE_PSQL" -eq 1 ]; then
   TRY=1
   while :; do
-    BUSY=$(psqlq "SELECT count(*) FROM audit_logs WHERE happened_at > now() - interval '10 minutes' AND actor_name IS NOT NULL AND $REVIEW_NOT_SQL")
-    echo "최근 10분 비-qa 감사 행: ${BUSY:-?} (시도 ${TRY}/10)"
+    db_read_var BUSY "$DB" "SELECT count(*) FROM audit_logs WHERE happened_at > now() - interval '10 minutes' AND actor_name IS NOT NULL AND $REVIEW_NOT_SQL" \
+      || { echo "운영 DB 를 읽지 못했다 — 시험을 시작하지 않는다 (R-73 · db_read rc 3)"; exit 3; }
+    echo "최근 10분 비-qa 감사 행: ${BUSY:-?} (시도 ${TRY}/10) (읽기 경로 ${DB_READ_VIA})"
     [ "${BUSY:-0}" -gt 0 ] 2>/dev/null || break
     if [ "$TRY" -ge 10 ]; then
       echo "10회(약 20분) 기다렸지만 사용자의 활동이 이어진다 — 시험을 시작하지 않는다 (SECURITY R-73 ①)"
@@ -256,9 +262,12 @@ NONQA_BEFORE=""
 SYS_BEFORE=""
 AUDIT_START=0
 if [ "$HAVE_PSQL" -eq 1 ]; then
-  NONQA_BEFORE=$(psqlq "SELECT count(*) FROM audit_logs WHERE actor_name IS NOT NULL AND $REVIEW_NOT_SQL")
-  SYS_BEFORE=$(psqlq "SELECT count(*) FROM audit_logs WHERE actor_name IS NULL")
-  AUDIT_START=$(mark)
+  db_read_var NONQA_BEFORE "$DB" "SELECT count(*) FROM audit_logs WHERE actor_name IS NOT NULL AND $REVIEW_NOT_SQL" \
+    || { echo "운영 DB 를 읽지 못했다 — 시험을 시작하지 않는다 (R-73 · db_read rc 3)"; exit 3; }
+  db_read_var SYS_BEFORE "$DB" "SELECT count(*) FROM audit_logs WHERE actor_name IS NULL" \
+    || { echo "운영 DB 를 읽지 못했다 — 시험을 시작하지 않는다 (R-73 · db_read rc 3)"; exit 3; }
+  db_read_var AUDIT_START "$DB" "SELECT coalesce(max(id),0) FROM audit_logs" \
+    || { echo "운영 DB 를 읽지 못했다 — 시험을 시작하지 않는다 (R-73 · db_read rc 3)"; exit 3; }
 fi
 
 # ─── 시험 파일 ───────────────────────────────────────────────────
@@ -296,15 +305,15 @@ EXEC_SHA=$(sha256sum "$EXEC_ZIP" | awk '{print $1}')
 note "F65-exec.zip sha256 = $EXEC_SHA"
 
 # ─── 세션 ────────────────────────────────────────────────────────
-hr "준비 — 검토 계정 세션 (qa_admin01 · qa_employee01)"
+hr "준비 — 검토 계정 세션 (claude_admin01 · claude_employee01)"
 ADM_CSRF=""; EMP_CSRF=""
-ADM_CSRF=$(login qa_admin01)    || ADM_CSRF=""
-EMP_CSRF=$(login qa_employee01) || EMP_CSRF=""
-[ -n "$ADM_CSRF" ] && note "qa_admin01 로그인 OK" || note "qa_admin01 로그인 실패 — 관련 항목 SKIP"
-[ -n "$EMP_CSRF" ] && note "qa_employee01 로그인 OK" || note "qa_employee01 로그인 실패 — 관련 항목 SKIP"
+ADM_CSRF=$(login claude_admin01)    || ADM_CSRF=""
+EMP_CSRF=$(login claude_employee01) || EMP_CSRF=""
+[ -n "$ADM_CSRF" ] && note "claude_admin01 로그인 OK" || note "claude_admin01 로그인 실패 — 관련 항목 SKIP"
+[ -n "$EMP_CSRF" ] && note "claude_employee01 로그인 OK" || note "claude_employee01 로그인 실패 — 관련 항목 SKIP"
 
-ADM_JAR="$JAR_DIR/qa_admin01.jar"
-EMP_JAR="$JAR_DIR/qa_employee01.jar"
+ADM_JAR="$JAR_DIR/claude_admin01.jar"
+EMP_JAR="$JAR_DIR/claude_employee01.jar"
 
 RUN_HTTP=0
 if [ "$HAVE_COLUMN" = "1" ] && [ -n "$ADM_CSRF" ]; then RUN_HTTP=1; fi
@@ -312,12 +321,14 @@ if [ "$HAVE_COLUMN" = "1" ] && [ -n "$ADM_CSRF" ]; then RUN_HTTP=1; fi
 # 업로드 한 번 — CODE·BODY·NEWID 를 채운다.
 CODE=""; BODY=""; NEWID=""
 up_exec() {   # $1 jar  $2 csrf  $3 파일  $4 등급  $5 exec_ack("" 또는 1)  $6 비밀번호  $7 코드
-  local out args
+  local out args up_pw
   set -- "$1" "$2" "$3" "$4" "${5:-}" "${6:-}" "${7:-}"
   if [ -n "$5" ]; then
-    out=$(curl -s -w '\n%{http_code}' -X POST -b "$1" -A "$UA" -H "X-CSRF-Token: $2" \
+    # 비밀번호 필드는 인자가 아니라 표준입력(-F 'password=<-')으로 — curl_form_secret (R-62)
+    up_pw="$6"
+    out=$(curl_form_secret password up_pw -s -w '\n%{http_code}' -X POST -b "$1" -A "$UA" -H "X-CSRF-Token: $2" \
           -F "file=@$3" -F "access_level=$4" \
-          -F "exec_ack=$5" -F "password=$6" -F "otp=$7" "$BASE/api/files")
+          -F "exec_ack=$5" -F "otp=$7" "$BASE/api/files")
   else
     out=$(curl -s -w '\n%{http_code}' -X POST -b "$1" -A "$UA" -H "X-CSRF-Token: $2" \
           -F "file=@$3" -F "access_level=$4" "$BASE/api/files")
@@ -330,7 +341,7 @@ hr "(a) 올리기 — 확인 없이 → 400 next · 틀린 비밀번호 · 틀�
 
 A_ID=""
 if [ "$RUN_HTTP" -eq 0 ]; then
-  skip "(a) 전체" "운영 DB 열 없음 또는 qa_admin01 세션 없음"
+  skip "(a) 전체" "운영 DB 열 없음 또는 claude_admin01 세션 없음"
 else
   M=$(mark)
   sub "① 확인 없이 (admin-only)"
@@ -349,7 +360,7 @@ else
 
   sub "② exec_ack=1 + 틀린 비밀번호 → 400 통일 문구 + bad_credentials + failed_count 증가"
   FC_BEFORE=0
-  [ "$HAVE_PSQL" -eq 1 ] && FC_BEFORE=$(psqlq "SELECT failed_count FROM users WHERE username='qa_admin01'")
+  [ "$HAVE_PSQL" -eq 1 ] && FC_BEFORE=$(psqlq "SELECT failed_count FROM users WHERE username='claude_admin01'")
   M=$(mark)
   up_exec "$ADM_JAR" "$ADM_CSRF" "$EXEC_ZIP" "admin-only" "1" "wrong-password-$TAG" "000000"
   expect "(a) 틀린 비밀번호 → 상태" "400" "$CODE"
@@ -358,13 +369,13 @@ else
   if [ "$HAVE_PSQL" -eq 1 ]; then
     expect "(a) 감사 file.upload_exec deny bad_credentials" "1" \
       "$(psqlq "SELECT count(*) FROM audit_logs WHERE id > ${M:-0} AND action='file.upload_exec' AND result='deny' AND reason='bad_credentials'")"
-    FC_AFTER=$(psqlq "SELECT failed_count FROM users WHERE username='qa_admin01'")
+    FC_AFTER=$(psqlq "SELECT failed_count FROM users WHERE username='claude_admin01'")
     expect "(a) users.failed_count 증가" "$((${FC_BEFORE:-0} + 1))" "${FC_AFTER:-0}"
   else skip "(a) 실패 집계 확인" "psql 없음"; fi
 
   sub "③ 맞는 비밀번호 + 틀린 코드 → 400 bad_code"
   M=$(mark)
-  up_exec "$ADM_JAR" "$ADM_CSRF" "$EXEC_ZIP" "admin-only" "1" "$(qa_password qa_admin01)" "000000"
+  up_exec "$ADM_JAR" "$ADM_CSRF" "$EXEC_ZIP" "admin-only" "1" "$(qa_password claude_admin01)" "000000"
   expect "(a) 틀린 코드 → 상태" "400" "$CODE"
   expect "(a) 틀린 코드 → 통일 문구" "잘못된 요청입니다" "$(printf '%s' "$BODY" | jget "d.get('error','')")"
   if [ "$HAVE_PSQL" -eq 1 ]; then
@@ -373,9 +384,9 @@ else
   else skip "(a) bad_code 감사" "psql 없음"; fi
 
   sub "④ 맞는 비밀번호 + 맞는 코드 → 201"
-  OTP=$(totp_fresh qa_admin01)
+  OTP=$(totp_fresh claude_admin01)
   M=$(mark)
-  up_exec "$ADM_JAR" "$ADM_CSRF" "$EXEC_ZIP" "admin-only" "1" "$(qa_password qa_admin01)" "$OTP"
+  up_exec "$ADM_JAR" "$ADM_CSRF" "$EXEC_ZIP" "admin-only" "1" "$(qa_password claude_admin01)" "$OTP"
   expect "(a) 확인하고 올리기 → 상태" "201" "$CODE"
   A_ID="$NEWID"
   if [ -n "$A_ID" ]; then
@@ -395,7 +406,7 @@ else
 
       sub "⑤ 비밀번호·코드 문자열이 감사 detail 에 0건 (PRD 7.7)"
       expect "(a) detail 에 비밀번호 문자열" "0" \
-        "$(psqlq "SELECT count(*) FROM audit_logs WHERE id > ${M:-0} AND detail::text LIKE '%' || (SELECT 'qa_admin01') || '-pw%'")"
+        "$(psqlq "SELECT count(*) FROM audit_logs WHERE id > ${M:-0} AND detail::text LIKE '%' || (SELECT 'claude_admin01') || '-pw%'")"
       expect "(a) detail 에 방금 쓴 코드 문자열" "0" \
         "$(psqlq "SELECT count(*) FROM audit_logs WHERE happened_at > now() - interval '30 minutes' AND detail::text LIKE '%${OTP}%'")"
       expect "(a) detail 에 password·otp 키" "0" \
@@ -407,7 +418,7 @@ else
 
   sub "⑥ 같은 코드 재사용 → 400 code_reused (R-45)"
   M=$(mark)
-  up_exec "$ADM_JAR" "$ADM_CSRF" "$EXEC_ZIP2" "admin-only" "1" "$(qa_password qa_admin01)" "$OTP"
+  up_exec "$ADM_JAR" "$ADM_CSRF" "$EXEC_ZIP2" "admin-only" "1" "$(qa_password claude_admin01)" "$OTP"
   expect "(a) 코드 재사용 → 상태" "400" "$CODE"
   if [ "$HAVE_PSQL" -eq 1 ]; then
     expect "(a) 감사 file.upload_exec deny code_reused" "1" \
@@ -415,8 +426,8 @@ else
   else skip "(a) code_reused 감사" "psql 없음"; fi
 
   # 실패 3회가 쌓였다 — 다시 로그인해 카운터를 0 으로 되돌린다 (R-48 잠금 방지).
-  note "실패 카운터를 되돌리기 위해 qa_admin01 을 다시 로그인한다"
-  NEW_CSRF=$(login qa_admin01) && ADM_CSRF="$NEW_CSRF"
+  note "실패 카운터를 되돌리기 위해 claude_admin01 을 다시 로그인한다"
+  NEW_CSRF=$(login claude_admin01) && ADM_CSRF="$NEW_CSRF"
 fi
 
 # ─── (b) 예외가 아닌 갈래 ────────────────────────────────────────
@@ -437,7 +448,7 @@ else
       expect "(b) file.upload_exec 행 0건" "0" \
         "$(psqlq "SELECT count(*) FROM audit_logs WHERE id > ${M:-0} AND action='file.upload_exec'")"
     else skip "(b) 직원 감사" "psql 없음"; fi
-  else skip "(b) 직원 갈래" "qa_employee01 세션 없음"; fi
+  else skip "(b) 직원 갈래" "claude_employee01 세션 없음"; fi
 
   if [ -n "$ADM_CSRF" ]; then
     up_exec "$ADM_JAR" "$ADM_CSRF" "$EXEC_ZIP2" "internal"
@@ -445,7 +456,7 @@ else
     expect "(b) 관리자 internal → next 없음" "0" "$(printf '%s' "$BODY" | grep -c 'next' || true)"
 
     sub "「역할로 보기」(Employee) 중에는 admin-only 라도 예외가 열리지 않는다 (F-39)"
-    RC=$(reauth qa_admin01 "$ADM_CSRF")
+    RC=$(reauth claude_admin01 "$ADM_CSRF")
     if [ "$RC" = "200" ]; then
       AC=$(curl -s -o /dev/null -w '%{http_code}' -X POST -b "$ADM_JAR" -A "$UA" \
            -H 'Content-Type: application/json' -H "X-CSRF-Token: $ADM_CSRF" \
@@ -464,20 +475,20 @@ else
         note "「역할로 보기」를 껐다"
       else skip "(b) 역할로 보기" "POST /api/me/act → $AC"; fi
     else skip "(b) 역할로 보기" "재인증 실패 → $RC"; fi
-  else skip "(b) 관리자 갈래" "qa_admin01 세션 없음"; fi
+  else skip "(b) 관리자 갈래" "claude_admin01 세션 없음"; fi
 
   sub "개인 토큰으로 프로그램 입구 POST /api/upload → 힌트 없는 400"
   TOK=""
-  # ★ 토큰의 귀속 계정은 **qa_admin01** 이다 (2026-09-21 보정).
-  #   qa_employee01 에 발급하면 (c) 의 「토큰으로 exec 파일 받기」가 `decideRead` 에서
+  # ★ 토큰의 귀속 계정은 **claude_admin01** 이다 (2026-09-21 보정).
+  #   claude_employee01 에 발급하면 (c) 의 「토큰으로 exec 파일 받기」가 `decideRead` 에서
   #   `role_not_permitted` 로 먼저 끝나 **F-65 관문(`exec_content_token`)에 닿지 못한다**
   #   (첫 실행에서 실측: 403 은 났지만 사유가 달랐다). API.md 9-1 이 약속하는 것은
   #   「읽을 수 있는 계정의 토큰이어도 못 받는다」 이므로, 읽을 수 있는 계정으로 발급해
   #   그 갈래를 실제로 지나게 한다.
   if [ -n "$ADM_CSRF" ] && [ "$HAVE_PSQL" -eq 1 ]; then
-    ADM_UID=$(psqlq "SELECT id FROM users WHERE username='qa_admin01'")
+    ADM_UID=$(psqlq "SELECT id FROM users WHERE username='claude_admin01'")
     if [ -n "$ADM_UID" ]; then
-      reauth qa_admin01 "$ADM_CSRF" >/dev/null
+      reauth claude_admin01 "$ADM_CSRF" >/dev/null
       curl -s -o "$WORK/issue.json" -w '%{http_code}' -X POST -b "$ADM_JAR" -A "$UA" \
         -H "X-CSRF-Token: $ADM_CSRF" -H 'Content-Type: application/json' \
         -d "{\"name\":\"F65-tok-$TAG\",\"reason_text\":\"T-77 (b)(c) 시험 — 토큰 입구·토큰 받기에 예외가 없는지\"}" \
@@ -489,7 +500,7 @@ else
     fi
   fi
   if [ -n "$TOK" ]; then
-    OUT=$(curl -s -w '\n%{http_code}' -X POST -A "$UA" -H "X-API-Token: $TOK" \
+    OUT=$(curl_hdr_secret X-API-Token TOK -s -w '\n%{http_code}' -X POST -A "$UA" \
           -F "file=@$EXEC_ZIP2" -F 'level=public' "$BASE/api/upload")
     expect "(b) 토큰 입구 → 상태" "400" "$(code_of "$OUT")"
     expect "(b) 토큰 입구 → next 없음" "0" "$(body_of "$OUT" | grep -c 'next' || true)"
@@ -530,8 +541,8 @@ else
 
   if [ -n "$TOK" ]; then
     M=$(mark)
-    OUT=$(curl -s -w '\n%{http_code}' -A "$UA" -H "X-API-Token: $TOK" "$BASE/api/files/$A_ID/download")
-    # 귀속 계정이 qa_admin01 이라 `decideRead` 는 **통과**한다 — 그래서 여기서 막는 것은
+    OUT=$(curl_hdr_secret X-API-Token TOK -s -w '\n%{http_code}' -A "$UA" "$BASE/api/files/$A_ID/download")
+    # 귀속 계정이 claude_admin01 이라 `decideRead` 는 **통과**한다 — 그래서 여기서 막는 것은
     # 권한이 아니라 F-65 관문이고, 사유가 `exec_content_token` 이어야 한다 (API.md 9-1).
     # 문구는 통일 문구다: 프로그램은 2단계 코드를 칠 수 없어 알려 줄 다음 단계가 없다.
     expect "(c) 토큰 GET download → 상태" "403" "$(code_of "$OUT")"
@@ -598,14 +609,16 @@ else
   # 코드가 **먼저** 쓰이고 그 뒤에 423 이 나면 그 코드만 버려지므로(1회성), 순서가 중요하다.
   wait_clean "$A_ID" || note "검사가 끝나지 않은 채로 아래를 시도한다 — 423 이면 그것이 정상이다"
   # 실패 2회가 쌓였으니 다시 로그인해 카운터를 되돌린다 (R-48).
-  NEW_CSRF=$(login qa_admin01) && ADM_CSRF="$NEW_CSRF"
-  OTP2=$(totp_fresh qa_admin01)
+  NEW_CSRF=$(login claude_admin01) && ADM_CSRF="$NEW_CSRF"
+  OTP2=$(totp_fresh claude_admin01)
   M=$(mark)
   DL_HDR="$WORK/F65-exec-dl.hdr"
-  curl -s -D "$DL_HDR" -o "$WORK/F65-got.zip" -X POST -b "$ADM_JAR" -A "$UA" \
+  DL_PW=$(qa_password claude_admin01)
+  printf -v body '{"password":"%s","otp":"%s"}' "$DL_PW" "$OTP2"
+  curl_json_secret body -s -D "$DL_HDR" -o "$WORK/F65-got.zip" -X POST -b "$ADM_JAR" -A "$UA" \
     -H 'Content-Type: application/json' -H "X-CSRF-Token: $ADM_CSRF" \
-    -d "{\"password\":\"$(qa_password qa_admin01)\",\"otp\":\"$OTP2\"}" \
     "$BASE/api/files/$A_ID/exec-download"
+  DL_PW=""; body=""
   expect "(c) exec-download → 상태" "200" \
     "$(sed -n 's#^HTTP/[0-9.]* \([0-9][0-9][0-9]\).*#\1#p' "$DL_HDR" | tail -1)"
   expect "(c) Content-Disposition attachment" "1" \
@@ -623,10 +636,12 @@ else
   sub "exec_content=false 인 파일에 exec-download → 400 bad_request"
   if [ -n "$OK_ID" ]; then
     M=$(mark)
-    OUT=$(curl -s -w '\n%{http_code}' -X POST -b "$ADM_JAR" -A "$UA" \
+    DL_PW=$(qa_password claude_admin01)
+    printf -v body '{"password":"%s","otp":"000000"}' "$DL_PW"
+    OUT=$(curl_json_secret body -s -w '\n%{http_code}' -X POST -b "$ADM_JAR" -A "$UA" \
           -H 'Content-Type: application/json' -H "X-CSRF-Token: $ADM_CSRF" \
-          -d "{\"password\":\"$(qa_password qa_admin01)\",\"otp\":\"000000\"}" \
           "$BASE/api/files/$OK_ID/exec-download")
+    DL_PW=""; body=""
     expect "(c) 보통 파일 exec-download → 상태" "400" "$(code_of "$OUT")"
     if [ "$HAVE_PSQL" -eq 1 ]; then
       expect "(c) 감사 file.download_exec deny bad_request" "1" \
@@ -649,7 +664,7 @@ else
   sed 's/^/    /' "$WORK/al21.out"
   expect "(d) AL-21 dry-run 1건" "1" "$(grep -c '\[dry-run\] AL-21' "$WORK/al21.out" || true)"
   contains "(d) evidence 에 파일명" "F65-exec.zip" "$(cat "$WORK/al21.out")"
-  contains "(d) evidence 에 올린 사람" "qa_admin01" "$(cat "$WORK/al21.out")"
+  contains "(d) evidence 에 올린 사람" "claude_admin01" "$(cat "$WORK/al21.out")"
   contains "(d) evidence 에 항목 수" "exec_entry_count" "$(cat "$WORK/al21.out")"
   expect "(d) 출력에 비밀번호 문자열 0건" "0" \
     "$(grep -c -i 'password' "$WORK/al21.out" || true)"
@@ -662,19 +677,21 @@ if [ "$RUN_HTTP" -eq 0 ]; then
   skip "(e) 전체" "운영 DB 열 없음 또는 세션 없음"
 else
   # 2단계 코드를 **파이썬 안에서** 새 창마다 받기 위한 작은 wrapper.
-  # 비밀을 argv 로 넘기지 않는다(`ps` 에 뜬다) — 부를 때마다 여기서 읽어 php 에 준다.
+  # 비밀을 argv 로 넘기지 않는다(`ps` 에 뜬다) — 부를 때마다 여기서 읽어 php 에 **표준입력**으로 준다
+  # (`totp_code.php -` · /bin/sh(dash)의 printf 도 내장이라 새 프로세스의 인자에 비밀이 없다 — R-62).
   cat > "$WORK/otp.sh" <<OTPSH
 #!/bin/sh
 sec=\$(sudo -n awk -v u="\$1" '\$1==u{print \$2}' /etc/tbox-v2/qa-totp.txt 2>/dev/null)
 [ -n "\$sec" ] || exit 1
-exec php "$ROOT/scripts/totp_code.php" "\$sec"
+printf '%s\n' "\$sec" | php "$ROOT/scripts/totp_code.php" -
 OTPSH
   chmod +x "$WORK/otp.sh"
 
   cat > "$WORK/e-screen.py" <<'PY'
 import json, re, subprocess, sys, time
 
-base, ua, who, pw, zippath, otpsh, chrome = sys.argv[1:8]
+base, ua, who, zippath, otpsh, chrome = sys.argv[1:7]
+pw = sys.stdin.readline().rstrip('\n')   # 비밀번호는 인자가 아니라 표준입력 첫 줄(R-62 · py_secret)
 
 try:
     from playwright.sync_api import sync_playwright
@@ -839,9 +856,11 @@ PY
   note "크로미움: ${PW_CHROME:-(playwright 기본값)}"
 
   # ★ stderr 는 **따로** 받는다 — 표준출력에 섞으면 JSON 이 깨져 모든 항목이 빈 값이 된다.
-  python3 "$WORK/e-screen.py" "$BASE" "$UA" "qa_admin01" "$(qa_password qa_admin01)" \
+  E_PW=$(qa_password claude_admin01)
+  py_secret E_PW -- python3 "$WORK/e-screen.py" "$BASE" "$UA" "claude_admin01" \
     "$EXEC_ZIP" "$WORK/otp.sh" "$PW_CHROME" > "$WORK/e.json" 2> "$WORK/e.err"
   E_RC=$?
+  E_PW=""
   if [ "$E_RC" -ne 0 ] || [ ! -s "$WORK/e.json" ]; then
     printf '  ! (e) 파이썬이 실패했다 (rc=%s) — stderr:\n' "$E_RC"
     tail -20 "$WORK/e.err" | sed 's/^/      /'
@@ -873,7 +892,7 @@ PY
     expect "(e) 확인하고 받기 단추" "1" "$(eq "d.get('exec_dl_button',0)")"
     expect "(e) 확인 다운로드 창이 열린다" "1" "$(eq "d.get('dialog_open',0)")"
     contains "(e) 창에 파일명" "F65-exec.zip" "$(eq "d.get('dialog_file','')")"
-    contains "(e) 창에 올린 사람" "qa_admin01" "$(eq "d.get('dialog_uploader','')")"
+    contains "(e) 창에 올린 사람" "claude_admin01" "$(eq "d.get('dialog_uploader','')")"
     note "창의 올린 날짜: $(eq "d.get('dialog_created','')")"
     # 「자원 적재 밖」 자바스크립트 오류만 판정한다 — 이 시험은 **일부러** 400 을 만든다
     # (확인 없이 올리기). 그 400 을 브라우저가 console.error 로 찍는 것까지 세면
@@ -972,7 +991,7 @@ if [ "$HAVE_PSQL" -eq 1 ]; then
 fi
 
 # 2026-09-21 Fable 이 운영 트리 합친 뒤 스모크로 올린 파일 둘도 함께 치운다
-# (qa_admin01 이 올린 것 — 시험이 만든 것과 같은 성격이라 남겨 둘 이유가 없다).
+# (옛 검토 관리자 계정(qa_ 접두)이 올린 것 — 시험이 만든 것과 같은 성격이라 남겨 둘 이유가 없다).
 # 이미 휴지통에 있으면 404 가 나고, 그것도 「치워져 있다」 는 뜻이라 실패로 세지 않는다.
 for smoke in 4e5a5c67-fcdf-48d7-9d0e-8a2fce39f714 63c980b8-0cba-4515-a9b0-605566d34fb4; do
   SD=$(curl -s -o /dev/null -w '%{http_code}' -X DELETE -b "$ADM_JAR" -A "$UA" \
@@ -990,7 +1009,7 @@ done
 expect "올린 파일 휴지통으로 (psql 삭제 없음)" "$N_UP" "$N_DEL"
 
 if [ -n "$MADE_TOKENS" ] && [ -n "$ADM_CSRF" ]; then
-  reauth qa_admin01 "$ADM_CSRF" >/dev/null 2>&1
+  reauth claude_admin01 "$ADM_CSRF" >/dev/null 2>&1
   for t in $MADE_TOKENS; do
     uid=${t%%:*}; tid=${t##*:}
     RC=$(curl -s -o /dev/null -w '%{http_code}' -X DELETE -b "$ADM_JAR" -A "$UA" \
@@ -1019,16 +1038,16 @@ if [ "$HAVE_PSQL" -eq 1 ] && [ -n "$NONQA_BEFORE" ]; then
   #   전부 `-A "tbox-review/<날짜>"` 를 달고 간다. 그래서 「검토 UA 이면서 actor 가
   #   비-qa 인 행」이 0 인지를 본다. 사용자가 같은 시간에 무엇을 하든 이 값은 흔들리지 않는다.
   expect "시험 요청이 만든 비-qa 행 0건 (검토 UA 기준 — 사용자 데이터 불변)" "0" \
-    "$(psqlq "SELECT count(*) FROM audit_logs
+    "$(db_read "$DB" "SELECT count(*) FROM audit_logs
                 WHERE id > ${AUDIT_START:-0}
                   AND actor_name IS NOT NULL AND $REVIEW_NOT_SQL
                   AND COALESCE(user_agent, '') LIKE 'tbox-review/%'")"
   # 사용자가 같은 시간에 만든 행은 **판정하지 않고** 숫자로만 남긴다 (증거용).
-  NONQA_AFTER=$(psqlq "SELECT count(*) FROM audit_logs WHERE actor_name IS NOT NULL AND $REVIEW_NOT_SQL")
+  NONQA_AFTER=$(db_read "$DB" "SELECT count(*) FROM audit_logs WHERE actor_name IS NOT NULL AND $REVIEW_NOT_SQL")
   note "시험이 도는 동안 사용자가 만든 비-qa 행: $((${NONQA_AFTER:-0} - ${NONQA_BEFORE:-0}))건 (판정 대상 아님)"
   # 시스템 행(actor 없음)은 **늘어나는 것이 정상**이다 — 이 시험이 ClamAV 배치와 AL-21 을
   # 일부러 돌리기 때문이다. 몇 건이 왜 늘었는지를 숫자와 목록으로 남긴다(판정하지 않는다).
-  SYS_AFTER=$(psqlq "SELECT count(*) FROM audit_logs WHERE actor_name IS NULL")
+  SYS_AFTER=$(db_read "$DB" "SELECT count(*) FROM audit_logs WHERE actor_name IS NULL")
   note "시험이 만든 시스템 행(actor 없음): $((${SYS_AFTER:-0} - ${SYS_BEFORE:-0}))건 — 내역:"
   psqlq "SELECT action || ' ' || result || coalesce(' ' || reason, '') || '  ' || coalesce(target_name, '(대상 없음)')
            FROM audit_logs

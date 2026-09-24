@@ -19,6 +19,7 @@
 # 규칙 (CLAUDE.md 3장)
 #   · 로그인하지 않는다. 데이터를 만들지 않는다 — 공개 창구 GET 과 정적 검사, 그리고 브라우저뿐이다.
 #   · 실계정의 비밀(users.mfa_secret)은 읽지 않는다. (e)는 이 시험이 그 자리에서 만든 무작위 키를 쓴다.
+#     그 키도 비밀 모양이라 명령 인자에 싣지 않는다 — 파이썬·php 에 표준입력으로 준다(tests/lib/secrets.sh · 점검 봇 R15).
 #   · 모든 요청에 `-A "tbox-review/<날짜>"` 를 붙인다.
 #
 # 준비물: curl · php · python3 + playwright(사용자 로컬 설치) · sudo -u postgres psql(감사 로그 확인)
@@ -26,6 +27,7 @@
 set -u
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+. "$ROOT/tests/lib/secrets.sh" || { echo "tests/lib/secrets.sh 를 읽지 못했다 — 시험을 시작하지 않는다 (R-62)"; exit 3; }
 OUT="${1:-$HOME/.claude/ui-shots/f42}"
 BASE="http://127.0.0.1:8082/tbox"
 UA="tbox-review/$(date +%F)"
@@ -145,7 +147,7 @@ from playwright.sync_api import sync_playwright
 
 BASE, OUT, MODE = sys.argv[1], sys.argv[2], sys.argv[3]   # MODE: 'csp' | 'nocsp'
 URL = BASE + '/assets/totp-generator.html'
-SECRET = sys.argv[4]
+SECRET = sys.stdin.readline().rstrip('\n')   # 시험용 비밀 키는 표준입력 첫 줄(py_secret) — 명령 인자에 싣지 않는다
 out = {'mode': MODE, 'console': [], 'pageerror': []}
 
 with sync_playwright() as p:
@@ -195,12 +197,12 @@ PYEOF
 TEST_SECRET=$(php -r '
 require "'"$ROOT"'/src/Totp.php";
 echo Totp::generateSecret(), PHP_EOL;')
-echo "  · 시험용 임의 비밀 키(이번 실행에서만 쓰고 버린다): $TEST_SECRET"
+echo "  · 시험용 임의 비밀 키를 만들었다 (${#TEST_SECRET}자 · 이번 실행에서만 쓰고 버린다 · 값은 찍지 않는다)"
 
 for MODE in csp nocsp; do
   if [ "$MODE" = csp ]; then sub "① 지금 배포된 CSP 그대로 — connect-src 'self' 적용 뒤(F-42, 2026-09-15)라 「서버와 동기화됨」 이 정상"
   else sub "② CSP 응답 헤더를 벗긴 상태 — nginx 에 connect-src 'self' 를 적용한 뒤와 같다"; fi
-  if python3 "$WORK/server_page.py" "$BASE" "$OUT" "$MODE" "$TEST_SECRET" > "$WORK/c-$MODE.json" 2>"$WORK/c-$MODE.err"; then
+  if py_secret TEST_SECRET -- python3 "$WORK/server_page.py" "$BASE" "$OUT" "$MODE" > "$WORK/c-$MODE.json" 2>"$WORK/c-$MODE.err"; then
     STATUS=$(python3 -c "import json;print(json.load(open('$WORK/c-$MODE.json'))['status'])")
     STATUS2=$(python3 -c "import json;print(json.load(open('$WORK/c-$MODE.json'))['status_after'])")
     LEFT=$(python3 -c "import json;print(json.load(open('$WORK/c-$MODE.json'))['left'])")
@@ -294,7 +296,8 @@ cat > "$WORK/match.py" <<'PYEOF'
 import json, sys, time
 from playwright.sync_api import sync_playwright
 
-BASE, OUT, SECRET = sys.argv[1], sys.argv[2], sys.argv[3]
+BASE, OUT = sys.argv[1], sys.argv[2]
+SECRET = sys.stdin.readline().rstrip('\n')   # 시험용 비밀 키는 표준입력 첫 줄(py_secret) — 명령 인자에 싣지 않는다
 URL = BASE + '/assets/totp-generator.html'
 out = {'rows': [], 'pageerror': []}
 
@@ -331,7 +334,7 @@ with sync_playwright() as p:
 print(json.dumps(out, ensure_ascii=False))
 PYEOF
 
-if python3 "$WORK/match.py" "$BASE" "$OUT" "$TEST_SECRET" > "$WORK/e.json" 2>"$WORK/e.err"; then
+if py_secret TEST_SECRET -- python3 "$WORK/match.py" "$BASE" "$OUT" > "$WORK/e.json" 2>"$WORK/e.err"; then
   echo "  · 상태 줄: $(python3 -c "import json;print(json.load(open('$WORK/e.json'))['status'])")"
   N=$(python3 -c "import json;print(len(json.load(open('$WORK/e.json'))['rows']))")
   i=0
@@ -342,13 +345,16 @@ r = json.load(open('$WORK/e.json'))['rows'][$i]
 print(r['at'], r['pos'], r['step'], r['code'], r['left'])")
     set -- $ROW
     AT=$1; POS=$2; STEP=$3; SHOWN=$4
-    SRVCODE=$(php -r '
+    # 시험용 비밀 키는 표준입력 첫 줄로 준다(py_secret) — php 인자는 코드·시각만
+    SRVCODE=$(py_secret TEST_SECRET -- php -r '
 require "'"$ROOT"'/src/Totp.php";
-echo Totp::code($argv[1], (int) $argv[2]), PHP_EOL;' "$TEST_SECRET" "$AT")
-    OKSTEP=$(php -r '
+$sec = rtrim((string) fgets(STDIN), "\r\n");
+echo Totp::code($sec, (int) $argv[1]), PHP_EOL;' "$AT")
+    OKSTEP=$(py_secret TEST_SECRET -- php -r '
 require "'"$ROOT"'/src/Totp.php";
-$s = Totp::verifyStep($argv[1], $argv[2], 0, (int) $argv[3]);
-echo $s === null ? "null" : $s, PHP_EOL;' "$TEST_SECRET" "$SHOWN" "$AT")
+$sec = rtrim((string) fgets(STDIN), "\r\n");
+$s = Totp::verifyStep($sec, $argv[1], 0, (int) $argv[2]);
+echo $s === null ? "null" : $s, PHP_EOL;' "$SHOWN" "$AT")
     echo "  · 스텝 안 ${POS}초 지점(step $STEP) — 화면 $SHOWN · 서버 $SRVCODE"
     expect "스텝 $STEP 에서 화면 = 서버 코드" "$SRVCODE" "$SHOWN"
     expect "서버 verifyStep(창 0) 이 같은 스텝으로 인정" "$STEP" "$OKSTEP"

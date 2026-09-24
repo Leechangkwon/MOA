@@ -67,6 +67,7 @@
 | F-71 | 검토·시험 계정을 `claude_` 이름으로 — 계정 5개(`seed_users.php --claude-only`) · 첫 로그인 절차를 창구로 마치는 CLI(`scripts/review_account_setup.php`) · 「검토 계정」 판정 `qa_` **또는** `claude_` 한 벌(`tests/lib/review_accounts.sh`, 시험 19개) · 감사 화면 「Claude」 배지(`src/Origin.php`, 계정 **그리고** UA) — 사용자 결정 2026-09-24 | ◐ 구현(복제본) | ✅ 2026-09-24 (claude, 복제본 — 정적 검사만) | ⚠ 대기 | ⚠ 대기 | 커밋 전 |
 | F-69 | 경보에 「누가 일으켰나」 — `origin` 넷(`human`·`system`·`claude-review`·`claude-session`, 판정 `src/Origin.php` 한 곳, 계정 **그리고** UA) · 제목 `[Claude]` · 관리자 경보 목록 배지 · AL-6 격리 파일 오탐 수정(`cli_quarantine_dir()`) · 대기열 2b 사람 계정의 검토 접두 예약 — 사용자 결정 2026-09-24 | ◐ 구현(복제본) | ✅ 2026-09-24 (claude, 복제본 — 정적 검사 + `tests/f69.sh` D-1 앞 판 98/0/1, 지금 판 재실행 대기) | ⚠ 대기 | ⚠ 대기 (D-1 AL-2 루프백 · 「시스템」 배지 색 확인 포함) | 복제본 커밋 `00f442d`(운영 v2.20.0+1b 위, 미반영) |
 | 대기열 1b | 시험 규격화(점검 봇 1-A) — `tests/lib/common.sh`·`results.py`·`selftest.sh`(+fixtures)·`tests/run.sh`·`tests/catalog.json` · `stage26.sh`·`f52.sh` 끝부분 종료 코드(실패인데 rc 0 이던 것) | ✅ 합침 | ✅ www-9e(점검 봇 세션) 작성·독립 검토 | ✅ 2026-09-24 claude 확인(`tests/` 밖 0 · selftest 195/0 · `run.sh --select env:static` 2/0) | — (시험만) | `7c0ec9c` · 발행 없음 |
+| 대기열 1g | 점검 봇 1-B-1 — 시험 비밀을 명령 인자에서 빼기(`tests/lib/secrets.sh`) · qa_→claude_ · R-73 읽기 `db_read` · `scripts/totp_code.php -`(표준입력) | ✅ 합침 | ✅ 점검 봇 세션 작성·독립 검토 | ✅ 2026-09-24 claude 확인(범위 26파일 · selftest 247/0 · static 71/0 · api_whoami 15/0) | — | 운영 커밋(아래 커밋 메시지) · 발행 없음 |
 
 ---
 

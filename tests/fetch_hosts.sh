@@ -8,7 +8,7 @@
 #   (h) 린트 · php -l · \dp fetch_hosts
 #
 # 규칙 (CLAUDE.md 3장)
-#   · **검토 계정(qa_ 접두)만** 쓴다. 시드 계정(admin01 …)은 사용자의 자기 공격 전용이다.
+#   · **검토 계정(claude_ 접두)만** 쓴다. 시드 계정(admin01 …)은 사용자의 자기 공격 전용이다.
 #   · 모든 요청에 `-A "tbox-review/<날짜>"` 를 붙인다.
 #   · 비밀번호·TOTP 비밀은 **필요한 필드만** awk 로 뽑고 변수에만 담는다 (SECURITY R-62).
 #
@@ -36,6 +36,8 @@ DB="tbox_re"
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 # 검토 계정 판정 한 벌(qa_·claude_ — F-71 C). 못 읽으면 사전 검사가 빈 값으로 열리므로 시작하지 않는다.
 . "$ROOT/tests/lib/review_accounts.sh" || { echo "tests/lib/review_accounts.sh 를 읽지 못했다 — 시험을 시작하지 않는다 (R-73)"; exit 3; }
+. "$ROOT/tests/lib/secrets.sh" || { echo "tests/lib/secrets.sh 를 읽지 못했다 — 시험을 시작하지 않는다 (R-62)"; exit 3; }
+. "$ROOT/tests/lib/db_read.sh" || { echo "tests/lib/db_read.sh 를 읽지 못했다 — 시험을 시작하지 않는다 (R-73)"; exit 3; }
 OUT="${1:-$HOME/.claude/ui-shots/f43}"
 JAR_DIR="$(mktemp -d)"
 WORK="$(mktemp -d)"
@@ -66,14 +68,14 @@ expect() {
 # ── 로그인 ────────────────────────────────────────────────────
 # TOTP 코드는 1회성이다(R-45) — 같은 창에서 두 번 쓰면 거부되는 것이 **정상**이라 기다렸다 다시 한다.
 login() {
-  local who="$1" jar="$JAR_DIR/$1.jar" pw sec raw code left out try
+  local who="$1" jar="$JAR_DIR/$1.jar" pw sec raw code left out try body
   pw=$(sudo -n awk -v u="$who" '$1==u{print $3}' /etc/tbox-v2/seed-accounts.txt)
   sec=$(sudo -n awk -v u="$who" '$1==u{print $2}' /etc/tbox-v2/qa-totp.txt)
   for try in 1 2 3; do
-    raw=$(php "$ROOT/scripts/totp_code.php" "$sec")
+    raw=$(totp_now sec)
     code=${raw%%$'\n'*}
-    out=$(curl -s -c "$jar" -A "$UA" -H 'Content-Type: application/json' \
-          -d "{\"username\":\"$who\",\"password\":\"$pw\",\"otp\":\"$code\"}" "$BASE/api/login")
+    printf -v body '{"username":"%s","password":"%s","otp":"%s"}' "$who" "$pw" "$code"
+    out=$(curl_json_secret body -s -c "$jar" -A "$UA" -H 'Content-Type: application/json' "$BASE/api/login")
     case "$out" in
       *'"ok":true'*)
         curl -s -b "$jar" -A "$UA" "$BASE/api/me" \
@@ -90,25 +92,25 @@ login() {
 }
 
 reauth() {
-  local who="$1" token="$2" pw
+  local who="$1" token="$2" pw body
   pw=$(sudo -n awk -v u="$who" '$1==u{print $3}' /etc/tbox-v2/seed-accounts.txt)
-  curl -s -o /dev/null -w '%{http_code}' -b "$JAR_DIR/$who.jar" -A "$UA" \
-    -H 'Content-Type: application/json' -H "X-CSRF-Token: $token" \
-    -d "{\"password\":\"$pw\"}" "$BASE/api/me/reauth"
+  printf -v body '{"password":"%s"}' "$pw"
+  curl_json_secret body -s -o /dev/null -w '%{http_code}' -b "$JAR_DIR/$who.jar" -A "$UA" \
+    -H 'Content-Type: application/json' -H "X-CSRF-Token: $token" "$BASE/api/me/reauth"
 }
 
 # 지금 쓸 수 있는 TOTP 코드 하나 (1회성이라 요청마다 새로 받는다)
 otp_now() {
   local who="$1" sec
   sec=$(sudo -n awk -v u="$who" '$1==u{print $2}' /etc/tbox-v2/qa-totp.txt)
-  php "$ROOT/scripts/totp_code.php" "$sec" | head -1
+  totp_now sec | head -1
 }
 
 # 다음 TOTP 창까지 기다린다 (코드 1회성 때문에 연속 저장 시 필요)
 wait_next_step() {
   local who="$1" sec left
   sec=$(sudo -n awk -v u="$who" '$1==u{print $2}' /etc/tbox-v2/qa-totp.txt)
-  left=$(php "$ROOT/scripts/totp_code.php" "$sec" | sed -n 's/^남은 시간: \([0-9]*\)초.*/\1/p')
+  left=$(totp_now sec | sed -n 's/^남은 시간: \([0-9]*\)초.*/\1/p')
   [ -n "$left" ] || left=31
   sleep $((left + 1))
 }
@@ -134,8 +136,9 @@ hr "0. 시험 안전 점검 (SECURITY R-73)"
 # ─────────────────────────────────────────────────────────────
 # 2026-09-15 Fable: 감사 단언은 「이 실행 시작 이후」만 센다 — 고정 창(2·10분)은 연속 실행 때 앞 실행의 행을 함께 세어 오탐했다
 T0=$(psqlq "SELECT now();")
-NONQA_BEFORE=$(psqlq "SELECT count(*) FROM audit_logs WHERE happened_at > now() - interval '10 minutes' AND actor_name IS NOT NULL AND $REVIEW_NOT_SQL")
-echo "  최근 10분 비-qa 감사 행: $NONQA_BEFORE"
+db_read_var NONQA_BEFORE "$DB" "SELECT count(*) FROM audit_logs WHERE happened_at > now() - interval '10 minutes' AND actor_name IS NOT NULL AND $REVIEW_NOT_SQL" \
+  || { echo "운영 DB 를 읽지 못했다 — 시험을 시작하지 않는다 (R-73 · db_read rc 3)"; exit 3; }
+echo "  최근 10분 비-qa 감사 행: $NONQA_BEFORE (읽기 경로 ${DB_READ_VIA})"
 if [ "${NONQA_BEFORE:-1}" != "0" ]; then
   echo "  ✖ 사용자가 지금 서비스를 쓰고 있다 — 시험을 시작하지 않는다 (종료 3)"
   exit 3
@@ -147,75 +150,75 @@ echo "  그 중 s43- 접두(이전 시험 잔재): $(psqlq "SELECT count(*) FROM
 psqlc "DELETE FROM fetch_hosts WHERE host LIKE 's43-%.example.invalid'"
 
 # ─────────────────────────────────────────────────────────────
-hr "로그인 (qa_admin01 · qa_manager01 · qa_employee01)"
+hr "로그인 (claude_admin01 · claude_manager01 · claude_employee01)"
 # ─────────────────────────────────────────────────────────────
-TOK_ADMIN=$(login qa_admin01)   || exit 1
-TOK_MGR=$(login qa_manager01)   || exit 1
-TOK_EMP=$(login qa_employee01)  || exit 1
+TOK_ADMIN=$(login claude_admin01)   || exit 1
+TOK_MGR=$(login claude_manager01)   || exit 1
+TOK_EMP=$(login claude_employee01)  || exit 1
 echo "  csrf 토큰 3개 확보"
 
 # ─────────────────────────────────────────────────────────────
 hr "(c-1) /api/me — 목록이 0건일 때 (fetch_enabled=false)"
 # ─────────────────────────────────────────────────────────────
-ME_MGR=$(curl -s -b "$JAR_DIR/qa_manager01.jar" -A "$UA" "$BASE/api/me")
-expect "qa_manager01 can_fetch=true"      1 "$(printf '%s' "$ME_MGR" | grep -c '"can_fetch":true')"
-expect "qa_manager01 fetch_enabled=false" 1 "$(printf '%s' "$ME_MGR" | grep -c '"fetch_enabled":false')"
-expect "qa_manager01 fetch_hosts_public 키 있음" 1 "$(printf '%s' "$ME_MGR" | grep -c 'fetch_hosts_public')"
+ME_MGR=$(curl -s -b "$JAR_DIR/claude_manager01.jar" -A "$UA" "$BASE/api/me")
+expect "claude_manager01 can_fetch=true"      1 "$(printf '%s' "$ME_MGR" | grep -c '"can_fetch":true')"
+expect "claude_manager01 fetch_enabled=false" 1 "$(printf '%s' "$ME_MGR" | grep -c '"fetch_enabled":false')"
+expect "claude_manager01 fetch_hosts_public 키 있음" 1 "$(printf '%s' "$ME_MGR" | grep -c 'fetch_hosts_public')"
 
-ME_EMP=$(curl -s -b "$JAR_DIR/qa_employee01.jar" -A "$UA" "$BASE/api/me")
-expect "qa_employee01 can_fetch=false"           1 "$(printf '%s' "$ME_EMP" | grep -c '"can_fetch":false')"
-expect "qa_employee01 응답에 fetch_hosts_public 키 없음" 0 "$(printf '%s' "$ME_EMP" | grep -c 'fetch_hosts_public')"
+ME_EMP=$(curl -s -b "$JAR_DIR/claude_employee01.jar" -A "$UA" "$BASE/api/me")
+expect "claude_employee01 can_fetch=false"           1 "$(printf '%s' "$ME_EMP" | grep -c '"can_fetch":false')"
+expect "claude_employee01 응답에 fetch_hosts_public 키 없음" 0 "$(printf '%s' "$ME_EMP" | grep -c 'fetch_hosts_public')"
 
 # ─────────────────────────────────────────────────────────────
 hr "(a) 권한 · 재인증 · 코드 · 사유 관문"
 # ─────────────────────────────────────────────────────────────
 sub "Manager 는 창구 자체가 막힌다 (라우트 정책 role:Admin)"
-R=$(call qa_manager01 GET  /api/fetch-hosts "$TOK_MGR")
+R=$(call claude_manager01 GET  /api/fetch-hosts "$TOK_MGR")
 expect "GET  /api/fetch-hosts → 403" 403 "$(code_of "$R")"
-R=$(call qa_manager01 POST /api/fetch-hosts "$TOK_MGR" '{"changes":[{"host":"'"$H1"'","is_active":true}],"reason_text":"x","otp":"000000"}')
+R=$(call claude_manager01 POST /api/fetch-hosts "$TOK_MGR" '{"changes":[{"host":"'"$H1"'","is_active":true}],"reason_text":"x","otp":"000000"}')
 expect "POST /api/fetch-hosts → 403" 403 "$(code_of "$R")"
-expect "감사 authz.route deny 남음" 1 "$(psqlq "SELECT count(*) > 0 FROM audit_logs WHERE action='authz.route' AND result='deny' AND actor_name='qa_manager01' AND happened_at > '$T0'::timestamptz" | grep -c '^t$')"
+expect "감사 authz.route deny 남음" 1 "$(psqlq "SELECT count(*) > 0 FROM audit_logs WHERE action='authz.route' AND result='deny' AND actor_name='claude_manager01' AND happened_at > '$T0'::timestamptz" | grep -c '^t$')"
 
 sub "Admin 이라도 재인증 창이 없으면 막힌다 (F-23)"
-R=$(call qa_admin01 GET /api/fetch-hosts "$TOK_ADMIN")
+R=$(call claude_admin01 GET /api/fetch-hosts "$TOK_ADMIN")
 expect "GET → 403" 403 "$(code_of "$R")"
 expect "본문에 next:reauth" 1 "$(body_of "$R" | grep -c '"next":"reauth"')"
 
-echo "  재인증: qa_admin01 → $(reauth qa_admin01 "$TOK_ADMIN")"
+echo "  재인증: claude_admin01 → $(reauth claude_admin01 "$TOK_ADMIN")"
 
-R=$(call qa_admin01 GET /api/fetch-hosts "$TOK_ADMIN")
+R=$(call claude_admin01 GET /api/fetch-hosts "$TOK_ADMIN")
 expect "재인증 뒤 GET → 200" 200 "$(code_of "$R")"
 expect "빈 목록"              1 "$(body_of "$R" | grep -c '"hosts":\[\]')"
 
 sub "사유 없음 · 코드 없음 · 코드 틀림 (전부 400)"
-R=$(call qa_admin01 POST /api/fetch-hosts "$TOK_ADMIN" '{"changes":[{"host":"'"$H1"'","is_active":true}],"otp":"123456"}')
+R=$(call claude_admin01 POST /api/fetch-hosts "$TOK_ADMIN" '{"changes":[{"host":"'"$H1"'","is_active":true}],"otp":"123456"}')
 expect "사유 없음 → 400" 400 "$(code_of "$R")"
-R=$(call qa_admin01 POST /api/fetch-hosts "$TOK_ADMIN" '{"changes":[{"host":"'"$H1"'","is_active":true}],"reason_text":"시험"}')
+R=$(call claude_admin01 POST /api/fetch-hosts "$TOK_ADMIN" '{"changes":[{"host":"'"$H1"'","is_active":true}],"reason_text":"시험"}')
 expect "코드 없음 → 400" 400 "$(code_of "$R")"
-R=$(call qa_admin01 POST /api/fetch-hosts "$TOK_ADMIN" '{"changes":[{"host":"'"$H1"'","is_active":true}],"reason_text":"시험","otp":"000000"}')
+R=$(call claude_admin01 POST /api/fetch-hosts "$TOK_ADMIN" '{"changes":[{"host":"'"$H1"'","is_active":true}],"reason_text":"시험","otp":"000000"}')
 expect "코드 틀림 → 400" 400 "$(code_of "$R")"
-expect "감사 fetch_host.change deny bad_code" 1 "$(psqlq "SELECT count(*) > 0 FROM audit_logs WHERE action='fetch_host.change' AND result='deny' AND reason='bad_code' AND actor_name='qa_admin01' AND happened_at > '$T0'::timestamptz" | grep -c '^t$')"
+expect "감사 fetch_host.change deny bad_code" 1 "$(psqlq "SELECT count(*) > 0 FROM audit_logs WHERE action='fetch_host.change' AND result='deny' AND reason='bad_code' AND actor_name='claude_admin01' AND happened_at > '$T0'::timestamptz" | grep -c '^t$')"
 expect "표는 여전히 0행" 0 "$(psqlq "SELECT count(*) FROM fetch_hosts WHERE host LIKE 's43-%'")"
 
 # ─────────────────────────────────────────────────────────────
 hr "(b) 추가 2건 → 감사 · AL-18 · 형식 거부"
 # ─────────────────────────────────────────────────────────────
 sub "정상 저장 — 대문자로 보내고 소문자로 저장되는지 함께 본다"
-wait_next_step qa_admin01
-OTP=$(otp_now qa_admin01)
-R=$(call qa_admin01 POST /api/fetch-hosts "$TOK_ADMIN" \
+wait_next_step claude_admin01
+OTP=$(otp_now claude_admin01)
+R=$(call claude_admin01 POST /api/fetch-hosts "$TOK_ADMIN" \
    '{"changes":[{"host":"'"$(printf '%s' "$H1" | tr a-z A-Z)"'","is_active":true,"note":"F-43 시험용"},{"host":"'"$H2"'","is_active":true}],"reason_text":"F-43 수락 기준 시험","otp":"'"$OTP"'"}')
 expect "POST → 200"     200 "$(code_of "$R")"
 expect "changed 2건"      2 "$(body_of "$R" | grep -o '"added":true' | wc -l)"
 expect "표에 2행"         2 "$(psqlq "SELECT count(*) FROM fetch_hosts WHERE host LIKE 's43-%'")"
 expect "소문자로 저장"    1 "$(psqlq "SELECT count(*) FROM fetch_hosts WHERE host = '$H1'")"
-expect "감사 allow 2건"   2 "$(psqlq "SELECT count(*) FROM audit_logs WHERE action='fetch_host.change' AND result='allow' AND actor_name='qa_admin01' AND happened_at > '$T0'::timestamptz")"
+expect "감사 allow 2건"   2 "$(psqlq "SELECT count(*) FROM audit_logs WHERE action='fetch_host.change' AND result='allow' AND actor_name='claude_admin01' AND happened_at > '$T0'::timestamptz")"
 echo "  감사 detail 원문:"
 psqlq "SELECT target_name || ' :: ' || detail::text FROM audit_logs WHERE action='fetch_host.change' AND result='allow' AND happened_at > '$T0'::timestamptz ORDER BY id" | sed 's/^/    /'
 expect "detail 에 before(null)·after·사유·코드확인" 2 "$(psqlq "SELECT count(*) FROM audit_logs WHERE action='fetch_host.change' AND result='allow' AND happened_at > '$T0'::timestamptz AND detail ? 'after' AND detail ? 'reason_text' AND detail->>'otp_verified' = 'true'")"
 
 sub "같은 코드를 다시 쓰면 거부 (R-45)"
-R=$(call qa_admin01 POST /api/fetch-hosts "$TOK_ADMIN" \
+R=$(call claude_admin01 POST /api/fetch-hosts "$TOK_ADMIN" \
    '{"changes":[{"host":"'"$H1"'","is_active":false}],"reason_text":"코드 재사용 시험","otp":"'"$OTP"'"}')
 expect "같은 코드 재사용 → 400" 400 "$(code_of "$R")"
 expect "감사 code_reused" 1 "$(psqlq "SELECT count(*) > 0 FROM audit_logs WHERE action='fetch_host.change' AND result='deny' AND reason='code_reused' AND happened_at > '$T0'::timestamptz" | grep -c '^t$')"
@@ -231,9 +234,9 @@ echo is_array($s) ? count(array_filter(array_keys($s), fn($k) => str_starts_with
 
 sub "형식 거부 — 와일드카드 · IP · http · 경로"
 for BAD in '*.example.invalid' '10.0.0.5' 'https://s43-3.example.invalid/x' 'localhost' 's43 4.example.invalid'; do
-  wait_next_step qa_admin01
-  OTPB=$(otp_now qa_admin01)
-  R=$(call qa_admin01 POST /api/fetch-hosts "$TOK_ADMIN" \
+  wait_next_step claude_admin01
+  OTPB=$(otp_now claude_admin01)
+  R=$(call claude_admin01 POST /api/fetch-hosts "$TOK_ADMIN" \
      "$(printf '{"changes":[{"host":%s,"is_active":true}],"reason_text":"형식 시험","otp":"%s"}' "$(php -r 'echo json_encode($argv[1], JSON_UNESCAPED_SLASHES|JSON_UNESCAPED_UNICODE);' "$BAD")" "$OTPB")")
   expect "거부: $BAD → 400" 400 "$(code_of "$R")"
 done
@@ -241,31 +244,31 @@ expect "형식 거부가 행을 만들지 않음" 2 "$(psqlq "SELECT count(*) FR
 expect "감사 invariant 5건" 5 "$(psqlq "SELECT count(*) FROM audit_logs WHERE action='fetch_host.change' AND result='deny' AND reason='invariant' AND happened_at > '$T0'::timestamptz")"
 
 sub "DELETE 라우트가 없다 (405/404)"
-R=$(call qa_admin01 DELETE /api/fetch-hosts "$TOK_ADMIN")
+R=$(call claude_admin01 DELETE /api/fetch-hosts "$TOK_ADMIN")
 expect "DELETE /api/fetch-hosts → 405" 405 "$(code_of "$R")"
 
 # ─────────────────────────────────────────────────────────────
 hr "(c-2) /api/me — 목록이 활성 2건일 때 · 비활성화하면 다시 false"
 # ─────────────────────────────────────────────────────────────
-ME_MGR=$(curl -s -b "$JAR_DIR/qa_manager01.jar" -A "$UA" "$BASE/api/me")
+ME_MGR=$(curl -s -b "$JAR_DIR/claude_manager01.jar" -A "$UA" "$BASE/api/me")
 expect "fetch_enabled=true" 1 "$(printf '%s' "$ME_MGR" | grep -c '"fetch_enabled":true')"
 expect "fetch_hosts_public 에 픽스처 2개" 2 "$(printf '%s' "$ME_MGR" | grep -o 's43-[12]\.example\.invalid' | wc -l)"
 
 sub "두 사이트를 비활성화 → 다시 false"
-wait_next_step qa_admin01
-OTP2=$(otp_now qa_admin01)
-R=$(call qa_admin01 POST /api/fetch-hosts "$TOK_ADMIN" \
+wait_next_step claude_admin01
+OTP2=$(otp_now claude_admin01)
+R=$(call claude_admin01 POST /api/fetch-hosts "$TOK_ADMIN" \
    '{"changes":[{"host":"'"$H1"'","is_active":false},{"host":"'"$H2"'","is_active":false}],"reason_text":"시험 정리 — 비활성화","otp":"'"$OTP2"'"}')
 expect "비활성화 POST → 200" 200 "$(code_of "$R")"
 expect "행은 그대로 2행 (지워지지 않음)" 2 "$(psqlq "SELECT count(*) FROM fetch_hosts WHERE host LIKE 's43-%'")"
 expect "활성 0행" 0 "$(psqlq "SELECT count(*) FROM fetch_hosts WHERE host LIKE 's43-%' AND is_active")"
-ME_MGR=$(curl -s -b "$JAR_DIR/qa_manager01.jar" -A "$UA" "$BASE/api/me")
+ME_MGR=$(curl -s -b "$JAR_DIR/claude_manager01.jar" -A "$UA" "$BASE/api/me")
 expect "fetch_enabled 다시 false" 1 "$(printf '%s' "$ME_MGR" | grep -c '"fetch_enabled":false')"
 
 sub "바뀌는 것이 없는 요청은 거부 (사유만 남기는 기록을 만들지 않는다)"
-wait_next_step qa_admin01
-OTP3=$(otp_now qa_admin01)
-R=$(call qa_admin01 POST /api/fetch-hosts "$TOK_ADMIN" \
+wait_next_step claude_admin01
+OTP3=$(otp_now claude_admin01)
+R=$(call claude_admin01 POST /api/fetch-hosts "$TOK_ADMIN" \
    '{"changes":[{"host":"'"$H1"'","is_active":false}],"reason_text":"변화 없음 시험","otp":"'"$OTP3"'"}')
 expect "변화 없음 → 400" 400 "$(code_of "$R")"
 
@@ -273,19 +276,19 @@ expect "변화 없음 → 400" 400 "$(code_of "$R")"
 hr "가져오기 동작 — 허용 목록이 실제로 통로를 여닫는가"
 # ─────────────────────────────────────────────────────────────
 sub "비활성 상태: 픽스처 주소로 가져오기 → host_not_allowed"
-R=$(call qa_manager01 POST /api/files/fetch "$TOK_MGR" '{"url":"https://'"$H1"'/a.csv","access_level":"internal"}')
+R=$(call claude_manager01 POST /api/files/fetch "$TOK_MGR" '{"url":"https://'"$H1"'/a.csv","access_level":"internal"}')
 expect "가져오기 → 400" 400 "$(code_of "$R")"
-expect "감사 reason=host_not_allowed" 1 "$(psqlq "SELECT count(*) > 0 FROM audit_logs WHERE action='file.fetch' AND result='deny' AND reason='host_not_allowed' AND actor_name='qa_manager01' AND happened_at > '$T0'::timestamptz" | grep -c '^t$')"
+expect "감사 reason=host_not_allowed" 1 "$(psqlq "SELECT count(*) > 0 FROM audit_logs WHERE action='file.fetch' AND result='deny' AND reason='host_not_allowed' AND actor_name='claude_manager01' AND happened_at > '$T0'::timestamptz" | grep -c '^t$')"
 
 sub "활성화하면 사유가 바뀐다 — 허용은 됐고 DNS 가 없어 private_ip (밖으로 나가지 않음)"
-wait_next_step qa_admin01
-OTP4=$(otp_now qa_admin01)
-R=$(call qa_admin01 POST /api/fetch-hosts "$TOK_ADMIN" \
+wait_next_step claude_admin01
+OTP4=$(otp_now claude_admin01)
+R=$(call claude_admin01 POST /api/fetch-hosts "$TOK_ADMIN" \
    '{"changes":[{"host":"'"$H1"'","is_active":true}],"reason_text":"가져오기 경로 시험","otp":"'"$OTP4"'"}')
 expect "재활성 POST → 200" 200 "$(code_of "$R")"
-R=$(call qa_manager01 POST /api/files/fetch "$TOK_MGR" '{"url":"https://'"$H1"'/a.csv","access_level":"internal"}')
+R=$(call claude_manager01 POST /api/files/fetch "$TOK_MGR" '{"url":"https://'"$H1"'/a.csv","access_level":"internal"}')
 expect "가져오기 → 400 (DNS 없음)" 400 "$(code_of "$R")"
-LASTREASON=$(psqlq "SELECT reason FROM audit_logs WHERE action='file.fetch' AND result='deny' AND actor_name='qa_manager01' ORDER BY id DESC LIMIT 1")
+LASTREASON=$(psqlq "SELECT reason FROM audit_logs WHERE action='file.fetch' AND result='deny' AND actor_name='claude_manager01' ORDER BY id DESC LIMIT 1")
 expect "사유가 host_not_allowed 가 아니다 (허용 목록을 통과했다)" "yes" "$([ "$LASTREASON" != "host_not_allowed" ] && echo yes || echo "no($LASTREASON)")"
 echo "    마지막 사유: $LASTREASON"
 
@@ -293,10 +296,10 @@ sub "SharePoint 링크 → download=1 로 변환(F-46) · 허용 목록에 없�
 # F-46(2026-09-15) 전에는 주소 모양만 보고 needs_login 으로 미리 거절했다. 지금은 OneDrive 와 같이
 # download=1 을 붙여 정상 경로로 보내고, 「공개가 아니다」는 돌아온 HTML 을 보고 판단한다.
 # 그래서 이 가짜 테넌트는 허용 목록 검사(첫 요청 = 정확 일치)에서 막혀야 하고, 로그인 문구가 나오면 안 된다.
-R=$(call qa_manager01 POST /api/files/fetch "$TOK_MGR" '{"url":"https://contoso-my.sharepoint.com/:x:/g/personal/a_b/EABCdefgh","access_level":"internal"}')
+R=$(call claude_manager01 POST /api/files/fetch "$TOK_MGR" '{"url":"https://contoso-my.sharepoint.com/:x:/g/personal/a_b/EABCdefgh","access_level":"internal"}')
 expect "host_not_allowed → 400" 400 "$(code_of "$R")"
 expect "로그인 문구가 아니다 (주소 모양으로 미리 거절하지 않는다, F-46)" 0 "$(body_of "$R" | grep -c '로그인이 필요합니다')"
-expect "감사 reason=host_not_allowed" 1 "$(psqlq "SELECT count(*) > 0 FROM audit_logs WHERE action='file.fetch' AND result='deny' AND reason='host_not_allowed' AND actor_name='qa_manager01' AND happened_at > '$T0'::timestamptz" | grep -c '^t$')"
+expect "감사 reason=host_not_allowed" 1 "$(psqlq "SELECT count(*) > 0 FROM audit_logs WHERE action='file.fetch' AND result='deny' AND reason='host_not_allowed' AND actor_name='claude_manager01' AND happened_at > '$T0'::timestamptz" | grep -c '^t$')"
 
 # ─────────────────────────────────────────────────────────────
 hr "(e) CloudLink 단위 시험 (네트워크 0)"
@@ -387,7 +390,7 @@ hr "(d) 화면 — 홈 단추 · 관리 화면 · 도움말 (Playwright)"
 # 지금 상태: 픽스처 1건이 활성이다 → 홈 단추가 보여야 한다.
 mkdir -p "$OUT/d-shots"
 export PATH="$HOME/.local/bin:$PATH"
-python3 - "$BASE" "$UA" "$JAR_DIR/qa_admin01.jar" "$JAR_DIR/qa_manager01.jar" "$OUT/d-shots" <<'PY' > "$OUT/d-ui.txt" 2>&1
+python3 - "$BASE" "$UA" "$JAR_DIR/claude_admin01.jar" "$JAR_DIR/claude_manager01.jar" "$OUT/d-shots" <<'PY' > "$OUT/d-ui.txt" 2>&1
 import json, sys, re
 base, ua, admin_jar, mgr_jar, out = sys.argv[1:6]
 
@@ -506,7 +509,7 @@ AFTER_DEL=$(psqlq "SELECT count(*) FROM fetch_hosts")
 echo "  fetch_hosts: $BEFORE_DEL → $AFTER_DEL (픽스처 2행 제거)"
 expect "정리 뒤 s43- 행 0" 0 "$(psqlq "SELECT count(*) FROM fetch_hosts WHERE host LIKE 's43-%'")"
 
-NONQA_AFTER=$(psqlq "SELECT count(*) FROM audit_logs WHERE happened_at > now() - interval '30 minutes' AND actor_name IS NOT NULL AND $REVIEW_NOT_SQL")
+NONQA_AFTER=$(db_read "$DB" "SELECT count(*) FROM audit_logs WHERE happened_at > now() - interval '30 minutes' AND actor_name IS NOT NULL AND $REVIEW_NOT_SQL")
 echo "  최근 30분 비-qa 감사 행: 시작 $NONQA_BEFORE → 지금 $NONQA_AFTER (0 이어야 정상)"
 
 rm -rf "$JAR_DIR" "$WORK"

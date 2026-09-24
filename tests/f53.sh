@@ -19,12 +19,13 @@
 #   (g) `scripts/security_lint.sh` 0건 · `php -l` · 올린 파일 전부 휴지통 · 작업 폴더 삭제
 #
 # 규칙 (CLAUDE.md 3장)
-#   · **검토 계정은 `qa_employee01` 하나만** 쓴다. 시드 계정(admin01 …)은 사용자의 자기 공격 전용이다.
+#   · **검토 계정은 `claude_employee01` 하나만** 쓴다. 시드 계정(admin01 …)은 사용자의 자기 공격 전용이다.
 #   · 모든 요청에 `-A "tbox-review/<날짜>"` 를 붙인다 — 감사 로그에서 사람의 행동과 갈라 보려는 것.
 #   · **운영 데이터에 손대지 않는다.** 올린 파일은 앱 창구(`DELETE /api/files/{id}`)로 휴지통에
 #     보낼 뿐, `psql` 로 지우지 않는다 (SECURITY R-73). 다른 계정·표·설정은 건드리지 않는다.
 #   · 세션 업로드(`POST /api/files`, 세션 + CSRF)만 쓴다. 토큰 창구(`POST /api/upload`)는
 #     진짜 토큰을 읽어야 해서 쓰지 않는다 (SECURITY R-62) — 두 창구는 같은 검증 함수를 탄다.
+#   · 비밀번호·TOTP 비밀은 명령 인자에 싣지 않는다 — 표준입력으로만 넘긴다(tests/lib/secrets.sh · 점검 봇 R15).
 #
 # ★ 시험 안전 (SECURITY R-73 · R-80)
 #   ① 최근 10분 감사 로그에 비-qa actor 가 있으면 시작하지 않는다(종료 코드 3)
@@ -38,6 +39,8 @@ set -u
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 # 검토 계정 판정 한 벌(qa_·claude_ — F-71 C). 못 읽으면 사전 검사가 빈 값으로 열리므로 시작하지 않는다.
 . "$ROOT/tests/lib/review_accounts.sh" || { echo "tests/lib/review_accounts.sh 를 읽지 못했다 — 시험을 시작하지 않는다 (R-73)"; exit 3; }
+. "$ROOT/tests/lib/secrets.sh" || { echo "tests/lib/secrets.sh 를 읽지 못했다 — 시험을 시작하지 않는다 (R-62)"; exit 3; }
+. "$ROOT/tests/lib/db_read.sh" || { echo "tests/lib/db_read.sh 를 읽지 못했다 — 시험을 시작하지 않는다 (R-73)"; exit 3; }
 BASE="http://127.0.0.1:8082/tbox"
 UA="tbox-review/$(date +%F)"
 DB="tbox_re"
@@ -79,8 +82,9 @@ echo "루트 파티션 여유: $(df -Ph / | awk 'NR==2{print $4}') (${avail_kb}K
 HAVE_PSQL=0
 if psqlq "SELECT 1" >/dev/null 2>&1; then HAVE_PSQL=1; fi
 if [ "$HAVE_PSQL" -eq 1 ]; then
-  BUSY=$(psqlq "SELECT count(*) FROM audit_logs WHERE happened_at > now() - interval '10 minutes' AND actor_name IS NOT NULL AND $REVIEW_NOT_SQL")
-  echo "최근 10분 비-qa 감사 행: ${BUSY:-?}"
+  db_read_var BUSY "$DB" "SELECT count(*) FROM audit_logs WHERE happened_at > now() - interval '10 minutes' AND actor_name IS NOT NULL AND $REVIEW_NOT_SQL" \
+    || { echo "운영 DB 를 읽지 못했다 — 시험을 시작하지 않는다 (R-73 · db_read rc 3)"; exit 3; }
+  echo "최근 10분 비-qa 감사 행: ${BUSY:-?} (읽기 경로 ${DB_READ_VIA})"
   if [ "${BUSY:-0}" -gt 0 ] 2>/dev/null; then
     echo "사용자가 지금 서비스를 쓰고 있다 — 시험을 시작하지 않는다 (SECURITY R-73 ①)"; exit 3
   fi
@@ -265,20 +269,20 @@ for f in "$WORK"/F53-*; do
   printf '    %-20s %s\n' "$(basename "$f")" "$(file -b --mime-type "$f")"
 done
 
-# ─── 로그인 (qa_employee01 하나만) ───────────────────────────────
-hr "로그인 — qa_employee01"
+# ─── 로그인 (claude_employee01 하나만) ───────────────────────────────
+hr "로그인 — claude_employee01"
 
 # TOTP 코드는 1회성이다(R-45) — 같은 창에서 두 번 쓰면 거부되는 것이 정상이라 기다렸다 다시 한다.
 login() {
-  local who="$1" jar="$JAR_DIR/$1.jar" pw sec raw code left out try
+  local who="$1" jar="$JAR_DIR/$1.jar" pw sec raw code left out try body
   pw=$(sudo -n awk -v u="$who" '$1==u{print $3}' /etc/tbox-v2/seed-accounts.txt 2>/dev/null)
   sec=$(sudo -n awk -v u="$who" '$1==u{print $2}' /etc/tbox-v2/qa-totp.txt 2>/dev/null)
   [ -n "$pw" ] && [ -n "$sec" ] || return 2
   for try in 1 2 3; do
-    raw=$(php "$ROOT/scripts/totp_code.php" "$sec")
+    raw=$(totp_now sec)
     code=${raw%%$'\n'*}
-    out=$(curl -s -c "$jar" -A "$UA" -H 'Content-Type: application/json' \
-          -d "{\"username\":\"$who\",\"password\":\"$pw\",\"otp\":\"$code\"}" "$BASE/api/login")
+    printf -v body '{"username":"%s","password":"%s","otp":"%s"}' "$who" "$pw" "$code"
+    out=$(curl_json_secret body -s -c "$jar" -A "$UA" -H 'Content-Type: application/json' "$BASE/api/login")
     case "$out" in
       *'"ok":true'*)
         curl -s -b "$jar" -A "$UA" "$BASE/api/me" \
@@ -293,11 +297,11 @@ login() {
   return 1
 }
 
-CSRF=$(login qa_employee01)
-JAR="$JAR_DIR/qa_employee01.jar"
+CSRF=$(login claude_employee01)
+JAR="$JAR_DIR/claude_employee01.jar"
 HAVE_SESSION=0
-if [ -n "${CSRF:-}" ]; then HAVE_SESSION=1; echo "  qa_employee01 로그인 OK (CSRF 토큰 확보)"
-else echo "  qa_employee01 로그인 실패 — HTTP 항목은 전부 SKIP 되고 단위 시험만 돈다"; fi
+if [ -n "${CSRF:-}" ]; then HAVE_SESSION=1; echo "  claude_employee01 로그인 OK (CSRF 토큰 확보)"
+else echo "  claude_employee01 로그인 실패 — HTTP 항목은 전부 SKIP 되고 단위 시험만 돈다"; fi
 
 CODE=""; BODY=""; REASON=""; NEWID=""
 up() {   # $1 파일경로 → CODE·BODY·REASON·NEWID 설정 · 성공하면 UPLOADED 에 UUID 를 모은다

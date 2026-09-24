@@ -29,6 +29,10 @@ DB="tbox_re"
 WORK="$(mktemp -d)"
 TMP="$(mktemp -d)"
 PORT=18082
+# 임시 서버도 앱의 base-path(src/bootstrap.php `TBOX_BASE`='/tbox') 아래로 친다 — 접두 없는 옛 경로는
+# 308 로 넘어가 (b) 가 503·500 을 보지 못한다(점검 봇 C⑤, 2026-09-24 실측 6건 실패). 가짜 .env 의 APP_URL 은
+# 출처만 둔다(Http::url 이 /tbox 를 붙인다).
+TMPBASE="http://127.0.0.1:$PORT/tbox"
 SRV_PID=""
 PASS=0
 FAIL=0
@@ -164,7 +168,7 @@ SRV_PID=$!
 READY=no
 i=0
 while [ "$i" -lt 25 ]; do
-  C=$(curl -s -o /dev/null -w '%{http_code}' -A "$UA" "http://127.0.0.1:$PORT/api/health" 2>/dev/null)
+  C=$(curl -s -o /dev/null -w '%{http_code}' -A "$UA" "$TMPBASE/api/health" 2>/dev/null)
   if [ -n "$C" ] && [ "$C" != "000" ]; then READY=yes; break; fi
   i=$((i+1))
   perl -e 'select(undef,undef,undef,0.2)' 2>/dev/null || true
@@ -172,7 +176,7 @@ done
 expect "내장 서버 기동 (127.0.0.1:$PORT)" "yes" "$READY"
 
 if [ "$READY" = yes ]; then
-  BCODE=$(curl -s -o "$WORK/b.json" -D "$WORK/b.head" -w '%{http_code}' -A "$UA" "http://127.0.0.1:$PORT/api/health")
+  BCODE=$(curl -s -o "$WORK/b.json" -D "$WORK/b.head" -w '%{http_code}' -A "$UA" "$TMPBASE/api/health")
   echo "  · 응답 상태 : $BCODE"
   echo "  · 응답 본문 : $(cat "$WORK/b.json")"
   echo "  · 응답 헤더 :"; sed 's/^/      /' "$WORK/b.head"
@@ -187,7 +191,7 @@ if [ "$READY" = yes ]; then
     expect "본문+헤더에 「$S」 0건" "0" "$(grep -oiF "$S" "$WORK/b.all" | wc -l)"
   done
 
-  MCODE=$(curl -s -o "$WORK/m.json" -w '%{http_code}' -A "$UA" "http://127.0.0.1:$PORT/api/me")
+  MCODE=$(curl -s -o "$WORK/m.json" -w '%{http_code}' -A "$UA" "$TMPBASE/api/me")
   echo "  · GET /api/me → $MCODE  $(cat "$WORK/m.json")"
   expect "GET /api/me 는 여전히 500 (다른 창구는 전과 같다)" "500" "$MCODE"
   expect "GET /api/me 본문이 {\"error\":\"서버 오류\"}" '{"error":"서버 오류"}' "$(cat "$WORK/m.json")"

@@ -8,7 +8,7 @@
 #   (e) scripts/security_lint.sh 0건 · 바뀐 파일 php -l
 #
 # 규칙 (CLAUDE.md 3장)
-#   · 검토 계정(qa_ 접두)만 쓴다 — (d)·(e) 의 scripts/ui_snapshot.sh 가 qa_admin01 로 들어가고
+#   · 검토 계정(claude_ 접두)만 쓴다 — (d)·(e) 의 scripts/ui_snapshot.sh 가 claude_admin01 로 들어가고
 #     모든 요청에 `-A "tbox-review/<날짜>"` 를 붙인다. 이 시험은 **데이터를 하나도 만들지 않는다**
 #     (정적 검사와 GET 뿐이라 지울 것도 되돌릴 것도 없다).
 #

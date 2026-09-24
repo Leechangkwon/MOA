@@ -33,7 +33,7 @@
 #       마지막에 「검토 UA 로 들어온 비-qa actor 행 0건」
 #
 # 규칙 (CLAUDE.md 3장)
-#   · 검토 계정은 `qa_admin01`·`qa_employee01` 뿐이다. 시드 계정(admin01 …)은 사용자 몫이다.
+#   · 검토 계정은 `claude_admin01`·`claude_employee01` 뿐이다. 시드 계정(admin01 …)은 사용자 몫이다.
 #   · 모든 요청에 `-A "tbox-review/<날짜>"` — 감사 로그에서 사람의 행동과 갈라 보려는 것.
 #   · 운영 데이터에 손대지 않는다. 만든 것은 앱 창구로만 되돌린다.
 #   · 운영 DB 에 DDL·DML 을 실행하지 않는다 (psql 은 **읽기**만).
@@ -54,6 +54,8 @@ set -u
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 # 검토 계정 판정 한 벌(qa_·claude_ — F-71 C). 못 읽으면 사전 검사가 빈 값으로 열리므로 시작하지 않는다.
 . "$ROOT/tests/lib/review_accounts.sh" || { echo "tests/lib/review_accounts.sh 를 읽지 못했다 — 시험을 시작하지 않는다 (R-73)"; exit 3; }
+. "$ROOT/tests/lib/secrets.sh" || { echo "tests/lib/secrets.sh 를 읽지 못했다 — 시험을 시작하지 않는다 (R-62)"; exit 3; }
+. "$ROOT/tests/lib/db_read.sh" || { echo "tests/lib/db_read.sh 를 읽지 못했다 — 시험을 시작하지 않는다 (R-73)"; exit 3; }
 BASE="http://127.0.0.1:8082/tbox"
 UA="tbox-review/$(date +%F)"
 DB="tbox_re"
@@ -127,11 +129,12 @@ reason_msg() {   # $1 사유 코드 → 문장
 qa_password() { sudo -n awk -v u="$1" '$1==u{print $3}' /etc/tbox-v2/seed-accounts.txt 2>/dev/null; }
 qa_secret()   { sudo -n awk -v u="$1" '$1==u{print $2}' /etc/tbox-v2/qa-totp.txt 2>/dev/null; }
 
-totp_now() {   # $1 계정 → "코드 남은초"
+# (이름 totp_pair — tests/lib/secrets.sh 의 totp_now <변수 이름> 과 겹치지 않게. 비밀은 표준입력으로 php 에)
+totp_pair() {   # $1 계정 → "코드 남은초"
   local sec raw
   sec=$(qa_secret "$1")
   [ -n "$sec" ] || return 1
-  raw=$(php "$ROOT/scripts/totp_code.php" "$sec" 2>/dev/null) || return 1
+  raw=$(totp_now sec 2>/dev/null) || return 1
   printf '%s %s\n' \
     "$(printf '%s' "$raw" | head -1)" \
     "$(printf '%s' "$raw" | sed -n 's/^남은 시간: \([0-9]*\)초.*/\1/p')"
@@ -140,25 +143,25 @@ totp_now() {   # $1 계정 → "코드 남은초"
 # **다음 창**의 코드 — 방금 쓴 코드를 다시 쓰면 `code_reused` 가 정상이다 (R-45).
 totp_fresh() {   # $1 계정 → 코드만
   local pair left
-  pair=$(totp_now "$1") || return 1
+  pair=$(totp_pair "$1") || return 1
   left=${pair##* }
   [ -n "$left" ] || left=31
   printf '  · %s 다음 2단계 코드 창까지 %s초 기다린다 (R-45 1회성)\n' "$1" "$left" >&2
   sleep $((left + 1))
-  pair=$(totp_now "$1") || return 1
+  pair=$(totp_pair "$1") || return 1
   printf '%s\n' "${pair%% *}"
 }
 
 login() {   # $1 계정 → 성공하면 표준출력에 csrf 토큰
-  local who="$1" jar="$JAR_DIR/$1.jar" pw sec raw code left out try
+  local who="$1" jar="$JAR_DIR/$1.jar" pw sec raw code left out try body
   pw=$(qa_password "$who")
   sec=$(qa_secret "$who")
   [ -n "$pw" ] && [ -n "$sec" ] || return 2
   for try in 1 2 3; do
-    raw=$(php "$ROOT/scripts/totp_code.php" "$sec")
+    raw=$(totp_now sec)
     code=${raw%%$'\n'*}
-    out=$(curl -s -c "$jar" -A "$UA" -H 'Content-Type: application/json' \
-          -d "{\"username\":\"$who\",\"password\":\"$pw\",\"otp\":\"$code\"}" "$BASE/api/login")
+    printf -v body '{"username":"%s","password":"%s","otp":"%s"}' "$who" "$pw" "$code"
+    out=$(curl_json_secret body -s -c "$jar" -A "$UA" -H 'Content-Type: application/json' "$BASE/api/login")
     case "$out" in
       *'"ok":true'*)
         curl -s -b "$jar" -A "$UA" "$BASE/api/me" \
@@ -174,9 +177,11 @@ login() {   # $1 계정 → 성공하면 표준출력에 csrf 토큰
 }
 
 reauth() {   # $1 계정  $2 csrf → HTTP 코드
-  curl -s -o /dev/null -w '%{http_code}' -b "$JAR_DIR/$1.jar" -A "$UA" \
-    -H 'Content-Type: application/json' -H "X-CSRF-Token: $2" \
-    -d "{\"password\":\"$(qa_password "$1")\"}" "$BASE/api/me/reauth"
+  local pw body
+  pw=$(qa_password "$1")
+  printf -v body '{"password":"%s"}' "$pw"
+  curl_json_secret body -s -o /dev/null -w '%{http_code}' -b "$JAR_DIR/$1.jar" -A "$UA" \
+    -H 'Content-Type: application/json' -H "X-CSRF-Token: $2" "$BASE/api/me/reauth"
 }
 
 # ─── 한 항목을 네 가지로 판정한다 ────────────────────────────────
@@ -189,7 +194,7 @@ reason_case() {
   got=$(printf '%s' "$body" | jget "d.get('error','')")
   expect "$desc — 문장(ARCH 5.30 표 = Http::reasonMessage)" "$want" "$got"
   expect "$desc — 문장에 시험이 만든 이름·계정 이름 0" "0" \
-    "$(printf '%s\n' "$got" | grep -c -e 'F68-' -e 'qa_admin01' -e 'qa_employee01' || true)"
+    "$(printf '%s\n' "$got" | grep -c -e 'F68-' -e 'claude_admin01' -e 'claude_employee01' || true)"
   if [ -n "$action" ]; then
     if [ "$HAVE_PSQL" -eq 1 ]; then
       expect "$desc — 감사 사유 코드 불변 ($action deny)" "$code" \
@@ -211,8 +216,9 @@ if psqlq "SELECT 1" >/dev/null 2>&1; then HAVE_PSQL=1; fi
 if [ "$HAVE_PSQL" -eq 1 ]; then
   TRY=1
   while :; do
-    BUSY=$(psqlq "SELECT count(*) FROM audit_logs WHERE happened_at > now() - interval '10 minutes' AND actor_name IS NOT NULL AND $REVIEW_NOT_SQL")
-    echo "최근 10분 비-qa 감사 행: ${BUSY:-?} (시도 ${TRY}/10)"
+    db_read_var BUSY "$DB" "SELECT count(*) FROM audit_logs WHERE happened_at > now() - interval '10 minutes' AND actor_name IS NOT NULL AND $REVIEW_NOT_SQL" \
+      || { echo "운영 DB 를 읽지 못했다 — 시험을 시작하지 않는다 (R-73 · db_read rc 3)"; exit 3; }
+    echo "최근 10분 비-qa 감사 행: ${BUSY:-?} (시도 ${TRY}/10) (읽기 경로 ${DB_READ_VIA})"
     [ "${BUSY:-0}" -gt 0 ] 2>/dev/null || break
     if [ "$TRY" -ge 10 ]; then
       echo "10회(약 20분) 기다렸지만 사용자의 활동이 이어진다 — 시험을 시작하지 않는다 (SECURITY R-73 ①)"
@@ -227,29 +233,33 @@ else
 fi
 
 AUDIT_START=0
-[ "$HAVE_PSQL" -eq 1 ] && AUDIT_START=$(mark)
+# 끝의 「시험 요청이 만든 비-qa 행 0건」 대조의 시작 값 — 읽지 못하면 시작하지 않는다(R-73 · db_read)
+if [ "$HAVE_PSQL" -eq 1 ]; then
+  db_read_var AUDIT_START "$DB" "SELECT coalesce(max(id),0) FROM audit_logs" \
+    || { echo "운영 DB 를 읽지 못했다 — 시험을 시작하지 않는다 (R-73 · db_read rc 3)"; exit 3; }
+fi
 
 # ─── 세션 ────────────────────────────────────────────────────────
-hr "준비 — 검토 계정 세션 (qa_admin01 · qa_employee01)"
-ADM_JAR="$JAR_DIR/qa_admin01.jar"
-EMP_JAR="$JAR_DIR/qa_employee01.jar"
+hr "준비 — 검토 계정 세션 (claude_admin01 · claude_employee01)"
+ADM_JAR="$JAR_DIR/claude_admin01.jar"
+EMP_JAR="$JAR_DIR/claude_employee01.jar"
 ADM_CSRF=""; EMP_CSRF=""
-ADM_CSRF=$(login qa_admin01)    || ADM_CSRF=""
-EMP_CSRF=$(login qa_employee01) || EMP_CSRF=""
-[ -n "$ADM_CSRF" ] && note "qa_admin01 로그인 OK"    || note "qa_admin01 로그인 실패 — 관련 항목 SKIP"
-[ -n "$EMP_CSRF" ] && note "qa_employee01 로그인 OK" || note "qa_employee01 로그인 실패 — 관련 항목 SKIP"
+ADM_CSRF=$(login claude_admin01)    || ADM_CSRF=""
+EMP_CSRF=$(login claude_employee01) || EMP_CSRF=""
+[ -n "$ADM_CSRF" ] && note "claude_admin01 로그인 OK"    || note "claude_admin01 로그인 실패 — 관련 항목 SKIP"
+[ -n "$EMP_CSRF" ] && note "claude_employee01 로그인 OK" || note "claude_employee01 로그인 실패 — 관련 항목 SKIP"
 
 # 계정 번호·팀 — 관리 창구(`GET /api/users`)로 읽는다. 운영 DB 에 쓰지 않는다.
 ADM_UID=""; EMP_UID=""; ADM_TEAM=""; EMP_TEAM=""; ADM_ROLE=""
 if [ -n "$ADM_CSRF" ]; then
-  RC=$(reauth qa_admin01 "$ADM_CSRF"); note "qa_admin01 재인증 [$RC]"
+  RC=$(reauth claude_admin01 "$ADM_CSRF"); note "claude_admin01 재인증 [$RC]"
   curl -s -b "$ADM_JAR" -A "$UA" "$BASE/api/users?per_page=100" > "$WORK/users.json"
-  ADM_UID=$(jget "[u['id'] for u in d['users'] if u['username']=='qa_admin01'][0]" < "$WORK/users.json")
-  EMP_UID=$(jget "[u['id'] for u in d['users'] if u['username']=='qa_employee01'][0]" < "$WORK/users.json")
-  ADM_TEAM=$(jget "[u['team_id'] for u in d['users'] if u['username']=='qa_admin01'][0]" < "$WORK/users.json")
-  EMP_TEAM=$(jget "[u['team_id'] for u in d['users'] if u['username']=='qa_employee01'][0]" < "$WORK/users.json")
-  ADM_ROLE=$(jget "[u['role'] for u in d['users'] if u['username']=='qa_admin01'][0]" < "$WORK/users.json")
-  note "qa_admin01 id=${ADM_UID:-?} role=${ADM_ROLE:-?} team=${ADM_TEAM:-없음} · qa_employee01 id=${EMP_UID:-?} team=${EMP_TEAM:-없음}"
+  ADM_UID=$(jget "[u['id'] for u in d['users'] if u['username']=='claude_admin01'][0]" < "$WORK/users.json")
+  EMP_UID=$(jget "[u['id'] for u in d['users'] if u['username']=='claude_employee01'][0]" < "$WORK/users.json")
+  ADM_TEAM=$(jget "[u['team_id'] for u in d['users'] if u['username']=='claude_admin01'][0]" < "$WORK/users.json")
+  EMP_TEAM=$(jget "[u['team_id'] for u in d['users'] if u['username']=='claude_employee01'][0]" < "$WORK/users.json")
+  ADM_ROLE=$(jget "[u['role'] for u in d['users'] if u['username']=='claude_admin01'][0]" < "$WORK/users.json")
+  note "claude_admin01 id=${ADM_UID:-?} role=${ADM_ROLE:-?} team=${ADM_TEAM:-없음} · claude_employee01 id=${EMP_UID:-?} team=${EMP_TEAM:-없음}"
 fi
 
 # ─── 시험 파일 ───────────────────────────────────────────────────
@@ -320,11 +330,11 @@ hr "(a) 문장이 나오는 갈래 (T-81 (a))"
 # ── 1. team_has_members ─────────────────────────────────────────
 sub "1. team_has_members — 활성 구성원이 있는 팀 비활성화 (PATCH /api/org/teams/{id})"
 if [ -z "$ADM_CSRF" ]; then
-  skip "(a)1 team_has_members" "qa_admin01 세션 없음"
+  skip "(a)1 team_has_members" "claude_admin01 세션 없음"
 elif [ -z "${EMP_TEAM:-}" ]; then
-  skip "(a)1 team_has_members" "qa_employee01 에 팀이 없다 — 팀을 실제로 내릴 위험을 만들지 않는다"
+  skip "(a)1 team_has_members" "claude_employee01 에 팀이 없다 — 팀을 실제로 내릴 위험을 만들지 않는다"
 else
-  reauth qa_admin01 "$ADM_CSRF" >/dev/null
+  reauth claude_admin01 "$ADM_CSRF" >/dev/null
   curl -s -b "$ADM_JAR" -A "$UA" "$BASE/api/org/teams" > "$WORK/teams.json"
   MC=$(jget "str([t['member_count'] for t in d['teams'] if t['id']==$EMP_TEAM][0])" < "$WORK/teams.json")
   TNAME_ACTIVE=$(jget "str([t['is_active'] for t in d['teams'] if t['id']==$EMP_TEAM][0])" < "$WORK/teams.json")
@@ -353,7 +363,7 @@ fi
 # ── 2. depth_exceeded ───────────────────────────────────────────
 sub "2. depth_exceeded — F68-d1 … F68-d6 (6번째가 400)"
 if [ -z "$ADM_CSRF" ]; then
-  skip "(a)2 depth_exceeded" "qa_admin01 세션 없음"
+  skip "(a)2 depth_exceeded" "claude_admin01 세션 없음"
 else
   PARENT=""
   DEPTH_OK=1
@@ -377,7 +387,7 @@ fi
 sub "3. cycle — F68-a 아래 F68-b 를 두고 F68-a 를 b 아래로"
 A_FID=""; B_FID=""
 if [ -z "$ADM_CSRF" ]; then
-  skip "(a)3 cycle" "qa_admin01 세션 없음"
+  skip "(a)3 cycle" "claude_admin01 세션 없음"
 else
   mkfolder "$ADM_JAR" "$ADM_CSRF" "F68-a-$TAG" "internal"; A_FID="$FID"
   if [ "$FCODE" = "201" ]; then
@@ -398,7 +408,7 @@ fi
 sub "4. parent_narrower — internal 폴더 F68-p 아래 public 폴더"
 P_FID=""; Q_FID=""
 if [ -z "$ADM_CSRF" ]; then
-  skip "(a)4 parent_narrower" "qa_admin01 세션 없음"
+  skip "(a)4 parent_narrower" "claude_admin01 세션 없음"
 else
   mkfolder "$ADM_JAR" "$ADM_CSRF" "F68-p-$TAG" "internal"; P_FID="$FID"
   if [ -n "$P_FID" ]; then
@@ -417,7 +427,7 @@ if [ -z "$NARROW_TEAM" ] && [ -f "$WORK/teams.json" ]; then
   NARROW_TEAM=$(jget "str([t['id'] for t in d['teams'] if t['is_active']][0])" < "$WORK/teams.json")
 fi
 if [ -z "$ADM_CSRF" ] || [ -z "$P_FID" ]; then
-  skip "(a)5 children_exceed" "qa_admin01 세션 또는 F68-p 가 없다"
+  skip "(a)5 children_exceed" "claude_admin01 세션 또는 F68-p 가 없다"
 elif [ -z "$NARROW_TEAM" ]; then
   skip "(a)5 children_exceed" "좁힐 대상 활성 팀을 찾지 못했다"
 else
@@ -438,7 +448,7 @@ fi
 sub "6. description_too_long — 501자 · 7. no_change — 같은 값 다시"
 DESC_ID=""
 if [ -z "$EMP_CSRF" ]; then
-  skip "(a)6·7" "qa_employee01 세션 없음"
+  skip "(a)6·7" "claude_employee01 세션 없음"
 else
   web_upload "$EMP_JAR" "$EMP_CSRF" "$WORK/F68-desc.txt" "internal"
   if [ "$CODE" != "201" ]; then
@@ -467,14 +477,14 @@ fi
 # ── 8. already_exists ───────────────────────────────────────────
 sub "8. already_exists — 있는 아이디로 계정 생성 (아무것도 만들어지지 않아야 한다)"
 if [ -z "$ADM_CSRF" ]; then
-  skip "(a)8 already_exists" "qa_admin01 세션 없음"
+  skip "(a)8 already_exists" "claude_admin01 세션 없음"
 else
-  reauth qa_admin01 "$ADM_CSRF" >/dev/null
+  reauth claude_admin01 "$ADM_CSRF" >/dev/null
   TOTAL_BEFORE=$(curl -s -b "$ADM_JAR" -A "$UA" "$BASE/api/users?per_page=1" | jget "str(d['total'])")
   M=$(mark)
   OUT=$(curl -s -w '\n%{http_code}' -X POST -b "$ADM_JAR" -A "$UA" \
         -H 'Content-Type: application/json' -H "X-CSRF-Token: $ADM_CSRF" \
-        -d '{"username":"qa_employee01","role":"Employee","reason_text":"F68 시험 — 있는 아이디는 만들어지지 않아야 한다"}' \
+        -d '{"username":"claude_employee01","role":"Employee","reason_text":"F68 시험 — 있는 아이디는 만들어지지 않아야 한다"}' \
         "$BASE/api/users")
   reason_case "(a)8 already_exists" "already_exists" "$(code_of "$OUT")" "$(body_of "$OUT")" "user.create" "$M"
   TOTAL_AFTER=$(curl -s -b "$ADM_JAR" -A "$UA" "$BASE/api/users?per_page=1" | jget "str(d['total'])")
@@ -482,11 +492,11 @@ else
 fi
 
 # ── 9. self_change ──────────────────────────────────────────────
-sub "9. self_change — qa_admin01 이 자기 역할 변경 (역할 불변이어야 한다)"
+sub "9. self_change — claude_admin01 이 자기 역할 변경 (역할 불변이어야 한다)"
 if [ -z "$ADM_CSRF" ] || [ -z "${ADM_UID:-}" ]; then
-  skip "(a)9 self_change" "qa_admin01 세션 또는 계정 번호 없음"
+  skip "(a)9 self_change" "claude_admin01 세션 또는 계정 번호 없음"
 else
-  reauth qa_admin01 "$ADM_CSRF" >/dev/null
+  reauth claude_admin01 "$ADM_CSRF" >/dev/null
   M=$(mark)
   OUT=$(curl -s -w '\n%{http_code}' -X PATCH -b "$ADM_JAR" -A "$UA" \
         -H 'Content-Type: application/json' -H "X-CSRF-Token: $ADM_CSRF" \
@@ -494,7 +504,7 @@ else
         "$BASE/api/users/$ADM_UID")
   reason_case "(a)9 self_change" "self_change" "$(code_of "$OUT")" "$(body_of "$OUT")" "user.role_change" "$M"
   ROLE_AFTER=$(curl -s -b "$ADM_JAR" -A "$UA" "$BASE/api/users?per_page=100" \
-               | jget "[u['role'] for u in d['users'] if u['username']=='qa_admin01'][0]")
+               | jget "[u['role'] for u in d['users'] if u['username']=='claude_admin01'][0]")
   expect "(a)9 역할 불변" "${ADM_ROLE:-Admin}" "${ROLE_AFTER:-?}"
   note "last_admin 은 운영 DB 에서 재현할 수 없다 — 코드 읽기로만 확인한다 (T-81 (a) 단서)"
   skip "(a)9b last_admin" "운영 DB 에서 재현 불가 — Http::reasonMessage('last_admin') 문장은 (a)15 표 대조가 확인한다"
@@ -503,7 +513,7 @@ fi
 # ── 10. ext_not_allowed ─────────────────────────────────────────
 sub "10. ext_not_allowed — 웹 업로드 F68-x.exe (문장의 허용 목록은 Upload::ALLOWED_EXT 에서 만들어진다)"
 if [ -z "$EMP_CSRF" ]; then
-  skip "(a)10 ext_not_allowed" "qa_employee01 세션 없음"
+  skip "(a)10 ext_not_allowed" "claude_employee01 세션 없음"
 else
   M=$(mark)
   web_upload "$EMP_JAR" "$EMP_CSRF" "$WORK/F68-x.exe" "internal"
@@ -517,7 +527,7 @@ fi
 # ── 11. zip_blocked_entry ───────────────────────────────────────
 sub "11. zip_blocked_entry — 직원이 x.sh 든 zip(internal) · 응답에 next 키 0 (ARCH 5.29 ②)"
 if [ -z "$EMP_CSRF" ]; then
-  skip "(a)11 zip_blocked_entry" "qa_employee01 세션 없음"
+  skip "(a)11 zip_blocked_entry" "claude_employee01 세션 없음"
 else
   M=$(mark)
   web_upload "$EMP_JAR" "$EMP_CSRF" "$WORK/F68-sh.zip" "internal"
@@ -533,7 +543,7 @@ fi
 # ── 12. macro_found ─────────────────────────────────────────────
 sub "12. macro_found — word/vbaProject.bin 이 든 docx (f53.sh 픽스처 방식)"
 if [ -z "$EMP_CSRF" ]; then
-  skip "(a)12 macro_found" "qa_employee01 세션 없음"
+  skip "(a)12 macro_found" "claude_employee01 세션 없음"
 else
   M=$(mark)
   web_upload "$EMP_JAR" "$EMP_CSRF" "$WORK/F68-macro.docx" "internal"
@@ -549,18 +559,18 @@ sub "13. limit_exceeded — 살아 있는 개인 토큰 5개 뒤 6번째 발급"
 skip "(a)13 limit_exceeded" "F-66 으로 발급이 본인 창구가 되어 tests/f66.sh (b) 로 옮겼다 — 2단계 코드 1회성 때문에 30초 창 다섯 번이 필요하다"
 
 # ── 14. already_enabled ─────────────────────────────────────────
-sub "14. already_enabled — 2단계가 켜진 qa_admin01 의 enroll (mfa_secret 불변)"
+sub "14. already_enabled — 2단계가 켜진 claude_admin01 의 enroll (mfa_secret 불변)"
 if [ -z "$ADM_CSRF" ]; then
-  skip "(a)14 already_enabled" "qa_admin01 세션 없음"
+  skip "(a)14 already_enabled" "claude_admin01 세션 없음"
 else
   SEC_BEFORE=""
-  [ "$HAVE_PSQL" -eq 1 ] && SEC_BEFORE=$(psqlq "SELECT md5(coalesce(mfa_secret,'')) FROM users WHERE username='qa_admin01'")
+  [ "$HAVE_PSQL" -eq 1 ] && SEC_BEFORE=$(psqlq "SELECT md5(coalesce(mfa_secret,'')) FROM users WHERE username='claude_admin01'")
   M=$(mark)
   OUT=$(curl -s -w '\n%{http_code}' -X POST -b "$ADM_JAR" -A "$UA" \
         -H 'Content-Type: application/json' -H "X-CSRF-Token: $ADM_CSRF" -d '{}' "$BASE/api/me/mfa/enroll")
   reason_case "(a)14 already_enabled" "already_enabled" "$(code_of "$OUT")" "$(body_of "$OUT")" "auth.mfa_enroll" "$M"
   if [ "$HAVE_PSQL" -eq 1 ]; then
-    SEC_AFTER=$(psqlq "SELECT md5(coalesce(mfa_secret,'')) FROM users WHERE username='qa_admin01'")
+    SEC_AFTER=$(psqlq "SELECT md5(coalesce(mfa_secret,'')) FROM users WHERE username='claude_admin01'")
     expect "(a)14 mfa_secret 불변 (해시 비교 — 값은 찍지 않는다)" "${SEC_BEFORE:-?}" "${SEC_AFTER:-?}"
   else skip "(a)14 mfa_secret 불변" "psql 없음"; fi
 fi
@@ -635,7 +645,7 @@ fi
 sub "2. POST /api/me/password 틀린 현재 비밀번호 → 400 통일 문구 (1회만, 직후 재로그인)"
 PW_MSG=""
 if [ -z "$EMP_CSRF" ]; then
-  skip "(b)2 비밀번호 변경 실패 문구" "qa_employee01 세션 없음"
+  skip "(b)2 비밀번호 변경 실패 문구" "claude_employee01 세션 없음"
 else
   OUT=$(curl -s -w '\n%{http_code}' -X POST -b "$EMP_JAR" -A "$UA" \
         -H 'Content-Type: application/json' -H "X-CSRF-Token: $EMP_CSRF" \
@@ -643,22 +653,24 @@ else
   expect "(b)2 상태" "400" "$(code_of "$OUT")"
   PW_MSG=$(body_of "$OUT" | jget "d.get('error','')")
   expect "(b)2 문구(통일)" "잘못된 요청입니다" "$PW_MSG"
-  note "실패 카운터를 되돌리기 위해 qa_employee01 을 다시 로그인한다 (R-48)"
-  NEW=$(login qa_employee01) && EMP_CSRF="$NEW"
+  note "실패 카운터를 되돌리기 위해 claude_employee01 을 다시 로그인한다 (R-48)"
+  NEW=$(login claude_employee01) && EMP_CSRF="$NEW"
   if [ "$HAVE_PSQL" -eq 1 ]; then
     expect "(b)2 재로그인 뒤 failed_count 0" "0" \
-      "$(psqlq "SELECT failed_count FROM users WHERE username='qa_employee01'")"
+      "$(psqlq "SELECT failed_count FROM users WHERE username='claude_employee01'")"
   else skip "(b)2 failed_count 0" "psql 없음"; fi
 fi
 
 # ── 3. /api/me/mfa/disable 맞는 비밀번호 + 틀린 코드 (1회만) ────
 sub "3. POST /api/me/mfa/disable 맞는 비밀번호 + 틀린 코드 → 2 와 **같은 문구** (R-48 오라클 차단)"
 if [ -z "$ADM_CSRF" ]; then
-  skip "(b)3 mfa/disable 문구" "qa_admin01 세션 없음"
+  skip "(b)3 mfa/disable 문구" "claude_admin01 세션 없음"
 else
-  OUT=$(curl -s -w '\n%{http_code}' -X POST -b "$ADM_JAR" -A "$UA" \
-        -H 'Content-Type: application/json' -H "X-CSRF-Token: $ADM_CSRF" \
-        -d "{\"current_password\":\"$(qa_password qa_admin01)\",\"otp\":\"000000\"}" "$BASE/api/me/mfa/disable")
+  B3_PW=$(qa_password claude_admin01)
+  printf -v body '{"current_password":"%s","otp":"000000"}' "$B3_PW"
+  OUT=$(curl_json_secret body -s -w '\n%{http_code}' -X POST -b "$ADM_JAR" -A "$UA" \
+        -H 'Content-Type: application/json' -H "X-CSRF-Token: $ADM_CSRF" "$BASE/api/me/mfa/disable")
+  B3_PW=""; body=""
   expect "(b)3 상태" "400" "$(code_of "$OUT")"
   MFA_MSG=$(body_of "$OUT" | jget "d.get('error','')")
   expect "(b)3 문구(통일)" "잘못된 요청입니다" "$MFA_MSG"
@@ -667,13 +679,13 @@ else
   else skip "(b)3 (b)2 와 문구 비교" "(b)2 를 돌리지 못했다"; fi
   if [ "$HAVE_PSQL" -eq 1 ]; then
     expect "(b)3 2단계 인증이 꺼지지 않았다" "t" \
-      "$(psqlq "SELECT mfa_enabled FROM users WHERE username='qa_admin01'")"
+      "$(psqlq "SELECT mfa_enabled FROM users WHERE username='claude_admin01'")"
   else skip "(b)3 mfa_enabled 불변" "psql 없음"; fi
-  note "실패 카운터를 되돌리기 위해 qa_admin01 을 다시 로그인한다 (R-48)"
-  NEW=$(login qa_admin01) && ADM_CSRF="$NEW"
+  note "실패 카운터를 되돌리기 위해 claude_admin01 을 다시 로그인한다 (R-48)"
+  NEW=$(login claude_admin01) && ADM_CSRF="$NEW"
   if [ "$HAVE_PSQL" -eq 1 ]; then
     expect "(b)3 재로그인 뒤 failed_count 0" "0" \
-      "$(psqlq "SELECT failed_count FROM users WHERE username='qa_admin01'")"
+      "$(psqlq "SELECT failed_count FROM users WHERE username='claude_admin01'")"
   else skip "(b)3 failed_count 0" "psql 없음"; fi
 fi
 
@@ -704,7 +716,7 @@ expect "(b)5 문구(404 통일 — 존재 여부 오라클 차단)" '{"error":"�
 # ── 6. URL 가져오기 ────────────────────────────────────────────
 sub "6. POST /api/files/fetch → 400 「가져올 수 없습니다」 (S-05 ⑩ — 내부망 정찰 재료를 주지 않는다)"
 if [ -z "$ADM_CSRF" ]; then
-  skip "(b)6 fetch 통일 문구" "qa_admin01 세션 없음"
+  skip "(b)6 fetch 통일 문구" "claude_admin01 세션 없음"
 else
   OUT=$(curl -s -w '\n%{http_code}' -X POST -b "$ADM_JAR" -A "$UA" \
         -H 'Content-Type: application/json' -H "X-CSRF-Token: $ADM_CSRF" \
@@ -716,7 +728,7 @@ fi
 # ── 7. F-65 확인 업로드 틀린 비밀번호 (1회만) ──────────────────
 sub "7. F-65 확인 업로드 틀린 비밀번호 → 400 「잘못된 요청입니다」 · next 0 (1회만, 직후 재로그인)"
 if [ -z "$ADM_CSRF" ]; then
-  skip "(b)7 F-65 확인 업로드" "qa_admin01 세션 없음"
+  skip "(b)7 F-65 확인 업로드" "claude_admin01 세션 없음"
 else
   OUT=$(curl -s -w '\n%{http_code}' -X POST -b "$ADM_JAR" -A "$UA" -H "X-CSRF-Token: $ADM_CSRF" \
         -F "file=@$WORK/F68-sh2.zip" -F 'access_level=admin-only' -F 'exec_ack=1' \
@@ -729,11 +741,11 @@ else
     expect "(b)7 감사 file.upload_exec deny bad_credentials 1건" "1" \
       "$(psqlq "SELECT count(*) FROM audit_logs WHERE id > ${AUDIT_START:-0} AND action='file.upload_exec' AND result='deny' AND reason='bad_credentials'")"
   else skip "(b)7 감사 확인" "psql 없음"; fi
-  note "실패 카운터를 되돌리기 위해 qa_admin01 을 다시 로그인한다 (R-48)"
-  NEW=$(login qa_admin01) && ADM_CSRF="$NEW"
+  note "실패 카운터를 되돌리기 위해 claude_admin01 을 다시 로그인한다 (R-48)"
+  NEW=$(login claude_admin01) && ADM_CSRF="$NEW"
   if [ "$HAVE_PSQL" -eq 1 ]; then
     expect "(b)7 재로그인 뒤 failed_count 0" "0" \
-      "$(psqlq "SELECT failed_count FROM users WHERE username='qa_admin01'")"
+      "$(psqlq "SELECT failed_count FROM users WHERE username='claude_admin01'")"
   else skip "(b)7 failed_count 0" "psql 없음"; fi
 fi
 
@@ -780,7 +792,7 @@ for id in $UPLOADED; do
 done
 
 if [ -n "$MADE_TOKENS" ] && [ -n "$ADM_CSRF" ]; then
-  reauth qa_admin01 "$ADM_CSRF" >/dev/null 2>&1
+  reauth claude_admin01 "$ADM_CSRF" >/dev/null 2>&1
   for t in $MADE_TOKENS; do
     uid=${t%%:*}; tid=${t##*:}
     RC=$(curl -s -o /dev/null -w '%{http_code}' -X DELETE -b "$ADM_JAR" -A "$UA" \
@@ -803,7 +815,7 @@ if [ "$HAVE_PSQL" -eq 1 ]; then
   # 사용자가 같은 시간에 t-box 를 쓰면 비-qa 행은 늘어난다 — 그것은 시험의 탓이 아니다.
   # 물어야 할 것은 「이 시험의 요청(검토 UA)이 비-qa 계정으로 무엇을 했나」이고 그 답은 0 이어야 한다.
   expect "시험 요청이 만든 비-qa 행 0건 (검토 UA 기준 — 사용자 데이터 불변)" "0" \
-    "$(psqlq "SELECT count(*) FROM audit_logs
+    "$(db_read "$DB" "SELECT count(*) FROM audit_logs
                 WHERE id > ${AUDIT_START:-0}
                   AND actor_name IS NOT NULL AND $REVIEW_NOT_SQL
                   AND COALESCE(user_agent, '') LIKE 'tbox-review/%'")"

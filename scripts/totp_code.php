@@ -13,6 +13,10 @@ declare(strict_types=1);
  * 사용법
  *   sudo php scripts/totp_code.php <base32 비밀>
  *   예) sudo php scripts/totp_code.php JBSWY3DPEHPK3PXP
+ *   printf '%s\n' "$sec" | php scripts/totp_code.php -     (인자 `-` = 표준입력에서 비밀 한 줄)
+ *     — 시험·스크립트는 이쪽을 쓴다. 명령 인자는 ps·/proc/<pid>/cmdline 으로 같은 호스트의 다른 계정도
+ *       읽고, sudo 로 부르면 auth.log 의 COMMAND= 에 남는다(SECURITY R-62 · 점검 봇 R15 · tests/lib/secrets.sh).
+ *       읽는 것은 첫 줄 하나뿐이고(최대 256바이트), 끝의 줄바꿈만 뗀다. 나머지 다듬기·검사는 인자 방식과 같다.
  *
  * 종료 코드
  *   0 정상 · 2 사용법·비밀 형식 오류
@@ -42,6 +46,7 @@ function totp_usage(string $why): void
     fwrite(STDERR, '[사용법 오류] ' . $why . "\n");
     fwrite(STDERR, "사용법: sudo php scripts/totp_code.php <base32 비밀>\n");
     fwrite(STDERR, "  예)  sudo php scripts/totp_code.php JBSWY3DPEHPK3PXP\n");
+    fwrite(STDERR, "  표준입력으로:  printf '%s\\n' \"\$sec\" | php scripts/totp_code.php -\n");
     fwrite(STDERR, "  비밀은 홈 화면 「내 계정 → 2단계 인증 켜기」 가 보여 준 값입니다.\n");
     fwrite(STDERR, "  주의: 비밀을 파일·셸 히스토리에 남기지 마세요.\n");
 }
@@ -56,9 +61,16 @@ if (count($args) > 2) {
     exit(2);
 }
 
+$raw = (string) $args[1];
+if ($raw === '-') {
+    // 표준입력에서 비밀 한 줄. 빈 입력·읽기 실패는 형식 오류와 같은 길로 보낸다(비밀 글자를 찍지 않는다).
+    $line = fgets(STDIN, 257);
+    $raw  = $line === false ? '' : rtrim($line, "\r\n");
+}
+
 // 사람이 옮겨 적는 값이라 소문자·공백·하이픈이 섞이기 쉽다. 그것만 다듬고,
 // 형태 검사는 Totp 가 쓰는 것과 **같은 정규식**으로 한다 (여기서 규칙을 새로 만들지 않는다).
-$secret = strtoupper((string) preg_replace('/[\s-]+/', '', (string) $args[1]));
+$secret = strtoupper((string) preg_replace('/[\s-]+/', '', $raw));
 if (preg_match(Totp::SECRET_RE, $secret) !== 1) {
     totp_usage('비밀은 base32 대문자(A-Z, 2-7) 16~64자입니다');
     exit(2);

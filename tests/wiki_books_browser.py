@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 """tests/wiki_books_browser.py — 위키 책 셋을 헤드리스 Chromium 으로 **눌러 보고** 찍는다 (2026-09-23).
 
-tests/wiki_books.sh 의 (g) 가 부른다. 인자: BASE UA COOKIES OUT
+tests/wiki_books.sh 의 (g) 가 부른다. 인자: BASE UA OUT · 표준입력 첫 줄: COOKIES
   BASE     http://127.0.0.1:8082/tbox
-  COOKIES  "이름=값;이름=값;" (재인증을 마친 qa_admin01 세션)
+  COOKIES  "이름=값;이름=값;" (재인증을 마친 claude_admin01 세션) — 인자가 아니라 **표준입력**으로 받는다
+           (명령 인자는 ps·/proc 로 다른 계정도 읽는다 — SECURITY R-62 · tests/lib/secrets.sh py_secret)
   OUT      스크린샷 폴더
 
 무엇을 하나 — 「보이는가」가 아니라 「눌렀더니 어디로 갔나」를 단언한다
@@ -19,7 +20,8 @@ tests/wiki_books.sh 의 (g) 가 부른다. 인자: BASE UA COOKIES OUT
 import sys
 from playwright.sync_api import sync_playwright
 
-BASE, UA, COOKIES, OUT = sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4]
+BASE, UA, OUT = sys.argv[1], sys.argv[2], sys.argv[3]
+COOKIES = sys.stdin.readline().rstrip('\n')
 HOST = BASE.split("/")[2].split(":")[0]
 ORIGIN = "/".join(BASE.split("/")[:3])   # http://127.0.0.1:8082 — href 는 /tbox/… 로 시작한다
 FAIL = 0

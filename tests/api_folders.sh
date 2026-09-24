@@ -2,7 +2,7 @@
 # tests/api_folders.sh — F-58 「프로그램용 폴더 관리」 수락 기준 실행 (PRD 12.2 T-70)
 #
 #   (a) 목록  토큰 GET /api/folders → 200 · 최상위 키 folder,folders · 같은 계정 **세션**
-#       응답과 JSON 문자열 동일(투영 없음) · qa_admin01 이 만든 admin-only 폴더 S 는
+#       응답과 JSON 문자열 동일(투영 없음) · claude_admin01 이 만든 admin-only 폴더 S 는
 #       Employee 귀속 토큰 트리에 **없음** · ?parent=S → 403 「권한이 없습니다」.
 #   (b) 생성  토큰 POST /api/folders {name,access_level:"internal"} → 201 folder.id ·
 #       같은 이름 다시 → 409 · name 없음 → 400 · access_level:"admin-only" → 403.
@@ -30,13 +30,13 @@
 #       scripts/security_lint.sh 0 · php -l(세 파일) · bash -n.
 #
 # ★ 토큰 항목의 조건 (a)(b)(c)(d)(f) 와 (e) 의 「틀린 토큰」 뒤 감사
-#   진짜 토큰은 `.env` 의 `API_TOKEN_USER` 계정으로 동작한다. 그 귀속이 **검토 계정(qa_)이
+#   진짜 토큰은 `.env` 의 `API_TOKEN_USER` 계정으로 동작한다. 그 귀속이 **검토 계정(qa_·claude_)이
 #   아니면** 이 항목들을 돌리지 않는다(SKIP) — 시드·운영 계정으로 요청을 보내면 감사 로그에서
 #   사용자의 자기 공격과 검토 요청이 갈라지지 않는다(CLAUDE.md 3장).
 #   토큰 값은 변수로만 다루고 **어디에도 출력하지 않는다**(SECURITY R-62 · PRD S-09-11).
 #
 # 규칙 (CLAUDE.md 3장) — tests/api_read.sh · tests/api_whoami.sh 와 같다
-#   · 검토 계정(qa_ 접두)만. 시드 계정(admin01 …)은 사용자의 자기 공격 전용이다.
+#   · 검토 계정(claude_ 접두)만. 시드 계정(admin01 …)은 사용자의 자기 공격 전용이다.
 #   · 모든 요청에 `-A "tbox-review/<날짜>"`.
 #   · 운영 DB·.env·nginx·php-fpm 에 손대지 않는다. .env 에서 읽는 것은 API_TOKEN_USER **계정 이름**과
 #     API_TOKEN **값(변수로만)** 뿐이고, 고치지 않는다.
@@ -55,6 +55,8 @@ set -u
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 # 검토 계정 판정 한 벌(qa_·claude_ — F-71 C). 못 읽으면 사전 검사가 빈 값으로 열리므로 시작하지 않는다.
 . "$ROOT/tests/lib/review_accounts.sh" || { echo "tests/lib/review_accounts.sh 를 읽지 못했다 — 시험을 시작하지 않는다 (R-73)"; exit 3; }
+. "$ROOT/tests/lib/secrets.sh" || { echo "tests/lib/secrets.sh 를 읽지 못했다 — 시험을 시작하지 않는다 (R-62)"; exit 3; }
+. "$ROOT/tests/lib/db_read.sh" || { echo "tests/lib/db_read.sh 를 읽지 못했다 — 시험을 시작하지 않는다 (R-73)"; exit 3; }
 BASE="http://127.0.0.1:8082/tbox"
 UA="tbox-review/$(date +%F)"
 DB="tbox_re"
@@ -94,13 +96,13 @@ print(eval(sys.argv[1]))' "$1" 2>/dev/null; }
 
 # ─── 정리 — 만든 파일·폴더를 세션으로 되돌린다 (trap 에서도 돈다) ──
 # 삭제는 **토큰으로 열려 있지 않다**(F-58 ⑤). 그래서 정리는 언제나 세션 경로다.
-# 지우는 자격: Admin 은 남의 폴더·파일도 지울 수 있으므로 qa_admin01 을 먼저 쓰고,
+# 지우는 자격: Admin 은 남의 폴더·파일도 지울 수 있으므로 claude_admin01 을 먼저 쓰고,
 # 그 세션이 없으면 만든 계정(귀속 계정) 세션으로 되돌린다.
 del_file() {
   local id="$1" c
   [ -n "$id" ] || return 0
   if [ -n "${ADM_CSRF:-}" ]; then
-    c=$(curl -s -o /dev/null -w '%{http_code}' -X DELETE -b "$JAR_DIR/qa_admin01.jar" -A "$UA" \
+    c=$(curl -s -o /dev/null -w '%{http_code}' -X DELETE -b "$JAR_DIR/claude_admin01.jar" -A "$UA" \
         -H "X-CSRF-Token: $ADM_CSRF" "$BASE/api/files/$id")
     [ "$c" = "200" ] && { printf '  · 파일 %s 휴지통 [%s]\n' "$id" "$c"; return 0; }
   fi
@@ -114,10 +116,10 @@ del_file() {
 del_folder() {
   local num="$1" c
   [ -n "$num" ] || return 0
-  for who in qa_admin01 "${TOKEN_USER:-}"; do
+  for who in claude_admin01 "${TOKEN_USER:-}"; do
     [ -n "$who" ] || continue
     local csrf=''
-    [ "$who" = "qa_admin01" ] && csrf="${ADM_CSRF:-}" || csrf="${OWN_CSRF:-}"
+    [ "$who" = "claude_admin01" ] && csrf="${ADM_CSRF:-}" || csrf="${OWN_CSRF:-}"
     [ -n "$csrf" ] || continue
     c=$(curl -s -o /dev/null -w '%{http_code}' -X DELETE -b "$JAR_DIR/$who.jar" -A "$UA" \
         -H "X-CSRF-Token: $csrf" "$BASE/api/folders/$num")
@@ -153,8 +155,9 @@ echo "루트 파티션 여유: $(df -Ph / | awk 'NR==2{print $4}') (${avail_kb}K
 HAVE_PSQL=0
 if psqlq "SELECT 1" >/dev/null 2>&1; then HAVE_PSQL=1; fi
 if [ "$HAVE_PSQL" -eq 1 ]; then
-  BUSY=$(psqlq "SELECT count(*) FROM audit_logs WHERE happened_at > now() - interval '10 minutes' AND actor_name IS NOT NULL AND $REVIEW_NOT_SQL")
-  echo "최근 10분 비-qa 감사 행: ${BUSY:-?}"
+  db_read_var BUSY "$DB" "SELECT count(*) FROM audit_logs WHERE happened_at > now() - interval '10 minutes' AND actor_name IS NOT NULL AND $REVIEW_NOT_SQL" \
+    || { echo "운영 DB 를 읽지 못했다 — 시험을 시작하지 않는다 (R-73 · db_read rc 3)"; exit 3; }
+  echo "최근 10분 비-qa 감사 행: ${BUSY:-?} (읽기 경로 ${DB_READ_VIA})"
   if [ "${BUSY:-0}" -gt 0 ] 2>/dev/null; then
     echo "사용자가 지금 서비스를 쓰고 있다 — 시험을 시작하지 않는다 (SECURITY R-73 ①)"; exit 3
   fi
@@ -177,22 +180,23 @@ if [ "$USE_TOKEN" -eq 1 ]; then
   echo "→ 귀속이 검토 계정이다. (a)(b)(c)(d)(f) 를 실행한다. (토큰 값은 출력하지 않는다)"
 else
   API_TOKEN=''
-  echo "→ 귀속이 검토 계정(qa_)이 아니다 — (a)(b)(c)(d)(f) 는 **SKIP**. Fable 이 검토에서 귀속을 바꿔 돌린다."
+  echo "→ 귀속이 검토 계정(qa_·claude_)이 아니다 — (a)(b)(c)(d)(f) 는 **SKIP**. Fable 이 검토에서 귀속을 바꿔 돌린다."
 fi
 # 어떤 서버에서도 맞을 수 없는 고정 문자열. (e) 의 「틀린 토큰」과 「헤더 무시」에 쓴다.
 WRONG_TOKEN='wrong-token-0000000000000000000000000000000000'
 
 # ─── 로그인 헬퍼 (tests/api_read.sh 와 같다) ─────────────────────
 login() {
-  local who="$1" jar="$JAR_DIR/$1.jar" pw sec raw code left out try
+  local who="$1" jar="$JAR_DIR/$1.jar" pw sec raw code left out try body
   pw=$(sudo -n awk -v u="$who" '$1==u{print $3}' /etc/tbox-v2/seed-accounts.txt 2>/dev/null)
   sec=$(sudo -n awk -v u="$who" '$1==u{print $2}' /etc/tbox-v2/qa-totp.txt 2>/dev/null)
   [ -n "$pw" ] && [ -n "$sec" ] || return 2
   for try in 1 2 3; do
-    raw=$(php "$ROOT/scripts/totp_code.php" "$sec")
+    raw=$(totp_now sec)
     code=${raw%%$'\n'*}
-    out=$(curl -s -c "$jar" -A "$UA" -H 'Content-Type: application/json' \
-          -d "{\"username\":\"$who\",\"password\":\"$pw\",\"otp\":\"$code\"}" "$BASE/api/login")
+    # 비밀번호가 든 본문은 인자가 아니라 표준입력으로 보낸다(R-62 · tests/lib/secrets.sh). 보내는 바이트는 같다.
+    printf -v body '{"username":"%s","password":"%s","otp":"%s"}' "$who" "$pw" "$code"
+    out=$(curl_json_secret body -s -c "$jar" -A "$UA" -H 'Content-Type: application/json' "$BASE/api/login")
     case "$out" in
       *'"ok":true'*)
         curl -s -b "$jar" -A "$UA" "$BASE/api/me" \
@@ -210,17 +214,17 @@ login() {
 # ─── 준비: 세션 둘, 그리고 admin-only 폴더 S ─────────────────────
 hr "준비 — 검토 계정 세션 · admin-only 폴더 S"
 
-EMP_CSRF=$(login qa_employee01)
-ADM_CSRF=$(login qa_admin01)
-[ -n "${EMP_CSRF:-}" ] && note "qa_employee01 세션 확보" || note "qa_employee01 로그인 실패 — (g) 회귀는 SKIP 된다"
-[ -n "${ADM_CSRF:-}" ] && note "qa_admin01 세션 확보"    || note "qa_admin01 로그인 실패 — 폴더 S 를 만들지 못한다"
+EMP_CSRF=$(login claude_employee01)
+ADM_CSRF=$(login claude_admin01)
+[ -n "${EMP_CSRF:-}" ] && note "claude_employee01 세션 확보" || note "claude_employee01 로그인 실패 — (g) 회귀는 SKIP 된다"
+[ -n "${ADM_CSRF:-}" ] && note "claude_admin01 세션 확보"    || note "claude_admin01 로그인 실패 — 폴더 S 를 만들지 못한다"
 
 # (b)(c) 는 **토큰 귀속 계정 그 자신**의 세션도 쓴다((a) 의 세션 대조·정리).
 OWN_CSRF=''
 if [ "$USE_TOKEN" -eq 1 ]; then
   case "$TOKEN_USER" in
-    qa_employee01) OWN_CSRF="${EMP_CSRF:-}" ;;
-    qa_admin01)    OWN_CSRF="${ADM_CSRF:-}" ;;
+    claude_employee01) OWN_CSRF="${EMP_CSRF:-}" ;;
+    claude_admin01)    OWN_CSRF="${ADM_CSRF:-}" ;;
     *)             OWN_CSRF=$(login "$TOKEN_USER") ;;
   esac
   [ -n "${OWN_CSRF:-}" ] && note "귀속 계정($TOKEN_USER) 세션 확보" || note "귀속 계정($TOKEN_USER) 세션 없음 — (a) 세션 대조는 SKIP"
@@ -229,7 +233,7 @@ fi
 S_NAME="F58-S-$TAG"
 S_ID=''
 if [ -n "${ADM_CSRF:-}" ]; then
-  OUT=$(curl -s -w '\n%{http_code}' -X POST -b "$JAR_DIR/qa_admin01.jar" -A "$UA" \
+  OUT=$(curl -s -w '\n%{http_code}' -X POST -b "$JAR_DIR/claude_admin01.jar" -A "$UA" \
         -H "X-CSRF-Token: $ADM_CSRF" -H 'Content-Type: application/json' \
         -d "{\"name\":\"$S_NAME\",\"access_level\":\"admin-only\"}" "$BASE/api/folders")
   echo "  $S_NAME 생성 [$(code_of "$OUT")] $(body_of "$OUT")"
@@ -240,7 +244,7 @@ fi
 # 귀속 계정이 admin-only 를 읽을 수 있으면 (a) 의 「S 가 보이지 않는다」는 뜻이 없다.
 TOKEN_ROLE=''
 if [ "$USE_TOKEN" -eq 1 ]; then
-  TOKEN_ROLE=$(curl -s -A "$UA" -H "X-API-Token: $API_TOKEN" "$BASE/api/whoami" \
+  TOKEN_ROLE=$(curl_hdr_secret X-API-Token API_TOKEN -s -A "$UA" "$BASE/api/whoami" \
                | sed -n 's/.*"role":"\([A-Za-z]*\)".*/\1/p')
   note "귀속 계정 역할: ${TOKEN_ROLE:-알 수 없음}"
 fi
@@ -248,9 +252,9 @@ fi
 # ─── (a) 목록 — 세션과 같은 JSON · 못 읽는 폴더는 없다 ───────────
 hr "(a) 토큰으로 GET /api/folders"
 if [ "$USE_TOKEN" -eq 0 ]; then
-  skip "(a)" "토큰 귀속이 검토 계정(qa_)이 아님 — 값은 읽지 않았다"
+  skip "(a)" "토큰 귀속이 검토 계정(qa_·claude_)이 아님 — 값은 읽지 않았다"
 else
-  OUT=$(curl -s -w '\n%{http_code}' -A "$UA" -H "X-API-Token: $API_TOKEN" "$BASE/api/folders")
+  OUT=$(curl_hdr_secret X-API-Token API_TOKEN -s -w '\n%{http_code}' -A "$UA" "$BASE/api/folders")
   CODE=$(code_of "$OUT"); printf '%s' "$(body_of "$OUT")" > "$WORK/a_token.json"
   echo "  응답: $(body_of "$OUT")"
   expect "상태" "200" "$CODE"
@@ -276,7 +280,7 @@ else
   else
     expect "트리에 S 없음 (S-02 — 숨김이 아니라 응답에 없음)" "0" \
       "$(jq_py "sum(1 for f in d['folders'] if f['name']=='$S_NAME')" < "$WORK/a_token.json")"
-    OUT=$(curl -s -w '\n%{http_code}' -A "$UA" -H "X-API-Token: $API_TOKEN" "$BASE/api/folders?parent=$S_ID")
+    OUT=$(curl_hdr_secret X-API-Token API_TOKEN -s -w '\n%{http_code}' -A "$UA" "$BASE/api/folders?parent=$S_ID")
     echo "  ?parent=S → [$(code_of "$OUT")] $(body_of "$OUT")"
     expect "?parent=S 상태" "403" "$(code_of "$OUT")"
     expect "?parent=S 문구" '{"error":"권한이 없습니다"}' "$(body_of "$OUT")"
@@ -291,9 +295,9 @@ A_NAME="F58-a-$TAG"
 B_NAME="F58-b-$TAG"
 T_AUDIT=$(mark)
 if [ "$USE_TOKEN" -eq 0 ]; then
-  skip "(b)" "토큰 귀속이 검토 계정(qa_)이 아님"
+  skip "(b)" "토큰 귀속이 검토 계정(qa_·claude_)이 아님"
 else
-  OUT=$(curl -s -w '\n%{http_code}' -X POST -A "$UA" -H "X-API-Token: $API_TOKEN" \
+  OUT=$(curl_hdr_secret X-API-Token API_TOKEN -s -w '\n%{http_code}' -X POST -A "$UA" \
         -H 'Content-Type: application/json' \
         -d "{\"name\":\"$A_NAME\",\"access_level\":\"internal\"}" "$BASE/api/folders")
   echo "  $A_NAME → [$(code_of "$OUT")] $(body_of "$OUT")"
@@ -302,20 +306,20 @@ else
   [ -n "$A_ID" ] && MADE_FOLDERS="$MADE_FOLDERS $A_ID"
   expect "folder.id 가 왔다" "yes" "$([ -n "$A_ID" ] && echo yes || echo no)"
 
-  OUT=$(curl -s -w '\n%{http_code}' -X POST -A "$UA" -H "X-API-Token: $API_TOKEN" \
+  OUT=$(curl_hdr_secret X-API-Token API_TOKEN -s -w '\n%{http_code}' -X POST -A "$UA" \
         -H 'Content-Type: application/json' \
         -d "{\"name\":\"$A_NAME\",\"access_level\":\"internal\"}" "$BASE/api/folders")
   echo "  같은 이름 다시 → [$(code_of "$OUT")] $(body_of "$OUT")"
   expect "중복 이름 상태" "409" "$(code_of "$OUT")"
   expect "중복 이름 문구" '{"error":"이미 있는 이름입니다"}' "$(body_of "$OUT")"
 
-  OUT=$(curl -s -w '\n%{http_code}' -X POST -A "$UA" -H "X-API-Token: $API_TOKEN" \
+  OUT=$(curl_hdr_secret X-API-Token API_TOKEN -s -w '\n%{http_code}' -X POST -A "$UA" \
         -H 'Content-Type: application/json' -d '{"access_level":"internal"}' "$BASE/api/folders")
   echo "  name 없음 → [$(code_of "$OUT")] $(body_of "$OUT")"
   expect "name 없음 상태" "400" "$(code_of "$OUT")"
   expect "name 없음 문구" '{"error":"잘못된 요청입니다"}' "$(body_of "$OUT")"
 
-  OUT=$(curl -s -w '\n%{http_code}' -X POST -A "$UA" -H "X-API-Token: $API_TOKEN" \
+  OUT=$(curl_hdr_secret X-API-Token API_TOKEN -s -w '\n%{http_code}' -X POST -A "$UA" \
         -H 'Content-Type: application/json' \
         -d "{\"name\":\"F58-x-$TAG\",\"access_level\":\"admin-only\"}" "$BASE/api/folders")
   echo "  access_level=admin-only → [$(code_of "$OUT")] $(body_of "$OUT")"
@@ -331,17 +335,17 @@ fi
 # ─── (c) 폴더 이름 변경·이동 · 허용 키 밖은 400 ──────────────────
 hr "(c) 토큰으로 PATCH /api/folders/{num}"
 if [ "$USE_TOKEN" -eq 0 ]; then
-  skip "(c)" "토큰 귀속이 검토 계정(qa_)이 아님"
+  skip "(c)" "토큰 귀속이 검토 계정(qa_·claude_)이 아님"
 elif [ -z "$A_ID" ]; then
   skip "(c)" "(b) 에서 폴더 A 를 만들지 못했다"
 else
   A_NAME2="F58-a2-$TAG"
-  OUT=$(curl -s -w '\n%{http_code}' -X PATCH -A "$UA" -H "X-API-Token: $API_TOKEN" \
+  OUT=$(curl_hdr_secret X-API-Token API_TOKEN -s -w '\n%{http_code}' -X PATCH -A "$UA" \
         -H 'Content-Type: application/json' -d "{\"name\":\"$A_NAME2\"}" "$BASE/api/folders/$A_ID")
   echo "  이름 변경 → [$(code_of "$OUT")] $(body_of "$OUT")"
   expect "이름 변경 상태" "200" "$(code_of "$OUT")"
 
-  OUT=$(curl -s -w '\n%{http_code}' -X POST -A "$UA" -H "X-API-Token: $API_TOKEN" \
+  OUT=$(curl_hdr_secret X-API-Token API_TOKEN -s -w '\n%{http_code}' -X POST -A "$UA" \
         -H 'Content-Type: application/json' \
         -d "{\"name\":\"$B_NAME\",\"access_level\":\"internal\"}" "$BASE/api/folders")
   B_ID=$(fid_of "$(body_of "$OUT")")
@@ -351,27 +355,27 @@ else
   if [ -z "$B_ID" ]; then
     skip "(c) 이동·cycle" "폴더 B 를 만들지 못했다"
   else
-    OUT=$(curl -s -w '\n%{http_code}' -X PATCH -A "$UA" -H "X-API-Token: $API_TOKEN" \
+    OUT=$(curl_hdr_secret X-API-Token API_TOKEN -s -w '\n%{http_code}' -X PATCH -A "$UA" \
           -H 'Content-Type: application/json' -d "{\"parent_id\":$A_ID}" "$BASE/api/folders/$B_ID")
     CODE=$(code_of "$OUT"); printf '%s' "$(body_of "$OUT")" > "$WORK/c_move.json"
     echo "  B 를 A 아래로 → [$CODE] $(body_of "$OUT")"
     expect "이동 상태" "200" "$CODE"
     expect "옮긴 뒤 depth" "2" "$(jq_py 'd["folder"]["depth"]' < "$WORK/c_move.json")"
 
-    OUT=$(curl -s -w '\n%{http_code}' -X PATCH -A "$UA" -H "X-API-Token: $API_TOKEN" \
+    OUT=$(curl_hdr_secret X-API-Token API_TOKEN -s -w '\n%{http_code}' -X PATCH -A "$UA" \
           -H 'Content-Type: application/json' -d "{\"parent_id\":$B_ID}" "$BASE/api/folders/$A_ID")
     echo "  A 를 자식 B 아래로(cycle) → [$(code_of "$OUT")] $(body_of "$OUT")"
     expect "cycle 상태" "400" "$(code_of "$OUT")"
     expect "cycle 문구(F-68 사유 문장 — ARCH 5.30)" '{"error":"폴더를 자기 자신이나 그 하위 폴더 안으로 옮길 수 없습니다"}' "$(body_of "$OUT")"
   fi
 
-  OUT=$(curl -s -w '\n%{http_code}' -X PATCH -A "$UA" -H "X-API-Token: $API_TOKEN" \
+  OUT=$(curl_hdr_secret X-API-Token API_TOKEN -s -w '\n%{http_code}' -X PATCH -A "$UA" \
         -H 'Content-Type: application/json' -d '{"access_level":"public"}' "$BASE/api/folders/$A_ID")
   echo "  access_level (토큰 허용 키 밖) → [$(code_of "$OUT")] $(body_of "$OUT")"
   expect "access_level 상태(토큰 허용 키 밖 — 등급 변경은 닫혀 있다)" "400" "$(code_of "$OUT")"
   expect "access_level 문구" '{"error":"잘못된 요청입니다"}' "$(body_of "$OUT")"
 
-  OUT=$(curl -s -w '\n%{http_code}' -X PATCH -A "$UA" -H "X-API-Token: $API_TOKEN" \
+  OUT=$(curl_hdr_secret X-API-Token API_TOKEN -s -w '\n%{http_code}' -X PATCH -A "$UA" \
         -H 'Content-Type: application/json' -d "{\"name\":\"$A_NAME2\",\"cascade\":false}" "$BASE/api/folders/$A_ID")
   echo "  cascade (토큰 허용 키 밖) → [$(code_of "$OUT")] $(body_of "$OUT")"
   expect "cascade 상태" "400" "$(code_of "$OUT")"
@@ -382,7 +386,7 @@ else
   elif [ "$TOKEN_ROLE" = "Admin" ]; then
     skip "(c) S 이름 변경 403" "귀속 계정이 Admin 이라 남의 폴더도 고칠 수 있다"
   else
-    OUT=$(curl -s -w '\n%{http_code}' -X PATCH -A "$UA" -H "X-API-Token: $API_TOKEN" \
+    OUT=$(curl_hdr_secret X-API-Token API_TOKEN -s -w '\n%{http_code}' -X PATCH -A "$UA" \
           -H 'Content-Type: application/json' -d '{"name":"F58-stolen"}' "$BASE/api/folders/$S_ID")
     echo "  S 이름 변경 → [$(code_of "$OUT")] $(body_of "$OUT")"
     expect "남의(못 읽는) 폴더 상태" "403" "$(code_of "$OUT")"
@@ -394,12 +398,12 @@ fi
 hr "(d) 토큰으로 PATCH /api/files/{id} — folder_id 만"
 D_FILE=''
 if [ "$USE_TOKEN" -eq 0 ]; then
-  skip "(d)" "토큰 귀속이 검토 계정(qa_)이 아님"
+  skip "(d)" "토큰 귀속이 검토 계정(qa_·claude_)이 아님"
 elif [ -z "$A_ID" ]; then
   skip "(d)" "옮겨 넣을 폴더 A 가 없다"
 else
   printf 'F-58 시험용 파일입니다. %s\n' "$TAG" > "$WORK/F58-move-$TAG.txt"
-  OUT=$(curl -s -w '\n%{http_code}' -X POST -A "$UA" -H "X-API-Token: $API_TOKEN" \
+  OUT=$(curl_hdr_secret X-API-Token API_TOKEN -s -w '\n%{http_code}' -X POST -A "$UA" \
         -F "file=@$WORK/F58-move-$TAG.txt" -F 'level=internal' "$BASE/api/upload")
   echo "  업로드 → [$(code_of "$OUT")] $(body_of "$OUT")"
   D_FILE=$(uuid_of "$(body_of "$OUT")")
@@ -408,21 +412,21 @@ else
   if [ -z "$D_FILE" ]; then
     skip "(d)" "토큰 업로드가 id 를 주지 않았다"
   else
-    OUT=$(curl -s -w '\n%{http_code}' -X PATCH -A "$UA" -H "X-API-Token: $API_TOKEN" \
+    OUT=$(curl_hdr_secret X-API-Token API_TOKEN -s -w '\n%{http_code}' -X PATCH -A "$UA" \
           -H 'Content-Type: application/json' -d "{\"folder_id\":$A_ID}" "$BASE/api/files/$D_FILE")
     echo "  A 로 이동 → [$(code_of "$OUT")] $(body_of "$OUT")"
     expect "파일 이동 상태" "200" "$(code_of "$OUT")"
 
-    curl -s -A "$UA" -H "X-API-Token: $API_TOKEN" "$BASE/api/files?folder=$A_ID&limit=50" > "$WORK/d_list.json"
+    curl_hdr_secret X-API-Token API_TOKEN -s -A "$UA" "$BASE/api/files?folder=$A_ID&limit=50" > "$WORK/d_list.json"
     expect "?folder=A 배열에 그 id 가 있다" "1" \
       "$(jq_py "sum(1 for f in d if f['id']=='$D_FILE')" < "$WORK/d_list.json")"
 
-    OUT=$(curl -s -w '\n%{http_code}' -X PATCH -A "$UA" -H "X-API-Token: $API_TOKEN" \
+    OUT=$(curl_hdr_secret X-API-Token API_TOKEN -s -w '\n%{http_code}' -X PATCH -A "$UA" \
           -H 'Content-Type: application/json' -d '{"folder_id":null}' "$BASE/api/files/$D_FILE")
     echo "  루트 복귀 → [$(code_of "$OUT")] $(body_of "$OUT")"
     expect "루트 복귀 상태" "200" "$(code_of "$OUT")"
 
-    OUT=$(curl -s -w '\n%{http_code}' -X PATCH -A "$UA" -H "X-API-Token: $API_TOKEN" \
+    OUT=$(curl_hdr_secret X-API-Token API_TOKEN -s -w '\n%{http_code}' -X PATCH -A "$UA" \
           -H 'Content-Type: application/json' -d '{"description":"x"}' "$BASE/api/files/$D_FILE")
     echo "  description (토큰 허용 키 밖) → [$(code_of "$OUT")] $(body_of "$OUT")"
     expect "description 상태(토큰 허용 키 밖)" "400" "$(code_of "$OUT")"
@@ -433,7 +437,7 @@ else
     elif [ "$TOKEN_ROLE" = "Admin" ]; then
       skip "(d) 못 읽는 폴더 400" "귀속 계정이 Admin 이라 S 를 읽을 수 있다"
     else
-      OUT=$(curl -s -w '\n%{http_code}' -X PATCH -A "$UA" -H "X-API-Token: $API_TOKEN" \
+      OUT=$(curl_hdr_secret X-API-Token API_TOKEN -s -w '\n%{http_code}' -X PATCH -A "$UA" \
             -H 'Content-Type: application/json' -d "{\"folder_id\":$S_ID}" "$BASE/api/files/$D_FILE")
       echo "  못 읽는 폴더로 이동 → [$(code_of "$OUT")] $(body_of "$OUT")"
       expect "못 읽는 폴더 상태(없는 폴더와 같은 bad_folder)" "400" "$(code_of "$OUT")"
@@ -514,7 +518,7 @@ fi
 # ─── (f) 감사 — 전부 detail.auth=api_token · 문장표에 없는 조합 0 ─────────
 hr "(f) 감사 — (b)(c)(d) 의 행"
 if [ "$USE_TOKEN" -eq 0 ]; then
-  skip "(f)" "토큰 귀속이 검토 계정(qa_)이 아님 — 토큰 요청을 보내지 않았다"
+  skip "(f)" "토큰 귀속이 검토 계정(qa_·claude_)이 아님 — 토큰 요청을 보내지 않았다"
 elif [ "$HAVE_PSQL" -eq 0 ]; then
   skip "(f)" "psql 을 쓸 수 없음"
 else
@@ -542,13 +546,13 @@ hr "(g) 회귀 — 세션 허용 키 여섯·넷 불변 · 트리 모양 불변"
 G_FOLDER=''
 G_FILE=''
 if [ -z "${EMP_CSRF:-}" ]; then
-  skip "(g) 세션 회귀" "qa_employee01 세션 없음"
+  skip "(g) 세션 회귀" "claude_employee01 세션 없음"
 else
-  MY_TEAM=$(curl -s -b "$JAR_DIR/qa_employee01.jar" -A "$UA" "$BASE/api/me" \
+  MY_TEAM=$(curl -s -b "$JAR_DIR/claude_employee01.jar" -A "$UA" "$BASE/api/me" \
             | sed -n 's/.*"team_id":\([0-9]*\).*/\1/p' | head -1)
-  note "qa_employee01 team_id=${MY_TEAM:-없음}"
+  note "claude_employee01 team_id=${MY_TEAM:-없음}"
 
-  OUT=$(curl -s -w '\n%{http_code}' -X POST -b "$JAR_DIR/qa_employee01.jar" -A "$UA" \
+  OUT=$(curl -s -w '\n%{http_code}' -X POST -b "$JAR_DIR/claude_employee01.jar" -A "$UA" \
         -H "X-CSRF-Token: $EMP_CSRF" -H 'Content-Type: application/json' \
         -d "{\"name\":\"F58-g-$TAG\",\"access_level\":\"internal\"}" "$BASE/api/folders")
   echo "  세션 폴더 생성 → [$(code_of "$OUT")] $(body_of "$OUT")"
@@ -558,7 +562,7 @@ else
   if [ -z "$G_FOLDER" ] || [ -z "${MY_TEAM:-}" ]; then
     skip "(g) 세션 등급 변경" "폴더 또는 team_id 가 없다"
   else
-    OUT=$(curl -s -w '\n%{http_code}' -X PATCH -b "$JAR_DIR/qa_employee01.jar" -A "$UA" \
+    OUT=$(curl -s -w '\n%{http_code}' -X PATCH -b "$JAR_DIR/claude_employee01.jar" -A "$UA" \
           -H "X-CSRF-Token: $EMP_CSRF" -H 'Content-Type: application/json' \
           -d "{\"access_level\":\"team\",\"team_id\":$MY_TEAM}" "$BASE/api/folders/$G_FOLDER")
     echo "  세션 등급 변경 internal→team → [$(code_of "$OUT")] $(body_of "$OUT")"
@@ -566,7 +570,7 @@ else
   fi
 
   printf 'F-58 세션 회귀용 파일입니다. %s\n' "$TAG" > "$WORK/F58-g-$TAG.txt"
-  OUT=$(curl -s -w '\n%{http_code}' -X POST -b "$JAR_DIR/qa_employee01.jar" -A "$UA" \
+  OUT=$(curl -s -w '\n%{http_code}' -X POST -b "$JAR_DIR/claude_employee01.jar" -A "$UA" \
         -H "X-CSRF-Token: $EMP_CSRF" -F "file=@$WORK/F58-g-$TAG.txt" -F 'access_level=internal' \
         "$BASE/api/files")
   echo "  세션 업로드 → [$(code_of "$OUT")] $(body_of "$OUT")"
@@ -576,14 +580,14 @@ else
   if [ -z "$G_FILE" ]; then
     skip "(g) 세션 설명 변경" "세션 업로드가 id 를 주지 않았다"
   else
-    OUT=$(curl -s -w '\n%{http_code}' -X PATCH -b "$JAR_DIR/qa_employee01.jar" -A "$UA" \
+    OUT=$(curl -s -w '\n%{http_code}' -X PATCH -b "$JAR_DIR/claude_employee01.jar" -A "$UA" \
           -H "X-CSRF-Token: $EMP_CSRF" -H 'Content-Type: application/json' \
           -d '{"description":"F-58 회귀"}' "$BASE/api/files/$G_FILE")
     echo "  세션 설명 변경 → [$(code_of "$OUT")] $(body_of "$OUT")"
     expect "세션 PATCH /api/files 설명 변경(허용 키 넷 불변)" "200" "$(code_of "$OUT")"
   fi
 
-  OUT=$(curl -s -w '\n%{http_code}' -b "$JAR_DIR/qa_employee01.jar" -A "$UA" "$BASE/api/folders")
+  OUT=$(curl -s -w '\n%{http_code}' -b "$JAR_DIR/claude_employee01.jar" -A "$UA" "$BASE/api/folders")
   CODE=$(code_of "$OUT"); printf '%s' "$(body_of "$OUT")" > "$WORK/g_tree.json"
   expect "세션 GET /api/folders 상태" "200" "$CODE"
   expect "세션 트리 최상위 키" "folder,folders" "$(jq_py '",".join(sorted(d.keys()))' < "$WORK/g_tree.json")"
@@ -618,7 +622,7 @@ expect "bash -n (시험 스크립트 셋)" "0" "$SHBAD"
 hr "결과"
 printf '통과 %d · 실패 %d · 건너뜀/미검증 %d\n' "$PASS" "$FAIL" "$SKIP"
 if [ "$USE_TOKEN" -eq 0 ]; then
-  echo "(a)(b)(c)(d)(f) 는 토큰 귀속이 검토 계정(qa_)이 아니라 실행하지 않았다 — **미검증**이다."
+  echo "(a)(b)(c)(d)(f) 는 토큰 귀속이 검토 계정(qa_·claude_)이 아니라 실행하지 않았다 — **미검증**이다."
 fi
 [ "$FAIL" -eq 0 ] || exit 1
 exit 0
