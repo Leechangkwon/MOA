@@ -10,7 +10,13 @@ declare(strict_types=1);
  *
  * `scripts/alerts.php`(root, 5분마다 cron)가 남기는 **경보 로그의 마지막 50줄**을 읽어
  * 그대로 돌려준다. 한 줄이 JSON 하나이며 모양은 `cli_raise_alert()` 가 정한다:
- *   `{raised_at, rule, evidence:{…}, dispatch, request_id}`
+ *   `{raised_at, rule, evidence:{…}, dispatch, request_id, origin, title}`
+ *
+ * F-69 (PRD F-69 ③, ARCH 5.14) — 줄의 `origin`·`title` 을 **그대로** 내려 준다. 판정은 배치가 이미 했다
+ * (src/Origin.php) — 이 창구는 다시 판정하지 않는다. 2026-09-24 전의 옛 줄에는 두 키가 없으므로 **null**
+ * 이고, 화면은 그 줄을 「출처 표기 전」으로 보인다(옛 줄은 고치지 않는다 — alerts.log 는 증거다).
+ * origin 은 넷(Origin::VALUES) 중 하나일 때만 내려 보내고, 그 밖의 글자는 null 로 떨어뜨린다 — 로그 파일은
+ * 배치만 쓰지만, 모르는 값이 화면 배지를 고르게 하지 않는다. `evidence.origin_hint`(partial)는 근거 안에 그대로 있다.
  *
  * 지키는 것
  *   · **읽기만 한다.** 이 창구에는 쓰기도 지우기도 없다 — 경보 로그는 배치가 쌓는 증거이고
@@ -39,6 +45,12 @@ $alertLines = 50;
 
 /** AL-9 의 명령 문자열을 화면으로 내보낼 때의 상한 (ARCH 5.14) */
 $alertCommandChars = 200;
+
+/** F-69 — title 을 화면으로 내보낼 때의 상한(규칙 문장 + `[Claude] ` 는 이보다 짧다) */
+$alertTitleChars = 300;
+
+/** F-69 — 줄의 origin 으로 받아 주는 값 (Origin::VALUES 와 같은 넷). 웹 bootstrap 은 Origin.php 를 싣지 않는다 */
+require_once dirname(__DIR__) . '/Origin.php';
 
 // 경로는 코드와 설정에서만 만들어진다 — 요청 값이 섞이는 자리가 없다.
 $alertPath = dirname(Env::get('AUDIT_LOG_FILE')) . '/alerts.log';
@@ -75,6 +87,14 @@ if ($readable) {
             );
         }
 
+        // F-69 — 옛 줄(키 없음)·모르는 값은 null. 화면은 null 을 「출처 표기 전」으로 보인다.
+        $origin = isset($row['origin']) && is_string($row['origin']) && Origin::isValue($row['origin'])
+            ? $row['origin']
+            : null;
+        $title = isset($row['title']) && is_string($row['title'])
+            ? (string) iconv_substr($row['title'], 0, $alertTitleChars, 'UTF-8')
+            : null;
+
         $alerts[] = [
             'raised_at' => (string) $row['raised_at'],
             'rule'      => (string) $row['rule'],
@@ -82,6 +102,8 @@ if ($readable) {
                 ? (string) $row['dispatch']
                 : null,
             'evidence'  => $evidence,
+            'origin'    => $origin,
+            'title'     => $title,
         ];
     }
 }

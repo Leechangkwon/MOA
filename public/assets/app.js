@@ -376,6 +376,41 @@ function originBadgeFor(origin, hint) {
 }
 
 /*
+ * F-69 ③ (2026-09-24) — 관리자 경보 목록의 「누가 일으켰나」 배지. 화면은 서버(admin_alerts.php)가 내려 준
+ * 줄의 `origin` 과 `evidence.origin_hint` **두 값만** 본다 — 판정은 배치가 src/Origin.php 로 이미 했다.
+ * 위 originBadgeFor(감사 화면)의 뜻은 그대로 두고, 경보에만 있는 두 갈래를 앞에 더한다.
+ *   origin 없음(null — 2026-09-24 전의 옛 줄) → 「출처 표기 전」 .badge--off (흐린 회색 — 모른다)
+ *   system                                    → 「시스템」 .badge--team (보라 — 사람도 Claude 도 아닌 배치 판정)
+ *   claude-session                            → 「Claude」 (감사 화면과 같은 모양, 설명만 서버 명령용)
+ *   claude-review · partial · human           → originBadgeFor 그대로(「Claude」·「확인 필요」·없음)
+ * 색은 DESIGN 2.2 의 기존 변형만 쓴다(새 클래스·색 없음). 배지는 표시일 뿐 경보를 거르거나 숨기지 않는다.
+ */
+function alertOriginBadgeFor(origin, hint) {
+  if (origin === null || typeof origin === 'undefined') {
+    return {
+      label: '출처 표기 전',
+      cls: 'badge badge--off',
+      title: '출처(origin) 표기가 생기기 전(2026-09-24 전)에 남은 경보 줄입니다 — 누가 일으켰는지 적혀 있지 않습니다'
+    };
+  }
+  if (origin === 'system') {
+    return {
+      label: '시스템',
+      cls: 'badge badge--team',
+      title: 'system — 행위자가 없는 배치 판정(정합성·백업·감사 끊김)입니다'
+    };
+  }
+  if (origin === 'claude-session') {
+    return {
+      label: 'Claude',
+      cls: 'badge badge--internal',
+      title: 'claude-session — AI 세션이 서버에서 임시·시험 DB 만 다룬 명령입니다(운영 DB 를 겨누면 사람으로 셉니다)'
+    };
+  }
+  return originBadgeFor(origin, hint);
+}
+
+/*
  * F-65 (PRD F-65 ③, ARCH 5.29 「목록·화면」) — 「실행 파일 포함」 배지.
  *
  * 화면은 서버가 준 `exec_content` 불리언 **하나만** 본다. 파일명·확장자를 보고 스스로
@@ -6878,6 +6913,27 @@ function initAdmin(csrfToken, me) {
       var rule = document.createElement('strong');
       setText(rule, alert.rule);
       head.appendChild(rule);
+
+      /* F-69 ③ — 출처 배지 + 제목. 둘 다 서버 값 그대로이고 글자는 textContent 로만 넣는다
+         (제목의 `[Claude] ` 앞머리도 서버가 붙인 것이다 — 화면이 판정해 덧붙이지 않는다). */
+      var evidenceForHint = alert.evidence && typeof alert.evidence === 'object' ? alert.evidence : {};
+      var originBadge = alertOriginBadgeFor(
+        typeof alert.origin === 'string' ? alert.origin : null,
+        typeof evidenceForHint.origin_hint === 'string' ? evidenceForHint.origin_hint : null
+      );
+      if (originBadge !== null) {
+        var badgeEl = document.createElement('span');
+        badgeEl.className = originBadge.cls;
+        badgeEl.setAttribute('title', originBadge.title);
+        setText(badgeEl, originBadge.label);
+        head.appendChild(badgeEl);
+      }
+      if (typeof alert.title === 'string' && alert.title !== '') {
+        var titleEl = document.createElement('span');
+        setText(titleEl, alert.title);
+        head.appendChild(titleEl);
+      }
+
       var when = document.createElement('span');
       when.className = 'muted';
       setWhen(when, alert.raised_at);

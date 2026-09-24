@@ -8,7 +8,9 @@
 #   (b) EICAR 시험 문자열 → 201 · `pending` → 배치 → `infected` ·
 #       바이트가 storage 에서 사라지고 quarantine/<stored_name> 에 0640 으로 있음 ·
 #       감사 `file.scan deny infected`(detail.signature 에 Eicar) · 다운로드·미리보기 403 「격리」 ·
-#       목록 `infected` · `alerts.php --rule AL-19 --dry-run --state <임시>` 가 발동
+#       목록 `infected` · `alerts.php --rule AL-19 --dry-run --state <임시>` 가 발동(F-69: origin=claude-review) ·
+#       **격리 뒤 consistency_check 한 번**(F-69 C) — 격리된 EICAR 가 missing·quarantine_missing 으로 세어지지 않고
+#       「정상 격리」 1건 이상
 #   (c) 대기 0건 → 배치가 clamscan 을 **띄우지 않고** 2초 안에 「검사 대기 없음」 ·
 #       잠금 파일을 남이 쥐고 있으면 두 번째 실행은 「이미 실행 중」으로 즉시 종료
 #   (d) `Upload::initialScanStatus()` — SCAN_ENABLED 없음/0/1 → clean/clean/pending (단위)
@@ -24,7 +26,8 @@
 #   Fable 이 `SCAN_ENABLED=1` 로 켠 뒤 이 스크립트를 **다시 돌린다**.
 #
 # 규칙 (CLAUDE.md 3장)
-#   · 검토 계정은 `qa_employee01`·`qa_admin01` 뿐이다. 시드 계정(admin01 …)은 사용자 몫이다.
+#   · 검토 계정은 `claude_employee01` 뿐이다(F-71 ② — 고치는 시험은 claude_ 로. 2026-09-24 F-69 에서 qa_employee01 에서 옮김).
+#     시드 계정(admin01 …)은 사용자 몫이다.
 #   · 모든 요청에 `-A "tbox-review/<날짜>"` — 감사 로그에서 사람의 행동과 갈라 보려는 것.
 #   · 운영 데이터에 손대지 않는다. 올린 파일은 앱 창구(`DELETE /api/files/{id}`)로만 되돌린다.
 #   · `.env` 는 **읽지 않는다** — `grep -c` 로 켜짐 여부(0/1)만 센다. 값은 출력하지 않는다.
@@ -125,8 +128,8 @@ else
   echo "  → 검사가 꺼져 있다. (a)(b)(f) 는 SKIP 하고 (c)(d)(e)(g) 만 돈다 — Fable 이 켠 뒤 재실행."
 fi
 
-# ─── 로그인 (qa_employee01) ─────────────────────────────────────
-hr "로그인 — qa_employee01"
+# ─── 로그인 (claude_employee01) ─────────────────────────────────
+hr "로그인 — claude_employee01"
 
 # TOTP 코드는 1회성이다(R-45) — 같은 창에서 두 번 쓰면 거부되는 것이 정상이라 기다렸다 다시 한다.
 login() {
@@ -153,11 +156,11 @@ login() {
   return 1
 }
 
-CSRF=$(login qa_employee01)
-JAR="$JAR_DIR/qa_employee01.jar"
+CSRF=$(login claude_employee01)
+JAR="$JAR_DIR/claude_employee01.jar"
 HAVE_SESSION=0
-if [ -n "${CSRF:-}" ]; then HAVE_SESSION=1; echo "  qa_employee01 로그인 OK (CSRF 토큰 확보)"
-else echo "  qa_employee01 로그인 실패 — HTTP 항목은 전부 SKIP 되고 단위·서버 항목만 돈다"; fi
+if [ -n "${CSRF:-}" ]; then HAVE_SESSION=1; echo "  claude_employee01 로그인 OK (CSRF 토큰 확보)"
+else echo "  claude_employee01 로그인 실패 — HTTP 항목은 전부 SKIP 되고 단위·서버 항목만 돈다"; fi
 
 CODE=""; BODY=""; NEWID=""
 up() {   # $1 파일경로 → CODE·BODY·NEWID
@@ -308,6 +311,26 @@ else
     printf '%s\n' "$AOUT" | sed 's/^/    | /'
     contains "AL-19 발동" "AL-19" "$AOUT"
     contains "AL-19 근거에 시그니처" "signature" "$AOUT"
+    # F-69 A-1 — 올린 감사 행이 검토 계정(claude_employee01) **그리고** 표식 UA 라 claude-review 다.
+    #   같은 5분 창에 사람이 올린 감염 파일이 섞이면 그 줄은 human 이다 — 이 시험의 줄만 본다.
+    contains "AL-19 origin (검토 계정 + 표식 UA)" "origin=claude-review" \
+      "$(printf '%s\n' "$AOUT" | grep 'eicar-test.txt' | head -1)"
+
+    sub "격리 뒤 정합성 검사 한 번 — 격리된 감염 파일은 「분실」이 아니다 (F-69 C · T-7)"
+    # consistency_check 는 매일 02:00 root cron 이 도는 **읽기만 하는** 검사다(파일을 옮기거나 지우지 않는다).
+    # 한 번 더 돌면 감사 `audit.integrity` 한 행이 는다. 불일치가 나오면 그것은 운영의 **진짜** 불일치이고
+    # 그때 남는 AL-6(origin system) 도 진짜 경보다 — 시험이 만든 소음이 아니다.
+    COUT=$(sudo -n php "$ROOT/scripts/consistency_check.php" 2>&1)
+    printf '%s\n' "$COUT" | sed 's/^/    | /'
+    contains "출력에 격리 폴더 줄" "격리 폴더: 정상 격리" "$COUT"
+    expect "EICAR 가 [missing] 으로 세어지지 않는다" "0" \
+      "$(printf '%s\n' "$COUT" | grep -cF "[missing] $B_STORED")"
+    expect "EICAR 가 격리 불일치(quarantine_missing·infected_in_storage·quarantine_hash_mismatch)가 아니다" "0" \
+      "$(printf '%s\n' "$COUT" | grep -E "\[(quarantine_missing|infected_in_storage|quarantine_hash_mismatch)\]" | grep -cF "$B_STORED")"
+    QN=$(printf '%s\n' "$COUT" | sed -n 's/.*정상 격리 \([0-9][0-9]*\)건.*/\1/p' | head -1)
+    expect "정상 격리 1건 이상" "yes" "$([ "${QN:-0}" -ge 1 ] 2>/dev/null && echo yes || echo "no(${QN:-?})")"
+    note "감사 audit.integrity detail.quarantined = $(psqlq "SELECT coalesce(detail->>'quarantined','?') FROM audit_logs WHERE action='audit.integrity' AND target_name='consistency' ORDER BY id DESC LIMIT 1")"
+    note "불일치 목록은 50건까지만 찍힌다 — 그보다 많으면 위 두 줄은 목록 밖을 보지 못한다(그때는 출력의 불일치 건수를 사람이 본다)"
   else
     skip "(b) 나머지" "업로드 id 또는 psql 없음"
   fi
@@ -352,7 +375,12 @@ sub "격리는 됐는데 기록을 못 남긴 경우의 복구 (코드 읽기 �
 # 주석의 설명이 아니라 **코드의 대입**만 센다.
 REC=$(grep -c "=> 'quarantined_earlier'," "$ROOT/scripts/scan_pending.php")
 expect "복구 갈래(signature: quarantined_earlier) 가 있다" "1" "$REC"
-grep -n 'QUARANTINE_DIR . ./. . basename($path)' "$ROOT/scripts/scan_pending.php" | sed 's/^/    | /'
+grep -nF "\$quarantineDir . '/' . basename(\$path)" "$ROOT/scripts/scan_pending.php" | sed 's/^/    | /'
+# F-69 C-2 — 격리 경로는 상수가 아니라 cli_quarantine_dir() 한 곳(consistency_check 와 같은 폴더)
+expect "scan_pending 이 격리 경로를 cli_quarantine_dir() 에서 받는다" "1" \
+  "$(grep -c '^\$quarantineDir = cli_quarantine_dir();' "$ROOT/scripts/scan_pending.php")"
+expect "consistency_check 도 같은 함수를 쓴다" "1" \
+  "$(grep -c '^\$quarantineDir = cli_quarantine_dir();' "$ROOT/scripts/consistency_check.php")"
 note "저장소에 바이트가 없을 때 격리 폴더를 먼저 보고, 있으면 옮기지 않고 UPDATE+감사만 마무리한다"
 note "그 밖(사람이 지웠다·저장소 사고)은 지금처럼 file_missing 으로 남기고 상태는 pending 그대로"
 RECFAIL=$(grep -c "scan_fail(\$row, 'file_missing')" "$ROOT/scripts/scan_pending.php")
@@ -501,10 +529,11 @@ PHPBAD=0
 for f in src/Upload.php src/Audit.php src/Http.php src/handlers/_upload_common.php src/handlers/files_fetch.php \
          src/handlers/files_download.php src/handlers/files_preview.php \
          src/handlers/files_preview_raw.php src/handlers/share_download.php \
-         src/handlers/files_list.php scripts/scan_pending.php scripts/alerts.php; do
+         src/handlers/files_list.php scripts/scan_pending.php scripts/alerts.php \
+         scripts/consistency_check.php scripts/lib/cli_bootstrap.php src/Origin.php; do
   php -l "$ROOT/$f" >/dev/null 2>&1 || { echo "  ✖ php -l 실패: $f"; PHPBAD=1; }
 done
-expect "php -l (수정한 12개 PHP)" "0" "$PHPBAD"
+expect "php -l (수정한 15개 PHP — F-69 셋 포함)" "0" "$PHPBAD"
 
 BASHBAD=0
 for f in scripts/check_baseline.sh deploy/install.sh tests/f54.sh; do

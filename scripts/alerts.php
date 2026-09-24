@@ -44,6 +44,12 @@ declare(strict_types=1);
  *   (inode 가 바뀌면) 처음부터 읽는다. auth.log 는 0640 syslog:adm 이라 **root 가 아니면 읽지
  *   못한다**; 그때는 두 규칙만 `[건너뜀]` 을 찍고 나머지 규칙은 그대로 판정한다.
  *
+ * 「누가 일으켰나(origin)」— F-69 (PRD F-69 ①~④, 지시서 `docs/f69-alert-origin-directive.md` A)
+ *   발동하는 모든 경보에 origin(human · system · claude-review · claude-session)을 붙인다. 판정은
+ *   src/Origin.php 한 곳이고, 이 파일은 규칙마다 **재료**(대상 계정·UA 표식 집계·sudo 명령)를 SELECT·파싱에
+ *   더해 $raise 로 넘길 뿐이다. 경보를 끄거나 문턱을 바꾸지 않는다 — 발동 조건·중복 억제는 전과 같다.
+ *   dry-run 출력은 옛 줄 끝에 ` origin=…`(한쪽만 맞으면 ` hint=partial`)만 붙는다.
+ *
  * 이 스크립트가 판정하지 않는 규칙과 이유
  *   AL-4 (대량 다운로드) · AL-11 (일일 요약) — 9단계 범위 밖(지시서)
  *   AL-8 (백업 2회 연속 실패) — scripts/verify_backup.sh 가 직접 판정한다(실패 횟수 파일)
@@ -153,12 +159,18 @@ $fired = 0;
 /**
  * 규칙 하나를 발동한다 — 중복 억제를 통과할 때만.
  *
- * @param array<string,mixed> $evidence
+ * F-69 — 넷째 인자 `$origin` 은 규칙마다 src/Origin.php 로 판정한 `{origin, origin_hint}` 다.
+ * 중복 억제·발동 여부는 origin 과 **무관하다**(키도 `규칙|대상` 그대로) — origin 은 보여 주기와 분류에만 쓴다.
+ *
+ * @param array<string,mixed>                          $evidence
+ * @param array{origin: string, origin_hint: ?string}  $origin
  */
-$raise = function (string $rule, string $subject, array $evidence) use (
+$raise = function (string $rule, string $subject, array $evidence, array $origin) use (
     &$state, &$stateChanged, &$fired, $now, $dryRun
 ): void {
     $windowMinutes = DEDUP_MINUTES;
+    $originNote = ' origin=' . $origin['origin']
+        . ($origin['origin_hint'] === null ? '' : ' hint=' . $origin['origin_hint']);
 
     $key  = $rule . '|' . $subject;
     $last = isset($state[$key]) ? strtotime($state[$key]) : false;
@@ -167,15 +179,52 @@ $raise = function (string $rule, string $subject, array $evidence) use (
         return;
     }
     if ($dryRun) {
-        cli_say(sprintf('  [dry-run] %s %s %s', $rule, $subject, json_encode($evidence, JSON_UNESCAPED_UNICODE)));
+        // 옛 출력 그대로 + 끝에 origin (T-10 「발동 목록이 전과 같고 origin 만 붙음」)
+        cli_say(sprintf('  [dry-run] %s %s %s%s', $rule, $subject,
+            json_encode($evidence, JSON_UNESCAPED_UNICODE), $originNote));
         return;
     }
-    cli_raise_alert($rule, ['subject' => $subject] + $evidence);
+    cli_raise_alert($rule, ['subject' => $subject] + $evidence, $origin['origin'], $origin['origin_hint']);
     $state[$key]  = date('c', $now);
     $stateChanged = true;
     $fired++;
-    cli_say(sprintf('  ★ %s %s 발동', $rule, $subject));
+    cli_say(sprintf('  ★ %s %s 발동%s', $rule, $subject, $originNote));
 };
+
+/**
+ * PDO(pgsql) 가 돌려준 불리언을 PHP bool 로 — 드라이버·설정에 따라 true/'t'/1 로 온다
+ * (consistency_check 의 alive 판정과 같은 방어). NULL(행 0개의 bool_and)은 false 다.
+ */
+function al_bool(mixed $v): bool
+{
+    return $v === true || $v === 't' || $v === 1 || $v === '1' || $v === 'true';
+}
+
+/**
+ * 집계 SQL 이 `chr(10)` 으로 이어 붙인 계정 이름들을 목록으로 (F-69 묶음 판정 재료).
+ * 계정 이름에 줄바꿈이 섞여 있어도(실패 로그인의 대상 이름은 공격자가 정한다) 조각의 **첫 조각**은
+ * 원래 이름의 앞부분이라, 쪼개기가 사람 이름을 검토 계정처럼 보이게 만들 수는 없다.
+ *
+ * @return list<string>
+ */
+function al_accounts(mixed $joined): array
+{
+    if (!is_string($joined)) {
+        return [''];   // 계정 없음 — 검토 계정이 아니다
+    }
+    return explode("\n", $joined);
+}
+
+/*
+ * 묶음 판정에 쓰는 UA 표식 집계 (F-69 A-1) — 아래 규칙들의 SELECT 에 같은 식이 들어간다:
+ *     bool_and(COALESCE(user_agent, '') LIKE :review_ua) AS all_marked
+ *   · 「묶음의 **모든** 행이 표식을 달았나」. user_agent 가 NULL 인 행은 **표식 없음**으로 센다 —
+ *     `bool_and` 는 NULL 을 건너뛰므로 COALESCE 가 없으면 표식 없는 행이 판정에서 빠진다.
+ *   · 접두 글자는 SQL 에 베끼지 않고 Origin::reviewMarkLikePattern() 을 **바인딩**한다 — 표식 접두가
+ *     src/Origin.php 한 곳에만 있게(지시서의 「고정 문자열」과 같은 값이고, 요청 값이 아니다).
+ *     LIKE 는 대소문자를 가린다 — Origin::hasReviewMark(str_starts_with) 와 같은 판정이다.
+ */
+$reviewUa = [':review_ua' => Origin::reviewMarkLikePattern()];
 
 $want = static fn(string $rule): bool => $only === null || $only === $rule;
 
@@ -350,7 +399,8 @@ cli_say('경보 판정 시작 (' . date('c') . ')');
 if ($want('AL-1')) {
     $rows = $db->run(
         "SELECT actor_name, count(*) AS n,
-                min(happened_at) AS first_at, max(happened_at) AS last_at
+                min(happened_at) AS first_at, max(happened_at) AS last_at,
+                bool_and(COALESCE(user_agent, '') LIKE :review_ua) AS all_marked
            FROM audit_logs
           WHERE result = 'deny'
             AND actor_name IS NOT NULL
@@ -359,7 +409,8 @@ if ($want('AL-1')) {
                  OR reason IN ('role_not_permitted','team_mismatch'))
             AND happened_at > now() - interval '10 minutes'
           GROUP BY actor_name
-         HAVING count(*) >= 5"
+         HAVING count(*) >= 5",
+        $reviewUa
     )->fetchAll();
     foreach ($rows as $r) {
         $raise('AL-1', (string) $r['actor_name'], [
@@ -368,7 +419,7 @@ if ($want('AL-1')) {
             'window'    => '10 minutes',
             'first_at'  => (string) $r['first_at'],
             'last_at'   => (string) $r['last_at'],
-        ]);
+        ], Origin::ofGroup([(string) $r['actor_name']], al_bool($r['all_marked'])));
     }
     cli_say(sprintf('AL-1 대상 %d명', count($rows)));
 }
@@ -408,7 +459,9 @@ if ($want('AL-2')) {
                 count(*) FILTER (WHERE reason = 'locked') AS locked,
                 count(*) FILTER (WHERE action <> 'auth.login') AS after_login,
                 array_to_string(array_agg(DISTINCT action ORDER BY action), ',') AS actions,
-                max(happened_at) AS last_at
+                max(happened_at) AS last_at,
+                string_agg(DISTINCT COALESCE(NULLIF(actor_name, ''), target_name, ''), chr(10)) AS accounts,
+                bool_and(COALESCE(user_agent, '') LIKE :review_ua) AS all_marked
            FROM audit_logs
           WHERE result = 'deny' AND ip IS NOT NULL
             AND happened_at > now() - interval '10 minutes'
@@ -421,9 +474,14 @@ if ($want('AL-2')) {
                   OR (action = 'auth.reauth'          AND reason = 'bad_credentials')
                 )
           GROUP BY host(ip)
-         HAVING count(*) >= 20 OR count(*) FILTER (WHERE reason = 'locked') > 0"
+         HAVING count(*) >= 20 OR count(*) FILTER (WHERE reason = 'locked') > 0",
+        $reviewUa
     )->fetchAll();
     foreach ($rows as $r) {
+        /* 출처 판정은 좁은 쪽(구현 보고 결정 1 — 사용자 확인 대기): 실패 로그인의 **대상 이름**(target_name)과 UA 는 둘 다
+           바깥의 공격자가 정한다. UA 를 흉내 내며 claude_admin01 을 겨누는 무차별 대입이 「Claude」로 낮아지지 않게,
+           출발지가 **이 서버 자신(루프백)** 일 때만 표식으로 센다 — 검토 시험은 늘 127.0.0.1:8082 로 들어온다. */
+        $fromHere = in_array((string) $r['src'], ['127.0.0.1', '::1'], true);
         $raise('AL-2', (string) $r['src'], [
             'rule_text'   => '인증 실패(로그인·비밀번호 변경·2단계 인증·재인증) 10분 내 20회 이상 또는 계정 잠금 발생',
             'count'       => (int) $r['n'],
@@ -434,7 +492,7 @@ if ($want('AL-2')) {
             'actions'     => (string) $r['actions'],
             'window'      => '10 minutes',
             'last_at'     => (string) $r['last_at'],
-        ]);
+        ], Origin::ofGroup(al_accounts($r['accounts']), $fromHere && al_bool($r['all_marked'])));
     }
     cli_say(sprintf('AL-2 대상 %d개 IP', count($rows)));
 }
@@ -447,7 +505,7 @@ if ($want('AL-2')) {
 // ─────────────────────────────────────────────────────────────
 if ($want('AL-5')) {
     $rows = $db->run(
-        "SELECT id, actor_name, target_name,
+        "SELECT id, actor_name, target_name, user_agent,
                 detail->'before'->>'access_level' AS before_level,
                 detail->'after'->>'access_level'  AS after_level,
                 happened_at
@@ -469,7 +527,10 @@ if ($want('AL-5')) {
             'before'    => (string) $r['before_level'],
             'after'     => (string) $r['after_level'],
             'at'        => (string) $r['happened_at'],
-        ]);
+        ], Origin::ofAppAction(
+            $r['actor_name'] === null ? null : (string) $r['actor_name'],
+            $r['user_agent'] === null ? null : (string) $r['user_agent']
+        ));
     }
     cli_say(sprintf('AL-5 대상 %d건', count($rows)));
 }
@@ -493,7 +554,7 @@ if ($want('AL-7')) {
                 'rule_text' => '업무시간(09~18시)에 감사 로그 30분간 0건',
                 'window'    => '30 minutes',
                 'count'     => 0,
-            ]);
+            ], Origin::ofFixedRule('AL-7'));
         }
         cli_say(sprintf('AL-7 최근 30분 기록 %d건 (업무시간)', $n));
     } else {
@@ -512,13 +573,15 @@ if ($want('AL-10')) {
     // 바인딩 자리로 읽어 구문 오류가 난다(2026-09-11 실측). `->> IS NOT NULL` 로 같은 뜻을 쓴다.
     $rows = $db->run(
         "SELECT actor_name, count(DISTINCT detail->>'login_ref') AS refs,
-                count(DISTINCT host(ip)) AS ips
+                count(DISTINCT host(ip)) AS ips,
+                bool_and(COALESCE(user_agent, '') LIKE :review_ua) AS all_marked
            FROM audit_logs
           WHERE actor_name IS NOT NULL
             AND detail->>'login_ref' IS NOT NULL
             AND happened_at > now() - interval '1 hour'
           GROUP BY actor_name
-         HAVING count(DISTINCT detail->>'login_ref') >= 3"
+         HAVING count(DISTINCT detail->>'login_ref') >= 3",
+        $reviewUa
     )->fetchAll();
     foreach ($rows as $r) {
         $raise('AL-10', (string) $r['actor_name'], [
@@ -526,7 +589,7 @@ if ($want('AL-10')) {
             'login_refs' => (int) $r['refs'],
             'ips'        => (int) $r['ips'],
             'window'     => '1 hour',
-        ]);
+        ], Origin::ofGroup([(string) $r['actor_name']], al_bool($r['all_marked'])));
     }
     cli_say(sprintf('AL-10 대상 %d명', count($rows)));
 }
@@ -540,14 +603,16 @@ if ($want('AL-10')) {
 if ($want('AL-12')) {
     $rows = $db->run(
         "SELECT actor_name, count(*) AS n, array_agg(DISTINCT reason) AS reasons,
-                max(happened_at) AS last_at
+                max(happened_at) AS last_at,
+                bool_and(COALESCE(user_agent, '') LIKE :review_ua) AS all_marked
            FROM audit_logs
           WHERE action = 'file.fetch' AND result = 'deny'
             AND actor_name IS NOT NULL
             AND reason IN ('scheme','port','host_not_allowed','private_ip','redirect')
             AND happened_at > now() - interval '10 minutes'
           GROUP BY actor_name
-         HAVING count(*) >= 5"
+         HAVING count(*) >= 5",
+        $reviewUa
     )->fetchAll();
     foreach ($rows as $r) {
         $raise('AL-12', (string) $r['actor_name'], [
@@ -556,7 +621,7 @@ if ($want('AL-12')) {
             'reasons'   => (string) $r['reasons'],
             'window'    => '10 minutes',
             'last_at'   => (string) $r['last_at'],
-        ]);
+        ], Origin::ofGroup([(string) $r['actor_name']], al_bool($r['all_marked'])));
     }
     cli_say(sprintf('AL-12 대상 %d명', count($rows)));
 }
@@ -576,11 +641,13 @@ if ($want('AL-13')) {
         "SELECT actor_name, count(*) AS n,
                 array_to_string(array_agg(target_name ORDER BY id), ',') AS cells,
                 max(detail->>'reason_text') AS reason_text,
-                max(happened_at) AS last_at
+                max(happened_at) AS last_at,
+                bool_and(COALESCE(user_agent, '') LIKE :review_ua) AS all_marked
            FROM audit_logs
           WHERE action = 'permission.change' AND result = 'allow'
             AND happened_at > now() - interval '5 minutes'
-          GROUP BY actor_name"
+          GROUP BY actor_name",
+        $reviewUa
     )->fetchAll();
     foreach ($rows as $r) {
         $raise('AL-13', (string) ($r['actor_name'] ?? '?'), [
@@ -591,7 +658,7 @@ if ($want('AL-13')) {
             'reason_text' => $r['reason_text'] === null ? '' : (string) $r['reason_text'],
             'window'      => '5 minutes',
             'last_at'     => (string) $r['last_at'],
-        ]);
+        ], Origin::ofGroup([$r['actor_name'] === null ? null : (string) $r['actor_name']], al_bool($r['all_marked'])));
     }
     cli_say(sprintf('AL-13 대상 %d명', count($rows)));
 }
@@ -611,11 +678,13 @@ if ($want('AL-18')) {
         "SELECT actor_name, count(*) AS n,
                 array_to_string(array_agg(target_name ORDER BY id), ',') AS hosts,
                 max(detail->>'reason_text') AS reason_text,
-                max(happened_at) AS last_at
+                max(happened_at) AS last_at,
+                bool_and(COALESCE(user_agent, '') LIKE :review_ua) AS all_marked
            FROM audit_logs
           WHERE action = 'fetch_host.change' AND result = 'allow'
             AND happened_at > now() - interval '5 minutes'
-          GROUP BY actor_name"
+          GROUP BY actor_name",
+        $reviewUa
     )->fetchAll();
     foreach ($rows as $r) {
         $raise('AL-18', (string) ($r['actor_name'] ?? '?'), [
@@ -626,7 +695,7 @@ if ($want('AL-18')) {
             'reason_text' => $r['reason_text'] === null ? '' : (string) $r['reason_text'],
             'window'      => '5 minutes',
             'last_at'     => (string) $r['last_at'],
-        ]);
+        ], Origin::ofGroup([$r['actor_name'] === null ? null : (string) $r['actor_name']], al_bool($r['all_marked'])));
     }
     cli_say(sprintf('AL-18 대상 %d명', count($rows)));
 }
@@ -642,17 +711,33 @@ if ($want('AL-18')) {
 //   근거에 파일 이름·올린 사람 id·시그니처 이름을 담는다 (PRD 7.11 AL-19 evidence 칸).
 //   올린 사람은 **id** 로만 담는다 — 계정명은 감사 로그를 열면 나온다(23단계 규칙과 같은 선).
 //   창은 다른 audit_logs 규칙과 맞춰 5분(배치 주기)이고, 중복 억제는 $raise 가 한다.
+//   F-69 — origin 은 **그 파일을 올린 감사 행**(file.upload·file.upload_exec·file.fetch allow, 같은
+//   target_id 의 첫 행)의 actor·UA 로 판정한다. 검사 행은 배치가 남겨 행위자가 없기 때문이다.
+//   올린 행을 못 찾으면(옛 파일) 계정·표식이 없는 것으로 세어 `human` 이다. 격리 건수는 5분에 몇 건이라
+//   파일마다 한 번 찾는 LATERAL 이 무겁지 않다.
 // ─────────────────────────────────────────────────────────────
 if ($want('AL-19')) {
     $rows = $db->run(
-        "SELECT target_name, count(*) AS n,
-                max(detail->>'signature')   AS signature,
-                max(detail->>'uploader_id') AS uploader,
-                max(happened_at)            AS last_at
-           FROM audit_logs
-          WHERE action = 'file.scan' AND result = 'deny' AND reason = 'infected'
-            AND happened_at > now() - interval '5 minutes'
-          GROUP BY target_name"
+        "SELECT s.target_name, count(*) AS n,
+                max(s.detail->>'signature')   AS signature,
+                max(s.detail->>'uploader_id') AS uploader,
+                max(s.happened_at)            AS last_at,
+                string_agg(DISTINCT COALESCE(up.actor_name, ''), chr(10)) AS accounts,
+                bool_and(COALESCE(up.user_agent, '') LIKE :review_ua) AS all_marked
+           FROM audit_logs s
+           LEFT JOIN LATERAL (
+                SELECT a.actor_name, a.user_agent
+                  FROM audit_logs a
+                 WHERE a.target_type = 'file' AND a.target_id = s.target_id
+                   AND a.result = 'allow'
+                   AND a.action IN ('file.upload','file.upload_exec','file.fetch')
+                 ORDER BY a.id
+                 LIMIT 1
+           ) up ON true
+          WHERE s.action = 'file.scan' AND s.result = 'deny' AND s.reason = 'infected'
+            AND s.happened_at > now() - interval '5 minutes'
+          GROUP BY s.target_name",
+        $reviewUa
     )->fetchAll();
     foreach ($rows as $r) {
         $raise('AL-19', (string) ($r['target_name'] ?? '?'), [
@@ -663,7 +748,7 @@ if ($want('AL-19')) {
             'uploader'  => $r['uploader'] === null ? '' : (string) $r['uploader'],
             'window'    => '5 minutes',
             'last_at'   => (string) $r['last_at'],
-        ]);
+        ], Origin::ofGroup(al_accounts($r['accounts']), al_bool($r['all_marked'])));
     }
     cli_say(sprintf('AL-19 대상 %d건', count($rows)));
 }
@@ -686,11 +771,13 @@ if ($want('AL-20')) {
                 max(detail->>'token_name')  AS token_name,
                 max(detail->>'token_scope') AS token_scope,
                 max(detail->>'reason_text') AS reason_text,
-                max(happened_at) AS last_at
+                max(happened_at) AS last_at,
+                bool_and(COALESCE(user_agent, '') LIKE :review_ua) AS all_marked
            FROM audit_logs
           WHERE action = 'api_token.issue' AND result = 'allow'
             AND happened_at > now() - interval '5 minutes'
-          GROUP BY actor_name"
+          GROUP BY actor_name",
+        $reviewUa
     )->fetchAll();
     foreach ($rows as $r) {
         $raise('AL-20', (string) ($r['actor_name'] ?? '?'), [
@@ -705,7 +792,7 @@ if ($want('AL-20')) {
             'reason_text' => $r['reason_text'] === null ? '' : (string) $r['reason_text'],
             'window'      => '5 minutes',
             'last_at'     => (string) $r['last_at'],
-        ]);
+        ], Origin::ofGroup([$r['actor_name'] === null ? null : (string) $r['actor_name']], al_bool($r['all_marked'])));
     }
     cli_say(sprintf('AL-20 대상 %d명', count($rows)));
 }
@@ -728,11 +815,14 @@ if ($want('AL-21')) {
         "SELECT target_name, count(*) AS n,
                 max(actor_name)                      AS actor_name,
                 max(detail->>'exec_entry_count')     AS entry_count,
-                max(happened_at)                     AS last_at
+                max(happened_at)                     AS last_at,
+                string_agg(DISTINCT COALESCE(actor_name, ''), chr(10)) AS accounts,
+                bool_and(COALESCE(user_agent, '') LIKE :review_ua)     AS all_marked
            FROM audit_logs
           WHERE action = 'file.upload_exec' AND result = 'allow'
             AND happened_at > now() - interval '5 minutes'
-          GROUP BY target_name"
+          GROUP BY target_name",
+        $reviewUa
     )->fetchAll();
     foreach ($rows as $r) {
         $raise('AL-21', (string) ($r['target_name'] ?? '?'), [
@@ -743,7 +833,7 @@ if ($want('AL-21')) {
             'exec_entry_count' => $r['entry_count'] === null ? '' : (string) $r['entry_count'],
             'window'           => '5 minutes',
             'last_at'          => (string) $r['last_at'],
-        ]);
+        ], Origin::ofGroup(al_accounts($r['accounts']), al_bool($r['all_marked'])));
     }
     cli_say(sprintf('AL-21 대상 %d건', count($rows)));
 }
@@ -801,7 +891,7 @@ if ($want('AL-3') || $want('AL-9')) {
                         'method'    => $method,
                         'when'      => al_line_time($line),
                         'window'    => SSH_SEEN_DAYS . ' days',
-                    ]);
+                    ], Origin::ofFixedRule('AL-3'));   // 늘 human — SSH 로 들어오는 것은 사람이다
                     /*
                      * 첫 관측 시각은 **처음 본 때**로 둔다(볼 때마다 갱신하지 않는다) —
                      * 30일이 지나면 저장 단계에서 버려지고, 그 뒤 다시 들어오면 새 출처로
@@ -833,13 +923,16 @@ if ($want('AL-3') || $want('AL-9')) {
                     continue;   // 일상적인 sudo(예: systemctl status)는 알리지 않는다
                 }
                 $sudoHit++;
+                // 비밀값 조각을 지우고 앞 200자만 (PRD 7.7). origin 판정도 **이 가린 문자열**로만 한다
+                // (F-69 A-1) — 200자에 닿았으면 뒤가 잘렸을 수 있으므로 겨눈 DB 를 다 봤다고 할 수 없다(→ human).
+                $scrubbed = al_scrub_command($command);
+                $complete = iconv_strlen($scrubbed, 'UTF-8') < SUDO_CMD_CHARS;
                 $raise('AL-9', $account, [
                     'rule_text' => 'sudo 로 데이터·로그를 지우거나 통째로 읽는 명령 실행',
                     'user'      => $account,
-                    // 비밀값 조각을 지우고 앞 200자만 (PRD 7.7)
-                    'command'   => al_scrub_command($command),
+                    'command'   => $scrubbed,
                     'when'      => al_line_time($line),
-                ]);
+                ], Origin::ofSudoCommand($scrubbed, $complete));
             }
         }
 

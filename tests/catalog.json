@@ -435,7 +435,10 @@
         "deploy/install.sh",
         "src/handlers/files_delete.php",
         "src/handlers/login.php",
-        "src/handlers/me.php"
+        "src/handlers/me.php",
+        "scripts/consistency_check.php",
+        "scripts/lib/cli_bootstrap.php",
+        "src/Origin.php"
       ],
       "requirements": [
         "T-18",
@@ -450,7 +453,7 @@
       ],
       "est_sec": 300,
       "writes_prod": true,
-      "notes": "manual_only(지시서 A-5 초기값: 호스트 root·clamav): dpkg·systemctl·clamav 시그니처·sudo -n bash scripts/check_baseline.sh·격리 폴더 stat, 그리고 sudo -n -u tbox-php php scripts/scan_pending.php --force-enabled 로 운영의 검사 대기 파일을 실제로 검사·격리한다(EICAR 격리 파일은 증거로 남김). .env 의 SCAN_ENABLED=1 이 아니면 (a)(b)(f) SKIP. sudo -n php alerts.php AL-19 --dry-run."
+      "notes": "manual_only(지시서 A-5 초기값: 호스트 root·clamav): dpkg·systemctl·clamav 시그니처·sudo -n bash scripts/check_baseline.sh·격리 폴더 stat, 그리고 sudo -n -u tbox-php php scripts/scan_pending.php --force-enabled 로 운영의 검사 대기 파일을 실제로 검사·격리한다(EICAR 격리 파일은 증거로 남김). .env 의 SCAN_ENABLED=1 이 아니면 (a)(b)(f) SKIP. sudo -n php alerts.php AL-19 --dry-run. 2026-09-24 F-69: 검토 계정이 claude_employee01 로 바뀌었다(F-71 — qa_employee01 에서 옮김) · AL-19 dry-run 의 EICAR 줄에 origin=claude-review 를 확인 · (b) 끝에 격리 뒤 **운영** sudo -n php scripts/consistency_check.php 를 한 번 돌린다(읽기만 하는 검사지만 운영 감사에 audit.integrity 1행이 늘고, 불일치가 나오면 그때의 AL-6(system)은 운영의 진짜 경보) + 운영 tbox_re 에서 그 행의 detail.quarantined 읽기 · php -l 목록 15개(consistency_check·cli_bootstrap·Origin 추가)."
     },
     {
       "id": "tbox.f65",
@@ -635,6 +638,41 @@
       "est_sec": 300,
       "writes_prod": false,
       "notes": "F-68 400 사유 문장. 운영 8082 에 F68- 팀·폴더·파일·토큰을 앱 창구로 만들고 되돌림, psql 읽기만. (b) 2·3·7 은 일부러 1회 틀리고 곧 다시 로그인(R-48) — 같은 창 재로그인이라 TOTP 창 대기. (c) api_upload 회귀는 이 스크립트가 돌리지 않는다."
+    },
+    {
+      "id": "tbox.f69",
+      "cmd": "bash tests/f69.sh",
+      "module": "tbox",
+      "env": "prod",
+      "status": "required",
+      "needs": [
+        "sudo",
+        "browser",
+        "totp_wait"
+      ],
+      "covers": [
+        "src/Origin.php",
+        "scripts/lib/cli_bootstrap.php",
+        "scripts/alerts.php",
+        "scripts/consistency_check.php",
+        "scripts/verify_backup.sh",
+        "scripts/totp_code.php",
+        "scripts/security_lint.sh",
+        "scripts/wiki_check.php",
+        "scripts/audit_chain.php",
+        "scripts/scan_pending.php",
+        "src/Audit.php",
+        "src/handlers/admin_alerts.php",
+        "src/handlers/users_create.php",
+        "src/handlers/admin_page.php",
+        "src/handlers/login_page.php",
+        "src/handlers/me.php"
+      ],
+      "requirements": [],
+      "risks": [],
+      "est_sec": 420,
+      "writes_prod": false,
+      "notes": "F-69 경보 출처(origin)·AL-6 격리 파일 + 대기열 2b 수락 시험(지시서 docs/f69-alert-origin-directive.md D 표 F69-T1~T10 — PRD 12장에 T- 번호가 없어 requirements 는 비움, 머리 주석에 R- 없음). 본체는 임시 인스턴스: pg_dump tbox_re(읽기) → 운영 클러스터에 createdb -O tbox_owner tbox_f69_test → 복원(마이그레이션·grants 없음) → 복사본 + 운영 .env 세 줄 치환(DB_NAME·STORAGE_DIR·AUDIT_LOG_FILE) + 임시 quarantine/·log/ → php -S 127.0.0.1:8099. 운영 8082 요청 0. 그런데 운영에 **읽기**가 넷 있어 env=prod 로 둔다(결과가 운영 자료에 기대므로 캐시하지 않게): T6 운영 /var/log/tbox-v2/alerts.log 앞 889줄 sha256(sudo -n head — 시작·끝 대조) · T8 운영 tbox_re 의 살아 있는 infected 행 SELECT + 격리 폴더·저장소 sudo -n test · T10 운영 코드 sudo -n php scripts/alerts.php --dry-run(--state·--auth-log 는 임시 — 운영 상태 파일·alerts.log 무변경) · T5 앞뒤로 /var/backups/tbox-v2/.fail_count 읽기(불변 대조). 쓰기는 임시 DB·임시 폴더뿐: T2 가짜 감사 행 INSERT(행위자 claude_f69r·f69h·claude_f69p+시각 — 계정 행은 만들지 않음) 앞에 임시 DB 의 최근 2시간 감사 행 DELETE · T7 임시 DB files TRUNCATE CASCADE 뒤 감염 행 여섯 · 임시 사본 alerts.php·consistency_check.php 는 일반 사용자로 · verify_backup.sh(임시 사본)만 sudo -n bash 로 --backup-root 임시 폴더(/etc/tbox-v2/backup.key 를 root 로 못 읽으면 T5 SKIP). T9(playwright 없으면 SKIP)는 claude_admin01 로 브라우저 로그인(자격 sudo -n awk /etc/tbox-v2/seed-accounts.txt·qa-totp.txt — 코드는 늘 다음 30초 창을 기다린다) → /admin 경보 목록 배지·textContent·라이트·다크·390px 스크린샷, 같은 세션에서 2b: POST /api/users 넷(claude_f69new·qa_f69new+시각 → 400 reserved_prefix, claude_admin01 → already_exists, f69new+시각 → 201 — 임시 DB 에만 계정이 생김). 인자 [스크린샷 폴더](기본 ~/.claude/ui-shots/f69) · 환경 변수 F69_BASE(기본 v2.19.0 — T10 옛 코드 대조, git show 로 alerts.php·cli_bootstrap.php 를 꺼냄. 두 파일은 v2.19.0 과 7c0ec9c 가 같다). 덤프 /tmp/tbox_f69_dump.$$.sql(운영 전체 평문, 복원 뒤 sudo rm) — cleanup 에 덤프 삭제가 없다(1-A A-4 목록 밖). 이 시험이 치는 sudo psql·pg_dump 는 운영 cron alerts.php 의 AL-9 에 걸린다(임시 DB 는 claude-session, 운영 DB 읽기는 human — 시험 머리 주석 · 지시서 K-3). R-73 사전 검사(최근 10분 비-검토 행)는 note 로만 찍고 멈추지 않는다(운영 DB 에 쓰지 않는 시험). 포트 8099 는 community.stage7d1 과 같다(run.sh 는 한 번에 하나라 겹치지 않음 — 따로 동시에 돌리면 「포트 이미 쓰임」 exit 3). 회귀(f54·stage26·help_button·f68)는 이 스크립트가 돌리지 않는다. 2026-09-24 D-1(37332be — alerts.php AL-2 루프백 조건 + T2 기대값) **앞** 판으로 복제본에서 한 번 돌았다: 통과 98 · 실패 0 · 건너뜀 1(T8 은 늘 미검증 1 로 센다). 지금 판은 아직 안 돌았다. covers 에 public/assets/app.js 는 넣지 않음(이름으로 부르지 않음 — T9 가 화면으로 본다)."
     },
     {
       "id": "tbox.fetch_hosts",
@@ -1815,6 +1853,60 @@
       "notes": "임시 인스턴스(stage4d 와 같은 틀): pg_dump tbox_re(읽기) → 운영 클러스터에 createdb -O tbox_owner tbox_7c_test → 복원·마이그레이션·grants.sql → 복사본 + 운영 .env 세 줄 치환 → php -S 127.0.0.1:8097. 운영 8082 요청 0. 덤프 /tmp/tbox7c_dump.$$.sql(운영 전체 평문, 복원 뒤 sudo rm) — cleanup 에 덤프 삭제가 없다(1-A A-4 목록 10개 밖, 1a-held-A4.patch 에 없음 — 7단계 뒤 A-4 를 합칠 때 함께). REGRESS 는 기본 0(${REGRESS:-0}) — cmd 에 REGRESS=0 을 박아 물려받은 환경 변수로 회귀(다른 시험을 8082→임시로 sed 치환해 돌림)가 켜지지 않게 한다. browser_7c.py 를 부른다(playwright 없으면 SKIP). claude_ 검토 계정 다섯(F-71: claude_employee01·02·claude_manager01·claude_admin01·claude_guest01)으로 순차 로그인 — 운영 DB 덤프에 그 계정이 있어야 한다. php -r 로 src/bootstrap.php·src/community/routes.php·src/community/Doc.php 를 직접 부른다(서버 렌더러·호스트 판정). C:T-184 는 **임시 복사본**의 src/bootstrap.php 상수를 sed -i 로 켰다 끈다(저장소·운영 파일은 그대로). 임베드 주소(youtube 등)는 저장·렌더 문자열로만 쓰고 바깥 요청은 없다(원문 판단 — 읽기 화면 틀은 기본 끔, JS 렌더러 시험은 문서에 붙이지 않은 div 안). covers 의 version_restore.php 는 derive 가 ${VNUM:-1} 경로를 못 읽어 손으로 더함(POST 명시·라우트 하나). 머리 주석의 「T-33」은 커뮤니티 PRD 로드맵 번호라 requirements 에 넣지 않음. 운영 HEAD 에 조사표·1-A 뒤에 들어온 파일 — 원문으로 실음."
     },
     {
+      "id": "community.stage7d1",
+      "cmd": "REGRESS=0 bash tests/community/stage7d1.sh",
+      "module": "community",
+      "env": "temp-instance",
+      "status": "required",
+      "needs": [
+        "sudo",
+        "browser"
+      ],
+      "covers": [
+        "scripts/totp_code.php",
+        "db/community/grants.sql",
+        "scripts/security_lint.sh",
+        "public/index.php",
+        "src/Origin.php",
+        "db/migrations/2026-09-23_community_page_properties.sql",
+        "db/migrations/2026-09-23_community_owner_share.sql",
+        "db/migrations/2026-09-23_users_display_name.sql",
+        "db/migrations/2026-09-24_community_boards.sql",
+        "db/migrations/2026-09-24_community_discussion.sql",
+        "db/migrations/2026-09-25_community_databases.sql",
+        "db/migrations/2026-09-26_community_purge.sql",
+        "db/migrations/2026-09-27_community_templates.sql",
+        "db/migrations/2026-09-28_community_embeds.sql",
+        "src/community/handlers/admin_popular.php",
+        "src/community/handlers/board_pages_create.php",
+        "src/community/handlers/boards_create.php",
+        "src/community/handlers/boards_update.php",
+        "src/community/handlers/pages_create.php",
+        "src/community/handlers/pages_delete.php",
+        "src/community/handlers/pages_get.php",
+        "src/community/handlers/pages_hide.php",
+        "src/community/handlers/pages_list.php",
+        "src/community/handlers/pages_publish.php",
+        "src/community/handlers/pages_unpublish.php",
+        "src/community/handlers/pages_visibility.php",
+        "src/community/handlers/space_me.php",
+        "src/community/handlers/spaces_list.php",
+        "src/handlers/login.php",
+        "src/handlers/me.php",
+        "src/handlers/reauth.php"
+      ],
+      "requirements": [
+        "C:T-190",
+        "C:T-191",
+        "C:T-192",
+        "C:T-193"
+      ],
+      "risks": [],
+      "est_sec": 420,
+      "writes_prod": false,
+      "notes": "7-D1 많이 읽힌 문서(관리자). 임시 인스턴스(stage7c 와 같은 틀): pg_dump tbox_re(읽기) → 운영 클러스터에 createdb -O tbox_owner tbox_7d1_test → 복원·마이그레이션(목록 10줄에 2026-09-25_community_databases.sql 이 두 번 — 파일은 9개)·grants.sql → 복사본 + 운영 .env 세 줄 치환 → php -S 127.0.0.1:8099(tbox.f69 와 같은 포트 — run.sh 는 한 번에 하나라 겹치지 않음). 운영 8082 요청 0. 덤프 /tmp/tbox7d1_dump.$$.sql(운영 전체 평문, 복원 뒤 sudo rm) — cleanup 에 덤프 삭제가 없다(1-A A-4 목록 밖). REGRESS 는 기본 0(${REGRESS:-0}) — cmd 에 REGRESS=0 을 박아 물려받은 환경 변수로 회귀(다른 시험을 8082→임시로 sed 치환해 돌림)가 켜지지 않게 한다. claude_ 검토 계정 다섯(claude_employee01·02·claude_manager01·claude_admin01·claude_guest01)으로 순차 로그인(자격 sudo -n awk /etc/tbox-v2) + 브라우저 단계에서 claude_admin01 을 한 번 더(재인증 안 한 세션 — 셸 재인증 창 흐름). browser_7d1.py 를 부른다(playwright 없으면 SKIP) — 관리자 비밀번호를 SMOKE_A1_PW 환경 변수로 넘긴다. 임시 DB 에만 psql 로 직접 쓴다: community.page_views INSERT(사람 employee01 의 날짜별 조회 · qa_employee01 조회) · users UPDATE(employee02 → qaxemployee02 — 밑줄 이스케이프 확인). src/Origin.php 의 REVIEW_ACCOUNT_PREFIXES 와 admin_popular.php 의 NOT LIKE 두 줄을 grep 으로 대조(검토 계정 판정 한 곳). appq()(앱 계정 psql, 「C:T-59 전용」)·tapi·page_html·share·comment·mkdb·rows 등 앞 단계 도우미는 정의만 있고 부르지 않는다 — covers 에 넣지 않음. 머리 주석의 「N-34」·「J-6」은 커뮤니티 PRD 요구·결정 번호라 requirements 에 넣지 않음. 운영 HEAD 에 조사표·1-A 뒤에 들어온 파일 — 원문으로 실음."
+    },
+    {
       "id": "community.browser_smoke",
       "cmd": "python3 tests/community/browser_smoke.py",
       "module": "community",
@@ -2032,6 +2124,27 @@
       "est_sec": 120,
       "writes_prod": false,
       "notes": "부르는 셸: community.stage7c. 단독 실행 불가(인자 SITE UA 와 SMOKE_E1·SMOKE_A1·SMOKE_PE·SMOKE_RENDER 환경 변수를 부르는 셸이 넘긴다). 결과 줄 SMOKE_FAIL=n. 렌더러 JS(public/assets/community/doc-render.js 를 import)의 iframe 은 문서에 붙이지 않은 div 안에서만 만든다 — 바깥 요청 0(원문 판단). 운영 HEAD 에 조사표·1-A 뒤에 들어온 파일 — 원문으로 실음."
+    },
+    {
+      "id": "community.browser_7d1",
+      "cmd": "python3 tests/community/browser_7d1.py",
+      "module": "community",
+      "env": "temp-instance",
+      "status": "helper",
+      "needs": [
+        "browser"
+      ],
+      "covers": [
+        "src/community/handlers/home_page.php",
+        "src/community/handlers/admin_popular.php"
+      ],
+      "requirements": [
+        "C:T-193"
+      ],
+      "risks": [],
+      "est_sec": 120,
+      "writes_prod": false,
+      "notes": "부르는 셸: community.stage7d1. 단독 실행 불가(인자 SITE UA 와 SMOKE_A1·SMOKE_E1·SMOKE_TITLE 환경 변수가 필수 — 없으면 KeyError. SMOKE_M1·SMOKE_A1_STALE·SMOKE_A1_PW·SMOKE_SHOTS 는 있을 때만 그 단계). 결과 줄 SMOKE_FAIL=n. 관리자 비밀번호를 SMOKE_A1_PW 환경 변수로 받아 셸 재인증 창에 넣는다(1-B B-1 「비밀은 표준입력으로」의 대상). 의도한 재인증 403(/community/api/admin/popular) 한 건은 HTTP 오류 수에서 뺀다. 390px 가로 넘침 확인, 스크린샷은 SMOKE_SHOTS 가 있을 때만(l1-popular.png). 운영 HEAD 에 조사표·1-A 뒤에 들어온 파일 — 원문으로 실음."
     },
     {
       "id": "community.stage5a_handover_self",

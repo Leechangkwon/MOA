@@ -861,6 +861,18 @@ Admin 전용. 정책 `org.manage`(`Authz::canManageOrg` = Admin) 를 `KNOWN_POLI
 
 **일반 셸.** `shell_top.php` 의 관리 그룹(계정·조직·감사·휴지통·위키)을 없애고 Admin 에게만 「관리자 페이지」(`/admin`) 한 항목을 `can_admin`(`/api/me`, = `Authz::canReadWiki` 와 같은 Admin 판정 함수 `canAdmin`)로 연다. 비관리자 HTML 에는 항목 자체가 없다(기본 `hidden` 은 지금처럼 — 막는 것은 정책). 기존 관리 화면 경로는 그대로 두되 허브에서만 연결한다 — 위키·문서가 그 경로를 가리키고, 이미 재인증 대상이다.
 
+**경보 목록의 출처 배지 (F-69 ③, 2026-09-24 — 판정 표는 11.4).** `GET /api/admin/alerts` 는 줄의 `origin`·`title` 을 **그대로** 내려 준다 — 판정은 배치가 `src/Origin.php` 로 이미 했고 이 창구는 다시 판정하지 않는다. `origin` 은 넷(`Origin::VALUES`) 중 하나일 때만 내려 보내고, 그 밖(2026-09-24 전의 옛 줄 — 키 없음 — 또는 모르는 글자)은 `null` 이다. `title` 은 300자까지(`iconv_substr`), `evidence.origin_hint` 는 근거 안에 그대로다. 화면(`app.js` `alertOriginBadgeFor`)은 이 두 값만 보고 규칙 번호 옆에 배지를, 그 옆에 제목을 둔다:
+
+| 줄의 값 | 배지 | 클래스(DESIGN 2.2 — 새 클래스·색 0) |
+|---|---|---|
+| `origin` 없음(`null` — 옛 줄) | 「출처 표기 전」 | `.badge--off` |
+| `system` | 「시스템」 | `.badge--team` 재사용 — **색은 사용자 확인 대기** |
+| `claude-review` · `claude-session` | 「Claude」 | `.badge--internal` (감사 화면 F-71 과 같은 모양) |
+| `human` + `origin_hint: partial` | 「확인 필요」 | `.badge--scan-pending` |
+| `human` | 없음 | — |
+
+제목의 `[Claude] ` 앞머리도 서버가 붙인 글자다 — 화면이 판정해 덧붙이지 않는다. 배지·제목은 전부 `textContent` 로 넣고, 배지는 표시일 뿐 경보를 거르거나 숨기지 않는다(지시서 B 의 선택 항목 「사람·시스템만」 거르개는 넣지 않았다). 옛 줄은 고치지 않는다 — `alerts.log` 는 증거다.
+
 ### 5.15 권한 매트릭스 편집 — `GET/PATCH /api/admin/permissions` (PRD F-25 · Q-12 결정 · 17-2, 2026-09-12)
 
 **결정 배경.** 6.2-1 의 "앱 계정은 SELECT 만" 은 권한 상승 경로 차단의 핵심이었다. 사용자 결정(Q-12, "보안만 확보된다면 페이지에서")으로 편집을 허용하되 **그 핵심은 유지**한다 — 런타임 롤 `tbox_app` 은 여전히 SELECT 만이고, 쓰기는 **별도 롤 `tbox_perm`** 으로 **한 핸들러**에서만 한다. 다른 핸들러의 SQL 인젝션·결함으로는 여전히 표를 바꿀 수 없다(SECURITY R-60).
@@ -1809,6 +1821,7 @@ GRANT  USAGE, SELECT  ON SEQUENCE audit_logs_id_seq TO tbox_app;
 | `user.create|allow` | `{actor} 이(가) 계정 「{target}」 을(를) 만들었습니다 (역할·팀·사유는 상세 기록)` | 10단계 users (Admin) |
 | `user.create|deny|bad_request` | `{actor} 이(가) 계정 생성 요청을 잘못된 형식(아이디·비밀번호·역할·팀·사유)으로 보내 거부했습니다` | 10단계 |
 | `user.create|deny|already_exists` | `{actor} 이(가) 이미 있는 아이디 「{target}」 로 계정을 만들려 해서 거부했습니다` | 10단계 |
+| `user.create|deny|reserved_prefix` | `{actor} 이(가) 검토·시험 계정 전용 접두로 시작하는 아이디 「{target}」 로 계정을 만들려 해서 거부했습니다 (검토 계정은 seed_users.php 로만 만듭니다)` | 대기열 2b (2026-09-24, PRD F-71 ③) — `qa_`·`claude_` 접두(`Origin::isReviewAccount()` 한 곳). `already_exists` 검사 **뒤**라 이미 있는 아이디(검토 계정 포함)는 전처럼 `already_exists` |
 | `user.role_change|allow` | `{actor} 이(가) 계정 「{target}」 의 역할을 바꿨습니다 (이전 → 새 역할·사유는 상세 기록)` | 10단계 (detail.before/after/reason_text) |
 | `user.role_change|deny|bad_request` | `{actor} 이(가) 계정 「{target}」 의 역할 변경을 잘못된 형식(역할·팀·사유 없음)으로 요청해서 거부했습니다` | 10단계 |
 | `user.role_change|deny|self_change` | `{actor} 이(가) 자기 자신의 역할을 바꾸려 해서 거부했습니다 (관리자 권한 자기 부여·자기 강등 방지)` | 10단계 |
@@ -2049,8 +2062,13 @@ GRANT  USAGE, SELECT  ON SEQUENCE audit_logs_id_seq TO tbox_app;
 | `upload_reason` | 왜 | `invalid_file` 거부의 세부 사유(`ext_not_allowed`·`mime_mismatch`·`too_large`·`quota_exceeded`…) — Upload 검증 코드 그대로 | 핸들러 | `file.fetch` deny `invalid_file` (7단계 검토에서 등록, 8단계 이후 반영) |
 | `filters` | 어떻게 | 감사 로그 조회에 적용한 필터(키·값 객체). 값은 500자 절단 | 핸들러 | `audit.view` (8단계) |
 | `artifact` · `checksum` · `bytes` | 무엇을 | 백업 산출물 파일명·sha256·크기 | 배치 | `backup.run`·`backup.restore` (9단계) |
-| `checked` · `mismatches` | 왜 | 정합성 검사 건수와 불일치 목록(`stored_name`·종류, 최대 50건) | 배치 | `audit.integrity` (9단계) |
+| `checked` · `mismatches` | 왜 | 정합성 검사 건수와 불일치 목록(`stored_name`·종류, 최대 50건). 종류는 `missing`·`hash_mismatch`·`unreadable`·`orphan`·`orphan_purged` + F-69(2026-09-24) 감염 행 갈래 `infected_in_storage`·`quarantine_missing`·`quarantine_hash_mismatch`·`quarantine_unreadable`(11.4) | 배치 | `audit.integrity` (9단계) |
+| `quarantined` · `quarantine_orphan` · `trash_quarantine_missing` · `quarantine_readable` | 무엇을 | 정합성 검사의 격리 폴더 대조(F-69 C, 11.4): 격리 폴더에 제대로 있는 살아 있는 감염 행 수(정상) · 행이 없는 격리 파일 수(보고만 — 증거 보관소라 지우지 않는다) · 휴지통 감염 행인데 격리 폴더에 없는 수(보고만) · 격리 폴더를 읽었나(`true`/`false` — `false` 면 감염 행이 전부 `quarantine_missing` 이 된 이유다). **개수·참거짓만** — 파일 이름은 `mismatches` 목록에만 | 배치 | `audit.integrity` allow·error (consistency_check, F-69) |
 | `rule` · `evidence` | 왜 | 경보 규칙 번호와 근거(대상 계정·건수·기간) | 배치 | `alert.raised` (9단계) |
+| `rule_text` | 왜 | 경보 규칙의 사람 문장(규칙마다 코드 상수) — 경보 줄 `title` 의 재료. `scripts/alerts.php` 의 규칙 13개(`$raise` 자리 전부)에는 전부터 있었고, F-69(2026-09-24)로 AL-6(`consistency_check.php` · `audit_chain.php` 두 곳)·AL-8(`verify_backup.sh`)에도 붙었다 | 배치 | `alert.raised` 의 `evidence` 안 · `alerts.log` 줄의 `evidence` 안 |
+| `origin` | 누가 | 경보를 누가 일으켰나 — `human`·`system`·`claude-review`·`claude-session` 넷 중 하나(판정 표 11.4, `src/Origin.php`). `alerts.log` 줄의 최상위 `origin` 과 **같은 값**. 보여 주기·분류(F-70 즉시/하루 요약) 전용 — 권한·차단·기록 여부에 쓰지 않는다(SECURITY R-100) | 배치(`cli_raise_alert()` · `verify_backup.sh` 는 `"system"` 고정) | `alert.raised` detail **최상위**(`{rule, evidence, origin}`) · `alerts.log` 줄 최상위 (F-69) |
+| `title` (경보 줄) | 무엇을 | 사람이 읽는 경보 제목 — `Origin::title()`: `claude-*` 면 `[Claude] ` + `rule_text`, 아니면 `rule_text`(없으면 규칙 번호). **`alerts.log` 줄에만** 있고 감사 detail 에는 넣지 않는다(같은 값을 `rule_text`·`origin` 에서 다시 만들 수 있다) | `cli_raise_alert()` · `verify_backup.sh` | `alerts.log` 줄 최상위 (F-69) |
+| `origin_hint` | 누가 | `partial` 하나 — 계정(`qa_`·`claude_`)과 검토 표식 UA(`tbox-review/`) 중 **하나만** 맞음(화면 「확인 필요」). 해당 없으면 키가 없다 | 배치(`cli_raise_alert()` 가 evidence 에 넣는다) | `evidence` 안 — `alerts.log` 줄과 `alert.raised` detail 둘 다 (F-69) |
 | `step` | 어디서 | 배치가 **멈춘 단계** 이름 (`pg_dump`·`pg_restore`·`files_extract`·`consistency_check`…). 경로가 아니라 단계 이름이며 인자·비밀값은 넣지 않는다 | 배치 | `backup.run error`·`backup.restore error` (9단계 · 16-2) |
 | `window_minutes` | 어떻게 | 관리 기능 재인증 창의 길이(분, `Auth::REAUTH_MINUTES`). 나중에 창을 조정해도 "그때는 몇 분이었나" 를 로그만으로 알 수 있게 한다. 시각·세션 값이 아니다 | Auth::reauth | `auth.reauth allow` (16-1) |
 | `chain_prev` · `chain_hash` | 무엇을 | 감사 로그 파일 해시 체인: 직전 일자 마지막 해시 · 봉인한 날 파일의 sha256 (R-11). `chain_hash` 는 이름에 `hash` 가 들어가 `FORBIDDEN_DETAIL_KEYS` 부분 일치에 걸려 2026-09-12 까지 `[제거됨]` 으로 남고 있었다(실측) — 공개돼야 의미가 있는 무결성 증거이므로 `Audit::ALLOWED_DETAIL_KEYS` 에 정확 일치로 등록한다(13단계) | 배치 | `audit.integrity` (9단계) |
@@ -2355,6 +2373,50 @@ SELECT actor_id, count(*) FROM audit_logs
    AND happened_at > now() - interval '10 minutes'
  GROUP BY actor_id HAVING count(*) >= 5;
 ```
+
+**경보의 출처 `origin` — 「누가 일으켰나」 (F-69, 2026-09-24 — 지시서 `docs/f69-alert-origin-directive.md` A·B, 결정 K-1~K-5, SECURITY R-100)**
+
+`alerts.log` 889줄(2026-09-24 실측) 가운데 약 80% 가 검토 계정(`qa_`)·AI 세션의 `sudo psql` 에서 나와 진짜 경보가 묻혔다. 사용자 결정은 「지우지 않고 Claude 가 한 것임을 이름에 표기」다. 그래서 **경보를 지우거나 끄거나 문턱을 바꾸지 않는다** — 발동 조건·중복 억제(키 `규칙|대상` 그대로)는 전과 같고, 발동한 줄마다 `origin` 을 붙일 뿐이다. 판정은 `src/Origin.php` **한 곳**(순수 함수 — DB·파일·네트워크에 닿지 않아 `php -r` 로 단위 시험된다)이고, 배치(`alerts.php`·`consistency_check.php`·`audit_chain.php`)는 규칙마다 **재료**(대상 계정·UA 표식 집계·sudo 명령)만 SELECT·파싱에 더해 넘긴다.
+
+| 값 | 뜻 | 화면 배지(5.14) | F-70(나중 — 이번엔 보내지 않는다) |
+|---|---|---|---|
+| `human` | 사람 — 또는 **가려낼 수 없는 것** | 없음(한쪽만 맞으면 「확인 필요」) | 즉시 |
+| `system` | 행위자가 없는 배치 판정(정합성·백업·감사 끊김) — K-2 로 더함 | 「시스템」 | 즉시 |
+| `claude-review` | 검토 계정 **그리고** 검토 표식으로 앱에서 한 행동 | 「Claude」 | 하루 요약 |
+| `claude-session` | AI 세션이 서버에서 임시·시험 DB **만** 다룬 sudo 명령(AL-9) | 「Claude」 | 하루 요약 |
+
+규칙별 판정 (구현한 대로 — 지시서 A-1 표 + 구현 보고 결정)
+
+| 규칙 | 재료 | origin |
+|---|---|---|
+| AL-1 · AL-10 · AL-12 · AL-13 · AL-18 · AL-20 (묶음 = 행위자) | 묶음의 `actor_name` + 집계 SQL `bool_and(COALESCE(user_agent, '') LIKE :review_ua)`. `:review_ua` 는 `Origin::reviewMarkLikePattern()`(= `tbox-review/%`, LIKE 특수 글자 이스케이프)을 **바인딩**한다 — 접두를 SQL 에 베끼지 않는다. UA 가 NULL 인 행은 표식 없음으로 센다(`bool_and` 는 NULL 을 건너뛰므로 `COALESCE`) | `Origin::ofGroup()` → `classify()`: 계정이 `qa_`·`claude_` **그리고** 모든 행이 표식 → `claude-review` · 한쪽만 → `human` + `origin_hint: partial` · 둘 다 아님 → `human` |
+| AL-2 (묶음 = 출발 IP) | 실패 행들이 겨눈 계정 **전부**(`actor_name`, 없으면 `target_name` — `string_agg(DISTINCT …, chr(10))`) + 모든 행의 UA 표식 + **출발지가 이 서버 자신(`127.0.0.1`·`::1`)인가** | 전부 검토 계정 그리고 전부 표식 **그리고 루프백**일 때만 `claude-review`. 실패 로그인의 대상 이름과 UA 는 둘 다 바깥 공격자가 정하므로, `claude_admin01` 을 겨누며 표식을 흉내 내는 바깥 무차별 대입은 `human` + partial 이다(검토 시험은 늘 127.0.0.1 로 들어온다). **이 루프백 조건은 구현 보고 결정 D-1 — 사용자 확인 대기** |
+| AL-5 (감사 행 하나) | 그 행의 `actor_name`·`user_agent` | `Origin::ofAppAction()` — 같은 「그리고」 |
+| AL-19 (감염 파일 하나) | 그 파일을 **올린** 감사 행(`file.upload`·`file.upload_exec`·`file.fetch` allow, 같은 `target_id` 의 첫 행 — `LEFT JOIN LATERAL`)의 actor·UA. 검사 행은 배치가 남겨 행위자가 없기 때문이다 | 같은 「그리고」. 올린 행을 못 찾으면(옛 파일) `human`. f54 의 EICAR 시험(`claude_employee01` + 표식) → `claude-review` |
+| AL-21 (실행 파일 압축본 하나) | `file.upload_exec allow` 행들의 actor·UA | 같은 「그리고」 |
+| AL-6 · AL-7 · AL-8 | 행위자 없음 | `system` (`Origin::ofFixedRule()`) |
+| AL-3 (새 출처 SSH) | OS 계정@IP | **늘 `human`** — SSH 로 들어오는 것은 사람이다(AI 세션은 이 VM 안에서 돈다). 서버 침입의 첫 신호가 하루 요약으로 밀리지 않게 |
+| AL-9 (위험한 sudo) | `al_scrub_command()` 로 가린 명령(앞 200자) — 사람과 AI 세션이 같은 OS 계정(`changkwon`)을 쓰므로 계정이 아니라 **명령이 겨눈 DB** 로만 가른다 | `Origin::ofSudoCommand()` — 겨눈 DB 가 **전부** 임시·시험 DB 이름일 때만 `claude-session`. 이름 규칙(코드 상수 한 줄): `_test`·`_test2`·`_scratch` 로 끝나거나 `qcheck_` 로 시작하거나 정확히 `comm_check`(소문자·숫자·밑줄, 63바이트 이하). 조금이라도 모호하면 `human`: 첫 낱말(basename)이 `psql`·`pg_dump`·`pg_restore`·`dropdb`·`createdb` 가 아님(`rm`·`find -delete`·`truncate`·`chattr`·`sh -c`·`env` 감싸개) · psql 에 `-d`/`--dbname` 이 없음 · psql 에 역슬래시 메타 명령(`\c`·`\!`·`\copy`)이나 DB 밖에 닿는 낱말(`DATABASE`·`ROLE`·`USER`·`COPY`·`DO`·`EXECUTE`·`dblink`·`pg_read_*` …) · `pg_restore -C` · `createdb -T <운영>` · 겨눈 DB 값이 이름 모양이 아님(`postgresql://…` 접속 문자열 등) · 200자에서 잘림. **`tbox_re`(운영)를 겨누면 읽기 쿼리라도 `human`**(K-3 — 판정을 넓히지 않는다). `psql -f 파일`·표준입력의 **내용**은 auth.log 에 없어 보지 못한다 — 그래서 psql 에 `-f`/`--file` 이 있거나 `-c`/`--command` 가 **없으면**(표준입력 스크립트) `human`(독립 검토 M-1) · psql `-o`/`-L`(postgres 권한으로 파일 쓰기) `human`(L-2) · 첫 낱말이 경로면 `/usr/bin/`·`/bin/`·`/usr/lib/postgresql/<판>/bin/` 일 때만 도구로 봄(`/tmp/psql` → `human`, L-1). 분류일 뿐 차단이 아니다 |
+| 옛 규칙 번호(AL-14·16·17 …) | — | 판정하지 않는다(이제 발동하지 않는다) |
+
+**줄 모양.** `{raised_at, rule, evidence, dispatch, request_id, origin, title}` — 앞 다섯 키는 그대로라 옛 파서가 그대로 읽는다. `title` 은 `claude-*` 면 `[Claude] ` + `evidence.rule_text`, 아니면 `rule_text`(없으면 규칙 번호) — `Origin::title()` 한 곳에서 만든다. `origin_hint`(`partial`)는 `evidence` 안에 둔다. 감사 `alert.raised` detail 에도 같은 `origin` 이 들어간다(`{rule, evidence, origin}`, 7.5). `cli_raise_alert(rule, evidence, origin, hint)` 는 값을 **고르지 않고** 모양만 본다 — 넷 밖의 값이나 `partial` 밖의 hint 는 예외다(조용히 `human` 으로 바꾸지 않는다). `verify_backup.sh` 가 직접 쓰는 AL-8 줄도 같은 키(`request_id` 만 없다) — `origin:"system"`, `title` = `rule_text`(「백업 검증 2회 연속 실패 — 복구 능력 상실」), 경보 로그 경로는 PHP 와 같은 규칙(저장소 `.env` 의 `AUDIT_LOG_FILE` 디렉터리 + `alerts.log`, 못 읽으면 `/var/log/tbox-v2/alerts.log`)이고, 시험용 인자 `--backup-root <절대 경로 디렉터리>` 하나가 생겼다(연속 실패 횟수 파일도 그 안 — 시험이 운영 횟수를 밀지 않게). `alerts.php --dry-run` 출력은 옛 줄 끝에 ` origin=…`(한쪽만이면 ` hint=partial`)만 붙는다 — 발동 목록이 옛 코드와 같은지 f69.sh T10 이 대조한다. **2026-09-24 전의 옛 줄(889줄)은 고치지 않는다**(append-only 증거) — 화면은 그 줄을 「출처 표기 전」으로 보이고, 옛 줄 분류 보고(`--classify-history`)는 K-4 로 넣지 않았다.
+
+★ `origin` 은 **보여 주기와 분류(F-70 즉시/하루 요약)에만** 쓴다. 경보를 남길지·감사를 남길지·중복 억제는 origin 과 무관하고(어떤 값이든 두 곳에 똑같이 남는다), 권한·차단에도 쓰지 않는다 — Authz·Auth·Audit 은 `Origin.php` 를 읽지 않는다. 예외 하나는 `users_create.php` 가 `isReviewAccount()` **이름 판정만** 읽어 사람 계정 이름에 검토 접두를 못 쓰게 막는 것(대기열 2b, 7.4 `user.create deny reserved_prefix`) — 판정이 아니라 「이름 예약」이고, 접두 목록을 두 벌로 두지 않으려고 같은 함수를 쓴다.
+
+**알려진 틈 — 이번에 고치지 않음(별도 과제).** AL-9 의 **발동** 정규식 `(^|/|\s)(psql|pg_dump|pg_restore|dropdb|truncate|chattr)\b|(^|\s)rm\s|find\b.*-delete` 는 auth.log 의 `COMMAND=` 가 늘 절대 경로라서 `COMMAND=/usr/bin/rm -rf …` 를 잡지 못한다(`rm` 앞 글자가 `/`). F-69 이전(16단계)부터의 모양이고 F-69 는 발동 조건을 바꾸지 않는다(경보 규칙 변경 금지). 그래서 f69.sh T3 은 「DB 이름 없는 명령 → `human`」 을 `find -delete` 로 확인하고, `rm` 줄은 발동했는지만 적는다.
+
+**AL-6 — 격리된 감염 파일을 분실로 세지 않는다 (F-69 C, `consistency_check.php`).** 전에는 [1] 이 `files` 의 `stored_name`·`alive`·`purged` 만 읽고 [2] 가 저장소만 훑어서, `scan_pending.php` 가 격리 폴더로 **옮긴**(삭제 아님, F-54 ②) 살아 있는 `infected` 행을 「저장소에 없음(`missing`)」으로 셌다 — 운영 3건, 09-17·09-22·09-23 의 매일 02:00 오탐. 이제 격리 폴더 경로는 `cli_quarantine_dir()`(`scripts/lib/cli_bootstrap.php`) **한 곳**이다: `dirname(Storage::baseDir()) . '/quarantine'` — 운영에서는 옛 상수와 같은 `/var/lib/tbox-v2/quarantine`, 임시 인스턴스(`STORAGE_DIR` = 임시 폴더)에서는 그 옆이라 운영 밖에서 시험된다. `scan_pending.php`(옮기기 — 상수 `QUARANTINE_DIR` 을 없앴다)와 `consistency_check.php`(대조 — 읽기만)가 같은 함수를 쓴다. [1] SELECT 에 `scan_status` 를 더하고, [2-2] 격리 폴더의 파일 이름을 한 층만 훑는다(폴더가 없거나 못 읽으면 빈 것으로 본다 → 살아 있는 감염 행이 전부 `quarantine_missing` 이 되어 경보가 난다 — 조용히 넘어가지 않는다, detail `quarantine_readable:false`).
+
+| 행 | 격리 폴더 | 저장소 | 결과 |
+|---|---|---|---|
+| 살아 있음 + `infected` | 있음 | 없음 | **정상** — `quarantined` 로 센다. sha256 을 대조한다(바이트를 읽기만, 열거나 실행하지 않는다) — 다르면 불일치 `quarantine_hash_mismatch`(격리 중 변조), 못 읽으면 `quarantine_unreadable` |
+| 살아 있음 + `infected` | (무관) | 있음 | 불일치 `infected_in_storage` — 옮기기 실패, 감염 바이트가 서비스 폴더에 남았다 |
+| 살아 있음 + `infected` | 없음 | 없음 | 불일치 `quarantine_missing` |
+| 휴지통 + `infected` | 없음 | — | **보고만** `trash_quarantine_missing` 개수(휴지통 규칙과 같이) |
+| `pending` · `clean` | — | — | 옛 규칙 그대로 |
+| (행 없음) | 있음 | — | **보고만** `quarantine_orphan` 개수 — 격리 폴더는 증거 보관소라 지우지 않는다. [4] 고아 판정은 전처럼 저장소만 |
+
+AL-6 줄에는 `rule_text`(「정합성 검사에서 누락·sha256 불일치·고아 파일 발견」)와 origin `system` 이 붙는다. `audit_chain.php` 의 AL-6 두 곳(검산 실패 · 이미 닫힌 날 해시가 달라짐)도 각자 `rule_text` + `system`. 감사 `audit.integrity` detail 에 `quarantined`·`quarantine_orphan`·`trash_quarantine_missing`·`quarantine_readable` 이 더해진다(7.5). 운영 확인은 쓰기 없이 한다 — 운영 DB 를 **읽어** 살아 있는 `infected` 행이 전부 격리 폴더에 있는지 SQL + `ls` 로 재현하고(f69.sh T8), 실제 결과는 적용 **다음 날 02:00** 배치의 `audit.integrity` 행으로 본다. `tests/f54.sh` 는 EICAR 격리 **뒤 운영에서 `consistency_check.php` 를 한 번** 돌려 그 파일이 `missing`·격리 불일치로 세어지지 않는지 본다 — 이 한 번은 운영 감사에 `audit.integrity` **1행**을 더하고, 그때 불일치가 나오면 남는 AL-6(`system`)은 시험 소음이 아니라 운영의 **진짜** 불일치다.
 
 ### 11.5 운영 캘린더 — PRD S-11-B
 

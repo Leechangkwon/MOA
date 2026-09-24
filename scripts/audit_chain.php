@@ -259,7 +259,12 @@ if (cli_flag($argv, 'verify')) {
         'target_name' => 'audit_chain_verify',
         'detail'      => ['checked' => $checked, 'mismatches' => $bad],
     ]);
-    cli_raise_alert('AL-6', ['source' => 'audit_chain_verify', 'broken' => $bad]);
+    // origin `system` — 행위자 없는 배치 판정 (F-69 A-1)
+    cli_raise_alert('AL-6', [
+        'rule_text' => '감사 로그 해시 체인 검산 실패 — 닫힌 날의 연결·해시가 어긋남',
+        'source'    => 'audit_chain_verify',
+        'broken'    => $bad,
+    ], Origin::SYSTEM);
     cli_warn(sprintf('결과: 실패 — 어긋난 날 %d개. 경보 AL-6 을 남겼다', count($bad)));
     exit(TBOX_CLI_MISMATCH);
 }
@@ -468,7 +473,13 @@ if ($found !== null) {
                 'chain_hash' => $hash,
             ],
         ]);
-        cli_raise_alert('AL-6', ['source' => 'audit_chain', 'date' => $date, 'kind' => 'closed_day_changed']);
+        // origin `system` — 행위자 없는 배치 판정 (F-69 A-1)
+        cli_raise_alert('AL-6', [
+            'rule_text' => '이미 닫힌 날의 감사 로그 해시가 달라짐 — 변조 의심',
+            'source'    => 'audit_chain',
+            'date'      => $date,
+            'kind'      => 'closed_day_changed',
+        ], Origin::SYSTEM);
         cli_warn(sprintf('%s 는 이미 닫힌 날인데 해시가 달라졌다 — 경보 AL-6. 체인은 고치지 않는다.', $date));
         exit(TBOX_CLI_MISMATCH);
     }

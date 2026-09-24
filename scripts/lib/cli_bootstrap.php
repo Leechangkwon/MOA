@@ -31,6 +31,9 @@ if (PHP_SAPI !== 'cli') {
 }
 
 require_once dirname(__DIR__, 2) . '/src/bootstrap.php';
+// F-69 — 경보 한 줄마다 붙이는 「누가 일으켰나(origin)」 판정 한 곳. 웹 bootstrap 은 이 파일을 싣지 않는다
+// (읽는 곳이 감사 화면 핸들러뿐이라 그쪽이 직접 싣는다) — 경보 배치는 모두 여기를 거치므로 여기서 싣는다.
+require_once dirname(__DIR__, 2) . '/src/Origin.php';
 
 /** 배치 종료 코드 — 셸 스크립트·cron 이 이 값으로 성공·실패를 가른다 */
 const TBOX_CLI_OK        = 0;   // 정상
@@ -146,14 +149,40 @@ function cli_write_private(string $path, string $contents): void
  * 경로(proc_open·shell_exec 류)를 앱 코드에 만들지 않기 위해서다 (PRD S-09, 보안 린트 금지 패턴).
  * 값이 채워져 있으면 "보낼 곳이 설정돼 있으나 이 버전은 보내지 않는다" 를 로그에 함께 남긴다.
  *
- * @param string               $rule     AL-1 … AL-12
- * @param array<string,mixed>  $evidence 근거 (대상 계정·건수·기간 등). ARCH 7.5 evidence 키
+ * F-69 (PRD F-69 ①~④, 지시서 A-3) — 줄마다 **origin**·**title** 을 더한다.
+ *   `{raised_at, rule, evidence, dispatch, request_id, origin, title}` — 앞 다섯 키는 그대로다(옛 줄과 같은 파서).
+ *   origin  Origin::VALUES 넷 중 하나. 부르는 쪽이 규칙별 판정(src/Origin.php)을 거쳐 넘긴다 — 이 함수는
+ *           값을 **고르지 않고** 모양만 본다(넷 밖이면 예외 — 조용히 `human` 으로 바꾸지 않는다).
+ *   title   `claude-*` 면 `[Claude] ` + evidence.rule_text, 아니면 rule_text (Origin::title 한 곳).
+ *           rule_text 가 없으면 규칙 번호를 쓴다.
+ *   origin_hint(`partial` = 계정·표식 중 하나만 맞음)는 **evidence 안**에 넣는다(화면 「확인 필요」).
+ *   감사 `alert.raised` detail 에도 같은 origin 을 넣는다.
+ * ★ origin 은 보여 주기와 분류(F-70 즉시/하루 요약)에만 쓴다. 경보를 남길지·감사를 남길지는 origin 과
+ *   무관하다 — 어떤 값이든 두 곳에 똑같이 남는다 (F-69 금지 패턴).
+ *
+ * @param string               $rule       AL-1 … AL-21
+ * @param array<string,mixed>  $evidence   근거 (대상 계정·건수·기간 등). ARCH 7.5 evidence 키
+ * @param string               $origin     Origin::VALUES 중 하나
+ * @param string|null          $originHint Origin::HINT_PARTIAL 또는 null
  */
-function cli_raise_alert(string $rule, array $evidence): void
+function cli_raise_alert(string $rule, array $evidence, string $origin, ?string $originHint = null): void
 {
     if (preg_match('/^AL-[0-9]{1,2}$/', $rule) !== 1) {
         throw new RuntimeException('경보 규칙 번호 형태가 아닙니다: ' . $rule);
     }
+    if (!Origin::isValue($origin)) {
+        throw new RuntimeException('경보 origin 값이 아닙니다: ' . $origin);
+    }
+    if ($originHint !== null && $originHint !== Origin::HINT_PARTIAL) {
+        throw new RuntimeException('경보 origin_hint 값이 아닙니다: ' . $originHint);
+    }
+    if ($originHint !== null) {
+        $evidence['origin_hint'] = $originHint;
+    }
+    $ruleText = isset($evidence['rule_text']) && is_string($evidence['rule_text']) && $evidence['rule_text'] !== ''
+        ? $evidence['rule_text']
+        : $rule;
+    $title = Origin::title($origin, $ruleText);
 
     $dispatch = Env::getOrEmpty('ALERT_COMMAND') === '' ? 'log_only' : 'configured_not_sent';
 
@@ -163,6 +192,8 @@ function cli_raise_alert(string $rule, array $evidence): void
         'evidence'   => $evidence,
         'dispatch'   => $dispatch,
         'request_id' => TBOX_REQUEST_ID,
+        'origin'     => $origin,
+        'title'      => $title,
     ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
     if ($line === false) {
         throw new RuntimeException('경보를 직렬화할 수 없습니다');
@@ -177,6 +208,20 @@ function cli_raise_alert(string $rule, array $evidence): void
     Audit::allow('alert.raised', [
         'target_type' => 'system',
         'target_name' => $rule,
-        'detail'      => ['rule' => $rule, 'evidence' => $evidence],
+        'detail'      => ['rule' => $rule, 'evidence' => $evidence, 'origin' => $origin],
     ]);
+}
+
+/**
+ * 감염 파일을 옮겨 두는 격리 폴더 — **한 곳** (PRD F-54 ②, F-69 C-2).
+ * 저장소(`STORAGE_DIR`)의 **형제** `quarantine` 이다 — Storage::tmpDir() 와 같은 규칙.
+ * 운영에서는 `/var/lib/tbox-v2/storage` 의 부모라 옛 상수 `/var/lib/tbox-v2/quarantine` 과 같은 경로이고,
+ * 임시 인스턴스(STORAGE_DIR=임시 폴더)에서는 그 옆을 가리켜 격리·정합성 흐름을 운영 밖에서 시험할 수 있다.
+ * 쓰는 곳: scan_pending.php(옮기기) · consistency_check.php(대조 — 읽기만).
+ * realpath 를 하지 않는다 — 폴더가 없으면 부르는 쪽이 is_dir() 로 알아채야 한다(scan_pending 은 `quarantine_missing`).
+ * 경로에 요청 값이 섞이지 않는다(설정값 + 고정 이름).
+ */
+function cli_quarantine_dir(): string
+{
+    return dirname(Storage::baseDir()) . '/quarantine';
 }

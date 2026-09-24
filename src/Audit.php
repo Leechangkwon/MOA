@@ -502,6 +502,8 @@ final class Audit
         'user.create|allow'                       => '{actor} 이(가) 계정 「{target}」 을(를) 만들었습니다 (역할·팀·사유는 상세 기록)',
         'user.create|deny|bad_request'            => '{actor} 이(가) 계정 생성 요청을 잘못된 형식(아이디·비밀번호·역할·팀·사유)으로 보내 거부했습니다',
         'user.create|deny|already_exists'         => '{actor} 이(가) 이미 있는 아이디 「{target}」 로 계정을 만들려 해서 거부했습니다',
+        // 대기열 2b (2026-09-24, PRD F-71 ③) — `qa_`·`claude_` 는 검토 계정 전용 접두. 검토 계정은 seed_users.php 로만 만든다.
+        'user.create|deny|reserved_prefix'        => '{actor} 이(가) 검토·시험 계정 전용 접두로 시작하는 아이디 「{target}」 로 계정을 만들려 해서 거부했습니다 (검토 계정은 seed_users.php 로만 만듭니다)',
         'user.role_change|allow'                  => '{actor} 이(가) 계정 「{target}」 의 역할을 바꿨습니다 (이전 → 새 역할·사유는 상세 기록)',
         'user.role_change|deny|bad_request'       => '{actor} 이(가) 계정 「{target}」 의 역할 변경을 잘못된 형식(역할·팀·사유 없음)으로 요청해서 거부했습니다',
         'user.role_change|deny|self_change'       => '{actor} 이(가) 자기 자신의 역할을 바꾸려 해서 거부했습니다 (관리자 권한 자기 부여·자기 강등 방지)',

@@ -35,7 +35,8 @@ declare(strict_types=1);
  *   inode 를 잠그는 창이 생긴다.
  *
  * ── 격리는 삭제가 아니다 (PRD F-54 ②)
- *   감염 파일은 `/var/lib/tbox-v2/quarantine/<stored_name>` 으로 **옮긴다**. 같은 파일시스템이라
+ *   감염 파일은 격리 폴더(`cli_quarantine_dir()` — 운영 `/var/lib/tbox-v2/quarantine`)의 `<stored_name>` 으로
+ *   **옮긴다**. 같은 파일시스템이라
  *   `rename` 은 원자적이고 바이트를 복사하지 않는다. 행은 그대로 남고 `deleted_at` 도 건드리지
  *   않는다 — 누가 언제 무엇을 올렸는지가 증거다(PRD S-07). 되살리는 창구는 없다(수동).
  *
@@ -58,8 +59,7 @@ require_once __DIR__ . '/lib/cli_bootstrap.php';
 
 /** 동시 실행 방지 잠금 (ARCH 5.28 [1]) */
 const SCAN_LOCK_FILE = '/var/lib/tbox-v2/scan.lock';
-/** 감염 파일을 옮겨 두는 곳 — 0750 tbox-php, 웹 루트 밖, open_basedir 안 (deploy/install.sh) */
-const QUARANTINE_DIR = '/var/lib/tbox-v2/quarantine';
+/* 감염 파일을 옮겨 두는 곳은 상수가 아니라 cli_quarantine_dir() 한 곳이다 — 아래 [3] 바로 앞 $quarantineDir (F-69 C-2) */
 /** 기본 스캐너 (배포판 패키지 clamav. clamav-daemon 은 설치하지 않는다 — R-86) */
 const CLAMSCAN_DEFAULT = '/usr/bin/clamscan';
 /** 격리 파일 권한 — 저장소 파일과 같다(0640 tbox-php). rename 은 권한을 보존하지만 못 박아 둔다 */
@@ -199,6 +199,15 @@ function scan_fail(array $row, string $why): void
     ]);
 }
 
+/*
+ * 격리 폴더 — 0750 tbox-php, 웹 루트 밖, open_basedir 안 (deploy/install.sh).
+ * F-69 C-2 (2026-09-24): 경로는 상수가 아니라 **cli_quarantine_dir() 한 곳**에서 받는다(저장소의 형제
+ * `quarantine`). 운영에서는 옛 상수와 같은 `/var/lib/tbox-v2/quarantine` 이고, 정합성 검사
+ * (consistency_check.php)가 같은 함수로 같은 폴더를 본다 — 두 곳이 어긋나 격리 파일을 「분실」로 세지 않게.
+ * 대기 0건·검사 꺼짐이면 여기까지 오지 않는다(저장소에 닿지 않고 끝나는 옛 동작 그대로).
+ */
+$quarantineDir = cli_quarantine_dir();
+
 foreach ($rows as $row) {
     try {
         $path = Storage::pathFor((string) $row['stored_name']);
@@ -223,7 +232,7 @@ foreach ($rows as $row) {
          * ② 그 밖(사람이 손으로 지웠다·저장소 사고) — 지금처럼 `file_missing` 으로 남긴다.
          *   상태는 `pending` 그대로이며 정합성 검사(consistency_check)가 볼 몫이다.
          */
-        $q = QUARANTINE_DIR . '/' . basename($path);
+        $q = $quarantineDir . '/' . basename($path);
         if (is_file($q)) {
             try {
                 $db->begin();
@@ -367,8 +376,8 @@ foreach ($byPath as $path => $row) {
             // $path 는 위 [3] 에서 pathFor() 를 통과한 값이라 이름이 `UUID.확장자` 형태임이
             // 보장돼 있고(STORED_RE), basename 을 쓰면 DB 값이 어떻든 격리 폴더 밖으로 나갈 수
             // 없다 — 사용자 입력이 경로에 닿지 않는다 (ARCH 13장 체크리스트).
-            $dest = QUARANTINE_DIR . '/' . basename($path);
-            if (!is_dir(QUARANTINE_DIR)) {
+            $dest = $quarantineDir . '/' . basename($path);
+            if (!is_dir($quarantineDir)) {
                 throw new RuntimeException('quarantine_missing');
             }
             if (!@rename($path, $dest)) {

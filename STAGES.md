@@ -65,6 +65,8 @@
 | **28** | t-box 를 `/tbox/` 아래로(base-path) + 루트 `/` Qaredi 런처 + 옛 주소 308 — 강사 지시 2026-09-21 · 사용자 결정 2026-09-22(Qaredi C). 설계 `../launcher/ARCHITECTURE.md` | ✅ 구현 2026-09-22 (Opus, 재지시 1회) | ✅ 2026-09-22 | ✅ 2026-09-22 (Q:T-1~9 · 회귀 7종 통과 수 불변 · SECURITY 7장) | ⚠ 사용자 확인 대기 (Q:T-10 PC 프로그램·브라우저) | `7d9362a` · 발행 **v2.0.0** `ecb7e30` |
 | **F-65** | 실행 파일이 든 압축본의 관리자 확인 업로드·확인 다운로드 — 요청마다 비밀번호+OTP(올릴 때·받을 때)·확인 문구·경고 배지·공유/토큰/등급 변경 금지·AL-21 (Q-23, 사용자 결정 2026-09-21) | ✅ 구현·검토 | ✅ 2026-09-21 (Opus 2단계, 후속 1회) | ✅ 2026-09-21 (T-77 Fable 재실행 106/0/0 · f54 61/0/2 · api_upload 27/0/0) | ⚠ 대기(브라우저로 `x.php` 든 zip 업로드) | `777ffe1` · v1.15.0 `dadcc03` |
 | F-71 | 검토·시험 계정을 `claude_` 이름으로 — 계정 5개(`seed_users.php --claude-only`) · 첫 로그인 절차를 창구로 마치는 CLI(`scripts/review_account_setup.php`) · 「검토 계정」 판정 `qa_` **또는** `claude_` 한 벌(`tests/lib/review_accounts.sh`, 시험 19개) · 감사 화면 「Claude」 배지(`src/Origin.php`, 계정 **그리고** UA) — 사용자 결정 2026-09-24 | ◐ 구현(복제본) | ✅ 2026-09-24 (claude, 복제본 — 정적 검사만) | ⚠ 대기 | ⚠ 대기 | 커밋 전 |
+| F-69 | 경보에 「누가 일으켰나」 — `origin` 넷(`human`·`system`·`claude-review`·`claude-session`, 판정 `src/Origin.php` 한 곳, 계정 **그리고** UA) · 제목 `[Claude]` · 관리자 경보 목록 배지 · AL-6 격리 파일 오탐 수정(`cli_quarantine_dir()`) · 대기열 2b 사람 계정의 검토 접두 예약 — 사용자 결정 2026-09-24 | ◐ 구현(복제본) | ✅ 2026-09-24 (claude, 복제본 — 정적 검사 + `tests/f69.sh` D-1 앞 판 98/0/1, 지금 판 재실행 대기) | ⚠ 대기 | ⚠ 대기 (D-1 AL-2 루프백 · 「시스템」 배지 색 확인 포함) | 복제본 커밋 `00f442d`(운영 v2.20.0+1b 위, 미반영) |
+| 대기열 1b | 시험 규격화(점검 봇 1-A) — `tests/lib/common.sh`·`results.py`·`selftest.sh`(+fixtures)·`tests/run.sh`·`tests/catalog.json` · `stage26.sh`·`f52.sh` 끝부분 종료 코드(실패인데 rc 0 이던 것) | ✅ 합침 | ✅ www-9e(점검 봇 세션) 작성·독립 검토 | ✅ 2026-09-24 claude 확인(`tests/` 밖 0 · selftest 195/0 · `run.sh --select env:static` 2/0) | — (시험만) | `7c0ec9c` · 발행 없음 |
 
 ---
 
@@ -2424,6 +2426,60 @@ HTTP 시험(T-77 (a)~(e))은 **미실행** — 운영 DB 에 `files.exec_content
 - `claude_guest01` 만료 = 만든 때 + 90일 — **적용한 날 이 절에 날짜를 적고** 2주 전에 알린다(K-2). 연장은 Admin 창구(F-10), 사유와 함께.
 - `qa_f64_1789961456` 은 건드리지 않는다 — 보고만(K-3).
 - `seed_users.php` 는 감사 기록을 남기지 않는다 → F71-T2 의 「계정 생성」 행은 0 이 정상(지시서 A 의 대안 — Admin 창구로 만들면 남는다 — 과 다른 점).
+
+### F-69 — 경보에 「누가 일으켰나(origin)」 표기 · AL-6 격리 파일 오탐 수정 (+ 대기열 2b 검토 접두 예약) (T: 지시서 D 표 F69-T1~T10) — 착수 2026-09-24
+
+> 지시서: `docs/f69-alert-origin-directive.md`(확정 2026-09-24, 결정 K-1~K-5). 근거: PRD **F-69** ①~⑤ · F-54 ②(격리) · F-71 ③④ · 7.11 S-11-A · ARCH **11.4**(판정 표·AL-6 격리 갈래) · **5.14**(경보 배지) · 7.4 · 7.5 · SECURITY **R-100**(새) · R-73 · R-86. 대기열 2b(사람 계정 이름의 검토 접두 예약)를 같은 커밋에 실었다.
+> 배경(2026-09-24 실측, `alerts.log` 889줄 읽기만): AL-10 381 · AL-9 135 · AL-7 105 · AL-14 100(옛 구매 규칙) · AL-1 74 … — 앱 규칙의 대상은 거의 전부 `qa_`, AL-9 는 사람과 AI 세션이 같은 OS 계정 `changkwon` 이라 **계정으로 못 가르고 명령이 겨눈 DB 로만** 가른다. AL-6 은 09-17·09-22·09-23 에 격리된 감염 파일 3건을 「저장소에 없음」으로 센 매일 02:00 오탐이었다.
+> 선후: F-71 이 만든 `src/Origin.php` 에 서버 층·배치 갈래를 더했다(기존 5함수 글자 불변). F-70(휴대폰 경보)의 선행이다 — F-70 은 `origin` 으로 즉시/하루 요약을 가른다.
+
+**개발 사항 (① 구현 — claude, 복제본 2026-09-24 · 운영 v2.20.0+1b `7c0ec9c` 위 커밋 `00f442d`)**
+- [x] `src/Origin.php` — 값 넷(`SYSTEM`·`CLAUDE_SESSION` 추가, `VALUES`) · `ofGroup()`(묶음 — 계정 전부 **그리고** 모든 행 표식) · `ofFixedRule()`(AL-3 → human, AL-6·7·8 → system) · `title()`(`[Claude] ` 앞머리) · `isScratchDatabase()`·`ofSudoCommand()`·`sudoDbTargets()`(AL-9 — 겨눈 DB 가 **전부** 임시 이름일 때만 `claude-session`, 모호하면 human) · `reviewMarkLikePattern()`·`reviewAccountPrefixes()`·`isValue()`
+- [x] `scripts/lib/cli_bootstrap.php` — `cli_raise_alert(rule, evidence, origin, hint)`: 줄에 `origin`·`title`, `evidence.origin_hint`, 감사 `alert.raised` detail 에 `origin`(넷 밖이면 예외) · `cli_quarantine_dir()`(격리 폴더 경로 한 곳 — 저장소의 형제 `quarantine`)
+- [x] `scripts/alerts.php` — 13개 `$raise` 에 origin. 묶음 SQL 에 `bool_and(COALESCE(user_agent,'') LIKE :review_ua)`(바인딩) · AL-2 겨눈 계정 `string_agg` + **루프백 조건**(D-1) · AL-5 `user_agent` · AL-19 올린 행 `LEFT JOIN LATERAL` · AL-9 가린 명령·200자 잘림이면 human · dry-run 끝에 ` origin=`. 발동 조건·중복 억제 키 불변
+- [x] `scripts/consistency_check.php` — `scan_status` 읽기 · 격리 폴더 목록 · 감염 행 갈래(`quarantined` 정상 · `infected_in_storage`·`quarantine_missing`·`quarantine_hash_mismatch`·`quarantine_unreadable` 불일치 · `trash_quarantine_missing`·`quarantine_orphan` 보고만) · detail 개수 넷 · AL-6 `rule_text` + `system`
+- [x] `scripts/audit_chain.php`(AL-6 두 곳 `rule_text` + `system`) · `scripts/scan_pending.php`(상수 `QUARANTINE_DIR` → `cli_quarantine_dir()`, 운영 경로 값은 그대로) · `scripts/verify_backup.sh`(AL-8 줄 `rule_text`·`"origin":"system"`·`title`, 감사 detail `origin`, 시험 인자 `--backup-root`, 경보 경로를 `.env` `AUDIT_LOG_FILE` 디렉터리에서)
+- [x] `src/handlers/admin_alerts.php`(origin — 넷 중 하나만, 아니면 null · title 300자) · `public/assets/app.js` `alertOriginBadgeFor`(「출처 표기 전」 `.badge--off` · 「시스템」 `.badge--team` · 「Claude」 `.badge--internal` · 「확인 필요」 `.badge--scan-pending`) + 제목 칸 — 새 클래스·색 0, 전부 `textContent`
+- [x] **대기열 2b** — `src/handlers/users_create.php` [9b] `Origin::isReviewAccount()` 이면 400 + 감사 `user.create deny reserved_prefix`(`already_exists` 검사 **뒤**) · `src/Audit.php` 문장 한 줄 · PRD F-71 ③ 한 줄. 계정 이름을 바꾸는 창구는 없다(`users_update` 허용 키에 `username` 없음)
+- [x] `tests/f69.sh`(새 — T1~T10 + 2b, 임시 DB `tbox_f69_test`·포트 8099) · `tests/f54.sh`(`claude_employee01` 로 옮김 · AL-19 `origin=claude-review` · **격리 뒤 운영 `consistency_check` 한 단계** · 격리 경로 grep 갱신 · `php -l` 15개)
+- [x] 문서(claude, 2026-09-24 — 이 절) — ARCH 5.14·7.4·7.5·11.4 · PRD F-69 행(「구현」, ② 「계정 **그리고** UA」 K-1) · SECURITY R-100 + 7장 · DESIGN 2.2(배지 쓰임)·7장 D-14 · 위키 `guide-review` 「경보에도 붙는 「Claude」」 절 · `tests/catalog.json`(`tbox.f69`·`community.stage7d1`·`community.browser_7d1` 더함, `tbox.f54` 갱신)
+
+**체크 (② 검토 — 지시서 D 표)**
+- [x] 정적(구현자): `php -l` 9 · `bash -n` 3 · `security_lint.sh` 0건 · `wiki_check.php` 0건 · 기존 `Origin` 5함수 글자 동일 · F69-T1 블록만 `php -r` 로 따로 74칸 어긋남 0
+- [x] `tests/f69.sh` **D-1 앞 판**(복제본 f69, 2026-09-24 04:47 — 스크래치패드 `runf69_1.txt`) 한 번: **통과 98 · 실패 0 · 건너뜀/미검증 1**(T8 이 늘 세는 1). T1~T10·2b 가 기대대로 — T8 운영 살아 있는 `infected` 3행 전부 격리 폴더에 있음·저장소 0 · T6 운영 `alerts.log` 앞 889줄 sha256 불변 · T3 `/usr/bin/rm` 줄은 발동하지 않음(MISSING — D-3 실측) · T9 배지 넷·옛 줄·주입 0·390px 넘침 없음 · 2b 네 갈래
+- [x] **지금 판** 재실행(claude, 2026-09-24 09:38 — 운영 `0f78e18` 위로 옮긴 복제본, 독립 검토 M-1·L-1·L-2 반영 뒤): **통과 99 · 실패 0 · 미검증 1**(T8 다음 날 02:00) · T1 83칸 어긋남 0 · T10 운영 dry-run 발동 목록이 옛 코드와 같음(origin 만 붙음) · T6 운영 `alerts.log` 앞 889줄 sha256 불변
+- [x] 회귀(임시 인스턴스, 2026-09-24): `stage26` 109/0 · `help_button` 16/0 · `f68` 109/0((a)8 `already_exists` 갈래 그대로) · `api_whoami` 15/0 · `api_read` 25/0 · `api_folders` 25/0 · 커뮤니티 `stage7d1` 66/0. `q_launcher` 는 nginx 가 필요해 임시 인스턴스에서 4건 실패(308·nginx CSP·공유 전달 — 카탈로그 「php -S 로는 못 돎」) → **운영 반영 뒤 8082 에서** 돌린다. `tests/f54.sh` 는 운영에 쓰는 manual_only(clamav·scan_pending --force-enabled) → **사용자 몫·미검증**
+- [x] 화면 — 관리자 경보 목록 라이트·다크·390px 스크린샷을 claude 가 직접 봄(2026-09-24): 「출처 표기 전」·「시스템」·「Claude」 배지 · 사람 줄 배지 없음 · `[Claude]` 제목 · 390px 넘침 없음 · 주입 문자열은 글자로
+- [x] 독립 보안 검토(Fable 에이전트, 다른 문맥 2026-09-24): High 0 · **Medium 1** — AL-9 psql `-f`/`--file`/표준입력(`-c` 없음)이 `claude-session` 이 됨(스크립트 안의 `\c tbox_re` 가 안 보임) → **고침**(모르면 human) · Low-1 `/tmp/psql` 같은 설치 자리 밖 경로 → 고침 · Low-2 psql `-o`/`-L` 파일 쓰기 → 고침 · Low-3 AL-2 루프백 조건이 지시서 표보다 좁음 → D-1 사용자 확인 대기(그대로) · Low-4 휴지통+감염인데 바이트가 저장소에 남은 경우를 세지 않음 → 후속(선택). 2b 의 `src/Audit.php`(문장 표 1줄)·`users_create.php` 는 지시서 목록 밖이지만 **최소·정확** 판정. origin 이 권한·차단·감사 여부에 쓰이는 곳 0 · 흉내 87건 중 운영을 겨누는 것 전부 human
+
+**자기 공격 체크 (③ 사용자)**
+- [ ] 관리자 페이지 「최근 경보」 — 검토 시험이 만든 줄에 「Claude」, 백업·정합성 줄에 「시스템」, 옛 줄에 「출처 표기 전」이 보이는지 · 사람 줄에는 배지가 없는지
+- [ ] 「시스템」 배지 색(보라, `.badge--team` 재사용)이 괜찮은지 — 결정 대기(아래)
+- [ ] 개발자도구로 UA 를 `tbox-review/…` 로 바꿔 `employee01` 로 권한 밖 파일을 5번 두드려 보기 → AL-1 줄이 「Claude」가 아니라 「확인 필요」로 뜨는지(계정 **그리고** 표식)
+
+**결정 · 열린 문제** (K 는 지시서 E 표, D 는 이 절의 구현 보고 번호 — DESIGN.md 7장의 D 번호와 다르다)
+
+| # | 내용 | 상태 |
+|---|---|---|
+| K-1 | 검토 판정을 「계정 **그리고** UA」로(PRD ② 의 「이거나」를 고침 — UA 흉내로 경보를 낮추지 못하게) | ✅ 사용자 수락 2026-09-24 · PRD F-69 ② 반영 |
+| K-2 | origin 값에 `system` 추가 | ✅ 수락 |
+| K-3 | AL-9 소음(시험의 운영 DB 읽기 sudo)은 판정을 넓히지 않고 별도 과제(읽기 전용 DB 역할)로 | ✅ 수락 — 점검 봇 1단계로 넘김 |
+| K-4 | 옛 889줄 분류 보고(`--classify-history`) | ✅ 넣지 않음 |
+| K-5 | DB 역할 `tbox`(교육용 v1) | ✅ 그대로 둔다 |
+| D-1 | **AL-2 는 출발지가 루프백일 때만 표식으로 센다**(구현 보고 결정 1) — 실패 로그인의 대상 이름·UA 는 둘 다 바깥 공격자가 정하므로. 지시서 A-1 표보다 좁다 | ⚠ **사용자 확인 대기** |
+| D-2 | 「시스템」 배지 색 — 새 색을 만들지 않으려고 `.badge--team`(보라, 뜻은 「등급 team」)을 빌려 씀 | ⚠ **사용자 확인 대기**(DESIGN 7장 D-14) |
+| D-3 | AL-9 **발동** 정규식이 `rm` 을 「줄 처음이나 공백 뒤」일 때만 잡아서, auth.log 의 절대 경로 `COMMAND=/usr/bin/rm -rf …` 를 놓치는 옛 틈(16단계부터 — 원문은 ARCH 11.4 「알려진 틈」) | ◐ **별도 과제** — F-69 는 발동 조건을 바꾸지 않는다(경보 규칙 변경 금지). f69.sh T3 은 「DB 이름 없음 → human」을 `find -delete` 로 보고 rm 줄은 발동 여부만 적는다 |
+| D-4 | `tests/f54.sh` 의 새 단계는 **운영에서** `consistency_check.php` 를 한 번 돌린다 — 읽기만 하는 검사지만 감사 `audit.integrity` **1행**이 는다. 불일치가 나오면 그때의 AL-6(`system`)은 시험 소음이 아니라 운영의 진짜 불일치다 | 기록(카탈로그 `tbox.f54` notes 에도) |
+| D-5 | 2b 접두 검사는 `already_exists` 검사 **뒤** — 이미 있는 아이디(검토 계정 포함)는 전처럼 `already_exists`(f68 (a)8 이 `qa_employee01` 로 그 갈래를 본다) | 구현 |
+| D-6 | 2b 뒤로 **시험용 임시 계정**은 창구로 만들 때 접두 없는 이름(`t<단계>_…` — 예 `t5a2_new`)으로, 검토 접두가 필요하면 임시 DB 에 SQL 로(예 stage5a 의 `qa_tmp5a_recv`) 만든다 | 규칙 |
+| D-7 | SECURITY 새 위험 번호는 **R-100** — R-99 는 F-70 지시서 E-2(안)가 먼저 잡아 두었다 | 기록 |
+
+**학습 기록**
+| 날짜 | 구분 | 내용 | 해소·근거 |
+|---|---|---|---|
+| 2026-09-24 | 결정(사용자) | 「일단 지우지 않고 Claude 가 한 것임을 이름에 표기」(취합 보고서 P-1) | PRD F-69 ① — 경보를 지우거나 끄지 않고 `origin`·`[Claude]` 를 붙인다. 판정 표 ARCH 11.4 |
+| 2026-09-24 | 해소 | 매일 02:00 AL-6 「missing 1~3」 — 파일이 사라졌나? | 아니다. 악성코드 검사가 감염 파일을 격리 폴더로 **옮긴** 것(F-54 ②)을 정합성 검사가 저장소만 보고 「없음」으로 셌다. 이제 격리 폴더를 함께 본다(ARCH 11.4 AL-6 표). 운영 확인은 적용 다음 날 02:00 |
+| 2026-09-24 | 궁금 | 왜 「계정 **또는** UA」가 아니라 「그리고」인가 | UA 는 누구나 흉내 낸다 — 「또는」이면 공격자가 UA 만 바꿔 자기 경보를 「Claude」(F-70 에서 하루 요약)로 낮춘다. 둘 다 맞추려면 root 0600 파일의 비밀이 필요하다(SECURITY R-100, K-1) |
 
 ## 2-1. 10단계 뒤 일괄 자기 공격 — 진행 순서 (관문 ③, 사용자)
 
