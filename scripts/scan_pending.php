@@ -9,7 +9,7 @@ declare(strict_types=1);
  * 사용법
  *   sudo -u tbox-php php scripts/scan_pending.php [--dry-run] [--limit 200]
  *                                                 [--clamscan <경로>] [--force-enabled]
- *     --dry-run        검사만 하고 상태·바이트를 바꾸지 않는다 (규칙을 고친 뒤 확인용)
+ *     --dry-run        검사만 하고 상태·바이트·감사를 바꾸지 않는다 (규칙을 고친 뒤 확인용 · 복구·실패 기록 갈래 포함 — 대기열 2e)
  *     --limit N        한 번에 볼 최대 건수 (기본 200). 한 배치가 디스크·메모리를 오래 쥐지 않게.
  *     --clamscan 경로  스캐너 실행 파일 (기본 /usr/bin/clamscan). 운영자가 셸에서 주는 값이며
  *                      절대 경로·실행 가능·셸 특수문자 없음을 확인한 뒤에만 쓴다.
@@ -29,7 +29,7 @@ declare(strict_types=1);
  *   DB 를 한 번 보고 끝난다 — 1분마다 돌아도 평소에는 아무 비용이 없다.
  *
  * ── 잠금
- *   `clamscan` 한 번이 22초라 1분 주기와 겹칠 수 있다. `/var/lib/tbox-v2/scan.lock` 을
+ *   `clamscan` 한 번이 22초라 1분 주기와 겹칠 수 있다. 저장소의 형제 경로 `scan.lock`(운영 `/var/lib/tbox-v2/scan.lock` — 대기열 2e) 을
  *   `flock(LOCK_EX|LOCK_NB)` 로 잡고, 못 잡으면 「이미 실행 중」 한 줄을 찍고 **정상 종료**한다
  *   (cron 실패로 보이지 않게). 잠금 파일은 지우지 않는다 — 지우면 두 프로세스가 서로 다른
  *   inode 를 잠그는 창이 생긴다.
@@ -58,7 +58,11 @@ declare(strict_types=1);
 require_once __DIR__ . '/lib/cli_bootstrap.php';
 
 /** 동시 실행 방지 잠금 (ARCH 5.28 [1]) */
-const SCAN_LOCK_FILE = '/var/lib/tbox-v2/scan.lock';
+/*
+ * 잠금 파일 — 상수가 아니라 **저장소의 형제 경로**(격리 폴더 cli_quarantine_dir() 와 같은 규칙, 대기열 2e).
+ * 운영에서는 옛 상수와 같은 `/var/lib/tbox-v2/scan.lock` 이다(STORAGE_DIR=/var/lib/tbox-v2/storage). 시험이 임시 저장소로
+ * 배치를 돌릴 때 운영 잠금·운영 폴더에 닿지 않게 한다. 아래 [1] 에서 정한다.
+ */
 /* 감염 파일을 옮겨 두는 곳은 상수가 아니라 cli_quarantine_dir() 한 곳이다 — 아래 [3] 바로 앞 $quarantineDir (F-69 C-2) */
 /** 기본 스캐너 (배포판 패키지 clamav. clamav-daemon 은 설치하지 않는다 — R-86) */
 const CLAMSCAN_DEFAULT = '/usr/bin/clamscan';
@@ -69,6 +73,8 @@ $argv = $_SERVER['argv'];
 
 $dryRun       = cli_flag($argv, 'dry-run');
 $forceEnabled = cli_flag($argv, 'force-enabled');
+/** dry-run 이면 DB·감사에 한 줄도 쓰지 않는다 — scan_fail() 도 이 값을 본다(대기열 2c alerts.php 와 같은 규칙 · 2e) */
+define('SCAN_DRY_RUN', $dryRun);
 
 // ─── [0] 켜져 있나 ───────────────────────────────────────────────
 // 꺼져 있으면 업로드가 애초에 'clean' 으로 저장되므로 대기 행이 생기지 않는다.
@@ -140,9 +146,10 @@ try {
 }
 
 // ─── [1] 잠금 ────────────────────────────────────────────────────
-$lock = @fopen(SCAN_LOCK_FILE, 'c');
+$lockFile = dirname(Storage::baseDir()) . '/scan.lock';
+$lock = @fopen($lockFile, 'c');
 if ($lock === false) {
-    cli_warn('잠금 파일을 열 수 없다: ' . SCAN_LOCK_FILE . ' (실행 계정이 tbox-php 인지 확인)');
+    cli_warn('잠금 파일을 열 수 없다: ' . $lockFile . ' (실행 계정이 tbox-php 인지 확인)');
     exit(TBOX_CLI_FAIL);
 }
 if (!flock($lock, LOCK_EX | LOCK_NB)) {
@@ -190,6 +197,11 @@ $infected = 0;
  */
 function scan_fail(array $row, string $why): void
 {
+    if (SCAN_DRY_RUN) {
+        // 「하려던 일」만 알린다 — 감사·DB 에 쓰지 않는다(대기열 2e).
+        cli_say(sprintf('  [예정·dry-run] id=%d 실패 기록(%s) — 쓰지 않는다', (int) $row['id'], $why));
+        return;
+    }
     Audit::error('file.scan', 'scan_failed', [
         'target_type'  => 'file',
         'target_id'    => (int) $row['id'],
@@ -204,7 +216,8 @@ function scan_fail(array $row, string $why): void
  * F-69 C-2 (2026-09-24): 경로는 상수가 아니라 **cli_quarantine_dir() 한 곳**에서 받는다(저장소의 형제
  * `quarantine`). 운영에서는 옛 상수와 같은 `/var/lib/tbox-v2/quarantine` 이고, 정합성 검사
  * (consistency_check.php)가 같은 함수로 같은 폴더를 본다 — 두 곳이 어긋나 격리 파일을 「분실」로 세지 않게.
- * 대기 0건·검사 꺼짐이면 여기까지 오지 않는다(저장소에 닿지 않고 끝나는 옛 동작 그대로).
+ * 대기 0건·검사 꺼짐이면 여기까지 오지 않는다. (대기열 2e 부터 잠금 경로를 [1] 에서 저장소 기준으로 정하므로, 저장소 폴더가
+ * 없으면 대기 0건이어도 [1] 에서 실패로 끝난다 — 운영에서는 폴더가 늘 있다. 검사 꺼짐은 여전히 저장소에 닿지 않고 끝난다.)
  */
 $quarantineDir = cli_quarantine_dir();
 
@@ -233,6 +246,12 @@ foreach ($rows as $row) {
          *   상태는 `pending` 그대로이며 정합성 검사(consistency_check)가 볼 몫이다.
          */
         $q = $quarantineDir . '/' . basename($path);
+        if (is_file($q) && $dryRun) {
+            // 「하려던 일」만 알린다 — UPDATE·감사 없이(대기열 2e). 바이트도 옮기지 않는다(원래도 옮기지 않는 갈래다).
+            cli_say(sprintf('  [예정·dry-run] id=%d 이미 격리돼 있어 기록을 마무리할 것 — 쓰지 않는다', (int) $row['id']));
+            $infected++;
+            continue;
+        }
         if (is_file($q)) {
             try {
                 $db->begin();

@@ -1364,7 +1364,8 @@ authentication failed for user "tbox_app"` 같은 형태다 — 호스트·포�
               · SCAN_ENABLED=1 → 'pending'   · 아니면 'clean' (지금까지의 동작)
               · 두 곳 전부: _upload_common · files_fetch
 [cron * * * * *  tbox-php]  php scripts/scan_pending.php
-   [1] 잠금 /var/lib/tbox-v2/scan.lock (flock, 있으면 즉시 종료)
+   [1] 잠금 dirname(STORAGE_DIR)/scan.lock = 운영 /var/lib/tbox-v2/scan.lock (flock, 있으면 즉시 종료 — 격리 폴더와 같은 「저장소 형제 경로」 규칙, 대기열 2e)
+       --dry-run 은 복구·실패 기록 갈래까지 DB·감사에 쓰지 않고 「[예정·dry-run]」만 찍는다(대기열 2e)
    [2] SELECT id, stored_name FROM files WHERE scan_status='pending' AND purged_at IS NULL ORDER BY created_at LIMIT 200
        0건 → 종료 (clamscan 실행 없음)
    [3] proc_open clamscan --no-summary --infected --stdout --max-filesize=100M --max-scansize=1G <경로…>
