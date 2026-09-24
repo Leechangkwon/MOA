@@ -80,6 +80,8 @@ cleanup() {
 trap cleanup EXIT
 
 psqlq() { sudo -n -u postgres psql -d "$DB" -t -A -c "$1" 2>/dev/null; }
+# 값에 세션 id(sha256)가 들어가는 SQL 은 명령 인자가 아니라 **표준입력**으로(R15 — 점검 봇 B2 채점 발견). printf 는 bash 내장이라 인자 목록에 남지 않는다
+psqlq_in() { sudo -n -u postgres psql -d "$DB" -t -A -q -f - 2>/dev/null; }
 jget() { python3 -c 'import json,sys
 try:
     d = json.load(sys.stdin)
@@ -187,11 +189,9 @@ call() {
       -H 'Content-Type: application/json' -H @"$WORK/$tag.write" "${extra[@]}" --data-binary '{}' "$url"
   fi
 }
-seen_at() { psqlq "SELECT to_char(last_seen_at, 'YYYY-MM-DD HH24:MI:SS.US') FROM sessions WHERE id = '$(sid "$1")'"; }
-act_seen_at() { psqlq "SELECT coalesce(to_char(act_last_seen_at, 'YYYY-MM-DD HH24:MI:SS.US'), 'NULL') FROM sessions WHERE id = '$(sid "$1")'"; }
-backdate() { psqlq "UPDATE sessions SET last_seen_at = last_seen_at - interval '61 seconds',
-                      act_last_seen_at = CASE WHEN act_last_seen_at IS NULL THEN NULL ELSE act_last_seen_at - interval '61 seconds' END
-                    WHERE id = '$(sid "$1")'" >/dev/null; }
+seen_at() { local _v; _v=$(sid "$1"); printf "SELECT to_char(last_seen_at, 'YYYY-MM-DD HH24:MI:SS.US') FROM sessions WHERE id = '%s';\n" "$_v" | psqlq_in; }
+act_seen_at() { local _v; _v=$(sid "$1"); printf "SELECT coalesce(to_char(act_last_seen_at, 'YYYY-MM-DD HH24:MI:SS.US'), 'NULL') FROM sessions WHERE id = '%s';\n" "$_v" | psqlq_in; }
+backdate() { local _v; _v=$(sid "$1"); printf "UPDATE sessions SET last_seen_at = last_seen_at - interval '61 seconds', act_last_seen_at = CASE WHEN act_last_seen_at IS NULL THEN NULL ELSE act_last_seen_at - interval '61 seconds' END WHERE id = '%s';\n" "$_v" | psqlq_in >/dev/null; }
 
 # ════════════════════════════════════════════════════════════════
 hr "Q:F-4 B2 — 준비 (운영 DB 에는 쓰지 않는다)"
@@ -475,7 +475,7 @@ note "e1b($E1) 자동만 · e2a($E2) 자동+사람 · a1a($A1 보는 중) 자동
 login_as "$E1" e1b
 # 창의 시작을 맞춘다(임시 DB) — 다섯 세션의 마지막 활동 = 지금. 앞 절의 사람 요청이 언제였는지에 따라 창이 짧아지지 않게
 # (첫 실행에서 e2a 가 앞 절의 마지막 요청 뒤 이미 35초가 지나 90초 칸 전에 만료됐다). 보는 중 시각(act_last_seen_at)은 그대로 둔다.
-psqlq "UPDATE sessions SET last_seen_at = now() WHERE id IN ('$(sid e1b)', '$(sid e2a)', '$(sid a1a)', '$(sid a1b)', '$(sid m1)')" >/dev/null
+printf "UPDATE sessions SET last_seen_at = now() WHERE id IN ('%s', '%s', '%s', '%s', '%s');\n" "$(sid e1b)" "$(sid e2a)" "$(sid a1a)" "$(sid a1b)" "$(sid m1)" | psqlq_in >/dev/null   # 세션 id 는 표준입력으로(R15)
 AUD_W=$(psqlq "SELECT coalesce(max(id), 0) FROM audit_logs")
 W_E1B=$(seen_at e1b); W_A1A=$(seen_at a1a); W_A1A_ACT=$(act_seen_at a1a)
 T_START=$(date +%s)
