@@ -30,4 +30,4 @@ mkdir -p "$OUT"
 # 쿠키 jar → name=value 목록
 COOKIES=$(awk '(!/^#/ || /^#HttpOnly_/) && NF>=7 {printf "%s=%s;", $6, $7}' "$JAR")  # curl 은 HttpOnly 쿠키를 #HttpOnly_ 접두로 쓴다
 export PATH="$HOME/.local/bin:$PATH"
-python3 "$HERE/ui_snapshot.py" "$BASE" "$UA" "$COOKIES" "$OUT" "$WIDTH"
+py_secret COOKIES -- python3 "$HERE/ui_snapshot.py" "$BASE" "$UA" "$OUT" "$WIDTH"   # 쿠키는 표준입력으로(R-62)

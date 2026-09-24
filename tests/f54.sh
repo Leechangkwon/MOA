@@ -44,6 +44,8 @@ set -u
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 # 검토 계정 판정 한 벌(qa_·claude_ — F-71 C). 못 읽으면 사전 검사가 빈 값으로 열리므로 시작하지 않는다.
 . "$ROOT/tests/lib/review_accounts.sh" || { echo "tests/lib/review_accounts.sh 를 읽지 못했다 — 시험을 시작하지 않는다 (R-73)"; exit 3; }
+. "$ROOT/tests/lib/secrets.sh" || { echo "tests/lib/secrets.sh 를 읽지 못했다 — 시험을 시작하지 않는다 (R-62)"; exit 3; }
+. "$ROOT/tests/lib/db_read.sh" || { echo "tests/lib/db_read.sh 를 읽지 못했다 — 시험을 시작하지 않는다 (R-73)"; exit 3; }
 BASE="http://127.0.0.1:8082/tbox"
 UA="tbox-review/$(date +%F)"
 DB="tbox_re"
@@ -95,8 +97,9 @@ if psqlq "SELECT 1" >/dev/null 2>&1; then HAVE_PSQL=1; fi
 if [ "$HAVE_PSQL" -eq 1 ]; then
   TRY=1
   while :; do
-    BUSY=$(psqlq "SELECT count(*) FROM audit_logs WHERE happened_at > now() - interval '10 minutes' AND actor_name IS NOT NULL AND $REVIEW_NOT_SQL")
-    echo "최근 10분 비-qa 감사 행: ${BUSY:-?} (시도 ${TRY}/10)"
+    db_read_var BUSY "$DB" "SELECT count(*) FROM audit_logs WHERE happened_at > now() - interval '10 minutes' AND actor_name IS NOT NULL AND $REVIEW_NOT_SQL" \
+      || { echo "운영 DB 를 읽지 못했다 — 시험을 시작하지 않는다 (R-73 · db_read rc 3)"; exit 3; }
+    echo "최근 10분 비-qa 감사 행: ${BUSY:-?} (시도 ${TRY}/10) (읽기 경로 ${DB_READ_VIA})"
     [ "${BUSY:-0}" -gt 0 ] 2>/dev/null || break
     if [ "$TRY" -ge 10 ]; then
       echo "10회(약 20분) 기다렸지만 사용자의 활동이 이어진다 — 시험을 시작하지 않는다 (SECURITY R-73 ①)"
@@ -133,15 +136,15 @@ hr "로그인 — claude_employee01"
 
 # TOTP 코드는 1회성이다(R-45) — 같은 창에서 두 번 쓰면 거부되는 것이 정상이라 기다렸다 다시 한다.
 login() {
-  local who="$1" jar="$JAR_DIR/$1.jar" pw sec raw code left out try
+  local who="$1" jar="$JAR_DIR/$1.jar" pw sec raw code left out try body
   pw=$(sudo -n awk -v u="$who" '$1==u{print $3}' /etc/tbox-v2/seed-accounts.txt 2>/dev/null)
   sec=$(sudo -n awk -v u="$who" '$1==u{print $2}' /etc/tbox-v2/qa-totp.txt 2>/dev/null)
   [ -n "$pw" ] && [ -n "$sec" ] || return 2
   for try in 1 2 3; do
-    raw=$(php "$ROOT/scripts/totp_code.php" "$sec")
+    raw=$(totp_now sec)                      # 비밀은 표준입력으로(R-62 · 1-B-2)
     code=${raw%%$'\n'*}
-    out=$(curl -s -c "$jar" -A "$UA" -H 'Content-Type: application/json' \
-          -d "{\"username\":\"$who\",\"password\":\"$pw\",\"otp\":\"$code\"}" "$BASE/api/login")
+    printf -v body '{"username":"%s","password":"%s","otp":"%s"}' "$who" "$pw" "$code"
+    out=$(curl_json_secret body -s -c "$jar" -A "$UA" -H 'Content-Type: application/json' "$BASE/api/login")
     case "$out" in
       *'"ok":true'*)
         curl -s -b "$jar" -A "$UA" "$BASE/api/me" \

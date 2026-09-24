@@ -7,7 +7,9 @@
 import json, sys, time
 from playwright.sync_api import sync_playwright
 
-BASE, UA, COOKIES, OUT, WIDTH = sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4], int(sys.argv[5])
+# 세션 쿠키는 인자가 아니라 표준입력 첫 줄로 받는다 — 인자는 ps·/proc 에 보인다(R-62 · 점검 봇 1-B-2, 1-B-1 독립 검토 중간).
+BASE, UA, OUT, WIDTH = sys.argv[1], sys.argv[2], sys.argv[3], int(sys.argv[4])
+COOKIES = sys.stdin.readline().rstrip("\n")
 import os
 PAGES = os.environ["UI_PAGES"].split(",") if os.environ.get("UI_PAGES") else ["/", "/settings", "/activity", "/admin", "/users",
          "/org", "/admin/permissions", "/audit", "/trash"]

@@ -42,6 +42,7 @@ set -u
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 # 검토 계정 판정 한 벌(qa_·claude_ — F-71 C). 못 읽으면 시작하지 않는다.
 . "$ROOT/tests/lib/review_accounts.sh" || { echo "tests/lib/review_accounts.sh 를 읽지 못했다 — 시험을 시작하지 않는다 (R-73)"; exit 3; }
+. "$ROOT/tests/lib/secrets.sh" || { echo "tests/lib/secrets.sh 를 읽지 못했다 — 시험을 시작하지 않는다 (R-62)"; exit 3; }
 
 PORT=8099
 SITE="http://127.0.0.1:$PORT"
@@ -171,12 +172,15 @@ T6_H0=$(sudo -n head -n "$PROD_OLD_LINES" "$PROD_ALERTS" 2>/dev/null | sha256sum
 note "운영 alerts.log 줄 수 ${T6_N0:-?} · 앞 ${PROD_OLD_LINES}줄 sha256 ${T6_H0:-?}"
 
 sub "① 운영 DB 를 **읽어** 임시 DB 를 만든다"
-DUMP="/tmp/tbox_f69_dump.$$.sql"
+# 덤프를 파일로 두지 않는다 — 운영 전체 평문 덤프(비밀번호 해시·TOTP 비밀 포함)가 /tmp 에 postgres umask(세계 읽기)로
+# 잠시라도 남는 길을 없앤다(개발 대기열 2d · 점검 봇 1-B-2). pg_dump 의 표준출력을 그대로 psql 의 표준입력으로.
 sudo -n -u postgres dropdb --if-exists "$DB" >/dev/null 2>&1
 sudo -n -u postgres createdb -O tbox_owner "$DB" >/dev/null 2>&1 || { echo "임시 DB 를 만들 수 없다"; exit 3; }
-sudo -n -u postgres pg_dump -d "$SRC_DB" -f "$DUMP" 2>/dev/null || { echo "운영 DB 를 읽지 못했다 (pg_dump)"; exit 3; }
-sudo -n -u postgres psql -q -d "$DB" -v ON_ERROR_STOP=0 -f "$DUMP" >/dev/null 2>"$WORK/restore.err"
-sudo -n rm -f "$DUMP"
+sudo -n -u postgres pg_dump -d "$SRC_DB" 2>/dev/null \
+  | sudo -n -u postgres psql -q -d "$DB" -v ON_ERROR_STOP=0 >/dev/null 2>"$WORK/restore.err"
+DUMP_RC=${PIPESTATUS[0]}
+# pg_dump 가 실패하면 예전처럼 rc 3(임시 DB 는 반쯤 찼을 수 있다 — cleanup trap 이 dropdb 로 지운다)
+[ "$DUMP_RC" -eq 0 ] || { echo "운영 DB 를 읽지 못했다 (pg_dump rc $DUMP_RC — 141 이면 psql 쪽이 먼저 끝났다)"; head -2 "$WORK/restore.err" 2>/dev/null | sed 's/^/   /'; exit 3; }
 n_users=$(psqlt "SELECT count(*) FROM public.users")
 [ -n "$n_users" ] && [ "$n_users" -gt 0 ] 2>/dev/null || { echo "임시 DB 로 옮기지 못했다 — $(head -2 "$WORK/restore.err")"; exit 3; }
 echo "  · 임시 DB $DB — 계정 ${n_users}명"
@@ -612,14 +616,16 @@ cat > "$WORK/otp.sh" <<OTPSH
 #!/bin/sh
 sec=\$(sudo -n awk -v u="\$1" '\$1==u{print \$2}' /etc/tbox-v2/qa-totp.txt 2>/dev/null)
 [ -n "\$sec" ] || exit 1
-exec php "$ROOT/scripts/totp_code.php" "\$sec"
+# 비밀은 php 의 인자가 아니라 표준입력으로(ps·/proc 에 보이지 않게 — R-62 · 봇 BF-0002). dash 의 printf 도 내장이다.
+printf '%s\n' "\$sec" | php "$ROOT/scripts/totp_code.php" -
 OTPSH
 chmod +x "$WORK/otp.sh"
 
 cat > "$WORK/t9.py" <<'PY'
 import json, re, subprocess, sys, time
 
-base, ua, who, pw, otpsh, chrome, shots, tag = sys.argv[1:9]
+base, ua, who, otpsh, chrome, shots, tag = sys.argv[1:8]
+pw = sys.stdin.readline().rstrip('\n')   # 비밀번호는 인자가 아니라 표준입력 첫 줄로(R-62 · 봇 BF-0003 — py_secret)
 
 try:
     from playwright.sync_api import sync_playwright
@@ -778,7 +784,7 @@ if [ -z "$ADMIN_PW" ]; then
   skip "T9 전체" "$ADMIN 비밀번호를 읽지 못했다(seed-accounts.txt)"
 else
   # ★ stderr 는 따로 받는다 — 표준출력에 섞으면 JSON 이 깨진다 (f65.sh 실측)
-  python3 "$WORK/t9.py" "$BASE" "$UA" "$ADMIN" "$ADMIN_PW" "$WORK/otp.sh" "$PW_CHROME" "$OUT" "$TAG" \
+  py_secret ADMIN_PW -- python3 "$WORK/t9.py" "$BASE" "$UA" "$ADMIN" "$WORK/otp.sh" "$PW_CHROME" "$OUT" "$TAG" \
     > "$WORK/t9.json" 2> "$WORK/t9.err"
   T9_RC=$?
   unset ADMIN_PW
