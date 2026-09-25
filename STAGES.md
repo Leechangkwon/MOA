@@ -70,6 +70,7 @@
 | 대기열 5b | 파일 전역 검색 색인(Q:F-2 J-2 후속) — `files.search_tsv`(같은 SearchText · 이름+설명) + GIN + NULL 부분 색인 · 올리기·가져오기·설명 고치기가 채움 · 목록 창구는 한글 검색어만 색인으로 **후보를 좁힘**(원문 ILIKE 그대로 — 결과 같음) · 배치 `qf2b_backfill_files.php` — 구현 기록 `docs/qf2b-files-search-implementation.md` | ✅ 운영 반영 | ✅ 2026-09-25 (claude — 수락 40/0) | ✅ 독립 검토 조건부 → 고침 → 재확인 반영 가능 | ◐ 2026-09-25 23:02 취합이 claude_ 로 대신 — 관리자 전용 파일 이름·가운데 두 글자 검색이 다른 네 계정에 0 (사용자 확인 대기) | 운영 `ffbeb87`(2026-09-25 21:01 — DB 는 사용자 d47 허락) |
 | 대기열 1b | 시험 규격화(점검 봇 1-A) — `tests/lib/common.sh`·`results.py`·`selftest.sh`(+fixtures)·`tests/run.sh`·`tests/catalog.json` · `stage26.sh`·`f52.sh` 끝부분 종료 코드(실패인데 rc 0 이던 것) | ✅ 합침 | ✅ www-9e(점검 봇 세션) 작성·독립 검토 | ✅ 2026-09-24 claude 확인(`tests/` 밖 0 · selftest 195/0 · `run.sh --select env:static` 2/0) | — (시험만) | `7c0ec9c` · 발행 없음 |
 | 대기열 1g | 점검 봇 1-B-1 — 시험 비밀을 명령 인자에서 빼기(`tests/lib/secrets.sh`) · qa_→claude_ · R-73 읽기 `db_read` · `scripts/totp_code.php -`(표준입력) | ✅ 합침 | ✅ 점검 봇 세션 작성·독립 검토 | ✅ 2026-09-24 claude 확인(범위 26파일 · selftest 247/0 · static 71/0 · api_whoami 15/0) | — | 운영 커밋(아래 커밋 메시지) · 발행 없음 |
+| 대기열 1n | 점검 봇 규칙판 v4(bot-v4-static · e42655d) 합치기 — tests/static 만(143파일 · 규칙 22 = v3 19 + R29 반영 스크립트 허용 목록 × rename/copy · R30 청소 경쟁 · R31 tests/static 까지 셈) · 사이트 동작 변화 0 | ✅ 합침 | ✅ 취합 changkwon-32(봇 대신) — selftest 238/0 · 보안 린트 통과 | ✅ 1차 독립 검토 중간 3 반영 · 재검토 1~4 · 5차 「반영 가능」 | — (시험 규칙) | 운영 `eaf09e8`(2026-09-25 21:08) · 반영 `scripts/apply-checkbot-rules-v4-2026-09-25.sh` · 정의 `../docs/checkbot/answer-key/bot-v4-static.md` |
 
 ---
 
