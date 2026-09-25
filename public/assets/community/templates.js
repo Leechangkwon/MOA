@@ -11,7 +11,7 @@
  * ★ 미리보기는 읽기 렌더러(`renderDoc`)가 그린다 — 보이는 것과 만들어지는 것이 같다.
  *   글자는 전부 textContent 로 넣는다(HTML 문자열을 넣는 자리가 없다).
  */
-import { renderDoc } from './doc-render.js?v=a981eb7ae8f3';
+import { renderDoc } from './doc-render.js?v=3548892688fe';
 
 const SCOPE_LABELS = {
   site: '사이트 기본',
@@ -73,13 +73,16 @@ export function bindTemplateGallery(d) {
     }).catch(() => { d.setText(msg, d.genericError); btn.disabled = false; });
   }
 
-  /* 7-C — 미리보기의 임베드 재료(허용 목록 · 틀을 여는가). 한 번 받아 둔다 — 없으면 모든 임베드가 「허용 목록 밖」으로 보인다(독립 검토 7-C L-6) */
+  /* 7-C — 미리보기의 임베드 재료(허용 목록). 한 번 받아 둔다 — 없으면 모든 임베드가 「허용 목록 밖」으로 보인다(독립 검토 7-C L-6).
+     · 호스트는 창구의 `hosts`(그릴 때의 판정 — 페이지 응답 `embeds.hosts` 와 같음: 이 사이트 자신·상위·하위 도메인은 빠진다).
+     · 틀은 **열지 않는다**(frames 거짓 — 목록 안은 「허용 대기 · 새 탭에서 열기」 카드). 틀을 받는 CSP(`frame-src`)는 페이지 화면에만
+       붙고(K-5 · nginx 도 그 경로만), 이 창이 뜨는 홈 화면의 CSP 는 바깥 틀을 막는다 — 틀을 그리면 빈 틀이 된다. */
   let embedCtx = null;
   function loadEmbedCtx() {
     if (embedCtx) { return Promise.resolve(embedCtx); }
     return d.api('GET', '/api/embed-domains').then((r) => {
-      embedCtx = r.status === 200 && r.data
-        ? { hosts: (Array.isArray(r.data.domains) ? r.data.domains : []).map((x) => x.host), frames: r.data.frames === true }
+      embedCtx = r.status === 200 && r.data && Array.isArray(r.data.hosts)
+        ? { hosts: r.data.hosts.filter((h) => typeof h === 'string'), frames: false }
         : { hosts: [], frames: false };
       return embedCtx;
     }).catch(() => ({ hosts: [], frames: false }));

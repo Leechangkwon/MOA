@@ -26,7 +26,8 @@ declare(strict_types=1);
 
 $viewPageId = (string) $params[0];
 
-// 7-C 결정 K-5 — 틀을 여는 스위치(코드 상수, 기본 끔)가 켜졌을 때만 이 화면의 CSP 에 허용 목록 호스트를 `frame-src` 로 더한다.
+// 7-C 결정 K-5 — 틀을 여는 스위치(코드 상수 — 사용자 결정 2026-09-24 로 켬)가 켜졌을 때만 이 화면의 CSP 에 허용 목록 호스트를 `frame-src` 로 더한다.
+// nginx 는 이 경로(`^/community/p/<UUID>$`)만 CSP 를 붙이지 않는 location 으로 받는다 — 그래서 앱 CSP 하나만 남는다(Qaredi ../scripts/apply-nginx-embed-csp-2026-09-26.sh).
 community_embed_csp();
 
 $pageTitle   = '페이지';

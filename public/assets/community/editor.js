@@ -40,13 +40,13 @@ import { inputRules, textblockTypeInputRule, InputRule } from './vendor/pm/prose
 import { dropCursor } from './vendor/pm/prosemirror-dropcursor.js?v=5823578fa61a';
 import { gapCursor } from './vendor/pm/prosemirror-gapcursor.js?v=5823578fa61a';
 
-import { renderDoc, embedHost } from './doc-render.js?v=a981eb7ae8f3';
-import { createDatabaseView } from './database.js?v=a981eb7ae8f3';
-import { bindTemplateGallery, createTemplateSave } from './templates.js?v=a981eb7ae8f3';
-import { bindEmbedAdmin } from './embeds.js?v=a981eb7ae8f3';
-import { bindPopular } from './popular.js?v=a981eb7ae8f3';
-import { schema, toDoc, fromDoc, uuid4, colorAllowed, schemeOkForEditor, COLORS, BLOCK_TYPES } from './editor-schema.js?v=a981eb7ae8f3';
-import { createDrafts } from './drafts.js?v=a981eb7ae8f3';
+import { renderDoc, embedHost } from './doc-render.js?v=3548892688fe';
+import { createDatabaseView } from './database.js?v=3548892688fe';
+import { bindTemplateGallery, createTemplateSave } from './templates.js?v=3548892688fe';
+import { bindEmbedAdmin } from './embeds.js?v=3548892688fe';
+import { bindPopular } from './popular.js?v=3548892688fe';
+import { schema, toDoc, fromDoc, uuid4, colorAllowed, schemeOkForEditor, COLORS, BLOCK_TYPES } from './editor-schema.js?v=3548892688fe';
+import { createDrafts } from './drafts.js?v=3548892688fe';
 
 /* ─── 주소와 공통 도우미 ─────────────────────────────────────── */
 
@@ -2489,7 +2489,7 @@ function createAtomDialog(getView, hooks) {
   const msgEl = $('atom-msg');
   const commitButton = $('atom-commit');
   const panes = { toggle: $('atom-toggle'), table: $('atom-table'), link_to_page: $('atom-link'), image: $('atom-file'), file: $('atom-file'), columns: $('atom-columns'), embed: $('atom-embed') };
-  // 7-C 임베드 — 주소 · 설명 · 허용된 사이트 안내(창구 `GET /api/embed-domains` 가 준 목록 그대로)
+  // 7-C 임베드 — 주소 · 설명 · 허용된 사이트 안내(창구 `GET /api/embed-domains` 의 `hosts` — 서버가 그릴 때 쓰는 판정 그대로)
   const embedUrl = $('atom-embed-url');
   const embedCaption = $('atom-embed-caption');
   const embedHosts = $('atom-embed-hosts');
@@ -2722,14 +2722,16 @@ function createAtomDialog(getView, hooks) {
   const LABELS = { toggle: '토글', table: '표', link_to_page: '페이지 링크', image: '그림', file: '파일', columns: '단 나누기', embed: '임베드' };
 
   /** 7-C — 허용된 사이트 안내. 판단은 서버가 저장할 때 한다 — 여기서는 무엇을 넣을 수 있는지 알려 주고, 받은 목록 밖이면
-      넣기 전에 알린다(목록 밖을 넣으면 그 뒤 자동 저장이 전부 400 이 된다 — 독립 검토 7-C L-5). 목록을 못 받으면 서버에 맡긴다. */
+      넣기 전에 알린다(목록 밖을 넣으면 그 뒤 자동 저장이 전부 400 이 된다 — 독립 검토 7-C L-5). 목록을 못 받으면 서버에 맡긴다.
+      목록은 `hosts`(서버가 거른 것 — 이 사이트 자신·상위·하위 도메인은 표에 있어도 빠진다)다. 관리용 표 `domains` 를 쓰면
+      저장·그리기에서 막히는 자기 주소가 「허용됨」으로 보인다(임베드 켜기 독립 검토 정보 6). */
   let embedAllowed = null;
   function loadEmbedHosts() {
     setText(embedHosts, '허용된 사이트를 읽는 중…');
     embedAllowed = null;
     api('GET', '/api/embed-domains').then((result) => {
       if (result.status !== 200) { setText(embedHosts, ''); return; }
-      const hosts = (Array.isArray(result.data.domains) ? result.data.domains : []).map((d) => d.host);
+      const hosts = (Array.isArray(result.data.hosts) ? result.data.hosts : []).filter((h) => typeof h === 'string');
       embedAllowed = hosts;
       setText(embedHosts, hosts.length === 0
         ? '관리자가 아직 허용한 사이트가 없습니다 — 지금은 임베드를 넣을 수 없습니다.'

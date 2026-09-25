@@ -165,8 +165,9 @@ with sync_playwright() as p:
       };
     }""")
     fr = js.get("frame") or {}
-    step("2 목록 안 + 틀 열림 → iframe sandbox=\"\"(권한 토큰 0) · no-referrer",
-         fr.get("sandbox") == "" and fr.get("ref") == "no-referrer" and fr.get("src") == "https://www.youtube.com/embed/x?a=1&b=2", json.dumps(fr, ensure_ascii=False))
+    step("2 목록 안 + 틀 열림 → iframe · sandbox 토큰(사용자 결정 2026-09-24) · strict-origin",
+         fr.get("sandbox") == "allow-scripts allow-same-origin allow-presentation allow-popups" and fr.get("ref") == "strict-origin"
+         and fr.get("src") == "https://www.youtube.com/embed/x?a=1&b=2", json.dumps(fr, ensure_ascii=False))
     step("2 목록 안 + 틀 닫힘 → 「허용 대기」 카드 · iframe 0 · noopener",
          "허용 대기 · 새 탭에서 열기" in js["wait"] and js["waitFrames"] == 0 and js["waitRel"] == "noopener noreferrer")
     step("2 목록 밖 → 「허용 목록 밖의 임베드」 · 링크·틀 0", "허용 목록 밖의 임베드" in js["block"] and js["blockLinks"] == 0)

@@ -1836,7 +1836,13 @@
         "src/community/handlers/version_restore.php",
         "src/handlers/login.php",
         "src/handlers/me.php",
-        "src/handlers/reauth.php"
+        "src/handlers/reauth.php",
+        "public/assets/community/templates.js",
+        "deploy/sites/tbox-v2.conf",
+        "deploy/sites/tbox-v2-local.conf",
+        "deploy/sites/tbox-common.conf",
+        "tests/static/r27_nginx_conf.py",
+        "tests/upgrade/asset_cache.py"
       ],
       "requirements": [
         "C:T-180",
@@ -1845,12 +1851,14 @@
         "C:T-183",
         "C:T-184",
         "C:T-185",
-        "C:T-186"
+        "C:T-186",
+        "C:T-187",
+        "C:T-188"
       ],
       "risks": [],
-      "est_sec": 420,
+      "est_sec": 540,
       "writes_prod": false,
-      "notes": "임시 인스턴스(stage4d 와 같은 틀): pg_dump tbox_re(읽기) → 운영 클러스터에 createdb -O tbox_owner tbox_7c_test → 복원·마이그레이션·grants.sql → 복사본 + 운영 .env 세 줄 치환 → php -S 127.0.0.1:8097. 운영 8082 요청 0. 덤프 /tmp/tbox7c_dump.$$.sql(운영 전체 평문, 복원 뒤 sudo rm) — cleanup 에 덤프 삭제가 없다(1-A A-4 목록 10개 밖, 1a-held-A4.patch 에 없음 — 7단계 뒤 A-4 를 합칠 때 함께). REGRESS 는 기본 0(${REGRESS:-0}) — cmd 에 REGRESS=0 을 박아 물려받은 환경 변수로 회귀(다른 시험을 8082→임시로 sed 치환해 돌림)가 켜지지 않게 한다. browser_7c.py 를 부른다(playwright 없으면 SKIP). claude_ 검토 계정 다섯(F-71: claude_employee01·02·claude_manager01·claude_admin01·claude_guest01)으로 순차 로그인 — 운영 DB 덤프에 그 계정이 있어야 한다. php -r 로 src/bootstrap.php·src/community/routes.php·src/community/Doc.php 를 직접 부른다(서버 렌더러·호스트 판정). C:T-184 는 **임시 복사본**의 src/bootstrap.php 상수를 sed -i 로 켰다 끈다(저장소·운영 파일은 그대로). 임베드 주소(youtube 등)는 저장·렌더 문자열로만 쓰고 바깥 요청은 없다(원문 판단 — 읽기 화면 틀은 기본 끔, JS 렌더러 시험은 문서에 붙이지 않은 div 안). covers 의 version_restore.php 는 derive 가 ${VNUM:-1} 경로를 못 읽어 손으로 더함(POST 명시·라우트 하나). 머리 주석의 「T-33」은 커뮤니티 PRD 로드맵 번호라 requirements 에 넣지 않음. 운영 HEAD 에 조사표·1-A 뒤에 들어온 파일 — 원문으로 실음."
+      "notes": "임시 인스턴스(stage4d 와 같은 틀): pg_dump tbox_re(읽기) → 운영 클러스터에 createdb -O tbox_owner tbox_7c_test(STAGE7C_DB 로 바꿈) → 복원·마이그레이션·grants.sql → 복사본 + 운영 .env 세 줄 치환 → php -S 127.0.0.1:8097(STAGE7C_PORT 로 바꿈 · 80·8081·8082 는 거부). 운영 8082 요청 0. REGRESS 는 기본 0(${REGRESS:-0}) — cmd 에 REGRESS=0 을 박아 물려받은 환경 변수로 회귀(다른 시험을 8082→임시로 sed 치환해 돌림)가 켜지지 않게 한다. browser_7c.py · browser_7c_frames.py · browser_7c_nginx.py 를 부른다(playwright 없으면 SKIP). claude_ 검토 계정 다섯(F-71: claude_employee01·02·claude_manager01·claude_admin01·claude_guest01)으로 순차 로그인 — 운영 DB 덤프에 그 계정이 있어야 한다. php -r 로 src/bootstrap.php·src/community/routes.php·src/community/Doc.php 를 직접 부른다(서버 렌더러·호스트 판정). 틀 스위치 COMMUNITY_EMBED_FRAMES 는 켬(사용자 2026-09-24) — C:T-184 는 **임시 복사본**의 src/bootstrap.php 상수를 sed -i 로 껐다(browser_7c.py) 다시 켠다(browser_7c_frames.py · C:T-187·188). 저장소·운영 파일은 그대로. C:T-188 은 임베드 nginx 판(기본 저장소 deploy/sites · EMBED_SITES_DIR 로 바꿈 — 페이지 화면 location 이 없으면 SKIP)을 embed_nginx_check.py·R27·업그레이드 스모크의 asset_cache.py(자산 캐시 판정 불변)로 글자 검사하고, 이 사용자로 임시 php-fpm(유닉스 소켓 · opcache 끔)과 임시 nginx(STAGE7C_NGX_PORT 부터 세 포트 — 임베드 판 공개용·로컬용 · 그 location 을 뺀 대조군)를 띄워 머리글과 브라우저로 본다. 운영 nginx·운영 php-fpm·/etc 접촉 0(/etc/nginx/fastcgi_params·mime.types 를 읽기만). 임베드 주소(youtube 등)는 저장·렌더 문자열로만 쓰고 바깥 요청은 없다 — 브라우저 도우미가 바깥 주소를 가로채 끊거나(browser_7c_frames) 시험용 글로 답한다(browser_7c_nginx). covers 의 version_restore.php 는 derive 가 ${VNUM:-1} 경로를 못 읽어 손으로 더함(POST 명시·라우트 하나). 머리 주석의 「T-33」은 커뮤니티 PRD 로드맵 번호라 requirements 에 넣지 않음. 운영 HEAD 에 조사표·1-A 뒤에 들어온 파일 — 원문으로 실음."
     },
     {
       "id": "community.stage7d1",
@@ -2124,6 +2132,72 @@
       "est_sec": 120,
       "writes_prod": false,
       "notes": "부르는 셸: community.stage7c. 단독 실행 불가(인자 SITE UA 와 SMOKE_E1·SMOKE_A1·SMOKE_PE·SMOKE_RENDER 환경 변수를 부르는 셸이 넘긴다). 결과 줄 SMOKE_FAIL=n. 렌더러 JS(public/assets/community/doc-render.js 를 import)의 iframe 은 문서에 붙이지 않은 div 안에서만 만든다 — 바깥 요청 0(원문 판단). 운영 HEAD 에 조사표·1-A 뒤에 들어온 파일 — 원문으로 실음."
+    },
+    {
+      "id": "community.browser_7c_frames",
+      "cmd": "python3 tests/community/browser_7c_frames.py",
+      "module": "community",
+      "env": "temp-instance",
+      "status": "helper",
+      "needs": [
+        "browser"
+      ],
+      "covers": [
+        "public/assets/community/doc-render.js",
+        "src/community/handlers/home_page.php",
+        "src/community/handlers/page_view.php"
+      ],
+      "requirements": [
+        "C:T-185"
+      ],
+      "risks": [],
+      "est_sec": 120,
+      "writes_prod": false,
+      "notes": "stage7c.sh 가 부르는 도우미(C:T-185 둘째 부분) — 임시 복사본의 COMMUNITY_EMBED_FRAMES 를 켠 읽기 화면에서 틀·sandbox 토큰을 본다. 바깥 사이트 요청은 브라우저가 끊는다(시험이 YouTube 에 닿지 않는다). 혼자 돌리지 않는다."
+    },
+    {
+      "id": "community.browser_7c_nginx",
+      "cmd": "python3 tests/community/browser_7c_nginx.py",
+      "module": "community",
+      "env": "temp-instance",
+      "status": "helper",
+      "needs": [
+        "browser"
+      ],
+      "covers": [
+        "public/assets/community/doc-render.js",
+        "public/assets/community/templates.js",
+        "src/community/handlers/page_view.php",
+        "deploy/sites/tbox-v2.conf"
+      ],
+      "requirements": [
+        "C:T-188"
+      ],
+      "risks": [],
+      "est_sec": 90,
+      "writes_prod": false,
+      "notes": "stage7c.sh 가 부르는 도우미(C:T-188 ⑤) — 임시 인스턴스 앞에 이 사용자로 띄운 임시 nginx(임베드 판 · 대조군)를 거쳐 페이지 화면의 틀이 실제로 열리는지(CSP 머리글 하나 · 시험용 글이 틀 안에 그려짐 · CSP 위반 0), 대조군은 막히는지(CSP 둘 · frame-src 위반), 목록 밖·자기 주소 카드, 홈 템플릿 미리보기는 틀 없이 카드, 412·1280 × 라이트·다크 사진. 바깥 주소는 브라우저가 가로챈다(YouTube 틀 주소는 시험용 글로 답함 · 나머지는 끊음 — 바깥 요청 0). 혼자 돌리지 않는다."
+    },
+    {
+      "id": "community.embed_nginx_check",
+      "cmd": "python3 tests/community/embed_nginx_check.py",
+      "module": "community",
+      "env": "static",
+      "status": "helper",
+      "needs": [],
+      "covers": [
+        "deploy/sites/tbox-v2.conf",
+        "deploy/sites/tbox-v2-local.conf",
+        "public/index.php",
+        "src/bootstrap.php"
+      ],
+      "requirements": [
+        "C:T-188"
+      ],
+      "risks": [],
+      "est_sec": 2,
+      "writes_prod": false,
+      "notes": "stage7c.sh 가 부르는 도우미(C:T-188 ①) — 인자 <사이트 폴더> <앱 뿌리>. 파일만 읽는다: 페이지 화면 location 하나 · 정규식 = 라우터 {id} · CSP 없음 · 나머지 보안 헤더가 server 단과 이름·값·always 까지 같음 · FastCGI 줄이 단일 입구와 같음 · 단일 입구에 add_header 없음 · 공개용만 HSTS · 두 파일 블록 같음 · 앱 기본 CSP = nginx CSP. 결과 줄 CHECK_FAIL=n. 부르는 셸은 저장소 deploy/sites 를 넘긴다(EMBED_SITES_DIR 로 다른 판)."
     },
     {
       "id": "community.browser_7d1",

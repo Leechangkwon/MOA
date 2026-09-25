@@ -190,6 +190,8 @@ require __DIR__ . '/../../views/shell_top.php';
           <input id="embed-host" class="input" type="text" maxlength="253" autocomplete="off" spellcheck="false" placeholder="www.youtube.com">
           <button id="embed-add" class="btn btn--small" type="button">더하기</button>
         </div>
+        <!-- 넣으면 안 되는 사이트 안내(임베드 켜기 독립 검토 정보 7) — 틀에는 스크립트가 돈다. 고정 문장 · 동적 값 0 -->
+        <p class="muted">사용자가 HTML·스크립트를 올릴 수 있는 사이트(codepen.io · jsfiddle.net · docs.google.com · sites.google.com 등)는 넣지 마세요 — 페이지를 고칠 수 있는 누구나 그 사이트에 만든, 스크립트가 도는 틀을 넣을 수 있습니다. 영상처럼 내용을 그 사이트가 관리하는 곳만 넣습니다.</p>
         <div class="table-wrap">
           <table class="files">
             <thead>

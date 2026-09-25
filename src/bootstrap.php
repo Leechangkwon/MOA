@@ -151,16 +151,31 @@ const COMMUNITY_BASE = '/community';
 const COMMUNITY_DOC_STAGE = 7;
 
 /**
- * 임베드를 **틀(iframe)로 그릴지** (7-C 결정 K-5). **코드 상수, 기본 끔.**
+ * 임베드를 **틀(iframe)로 그릴지** (7-C 결정 K-5). **코드 상수 — 켬(사용자 「임베드 허용해라」 2026-09-24).**
  *
  * 켜면 커뮤니티 페이지 화면(`page_view.php`)이 CSP 에 `frame-src` 로 **허용 목록의 호스트만** 더해 보내고, 렌더러 두 벌이
- * 허용 목록 안의 임베드를 `<iframe sandbox>`(권한 토큰 0 — J-4)로 그린다. 끄면 모든 임베드가 「허용 대기」 카드다.
- * 켜는 것은 사이트의 콘텐츠 보안 정책을 넓히는 일이라 **사용자 확인 뒤**에 한다(HANDOFF 2장 — CSP 는 사용자). 절차는 **두 단계**:
- *   ① 이 상수를 true 로(코드) ② nginx(`/etc/nginx/sites-enabled/tbox-v2`)의 `location = /index.php` 에서 CSP 를 뺀 보안 머리글을 다시 적어
- *   CSP 가 앱 것 하나만 남게(설정 — 사용자). ② 없이 ① 만 하면 nginx 의 CSP 가 틀을 막아 **빈 틀**이 된다(독립 검토 7-C M-1).
- * ★ `sandbox=""`(스크립트 없음, J-4)라 스크립트가 필요한 임베드(YouTube·지도 등)는 틀을 열어도 비어 보일 수 있다 — USER-CHECKS 7-C.
+ * 허용 목록 안의 임베드를 `<iframe>` 으로 그린다. 끄면 모든 임베드가 「허용 대기」 카드다.
+ * 틀의 권한(sandbox)은 `COMMUNITY_EMBED_SANDBOX` — 사용자 결정 2026-09-24 로 J-4(`sandbox=""`)를 넓혔다(영상이 재생되게).
+ * 틀이 실제로 열리려면 **두 단계**가 다 되어야 한다:
+ *   ① 이 상수 true(코드) ② nginx 두 파일(`tbox-v2`·`tbox-v2-local`)에 **커뮤니티 페이지 화면 경로 하나만** 받는 location
+ *   (`^/community/p/<UUID>$` — CSP 를 뺀 보안 머리글을 다시 적음)을 두어 그 응답의 CSP 가 앱 것 하나만 남게
+ *   (설정 — 사용자가 Qaredi `../scripts/apply-nginx-embed-csp-2026-09-26.sh` 를 sudo 로, 보안 넷 R-31 nginx 뒤에).
+ *   ② 없이 ① 만 하면 nginx 의 CSP(frame-src 없음)가 틀을 막아 **빈 틀**이 된다(독립 검토 7-C M-1) — 닫힌 쪽이라 위험은 없다.
+ * 홈의 「템플릿에서」 미리보기는 화면 CSP 에 frame-src 가 없어 틀을 열지 않는다(`templates.js` — 카드로 그림).
  */
-const COMMUNITY_EMBED_FRAMES = false;
+const COMMUNITY_EMBED_FRAMES = true;
+
+/**
+ * 임베드 틀의 sandbox 토큰 (사용자 결정 2026-09-24 — 「허용 목록 사이트만 스크립트 허용」, J-4 를 넓힘).
+ *   · `allow-scripts allow-same-origin` — 영상 재생기(YouTube 등)가 돌려면 둘 다 필요하다. 틀은 **남의 출처**(허용 목록 호스트)이므로
+ *     같은 출처 권한은 그 사이트의 것이지 이 사이트의 것이 아니다 — 그래서 **이 사이트 자신·상위·하위 도메인은 허용 목록에 넣지 못하고**
+ *     (`community_embed_host_is_self`), 목록에 있어도 그리지 않는다(스크립트 + 같은 출처가 우리 출처면 sandbox 를 스스로 벗길 수 있다).
+ *   · `allow-presentation`(전체 화면·캐스트) · `allow-popups`(「YouTube 에서 보기」 새 창 — 새 창도 같은 sandbox 를 물려받는다).
+ *   · **넣지 않는 것**: `allow-top-navigation*`(이 페이지를 딴 곳으로 보내기) · `allow-forms` · `allow-modals` · `allow-popups-to-escape-sandbox`
+ *     · `allow-downloads` · `allow-storage-access-by-user-activation`.
+ * 렌더러 두 벌(`DocRender.php`·`doc-render.js`)이 같은 글자를 쓴다 — 시험(stage7c C:T-183)이 두 쪽이 같은지 본다.
+ */
+const COMMUNITY_EMBED_SANDBOX = 'allow-scripts allow-same-origin allow-presentation allow-popups';
 
 // ─── 3) 예외·치명적 오류 은닉 (PRD S-09-7, SECURITY 1.7) ───────
 // 어떤 예외도 스택 트레이스·DB 오류 문구·파일 경로를 응답에 넣지 않는다.

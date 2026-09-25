@@ -8,6 +8,7 @@ declare(strict_types=1);
  *   받는 값 `{host}` — 호스트 이름 **하나**(https 는 붙이지 않는다). 앞뒤 빈칸을 떼고 소문자로 바꾼 뒤 `Doc::isEmbedHost` 모양이어야 한다
  *   (IP·포트·경로·와일드카드·사용자 정보·비 ASCII 는 400 — 국제 도메인은 punycode `xn--` 로).
  *   살아 있는 것 20개까지(400 `too_many_domains`) · 이미 있으면 400 `exists`. 감사 `embed.domain_add allow`.
+ *   이 사이트 자신·상위·하위 도메인은 400 `self_host`(틀에 스크립트 + 같은 출처를 주므로 — 사용자 결정 2026-09-24).
  *
  * @var array<string,mixed> $user   라우터가 넘긴 현재 사용자
  */
@@ -19,6 +20,11 @@ if (array_diff(array_keys($body), ['host']) !== [] || !is_string($body['host'] ?
 $host = strtolower(trim((string) $body['host']));
 if (!Doc::isEmbedHost($host)) {
     Http::json(['error' => '호스트 이름만 적습니다 — 예: www.youtube.com (https·경로·포트·IP·와일드카드 없이, 국제 도메인은 xn-- 형태)', 'reason' => 'bad_host'], 400);
+    exit;
+}
+// 이 사이트 자신·상위·하위 도메인은 넣지 않는다 — 틀에 스크립트 + 같은 출처를 주므로 sandbox 를 스스로 벗길 수 있다(사용자 결정 2026-09-24)
+if (community_embed_host_is_self($host)) {
+    Http::json(['error' => '이 사이트 자신(과 그 상위·하위 도메인)은 임베드 허용 목록에 넣을 수 없습니다', 'reason' => 'self_host'], 400);
     exit;
 }
 

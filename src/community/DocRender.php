@@ -320,8 +320,10 @@ final class DocRender
                      . '</div>';
 
             /* 7-C 임베드 (K-4) — `$ctx['embeds']` = {hosts: 지금 허용 목록, frames: 사이트가 틀을 여는가}.
-               목록 안 + 틀 열림 → `<iframe sandbox="">`(권한 토큰 0 — 스크립트·같은 출처·팝업 없음, J-4) · 목록 안 → 「허용 대기」 카드 +
-               새 탭 링크 · 목록 밖(빠진 호스트 포함) → 링크 없는 카드. 주소는 검증기가 본 https 모양이고 여기서도 호스트를 다시 뽑는다. */
+               목록 안 + 틀 열림 → `<iframe sandbox="COMMUNITY_EMBED_SANDBOX">`(사용자 결정 2026-09-24 — 스크립트·같은 출처·전체 화면·팝업,
+               이 페이지를 딴 곳으로 보내기·폼·다운로드는 없음) + `referrerpolicy="strict-origin"`(영상 사이트가 출처만 받게 — 경로는 안 보낸다)
+               · 목록 안 → 「허용 대기」 카드 + 새 탭 링크 · 목록 밖(빠진 호스트 포함) → 링크 없는 카드.
+               주소는 검증기가 본 https 모양이고 여기서도 호스트를 다시 뽑는다. */
             case 'embed':
                 $eurl   = isset($block['url']) && is_string($block['url']) ? $block['url'] : '';
                 $ehost  = Doc::embedHost($eurl);
@@ -331,7 +333,8 @@ final class DocRender
                 $ecap   = isset($block['caption']) && is_array($block['caption']) ? self::rich($block['caption']) : '';
                 if ($listed && ($emb['frames'] ?? false) === true) {
                     return '<figure class="doc-embed"' . $idAttr . '>'
-                         . '<iframe class="doc-embed__frame" src="' . self::esc($eurl) . '" sandbox="" referrerpolicy="no-referrer" loading="lazy"'
+                         . '<iframe class="doc-embed__frame" src="' . self::esc($eurl) . '" sandbox="' . self::esc(COMMUNITY_EMBED_SANDBOX) . '"'
+                         . ' allow="fullscreen; picture-in-picture; encrypted-media" referrerpolicy="strict-origin" loading="lazy"'
                          . ' title="' . self::esc('임베드 — ' . $ehost) . '"></iframe>'
                          . ($ecap === '' ? '' : '<figcaption class="doc-embed__caption">' . $ecap . '</figcaption>')
                          . '</figure>';

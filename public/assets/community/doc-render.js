@@ -34,6 +34,8 @@ const FILE_UNREADABLE = '볼 수 없는 파일';
 /** 7-C — 임베드 카드 문구. 서버 렌더러 `DocRender::EMBED_*` 와 같은 문구(C:T-19) */
 const EMBED_WAITING = '허용 대기 · 새 탭에서 열기';
 const EMBED_BLOCKED = '허용 목록 밖의 임베드';
+/** 틀 sandbox 토큰 — 서버 `COMMUNITY_EMBED_SANDBOX`(src/bootstrap.php)와 **같은 글자**여야 한다(사용자 결정 2026-09-24 · stage7c 가 견준다) */
+const EMBED_SANDBOX = 'allow-scripts allow-same-origin allow-presentation allow-popups';
 /** 7-C — `Doc::embedHost` 와 같은 규칙(https · 소문자 ASCII 라벨 · 점 하나 이상 · IP·포트·사용자 정보 없음) */
 // 경로는 ASCII 인쇄 가능 글자만 — 서버(`Doc::embedHost`)와 같은 규칙(유니코드 공백에서 갈리지 않게, 독립 검토 7-C L-2)
 const EMBED_URL_RE = /^https:\/\/([^/?#\u0000-\u0020\u007f-\uffff]+)(?:[/?#][^\u0000-\u0020\u007f-\uffff"'<>\\^`{|}]*)?$/;
@@ -82,7 +84,8 @@ function renderLinkPage(block, id, ctx) {
 
 /**
  * 7-C 임베드 (K-4) — `ctx.embeds` = {hosts, frames}. 서버 렌더러와 같은 세 갈래:
- * 목록 안 + 틀 열림 → `<iframe sandbox="">`(권한 토큰 0) · 목록 안 → 「허용 대기」 카드 + 새 탭 링크 · 목록 밖 → 링크 없는 카드.
+ * 목록 안 + 틀 열림 → `<iframe sandbox="EMBED_SANDBOX">`(서버 `COMMUNITY_EMBED_SANDBOX` 와 같은 글자 — 사용자 결정 2026-09-24)
+ *   · 목록 안 → 「허용 대기」 카드 + 새 탭 링크 · 목록 밖 → 링크 없는 카드.
  */
 function renderEmbed(block, id, ctx) {
   const url = typeof block.url === 'string' ? block.url : '';
@@ -97,8 +100,9 @@ function renderEmbed(block, id, ctx) {
     if (id) { fig.id = 'block-' + id; }
     const frame = document.createElement('iframe');
     frame.className = 'doc-embed__frame';
-    frame.setAttribute('sandbox', '');
-    frame.setAttribute('referrerpolicy', 'no-referrer');
+    frame.setAttribute('sandbox', EMBED_SANDBOX);
+    frame.setAttribute('allow', 'fullscreen; picture-in-picture; encrypted-media');
+    frame.setAttribute('referrerpolicy', 'strict-origin');
     frame.setAttribute('loading', 'lazy');
     frame.setAttribute('title', '임베드 — ' + host);
     frame.setAttribute('src', url);

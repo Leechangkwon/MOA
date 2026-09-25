@@ -3125,8 +3125,76 @@ function community_embed_hosts(): array
             error_log('[tbox] request_id=' . TBOX_REQUEST_ID . ' community embed_domains unreadable — 빈 목록으로 닫음');
             $hosts = [];
         }
+        /* 이 사이트 자신·상위·하위 도메인은 목록에 있어도 쓰지 않는다 — 틀이 스크립트 + 같은 출처를 가지므로(COMMUNITY_EMBED_SANDBOX).
+           등록 창구가 막지만, 설정(APP_URL)이 나중에 바뀌어도 여기서 한 번 더 닫는다. */
+        $hosts = array_values(array_filter($hosts, static fn (string $h): bool => !community_embed_host_is_self($h)));
     }
     return $hosts;
+}
+
+/**
+ * 이 호스트가 이 사이트 자신이거나 그 상위·하위 도메인인가 (사용자 결정 2026-09-24 — 틀에 스크립트 + 같은 출처를 주므로).
+ * 사이트 주소는 `.env` 의 `APP_URL`. 주소를 못 읽거나 모르는 모양이면 **참**(닫힌 쪽 — 어떤 호스트도 틀로 그리지 않는다).
+ * 견주기 전에 맞춘다(임베드 켜기 독립 검토 권고 5): 소문자 · 끝 점 떼기(`changkwon.mso.so.` 도 같은 이름) ·
+ * 국제 도메인은 punycode(`idn_to_ascii` — intl 이 없거나 바꾸지 못하면 닫힌 쪽).
+ * `APP_URL` 이 IP 면 이름으로 견줄 수 없으므로 **요청 머리글 Host 도** 자기 주소로 함께 본다 — 닫힌 쪽만 넓힌다
+ * (Host 는 요청이 준 값이라 `APP_URL` 이 이름일 때는 쓰지 않는다 — 남의 Host 로 판정을 바꿀 수 없게).
+ */
+function community_embed_host_is_self(string $host): bool
+{
+    try {
+        $raw = (string) parse_url(Env::get('APP_URL'), PHP_URL_HOST);
+    } catch (Throwable $e) {
+        $raw = '';
+    }
+    $self = community_embed_norm_host($raw);
+    if ($self === null) {
+        return true;
+    }
+    $names = [$self];
+    if (filter_var(trim($self, '[]'), FILTER_VALIDATE_IP) !== false) {
+        $given = (string) ($_SERVER['HTTP_HOST'] ?? '');
+        if ($given !== '') {
+            $reqHost = community_embed_norm_host((string) preg_replace('/:\d+$/D', '', $given));
+            if ($reqHost === null) {
+                return true;
+            }
+            $names[] = $reqHost;
+        }
+    }
+    $host = community_embed_norm_host($host);
+    if ($host === null) {
+        return true;
+    }
+    foreach ($names as $name) {
+        if ($host === $name || str_ends_with($host, '.' . $name) || str_ends_with($name, '.' . $host)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+/**
+ * 호스트 글자를 견줄 모양으로 — 앞뒤 빈칸 뗌 · 소문자 · 끝 점 뗌 · 비 ASCII(국제 도메인)는 punycode.
+ * 빈 값 · 제어 문자·빈칸이 든 값 · intl 이 없는데 비 ASCII · 바꾸지 못한 값은 null(부르는 쪽이 닫힌 쪽으로 판정한다).
+ */
+function community_embed_norm_host(string $h): ?string
+{
+    $h = rtrim(strtolower(trim($h)), '.');
+    if ($h === '' || preg_match('/[\x00-\x20\x7f]/', $h) === 1) {
+        return null;
+    }
+    if (preg_match('/[\x80-\xff]/', $h) === 1) {
+        if (!function_exists('idn_to_ascii')) {
+            return null;
+        }
+        $a = idn_to_ascii($h, IDNA_DEFAULT, INTL_IDNA_VARIANT_UTS46);
+        if (!is_string($a) || $a === '') {
+            return null;
+        }
+        $h = rtrim(strtolower($a), '.');
+    }
+    return $h === '' ? null : $h;
 }
 
 /**
@@ -3168,7 +3236,9 @@ const COMMUNITY_EMBED_REFUSED = '허용 목록에 없는 주소는 임베드할 
  * 사이트 기본 CSP(`bootstrap.php`)는 그대로 두고, 이미 나간 머리글을 읽어 뒤에 한 조각을 붙여 **이 응답만** 바꾼다.
  * 호스트는 DB CHECK · `Doc::isEmbedHost`(끝 줄바꿈까지 막는 `D`) · `header()` 의 CR/LF 거부 세 겹을 지난다. 목록이 비면 아무것도 하지 않는다.
  * ★ **nginx 도 CSP 머리글을 따로 붙인다**(`/etc/nginx/sites-enabled/tbox-v2` server 블록) — 브라우저는 두 정책을 모두 적용하므로,
- *   이 함수만으로는 틀이 열리지 않는다. 켜는 절차는 상수 + nginx 두 단계다(USER-CHECKS 7-C · 독립 검토 7-C M-1).
+ *   이 함수만으로는 틀이 열리지 않는다. 켜는 절차는 상수 + nginx 두 단계다(USER-CHECKS 7-C · 독립 검토 7-C M-1). nginx 쪽은
+ *   이 화면 경로(`^/community/p/<UUID>$`)만 받는 location 이 CSP 를 뺀 보안 머리글을 다시 적는다(Qaredi `../scripts/apply-nginx-embed-csp-2026-09-26.sh`)
+ *   — 그래서 이 함수가 부르는 화면은 **이 경로 하나**여야 한다(다른 화면에서 부르면 nginx CSP 가 남아 틀이 빈다).
  */
 function community_embed_csp(): void
 {
