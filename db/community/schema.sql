@@ -289,6 +289,9 @@ CREATE TABLE community.comments (
     hidden_by         BIGINT      REFERENCES public.users(id),
     deleted_at        TIMESTAMPTZ,
     deleted_by        BIGINT      REFERENCES public.users(id),
+    -- 검색 색인(Q:F-2) — `body` 에서 뽑은 **파생값**(SearchText 한글 음절 겹침 + 단어). 앱이 댓글을 쓰고 고칠 때 채운다.
+    -- 이미 있는 DB 는 db/migrations/2026-10-01_qf2_search.sql 이 같은 모양으로 더한다(새 설치는 이 파일 하나로 끝난다)
+    search_tsv        TSVECTOR,
     CONSTRAINT comments_resolved_shape CHECK ((resolved_at IS NULL) = (resolved_by IS NULL)),
     CONSTRAINT comments_hidden_shape   CHECK ((hidden_at IS NULL) = (hidden_by IS NULL)),
     CONSTRAINT comments_deleted_shape  CHECK ((deleted_at IS NULL) = (deleted_by IS NULL)),
@@ -296,6 +299,7 @@ CREATE TABLE community.comments (
 );
 CREATE INDEX comments_page_idx   ON community.comments (page_id, created_at) WHERE deleted_at IS NULL;
 CREATE INDEX comments_parent_idx ON community.comments (parent_comment_id) WHERE parent_comment_id IS NOT NULL;
+CREATE INDEX comments_search_tsv_idx ON community.comments USING GIN (search_tsv);
 
 CREATE TABLE community.comment_reactions (
     comment_id BIGINT      NOT NULL REFERENCES community.comments(id),
