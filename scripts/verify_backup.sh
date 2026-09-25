@@ -8,7 +8,12 @@
 #                  실패 경로를 만든다). 연속 실패 횟수 파일도 그 안에 둔다 — 시험이 운영의 횟수를 밀지 않게.
 #                  운영자가 셸에서 주는 절대 경로이며, 실제로 있는 디렉터리여야 한다.
 #
-# 무엇을 보나 — "파일이 있다" 는 검증이 아니다. 세 가지를 본다.
+# 무엇을 보나 — "파일이 있다" 는 검증이 아니다. 네 가지를 본다.
+#   ⓪ 새로움   가장 최근 산출물이 24.5시간 안에 만들어졌나 → 백업 자체가 멈춘 것을 잡는다.
+#              (2026-09-26 발견: backup_db.sh 가 09-23 부터 매일 실패했는데 이 검증은 남아 있던 09-22 파일만 보고
+#               나흘 동안 「통과」 — AL-8 이 한 번도 안 울렸다. 백업이 03:00(DB)·03:30(파일), 검증이 04:30 이라 평소 1~1.5시간,
+#               하루치가 빠지면 가장 최근 것이 25~25.5시간 전이 된다 → 24.5시간을 넘으면 문제로 센다. 26시간으로 두면
+#               하루 결손을 놓친다(독립 검토). 검증을 손으로 백업 시각 직전에 돌려도 24시간 안팎이라 헛실패가 없다)
 #   ① 체크섬   sha256sum -c   → 저장된 뒤 바이트가 바뀌지 않았나 (디스크 손상·변조)
 #   ② 복호화   gpg -d          → 키로 실제로 열리나 (키가 바뀌었거나 산출물이 깨졌으면 여기서 걸린다)
 #   ③ 내용     pg_dump 는 `pg_restore -l` 로 **목록만**, 파일은 `tar -tz` 로 목록만
@@ -50,7 +55,10 @@ done
 
 # 경보 로그 — PHP(cli_raise_alert · admin_alerts.php)와 같은 규칙으로 만든다(`.env` 의 AUDIT_LOG_FILE 디렉터리).
 # `.env` 에서 **그 한 줄만** 읽는다(다른 값·비밀은 읽지 않는다). 따옴표는 Env.php 처럼 한 겹 벗긴다.
-ALERTS_LOG="/var/log/tbox-v2/alerts.log"
+# ★ `.env` 를 못 읽거나 그 줄이 없으면 **멈춘다** — 예전에는 운영 기본값(/var/log/tbox-v2/alerts.log)으로 넘어가서,
+#   `.env` 없는 복제본에서 --backup-root 임시 폴더로 돌린 검토가 운영 경보 로그에 가짜 AL-8 을 남겼고 휴대폰 알림 배치가
+#   그것을 사용자에게 보냈다(2026-09-26 06:54 — SECURITY R-104). 운영 `.env` 에는 이 줄이 있다(cron 04:30 은 그대로 돈다).
+ALERTS_LOG=""
 AUDIT_LOG_LINE="$(grep -m1 '^AUDIT_LOG_FILE=' "${REPO_DIR}/.env" 2>/dev/null || true)"
 if [ -n "$AUDIT_LOG_LINE" ]; then
   AUDIT_LOG_VALUE="${AUDIT_LOG_LINE#AUDIT_LOG_FILE=}"
@@ -60,6 +68,7 @@ if [ -n "$AUDIT_LOG_LINE" ]; then
     /*) ALERTS_LOG="$(dirname "$AUDIT_LOG_VALUE")/alerts.log" ;;
   esac
 fi
+[ -n "$ALERTS_LOG" ] || { printf '[중단] %s/.env 의 AUDIT_LOG_FILE(절대 경로)을 읽지 못했다 — 경보 로그 자리를 정할 수 없어 멈춘다(운영 로그로 넘어가지 않는다)\n' "$REPO_DIR" >&2; exit 3; }
 
 DB_DIR="${BACKUP_ROOT}/db"
 FILES_DIR="${BACKUP_ROOT}/files"
@@ -77,6 +86,24 @@ CHECKED=0
 
 note_problem() { PROBLEMS+=("$1"); printf '   ✖ %s\n' "$1" >&2; }
 
+# ⓪ 새로움 — 가장 최근 산출물의 수정 시각(백업 스크립트가 mv 로 최종 이름을 준 시각)이 24.5시간 안인가
+MAX_AGE_MIN=$((24 * 60 + 30))   # 24.5시간 — 하루 빠지면 DB 25.5시간·파일 25시간이라 다음 검증에서 바로 잡힌다(26시간이면 하루 결손을 놓친다 — 독립 검토)
+fresh_check() {  # fresh_check <라벨> <경로>
+  local mtime now age
+  mtime="$(stat -c %Y "$2" 2>/dev/null || echo '')"
+  now="$(date +%s)"
+  if [ -z "$mtime" ]; then
+    note_problem "$1 백업의 만든 시각을 읽을 수 없다: $(basename "$2")"
+    return 0
+  fi
+  age=$(( (now - mtime) / 60 ))
+  if [ "$age" -gt "$MAX_AGE_MIN" ]; then
+    note_problem "$1 백업이 새로 만들어지지 않았다 — 가장 최근 $(basename "$2") 이 $((age / 60))시간 $((age % 60))분 전(24.5시간 넘음 · 백업 스크립트 실패 여부를 본다)"
+  else
+    say "⓪ 새로움: $((age / 60))시간 $((age % 60))분 전 (24.5시간 안)"
+  fi
+}
+
 # 디렉터리에서 가장 최근 산출물 하나 (이름에 날짜가 들어가 사전순 = 시간순)
 latest() {  # latest <디렉터리> <glob>
   find "$1" -maxdepth 1 -type f -name "$2" -printf '%f\n' 2>/dev/null | sort -r | head -n1
@@ -91,6 +118,7 @@ if [ -z "$DB_NAME_LATEST" ]; then
 else
   CHECKED=$((CHECKED + 1))
   say "DB 산출물: ${DB_NAME_LATEST} ($(stat -c %s "${DB_DIR}/${DB_NAME_LATEST}") 바이트)"
+  fresh_check "DB" "${DB_DIR}/${DB_NAME_LATEST}"
 
   # ① 체크섬 — 체크섬 파일 안에는 이름만 있으므로 그 디렉터리에서 돌린다
   if [ ! -r "${DB_DIR}/${DB_NAME_LATEST}.sha256" ]; then
@@ -134,6 +162,7 @@ if [ -z "$F_NAME_LATEST" ]; then
 else
   CHECKED=$((CHECKED + 1))
   say "파일 산출물: ${F_NAME_LATEST} ($(stat -c %s "${FILES_DIR}/${F_NAME_LATEST}") 바이트)"
+  fresh_check "파일" "${FILES_DIR}/${F_NAME_LATEST}"
 
   if [ ! -r "${FILES_DIR}/${F_NAME_LATEST}.sha256" ]; then
     note_problem "파일 체크섬 파일이 없다: ${F_NAME_LATEST}.sha256"

@@ -2914,6 +2914,29 @@
       "est_sec": 90,
       "writes_prod": false,
       "notes": "부르는 셸: community.qf3a. 단독 실행 불가(인자 SITE UA SHOTS IDS_JSON · 세션 둘은 표준입력 — R-62)."
+    },
+    {
+      "id": "tbox.verify_backup_fresh",
+      "cmd": "bash tests/verify_backup_fresh.sh",
+      "module": "tbox",
+      "env": "temp-instance",
+      "status": "required",
+      "needs": [
+        "sudo"
+      ],
+      "covers": [
+        "scripts/verify_backup.sh",
+        "scripts/audit_cli.php",
+        "db/schema.sql",
+        "db/grants.sql"
+      ],
+      "requirements": [],
+      "risks": [
+        "R-104"
+      ],
+      "est_sec": 60,
+      "writes_prod": false,
+      "notes": "R-104(2026-09-26) — 백업 검증 ⓪ 새로움(24.5시간) · .env 없는 사본은 멈춤(G — 운영 경보 로그 줄 수 대조). --backup-root 임시(root 0700)에 운영 키로 만든 작은 가짜 산출물(임시 DB 스키마 덤프 · 글자 하나 tar) · 임시 DB tbox_vbfresh_test · 임시 인스턴스 .env(DB·감사 로그만 바꿈). 운영 실패 횟수·백업 폴더·감사(검증·경보 행) 불변을 F 에서 대조. 운영 /etc/tbox-v2/backup.key 를 root 로 읽는다(암호화에만)."
     }
   ]
 }
