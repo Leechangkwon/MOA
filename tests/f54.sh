@@ -511,8 +511,9 @@ expect "scripts/security_lint.sh 종료 코드" "0" "$LINT"
 expect "✖ 표시 줄 수" "0" "$(grep -c '^✖' "$WORK/lint.out")"
 tail -1 "$WORK/lint.out" | sed 's/^/    /'
 
-sub "앱 코드(src/·public/)에 exec·proc_open·소켓이 0인가"
-APPHITS=$(grep -rnE 'proc_open|shell_exec|passthru|popen\(|\bexec\(|fsockopen|stream_socket_' "$ROOT/src" "$ROOT/public" 2>/dev/null | wc -l)
+sub "앱 코드(src/·public/ 의 PHP)에 exec·proc_open·소켓이 0인가"
+# PHP 파일만 본다 — 브라우저 JS 의 정규식 `.exec(`(예: public/assets/community/vendor/pm/)는 OS 명령이 아니다(2026-09-25).
+APPHITS=$(grep -rnE --include='*.php' 'proc_open|shell_exec|passthru|popen\(|\bexec\(|fsockopen|stream_socket_' "$ROOT/src" "$ROOT/public" 2>/dev/null | wc -l)
 expect "0건" "0" "$APPHITS"
 # 스캐너를 **실행**하는 곳은 배치 하나뿐이어야 한다 (ARCH 5.28). 주석의 언급이 아니라
 # `proc_open(` 호출이 있는 파일만 센다.
