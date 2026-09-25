@@ -244,6 +244,11 @@ code {
 @media (max-width: 719.98px) {
   .page-head__text { flex: 1 1 100%; }
   .page-head__actions { flex: 1 1 100%; justify-content: flex-end; }
+  /* 동작 줄은 한 줄 — 「사용 방법」은 ? 아이콘만(글자는 화면 읽기용으로 남긴다: 가리기만, display:none 아님) */
+  .page-head__actions [data-help-open] { width: var(--h-btn); padding: 0; justify-content: center; }
+  .page-head__actions [data-help-open] > span:not(.icon) {
+    position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0;
+  }
 }
 
 /* ─── 더보기 메뉴 `.menu` (DESIGN 2.15, 2026-09-25) ─────────────────
