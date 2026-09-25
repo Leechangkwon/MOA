@@ -598,6 +598,36 @@ details.page-tree__node[open] > summary > .page-tree__row > .page-tree__caret { 
 @media (max-width: 719.98px) { .page-props__sep { display: none; } }
 /* 고칠 수 없는 사람에게는 단추가 잠긴다 — 값은 그대로 보이고 눌리지 않는다. */
 .page-props .btn[disabled] { cursor: default; }
+/* 「상태」는 배지 자체가 누르는 곳 — 단추 테두리 안에 배지 테두리가 겹쳐 보이지 않게 단추 겉모양을 걷는다(2026-09-25) */
+#page-status.btn--quiet { height: auto; padding: 0; border-color: transparent; background: transparent; box-shadow: none; }
+/* 겉모양을 걷어도 키보드 초점 링은 남긴다(위 규칙이 `.btn:focus-visible` 보다 무거워 링이 사라졌다 — 독립 검토) */
+#page-status.btn--quiet:focus-visible { border-color: var(--ring); box-shadow: 0 0 0 3px var(--ring-soft); }
+
+/* 「하위 페이지」 이름표는 줄 머리에 붙인다 — `.nav-title` 의 사이드바용 바깥 여백(12px 8px 4px)이 여기서는 한 칸 들여·내려 보였다 */
+#page-children-wrap > .toolbar > .nav-title,
+#page-comments-wrap > .toolbar > .nav-title { margin: 0; }
+
+/* 720px 미만 — 속성은 한 줄에 하나, 이름표 폭을 맞추고 동작 단추는 줄 끝에 작게(아이콘 없이) 모은다.
+   (2026-09-25 사용자 폰 스크린샷 「단추의 배열이 너무 크고 정리돼 있지 않다」) */
+@media (max-width: 719.98px) {
+  .page-props { flex-direction: column; align-items: stretch; gap: 6px; }
+  /* 한 속성 = 한 줄. 넘치면 줄 안에서 꺾되 꺾인 줄은 값 세로선(이름표 폭 + 간격)에서 시작한다(매단 들여쓰기) */
+  .page-props__group { display: flex; flex-wrap: wrap; row-gap: 4px; min-height: 28px; padding-left: calc(5.5rem + 8px); }
+  .page-props__group > .muted:first-child { flex: 0 0 5.5rem; margin-left: calc(-5.5rem - 8px); align-self: flex-start; padding-top: 4px; }
+  /* 첫 값이 값 칸보다 길 때 통째로 다음 줄로 넘어가 이름표만 윗줄에 남지 않게 — 값은 값 칸 폭까지만 */
+  .page-props__group > :not(:first-child) { max-width: 100%; }
+  .page-props__group > :not(.btn) + .btn:not(#page-status) { margin-left: auto; }
+  /* 속성의 동작 단추만(태그 칩의 ✕ 는 그대로 — 칩은 #page-tags 안에 있다) */
+  .page-props__group > .btn--small:not(#page-status) { height: 28px; padding: 0 10px; }
+  .page-props__group > .btn--small:not(#page-status) .icon { display: none; }
+  #page-tag-input { flex: 1 1 8rem; width: auto; min-width: 0; }
+  #page-tags:empty { display: none; }   /* 칩이 없으면 빈 칸이 간격만 먹어 입력 칸이 다른 값보다 안쪽으로 밀렸다 */
+  #page-board-link, #page-owner-name { min-width: 0; overflow-wrap: anywhere; }
+  #page-views { font-size: 13px; }
+  /* 하위 페이지 줄 — 제목·개수 뒤 단추 둘을 한 줄 끝에(글자는 「＋ 페이지」·「＋ 데이터베이스」로 짧게) */
+  #page-children-wrap > .toolbar > .btn { height: 28px; padding: 0 10px; }
+  #page-children-wrap > .toolbar > #page-new-child { margin-left: auto; }
+}
 /* 5-C 태그 — 칩 줄과 입력 칸. 입력 칸은 도구줄 입력(`.toolbar input`)과 **같은 토큰**이고 높이만 같은 줄의
    작은 단추(32px)에 맞춘다. 좁은 화면에서는 태그 묶음이 제 안에서 줄을 바꾼다(칸을 밀지 않는다). */
 .page-props input[type="text"] {

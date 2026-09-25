@@ -253,7 +253,15 @@ code {
 /* 480px 미만(접은 폴드·작은 폰) — 머리 동작 한 줄을 지키려고 단추 안 여백만 줄인다(글자는 그대로) */
 @media (max-width: 479.98px) {
   .page-head__actions { gap: 6px; }
+  /* 머리 단추 높이 36→32px(작은 단추와 같은 높이) — 2026-09-25 사용자 「단추가 너무 크다」 */
+  .page-head__actions .btn { height: 32px; }
+  .page-head__actions [data-help-open] { width: 32px; }
   .page-head__actions .btn:not([data-help-open]) { padding: 0 10px; gap: 6px; }
+}
+
+/* 좁은 화면에서만 가리는 글자 — 화면 읽기용으로는 남는다(display:none 아님). 긴 단추 이름을 줄일 때(DESIGN 2.9) */
+@media (max-width: 719.98px) {
+  .narrow-hide { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
 }
 
 /* ─── 더보기 메뉴 `.menu` (DESIGN 2.15, 2026-09-25) ─────────────────

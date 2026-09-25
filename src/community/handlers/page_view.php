@@ -265,12 +265,14 @@ require __DIR__ . '/../../views/shell_top.php';
       <div class="toolbar">
         <p class="nav-title">하위 페이지</p>
         <span id="page-children-count" class="muted"></span>
-        <button id="page-new-child" class="btn btn--quiet" type="button" hidden>
-          <span class="icon" data-icon="plus"></span>하위 페이지 만들기
+        <!-- 좁은 화면(720px 미만)에서는 「하위 」·「 만들기」를 가려 「＋ 페이지」·「＋ 데이터베이스」로 짧게 보인다 — 글자는
+             화면 읽기용으로 남는다(`.narrow-hide`, DESIGN 2.9 · 2026-09-25 사용자 「단추가 너무 크고 정리가 안 돼 보인다」). -->
+        <button id="page-new-child" class="btn btn--quiet btn--small" type="button" hidden>
+          <span class="icon" data-icon="plus"></span><span><span class="narrow-hide">하위 </span>페이지<span class="narrow-hide"> 만들기</span></span>
         </button>
         <!-- 6-A — 표 모양의 하위 데이터베이스. 만든 뒤 그 DB 페이지로 간다(행은 DB 표 안에서 만든다) -->
-        <button id="page-new-db" class="btn btn--quiet" type="button" hidden>
-          <span class="icon" data-icon="plus"></span>하위 데이터베이스 만들기
+        <button id="page-new-db" class="btn btn--quiet btn--small" type="button" hidden>
+          <span class="icon" data-icon="plus"></span><span><span class="narrow-hide">하위 </span>데이터베이스<span class="narrow-hide"> 만들기</span></span>
         </button>
       </div>
       <div id="page-children" class="card-grid"></div>
