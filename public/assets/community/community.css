@@ -578,6 +578,8 @@ details.page-tree__node[open] > summary > .page-tree__row > .page-tree__caret { 
 /* 라벨과 그 값은 한 덩어리 — 좁은 화면에서 줄이 꺾여도 「공개 범위」와 배지가 떨어지지 않는다 */
 .page-props__group { display: inline-flex; align-items: center; gap: 8px; }
 .page-props__sep { align-self: stretch; width: 1px; margin: 4px 4px; background: var(--line); }
+/* DESIGN 2.14 (2026-09-25) — 좁으면 줄이 꺾여 세로줄이 줄 머리·끝에 매달린다 */
+@media (max-width: 719.98px) { .page-props__sep { display: none; } }
 /* 고칠 수 없는 사람에게는 단추가 잠긴다 — 값은 그대로 보이고 눌리지 않는다. */
 .page-props .btn[disabled] { cursor: default; }
 /* 5-C 태그 — 칩 줄과 입력 칸. 입력 칸은 도구줄 입력(`.toolbar input`)과 **같은 토큰**이고 높이만 같은 줄의

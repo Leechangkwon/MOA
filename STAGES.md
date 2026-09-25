@@ -2273,6 +2273,11 @@ HTTP 시험(T-77 (a)~(e))은 **미실행** — 운영 DB 에 `files.exec_content
 - [x] `security_lint.sh` 0건 · 인라인 on*/style 0건 · Playwright 콘솔 0
 - [x] 관문 ③ 사용자 자기 공격: 개발자도구에서 `document.cookie='tbox_theme="><img src=x onerror=alert(1)>'` 넣고 새로고침 → `<html lang="ko">` 만 나오고 알림창이 뜨지 않는지 — **✅ 2026-09-22** 사용자 「확인했어」 + Fable 이 curl 로 재실측: 공격 쿠키 → `/login` 200, `<html lang="ko">` 만(`onerror`·`img` 0건), `dark`/`light` 는 `data-theme` 정상 반영, 쿠키 없음 → 속성 없음 (`shell_top.php`·`login_page.php` 허용 목록 `in_array` 그대로)
 - [x] 커밋 `ae534de` (2026-09-22) · 발행 **v1.16.0** `4357fa6` — F-68(`df126a4`)과 묶어 한 번호로 (다른 세션과 합의). 지시서 d5·d6·d7·d7b, 견본 docs/design-guide.html
+- [x] **보완 셋(2026-09-25, 취합 세션 — 개발·기획 세션 한도로 직접)** — 사용자 지적 「왤케 UI/UX 가 지저분하냐」(폰 스크린샷) · 「디자인 지침으로 부족하면 보완해」. DESIGN 2.12 브라우저 강제 다크 막기(글자 그대로의 `<meta name="color-scheme">` + 밝은 뿌리 `color-scheme: only light`) · 2.9 화면 머리 단추 넷까지 · **새 구성 요소 2.15 「더보기」 `details.menu`** · 2.14 좁은 화면 세로줄 숨김 · 6장 체크리스트 두 줄. 커뮤니티 페이지 머리 = 사용 방법 · 이력 · 더보기(옮기기·템플릿으로 저장·게시·게시 해제·숨기기·해결됨 · 구분선 · 삭제) · 편집. 도움말(`src/help/community.php`) 다섯 문장 새 위치로. 복제본 태그 `selftest-base/ux1` → `review-base/ux1`
+- [x] 검토: 독립 검토(Fable) 조건부 — 높음 0 · 중간 3(메뉴 항목 누른 뒤 초점 사라짐 · 구분선 홀로 남음 · 지침 체크리스트) · 낮음 6 → 전부 반영. CSP·인라인 0 · 화면 권한 판단 0 확인
+- [x] 전후 스크린샷(임시 인스턴스, 390·820·1440 × 밝게·어둡게·강제 다크) — 머리 단추 5 → 4, 가로 넘침 0, pageerror 0. 한계: 헤드리스의 「무조건 뒤집기」 설정은 `only light` 도 무시(휴대폰이 어두운 선호를 알리면 우리 다크가 그대로 — 확인)
+- [ ] 회귀 stage5c(188/0 ✅) · stage7b · stage4a · stage4c(검토 반영 판으로 다시) — 반영 전
+- [ ] 운영 반영 · 관문 ③ 사용자 확인(휴대폰 삼성 인터넷에서 같은 페이지)
 
 학습 기록
 | 날짜 | 구분 | 내용 | 해소·근거 |

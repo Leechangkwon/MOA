@@ -319,6 +319,7 @@ function community_not_ready(bool $isApi): void
        . '<html lang="ko"' . Http::themeAttr() . '>' . "\n"
        . '<head><meta charset="utf-8">'
        . '<meta name="viewport" content="width=device-width, initial-scale=1">'
+       . '<meta name="color-scheme" content="light dark">'
        . '<title>커뮤니티 · Qaredi</title>'
        . '<link rel="stylesheet" href="' . $css . '"></head>' . "\n"
        . '<body><div class="app"><main class="main">'

@@ -69,6 +69,7 @@ $loginApp = $loginApps[$loginTo === '' ? 'tbox' : $loginTo];
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
 <title>로그인 · <?= htmlspecialchars($loginApp['name'], ENT_QUOTES, 'UTF-8') ?> · Qaredi</title>
 <link rel="stylesheet" href="<?= Http::url('/assets/app.css') ?>?v=<?= $loginCssVersion ?>">
 </head>

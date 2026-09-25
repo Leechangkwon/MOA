@@ -41,6 +41,18 @@ expected_bad = []          # 일부러 부른 403 (못 보는 게시판) — 「
 CSP_STYLE_RE = re.compile(r"Applying inline style violates")
 
 
+
+def open_more(page):
+    """화면 머리의 「더보기」 메뉴(DESIGN 2.15, 2026-09-25)를 연다 — 안의 단추는 메뉴가 열려야 보이고 눌린다"""
+    # 사람이 누르는 길 그대로 — 「더보기」 단추를 누른다(열려 있으면 그대로 둔다 · 검토 L-5)
+    if not page.evaluate("() => { const m = document.getElementById('page-more'); return !!m && m.open; }"):
+        page.click("#page-more > summary")
+
+
+def shown(page, sel):
+    """메뉴 안 단추가 「있어야 할 때 있는가」 — 메뉴가 닫혀 있어도 창구의 can_* 로 정해진 hidden 만 본다"""
+    return page.evaluate("s => { const e = document.querySelector(s); return !!e && !e.hidden; }", sel)
+
 def step(name, ok, detail=""):
     global fails
     if not ok:
@@ -210,7 +222,8 @@ with sync_playwright() as pw:
     pid = made["data"]["page"]["id"]
     page.goto(COMMUNITY + "/p/" + pid, wait_until="networkidle")
     page.wait_for_selector("#page-props:not([hidden])", timeout=10000)
-    step("3 「게시」 단추 · 「게시 해제」 없음", page.locator("#page-publish").is_visible() and not page.locator("#page-unpublish").is_visible())
+    step("3 「게시」 단추 · 「게시 해제」 없음", shown(page, "#page-publish") and not shown(page, "#page-unpublish"))
+    open_more(page)
     page.click("#page-publish")
     page.wait_for_selector("#publish-dialog[open]", timeout=5000)
     page.wait_for_selector('#publish-choices input[name="publish-board"]', timeout=5000)
@@ -223,8 +236,8 @@ with sync_playwright() as pw:
     page.click("#publish-save")
     page.wait_for_function("() => document.getElementById('page-visibility').textContent.trim() === '게시됨'", timeout=8000)
     step("3 게시 뒤 배지 「게시됨」 · 게시판 칸 · 「게시 해제」",
-         page.locator("#page-board-group").is_visible() and page.locator("#page-unpublish").is_visible()
-         and not page.locator("#page-publish").is_visible())
+         page.locator("#page-board-group").is_visible() and shown(page, "#page-unpublish")
+         and not shown(page, "#page-publish"))
     step("3 게시 중 「공개 범위 바꾸기」 숨김", not page.locator("#page-visibility-edit").is_visible())
     shots(page, "3-published")
     ctx.close()
@@ -253,11 +266,13 @@ with sync_playwright() as pw:
     page.goto(COMMUNITY + "/p/" + post_id, wait_until="networkidle")
     page.wait_for_selector("#page-props:not([hidden])", timeout=10000)
     step("5 남의 게시판 글 — 「편집」 없음 · 「숨기기」 있음",
-         not page.locator("#page-edit").is_visible() and page.locator("#page-hide").is_visible())
+         not page.locator("#page-edit").is_visible() and shown(page, "#page-hide"))
+    open_more(page)
     page.click("#page-hide")
     page.wait_for_function("() => !document.getElementById('page-board-hidden').hidden", timeout=8000)
-    step("5 숨긴 뒤 「숨김」 배지 · 단추가 「숨김 풀기」", page.locator("#page-hide").inner_text().strip() == "숨김 풀기")
+    step("5 숨긴 뒤 「숨김」 배지 · 단추가 「숨김 풀기」", (page.locator("#page-hide").text_content() or "").strip() == "숨김 풀기")
     shots(page, "5-hidden")
+    open_more(page)
     page.click("#page-hide")
     page.wait_for_function("() => document.getElementById('page-board-hidden').hidden", timeout=8000)
     step("5 숨김 풀기 → 배지 사라짐", True)
@@ -294,8 +309,9 @@ with sync_playwright() as pw:
     page.wait_for_url(re.compile(r"/community/p/"), timeout=10000)
     page.wait_for_selector("#page-done:not([hidden])", timeout=10000)
     page.click("#page-done")
-    page.wait_for_selector("#page-resolve:not([hidden])", timeout=8000)
+    page.wait_for_selector("#page-resolve:not([hidden])", state="attached", timeout=8000)
     step("6 「미해결」 배지", page.locator("#page-resolved-badge").inner_text().strip() == "미해결")
+    open_more(page)
     page.click("#page-resolve")
     page.wait_for_function("() => document.getElementById('page-resolved-badge').textContent.trim() === '해결됨'", timeout=8000)
     step("6 누르면 「해결됨」", True)

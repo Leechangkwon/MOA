@@ -58,6 +58,7 @@ if (is_array($launcherUser)) {
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
 <title>Qaredi</title>
 <!-- 브라우저가 스스로 부르는 `/favicon.ico` 가 404 로 떨어지지 않게 문서 안에 둔다(셸과 같은 고정 문자열). -->
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath fill='%2314213d' d='M12 2 4 5v6c0 5 3.4 9.4 8 11 4.6-1.6 8-6 8-11V5z'/%3E%3C/svg%3E">

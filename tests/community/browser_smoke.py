@@ -86,6 +86,18 @@ expected_bad = []
 expected_rules = []          # (메서드, URL 조각) — 이 짝에 맞는 400 만 옮겨 담는다
 
 
+
+def open_more(page):
+    """화면 머리의 「더보기」 메뉴(DESIGN 2.15, 2026-09-25)를 연다 — 안의 단추는 메뉴가 열려야 보이고 눌린다"""
+    # 사람이 누르는 길 그대로 — 「더보기」 단추를 누른다(열려 있으면 그대로 둔다 · 검토 L-5)
+    if not page.evaluate("() => { const m = document.getElementById('page-more'); return !!m && m.open; }"):
+        page.click("#page-more > summary")
+
+
+def shown(page, sel):
+    """메뉴 안 단추가 「있어야 할 때 있는가」 — 메뉴가 닫혀 있어도 창구의 can_* 로 정해진 hidden 만 본다"""
+    return page.evaluate("s => { const e = document.querySelector(s); return !!e && !e.hidden; }", sel)
+
 def step(name, ok, detail=""):
     global fails
     if ok:
@@ -897,7 +909,8 @@ with sync_playwright() as p:
     # ── 26. 옮기기 창 ────────────────────────────────────────────
     print("── 26. 옮기기 창으로 부모를 바꾼다")
     page.goto(COMMUNITY + "/p/" + child_id, wait_until="networkidle")
-    page.wait_for_selector("#page-move:not([hidden])", timeout=10000)
+    page.wait_for_selector("#page-move:not([hidden])", state="attached", timeout=10000)
+    open_more(page)
     page.click("#page-move")
     page.wait_for_selector("#move-dialog[open]", timeout=5000)
     page.wait_for_selector("#move-tree .move-tree__pick", timeout=10000)
@@ -921,6 +934,7 @@ with sync_playwright() as p:
          "하위=%r" % [c["title"] for c in parent_now["children"]])
 
     print("── 26-b. 다시 원래 부모 아래로 되돌린다 (정리가 함께 지우도록)")
+    open_more(page)
     page.click("#page-move")
     page.wait_for_selector("#move-dialog[open]", timeout=5000)
     page.wait_for_selector("#move-tree .move-tree__pick", timeout=10000)
@@ -1076,6 +1090,7 @@ with sync_playwright() as p:
              "배지=%r" % (vis_badge(),))
 
         print("── 29-b. 팀 공간에 만든 페이지를 지운다 (정리)")
+        open_more(page)
         page.click("#page-delete")
         page.wait_for_selector("#delete-dialog[open]", timeout=5000)
         page.click("#delete-confirm")
@@ -1185,7 +1200,8 @@ with sync_playwright() as p:
 
     # ── 20. 정리 — 만든 페이지를 삭제 단추로 지운다 ───────────────
     print("── 20. 정리 (삭제 단추)")
-    page.wait_for_selector("#page-delete:not([hidden])", timeout=10000)
+    page.wait_for_selector("#page-delete:not([hidden])", state="attached", timeout=10000)
+    open_more(page)
     page.click("#page-delete")
     page.wait_for_selector("#delete-dialog[open]", timeout=5000)
     page.click("#delete-confirm")
@@ -1226,7 +1242,8 @@ with sync_playwright() as p:
 
     # 정리 — 다시 지운다(이 시험이 만든 것은 이 시험이 되돌린다).
     page.goto(page_url, wait_until="networkidle")
-    page.wait_for_selector("#page-delete:not([hidden])", timeout=10000)
+    page.wait_for_selector("#page-delete:not([hidden])", state="attached", timeout=10000)
+    open_more(page)
     page.click("#page-delete")
     page.wait_for_selector("#delete-dialog[open]", timeout=5000)
     page.click("#delete-confirm")
@@ -1334,7 +1351,8 @@ with sync_playwright() as p:
     page.wait_for_timeout(300)
 
     # ── 정리 ──────────────────────────────────────────────────────
-    page.wait_for_selector("#page-delete:not([hidden])", timeout=10000)
+    page.wait_for_selector("#page-delete:not([hidden])", state="attached", timeout=10000)
+    open_more(page)
     page.click("#page-delete")
     page.wait_for_selector("#delete-dialog[open]", timeout=5000)
     page.click("#delete-confirm")

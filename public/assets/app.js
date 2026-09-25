@@ -8660,9 +8660,51 @@ function initThemeToggle() {
   });
 }
 
+/** 더보기 메뉴 `details.menu` (DESIGN.md 2.15, 2026-09-25) — 여닫기는 <details> 가 하고, 여기서는 닫기만 한다:
+    안의 항목을 누르면 · 밖을 누르면 · Esc 면. 문서에 한 번만 걸어 나중에 생긴 메뉴에도 먹는다. */
+function initMenus() {
+  function closeAll(except) {
+    document.querySelectorAll('details.menu[open]').forEach(function (menu) {
+      if (menu !== except) { menu.open = false; }
+    });
+  }
+  /* 항목을 누르면 항목 자신의 처리보다 **먼저**(capture) 닫고 초점을 「더보기」로 돌려 둔다 — 그래야 항목이 여는
+     창(showModal)이 기억하는 「이전 초점」이 사라진 항목이 아니라 「더보기」가 되어, 창을 닫으면 초점이 돌아온다
+     (DESIGN 4장 「키보드」 · 독립 검토 M-1). */
+  document.addEventListener('click', function (event) {
+    var target = event.target;
+    var item = target && target.closest ? target.closest('details.menu .menu__item') : null;
+    if (!item) { return; }
+    var menu = item.closest('details.menu');
+    menu.open = false;
+    var summary = menu.querySelector('summary');
+    if (summary) { summary.focus(); }
+  }, true);
+  document.addEventListener('click', function (event) {
+    var target = event.target;
+    closeAll(target && target.closest ? target.closest('details.menu') : null);
+  });
+  /* Tab 으로 메뉴 밖으로 나가면 닫는다(검토 L-1) */
+  document.addEventListener('focusout', function (event) {
+    var menu = event.target && event.target.closest ? event.target.closest('details.menu[open]') : null;
+    if (menu && !(event.relatedTarget && menu.contains(event.relatedTarget))) { menu.open = false; }
+  });
+  document.addEventListener('keydown', function (event) {
+    if (event.key !== 'Escape') { return; }
+    var open = document.querySelector('details.menu[open]');
+    if (!open) { return; }
+    open.open = false;
+    var summary = open.querySelector('summary');
+    if (summary) { summary.focus(); }
+  });
+}
+
 document.addEventListener('DOMContentLoaded', function () {
   // 서버 HTML 의 <template> 아이콘을 [data-icon] 자리에 붙인다 (문자열 → HTML 변환 0).
   paintIcons(document);
+
+  /* 더보기 메뉴 닫기 (DESIGN.md 2.15) — 메뉴가 없는 화면에서는 아무 일도 하지 않는다 */
+  initMenus();
 
   /* 해/달 단추 (D-5, DESIGN.md 2.12). 셸과 로그인 화면이 같이 쓰므로 아래 화면 분기 **밖**에서
      한 번만 건다 — 단추가 없는 화면에서는 아무 일도 하지 않는다. */

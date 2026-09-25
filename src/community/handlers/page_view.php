@@ -53,16 +53,38 @@ require __DIR__ . '/../../views/shell_top.php';
         </button>
         <span id="page-editors" class="badge" hidden></span>
         <span id="page-save-state" class="badge" hidden></span>
-        <button id="page-delete" class="btn btn--quiet btn--danger" type="button" hidden>
-          <span class="icon" data-icon="trash"></span>삭제
+        <!-- 「이력」 (4-C) — 이 페이지를 **볼 수 있는 사람이면 누구나** 연다(읽기 판정과 같은 자격),
+             되돌리기 단추만 고칠 수 있는 사람에게 보인다. 늘 보이는 outline 하나(DESIGN 2.9 — 머리 단추 넷까지). -->
+        <button id="page-history" class="btn btn--quiet" type="button" aria-haspopup="dialog">
+          <span class="icon" data-icon="log"></span>이력
         </button>
-        <button id="page-move" class="btn btn--quiet" type="button" hidden>
-          <span class="icon" data-icon="files"></span>옮기기
-        </button>
-        <!-- 7-B — 「템플릿으로 저장」. 창구가 준 `template_scopes` 가 비어 있으면 숨은 채다. -->
-        <button id="page-save-template" class="btn btn--quiet" type="button" aria-haspopup="dialog" hidden>
-          <span class="icon" data-icon="download"></span>템플릿으로 저장
-        </button>
+        <!-- 더보기 (DESIGN 2.15, 2026-09-25 — 사용자 지적 「왤케 UI/UX 가 지저분하냐」) — 가끔 쓰는 동작을 담는다.
+             항목의 보이고 숨는 것은 전과 같이 editor.js 가 창구의 can_* 로 `hidden` 을 바꾼다 — 모두 숨으면 CSS 가 메뉴째 숨긴다.
+             id 는 그대로라 동작 코드는 바뀌지 않는다. 삭제는 맨 아래 구분선 위 빨간 글자. -->
+        <details id="page-more" class="menu">
+          <summary class="btn btn--quiet"><span class="icon" data-icon="chevron"></span>더보기</summary>
+          <div class="menu__list">
+            <button id="page-move" class="menu__item" type="button" hidden>
+              <span class="icon" data-icon="files"></span>옮기기
+            </button>
+            <!-- 7-B — 「템플릿으로 저장」. 창구가 준 `template_scopes` 가 비어 있으면 숨은 채다. -->
+            <button id="page-save-template" class="menu__item" type="button" aria-haspopup="dialog" hidden>
+              <span class="icon" data-icon="download"></span>템플릿으로 저장
+            </button>
+            <!-- 5-C 게시판 — 「게시」·「게시 해제」·「숨기기」·「숨김 풀기」·「해결됨」은 창구가 준
+                 `can_publish`·`can_unpublish`·`can_hide`·`can_resolve` 가 참일 때만 보인다(PRD S-01). -->
+            <button id="page-publish" class="menu__item" type="button" aria-haspopup="dialog" hidden>
+              <span class="icon" data-icon="upload"></span>게시
+            </button>
+            <button id="page-unpublish" class="menu__item" type="button" hidden>게시 해제</button>
+            <button id="page-hide" class="menu__item" type="button" hidden>숨기기</button>
+            <button id="page-resolve" class="menu__item" type="button" hidden>해결됨으로 표시</button>
+            <hr class="menu__sep">
+            <button id="page-delete" class="menu__item menu__item--danger" type="button" hidden>
+              <span class="icon" data-icon="trash"></span>삭제
+            </button>
+          </div>
+        </details>
         <button id="page-edit" class="btn" type="button" hidden>
           <span class="icon" data-icon="edit"></span>편집
         </button>
@@ -116,8 +138,6 @@ require __DIR__ . '/../../views/shell_top.php';
           <span class="icon" data-icon="users"></span><span id="page-share-open-label">공유 보기</span>
         </button>
       </span>
-      <!-- 「이력」 (4-C). 이 페이지를 **볼 수 있는 사람이면 누구나** 연다 — 읽기 판정과 같은
-           자격이고(`decidePageRead`), 되돌리기 단추만 고칠 수 있는 사람에게 보인다. -->
       <!-- 게시판 (5-C) — 이 페이지가 걸린 게시판(게시판 글이면 그 게시판, 게시했으면 게시한 게시판).
            「게시」·「게시 해제」·「숨기기」·「숨김 풀기」·「해결됨」은 창구가 준 `can_publish`·`can_unpublish`·
            `can_hide`·`can_resolve` 가 참일 때만 보인다 — 화면이 소유·역할을 따지지 않는다(PRD S-01). -->
@@ -129,15 +149,8 @@ require __DIR__ . '/../../views/shell_top.php';
         <!-- 5-D 공지 「읽은 사람 n/N」 — 창구가 준 `can_view_reads` 가 참일 때만(쓴 사람·Admin). 수만 보인다(결정 D-8). -->
         <span id="page-reads" class="badge" hidden></span>
       </span>
-      <button id="page-publish" class="btn btn--small btn--quiet" type="button" aria-haspopup="dialog" hidden>
-        <span class="icon" data-icon="upload"></span>게시
-      </button>
-      <button id="page-unpublish" class="btn btn--small btn--quiet" type="button" hidden>게시 해제</button>
-      <button id="page-hide" class="btn btn--small btn--quiet" type="button" hidden>숨기기</button>
-      <button id="page-resolve" class="btn btn--small btn--quiet" type="button" hidden>해결됨으로 표시</button>
       <!-- 태그 (5-C) — 칩 + 입력 칸. 추천은 `<datalist>`(브라우저 기능 — 떠 있는 목록을 새로 만들지 않는다,
            DESIGN 2.8 ★). 칩의 ✕ 와 입력 칸은 창구가 준 `can_tag` 가 참일 때만 보인다. -->
-      <span class="page-props__sep" aria-hidden="true"></span>
       <span class="page-props__group" id="page-tags-group">
         <span class="muted">태그</span>
         <span id="page-tags"></span>
@@ -146,10 +159,6 @@ require __DIR__ . '/../../views/shell_top.php';
         <datalist id="page-tag-options"></datalist>
       </span>
       <span id="page-views" class="muted" hidden></span>
-      <span class="page-props__sep" aria-hidden="true"></span>
-      <button id="page-history" class="btn btn--small btn--quiet" type="button" aria-haspopup="dialog">
-        <span class="icon" data-icon="log"></span>이력
-      </button>
     </div>
 
     <p id="msg" class="msg" role="alert" aria-live="polite"></p>

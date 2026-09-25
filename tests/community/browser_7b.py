@@ -28,6 +28,18 @@ pageerrors, console_errors, dialogs, http_bad = [], [], [], []
 CSP_STYLE_RE = re.compile(r"Applying inline style violates")
 
 
+
+def open_more(page):
+    """화면 머리의 「더보기」 메뉴(DESIGN 2.15, 2026-09-25)를 연다 — 안의 단추는 메뉴가 열려야 보이고 눌린다"""
+    # 사람이 누르는 길 그대로 — 「더보기」 단추를 누른다(열려 있으면 그대로 둔다 · 검토 L-5)
+    if not page.evaluate("() => { const m = document.getElementById('page-more'); return !!m && m.open; }"):
+        page.click("#page-more > summary")
+
+
+def shown(page, sel):
+    """메뉴 안 단추가 「있어야 할 때 있는가」 — 메뉴가 닫혀 있어도 창구의 can_* 로 정해진 hidden 만 본다"""
+    return page.evaluate("s => { const e = document.querySelector(s); return !!e && !e.hidden; }", sel)
+
 def step(name, ok, detail=""):
     global fails
     if not ok:
@@ -114,7 +126,8 @@ with sync_playwright() as p:
 
     print("── 2. 페이지 「템플릿으로 저장」")
     page.goto(COMMUNITY + "/p/" + PSRC, wait_until="networkidle")
-    page.wait_for_selector("#page-save-template:not([hidden])", timeout=8000)
+    page.wait_for_selector("#page-save-template:not([hidden])", state="attached", timeout=8000)
+    open_more(page)
     page.click("#page-save-template")
     page.wait_for_selector("#template-save-dialog[open]", timeout=5000)
     title = page.inner_text("#page-title")
