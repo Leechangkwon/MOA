@@ -2719,6 +2719,201 @@
       "est_sec": 330,
       "writes_prod": false,
       "notes": "F-70 휴대폰 경보 수락(지시서 G 표 F70-T1~T10 — T9 실제 기기는 대기). 임시 인스턴스: pg_dump tbox_re(읽기) | psql → tbox_f70_test + 구조만 pg_dump -s → tbox_f70_host · 마이그레이션은 역할 이름만 시험 전용(tbox_push_t<pid>·tbox_push_h<pid> — 운영 이름 tbox_push 는 만들지 않음, 끝에 DROP ROLE)·역할 설정은 IN DATABASE <임시>로만 · php -S 127.0.0.1:8105 · 가짜 푸시 서버 127.0.0.1:18443(자체 서명 TLS). 바깥 푸시 서비스 요청 0 — 보내는 쪽은 시험 사본에서만 Fetch.php 네 곳(포트·주소 조립·이름 풀이 fcm·apple→127.0.0.1 · mozilla→10.20.30.40·사설 대역에서 127/8 만 뺌)과 alert_push.php 시각 한 줄(F70_NOW)을 바꾸고 curl.cainfo=가짜 인증서만 믿는다. 인스턴스 사본은 WebPush::PUBLIC_KEY_FILE 한 줄만. 시험 키(VAPID·기기 12벌)는 실행 때 새로(저장소 파일 0). 로그인 claude_admin01·claude_manager01(자격 sudo -n awk /etc/tbox-v2 — 비밀번호·TOTP 는 py_secret 표준입력, 쿠키는 0600 머리 파일, 재인증 본문은 curl_json_secret). 브라우저(playwright — 없으면 T8 화면 SKIP)는 「알림 받기 켜기」를 누르지 않는다(크로미움 구독은 FCM 에 붙는다) — 화면·해지 확인 창·시험 알림·워커 등록/해제·빈 문서 흉내 self 로 워커 처리기. ⑨ 호스트 반영 스크립트 사본(경로만 임시·비root·가짜 setfacl): setfacl 없음 → exit 1 · dry-run · 반쪽·알려진 판 아님 → 1 · 경계 확인 틀림 → 되돌림 4 · 경계 항목 뺀 사본 본 실행 0 · 이미 됨 0. 실제 OS 계정 경계(tbox-push·tbox-php)는 미검증(운영 반영 확인 절). 운영에 닿는 것은 읽기뿐: pg_dump 둘 · /etc/cron.d/tbox-v2 sha · /etc/tbox-v2 비밀 두 줄(awk). 이 시험의 sudo psql 은 운영 alerts.php AL-9 에 걸린다(임시 DB = claude-session, 운영 DB 읽기 pg_dump = human)."
+    },
+    {
+      "id": "community.qf2_search",
+      "cmd": "bash tests/community/qf2_search.sh",
+      "module": "community",
+      "env": "temp-instance",
+      "status": "required",
+      "needs": [
+        "sudo",
+        "browser"
+      ],
+      "covers": [
+        "db/community/grants.sql",
+        "db/migrations/2026-10-01_qf2_search.sql",
+        "scripts/community_asset_version.php",
+        "scripts/lib/cli_bootstrap.php",
+        "scripts/qf2_backfill_search.php",
+        "scripts/security_lint.sh",
+        "scripts/ui_snapshot.sh",
+        "scripts/wiki_check.php",
+        "src/SearchText.php",
+        "src/bootstrap.php",
+        "src/community/handlers/board_pages_create.php",
+        "src/community/handlers/comment_update.php",
+        "src/community/handlers/comments_create.php",
+        "src/community/handlers/pages_create.php",
+        "src/community/handlers/pages_tags_put.php",
+        "src/community/handlers/pages_update.php",
+        "src/community/handlers/search.php",
+        "src/community/handlers/space_me.php",
+        "src/community/handlers/version_restore.php",
+        "src/community/routes.php",
+        "src/views/shell_top.php"
+      ],
+      "requirements": [],
+      "risks": [
+        "R-62"
+      ],
+      "est_sec": 420,
+      "writes_prod": false,
+      "notes": "Q:F-2 통합 검색 + 한글 색인 수락(지시서 docs/qf2-unified-search-directive.md 6장 QF2-T1~T8 — T- 번호 체계가 아니라 requirements 는 비움). 말뭉치 fixtures/search_ko.json 을 claude_employee01 이 임시 인스턴스 창구로 만들고 재현율·정밀도·기준선(색인 없는 SQL) 대조, 권한 경계, 화면(tests/browser/qf2_search_modal.py — 이 셸이 부름). 임시 DB·php -S(기본 8152) — 운영 8082 요청 0. 2026-09-26 대기열 5d ④로 카탈로그에 넣음"
+    },
+    {
+      "id": "tbox.qf2b_files_search",
+      "cmd": "bash tests/qf2b_files_search.sh",
+      "module": "tbox",
+      "env": "temp-instance",
+      "status": "required",
+      "needs": [
+        "sudo"
+      ],
+      "covers": [
+        "db/community/grants.sql",
+        "db/migrations/2026-10-02_qf2b_files_search.sql",
+        "scripts/lib/cli_bootstrap.php",
+        "scripts/qf2b_backfill_files.php",
+        "scripts/security_lint.sh",
+        "src/SearchText.php",
+        "src/bootstrap.php",
+        "src/handlers/_upload_common.php",
+        "src/handlers/files_fetch.php",
+        "src/handlers/files_list.php",
+        "src/handlers/files_update.php"
+      ],
+      "requirements": [],
+      "risks": [
+        "R-62"
+      ],
+      "est_sec": 240,
+      "writes_prod": false,
+      "notes": "대기열 5b 파일 전역 검색 색인 수락(B-T0~B-T6): 저장 길(올리기·설명 고치기 → search_tsv = SearchText::indexTextFile 규칙) · 마이그레이션·채우기 배치 · 색인 쓴 결과 = 판정 기준선 · NULL 행 대체 길. 임시 DB·php -S(기본 8156). 2026-09-26 대기열 5d ④로 넣음"
+    },
+    {
+      "id": "tbox.qf3a",
+      "cmd": "bash tests/qf3a_tbox.sh",
+      "module": "tbox",
+      "env": "temp-instance",
+      "status": "required",
+      "needs": [
+        "sudo"
+      ],
+      "covers": [
+        "db/community/grants.sql",
+        "db/community/schema.sql",
+        "db/grants.sql",
+        "db/migrations/2026-10-03_qf3a_favorites_recent.sql",
+        "db/schema.sql",
+        "public/index.php",
+        "scripts/security_lint.sh",
+        "src/community/handlers/favorites.php",
+        "src/community/handlers/page_view.php",
+        "src/community/handlers/pages_get.php",
+        "src/community/handlers/recent_clear.php",
+        "src/community/handlers/recent_list.php",
+        "src/community/routes.php",
+        "src/handlers/favorites_files.php",
+        "src/handlers/favorites_folders.php",
+        "src/handlers/files_recent.php",
+        "src/handlers/home.php",
+        "src/help/community.php",
+        "src/help/screens.php",
+        "src/views/shell_top.php"
+      ],
+      "requirements": [],
+      "risks": [
+        "R-62"
+      ],
+      "est_sec": 300,
+      "writes_prod": false,
+      "notes": "대기열 6 Q:F-3a 라운드 A t-box 쪽 수락(A-T0 표·권한·새 설치 모양 = 마이그레이션 모양 · 즐겨찾기 넣기 판정 · 최근 = 감사 로그 읽기 · 한도). 임시 DB(+새 설치 비교용 빈 DB)·php -S(기본 8160). 2026-09-26 대기열 5d ④로 넣음"
+    },
+    {
+      "id": "community.qf3a",
+      "cmd": "bash tests/community/qf3a.sh",
+      "module": "community",
+      "env": "temp-instance",
+      "status": "required",
+      "needs": [
+        "sudo",
+        "browser"
+      ],
+      "covers": [
+        "db/community/grants.sql",
+        "db/migrations/2026-10-03_qf3a_favorites_recent.sql",
+        "scripts/ui_snapshot.sh",
+        "src/community/handlers/favorites.php",
+        "src/community/handlers/recent_clear.php",
+        "src/community/handlers/recent_list.php"
+      ],
+      "requirements": [],
+      "risks": [
+        "R-62"
+      ],
+      "est_sec": 360,
+      "writes_prod": false,
+      "notes": "대기열 6 Q:F-3a 라운드 A 커뮤니티 쪽 + 두 앱 화면(QF3A-T1~ — requirements 비움). 비공개 페이지 넣기 404 가 없는 id 와 같은 본문 · 순서·최근·지우기 · 화면(tests/browser/qf3a_favorites.py — 이 셸이 부름). 임시 DB·php -S(기본 8161). 2026-09-26 대기열 5d ④로 넣음"
+    },
+    {
+      "id": "perf.qf2_search",
+      "cmd": "bash tests/perf/qf2_search_perf.sh",
+      "module": "core",
+      "env": "temp-instance",
+      "status": "advisory",
+      "needs": [
+        "sudo"
+      ],
+      "covers": [
+        "db/community/grants.sql",
+        "db/migrations/2026-10-01_qf2_search.sql",
+        "db/migrations/2026-10-02_qf2b_files_search.sql",
+        "scripts/lib/cli_bootstrap.php",
+        "scripts/qf2_backfill_search.php",
+        "scripts/qf2b_backfill_files.php",
+        "src/community/routes.php",
+        "src/handlers/files_list.php"
+      ],
+      "requirements": [],
+      "risks": [
+        "R-62"
+      ],
+      "est_sec": 900,
+      "writes_prod": false,
+      "notes": "Q:F-2 검색 성능(QF2-T4): 지금 규모 p95 · 큰 규모(페이지 5만 등) 서버 시간 · 5b 마이그레이션이 트리에 있으면 파일 검색 색인까지. 오래 걸리고 수치가 기계 부하에 흔들려 advisory. 임시 DB·php -S(기본 8153). 2026-09-26 대기열 5d ④로 넣음"
+    },
+    {
+      "id": "community.qf2_search_modal",
+      "cmd": "python3 tests/browser/qf2_search_modal.py",
+      "module": "community",
+      "env": "temp-instance",
+      "status": "helper",
+      "needs": [
+        "browser"
+      ],
+      "covers": [],
+      "requirements": [],
+      "risks": [],
+      "est_sec": 90,
+      "writes_prod": false,
+      "notes": "부르는 셸: community.qf2_search. 단독 실행 불가(인자 SITE UA IDS_JSON SHOTS 파일이름 · 세션 둘은 표준입력 — R-62)."
+    },
+    {
+      "id": "community.qf3a_favorites",
+      "cmd": "python3 tests/browser/qf3a_favorites.py",
+      "module": "community",
+      "env": "temp-instance",
+      "status": "helper",
+      "needs": [
+        "browser"
+      ],
+      "covers": [],
+      "requirements": [],
+      "risks": [],
+      "est_sec": 90,
+      "writes_prod": false,
+      "notes": "부르는 셸: community.qf3a. 단독 실행 불가(인자 SITE UA SHOTS IDS_JSON · 세션 둘은 표준입력 — R-62)."
     }
   ]
 }

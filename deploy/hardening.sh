@@ -221,8 +221,9 @@ run ufw allow from "$PROXY_IP"  to any port 80 proto tcp comment '강사 리버�
 # 아웃바운드: 이름 풀이·시각 동기화·패키지 미러만. 그 밖은 거부 = 데이터 유출·C2 통로 차단.
 run ufw allow out 53 comment 'DNS'
 run ufw allow out 123 comment 'NTP'
-run ufw allow out 80 proto tcp comment 'apt 미러'
-run ufw allow out 443 proto tcp comment 'apt 미러·F-14 허용 도메인'
+run ufw allow out 67/udp comment 'DHCP 갱신'   # 서버 주소가 DHCP(netplan dhcp4) — 나가는 기본 거부면 갱신(T1) 요청이 막힌다(2026-09-26 d53 규칙안에서 더함)
+run ufw allow out 80/tcp comment 'apt 미러'   # 「allow out 80 proto tcp」 는 ufw 가 거부한다(Wrong number of arguments) — --apply 였다면 set -e 로 방화벽이 꺼진 채 멈췄을 것(5d 독립 검토 · 실제로 돌린 적은 없음)
+run ufw allow out 443/tcp comment 'apt 미러·F-14 허용 도메인'
 run ufw --force enable
 note "확인: ufw status verbose  /  scripts/check_baseline.sh"
 note "주의: 아웃바운드 443 을 통째로 여는 것은 임시다. F-14 허용 도메인이 정해지면(Q-10)"
@@ -408,8 +409,8 @@ fi
 
 # ─────────────────────────────────────────────────────────────
 head2 "6. 이 스크립트가 **하지 않는** 것 (근거와 함께)"
-note "· fail2ban·chrony·ClamAV 설치 — 새 패키지 0 원칙 (PRD S-10-C). 대체: sshd MaxAuthTries,"
-note "  앱 잠금(S-09-4), systemd-timesyncd, Q-3 결정(ClamAV 미포함)."
+note "· fail2ban·chrony 설치 — 새 패키지 0 원칙 (PRD S-10-C). 대체: sshd MaxAuthTries, 앱 잠금(S-09-4), systemd-timesyncd."
+note "· ClamAV — Q-3 재결정(2026-09-16)으로 설치돼 있다(F-54 배치 scripts/scan_pending.php · clamav-freshclam). 설치·점검은 이 스크립트 몫이 아니다(DEPENDENCIES 1장)."
 note "· /var/lib/tbox-v2/storage 를 noexec,nosuid,nodev 별도 마운트로 — 파티션 재구성이 필요하다."
 note "  (지금도 디렉터리에 실행 권한이 없고 PHP 핸들러가 붙지 않아 실행은 되지 않는다 — ARCH 6.3)"
 note "· AIDE/debsums 무결성 감시(AL-9) — 미적용. 현재 대체 수단은 scripts/check_baseline.sh 수동 점검."

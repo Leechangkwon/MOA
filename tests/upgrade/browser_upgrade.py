@@ -78,7 +78,11 @@ def matches(req, want):
     if not want:
         return False
     p = urlsplit(req.url)
-    return req.method == want["method"] and p.hostname == HOST and p.path.startswith(want["path"])
+    if not (req.method == want["method"] and p.hostname == HOST and p.path.startswith(want["path"])):
+        return False
+    # query_has: 쿼리에 이 글자가 있어야 한다(경로 앞부분만 보면 /tbox/api/files/{id}/preview/raw·/favorites 같은
+    # 다른 요청이 대신 맞아 헛통과할 수 있다 — 5d 독립 검토 낮음 3)
+    return all(q in p.query for q in want.get("query_has", []))
 
 
 def resp_status(req):
@@ -130,28 +134,39 @@ def run_flow(ctx, flow):
             elif code >= 400 or code == 0:
                 problems.append(("OTHER", "열자마자 %s %s 응답 %d" % (flow["on_load"]["method"], flow["on_load"]["path"], code)))
         for st in flow.get("steps", []):
-            loc = page.locator(st["click"])
+            # 단계 두 가지: click(누르기) · fill(글자 넣기 — 통합 검색처럼 입력이 요청을 내는 동선, 5d ①)
+            kind = "fill" if "fill" in st else "click"
+            sel = st[kind]
+            loc = page.locator(sel)
             if loc.count() == 0:
-                problems.append(("OTHER", "누를 것 없음 %s" % st["click"]))
+                problems.append(("OTHER", "%s 없음 %s" % ("글자 넣을 칸" if kind == "fill" else "누를 것", sel)))
                 continue
             want = st.get("expect")
+
+            def act(l=loc, k=kind, s=st):
+                if k == "fill":
+                    # force: 칸이 안 보여도 넣는다 — 스크립트가 통째로 안 돌아 창이 안 열린 사고 모양이 「가려진 칸 시간 초과(OTHER)」가
+                    # 아니라 「넣었는데 요청 0건(REQ0)」으로 나오게(5d 독립 검토 낮음 2). 칸 자체가 없으면 위에서 OTHER.
+                    l.first.fill(s.get("text", ""), timeout=3000, force=True)
+                else:
+                    l.first.click(timeout=3000)
             try:
                 if want:
                     # 고정 대기 대신 기대 요청을 기다린다(검토 L4) — 5초 안에 없으면 0건
                     with page.expect_request(lambda r, w=want: matches(r, w), timeout=5000) as got:
-                        loc.first.click(timeout=3000)
+                        act()
                     code = resp_status(got.value)
                     if code >= 400 or code == 0:   # 요청은 나갔다 — 사고 모양(0건)은 아니지만 동선이 끊겼다
-                        problems.append(("OTHER", "%s → %s %s 응답 %d" % (st["click"], want["method"], want["path"], code)))
+                        problems.append(("OTHER", "%s → %s %s 응답 %d" % (sel, want["method"], want["path"], code)))
                 else:
-                    loc.first.click(timeout=3000)
+                    act()
                     page.wait_for_timeout(400)
             except Exception as e:
                 msg = str(e).splitlines()[0]
-                if want and isinstance(e, PWTimeout) and "Locator.click" not in msg:   # 누르기는 됐고 기대 요청을 기다리다 시간이 다 됐다
-                    problems.append(("REQ0", "%s → %s %s 0건" % (st["click"], want["method"], want["path"])))
+                if want and isinstance(e, PWTimeout) and ("Locator.%s" % kind) not in msg:   # 동작은 됐고 기대 요청을 기다리다 시간이 다 됐다
+                    problems.append(("REQ0", "%s → %s %s 0건" % (sel, want["method"], want["path"])))
                 else:  # 가려짐·안 보임·그 밖의 예외 — 사고 모양은 아니지만 동선이 끊겼다
-                    problems.append(("OTHER", "누르지 못함 %s (%s)" % (st["click"], msg[:80])))
+                    problems.append(("OTHER", "%s 못함 %s (%s)" % ("글자 넣지" if kind == "fill" else "누르지", sel, msg[:80])))
                 continue
         if flow.get("creates") == "community_page":
             try:

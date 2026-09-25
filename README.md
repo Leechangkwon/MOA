@@ -522,15 +522,56 @@ php-fpm 풀(`/etc/php/8.1/fpm/pool.d/tbox.conf`), nginx 사이트 파일 설치�
 
 **2) `switch-site.sh`** 는 80 포트에 꽂을 버전을 고릅니다. `v1` / `v2` / `v3` / `status`.
 
-**이미 돌고 있는 DB 에는 마이그레이션이 따로 필요합니다.** `install.sh` 는 표가 이미 있으면 `schema.sql` 을 건너뛰므로,
-나중에 더해진 컬럼은 `db/migrations/*.sql` 로 들어옵니다. `install.sh` 가 무엇이 빠졌는지 알려 주기만 하고
-**자동으로 적용하지는 않습니다**(운영 DB 에 DDL 을 몰래 거는 스크립트를 만들지 않습니다).
+**커뮤니티 스키마는 `install.sh` 가 만들지 않습니다.** 새로 설치할 때는 1) 뒤에 아래 세 줄을 이 차례로 돌립니다.
+`db/community/schema.sql` 이 지금 커뮤니티 모양 전부이고(3단계 마이그레이션 `2026-09-22_community_stage3.sql` 은 이 파일을 `\ir` 로 읽는 껍데기),
+`grants.sql` 은 REVOKE 뒤 GRANT 라 여러 번 돌려도 같습니다. **그다음 아래 마이그레이션을 전부 돌립니다** — `schema.sql` 둘에 없고
+마이그레이션으로만 들어오는 것이 셋 있습니다(2026-09-26 확인): 휴대폰 경보 표(`2026-09-30_f70_push.sql`) · 커뮤니티 휴지통 영구 삭제 함수
+`community.purge_trash`(`2026-09-26_community_purge.sql`) · `community.page_versions.created_at`(`2026-09-23_community_version_squash.sql`).
+
+저장소 폴더(`/var/www/tbox-v2`)에서 칩니다 — postgres 계정이 상대 경로 `db/…` 를 읽습니다.
 
 ```bash
-sudo -u postgres psql -d tbox_re -v ON_ERROR_STOP=1 -f db/migrations/2026-09-10_audit_summary.sql  # audit_logs.summary (8단계)
-sudo -u postgres psql -d tbox_re -v ON_ERROR_STOP=1 -f db/migrations/2026-09-11_purged_at.sql      # files.purged_at  (9단계)
-sudo -u postgres psql -d tbox_re -v ON_ERROR_STOP=1 -f db/migrations/2026-09-12_teams_active.sql   # teams.is_active·created_at·updated_at (12-3)
+sudo -u postgres psql -d tbox_re -v ON_ERROR_STOP=1 -c 'CREATE SCHEMA IF NOT EXISTS community AUTHORIZATION tbox_owner;'
+sudo -u postgres psql -d tbox_re -v ON_ERROR_STOP=1 -c 'SET ROLE tbox_owner' -f db/community/schema.sql   # 표 주인은 tbox_owner(SET ROLE 은 -f 까지 이어진다)
+sudo -u postgres psql -d tbox_re -v ON_ERROR_STOP=1 -f db/community/grants.sql
 ```
+
+**이미 돌고 있는 DB 에는 마이그레이션이 따로 필요합니다.** `install.sh` 는 표가 이미 있으면 `schema.sql` 을 건너뛰므로,
+나중에 더해진 칸·표는 `db/migrations/*.sql` 로 들어옵니다. `install.sh` 는 무엇이 빠졌는지 알려 주기만 하고(4-4-1 확인 목록)
+**자동으로 적용하지는 않습니다**(운영 DB 에 DDL 을 몰래 거는 스크립트를 만들지 않습니다).
+
+- **파일 이름 차례로** 적용합니다. 이미 들어간 것은 표·칸을 다시 만들지 않게 쓰여 있습니다 — 2026-09-26 확인: 새로 설치한 임시 DB 에
+  `db/migrations/*.sql` 을 전부 다시 돌려 오류 0, 모양(`pg_dump -s`)이 운영과 같음(칸 순서 다섯 곳만 다름 — 운영은 뒤에 붙였으므로).
+  **예외 하나**: `2026-09-22_community_stage3.sql` 은 커뮤니티 표를 처음 만드는 파일이라 표가 있으면 멈춥니다 — 새 설치(위 세 줄)에서는 건너뜁니다.
+  몇 파일은 데이터 조건에 맞는 행만 고치는 `UPDATE` 가 있습니다(예: `2026-09-11_users_first_login.sql`) — 다시 돌려도 오류는 없지만 「아무 일도 없음」은 그때 데이터에 따라 다릅니다.
+
+```bash
+cd /var/www/tbox-v2
+for f in db/migrations/*.sql; do
+  case "$(basename "$f")" in
+    2026-09-22_community_stage3.sql) continue ;;                          # 새 설치는 위 세 줄이 대신한다
+    2026-09-29_app_role_timeouts.sql|2026-09-30_f70_push.sql) role='' ;;  # 역할을 만들거나 바꾼다 — postgres 그대로
+    2026-09-12_share_links.sql|2026-09-13_folders.sql|2026-09-16_api_tokens.sql|2026-09-17_fetch_hosts.sql|2026-09-22_api_tokens_scope_expiry.sql)
+      role='' ;;                                                          # 운영에서 이 표들의 주인이 postgres(아래 참고) — tbox_owner 로는 못 고친다
+    *) role='SET ROLE tbox_owner' ;;                                      # 표 주인 = tbox_owner
+  esac
+  sudo -u postgres psql -d tbox_re -v ON_ERROR_STOP=1 ${role:+-c "$role"} -f "$f" || { echo "멈춤: $f"; break; }
+done
+```
+
+  이 루프는 새 설치 임시 DB 와 운영 모양(운영 `pg_dump -s` 를 부은) 임시 DB 양쪽에서 끝까지 오류 0(2026-09-26). 「멈춤:」 이 찍히면 그 파일부터 원인을 보고 다시 돈다.
+- **운영 DB(tbox_re) 는 반영 스크립트로만** 바꿉니다 — `/var/www/qaredi/scripts/apply-*-db-*.sh` 가 기준 판 확인 · 마이그레이션 · 채우기 배치 · 확인을 한 번에 하고 실패하면 되돌립니다.
+- **검색 색인 채우기** — 마이그레이션은 칸만 만듭니다. **파일**은 칸이 비어도 결과는 같고 느린 길을 탈 뿐이지만(목록이 빈 칸도 찾는다), **페이지·댓글**의 한글 검색은 색인만 보므로 채우기 전까지 **빈 칸 댓글과 옛 규칙으로 색인된 페이지가 결과에서 빠집니다** — 미루지 말고 마이그레이션 바로 뒤에 돌립니다. 앱 계정으로(`.env` 를 그룹으로 읽는 `tbox-php` — 반영 스크립트도 이 모양):
+
+```bash
+cd / && sudo -u tbox-php php /var/www/tbox-v2/scripts/qf2_backfill_search.php --dry-run   # 2026-10-01_qf2_search.sql 뒤 — 페이지·댓글(바꿀 행 수만)
+cd / && sudo -u tbox-php php /var/www/tbox-v2/scripts/qf2_backfill_search.php
+cd / && sudo -u tbox-php php /var/www/tbox-v2/scripts/qf2b_backfill_files.php --dry-run   # 2026-10-02_qf2b_files_search.sql 뒤 — 파일 이름·설명
+cd / && sudo -u tbox-php php /var/www/tbox-v2/scripts/qf2b_backfill_files.php             # 끝나면 --dry-run 이 「바꿀 0」 이어야 한다
+```
+
+- 역할에 닿는 것: `2026-09-29_app_role_timeouts.sql`(표·칸 없이 tbox_app 역할 설정만 — 문장 15초·유휴 60초 · 클러스터 공용) · `2026-09-30_f70_push.sql`(휴대폰 경보 표 둘 **과** 보내는 역할 tbox_push — 운영은 `apply-f70-host-2026-09-24.sh` 가 OS 계정·키와 함께).
+- 참고(2026-09-26 실측): 운영의 `api_tokens`·`fetch_hosts`·`folders`·`share_links`(와 그 시퀀스)는 소유가 `postgres`(그때 postgres 로 마이그레이션을 돌림), 새 설치는 `tbox_owner` 입니다. 앱 계정 권한(`tbox_app`·`tbox_backup`)은 같습니다 — 이 넷을 고치는 마이그레이션은 `tbox_owner` 가 아니라 postgres 로 돌려야 합니다.
 
 **멱등합니다.** 두 스크립트 모두 여러 번 실행해도 안전하고, 이미 있는 저장소 루트 `.env` 의 비밀번호는 바꾸지 않습니다.
 운영 전환 검토용으로 옮겨 두었던 `/etc/tbox-v2/tbox.env` 가 남아 있으면 값을 그대로 보존해 저장소 루트 `.env` 로 **되돌려 옮깁니다**(`mv`).

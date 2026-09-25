@@ -360,20 +360,60 @@ fi
 # 4-4-1. 마이그레이션 확인 — 표가 이미 있으면 schema.sql 을 건너뛰므로(4-4), 나중에 더해진
 #        컬럼은 db/migrations/*.sql 로만 들어온다. 여기서는 **적용하지 않고 알려만 준다** —
 #        운영 DB 에 DDL 을 자동으로 거는 스크립트는 만들지 않는다(ARCH 7.4 "기존 DB 반영").
-for _mig in "summary|audit_logs|2026-09-10_audit_summary.sql" \
-            "purged_at|files|2026-09-11_purged_at.sql" \
-            "mfa_enabled|users|2026-09-11_users_mfa_expiry.sql" \
-            "token_hash|api_tokens|2026-09-16_api_tokens.sql" \
-            "exec_content|files|2026-09-21_files_exec_content.sql" \
-            "scope|api_tokens|2026-09-22_api_tokens_scope_expiry.sql"; do
-  _col="${_mig%%|*}"; _rest="${_mig#*|}"; _tbl="${_rest%%|*}"; _file="${_rest##*|}"
-  _has="$(psql_su -d "$DB_NAME" -Atc "SELECT 1 FROM information_schema.columns WHERE table_name='${_tbl}' AND column_name='${_col}'")"
+# 커뮤니티 스키마는 install.sh 가 만들지 않는다(README 「설치 · 실행」 세 줄) — 없으면 알리고 커뮤니티 칸 확인은 건너뛴다
+if [ "$(psql_su -d "$DB_NAME" -Atc "SELECT to_regclass('community.pages') IS NOT NULL")" = "t" ]; then
+  HAS_COMMUNITY=1
+else
+  HAS_COMMUNITY=0
+  info "★ 커뮤니티 스키마 없음 — README 「설치 · 실행」 의 세 줄(CREATE SCHEMA community · db/community/schema.sql · db/community/grants.sql)"
+fi
+# 칸 목록: 칸|스키마.표|파일 — 스키마를 붙여 본다(public·community 에 같은 이름 표가 생겨도 헷갈리지 않게 · 대기열 5d ③)
+for _mig in "summary|public.audit_logs|2026-09-10_audit_summary.sql" \
+            "purged_at|public.files|2026-09-11_purged_at.sql" \
+            "mfa_enabled|public.users|2026-09-11_users_mfa_expiry.sql" \
+            "token_hash|public.api_tokens|2026-09-16_api_tokens.sql" \
+            "exec_content|public.files|2026-09-21_files_exec_content.sql" \
+            "scope|public.api_tokens|2026-09-22_api_tokens_scope_expiry.sql" \
+            "search_tsv|community.comments|2026-10-01_qf2_search.sql" \
+            "search_tsv|public.files|2026-10-02_qf2b_files_search.sql" \
+            "created_at|community.page_versions|2026-09-23_community_version_squash.sql"; do
+  _col="${_mig%%|*}"; _rest="${_mig#*|}"; _st="${_rest%%|*}"; _file="${_rest##*|}"
+  _sch="${_st%%.*}"; _tbl="${_st#*.}"
+  if [ "$_sch" = "community" ] && [ "$HAS_COMMUNITY" = "0" ]; then continue; fi
+  _has="$(psql_su -d "$DB_NAME" -Atc "SELECT 1 FROM information_schema.columns WHERE table_schema='${_sch}' AND table_name='${_tbl}' AND column_name='${_col}'")"
   if [ "$_has" = "1" ]; then
-    info "마이그레이션 적용됨: ${_tbl}.${_col}"
+    info "마이그레이션 적용됨: ${_sch}.${_tbl}.${_col}"
   else
-    info "★ 마이그레이션 필요: ${_tbl}.${_col} — sudo -u postgres psql -d ${DB_NAME} -v ON_ERROR_STOP=1 -f db/migrations/${_file}"
+    info "★ 마이그레이션 필요: ${_sch}.${_tbl}.${_col} — sudo -u postgres psql -d ${DB_NAME} -v ON_ERROR_STOP=1 -f db/migrations/${_file}"
   fi
 done
+# 검색 색인 칸이 있는데 빈 행이 있으면 채우기 배치를 알린다(적용하지 않는다 — README 「검색 색인 채우기」)
+# 칸이 있는지 먼저 보고 센다 — 한 문장에 넣으면 칸이 없을 때 CASE 안의 참조도 해석돼 오류가 난다(set -e 로 설치가 멈춤)
+for _ix in "public|files|qf2b_backfill_files.php|파일" "community|comments|qf2_backfill_search.php|댓글"; do
+  IFS='|' read -r _sch _tbl _bf _label <<<"$_ix"
+  if [ "$_sch" = "community" ] && [ "$HAS_COMMUNITY" = "0" ]; then continue; fi
+  [ "$(psql_su -d "$DB_NAME" -Atc "SELECT 1 FROM information_schema.columns WHERE table_schema='${_sch}' AND table_name='${_tbl}' AND column_name='search_tsv'")" = "1" ] || continue
+  _empty="$(psql_su -d "$DB_NAME" -Atc "SELECT count(*) FROM ${_sch}.${_tbl} WHERE search_tsv IS NULL")"
+  [ "$_empty" = "0" ] || info "★ ${_label} 검색 색인 빈 행 ${_empty} — cd / && sudo -u tbox-php php ${REPO_DIR}/scripts/${_bf} --dry-run (README)"
+done
+# 페이지 색인은 빈 칸이 아니라 「옛 규칙으로 만든 값」이 문제라 여기서 셀 수 없다 — 규칙이 바뀐 마이그레이션(2026-10-01) 뒤·복원 뒤에는 한 번 확인
+[ "$HAS_COMMUNITY" = "0" ] || info "참고: 마이그레이션·복원 뒤에는 cd / && sudo -u tbox-php php ${REPO_DIR}/scripts/qf2_backfill_search.php --dry-run 을 한 번 — 「바꿀 0」 이 아니면 페이지·댓글이 한글 검색에서 빠진다 (README)"
+# 커뮤니티 휴지통 영구 삭제 함수(7-A) — community/schema.sql 에 없고 마이그레이션만 만든다(cron 정리 배치가 부른다)
+if [ "$HAS_COMMUNITY" = "1" ]; then
+  if [ "$(psql_su -d "$DB_NAME" -Atc "SELECT to_regproc('community.purge_trash') IS NOT NULL")" = "t" ]; then
+    info "마이그레이션 적용됨: community.purge_trash (7-A)"
+  else
+    info "★ 마이그레이션 필요: community.purge_trash — sudo -u postgres psql -d ${DB_NAME} -v ON_ERROR_STOP=1 -f db/migrations/2026-09-26_community_purge.sql"
+  fi
+fi
+# Q:F-3a 즐겨찾기·최근 표 넷 — 칸이 아니라 표라 to_regclass 로 본다(적용하지 않는다)
+_fav="$(psql_su -d "$DB_NAME" -Atc "SELECT (to_regclass('public.file_favorites') IS NOT NULL)::int + (to_regclass('public.folder_favorites') IS NOT NULL)::int
+                                         + (to_regclass('community.page_favorites') IS NOT NULL)::int + (to_regclass('community.page_recent') IS NOT NULL)::int")"
+if [ "$_fav" = "4" ]; then
+  info "마이그레이션 적용됨: 즐겨찾기·최근 표 넷 (Q:F-3a)"
+elif [ "$HAS_COMMUNITY" = "1" ]; then   # 커뮤니티가 없으면 위 ★ 한 줄로 충분하다(새 설치는 schema.sql 둘이 네 표를 다 만든다)
+  info "★ 마이그레이션 필요: 즐겨찾기·최근 표(${_fav}/4) — sudo -u postgres psql -d ${DB_NAME} -v ON_ERROR_STOP=1 -f db/migrations/2026-10-03_qf3a_favorites_recent.sql"
+fi
 # F-70 휴대폰 경보의 표 둘 — 칸이 아니라 표라 위 목록 방식 대신 to_regclass 로 본다(적용하지 않는다)
 if [ "$(psql_su -d "$DB_NAME" -Atc "SELECT to_regclass('public.alert_push_subscriptions') IS NOT NULL")" = "t" ]; then
   info "마이그레이션 적용됨: alert_push_subscriptions · alert_push_outbox (F-70)"
