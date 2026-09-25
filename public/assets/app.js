@@ -1369,11 +1369,38 @@ function initFiles(csrfToken, uploadLevels, canFetch, myTeamId) {
   var moveClose = document.getElementById('move-close');
   var moveX = document.getElementById('move-x');
 
+  /* ─── 개발 대기열 6 · Q:F-3a 라운드 A — 보기 셋(파일·즐겨찾기·최근) · ☆ (지시서 1.1 · 1.2) ──────────
+     화면은 판단하지 않는다: 즐겨찾기에 넣을 수 있는지는 창구가 `Authz::decideRead` 로, 목록에 무엇이 나오나는 창구의
+     읽기 조건절(`visibleFilesWhere`)이 정한다. 별이 찬지(넣었나)는 창구가 돌려준 목록에 있나 없나만 본다 (PRD S-01·S-02). */
+  var viewButtons = {
+    files: document.getElementById('files-view-files'),
+    favorites: document.getElementById('files-view-favorites'),
+    recent: document.getElementById('files-view-recent')
+  };
+  var favFoldersWrap = document.getElementById('fav-folders-wrap');
+  var favFoldersList = document.getElementById('fav-folders');
+  var whenHead = document.getElementById('files-when-head');
+  var folderFavBtn = document.getElementById('folder-fav');
+  var folderFavLabel = document.getElementById('folder-fav-label');
+  /** 창구가 돌려준 즐겨찾기(지금 볼 수 있는 것) — 파일 id · 폴더 id → true */
+  var favFiles = {};
+  var favFolders = {};
+  /** 보기를 빨리 바꿀 때 늦게 온 옛 응답이 새 보기를 덮지 않게 — 부를 때마다 하나씩 오른다 */
+  var loadSeq = 0;
+  /** 보기마다의 빈 목록 문장(DESIGN 2.4 「(무엇)이 없습니다.」 + 다음에 할 일 한 문장) */
+  var EMPTY_TEXT = {
+    files: '표시할 파일이 없습니다.',
+    favorites: '즐겨찾기한 파일이 없습니다. 파일 줄 이름 앞의 별(☆)을 누르면 여기에 모입니다.',
+    recent: '최근 30일 동안 미리보기·받기로 연 파일이 없습니다.'
+  };
+
   /* state.folder 는 **지금 열어 둔 폴더**(0 = 루트)이고, folderInfo·crumbs 는 서버가
      `GET /api/files` 응답의 `folder` 로 내려 준 값 그대로다 — 화면이 지어내지 않는다. */
   var state = {
     q: '', sort: 'created_at', dir: 'desc', page: 1, total: 0, perPage: 20,
-    folder: 0, folderInfo: null, crumbs: [], children: []
+    folder: 0, folderInfo: null, crumbs: [], children: [],
+    // 개발 대기열 6 — 지금 보기(files · favorites · recent)
+    view: 'files'
   };
 
   /** 폴더 모달의 모드 — 'create' · 'rename' · 'level' */
@@ -2330,6 +2357,322 @@ function initFiles(csrfToken, uploadLevels, canFetch, myTeamId) {
     row.appendChild(td);
   }
 
+  /**
+   * 표의 한 줄 — 「파일」 보기와 「즐겨찾기」·「최근」 보기가 같은 줄을 그린다(개발 대기열 6 — 전에는 renderFiles 안에 있던 몸통).
+   * showFolder 가 참이면 「폴더」 경로 칸을 넣는다(전역 검색·즐겨찾기·최근). whenValue 는 시각 칸의 값(올린 때 또는 마지막으로 연 때).
+   */
+  function fileRow(file, showFolder, whenValue) {
+    var row = document.createElement('tr');
+    // 15-3 — 「민감」 배지는 서버가 준 sensitive 불리언만 보고 붙인다 (PRD F-22).
+    // F-54 — 「검사 중」·「격리됨」 배지도 서버가 준 scan_status 하나만 보고 붙인다.
+    // F-65 — 「실행 파일 포함」 배지도 서버가 준 exec_content 하나만 보고 붙인다.
+    var nameCell = addNameCell(row, file.name, file.sensitive === true, file.scan_status, file.exec_content === true);
+    // 개발 대기열 6 — 이름 앞의 별(즐겨찾기 넣기·빼기). 행 동작 칸(보기→받기→…→삭제, DESIGN 2.1)은 그대로 둔다.
+    var star = makeFileStar(file);
+    if (star !== null) {
+      nameCell.insertBefore(star, nameCell.firstChild);
+    }
+    addCell(row, formatSize(file.size_bytes));
+    addLevelCell(row, file.access_level);
+    addCell(row, file.team_name === null || file.team_name === undefined ? '—' : file.team_name);
+    if (showFolder) {
+      // 서버가 준 folder_path 그대로. 루트면 「—」 (경로는 표시용이며 권한과 무관하다).
+      addCell(row, typeof file.folder_path === 'string' && file.folder_path !== ''
+        ? file.folder_path
+        : '—');
+    }
+    addCell(row, file.uploaded_by);
+    addWhenCell(row, whenValue);
+    addCell(row, file.description);
+    addActions(row, file);
+    return row;
+  }
+
+  /* ─── 즐겨찾기 ☆ (개발 대기열 6 · 지시서 1.1) ────────────────────────
+     별은 `.btn--icon`(makeIconButton — aria-label = 툴팁 글, DESIGN 2.1·2.8)이고 모양 둘(빈 별 · 찬 별)은 home.php 의
+     <template> 이다. 눌린 상태는 aria-pressed. 넣을 수 있는지는 창구가 다시 판단한다 — 못 읽는 파일이면 404 문구를 그대로 보인다. */
+  function starLabel(on) {
+    return on ? '즐겨찾기에서 빼기' : '즐겨찾기에 넣기';
+  }
+
+  function paintStar(button, on) {
+    button.replaceChildren(makeIcon(on ? 'star-fill' : 'star'));
+    button.setAttribute('aria-label', starLabel(on));
+    button.setAttribute('aria-pressed', on ? 'true' : 'false');
+  }
+
+  function makeFileStar(file) {
+    if (!file || !UUID_RE.test(file.id)) {
+      return null;
+    }
+    var button = makeIconButton('star', starLabel(false));
+    button.setAttribute('data-fav-file', file.id);
+    paintStar(button, favFiles[file.id] === true);
+    button.addEventListener('click', function () {
+      toggleFileFavorite(file, button);
+    });
+    return button;
+  }
+
+  /** 즐겨찾기 창구 부르기 — 401 이면 로그인으로(null), 아니면 {ok, status, data}. 주소는 부르는 쪽이 `APP_BASE + '/…'` 로 만든다(Q:T-4) */
+  function favFetch(method, url) {
+    var options = { method: method, credentials: 'same-origin', cache: 'no-store' };
+    if (method !== 'GET') {
+      options.headers = csrfHeaders();
+    }
+    return fetch(url, options).then(function (response) {
+      if (response.status === 401) {
+        toLogin();
+        return null;
+      }
+      return readJson(response).then(function (data) {
+        return { ok: response.ok, status: response.status, data: data };
+      });
+    });
+  }
+
+  function toggleFileFavorite(file, button) {
+    var on = favFiles[file.id] === true;
+    button.disabled = true;
+    setText(msg, '');
+    showDone('');
+    favFetch(on ? 'DELETE' : 'PUT', APP_BASE + '/api/files/' + file.id + '/favorite')
+      .then(function (result) {
+        button.disabled = false;
+        if (result === null) {
+          return;
+        }
+        if (!result.ok) {
+          setText(msg, errorMessage(result.data));
+          return;
+        }
+        if (on) {
+          delete favFiles[file.id];
+        } else {
+          favFiles[file.id] = true;
+        }
+        paintStar(button, !on);
+        // 「즐겨찾기」 보기에서 뺐으면 그 줄이 목록에서 사라져야 한다 — 창구의 답으로 다시 그린다
+        if (state.view === 'favorites') {
+          loadFiles();
+        }
+      })
+      .catch(function () {
+        button.disabled = false;
+        setText(msg, GENERIC_ERROR);
+      });
+  }
+
+  /** 즐겨찾기 목록 둘(파일·폴더)을 받아 별 표시용 표를 새로 만든다. 401 이면 null. */
+  function loadFavoriteLists() {
+    return Promise.all([favFetch('GET', APP_BASE + '/api/files/favorites'), favFetch('GET', APP_BASE + '/api/folders/favorites')])
+      .then(function (res) {
+        if (res[0] === null || res[1] === null) {
+          return null;
+        }
+        if (!res[0].ok) {
+          setText(msg, errorMessage(res[0].data));
+        }
+        var files = res[0].ok && res[0].data && Array.isArray(res[0].data.files) ? res[0].data.files : [];
+        var folders = res[1].ok && res[1].data && Array.isArray(res[1].data.folders) ? res[1].data.folders : [];
+        favFiles = {};
+        favFolders = {};
+        files.forEach(function (f) {
+          if (f && typeof f.id === 'string') {
+            favFiles[f.id] = true;
+          }
+        });
+        folders.forEach(function (d) {
+          if (d && typeof d.id === 'number') {
+            favFolders[d.id] = true;
+          }
+        });
+        return { files: files, folders: folders };
+      });
+  }
+
+  /** 지금 표의 별과 폴더 단추를 표에 맞춘다(목록을 새로 받은 뒤) */
+  function syncStars() {
+    var stars = body ? body.querySelectorAll('button[data-fav-file]') : [];
+    var i;
+    for (i = 0; i < stars.length; i++) {
+      paintStar(stars[i], favFiles[stars[i].getAttribute('data-fav-file')] === true);
+    }
+    syncFolderFav();
+  }
+
+  /** 지금 연 폴더의 「즐겨찾기에 넣기/빼기」 단추 — 루트에는 없다(폴더 동작 줄째 숨는다) */
+  function syncFolderFav() {
+    if (!folderFavBtn) {
+      return;
+    }
+    var on = state.folder !== 0 && favFolders[state.folder] === true;
+    folderFavBtn.setAttribute('aria-pressed', on ? 'true' : 'false');
+    setText(folderFavLabel, on ? '즐겨찾기에서 빼기' : '즐겨찾기에 넣기');
+    var icon = folderFavBtn.querySelector('.icon');
+    var fresh = makeIcon(on ? 'star-fill' : 'star');
+    if (icon) {
+      folderFavBtn.replaceChild(fresh, icon);
+    } else {
+      folderFavBtn.insertBefore(fresh, folderFavBtn.firstChild);
+    }
+  }
+
+  function toggleFolderFavorite() {
+    var id = state.folder;
+    if (typeof id !== 'number' || id <= 0) {
+      return;
+    }
+    var on = favFolders[id] === true;
+    folderFavBtn.disabled = true;
+    setText(folderMsg, '');
+    favFetch(on ? 'DELETE' : 'PUT', APP_BASE + '/api/folders/' + String(id) + '/favorite')
+      .then(function (result) {
+        folderFavBtn.disabled = false;
+        if (result === null) {
+          return;
+        }
+        if (!result.ok) {
+          setText(folderMsg, errorMessage(result.data));
+          return;
+        }
+        if (on) {
+          delete favFolders[id];
+        } else {
+          favFolders[id] = true;
+        }
+        syncFolderFav();
+      })
+      .catch(function () {
+        folderFavBtn.disabled = false;
+        setText(folderMsg, GENERIC_ERROR);
+      });
+  }
+
+  /** 「즐겨찾기」 보기의 폴더 묶음 — 이름(경로)을 누르면 그 폴더를 「파일」 보기로 연다 */
+  function drawFavoriteFolders(folders) {
+    if (!favFoldersList || !favFoldersWrap) {
+      return;
+    }
+    favFoldersList.replaceChildren();
+    folders.forEach(function (folder) {
+      if (!folder || typeof folder.id !== 'number') {
+        return;
+      }
+      var li = document.createElement('li');
+      var button = document.createElement('button');
+      button.type = 'button';
+      button.className = 'foldertree__item';
+      var name = document.createElement('span');
+      name.className = 'foldertree__name';
+      setText(name, typeof folder.path === 'string' && folder.path !== '' ? folder.path : folder.name);
+      button.appendChild(name);
+      var meta = document.createElement('span');
+      meta.className = 'foldertree__meta';
+      var badge = makeLevelBadge(folder.access_level);
+      if (badge) {
+        meta.appendChild(badge);
+      }
+      if (typeof folder.team_name === 'string' && folder.team_name !== '') {
+        var team = document.createElement('span');
+        team.className = 'foldertree__team';
+        setText(team, folder.team_name);
+        meta.appendChild(team);
+      }
+      button.appendChild(meta);
+      button.addEventListener('click', function () {
+        goToFolder(folder.id);
+      });
+      li.appendChild(button);
+      favFoldersList.appendChild(li);
+    });
+    favFoldersWrap.hidden = folders.length === 0;
+  }
+
+  /** 「즐겨찾기」·「최근」 보기의 표 — 쪽 나눔이 없다(창구가 200 · 20 까지만 준다). 개수는 **보이는 줄 수**뿐이다 */
+  function drawPlainList(files, label, whenKey) {
+    clearRows();
+    if (filesFolderHead) {
+      filesFolderHead.hidden = false;
+    }
+    files.forEach(function (file) {
+      body.appendChild(fileRow(file, true, whenKey === 'last_used_at' ? file.last_used_at : file.created_at));
+    });
+    if (empty) {
+      empty.hidden = files.length !== 0;
+    }
+    setText(pageInfo, label + ' ' + files.length + '건');
+  }
+
+  function loadFavoritesView() {
+    var seq = ++loadSeq;
+    loadFavoriteLists()
+      .then(function (lists) {
+        if (lists === null || seq !== loadSeq || state.view !== 'favorites') {
+          return;
+        }
+        drawPlainList(lists.files, '즐겨찾기', 'created_at');
+        drawFavoriteFolders(lists.folders);
+        syncFolderFav();
+      })
+      .catch(function () {
+        setText(msg, GENERIC_ERROR);
+      });
+  }
+
+  function loadRecentView() {
+    var seq = ++loadSeq;
+    favFetch('GET', APP_BASE + '/api/files/recent')
+      .then(function (result) {
+        if (result === null || seq !== loadSeq || state.view !== 'recent') {
+          return;
+        }
+        if (!result.ok) {
+          clearRows();
+          setText(msg, errorMessage(result.data));
+          return;
+        }
+        drawPlainList(result.data && Array.isArray(result.data.files) ? result.data.files : [], '최근', 'last_used_at');
+      })
+      .catch(function () {
+        setText(msg, GENERIC_ERROR);
+      });
+  }
+
+  /** 보기 바꾸기 — 고른 단추는 테두리 있는 outline, 나머지는 테두리를 걷는다(새 클래스 0) */
+  function setView(view) {
+    if (view !== 'files' && view !== 'favorites' && view !== 'recent') {
+      return;
+    }
+    state.view = view;
+    Object.keys(viewButtons).forEach(function (key) {
+      var button = viewButtons[key];
+      if (!button) {
+        return;
+      }
+      var on = key === view;
+      button.setAttribute('aria-pressed', on ? 'true' : 'false');
+      button.classList.toggle('btn--plain', !on);
+    });
+    if (searchForm) {
+      searchForm.hidden = view !== 'files';
+    }
+    if (favFoldersWrap && view !== 'favorites') {
+      favFoldersWrap.hidden = true;
+    }
+    if (prev) {
+      prev.hidden = view !== 'files';
+    }
+    if (next) {
+      next.hidden = view !== 'files';
+    }
+    setText(whenHead, view === 'recent' ? '마지막으로 연 때' : '올린 시각');
+    setText(empty, EMPTY_TEXT[view]);
+    setText(msg, '');
+    showDone('');
+    loadFiles();
+  }
+
   function renderFiles(data) {
     clearRows();
     var files = data && Array.isArray(data.files) ? data.files : [];
@@ -2361,25 +2704,7 @@ function initFiles(csrfToken, uploadLevels, canFetch, myTeamId) {
     state.page = typeof data.page === 'number' && data.page > 0 ? data.page : 1;
 
     files.forEach(function (file) {
-      var row = document.createElement('tr');
-      // 15-3 — 「민감」 배지는 서버가 준 sensitive 불리언만 보고 붙인다 (PRD F-22).
-      // F-54 — 「검사 중」·「격리됨」 배지도 서버가 준 scan_status 하나만 보고 붙인다.
-      // F-65 — 「실행 파일 포함」 배지도 서버가 준 exec_content 하나만 보고 붙인다.
-      addNameCell(row, file.name, file.sensitive === true, file.scan_status, file.exec_content === true);
-      addCell(row, formatSize(file.size_bytes));
-      addLevelCell(row, file.access_level);
-      addCell(row, file.team_name === null || file.team_name === undefined ? '—' : file.team_name);
-      if (searching) {
-        // 서버가 준 folder_path 그대로. 루트면 「—」 (경로는 표시용이며 권한과 무관하다).
-        addCell(row, typeof file.folder_path === 'string' && file.folder_path !== ''
-          ? file.folder_path
-          : '—');
-      }
-      addCell(row, file.uploaded_by);
-      addWhenCell(row, file.created_at);
-      addCell(row, file.description);
-      addActions(row, file);
-      body.appendChild(row);
+      body.appendChild(fileRow(file, searching, file.created_at));
     });
 
     if (empty) {
@@ -2396,7 +2721,21 @@ function initFiles(csrfToken, uploadLevels, canFetch, myTeamId) {
     }
   }
 
+  /** 지금 보기의 목록을 다시 받는다 — 올리기·지우기·고치기·옮기기 뒤의 새로 고침이 모두 여기를 부른다 */
   function loadFiles() {
+    if (state.view === 'favorites') {
+      loadFavoritesView();
+      return;
+    }
+    if (state.view === 'recent') {
+      loadRecentView();
+      return;
+    }
+    loadFolderFiles();
+  }
+
+  function loadFolderFiles() {
+    var seq = ++loadSeq;
     var query =
       '?q=' + encodeURIComponent(state.q) +
       '&sort=' + encodeURIComponent(state.sort) +
@@ -2418,6 +2757,10 @@ function initFiles(csrfToken, uploadLevels, canFetch, myTeamId) {
           return null;
         }
         return readJson(response).then(function (data) {
+          // 개발 대기열 6 — 그 사이 다른 보기로 바뀌었으면 옛 응답으로 표를 덮지 않는다
+          if (seq !== loadSeq || state.view !== 'files') {
+            return null;
+          }
           if (!response.ok) {
             setText(msg, errorMessage(data));
             return null;
@@ -2479,6 +2822,7 @@ function initFiles(csrfToken, uploadLevels, canFetch, myTeamId) {
     if (folderActions) {
       folderActions.hidden = state.folder === 0;
     }
+    syncFolderFav();
   }
 
   /** 지금 열어 둔 폴더의 등급(루트면 null) — 새 폴더·업로드 기본값에 쓴다. */
@@ -2571,7 +2915,12 @@ function initFiles(csrfToken, uploadLevels, canFetch, myTeamId) {
     state.page = 1;
     setText(msg, '');
     showDone('');   // U-2a — 다른 폴더로 가면 지난 결과 한 줄을 거둔다
-    loadFiles();
+    syncFolderFav();
+    if (state.view !== 'files') {
+      setView('files');   // 개발 대기열 6 — 즐겨찾기 폴더·트리에서 폴더를 고르면 「파일」 보기로 연다(목록은 setView 가 부른다)
+    } else {
+      loadFiles();
+    }
     loadTree();
   }
 
@@ -3537,8 +3886,20 @@ function initFiles(csrfToken, uploadLevels, canFetch, myTeamId) {
       state.sort = sortSelect.value;
       state.dir = dirSelect.value;
       state.page = 1;
+      state.view = 'files';
       loadFiles();
     });
+  }
+  // 개발 대기열 6 — 보기 셋 · 폴더 즐겨찾기 단추
+  Object.keys(viewButtons).forEach(function (key) {
+    if (viewButtons[key]) {
+      viewButtons[key].addEventListener('click', function () {
+        setView(key);
+      });
+    }
+  });
+  if (folderFavBtn) {
+    folderFavBtn.addEventListener('click', toggleFolderFavorite);
   }
   if (prev) {
     prev.addEventListener('click', function () {
@@ -3788,6 +4149,14 @@ function initFiles(csrfToken, uploadLevels, canFetch, myTeamId) {
   loadTeams();
   loadFiles();
   loadTree();
+  // 개발 대기열 6 — 별 표시용 즐겨찾기 목록(표를 먼저 그리고, 목록이 오면 별만 맞춘다)
+  loadFavoriteLists()
+    .then(function (lists) {
+      if (lists !== null) {
+        syncStars();
+      }
+    })
+    .catch(function () {});
 }
 
 /* ─── 감사 로그 화면 (8단계 — GET /audit + GET /api/audit) ────────

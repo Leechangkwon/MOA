@@ -1615,6 +1615,28 @@ P-5c(쿠키 없는 `/`·308·404 세션 증가 0 · 쿠키 런처 동일 · DB �
 ⑤ 보낼 때마다 A/AAAA 전부 공인 ⑥ CURLOPT_RESOLVE ⑦ 3xx 실패 ⑧ 연결 3초·전체 10초·보내는 본문 4KB·응답 8KB 에서 끊음 ⑩ 상태 코드만 ⑬ curl 은 Fetch.php 에만.
 ⑫ 인프라 잠금(아웃바운드 방화벽)은 **없다**(L-8 — R-22 와 따로 계획).
 
+### 5.33 즐겨찾기 · 최근 — `/api/files/favorites` · `/api/folders/favorites` · `/api/files/recent` (개발 대기열 6 · Q:F-3a 라운드 A, 2026-09-25)
+
+지시서 `../docs/qf3a-favorites-recent-bulk-directive.md` 1.1 · 1.2 · 결정 M-1~M-3 · M-8 · 구현 기록 `docs/qf3a-favorites-recent-implementation.md`.
+**새 판정 코드 0** — 넣을 때는 그 순간의 읽기 판정, 목록은 지금의 읽기 조건절. 커뮤니티 쪽은 커뮤니티 ARCH 21.24.
+
+| 창구 | 정책 | 판정 · 조건 | 응답 |
+|---|---|---|---|
+| `GET /api/files/favorites` | file.read | `file_favorites` ⋈ `files` + `Authz::visibleFilesWhere`(논리 삭제 제외 포함) · 넣은 때 오름차순 · 200 | 파일 목록과 같은 줄 모양 + `favorited_at` · **전체 개수 칸 없음** |
+| `PUT·DELETE /api/files/{id}/favorite` | file.read (+ CSRF) | PUT: 행(`deleted_at IS NULL`) + `Authz::decideRead` — 없음·지움·못 읽음은 **같은 404 문구** · 사람당 200(가득 차면 못 보는 내 줄을 먼저 걷음 → 그래도 409) · DELETE: 내 줄만(있든 없든 200) | `{ok, favorite}` |
+| `GET /api/folders/favorites` | file.read | `folder_favorites` ⋈ `folders` + `Authz::visibleWhere($user, 'd')`(폴더 트리와 같은 조건절) · 50 | `{folders: [{id, name, access_level, team_id, team_name, path}]}` |
+| `PUT·DELETE /api/folders/{num}/favorite` | file.read (+ CSRF) | PUT: `Authz::decideRead`(트리 [권한 ✔ 1]과 같은 함수) — 없음·못 읽음 같은 404 · 사람당 50 | `{ok, favorite}` |
+| `GET /api/files/recent` | file.read | **새로 쓰는 행 0** — `audit_logs` 에서 `actor_id = 나 · action IN ('file.download','file.preview') · result='allow' · target_type='file'` 최근 30일을 파일마다 마지막 시각으로 묶고(`audit_actor_idx`), 그 뒤에 `visibleFilesWhere` · 20 | 파일 줄 + `last_used_at` · 대상 인자 없음(세션 본인 고정) |
+
+- **표**: `file_favorites(user_id, file_id, created_at)` · `folder_favorites(user_id, folder_id, created_at)` — 기본키 (사람, 대상). 대상 외래 키 `ON DELETE CASCADE`
+  (빈 폴더는 행째 지워진다 — 즐겨찾기가 삭제를 막지 않는다) · 사람 외래 키는 ON DELETE 절 없음(계정은 지우지 않는다). 앱 계정 SELECT · 칸 단위 INSERT · DELETE(10장).
+- **감사 없음**(결정 M-2 — 개인 화면 설정 · 거부도 — 구현 기록 D-4). 목록 조회도 남기지 않는다(5.1 마지막 줄과 같다).
+- **토큰 창구 아님** — `TBOX_API_TOKEN_ROUTES` 불변. 화면 편의 창구라 세션으로만.
+- **화면**(`home.php` · `app.js`): 목록 위 보기 셋 「파일」「즐겨찾기」「최근」(`.btn--quiet.btn--small` + 고르지 않은 것 `.btn--plain` + `aria-pressed`) ·
+  파일 줄 이름 앞 ☆(`.btn--icon` — `aria-label` 「즐겨찾기에 넣기/빼기」) · 「즐겨찾기」 보기의 「즐겨찾기 폴더」 묶음(누르면 그 폴더를 「파일」 보기로) ·
+  폴더 동작 줄의 「즐겨찾기에 넣기/빼기」 · 「최근」 보기의 시각 칸은 「마지막으로 연 때」. 별이 찬지는 창구가 준 목록에 있나 없나만 본다(화면은 판단하지 않는다).
+- 런처에는 보이지 않는다(결정 M-8 — 런처는 데이터 0).
+
 ## 6. 저장 위치 — 파일 정보 vs 실제 파일
 
 ### 6.1 두 곳에 나눠 저장하는 이유
@@ -2467,6 +2489,7 @@ php_admin_value[disable_functions]   = fsockopen,pfsockopen,stream_socket_client
 | `tbox_app` | PHP 앱 런타임 | `users teams files`: SELECT/INSERT/UPDATE · `sessions`: SELECT/INSERT/UPDATE/DELETE · `permissions`: **SELECT 만** · `audit_logs`: SELECT/INSERT 만 · DROP 없음 |
 | `tbox_backup` | 백업 스크립트 | 전체 SELECT (읽기 전용) |
 | `tbox_perm` | 권한 매트릭스 편집 핸들러 **하나**(`admin_permissions_update.php`, 17단계 F-25) | `permissions`: SELECT/UPDATE 만 · 다른 표 0 · INSERT/DELETE 없음(16행 고정). `.env` `DB_PERM_USER/PASS`, `Db::perm()` 지연 연결 · **비영속**(앱 연결 `tbox_app` 만 워커마다 재사용 — 5.31) |
+| `tbox_app` (즐겨찾기 — 5.33) | 같은 앱 계정 | `file_favorites` · `folder_favorites`: SELECT · INSERT(사람·대상 칸만) · DELETE(빼기) — UPDATE 없음. 커뮤니티 `page_favorites`(+ position UPDATE) · `page_recent`(+ last_viewed_at UPDATE · DELETE — 기록이 아니라 화면 편의)는 커뮤니티 ARCH 21.24 |
 | `tbox_push` | 휴대폰 경보 **보내는 배치** 하나(`scripts/alert_push.php`, OS 계정 tbox-push — F-70 · 5.32) | `alert_push_subscriptions`: SELECT · UPDATE(last_ok_at·fail_count·fail_since·revoked_at·revoked_reason) · `alert_push_outbox`: SELECT · UPDATE(sent_at) · `users`: **(id, role, is_active) 세 칸만** SELECT · `audit_logs`: INSERT 만 · 그 밖 0. 마이그레이션이 NOLOGIN 으로 만들고 로그인·비밀번호(`/etc/tbox-v2/push.pgpass`)는 사용자 sudo 반영 스크립트가 표준입력으로 정한다 · 문장 15s · 유휴 트랜잭션 60s |
 
 > 파일 삭제가 논리 삭제(UPDATE)이므로 앱 계정에 `DELETE` 권한 자체가 필요 없다. 30일 실제 정리는 `tbox_owner` 권한의 배치 스크립트가 수행한다.

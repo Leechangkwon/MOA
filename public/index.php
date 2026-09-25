@@ -170,6 +170,21 @@ const TBOX_ROUTES = [
     ['GET',    '/api/files/trash',          'files_trash.php',   Authz::POLICY_AUTHENTICATED],
     ['POST',   '/api/files/{id}/restore',   'files_restore.php', Authz::POLICY_AUTHENTICATED],
 
+    // 개발 대기열 6 · Q:F-3a 라운드 A — 즐겨찾기 · 최근 (지시서 ../docs/qf3a-favorites-recent-bulk-directive.md 1.1 · 1.2, ARCH 5.33).
+    //   정책은 목록·다운로드와 **같은 file.read** 다 — 라우터는 「읽는 종류의 행동인가」까지만 보고, 그 파일·폴더를 읽을 수
+    //   있는지는 핸들러가 행을 읽은 뒤 `Authz::decideRead`(넣기)·`visibleFilesWhere`/`visibleWhere(…,'d')`(목록)로 다시 판단한다.
+    //   새 정책 이름·새 판정 코드 0. PUT·DELETE 는 [3] CSRF 를 지난다. 대상은 언제나 세션의 본인이다(요청에서 사람을 받지 않는다).
+    //   ★ 토큰 창구 집합(TBOX_API_TOKEN_ROUTES)에 넣지 않는다 — 화면 편의 창구라 세션으로만 부른다.
+    //   `/api/files/favorites`·`/api/files/recent` 는 `{id}`(UUID 36자)와, `/api/folders/favorites` 는 `{num}`(숫자)과
+    //   모양이 달라 겹치지 않는다 — 뜻을 드러내려고 한곳에 모아 둔다.
+    ['GET',    '/api/files/favorites',          'favorites_files.php',   'file.read'],
+    ['PUT',    '/api/files/{id}/favorite',      'favorites_files.php',   'file.read'],
+    ['DELETE', '/api/files/{id}/favorite',      'favorites_files.php',   'file.read'],
+    ['GET',    '/api/files/recent',             'files_recent.php',      'file.read'],
+    ['GET',    '/api/folders/favorites',        'favorites_folders.php', 'file.read'],
+    ['PUT',    '/api/folders/{num}/favorite',   'favorites_folders.php', 'file.read'],
+    ['DELETE', '/api/folders/{num}/favorite',   'favorites_folders.php', 'file.read'],
+
     // 12단계 — 기능별 화면 분리 (PRD F-20, 8장 「화면(HTML)」 행, 10장 화면 요구사항).
     //   한 페이지에 쌓여 있던 기능을 화면 단위로 나눈 것이며 **권한 규칙은 그대로**다:
     //   휴지통 화면은 데이터(`GET /api/files/trash`)와 **같은 정책**을 쓰고,

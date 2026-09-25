@@ -128,6 +128,11 @@ require __DIR__ . '/../views/shell_top.php';
         <ul class="foldertree__list" id="folder-list"></ul>
         <p id="folder-empty" class="muted" hidden>하위 폴더가 없습니다.</p>
         <div class="foldertree__actions" id="folder-actions" hidden>
+          <!-- 개발 대기열 6 (Q:F-3a 라운드 A) — 지금 연 폴더를 즐겨찾기에 넣고 뺀다. 눌린 상태(aria-pressed)와 글자는 app.js 가
+               `GET /api/folders/favorites` 의 답으로 정한다 — 넣을 수 있는지는 창구가 `Authz::decideRead` 로 다시 판단한다(PRD S-01). -->
+          <button id="folder-fav" class="btn btn--quiet btn--small" type="button" aria-pressed="false">
+            <span class="icon" data-icon="star"></span><span id="folder-fav-label">즐겨찾기에 넣기</span>
+          </button>
           <button id="folder-rename" class="btn btn--quiet btn--small" type="button">이름 변경</button>
           <button id="folder-level" class="btn btn--quiet btn--small" type="button">등급 변경</button>
           <button id="folder-delete" class="btn btn--quiet btn--small" type="button">삭제</button>
@@ -136,6 +141,29 @@ require __DIR__ . '/../views/shell_top.php';
       </aside>
 
       <div class="workspace__main">
+    <!-- 개발 대기열 6 (Q:F-3a 라운드 A · 지시서 1.1 · 1.2) — 목록 위 보기 셋: 「파일」(폴더·검색) · 「즐겨찾기」 · 「최근」.
+         새 클래스 0 — 고른 것은 outline 작은 단추(`.btn--quiet.btn--small`), 나머지는 테두리를 걷은 같은 단추(`.btn--plain`) ·
+         `aria-pressed` 로 화면 읽기에도 알린다(DESIGN 2.1 · 커뮤니티 DB 보기 단추와 같은 모양). 무엇이 나오나는 서버가 정한다 —
+         즐겨찾기·최근 모두 **지금 볼 수 있는 파일만** 창구가 돌려준다(PRD S-02). -->
+    <div class="toolbar" id="files-views" role="group" aria-label="목록 보기">
+      <button id="files-view-files" class="btn btn--quiet btn--small" type="button" aria-pressed="true" data-view="files">
+        <span class="icon" data-icon="files"></span>파일
+      </button>
+      <button id="files-view-favorites" class="btn btn--quiet btn--small btn--plain" type="button" aria-pressed="false" data-view="favorites">
+        <span class="icon" data-icon="star"></span>즐겨찾기
+      </button>
+      <button id="files-view-recent" class="btn btn--quiet btn--small btn--plain" type="button" aria-pressed="false" data-view="recent">
+        <span class="icon" data-icon="log"></span>최근
+      </button>
+    </div>
+    <!-- 「즐겨찾기」 보기의 폴더 묶음 — 이름을 누르면 그 폴더를 「파일」 보기로 연다. 줄은 app.js 가 createElement/textContent 로
+         만든다(폴더 트리와 같은 줄 모양 `.foldertree__item`). 없으면 묶음째 숨는다. -->
+    <section class="panel panel--tight" id="fav-folders-wrap" aria-labelledby="fav-folders-title" hidden>
+      <div class="panel__head">
+        <h2 class="panel__title" id="fav-folders-title">즐겨찾기 폴더</h2>
+      </div>
+      <ul class="foldertree__list" id="fav-folders"></ul>
+    </section>
     <!-- Q:F-4 U-2a — 지운 뒤 결과 한 줄(DESIGN 4장 「성공」 = `.ok-note`). 기본 hidden 이고,
          app.js 가 확인 창을 거쳐 서버가 200 을 준 뒤에만 textContent 로 채워 연다.
          `<p>` 가 아니라 `<div>` — 문단 기본 여백이 열 간격에 더해져 옆 폴더 카드와 윗줄이 어긋났다(스크린샷 확인). -->
@@ -167,7 +195,8 @@ require __DIR__ . '/../views/shell_top.php';
                    folder_path 를 app.js 가 textContent 로 넣는다 (PRD S-03). -->
               <th scope="col" id="files-folder-head" hidden>폴더</th>
               <th scope="col">올린 사람</th>
-              <th scope="col">올린 시각</th>
+              <!-- 「최근」 보기에서는 app.js 가 글자를 「마지막으로 연 때」로 바꾼다(값은 서버가 준 last_used_at). -->
+              <th scope="col" id="files-when-head">올린 시각</th>
               <th scope="col">설명</th>
               <th scope="col">작업</th>
             </tr>
@@ -546,4 +575,8 @@ require __DIR__ . '/../views/shell_top.php';
         <button id="preview-close" class="btn" type="button">닫기</button>
       </div>
     </dialog>
+<!-- 개발 대기열 6 — 즐겨찾기 아이콘 둘(빈 별 = 넣기 · 찬 별 = 빼기). DESIGN 2.11 규격(24×24 · stroke 1.8, lucide star) — 이 화면만 쓴다.
+     고정 문자열이고 사용자 입력이 한 글자도 없다. app.js 는 cloneNode 로만 붙인다. -->
+<template id="tpl-icon-star"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m12 2.5 2.9 5.9 6.5.9-4.7 4.6 1.1 6.5L12 17.3l-5.8 3.1 1.1-6.5-4.7-4.6 6.5-.9z"/></svg></template>
+<template id="tpl-icon-star-fill"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m12 2.5 2.9 5.9 6.5.9-4.7 4.6 1.1 6.5L12 17.3l-5.8 3.1 1.1-6.5-4.7-4.6 6.5-.9z"/></svg></template>
 <?php require __DIR__ . '/../views/shell_bottom.php'; ?>

@@ -64,6 +64,13 @@ require __DIR__ . '/../../views/shell_top.php';
         <details id="page-more" class="menu">
           <summary class="btn btn--quiet"><span class="icon" data-icon="chevron"></span>더보기</summary>
           <div class="menu__list">
+            <!-- 개발 대기열 6 (Q:F-3a 라운드 A · 지시서 1.1) — 즐겨찾기 ☆. 머리 단추가 이미 넷이라(DESIGN 2.9 — 사용 방법 · 이력 ·
+                 더보기 · 편집) 이 메뉴의 **맨 위** 항목으로 둔다. 볼 수 있는 사람이면 누구나 보인다 — 글자·별 모양은 editor.js 가
+                 창구 `GET /community/api/me/favorites` 의 답(이 페이지가 들어 있나)으로 바꾼다. 넣을 수 있는지는 창구
+                 `PUT …/favorite` 가 `decidePageRead` 로 다시 판단한다(PRD S-01). -->
+            <button id="page-fav" class="menu__item" type="button" aria-pressed="false" hidden>
+              <span class="icon" data-icon="star"></span><span id="page-fav-label">즐겨찾기에 넣기</span>
+            </button>
             <button id="page-move" class="menu__item" type="button" hidden>
               <span class="icon" data-icon="files"></span>옮기기
             </button>
@@ -855,6 +862,10 @@ require __DIR__ . '/../../views/shell_top.php';
 
     <!-- 페이지 id 를 전하는 자리. 값은 라우터가 UUID 로만 통과시킨 뒤 이스케이프한 것이다. -->
     <span id="page-meta" hidden data-page-id="<?= htmlspecialchars($viewPageId, ENT_QUOTES, 'UTF-8') ?>"></span>
+    <!-- 개발 대기열 6 — 즐겨찾기 아이콘 둘(빈 별 = 넣기 · 찬 별 = 빼기). DESIGN 2.11 규격(24×24 · stroke 1.8, lucide star) —
+         이 화면만 쓴다(t-box 파일 화면 home.php 와 같은 글자). 고정 문자열이고 editor.js 는 cloneNode 로만 붙인다. -->
+    <template id="tpl-icon-star"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m12 2.5 2.9 5.9 6.5.9-4.7 4.6 1.1 6.5L12 17.3l-5.8 3.1 1.1-6.5-4.7-4.6 6.5-.9z"/></svg></template>
+    <template id="tpl-icon-star-fill"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m12 2.5 2.9 5.9 6.5.9-4.7 4.6 1.1 6.5L12 17.3l-5.8 3.1 1.1-6.5-4.7-4.6 6.5-.9z"/></svg></template>
 <?php
 $pageMsgTop = true;
 require __DIR__ . '/../../views/shell_bottom.php';

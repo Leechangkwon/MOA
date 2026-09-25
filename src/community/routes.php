@@ -169,6 +169,17 @@ const COMMUNITY_ROUTES = [
     ['GET',    '/api/notifications',                     'notifications_list.php', 'community.read'],
     ['POST',   '/api/notifications/read',                'notifications_read.php', 'community.read'],
     ['GET',    '/api/pages/{id}/reads',                  'page_reads.php',         'community.read'],
+    /* 개발 대기열 6 · Q:F-3a 라운드 A — 즐겨찾기 · 최근 (지시서 ../../../docs/qf3a-favorites-recent-bulk-directive.md 1.1 · 1.2,
+       커뮤니티 ARCH 21.24). 정책은 전부 `community.read` — 로그인한 사람의 **개인 화면 설정**이고(내 줄만 읽고 쓴다),
+       페이지를 넣을 수 있는지는 핸들러가 `CommunityAuthz::decidePageRead` 로, 목록은 검색과 같은 조건절
+       `community_search_pages_where`(관리자 특권 갈래 끔)로 다시 판단한다. 새 정책·새 판정 코드 0. 상태를 바꾸는 넷(PATCH·PUT·
+       DELETE 둘)은 [3] CSRF 를 지난다. 대상은 언제나 세션의 본인 — 요청에서 사람을 받지 않는다. */
+    ['GET',    '/api/me/favorites',                      'favorites.php',          'community.read'],
+    ['PATCH',  '/api/me/favorites',                      'favorites.php',          'community.read'],   // 끌어서 순서 바꾸기
+    ['PUT',    '/api/pages/{id}/favorite',               'favorites.php',          'community.read'],
+    ['DELETE', '/api/pages/{id}/favorite',               'favorites.php',          'community.read'],
+    ['GET',    '/api/me/recent',                         'recent_list.php',        'community.read'],
+    ['DELETE', '/api/me/recent',                         'recent_clear.php',       'community.read'],   // 「최근 기록 지우기」 — 내 줄만
 ];
 
 /**
@@ -2177,6 +2188,49 @@ function community_view_count(int $pageId): int
         SQL;
     $row = Db::instance()->run($sql, [':pid' => $pageId])->fetch();
     return is_array($row) ? (int) $row['n'] : 0;
+}
+
+/** 최근 목록의 사람당 줄 수 (개발 대기열 6 · 지시서 1.2 — 넘으면 오래된 것부터 지운다) */
+const COMMUNITY_RECENT_MAX = 50;
+/** 즐겨찾기의 사람당 줄 수 (지시서 1.1) */
+const COMMUNITY_FAVORITES_MAX = 200;
+
+/**
+ * 「최근」 한 줄 남기기 (개발 대기열 6 · Q:F-3a 라운드 A — 지시서 1.2 · 결정 M-3).
+ *
+ * 읽기 판정을 **지난 뒤에만** 부른다(`pages_get.php` — 조회수 `community_record_view` 바로 옆). 쓰기를 줄이려고
+ * 마지막 기록이 **5분보다 오래됐을 때만** 시각을 민다(Q:F-4 P-3 과 같은 생각) — 5분 안에 다시 열면 문장은 돌지만 행은
+ * 바뀌지 않는다(`ON CONFLICT … DO UPDATE … WHERE` 가 거짓이면 갱신 0). 새 줄이 생겼을 때만 사람당 50줄을 넘는
+ * 가장 오래된 줄을 지운다(이 표는 기록이 아니라 화면 편의다 — 앱 계정에 DELETE 가 있다).
+ * 실패해도 읽기는 막지 않는다 — 부르는 쪽이 try/catch 로 감싸 서버 로그에만 남긴다.
+ * 값은 전부 바인딩이다(자리표시자 이름은 문장마다 한 번씩 — 서버측 prepare).
+ */
+function community_record_recent(int $pageId, int $userId): void
+{
+    $db = Db::instance();
+    $sqlUpsert = <<<'SQL'
+        INSERT INTO community.page_recent AS r (user_id, page_id)
+        VALUES (CAST(:uid AS bigint), CAST(:pid AS bigint))
+        ON CONFLICT (user_id, page_id) DO UPDATE
+           SET last_viewed_at = now()
+         WHERE r.last_viewed_at < now() - interval '5 minutes'
+        RETURNING (r.xmax = 0) AS inserted
+        SQL;
+    $row = $db->run($sqlUpsert, [':uid' => $userId, ':pid' => $pageId])->fetch();
+    // 갱신했거나(줄 수 그대로) 5분 안이라 건너뛰었으면 지울 것이 없다
+    if (!is_array($row) || $row['inserted'] !== true) {
+        return;
+    }
+    $sqlEvict = <<<'SQL'
+        DELETE FROM community.page_recent
+         WHERE user_id = CAST(:uid AS bigint)
+           AND page_id IN (SELECT k.page_id
+                             FROM community.page_recent k
+                            WHERE k.user_id = CAST(:uid_k AS bigint)
+                            ORDER BY k.last_viewed_at DESC, k.page_id DESC
+                           OFFSET CAST(:keep AS integer))
+        SQL;
+    $db->run($sqlEvict, [':uid' => $userId, ':uid_k' => $userId, ':keep' => COMMUNITY_RECENT_MAX]);
 }
 
 /**

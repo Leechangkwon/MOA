@@ -40,13 +40,13 @@ import { inputRules, textblockTypeInputRule, InputRule } from './vendor/pm/prose
 import { dropCursor } from './vendor/pm/prosemirror-dropcursor.js?v=5823578fa61a';
 import { gapCursor } from './vendor/pm/prosemirror-gapcursor.js?v=5823578fa61a';
 
-import { renderDoc, embedHost } from './doc-render.js?v=1eeb6a775ed2';
-import { createDatabaseView } from './database.js?v=1eeb6a775ed2';
-import { bindTemplateGallery, createTemplateSave } from './templates.js?v=1eeb6a775ed2';
-import { bindEmbedAdmin } from './embeds.js?v=1eeb6a775ed2';
-import { bindPopular } from './popular.js?v=1eeb6a775ed2';
-import { schema, toDoc, fromDoc, uuid4, colorAllowed, schemeOkForEditor, COLORS, BLOCK_TYPES } from './editor-schema.js?v=1eeb6a775ed2';
-import { createDrafts } from './drafts.js?v=1eeb6a775ed2';
+import { renderDoc, embedHost } from './doc-render.js?v=a981eb7ae8f3';
+import { createDatabaseView } from './database.js?v=a981eb7ae8f3';
+import { bindTemplateGallery, createTemplateSave } from './templates.js?v=a981eb7ae8f3';
+import { bindEmbedAdmin } from './embeds.js?v=a981eb7ae8f3';
+import { bindPopular } from './popular.js?v=a981eb7ae8f3';
+import { schema, toDoc, fromDoc, uuid4, colorAllowed, schemeOkForEditor, COLORS, BLOCK_TYPES } from './editor-schema.js?v=a981eb7ae8f3';
+import { createDrafts } from './drafts.js?v=a981eb7ae8f3';
 
 /* ─── 주소와 공통 도우미 ─────────────────────────────────────── */
 
@@ -566,6 +566,256 @@ function markActiveVisible(box) {
   if (r.top < b.top || r.bottom > b.bottom) {
     side.scrollTop += r.top - b.top - b.height / 3;
   }
+}
+
+/* ─── 즐겨찾기 · 최근 (개발 대기열 6 · Q:F-3a 라운드 A — 지시서 1.1 · 1.2 · 결정 M-1) ─────────────
+ *
+ * 사이드바 맨 위 「즐겨찾기」(접을 수 있음) → 「최근」 5개 + 「더 보기」. 세 화면(내 공간·페이지·게시판) 공통.
+ *   · 항목은 **창구가 준 것만** — 두 창구 모두 검색과 같은 조건절 안에서만 돌려준다(못 보게 된 페이지는 제목째 없다).
+ *     이 파일에는 누가 무엇을 볼 수 있나를 아는 코드가 없다 (PRD S-01, DESIGN 원칙 1).
+ *   · 줄은 사이드바 트리와 같은 `.nav-tree` 줄이고 글자는 textContent 뿐이다. 새 클래스·인라인 style 0.
+ *   · 즐겨찾기 순서: 줄을 끌어 놓거나(HTML 끌어 놓기) 링크에 초점을 두고 Alt+↑/↓ → `PATCH /api/me/favorites {ids}`.
+ *     실패하면 창구의 순서로 다시 그린다.
+ *   · 「최근 기록 지우기」는 창 안의 빨간 단추를 **두 번** 눌러야 나간다(댓글 지우기와 같은 방식 — 모달 안에 모달 0).
+ */
+let favoriteIds = new Set();
+/** 즐겨찾기를 새로 받았을 때 알릴 곳 — 페이지 화면의 ☆ 메뉴가 등록한다 */
+const favoriteListeners = [];
+/** 최근 목록(창구의 답 그대로) — 「더 보기」 창이 쓴다 */
+let recentPages = [];
+const FAV_OPEN_KEY = 'qaredi-nav-fav-open';
+
+/** 사이드바 한 줄 — 트리 줄과 같은 모양(왼쪽 빈 칸은 트리의 펼침 단추 자리) */
+function navPageRow(page, activeId) {
+  const li = document.createElement('li');
+  const row = document.createElement('div');
+  row.className = 'nav-tree__row' + (page.id === activeId ? ' is-active' : '');
+  row.appendChild(navToggle('', false, false));
+  const link = document.createElement('a');
+  link.className = 'nav-tree__link';
+  link.setAttribute('href', COMMUNITY_BASE + '/p/' + page.id);
+  link.textContent = (page.icon ? page.icon + ' ' : '') + page.title;
+  if (page.id === activeId) { link.setAttribute('aria-current', 'page'); }
+  row.appendChild(link);
+  li.appendChild(row);
+  return { li: li, link: link };
+}
+
+/** 즐겨찾기 줄들의 지금 순서(페이지 id) */
+function favoriteOrder(ul) {
+  return Array.from(ul.querySelectorAll('li[data-fav-id]')).map((li) => li.getAttribute('data-fav-id'));
+}
+
+function saveFavoriteOrder(ul, before) {
+  const ids = favoriteOrder(ul);
+  if (ids.join(',') === before.join(',')) { return; }
+  api('PATCH', '/api/me/favorites', { ids: ids }).then((result) => {
+    if (result.status === 401) { toLogin(); return; }
+    if (result.status !== 200) {
+      setText(document.getElementById('msg'), errorMessage(result.data));
+      loadFavoritesNav();   // 창구의 순서로 되돌린다
+    }
+  }).catch(() => { loadFavoritesNav(); });
+}
+
+function drawFavoritesNav(pages) {
+  const box = document.getElementById('nav-community-fav-box');
+  const nav = document.getElementById('nav-community-fav');
+  if (!box || !nav) { return; }
+  clear(nav);
+  const activeId = currentPageId();
+  const ul = document.createElement('ul');
+  ul.className = 'nav-tree';
+  let dragging = null;
+  let before = [];
+  for (const page of pages) {
+    const made = navPageRow(page, activeId);
+    const li = made.li;
+    li.setAttribute('data-fav-id', page.id);
+    li.draggable = true;
+    // 링크 자체가 끌리면(주소 끌기) 줄이 움직이지 않는다 — 줄(li)이 끌리게 링크의 끌기를 끈다
+    made.link.draggable = false;
+    made.link.setAttribute('aria-keyshortcuts', 'Alt+ArrowUp Alt+ArrowDown');
+    made.link.addEventListener('keydown', (event) => {
+      if (!event.altKey || (event.key !== 'ArrowUp' && event.key !== 'ArrowDown')) { return; }
+      event.preventDefault();
+      const was = favoriteOrder(ul);
+      if (event.key === 'ArrowUp' && li.previousElementSibling) {
+        ul.insertBefore(li, li.previousElementSibling);
+      } else if (event.key === 'ArrowDown' && li.nextElementSibling) {
+        ul.insertBefore(li.nextElementSibling, li);
+      }
+      made.link.focus();
+      saveFavoriteOrder(ul, was);
+    });
+    li.addEventListener('dragstart', (event) => {
+      dragging = li;
+      before = favoriteOrder(ul);
+      if (event.dataTransfer) {
+        event.dataTransfer.effectAllowed = 'move';
+        event.dataTransfer.setData('text/plain', page.id);
+      }
+    });
+    li.addEventListener('dragover', (event) => {
+      if (dragging === null || dragging === li) { return; }
+      event.preventDefault();
+      const r = li.getBoundingClientRect();
+      ul.insertBefore(dragging, event.clientY > r.top + r.height / 2 ? li.nextSibling : li);
+    });
+    li.addEventListener('drop', (event) => { event.preventDefault(); });
+    li.addEventListener('dragend', () => {
+      if (dragging === null) { return; }
+      dragging = null;
+      saveFavoriteOrder(ul, before);
+    });
+    ul.appendChild(li);
+  }
+  nav.appendChild(ul);
+  show(box, pages.length > 0);
+}
+
+/** 즐겨찾기를 받아 사이드바를 그리고, 등록된 곳(☆ 메뉴)에 알린다 */
+function loadFavoritesNav() {
+  return api('GET', '/api/me/favorites').then((result) => {
+    if (result.status === 401) { toLogin(); return []; }
+    const pages = result.status === 200 && Array.isArray(result.data.pages) ? result.data.pages : [];
+    favoriteIds = new Set(pages.map((p) => p.id));
+    drawFavoritesNav(pages);
+    for (const fn of favoriteListeners) { fn(); }
+    return pages;
+  }).catch(() => []);
+}
+
+/** 접은 상태를 이 브라우저에만 기억한다(화면 취향 — 저장이 막혀도 기본은 펼침) */
+function bindFavoritesFold() {
+  const box = document.getElementById('nav-community-fav-box');
+  if (!box) { return; }
+  try {
+    if (window.localStorage.getItem(FAV_OPEN_KEY) === '0') { box.open = false; }
+  } catch (e) { /* 저장소를 못 쓰면 늘 펼친 채로 시작한다 */ }
+  box.addEventListener('toggle', () => {
+    try { window.localStorage.setItem(FAV_OPEN_KEY, box.open ? '1' : '0'); } catch (e) { /* 무시 */ }
+  });
+}
+
+function drawRecentNav(pages) {
+  const title = document.getElementById('nav-community-recent-title');
+  const nav = document.getElementById('nav-community-recent');
+  if (!nav) { return; }
+  clear(nav);
+  const activeId = currentPageId();
+  const ul = document.createElement('ul');
+  ul.className = 'nav-tree';
+  for (const page of pages.slice(0, 5)) {
+    ul.appendChild(navPageRow(page, activeId).li);
+  }
+  nav.appendChild(ul);
+  if (pages.length > 0) {
+    const more = document.createElement('button');
+    more.type = 'button';
+    more.className = 'nav__item';
+    more.id = 'nav-community-recent-more';
+    more.setAttribute('aria-haspopup', 'dialog');
+    more.appendChild(makeIcon('log'));
+    const label = document.createElement('span');
+    label.textContent = '더 보기';
+    more.appendChild(label);
+    more.addEventListener('click', openRecentDialog);
+    nav.appendChild(more);
+  }
+  show(nav, pages.length > 0);
+  show(title, pages.length > 0);
+}
+
+function loadRecentNav() {
+  return api('GET', '/api/me/recent').then((result) => {
+    if (result.status === 401) { toLogin(); return []; }
+    recentPages = result.status === 200 && Array.isArray(result.data.pages) ? result.data.pages : [];
+    drawRecentNav(recentPages);
+    return recentPages;
+  }).catch(() => []);
+}
+
+function fillRecentDialog() {
+  const list = document.getElementById('recent-list');
+  const empty = document.getElementById('recent-empty');
+  const clearButton = document.getElementById('recent-clear');
+  clear(list);
+  for (const page of recentPages) {
+    const li = document.createElement('li');
+    li.className = 'list__item';
+    const head = document.createElement('div');
+    head.className = 'list__head';
+    const link = document.createElement('a');
+    link.setAttribute('href', COMMUNITY_BASE + '/p/' + page.id);
+    link.textContent = (page.icon ? page.icon + ' ' : '') + page.title;
+    head.appendChild(link);
+    li.appendChild(head);
+    const body = document.createElement('div');
+    body.className = 'list__body';
+    const where = document.createElement('span');
+    where.textContent = page.space && typeof page.space.name === 'string' ? page.space.name : '';
+    const when = document.createElement('span');
+    when.className = 'muted';
+    when.textContent = shortWhen(page.last_viewed_at);
+    if (typeof page.last_viewed_at === 'string') { when.setAttribute('title', page.last_viewed_at); }
+    body.appendChild(where);
+    body.appendChild(when);
+    li.appendChild(body);
+    list.appendChild(li);
+  }
+  show(empty, recentPages.length === 0);
+  if (clearButton) { clearButton.disabled = recentPages.length === 0; }
+}
+
+let recentDialogBound = false;
+
+function openRecentDialog() {
+  const dialog = document.getElementById('recent-dialog');
+  if (!dialog) { return; }
+  const msg = document.getElementById('recent-msg');
+  const clearButton = document.getElementById('recent-clear');
+  if (!recentDialogBound) {
+    recentDialogBound = true;
+    // 좁은 화면에서는 사이드바가 숨는다 — 창을 body 끝으로 옮겨 둔다(알림 창과 같은 까닭)
+    document.body.appendChild(dialog);
+    for (const close of dialog.querySelectorAll('[data-recent-close]')) {
+      close.addEventListener('click', () => dialog.close());
+    }
+    dialog.addEventListener('close', () => {
+      if (clearButton) { delete clearButton.dataset.armed; clearButton.textContent = '최근 기록 지우기'; }
+    });
+    if (clearButton) {
+      // 지우기 — 되돌릴 수 없는 동작이라 한 번 더 누르게 한다(DESIGN 4장 「위험 동작 → 확인」 · 댓글 지우기와 같다)
+      clearButton.addEventListener('click', () => {
+        if (clearButton.dataset.armed !== '1') {
+          clearButton.dataset.armed = '1';
+          clearButton.textContent = '정말 지우기';
+          return;
+        }
+        clearButton.disabled = true;
+        setText(msg, '');
+        api('DELETE', '/api/me/recent').then((result) => {
+          if (result.status === 401) { toLogin(); return; }
+          delete clearButton.dataset.armed;
+          clearButton.textContent = '최근 기록 지우기';
+          if (result.status !== 200) {
+            clearButton.disabled = false;
+            setText(msg, errorMessage(result.data));
+            return;
+          }
+          recentPages = [];
+          drawRecentNav(recentPages);
+          fillRecentDialog();
+        }).catch(() => { clearButton.disabled = false; setText(msg, GENERIC_ERROR); });
+      });
+    }
+  }
+  setText(msg, '');
+  fillRecentDialog();
+  dialog.showModal();
+  // 창을 연 뒤 창구의 지금 답으로 한 번 더 맞춘다(다른 탭에서 연 페이지까지)
+  loadRecentNav().then(() => { if (dialog.open) { fillRecentDialog(); } });
 }
 
 /* ─── 내 공간 (community-home) ───────────────────────────────── */
@@ -2894,6 +3144,9 @@ function initPage() {
   const handoverButton = document.getElementById('page-handover');
   const shareMineEl = document.getElementById('page-share-mine');
   const shareOpenButton = document.getElementById('page-share-open');
+  // 개발 대기열 6 — 「더보기」 맨 위의 즐겨찾기 ☆. 넣었나는 창구의 즐겨찾기 목록(지금 볼 수 있는 것)에 이 페이지가 있나만 본다.
+  const favButton = document.getElementById('page-fav');
+  const favLabel = document.getElementById('page-fav-label');
 
   let state = {
     doc: null, version: 0, title: '', canEdit: false, editing: false,
@@ -3194,6 +3447,36 @@ function initPage() {
     show(newDbButton, state.canEdit && !flat && !isDb);
   }
 
+  /* ── 즐겨찾기 ☆ (개발 대기열 6 · 지시서 1.1) — 글자·별 모양·aria-pressed 를 창구가 준 목록에 맞춘다 ── */
+  function paintFavorite() {
+    if (!favButton) { return; }
+    const on = favoriteIds.has(pageId);
+    favButton.setAttribute('aria-pressed', on ? 'true' : 'false');
+    setText(favLabel, on ? '즐겨찾기에서 빼기' : '즐겨찾기에 넣기');
+    const icon = favButton.querySelector('.icon');
+    const fresh = makeIcon(on ? 'star-fill' : 'star');
+    if (icon) { favButton.replaceChild(fresh, icon); } else { favButton.insertBefore(fresh, favButton.firstChild); }
+  }
+  favoriteListeners.push(paintFavorite);
+  if (favButton) {
+    favButton.addEventListener('click', () => {
+      const on = favoriteIds.has(pageId);
+      favButton.disabled = true;
+      setText(msg, '');
+      api(on ? 'DELETE' : 'PUT', '/api/pages/' + pageId + '/favorite').then((result) => {
+        favButton.disabled = false;
+        if (result.status === 401) { toLogin(); return; }
+        if (result.status !== 200) { setText(msg, errorMessage(result.data)); return; }
+        /* 넣었지만 목록 조건(검색과 같은 조건절) 밖인 페이지 — 관리자 권한으로 연 남의 비공개 페이지처럼(QF3A-T3).
+           화면은 창구가 준 참·거짓(`listed`)만 보고 알린다. */
+        if (!on && result.data && result.data.listed === false) {
+          setText(msg, '즐겨찾기에 넣었지만 이 페이지는 즐겨찾기 목록에 나오지 않습니다 — 검색에도 나오지 않는 페이지(관리자 권한으로 연 다른 사람의 페이지)입니다.');
+        }
+        loadFavoritesNav();
+      }).catch(() => { favButton.disabled = false; setText(msg, GENERIC_ERROR); });
+    });
+  }
+
   function load() {
     return api('GET', '/api/pages/' + pageId).then((result) => {
       if (result.status === 401) { toLogin(); return; }
@@ -3259,6 +3542,9 @@ function initPage() {
       show(deleteButton, state.canManage);
       // 5-C — 게시판 글은 트리가 없어 옮길 자리가 없다(창구도 `space_governed`). 지우기는 쓴 사람이 한다.
       show(moveButton, state.canManage && !(state.board && state.board.kind === 'post'));
+      // 개발 대기열 6 — 즐겨찾기 ☆ 는 이 페이지를 볼 수 있는 사람이면 누구나(넣기는 창구가 다시 판단한다)
+      show(favButton, true);
+      paintFavorite();
       show(visibilityButton, state.canSetVisibility);
       // 공유받은 사람 — 받은 권한 배지와 「공유 보기」(자기 공유 빼기). 관리할 수 있는 사람은 「바꾸기」로 연다.
       if (shareMineEl) {
@@ -5347,6 +5633,8 @@ function initPage() {
   /* 5-C — 게시판 「새 글」은 `?edit=1` 로 열린다: 고칠 수 있으면(창구의 `can_edit`) 곧바로 편집 모드.
      꼬리표는 주소에서 지운다(새로 고침·뒤로 가기에 다시 편집 모드로 들어가지 않게). */
   load().then(() => {
+    // 개발 대기열 6 — 「최근」은 이 페이지를 연 **뒤에** 받는다(창구가 방금 이 줄을 남겼다 — 읽기 판정을 지난 경우만)
+    loadRecentNav();
     // B1-2 설계 5 — 이 사람·이 페이지의 임시저장이 있으면 알림 줄로 묻는다(불러오기는 사람이 누를 때만)
     offerDrafts();
     let wantEdit = false;
@@ -5354,7 +5642,7 @@ function initPage() {
     if (!wantEdit) { return; }
     try { window.history.replaceState(null, '', window.location.pathname); } catch (e) { /* 주소 정리는 편의일 뿐 */ }
     if (state.canEdit && !state.editing) { startEditing(); }
-  }).catch(() => setText(msg, GENERIC_ERROR));
+  }).catch(() => { loadRecentNav(); setText(msg, GENERIC_ERROR); });
 }
 
 /* ─── 시작 ───────────────────────────────────────────────────── */
@@ -5398,6 +5686,10 @@ function boot() {
         drafts = createDrafts(typeof me.username === 'string' ? me.username : '', loadDraftKey);
         drafts.sweep();
         bindNewPage();
+        // 개발 대기열 6 — 사이드바 「즐겨찾기」「최근」(세 화면 공통). 페이지 화면의 「최근」은 그 페이지를 연 뒤 initPage 가 받는다.
+        bindFavoritesFold();
+        loadFavoritesNav();
+        if (page !== 'community-page') { loadRecentNav(); }
         if (page === 'community-home') {
           initHome();
         } else if (page === 'community-board') {

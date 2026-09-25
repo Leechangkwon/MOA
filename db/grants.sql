@@ -202,3 +202,23 @@ BEGIN
     GRANT SELECT ON SEQUENCE public.alert_push_subscriptions_id_seq, public.alert_push_outbox_id_seq TO tbox_backup;
 END
 $$;
+
+-- ─── 즐겨찾기 (개발 대기열 6 · Q:F-3a 라운드 A, ARCH 5.33 · 10장) — 표 둘(file_favorites · folder_favorites).
+--     표를 만드는 것은 db/schema.sql(새 설치)·db/migrations/2026-10-03_qf3a_favorites_recent.sql(기존 DB)이고, 이 절은 **같은 권한**을
+--     다시 건다(재실행 시 과거 권한이 남지 않게 회수 뒤 GRANT). 표가 없으면(마이그레이션 전) 아무것도 하지 않고 NOTICE 만 남긴다.
+--   tbox_app    SELECT · INSERT(user_id·대상 id 칸만 — created_at 은 기본값) · DELETE(빼기). UPDATE 없음 — 고칠 값이 없다.
+--               개인 화면 설정이라 감사에 남기지 않는다(결정 M-2) — 이 표가 곧 그 사람의 설정이다.
+--   tbox_backup SELECT 만 · tbox_perm · tbox_push 0
+DO $$
+BEGIN
+    IF to_regclass('public.file_favorites') IS NULL OR to_regclass('public.folder_favorites') IS NULL THEN
+        RAISE NOTICE '즐겨찾기 표가 없다 — db/migrations/2026-10-03_qf3a_favorites_recent.sql 을 먼저 돌린다(이 절은 건너뜀)';
+        RETURN;
+    END IF;
+    REVOKE ALL ON public.file_favorites, public.folder_favorites FROM tbox_app, tbox_backup, tbox_perm;
+    GRANT SELECT, DELETE              ON public.file_favorites, public.folder_favorites TO tbox_app;
+    GRANT INSERT (user_id, file_id)   ON public.file_favorites   TO tbox_app;
+    GRANT INSERT (user_id, folder_id) ON public.folder_favorites TO tbox_app;
+    GRANT SELECT                      ON public.file_favorites, public.folder_favorites TO tbox_backup;
+END
+$$;

@@ -336,3 +336,26 @@ CREATE TABLE fetch_hosts (
 );
 CREATE UNIQUE INDEX fetch_hosts_host_uidx   ON fetch_hosts (host);
 CREATE INDEX        fetch_hosts_active_idx  ON fetch_hosts (is_active);
+
+-- ─────────────────────────────────────────────────────────────
+-- file_favorites · folder_favorites — 즐겨찾기 (개발 대기열 6 · Q:F-3a 라운드 A, ARCH 5.33)
+--   개인 화면 설정이다(감사에 남기지 않는다 — 지시서 결정 M-2). 넣을 때 그 순간 읽을 수 있어야 하고
+--   (`Authz::decideRead`), 목록은 **지금의 읽기 조건절**(`visibleFilesWhere` · 폴더는 `visibleWhere(…, 'd')`) 안에서만
+--   돌려준다 — 못 보게 된 파일·폴더는 저절로 빠진다. 사람당 파일 200 · 폴더 50(앱이 센다).
+--   대상 외래 키는 ON DELETE CASCADE(빈 폴더는 행째 지워진다) · 사람 외래 키는 ON DELETE 절 없음(계정은 지우지 않는다).
+--   (기존 DB 는 db/migrations/2026-10-03_qf3a_favorites_recent.sql 로 같은 모양이 된다.)
+-- ─────────────────────────────────────────────────────────────
+CREATE TABLE file_favorites (
+    user_id    BIGINT      NOT NULL REFERENCES users(id),
+    file_id    BIGINT      NOT NULL REFERENCES files(id) ON DELETE CASCADE,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    PRIMARY KEY (user_id, file_id)
+);
+CREATE INDEX file_favorites_file_idx ON file_favorites (file_id);
+CREATE TABLE folder_favorites (
+    user_id    BIGINT      NOT NULL REFERENCES users(id),
+    folder_id  BIGINT      NOT NULL REFERENCES folders(id) ON DELETE CASCADE,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    PRIMARY KEY (user_id, folder_id)
+);
+CREATE INDEX folder_favorites_folder_idx ON folder_favorites (folder_id);

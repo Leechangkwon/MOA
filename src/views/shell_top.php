@@ -381,6 +381,38 @@ if (!headers_sent()) {
         <button id="notify-all-read" class="btn" type="button">모두 읽음</button>
       </div>
     </dialog>
+    <!-- 즐겨찾기 · 최근 (개발 대기열 6 · Q:F-3a 라운드 A — 결정 M-1 순서: 즐겨찾기(접을 수 있음) → 최근 → 내 공간 → 팀 공간 →
+         공유받은 페이지). 항목은 editor.js 가 창구 `GET /community/api/me/favorites` · `GET /community/api/me/recent` 의 답 —
+         **지금 볼 수 있는 것만**(검색과 같은 조건절) — 으로 채운다. 이 파일에는 판단이 없다. 없으면 묶음째 숨는다.
+         새 클래스 0: 제목은 `.nav-title`, 줄은 사이드바 트리와 같은 `.nav-tree` 줄(5-A′). 접기·펼치기는 <details> 가 한다
+         (여닫는 스크립트 0 · 키보드로도 열린다 — DESIGN 2.14 페이지 트리와 같은 방식). 즐겨찾기 순서는 줄을 끌어 놓거나
+         Alt+↑/↓ 로 바꾼다(editor.js — `PATCH /community/api/me/favorites`). -->
+    <details id="nav-community-fav-box" open hidden>
+      <summary class="nav-title">즐겨찾기</summary>
+      <nav id="nav-community-fav" class="nav" aria-label="즐겨찾기"></nav>
+    </details>
+    <p id="nav-community-recent-title" class="nav-title" hidden>최근</p>
+    <nav id="nav-community-recent" class="nav" aria-label="최근 본 페이지" hidden></nav>
+    <!-- 「최근」 더 보기 창 — 최근 본 페이지 전부(50까지)와 「최근 기록 지우기」(내 줄만 · 두 번 눌러야 — 댓글 지우기와 같은 방식,
+         DESIGN 2.14 5-D). 목록은 알림 창과 같은 `.list`(2.13). 좁은 화면에서는 editor.js 가 창을 body 끝으로 옮긴다(알림 창과 같다). -->
+    <dialog id="recent-dialog" class="modal modal--form modal--stack" aria-labelledby="recent-title">
+      <div class="modal__head">
+        <h2 id="recent-title" class="modal__title">최근 본 페이지</h2>
+        <button class="btn btn--icon btn--plain" type="button" data-recent-close aria-label="닫기">
+          <span class="icon" data-icon="x"></span>
+        </button>
+      </div>
+      <div class="modal__body">
+        <p id="recent-msg" class="msg" role="alert" aria-live="polite"></p>
+        <p class="help">내가 연 페이지가 최근 것부터 50개까지 남습니다. 지금 볼 수 없게 된 페이지는 목록에 나오지 않습니다. 지워도 조회수·이력은 그대로입니다.</p>
+        <ul id="recent-list" class="list" aria-label="최근 본 페이지 목록"></ul>
+        <p id="recent-empty" class="muted" hidden>최근 본 페이지가 없습니다.</p>
+      </div>
+      <div class="form-actions">
+        <button id="recent-clear" class="btn btn--danger" type="button">최근 기록 지우기</button>
+        <button class="btn btn--quiet" type="button" data-recent-close>닫기</button>
+      </div>
+    </dialog>
     <p class="nav-title">내 공간</p>
     <nav class="nav" aria-label="커뮤니티">
       <a id="nav-community-home" class="<?= $shellNavClass('community-home') ?>" href="<?= Http::communityUrl('/') ?>">

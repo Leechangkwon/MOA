@@ -420,3 +420,24 @@ CREATE TABLE community.embed_domains (
 );
 -- 살아 있는 줄에서 호스트는 하나 — 뺐다가 다시 넣으면 새 줄(누가 언제 넣고 뺐는지가 줄마다 남는다)
 CREATE UNIQUE INDEX embed_domains_live_host ON community.embed_domains (host) WHERE removed_at IS NULL;
+
+-- 즐겨찾기 · 최근 (개발 대기열 6 · Q:F-3a 라운드 A — db/migrations/2026-10-03_qf3a_favorites_recent.sql 과 같은 모양)
+--   page_favorites — 사람당 200 · 끌어서 순서(position). 뒤에 들어올 「모음」(F-52)의 기본 모음으로 옮길 수 있게 모양을 맞춘다.
+--   page_recent    — 읽기 판정을 지난 뒤 5분에 한 번 · 사람당 50줄. **기록이 아니라 화면 편의**다(결정 M-3 — 앱 DELETE 있음).
+--   목록은 둘 다 검색과 같은 조건절(`community_search_pages_where` — 관리자 특권 갈래 끔) 안에서만 나간다.
+CREATE TABLE community.page_favorites (
+    user_id    BIGINT      NOT NULL REFERENCES public.users(id),
+    page_id    BIGINT      NOT NULL REFERENCES community.pages(id) ON DELETE CASCADE,
+    position   INTEGER     NOT NULL DEFAULT 0 CHECK (position BETWEEN 0 AND 100000),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    PRIMARY KEY (user_id, page_id)
+);
+CREATE INDEX page_favorites_page_idx ON community.page_favorites (page_id);
+CREATE TABLE community.page_recent (
+    user_id        BIGINT      NOT NULL REFERENCES public.users(id),
+    page_id        BIGINT      NOT NULL REFERENCES community.pages(id) ON DELETE CASCADE,
+    last_viewed_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    PRIMARY KEY (user_id, page_id)
+);
+CREATE INDEX page_recent_user_time_idx ON community.page_recent (user_id, last_viewed_at DESC);
+CREATE INDEX page_recent_page_idx ON community.page_recent (page_id);

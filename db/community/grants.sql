@@ -117,3 +117,27 @@ GRANT SELECT ON ALL SEQUENCES IN SCHEMA community TO tbox_backup;   -- 시퀀스
 -- 앞으로 만들 표에 자동으로 권한이 붙지 않게 기본 권한(ALTER DEFAULT PRIVILEGES)은 두지 않는다.
 -- 새 표를 만들면 이 파일에 한 줄을 더해 다시 실행한다 — 백업에서 표가 빠지는 것은 여기서
 -- 드러나야 하고, 조용히 권한이 따라붙는 것보다 낫다 (t-box db/grants.sql 과 같은 판단).
+
+-- ─── 즐겨찾기 · 최근 (개발 대기열 6 · Q:F-3a 라운드 A — 커뮤니티 ARCH 21.24) — 표 둘(page_favorites · page_recent).
+--     표를 만드는 것은 db/community/schema.sql(새 설치)·db/migrations/2026-10-03_qf3a_favorites_recent.sql(기존 DB)이고, 이 절은 **같은
+--     권한**을 다시 건다. 표가 없으면(마이그레이션 전) 아무것도 하지 않고 NOTICE 만 남긴다(위 목록에 넣지 않은 까닭 — 없는 표를
+--     REVOKE 하면 이 파일 전체가 멈춘다).
+--   page_favorites  SELECT · INSERT(user_id·page_id·position) · UPDATE(position — 끌어서 순서만) · DELETE(빼기)
+--   page_recent     SELECT · INSERT(user_id·page_id — 시각은 기본값) · UPDATE(last_viewed_at — 5분에 한 번) · DELETE
+--                   (★ 기록이 아니라 화면 편의 — 50줄 넘으면 오래된 것부터 · 「최근 기록 지우기」 — 결정 M-3)
+--   tbox_backup     SELECT 만
+DO $$
+BEGIN
+    IF to_regclass('community.page_favorites') IS NULL OR to_regclass('community.page_recent') IS NULL THEN
+        RAISE NOTICE '즐겨찾기·최근 표가 없다 — db/migrations/2026-10-03_qf3a_favorites_recent.sql 을 먼저 돌린다(이 절은 건너뜀)';
+        RETURN;
+    END IF;
+    REVOKE ALL ON community.page_favorites, community.page_recent FROM tbox_app, tbox_backup;
+    GRANT SELECT, DELETE                      ON community.page_favorites, community.page_recent TO tbox_app;
+    GRANT INSERT (user_id, page_id, position) ON community.page_favorites TO tbox_app;
+    GRANT UPDATE (position)                   ON community.page_favorites TO tbox_app;
+    GRANT INSERT (user_id, page_id)           ON community.page_recent    TO tbox_app;
+    GRANT UPDATE (last_viewed_at)             ON community.page_recent    TO tbox_app;
+    GRANT SELECT                              ON community.page_favorites, community.page_recent TO tbox_backup;
+END
+$$;

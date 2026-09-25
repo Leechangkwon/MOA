@@ -83,6 +83,13 @@ try {
 } catch (Throwable $e) {
     error_log('[tbox] request_id=' . TBOX_REQUEST_ID . ' community page view count failed: ' . get_class($e));
 }
+/* 개발 대기열 6 · Q:F-3a 라운드 A — 「최근」 한 줄(지시서 1.2). 조회수와 **같은 자리**(읽기 판정을 지난 뒤)이고 같은 태도다 —
+   실패해도 읽기는 막지 않는다. 5분에 한 번만 시각을 밀고, 사람당 50줄을 넘으면 오래된 것부터 지운다(`community_record_recent`). */
+try {
+    community_record_recent((int) $row['id'], $me);
+} catch (Throwable $e) {
+    error_log('[tbox] request_id=' . TBOX_REQUEST_ID . ' community recent record failed: ' . get_class($e));
+}
 
 /* 5-D 공지 읽음 — 공지 게시판에 걸린 글을 연 일(한 사람 한 줄, 마지막 읽은 때만 민다). 숨긴 글을 관리자가
    여는 것은 「읽음」이 아니다(게시판 등급으로 연 사람만 센다). 실패해도 읽기는 막지 않는다. */
