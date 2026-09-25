@@ -470,12 +470,21 @@ details.page-tree__node[open] > summary > .page-tree__row > .page-tree__caret { 
 .page-tree__row > .muted { flex: none; white-space: nowrap; }
 .page-tree__link:hover { text-decoration: underline; }
 
-.page-tree__add { opacity: 0; }
+/* 「하위 추가」는 줄에 마우스를 올리거나 줄 안에 초점이 있을 때만 **나타나고, 평소에는 자리를 차지하지 않는다**.
+   예전에는 투명(opacity 0)으로 자리를 잡아, 제목이 잘리고 배지가 오른쪽 끝에 붙지 않았다 — 폴드의 삼성 인터넷은
+   S펜 때문에 「올릴 수 있는 기기」(hover: hover)로 알려 아래 hover:none 규칙도 빗나갔다(2026-09-25 사용자 스크린샷).
+   나타날 때는 줄 오른쪽 끝에 겹쳐 뜬다(배지 위) — 줄 폭이 흔들리지 않게. */
+.page-tree__row { position: relative; }
+.page-tree__add { display: none; position: absolute; right: 6px; top: 50%; transform: translateY(-50%); }
 .page-tree__row:hover .page-tree__add,
-.page-tree__add:focus-visible { opacity: 1; }
-/* 마우스가 없는 기기(휴대폰)에는 「올리면 보이는」 단추가 보이지 않는 채 자리만 차지하고, 빈 곳을 누르면
-   하위 페이지가 생긴다 — 아예 뺀다. 하위 페이지는 페이지 안 「하위 페이지 만들기」로(도움말). */
-@media (hover: none) { .page-tree__add { display: none; } }
+.page-tree__row:focus-within .page-tree__add { display: inline-flex; }
+/* 터치 기기에서는 아예 뺀다 — 누르는 순간 :hover 가 걸려 단추가 나타나고 그 탭을 단추가 받아 하위 페이지가
+   생긴다(독립 검토 재현). 폴드처럼 hover 를 알리는 터치 기기도 있어 any-pointer: coarse 도 함께 본다.
+   위 여는 규칙과 **같은 선택자**로 덮는다(무게가 낮으면 여는 규칙이 이긴다). 하위 페이지는 페이지 안 「하위 페이지 만들기」로(도움말). */
+@media (hover: none), (any-pointer: coarse) {
+  .page-tree__row:hover .page-tree__add,
+  .page-tree__row:focus-within .page-tree__add { display: none; }
+}
 
 .page-tree__kids {
   margin-left: 1rem;

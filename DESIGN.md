@@ -275,7 +275,7 @@
 | 인라인 마크 | `<strong>` `<em>` `<u>` `<s>` `<code class="doc-inline-code">` `<a>`(외부는 `rel="noopener noreferrer"`) | 기존 글자 토큰 |
 | 에디터 | `.editor`(PM 루트, `.doc` 와 같은 규칙으로 보이게) · `.editor-toolbar`(편집하는 동안 본문 위에 sticky 로 붙어 있는 줄 — **「블록 추가」 + 「색」 「배경」 「링크」**, `.btn.btn--small.btn--quiet`, 글자를 고르지 않으면 꾸미기 셋은 `disabled`) · `.block-handle`(블록 왼쪽 손잡이 ⋮⋮) · 저장 상태 배지 `.badge`(「저장 중…」「저장됨」「저장 못 함」 **셋**) | 새 색·간격 0. 다크는 토큰이 따라온다 |
 | 「블록 추가」 창 (2026-09-23 등록) | `dialog.modal`(2.7 의 960px) 안에 `.block-picker`(왼쪽 `.list` 종류 목록 15rem + 오른쪽 상세) · `.block-pick`(목록의 단추) · `.block-picker__detail` · `.block-picker__sample`(미리보기를 **읽기 렌더러 `renderDoc` 으로** 그린다) | 격자·간격은 기존 토큰만. 720px 미만에서 한 열 |
-| 페이지 트리 (커뮤니티 4-A, 2026-09-23 등록) | `.page-tree`(내 공간 목록 상자, `.panel` 위에) > `.page-tree__node`(하위가 있으면 **`<details>`**, 없으면 `<div>`) > `.page-tree__row`(한 줄 = `.page-tree__caret` 삼각형 + `.page-tree__link` 제목 + `.page-tree__add` 「하위 추가」) · `.page-tree__kids`(한 층 들여쓰고 왼쪽에 `--line` 선) | 새 색·간격 0. **접기·펼치기는 `<details>` 가 한다** — 여닫는 JS 가 한 줄도 없고 키보드로도 열린다. 줄의 요소는 `<a>`·`<button>` 이라 Tab 으로 닿는다 (4장). **제목은 한 줄 + 말줄임**, 배지·「하위 n」은 줄지 않는다(`flex: none`). 「하위 추가」는 마우스를 올릴 때만 보이므로 **마우스 없는 기기(`hover: none`)에서는 뺀다** — 보이지 않는 단추가 자리만 차지하고 눌리면 페이지가 생겼다(2026-09-25) |
+| 페이지 트리 (커뮤니티 4-A, 2026-09-23 등록) | `.page-tree`(내 공간 목록 상자, `.panel` 위에) > `.page-tree__node`(하위가 있으면 **`<details>`**, 없으면 `<div>`) > `.page-tree__row`(한 줄 = `.page-tree__caret` 삼각형 + `.page-tree__link` 제목 + `.page-tree__add` 「하위 추가」) · `.page-tree__kids`(한 층 들여쓰고 왼쪽에 `--line` 선) | 새 색·간격 0. **접기·펼치기는 `<details>` 가 한다** — 여닫는 JS 가 한 줄도 없고 키보드로도 열린다. 줄의 요소는 `<a>`·`<button>` 이라 Tab 으로 닿는다 (4장). **제목은 한 줄 + 말줄임**, 배지·「하위 n」은 줄지 않는다(`flex: none`). 「하위 추가」는 줄에 마우스를 올리거나 줄 안에 초점이 있을 때만 **나타나고 평소에는 자리를 차지하지 않는다**(`display:none` → 줄 오른쪽 끝에 겹쳐 뜸) · 터치 기기(`hover: none` 또는 `any-pointer: coarse` — 누르는 순간 나타난 단추가 그 탭을 받아 페이지가 생긴다)에서는 여는 규칙과 같은 선택자로 아예 뺀다 — 투명 단추가 자리만 차지해 제목이 잘리고, 눌리면 페이지가 생겼다. 폴드의 삼성 인터넷은 S펜 때문에 `hover: hover` 로 알리므로 hover 미디어 쿼리만 믿지 않는다(2026-09-25) |
 | 경로(breadcrumb) (4-A) | `.crumb`(`<nav aria-label="페이지 경로">`) > `.crumb__item`(마지막 칸은 `.is-current` + `aria-current="page"`, 링크가 아니다) · `.crumb__sep`(`›`, `aria-hidden`) | 13px `--muted`. 화면 머리 **위**에 한 줄 |
 | 본문의 하위 페이지 카드 (4-A `child_page`) | 볼 수 있으면 `a.card.card--link.doc-child-page` > `.card__title`, 볼 수 없으면 `div.card.card--soon.doc-child-page` > `.card__title` 「볼 수 없는 페이지」 | 2.3 의 규칙대로 — **눌러도 아무 일 없는 카드에 `.card--link` 를 쓰지 않는다.** 서버·클라이언트 렌더러가 **같은 문구·같은 클래스**여야 한다 (C:T-19) |
 | 「옮기기」 창 (4-A) | `dialog.modal` 안 `.move-tree`(`role="listbox"`) > `.move-tree__node` > `.move-tree__pick`(고른 것은 `.is-selected`) · `.move-tree__kids` | 들여쓰기는 중첩 상자로 한다 — 인라인 `style` 0 |
@@ -360,7 +360,7 @@
 - [ ] 화면 머리 단추가 넷을 넘지 않는다 — ghost 하나 · outline 둘까지 · 검정 하나, 나머지는 2.15 「더보기」, 삭제는 그 맨 아래 (2.9)
 - [ ] 새 상태·등급 배지는 1.1 의 색 뜻에 맞다. 새 색값을 만들지 않았다 (2.2)
 - [ ] 나란히 놓인 패널은 `.grid-2` 다 (2.3)
-- [ ] **360 · 412 · 820px** 에서 머리 동작이 한 줄 · 도구줄의 이름표(「상태」 등)와 그 칸이 같은 줄 · 가로 넘침 0 · 목록 제목이 꺾이지 않는다 (2.9 · 2.3 · 2026-09-25)
+- [ ] **360 · 412 · 820px** 에서(412 는 **터치 흉내와 마우스 흉내 둘 다** — 폴드는 좁은데도 hover 를 알린다) 머리 동작이 한 줄 · 도구줄의 이름표(「상태」 등)와 그 칸이 같은 줄 · 가로 넘침 0 · 목록 제목이 꺾이지 않는다 (2.9 · 2.3 · 2026-09-25)
 - [ ] 모달은 2.7 의 폭 여섯 개 중 하나다
 - [ ] 인라인 `style` · `<script>` · 외부 URL 이 없다 (0장 2)
 - [ ] 화면에 역할 비교·필터 로직이 없다 — 보이고 안 보이고는 `/api/me` 의 `can_*` 로만 (0장 1)
