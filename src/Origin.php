@@ -87,12 +87,14 @@ final class Origin
      *   AL-3 — SSH 로 들어오는 것은 사람이다. AI 세션은 이 VM 안에서 돈다(SSH 를 타지 않는다).
      *          그래서 계정·출처가 무엇이든 늘 `human` 이다 — 서버 침입의 첫 신호가 요약으로 밀리지 않게.
      *   AL-6·7·8 — 행위자가 없는 배치 판정.
+     *   AL-22 — 경보 휴대폰 전달이 24시간 실패(F-70 E-3 · L-5). 판정 재료가 받기 표의 전달 기록뿐이라 행위자가 없다.
      */
     private const FIXED_BY_RULE = [
-        'AL-3' => self::HUMAN,
-        'AL-6' => self::SYSTEM,
-        'AL-7' => self::SYSTEM,
-        'AL-8' => self::SYSTEM,
+        'AL-3'  => self::HUMAN,
+        'AL-6'  => self::SYSTEM,
+        'AL-7'  => self::SYSTEM,
+        'AL-8'  => self::SYSTEM,
+        'AL-22' => self::SYSTEM,
     ];
 
     /**
@@ -271,7 +273,7 @@ final class Origin
     }
 
     /**
-     * 재료 없이 값이 정해진 규칙이면 그 값, 아니면 null (AL-3 → human · AL-6·7·8 → system).
+     * 재료 없이 값이 정해진 규칙이면 그 값, 아니면 null (AL-3 → human · AL-6·7·8·22 → system).
      *
      * @return array{origin: string, origin_hint: ?string}|null
      */

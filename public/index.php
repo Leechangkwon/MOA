@@ -288,6 +288,29 @@ const TBOX_ROUTES = [
     ['GET',    '/api/admin/alerts',              'admin_alerts.php',             'role:Admin'],
 
     /*
+     * F-70 — 휴대폰 경보 (설치형 웹 앱 + 웹 푸시, PRD F-70 · 지시서 docs/f70-push-alerts-directive.md D 표,
+     *   구현 기록 docs/f70-push-alerts-implementation.md, ARCH 5.32, API.md 15장, SECURITY R-99).
+     *
+     * 일곱 줄 전부 정책 `role:Admin` 이다 — 받는 사람은 Admin 만(F-70). `role:Admin` 은 `Authz::REAUTH_POLICIES` 에 있어
+     * **재인증 관문 [3-2] 가 자동으로 따라붙는다**(등록·해지뿐 아니라 시험·목록·화면까지 — 새 정책 이름을 만들지 않는
+     * 이유는 관리자 영역과 같다, R-04). 상태를 바꾸는 셋(POST 둘 · DELETE)은 [3] CSRF 를 지난다.
+     * ★ **웹은 밖으로 한 번도 나가지 않는다**(원칙 1) — 이 핸들러들에 `Fetch::` 보내기 호출이 없고, 「시험 알림」도
+     *   대기표 `alert_push_outbox` 에 한 행만 넣는다. 보내는 것은 cron 배치 scripts/alert_push.php(OS 계정 tbox-push) 하나다.
+     * ★ 서비스 워커·매니페스트도 PHP 라우트다(구현 기록 1) — 주소가 `/tbox/…` 바로 아래라 등록 범위 `/tbox/alerts-app` 가
+     *   Service-Worker-Allowed 없이 되고 nginx 설정을 바꾸지 않는다. 보안 머리는 다른 PHP 응답과 같다(bootstrap).
+     *   원본 `src/push/alerts-sw.js` 는 public/ 밖이라 /tbox/assets/ 로는 나가지 않는다.
+     * `{num}` 은 받기 행 번호(alert_push_subscriptions.id) — 자기 것만, 남의 번호는 없는 번호와 같은 404.
+     */
+    ['GET',    '/alerts-app',                    'push_app_page.php',            'role:Admin'],
+    ['GET',    '/alerts-sw.js',                  'push_sw.php',                  'role:Admin'],
+    ['GET',    '/alerts-app.webmanifest',        'push_manifest.php',            'role:Admin'],
+    ['GET',    '/api/admin/push/key',            'push_key.php',                 'role:Admin'],
+    ['GET',    '/api/admin/push/subscriptions',  'push_subscriptions.php',       'role:Admin'],
+    ['POST',   '/api/admin/push/subscriptions',  'push_subscriptions.php',       'role:Admin'],
+    ['DELETE', '/api/admin/push/subscriptions/{num}', 'push_subscription_delete.php', 'role:Admin'],
+    ['POST',   '/api/admin/push/test',           'push_test.php',                'role:Admin'],
+
+    /*
      * F-43 — URL 가져오기 허용 사이트 (PRD F-43 · 8장 3행, ARCH 5.22, SECURITY R-76).
      *
      * 정책은 위 관리자 영역과 **같은 `role:Admin`** 이다. 새 정책 이름을 만들지 않는 이유도 같다:
@@ -352,6 +375,9 @@ const TBOX_REAUTH_RETURN = [
     'GET /admin/permissions'  => 'admin',
     // F-43 — 허용 사이트 화면도 키는 `admin` 하나다(화면이 늘어도 키를 늘리지 않는다).
     'GET /admin/fetch-hosts'  => 'admin',
+    // F-70 — 휴대폰 경보 화면. 설치한 앱(홈 화면)의 시작 화면이라 확인 뒤 **허브가 아니라 이 화면**으로 돌아와야 한다 —
+    // 그래서 키를 하나 더한다(`alerts`). 돌아갈 경로는 아래 고정 표의 한 줄이고, app.js REAUTH_PATHS 에도 같은 줄이 있다.
+    'GET /alerts-app'         => 'alerts',
 ];
 
 /**
@@ -367,6 +393,8 @@ const TBOX_REAUTH_PATHS = [
     'wiki'  => '/wiki',
     // 17-1 — 관리자 허브 (PRD F-24). `/reauth?to=admin` 은 언제나 이 고정 경로로 돌아온다.
     'admin' => '/admin',
+    // F-70 — 휴대폰 경보 화면 (`/reauth?to=alerts`).
+    'alerts' => '/alerts-app',
 ];
 
 /** 재인증 화면의 경로. 코드 상수이며 요청 값이 섞이지 않는다 (TBOX_LOGIN_PATH 와 같다). */

@@ -204,6 +204,14 @@ if (isset($pageCss) && is_array($pageCss)) {
     }
 }
 
+/**
+ * F-70 — 설치형 웹 앱 화면 표시 (`$pageApp`). **허용 목록 한 값**(`alerts` — 휴대폰 경보 화면 push_app_page.php)만 통과하고,
+ * 통과하면 머리에 매니페스트·아이폰 홈 화면 메타를, 바닥(shell_bottom)에 alerts-app.js 를 붙인다. 그 밖의 값은 빈 문자열.
+ * 이름을 `$shellPwa` 로 둔 까닭: 아래 앱 그리드의 foreach 가 `$shellApp` 을 돌림 변수로 쓴다(겹치면 바닥에서 값이 바뀐다 — F-70 첫 시험에서 발견).
+ * 붙는 글자는 전부 고정 문자열이라 요청 값이 섞일 자리가 없다 (PRD S-03).
+ */
+$shellPwa = isset($pageApp) && $pageApp === 'alerts' ? 'alerts' : '';
+
 /** 지금 켜 둘 항목에만 is-active 를 붙인다. 값은 위 허용 목록을 통과한 문자열이다. */
 $shellNavClass = static function (string $key) use ($shellActive): string {
     return $key === $shellActive ? 'nav__item is-active' : 'nav__item';
@@ -240,6 +248,16 @@ if (!headers_sent()) {
      버전을 달던 때는 7일 캐시된 옛 부품과 새 editor.js 가 섞여 모듈 연결이 실패했다(2026-09-24 핫픽스). -->
 <script type="module" src="<?= Http::url('/assets/community/editor.js') ?>?v=<?= (int) filemtime(__DIR__ . '/../../public/assets/community/editor.js') ?>"></script>
 <script defer src="<?= Http::url('/assets/community/search.js') ?>?v=<?= (int) filemtime(__DIR__ . '/../../public/assets/community/search.js') ?>"></script>
+<?php endif; ?>
+<?php if ($shellPwa === 'alerts'): ?>
+<!-- F-70 「Qaredi 경보」 설치형 웹 앱 (PRD F-70, ARCH 5.32) — 휴대폰 경보 화면(`/alerts-app`)만. 값은 전부 고정 글자다.
+     매니페스트는 로그인·재인증 뒤에만 열리는 라우트라 쿠키를 싣는다(use-credentials — 같은 사이트 요청).
+     아이폰은 매니페스트와 함께 이 메타·PNG 아이콘으로 홈 화면 앱을 만든다(iOS 16.4+ 웹 푸시는 홈 화면 앱 안에서만). -->
+<link rel="manifest" href="<?= Http::url('/alerts-app.webmanifest') ?>" crossorigin="use-credentials">
+<link rel="apple-touch-icon" href="<?= Http::url('/assets/alerts-icon-192.png') ?>?v=<?= (int) filemtime(__DIR__ . '/../../public/assets/alerts-icon-192.png') ?>">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Qaredi 경보">
 <?php endif; ?>
 </head>
 <body data-page="<?= $shellPage ?>" data-base="<?= TBOX_BASE ?>"<?= $shellMod === '' ? '' : ' data-community-base="' . COMMUNITY_BASE . '"' ?>>

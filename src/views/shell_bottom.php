@@ -169,5 +169,10 @@ $shellChangelog = Changelog::entries();
 <template id="tpl-icon-moon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/></svg></template>
 
 <script src="<?= Http::url('/assets/app.js') ?>?v=<?= $shellJsVersion ?>"></script>
+<?php if (isset($shellPwa) && $shellPwa === 'alerts'): ?>
+<!-- F-70 휴대폰 경보 화면의 동작 (public/assets/alerts-app.js) — app.js 뒤에 싣는다(그쪽이 내놓는 qarediMe·qarediHandleReauth 를 쓴다).
+     `$shellPwa` 는 shell_top.php 가 허용 목록 한 값으로 좁힌 것이다. -->
+<script src="<?= Http::url('/assets/alerts-app.js') ?>?v=<?= (int) filemtime(__DIR__ . '/../../public/assets/alerts-app.js') ?>"></script>
+<?php endif; ?>
 </body>
 </html>

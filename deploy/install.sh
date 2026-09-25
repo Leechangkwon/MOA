@@ -46,6 +46,15 @@ BACKUP_KEY="${CONF_DIR}/backup.key"           # gpg 대칭키 (0600 root) — �
 BACKUP_ROOT="/var/backups/tbox-v2"            # 산출물 (0700 root, 웹 루트·업로드 밖)
 CRON_FILE="/etc/cron.d/tbox-v2"               # 백업·정리·검증·경보 일정 (ARCH 11.1)
 ALERT_STATE="/var/lib/tbox-v2/alerts-state.json"   # 경보 중복 억제 상태 (0600 root)
+# ── F-70 휴대폰 경보 — 보내는 배치 전용 계정·키 (PRD F-70 · 지시서 L-3, 구현 기록 2·3, ARCH 5.32) ──
+PUSH_USER="tbox-push"                          # 보내는 배치 OS 계정 (로그인 불가 · sudo·adm 없음)
+DB_PUSH_ROLE="tbox_push"                      # 그 배치의 DB 역할 (D 표 권한만 — db/grants.sql 맨 아래 절)
+PUSH_HOME="/var/lib/tbox-push"                # 상태(읽기 위치·대기) 0700
+PUSH_LOG="/var/log/tbox-push"                 # 자기 감사 사본 0750 (audit.log · error.log 0640)
+PUSH_CONF="${CONF_DIR}/push.conf"             # 배치 설정 (비밀 없음, root 0644 — deploy/push.conf)
+PUSH_PGPASS="${CONF_DIR}/push.pgpass"         # tbox_push 비밀번호 (tbox-push 0600)
+VAPID_PRIV="${CONF_DIR}/vapid-private.pem"    # VAPID 비밀 키 (tbox-push 0600 — 웹 계정은 못 읽는다)
+VAPID_PUB="${CONF_DIR}/vapid-public.txt"      # VAPID 공개 키 (root 0644 — 웹이 GET /api/admin/push/key 로 낸다)
 AUDIT_CHAIN="/var/lib/tbox-v2/audit-chain.txt"     # 감사 로그 해시 체인 (0600 root, R-11)
 
 # CERT_* 는 자체 서명 인증서를 쓰던 때의 값이다. 이제 VM 은 TLS 를 하지 않으므로
@@ -317,6 +326,15 @@ else
 fi
 psql_su -qc "ALTER ROLE ${DB_PERM_ROLE} NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS"
 
+# 4-2-3. tbox_push — 휴대폰 경보 보내는 배치 (F-70, L-3). 여기서는 **NOLOGIN 으로만** 만든다(있으면 그대로) —
+#        db/grants.sql 의 F-70 절이 이 역할에 권한을 건다. 비밀번호와 LOGIN 은 아래 6-3(보내는 계정·키)이 표준입력으로 정한다.
+if role_exists "$DB_PUSH_ROLE"; then
+  info "역할 있음: ${DB_PUSH_ROLE}"
+else
+  psql_su -qc "CREATE ROLE ${DB_PUSH_ROLE} NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS"
+  info "역할 생성: ${DB_PUSH_ROLE} (NOLOGIN — 6-3 이 로그인을 켠다)"
+fi
+
 # 4-3. DB
 if db_exists "$DB_NAME"; then
   info "DB 있음: ${DB_NAME}"
@@ -356,6 +374,12 @@ for _mig in "summary|audit_logs|2026-09-10_audit_summary.sql" \
     info "★ 마이그레이션 필요: ${_tbl}.${_col} — sudo -u postgres psql -d ${DB_NAME} -v ON_ERROR_STOP=1 -f db/migrations/${_file}"
   fi
 done
+# F-70 휴대폰 경보의 표 둘 — 칸이 아니라 표라 위 목록 방식 대신 to_regclass 로 본다(적용하지 않는다)
+if [ "$(psql_su -d "$DB_NAME" -Atc "SELECT to_regclass('public.alert_push_subscriptions') IS NOT NULL")" = "t" ]; then
+  info "마이그레이션 적용됨: alert_push_subscriptions · alert_push_outbox (F-70)"
+else
+  info "★ 마이그레이션 필요: 휴대폰 경보 표 — sudo -u postgres psql -d ${DB_NAME} -v ON_ERROR_STOP=1 -f db/migrations/2026-09-30_f70_push.sql (운영은 /var/www/qaredi/scripts/apply-f70-host-2026-09-24.sh)"
+fi
 # 역할 시간 제한(Q:F-4 P-7) — 표 칸이 아니라 역할 설정이라 위 목록 방식으로 볼 수 없다. rolconfig 로 따로 알린다(적용하지 않는다).
 _rc="$(psql_su -d "$DB_NAME" -Atc "SELECT coalesce(array_to_string(rolconfig, ','), '') FROM pg_roles WHERE rolname = 'tbox_app'")"
 case ",${_rc}," in
@@ -493,6 +517,65 @@ if grep -q '^error:' "${LOGROTATE_CONF}.check"; then
 fi
 rm -f "${LOGROTATE_CONF}.check"
 info "logrotate 문법 확인 통과 (logrotate -d ${LOGROTATE_CONF})"
+
+# 6-3(cron 앞). 휴대폰 경보 보내는 계정·키 (F-70, 지시서 L-3 · F장 1, 구현 기록 2·3·9, SECURITY R-99)
+#   cron 의 alert_push 줄은 계정 tbox-push 로 돈다 — 계정이 없으면 cron 이 그 줄만 「Unknown user」로 건너뛴다.
+#   이 함수는 멱등이다: 있는 것은 그대로 두고(**VAPID 키는 절대 바꾸지 않는다** — 바꾸면 모든 기기를 다시 등록해야 한다),
+#   없는 것만 만든다. 비밀(키·비밀번호)은 파일로만 오가고 화면·명령 인자에 나오지 않는다(비밀번호는 psql 표준입력).
+#   ACL(폴더 통과 x — 대상 두 곳 /var/log/tbox-v2 · /etc/tbox-v2)은 setfacl(acl 패키지)이 있을 때만 건다 — 없으면 안내만 한다
+#   (이 스크립트는 패키지를 설치하지 않는다 · ACL 이진 형식을 손으로 쓰지 않는다 — 구현 기록 9).
+f70_push_sender() {
+  if id -u "$PUSH_USER" >/dev/null 2>&1; then
+    info "계정 있음: ${PUSH_USER} ($(id -nG "$PUSH_USER"))"
+  else
+    useradd --system --shell /usr/sbin/nologin --home-dir "$PUSH_HOME" --no-create-home --user-group "$PUSH_USER"
+    info "계정 생성: ${PUSH_USER} (nologin · sudo·adm 무리 없음)"
+  fi
+  install -d -o "$PUSH_USER" -g "$PUSH_USER" -m 0700 "$PUSH_HOME"
+  install -d -o "$PUSH_USER" -g "$PUSH_USER" -m 0750 "$PUSH_LOG"
+  [ -e "${PUSH_LOG}/audit.log" ] || install -o "$PUSH_USER" -g "$PUSH_USER" -m 0640 /dev/null "${PUSH_LOG}/audit.log"
+  [ -e "${PUSH_LOG}/error.log" ] || install -o "$PUSH_USER" -g "$PUSH_USER" -m 0640 /dev/null "${PUSH_LOG}/error.log"
+  if command -v setfacl >/dev/null 2>&1; then
+    setfacl -m "u:${PUSH_USER}:x" "$LOG_DIR"
+    setfacl -m "u:${PUSH_USER}:x" "$CONF_DIR"
+    info "폴더 통과 권한: ${LOG_DIR} · ${CONF_DIR} 에 u:${PUSH_USER}:x (alerts.log 읽기 · app.log·audit.log·.env 못 읽음)"
+  else
+    info "★ setfacl 이 없다(acl 패키지) — ${LOG_DIR}·${CONF_DIR} 통과 권한을 걸지 못했다. 보내는 배치가 설정·경보 줄을 못 읽는다."
+    info "  → sudo apt install acl 뒤 이 스크립트를 다시 돈다(운영은 /var/www/qaredi/scripts/apply-f70-host-2026-09-24.sh — 같은 조건이면 멈춘다)"
+  fi
+  if [ -e "$VAPID_PRIV" ] || [ -e "$VAPID_PUB" ]; then
+    info "VAPID 키 있음 — 그대로 둔다(바꾸면 모든 기기를 다시 등록해야 한다)"
+  else
+    local t; t=$(mktemp -d); chmod 700 "$t"
+    ( umask 077
+      openssl ecparam -name prime256v1 -genkey -noout -out "$t/k.ec" 2>/dev/null
+      openssl pkey -in "$t/k.ec" -out "$t/k.pem" 2>/dev/null
+      openssl pkey -in "$t/k.pem" -pubout -outform DER 2>/dev/null | tail -c 65 | base64 -w0 | tr '+/' '-_' | tr -d '=' > "$t/k.pub"
+      printf '\n' >> "$t/k.pub" )
+    install -o "$PUSH_USER" -g "$PUSH_USER" -m 0600 "$t/k.pem" "$VAPID_PRIV"
+    install -o root -g root -m 0644 "$t/k.pub" "$VAPID_PUB"
+    shred -u "$t/k.ec" "$t/k.pem" 2>/dev/null || true
+    rm -rf "$t"
+    info "VAPID 키 생성: ${VAPID_PRIV} (${PUSH_USER} 0600) · ${VAPID_PUB} (root 0644) — 비밀 키 출력 0"
+  fi
+  [ -e "$PUSH_CONF" ] || install -o root -g root -m 0644 "${REPO_DIR}/deploy/push.conf" "$PUSH_CONF"
+  info "배치 설정: $(ls -l "$PUSH_CONF")"
+  if [ -e "$PUSH_PGPASS" ]; then
+    info "${PUSH_PGPASS} 있음 — ${DB_PUSH_ROLE} 비밀번호를 바꾸지 않는다"
+  else
+    local pw; pw=$(openssl rand -hex 24)
+    # 비밀번호는 표준입력으로만(printf 는 bash 내장 — 명령 인자·ps 에 없다). 서버 log_statement 가 none 이어야 로그에도 없다
+    printf "ALTER ROLE %s LOGIN PASSWORD '%s';\n" "$DB_PUSH_ROLE" "$pw" | runuser -u postgres -- psql -X -q -v ON_ERROR_STOP=1 -d postgres -f -
+    local t2; t2=$(mktemp); chmod 600 "$t2"
+    printf '%s:%s:%s:%s:%s\n' "$DB_HOST" "$DB_PORT" "$DB_NAME" "$DB_PUSH_ROLE" "$pw" > "$t2"
+    unset pw
+    install -o "$PUSH_USER" -g "$PUSH_USER" -m 0600 "$t2" "$PUSH_PGPASS"
+    shred -u "$t2" 2>/dev/null || rm -f "$t2"
+    info "${DB_PUSH_ROLE} 로그인 켬 · ${PUSH_PGPASS} (${PUSH_USER} 0600) — 비밀번호 출력 0"
+  fi
+}
+step "6-3. 휴대폰 경보 보내는 계정·키 (F-70)"
+f70_push_sender
 
 # 6-2. cron — 백업·정리·검증·정합성·체인·경보 일정 (9단계, ARCH 11.1 표).
 #      /etc/cron.d 형식이라 **실행 계정 칸(root)** 이 있다. 백업 키·pgpass 를 읽어야 하므로 root 다.
@@ -655,6 +738,14 @@ printf '     %s\n' "$(ls -l "$ALERT_STATE" 2>/dev/null || echo 'alerts-state.jso
 printf '     %s\n' "$(ls -l "$AUDIT_CHAIN" 2>/dev/null || echo 'audit-chain.txt 없음')"
 printf '     백업 산출물 사용량: %s\n' "$(du -sh "$BACKUP_ROOT" 2>/dev/null | awk '{print $1}')"
 printf '     디스크: %s\n' "$(df -h / | awk 'NR==2{print $3" / "$2" ("$5" 사용)"}')"
+
+printf '\n   휴대폰 경보 보내는 계정 (F-70, L-3 — 비밀 키·pgpass 는 %s 만 읽는다):\n' "$PUSH_USER"
+printf '     %s\n' "$(id "$PUSH_USER" 2>/dev/null || echo "${PUSH_USER} 없음")"
+printf '     %s\n' "$(ls -l "$VAPID_PRIV" 2>/dev/null || echo 'vapid-private.pem 없음')"
+printf '     %s\n' "$(ls -l "$VAPID_PUB" 2>/dev/null || echo 'vapid-public.txt 없음')"
+printf '     %s\n' "$(ls -l "$PUSH_PGPASS" 2>/dev/null || echo 'push.pgpass 없음')"
+printf '     tbox-php 가 비밀 키를 읽나(못 읽어야 한다): %s\n' "$(runuser -u "$APP_USER" -- cat "$VAPID_PRIV" >/dev/null 2>&1 && echo '읽힘 ✖' || echo '못 읽음 ✔')"
+printf '     배치 dry-run: %s\n' "$(cd / && runuser -u "$PUSH_USER" -- php "${REPO_DIR}/scripts/alert_push.php" --dry-run --once 2>&1 | grep -E '대상 받기' | head -1 || echo '실행 실패')"
 
 printf '\n설치 완료.\n'
 printf '  도메인 %s/ 은 지금 80 포트에 꽂힌 버전을 보여 준다 (현재: %s).\n' \

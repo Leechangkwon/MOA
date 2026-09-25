@@ -1557,6 +1557,64 @@ P-5c(쿠키 없는 `/`·308·404 세션 증가 0 · 쿠키 런처 동일 · DB �
 - **첫 질의 전에 부작용을 두지 않는다.** 연결 실패는 이제 부팅이 아니라 첫 질의에서 드러난다. 그래서 핸들러는 DB 를 처음 읽기 전에 파일 쓰기·외부 요청 같은 되돌릴 수 없는 일을 하지 않는다(2026-09-24 현재 그런 창구 없음 — 새 창구도 이 순서를 지킨다).
 - **재접속은 비영속으로 연다(M-1).** 넘겨받은 영속 연결의 정리(`ROLLBACK`·`DISCARD ALL`)가 실패하면, 이 요청은 풀 핸들 대신 이 요청만 쓰는 비영속 연결을 새로 연다.
 
+### 5.32 휴대폰 경보 — 설치형 웹 앱 + 웹 푸시 (PRD F-70 · Q-28 ⓐ, 2026-09-24~25)
+
+지시서 `docs/f70-push-alerts-directive.md`(확정) · 구현 기록 `docs/f70-push-alerts-implementation.md`(다르게 간 곳과 이유) · SECURITY R-99.
+
+```
+[경보가 생김] cli_raise_alert → alerts.log 한 줄(F-69 origin·title)          alerts.php(root, 5분) ── AL-22 판정(받기 표 fail_since)
+        │ (읽기만 — tbox-push 는 폴더 통과 x 뿐)
+[보내는 배치] scripts/alert_push.php  (cron 매분 · OS 계정 tbox-push · DB 역할 tbox_push · .env 를 읽지 않는다 — push.conf)
+        ├ human · system · origin 없는 줄 → 곧바로(받기마다 시간당 10건, 넘치면 다음 정시 「외 n건」)
+        ├ claude-* · DIGEST_RULES(기본 AL-9) → 하루 요약 칸(개수만) → 18시 첫 실행에 한 번(0건이면 안 보냄)
+        └ 대기표 alert_push_outbox 의 「시험 알림」
+              → 내용 JSON ≤ 1KB {v, kind, rule, name, origin, at, n} → RFC 8291 aes128gcm(받기의 p256dh·auth) + VAPID JWT(ES256, 12시간)
+              → src/Fetch.php pushSend() → 푸시 서버(코드 상수 PUSH_HOSTS 셋 — S-05 ①~⑧ 그대로)
+[관리자 휴대폰] 「Qaredi 경보」(홈 화면 앱) ← 서비스 워커 push → 알림 → 누르면 고정 주소 /tbox/admin
+[웹] 받기 등록·해지·목록·시험(대기표 한 행)·공개 키 — **밖으로 한 번도 나가지 않는다**(새 핸들러에 Fetch:: 0)
+```
+
+| 창구 (전부 `role:Admin` — 재인증 관문 자동) | 하는 일 |
+|---|---|
+| `GET /alerts-app` | 화면(공통 셸 · 셸 키 `admin` · `$pageApp='alerts'` 로 매니페스트·아이폰 메타·`alerts-app.js`). 재인증은 `/reauth?to=alerts` 로 가서 이 화면으로 돌아온다 |
+| `GET /alerts-sw.js` · `GET /alerts-app.webmanifest` | 서비스 워커(원본 `src/push/alerts-sw.js`, public/ 밖)·매니페스트 — **PHP 라우트**라 등록 범위 `/tbox/alerts-app` 에 Service-Worker-Allowed 가 필요 없고 nginx 변경 0. 보안 머리는 다른 PHP 응답과 같다 · `Cache-Control: no-cache` |
+| `GET /api/admin/push/key` | VAPID 공개 키(`/etc/tbox-v2/vapid-public.txt`, root 0644 — `.env` 아님). 없으면 503 |
+| `GET /api/admin/push/subscriptions` | 내 살아 있는 받기 `{id, host, device_hint, created_at, last_ok_at}` — 주소·키 원문 없음 |
+| `POST /api/admin/push/subscriptions` (+ CSRF) | 허용 키 셋만 · 주소는 `Fetch::pushEndpoint`(check 의 ①②④ + PUSH_HOSTS 정확 일치, **DNS 없음** — `WebPush::checkEndpoint` 가 감싼다) · p256dh 65바이트·0x04·곡선 위의 점 · auth 16바이트 · 사람 행 잠금 뒤 3대 · 같은 주소는 200 · 감사 `alert.push_subscribe` `{host, device_hint}` |
+| `DELETE /api/admin/push/subscriptions/{num}` (+ CSRF) | 내 것만(남의 것·없는 것 404 같은 문구) · `revoked_reason='user'` · 행은 지우지 않는다 |
+| `POST /api/admin/push/test` (+ CSRF) | 대기표 한 행(보내지 않음) · 사람당 10분 1회(429 · Retry-After) · 받기 0 이면 400 |
+
+**표** (`db/migrations/2026-09-30_f70_push.sql`, 소유자 tbox_owner)
+
+| 표 | 칸 | 규칙 |
+|---|---|---|
+| `alert_push_subscriptions` | id · user_id · endpoint(≤1024, https, 살아 있는 줄에서 UNIQUE) · host(PUSH_HOSTS 셋 CHECK · 주소의 호스트와 같음) · p256dh(BYTEA 65, 0x04) · auth(BYTEA 16) · device_hint(고정 글자 ≤ 40) · created_at · last_ok_at · fail_count · **fail_since**(연속 실패 시작 — 성공하면 NULL) · revoked_at · revoked_reason(user·not_admin·gone) | 지우지 않는다(해지 = revoked_at). tbox_app: SELECT · INSERT(모양 칸) · UPDATE(해지 두 칸). tbox_push: SELECT · UPDATE(전달 결과·해지 칸) |
+| `alert_push_outbox` | id · user_id · requested_at · sent_at | tbox_app: SELECT · INSERT(user_id). tbox_push: SELECT · UPDATE(sent_at) |
+
+**보내는 배치** `scripts/alert_push.php` — 시작점 `scripts/lib/push_bootstrap.php`(Env·Db·Http·Auth·Audit·Fetch·WebPush·Origin·log_tail 만 명시 목록),
+설정 `/etc/tbox-v2/push.conf`(비밀 없음) · DB 비밀번호 `/etc/tbox-v2/push.pgpass`(tbox-push 0600 — libpq 가 PGPASSFILE 로 읽는다) · VAPID 비밀 키
+`/etc/tbox-v2/vapid-private.pem`(tbox-push 0600) · 상태 `/var/lib/tbox-push/alert-push-state.json`(0600 — 읽기 위치·대기·개수, 주소·키 없음) ·
+자기 감사 사본 `/var/log/tbox-push/audit.log`(Audit 클래스 그대로, `AUDIT_LOG_FILE` 만 push.conf 값).
+
+| 단계 | 규칙 |
+|---|---|
+| 읽기 | `scripts/lib/log_tail.php`(alerts.php 와 한 벌 — inode 로 회전, 크기로 잘림, 줄 단위). **처음 켤 때 위치 = 파일 끝** |
+| 가르기 | origin 없는 줄 = `human`(좁은 쪽) · 모르는 origin = `human` · claude-* → 요약 · `DIGEST_RULES` 규칙 → 요약 |
+| 받는 사람 | 매 실행 `JOIN users … (role = 'Admin' AND is_active)` — 아니면 보내지 않고 `not_admin` 해지 + `alert.push_revoke` |
+| 만들기 | `name` 은 배치의 코드 표(`PUSH_RULE_NAMES`) — 근거 글자를 옮기지 않는다 · 보낼 때마다 새 임시 키·salt · JWT `aud` = 스킴+호스트, `exp` = +12시간, `sub` = `https://changkwon.mso.so` |
+| 보내기 | TTL 3600(즉시)·86400(요약) · Urgency high(즉시·외 n건·시험) · Content-Encoding aes128gcm · Authorization `vapid t=…, k=…` |
+| 결과 | 2xx → last_ok_at·fail_count 0·fail_since NULL · 404/410 → `gone` 해지 · 413 → 기록만 · 429·5xx·연결 실패·사설 IP·응답 8KB 초과·키 없음 → fail_count+1, 50초 뒤 다음 실행에 다시(최대 3회 — 푸시 서버가 `Retry-After` 를 주면 그만큼 뒤, 초·HTTP 날짜 둘 다, 상한 3600초 `Fetch::PUSH_MAX_RETRY_AFTER` — `pushSend` 가 `retry_after` 정수로 돌려준다) · 3xx·그 밖 4xx → fail_count+1(다시 안 함) |
+| 기록 | `alert.push_send allow|error` detail `{host, status, rule, kind}` 만(7.4 · 7.5) · 실패해도 exit 0 |
+| dry-run | 대상 수·호스트·내용 크기만 찍는다 — 오프셋·상태·잠금 파일·받기 표·대기표·감사 0, Fetch 0 |
+
+**서비스 워커** — 처리기는 `push`·`notificationclick` **둘뿐**(fetch 처리기 0 — 로그인 화면을 기기에 남기지 않는다). 제목 「[사람] AL-1 권한 우회 시도」 ·
+「[시스템] AL-8 백업 실패」 · 「[Claude] 오늘 경보 n건」 · 「[요약] 오늘 경보 n건」(사람 AL-9 가 섞인 요약) · 「[경보] 지난 한 시간 외 n건」 · 「[시험] …」.
+내용 모양을 다시 좁히고(규칙 번호 `AL-n` · 이름 40자 · 개수 정수), 모르는 내용이 와도 고정 제목 하나를 띄운다. 누르면 **고정 주소** `/tbox/admin`.
+
+**나가는 통로의 잠금** (S-05 — SECURITY R-99 · 6장): ① https ② 443 ③ `PUSH_HOSTS` 정확 일치(fetch_hosts 표와 따로 — 화면으로 넓힐 수 없다) ④ 표기 정규화
+⑤ 보낼 때마다 A/AAAA 전부 공인 ⑥ CURLOPT_RESOLVE ⑦ 3xx 실패 ⑧ 연결 3초·전체 10초·보내는 본문 4KB·응답 8KB 에서 끊음 ⑩ 상태 코드만 ⑬ curl 은 Fetch.php 에만.
+⑫ 인프라 잠금(아웃바운드 방화벽)은 **없다**(L-8 — R-22 와 따로 계획).
+
 ## 6. 저장 위치 — 파일 정보 vs 실제 파일
 
 ### 6.1 두 곳에 나눠 저장하는 이유
@@ -1886,6 +1944,30 @@ GRANT  USAGE, SELECT  ON SEQUENCE audit_logs_id_seq TO tbox_app;
 | `audit.integrity|allow` | `정합성·무결성 점검을 마쳤습니다 (검사 건수·불일치 0)` | 9단계 consistency_check.php · audit_chain.php |
 | `audit.integrity|error|mismatch` | `정합성·무결성 점검에서 불일치가 발견되었습니다 (목록은 상세 기록) — 경보 AL-6` | 9단계 |
 | `alert.raised|allow` | `경보 {target} 조건이 충족되어 알림을 보냈습니다 (근거는 상세 기록)` | 9단계 scripts/alerts.php (target = AL-1 등 규칙 번호) |
+| `alert.push_subscribe|allow` | `{actor} 이(가) 휴대폰 경보 받기 기기를 등록했습니다 (푸시 서버 {target} — 기기 요약은 상세 기록)` | F-70 받기 등록 `POST /api/admin/push/subscriptions` (Admin · 재인증 · CSRF). target = 푸시 서버 호스트, detail `{host, device_hint}` — 주소(endpoint)·기기 키·auth 는 남기지 않는다 |
+| `alert.push_subscribe|deny|bad_request` | `{actor} 이(가) 휴대폰 경보 받기를 등록하려 했지만 받기 정보의 모양이 맞지 않아 거부했습니다` | F-70 — 허용 키 셋(`endpoint`·`keys.p256dh`·`keys.auth`) 밖 · 문자열 아님 · 1,024자 초과 |
+| `alert.push_subscribe|deny|bad_endpoint` | `{actor} 이(가) 휴대폰 경보 받기를 등록하려 했지만 받기 주소가 https·443·호스트 표기 규칙에 맞지 않아 거부했습니다` | F-70 — `Fetch::pushEndpoint` ①②④(http · `:8443` · IP 리터럴 · `user@host` …). target 없음(정규화에 실패한 글자를 남기지 않는다) |
+| `alert.push_subscribe|deny|host_not_allowed` | `{actor} 이(가) 허용 목록 밖의 푸시 서버 {target} 로 휴대폰 경보 받기를 등록하려 해서 거부했습니다` | F-70 — 호스트가 `Fetch::PUSH_HOSTS` 정확 일치가 아님(SSRF 시도의 흔적 — R-99 ①). target = 정규화한 호스트 |
+| `alert.push_subscribe|deny|bad_key` | `{actor} 이(가) 휴대폰 경보 받기를 등록하려 했지만 기기 키가 올바른 P-256 공개 키가 아니거나 auth 길이가 맞지 않아 거부했습니다` | F-70 — p256dh 65바이트·0x04·곡선 위의 점, auth 16바이트(`WebPush::checkSubscriptionKeys`) |
+| `alert.push_subscribe|deny|too_many` | `{actor} 이(가) 휴대폰 경보 받기 기기를 네 대째 등록하려 해서 거부했습니다 (한 사람 3대까지)` | F-70 L-6 — 살아 있는 받기 COUNT(사람 행 잠금 뒤) |
+| `alert.push_subscribe|deny|duplicate` | `{actor} 이(가) 다른 사람이 이미 등록한 받기 주소로 휴대폰 경보 받기를 등록하려 해서 거부했습니다` | F-70 — 같은 주소의 살아 있는 받기가 다른 계정 것(한 브라우저를 두 관리자가 나눠 쓸 때) |
+| `alert.push_unsubscribe|allow` | `{actor} 이(가) 휴대폰 경보 받기 기기 하나를 해지했습니다 (푸시 서버 {target})` | F-70 `DELETE /api/admin/push/subscriptions/{num}` — 자기 것만, `revoked_reason='user'`(행은 지우지 않는다) |
+| `alert.push_unsubscribe|deny|not_found` | `{actor} 이(가) 없거나 자기 것이 아닌 휴대폰 경보 받기를 해지하려 해서 막았습니다` | F-70 — 남의 받기·이미 해지한 받기·없는 번호는 같은 404 문구 |
+| `alert.push_revoke|allow` | `배치가 휴대폰 경보 받기 하나를 해지했습니다 (푸시 서버 {target} — 사유는 상세 기록)` | F-70 scripts/alert_push.php — detail `{host, revoked_reason}`: `not_admin`(받는 사람이 지금 활성 Admin 이 아님) · `gone`(푸시 서버 404/410) |
+| `alert.push_test|allow` | `{actor} 이(가) 휴대폰 시험 알림을 요청했습니다 (1분 안에 배치가 보냅니다)` | F-70 `POST /api/admin/push/test` — 대기표에 한 행만 넣는다(웹은 보내지 않는다) |
+| `alert.push_test|deny|rate_limited` | `{actor} 이(가) 10분 안에 휴대폰 시험 알림을 다시 요청해서 막았습니다` | F-70 — 사람당 10분에 1회(429) |
+| `alert.push_test|deny|no_subscription` | `{actor} 이(가) 휴대폰 시험 알림을 요청했지만 등록한 기기가 없어 거부했습니다` | F-70 — 살아 있는 받기 0 |
+| `alert.push_send|allow` | `배치가 휴대폰 경보 알림 한 건을 푸시 서버 {target} 에 넘겼습니다 (규칙·종류·상태 코드는 상세 기록)` | F-70 scripts/alert_push.php (시스템 — actor 없음). detail `{host, status, rule, kind}` 만 — 주소·키·내용 원문 없음 |
+| `alert.push_send|error|http_status` | `배치가 휴대폰 경보 알림을 푸시 서버 {target} 에 넘기지 못했습니다 — 푸시 서버가 받지 않았습니다 (상태 코드는 상세 기록)` | F-70 — 2xx 가 아닌 응답(404/410 → 해지 · 413 → 기록만 · 429/5xx → 다음 실행에 다시, 최대 3회) |
+| `alert.push_send|error|fetch_failed` | `배치가 휴대폰 경보 알림을 푸시 서버 {target} 에 보내지 못했습니다 — 연결·TLS·시간 초과 (다음 실행에 다시)` | F-70 — `Fetch::pushSend` fetch_failed(연결 3초·전체 10초) |
+| `alert.push_send|error|redirect` | `배치가 휴대폰 경보 알림을 보내려 했지만 푸시 서버 {target} 가 다른 주소로 넘겨서(3xx) 따라가지 않았습니다` | F-70 — S-05 ⑦(리다이렉트 = 실패) |
+| `alert.push_send|error|private_ip` | `배치가 휴대폰 경보 알림을 보내려 했지만 푸시 서버 {target} 의 이름이 내부망 주소로 풀려 보내지 않았습니다` | F-70 — S-05 ⑤(보낼 때마다 DNS 를 다시 풀어 본다) |
+| `alert.push_send|error|host_not_allowed` | `배치가 허용 목록 밖 푸시 서버로 가는 받기 {target} 에 보내지 않았습니다` | F-70 — 저장된 받기의 호스트가 지금 `PUSH_HOSTS` 에 없음(코드 상수를 줄인 경우) |
+| `alert.push_send|error|bad_endpoint` | `배치가 모양이 맞지 않는 받기 주소에 휴대폰 경보 알림을 보내지 않았습니다` | F-70 — 저장된 주소가 `Fetch::pushEndpoint` 를 통과하지 못함 |
+| `alert.push_send|error|too_large` | `배치가 휴대폰 경보 알림을 보냈지만 푸시 서버 {target} 의 응답 본문이 8KB 를 넘어 끊었습니다` | F-70 — S-05 ⑧(응답 본문은 읽어 버린다, 최대 8KB) |
+| `alert.push_send|error|bad_key` | `배치가 받기의 기기 키로 휴대폰 경보 알림을 암호화하지 못해 보내지 않았습니다 (푸시 서버 {target})` | F-70 — RFC 8291 암호화 실패(`WebPush::encrypt`) |
+| `alert.push_send|error|no_key` | `배치가 VAPID 서명 키를 읽지 못해 휴대폰 경보 알림을 보내지 않았습니다 (키 파일·권한 확인 — 계속되면 경보 AL-22)` | F-70 — `/etc/tbox-v2/vapid-private.pem`(tbox-push 0600)을 못 읽거나 공개 키 파일과 짝이 아님 |
+| `alert.push_send|error|state_corrupt` | `배치의 상태 파일이 깨져 읽기 위치를 잃었습니다 — 경보 로그의 지금 끝부터 다시 읽습니다 (그 사이 경보는 휴대폰으로 보내지 않았습니다)` | F-70 — `alert-push-state.json` 이 비었거나 JSON 이 아님. 방향은 「처음 켬」과 같다(옛 줄을 몰아 보내지 않는다) — 조용히 넘어가지 않고 한 줄. target_type `push_state`, detail `{kind: state}` |
 | `user.create|allow` | `{actor} 이(가) 계정 「{target}」 을(를) 만들었습니다 (역할·팀·사유는 상세 기록)` | 10단계 users (Admin) |
 | `user.create|deny|bad_request` | `{actor} 이(가) 계정 생성 요청을 잘못된 형식(아이디·비밀번호·역할·팀·사유)으로 보내 거부했습니다` | 10단계 |
 | `user.create|deny|already_exists` | `{actor} 이(가) 이미 있는 아이디 「{target}」 로 계정을 만들려 해서 거부했습니다` | 10단계 |
@@ -2142,6 +2224,12 @@ GRANT  USAGE, SELECT  ON SEQUENCE audit_logs_id_seq TO tbox_app;
 | `origin` | 누가 | 경보를 누가 일으켰나 — `human`·`system`·`claude-review`·`claude-session` 넷 중 하나(판정 표 11.4, `src/Origin.php`). `alerts.log` 줄의 최상위 `origin` 과 **같은 값**. 보여 주기·분류(F-70 즉시/하루 요약) 전용 — 권한·차단·기록 여부에 쓰지 않는다(SECURITY R-100) | 배치(`cli_raise_alert()` · `verify_backup.sh` 는 `"system"` 고정) | `alert.raised` detail **최상위**(`{rule, evidence, origin}`) · `alerts.log` 줄 최상위 (F-69) |
 | `title` (경보 줄) | 무엇을 | 사람이 읽는 경보 제목 — `Origin::title()`: `claude-*` 면 `[Claude] ` + `rule_text`, 아니면 `rule_text`(없으면 규칙 번호). **`alerts.log` 줄에만** 있고 감사 detail 에는 넣지 않는다(같은 값을 `rule_text`·`origin` 에서 다시 만들 수 있다) | `cli_raise_alert()` · `verify_backup.sh` | `alerts.log` 줄 최상위 (F-69) |
 | `origin_hint` | 누가 | `partial` 하나 — 계정(`qa_`·`claude_`)과 검토 표식 UA(`tbox-review/`) 중 **하나만** 맞음(화면 「확인 필요」). 해당 없으면 키가 없다 | 배치(`cli_raise_alert()` 가 evidence 에 넣는다) | `evidence` 안 — `alerts.log` 줄과 `alert.raised` detail 둘 다 (F-69) |
+| `host` | 어디로 | 푸시 서버 호스트(`fcm.googleapis.com`·`web.push.apple.com`·`updates.push.services.mozilla.com`) — **받기 주소(endpoint) 전체가 아니다**(주소에는 받기 토큰이 있다) | 핸들러 · 배치 | `alert.push_subscribe`·`alert.push_unsubscribe`·`alert.push_revoke`·`alert.push_send` (F-70) |
+| `status` | 어떻게 | 푸시 서버 응답 상태 코드(정수) · 응답 전에 끊겼으면 null. 응답 본문·머리는 남기지 않는다 | 배치 | `alert.push_send` (F-70) |
+| `kind` | 무엇을 | 알림 종류 `alert`·`digest`·`test`·`more`(「외 n건」) | 배치 | `alert.push_send` (F-70) |
+| `device_hint` | 무엇으로 | 기기 요약 고정 글자(「Android Chrome」 등) — UA 원문 아님 | 핸들러 | `alert.push_subscribe`·`alert.push_unsubscribe` (F-70) |
+| `revoked_reason` | 왜 | 받기 해지 사유 `user`·`not_admin`·`gone` | 핸들러 · 배치 | `alert.push_unsubscribe`·`alert.push_revoke` (F-70) |
+| `subscriptions` · `retry_after` | 얼마나 | 시험 알림을 받을 기기 수 · 다시 요청할 수 있을 때까지 초 | 핸들러 | `alert.push_test` (F-70) |
 | `step` | 어디서 | 배치가 **멈춘 단계** 이름 (`pg_dump`·`pg_restore`·`files_extract`·`consistency_check`…). 경로가 아니라 단계 이름이며 인자·비밀값은 넣지 않는다 | 배치 | `backup.run error`·`backup.restore error` (9단계 · 16-2) |
 | `window_minutes` | 어떻게 | 관리 기능 재인증 창의 길이(분, `Auth::REAUTH_MINUTES`). 나중에 창을 조정해도 "그때는 몇 분이었나" 를 로그만으로 알 수 있게 한다. 시각·세션 값이 아니다 | Auth::reauth | `auth.reauth allow` (16-1) |
 | `chain_prev` · `chain_hash` | 무엇을 | 감사 로그 파일 해시 체인: 직전 일자 마지막 해시 · 봉인한 날 파일의 sha256 (R-11). `chain_hash` 는 이름에 `hash` 가 들어가 `FORBIDDEN_DETAIL_KEYS` 부분 일치에 걸려 2026-09-12 까지 `[제거됨]` 으로 남고 있었다(실측) — 공개돼야 의미가 있는 무결성 증거이므로 `Audit::ALLOWED_DETAIL_KEYS` 에 정확 일치로 등록한다(13단계) | 배치 | `audit.integrity` (9단계) |
@@ -2379,12 +2467,13 @@ php_admin_value[disable_functions]   = fsockopen,pfsockopen,stream_socket_client
 | `tbox_app` | PHP 앱 런타임 | `users teams files`: SELECT/INSERT/UPDATE · `sessions`: SELECT/INSERT/UPDATE/DELETE · `permissions`: **SELECT 만** · `audit_logs`: SELECT/INSERT 만 · DROP 없음 |
 | `tbox_backup` | 백업 스크립트 | 전체 SELECT (읽기 전용) |
 | `tbox_perm` | 권한 매트릭스 편집 핸들러 **하나**(`admin_permissions_update.php`, 17단계 F-25) | `permissions`: SELECT/UPDATE 만 · 다른 표 0 · INSERT/DELETE 없음(16행 고정). `.env` `DB_PERM_USER/PASS`, `Db::perm()` 지연 연결 · **비영속**(앱 연결 `tbox_app` 만 워커마다 재사용 — 5.31) |
+| `tbox_push` | 휴대폰 경보 **보내는 배치** 하나(`scripts/alert_push.php`, OS 계정 tbox-push — F-70 · 5.32) | `alert_push_subscriptions`: SELECT · UPDATE(last_ok_at·fail_count·fail_since·revoked_at·revoked_reason) · `alert_push_outbox`: SELECT · UPDATE(sent_at) · `users`: **(id, role, is_active) 세 칸만** SELECT · `audit_logs`: INSERT 만 · 그 밖 0. 마이그레이션이 NOLOGIN 으로 만들고 로그인·비밀번호(`/etc/tbox-v2/push.pgpass`)는 사용자 sudo 반영 스크립트가 표준입력으로 정한다 · 문장 15s · 유휴 트랜잭션 60s |
 
 > 파일 삭제가 논리 삭제(UPDATE)이므로 앱 계정에 `DELETE` 권한 자체가 필요 없다. 30일 실제 정리는 `tbox_owner` 권한의 배치 스크립트가 수행한다.
 > (2026-09-24 코드 확인: t-box 휴지통 정리 `purge_trash.php` 는 **`tbox_app`** 으로 붙어 `files.purged_at` 만 UPDATE 하고 바이트는 파일 시스템에서 지운다 — 행은 남는다.
 > `tbox_owner` 로 붙는 배치는 커뮤니티 휴지통 정리 `community_purge.php` 하나다(아래 표).)
 
-**역할 시간 제한 (Q:F-4 P-7, 9.1 · SECURITY R-103).** `tbox_app` **만** `statement_timeout = 15s` · `idle_in_transaction_session_timeout = 60s`
+**역할 시간 제한 (Q:F-4 P-7, 9.1 · SECURITY R-103).** `tbox_app`(그리고 F-70 의 `tbox_push` — 같은 두 값, `db/migrations/2026-09-30_f70_push.sql`) `statement_timeout = 15s` · `idle_in_transaction_session_timeout = 60s`
 (`db/migrations/2026-09-29_app_role_timeouts.sql`, 역할 설정 `ALTER ROLE … SET` — 새 연결부터). `tbox_owner` · `tbox_backup` · `tbox_perm` 은 제한 없음(서버 기본 0),
 시험 전용 읽기 역할 `tbox_testread` 는 자체 설정(`statement_timeout 10s` · `lock_timeout 1s` · `idle_in_transaction_session_timeout 30s` · `default_transaction_read_only on`) 그대로다.
 
@@ -2399,6 +2488,7 @@ php_admin_value[disable_functions]   = fsockopen,pfsockopen,stream_socket_client
 | 04:30 root | `verify_backup.sh` | DB 는 `audit_cli.php` 감사(`tbox_app`)뿐 — `pg_restore -l` 은 DB 에 붙지 않는다 | 0.11초 |
 | 5분 root | `alerts.php` | `tbox_app` — `audit_logs` 판정 SQL 10개 | 0.52~0.71초 · 가장 긴 문장 53ms |
 | 1분 tbox-php | `scan_pending.php` | `tbox_app` — 대기 SELECT 1 + 파일마다 짧은 트랜잭션. clamscan(최대 22초)은 트랜잭션 **밖** | 0.10~0.15초(대기 0 · 30건 dry-run) |
+| 1분 tbox-push | `alert_push.php` (F-70) | **`tbox_push`** — `push_bootstrap` → `Db::boot`(비밀번호 칸 비움 · PGPASSFILE). 받기·대기표 SELECT 몇 줄 + 결과마다 UPDATE·감사 INSERT(자동 커밋 — 밖으로 나가는 동안 트랜잭션 없음) | 시험 임시 DB 에서 배치 한 번 1초 안(가짜 푸시 서버). 바깥 요청 한 번은 최대 10초이지만 문장이 아니다 |
 | (웹 일부) | 권한 매트릭스 쓰기 `Db::perm()` | **`tbox_perm`** (비영속) | 제한 밖 |
 
 스크립트 **전체**가 15초 안이면 그 안의 어떤 문장도 15초를 넘지 않는다 — 모두 1초 안이라 스크립트별 `SET statement_timeout` 은 두지 않았다(필요해지면 그 스크립트의
@@ -2425,6 +2515,7 @@ php_admin_value[disable_functions]   = fsockopen,pfsockopen,stream_socket_client
 | 00:05 | `scripts/audit_chain.php` | `audit.log` 일별 sha256 해시 체인(R-11) | `/var/lib/tbox-v2/audit-chain.txt`, `audit.integrity` |
 | 매 5분 | `scripts/alerts.php` | AL-1·AL-2·AL-5·AL-7·AL-10 SQL 판정, 중복 억제 30분 | `/var/log/tbox-v2/alerts.log`, `alert.raised` |
 | 매분 | `scripts/scan_pending.php` (`tbox-php`) | `pending` 파일이 있을 때만 `clamscan` → `clean`/`infected`·격리·감사 `file.scan` (F-54, 5.28) |
+| 매분 | `scripts/alert_push.php` (**`tbox-push`** — F-70, L-3) | alerts.log 새 줄 · 시험 알림 대기표 → 푸시 서버 셋(5.32). 사람·시스템 곧바로 · Claude 18시 요약 | 감사 `alert.push_send`·`alert.push_revoke` · 자기 사본 `/var/log/tbox-push/audit.log` · 24시간 실패면 alerts.php 가 AL-22 |
 | **매일 02:00** (16-2, 2026-09-12 — 주 1회에서 당김, SECURITY 8.4-6) | `scripts/consistency_check.php` | DB ↔ 스토리지 정합성 (고아·누락·sha256) | `audit.integrity`, 불일치 → `alert.raised AL-6` |
 | **(PC) 매일 05:00** (F-55, 2026-09-16) | `deploy/pc/pull_backup.ps1` — **사용자 PC 의 작업 스케줄러**가 실행 | PC 가 `ssh changkwon@서버 "sudo -n tar -C / --newer-mtime='3 days ago' -cf - var/backups/tbox-v2/{db,files,weekly,monthly} var/log/tbox-v2"` 로 암호화 산출물·`.sha256`·로그를 **끌어와(pull)** `C:\tbox-backup\` 에 풀고 최신 db·files 를 sha256 대조, 45일 지난 사본 삭제. 서버 파일·cron 변경 0, 서버에 원격 자격증명 0(root 공격자가 원격 사본까지 지우지 못하게). `files-mirror/`·평문 덤프 제외. `backup.key` 는 `-Key` 로 한 번만 별도 장소에 | PC `pull.log` 마지막 줄 `OK\|WARN\|FAIL`. 서버 감사 기록 없음(읽기 전용 tar). 3-2-1 의 「원격 1」 임시 충족(Q-4) |
 
@@ -2502,6 +2593,18 @@ php_admin_value[disable_functions]   = fsockopen,pfsockopen,stream_socket_client
 **AL-2 집계 대상 (13단계 보정 2026-09-12 — SECURITY R-45 · R-48)**
 
 **서버 층 경보 — AL-3 확장·AL-9 (16단계 2026-09-12, SECURITY 8.4-5)**: `alerts.php`(root, 5분)가 `audit_logs` 외에 `/var/log/auth.log`(와 `.1`)도 읽는다. ① AL-3: `sshd … Accepted (publickey|password) for <계정> from <IP>` 중 **최근 30일 안에 본 적 없는 IP** → `AL-3|계정@IP`(상태 파일에 IP 별 첫 관측 시각을 기억) ② AL-9: `sudo: <계정> : … COMMAND=<명령>` 의 명령이 `psql|pg_dump|pg_restore|dropdb|rm |find .* -delete|truncate|chattr -a` 에 걸리면 `AL-9|계정`(명령은 앞 200자만, 인자 속 비밀값이 있을 수 있어 `password=`·`PGPASSWORD` 조각은 지운다). 파일 위치·읽기 오프셋은 상태 파일에 두고 회전(`auth.log.1`)을 따라간다. 시험은 `--auth-log <사본 경로>` 인자로. 정합성 검사(`consistency_check.php`)는 주 1회 → **매일 02:00**(8.4-6).
+
+**휴대폰으로 보내기 · AL-22 (F-70, 2026-09-24~25 — 5.32)**: 경보 줄은 여전히 `alerts.log`·`alert.raised` 두 곳이 원본이고, 휴대폰 알림은 **덧붙은 전달 경로**다
+(`scripts/alert_push.php`, tbox-push, 매분). origin 이 곧 갈래다 — `human`·`system`·origin 없는 옛 줄은 곧바로, `claude-*` 는 18시 하루 요약(개수만),
+`push.conf` 의 `DIGEST_RULES`(기본 `AL-9` — 구현 기록 5, 사용자 결정 대기)도 요약. 알림 내용은 규칙 번호·짧은 이름·출처·시각·개수뿐이다(근거 글자 0).
+**AL-22** = 살아 있는 받기 **전부**의 `fail_since`(연속 실패 시작)가 24시간을 넘음 → `AL-22|push` · 또는 `push.conf` 가 있는데 보내는 배치의 상태 파일
+(`STATE_DIR/alert-push-state.json` — 배치가 매 실행 다시 쓴다)이 15분 넘게 그대로(없으면 설정 파일 시각부터) → `AL-22|stale`. origin `system`(Origin::ofFixedRule).
+중복 억제는 **이 규칙만 6시간**(`AL22_DEDUP_MINUTES` — 막힌 동안 같은 줄이 30분마다 쌓이지 않게). 막혔다가(상태 키 `AL-22|down`) 둘 다 풀리면 `AL-22|recovered`
+**한 줄만** — 보내는 배치는 그 줄을 갈래 이름 「휴대폰 경보 전달 복구」로 보낸다(코드 표 `PUSH_VARIANT_NAMES`, 근거 글자는 옮기지 않는다).
+배치가 시작조차 못 하는 오류(설정·pgpass·잡히지 않은 예외)는 받기 표에 흔적이 없어 push 로는 안 보인다 — stale 이 그것을 잡고, 원인은 배치의 오류 기록
+`/var/log/tbox-push/error.log`(push.conf `ERROR_LOG`, tbox-push 0640 — cron 은 출력을 버린다)에 남는다.
+판정은 이 배치(alerts.php, root)가 한다 — 보내는 계정은 alerts.log 를 읽기만 한다(구현 기록 6). 받기 표가 없거나 읽을 수 없으면 AL-22 만 건너뛴다.
+auth.log 오프셋 읽기는 F-70 부터 `scripts/lib/log_tail.php` 한 벌이다(보내는 배치가 alerts.log 에 같은 함수를 쓴다 — 동작은 전과 같다).
 
 **AL-18 (F-43 2026-09-15)**: 5분 창에 `fetch_host.change allow` 1건 이상 → 즉시(`AL-18|행위자`, evidence 에 바뀐 호스트 이름·사유). AL-13 과 **같은 형태**이고 임계값이 없는 이유도 같다 — 허용 호스트가 바뀌면 그 순간부터 서버가 나갈 수 있는 곳이 달라진다(S-05).
 

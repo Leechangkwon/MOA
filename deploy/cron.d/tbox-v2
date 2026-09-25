@@ -14,6 +14,7 @@
 #
 # 예외: scan_pending.php(F-54)만 **tbox-php** 로 돈다. 악성일 수 있는 파일을 root 권한의
 #       프로세스에 물리지 않기 위해서다. 그 배치에 root 가 필요한 자원은 하나도 없다.
+# 예외 둘째: alert_push.php(F-70)는 **tbox-push** 로 돈다. 밖(푸시 서버)으로 나가는 배치를 root·앱 계정과 떼어 둔다(L-3).
 #
 # MAILTO="" : 이 VM 에는 MTA 가 없다. 결과는 감사 로그(audit_logs)·alerts.log 에 남는다.
 #             메일로 보내려면 MTA 를 세운 뒤 이 값을 운영자 주소로 바꾼다.
@@ -30,35 +31,43 @@ SHELL=/bin/bash
 # 분  시  일  월 요일  계정  명령
 #
 # 03:00  DB 전체 백업 (pg_dump -Fc | gpg AES256, 보관 일 7·주 6·월 1 = 45일 이내)
-0    3   *   *  *     root  bash /var/www/tbox-v2/scripts/backup_db.sh
+0    3   *   *  *     root  bash /var/www/qaredi/tbox-v2/scripts/backup_db.sh
 # 03:30  업로드 파일 백업 (tar|gpg 전체 + rsync 로컬 미러)
-30   3   *   *  *     root  bash /var/www/tbox-v2/scripts/backup_files.sh
+30   3   *   *  *     root  bash /var/www/qaredi/tbox-v2/scripts/backup_files.sh
 # 04:00  휴지통 30일 정리 (바이트만 삭제, files.purged_at 기록)
-0    4   *   *  *     root  php  /var/www/tbox-v2/scripts/purge_trash.php
-# 커뮤니티 휴지통 30일 정리(7-A) — 파일 정리(04:00) 뒤, 백업 검증(04:30) 앞. 소유자 계정으로 DB 함수를 부르고 앱 감사에 남긴다
-10   4   *   *  *     root  php  /var/www/tbox-v2/scripts/community_purge.php --run --max 500
+0    4   *   *  *     root  php  /var/www/qaredi/tbox-v2/scripts/purge_trash.php
+# 커뮤니티 휴지통 30일 정리(7-A) — 파일 정리(04:00) 뒤, 백업 검증(04:30) 앞 (사용자 승인 2026-09-24, 취합 보고서)
+10   4   *   *  *     root  php  /var/www/qaredi/tbox-v2/scripts/community_purge.php --run --max 500
 # 04:30  백업 검증 (sha256sum -c + gpg 복호화 시험). 2회 연속 실패 → AL-8
-30   4   *   *  *     root  bash /var/www/tbox-v2/scripts/verify_backup.sh
+30   4   *   *  *     root  bash /var/www/qaredi/tbox-v2/scripts/verify_backup.sh
 # 00:05  감사 로그 해시 체인 — **어제**(logrotate 가 00:00 에 회전시킨 파일)를 봉인한다.
 #         인자가 없으면 어제다(= --yesterday). 오늘 파일은 하루 종일 자라므로 적지 않는다.
 #         2026-09-12 이전에는 인자 없이 **오늘**을 적어, 회전 직후의 빈 파일(0줄)이 봉인되고
 #         어제는 영영 봉인되지 않았다 → --verify 가 매일 실패하고 AL-6 헛경보 (SECURITY R-50).
 #         잘못 적힌 지난 항목은 사람이 `--reseal YYYY-MM-DD` 로 한 번만 바로잡는다.
-5    0   *   *  *     root  php  /var/www/tbox-v2/scripts/audit_chain.php --yesterday
+5    0   *   *  *     root  php  /var/www/qaredi/tbox-v2/scripts/audit_chain.php --yesterday
 # 매일 02:00  DB ↔ 저장소 정합성 검사. 불일치 → AL-6
 #         16-2(2026-09-12, SECURITY 8.4-6): **주 1회 → 일 1회**로 당겼다. 2026-09-11 사고에서
 #         앱 밖 삭제가 일어난 뒤 정합성이 깨진 상태로 최대 7일 조용할 수 있었다(요일 칸이 `0`).
 #         하루치 검사 비용(파일 수만큼의 stat + sha256)은 이 규모에서 문제가 되지 않는다.
-0    2   *   *  *     root  php  /var/www/tbox-v2/scripts/consistency_check.php --quiet
+0    2   *   *  *     root  php  /var/www/qaredi/tbox-v2/scripts/consistency_check.php --quiet
 # 5분마다  경보 판정 (AL-1·AL-2·AL-5·AL-7·AL-10·AL-12 = audit_logs SQL,
 #          AL-3·AL-9 = /var/log/auth.log — 16-2, SECURITY 8.4-5)
 #          auth.log 는 0640 syslog:adm 이라 **root 로 실행할 때만** 그 두 규칙이 돈다.
 #          읽지 못하면 그 규칙만 `[건너뜀]` 을 찍고 나머지는 그대로 판정한다.
-*/5  *   *   *  *     root  php  /var/www/tbox-v2/scripts/alerts.php
+*/5  *   *   *  *     root  php  /var/www/qaredi/tbox-v2/scripts/alerts.php
 # 매분  악성코드 검사 (F-54, ARCH 5.28 · 11.1) — `pending` 행이 **있을 때만** clamscan 을 띄운다.
 #         대기가 0건이면 DB 를 한 번 보고 끝나므로 1분 주기여도 평소 비용이 없다.
 #         실행 계정이 **tbox-php** 인 이유: 이 배치는 사용자가 올린(어쩌면 악성인) 바이트를
 #         스캐너에 물린다. root 로 파싱하지 않는다. 필요한 권한은 저장소 읽기·격리 폴더 쓰기·
 #         DB UPDATE 뿐이고 셋 다 tbox-php 가 이미 가진 것이다 (ARCH 10장).
 #         상주 데몬(clamav-daemon)은 설치하지 않는다 — 메모리 (SECURITY R-86).
-*    *   *   *  *     tbox-php  php  /var/www/tbox-v2/scripts/scan_pending.php
+*    *   *   *  *     tbox-php  php  /var/www/qaredi/tbox-v2/scripts/scan_pending.php
+# 매분  경보를 관리자 휴대폰으로 (F-70, ARCH 5.32 · 11.4, SECURITY R-99) — alerts.log 새 줄 · 시험 알림 대기표 →
+#         푸시 서버 세 곳(코드 상수 허용 목록)으로만 나간다. 사람·시스템 경보는 곧바로, Claude 경보는 18시 하루 요약.
+#         실행 계정이 **tbox-push** 인 이유(L-3): 이 서버에서 밖으로 나가는 **유일한** 배치라 전용 계정에 가둔다 —
+#         .env(tbox_app 비밀번호·APP_SECRET)·app.log·audit.log 를 읽지 못하고, /var/log/tbox-v2 는 통과(x)만, alerts.log 는 읽기만,
+#         /etc/tbox-v2 는 통과(x)만(자기 파일 셋 — push.conf · push.pgpass · vapid-private.pem). sudo·adm 그룹 없음.
+#         설정 /etc/tbox-v2/push.conf · DB 역할 tbox_push · 자기 감사 사본 /var/log/tbox-push/audit.log · 상태 /var/lib/tbox-push.
+#         실패해도 종료 코드 0(메일 없음) — 대신 감사 alert.push_send · 24시간 실패면 alerts.php 가 AL-22.
+*    *   *   *  *     tbox-push  php  /var/www/qaredi/tbox-v2/scripts/alert_push.php

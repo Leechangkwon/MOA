@@ -86,7 +86,9 @@ var REAUTH_PATHS = {
   'wiki': APP_BASE + '/wiki',
   // 17-1 관리자 허브 (PRD F-24). `/admin`·`/admin/permissions` 둘 다 이 키 하나를 쓰고,
   // 확인이 끝나면 허브로 돌아온다 (서버 TBOX_REAUTH_RETURN 과 같은 내용).
-  'admin': APP_BASE + '/admin'
+  'admin': APP_BASE + '/admin',
+  // F-70 — 휴대폰 경보 화면(설치한 앱의 시작 화면)은 확인 뒤 그 화면으로 돌아온다.
+  'alerts': APP_BASE + '/alerts-app'
 };
 
 /** 서버가 내려 준 파일 ID 형태 (UUIDv4). 링크를 만들기 전에 반드시 확인한다. */
@@ -876,7 +878,7 @@ function isAdminPath(href) {
      떼지 않아 28단계 이후 재인증 **모달**이 한 번도 걸리지 않고 늘 `/reauth` 화면으로 넘어갔다
      (2026-09-23 커뮤니티 앱 메뉴에서 발견). 막는 것은 여전히 서버 관문 [3-2] 다. */
   var path = href.indexOf(APP_BASE + '/') === 0 ? href.slice(APP_BASE.length) : href;
-  return /^\/(admin(\/|$)|users$|org$|audit$|trash$|wiki(\/|$))/.test(path);
+  return /^\/(admin(\/|$)|users$|org$|audit$|trash$|wiki(\/|$)|alerts-app$)/.test(path);
 }
 
 /**

@@ -671,6 +671,27 @@ curl -s -H "X-API-Token: $API_TOKEN" http://127.0.0.1:8082/tbox/api/whoami
 
 ---
 
+## 15. 관리자 창구 — 휴대폰 경보 (F-70, 2026-09-24~25 · 세션)
+
+프로그램이 부르는 창구가 아니라 **관리자가 휴대폰 경보를 켜고 끄는** 화면(`/tbox/alerts-app`)의 창구다(PRD F-70, ARCHITECTURE 5.32, SECURITY R-99).
+**X-API-Token 으로는 부를 수 없다**(토큰 창구 집합 밖). 알림을 실제로 보내는 것은 서버의 배치(매분)이고, 이 창구들은 **밖으로 한 번도 나가지 않는다** —
+「시험 알림」도 대기표에 한 행을 넣을 뿐이다.
+
+| 항목 | 내용 |
+|---|---|
+| 인증 | 세션 쿠키 + `X-CSRF-Token`(POST·DELETE). 정책 `role:Admin` — **재인증(15분 창) 관문이 모든 창구에 붙는다**. 창이 닫혔으면 `403 {"error":"관리 기능을 쓰려면 비밀번호를 다시 확인해야 합니다","next":"reauth"}`(화면 요청은 302 `/tbox/reauth?to=alerts`). Admin 이 아니면 `403 {"error":"권한이 없습니다"}` |
+| 공개 키 | `GET /api/admin/push/key` → `200 {"public_key":"<base64url 87자 — 65바이트 P-256 점>"}`. 서버에 키가 아직 없으면 `503 {"error":"휴대폰 경보가 아직 준비되지 않았습니다 (서버의 알림 키가 없습니다)"}`. 비밀이 아니다 — 브라우저 `pushManager.subscribe({applicationServerKey})` 에 넣는다 |
+| 받기 목록 | `GET /api/admin/push/subscriptions` → `200 {"subscriptions":[{"id":<정수>,"host":"fcm.googleapis.com","device_hint":"Android Chrome","created_at":"…","last_ok_at":"…|null"}],"max_devices":3}` — **내** 살아 있는 받기만. 받기 주소(endpoint)·키는 응답에 없다 |
+| 받기 등록 | `POST /api/admin/push/subscriptions` JSON **허용 키 셋만** `{"endpoint":"https://…","keys":{"p256dh":"<base64url 65바이트>","auth":"<base64url 16바이트>"}}` (브라우저 `PushSubscription.toJSON()` 의 `expirationTime` 은 빼고 보낸다) → `201 {"ok":true,"subscription":{…목록 항목 모양…}}`. 같은 주소를 다시 보내면 `200 {"ok":true,"already":true,…}` |
+| 등록 검사 | 주소: 1,024자 이하 · https · 포트 없음(443) · 사용자정보·IP 리터럴 없음 · 호스트가 **정확히** `fcm.googleapis.com`(안드로이드 Chrome) · `web.push.apple.com`(아이폰 Safari 홈 화면 앱, iOS 16.4+) · `updates.push.services.mozilla.com`(Firefox) 중 하나(Edge 는 안 된다). 키: p256dh 65바이트 · 첫 바이트 0x04 · P-256 곡선 위의 점, auth 16바이트. 한 사람 3대 |
+| 등록 실패 | `400` 문구 — 「받기 정보의 모양이 맞지 않습니다」(허용 밖 키·길이) · 「받기 주소가 올바르지 않습니다」(http·포트·사용자정보) · 「이 브라우저의 푸시 서버는 쓸 수 없습니다 (안드로이드 Chrome · 아이폰 Safari · Firefox 만)」 · 「받기 키가 올바르지 않습니다」 · 「기기는 한 사람 3대까지 등록할 수 있습니다 — 쓰지 않는 기기를 먼저 해지하세요」 · 「이 브라우저의 받기는 다른 관리자 계정에 등록돼 있습니다 — 그 계정에서 해지한 뒤 다시 켜세요」 |
+| 해지 | `DELETE /api/admin/push/subscriptions/{num}` → `200 {"ok":true}`. 내 것만 — 남의 번호·없는 번호·이미 해지한 번호는 `404 {"error":"찾을 수 없습니다"}`(같은 문구). 행은 지우지 않는다(해지 기록) |
+| 시험 알림 | `POST /api/admin/push/test`(본문 `{}`) → `202 {"ok":true,"queued":true,"subscriptions":<내 기기 수>}` — 1분 안에 내 기기 전부에 시험 알림이 간다. 10분 안에 다시 → `429 {"error":"시험 알림은 10분에 한 번 보낼 수 있습니다","retry_after":<초>}` + `Retry-After` 머리 · 기기가 없으면 `400 {"error":"이 계정에 등록된 기기가 없습니다 — 먼저 「알림 받기 켜기」를 누르세요"}` |
+| 앱 파일 | `GET /tbox/alerts-sw.js`(서비스 워커 — `application/javascript; charset=utf-8`, `Cache-Control: no-cache`) · `GET /tbox/alerts-app.webmanifest`(`application/manifest+json`) — 둘 다 같은 정책(Admin + 재인증). 화면은 매니페스트를 `crossorigin="use-credentials"` 로 부른다 |
+| 준비 안 됨 | 서버 쪽 반영(표 둘을 만드는 마이그레이션 — `apply-f70-host`) 전이면 받기 목록·등록·해지·시험 알림이 `503 {"error":"휴대폰 경보가 아직 준비되지 않았습니다 (서버 쪽 반영 전 — 관리자 작업이 끝나면 켤 수 있습니다)"}`(500 이 아니다). 공개 키 창구는 위 문구. 화면 `/tbox/alerts-app` 은 `200` 그대로 「준비 안 됨」 안내를 보이고 켜기·시험 단추를 막는다 |
+| 알림 내용 | 휴대폰에 가는 것은 규칙 번호·짧은 이름·출처(사람/시스템/Claude)·시각·개수뿐이다(계정·IP·파일 이름·명령 없음). 누르면 언제나 `/tbox/admin` 이 열린다 |
+| 감사 | `alert.push_subscribe allow|deny`(detail `{host, device_hint}` — 주소·키 없음) · `alert.push_unsubscribe` · `alert.push_test` · 배치의 `alert.push_send`·`alert.push_revoke`(ARCHITECTURE 7.4) |
+
 ## 추가 규칙 (API 를 새로 적을 때)
 
 1. 장 번호를 이어서 붙이고 제목은 `## N. 이름 — 메서드 경로`.

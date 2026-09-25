@@ -32,6 +32,11 @@ require_once __DIR__ . '/CloudLink.php';
  *     구글 시트의 `export` 가 매번 다른 `doc-xx-yy-sheets.googleusercontent.com` 으로 넘기기 때문이며,
  *     **리다이렉트 다음 단계에서만** 열린다. 첫 요청은 언제나 관리자 허용 목록의 정확 일치다.
  *
+ * F-70 (2026-09-24) — 두 번째 바깥 통로 `pushSend()`(휴대폰 경보, 푸시 서버 세 곳). 뼈대 셋은 그대로다:
+ *   허용 목록은 표가 아니라 **코드 상수 PUSH_HOSTS**(정확 일치), 검사·DNS·IP 고정·3xx 실패·시간 제한은
+ *   check() 와 **같은 함수**(parseTarget · publicIpOf · CURLOPT_RESOLVE)를 쓴다. 부르는 곳은 보내는 배치
+ *   scripts/alert_push.php 하나뿐이고 웹 요청은 부르지 않는다. Db·Env 없이 돈다(배치는 .env 를 읽지 않는다).
+ *
  * 이 파일이 하지 않는 것
  *   · 권한·속도 제한·감사 로그 — 핸들러(src/handlers/files_fetch.php)의 몫이다.
  *   · 사용자에게 무엇을 보여 줄지 결정하기 — 실패는 예외(FetchDenied)로만 알리고,
@@ -260,6 +265,37 @@ final class Fetch
      */
     public static function check(string $url, ?string $downloadProvider = null): array
     {
+        // ①②④ — 길이 · 제어문자 · 파싱 · https · 443 · 사용자정보 · 호스트 표기 (F-70 에서 parseTarget 으로 뗐다 —
+        //         푸시 받기 주소 검사 pushEndpoint 가 **같은 함수**를 쓴다. 순서·사유 코드는 전과 한 글자도 같다)
+        [$host, $parts] = self::parseTarget($url);
+
+        // ③ 화이트리스트 — 정확 일치만. 목록이 비면 어떤 호스트도 통과하지 못한다.
+        //   F-46: 리다이렉트 다음 단계에 한해 공급자의 내려받기 호스트도 통과시킨다
+        //   (첫 요청은 $downloadProvider 가 null 이라 이 곁길이 열리지 않는다).
+        if (!in_array($host, self::allowedHosts(), true)
+            && !self::providerHostAllowed($downloadProvider, $host)
+        ) {
+            throw new FetchDenied('host_not_allowed', null, $host);
+        }
+
+        // ⑤ DNS 해석 — A/AAAA 가 하나도 없거나, 하나라도 내부망이면 거부 (pushSend 와 같은 함수)
+        $ip = self::publicIpOf($host);
+
+        return [
+            'host' => $host,
+            'ip'   => $ip,
+            'url'  => self::rebuild($host, $parts),
+        ];
+    }
+
+    /**
+     * check() 의 ①②④ — 네트워크·DB 가 한 줄도 없는 순수 판정 (F-70 에서 떼어 냄, 순서·사유 그대로).
+     * 통과하면 [정규화 호스트, parse_url 결과]. 실패는 FetchDenied(bad_request · host_not_allowed · scheme · port).
+     *
+     * @return array{0:string, 1:array<string,mixed>}
+     */
+    private static function parseTarget(string $url): array
+    {
         if (strlen($url) > self::MAX_URL_BYTES) {
             throw new FetchDenied('bad_request');
         }
@@ -303,16 +339,15 @@ final class Fetch
             throw new FetchDenied('host_not_allowed', null, $host);
         }
 
-        // ③ 화이트리스트 — 정확 일치만. 목록이 비면 어떤 호스트도 통과하지 못한다.
-        //   F-46: 리다이렉트 다음 단계에 한해 공급자의 내려받기 호스트도 통과시킨다
-        //   (첫 요청은 $downloadProvider 가 null 이라 이 곁길이 열리지 않는다).
-        if (!in_array($host, self::allowedHosts(), true)
-            && !self::providerHostAllowed($downloadProvider, $host)
-        ) {
-            throw new FetchDenied('host_not_allowed', null, $host);
-        }
+        return [$host, $parts];
+    }
 
-        // ⑤ DNS 해석 — A/AAAA 가 하나도 없거나, 하나라도 내부망이면 거부
+    /**
+     * ⑤ DNS 해석 — A/AAAA 가 하나도 없거나 **하나라도** 내부망이면 거부, 통과하면 접속에 고정할 첫 IP.
+     * check()(URL 가져오기)와 pushSend()(F-70)가 같은 함수를 쓴다.
+     */
+    private static function publicIpOf(string $host): string
+    {
         $ips = self::resolve($host);
         if ($ips === []) {
             throw new FetchDenied('private_ip', null, $host);
@@ -322,12 +357,179 @@ final class Fetch
                 throw new FetchDenied('private_ip', null, $host);
             }
         }
+        return $ips[0];
+    }
 
-        return [
-            'host' => $host,
-            'ip'   => $ips[0],
-            'url'  => self::rebuild($host, $parts),
-        ];
+    /* ─── F-70 — 푸시 서버로 보내기 (지시서 docs/f70-push-alerts-directive.md B · E-1, ARCH 5.32, SECURITY R-99) ───
+     *
+     * 이 파일의 두 번째 바깥 통로다. 뼈대는 URL 가져오기와 **같다** — 위의 parseTarget(①②④) · resolve + isPrivate(⑤) ·
+     * CURLOPT_RESOLVE(⑥) · 3xx = 실패(⑦, 따라가지 않는다) · 연결 3초/전체 10초(⑧)를 그대로 쓴다. 다른 것 넷:
+     *   ③ 허용 호스트는 **코드 상수 PUSH_HOSTS** 정확 일치다 — 표 `fetch_hosts` 와 따로다(L-4). 관리자 화면·`.env` 로
+     *     넓힐 수 없고, 넓히려면 이 줄을 고쳐 검토를 받아야 한다. 하위 도메인이 바뀌는 Edge(`*.notify.windows.com`)는 뺐다.
+     *   ⑧ 보내는 본문 ≤ 4KB(PUSH_MAX_BODY) · **응답 본문은 읽어 버린다**(최대 8KB — 넘으면 끊는다, 가져온 것이 없다 ⑨)
+     *   ⑩ 돌려주는 것은 **상태 코드 하나**뿐이다. 응답 머리·본문은 한 글자도 밖으로 나가지 않는다.
+     *   ⑬ 이 함수는 `Db`·`Env` 를 쓰지 않는다 — 보내는 배치(OS 계정 tbox-push)는 `.env` 를 읽지 않는다(구현 기록 3).
+     * 권한·속도 제한·감사는 부르는 쪽(scripts/alert_push.php)의 몫이다. **웹 요청 처리 중에는 부르지 않는다**(원칙 1 —
+     * 새 핸들러에 `Fetch::` 0, tests/f70.sh T3).
+     */
+
+    /** 푸시 서버 허용 목록 — 정확 일치만 (L-4 기본: 안드로이드 Chrome · 아이폰 Safari · Firefox) */
+    public const PUSH_HOSTS = [
+        'fcm.googleapis.com',
+        'web.push.apple.com',
+        'updates.push.services.mozilla.com',
+    ];
+
+    /** 받기 주소(endpoint) 길이 상한 — D 표 `endpoint TEXT(≤1024)` */
+    public const PUSH_MAX_ENDPOINT = 1024;
+
+    /** 보내는 본문 상한 (E-1 ⑧) — 암호화 본문은 1KB 내용 + 103바이트라 여유가 있다 */
+    public const PUSH_MAX_BODY = 4096;
+
+    /** 응답 본문을 읽어 버리는 상한 (E-1 ⑧) — 넘으면 전송을 끊고 too_large */
+    public const PUSH_MAX_RESPONSE = 8192;
+
+    /** 푸시 요청에 실을 수 있는 머리 이름 (C장 5) — 이 밖의 이름은 거부한다 */
+    private const PUSH_HEADER_NAMES = ['TTL', 'Urgency', 'Content-Encoding', 'Authorization'];
+
+    /** 상대 서버 로그에 남는 이름 */
+    private const PUSH_USER_AGENT = 'qaredi-push/1';
+
+    /** 푸시 서버가 준 Retry-After 를 따르는 상한 (초) — 그 이상 기다리라고 해도 한 시간 뒤에는 다시 본다 */
+    public const PUSH_MAX_RETRY_AFTER = 3600;
+
+    /**
+     * 받기 주소 검사 — **네트워크 없음**(등록 창구와 보내기 둘 다 쓴다, D 표 POST 행 「①②④ + PUSH_HOSTS 정확 일치」).
+     * 웹 요청이 부를 때 DNS 도 묻지 않는다(웹은 밖으로 나가지 않는다 — 원칙 1). 통과하면 다시 조립한 주소.
+     *
+     * @return array{host:string, url:string}
+     */
+    public static function pushEndpoint(string $url): array
+    {
+        if (strlen($url) > self::PUSH_MAX_ENDPOINT) {
+            throw new FetchDenied('bad_request');
+        }
+        [$host, $parts] = self::parseTarget($url);
+        if (!in_array($host, self::PUSH_HOSTS, true)) {
+            throw new FetchDenied('host_not_allowed', null, $host);
+        }
+        return ['host' => $host, 'url' => self::rebuild($host, $parts)];
+    }
+
+    /**
+     * 응답 머리 `Retry-After` 값 → 기다릴 초(0 ~ PUSH_MAX_RETRY_AFTER). 초 수(delta-seconds)와 HTTP 날짜 둘 다 받는다(RFC 9110 10.2.3).
+     * 모양이 아니면 null — 부르는 쪽이 자기 기본 간격을 쓴다. 네트워크 없음(순수 계산).
+     */
+    public static function retryAfterSeconds(string $value, int $now): ?int
+    {
+        $v = trim($value);
+        if ($v === '' || strlen($v) > 64) {
+            return null;
+        }
+        if (preg_match('/^[0-9]{1,10}$/', $v) === 1) {
+            return min((int) $v, self::PUSH_MAX_RETRY_AFTER);
+        }
+        if (preg_match('/^[A-Za-z]{3}, [0-9]{2} [A-Za-z]{3} [0-9]{4} [0-9]{2}:[0-9]{2}:[0-9]{2} GMT$/', $v) !== 1) {
+            return null;
+        }
+        $t = strtotime($v);
+        if ($t === false) {
+            return null;
+        }
+        return max(0, min($t - $now, self::PUSH_MAX_RETRY_AFTER));
+    }
+
+    /**
+     * 푸시 서버에 한 번 POST 한다 (RFC 8030 5장). 돌려주는 것은 `{status, host, retry_after}` 뿐이다
+     * (`retry_after` = 응답 머리 Retry-After 를 초로 — 상한 PUSH_MAX_RETRY_AFTER, 없거나 모양이 아니면 null).
+     *
+     * 거부·실패는 FetchDenied: host_not_allowed · scheme · port · bad_request(주소·머리·본문 모양) · private_ip ·
+     * redirect(3xx — 따라가지 않는다) · too_large(보내는 본문 4KB 초과 · 응답 본문 8KB 초과) · fetch_failed(연결·TLS·시간).
+     *
+     * @param array<string,string> $headers 이름 → 값. PUSH_HEADER_NAMES 밖 이름·줄바꿈 섞인 값은 거부
+     * @return array{status:int, host:string, retry_after:?int}
+     */
+    public static function pushSend(string $endpoint, array $headers, string $body): array
+    {
+        if (strlen($body) > self::PUSH_MAX_BODY) {
+            throw new FetchDenied('too_large');
+        }
+        $checked = self::pushEndpoint($endpoint);
+        $host = $checked['host'];
+
+        $lines = ['Content-Type: application/octet-stream'];
+        foreach ($headers as $name => $value) {
+            if (!in_array($name, self::PUSH_HEADER_NAMES, true)
+                || !is_string($value) || $value === '' || strlen($value) > 2048
+                || preg_match('/[\x00-\x1f\x7f]/', $value) === 1
+            ) {
+                throw new FetchDenied('bad_request', null, $host);
+            }
+            $lines[] = $name . ': ' . $value;
+        }
+
+        // ⑤ 보낼 때마다 다시 푼다 — 등록 때 통과했어도 지금 내부망으로 풀리면 거부
+        $ip = self::publicIpOf($host);
+
+        $received = 0;
+        $retryAfter = null;
+        $now = time();
+        $ch = curl_init($checked['url']);
+        if ($ch === false) {
+            throw new FetchDenied('fetch_failed', null, $host);
+        }
+        curl_setopt_array($ch, [
+            CURLOPT_PROTOCOLS       => CURLPROTO_HTTPS,
+            CURLOPT_REDIR_PROTOCOLS => 0,
+            CURLOPT_FOLLOWLOCATION  => false,                                    // ⑦
+            CURLOPT_RESOLVE         => [$host . ':' . self::PORT . ':' . $ip],   // ⑥
+            CURLOPT_CONNECTTIMEOUT  => self::CONNECT_TIMEOUT,                    // ⑧ 3초
+            CURLOPT_TIMEOUT         => self::TIMEOUT,                            // ⑧ 10초
+            CURLOPT_SSL_VERIFYPEER  => true,
+            CURLOPT_SSL_VERIFYHOST  => 2,
+            CURLOPT_USERAGENT       => self::PUSH_USER_AGENT,
+            CURLOPT_FORBID_REUSE    => true,
+            CURLOPT_POST            => true,
+            CURLOPT_POSTFIELDS      => $body,
+            CURLOPT_HTTPHEADER      => $lines,
+            // 응답 머리는 Retry-After 한 개만 읽는다(상태 코드는 curl_getinfo 로). 새 응답의 첫 줄이면 앞 응답(100 Continue 등)의 값을 버린다
+            CURLOPT_HEADERFUNCTION  => static function ($handle, string $header) use (&$retryAfter, $now): int {
+                if (strncasecmp($header, 'HTTP/', 5) === 0) {
+                    $retryAfter = null;
+                } elseif (strncasecmp($header, 'Retry-After:', 12) === 0) {
+                    $retryAfter = self::retryAfterSeconds(substr($header, 12), $now);
+                }
+                return strlen($header);
+            },
+            // ⑧ 응답 본문은 **세기만 하고 버린다**. 8KB 를 넘으면 0 을 돌려 전송을 끊는다(CURLE_WRITE_ERROR)
+            CURLOPT_WRITEFUNCTION   => static function ($handle, string $chunk) use (&$received): int {
+                $received += strlen($chunk);
+                return $received > self::PUSH_MAX_RESPONSE ? 0 : strlen($chunk);
+            },
+        ]);
+
+        $ok     = curl_exec($ch);
+        $errno  = curl_errno($ch);
+        $status = (int) curl_getinfo($ch, CURLINFO_RESPONSE_CODE);
+        curl_close($ch);
+
+        if ($ok === false) {
+            if ($errno === CURLE_WRITE_ERROR && $received > self::PUSH_MAX_RESPONSE) {
+                throw new FetchDenied('too_large', $status !== 0 ? $status : null, $host);
+            }
+            // curl 문구에는 주소가 섞일 수 있다(받기 토큰) — 번호와 호스트만 남긴다 (금지 패턴: endpoint 를 로그에)
+            error_log(sprintf(
+                '[tbox] request_id=%s alert.push curl errno=%d host=%s',
+                defined('TBOX_REQUEST_ID') ? (string) constant('TBOX_REQUEST_ID') : '-',
+                $errno,
+                $host
+            ));
+            throw new FetchDenied('fetch_failed', $status !== 0 ? $status : null, $host);
+        }
+        if ($status >= 300 && $status < 400) {
+            throw new FetchDenied('redirect', $status, $host);                  // ⑦ 따라가지 않는다
+        }
+        return ['status' => $status, 'host' => $host, 'retry_after' => $retryAfter];
     }
 
     /**

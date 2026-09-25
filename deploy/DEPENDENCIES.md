@@ -104,6 +104,24 @@ bash scripts/vendor_prosemirror.sh --verify   # 받지만 쓰지 않는다 — �
 
 PostgreSQL 확장도 설치하지 않는다 — UUID 는 PostgreSQL 13+ 내장 `gen_random_uuid()` 로 충분하므로 `pgcrypto` 가 필요 없다.
 
+### 4.2 밖으로 나가는 서비스 — 웹 푸시 서버 세 곳 (F-70, 2026-09-24 · 지시서 L-4 · SECURITY R-99)
+
+라이브러리가 아니라 **서버가 요청을 보내는 바깥 회사**다. 코드 의존성은 0 이다 — 암호화(RFC 8291)·서명(RFC 8292)은
+PHP 내장 openssl·hash 로 `src/WebPush.php` 가, 보내기는 `src/Fetch.php` 의 `pushSend()` 가 한다(curl 은 그 파일에만).
+허용 목록은 **코드 상수** `Fetch::PUSH_HOSTS` 이고 표 `fetch_hosts` 와 따로다(화면에서 넓힐 수 없다). 보내는 것은 cron 배치
+`scripts/alert_push.php`(OS 계정 tbox-push) 하나뿐이고, 웹 요청 처리 중에는 한 번도 나가지 않는다.
+
+| 서비스 | 호스트(정확 일치, 443 · https 만) | 누가 쓰나 | 보내는 것 | 그쪽에 보이는 것 |
+|---|---|---|---|---|
+| Google FCM (Web Push) | `fcm.googleapis.com` | 안드로이드 Chrome 의 받기 | 기기 키로 암호화한 내용(≤ 1KB) + VAPID 서명(JWT: `aud` 스킴+호스트 · `exp` 12시간 · `sub` = 사이트 주소) | 보낸 시각·횟수·크기·서버 IP·사이트 주소(`sub`). **내용은 못 읽는다**(RFC 8291) |
+| Apple Web Push | `web.push.apple.com` | 아이폰 Safari(홈 화면 앱, iOS 16.4+) | 같음 | 같음 |
+| Mozilla Push | `updates.push.services.mozilla.com` | Firefox | 같음 | 같음 |
+
+- 빼는 것: Microsoft Edge(`*.notify.windows.com` — 하위 도메인이 바뀌어 정확 일치가 안 된다, L-4).
+- 멈추면: 알림만 안 온다. 경보 자체는 `alerts.log`·감사·관리자 화면에 그대로 남는다(푸시는 덧붙은 전달 경로).
+  24시간 동안 살아 있는 받기 전부가 실패하거나, 보내는 배치가 15분 넘게 돌지 못하면 경보 AL-22(system).
+- 방화벽(아웃바운드 443 만 — S-05 ⑫)은 **없다** — L-8 결정으로 R-22 와 함께 따로 계획. 그동안 코드 잠금 한 겹(R-99).
+
 ## 5. 시스템 계정 · 경로
 
 | 항목 | 값 | 권한 |
@@ -123,7 +141,10 @@ PostgreSQL 확장도 설치하지 않는다 — UUID 는 PostgreSQL 13+ 내장 `
 | 경보 상태·해시 체인 (9단계) | `/var/lib/tbox-v2/alerts-state.json`, `/var/lib/tbox-v2/audit-chain.txt` | 0600 root |
 | cron 일정 (9단계) | `/etc/cron.d/tbox-v2` (`deploy/cron.d/tbox-v2` 복사, 실행 계정 root) | 0644 root |
 | TLS | `/etc/ssl/tbox/{fullchain,privkey}.pem` | privkey 0640 root:www-data |
-| DB 역할 | `tbox_owner`(소유), `tbox_app`(런타임 최소 권한), `tbox_backup`(**SELECT 만**, 9단계) | `db/grants.sql` |
+| DB 역할 | `tbox_owner`(소유), `tbox_app`(런타임 최소 권한), `tbox_backup`(**SELECT 만**, 9단계), `tbox_push`(F-70 보내는 배치 — 받기·대기표·`users` 세 칸·`audit_logs` INSERT 만, 문장 15s·유휴 트랜잭션 60s) | `db/grants.sql` · `db/migrations/2026-09-30_f70_push.sql` |
+| 휴대폰 경보 보내는 계정 (F-70, L-3) | `tbox-push` (system, nologin, 홈 `/var/lib/tbox-push`, 무리 `tbox-push` 하나 — sudo·adm 없음). `/var/log/tbox-v2`·`/etc/tbox-v2` 에 **통과(x) ACL 만** — alerts.log 읽기 · app.log·audit.log·.env·다른 비밀 파일 못 읽음 | cron `alert_push.php` 매분 |
+| 휴대폰 경보 설정·비밀 (F-70) | `/etc/tbox-v2/push.conf`(비밀 없음) · `/etc/tbox-v2/push.pgpass`(tbox_push 비밀번호) · `/etc/tbox-v2/vapid-private.pem`(VAPID 비밀 키) · `/etc/tbox-v2/vapid-public.txt`(공개 키 — 웹이 낸다) | root 0644 · tbox-push 0600 · tbox-push 0600 · root 0644 |
+| 휴대폰 경보 상태·감사 사본 (F-70) | `/var/lib/tbox-push/alert-push-state.json`(읽기 위치·대기 — 받기 번호·개수만) · `/var/log/tbox-push/audit.log`(자기 감사 사본, 구현 기록 4) · `/var/log/tbox-push/error.log`(배치 오류 기록 — 설정 오류·예외, 값 없음) | 0700·0600 tbox-push · 0750·0640 tbox-push |
 
 ### 5.1 쓰는 외부 도구 (배포판 기본 패키지, 4단계 추가 · 9단계 확장)
 
@@ -150,7 +171,8 @@ PostgreSQL 확장도 설치하지 않는다 — UUID 는 PostgreSQL 13+ 내장 `
 | `pg_dump`/`pg_restore` | `postgresql-client-14` (DB 와 함께 설치됨) | `backup_db.sh`·`verify_backup.sh`·`restore.sh` | DB 전체 백업(`-Fc`)과 복구·목록 검증 | `pg_dump --version` |
 | `cron` | `cron` (기본, 서비스 active) | `/etc/cron.d/tbox-v2` (`deploy/cron.d/tbox-v2` 를 install.sh 가 복사) | 백업·정리·검증·정합성·체인·경보 일정 (ARCH 11.1) | `cat /etc/cron.d/tbox-v2` |
 | `systemd-timesyncd` | `systemd` (기본, NTP active) | 시각 동기화 | 감사 로그 시각 정합성 (PRD S-10-A) | `timedatectl` |
-| `openssl` | `openssl` (기본) | `deploy/install.sh` | 백업 키·DB 비밀번호 난수 생성 | `openssl version` |
+| `openssl` | `openssl` (기본) | `deploy/install.sh` · 반영 스크립트 `apply-f70-host` | 백업 키·DB 비밀번호 난수 생성 · **F-70 VAPID 키 한 쌍**(`openssl ecparam -name prime256v1` — 비밀 키는 파일로만) | `openssl version` |
+| `setfacl`·`getfacl` | `acl` 2.3.1-1 — **설치됨 2026-09-25**(사용자 확정 d39, 배포판 패키지 `apt-get install acl`). F-70 반영에 필요 | 반영 스크립트 `apply-f70-host` · `deploy/install.sh` 6-3 | 보내는 계정 tbox-push 에게 `/var/log/tbox-v2`·`/etc/tbox-v2` **통과(x)만** 준다(`setfacl -m u:tbox-push:x`). adm 무리에 넣으면 auth.log·app.log 까지 읽혀 L-3 결정으로 뺐다. 없으면 반영 스크립트는 멈춘다(exit 1) — ACL 이진 형식을 손으로 쓰는 우회는 두지 않는다(구현 기록 9) | `getfacl -p /var/log/tbox-v2` 에 `user:tbox-push:--x` |
 | `sha256sum` | `coreutils` (기본) | 백업 체크섬 | PRD S-08 "백업마다 SHA-256 체크섬 기록, 매일 검증" | `sha256sum --version` |
 
 ### 5.3 문서가 요구했지만 **쓰지 않기로 한** 도구 (9단계 결정, 2026-09-11)

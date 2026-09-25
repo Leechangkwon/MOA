@@ -4,6 +4,7 @@ declare(strict_types=1);
 /**
  * scripts/alerts.php — 감사 로그를 5분마다 훑어 경보 규칙을 판정한다 (9단계)
  *   PRD 7.11 S-11-A (AL-1 · AL-2 · AL-5 · AL-7 · AL-10 · AL-12 · AL-13 · AL-18 · AL-19 · AL-20 · AL-21 · 서버 층 AL-3 · AL-9)
+ *   휴대폰 경보 전달 실패 AL-22 (PRD F-70 · 지시서 docs/f70-push-alerts-directive.md E-3, ARCH 11.4 — 받기 표의 fail_since, origin system)
  *   실행 파일이 든 압축본 AL-21 (PRD F-65 ⑤ · 7.11, ARCH 5.29 · 11.4 — `file.upload_exec allow` 1건이라도 즉시)
  *   개인 프로그램 토큰 AL-20 (PRD F-59 ⑦, ARCH 4.6 · 11.4 — `api_token.issue allow` 1건이라도 즉시)
  *   악성코드 AL-19 (PRD F-54 ④, ARCH 5.28 · 11.4 — `file.scan deny infected` 1건이라도 즉시)
@@ -58,10 +59,20 @@ declare(strict_types=1);
  */
 
 require_once __DIR__ . '/lib/cli_bootstrap.php';
+// F-70 — 줄 로그를 오프셋으로 이어 읽는 한 벌(회전·잘림 규칙). 보내는 배치 alert_push.php 도 같은 파일을 쓴다.
+require_once __DIR__ . '/lib/log_tail.php';
 
 const STATE_FILE     = '/var/lib/tbox-v2/alerts-state.json';
 /** 같은 규칙·같은 대상은 이 시간 안에 다시 발동하지 않는다 (분) */
 const DEDUP_MINUTES  = 30;
+/** AL-22 만 더 길게 (분) — 휴대폰 경보가 막힌 동안 같은 줄이 하루에 몇 번씩 쌓이지 않게 */
+const AL22_DEDUP_MINUTES = 360;
+/** F-70 보내는 배치의 설정 — 이 파일이 있으면 휴대폰 경보가 켜진 것이다(없으면 AL-22 의 배치 확인은 조용) */
+const AL22_PUSH_CONF = '/etc/tbox-v2/push.conf';
+/** 보내는 배치가 매 실행 다시 쓰는 상태 파일 이름(설정의 STATE_DIR 아래 — scripts/alert_push.php 와 같은 이름) */
+const AL22_PUSH_STATE_NAME = 'alert-push-state.json';
+/** 상태 파일이 이만큼 그대로면 배치가 돌지 못하는 것으로 본다 (분 — cron 은 매분) */
+const AL22_STALE_MINUTES = 15;
 
 /** 서버 층 규칙이 읽는 인증 로그 (16-2). 회전된 직전 파일까지 본다 */
 const AUTH_LOG       = '/var/log/auth.log';
@@ -168,14 +179,15 @@ $fired = 0;
 $raise = function (string $rule, string $subject, array $evidence, array $origin) use (
     &$state, &$stateChanged, &$fired, $now, $dryRun
 ): void {
-    $windowMinutes = DEDUP_MINUTES;
+    $windowMinutes = $rule === 'AL-22' ? AL22_DEDUP_MINUTES : DEDUP_MINUTES;
     $originNote = ' origin=' . $origin['origin']
         . ($origin['origin_hint'] === null ? '' : ' hint=' . $origin['origin_hint']);
 
     $key  = $rule . '|' . $subject;
     $last = isset($state[$key]) ? strtotime($state[$key]) : false;
     if ($last !== false && ($now - $last) < $windowMinutes * 60) {
-        cli_say(sprintf('  %s %s — %d분 안에 이미 발동해 건너뛴다', $rule, $subject, $windowMinutes));
+        cli_say(sprintf('  %s %s — %s 안에 이미 발동해 건너뛴다', $rule, $subject,
+            $windowMinutes % 60 === 0 && $windowMinutes >= 120 ? intdiv($windowMinutes, 60) . '시간' : $windowMinutes . '분'));
         return;
     }
     if ($dryRun) {
@@ -276,77 +288,29 @@ function al_read_auth_log(?string $override, array $pos): array
         ];
     }
 
-    if (!is_readable(AUTH_LOG)) {
+    // 회전·잘림 규칙은 scripts/lib/log_tail.php 한 벌이다(F-70 — 보내는 배치가 alerts.log 에 같은 함수를 쓴다).
+    // 옛 동작을 바꾸지 않도록 줄 단위로 끊지 않는다(wholeLines=false — 16-2 부터의 모양 그대로).
+    $tail = log_tail_read(AUTH_LOG, AUTH_LOG_PREV, $pos, AUTH_LOG_MAX_BYTES, false);
+    if (!$tail['ok']) {
         // 0640 syslog:adm — root 가 아니면 여기서 끝난다 (cron 은 root 로 돈다)
-        return ['reason' => 'permission'] + $empty;
-    }
-
-    $stat = @stat(AUTH_LOG);
-    if (!is_array($stat)) {
-        return ['reason' => 'unreadable'] + $empty;
-    }
-    $inode = (int) $stat['ino'];
-    $size  = (int) $stat['size'];
-
-    $lines  = [];
-    $offset = $pos['offset'];
-
-    if ($inode !== $pos['inode']) {
-        // 회전됐거나 첫 실행이다. 직전 파일의 남은 꼬리를 먼저 읽어 둔다(있으면).
-        if ($pos['inode'] !== 0 && $pos['offset'] > 0 && is_readable(AUTH_LOG_PREV)) {
-            $prevStat = @stat(AUTH_LOG_PREV);
-            if (is_array($prevStat) && (int) $prevStat['ino'] === $pos['inode']
-                && (int) $prevStat['size'] > $pos['offset']
-            ) {
-                $tail = file_get_contents(
-                    AUTH_LOG_PREV,
-                    false,
-                    null,
-                    $pos['offset'],
-                    min(AUTH_LOG_MAX_BYTES, (int) $prevStat['size'] - $pos['offset'])
-                );
-                if ($tail !== false) {
-                    $lines = al_split_lines($tail);
-                }
-            }
-        }
-        $offset = 0;
-    } elseif ($size < $offset) {
-        // 잘렸다(truncate). 처음부터 다시 읽는다.
-        $offset = 0;
-    }
-
-    if ($size > $offset) {
-        $take = min(AUTH_LOG_MAX_BYTES, $size - $offset);
-        $text = file_get_contents(AUTH_LOG, false, null, $offset, $take);
-        if ($text === false) {
-            return ['reason' => 'unreadable'] + $empty;
-        }
-        $lines  = array_merge($lines, al_split_lines($text));
-        $offset += $take;
+        return ['reason' => $tail['reason']] + $empty;
     }
 
     return [
         'ok'      => true,
         'reason'  => '',
-        'lines'   => $lines,
-        'inode'   => $inode,
-        'offset'  => $offset,
+        'lines'   => $tail['lines'],
+        'inode'   => $tail['inode'],
+        'offset'  => $tail['offset'],
         'advance' => true,
         'path'    => AUTH_LOG,
     ];
 }
 
-/** 읽은 덩어리를 줄 단위로 자른다 (빈 줄은 버린다) */
+/** 읽은 덩어리를 줄 단위로 자른다 (빈 줄은 버린다) — scripts/lib/log_tail.php 와 한 벌 */
 function al_split_lines(string $text): array
 {
-    $out = [];
-    foreach (preg_split('/\r?\n/', $text) ?: [] as $line) {
-        if (is_string($line) && $line !== '') {
-            $out[] = $line;
-        }
-    }
-    return $out;
+    return log_tail_split($text);
 }
 
 /** 로그 줄 앞의 시각 표기만 떼어 낸다 (`Sep 12 16:32:01` 또는 RFC3339). 없으면 빈 문자열 */
@@ -836,6 +800,119 @@ if ($want('AL-21')) {
         ], Origin::ofGroup(al_accounts($r['accounts']), al_bool($r['all_marked'])));
     }
     cli_say(sprintf('AL-21 대상 %d건', count($rows)));
+}
+
+// ─────────────────────────────────────────────────────────────
+// AL-22 — 휴대폰 경보가 막혔다 (F-70 지시서 E-3 · L-5, ARCH 11.4 · 5.32, SECURITY R-99). origin `system`. 대상(subject) 셋:
+//   push      살아 있는 받기 **전부**에 24시간 동안 전달 성공(2xx)이 한 번도 없다. 재료는 받기 표 `alert_push_subscriptions`
+//             의 `fail_since`(연속 실패가 시작된 시각 — 성공하면 NULL, 보내는 배치가 적는다)뿐이다. 조용한 날(보낼 경보가
+//             없어 시도 자체가 없는 날)은 `fail_since` 가 비어 있으므로 경보가 나지 않는다 — 「보내 봤는데 안 됐다」만 센다.
+//   stale     보내는 배치가 돌지 못한다 — 설정(push.conf)이 있는데 배치의 상태 파일이 15분 넘게 그대로다(배치는 매 실행
+//             그 파일을 다시 쓴다). 설정 오류·DB 비밀번호·치명 오류로 배치가 시작조차 못 하면 받기 표에 흔적이 없어
+//             위 push 로는 보이지 않는다. 상태 파일이 아직 없으면 설정 파일의 시각부터 센다. 설정 전(파일 없음)이면 조용하다.
+//   recovered 앞 실행까지 push·stale 가운데 하나라도 참이었는데 지금 둘 다 아니면 **한 줄만**(상태 키 `AL-22|down`).
+//   ★ 왜 보내는 배치가 아니라 여기서 판정하나: 경보 줄은 `alerts.log`(root 0644)에 쓰는데, 보내는 계정 tbox-push 는
+//     그 파일을 **읽기만** 한다(L-3 — 폴더 통과 ACL 만). 판정은 늘 경보를 쓰던 이 배치(root)에 둔다. 앱 계정 tbox_app 은
+//     그 표에 SELECT 가 있다(D 표). 이 줄은 다음 실행의 보내는 배치가 다시 보내 본다.
+//   중복 억제는 이 규칙만 6시간(AL22_DEDUP_MINUTES — 키 `AL-22|push` · `AL-22|stale` · `AL-22|recovered`).
+//   표가 아직 없거나(마이그레이션 전) 읽을 권한이 없으면 push 만 건너뛴다 — 나머지 규칙은 그대로 돈다.
+//   근거에는 받기 **개수**·시각·분만 담는다 — 주소(endpoint)·키·기기 이름·파일 경로는 담지 않는다(F-70 금지 패턴).
+// ─────────────────────────────────────────────────────────────
+
+/**
+ * 보내는 배치 설정에서 상태 폴더(STATE_DIR) 한 줄만 읽는다 — 설정 전체를 Env 로 싣지 않는다(이 배치의 .env 값과 섞이지 않게).
+ * 파일이 없거나 읽을 수 없거나 줄 모양이 아니면 null (= 휴대폰 경보가 아직 설정되지 않았다).
+ */
+function al_push_state_dir(string $confPath): ?string
+{
+    if (!is_file($confPath) || !is_readable($confPath)) {
+        return null;
+    }
+    $text = file_get_contents($confPath, false, null, 0, 65536);
+    if (!is_string($text) || preg_match('/^STATE_DIR=(\/[A-Za-z0-9._\/-]{1,255})$/m', $text, $m) !== 1 || strpos($m[1], '..') !== false) {
+        return null;
+    }
+    return $m[1];
+}
+
+if ($want('AL-22')) {
+    $al22Down = false;
+
+    // stale — 보내는 배치가 돌고 있나
+    $pushStateDir = al_push_state_dir(AL22_PUSH_CONF);
+    if ($pushStateDir === null) {
+        cli_say('AL-22 보내는 배치 — 설정 전(push.conf 없음) · 확인하지 않는다');
+    } else {
+        clearstatcache();
+        $pushState = $pushStateDir . '/' . AL22_PUSH_STATE_NAME;
+        $hasState = is_file($pushState);
+        $ref = $hasState ? filemtime($pushState) : filemtime(AL22_PUSH_CONF);
+        $age = $ref === false ? PHP_INT_MAX : max(0, $now - $ref);
+        if ($age > AL22_STALE_MINUTES * 60) {
+            $al22Down = true;
+            $raise('AL-22', 'stale', [
+                'rule_text'  => '휴대폰 경보를 보내는 배치가 15분 넘게 돌지 못함 — 상태 파일이 그대로',
+                'state_file' => $hasState ? 'unchanged' : 'missing',
+                'minutes'    => $ref === false ? null : intdiv($age, 60),
+                'window'     => AL22_STALE_MINUTES . ' minutes',
+            ], Origin::ofFixedRule('AL-22'));
+        }
+        cli_say(sprintf('AL-22 보내는 배치 상태 파일 — %s · %s', $hasState ? '있음' : '없음(설정 파일 시각부터)',
+            $ref === false ? '시각을 읽지 못함' : intdiv($age, 60) . '분 전'));
+    }
+
+    // push — 살아 있는 받기 전부가 24시간 실패
+    $pushTable = $db->run(
+        "SELECT to_regclass('public.alert_push_subscriptions') IS NOT NULL AS has_table"
+    )->fetch();
+    $pushReadable = false;
+    if (is_array($pushTable) && al_bool($pushTable['has_table'])) {
+        $pushPriv = $db->run(
+            "SELECT has_table_privilege('public.alert_push_subscriptions', 'SELECT') AS can_read"
+        )->fetch();
+        $pushReadable = is_array($pushPriv) && al_bool($pushPriv['can_read']);
+    }
+    if (!$pushReadable) {
+        cli_say('AL-22 건너뜀 (휴대폰 경보 받기 표가 없거나 읽을 수 없다 — F-70 반영 전)');
+    } else {
+        $r = $db->run(
+            "SELECT count(*) AS alive,
+                    count(*) FILTER (WHERE fail_since IS NOT NULL
+                                       AND fail_since <= now() - interval '24 hours') AS failing,
+                    min(fail_since) AS since
+               FROM alert_push_subscriptions
+              WHERE revoked_at IS NULL"
+        )->fetch();
+        $alive   = is_array($r) ? (int) $r['alive'] : 0;
+        $failing = is_array($r) ? (int) $r['failing'] : 0;
+        if ($alive > 0 && $failing === $alive) {
+            $al22Down = true;
+            $raise('AL-22', 'push', [
+                'rule_text'     => '경보를 휴대폰으로 보내는 일이 24시간 동안 실패 — 살아 있는 받기 전부',
+                'subscriptions' => $alive,
+                'failing_since' => (string) ($r['since'] ?? ''),
+                'window'        => '24 hours',
+            ], Origin::ofFixedRule('AL-22'));
+        }
+        cli_say(sprintf('AL-22 살아 있는 받기 %d개 · 24시간 넘게 실패 중 %d개', $alive, $failing));
+    }
+
+    // recovered — 막혀 있다가 풀렸으면 한 줄. 막힌 동안은 표시를 매 실행 새로 적는다(7일 지난 상태 키를 버리는 규칙에 걸리지 않게)
+    $downKey = 'AL-22|down';
+    if ($al22Down) {
+        if (!$dryRun) {
+            $state[$downKey] = date('c', $now);
+            $stateChanged = true;
+        }
+    } elseif (isset($state[$downKey])) {
+        $raise('AL-22', 'recovered', [
+            'rule_text' => '휴대폰 경보 전달 복구 — 보내는 배치가 다시 돌고 받기 전부가 24시간 실패 상태가 아님',
+        ], Origin::ofFixedRule('AL-22'));
+        if (!$dryRun) {
+            unset($state[$downKey]);
+            $stateChanged = true;
+        }
+    }
 }
 
 // ─────────────────────────────────────────────────────────────

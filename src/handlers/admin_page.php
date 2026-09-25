@@ -81,6 +81,13 @@ require __DIR__ . '/../views/shell_top.php';
           <span class="card__desc">「URL 로 가져오기」가 접속할 수 있는 사이트를 정합니다</span>
         </span>
       </a>
+      <a class="card card--link" href="<?= Http::url('/alerts-app') ?>">
+        <span class="card__icon"><span class="icon" data-icon="bell"></span></span>
+        <span class="card__body">
+          <strong class="card__title">휴대폰 경보</strong>
+          <span class="card__desc">관리자 휴대폰에 경보 알림 받기 — 앱 설치·기기 등록·시험 알림</span>
+        </span>
+      </a>
       <a class="card card--link" href="<?= Http::url('/audit') ?>">
         <span class="card__icon"><span class="icon" data-icon="log"></span></span>
         <span class="card__body">

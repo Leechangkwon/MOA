@@ -15,6 +15,9 @@
 --     tbox_app 만 statement_timeout 15s · idle_in_transaction_session_timeout 60s
 --     (db/migrations/2026-09-29_app_role_timeouts.sql, 확인 `SELECT rolname, rolconfig FROM pg_roles WHERE rolname LIKE 'tbox\_%'`).
 --     tbox_owner · tbox_backup · tbox_perm 에는 걸지 않는다 — 마이그레이션·백업 pg_dump·권한 매트릭스 쓰기는 제한 밖이다.
+--     F-70 보내는 배치 역할 tbox_push 에도 같은 두 값을 건다(db/migrations/2026-09-30_f70_push.sql).
+--   · F-70 휴대폰 경보의 표 둘(alert_push_subscriptions · alert_push_outbox)과 역할 tbox_push 는 맨 아래 절 —
+--     표·역할이 **있을 때만** 권한을 건다(마이그레이션 전 DB 에서 이 파일을 돌려도 실패하지 않게).
 
 \set ON_ERROR_STOP on
 
@@ -148,3 +151,54 @@ REVOKE ALL ON teams, users, permissions, files, audit_logs, sessions, share_link
 REVOKE ALL ON ALL SEQUENCES IN SCHEMA public FROM tbox_perm;
 
 GRANT SELECT, UPDATE ON permissions TO tbox_perm;   -- ★ 이 한 줄이 전부. INSERT·DELETE 없음
+
+-- ─── F-70 휴대폰 경보 — 받기·시험 알림 대기표 · 보내는 배치 역할 tbox_push (지시서 docs/f70-push-alerts-directive.md D 표,
+--     ARCH 5.32 · 10장, SECURITY R-99). 표를 만드는 것과 역할 tbox_push(NOLOGIN)를 만드는 것은
+--     db/migrations/2026-09-30_f70_push.sql 이고, 이 절은 **같은 권한**을 다시 건다(재실행 시 과거 권한이 남지 않게 회수 뒤 GRANT).
+--
+--   tbox_app (웹)   받기 SELECT · INSERT(모양 칸만) · UPDATE(revoked_at·revoked_reason) — ★ DELETE 없음(해지 기록을 남긴다)
+--                   대기표 SELECT · INSERT(user_id 만) — 웹은 행을 넣기만 하고 보내지 않는다(웹 요청 중 외부 요청 0)
+--   tbox_push (배치) 받기 SELECT · UPDATE(last_ok_at·fail_count·fail_since·revoked_at·revoked_reason) · 대기표 SELECT · UPDATE(sent_at) ·
+--                   users (id, role, is_active) 열 SELECT · audit_logs INSERT 만(append-only) · CONNECT · 그 밖 0.
+--                   비밀번호·LOGIN 은 사용자 sudo 반영 스크립트가 정한다(비밀번호는 /etc/tbox-v2/push.pgpass 0600 tbox-push).
+--   tbox_backup     SELECT 만 · tbox_perm 0
+--   표가 아직 없으면(마이그레이션 전) 아무것도 하지 않고 NOTICE 만 남긴다.
+DO $$
+BEGIN
+    IF to_regclass('public.alert_push_subscriptions') IS NULL OR to_regclass('public.alert_push_outbox') IS NULL THEN
+        RAISE NOTICE 'F-70 표가 없다 — db/migrations/2026-09-30_f70_push.sql 을 먼저 돌린다(이 절은 건너뜀)';
+        RETURN;
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'tbox_push') THEN
+        RAISE EXCEPTION 'tbox_push 역할이 없다 — db/migrations/2026-09-30_f70_push.sql 이 먼저 만든다(NOLOGIN)';
+    END IF;
+
+    EXECUTE format('GRANT CONNECT ON DATABASE %I TO tbox_push', current_database());
+    GRANT USAGE ON SCHEMA public TO tbox_push;
+
+    REVOKE ALL ON public.alert_push_subscriptions, public.alert_push_outbox FROM tbox_app, tbox_push, tbox_backup, tbox_perm;
+    REVOKE ALL ON SEQUENCE public.alert_push_subscriptions_id_seq, public.alert_push_outbox_id_seq FROM tbox_app, tbox_push, tbox_backup, tbox_perm;
+
+    GRANT SELECT                                                      ON public.alert_push_subscriptions TO tbox_app;
+    GRANT INSERT (user_id, endpoint, host, p256dh, auth, device_hint) ON public.alert_push_subscriptions TO tbox_app;
+    GRANT UPDATE (revoked_at, revoked_reason)                         ON public.alert_push_subscriptions TO tbox_app;
+    GRANT USAGE, SELECT ON SEQUENCE public.alert_push_subscriptions_id_seq TO tbox_app;
+    GRANT SELECT                                                      ON public.alert_push_outbox TO tbox_app;
+    GRANT INSERT (user_id)                                            ON public.alert_push_outbox TO tbox_app;
+    GRANT USAGE, SELECT ON SEQUENCE public.alert_push_outbox_id_seq   TO tbox_app;
+
+    GRANT SELECT                                                                  ON public.alert_push_subscriptions TO tbox_push;
+    GRANT UPDATE (last_ok_at, fail_count, fail_since, revoked_at, revoked_reason) ON public.alert_push_subscriptions TO tbox_push;
+    GRANT SELECT                                                                  ON public.alert_push_outbox TO tbox_push;
+    GRANT UPDATE (sent_at)                                                        ON public.alert_push_outbox TO tbox_push;
+    -- users 는 세 칸만 — 비밀번호 해시·TOTP 비밀·이름 칸에는 닿지 않는다. 표 전체 권한을 먼저 걷고(재실행 대비) 칸만 준다
+    REVOKE ALL ON public.users FROM tbox_push;
+    GRANT SELECT (id, role, is_active)                                            ON public.users TO tbox_push;
+    REVOKE ALL ON public.audit_logs FROM tbox_push;
+    GRANT INSERT                                                                  ON public.audit_logs TO tbox_push;   -- ★ SELECT·UPDATE·DELETE 없음
+    GRANT USAGE ON SEQUENCE public.audit_logs_id_seq                              TO tbox_push;
+
+    GRANT SELECT ON public.alert_push_subscriptions, public.alert_push_outbox TO tbox_backup;
+    GRANT SELECT ON SEQUENCE public.alert_push_subscriptions_id_seq, public.alert_push_outbox_id_seq TO tbox_backup;
+END
+$$;

@@ -2655,6 +2655,70 @@
       "est_sec": 90,
       "writes_prod": false,
       "notes": "부르는 셸: tbox.qf4b1(P-4b). 단독 실행 불가(인자 SITE UA <페이지 UUID> <B 아이디> 와 SMOKE_E1·SMOKE_E2 환경 변수 — 쿠키는 환경 변수로만). 본문은 고치지 않는다(편집 모드에 들어갔다 완료만). 결과 줄 SMOKE_FAIL=n."
+    },
+    {
+      "id": "tbox.f70_webpush_vectors",
+      "cmd": "php tests/f70_webpush_vectors.php",
+      "module": "tbox",
+      "env": "static",
+      "status": "required",
+      "needs": [],
+      "covers": [
+        "src/WebPush.php"
+      ],
+      "requirements": [],
+      "risks": [
+        "R-99"
+      ],
+      "est_sec": 2,
+      "writes_prod": false,
+      "notes": "F-70 F70-T1(지시서 docs/f70-push-alerts-directive.md G 표 — PRD 12장에 T- 번호 없음). 순수 계산 — 네트워크·DB·파일 쓰기 0. RFC 8291 5장 예시·부록 A 중간값(RFC 공개 예시를 글자 그대로)으로 ecdh_secret·PRK_key·key_info·IKM·PRK·CEK·NONCE·86바이트 머리·암호문이 바이트 단위로 같은지, WebPush::encrypt 결과 = 5장 본문. 받는 쪽 풀기 · RFC 8292 2장 예시 JWT 서명을 예시 k 로 openssl_verify(r‖s → DER) · 실행 때 새로 만든 시험 키로 서명 200번 DER↔r‖s 왕복 · 받기 값 검사(64바이트·0x03·곡선 밖·x≥p·auth 15/17·모양 밖) · 내용 모양. 저장소에 우리 키 0."
+    },
+    {
+      "id": "tbox.f70",
+      "cmd": "bash tests/f70.sh",
+      "module": "tbox",
+      "env": "temp-instance",
+      "status": "required",
+      "needs": [
+        "sudo",
+        "browser",
+        "totp_wait"
+      ],
+      "covers": [
+        "src/WebPush.php",
+        "src/Fetch.php",
+        "src/Audit.php",
+        "src/Origin.php",
+        "public/index.php",
+        "scripts/alert_push.php",
+        "scripts/alerts.php",
+        "scripts/lib/log_tail.php",
+        "scripts/lib/push_bootstrap.php",
+        "scripts/vapid_keygen.php",
+        "db/migrations/2026-09-30_f70_push.sql",
+        "db/grants.sql",
+        "src/handlers/push_app_page.php",
+        "src/handlers/push_key.php",
+        "src/handlers/push_manifest.php",
+        "src/handlers/push_subscription_delete.php",
+        "src/handlers/push_subscriptions.php",
+        "src/handlers/push_sw.php",
+        "src/handlers/push_test.php",
+        "src/push/alerts-sw.js",
+        "public/assets/alerts-app.js",
+        "deploy/push.conf",
+        "deploy/cron.d/tbox-v2",
+        "review-scripts/apply-f70-host-2026-09-24.sh",
+        "review-scripts/apply-f70-repo-2026-09-24.sh"
+      ],
+      "requirements": [],
+      "risks": [
+        "R-99"
+      ],
+      "est_sec": 330,
+      "writes_prod": false,
+      "notes": "F-70 휴대폰 경보 수락(지시서 G 표 F70-T1~T10 — T9 실제 기기는 대기). 임시 인스턴스: pg_dump tbox_re(읽기) | psql → tbox_f70_test + 구조만 pg_dump -s → tbox_f70_host · 마이그레이션은 역할 이름만 시험 전용(tbox_push_t<pid>·tbox_push_h<pid> — 운영 이름 tbox_push 는 만들지 않음, 끝에 DROP ROLE)·역할 설정은 IN DATABASE <임시>로만 · php -S 127.0.0.1:8105 · 가짜 푸시 서버 127.0.0.1:18443(자체 서명 TLS). 바깥 푸시 서비스 요청 0 — 보내는 쪽은 시험 사본에서만 Fetch.php 네 곳(포트·주소 조립·이름 풀이 fcm·apple→127.0.0.1 · mozilla→10.20.30.40·사설 대역에서 127/8 만 뺌)과 alert_push.php 시각 한 줄(F70_NOW)을 바꾸고 curl.cainfo=가짜 인증서만 믿는다. 인스턴스 사본은 WebPush::PUBLIC_KEY_FILE 한 줄만. 시험 키(VAPID·기기 12벌)는 실행 때 새로(저장소 파일 0). 로그인 claude_admin01·claude_manager01(자격 sudo -n awk /etc/tbox-v2 — 비밀번호·TOTP 는 py_secret 표준입력, 쿠키는 0600 머리 파일, 재인증 본문은 curl_json_secret). 브라우저(playwright — 없으면 T8 화면 SKIP)는 「알림 받기 켜기」를 누르지 않는다(크로미움 구독은 FCM 에 붙는다) — 화면·해지 확인 창·시험 알림·워커 등록/해제·빈 문서 흉내 self 로 워커 처리기. ⑨ 호스트 반영 스크립트 사본(경로만 임시·비root·가짜 setfacl): setfacl 없음 → exit 1 · dry-run · 반쪽·알려진 판 아님 → 1 · 경계 확인 틀림 → 되돌림 4 · 경계 항목 뺀 사본 본 실행 0 · 이미 됨 0. 실제 OS 계정 경계(tbox-push·tbox-php)는 미검증(운영 반영 확인 절). 운영에 닿는 것은 읽기뿐: pg_dump 둘 · /etc/cron.d/tbox-v2 sha · /etc/tbox-v2 비밀 두 줄(awk). 이 시험의 sudo psql 은 운영 alerts.php AL-9 에 걸린다(임시 DB = claude-session, 운영 DB 읽기 pg_dump = human)."
     }
   ]
 }
