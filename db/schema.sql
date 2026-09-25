@@ -66,6 +66,10 @@ CREATE TABLE users (
     must_change_password BOOLEAN NOT NULL DEFAULT false,
     mfa_setup_required   BOOLEAN NOT NULL DEFAULT false,
     password_changed_at  TIMESTAMPTZ,
+    -- 임시 비밀번호 유효기간 (SECURITY R-39 · 보안 넷 ④ 2026-09-26, migrations/2026-10-04_users_temp_password_issued_at.sql).
+    --   Admin 이 임시 비밀번호를 발급한 때(계정 만들기·재발급). 본인이 비밀번호를 바꾸면 NULL.
+    --   must_change_password 이고 72시간이 지났으면 로그인 401(auth.login deny temp_expired). NULL = 만료 없음(시드·이전 발급)
+    temp_password_issued_at TIMESTAMPTZ,
     -- 5-A″ (2026-09-23, migrations/2026-09-23_users_display_name.sql) — 사람이 알아보는 **이름**.
     --   NULL 이 기본(이름 없으면 화면은 아이디만). 유일하지 않다(동명이인) — 화면은 언제나 아이디를 함께 보인다.
     --   쓰기는 Admin 의 계정 관리 창구뿐. 아래 CHECK 은 앱 검증(1~40자·앞뒤 공백·제어 문자)의 뒷받침이다.

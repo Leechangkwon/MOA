@@ -52,16 +52,18 @@
 
 코드는 시각의 함수(스텝 = `시각 ÷ 30`)라 PC 시계가 어긋나면 화면의 코드가 서버에서 거부된다. 그래서 생성기는 **열릴 때 한 번과 그 뒤 5분마다** 서버에 시각을 물어 「서버 − PC」 차이를 구하고, 남은 초와 코드 계산에 그 차이를 더한다. 서버 시각을 파일에 박아 넣지 않는다(사용자 결정 2026-09-15).
 
-**창구** — `GET /api/time` (`src/handlers/time.php`, 라우트 정책 `POLICY_PUBLIC`). 응답은 `{"now": <유닉스 초>, "period": 30}` 뿐이고 `Cache-Control: no-store` 다. 로그인·CSRF·감사 기록이 없다 — 읽기만 하고 대상이 없으며, 같은 값이 응답 헤더 `Date` 로도 이미 나간다.
+**창구** — `GET /api/time` (`src/handlers/time.php`, 라우트 정책 `POLICY_PUBLIC`). 응답은 `{"now": <유닉스 초>, "now_ms": <유닉스 밀리초>, "period": 30}` 뿐이고(`now_ms` 는 보안 넷 2026-09-26 — `now` 는 그 몫 그대로) `Cache-Control: no-store` 다. 로그인·CSRF·감사 기록이 없다 — 읽기만 하고 대상이 없으며, 같은 값이 응답 헤더 `Date` 로도 이미 나간다.
 
-**공식** — 보낸 때 `t0`, 받은 때 `t1`(둘 다 PC 시계), 응답 `now`(초):
+**공식** — 보낸 때 `t0`, 받은 때 `t1`(둘 다 PC 시계), 응답 `now_ms`(밀리초 — 없으면 `now` × 1000, `serverMillis()`):
 
 ```
-offset = now × 1000 + (t1 − t0) ÷ 2 − t1        (밀리초, 「서버 − PC」)
+offset = now_ms + (t1 − t0) ÷ 2 − t1        (밀리초, 「서버 − PC」)
 serverNow() = Date.now() + offset
 ```
 
 왕복 지연의 절반을 더해 **답이 만들어진 순간**을 `t1` 에 맞춘다. `Date.now()` 는 `serverNow()`·`syncTime()` 안에서만 쓰고, `tick()` 과 코드 계산은 `serverNow()` 만 본다.
+
+**갱신 박자** — `tick()` 은 `scheduleTick()` 이 잡는 `setTimeout` 으로 **다음 초 경계(서버 시각) + 20ms** 에 돈다(`TICK_SLACK`). 30초 스텝 경계도 초 경계라 코드가 경계 직후 바로 바뀐다. 시각을 다시 맞추면(`syncTime` 성공) 박자도 새로 잡고, 숨겨 둔 탭이 다시 보이면(`visibilitychange`) 바로 한 번 그린다. 전에는 `setInterval(tick, 1000)` 과 정수 초 `now` 때문에 경계 직후 1~2초 동안 이전 스텝 코드가 보였다(SECURITY R-79, 서버 창 0 에서 401).
 
 **저장 키** — `localStorage['tbox-totp-offset'] = {"offset": <ms>, "at": <마지막으로 맞춘 때, PC 시계 ms>, "base": "<물어본 t-box 주소>"}`. 비밀 키는 이 값에 들어가지 않는다. 서버에서 **받는 것은 시각뿐이고 보내는 것은 없다**(SECURITY R-40 보충).
 

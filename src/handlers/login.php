@@ -47,6 +47,11 @@ try {
     // (비밀번호가 틀리면 아래 401 동일 문구뿐이라 2단계 인증 사용 여부를 알 수 없다.)
     Http::json(['error' => Http::MSG_MFA_REQUIRED, 'mfa_required' => true], 401);
     exit;
+} catch (AuthTempPasswordExpiredException $e) {
+    // 보안 넷 ④ (SECURITY R-39) — 비밀번호는 맞았지만 발급 72시간이 지난 임시 비밀번호다. 세션은 없다.
+    // mfa_required 와 같은 자리의 정보(비밀번호가 맞은 사람에게만)이고, 할 일(관리자에게 재발급 요청)을 문장으로 알린다.
+    // 응답 모양은 {"error": …} 하나 — 화면은 서버 문장을 그대로 띄운다(app.js errorMessage).
+    Http::error(401, Auth::MSG_TEMP_PASSWORD_EXPIRED);
 }
 
 if ($result === null) {

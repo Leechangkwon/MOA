@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # tests/totp_time_sync.sh — F-42 「생성기 시각 동기화 · 잠금 문구 12자」 수락 기준 실행 (PRD 12.2 T-55)
 #
-#   (a) GET /api/time — 200 · 본문 키 {now, period} 뿐 · now 가 서버 시각 ±2초 ·
+#   (a) GET /api/time — 200 · 본문 키 {now, now_ms, period} 뿐(now_ms 는 보안 넷 R-79) · now 가 서버 시각 ±2초 ·
+#       now_ms 정수 · now = ⌊now_ms/1000⌋ ·
 #       `Cache-Control: no-store` · `Access-Control-Allow-Origin: *` ·
 #       /api/health 에는 CORS 헤더 없음 · 로그인 없이 됨 · 감사 로그 0행
 #   (b) 생성기 소스 정적 검사 — Date.now() 직접 사용은 serverNow()·syncTime() 안에만 ·
@@ -12,8 +13,9 @@
 #       ② CSP 응답 헤더를 벗긴 상태 → 역시 「서버와 동기화됨」 (헤더가 없어도 생성기는 같은 서버만 부른다)
 #   (d) Playwright(file://) — 저장된 보정값이 없으면 「오프라인 · PC 시각 사용」 + 주소 입력칸,
 #       보정값을 넣어 두고 열면 「저장된 보정값 사용」
-#   (e) 시각 일치 실증 — 시험용 임의 비밀 키로 서버 Totp::code 와 생성기 화면의 6자리를
-#       같은 스텝에서 3회(스텝 경계 직후·중간·직전) 비교
+#   (e) 시각 일치 실증 — 시험용 임의 비밀 키로 서버 Totp::code 와 생성기 화면의 6자리를 비교.
+#       보안 넷(2026-09-26, SECURITY R-79): **이어지는 스텝 3개**에서 각각 ① 경계 직후(+0.25초) ② 「스텝 안 1초 지점」(+1.2초)
+#       — 화면이 경계 직후 이미 새 스텝 코드로 바뀌었나, 경계 직전(-0.3초) 코드와 다른가 — 그리고 한 번씩 15초·28초 지점.
 #   회귀 : scripts/security_lint.sh · php -l · tests/help_button.sh(셸 확인) · 로그인 화면 200
 #
 # 규칙 (CLAUDE.md 3장)
@@ -59,7 +61,12 @@ echo "  · 응답 본문: $(cat "$WORK/time.json")"
 expect "HTTP 상태" "200" "$CODE"
 
 KEYS=$(python3 -c "import json;print(','.join(sorted(json.load(open('$WORK/time.json')))))" 2>/dev/null || echo "파싱실패")
-expect "본문 키가 정확히 {now, period}" "now,period" "$KEYS"
+expect "본문 키가 정확히 {now, now_ms, period}" "now,now_ms,period" "$KEYS"
+expect "now_ms 가 정수" "True" "$(python3 -c "import json;print(isinstance(json.load(open('$WORK/time.json')).get('now_ms'), int))" 2>/dev/null)"
+expect "now = ⌊now_ms ÷ 1000⌋ (같은 순간)" "True" "$(python3 -c "import json;d=json.load(open('$WORK/time.json'));print(d.get('now') == d.get('now_ms', -1000) // 1000)" 2>/dev/null)"
+MS_GAP=$(python3 -c "import json,time;d=json.load(open('$WORK/time.json'));print(abs(int(time.time()*1000) - int(d.get('now_ms', 0))))" 2>/dev/null || echo 999999)
+echo "  · now_ms 와 이 시험의 시계 차이 ${MS_GAP}ms (같은 기계 — 요청 왕복만큼)"
+expect "now_ms 가 서버 시각 ±2000ms" "yes" "$([ "$MS_GAP" -le 2000 ] && echo yes || echo no)"
 
 NOW=$(python3 -c "import json;d=json.load(open('$WORK/time.json'));print(d.get('now'))" 2>/dev/null || echo 0)
 PERIOD=$(python3 -c "import json;d=json.load(open('$WORK/time.json'));print(d.get('period'))" 2>/dev/null || echo 0)
@@ -137,6 +144,9 @@ expect "인라인 이벤트 속성(on…=) 0" "0" "$(grep -cE '<[^>]+ on[a-z]+='
 expect "생성기가 부르는 주소는 api/time 하나" "1" "$(grep -c "fetch(openedAsFile() ? base + '/api/time' : '../api/time'" "$GEN")"
 expect "fetch 호출은 1곳뿐" "1" "$(grep -c 'fetch(' "$GEN")"
 expect "저장 키 tbox-totp-offset" "1" "$(grep -c "OFFSET_KEY = 'tbox-totp-offset'" "$GEN")"
+expect "화면 갱신에 1초 간격 반복(setInterval(tick) 0 — 초 경계 정렬, R-79)" "0" "$(grep -c 'setInterval(tick' "$GEN")"
+expect "초 경계에 맞춘 예약 함수 scheduleTick 정의 1" "1" "$(grep -c 'function scheduleTick()' "$GEN")"
+expect "보정은 밀리초 now_ms 를 먼저 읽는다" "1" "$(grep -c "typeof data.now_ms === 'number'" "$GEN")"
 
 # ════════════════════════════════════════════════════════════
 hr "(c) Playwright — 서버에서 연 생성기 (CSP 그대로 / CSP 벗긴 상태)"
@@ -297,14 +307,27 @@ import json, sys, time
 from playwright.sync_api import sync_playwright
 
 BASE, OUT = sys.argv[1], sys.argv[2]
+ROUNDS = int(sys.argv[3]) if len(sys.argv) > 3 else 3
+PAGE = sys.argv[4] if len(sys.argv) > 4 else '/assets/totp-generator.html'
 SECRET = sys.stdin.readline().rstrip('\n')   # 시험용 비밀 키는 표준입력 첫 줄(py_secret) — 명령 인자에 싣지 않는다
-URL = BASE + '/assets/totp-generator.html'
+URL = BASE + PAGE
 out = {'rows': [], 'pageerror': []}
 
 def strip(route):
     r = route.fetch()
     h = {k: v for k, v in r.headers.items() if k.lower() != 'content-security-policy'}
     route.fulfill(response=r, headers=h)
+
+def sleep_until(t):
+    d = t - time.time()
+    if d > 0:
+        time.sleep(d)
+
+def read(page, kind):
+    code = page.locator('#code').inner_text()
+    now = time.time()
+    out['rows'].append({'kind': kind, 'at': int(now), 'ms': int(now * 1000) % 1000, 'pos': int(now) % 30,
+                        'step': int(now) // 30, 'code': code, 'left': page.locator('#left').inner_text()})
 
 with sync_playwright() as p:
     b = p.chromium.launch(channel='chromium', args=['--no-sandbox'])
@@ -318,15 +341,21 @@ with sync_playwright() as p:
     page.click('#apply')
     page.wait_for_timeout(1500)
 
-    # 스텝(30초) 안의 자리별로 세 번 읽는다: 경계 직후 · 중간 · 직전
-    for want in (1, 15, 28):
+    # 이어지는 스텝 ROUNDS 개 — 경계 직전(-0.3초) · 경계 직후(+0.25초) · 「스텝 안 1초 지점」(+1.2초)
+    nxt = (int(time.time()) // 30 + 1) * 30
+    if nxt - time.time() < 1.0:          # 경계 직전 읽기를 놓치지 않게 한 스텝 더 기다린다
+        nxt += 30
+    for _ in range(ROUNDS):
+        sleep_until(nxt - 0.3);  read(page, 'before')
+        sleep_until(nxt + 0.25); read(page, 'after')
+        sleep_until(nxt + 1.2);  read(page, 'pos1')
+        nxt += 30
+    # 한 번씩 — 중간·직전(예전 시험과 같은 자리)
+    for want in (15, 28):
         while int(time.time()) % 30 != want:
-            time.sleep(0.2)
-        time.sleep(0.6)                  # 화면이 1초마다 갱신되므로 조금 기다린다
-        code = page.locator('#code').inner_text()
-        now = time.time()
-        out['rows'].append({'at': int(now), 'pos': int(now) % 30, 'step': int(now) // 30, 'code': code,
-                            'left': page.locator('#left').inner_text()})
+            time.sleep(0.05)
+        time.sleep(0.3)
+        read(page, 'pos%d' % want)
         if want == 15:
             page.screenshot(path=OUT + '/e-match.png', full_page=True)
     b.close()
@@ -334,17 +363,18 @@ with sync_playwright() as p:
 print(json.dumps(out, ensure_ascii=False))
 PYEOF
 
-if py_secret TEST_SECRET -- python3 "$WORK/match.py" "$BASE" "$OUT" > "$WORK/e.json" 2>"$WORK/e.err"; then
+if py_secret TEST_SECRET -- python3 "$WORK/match.py" "$BASE" "$OUT" "${E_ROUNDS:-3}" > "$WORK/e.json" 2>"$WORK/e.err"; then
   echo "  · 상태 줄: $(python3 -c "import json;print(json.load(open('$WORK/e.json'))['status'])")"
   N=$(python3 -c "import json;print(len(json.load(open('$WORK/e.json'))['rows']))")
   i=0
+  PREV_CODE=""
   while [ "$i" -lt "$N" ]; do
     ROW=$(python3 -c "
 import json
 r = json.load(open('$WORK/e.json'))['rows'][$i]
-print(r['at'], r['pos'], r['step'], r['code'], r['left'])")
+print(r['kind'], r['at'], r['ms'], r['pos'], r['step'], r['code'])")
     set -- $ROW
-    AT=$1; POS=$2; STEP=$3; SHOWN=$4
+    KIND=$1; AT=$2; MS=$3; POS=$4; STEP=$5; SHOWN=$6
     # 시험용 비밀 키는 표준입력 첫 줄로 준다(py_secret) — php 인자는 코드·시각만
     SRVCODE=$(py_secret TEST_SECRET -- php -r '
 require "'"$ROOT"'/src/Totp.php";
@@ -355,11 +385,22 @@ require "'"$ROOT"'/src/Totp.php";
 $sec = rtrim((string) fgets(STDIN), "\r\n");
 $s = Totp::verifyStep($sec, $argv[1], 0, (int) $argv[2]);
 echo $s === null ? "null" : $s, PHP_EOL;' "$SHOWN" "$AT")
-    echo "  · 스텝 안 ${POS}초 지점(step $STEP) — 화면 $SHOWN · 서버 $SRVCODE"
-    expect "스텝 $STEP 에서 화면 = 서버 코드" "$SRVCODE" "$SHOWN"
-    expect "서버 verifyStep(창 0) 이 같은 스텝으로 인정" "$STEP" "$OKSTEP"
+    case "$KIND" in
+      before) WHERE="경계 직전(스텝 안 ${POS}.$(printf '%03d' "$MS")초)" ;;
+      after)  WHERE="경계 직후(스텝 안 ${POS}.$(printf '%03d' "$MS")초)" ;;
+      pos1)   WHERE="스텝 안 1초 지점(${POS}.$(printf '%03d' "$MS")초)" ;;
+      *)      WHERE="스텝 안 ${POS}초 지점" ;;
+    esac
+    echo "  · ${WHERE}(step $STEP) — 화면 $SHOWN · 서버 $SRVCODE"
+    expect "[$KIND] 스텝 $STEP 에서 화면 = 서버 코드" "$SRVCODE" "$SHOWN"
+    expect "[$KIND] 서버 verifyStep(창 0) 이 같은 스텝으로 인정" "$STEP" "$OKSTEP"
+    if [ "$KIND" = "after" ]; then
+      expect "[after] 경계를 넘자 화면 코드가 바뀌었다(직전 코드와 다름)" "yes" "$([ -n "$PREV_CODE" ] && [ "$PREV_CODE" != "$SHOWN" ] && echo yes || echo no)"
+    fi
+    PREV_CODE="$SHOWN"
     i=$((i+1))
   done
+  expect "읽은 줄 수(스텝 ${E_ROUNDS:-3}개 × 3 + 2)" "$(( ${E_ROUNDS:-3} * 3 + 2 ))" "$N"
   expect "페이지 오류 0" "0" "$(python3 -c "import json;print(len(json.load(open('$WORK/e.json'))['pageerror']))")"
 else
   echo "  ✖ Playwright 실행 실패"; sed 's/^/    /' "$WORK/e.err"; FAIL=$((FAIL+1))

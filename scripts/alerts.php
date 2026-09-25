@@ -992,8 +992,14 @@ if ($want('AL-3') || $want('AL-9')) {
             ) {
                 $account = $m[1];
                 $command = $m[2];
+                /*
+                 * rm 은 앞이 줄 처음·공백·`/` 이고 뒤가 공백일 때만 — sudo 기록의 COMMAND 는 늘 절대 경로
+                 * (`/usr/bin/rm -rf …`)라 옛 식 `(^|\s)rm\s` 는 앞이 `/` 인 rm 을 못 잡았다(R-100 남은 틈, 보안 넷 2026-09-26).
+                 * 뒤의 공백 조건은 그대로 — `/usr/bin/rmdir`·`/usr/bin/firmware` 처럼 rm 이 이름 속에 든 명령은 울리지 않는다.
+                 * 다른 도구(psql·dropdb …)는 이미 `(^|\/|\s)` 였다. 발동 조건만 넓힌 것이고 origin 판정(Origin::ofSudoCommand)은 그대로다.
+                 */
                 if (preg_match(
-                        '/(^|\/|\s)(psql|pg_dump|pg_restore|dropdb|truncate|chattr)\b|(^|\s)rm\s|find\b.*-delete/',
+                        '/(^|\/|\s)(psql|pg_dump|pg_restore|dropdb|truncate|chattr)\b|(^|\/|\s)rm\s|find\b.*-delete/',
                         $command
                     ) !== 1
                 ) {

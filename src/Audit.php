@@ -282,6 +282,8 @@ final class Audit
         'auth.login|deny|bad_credentials'         => '{target} 계정으로 로그인을 시도했지만 아이디 또는 비밀번호가 틀렸습니다',
         'auth.login|deny|locked'                  => '{target} 계정으로 로그인을 시도했지만 실패 5회로 10분 잠긴 계정입니다',
         'auth.login|deny|inactive'                => '{target} 계정으로 로그인을 시도했지만 비활성화된 계정입니다',
+        // 보안 넷 ④ (SECURITY R-39, 2026-09-26) — 비밀번호는 맞았지만 발급 72시간이 지난 임시 비밀번호. 비밀번호 값은 넣지 않는다.
+        'auth.login|deny|temp_expired'            => '{target} 계정으로 로그인을 시도했지만 임시 비밀번호의 유효기간(발급 뒤 72시간)이 지났습니다',
         'auth.logout|allow'                       => '{actor} 이(가) 로그아웃했습니다',
         'auth.required|deny|not_authenticated'    => '로그인하지 않은 채 {target} 에 접근하려 해서 막았습니다',
 

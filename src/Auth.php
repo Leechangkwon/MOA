@@ -29,6 +29,19 @@ final class AuthMfaRequiredException extends RuntimeException
 }
 
 /**
+ * 비밀번호는 맞았는데 그것이 **발급 뒤 72시간이 지난 임시 비밀번호**일 때 던진다
+ * (SECURITY R-39 — 보안 넷 ④ 2026-09-26, 사용자 결정 d52).
+ * 핸들러(src/handlers/login.php)가 잡아서 401 + Auth::MSG_TEMP_PASSWORD_EXPIRED 로 답한다.
+ *
+ * AuthMfaRequiredException 과 같은 자리의 정보다 — **비밀번호가 맞은 사람에게만** 나간다(틀리면 401 동일 문구).
+ * 만료된 임시 비밀번호는 그 값을 아는 사람에게도 쓸모가 없으므로 이 문장이 새로 알려 주는 것은 없다.
+ * 실패 횟수를 올리지 않는다 — 본인이 늦게 들어온 것이지 추측이 아니다(추측은 5)의 비밀번호 틀림에서 센다).
+ */
+final class AuthTempPasswordExpiredException extends RuntimeException
+{
+}
+
+/**
  * src/Auth.php — "누구인가" (ARCH 4장 [1] · 4.0, PRD S-01, S-09-2, S-09-4, SECURITY R-10)
  *
  * 원칙
@@ -70,6 +83,16 @@ final class Auth
     /** PRD S-09-4: 실패 5회 → 10분 잠금 */
     private const MAX_FAILED   = 5;
     private const LOCK_MINUTES = 10;
+
+    /**
+     * 임시 비밀번호 유효기간(시간) — SECURITY R-39, 보안 넷 ④(2026-09-26, 사용자 결정 d52).
+     * Admin 이 발급한(계정 만들기·재발급) 임시 비밀번호는 이 시간 안에 첫 로그인해서 바꿔야 한다.
+     * 지나면 비밀번호가 맞아도 401 — 관리자가 다시 발급한다. 판정은 SQL 이 한다(PHP·DB 시계를 섞지 않는다).
+     */
+    public const TEMP_PASSWORD_HOURS = 72;
+
+    /** 만료된 임시 비밀번호로 로그인했을 때의 문장 — 비밀번호가 맞은 사람에게만 나간다(MSG_MFA_REQUIRED 와 같은 자리) */
+    public const MSG_TEMP_PASSWORD_EXPIRED = '임시 비밀번호가 만료되었습니다(발급 뒤 72시간). 관리자에게 다시 발급을 요청하세요';
 
     /**
      * 관리 기능 재인증(sudo 모드)의 창 길이 — 분 (16-1, PRD F-23, ARCH 4.0).
@@ -287,8 +310,24 @@ final class Auth
                -- 11단계 (PRD F-16): 비밀번호를 바꾼 **그 문장**에서 강제 플래그를 내린다.
                -- 두 문장으로 나누면 사이에서 실패했을 때 "바뀌었는데 계속 막히는" 상태가 남는다.
                must_change_password = false,
+               -- 보안 넷 ④ (SECURITY R-39): 임시 비밀번호의 발급 시각도 같은 문장에서 지운다.
+               temp_password_issued_at = NULL,
                password_changed_at  = now(),
                updated_at           = now()
+         WHERE id = :id
+        SQL;
+
+    /**
+     * 임시 비밀번호가 유효기간을 넘겼나 (SECURITY R-39, 보안 넷 ④). 판정은 SQL 이 한다 —
+     * `SQL_LOAD_USER` 의 Guest 만료(`is_expired`)와 같은 방식(PHP 시계와 DB 시계를 섞지 않는다).
+     * 발급 시각이 NULL 이면(이 기능 전 발급·CLI 시드) 만료 없음이다.
+     * `SQL_LOAD_USER`·`SQL_LOAD_USER_BY_ID`(두 경로가 같은 열 목록이어야 한다)는 건드리지 않고,
+     * must_change_password 인 계정의 로그인에서만 따로 한 번 읽는다.
+     */
+    private const SQL_TEMP_EXPIRED = <<<'SQL'
+        SELECT (temp_password_issued_at IS NOT NULL
+                AND temp_password_issued_at < now() - make_interval(hours => CAST(:hours AS integer))) AS temp_expired
+          FROM users
          WHERE id = :id
         SQL;
 
@@ -782,6 +821,7 @@ final class Auth
      * @return array<string,mixed>|null 성공 시 사용자, 실패 시 null (호출자가 401)
      * @throws AuthLockedException      계정이 잠겨 있을 때 (호출자가 423)
      * @throws AuthMfaRequiredException 비밀번호는 맞았고 코드가 더 필요할 때 (호출자가 401 + mfa_required)
+     * @throws AuthTempPasswordExpiredException 비밀번호는 맞았지만 발급 72시간이 지난 임시 비밀번호일 때 (호출자가 401)
      */
     public static function login(string $username, string $password, ?string $otp = null): ?array
     {
@@ -834,6 +874,26 @@ final class Auth
                 'target_name' => (string) $row['username'],
             ]);
             return null;
+        }
+
+        // 6-2) 임시 비밀번호 유효기간 (SECURITY R-39 — 보안 넷 ④ 2026-09-26, 사용자 결정 d52).
+        //    Admin 이 발급한 임시 비밀번호(계정 만들기·재발급)는 72시간 안에 첫 로그인해서 바꿔야 한다.
+        //    여기는 **비밀번호가 맞은 뒤**다 — 틀린 비밀번호는 위 5)의 동일 문구로 끝나므로 만료 여부가 새지 않는다.
+        //    2단계 인증보다 먼저 본다: 만료된 값으로는 코드까지 맞아도 들어올 수 없으므로 코드를 묻는 것이 무의미하다.
+        //    실패 횟수는 올리지 않는다(추측이 아니다). 세션은 만들지 않는다.
+        if ($row['must_change_password'] === true) {
+            $temp = $db->run(self::SQL_TEMP_EXPIRED, [
+                ':id'    => (int) $row['id'],
+                ':hours' => self::TEMP_PASSWORD_HOURS,
+            ])->fetch();
+            if (is_array($temp) && $temp['temp_expired'] === true) {
+                Audit::deny('auth.login', 'temp_expired', [
+                    'target_type' => 'user',
+                    'target_id'   => (int) $row['id'],
+                    'target_name' => (string) $row['username'],
+                ]);
+                throw new AuthTempPasswordExpiredException(self::MSG_TEMP_PASSWORD_EXPIRED);
+            }
         }
 
         // 7) 2단계 인증 (SECURITY R-05, ARCH 4.0 "2단계 인증 로그인 흐름").

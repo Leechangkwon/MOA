@@ -37,6 +37,8 @@
 # 준비물: php · python3(+playwright — 없으면 T9 SKIP) · sudo -n(postgres psql·pg_dump·createdb·dropdb ·
 #         verify_backup · seed-accounts.txt · qa-totp.txt · 운영 alerts.log 읽기) · git(T10 옛 코드 대조)
 # 사용: sudo -v && bash tests/f69.sh [스크린샷 폴더]      (F69_BASE=v2.19.0 — 대조할 옛 코드)
+#       복제본(운영 .env 가 없는 트리): F69_PORT=819x F69_NO_ROOT=1 QF2_ENV_SRC=<0700 폴더의 .env 사본> bash tests/f69.sh
+#       — 포트·root 갈래 건너뛰기·임시 .env 원본만 바꾼다(보안 넷 2026-09-26). 기본값은 전과 같다.
 set -u
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -44,7 +46,12 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 . "$ROOT/tests/lib/review_accounts.sh" || { echo "tests/lib/review_accounts.sh 를 읽지 못했다 — 시험을 시작하지 않는다 (R-73)"; exit 3; }
 . "$ROOT/tests/lib/secrets.sh" || { echo "tests/lib/secrets.sh 를 읽지 못했다 — 시험을 시작하지 않는다 (R-62)"; exit 3; }
 
-PORT=8099
+PORT="${F69_PORT:-8099}"
+case "$PORT" in 80|8082|8081) echo "운영 포트($PORT)는 쓰지 않는다"; exit 3 ;; esac
+# F69_NO_ROOT=1 — postgres(psql·pg_dump·createdb·dropdb)·비밀 awk 말고는 sudo 를 쓰지 않는 판(보안 넷 2026-09-26, 복제본 자체 시험용).
+#   root 가 필요한 갈래(T5 verify_backup · T6 운영 alerts.log 읽기 · T8 운영 저장소 ls · T10 운영 dry-run)는 건너뜀으로 센다.
+#   기본값(비움)은 전과 같다.
+NO_ROOT="${F69_NO_ROOT:-}"
 SITE="http://127.0.0.1:$PORT"
 BASE="$SITE/tbox"
 UA="tbox-review/$(date +%F)"
@@ -89,7 +96,7 @@ cleanup() {
   if [ -n "$SERVER_PID" ]; then kill "$SERVER_PID" 2>/dev/null; wait "$SERVER_PID" 2>/dev/null; fi
   sudo -n -u postgres dropdb --if-exists "$DB" >/dev/null 2>&1
   [ -n "$INST" ] && rm -rf "$INST"
-  sudo -n rm -rf "$RWORK" 2>/dev/null
+  if [ -n "$NO_ROOT" ]; then rm -rf "$RWORK"; else sudo -n rm -rf "$RWORK" 2>/dev/null; fi
   rm -rf "$JAR_DIR" "$WORK"
 }
 trap cleanup EXIT
@@ -167,8 +174,10 @@ sudo -n -u postgres psql -d "$SRC_DB" -tAc "SELECT 1" >/dev/null 2>&1 \
 note "운영 최근 10분 비-검토 actor 행: $(psqlp "SELECT count(*) FROM audit_logs WHERE happened_at > now() - interval '10 minutes' AND actor_name IS NOT NULL AND $REVIEW_NOT_SQL") (참고 — 이 시험은 운영 DB 에 쓰지 않는다)"
 
 sub "T6 준비 — 운영 alerts.log 앞 ${PROD_OLD_LINES}줄의 sha256 (읽기만)"
+if [ -z "$NO_ROOT" ]; then
 T6_N0=$(sudo -n wc -l < "$PROD_ALERTS" 2>/dev/null)
 T6_H0=$(sudo -n head -n "$PROD_OLD_LINES" "$PROD_ALERTS" 2>/dev/null | sha256sum | cut -c1-64)
+fi
 note "운영 alerts.log 줄 수 ${T6_N0:-?} · 앞 ${PROD_OLD_LINES}줄 sha256 ${T6_H0:-?}"
 
 sub "① 운영 DB 를 **읽어** 임시 DB 를 만든다"
@@ -184,6 +193,12 @@ DUMP_RC=${PIPESTATUS[0]}
 n_users=$(psqlt "SELECT count(*) FROM public.users")
 [ -n "$n_users" ] && [ "$n_users" -gt 0 ] 2>/dev/null || { echo "임시 DB 로 옮기지 못했다 — $(head -2 "$WORK/restore.err")"; exit 3; }
 echo "  · 임시 DB $DB — 계정 ${n_users}명"
+# 반영 순서가 DB → 코드인 마이그레이션은 임시 DB 에도 먼저 넣는다(이미 있으면 아무 일도 없다 — IF NOT EXISTS).
+#   보안 넷 ④(2026-09-26): 새 코드의 계정 만들기(2b 201 갈래)가 users.temp_password_issued_at 에 쓴다.
+for m in 2026-10-04_users_temp_password_issued_at.sql; do
+  [ -f "$ROOT/db/migrations/$m" ] || continue
+  sudo -n -u postgres psql -X -q -d "$DB" -v ON_ERROR_STOP=1 -f - < "$ROOT/db/migrations/$m" 2>&1 | grep -v 'could not change directory' | sed 's/^/    /'
+done
 
 sub "② 저장소를 임시 폴더로 복사하고 두 번째 인스턴스를 띄운다"
 INST="$(mktemp -d)"
@@ -194,7 +209,7 @@ tar -C "$ROOT" -cf - --exclude=.git --exclude=jar --exclude=api-test.txt --exclu
 sed -e "s#^DB_NAME=.*#DB_NAME=$DB#" \
     -e "s#^STORAGE_DIR=.*#STORAGE_DIR=$INST/storage#" \
     -e "s#^AUDIT_LOG_FILE=.*#AUDIT_LOG_FILE=$INST/log/audit.log#" \
-    "$ROOT/.env" > "$INST/app/.env"
+    "${QF2_ENV_SRC:-$ROOT/.env}" > "$INST/app/.env"
 chmod 600 "$INST/app/.env"
 grep -q "^DB_NAME=$DB\$" "$INST/app/.env" || { echo "임시 .env 에 임시 DB 이름이 들어가지 않았다 — 중단"; exit 4; }
 grep -q "^AUDIT_LOG_FILE=$INST/log/audit.log\$" "$INST/app/.env" || { echo "임시 .env 의 로그 경로가 임시가 아니다 — 중단"; exit 4; }
@@ -429,6 +444,9 @@ Sep 24 10:00:03 f69host sudo:  f69s2${TAG} : TTY=pts/0 ; PWD=/tmp ; USER=postgre
 Sep 24 10:00:04 f69host sudo:  f69s3${TAG} : TTY=pts/0 ; PWD=/tmp ; USER=postgres ; COMMAND=/usr/bin/psql -d qcheck_17 -c SELECT 1
 Sep 24 10:00:05 f69host sudo:  f69s4${TAG} : TTY=pts/0 ; PWD=/tmp ; USER=root ; COMMAND=/usr/bin/find /var/lib/x -delete
 Sep 24 10:00:08 f69host sudo:  f69s7${TAG} : TTY=pts/0 ; PWD=/tmp ; USER=root ; COMMAND=/usr/bin/rm -rf /var/lib/x
+Sep 24 10:00:09 f69host sudo:  f69s0${TAG} : TTY=pts/0 ; PWD=/tmp ; USER=root ; COMMAND=/bin/rm -f /var/log/tbox-v2/audit.log
+Sep 24 10:00:10 f69host sudo:  f69s8${TAG} : TTY=pts/0 ; PWD=/tmp ; USER=root ; COMMAND=/usr/bin/rmdir /var/lib/x
+Sep 24 10:00:11 f69host sudo:  f69s9${TAG} : TTY=pts/0 ; PWD=/tmp ; USER=root ; COMMAND=/usr/bin/firmware --list
 Sep 24 10:00:06 f69host sudo:  f69s5${TAG} : TTY=pts/0 ; PWD=/tmp ; USER=postgres ; COMMAND=/usr/bin/psql -d qcheck_18 -c SELECT 1 PGPASSWORD=f69secretXYZ
 Sep 24 10:00:07 f69host sudo:  f69s6${TAG} : TTY=pts/0 ; PWD=/tmp ; USER=postgres ; COMMAND=/usr/bin/psql -d tbox_re -c CREATE USER f69u WITH PASSWORD 'f69secretABC'
 LOG
@@ -444,16 +462,29 @@ expect "T3 AL-9 dropdb --if-exists tbox_4d_test"      "claude-session|-|claude|k
 expect "T3 AL-9 psql -d tbox_re (운영 읽기) → human"  "human|-|plain|keys"          "$(line_of AL-9 user "f69s2${TAG}")"
 expect "T3 AL-9 psql -d qcheck_17"                    "claude-session|-|claude|keys" "$(line_of AL-9 user "f69s3${TAG}")"
 expect "T3 AL-9 DB 이름 없는 명령(find -delete) → human" "human|-|plain|keys"        "$(line_of AL-9 user "f69s4${TAG}")"
-# ★ 지시서 T3 의 예는 `sudo … rm -rf /var/lib/x` 다. 그런데 auth.log 의 COMMAND 는 늘 절대 경로(/usr/bin/rm)이고,
-#   AL-9 의 발동 정규식 `(^|\s)rm\s` 는 앞이 `/` 인 rm 을 잡지 못한다(F-69 이전부터의 모양 — 발동 조건은 이 지시서가
-#   바꾸지 않는다). 그래서 「DB 이름 없음 → human」은 find -delete 로 보고, rm 줄은 발동했는지만 적는다.
-note "T3 참고 — /usr/bin/rm -rf 줄의 AL-9 발동: $(line_of AL-9 user "f69s7${TAG}") (MISSING 이면 발동 정규식이 절대 경로 rm 을 못 잡은 것 — 보고 대상)"
+# ★ auth.log 의 COMMAND 는 늘 절대 경로(/usr/bin/rm)다. 옛 발동 정규식 `(^|\s)rm\s` 는 앞이 `/` 인 rm 을 못 잡았다
+#   (R-100 남은 틈). 보안 넷(2026-09-26)이 `(^|\/|\s)rm\s` 로 고쳤다 — 절대 경로 rm 은 울리고, rm 이 이름 속에 든 명령
+#   (rmdir·firmware)은 뒤의 공백 조건 때문에 그대로 조용하다.
+expect "T3 AL-9 /usr/bin/rm -rf → 발동 · human(DB 없음)"  "human|-|plain|keys"          "$(line_of AL-9 user "f69s7${TAG}")"
+expect "T3 AL-9 /bin/rm -f (감사 로그) → 발동 · human"     "human|-|plain|keys"          "$(line_of AL-9 user "f69s0${TAG}")"
+expect "T3 AL-9 /usr/bin/rmdir → 울리지 않음(rm 뒤 공백 아님)" "MISSING"                  "$(line_of AL-9 user "f69s8${TAG}")"
+expect "T3 AL-9 /usr/bin/firmware → 울리지 않음(이름 속 rm)"   "MISSING"                  "$(line_of AL-9 user "f69s9${TAG}")"
+sub "T3 dry-run — 같은 사본 auth.log · 임시 상태 파일(새로) · --dry-run: 발동 목록만 보고 쓰지 않는다"
+php "$INST/app/scripts/alerts.php" --rule AL-9 --dry-run --auth-log "$AUTHLOG" --state "$WORK/state-AL-9-dry.json" \
+  > "$WORK/t3-dry.out" 2>&1
+expect "T3 dry-run 종료 코드" "0" "$?"
+T3D=$(grep -oE "\[dry-run\] AL-9 f69s[0-9]${TAG} " "$WORK/t3-dry.out" | sed -E "s/.*AL-9 f69(s[0-9])${TAG} /\1/" | sort | tr '\n' ' ')
+expect "T3 dry-run AL-9 발동 계정(s0·s1~s7 · s8 rmdir·s9 firmware 없음)" "s0 s1 s2 s3 s4 s5 s6 s7 " "$T3D"
+expect "T3 dry-run 이 임시 상태 파일을 만들지 않음" "no" "$([ -e "$WORK/state-AL-9-dry.json" ] && echo yes || echo no)"
 expect "T3 AL-9 CREATE USER on tbox_re → human"       "human|-|plain|keys"          "$(line_of AL-9 user "f69s6${TAG}")"
 
 # ════════════════════════════════════════════════════════════════
 hr "T5 — verify_backup.sh 실패 경로 (--backup-root 빈 임시 폴더) · AL-8 origin system"
 
 BK="$RWORK/backup"
+if [ -n "$NO_ROOT" ]; then
+  skip "T5 전체" "F69_NO_ROOT — verify_backup 은 root 로만 돈다"
+else
 PROD_FAIL_BEFORE=$(sudo -n cat /var/backups/tbox-v2/.fail_count 2>/dev/null || echo none)
 if sudo -n test -r /etc/tbox-v2/backup.key; then
   sudo -n mkdir -p "$BK/db" "$BK/files"
@@ -478,6 +509,7 @@ print("yes" if need <= set(d) else "no " + ",".join(sorted(need - set(d))))' 2>/
 else
   skip "T5 전체" "/etc/tbox-v2/backup.key 를 root 로 읽을 수 없다"
 fi
+fi   # NO_ROOT
 
 # ════════════════════════════════════════════════════════════════
 hr "T7 — AL-6 격리 파일 (임시 저장소 · 임시 격리 폴더 · 임시 DB 의 files 만)"
@@ -593,6 +625,10 @@ hr "T8 — AL-6 운영 확인 (쓰기 없음 — 운영 DB 읽기 + ls)"
 
 PROD_INF=$(psqlp "SELECT stored_name FROM files WHERE deleted_at IS NULL AND purged_at IS NULL AND scan_status='infected' ORDER BY id")
 T8_N=0; T8_Q=0; T8_S=0; T8_BAD=0
+if [ -n "$NO_ROOT" ]; then
+  skip "T8 격리 폴더·저장소 확인" "F69_NO_ROOT — 운영 저장소는 root 만 읽는다"
+  PROD_INF=""
+fi
 for n in $PROD_INF; do
   # DB 값이지만 경로에 넣기 전에 모양을 본다(UUID.확장자만)
   if ! [[ "$n" =~ ^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.[a-z0-9]{1,10}$ ]]; then
@@ -603,8 +639,10 @@ for n in $PROD_INF; do
   sudo -n test -e "/var/lib/tbox-v2/storage/${n:0:2}/${n:2:2}/$n" && T8_S=$((T8_S+1))
 done
 note "운영 살아 있는 infected 행 ${T8_N}개 · 격리 폴더에 있음 ${T8_Q} · 저장소에 남음 ${T8_S} · 이름 모양 이상 ${T8_BAD}"
+if [ -z "$NO_ROOT" ]; then
 expect "T8 살아 있는 infected 행이 전부 격리 폴더에 있다" "$T8_N" "$T8_Q"
 expect "T8 저장소에 남은 감염 바이트 0" "0" "$T8_S"
+fi
 note "→ 이 갈래는 고친 코드로 불일치 0 이 될 것이다(옛 코드는 ${T8_N}건을 missing 으로 셌다 — 지시서 머리 실측 3건)"
 note "실제 확인은 적용 **다음 날 02:00** 배치의 행(읽기): SELECT happened_at, result, detail->>'mismatches', detail->>'quarantined' FROM audit_logs WHERE action='audit.integrity' AND target_name='consistency' ORDER BY id DESC LIMIT 1"
 SKIP=$((SKIP+1))
@@ -803,7 +841,10 @@ else
     expect "T9 사람 계정 줄(AL-1) — 배지 없음"                "없음"         "$(pick "subject: $H" AL-1)"
     expect "T9 한쪽만 맞은 줄(AL-1) — 「확인 필요」"           "확인 필요"    "$(pick "subject: $P" AL-1)"
     expect "T9 AL-9 claude-session 줄 — 「Claude」"             "Claude"       "$(pick "user: f69s1${TAG}" AL-9)"
+    if [ -n "$NO_ROOT" ]; then skip "T9 AL-8 백업 실패 줄 — 「시스템」" "F69_NO_ROOT — AL-8 줄은 T5(verify_backup, root)가 만든다"
+    else
     expect "T9 AL-8 백업 실패 줄 — 「시스템」"                  "시스템"       "$(tq "next((','.join(i['badges']) or '없음') for i in d.get('items', []) if i['rule'] == 'AL-8')")"
+    fi
     expect "T9 AL-6 정합성 줄(T7 첫 실행) — 「시스템」"         "시스템"       "$(pick "infected_in_storage" AL-6)"
     expect "T9 옛 줄 — 「출처 표기 전」"                        "출처 표기 전" "$(pick "f69-old-$TAG" AL-6)"
     expect "T9 「Claude」 줄의 제목이 [Claude] 로 시작"         "yes" \
@@ -814,7 +855,10 @@ else
     expect "T9 주입 문자열은 글자로 보인다" "yes" \
       "$(tq "'yes' if any('<img src=x' in i['body'] for i in d.get('items', [])) else 'no'")"
     expect "T9 경보 목록 안 인라인 style 0" "0" "$(tq "d.get('inline_style', -1)")"
+    if [ -n "$NO_ROOT" ]; then skip "T9 T5 — 같은 파서가 AL-8 을 읽음" "F69_NO_ROOT — T5 를 건너뛰었다"
+    else
     expect "T9 T5 — 같은 파서(GET /api/admin/alerts)가 AL-8 을 origin system 으로 읽음" "system" "$(tq "(d.get('api_al8') or [['?']])[0][0]")"
+    fi
     expect "T9 API — 옛 줄 origin 은 null" "None" "$(tq "str((d.get('api_old') or ['?'])[0])")"
     expect "T9 API — 줄마다 origin·title 키가 있다(옛 줄은 null)" "True" "$(tq "str(d.get('api_keys_ok'))")"
     expect "T9 390px 가로 넘침 없음" "False" "$(tq "str(d.get('mobile_overflow'))")"
@@ -838,6 +882,9 @@ fi
 hr "T10 — 회귀·정적"
 
 sub "운영 alerts.php --dry-run (읽기만 — --state 임시 · --auth-log 빈 파일): 줄마다 origin= 이 붙는다"
+if [ -n "$NO_ROOT" ]; then
+  skip "T10 운영 dry-run" "F69_NO_ROOT — 운영 .env 를 root 로 읽어야 한다(임시 인스턴스 dry-run 은 아래 옛 코드 대조가 본다)"
+else
 : > "$RWORK/empty-auth.log" 2>/dev/null || sudo -n touch "$RWORK/empty-auth.log"
 sudo -n php "$ROOT/scripts/alerts.php" --dry-run --state "$RWORK/prod-dry-state.json" --auth-log "$RWORK/empty-auth.log" \
   > "$WORK/prod-dry.out" 2>&1
@@ -846,6 +893,7 @@ sed 's/^/    | /' "$WORK/prod-dry.out" | head -40
 PD_N=$(grep -c '\[dry-run\]' "$WORK/prod-dry.out")
 PD_O=$(grep '\[dry-run\]' "$WORK/prod-dry.out" | grep -cE ' origin=(human|system|claude-review|claude-session)( hint=partial)?$')
 expect "T10 운영 dry-run 줄마다 origin= (넷 중 하나)" "$PD_N" "$PD_O"
+fi
 
 sub "옛 코드($F69_BASE)와 발동 목록 대조 — 같은 임시 DB · 같은 순간 · origin 꼬리만 떼고 같아야 한다"
 if git -C "$ROOT" rev-parse --verify -q "$F69_BASE^{commit}" >/dev/null 2>&1; then
@@ -883,13 +931,24 @@ for f in scripts/verify_backup.sh tests/f69.sh tests/f54.sh; do
   bash -n "$ROOT/$f" 2>/dev/null || { echo "  ✖ bash -n 실패: $f"; BASHBAD=1; }
 done
 expect "T10 bash -n (3개)" "0" "$BASHBAD"
-php "$ROOT/scripts/wiki_check.php" > "$WORK/wiki.out" 2>&1
+# 위키 검사 ⑧ 은 저장소 부모 폴더의 사이트·커뮤니티 STAGES 를 읽는다. 복제본(부모 폴더 없음)이면 임시 사본에 운영 쪽 두 파일을
+# 읽기 링크로 두고 그 사본에서 돈다(보안 넷 2026-09-26 — 읽기만)
+WIKI_ROOT="$ROOT"
+if [ ! -f "$ROOT/../STAGES.md" ] || [ ! -f "$ROOT/../community/STAGES.md" ]; then
+  [ -e "$INST/STAGES.md" ] || ln -s /var/www/qaredi/STAGES.md "$INST/STAGES.md"
+  [ -e "$INST/community" ] || ln -s /var/www/qaredi/community "$INST/community"
+  WIKI_ROOT="$INST/app"
+fi
+php "$WIKI_ROOT/scripts/wiki_check.php" > "$WORK/wiki.out" 2>&1
 expect "T10 wiki_check.php 종료 코드" "0" "$?"
 tail -1 "$WORK/wiki.out" | sed 's/^/    /'
 note "회귀 시험은 이 스크립트가 돌리지 않는다 — 따로: tests/f54.sh(격리 흐름 + 새 한 단계) · tests/stage26.sh · tests/help_button.sh · tests/f68.sh"
 
 # ════════════════════════════════════════════════════════════════
 hr "T6 — 옛 줄 불변 (운영 alerts.log 앞 ${PROD_OLD_LINES}줄) · 이 시험이 운영 로그에 남긴 줄 0"
+if [ -n "$NO_ROOT" ]; then
+  skip "T6" "F69_NO_ROOT — 운영 alerts.log 는 root 만 읽는다(이 판은 운영 로그에 쓰는 갈래도 없다: alerts.php 는 임시 인스턴스 사본만 돈다)"
+else
 T6_H1=$(sudo -n head -n "$PROD_OLD_LINES" "$PROD_ALERTS" 2>/dev/null | sha256sum | cut -c1-64)
 if [ -n "${T6_N0:-}" ] && [ "${T6_N0:-0}" -ge "$PROD_OLD_LINES" ] 2>/dev/null; then
   expect "T6 앞 ${PROD_OLD_LINES}줄 sha256 시작 = 끝" "$T6_H0" "$T6_H1"
@@ -898,6 +957,7 @@ if [ -n "${T6_N0:-}" ] && [ "${T6_N0:-0}" -ge "$PROD_OLD_LINES" ] 2>/dev/null; t
 else
   skip "T6" "운영 alerts.log 를 읽지 못했거나 ${PROD_OLD_LINES}줄보다 짧다(${T6_N0:-?}줄)"
 fi
+fi   # NO_ROOT
 
 # ════════════════════════════════════════════════════════════════
 hr "결과"

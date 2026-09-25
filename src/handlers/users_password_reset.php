@@ -94,6 +94,9 @@ $sqlReset = <<<'SQL'
     UPDATE users
        SET password_hash        = :hash,
            must_change_password = true,
+           -- 보안 넷 ④ (SECURITY R-39): 발급 시각을 같은 문장에서 새로 — 72시간이 지나면 이 값으로는 로그인할 수 없다
+           -- (Auth::TEMP_PASSWORD_HOURS). 예전 발급의 시각이 남아 새 임시 비밀번호가 곧바로 만료되는 일이 없다.
+           temp_password_issued_at = now(),
            -- 13단계 (SECURITY R-49): 잠금과 실패 카운터를 **같은 문장**에서 함께 치운다.
            -- 전에는 임시 비밀번호를 새로 받아도 `failed_count`·`locked_until` 이 그대로 남아,
            -- 잠긴 계정은 재발급을 받고도 10분을 더 기다려야 했고 잠금이 이어졌다.

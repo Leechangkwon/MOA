@@ -183,6 +183,8 @@ if (Origin::isReviewAccount($username)) {
 
 // ─── [10] 저장 — 임시 비밀번호를 만들고 해시만 넣는다 (F-16 ①, PRD S-09-4, T-16) ───
 //         두 플래그를 함께 켠다: 첫 로그인에 비밀번호 변경 → 2단계 인증 등록.
+//         발급 시각(temp_password_issued_at = now())도 같은 문장에 — 72시간이 지나면 이 값으로는 로그인할 수 없다
+//         (SECURITY R-39 · 보안 넷 ④, Auth::TEMP_PASSWORD_HOURS).
 $temp = Auth::generateTempPassword();
 $hash = password_hash($temp, PASSWORD_ARGON2ID);
 if (!is_string($hash)) {
@@ -191,9 +193,11 @@ if (!is_string($hash)) {
 
 $sqlInsert = <<<'SQL'
     INSERT INTO users (username, password_hash, role, team_id, expires_at,
-                       must_change_password, mfa_setup_required, display_name)
+                       must_change_password, mfa_setup_required, display_name,
+                       temp_password_issued_at)
     VALUES (:username, :hash, :role, :team_id, CAST(:expires AS timestamptz),
-            true, true, :display_name)
+            true, true, :display_name,
+            now())
     RETURNING id
     SQL;
 

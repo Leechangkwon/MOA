@@ -196,6 +196,7 @@
   var WEAK_PASS = 12;                    /* 이보다 짧으면 노란 안내 */
   var SYNC_EVERY = 300000;               /* 서버 시각을 다시 받아 오는 간격(5분) */
   var SYNC_WARN = 60000;                 /* PC 시계가 이만큼 어긋나면 경고색 */
+  var TICK_SLACK = 20;                   /* 화면 갱신을 초 경계보다 이만큼(밀리초) 늦게 깨운다 — 타이머가 조금 일찍 깨도 지난 초를 그리지 않게 */
 
   /* 공개된 표준 시험값. 기대값은 8자리이며, 6자리는 그 뒤 6자리다. */
   var TEST_SECRET = 'GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ';
@@ -245,6 +246,7 @@
      at 은 마지막으로 맞춘 때(PC 시계), base 는 시각을 물어본 t-box 주소,
      live 는 이 화면을 연 뒤 실제로 맞추기에 성공했는지. */
   var timeSync = { offset: 0, at: 0, base: '', live: false };
+  var tickTimer = null;                  /* 다음 화면 갱신 예약(setTimeout) — 한 번에 하나만 */
 
   /* ---------- 바이트·문자 변환 ---------- */
 
@@ -525,6 +527,15 @@
     } catch (e) { /* 저장이 막혀 있으면 이번 화면에서만 쓴다 */ }
   }
 
+  /** 서버가 알려 준 지금 시각(밀리초). 새 서버는 밀리초(`now_ms`)를 주고, 옛 서버는 초(`now`)만 준다 —
+      초만 오면 그 초의 어디쯤인지 몰라 보정값이 최대 1초 뒤처진다. 모양이 틀리면 null. */
+  function serverMillis(data) {
+    if (!data) { return null; }
+    if (typeof data.now_ms === 'number' && isFinite(data.now_ms)) { return data.now_ms; }
+    if (typeof data.now === 'number' && isFinite(data.now)) { return data.now * 1000; }
+    return null;
+  }
+
   /** 서버에 지금 시각을 물어 「서버 − PC」 차이를 다시 잰다.
       오간 시간의 절반을 빼서 답이 도착한 순간을 기준으로 맞춘다. 주고받는 것은 시각뿐이다. */
   function syncTime() {
@@ -541,14 +552,16 @@
       })
       .then(function (data) {
         var t1 = Date.now();
-        if (!data || typeof data.now !== 'number' || !isFinite(data.now)) { throw new Error('format'); }
-        timeSync.offset = data.now * 1000 + (t1 - t0) / 2 - t1;
+        var ms = serverMillis(data);
+        if (ms === null) { throw new Error('format'); }
+        timeSync.offset = ms + (t1 - t0) / 2 - t1;
         timeSync.at = t1;
         timeSync.base = base;
         timeSync.live = true;
         writeOffset();
         showTimeStatus();
         tick();
+        scheduleTick();    /* 보정값이 바뀌었으니 다음 초 경계도 새로 잡는다 */
         return true;
       })
       .catch(function () {
@@ -656,7 +669,7 @@
     start(parsed, '비밀 키를 읽었습니다(저장하지 않았습니다). 코드는 ' + parsed.period + '초마다 바뀝니다.');
   }
 
-  /** 1초마다: 남은 초·진행 막대·상태 줄 갱신, 스텝이 바뀌면 코드 다시 계산.
+  /** 초 경계마다: 남은 초·진행 막대·상태 줄 갱신, 스텝이 바뀌면 코드 다시 계산.
       시각은 언제나 serverNow() — 서버와 맞춘 시각이다. */
   function tick() {
     var now = serverNow();
@@ -688,6 +701,18 @@
         setMsg('코드를 계산할 수 없습니다. 비밀 키를 다시 확인해 주세요.', false);
       });
     }
+  }
+
+  /** 다음 초 경계(서버 시각 기준)에 맞춰 tick 을 부른다. 30초 스텝 경계도 초 경계이므로 코드가
+      경계 직후 바로 바뀐다. 예전 1초 간격 반복은 경계와 무관한 박자라 경계 뒤 최대 1초 동안 이전 코드를 보였다. */
+  function scheduleTick() {
+    if (tickTimer !== null) { clearTimeout(tickTimer); }
+    var wait = 1000 - (serverNow() % 1000) + TICK_SLACK;
+    tickTimer = setTimeout(function () {
+      tickTimer = null;
+      tick();
+      scheduleTick();
+    }, wait);
   }
 
   /* ---------- 잠가 저장 · 열기 · 잠금 · 지우기 ---------- */
@@ -926,6 +951,10 @@
   setInterval(syncTime, SYNC_EVERY);
 
   tick();
-  setInterval(tick, 1000);
+  scheduleTick();
+  /* 뒤에 숨겨 둔 탭은 브라우저가 타이머를 늦춘다 — 다시 보이는 순간 바로 그리고 박자를 다시 잡는다. */
+  document.addEventListener('visibilitychange', function () {
+    if (!document.hidden) { tick(); scheduleTick(); }
+  });
 })();
 </script>
