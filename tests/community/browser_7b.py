@@ -29,6 +29,13 @@ CSP_STYLE_RE = re.compile(r"Applying inline style violates")
 
 
 
+def open_home_more(page):
+    """커뮤니티 홈 머리의 「더보기」(DESIGN 2.9 · 2.15, 2026-09-25)를 연다 — 안의 단추는 메뉴가 열려야 보이고 눌린다"""
+    if not page.evaluate("() => { const m = document.getElementById('community-more'); return !!m && m.open; }"):
+        page.click("#community-more > summary")
+
+
+
 def open_more(page):
     """화면 머리의 「더보기」 메뉴(DESIGN 2.15, 2026-09-25)를 연다 — 안의 단추는 메뉴가 열려야 보이고 눌린다"""
     # 사람이 누르는 길 그대로 — 「더보기」 단추를 누른다(열려 있으면 그대로 둔다 · 검토 L-5)
@@ -94,6 +101,7 @@ def no_overflow_390(page, name):
 
 def open_gallery(page):
     page.goto(COMMUNITY + "/", wait_until="networkidle")
+    open_home_more(page)
     page.click("#community-template-new")
     page.wait_for_selector("#template-dialog[open]", timeout=5000)
     page.wait_for_function("() => document.querySelectorAll('#template-body tr').length > 0", timeout=8000)

@@ -87,6 +87,13 @@ expected_rules = []          # (메서드, URL 조각) — 이 짝에 맞는 400
 
 
 
+def open_home_more(page):
+    """커뮤니티 홈 머리의 「더보기」(DESIGN 2.9 · 2.15, 2026-09-25)를 연다 — 안의 단추는 메뉴가 열려야 보이고 눌린다"""
+    if not page.evaluate("() => { const m = document.getElementById('community-more'); return !!m && m.open; }"):
+        page.click("#community-more > summary")
+
+
+
 def open_more(page):
     """화면 머리의 「더보기」 메뉴(DESIGN 2.15, 2026-09-25)를 연다 — 안의 단추는 메뉴가 열려야 보이고 눌린다"""
     # 사람이 누르는 길 그대로 — 「더보기」 단추를 누른다(열려 있으면 그대로 둔다 · 검토 L-5)
@@ -1217,6 +1224,7 @@ with sync_playwright() as p:
     # ── 31. 휴지통 — 지운 페이지를 되살린다 (4-C) ─────────────────
     print("── 31. 휴지통 (되살리기)")
     page.goto(COMMUNITY + "/", wait_until="networkidle")
+    open_home_more(page)
     page.click("#community-trash")
     page.wait_for_selector("#trash-dialog[open]", timeout=5000)
     page.wait_for_timeout(700)

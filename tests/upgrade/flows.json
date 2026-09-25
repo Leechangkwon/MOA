@@ -6,6 +6,7 @@
       "id": "community.trash",
       "url": "/community/",
       "steps": [
+        { "click": "#community-more > summary" },
         { "click": "#community-trash", "expect": { "method": "GET", "path": "/community/api/me/trash" } }
       ]
     },

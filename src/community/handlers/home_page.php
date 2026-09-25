@@ -38,23 +38,31 @@ require __DIR__ . '/../../views/shell_top.php';
         <button type="button" class="btn btn--quiet" data-help-open>
           <span class="icon" data-icon="help"></span><span>사용 방법</span>
         </button>
-        <!-- 「휴지통」 (4-C). 목록은 창구 `GET /api/me/trash` 가 주는 것만이고, 화면에는
-             「내가 지운 것인가」를 따지는 코드가 한 줄도 없다 (PRD S-01). -->
-        <button id="community-trash" class="btn btn--quiet" type="button">
-          <span class="icon" data-icon="trash"></span>휴지통
-        </button>
-        <!-- 「많이 읽힌 문서」 (7-D1, N-34) — 창구 `GET /api/boards` 의 `can_manage` 가 참일 때만 보인다(Admin) -->
-        <button id="community-popular" class="btn btn--quiet" type="button" aria-haspopup="dialog" hidden>
-          <span class="icon" data-icon="log"></span>많이 읽힌 문서
-        </button>
-        <!-- 「임베드 허용 목록」 (7-C, C:F-32) — 창구 `GET /api/embed-domains` 의 `can_manage` 가 참일 때만 보인다(Admin) -->
-        <button id="community-embed-admin" class="btn btn--quiet" type="button" aria-haspopup="dialog" hidden>
-          <span class="icon" data-icon="shield"></span>임베드 허용 목록
-        </button>
-        <!-- 「템플릿에서」 (7-B, C:F-31) — 목록은 창구 `GET /api/templates` 가 주는 것만(내 것 · 내 팀 · 사이트 기본). -->
-        <button id="community-template-new" class="btn btn--quiet" type="button" aria-haspopup="dialog">
-          <span class="icon" data-icon="files"></span>템플릿에서
-        </button>
+        <!-- 더보기 (DESIGN 2.9 · 2.15, 2026-09-25 — 사용자 폴드 접은 화면 스크린샷: 머리 단추 여섯이 세 줄로 밀림).
+             머리에는 「사용 방법」 · 더보기 · 「새 페이지」 셋만 둔다. 항목의 보이고 숨는 것은 전과 같이 각 스크립트가
+             창구의 can_manage 로 `hidden` 을 바꾼다 — id 는 그대로라 동작 코드는 바뀌지 않는다. -->
+        <details id="community-more" class="menu">
+          <summary class="btn btn--quiet"><span class="icon" data-icon="chevron"></span>더보기</summary>
+          <div class="menu__list">
+            <!-- 「템플릿에서」 (7-B, C:F-31) — 목록은 창구 `GET /api/templates` 가 주는 것만(내 것 · 내 팀 · 사이트 기본). -->
+            <button id="community-template-new" class="menu__item" type="button" aria-haspopup="dialog">
+              <span class="icon" data-icon="files"></span>템플릿에서 만들기
+            </button>
+            <!-- 「휴지통」 (4-C). 목록은 창구 `GET /api/me/trash` 가 주는 것만이고, 화면에는
+                 「내가 지운 것인가」를 따지는 코드가 한 줄도 없다 (PRD S-01). -->
+            <button id="community-trash" class="menu__item" type="button" aria-haspopup="dialog">
+              <span class="icon" data-icon="trash"></span>휴지통
+            </button>
+            <!-- 「많이 읽힌 문서」 (7-D1, N-34) — 창구 `GET /api/boards` 의 `can_manage` 가 참일 때만 보인다(Admin) -->
+            <button id="community-popular" class="menu__item" type="button" aria-haspopup="dialog" hidden>
+              <span class="icon" data-icon="log"></span>많이 읽힌 문서
+            </button>
+            <!-- 「임베드 허용 목록」 (7-C, C:F-32) — 창구 `GET /api/embed-domains` 의 `can_manage` 가 참일 때만 보인다(Admin) -->
+            <button id="community-embed-admin" class="menu__item" type="button" aria-haspopup="dialog" hidden>
+              <span class="icon" data-icon="shield"></span>임베드 허용 목록
+            </button>
+          </div>
+        </details>
         <button id="community-new" class="btn" type="button">
           <span class="icon" data-icon="plus"></span>새 페이지
         </button>

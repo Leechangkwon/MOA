@@ -21,6 +21,17 @@ fails = 0
 pageerrors, console_errors, http_bad = [], [], []
 
 
+def open_home_more(page):
+    """커뮤니티 홈 머리의 「더보기」(DESIGN 2.9 · 2.15, 2026-09-25)를 연다 — 안의 단추는 메뉴가 열려야 보이고 눌린다"""
+    if not page.evaluate("() => { const m = document.getElementById('community-more'); return !!m && m.open; }"):
+        page.click("#community-more > summary")
+
+
+def home_btn_shown(page, sel):
+    """홈 메뉴 안 단추가 「있어야 할 때 있는가」 — 메뉴가 닫혀 있어도 창구의 can_manage 로 정해진 hidden 만 본다"""
+    return page.evaluate("s => { const e = document.querySelector(s); return !!e && !e.hidden; }", sel)
+
+
 def step(name, ok, detail=""):
     global fails
     if not ok:
@@ -52,19 +63,20 @@ with sync_playwright() as p:
     page.goto(COMMUNITY + "/", wait_until="networkidle")
     page.wait_for_timeout(300)
     page.wait_for_function("() => document.querySelectorAll('#nav-community-boards a').length > 0", timeout=8000)  # 게시판 창구 응답(단추 판단과 같은 창구)이 온 뒤
-    step("1 직원 홈에는 「많이 읽힌 문서」 단추가 없다(창구 응답 뒤)", page.locator("#community-popular").is_hidden())
+    step("1 직원 홈에는 「많이 읽힌 문서」 단추가 없다(창구 응답 뒤)", not home_btn_shown(page, "#community-popular"))
     ctx.close()
     if M1:
         ctx, page = context(browser, M1)
         page.goto(COMMUNITY + "/", wait_until="networkidle")
         page.wait_for_function("() => document.querySelectorAll('#nav-community-boards a').length > 0", timeout=8000)
-        step("1 매니저 홈에도 단추가 없다", page.locator("#community-popular").is_hidden())
+        step("1 매니저 홈에도 단추가 없다", not home_btn_shown(page, "#community-popular"))
         ctx.close()
 
     print("── 2. 관리자 — 창 · 목록")
     ctx, page = context(browser, A1)
     page.goto(COMMUNITY + "/", wait_until="networkidle")
-    page.wait_for_selector("#community-popular:not([hidden])", timeout=8000)
+    page.wait_for_selector("#community-popular:not([hidden])", state="attached", timeout=8000)
+    open_home_more(page)
     page.click("#community-popular")
     page.wait_for_selector("#popular-dialog[open]", timeout=5000)
     page.wait_for_function("() => document.querySelectorAll('#popular-body tr').length > 0", timeout=8000)
@@ -87,7 +99,8 @@ with sync_playwright() as p:
         print("── 3. 재인증 안 한 관리자 — 셸 재인증 창 → 비밀번호 → 목록")
         ctx, page = context(browser, STALE)
         page.goto(COMMUNITY + "/", wait_until="networkidle")
-        page.wait_for_selector("#community-popular:not([hidden])", timeout=8000)
+        page.wait_for_selector("#community-popular:not([hidden])", state="attached", timeout=8000)
+        open_home_more(page)
         page.click("#community-popular")
         page.wait_for_selector("#reauth-dialog-form input[type=password]", timeout=8000)
         step("3 403 next=reauth → 셸 재인증 창이 뜬다", page.locator("#reauth-dialog-form").count() == 1)

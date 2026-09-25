@@ -28,6 +28,17 @@ pageerrors, console_errors, dialogs, http_bad = [], [], [], []
 CSP_STYLE_RE = re.compile(r"Applying inline style violates")
 
 
+def open_home_more(page):
+    """커뮤니티 홈 머리의 「더보기」(DESIGN 2.9 · 2.15, 2026-09-25)를 연다 — 안의 단추는 메뉴가 열려야 보이고 눌린다"""
+    if not page.evaluate("() => { const m = document.getElementById('community-more'); return !!m && m.open; }"):
+        page.click("#community-more > summary")
+
+
+def home_btn_shown(page, sel):
+    """홈 메뉴 안 단추가 「있어야 할 때 있는가」 — 메뉴가 닫혀 있어도 창구의 can_manage 로 정해진 hidden 만 본다"""
+    return page.evaluate("s => { const e = document.querySelector(s); return !!e && !e.hidden; }", sel)
+
+
 def step(name, ok, detail=""):
     global fails
     if not ok:
@@ -90,7 +101,7 @@ with sync_playwright() as p:
     ctx, page = context(browser, E1)
     page.goto(COMMUNITY + "/", wait_until="networkidle")
     page.wait_for_timeout(300)
-    step("1 직원 홈에는 「임베드 허용 목록」 단추가 없다", page.locator("#community-embed-admin").is_hidden())
+    step("1 직원 홈에는 「임베드 허용 목록」 단추가 없다", not home_btn_shown(page, "#community-embed-admin"))
     page.goto(COMMUNITY + "/p/" + PE, wait_until="networkidle")
     page.click("#page-edit")
     page.wait_for_selector("#page-editor .ProseMirror", timeout=8000)
@@ -168,7 +179,8 @@ with sync_playwright() as p:
     print("── 3. 관리자 — 「임베드 허용 목록」 창에서 더하고 빼기")
     ctx, page = context(browser, A1)
     page.goto(COMMUNITY + "/", wait_until="networkidle")
-    page.wait_for_selector("#community-embed-admin:not([hidden])", timeout=8000)
+    page.wait_for_selector("#community-embed-admin:not([hidden])", state="attached", timeout=8000)
+    open_home_more(page)
     page.click("#community-embed-admin")
     page.wait_for_selector("#embed-dialog[open]", timeout=5000)
     page.wait_for_function("() => document.querySelectorAll('#embed-body tr').length > 0", timeout=8000)

@@ -42,6 +42,13 @@ for name in sorted(os.listdir(OLD_DIR)):
 fails = 0
 
 
+def open_home_more(page):
+    """커뮤니티 홈 머리의 「더보기」(DESIGN 2.9 · 2.15, 2026-09-25)를 연다 — 안의 단추는 메뉴가 열려야 보이고 눌린다"""
+    if not page.evaluate("() => { const m = document.getElementById('community-more'); return !!m && m.open; }"):
+        page.click("#community-more > summary")
+
+
+
 def step(name, ok, detail=""):
     global fails
     if not ok:
@@ -85,6 +92,7 @@ def run(browser, mode):
     page.wait_for_timeout(500)
 
     # 「휴지통」 먼저(페이지를 떠나지 않는다) → 「새 페이지」(새 페이지로 옮겨 간다)
+    open_home_more(page)
     page.click("#community-trash")
     page.wait_for_timeout(1500)
     seen["trash_open"] = page.locator("#trash-dialog[open]").count() == 1

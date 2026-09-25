@@ -463,12 +463,19 @@
 }
 details.page-tree__node[open] > summary > .page-tree__row > .page-tree__caret { transform: rotate(90deg); }
 
-.page-tree__link { flex: 1 1 auto; min-width: 0; color: var(--fg); text-decoration: none; }
+.page-tree__link { flex: 1 1 auto; min-width: 0; color: var(--fg); text-decoration: none;
+  /* 제목은 한 줄 — 길면 말줄임(2026-09-25 폴드 접은 화면에서 배지에 밀려 세 줄로 꺾였다) */
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.page-tree__row > .badge,
+.page-tree__row > .muted { flex: none; white-space: nowrap; }
 .page-tree__link:hover { text-decoration: underline; }
 
 .page-tree__add { opacity: 0; }
 .page-tree__row:hover .page-tree__add,
 .page-tree__add:focus-visible { opacity: 1; }
+/* 마우스가 없는 기기(휴대폰)에는 「올리면 보이는」 단추가 보이지 않는 채 자리만 차지하고, 빈 곳을 누르면
+   하위 페이지가 생긴다 — 아예 뺀다. 하위 페이지는 페이지 안 「하위 페이지 만들기」로(도움말). */
+@media (hover: none) { .page-tree__add { display: none; } }
 
 .page-tree__kids {
   margin-left: 1rem;
