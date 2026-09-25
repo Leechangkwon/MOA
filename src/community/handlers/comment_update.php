@@ -37,13 +37,15 @@ if (!$may || $comment['hidden_at'] !== null) {
 }
 
 $sql = <<<'SQL'
-    UPDATE community.comments SET body = :body, updated_at = now()
+    UPDATE community.comments SET body = :body, updated_at = now(), search_tsv = strip(to_tsvector('simple', :tsv))
      WHERE id = CAST(:cid AS bigint) AND deleted_at IS NULL AND hidden_at IS NULL
     SQL;
 $db = Db::instance();
 $db->begin();
 try {
-    if ($db->run($sql, [':body' => $text, ':cid' => (int) $comment['id']])->rowCount() < 1) {
+    // Q:F-2 — 고친 본문으로 댓글 검색 색인도 다시(SearchText)
+    $tsv = SearchText::indexText([$text], 'comment ' . (int) $comment['id']);
+    if ($db->run($sql, [':body' => $text, ':tsv' => $tsv, ':cid' => (int) $comment['id']])->rowCount() < 1) {
         $db->rollback();
         Http::error(404, Http::MSG_NOT_FOUND);
     }

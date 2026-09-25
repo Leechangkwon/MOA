@@ -240,7 +240,7 @@ $sqlUpdate = <<<'SQL'
            doc = CAST(:doc AS jsonb),
            doc_version = CAST(:newv AS int),
            plain_text = :plain,
-           search_tsv = to_tsvector('simple', :tsv),
+           search_tsv = strip(to_tsvector('simple', :tsv)),
            block_count = CAST(:blocks AS int),
            updated_at = now(),
            last_edited_by = CAST(:editor AS bigint)
@@ -256,6 +256,9 @@ $newVersion = $currentVersion + 1;
 
 $db->begin();
 try {
+    // Q:F-2 — 태그를 읽기 전에 행을 잠근다(태그 고치기와 겹쳐 색인이 옛 태그로 남지 않게 — routes.php 상수 머리글)
+    $db->run(COMMUNITY_PAGE_LOCK_SQL, [':pid' => $pageId]);
+    $tagsNow = community_page_tags($pageId);
     /* 이전 판을 먼저 남긴다 — 뒤의 UPDATE 가 실패하면 함께 되돌아간다.
        5분 합치기에 걸리면 이 줄을 건너뛴다(그 판의 내용은 다음 스냅샷에 합쳐진다). */
     if (!$squashed) {
@@ -267,7 +270,9 @@ try {
         ':doc'    => $docJson,
         ':newv'   => $newVersion,
         ':plain'  => $extract['plain_text'],
-        ':tsv'    => $title . ' ' . $extract['plain_text'],
+        // Q:F-2 — 색인 글자는 한 함수(제목 + 본문 + 태그 이름, 한글 두 글자 조각 + 한 글자)
+        // 태그는 위에서 행을 잠근 뒤 읽었다($tagsNow — COMMUNITY_PAGE_LOCK_SQL)
+        ':tsv'    => community_search_text($title, $extract['plain_text'], $tagsNow, 'page ' . $pageId),
         ':blocks' => count($extract['blocks']),
         ':editor' => $me,
         ':pid'    => $pageId,

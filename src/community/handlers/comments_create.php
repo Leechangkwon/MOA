@@ -105,8 +105,9 @@ if ($blockId !== null) {
 
 // ─── [3] 저장 + 알림 + 감사 ───────────────────────────────────
 $sqlInsert = <<<'SQL'
-    INSERT INTO community.comments (page_id, parent_comment_id, block_id, quote, body, author_id)
-    VALUES (CAST(:pid AS bigint), CAST(:parent AS bigint), CAST(:bid AS uuid), :quote, :body, CAST(:me AS bigint))
+    INSERT INTO community.comments (page_id, parent_comment_id, block_id, quote, body, author_id, search_tsv)
+    VALUES (CAST(:pid AS bigint), CAST(:parent AS bigint), CAST(:bid AS uuid), :quote, :body, CAST(:me AS bigint),
+            strip(to_tsvector('simple', :tsv)))
     RETURNING id, public_id, created_at
     SQL;
 
@@ -120,6 +121,8 @@ try {
         ':quote'  => $quote,
         ':body'   => $text,
         ':me'     => $me,
+        // Q:F-2 — 댓글 검색 색인(본문만, 한글 두 글자 조각 + 한 글자 — SearchText)
+        ':tsv'    => SearchText::indexText([$text], 'comment on page ' . $pageId),
     ])->fetch();
     if (!is_array($c)) {
         throw new RuntimeException('댓글을 남기지 못했습니다');

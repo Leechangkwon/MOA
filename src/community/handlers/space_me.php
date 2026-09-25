@@ -39,7 +39,7 @@ $sqlInsertPage = <<<'SQL'
          author_id, last_edited_by, visibility, position)
     VALUES
         (CAST(:space AS bigint), :title, CAST(:doc AS jsonb), 1, :plain,
-         to_tsvector('simple', :tsv), CAST(:blocks AS int),
+         strip(to_tsvector('simple', :tsv)), CAST(:blocks AS int),
          CAST(:author AS bigint), CAST(:editor AS bigint), 'private', 0)
     RETURNING id, public_id
     SQL;
@@ -88,7 +88,7 @@ if (!is_array($row)) {
                 ':title'  => $pageTitle,
                 ':doc'    => $docJson,
                 ':plain'  => $extract['plain_text'],
-                ':tsv'    => $pageTitle . ' ' . $extract['plain_text'],
+                ':tsv'    => community_search_text($pageTitle, $extract['plain_text']),   // Q:F-2
                 ':blocks' => count($extract['blocks']),
                 ':author' => $me,
                 ':editor' => $me,

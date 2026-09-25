@@ -394,7 +394,7 @@ $sqlInsert = <<<'SQL'
          author_id, last_edited_by, visibility, position, database_id, properties, icon)
     VALUES
         (CAST(:space AS bigint), CAST(:parent AS bigint), :title, CAST(:doc AS jsonb), 1, :plain,
-         to_tsvector('simple', :tsv), CAST(:blocks AS int),
+         strip(to_tsvector('simple', :tsv)), CAST(:blocks AS int),
          CAST(:author AS bigint), CAST(:editor AS bigint), :vis, CAST(:pos AS int),
          CAST(:dbid AS bigint), CAST(:props AS jsonb), :icon)
     RETURNING id, public_id, created_at, updated_at
@@ -422,7 +422,7 @@ try {
         ':title'  => $title,
         ':doc'    => $docJson,
         ':plain'  => $extract['plain_text'],
-        ':tsv'    => $title . ' ' . $extract['plain_text'],
+        ':tsv'    => community_search_text($title, $extract['plain_text']),   // Q:F-2 — 새 페이지라 태그 없음
         ':blocks' => count($extract['blocks']),
         ':author' => $me,
         ':editor' => $me,

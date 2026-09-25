@@ -40,13 +40,13 @@ import { inputRules, textblockTypeInputRule, InputRule } from './vendor/pm/prose
 import { dropCursor } from './vendor/pm/prosemirror-dropcursor.js?v=5823578fa61a';
 import { gapCursor } from './vendor/pm/prosemirror-gapcursor.js?v=5823578fa61a';
 
-import { renderDoc, embedHost } from './doc-render.js?v=3c7ca551d4f8';
-import { createDatabaseView } from './database.js?v=3c7ca551d4f8';
-import { bindTemplateGallery, createTemplateSave } from './templates.js?v=3c7ca551d4f8';
-import { bindEmbedAdmin } from './embeds.js?v=3c7ca551d4f8';
-import { bindPopular } from './popular.js?v=3c7ca551d4f8';
-import { schema, toDoc, fromDoc, uuid4, colorAllowed, schemeOkForEditor, COLORS, BLOCK_TYPES } from './editor-schema.js?v=3c7ca551d4f8';
-import { createDrafts } from './drafts.js?v=3c7ca551d4f8';
+import { renderDoc, embedHost } from './doc-render.js?v=1eeb6a775ed2';
+import { createDatabaseView } from './database.js?v=1eeb6a775ed2';
+import { bindTemplateGallery, createTemplateSave } from './templates.js?v=1eeb6a775ed2';
+import { bindEmbedAdmin } from './embeds.js?v=1eeb6a775ed2';
+import { bindPopular } from './popular.js?v=1eeb6a775ed2';
+import { schema, toDoc, fromDoc, uuid4, colorAllowed, schemeOkForEditor, COLORS, BLOCK_TYPES } from './editor-schema.js?v=1eeb6a775ed2';
+import { createDrafts } from './drafts.js?v=1eeb6a775ed2';
 
 /* ─── 주소와 공통 도우미 ─────────────────────────────────────── */
 

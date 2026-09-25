@@ -247,8 +247,10 @@ if (!headers_sent()) {
      import 문 자체에 `?v=<버전>` 이 찍혀 있다 — `scripts/community_asset_version.php`. 진입 파일만
      버전을 달던 때는 7일 캐시된 옛 부품과 새 editor.js 가 섞여 모듈 연결이 실패했다(2026-09-24 핫픽스). -->
 <script type="module" src="<?= Http::url('/assets/community/editor.js') ?>?v=<?= (int) filemtime(__DIR__ . '/../../public/assets/community/editor.js') ?>"></script>
-<script defer src="<?= Http::url('/assets/community/search.js') ?>?v=<?= (int) filemtime(__DIR__ . '/../../public/assets/community/search.js') ?>"></script>
 <?php endif; ?>
+<!-- Q:F-2 통합 검색 창 (사이트 PRD Q:F-2 — 두 앱 공통). 사이드바 「검색」·Ctrl+K(⌘K). 창과 동작은 search.js,
+     무엇이 나오나는 각 앱의 서버(커뮤니티 search.php · t-box files_list.php 전역 검색). 일반 스크립트(defer). -->
+<script defer src="<?= Http::url('/assets/search.js') ?>?v=<?= (int) filemtime(__DIR__ . '/../../public/assets/search.js') ?>"></script>
 <?php if ($shellPwa === 'alerts'): ?>
 <!-- F-70 「Qaredi 경보」 설치형 웹 앱 (PRD F-70, ARCH 5.32) — 휴대폰 경보 화면(`/alerts-app`)만. 값은 전부 고정 글자다.
      매니페스트는 로그인·재인증 뒤에만 열리는 라우트라 쿠키를 싣는다(use-credentials — 같은 사이트 요청).
@@ -331,6 +333,22 @@ if (!headers_sent()) {
       </details>
     </div>
 
+    <!-- 검색 (5-B → Q:F-2 두 앱 공통) — 누르거나 Ctrl+K(⌘K). 창과 동작은 search.js, 무엇이 나오나는 각 앱의 서버
+         (커뮤니티 search.php — 페이지·댓글 / t-box files_list.php — 파일 전역 검색). 창에 커뮤니티 기준 주소를 싣는다
+         (t-box 화면의 <body> 에는 커뮤니티 기준이 없다). 값은 고정 상수다. -->
+    <button id="nav-search" class="nav__item nav-search" type="button" aria-haspopup="dialog">
+      <span class="icon" data-icon="search"></span><span>검색</span><kbd class="nav-search__key">Ctrl K</kbd>
+    </button>
+    <dialog id="search-dialog" class="modal modal--form search-dialog" aria-label="통합 검색" data-community-base="<?= COMMUNITY_BASE ?>">
+      <div class="search-dialog__bar">
+        <span class="icon" data-icon="search"></span>
+        <input id="search-input" type="search" maxlength="100" autocomplete="off" spellcheck="false"
+               placeholder="찾기 — 페이지·댓글·파일" aria-label="찾을 말" aria-controls="search-results">
+        <button class="btn btn--small btn--quiet" type="button" data-search-close>닫기</button>
+      </div>
+      <ul id="search-results" class="search-results" role="listbox" aria-label="검색 결과"></ul>
+      <p id="search-note" class="search-dialog__note muted" role="status"></p>
+    </dialog>
 <?php if ($shellMod === 'community'): ?>
     <!-- ─── 커뮤니티 모듈의 내비 (커뮤니티 ARCHITECTURE.md 21.3) ───────────────────
          항목 둘이다. 「내 공간」은 링크, 「새 페이지」는 만들자마자 그 페이지로 가야 해서
@@ -338,10 +356,6 @@ if (!headers_sent()) {
          단추에도 같은 `.nav__item` 을 쓴다 — 화면 전용 클래스를 만들지 않는다(DESIGN 원칙 6).
          t-box 의 파일·설정·관리 묶음은 이 모드에서 **그리지 않는다**: 다른 앱의 내비이고,
          앱 사이 이동은 위 그리드 단추가 맡는다. -->
-    <!-- 검색 (5-B) — 누르거나 Ctrl+K(⌘K). 창과 동작은 search.js, 무엇이 나오나는 서버(search.php) -->
-    <button id="nav-community-search" class="nav__item nav-search" type="button" aria-haspopup="dialog">
-      <span class="icon" data-icon="search"></span><span>검색</span><kbd class="nav-search__key">Ctrl K</kbd>
-    </button>
     <!-- 알림 (5-D, PRD F-22) — 종 아이콘 + 안 읽은 수. 30초마다 `GET /community/api/notifications?unread=1`.
          누르면 알림 창 — 목록은 창구가 **지금도 볼 수 있는 페이지만** 제목을 준다(아니면 「볼 수 없는 페이지」). -->
     <nav class="nav" aria-label="알림">
@@ -366,16 +380,6 @@ if (!headers_sent()) {
         <button class="btn btn--quiet" type="button" data-notify-close>닫기</button>
         <button id="notify-all-read" class="btn" type="button">모두 읽음</button>
       </div>
-    </dialog>
-    <dialog id="search-dialog" class="modal modal--form search-dialog" aria-label="페이지 검색">
-      <div class="search-dialog__bar">
-        <span class="icon" data-icon="search"></span>
-        <input id="search-input" type="search" maxlength="100" autocomplete="off" spellcheck="false"
-               placeholder="페이지 찾기 — 제목·본문" aria-label="찾을 말" aria-controls="search-results">
-        <button class="btn btn--small btn--quiet" type="button" data-search-close>닫기</button>
-      </div>
-      <ul id="search-results" class="search-results" role="listbox" aria-label="검색 결과"></ul>
-      <p id="search-note" class="search-dialog__note muted" role="status"></p>
     </dialog>
     <p class="nav-title">내 공간</p>
     <nav class="nav" aria-label="커뮤니티">

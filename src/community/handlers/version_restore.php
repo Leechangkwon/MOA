@@ -157,7 +157,7 @@ $sqlUpdate = <<<'SQL'
            doc = CAST(:doc AS jsonb),
            doc_version = CAST(:newv AS int),
            plain_text = :plain,
-           search_tsv = to_tsvector('simple', :tsv),
+           search_tsv = strip(to_tsvector('simple', :tsv)),
            block_count = CAST(:blocks AS int),
            updated_at = now(),
            last_edited_by = CAST(:editor AS bigint)
@@ -168,6 +168,9 @@ $sqlUpdate = <<<'SQL'
 
 $db->begin();
 try {
+    // Q:F-2 — 태그를 읽기 전에 행을 잠근다(태그 고치기와 겹쳐 색인이 옛 태그로 남지 않게 — routes.php 상수 머리글)
+    $db->run(COMMUNITY_PAGE_LOCK_SQL, [':pid' => $pageId]);
+    $tagsNow = community_page_tags($pageId);
     /* ① 지금 판을 스냅샷으로 남긴다. `summary` 는 **이 판이 어떻게 끝났나**이고, 화면은 그
        값을 다음 판의 줄에 「판 N 에서 되돌림」으로 붙인다 (`versions_list.php` 머리글 ★). */
     community_insert_snapshot($row, 'restore from v' . (string) $want);
@@ -178,7 +181,9 @@ try {
         ':doc'    => $docJson,
         ':newv'   => $newVersion,
         ':plain'  => $extract['plain_text'],
-        ':tsv'    => $title . ' ' . $extract['plain_text'],
+        // Q:F-2 — 색인 글자는 한 함수(제목 + 본문 + 태그 이름)
+        // 태그는 위에서 행을 잠근 뒤 읽었다($tagsNow — COMMUNITY_PAGE_LOCK_SQL)
+        ':tsv'    => community_search_text($title, $extract['plain_text'], $tagsNow, 'page ' . $pageId),
         ':blocks' => count($extract['blocks']),
         ':editor' => $me,
         ':pid'    => $pageId,

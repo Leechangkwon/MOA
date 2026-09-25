@@ -37,6 +37,8 @@ require_once __DIR__ . '/Doc.php';
 require_once __DIR__ . '/DocRender.php';
 require_once __DIR__ . '/CommunityAuthz.php';
 require_once __DIR__ . '/DbProps.php';
+// Q:F-2 — 검색 색인·검색어 토큰 한 벌(사이트 공통 — t-box 파일 색인도 나중에 같은 파일, 지시서 2.1)
+require_once __DIR__ . '/../SearchText.php';
 
 /**
  * 라우트 표 — [메서드, **모듈 경로** 패턴, 핸들러 파일명, 정책]
@@ -1084,6 +1086,307 @@ function community_search_pages_where(array $u): array
         $bind[':vis_mteam' . $n] = null;
     }
     return [$sql, $bind];
+}
+
+/* ══════════════════════════════════════════════════════════════════
+ * Q:F-2 통합 검색 — 색인 글자 · 찾기 SQL · 경로 묶음 (지시서 docs/qf2-unified-search-directive.md 2장)
+ *
+ * 판정은 **새로 만들지 않는다**(2.6): 페이지는 `community_search_pages_where`(관리자·게시판 관리자 갈래 끔)
+ * 그대로, 댓글은 그 조건절로 페이지를 먼저 거른 뒤 그 페이지의 댓글만(삭제·숨김 제외). 이 절이 더하는 것은
+ * 「무엇이 맞나」(색인 + ILIKE 다시 확인)뿐이다.
+ * ══════════════════════════════════════════════════════════════════ */
+
+/*
+ * Q:F-2 — 저장이 태그를 읽기 **전에** 이 페이지 행을 잠근다. 태그 고치기(pages_tags_put)도 같은 행을 먼저 잠그므로
+ * 두 쓰기가 한 줄로 선다 — 저장이 커밋 전 옛 태그를 읽어 색인을 쓰고, 그 사이 커밋된 새 태그가 색인에서 빠지는 일이 없다.
+ * 잠금은 `FOR NO KEY UPDATE`(키를 바꾸지 않는 UPDATE 가 잡는 것과 같은 세기) — 저장·태그 고치기끼리는 부딪히지만,
+ * 이 페이지를 외래 키로 가리키는 쓰기(댓글 · 하위 페이지 · 공유 · 알림)의 KEY SHARE 와는 부딪히지 않는다. `FOR UPDATE`
+ * 였으면 자동 저장 트랜잭션이 끝날 때까지 그 쓰기들이 줄을 섰다(검토 N-1).
+ */
+const COMMUNITY_PAGE_LOCK_SQL = <<<'SQL'
+    SELECT 1 FROM community.pages WHERE id = CAST(:pid AS bigint) FOR NO KEY UPDATE
+    SQL;
+
+/**
+ * 페이지 색인 글자 — 저장하는 다섯 곳(pages_create · pages_update · board_pages_create · space_me ·
+ * version_restore)과 태그를 고치는 곳(pages_tags_put)이 **이 함수 하나만** 부른다. SQL 은
+ * `strip(to_tsvector('simple', :tsv))`. 제목 + 본문 + 태그 이름(J-4)을 한 벡터로.
+ *
+ * @param list<string> $tags
+ */
+function community_search_text(string $title, string $plain, array $tags = [], string $where = ''): string
+{
+    // 순서는 제목 → 태그 → 본문 — 토큰 상한(20,000)에서 잘릴 때 짧고 중요한 제목·태그가 먼저 들어가 남는다
+    return SearchText::indexText(array_merge([$title], array_values($tags), [$plain]), $where);
+}
+
+/*
+ * 찾기 SQL 의 고정 조각 — 바뀌는 것은 낱말 번호(`@N@`, 정수) 하나뿐이다(`community_share_rank_sql` 과 같은 방식).
+ * 요청 글자는 한 글자도 조각에 들어가지 않는다 — 값은 전부 `:s?N` 바인딩(S-04).
+ *   TITLE        제목에 이 낱말이 있나(정렬 「제목에 맞은 것 먼저」 — 모든 낱말이 제목에 있을 때 참)
+ *   PAGE_RAW     제목·본문·태그 원문 ILIKE (지금 검색과 같은 뜻 — 영문·숫자만인 검색은 이것뿐)
+ *   PAGE_NFC     NFC 로 합친 원문 ILIKE — 맥 NFD 로 적힌 글도 조합한 검색어로(한글이 든 검색에서만)
+ *   PAGE_HANGUL  한글 음절만인 낱말 — 대소문자가 없어 ILIKE 와 같은 뜻인 글자열 찾기(strpos)로(원문 · NFC 둘 다)
+ *   COMMENT_*    댓글 본문에 같은 규칙
+ */
+const COMMUNITY_SEARCH_TITLE_SQL = <<<'SQL'
+p.title ILIKE :st@N@ ESCAPE '#'
+SQL;
+const COMMUNITY_SEARCH_PAGE_RAW_SQL = <<<'SQL'
+p.title ILIKE :sa@N@ ESCAPE '#' OR p.plain_text ILIKE :sb@N@ ESCAPE '#'
+ OR EXISTS (SELECT 1 FROM community.page_tags pt WHERE pt.page_id = p.id AND pt.tag ILIKE :sc@N@ ESCAPE '#')
+SQL;
+const COMMUNITY_SEARCH_PAGE_NFC_SQL = <<<'SQL'
+ OR normalize(p.title || E'\n' || p.plain_text, NFC) ILIKE :sd@N@ ESCAPE '#'
+ OR EXISTS (SELECT 1 FROM community.page_tags pn WHERE pn.page_id = p.id AND normalize(pn.tag, NFC) ILIKE :se@N@ ESCAPE '#')
+SQL;
+const COMMUNITY_SEARCH_PAGE_HANGUL_SQL = <<<'SQL'
+strpos(p.title, :sa@N@) > 0 OR strpos(p.plain_text, :sb@N@) > 0
+ OR EXISTS (SELECT 1 FROM community.page_tags pt WHERE pt.page_id = p.id AND strpos(pt.tag, :sc@N@) > 0)
+ OR strpos(normalize(p.title || E'\n' || p.plain_text, NFC), :sd@N@) > 0
+ OR EXISTS (SELECT 1 FROM community.page_tags pn WHERE pn.page_id = p.id AND strpos(normalize(pn.tag, NFC), :se@N@) > 0)
+SQL;
+const COMMUNITY_SEARCH_COMMENT_RAW_SQL = <<<'SQL'
+c.body ILIKE :sa@N@ ESCAPE '#'
+SQL;
+const COMMUNITY_SEARCH_COMMENT_NFC_SQL = <<<'SQL'
+ OR normalize(c.body, NFC) ILIKE :sd@N@ ESCAPE '#'
+SQL;
+const COMMUNITY_SEARCH_COMMENT_HANGUL_SQL = <<<'SQL'
+strpos(c.body, :sa@N@) > 0 OR strpos(normalize(c.body, NFC), :sd@N@) > 0
+SQL;
+
+/*
+ * 페이지 찾기 문장 앞뒤에 거는 계획 설정 — **같은 트랜잭션 안에서만**(SET LOCAL, 끝나면 저절로 풀린다).
+ * 페이지 벡터는 평균 8KB 라 TOAST 밖에 산다. 아주 흔한 말(한 글자 「회」「의」 — 문서 절반 넘게)에서 계획기가 순차 읽기 +
+ * `@@` 거르기를 고르면 줄마다 벡터를 풀어 1초가 넘었다(S1 실측 1,027ms). 비트맵 색인 읽기는 정확한 줄 번호만 넘겨 벡터를
+ * 풀지 않는다(136ms). 계획기의 비용 모형이 「벡터 풀기」를 모르므로 이 문장에서만 순차 읽기를 끈다 — 판정·결과는 같다.
+ * 댓글 문장에는 걸지 않는다(댓글 벡터는 작아 표 안에 있고, 거기서는 순차 읽기가 더 빨랐다).
+ */
+const COMMUNITY_SEARCH_PAGES_PLAN_ON  = 'SET LOCAL enable_seqscan = off';
+const COMMUNITY_SEARCH_PAGES_PLAN_OFF = 'SET LOCAL enable_seqscan = on';
+
+/**
+ * 찾기 SQL 한 벌 — 화면 창구(search.php)와 성능 시험(tests/perf/qf2_search_perf.sh 의 EXPLAIN)이 **같은 문장**을 쓴다.
+ *
+ *   $kind  'pages' | 'comments' (코드 리터럴만)
+ *   $terms SearchText::queryTerms() 의 결과(비어 있지 않다)
+ *
+ * 규칙 (지시서 2.2)
+ *   · 한글이 든 검색 — `search_tsv @@ to_tsquery('simple', :tq)`(색인) AND 기존 범위 조건절 AND 낱말마다 다시 확인.
+ *     다시 확인은 원문이 먼저, 안 맞으면 NFC 로 합친 원문(`normalize(…, NFC)` — PG 13+ 내장, 확장 아님)으로
+ *     한 번 더 — 맥 NFD 로 적힌 글도 조합한 검색어로 찾는다(색인도 조합한 글자로 만든다, ①).
+ *     한글만 1~2글자인 낱말은 다시 확인하지 않는다(색인 토큰이 곧 그 글자열 — `SearchText::queryTerms`).
+ *   · 한글이 없는 검색(영문·숫자만) — tsquery 없이 **지금과 같은 ILIKE**(색인 없음, J-10 ⓑ).
+ *   · 여러 낱말은 AND(낱말마다 제목·본문·태그 중 어디든).
+ *
+ * 문장 모양 — **정렬 먼저, 판정은 필요한 만큼** (S1 실측 — 구현 기록 5장)
+ *   ① 후보(색인에 맞은 살아 있는 행)를 싼 칸(id · 제목 · 고친 때)으로만 정렬한다 — 본문을 풀지 않는다.
+ *   ② 그 순서대로 한 줄씩 **범위 조건절**(`community_search_pages_where` — 글자 그대로)과 다시 확인을 매기고, 20줄이 차면 멈춘다
+ *      (`LATERAL … OFFSET 0` — 줄마다 부르는 안쪽 질의라 먼저 다 매기지 않는다).
+ *   판정 조건절 자체는 한 글자도 바꾸지 않는다(새 권한 코드 0) — 매기는 **줄 수**만 준다. 뜻(무엇이 나오고 어떤 순서인가)은
+ *   「다 매긴 뒤 정렬 · 20건」과 같다.
+ * 결과 전체 개수는 세지 않는다(2.6). 값은 전부 바인딩이고 SQL 조각은 위 고정 글자다(S-04).
+ * 같은 자리표시자를 두 번 쓰지 않는다(서버측 prepare — Db.php) — 낱말마다 이름을 번호로 가른다.
+ *
+ * @param  array<string,mixed> $u
+ * @param  list<array{text:string,tokens:list<string>,recheck:bool,hangul?:bool}> $terms
+ * @return array{0:string,1:array<string,mixed>}
+ */
+function community_search_sql(array $u, array $terms, string $kind): array
+{
+    if (($kind !== 'pages' && $kind !== 'comments') || $terms === [] || count($terms) > 60) {
+        throw new RuntimeException('community_search_sql: 허용되지 않는 인자');
+    }
+    [$visible, $bind] = community_search_pages_where($u);
+    $tq = SearchText::tsquery($terms);
+    $pages = $kind === 'pages';
+
+    $conds = [];
+    $inTitle = [];
+    foreach (array_values($terms) as $n => $t) {
+        $text = (string) $t['text'];
+        $like = SearchText::likePattern($text);
+        $num  = ['@N@' => (string) (int) $n];
+        if ($pages) {
+            $bind[':st' . $n] = $like;
+            $inTitle[] = strtr(COMMUNITY_SEARCH_TITLE_SQL, $num);
+        }
+        if ($tq !== null && !$t['recheck']) {
+            continue;
+        }
+        // 한글 음절만인 낱말(3글자 이상)은 글자열 찾기 — 값은 낱말 그대로, 아니면 ILIKE 무늬
+        $hangul = $tq !== null && ($t['hangul'] ?? false) === true;
+        $val = $hangul ? $text : $like;
+        $bind[':sa' . $n] = $val;
+        if ($pages) {
+            $bind[':sb' . $n] = $val;
+            $bind[':sc' . $n] = $val;
+        }
+        if ($hangul) {
+            $bind[':sd' . $n] = $val;
+            if ($pages) {
+                $bind[':se' . $n] = $val;
+            }
+            $c = strtr($pages ? COMMUNITY_SEARCH_PAGE_HANGUL_SQL : COMMUNITY_SEARCH_COMMENT_HANGUL_SQL, $num);
+        } else {
+            $c = strtr($pages ? COMMUNITY_SEARCH_PAGE_RAW_SQL : COMMUNITY_SEARCH_COMMENT_RAW_SQL, $num);
+            if ($tq !== null) {
+                $bind[':sd' . $n] = $like;
+                if ($pages) {
+                    $bind[':se' . $n] = $like;
+                }
+                $c .= strtr($pages ? COMMUNITY_SEARCH_PAGE_NFC_SQL : COMMUNITY_SEARCH_COMMENT_NFC_SQL, $num);
+            }
+        }
+        $conds[] = '(' . $c . ')';
+    }
+    $match = $conds === [] ? 'TRUE' : implode("\n               AND ", $conds);
+    $idx   = 'TRUE';
+    if ($tq !== null) {
+        $idx = ($pages ? 'p' : 'c') . ".search_tsv @@ to_tsquery('simple', CAST(:tq AS text))";
+        $bind[':tq'] = $tq;
+    }
+
+    if ($pages) {
+        $titleAll = implode(' AND ', $inTitle);
+        // `NOT (board AND hidden)` — 5-C: 숨긴 게시판 글은 검색에도 없다(쓴 사람에게도 — 숨긴 글은 주소로만 연다)
+        $sql = <<<SQL
+            SELECT v.id, v.public_id, v.title, v.icon, v.space_id, v.space_kind, v.space_name, h.in_title,
+                   left(v.plain_text, 20000) AS body
+              FROM (SELECT p.id, p.updated_at,
+                           ({$titleAll}) AS in_title
+                      FROM community.pages p
+                     WHERE p.deleted_at IS NULL
+                       AND {$idx}
+                     ORDER BY 3 DESC, p.updated_at DESC, p.id DESC
+                    OFFSET 0) h
+             CROSS JOIN LATERAL (
+                SELECT p.id, p.public_id, p.title, p.icon, p.space_id, p.plain_text,
+                       s.kind AS space_kind, s.name AS space_name
+                  FROM community.pages p
+                  JOIN community.spaces s ON s.id = p.space_id
+                  LEFT JOIN public.users owner ON owner.id = s.owner_user_id
+                 WHERE p.id = h.id
+                   AND {$visible}
+                   AND NOT (s.kind = 'board' AND p.hidden_at IS NOT NULL)
+                   AND {$match}
+                OFFSET 0) v
+             ORDER BY h.in_title DESC, h.updated_at DESC, h.id DESC
+             LIMIT 20
+            SQL;
+        return [$sql, $bind];
+    }
+
+    // ─── 댓글 (2.3) — 볼 수 있는 페이지의 살아 있는 · 숨기지 않은 댓글(J-5)
+    /* 게시판 등급으로만 보는 사람에게 댓글 목록은 **게시 뒤** 댓글만 준다(comments_list 의 `since` — 5-C #9).
+       검색은 그 갈래를 가려낼 판정을 새로 적지 않고 **좁은 쪽**으로 간다: 게시 중인 개인 페이지에서는
+       공간 주인이 아니면 게시 전에 쓴 댓글(과 게시 전 댓글에 단 답글)을 검색에서 뺀다. 목록에서는 보이는
+       사람(공유·팀)이 검색에서 덜 보는 것은 있어도, 목록에서 못 보는 댓글이 검색에 나오는 일은 없다. */
+    $bind[':sme'] = (int) $u['id'];
+    $sql = <<<SQL
+        SELECT v.comment_id, left(v.body, 2000) AS body, v.created_at, v.author_username, v.author_display_name,
+               v.id, v.public_id, v.title, v.icon, v.space_id, v.space_kind, v.space_name
+          FROM (SELECT c.id, c.created_at
+                  FROM community.comments c
+                 WHERE c.deleted_at IS NULL
+                   AND c.hidden_at IS NULL
+                   AND {$idx}
+                 ORDER BY c.created_at DESC, c.id DESC
+                OFFSET 0) h
+         CROSS JOIN LATERAL (
+            SELECT c.public_id AS comment_id, c.body, c.created_at,
+                   cu.username AS author_username, cu.display_name AS author_display_name,
+                   p.id, p.public_id, p.title, p.icon, p.space_id, s.kind AS space_kind, s.name AS space_name
+              FROM community.comments c
+              JOIN community.pages p ON p.id = c.page_id
+              JOIN community.spaces s ON s.id = p.space_id
+              LEFT JOIN public.users owner ON owner.id = s.owner_user_id
+              JOIN public.users cu ON cu.id = c.author_id
+              LEFT JOIN community.comments par ON par.id = c.parent_comment_id
+             WHERE c.id = h.id
+               AND p.deleted_at IS NULL
+               AND {$visible}
+               AND NOT (s.kind = 'board' AND p.hidden_at IS NOT NULL)
+               AND NOT (s.kind = 'personal' AND p.visibility = 'published'
+                        AND s.owner_user_id IS DISTINCT FROM CAST(:sme AS bigint)
+                        AND (c.created_at < p.published_at OR coalesce(par.created_at < p.published_at, false)))
+               AND {$match}
+            OFFSET 0) v
+         ORDER BY h.created_at DESC, h.id DESC
+         LIMIT 20
+        SQL;
+    return [$sql, $bind];
+}
+
+/**
+ * 여러 페이지의 경로 줄을 **한 문장**으로 (N+1 제거 — 지시서 2.2 ⑥). 뜻은 `community_breadcrumb()` 와 같다:
+ * 맨 앞이 뿌리, 맨 뒤가 자기 자신, 자기에서 위로 올라가다 **처음 보이지 않는 조상에서 자른다**
+ * (조상마다 목록과 같은 조건절 `community_visible_pages_where` — 한 장씩 부르던 때와 같은 판정).
+ *
+ * @param  list<array{id:int,space_id:int}> $pages
+ * @param  array<string,mixed> $u
+ * @return array<int,list<array{id:string,title:string,icon:?string}>> 페이지 번호 → 경로
+ */
+function community_breadcrumbs_many(array $pages, array $u): array
+{
+    $ids = [];
+    foreach ($pages as $pg) {
+        $ids[(int) $pg['id']] = true;
+    }
+    if ($ids === []) {
+        return [];
+    }
+    [$where, $visBind] = community_visible_pages_where($u);
+    $sql = <<<SQL
+        WITH RECURSIVE up AS (
+            SELECT p.id AS start_id, p.id, p.parent_page_id, p.space_id, p.public_id, p.title, p.icon, 0 AS lvl
+              FROM community.pages p
+             WHERE p.id = ANY (CAST(:ids AS bigint[]))
+               AND p.deleted_at IS NULL
+            UNION ALL
+            SELECT up.start_id, parent.id, parent.parent_page_id, parent.space_id, parent.public_id,
+                   parent.title, parent.icon, up.lvl + 1
+              FROM community.pages parent
+              JOIN up ON parent.id = up.parent_page_id
+             WHERE parent.space_id = up.space_id
+               AND parent.deleted_at IS NULL
+        )
+        SELECT up.start_id, up.public_id, up.title, up.icon, up.lvl,
+               EXISTS (SELECT 1 FROM community.pages p
+                         JOIN community.spaces s ON s.id = p.space_id
+                         LEFT JOIN public.users owner ON owner.id = s.owner_user_id
+                        WHERE p.id = up.id
+                          AND {$where}) AS visible
+          FROM up ORDER BY up.start_id, up.lvl ASC
+        SQL;
+    $rows = Db::instance()->run($sql, array_merge(
+        [':ids' => '{' . implode(',', array_map('intval', array_keys($ids))) . '}'],
+        $visBind
+    ))->fetchAll();
+
+    $chains = [];
+    $cut = [];
+    foreach ($rows as $r) {
+        $sid = (int) $r['start_id'];
+        if (isset($cut[$sid])) {
+            continue;
+        }
+        if ((int) $r['lvl'] > 0 && $r['visible'] !== true) {
+            $cut[$sid] = true;
+            continue;
+        }
+        $chains[$sid][] = [
+            'id'    => (string) $r['public_id'],
+            'title' => (string) $r['title'],
+            'icon'  => $r['icon'] === null ? null : (string) $r['icon'],
+        ];
+    }
+    $out = [];
+    foreach ($chains as $sid => $chain) {
+        $out[$sid] = array_reverse($chain);
+    }
+    return $out;
 }
 
 /**

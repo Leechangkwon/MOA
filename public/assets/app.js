@@ -3767,6 +3767,22 @@ function initFiles(csrfToken, uploadLevels, canFetch, myTeamId) {
     folderNewBtn.hidden = !canUpload;
   }
 
+  /* Q:F-2 — 통합 검색 창(public/assets/search.js)의 파일 결과는 `/tbox/?q=<검색어>` 로 이 화면을 연다.
+     주소의 q 를 검색 칸에 넣고 첫 목록을 그 검색어로 부른다 — state.q 가 있으면 loadFiles 가 folder 를
+     보내지 않으므로 **전역 검색**이다(18-1). 값은 칸의 value 와 요청 인자로만 쓴다(textContent·HTML 0).
+     보이는 파일은 여전히 서버의 visibleFilesWhere 하나가 정한다 (PRD S-02). */
+  var wantQ = '';
+  try {
+    wantQ = new URLSearchParams(window.location.search).get('q') || '';
+  } catch (e) {
+    wantQ = '';
+  }
+  wantQ = wantQ.trim().slice(0, 200);
+  if (wantQ !== '' && qInput) {
+    qInput.value = wantQ;
+    state.q = wantQ;
+  }
+
   syncTeamField();
   syncFetchTeamField();
   loadTeams();

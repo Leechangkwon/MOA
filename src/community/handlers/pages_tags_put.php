@@ -59,9 +59,20 @@ $sqlIns = <<<'SQL'
     VALUES (CAST(:pid AS bigint), :tag, lower(:tag2), CAST(:by AS bigint))
     ON CONFLICT (page_id, tag_norm) DO NOTHING
     SQL;
+/* Q:F-2 — 태그 이름도 검색 색인에 든다(J-4). 태그가 바뀌면 그 페이지의 색인을 **같은 트랜잭션**에서 다시 만든다
+   (제목·본문은 지금 행의 값 — 트랜잭션 **처음에** 행을 잠가 읽는다, 저장과 겹쳐 옛 본문·옛 태그로 덮지 않게). 판정·감사는 그대로다.
+   잠금 세기는 저장과 같은 `FOR NO KEY UPDATE`(routes.php COMMUNITY_PAGE_LOCK_SQL 머리글 — 외래 키 쓰기를 막지 않는다). */
+$sqlText = <<<'SQL'
+    SELECT title, plain_text FROM community.pages WHERE id = CAST(:pid AS bigint) FOR NO KEY UPDATE
+    SQL;
+$sqlTsv = <<<'SQL'
+    UPDATE community.pages SET search_tsv = strip(to_tsvector('simple', :tsv)) WHERE id = CAST(:pid AS bigint)
+    SQL;
 
 $db->begin();
 try {
+    // 페이지 행을 **먼저** 잠근다 — 저장(pages_update · version_restore)도 태그를 읽기 전에 같은 행을 잠그므로 한 줄로 선다
+    $cur = $db->run($sqlText, [':pid' => $pageId])->fetch();
     $db->run($sqlDel, [':pid' => $pageId]);
     foreach ($want as $t) {
         $db->run($sqlIns, [':pid' => $pageId, ':tag' => $t, ':tag2' => $t, ':by' => $me]);
@@ -72,6 +83,12 @@ try {
         $db->rollback();
         Http::json(['page' => ['id' => $pid, 'tags' => $before], 'changed' => false]);
         exit;
+    }
+    if (is_array($cur)) {
+        $db->run($sqlTsv, [
+            ':tsv' => community_search_text((string) $cur['title'], (string) $cur['plain_text'], $after, 'page ' . $pageId),
+            ':pid' => $pageId,
+        ]);
     }
     Audit::allow('page.tags', [
         'target_type' => 'page',

@@ -1721,6 +1721,34 @@ dialog.token-modal { width: min(720px, calc(100vw - 32px)); }
 .token-box { display: flex; flex-direction: column; gap: 12px; margin: 0; }
 .token-box__table { width: 100%; font-size: 13px; }
 
+/* ─── 통합 검색 (5-B 2026-09-23 → Q:F-2 두 앱 공통, DESIGN 2.14) — 사이드바 단추 · Ctrl+K 창 ─────────────
+   community.css 에 있던 규칙을 **그대로 옮겼다**(t-box 셸에도 창이 실린다). 토큰만(새 색값 0). 창은 위쪽에 붙은 넓은
+   모달 — 결과가 늘어도 입력 칸이 움직이지 않는다. 묶음 제목은 `.nav-title`, 「더 보기」는 `.btn--small.btn--quiet`(새 클래스 0).
+   찾은 글자 강조는 커뮤니티 문서 토큰 `--nt-yellow-bg`(community.css) — 그 파일이 없는 t-box 화면에서는 기존 토큰 `--warn-bg`. */
+.nav-search { width: 100%; border: 1px solid var(--line); background: var(--surface); font: inherit; text-align: left; cursor: pointer; margin-bottom: 4px; }
+.nav-search__key { margin-left: auto; padding: 0 6px; border: 1px solid var(--line); border-radius: var(--r-sm); color: var(--muted); font-family: var(--mono); font-size: 12px; line-height: 18px; }
+dialog.search-dialog { width: min(640px, calc(100vw - 32px)); margin-top: 12vh; padding: 0; }
+.search-dialog__bar { display: flex; align-items: center; gap: 10px; padding: 12px 16px; border-bottom: 1px solid var(--line); }
+.search-dialog__bar .icon { display: inline-flex; color: var(--muted); }
+.search-dialog__bar input { flex: 1 1 auto; min-width: 0; height: 32px; border: 0; outline: none; background: transparent; color: var(--fg); font: inherit; font-size: 16px; }
+.search-results { max-height: 55vh; margin: 0; padding: 6px; overflow-y: auto; list-style: none; }
+.search-results:empty { display: none; }
+.search-results > li { border-radius: var(--r-ctl); }
+.search-results > li.is-active { background: var(--muted-bg); }
+.search-results > li.nav-title { margin: 8px 10px 2px; }
+.search-results > li > .btn { margin: 2px 10px 6px; }
+.search-hit { display: flex; flex-direction: column; gap: 2px; padding: 8px 10px; color: var(--fg); }
+.search-hit:hover { text-decoration: none; }
+.search-hit__title { font-size: 14px; font-weight: 600; overflow-wrap: anywhere; }
+.search-hit__path { font-size: 12px; color: var(--muted); overflow-wrap: anywhere; }
+.search-hit__snippet { font-size: 13px; color: var(--fg-2); overflow-wrap: anywhere; }
+.search-hit mark { padding: 0 1px; border-radius: 3px; background: var(--nt-yellow-bg, var(--warn-bg)); color: inherit; }
+.search-dialog__note { margin: 0; padding: 10px 16px 14px; font-size: 13px; }
+/* 검색 칸은 창 머리줄 자체가 칸이다 — 공통 초점 고리를 겹쳐 그리지 않는다(두 겹 테두리) */
+.search-dialog__bar input:focus,
+.search-dialog__bar input:focus-visible { border: 0; box-shadow: none; outline: none; }
+.search-dialog__bar:focus-within { box-shadow: inset 0 -2px 0 var(--ring-soft); }
+
 /* ─── 다크 모드 (DESIGN.md 2.12, D-5 결정 2026-09-21) ─────────────────────────
  * 색은 전부 토큰이라 여기서 값만 바꾼다. 화면 CSS 는 손대지 않는다.
  *   · 저장된 선택이 없으면 OS 설정(prefers-color-scheme)을 따른다 — 단, html[data-theme="light"] 가 아닐 때만.
