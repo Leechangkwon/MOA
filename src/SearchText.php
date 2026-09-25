@@ -77,11 +77,12 @@ final class SearchText
 
     /**
      * 색인에 넣을 토큰(②③⑤). 여러 글(제목·본문·태그)을 받아 한 벌로 합친다.
+     * $compose = false 는 ①(자모 조합)을 건너뛰고 **원문 그대로의** 음절 덩어리에서 뽑는다 — indexTextFile 만 쓴다(기본값은 그대로).
      *
      * @param  list<string> $parts
      * @return array{tokens:list<string>,truncated:bool}
      */
-    public static function indexTokens(array $parts): array
+    public static function indexTokens(array $parts, bool $compose = true): array
     {
         $set = [];
         $n = 0;
@@ -90,7 +91,7 @@ final class SearchText
             if (!is_string($part) || $part === '') {
                 continue;
             }
-            if (preg_match_all(self::HANGUL_RUN, self::compose($part), $m) < 1) {
+            if (preg_match_all(self::HANGUL_RUN, $compose ? self::compose($part) : $part, $m) < 1) {
                 continue;
             }
             foreach ($m[0] as $run) {
@@ -130,6 +131,38 @@ final class SearchText
                 . ($where === '' ? '' : ' (' . preg_replace('/[^A-Za-z0-9:_ -]/', '', $where) . ')'));
         }
         return implode(' ', $r['tokens']);
+    }
+
+    /**
+     * 파일 색인 글자(대기열 5b) — **조합한 글의 토큰 ∪ 원문 그대로의 토큰**. 파일 목록 창구(files_list.php)는 원문 ILIKE 로
+     * 다시 확인하고 검색어에 분리 자모가 있으면 색인을 쓰지 않는다. 그런데 저장된 이름·설명에 「조합 음절 + 받침 자모」
+     * (LV+T — 예 「가」+U+11A8)가 있으면 원문에는 「가」가 있는데 조합하면 「각」만 남아, 색인이 ILIKE 로는 걸리는 파일을
+     * 떨어뜨렸다(독립 검토 M-1). 원문 토큰을 합치면 「검색어(분리 자모 없음)가 원문의 부분 문자열이면 그 조각은 모두 벡터에
+     * 있다」가 성립한다. 조합 토큰도 남긴다(부르는 쪽이 나중에 조합 뜻으로 찾아도 되게). 커뮤니티는 조합 뜻(NFC)으로
+     * 다시 확인하므로 indexText 그대로 — 이 함수는 파일만 쓴다(저장 네 문장 · qf2b_backfill_files.php).
+     * 파일 이름 ≤ 255자 · 설명 ≤ 500자(DB CHECK)라 두 벌을 합쳐도 상한(20,000)에 닿지 않지만, 닿으면 자르고 한 줄 기록한다.
+     *
+     * @param list<string> $parts
+     */
+    public static function indexTextFile(array $parts, string $where = ''): string
+    {
+        $a = self::indexTokens($parts);
+        $b = self::indexTokens($parts, false);
+        $set = [];
+        foreach (array_merge($a['tokens'], $b['tokens']) as $tok) {
+            $set[$tok] = true;
+        }
+        $tokens = array_map('strval', array_keys($set));
+        $truncated = $a['truncated'] || $b['truncated'];
+        if (count($tokens) > self::MAX_TOKENS) {
+            $tokens = array_slice($tokens, 0, self::MAX_TOKENS);
+            $truncated = true;
+        }
+        if ($truncated) {
+            error_log('[tbox] search_tsv 토큰 상한 ' . self::MAX_TOKENS . ' 에서 자름'
+                . ($where === '' ? '' : ' (' . preg_replace('/[^A-Za-z0-9:_ -]/', '', $where) . ')'));
+        }
+        return implode(' ', $tokens);
     }
 
     /**

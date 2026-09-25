@@ -159,6 +159,17 @@ $sqlSearch = <<<'SQL'
             OR f.description ILIKE :q_desc ESCAPE '#')
     SQL;
 
+/* 대기열 5b (Q:F-2 J-2 · 지시서 2.4) — 한글이 든 검색어는 색인으로 **후보를 먼저 좁힌다**.
+ * 위 ILIKE 는 그대로 붙어 있으므로 결과 집합은 바뀌지 않는다: 이름이나 설명에 검색어가 들어 있으면 검색어의
+ * 한글 조각(두 글자 조각·한 글자)은 모두 그 파일의 `search_tsv`(이름 + 설명, 같은 SearchText 규칙)에 있다.
+ * 아직 채우지 않은 행(NULL — 반영 뒤 배치 전, 또는 색인을 쓰지 않는 길로 들어온 행)은 `IS NULL` 갈래로 남겨
+ * 검색에서 빠지지 않게 한다(부분 색인 files_search_tsv_null_idx 가 그 갈래를 받친다 — 다 채우면 비어 있다).
+ * tsquery 글자는 한글 음절 토큰을 ` & ` 로 이은 것뿐이고 값으로 바인딩한다(PRD S-04 · SearchText::tsquery). */
+$sqlSearchIndexed = <<<'SQL'
+
+       AND (f.search_tsv @@ to_tsquery('simple', :q_tq) OR f.search_tsv IS NULL)
+    SQL;
+
 // 18-1 (F-26) — 폴더 필터. `IS NOT DISTINCT FROM` 은 NULL(루트)과 정수를 한 조건으로 다룬다
 // (`= NULL` 은 언제나 UNKNOWN 이라 루트를 고를 수 없다). 목록과 건수에 **똑같이** 붙는다.
 $sqlFolder = <<<'SQL'
@@ -192,6 +203,16 @@ if ($q !== '') {
     $filter            = $filter . $sqlSearch;
     $bind[':q_name']   = $pattern;
     $bind[':q_desc']   = $pattern;
+    /* 한글 조각은 검색어를 조합(NFC)해서 만든다. 검색어에 맥식 분리 자모(U+1100~11FF)가 있으면 ILIKE 는 원문(분리
+     * 자모) 그대로 비교하므로, 음절 경계가 조합 결과와 어긋나(검색어 끝의 「초성+중성」이 파일에서는 받침과 한 음절)
+     * ILIKE 로는 걸리는 파일을 색인 조건이 떨어뜨릴 수 있다 — 그런 검색어는 지금처럼 ILIKE 만 쓴다(화면은 NFC 로 보낸다 — 지시서 2.5). */
+    if (preg_match('/[\x{1100}-\x{11FF}]/u', $q) !== 1) {
+        $tq = SearchText::tsquery(SearchText::queryTerms($q));
+        if ($tq !== null) {
+            $filter          = $filter . $sqlSearchIndexed;
+            $bind[':q_tq']   = $tq;
+        }
+    }
 }
 
 $db = Db::instance();

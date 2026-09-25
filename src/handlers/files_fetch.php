@@ -384,12 +384,12 @@ $sqlInsert = <<<'SQL'
     INSERT INTO files
         (original_name, stored_name, ext, mime, size_bytes, sha256,
          description, access_level, team_id, uploaded_by, sensitive_flags, folder_id,
-         scan_status)
+         scan_status, search_tsv)
     VALUES
         (:original_name, :stored_name, :ext, :mime, :size_bytes, :sha256,
          :description, :access_level, :team_id, :uploaded_by,
          CAST(:flags AS text[]), CAST(:folder_id AS bigint),
-         :scan_status)
+         :scan_status, strip(to_tsvector('simple', :tsv)))
     RETURNING id, public_id
     SQL;
 
@@ -412,6 +412,8 @@ try {
         ':folder_id'     => $folderId,
         // F-54 ① (ARCH 5.28) — 가져온 파일도 수동 업로드와 **같은 상태**로 저장한다.
         ':scan_status'   => Upload::initialScanStatus(),
+        // 대기열 5b — 업로드와 같은 검색 색인(이름 + 설명)
+        ':tsv'           => SearchText::indexTextFile([$original, $description], 'file fetch'),
     ])->fetch();
 
     if (!is_array($row)) {

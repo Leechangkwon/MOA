@@ -38,6 +38,7 @@ require_once __DIR__ . '/Preview.php';  // F-18 미리보기 추출 (12-2, ARCH 
 require_once __DIR__ . '/Fetch.php';   // F-14 외부 요청 (7단계, PRD S-05 ⑬)
 require_once __DIR__ . '/Totp.php';    // 2단계 인증 TOTP (10단계, SECURITY R-05)
 require_once __DIR__ . '/Qr.php';      // 2단계 인증 등록 QR (F-51, ARCH 5.25)
+require_once __DIR__ . '/SearchText.php'; // 검색 색인 토큰 — 커뮤니티 검색·파일 검색 한 벌 (Q:F-2 · 대기열 5b)
 
 /**
  * 요청 식별자 (UUIDv4). random_bytes 로 만든다 — 예측 가능한 값이면

@@ -381,12 +381,13 @@ function tbox_upload_run(array $user, string $levelField, string $levelDefault, 
         INSERT INTO files
             (original_name, stored_name, ext, mime, size_bytes, sha256,
              description, access_level, team_id, uploaded_by, sensitive_flags, folder_id,
-             scan_status, exec_content)
+             scan_status, exec_content, search_tsv)
         VALUES
             (:original_name, :stored_name, :ext, :mime, :size_bytes, :sha256,
              :description, :access_level, :team_id, :uploaded_by,
              CAST(:flags AS text[]), CAST(:folder_id AS bigint),
-             :scan_status, CAST(:exec_content AS boolean))
+             :scan_status, CAST(:exec_content AS boolean),
+             strip(to_tsvector('simple', :tsv)))
         RETURNING id, public_id
         SQL;
 
@@ -415,6 +416,8 @@ function tbox_upload_run(array $user, string $levelField, string $levelDefault, 
              * 그 파일은 이후 공유·토큰·미리보기·등급 변경이 막히고 받을 때도 다시 확인한다.
              * 참이 되는 자리는 **여기 하나**이고, 거짓으로 되돌리는 창구는 만들지 않는다. */
             ':exec_content'  => $execEntries !== null ? 'true' : 'false',   // PDO 는 false 를 "" 로 보내 boolean 오류 — users_update 와 같은 관례
+            // 대기열 5b — 이름 + 설명의 검색 색인(파생값, SearchText 한 벌). 목록 창구가 한글 검색의 후보를 이것으로 좁힌다
+            ':tsv'           => SearchText::indexTextFile([$original, $description], 'file upload'),
         ])->fetch();
 
         if (!is_array($row)) {

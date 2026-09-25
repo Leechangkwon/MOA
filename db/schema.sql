@@ -168,6 +168,10 @@ CREATE TABLE files (
     -- ON DELETE RESTRICT: 파일이 참조하는 폴더는 DB 가 삭제를 막는다(앱 검사의 마지막 그물).
     -- (기존 DB 는 db/migrations/2026-09-13_folders.sql 로 같은 모양이 된다.)
     folder_id     BIGINT      REFERENCES folders(id) ON DELETE RESTRICT,
+    -- 대기열 5b (Q:F-2 J-2) — 이름 + 설명의 검색 색인. **파생값**(src/SearchText.php 한글 두 글자 조각 + 한 글자)이고
+    -- 앱이 올릴 때·설명을 고칠 때 채운다. NULL 이어도 검색에서 빠지지 않는다(목록 창구가 `OR search_tsv IS NULL`).
+    -- (기존 DB 는 db/migrations/2026-10-02_qf2b_files_search.sql 로 같은 모양이 된다.)
+    search_tsv    TSVECTOR,
     -- team 레벨이면 team_id 필수 (PRD 4장 규칙을 DB가 강제)
     CONSTRAINT team_requires_team_id
         CHECK (access_level <> 'team' OR team_id IS NOT NULL)
@@ -178,6 +182,9 @@ CREATE INDEX files_name_idx    ON files (lower(original_name)) WHERE deleted_at 
 CREATE INDEX files_purge_idx   ON files (deleted_at) WHERE deleted_at IS NOT NULL AND purged_at IS NULL;
 -- 18-1 (F-26) — 폴더 안 목록(`GET /api/files?folder=`)과 폴더 삭제 전 "파일이 있나" 조회용
 CREATE INDEX files_folder_idx  ON files (folder_id) WHERE deleted_at IS NULL;
+-- 대기열 5b — 한글이 든 파일 검색의 후보를 좁히는 색인 + 아직 채우지 않은 행만 담는 부분 색인(다 채우면 비어 있다)
+CREATE INDEX files_search_tsv_idx      ON files USING GIN (search_tsv);
+CREATE INDEX files_search_tsv_null_idx ON files (id) WHERE search_tsv IS NULL;
 
 -- ─────────────────────────────────────────────────────────────
 -- audit_logs — Append-only (ARCH 7.2, PRD S-07)

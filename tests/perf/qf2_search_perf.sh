@@ -2,6 +2,8 @@
 # tests/perf/qf2_search_perf.sh — Q:F-2 통합 검색 성능 시험 (지시서 docs/qf2-unified-search-directive.md 4장 · QF2-T4)
 #
 #   ① 지금 규모(운영 사본 그대로)에서 검색 창구 서버 시간 p95 ≤ 100ms
+#   (대기열 5b) 트리에 db/migrations/2026-10-02_qf2b_files_search.sql 이 있으면 파일 검색 색인도 만들고 채우고(qf2b_backfill_files.php)
+#      파일 검색어(휴가·계약서·1글자)와 files 문장 EXPLAIN 을 더 잰다. 파일만 보려면 QF2_S1_PAGES·QF2_S1_COMMENTS 를 줄인다.
 #   ② 합성 규모 S1(임시 DB 에만 SQL 로): 살아 있는 페이지 +50,000(본문 평균 약 2,000자, 한글 약 80%) · 댓글 +100,000 · 파일 +100,000
 #      — 계정 행은 만들지 않는다(시험 규칙 — 앱 창구 밖 계정 INSERT 금지). 사용자는 운영 사본의 활성 계정 그대로(보고서에 수).
 #      벡터는 배치(scripts/qf2_backfill_search.php)로 채운다 — 운영 반영 때의 배치 시간도 함께 잰다.
@@ -192,6 +194,25 @@ if ($mode === 'pages' || $mode === 'comments') {
 } elseif ($mode === 'index_only') {
     $bind = [':tq' => (string) SearchText::tsquery(SearchText::queryTerms($q))];
     $sql = "SELECT count(*) FROM community.pages p WHERE p.search_tsv @@ to_tsquery('simple', CAST(:tq AS text))";
+} elseif ($mode === 'files') {
+    // 대기열 5b — src/handlers/files_list.php 의 목록 문장(전역 검색 · 한글 검색어)을 **옮겨 적은 것**이다.
+    // 그 파일의 조각(권한 조건절 · ILIKE · 색인 갈래 · 정렬 created_at desc · LIMIT 20)이 바뀌면 여기도 바꾼다.
+    [$w, $bind] = Authz::visibleFilesWhere($u);
+    $bind[':q_name'] = SearchText::likePattern($q);
+    $bind[':q_desc'] = SearchText::likePattern($q);
+    $bind[':q_tq']   = (string) SearchText::tsquery(SearchText::queryTerms($q));
+    $sql = 'SELECT f.public_id FROM files f JOIN users u ON u.id = f.uploaded_by LEFT JOIN teams t ON t.id = f.team_id WHERE ' . $w
+         . " AND (f.original_name ILIKE :q_name ESCAPE '#' OR f.description ILIKE :q_desc ESCAPE '#')"
+         . " AND (f.search_tsv @@ to_tsquery('simple', :q_tq) OR f.search_tsv IS NULL)"
+         . ' ORDER BY f.created_at DESC, f.id DESC LIMIT 20';
+} elseif ($mode === 'files_count') {
+    [$w, $bind] = Authz::visibleFilesWhere($u);
+    $bind[':q_name'] = SearchText::likePattern($q);
+    $bind[':q_desc'] = SearchText::likePattern($q);
+    $bind[':q_tq']   = (string) SearchText::tsquery(SearchText::queryTerms($q));
+    $sql = 'SELECT count(*) FROM files f WHERE ' . $w
+         . " AND (f.original_name ILIKE :q_name ESCAPE '#' OR f.description ILIKE :q_desc ESCAPE '#')"
+         . " AND (f.search_tsv @@ to_tsquery('simple', :q_tq) OR f.search_tsv IS NULL)";
 } else {
     exit(3);
 }
@@ -217,9 +238,14 @@ sudo -n -u postgres createdb -O tbox_owner "$DB" >/dev/null 2>&1 || { echo "임�
 sudo -n -u postgres pg_dump -d "$SRC_DB" 2>/dev/null | sudo -n -u postgres psql -q -d "$DB" -v ON_ERROR_STOP=0 >/dev/null 2>"$WORK/restore.err"
 [ -n "$(psqlq "SELECT count(*) FROM community.pages")" ] || { echo "임시 DB 로 옮기지 못했다"; exit 3; }
 sudo -n -u postgres psql -q -d "$DB" -v ON_ERROR_STOP=1 -f - < "$ROOT/db/migrations/2026-10-01_qf2_search.sql" > /dev/null 2>&1 || { echo "마이그레이션 실패"; exit 3; }
+# 대기열 5b — 파일 검색 색인(있는 트리에서만 — 고치기 전 트리와 견줄 때도 같은 DB 를 쓴다: 옛 코드는 이 칸을 모른다)
+if [ -f "$ROOT/db/migrations/2026-10-02_qf2b_files_search.sql" ]; then
+  sudo -n -u postgres psql -q -d "$DB" -v ON_ERROR_STOP=1 -f - < "$ROOT/db/migrations/2026-10-02_qf2b_files_search.sql" > /dev/null 2>&1 || { echo "마이그레이션 실패(5b)"; exit 3; }
+fi
 sudo -n -u postgres psql -q -d "$DB" -v ON_ERROR_STOP=1 -f - < "$ROOT/db/community/grants.sql" > /dev/null 2>&1
 INST="$(mktemp -d)"; SERVER_PID=$(mkinst "$ROOT" "$INST" "$PORT")
 ( cd "$INST/app" && php scripts/qf2_backfill_search.php ) | sed 's/^/    /'
+[ -f "$INST/app/scripts/qf2b_backfill_files.php" ] && ( cd "$INST/app" && php scripts/qf2b_backfill_files.php ) | sed 's/^/    /'
 for _ in $(seq 1 10); do sleep 1; [ "$(curl -s -o /dev/null -w '%{http_code}' "$SITE/community/api/pages")" = "401" ] && break; done
 for who in claude_employee01 claude_employee02 claude_manager01 claude_admin01 claude_guest01; do
   login "$who" "$SITE" || { echo "  ✖ $who 로그인 실패"; exit 4; }
@@ -344,13 +370,18 @@ sub "벡터 채우기 — scripts/qf2_backfill_search.php(운영 반영 때와 �
 t0=$(date +%s)
 ( cd "$INST/app" && php scripts/qf2_backfill_search.php 2>&1 | grep -v '토큰 상한' ) | sed 's/^/    /'
 BF_SECS=$(( $(date +%s) - t0 ))
+if [ -f "$INST/app/scripts/qf2b_backfill_files.php" ]; then
+  t0=$(date +%s)
+  ( cd "$INST/app" && php scripts/qf2b_backfill_files.php 2>&1 ) | sed 's/^/    /'
+  note "파일 배치(5b) $(( $(date +%s) - t0 ))초 (파일 $(psqlq "SELECT count(*) FROM files")) · NULL 벡터 $(psqlq "SELECT count(*) FROM files WHERE search_tsv IS NULL")"
+fi
 note "배치 ${BF_SECS}초 (페이지 $(psqlq "SELECT count(*) FROM community.pages") · 댓글 $(psqlq "SELECT count(*) FROM community.comments"))"
 sudo -n -u postgres psql -q -d "$DB" -c "VACUUM ANALYZE community.pages" -c "VACUUM ANALYZE community.comments" -c "VACUUM ANALYZE public.files" -c "VACUUM ANALYZE community.page_shares" -c "VACUUM ANALYZE community.page_tags" >/dev/null 2>&1
 note "크기 — pages $(psqlq "SELECT pg_size_pretty(pg_total_relation_size('community.pages'))") · pages_search_tsv_idx $(psqlq "SELECT pg_size_pretty(pg_relation_size('community.pages_search_tsv_idx'))") · comments $(psqlq "SELECT pg_size_pretty(pg_total_relation_size('community.comments'))") · comments_search_tsv_idx $(psqlq "SELECT pg_size_pretty(pg_relation_size('community.comments_search_tsv_idx'))") · files $(psqlq "SELECT pg_size_pretty(pg_total_relation_size('public.files'))") · 임시 DB $(psqlq "SELECT pg_size_pretty(pg_database_size(current_database()))")"
 note "벡터 크기 — 페이지 평균 $(psqlq "SELECT round(avg(pg_column_size(search_tsv))) FROM community.pages WHERE search_tsv IS NOT NULL")B · 최대 $(psqlq "SELECT max(pg_column_size(search_tsv)) FROM community.pages")B"
 disk_ok
 
-QUERIES_S1=$'영문 없는 말|c|zqxjvk\n2글자 회의|c|회의\n2글자 휴가|c|휴가\n2글자 정산|c|정산\n2글자 계약|c|계약\n1글자 회|c|회\n1글자 휴|c|휴\n1글자 의(최악)|c|의\n3글자 계약서|c|계약서\n3글자 회의록|c|회의록\n여러 낱말|c|휴가 신청\n섞임 report 휴가|c|report 휴가\n드문 말|c|정산서\n없는 말|c|없는말조각\n영문 report|c|report\n영문 meet|c|meet\n숫자 2026|c|2026\n파일 계약|f|계약\n파일 회의|f|회의\n파일 report|f|report\n파일 2026|f|2026'
+QUERIES_S1=$'영문 없는 말|c|zqxjvk\n2글자 회의|c|회의\n2글자 휴가|c|휴가\n2글자 정산|c|정산\n2글자 계약|c|계약\n1글자 회|c|회\n1글자 휴|c|휴\n1글자 의(최악)|c|의\n3글자 계약서|c|계약서\n3글자 회의록|c|회의록\n여러 낱말|c|휴가 신청\n섞임 report 휴가|c|report 휴가\n드문 말|c|정산서\n없는 말|c|없는말조각\n영문 report|c|report\n영문 meet|c|meet\n숫자 2026|c|2026\n파일 계약|f|계약\n파일 회의|f|회의\n파일 휴가|f|휴가\n파일 계약서|f|계약서\n파일 1글자 회|f|회\n파일 report|f|report\n파일 2026|f|2026'
 hr "③ S1 측정 — 새 코드 (직원1 · ${REPS}회 · 중앙값/p95/최대 ms)"
 run_series "$SITE" "$QUERIES_S1" "$WORK/s1new.txt"
 printf '    %-18s %8s %8s %8s  %s\n' "검색" "중앙" "p95" "최대" "상태·횟수"
@@ -358,7 +389,9 @@ while IFS='|' read -r n m p x c r; do printf '    %-18s %8s %8s %8s  %s·%s\n' "
 p95of() { awk -F'|' -v n="$1" '$1==n{print $3}' "$WORK/s1new.txt"; }
 for n in "2글자 회의" "2글자 휴가" "2글자 정산" "2글자 계약" "3글자 계약서" "3글자 회의록" "여러 낱말" "섞임 report 휴가" "드문 말" "없는 말"; do goal "S1 커뮤니티 검색 「$n」 p95" "$(p95of "$n")" 300; done
 for n in "1글자 회" "1글자 휴" "1글자 의(최악)"; do goal "S1 커뮤니티 1글자 「$n」 p95" "$(p95of "$n")" 500; done
-for n in "파일 계약" "파일 회의" "파일 report" "파일 2026"; do goal "S1 파일 전역 「$n」 p95" "$(p95of "$n")" 300; done
+for n in "파일 계약" "파일 회의" "파일 휴가" "파일 계약서" "파일 report" "파일 2026"; do goal "S1 파일 전역 「$n」 p95" "$(p95of "$n")" 300; done
+# 파일 한 글자 — 지시서 4장은 파일에 따로 적지 않았다. 커뮤니티 1글자와 같은 500ms 로 본다(대기열 5b)
+goal "S1 파일 전역 「파일 1글자 회」 p95" "$(p95of "파일 1글자 회")" 500
 note "영문·숫자만(ILIKE 전수 — J-10 ⓑ, 목표 없음·측정만): report $(p95of '영문 report')ms · meet $(p95of '영문 meet')ms · 2026 $(p95of '숫자 2026')ms · 없는 영문 말 $(p95of '영문 없는 말')ms(후보를 끝까지 매긴다 — 최악) (1초 넘으면 갈래 B 를 새 항목으로)"
 codes=$(awk -F'|' '{print $5}' "$WORK/s1new.txt" | tr ',' '\n' | sort -u | tr '\n' ' ')
 expect "S1 측정 요청 상태 코드는 200 뿐" "200 " "$codes"
@@ -384,6 +417,15 @@ explain claude_employee01 comments 회의 > "$WORK/ex_c.txt"
 echo "    ▸ comments 「회의」"; sed 's/^/      /' "$WORK/ex_c.txt"
 expect "comments 「회의」 — Seq Scan on comments 없음" "0" "$(grep -cE 'Seq Scan on comments( |$)' "$WORK/ex_c.txt")"
 expect "comments 「회의」 — Bitmap Index Scan on comments_search_tsv_idx" "yes" "$(grep -q 'Bitmap Index Scan on comments_search_tsv_idx' "$WORK/ex_c.txt" && echo yes || echo no)"
+if [ -f "$ROOT/db/migrations/2026-10-02_qf2b_files_search.sql" ]; then
+  for q in 회의 계약서; do
+    explain claude_employee01 files "$q" > "$WORK/ex_f_$q.txt"; explain claude_employee01 files_count "$q" > "$WORK/ex_fc_$q.txt"
+    echo "    ▸ files 「$q」 목록(대기열 5b)"; sed 's/^/      /' "$WORK/ex_f_$q.txt"
+    echo "    ▸ files 「$q」 개수"; sed 's/^/      /' "$WORK/ex_fc_$q.txt" | tail -8
+    expect "files 「$q」 목록·개수 — Seq Scan on files 없음" "0" "$(cat "$WORK/ex_f_$q.txt" "$WORK/ex_fc_$q.txt" | grep -c 'Seq Scan on files')"
+    expect "files 「$q」 목록·개수 — Bitmap Index Scan on files_search_tsv_idx" "yes|yes" "$(grep -q 'Bitmap Index Scan on files_search_tsv_idx' "$WORK/ex_f_$q.txt" && echo yes || echo no)|$(grep -q 'Bitmap Index Scan on files_search_tsv_idx' "$WORK/ex_fc_$q.txt" && echo yes || echo no)"
+  done
+fi
 sub "판정 조건절만의 비용(리서치 P-11 — 조건절이 병목이면 이 지시서가 아니라 P-11 로)"
 explain claude_employee01 where_only "" > "$WORK/ex_w.txt"; echo "    ▸ 조건절만 — 살아 있는 페이지 전부에 community_search_pages_where"; sed 's/^/      /' "$WORK/ex_w.txt" | tail -4
 explain claude_employee01 index_only 회의 > "$WORK/ex_i.txt"; echo "    ▸ 색인만 — search_tsv @@ 「회의」 count"; sed 's/^/      /' "$WORK/ex_i.txt" | tail -4

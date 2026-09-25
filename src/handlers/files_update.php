@@ -370,7 +370,8 @@ if ($folderRow !== null && ($folderChanged || $levelChanged)) {
 // 그 밖의 컬럼은 어떤 요청으로도 이 핸들러에서 바뀌지 않는다 (SECURITY R-07).
 $sqlSetDescription = <<<'SQL'
     UPDATE files
-       SET description = :description
+       SET description = :description,
+           search_tsv  = strip(to_tsvector('simple', :tsv))
      WHERE id = :id
        AND deleted_at IS NULL
     SQL;
@@ -387,7 +388,8 @@ $sqlSetBoth = <<<'SQL'
     UPDATE files
        SET description  = :description,
            access_level = :access_level,
-           team_id      = :team_id
+           team_id      = :team_id,
+           search_tsv   = strip(to_tsvector('simple', :tsv))
      WHERE id = :id
        AND deleted_at IS NULL
     SQL;
@@ -411,6 +413,8 @@ if ($descriptionChanged && $levelChanged) {
         ':access_level' => $newLevel,
         ':team_id'      => $newTeamId,
         ':id'           => $fileId,
+        // 대기열 5b — 설명이 바뀌면 검색 색인(이름 + 새 설명)도 같은 문장에서 바꾼다(이름은 고치는 창구가 없다)
+        ':tsv'          => SearchText::indexTextFile([$currentName, $newDescription], 'file ' . $fileId),
     ];
 } elseif ($levelChanged) {
     $sqlApply = $sqlSetLevel;
@@ -424,6 +428,7 @@ if ($descriptionChanged && $levelChanged) {
     $applyBind = [
         ':description' => $newDescription,
         ':id'          => $fileId,
+        ':tsv'         => SearchText::indexTextFile([$currentName, $newDescription], 'file ' . $fileId),
     ];
 }
 
