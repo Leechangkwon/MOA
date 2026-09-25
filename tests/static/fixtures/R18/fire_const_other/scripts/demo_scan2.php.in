@@ -1,0 +1,19 @@
+<?php
+// 가짜 견본(대조 — v4 상수 가드) — 상수가 dry-run 플래그에서 오지 않으면(조용 모드 등) 가드가 아니다 → 울림(1).
+declare(strict_types=1);
+$dryRun = in_array('--dry-run', $argv, true);
+define('DEMO_QUIET', getenv('DEMO_QUIET') === '1');
+const DEMO_STATE = '/var/lib/demo-scan/state.json';
+
+function demo_save(array $st): void
+{
+    if (DEMO_QUIET) {
+        return;
+    }
+    file_put_contents(DEMO_STATE, json_encode($st));
+}
+
+if ($dryRun) {
+    echo "[dry-run] 판정만\n";
+}
+demo_save(['n' => 1]);

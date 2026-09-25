@@ -6,7 +6,9 @@ cleanup) — 정적 규칙, python3 stdlib 만, 파일은 읽기만.
 
 answers: HO-B1-004(tests/qf4b1.sh:88-96 — 운영 .env 를 mktemp 인스턴스 두 곳에 셋씩 복사 · 정리는 EXIT trap 뿐 ·
          남김 → 기준 판에서도 울려야 진짜) · 1l 봇 검토(tests/upgrade_smoke.sh — 결함 판 317168e 는 울리고, 다음
-         실행이 옛 임시 폴더를 치우는 고친 판 7e63a0c 는 조용해야)
+         실행이 옛 임시 폴더를 치우는 고친 판 7e63a0c 는 조용해야) · R20+(v4): 대기열 11 검토 [낮음](scripts/
+         api_token_rotate.sh 의 `mktemp -p <.env 폴더> .env.rotate.XXXXXX` — 고친 판 b8a4a33 의 뿌리 .gitignore 에
+         `.env.rotate.*` 가 있어 조용해야 · 그 앞 판(.gitignore 줄 없음)은 저장소에 없다 → 견본)
 
 무엇을 부류로 잡나:
   시험·반영 스크립트가 비밀 파일(앱 .env · /etc/tbox-v2/* · pgpass · 개인 키)을 임시 폴더로 복사(cp·install·
@@ -23,6 +25,11 @@ answers: HO-B1-004(tests/qf4b1.sh:88-96 — 운영 .env 를 mktemp 인스턴스 
       임시 폴더를 복사 전에 `rm -r…` 로 비움(다음 실행이 같은 자리를 지움) ③ 받아들인 위험 표식: 복사 줄·mktemp
       줄(또는 바로 윗줄)의 `qcheck-allow: R20`(예: tmpfs 0700 위라 재부팅이 지운다는 주석과 함께).
   같은 임시 뿌리로 가는 복사는 한 줄로 모은다(첫 복사 줄 · 설명에 나머지 줄).
+  R20+(v4) 저장소 트리 안 사본 — 비밀 사본을 받는 mktemp 가 **저장소 트리 안**(`-p <폴더>`·`--tmpdir=<폴더>`·틀에
+    든 폴더가 스크립트 자리 `$0`·BASH_SOURCE 나 `git rev-parse --show-toplevel` 에 묶여 뿌리 안으로 풀림 — 대입·
+    dirname·`cd … && pwd`·realpath 를 따라감)에 있고, 그 이름 모양(틀의 X 를 채운 것 · -d 면 폴더)이 뿌리
+    .gitignore(와 그 길의 하위 .gitignore)에 걸리지 않으면 **한 줄 더**(mktemp 줄) — kill -9 로 남은 사본을
+    `git add -A` 가 커밋할 수 있다. 옛 사본 청소가 있어도(위 ①) 이 줄은 따로 본다. 표식은 위와 같다.
   심각도: 낮음(사본은 대개 0600 — 남는 창이 문제).
 
 대상: --root 아래 --dirs(기본 tests·scripts·review-scripts)의 셸 + --outer 를 주면 <outer>/scripts/*.sh
@@ -31,6 +38,8 @@ answers: HO-B1-004(tests/qf4b1.sh:88-96 — 운영 .env 를 mktemp 인스턴스 
 rc:   0 발견 없음 · 1 발견 있음 · 2 실행 오류
 한계: 파이프로 흘려 쓰는 복사(`cat .env | tee 임시`)·tar 로 묶어 옮기는 것·heredoc 안 스크립트는 보지 않는다.
       임시 폴더가 tmpfs 인지·재부팅 때 비는지는 모른다(표식으로 받아들인다).
+      R20+: 글자 절대 경로(`-p /srv/app`)·현재 폴더 기준 상대 경로는 트리 안인지 모르므로 보지 않는다 ·
+      .git/info/exclude·전역 제외 목록은 보지 않는다(저장소 안 .gitignore 만).
 """
 import argparse
 import fnmatch
@@ -1196,6 +1205,7 @@ class TmpCtx(object):
         self.fparams = {}      # (함수, 위치 번호) → 뿌리 id
         self.falias = {}       # (함수, 지역 변수) → 위치 번호
         self.cleared = set()   # 복사 전에 rm -r 로 비운 변수(고정 경로)
+        self.mk_sub = {}       # mktemp 를 받은 변수 → 그 치환(R20+ 저장소 트리 안 판정)
         for c in sf.cmds:
             for w in self._assign_words(c):
                 name, parts = sh_assign_parts(w)
@@ -1214,6 +1224,7 @@ class TmpCtx(object):
                     mk = self._mktemp_tmpl(subs[0].sub)
                     if mk is not None:
                         self.roots[name] = ('%s@%d' % (name, c.line), c.line, mk)
+                        self.mk_sub[name] = subs[0].sub
         # 한 단계 파생: D="$WORK/x" · 고정 /tmp 경로
         for _ in range(2):
             for name, lst in self.assign_words.items():
@@ -1421,8 +1432,235 @@ def has_exit_trap(sf):
     return False
 
 
-def check_file(sf):
+# ─── R20+ 저장소 트리 안 사본 × .gitignore (v4) ──────────────────────────────────────────────────
+def _norm_rel(path):
+    """'a/b/../c' → 'a/c' · 뿌리 위로 나가면 None · '' 은 뿌리."""
+    out = []
+    for comp in path.split('/'):
+        if comp in ('', '.'):
+            continue
+        if comp == '..':
+            if not out:
+                return None
+            out.pop()
+            continue
+        out.append(comp)
+    return '/'.join(out)
+
+
+class PathEval(object):
+    """셸 경로 글을 저장소 뿌리 기준 상대 경로로 푼다 — 스크립트 자리($0 · BASH_SOURCE)나
+    `git rev-parse --show-toplevel` 에 묶인 것만(대입 · dirname · cd … && pwd · realpath/readlink -f 를 따라감).
+    못 풀면 None. '' 은 뿌리."""
+
+    def __init__(self, sf, script_rel):
+        self.script = script_rel
+        self.assign = {}
+        self.memo = {}
+        for c in sf.cmds:
+            ws = []
+            if not c.words:
+                ws = list(c.assigns)
+            elif c.words[0].lit() in ('local', 'declare', 'typeset', 'export', 'readonly'):
+                ws = [w for w in c.words[1:] if SH_ASSIGN_RE.match(w.raw)]
+            for w in ws:
+                name, parts = sh_assign_parts(w)
+                if name:
+                    self.assign.setdefault(name, []).append(parts)
+
+    def parts(self, parts, depth=0):
+        if depth > 8:
+            return None
+        ps = [p for p in parts if not (p.k == 'lit' and p.v == '')]
+        if not ps:
+            return None
+        p0, rest = ps[0], ps[1:]
+        if any(p.k != 'lit' for p in rest):
+            return None
+        tail = ''.join(p.v for p in rest)
+        if p0.k == 'pos' and p0.v == 0 and not p0.op:
+            base = self.script
+        elif p0.k == 'var' and p0.v == 'BASH_SOURCE' and (p0.op or '') in ('', '[0]'):
+            base = self.script
+        elif p0.k == 'var' and not p0.op:
+            if p0.v in self.memo:
+                base = self.memo[p0.v]
+            else:
+                self.memo[p0.v] = None          # 제 자신을 부르는 대입(X="$X/…")은 못 푼 것으로
+                got = set(self.parts(v, depth + 1) for v in (self.assign.get(p0.v) or []))
+                base = got.pop() if len(got) == 1 else None
+                self.memo[p0.v] = base
+        elif p0.k == 'sub' and p0.sub is not None:
+            base = self.sub(p0.sub, depth + 1)
+        else:
+            return None
+        if base is None:
+            return None
+        return _norm_rel(base + '/' + tail) if tail else base
+
+    def sub(self, sub, depth):
+        if re.search(r'rev-parse\b.*--show-toplevel', sub.text or ''):
+            return ''
+        cmds = sub.cmds
+        if not cmds:
+            return None
+        c0 = cmds[0]
+        n0 = os.path.basename(c0.words[0].lit() or '') if c0.words else ''
+        args = [w for w in c0.words[1:] if not (w.lit() or '').startswith('-')]
+        if n0 == 'cd' and args and any(c.name() == 'pwd' for c in cmds[1:]):
+            return self.parts(args[0].parts, depth)
+        if n0 == 'dirname' and args:
+            x = self.parts(args[-1].parts, depth)
+            if x is None or x == '':
+                return None
+            return x.rsplit('/', 1)[0] if '/' in x else ''
+        if n0 in ('realpath', 'readlink') and args and (n0 == 'realpath' or any(
+                re.fullmatch(r'-[a-zA-Z]*[fem][a-zA-Z]*', w.lit() or '') for w in c0.words[1:])):
+            return self.parts(args[-1].parts, depth)
+        return None
+
+
+def mktemp_tree_path(sub, pe):
+    """치환 안 mktemp 가 만드는 자리를 뿌리 기준 (경로 틀, 폴더 여부)로 — 트리 안으로 풀리지 않으면 (None, _)."""
+    for c in sub.cmds:
+        ws = sh_effective(c.words)
+        if not ws or os.path.basename(ws[0].lit() or '') != 'mktemp':
+            continue
+        is_dir, dparts, tmpl, tmp_flag = False, None, None, False
+        k = 1
+        while k < len(ws):
+            w = ws[k]
+            lt = w.lit()
+            head = w.parts[0].v if w.parts and w.parts[0].k == 'lit' else ''
+            if (lt is not None and lt.startswith('-') and len(lt) > 1) or (lt is None and head.startswith('-')):
+                if lt == '-p' and k + 1 < len(ws):
+                    dparts = ws[k + 1].parts
+                    k += 2
+                    continue
+                if head.startswith('--tmpdir='):
+                    dparts = [ShPart('lit', head[len('--tmpdir='):], w.parts[0].q, w.parts[0].line)] + list(w.parts[1:])
+                    k += 1
+                    continue
+                if lt == '--tmpdir':
+                    tmp_flag = True
+                elif lt == '--directory':
+                    is_dir = True
+                elif lt and not lt.startswith('--'):
+                    if 'd' in lt[1:]:
+                        is_dir = True
+                    if 't' in lt[1:]:
+                        tmp_flag = True
+                    if lt.endswith('p') and len(lt) > 2 and k + 1 < len(ws):
+                        dparts = ws[k + 1].parts
+                        k += 2
+                        continue
+                k += 1
+                continue
+            tmpl = w
+            k += 1
+        if tmp_flag:
+            return None, is_dir
+        if tmpl is not None and '/' in tmpl.lit_text():
+            return pe.parts(tmpl.parts), is_dir
+        if dparts is None:
+            return None, is_dir
+        d = pe.parts(dparts)
+        base = tmpl.lit() if tmpl is not None else 'tmp.XXXXXXXXXX'
+        if d is None or not base:
+            return None, is_dir
+        return _norm_rel(d + '/' + base), is_dir
+    return None, False
+
+
+def _gi_parse(text):
+    pats = []
+    for ln in text.split('\n'):
+        ln = ln.rstrip('\r')
+        if not ln or ln.startswith('#'):
+            continue
+        ln = re.sub(r'(?<!\\)\s+$', '', ln)
+        neg = ln.startswith('!')
+        if neg:
+            ln = ln[1:]
+        if ln.startswith('\\'):
+            ln = ln[1:]
+        dir_only = ln.endswith('/')
+        ln = ln.rstrip('/')
+        if not ln:
+            continue
+        anchored = '/' in ln
+        pats.append((neg, dir_only, anchored, ln.lstrip('/')))
+    return pats
+
+
+def _gi_path_match(pp, cc):
+    if not pp:
+        return not cc
+    if pp[0] == '**':
+        return any(_gi_path_match(pp[1:], cc[i:]) for i in range(len(cc) + 1))
+    if not cc:
+        return False
+    return fnmatch.fnmatchcase(cc[0], pp[0]) and _gi_path_match(pp[1:], cc[1:])
+
+
+def _gi_read(repo, d):
+    full = os.path.join(repo, d, '.gitignore') if d else os.path.join(repo, '.gitignore')
+    try:
+        if os.path.islink(full) or not os.path.isfile(full) or os.path.getsize(full) > (1 << 20):
+            return []
+        with open(full, 'rb') as fh:
+            return _gi_parse(fh.read().decode('utf-8', 'replace'))
+    except OSError:
+        return []
+
+
+def gitignored(repo, rel, is_dir):
+    """뿌리 기준 rel(글자 경로)이 저장소 안 .gitignore 들에 걸리나 — 조상 폴더가 걸리면 그 아래도."""
+    comps = [x for x in rel.split('/') if x]
+    if not comps:
+        return False
+    gis = [('', _gi_read(repo, ''))]
+    for i in range(1, len(comps)):
+        d = '/'.join(comps[:i])
+        gis.append((d, _gi_read(repo, d)))
+    for i in range(1, len(comps) + 1):
+        pref = comps[:i]
+        pdir = True if i < len(comps) else is_dir
+        st = None
+        for d, pats in gis:
+            dc = [x for x in d.split('/') if x]
+            if len(dc) >= len(pref) or pref[:len(dc)] != dc:
+                continue
+            sub = pref[len(dc):]
+            for neg, dir_only, anchored, pat in pats:
+                if dir_only and not pdir:
+                    continue
+                ok = _gi_path_match(pat.split('/'), sub) if anchored else fnmatch.fnmatchcase(sub[-1], pat)
+                if ok:
+                    st = not neg
+        if st:
+            return True
+    return False
+
+
+def tree_copy_gap(ctx, name, repo, pe):
+    """비밀 사본을 받는 mktemp(변수 name)가 트리 안이고 이름 모양이 .gitignore 밖이면 (자리 글, 이름 모양)."""
+    if repo is None or name is None or name not in ctx.mk_sub:
+        return None
+    rel, is_dir = mktemp_tree_path(ctx.mk_sub[name], pe)
+    if not rel:
+        return None
+    d, base = rel.rsplit('/', 1) if '/' in rel else ('', rel)
+    m = re.search(r'X{3,}$', base)
+    filled = (base[:m.start()] + 'a' * len(m.group(0))) if m else base
+    if gitignored(repo, (d + '/' + filled) if d else filled, is_dir):
+        return None
+    return (d or '뿌리'), base
+
+
+def check_file(sf, repo=None, script_rel=None):
     ctx = TmpCtx(sf)
+    pe = PathEval(sf, script_rel if script_rel is not None else sf.rel)
     groups = {}            # 뿌리 id → [(줄, 비밀 이름, 명령)]
     for c in sf.cmds:
         cp = copy_pairs(c)
@@ -1442,6 +1680,20 @@ def check_file(sf):
     for rid, lst in groups.items():
         lst.sort(key=lambda x: x[0])
         name, mkline, tmpl = ctx.root_info(rid)
+        gap = tree_copy_gap(ctx, name, repo, pe) if tmpl else None
+        if gap:
+            gmarks = [ln for ln, _s, _c in lst] + [mkline]
+            if any(sf.allowed(RULE, ln) for ln in gmarks):
+                allowed += 1
+            else:
+                gnames = []
+                for _ln, s, _c in lst:
+                    if s not in gnames:
+                        gnames.append(s)
+                out.append(('낮음', sf.rel, mkline,
+                            '비밀 사본(%s)을 저장소 트리 안(%s)에 mktemp 로 만드는데 그 이름 모양(%s)이 .gitignore 에 '
+                            '없다 — kill -9 로 남은 사본을 `git add -A` 가 커밋할 수 있다(뿌리 .gitignore 에 이름 모양 한 줄 · '
+                            'R20+)' % ('·'.join(gnames[:3]), gap[0], gap[1])))
         if tmpl is None and name is not None:
             # 고정 경로 — 복사 전에 비우면 다음 실행이 같은 자리를 지운다
             first_seq = lst[0][2].seq
@@ -1483,7 +1735,10 @@ def main(argv=None):
     skipped += bad
     findings = []
     for rel, sf in sfs.items():
-        got, allowed = check_file(sf)
+        if rel.startswith('../'):
+            got, allowed = check_file(sf, outer, rel[len('../'):])
+        else:
+            got, allowed = check_file(sf, root, rel)
         findings.extend(got)
         skipped += allowed
     return sh_emit(RULE, findings, len(sfs), skipped)

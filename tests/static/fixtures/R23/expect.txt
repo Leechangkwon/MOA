@@ -19,3 +19,15 @@ quiet_record rc=0 findings=0
 quiet_shell_text rc=0 findings=0
 quiet_prep rc=0 findings=0
 quiet_empty_eq rc=0 findings=0
+# v4 묶음 A — answers FP-0007(출처가 확인된 값) · 기존 R23 train 은 그대로 울림
+#   quiet_src_confirmed    준비 값이 탐침 응답에서 뽑은 값(요청·쓰기 없는 도우미 jf · printf|sed)이고, 그 응답이나 같은 응답에서
+#                          뽑은 다른 값이 긍정 단언으로 확인됨 — 0 (v3 은 2)
+#   fire_src_unconfirmed   출처를 부정 단언으로만 봄(2) · 확인된 출처로 **만든** 값(curl POST 도우미)(1) · 두 단계 흐름(1) — 4
+quiet_src_confirmed rc=0 findings=0
+fire_src_unconfirmed rc=1 findings=4
+#   quiet_shape_checked    두 명령 치환 값을 같음 비교하기 전에 한쪽을 빈 글자에 맞지 않는 정규식(`[[ =~ ^[0-9]+$ ]] || exit` ·
+#                          단언 안 `[[ =~ ]]` · `if ! [[ $V =~ $re ]]; then exit`)이나 case(빈 값 갈래가 exit)로 거름 — 0 (v3 은 4)
+#                          answers FP-0008(개발 판은 저장소 밖 → 가짜 견본)
+#   fire_shape_unchecked   빈 글자에도 맞는 정규식 · 걸러도 갈래를 끝내지 않음 · case 빈 값 갈래가 끝내지 않음 — 3
+quiet_shape_checked rc=0 findings=0
+fire_shape_unchecked rc=1 findings=3

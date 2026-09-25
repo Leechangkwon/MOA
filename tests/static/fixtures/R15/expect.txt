@@ -38,3 +38,17 @@ quiet_config_extract rc=0 findings=0
 fire_config_secret rc=1 findings=1
 fire_outer_script rc=1 findings=1
 quiet_allow_mark rc=0 findings=0
+# 묶음 B (v4) — 파이썬 이름 흐름의 범위·순서·튜플 풀기 — answers 880078d 판 r23 오탐(pw → v → st → root) ·
+#   묶음 K 보고의 r6 clean_token() 결과 번짐(t · b) · v3 한계(bot-v3-static.md 「R15 파이썬 이름 흐름이 순서를 보지 않음」)
+#   quiet_py_scope   한 함수의 비밀 이름 흐름(pw · clean_token())이 다른 함수의 같은 이름(st · root · t · b)으로 번지지 않음 — 조용(v3 는 2건)
+#   fire_py_scope    함수가 읽는 모듈 이름(자유 이름) · 클로저가 읽는 둘러싼 함수 이름 — 둘 다 울림
+#   quiet_py_order   비밀 대입 앞의 사용 · 글자를 다시 대입한 뒤의 사용 — 조용(v3 는 2건)
+#   fire_py_order    반복문 뒤쪽 대입이 다음 바퀴의 앞 사용에 닿음 · 다시 대입한 비밀 값 — 둘 다 울림
+#   quiet_py_unpack  비밀이 아닌 st 풀기 · 같은 길이 튜플 글자의 비밀 아닌 자리 — 조용(v3 는 1건)
+#   fire_py_unpack   비밀 st 풀기(전부) · 튜플 글자의 비밀 자리(cred 만) — 둘 다 울림
+quiet_py_scope rc=0 findings=0
+fire_py_scope rc=1 findings=2
+quiet_py_order rc=0 findings=0
+fire_py_order rc=1 findings=2
+quiet_py_unpack rc=0 findings=0
+fire_py_unpack rc=1 findings=2

@@ -7,6 +7,8 @@ answers: BF-0002 · BF-0003(처음 부류 — TOTP 비밀·비밀번호) · BF-0
          · FP-0001(오탐 정정 — 줄 이어짐으로 나뉜 환경 변수 접두)
          · v3 묶음 K: HO-B2-011(세션 해시 키 · 한 싱크의 출처 전부) · FP-0006(sed 로 뽑은 설정 값) · v2 한계(*_id 예외 ·
            secrets.sh `len(` 오탐 — bot-v2-static.md) · 바깥 저장소 반영 스크립트(--outer)
+         · v4 묶음 B: v3 한계(bot-v3-static.md — 파이썬 이름 흐름이 순서·범위를 보지 않음) · 880078d 판 r23 오탐
+           (pw → v → st → root 가 subprocess 인자) · 묶음 K 보고의 r6 clean_token() 결과 번짐(t · b)
 
 무엇을 부류로 잡나:
   명령 인자(argv)는 같은 호스트의 다른 사용자에게 `ps`·/proc/<pid>/cmdline 으로 보이고, sudo 를 거치면
@@ -18,8 +20,18 @@ answers: BF-0002 · BF-0003(처음 부류 — TOTP 비밀·비밀번호) · BF-0
       같은 말이 붙은 변수·속성·배열 키(`mfa_secret` 열 값 포함). 이름에 FILE·PATH·ID·NAME·HASH·COUNT·
       CODE·LEN·URL·BAD·FAKE… 같은 「비밀 자체가 아님」 토큰이 붙으면 뺀다. 파일 안에서 글자 그대로의
       값만 대입되는 변수(시험용 가짜 값)도 뺀다.
-      ② 그런 값을 대입받은 변수(파일 안 흐름, 순서 무시), 이름이 비밀을 가리키는 함수·명령의 출력
+      ② 그런 값을 대입받은 변수, 이름이 비밀을 가리키는 함수·명령의 출력
       `$(qa_secret …)`, 비밀 이름이 적힌 파일·열을 읽는 명령 치환 `$(… totp … )`.
+        셸·PHP 는 파일 안 흐름(순서 무시). 파이썬은 v4 부터 범위·순서를 본다(v4 묶음 B):
+        (a) 범위(모듈 · 함수 · 클래스 몸통)마다 따로 잇는다 — 한 함수의 이름은 다른 함수의 같은 이름과 무관하다.
+            함수 안에서 대입되지 않는 이름(자유 이름)은 파이썬 이름 규칙대로 둘러싼 함수·모듈의 이름이다(global·
+            nonlocal 선언 포함). 부르는 때를 모르므로 둘러싼 범위 어딘가에서 비밀을 받았으면 비밀로 친다.
+        (b) 문장 차례대로 — 대입 **뒤**의 사용에만 잇는다. 다시 대입하면 새 값으로 바뀌고(글자를 넣으면 흐름이 끝남),
+            if·try 갈래는 합치며, 반복문은 뒤쪽 대입이 다음 바퀴의 앞 사용에 닿도록 고정점까지 돈다.
+        (c) 튜플 풀기 `a, b = st` 는 st 가 비밀일 때만 전부에 — 오른쪽이 같은 길이의 튜플 글자면(`a, b = x, pw`)
+            자리끼리 잇는다. for 대상 · with … as · := 도 대입으로 친다. 내포(comprehension)의 대상과 lambda
+            매개변수는 그 안에서만 따로 본다.
+        함수 매개변수는 부르는 쪽 값을 따라가지 않는다(v3 과 같음 — 이름으로 비밀이면 울린다).
       ③ 셸 함수의 위치 인자(`$1`)는 호출하는 쪽에서 비밀을 넘길 때만 비밀로 친다(함수 사이 전파 포함).
       ④ 세션 쿠키(묶음 X) — 로그인 세션 값은 비밀번호와 같은 자격이다(가진 사람이 그 계정으로 요청한다).
         (a) 이름: 토큰 COOKIE(S)·SESSION·SESS·SID(…SESSID) 가 든 변수·함수·속성. 「자리」(…_FILE·_PATH·
@@ -62,7 +74,8 @@ answers: BF-0002 · BF-0003(처음 부류 — TOTP 비밀·비밀번호) · BF-0
       설명에는 변수 이름만 적고 값은 적지 않는다.
 rc:   0 발견 없음 · 1 발견 있음 · 2 실행 오류(뿌리 없음·git 목록 실패 = 검사 못 함)
 한계: 셸 분석은 bash 문법의 부분 집합이다(case 안의 `$(…)`·eval·xargs·동적 명령 이름·배열 원소별 추적은
-      못 본다). `printf -v 변수` 로 만든 값은 흐름에 넣지 않는다. 이름에도 모양에도 표시가 없는 쿠키 값
+      못 본다). 파이썬은 이름 흐름만 본다 — 속성·첨자에 넣은 값(`self.x = pw` · `cmd[1] = pw`)·목록 메서드
+      (`cmd.append(pw)`)·함수 인자에서 매개변수로 가는 흐름은 따라가지 않는다(이름·모양으로 비밀이면 울린다). `printf -v 변수` 로 만든 값은 흐름에 넣지 않는다. 이름에도 모양에도 표시가 없는 쿠키 값
       (예: 응답 머리를 다른 이름으로 받아 그대로 넘김)은 못 잡는다. 이름 SID 가 세션이 아닌 것(공유 id 등)을
       뜻하면 값이 id 칸 읽기일 때만 빠진다.
 """
@@ -1660,6 +1673,147 @@ def py_cookie_shape(n):
     return None
 
 
+# ─── 파이썬 이름 흐름(v4 묶음 B) — 범위 · 대입 순서 · 튜플 풀기 ──────────────────────
+# v3 까지는 파일 전체에서 같은 이름이면 흐름을 이었다(순서·범위 무시) — 한 함수의 `pw`(비밀 이름) 흐름이 다른 함수의
+# 같은 이름(v · st · root …)으로 번져 무관한 subprocess 인자에서 울렸다(880078d 판 r23 · r6 의 clean_token() 결과).
+# 이제는 ① 범위(모듈 · 함수 · 클래스 몸통)마다 따로 잇고 ② 문장 차례대로 — 대입 **뒤**의 사용에만 잇는다
+# (다시 대입하면 새 값으로, 갈래는 합치고, 반복문은 고정점) ③ 튜플 풀기 `a, b = st` 는 st 가 비밀일 때만 전부에,
+# 오른쪽이 같은 길이의 튜플 글자(`a, b = x, pw`)면 자리끼리 잇는다.
+_PY_FUNC_NODES = (ast.FunctionDef, ast.AsyncFunctionDef)
+_PY_SCOPE_NODES = _PY_FUNC_NODES + (ast.ClassDef, ast.Lambda)
+_PY_COMP_NODES = (ast.ListComp, ast.SetComp, ast.DictComp, ast.GeneratorExp)
+_PY_LOOP_NODES = (ast.For, ast.AsyncFor, ast.While)
+_PY_FIX_CAP = 8      # 반복문 고정점 · 파일 전체 고정점(global·nonlocal 쓰기)의 상한
+
+
+def _py_target_names(t):
+    """대입 대상이 묶는 이름들(a · a, b · [a, *b] · (a, (b, c))). 속성·첨자는 이름을 묶지 않는다."""
+    if isinstance(t, ast.Name):
+        return [t.id]
+    if isinstance(t, ast.Starred):
+        return _py_target_names(t.value)
+    if isinstance(t, (ast.Tuple, ast.List)):
+        out = []
+        for e in t.elts:
+            out.extend(_py_target_names(e))
+        return out
+    return []
+
+
+def _py_arg_names(a):
+    names = [x.arg for x in getattr(a, 'posonlyargs', [])] + [x.arg for x in a.args] + [x.arg for x in a.kwonlyargs]
+    if a.vararg:
+        names.append(a.vararg.arg)
+    if a.kwarg:
+        names.append(a.kwarg.arg)
+    return names
+
+
+def _py_outer_parts(node):
+    """정의(def·class·lambda)에서 **둘러싼 범위**가 평가하는 조각 — 장식자 · 기본값 · 기반 클래스."""
+    if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda)):
+        a = node.args
+        return list(getattr(node, 'decorator_list', [])) + list(a.defaults) + [d for d in a.kw_defaults if d is not None]
+    if isinstance(node, ast.ClassDef):
+        return list(node.decorator_list) + list(node.bases) + [k.value for k in node.keywords]
+    return []
+
+
+def _py_scope_walk(nodes):
+    """한 범위 안의 마디들 — 안쪽 def·class·lambda 의 몸통은 들어가지 않는다(둘러싼 쪽이 평가하는 조각만)."""
+    stack = list(reversed(nodes))
+    while stack:
+        n = stack.pop()
+        yield n
+        if isinstance(n, _PY_SCOPE_NODES):
+            stack.extend(reversed(_py_outer_parts(n)))
+            continue
+        stack.extend(reversed(list(ast.iter_child_nodes(n))))
+
+
+def _py_pattern_names(p):
+    out = []
+    for n in ast.walk(p):
+        nm = getattr(n, 'name', None) if n.__class__.__name__ in ('MatchAs', 'MatchStar') else None
+        if nm:
+            out.append(nm)
+        rest = getattr(n, 'rest', None) if n.__class__.__name__ == 'MatchMapping' else None
+        if rest:
+            out.append(rest)
+    return out
+
+
+def _py_import_names(s):
+    out = []
+    for a in s.names:
+        if a.name == '*':
+            continue
+        out.append(a.asname or (a.name.split('.')[0] if isinstance(s, ast.Import) else a.name))
+    return out
+
+
+def _py_has_jump(body):
+    """반복문 몸통에 이 반복문의 break·continue 가 있나(안쪽 반복문·함수 몸통은 빼고)."""
+    stack = list(body)
+    while stack:
+        n = stack.pop()
+        if isinstance(n, (ast.Break, ast.Continue)):
+            return True
+        if isinstance(n, _PY_LOOP_NODES):
+            stack.extend(n.orelse)
+            continue
+        if isinstance(n, _PY_SCOPE_NODES) or isinstance(n, ast.expr):
+            continue
+        stack.extend(ast.iter_child_nodes(n))
+    return False
+
+
+class PyScope(object):
+    """이름 흐름의 범위 하나(모듈 · 함수 · 클래스 몸통). locals = 이 범위에서 묶이는 이름(대입·for·with·except·
+    import·def·class·:=·매개변수 — global·nonlocal 선언은 뺌). ever = 이 범위 어딘가에서 비밀 흐름을 받은 이름
+    (안쪽 함수가 자유 이름으로 읽을 때 — 부르는 때를 모르므로 범위 전체의 합). extern = 안쪽 범위가 global·nonlocal 로
+    비밀을 써 넣은 이름."""
+    __slots__ = ('node', 'kind', 'parent', 'locals', 'globals', 'nonlocals', 'ever', 'extern', 'outer_state')
+
+    def __init__(self, node, kind, parent):
+        self.node, self.kind, self.parent = node, kind, parent
+        self.locals, self.globals, self.nonlocals = set(), set(), set()
+        self.ever, self.extern = set(), set()
+        self.outer_state = frozenset()
+        for n in _py_scope_walk(list(node.body)):
+            if isinstance(n, ast.Assign):
+                for t in n.targets:
+                    self.locals.update(_py_target_names(t))
+            elif isinstance(n, (ast.AugAssign, ast.AnnAssign)):
+                self.locals.update(_py_target_names(n.target))
+            elif isinstance(n, (ast.For, ast.AsyncFor)):
+                self.locals.update(_py_target_names(n.target))
+            elif isinstance(n, ast.withitem) and n.optional_vars is not None:
+                self.locals.update(_py_target_names(n.optional_vars))
+            elif isinstance(n, ast.ExceptHandler) and n.name:
+                self.locals.add(n.name)
+            elif isinstance(n, (ast.Import, ast.ImportFrom)):
+                self.locals.update(_py_import_names(n))
+            elif isinstance(n, _PY_FUNC_NODES + (ast.ClassDef,)) and n is not node:
+                self.locals.add(n.name)
+            elif isinstance(n, ast.NamedExpr):
+                self.locals.update(_py_target_names(n.target))
+            elif isinstance(n, ast.Delete):
+                for t in n.targets:
+                    self.locals.update(_py_target_names(t))
+            elif isinstance(n, ast.Global):
+                self.globals.update(n.names)
+            elif isinstance(n, ast.Nonlocal):
+                self.nonlocals.update(n.names)
+            elif n.__class__.__name__ == 'match_case':
+                self.locals.update(_py_pattern_names(n.pattern))
+        if kind == 'function':
+            self.locals.update(_py_arg_names(node.args))
+        if kind == 'module':
+            self.globals, self.nonlocals = set(), set()      # 모듈 수준의 global 선언은 뜻이 없다
+        self.locals -= self.globals | self.nonlocals
+
+
 class PyFile(object):
     def __init__(self, rel, text, line0=1):
         self.rel = rel
@@ -1673,6 +1827,10 @@ class PyFile(object):
             elif isinstance(node, ast.ImportFrom) and node.module:
                 for a in node.names:
                     self.alias[a.asname or a.name] = node.module + '.' + a.name
+        self.module = PyScope(self.tree, 'module', None)
+        self.scopes = {}          # 정의 마디 → PyScope(고정점 사이에 extern 을 이어 가려고 한 번만 만든다)
+        self._deferred = []
+        self._hits = {}
 
     def resolve(self, func):
         d = _py_dotted(func)
@@ -1682,10 +1840,13 @@ class PyFile(object):
         full = self.alias.get(head, head)
         return full + ('.' + rest if rest else '')
 
-    def refs(self, node, tainted):
+    # ── 값 판정 ──
+    def refs(self, node, is_t):
+        """식 안의 비밀 참조 이름들. is_t(이름) — 그 자리에서 그 이름이 비밀 흐름을 받았나(범위·순서를 본 판정).
+        lambda 매개변수와 내포(comprehension)의 대상 이름은 그 안에서만 따로 본다(대상은 도는 값이 비밀일 때만)."""
         out = []
 
-        def visit(n):
+        def visit(n, over):
             shape = py_cookie_shape(n)
             if shape:
                 out.append(shape)
@@ -1700,8 +1861,10 @@ class PyFile(object):
                     return      # Session() · SimpleCookie() — 세션·쿠키 그릇을 만드는 것(값이 아님)
                 if last and is_secret_name(last0):
                     out.append(fname + '()')
-            if isinstance(n, ast.Name) and (n.id in tainted or is_secret_name(n.id)):
-                out.append(n.id)
+            if isinstance(n, ast.Name):
+                t = over[n.id] if n.id in over else is_t(n.id)
+                if t or is_secret_name(n.id):
+                    out.append(n.id)
                 return
             if isinstance(n, ast.Attribute) and is_secret_name(n.attr):
                 out.append((_py_dotted(n) or n.attr))
@@ -1713,63 +1876,351 @@ class PyFile(object):
                 if isinstance(sl, ast.Constant) and isinstance(sl.value, str) and is_secret_name(sl.value):
                     out.append('[%r]' % sl.value)
                     return
+            if isinstance(n, ast.Lambda):
+                for d in _py_outer_parts(n):
+                    visit(d, over)
+                o2 = dict(over)
+                for nm in _py_arg_names(n.args):
+                    o2[nm] = False
+                visit(n.body, o2)
+                return
+            if isinstance(n, _PY_COMP_NODES):
+                o2 = dict(over)
+                for g in n.generators:
+                    k0 = len(out)
+                    visit(g.iter, o2)
+                    tt = len(out) > k0
+                    for nm in _py_target_names(g.target):
+                        o2[nm] = tt
+                    for c in g.ifs:
+                        visit(c, o2)
+                for e in ([n.key, n.value] if isinstance(n, ast.DictComp) else [n.elt]):
+                    visit(e, o2)
+                return
             for c in ast.iter_child_nodes(n):
-                visit(c)
+                visit(c, over)
 
-        visit(node)
+        visit(node, {})
         return out
 
-    def taint(self):
-        tainted = set()
-        changed = True
-        while changed:
-            changed = False
-            for node in ast.walk(self.tree):
-                if isinstance(node, (ast.Assign, ast.AugAssign, ast.AnnAssign)) and node.value is not None:
-                    targets = node.targets if isinstance(node, ast.Assign) else [node.target]
-                    names = [t.id for t in targets if isinstance(t, ast.Name)]
-                    for t in targets:
-                        if isinstance(t, (ast.Tuple, ast.List)):
-                            names.extend(e.id for e in t.elts if isinstance(e, ast.Name))
-                    if not names or all(nm in tainted for nm in names):
-                        continue
-                    if self.refs(node.value, tainted):
-                        for nm in names:
-                            if nm not in tainted:
-                                tainted.add(nm)
-                                changed = True
-        return tainted
+    def _is_t(self, sc, st, name):
+        """범위 sc 의 지금 상태 st 에서 이름이 비밀 흐름을 받았나(파이썬 이름 규칙 — 지역 · global · nonlocal · 자유)."""
+        mod = self.module
+        if sc.kind != 'module' and name in sc.globals:
+            return name in mod.ever or name in mod.extern
+        if name in sc.nonlocals:
+            p = self._owner(sc, name)
+            return p is not None and (name in p.ever or name in p.extern)
+        if name in sc.locals:
+            return name in st or name in sc.extern
+        if sc.kind == 'class' and sc.parent is not None and sc.parent.kind != 'class' and name in sc.parent.locals:
+            return name in sc.outer_state or name in sc.parent.extern     # 클래스 몸통은 정의되는 그 자리에서 돈다
+        p = sc.parent
+        while p is not None:
+            if p.kind != 'class':
+                if p.kind != 'module' and name in p.globals:
+                    return name in mod.ever or name in mod.extern
+                if name in p.locals:
+                    return name in p.ever or name in p.extern
+            p = p.parent
+        return False
+
+    def _owner(self, sc, name):
+        p = sc.parent
+        while p is not None:
+            if p.kind == 'function' and name in p.locals:
+                return p
+            p = p.parent
+        return None
+
+    def _ist(self, sc, st):
+        return lambda name: self._is_t(sc, st, name)
+
+    def _set(self, sc, st, name, t):
+        """이름에 새 값 — 비밀이면 넣고 아니면 뺀다(다시 대입하면 앞 값의 흐름은 끝난다). global·nonlocal 이름은
+        그 범위의 extern 에만 더한다(부르는 때를 모르니 빼지는 않는다)."""
+        if sc.kind != 'module' and name in sc.globals:
+            if t:
+                self.module.extern.add(name)
+            return st
+        if name in sc.nonlocals:
+            p = self._owner(sc, name)
+            if t and p is not None:
+                p.extern.add(name)
+            return st
+        if t:
+            return st if name in st else st | {name}
+        return st - {name} if name in st else st
+
+    def _pair(self, sc, pre, target, value, out):
+        # 오른쪽이 같은 길이의 튜플·목록 글자면 자리끼리(a, b = x, pw → b 만) — 아니면 값 전체가 비밀일 때만 전부에
+        if isinstance(target, (ast.Tuple, ast.List)) and isinstance(value, (ast.Tuple, ast.List)) and \
+                len(target.elts) == len(value.elts) and \
+                not any(isinstance(e, ast.Starred) for e in list(target.elts) + list(value.elts)):
+            for te, ve in zip(target.elts, value.elts):
+                self._pair(sc, pre, te, ve, out)
+            return
+        t = bool(self.refs(value, self._ist(sc, pre)))
+        for nm in _py_target_names(target):
+            out.append((nm, t))
+
+    def _bind(self, sc, st, target, value, pre):
+        pairs = []
+        self._pair(sc, pre, target, value, pairs)      # 오른쪽은 대입 전 상태로 먼저 다 잰다
+        for nm, t in pairs:
+            st = self._set(sc, st, nm, t)
+        return st
+
+    def _walrus(self, sc, st, expr):
+        """식 안의 `이름 := 값`(lambda 몸통 밖) — 그 문장에서 대입으로 친다."""
+        if expr is None:
+            return st
+        stack = [expr]
+        while stack:
+            n = stack.pop()
+            if isinstance(n, ast.Lambda):
+                continue
+            if isinstance(n, ast.NamedExpr) and isinstance(n.target, ast.Name):
+                st = self._set(sc, st, n.target.id, bool(self.refs(n.value, self._ist(sc, st))))
+            stack.extend(ast.iter_child_nodes(n))
+        return st
+
+    # ── 싱크 ──
+    def _scan(self, sc, st, nodes):
+        base = self._ist(sc, st)
+        for n in nodes:
+            if n is not None:
+                self._scan_expr(n, base, {})
+
+    def _scan_expr(self, n, base, over):
+        def is_t(name, over=over):
+            return over[name] if name in over else base(name)
+        if isinstance(n, ast.Lambda):
+            for d in _py_outer_parts(n):
+                self._scan_expr(d, base, over)
+            o2 = dict(over)
+            for nm in _py_arg_names(n.args):
+                o2[nm] = False
+            self._scan_expr(n.body, base, o2)
+            return
+        if isinstance(n, _PY_COMP_NODES):
+            o2 = dict(over)
+            for g in n.generators:
+                self._scan_expr(g.iter, base, o2)
+                tt = bool(self.refs(g.iter, lambda name, o=dict(o2): o[name] if name in o else base(name)))
+                for nm in _py_target_names(g.target):
+                    o2[nm] = tt
+                for c in g.ifs:
+                    self._scan_expr(c, base, o2)
+            for e in ([n.key, n.value] if isinstance(n, ast.DictComp) else [n.elt]):
+                self._scan_expr(e, base, o2)
+            return
+        if isinstance(n, ast.Call):
+            self._check_sink(n, is_t)
+        for c in ast.iter_child_nodes(n):
+            self._scan_expr(c, base, over)
+
+    def _check_sink(self, node, is_t):
+        full = self.resolve(node.func)
+        how = PY_SINKS.get(full or '')
+        if not how:
+            return
+        if how == 'first':
+            args = node.args[:1] or [kw.value for kw in node.keywords if kw.arg in ('args', 'cmd', 'command')]
+        elif how == 'second':
+            args = node.args[1:2]
+        elif how == 'all':
+            args = node.args
+        else:
+            args = node.args[:-1]
+        refs = []
+        for a in args:
+            refs.extend(self.refs(a, is_t))
+        if refs:
+            hit = self._hits.setdefault(node, (full, args, []))
+            for r in refs:
+                if r not in hit[2]:
+                    hit[2].append(r)
+
+    # ── 문장 차례 ──
+    def _block(self, sc, stmts, st):
+        """문장 목록을 차례로 — (끝 상태, 도중에 본 상태의 합)."""
+        seen = set(st)
+        for s in stmts:
+            st, sn = self._stmt(sc, s, st)
+            seen |= sn
+        return st, seen
+
+    def _loop(self, sc, body, st, enter, test=None):
+        """반복문 몸통의 고정점 — 뒤쪽 대입이 다음 바퀴의 앞쪽 사용에 닿는 것까지(끝 상태는 0바퀴 · 바퀴 끝의 합)."""
+        cur, seen_all = frozenset(st), set(st)
+        jumps = _py_has_jump(body)
+        for _ in range(_PY_FIX_CAP):
+            st0 = cur
+            if test is not None:
+                self._scan(sc, st0, [test])
+                st0 = self._walrus(sc, st0, test)
+            b0 = enter(st0)
+            out, seen = self._block(sc, body, b0)
+            seen_all |= seen
+            new = cur | out | st0 | (seen if jumps else frozenset())
+            if new == cur:
+                break
+            cur = frozenset(new)
+        return cur, seen_all
+
+    def _stmt(self, sc, s, st):
+        if isinstance(s, _PY_FUNC_NODES):
+            self._scan(sc, st, _py_outer_parts(s))
+            fsc = self._scope(s, 'function', sc)
+            if fsc not in self._deferred:
+                self._deferred.append(fsc)      # 몸통은 둘러싼 범위를 다 돈 뒤에
+            st = self._set(sc, st, s.name, False)
+            return st, st
+        if isinstance(s, ast.ClassDef):
+            self._scan(sc, st, _py_outer_parts(s))
+            csc = self._scope(s, 'class', sc)
+            csc.outer_state = frozenset(st)
+            self._run_scope(csc)
+            st = self._set(sc, st, s.name, False)
+            return st, st
+        if isinstance(s, ast.Assign):
+            self._scan(sc, st, [s.value] + list(s.targets))
+            st = self._walrus(sc, st, s.value)
+            pre = st
+            for t in s.targets:
+                st = self._bind(sc, st, t, s.value, pre)
+            return st, st
+        if isinstance(s, ast.AugAssign):
+            self._scan(sc, st, [s.value, s.target])
+            st = self._walrus(sc, st, s.value)
+            if isinstance(s.target, ast.Name):
+                nm = s.target.id
+                t = self._is_t(sc, st, nm) or bool(self.refs(s.value, self._ist(sc, st)))
+                st = self._set(sc, st, nm, t)
+            return st, st
+        if isinstance(s, ast.AnnAssign):
+            if s.value is None:
+                return st, st
+            self._scan(sc, st, [s.value])
+            st = self._walrus(sc, st, s.value)
+            st = self._bind(sc, st, s.target, s.value, st)
+            return st, st
+        if isinstance(s, (ast.For, ast.AsyncFor)):
+            self._scan(sc, st, [s.iter])
+            st = self._walrus(sc, st, s.iter)
+            it_t = bool(self.refs(s.iter, self._ist(sc, st)))
+
+            def enter(cur):
+                for nm in _py_target_names(s.target):
+                    cur = self._set(sc, cur, nm, it_t)
+                return cur
+            after, seen = self._loop(sc, s.body, st, enter)
+            o2, sn2 = self._block(sc, s.orelse, after)
+            return o2, seen | sn2
+        if isinstance(s, ast.While):
+            after, seen = self._loop(sc, s.body, st, lambda cur: cur, test=s.test)
+            o2, sn2 = self._block(sc, s.orelse, after)
+            return o2, seen | sn2
+        if isinstance(s, ast.If):
+            self._scan(sc, st, [s.test])
+            st = self._walrus(sc, st, s.test)
+            o1, s1 = self._block(sc, s.body, st)
+            o2, s2 = self._block(sc, s.orelse, st)
+            return o1 | o2, s1 | s2
+        if isinstance(s, (ast.With, ast.AsyncWith)):
+            for it in s.items:
+                self._scan(sc, st, [it.context_expr])
+                st = self._walrus(sc, st, it.context_expr)
+                if it.optional_vars is not None:
+                    st = self._bind(sc, st, it.optional_vars, it.context_expr, st)
+            o, sn = self._block(sc, s.body, st)
+            return o, sn | st
+        if isinstance(s, ast.Try) or s.__class__.__name__ == 'TryStar':
+            ob, sb = self._block(sc, s.body, st)
+            hin = st | sb          # 예외는 몸통 어디서나 — 도중 상태의 합으로 들어간다
+            oe, se = self._block(sc, s.orelse, ob)
+            outs, seen = [oe], sb | se
+            for h in s.handlers:
+                if h.type is not None:
+                    self._scan(sc, hin, [h.type])
+                hs = self._set(sc, hin, h.name, False) if h.name else hin
+                oh, sh = self._block(sc, h.body, hs)
+                outs.append(oh)
+                seen |= sh
+            merged = set().union(*outs)
+            if s.finalbody:
+                of, sf = self._block(sc, s.finalbody, merged | hin)
+                return of, seen | sf
+            return merged, seen
+        if s.__class__.__name__ == 'Match':
+            self._scan(sc, st, [s.subject])
+            st = self._walrus(sc, st, s.subject)
+            subj_t = bool(self.refs(s.subject, self._ist(sc, st)))
+            outs, seen = [st], set(st)
+            for c in s.cases:
+                cs = st
+                for nm in _py_pattern_names(c.pattern):
+                    cs = self._set(sc, cs, nm, subj_t)
+                if c.guard is not None:
+                    self._scan(sc, cs, [c.guard])
+                oc, scs = self._block(sc, c.body, cs)
+                outs.append(oc)
+                seen |= scs
+            return set().union(*outs), seen
+        if isinstance(s, ast.Delete):
+            self._scan(sc, st, list(s.targets))
+            for t in s.targets:
+                for nm in _py_target_names(t):
+                    st = self._set(sc, st, nm, False)
+            return st, st
+        if isinstance(s, (ast.Import, ast.ImportFrom)):
+            for nm in _py_import_names(s):
+                st = self._set(sc, st, nm, False)
+            return st, st
+        kids = [c for c in ast.iter_child_nodes(s) if isinstance(c, ast.expr)]     # 식 · return · raise · assert …
+        self._scan(sc, st, kids)
+        for k in kids:
+            st = self._walrus(sc, st, k)
+        return st, st
+
+    def _scope(self, node, kind, parent):
+        sc = self.scopes.get(node)
+        if sc is None:
+            sc = self.scopes[node] = PyScope(node, kind, parent)
+        return sc
+
+    def _run_scope(self, sc):
+        out, seen = self._block(sc, list(sc.node.body), frozenset())
+        sc.ever = set(seen) | set(out)
+
+    def _extern_snapshot(self):
+        return tuple(sorted((id(sc), tuple(sorted(sc.extern))) for sc in [self.module] + list(self.scopes.values())))
 
     def run(self):
-        tainted = self.taint()
+        # 모듈을 먼저 차례로 돌고, 함수 몸통은 둘러싼 범위를 다 돈 뒤에(자유 이름은 둘러싼 범위 전체의 합으로) 돈다.
+        # global·nonlocal 로 바깥 이름에 비밀을 쓰는 함수가 있으면 바뀌지 않을 때까지 다시 돈다.
+        for _ in range(_PY_FIX_CAP):
+            snap = self._extern_snapshot()
+            self._hits = {}
+            self._deferred = []
+            self._run_scope(self.module)
+            i = 0
+            while i < len(self._deferred):
+                self._run_scope(self._deferred[i])
+                i += 1
+            if self._extern_snapshot() == snap:
+                break
         out = []
-        for node in ast.walk(self.tree):
-            if not isinstance(node, ast.Call):
-                continue
-            full = self.resolve(node.func)
-            how = PY_SINKS.get(full or '')
-            if not how:
-                continue
-            if how == 'first':
-                args = node.args[:1] or [kw.value for kw in node.keywords if kw.arg in ('args', 'cmd', 'command')]
-            elif how == 'second':
-                args = node.args[1:2]
-            elif how == 'all':
-                args = node.args
-            else:
-                args = node.args[:-1]
-            refs = []
-            for a in args:
-                refs.extend(self.refs(a, tainted))
-            if refs:
-                logged = any(isinstance(n, ast.Constant) and isinstance(n.value, str) and
-                             re.match(r'\s*(sudo|doas)\b', n.value) for a in args for n in ast.walk(a))
-                hk = refs_all_hashkey(refs)
-                sev = '높음' if logged else '중간'
-                out.append(Finding(lower(sev) if hk else sev, self.rel, node.lineno + self.line0 - 1,
-                                   '비밀로 보이는 값(%s)이 %s 명령 인자로 들어감%s%s — input=·파일·env= 로 넘길 것'
-                                   % (', '.join(dict.fromkeys(refs)), full, ' (sudo 기록에 남음)' if logged else '',
-                                      HASH_NOTE if hk else '')))
+        for node, (full, args, refs) in sorted(self._hits.items(), key=lambda kv: (kv[0].lineno, kv[0].col_offset)):
+            logged = any(isinstance(n, ast.Constant) and isinstance(n.value, str) and
+                         re.match(r'\s*(sudo|doas)\b', n.value) for a in args for n in ast.walk(a))
+            hk = refs_all_hashkey(refs)
+            sev = '높음' if logged else '중간'
+            out.append(Finding(lower(sev) if hk else sev, self.rel, node.lineno + self.line0 - 1,
+                               '비밀로 보이는 값(%s)이 %s 명령 인자로 들어감%s%s — input=·파일·env= 로 넘길 것'
+                               % (', '.join(dict.fromkeys(refs)), full, ' (sudo 기록에 남음)' if logged else '',
+                                  HASH_NOTE if hk else '')))
         return out
 
 

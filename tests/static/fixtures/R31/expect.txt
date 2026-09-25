@@ -1,0 +1,20 @@
+# R31 견본별 기대값 — 형식: <견본 폴더> rc=<종료 코드> findings=<FINDING 줄 수>
+# 부르는 법: bash tests/static/selftest.sh R31  (run_case.sh 가 견본 폴더를 --root 로, 안의 outer/ 를 --outer 로 넘긴다)
+# 견본은 전부 새로 지은 가짜 코드다(정답지·저장소 본문 복사 없음 · 주소는 example.invalid).
+#   fire_count     반영 스크립트가 "$APP/tests" 를 grep -r | wc -l 로 세어 chk 로 기대값과 견줌(1) — 대기열 11 검토 [높음]
+#                  결함 모양 · 스크립트 자리 뿌리("$ROOT")를 grep -rc | awk 합으로 세어 expect 에(1)
+#   fire_forms     grep -c … $(find "$ROOT/tests" …) 를 [ -eq ] 로(1) · git grep -c(트리 전체) 수를 $((…)) 로 더해 [ = ] 로(1)
+#   fire_outer     바깥 반영 스크립트(--outer) — grep -rl … "$APP/tests" | wc -l 을 [ -eq ] 로(1)
+#   quiet_scoped   패치가 건드린 파일 안에서만 세기 · --exclude-dir=static · src 만 · 파이프 뒤 grep -v tests/static ·
+#                  세어 찍기만 · git grep :!tests/static · tests/static 자체 · 뿌리가 아닌 폴더 · 표식 — 0
+fire_count rc=1 findings=2
+fire_forms rc=1 findings=2
+fire_outer rc=1 findings=1
+quiet_scoped rc=0 findings=0
+# v4 독립 검토 중간 2 — `.`·경로 없는 grep -r·git grep 을 늘 뿌리로 읽음(오탐) → 직전 cd·pushd 를 PathEval 로 풀고, 못 풀면 조용
+#   fire_cd_root        `cd "$ROOT"` 뒤 `grep -rc … .`(1) · `pushd "$ROOT/tests"` 뒤 경로 없는 grep -rl | wc -l(1) ·
+#                       `cd "$(dirname "$0")/../src"` → `cd ..` 로 뿌리에 돌아와 `.`(1)
+#   quiet_cd_elsewhere  `cd "$ROOT/src"` 뒤 `grep -rc … .`(검토 예시) · 경로 없는 grep -r · 함수 안 cd src · 서브셸 ( cd src && … ) ·
+#                       풀 수 없는 cd(인자 폴더 · if 갈래 안 cd · popd) — 0
+fire_cd_root rc=1 findings=3
+quiet_cd_elsewhere rc=0 findings=0

@@ -1,0 +1,26 @@
+<?php
+// 가짜 견본(v4 검토 중간 1 — 복합 조건 가드 뒤 반복 머리가 조각 변수를 다시 묶음) — 가드가 아니다 → 울림(2).
+//   ① foreach 머리 `as $q` 가 $q 를 다시 묶음(검토 보고 예시 그대로) ② while 몸 끝에서 $q 를 다시 넣음(다음 바퀴의 조건이 다른 $q)
+declare(strict_types=1);
+$dryRun = in_array('--dry-run', $argv, true);
+$holdDir = '/var/lib/demo-hold/held';
+$rows = [['id' => 1, 'name' => 'a.bin']];
+foreach ($rows as $row) {
+    $q = $holdDir . '/' . basename($row['name']);
+    if (is_file($q) && $dryRun) continue;
+    foreach (glob($q.'.*') as $q) { if (is_file($q)) unlink($q); }
+}
+foreach ($rows as $row) {
+    $q = $holdDir . '/' . basename($row['name']);
+    if (is_file($q) && $dryRun) {
+        continue;
+    }
+    $n = 0;
+    while ($n < 3) {
+        if (is_file($q)) {
+            touch($q);
+        }
+        $q = $q . '.' . $n;
+        $n++;
+    }
+}

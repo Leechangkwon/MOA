@@ -1,0 +1,23 @@
+<?php
+// 가짜 견본(대조 — v4 검토 중간 1) — 가드 뒤 안쪽 반복이 조각 변수가 아닌 다른 변수($x)만 묶음 → 조각 $q 는 그대로 → 조용(0).
+//   · 안쪽 반복을 감싼 if 의 조건은 반복 앞에서 한 번 판정 → 반복이 $q 를 다시 묶어도 가드는 그대로 → 조용
+declare(strict_types=1);
+$dryRun = in_array('--dry-run', $argv, true);
+$holdDir = '/var/lib/demo-hold/held';
+$rows = [['id' => 1, 'name' => 'a.bin']];
+foreach ($rows as $row) {
+    $q = $holdDir . '/' . basename($row['name']);
+    if (is_file($q) && $dryRun) continue;
+    foreach (glob($holdDir . '/*.tmp') as $x) { if (is_file($q)) unlink($q . '.' . basename($x)); }
+}
+foreach ($rows as $row) {
+    $q = $holdDir . '/' . basename($row['name']);
+    if (is_file($q) && $dryRun) {
+        continue;
+    }
+    if (is_file($q)) {
+        foreach (glob($q . '.*') as $q) {
+            unlink($q);
+        }
+    }
+}

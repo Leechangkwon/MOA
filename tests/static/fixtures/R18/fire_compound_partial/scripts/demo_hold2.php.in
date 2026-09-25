@@ -1,0 +1,35 @@
+<?php
+// 가짜 견본(대조 — v4 복합 조건 가드) — 복합 조건이 가드가 되지 못하는 모양은 울림(3).
+//   ① 뒤 if 의 조각이 다름(is_file ↔ is_readable) ② 사이에 조각의 변수 $q 를 다시 넣음 ③ 앞 갈래가 빠지지 않음(continue 없음)
+declare(strict_types=1);
+$dryRun = in_array('--dry-run', $argv, true);
+$holdDir = '/var/lib/demo-hold/held';
+$rows = [['id' => 1, 'name' => 'a.bin']];
+foreach ($rows as $row) {
+    $q = $holdDir . '/' . basename($row['name']);
+    if (is_file($q) && $dryRun) {
+        continue;
+    }
+    if (is_readable($q)) {
+        unlink($q);
+    }
+}
+foreach ($rows as $row) {
+    $q = $holdDir . '/' . basename($row['name']);
+    if (is_file($q) && $dryRun) {
+        continue;
+    }
+    $q = $holdDir . '/old/' . basename($row['name']);
+    if (is_file($q)) {
+        touch($q);
+    }
+}
+foreach ($rows as $row) {
+    $q = $holdDir . '/' . basename($row['name']);
+    if (is_file($q) && $dryRun) {
+        echo "[dry-run] 보관됨\n";
+    }
+    if (is_file($q)) {
+        file_put_contents($q . '.seen', 'x');
+    }
+}

@@ -3,7 +3,9 @@
 """
 R18 dry-run 이 상태를 쓴다 (dry-run reaches a state write) — 1-F 정적 규칙, python3 stdlib 만, 파일은 읽기만.
 
-answers: BF-0001 · FP-0005(v3 묶음 K — dry-run 참 갈래가 mktemp 임시 사본 아래 링크를 돌리는 것을 「조건 없는 쓰기」로 읽던 오탐)
+answers: BF-0001 · FP-0005(v3 묶음 K — dry-run 참 갈래가 mktemp 임시 사본 아래 링크를 돌리는 것을 「조건 없는 쓰기」로 읽던 오탐) ·
+         v4 묶음 A: v3 독립 검토 낮음 6(scripts/scan_pending.php 205·258·262 @52b3d1c·31c785d — 상수 가드·복합 조건 가드 오탐) ·
+         BF-0008(결함 판 dd25d24 의 193·239·243 은 dry 확인이 없어 여전히 울려야 · 고친 판 242dece 는 조용해야)
 
 무엇을 부류로 잡나:
   dry-run 류 플래그(`--dry-run`·`dry_run`·`DRY_RUN`·`$dryRun`·`$dry`·`noop` …)를 **받는** 스크립트(PHP·셸·파이썬)는
@@ -29,6 +31,11 @@ answers: BF-0001 · FP-0005(v3 묶음 K — dry-run 참 갈래가 mktemp 임시 
       break|throw; }`(셸 `[ "$DRY" = 1 ] && exit`, 끝내는 함수 호출 포함)이거나, 식 안에서 `$dry || w()`·`$dry ? … : w()` 이면.
       한 단계 흐름: 쓰기가 `if ($flag)` 안이면(깃발 = dry-run 아닌 변수), 그 깃발에 참 값을 넣는 자리마다 위 조건이 있는지
       본다(`||` 로 이은 깃발은 전부, `&&` 는 하나라도). 깃발 자리가 함수 안이면 그 함수를 부르는 자리까지 한 단계 본다.
+      상수 가드(v4 · PHP): `define('X', <식>)`·맨 위 `const X = <식>;` 의 식이 dry-run 플래그로 정해지면(`$dryRun` ·
+      `!$dryRun` · 앞의 그런 상수) X 를 그 조건으로 읽는다 — 함수 안 `if (X) { …; return; }` 뒤의 쓰기는 막힘.
+      복합 조건 가드(v4 · PHP·셸·파이썬): 앞선 문장 `if (A && dry) { …; continue|return|exit; }` 가 있고, 쓰기를 감싼 if 갈래들의
+      맨 위 && 조각이 A 의 조각을 **글이 같게** 모두 담으며, 그 사이에 A 의 변수에 값이 다시 들어가지 않으면 막힘
+      (`if (is_file($q) && $dryRun) { continue; } if (is_file($q)) { 쓰기 }`). 조각이 다르거나 앞 갈래가 끝내지 않으면 그대로 울림.
   대상 밖: dry-run 류 플래그를 스스로 받지 않는 스크립트(다른 스크립트에 `--dry-run` 을 넘기기만 하는 시험 등).
   심각도: 지우기(unlink·rm·rmdir·DELETE·DROP·TRUNCATE·rmtree)는 높음, 나머지는 중간.
 
@@ -155,6 +162,9 @@ class Stmt(object):
         self.branches, self.els, self.conds = [], None, []   # if
         self.name, self.body, self.cls = None, None, None     # func
         self.loop_cond = None       # while
+        self.bconj = None           # if: 갈래마다 맨 위 && 조각 [(글 열쇠, Cond, 변수 이름들)] — 복합 조건 가드(v4)
+        self.loop = False           # 반복(while·until·for·foreach·do) — 복합 조건 가드가 반복 밖으로 올라갈 때 본다(v4 검토 중간 1)
+        self.binds = []             # 반복 머리가 묶는 이름(PHP foreach `as` · 파이썬 튜플 풀기) — sets 밖(깃발 흐름엔 안 씀)
 
     def blocks(self):
         out = list(self.children)
@@ -220,6 +230,35 @@ def early_exit(s):
     return s.els is not None and terminates(s.els)
 
 
+def partial_exit(s):
+    """복합 조건 가드(v4): `if (A && dry) { …; continue|return|exit; }` — dry-run 조각과 나머지 A 가 함께 참이면 끝나는
+    첫 갈래. 나머지 조각들 [(글 열쇠, 변수 이름들)] 을, 그런 모양이 아니면 None."""
+    if s.kind != 'if' or not s.branches or not s.bconj or not s.bconj[0]:
+        return None
+    if not terminates(s.branches[0][1]):
+        return None
+    parts = s.bconj[0]
+    if not any(c.on for _k, c, _v in parts):
+        return None
+    rest = [(k, v) for k, c, v in parts if not c.on]
+    if not rest or any(k is None for k, _v in rest):
+        return None
+    return rest
+
+
+def assigned_names(stmts):
+    """문장들(속 블록 포함 · 함수 몸 빼고)이 값을 넣는 이름."""
+    out = set()
+    for s in stmts:
+        if s.kind == 'func':
+            continue
+        out.update(n for n, _v in s.sets)
+        out.update(s.binds)
+        for b in s.blocks():
+            out |= assigned_names(b.stmts)
+    return out
+
+
 class Analyzer(object):
     """한 파일의 중간 표현 위에서 「dry-run 에서 닿나」를 판정한다."""
 
@@ -245,13 +284,21 @@ class Analyzer(object):
     def guard(self, st, flags_ok=True, why=None):
         """(막힘?, 경계 함수 Stmt|None). why 에 깃발 흐름이 실패한 까닭을 모은다."""
         node = st
+        known = []      # 쓰기를 감싼 if 갈래의 && 조각: [({열쇠: 변수들}, 그 if 와 위 층 앞선 문장 사이에 대입된 이름들)]
         while True:
             blk = node.parent
             if blk is None:
                 return False, None
-            for prev in blk.stmts[:node.pos]:
+            pre = blk.stmts[:node.pos]
+            for prev in pre:
                 if early_exit(prev):
                     return True, None
+            if known and self.compound_guard(pre, known):
+                return True, None
+            if known:
+                names = assigned_names(pre)
+                for _keys, seen in known:
+                    seen |= names
             owner, role = blk.owner, blk.role
             if owner is None:
                 return False, None
@@ -265,6 +312,11 @@ class Analyzer(object):
                         return True, None
                     if flags_ok and self.flag_guard(c, why):
                         return True, None
+                    conj = owner.bconj[i] if owner.bconj and i < len(owner.bconj) else None
+                    if conj:
+                        keys = dict((k, v) for k, _c, v in conj if k is not None and not _c.on)
+                        if keys:
+                            known.append((keys, set()))
                 elif role[0] == 'else':
                     if any(c.on for c, _ in owner.branches):
                         return True, None
@@ -273,7 +325,30 @@ class Analyzer(object):
                         return True, None
             elif owner.kind == 'block' and role[0] == 'body' and owner.loop_cond is not None and owner.loop_cond.off:
                 return True, None
+            if known and owner.loop:
+                # 반복 밖의 가드에서 보면 반복 안 조건은 바퀴마다 다시 판정된다 — 반복 머리가 묶는 이름(for 변수 ·
+                # foreach `as` · while read)과 몸 어디서든 넣는 이름은 「다시 묶임」(v4 검토 중간 1, v3 대비 퇴행)
+                names = assigned_names([owner])
+                for _keys, seen in known:
+                    seen |= names
             node = owner
+
+    def compound_guard(self, pre, known):
+        """앞선 문장 `if (A && dry) { …; 끝냄 }` 이 있고, 쓰기를 감싼 if 갈래들의 조각이 A 를 모두 담으며(글이 같은 조각),
+        그 사이에 A 의 변수에 값이 다시 들어가지 않으면 — 쓰기에 닿을 때 dry-run 이면 이미 빠졌다."""
+        for pi, prev in enumerate(pre):
+            rest = partial_exit(prev)
+            if not rest:
+                continue
+            between = assigned_names(pre[pi + 1:])
+            ok = True
+            for key, vs in rest:
+                if not any(key in keys and not (vs & (between | seen)) for keys, seen in known):
+                    ok = False
+                    break
+            if ok:
+                return True
+        return False
 
     def flag_guard(self, c, why=None):
         if not c.dnf:
@@ -1384,6 +1459,29 @@ class ShIR(object):
                 return mk(var, pos)
         return c_other()
 
+    # ── 복합 조건 가드의 조각(v4) ──
+    def conj_item(self, nd):
+        """조건 명령 하나 → (글 열쇠, Cond, 변수 이름들). 열쇠는 리다이렉트·대입 없는 단순 명령만(아니면 None)."""
+        key = None
+        vs = set()
+        if nd.kind == 'simple' and not nd.assigns and not nd.redirs and not nd.heredocs and not nd.herestr and nd.words:
+            key = '\x1f'.join(w.text() for w in nd.words)
+            for w in nd.words:
+                vs.update(w.vars())
+        return key, self.cond_of(nd), frozenset(vs)
+
+    def conj_of(self, nd):
+        """if 조건 목록 → 맨 위 && 조각들(마지막 명령이 판정 · && 만으로 이은 목록이면 조각마다)."""
+        if nd is None:
+            return []
+        if nd.kind == 'list':
+            if not nd.items:
+                return []
+            nd = nd.items[-1]
+        if nd.kind == 'andor' and all(op == '&&' for op in nd.ops):
+            return [self.conj_item(x) for x in nd.items]
+        return [self.conj_item(nd)]
+
     # ── 문장 ──
     def block(self, lst, owner, role):
         items = lst.items if lst is not None and lst.kind == 'list' else ([lst] if lst is not None else [])
@@ -1398,11 +1496,16 @@ class ShIR(object):
         if k == 'andor':
             cur = self.stmt(nd.items[0])
             cond = self.cond_of(nd.items[0])
+            sofar, all_and = [nd.items[0]], True
             for op, it in zip(nd.ops, nd.items[1:]):
                 s = Stmt('if', cur.line)
                 s.conds.append(Block([cur], s, ('cond', 0)))
                 c = cond if op == '&&' else c_not(cond)
                 s.branches.append((c, Block([self.stmt(it)], s, ('branch', 0))))
+                all_and = all_and and op == '&&'
+                if all_and:
+                    s.bconj = [[self.conj_item(x) for x in sofar]]
+                sofar.append(it)
                 c2 = self.cond_of(it)
                 cond = c_and([cond, c2]) if op == '&&' else c_or([cond, c2])
                 cur = s
@@ -1413,15 +1516,18 @@ class ShIR(object):
             return s
         if k == 'if':
             s = Stmt('if', nd.line)
+            s.bconj = []
             for i, (c, b) in enumerate(nd.clauses):
                 s.conds.append(self.block(c, s, ('cond', i)))
                 s.branches.append((self.cond_of(c), self.block(b, s, ('branch', i))))
+                s.bconj.append(self.conj_of(c))
             if nd.els is not None:
                 s.els = self.block(nd.els, s, ('else',))
             self._redir_events(s, nd)
             return s
         if k == 'while':
             s = Stmt('block', nd.line)
+            s.loop = True
             c = self.cond_of(nd.cond)
             s.loop_cond = c_not(c) if nd.until else c
             s.children.append(self.block(nd.cond, s, ('cond', 0)))
@@ -1430,6 +1536,7 @@ class ShIR(object):
             return s
         if k == 'for':
             s = Stmt('block', nd.line)
+            s.loop = True
             if nd.var:
                 s.sets.append((nd.var, True))
             s.children.append(self.block(nd.body, s, ('body',)))
@@ -1896,6 +2003,7 @@ class PhpIR(object):
         self.temp_vars = set()
         self.fopen_vars = set()
         self.requires = []
+        self.dry_consts = {}        # 상수 이름 → Cond (define('X', $dryRun) · const X = …; — dry-run 플래그에서 정해짐, v4)
         self._prescan()
         self.cur_class = None
         self.top = Block(self.parse_block(0, len(self.toks)))
@@ -1969,6 +2077,45 @@ class PhpIR(object):
                 if name not in self.temp_vars and self.iter_temp(lo, hi):
                     self.temp_vars.add(name)
                     changed = True
+        self._scan_dry_consts()
+
+    def _scan_dry_consts(self):
+        """dry-run 상수(v4): `define('X', <식>)` · 맨 위 `const X = <식>;` 에서 식이 dry-run 플래그로 정해지면(조건으로 읽어
+        참이면 dry-run · 참이면 dry-run 아님) 그 상수를 dry-run 조건으로 읽는다. 앞의 상수를 쓰는 상수도 차례로."""
+        T = self.toks
+        depth = 0
+        for k, t in enumerate(T):
+            if t.kind == 'op' and t.val in '{':
+                depth += 1
+            elif t.kind == 'op' and t.val in '}':
+                depth -= 1
+            if t.kind != 'ident' or (k > 0 and T[k - 1].kind == 'op' and T[k - 1].val in ('->', '?->', '::')):
+                continue
+            name, rng = None, None
+            if t.val.lower().lstrip('\\') == 'define' and k + 1 < len(T) and T[k + 1].val == '(':
+                args = self._call_args(k) or []
+                if len(args) >= 2 and args[0][1] - args[0][0] == 1 and T[args[0][0]].kind == 'str':
+                    name, rng = T[args[0][0]].val, args[1]
+            elif t.val.lower() == 'const' and depth == 0 and k + 2 < len(T) and T[k + 1].kind == 'ident' and \
+                    T[k + 2].kind == 'op' and T[k + 2].val == '=':
+                name, rng = T[k + 1].val, (k + 3, self.stmt_end(k + 3, len(T)))
+            if not name or not re.fullmatch(r'[A-Za-z_][A-Za-z0-9_]*', name) or rng[0] >= rng[1]:
+                continue
+            c = self.cond(*rng)
+            if c.on or c.off:
+                self.dry_consts[name] = c
+
+    def const_at(self, k):
+        """k 의 낱말이 dry-run 상수(메서드·속성·함수 이름 아님)면 그 Cond."""
+        T = self.toks
+        t = T[k]
+        if t.kind != 'ident' or t.val not in self.dry_consts:
+            return None
+        if k > 0 and T[k - 1].kind == 'op' and T[k - 1].val in ('->', '?->', '::'):
+            return None
+        if k + 1 < len(T) and T[k + 1].kind == 'op' and T[k + 1].val == '(':
+            return None
+        return self.dry_consts[t.val]
 
     def range_temp(self, lo, hi):
         T = self.toks
@@ -2020,6 +2167,9 @@ class PhpIR(object):
             return True
         if t.kind == 'str' and DRY_LIT_RE.search(t.val) and len(t.val) < 40:
             return True
+        c = self.const_at(k)
+        if c is not None and c.on:
+            return True
         return False
 
     def cond(self, lo, hi):
@@ -2063,6 +2213,10 @@ class PhpIR(object):
         if lo < hi and T[lo].kind == 'op' and T[lo].val == '(' and self.pairs.get(lo) == hi - 1:
             c = self.cond(lo + 1, hi - 1)
             return c_not(c) if neg else c
+        # dry-run 상수 하나(`if (SCAN_DRY_RUN)` · `if (!LIVE_RUN)`) — 정의 식의 조건 그대로(v4)
+        if hi - lo == 1 and self.const_at(lo) is not None:
+            c = self.const_at(lo)
+            return c_not(c) if neg else c
         dry = any(self.is_dry_tok(k) for k in range(lo, hi))
         # 비교
         cmp_at = None
@@ -2100,6 +2254,36 @@ class PhpIR(object):
         if name is not None and cmp_at is None:
             return c_flag(name, not neg)
         return c_other()
+
+    def conj_of(self, lo, hi):
+        """조건 식의 맨 위 && 조각들 → [(글 열쇠, Cond, 변수 이름들)] — 맨 위가 || 면 식 하나(복합 조건 가드, v4)."""
+        T = self.toks
+
+        def strip(a, b):
+            while a < b and T[a].kind == 'op' and T[a].val == '(' and self.pairs.get(a) == b - 1:
+                a, b = a + 1, b - 1
+            return a, b
+        lo, hi = strip(lo, hi)
+        if lo >= hi:
+            return []
+        parts = [(lo, hi)] if len(self._split(lo, hi, ('||',), ('or',))) > 1 else \
+            self._split(lo, hi, ('&&',), ('and',))
+        out = []
+        for a, b in parts:
+            a, b = strip(a, b)
+            if a >= b:
+                continue
+            key = '\x1f'.join('%s\x1e%s' % (T[k].kind, T[k].val) for k in range(a, b))
+            vs = set()
+            for k in range(a, b):
+                if T[k].kind == 'var':
+                    if T[k].val == 'this' and k + 2 < b and T[k + 1].val in ('->', '?->') and T[k + 2].kind == 'ident':
+                        vs.add('$this->' + T[k + 2].val)
+                    vs.add('$' + T[k].val)
+                elif T[k].kind == 'istr':
+                    vs.update('$' + m for m in re.findall(r'\$\{?([A-Za-z_][A-Za-z0-9_]*)', T[k].val))
+            out.append((key, self.cond(a, b), frozenset(vs)))
+        return out
 
     def flag_name(self, lo, hi):
         T = self.toks
@@ -2176,8 +2360,11 @@ class PhpIR(object):
             if kw in ('while', 'for', 'foreach', 'switch', 'declare') and k + 1 < hi and T[k + 1].val == '(':
                 pe = self.pairs.get(k + 1, k + 1)
                 s = Stmt('block', t.line)
+                s.loop = kw in ('while', 'for', 'foreach')
                 if kw == 'while':
                     s.loop_cond = self.cond(k + 2, pe)
+                if kw == 'foreach':
+                    s.binds.extend(self._foreach_binds(k + 2, pe))
                 s.children.append(self.inline_range(s, k + 2, pe))
                 body, nk = self.body_at(pe + 1, hi, s, ('body',))
                 s.children.append(body)
@@ -2185,6 +2372,7 @@ class PhpIR(object):
                 return s, nk
             if kw == 'do':
                 s = Stmt('block', t.line)
+                s.loop = True
                 body, nk = self.body_at(k + 1, hi, s, ('body',))
                 s.children.append(body)
                 if nk < hi and T[nk].kind == 'ident' and T[nk].val.lower() == 'while':
@@ -2301,6 +2489,9 @@ class PhpIR(object):
             c = self.cond(p + 1, pe)
             body, nk = self.body_at(pe + 1, hi, s, ('branch', i))
             s.branches.append((c, body))
+            if s.bconj is None:
+                s.bconj = []
+            s.bconj.append(self.conj_of(p + 1, pe))
             i += 1
             if nk < hi and T[nk].kind == 'ident' and T[nk].val.lower() == 'elseif':
                 continue
@@ -2313,6 +2504,14 @@ class PhpIR(object):
             break
         nk = self._skip_alt_end(nk, hi)
         return s, nk
+
+    def _foreach_binds(self, lo, hi):
+        """foreach 머리 `… as [$k =>] $v` · `as [$a, $b]` · `as list(…)` 가 묶는 변수 이름들."""
+        T = self.toks
+        as_at = next((j for j in range(lo, hi) if T[j].kind == 'ident' and T[j].val.lower() == 'as'), None)
+        if as_at is None:
+            return []
+        return ['$' + T[j].val for j in range(as_at + 1, hi) if T[j].kind == 'var']
 
     def inline_range(self, owner, lo, hi, role=('inline',)):
         """조건·머리 괄호 안 식 → 인라인 블록(속 호출을 사건으로)."""
@@ -2677,6 +2876,20 @@ class PyIR(object):
             return c_flag('self.' + e.attr, True)
         return c_other()
 
+    def conj_of(self, e):
+        """if 조건 → 맨 위 and 조각들 [(글 열쇠, Cond, 변수 이름들)] (복합 조건 가드, v4)."""
+        vals = e.values if isinstance(e, ast.BoolOp) and isinstance(e.op, ast.And) else [e]
+        out = []
+        for v in vals:
+            vs = set()
+            for n in ast.walk(v):
+                if isinstance(n, ast.Name):
+                    vs.add(n.id)
+                elif isinstance(n, ast.Attribute) and isinstance(n.value, ast.Name) and n.value.id == 'self':
+                    vs.add('self.' + n.attr)
+            out.append((ast.dump(v), self.cond(v), frozenset(vs)))
+        return out
+
     def _is_dry(self, e):
         if isinstance(e, ast.Name):
             return is_dry_name(e.id)
@@ -2703,10 +2916,12 @@ class PyIR(object):
             branches = []
             cur = n
             i = 0
+            s.bconj = []
             while True:
                 st = self.simple_expr(cur.test, getattr(cur, 'lineno', line))
                 s.conds.append(Block([st], s, ('cond', i)))
                 s.branches.append((self.cond(cur.test), Block(self.stmts(cur.body), s, ('branch', i))))
+                s.bconj.append(self.conj_of(cur.test))
                 i += 1
                 if len(cur.orelse) == 1 and isinstance(cur.orelse[0], ast.If):
                     cur = cur.orelse[0]
@@ -2727,6 +2942,7 @@ class PyIR(object):
             return s
         if isinstance(n, (ast.While,)):
             s = Stmt('block', line)
+            s.loop = True
             s.loop_cond = self.cond(n.test)
             s.children.append(Block([self.simple_expr(n.test, line)], s, ('cond', 0)))
             s.children.append(Block(self.stmts(n.body), s, ('body',)))
@@ -2737,8 +2953,11 @@ class PyIR(object):
             head = []
             if isinstance(n, (ast.For, ast.AsyncFor)):
                 head.append(n.iter)
+                s.loop = True
                 if isinstance(n.target, ast.Name):
                     s.sets.append((n.target.id, True))
+                else:
+                    s.binds.extend(x.id for x in ast.walk(n.target) if isinstance(x, ast.Name))
             if isinstance(n, (ast.With, ast.AsyncWith)):
                 head.extend(it.context_expr for it in n.items)
             for h in head:

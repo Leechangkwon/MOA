@@ -11,3 +11,9 @@ fire_env_copy rc=1 findings=2
 fire_etc_secret rc=1 findings=2
 fire_outer rc=1 findings=1
 quiet_cleanup rc=0 findings=0
+# v4 묶음 C — R20+(저장소 트리 안 비밀 사본 × .gitignore). 견본의 .gitignore.in 은 selftest 가 .gitignore 로 풀어 준다.
+#   fire_tree_copy   mktemp -p <.env 폴더 = 뿌리>(옛 사본 청소 있음) · mktemp -d "$HERE/.work.X"(BASH_SOURCE 기준 tests/)
+#                    — 이름 모양이 뿌리 .gitignore 에 없음(2) — 대기열 11 검토 [낮음] 앞 판 모양
+#   quiet_tree_copy  같은 둘 + .gitignore 의 `.env.demo.*`·`/tests/.work.*/` · 저장소 밖(TMPDIR) · 비밀 아닌 파일 · 표식 — 0
+fire_tree_copy rc=1 findings=2
+quiet_tree_copy rc=0 findings=0

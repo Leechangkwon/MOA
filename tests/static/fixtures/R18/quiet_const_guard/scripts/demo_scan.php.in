@@ -1,0 +1,37 @@
+<?php
+// 가짜 견본(v4 상수 가드) — dry-run 플래그에서 define·const 로 정한 상수가 참이면 먼저 빠지는 함수의 쓰기는 조용(0).
+declare(strict_types=1);
+$dryRun = in_array('--dry-run', $argv, true);
+/** dry-run 이면 기록을 남기지 않는다 — 도우미가 이 상수를 본다 */
+define('DEMO_DRY_RUN', $dryRun);
+define('DEMO_LIVE_RUN', !$dryRun);
+define('DEMO_DRY_CHAIN', DEMO_DRY_RUN);
+
+function demo_note_fail(int $id, string $why): void
+{
+    if (DEMO_DRY_RUN) {
+        echo "[dry-run] $id 실패 기록 예정: $why\n";
+        return;
+    }
+    file_put_contents('/var/lib/demo-scan/fail.log', "$id $why\n", FILE_APPEND);
+}
+
+function demo_mark_done(int $id): void
+{
+    if (DEMO_LIVE_RUN) {
+        touch('/var/lib/demo-scan/done/' . $id);
+    }
+}
+
+function demo_forget(int $id): void
+{
+    if (!DEMO_DRY_CHAIN) {
+        unlink('/var/lib/demo-scan/pending/' . $id);
+    }
+}
+
+foreach ([3, 5, 8] as $id) {
+    demo_note_fail($id, 'bad_name');
+    demo_mark_done($id);
+    demo_forget($id);
+}

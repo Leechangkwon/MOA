@@ -8,7 +8,10 @@ answers: 1l 봇 검토 낮음(tests/upgrade_smoke.sh — 결함 판 317168e 는 
          「내 휴지통」 글자가 공통 셸 내비에 있어 늘 참 · 결함 판 없음 → 견본 · 고친 판 75f57a9 는 조용해야) ·
          HO-7D1-009(stage7d1 준비 성공 미확인 → 빈 번호로 「목록에 없음」이 공짜 통과 · 팀 공간 단언이 말없이 빠짐 —
          결함 판 fa5dc78(= 72344d0 같은 blob) · 고친 판 68dbdfd) · HO-C-005(반영 스크립트 보안 헤더 해시 비교가 빈 값끼리
-         같음 — 결함 판 git 밖 → 견본 · 고친 판 qaredi 0dd2240 은 조용해야) · HO-C-004(판단 — ⑤ 는 규칙으로 만들지 않음)
+         같음 — 결함 판 git 밖 → 견본 · 고친 판 qaredi 0dd2240 은 조용해야) · HO-C-004(판단 — ⑤ 는 규칙으로 만들지 않음) ·
+         v4: FP-0007(tests/qf4_p7_timeouts.sh 9a6d08c:380 · 31c785d:400 — 탐침 응답에서 뽑은 P0, 그 응답을 긍정 단언으로
+         확인 → 조용해야) · FP-0008(숫자 정규식으로 거른 준비 값의 같음 비교 — 개발 판은 저장소 밖 → 견본으로 조용 ·
+         31c785d qf4b1.sh:618 = BF-0012 는 확인이 없어 여전히 울려야)
 
 무엇을 부류로 잡나:
   단언(expect·say 같은 같음 비교 도우미 · `[ … ]`)의 한쪽이 같은 셸의 앞선 동작 때문에 이미 정해진 값이 되어
@@ -26,10 +29,16 @@ answers: 1l 봇 검토 낮음(tests/upgrade_smoke.sh — 결함 판 317168e 는 
       이름 목록을 돌며 `${!v}` 를 보는 확인·V 를 쓰는 긍정 단언이 없음) 부정 단언(기대 "no"·"0"·""·"false"·"none")의
       대상 인자로 넘긴다 — 만들기가 실패해 V 가 비면 「없음」이 공짜로 통과. ③′ `[ -n "$V" ] && 부정 단언`(또는 else 없는
       `if [ -n "$V" ]`)으로 V 가 비면 「없음」 단언이 **말없이 빠지는** 모양도 같은 뿌리로 잡는다(긍정 확인이 빠지는 것은 뺀다).
+      출처가 확인된 값(v4): V=$(도우미 "$SRC" …) 처럼 V 를 SRC 에서 **뽑았고**(치환 안이 전부 요청·sudo 류 감싸기·쓰는 말·
+      파일 리다이렉트 없는 글 다루기 도구 또는 그런 도우미) SRC(또는 같은 SRC 에서 뽑은 다른 값)가 긍정 단언으로 확인되면
+      V 도 확인된 것으로 친다(한 단계). 확인된 SRC 로 **만든** 값(curl POST 도우미)은 뽑기가 아니다.
     ④ 빈 값끼리 같음 — 같음 비교 도우미(또는 그 안의 `[ A = B ]`·`||` 로 실패하는 `[ A = B ]`)의 두 쪽이 모두 명령
       치환에서 오고(직접 `$(…)` 이거나 `$(…)` 만 대입받은 변수 — 해시·줄 수는 입력이 비어도 같은 값) 어느 쪽에도
       빈 값 확인이 없다. 한쪽이라도 확인(위 ③ 의 확인 · `${V:-대체}` · 대체 값을 내는 도우미 `printf '%s' "${v:-(none)}"` ·
       확인된 값을 해시한 값)이 있으면 조용.
+      모양 확인(v4 — ③·④ 공통): `[[ "$V" =~ 정규식 ]]` 의 정규식이 빈 글자에 맞지 않고 갈래를 끝내면(`|| exit`·단언 안·
+      else · `!` 로 뒤집음) 확인이다. case "$V" 에서 빈 값이 걸리는 첫 갈래(''·*)가 exit·return·continue·break 하면 확인이다
+      (무늬는 풀이기가 버리므로 파일 글에서 읽는다 — 따옴표가 줄을 넘거나 case 가 겹치면 보지 않음).
     ⑤ 판정에 쓸모없는 탐침(짧은 401 응답으로 「압축 안 됨」 확인 · HO-C-004)은 판단이 필요해 규칙으로 만들지 않았다.
   심각도: ① 중간 · ② 중간 · ③ 낮음 · ④ 낮음.
 
@@ -1192,6 +1201,135 @@ def word_subs(w):
     return [p.sub for p in w.parts if p.k == 'sub' and p.sub is not None and p.nest is None]
 
 
+# ── 모양 확인(v4 — FP-0008): 정규식 · case 로 빈 값을 거르는 확인 ──
+POSIX_CLASS = {'digit': '0-9', 'alpha': 'A-Za-z', 'alnum': 'A-Za-z0-9', 'xdigit': '0-9A-Fa-f', 'upper': 'A-Z',
+               'lower': 'a-z', 'space': r'\s', 'blank': r' \t', 'word': r'\w', 'print': r' -~', 'graph': r'!-~',
+               'punct': r'!-/:-@\[-`{-~'}
+CASE_TERM_RE = re.compile(r'(?:^|[\s;&|{(])(?:exit|return|continue|break)(?![A-Za-z0-9_-])')
+
+
+def regex_needs_char(ctx, ws):
+    """`[[ V =~ … ]]` 오른쪽 단어들 → 빈 글자에 맞지 않는 정규식이면 True(모르면 False). 따옴표 안은 글자 그대로
+    (bash 규칙), 따옴표 없는 변수는 그 파일에서 한 번 글자로 대입된 값이면 정규식으로 읽는다."""
+    out = []
+    for w in ws:
+        if w.lit() in (']]', '&&', '||'):
+            break
+        for p in w.parts:
+            if p.k == 'lit':
+                out.append(re.escape(p.v) if p.q in ('s', 'd', 'e') else p.v)
+            elif p.k == 'var' and not p.op:
+                vals = ctx.assigns.get(p.v, [])
+                if len(vals) != 1 or not all(x.k == 'lit' for x in vals[0][0]):
+                    return False
+                txt = ''.join(x.v for x in vals[0][0])
+                out.append(re.escape(txt) if p.q == 'd' else txt)
+            else:
+                return False
+    pat = ''.join(out)
+    if not pat:
+        return False
+    pat = re.sub(r'\[:([a-z]+):\]', lambda m: POSIX_CLASS.get(m.group(1), '\x00'), pat)
+    if '\x00' in pat:
+        return False
+    try:
+        return re.search(pat, '') is None
+    except (re.error, RecursionError, OverflowError):
+        return False
+
+
+def pattern_matches_empty(pat):
+    """case 무늬 하나가 빈 글자에 맞나 — 빈 따옴표('' · "")를 뺀 나머지가 따옴표 없는 * 뿐이면."""
+    return re.fullmatch(r'\**', re.sub(r"''|\"\"", '', pat.strip())) is not None
+
+
+def case_arms(text, line):
+    """줄 line 의 `case … in` 부터 esac 까지 갈래들 [(무늬 목록, 몸 글)] — 풀이기는 무늬를 버리므로 글에서 읽는다.
+    따옴표가 줄을 넘거나 몸 안에 case 가 또 있으면 None(풀지 않음)."""
+    t = '\n'.join(text.split('\n')[line - 1:])
+    m = re.search(r'\bcase\s+("[^"\n]*"|\'[^\'\n]*\'|\S+)\s+in\b', t)
+    if not m:
+        return None
+    n = len(t)
+
+    def skip_quoted(j):
+        k = t.find(t[j], j + 1)
+        return -1 if k < 0 else k + 1
+
+    def word_at(j, w):
+        return t.startswith(w, j) and (j == 0 or not (t[j - 1].isalnum() or t[j - 1] == '_')) and \
+            not (t[j + len(w):j + len(w) + 1].isalnum() or t[j + len(w):j + len(w) + 1] == '_')
+
+    i = m.end()
+    arms = []
+    while i < n:
+        i += re.match(r'(?:\s+|#[^\n]*)*', t[i:]).end()
+        if i >= n:
+            return None
+        if word_at(i, 'esac'):
+            return arms
+        if t[i] == '(':
+            i += 1
+        j = i
+        while j < n and t[j] != ')':
+            if t[j] == '\n':
+                return None
+            if t[j] == '\\':
+                j += 2
+                continue
+            if t[j] in '\'"':
+                j = skip_quoted(j)
+                if j < 0:
+                    return None
+                continue
+            j += 1
+        if j >= n:
+            return None
+        pats, cur, q = [], '', None
+        for ch in t[i:j]:
+            if q:
+                cur += ch
+                if ch == q:
+                    q = None
+            elif ch in '\'"':
+                q = ch
+                cur += ch
+            elif ch == '|':
+                pats.append(cur)
+                cur = ''
+            else:
+                cur += ch
+        pats.append(cur)
+        i = j + 1
+        j = i
+        while j < n:
+            if t[j] == '\\':
+                j += 2
+                continue
+            if t[j] in '\'"':
+                j = skip_quoted(j)
+                if j < 0:
+                    return None
+                continue
+            if t[j] == '#' and (j == 0 or t[j - 1] in ' \t\n;'):
+                k = t.find('\n', j)
+                j = n if k < 0 else k
+                continue
+            if t.startswith(';;', j) or t.startswith(';&', j) or word_at(j, 'esac'):
+                break
+            if word_at(j, 'case'):
+                return None
+            j += 1
+        arms.append((pats, t[i:j]))
+        if t.startswith(';;&', j):
+            i = j + 3
+        elif t.startswith(';;', j) or t.startswith(';&', j):
+            i = j + 2
+        else:
+            i = j
+    return None
+
+
 class FileCtx(object):
     def __init__(self, sf, libs):
         self.sf = sf
@@ -1429,6 +1567,15 @@ class FileCtx(object):
                         ps = nonempty_parts(ws[k + 1])
                         if len(ps) == 1 and ps[0].k == 'indirect' and self._loop_names(ps[0].v, c, v):
                             return True
+                    # 모양 확인(v4 — FP-0008): [[ "$V" =~ ^[0-9]+$ ]] — 빈 글자에 맞지 않는 정규식으로 거르고 갈래를 끝냄
+                    #   (`!` 로 뒤집은 것은 -z 처럼 · 아니면 -n 처럼 실패 길 · 단언 안 · else 가 있어야)
+                    if op == '=~' and k >= 2 and whole_var(ws[k - 1]) == v and regex_needs_char(self, ws[k + 1:]):
+                        if c.neg or ws[k - 2].lit() == '!':
+                            return True
+                        if self.chain_has_fail(c) or self.assertion_ancestor(c)[0] is not None:
+                            return True
+                        if c.cond is not None and c.cond.get('has_else'):
+                            return True
             # 내용 확인: printf "$V" | grep -q … || … · grep -q … <<< "$V" || …
             if eff_name(c) in ('grep', 'egrep') and self.chain_has_fail(c):
                 src = False
@@ -1440,6 +1587,9 @@ class FileCtx(object):
                     src = True
                 if src:
                     return True
+        # case "$V" in ''|*[!0-9]*) …; exit ;; esac — 빈 값이 걸리는 첫 갈래가 끝내면 확인한 것(v4 — FP-0008)
+        if self._case_checked(v):
+            return True
         # 대체 값으로 다시 대입: V=${V:-missing}
         for parts, _c in self.assigns.get(v, []):
             for p in parts:
@@ -1456,6 +1606,20 @@ class FileCtx(object):
                             u = whole_var(w)
                             if u and u != v and self.guarded(u, 1):
                                 return True
+        return False
+
+    def _case_checked(self, v):
+        for c in self.sf.cmds:
+            if c.kind != 'header' or len(c.words) < 3 or c.words[0].lit() != 'case' or whole_var(c.words[1]) != v:
+                continue
+            arms = case_arms(self.sf.text, c.line)
+            if not arms:
+                continue
+            for pats, body in arms:
+                if any(pattern_matches_empty(p) for p in pats):
+                    if CASE_TERM_RE.search(body):
+                        return True
+                    break
         return False
 
     def _loop_names(self, loopvar, c, v):
@@ -1920,6 +2084,87 @@ def positive_use(ctx, v):
     return False
 
 
+# ── 출처가 확인된 값(v4 — FP-0007) ──
+# V=$(도우미 "$SRC" …) 처럼 V 가 다른 변수 SRC 에서 **뽑은** 값이고, SRC(또는 같은 SRC 에서 뽑은 다른 값)가 긍정 단언으로
+# 확인되면 V 도 확인된 것으로 본다(한 단계). 「뽑기」 = 치환 안의 명령이 전부 요청(curl·wget·그 도우미)·특권 감싸기(sudo …)·
+# 쓰는 말(INSERT·POST …)·파일로 가는 리다이렉트가 없는 글 다루기 도구이거나 그런 도구만 쓰는 도우미 — 만들기·조회는 뽑기가 아니다.
+EXTRACT_TOOLS = {'jq', 'python3', 'python', 'sed', 'awk', 'gawk', 'mawk', 'grep', 'egrep', 'fgrep', 'cut', 'head', 'tail',
+                 'tr', 'printf', 'echo', 'sort', 'uniq', 'wc', 'basename', 'dirname', 'base64', 'sha256sum', 'sha1sum',
+                 'md5sum', 'local', 'return', 'true', 'false', ':', '[', '[[', 'test', 'cat'}
+WRITE_WORD_RE = re.compile(r'(?i)\b(?:insert|update|delete|create|drop|alter|truncate|post|put|patch)\b')
+PY_IO_RE = re.compile(r'\b(?:urllib|requests|http\.client|socket|subprocess|os\.system)\b|\bopen\s*\(')
+
+
+def extract_cmd(ctx, c, seen=()):
+    """명령 하나가 「뽑기」인가(위 설명)."""
+    if not c.words:
+        return True
+    n0 = c.name()
+    if n0 is None or eff_name(c) != os.path.basename(n0):
+        return False         # 동적 명령 이름 · sudo·env 같은 감싸기
+    if ctx.is_request(c):
+        return False
+    for op, w in c.redirs:
+        if op in ('>', '>>', '>|', '&>', '&>>') and (w.lit() or '') not in ('/dev/null', '/dev/stderr', '/dev/stdout'):
+            return False
+    for w in c.words[1:] + c.herestr:
+        if WRITE_WORD_RE.search(w.lit_text()):
+            return False
+    if n0 in ctx.funcs:
+        if n0 in seen:
+            return True
+        return all(extract_cmd(ctx, x, seen + (n0,)) for x in ctx.funcs[n0])
+    base = os.path.basename(n0)
+    if base not in EXTRACT_TOOLS:
+        return False
+    if base in ('python3', 'python') and any(PY_IO_RE.search(w.lit_text()) for w in c.words[1:]):
+        return False
+    if base in ('sed', 'awk', 'gawk') and any((w.lit() or '').startswith(('-i', '--in-place')) for w in c.words[1:]):
+        return False
+    return True
+
+
+def extract_sources(ctx, v):
+    """V 의 대입이 전부 뽑기 치환이면 그 치환이 통째로 받는 변수들(SRC) — 아니면 빈 집합."""
+    lst = ctx.assigns.get(v)
+    if not lst:
+        return set()
+    out = set()
+    for parts, _c in lst:
+        ps = [p for p in parts if not (p.k == 'lit' and p.v == '')]
+        if not (len(ps) == 1 and ps[0].k == 'sub' and ps[0].sub is not None and ps[0].sub.cmds):
+            return set()
+        cmds = [y for x in ps[0].sub.cmds for y in [x] + ctx.descendants(x)]
+        if not all(extract_cmd(ctx, y) for y in cmds):
+            return set()
+        got = set()
+        for y in cmds:
+            for w in y.words[1:] + y.herestr:
+                u = whole_var(w)
+                if u and u != v:
+                    got.add(u)
+        if not got:
+            return set()
+        out |= got
+    return out
+
+
+def source_confirmed(ctx, v):
+    """V 를 뽑은 SRC, 또는 같은 SRC 에서 뽑은 다른 값이 긍정 단언으로 확인되나(흐름 한 단계)."""
+    srcs = extract_sources(ctx, v)
+    if not srcs:
+        return False
+    for s in srcs:
+        if positive_use(ctx, s):
+            return True
+    for u in ctx.assigns:
+        if u == v or u in srcs:
+            continue
+        if extract_sources(ctx, u) & srcs and positive_use(ctx, u):
+            return True
+    return False
+
+
 def arith_only(cmds):
     """함수 몸이 위치 인자를 산술 $(( )) 안에서만 쓰나."""
     seen_arith = False
@@ -1991,7 +2236,7 @@ def check_prep(ctx):
                     v = whole_var(w)
                     if v not in pv or ('neg', v) in seen:
                         continue
-                    if ctx.guarded(v) or positive_use(ctx, v):
+                    if ctx.guarded(v) or positive_use(ctx, v) or source_confirmed(ctx, v):
                         continue
                     seen.add(('neg', v))
                     out.append(('낮음', sf.rel, c.line,

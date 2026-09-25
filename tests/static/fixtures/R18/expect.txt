@@ -30,3 +30,21 @@ quiet_dry_temp_copy rc=0 findings=0
 fire_dry_branch_etc rc=1 findings=1
 quiet_php_foreach_temp rc=0 findings=0
 fire_php_dry_branch rc=1 findings=1
+# v4 묶음 A — answers: v3 독립 검토 낮음 6(scan_pending 상수·복합 가드 오탐 3) · BF-0008·BF-0001(퇴행 없음)
+#   quiet_const_guard      define 으로 dry-run 플래그에서 정한 상수(참=dry · !$dryRun 으로 정한 반대 상수 · 상수를 받은 상수)가
+#                          먼저 빠지게 하는 함수 속 쓰기 — 0 (v3 은 3)
+#   quiet_compound_guard   `if (A && dry) { …; continue|return; }` 뒤 쓰기가 같은 조각 A 를 가진 if 아래(PHP · and·괄호 ·
+#                          조각을 두 겹 if 가 나눠 가짐 · 셸 if/&& 줄 · 파이썬) — 0 (v3 은 6)
+#   fire_const_other       상수가 dry-run 플래그가 아닌 값(getenv 조용 모드)에서 옴 — 1
+#   fire_compound_partial  뒤 조각이 다름 · 사이에 조각 변수를 다시 넣음 · 앞 갈래가 빠지지 않음 · 셸 조각 다름 — 4
+quiet_const_guard rc=0 findings=0
+quiet_compound_guard rc=0 findings=0
+fire_const_other rc=1 findings=1
+fire_compound_partial rc=1 findings=4
+# v4 독립 검토 중간 1 — 복합 조건 가드 뒤 반복 머리가 조각 변수를 다시 묶음(v3 대비 퇴행 · v3 결과와 같아야 함)
+#   fire_compound_loop_rebind  가드 `if (is_file($q) && $dryRun) continue;` 뒤 `foreach (glob($q.'.*') as $q)` 안 쓰기(검토 예시) ·
+#                              while 몸 끝에서 $q 를 다시 넣음 · 셸 `for q in` · 셸 `while read -r q` · 파이썬 for 이름·튜플 풀기 — 6 (v3 도 6)
+#   quiet_compound_loop_other  안쪽 반복이 다른 변수만 묶음(PHP foreach · 셸 for·while read · 파이썬 튜플) · 반복을 감싼 if 가 반복
+#                              앞에서 같은 조각을 판정 — 0
+fire_compound_loop_rebind rc=1 findings=6
+quiet_compound_loop_other rc=0 findings=0

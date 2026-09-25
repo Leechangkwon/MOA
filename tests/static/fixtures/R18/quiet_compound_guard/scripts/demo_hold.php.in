@@ -1,0 +1,44 @@
+<?php
+// 가짜 견본(v4 복합 조건 가드) — `if (A && $dryRun) { …; continue; }` 뒤의 쓰기가 같은 조각 A 를 가진 if 아래에만 있으면 조용(0).
+//   · 조각 둘을 서로 다른 if 두 겹이 나눠 가져도(함수 demo_close) · `and`·괄호로 쓴 모양도 같은 조각으로 본다.
+declare(strict_types=1);
+$dryRun = in_array('--dry-run', $argv, true);
+$db = new PDO('sqlite:/var/lib/demo-hold/state.db');
+$holdDir = '/var/lib/demo-hold/held';
+$rows = [['id' => 1, 'name' => 'a.bin'], ['id' => 2, 'name' => 'b.bin']];
+foreach ($rows as $row) {
+    $q = $holdDir . '/' . basename($row['name']);
+    if (is_file($q) && $dryRun) {
+        echo "[dry-run] 이미 보관됨 — 기록만 마무리할 것\n";
+        continue;
+    }
+    if (is_file($q)) {
+        try {
+            $db->exec("UPDATE items SET state = 'held' WHERE id = " . (int) $row['id']);
+        } catch (Throwable $e) {
+            error_log('보관 기록 실패');
+        }
+        continue;
+    }
+    if ($dryRun and (is_readable($q))) {
+        continue;
+    }
+    if (is_readable($q) && $row['id'] > 0) {
+        rename($q, $q . '.done');
+    }
+}
+
+function demo_close(array $rows, bool $dryRun): void
+{
+    foreach ($rows as $r) {
+        if ($r['id'] > 1 && !empty($r['name']) && $dryRun) {
+            return;
+        }
+        if ($r['id'] > 1) {
+            if (!empty($r['name'])) {
+                file_put_contents('/var/lib/demo-hold/closed/' . (int) $r['id'], 'x');
+            }
+        }
+    }
+}
+demo_close($rows, $dryRun);
