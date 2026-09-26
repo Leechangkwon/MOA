@@ -16,6 +16,7 @@ declare(strict_types=1);
  *       → decideEdit(소유자·팀 규칙, PRD 5.3)
  *   [권한 ✔ 3] 등급 하향으로 노출 범위를 넓히는 변경 — decideLevelChange
  *       (낮추는 변경은 Admin 만: PRD 4장·5.3, SECURITY R-20. 새 등급·팀 지정 자격은 업로드와 같다)
+ *       + 디버깅 묶음 S-8: 그 **낮추는 변경**은 15분 재인증 창(PRD F-23) 안에서만 — Authz::levelChangeNeedsReauth
  *   [4-3] **민감정보가 든 파일을 public·internal 로 낮추는 변경** (15-3, PRD F-22, ARCH 5.13).
  *       판단 근거는 DB 의 `files.sensitive_flags` 뿐이다 — 파일을 다시 읽지 않는다.
  *       Admin 이라도 막힌다: 여기서 막는 것은 "누가" 가 아니라 **"무엇을 어디까지 넓히나"** 이고,
@@ -300,6 +301,22 @@ if ($levelChanged) {
             ],
         ]);
         Http::error(403, Http::MSG_FORBIDDEN);
+    }
+
+    /* ─── [재인증] 디버깅 묶음 S-8 — Admin 의 등급 **내리기**(노출 넓히기)는 15분 재인증 창 안에서만 ───
+     * 판정은 Authz::levelChangeNeedsReauth 한 곳(역할 비교 없음). 응답·감사는 관문 [3-2] 와 **같은 모양**이다 —
+     * `auth.gate deny reauth_required` + 403 `{error, next:"reauth"}`(화면은 이 응답을 받으면 재인증 창을 띄우고
+     * 같은 요청을 다시 보낸다 — app.js handleReauth). 자리: 역할 판정(decideLevelChange) **뒤** · 내용 규칙
+     * (민감정보·폴더) **앞** — 권한이 없는 사람에게는 403 이 먼저이고, 재인증은 권한을 만들지 않는다. */
+    if (Authz::levelChangeNeedsReauth($user, $currentLevel, $newLevel) && ($user['reauth_fresh'] ?? false) !== true) {
+        Audit::deny('auth.gate', 'reauth_required', [
+            'target_type' => 'user',
+            'target_id'   => (int) $user['id'],
+            'target_name' => (string) $user['username'],
+            'detail'      => ['next' => 'reauth', 'policy' => 'file.update'],
+        ]);
+        Http::json(['error' => Http::MSG_REAUTH_REQUIRED, 'next' => 'reauth'], 403);
+        exit;
     }
 }
 

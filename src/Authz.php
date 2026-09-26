@@ -76,6 +76,10 @@ final class Authz
      * 여기 **없는** 것: `authenticated`(본인 계정 창구 `/api/me/*` 는 이미 현재 비밀번호·코드를
      * 묻는다), `file.*`(일상 업무를 15분마다 끊지 않는다 — PRD F-23 "본인 계정 기능은 대상이
      * 아니다", T-36 의 `/api/me/password`·`/api/files` 행).
+     * 다만 `file.*` 라우트 안의 **Admin 결정 둘** — 파일 등급 내리기(노출 넓히기)·공유 링크 만들기 — 은
+     * 핸들러가 행을 읽은 뒤 같은 15분 창을 본다(디버깅 묶음 S-8 · PRD F-23 「파일 창구의 Admin 결정」 ·
+     * ARCH 4.5 「등급·팀 변경을 토큰에 열지 않는 이유」의 전제). 판정은 아래 levelChangeNeedsReauth ·
+     * shareCreateNeedsReauth 두 함수이고 라우트 정책 목록은 그대로다(일상 업무 PATCH·목록은 묻지 않는다).
      *
      * @var list<string>
      */
@@ -408,6 +412,39 @@ final class Authz
     private static function mayDowngrade(string $role): bool
     {
         return $role === 'Admin';
+    }
+
+    /**
+     * 디버깅 묶음 S-8 — 이 등급 변경에 **15분 재인증**(PRD F-23 창)을 물어야 하나.
+     *
+     * 등급을 **낮추는**(노출 범위를 넓히는) 변경은 Admin 만 할 수 있고(mayDowngrade, R-20), ARCH 4.5 는
+     * 「그 결정은 재인증 관문 대상이라 토큰 경로에 열지 않는다」를 전제로 쓴다. 그런데 파일 창구의 라우트 정책
+     * `file.update` 는 REAUTH_POLICIES 밖이라, 훔친 Admin 세션(자리 비움)만으로 admin-only → public 이 됐다
+     * (2026-09-26 보안 점검 낮음 10). 그래서 **낮추는 변경을 실제로 하는 경우에만** 참이다 — 같은 등급·올리기·
+     * 팀만 바꾸기·설명·폴더 이동은 묻지 않는다(일상 업무를 15분마다 끊지 않는다는 F-23 원칙 그대로).
+     * decideLevelChange 가 **허용한 뒤**에 부른다(권한이 없는 사람에게는 재인증이 아니라 403 이 먼저다 —
+     * 재인증은 권한을 만들지 않는다).
+     *
+     * @param array<string,mixed> $u
+     */
+    public static function levelChangeNeedsReauth(array $u, string $currentLevel, string $newLevel): bool
+    {
+        return isset(self::LEVEL_RANK[$newLevel], self::LEVEL_RANK[$currentLevel])
+            && self::LEVEL_RANK[$newLevel] < self::LEVEL_RANK[$currentLevel]
+            && self::mayDowngrade(self::roleOf($u));
+    }
+
+    /**
+     * 디버깅 묶음 S-8 — 이 공유 링크 만들기에 **15분 재인증**을 물어야 하나.
+     *
+     * 공유 링크는 로그인하지 않은 사람에게 파일을 내보내는 길이고, 세션이 끊긴 뒤에도 남는다(만료까지).
+     * Admin 은 **모든** 파일(admin-only 포함)의 링크를 만들 수 있다 — decideEdit 의 허용 코드가 `admin_all` 인
+     * 경우다. 그 경우만 묻는다(본인·팀 규칙으로 허용된 링크는 묻지 않는다). 핸들러는 역할을 보지 않고 이 함수에
+     * decideEdit 가 돌려준 **허용 코드**만 넘긴다(휴지통의 `admin_all` 재인증과 같은 모양 — restorableFilesWhere).
+     */
+    public static function shareCreateNeedsReauth(string $editCode): bool
+    {
+        return $editCode === self::CODE_ADMIN_ALL;
     }
 
     /**

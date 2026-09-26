@@ -1556,31 +1556,39 @@ function initFiles(csrfToken, uploadLevels, canFetch, myTeamId) {
     }
 
     setText(msg, '');
-    fetch(APP_BASE + '/api/files/' + file.id, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken },
-      body: JSON.stringify(payload),
-      credentials: 'same-origin',
-      cache: 'no-store'
-    })
-      .then(function (response) {
-        if (response.status === 401) {
-          toLogin();
-          return null;
-        }
-        if (response.status === 200) {
-          loadFiles();
-          return null;
-        }
-        return readJson(response).then(function (data) {
-          // 403·400 문구는 서버가 준 것만 쓴다 (사유를 브라우저가 추측하지 않는다).
-          setText(msg, errorMessage(data));
-          return null;
-        });
+    /* 디버깅 묶음 S-8 — 관리자의 등급 **내리기**는 15분 재인증 창 안에서만 된다(서버가 403 next:"reauth").
+       그때는 공용 재인증 창을 띄우고, 통과하면 **같은 값**을 다시 보낸다(값을 다시 묻지 않는다). */
+    function sendEdit() {
+      fetch(APP_BASE + '/api/files/' + file.id, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken },
+        body: JSON.stringify(payload),
+        credentials: 'same-origin',
+        cache: 'no-store'
       })
-      .catch(function () {
-        setText(msg, GENERIC_ERROR);
-      });
+        .then(function (response) {
+          if (response.status === 401) {
+            toLogin();
+            return null;
+          }
+          if (response.status === 200) {
+            loadFiles();
+            return null;
+          }
+          return readJson(response).then(function (data) {
+            if (handleReauth(response, data, sendEdit)) {
+              return null;
+            }
+            // 403·400 문구는 서버가 준 것만 쓴다 (사유를 브라우저가 추측하지 않는다).
+            setText(msg, errorMessage(data));
+            return null;
+          });
+        })
+        .catch(function () {
+          setText(msg, GENERIC_ERROR);
+        });
+    }
+    sendEdit();
   }
 
   /* ─── 미리보기 모달 (12-2 — PRD F-18, ARCH 5.8, SECURITY R-41) ──────────
@@ -2069,11 +2077,20 @@ function initFiles(csrfToken, uploadLevels, canFetch, myTeamId) {
           }
           return readJson(response).then(function (data) {
             if (response.status !== 201) {
-              // 403·400 문구는 서버가 준 것만 쓴다 (사유를 브라우저가 추측하지 않는다).
-              setText(shareMsg, errorMessage(data));
               if (shareSubmit) {
                 shareSubmit.disabled = false;
               }
+              /* 디버깅 묶음 S-8 — 관리자 권한으로 만드는 링크는 15분 재인증 창 안에서만 된다(403 next:"reauth").
+                 공용 재인증 창을 띄우고, 통과하면 같은 폼을 다시 보낸다(적어 둔 값은 폼에 그대로 있다). */
+              if (handleReauth(response, data, function () {
+                if (shareSubmit && !shareSubmit.disabled) {
+                  shareSubmit.click();
+                }
+              })) {
+                return null;
+              }
+              // 403·400 문구는 서버가 준 것만 쓴다 (사유를 브라우저가 추측하지 않는다).
+              setText(shareMsg, errorMessage(data));
               return null;
             }
             // 주소는 여기서 한 번만 보인다. 폼은 접어 두어 실수로 또 만들지 않게 한다.
@@ -5438,7 +5455,12 @@ function initAccount(csrfToken, mfaEnabled, onMfaEnabled, mfaRequired) {
             return null;
           }
           var revoked = typeof result.data.sessions_revoked === 'number' ? result.data.sessions_revoked : 0;
-          setText(msg, '비밀번호를 바꿨습니다. 끊은 다른 기기 세션: ' + revoked + '개');
+          // 디버깅 묶음 S-5 — 개인 프로그램 토큰도 전부 취소된다(개수는 서버가 준 값).
+          var tokensRevoked = typeof result.data.tokens_revoked === 'number' ? result.data.tokens_revoked : 0;
+          setText(msg, '비밀번호를 바꿨습니다. 끊은 다른 기기 세션: ' + revoked + '개 · 취소한 프로그램 토큰: ' + tokensRevoked + '개');
+          if (tokensRevoked > 0) {
+            document.dispatchEvent(new CustomEvent('qaredi:tokens-changed'));
+          }
           return null;
         })
         .catch(function () {
@@ -8132,6 +8154,10 @@ function initMyTokens(csrfToken, me) {
       clearIssuedToken();
     });
   }
+
+  /* 디버깅 묶음 S-5 — 같은 화면에서 비밀번호를 바꾸면 서버가 토큰을 전부 회수한다. 그때 표를 다시 읽는다
+     (값은 서버 목록 그대로 — 화면이 「회수됨」을 스스로 적지 않는다). */
+  document.addEventListener('qaredi:tokens-changed', load);
 
   load();
 }

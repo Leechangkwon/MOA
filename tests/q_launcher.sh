@@ -96,8 +96,8 @@ status_of() { sed -n 's#^HTTP/[0-9.]* \([0-9]*\).*#\1#p' "$1" | head -1 | tr -d 
 qa_password() { sudo -n awk -v u="$1" '$1==u{print $3}' /etc/tbox-v2/seed-accounts.txt 2>/dev/null; }
 qa_secret()   { sudo -n awk -v u="$1" '$1==u{print $2}' /etc/tbox-v2/qa-totp.txt 2>/dev/null; }
 
-login() {   # $1 계정 → 성공하면 표준출력에 csrf 토큰
-  local who="$1" jar="$JAR_DIR/$1.jar" pw sec raw code left out try body
+login() {   # $1 계정 [$2 쿠키 병 이름 — 같은 계정의 두 번째 세션] → 성공하면 표준출력에 csrf 토큰
+  local who="$1" jar="$JAR_DIR/${2:-$1}.jar" pw sec raw code left out try body
   pw=$(qa_password "$who")
   sec=$(qa_secret "$who")
   [ -n "$pw" ] && [ -n "$sec" ] || return 2
@@ -334,6 +334,18 @@ if [ -n "$EMP_CSRF" ]; then
   if [ -z "$FID" ] && [ -n "$ADM_CSRF" ]; then   # 직원이 볼 수 있는 clean 파일이 없으면 관리자 목록으로
     FID=$(curl -s -b "$ADM_JAR" -A "$UA" "$BASE/api/files?page=1" | jget "next((f['id'] for f in d.get('files',[]) if f.get('scan_status','clean')=='clean'), '')")
     SHARE_JAR="$ADM_JAR"; SHARE_CSRF="$ADM_CSRF"
+    # 디버깅 묶음 S-8 — 관리자 권한(admin_all)으로 만드는 링크는 15분 재인증 창 안에서만 된다(403 next:"reauth").
+    # 뒤의 Q:T-5 가 첫 관리자 세션의 「재인증 전 302」를 보므로, 재인증은 같은 계정의 **두 번째 세션**에서 한다.
+    ADM2_CSRF=$(login claude_admin01 claude_admin01-share) || ADM2_CSRF=""
+    if [ -n "$ADM2_CSRF" ]; then
+      ADM_PW=$(qa_password claude_admin01)
+      printf -v RBODY '{"password":"%s"}' "$ADM_PW"
+      RC=$(curl_json_secret RBODY -s -o /dev/null -w '%{http_code}' -b "$JAR_DIR/claude_admin01-share.jar" -A "$UA" \
+           -H 'Content-Type: application/json' -H "X-CSRF-Token: $ADM2_CSRF" "$BASE/api/me/reauth")
+      unset ADM_PW RBODY
+      expect "공유 링크를 만들 관리자 두 번째 세션 재인증(S-8)" "200" "$RC"
+      SHARE_JAR="$JAR_DIR/claude_admin01-share.jar"; SHARE_CSRF="$ADM2_CSRF"
+    fi
   fi
   if [ -n "$FID" ]; then
     R=$(curl -s -b "$SHARE_JAR" -A "$UA" -H 'Content-Type: application/json' -H "X-CSRF-Token: $SHARE_CSRF" \

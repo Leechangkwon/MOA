@@ -320,6 +320,14 @@ final class Audit
         'api_token.revoke|allow'                  => '{actor} 이(가) 계정 「{target}」 의 프로그램 토큰을 회수했습니다 (이후 그 토큰은 쓸 수 없습니다)',
         'api_token.revoke|deny|not_found'         => '{actor} 이(가) 계정 「{target}」 에 없는 프로그램 토큰을 회수하려 해서 거부했습니다',
         'api_token.revoke|deny|bad_request'       => '{actor} 이(가) 이미 회수된 프로그램 토큰을 다시 회수하려 해서 거부했습니다',
+        /*
+         * 디버깅 묶음 S-5 (ARCH 4.7 「자동 회수」) — 비밀번호 변경(본인)·임시 비밀번호 재발급·2단계 인증 초기화(관리자)가
+         * 그 계정의 **살아 있는 토큰 전부**를 같은 트랜잭션에서 회수한다. 토큰 하나에 한 행 · detail 은 token_id·token_name.
+         * 사유 칸이 「왜 회수됐나」다 — 사람이 누른 회수(사유 없는 allow)와 갈라진다.
+         */
+        'api_token.revoke|allow|password_change'  => '{actor} 이(가) 비밀번호를 바꿔 계정 「{target}」 의 프로그램 토큰을 회수했습니다 (이후 그 토큰은 쓸 수 없습니다)',
+        'api_token.revoke|allow|password_reset'   => '{actor} 이(가) 계정 「{target}」 의 임시 비밀번호를 재발급해 그 계정의 프로그램 토큰을 회수했습니다 (이후 그 토큰은 쓸 수 없습니다)',
+        'api_token.revoke|allow|mfa_reset'        => '{actor} 이(가) 계정 「{target}」 의 2단계 인증을 초기화해 그 계정의 프로그램 토큰을 회수했습니다 (이후 그 토큰은 쓸 수 없습니다)',
 
         /*
          * F-66 본인 발급의 인증 실패와 토큰의 만료·범위 (PRD F-66 ① ② ③ ④, ARCH 4.7 · 7.4).
@@ -657,6 +665,15 @@ final class Audit
         // 이 창구에는 로그인한 사람이 없으므로 다른 share 행처럼 {actor} 를 쓰지 않는다.
         'share.download|deny|scan_pending'              => '공유 링크로 아직 검사 중인 파일 「{target}」 을(를) 내려받으려 해서 막았습니다',
         'share.download|deny|scan_infected'             => '공유 링크로 악성코드가 격리된 파일 「{target}」 을(를) 내려받으려 해서 막았습니다',
+        /*
+         * 디버깅 묶음 S-2 (ARCH 5.12 「받기」 ⑤-1) — 링크는 **만든 사람의 권한을 빌려 주는 것**이라, 받을 때마다
+         * 만든 사람이 지금도 그 파일을 볼 수 있고 고칠 수 있는지(decideRead·decideEdit — 만들 때와 같은 둘) 다시 판정한다. 응답은 다른 실패와 같은 404 이고 사유는 여기에만.
+         * {level} 은 파일의 **지금** 등급이다(등급을 올린 뒤라면 올린 등급).
+         */
+        'share.download|deny|issuer_inactive'           => '공유 링크를 만든 사람의 계정이 꺼졌거나 만료되어 파일 「{target}」 을(를) 링크로 받지 못하게 막았습니다',
+        'share.download|deny|role_not_permitted'        => '공유 링크를 만든 사람이 지금은 {level} 등급 파일 「{target}」 에 대한 권한이 없어 링크로 받지 못하게 막았습니다',
+        'share.download|deny|team_mismatch'             => '공유 링크를 만든 사람이 지금은 다른 팀의 파일 「{target}」 에 대한 권한이 없어 링크로 받지 못하게 막았습니다',
+        'share.download|deny|not_owner'                 => '공유 링크를 만든 사람이 지금은 파일 「{target}」 을(를) 고칠 수 없어 링크로 받지 못하게 막았습니다',
 
         // ── 민감정보 패턴 검출 (15-3 — F-22, ARCH 5.13 · 7.4, SECURITY R-58) ──
         // 문장에도 detail 에도 **패턴 이름과 건수만** 남는다 (검출된 숫자 원문은 금지, PRD S-07).
@@ -963,6 +980,15 @@ final class Audit
     private const ACTOR_ANONYMOUS = '(로그인 전)';
     private const VALUE_UNKNOWN   = '?';
 
+    /**
+     * 디버깅 묶음 S-1 — 「내 활동」(F-12, ARCH 5.11) 의 **거부 행**에서 대상 이름·등급 대신 보이는 글자.
+     * 거부된 대상은 그 사람이 볼 수 없는 것일 수 있다(admin-only 파일 이름이 거부 행으로 되돌아 나가던 길).
+     */
+    public const MASKED_TARGET = '(볼 수 없는 대상)';
+    public const MASKED_LEVEL  = '(가림)';
+    /** 문장 틀이 표에서 빠진 옛 조합일 때의 가린 문장 (예외를 던지지 않는다 — 조회 화면이 500 이 되지 않게) */
+    private const MASKED_FALLBACK = '(볼 수 없는 대상)에 대한 요청이 거부되었습니다';
+
     /** 요약 문장 최대 길이 (ARCH 7.4 "문장 길이는 1,000자에서 자른다") */
     private const SUMMARY_MAX_CHARS = 1000;
 
@@ -1231,6 +1257,39 @@ final class Audit
         return self::cut($text, self::SUMMARY_MAX_CHARS);
     }
 
+    /**
+     * 디버깅 묶음 S-1 — 「내 활동」 거부 행에 보여 줄 **가린** 요약 문장 (ARCH 5.11 「거부 행 가림」).
+     *
+     * 저장된 summary 에는 거부된 대상의 이름·등급이 글자로 들어 있다(기록 시점에 만들어 두는 설계 — 위 summary()).
+     * 그 문장을 그대로 본인에게 돌려주면 「볼 수 없는 파일의 이름」이 새는 길이 된다(점검 중간 1).
+     * 그래서 **같은 문장 틀**(SUMMARY_TEMPLATES)에 {target}·{level} 을 가린 글자로 넣어 다시 만든다 —
+     * 문장을 이 함수 밖에서 고치거나 자르지 않는다(틀 표 하나 원칙 그대로). 저장된 원본(DB·파일 사본·감사 화면)은
+     * 한 글자도 바뀌지 않는다.
+     *
+     * 한계: 틀을 나중에 고치면 가린 문장은 **지금 틀**로 만들어진다(원본 문장은 원본 그대로 남는다).
+     * 틀이 표에서 빠진 옛 조합이면 예외 대신 고정 문장이다 — 조회 화면이 500 이 되지 않게(기록 쪽의
+     * 「틀이 없으면 실패」 규칙은 쓰는 경로의 규칙이고, 읽는 경로에 옮기지 않는다).
+     */
+    public static function maskedSummary(string $action, string $result, ?string $reason, ?string $actorName): string
+    {
+        $key = $reason === null
+            ? $action . '|' . $result
+            : $action . '|' . $result . '|' . $reason;
+
+        if (!isset(self::SUMMARY_TEMPLATES[$key])) {
+            return self::MASKED_FALLBACK;
+        }
+
+        // summary() 와 같은 한 번 치환(strtr 배열) — 값 안의 글자는 자리표시자로 다시 읽히지 않는다.
+        $text = strtr(self::SUMMARY_TEMPLATES[$key], [
+            '{actor}'  => $actorName === null ? self::ACTOR_ANONYMOUS : $actorName,
+            '{target}' => self::MASKED_TARGET,
+            '{level}'  => self::MASKED_LEVEL,
+        ]);
+
+        return self::cut($text, self::SUMMARY_MAX_CHARS);
+    }
+
     /** @param array<string,mixed> $row */
     private static function toDatabase(array $row, ?string $detailJson): void
     {
@@ -1279,9 +1338,96 @@ final class Audit
         if ($line === false) {
             throw new RuntimeException('감사 로그를 직렬화할 수 없습니다');
         }
+        /*
+         * 디버깅 묶음 S 검토 M-2 — **root 로 도는 배치**(cron 의 alerts.php·audit_chain.php·consistency_check.php)가 여기 오면
+         * 감사 파일(`/var/log/tbox-v2/audit.log` — tbox-php:adm 0640, 폴더 주인 tbox-php)에 링크를 따라 덧붙이지 않게
+         * appendLineNoFollow 로 쓴다(보통 파일·링크 아님·하드 링크 하나 · 연 뒤 fstat/lstat 대조). 감사 파일은 `chattr +a` 라
+         * 추가 모드(O_APPEND)로만 열 수 있고, **없으면 만들지 않는다**(root 가 만들면 주인이 root 가 되어 웹이 못 쓴다 —
+         * logrotate `create 0640 tbox-php adm` 몫). 웹(tbox-php)·root 가 아닌 CLI 는 전과 같다 — 자기 폴더라 권한 경계가 없다.
+         */
+        if (PHP_SAPI === 'cli' && function_exists('posix_geteuid') && posix_geteuid() === 0) {
+            self::appendLineNoFollow($path, $line . "\n", true, false, null);
+            return;
+        }
         $written = file_put_contents($path, $line . "\n", FILE_APPEND | LOCK_EX);
         if ($written === false) {
             throw new RuntimeException('감사 로그 파일에 기록할 수 없습니다');
+        }
+    }
+
+    /**
+     * 디버깅 묶음 S-9 · 검토 M-2·L-6 — 다른 계정이 주인인 폴더의 줄 로그에 **링크를 따라가지 않고** 한 줄 덧붙인다.
+     * root 배치의 감사 파일 사본(toFile)과 경보 로그(`scripts/lib/cli_bootstrap.php` cli_append_line)가 이 한 벌을 쓴다.
+     *
+     *   ① 열기 전 `lstat`: 있으면 **보통 파일**(링크·폴더·장치·관 아님)·하드 링크 하나·($ownerUid 가 있으면) 그 주인 — 아니면 거부
+     *   ② 없으면: $createIfMissing 일 때만 `fopen('x')`(O_CREAT|O_EXCL — 그 자리에 심은 링크를 따라가지 않는다 · 0644) — 아니면 거부
+     *   ③ 있으면: $appendMode 면 `a`(O_APPEND — `chattr +a` 파일은 이것만 된다), 아니면 **만들지 않는** `r+`
+     *   ④ 연 뒤 `fstat`(연 것)과 `lstat`(경로)이 보통 파일이고 장치·inode 가 같으며, ① 에서 본 것과도 같아야 쓴다 — 여는 순간 바뀌었으면
+     *      쓰지 않고 닫는다 ⑤ LOCK_EX · (r+ 면 끝으로) · 쓰기 · fflush
+     * 남는 틈(SECURITY R-105): `a` 는 O_CREAT 를 함께 켠다 — ① 과 ③ 사이에 경로가 **끝이 없는 링크**로 바뀌면 그 끝에 빈 파일이
+     * 생길 수 있다(쓰기는 ④ 에서 막힌다). `r+` 쪽(경보 로그)은 만들지 않는다.
+     *
+     * @param ?int $ownerUid 있으면 그 uid 가 주인인 파일에만 쓴다(경보 로그 — 배치를 돌리는 계정 = 운영 root)
+     */
+    public static function appendLineNoFollow(string $path, string $line, bool $appendMode, bool $createIfMissing, ?int $ownerUid): void
+    {
+        clearstatcache();
+        $before = @lstat($path);
+        $fh = false;
+        if ($before === false) {
+            if (!$createIfMissing) {
+                throw new RuntimeException('덧붙일 파일이 없습니다(만들지 않는다): ' . $path);
+            }
+            $old = umask(0022);
+            try {
+                $fh = @fopen($path, 'x');
+            } finally {
+                umask($old);
+            }
+            if ($fh === false) {
+                throw new RuntimeException('덧붙일 파일을 새로 만들 수 없습니다: ' . $path);
+            }
+        } else {
+            if (($before['mode'] & 0170000) !== 0100000) {
+                throw new RuntimeException('덧붙일 경로가 보통 파일이 아닙니다(링크·폴더 등) — 쓰지 않습니다: ' . $path);
+            }
+            if ($before['nlink'] !== 1) {
+                throw new RuntimeException('덧붙일 파일의 하드 링크가 하나가 아닙니다 — 쓰지 않습니다: ' . $path);
+            }
+            if ($ownerUid !== null && $before['uid'] !== $ownerUid) {
+                throw new RuntimeException('덧붙일 파일의 주인이 이 배치의 계정이 아닙니다 — 쓰지 않습니다: ' . $path);
+            }
+            $fh = @fopen($path, $appendMode ? 'a' : 'r+');
+            if ($fh === false) {
+                throw new RuntimeException('덧붙일 파일을 열 수 없습니다: ' . $path);
+            }
+        }
+        try {
+            $opened = fstat($fh);
+            clearstatcache();
+            $named = @lstat($path);
+            if (!is_array($opened) || !is_array($named)
+                || ($opened['mode'] & 0170000) !== 0100000 || ($named['mode'] & 0170000) !== 0100000
+                || $opened['dev'] !== $named['dev'] || $opened['ino'] !== $named['ino']
+                || ($before !== false && ($opened['dev'] !== $before['dev'] || $opened['ino'] !== $before['ino']))
+            ) {
+                throw new RuntimeException('덧붙일 경로가 연 파일과 다릅니다(링크로 바뀌었나) — 쓰지 않습니다: ' . $path);
+            }
+            if (!flock($fh, LOCK_EX)) {
+                throw new RuntimeException('덧붙일 파일을 잠글 수 없습니다: ' . $path);
+            }
+            try {
+                if (!$appendMode && fseek($fh, 0, SEEK_END) !== 0) {
+                    throw new RuntimeException('덧붙일 파일의 끝으로 갈 수 없습니다: ' . $path);
+                }
+                if (fwrite($fh, $line) !== strlen($line) || !fflush($fh)) {
+                    throw new RuntimeException('덧붙일 파일에 쓸 수 없습니다: ' . $path);
+                }
+            } finally {
+                flock($fh, LOCK_UN);
+            }
+        } finally {
+            fclose($fh);
         }
     }
 

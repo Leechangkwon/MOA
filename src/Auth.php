@@ -295,6 +295,22 @@ final class Auth
            AND (last_used_at IS NULL OR last_used_at < now() - interval '60 seconds')
         SQL;
 
+    /**
+     * 디버깅 묶음 S-5 — 한 계정의 살아 있는 토큰 전부 회수 (revokeAllApiTokens). 행을 지우지 않는다.
+     * 돌려받는 것은 감사 한 행씩에 쓸 번호·이름뿐이다 — token_hash 는 읽지 않는다.
+     */
+    private const SQL_REVOKE_USER_API_TOKENS = <<<'SQL'
+        UPDATE api_tokens
+           SET revoked_at = now(),
+               revoked_by = :by
+         WHERE user_id = :uid
+           AND revoked_at IS NULL
+        RETURNING id, name
+        SQL;
+
+    /** revokeAllApiTokens 의 사유 — ARCH 7.4 `api_token.revoke|allow|<사유>` 세 행과 같은 값 */
+    private const API_TOKEN_REVOKE_CAUSES = ['password_change', 'password_reset', 'mfa_reset'];
+
     /** 비밀번호 변경(10단계) — 현재 비밀번호 확인용. 세션의 user_id 로만 찾는다 */
     private const SQL_LOAD_BY_ID = <<<'SQL'
         SELECT id, username, password_hash, must_change_password
@@ -1087,11 +1103,13 @@ final class Auth
      *   3) Argon2id 해시로 갈아 끼우고, **지금 이 세션만 남기고** 그 사용자의 세션을 전부 지운다.
      *      (바꾼 기기에서 다시 로그인하게 만들 이유는 없고, 다른 기기는 즉시 끊겨야 한다.)
      *   4) 결과를 감사 로그에 남긴다. 비밀번호는 옛것도 새것도 남기지 않는다.
+     *   5) (디버깅 묶음 S-5) 그 계정의 개인 프로그램 토큰을 **전부 회수**한다 — 같은 트랜잭션, 토큰마다
+     *      `api_token.revoke allow password_change` 한 행(revokeAllApiTokens).
      *
      * 실패해도 응답 문구는 호출자가 정하고, 여기서는 **사유 코드**만 돌려준다.
      *
      * @param array<string,mixed> $actor 현재 로그인한 사용자 (요청 값이 아니다)
-     * @return array{0:bool,1:?string,2:int} [성공 여부, 사유 코드(bad_credentials·weak_password·same_password), 끊은 세션 수]
+     * @return array{0:bool,1:?string,2:int,3:int} [성공 여부, 사유 코드(bad_credentials·weak_password·same_password), 끊은 세션 수, 회수한 토큰 수]
      */
     public static function changePassword(array $actor, string $current, string $new): array
     {
@@ -1115,7 +1133,7 @@ final class Auth
              * 기록(Audit::deny)을 먼저 하는 이유: 세션을 끊은 뒤에는 actor 를 읽을 수 없다.
              */
             self::countFailureAndRevoke($userId);
-            return [false, 'bad_credentials', 0];
+            return [false, 'bad_credentials', 0, 0];
         }
 
         /*
@@ -1134,7 +1152,7 @@ final class Auth
          */
         if (password_verify($new, (string) $row['password_hash'])) {
             Audit::deny('auth.password_change', 'same_password', $target);
-            return [false, 'same_password', 0];
+            return [false, 'same_password', 0, 0];
         }
 
         // 10자 이상 (PRD S-09-4). 글자 수로 센다 — 한글 10자도 10자다.
@@ -1143,7 +1161,7 @@ final class Auth
             || iconv_strlen($new, 'UTF-8') < self::MIN_PASSWORD_CHARS
         ) {
             Audit::deny('auth.password_change', 'weak_password', $target);
-            return [false, 'weak_password', 0];
+            return [false, 'weak_password', 0, 0];
         }
 
         $hash = password_hash($new, PASSWORD_ARGON2ID);
@@ -1153,6 +1171,7 @@ final class Auth
 
         $keep    = (string) ($actor['session_id'] ?? '');
         $revoked = 0;
+        $tokens  = 0;
 
         $db->begin();
         try {
@@ -1167,13 +1186,16 @@ final class Auth
                 $detail['forced'] = true;     // ARCH 7.5 `forced`
             }
             Audit::allow('auth.password_change', $target + ['detail' => $detail]);
+            // S-5 — 개인 프로그램 토큰도 전부 회수한다(같은 트랜잭션 · 토큰마다 감사 한 행).
+            //        회수한 수는 응답(`tokens_revoked`)으로만 돌려준다 — 위 감사 detail 은 그대로 둔다.
+            $tokens = self::revokeAllApiTokens($userId, (string) $actor['username'], $userId, 'password_change');
             $db->commit();
         } catch (Throwable $e) {
             $db->rollback();
             throw $e;
         }
 
-        return [true, null, $revoked];
+        return [true, null, $revoked, $tokens];
     }
 
     /**
@@ -1343,6 +1365,48 @@ final class Auth
     public static function revokeAllSessions(int $userId): int
     {
         return Db::instance()->run(self::SQL_DROP_USER_SESSIONS, [':user_id' => $userId])->rowCount();
+    }
+
+    /**
+     * 디버깅 묶음 S-5 — 그 계정의 **살아 있는 개인 프로그램 토큰 전부**를 회수한다 (ARCH 4.7 「자동 회수」).
+     *
+     * 왜: 비밀번호를 바꾸거나(본인) 관리자가 임시 비밀번호를 재발급·2단계 인증을 초기화하는 것은 대개
+     * 「이 계정의 자격이 새었을 수 있다」는 뜻이다. 세션은 이미 끊었지만(R-10) 개인 토큰은 살아 있어,
+     * 훔친 사람이 미리 발급해 둔 토큰으로 계속 올리고·지울 수 있었다(2026-09-26 보안 점검 낮음 9 · R-91).
+     *
+     * 부르는 쪽의 **트랜잭션 안에서** 부른다 — 비밀번호·2단계 변경과 토큰 회수·감사가 한 덩어리로 되거나
+     * 안 된다. 행은 지우지 않는다(`revoked_at`·`revoked_by` UPDATE — 앱 계정에는 DELETE 권한이 없다, 6.2-5).
+     * 토큰 하나에 감사 한 행: `api_token.revoke allow <사유>` · detail `token_id`·`token_name`(ARCH 7.5 등록부 키 —
+     * 토큰 값도 해시도 hint 도 읽지 않는다). 사유는 코드가 정한 셋 중 하나다(요청 값이 아니다).
+     *
+     * @param int    $userId     토큰을 잃는 계정
+     * @param string $targetName 그 계정의 아이디 (감사 문장의 {target})
+     * @param int    $byUserId   회수한 사람 — 본인 변경이면 본인, 관리자 재발급·초기화면 그 관리자
+     * @param string $cause      password_change | password_reset | mfa_reset
+     * @return int   회수한 토큰 수
+     */
+    public static function revokeAllApiTokens(int $userId, string $targetName, int $byUserId, string $cause): int
+    {
+        if (!in_array($cause, self::API_TOKEN_REVOKE_CAUSES, true)) {
+            throw new RuntimeException('토큰 회수 사유가 아닙니다');
+        }
+        $rows = Db::instance()->run(self::SQL_REVOKE_USER_API_TOKENS, [
+            ':by'  => $byUserId,
+            ':uid' => $userId,
+        ])->fetchAll();
+
+        foreach ($rows as $row) {
+            Audit::allow('api_token.revoke', [
+                'target_type' => 'user',
+                'target_id'   => $userId,
+                'target_name' => $targetName,
+                'detail'      => [
+                    'token_id'   => (int) $row['id'],
+                    'token_name' => (string) $row['name'],
+                ],
+            ], $cause);
+        }
+        return count($rows);
     }
 
     /** 쿠키에 실려 온 토큰의 세션 해시. 형식이 어긋나면 null (DB 를 건드리지 않는다). */

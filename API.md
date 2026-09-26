@@ -443,7 +443,7 @@ curl -s -w ' [%{http_code}]\n' -b jar 'http://127.0.0.1:8082/tbox/api/whoami'
 |---|---|
 | 인증 | 헤더 **`X-API-Token: <토큰>`**(7장과 같은 토큰). 헤더를 보내지 않으면 세션 쿠키 경로로 판정한다 |
 | 요청 | `parent`(선택, 폴더 번호. **0 또는 없음 = 루트**) |
-| 성공 | `200` `{"folder":{"id":<parent>,"name":…,"access_level":…,"breadcrumb":[{id,name,access_level}…]},"folders":[{"id":<정수>,"name":…,"depth":1~5,"access_level":…,"team_id":…,"team_name":…,"child_count":<n>,"file_count":<n>}]}` — 화면 응답과 **동일**. `folders` 는 **귀속 계정이 읽을 수 있는 자식만**(못 읽는 폴더는 응답에 없다), `file_count` 는 그 안에서 귀속 계정이 볼 수 있는 파일 수 |
+| 성공 | `200` `{"folder":{"id":<parent>,"name":…,"access_level":…,"breadcrumb":[{id,name,access_level}…]},"folders":[{"id":<정수>,"name":…,"depth":1~5,"access_level":…,"team_id":…,"team_name":…,"child_count":<n>,"file_count":<n>}]}` — 화면 응답과 **동일**. `folders` 는 **귀속 계정이 읽을 수 있는 자식만**(못 읽는 폴더는 응답에 없다), `file_count` 는 그 안에서 귀속 계정이 볼 수 있는 파일 수 · `child_count` 도 귀속 계정이 볼 수 있는 하위 폴더 수(2026-09-26 디버깅 묶음 S-7 부터 — 그 폴더를 펼쳤을 때 돌아오는 수와 같다) |
 | 실패 | `401`(헤더 없음 → 「로그인이 필요합니다」 · 틀린 토큰 → 「API 토큰이 올바르지 않습니다」) · `403 {"error":"권한이 없습니다"}`(`parent` 를 읽을 수 없거나 없는 번호 — 둘을 구분하지 않는다) · `503`(토큰 미설정) |
 | 넣지 않는 것 | 폴더를 만든 사람 · 못 읽는 폴더의 존재 · 전체 개수 |
 
@@ -581,6 +581,7 @@ F-66(2026-09-22)에서 세 가지가 바뀌었다.
 | 발급 | `POST /api/me/api-tokens` JSON **허용 키 다섯** `{"name":"<1~50자>","purpose":"<필수, 500자>","scope":"<아래 셋 중 하나>","password":"<현재 비밀번호>","otp":"<6자리>"}` → `201 {"id":<정수>,"name":"…","hint":"…","scope":"…","expires_at":"…","token":"<48자>"}`. **`token` 은 이 응답에만 나온다** — 서버는 sha256 만 저장하므로 다시 보여 줄 수 없다. 잃으면 회수하고 새로 발급한다 |
 | 고를 수 있는 범위 | `read`(읽기만) · `read+upload`(읽기 + 올리기) · `read+upload+delete`(읽기 + 올리기 + 지우기). **역할이 허용하는 것만** 고를 수 있다 — 올릴 수 없는 역할(Guest)은 `read` 하나뿐이다. 그 목록은 `GET /api/me` 의 `token_scopes` 이고, 발급 폼을 보일지는 `can_issue_tokens`(= 2단계 인증이 켜졌나)가 정한다 |
 | 회수 | `DELETE /api/me/api-tokens/{tid}` → `200 {"ok":true}`. 그 순간부터 그 토큰은 401 「API 토큰이 올바르지 않습니다」. **비밀번호·코드를 묻지 않는다** — 닫는 방향은 자격을 줄이는 일이다 |
+| 자동 회수 | (2026-09-26 디버깅 묶음 S-5) **비밀번호를 바꾸면**(본인) · 관리자가 **임시 비밀번호를 재발급**하거나 **2단계 인증을 초기화**하면 그 계정의 살아 있는 토큰이 **전부** 회수된다 — 그 뒤 토큰 요청은 401 「API 토큰이 올바르지 않습니다」. 프로그램에는 새로 발급한 토큰을 다시 심는다. 감사 `api_token.revoke allow password_change|password_reset|mfa_reset`(토큰마다 한 행) |
 | 실패 | `400 {"error":"살아 있는 토큰이 상한에 이르렀습니다 — 먼저 하나를 회수하세요"}` — 살아 있는 토큰이 이미 5개(F-68, ARCHITECTURE 5.30) · `400 {"error":"잘못된 요청입니다"}` — 허용 외 키·이름 규칙·용도 없음·**역할 밖 범위나 모르는 범위**(역할 힌트를 주지 않는다), 그리고 **인증 실패 전부**(틀린 비밀번호·틀린 코드·이미 쓴 코드 — 세 사유가 한 문구다, ARCHITECTURE 5.30 예외 목록·R-48) · `403 {"error":"권한이 없습니다"}` — **2단계 인증이 꺼진 계정**(`mfa_not_enabled`, 실패로 세지 않는다) · CSRF 없음 · `404 {"error":"찾을 수 없습니다"}` — 내 토큰이 아닌 tid(그 번호가 있는지도 새지 않는다) · 이미 회수된 토큰은 `400 {"error":"잘못된 요청입니다"}` |
 | 넣지 않는 것 | 토큰 원문(발급 응답 한 번 밖에는 어디에도 — 목록·감사·로그) · 해시 · **비밀번호·2단계 코드**(응답·감사·로그 0) |
 | 감사 | `api_token.issue allow`(detail `token_id`·`token_name`·**`token_scope`**·`reason_text`·`otp_verified:true`) · 거부 `mfa_not_enabled`·`bad_credentials`·`bad_code`·`code_reused`·`bad_request`·`limit_exceeded` · `api_token.revoke allow` · 경보 **AL-20**(발급 1건 즉시, 근거에 범위) |

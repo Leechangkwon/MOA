@@ -29,6 +29,13 @@ declare(strict_types=1);
  * 중복 억제 (PRD S-11-A "즉시 알림" 이 곧 "5분마다 같은 알림" 이 되면 아무도 안 본다)
  *   `/var/lib/tbox-v2/alerts-state.json` 에 `규칙|대상` 별 마지막 발동 시각을 적고,
  *   30분 안에는 같은 대상으로 다시 발동하지 않는다.
+ *   ★ AL-9 만 키가 `AL-9|계정|<명령 요약>` 이다(디버깅 묶음 S-3, 2026-09-26) — 계정만 키로 두면 가벼운 `sudo psql`
+ *     한 번이 울린 뒤 30분 동안 같은 계정의 `pg_dump`·`rm -rf` 가 alerts.log·감사에 한 줄도 남지 않았다. 지금은
+ *     **서로 다른 명령은 각각 한 줄**, 같은 명령의 되풀이만 30분 억제한다(요약 = 첫 낱말 + 가린 명령 sha256 앞 12자 —
+ *     scripts/lib/alerts_lib.php al_sudo_command_key). 줄이 늘어도 **휴대폰은 폭주하지 않는다**: 운영 push.conf 의
+ *     `DIGEST_RULES=AL-9,…` 라 AL-9 는 휴대폰에 18:00 하루 요약(개수)으로만 간다(F-70 · ARCH 11.4 · 5.32).
+ *   ★ 상태 파일의 **미래 시각**(지금+5분 초과)은 읽을 때 버리고 경고 한 줄(S-9) — 그 폴더에 쓸 수 있는 누군가가
+ *     억제 시각을 먼 미래로 적어 경보를 영영 끄지 못하게. 상태 파일이 심볼릭 링크면 읽지도 쓰지도 않는다.
  *
  * 알림 채널: 이 VM 에는 없다. 발동하면 `/var/log/tbox-v2/alerts.log` 한 줄 JSON +
  * `alert.raised allow` 감사 기록까지다 (cli_raise_alert, `.env` 의 ALERT_COMMAND 주석 참고).
@@ -61,6 +68,8 @@ declare(strict_types=1);
 require_once __DIR__ . '/lib/cli_bootstrap.php';
 // F-70 — 줄 로그를 오프셋으로 이어 읽는 한 벌(회전·잘림 규칙). 보내는 배치 alert_push.php 도 같은 파일을 쓴다.
 require_once __DIR__ . '/lib/log_tail.php';
+// 디버깅 묶음 S — 시각·명령 판정의 순수 함수(업무시간 S-4 · AL-9 명령 요약 S-3 · 상태 파일 시각 S-9). php -r 로 시험한다.
+require_once __DIR__ . '/lib/alerts_lib.php';
 
 const STATE_FILE     = '/var/lib/tbox-v2/alerts-state.json';
 /** 같은 규칙·같은 대상은 이 시간 안에 다시 발동하지 않는다 (분) */
@@ -132,8 +141,43 @@ $state = [];
 $sshSeen = [];
 $authPos = ['inode' => 0, 'offset' => 0];
 
-if (is_file($stateFile)) {
-    $raw = file_get_contents($stateFile);
+/*
+ * S-9 — 상태 파일은 tbox-php 소유 폴더(0750)에 있다. 심볼릭 링크면 **읽지 않는다**(root 가 링크를 따라 다른 파일을
+ * 상태로 읽지 않게 — 쓰기는 cli_write_private 가 따로 거부한다). 미래 시각(지금+5분 초과)의 칸은 버리고 경고 한 줄.
+ */
+$loadNow      = time();
+$futureDrops  = 0;
+/*
+ * 검토 M-3(b) — 읽기 전에 **주인·종류·권한**을 본다: 보통 파일 · 주인 = 이 배치의 계정(운영 root) · 그룹·다른 사람 쓰기 없음 ·
+ * 연 뒤 fstat 이 lstat 과 같은 파일. 하나라도 아니면 **빈 상태로 판정**(억제 없음 — 경보가 더 울리는 쪽)하고 경고 한 줄.
+ * 폴더 주인(tbox-php)은 파일을 지우고 제 파일로 바꿔 놓을 수 있다 — 미래 시각 검사(5분)만으로는 「지금+4분」을 되풀이해 적어
+ * 억제를 이어 가거나 `ssh_seen` 에 제 출처를 심어 AL-3 를 막을 수 있었다. 주인이 다른 파일은 믿지 않는다(R-105).
+ */
+$stateRaw = null;
+clearstatcache();
+$stateL = @lstat($stateFile);
+if ($stateL !== false) {
+    $euid = function_exists('posix_geteuid') ? posix_geteuid() : getmyuid();
+    if (($stateL['mode'] & 0170000) !== 0100000) {
+        cli_warn('[경고] 경보 상태 파일이 보통 파일이 아니다(심볼릭 링크 등) — 읽지 않고 빈 상태로 판정한다(저장도 거부된다): ' . $stateFile);
+    } elseif ($stateL['uid'] !== $euid || ($stateL['mode'] & 0022) !== 0 || $stateL['nlink'] !== 1) {
+        cli_warn('[경고] 경보 상태 파일의 주인·권한이 맞지 않다(주인 = 이 배치 계정 · 그룹/다른 사람 쓰기 없음 · 하드 링크 하나) — 믿지 않고 빈 상태로 판정한다: ' . $stateFile);
+    } else {
+        $sfh = @fopen($stateFile, 'rb');
+        if ($sfh !== false) {
+            $sfs = fstat($sfh);
+            if (is_array($sfs) && $sfs['dev'] === $stateL['dev'] && $sfs['ino'] === $stateL['ino']) {
+                $got = stream_get_contents($sfh, 1048576);
+                $stateRaw = is_string($got) ? $got : null;
+            } else {
+                cli_warn('[경고] 경보 상태 파일이 읽는 사이 바뀌었다 — 빈 상태로 판정한다: ' . $stateFile);
+            }
+            fclose($sfh);
+        }
+    }
+}
+if ($stateRaw !== null) {
+    $raw = $stateRaw;
     if ($raw !== false && $raw !== '') {
         $parsed = json_decode($raw, true, 5);
         if (is_array($parsed)) {
@@ -142,6 +186,11 @@ if (is_file($stateFile)) {
                     if (is_array($v)) {
                         foreach ($v as $seenKey => $seenAt) {
                             if (is_string($seenKey) && is_string($seenAt)) {
+                                // 미래 시각의 첫 관측은 버린다 — 그 `계정@IP` 가 「이미 아는 출처」로 영영 조용해지지 않게
+                                if (strtotime($seenAt) !== false && al_state_time($seenAt, $loadNow) === null) {
+                                    $futureDrops++;
+                                    continue;
+                                }
                                 $sshSeen[$seenKey] = $seenAt;
                             }
                         }
@@ -157,11 +206,20 @@ if (is_file($stateFile)) {
                     continue;
                 }
                 if (is_string($k) && is_string($v)) {
+                    // 미래 시각의 억제 칸은 버린다 — `(지금 - 그 시각) < 30분` 이 영원히 참이 되어 그 경보가 꺼지지 않게
+                    if (strtotime($v) !== false && al_state_time($v, $loadNow) === null) {
+                        $futureDrops++;
+                        continue;
+                    }
                     $state[$k] = $v;
                 }
             }
         }
     }
+}
+if ($futureDrops > 0) {
+    cli_warn(sprintf('[경고] 경보 상태 파일에 지금보다 %d초 넘게 앞선 시각 %d개 — 믿지 않고 버렸다(억제 없음으로 판정): %s',
+        AL_STATE_FUTURE_SKEW_SECONDS, $futureDrops, $stateFile));
 }
 $stateChanged = false;
 $now = time();
@@ -172,21 +230,23 @@ $fired = 0;
  *
  * F-69 — 넷째 인자 `$origin` 은 규칙마다 src/Origin.php 로 판정한 `{origin, origin_hint}` 다.
  * 중복 억제·발동 여부는 origin 과 **무관하다**(키도 `규칙|대상` 그대로) — origin 은 보여 주기와 분류에만 쓴다.
+ * S-3 — 다섯째 인자 `$dedupExtra` 가 있으면 억제 키가 `규칙|대상|그 값` 이 된다(지금은 AL-9 의 명령 요약만 쓴다).
+ * 경보 줄의 `subject` 는 그대로 대상이다(계정) — 요약은 근거의 `command_key` 로 보인다.
  *
  * @param array<string,mixed>                          $evidence
  * @param array{origin: string, origin_hint: ?string}  $origin
  */
-$raise = function (string $rule, string $subject, array $evidence, array $origin) use (
+$raise = function (string $rule, string $subject, array $evidence, array $origin, ?string $dedupExtra = null) use (
     &$state, &$stateChanged, &$fired, $now, $dryRun
 ): void {
     $windowMinutes = $rule === 'AL-22' ? AL22_DEDUP_MINUTES : DEDUP_MINUTES;
     $originNote = ' origin=' . $origin['origin']
         . ($origin['origin_hint'] === null ? '' : ' hint=' . $origin['origin_hint']);
 
-    $key  = $rule . '|' . $subject;
+    $key  = $rule . '|' . $subject . ($dedupExtra === null ? '' : '|' . $dedupExtra);
     $last = isset($state[$key]) ? strtotime($state[$key]) : false;
     if ($last !== false && ($now - $last) < $windowMinutes * 60) {
-        cli_say(sprintf('  %s %s — %s 안에 이미 발동해 건너뛴다', $rule, $subject,
+        cli_say(sprintf('  %s %s — %s 안에 이미 발동해 건너뛴다', $rule, $subject . ($dedupExtra === null ? '' : ' ' . $dedupExtra),
             $windowMinutes % 60 === 0 && $windowMinutes >= 120 ? intdiv($windowMinutes, 60) . '시간' : $windowMinutes . '분'));
         return;
     }
@@ -337,11 +397,8 @@ function al_scrub_command(string $cmd): string
      * (STAGES 2026-09-12, ARCH 11.4 「AL-13 · AL-2 보강」). 경보는 위험을 알리는 글이지
      * 비밀번호를 옮겨 적는 글이 아니다 (PRD S-07 민감정보 금지).
      */
-    $clean = (string) preg_replace('/(?:PGPASSWORD|password)=\S+/i', '[제거됨]', $cmd);
-    $clean = (string) preg_replace('/\bPASSWORD\s+\'[^\']*\'/i', 'PASSWORD [제거됨]', $clean);
-    $clean = (string) preg_replace('/\bPASSWORD\s+"[^"]*"/i', 'PASSWORD [제거됨]', $clean);
-    $utf8  = iconv('UTF-8', 'UTF-8//IGNORE', $clean);
-    $clean = is_string($utf8) ? $utf8 : '';
+    // 가리는 규칙은 scripts/lib/alerts_lib.php al_scrub_secrets 한 벌(AL-9 명령 요약도 같은 것을 쓴다 — 검토 L-4)
+    $clean = al_scrub_secrets($cmd);
     if (iconv_strlen($clean, 'UTF-8') > SUDO_CMD_CHARS) {
         $clean = (string) iconv_substr($clean, 0, SUDO_CMD_CHARS, 'UTF-8');
     }
@@ -504,25 +561,27 @@ if ($want('AL-5')) {
 //   로그가 끊긴 것 자체가 침해 신호다. 다만 **이 서버 안에서 하는 판정은 약한 판정**이다 —
 //   서버가 통째로 털리면 이 배치도 돌지 않는다. 진짜 감시는 원격 로그 서버 쪽에서 해야 한다
 //   (ARCH 11.4 "밖에서 감시"). 여기서는 "앱은 도는데 기록만 끊긴" 경우를 잡는다.
-//   업무시간은 서버 로컬 시각 09:00~18:00. 2026-09-11 부터 VM·PostgreSQL·PHP 시간대를 Asia/Seoul(KST) 로
-//   통일했으므로 이 판정이 실제 한국 업무시간과 맞는다 (README 「서버 시간대」).
+//   업무시간은 서버 로컬 시각 **평일(월~금)** 09:00~18:00(디버깅 묶음 S-4, 2026-09-26 — 전에는 요일을 안 봐서
+//   토·일 낮에도 판정했고, 사람이 없는 주말의 30분 0건이 경보로 되풀이됐다). 판정은 scripts/lib/alerts_lib.php
+//   al_is_business_hours 한 곳. 공휴일은 모른다(한계 — ARCH 11.4). 2026-09-11 부터 VM·PostgreSQL·PHP 시간대를
+//   Asia/Seoul(KST) 로 통일했으므로 이 판정이 실제 한국 업무시간과 맞는다 (README 「서버 시간대」).
 // ─────────────────────────────────────────────────────────────
 if ($want('AL-7')) {
-    $hour = (int) date('G');
-    if ($hour >= 9 && $hour < 18) {
+    $hour = (int) date('G', $now);
+    if (al_is_business_hours($now)) {
         $n = (int) $db->run(
             "SELECT count(*) AS n FROM audit_logs WHERE happened_at > now() - interval '30 minutes'"
         )->fetch()['n'];
         if ($n === 0) {
             $raise('AL-7', 'audit_logs', [
-                'rule_text' => '업무시간(09~18시)에 감사 로그 30분간 0건',
+                'rule_text' => '업무시간(평일 09~18시)에 감사 로그 30분간 0건',
                 'window'    => '30 minutes',
                 'count'     => 0,
             ], Origin::ofFixedRule('AL-7'));
         }
         cli_say(sprintf('AL-7 최근 30분 기록 %d건 (업무시간)', $n));
     } else {
-        cli_say(sprintf('AL-7 건너뜀 (업무시간 아님, 현재 %d시)', $hour));
+        cli_say(sprintf('AL-7 건너뜀 (%s, 현재 %s %d시)', al_off_hours_reason($now), date('D', $now), $hour));
     }
 }
 
@@ -1010,12 +1069,17 @@ if ($want('AL-3') || $want('AL-9')) {
                 // (F-69 A-1) — 200자에 닿았으면 뒤가 잘렸을 수 있으므로 겨눈 DB 를 다 봤다고 할 수 없다(→ human).
                 $scrubbed = al_scrub_command($command);
                 $complete = iconv_strlen($scrubbed, 'UTF-8') < SUDO_CMD_CHARS;
+                // S-3 — 억제 키에 명령 요약을 넣는다: 다른 명령은 각각 한 줄, 같은 명령의 되풀이만 30분 억제.
+                //        (휴대폰은 push.conf DIGEST_RULES=AL-9 로 18:00 요약 — 줄이 늘어도 푸시 폭주는 없다.)
+                // 요약은 자르기 **전** 전체(비밀만 가린 것)로 — 앞 200자가 같은 다른 명령이 한 키로 묶이지 않게(검토 L-4)
+                $commandKey = al_sudo_command_key(al_scrub_secrets($command));
                 $raise('AL-9', $account, [
-                    'rule_text' => 'sudo 로 데이터·로그를 지우거나 통째로 읽는 명령 실행',
-                    'user'      => $account,
-                    'command'   => $scrubbed,
-                    'when'      => al_line_time($line),
-                ], Origin::ofSudoCommand($scrubbed, $complete));
+                    'rule_text'   => 'sudo 로 데이터·로그를 지우거나 통째로 읽는 명령 실행',
+                    'user'        => $account,
+                    'command'     => $scrubbed,
+                    'command_key' => $commandKey,
+                    'when'        => al_line_time($line),
+                ], Origin::ofSudoCommand($scrubbed, $complete), $commandKey);
             }
         }
 

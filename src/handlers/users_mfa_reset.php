@@ -96,6 +96,10 @@ $db->begin();
 try {
     $db->run($sqlReset, [':id' => $uid]);
     $revoked = Auth::revokeAllSessions($uid);
+    // 디버깅 묶음 S-5 — 대상의 개인 프로그램 토큰도 전부 회수한다(같은 트랜잭션 · 토큰마다 감사 한 행,
+    // `api_token.revoke allow mfa_reset`). 토큰 발급에는 2단계 인증이 필요했는데(F-66), 그 인증이 초기화되면
+    // 그 전에 받은 토큰도 믿을 근거가 없다 (R-91).
+    Auth::revokeAllApiTokens($uid, (string) $target['username'], (int) $user['id'], 'mfa_reset');
 
     Audit::allow('user.mfa_reset', $auditTarget + [
         'detail' => [

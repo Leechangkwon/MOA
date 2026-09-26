@@ -83,7 +83,7 @@ require __DIR__ . '/../views/shell_top.php';
       <section class="panel">
         <div class="panel__head">
           <h2 class="panel__title">비밀번호 변경</h2>
-          <p class="panel__sub">바꾸면 <strong>다른 기기의 세션이 모두 끊깁니다</strong>(지금 이 창은 유지됩니다).</p>
+          <p class="panel__sub">바꾸면 <strong>다른 기기의 세션이 모두 끊기고 개인 프로그램 토큰도 모두 취소됩니다</strong>(지금 이 창은 유지됩니다).</p>
         </div>
         <form id="password-form" class="form" autocomplete="off">
           <label class="field">

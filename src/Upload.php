@@ -81,6 +81,30 @@ final class Upload
     ];
 
     /**
+     * 디버깅 묶음 S-10 — zip 항목의 **마지막 확장자**로만 막는 형식 (BLOCKED_EXT 에 더해).
+     *
+     * 윈도에서 **열면 실행되거나 실행을 부르는** 형식이다: 바로 가기·HTML 앱·스크립트 호스트(wsf·wsh·wsc·ws·vbe·jse·sct)·
+     * 관리 콘솔·제어판·탐색기 명령·도움말(chm·hlp)·자바(jar·jnlp)·설치 패치(msp·mst·msu)·엑셀 추가 기능(xll)·PowerShell
+     * (psm1·psd1·ps1xml·ps2·ps2xml·psc1·psc2·msh 계열)·앱 설치 묶음·설정/라이브러리/검색 바로 가기·디스크 이미지(iso·img·vhd·vhdx —
+     * 열면 탑재되어 안의 실행 파일이 인터넷 표식(MOTW) 없이 뜬다)·레지스트리(reg)·인터넷 바로 가기(url·website)·설치 정보(inf)·
+     * OneNote(one)·Access 실행형(ade·adp·mde·accde)·셸 조각(shb·shs)·ClickOnce(application·xbap)·Outlook 이 첫 단계로
+     * 막는 나머지(ins·isp·its·hpj·crt 는 넣지 않음 — 인증서는 업무 파일이다).
+     *
+     * **이중 확장자 검사(가운데 세그먼트)에는 쓰지 않는다.** 처음엔 BLOCKED_EXT 에 넣었다가, 이중 확장자 검사가 **맨 앞
+     * 조각**까지 보므로 `Gadget.png`·`김철수.MSc.논문.pdf`·`HTA.보고서.pdf`·`jar.jpg`·`plan.MST.xlsx`·`MSP.계약.docx` 같은
+     * 정상 이름이 400 이 됐다(독립 검토 M-1 — 기준 판은 통과). 겉 파일은 화이트리스트(ALLOWED_EXT)가 이미 막으므로
+     * 이 목록은 zip 안의 항목에서만 본다.
+     */
+    public const ENTRY_BLOCKED_EXT = [
+        'lnk', 'hta', 'jar', 'jnlp', 'wsf', 'wsh', 'wsc', 'ws', 'vbe', 'jse', 'sct', 'msc', 'cpl', 'scf',
+        'chm', 'hlp', 'hpj', 'its', 'msp', 'mst', 'msu', 'xll', 'gadget',
+        'psm1', 'psd1', 'ps1xml', 'ps2', 'ps2xml', 'psc1', 'psc2', 'msh', 'msh1', 'msh2', 'mshxml', 'msh1xml', 'msh2xml',
+        'appx', 'msix', 'appref-ms', 'settingcontent-ms', 'library-ms', 'search-ms', 'diagcab',
+        'iso', 'img', 'vhd', 'vhdx', 'reg', 'url', 'website', 'inf', 'ins', 'isp', 'one',
+        'ade', 'adp', 'mde', 'accde', 'shb', 'shs', 'application', 'xbap',
+    ];
+
+    /**
      * 확장자 ↔ finfo(FILEINFO_MIME_TYPE) 실측값 짝 표.
      * 값은 전부 소문자다 — checkMime() 이 finfo 결과를 strtolower 한 뒤 비교한다.
      *
@@ -533,10 +557,10 @@ final class Upload
                 $lower = strtolower($norm);
                 $slash = strrpos($lower, '/');
                 $leaf  = $slash === false ? $lower : substr($lower, $slash + 1);
-                $dot   = strrpos($leaf, '.');
-                $entryExt = $dot === false ? '' : substr($leaf, $dot + 1);
+                $entryExts = self::entryExtensions($leaf);
+                $entryExt  = $entryExts[0];
 
-                if ($entryExt !== '' && in_array($entryExt, self::BLOCKED_EXT, true)) {
+                if (self::isBlockedEntry($entryExts)) {
                     // F-65 — 모으기만 하고 계속 훑는다. 던지는 자리는 루프 **뒤**다.
                     // 이름은 정규화한 경로(`$norm`) 그대로 — 화면이 textContent 로만 넣는다.
                     $blocked[] = $norm;
@@ -588,6 +612,51 @@ final class Upload
         }
 
         return $blocked;
+    }
+
+    /**
+     * 디버깅 묶음 S-10 — zip 항목 이름(마지막 세그먼트, 소문자)의 **확장자 후보**를 정규화해서 돌려준다.
+     *
+     * 윈도는 파일 이름 **끝의 점·공백을 버리고** 만든다 — `evil.exe.`·`evil.exe ` 는 풀면 `evil.exe` 다.
+     * 전에는 마지막 점 뒤를 그대로 확장자로 봐서(``·`exe `) 이름 검사를 빠져나갔다(2026-09-26 보안 점검 중간 8).
+     *   ① 끝의 점·공백·탭·NUL·제어 문자를 떼고 마지막 점 뒤를 본다
+     *   ② 이름에 `:` 가 있으면(NTFS 대체 스트림 `evil.exe::$DATA`·`evil.exe:x`) `:` **앞** 부분도 같은 규칙으로 본다 —
+     *      둘 중 하나라도 막히는 확장자면 막는다(후보가 늘기만 한다 — 원래 확장자가 빠지는 길은 없다)
+     * 첫 원소가 늘 ① 의 값이다(빈 문자열일 수 있다 — 중첩 zip 이름 검사가 그 값을 쓴다).
+     *
+     * @return non-empty-list<string>
+     */
+    private static function entryExtensions(string $leaf): array
+    {
+        $out = [];
+        $candidates = [$leaf];
+        $colon = strpos($leaf, ':');
+        if ($colon !== false) {
+            $candidates[] = substr($leaf, 0, $colon);
+        }
+        foreach ($candidates as $name) {
+            // 끝의 공백·점·제어 문자(0x00~0x1F · 0x7F)를 뗀다 — rtrim 의 `..` 는 범위다
+            $trimmed = rtrim($name, " .\x00..\x1F\x7F");
+            $dot     = strrpos($trimmed, '.');
+            $out[]   = $dot === false ? '' : substr($trimmed, $dot + 1);
+        }
+        return $out;
+    }
+
+    /**
+     * 디버깅 묶음 S-10 — 정규화한 확장자 후보 가운데 하나라도 BLOCKED_EXT · ENTRY_BLOCKED_EXT 에 있으면 참.
+     *
+     * @param list<string> $exts entryExtensions() 의 결과
+     */
+    private static function isBlockedEntry(array $exts): bool
+    {
+        foreach ($exts as $ext) {
+            if ($ext !== ''
+                && (in_array($ext, self::BLOCKED_EXT, true) || in_array($ext, self::ENTRY_BLOCKED_EXT, true))) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /**

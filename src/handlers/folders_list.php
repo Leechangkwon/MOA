@@ -20,6 +20,9 @@ declare(strict_types=1);
  *
  * `file_count` 는 "이 폴더 안에서 **호출자가 볼 수 있는** 파일 수" 다 — 세는 SQL 에도
  * `visibleFilesWhere` 를 붙인다. `GET /api/files?folder=` 의 `total` 과 같은 값이다.
+ * `child_count` 도 같다 — "**호출자가 볼 수 있는** 하위 폴더 수"(디버깅 묶음 S-7, 2026-09-26 보안 점검 낮음 11).
+ * 전에는 하위를 조건 없이 세어, 못 보는 admin-only 하위 폴더가 있다는 사실(과 개수)이 숫자로 새었다.
+ * 지금은 그 층을 펼쳤을 때(`?parent=<id>`) 돌아오는 폴더 수와 같다.
  *
  * breadcrumb 의 조상들은 따로 검사하지 않는다: 불변 규칙 ①(하위 등급 ≥ 부모 등급)이 지켜지는
  * 한 **읽을 수 있는 폴더의 조상은 언제나 읽을 수 있다**(조상은 자기보다 넓거나 같은 등급이고,
@@ -87,8 +90,7 @@ $sqlChildren = <<<'SQL'
            d.depth,
            d.access_level,
            d.team_id,
-           t.name AS team_name,
-           (SELECT count(*) FROM folders k WHERE k.parent_id = d.id) AS child_count
+           t.name AS team_name
       FROM folders d
       LEFT JOIN teams t ON t.id = d.team_id
      WHERE d.parent_id IS NOT DISTINCT FROM CAST(:parent AS bigint)
@@ -129,6 +131,31 @@ foreach ($db->run($sqlFileCounts . ' ' . $visibleFiles . ' ' . $sqlFileCountsTai
     $counts[(int) $c['fid']] = (int) $c['n'];
 }
 
+/* S-7 — 이 층 폴더들의 **볼 수 있는** 하위 폴더 수를 한 문장으로 센다(폴더마다 따로 묻지 않는다).
+ * 세는 쪽(하위)이 별칭 `d` 이고, 이 층의 폴더가 `p` 다 — 조건은 트리 목록과 **같은 함수**
+ * `visibleWhere($user, 'd')` 에서 새로 받는다(바인딩 이름이 겹치므로 문장·바인딩을 따로 둔다 — 위 두 문장과 같은 이유).
+ * 그래서 이 값은 그 폴더를 펼쳤을 때 돌아오는 폴더 수와 같다(상한 500 은 펼칠 때만). */
+[$visibleChildren, $childBind] = Authz::visibleWhere($user, 'd');
+
+$sqlChildCounts = <<<'SQL'
+    SELECT d.parent_id AS pid, count(*) AS n
+      FROM folders d
+      JOIN folders p ON p.id = d.parent_id
+     WHERE p.parent_id IS NOT DISTINCT FROM CAST(:parent AS bigint)
+       AND
+    SQL;
+
+$sqlChildCountsTail = <<<'SQL'
+     GROUP BY d.parent_id
+    SQL;
+
+$childBind[':parent'] = $parent === 0 ? null : $parent;
+
+$childCounts = [];
+foreach ($db->run($sqlChildCounts . ' ' . $visibleChildren . ' ' . $sqlChildCountsTail, $childBind)->fetchAll() as $c) {
+    $childCounts[(int) $c['pid']] = (int) $c['n'];
+}
+
 $folders = [];
 foreach ($rows as $row) {
     $fid = (int) $row['id'];
@@ -139,7 +166,8 @@ foreach ($rows as $row) {
         'access_level' => (string) $row['access_level'],
         'team_id'      => $row['team_id'] === null ? null : (int) $row['team_id'],
         'team_name'    => $row['team_name'] === null ? null : (string) $row['team_name'],
-        'child_count'  => (int) $row['child_count'],
+        // 호출자가 볼 수 있는 하위 폴더 수 (S-7). 안 보이는 하위는 세지지 않는다 (PRD S-02).
+        'child_count'  => $childCounts[$fid] ?? 0,
         // 호출자가 볼 수 있는 파일 수. 안 보이는 파일은 여기 세지지 않는다 (PRD S-02).
         'file_count'   => $counts[$fid] ?? 0,
     ];

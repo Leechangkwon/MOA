@@ -112,6 +112,9 @@ try {
     $db->run($sqlReset, [':hash' => $hash, ':id' => $uid]);
     // 대상의 세션을 전부 끊는다 (SECURITY R-10). 재발급한 Admin 의 세션은 대상이 아니다.
     $revoked = Auth::revokeAllSessions($uid);
+    // 디버깅 묶음 S-5 — 대상의 개인 프로그램 토큰도 전부 회수한다(같은 트랜잭션 · 토큰마다 감사 한 행,
+    // `api_token.revoke allow password_reset`). 재발급은 「이 계정 자격이 새었을 수 있다」는 신호다 (R-91).
+    Auth::revokeAllApiTokens($uid, (string) $target['username'], (int) $user['id'], 'password_reset');
 
     Audit::allow('user.password_reset', $auditTarget + [
         'detail' => [

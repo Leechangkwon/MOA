@@ -121,22 +121,75 @@ function cli_option(array $argv, string $name, ?string $default = null): ?string
  * 배치가 만드는 상태 파일(경보 중복 억제·체인·실패 횟수)의 공통 쓰기.
  * 같은 디렉터리에 임시 파일을 만들고 rename 한다 — 읽는 쪽이 반쪽 파일을 보지 않게.
  * 권한은 0600(root) — 경보 근거·해시 체인은 침입자에게 보여 줄 값이 아니다.
+ *
+ * ★ 디버깅 묶음 S-9 (2026-09-26 보안 점검 중간 4) — 이 함수는 cron 의 **root** 가 **tbox-php 소유 폴더**
+ *   (`/var/lib/tbox-v2` 0750)에 쓴다. 전에는 임시 이름이 고정(`<대상>.tmp`)이고 `file_put_contents` → `chmod` 가
+ *   링크를 따라갔다 — 그 폴더에 쓸 수 있는 누군가가 `alerts-state.json.tmp` 를 `/etc/…` 로 가는 심볼릭 링크로
+ *   심어 두면 root 가 그 파일을 덮어쓰고 0600 으로 바꿨다. 지금은
+ *   ① 대상이 심볼릭 링크면 **쓰지 않는다**(쓰기 전 · rename 직전 두 번 본다)
+ *   ② 임시 파일은 같은 폴더의 **무작위 이름**(16진 16자)을 `fopen(…, 'x')` — O_CREAT|O_EXCL 로 만든다.
+ *      그 이름에 무엇이 있든(링크 포함) 만들기가 실패할 뿐 따라가지 않는다. 권한은 만들 때 umask 0077 로 0600 —
+ *      링크를 따라갈 수 있는 `chmod` 를 부르지 않는다
+ *   ③ 다 쓴 뒤 임시 파일이 여전히 보통 파일(링크 아님)인지 보고 rename 한다(rename 은 링크를 따라가지 않는다).
+ *   남는 틈: 폴더 주인(tbox-php)은 rename 직전에 임시 파일을 지우고 다른 것으로 바꿔 놓을 수 있다 — 그러면 대상 자리에
+ *   그 파일이 놓일 뿐 root 가 다른 곳에 쓰지는 않는다(다음 실행은 ① 에서 멈춘다). 근본 해결은 폴더 주인을 root 로
+ *   옮기는 서버 설정이다(이번 묶음 범위 밖 — SECURITY R-105).
  */
 function cli_write_private(string $path, string $contents): void
 {
     $dir = dirname($path);
+    clearstatcache();
     if (!is_dir($dir)) {
         throw new RuntimeException('상태 디렉터리가 없습니다: ' . $dir);
     }
-    $tmp = $path . '.tmp';
-    if (file_put_contents($tmp, $contents, LOCK_EX) === false) {
+    if (is_link($path)) {
+        throw new RuntimeException('상태 파일이 심볼릭 링크라 쓰지 않습니다: ' . $path);
+    }
+    $tmp = $dir . '/.' . basename($path) . '.' . bin2hex(random_bytes(8)) . '.tmp';
+    $old = umask(0077);
+    try {
+        $fh = @fopen($tmp, 'x');
+    } finally {
+        umask($old);
+    }
+    if ($fh === false) {
+        throw new RuntimeException('상태 파일의 임시 파일을 새로 만들 수 없습니다: ' . $path);
+    }
+    $ok = false;
+    try {
+        $ok = fwrite($fh, $contents) === strlen($contents) && fflush($fh);
+    } finally {
+        fclose($fh);
+    }
+    clearstatcache();
+    if (!$ok || is_link($tmp) || !is_file($tmp)) {
+        @unlink($tmp);
         throw new RuntimeException('상태 파일을 쓸 수 없습니다: ' . $path);
     }
-    chmod($tmp, 0600);
+    if (is_link($path)) {
+        @unlink($tmp);
+        throw new RuntimeException('상태 파일이 심볼릭 링크라 쓰지 않습니다: ' . $path);
+    }
     if (!rename($tmp, $path)) {
-        unlink($tmp);
+        @unlink($tmp);
         throw new RuntimeException('상태 파일을 바꿔 놓을 수 없습니다: ' . $path);
     }
+}
+
+/**
+ * 디버깅 묶음 S-9 · 검토 L-6 — root 배치가 **tbox-php 소유 폴더**(`/var/log/tbox-v2`)의 줄 로그(alerts.log)에 한 줄 덧붙인다.
+ *
+ * 전에는 `file_put_contents(…, FILE_APPEND)` 라 그 자리에 심어 둔 심볼릭 링크를 따라 root 가 아무 파일에나 덧붙였다
+ * (보안 점검 중간 4). 지금은 `Audit::appendLineNoFollow` 한 벌(감사 파일 사본과 같은 코드)로 쓴다:
+ *   열기 전 lstat — 보통 파일 · 하드 링크 하나 · **주인 = 이 배치를 돌리는 계정**(운영 root) · 없으면 `x` 로 새로(0644 —
+ *   보내는 배치 tbox-push 가 읽는다) · 있으면 **만들지 않는** `r+` · 연 뒤 fstat/lstat 대조(S_ISREG · 장치·inode) · LOCK_EX · 끝에 쓰기.
+ * O_APPEND 가 없는 열기라 잠그지 않는 쓰는 이(verify_backup.sh 의 셸 `>>`, 하루 한 번)와 같은 순간에 겹치면 한 줄이 섞일 수
+ * 있다 — 받아들인 한계(R-105).
+ */
+function cli_append_line(string $path, string $line): void
+{
+    $uid = function_exists('posix_geteuid') ? posix_geteuid() : getmyuid();
+    Audit::appendLineNoFollow($path, $line, false, true, is_int($uid) ? $uid : null);
 }
 
 /**
@@ -200,15 +253,27 @@ function cli_raise_alert(string $rule, array $evidence, string $origin, ?string 
     }
 
     // 경보 로그는 감사 로그와 같은 디렉터리(0750 tbox-php:adm)에 둔다. 파일이 없으면 만든다.
+    // S-9 — 그 폴더의 주인은 tbox-php 라, 심볼릭 링크를 따라가지 않는 덧붙이기(cli_append_line)로만 쓴다.
+    // 검토 M-3(a) — 경보 로그 쓰기가 실패해도(링크를 심어 두었거나 주인이 다름) **경보를 조용히 잃지 않는다**:
+    //   경고 한 줄 · 감사 행은 그대로 남기되 detail `alerts_log_failed` 를 붙이고 · 예외를 삼켜 다음 규칙이 계속 돈다.
+    //   전에는 여기서 던져 alert.raised 도 못 남기고 그 회차 전체가 멈췄다(링크 하나로 모든 경보를 끄는 길).
     $path = dirname(Env::get('AUDIT_LOG_FILE')) . '/alerts.log';
-    if (file_put_contents($path, $line . "\n", FILE_APPEND | LOCK_EX) === false) {
-        throw new RuntimeException('경보 로그에 쓸 수 없습니다: ' . $path);
+    $alertsLogFailed = false;
+    try {
+        cli_append_line($path, $line . "\n");
+    } catch (RuntimeException $e) {
+        $alertsLogFailed = true;
+        cli_warn('[경고] 경보 로그에 쓰지 못했다 — 감사 행만 남긴다(' . $rule . '): ' . $e->getMessage());
     }
 
+    $detail = ['rule' => $rule, 'evidence' => $evidence, 'origin' => $origin];
+    if ($alertsLogFailed) {
+        $detail['alerts_log_failed'] = true;
+    }
     Audit::allow('alert.raised', [
         'target_type' => 'system',
         'target_name' => $rule,
-        'detail'      => ['rule' => $rule, 'evidence' => $evidence, 'origin' => $origin],
+        'detail'      => $detail,
     ]);
 }
 

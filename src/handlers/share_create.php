@@ -16,6 +16,7 @@ declare(strict_types=1);
  *       `token_hash` 같은 컬럼은 요청으로 바뀌는 통로 자체가 없다.
  *   [권한 ✔ 1·2] 볼 수 없는 파일(decideRead) · 남의 파일(decideEdit)에 링크를 만드는 것.
  *       `admin-only` 파일의 링크는 결과적으로 Admin 만 만들 수 있다 — decideEdit 가 그렇게 귀결된다.
+ *   [재인증] 디버깅 묶음 S-8 — Admin 권한(`admin_all`)으로 만드는 링크는 15분 재인증 창(PRD F-23) 안에서만.
  *   [5] 무한·무제한 링크 — 만료 1~168시간(최대 7일)·횟수 1~10 을 앱이 보고, DB CHECK 가 한 번 더 본다.
  *
  * ★ 토큰은 `random_bytes(32)` 를 base64url 로 옮긴 43자다. DB 에는 **sha256 만** 넣는다
@@ -98,6 +99,22 @@ if (!$mayRead) {
 if (!$mayEdit) {
     Audit::deny('share.create', $editCode, $auditTarget + ['detail' => $auditWhat]);
     Http::error(403, Http::MSG_FORBIDDEN);
+}
+
+/* ─── [재인증] 디버깅 묶음 S-8 — Admin 권한(`admin_all`)으로 만드는 링크는 15분 재인증 창 안에서만 ───
+ * 링크는 로그인 없이 파일을 내보내는 길이고 세션이 끊긴 뒤에도 남는다. 훔친 Admin 세션만으로 admin-only
+ * 파일의 링크를 만들어 두는 길을 닫는다. 판정은 Authz::shareCreateNeedsReauth(허용 코드만 본다 — 역할 비교 없음).
+ * 응답·감사는 관문 [3-2] 와 같은 모양(`auth.gate deny reauth_required` + 403 next:reauth). 자리: decideEdit
+ * **뒤**(고칠 수 없는 사람에게는 403 이 먼저) · F-65·값 검증 **앞**. */
+if (Authz::shareCreateNeedsReauth($editCode) && ($user['reauth_fresh'] ?? false) !== true) {
+    Audit::deny('auth.gate', 'reauth_required', [
+        'target_type' => 'user',
+        'target_id'   => (int) $user['id'],
+        'target_name' => (string) $user['username'],
+        'detail'      => ['next' => 'reauth', 'policy' => 'file.update'],
+    ]);
+    Http::json(['error' => Http::MSG_REAUTH_REQUIRED, 'next' => 'reauth'], 403);
+    exit;
 }
 
 /* ─── [권한 ✔ 3] F-65 실행 파일이 든 압축본은 링크로 나가지 않는다 (ARCH 5.29 「받기」 표) ───

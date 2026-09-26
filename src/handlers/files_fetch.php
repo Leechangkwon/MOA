@@ -50,9 +50,34 @@ $hops      = [];
    (SECURITY R-77 보충). 0 이면 한 단계도 쿠키 없이 왔다는 뜻이다. */
 $cookieHops = 0;
 
-/** 감사 로그 detail 에 넣을 주소 — 512바이트로 자른다(로그 한 줄이 주소로 채워지지 않게) */
+/**
+ * 감사 로그 detail 에 넣을 주소 — **사용자 정보(userinfo)를 가린 뒤** 512바이트로 자른다
+ * (로그 한 줄이 주소로 채워지지 않게).
+ *
+ * 디버깅 묶음 S-6 (2026-09-26 보안 점검 낮음 12) — `https://user:pass@host/…` 모양의 주소는 Fetch::check 가
+ * 거부하지만(④ 사용자정보 — 파서 혼동), 전에는 그 **거부 감사에 주소 원문**이 실려 비밀번호가 감사 로그(DB·파일
+ * 사본)에 남았다. 허용 행도 같은 함수를 지나므로 어느 쪽이든 `***@` 로만 남는다.
+ *   규칙(검토 L-3 — 구분자를 믿지 않는다): 문자열의 **마지막 `@`** 를 찾고, 그보다 앞에 `//`·`\\` 가 있으면 그 **첫 번째** 바로 뒤부터,
+ *   없으면 문자열 맨 앞부터 그 `@` 까지를 `***` 로 바꾼다. 비밀번호에 `/`·`?`·`#`·공백이 섞여도(`u:p/w@host`) 남지 않는다.
+ *   쿼리 속 다른 주소(`?next=https://u:p@x/`)·바꾼 주소(`→` 뒤)도 같은 문자열이라 함께 가려진다.
+ *   대가: 경로에 `@` 가 든 주소(`https://host/a@b.pdf`)는 호스트·경로까지 가려진다 — 받은 호스트는 `source_host` 칸에 따로 남는다.
+ * 가리기는 기록용 문자열에만 한다 — 검사(Fetch::check)는 원래 주소 그대로 받는다(거부는 그쪽이 한다).
+ */
 $shortUrl = static function (string $url): string {
-    return strlen($url) > 512 ? substr($url, 0, 512) : $url;
+    $masked = $url;
+    $at = strrpos($masked, '@');
+    if ($at !== false) {
+        $starts = [];
+        foreach (['//', '\\\\'] as $sep) {
+            $p = strpos($masked, $sep);
+            if ($p !== false && $p < $at) {
+                $starts[] = $p + 2;
+            }
+        }
+        $from   = $starts === [] ? 0 : min($starts);
+        $masked = substr($masked, 0, $from) . '***' . substr($masked, $at);
+    }
+    return strlen($masked) > 512 ? substr($masked, 0, 512) : $masked;
 };
 
 /**
