@@ -523,6 +523,49 @@ require __DIR__ . '/../views/shell_top.php';
       </div>
     </dialog>
 
+    <!-- ─── 파일 한 건 「수정」 창 (디버깅 묶음 U H2 · 2026-09-26, DESIGN 2.7 `.modal--form`) ─────────────────
+         예전엔 브라우저 기본 입력 창(window.prompt)이 세 번 떴다 — 설명 → 등급을 **영어 값으로 직접 입력** → 팀 **번호**.
+         이제 창 하나: 설명 칸 + 등급 고르개 + 팀 고르개(이름). 선택지는 **서버가 준 것만**이다 — 등급은 /api/me 의
+         upload_levels(올리기 창·등급 바꾸기 창과 같은 목록)에 이 파일의 지금 등급을 더한 것, 팀은 /api/teams 의 이름.
+         보내는 것은 전과 같이 **바뀐 키만**(description · access_level · team_id)이고, 바꿀 자격·낮추는 변경인지·폴더 등급은
+         서버(`Authz::decideEdit` · `decideLevelChange`)가 다시 판단한다 — 거부 문구는 서버가 준 것을 이 창 아래 줄에 그대로(PRD S-01).
+         실행 파일이 든 압축본은 등급을 묻지 않는다(F-65 — 서버가 access_level 키를 400 으로 막는다). 값은 전부 app.js 가 textContent·value 로. -->
+    <dialog id="file-edit-dialog" class="modal modal--form" aria-labelledby="file-edit-title">
+      <div class="modal__head">
+        <span class="preview__mark"><span class="icon" data-icon="edit"></span></span>
+        <div class="preview__headtext">
+          <h2 class="modal__title" id="file-edit-title">파일 고치기</h2>
+          <div class="modal__meta"><span id="file-edit-name"></span></div>
+        </div>
+        <button id="file-edit-x" class="btn btn--icon" type="button" aria-label="닫기">
+          <span class="icon" data-icon="x"></span>
+        </button>
+      </div>
+      <div class="modal__body">
+        <form id="file-edit-form" class="form form--grid" autocomplete="off">
+          <label class="field field--full">
+            <span class="field__label">설명 (500자 이내)</span>
+            <input id="file-edit-description" type="text" maxlength="500">
+          </label>
+          <label class="field" id="file-edit-level-field">
+            <span class="field__label">접근 등급</span>
+            <select id="file-edit-level"></select>
+          </label>
+          <label class="field" id="file-edit-team-field" hidden>
+            <span class="field__label">팀</span>
+            <select id="file-edit-team"></select>
+          </label>
+          <p id="file-edit-level-note" class="help field--full" hidden>실행 파일이 든 압축본은 등급을 바꿀 수 없습니다 — 받는 사람이 언제나 관리자여야 합니다. 설명은 바꿀 수 있습니다.</p>
+          <p class="help field--full">등급을 넓히는 변경(예: 팀 → 사내)은 관리자만 할 수 있습니다. 바꿀 수 없으면 이유가 아래에 나옵니다.</p>
+        </form>
+      </div>
+      <div class="modal__foot">
+        <p id="file-edit-msg" class="msg" role="alert" aria-live="polite"></p>
+        <button id="file-edit-close" class="btn btn--quiet" type="button">닫기</button>
+        <button id="file-edit-submit" class="btn" type="submit" form="file-edit-form">저장하기</button>
+      </div>
+    </dialog>
+
     <!-- ─── 공유 링크 모달 (15-2 — PRD F-13, ARCH 5.12) ─────────────────────
          **여기에도 값이 하나도 적혀 있지 않다.** 파일명·만들어진 주소는 app.js 가
          서버 응답에서 받아 textContent 로만 넣는다 (PRD S-03).
@@ -661,12 +704,14 @@ require __DIR__ . '/../views/shell_top.php';
         <aside class="preview__info">
           <div class="preview__label">형식</div>
           <div class="preview__value" id="preview-kind"></div>
-          <div class="preview__label">sha256</div>
+          <!-- 디버깅 묶음 U M17 (2026-09-26) — 사용자 말로: 「sha256」 → 「파일 지문 (sha256)」(약어는 한글 뜻을 먼저, DESIGN 원칙 5) -->
+          <div class="preview__label">파일 지문 (sha256)</div>
           <div class="preview__value mono" id="preview-sha"></div>
           <div class="preview__label">올린 시각</div>
           <div class="preview__value" id="preview-created"></div>
-          <div class="preview__label">권한 근거</div>
-          <div class="preview__value">서버 Authz 가 허용한 파일입니다</div>
+          <!-- 디버깅 묶음 U M17 — 「권한 근거: 서버 Authz 가 허용한 파일입니다」(개발자 말) → 사용자 말. 뜻은 같다: 열 때마다 서버가 다시 판단한다 -->
+          <div class="preview__label">볼 수 있는 까닭</div>
+          <div class="preview__value">내가 볼 수 있는 등급의 파일입니다. 열 때마다 다시 확인합니다.</div>
           <p class="preview__warn">미리보기 내용은 글자 그대로만 표시됩니다. 스크립트·서식은 실행되지 않습니다.</p>
         </aside>
       </div>

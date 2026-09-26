@@ -543,8 +543,19 @@ table.files tbody tr:hover .btn--icon[aria-label="삭제"] { color: var(--danger
      그래서 display 로 켠다·끈다 (2026-09-21) */
   display: none;
 }
-.btn--icon[aria-label]:hover::after,
 .btn--icon[aria-label]:focus-visible::after { display: block; }
+/* 올려서 보는 툴팁은 **마우스 같은 정밀한 포인터**가 주 입력인 기기에서만 (디버깅 묶음 U L4 · 2026-09-26).
+   터치 화면은 누른 뒤에도 :hover 가 그 단추에 남아, 「zip 으로 받기」를 누른 뒤 툴팁이 막대 아래 안내 문장을 가렸다(운영 폰 스크린샷).
+   터치에서는 이름이 aria-label(화면 읽기)로 남고, 키보드 초점(:focus-visible)의 툴팁은 그대로다. */
+@media (hover: hover) and (pointer: fine) {
+  .btn--icon[aria-label]:hover::after { display: block; }
+}
+/* 독립 검토 L-3 — 폴드처럼 **hover 를 알리는 터치 기기**(삼성 인터넷은 S펜 때문에 hover: hover · 주 포인터 fine 으로 알린다)도
+   누른 뒤 :hover 가 남는다. 트리 「하위 추가」 규칙(community.css)과 같이 `any-pointer: coarse` 도 보고 올려서 보는 툴팁을 끈다.
+   키보드 초점 툴팁은 그대로(:focus-visible 은 빼지 않는다). 한계: 터치 화면이 달린 노트북은 마우스로 올려도 툴팁이 안 뜬다(이름은 aria-label). */
+@media (hover: none), (any-pointer: coarse) {
+  .btn--icon[aria-label]:hover:not(:focus-visible)::after { display: none; }
+}
 /* 표 마지막 열의 단추는 툴팁이 오른쪽으로 새지 않게 오른끝을 맞춘다 */
 td.actions .btn--icon:last-child::after,
 .modal__head .btn--icon::after { left: auto; right: 0; transform: none; }
@@ -740,6 +751,70 @@ table.files tbody tr:hover .btn--icon { color: var(--fg-2); }
 #audit-body td:nth-child(1), #activity-body td:nth-child(1) { min-width: 6.5rem; }
 #users-body td:nth-child(2) { overflow-wrap: anywhere; min-width: 7rem; }                                /* 아이디 */
 /* 만료(6) · 만든 시각(8): 같은 이유로 규칙 없음 */
+
+/* 머리만 있는 표는 보이지 않는다(DESIGN 2.4 「빈 표」 · D-6) — 줄이 하나도 없으면 감싸개째 숨고 아래 「(무엇)이 없습니다」 한 줄만 남는다.
+   좁은 폭에서 빈 표의 머리 줄만 가로로 밀리던 것(내 공유 링크 · 임베드 허용 목록, 디버깅 묶음 U 2026-09-26). */
+.table-wrap:has(> table.files > tbody:empty) { display: none; }
+
+/* ─── 좁은 폭의 표 — 행을 쌓는다 (DESIGN 2.4 「좁은 폭」, 디버깅 묶음 U H1 · 2026-09-26) ──────────────
+   폰(360·412)에서 행 동작(받기·공유·복구·되살리기·만들기·회수)이 가로 스크롤 **뒤**에 있어 보이지 않았다.
+   행 동작 칸(`td.actions`)이 있는 표는 720px 미만에서 한 행을 **이름 줄 → 값 줄 → 동작 줄**로 쌓는다.
+   · 고르는 것은 마크업이 아니라 이 한 규칙이다(`:has(> tbody > tr > td.actions)`) — 화면마다 클래스를 달지 않는다.
+     창 안의 표(커뮤니티 휴지통·템플릿·이력·임베드, 계정의 토큰 창)도 같은 규칙이라 `.list`(2.13) 와 같은 모양이 된다.
+   · 이름 줄 = 첫 칸. 값 칸 앞의 작은 이름표는 표 머리 글자다 — app.js `labelStackTables` 가 머리(th)의 글자를 칸의
+     `data-label` 로 옮겨 적고 CSS 가 `attr()` 로 그린다(글자만 · 인라인 style 0). 빈 칸은 숨긴다.
+   · 머리 줄은 숨긴다 — 「모두 고르기」 체크가 든 머리 칸만 남는다.
+   · 열 아홉에 글자 단추 다섯인 계정 표는 **960px 미만**부터 같은 모양이다(폴드 펼친 화면 820 에서도 잘렸다) — 아래 두 번째 묶음.
+   ★ 한계: `:has` 를 모르는 옛 브라우저(Firefox 121·Safari 15.4 전)는 예전처럼 가로 스크롤 표로 남는다(2.15 와 같은 한계). */
+@media (max-width: 719.98px) {
+  table.files:has(> tbody > tr > td.actions),
+  table.files:has(> tbody > tr > td.actions) > tbody { display: block; }
+  table.files:has(> tbody > tr > td.actions) > thead { display: none; }
+  table.files:has(> tbody > tr > td.actions) > thead:has(input[type="checkbox"]) { display: block; }
+  table.files:has(> tbody > tr > td.actions) > thead > tr { display: flex; }
+  table.files:has(> tbody > tr > td.actions) > thead th { display: none; }
+  table.files:has(> tbody > tr > td.actions) > thead th:has(> input[type="checkbox"]) { display: flex; align-items: center; gap: 8px; flex: 1 1 100%; padding: 0 14px; }
+  table.files:has(> tbody > tr > td.actions) > tbody > tr {
+    display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px;
+    padding: 10px 14px; border-bottom: 1px solid var(--line);
+  }
+  table.files:has(> tbody > tr > td.actions) > tbody > tr:last-child { border-bottom: 0; }
+  table.files:has(> tbody > tr > td.actions) > tbody > tr:hover { background: var(--surface-2); }
+  table.files:has(> tbody > tr > td.actions) > tbody > tr > td { display: block; min-width: 0; padding: 0; border: 0; background: transparent; }
+  /* 표 모양일 때의 열 최소 폭(위 `#… td:nth-child(n)` — id 라 더 무겁다)은 쌓이면 뜻이 없다 — 짧은 값 뒤에 빈 폭이 남았다 */
+  :is(#files-body, #trash-body, #users-body) > tr > td:nth-child(n) { min-width: 0; }
+  table.files:has(> tbody > tr > td.actions) > tbody > tr > td:empty { display: none; }
+  table.files:has(> tbody > tr > td.actions) > tbody > tr > td:first-child { flex: 1 1 100%; font-weight: 500; }
+  table.files:has(> tbody > tr > td.actions) > tbody > tr > td:not(:first-child):not(.actions) { font-size: 13px; }
+  table.files:has(> tbody > tr > td.actions) > tbody > tr > td[data-label]:not(:first-child):not(.actions)::before {
+    content: attr(data-label); margin-right: 6px; color: var(--muted);
+  }
+  table.files:has(> tbody > tr > td.actions) > tbody > tr > td.actions { flex: 1 1 100%; min-width: 0; text-align: left; }
+  table.files:has(> tbody > tr > td.actions) > tbody > tr > td.actions .btn:first-child { margin-left: 0; }
+  /* 첫 칸이 짧은 번호인 표(계정 id) — 번호와 이름이 한 줄 */
+  #users-body > tr > td:first-child { flex: 0 0 auto; color: var(--muted); font-weight: 400; }
+  #users-body > tr > td:nth-child(2) { flex: 1 1 calc(100% - 4rem); font-size: 14px; font-weight: 500; }
+  #users-body > tr > td:nth-child(2)::before { content: none; }
+  #users-body > tr > td.actions { min-width: 0; }
+}
+/* 계정 표 — 같은 쌓기를 960px 미만부터(위 묶음과 같은 선언 — 표 하나라 선택자만 좁혔다) */
+@media (min-width: 720px) and (max-width: 959.98px) {
+  table.files:has(> #users-body), table.files:has(> #users-body) > tbody { display: block; }
+  table.files:has(> #users-body) > thead { display: none; }
+  #users-body > tr {
+    display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px;
+    padding: 10px 14px; border-bottom: 1px solid var(--line);
+  }
+  #users-body > tr:last-child { border-bottom: 0; }
+  #users-body > tr:hover { background: var(--surface-2); }
+  #users-body > tr > td:nth-child(n) { display: block; min-width: 0; padding: 0; border: 0; background: transparent; font-size: 13px; }
+  #users-body > tr > td:empty { display: none; }
+  #users-body > tr > td[data-label]:not(:first-child):not(:nth-child(2)):not(.actions)::before { content: attr(data-label); margin-right: 6px; color: var(--muted); }
+  #users-body > tr > td:first-child { flex: 0 0 auto; color: var(--muted); }
+  #users-body > tr > td:nth-child(2) { flex: 1 1 calc(100% - 4rem); font-size: 14px; font-weight: 500; }
+  #users-body > tr > td.actions { flex: 1 1 100%; min-width: 0; text-align: left; }
+  #users-body > tr > td.actions .btn:first-child { margin-left: 0; }
+}
 
 .table-foot {
   display: flex;
@@ -1215,6 +1290,18 @@ dialog.modal--upload .upload-status { font-size: 14px; }
   dialog.modal--stack .modal__head { padding: 14px 16px; gap: 10px; }
   dialog.modal--stack .modal__body { padding: 16px; }
   dialog.modal--stack .modal__foot { padding: 12px 16px; flex-wrap: wrap; }
+}
+/* 720px 미만 — ✕ 는 언제나 머리 첫 줄 오른끝 (디버깅 묶음 U M4 · 2026-09-26).
+   제목 옆 설명(`p.muted`·`.modal__meta`)이 길면 둘째 줄로 내려가고, 그 뒤의 ✕ 가 **혼자 셋째 줄**로 밀렸다
+   (임베드 허용 목록·휴지통·많이 읽힌 문서 창, 412·360). 머리 오른쪽에 ✕ 자리(32px + 간격)를 비워 두고 거기에 붙인다.
+   제목·설명은 남은 폭에서 줄을 바꾼다(`min-width: 0`). 넓은 화면은 위 규칙 그대로다.
+   이 자리(520 규칙 **뒤**)에 두는 이유: `dialog.modal--stack .modal__head` 의 좁은 여백(14px 16px)과 같은 무게라 뒤에 와야 이긴다. */
+@media (max-width: 719.98px) {
+  dialog.modal > .modal__head { position: relative; padding-right: 56px; }
+  .modal__head > .modal__title, .modal__head > .modal__meta, .modal__head > p { min-width: 0; }
+  /* 마크 + 세로 묶음 꼴(올리기·새 폴더·파일 고치기): 묶음이 마크 옆 남은 폭을 쓴다 — 16rem 기준 폭 때문에 마크만 한 줄을 차지했다 */
+  .modal__head > .preview__headtext { flex: 1 1 0; }
+  .modal__head > .btn--icon:last-child { position: absolute; top: 12px; right: 12px; margin: 0; }
 }
 
 /* ─── 위키 (14단계, F-21) — 차례와 글 한 편 ────────────────────────

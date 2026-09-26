@@ -457,7 +457,7 @@ expect "guest01(이름 없음) t-box 홈 → 200" "200" "$(page_html /tbox/ clau
 contains "  아이디만" 'userchip__name">claude_guest01<' "$(cat "$WORK/html")"
 lacks "  「(claude_guest01)」 괄호가 없다" "(claude_guest01)" "$(cat "$WORK/html")"
 expect "employee02 런처(/) → 200" "200" "$(page_html / claude_employee02)"
-contains "  런처의 「이름 (아이디) · 역할」" "$N2 (claude_employee02) · Employee" "$(cat "$WORK/html")"
+contains "  런처의 「이름 (아이디) · 역할」(역할은 한글 — 디버깅 묶음 U M7)" "$N2 (claude_employee02) · 직원" "$(cat "$WORK/html")"
 expect "employee02 「내 계정」 → 200" "200" "$(page_html /tbox/settings claude_employee02)"
 contains "  이름 칸(보기만)" ">$N2<" "$(cat "$WORK/html")"
 page_html /tbox/settings claude_guest01 > /dev/null

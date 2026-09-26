@@ -45,7 +45,10 @@ if (is_array($launcherUser)) {
         isset($launcherUser['display_name']) && is_string($launcherUser['display_name']) ? $launcherUser['display_name'] : null,
         (string) ($launcherUser['username'] ?? '')
     );
+    // 역할은 한글로 보인다(DESIGN 5장 · 디버깅 묶음 U M7 — 셸 `shell_top.php` 와 같은 표, 값은 그대로)
+    $launcherRoleNames = ['Admin' => '관리자', 'Manager' => '팀장', 'Employee' => '직원', 'Guest' => '손님'];
     $launcherRoleRaw = (string) ($launcherUser['role'] ?? '');
+    $launcherRoleRaw = $launcherRoleNames[$launcherRoleRaw] ?? $launcherRoleRaw;
     if ($launcherNameRaw !== '') {
         $launcherWho = $launcherEsc(
             $launcherRoleRaw === '' ? $launcherNameRaw : $launcherNameRaw . ' · ' . $launcherRoleRaw

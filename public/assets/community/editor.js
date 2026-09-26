@@ -40,13 +40,13 @@ import { inputRules, textblockTypeInputRule, InputRule } from './vendor/pm/prose
 import { dropCursor } from './vendor/pm/prosemirror-dropcursor.js?v=5823578fa61a';
 import { gapCursor } from './vendor/pm/prosemirror-gapcursor.js?v=5823578fa61a';
 
-import { renderDoc, embedHost } from './doc-render.js?v=2b22a110e917';
-import { createDatabaseView } from './database.js?v=2b22a110e917';
-import { bindTemplateGallery, createTemplateSave } from './templates.js?v=2b22a110e917';
-import { bindEmbedAdmin } from './embeds.js?v=2b22a110e917';
-import { bindPopular } from './popular.js?v=2b22a110e917';
-import { schema, toDoc, fromDoc, uuid4, colorAllowed, schemeOkForEditor, COLORS, BLOCK_TYPES } from './editor-schema.js?v=2b22a110e917';
-import { createDrafts } from './drafts.js?v=2b22a110e917';
+import { renderDoc, embedHost } from './doc-render.js?v=dc121e88d472';
+import { createDatabaseView } from './database.js?v=dc121e88d472';
+import { bindTemplateGallery, createTemplateSave } from './templates.js?v=dc121e88d472';
+import { bindEmbedAdmin } from './embeds.js?v=dc121e88d472';
+import { bindPopular } from './popular.js?v=dc121e88d472';
+import { schema, toDoc, fromDoc, uuid4, colorAllowed, schemeOkForEditor, COLORS, BLOCK_TYPES } from './editor-schema.js?v=dc121e88d472';
+import { createDrafts } from './drafts.js?v=dc121e88d472';
 
 /* ─── 주소와 공통 도우미 ─────────────────────────────────────── */
 
@@ -87,6 +87,15 @@ function readJson(response) {
 function personLabel(displayName, username) {
   const shared = typeof window.qarediPersonLabel === 'function' ? window.qarediPersonLabel : null;
   return shared ? shared(displayName, username) : String(username === null || username === undefined ? '' : username);
+}
+
+/**
+ * 역할의 화면 글자 — 한글(디버깅 묶음 U M7 · DESIGN 5장). 셸(app.js)의 `window.qarediRoleLabel` 한 벌을 쓰고, 셸이 없는 날에는
+ * 받은 글자 그대로다. 값(`role`)을 비교하는 코드가 아니다 — 보이는 글자만 바꾼다.
+ */
+function roleText(role) {
+  const shared = typeof window.qarediRoleLabel === 'function' ? window.qarediRoleLabel : null;
+  return shared ? shared(role) : String(role === null || role === undefined ? '' : role);
 }
 
 function errorMessage(data) {
@@ -319,8 +328,14 @@ function paintVisibility(el, visibility) {
   show(el, true);
 }
 
-/** 트리·카드 줄에 붙일 작은 배지 하나. */
+/**
+ * 트리·카드 줄에 붙일 작은 배지 하나.
+ * **기본값(비공개)은 그리지 않는다** — 내 공간의 페이지는 처음에 비공개라, 트리 거의 모든 줄에 빨간 「비공개」가 붙어
+ * 정작 넓게 연 페이지(팀·사내)가 눈에 띄지 않았다(디버깅 묶음 U M11 · 2026-09-26). 줄에는 **기본과 다른 것**만 보인다.
+ * 페이지 화면 속성 줄의 「공개 범위」 배지(`paintVisibility`)는 그대로 비공개도 보인다 — 거기는 그 페이지의 값을 묻는 자리다.
+ */
 function visibilityBadge(visibility) {
+  if (visibility === 'private') { return null; }
   const entry = VISIBILITY_LABELS[visibility];
   if (!entry) { return null; }
   const span = document.createElement('span');
@@ -1331,7 +1346,10 @@ function initHome() {
 
     const mark = spaceKind === 'team' ? null : visibilityBadge(node.visibility);
 
-    const add = document.createElement('button');
+    /* 독립 검토 L-1 — 「하위 추가」는 **쓸 수 있는 사람에게만** 만든다(`/api/me` 의 can_community_write — 위 `meCanWrite`).
+       손님에게는 줄에 올리면 나타났다가 누르면 권한 없음만 나오던 단추다. 숨김은 편의이고 `POST /api/pages` 는 정책이 다시 막는다. */
+    const add = meCanWrite ? document.createElement('button') : null;
+    if (add) {
     add.type = 'button';
     add.className = 'btn btn--small btn--quiet page-tree__add';
     add.textContent = '하위 추가';
@@ -1353,6 +1371,7 @@ function initHome() {
         })
         .catch(() => { setText(msg, GENERIC_ERROR); add.disabled = false; });
     });
+    }
 
     row.appendChild(caret);
     row.appendChild(link);
@@ -1366,7 +1385,7 @@ function initHome() {
       badge.textContent = '하위 ' + String(kidCount);
       row.appendChild(badge);
     }
-    row.appendChild(add);
+    if (add) { row.appendChild(add); }
     return row;
   }
 
@@ -2021,7 +2040,7 @@ function bindTrash(onRestored) {
     tr.appendChild(kids);
 
     const when = document.createElement('td');
-    when.textContent = shortWhen(page.deleted_at);
+    setWhenParts(when, page.deleted_at);   // 디버깅 묶음 U M2
     when.setAttribute('title', String(page.deleted_at));
     tr.appendChild(when);
 
@@ -2092,6 +2111,27 @@ function bindTrash(onRestored) {
 function shortWhen(value) {
   if (typeof value !== 'string' || value === '') { return ''; }
   return value.slice(0, 16).replace('T', ' ');
+}
+
+/**
+ * 표 칸의 시각 — 날짜와 시각을 **두 조각**(`.nowrap` 둘 + 빈칸)으로 (디버깅 묶음 U M2 · 2026-09-26, t-box `addWhenCell` 과 같은 방식).
+ * 좁은 칸에서 날짜의 하이픈이 줄바꿈 자리가 되어 「2026-」/「09-26」/「11:54」 세 줄로 갈라졌다 — 이제 많아야 두 줄이다.
+ * 글자(textContent)는 전과 같다. 요소로 만들고 글자는 textContent 로만 넣는다.
+ */
+function setWhenParts(el, value) {
+  const text = shortWhen(value);
+  const m = text.match(/^(\S+) (\S+)$/);   // String#match — 보안 린트의 코드 실행 함수 이름 규칙(S-09)에 걸리지 않게
+  el.textContent = '';
+  if (!m) { el.textContent = text; return; }
+  const day = document.createElement('span');
+  day.className = 'nowrap';
+  day.textContent = m[1];
+  const clock = document.createElement('span');
+  clock.className = 'nowrap';
+  clock.textContent = m[2];
+  el.appendChild(day);
+  el.appendChild(document.createTextNode(' '));
+  el.appendChild(clock);
 }
 
 /* ─── 새 페이지 만들기 (두 화면 모두의 단추) ─────────────────── */
@@ -2313,7 +2353,7 @@ function initBoard() {
     tr.appendChild(who);
 
     const when = document.createElement('td');
-    when.textContent = shortWhen(item.posted_at);
+    setWhenParts(when, item.posted_at);   // 디버깅 묶음 U M2
     when.setAttribute('title', String(item.posted_at));
     tr.appendChild(when);
 
@@ -3883,6 +3923,7 @@ function initPage() {
   const deleteButton = document.getElementById('page-delete');
   const saveState = document.getElementById('page-save-state');
   const editorsBadge = document.getElementById('page-editors');
+  const pageStateLine = document.getElementById('page-state');   // 디버깅 묶음 U H5 — 위 두 배지를 담는 제목 아래 줄
   const childrenWrap = document.getElementById('page-children-wrap');
   const childrenBox = document.getElementById('page-children');
   const childrenCount = document.getElementById('page-children-count');
@@ -3958,6 +3999,13 @@ function initPage() {
     saveState.className = 'badge' + (kind ? ' ' + kind : '');
     setText(saveState, text);
     show(saveState, text !== '');
+    syncPageState();
+  }
+
+  /* 디버깅 묶음 U H5 — 상태 배지 줄(`#page-state`, 제목 아래)은 보이는 배지가 하나라도 있을 때만 보인다 */
+  function syncPageState() {
+    if (!pageStateLine) { return; }
+    show(pageStateLine, Array.prototype.some.call(pageStateLine.children, (el) => !el.hidden));
   }
 
   /* ── 쓰던 글 임시저장 (Q:F-4 B1-2 설계 3·4·6) ──
@@ -3985,6 +4033,7 @@ function initPage() {
       saveState.parentNode.insertBefore(draftBadge, saveState.nextSibling);
     }
     show(draftBadge, want);
+    syncPageState();
   }
 
   function titleNow() {
@@ -4258,7 +4307,9 @@ function initPage() {
       state.doc = page.doc;
       state.version = page.doc_version;
       state.title = page.title;
-      state.canEdit = result.data.can_edit === true;
+      // 디버깅 묶음 U H3 — 쓰는 단추는 페이지별 값과 `/api/me` 의 쓰기 자격이 **둘 다** 참일 때만(위 `meCanWrite`)
+      const w = meCanWrite;
+      state.canEdit = w && result.data.can_edit === true;
       state.childTitles = result.data.child_titles && typeof result.data.child_titles === 'object'
         ? result.data.child_titles
         : {};
@@ -4269,13 +4320,13 @@ function initPage() {
       drawBacklinks(Array.isArray(result.data.backlinks) ? result.data.backlinks : []);
       state.visibility = typeof page.visibility === 'string' ? page.visibility : 'private';
       state.space = result.data.space || null;
-      state.canSetVisibility = result.data.can_set_visibility === true;
+      state.canSetVisibility = w && result.data.can_set_visibility === true;
       state.status = typeof page.status === 'string' ? page.status : null;
-      state.canSetProperties = result.data.can_set_properties === true;
+      state.canSetProperties = w && result.data.can_set_properties === true;
       state.owner = page.owner && typeof page.owner === 'object' ? page.owner : null;
-      state.canManage = result.data.can_manage === true;
-      state.canShare = result.data.can_share === true;
-      state.canHandover = result.data.can_handover === true;
+      state.canManage = w && result.data.can_manage === true;
+      state.canShare = w && result.data.can_share === true;
+      state.canHandover = w && result.data.can_handover === true;
       state.shareLevel = typeof result.data.share_level === 'string' ? result.data.share_level : null;
       state.subtreeCount = typeof result.data.subtree_count === 'number' ? result.data.subtree_count : null;
       state.board = result.data.board && typeof result.data.board === 'object' ? result.data.board : null;
@@ -4283,12 +4334,12 @@ function initPage() {
       state.tags = Array.isArray(result.data.tags) ? result.data.tags : [];
       state.viewCount = typeof result.data.view_count === 'number' ? result.data.view_count : 0;
       state.resolved = result.data.resolved === true;
-      state.canTag = result.data.can_tag === true;
-      state.canPublish = result.data.can_publish === true;
-      state.canUnpublish = result.data.can_unpublish === true;
-      state.canHide = result.data.can_hide === true;
-      state.canResolve = result.data.can_resolve === true;
-      state.canComment = result.data.can_comment === true;
+      state.canTag = w && result.data.can_tag === true;
+      state.canPublish = w && result.data.can_publish === true;
+      state.canUnpublish = w && result.data.can_unpublish === true;
+      state.canHide = w && result.data.can_hide === true;
+      state.canResolve = w && result.data.can_resolve === true;
+      state.canComment = w && result.data.can_comment === true;
       state.canViewReads = result.data.can_view_reads === true;
       drawVisibility();
       drawProps();
@@ -4805,7 +4856,7 @@ function initPage() {
       }
       setText(commentsCount, String(result.data.count || 0) + '개');
       show(commentsEmpty, all.length === 0);
-      state.canComment = result.data.can_comment === true;
+      state.canComment = meCanWrite && result.data.can_comment === true;
       show(commentForm, state.canComment);
       show(commentsWrap, true);
       if (window.location.hash.indexOf('#comment-') === 0) {
@@ -5036,7 +5087,7 @@ function initPage() {
     const head = document.createElement('div');
     head.className = 'list__head';
     const who = document.createElement('strong');
-    who.textContent = personLabel(share.display_name, share.username) + ' · ' + share.role
+    who.textContent = personLabel(share.display_name, share.username) + ' · ' + roleText(share.role)
       + (share.is_active === false ? ' (쓰지 않는 계정)' : '');
     head.appendChild(who);
     const level = shareBadge(share.level);
@@ -5127,7 +5178,7 @@ function initPage() {
     button.type = 'button';
     button.className = 'btn btn--quiet btn--small';
     button.setAttribute('data-candidate', person.username);
-    button.textContent = personLabel(person.display_name, person.username) + ' · ' + person.role + (label ? ' — ' + label : '');
+    button.textContent = personLabel(person.display_name, person.username) + ' · ' + roleText(person.role) + (label ? ' — ' + label : '');
     button.addEventListener('click', () => onPick(person, button));
     li.appendChild(button);
     return li;
@@ -5301,7 +5352,7 @@ function initPage() {
           handoverList.appendChild(candidateItem(person, (who) => {
             handoverTo = who.username;
             handoverToLabel = personLabel(who.display_name, who.username);
-            setText(handoverPicked, '받는 사람: ' + handoverToLabel + ' · ' + who.role);
+            setText(handoverPicked, '받는 사람: ' + handoverToLabel + ' · ' + roleText(who.role));
             for (const b of handoverList.querySelectorAll('[data-candidate]')) {
               b.setAttribute('aria-pressed', b.getAttribute('data-candidate') === who.username ? 'true' : 'false');
             }
@@ -5458,7 +5509,7 @@ function initPage() {
     tr.appendChild(who);
 
     const when = document.createElement('td');
-    when.textContent = shortWhen(entry.at);
+    setWhenParts(when, entry.at);   // 디버깅 묶음 U M2
     when.setAttribute('title', String(entry.at));
     tr.appendChild(when);
 
@@ -5501,7 +5552,7 @@ function initPage() {
       if (result.status === 401) { toLogin(); return; }
       if (result.status !== 200) { setText(historyMsg, errorMessage(result.data)); return; }
       setText(historyMsg, '');
-      historyCanEdit = result.data.can_edit === true;
+      historyCanEdit = meCanWrite && result.data.can_edit === true;   // 디버깅 묶음 U H3
       const list = Array.isArray(result.data.versions) ? result.data.versions : [];
       clear(historyVersionsBody);
       for (const entry of list) { historyVersionsBody.appendChild(historyRow(entry)); }
@@ -5672,10 +5723,11 @@ function initPage() {
 
   function showEditors(editors) {
     const list = Array.isArray(editors) ? editors : [];
-    if (list.length === 0) { show(editorsBadge, false); return; }
+    if (list.length === 0) { show(editorsBadge, false); syncPageState(); return; }
     const names = list.map((e) => personLabel(e.display_name, e.username)).join(', ');
     setText(editorsBadge, names + ' 님도 보는 중');
     show(editorsBadge, true);
+    syncPageState();
   }
 
   /**
@@ -6433,6 +6485,14 @@ function loadMe() {
 
 let booted = false;
 
+/**
+ * 디버깅 묶음 U H3 (2026-09-26) — 이 사람이 커뮤니티에 **쓸 수 있는 역할인가**(`/api/me` 의 `can_community_write` — 서버가
+ * 라우트 정책 `community.write` 와 같은 함수로 정한 값). 페이지 화면은 창구가 준 페이지별 can_*(편집·넘기기·공개 범위·태그…)와
+ * **둘 다** 참일 때만 단추를 보인다 — 손님이 자기 「시작하기」 페이지에서 누르면 권한 없음만 나오던 단추들이다.
+ * 값이 없으면(옛 창구) 페이지별 값만 따른다. 숨김은 편의이고 막는 것은 서버다 (PRD S-01).
+ */
+let meCanWrite = true;
+
 function boot() {
   if (booted) { return; }
   booted = true;
@@ -6455,6 +6515,8 @@ function boot() {
         drafts = createDrafts(typeof me.username === 'string' ? me.username : '', loadDraftKey);
         // 라운드 B — 일괄 작업의 「이어서 하기」가 같은 계정인지 견줄 아이디
         meUsername = typeof me.username === 'string' ? me.username : null;
+        // 디버깅 묶음 U H3 — 쓰기 자격(서버 판정 값). false 일 때만 끈다
+        meCanWrite = me.can_community_write !== false;
         drafts.sweep();
         bindNewPage();
         // 개발 대기열 6 — 사이드바 「즐겨찾기」「최근」(세 화면 공통). 페이지 화면의 「최근」은 그 페이지를 연 뒤 initPage 가 받는다.

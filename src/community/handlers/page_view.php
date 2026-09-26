@@ -47,13 +47,19 @@ require __DIR__ . '/../../views/shell_top.php';
         <!-- 제목은 창구가 준 값을 editor.js 가 textContent 로 넣는다(편집 모드에서는 입력 칸). -->
         <h1 id="page-title" class="page-head__title">페이지</h1>
         <p id="page-sub" class="page-head__sub"></p>
+        <!-- 디버깅 묶음 U H5 (2026-09-26 — 사용자 지적 재발 「편집 끝」이 둘째 줄) — 상태 배지(함께 보는 사람 · 저장 중/저장됨/저장 못 함 ·
+             임시저장 못 함)는 머리 **동작 줄이 아니라 제목 아래 한 줄**에 둔다. 동작 줄은 사용 방법 · 이력 · 더보기 · 편집(끝) 넷이라
+             360·412 에서도 한 줄이다(DESIGN 2.9). 배지가 하나도 없으면 줄째 숨는다(editor.js `syncPageState`). 새 클래스 0 —
+             `.page-head__sub`(글자) + `.toolbar`(배지 사이 간격). 글자는 전부 editor.js 가 textContent 로. -->
+        <p id="page-state" class="page-head__sub toolbar" aria-live="polite" hidden>
+          <span id="page-editors" class="badge" hidden></span>
+          <span id="page-save-state" class="badge" hidden></span>
+        </p>
       </div>
       <div class="page-head__actions">
         <button type="button" class="btn btn--quiet" data-help-open>
           <span class="icon" data-icon="help"></span><span>사용 방법</span>
         </button>
-        <span id="page-editors" class="badge" hidden></span>
-        <span id="page-save-state" class="badge" hidden></span>
         <!-- 「이력」 (4-C) — 이 페이지를 **볼 수 있는 사람이면 누구나** 연다(읽기 판정과 같은 자격),
              되돌리기 단추만 고칠 수 있는 사람에게 보인다. 늘 보이는 outline 하나(DESIGN 2.9 — 머리 단추 넷까지). -->
         <button id="page-history" class="btn btn--quiet" type="button" aria-haspopup="dialog">

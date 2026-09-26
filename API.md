@@ -107,6 +107,7 @@ curl -s -c jar -H 'Content-Type: application/json' \
 |---|---|
 | 인증 | 세션 쿠키 |
 | 응답 | `200` — 업로드 도구가 쓰는 키: `username`, `role`, `team_id`, **`csrf_token`**, **`upload_levels`**(내가 올릴 수 있는 접근 등급 목록, 예 `["public","internal","team"]`), `next`. 그 밖의 `can_*`·`acting*` 등은 화면용 편의 값이다 |
+| 커뮤니티 쓰기 자격 (2026-09-26 디버깅 묶음 U) | `can_community_write` — `true`/`false`. 커뮤니티에 **쓸 수 있는 역할인가**(새 페이지·템플릿·편집·댓글 등). 값은 커뮤니티 쓰기 라우트 정책 `community.write` 가 부르는 함수(`Authz::canCommunityWrite` — 권한 매트릭스의 올리기 자격, Guest 거짓)를 그대로 부른 결과다. 다른 `can_*` 와 같은 **화면 편의 값**이며 권한이 아니다 — 쓰는 창구는 전부 정책 `community.write` 와 행 단위 판정이 매 요청 다시 막는다(손님이 `POST /community/api/pages` → `403`) |
 | 실패 | `401 {"error":"로그인이 필요합니다"}` |
 
 ```bash

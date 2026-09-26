@@ -555,6 +555,14 @@ details.page-tree__node[open] > summary > .page-tree__row > .page-tree__caret { 
 #history-versions-body td:nth-child(3) { overflow-wrap: anywhere; min-width: 6rem; }
 #history-versions-body td.actions { min-width: 9.5rem; }
 
+/* 좁은 폭(720px 미만)에서는 행이 쌓인다(DESIGN 2.4 「좁은 폭」 — app.css 한 규칙). 이력 표는 첫 칸이 짧은 판 번호라
+   번호와 제목을 한 줄에 둔다(계정 표의 id 와 같은 방식 · 디버깅 묶음 U H1). */
+@media (max-width: 719.98px) {
+  #history-versions-body > tr > td:first-child { flex: 0 0 auto; color: var(--muted); font-weight: 400; }
+  #history-versions-body > tr > td:nth-child(2) { flex: 1 1 calc(100% - 6rem); font-weight: 500; }
+  #history-versions-body > tr > td:nth-child(2)::before { content: none; }
+}
+
 /* 휴지통: 제목 · 공간 · 함께 지운 하위 · 지운 때 · 동작 */
 #trash-body td:nth-child(1) { overflow-wrap: anywhere; min-width: 9rem; }
 #trash-body td:nth-child(2) { overflow-wrap: anywhere; min-width: 6rem; }
@@ -761,6 +769,11 @@ details.page-tree__node[open] > summary > .page-tree__row > .page-tree__caret { 
 .doc-table-wrap { max-width: 100%; overflow-x: auto; margin: 8px 0; }
 .doc-table { border-collapse: collapse; min-width: 50%; font-size: 14px; }
 .doc-table__cell { border: 1px solid var(--line); padding: 6px 10px; text-align: left; vertical-align: top; }
+/* 디버깅 묶음 U H4 (2026-09-26) — 폰에서 문서 안 표가 **한 글자씩 세로로** 쪼개졌다(「김/영/업」·「담/당」).
+   문서 본문(`.doc`)의 `overflow-wrap: anywhere` 가 칸의 최소 폭을 한 글자로 계산하게 해, 표가 화면 폭에 맞추려고 칸을 짓눌렀다.
+   표 칸만 어절 단위(`keep-all`) · 낱말 안에서 자르지 않게(`normal`) 하고 칸마다 최소 폭을 준다 — 그래도 넓으면 표만
+   감싸개(`.doc-table-wrap`, 위)가 가로로 밀린다. 본문 글·다른 블록은 그대로다. 편집기 안 표(`.atom-grid`)는 입력 칸이라 제외. */
+.doc-table:not(.atom-grid) .doc-table__cell { word-break: keep-all; overflow-wrap: normal; min-width: 6rem; }
 th.doc-table__cell { background: var(--surface-2); font-weight: 600; }
 
 /* 그림 — 폭 넷. 그림 주소는 t-box 창구이고 못 보는 사람에게 t-box 가 403 을 준다 */

@@ -20,6 +20,14 @@ declare(strict_types=1);
  * @var list<string>        $params 경로 변수 없음
  */
 
+/*
+ * 디버깅 묶음 U H3 (2026-09-26) — 쓰는 단추(「새 페이지」 · 「템플릿에서 만들기」 · 「선택하기」)는 **쓸 수 있는 역할**에게만 그린다.
+ * 값은 `/api/me` 의 `can_community_write` 와 같은 함수(`Authz::canCommunityWrite` — 라우트 정책 `community.write` 가 부르는 그 함수)를
+ * 그대로 부른 결과다. 숨김은 편의일 뿐 막는 것은 서버다: 단추를 되살려 눌러도 쓰는 창구는 전부 `community.write` 정책이 403 으로 막는다
+ * (PRD S-01). 손님(Guest)에게는 누르면 「권한 없음」만 나오던 단추들이다(디자인 점검 2026-09-26 12:13).
+ */
+$homeWriteHidden = Authz::canCommunityWrite($user) ? '' : ' hidden';
+
 $pageTitle   = '내 공간';
 $activeNav   = 'community-home';
 $pageKey     = 'community-home';
@@ -45,7 +53,7 @@ require __DIR__ . '/../../views/shell_top.php';
           <summary class="btn btn--quiet"><span class="icon" data-icon="chevron"></span>더보기</summary>
           <div class="menu__list">
             <!-- 「템플릿에서」 (7-B, C:F-31) — 목록은 창구 `GET /api/templates` 가 주는 것만(내 것 · 내 팀 · 사이트 기본). -->
-            <button id="community-template-new" class="menu__item" type="button" aria-haspopup="dialog">
+            <button id="community-template-new" class="menu__item" type="button" aria-haspopup="dialog"<?= $homeWriteHidden ?>>
               <span class="icon" data-icon="files"></span>템플릿에서 만들기
             </button>
             <!-- 「휴지통」 (4-C). 목록은 창구 `GET /api/me/trash` 가 주는 것만이고, 화면에는
@@ -63,7 +71,7 @@ require __DIR__ . '/../../views/shell_top.php';
             </button>
           </div>
         </details>
-        <button id="community-new" class="btn" type="button">
+        <button id="community-new" class="btn" type="button"<?= $homeWriteHidden ?>>
           <span class="icon" data-icon="plus"></span>새 페이지
         </button>
       </div>
@@ -95,7 +103,7 @@ require __DIR__ . '/../../views/shell_top.php';
       <span id="community-count" class="muted"></span>
       <!-- 개발 대기열 6 · Q:F-3a 라운드 B — 「선택」 모드(지시서 1.3). 누르면 트리 줄마다 체크가 붙고(누른 상태 aria-pressed), 다시 누르거나
            Esc 면 끝난다. 찾기(카드 목록)에서는 쓰지 않는다 — 찾기를 시작하면 모드가 끝난다. 공간을 바꾸면 화면이 다시 열려 풀린다(M-4). -->
-      <button id="community-select" class="btn btn--quiet" type="button" aria-pressed="false" aria-controls="community-tree">
+      <button id="community-select" class="btn btn--quiet" type="button" aria-pressed="false" aria-controls="community-tree"<?= $homeWriteHidden ?>>
         <span class="icon" data-icon="check"></span><span id="community-select-label">선택하기</span>
       </button>
     </div>

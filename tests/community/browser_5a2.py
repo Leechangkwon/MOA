@@ -196,13 +196,14 @@ with sync_playwright() as pw:
     page.wait_for_timeout(600)
     step("3 치기 전 안내 「아이디나 이름을 입력하세요」 보임 · 후보 목록 숨김",
          page.locator("#share-hint").is_visible() and not page.locator("#share-candidates").is_visible())
-    step("3 공유한 사람 줄 = 「%s · Employee」" % label(N2, "claude_employee02"),
-         (label(N2, "claude_employee02") + " · Employee") in page.locator("#share-list").inner_text(),
+    # 디버깅 묶음 U M7(2026-09-26) — 역할은 한글로 보인다(값은 그대로)
+    step("3 공유한 사람 줄 = 「%s · 직원」" % label(N2, "claude_employee02"),
+         (label(N2, "claude_employee02") + " · 직원") in page.locator("#share-list").inner_text(),
          page.locator("#share-list").inner_text()[:80])
     page.fill("#share-search", "관리")
     page.wait_for_selector('#share-candidates [data-candidate="claude_manager01"]', timeout=5000)
     cand = page.locator('#share-candidates [data-candidate="claude_manager01"]').inner_text()
-    step("3 **이름**으로 찾은 후보 「박관리 (claude_manager01) · Manager — 추가」", cand.startswith("박관리 (claude_manager01) · Manager"), cand)
+    step("3 **이름**으로 찾은 후보 「박관리 (claude_manager01) · 팀장 — 추가」", cand.startswith("박관리 (claude_manager01) · 팀장"), cand)
     step("3 치면 안내가 사라진다", not page.locator("#share-hint").is_visible())
     shots(page, "3-share-dialog")
     page.fill("#share-search", " ")
@@ -221,8 +222,8 @@ with sync_playwright() as pw:
     page.click('#handover-candidates [data-candidate="claude_employee02"]')
     page.wait_for_timeout(200)
     picked = page.locator("#handover-picked").inner_text()
-    step("3 고른 받는 사람 「받는 사람: %s · Employee」" % label(N2, "claude_employee02"),
-         picked == "받는 사람: %s · Employee" % label(N2, "claude_employee02"), picked)
+    step("3 고른 받는 사람 「받는 사람: %s · 직원」" % label(N2, "claude_employee02"),
+         picked == "받는 사람: %s · 직원" % label(N2, "claude_employee02"), picked)
     shots(page, "3-handover")
     page.locator("#handover-dialog [data-handover-close]").first.click()
     page.wait_for_timeout(300)

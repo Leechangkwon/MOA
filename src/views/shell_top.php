@@ -108,8 +108,26 @@ $shellVersion = htmlspecialchars(Changelog::version(), ENT_QUOTES, 'UTF-8');
  */
 $shellActing = ($shellUser['acting'] ?? false) === true;
 
+/*
+ * 디버깅 묶음 U H3 (2026-09-26) — 사이드바 「새 페이지」(커뮤니티)는 **쓸 수 있는 역할**에게만 보인다.
+ * 값은 `/api/me` 의 `can_community_write` 와 같은 함수(`Authz::canCommunityWrite` — 라우트 정책 `community.write` 가 부르는 그 함수)를
+ * 그대로 부른 결과이고, 숨김은 편의다: 단추를 되살려 눌러도 `POST /community/api/pages` 는 정책이 403 으로 막는다 (PRD S-01).
+ * 서버가 처음부터 그리므로 손님 화면에 단추가 잠깐 보였다 사라지는 일이 없다.
+ */
+$shellCommunityWrite = $shellUser !== [] && Authz::canCommunityWrite($shellUser);
+
+/*
+ * 역할의 **화면 표기** — 한글로 보이고 원래 값은 title 로 (DESIGN 5장 「등급·역할」, 디버깅 묶음 U M7 · 2026-09-26).
+ * 값(세션·DB·창구의 `role`)은 그대로다 — 여기는 보이는 글자만 바꾼다. 표에 없는 값은 받은 그대로 보인다.
+ * 새 PHP 함수를 만들지 않고 이 파일 안의 배열로 둔다(반영 직후 opcache 가 옛 파일을 쥐는 2초 동안 새 함수를 부르는 화면이
+ * 500 이 난 적이 있다 — DESIGN 2.12, 2026-09-25). app.js `ROLE_LABELS` 와 같은 표다.
+ */
+$shellRoleNames = ['Admin' => '관리자', 'Manager' => '팀장', 'Employee' => '직원', 'Guest' => '손님'];
+$shellRoleRaw   = (string) ($shellUser['role'] ?? '');
+
 /** 사용자 칩에 보이는 역할 — 언제나 **유효 역할**이고, 보는 중이면 그 사실을 함께 적는다 */
-$shellRoleText = (string) ($shellUser['role'] ?? '');
+$shellRoleText = $shellRoleNames[$shellRoleRaw] ?? $shellRoleRaw;
+$shellRoleTitle = htmlspecialchars($shellRoleRaw, ENT_QUOTES, 'UTF-8');
 if ($shellActing) {
     $shellRoleText .= ' (보기)';
 }
@@ -122,7 +140,7 @@ $shellRole = htmlspecialchars($shellRoleText, ENT_QUOTES, 'UTF-8');
 $shellActParts  = [];
 $shellActActual = '';
 if ($shellActing) {
-    $shellActParts[] = (string) ($shellUser['role'] ?? '');
+    $shellActParts[] = $shellRoleNames[$shellRoleRaw] ?? $shellRoleRaw;
 
     $shellActTeamId = $shellUser['team_id'] ?? null;
     if ($shellActTeamId !== null && $shellActTeamId !== '') {
@@ -135,8 +153,9 @@ if ($shellActing) {
         }
     }
 
+    $shellActRealRole = (string) ($shellUser['real_role'] ?? '');
     $shellActActual = htmlspecialchars(
-        (string) ($shellUser['username'] ?? '') . '(' . (string) ($shellUser['real_role'] ?? '') . ')',
+        (string) ($shellUser['username'] ?? '') . '(' . ($shellRoleNames[$shellActRealRole] ?? $shellActRealRole) . ')',
         ENT_QUOTES,
         'UTF-8'
     );
@@ -320,7 +339,7 @@ if (!headers_sent()) {
             <span class="app-menu__avatar" aria-hidden="true"><?= $shellInitial ?></span>
             <span class="app-menu__text">
               <span class="app-menu__name"><?= $shellName ?></span>
-              <span class="app-menu__desc"><?= $shellRole ?></span>
+              <span class="app-menu__desc" title="<?= $shellRoleTitle ?>"><?= $shellRole ?></span>
             </span>
           </div>
           <nav class="nav" aria-label="계정">
@@ -420,7 +439,7 @@ if (!headers_sent()) {
       </a>
       <!-- 내 페이지 트리 (5-A′) — editor.js 가 `?tree=1` 의 답으로 채운다 -->
       <div id="nav-community-tree" class="nav-tree-box"></div>
-      <button id="nav-community-new" class="nav__item" type="button">
+      <button id="nav-community-new" class="nav__item" type="button"<?= $shellCommunityWrite ? '' : ' hidden' ?>>
         <span class="icon" data-icon="plus"></span><span>새 페이지</span>
       </button>
       <!-- 팀 공간 (4-B) — 항목은 `editor.js` 가 창구 `GET /community/api/spaces` 의 답으로
@@ -537,7 +556,7 @@ if (!headers_sent()) {
       <span class="userchip__avatar" aria-hidden="true"><?= $shellInitial ?></span>
       <span class="userchip__text">
         <span class="userchip__name"><?= $shellName ?></span>
-        <span class="userchip__role"><?= $shellRole ?></span>
+        <span class="userchip__role" title="<?= $shellRoleTitle ?>"><?= $shellRole ?></span>
       </span>
     </div>
   </aside>

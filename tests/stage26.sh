@@ -690,13 +690,14 @@ if py_secret CK_ADMIN CK_EMP -- python3 "$WORK/shots.py" "$BASE" "$UA" "$OUT" > 
   jget() { python3 -c "import json;d=json.load(open('$OUT/shots.json'));v=d.get('$1');print('' if v is None else (json.dumps(v,ensure_ascii=False) if isinstance(v,(dict,list)) else v))"; }
   BANNER="$(jget banner_text)"
   expect "띠에 「으로 보는 중」"          1 "$(printf '%s' "$BANNER" | grep -c '으로 보는 중')"
-  expect "띠에 실제 계정 표시"            1 "$(printf '%s' "$BANNER" | grep -c 'claude_admin01(Admin)')"
+  # 디버깅 묶음 U M7(2026-09-26) — 역할은 한글로 보인다(값은 그대로 · 칩의 title 에 원래 값)
+  expect "띠에 실제 계정 표시"            1 "$(printf '%s' "$BANNER" | grep -c 'claude_admin01(관리자)')"
   expect "띠에 「원래대로」 단추"          "True" "$(jget banner_has_button)"
   expect "보는 중 콘솔 오류 0건"          "[]"   "$(jget console_errors_acting)"
   expect "보는 중 관리 묶음 닫힘"          "True" "$(jget acting_admin_group_hidden)"
   expect "「원래대로」 뒤 띠 사라짐"        "False" "$(jget after_stop_banner)"
   expect "「원래대로」 뒤 관리 묶음 열림"    "False" "$(jget after_stop_admin_group_hidden)"
-  expect "「원래대로」 뒤 칩 역할 Admin"    "Admin" "$(jget after_stop_chip_role)"
+  expect "「원래대로」 뒤 칩 역할 관리자(Admin)"    "관리자" "$(jget after_stop_chip_role)"
   expect "Employee 에게 관리 묶음 닫힘"     "True" "$(jget employee_admin_group_hidden)"
   expect "Employee 에게 관리 링크 0개"      0 "$(jget employee_admin_links_open)"
   expect "무변경 저장 → 요청 0건"          0 "$(jget nochange_requests)"

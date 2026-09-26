@@ -289,10 +289,10 @@
       el.confirm.showModal();
       return;
     }
-    // <dialog> 가 없는 브라우저 — 확인 없이 지우지 않는다
-    if (window.confirm('이 기기를 해지합니다. 그 기기로는 더 이상 경보 알림이 오지 않습니다.')) {
-      doRevoke();
-    }
+    /* <dialog> 가 없는 브라우저 — 확인 없이 지우지 않는다. 예전엔 브라우저 기본 확인 창(window.confirm)으로 물었다 —
+       디버깅 묶음 U H2(2026-09-26): 확인 방식은 이 화면의 확인 창(#push-confirm) 하나다. 창을 못 여는 브라우저에서는 해지하지 않고 알린다. */
+    pendingRevoke = null;
+    say('이 브라우저에서는 확인 창을 열 수 없어 해지하지 않았습니다. 다른 브라우저(최신 Chrome·삼성 인터넷)에서 해지하세요.');
   }
 
   function closeConfirm() {

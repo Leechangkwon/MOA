@@ -205,11 +205,28 @@ function shortWhen(value) {
   var text = m[1] + ' ' + m[2];
   return { text: text, full: value.length > text.length ? value : '' };
 }
-/* 표 칸 하나 — 글자는 짧게, title 에 전체 값. suffix 는 「 (만료)」 같은 꼬리(없으면 생략). */
+/* 표 칸 하나 — 글자는 짧게, title 에 전체 값. suffix 는 「 (만료)」 같은 꼬리(없으면 생략).
+   날짜와 시각은 **두 조각**(`.nowrap` 둘 + 빈칸 하나)으로 넣는다 — 좁은 칸에서 날짜의 하이픈이 줄바꿈 자리가 되어
+   「2026-」 / 「09-26」 / 「11:54:07」 세 줄로 갈라졌다(디버깅 묶음 U M2 · 2026-09-26). 이제 많아야 날짜 줄 · 시각 줄 두 줄이다.
+   글자(textContent)는 전과 같은 「YYYY-MM-DD HH:MM:SS」 — 조각은 요소로 만들고 글자는 setText 로만 넣는다(PRD S-03). */
 function addWhenCell(row, value, suffix) {
   var td = document.createElement('td');
   var w = shortWhen(value);
-  setText(td, w.text + (typeof suffix === 'string' ? suffix : ''));
+  var tail = typeof suffix === 'string' ? suffix : '';
+  var m = w.full !== '' || WHEN_RE.test(w.text) ? w.text.match(/^(\S+) (\S+)$/) : null;
+  if (m) {
+    var day = document.createElement('span');
+    day.className = 'nowrap';
+    setText(day, m[1]);
+    var clock = document.createElement('span');
+    clock.className = 'nowrap';
+    setText(clock, m[2] + tail);
+    td.appendChild(day);
+    td.appendChild(document.createTextNode(' '));
+    td.appendChild(clock);
+  } else {
+    setText(td, w.text + tail);
+  }
   if (w.full !== '') { td.setAttribute('title', w.full); }
   row.appendChild(td);
   return td;
@@ -275,6 +292,41 @@ var LEVEL_BADGE_LABELS = {
   'team': '팀',
   'admin-only': '관리자'
 };
+
+/**
+ * 역할의 **화면 문구** (DESIGN 5장 「등급·역할」 — 한글로 보이고 원래 값은 title, 디버깅 묶음 U M7 · 2026-09-26).
+ * 값(창구가 준 `role`·보내는 값·<option value>)은 **그대로**다 — 보이는 글자만 바꾼다. 표에 없는 값은 받은 글자 그대로.
+ * 서버가 그리는 셸·런처·내 계정은 PHP 쪽에 같은 표가 있다(`shell_top.php` 등). 역할을 **비교하는** 코드가 아니다 — 글자 바꾸기뿐이다.
+ * 커뮤니티 모듈(editor.js)도 이 함수를 쓴다 — `window.qarediRoleLabel`.
+ */
+var ROLE_LABELS = {
+  'Admin': '관리자',
+  'Manager': '팀장',
+  'Employee': '직원',
+  'Guest': '손님'
+};
+function roleLabel(role) {
+  var raw = role === null || role === undefined ? '' : String(role);
+  return Object.prototype.hasOwnProperty.call(ROLE_LABELS, raw) ? ROLE_LABELS[raw] : raw;
+}
+window.qarediRoleLabel = roleLabel;
+/** 역할 칸 하나 — 한글 글자 + title 에 원래 값 */
+function addRoleCell(row, role) {
+  var td = document.createElement('td');
+  setText(td, roleLabel(role));
+  if (typeof role === 'string' && role !== '') { td.setAttribute('title', role); }
+  row.appendChild(td);
+  return td;
+}
+/** 역할 고르개의 글자 — 값이 역할이고 글자가 그 값 그대로인 <option> 만 「직원 (Employee)」 로(값은 그대로 · 처음 나올 때 병기, DESIGN 5장) */
+function relabelRoleOptions(root) {
+  Array.prototype.forEach.call((root || document).querySelectorAll('select option'), function (option) {
+    var v = option.value;
+    if (Object.prototype.hasOwnProperty.call(ROLE_LABELS, v) && String(option.textContent).trim() === v) {
+      setText(option, ROLE_LABELS[v] + ' (' + v + ')');
+    }
+  });
+}
 
 /**
  * 미리보기 갈래의 **화면 문구** (12-2, PRD F-18). 갈래 자체는 서버가 DB `ext` 로 정하고
@@ -933,16 +985,19 @@ function armReauthLinks(me) {
   });
 }
 
-/** 크기 표시 — 숫자만 다룬다(서버 문자열을 그대로 쓰지 않는다) */
+/** 크기 표시 — 숫자만 다룬다(서버 문자열을 그대로 쓰지 않는다).
+    숫자와 단위 사이는 **줄바꿈 없는 빈칸**(U+00A0) — 좁은 표에서 「68」 / 「B」 가 두 줄로 갈라졌다(디버깅 묶음 U M1 · 2026-09-26).
+    보이는 모양은 DESIGN 5장 그대로 「1.8 MB」(단위 앞 한 칸)다. */
+var SIZE_GAP = '\u00a0';
 function formatSize(bytes) {
   var n = typeof bytes === 'number' && isFinite(bytes) && bytes >= 0 ? bytes : 0;
   if (n < 1024) {
-    return n + ' B';
+    return n + SIZE_GAP + 'B';
   }
   if (n < 1024 * 1024) {
-    return (n / 1024).toFixed(1) + ' KB';
+    return (n / 1024).toFixed(1) + SIZE_GAP + 'KB';
   }
-  return (n / (1024 * 1024)).toFixed(1) + ' MB';
+  return (n / (1024 * 1024)).toFixed(1) + SIZE_GAP + 'MB';
 }
 
 /* ─── 로그인 화면 — 순차 2단계 (ARCH 4.0 "2단계 인증 로그인 흐름") ───
@@ -993,9 +1048,10 @@ function initLogin(form) {
   /** 서버가 "코드가 더 필요하다" 고 답했을 때만 2단계로 넘어간다 */
   function enterStep2(password) {
     pendingPassword = password;
+    /* 디버깅 묶음 U M13 (2026-09-26) — 비밀번호 칸을 **비우지 않는다**(가려진 점 그대로). 예전엔 2단계로 넘어갈 때 칸을 비웠고,
+       코드가 틀리면 「아이디 또는 비밀번호가 올바르지 않습니다」 + 빈 비밀번호 칸이 함께 보여 비밀번호를 다시 쳐야 하는 줄 알았다.
+       값은 전과 같이 이 화면(JS 변수·칸)에만 있고 저장소에 쓰지 않는다. 칸을 고쳐 적으면 적은 쪽이 이긴다(아래 submit). */
     if (passwordInput) {
-      // 비밀번호는 화면에서 지우고 변수에만 둔다. 빈 칸이 전송을 막지 않게 required 를 뗀다.
-      passwordInput.value = '';
       passwordInput.required = false;
     }
     if (otpField) {
@@ -1064,6 +1120,13 @@ function initLogin(form) {
           if (inStep2() && response.status === 401) {
             // 코드가 틀렸다 — 2단계에 머물고 코드 칸만 비운다.
             // (코드는 30초마다 바뀐다. 틀린 값을 남겨 두면 다시 눌러도 또 틀린다.)
+            /* 디버깅 묶음 U M13 — 서버는 코드가 틀려도 1단계와 **같은 문구**(「아이디 또는 비밀번호…」)로 답한다(계정 상태를 새지 않으려는
+               것 — Auth::login 7). 이 화면은 이미 2단계다: 비밀번호가 맞았다는 것은 서버가 1단계 답(mfa_required)으로 **이미 알려 준 것**이라
+               「코드가 맞지 않다」고 말해도 새로 새는 것이 없다. 그래서 2단계의 401 만 코드 문장으로 바꿔 보인다 — 2단계에 닿은 뒤의 401 은
+               코드가 틀린 경우다(만료된 임시 비밀번호는 코드보다 먼저 1단계에서 걸리고, 다섯 번 틀려 잠기면 423 이라 아래에서 처음부터 다시).
+               드물게 그 사이 계정이 꺼진 경우도 같은 401 이라 문장에 「시간이 지났습니다」를 함께 둔다. */
+            /* 독립 검토 L-4 — 비밀번호 칸을 비우지 않으므로(고쳐 적을 수 있다) 문장이 둘 다를 가리킨다. 계정이 있는지는 말하지 않는다. */
+            setText(msg, '비밀번호나 인증 코드가 맞지 않습니다. 비밀번호를 확인하고, 인증 앱에 지금 보이는 6자리 코드를 넣으세요.');
             if (otpInput) {
               otpInput.value = '';
               otpInput.focus();
@@ -1505,60 +1568,163 @@ function initFiles(csrfToken, uploadLevels, canFetch, myTeamId) {
   }
 
   /**
-   * 설명·접근 등급 바꾸기 (PATCH /api/files/{id}).
-   * 사용자가 적은 값을 **그대로** 보낸다 — 등급을 고를 자격이 있는지, 낮추는 변경인지는
-   * 서버(Authz)가 판단한다. 여기서 미리 걸러내면 그것이 곧 화면에 심은 권한 판단이 된다.
-   * 보내는 것은 **바뀐 키만**이다 (허용 항목은 description·access_level·team_id 셋뿐).
+   * 설명·접근 등급 바꾸기 (PATCH /api/files/{id}) — **창 하나**(`#file-edit-dialog`, 디버깅 묶음 U H2 · 2026-09-26).
+   * 예전엔 브라우저 기본 입력 창이 세 번 떴다(설명 → 등급 영어 값을 직접 입력 → 팀 **번호**). 이제 설명 칸 + 등급 고르개 + 팀 고르개(이름).
+   *
+   * ★ 선택지는 **서버가 준 것만** — 등급은 /api/me 의 upload_levels(올리기 창·등급 바꾸기 창과 같은 목록)에 이 파일의 **지금 등급**을
+   *   더한 것(지금 값이 목록 밖이어도 그대로 보이게), 팀은 /api/teams 의 이름(loadTeams 가 채운다). 고를 수 있다고 허용되는 것이 아니다 —
+   *   바꿀 자격·낮추는 변경인지·폴더보다 넓은지는 서버(Authz)가 판단하고, 거부 문구는 창 아래 줄에 **서버가 준 그대로** 보인다.
+   *   여기서 미리 걸러내면 그것이 곧 화면에 심은 권한 판단이다 (PRD S-01).
+   * ★ 보내는 것은 **바뀐 키만**이다 (허용 항목은 description·access_level·team_id 셋뿐) — 전과 같다.
+   * ★ F-65 — 「실행 파일 포함」 파일은 **등급을 묻지 않는다**: admin-only 를 내리면 「받는 사람은 언제나 Admin(2단계 인증 필수)」 전제가
+   *   깨지므로 서버가 `access_level` 키 자체를 400 으로 막는다 (ARCH 5.29). 설명은 그대로 바꿀 수 있다.
+   * 「닫기」·✕·Esc·바깥 누르기는 요청 0. 닫히면 초점은 연 단추로 돌아간다(<dialog> 기본 동작).
    */
+  var editDialog = document.getElementById('file-edit-dialog');
+  var editForm = document.getElementById('file-edit-form');
+  var editName = document.getElementById('file-edit-name');
+  var editDesc = document.getElementById('file-edit-description');
+  var editLevelField = document.getElementById('file-edit-level-field');
+  var editLevel = document.getElementById('file-edit-level');
+  var editTeamField = document.getElementById('file-edit-team-field');
+  var editTeam = document.getElementById('file-edit-team');
+  var editLevelNote = document.getElementById('file-edit-level-note');
+  var editMsg = document.getElementById('file-edit-msg');
+  var editSubmit = document.getElementById('file-edit-submit');
+  var editTarget = null;     // 지금 고치는 파일(서버가 준 행 그대로)
+  var editBusy = false;
+  var editTeamInitial = '';  // 창을 열 때의 팀 고르개 값 — 사용자가 바꾼 경우에만 team_id 를 보낸다(독립 검토 M-1)
+
+  /** 등급 고르개 — 서버가 준 목록 + 이 파일의 지금 등급. 표(LEVEL_LABELS)에 없는 값은 만들지 않는다 */
+  function fillEditLevels(current) {
+    if (!editLevel) {
+      return;
+    }
+    editLevel.replaceChildren();
+    var offered = {};
+    (Array.isArray(uploadLevels) ? uploadLevels : []).forEach(function (level) {
+      if (typeof level === 'string') { offered[level] = true; }
+    });
+    if (typeof current === 'string') {
+      offered[current] = true;
+    }
+    ['public', 'internal', 'team', 'admin-only'].forEach(function (level) {
+      if (offered[level] !== true || !Object.prototype.hasOwnProperty.call(LEVEL_LABELS, level)) {
+        return;
+      }
+      var option = document.createElement('option');
+      option.value = level;
+      setText(option, LEVEL_LABELS[level]);
+      editLevel.appendChild(option);
+    });
+    editLevel.value = typeof current === 'string' ? current : '';
+  }
+
+  function syncEditTeamField() {
+    if (editTeamField) {
+      editTeamField.hidden = !editLevel || (editLevelField !== null && editLevelField.hidden) || editLevel.value !== 'team';
+    }
+  }
+
   function editFile(file) {
     if (!UUID_RE.test(file.id)) {
       setText(msg, GENERIC_ERROR);
       return;
     }
-
-    var currentDescription = typeof file.description === 'string' ? file.description : '';
-    var description = window.prompt('설명 (500자 이내)', currentDescription);
-    if (description === null) {
-      return;   // 취소 → 아무것도 보내지 않는다
+    if (!editDialog || typeof editDialog.showModal !== 'function' || editDialog.open) {
+      return;
     }
+    editTarget = file;
+    setText(msg, '');
+    setText(editMsg, '');
+    setText(editName, file.name);
+    if (editDesc) {
+      editDesc.value = typeof file.description === 'string' ? file.description : '';
+    }
+    var locked = file.exec_content === true;
+    if (editLevelField) {
+      editLevelField.hidden = locked;
+    }
+    if (editLevelNote) {
+      editLevelNote.hidden = !locked;
+    }
+    fillEditLevels(typeof file.access_level === 'string' ? file.access_level : '');
+    /* 독립 검토 M-1 — 팀 고르개를 **이 파일의 팀**으로 맞추고 그 값을 기억한다. 앞서 연 파일의 「지금 팀」 자리는 지운다.
+       파일의 팀이 목록에 없으면(쓰지 않는 팀 · 팀 목록이 아직 안 옴) 「지금 팀」 자리를 하나 두고 그것을 고른다 — 전에는
+       고르개에 이전 값(또는 늦게 온 목록이 고른 「내 팀」)이 남아 설명만 고쳐도 team_id 가 실렸다(관리자는 파일이 다른 팀으로
+       조용히 옮겨지고, 팀장·직원은 뜻밖의 403). 보내는 쪽(submitEdit)은 사용자가 팀을 바꿨거나 등급을 team 으로 바꿀 때만 싣는다. */
+    if (editTeam) {
+      Array.prototype.forEach.call(editTeam.querySelectorAll('option[data-edit-current]'), function (option) {
+        option.remove();
+      });
+      if (file.team_id !== null && file.team_id !== undefined && String(file.team_id) !== '') {
+        var want = String(file.team_id);
+        var found = Array.prototype.some.call(editTeam.options, function (option) { return option.value === want; });
+        if (!found) {
+          var cur = document.createElement('option');
+          cur.value = want;
+          cur.setAttribute('data-edit-current', '');
+          var curName = typeof file.team_name === 'string' && file.team_name !== '' ? file.team_name + ' — ' : '';
+          setText(cur, curName + '지금 팀(쓰지 않는 팀)');
+          editTeam.insertBefore(cur, editTeam.firstChild);
+        }
+        editTeam.value = want;
+      }
+      editTeamInitial = editTeam.value;
+    }
+    syncEditTeamField();
+    if (editSubmit) {
+      editSubmit.disabled = false;
+    }
+    editDialog.showModal();
+    if (editDesc) {
+      editDesc.focus();
+    }
+  }
 
+  function submitEdit(event) {
+    event.preventDefault();
+    var file = editTarget;
+    if (!file || editBusy) {
+      return;
+    }
     var payload = {};
+    var currentDescription = typeof file.description === 'string' ? file.description : '';
+    var description = editDesc ? editDesc.value : currentDescription;
     if (description !== currentDescription) {
       payload.description = description;
     }
-
-    /* F-65 — 「실행 파일 포함」 파일은 **등급을 묻지 않는다**(= 잠긴 셀렉트와 같은 뜻이다).
-       admin-only 를 내리면 「받는 사람은 언제나 Admin(2단계 인증 필수)」 전제가 깨지므로
-       서버가 `access_level` 키 자체를 400 으로 막는다 (ARCH 5.29 「받기」 표).
-       설명·폴더는 그대로 바꿀 수 있다. 화면이 묻지 않는 것은 편의이고, 콘솔에서 직접
-       PATCH 를 보내도 서버가 같은 400 을 준다 (PRD S-01). */
-    var currentLevel = typeof file.access_level === 'string' ? file.access_level : '';
-    var level = file.exec_content === true
-      ? null
-      : window.prompt('접근 등급 (public / internal / team / admin-only)', currentLevel);
-    if (level !== null) {
-      if (level !== currentLevel) {
+    if (editLevelField && !editLevelField.hidden && editLevel) {
+      var currentLevel = typeof file.access_level === 'string' ? file.access_level : '';
+      var level = editLevel.value;
+      if (level !== '' && level !== currentLevel) {
         payload.access_level = level;
       }
-      if (level === 'team') {
-        var currentTeam =
-          file.team_id === null || file.team_id === undefined ? '' : String(file.team_id);
-        var team = window.prompt('팀 번호', currentTeam);
-        if (team !== null && team !== currentTeam) {
-          payload.team_id = team;
-        }
+      // 독립 검토 M-1 — team_id 는 등급을 team 으로 **바꿀 때** · 사용자가 팀 고르개를 **바꿨을 때**만 싣는다(설명만 고치면 키 자체가 없다)
+      if (level === 'team' && editTeam && editTeam.value !== ''
+          && (level !== currentLevel || editTeam.value !== editTeamInitial)) {
+        payload.team_id = editTeam.value;
       }
     }
-
     if (Object.keys(payload).length === 0) {
       // 서버도 400 으로 막지만, 굳이 바뀌는 값이 없는 요청을 보내지 않는다.
+      setText(editMsg, '바뀐 내용이 없습니다.');
       return;
     }
 
-    setText(msg, '');
-    /* 디버깅 묶음 S-8 — 관리자의 등급 **내리기**는 15분 재인증 창 안에서만 된다(서버가 403 next:"reauth").
-       그때는 공용 재인증 창을 띄우고, 통과하면 **같은 값**을 다시 보낸다(값을 다시 묻지 않는다). */
+    editBusy = true;
+    if (editSubmit) {
+      editSubmit.disabled = true;
+    }
+    setText(editMsg, '');
+    /* 디버깅 묶음 S-8 (e88f690 과 합침) — 관리자의 등급 **내리기**는 15분 재인증 창 안에서만 된다(서버가 403 next:"reauth").
+       그때는 공용 재인증 창을 띄우고, 통과하면 **같은 값**을 다시 보낸다(값을 다시 묻지 않는다). 수정 창은 열어 둔 채다 —
+       재인증 창을 닫으면(그만두면) 저장 단추가 다시 살아나 고쳐서 다시 낼 수 있다(디버깅 묶음 U 의 창 흐름). */
     function sendEdit() {
+      editBusy = true;
+      if (editSubmit) {
+        editSubmit.disabled = true;
+      }
       fetch(APP_BASE + '/api/files/' + file.id, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken },
@@ -1572,6 +1738,10 @@ function initFiles(csrfToken, uploadLevels, canFetch, myTeamId) {
             return null;
           }
           if (response.status === 200) {
+            if (editDialog.open) {
+              editDialog.close();
+            }
+            showDone('「' + file.name + '」을(를) 고쳤습니다.');
             loadFiles();
             return null;
           }
@@ -1579,16 +1749,35 @@ function initFiles(csrfToken, uploadLevels, canFetch, myTeamId) {
             if (handleReauth(response, data, sendEdit)) {
               return null;
             }
-            // 403·400 문구는 서버가 준 것만 쓴다 (사유를 브라우저가 추측하지 않는다).
-            setText(msg, errorMessage(data));
+            // 403·400 문구는 서버가 준 것만 쓴다 (사유를 브라우저가 추측하지 않는다). 창은 열어 둔다 — 고쳐서 다시 낼 수 있게.
+            setText(editMsg, errorMessage(data));
             return null;
           });
         })
         .catch(function () {
-          setText(msg, GENERIC_ERROR);
+          setText(editMsg, GENERIC_ERROR);
+        })
+        .then(function () {
+          editBusy = false;
+          if (editSubmit) {
+            editSubmit.disabled = false;
+          }
         });
     }
     sendEdit();
+  }
+
+  if (editForm) {
+    editForm.addEventListener('submit', submitEdit);
+  }
+  if (editLevel) {
+    editLevel.addEventListener('change', syncEditTeamField);
+  }
+  if (editDialog) {
+    editDialog.addEventListener('close', function () {
+      editTarget = null;
+      setText(editMsg, '');
+    });
   }
 
   /* ─── 미리보기 모달 (12-2 — PRD F-18, ARCH 5.8, SECURITY R-41) ──────────
@@ -4199,13 +4388,28 @@ function initFiles(csrfToken, uploadLevels, canFetch, myTeamId) {
           teams.forEach(function (team) {
             // 같은 목록을 업로드 폼과 가져오기 폼 두 곳의 <select> 에 만든다.
             // 18-1 — 폴더 모달의 팀 선택지도 같은 목록으로 채운다.
-            [teamSelect, fetchTeam, folderTeamSelect, bulkTeamSelect].forEach(function (select) {
+            // 디버깅 묶음 U H2 — 파일 「수정」 창의 팀 고르개(이름으로 고른다)도 같은 목록이다.
+            [teamSelect, fetchTeam, folderTeamSelect, bulkTeamSelect, editTeam].forEach(function (select) {
               if (!select) {
                 return;
               }
               var option = document.createElement('option');
               option.value = String(team.id);
               setText(option, team.name);
+              if (select === editTeam) {
+                /* 독립 검토 M-1 — 파일 「수정」 창은 창을 연 파일의 팀이 기준이다. 「내 팀」을 미리 고르지 않는다(목록이 늦게 오면
+                   고르개가 내 팀으로 바뀌어 설명만 고쳐도 team_id 가 실렸다). 같은 값의 「지금 팀」 자리가 있으면 진짜 선택지로 바꾼다. */
+                var placeholder = select.querySelector('option[data-edit-current][value="' + String(team.id).replace(/[^0-9]/g, '') + '"]');
+                if (placeholder) {
+                  var wasPicked = placeholder.selected;
+                  placeholder.remove();
+                  select.appendChild(option);
+                  if (wasPicked) { select.value = option.value; }
+                  return;
+                }
+                select.appendChild(option);
+                return;
+              }
               // 내 팀을 기본 선택으로 둔다(편의). 다른 팀을 고르는 것은 그대로 허용한다 —
               // 남의 팀으로 올리려는 요청은 서버가 403 으로 막고 감사 로그에 남긴다 (PRD S-01).
               if (mine !== '' && String(team.id) === mine) {
@@ -4923,6 +5127,8 @@ function initFiles(csrfToken, uploadLevels, canFetch, myTeamId) {
   bindDialogDismiss(fetchDialog, [fetchDialogClose, fetchDialogX], null);
   // 라운드 B — 등급·팀 바꾸기 창(닫기·✕·Esc·바깥 — 새 폴더 창과 같은 규칙)
   bindDialogDismiss(bulkLevelDialog, [document.getElementById('bulk-level-close'), document.getElementById('bulk-level-x')], null);
+  // 디버깅 묶음 U H2 — 파일 한 건 「수정」 창(닫기·✕·Esc·바깥 — 같은 규칙. 저장 중에는 닫지 않는다)
+  bindDialogDismiss(editDialog, [document.getElementById('file-edit-close'), document.getElementById('file-edit-x')], function () { return editBusy; });
 
   // 업로드 레벨 선택지는 서버가 준 목록으로만 만든다. 하나도 없으면(Guest) 올리기 단추를
   // 감춘다. 감추는 것은 편의일 뿐이다 — 그래도 POST /api/files 는 서버가 다시 막는다 (PRD S-01).
@@ -5940,7 +6146,7 @@ function addTokenRowShared(ctx, token) {
         button.type = 'button';
         button.className = 'btn btn--quiet btn--small';
         setText(button, '회수');
-        button.addEventListener('click', function () { ctx.onRevoke(token); });
+        button.addEventListener('click', function () { ctx.onRevoke(token, button); });
         td.appendChild(button);
       }
     }
@@ -6325,6 +6531,9 @@ function initUsers(csrfToken) {
   var tkBody = null;     // 표의 tbody
   var tkMsg = null;      // 이 구역의 알림 줄 (서버 문구를 그대로 쓴다)
   var tkUid = null;      // 지금 보고 있는 계정 id
+  var tkConfirm = null;        // 회수 확인 줄(`.notice`) — 디버깅 묶음 U H2
+  var tkConfirmText = null;
+  var tkConfirmCancel = null;
 
   /** 「내 계정」 절과 같은 표를 그린다 — 칸 차례만 다르다(`<thead>` 순서 그대로) */
   var TK_COLUMNS = ['name', 'hint', 'scope', 'expires', 'created', 'used', 'state', 'actions'];
@@ -6370,19 +6579,39 @@ function initUsers(csrfToken) {
       });
   }
 
-  /** 회수 — 되묻고 나서 DELETE. 회수한 순간부터 그 토큰은 401 이다. */
-  function revokeToken(token) {
-    if (tkUid === null || !token || typeof token.id !== 'number') {
+  /** 회수 — 먼저 **창 안의 확인 줄**로 묻는다(디버깅 묶음 U H2 · 2026-09-26). 예전엔 브라우저 기본 확인 창(window.confirm)이었다.
+      이 창이 이미 모달이라 확인 창(#confirm-dialog)을 또 띄우지 않는다 — 모달 안에 모달을 열지 않는다(DESIGN 2.7).
+      모양은 이력 창의 되돌리기 확인과 같다(`.notice` + 「그만두기」 `.btn--quiet` · 「회수하기」 `.btn--danger`, 처음 초점은 「그만두기」).
+      「그만두기」·Esc(창을 닫음)는 요청 0. 회수한 순간부터 그 토큰은 401 이다. */
+  var tkPending = null;   // 확인 줄이 묻고 있는 { token, button }
+  function revokeToken(token, button) {
+    if (tkUid === null || !token || typeof token.id !== 'number' || !tkConfirm) {
       return;
     }
-    if (!window.confirm('토큰 「' + String(token.name) + '」 을(를) 회수합니다. 그 프로그램은 바로 쓸 수 없게 됩니다.')) {
-      setText(tkMsg, '취소했습니다');
+    tkPending = { token: token, button: button || null };
+    setText(tkMsg, '');
+    setText(tkConfirmText, '토큰 「' + String(token.name) + '」 을(를) 회수합니다. 그 프로그램은 바로 쓸 수 없게 됩니다.');
+    tkConfirm.hidden = false;
+    tkConfirmCancel.focus();
+  }
+  function hideTokenConfirm(returnFocus) {
+    var pending = tkPending;
+    tkPending = null;
+    if (tkConfirm) {
+      tkConfirm.hidden = true;
+    }
+    if (returnFocus && pending && pending.button && pending.button.isConnected) {
+      pending.button.focus();
+    }
+  }
+  function sendRevokeToken(token) {
+    if (tkUid === null || !token || typeof token.id !== 'number') {
       return;
     }
     var uid = tkUid;
     setText(tkMsg, '');
     tokenFetch('DELETE', APP_BASE + '/api/users/' + String(uid) + '/api-tokens/' + String(token.id),
-      null, function () { revokeToken(token); })
+      null, function () { sendRevokeToken(token); })
       .then(function (result) {
         if (result === null) {
           return null;
@@ -6442,8 +6671,11 @@ function initUsers(csrfToken) {
 
     tkBox.appendChild(boxHead);
 
+    /* 디버깅 묶음 U H1 — 다른 화면과 같은 표(`table.files` + `.table-wrap`). 좁은 폭에서는 같은 규칙으로 행이 쌓인다(DESIGN 2.4) */
+    var tableWrap = document.createElement('div');
+    tableWrap.className = 'table-wrap';
     var table = document.createElement('table');
-    table.className = 'table token-box__table';
+    table.className = 'files token-box__table';
     var head = document.createElement('thead');
     var headRow = document.createElement('tr');
     // F-66 — 범위·만료 두 칸이 늘었다 (위 TK_COLUMNS 와 같은 차례여야 한다).
@@ -6456,7 +6688,44 @@ function initUsers(csrfToken) {
     table.appendChild(head);
     tkBody = document.createElement('tbody');
     table.appendChild(tkBody);
-    tkBox.appendChild(table);
+    tableWrap.appendChild(table);
+    tkBox.appendChild(tableWrap);
+    watchStackTable(table);
+
+    // 회수 확인 줄 — 표 아래, 알림 줄 위(이력 창의 되돌리기 확인과 같은 모양 · 새 클래스 0)
+    tkConfirm = document.createElement('div');
+    tkConfirm.className = 'notice';
+    tkConfirm.setAttribute('role', 'alert');
+    tkConfirm.hidden = true;
+    tkConfirmText = document.createElement('p');
+    tkConfirmText.className = 'notice__title';
+    tkConfirm.appendChild(tkConfirmText);
+    var tkConfirmNote = document.createElement('p');
+    tkConfirmNote.className = 'muted';
+    setText(tkConfirmNote, '되돌릴 수 없습니다. 필요하면 본인이 「내 계정」에서 새로 발급합니다.');
+    tkConfirm.appendChild(tkConfirmNote);
+    var tkConfirmActions = document.createElement('div');
+    tkConfirmActions.className = 'toolbar';
+    tkConfirmCancel = document.createElement('button');
+    tkConfirmCancel.type = 'button';
+    tkConfirmCancel.className = 'btn btn--quiet btn--small';
+    setText(tkConfirmCancel, '그만두기');
+    tkConfirmCancel.addEventListener('click', function () { hideTokenConfirm(true); });
+    tkConfirmActions.appendChild(tkConfirmCancel);
+    var tkConfirmOk = document.createElement('button');
+    tkConfirmOk.type = 'button';
+    tkConfirmOk.className = 'btn btn--danger btn--small';
+    setText(tkConfirmOk, '회수하기');
+    tkConfirmOk.addEventListener('click', function () {
+      var pending = tkPending;
+      hideTokenConfirm(false);
+      if (pending) {
+        sendRevokeToken(pending.token);
+      }
+    });
+    tkConfirmActions.appendChild(tkConfirmOk);
+    tkConfirm.appendChild(tkConfirmActions);
+    tkBox.appendChild(tkConfirm);
 
     // F-66 — 발급 폼이 있던 자리다. 관리자는 남의 토큰을 **만들지 않는다**(라우트도 없다).
     //         발급은 본인이 「내 계정」 화면에서 비밀번호 + 2단계 코드로 한다.
@@ -6491,6 +6760,7 @@ function initUsers(csrfToken) {
   /** 닫는다 — **보여 준 토큰 값을 지우고** 나서 닫는다(닫으면 다시 볼 수 없다). */
   function closeTokenSection() {
     clearIssuedToken();
+    hideTokenConfirm(false);
     tkUid = null;
     if (tkDialog && tkDialog.open) {
       tkDialog.close();
@@ -6505,6 +6775,7 @@ function initUsers(csrfToken) {
       return;
     }
     clearIssuedToken();                    // 앞서 본 토큰 값을 다음 계정으로 끌고 가지 않는다
+    hideTokenConfirm(false);               // 앞 계정에서 묻던 확인 줄도 버린다
     setText(tkTitle, '프로그램 토큰 — ' + item.username);
     setText(tkMsg, '');
     while (tkBody && tkBody.firstChild) {
@@ -6721,7 +6992,7 @@ function initUsers(csrfToken) {
       var row = document.createElement('tr');
       addCell(row, item.id);
       addCell(row, personLabel(item.display_name, item.username));
-      addCell(row, item.role);
+      addRoleCell(row, item.role);   // 디버깅 묶음 U M7 — 한글 글자 · title 에 원래 값
       addCell(row, item.team_name);
       addCell(row, item.is_active === true ? '활성' : '비활성');
       item.expires_at === null
@@ -7151,7 +7422,8 @@ function initOrg(csrfToken) {
       row.appendChild(nameCell);
 
       var roleCell = document.createElement('td');
-      setText(roleCell, member.role);
+      setText(roleCell, roleLabel(member.role));   // 디버깅 묶음 U M7 — 한글 글자 · title 에 원래 값
+      if (typeof member.role === 'string') { roleCell.setAttribute('title', member.role); }
       row.appendChild(roleCell);
 
       var stateCell = document.createElement('td');
@@ -7244,7 +7516,8 @@ function initOrg(csrfToken) {
     roles.forEach(function (role) {
       var row = document.createElement('tr');
       var head = document.createElement('td');
-      setText(head, role);
+      setText(head, roleLabel(role));
+      head.setAttribute('title', role);
       row.appendChild(head);
       MATRIX_LEVELS.forEach(function (level) {
         var cell = document.createElement('td');
@@ -7339,7 +7612,7 @@ function initOrg(csrfToken) {
         users.forEach(function (item) {
           var option = document.createElement('option');
           option.value = String(item.id);
-          var label = item.username + ' · ' + item.role;
+          var label = item.username + ' · ' + roleLabel(item.role);
           if (typeof item.team_name === 'string' && item.team_name !== '') {
             label += ' · ' + item.team_name;
           }
@@ -8025,18 +8298,24 @@ function initMyTokens(csrfToken, me) {
     blocked.hidden = canIssue;
   }
 
-  /** 회수 — 되묻고 나서 DELETE. 회수한 순간부터 그 토큰은 401 이다. */
+  /** 회수 — 먼저 파일 지우기와 **같은 확인 창**(openConfirm · #confirm-dialog)으로 묻는다(디버깅 묶음 U H2 · 2026-09-26 —
+      예전엔 브라우저 기본 확인 창). 「닫기」·✕·Esc 는 요청 0, 「회수하기」(빨강)를 눌러야 DELETE. 회수한 순간부터 그 토큰은 401 이다. */
   function revoke(token) {
     if (!token || typeof token.id !== 'number') {
       return;
     }
-    if (!window.confirm('토큰 「' + String(token.name) + '」 을(를) 회수합니다. 그 프로그램은 바로 쓸 수 없게 됩니다.')) {
-      setText(msg, '취소했습니다');
-      return;
-    }
+    setText(msg, '');
+    openConfirm({
+      title: '토큰 회수',
+      lead: '토큰 「' + String(token.name) + '」 을(를) 회수합니다.',
+      note: '그 프로그램은 바로 쓸 수 없게 됩니다. 되돌릴 수 없습니다.',
+      okLabel: '회수하기'
+    }, function () { sendRevoke(token); });
+  }
+  function sendRevoke(token) {
     setText(msg, '');
     tokenApiFetch(csrfToken, 'DELETE', APP_BASE + '/api/me/api-tokens/' + String(token.id), null,
-      function () { revoke(token); })
+      function () { sendRevoke(token); })
       .then(function (result) {
         if (result === null) { return null; }
         if (!result.ok) {
@@ -8325,7 +8604,8 @@ function initAdmin(csrfToken, me) {
   if (reauthBadge) {
     var fresh = me && me.reauth_fresh === true;
     reauthBadge.className = fresh ? 'badge badge--ok' : 'badge badge--off';
-    setText(reauthBadge, fresh ? '재인증 확인됨 (15분 창)' : '재인증 필요');
+    // 디버깅 묶음 U M17 — 사용자 말로(예전: 「재인증 확인됨 (15분 창)」·「재인증 필요」)
+    setText(reauthBadge, fresh ? '비밀번호 확인됨 (15분 동안)' : '비밀번호 다시 확인 필요');
   }
 
   /** GET — 401 → 로그인, 403+next → 강제 절차/재인증 처리. 그 밖은 {ok,status,data} */
@@ -8738,7 +9018,8 @@ function initAdminPermissions(csrfToken) {
       var tr = document.createElement('tr');
       var head = document.createElement('td');
       var name = document.createElement('strong');
-      setText(name, role);
+      setText(name, roleLabel(role));
+      name.setAttribute('title', role);
       head.appendChild(name);
       tr.appendChild(head);
 
@@ -8815,7 +9096,7 @@ function initAdminPermissions(csrfToken) {
           can_read: read,
           can_upload: upload
         },
-        text: row.role + ' · ' + row.access_level + ' : ' + parts.join(', ')
+        text: roleLabel(row.role) + ' · ' + row.access_level + ' : ' + parts.join(', ')
       });
     });
     return out;
@@ -9946,12 +10227,70 @@ function initMenus() {
   });
 }
 
+/**
+ * 좁은 폭의 표 — 쌓인 행의 값 칸 앞 이름표 (DESIGN.md 2.4 「좁은 폭」, 디버깅 묶음 U H1 · 2026-09-26).
+ *
+ * 720px 미만에서 행 동작 칸이 있는 표는 CSS 가 행을 「이름 줄 · 값 줄 · 동작 줄」로 쌓는다(app.css). 쌓이면 표 머리가
+ * 숨으므로 「68 B」·「—」 가 무슨 값인지 알 수 없다 — 그래서 **표 머리(th)의 글자**를 그 열의 칸마다 `data-label` 로 옮겨 적고,
+ * CSS 가 `attr(data-label)` 로 값 앞에 작게 그린다. 옮기는 것은 우리가 쓴 머리 글자뿐이고(서버 값 0) 속성 값으로만 넣는다
+ * (문자열 → HTML 변환 0 · 인라인 style 0 — PRD S-03). 숨은 머리 칸(검색할 때만 보이는 「폴더」 열)은 건너뛴다 — 그때 행에도
+ * 그 칸이 없다. 체크가 든 머리 칸은 그 안의 이름(`span[id]`) 글자를 쓴다.
+ * 행은 표를 그린 뒤 스크립트가 채우므로 tbody 의 줄 바뀜을 지켜보다 다시 적는다(표마다 한 번 · 머리 글자가 바뀌어도 따라간다).
+ * 넓은 화면에서는 CSS 가 이 속성을 쓰지 않는다 — 표 모양·시험이 보는 DOM(`#… tr td`)은 그대로다.
+ */
+function watchStackTable(table) {
+  if (!table || table.__stackWatched === true || !table.tHead || !table.tBodies || !table.tBodies[0]) {
+    return;
+  }
+  table.__stackWatched = true;
+  var head = table.tHead;
+  var body = table.tBodies[0];
+  function labels() {
+    var row = head.rows[0];
+    if (!row) { return []; }
+    var out = [];
+    Array.prototype.forEach.call(row.cells, function (th) {
+      if (th.hidden) { return; }
+      var named = th.querySelector('span[id]');
+      out.push(String((named || th).textContent || '').replace(/\s+/g, ' ').trim());
+    });
+    return out;
+  }
+  function apply() {
+    var names = labels();
+    Array.prototype.forEach.call(body.rows, function (tr) {
+      Array.prototype.forEach.call(tr.cells, function (td, i) {
+        var name = td.colSpan === 1 && i < names.length ? names[i] : '';
+        if (name !== '') {
+          if (td.getAttribute('data-label') !== name) { td.setAttribute('data-label', name); }
+        } else if (td.hasAttribute('data-label')) {
+          td.removeAttribute('data-label');
+        }
+      });
+    });
+  }
+  apply();
+  if (typeof MutationObserver === 'function') {
+    new MutationObserver(apply).observe(body, { childList: true });
+    new MutationObserver(apply).observe(head, { childList: true, subtree: true, characterData: true, attributes: true, attributeFilter: ['hidden'] });
+  }
+}
+function labelStackTables(root) {
+  Array.prototype.forEach.call((root || document).querySelectorAll('table.files'), watchStackTable);
+}
+
 document.addEventListener('DOMContentLoaded', function () {
   // 서버 HTML 의 <template> 아이콘을 [data-icon] 자리에 붙인다 (문자열 → HTML 변환 0).
   paintIcons(document);
 
   /* 더보기 메뉴 닫기 (DESIGN.md 2.15) — 메뉴가 없는 화면에서는 아무 일도 하지 않는다 */
   initMenus();
+
+  /* 좁은 폭의 표 — 쌓인 행의 이름표(DESIGN.md 2.4). 서버가 그린 표 전부(창 안의 표 포함) — 표가 없는 화면은 아무 일도 없다 */
+  labelStackTables(document);
+
+  /* 역할 고르개의 글자를 한글로(값은 그대로 — DESIGN 5장, 디버깅 묶음 U M7). 역할 고르개가 없는 화면은 아무 일도 없다 */
+  relabelRoleOptions(document);
 
   /* 해/달 단추 (D-5, DESIGN.md 2.12). 셸과 로그인 화면이 같이 쓰므로 아래 화면 분기 **밖**에서
      한 번만 건다 — 단추가 없는 화면에서는 아무 일도 하지 않는다. */

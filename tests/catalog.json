@@ -3238,6 +3238,70 @@
       "est_sec": 5,
       "writes_prod": false,
       "notes": "운영 파일 쓰기 가드 단위 확인(디버깅 묶음 T 9번 · 2026-09-26 사고): tests/lib/prod_guard.sh(pg_target_kind · pg_is_prod_path · prod_write_guard) + f51·f52 의 비밀 파일 자리 결정 절·save_secret·qa_secret 과 stage26 의 저장소 자리 결정 절을 sed 로 떼어 **가짜 뿌리**(mktemp)에서 돌린다. sudo 는 셸 함수로 바꿔 끼워 가짜 파일에만 install. 운영 /etc/tbox-v2·/var/lib/tbox-v2·/var/log/tbox-v2 읽기·쓰기 0 · sudo·DB·네트워크 0. 복제본 실측 1초."
+    },
+    {
+      "id": "tbox.dbg_u_ui",
+      "cmd": "bash tests/dbg_u_ui.sh",
+      "module": "tbox",
+      "env": "temp-instance",
+      "status": "required",
+      "needs": [
+        "sudo",
+        "browser",
+        "totp_wait"
+      ],
+      "covers": [
+        "public/assets/alerts-app.js",
+        "public/assets/app.css",
+        "public/assets/app.js",
+        "public/assets/community/community.css",
+        "public/assets/community/editor.js",
+        "scripts/community_asset_version.php",
+        "scripts/security_lint.sh",
+        "src/community/handlers/home_page.php",
+        "src/community/handlers/page_view.php",
+        "src/handlers/home.php",
+        "src/handlers/me.php",
+        "src/handlers/settings_page.php",
+        "src/views/launcher.php",
+        "src/views/shell_top.php",
+        "tests/browser/dbg_u_ui.py"
+      ],
+      "requirements": [],
+      "risks": [
+        "R-62"
+      ],
+      "est_sec": 1200,
+      "writes_prod": false,
+      "notes": "디버깅 묶음 U(디자인 점검 2026-09-26 12:13 높음 다섯 + 중간 일부) 수락 — U-S 정적(기본 창 호출 0 · php -l · 보안 린트 · 부품 버전 · /api/me can_community_write 한 줄 · 인라인 0 · 라우트·판정 파일 diff 0) · U-A 창구(can_community_write 직원·관리자 참·손님 거짓 · 손님 쓰기 403) · U-B 화면(tests/browser/dbg_u_ui.py — 360·412 터치·820·1280 × 라이트·다크: 가로 넘침 0 · 주요 동작 화면 안 · 기본 창 0 · 콘솔 0 · 손님 쓰기 단추 0 · 새 창 저장·닫기·Esc·초점 복귀 · 독립 검토 M-1 팀 고르개 · L-1·L-3·L-4) · U-L 서버 로그 · 운영 감사 UA 행 0 대조. 임시 DB tbox_d1u_<포트>_test·php -S(기본 8223 — DBGU_PORT). 손잡이: DBGU_COMBOS(조합 줄이기) · DBGU_SHOTS · DBGU_SYNC_TOTP=1(검토 계정 비밀 파일과 운영 DB 가 어긋날 때 임시 DB 만 맞춤) · DBGU_SKIP_BROWSER=1 · REGRESS=1(같은 인스턴스에서 회귀 — 스크립트마다 다음 TOTP 창 대기). 운영 8082 요청 0. 2026-09-26 디버깅 묶음 U 로 넣음."
+    },
+    {
+      "id": "tbox.browser_dbg_u_ui",
+      "cmd": "python3 tests/browser/dbg_u_ui.py",
+      "module": "tbox",
+      "env": "temp-instance",
+      "status": "helper",
+      "needs": [
+        "browser",
+        "totp_wait"
+      ],
+      "covers": [
+        "public/assets/app.css",
+        "public/assets/app.js",
+        "public/assets/community/community.css",
+        "public/assets/community/editor.js",
+        "src/community/handlers/home_page.php",
+        "src/community/handlers/page_view.php",
+        "src/handlers/home.php",
+        "src/handlers/settings_page.php"
+      ],
+      "requirements": [],
+      "risks": [
+        "R-62"
+      ],
+      "est_sec": 900,
+      "writes_prod": false,
+      "notes": "부르는 셸: tbox.dbg_u_ui. 단독 실행 불가(인자 SITE UA SHOTS 와 세션 셋·비밀번호 둘·TOTP 비밀 하나를 표준입력 여섯 줄로 부르는 셸이 넘긴다). 결과 줄 SMOKE_FAIL=n. 넷째 인자 before 는 고치기 전 판 스크린샷용(종료 코드 0). 임시 DB 에 파일·페이지·템플릿·토큰을 만든다."
     }
   ]
 }

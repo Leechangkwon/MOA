@@ -110,6 +110,15 @@ $mePayload = [
     // 항목을 개발자도구로 되살려 /admin 이나 /api/admin/* 를 직접 불러도 라우터 정책
     // role:Admin 과 재인증 관문이 다시 막는다 (PRD S-01, T-38).
     'can_admin'        => Authz::canAdmin($user),
+    /*
+     * 디버깅 묶음 U H3 (2026-09-26) — 커뮤니티에 **쓸 수 있는 역할인가**(새 페이지·템플릿·선택하기·편집·넘기기·공개 범위·태그 단추를
+     * 보일지). 값은 커뮤니티 쓰기 라우트 정책 `community.write` 가 부르는 **그 함수**(`Authz::canCommunityWrite` — 매트릭스의
+     * 올리기 자격, Guest 거짓)를 그대로 부른 결과다 — 화면이 역할 문자열을 비교하지 않는다(DESIGN 0장 1).
+     * 다른 can_* 와 똑같은 **화면 편의 값**이며 권한이 아니다: 단추를 되살려 POST·PATCH 를 보내도 라우트 정책 `community.write`
+     * 가 403 으로, 행 단위 판정(`CommunityAuthz::decidePage*`)이 다시 막는다 (PRD S-01). 페이지마다의 can_edit·can_handover 등은
+     * 그대로 창구(`GET /community/api/pages/{id}`)가 준다 — 화면은 두 값이 **둘 다** 참일 때만 단추를 보인다.
+     */
+    'can_community_write' => Authz::canCommunityWrite($user),
     // 10단계 — 내 2단계 인증이 켜져 있나 (R-05). 권한이 아니라 상태이며,
     // 화면이 "켜기" 를 보일지 "끄기" 를 보일지 고르는 데만 쓴다.
     'mfa_enabled'      => ($user['mfa_enabled'] ?? false) === true,
