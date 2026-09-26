@@ -21,6 +21,10 @@ python3 표준 라이브러리만 쓴다. 두 가지로 쓰인다.
   - rc 와 합계가 어긋나면 더 나쁜 쪽(실패)을 쓰고 「형식 위반」으로 표시한다.
   - rc 3·4 는 ③ 시작 거부/준비 실패. status=required 인데 SKIP>0 이면 ③ skipped_by_test.
   - known_fail 은 ③ known_fail(사유·만료일). 만료가 지났거나 만료일이 없으면 required 로 판정한다.
+  - 운영에 쓰는 시험(writes_prod: true · 또는 cmd 가 저장소 카탈로그의 writes_prod 시험 파일을 부름)은 **기본 거부** —
+    ③ writes_prod. --select·--catalog(사용자 지정 목록)·--include-manual 로는 풀리지 않는다. `--allow-writes-prod` 를 **명시**하고
+    그 시험 스크립트의 대상(첫 `BASE="…"`·`DB="…"` 줄)이 tests/lib/prod_guard.sh 판정으로 「prod」일 때만 돈다 — temp·unknown 이면
+    이 인자가 있어도 거부(디버깅 묶음 T 9번 — 2026-09-26 회귀 틀이 f51·f52 를 돌려 운영 qa-totp.txt 를 덮어쓴 사고 · 취합 결정).
 """
 
 import argparse
@@ -562,6 +566,112 @@ def outside_catalog(entries, root):
     return [f for f in tests if f not in listed]
 
 
+def writes_prod_files(root, entries):
+    """writes_prod 인 항목이 부르는 시험 파일 — 지금 카탈로그 **와 저장소 카탈로그(tests/catalog.json)** 둘에서 모은다.
+    사용자 지정 카탈로그(--catalog)가 writes_prod 표시를 빼거나 다른 id 로 같은 파일을 불러도 거부하려고(디버깅 묶음 T 9번)."""
+    files = set(repo_files(root))
+    out = set()
+    lists = [entries]
+    try:
+        lists.append(load_catalog(os.path.join(root, "tests", "catalog.json")))
+    except UsageError:
+        pass
+    for es in lists:
+        for e in es:
+            if e.get("writes_prod") is True:
+                out |= own_files(e, files)
+    return out
+
+
+_KIND_CACHE = {}
+
+
+def script_target_kind(e, root):
+    """cmd 가 부르는 시험 스크립트의 대상 — prod · temp · unknown (tests/lib/prod_guard.sh pg_target_kind 그대로).
+    스크립트의 첫 `BASE="…"`·`DB="…"` 줄(시험이 쓰는 값)을 읽어 넘긴다. 스크립트·두 줄·가드를 못 찾으면 unknown."""
+    try:
+        toks, _ = split_cmd(str(e.get("cmd") or ""))
+    except (UsageError, ValueError):
+        return "unknown"
+    script = None
+    for t in toks:
+        if t.endswith(".sh"):
+            p = t if os.path.isabs(t) else os.path.join(root, t)
+            if os.path.isfile(p):
+                script = os.path.realpath(p)
+                break
+    if not script:
+        return "unknown"
+    if script in _KIND_CACHE:
+        return _KIND_CACHE[script]
+    vals = {}
+    try:
+        with open(script, encoding="utf-8", errors="replace") as fh:
+            for line in fh:
+                m = re.match(r'^(BASE|DB)="([^"$`\\]*)"\s*(#.*)?$', line.rstrip("\n"))
+                if m and m.group(1) not in vals:
+                    vals[m.group(1)] = m.group(2)
+    except OSError:
+        return "unknown"
+    guard = os.path.join(root, "tests", "lib", "prod_guard.sh")
+    kind = "unknown"
+    if "BASE" in vals and "DB" in vals and os.path.isfile(guard):
+        env = {"PATH": os.environ.get("PATH", "/usr/bin:/bin"), "ROOT": root, "BASE": vals["BASE"], "DB": vals["DB"]}
+        try:
+            r = subprocess.run(["bash", "-c", '. "$ROOT/tests/lib/prod_guard.sh" && pg_target_kind'], env=env,
+                               capture_output=True, text=True, timeout=10)
+            out = r.stdout.strip()
+            if r.returncode == 0 and out in ("prod", "temp", "unknown"):
+                kind = out
+        except (OSError, subprocess.SubprocessError):
+            kind = "unknown"
+    _KIND_CACHE[script] = kind
+    return kind
+
+
+def prod_write_decision(e, wp_files, root, allow):
+    """(거부 이유 | None, 허용 메모 | None) — 운영에 쓰는 시험은 기본 거부 · --allow-writes-prod + 대상 prod 일 때만 허용"""
+    why = refuses_prod_write(e, wp_files, root)
+    if not why:
+        return None, None
+    if not allow:
+        return why + " — 기본 거부(--allow-writes-prod 와 대상 prod 일 때만)", None
+    kind = script_target_kind(e, root)
+    if kind != "prod":
+        return why + " — --allow-writes-prod 이어도 대상이 %s(prod_guard) → 거부" % kind, None
+    return None, "--allow-writes-prod · 대상 prod(prod_guard) — 운영에 씀"
+
+
+def refuses_prod_write(e, wp_files, root="."):
+    """운영에 쓰는 시험이면 거부 이유(문자열), 아니면 None.
+    cmd 의 파일 토큰은 저장소 뿌리 기준 **realpath** 로 writes_prod 시험 파일과 견준다(`./tests/../tests/f52.sh`·링크).
+    `-c` 문자열(bash -c · sh -c …)에 writes_prod 시험 파일의 **이름(basename)** 이 들어 있어도 거부한다(독립 검토 L1).
+    한계: 다른 스크립트가 **안에서** 부르는 것(감싸는 스크립트)·이름을 바꾼 사본은 못 잡는다 — 그 길은 시험 안 가드(tests/lib/prod_guard.sh)가 막는다."""
+    if e.get("writes_prod") is True:
+        return "writes_prod: true"
+    cmd = str(e.get("cmd") or "")
+    try:
+        toks = split_cmd(cmd)[0]
+    except (UsageError, ValueError):
+        toks = cmd.split()
+    real = {}
+    for f in wp_files:
+        real[os.path.realpath(os.path.join(root, f))] = f
+    hit = set(f for f in wp_files if f in cmd)
+    for t in toks:
+        rp = os.path.realpath(t if os.path.isabs(t) else os.path.join(root, t))
+        if rp in real:
+            hit.add(real[rp])
+    if "-c" in toks:
+        cstr = " ".join(toks[toks.index("-c") + 1:])
+        for f in wp_files:
+            if os.path.basename(f) and os.path.basename(f) in cstr:
+                hit.add(f)
+    if hit:
+        return "cmd 가 운영에 쓰는 시험 파일을 부른다(%s — 저장소 카탈로그 writes_prod)" % ", ".join(sorted(hit))
+    return None
+
+
 def split_cmd(cmd):
     toks = shlex.split(cmd)
     env = {}
@@ -888,13 +998,20 @@ def cmd_run(a, root):
     S = {"version": 1, "kind": "local", "run": n, "root": root, "catalog": os.path.abspath(a.catalog),
          "catalog_sha256": cat_sha, "tree": tree, "head": head, "dirty": dirty,
          "started_at": now, "finished_at": None, "selectors": a.select or [],
-         "include_manual": a.include_manual, "fresh": a.fresh, "fail_fast": a.fail_fast,
+         "include_manual": a.include_manual, "allow_writes_prod": a.allow_writes_prod, "fresh": a.fresh, "fail_fast": a.fail_fast,
          "total": len(entries), "selected": len(selected), "diff": info["diff"], "no_test": info["no_test"],
          "tests": [], "interrupted": False, "exit_code": None}
     idx = {e["id"]: i for i, e in enumerate(entries)}
     to_run = []
+    wp_files = writes_prod_files(root, entries)
     for e in selected:
-        if e_status(e) in DEFAULT_EXCLUDED and not a.include_manual:
+        why, _allowed = prod_write_decision(e, wp_files, root, a.allow_writes_prod)
+        if why:
+            r = base_record(e)
+            r.update(verdict="unverified", code="writes_prod", note="돌리지 않음 — " + why,
+                     counts={"pass": 0, "fail": 0, "skip": 0}, rc=None)
+            S["tests"].append(r)
+        elif e_status(e) in DEFAULT_EXCLUDED and not a.include_manual:
             r = base_record(e)
             r.update(verdict="unverified", code=e_status(e), note="기본 제외(--include-manual)",
                      counts={"pass": 0, "fail": 0, "skip": 0}, rc=None)
@@ -977,8 +1094,9 @@ def _join_ids(ids, limit=6):
     return s + (" … 외 %d" % (len(ids) - limit) if len(ids) > limit else "")
 
 
-CODE_ORDER = ("known_fail", "skipped_by_test", "refused", "prep_failed", "not_run", "manual_only", "orphan")
+CODE_ORDER = ("known_fail", "skipped_by_test", "refused", "prep_failed", "not_run", "writes_prod", "manual_only", "orphan")
 CODE_HINT = {"skipped_by_test": "→ ai", "prep_failed": "→ ai",
+             "writes_prod": "운영에 씀 — 기본 거부 · --allow-writes-prod(대상 prod 만) · → user",
              "manual_only": "기본 제외 · --include-manual · → user",
              "orphan": "기본 제외 · 부르는 곳 없음"}
 PER_ITEM_CODES = ("known_fail", "skipped_by_test", "refused", "prep_failed")
@@ -1138,6 +1256,8 @@ def render_report(S):
         nxt.append("- 준비 실패(rc 4): 원문으로 준비 단계 오류를 확인한다")
     if "manual_only" in codes:
         nxt.append("- manual_only: 사용자가 `!` 로 실행하고 결과를 보고서에 붙인다")
+    if "writes_prod" in codes:
+        nxt.append("- writes_prod: 운영에 쓰는 시험 — 기본 거부. 운영 대상이 맞으면 `--allow-writes-prod` 로 다시(대상 temp·unknown 은 그래도 거부)")
     if S.get("no_test"):
         nxt.append("- no_test: 바뀐 코드 파일을 지키는 시험·카탈로그 covers 를 더한다(AI)")
     if S.get("dirty"):
@@ -1224,8 +1344,13 @@ def cmd_show(a):
 def cmd_list(a, root):
     entries = load_catalog(a.catalog)
     selected, info = select(entries, a.select or [], root)
-    run_, excl = [], []
+    run_, excl, wp = [], [], []
+    wp_files = writes_prod_files(root, entries)
     for e in selected:
+        why, _allowed = prod_write_decision(e, wp_files, root, a.allow_writes_prod)
+        if why:
+            wp.append((e, why))
+            continue
         (excl if (e_status(e) in DEFAULT_EXCLUDED and not a.include_manual) else run_).append(e)
     idx = {e["id"]: i for i, e in enumerate(entries)}
     run_ = [e for _, e in sorted(((idx[e["id"]], e) for e in run_), key=run_order)]
@@ -1239,6 +1364,10 @@ def cmd_list(a, root):
         needs = ",".join(e_list(e, "needs")) or "-"
         print("  %s  %-13s %-11s %5ss  needs %s%s" % (e["id"].ljust(w), e.get("env", "?"), e_status(e),
                                                     e.get("est_sec", "?"), needs, "  [운영]" if is_prod(e) else ""))
+    if wp:
+        print("운영에 쓰는 시험 — 돌리지 않음(기본 거부 · --allow-writes-prod 와 대상 prod 일 때만) %d:" % len(wp))
+        for e, why in wp:
+            print("  %s  %-11s %s" % (e["id"].ljust(w), e_status(e), _snip(why, 80)))
     if excl:
         print("기본 제외(--include-manual 없이는 안 돌림) %d:" % len(excl))
         for e in excl:
@@ -1270,10 +1399,12 @@ def _cli(argv):
     p = sub.add_parser("list", help="고른 목록만(실행 0)")
     p.add_argument("--select", action="append")
     p.add_argument("--include-manual", action="store_true")
+    p.add_argument("--allow-writes-prod", action="store_true")
     p.add_argument("--catalog")
     p = sub.add_parser("run", help="고른 시험을 돌리고 요약")
     p.add_argument("--select", action="append")
     p.add_argument("--include-manual", action="store_true")
+    p.add_argument("--allow-writes-prod", action="store_true")
     p.add_argument("--fail-fast", action="store_true")
     p.add_argument("--fresh", action="store_true")
     p.add_argument("--catalog")

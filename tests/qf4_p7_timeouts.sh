@@ -19,6 +19,10 @@
 # ★ 검토 계정 claude_employee01 만 쓴다(tests/lib/review_accounts.sh). UA tbox-review/<날짜>.
 # 준비물: sudo -n(postgres psql·pg_dump·createdb·dropdb · /etc/tbox-v2 비밀 읽기) · php-fpm8.1 · nginx · php · curl · python3
 # 걸리는 시간: 약 2~3분(② 15초 · ④ 15초+ · ⑦ 여러 번 reload). 임시 파일은 $TMPDIR(없으면 /tmp) 아래 mktemp 폴더 하나.
+# 손잡이(나란히 도는 복제본 · 복제본에서 돌리기 — 디버깅 묶음 T): 임시 DB 이름 앞 `tbox_` = QTEST_DB_PREFIX(예 tbox_d1t_) ·
+#   임시 nginx 포트 P7_P80·P7_P82·P7_P84 · 임시 .env 원본 QF2_ENV_SRC(복제본에는 .env 가 없다 — mktemp 폴더 0600 사본) ·
+#   ⑦ 반영 스크립트 자리 P7_SCRIPTS_DIR(없으면 review-scripts/ → 트리 형제 ../scripts/). 그 자리에 스크립트 둘이 없으면
+#   ⑦ 만 「환경 없음 — 건너뜀(실패 아님)」이고 ①~⑥ 은 그대로 돈다.
 # 나가는 값: 0 통과 · 1 실패 · 3 준비물 없음 · 4 인스턴스 실패
 set -u
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -26,16 +30,24 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 . "$ROOT/tests/lib/secrets.sh" || { echo "tests/lib/secrets.sh 를 읽지 못했다 — 시작하지 않는다"; exit 3; }
 UA="tbox-review/$(date +%F)"
 SRC_DB="tbox_re"            # 운영 — **읽기만** (pg_dump)
-DB="tbox_qf4p7_test"        # 임시 — 앱 인스턴스·②③④
-DBH="tbox_qf4p7_dbh"        # 임시(빈 DB) — ⑦ DB 반영 스크립트 사본이 역할 설정을 거는 곳
-P80=18580; P82=18582; P84=18584     # 임시 nginx: 운영 사이트 사본 둘(⑦) · 시험 전용(④⑥)
+# 임시 DB 접두 — 나란히 도는 복제본끼리 이름을 가른다(예 QTEST_DB_PREFIX=tbox_d1t_). tbox_ 로 시작 · 소문자·숫자·밑줄 · _ 로 끝
+DBP="${QTEST_DB_PREFIX:-tbox_}"
+[[ "$DBP" =~ ^tbox_([a-z0-9]+_)*$ ]] || { echo "QTEST_DB_PREFIX 모양이 아니다(tbox_…_) — 시작하지 않는다"; exit 3; }
+DB="${DBP}qf4p7_test"        # 임시 — 앱 인스턴스·②③④
+DBH="${DBP}qf4p7_dbh"        # 임시(빈 DB) — ⑦ DB 반영 스크립트 사본이 역할 설정을 거는 곳
+P80="${P7_P80:-18580}"; P82="${P7_P82:-18582}"; P84="${P7_P84:-18584}"     # 임시 nginx: 운영 사이트 사본 둘(⑦) · 시험 전용(④⑥)
+for p in "$P80" "$P82" "$P84"; do case "$p" in 80|443|8082|8081|"") echo "운영 포트($p)·빈 포트는 쓰지 않는다"; exit 3 ;; esac; done
+[ "$(printf '%s\n' "$P80" "$P82" "$P84" | sort -u | wc -l | tr -d ' ')" = 3 ] || { echo "포트 셋이 서로 달라야 한다"; exit 3; }
+ENV_SRC="${QF2_ENV_SRC:-$ROOT/.env}"   # 임시 .env 를 만들 원본(복제본은 mktemp 사본)
 WHO=claude_employee01
 MIG="$ROOT/db/migrations/2026-09-29_app_role_timeouts.sql"
 POOL_SRC="$ROOT/deploy/php-fpm-pool.conf"
 # 반영 스크립트 자리 — 복제본(검토 중)은 review-scripts/, 운영은 Qaredi 저장소 scripts/(트리 형제). 앞에 있는 것을 쓴다
 #   폴더가 있는지가 아니라 **P-7 스크립트가 있는 자리**를 고른다 — 다른 항목의 복제본에도 review-scripts/ 가 있을 수 있다(대기열 11 에서 발견)
+#   P7_SCRIPTS_DIR 를 주면 그 자리가 먼저다(복제본에서 운영 사이트의 scripts/ 를 **읽어** 사본으로만 돌릴 때 — 디버깅 묶음 T)
 SH_DIR="$(dirname "$ROOT")/scripts"
 [ -f "$ROOT/review-scripts/apply-fpm-p7-2026-09-24.sh" ] && SH_DIR="$ROOT/review-scripts"
+[ -n "${P7_SCRIPTS_DIR:-}" ] && SH_DIR="$P7_SCRIPTS_DIR"
 FPM_SH="$SH_DIR/apply-fpm-p7-2026-09-24.sh"
 DB_SH="$SH_DIR/apply-db-p7-2026-09-24.sh"
 FPM_BIN=/usr/sbin/php-fpm8.1
@@ -74,6 +86,9 @@ code_of() { curl -s -o /dev/null -w '%{http_code}' -A "$UA" "$@"; }
 dbrole_conf() { psqlpg "SELECT coalesce((SELECT string_agg(x, ',' ORDER BY x) FROM pg_db_role_setting s JOIN pg_roles r ON r.oid = s.setrole JOIN pg_database d ON d.oid = s.setdatabase, unnest(s.setconfig) x WHERE r.rolname = '$2' AND d.datname = '$1'), '(none)')"; }
 global_conf() { psqlpg "SELECT coalesce(array_to_string(rolconfig, ','), '(none)') FROM pg_roles WHERE rolname = '$1'"; }
 sha() { sha256sum "$1" | cut -d' ' -f1; }
+# 반영 스크립트(사본) 한 번 — 종료 코드만 돌려주고 출력은 runf.txt 로. ⑦ 의 FPM 절과 DB 절이 **함께** 쓴다 — FPM 절 안에서만 정의하면
+#   FPM 사본 시험을 건너뛸 때(ETC_WANT 판을 못 찾음) DB 절이 「runf: command not found」로 9건 틀렸다(디버깅 묶음 T, 2026-09-26 기능 점검)
+runf() { local rc=0; bash "$@" > "$WORK/log/runf.txt" 2>&1 || rc=$?; echo "$rc"; }
 
 # ════════════════════════════════════════════════════════════════
 hr "P-7 — 준비 (운영에는 쓰지 않는다)"
@@ -81,8 +96,10 @@ avail_kb=$(df -Pk / | awk 'NR==2{print $4}')
 [ "$avail_kb" -ge 1048576 ] || { echo "루트 디스크 여유 1GB 미만 — 시작하지 않는다 (SECURITY R-80)"; exit 3; }
 sudo -n -u postgres psql -X -d "$SRC_DB" -tAc "SELECT 1" >/dev/null 2>&1 || { echo "psql(postgres) 을 쓸 수 없다"; exit 3; }
 for b in "$FPM_BIN" nginx php curl python3; do command -v "$b" >/dev/null 2>&1 || { echo "$b 가 없다"; exit 3; }; done
-[ -f "$MIG" ] && [ -f "$POOL_SRC" ] && [ -f "$FPM_SH" ] && [ -f "$DB_SH" ] || { echo "P-7 파일이 없다(마이그레이션 · 풀 설정 · 반영 스크립트 $SH_DIR)"; exit 3; }
-[ -f "$ROOT/.env" ] || { echo "$ROOT/.env 가 없다 — 임시 .env 를 만들 원본이 없다"; exit 3; }
+[ -f "$MIG" ] && [ -f "$POOL_SRC" ] || { echo "P-7 파일이 없다(마이그레이션 · 풀 설정)"; exit 3; }
+# 반영 스크립트 둘은 저장소 밖(트리 형제 scripts/ 또는 검토 복제본 review-scripts/)에 있다 — 없으면 ⑦ 만 건너뛴다(환경 없음 · 실패 아님)
+HAVE_SH=0; [ -f "$FPM_SH" ] && [ -f "$DB_SH" ] && HAVE_SH=1
+[ -f "$ENV_SRC" ] || { echo "$ENV_SRC 가 없다 — 임시 .env 를 만들 원본이 없다(복제본은 QF2_ENV_SRC)"; exit 3; }
 [ -r "$ETC_POOL" ] || { echo "$ETC_POOL 을 읽을 수 없다 — 운영 흉내 풀을 만들 수 없다"; exit 3; }
 mkdir -p "$WORK/run" "$WORK/log" "$WORK/hdr" "$WORK/tmp"/{cb,px,fc,uw,sc}
 chmod 700 "$WORK/hdr"
@@ -90,7 +107,9 @@ SOCK_A="$WORK/a.sk"; SOCK_B="$WORK/b.sk"; SOCK_C="$WORK/c.sk"   # 유닉스 소�
 [ "$(printf '%s' "$SOCK_A" | wc -c)" -lt 107 ] || { echo "소켓 경로가 너무 길다 — TMPDIR 을 짧게"; exit 3; }
 GLOBAL_BEFORE=$(global_conf tbox_app)
 ETC_BEFORE=$(sha "$ETC_POOL")          # 운영 /etc 풀 파일 — 반영 전(ETC_WANT)이든 반영 뒤(WANT)든 시험이 끝날 때 같아야 한다
-ETC_WANT_H=$(sed -n 's/^ETC_WANT=//p' "$FPM_SH"); WANT_H=$(sed -n 's/^WANT=//p' "$FPM_SH")
+ETC_WANT_H=""; WANT_H=""
+[ "$HAVE_SH" = 1 ] && { ETC_WANT_H=$(sed -n 's/^ETC_WANT=//p' "$FPM_SH"); WANT_H=$(sed -n 's/^WANT=//p' "$FPM_SH"); }
+note "⑦ 반영 스크립트 자리: $SH_DIR — $([ "$HAVE_SH" = 1 ] && echo '둘 다 있음' || echo '없음 → ⑦ 은 「환경 없음 — 건너뜀(실패 아님)」')"
 TESTREAD_BEFORE=$(global_conf tbox_testread)
 note "시작할 때 전역 tbox_app 역할 설정: $GLOBAL_BEFORE (시험이 끝날 때 같아야 한다)"
 
@@ -114,7 +133,7 @@ make_app() {  # $1 폴더 $2 DB 이름
   tar -C "$ROOT" -cf - --exclude=.git --exclude=jar --exclude=api-test.txt --exclude=./.env . | tar -C "$1/app" -xf -
   # qcheck-allow: R20 — 임시 인스턴스용 사본(0700·0600 · trap 정리) · kill -9 뒤 남는 창은 받아들인 위험(HO-B1-004)
   sed -e "s#^DB_NAME=.*#DB_NAME=$2#" -e "s#^STORAGE_DIR=.*#STORAGE_DIR=$1/data/storage#" \
-      -e "s#^AUDIT_LOG_FILE=.*#AUDIT_LOG_FILE=$1/log/audit.log#" "$ROOT/.env" > "$1/app/.env"
+      -e "s#^AUDIT_LOG_FILE=.*#AUDIT_LOG_FILE=$1/log/audit.log#" "$ENV_SRC" > "$1/app/.env"
   chmod 600 "$1/app/.env"
   grep -q "^DB_NAME=$2\$" "$1/app/.env"
 }
@@ -458,6 +477,9 @@ expect "그 뒤 풀은 새 워커로 계속 받는다 → 200" "200" "$R"
 
 # ════════════════════════════════════════════════════════════════
 hr "⑦ 반영 스크립트 둘"
+if [ "$HAVE_SH" != 1 ]; then
+  skip "⑦ 반영 스크립트 둘(정적 · FPM 사본 · DB 사본)" "환경 없음 — $SH_DIR 에 apply-fpm-p7·apply-db-p7 이 없다(P7_SCRIPTS_DIR 로 줄 수 있다) · 실패 아님"
+else
 sub "정적 — bash -n · 해시 고정값이 이 트리 파일과 같다 · 헤더 확인 함수 모양"
 expect "bash -n apply-fpm" "0" "$(bash -n "$FPM_SH" >/dev/null 2>&1; echo $?)"
 expect "bash -n apply-db" "0" "$(bash -n "$DB_SH" >/dev/null 2>&1; echo $?)"
@@ -492,8 +514,11 @@ if [ "$FPM_HARNESS" = 1 ]; then
   DEST_A="$WORK/fpmA/pool.d/tbox.conf"; SRC_A="$WORK/A/app/deploy/php-fpm-pool.conf"
   cp -p "$DEST_A" "$WORK/old-pool.conf"; cp -p "$SRC_A" "$WORK/new-pool.conf"
   reset_a() { cp -p "$WORK/old-pool.conf" "$DEST_A"; cp -p "$WORK/new-pool.conf" "$SRC_A"; kill -USR2 "$PIDA"; sleep 2; }
-  runf() { local rc=0; bash "$@" > "$WORK/log/runf.txt" 2>&1 || rc=$?; echo "$rc"; }
-  mk_fpm_copy "$WORK/fpm-apply.sh" "$OLD_A" "$NEW_A" && expect "사본에 운영 경로·root 명령이 남지 않았다" "ok" "ok" || expect "사본에 운영 경로·root 명령이 남지 않았다" "ok" "left"
+  # 사본 정리 검사가 「left」면 이 절의 사본을 **돌리지 않는다**(독립 검토 L6). 뒤의 bad·down 사본은 같은 원본·같은 sed 라 이 검사가 대표한다
+  if mk_fpm_copy "$WORK/fpm-apply.sh" "$OLD_A" "$NEW_A"; then FPM_COPY_OK=1; expect "사본에 운영 경로·root 명령이 남지 않았다" "ok" "ok"; else FPM_COPY_OK=0; expect "사본에 운영 경로·root 명령이 남지 않았다" "ok" "left"; fi
+  if [ "$FPM_COPY_OK" != 1 ]; then
+    skip "⑦ FPM 사본 dry-run·본 실행" "사본에 운영 경로·root 명령이 남았다 — 사본을 돌리지 않는다"
+  else
 
   RC=$(TMPDIR="$WORK/tmp" runf "$WORK/fpm-apply.sh" --dry-run)
   expect "dry-run 통과 → 0 · /etc 사본 그대로" "0|$OLD_A" "$RC|$(sha "$DEST_A")"
@@ -558,6 +583,7 @@ if [ "$FPM_HARNESS" = 1 ]; then
   RC=$(runf "$WORK/fpm-nouser.sh" --dry-run)
   expect "  풀 계정이 없음 — dry-run 도 1" "1" "$RC"
 
+  fi   # FPM_COPY_OK
 else
   skip "⑦ FPM 반영 스크립트 사본 시험" "ETC_WANT 판을 /etc·저장소 이력에서 찾지 못함"
 fi
@@ -580,7 +606,11 @@ mk_db_copy() {  # $1 출력 · $2 MIG_WANT
   grep -q "IN DATABASE $DBH RESET" "$1" && grep -q "datname = '$DBH')" "$1" && grep -q '^AS_APP=(env)$' "$1" && ! grep -nE '(sudo -u postgres|/var/www/qaredi|ALTER ROLE \$ROLE RESET|runuser)' "$1" | grep -vE '^[0-9]+:[[:space:]]*(#|echo )'
 }
 mk_mig 15s; MIGH="$WORK/H/app/db/migrations/$(basename "$MIG")"
-mk_db_copy "$WORK/db-apply.sh" "$(sha "$MIGH")" && expect "사본에 전역 ALTER·운영 경로가 남지 않았다" "ok" "ok" || expect "사본에 전역 ALTER·운영 경로가 남지 않았다" "ok" "left"
+# 사본 정리 검사(운영 경로·전역 ALTER 가 남지 않았나)가 「left」면 이 절의 사본을 **돌리지 않는다**(독립 검토 L6 — 전에는 적기만 하고 계속 돌렸다)
+if mk_db_copy "$WORK/db-apply.sh" "$(sha "$MIGH")"; then DB_COPY_OK=1; expect "사본에 전역 ALTER·운영 경로가 남지 않았다" "ok" "ok"; else DB_COPY_OK=0; expect "사본에 전역 ALTER·운영 경로가 남지 않았다" "ok" "left"; fi
+if [ "$DB_COPY_OK" != 1 ]; then
+  skip "⑦ DB 사본 dry-run·본 실행" "사본에 운영 경로·전역 ALTER 가 남았다 — 사본을 돌리지 않는다"
+else
 expect "사본 마이그레이션은 IN DATABASE $DBH 두 줄" "2" "$(grep -c "^ALTER ROLE tbox_app IN DATABASE $DBH SET" "$MIGH")"
 TARGET="idle_in_transaction_session_timeout=$IT_VAL,statement_timeout=$ST_VAL"
 OTHERS0=$(psqlpg "SELECT string_agg(rolname || '=' || coalesce(array_to_string(rolconfig, ','), '(none)'), ' ' ORDER BY rolname) FROM pg_roles WHERE rolname LIKE 'tbox\_%'")
@@ -618,6 +648,8 @@ mk_mig 14s; mk_db_copy "$WORK/db-bad.sh" "$(sha "$MIGH")" >/dev/null
 RC=$(runf "$WORK/db-bad.sh")
 expect "본 실행 — 적용 뒤 확인 실패(14s 판) → RESET 으로 되돌림 · 4" "4|(none)" "$RC|$(dbrole_conf "$DBH" tbox_app)"
 grep -E '✖|되돌림' "$WORK/log/runf.txt" | head -4 | sed 's/^/    | /'
+fi   # DB_COPY_OK
+fi   # HAVE_SH — ⑦
 
 # ════════════════════════════════════════════════════════════════
 hr "끝 — 시험이 운영에 남긴 것 0"

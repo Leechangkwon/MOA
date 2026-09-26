@@ -18,6 +18,10 @@
 #   ② 이 시험은 claude_employee01 의 **2단계 인증을 껐다 켠다**. 끌 때마다 비밀이 새로 만들어지므로
 #      마지막에 반드시 confirm 으로 다시 켜고 `/etc/tbox-v2/qa-totp.txt` 를 새 값으로 갱신한다
 #      (다른 시험이 이 파일로 로그인한다). 다른 계정·파일·표에는 손대지 않는다.
+#      ★ 운영 파일에 쓰는 것은 **대상이 운영일 때만**(BASE 운영 검토 주소 · DB tbox_re — tests/lib/prod_guard.sh).
+#        회귀 틀이 BASE·DB 를 임시로 바꿔 돌리면 새 비밀은 이 실행의 메모리에만 두고(또는 QA_TOTP_FILE 로 준 자리에) 운영 파일은
+#        건드리지 않는다. 대상을 가를 수 없으면 시작하지 않는다. 쓰기 직전에 BASE·DB·운영 .env 의 DB_NAME 을 다시 본다
+#        (2026-09-26 13:52 사고 — 임시 대상 실행이 운영 qa-totp.txt 를 덮어씀 · 디버깅 묶음 T 9번).
 #   ③ 바깥으로 나가는 요청이 없다. 파이썬 `qrcode` 는 **시험 전용**이고 앱은 부르지 않는다.
 #
 # 준비물: sudo(/etc/tbox-v2 읽기·쓰기 · psql), php, curl, python3(+qrcode, +playwright)
@@ -42,7 +46,24 @@ PASS=0
 FAIL=0
 
 WHO="claude_employee01"
-TOTP_FILE="/etc/tbox-v2/qa-totp.txt"
+. "$ROOT/tests/lib/prod_guard.sh" || { echo "tests/lib/prod_guard.sh 를 읽지 못했다 — 시험을 시작하지 않는다(운영 파일 가드)"; exit 3; }
+# 2단계 비밀 파일 — 읽는 자리 = QA_TOTP_FILE(주면) 아니면 운영 파일(읽기). 새 비밀을 **쓰는** 자리는 대상에 따라:
+#   운영 대상 → 그 파일(쓰기 직전 prod_write_guard) · 임시 대상 → QA_TOTP_FILE 을 주었으면 그 파일, 아니면 쓰지 않고 메모리에만.
+PROD_TOTP_FILE="/etc/tbox-v2/qa-totp.txt"
+TOTP_FILE="${QA_TOTP_FILE:-$PROD_TOTP_FILE}"
+TARGET_KIND=$(pg_target_kind)
+case "$TARGET_KIND" in
+  prod)
+    # 운영 대상 — 운영 상태(운영 계정 2단계)를 **바꾸기 전에** 쓰기 가드를 한 번 먼저 본다. 쓰기 직전(save_secret)에만 보면 2단계를 이미
+    #   바꾼 뒤 멈춰 운영 파일이 옛 값으로 남는다(13:52 의 반대 방향 · 독립 검토 중간 1). 운영 대상에 QA_TOTP_FILE 을 주면 새 비밀이
+    #   그 파일로만 가고 운영 파일은 옛 값이 되므로 거부한다.
+    [ -z "${QA_TOTP_FILE:-}" ] || { echo "운영 대상에는 QA_TOTP_FILE 을 줄 수 없다(운영 $PROD_TOTP_FILE 이 옛 값으로 남는다) — 시험을 시작하지 않는다"; exit 3; }
+    prod_write_guard "$PROD_TOTP_FILE" || { echo "운영 파일 쓰기 가드가 막는다 — 운영 상태를 바꾸기 전에 시험을 시작하지 않는다"; exit 3; }
+    TOTP_SAVE=file ;;
+  temp) if [ -n "${QA_TOTP_FILE:-}" ]; then TOTP_SAVE=file; else TOTP_SAVE=memory; fi ;;
+  *) echo "대상이 운영인지 임시인지 가를 수 없다(BASE=$BASE · DB=$DB) — 시험을 시작하지 않는다(운영 파일 가드)"; exit 3 ;;
+esac
+MEM_SECRET=""   # 임시 대상에서 새 비밀(값은 찍지 않는다)
 
 mkdir -p "$OUT" "$OUT/a" "$OUT/d-shots"
 
@@ -64,7 +85,7 @@ code_of() { printf '%s' "$1" | tail -1; }
 body_of() { printf '%s' "$1" | sed '$d'; }
 
 # ── 비밀 다루기 (전부 변수에만 — 화면에 찍지 않는다) ─────────────
-qa_secret()   { sudo -n awk -v u="$WHO" '$1==u{print $2}' "$TOTP_FILE"; }
+qa_secret()   { if [ -n "$MEM_SECRET" ]; then printf '%s\n' "$MEM_SECRET"; else sudo -n awk -v u="$WHO" '$1==u{print $2}' "$TOTP_FILE"; fi; }
 qa_password() { sudo -n awk -v u="$WHO" '$1==u{print $3}' /etc/tbox-v2/seed-accounts.txt; }
 
 # 지금 코드 — 남은 시간이 3초 미만이면 다음 창까지 기다린다
@@ -97,13 +118,25 @@ next_code() {
 #   빈 값·줄바꿈(py_secret rc 90)·base32 가 아닌 값(awk rc 2)·대상 계정 줄이 1개가 아님(awk rc 3)이면
 #   install 을 부르지 않는다 — 빈 값으로 qa-totp.txt 를 덮어쓰는 사고를 막는다.
 save_secret() {
-  local tmp
+  local tmp v
+  if [ "$TOTP_SAVE" = memory ]; then
+    v=${!1-}
+    if [[ "$v" =~ ^[A-Z2-7]{16,64}$ ]]; then
+      MEM_SECRET=$v
+      echo "  · 대상이 임시(DB $DB)다 — 새 비밀은 이 실행의 메모리에만 둔다(운영 $PROD_TOTP_FILE 쓰기 0)"
+      return 0
+    fi
+    echo "  ! 새 비밀 모양이 아니다 — 메모리에도 두지 않았다"
+    return 1
+  fi
+  # 운영 자리면 쓰기 **직전에** 다시 확인 — 어긋나면 멈춘다(rc 3)
+  prod_write_guard "$TOTP_FILE" || { echo "  ! 운영 파일 쓰기 가드가 막았다 — 시험을 멈춘다"; exit 3; }
   tmp=$(mktemp)
   if py_secret "$1" -- sudo -n awk -v u="$WHO" '
         BEGIN { if ((getline s < "/dev/stdin") <= 0 || s !~ /^[A-Z2-7]+$/) { bad = 1; exit 2 } }
         $1 == u { $2 = s; n++ } { print }
         END { if (bad) exit 2; if (n != 1) exit 3 }' "$TOTP_FILE" > "$tmp" \
-     && sudo -n install -o root -g root -m 600 "$tmp" "$TOTP_FILE"; then
+     && if pg_is_prod_path "$TOTP_FILE"; then sudo -n install -o root -g root -m 600 "$tmp" "$TOTP_FILE"; else install -m 600 "$tmp" "$TOTP_FILE"; fi; then
     rm -f "$tmp"
     echo "  · $TOTP_FILE 의 $WHO 비밀을 새 값으로 갱신했다 (값은 찍지 않는다)"
     return 0

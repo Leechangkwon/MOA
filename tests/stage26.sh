@@ -27,6 +27,19 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 . "$ROOT/tests/lib/review_accounts.sh" || { echo "tests/lib/review_accounts.sh 를 읽지 못했다 — 시험을 시작하지 않는다 (R-73)"; exit 3; }
 . "$ROOT/tests/lib/secrets.sh" || { echo "tests/lib/secrets.sh 를 읽지 못했다 — 시험을 시작하지 않는다 (R-62)"; exit 3; }
 . "$ROOT/tests/lib/db_read.sh" || { echo "tests/lib/db_read.sh 를 읽지 못했다 — 시험을 시작하지 않는다 (R-73)"; exit 3; }
+. "$ROOT/tests/lib/prod_guard.sh" || { echo "tests/lib/prod_guard.sh 를 읽지 못했다 — 시험을 시작하지 않는다(운영 파일 가드)"; exit 3; }
+# 정리 때 S26- 파일 바이트를 지우는 저장소 자리 — 운영 대상일 때만 운영 저장소가 기본값(디버깅 묶음 T 9번 · 2026-09-26 사고와 같은 부류).
+#   임시 대상(회귀 틀이 BASE·DB 를 바꾼 사본)이면 S26_STORAGE_DIR 을 준 때만 그 자리, 아니면 바이트는 지우지 않는다(임시 저장소는 그 틀이 통째로 지운다).
+#   대상을 가를 수 없으면 시작하지 않는다. 지우기 직전에 prod_write_guard 로 다시 본다.
+case "$(pg_target_kind)" in
+  prod)
+    # 운영 대상에 S26_STORAGE_DIR 을 주면 운영 저장소에 S26- 바이트가 고아로 남는다 — 거부. 운영 상태를 바꾸기 전에 쓰기 가드를 한 번 먼저(독립 검토 중간 1)
+    [ -z "${S26_STORAGE_DIR:-}" ] || { echo "운영 대상에는 S26_STORAGE_DIR 을 줄 수 없다(운영 저장소에 S26- 바이트가 남는다) — 시험을 시작하지 않는다"; exit 3; }
+    S26_STORAGE="$PG_PROD_STORAGE"
+    prod_write_guard "$S26_STORAGE" || { echo "운영 파일 쓰기 가드가 막는다 — 운영 상태를 바꾸기 전에 시험을 시작하지 않는다"; exit 3; } ;;
+  temp) S26_STORAGE="${S26_STORAGE_DIR:-}" ;;
+  *) echo "대상이 운영인지 임시인지 가를 수 없다(BASE=$BASE · DB=$DB) — 시험을 시작하지 않는다(운영 파일 가드)"; exit 3 ;;
+esac
 OUT="${1:-$HOME/.claude/ui-shots/stage26}"
 JAR_DIR="$(mktemp -d)"
 WORK="$(mktemp -d)"
@@ -180,10 +193,18 @@ cleanup() {
   local blobs
   blobs=$(psqlq "SELECT stored_name FROM files
                   WHERE uploaded_by IN ($QA_IDS) AND original_name LIKE 'S26-%';")
-  if [ -n "$blobs" ]; then
+  if [ -n "$blobs" ] && [ -z "$S26_STORAGE" ]; then
+    echo "  S26- 파일 바이트는 지우지 않음 — 대상이 임시(DB $DB)이고 S26_STORAGE_DIR 이 없다(임시 저장소는 부른 틀이 지운다)"
+  elif [ -n "$blobs" ] && ! prod_write_guard "$S26_STORAGE"; then
+    echo "  ✖ S26- 파일 바이트 — 운영 파일 쓰기 가드가 막아 지우지 않았다"; FAIL=$((FAIL+1))
+  elif [ -n "$blobs" ]; then
     local sn
     for sn in $blobs; do
-      sudo -n rm -f "/var/lib/tbox-v2/storage/${sn:0:2}/${sn:2:2}/$sn" 2>/dev/null
+      if pg_is_prod_path "$S26_STORAGE"; then
+        sudo -n rm -f "$S26_STORAGE/${sn:0:2}/${sn:2:2}/$sn" 2>/dev/null
+      else
+        rm -f "$S26_STORAGE/${sn:0:2}/${sn:2:2}/$sn" 2>/dev/null
+      fi
     done
   fi
   psqlc "DELETE FROM files WHERE uploaded_by IN ($QA_IDS) AND original_name LIKE 'S26-%';" \

@@ -16,8 +16,10 @@
 #   REGRESS=1           같은 임시 인스턴스에서 회귀 — 커뮤니티 stage3~4c · stage26 · help_button · q_launcher · f68(qf2_search.sh 의 회귀 틀)
 #                       목록은 REGRESS_LIST 로 바꿀 수 있다(예: "q_launcher api_whoami api_read api_folders api_tokens").
 #   REGRESS_ONLY=1      T 절·화면을 건너뛰고 회귀만(REGRESS_LIST 와 함께).
+#   QF3A_SMOKE_RUNS=N   화면 시험(T9)을 같은 인스턴스에서 N 번 잇달아(기본 1) — 흔들림 확인. 끝에 「실패한 회수 0/N」 한 줄.
 #
-# ★ 운영 DB·운영 포트를 건드리지 않는다 — 임시 DB `tbox_qf3a_<포트>_test`, 임시 인스턴스 `php -S 127.0.0.1:<포트>`(기본 8161).
+# ★ 운영 DB·운영 포트를 건드리지 않는다 — 임시 DB `tbox_qf3a_<포트>_test`(앞 `tbox_` 는 QTEST_DB_PREFIX 로 바꿀 수 있다 — 예 tbox_d1t_),
+#   임시 인스턴스 `php -S 127.0.0.1:<포트>`(기본 8161).
 #   운영 DB 는 pg_dump 로 **읽어** 임시 DB 에 붓기만 한다(파이프). 검토 계정은 claude_ 다섯(F-71). 비밀은 표준입력으로만(R-62).
 #   임시 .env 원본 — 복제본에서는 mktemp 폴더(0700)의 사본을 QF2_ENV_SRC 로 넘기고 끝에 지운다.
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
@@ -30,7 +32,12 @@ BASE="$SITE/tbox"
 CBASE="$SITE/community"
 UA="tbox-review/$(date +%F)"
 SRC_DB="tbox_re"                  # 운영 — **읽기만** 한다(pg_dump)
-DB="tbox_qf3a_${PORT}_test"       # 임시 — 여기에만 쓴다
+# 임시 DB 접두 — 나란히 도는 복제본끼리 이름을 가른다(예 QTEST_DB_PREFIX=tbox_d1t_). tbox_ 로 시작 · 소문자·숫자·밑줄 · _ 로 끝
+DBP="${QTEST_DB_PREFIX:-tbox_}"
+[[ "$DBP" =~ ^tbox_([a-z0-9]+_)*$ ]] || { echo "QTEST_DB_PREFIX 모양이 아니다(tbox_…_) — 시험을 시작하지 않는다"; exit 3; }
+DB="${DBP}qf3a_${PORT}_test"       # 임시 — 여기에만 쓴다
+SMOKE_RUNS="${QF3A_SMOKE_RUNS:-1}"  # 화면 시험(T9)을 같은 인스턴스에서 몇 번 잇달아 돌리나 — 흔들림 확인용(디버깅 묶음 T: 10)
+[[ "$SMOKE_RUNS" =~ ^[1-9][0-9]?$ ]] || { echo "QF3A_SMOKE_RUNS 는 1~99 — 시험을 시작하지 않는다"; exit 3; }
 MIG="2026-10-03_qf3a_favorites_recent.sql"
 JAR_DIR="$(mktemp -d)"
 WORK="$(mktemp -d)"
@@ -435,16 +442,26 @@ pp=$(sed -n 's/^PY_PASS=\([0-9]*\) PY_FAIL=\([0-9]*\)$/\1/p' "$WORK/drv.out"); p
 if [[ "$pp" =~ ^[0-9]+$ ]] && [[ "$pf" =~ ^[0-9]+$ ]]; then PASS=$((PASS + pp)); FAIL=$((FAIL + pf)); else echo "  ✖ 파이썬 몸통이 끝줄을 못 찍었다"; FAIL=$((FAIL+1)); fi
 [ "${pp:-0}" -ge 60 ] 2>/dev/null && expect "몸통이 헛돌지 않았다(통과 60 이상)" "yes" "yes" || expect "몸통이 헛돌지 않았다(통과 60 이상)" "yes" "no(${pp:-?})"
 
-hr "QF3A-T9 — 화면(헤드리스 · 두 앱) — tests/browser/qf3a_favorites.py"
+hr "QF3A-T9 — 화면(헤드리스 · 두 앱) — tests/browser/qf3a_favorites.py$([ "$SMOKE_RUNS" -gt 1 ] && printf ' × %s번' "$SMOKE_RUNS")"
 note "스크린샷 폴더: $SHOTS (사람이 직접 연다)"
-py_secret S_E1 S_E2 -- env PATH="$HOME/.local/bin:$PATH" python3 "$ROOT/tests/browser/qf3a_favorites.py" "$SITE" "$UA" "$SHOTS" "$WORK/ids.json" > "$WORK/browser.out" 2>&1
-rc=$?
-cat "$WORK/browser.out"
-expect "화면 시험 종료 코드" "0" "$rc"
-bf=$(sed -n 's/^SMOKE_FAIL=\([0-9]*\)$/\1/p' "$WORK/browser.out")
-expect "화면 시험 실패 수" "0" "${bf:-?}"
-bp=$(grep -c '^  ✔' "$WORK/browser.out")
-[ "$bp" -ge 25 ] && expect "화면 시험이 헛돌지 않았다(✔ 25 이상)" "yes" "yes" || expect "화면 시험이 헛돌지 않았다(✔ 25 이상)" "yes" "no($bp)"
+SMOKE_BAD=0
+for run_i in $(seq 1 "$SMOKE_RUNS"); do
+  rt=""; [ "$SMOKE_RUNS" -gt 1 ] && { rt=" ($run_i/$SMOKE_RUNS)"; sub "화면 시험 $run_i / $SMOKE_RUNS (시작 $(date +%T))"; }
+  py_secret S_E1 S_E2 -- env PATH="$HOME/.local/bin:$PATH" python3 "$ROOT/tests/browser/qf3a_favorites.py" "$SITE" "$UA" "$SHOTS" "$WORK/ids.json" > "$WORK/browser.out" 2>&1
+  rc=$?
+  if [ "$SMOKE_RUNS" -gt 1 ] && [ "$rc" = 0 ]; then
+    note "$run_i 번째 — 종료 코드 0 · $(tail -1 "$WORK/browser.out") · ✔ $(grep -c '^  ✔' "$WORK/browser.out")"
+  else
+    cat "$WORK/browser.out"
+  fi
+  expect "화면 시험 종료 코드$rt" "0" "$rc"
+  bf=$(sed -n 's/^SMOKE_FAIL=\([0-9]*\)$/\1/p' "$WORK/browser.out")
+  expect "화면 시험 실패 수$rt" "0" "${bf:-?}"
+  [ "$rc" = 0 ] && [ "${bf:-?}" = 0 ] || SMOKE_BAD=$((SMOKE_BAD + 1))
+  bp=$(grep -c '^  ✔' "$WORK/browser.out")
+  [ "$bp" -ge 25 ] && expect "화면 시험이 헛돌지 않았다(✔ 25 이상)" "yes" "yes" || expect "화면 시험이 헛돌지 않았다(✔ 25 이상)" "yes" "no($bp)"
+done
+[ "$SMOKE_RUNS" -gt 1 ] && expect "화면 시험 $SMOKE_RUNS번 잇달아 — 실패한 회수" "0/$SMOKE_RUNS" "$SMOKE_BAD/$SMOKE_RUNS"
 
 hr "서버 로그"
 errs_after=$(grep -ciE 'PHP (Fatal|Warning|Notice|Deprecated)|SQLSTATE|Uncaught' "$INST/server.log")

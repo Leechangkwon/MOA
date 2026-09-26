@@ -18,6 +18,8 @@
 #
 # ★ 운영 nginx·운영 포트(80·8082·8081)·운영 php-fpm 에 닿지 않는다.
 #   임시 nginx 는 이 사용자로 127.0.0.1·::1 의 R31_PORT(기본 8191)에만 열고, 로그·pid·임시 파일은 mktemp 폴더(0700)에 둔다.
+#   그 폴더는 TMPDIR 이 아니라 짧은 /tmp 아래다 — 없는 FastCGI 소켓 경로(unix:…/run/no-fpm.sock)도 nginx 가 설정을 읽을 때 108바이트
+#   한도를 따지므로, 긴 TMPDIR(에이전트 작업 폴더 등)에서는 「too long path in the unix domain socket」으로 N1·N2 가 틀렸다(디버깅 묶음 T).
 #   FastCGI 는 **없는 임시 소켓**으로 돌린다(PHP 경로는 502 — 「관문을 지나 location 에 닿았다」는 뜻으로만 쓴다).
 #   정적 파일은 이 복제본의 public/ 을 읽는다. sudo 를 쓰지 않는다.
 # 사용: bash tests/sec4_r31_nginx.sh
@@ -30,7 +32,11 @@ DOMAIN="changkwon.mso.so"
 PROXY_REAL="192.168.104.100"     # 운영 프록시 주소(저장소 파일의 값)
 PROXY_SIM="127.0.0.100"          # 임시 사본에서 프록시 자리를 대신하는 루프백 주소
 DIRECT_SIM="127.0.0.7"           # 사내망 PC 의 직접 접속을 대신하는 루프백 주소
-WORK="$(mktemp -d)"; chmod 700 "$WORK"
+WORK="$(mktemp -d /tmp/r31.XXXXXX)"; chmod 700 "$WORK"
+[ "$(printf '%s' "$WORK/run/no-fpm.sock" | wc -c)" -lt 100 ] || { echo "소켓 경로가 너무 길다($WORK) — 중단"; rm -rf "$WORK"; exit 3; }
+# nginx 설정에서 지시어 줄만 센다 — `#` 로 시작하는 주석 줄에 같은 글자가 들어 있어도(예: 임베드 260d036 이 tbox-v2.conf 에 더한 설명 주석)
+#   세지 않는다(디버깅 묶음 T, 2026-09-26 기능 점검 — 주석 줄까지 세어 「관문 1개」가 2 로 틀렸다)
+count_directive() { grep -vE '^[[:space:]]*#' "$2" | grep -cF -- "$1" || true; }
 NGX_UP=0
 PASS=0; FAIL=0
 
@@ -101,8 +107,8 @@ if grep -hvE '^[[:space:]]*#' "$WORK/ngx/tbox-v2" "$WORK/ngx/tbox-common.conf" \
      | grep -qE "/var/www/qaredi|php8\.1-fpm-tbox\.sock|/var/log/nginx|/var/lib/tbox-v2|$PROXY_REAL|listen +80 |listen +\[::\]:80"; then
   echo "사본에 운영 경로·포트·주소가 남았다 — 중단"; exit 4
 fi
-expect "N2 사본에도 map·if 가 그대로" "1|1" \
-  "$(grep -c 'map \$realip_remote_addr \$tbox_via_proxy' "$WORK/ngx/tbox-common.conf")|$(grep -c 'if (\$tbox_via_proxy = 0)' "$WORK/ngx/tbox-v2")"
+expect "N2 사본에도 map·if 가 그대로(주석 줄 빼고 셈)" "1|1" \
+  "$(count_directive 'map $realip_remote_addr $tbox_via_proxy' "$WORK/ngx/tbox-common.conf")|$(count_directive 'if ($tbox_via_proxy = 0)' "$WORK/ngx/tbox-v2")"
 cat > "$WORK/ngx/nginx.conf" <<NG
 pid $WORK/run/nginx.pid;
 error_log $WORK/log/nginx-main.err;
@@ -207,7 +213,10 @@ expect "map 의 1 값은 셋뿐(프록시 · 127.0.0.1 · ::1)" "3" \
 expect "map 기본값 0" "1" "$(awk '/^map \$realip_remote_addr \$tbox_via_proxy/{f=1;next} f&&/^}/{f=0} f&&$1=="default"&&$2=="0;"' "$ROOT/deploy/sites/tbox-common.conf" | wc -l | tr -d ' ')"
 expect "로컬 8082(tbox-v2-local)·8081(tbox-v1-local)은 이 값을 쓰지 않는다" "0" \
   "$(cat "$ROOT/deploy/sites/tbox-v2-local.conf" "$ROOT/deploy/sites/tbox-v1-local.conf" | grep -c 'tbox_via_proxy')"
-expect "공개용 사이트의 관문은 한 곳(if 블록 1개)" "1" "$(grep -c 'if (\$tbox_via_proxy = 0)' "$ROOT/deploy/sites/tbox-v2.conf")"
+expect "공개용 사이트의 관문은 한 곳(if 블록 1개 — 주석 줄 빼고 셈)" "1" "$(count_directive 'if ($tbox_via_proxy = 0)' "$ROOT/deploy/sites/tbox-v2.conf")"
+printf '%s\n' '    # 설명 주석: server 단 if ($tbox_via_proxy = 0) 는 rewrite 단계라 …' '    if ($tbox_via_proxy = 0) {' '        return 301 https://x$request_uri;' '    }' > "$WORK/count_probe.conf"
+expect "  (자기 확인) 주석 줄 하나 + 지시어 줄 하나 → 지시어 셈 1 · 글자 셈(옛 식) 2" "1|2" \
+  "$(count_directive 'if ($tbox_via_proxy = 0)' "$WORK/count_probe.conf")|$(grep -cF 'if ($tbox_via_proxy = 0)' "$WORK/count_probe.conf")"
 if python3 -B "$ROOT/tests/upgrade/asset_cache.py" parse "$ROOT/deploy/sites/tbox-v2.conf" "$ROOT/deploy/sites/tbox-common.conf" "$ROOT/public/assets" > "$WORK/ac-new.json" 2>"$WORK/ac.err"; then
   BASEREV="${R31_BASE:-335791d}"
   mkdir -p "$WORK/old"   # 파일 이름이 결과의 「from」 글에 들어가므로 같은 이름으로 꺼낸다

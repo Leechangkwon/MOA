@@ -17,7 +17,8 @@
 #              R-73 사전 검사(최근 10분 비-검토 행)를 막지 않게. R-31(nginx)은 tests/sec4_r31_nginx.sh, AL-9 본 시험은 tests/f69.sh 가 따로 본다.
 #   REGRESS_ONLY=1  S4 절을 건너뛰고 회귀만.
 #
-# ★ 운영 DB·운영 포트를 건드리지 않는다 — 임시 DB `tbox_sec4_<포트>_test`, 임시 인스턴스 `php -S 127.0.0.1:<포트>`(기본 8192).
+# ★ 운영 DB·운영 포트를 건드리지 않는다 — 임시 DB `tbox_sec4_<포트>_test`(앞 `tbox_` 는 QTEST_DB_PREFIX — 예 tbox_d1t_),
+#   임시 인스턴스 `php -S 127.0.0.1:<포트>`(기본 8192).
 #   운영 DB 는 pg_dump 로 **읽어** 임시 DB 에 붓기만 한다(파이프). 검토 계정은 claude_ 다섯(F-71), UA tbox-review/<날짜>.
 #   비밀(검토 계정 비밀번호·TOTP·임시 비밀번호·세션·CSRF)은 표준입력으로만(tests/lib/secrets.sh — R-62). 화면에 찍지 않는다.
 #   임시 .env 원본 — 복제본에서는 mktemp 폴더(0700)의 사본을 QF2_ENV_SRC 로 넘기고 끝에 지운다.
@@ -31,7 +32,10 @@ SITE="http://127.0.0.1:$PORT"
 BASE="$SITE/tbox"
 UA="tbox-review/$(date +%F)"
 SRC_DB="tbox_re"                  # 운영 — **읽기만** 한다(pg_dump)
-DB="tbox_sec4_${PORT}_test"       # 임시 — 여기에만 쓴다
+# 임시 DB 접두 — 나란히 도는 복제본끼리 이름을 가른다(예 QTEST_DB_PREFIX=tbox_d1t_). tbox_ 로 시작 · 소문자·숫자·밑줄 · _ 로 끝
+DBP="${QTEST_DB_PREFIX:-tbox_}"
+[[ "$DBP" =~ ^tbox_([a-z0-9]+_)*$ ]] || { echo "QTEST_DB_PREFIX 모양이 아니다(tbox_…_) — 시험을 시작하지 않는다"; exit 3; }
+DB="${DBP}sec4_${PORT}_test"       # 임시 — 여기에만 쓴다
 MIG="2026-10-04_users_temp_password_issued_at.sql"
 OLD_REV="${SEC4_OLD_REV:-335791d}"   # 대조용 옛 생성기 판(보안 넷 앞 운영 HEAD)
 TAG="$(date +%H%M%S)"
@@ -142,7 +146,18 @@ NUSERS=$(psqlq "SELECT count(*) FROM users")
 note "임시 DB $DB — 계정 $NUSERS · 파일 $(psqlq "SELECT count(*) FROM files")"
 
 hr "S4-M — 마이그레이션 $MIG (임시 DB 에만)"
-expect "마이그레이션 전 칸 없음" "0" "$(psqlq "SELECT count(*) FROM information_schema.columns WHERE table_schema='public' AND table_name='users' AND column_name='temp_password_issued_at'")"
+# 「마이그레이션 전」을 시험이 직접 만든다(디버깅 묶음 T, 2026-09-26 기능 점검). 운영에 보안 넷이 반영된 뒤로는 운영 사본에 이미
+#   users.temp_password_issued_at 칸이 있다 — 그러면 **임시 DB 에서만** 그 칸을 걷어(마이그레이션이 더한 것은 그 칸 하나뿐) 전 상태로 되돌린다.
+TPI_COL_SQL="SELECT count(*) FROM information_schema.columns WHERE table_schema='public' AND table_name='users' AND column_name='temp_password_issued_at'"
+TPI_PRE=$(psqlq "$TPI_COL_SQL")
+if [ "$TPI_PRE" = "1" ]; then
+  case "$DB" in "$SRC_DB"|*[!a-z0-9_]*) echo "임시 DB 이름이 이상하다($DB) — 중단"; exit 4 ;; esac
+  note "운영 사본에 칸이 이미 있다(운영 반영 뒤 — 값 있는 줄 $(psqlq "SELECT count(temp_password_issued_at) FROM users")) → 임시 DB 에서만 칸을 걷어 「마이그레이션 전」을 만든다"
+  psqlq "ALTER TABLE public.users DROP COLUMN temp_password_issued_at" >/dev/null
+else
+  note "운영 사본에 칸 없음(운영 반영 전) — 그대로 「마이그레이션 전」"
+fi
+expect "마이그레이션 전 칸 없음(운영 사본 ${TPI_PRE:-?}칸 → 시험이 만든 전 상태)" "0" "$(psqlq "$TPI_COL_SQL")"
 for m in 2026-10-01_qf2_search.sql 2026-10-02_qf2b_files_search.sql 2026-10-03_qf3a_favorites_recent.sql; do
   sudo -n -u postgres psql -X -q -d "$DB" -v ON_ERROR_STOP=1 -f - < "$ROOT/db/migrations/$m" 2>&1 | grep -v 'could not change directory\|already exists, skipping' | sed 's/^/    /'
 done
@@ -233,7 +248,7 @@ if [ "${REGRESS:-0}" = "1" ] || [ "${REGRESS_ONLY:-0}" = "1" ]; then
       echo "  ✖ $s — 운영 주소·DB·저장 경로가 남아 있어 돌리지 않는다"; FAIL=$((FAIL+1)); continue
     fi
     echo "  ▸ $s (시작 $(date +%T))"
-    bash "$dst" "$SHOTS/regress-$s" > "$WORK/regress_$s.txt" 2>&1
+    S26_STORAGE_DIR="$INST/storage" bash "$dst" "$SHOTS/regress-$s" > "$WORK/regress_$s.txt" 2>&1   # stage26 정리가 지울 바이트 자리(임시 저장소 — 디버깅 묶음 T 9번)
     rc=$?
     line=$(grep -E '통과 [0-9]+|PASS|통과:|결과' "$WORK/regress_$s.txt" | tail -1)
     echo "    종료 코드 $rc · ${line:-결과 줄 없음}"

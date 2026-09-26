@@ -4,14 +4,15 @@
 # 지시서: ../docs/qf4-quick-fixes-directive.md 라운드 B — P-2 ①~⑤ · P-5c ①~⑤ · P-4b ①~③
 #         (ARCH 5.31 · SECURITY R-101)
 #
-# 틀: tests/community/stale_modules.sh 와 같다 — 운영 DB 를 **읽어** 임시 DB(tbox_qf4b1_test)를 만들고,
-#     저장소를 임시 폴더로 복사한 PHP 내장 서버(127.0.0.1:8100)에서 잰다. 내장 서버는 **한 프로세스**라
+# 틀: tests/community/stale_modules.sh 와 같다 — 운영 DB 를 **읽어** 임시 DB(tbox_qf4b1_test — 앞 `tbox_` 는 QTEST_DB_PREFIX)를 만들고,
+#     저장소를 임시 폴더로 복사한 PHP 내장 서버(127.0.0.1:8100 — QF4B1_PORT)에서 잰다. 내장 서버는 **한 프로세스**라
 #     FPM 으로 치면 「워커 1」이다 — 세션 수 기준도 워커 1 이다.
 #   전(前) = BEFORE_REF(기본 9dcd2e7 — B1 반영 직전 운영 커밋. 아래 BEFORE_REF 기본값과 같다)의 코드 · 후(後) = 이 작업 트리.
 #   두 인스턴스는 같은 임시 DB 를 쓰고 같은 포트를 **차례로** 쓴다(동시에 띄우지 않는다). 로그인은 한 번 —
 #   세션 표가 같은 임시 DB 에 있으므로 전·후 인스턴스가 같은 쿠키를 받아들인다.
 #
 # ★ 운영 DB·운영 트리에는 쓰지 않는다. 연결을 끊는 시험(④)은 `datname = 임시 DB` 이고 앱 계정인 연결만 겨눈다.
+#   임시 .env 원본 — 복제본에는 .env 가 없다: mktemp 폴더(0700)의 0600 사본을 QF2_ENV_SRC 로 넘기고 끝에 지운다(다른 수락 시험과 같은 손잡이).
 # ★ 비밀(비밀번호·OTP 비밀)은 명령 인자에 싣지 않는다 — 로그인은 계정마다 파이썬 한 프로세스가 환경 변수로 받는다.
 #   세션·CSRF 는 600 헤더 파일로만(`-H @파일`) 쓴다.
 # ★ 시험 전용 경로 `/__qf4b/*` 는 **이 시험이 만드는 임시 인스턴스의 router.php 에만** 있다 — 제품 라우트 표
@@ -20,14 +21,19 @@
 #   때마다 1 이 늘어난다 — 시작할 때 그 값을 재서(보정) 뺀다. 통계는 최대 0.5초 늦으므로 읽기 전에 1초 쉰다.
 # 나가는 값: 0 통과 · 1 실패 · 3 준비물 없음 · 4 인스턴스 실패
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-PORT=8100
+PORT="${QF4B1_PORT:-8100}"
+case "$PORT" in 80|8082|8081|"") echo "운영 포트($PORT)·빈 포트는 쓰지 않는다"; exit 3 ;; esac
 SITE="http://127.0.0.1:$PORT"
 BASE="$SITE/tbox"
 CBASE="$SITE/community"
 UA="tbox-review/$(date +%F)"
 SRC_DB="tbox_re"              # 운영 — **읽기만** 한다 (pg_dump)
-DB="tbox_qf4b1_test"          # 임시 — 여기에만 쓴다
-NODB="tbox_qf4b1_nodb"        # 없는 DB 이름 — 「DB 가 내려가 있다」 흉내(만들지 않는다)
+# 임시 DB 접두 — 나란히 도는 복제본끼리 이름을 가른다(예 QTEST_DB_PREFIX=tbox_d1t_). tbox_ 로 시작 · 소문자·숫자·밑줄 · _ 로 끝
+DBP="${QTEST_DB_PREFIX:-tbox_}"
+[[ "$DBP" =~ ^tbox_([a-z0-9]+_)*$ ]] || { echo "QTEST_DB_PREFIX 모양이 아니다(tbox_…_) — 시작하지 않는다"; exit 3; }
+DB="${DBP}qf4b1_test"          # 임시 — 여기에만 쓴다
+NODB="${DBP}qf4b1_nodb"        # 없는 DB 이름 — 「DB 가 내려가 있다」 흉내(만들지 않는다)
+ENV_SRC="${QF2_ENV_SRC:-$ROOT/.env}"   # 임시 .env 를 만들 원본(복제본은 mktemp 사본)
 BEFORE_REF="${BEFORE_REF:-9dcd2e7}"
 ACCOUNTS="claude_admin01 claude_manager01 claude_employee01 claude_employee02 claude_guest01"
 N_REQ=100                     # P-2 ① 같은 워커로 보내는 요청 수
@@ -89,7 +95,7 @@ make_inst() {
   sed -e "s#^DB_NAME=.*#DB_NAME=$DB#" \
       -e "s#^STORAGE_DIR=.*#STORAGE_DIR=$dir/storage#" \
       -e "s#^AUDIT_LOG_FILE=.*#AUDIT_LOG_FILE=$dir/log/audit.log#" \
-      "$ROOT/.env" > "$dir/app/.env"
+      "$ENV_SRC" > "$dir/app/.env"
   chmod 600 "$dir/app/.env"
   grep -q "^DB_NAME=$DB\$" "$dir/app/.env" || return 1
   sed -e "s#^DB_NAME=.*#DB_NAME=$NODB#" "$dir/app/.env" > "$dir/app/.env.nodb"
@@ -220,7 +226,8 @@ sudo -n -u postgres psql -d "$SRC_DB" -tAc "SELECT 1" >/dev/null 2>&1 \
   || { echo "psql(postgres) 을 쓸 수 없다 — 이 시험은 임시 DB 가 없으면 성립하지 않는다"; exit 3; }
 git -C "$ROOT" rev-parse --verify -q "$BEFORE_REF^{commit}" >/dev/null \
   || { echo "BEFORE_REF=$BEFORE_REF 를 찾을 수 없다(얕은 클론?) — 전후 비교를 할 수 없다"; exit 3; }
-APP_DB_USER=$(sed -n 's/^DB_USER=//p' "$ROOT/.env")
+[ -f "$ENV_SRC" ] || { echo "임시 .env 원본이 없다($ENV_SRC — 복제본은 QF2_ENV_SRC)"; exit 3; }
+APP_DB_USER=$(sed -n 's/^DB_USER=//p' "$ENV_SRC")
 [ -n "$APP_DB_USER" ] || { echo ".env 에 DB_USER 가 없다"; exit 3; }
 PLAN_DIR="$(cd "$ROOT/.." && pwd)/community"
 [ -f "$PLAN_DIR/doc-schema.json" ] || PLAN_DIR=/var/www/qaredi/community
@@ -435,7 +442,15 @@ expect "GET /nope-qf4b 404" "404" "$(code_of "$SITE/nope-qf4b")"
 sub "P-5c ② 로그인 쿠키가 있으면 사용자 칩이 전처럼"
 curl -s -A "$UA" -H @"$E1C" -o "$WORK/root_cookie_new.html" "$SITE/"
 expect "쿠키 런처에 사용자 배지 (page-head__actions 1)" "1" "$(grep -c 'page-head__actions' "$WORK/root_cookie_new.html" | tr -d ' ')"
-expect "쿠키 런처 HTML 이 전과 같다 (CSS ?v= 파일 시각만 지우고)" "$(html_fp "$WORK/root_cookie_old.html")" "$(html_fp "$WORK/root_cookie_new.html")"
+# 기준 판(BEFORE_REF) 뒤에 런처에 **의도적으로** 들어온 줄 — 이 목록의 줄(한 줄 통째)만 양쪽에서 빼고 견준다(디버깅 묶음 T, 2026-09-26).
+#   새 의도적 변경이 생기면 여기에 그 줄과 커밋을 한 줄씩 더한다. 목록 밖의 차이는 모두 실패로 남는다.
+#   · 1bf8964 「브라우저 강제 다크 막기」 — <head> 의 color-scheme 한 줄
+printf '%s\n' '<meta name="color-scheme" content="light dark">' > "$WORK/launcher_intended.txt"
+expect "런처의 의도적 변경 줄이 후(이 트리)에 그대로 있다 (1bf8964 color-scheme · 전 $BEFORE_REF 에는 $(grep -cxFf "$WORK/launcher_intended.txt" "$WORK/root_cookie_old.html")줄)" \
+  "$(wc -l < "$WORK/launcher_intended.txt" | tr -d ' ')" "$(grep -cxFf "$WORK/launcher_intended.txt" "$WORK/root_cookie_new.html")"
+grep -vxFf "$WORK/launcher_intended.txt" "$WORK/root_cookie_old.html" > "$WORK/root_cookie_old.cmp"
+grep -vxFf "$WORK/launcher_intended.txt" "$WORK/root_cookie_new.html" > "$WORK/root_cookie_new.cmp"
+expect "쿠키 런처 HTML 이 전과 같다 (CSS ?v= 파일 시각 · 위 의도적 변경 줄만 빼고)" "$(html_fp "$WORK/root_cookie_old.cmp")" "$(html_fp "$WORK/root_cookie_new.cmp")"
 
 sub "P-5c ③ /tbox/api/health 는 여전히 DB 를 확인한다 (DB 가 있을 때)"
 expect "GET /tbox/api/health → 200 · db ok" "200|ok" \
@@ -644,10 +659,23 @@ expect "  (grep 자기 확인) 같은 식이 시험 전용 파일의 run('BEGIN'
   "$(grep -qE "(['\"]|<<<'?SQL'?)[[:space:]]*(BEGIN|COMMIT)[[:space:]]*(;|['\"]|$)" "$INST_NEW/app/qf4b_probe.php" && echo yes || echo no)"
 expect "PDO 트랜잭션 메서드(beginTransaction·rollBack)를 부르는 파일은 src/Db.php 뿐" "src/Db.php" \
   "$(grep -rlE --include='*.php' -e '->(beginTransaction|rollBack)\(' "$ROOT/src" "$ROOT/public" "$ROOT/scripts" | sed "s#^$ROOT/##" | sort -u | tr '\n' ' ' | sed 's/ $//')"
-grep -rnE --include='*.php' -e "set_config\(|pg_(try_)?advisory_lock(_shared)?\(|CREATE[[:space:]]+(TEMP|TEMPORARY)[[:space:]]|SET[[:space:]]+(SESSION[[:space:]]|ROLE[[:space:]]+[a-z_\"]|LOCAL[[:space:]]|search_path)|LISTEN[[:space:]]|WITH[[:space:]]+HOLD|DISCARD[[:space:]]" \
+# 세션 상태 SQL 식(디버깅 묶음 T, 2026-09-26) — `SET LOCAL` 은 뺀다: 트랜잭션 끝에 풀리고, 트랜잭션 밖이면 PostgreSQL 이 경고만 내고
+#   아무것도 걸지 않는다(src/community/handlers/search.php 의 SET LOCAL enable_seqscan 은 $db->begin() 안 — routes.php 상수).
+#   대신 트랜잭션 밖에 남는 **맨 SET**(SQL 문자열 첫머리의 `SET 설정 = 값`·`SET 설정 TO 값`)을 새로 잡는다 — 옛 식은 SESSION·ROLE·search_path 만.
+SESS_RE="set_config\(|pg_(try_)?advisory_lock(_shared)?\(|CREATE[[:space:]]+(TEMP|TEMPORARY)[[:space:]]|SET[[:space:]]+(SESSION[[:space:]]|ROLE[[:space:]]+[a-z_\"]|search_path)|(['\"]|<<<'?SQL'?)[[:space:]]*SET[[:space:]]+[a-z_.]+[[:space:]]*(=|TO[[:space:]])|LISTEN[[:space:]]|WITH[[:space:]]+HOLD|DISCARD[[:space:]]"
+grep -rnE --include='*.php' -e "$SESS_RE" \
   "$ROOT/src" "$ROOT/public" "$ROOT/scripts" | grep -v '^[^:]*:[0-9]*:[[:space:]]*\(\*\|//\)' | grep -v "/src/Db.php:.*DISCARD ALL" > "$WORK/sessstate.txt"
 note "세션 상태 SQL grep $(wc -l < "$WORK/sessstate.txt" | tr -d ' ')줄"; sed 's/^/    /' "$WORK/sessstate.txt" | head -5
-expect "세션에 상태를 남기는 SQL 0 (SET 세션·SET ROLE·set_config·세션 advisory lock·임시 표·LISTEN·WITH HOLD — xact 잠금 제외)" "0" "$(wc -l < "$WORK/sessstate.txt" | tr -d ' ')"
+expect "세션에 상태를 남기는 SQL 0 (맨 SET·SET SESSION·SET ROLE·set_config·세션 advisory lock·임시 표·LISTEN·WITH HOLD — SET LOCAL·xact 잠금 제외)" "0" "$(wc -l < "$WORK/sessstate.txt" | tr -d ' ')"
+# 음성 시험 — 같은 식이 트랜잭션 밖 SET 은 계속 잡고, SET LOCAL 과 UPDATE 의 SET 은 넘기는가(식이 헛돌지 않는다)
+printf '%s\n' '<?php' \
+  "\$db->run('SET enable_seqscan = off');" \
+  "\$db->run(\"SET statement_timeout TO 0\");" \
+  "\$db->run('SET SESSION enable_seqscan = off');" \
+  "const PLAN_ON = 'SET LOCAL enable_seqscan = off';" \
+  "\$db->run('UPDATE sessions SET last_seen_at = now()');" > "$WORK/sessre_probe.php"
+expect "  (grep 자기 확인) 트랜잭션 밖 SET(맨 SET 둘 · SET SESSION)은 잡고 SET LOCAL · UPDATE 의 SET 은 넘긴다 — 잡힌 줄" "2 3 4" \
+  "$(grep -nE -e "$SESS_RE" "$WORK/sessre_probe.php" | cut -d: -f1 | tr '\n' ' ' | sed 's/ $//')"
 
 sub "P-2 ④ 끊긴 영속 연결 — 임시 DB 의 앱 연결만 끊은 뒤 다음 요청 (DB 재시작 흉내)"
 T=$(psqlq "SELECT count(pg_terminate_backend(pid)) FROM pg_stat_activity WHERE datname = '$DB' AND usename = '$APP_DB_USER' AND pid <> pg_backend_pid()")

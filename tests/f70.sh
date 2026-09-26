@@ -33,6 +33,10 @@
 #   · 임시 DB 둘(tbox_f70_test = 운영 pg_dump **읽기** 파이프 · tbox_f70_host = 구조만 pg_dump -s) · 임시 인스턴스 127.0.0.1:8105 ·
 #     시험 전용 DB 역할 둘(tbox_push_t<pid>·tbox_push_h<pid> — 운영 이름 tbox_push 는 만들지 않는다, 끝에 지운다, 역할 설정은
 #     `IN DATABASE <임시>` 로만) · 가짜 푸시 서버 127.0.0.1:18443(자체 서명 TLS — 이름 셋의 SAN)
+#   · 나란히 도는 복제본끼리 가르는 손잡이: 임시 DB 이름 앞 `tbox_` = QTEST_DB_PREFIX(예 tbox_d1t_) · 포트 F70_PORT·F70_RPORT·F70_PUSH_PORT ·
+#     임시 .env 원본 QF2_ENV_SRC(복제본에는 .env 가 없다 — mktemp 폴더 0600 사본)
+#   · 운영에 F-70 이 반영된 뒤로는 운영 사본에 받기 표와 **실제 받기**(운영 휴대폰 주소)가 딸려 온다 — ① 에서 임시 DB 에서만 F-70 이 더한 것을
+#     걷어 「마이그레이션 전」을 시험이 직접 만들고, 끝에 가짜 푸시 서버가 받은 요청이 모두 시험 주소(/f70/…)인지 본다(디버깅 묶음 T)
 #   · 보내는 배치·pushSend 는 **시험 사본에서만** Fetch.php 네 곳을 바꾼다(P-7 가져오기 실측과 같은 방식 — 제품 코드에 시험 구멍 0):
 #       PORT 443 → 18443 · rebuild() 가 포트를 붙임 · resolve(): fcm·apple → 127.0.0.1, mozilla → 10.20.30.40(사설 — T4) ·
 #       PRIVATE_CIDRS 에서 127.0.0.0/8 만 뺌. 그리고 alert_push.php 의 `$now = time();` 한 줄 → 환경 변수 F70_NOW(시각 흉내).
@@ -50,16 +54,22 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 . "$ROOT/tests/lib/review_accounts.sh" || { echo "tests/lib/review_accounts.sh 를 읽지 못했다 — 시작하지 않는다 (R-73)"; exit 3; }
 . "$ROOT/tests/lib/secrets.sh" || { echo "tests/lib/secrets.sh 를 읽지 못했다 — 시작하지 않는다 (R-62)"; exit 3; }
 
-PORT=8105
-PPORT=18443
+PORT="${F70_PORT:-8105}"
+PPORT="${F70_PUSH_PORT:-18443}"
 SITE="http://127.0.0.1:$PORT"
 BASE="$SITE/tbox"
 UA="tbox-review/$(date +%F)"
 SRC_DB="tbox_re"            # 운영 — **읽기만**
-DB="tbox_f70_test"          # 임시 — 인스턴스·배치
-DBH="tbox_f70_host"         # 임시(구조만) — 호스트 반영 스크립트 사본
-DBR="tbox_f70_repo"         # 임시 — 「저장소 쪽만 반영, 서버 쪽은 아직」(T11 — 마이그레이션 전의 사본)
-RPORT=8106                  # T11 두 번째 인스턴스
+# 임시 DB 접두 — 나란히 도는 복제본끼리 이름을 가른다(예 QTEST_DB_PREFIX=tbox_d1t_). tbox_ 로 시작 · 소문자·숫자·밑줄 · _ 로 끝
+DBP="${QTEST_DB_PREFIX:-tbox_}"
+[[ "$DBP" =~ ^tbox_([a-z0-9]+_)*$ ]] || { echo "QTEST_DB_PREFIX 모양이 아니다(tbox_…_) — 시작하지 않는다"; exit 3; }
+DB="${DBP}f70_test"          # 임시 — 인스턴스·배치
+DBH="${DBP}f70_host"         # 임시(구조만) — 호스트 반영 스크립트 사본
+DBR="${DBP}f70_repo"         # 임시 — 「저장소 쪽만 반영, 서버 쪽은 아직」(T11 — 마이그레이션 전의 사본)
+RPORT="${F70_RPORT:-8106}"   # T11 두 번째 인스턴스
+for p in "$PORT" "$PPORT" "$RPORT"; do case "$p" in 80|443|8082|8081|"") echo "운영 포트($p)·빈 포트는 쓰지 않는다"; exit 3 ;; esac; done
+[ "$(printf '%s\n' "$PORT" "$PPORT" "$RPORT" | sort -u | wc -l | tr -d ' ')" = 3 ] || { echo "포트 셋이 서로 달라야 한다"; exit 3; }
+ENV_SRC="${QF2_ENV_SRC:-$ROOT/.env}"   # 임시 .env 를 만들 원본(복제본은 mktemp 사본)
 TROLE="tbox_push_t$$"       # 시험 전용 역할(배치) — 끝에 지운다
 HROLE="tbox_push_h$$"       # 시험 전용 역할(호스트 스크립트 사본) — 끝에 지운다
 ADMIN="claude_admin01"
@@ -147,7 +157,7 @@ for b in php python3 openssl curl ss; do command -v "$b" >/dev/null 2>&1 || { ec
 sudo -n -u postgres psql -X -d "$SRC_DB" -tAc "SELECT 1" >/dev/null 2>&1 || { echo "psql(postgres) 을 쓸 수 없다"; exit 3; }
 review_account "$ADMIN" && review_account "$MGR" || { echo "검토 계정 판정이 어긋난다 — 중단"; exit 3; }
 for p in "$PORT" "$PPORT" "$RPORT"; do ss -ltn 2>/dev/null | grep -q "127.0.0.1:$p " && { echo "포트 $p 이 이미 쓰이고 있다"; exit 3; }; done
-[ -f "$ROOT/.env" ] || { echo "$ROOT/.env 가 없다 — 임시 .env 원본이 없다"; exit 3; }
+[ -f "$ENV_SRC" ] || { echo "$ENV_SRC 가 없다 — 임시 .env 원본이 없다(복제본은 QF2_ENV_SRC)"; exit 3; }
 note "운영 최근 10분 비-검토 actor 행: $(printf '%s\n' "SELECT count(*) FROM audit_logs WHERE happened_at > now() - interval '10 minutes' AND actor_name IS NOT NULL AND $REVIEW_NOT_SQL" | sudo -n -u postgres psql -X -d "$SRC_DB" -t -A -f - 2>/dev/null) (참고 — 이 시험은 운영 DB 에 쓰지 않는다)"
 
 sub "① 임시 DB — 운영을 **읽어** 파이프(덤프 파일 0) · 구조만 한 벌 더(⑨)"
@@ -164,6 +174,33 @@ set +o pipefail
 n_users=$(psqlq "SELECT count(*) FROM public.users")
 [ -n "$n_users" ] && [ "$n_users" -gt 0 ] 2>/dev/null || { echo "임시 DB 로 옮기지 못했다"; exit 4; }
 note "임시 DB $DB — 계정 ${n_users}명 · $DBH — 구조만"
+# 「마이그레이션 전」을 시험이 직접 만든다(디버깅 묶음 T, 2026-09-26 기능 점검 — B1 보낸 수 7 · T11 · AL-22 실패의 원인).
+#   운영에 F-70 이 반영된 뒤로는 운영 사본에 받기 표 둘 · **실제 받기**(운영 휴대폰 주소) · 대기표 줄 · 운영 역할 tbox_push 권한이 딸려 온다.
+#   이 시험은 ② 마이그레이션 · T5 보낸 수 · T11(마이그레이션 전 사본)이 모두 「표 없음」에서 시작한다고 전제하므로, **임시 DB 에서만**
+#   마이그레이션이 더한 것(표 둘 — 받기·대기표 줄과 그 권한이 함께 사라진다 · tbox_push 의 users·audit_logs·순서·스키마 권한)을 걷는다.
+#   걷은 받기 주소는 읽지도 적지도 않는다(개수만). 그 주소로 요청이 나가지 않았는지는 끝(「운영 받기로 간 요청 0」)에서 가짜 푸시 서버 기록으로 본다.
+case "$DB" in "$SRC_DB"|*[!a-z0-9_]*) echo "임시 DB 이름이 이상하다($DB) — 중단"; exit 4 ;; esac
+F70_PRE=$(psqlq "SELECT CASE WHEN to_regclass('public.alert_push_subscriptions') IS NULL THEN 'none' ELSE
+                   (SELECT count(*) FROM alert_push_subscriptions)::text || '|' || (SELECT count(*) FROM alert_push_subscriptions WHERE revoked_at IS NULL)::text
+                   || '|' || coalesce((SELECT count(*) FROM alert_push_outbox)::text, '0') END")
+F70_PUSH_PRIVS_SQL="SELECT (SELECT count(*) FROM information_schema.role_table_grants WHERE grantee = 'tbox_push')
+                         + (SELECT count(*) FROM information_schema.column_privileges WHERE grantee = 'tbox_push')
+                         + (SELECT count(*) FROM information_schema.usage_privileges WHERE grantee = 'tbox_push')"
+if [ "$F70_PRE" = "none" ]; then
+  note "운영 사본에 F-70 표 없음(운영 반영 전) — 그대로 「마이그레이션 전」"
+else
+  note "운영 사본에 F-70 이 딸려 왔다 — 받기 ${F70_PRE%%|*}줄(해지 안 된 것 $(printf '%s' "$F70_PRE" | cut -d'|' -f2)) · 대기표 ${F70_PRE##*|}줄 → 임시 DB 에서만 걷는다"
+  psqlq "DROP TABLE IF EXISTS public.alert_push_outbox, public.alert_push_subscriptions;
+         DO \$\$ BEGIN
+           IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'tbox_push') THEN
+             REVOKE ALL ON public.users, public.audit_logs FROM tbox_push;
+             REVOKE ALL ON SEQUENCE public.audit_logs_id_seq FROM tbox_push;
+             REVOKE ALL ON SCHEMA public FROM tbox_push;
+           END IF;
+         END \$\$;" >/dev/null
+fi
+expect "임시 DB 가 「마이그레이션 전」 — 받기·대기표 표 0 · 운영 역할 tbox_push 권한 0" "0|0" \
+  "$(psqlq "SELECT count(*) FROM pg_tables WHERE schemaname = 'public' AND tablename IN ('alert_push_subscriptions', 'alert_push_outbox')")|$(psqlq "$F70_PUSH_PRIVS_SQL")"
 # T11 용 — 마이그레이션 **전**의 사본(표 없음). 이 순간 $DB 에 붙은 연결이 없어야 틀로 쓸 수 있다
 sudo -n -u postgres dropdb --if-exists "$DBR" >/dev/null 2>&1
 sudo -n -u postgres createdb -O tbox_owner -T "$DB" "$DBR" >/dev/null 2>&1 || { echo "임시 DB(T11)를 만들 수 없다"; exit 4; }
@@ -234,7 +271,7 @@ chmod 700 "$WORK/hdr" "$WORK/etc"
 tar -C "$ROOT" -cf - --exclude=.git --exclude=jar --exclude=api-test.txt --exclude=./.env . | tar -C "$INST/app" -xf -
 # qcheck-allow: R20 — 임시 인스턴스용 사본(WORK 0700 · 사본 0600 로 만듦 · trap 정리) · kill -9 뒤 남는 창은 받아들인 위험(HO-B1-004)
 ( umask 077; sed -e "s#^DB_NAME=.*#DB_NAME=$DB#" -e "s#^STORAGE_DIR=.*#STORAGE_DIR=$INST/storage#" \
-    -e "s#^AUDIT_LOG_FILE=.*#AUDIT_LOG_FILE=$INST/log/audit.log#" "$ROOT/.env" > "$INST/app/.env" )
+    -e "s#^AUDIT_LOG_FILE=.*#AUDIT_LOG_FILE=$INST/log/audit.log#" "$ENV_SRC" > "$INST/app/.env" )
 chmod 600 "$INST/app/.env"
 grep -q "^DB_NAME=$DB\$" "$INST/app/.env" || { echo "임시 .env 실패"; exit 4; }
 touch "$INST/log/audit.log" "$INST/log/alerts.log"
@@ -1263,7 +1300,7 @@ RAPP="$WORK/repoapp"; RLOG="$WORK/repolog"; RNONE="$WORK/repo-none"; mkdir -p "$
 tar -C "$ROOT" -cf - --exclude=.git --exclude=jar --exclude=api-test.txt --exclude=./.env . | tar -C "$RAPP" -xf -
 # qcheck-allow: R20 — 임시 인스턴스용 사본(WORK 0700 · 사본 0600 로 만듦 · trap 정리) · kill -9 뒤 남는 창은 받아들인 위험(HO-B1-004)
 ( umask 077; sed -e "s#^DB_NAME=.*#DB_NAME=$DBR#" -e "s#^STORAGE_DIR=.*#STORAGE_DIR=$INST/storage#" \
-    -e "s#^AUDIT_LOG_FILE=.*#AUDIT_LOG_FILE=$RLOG/audit.log#" "$ROOT/.env" > "$RAPP/.env" )
+    -e "s#^AUDIT_LOG_FILE=.*#AUDIT_LOG_FILE=$RLOG/audit.log#" "$ENV_SRC" > "$RAPP/.env" )
 touch "$RLOG/audit.log" "$RLOG/alerts.log"
 sed -i "s#public const PUBLIC_KEY_FILE = '/etc/tbox-v2/vapid-public.txt';#public const PUBLIC_KEY_FILE = '$RNONE/vapid-public.txt';#" "$RAPP/src/WebPush.php"
 sed -i "s#^const AL22_PUSH_CONF = '/etc/tbox-v2/push.conf';#const AL22_PUSH_CONF = '$RNONE/push.conf';#" "$RAPP/scripts/alerts.php"
@@ -1596,6 +1633,23 @@ PY
 fi
 
 # ════════════════════════════════════════════════════════════════
+hr "운영 받기로 간 요청 0 — 사본에 딸려 온 운영 받기(휴대폰 주소)는 ① 에서 걷었고, 요청은 모두 시험 주소로만(디버깅 묶음 T)"
+# 시험이 등록한 받기는 모두 https://<푸시 회사>/f70/<응답 모양>/<이름> 이다. 운영 받기 주소(…/fcm/send/… · 애플의 토큰 경로 등)는
+#   /f70/ 으로 시작하지 않으므로, 가짜 푸시 서버(시험 사본의 이름 풀이가 fcm·apple 을 여기로 보낸다)가 받은 요청 중 /f70/ 밖이 0 이면
+#   운영 받기로 보낸 요청이 없었다는 뜻이다(주소 값은 읽지도 찍지도 않는다 — 개수만).
+PUSH_ALL=$(reqs)
+PUSH_OUT=$(python3 -c 'import json,sys
+n = 0
+for l in open(sys.argv[1], encoding="utf-8"):
+    if l.strip() and not str(json.loads(l).get("path", "")).startswith("/f70/"):
+        n += 1
+print(n)' "$WORK/push/log.jsonl" 2>/dev/null || echo "?")
+expect "가짜 푸시 서버가 받은 요청 중 시험 주소(/f70/…) 밖 — 운영 받기로 간 요청" "0" "$PUSH_OUT"
+expect "  (자기 확인) 대조가 헛돌지 않았다 — 가짜 푸시 서버가 받은 요청 30건 이상" "yes" "$([ "${PUSH_ALL:-0}" -ge 30 ] 2>/dev/null && echo yes || echo "no(${PUSH_ALL:-0})")"
+expect "  임시 DB 받기 표의 줄이 모두 시험이 등록한 주소(/f70/…)" "0" \
+  "$(psqlq "SELECT count(*) FROM alert_push_subscriptions WHERE endpoint NOT LIKE 'https://' || host || '/f70/%'")"
+
+# ════════════════════════════════════════════════════════════════
 hr "T10 — 정적"
 bash "$ROOT/scripts/security_lint.sh" > "$WORK/lint.out" 2>&1
 expect "security_lint.sh 종료 코드" "0" "$?"
@@ -1613,8 +1667,15 @@ expect "php -l (바뀐·새 PHP 스물둘)" "0" "$PHPBAD"
 BASHBAD=0
 for f in tests/f70.sh deploy/install.sh; do bash -n "$ROOT/$f" 2>/dev/null || { echo "  ✖ bash -n $f"; BASHBAD=1; }; done
 expect "bash -n (시험 · install.sh)" "0" "$BASHBAD"
-php "$ROOT/scripts/wiki_check.php" > "$WORK/wiki.out" 2>&1
-expect "wiki_check.php 종료 코드" "0" "$?"
+# 위키 검사는 저장소 바깥의 사이트 STAGES 두 개를 읽는다 — tests/wiki_check.sh 가 사이트 루트를 정한다(인자·QAREDI_SITE_ROOT·저장소 부모).
+#   찾지 못하면 「환경 없음 — 건너뜀」(복제본) — 실패로 세지 않는다(디버깅 묶음 T)
+bash "$ROOT/tests/wiki_check.sh" > "$WORK/wiki.out" 2>&1; WRC=$?
+if grep -q '^RESULT pass=0 fail=0 skip=1$' "$WORK/wiki.out" && [ "$WRC" = 0 ]; then
+  skip "wiki_check" "환경 없음 — 사이트 STAGES 를 찾지 못함(QAREDI_SITE_ROOT 로 줄 수 있다)"
+else
+  expect "wiki_check (tests/wiki_check.sh) 종료 코드" "0" "$WRC"
+  grep -E '^(결과|사이트 루트)' "$WORK/wiki.out" | sed 's/^/    /'
+fi
 expect "지시서 본문 무변경(docs/f70-push-alerts-directive.md · $F70_SCOPE)" "0" "$(f70_changed docs/f70-push-alerts-directive.md | grep -c .)"
 expect "저장소에 키·pgpass 파일 0(추적 파일 + 이 판의 새 파일 중 PEM·pgpass)" "0" "$( { git -C "$ROOT" ls-files; f70_changed .; } | sort -u | grep -cE '\.pem$|pgpass$|vapid-private')"
 note "회귀 시험은 이 스크립트가 돌리지 않는다 — 따로: f69.sh · stage26.sh · help_button.sh · f68.sh · alerts_dryrun_offset.sh · tests/static R15·R16·R18"

@@ -36,16 +36,18 @@ quiet_reject_loose rc=0 findings=0
 # v4 재검토 3 중간 — 「모름」(겹친 반복 · 끝없는 반복 넷 이상 · 300자 넘음 · 시간 상한 · 못 옮김)을 거부로 인정하던 것 → 글자 판정:
 #   패턴 글자에 rename·copy·similarity 가 있을 때만 인정(-i 반영). 부하와 무관하게 결정적(par= 로 병렬 8번 대조)
 #   fire_reject_redos    `grep -qE '(.|.|.)*Q'` · `-P '(\w|\S|.)*Q'` · BRE `\(.\|[^ ]\)*Q` · awk `/(.|[^ ])*Q/` · `(a+)+Q` — rename 글자
-#                        없음 → 거부 아님 → 5 · 3초 이하(고치기 전 ERE·-P 는 30초 넘게 멈춤)
-#   quiet_reject_redos   rename·copy·similarity 글자가 든 겹친 반복 · 320자 · `.*` 열 개 · -P · -i 대문자 — 0 · 3초 이하
+#                        없음 → 거부 아님 → 5 · 10초 이하(고치기 전 ERE·-P 는 30초 넘게 멈춤)
+#   quiet_reject_redos   rename·copy·similarity 글자가 든 겹친 반복 · 320자 · `.*` 열 개 · -P · -i 대문자 — 0 · 10초 이하
+# 시간 한도 max_s 3 → 10(디버깅 묶음 T, 2026-09-26): 한가할 때 한 번 0.1초대지만 기능 점검 중 부하(나란히 도는 시험)에서 3초를 넘어
+#   틀림으로 나왔다. 10초(selftest 는 그 두 배 + 2초에서 끊음)도 고치기 전 되돌이 폭발(30초 넘게 멈춤)과는 여전히 갈린다.
 #   fire_reject_unknown  검토 재현 넷(.env · 바이너리 · 모드 · 무의미한 '(a|b)*zz' — ab7f501·561dc26 은 울림, 3ce9234 는 조용) ·
 #                        -i 없는 대문자 RENAME — 5
 #   fire_reject_dotstar  `.*` 열 개 이은 패턴 · 앵커 없는 'a.*'×8 'Q'(혼자 약 0.7초 — 3ce9234 는 1초 타이머에 기대 부하에 따라
 #                        뒤집힐 수 있음) · rename 글자 없음 — 거르개가 바로 글자 판정(타이머에 닿지 않음) — 2 · 병렬 8번 같음
-fire_reject_redos rc=1 findings=5 max_s=3
-quiet_reject_redos rc=0 findings=0 max_s=3 par=8
-fire_reject_unknown rc=1 findings=5 max_s=3
-fire_reject_dotstar rc=1 findings=2 max_s=3 par=8
+fire_reject_redos rc=1 findings=5 max_s=10
+quiet_reject_redos rc=0 findings=0 max_s=10 par=8
+fire_reject_unknown rc=1 findings=5 max_s=10
+fire_reject_dotstar rc=1 findings=2 max_s=10 par=8
 # v4 재검토 2 낮음 — 앞 grep 에 문맥 선택지(-A·-B·-C·-<수>·--context·--after-context·--before-context)가 있으면 맞은 줄 뒤의
 #   rename 머리도 넘기므로 「파이프 앞 grep 이 표본에 맞지 않음」 제외를 쓰지 않는다
 #   quiet_reject_context  `grep -A3 '^diff --git' "$PATCH" | grep -q '^rename '`(검토 예시) · --after-context=4 · -C 2 · --context 3 ·
@@ -56,4 +58,4 @@ quiet_reject_context rc=0 findings=0
 #   ③ 글자 판정은 뒤 단어 경계(renamed·copyright 는 아님)
 #   fire_reject_codeban  `^\+[^#]*rename\s*\([^)]*\)\s*;` · `^\+.*\bcopy\s*\(.*\).*` · `.*.*.*.*renamed` · BRE `rename(` ·
 #                        `(copyright|license)+ ` — 5 (e4dfbc6 은 copyright 뺀 4 · 5ce792e 는 BRE rename( 하나만)
-fire_reject_codeban rc=1 findings=5 max_s=3 par=4
+fire_reject_codeban rc=1 findings=5 max_s=10 par=4

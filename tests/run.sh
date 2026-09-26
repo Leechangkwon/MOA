@@ -4,8 +4,8 @@
 # AI 세션이 지금 권한 그대로 쓰는 것이다. 시험을 고치거나 대상(BASE·DB·계정)을 바꾸지 않는다.
 # 카탈로그(tests/catalog.json)에서 고르고 · 돌리고 · 세고 · 줄여서 보인다. 몸체는 tests/lib/results.py.
 #
-#   tests/run.sh list    [--select …] [--include-manual] [--catalog <경로>]      고른 목록만(실행 0)
-#   tests/run.sh run     [--select …] [--include-manual] [--fail-fast] [--fresh] [--catalog <경로>]
+#   tests/run.sh list    [--select …] [--include-manual] [--allow-writes-prod] [--catalog <경로>]   고른 목록만(실행 0)
+#   tests/run.sh run     [--select …] [--include-manual] [--allow-writes-prod] [--fail-fast] [--fresh] [--catalog <경로>]
 #   tests/run.sh show    <run|last> <id> [--context 8 | --lines a-b | --grep PAT]  실패 조각(200줄 이하)
 #   tests/run.sh summary <run|last> [--all]                                     요약 다시 보기
 #   tests/run.sh report  <run|last> --md                                        CLAUDE.md 3장 ①~④ 조각
@@ -15,6 +15,9 @@
 # 실행 폴더: ${QCHECK_RUNS:-$HOME/.cache/qaredi-check/runs}/<번호>/ (0700) — raw/<id>.log(0600, 원문)
 #            · summary.json · summary.txt. 저장소 안이면 거부한다. 출력은 모두 가림 뒤다.
 # 기본 제외: manual_only · helper · orphan (--include-manual 로 포함).
+# 기본 거부: 운영에 쓰는 시험(writes_prod: true · 또는 cmd 가 저장소 카탈로그의 writes_prod 시험 파일을 부름) — ③ writes_prod.
+#   --allow-writes-prod 를 명시하고 그 스크립트의 대상(BASE·DB)이 tests/lib/prod_guard.sh 로 「prod」일 때만 돈다(stage26·f66·fetch_hosts 등).
+#   대상이 temp·unknown 이면 이 인자가 있어도 거부(디버깅 묶음 T 9번, 2026-09-26 사고).
 # 캐시: 작업 트리가 깨끗할 때만. (HEAD^{tree} + id + 카탈로그 항목 해시)가 같고 24시간 안 통과면 건너뜀.
 #       --fresh 는 캐시를 무시. env=prod 항목은 캐시하지 않는다.
 # 동시성: run 은 flock 으로 한 번에 하나. 다른 실행이 있으면 rc 3. 잠금은 실행 폴더가 아니라 사용자 단위

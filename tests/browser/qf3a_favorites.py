@@ -23,7 +23,7 @@ import sys
 import time
 import uuid
 
-from playwright.sync_api import sync_playwright
+from playwright.sync_api import sync_playwright, TimeoutError as PlaywrightTimeout
 
 SITE = sys.argv[1].rstrip("/")
 UA = sys.argv[2]
@@ -102,6 +102,28 @@ def tab_clip(page):
     return {"x": max(0, box["x"] - 8), "y": max(0, box["y"] - 8), "width": min(420, box["width"] + 16), "height": box["height"] + 16}
 
 
+# 목록 줄의 ☆ data-fav-file 을 **한 번의 페이지 안 평가로** 본다(디버깅 묶음 T, 2026-09-26 기능 점검 — 10번에 3번 실패).
+#   옛 식은 `.all()` 로 그 순간의 줄 n 개를 nth 로케이터로 잡고 하나씩 get_attribute 를 불렀다. 그 사이 목록이 적은 줄로 다시
+#   그려지면(「파일」 보기 7줄 → 「즐겨찾기」 2줄) 사라진 nth 줄의 get_attribute 가 Playwright 기본 30초를 기다려 wait_until 8초 창을 넘겼다.
+#   목록은 drawPlainList 가 한 JS 작업 안에서 줄을 다 바꾸고 쪽 글(「<보기> n건」)을 적으므로, 쪽 글과 줄을 한 평가에서 함께 보면
+#   반쯤 그려진 목록·앞 보기의 줄을 읽지 않는다. 기다림은 wait_for_function 한 번(8초) — 줄 수가 바뀌어도 멈추지 않는다.
+ROWS_JS = ("(a) => { const info = (document.getElementById('page-info') || {}).textContent || '';"
+           " if (!info.startsWith(a.label + ' ')) return false;"
+           " const ids = [...document.querySelectorAll('#files-body button[data-fav-file]')].map(b => b.getAttribute('data-fav-file'));"
+           " return a.first ? ids[0] === a.id : ids.includes(a.id); }")
+
+
+def wait_rows(page, label, fid, first=False, timeout_ms=8000):
+    """「<label>」 보기가 그려졌고 그 목록에 fid 줄이 있다(first=True 면 첫 줄이 fid) — 될 때까지 기다린다"""
+    if not fid:
+        return False
+    try:
+        page.wait_for_function(ROWS_JS, arg={"label": label, "id": fid, "first": first}, timeout=timeout_ms, polling=100)
+        return True
+    except PlaywrightTimeout:
+        return False
+
+
 def wait_view(page, label):
     """보기를 바꾼 뒤 **그 보기의 목록이 그려질 때까지** — 쪽 글이 「<label> n건」이 되면(앞 보기의 줄이 남아 있는 동안 재지 않게)"""
     return wait_until(lambda: (page.locator("#page-info").text_content() or "").startswith(label + " "))
@@ -140,7 +162,7 @@ with sync_playwright() as p:
     page.keyboard.press("Space")
     step("1 둘째 줄 ☆ 에 초점을 두고 Space → 눌림 바뀜", wait_until(lambda: star2.get_attribute("aria-pressed") != before2))
     page.locator("#files-view-favorites").click()
-    step("1 「즐겨찾기」 보기 — 그 파일 줄이 나온다", wait_until(lambda: fid in [b.get_attribute("data-fav-file") for b in page.locator("#files-body button[data-fav-file]").all()]))
+    step("1 「즐겨찾기」 보기 — 그 파일 줄이 나온다", wait_rows(page, "즐겨찾기", fid))
     step("1 「즐겨찾기」 눌림 · 「파일」 풀림", page.get_attribute("#files-view-favorites", "aria-pressed") == "true" and page.get_attribute("#files-view-files", "aria-pressed") == "false")
     step("1 검색 줄은 숨는다 · 「폴더」 칸이 보인다 · 쪽 넘기기 숨음",
          page.locator("#search-form").is_hidden() and page.locator("#files-folder-head").is_visible() and page.locator("#page-next").is_hidden())
@@ -178,8 +200,7 @@ with sync_playwright() as p:
     got = page.request.get(TBOX + "/api/files/%s/download" % rid) if rid else None
     step("3 준비된 파일 받기 200", got is not None and got.status == 200, got.status if got else None)
     page.locator("#files-view-recent").click()
-    step("3 「최근」 보기 첫 줄 = 방금 받은 파일",
-         wait_until(lambda: [b.get_attribute("data-fav-file") for b in page.locator("#files-body button[data-fav-file]").all()][:1] == [rid]))
+    step("3 「최근」 보기 첫 줄 = 방금 받은 파일", wait_rows(page, "최근", rid, first=True))
     step("3 시각 칸 머리 「마지막으로 연 때」 · 쪽 글 「최근 n건」",
          (page.locator("#files-when-head").text_content() or "") == "마지막으로 연 때" and (page.locator("#page-info").text_content() or "").startswith("최근 "))
     page.screenshot(path=os.path.join(SHOTS, "tbox-recent-light-1440.png"), full_page=True)

@@ -6,12 +6,13 @@
     "env": "무엇을 치나(오늘 기준 사실): static=저장소 파일만 · prod=운영 8082 또는 운영 DB tbox_re 를 친다(임시 부분이 섞여도 8082 를 치면 prod) · temp-instance=운영 DB 를 pg_dump 로 읽어 만든 임시 DB 와 php -S 두 번째 인스턴스만 친다 · manual=사람이 준 SITE 를 친다",
     "status": "required|advisory|known_fail|manual_only|helper(다른 시험이 부르는 도우미 — 단독 실행 불가)|orphan(부르는 셸 없음)",
     "needs": "sudo=sudo -n 을 쓴다(없으면 SKIP·FAIL·exit 3 경로) · browser=playwright · nginx=운영 nginx 설정의 행동을 단언 · clamav=clamscan 이 실제로 돌아야 함 · network=바깥 인터넷 요청 · qrcode=python qrcode · totp_wait=정상 경로에서 다음 TOTP 30초 창을 기다림(로그인 재시도 대기만 있는 것은 넣지 않음)",
-    "writes_prod": "true = 앱 요청 경로 밖에서 운영 상태를 바꾼다(운영 tbox_re 에 psql 직접 쓰기 · /etc/tbox-v2 비밀 파일 교체 · 운영 .env 로 도는 앱 CLI 가 상태를 바꿈: scan_pending --force-enabled, dry-run 아닌 alerts.php). qa_ 계정이 앱 창구로 만들고 스스로 되돌리는 쓰기와 운영 클러스터의 임시 DB createdb/dropdb 는 false 이고 notes 에 적었다",
+    "writes_prod": "true = 앱 요청 경로 밖에서 운영 상태를 바꾼다(운영 tbox_re 에 psql 직접 쓰기 · /etc/tbox-v2 비밀 파일 교체 · 운영 .env 로 도는 앱 CLI 가 상태를 바꿈: scan_pending --force-enabled, dry-run 아닌 alerts.php). qa_ 계정이 앱 창구로 만들고 스스로 되돌리는 쓰기와 운영 클러스터의 임시 DB createdb/dropdb 는 false 이고 notes 에 적었다 · tests/run.sh 는 writes_prod 항목(또는 cmd 가 그 시험 파일을 부르는 항목)을 기본 거부한다(③ writes_prod — --select·--catalog·--include-manual 로는 안 풀림). --allow-writes-prod 를 명시하고 그 스크립트의 BASE·DB 가 tests/lib/prod_guard.sh 로 「prod」일 때만 돈다(temp·unknown 은 그래도 거부 · 디버깅 묶음 T 9번 2026-09-26 · 취합 결정)",
     "covers": "원문에서 확실한 것만: (1) 스크립트가 이름으로 부르거나 검사하는 저장소 파일(머리 주석·코드, 있는 파일만, 디렉터리 전체 php -l 은 뺌) (2) 스크립트가 부르는 창구 경로를 public/index.php TBOX_ROUTES·src/community/routes.php COMMUNITY_ROUTES 로 찾은 핸들러(메서드가 적혀 있거나 경로의 라우트가 하나뿐일 때만). core 셋과 고아 둘(f-문자열 경로)은 손으로 — 고아 둘은 호출마다 메서드·경로를 라우트 표에 대조",
     "requirements": "머리 주석에 적힌 수락 기준 ID(T-·C:T-·Q:T-)만. 범위(C:T-14 ~ C:T-20)는 펼쳤다. 「… 방식」 참조와 다른 번호 체계와 겹치는 옛 번호는 뺐고 notes 에 적음",
     "risks": "머리 주석에 적힌 R-·C:R- ID 만",
     "est_sec": "어림값(실측 아님): 로그인 수·TOTP 창 대기·브라우저·임시 DB 준비로 잡음. R-73 사용자 활동 대기(최대 20분)는 넣지 않음. 정적 둘만 복제본 실측",
-    "known_fail": "status=known_fail 일 때만 {reason, since, expires}(만료 30일)"
+    "known_fail": "status=known_fail 일 때만 {reason, since, expires}(만료 30일)",
+    "accepted_limit": "받아들인 한계(결함 아님) {decision, since, text} — 사용자 결정으로 목표 밖이 된 몫. 단언은 그대로 두고, 그 몫으로 틀리면 결함이 아니라 known 한계로 분류한다(요약기는 이 칸을 읽지 않는다 — 사람·취합이 판정할 때 본다)"
   },
   "tests": [
     {
@@ -304,18 +305,19 @@
         "totp_wait"
       ],
       "covers": [
-        "scripts/totp_code.php",
-        "src/Totp.php",
-        "src/Qr.php",
         "public/assets/app.js",
-        "src/handlers/mfa_enroll.php",
         "scripts/security_lint.sh",
-        "src/views/mfa_enroll.php",
+        "scripts/totp_code.php",
+        "src/Qr.php",
+        "src/Totp.php",
         "src/bootstrap.php",
         "src/handlers/login.php",
         "src/handlers/me.php",
         "src/handlers/mfa_confirm.php",
-        "src/handlers/mfa_disable.php"
+        "src/handlers/mfa_disable.php",
+        "src/handlers/mfa_enroll.php",
+        "src/views/mfa_enroll.php",
+        "tests/lib/prod_guard.sh"
       ],
       "requirements": [
         "T-63"
@@ -326,7 +328,7 @@
       ],
       "est_sec": 360,
       "writes_prod": true,
-      "notes": "manual_only(지시서 A-5 초기값): claude_employee01 의 2단계를 껐다 켜며 /etc/tbox-v2/qa-totp.txt 를 sudo -n install 로 교체한다(비밀 회전 — 이 파일로 로그인하는 다른 시험의 자격이 바뀜). python qrcode 필요. sudo -n grep 으로 /var/log/tbox-v2/app.log 확인. 다음 TOTP 창 대기(next_code) 여러 번. R-80 가드 없음. (1-B-1 9dcd2e7 뒤 검토 계정 claude_ — 자격 파일 이름 qa-totp.txt·seed-accounts.txt 는 그대로)"
+      "notes": "manual_only(지시서 A-5 초기값): claude_employee01 의 2단계를 껐다 켜며 /etc/tbox-v2/qa-totp.txt 를 sudo -n install 로 교체한다(비밀 회전 — 이 파일로 로그인하는 다른 시험의 자격이 바뀜). python qrcode 필요. sudo -n grep 으로 /var/log/tbox-v2/app.log 확인. 다음 TOTP 창 대기(next_code) 여러 번. R-80 가드 없음. (1-B-1 9dcd2e7 뒤 검토 계정 claude_ — 자격 파일 이름 qa-totp.txt·seed-accounts.txt 는 그대로) · 2026-09-26 디버깅 묶음 T 9번(사고 — 회귀 틀이 BASE·DB 만 임시로 바꿔 돌려 운영 qa-totp.txt 를 덮어씀): 운영 파일 쓰기는 **운영 대상일 때만**(tests/lib/prod_guard.sh — BASE = deploy/sites/tbox-v2-local.conf 의 운영 검토 포트 · DB tbox_re). 임시 대상이면 새 비밀은 메모리에만(QA_TOTP_FILE 을 주면 그 자리) · 대상을 가를 수 없으면 rc 3 · 쓰기 직전에 BASE·DB·운영 앱 .env 의 DB_NAME 을 다시 보고 어긋나면 rc 3. 가드 단위 확인은 core.prod_guard(가짜 경로). writes_prod·manual_only 그대로(운영 대상이면 여전히 운영 파일을 교체한다). · review-fix2(독립 검토 중간 1·L3·L4): 운영 대상이면 **운영 상태를 바꾸기 전에**(결정 절) 쓰기 가드를 한 번 먼저 부른다 · 운영 대상에 QA_TOTP_FILE 거부 · 운영 파일 쓰기는 운영 트리(/var/www/qaredi/tbox-v2)에서 부를 때만(복제본에서 운영 대상으로 부르면 rc 3) · BASE 별칭(localhost·끝 /) 정규화"
     },
     {
       "id": "tbox.f52",
@@ -340,25 +342,26 @@
         "totp_wait"
       ],
       "covers": [
+        "public/assets/app.js",
+        "scripts/security_lint.sh",
         "scripts/totp_code.php",
         "src/Auth.php",
-        "scripts/security_lint.sh",
+        "src/handlers/files_list.php",
+        "src/handlers/home.php",
         "src/handlers/login.php",
+        "src/handlers/logout.php",
         "src/handlers/me.php",
         "src/handlers/mfa_confirm.php",
         "src/handlers/mfa_disable.php",
-        "src/handlers/users_mfa_reset.php",
-        "src/handlers/home.php",
+        "src/handlers/mfa_enroll.php",
         "src/handlers/settings_page.php",
+        "src/handlers/users_mfa_reset.php",
         "src/help/screens.php",
+        "tests/lib/prod_guard.sh",
         "wiki/tbox/guide-risks.json",
         "wiki/tbox/guide-what.json",
-        "wiki/tbox/stage-11.json",
         "wiki/tbox/stage-02.json",
-        "public/assets/app.js",
-        "src/handlers/files_list.php",
-        "src/handlers/logout.php",
-        "src/handlers/mfa_enroll.php"
+        "wiki/tbox/stage-11.json"
       ],
       "requirements": [
         "T-64"
@@ -369,7 +372,7 @@
       ],
       "est_sec": 300,
       "writes_prod": true,
-      "notes": "manual_only(지시서 A-5 초기값): claude_employee01·claude_admin01 의 2단계를 껐다 켜며 qa-totp.txt 를 교체(비밀 회전). 원문은 마지막 줄이 printf 라 rc 가 늘 0(R-73 exit 3 만 예외) — A-3 에서 고치는 대상. R-80 가드 없음. (1-B-1 9dcd2e7 뒤 검토 계정 claude_ — 자격 파일 이름 qa-totp.txt·seed-accounts.txt 는 그대로)"
+      "notes": "manual_only(지시서 A-5 초기값): claude_employee01·claude_admin01 의 2단계를 껐다 켜며 qa-totp.txt 를 교체(비밀 회전). 원문은 마지막 줄이 printf 라 rc 가 늘 0(R-73 exit 3 만 예외) — A-3 에서 고치는 대상. R-80 가드 없음. (1-B-1 9dcd2e7 뒤 검토 계정 claude_ — 자격 파일 이름 qa-totp.txt·seed-accounts.txt 는 그대로) · 2026-09-26 디버깅 묶음 T 9번(사고 — 회귀 틀이 BASE·DB 만 임시로 바꿔 돌려 운영 qa-totp.txt 를 덮어씀): 운영 파일 쓰기는 **운영 대상일 때만**(tests/lib/prod_guard.sh — BASE = deploy/sites/tbox-v2-local.conf 의 운영 검토 포트 · DB tbox_re). 임시 대상이면 새 비밀은 메모리에만(QA_TOTP_FILE 을 주면 그 자리) · 대상을 가를 수 없으면 rc 3 · 쓰기 직전에 BASE·DB·운영 앱 .env 의 DB_NAME 을 다시 보고 어긋나면 rc 3. 가드 단위 확인은 core.prod_guard(가짜 경로). writes_prod·manual_only 그대로(운영 대상이면 여전히 운영 파일을 교체한다). · review-fix2(독립 검토 중간 1·L3·L4): 운영 대상이면 **운영 상태를 바꾸기 전에**(결정 절) 쓰기 가드를 한 번 먼저 부른다 · 운영 대상에 QA_TOTP_FILE 거부 · 운영 파일 쓰기는 운영 트리(/var/www/qaredi/tbox-v2)에서 부를 때만(복제본에서 운영 대상으로 부르면 rc 3) · BASE 별칭(localhost·끝 /) 정규화"
     },
     {
       "id": "tbox.f53",
@@ -792,9 +795,8 @@
         "browser"
       ],
       "covers": [
-        "scripts/totp_code.php",
         "public/assets/app.js",
-        "src/handlers/users_page.php",
+        "scripts/totp_code.php",
         "src/handlers/files_delete.php",
         "src/handlers/files_list.php",
         "src/handlers/files_restore.php",
@@ -806,7 +808,9 @@
         "src/handlers/me_act_start.php",
         "src/handlers/me_act_stop.php",
         "src/handlers/reauth.php",
-        "src/handlers/users_list.php"
+        "src/handlers/users_list.php",
+        "src/handlers/users_page.php",
+        "tests/lib/prod_guard.sh"
       ],
       "requirements": [
         "T-52",
@@ -819,7 +823,7 @@
       ],
       "est_sec": 300,
       "writes_prod": true,
-      "notes": "26단계(역할로 보기·관리 폼·폴더 삭제). 운영 tbox_re 에 psqlc 로 직접 쓴다: UPDATE users role(claude_admin01 Manager↔Admin, 끝에 원복)·UPDATE sessions act_*·reauth_at(qa 세션 시간 조작)·DELETE files/folders(qa 가 만든 S26- 만) + sudo -n rm 저장소 바이트 → writes_prod. 원문은 합계를 trap 안에서 찍고 마지막 줄이 echo 라 rc 가 늘 0 — A-3 에서 고치는 대상. 크로미움 경로 ~/.cache/ms-playwright/chromium-1234 고정. R-80 가드 없음. Q:F-4 U-2b(75f57a9) 뒤 기대값: Employee 의 /trash 는 403 이 아니라 200 「내 휴지통」(제목·표 속성·열 구성 세 줄로 확인 — 공통 셸 글자로 늘 참이던 확인을 고침). 1-B-3(점검 봇): 감사 단언 4곳(T-52(i) file.upload · (g) act.expire · (h) role_lost · move_trashed folder.delete)에 이번 실행 경계(id > *_MARK) — BF-0009. (1-B-1 9dcd2e7 뒤 검토 계정 claude_ — 자격 파일 이름 qa-totp.txt·seed-accounts.txt 는 그대로)"
+      "notes": "26단계(역할로 보기·관리 폼·폴더 삭제). 운영 tbox_re 에 psqlc 로 직접 쓴다: UPDATE users role(claude_admin01 Manager↔Admin, 끝에 원복)·UPDATE sessions act_*·reauth_at(qa 세션 시간 조작)·DELETE files/folders(qa 가 만든 S26- 만) + sudo -n rm 저장소 바이트 → writes_prod. 원문은 합계를 trap 안에서 찍고 마지막 줄이 echo 라 rc 가 늘 0 — A-3 에서 고치는 대상. 크로미움 경로 ~/.cache/ms-playwright/chromium-1234 고정. R-80 가드 없음. Q:F-4 U-2b(75f57a9) 뒤 기대값: Employee 의 /trash 는 403 이 아니라 200 「내 휴지통」(제목·표 속성·열 구성 세 줄로 확인 — 공통 셸 글자로 늘 참이던 확인을 고침). 1-B-3(점검 봇): 감사 단언 4곳(T-52(i) file.upload · (g) act.expire · (h) role_lost · move_trashed folder.delete)에 이번 실행 경계(id > *_MARK) — BF-0009. (1-B-1 9dcd2e7 뒤 검토 계정 claude_ — 자격 파일 이름 qa-totp.txt·seed-accounts.txt 는 그대로) · 2026-09-26 디버깅 묶음 T 9번: 정리 때 S26- 바이트를 지우는 저장소 자리는 운영 대상일 때만 운영 저장소(tests/lib/prod_guard.sh PG_PROD_STORAGE) · 임시 대상이면 S26_STORAGE_DIR 을 준 때만 그 자리, 아니면 지우지 않음 · 섞인 대상 rc 3 · 지우기 직전 prod_write_guard. writes_prod 그대로(운영 대상이면 운영 tbox_re·저장소에 쓴다). · review-fix2: 운영 대상에 S26_STORAGE_DIR 거부(운영 저장소에 S26- 바이트가 고아로 남는 길) · 결정 절에서 쓰기 가드를 한 번 먼저(운영 트리·운영 .env DB_NAME) — 복제본에서 운영 대상으로 부르면 rc 3(run.sh --allow-writes-prod 여도 시험이 시작을 거부 → ③ refused)"
     },
     {
       "id": "tbox.totp_time_sync",
@@ -2293,7 +2297,7 @@
     },
     {
       "id": "core.wiki_check",
-      "cmd": "php scripts/wiki_check.php",
+      "cmd": "bash tests/wiki_check.sh",
       "module": "core",
       "env": "static",
       "status": "required",
@@ -2301,7 +2305,8 @@
       "covers": [
         "wiki/**",
         "src/Wiki.php",
-        "STAGES.md"
+        "STAGES.md",
+        "scripts/wiki_check.php"
       ],
       "requirements": [],
       "risks": [
@@ -2309,7 +2314,7 @@
       ],
       "est_sec": 5,
       "writes_prod": false,
-      "notes": "wiki/<책>/*.json 구조·빠진 단계 글 검사. DB·부트스트랩 없이 src/Wiki.php 만. 저장소 밖 ../../community/STAGES.md·../../STAGES.md 를 읽고 없으면 문제로 올린다 → 두 저장소를 같은 배치로 둬야 한다. rc 0 통과·1 문제·2 실행 오류. 복제본 실측 0.1초."
+      "notes": "wiki/<책>/*.json 구조·빠진 단계 글 검사(scripts/wiki_check.php — DB·부트스트랩 없이 src/Wiki.php 만). ⑧ 이 저장소 밖 <사이트 루트>/STAGES.md·community/STAGES.md 를 읽는다 — tests/wiki_check.sh 가 사이트 루트를 인자 → QAREDI_SITE_ROOT → 저장소 부모(두 파일이 있을 때만) 순으로 정하고, 부모가 아니면 저장소 사본의 형제 자리에 읽기 링크 둘을 두어 사본에서 돈다. 못 찾으면 저장소에서 그대로 돌리고 사이트·커뮤니티 책 ⑧ 두 줄(「파일이 없다」)만 환경 몫으로 건너뛴다 — ①~⑦·t-box 책 ⑧ 은 본다(그 둘 말고 문제가 있으면 실패 · 없으면 RESULT pass=1 skip=1 · rc 0 — 독립 검토 L5). 운영 사이트 폴더로 저절로 넘어가지 않는다. 복제본에서 운영 STAGES 와 견주려면 QAREDI_SITE_ROOT=/var/www/qaredi. rc 0 통과(건너뜀 포함) · 1 문제 · 2 없는 사이트 루트를 분명히 줌. 2026-09-26 디버깅 묶음 T 로 cmd 를 틀로 바꿈(복제본에서 문제 2건 「파일이 없다」로 실패하던 환경 요인). 복제본 실측 0.5초."
     },
     {
       "id": "core.ui_snapshot",
@@ -2687,7 +2692,7 @@
       ],
       "est_sec": 600,
       "writes_prod": false,
-      "notes": "Q:F-4 라운드 B1 수락(P-2 DB 연결 재사용 ①~⑤ · P-5c 필요할 때 연결 ①~⑤ · P-4b heartbeat 가볍게 ①~③). 임시 인스턴스: pg_dump tbox_re(읽기) → 임시 DB tbox_qf4b1_test · 저장소 복사 PHP 내장 서버 127.0.0.1:8100(한 프로세스 = 워커 1). 전 = BEFORE_REF(머리 주석 기본 9c20065 — 운영 기준과 어긋남, 검토 L-5·규칙 후보 R21) 코드 · 후 = 작업 트리, 같은 포트를 차례로. 연결 끊기(④)는 임시 DB 의 앱 계정 연결만 겨눈다. 시험 전용 경로 /__qf4b/* 는 임시 router.php 에만. 비밀은 파이썬 한 프로세스의 환경 변수·세션·CSRF 는 600 헤더 파일. 409·429·694 행은 사이트 층(옛 주소 308·옛 주소가 DB 에 붙지 않음)을 일부러 본다(FP-0002~0004 — v2 R5 는 조용). 운영 8082 요청 0. 첫 반영 3d1c050."
+      "notes": "Q:F-4 라운드 B1 수락(P-2 DB 연결 재사용 ①~⑤ · P-5c 필요할 때 연결 ①~⑤ · P-4b heartbeat 가볍게 ①~③). 임시 인스턴스: pg_dump tbox_re(읽기) → 임시 DB tbox_qf4b1_test · 저장소 복사 PHP 내장 서버 127.0.0.1:8100(한 프로세스 = 워커 1). 전 = BEFORE_REF(머리 주석 기본 9c20065 — 운영 기준과 어긋남, 검토 L-5·규칙 후보 R21) 코드 · 후 = 작업 트리, 같은 포트를 차례로. 연결 끊기(④)는 임시 DB 의 앱 계정 연결만 겨눈다. 시험 전용 경로 /__qf4b/* 는 임시 router.php 에만. 비밀은 파이썬 한 프로세스의 환경 변수·세션·CSRF 는 600 헤더 파일. 409·429·694 행은 사이트 층(옛 주소 308·옛 주소가 DB 에 붙지 않음)을 일부러 본다(FP-0002~0004 — v2 R5 는 조용). 운영 8082 요청 0. 첫 반영 3d1c050. · 2026-09-26 디버깅 묶음 T: 쿠키 런처 HTML 전후 대조는 BEFORE_REF 뒤 **의도적 변경 목록**(1bf8964 color-scheme 한 줄)만 양쪽에서 빼고 견준다(그 줄이 후에 있는지도 단언) · 세션 상태 grep 은 SET LOCAL 을 빼고(트랜잭션 끝에 풀림 — search.php) 트랜잭션 밖 맨 SET 을 새로 잡는다 + 음성 시험 한 줄 · 손잡이 QF4B1_PORT · QTEST_DB_PREFIX · QF2_ENV_SRC"
     },
     {
       "id": "tbox.qf4_p7_timeouts",
@@ -2712,7 +2717,7 @@
       ],
       "est_sec": 180,
       "writes_prod": false,
-      "notes": "Q:F-4 P-7 수락(① 마이그레이션 값 대조 ② pg_sleep(20) 15초 취소 ③ SHOW 역할별 ④ B1 영속 연결 × idle_in_transaction(임시 DB 한정 3초, php-fpm 워커 1) ⑤ php-fpm -t -y 새 풀 설정 ⑥ request_terminate_timeout(시험 풀만 2초) ⑦ 반영 스크립트 두 벌 — 경로만 바꾼 사본으로 dry-run·실패 경로·되돌림). 임시 인스턴스: pg_dump tbox_re(읽기) | psql → 임시 DB tbox_qf4p7_test + 빈 임시 DB tbox_qf4p7_dbh · 역할 설정은 ALTER ROLE tbox_app IN DATABASE <임시> 로만(전역 ALTER ROLE 0) · 비root php-fpm 둘 + nginx(운영 사이트 사본, 127.0.0.1:18580·18582·18584). /etc 는 읽기만. 로그인은 claude_employee01 — 비밀은 표준입력(py_secret), 쿠키는 600 헤더 파일. 시험 전용 탐침 p7_probe.php·sleep.php 는 임시 앱 폴더에만. 운영 8082 요청 0."
+      "notes": "Q:F-4 P-7 수락(① 마이그레이션 값 대조 ② pg_sleep(20) 15초 취소 ③ SHOW 역할별 ④ B1 영속 연결 × idle_in_transaction(임시 DB 한정 3초, php-fpm 워커 1) ⑤ php-fpm -t -y 새 풀 설정 ⑥ request_terminate_timeout(시험 풀만 2초) ⑦ 반영 스크립트 두 벌 — 경로만 바꾼 사본으로 dry-run·실패 경로·되돌림). 임시 인스턴스: pg_dump tbox_re(읽기) | psql → 임시 DB tbox_qf4p7_test + 빈 임시 DB tbox_qf4p7_dbh · 역할 설정은 ALTER ROLE tbox_app IN DATABASE <임시> 로만(전역 ALTER ROLE 0) · 비root php-fpm 둘 + nginx(운영 사이트 사본, 127.0.0.1:18580·18582·18584). /etc 는 읽기만. 로그인은 claude_employee01 — 비밀은 표준입력(py_secret), 쿠키는 600 헤더 파일. 시험 전용 탐침 p7_probe.php·sleep.php 는 임시 앱 폴더에만. 운영 8082 요청 0. · 2026-09-26 디버깅 묶음 T: runf 를 ⑦ FPM 절 밖으로(FPM 사본 시험을 건너뛰면 DB 절이 runf 없음 9건) · 반영 스크립트 자리 P7_SCRIPTS_DIR(→ review-scripts/ → 트리 형제 scripts/) — 없으면 ⑦ 만 「환경 없음 — 건너뜀(실패 아님)」 · 손잡이 P7_P80·P7_P82·P7_P84 · QTEST_DB_PREFIX · QF2_ENV_SRC · review-fix2(L6): ⑦ 사본 정리 검사(운영 경로·root 명령·전역 ALTER)가 「left」면 그 절(FPM·DB)의 사본을 돌리지 않고 건너뜀"
     },
     {
       "id": "tbox.qf4b1_heartbeat",
@@ -2784,7 +2789,8 @@
         "deploy/push.conf",
         "deploy/cron.d/tbox-v2",
         "review-scripts/apply-f70-host-2026-09-24.sh",
-        "review-scripts/apply-f70-repo-2026-09-24.sh"
+        "review-scripts/apply-f70-repo-2026-09-24.sh",
+        "tests/wiki_check.sh"
       ],
       "requirements": [],
       "risks": [
@@ -2792,7 +2798,7 @@
       ],
       "est_sec": 330,
       "writes_prod": false,
-      "notes": "F-70 휴대폰 경보 수락(지시서 G 표 F70-T1~T10 — T9 실제 기기는 대기). 임시 인스턴스: pg_dump tbox_re(읽기) | psql → tbox_f70_test + 구조만 pg_dump -s → tbox_f70_host · 마이그레이션은 역할 이름만 시험 전용(tbox_push_t<pid>·tbox_push_h<pid> — 운영 이름 tbox_push 는 만들지 않음, 끝에 DROP ROLE)·역할 설정은 IN DATABASE <임시>로만 · php -S 127.0.0.1:8105 · 가짜 푸시 서버 127.0.0.1:18443(자체 서명 TLS). 바깥 푸시 서비스 요청 0 — 보내는 쪽은 시험 사본에서만 Fetch.php 네 곳(포트·주소 조립·이름 풀이 fcm·apple→127.0.0.1 · mozilla→10.20.30.40·사설 대역에서 127/8 만 뺌)과 alert_push.php 시각 한 줄(F70_NOW)을 바꾸고 curl.cainfo=가짜 인증서만 믿는다. 인스턴스 사본은 WebPush::PUBLIC_KEY_FILE 한 줄만. 시험 키(VAPID·기기 12벌)는 실행 때 새로(저장소 파일 0). 로그인 claude_admin01·claude_manager01(자격 sudo -n awk /etc/tbox-v2 — 비밀번호·TOTP 는 py_secret 표준입력, 쿠키는 0600 머리 파일, 재인증 본문은 curl_json_secret). 브라우저(playwright — 없으면 T8 화면 SKIP)는 「알림 받기 켜기」를 누르지 않는다(크로미움 구독은 FCM 에 붙는다) — 화면·해지 확인 창·시험 알림·워커 등록/해제·빈 문서 흉내 self 로 워커 처리기. ⑨ 호스트 반영 스크립트 사본(경로만 임시·비root·가짜 setfacl): setfacl 없음 → exit 1 · dry-run · 반쪽·알려진 판 아님 → 1 · 경계 확인 틀림 → 되돌림 4 · 경계 항목 뺀 사본 본 실행 0 · 이미 됨 0. 실제 OS 계정 경계(tbox-push·tbox-php)는 미검증(운영 반영 확인 절). 운영에 닿는 것은 읽기뿐: pg_dump 둘 · /etc/cron.d/tbox-v2 sha · /etc/tbox-v2 비밀 두 줄(awk). 이 시험의 sudo psql 은 운영 alerts.php AL-9 에 걸린다(임시 DB = claude-session, 운영 DB 읽기 pg_dump = human)."
+      "notes": "F-70 휴대폰 경보 수락(지시서 G 표 F70-T1~T10 — T9 실제 기기는 대기). 임시 인스턴스: pg_dump tbox_re(읽기) | psql → tbox_f70_test + 구조만 pg_dump -s → tbox_f70_host · 마이그레이션은 역할 이름만 시험 전용(tbox_push_t<pid>·tbox_push_h<pid> — 운영 이름 tbox_push 는 만들지 않음, 끝에 DROP ROLE)·역할 설정은 IN DATABASE <임시>로만 · php -S 127.0.0.1:8105 · 가짜 푸시 서버 127.0.0.1:18443(자체 서명 TLS). 바깥 푸시 서비스 요청 0 — 보내는 쪽은 시험 사본에서만 Fetch.php 네 곳(포트·주소 조립·이름 풀이 fcm·apple→127.0.0.1 · mozilla→10.20.30.40·사설 대역에서 127/8 만 뺌)과 alert_push.php 시각 한 줄(F70_NOW)을 바꾸고 curl.cainfo=가짜 인증서만 믿는다. 인스턴스 사본은 WebPush::PUBLIC_KEY_FILE 한 줄만. 시험 키(VAPID·기기 12벌)는 실행 때 새로(저장소 파일 0). 로그인 claude_admin01·claude_manager01(자격 sudo -n awk /etc/tbox-v2 — 비밀번호·TOTP 는 py_secret 표준입력, 쿠키는 0600 머리 파일, 재인증 본문은 curl_json_secret). 브라우저(playwright — 없으면 T8 화면 SKIP)는 「알림 받기 켜기」를 누르지 않는다(크로미움 구독은 FCM 에 붙는다) — 화면·해지 확인 창·시험 알림·워커 등록/해제·빈 문서 흉내 self 로 워커 처리기. ⑨ 호스트 반영 스크립트 사본(경로만 임시·비root·가짜 setfacl): setfacl 없음 → exit 1 · dry-run · 반쪽·알려진 판 아님 → 1 · 경계 확인 틀림 → 되돌림 4 · 경계 항목 뺀 사본 본 실행 0 · 이미 됨 0. 실제 OS 계정 경계(tbox-push·tbox-php)는 미검증(운영 반영 확인 절). 운영에 닿는 것은 읽기뿐: pg_dump 둘 · /etc/cron.d/tbox-v2 sha · /etc/tbox-v2 비밀 두 줄(awk). 이 시험의 sudo psql 은 운영 alerts.php AL-9 에 걸린다(임시 DB = claude-session, 운영 DB 읽기 pg_dump = human). · 2026-09-26 디버깅 묶음 T: 운영에 F-70 이 반영된 뒤 사본에 딸려 오는 받기 표·실제 받기(운영 휴대폰 주소)·대기표·tbox_push 권한을 ① 에서 **임시 DB 에서만** 걷어 「마이그레이션 전」을 시험이 만든다(T11 사본도 그 뒤에 뜸) · 끝에 가짜 푸시 서버가 받은 요청이 모두 시험 주소(/f70/…)인지 단언(운영 받기로 간 요청 0) · T10 위키 검사는 tests/wiki_check.sh(사이트 루트 없으면 건너뜀) · 손잡이 F70_PORT·F70_RPORT·F70_PUSH_PORT · QTEST_DB_PREFIX · QF2_ENV_SRC"
     },
     {
       "id": "community.qf2_search",
@@ -2920,7 +2926,8 @@
         "scripts/ui_snapshot.sh",
         "src/community/handlers/favorites.php",
         "src/community/handlers/recent_clear.php",
-        "src/community/handlers/recent_list.php"
+        "src/community/handlers/recent_list.php",
+        "tests/browser/qf3a_favorites.py"
       ],
       "requirements": [],
       "risks": [
@@ -2928,7 +2935,7 @@
       ],
       "est_sec": 360,
       "writes_prod": false,
-      "notes": "대기열 6 Q:F-3a 라운드 A 커뮤니티 쪽 + 두 앱 화면(QF3A-T1~ — requirements 비움). 비공개 페이지 넣기 404 가 없는 id 와 같은 본문 · 순서·최근·지우기 · 화면(tests/browser/qf3a_favorites.py — 이 셸이 부름). 임시 DB·php -S(기본 8161). 2026-09-26 대기열 5d ④로 넣음"
+      "notes": "대기열 6 Q:F-3a 라운드 A 커뮤니티 쪽 + 두 앱 화면(QF3A-T1~ — requirements 비움). 비공개 페이지 넣기 404 가 없는 id 와 같은 본문 · 순서·최근·지우기 · 화면(tests/browser/qf3a_favorites.py — 이 셸이 부름). 임시 DB·php -S(기본 8161). 2026-09-26 대기열 5d ④로 넣음 · 2026-09-26 디버깅 묶음 T: 화면 시험의 목록 읽기를 한 번의 wait_for_function 으로(옛 .all() 은 다시 그려진 목록에서 30초 멈춤 — 10번에 3번 실패) · QF3A_SMOKE_RUNS=N(화면 시험 N번 잇달아 · 끝에 「실패한 회수 0/N」) · 임시 DB 접두 QTEST_DB_PREFIX(기본 tbox_)"
     },
     {
       "id": "perf.qf2_search",
@@ -2955,7 +2962,12 @@
       ],
       "est_sec": 900,
       "writes_prod": false,
-      "notes": "Q:F-2 검색 성능(QF2-T4): 지금 규모 p95 · 큰 규모(페이지 5만 등) 서버 시간 · 5b 마이그레이션이 트리에 있으면 파일 검색 색인까지. 오래 걸리고 수치가 기계 부하에 흔들려 advisory. 임시 DB·php -S(기본 8153). 2026-09-26 대기열 5d ④로 넣음"
+      "notes": "【known 한계 — d45: 영문·숫자 파일 검색은 목표 밖(accepted_limit)】 Q:F-2 검색 성능(QF2-T4): 지금 규모 p95 · 큰 규모(페이지 5만 등) 서버 시간 · 5b 마이그레이션이 트리에 있으면 파일 검색 색인까지. 오래 걸리고 수치가 기계 부하에 흔들려 advisory. 임시 DB·php -S(기본 8153). 2026-09-26 대기열 5d ④로 넣음",
+      "accepted_limit": {
+        "decision": "d45",
+        "since": "2026-09-25",
+        "text": "d45 로 받아들인 한계 — 영문·숫자 파일 검색은 목표 밖(색인은 한글만 · J-10 ⓑ · 영문 최악은 DB 업그레이드 뒤 갈래 B). 그 p95 단언이 부하 중 경계값으로 틀리는 것은 결함이 아니다(2026-09-26 기능 점검 — 흔들리는 시험 1). 단언은 그대로 둔다."
+      }
     },
     {
       "id": "community.qf2_search_modal",
@@ -3011,6 +3023,221 @@
       "est_sec": 60,
       "writes_prod": false,
       "notes": "R-104(2026-09-26) — 백업 검증 ⓪ 새로움(24.5시간) · .env 없는 사본은 멈춤(G — 운영 경보 로그 줄 수 대조). --backup-root 임시(root 0700)에 운영 키로 만든 작은 가짜 산출물(임시 DB 스키마 덤프 · 글자 하나 tar) · 임시 DB tbox_vbfresh_test · 임시 인스턴스 .env(DB·감사 로그만 바꿈). 운영 실패 횟수·백업 폴더·감사(검증·경보 행) 불변을 F 에서 대조. 운영 /etc/tbox-v2/backup.key 를 root 로 읽는다(암호화에만)."
+    },
+    {
+      "id": "tbox.qf3b",
+      "cmd": "bash tests/qf3b_tbox.sh",
+      "module": "tbox",
+      "env": "temp-instance",
+      "status": "required",
+      "needs": [
+        "sudo"
+      ],
+      "covers": [
+        "db/migrations/2026-10-05_qf3b_purge_favorites.sql",
+        "public/assets/app.js",
+        "public/index.php",
+        "scripts/security_lint.sh",
+        "src/community/handlers/favorites.php",
+        "src/community/handlers/home_page.php",
+        "src/community/handlers/page_view.php",
+        "src/community/handlers/pages_get.php",
+        "src/community/routes.php",
+        "src/handlers/favorites_files.php",
+        "src/handlers/favorites_folders.php",
+        "src/handlers/files_delete.php",
+        "src/handlers/files_restore.php",
+        "src/handlers/files_update.php",
+        "src/handlers/home.php",
+        "src/help/community.php",
+        "src/help/screens.php",
+        "src/views/shell_top.php"
+      ],
+      "requirements": [],
+      "risks": [
+        "R-62"
+      ],
+      "est_sec": 300,
+      "writes_prod": false,
+      "notes": "대기열 6 Q:F-3a 라운드 B t-box 쪽 수락(QF3A-T6 섞인 선택 — 한 건 창구 × 항목 · T7 끊김 — 옛 세션 무활동 만료 뒤 새 세션으로 잇기 · L-1 역할로 보기 중 즐겨찾기 · L-2 동시 넣기(워커 넷 인스턴스) · B-T0 정적 — 새 창구 0(기준 판 a0d5503 대비 public/index.php diff 0)). QF3A-T 번호 체계라 requirements 는 비움. 임시 DB tbox_qf3b_<포트>_test(pg_dump tbox_re 읽기 파이프)·php -S(기본 8166 + 워커 넷 8168 — QF3B_PORT·QF3B_BURST_PORT). 비밀은 표준입력(R-62). 복제본은 QF2_ENV_SRC(mktemp 0600 사본). 운영 8082 요청 0. 2026-09-26 디버깅 묶음 T 로 카탈로그에 넣음(카탈로그 밖 수락 시험)."
+    },
+    {
+      "id": "community.qf3b",
+      "cmd": "bash tests/community/qf3b.sh",
+      "module": "community",
+      "env": "temp-instance",
+      "status": "required",
+      "needs": [
+        "sudo",
+        "browser"
+      ],
+      "covers": [
+        "db/migrations/2026-09-26_community_purge.sql",
+        "db/migrations/2026-10-05_qf3b_purge_favorites.sql",
+        "scripts/community_asset_version.php",
+        "scripts/ui_snapshot.sh",
+        "src/community/handlers/favorites.php",
+        "src/community/handlers/pages_delete.php",
+        "src/community/handlers/pages_move.php",
+        "tests/browser/qf3a_bulk.py"
+      ],
+      "requirements": [],
+      "risks": [
+        "R-62"
+      ],
+      "est_sec": 600,
+      "writes_prod": false,
+      "notes": "대기열 6 Q:F-3a 라운드 B 커뮤니티 쪽 + 두 앱 화면 수락(D-2 30일 정리 함수 · L-1 · L-2 동시 넣기 · L-3 행 잠금 · 특권 열람 최근 0 · QF3A-T6 부모+자식+깊이 초과 옮기기 · T9 화면 tests/browser/qf3a_bulk.py — 이 셸이 부름, 두 앱 × 360·412 터치·820·1280 × 라이트·다크 · 도중 세션 만료 → 이어서 하기). 임시 DB tbox_qf3b_<포트>_test·php -S(기본 8167 + 워커 넷 8169). 비밀은 표준입력(R-62). REGRESS=1 이면 같은 인스턴스에서 회귀. 운영 8082 요청 0. 2026-09-26 디버깅 묶음 T 로 넣음."
+    },
+    {
+      "id": "community.qf3a_bulk",
+      "cmd": "python3 tests/browser/qf3a_bulk.py",
+      "module": "community",
+      "env": "temp-instance",
+      "status": "helper",
+      "needs": [
+        "browser"
+      ],
+      "covers": [],
+      "requirements": [],
+      "risks": [
+        "R-62"
+      ],
+      "est_sec": 300,
+      "writes_prod": false,
+      "notes": "부르는 셸: community.qf3b. 단독 실행 불가(인자 SITE UA SHOTS IDS_JSON 임시DB · 세션 일곱은 표준입력 — R-62 · 임시 DB 는 sudo psql 로 세션 만료 흉내·감사 확인에만). 2026-09-26 디버깅 묶음 T 로 넣음."
+    },
+    {
+      "id": "tbox.sec4",
+      "cmd": "bash tests/sec4.sh",
+      "module": "tbox",
+      "env": "temp-instance",
+      "status": "required",
+      "needs": [
+        "sudo",
+        "browser"
+      ],
+      "covers": [
+        "db/migrations/2026-10-04_users_temp_password_issued_at.sql",
+        "db/schema.sql",
+        "public/assets/totp-generator.html",
+        "scripts/alerts.php",
+        "scripts/security_lint.sh",
+        "scripts/wiki_check.php",
+        "src/Audit.php",
+        "src/Auth.php",
+        "src/Totp.php",
+        "src/handlers/login.php",
+        "src/handlers/time.php",
+        "src/handlers/users_create.php",
+        "src/handlers/users_password_reset.php"
+      ],
+      "requirements": [],
+      "risks": [
+        "R-31",
+        "R-39",
+        "R-62",
+        "R-73",
+        "R-79",
+        "R-100"
+      ],
+      "est_sec": 420,
+      "writes_prod": false,
+      "notes": "보안 넷(d52) 수락 — S4-M 마이그레이션(임시 DB — 운영 사본에 칸이 이미 있으면 임시 DB 에서만 걷어 「마이그레이션 전」을 시험이 만든다, 2026-09-26 디버깅 묶음 T) · S4-39 R-39 임시 비밀번호 72시간(발급 시각을 SQL 로 돌려 가며 로그인 · 감사 auth.login deny temp_expired · 로그인 화면 헤드리스) · S4-79 R-79 /api/time now_ms · 옛 생성기(335791d) 대조 · S4-100 AL-9 절대 경로 rm(사본 auth.log · --dry-run) · S4-S 정적. 임시 DB tbox_sec4_<포트>_test(앞 tbox_ 는 QTEST_DB_PREFIX)·php -S(기본 8192 — SEC4_PORT). 검토 계정 claude_admin01 이 임시 DB 에 사람 계정 s4t<시각> 을 만든다(임시 DB 에만). REGRESS=1 이면 회귀(S4 절보다 먼저). R-31 nginx 는 tbox.sec4_r31_nginx. 운영 8082 요청 0. 2026-09-26 디버깅 묶음 T 로 넣음."
+    },
+    {
+      "id": "tbox.sec4_r31_nginx",
+      "cmd": "bash tests/sec4_r31_nginx.sh",
+      "module": "tbox",
+      "env": "temp-instance",
+      "status": "required",
+      "needs": [
+        "nginx"
+      ],
+      "covers": [
+        "deploy/sites/tbox-common.conf",
+        "deploy/sites/tbox-v1-local.conf",
+        "deploy/sites/tbox-v2-local.conf",
+        "deploy/sites/tbox-v2.conf",
+        "tests/upgrade/asset_cache.py"
+      ],
+      "requirements": [],
+      "risks": [
+        "R-31"
+      ],
+      "est_sec": 20,
+      "writes_prod": false,
+      "notes": "보안 넷 ② R-31 수락 — N1 저장소 nginx 두 파일을 글자 그대로(로그 경로·listen 만 임시) nginx -t · N2 임시 nginx(이 사용자 · 127.0.0.1/::1 의 R31_PORT, 기본 8191)에서 TCP 상대별 응답(자신 · 프록시 흉내 127.0.0.100 · 직접 접속 흉내 127.0.0.7 → 301 https 도메인 · XFF 위조 · 열린 리다이렉트 없음) · N3 정적(map 주소 = set_real_ip_from · 관문 if 한 곳 — 주석 줄 빼고 셈). sudo·DB 없음 — /etc/nginx 의 fastcgi_params·mime.types 만 읽는다. FastCGI 는 없는 임시 소켓(PHP 경로 502 = location 에 닿음). 임시 폴더는 짧은 /tmp 아래(유닉스 소켓 경로 108바이트 — 긴 TMPDIR 에서 N1·N2 가 틀리던 환경 요인, 2026-09-26 디버깅 묶음 T). 운영 nginx·80·8082·8081 요청 0. 2026-09-26 디버깅 묶음 T 로 넣음."
+    },
+    {
+      "id": "tbox.qf3c_zip",
+      "cmd": "bash tests/qf3c_zip.sh",
+      "module": "tbox",
+      "env": "temp-instance",
+      "status": "required",
+      "needs": [
+        "sudo"
+      ],
+      "covers": [
+        "deploy/install.sh",
+        "public/assets/app.js",
+        "public/index.php",
+        "scripts/security_lint.sh",
+        "src/Audit.php",
+        "src/handlers/_download_common.php",
+        "src/handlers/files_download.php",
+        "src/handlers/files_zip.php",
+        "src/handlers/home.php",
+        "src/help/screens.php",
+        "tests/browser/qf3c_zip.py"
+      ],
+      "requirements": [],
+      "risks": [
+        "R-62"
+      ],
+      "est_sec": 420,
+      "writes_prod": false,
+      "notes": "대기열 6 Q:F-3a 라운드 C zip 으로 받기 수락(C-T1 권한 · C-T2 추가 거부 · C-T3 한도 100개·500MB · C-T4 이름 · C-T5 바이트 · C-T6 감사 · C-T7 관문 · C-T8 임시 파일 · C-T9 동시 · C-T10 한 건 받기 옛 판 = 새 판 열두 갈래 · C-T11 정적 · C-T12 시간 한도). 임시 DB tbox_qf3c_<포트>_test·php -S 여섯(기본 8170 본 · 8172 워커 넷 · 8174 작은 tmpfs · 8176 기준 판 5de7467 · 8180 시간 한도 0 사본 · 8182 /dev/shm — QF3C_*_PORT). SCAN_ENABLED=0(검사 상태는 SQL 로). 선택: QF3C_BIG=1(100MB × 5 — 디스크 1.5GB 더 씀) · QF3C_BROWSER=1(tests/browser/qf3c_zip.py — 그때만 browser 필요) · REGRESS=1. 운영 8082 요청 0. 2026-09-26 디버깅 묶음 T 로 넣음."
+    },
+    {
+      "id": "tbox.qf3c_zip_browser",
+      "cmd": "python3 tests/browser/qf3c_zip.py",
+      "module": "tbox",
+      "env": "temp-instance",
+      "status": "helper",
+      "needs": [
+        "browser"
+      ],
+      "covers": [],
+      "requirements": [],
+      "risks": [
+        "R-62"
+      ],
+      "est_sec": 120,
+      "writes_prod": false,
+      "notes": "부르는 셸: tbox.qf3c_zip(QF3C_BROWSER=1 일 때). 단독 실행 불가(인자 SITE UA SHOTS 임시DB INST · 세션은 표준입력 — R-62). 2026-09-26 디버깅 묶음 T 로 넣음."
+    },
+    {
+      "id": "core.prod_guard",
+      "cmd": "bash tests/prod_guard_selftest.sh",
+      "module": "core",
+      "env": "static",
+      "status": "required",
+      "needs": [],
+      "covers": [
+        "tests/lib/prod_guard.sh",
+        "tests/f51.sh",
+        "tests/f52.sh",
+        "tests/stage26.sh"
+      ],
+      "requirements": [],
+      "risks": [
+        "R-62",
+        "R-73"
+      ],
+      "est_sec": 5,
+      "writes_prod": false,
+      "notes": "운영 파일 쓰기 가드 단위 확인(디버깅 묶음 T 9번 · 2026-09-26 사고): tests/lib/prod_guard.sh(pg_target_kind · pg_is_prod_path · prod_write_guard) + f51·f52 의 비밀 파일 자리 결정 절·save_secret·qa_secret 과 stage26 의 저장소 자리 결정 절을 sed 로 떼어 **가짜 뿌리**(mktemp)에서 돌린다. sudo 는 셸 함수로 바꿔 끼워 가짜 파일에만 install. 운영 /etc/tbox-v2·/var/lib/tbox-v2·/var/log/tbox-v2 읽기·쓰기 0 · sudo·DB·네트워크 0. 복제본 실측 1초."
     }
   ]
 }
