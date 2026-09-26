@@ -95,7 +95,7 @@ require __DIR__ . '/../../views/shell_top.php';
             <button id="page-resolve" class="menu__item" type="button" hidden>해결됨으로 표시</button>
             <hr class="menu__sep">
             <button id="page-delete" class="menu__item menu__item--danger" type="button" hidden>
-              <span class="icon" data-icon="trash"></span>삭제
+              <span class="icon" data-icon="trash"></span>지우기
             </button>
           </div>
         </details>
@@ -343,6 +343,8 @@ require __DIR__ . '/../../views/shell_top.php';
       </div>
       <div class="form-actions">
         <button id="conflict-reload" class="btn btn--quiet" type="button">새로 고침</button>
+        <!-- 디버깅 묶음 U2 M3 — 모든 창의 바닥에 「닫기」(✕ 와 같은 길 · 편집은 그대로 남는다), 주요는 오른쪽 끝 -->
+        <button class="btn btn--quiet" type="button" data-conflict-close>닫기</button>
         <button id="conflict-overwrite" class="btn" type="button">내 것으로 덮어쓰기</button>
       </div>
     </dialog>
@@ -362,7 +364,7 @@ require __DIR__ . '/../../views/shell_top.php';
         <p class="muted">30일 안에는 「내 공간」의 휴지통에서 되살릴 수 있습니다. 하위 페이지도 함께 돌아옵니다.</p>
       </div>
       <div class="form-actions">
-        <button class="btn btn--quiet" type="button" data-delete-close>그만두기</button>
+        <button class="btn btn--quiet" type="button" data-delete-close>닫기</button>
         <button id="delete-confirm" class="btn btn--danger" type="button">지우기</button>
       </div>
     </dialog>
@@ -384,7 +386,7 @@ require __DIR__ . '/../../views/shell_top.php';
         <div id="move-tree" class="move-tree" role="listbox" aria-label="새 상위 페이지"></div>
       </div>
       <div class="form-actions">
-        <button class="btn btn--quiet" type="button" data-move-close>그만두기</button>
+        <button class="btn btn--quiet" type="button" data-move-close>닫기</button>
         <button id="move-confirm" class="btn" type="button">여기로 옮기기</button>
       </div>
     </dialog>
@@ -513,7 +515,7 @@ require __DIR__ . '/../../views/shell_top.php';
         <p class="muted">내용·이력·체크 기록·작성자 이름은 그대로 따라갑니다.</p>
       </div>
       <div class="form-actions">
-        <button class="btn btn--quiet" type="button" data-handover-close>그만두기</button>
+        <button class="btn btn--quiet" type="button" data-handover-close>닫기</button>
         <button id="handover-confirm" class="btn btn--danger" type="button" disabled>넘기기</button>
       </div>
     </dialog>
@@ -840,7 +842,7 @@ require __DIR__ . '/../../views/shell_top.php';
         </label>
       </div>
       <div class="form-actions">
-        <button class="btn btn--quiet" type="button" data-status-close>그만두기</button>
+        <button class="btn btn--quiet" type="button" data-status-close>닫기</button>
         <button id="status-save" class="btn" type="button">바꾸기</button>
       </div>
     </dialog>

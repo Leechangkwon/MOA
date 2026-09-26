@@ -51,7 +51,7 @@ require __DIR__ . '/../views/shell_top.php';
     </header>
 
   <p class="help">계정은 1인 1개입니다. 역할 변경·비활성화·재활성화에는 사유가 필요하고, 역할·팀을 바꾸면 그 사람은 다시 로그인해야 합니다. 자기 자신의 역할·활성 상태는 바꿀 수 없고, 마지막 활성 관리자는 강등·비활성화되지 않습니다.</p>
-  <p class="help">Guest 계정은 만료일이 필수입니다. 계정은 지우지 않고 비활성화합니다.</p>
+  <p class="help">손님 계정은 만료일이 필수입니다. 계정은 지우지 않고 비활성화합니다. 한 계정에 할 일은 그 줄의 「관리」에서 고릅니다.</p>
 
   <!-- ─── 「계정 만들기」 모달 (D-10, DESIGN 2.7 · 2.1) ──────────────────────
        만들기 폼은 화면에 펼쳐 두지 않는다 — 화면 머리의 「계정 만들기」 단추가 이 모달을 열고,
@@ -66,7 +66,7 @@ require __DIR__ . '/../views/shell_top.php';
         <!-- 메타는 한 줄이다. 전에는 ✕ 가 아랫줄로 밀려 `<br>` 로 끊어 두었는데,
              `.modal__head > .preview__headtext { flex: 1 1 16rem; min-width: 0 }` 규칙이
              app.css 에 들어오면서 묶음이 남은 폭 안에서 스스로 줄을 바꾼다 (D-10 2차 A). -->
-        <div class="modal__meta"><span>Guest 는 만료일이 필수 · 비밀번호는 본인이 첫 로그인에서 정합니다</span></div>
+        <div class="modal__meta"><span>손님은 만료일이 필수 · 비밀번호는 본인이 첫 로그인에서 정합니다</span></div>
       </div>
       <button id="user-create-dialog-x" class="btn btn--icon" type="button" aria-label="닫기">
         <span class="icon" data-icon="x"></span>
@@ -97,11 +97,11 @@ require __DIR__ . '/../views/shell_top.php';
           </select>
         </label>
         <label class="field">
-          <span class="field__label">팀 (Guest 는 비움)</span>
+          <span class="field__label">팀 (손님은 비움)</span>
           <select id="u-team"></select>
         </label>
         <label class="field">
-          <span class="field__label">만료일 (Guest 는 필수)</span>
+          <span class="field__label">만료일 (손님은 필수)</span>
           <input id="u-expires" type="date">
         </label>
         <label class="field">
@@ -151,6 +151,69 @@ require __DIR__ . '/../views/shell_top.php';
     </div>
   </section>
 
+  <!-- ─── 계정 「관리」 상세 창 (디버깅 묶음 U2 M8 · 2026-09-26, DESIGN 2.7 `.modal--form` · 2.3 `.card--link`) ──────────
+       전에는 줄마다 글자 단추 다섯(이름·역할·팀·만료 · 임시 비밀번호 재발급 · 2단계 인증 초기화 · 비활성화 · 프로그램 토큰)이 있어
+       폴드 820 에서도 잘렸고 표가 단추로 가득했다. 이제 줄에는 「관리」 하나, 이 창에 그 계정의 사실과 **기존 동작 그대로**를 둔다.
+       동작을 고르면 이 창을 **닫고** 그 동작의 창(계정 변경 · 사유 · 프로그램 토큰)을 연다 — 창 안에 창을 겹쳐 열지 않는다(2.7).
+       창구·권한·요청은 그대로다: 무엇을 할 수 있는지는 여전히 `PATCH /api/users/{uid}` 등이 Authz 로 다시 정한다(PRD S-01).
+       값(아이디·이름·역할·팀·만료)은 app.js 가 `/api/users` 응답에서 textContent 로만 채운다 (PRD S-03). -->
+  <dialog id="user-manage-dialog" class="modal modal--form" aria-labelledby="um-title">
+    <div class="modal__head">
+      <span class="preview__mark"><span class="icon" data-icon="users"></span></span>
+      <div class="preview__headtext">
+        <h2 class="modal__title" id="um-title">계정 관리</h2>
+        <div class="modal__meta"><span id="um-sub"></span></div>
+      </div>
+      <button id="um-x" class="btn btn--icon" type="button" aria-label="닫기">
+        <span class="icon" data-icon="x"></span>
+      </button>
+    </div>
+    <div class="modal__body">
+      <div id="user-manage-facts" class="info-grid"></div>
+      <p id="um-self" class="help" hidden>내 계정의 이름·역할·팀·상태는 여기서 바꿀 수 없습니다(다른 관리자가 바꿉니다). 프로그램 토큰은 보고 회수할 수 있습니다.</p>
+      <div class="card-stack">
+        <button class="card card--link" type="button" data-user-action="edit">
+          <span class="card__icon"><span class="icon" data-icon="edit"></span></span>
+          <span class="card__body">
+            <strong class="card__title">이름·역할·팀·만료 바꾸기</strong>
+            <span class="card__desc">사유가 필요합니다. 역할·팀을 바꾸면 그 사람은 다시 로그인해야 합니다.</span>
+          </span>
+        </button>
+        <button class="card card--link" type="button" data-user-action="password">
+          <span class="card__icon"><span class="icon" data-icon="key"></span></span>
+          <span class="card__body">
+            <strong class="card__title">임시 비밀번호 재발급</strong>
+            <span class="card__desc">새 임시 비밀번호를 한 번만 보여 주고, 그 계정의 모든 세션과 프로그램 토큰을 끊습니다.</span>
+          </span>
+        </button>
+        <button class="card card--link" type="button" data-user-action="mfa">
+          <span class="card__icon"><span class="icon" data-icon="shield"></span></span>
+          <span class="card__body">
+            <strong class="card__title">2단계 인증 초기화</strong>
+            <span class="card__desc">인증 앱을 잃었을 때. 그 계정의 프로그램 토큰도 끊고, 다음 로그인에서 다시 등록합니다.</span>
+          </span>
+        </button>
+        <button class="card card--link" type="button" data-user-action="tokens">
+          <span class="card__icon"><span class="icon" data-icon="link"></span></span>
+          <span class="card__body">
+            <strong class="card__title">프로그램 토큰</strong>
+            <span class="card__desc">이 계정의 프로그램 토큰을 보고 회수합니다. 발급은 본인만 「내 계정」에서 합니다.</span>
+          </span>
+        </button>
+        <button class="card card--link card--warn" type="button" data-user-action="active">
+          <span class="card__icon"><span class="icon" data-icon="lock"></span></span>
+          <span class="card__body">
+            <strong class="card__title" id="um-active-title">비활성화</strong>
+            <span class="card__desc" id="um-active-desc">그 사람은 바로 로그인할 수 없게 됩니다. 사유가 필요하고, 다시 활성화할 수 있습니다.</span>
+          </span>
+        </button>
+      </div>
+    </div>
+    <div class="modal__foot">
+      <button id="um-close" class="btn btn--quiet" type="button">닫기</button>
+    </div>
+  </dialog>
+
   <!-- 26단계 계정 변경 모달 (PRD F-40, 사용자 지적 2026-09-15 「변경했는데 로그에 없다」).
        전에는 `window.prompt` 를 여러 번(역할→팀 번호→만료일→사유) 띄웠다.
        하나라도 취소하면 app.js 가 **조용히 return** 했고, 화면에 아무 알림이 없어 사용자는
@@ -165,6 +228,9 @@ require __DIR__ . '/../views/shell_top.php';
     <form id="user-edit-form" class="form" autocomplete="off">
       <div class="modal__head">
         <h2 class="modal__title" id="ue-title">계정 변경</h2>
+        <button id="ue-x" class="btn btn--icon" type="button" aria-label="닫기">
+          <span class="icon" data-icon="x"></span>
+        </button>
       </div>
       <div class="modal__body">
         <!-- 5-A″ — 이름. 비우고 저장하면 이름이 지워진다(아이디만 보인다). -->
@@ -186,7 +252,7 @@ require __DIR__ . '/../views/shell_top.php';
           <select id="ue-team"><option value="">— 팀 없음 —</option></select>
         </label>
         <label class="field">
-          <span class="field__label">만료일 (Guest 는 필수 · 비우면 그대로)</span>
+          <span class="field__label">만료일 (손님은 필수 · 비우면 그대로)</span>
           <input id="ue-expires" type="date">
         </label>
         <label class="field">
@@ -212,6 +278,9 @@ require __DIR__ . '/../views/shell_top.php';
     <form id="reason-form" class="form" autocomplete="off">
       <div class="modal__head">
         <h2 class="modal__title" id="rd-title">사유</h2>
+        <button id="rd-x" class="btn btn--icon" type="button" aria-label="닫기">
+          <span class="icon" data-icon="x"></span>
+        </button>
       </div>
       <div class="modal__body">
         <p id="rd-lead" class="muted"></p>
@@ -223,7 +292,7 @@ require __DIR__ . '/../views/shell_top.php';
       </div>
       <div class="modal__foot">
         <button id="rd-cancel" class="btn btn--quiet" type="button">닫기</button>
-        <button id="rd-submit" class="btn" type="submit">확인</button>
+        <button id="rd-submit" class="btn" type="submit">진행하기</button>
       </div>
     </form>
   </dialog>

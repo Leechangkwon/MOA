@@ -99,15 +99,18 @@ var UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{
  * 정하고, 여기 표는 그 값에 붙일 한국어 설명일 뿐이다. 표에 없는 값이 오면 만들지 않는다
  * (서버가 보낸 문자열이 그대로 <option value> 가 되지 않게 하는 방어).
  */
+/* 디버깅 묶음 U2(2026-09-26) — 고르개 글자는 **한글 이름만**(값은 그대로). 전에는 「internal — 사내 전체」처럼 영어 값이 앞에 보였다.
+   배지 이름(공개·사내·팀·관리자) + 누가 보는지를 짧게 — 폰 폭(360) 고르개 칸에서 잘리지 않는 길이. 커뮤니티 게시판 등급 고르개
+   (board_view.php)도 같은 글자다(DESIGN 5장 낱말 표). */
 var LEVEL_LABELS = {
-  'public': 'public — 전체 공개',
-  'internal': 'internal — 사내 전체',
-  'team': 'team — 팀 전용',
-  'admin-only': 'admin-only — 관리자 전용'
+  'public': '공개 — 손님까지 모두',
+  'internal': '사내 — 사내 구성원 모두',
+  'team': '팀 — 고른 팀만',
+  'admin-only': '관리자 — 관리자만'
 };
 
 /** 아직 아무것도 고르지 않았을 때의 자리표시 문구 (사용자 피드백 ②) */
-var LEVEL_PLACEHOLDER = '접근 레벨을 선택하세요';
+var LEVEL_PLACEHOLDER = '등급을 고르세요';
 
 /**
  * <select> 를 서버가 준 목록으로 채운다. createElement + textContent 만 쓴다.
@@ -318,12 +321,13 @@ function addRoleCell(row, role) {
   row.appendChild(td);
   return td;
 }
-/** 역할 고르개의 글자 — 값이 역할이고 글자가 그 값 그대로인 <option> 만 「직원 (Employee)」 로(값은 그대로 · 처음 나올 때 병기, DESIGN 5장) */
+/** 역할 고르개의 글자 — 값이 역할이고 글자가 그 값 그대로인 <option> 만 「직원」 으로(값은 그대로).
+    디버깅 묶음 U2(2026-09-26) — 고르개 글자는 한글 이름만(등급 고르개와 같은 규칙, DESIGN 5장). 전에는 「직원 (Employee)」 */
 function relabelRoleOptions(root) {
   Array.prototype.forEach.call((root || document).querySelectorAll('select option'), function (option) {
     var v = option.value;
     if (Object.prototype.hasOwnProperty.call(ROLE_LABELS, v) && String(option.textContent).trim() === v) {
-      setText(option, ROLE_LABELS[v] + ' (' + v + ')');
+      setText(option, ROLE_LABELS[v]);
     }
   });
 }
@@ -757,6 +761,10 @@ function openReauthModal(onDone) {
   setText(lead, '관리 기능을 쓰려면 비밀번호를 다시 확인합니다. 확인한 창은 15분 동안 열려 있습니다.');
   head.appendChild(lead);
 
+  // 디버깅 묶음 U2 M3 — 모든 창의 머리에 ✕(DESIGN 2.7 「✕ 와 「닫기」 둘 다」)
+  var closeX = makeIconButton('x', '닫기');
+  head.appendChild(closeX);
+
   dialog.appendChild(head);
 
   var body = document.createElement('div');
@@ -815,7 +823,12 @@ function openReauthModal(onDone) {
   dialog.appendChild(foot);
   document.body.appendChild(dialog);
 
+  var closed = false;   // 이 창이 이미 닫혔나 — 늦게 오는 close 이벤트가 **다음** 재인증 창의 빗장을 풀지 않게
   function close() {
+    if (closed) {
+      return;
+    }
+    closed = true;
     reauthOpen = false;
     if (dialog.open) {
       dialog.close();
@@ -826,6 +839,15 @@ function openReauthModal(onDone) {
   }
 
   cancel.addEventListener('click', function () {
+    close();
+  });
+  closeX.addEventListener('click', function () {
+    close();
+  });
+  /* 디버깅 묶음 U2 — Esc 로 닫으면 브라우저가 창만 닫고(cancel → close) 위 close() 는 불리지 않았다: 「열려 있음」 빗장(reauthOpen)이
+     남아 새로고침 전까지 다음 재인증 창이 뜨지 않았고(수정 창은 문구 없이 저장 단추만 살아 있었다 — a57cf6b 부터), 닫힌 창이 DOM 에 쌓였다.
+     닫히는 **모든 길**(닫기 · ✕ · Esc · 성공)이 지나는 close 이벤트에서 빗장을 풀고 창을 지운다. close() 가 다시 불려도 같은 결과다. */
+  dialog.addEventListener('close', function () {
     close();
   });
 
@@ -1747,6 +1769,9 @@ function initFiles(csrfToken, uploadLevels, canFetch, myTeamId) {
           }
           return readJson(response).then(function (data) {
             if (handleReauth(response, data, sendEdit)) {
+              /* 디버깅 묶음 U2 — 재인증 창을 그만두면(닫기·✕·Esc) 수정 창에는 저장 단추만 살아 있고 이유가 없었다.
+                 서버가 준 문구를 이 창 아래 줄에 남긴다 — 다시 「저장하기」를 누르면 재인증 창이 다시 뜬다. */
+              setText(editMsg, errorMessage(data));
               return null;
             }
             // 403·400 문구는 서버가 준 것만 쓴다 (사유를 브라우저가 추측하지 않는다). 창은 열어 둔다 — 고쳐서 다시 낼 수 있게.
@@ -1875,7 +1900,7 @@ function initFiles(csrfToken, uploadLevels, canFetch, myTeamId) {
   function renderPreviewText(data) {
     var wrap = document.createDocumentFragment();
     if (data.truncated === true) {
-      wrap.appendChild(previewNote('파일이 길어 앞부분 64KiB 만 표시합니다. 전체 내용은 다운로드로 확인하세요.'));
+      wrap.appendChild(previewNote('파일이 길어 앞부분 64KiB 만 표시합니다. 전체 내용은 받아서 확인하세요.'));
     }
     if (data.encoding === 'CP949') {
       wrap.appendChild(previewNote('CP949 로 저장된 파일이라 UTF-8 로 바꿔 표시합니다.'));
@@ -1892,7 +1917,7 @@ function initFiles(csrfToken, uploadLevels, canFetch, myTeamId) {
   function renderPreviewOffice(data) {
     var wrap = document.createDocumentFragment();
     if (data.truncated === true) {
-      wrap.appendChild(previewNote('문서가 길어 앞부분 20,000자만 표시합니다. 전체 내용은 다운로드로 확인하세요.'));
+      wrap.appendChild(previewNote('문서가 길어 앞부분 20,000자만 표시합니다. 전체 내용은 받아서 확인하세요.'));
     }
     wrap.appendChild(previewNote('서식·그림 없이 글자만 뽑은 발췌입니다.'));
     var pre = document.createElement('pre');
@@ -1985,12 +2010,12 @@ function initFiles(csrfToken, uploadLevels, canFetch, myTeamId) {
     if (data.reason === 'parse_failed') {
       return previewCard(
         '내용을 읽어 내지 못했습니다.',
-        '파일이 손상되었거나 미리보기가 다루지 못하는 구조입니다. 다운로드로 확인하세요.'
+        '파일이 손상되었거나 미리보기가 다루지 못하는 구조입니다. 받아서 확인하세요.'
       );
     }
     return previewCard(
       '미리보기를 지원하지 않는 형식입니다.',
-      '파일 정보는 오른쪽에 있습니다. 내용은 다운로드로 확인하세요.'
+      '파일 정보는 오른쪽에 있습니다. 내용은 받아서 확인하세요.'
     );
   }
 
@@ -2204,6 +2229,7 @@ function initFiles(csrfToken, uploadLevels, canFetch, myTeamId) {
     }
     if (shareSubmit) {
       shareSubmit.disabled = false;
+      shareSubmit.hidden = false;   // 디버깅 묶음 U2 M3 — 제출 단추는 바닥에 있다(폼 밖) · 주소를 만든 뒤 숨긴 것을 되돌린다
     }
     shareDialog.showModal();
   }
@@ -2285,6 +2311,9 @@ function initFiles(csrfToken, uploadLevels, canFetch, myTeamId) {
             // 주소는 여기서 한 번만 보인다. 폼은 접어 두어 실수로 또 만들지 않게 한다.
             if (shareForm) {
               shareForm.hidden = true;
+            }
+            if (shareSubmit) {
+              shareSubmit.hidden = true;   // 바닥의 「링크 만들기」도 함께 접는다 — 남는 것은 「닫기」 하나
             }
             if (shareResult) {
               shareResult.hidden = false;
@@ -2531,7 +2560,7 @@ function initFiles(csrfToken, uploadLevels, canFetch, myTeamId) {
         var link = document.createElement('a');
         link.setAttribute('href', APP_BASE + '/api/files/' + file.id + '/download');
         link.className = 'btn btn--icon';
-        link.setAttribute('aria-label', '다운로드');
+        link.setAttribute('aria-label', '받기');
         link.appendChild(makeIcon('download'));
         td.appendChild(link);
       }
@@ -2571,7 +2600,7 @@ function initFiles(csrfToken, uploadLevels, canFetch, myTeamId) {
       // 삭제 버튼도 서버가 그 행에 대해 can_delete 를 참으로 준 경우에만 만든다.
       // 화면이 역할·소유자를 따져서 정하지 않는다 — 판단은 서버가 이미 했다 (PRD S-01, 10장).
       if (file.can_delete === true) {
-        var button = makeIconButton('trash', '삭제');
+        var button = makeIconButton('trash', '지우기');
         button.addEventListener('click', function () {
           deleteFile(file);   // U-2a — 확인 창을 먼저 띄운다(요청은 확인 뒤에만)
         });
@@ -3699,7 +3728,7 @@ function initFiles(csrfToken, uploadLevels, canFetch, myTeamId) {
     var root = document.createElement('button');
     root.type = 'button';
     root.className = 'crumbs__item';
-    setText(root, '루트');
+    setText(root, '맨 위');   // 디버깅 묶음 U2 낱말 표 — 「루트」 → 「맨 위」(커뮤니티와 같은 말)
     root.addEventListener('click', function () {
       goToFolder(0);
     });
@@ -3839,10 +3868,10 @@ function initFiles(csrfToken, uploadLevels, canFetch, myTeamId) {
    * 불변 규칙 ①(`Authz::fitsUnderFolder`)로 다시 막는다 (PRD S-01, ARCH 5.16).
    */
 
-  /** 지금 연 폴더의 경로 글자 — 루트면 「루트」, 아니면 「A › B」 (크럼과 같은 글자) */
+  /** 지금 연 폴더의 경로 글자 — 맨 위면 「맨 위」, 아니면 「A › B」 (크럼과 같은 글자) */
   function folderPathText() {
     if (state.crumbs.length === 0) {
-      return '루트';
+      return '맨 위';
     }
     return state.crumbs.map(function (step) {
       return step.name;
@@ -3900,7 +3929,7 @@ function initFiles(csrfToken, uploadLevels, canFetch, myTeamId) {
       folderReason.value = '';
     }
 
-    var here = state.folderInfo && state.folderInfo.name ? state.folderInfo.name : '루트';
+    var here = state.folderInfo && state.folderInfo.name ? state.folderInfo.name : '맨 위';
     var levelField = folderLevelSelect ? folderLevelSelect.parentElement : null;
 
     if (mode === 'create') {
@@ -3914,16 +3943,16 @@ function initFiles(csrfToken, uploadLevels, canFetch, myTeamId) {
       if (folderCascadeField) { folderCascadeField.hidden = true; }
       if (folderReasonField) { folderReasonField.hidden = true; }
     } else if (mode === 'rename') {
-      setText(folderDialogTitle, '이름 변경');
+      setText(folderDialogTitle, '이름 바꾸기');
       setText(folderDialogWhere, here);
       setText(folderSubmit, '저장');
       if (folderNameField) { folderNameField.hidden = false; }
-      if (folderNameInput) { folderNameInput.value = here === '루트' ? '' : here; }
+      if (folderNameInput) { folderNameInput.value = here === '맨 위' ? '' : here; }
       if (levelField) { levelField.hidden = true; }
       if (folderCascadeField) { folderCascadeField.hidden = true; }
       if (folderReasonField) { folderReasonField.hidden = false; }
     } else {
-      setText(folderDialogTitle, '등급 변경');
+      setText(folderDialogTitle, '등급 바꾸기');
       setText(folderDialogWhere, here);
       setText(folderSubmit, '저장');
       if (folderNameField) { folderNameField.hidden = true; }
@@ -4068,6 +4097,12 @@ function initFiles(csrfToken, uploadLevels, canFetch, myTeamId) {
     title.className = 'modal__title';
     setText(title, '휴지통에 있는 파일이 남아 있습니다');
     head.appendChild(title);
+    var trashedX = makeIconButton('x', '닫기');   // 디버깅 묶음 U2 M3 — 머리에 ✕
+    trashedX.addEventListener('click', function () {
+      dialog.close();
+      setText(folderMsg, '취소했습니다');
+    });
+    head.appendChild(trashedX);
     dialog.appendChild(head);
 
     var bodyBox = document.createElement('div');
@@ -4085,7 +4120,7 @@ function initFiles(csrfToken, uploadLevels, canFetch, myTeamId) {
 
     var lead = document.createElement('p');
     lead.className = 'warn';
-    setText(lead, '폴더를 지우면 이 파일들은 루트로 옮겨진 채 휴지통에 남습니다(복구 가능). 진짜 지울까요?');
+    setText(lead, '폴더를 지우면 이 파일들은 맨 위로 옮겨진 채 휴지통에 남습니다(되살릴 수 있음). 지울까요?');
     bodyBox.appendChild(lead);
 
     dialog.appendChild(bodyBox);
@@ -4105,7 +4140,7 @@ function initFiles(csrfToken, uploadLevels, canFetch, myTeamId) {
     trashedOk = document.createElement('button');
     trashedOk.type = 'button';
     trashedOk.className = 'btn btn--danger';
-    setText(trashedOk, '휴지통 파일을 옮기고 폴더 삭제');
+    setText(trashedOk, '휴지통 파일을 옮기고 폴더 지우기');
     foot.appendChild(trashedOk);
     dialog.appendChild(foot);
 
@@ -4128,7 +4163,7 @@ function initFiles(csrfToken, uploadLevels, canFetch, myTeamId) {
     items.forEach(function (file) {
       var li = document.createElement('li');
       var when = typeof file.deleted_at === 'string' ? file.deleted_at.slice(0, 10) : '';
-      setText(li, String(file.name) + (when === '' ? '' : ' · ' + when + ' 삭제'));
+      setText(li, String(file.name) + (when === '' ? '' : ' · ' + when + ' 지움'));
       trashedList.appendChild(li);
     });
     trashedOthers.hidden = !(data && data.others === true);
@@ -4268,7 +4303,7 @@ function initFiles(csrfToken, uploadLevels, canFetch, myTeamId) {
     var root = document.createElement('button');
     root.type = 'button';
     root.className = 'crumbs__item';
-    setText(root, '루트');
+    setText(root, '맨 위');   // 디버깅 묶음 U2 낱말 표 — 「루트」 → 「맨 위」(커뮤니티와 같은 말)
     root.addEventListener('click', function () {
       movePick.folder = 0;
       loadMoveTree();
@@ -4318,7 +4353,7 @@ function initFiles(csrfToken, uploadLevels, canFetch, myTeamId) {
       // 라운드 B — 고른 파일 여럿: 창을 닫고 진행 표로(파일마다 한 건 이동과 같은 요청)
       var items = movePick.bulk;
       var target = movePick.folder === 0 ? null : movePick.folder;
-      var where = movePick.crumbs.length === 0 ? '루트' : movePick.crumbs[movePick.crumbs.length - 1].name;
+      var where = movePick.crumbs.length === 0 ? '맨 위' : movePick.crumbs[movePick.crumbs.length - 1].name;
       movePick.bulk = null;
       if (moveDialog.open) {
         moveDialog.close();
@@ -5919,7 +5954,7 @@ function initTrash(csrfToken, onRestored) {
       var td = document.createElement('td');
       td.className = 'actions';
       if (UUID_RE.test(file.id)) {
-        var button = makeIconButton('restore', '복구');
+        var button = makeIconButton('restore', '되살리기');
         var fileName = String(file.name === null || file.name === undefined ? '' : file.name);
         button.addEventListener('click', function () {
           restore(file.id, fileName);
@@ -6229,8 +6264,13 @@ function initUsers(csrfToken) {
    * 그래서 만들기 성공에 모달을 곧바로 닫지 않는다 — 상자의 「닫기」 를 누른 **뒤**에 닫는다.
    * 보였는지를 돌려주어(true/false), 상자가 없을 때만 바로 닫게 한다.
    */
-  function showTempPassword(username, temp) {
-    if (typeof temp !== 'string' || temp === '' || !form || !form.parentNode) {
+  function showTempPassword(username, temp, where) {
+    /* 디버깅 묶음 U2 M8 — `where`(선택) = { before: 상자를 넣을 자리의 다음 요소, onClose: 상자의 「닫기」 뒤에 할 일 }.
+       재발급은 계정 「관리」 창 안에 보인다. 전에는 재발급도 이 함수가 **닫혀 있는 「계정 만들기」 창** 안에 상자를 넣어
+       임시 비밀번호가 화면에 보이지 않았다(알림 줄만 「재발급했습니다」). */
+    var anchor = where && where.before ? where.before : (form ? form.nextSibling : null);
+    var host = where && where.before ? where.before.parentNode : (form ? form.parentNode : null);
+    if (typeof temp !== 'string' || temp === '' || !host) {
       return false;
     }
     var old = document.getElementById('temp-password-box');
@@ -6269,11 +6309,16 @@ function initUsers(csrfToken) {
         box.parentNode.removeChild(box);
       }
       // 임시 비밀번호를 다 읽은 뒤에야 모달이 닫힌다 (D-10).
-      closeCreateDialog();
+      if (where && typeof where.onClose === 'function') {
+        where.onClose();
+      } else {
+        closeCreateDialog();
+      }
     });
     box.appendChild(close);
 
-    form.parentNode.insertBefore(box, form.nextSibling);
+    host.insertBefore(box, anchor);
+    close.focus();
     return true;
   }
 
@@ -6384,6 +6429,7 @@ function initUsers(csrfToken) {
   var rdReason = document.getElementById('rd-reason');
   var rdMsg = document.getElementById('rd-msg');
   var rdCancel = document.getElementById('rd-cancel');
+  var rdSubmit = document.getElementById('rd-submit');
 
   /** 지금 열려 있는 모달이 끝나면 부를 함수. 닫히는 길은 「확인」·「취소」·Esc 셋뿐이다. */
   var reasonDone = null;
@@ -6406,7 +6452,7 @@ function initUsers(csrfToken) {
    * 사유만 받는다 (임시 비밀번호 재발급 · 2단계 인증 초기화 · 비활성화/재활성화).
    * `done(사유)` 또는 `done(null)`(취소) 로 끝난다 — 어느 쪽이든 **반드시 부른다**.
    */
-  function askReason(what, done) {
+  function askReason(what, done, okLabel) {
     if (!rdDialog || !rdForm) {
       setText(msg, GENERIC_ERROR);
       done(null);
@@ -6414,6 +6460,10 @@ function initUsers(csrfToken) {
     }
     reasonDone = done;
     setText(rdTitle, what);
+    // 디버깅 묶음 U2 — 바닥 단추는 그 동작의 이름(「확인」은 재인증 창 한 곳만 — DESIGN 5장)
+    if (rdSubmit) {
+      setText(rdSubmit, typeof okLabel === 'string' && okLabel !== '' ? okLabel : '진행하기');
+    }
     setText(rdLead, '이 행동은 사유와 함께 감사 로그에 남습니다.');
     setText(rdMsg, '');
     if (rdReason) {
@@ -6438,6 +6488,12 @@ function initUsers(csrfToken) {
   }
   if (rdCancel) {
     rdCancel.addEventListener('click', function () {
+      closeReason(null);
+    });
+  }
+  var rdX = document.getElementById('rd-x');
+  if (rdX) {
+    rdX.addEventListener('click', function () {
       closeReason(null);
     });
   }
@@ -6646,6 +6702,9 @@ function initUsers(csrfToken) {
     tkTitle.id = 'token-title';
     setText(tkTitle, '프로그램 토큰');
     head.appendChild(tkTitle);
+    var tkX = makeIconButton('x', '닫기');   // 디버깅 묶음 U2 M3 — 머리에 ✕
+    tkX.addEventListener('click', function () { closeTokenSection(); });
+    head.appendChild(tkX);
     tkDialog.appendChild(head);
 
     var body = document.createElement('div');
@@ -6786,19 +6845,6 @@ function initUsers(csrfToken) {
     tkDialog.showModal();
   }
 
-  /** 행마다 붙는 「프로그램 토큰」 단추 — 목록·회수를 여는 창이다 (F-66: 발급은 본인만). */
-  function tokenButton(item) {
-    var button = document.createElement('button');
-    button.type = 'button';
-    button.className = 'btn btn--quiet btn--small';
-    setText(button, '프로그램 토큰');
-    button.addEventListener('click', function () {
-      setText(msg, '');
-      openTokenSection(item);
-    });
-    return button;
-  }
-
   if (ueForm) {
     ueForm.addEventListener('submit', function (event) {
       event.preventDefault();
@@ -6844,6 +6890,13 @@ function initUsers(csrfToken) {
       closeEdit(null);
     });
   }
+  // 디버깅 묶음 U2 M3 — 머리의 ✕ 도 「닫기」와 같은 길(취소했다고 말한다)
+  var ueX = document.getElementById('ue-x');
+  if (ueX) {
+    ueX.addEventListener('click', function () {
+      closeEdit(null);
+    });
+  }
   if (ueDialog) {
     ueDialog.addEventListener('cancel', function (event) {
       event.preventDefault();
@@ -6851,46 +6904,15 @@ function initUsers(csrfToken) {
     });
   }
 
-  function addActions(row, item) {
-    var td = document.createElement('td');
-    td.className = 'actions';
-
-    // 자기 자신은 이 화면에서 **바꿀 수 없다**(서버 Authz 의 self_change 와 같은 규칙).
-    // 다만 「프로그램 토큰」은 자기 자신에게도 열려 있다 — 관리자 자신의 PC 프로그램이
-    // F-59 의 첫 용례이고, 서버도 자기 대상 발급을 허용한다(PRD F-59 ②). 토큰 발급은
-    // 계정의 역할·상태를 바꾸는 일이 아니라 **그 계정으로 쓰는 자격**을 만드는 일이다.
-    if (item.is_self === true) {
-      var selfLabel = document.createElement('span');
-      selfLabel.className = 'muted';
-      setText(selfLabel, '(본인)');
-      td.appendChild(selfLabel);
-      td.appendChild(tokenButton(item));
-      row.appendChild(td);
-      return;
-    }
-
-    var roleButton = document.createElement('button');
-    roleButton.type = 'button';
-    roleButton.className = 'btn btn--quiet btn--small';
-    setText(roleButton, '이름·역할·팀·만료');
-    // 26단계 — `window.prompt` 여섯 번이 모달 하나가 됐다 (PRD F-40). 취소·무변경·실패는
-    // 전부 #msg 로 말한다(조용한 return 금지). 바뀐 칸만 payload 에 들어간다.
-    roleButton.addEventListener('click', function () {
-      openUserEdit(item);
-    });
-    td.appendChild(roleButton);
-
-    /*
-     * 11단계 (PRD F-16 ⑤) — 임시 비밀번호 재발급 · 2단계 인증 초기화.
-     * 둘 다 **사유가 필수**이고 자기 자신에게는 쓸 수 없다(위에서 (본인) 로 끝났다).
-     * 화면은 사유를 받아 보낼 뿐이고, 허용 여부·자기 자신 금지는 서버가 다시 판단한다.
-     */
-    var pwResetButton = document.createElement('button');
-    pwResetButton.type = 'button';
-    pwResetButton.className = 'btn btn--quiet btn--small';
-    setText(pwResetButton, '임시 비밀번호 재발급');
-    pwResetButton.addEventListener('click', function () {
-      askReason('계정 「' + item.username + '」 임시 비밀번호 재발급', function (reason) {
+  /* ─── 계정 한 줄의 동작 — 디버깅 묶음 U2 M8 (2026-09-26) ──────────────────────────────
+   * 전에는 줄마다 글자 단추 다섯(이름·역할·팀·만료 · 임시 비밀번호 재발급 · 2단계 인증 초기화 · 비활성화 · 프로그램 토큰)이었다 —
+   * 표가 단추로 가득 차고 폴드 820 에서도 잘렸다. 이제 줄에는 「관리」 하나, 상세 창(#user-manage-dialog)에 그 계정의 사실과
+   * **기존 동작 그대로**(같은 함수 · 같은 창구 · 같은 사유 창)를 둔다. 동작을 고르면 상세 창을 **닫고** 그 동작의 창을 연다 —
+   * 창 안에 창을 겹쳐 열지 않는다(DESIGN 2.7). 무엇을 할 수 있는지는 여전히 서버가 정한다(자기 자신 금지·마지막 관리자 보호 —
+   * Authz::decideUserChange, PRD S-01). 화면이 가리는 것(본인 줄의 바꾸기 넷)은 전과 같은 편의다.
+   */
+  function resetPassword(item) {
+    askReason('계정 「' + item.username + '」 임시 비밀번호 재발급', function (reason) {
       if (reason === null) {
         setText(msg, '취소했습니다');
         return;
@@ -6905,24 +6927,37 @@ function initUsers(csrfToken) {
             setText(msg, errorMessage(result.data));
             return null;
           }
+          // 디버깅 묶음 U2 M8 — 상자는 **그 계정의** 「관리」 창 맨 위에(한 번만 보인다 · 창을 닫으면 지운다).
+          // 독립 검토 낮음 — 답을 기다리는 동안 다른 계정의 「관리」 창을 열어 두었으면 그 창에 넣지 않는다: 닫고 이 계정 창으로 다시 연다
+          if (umDialog && umDialog.open && (umItem === null || umItem.id !== item.id)) {
+            umDialog.close();   // close 이벤트가 그 창에 남은 상자·값도 지운다
+          }
+          if (umDialog && !umDialog.open) {
+            openManage(item);
+          }
+          if (umDialog && umDialog.open && umItem !== null && umItem.id === item.id) {
+            showTempPassword(item.username, result.data.temp_password, {
+              before: umFacts,
+              onClose: function () {
+                if (umDialog.open) {
+                  umDialog.close();
+                }
+              }
+            });
+          }
+          // 결과 한 줄은 창을 연 **뒤**에(openManage 가 알림 줄을 비운다)
           setText(msg, '임시 비밀번호를 재발급하고 그 계정의 모든 세션을 끊었습니다.');
-          showTempPassword(item.username, result.data.temp_password);
           load();
           return null;
         })
         .catch(function () {
           setText(msg, GENERIC_ERROR);
         });
-      });
-    });
-    td.appendChild(pwResetButton);
+    }, '재발급하기');
+  }
 
-    var mfaResetButton = document.createElement('button');
-    mfaResetButton.type = 'button';
-    mfaResetButton.className = 'btn btn--quiet btn--small';
-    setText(mfaResetButton, '2단계 인증 초기화');
-    mfaResetButton.addEventListener('click', function () {
-      askReason('계정 「' + item.username + '」 2단계 인증 초기화', function (reason) {
+  function resetMfa(item) {
+    askReason('계정 「' + item.username + '」 2단계 인증 초기화', function (reason) {
       if (reason === null) {
         setText(msg, '취소했습니다');
         return;
@@ -6944,40 +6979,157 @@ function initUsers(csrfToken) {
         .catch(function () {
           setText(msg, GENERIC_ERROR);
         });
+    }, '초기화하기');
+  }
+
+  function toggleActive(item) {
+    askReason(
+      '계정 「' + item.username + '」 ' + (item.is_active === true ? '비활성화' : '재활성화'),
+      function (reason) {
+        if (reason === null) {
+          setText(msg, '취소했습니다');
+          return;
+        }
+        patch(
+          item.id,
+          { is_active: item.is_active !== true, reason_text: reason },
+          item.is_active === true ? '비활성화했습니다' : '다시 활성화했습니다'
+        );
+      },
+      item.is_active === true ? '비활성화하기' : '다시 활성화하기'
+    );
+  }
+
+  var umDialog = document.getElementById('user-manage-dialog');
+  var umSub = document.getElementById('um-sub');
+  var umFacts = document.getElementById('user-manage-facts');
+  var umSelf = document.getElementById('um-self');
+  var umActiveTitle = document.getElementById('um-active-title');
+  var umActiveDesc = document.getElementById('um-active-desc');
+  var umItem = null;   // 지금 상세 창이 보여 주는 계정(서버가 준 행 그대로). 닫으면 비운다
+
+  /** 이름표 + 값 한 칸(`.info-item`) — 글자는 전부 textContent */
+  function umFact(label, value, title) {
+    var itemBox = document.createElement('div');
+    itemBox.className = 'info-item';
+    var l = document.createElement('span');
+    l.className = 'field__label';
+    setText(l, label);
+    var v = document.createElement('span');
+    v.className = 'info-item__value';
+    setText(v, value === null || value === undefined || value === '' ? '—' : String(value));
+    if (typeof title === 'string' && title !== '') {
+      v.setAttribute('title', title);
+    }
+    itemBox.appendChild(l);
+    itemBox.appendChild(v);
+    umFacts.appendChild(itemBox);
+  }
+
+  function openManage(item) {
+    if (!umDialog || typeof umDialog.showModal !== 'function' || umDialog.open) {
+      setText(msg, GENERIC_ERROR);
+      return;
+    }
+    umItem = item;
+    setText(msg, '');
+    setText(umSub, personLabel(item.display_name, item.username));
+    umFacts.replaceChildren();
+    umFact('아이디', item.username);
+    umFact('역할', roleLabel(item.role), typeof item.role === 'string' ? item.role : '');
+    umFact('팀', item.team_name);
+    umFact('상태', item.is_active === true ? '활성' : '비활성');
+    umFact('만료', item.expires_at === null || item.expires_at === undefined ? '—'
+      : shortWhen(item.expires_at).text + (item.is_expired === true ? ' (만료)' : ''));
+    umFact('2단계 인증', item.mfa_enabled === true ? '켜짐' : '꺼짐');
+    umFact('만든 시각', item.created_at ? shortWhen(item.created_at).text : '—');
+    var self = item.is_self === true;
+    umSelf.hidden = !self;
+    Array.prototype.forEach.call(umDialog.querySelectorAll('[data-user-action]'), function (button) {
+      // 본인 줄은 바꾸기 넷을 보이지 않는다(서버 self_change 와 같은 규칙 — 전에도 그 줄엔 「프로그램 토큰」만 있었다)
+      button.hidden = self && button.getAttribute('data-user-action') !== 'tokens';
+    });
+    // 활성 계정의 「비활성화」는 위험 동작(빨간 아이콘 — `.card--warn`), 「다시 활성화」는 보통 카드(D-2 · 팀 토글과 같은 규칙)
+    var activeCard = umDialog.querySelector('[data-user-action="active"]');
+    activeCard.classList.toggle('card--warn', item.is_active === true);
+    setText(umActiveTitle, item.is_active === true ? '비활성화' : '다시 활성화');
+    setText(umActiveDesc, item.is_active === true
+      ? '그 사람은 바로 로그인할 수 없게 됩니다. 사유가 필요하고, 다시 활성화할 수 있습니다.'
+      : '다시 로그인할 수 있게 합니다. 사유가 필요합니다.');
+    umDialog.showModal();
+    var first = umDialog.querySelector('[data-user-action]:not([hidden])');
+    if (first) {
+      first.focus();
+    }
+  }
+
+  if (umDialog) {
+    var umClose = function () {
+      if (umDialog.open) {
+        umDialog.close();
+      }
+    };
+    document.getElementById('um-close').addEventListener('click', umClose);
+    document.getElementById('um-x').addEventListener('click', umClose);
+    umDialog.addEventListener('close', function () {
+      /* close 이벤트는 늦게(다음 차례에) 온다 — 재발급 답이 다른 계정 창을 닫고 곧바로 이 계정 창을 다시 열면, 앞 창의 이벤트가
+         **다시 연 창**의 상자와 계정을 지웠다(독립 검토 고침 뒤 수락 시험이 잡음). 창이 다시 열려 있으면 앞 창의 이벤트다 — 건너뛴다 */
+      if (umDialog.open) {
+        return;
+      }
+      umItem = null;
+      // 임시 비밀번호 상자가 남아 있으면 값을 지우고 뺀다(Esc 로 닫아도 — 다시 볼 수 없는 값이다, R-39)
+      var box = document.getElementById('temp-password-box');
+      if (box && umDialog.contains(box)) {
+        Array.prototype.forEach.call(box.querySelectorAll('input'), function (f) { f.value = ''; });
+        box.parentNode.removeChild(box);
+      }
+    });
+    Array.prototype.forEach.call(umDialog.querySelectorAll('[data-user-action]'), function (button) {
+      button.addEventListener('click', function () {
+        var item = umItem;
+        var action = button.getAttribute('data-user-action');
+        // 상세 창을 먼저 닫는다 — 다음 창을 그 위에 겹쳐 열지 않는다(DESIGN 2.7). 닫으면 초점은 줄의 「관리」로 돌아가고,
+        // 다음 창이 닫히면 다시 그 「관리」로 돌아간다(<dialog> 기본 동작).
+        umClose();
+        if (!item) {
+          return;
+        }
+        if (action === 'edit') {
+          openUserEdit(item);
+        } else if (action === 'password') {
+          resetPassword(item);
+        } else if (action === 'mfa') {
+          resetMfa(item);
+        } else if (action === 'tokens') {
+          setText(msg, '');
+          openTokenSection(item);
+        } else if (action === 'active') {
+          toggleActive(item);
+        }
       });
     });
-    td.appendChild(mfaResetButton);
+  }
 
-    var activeButton = document.createElement('button');
-    activeButton.type = 'button';
-    /* DESIGN 2.1 — 비활성화(되돌릴 수 있지만 그 사람이 즉시 못 들어오게 되는 동작)는 위험 색,
-       다시 활성화는 보조 색. 목록이 다시 그려질 때마다 여기가 실행되므로 상태 전환도 따라간다.
-       (팀 토글과 같은 규칙) */
-    activeButton.className = item.is_active === true
-      ? 'btn btn--danger btn--small'
-      : 'btn btn--quiet btn--small';
-    setText(activeButton, item.is_active === true ? '비활성화' : '다시 활성화');
-    activeButton.addEventListener('click', function () {
-      askReason(
-        '계정 「' + item.username + '」 ' + (item.is_active === true ? '비활성화' : '재활성화'),
-        function (reason) {
-          if (reason === null) {
-            setText(msg, '취소했습니다');
-            return;
-          }
-          patch(
-            item.id,
-            { is_active: item.is_active !== true, reason_text: reason },
-            item.is_active === true ? '비활성화했습니다' : '다시 활성화했습니다'
-          );
-        }
-      );
+  function addActions(row, item) {
+    var td = document.createElement('td');
+    td.className = 'actions';
+    if (item.is_self === true) {
+      var selfLabel = document.createElement('span');
+      selfLabel.className = 'muted';
+      setText(selfLabel, '(본인)');
+      td.appendChild(selfLabel);
+    }
+    var manage = document.createElement('button');
+    manage.type = 'button';
+    manage.className = 'btn btn--quiet btn--small';
+    manage.setAttribute('aria-haspopup', 'dialog');
+    manage.setAttribute('aria-label', '관리 — ' + personLabel(item.display_name, item.username));
+    setText(manage, '관리');
+    manage.addEventListener('click', function () {
+      openManage(item);
     });
-    td.appendChild(activeButton);
-
-    // F-59 — 다른 행에서는 기존 단추들 **뒤**에 붙인다(자기 자신 행과 같은 함수).
-    td.appendChild(tokenButton(item));
-
+    td.appendChild(manage);
     row.appendChild(td);
   }
 
@@ -7151,7 +7303,17 @@ function initUsers(csrfToken) {
   if (createDialog) {
     // Esc 로 닫으면 위의 처리기를 거치지 않는다 — 지난 오류 문구를 남겨 두지 않는다 (D-10 2차 B)
     createDialog.addEventListener('close', function () {
+      if (createDialog.open) {
+        return;   // 늦게 온 앞 창의 이벤트(위 「관리」 창과 같은 까닭)
+      }
       setText(createMsg, '');
+      /* 독립 검토 낮음(기존 결함 · R-39 「한 번만」) — 만든 계정의 임시 비밀번호 상자는 상자의 「닫기」로만 지웠다. Esc·✕·바깥으로
+         창을 닫으면 상자와 값이 창 안에 남아, 다음에 「계정 만들기」를 열면 **지난 임시 비밀번호가 다시 보였다**. 닫히는 모든 길에서 지운다. */
+      var box = document.getElementById('temp-password-box');
+      if (box && createDialog.contains(box)) {
+        Array.prototype.forEach.call(box.querySelectorAll('input'), function (f) { f.value = ''; });
+        box.parentNode.removeChild(box);
+      }
     });
   }
   if (prev) {
@@ -7731,12 +7893,12 @@ function initOrg(csrfToken) {
       }
       if (team.is_active === true) {
         setText(activeTitle, '팀 비활성화');
-        setText(activeNote, '「' + team.name + '」 을(를) 비활성화합니다. 비활성 팀에는 새 배정·새 업로드가 막힙니다.'
+        setText(activeNote, '「' + team.name + '」 을(를) 비활성화합니다. 비활성 팀에는 새 배정·새 올리기가 막힙니다.'
           + ' 활성 구성원이 0명일 때만 됩니다 — 지금 활성 구성원 ' + team.member_count + '명.');
         setText(activeSubmit, '비활성화');
       } else {
         setText(activeTitle, '팀 활성화');
-        setText(activeNote, '「' + team.name + '」 을(를) 다시 활성화합니다. 배정·업로드 선택지에 다시 나타납니다.');
+        setText(activeNote, '「' + team.name + '」 을(를) 다시 활성화합니다. 배정·올리기 선택지에 다시 나타납니다.');
         setText(activeSubmit, '활성화');
       }
       openDialog(activeDialog);
@@ -7763,6 +7925,15 @@ function initOrg(csrfToken) {
       closeDialog(activeDialog);
     });
   }
+  // 디버깅 묶음 U2 M3 — 네 창의 머리에 ✕(DESIGN 2.7 「✕ 와 「닫기」 둘 다」). 「닫기」와 같은 길이다
+  [['tc-x', createDialog], ['tr-x', renameDialog], ['ta-x', assignDialog], ['td-x', activeDialog]].forEach(function (pair) {
+    var x = document.getElementById(pair[0]);
+    if (x && pair[1]) {
+      x.addEventListener('click', function () {
+        closeDialog(pair[1]);
+      });
+    }
+  });
 
   /* ── 제출 ──────────────────────────────────────────────────── */
 

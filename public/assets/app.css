@@ -502,22 +502,22 @@ code {
 }
 .btn--icon:hover { background: var(--muted-bg); color: var(--fg); border-color: transparent; }
 /* 행 동작 아이콘의 색은 **뜻**으로 나눈다 (DESIGN.md 2.1 · D-4 결정 2026-09-21):
-   받기(주요 동작) = 파랑, 삭제(되돌릴 수 없음) = 빨강, 나머지(보기·고치기·공유·이동) = 회색.
+   받기(주요 동작) = 파랑, 지우기(되돌릴 수 없음) = 빨강, 나머지(보기·고치기·공유·이동) = 회색.
    순서대로 색을 입히는 방식(0→4 무지개)은 뜻이 없어 쓰지 않는다 — 0장 원칙 4. 라벨은 makeIconButton 이 넣는 aria-label.
    「zip 으로 받기」(Q:F-3a 라운드 C — 일괄 막대의 받기)도 받기라 같은 파랑이다(새 색 0 — 선택자만 더함). */
-.btn--icon[aria-label="다운로드"],
+.btn--icon[aria-label="받기"],
 .btn--icon[aria-label="zip 으로 받기"],
 .btn--icon[aria-label^="확인하고 받기"] { color: var(--accent); }
-.btn--icon[aria-label="다운로드"]:hover,
+.btn--icon[aria-label="받기"]:hover,
 .btn--icon[aria-label="zip 으로 받기"]:hover,
 .btn--icon[aria-label^="확인하고 받기"]:hover { background: var(--accent-soft); color: var(--accent-dark); }
-.btn--icon[aria-label="삭제"] { color: var(--danger); opacity: .8; }
-.btn--icon[aria-label="삭제"]:hover,
-.btn--icon[aria-label="삭제"]:focus-visible { background: var(--danger-soft); color: var(--danger); opacity: 1; }
+.btn--icon[aria-label="지우기"] { color: var(--danger); opacity: .8; }
+.btn--icon[aria-label="지우기"]:hover,
+.btn--icon[aria-label="지우기"]:focus-visible { background: var(--danger-soft); color: var(--danger); opacity: 1; }
 /* 행 hover 로 아이콘이 진해질 때도 뜻 색은 유지된다 */
-table.files tbody tr:hover .btn--icon[aria-label="다운로드"],
+table.files tbody tr:hover .btn--icon[aria-label="받기"],
 table.files tbody tr:hover .btn--icon[aria-label^="확인하고 받기"] { color: var(--accent); }
-table.files tbody tr:hover .btn--icon[aria-label="삭제"] { color: var(--danger); }
+table.files tbody tr:hover .btn--icon[aria-label="지우기"] { color: var(--danger); }
 
 /* 아이콘 단추 툴팁 — app.js 가 모든 아이콘 단추에 넣는 aria-label 을 그대로 글자로 보인다.
    브라우저 기본 title 툴팁은 1초 뒤에야 뜨고 눈에 잘 안 띄어, 올리는 즉시 단추 아래에 보여 준다.
@@ -732,9 +732,9 @@ table.files tbody tr:hover td { background: var(--surface-2); }
 table.files tbody tr:last-child td { border-bottom: 0; }
 /* 행 동작 단추 — 한 줄에 다 안 들어가면 두 줄로 흐른다(예전엔 nowrap 이라 다른 열이 짓눌렸다).
    최소 폭을 주지 않으면 브라우저가 이 열을 단추 하나 폭으로 줄여 여섯 줄로 쌓아 버린다 —
-   아이콘 단추 표는 3개(7.5rem), 글자 단추가 다섯 개인 계정 표는 두 줄이 되게 20rem. */
+   아이콘 단추 표는 3개(7.5rem). 계정 표는 「관리」 하나라(디버깅 묶음 U2 M8) 따로 폭을 주지 않는다 — 전엔 글자 단추 다섯에 20rem. */
 table.files td.actions { white-space: normal; text-align: right; min-width: 7.5rem; }
-#users-body td.actions { min-width: 20rem; }
+#users-body td.actions { min-width: 0; white-space: nowrap; }
 table.files td.actions .btn { margin: 2px 0 2px 2px; vertical-align: middle; }
 table.files td.actions .btn:first-child { margin-left: 0; }
 /* 행 위에 마우스가 오면 아이콘이 진해져 「여기 누를 수 있는 것들이 있다」 가 드러난다 */
@@ -764,7 +764,7 @@ table.files tbody tr:hover .btn--icon { color: var(--fg-2); }
    · 이름 줄 = 첫 칸. 값 칸 앞의 작은 이름표는 표 머리 글자다 — app.js `labelStackTables` 가 머리(th)의 글자를 칸의
      `data-label` 로 옮겨 적고 CSS 가 `attr()` 로 그린다(글자만 · 인라인 style 0). 빈 칸은 숨긴다.
    · 머리 줄은 숨긴다 — 「모두 고르기」 체크가 든 머리 칸만 남는다.
-   · 열 아홉에 글자 단추 다섯인 계정 표는 **960px 미만**부터 같은 모양이다(폴드 펼친 화면 820 에서도 잘렸다) — 아래 두 번째 묶음.
+   · 계정 표도 720px 미만부터다(디버깅 묶음 U2 M8 — 줄 동작이 「관리」 하나가 되어 폴드 820 에서 표로 들어간다. 묶음 U 의 960 규칙은 뺐다).
    ★ 한계: `:has` 를 모르는 옛 브라우저(Firefox 121·Safari 15.4 전)는 예전처럼 가로 스크롤 표로 남는다(2.15 와 같은 한계). */
 @media (max-width: 719.98px) {
   table.files:has(> tbody > tr > td.actions),
@@ -797,25 +797,6 @@ table.files tbody tr:hover .btn--icon { color: var(--fg-2); }
   #users-body > tr > td:nth-child(2)::before { content: none; }
   #users-body > tr > td.actions { min-width: 0; }
 }
-/* 계정 표 — 같은 쌓기를 960px 미만부터(위 묶음과 같은 선언 — 표 하나라 선택자만 좁혔다) */
-@media (min-width: 720px) and (max-width: 959.98px) {
-  table.files:has(> #users-body), table.files:has(> #users-body) > tbody { display: block; }
-  table.files:has(> #users-body) > thead { display: none; }
-  #users-body > tr {
-    display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px;
-    padding: 10px 14px; border-bottom: 1px solid var(--line);
-  }
-  #users-body > tr:last-child { border-bottom: 0; }
-  #users-body > tr:hover { background: var(--surface-2); }
-  #users-body > tr > td:nth-child(n) { display: block; min-width: 0; padding: 0; border: 0; background: transparent; font-size: 13px; }
-  #users-body > tr > td:empty { display: none; }
-  #users-body > tr > td[data-label]:not(:first-child):not(:nth-child(2)):not(.actions)::before { content: attr(data-label); margin-right: 6px; color: var(--muted); }
-  #users-body > tr > td:first-child { flex: 0 0 auto; color: var(--muted); }
-  #users-body > tr > td:nth-child(2) { flex: 1 1 calc(100% - 4rem); font-size: 14px; font-weight: 500; }
-  #users-body > tr > td.actions { flex: 1 1 100%; min-width: 0; text-align: left; }
-  #users-body > tr > td.actions .btn:first-child { margin-left: 0; }
-}
-
 .table-foot {
   display: flex;
   flex-wrap: wrap;
@@ -1279,6 +1260,12 @@ dialog.modal--stack .modal__body { flex: 1 1 auto; min-height: 0; }
 /* 격자 칸이 제 내용만큼 벌어져 대화상자를 넓히지 못하게 한다(표는 .table-wrap 이 가로 스크롤). */
 dialog.modal--stack .modal__body > * { min-width: 0; }
 .modal__foot .msg { margin-right: auto; }   /* 오류 한 줄은 왼쪽, 단추는 오른쪽 — 모든 모달 공통 */
+/* 좁은 폭(720 미만) — 오류 한 줄이 있으면 그 줄이 바닥 첫 줄을 다 쓰고 단추는 다음 줄 오른쪽(디버깅 묶음 U2 — 360 에서 문장이
+   단추 옆 좁은 칸에 네 줄로 눌렸다). 비어 있으면(:empty) 자리를 차지하지 않는다 */
+@media (max-width: 719.98px) {
+  .modal__foot { flex-wrap: wrap; }
+  .modal__foot > .msg:not(:empty) { flex: 1 1 100%; }
+}
 
 /* 올리기는 안내 문구와 파일별 진행 표까지 담아 조금 넓다. 폭은 언제나
    calc(100vw - 32px) 이하라 폰 너비(~400px)에서도 가로 스크롤이 생기지 않는다. */
@@ -1719,7 +1706,10 @@ table.perm-table td { vertical-align: top; }
   text-align: center;
 }
 .dropzone.is-over { border-color: var(--primary); background: var(--muted-bg); }
-.dropzone__text { margin: 0; font-size: 13px; color: var(--muted); }
+.dropzone__text { margin: 0; font-size: 13px; color: var(--muted); text-align: center; }
+/* 폰 폭(360)에서 끌어 놓기 칸이 창 오른쪽 밖으로 밀리던 것(디버깅 묶음 U2 — 파일 고르기 칸의 고유 폭이 격자 칸을 넓혔다) */
+.dropzone { min-width: 0; }
+.dropzone input[type="file"] { max-width: 100%; min-width: 0; }
 
 /* 파일별 진행 표 — 상태 글자는 서버가 준 문구 그대로 들어간다 (textContent) */
 .upload-status td { vertical-align: top; }
@@ -2043,4 +2033,37 @@ a.app-menu__app:hover { background: var(--muted-bg); text-decoration: none; }
   font: inherit;
   text-align: left;
   cursor: pointer;
+}
+
+/* ─── 터치 대상 44px (DESIGN 4장 「터치 대상」 · 디버깅 묶음 U2 M12 · 2026-09-26 — 독립 검토 중간 한 건 반영) ──────────────
+   폰 폭(720px 미만)과 터치가 주 포인터인 기기(`pointer: coarse`)에서 누르는 것 — 단추 · 클래스가 붙은 링크(단추 모양·카드) ·
+   접기 머리(summary) · 체크 · 라디오 — 의 **누르는 자리**를 44×44px 이상으로(점검 2026-09-26: 폰 화면의 누르는 것 86개 중 84개가 44 미만).
+   두 가지 길이다 — 어느 쪽이든 **보이는 상자 안 어디를 눌러도 그 자신**이어야 한다(이웃의 넓힌 자리가 가져가면 안 된다):
+   ① 따로 떨어진 것(머리 단추 32 · 아이콘 단추 · 표 줄 체크 13 …) — 보이는 크기는 그대로, 모자란 만큼 보이지 않는 `::before` 가 사방으로 넓힌다.
+      넓힌 폭(한쪽 최대 6~16px)이 이웃에 닿지 않게 사이를 둔다(표 행 동작 아이콘 사이 12px). `:where()` 라 무게 0 — 자리를 정하는 기존 규칙이 이긴다.
+   ② **세로로 쌓이는 줄**(내비·메뉴 항목 · 폴더 목록 · 경로 조각 · 체크·라디오가 든 이름표 · 커뮤니티 트리 줄 — community.css)은 넓히지 않는다 —
+      줄 사이가 0~4px 라 넓힌 자리가 **다음 줄**을 가져갔다(독립 검토 실측: 사이드바 트리 줄 아래 8px · 페이지 트리 7px · 내비 6px).
+      대신 줄 자체를 44px 로 키운다(보이는 줄 간격이 넓어진다 — 폰은 그 편이 낫다).
+   글 속 링크(클래스 없는 `<a>` · 문서 본문 `.doc`)와 입력 칸·고르개(폭이 넓다)는 규칙 밖.
+   ★ 한계: 체크 상자의 `::before` 는 Chromium·WebKit 만 그린다(Firefox 는 보이는 크기 그대로). */
+@media (max-width: 719.98px), (pointer: coarse) {
+  :where(button, summary, a[class]:not(.doc a), input[type="checkbox"], input[type="radio"]) { position: relative; }
+  :where(button, summary, a[class]:not(.doc a), input[type="checkbox"], input[type="radio"])::before {
+    content: "";
+    position: absolute;
+    top: min(0px, calc((100% - 44px) / 2));
+    bottom: min(0px, calc((100% - 44px) / 2));
+    left: min(0px, calc((100% - 44px) / 2));
+    right: min(0px, calc((100% - 44px) / 2));
+  }
+  /* ② 세로로 쌓이는 줄 — 넓히지 않고 줄을 키운다 */
+  :is(.nav__item, .menu__item, .foldertree__item, .crumbs__item)::before,
+  label input[type="checkbox"]::before, label input[type="radio"]::before { content: none; }
+  .nav__item, .menu__item { height: 44px; }
+  .foldertree__item { min-height: 44px; justify-content: center; }
+  .crumbs__item { display: inline-flex; align-items: center; justify-content: center; min-height: 44px; min-width: 44px; }
+  label:has(> input[type="checkbox"]), label:has(> input[type="radio"]),
+  .field__label:has(> input[type="checkbox"]), .field__label:has(> input[type="radio"]) { min-height: 44px; }
+  /* ① 표 행 동작 아이콘 — 넓힌 자리(한쪽 6px)가 옆 아이콘에 닿지 않게 사이 12px */
+  table.files td.actions .btn:not(:first-child) { margin-left: 12px; }
 }

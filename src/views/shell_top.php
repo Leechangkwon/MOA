@@ -343,7 +343,7 @@ if (!headers_sent()) {
             </span>
           </div>
           <nav class="nav" aria-label="계정">
-            <a id="menu-settings" class="nav__item" href="<?= Http::url('/settings') ?>"><span class="icon" data-icon="settings"></span><span>내 계정 설정</span></a>
+            <a id="menu-settings" class="nav__item" href="<?= Http::url('/settings') ?>"><span class="icon" data-icon="settings"></span><span>내 계정</span></a>
             <a id="menu-activity" class="nav__item" href="<?= Http::url('/activity') ?>"><span class="icon" data-icon="log"></span><span>내 활동</span></a>
             <a id="menu-admin" class="nav__item" href="<?= Http::url('/admin') ?>" hidden><span class="icon" data-icon="lock"></span><span>관리자 페이지</span></a>
             <button id="logout" class="nav__item app-menu__logout" type="button"><span class="icon" data-icon="logout"></span><span>로그아웃</span></button>

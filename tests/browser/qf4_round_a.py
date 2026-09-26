@@ -175,7 +175,7 @@ with sync_playwright() as p:
         row = page.locator("#files-body tr", has_text=BASE_FILE_NAME)
         if row.count() == 1:
             mark = len(seen["reqs"])
-            row.locator('button[aria-label="삭제"]').click()
+            row.locator('button[aria-label="지우기"]').click()   # 디버깅 묶음 U2 낱말 표 — 삭제 → 지우기
             page.wait_for_timeout(1500)
             after = seen["reqs"][mark:]
             measure("u2a_requests_after_trash_click", len([r for r in after if r["m"] == "DELETE"]))

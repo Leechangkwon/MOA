@@ -117,7 +117,7 @@ require __DIR__ . '/../views/shell_top.php';
         <div class="org-matrix__head">
           <div class="panel__head">
             <h2 class="panel__title">권한 매트릭스</h2>
-            <p class="panel__sub">역할 × 접근 등급</p>
+            <p class="panel__sub">역할 × 등급</p>
           </div>
           <span class="badge badge--off">
             <span class="icon" data-icon="lock"></span>읽기 전용
@@ -126,7 +126,7 @@ require __DIR__ . '/../views/shell_top.php';
 
         <div class="matrix-grid">
           <div class="matrix-block">
-            <p class="field__label">읽기 (목록 + 다운로드 + 미리보기)</p>
+            <p class="field__label">읽기 (목록 + 받기 + 미리보기)</p>
             <div class="table-wrap">
               <table class="files matrix">
                 <thead>
@@ -143,7 +143,7 @@ require __DIR__ . '/../views/shell_top.php';
             </div>
           </div>
           <div class="matrix-block">
-            <p class="field__label">업로드 — 지정할 수 있는 레벨</p>
+            <p class="field__label">올리기 — 고를 수 있는 등급</p>
             <div class="table-wrap">
               <table class="files matrix">
                 <thead>
@@ -175,6 +175,9 @@ require __DIR__ . '/../views/shell_top.php';
     <form id="team-create-form" class="form" autocomplete="off">
       <div class="modal__head">
         <h2 class="modal__title" id="tc-title">팀 만들기</h2>
+        <button id="tc-x" class="btn btn--icon" type="button" aria-label="닫기">
+          <span class="icon" data-icon="x"></span>
+        </button>
       </div>
       <div class="modal__body">
         <label class="field">
@@ -198,6 +201,9 @@ require __DIR__ . '/../views/shell_top.php';
     <form id="team-rename-form" class="form" autocomplete="off">
       <div class="modal__head">
         <h2 class="modal__title" id="tr-title">팀 이름 변경</h2>
+        <button id="tr-x" class="btn btn--icon" type="button" aria-label="닫기">
+          <span class="icon" data-icon="x"></span>
+        </button>
       </div>
       <div class="modal__body">
         <p id="tr-target" class="muted"></p>
@@ -224,6 +230,9 @@ require __DIR__ . '/../views/shell_top.php';
     <form id="team-assign-form" class="form" autocomplete="off">
       <div class="modal__head">
         <h2 class="modal__title" id="ta-title">구성원 배정</h2>
+        <button id="ta-x" class="btn btn--icon" type="button" aria-label="닫기">
+          <span class="icon" data-icon="x"></span>
+        </button>
       </div>
       <div class="modal__body">
         <label class="field">
@@ -252,6 +261,9 @@ require __DIR__ . '/../views/shell_top.php';
     <form id="team-active-form" class="form" autocomplete="off">
       <div class="modal__head">
         <h2 class="modal__title" id="td-title">팀 비활성화</h2>
+        <button id="td-x" class="btn btn--icon" type="button" aria-label="닫기">
+          <span class="icon" data-icon="x"></span>
+        </button>
       </div>
       <div class="modal__body">
         <p id="td-note" class="muted"></p>

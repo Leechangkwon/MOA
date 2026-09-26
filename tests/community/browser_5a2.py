@@ -137,7 +137,10 @@ with sync_playwright() as pw:
     shots(page, "1-users-create")
     page.click("#user-create-dialog-close")
     row = page.locator("#users-body tr", has=page.locator("td", has_text=re.compile(r"^claude_guest01$")))
-    row.locator("button", has_text="이름·역할·팀·만료").click()
+    # 디버깅 묶음 U2 M8 — 줄 동작은 「관리」 하나 → 상세 창의 「이름·역할·팀·만료 바꾸기」
+    row.locator("td.actions button", has_text="관리").click()
+    page.wait_for_selector("#user-manage-dialog[open]", timeout=5000)
+    page.click("#user-manage-dialog [data-user-action='edit']")
     page.wait_for_selector("#user-edit[open]", timeout=5000)
     step("1 편집 창의 이름 칸이 비어 있다 (guest01 은 이름 없음)", page.input_value("#ue-name") == "")
     page.fill("#ue-name", "손님<b>굵게</b>")
@@ -151,7 +154,10 @@ with sync_playwright() as pw:
     shots(page, "1-users-list")
     no_hscroll(page, "1 계정 관리")
     row = page.locator("#users-body tr", has=page.locator("td", has_text="(claude_guest01)"))
-    row.locator("button", has_text="이름·역할·팀·만료").click()
+    # 디버깅 묶음 U2 M8 — 줄 동작은 「관리」 하나 → 상세 창의 「이름·역할·팀·만료 바꾸기」
+    row.locator("td.actions button", has_text="관리").click()
+    page.wait_for_selector("#user-manage-dialog[open]", timeout=5000)
+    page.click("#user-manage-dialog [data-user-action='edit']")
     page.wait_for_selector("#user-edit[open]", timeout=5000)
     step("1 다시 열면 이름 칸에 지금 값", page.input_value("#ue-name") == "손님<b>굵게</b>")
     page.fill("#ue-name", "")

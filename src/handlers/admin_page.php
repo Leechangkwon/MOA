@@ -99,7 +99,7 @@ require __DIR__ . '/../views/shell_top.php';
         <span class="card__icon"><span class="icon" data-icon="trash"></span></span>
         <span class="card__body">
           <strong class="card__title">휴지통</strong>
-          <span class="card__desc">삭제된 파일 복구</span>
+          <span class="card__desc">지운 파일 되살리기</span>
         </span>
       </a>
       <a class="card card--link" href="<?= Http::url('/wiki') ?>">

@@ -150,10 +150,10 @@ require __DIR__ . '/../../views/shell_top.php';
         <label class="field field--full" id="board-manage-level-field">
           <span class="field__label">등급 (만든 뒤에는 바꿀 수 없습니다)</span>
           <select id="board-manage-level">
-            <option value="public">공개 — 손님까지 봅니다</option>
-            <option value="internal" selected>사내 — 로그인한 사내 구성원이 봅니다</option>
-            <option value="team">팀 — 고른 팀만 봅니다</option>
-            <option value="admin-only">관리자 — 관리자만 봅니다</option>
+            <option value="public">공개 — 손님까지 모두</option>
+            <option value="internal" selected>사내 — 사내 구성원 모두</option>
+            <option value="team">팀 — 고른 팀만</option>
+            <option value="admin-only">관리자 — 관리자만</option>
           </select>
         </label>
         <label class="field field--full" id="board-manage-team-field" hidden>

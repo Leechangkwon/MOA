@@ -40,13 +40,13 @@ import { inputRules, textblockTypeInputRule, InputRule } from './vendor/pm/prose
 import { dropCursor } from './vendor/pm/prosemirror-dropcursor.js?v=5823578fa61a';
 import { gapCursor } from './vendor/pm/prosemirror-gapcursor.js?v=5823578fa61a';
 
-import { renderDoc, embedHost } from './doc-render.js?v=dc121e88d472';
-import { createDatabaseView } from './database.js?v=dc121e88d472';
-import { bindTemplateGallery, createTemplateSave } from './templates.js?v=dc121e88d472';
-import { bindEmbedAdmin } from './embeds.js?v=dc121e88d472';
-import { bindPopular } from './popular.js?v=dc121e88d472';
-import { schema, toDoc, fromDoc, uuid4, colorAllowed, schemeOkForEditor, COLORS, BLOCK_TYPES } from './editor-schema.js?v=dc121e88d472';
-import { createDrafts } from './drafts.js?v=dc121e88d472';
+import { renderDoc, embedHost } from './doc-render.js?v=0a3301b64e19';
+import { createDatabaseView } from './database.js?v=0a3301b64e19';
+import { bindTemplateGallery, createTemplateSave } from './templates.js?v=0a3301b64e19';
+import { bindEmbedAdmin } from './embeds.js?v=0a3301b64e19';
+import { bindPopular } from './popular.js?v=0a3301b64e19';
+import { schema, toDoc, fromDoc, uuid4, colorAllowed, schemeOkForEditor, COLORS, BLOCK_TYPES } from './editor-schema.js?v=0a3301b64e19';
+import { createDrafts } from './drafts.js?v=0a3301b64e19';
 
 /* ─── 주소와 공통 도우미 ─────────────────────────────────────── */
 
@@ -3934,7 +3934,9 @@ function initPage() {
   const dbView = createDatabaseView({
     api: api, setText: setText, show: show, clear: clear, errorMessage: errorMessage,
     base: COMMUNITY_BASE, statusLabels: STATUS_LABELS, genericError: GENERIC_ERROR, toLogin: toLogin,
-    tboxBase: APP_BASE, spaceId: () => (state.space ? state.space.id : 0)
+    tboxBase: APP_BASE, spaceId: () => (state.space ? state.space.id : 0),
+    // 디버깅 묶음 U2 · 독립 검토 L-2 — 데이터베이스의 쓰기 단추도 `/api/me` 의 쓰기 자격과 **둘 다** 참일 때만(페이지 머리와 같은 규칙)
+    canWrite: () => meCanWrite
   });
   const moveButton = document.getElementById('page-move');
   // 7-B — 「템플릿으로 저장」. 고를 수 있는 범위는 창구가 준 `template_scopes` 뿐이다.
@@ -6186,8 +6188,8 @@ function initPage() {
   }
 
   if (conflictDialog) {
-    const closeButton = conflictDialog.querySelector('[data-conflict-close]');
-    if (closeButton) {
+    // 디버깅 묶음 U2 — 머리 ✕ 와 바닥 「닫기」 둘 다(전엔 querySelector 라 첫 것만 이어졌다)
+    for (const closeButton of conflictDialog.querySelectorAll('[data-conflict-close]')) {
       closeButton.addEventListener('click', () => conflictDialog.close());
     }
     const reload = document.getElementById('conflict-reload');
@@ -6401,8 +6403,10 @@ function initPage() {
     deleteButton.addEventListener('click', () => {
       if (typeof deleteDialog.showModal === 'function') { deleteDialog.showModal(); }
     });
-    const cancel = deleteDialog.querySelector('[data-delete-close]');
-    if (cancel) { cancel.addEventListener('click', () => deleteDialog.close()); }
+    // 디버깅 묶음 U2 — 머리 ✕ 와 바닥 「닫기」 둘 다. 전엔 querySelector 라 첫 것(✕)만 이어져 바닥의 「그만두기」를 눌러도 닫히지 않았다
+    for (const cancel of deleteDialog.querySelectorAll('[data-delete-close]')) {
+      cancel.addEventListener('click', () => deleteDialog.close());
+    }
     const confirmButton = document.getElementById('delete-confirm');
     if (confirmButton) {
       confirmButton.addEventListener('click', () => {

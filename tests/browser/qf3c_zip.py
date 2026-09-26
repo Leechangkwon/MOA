@@ -6,7 +6,7 @@
 # 쓰는 법: printf '%s\n' "$직원1" | python3 qf3c_zip.py <SITE> <UA> <SHOTS> <임시 DB> <INST>
 #   세션은 **표준입력 한 줄**(R-62). 임시 DB 는 검사 상태를 정하고(sudo psql) 감사·sha256 을 보는 데만 쓴다.
 # 보는 것
-#   ① 막대 — 맨 앞이 「zip 으로 받기」(아이콘 단추 · 행 동작 순서 보기 → 받기 → 고치기 …) · 색 = 줄의 「다운로드」와 같은 파랑(뜻 색) · 막대 한 줄
+#   ① 막대 — 맨 앞이 「zip 으로 받기」(아이콘 단추 · 행 동작 순서 보기 → 받기 → 고치기 …) · 색 = 줄의 「받기」와 같은 파랑(뜻 색) · 막대 한 줄
 #   ② 고른 넷(clean 셋 + 검사 중 하나) → zip 받기 → 브라우저 내려받기 한 건 · 이름 `t-box-YYYYMMDD-HHMMSS.zip` · 안 이름 = 고른 순서의 clean 셋 ·
 #      sha256 = DB · 결과 한 줄 「3개를 zip 으로 받았습니다. 1개는 받을 수 없어 뺐습니다 …」 · 고른 것은 그대로
 #   ③ 만드는 동안 — 단추 비활성 · 막대 아래 「zip 을 만드는 중입니다」(요청을 잠시 붙잡아 본다) · 끝나면 풀림
@@ -180,9 +180,9 @@ with sync_playwright() as p:
     step("① aria-label(툴팁) 「zip 으로 받기」 · 아이콘 단추(.btn--icon) · 아이콘 = 받기(download)",
          lab == "zip 으로 받기" and "btn--icon" in (page.locator("#files-bulk-zip").get_attribute("class") or "")
          and page.locator("#files-bulk-zip svg path").count() >= 1, lab)
-    colors = page.evaluate("() => { const z = document.getElementById('files-bulk-zip'); const d = document.querySelector('#files-body .btn--icon[aria-label=\"다운로드\"]');"
+    colors = page.evaluate("() => { const z = document.getElementById('files-bulk-zip'); const d = document.querySelector('#files-body .btn--icon[aria-label=\"받기\"]');"
                            " return [getComputedStyle(z).color, d ? getComputedStyle(d).color : '', getComputedStyle(document.getElementById('files-bulk-level')).color]; }")
-    step("① 색 = 줄의 「다운로드」와 같은 파랑 · 「등급·팀 바꾸기」(회색)와 다름", colors[0] == colors[1] and colors[0] != colors[2], colors)
+    step("① 색 = 줄의 「받기」(디버깅 묶음 U2 낱말 표 — 전엔 「다운로드」)와 같은 파랑 · 「등급·팀 바꾸기」(회색)와 다름", colors[0] == colors[1] and colors[0] != colors[2], colors)
     ok_line, tops = one_line(page, "#files-bulk-bar")
     step("① 막대 한 줄(개수 + 아이콘 다섯 + ✕)", ok_line, tops)
 

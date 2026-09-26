@@ -69,13 +69,13 @@ require __DIR__ . '/../views/shell_top.php';
         <input id="f-target" type="text" maxlength="200">
       </label>
       <label class="field">
-        <span class="field__label">무엇을 — 접근 등급</span>
+        <span class="field__label">무엇을 — 등급</span>
         <select id="f-level">
           <option value="">(전체)</option>
-          <option value="public">public</option>
-          <option value="internal">internal</option>
-          <option value="team">team</option>
-          <option value="admin-only">admin-only</option>
+          <option value="public">공개</option>
+          <option value="internal">사내</option>
+          <option value="team">팀</option>
+          <option value="admin-only">관리자</option>
         </select>
       </label>
       <label class="field">

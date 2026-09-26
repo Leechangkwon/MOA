@@ -58,7 +58,7 @@ require __DIR__ . '/../views/shell_top.php';
       <div class="page-head__text">
 <?php if ($trashAll): ?>
         <h1 class="page-head__title">휴지통</h1>
-        <p class="page-head__sub">삭제된 파일을 되살립니다.</p>
+        <p class="page-head__sub">지운 파일을 되살립니다.</p>
 <?php else: ?>
         <h1 class="page-head__title">내 휴지통</h1>
         <p class="page-head__sub">내가 올리고 내가 지운 파일을 30일 안에 되살립니다.</p>
@@ -72,9 +72,9 @@ require __DIR__ . '/../views/shell_top.php';
     </header>
 
 <?php if ($trashAll): ?>
-    <p class="help">보존 기간이 지난 파일은 목록에 나오지 않고 복구할 수 없습니다.</p>
+    <p class="help">보존 기간이 지난 파일은 목록에 나오지 않고 되살릴 수 없습니다.</p>
 <?php else: ?>
-    <p class="help">다른 사람이 지운 내 파일은 여기 나오지 않습니다 — 관리자에게 되살려 달라고 요청하세요. 보존 기간(30일)이 지난 파일은 복구할 수 없습니다.</p>
+    <p class="help">다른 사람이 지운 내 파일은 여기 나오지 않습니다 — 관리자에게 되살려 달라고 요청하세요. 보존 기간(30일)이 지난 파일은 되살릴 수 없습니다.</p>
 <?php endif; ?>
 
     <!-- 되살린 뒤 결과 한 줄 — 기존 구성 요소 .ok-note (파일 화면의 #files-ok 와 같다). 글자는 app.js 가 textContent 로. -->
@@ -87,7 +87,7 @@ require __DIR__ . '/../views/shell_top.php';
             <tr>
               <th scope="col">이름</th>
               <th scope="col">크기</th>
-              <th scope="col">레벨</th>
+              <th scope="col">등급</th>
 <?php if ($trashAll): ?>
               <th scope="col">올린 사람</th>
               <th scope="col">지운 사람</th>

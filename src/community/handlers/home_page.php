@@ -119,7 +119,7 @@ require __DIR__ . '/../../views/shell_top.php';
       <button id="community-bulk-fav" class="btn btn--icon" type="button" aria-label="즐겨찾기에 넣기">
         <span class="icon" data-icon="star"></span>
       </button>
-      <button id="community-bulk-trash" class="btn btn--icon" type="button" aria-label="삭제" aria-haspopup="dialog">
+      <button id="community-bulk-trash" class="btn btn--icon" type="button" aria-label="지우기" aria-haspopup="dialog">
         <span class="icon" data-icon="trash"></span>
       </button>
       <button id="community-bulk-done" class="btn btn--icon" type="button" aria-label="선택 끝내기" aria-keyshortcuts="Escape">
@@ -197,7 +197,7 @@ require __DIR__ . '/../../views/shell_top.php';
         <div id="bulk-move-tree" class="move-tree" role="listbox" aria-label="새 상위 페이지"></div>
       </div>
       <div class="form-actions">
-        <button class="btn btn--quiet" type="button" data-bulk-move-close>그만두기</button>
+        <button class="btn btn--quiet" type="button" data-bulk-move-close>닫기</button>
         <button id="bulk-move-confirm" class="btn" type="button">여기로 옮기기</button>
       </div>
     </dialog>
@@ -215,7 +215,7 @@ require __DIR__ . '/../../views/shell_top.php';
         <p class="muted">30일 안에는 휴지통에서 되살릴 수 있습니다. 하위 페이지도 함께 지워지고 함께 돌아옵니다. 지울 수 없는 페이지는 그 페이지만 거부되고 이유가 진행 표에 남습니다.</p>
       </div>
       <div class="form-actions">
-        <button class="btn btn--quiet" type="button" data-bulk-delete-close>그만두기</button>
+        <button class="btn btn--quiet" type="button" data-bulk-delete-close>닫기</button>
         <button id="bulk-delete-confirm" class="btn btn--danger" type="button">지우기</button>
       </div>
     </dialog>
@@ -317,7 +317,7 @@ require __DIR__ . '/../../views/shell_top.php';
         <div class="toolbar">
           <label class="muted" for="embed-host">호스트</label>
           <input id="embed-host" class="input" type="text" maxlength="253" autocomplete="off" spellcheck="false" placeholder="www.youtube.com">
-          <button id="embed-add" class="btn btn--small" type="button">더하기</button>
+          <button id="embed-add" class="btn btn--quiet btn--small" type="button">더하기</button>
         </div>
         <!-- 넣으면 안 되는 사이트 안내(임베드 켜기 독립 검토 정보 7) — 틀에는 스크립트가 돈다. 고정 문장 · 동적 값 0 -->
         <p class="muted">사용자가 HTML·스크립트를 올릴 수 있는 사이트(codepen.io · jsfiddle.net · docs.google.com · sites.google.com 등)는 넣지 마세요 — 페이지를 고칠 수 있는 누구나 그 사이트에 만든, 스크립트가 도는 틀을 넣을 수 있습니다. 영상처럼 내용을 그 사이트가 관리하는 곳만 넣습니다.</p>

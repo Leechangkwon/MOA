@@ -640,8 +640,17 @@ with sync_playwright() as p:
     def dom_click(handle):
         handle.evaluate("el => el.click()")
 
+    # 디버깅 묶음 U2 M8 — 줄 동작은 「관리」 하나 → 상세 창의 「이름·역할·팀·만료 바꾸기」가 계정 변경 창을 연다(상세 창이 없는 옛 판은 줄 첫 단추 그대로)
+    def open_edit(row):
+        dom_click(row.query_selector_all("button")[0])
+        pg.wait_for_timeout(300)
+        card = pg.query_selector("#user-manage-dialog[open] [data-user-action='edit']")
+        if card:
+            dom_click(card)
+            pg.wait_for_timeout(200)
+
     if target:
-        dom_click(target.query_selector_all("button")[0])
+        open_edit(target)
         pg.wait_for_timeout(500)
         out["modal_title"] = (pg.inner_text("#ue-title") or "").strip()
         pg.screenshot(path=OUT + "/user-edit-modal.png")
@@ -651,7 +660,7 @@ with sync_playwright() as p:
         out["nochange_requests"] = len(sent)
         out["nochange_msg"] = (pg.inner_text("#msg") or "").strip()
         # ② 역할만 바꾸고 저장
-        dom_click(target.query_selector_all("button")[0])
+        open_edit(target)
         pg.wait_for_timeout(500)
         cur = pg.eval_on_selector("#ue-role", "el => el.value")
         pg.select_option("#ue-role", "Manager" if cur != "Manager" else "Employee")
@@ -660,7 +669,7 @@ with sync_playwright() as p:
         pg.wait_for_timeout(800)
         out["patch_body"] = sent[-1] if sent else None
         # ③ 취소
-        dom_click(target.query_selector_all("button")[0])
+        open_edit(target)
         pg.wait_for_timeout(400)
         pg.eval_on_selector("#ue-cancel", "el => el.click()")
         pg.wait_for_timeout(400)

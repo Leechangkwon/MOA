@@ -11,7 +11,7 @@
  * ★ 미리보기는 읽기 렌더러(`renderDoc`)가 그린다 — 보이는 것과 만들어지는 것이 같다.
  *   글자는 전부 textContent 로 넣는다(HTML 문자열을 넣는 자리가 없다).
  */
-import { renderDoc } from './doc-render.js?v=dc121e88d472';
+import { renderDoc } from './doc-render.js?v=0a3301b64e19';
 
 const SCOPE_LABELS = {
   site: '사이트 기본',
@@ -129,7 +129,7 @@ export function bindTemplateGallery(d) {
 
     const make = document.createElement('button');
     make.type = 'button';
-    make.className = 'btn btn--small';
+    make.className = 'btn btn--small btn--quiet';   // 디버깅 묶음 U2 M3 — 창 본문 안의 줄 단추는 테두리(검정은 창마다 바닥의 하나뿐, DESIGN 2.7)
     make.textContent = '만들기';
     make.setAttribute('aria-label', t.name + ' 으로 새 페이지 만들기');
     make.setAttribute('data-template-use', t.id);

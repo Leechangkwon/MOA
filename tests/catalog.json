@@ -3302,6 +3302,80 @@
       "est_sec": 900,
       "writes_prod": false,
       "notes": "부르는 셸: tbox.dbg_u_ui. 단독 실행 불가(인자 SITE UA SHOTS 와 세션 셋·비밀번호 둘·TOTP 비밀 하나를 표준입력 여섯 줄로 부르는 셸이 넘긴다). 결과 줄 SMOKE_FAIL=n. 넷째 인자 before 는 고치기 전 판 스크린샷용(종료 코드 0). 임시 DB 에 파일·페이지·템플릿·토큰을 만든다."
+    },
+    {
+      "id": "tbox.dbg_u2_ui",
+      "cmd": "bash tests/dbg_u2_ui.sh",
+      "module": "tbox",
+      "env": "temp-instance",
+      "status": "required",
+      "needs": [
+        "sudo",
+        "browser",
+        "totp_wait"
+      ],
+      "covers": [
+        "public/assets/app.css",
+        "public/assets/app.js",
+        "public/assets/community/database.js",
+        "public/assets/community/editor.js",
+        "public/assets/community/templates.js",
+        "scripts/community_asset_version.php",
+        "scripts/security_lint.sh",
+        "src/community/handlers/board_view.php",
+        "src/community/handlers/home_page.php",
+        "src/community/handlers/page_view.php",
+        "src/handlers/admin_page.php",
+        "src/handlers/admin_permissions_page.php",
+        "src/handlers/audit_page.php",
+        "src/handlers/home.php",
+        "src/handlers/org_page.php",
+        "src/handlers/org_permissions.php",
+        "src/handlers/settings_page.php",
+        "src/handlers/trash_page.php",
+        "src/handlers/users_page.php",
+        "src/help/community.php",
+        "src/help/screens.php",
+        "src/views/shell_top.php",
+        "tests/browser/dbg_u2_ui.py"
+      ],
+      "requirements": [],
+      "risks": [
+        "R-62"
+      ],
+      "est_sec": 3600,
+      "writes_prod": false,
+      "notes": "디버깅 묶음 U2(디자인 점검 2026-09-26 12:13 남은 중간 + 그날 검토·운영 캡처) 수락 — U2-S 정적(옛 낱말 문자열 0 · 등급·역할 고르개 영어 값 0 · 창 바닥 「그만두기」 0 · 기본 창 호출 0 · php -l · 보안 린트 · 부품 버전 · 인라인 0 · 라우트·판정·보안 핵심 파일 diff 0) · U2-H 서버가 그린 화면 글자(11화면 · 변경 이력 창 제외)의 옛 낱말 0 · U2-B 화면(tests/browser/dbg_u2_ui.py — 360·412 터치·820·1280 × 라이트·다크: 창 단추 규칙(모든 창) · 낱말 표 · 터치 대상 44px · 재인증 창 Esc 뒤 다시 뜸 · 계정 「관리」 상세 창 · 재발급 상자 · 데이터베이스 쓰기 단추 손님 숨김 · 넘침 0 · 콘솔 0 · 기본 창 0) · U2-L 서버 로그 · 운영 감사 UA 행 0 · 검토 계정 비밀 파일 시각 그대로. 임시 DB tbox_d2u_<포트>_test · php -S(기본 8273 — DBGU2_PORT, 8271~8279). 손잡이: DBGU2_COMBOS · DBGU2_SHOTS · DBGU2_APP_TREE+DBGU2_BEFORE=1(고치기 전 판 스크린샷) · DBGU2_SYNC_TOTP=1 · DBGU2_SKIP_BROWSER=1 · REGRESS=1(기본 help_button q_launcher f68 — 운영 쓰기 시험은 넣지 않는다). 운영 8082 요청 0. 2026-09-26 디버깅 묶음 U2 로 넣음."
+    },
+    {
+      "id": "tbox.browser_dbg_u2_ui",
+      "cmd": "python3 tests/browser/dbg_u2_ui.py",
+      "module": "tbox",
+      "env": "temp-instance",
+      "status": "helper",
+      "needs": [
+        "browser"
+      ],
+      "covers": [
+        "public/assets/app.css",
+        "public/assets/app.js",
+        "public/assets/community/database.js",
+        "public/assets/community/editor.js",
+        "public/assets/community/templates.js",
+        "src/community/handlers/home_page.php",
+        "src/community/handlers/page_view.php",
+        "src/handlers/home.php",
+        "src/handlers/org_page.php",
+        "src/handlers/settings_page.php",
+        "src/handlers/users_page.php"
+      ],
+      "requirements": [],
+      "risks": [
+        "R-62"
+      ],
+      "est_sec": 3000,
+      "writes_prod": false,
+      "notes": "부르는 셸: tbox.dbg_u2_ui. 단독 실행 불가(인자 SITE UA SHOTS 와 세션 셋·관리자 비밀번호를 표준입력 네 줄로 부르는 셸이 넘긴다). 결과 줄 SMOKE_FAIL=n. 넷째 인자 before 는 고치기 전 판 스크린샷용(종료 코드 0). 임시 DB 에 파일·페이지·계정 하나(재발급 시험용)를 만든다."
     }
   ]
 }

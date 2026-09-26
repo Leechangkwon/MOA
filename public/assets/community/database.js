@@ -14,7 +14,7 @@
  * editor.js 가 `createDatabaseView(deps)` 로 한 번 만들고, 페이지를 읽을 때마다 `draw(data)` 를 부른다.
  * 7-B — 새 행 고르개(「빈 행」 + 이 DB 의 행 템플릿 · 고른 템플릿 지우기)는 `templates.js` 의 `createRowTemplatePicker` 가 맡는다.
  */
-import { createRowTemplatePicker } from './templates.js?v=dc121e88d472';
+import { createRowTemplatePicker } from './templates.js?v=0a3301b64e19';
 
 const TYPE_LABELS = {
   text: '글', number: '숫자', checkbox: '체크', url: '주소', email: '메일', phone: '전화',
@@ -46,6 +46,10 @@ const STATUS_ORDER = ['todo', 'doing', 'review', 'done', 'hold'];
 
 export function createDatabaseView(deps) {
   const { api, setText, show, clear, errorMessage, base, statusLabels, genericError, toLogin, tboxBase, spaceId } = deps;
+  /* 디버깅 묶음 U2 · 독립 검토 L-2 (2026-09-26) — 창구의 `can_add_rows`·`can_manage_schema`·`can_edit_values` 는 **이 사람이 쓸 수 있는 역할일 때만**
+     따른다(`/api/me` 의 can_community_write — editor.js 의 meCanWrite). 손님 자기 공간의 데이터베이스처럼 창구 값이 참이어도 쓰기 요청은
+     라우트 정책 community.write 가 403 으로 막는다 — 누르면 권한 없음만 나오던 단추를 숨긴다(편의). 값이 없으면(옛 호출) 창구 값만 따른다. */
+  const canWrite = typeof deps.canWrite === 'function' ? deps.canWrite : () => true;
   const $ = (id) => document.getElementById(id);
 
   const wrap = $('db-wrap');
@@ -472,9 +476,9 @@ export function createDatabaseView(deps) {
       if (r.status === 401) { toLogin(); return; }
       if (r.status !== 200) { setText(msgEl, errorMessage(r.data)); return; }
       db.schema = r.data.database.schema;
-      db.can_add_rows = r.data.can_add_rows === true;
-      db.can_edit_values = r.data.can_edit_values === true;
-      db.can_manage_schema = r.data.can_manage_schema === true;
+      db.can_add_rows = canWrite() && r.data.can_add_rows === true;
+      db.can_edit_values = canWrite() && r.data.can_edit_values === true;
+      db.can_manage_schema = canWrite() && r.data.can_manage_schema === true;
       rows = Array.isArray(r.data.rows) ? r.data.rows : [];
       Object.assign(titles.rel, r.data.relation_titles || {});
       Object.assign(titles.file, r.data.file_titles || {});
@@ -898,7 +902,7 @@ export function createDatabaseView(deps) {
       const fill = () => {
         clear(dd);
         const v = fake.values ? fake.values[p.key] : undefined;
-        if (!row.can_edit) { dd.appendChild(valueNode(p, v)); return; }
+        if (!(canWrite() && row.can_edit)) { dd.appendChild(valueNode(p, v)); return; }   // L-2 — 행 페이지 속성 줄도 같은 규칙
         if (p.type === 'checkbox') {
           const box = editorFor(p, v, (val) => {
             saveValue(pageId, p, val).then((vals) => { if (vals) { fake.values = vals; } setText(rowMsg, ''); })
@@ -939,9 +943,9 @@ export function createDatabaseView(deps) {
       if (data.database) {
         db = {
           id: data.database.id, page_id: pageId, schema: data.database.schema || [],
-          can_add_rows: data.database.can_add_rows === true,
-          can_manage_schema: data.database.can_manage_schema === true,
-          can_edit_values: data.database.can_add_rows === true
+          can_add_rows: canWrite() && data.database.can_add_rows === true,
+          can_manage_schema: canWrite() && data.database.can_manage_schema === true,
+          can_edit_values: canWrite() && data.database.can_add_rows === true
         };
         version = null;
         viewId = null;

@@ -303,9 +303,9 @@ with sync_playwright() as p:
         def files():
             go(pg, "/tbox/")
             no_overflow(pg, "t-box 파일 " + tag)
-            # 받기는 `<a aria-label="다운로드">`(링크), 나머지는 `<button>` — 동작 칸의 aria-label 달린 것 전부를 본다
+            # 받기는 `<a aria-label="받기">`(링크 — 디버깅 묶음 U2 낱말 표, 전엔 「다운로드」), 나머지는 `<button>` — 동작 칸의 aria-label 달린 것 전부를 본다
             in_view(pg, "#files-body tr td.actions [aria-label]", "H1 파일 행 동작(보기·받기·고치기·공유·이동·삭제)이 화면 안 " + tag, 6)
-            in_view(pg, "#files-body tr:first-child td.actions [aria-label='다운로드'], #files-body tr:first-child td.actions [aria-label^='공유']",
+            in_view(pg, "#files-body tr:first-child td.actions [aria-label='받기'], #files-body tr:first-child td.actions [aria-label^='공유']",
                     "H1 첫 행 받기·공유 화면 안 " + tag, 2)
             sizes = pg.evaluate("""(L) => [...document.querySelectorAll('#files-body tr')].slice(0, 6).map(tr => { const td = tr.children[1]; const f = new Function('return ' + L)(); return td ? [td.textContent, f(td)] : null; })""", LINES)
             step("M1 크기 한 줄(숫자·단위 갈라짐 0) " + tag, bool(sizes) and all(s and s[1] == 1 for s in sizes), sizes[:3])
@@ -545,18 +545,23 @@ with sync_playwright() as p:
         def users():
             go(pg, "/tbox/users")
             no_overflow(pg, "계정 관리 " + tag)
-            in_view(pg, "#users-body tr:nth-child(-n+4) td.actions button", "H1 계정 관리 단추 다섯이 화면 안 " + tag, 12)
+            # 디버깅 묶음 U2 M8 — 줄 동작은 「관리」 하나(전엔 글자 단추 다섯)
+            in_view(pg, "#users-body tr:nth-child(-n+4) td.actions button", "H1 계정 관리 줄 동작(「관리」)이 화면 안 " + tag, 4)
             roles = pg.evaluate("() => [...document.querySelectorAll('#users-body tr')].slice(0, 6).map(tr => [tr.children[2].textContent.trim(), tr.children[2].getAttribute('title')])")
             step("M7 계정 표 역할 한글 · title 에 원래 값 " + tag,
                  bool(roles) and all(t in ("관리자", "팀장", "직원", "손님") and ti in ("Admin", "Manager", "Employee", "Guest") for t, ti in roles), roles[:3])
             opts = pg.evaluate("() => [...document.querySelectorAll('#u-role option')].map(o => [o.value, o.textContent.trim()])")
-            step("M7 역할 고르개 글자 한글 · 값은 그대로 " + tag, bool(opts) and all(v in t and not t == v for v, t in opts if v), opts)
+            # 디버깅 묶음 U2 — 고르개 글자는 한글 이름만(전엔 「직원 (Employee)」). 값↔글자 **짝**을 본다(독립 검토 — 집합만 보면 짝이 뒤바뀌어도 지나간다)
+            ROLE_KO = {"Admin": "관리자", "Manager": "팀장", "Employee": "직원", "Guest": "손님"}
+            step("M7 역할 고르개 글자 한글 · 값은 그대로(값↔글자 짝) " + tag, bool(opts) and all(ROLE_KO.get(v) == t for v, t in opts if v), opts)
             pg.locator("#users-body tr:first-child").scroll_into_view_if_needed()
             shot(pg, "a-users-" + tag)
             # 토큰 창 — claude_employee01 줄
             row = pg.locator("#users-body tr", has_text="claude_employee01").first
             row.scroll_into_view_if_needed()
-            row.locator("button", has_text="프로그램 토큰").click()
+            row.locator("td.actions button", has_text="관리").click()   # 디버깅 묶음 U2 M8 — 「관리」 → 상세 창의 「프로그램 토큰」
+            pg.wait_for_timeout(300)
+            pg.click("#user-manage-dialog [data-user-action='tokens']")
             pg.wait_for_timeout(1000)
             in_view(pg, "#token-dialog td.actions button", "H1 토큰 창 「회수」 화면 안 " + tag, 1)
             st = pg.evaluate("""() => { const W = document.documentElement.clientWidth; return [...document.querySelectorAll('#token-dialog tbody tr')].map(tr => { const td = tr.children[6]; if (!td) return false; const r = td.getBoundingClientRect(); return r.width > 0 && r.right <= W + 1 && r.left >= -1; }); }""")

@@ -860,3 +860,21 @@ th.doc-table__cell { background: var(--surface-2); font-weight: 600; }
 .atom-merge__field { display: inline-flex; align-items: center; gap: 4px; font-size: 13px; color: var(--muted); }
 .atom-merge__field .input { width: 4.5rem; height: 30px; }
 .atom-grid td.is-picked .input { border-color: var(--ring); box-shadow: 0 0 0 3px var(--ring-soft); }
+
+/* 터치 대상 44px (DESIGN 4장 · 디버깅 묶음 U2 M12 · 2026-09-26 — 독립 검토 중간 한 건 반영) — 트리·옮기기 목록·속성 줄은 **세로로 쌓이는 줄**이다.
+   app.css 끝의 보이지 않는 넓힘(`::before`)은 줄 사이가 좁아 **다음 줄**을 가져갔다(사이드바 트리 28px 줄 아래 8px · 페이지 트리 29px 줄 아래 7px).
+   폰 폭·터치 기기에서는 넓히지 않고 **줄 자체를 44px** 로 키운다(보이는 줄 간격이 넓어진다). 줄 안의 작은 단추(펼침 ▸ · ★)는 44px 칸.
+   속성 줄 동작(28px)은 줄 높이를 44 로 둬 넓힌 자리가 제 줄 안에 머문다. */
+@media (max-width: 719.98px), (pointer: coarse) {
+  .nav-tree__row, .nav-tree__row--space { height: 44px; }
+  .nav-tree__link { align-self: stretch; }
+  .nav-tree__toggle, .nav-tree__row > [data-fav-toggle] { flex: 0 0 44px; width: 44px; height: 44px; line-height: 44px; }
+  .nav-tree__link::before, .page-tree__link::before, .page-tree__node > summary::before, .move-tree__pick::before { content: none; }
+  .page-tree__row { min-height: 44px; padding-block: 0; }
+  .page-tree__link { align-self: stretch; line-height: 44px; }
+  .move-tree__pick { min-height: 44px; }
+}
+@media (max-width: 719.98px) {
+  .page-props__group { min-height: 44px; align-items: center; }
+  .page-props__group > .muted:first-child { padding-top: 12px; }
+}

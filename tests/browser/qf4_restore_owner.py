@@ -123,7 +123,7 @@ with sync_playwright() as p:
          page.evaluate("() => { const a = document.getElementById('nav-my-trash');"
                        " return !!a && (a.getAttribute('aria-current') === 'page' || /is-active|nav__item--active/.test(a.className)); }"))
     heads = header_cells(page)
-    step("ⓑ 표의 열 5개 — 이름·크기·레벨·지운 시각·작업", heads == ["이름", "크기", "레벨", "지운 시각", "작업"], str(heads))
+    step("ⓑ 표의 열 5개 — 이름·크기·등급·지운 시각·작업(디버깅 묶음 U2 낱말 표 — 레벨 → 등급)", heads == ["이름", "크기", "등급", "지운 시각", "작업"], str(heads))
 
     print("── ⓒ 표의 행 — 내가 지운 내 파일만")
     step("ⓒ 내 파일 행이 있다", row(page, OWN_NAME).count() == 1, OWN_NAME)
@@ -161,7 +161,7 @@ with sync_playwright() as p:
     # ─── ⓔ 복구 단추 ─────────────────────────────────────────────
     print("── ⓔ 복구 단추 → POST 1건 200 · 결과 한 줄 · 행 사라짐")
     mark = len(seen["requests"])
-    target = row(page, OWN_NAME).locator('button[aria-label="복구"]')
+    target = row(page, OWN_NAME).locator('button[aria-label="되살리기"]')   # 디버깅 묶음 U2 낱말 표 — 복구 → 되살리기
     with page.expect_response(lambda r: r.request.method == "POST" and r.url.endswith("/tbox/api/files/%s/restore" % OWN_ID)) as ri:
         target.click()
     resp = ri.value
@@ -194,7 +194,7 @@ with sync_playwright() as p:
     step("ⓕ 제목 「휴지통」", p3.locator("h1.page-head__title").inner_text().strip() == "휴지통",
          p3.locator("h1.page-head__title").inner_text().strip())
     heads = header_cells(p3)
-    step("ⓕ 열 7개 — 올린 사람·지운 사람 포함", heads == ["이름", "크기", "레벨", "올린 사람", "지운 사람", "지운 시각", "작업"], str(heads))
+    step("ⓕ 열 7개 — 올린 사람·지운 사람 포함", heads == ["이름", "크기", "등급", "올린 사람", "지운 사람", "지운 시각", "작업"], str(heads))
     step("ⓕ 관리자 표에는 남이 지운 그 파일도 있다", row(p3, OTHER_NAME).count() == 1, OTHER_NAME)
     p3.screenshot(path=os.path.join(SHOTS, "qf4u2b-admin-trash-light-1440.png"), full_page=True)
     clean(s3, "관리자 1440 라이트")

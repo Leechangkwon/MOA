@@ -38,7 +38,7 @@ require __DIR__ . '/../views/shell_top.php';
     <header class="page-head">
       <div class="page-head__text">
         <h1 class="page-head__title">파일</h1>
-        <p class="page-head__sub">내 파일과 팀 파일을 올리고 내려받습니다.</p>
+        <p class="page-head__sub">내 파일과 팀 파일을 올리고 받습니다.</p>
       </div>
       <div class="page-head__actions">
         <button type="button" class="btn btn--quiet" data-help-open>
@@ -133,9 +133,9 @@ require __DIR__ . '/../views/shell_top.php';
           <button id="folder-fav" class="btn btn--quiet btn--small" type="button" aria-pressed="false">
             <span class="icon" data-icon="star"></span><span id="folder-fav-label">즐겨찾기에 넣기</span>
           </button>
-          <button id="folder-rename" class="btn btn--quiet btn--small" type="button">이름 변경</button>
-          <button id="folder-level" class="btn btn--quiet btn--small" type="button">등급 변경</button>
-          <button id="folder-delete" class="btn btn--quiet btn--small" type="button">삭제</button>
+          <button id="folder-rename" class="btn btn--quiet btn--small" type="button">이름 바꾸기</button>
+          <button id="folder-level" class="btn btn--quiet btn--small" type="button">등급 바꾸기</button>
+          <button id="folder-delete" class="btn btn--quiet btn--small" type="button">지우기</button>
         </div>
         <p id="folder-msg" class="msg"></p>
       </aside>
@@ -203,7 +203,7 @@ require __DIR__ . '/../views/shell_top.php';
       <button id="files-bulk-fav" class="btn btn--icon" type="button" aria-label="즐겨찾기에 넣기">
         <span class="icon" data-icon="star"></span>
       </button>
-      <button id="files-bulk-trash" class="btn btn--icon" type="button" aria-label="삭제" aria-haspopup="dialog">
+      <button id="files-bulk-trash" class="btn btn--icon" type="button" aria-label="지우기" aria-haspopup="dialog">
         <span class="icon" data-icon="trash"></span>
       </button>
       <!-- 「선택 풀기」도 아이콘 단추(✕) — 글자 단추면 360px 에서 막대가 두 줄로 꺾였다(스크린샷 확인). Esc 와 같다. -->
@@ -262,7 +262,7 @@ require __DIR__ . '/../views/shell_top.php';
                    열 머리의 이름은 「이름」 글자만(aria-labelledby) — 체크의 aria-label 이 열 이름에 섞여 칸마다 읽히지 않게. -->
               <th scope="col" aria-labelledby="files-name-head"><input type="checkbox" id="files-check-all" data-bulk aria-label="이 쪽 파일 모두 고르기"><span id="files-name-head">이름</span></th>
               <th scope="col">크기</th>
-              <th scope="col">레벨</th>
+              <th scope="col">등급</th>
               <th scope="col">팀</th>
               <!-- 18-1 — 검색 결과일 때만 보이는 「폴더」 경로 열. 값은 서버가 준
                    folder_path 를 app.js 가 textContent 로 넣는다 (PRD S-03). -->
@@ -315,7 +315,7 @@ require __DIR__ . '/../views/shell_top.php';
         </p>
         <!-- 15-3 민감정보 검출 안내 (PRD F-22 「한계」, SECURITY R-58).
              검출은 **보조 장치**라는 것과 책임이 올리는 사람에게 있다는 것을 같은 자리에서 알린다. -->
-        <p class="panel__sub">민감정보(주민등록번호·카드번호·급여 등)가 보이는 파일은 <code>team</code>·<code>admin-only</code> 로만 올릴 수 있습니다.</p>
+        <p class="panel__sub">민감정보(주민등록번호·카드번호·급여 등)가 보이는 파일은 「팀」·「관리자」 등급으로만 올릴 수 있습니다.</p>
         <form id="upload-form" class="form form--grid" autocomplete="off">
           <!-- 18-2 일괄 업로드 (F-27, ARCH 5.17) — 여러 개를 고르거나 끌어 놓는다.
                **서버 계약은 그대로**다: 파일 하나 = 요청 하나이고, app.js 가 순서대로 보낸다. -->
@@ -332,9 +332,9 @@ require __DIR__ . '/../views/shell_top.php';
             <input id="upload-description" type="text" maxlength="500">
           </label>
           <label class="field">
-            <span class="field__label">접근 레벨 (필수)</span>
+            <span class="field__label">등급 (필수)</span>
             <!-- 선택지는 /api/me 의 upload_levels 로 app.js 가 채운다 (서버가 정한다).
-                 맨 앞의 "접근 레벨을 선택하세요" 자리표시(value="" disabled)도 app.js 가 넣는다 —
+                 맨 앞의 "등급을 고르세요" 자리표시(value="" disabled)도 app.js 가 넣는다 —
                  고르지 않고 올리는 일을 막기 위해서다.
                  18-1: **지금 연 폴더**보다 넓은 등급은 목록에서 빠지고 기본값도 그 폴더 등급이다
                  (서버가 400 으로 막는 것을 화면이 미리 알려 주는 편의일 뿐이다). -->
@@ -344,7 +344,6 @@ require __DIR__ . '/../views/shell_top.php';
             <span class="field__label">팀</span>
             <select id="upload-team"></select>
           </label>
-          <button id="upload-submit" class="btn" type="submit">올리기</button>
         </form>
 
         <!-- 파일별 진행 표 (F-27). 행은 app.js 가 createElement + textContent 로만 만든다.
@@ -367,6 +366,8 @@ require __DIR__ . '/../views/shell_top.php';
         <!-- 올리는 중에는 app.js 가 이 단추를 비활성으로 두고 ESC·바깥 누르기도 막는다
              (진행 표가 사라지면 무엇이 거부됐는지 알 수 없다). -->
         <button id="upload-dialog-close" class="btn btn--quiet" type="button">닫기</button>
+        <!-- 디버깅 묶음 U2 M3 — 제출 단추는 바닥 오른쪽 끝 하나(DESIGN 2.7 「창 바닥 단추」). 폼 밖이라 form 속성으로 잇는다 -->
+        <button id="upload-submit" class="btn" type="submit" form="upload-form">올리기</button>
       </div>
     </dialog>
 
@@ -396,7 +397,7 @@ require __DIR__ . '/../views/shell_top.php';
             <input id="fetch-description" type="text" maxlength="500">
           </label>
           <label class="field">
-            <span class="field__label">접근 레벨 (필수)</span>
+            <span class="field__label">등급 (필수)</span>
             <!-- 업로드 폼과 같다 — 선택지·자리표시·기본값을 전부 app.js 가 서버 값으로 만든다 -->
             <select id="fetch-level" required></select>
           </label>
@@ -404,12 +405,12 @@ require __DIR__ . '/../views/shell_top.php';
             <span class="field__label">팀</span>
             <select id="fetch-team"></select>
           </label>
-          <button id="fetch-submit" class="btn" type="submit">가져오기</button>
         </form>
       </div>
       <div class="modal__foot">
         <p id="fetch-msg" class="msg" role="alert" aria-live="polite"></p>
         <button id="fetch-dialog-close" class="btn btn--quiet" type="button">닫기</button>
+        <button id="fetch-submit" class="btn" type="submit" form="fetch-form">가져오기</button>
       </div>
     </dialog>
 
@@ -435,7 +436,7 @@ require __DIR__ . '/../views/shell_top.php';
             <input id="folder-name" type="text" maxlength="50">
           </label>
           <label class="field">
-            <span class="field__label">접근 등급</span>
+            <span class="field__label">등급</span>
             <select id="folder-level-select" required></select>
           </label>
           <label class="field" id="folder-team-field" hidden>
@@ -452,12 +453,12 @@ require __DIR__ . '/../views/shell_top.php';
             <span class="field__label">사유 (선택, 500자 이내)</span>
             <input id="folder-reason" type="text" maxlength="500">
           </label>
-          <button id="folder-submit" class="btn" type="submit">만들기</button>
         </form>
       </div>
       <div class="modal__foot">
         <p id="folder-dialog-msg" class="msg"></p>
-        <button id="folder-dialog-close" class="btn" type="button">닫기</button>
+        <button id="folder-dialog-close" class="btn btn--quiet" type="button">닫기</button>
+        <button id="folder-submit" class="btn" type="submit" form="folder-form">만들기</button>
       </div>
     </dialog>
 
@@ -483,8 +484,8 @@ require __DIR__ . '/../views/shell_top.php';
       </div>
       <div class="modal__foot">
         <p id="move-msg" class="msg"></p>
-        <button id="move-here" class="btn" type="button">여기로 이동</button>
         <button id="move-close" class="btn btn--quiet" type="button">닫기</button>
+        <button id="move-here" class="btn" type="button">여기로 이동</button>
       </div>
     </dialog>
 
@@ -507,19 +508,19 @@ require __DIR__ . '/../views/shell_top.php';
         <p class="panel__sub">고른 파일마다 따로 바꿉니다. 등급을 넓히는 변경(예: 팀 → 사내)은 관리자만 할 수 있습니다. 내가 바꿀 수 없는 파일 · 실행 파일이 든 압축본 · 폴더보다 넓은 등급은 그 파일만 거부되고 이유가 진행 표에 남습니다.</p>
         <form id="bulk-level-form" class="form form--grid" autocomplete="off">
           <label class="field">
-            <span class="field__label">접근 레벨 (필수)</span>
+            <span class="field__label">등급 (필수)</span>
             <select id="bulk-level-select" required></select>
           </label>
           <label class="field" id="bulk-team-field" hidden>
             <span class="field__label">팀</span>
             <select id="bulk-team-select"></select>
           </label>
-          <button id="bulk-level-submit" class="btn" type="submit">바꾸기</button>
         </form>
       </div>
       <div class="modal__foot">
         <p id="bulk-level-msg" class="msg" role="alert" aria-live="polite"></p>
         <button id="bulk-level-close" class="btn btn--quiet" type="button">닫기</button>
+        <button id="bulk-level-submit" class="btn" type="submit" form="bulk-level-form">바꾸기</button>
       </div>
     </dialog>
 
@@ -548,7 +549,7 @@ require __DIR__ . '/../views/shell_top.php';
             <input id="file-edit-description" type="text" maxlength="500">
           </label>
           <label class="field" id="file-edit-level-field">
-            <span class="field__label">접근 등급</span>
+            <span class="field__label">등급</span>
             <select id="file-edit-level"></select>
           </label>
           <label class="field" id="file-edit-team-field" hidden>
@@ -602,7 +603,6 @@ require __DIR__ . '/../views/shell_top.php';
             <span class="field__label">사유 (선택, 500자 이내)</span>
             <input id="share-reason" type="text" maxlength="500" placeholder="누구에게 왜 보내나">
           </label>
-          <button id="share-submit" class="btn" type="submit">링크 만들기</button>
         </form>
 
         <div id="share-result" class="notice" hidden>
@@ -615,7 +615,9 @@ require __DIR__ . '/../views/shell_top.php';
 
       <div class="modal__foot">
         <p id="share-msg" class="msg"></p>
-        <button id="share-close" class="btn" type="button">닫기</button>
+        <button id="share-close" class="btn btn--quiet" type="button">닫기</button>
+        <!-- 주소를 만든 뒤에는 app.js 가 폼과 함께 이 단추도 숨긴다(실수로 또 만들지 않게) -->
+        <button id="share-submit" class="btn" type="submit" form="share-form">링크 만들기</button>
       </div>
     </dialog>
 
@@ -660,13 +662,13 @@ require __DIR__ . '/../views/shell_top.php';
             <span class="field__label">2단계 인증 코드 (6자리)</span>
             <input id="exec-dl-otp" type="text" inputmode="numeric" pattern="[0-9]{6}" maxlength="6" autocomplete="off" required>
           </label>
-          <button id="exec-dl-submit" class="btn" type="submit">확인하고 받기</button>
         </form>
       </div>
 
       <div class="modal__foot">
         <p id="exec-dl-msg" class="msg" role="alert" aria-live="polite"></p>
         <button id="exec-dl-close" class="btn btn--quiet" type="button">닫기</button>
+        <button id="exec-dl-submit" class="btn" type="submit" form="exec-dl-form">확인하고 받기</button>
       </div>
     </dialog>
 
@@ -719,13 +721,13 @@ require __DIR__ . '/../views/shell_top.php';
       <div class="modal__foot">
         <p id="preview-msg" class="msg preview__msg"></p>
         <a id="preview-download" class="btn btn--quiet" href="<?= Http::url('/') ?>">
-          <span class="icon" data-icon="download"></span>다운로드
+          <span class="icon" data-icon="download"></span>받기
         </a>
         <!-- rel="noopener noreferrer": 새 탭이 이 창(window.opener)에 손대지 못하게 한다 -->
         <a id="preview-open" class="btn btn--quiet" href="<?= Http::url('/') ?>" target="_blank" rel="noopener noreferrer" hidden>
           <span class="icon" data-icon="link"></span>새 탭에서 열기
         </a>
-        <button id="preview-close" class="btn" type="button">닫기</button>
+        <button id="preview-close" class="btn btn--quiet" type="button">닫기</button>
       </div>
     </dialog>
 <!-- 개발 대기열 6 — 즐겨찾기 아이콘 둘(빈 별 = 넣기 · 찬 별 = 빼기). DESIGN 2.11 규격(24×24 · stroke 1.8, lucide star) — 이 화면만 쓴다.

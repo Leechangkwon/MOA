@@ -45,7 +45,7 @@ require __DIR__ . '/../views/shell_top.php';
     <header class="page-head">
       <div class="page-head__text">
         <h1 class="page-head__title">권한 매트릭스 편집</h1>
-        <p class="page-head__sub">역할 × 접근 등급 표를 바꿉니다. <a href="<?= Http::url('/admin') ?>">관리자 페이지로 돌아가기</a></p>
+        <p class="page-head__sub">역할 × 등급 표를 바꿉니다. <a href="<?= Http::url('/admin') ?>">관리자 페이지로 돌아가기</a></p>
       </div>
       <div class="page-head__actions">
         <button type="button" class="btn btn--quiet" data-help-open>

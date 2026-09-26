@@ -90,7 +90,7 @@ def file_row(page, name):
 
 
 def open_file_confirm(page, name):
-    file_row(page, name).locator('button[aria-label="삭제"]').click()
+    file_row(page, name).locator('button[aria-label="지우기"]').click()   # 디버깅 묶음 U2 낱말 표 — 삭제 → 지우기
     page.wait_for_timeout(400)
 
 
@@ -177,7 +177,7 @@ with sync_playwright() as p:
         p2.wait_for_timeout(400)
         if width < 960:
             # 좁은 화면 — 표가 가로로 밀리므로 행의 휴지통 단추를 화면 안으로 끌어온 뒤 누른다
-            file_row(p2, FILE_NAME).locator('button[aria-label="삭제"]').scroll_into_view_if_needed()
+            file_row(p2, FILE_NAME).locator('button[aria-label="지우기"]').scroll_into_view_if_needed()
         mark2 = len(s2["requests"])
         open_file_confirm(p2, FILE_NAME)
         g = modal_geometry(p2)
