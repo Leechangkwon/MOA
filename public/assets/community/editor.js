@@ -40,13 +40,13 @@ import { inputRules, textblockTypeInputRule, InputRule } from './vendor/pm/prose
 import { dropCursor } from './vendor/pm/prosemirror-dropcursor.js?v=5823578fa61a';
 import { gapCursor } from './vendor/pm/prosemirror-gapcursor.js?v=5823578fa61a';
 
-import { renderDoc, embedHost } from './doc-render.js?v=3548892688fe';
-import { createDatabaseView } from './database.js?v=3548892688fe';
-import { bindTemplateGallery, createTemplateSave } from './templates.js?v=3548892688fe';
-import { bindEmbedAdmin } from './embeds.js?v=3548892688fe';
-import { bindPopular } from './popular.js?v=3548892688fe';
-import { schema, toDoc, fromDoc, uuid4, colorAllowed, schemeOkForEditor, COLORS, BLOCK_TYPES } from './editor-schema.js?v=3548892688fe';
-import { createDrafts } from './drafts.js?v=3548892688fe';
+import { renderDoc, embedHost } from './doc-render.js?v=2b22a110e917';
+import { createDatabaseView } from './database.js?v=2b22a110e917';
+import { bindTemplateGallery, createTemplateSave } from './templates.js?v=2b22a110e917';
+import { bindEmbedAdmin } from './embeds.js?v=2b22a110e917';
+import { bindPopular } from './popular.js?v=2b22a110e917';
+import { schema, toDoc, fromDoc, uuid4, colorAllowed, schemeOkForEditor, COLORS, BLOCK_TYPES } from './editor-schema.js?v=2b22a110e917';
+import { createDrafts } from './drafts.js?v=2b22a110e917';
 
 /* ─── 주소와 공통 도우미 ─────────────────────────────────────── */
 
@@ -459,6 +459,7 @@ function navTree(pages, activeId) {
       if (node.id === activeId) { link.setAttribute('aria-current', 'page'); }
       row.appendChild(navToggle(title, kids.length > 0, expanded));
       row.appendChild(link);
+      row.appendChild(navStar(node));   // 라운드 B — 트리 항목의 ☆(넣기·빼기)
       li.appendChild(row);
       if (kids.length > 0) {
         const sub = level(node.id, depth + 1);
@@ -546,6 +547,7 @@ function fillSidebarTrees(spaces) {
         link.textContent = (page.icon ? page.icon + ' ' : '') + page.title;
         if (page.id === activeId) { link.setAttribute('aria-current', 'page'); }
         row.appendChild(link);
+        row.appendChild(navStar(page));   // 라운드 B — 트리 항목의 ☆
         li.appendChild(row);
         ul.appendChild(li);
       }
@@ -597,6 +599,7 @@ function navPageRow(page, activeId) {
   link.textContent = (page.icon ? page.icon + ' ' : '') + page.title;
   if (page.id === activeId) { link.setAttribute('aria-current', 'page'); }
   row.appendChild(link);
+  row.appendChild(navStar(page));   // 라운드 B — 즐겨찾기·최근 줄에도 같은 ☆(즐겨찾기 줄에서는 누르면 빠진다)
   li.appendChild(row);
   return { li: li, link: link };
 }
@@ -818,6 +821,367 @@ function openRecentDialog() {
   loadRecentNav().then(() => { if (dialog.open) { fillRecentDialog(); } });
 }
 
+/* ─── 사이드바 트리 줄의 ☆ (개발 대기열 6 · Q:F-3a 라운드 B — 지시서 1.1 「넣기 | … 트리 항목 메뉴」) ───────────
+ *
+ * 사이드바의 페이지 줄(내 공간 · 팀 공간 · 공유받은 페이지 · 즐겨찾기 · 최근)마다 끝에 ☆ 단추 하나. 항목 메뉴(「⋯」)로 만들지 않은
+ * 까닭: 항목이 하나뿐인 메뉴는 DESIGN 2.15 「하지 말 것」이다(정의된 항목이 둘 이하인 메뉴 → 그냥 단추). 모양은 줄의 펼침 단추와 같은
+ * `.nav-tree__toggle`(20px · 테두리 없음) — 새 클래스 0. 넣은 줄(★)은 늘 보이고, 안 넣은 줄은 줄에 올리거나 초점이 있을 때만
+ * 보인다(community.css — 「하위 추가」와 같은 규칙).
+ * 넣을 수 있는지는 창구가 판단한다(`PUT /api/pages/{id}/favorite` — 그 순간 읽을 수 있어야 · 못 읽으면 404 문구). 화면은 창구가 준
+ * 즐겨찾기 목록(`favoriteIds`)에 있나 없나로만 별을 칠한다.
+ */
+function navStar(page) {
+  const title = (page.icon ? page.icon + ' ' : '') + page.title;
+  const button = document.createElement('button');
+  button.type = 'button';
+  button.className = 'nav-tree__toggle';
+  button.setAttribute('data-fav-toggle', page.id);
+  button.setAttribute('data-fav-title', title);
+  paintNavStar(button);
+  button.addEventListener('click', (event) => {
+    event.preventDefault();
+    const on = favoriteIds.has(page.id);
+    button.disabled = true;
+    api(on ? 'DELETE' : 'PUT', '/api/pages/' + page.id + '/favorite', {})
+      .then((result) => {
+        button.disabled = false;
+        if (result.status === 401) { toLogin(); return null; }
+        if (result.status !== 200) { setText(document.getElementById('msg'), errorMessage(result.data)); return null; }
+        return loadFavoritesNav();   // 목록·모든 ☆ 를 창구의 답으로 다시 맞춘다
+      })
+      .catch(() => { button.disabled = false; setText(document.getElementById('msg'), GENERIC_ERROR); });
+  });
+  return button;
+}
+
+function paintNavStar(button) {
+  const id = button.getAttribute('data-fav-toggle') || '';
+  const on = favoriteIds.has(id);
+  button.replaceChildren(makeIcon(on ? 'star-fill' : 'star'));
+  button.setAttribute('aria-pressed', on ? 'true' : 'false');
+  button.setAttribute('aria-label', '「' + (button.getAttribute('data-fav-title') || '') + '」 ' + (on ? '즐겨찾기에서 빼기' : '즐겨찾기에 넣기'));
+}
+
+/** 즐겨찾기를 새로 받을 때마다 사이드바의 모든 ☆ 를 맞춘다 */
+function paintNavStars() {
+  for (const button of document.querySelectorAll('#sidebar [data-fav-toggle]')) { paintNavStar(button); }
+}
+favoriteListeners.push(paintNavStars);
+
+/* ─── 일괄 작업 진행기 (개발 대기열 6 · Q:F-3a 라운드 B — 지시서 1.3 · 결정 M-4 · M-7) ───────────────────
+ *
+ * 원칙: **새 서버 창구 0** — 한 건 작업과 같은 창구를 항목마다 한 번씩, 차례로 부른다(t-box F-27 일괄 올리기·파일 화면 일괄과 같은 방식).
+ * 할 수 있는지는 창구가 항목마다 판단하고(판정·감사·거부 문장이 한 건과 같다), 화면은 그 답을 줄마다 적을 뿐이다(DESIGN 원칙 1).
+ *   · 줄 상태: 대기 → 하는 중… → 완료 글자 / 창구가 준 거부 문장(F-68). 423 은 그 줄만 「나중에」.
+ *   · 부모와 그 하위를 함께 골랐으면 하위는 보내지 않는다 — 부모가 되면 「부모와 함께 …」, 부모가 거부되면 「… 부모를 … 못 했습니다」
+ *     (순서 섞임·깊이 오류를 막는다 — 지시서 1.3). 부모가 늘 하위보다 먼저 오게 트리 순서로 보낸다.
+ *   · 401 이면 멈추고 남은 줄을 그대로 둔다 → 새 탭에서 로그인한 뒤 「이어서 하기」: `/api/me` 를 새로 물어 **같은 계정**이면 새 CSRF
+ *     토큰으로 그 줄부터(다른 계정이면 잇지 않는다 — QF3A-T7). 403 reauth 는 셸의 재인증 창을 띄우고 통과하면 그 줄부터.
+ *     「이어서 하기」는 멈춘 까닭과 상관없이 보내기 전에 `/api/me` 로 같은 계정인지 보고, 새 토큰을 셸에도 넘긴다(`window.qarediSetCsrf`).
+ *     구간(시작 · 이어 가기)의 첫 403 에서도 `/api/me` 로 세션이 그대로인지 본다 — 바뀌었으면 거부로 세지 않고 멈춘다.
+ *   · 「되돌리기」(휴지통으로 보낸 것 — M-7 커뮤니티는 바로): 10초 동안, 지운 페이지마다 `POST /api/pages/{id}/restore`.
+ *   · 글자는 전부 textContent · 인라인 style 0 · 새 클래스 0(`.upload-status` 진행 표 · `.notice` · `.table-foot` 그대로).
+ *
+ * @param {Object} el     진행 표 요소들 {panel, title, body, stop, stopText, login, resume, summary, undo?, close?}
+ * @param {Object} hooks  {onChange?() — 도는 중인지가 바뀔 때, beforeReauth?() · afterReauth?() — 재인증 창을 띄우기 전·뒤(모달 안 모달 0)}
+ */
+const BULK_PICK_MAX = 100;   // 결정 M-4
+const BULK_UNDO_MS = 10000;  // 결정 M-7
+/** 「이어서 하기」가 같은 계정인지 견줄 아이디(boot 가 `/api/me` 의 username 으로 채운다 — 역할로 보기 중에도 실제 계정) */
+let meUsername = null;
+
+function createBulkRunner(el, hooks) {
+  let job = null;
+  let undoTimer = null;
+  let undoJob = null;
+
+  function setState(item, text, cls) {
+    setText(item.stateCell, text);
+    item.stateCell.className = cls ? 'upload-status__state ' + cls : 'upload-status__state';
+  }
+  function busy() { return job !== null && !job.finished; }
+  function changed() { if (hooks && typeof hooks.onChange === 'function') { hooks.onChange(); } }
+
+  /** 「n개 완료 · m개 못 함」 — 부모와 함께 된 하위는 완료, 나중에는 못 함 */
+  function tally(j) {
+    let ok = 0;
+    let no = 0;
+    for (const item of j.items) {
+      if (item.result === 'ok') { ok += 1; } else if (item.result === 'deny' || item.result === 'later') { no += 1; }
+    }
+    return String(ok) + '개 완료 · ' + String(no) + '개 못 함';
+  }
+
+  function hideUndo() {
+    if (undoTimer !== null) { window.clearTimeout(undoTimer); undoTimer = null; }
+    undoJob = null;
+    show(el.undo, false);
+  }
+
+  function start(next) {
+    if (busy() || !el.panel || !el.body) { return false; }
+    hideUndo();
+    job = next;
+    job.index = 0;
+    job.finished = false;
+    job.paused = null;
+    job.sessionChecked = false;
+    clear(el.body);
+    for (const item of job.items) {
+      const tr = document.createElement('tr');
+      const name = document.createElement('td');
+      name.textContent = item.name;
+      tr.appendChild(name);
+      item.stateCell = document.createElement('td');
+      tr.appendChild(item.stateCell);
+      item.result = 'wait';
+      setState(item, item.parent ? '대기 — 부모와 함께' : '대기', '');
+      el.body.appendChild(tr);
+    }
+    setText(el.title, job.title + ' · ' + String(job.items.length) + '개');
+    show(el.stop, false);
+    setText(el.summary, '');
+    if (el.close) { el.close.disabled = true; }
+    show(el.panel, true);
+    el.title.focus();
+    changed();
+    step(job);
+    return true;
+  }
+
+  function step(j) {
+    if (job !== j || j.paused !== null) { return; }
+    // 부모와 함께 고른 하위 — 보내지 않고 부모의 결과로 적는다(부모가 트리 순서상 먼저 끝났다)
+    while (j.index < j.items.length && j.items[j.index].parent) {
+      const kid = j.items[j.index];
+      if (kid.parent.result === 'ok') {
+        kid.result = 'ok';
+        setState(kid, j.withParentText || '부모와 함께 처리됨', 'is-ok');
+      } else {
+        kid.result = 'deny';
+        setState(kid, j.parentFailText || '부모를 처리하지 못해 그대로 두었습니다', 'is-deny');
+      }
+      j.index += 1;
+    }
+    if (j.index >= j.items.length) { finish(j); return; }
+    const item = j.items[j.index];
+    setState(item, '하는 중…', 'is-busy');
+    j.send(item)
+      .then((result) => {
+        if (result.status === 401) { pause(j, 'login'); return 'stop'; }
+        if (result.status === 403 && result.data && result.data.next === 'reauth' && typeof window.qarediHandleReauth === 'function') {
+          pause(j, 'reauth');
+          if (hooks && typeof hooks.beforeReauth === 'function') { hooks.beforeReauth(); }
+          window.qarediHandleReauth({ status: 403 }, result.data, () => {
+            if (hooks && typeof hooks.afterReauth === 'function') { hooks.afterReauth(); }
+            cont(j);
+          });
+          return 'stop';
+        }
+        if (result.status === 403 && !j.sessionChecked) {
+          // 이 구간의 첫 403 — 거부로 세기 전에 세션이 그대로인지 `/api/me` 로 본다(다른 탭에서 다시 로그인했으면 이 탭의
+          // CSRF 토큰이 옛 세션 것이라 줄마다 403 이 된다 — 그건 거부가 아니라 멈출 일이다)
+          j.sessionChecked = true;
+          return sessionCheck().then((why) => {
+            if (why !== null) { pause(j, why); return 'stop'; }
+            item.result = 'deny';
+            setState(item, errorMessage(result.data), 'is-deny');   // 세션은 그대로 — 창구의 거부 문장 그대로
+            return 'next';
+          });
+        }
+        if (result.status >= 200 && result.status < 300) {
+          item.result = 'ok';
+          setState(item, typeof j.okText === 'function' ? j.okText(result.data) : j.okText, 'is-ok');
+        } else if (result.status === 423) {
+          item.result = 'later';
+          setState(item, '나중에 — ' + errorMessage(result.data), 'is-deny');
+        } else {
+          item.result = 'deny';
+          setState(item, errorMessage(result.data), 'is-deny');   // 한 건 작업과 같은 서버 문장 그대로
+        }
+        return 'next';
+      })
+      .catch(() => {
+        item.result = 'deny';
+        setState(item, GENERIC_ERROR, 'is-deny');
+        return 'next';
+      })
+      .then((what) => {
+        if (what === 'next') { j.index += 1; step(j); }
+      });
+  }
+
+  /**
+   * 세션이 이 작업을 시작한 그대로인가 — `/api/me` 를 새로 묻는다(셸과 같은 창구 · no-store). 그대로면 null, 아니면 멈출 까닭:
+   * 'login' 세션 없음(401) · 'other' 다른 계정 · 'session' 같은 계정이지만 세션이 바뀜(토큰이 세션 id 로 계산되므로 토큰이 다르다) ·
+   * 'check' 물어보지 못함 — 모르는 채 거부로 세지 않는다.
+   */
+  function sessionCheck() {
+    if (typeof window.qarediMe !== 'function') { return Promise.resolve('check'); }
+    return window.qarediMe(true).then((result) => {
+      if (result.status === 401 || !result.me) { return 'login'; }
+      if (meUsername === null || result.me.username !== meUsername) { return 'other'; }
+      if (result.me.csrf_token !== csrfToken) { return 'session'; }
+      return null;
+    }, () => 'check');
+  }
+
+  function pause(j, why) {
+    j.paused = why;
+    const left = j.items.length - j.index;
+    const item = j.items[j.index];
+    if (why === 'login') {
+      setState(item, '멈춤 — 로그인이 필요합니다', 'is-deny');
+      setText(el.stopText, '로그인이 끝나 멈췄습니다 — 남은 ' + String(left) + '개는 그대로 있습니다. 새 탭에서 다시 로그인한 뒤 「이어서 하기」를 누르세요.');
+    } else if (why === 'other') {
+      setState(item, '멈춤 — 다른 계정으로 로그인됨', 'is-deny');
+      setText(el.stopText, '다른 계정으로 로그인했습니다 — 이어서 할 수 없습니다. 이 화면을 새로 고친 뒤 다시 고르세요.');
+    } else if (why === 'session') {
+      setState(item, '멈춤 — 로그인이 바뀌었습니다', 'is-deny');
+      setText(el.stopText, '다른 탭에서 다시 로그인해 멈췄습니다 — 남은 ' + String(left) + '개는 그대로 있습니다. 「이어서 하기」를 누르면 같은 계정인지 확인하고 이어 갑니다.');
+    } else if (why === 'check') {
+      setState(item, '멈춤 — 로그인 상태를 확인하지 못했습니다', 'is-deny');
+      setText(el.stopText, '로그인 상태를 확인하지 못해 멈췄습니다 — 남은 ' + String(left) + '개는 그대로 있습니다. 「이어서 하기」를 누르면 다시 확인합니다.');
+    } else {
+      setState(item, '멈춤 — 비밀번호 확인이 필요합니다', 'is-deny');
+      setText(el.stopText, '비밀번호 확인이 필요해 멈췄습니다 — 남은 ' + String(left) + '개는 그대로 있습니다. 「이어서 하기」를 누르면 다시 묻습니다.');
+    }
+    show(el.login, why === 'login');
+    show(el.resume, why !== 'other');   // 다른 계정이면 잇지 않는다
+    if (el.resume) { el.resume.disabled = false; }
+    show(el.stop, true);
+    if (el.close) { el.close.disabled = false; }
+    setText(el.summary, tally(j) + ' · 남은 ' + String(left) + '개');
+    changed();
+  }
+
+  function cont(j) {
+    if (job !== j || j.paused === null) { return; }
+    j.paused = null;
+    j.sessionChecked = false;   // 이어 간 구간의 첫 403 도 다시 세션을 본다
+    show(el.stop, false);
+    if (el.close) { el.close.disabled = true; }
+    setText(el.summary, '');
+    changed();
+    step(j);
+  }
+
+  /* 「이어서 하기」 — 멈춘 까닭과 상관없이(로그인 · 재인증 · 세션 바뀜 · 확인 못 함) **보내기 전에** `/api/me` 를 새로 물어 같은 계정인지
+     본다. 다른 계정이면 요청 0 으로 끝. 같은 계정이면 새 CSRF 토큰(이 모듈 · 셸의 재인증 창 · 로그아웃 둘 다)으로 멈춘 줄부터.
+     재인증 멈춤이면 그 줄을 다시 보내 창구가 또 403 reauth 를 주고, 그때 셸의 재인증 창이 뜬다. */
+  function resumeClick() {
+    const j = job;
+    if (j === null || j.paused === null) { return; }
+    if (el.resume) { el.resume.disabled = true; }
+    const ask = typeof window.qarediMe === 'function'
+      ? window.qarediMe(true)
+      : Promise.resolve({ status: 0, me: null });
+    ask.then((result) => {
+      if (el.resume) { el.resume.disabled = false; }
+      if (job !== j || j.paused === null) { return; }
+      if (result.status === 401 || !result.me) {
+        if (j.paused !== 'login') { pause(j, 'login'); }   // 세션이 끝났다 — 로그인 멈춤으로(「로그인 화면 열기」가 보인다)
+        setText(el.stopText, '아직 로그인되지 않았습니다 — 새 탭에서 로그인한 뒤 다시 「이어서 하기」를 누르세요. 남은 ' + String(j.items.length - j.index) + '개는 그대로 있습니다.');
+        return;
+      }
+      if (meUsername === null || result.me.username !== meUsername) {
+        // 다른 계정으로 로그인했다 — 그 계정으로 이 작업을 잇지 않는다
+        pause(j, 'other');
+        return;
+      }
+      if (typeof result.me.csrf_token === 'string') {
+        csrfToken = result.me.csrf_token;   // 새 세션의 토큰
+        if (typeof window.qarediSetCsrf === 'function') { window.qarediSetCsrf(result.me.csrf_token); }   // 셸도 같은 값으로
+      }
+      cont(j);
+    }).catch(() => {
+      if (el.resume) { el.resume.disabled = false; }
+      setText(el.stopText, GENERIC_ERROR);
+    });
+  }
+
+  function finish(j) {
+    j.finished = true;
+    show(el.stop, false);
+    if (el.close) { el.close.disabled = false; }
+    let line = tally(j);
+    const undoItems = j.items.filter((item) => item.result === 'ok' && !item.parent);
+    if (typeof j.undo === 'function' && el.undo && undoItems.length > 0) {
+      line += ' — ' + String(BULK_UNDO_MS / 1000) + '초 안에 되돌릴 수 있습니다';
+      undoJob = j.undo(undoItems.map((item) => ({ id: item.id, name: item.name })));
+      show(el.undo, true);
+      undoTimer = window.setTimeout(hideUndo, BULK_UNDO_MS);
+    }
+    setText(el.summary, line);
+    changed();
+    if (typeof j.done === 'function') { j.done(j); }
+  }
+
+  if (el.resume) { el.resume.addEventListener('click', resumeClick); }
+  if (el.undo) {
+    el.undo.addEventListener('click', () => {
+      const next = undoJob;
+      hideUndo();
+      if (next) { start(next); }
+    });
+  }
+  if (el.close) {
+    el.close.addEventListener('click', () => {
+      // 끝났거나 멈춘 작업만 닫힌다(도는 동안은 단추가 비활성). 멈춘 작업을 닫으면 남은 줄은 보내지 않는다.
+      if (job !== null && !job.finished && job.paused === null) { return; }
+      job = null;
+      hideUndo();
+      show(el.panel, false);
+      changed();
+    });
+  }
+  return {
+    start: start,
+    busy: busy,
+    /** 창을 다시 열 때 — **끝난** 작업의 진행 표를 치운다(도는 중이거나 멈춘 작업은 남은 줄과 함께 그대로 둔다) */
+    reset() {
+      if (busy()) { return; }
+      job = null;
+      hideUndo();
+      show(el.panel, false);
+      changed();
+    }
+  };
+}
+
+/** 트리 순서(부모가 하위보다 먼저)로 고른 페이지를 늘어놓고, 고른 조상이 있는 것에는 그 조상 항목을 `parent` 로 단다 */
+function bulkTreeItems(pickedIds, pages) {
+  const byParent = new Map();
+  const byId = new Map();
+  for (const page of pages) {
+    byId.set(page.id, page);
+    const key = typeof page.parent_id === 'string' ? page.parent_id : '';
+    if (!byParent.has(key)) { byParent.set(key, []); }
+    byParent.get(key).push(page);
+  }
+  const order = [];
+  const walk = (key, depth) => {
+    if (depth > 16) { return; }
+    for (const node of byParent.get(key) || []) { order.push(node); walk(node.id, depth + 1); }
+  };
+  walk('', 0);
+  const items = [];
+  const itemOf = new Map();
+  for (const node of order) {
+    if (!pickedIds.has(node.id)) { continue; }
+    const item = { id: node.id, name: (node.icon ? node.icon + ' ' : '') + node.title, parent: null };
+    // 가장 가까운 고른 조상(있으면) — 그 조상과 함께 처리된다
+    let up = typeof node.parent_id === 'string' ? byId.get(node.parent_id) : undefined;
+    for (let guard = 0; up && guard < 16; guard++) {
+      if (itemOf.has(up.id)) { item.parent = itemOf.get(up.id); break; }
+      up = typeof up.parent_id === 'string' ? byId.get(up.parent_id) : undefined;
+    }
+    itemOf.set(node.id, item);
+    items.push(item);
+  }
+  return items;
+}
+
 /* ─── 내 공간 (community-home) ───────────────────────────────── */
 
 function initHome() {
@@ -951,6 +1315,8 @@ function initHome() {
   function treeRow(node, kidCount) {
     const row = document.createElement('span');
     row.className = 'page-tree__row';
+    // 라운드 B — 「선택」 모드면 줄 맨 앞에 체크(`<summary>` 안이어도 체크를 누르면 접힘·펼침은 일어나지 않는다 — 체크가 누름의 대상)
+    if (sel.on) { row.appendChild(selCheck(node)); }
 
     // 삼각형 자리. 하위가 없어도 자리를 비워 둬 제목의 왼쪽 끝이 층마다 가지런하다.
     const caret = document.createElement('span');
@@ -1045,21 +1411,304 @@ function initHome() {
       if (result.status !== 200) { setText(msg, errorMessage(result.data)); return; }
       setText(msg, '');
       if (result.data.space) { spaceKind = result.data.space.kind; drawSpaceHead(result.data.space); }
-      clear(treeBox);
       const pages = Array.isArray(result.data.pages) ? result.data.pages : [];
-      const byParent = new Map();
-      for (const page of pages) {
-        const key = typeof page.parent_id === 'string' ? page.parent_id : '';
-        if (!byParent.has(key)) { byParent.set(key, []); }
-        byParent.get(key).push(page);
-      }
-      treeBox.appendChild(treeLevel(byParent, '', 0));
-      show(treeBox, pages.length > 0);
-      show(list, false);
-      show(empty, pages.length === 0);
-      setText(count, pages.length === 0 ? '' : '페이지 ' + String(result.data.total) + '개');
+      treePages = pages;
+      treeTotal = result.data.total;
+      // 라운드 B — 새 트리에 없는 페이지(지웠거나 옮겨 나간 것)는 고른 것에서 뺀다
+      const here = new Set(pages.map((p) => p.id));
+      for (const id of Array.from(sel.picked.keys())) { if (!here.has(id)) { sel.picked.delete(id); } }
+      drawTree();
     });
   }
+
+  /** 받아 둔 트리(treePages)를 그린다 — 「선택」 모드를 켜고 끌 때도 창구를 다시 부르지 않고 이것만 부른다 */
+  function drawTree() {
+    clear(treeBox);
+    const pages = treePages;
+    const byParent = new Map();
+    for (const page of pages) {
+      const key = typeof page.parent_id === 'string' ? page.parent_id : '';
+      if (!byParent.has(key)) { byParent.set(key, []); }
+      byParent.get(key).push(page);
+    }
+    treeBox.appendChild(treeLevel(byParent, '', 0));
+    show(treeBox, pages.length > 0);
+    show(list, false);
+    show(empty, pages.length === 0);
+    setText(count, pages.length === 0 ? '' : '페이지 ' + String(treeTotal) + '개');
+    syncSel();
+  }
+
+  /* ─── 「선택」 모드 · 일괄 작업 (개발 대기열 6 · Q:F-3a 라운드 B — 지시서 1.3 · 결정 M-4 · M-6 · M-7) ───────────
+   * 트리 줄마다 체크 → 막대의 옮기기 · 즐겨찾기 · 휴지통. 100개까지. 공간을 바꾸면 화면이 다시 열려 풀리고(M-4), 상태 거르개를 바꾸면
+   * 풀린다(목록이 바뀐다). 찾기(카드 목록)를 시작하면 모드가 끝난다. Esc · ✕ · 「선택 끝내기」로 끝낸다. 공개 범위 일괄은 없다(M-6).
+   * 동작은 **한 건과 같은 창구**를 페이지마다 한 번씩(진행기 `createBulkRunner`) — 새 서버 창구 0. 판단은 창구가 한다.
+   */
+  let treePages = [];
+  let treeTotal = 0;
+  const sel = { on: false, picked: new Map(), full: false };
+  const selButton = document.getElementById('community-select');
+  const selLabel = document.getElementById('community-select-label');
+  const bulkBar = document.getElementById('community-bulk-bar');
+  const bulkCount = document.getElementById('community-bulk-count');
+  const bulkNote = document.getElementById('community-bulk-note');
+  const bulkMoveBtn = document.getElementById('community-bulk-move');
+  const bulkFavBtn = document.getElementById('community-bulk-fav');
+  const bulkTrashBtn = document.getElementById('community-bulk-trash');
+  const bulkDoneBtn = document.getElementById('community-bulk-done');
+  const runner = createBulkRunner({
+    panel: document.getElementById('community-bulk-panel'),
+    title: document.getElementById('community-bulk-title'),
+    body: document.getElementById('community-bulk-body'),
+    stop: document.getElementById('community-bulk-stop'),
+    stopText: document.getElementById('community-bulk-stop-text'),
+    login: document.getElementById('community-bulk-login'),
+    resume: document.getElementById('community-bulk-resume'),
+    summary: document.getElementById('community-bulk-summary'),
+    undo: document.getElementById('community-bulk-undo'),
+    close: document.getElementById('community-bulk-close')
+  }, { onChange: () => syncSel() });
+
+  function selCheck(node) {
+    const check = document.createElement('input');
+    check.type = 'checkbox';
+    check.setAttribute('data-bulk', '');
+    check.setAttribute('data-bulk-page', node.id);
+    check.setAttribute('aria-label', '「' + (node.icon ? node.icon + ' ' : '') + node.title + '」 고르기');
+    check.checked = sel.picked.has(node.id);
+    check.addEventListener('click', (event) => {
+      event.stopPropagation();   // 줄(요약) 누름으로 번지지 않게 — 체크 자체의 켜고 끄기는 그대로
+      sel.full = false;
+      if (check.checked) {
+        if (sel.picked.size >= BULK_PICK_MAX) {
+          check.checked = false;
+          sel.full = true;
+        } else {
+          sel.picked.set(node.id, node);
+        }
+      } else {
+        sel.picked.delete(node.id);
+      }
+      syncSel();
+    });
+    return check;
+  }
+
+  /** 체크·막대·「선택」 단추를 지금 상태에 맞춘다 */
+  function syncSel() {
+    for (const check of treeBox.querySelectorAll('input[data-bulk-page]')) {
+      check.checked = sel.picked.has(check.getAttribute('data-bulk-page'));
+    }
+    if (selButton) {
+      selButton.setAttribute('aria-pressed', sel.on ? 'true' : 'false');
+      setText(selLabel, sel.on ? '선택 끝내기' : '선택하기');
+    }
+    const n = sel.picked.size;
+    const running = runner.busy();
+    setText(bulkCount, String(n) + '개 선택됨');
+    // 안내는 막대 아래 한 줄(막대는 폰 폭에서도 한 줄 — 개수 + 아이콘 단추)
+    let note = '줄 앞의 체크로 고르세요 — 한 번에 ' + String(BULK_PICK_MAX) + '개까지 · Esc 로 끝냅니다.';
+    if (sel.full) {
+      note = '한 번에 ' + String(BULK_PICK_MAX) + '개까지 고를 수 있습니다 — 더 고르려면 먼저 몇 개를 푸세요.';
+    } else if (running && n > 0) {
+      note = '앞 작업이 끝나면 고른 페이지로 할 수 있습니다.';
+    }
+    setText(bulkNote, note);
+    for (const b of [bulkMoveBtn, bulkFavBtn, bulkTrashBtn]) { if (b) { b.disabled = n === 0 || running; } }
+    show(bulkBar, sel.on);
+    show(bulkNote, sel.on);
+  }
+
+  function selMode(on) {
+    sel.on = on;
+    sel.picked.clear();
+    sel.full = false;
+    if (treeBox.hidden && on) {
+      // 찾기 결과(카드)를 보고 있었다면 트리로 돌아간다 — 모드는 트리에서만 쓴다
+      if (search) { search.value = ''; }
+      load('').catch(() => setText(msg, GENERIC_ERROR));
+    } else {
+      drawTree();
+    }
+    syncSel();
+  }
+
+  function selItems() {
+    return bulkTreeItems(new Set(sel.picked.keys()), treePages);
+  }
+
+  function afterBulk() {
+    // 고른 것은 시작할 때 풀렸다(startBulk) — 도는 동안 새로 고른 것은 남기고, 트리에서 사라진 줄은 loadTree 가 뺀다
+    loadSpaces();   // 사이드바 트리도 창구의 새 답으로(옮기거나 지운 페이지가 그 자리에 남지 않게)
+    return load(search ? search.value : '').catch(() => setText(msg, GENERIC_ERROR));
+  }
+
+  /** 작업을 시작한다 — 고른 것은 작업으로 넘어가며 풀린다(t-box 파일 화면과 같다 · 도는 동안 새로 고르면 다음 작업 몫) */
+  function startBulk(next) {
+    if (!runner.start(next)) { return; }
+    sel.picked.clear();
+    sel.full = false;
+    syncSel();
+  }
+
+  /* 옮기기 — 고른 페이지와 그 하위는 새 부모 후보에서 뺀다(서버가 cycle 로 다시 막는다). 부모가 늘 하위보다 먼저 간다. */
+  const bulkMoveDialog = document.getElementById('bulk-move-dialog');
+  const bulkMoveTree = document.getElementById('bulk-move-tree');
+  const bulkMoveMsg = document.getElementById('bulk-move-msg');
+  const bulkMoveMeta = document.getElementById('bulk-move-meta');
+  const bulkMoveConfirm = document.getElementById('bulk-move-confirm');
+  let bulkMovePick = null;
+  let bulkMovePicked = false;
+
+  function bulkMoveButton(label, id) {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'move-tree__pick';
+    button.setAttribute('role', 'option');
+    button.setAttribute('aria-selected', 'false');
+    button.textContent = label;
+    button.addEventListener('click', () => {
+      bulkMovePick = id;
+      bulkMovePicked = true;
+      for (const other of bulkMoveTree.querySelectorAll('.move-tree__pick')) {
+        const on = other === button;
+        other.className = 'move-tree__pick' + (on ? ' is-selected' : '');
+        other.setAttribute('aria-selected', on ? 'true' : 'false');
+      }
+    });
+    return button;
+  }
+
+  function bulkMoveLevel(byParent, key, depth, skip) {
+    const box = document.createDocumentFragment();
+    if (depth > 12) { return box; }
+    for (const node of byParent.get(key) || []) {
+      if (skip.has(node.id)) { continue; }   // 고른 페이지와 그 아래는 새 부모가 될 수 없다
+      const wrap = document.createElement('div');
+      wrap.className = 'move-tree__node';
+      wrap.appendChild(bulkMoveButton((node.icon ? node.icon + ' ' : '') + node.title, node.id));
+      const kids = bulkMoveLevel(byParent, node.id, depth + 1, skip);
+      if (kids.childNodes.length > 0) {
+        const kidBox = document.createElement('div');
+        kidBox.className = 'move-tree__kids';
+        kidBox.appendChild(kids);
+        wrap.appendChild(kidBox);
+      }
+      box.appendChild(wrap);
+    }
+    return box;
+  }
+
+  function openBulkMove() {
+    if (!bulkMoveDialog || sel.picked.size === 0) { return; }
+    bulkMovePick = null;
+    bulkMovePicked = false;
+    setText(bulkMoveMsg, '');
+    setText(bulkMoveMeta, '고른 페이지 ' + String(sel.picked.size) + '개');
+    clear(bulkMoveTree);
+    const byParent = new Map();
+    for (const page of treePages) {
+      const k = typeof page.parent_id === 'string' ? page.parent_id : '';
+      if (!byParent.has(k)) { byParent.set(k, []); }
+      byParent.get(k).push(page);
+    }
+    bulkMoveTree.appendChild(bulkMoveButton('맨 위 (상위 없음)', null));
+    bulkMoveTree.appendChild(bulkMoveLevel(byParent, '', 0, new Set(sel.picked.keys())));
+    if (!bulkMoveDialog.open) { bulkMoveDialog.showModal(); }
+  }
+
+  function runBulkMove() {
+    if (!bulkMovePicked) { setText(bulkMoveMsg, '새 상위 페이지를 고르세요'); return; }
+    const target = bulkMovePick;
+    const targetNode = target === null ? null : treePages.find((p) => p.id === target);
+    const where = targetNode ? (targetNode.icon ? targetNode.icon + ' ' : '') + targetNode.title : '맨 위';
+    bulkMoveDialog.close();
+    const items = selItems();
+    startBulk({
+      title: '「' + where + '」 아래로 옮기기',
+      items: items,
+      okText: '옮김',
+      withParentText: '부모와 함께 옮겨짐',
+      parentFailText: '옮기지 않음 — 부모를 옮기지 못했습니다',
+      send: (item) => api('PATCH', '/api/pages/' + item.id + '/move', { parent_id: target }),
+      done: () => { afterBulk(); }
+    });
+  }
+
+  function runBulkFavorite() {
+    const items = selItems().map((item) => ({ id: item.id, name: item.name, parent: null }));   // 즐겨찾기는 페이지마다(하위도 제 줄)
+    if (items.length === 0) { return; }
+    startBulk({
+      title: '즐겨찾기에 넣기',
+      items: items,
+      okText: (data) => (data && data.listed === false ? '넣음 — 목록에는 나오지 않습니다' : '넣음'),
+      send: (item) => api('PUT', '/api/pages/' + item.id + '/favorite', {}),
+      done: () => { loadFavoritesNav(); afterBulk(); }
+    });
+  }
+
+  const bulkDeleteDialog = document.getElementById('bulk-delete-dialog');
+  function openBulkDelete() {
+    if (!bulkDeleteDialog || sel.picked.size === 0) { return; }
+    setText(document.getElementById('bulk-delete-lead'),
+      '고른 페이지 ' + String(sel.picked.size) + '개와 그 하위 페이지가 목록에서 사라집니다. 하나씩 차례로 지웁니다.');
+    if (!bulkDeleteDialog.open) { bulkDeleteDialog.showModal(); }
+  }
+
+  function runBulkDelete() {
+    bulkDeleteDialog.close();
+    const items = selItems();
+    startBulk({
+      title: '휴지통으로 옮기기',
+      items: items,
+      okText: '휴지통으로 옮김',
+      withParentText: '부모와 함께 지워짐',
+      parentFailText: '지우지 않음 — 부모를 지우지 못했습니다',
+      send: (item) => api('DELETE', '/api/pages/' + item.id, {}),
+      // M-7 — 커뮤니티는 바로: 10초 동안 「되돌리기」 = 지운 페이지마다 되살리기(하위는 함께 돌아온다)
+      undo: (done) => ({
+        title: '되돌리기 — 휴지통에서 되살리기',
+        items: done.map((d) => ({ id: d.id, name: d.name, parent: null })),
+        okText: (data) => (data && data.moved_to_root === true ? '되살림 — 맨 위로 올렸습니다' : '되살림'),
+        send: (item) => api('POST', '/api/pages/' + item.id + '/restore', {}),
+        done: () => { afterBulk(); }
+      }),
+      done: () => { afterBulk(); loadFavoritesNav(); }
+    });
+  }
+
+  if (selButton) {
+    selButton.addEventListener('click', () => { selMode(!sel.on); });
+  }
+  if (bulkDoneBtn) {
+    bulkDoneBtn.addEventListener('click', () => {
+      selMode(false);
+      if (selButton) { selButton.focus(); }
+    });
+  }
+  if (bulkMoveBtn) { bulkMoveBtn.addEventListener('click', openBulkMove); }
+  if (bulkFavBtn) { bulkFavBtn.addEventListener('click', runBulkFavorite); }
+  if (bulkTrashBtn) { bulkTrashBtn.addEventListener('click', openBulkDelete); }
+  if (bulkMoveDialog) {
+    for (const close of bulkMoveDialog.querySelectorAll('[data-bulk-move-close]')) {
+      close.addEventListener('click', () => bulkMoveDialog.close());
+    }
+    if (bulkMoveConfirm) { bulkMoveConfirm.addEventListener('click', runBulkMove); }
+  }
+  if (bulkDeleteDialog) {
+    for (const close of bulkDeleteDialog.querySelectorAll('[data-bulk-delete-close]')) {
+      close.addEventListener('click', () => bulkDeleteDialog.close());
+    }
+    const confirmButton = document.getElementById('bulk-delete-confirm');
+    if (confirmButton) { confirmButton.addEventListener('click', runBulkDelete); }
+  }
+  document.addEventListener('keydown', (event) => {
+    // Esc — 「선택」 모드를 끝낸다. 창·메뉴가 열려 있으면 그쪽이 먼저 닫힌다(DESIGN 2.7 · 2.15)
+    if (event.key !== 'Escape' || !sel.on) { return; }
+    if (document.querySelector('dialog[open]') || document.querySelector('details.menu[open]')) { return; }
+    selMode(false);
+    if (selButton) { selButton.focus(); }
+  });
 
   function load(q) {
     // 「공유받은 페이지」는 공간·찾기와 상관없이 늘 같은 자리에 있다 (5-A).
@@ -1133,6 +1782,13 @@ function initHome() {
 
   if (search) {
     search.addEventListener('input', () => {
+      // 라운드 B — 찾기(카드 목록)를 시작하면 「선택」 모드가 끝난다(모드는 트리에서만 — 고른 것이 화면에서 사라진 채 남지 않게)
+      if (sel.on && search.value !== '') {
+        sel.on = false;
+        sel.picked.clear();
+        sel.full = false;
+        syncSel();
+      }
       window.clearTimeout(timer);
       timer = window.setTimeout(() => { load(search.value).catch(() => setText(msg, GENERIC_ERROR)); }, 300);
     });
@@ -1141,6 +1797,8 @@ function initHome() {
   // 상태 거르개 (4-D) — 고르면 창구를 다시 부른다. 화면이 목록에서 줄을 빼지 않는다.
   if (statusSelect) {
     statusSelect.addEventListener('change', () => {
+      sel.picked.clear();   // 라운드 B — 목록이 바뀌면 고른 것이 풀린다(M-4)
+      sel.full = false;
       load(search ? search.value : '').catch(() => setText(msg, GENERIC_ERROR));
     });
   }
@@ -1246,11 +1904,112 @@ function bindTrash(onRestored) {
   const msg = document.getElementById('trash-msg');
   if (!button || !dialog || !tbody) { return; }
 
+  /* 라운드 B — 여러 줄 되살리기(지시서 1.3 「휴지통 화면에서 되살리기」). 줄 앞 체크 · 머리 체크(모두) · 100개까지 → 「되살리기」가
+     고른 줄마다 `POST /api/pages/{id}/restore` 를 한 번씩(한 줄 되살리기와 같은 창구 · 같은 판정). 진행은 창 안의 표. */
+  const picked = new Map();
+  let shown = [];   // 지금 그린 줄 [{page, check}]
+  const checkAll = document.getElementById('trash-check-all');
+  const bulkBarEl = document.getElementById('trash-bulk-bar');
+  const bulkCountEl = document.getElementById('trash-bulk-count');
+  const bulkRestore = document.getElementById('trash-bulk-restore');
+  const trashRunner = createBulkRunner({
+    panel: document.getElementById('trash-bulk-panel'),
+    title: document.getElementById('trash-bulk-title'),
+    body: document.getElementById('trash-bulk-body'),
+    stop: document.getElementById('trash-bulk-stop'),
+    stopText: document.getElementById('trash-bulk-stop-text'),
+    login: document.getElementById('trash-bulk-login'),
+    resume: document.getElementById('trash-bulk-resume'),
+    summary: document.getElementById('trash-bulk-summary')
+  }, {
+    onChange: () => syncPicked(),
+    // 재인증 창은 모달이다 — 모달 안에 모달을 열지 않게 휴지통 창을 잠시 닫았다가 통과하면 다시 연다(popular.js 와 같은 방식)
+    beforeReauth: () => { if (dialog.open) { dialog.close(); } },
+    afterReauth: () => { if (!dialog.open) { dialog.showModal(); } }
+  });
+  let full = false;
+
+  function syncPicked() {
+    let onShown = 0;
+    for (const s of shown) {
+      const on = picked.has(s.page.id);
+      s.check.checked = on;
+      if (on) { onShown += 1; }
+    }
+    if (checkAll) {
+      checkAll.checked = shown.length > 0 && onShown === shown.length;
+      checkAll.indeterminate = onShown > 0 && onShown < shown.length;
+      checkAll.disabled = shown.length === 0 || trashRunner.busy();
+    }
+    const n = picked.size;
+    setText(bulkCountEl, String(n) + '개 선택됨');
+    // 100개에 닿으면 창의 알림 줄에(막대는 좁은 창에서도 한 줄로 둔다)
+    if (full) { setText(msg, '한 번에 ' + String(BULK_PICK_MAX) + '개까지 고를 수 있습니다 — 더 고르려면 먼저 몇 개를 푸세요.'); }
+    if (bulkRestore) { bulkRestore.disabled = n === 0 || trashRunner.busy(); }
+    show(bulkBarEl, n > 0);
+  }
+
+  function pickCheck(page) {
+    const check = document.createElement('input');
+    check.type = 'checkbox';
+    check.setAttribute('data-bulk', '');
+    check.setAttribute('data-bulk-trash', page.id);
+    check.setAttribute('aria-label', '「' + (page.icon ? page.icon + ' ' : '') + page.title + '」 고르기');
+    check.addEventListener('click', () => {
+      full = false;
+      if (check.checked) {
+        if (picked.size >= BULK_PICK_MAX) { check.checked = false; full = true; } else { picked.set(page.id, page); }
+      } else {
+        picked.delete(page.id);
+      }
+      syncPicked();
+    });
+    shown.push({ page: page, check: check });
+    return check;
+  }
+
+  if (checkAll) {
+    checkAll.addEventListener('click', () => {
+      const all = shown.length > 0 && shown.every((s) => picked.has(s.page.id));
+      full = false;
+      for (const s of shown) {
+        if (all) { picked.delete(s.page.id); } else if (!picked.has(s.page.id)) {
+          if (picked.size >= BULK_PICK_MAX) { full = true; break; }
+          picked.set(s.page.id, s.page);
+        }
+      }
+      syncPicked();
+    });
+  }
+  if (bulkRestore) {
+    bulkRestore.addEventListener('click', () => {
+      const items = Array.from(picked.values()).map((p) => ({ id: p.id, name: (p.icon ? p.icon + ' ' : '') + p.title, parent: null }));
+      if (items.length === 0) { return; }
+      setText(msg, '');
+      const started = trashRunner.start({
+        title: '되살리기',
+        items: items,
+        okText: (data) => (data && data.moved_to_root === true
+          ? (TRASH_MOVE_REASONS[data.moved_reason] || '되살렸습니다. 원래 자리로 돌아갈 수 없어 맨 위로 올렸습니다')
+          : '되살림'),
+        send: (item) => api('POST', '/api/pages/' + item.id + '/restore', {}),
+        done: () => {
+          // 고른 것은 시작할 때 풀렸다 — 도는 동안 새로 고른 것은 남기고, 목록에서 사라진 줄은 load 가 뺀다
+          loadSpaces();   // 사이드바 트리도 새 답으로
+          load().then(() => { if (typeof onRestored === 'function') { onRestored(); } }).catch(() => setText(msg, GENERIC_ERROR));
+        }
+      });
+      // 작업을 시작하면 고른 것은 작업으로 넘어가며 풀린다(t-box 파일 화면 · 내 공간 트리와 같다)
+      if (started) { picked.clear(); full = false; syncPicked(); }
+    });
+  }
+
   function row(page) {
     const tr = document.createElement('tr');
 
     const title = document.createElement('td');
-    title.textContent = (page.icon ? page.icon + ' ' : '') + page.title;
+    title.appendChild(pickCheck(page));   // 라운드 B — 줄 앞 체크(열을 늘리지 않는다)
+    title.appendChild(document.createTextNode((page.icon ? page.icon + ' ' : '') + page.title));
     tr.appendChild(title);
 
     const space = document.createElement('td');
@@ -1302,7 +2061,12 @@ function bindTrash(onRestored) {
       if (result.status !== 200) { setText(msg, errorMessage(result.data)); return; }
       const pages = Array.isArray(result.data.pages) ? result.data.pages : [];
       clear(tbody);
+      shown = [];
       for (const page of pages) { tbody.appendChild(row(page)); }
+      // 목록에 없는 줄(되살렸거나 30일 정리된 것)은 고른 것에서 뺀다
+      const here = new Set(pages.map((p) => p.id));
+      for (const id of Array.from(picked.keys())) { if (!here.has(id)) { picked.delete(id); } }
+      syncPicked();
       show(empty, pages.length === 0);
       setText(meta, pages.length === 0
         ? ''
@@ -1313,6 +2077,9 @@ function bindTrash(onRestored) {
   button.addEventListener('click', () => {
     if (typeof dialog.showModal !== 'function') { return; }
     setText(msg, '');
+    // 라운드 B — 창을 새로 열 때마다 고른 것·끝난 진행 표를 치운다(도는 중인 작업은 그대로 둔다)
+    trashRunner.reset();
+    if (!trashRunner.busy()) { picked.clear(); full = false; }
     if (!dialog.open) { dialog.showModal(); }
     load().catch(() => setText(msg, GENERIC_ERROR));
   });
@@ -5686,6 +6453,8 @@ function boot() {
         // B1-2 — 임시저장 창구(진짜 사용자 아이디 — 역할로 보기 중이어도 `username` 은 실제 계정). 열쇠는 아직 받지 않는다.
         // 7일이 지난 내 항목은 커뮤니티 화면을 열 때마다 정리한다(`saved_at` 은 평문이라 열쇠가 필요 없다).
         drafts = createDrafts(typeof me.username === 'string' ? me.username : '', loadDraftKey);
+        // 라운드 B — 일괄 작업의 「이어서 하기」가 같은 계정인지 견줄 아이디
+        meUsername = typeof me.username === 'string' ? me.username : null;
         drafts.sweep();
         bindNewPage();
         // 개발 대기열 6 — 사이드바 「즐겨찾기」「최근」(세 화면 공통). 페이지 화면의 「최근」은 그 페이지를 연 뒤 initPage 가 받는다.

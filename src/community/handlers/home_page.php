@@ -93,7 +93,63 @@ require __DIR__ . '/../../views/shell_top.php';
         <option value="hold">보류</option>
       </select>
       <span id="community-count" class="muted"></span>
+      <!-- 개발 대기열 6 · Q:F-3a 라운드 B — 「선택」 모드(지시서 1.3). 누르면 트리 줄마다 체크가 붙고(누른 상태 aria-pressed), 다시 누르거나
+           Esc 면 끝난다. 찾기(카드 목록)에서는 쓰지 않는다 — 찾기를 시작하면 모드가 끝난다. 공간을 바꾸면 화면이 다시 열려 풀린다(M-4). -->
+      <button id="community-select" class="btn btn--quiet" type="button" aria-pressed="false" aria-controls="community-tree">
+        <span class="icon" data-icon="check"></span><span id="community-select-label">선택하기</span>
+      </button>
     </div>
+
+    <!-- 선택 막대 — t-box 파일 화면의 막대와 같은 모양(개수 + 행 동작과 같은 아이콘 단추 · 폰 폭에서도 한 줄). 동작은 editor.js 가
+         **한 건 작업과 같은 창구**(`PATCH /api/pages/{id}/move` · `PUT …/favorite` · `DELETE /api/pages/{id}`)를 항목마다 한 번씩 부른다 —
+         새 서버 창구 0, 판정·감사·거부 문장은 한 건과 같다. 공개 범위 일괄 바꾸기는 1차에 없다(결정 M-6). -->
+    <div class="toolbar" id="community-bulk-bar" role="group" aria-label="고른 페이지로 할 일" hidden>
+      <span id="community-bulk-count" aria-live="polite"></span>
+      <button id="community-bulk-move" class="btn btn--icon" type="button" aria-label="옮기기" aria-haspopup="dialog">
+        <span class="icon" data-icon="files"></span>
+      </button>
+      <button id="community-bulk-fav" class="btn btn--icon" type="button" aria-label="즐겨찾기에 넣기">
+        <span class="icon" data-icon="star"></span>
+      </button>
+      <button id="community-bulk-trash" class="btn btn--icon" type="button" aria-label="삭제" aria-haspopup="dialog">
+        <span class="icon" data-icon="trash"></span>
+      </button>
+      <button id="community-bulk-done" class="btn btn--icon" type="button" aria-label="선택 끝내기" aria-keyshortcuts="Escape">
+        <span class="icon" data-icon="x"></span>
+      </button>
+    </div>
+    <!-- 막대 아래 안내 한 줄(모드 동안) — 막대 안에 쓰면 폰 폭에서 막대가 두 줄로 꺾인다(스크린샷 확인). -->
+    <p id="community-bulk-note" class="help" aria-live="polite" hidden></p>
+
+    <!-- 일괄 진행 표 — t-box 올리기 창·파일 화면과 같은 진행 표(`.upload-status` — 대기 · 하는 중 · 완료 · 서버가 준 거부 문장).
+         부모와 그 하위를 함께 골랐으면 하위는 보내지 않고 「부모와 함께 …」로 적는다(지시서 1.3). 로그인이 끝나면(401) 멈추고
+         남은 줄을 그대로 둔 채 「이어서 하기」를 보인다. 줄은 editor.js 가 createElement + textContent 로만 만든다. -->
+    <section class="panel panel--tight" id="community-bulk-panel" aria-labelledby="community-bulk-title" hidden>
+      <div class="panel__head">
+        <h2 class="panel__title" id="community-bulk-title" tabindex="-1"></h2>
+        <p class="panel__sub">한 번에 하나씩 차례로 보냅니다. 할 수 없는 페이지는 그 페이지만 거부되고 이유가 여기 남습니다.</p>
+      </div>
+      <div class="table-wrap list--scroll">
+        <table class="files upload-status">
+          <thead><tr><th scope="col">페이지</th><th scope="col">상태</th></tr></thead>
+          <tbody id="community-bulk-body"></tbody>
+        </table>
+      </div>
+      <div id="community-bulk-stop" class="notice" role="alert" hidden>
+        <p class="notice__title" id="community-bulk-stop-text"></p>
+        <div class="toolbar">
+          <a id="community-bulk-login" class="btn btn--quiet btn--small" href="<?= Http::url('/login?to=community') ?>" target="_blank" rel="noopener noreferrer">로그인 화면 열기</a>
+          <button id="community-bulk-resume" class="btn btn--quiet btn--small" type="button">이어서 하기</button>
+        </div>
+      </div>
+      <div class="table-foot">
+        <span id="community-bulk-summary" role="status" aria-live="polite"></span>
+        <div class="form-actions">
+          <button id="community-bulk-undo" class="btn btn--quiet btn--small" type="button" hidden>되돌리기</button>
+          <button id="community-bulk-close" class="btn btn--quiet btn--small" type="button">닫기</button>
+        </div>
+      </div>
+    </section>
 
     <!-- 「공유받은 페이지」 (5-A — 4-D 「내가 담당인 페이지」 자리). 다른 사람이 나에게 보기·편집으로
          준 페이지다. 언제나 남의 공간에 있으므로 줄마다 어느 공간인지와 받은 권한을 함께 보인다.
@@ -116,6 +172,46 @@ require __DIR__ . '/../../views/shell_top.php';
     <section id="community-list" class="card-grid" aria-live="polite" hidden></section>
     <p id="community-empty" class="muted" hidden>아직 페이지가 없습니다. 「새 페이지」로 시작하세요.</p>
 
+    <!-- 라운드 B — 고른 페이지 옮기기 창. 페이지 화면의 「옮기기」 창(page_view.php)과 **같은 모양**(`.move-tree` — 4-A)이다.
+         이 공간의 트리를 그리되 고른 페이지와 그 하위는 새 부모 후보에서 뺀다 — 그래도 **막는 것은 서버**다(`decidePageMove` —
+         cycle · depth_exceeded · wider_than_parent 가 페이지마다 갈린다). 목록 내용은 editor.js 가 createElement/textContent 로 채운다. -->
+    <dialog id="bulk-move-dialog" class="modal" aria-labelledby="bulk-move-title">
+      <div class="modal__head">
+        <h2 id="bulk-move-title" class="modal__title">고른 페이지 옮기기</h2>
+        <p id="bulk-move-meta" class="muted"></p>
+        <button class="btn btn--icon btn--plain" type="button" data-bulk-move-close aria-label="닫기">
+          <span class="icon" data-icon="x"></span>
+        </button>
+      </div>
+      <div class="modal__body">
+        <p class="muted">새 상위 페이지를 고르세요. 하위 페이지도 함께 따라갑니다. 부모와 그 하위를 함께 골랐으면 하위는 부모와 함께 옮겨집니다.</p>
+        <p id="bulk-move-msg" class="msg" role="alert" aria-live="polite"></p>
+        <div id="bulk-move-tree" class="move-tree" role="listbox" aria-label="새 상위 페이지"></div>
+      </div>
+      <div class="form-actions">
+        <button class="btn btn--quiet" type="button" data-bulk-move-close>그만두기</button>
+        <button id="bulk-move-confirm" class="btn" type="button">여기로 옮기기</button>
+      </div>
+    </dialog>
+
+    <!-- 라운드 B — 고른 페이지 지우기 확인 창. 페이지 화면의 「페이지를 지울까요?」 창과 같은 모양 · 같은 빨간 단추. -->
+    <dialog id="bulk-delete-dialog" class="modal" aria-labelledby="bulk-delete-title">
+      <div class="modal__head">
+        <h2 id="bulk-delete-title" class="modal__title">고른 페이지를 지울까요?</h2>
+        <button class="btn btn--icon btn--plain" type="button" data-bulk-delete-close aria-label="닫기">
+          <span class="icon" data-icon="x"></span>
+        </button>
+      </div>
+      <div class="modal__body">
+        <p id="bulk-delete-lead"></p>
+        <p class="muted">30일 안에는 휴지통에서 되살릴 수 있습니다. 하위 페이지도 함께 지워지고 함께 돌아옵니다. 지울 수 없는 페이지는 그 페이지만 거부되고 이유가 진행 표에 남습니다.</p>
+      </div>
+      <div class="form-actions">
+        <button class="btn btn--quiet" type="button" data-bulk-delete-close>그만두기</button>
+        <button id="bulk-delete-confirm" class="btn btn--danger" type="button">지우기</button>
+      </div>
+    </dialog>
+
     <!-- 「휴지통」 창 (4-C, DESIGN 2.7 모달 · 2.4 표). 지운 페이지를 목록에서 떠나지 않고
          되살린다. 한 줄은 **한 번의 삭제**다 — 함께 내려간 하위는 「하위 n」으로만 세고,
          되살리면 함께 돌아온다(창구가 그렇게 돌려준다).
@@ -130,10 +226,35 @@ require __DIR__ . '/../../views/shell_top.php';
       </div>
       <div class="modal__body">
         <p id="trash-msg" class="msg" role="alert" aria-live="polite"></p>
+        <!-- 라운드 B — 여러 줄 되살리기(지시서 1.3). 줄 앞 체크로 고르면 이 막대가 보이고, 「되살리기」는 고른 줄마다
+             `POST /api/pages/{id}/restore` 를 한 번씩 보낸다(한 줄 되살리기와 같은 창구 · 같은 판정). 진행은 아래 표. -->
+        <div class="toolbar" id="trash-bulk-bar" role="group" aria-label="고른 페이지로 할 일" hidden>
+          <span id="trash-bulk-count" aria-live="polite"></span>
+          <button id="trash-bulk-restore" class="btn btn--quiet btn--small" type="button">
+            <span class="icon" data-icon="restore"></span>되살리기
+          </button>
+        </div>
+        <section id="trash-bulk-panel" aria-labelledby="trash-bulk-title" hidden>
+          <p class="nav-title" id="trash-bulk-title" tabindex="-1"></p>
+          <div class="table-wrap">
+            <table class="files upload-status">
+              <thead><tr><th scope="col">페이지</th><th scope="col">상태</th></tr></thead>
+              <tbody id="trash-bulk-body"></tbody>
+            </table>
+          </div>
+          <div id="trash-bulk-stop" class="notice" role="alert" hidden>
+            <p class="notice__title" id="trash-bulk-stop-text"></p>
+            <div class="toolbar">
+              <a id="trash-bulk-login" class="btn btn--quiet btn--small" href="<?= Http::url('/login?to=community') ?>" target="_blank" rel="noopener noreferrer">로그인 화면 열기</a>
+              <button id="trash-bulk-resume" class="btn btn--quiet btn--small" type="button">이어서 하기</button>
+            </div>
+          </div>
+          <p id="trash-bulk-summary" class="muted" role="status" aria-live="polite"></p>
+        </section>
         <div class="table-wrap">
           <table class="files">
             <thead>
-              <tr><th>제목</th><th>공간</th><th>함께 지운 하위</th><th>지운 때</th><th></th></tr>
+              <tr><th aria-labelledby="trash-title-head"><input type="checkbox" id="trash-check-all" data-bulk aria-label="휴지통의 페이지 모두 고르기"><span id="trash-title-head">제목</span></th><th>공간</th><th>함께 지운 하위</th><th>지운 때</th><th></th></tr>
             </thead>
             <tbody id="trash-body"></tbody>
           </table>

@@ -20,7 +20,8 @@ declare(strict_types=1);
  *   이 창구는 파일 내용·이름·존재 어느 것도 돌려주지 않고, 새 감사 행동 이름을 만들지 않는다(Audit 문장 표는 그대로).
  * ★ 대상은 언제나 **세션의 본인**이다 — 요청에서 사람을 받지 않는다(쿼리·본문의 어떤 값도 읽지 않는다).
  * ★ 한도: 사람당 200. 가득 찼으면 먼저 **지금 못 보는 내 줄**을 걷어 낸 뒤 다시 센다(보이지 않는 줄 때문에 막히지 않게 —
- *   구현 기록 결정 D-5). 그래도 200 이면 409.
+ *   구현 기록 결정 D-5). 그래도 200 이면 409. 라운드 B: 세기·걷기·넣기는 한 트랜잭션 + 이 사람 advisory 잠금(동시 넣기로
+ *   한도를 넘지 않게 — L-2) · 「역할로 보기」 중에는 걷지 않는다(L-1).
  *
  * @var array<string,mixed> $user   라우터가 넘긴 현재 사용자
  * @var list<string>        $params PUT·DELETE: [0] = 파일 public_id (UUID) · GET: 없음
@@ -158,38 +159,60 @@ if (!is_array($file) || !Authz::decideRead($user, $file)[0]) {
 }
 $fileId = (int) $file['id'];
 
+/* 라운드 B (라운드 A 독립 검토 L-2) — 「있나 → 몇 개 → 걷기 → 넣기」를 **한 사람 한 줄로** 세운다. 같은 사람의 넣기가 동시에
+   여러 개 오면(일괄 즐겨찾기 · 탭 둘) 둘 다 199 를 세고 둘 다 넣어 한도를 넘었다. 트랜잭션 안에서 **이 사람·이 표**의
+   advisory 잠금을 먼저 잡는다 — 다른 사람·다른 표의 넣기와는 부딪히지 않고, 잠금은 트랜잭션이 끝나면 저절로 풀린다(xact).
+   열쇠 둘 = (표 이름의 hashtext, 사람 번호) — 값은 코드 상수와 세션의 내 번호뿐이다. 사람 번호는 int4 범위로 접는다
+   (접혀 겹치는 번호끼리는 줄을 설 뿐 결과는 같다). */
+$sqlLock = <<<'SQL'
+    SELECT pg_advisory_xact_lock(hashtext('tbox.file_favorites'), CAST(:me_lock AS integer))
+    SQL;
 $sqlHave = <<<'SQL'
     SELECT 1 FROM file_favorites WHERE user_id = CAST(:me AS bigint) AND file_id = CAST(:fid AS bigint)
     SQL;
-if ($db->run($sqlHave, [':me' => $me, ':fid' => $fileId])->fetch() === false) {
-    $sqlCount = <<<'SQL'
-        SELECT count(*) AS n FROM file_favorites WHERE user_id = CAST(:me AS bigint)
-        SQL;
-    $count = (int) ($db->run($sqlCount, [':me' => $me])->fetch()['n'] ?? 0);
-    if ($count >= $favMax) {
-        // 가득 찼다 — 지금 못 보는 내 줄(등급이 좁아졌거나 휴지통에 간 파일)을 먼저 걷는다. 조건절은 목록과 같은 함수다.
-        [$visibleWhere, $visibleBind] = Authz::visibleFilesWhere($user);
-        $sqlPrune = <<<'SQL'
-            DELETE FROM file_favorites fav
-             WHERE fav.user_id = CAST(:fav_me AS bigint)
-               AND NOT EXISTS (SELECT 1 FROM files f
-                                WHERE f.id = fav.file_id
-                                  AND
-            SQL;
-        $pruneBind = $visibleBind;
-        $pruneBind[':fav_me'] = $me;
-        $db->run($sqlPrune . ' ' . $visibleWhere . ')', $pruneBind);
+$sqlCount = <<<'SQL'
+    SELECT count(*) AS n FROM file_favorites WHERE user_id = CAST(:me AS bigint)
+    SQL;
+$sqlInsert = <<<'SQL'
+    INSERT INTO file_favorites (user_id, file_id)
+    VALUES (CAST(:me AS bigint), CAST(:fid AS bigint))
+    ON CONFLICT DO NOTHING
+    SQL;
+/* 라운드 B (L-1) — 「역할로 보기」 중이면 걷지 않는다. 걷는 조건절은 **지금 유효한 역할**로 만들어지므로, 관리자가 직원으로
+   보는 동안 넣기가 한도에 닿으면 관리자 **자신의** 줄(직원 역할로는 못 보는 파일)을 지워 버렸다. 그 동안은 세기만 하고
+   가득이면 409 — 원래 역할로 돌아오면 전과 같이 걷는다. */
+$acting = ($user['acting'] ?? false) === true;
+
+$db->begin();
+try {
+    $db->run($sqlLock, [':me_lock' => $me % 2147483647]);
+    if ($db->run($sqlHave, [':me' => $me, ':fid' => $fileId])->fetch() === false) {
         $count = (int) ($db->run($sqlCount, [':me' => $me])->fetch()['n'] ?? 0);
+        if ($count >= $favMax && !$acting) {
+            // 가득 찼다 — 지금 못 보는 내 줄(등급이 좁아졌거나 휴지통에 간 파일)을 먼저 걷는다. 조건절은 목록과 같은 함수다.
+            [$visibleWhere, $visibleBind] = Authz::visibleFilesWhere($user);
+            $sqlPrune = <<<'SQL'
+                DELETE FROM file_favorites fav
+                 WHERE fav.user_id = CAST(:fav_me AS bigint)
+                   AND NOT EXISTS (SELECT 1 FROM files f
+                                    WHERE f.id = fav.file_id
+                                      AND
+                SQL;
+            $pruneBind = $visibleBind;
+            $pruneBind[':fav_me'] = $me;
+            $db->run($sqlPrune . ' ' . $visibleWhere . ')', $pruneBind);
+            $count = (int) ($db->run($sqlCount, [':me' => $me])->fetch()['n'] ?? 0);
+        }
+        if ($count >= $favMax) {
+            $db->rollback();
+            Http::error(409, '즐겨찾기는 파일 ' . $favMax . '개까지입니다 — 쓰지 않는 것을 먼저 빼 주세요');
+        }
+        $db->run($sqlInsert, [':me' => $me, ':fid' => $fileId]);
     }
-    if ($count >= $favMax) {
-        Http::error(409, '즐겨찾기는 파일 ' . $favMax . '개까지입니다 — 쓰지 않는 것을 먼저 빼 주세요');
-    }
-    $sqlInsert = <<<'SQL'
-        INSERT INTO file_favorites (user_id, file_id)
-        VALUES (CAST(:me AS bigint), CAST(:fid AS bigint))
-        ON CONFLICT DO NOTHING
-        SQL;
-    $db->run($sqlInsert, [':me' => $me, ':fid' => $fileId]);
+    $db->commit();
+} catch (Throwable $e) {
+    $db->rollback();
+    throw $e;   // bootstrap 예외 처리기 → 500
 }
 
 Http::json(['ok' => true, 'favorite' => true]);

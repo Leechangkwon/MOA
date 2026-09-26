@@ -17,6 +17,7 @@ declare(strict_types=1);
  * ★ 감사에 남기지 않는다(결정 M-2). 대상은 세션의 본인뿐 — 요청에서 사람을 받지 않는다.
  * ★ 빈 폴더를 지우면(folders_delete) 이 표의 줄은 외래 키 ON DELETE CASCADE 로 함께 사라진다 — 즐겨찾기가 삭제를 막지 않는다.
  * ★ 한도: 사람당 50. 가득 찼으면 먼저 지금 못 여는 내 줄을 걷은 뒤 다시 센다(구현 기록 결정 D-5). 그래도 50 이면 409.
+ *   라운드 B: 한 트랜잭션 + 이 사람 advisory 잠금(L-2) · 「역할로 보기」 중에는 걷지 않는다(L-1).
  *
  * @var array<string,mixed> $user   라우터가 넘긴 현재 사용자
  * @var list<string>        $params PUT·DELETE: [0] = 폴더 id(정수 — 라우터가 9자리까지로 좁혔다) · GET: 없음
@@ -116,37 +117,54 @@ if (!is_array($folder) || !Authz::decideRead($user, $folder)[0]) {
     Http::error(404, Http::MSG_NOT_FOUND);
 }
 
+/* 라운드 B — 파일 즐겨찾기(favorites_files.php)와 같은 두 고침: 세기·걷기·넣기를 한 트랜잭션 + 이 사람 advisory 잠금으로
+   세운다(동시 넣기로 한도를 넘지 않게 — 라운드 A 독립 검토 L-2) · 「역할로 보기」 중에는 걷지 않는다(L-1 — 걷는 조건절이
+   흉내 낸 역할로 만들어져 관리자 자신의 줄을 지웠다). 열쇠는 표마다 따로라 파일 넣기와는 부딪히지 않는다. */
+$sqlLock = <<<'SQL'
+    SELECT pg_advisory_xact_lock(hashtext('tbox.folder_favorites'), CAST(:me_lock AS integer))
+    SQL;
 $sqlHave = <<<'SQL'
     SELECT 1 FROM folder_favorites WHERE user_id = CAST(:me AS bigint) AND folder_id = CAST(:fid AS bigint)
     SQL;
-if ($db->run($sqlHave, [':me' => $me, ':fid' => $folderId])->fetch() === false) {
-    $sqlCount = <<<'SQL'
-        SELECT count(*) AS n FROM folder_favorites WHERE user_id = CAST(:me AS bigint)
-        SQL;
-    $count = (int) ($db->run($sqlCount, [':me' => $me])->fetch()['n'] ?? 0);
-    if ($count >= $favMax) {
-        [$visibleFolders, $folderBind] = Authz::visibleWhere($user, 'd');
-        $sqlPrune = <<<'SQL'
-            DELETE FROM folder_favorites fav
-             WHERE fav.user_id = CAST(:fav_me AS bigint)
-               AND NOT EXISTS (SELECT 1 FROM folders d
-                                WHERE d.id = fav.folder_id
-                                  AND
-            SQL;
-        $pruneBind = $folderBind;
-        $pruneBind[':fav_me'] = $me;
-        $db->run($sqlPrune . ' ' . $visibleFolders . ')', $pruneBind);
+$sqlCount = <<<'SQL'
+    SELECT count(*) AS n FROM folder_favorites WHERE user_id = CAST(:me AS bigint)
+    SQL;
+$sqlInsert = <<<'SQL'
+    INSERT INTO folder_favorites (user_id, folder_id)
+    VALUES (CAST(:me AS bigint), CAST(:fid AS bigint))
+    ON CONFLICT DO NOTHING
+    SQL;
+$acting = ($user['acting'] ?? false) === true;
+
+$db->begin();
+try {
+    $db->run($sqlLock, [':me_lock' => $me % 2147483647]);
+    if ($db->run($sqlHave, [':me' => $me, ':fid' => $folderId])->fetch() === false) {
         $count = (int) ($db->run($sqlCount, [':me' => $me])->fetch()['n'] ?? 0);
+        if ($count >= $favMax && !$acting) {
+            [$visibleFolders, $folderBind] = Authz::visibleWhere($user, 'd');
+            $sqlPrune = <<<'SQL'
+                DELETE FROM folder_favorites fav
+                 WHERE fav.user_id = CAST(:fav_me AS bigint)
+                   AND NOT EXISTS (SELECT 1 FROM folders d
+                                    WHERE d.id = fav.folder_id
+                                      AND
+                SQL;
+            $pruneBind = $folderBind;
+            $pruneBind[':fav_me'] = $me;
+            $db->run($sqlPrune . ' ' . $visibleFolders . ')', $pruneBind);
+            $count = (int) ($db->run($sqlCount, [':me' => $me])->fetch()['n'] ?? 0);
+        }
+        if ($count >= $favMax) {
+            $db->rollback();
+            Http::error(409, '즐겨찾기는 폴더 ' . $favMax . '개까지입니다 — 쓰지 않는 것을 먼저 빼 주세요');
+        }
+        $db->run($sqlInsert, [':me' => $me, ':fid' => $folderId]);
     }
-    if ($count >= $favMax) {
-        Http::error(409, '즐겨찾기는 폴더 ' . $favMax . '개까지입니다 — 쓰지 않는 것을 먼저 빼 주세요');
-    }
-    $sqlInsert = <<<'SQL'
-        INSERT INTO folder_favorites (user_id, folder_id)
-        VALUES (CAST(:me AS bigint), CAST(:fid AS bigint))
-        ON CONFLICT DO NOTHING
-        SQL;
-    $db->run($sqlInsert, [':me' => $me, ':fid' => $folderId]);
+    $db->commit();
+} catch (Throwable $e) {
+    $db->rollback();
+    throw $e;   // bootstrap 예외 처리기 → 500
 }
 
 Http::json(['ok' => true, 'favorite' => true]);

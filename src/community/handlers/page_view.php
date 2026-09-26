@@ -863,10 +863,8 @@ require __DIR__ . '/../../views/shell_top.php';
 
     <!-- 페이지 id 를 전하는 자리. 값은 라우터가 UUID 로만 통과시킨 뒤 이스케이프한 것이다. -->
     <span id="page-meta" hidden data-page-id="<?= htmlspecialchars($viewPageId, ENT_QUOTES, 'UTF-8') ?>"></span>
-    <!-- 개발 대기열 6 — 즐겨찾기 아이콘 둘(빈 별 = 넣기 · 찬 별 = 빼기). DESIGN 2.11 규격(24×24 · stroke 1.8, lucide star) —
-         이 화면만 쓴다(t-box 파일 화면 home.php 와 같은 글자). 고정 문자열이고 editor.js 는 cloneNode 로만 붙인다. -->
-    <template id="tpl-icon-star"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m12 2.5 2.9 5.9 6.5.9-4.7 4.6 1.1 6.5L12 17.3l-5.8 3.1 1.1-6.5-4.7-4.6 6.5-.9z"/></svg></template>
-    <template id="tpl-icon-star-fill"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m12 2.5 2.9 5.9 6.5.9-4.7 4.6 1.1 6.5L12 17.3l-5.8 3.1 1.1-6.5-4.7-4.6 6.5-.9z"/></svg></template>
+    <!-- 즐겨찾기 아이콘 둘(☆·★)은 Q:F-3a 라운드 B 부터 셸(src/views/shell_top.php — 커뮤니티 사이드바)에 있다 — 사이드바 트리 줄의 ☆ 가
+         세 화면 모두에서 쓰므로 한 곳으로 옮겼다(같은 id 두 번 금지). 이 화면의 「더보기」 ☆ 도 그 템플릿을 쓴다. -->
 <?php
 $pageMsgTop = true;
 require __DIR__ . '/../../views/shell_bottom.php';

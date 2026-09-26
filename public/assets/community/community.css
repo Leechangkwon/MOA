@@ -702,6 +702,21 @@ details.page-tree__node[open] > summary > .page-tree__row > .page-tree__caret { 
 .nav-tree__link:hover { color: var(--fg); text-decoration: none; }
 .nav-tree__row.is-active .nav-tree__link { color: var(--fg); font-weight: 600; }
 .nav-tree-box:empty { display: none; }
+/* 트리 줄의 ☆ (Q:F-3a 라운드 B — 표시는 `data-fav-toggle` 속성 · 모양은 펼침 단추 `.nav-tree__toggle` 그대로, 새 클래스·색 0).
+   넣은 줄(★, aria-pressed=true)은 늘 보이고, 안 넣은 줄은 줄에 올리거나 줄 안에 초점이 있을 때만 보인다(「하위 추가」와 같은 뜻).
+   자리는 늘 잡아 둔다(visibility) — 올릴 때 제목 폭이 흔들리지 않게. 올리기가 없는 터치 기기에서는 늘 보인다. */
+.nav-tree__row > [data-fav-toggle] { flex: 0 0 20px; display: inline-flex; align-items: center; justify-content: center; }
+.nav-tree__row > [data-fav-toggle][aria-pressed="false"] { visibility: hidden; }
+.nav-tree__row:hover > [data-fav-toggle],
+.nav-tree__row:focus-within > [data-fav-toggle] { visibility: visible; }
+/* 「즐겨찾기」 묶음 안에서는 줄마다 ★ 가 늘 보일 까닭이 없다(묶음 자체가 즐겨찾기다) — 그 묶음에서만 ★ 도 올리거나 초점일 때만 */
+#nav-community-fav .nav-tree__row > [data-fav-toggle][aria-pressed="true"] { visibility: hidden; }
+#nav-community-fav .nav-tree__row:hover > [data-fav-toggle],
+#nav-community-fav .nav-tree__row:focus-within > [data-fav-toggle] { visibility: visible; }
+@media (hover: none), (any-pointer: coarse) {
+  .nav-tree__row > [data-fav-toggle][aria-pressed="false"],
+  #nav-community-fav .nav-tree__row > [data-fav-toggle][aria-pressed="true"] { visibility: visible; }
+}
 
 /* ─── 검색 (5-B) 규칙은 Q:F-2(두 앱 공통 창)에서 app.css 「통합 검색」 절로 옮겼다 — t-box 화면에도 실리게. */
 

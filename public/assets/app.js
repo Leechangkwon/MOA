@@ -628,6 +628,22 @@ function setReauthRetry(fn) {
 /** 상태 변경 요청에 붙일 CSRF 토큰 (bootPage 가 /api/me 에서 받아 넣는다) */
 var reauthCsrf = null;
 
+/** 셸(로그아웃 · 역할로 보기 끄기)이 붙일 CSRF 토큰 — initShell 이 넣고, 세션이 바뀌면 setSessionCsrf 가 바꾼다 */
+var shellCsrf = null;
+
+/**
+ * 이 탭을 연 뒤 세션이 바뀌었을 때(새 탭에서 다시 로그인하고 일괄 작업의 「이어서 하기」를 누름) 셸이 쥔 토큰을 새 값으로 바꾼다 —
+ * 재인증 창 · 로그아웃 · 역할로 보기 끄기가 이 값을 쓴다. 값은 **`/api/me` 의 답(csrf_token)에서만** 온다(부르는 쪽이 같은 계정인지
+ * 먼저 본다). 화면(파일 화면 · 커뮤니티)은 제 토큰을 따로 바꾼다. 막는 것은 여전히 서버다(Http CSRF 검사).
+ */
+function setSessionCsrf(token) {
+  if (typeof token !== 'string' || token === '') {
+    return;
+  }
+  reauthCsrf = token;
+  shellCsrf = token;
+}
+
 /**
  * 재인증이 필요해서 막힌 응답인가. 맞으면 모달을 열고 true 를 돌려준다.
  *
@@ -657,6 +673,8 @@ function handleReauth(response, data, retry) {
    「15분 창이 닫혀 API 가 403 을 돌려줄 때 뜨는 모달과 같은 모달」). 모듈은 이 파일의 함수를 이름으로
    부를 수 없어 `personLabel` 과 같은 방식으로 하나만 내놓는다. 막는 것은 여전히 서버다. */
 window.qarediHandleReauth = handleReauth;
+/* 커뮤니티의 일괄 「이어서 하기」도 셸의 토큰을 같은 함수로 바꾼다(모듈은 이 파일의 변수에 닿지 못한다) */
+window.qarediSetCsrf = setSessionCsrf;
 
 /** 모달 하나를 만들어 띄운다. 성공하면 onDone() 을 부르고 닫는다. */
 function openReauthModal(onDone) {
@@ -1406,7 +1424,7 @@ function initFiles(csrfToken, uploadLevels, canFetch, myTeamId) {
   /** 폴더 모달의 모드 — 'create' · 'rename' · 'level' */
   var folderMode = 'create';
   /** 파일 이동 모달이 지금 펼쳐 보고 있는 폴더(0 = 루트)와 옮길 파일 */
-  var movePick = { folder: 0, crumbs: [], file: null };
+  var movePick = { folder: 0, crumbs: [], file: null, bulk: null };   // bulk — 라운드 B 「고른 파일 여럿」(openBulkMove)
 
   /** 상태 변경 요청 공통 헤더 (PRD S-09-3) */
   function csrfHeaders() {
@@ -1417,6 +1435,7 @@ function initFiles(csrfToken, uploadLevels, canFetch, myTeamId) {
     while (body.firstChild) {
       body.removeChild(body.firstChild);
     }
+    pageRows = [];   // 라운드 B — 머리 체크·Shift 범위가 보는 「지금 그린 줄」도 함께 비운다
   }
 
   function addCell(row, value) {
@@ -2372,6 +2391,11 @@ function initFiles(csrfToken, uploadLevels, canFetch, myTeamId) {
     if (star !== null) {
       nameCell.insertBefore(star, nameCell.firstChild);
     }
+    // 라운드 B — 줄 체크(일괄 작업 고르기)는 별보다 앞 · 이름 칸 안(열을 늘리지 않는다 — DESIGN 2.4 폭 규칙 그대로)
+    var check = makeRowCheck(file);
+    if (check !== null) {
+      nameCell.insertBefore(check, nameCell.firstChild);
+    }
     addCell(row, formatSize(file.size_bytes));
     addLevelCell(row, file.access_level);
     addCell(row, file.team_name === null || file.team_name === undefined ? '—' : file.team_name);
@@ -2602,6 +2626,7 @@ function initFiles(csrfToken, uploadLevels, canFetch, myTeamId) {
       empty.hidden = files.length !== 0;
     }
     setText(pageInfo, label + ' ' + files.length + '건');
+    syncBulkUi();   // 라운드 B — 머리 체크를 새 줄에 맞춘다
   }
 
   function loadFavoritesView() {
@@ -2670,6 +2695,7 @@ function initFiles(csrfToken, uploadLevels, canFetch, myTeamId) {
     setText(empty, EMPTY_TEXT[view]);
     setText(msg, '');
     showDone('');
+    bulkClear();   // 라운드 B (M-4) — 보기를 바꾸면 고른 것이 풀린다
     loadFiles();
   }
 
@@ -2719,6 +2745,7 @@ function initFiles(csrfToken, uploadLevels, canFetch, myTeamId) {
     if (next) {
       next.disabled = state.page >= lastPage;
     }
+    syncBulkUi();   // 라운드 B — 쪽을 넘겨도 고른 것은 남는다(M-4). 이 쪽의 체크·머리 체크만 새로 맞춘다
   }
 
   /** 지금 보기의 목록을 다시 받는다 — 올리기·지우기·고치기·옮기기 뒤의 새로 고침이 모두 여기를 부른다 */
@@ -2772,6 +2799,593 @@ function initFiles(csrfToken, uploadLevels, canFetch, myTeamId) {
       .catch(function () {
         setText(msg, GENERIC_ERROR);
       });
+  }
+
+  /* ─── 일괄 작업 (개발 대기열 6 · Q:F-3a 라운드 B — 지시서 1.3 · 결정 M-4 · M-7) ─────────────────────
+   *
+   * 원칙: **새 서버 창구 0** — 한 건 작업과 같은 창구를 항목마다 한 번씩, 차례로 부른다(F-27 일괄 올리기와 같은 방식).
+   *   · 할 수 있는지는 창구가 **항목마다** 판단한다. 화면은 can_delete·can_edit 로 미리 거르지 않는다 — 남의 파일을 섞어 골라도
+   *     보내고, 창구가 준 거부 문장(F-68)을 그 줄에 그대로 적는다. 판정·감사·거부 문장이 한 건 작업과 같다(QF3A-T6, PRD S-01).
+   *   · 고르기: 줄 체크(이름 칸 맨 앞) · 머리 체크(이 쪽 전부) · Shift+클릭(범위) · 쪽을 넘겨도 유지 · 100개까지 ·
+   *     폴더·보기·검색을 바꾸면 풀림(M-4) · Esc 로 풀기. 고른 동안은 검색 줄 자리에 선택 막대가 온다.
+   *   · 진행: 앞 응답을 받은 뒤 다음(한 번에 하나). 줄마다 대기 → 하는 중 → 완료/거부 문장.
+   *       401          멈추고 **남은 줄을 그대로 둔다** → 새 탭에서 로그인한 뒤 「이어서 하기」 — `/api/me` 를 새로 물어 **같은 계정**
+   *                    인지 보고, 새 CSRF 토큰으로 그 줄부터 이어 간다(다른 계정이면 잇지 않는다 — QF3A-T7).
+   *       403 reauth   15분 재인증 창이 닫혀 막힘 → 재인증 창을 띄우고 통과하면 그 줄부터(닫으면 멈춤 + 「이어서 하기」).
+   *       403 그 밖    구간(시작 · 이어 가기)의 첫 403 에서 `/api/me` 로 세션이 그대로인지 본다 — 그대로면 거부, 바뀌었으면 멈춤
+   *                    (다른 탭에서 다시 로그인하면 이 탭의 토큰이 옛 세션 것이라 줄마다 403 이 된다 — 거부로 세지 않는다).
+   *       「이어서 하기」 멈춘 까닭과 상관없이 보내기 전에 `/api/me` — 같은 계정일 때만 새 토큰(화면 · 셸)으로 잇는다.
+   *       423          그 줄만 「나중에」(검사 중) — 나머지는 계속.
+   *   · 휴지통으로 보낸 뒤 10초 「되돌리기」(M-7 — Q:F-4 U-2b 본인 복구가 들어왔다): 옮긴 파일마다 `POST …/restore` 한 번씩.
+   *     되살릴 수 있는지도 창구가 판단한다(남의 파일은 관리자만 — 그 줄에 거부 문장).
+   *   · 글자는 전부 textContent(서버가 준 이름·거부 문장 포함) · 인라인 style 0 · 새 클래스 0.
+   */
+  var BULK_PICK_MAX = 100;       // 결정 M-4 — 한 번에 고를 수 있는 파일 수
+  var BULK_UNDO_MS = 10000;      // 결정 M-7 — 「되돌리기」가 보이는 시간
+  var bulkBar = document.getElementById('files-bulk-bar');
+  var bulkCountEl = document.getElementById('files-bulk-count');
+  var bulkNote = document.getElementById('files-bulk-note');
+  var bulkLevelBtn = document.getElementById('files-bulk-level');
+  var bulkMoveBtn = document.getElementById('files-bulk-move');
+  var bulkFavBtn = document.getElementById('files-bulk-fav');
+  var bulkTrashBtn = document.getElementById('files-bulk-trash');
+  var bulkClearBtn = document.getElementById('files-bulk-clear');
+  var checkAll = document.getElementById('files-check-all');
+  var bulkPanel = document.getElementById('files-bulk-panel');
+  var bulkTitle = document.getElementById('files-bulk-title');
+  var bulkBody = document.getElementById('files-bulk-body');
+  var bulkStop = document.getElementById('files-bulk-stop');
+  var bulkStopText = document.getElementById('files-bulk-stop-text');
+  var bulkLogin = document.getElementById('files-bulk-login');
+  var bulkResume = document.getElementById('files-bulk-resume');
+  var bulkSummary = document.getElementById('files-bulk-summary');
+  var bulkUndo = document.getElementById('files-bulk-undo');
+  var bulkClose = document.getElementById('files-bulk-close');
+  var bulkLevelDialog = document.getElementById('bulk-level-dialog');
+  var bulkLevelCount = document.getElementById('bulk-level-count');
+  var bulkLevelForm = document.getElementById('bulk-level-form');
+  var bulkLevelSelect = document.getElementById('bulk-level-select');
+  var bulkTeamField = document.getElementById('bulk-team-field');
+  var bulkTeamSelect = document.getElementById('bulk-team-select');
+  var bulkLevelMsg = document.getElementById('bulk-level-msg');
+
+  /** 고른 것 — 고른 순서의 id 와 id → 목록 응답의 줄(이름 표시용). 쪽을 넘겨도 남는다. */
+  var bulk = { order: [], files: {}, anchor: null, job: null, username: null, undoTimer: null, undoItems: null, full: false };
+  /** 지금 표에 그린 줄 [{file, check}] — 머리 체크(이 쪽 전부)와 Shift+클릭 범위가 본다(clearRows 가 비운다) */
+  var pageRows = [];
+
+  function bulkHas(id) {
+    return Object.prototype.hasOwnProperty.call(bulk.files, id);
+  }
+
+  /** 하나 더 고른다 — 100개면 고르지 않고 false */
+  function bulkAdd(file) {
+    if (bulkHas(file.id)) {
+      return true;
+    }
+    if (bulk.order.length >= BULK_PICK_MAX) {
+      bulk.full = true;
+      return false;
+    }
+    bulk.order.push(file.id);
+    bulk.files[file.id] = file;
+    return true;
+  }
+
+  function bulkRemove(id) {
+    if (!bulkHas(id)) {
+      return;
+    }
+    delete bulk.files[id];
+    bulk.order = bulk.order.filter(function (x) { return x !== id; });
+  }
+
+  /** 고른 것을 모두 푼다 — 폴더·보기·검색이 바뀔 때 · 「선택 풀기」 · Esc */
+  function bulkClear() {
+    bulk.order = [];
+    bulk.files = {};
+    bulk.anchor = null;
+    bulk.full = false;
+    syncBulkUi();
+  }
+
+  /** 줄 체크 하나 — 이름 칸 맨 앞. 화면 읽기용 이름은 「이름」 고르기 */
+  function makeRowCheck(file) {
+    if (!file || !UUID_RE.test(file.id)) {
+      return null;
+    }
+    var check = document.createElement('input');
+    check.type = 'checkbox';
+    check.setAttribute('data-bulk', '');
+    check.setAttribute('data-bulk-file', file.id);
+    check.setAttribute('aria-label', '「' + String(file.name === null || file.name === undefined ? '' : file.name) + '」 고르기');
+    check.checked = bulkHas(file.id);
+    var entry = { file: file, check: check };
+    pageRows.push(entry);
+    // click 에서 받는다 — change 에는 Shift 가 실리지 않는다. 이 때 check.checked 는 이미 바뀐 뒤의 값이다.
+    check.addEventListener('click', function (event) {
+      var want = check.checked;
+      bulk.full = false;
+      var from = -1;
+      var to = pageRows.indexOf(entry);
+      if (event.shiftKey && bulk.anchor !== null) {
+        pageRows.forEach(function (r, i) {
+          if (r.file.id === bulk.anchor) {
+            from = i;
+          }
+        });
+      }
+      var range = from < 0 ? [entry] : pageRows.slice(Math.min(from, to), Math.max(from, to) + 1);
+      range.forEach(function (r) {
+        if (want) {
+          bulkAdd(r.file);
+        } else {
+          bulkRemove(r.file.id);
+        }
+      });
+      bulk.anchor = file.id;
+      syncBulkUi();
+    });
+    return check;
+  }
+
+  /** 체크·머리 체크·선택 막대를 고른 것에 맞춘다 */
+  function syncBulkUi() {
+    var n = bulk.order.length;
+    var onPage = 0;
+    pageRows.forEach(function (r) {
+      var on = bulkHas(r.file.id);
+      r.check.checked = on;
+      if (on) {
+        onPage += 1;
+      }
+    });
+    if (checkAll) {
+      checkAll.checked = pageRows.length > 0 && onPage === pageRows.length;
+      checkAll.indeterminate = onPage > 0 && onPage < pageRows.length;
+      checkAll.disabled = pageRows.length === 0;
+    }
+    var busy = bulk.job !== null && !bulk.job.finished;
+    setText(bulkCountEl, n + '개 선택됨');
+    // 알림은 막대 아래 한 줄 — 막대는 폰 폭에서도 한 줄로 둔다(개수 + 아이콘 단추)
+    var note = '';
+    if (bulk.full) {
+      note = '한 번에 ' + BULK_PICK_MAX + '개까지 고를 수 있습니다 — 더 고르려면 먼저 몇 개를 푸세요.';
+    } else if (busy && n > 0) {
+      note = '앞 작업이 끝나면 고른 파일로 할 수 있습니다.';
+    }
+    setText(bulkNote, note);
+    if (bulkNote) {
+      bulkNote.hidden = note === '' || n === 0;
+    }
+    [bulkLevelBtn, bulkMoveBtn, bulkFavBtn, bulkTrashBtn].forEach(function (b) {
+      if (b) {
+        b.disabled = busy;
+      }
+    });
+    if (bulkFavBtn) {
+      // 「즐겨찾기」 보기에서는 빼기, 그 밖에서는 넣기 — 아이콘도 따라간다(찬 별 = 빼기)
+      var off = state.view === 'favorites';
+      bulkFavBtn.setAttribute('aria-label', off ? '즐겨찾기에서 빼기' : '즐겨찾기에 넣기');
+      bulkFavBtn.replaceChildren(makeIcon(off ? 'star-fill' : 'star'));
+    }
+    if (bulkBar) {
+      bulkBar.hidden = n === 0;
+    }
+    // 고른 동안은 검색 줄 자리에 선택 막대가 온다(검색은 「파일」 보기에서만 보인다 — setView 와 같은 규칙)
+    if (searchForm) {
+      searchForm.hidden = n > 0 || state.view !== 'files';
+    }
+  }
+
+  /** 고른 것을 작업 항목으로 — {id, name}. 고른 순서 그대로 */
+  function bulkItems() {
+    return bulk.order.map(function (id) {
+      var f = bulk.files[id];
+      return { id: id, name: String(f && f.name !== null && f.name !== undefined ? f.name : '') };
+    });
+  }
+
+  /** 창구 부르기 — 응답을 그대로 돌려준다(401·403·423 갈래는 진행기가 가른다). 주소는 부르는 쪽이 `APP_BASE + '/…'` 로(Q:T-4) */
+  function bulkFetch(method, url, payload) {
+    var headers = { 'X-CSRF-Token': csrfToken };
+    var options = { method: method, headers: headers, credentials: 'same-origin', cache: 'no-store' };
+    if (payload !== undefined) {
+      headers['Content-Type'] = 'application/json';
+      options.body = JSON.stringify(payload);
+    }
+    return fetch(url, options);
+  }
+
+  function bulkSet(item, text, cls) {
+    setText(item.stateCell, text);
+    item.stateCell.className = cls ? 'upload-status__state ' + cls : 'upload-status__state';
+  }
+
+  /** 새 작업 — 진행 표를 새로 그리고 첫 줄부터 보낸다. 고른 것은 작업으로 넘어가며 풀린다 */
+  function bulkStart(job) {
+    if (!bulkPanel || !bulkBody || (bulk.job !== null && !bulk.job.finished)) {
+      return;
+    }
+    bulkHideUndo();
+    job.index = 0;
+    job.finished = false;
+    job.paused = null;
+    job.sessionChecked = false;
+    bulkBody.replaceChildren();
+    job.items.forEach(function (item) {
+      var row = document.createElement('tr');
+      var nameCell = document.createElement('td');
+      setText(nameCell, item.name);
+      row.appendChild(nameCell);
+      item.stateCell = document.createElement('td');
+      row.appendChild(item.stateCell);
+      bulkSet(item, '대기', '');
+      item.result = 'wait';
+      bulkBody.appendChild(row);
+    });
+    bulk.job = job;
+    setText(bulkTitle, job.title + ' · ' + job.items.length + '개');
+    bulkStop.hidden = true;
+    setText(bulkSummary, '');
+    bulkClose.disabled = true;
+    bulkPanel.hidden = false;
+    setText(msg, '');
+    showDone('');
+    bulkClear();
+    bulkTitle.focus();
+    bulkStep(job);
+  }
+
+  function bulkStep(job) {
+    if (bulk.job !== job || job.paused !== null) {
+      return;
+    }
+    if (job.index >= job.items.length) {
+      bulkFinish(job);
+      return;
+    }
+    var item = job.items[job.index];
+    bulkSet(item, '하는 중…', 'is-busy');
+    job.send(item)
+      .then(function (response) {
+        if (response.status === 401) {
+          bulkPause(job, 'login');
+          return 'stop';
+        }
+        return readJson(response).then(function (data) {
+          if (response.status === 403 && data && data.next === 'reauth') {
+            bulkPause(job, 'reauth');
+            handleReauth(response, data, function () {
+              bulkContinue(job);
+            });
+            return 'stop';
+          }
+          if (response.status === 403 && !job.sessionChecked) {
+            // 이 구간의 첫 403 — 거부로 세기 전에 세션이 그대로인지 `/api/me` 로 본다. 다른 탭에서 로그아웃·다시 로그인했으면
+            // 이 탭의 CSRF 토큰이 옛 세션 것이라 모든 줄이 403(토큰 불일치)이 된다 — 그건 거부가 아니라 멈출 일이다.
+            job.sessionChecked = true;
+            return bulkSessionCheck().then(function (why) {
+              if (why !== null) {
+                bulkPause(job, why);
+                return 'stop';
+              }
+              item.result = 'deny';
+              bulkSet(item, errorMessage(data), 'is-deny');   // 세션은 그대로 — 창구의 거부 문장 그대로(F-68)
+              return 'next';
+            });
+          }
+          if (response.ok) {
+            item.result = 'ok';
+            bulkSet(item, typeof job.okText === 'function' ? job.okText(data) : job.okText, 'is-ok');
+          } else if (response.status === 423) {
+            item.result = 'later';
+            bulkSet(item, '나중에 — ' + errorMessage(data), 'is-deny');
+          } else {
+            item.result = 'deny';
+            bulkSet(item, errorMessage(data), 'is-deny');   // 한 건 작업과 같은 서버 문장 그대로(F-68)
+          }
+          return 'next';
+        });
+      })
+      .catch(function () {
+        item.result = 'deny';
+        bulkSet(item, GENERIC_ERROR, 'is-deny');
+        return 'next';
+      })
+      .then(function (what) {
+        if (what === 'next') {
+          job.index += 1;
+          bulkStep(job);
+        }
+      });
+  }
+
+  /**
+   * 세션이 이 작업을 시작한 그대로인가 — `/api/me` 를 새로 묻는다. 그대로면 null, 아니면 멈출 까닭:
+   *   'login'   세션이 없다(401) · 'other' 다른 계정으로 로그인됐다 · 'session' 같은 계정이지만 세션이 바뀌었다(토큰이 다르다) ·
+   *   'check'   물어보지 못했다(네트워크) — 모르는 채 거부로 세지 않는다.
+   * CSRF 토큰은 세션 id 로 계산되므로(Auth::csrfToken) 토큰이 다르면 세션이 바뀐 것이다.
+   */
+  function bulkSessionCheck() {
+    return fetchMe(true).then(function (result) {
+      if (result.status === 401 || result.me === null) {
+        return 'login';
+      }
+      if (bulk.username === null || result.me.username !== bulk.username) {
+        return 'other';
+      }
+      if (result.me.csrf_token !== csrfToken) {
+        return 'session';
+      }
+      return null;
+    }, function () {
+      return 'check';
+    });
+  }
+
+  /** 멈춤 — 남은 줄(지금 줄 포함)은 「대기」 그대로 두고 까닭과 「이어서 하기」를 보인다 */
+  function bulkPause(job, why) {
+    job.paused = why;
+    var item = job.items[job.index];
+    var left = job.items.length - job.index;
+    if (why === 'login') {
+      bulkSet(item, '멈춤 — 로그인이 필요합니다', 'is-deny');
+      setText(bulkStopText, '로그인이 끝나 멈췄습니다 — 남은 ' + left + '개는 그대로 있습니다. 새 탭에서 다시 로그인한 뒤 「이어서 하기」를 누르세요.');
+    } else if (why === 'other') {
+      bulkSet(item, '멈춤 — 다른 계정으로 로그인됨', 'is-deny');
+      setText(bulkStopText, '다른 계정으로 로그인했습니다 — 이어서 할 수 없습니다. 이 화면을 새로 고친 뒤 다시 고르세요.');
+    } else if (why === 'session') {
+      bulkSet(item, '멈춤 — 로그인이 바뀌었습니다', 'is-deny');
+      setText(bulkStopText, '다른 탭에서 다시 로그인해 멈췄습니다 — 남은 ' + left + '개는 그대로 있습니다. 「이어서 하기」를 누르면 같은 계정인지 확인하고 이어 갑니다.');
+    } else if (why === 'check') {
+      bulkSet(item, '멈춤 — 로그인 상태를 확인하지 못했습니다', 'is-deny');
+      setText(bulkStopText, '로그인 상태를 확인하지 못해 멈췄습니다 — 남은 ' + left + '개는 그대로 있습니다. 「이어서 하기」를 누르면 다시 확인합니다.');
+    } else {
+      bulkSet(item, '멈춤 — 비밀번호 확인이 필요합니다', 'is-deny');
+      setText(bulkStopText, '비밀번호 확인이 필요해 멈췄습니다 — 남은 ' + left + '개는 그대로 있습니다. 「이어서 하기」를 누르면 다시 묻습니다.');
+    }
+    if (bulkLogin) {
+      bulkLogin.hidden = why !== 'login';
+    }
+    if (bulkResume) {
+      // 다른 계정이면 잇지 않는다 — 「이어서 하기」를 감춘다(누르면 어차피 같은 확인에서 막힌다)
+      bulkResume.hidden = why === 'other';
+      bulkResume.disabled = false;
+    }
+    bulkStop.hidden = false;
+    bulkClose.disabled = false;
+    setText(bulkSummary, bulkTally(job) + ' · 남은 ' + left + '개');
+    syncBulkUi();
+  }
+
+  /** 멈춘 줄부터 다시 — 그 줄은 아직 처리되지 않았다(401·재인증은 핸들러 전에 막힌다) */
+  function bulkContinue(job) {
+    if (bulk.job !== job || job.paused === null) {
+      return;
+    }
+    job.paused = null;
+    job.sessionChecked = false;   // 이어 간 구간의 첫 403 도 다시 세션을 본다
+    bulkStop.hidden = true;
+    bulkClose.disabled = true;
+    setText(bulkSummary, '');
+    syncBulkUi();
+    bulkStep(job);
+  }
+
+  /**
+   * 「이어서 하기」 — 멈춘 까닭과 상관없이(로그인 · 재인증 · 세션 바뀜 · 확인 못 함) **보내기 전에** `/api/me` 를 새로 물어
+   * 같은 계정인지 본다. 다른 계정이면 요청 0 으로 끝. 같은 계정이면 새 CSRF 토큰(이 화면 · 셸 둘 다)으로 멈춘 줄부터.
+   * 재인증 멈춤이면 그 줄을 다시 보내 창구가 또 403 reauth 를 주고, 그때 재인증 창이 뜬다.
+   */
+  function bulkResumeClick() {
+    var job = bulk.job;
+    if (job === null || job.paused === null) {
+      return;
+    }
+    bulkResume.disabled = true;
+    fetchMe(true)
+      .then(function (result) {
+        bulkResume.disabled = false;
+        if (bulk.job !== job || job.paused === null) {
+          return;
+        }
+        if (result.status === 401 || result.me === null) {
+          if (job.paused !== 'login') {
+            bulkPause(job, 'login');   // 세션이 끝났다 — 로그인 멈춤으로 바꾼다(「로그인 화면 열기」가 보인다)
+          }
+          setText(bulkStopText, '아직 로그인되지 않았습니다 — 새 탭에서 로그인한 뒤 다시 「이어서 하기」를 누르세요. 남은 ' + (job.items.length - job.index) + '개는 그대로 있습니다.');
+          return;
+        }
+        var me = result.me;
+        if (bulk.username === null || me.username !== bulk.username) {
+          // 다른 계정으로 로그인했다 — 그 계정으로 남의 작업을 잇지 않는다
+          bulkPause(job, 'other');
+          return;
+        }
+        if (typeof me.csrf_token === 'string') {
+          csrfToken = me.csrf_token;   // 새 세션의 토큰 — 이 화면의 모든 요청(csrfHeaders·bulkFetch)이 이 값을 쓴다
+          setSessionCsrf(me.csrf_token);   // 셸(재인증 창 · 로그아웃)도 같은 값으로
+        }
+        bulkContinue(job);
+      })
+      .catch(function () {
+        bulkResume.disabled = false;
+        setText(bulkStopText, GENERIC_ERROR);
+      });
+  }
+
+  /** 「n개 완료 · m개 못 함」 (지시서 1.3 「끝나면」) — 못 함 = 거부 + 나중에 */
+  function bulkTally(job) {
+    var ok = 0;
+    var no = 0;
+    job.items.forEach(function (item) {
+      if (item.result === 'ok') {
+        ok += 1;
+      } else if (item.result === 'deny' || item.result === 'later') {
+        no += 1;
+      }
+    });
+    return ok + '개 완료 · ' + no + '개 못 함';
+  }
+
+  function bulkFinish(job) {
+    job.finished = true;
+    bulkStop.hidden = true;
+    bulkClose.disabled = false;
+    var doneItems = job.items.filter(function (item) { return item.result === 'ok'; });
+    var line = bulkTally(job);
+    if (job.undo && doneItems.length > 0) {
+      line += ' — ' + (BULK_UNDO_MS / 1000) + '초 안에 되돌릴 수 있습니다';
+      bulkShowUndo(doneItems);
+    }
+    setText(bulkSummary, line);
+    syncBulkUi();
+    if (typeof job.done === 'function') {
+      job.done(job);
+    }
+  }
+
+  /* M-7 — 휴지통으로 옮긴 파일을 10초 동안 되돌린다: 파일마다 `POST /api/files/{id}/restore`(Q:F-4 U-2b 본인 복구 창구 그대로) */
+  function bulkShowUndo(items) {
+    if (!bulkUndo) {
+      return;
+    }
+    bulkUndo.hidden = false;
+    bulk.undoItems = items.map(function (item) { return { id: item.id, name: item.name }; });
+    bulk.undoTimer = window.setTimeout(bulkHideUndo, BULK_UNDO_MS);
+  }
+
+  function bulkHideUndo() {
+    if (bulk.undoTimer !== null) {
+      window.clearTimeout(bulk.undoTimer);
+      bulk.undoTimer = null;
+    }
+    if (bulkUndo) {
+      bulkUndo.hidden = true;
+    }
+    bulk.undoItems = null;
+  }
+
+  function bulkUndoClick() {
+    var items = bulk.undoItems;
+    bulkHideUndo();
+    if (!items || items.length === 0) {
+      return;
+    }
+    bulkStart({
+      title: '되돌리기 — 휴지통에서 되살리기',
+      items: items,
+      okText: '되살림',
+      send: function (item) {
+        return bulkFetch('POST', APP_BASE + '/api/files/' + item.id + '/restore', {});
+      },
+      done: function () {
+        loadFiles();
+        loadTree();
+      }
+    });
+  }
+
+  /* ── 동작 넷 — 고르기 → 창(확인·폴더·등급) → 진행 표 ── */
+  function bulkTrash() {
+    var items = bulkItems();
+    if (items.length === 0) {
+      return;
+    }
+    openConfirm({
+      title: '파일 ' + items.length + '개를 휴지통으로 옮길까요?',
+      lead: '고른 파일 ' + items.length + '개를 하나씩 휴지통으로 옮깁니다 — 30일 안에 되살릴 수 있습니다.',
+      note: '내가 올린 파일은 「내 휴지통」에서, 다른 사람의 파일은 관리자가 되살립니다. 지울 수 없는 파일은 그 파일만 거부되고 이유가 진행 표에 남습니다.',
+      okLabel: '휴지통으로 옮기기'
+    }, function () {
+      bulkStart({
+        title: '휴지통으로 옮기기',
+        items: items,
+        okText: '휴지통으로 옮김',
+        undo: true,
+        send: function (item) {
+          return bulkFetch('DELETE', APP_BASE + '/api/files/' + item.id);
+        },
+        done: function () {
+          loadFiles();
+          loadTree();
+        }
+      });
+    });
+  }
+
+  function bulkFavorite() {
+    var items = bulkItems();
+    if (items.length === 0) {
+      return;
+    }
+    var off = state.view === 'favorites';
+    bulkStart({
+      title: off ? '즐겨찾기에서 빼기' : '즐겨찾기에 넣기',
+      items: items,
+      okText: off ? '뺌' : '넣음',
+      send: function (item) {
+        return bulkFetch(off ? 'DELETE' : 'PUT', APP_BASE + '/api/files/' + item.id + '/favorite');
+      },
+      done: function () {
+        loadFavoriteLists().then(function (lists) {
+          if (lists !== null) {
+            syncStars();
+          }
+        }).catch(function () {});
+        if (state.view === 'favorites') {
+          loadFiles();
+        }
+      }
+    });
+  }
+
+  function openBulkLevel() {
+    var items = bulkItems();
+    if (!bulkLevelDialog || items.length === 0) {
+      return;
+    }
+    setText(bulkLevelMsg, '');
+    setText(bulkLevelCount, '고른 파일 ' + items.length + '개');
+    syncBulkTeamField();
+    bulkLevelDialog.showModal();
+  }
+
+  function syncBulkTeamField() {
+    if (bulkTeamField && bulkLevelSelect) {
+      bulkTeamField.hidden = bulkLevelSelect.value !== 'team';
+    }
+  }
+
+  function submitBulkLevel(event) {
+    event.preventDefault();
+    var level = bulkLevelSelect ? bulkLevelSelect.value : '';
+    if (level === '') {
+      setText(bulkLevelMsg, LEVEL_PLACEHOLDER);
+      return;
+    }
+    // 보내는 값은 고른 것 그대로 — 바꿀 자격·폴더 등급·팀은 창구가 파일마다 본다(한 건 수정과 같은 PATCH)
+    var payload = { access_level: level };
+    if (level === 'team') {
+      payload.team_id = bulkTeamSelect ? bulkTeamSelect.value : '';
+    }
+    var items = bulkItems();
+    if (bulkLevelDialog.open) {
+      bulkLevelDialog.close();
+    }
+    bulkStart({
+      title: '등급·팀 바꾸기 — ' + (Object.prototype.hasOwnProperty.call(LEVEL_BADGE_LABELS, level) ? LEVEL_BADGE_LABELS[level] : level),
+      items: items,
+      okText: '바꿈',
+      send: function (item) {
+        return bulkFetch('PATCH', APP_BASE + '/api/files/' + item.id, payload);
+      },
+      done: function () {
+        loadFiles();
+        loadTree();
+      }
+    });
   }
 
   /* ─── 폴더 트리 (18-1 — PRD F-26, ARCH 5.16) ─────────────────────────────
@@ -2915,6 +3529,7 @@ function initFiles(csrfToken, uploadLevels, canFetch, myTeamId) {
     state.page = 1;
     setText(msg, '');
     showDone('');   // U-2a — 다른 폴더로 가면 지난 결과 한 줄을 거둔다
+    bulkClear();    // 라운드 B (M-4) — 폴더를 바꾸면 고른 것이 풀린다
     syncFolderFav();
     if (state.view !== 'files') {
       setView('files');   // 개발 대기열 6 — 즐겨찾기 폴더·트리에서 폴더를 고르면 「파일」 보기로 연다(목록은 setView 가 부른다)
@@ -3301,10 +3916,27 @@ function initFiles(csrfToken, uploadLevels, canFetch, myTeamId) {
       return;
     }
     movePick.file = file;
+    movePick.bulk = null;
     movePick.folder = state.folder;
     movePick.crumbs = state.crumbs.slice();
     setText(moveMsg, '');
     setText(moveFileLabel, file.name);
+    loadMoveTree();
+    moveDialog.showModal();
+  }
+
+  /* 라운드 B — 같은 창으로 **고른 파일 여럿**을 옮긴다. 「여기로 이동」을 누르면 창을 닫고 파일마다
+     `PATCH /api/files/{id} {folder_id}` 를 한 번씩 보낸다(doMove 의 bulk 갈래). 옮길 수 있는지는 창구가 파일마다 판단한다. */
+  function openBulkMove(items) {
+    if (!moveDialog || items.length === 0) {
+      return;
+    }
+    movePick.file = null;
+    movePick.bulk = items;
+    movePick.folder = state.folder;
+    movePick.crumbs = state.crumbs.slice();
+    setText(moveMsg, '');
+    setText(moveFileLabel, '고른 파일 ' + items.length + '개');
     loadMoveTree();
     moveDialog.showModal();
   }
@@ -3390,6 +4022,29 @@ function initFiles(csrfToken, uploadLevels, canFetch, myTeamId) {
   }
 
   function doMove() {
+    if (movePick.bulk && movePick.bulk.length > 0) {
+      // 라운드 B — 고른 파일 여럿: 창을 닫고 진행 표로(파일마다 한 건 이동과 같은 요청)
+      var items = movePick.bulk;
+      var target = movePick.folder === 0 ? null : movePick.folder;
+      var where = movePick.crumbs.length === 0 ? '루트' : movePick.crumbs[movePick.crumbs.length - 1].name;
+      movePick.bulk = null;
+      if (moveDialog.open) {
+        moveDialog.close();
+      }
+      bulkStart({
+        title: '「' + where + '」 폴더로 옮기기',
+        items: items,
+        okText: '옮김',
+        send: function (item) {
+          return bulkFetch('PATCH', APP_BASE + '/api/files/' + item.id, { folder_id: target });
+        },
+        done: function () {
+          loadFiles();
+          loadTree();
+        }
+      });
+      return;
+    }
     if (!movePick.file) {
       return;
     }
@@ -3441,7 +4096,7 @@ function initFiles(csrfToken, uploadLevels, canFetch, myTeamId) {
           teams.forEach(function (team) {
             // 같은 목록을 업로드 폼과 가져오기 폼 두 곳의 <select> 에 만든다.
             // 18-1 — 폴더 모달의 팀 선택지도 같은 목록으로 채운다.
-            [teamSelect, fetchTeam, folderTeamSelect].forEach(function (select) {
+            [teamSelect, fetchTeam, folderTeamSelect, bulkTeamSelect].forEach(function (select) {
               if (!select) {
                 return;
               }
@@ -3887,6 +4542,7 @@ function initFiles(csrfToken, uploadLevels, canFetch, myTeamId) {
       state.dir = dirSelect.value;
       state.page = 1;
       state.view = 'files';
+      bulkClear();   // 라운드 B — 검색·정렬이 바뀌면 목록이 바뀐다(고른 것이 화면에서 사라진 채 남지 않게)
       loadFiles();
     });
   }
@@ -3901,6 +4557,80 @@ function initFiles(csrfToken, uploadLevels, canFetch, myTeamId) {
   if (folderFavBtn) {
     folderFavBtn.addEventListener('click', toggleFolderFavorite);
   }
+  // 라운드 B — 일괄 작업: 머리 체크 · 선택 막대 · 진행 표 · 등급 창 · Esc
+  if (checkAll) {
+    checkAll.addEventListener('click', function () {
+      var all = pageRows.length > 0 && pageRows.every(function (r) { return bulkHas(r.file.id); });
+      bulk.full = false;
+      pageRows.forEach(function (r) {
+        if (all) {
+          bulkRemove(r.file.id);
+        } else {
+          bulkAdd(r.file);
+        }
+      });
+      bulk.anchor = null;
+      syncBulkUi();
+    });
+  }
+  if (bulkLevelBtn) {
+    bulkLevelBtn.addEventListener('click', openBulkLevel);
+  }
+  if (bulkMoveBtn) {
+    bulkMoveBtn.addEventListener('click', function () {
+      openBulkMove(bulkItems());
+    });
+  }
+  if (bulkFavBtn) {
+    bulkFavBtn.addEventListener('click', bulkFavorite);
+  }
+  if (bulkTrashBtn) {
+    bulkTrashBtn.addEventListener('click', bulkTrash);
+  }
+  if (bulkClearBtn) {
+    bulkClearBtn.addEventListener('click', function () {
+      bulkClear();
+      if (checkAll && !checkAll.disabled) {
+        checkAll.focus();   // 막대가 숨으니 초점을 머리 체크로
+      }
+    });
+  }
+  if (bulkResume) {
+    bulkResume.addEventListener('click', bulkResumeClick);
+  }
+  if (bulkUndo) {
+    bulkUndo.addEventListener('click', bulkUndoClick);
+  }
+  if (bulkClose) {
+    bulkClose.addEventListener('click', function () {
+      // 끝났거나 멈춘 작업만 닫힌다(도는 동안은 단추가 비활성). 멈춘 작업을 닫으면 남은 줄은 보내지 않는다.
+      if (bulk.job !== null && !bulk.job.finished && bulk.job.paused === null) {
+        return;
+      }
+      bulk.job = null;
+      bulkHideUndo();
+      if (bulkPanel) {
+        bulkPanel.hidden = true;
+      }
+      syncBulkUi();
+    });
+  }
+  if (bulkLevelForm) {
+    bulkLevelForm.addEventListener('submit', submitBulkLevel);
+  }
+  if (bulkLevelSelect) {
+    bulkLevelSelect.addEventListener('change', syncBulkTeamField);
+  }
+  document.addEventListener('keydown', function (event) {
+    // Esc — 고른 것을 푼다. 창·메뉴가 열려 있으면 그쪽이 먼저 닫힌다(DESIGN 2.7 · 2.15)
+    if (event.key !== 'Escape' || bulk.order.length === 0) {
+      return;
+    }
+    if (document.querySelector('dialog[open]') || document.querySelector('details.menu[open]')) {
+      return;
+    }
+    bulkClear();
+  });
   if (prev) {
     prev.addEventListener('click', function () {
       if (state.page > 1) {
@@ -4085,11 +4815,24 @@ function initFiles(csrfToken, uploadLevels, canFetch, myTeamId) {
 
   bindDialogDismiss(uploadDialog, [uploadDialogClose, uploadDialogX], uploadIsBusy);
   bindDialogDismiss(fetchDialog, [fetchDialogClose, fetchDialogX], null);
+  // 라운드 B — 등급·팀 바꾸기 창(닫기·✕·Esc·바깥 — 새 폴더 창과 같은 규칙)
+  bindDialogDismiss(bulkLevelDialog, [document.getElementById('bulk-level-close'), document.getElementById('bulk-level-x')], null);
 
   // 업로드 레벨 선택지는 서버가 준 목록으로만 만든다. 하나도 없으면(Guest) 올리기 단추를
   // 감춘다. 감추는 것은 편의일 뿐이다 — 그래도 POST /api/files 는 서버가 다시 막는다 (PRD S-01).
   var hasTeam = myTeamId !== null && myTeamId !== undefined && String(myTeamId) !== '';
   var canUpload = fillLevelOptions(levelSelect, uploadLevels, hasTeam) > 0;
+  /* 라운드 B — 등급·팀 바꾸기 창의 선택지는 올리기 창과 **같은 목록**(서버가 준 upload_levels). 고를 등급이 하나도 없으면(Guest)
+     막대의 그 단추를 감춘다 — 편의일 뿐이고, PATCH 는 창구가 다시 막는다(PRD S-01). */
+  if (fillLevelOptions(bulkLevelSelect, uploadLevels, hasTeam) === 0 && bulkLevelBtn) {
+    bulkLevelBtn.hidden = true;
+  }
+  // 「이어서 하기」가 같은 계정인지 견줄 아이디(역할로 보기 중에도 실제 계정 — P-5a 로 이미 받은 답을 나눠 쓴다)
+  fetchMe().then(function (result) {
+    if (result.me && typeof result.me.username === 'string') {
+      bulk.username = result.me.username;
+    }
+  }).catch(function () {});
   if (uploadToggle) {
     uploadToggle.hidden = !canUpload;
     if (canUpload) {
@@ -8632,6 +9375,8 @@ function initShell(me, csrfToken) {
   var sidebar = document.getElementById('sidebar');
   var navToggle = document.getElementById('nav-toggle');
   var logout = document.getElementById('logout');
+  // 로그아웃 · 역할로 보기 끄기가 붙일 토큰 — 일괄 「이어서 하기」가 새 세션의 값으로 바꿀 수 있게 셸 변수에 둔다(setSessionCsrf)
+  shellCsrf = typeof csrfToken === 'string' ? csrfToken : null;
 
   /* 최초 로그인 강제 절차가 남았나 (있으면 다른 화면으로 갈 길을 접어 둔다).
    *
@@ -8713,14 +9458,14 @@ function initShell(me, csrfToken) {
   var actStop = document.querySelector('[data-act-stop]');
   if (actStop) {
     actStop.addEventListener('click', function () {
-      if (csrfToken === null) {
+      if (shellCsrf === null) {
         setText(msg, GENERIC_ERROR);
         return;
       }
       actStop.disabled = true;
       fetch(APP_BASE + '/api/me/act', {
         method: 'DELETE',
-        headers: { 'X-CSRF-Token': csrfToken },
+        headers: { 'X-CSRF-Token': shellCsrf },
         credentials: 'same-origin',
         cache: 'no-store'
       })
@@ -8749,14 +9494,14 @@ function initShell(me, csrfToken) {
   if (logout) {
     logout.disabled = false;
     logout.addEventListener('click', function () {
-      if (csrfToken === null) {
+      if (shellCsrf === null) {
         setText(msg, GENERIC_ERROR);
         return;
       }
       logout.disabled = true;
       fetch(APP_BASE + '/api/logout', {
         method: 'POST',
-        headers: { 'X-CSRF-Token': csrfToken },
+        headers: { 'X-CSRF-Token': shellCsrf },
         credentials: 'same-origin',
         cache: 'no-store'
       })

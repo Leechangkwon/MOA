@@ -20,6 +20,8 @@ declare(strict_types=1);
  *   (결정 M-2 — 개인 화면 설정). 거부도 남기지 않는다 — 이 창구는 제목·본문·존재 어느 것도 돌려주지 않는다.
  * ★ 대상은 언제나 세션의 본인이다. 쿼리·본문에서 사람을 받지 않는다(순서 바꾸기의 id 목록은 **내 줄**의 순서일 뿐이다).
  * ★ 한도: 사람당 200. 가득 찼으면 지금 목록에 안 나오는 내 줄을 먼저 걷은 뒤 다시 센다(구현 기록 결정 D-5). 그래도 200 이면 409.
+ *   라운드 B: 한 트랜잭션 + 이 사람 advisory 잠금(한도·순서가 동시 넣기에 어긋나지 않게 — L-2) · 「역할로 보기」 중에는
+ *   걷지 않는다(L-1).
  *
  * @var array<string,mixed> $user   라우터가 넘긴 현재 사용자
  * @var list<string>        $params PUT·DELETE: [0] = 페이지 public_id · GET·PATCH: 없음
@@ -122,45 +124,64 @@ if ($row === null || !CommunityAuthz::decidePageRead($user, $row)[0]) {
 }
 $pageId = (int) $row['id'];
 
+/* 라운드 B (라운드 A 독립 검토 L-2) — 「있나 → 몇 개·마지막 순서 → 걷기 → 넣기」를 **한 사람 한 줄로** 세운다. 동시에 넣으면
+   둘 다 199 를 세고 둘 다 넣어 한도를 넘거나, 둘 다 같은 「마지막 순서 + 1」을 받아 순서가 겹쳤다(일괄 즐겨찾기 · 탭 둘).
+   트랜잭션 안에서 이 사람·이 표의 advisory 잠금을 먼저 잡는다(t-box 즐겨찾기와 같은 방식 — 표마다 열쇠가 다르다). */
+$sqlLock = <<<'SQL'
+    SELECT pg_advisory_xact_lock(hashtext('community.page_favorites'), CAST(:me_lock AS integer))
+    SQL;
 $sqlHave = <<<'SQL'
     SELECT 1 FROM community.page_favorites WHERE user_id = CAST(:me AS bigint) AND page_id = CAST(:page AS bigint)
     SQL;
-if ($db->run($sqlHave, [':me' => $me, ':page' => $pageId])->fetch() === false) {
-    $sqlCount = <<<'SQL'
-        SELECT count(*) AS n, coalesce(max(position), 0) AS last_pos
-          FROM community.page_favorites
-         WHERE user_id = CAST(:me AS bigint)
-        SQL;
-    $stat = $db->run($sqlCount, [':me' => $me])->fetch();
-    if ((int) ($stat['n'] ?? 0) >= COMMUNITY_FAVORITES_MAX) {
-        // 가득 찼다 — 지금 목록에 안 나오는 내 줄(비공개로 바뀜·휴지통·숨긴 글)을 먼저 걷는다. 조건은 목록과 같은 조건절이다.
-        [$visible, $pruneBind] = community_search_pages_where($user);
-        $pruneBind[':fav_me'] = $me;
-        $sqlPrune = <<<'SQL'
-            DELETE FROM community.page_favorites f
-             WHERE f.user_id = CAST(:fav_me AS bigint)
-               AND NOT EXISTS (SELECT 1
-                                 FROM community.pages p
-                                 JOIN community.spaces s ON s.id = p.space_id
-                                 LEFT JOIN public.users owner ON owner.id = s.owner_user_id
-                                WHERE p.id = f.page_id
-                                  AND p.deleted_at IS NULL
-                                  AND NOT (s.kind = 'board' AND p.hidden_at IS NOT NULL)
-                                  AND
-            SQL;
-        $db->run($sqlPrune . ' ' . $visible . ')', $pruneBind);
+$sqlCount = <<<'SQL'
+    SELECT count(*) AS n, coalesce(max(position), 0) AS last_pos
+      FROM community.page_favorites
+     WHERE user_id = CAST(:me AS bigint)
+    SQL;
+// 새 줄은 맨 뒤(지금 가장 큰 순서 + 1). 상한은 표 CHECK(0~100000) 안에서 멈춘다.
+$sqlInsert = <<<'SQL'
+    INSERT INTO community.page_favorites (user_id, page_id, position)
+    VALUES (CAST(:me AS bigint), CAST(:page AS bigint), CAST(:pos AS integer))
+    ON CONFLICT DO NOTHING
+    SQL;
+/* 라운드 B (L-1) — 「역할로 보기」 중이면 걷지 않는다. 걷는 조건절(`community_search_pages_where`)은 흉내 낸 역할로 만들어지므로
+   관리자 자신의 줄(그 역할로는 목록에 안 나오는 페이지)을 지웠다. 그 동안은 세기만 하고 가득이면 409. */
+$acting = ($user['acting'] ?? false) === true;
+
+$db->begin();
+try {
+    $db->run($sqlLock, [':me_lock' => $me % 2147483647]);
+    if ($db->run($sqlHave, [':me' => $me, ':page' => $pageId])->fetch() === false) {
         $stat = $db->run($sqlCount, [':me' => $me])->fetch();
+        if ((int) ($stat['n'] ?? 0) >= COMMUNITY_FAVORITES_MAX && !$acting) {
+            // 가득 찼다 — 지금 목록에 안 나오는 내 줄(비공개로 바뀜·휴지통·숨긴 글)을 먼저 걷는다. 조건은 목록과 같은 조건절이다.
+            [$visible, $pruneBind] = community_search_pages_where($user);
+            $pruneBind[':fav_me'] = $me;
+            $sqlPrune = <<<'SQL'
+                DELETE FROM community.page_favorites f
+                 WHERE f.user_id = CAST(:fav_me AS bigint)
+                   AND NOT EXISTS (SELECT 1
+                                     FROM community.pages p
+                                     JOIN community.spaces s ON s.id = p.space_id
+                                     LEFT JOIN public.users owner ON owner.id = s.owner_user_id
+                                    WHERE p.id = f.page_id
+                                      AND p.deleted_at IS NULL
+                                      AND NOT (s.kind = 'board' AND p.hidden_at IS NOT NULL)
+                                      AND
+                SQL;
+            $db->run($sqlPrune . ' ' . $visible . ')', $pruneBind);
+            $stat = $db->run($sqlCount, [':me' => $me])->fetch();
+        }
+        if ((int) ($stat['n'] ?? 0) >= COMMUNITY_FAVORITES_MAX) {
+            $db->rollback();
+            Http::error(409, '즐겨찾기는 ' . COMMUNITY_FAVORITES_MAX . '개까지입니다 — 쓰지 않는 것을 먼저 빼 주세요');
+        }
+        $db->run($sqlInsert, [':me' => $me, ':page' => $pageId, ':pos' => min(100000, (int) ($stat['last_pos'] ?? 0) + 1)]);
     }
-    if ((int) ($stat['n'] ?? 0) >= COMMUNITY_FAVORITES_MAX) {
-        Http::error(409, '즐겨찾기는 ' . COMMUNITY_FAVORITES_MAX . '개까지입니다 — 쓰지 않는 것을 먼저 빼 주세요');
-    }
-    // 새 줄은 맨 뒤(지금 가장 큰 순서 + 1). 상한은 표 CHECK(0~100000) 안에서 멈춘다.
-    $sqlInsert = <<<'SQL'
-        INSERT INTO community.page_favorites (user_id, page_id, position)
-        VALUES (CAST(:me AS bigint), CAST(:page AS bigint), CAST(:pos AS integer))
-        ON CONFLICT DO NOTHING
-        SQL;
-    $db->run($sqlInsert, [':me' => $me, ':page' => $pageId, ':pos' => min(100000, (int) ($stat['last_pos'] ?? 0) + 1)]);
+    $db->commit();
+} catch (Throwable $e) {
+    $db->rollback();
+    throw $e;   // bootstrap 예외 처리기 → 500
 }
 
 /* `listed` — 이 페이지가 **목록에 나오는가**(검색과 같은 조건절). 관리자가 `admin_all` 로 연 남의 비공개 페이지처럼 넣었어도

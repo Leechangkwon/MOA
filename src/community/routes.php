@@ -2204,19 +2204,54 @@ const COMMUNITY_FAVORITES_MAX = 200;
  * 가장 오래된 줄을 지운다(이 표는 기록이 아니라 화면 편의다 — 앱 계정에 DELETE 가 있다).
  * 실패해도 읽기는 막지 않는다 — 부르는 쪽이 try/catch 로 감싸 서버 로그에만 남긴다.
  * 값은 전부 바인딩이다(자리표시자 이름은 문장마다 한 번씩 — 서버측 prepare).
+ *
+ * 라운드 B 두 고침
+ *   ① (라운드 A 독립 검토 L-3) **먼저 읽기만** 한다 — 내 줄이 있고 마지막 기록이 5분 안이면 여기서 끝(쓰기·행 잠금 0).
+ *      전에는 5분 안에도 `ON CONFLICT … DO UPDATE` 가 돌아, WHERE 가 거짓이어도 충돌한 행을 **잠갔다**(같은 사람이 같은 페이지를
+ *      빠르게 여러 번 열면 그 줄에서 줄을 섰다). 읽기(MVCC)는 잠그지 않는다. 문턱 5분은 그대로다(지시서 1.2 — Q:F-4 P-3 과 같은 생각).
+ *      두 요청이 동시에 「5분 지남」을 읽으면 둘 다 아래 문장으로 가지만, 그 문장의 WHERE 가 두 번째를 거짓으로 만들어 결과는 같다.
+ *   ② (독립 검토 권고) **목록과 같은 조건절 안에서만** 적는다 — `community_search_pages_where`(관리자·게시판 관리자 특권 끔) +
+ *      지운 것·숨긴 게시판 글 제외. 관리자가 `admin_all` 로 연 남의 비공개 페이지는 「최근」 목록에 나오지 않으므로 줄도 남기지
+ *      않는다 — 전에는 목록에 안 나오는 줄이 사람당 50줄 자리를 차지했다. 판정 코드는 새로 만들지 않는다(목록이 쓰는 조건절 그대로).
+ *
+ * @param array<string,mixed> $user 읽기 판정을 지난 지금 사용자(세션의 본인)
  */
-function community_record_recent(int $pageId, int $userId): void
+function community_record_recent(int $pageId, array $user): void
 {
-    $db = Db::instance();
-    $sqlUpsert = <<<'SQL'
+    $db     = Db::instance();
+    $userId = (int) $user['id'];
+    $sqlFresh = <<<'SQL'
+        SELECT 1
+          FROM community.page_recent
+         WHERE user_id = CAST(:uid AS bigint)
+           AND page_id = CAST(:pid AS bigint)
+           AND last_viewed_at >= now() - interval '5 minutes'
+        SQL;
+    if ($db->run($sqlFresh, [':uid' => $userId, ':pid' => $pageId])->fetch() !== false) {
+        return;   // 5분 안에 적었다 — 쓰지 않는다(L-3)
+    }
+    // 아래 heredoc 은 `AND` 에서 끝나고, 바로 뒤에 목록과 같은 조건절(코드에 적힌 조각 — 요청 값 0)이 붙고, 그 뒤에 ON CONFLICT 꼬리가 온다.
+    $sqlUpsertHead = <<<'SQL'
         INSERT INTO community.page_recent AS r (user_id, page_id)
-        VALUES (CAST(:uid AS bigint), CAST(:pid AS bigint))
+        SELECT CAST(:rec_uid AS bigint), p.id
+          FROM community.pages p
+          JOIN community.spaces s ON s.id = p.space_id
+          LEFT JOIN public.users owner ON owner.id = s.owner_user_id
+         WHERE p.id = CAST(:rec_pid AS bigint)
+           AND p.deleted_at IS NULL
+           AND NOT (s.kind = 'board' AND p.hidden_at IS NOT NULL)
+           AND
+        SQL;
+    $sqlUpsertTail = <<<'SQL'
         ON CONFLICT (user_id, page_id) DO UPDATE
            SET last_viewed_at = now()
          WHERE r.last_viewed_at < now() - interval '5 minutes'
         RETURNING (r.xmax = 0) AS inserted
         SQL;
-    $row = $db->run($sqlUpsert, [':uid' => $userId, ':pid' => $pageId])->fetch();
+    [$visible, $bind] = community_search_pages_where($user);
+    $bind[':rec_uid'] = $userId;
+    $bind[':rec_pid'] = $pageId;
+    $row = $db->run($sqlUpsertHead . ' ' . $visible . ' ' . $sqlUpsertTail, $bind)->fetch();
     // 갱신했거나(줄 수 그대로) 5분 안이라 건너뛰었으면 지울 것이 없다
     if (!is_array($row) || $row['inserted'] !== true) {
         return;

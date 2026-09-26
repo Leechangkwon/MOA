@@ -338,6 +338,9 @@ code {
 }
 .card--pad { padding: 24px; }
 .card--flush { overflow: hidden; }
+/* 여백 없는 카드 안의 빈 목록 안내 한 줄(「(무엇)이 없습니다」 — DESIGN 2.4)은 표 머리·바닥(.table-foot) 글자와 같은 12px 안쪽에서
+   시작한다 — 카드 테두리에 글자가 붙어 있었다(Q:F-3a 라운드 A 디자인 지적 「빈 즐겨찾기 안내 글 왼쪽 여백 0」, 파일·휴지통 화면). */
+.card--flush > p.muted { margin: 0; padding: 12px; }
 
 /* 누를 수 있는 카드 (DESIGN 2.3) — 관리자 허브 · 팀 카드 · 위키 단계 카드가 전부 이 한 벌이다.
    <a> 또는 <button>. 구조: .card__icon(선택) + .card__body > .card__head(.card__title + 배지) · .card__desc · .card__meta */
@@ -633,6 +636,9 @@ a:focus-visible, .nav__item:focus-visible, summary:focus-visible { border-radius
   flex-shrink: 0;
   accent-color: var(--primary);
 }
+/* 일괄 고르기 체크(Q:F-3a 라운드 B — 두 앱의 줄·머리 체크, 표시는 `data-bulk` 속성 · 새 클래스 0): 폼 체크와 같은 --primary 색
+   (브라우저 기본 파랑은 DESIGN 0장 4 의 「정보·링크」 뜻이라 쓰지 않는다) · 글자와 가운데 한 줄 · 뒤 간격 6px. */
+input[type="checkbox"][data-bulk] { accent-color: var(--primary); vertical-align: middle; margin: 0 6px 0 0; cursor: pointer; }
 .field__label:has(> input[type="radio"]),
 .field__label:has(> input[type="checkbox"]) {
   display: flex;

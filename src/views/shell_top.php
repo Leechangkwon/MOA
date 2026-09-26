@@ -438,6 +438,11 @@ if (!headers_sent()) {
     <!-- 공유받은 페이지 (5-A · 5-A′) — 있을 때만 제목째 보인다 -->
     <p id="nav-community-shared-title" class="nav-title" hidden>공유받은 페이지</p>
     <nav id="nav-community-shared" class="nav" aria-label="공유받은 페이지" hidden></nav>
+    <!-- 즐겨찾기 아이콘 둘(빈 별 = 넣기 · 찬 별 = 빼기). DESIGN 2.11 규격(24×24 · stroke 1.8, lucide star) — t-box 파일 화면(home.php)과 같은 글자.
+         Q:F-3a 라운드 B — 사이드바 트리 줄의 ☆ · 「내 공간」 선택 막대가 세 화면 모두에서 쓰므로 페이지 화면(page_view.php)에서 여기로 옮겼다
+         (같은 id 가 두 번 나오지 않게 한 곳에만). 고정 문자열이고 사용자 입력이 한 글자도 없다 — editor.js 는 cloneNode 로만 붙인다. -->
+    <template id="tpl-icon-star"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m12 2.5 2.9 5.9 6.5.9-4.7 4.6 1.1 6.5L12 17.3l-5.8 3.1 1.1-6.5-4.7-4.6 6.5-.9z"/></svg></template>
+    <template id="tpl-icon-star-fill"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m12 2.5 2.9 5.9 6.5.9-4.7 4.6 1.1 6.5L12 17.3l-5.8 3.1 1.1-6.5-4.7-4.6 6.5-.9z"/></svg></template>
 <?php else: ?>
     <p class="nav-title">파일</p>
     <nav class="nav" aria-label="파일">

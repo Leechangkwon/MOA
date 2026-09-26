@@ -311,8 +311,9 @@ ok('  줄은 생겼다', sql("SELECT count(*) FROM community.page_favorites f JO
 c, ids, raw = favs('a1')
 ok('  admin01 즐겨찾기 원문에 그 id·제목 0', c == 200 and P_ADMIN.encode() not in raw and ('qf3a 관리자가볼 %s' % tag).encode() not in raw, raw[:200])
 c, ids, raw, _ = recents('a1')
-ok('  admin01 최근 원문에도 그 id 0(열어서 줄은 남았어도)', c == 200 and P_ADMIN.encode() not in raw
-   and sql("SELECT count(*) FROM community.page_recent r JOIN community.pages p ON p.id = r.page_id WHERE r.user_id = %s AND p.public_id = '%s'" % (uid['admin01'], P_ADMIN)) == '1', raw[:200])
+# 라운드 B(독립 검토 권고) — 특권(admin_all)으로 연 페이지는 「최근」 목록과 같은 조건절 밖이라 **줄도 남기지 않는다**(라운드 A 에서는 줄 1 · 목록 0)
+ok('  admin01 최근 원문에도 그 id 0 · 줄도 0(라운드 B)', c == 200 and P_ADMIN.encode() not in raw
+   and sql("SELECT count(*) FROM community.page_recent r JOIN community.pages p ON p.id = r.page_id WHERE r.user_id = %s AND p.public_id = '%s'" % (uid['admin01'], P_ADMIN)) == '0', raw[:200])
 
 print('\n── QF3A-T5 최근 — 5분에 한 번 · 50줄 · 지우기 · 못 보게 되면 빠짐')
 c, _, _ = req('e2', 'DELETE', C + '/me/recent')

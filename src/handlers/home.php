@@ -181,13 +181,77 @@ require __DIR__ . '/../views/shell_top.php';
       </select>
       <button class="btn btn--quiet" type="submit">검색</button>
     </form>
+    <!-- 개발 대기열 6 · Q:F-3a 라운드 B — 일괄 작업(지시서 1.3). 줄 앞 체크로 고르면 **검색 줄 자리**에 이 막대가 온다(고른 동안은
+         검색·정렬을 바꾸지 않는다 — 바꾸면 고른 것이 풀리는 것과 같은 뜻이다). 동작 단추는 행 동작과 **같은 아이콘 단추**
+         (`.btn--icon` + aria-label = 툴팁 글 · 순서 고치기 → 이동 → ☆ → 삭제, DESIGN 2.1)라 폰 폭에서도 한 줄이다.
+         ★ 새 서버 창구 0 — 누르면 app.js 가 **한 건 작업과 같은 창구**(`PATCH·DELETE /api/files/{id}` · `PUT·DELETE …/favorite`)를
+           항목마다 한 번씩, 차례로 부른다. 무엇을 할 수 있는지는 창구가 항목마다 판단하고, 거부 문장·감사도 한 건과 같다(PRD S-01). -->
+    <div class="toolbar" id="files-bulk-bar" role="group" aria-label="고른 파일로 할 일" hidden>
+      <span id="files-bulk-count" aria-live="polite"></span>
+      <button id="files-bulk-level" class="btn btn--icon" type="button" aria-label="등급·팀 바꾸기" aria-haspopup="dialog">
+        <span class="icon" data-icon="edit"></span>
+      </button>
+      <button id="files-bulk-move" class="btn btn--icon" type="button" aria-label="폴더로 이동" aria-haspopup="dialog">
+        <span class="icon" data-icon="files"></span>
+      </button>
+      <button id="files-bulk-fav" class="btn btn--icon" type="button" aria-label="즐겨찾기에 넣기">
+        <span class="icon" data-icon="star"></span>
+      </button>
+      <button id="files-bulk-trash" class="btn btn--icon" type="button" aria-label="삭제" aria-haspopup="dialog">
+        <span class="icon" data-icon="trash"></span>
+      </button>
+      <!-- 「선택 풀기」도 아이콘 단추(✕) — 글자 단추면 360px 에서 막대가 두 줄로 꺾였다(스크린샷 확인). Esc 와 같다. -->
+      <button id="files-bulk-clear" class="btn btn--icon" type="button" aria-label="선택 풀기" aria-keyshortcuts="Escape">
+        <span class="icon" data-icon="x"></span>
+      </button>
+    </div>
+    <!-- 막대 아래 한 줄(필요할 때만) — 100개에 닿았을 때 · 앞 작업이 도는 중일 때. 막대 안에 쓰면 폰 폭에서 막대가 두 줄로 꺾인다. -->
+    <p id="files-bulk-note" class="help" aria-live="polite" hidden></p>
+    <!-- 일괄 진행 표 — 올리기 창의 진행 표(F-27 `.upload-status`)와 같은 칸·같은 상태 글자(대기 · 하는 중 · 완료 · 서버가 준 거부 문장).
+         줄은 app.js 가 createElement + textContent 로만 만든다. 100줄까지라 표 칸은 줄 목록과 같은 높이(`.list--scroll` 480px)에서 스크롤한다.
+         로그인이 끝나면(401) 멈추고 남은 줄을 그대로 둔 채 「이어서 하기」를 보인다(지시서 1.3 · QF3A-T7). -->
+    <section class="panel panel--tight" id="files-bulk-panel" aria-labelledby="files-bulk-title" hidden>
+      <div class="panel__head">
+        <h2 class="panel__title" id="files-bulk-title" tabindex="-1"></h2>
+        <p class="panel__sub" id="files-bulk-sub">한 번에 하나씩 차례로 보냅니다. 할 수 없는 파일은 그 파일만 거부되고 이유가 여기 남습니다.</p>
+      </div>
+      <div class="table-wrap list--scroll">
+        <table class="files upload-status">
+          <thead>
+            <tr>
+              <th scope="col">파일</th>
+              <th scope="col">상태</th>
+            </tr>
+          </thead>
+          <tbody id="files-bulk-body"></tbody>
+        </table>
+      </div>
+      <div id="files-bulk-stop" class="notice" role="alert" hidden>
+        <p class="notice__title" id="files-bulk-stop-text"></p>
+        <div class="toolbar">
+          <!-- 새 탭에서 로그인한다 — 이 화면(남은 목록)은 그대로 둔다. 쿠키는 같은 사이트라 두 탭이 함께 쓴다. -->
+          <a id="files-bulk-login" class="btn btn--quiet btn--small" href="<?= Http::url('/login') ?>" target="_blank" rel="noopener noreferrer">로그인 화면 열기</a>
+          <button id="files-bulk-resume" class="btn btn--quiet btn--small" type="button">이어서 하기</button>
+        </div>
+      </div>
+      <div class="table-foot">
+        <span id="files-bulk-summary" role="status" aria-live="polite"></span>
+        <div class="form-actions">
+          <button id="files-bulk-undo" class="btn btn--quiet btn--small" type="button" hidden>되돌리기</button>
+          <button id="files-bulk-close" class="btn btn--quiet btn--small" type="button">닫기</button>
+        </div>
+      </div>
+    </section>
 
     <section class="card card--flush">
       <div class="table-wrap">
         <table class="files">
           <thead>
             <tr>
-              <th scope="col">이름</th>
+              <!-- 라운드 B — 머리 체크는 **이 쪽(지금 보이는 줄) 전부**를 고르고 푼다. 줄 체크는 이름 칸 맨 앞(☆ 앞)에 app.js 가 넣는다 —
+                   열을 새로 만들지 않아 `#files-body td:nth-child(n)` 폭 규칙(DESIGN 2.4)이 그대로다.
+                   열 머리의 이름은 「이름」 글자만(aria-labelledby) — 체크의 aria-label 이 열 이름에 섞여 칸마다 읽히지 않게. -->
+              <th scope="col" aria-labelledby="files-name-head"><input type="checkbox" id="files-check-all" data-bulk aria-label="이 쪽 파일 모두 고르기"><span id="files-name-head">이름</span></th>
               <th scope="col">크기</th>
               <th scope="col">레벨</th>
               <th scope="col">팀</th>
@@ -412,6 +476,41 @@ require __DIR__ . '/../views/shell_top.php';
         <p id="move-msg" class="msg"></p>
         <button id="move-here" class="btn" type="button">여기로 이동</button>
         <button id="move-close" class="btn btn--quiet" type="button">닫기</button>
+      </div>
+    </dialog>
+
+    <!-- ─── 고른 파일의 등급·팀 바꾸기 (개발 대기열 6 · Q:F-3a 라운드 B — 지시서 1.3) ─────────
+         선택지는 **올리기 창과 같은 목록**이다 — app.js 가 서버가 준 `upload_levels` 와 팀 목록(`GET /api/teams`)으로만 채운다.
+         「바꾸기」를 누르면 창을 닫고 고른 파일마다 `PATCH /api/files/{id} {access_level, team_id}` 를 한 번씩 보낸다 —
+         바꿀 자격·폴더 등급·실행 파일 압축본 규칙은 그 창구가 **파일마다** 다시 판단한다(한 건 수정과 같은 거부 문장, PRD S-01). -->
+    <dialog id="bulk-level-dialog" class="modal modal--form" aria-labelledby="bulk-level-title">
+      <div class="modal__head">
+        <span class="preview__mark"><span class="icon" data-icon="edit"></span></span>
+        <div class="preview__headtext">
+          <h2 class="modal__title" id="bulk-level-title">등급·팀 바꾸기</h2>
+          <div class="modal__meta"><span id="bulk-level-count"></span></div>
+        </div>
+        <button id="bulk-level-x" class="btn btn--icon" type="button" aria-label="닫기">
+          <span class="icon" data-icon="x"></span>
+        </button>
+      </div>
+      <div class="modal__body">
+        <p class="panel__sub">고른 파일마다 따로 바꿉니다. 등급을 넓히는 변경(예: 팀 → 사내)은 관리자만 할 수 있습니다. 내가 바꿀 수 없는 파일 · 실행 파일이 든 압축본 · 폴더보다 넓은 등급은 그 파일만 거부되고 이유가 진행 표에 남습니다.</p>
+        <form id="bulk-level-form" class="form form--grid" autocomplete="off">
+          <label class="field">
+            <span class="field__label">접근 레벨 (필수)</span>
+            <select id="bulk-level-select" required></select>
+          </label>
+          <label class="field" id="bulk-team-field" hidden>
+            <span class="field__label">팀</span>
+            <select id="bulk-team-select"></select>
+          </label>
+          <button id="bulk-level-submit" class="btn" type="submit">바꾸기</button>
+        </form>
+      </div>
+      <div class="modal__foot">
+        <p id="bulk-level-msg" class="msg" role="alert" aria-live="polite"></p>
+        <button id="bulk-level-close" class="btn btn--quiet" type="button">닫기</button>
       </div>
     </dialog>
 
