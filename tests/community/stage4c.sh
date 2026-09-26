@@ -569,7 +569,7 @@ expect "POST …/restore (살아 있는 페이지)" "404" \
 hr "브라우저 — 이력 창(탭 둘 · 보기 · 되돌리기) · 휴지통 되살리기"
 
 SMOKE_OUT="$WORK/smoke.txt"
-SESSION=$(awk '$6=="tbox_session"{print $7}' "$JAR_DIR/claude_employee01.jar" 2>/dev/null)
+SESSION=$(awk '$6=="__Host-tbox_session"{print $7}' "$JAR_DIR/claude_employee01.jar" 2>/dev/null)
 if [ -z "$SESSION" ]; then
   skip "브라우저 스모크" "세션 쿠키를 읽지 못했다 — **미검증**"
 else

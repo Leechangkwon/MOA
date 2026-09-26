@@ -96,7 +96,7 @@ login() {
   done
   return 1
 }
-session_of() { awk '$6=="tbox_session"{print $7}' "$JAR_DIR/$1.jar" 2>/dev/null | tail -1; }
+session_of() { awk '$6=="__Host-tbox_session"{print $7}' "$JAR_DIR/$1.jar" 2>/dev/null | tail -1; }
 
 # ════════════════════════════════════════════════════════════════
 hr "Q:F-3a 라운드 B (커뮤니티 · 화면) — 임시 인스턴스 준비 (운영 DB 에는 쓰지 않는다)"
@@ -219,7 +219,7 @@ def sql_file(path):
 CSRF = {}
 def req(who, m, path, body=None, csrf=True, site=None):
     h = {'User-Agent': UA}
-    if who: h['Cookie'] = 'tbox_session=' + S[who]
+    if who: h['Cookie'] = '__Host-tbox_session=' + S[who]
     if m != 'GET' and csrf and who: h['X-CSRF-Token'] = CSRF.get(who, '')
     data = None
     if body is not None:
@@ -413,7 +413,7 @@ def upload(who, name, level='internal'):
     parts = [('--%s\r\nContent-Disposition: form-data; name="%s"\r\n\r\n%s\r\n' % (b, k, v)).encode() for k, v in (('access_level', level), ('description', 'qf3b 화면'))]
     parts.append(('--%s\r\nContent-Disposition: form-data; name="file"; filename="%s"\r\nContent-Type: text/plain\r\n\r\n' % (b, name)).encode() + b'qf3b\n\r\n')
     parts.append(('--%s--\r\n' % b).encode())
-    h = {'User-Agent': UA, 'Cookie': 'tbox_session=' + S[who], 'X-CSRF-Token': CSRF[who], 'Content-Type': 'multipart/form-data; boundary=' + b}
+    h = {'User-Agent': UA, 'Cookie': '__Host-tbox_session=' + S[who], 'X-CSRF-Token': CSRF[who], 'Content-Type': 'multipart/form-data; boundary=' + b}
     try:
         with urllib.request.urlopen(urllib.request.Request(SITE + '/tbox/api/files', data=b''.join(parts), headers=h, method='POST'), timeout=60) as x:
             d = json.loads(x.read())

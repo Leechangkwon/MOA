@@ -77,7 +77,7 @@ login() {
   done
   return 1
 }
-session_of() { awk '$6=="tbox_session"{print $7}' "$JAR_DIR/$1.jar" 2>/dev/null | tail -1; }
+session_of() { awk '$6=="__Host-tbox_session"{print $7}' "$JAR_DIR/$1.jar" 2>/dev/null | tail -1; }
 
 # ════════════════════════════════════════════════════════════════
 hr "5b — 임시 인스턴스 준비 (운영 DB 에는 쓰지 않는다)"
@@ -230,7 +230,7 @@ SITE, UA, MODE = sys.argv[1], sys.argv[2], sys.argv[3]
 WHO = ['claude_employee01', 'claude_employee02', 'claude_manager01', 'claude_admin01', 'claude_guest01']
 SESS = {w: sys.stdin.readline().rstrip('\n') for w in WHO}
 def req(who, method, path, body=None, ctype=None, csrf=None):
-    h = {'User-Agent': UA, 'Cookie': 'tbox_session=' + SESS[who]}
+    h = {'User-Agent': UA, 'Cookie': '__Host-tbox_session=' + SESS[who]}
     if csrf: h['X-CSRF-Token'] = csrf
     if ctype: h['Content-Type'] = ctype
     r = urllib.request.Request(SITE + path, data=body, method=method, headers=h)
@@ -454,7 +454,7 @@ import json, sys, urllib.request, urllib.parse
 SITE, UA, FID = sys.argv[1], sys.argv[2], sys.argv[3]
 S = sys.stdin.readline().rstrip('\n')
 def hit(q):
-    r = urllib.request.Request(SITE + '/tbox/api/files?q=' + urllib.parse.quote(q), headers={'User-Agent': UA, 'Cookie': 'tbox_session=' + S})
+    r = urllib.request.Request(SITE + '/tbox/api/files?q=' + urllib.parse.quote(q), headers={'User-Agent': UA, 'Cookie': '__Host-tbox_session=' + S})
     with urllib.request.urlopen(r, timeout=30) as resp:
         d = json.loads(resp.read().decode('utf-8'))
     return 'in' if FID in [f['id'] for f in d.get('files', [])] else 'out'

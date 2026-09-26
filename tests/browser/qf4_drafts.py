@@ -93,7 +93,7 @@ def login(who):
             resp = urllib.request.urlopen(req, timeout=15)
             data = json.loads(resp.read().decode())
             for h in resp.headers.get_all("Set-Cookie") or []:
-                m = re.match(r"tbox_session=([^;]+)", h)
+                m = re.match(r"__Host-tbox_session=([^;]+)", h)
                 if m:
                     cookie = m.group(1)
         except Exception:
@@ -109,7 +109,7 @@ def login(who):
 
 
 def api(sess, method, path, body=None, csrf=None):
-    headers = {"User-Agent": UA, "Cookie": "tbox_session=" + sess}
+    headers = {"User-Agent": UA, "Cookie": "__Host-tbox_session=" + sess}
     data = None
     if method != "GET":
         headers["Content-Type"] = "application/json"
@@ -154,7 +154,7 @@ def watch(page):
 
 def set_session(ctx, sess, theme="light"):
     ctx.add_cookies([
-        {"name": "tbox_session", "value": sess, "domain": HOST, "path": "/", "httpOnly": True, "secure": False, "sameSite": "Lax"},
+        {"name": "__Host-tbox_session", "value": sess, "domain": HOST, "path": "/", "httpOnly": True, "secure": True, "sameSite": "Lax"},
         {"name": "tbox_theme", "value": theme, "domain": HOST, "path": "/", "secure": False, "sameSite": "Lax"},
     ])
 

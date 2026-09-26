@@ -496,7 +496,7 @@ else
 import sys
 for line in open(sys.argv[1], encoding='utf-8', errors='replace'):
     parts = line.rstrip('\n').split('\t')
-    if len(parts) == 7 and parts[5] == 'tbox_session':
+    if len(parts) == 7 and parts[5] == '__Host-tbox_session':
         print(parts[6])
         break
 PY

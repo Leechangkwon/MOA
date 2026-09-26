@@ -2,9 +2,9 @@
 # tests/q_launcher.sh — Qaredi C 수락 기준 실행 (사이트 PRD.md 9장 Q:T-1 · 3 · 4 · 5 · 6 · 7 · 8 · 9,
 #                        설계 ../docs/launcher/ARCHITECTURE.md, 지시서 ../docs/launcher/c-launcher-basepath-directive.md)
 #
-#   Q:T-1 런처 `GET /`         200 HTML · 타일 t-box·커뮤니티(**둘 다 링크** — 커뮤니티 3단계로 열렸다) ·
-#                              `<script` 0 · `Set-Cookie` 0 ·
-#                              미로그인이면 사용자 칩 없음 · 로그인(qa)이면 표시 이름 · `POST /` 405
+#   Q:T-1 런처 `GET /`         200 HTML · `<script` 0 · `Set-Cookie` 0 · `POST /` 405 ·
+#                              미로그인이면 **사이트 이름 + 로그인 단추만**(앱 이름·설명·경로·타일 0 — 디버깅 묶음 S2 · R-98) ·
+#                              로그인하면 타일 t-box·커뮤니티(둘 다 링크) + 사용자 배지(표시 이름) · 옛 이름 쿠키면 만료 머리 하나
 #   Q:T-3 옛 주소 308          `/api/health` `/login` `POST /api/login` `/s/{43자}` `/settings` `/assets/app.css`
 #                              → 308 + `Location: /tbox<경로+쿼리 원문>` · POST 는 처리 0(감사 행 0 · Set-Cookie 0)
 #                              · `/foo` `/api/nope` `/tbox/nope` `/community/` → 404(리다이렉트 아님)
@@ -12,7 +12,7 @@
 #                              (예외: 「Qaredi 홈」·커뮤니티 `/community/`) · `app.js` 절대 경로가 전부 `APP_BASE +` 뒤
 #   Q:T-5 리다이렉트 경로      미로그인 `/tbox/settings` → 302 `/tbox/login` · 재인증 전 `/tbox/admin` → 302 `/tbox/reauth?to=admin`
 #   Q:T-6 공유 링크            `POST …/share` 의 `url` 이 `APP_URL/tbox/s/` 로 시작하고 그 주소로 받아진다
-#   Q:T-7 쿠키·헤더 불변       `Set-Cookie` 속성(`Path=/; Secure; HttpOnly; SameSite=Lax`) · 전역 CSP 문자열
+#   Q:T-7 쿠키·헤더 불변       `Set-Cookie` 이름 `__Host-tbox_session`(S2) · 속성(`Path=/; Secure; HttpOnly; SameSite=Lax` · Domain 없음) · 전역 CSP 문자열
 #   Q:T-8 그리드 단추          셸 화면 전부에 `<details class="appbar__apps">` · 항목 셋 · `.btn--icon[title]` 0
 #   Q:T-9 정적 자산            `/tbox/assets/app.css` 200 `text/css` · 생성기 200 + 자체 CSP(`unsafe-inline`) ·
 #                              매니페스트 `start_url` `/tbox/…` · 옛 `/assets/app.css` → 308
@@ -178,18 +178,21 @@ expect "Set-Cookie 0건 (쿠키 발행 0)" "0" "$(grep -ci '^Set-Cookie:' "$WORK
 expect "<script 0건 (스크립트 0)" "0" "$(grep -c '<script' "$WORK/root.html" | tr -d ' ')"
 expect "인라인 style= 0건 (CSP)" "0" "$(grep -cE '<[^>]+ style="' "$WORK/root.html" | tr -d ' ')"
 expect "인라인 on…= 0건 (CSP)" "0" "$(grep -cE '<[^>]+ on[a-z]+=' "$WORK/root.html" | tr -d ' ')"
-contains "타일 t-box" "t-box" "$(cat "$WORK/root.html")"
-contains "타일 커뮤니티" "커뮤니티" "$(cat "$WORK/root.html")"
-# 커뮤니티 3단계(2026-09-22) — `config/apps.json` 에서 `status: soon` 을 뺐다. 「준비 중」 배지는
-# 이제 어느 타일에도 없다(다시 생기면 그것은 새 앱이 늘었다는 뜻이고, 그때 이 줄을 고친다).
-expect "배지 준비 중 0건 (커뮤니티가 열렸다)" "0" "$(grep -c '준비 중' "$WORK/root.html" | tr -d ' ')"
-contains "타일 클래스 card--link" "card card--link" "$(cat "$WORK/root.html")"
-contains "격자 card-grid" "card-grid" "$(cat "$WORK/root.html")"
+# 디버깅 묶음 S2 (사용자 결정 d72 ① · R-98) — 로그인 전에는 **사이트 이름 + 로그인 단추만**. 앱 이름·설명·경로·타일 0.
+contains "사이트 이름 Qaredi" ">Qaredi</h1>" "$(cat "$WORK/root.html")"
+expect "미로그인 — 앱 이름 t-box 0 · 커뮤니티 0" "0 0" "$(grep -c 't-box' "$WORK/root.html" | tr -d ' ') $(grep -c '커뮤니티' "$WORK/root.html" | tr -d ' ')"
+expect "미로그인 — 앱 설명(사내 파일 공유 · 개인 업무 공간) 0" "0 0" "$(grep -c '사내 파일 공유' "$WORK/root.html" | tr -d ' ') $(grep -c '개인 업무 공간' "$WORK/root.html" | tr -d ' ')"
+expect "미로그인 — 타일·격자 0(card-grid · card--link)" "0 0" "$(grep -c 'card-grid' "$WORK/root.html" | tr -d ' ') $(grep -c 'card--link' "$WORK/root.html" | tr -d ' ')"
+expect "미로그인 — 앱 경로 링크 0(href=\"/tbox/\" · href=\"/community/\")" "0 0" "$(grep -c 'href="/tbox/"' "$WORK/root.html" | tr -d ' ') $(grep -c 'href="/community/"' "$WORK/root.html" | tr -d ' ')"
+expect "미로그인 — 로그인 단추 하나(href=\"/tbox/login\" · .btn)" "1" "$(grep -c '<a class="btn" href="/tbox/login">로그인</a>' "$WORK/root.html" | tr -d ' ')"
 expect "화면 전용 클래스 launcher- 0건 (DESIGN 원칙 6)" "0" "$(grep -c 'launcher-' "$WORK/root.html" | tr -d ' ')"
-expect "미로그인 사용자 표시 없음 (page-head__actions 0)" "0" "$(grep -c 'page-head__actions' "$WORK/root.html" | tr -d ' ')"
+expect "미로그인 — 사용자 배지 없음(badge 0) · 단추 자리는 page-head__actions 하나" "0 1" "$(grep -c 'class="badge"' "$WORK/root.html" | tr -d ' ') $(grep -c 'page-head__actions' "$WORK/root.html" | tr -d ' ')"
 expect "런처에 userchip 0건 (DESIGN 2.9 — 배지 하나만)" "0" "$(grep -c 'userchip' "$WORK/root.html" | tr -d ' ')"
-expect "t-box 타일이 /tbox/ 로 간다" "1" "$(grep -c 'href="/tbox/"' "$WORK/root.html" | tr -d ' ')"
-expect "커뮤니티 타일이 /community/ 로 간다" "1" "$(grep -c 'href="/community/"' "$WORK/root.html" | tr -d ' ')"
+
+sub "Q:T-1 — 옛 이름 쿠키(tbox_session)만 들고 오면: 로그인 전 화면 + 옛 쿠키 만료 머리 하나(S2)"
+curl -s -D "$WORK/rootold.head" -o "$WORK/rootold.html" -A "$UA" -H 'Cookie: tbox_session=0000000000000000000000000000000000000000000000000000000000000000' "$SITE/"
+expect "옛 쿠키 — 상태 200 · 로그인 단추(로그인 전 화면)" "200 1" "$(status_of "$WORK/rootold.head") $(grep -c 'href="/tbox/login">로그인<' "$WORK/rootold.html" | tr -d ' ')"
+expect "옛 쿠키 — Set-Cookie 한 줄 = 옛 이름 만료(Max-Age=0)" "1 1" "$(grep -ci '^Set-Cookie:' "$WORK/rootold.head" | tr -d ' ') $(grep -ciE '^Set-Cookie: tbox_session=(deleted)?;.*Max-Age=0' "$WORK/rootold.head" | tr -d ' ')"
 
 curl -s -D "$WORK/rootpost.head" -o /dev/null -A "$UA" -X POST "$SITE/"
 expect "POST / 상태 405" "405" "$(status_of "$WORK/rootpost.head")"
@@ -307,10 +310,12 @@ if [ -n "$EMP_CSRF" ]; then
   T7_PW=""; body=""
   SC=$(hdr Set-Cookie "$WORK/cookie.head")
   if [ -n "$SC" ]; then
+    contains "쿠키 이름 __Host-tbox_session(S2)" "__Host-tbox_session=" "$SC"
     contains "쿠키 Path=/"      "Path=/"        "$SC"
     contains "쿠키 HttpOnly"    "HttpOnly"      "$SC"
     contains "쿠키 Secure"      "Secure"        "$SC"
     contains "쿠키 SameSite=Lax" "SameSite=Lax" "$SC"
+    expect "쿠키 Domain 없음(__Host- 조건)" "0" "$(printf '%s' "$SC" | grep -ci 'domain=' | tr -d ' ')"
   else
     note "이 응답에는 Set-Cookie 가 없다(2단계 코드 단계) — 로그인 응답의 쿠키는 위 login() 이 이미 받았다"
     skip "쿠키 속성" "이 요청에 Set-Cookie 없음"
@@ -381,6 +386,16 @@ if [ -n "$ADM_CSRF" ]; then
   expect "로그인 상태 런처에도 userchip 0건" "0" "$(grep -c 'userchip' "$WORK/root2.html" | tr -d ' ')"
   contains "칩에 표시 이름" "claude_admin01" "$(cat "$WORK/root2.html")"
   expect "로그인 상태 런처에도 <script 0건" "0" "$(grep -c '<script' "$WORK/root2.html" | tr -d ' ')"
+  # 로그인 뒤는 전과 같다 — 타일 둘(링크)·격자 · 로그인 단추 0 (S2 는 로그인 전만 바꿨다)
+  contains "로그인 뒤 타일 t-box" "t-box" "$(cat "$WORK/root2.html")"
+  contains "로그인 뒤 타일 커뮤니티" "커뮤니티" "$(cat "$WORK/root2.html")"
+  expect "로그인 뒤 배지 준비 중 0건 (커뮤니티가 열렸다)" "0" "$(grep -c '준비 중' "$WORK/root2.html" | tr -d ' ')"
+  contains "로그인 뒤 타일 클래스 card--link" "card card--link" "$(cat "$WORK/root2.html")"
+  contains "로그인 뒤 격자 card-grid" "card-grid" "$(cat "$WORK/root2.html")"
+  expect "로그인 뒤 t-box 타일이 /tbox/ 로 간다" "1" "$(grep -c 'href="/tbox/"' "$WORK/root2.html" | tr -d ' ')"
+  expect "로그인 뒤 커뮤니티 타일이 /community/ 로 간다" "1" "$(grep -c 'href="/community/"' "$WORK/root2.html" | tr -d ' ')"
+  expect "로그인 뒤 로그인 단추 0" "0" "$(grep -c 'href="/tbox/login">로그인<' "$WORK/root2.html" | tr -d ' ')"
+  expect "로그인 뒤 런처 Set-Cookie 0(세션은 읽기만)" "0" "$(grep -ci '^Set-Cookie:' "$WORK/root2.head" | tr -d ' ')"
 fi
 
 # ─── 정리 ───────────────────────────────────────────────────────

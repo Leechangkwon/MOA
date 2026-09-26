@@ -39,8 +39,8 @@ def outside(route):
 with sync_playwright() as p:
     browser = p.chromium.launch()
     ctx = browser.new_context(user_agent=UA, viewport={"width": 1440, "height": 900})
-    ctx.add_cookies([{"name": "tbox_session", "value": E1, "domain": host(), "path": "/",
-                      "httpOnly": True, "secure": False, "sameSite": "Lax"}])
+    ctx.add_cookies([{"name": "__Host-tbox_session", "value": E1, "domain": host(), "path": "/",
+                      "httpOnly": True, "secure": True, "sameSite": "Lax"}])
     ctx.route(re.compile(r"^https?://(?!" + re.escape(host()) + r"[:/]).*"), outside)
     page = ctx.new_page()
     page.on("pageerror", lambda e: pageerrors.append(str(e)))

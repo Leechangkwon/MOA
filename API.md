@@ -12,7 +12,7 @@ API 를 추가할 때마다 이 문서에 **이어서** 적는다(마지막 장�
 | 형식 | 요청·응답은 JSON (`Content-Type: application/json; charset=utf-8`). 파일 업로드만 `multipart/form-data` |
 | 인증 | 기본은 **세션 쿠키**(아래 「세션」)다. 헤더 `X-API-Token` 이 통하는 창구는 **열**이다 — `POST /api/upload`(7장) · `GET /api/files`(8장) · `GET /api/files/{id}/download`(9장) · `GET /api/whoami`(10장) · `GET /api/folders`·`POST /api/folders`·`PATCH /api/folders/{num}`(11장) · `PATCH /api/files/{id}`(12장, 폴더 이동만) · `DELETE /api/files/{id}`·`DELETE /api/folders/{num}`(14장, **개인 토큰만**). 업로드와 whoami 둘은 토큰 전용이고(세션 쿠키로는 부를 수 없다 — 헤더가 없으면 401), 나머지 여덟은 화면도 쓰는 창구라 **헤더를 보내면 토큰으로, 안 보내면 세션으로** 판정한다. 그 헤더는 **그 밖의 창구에서는 무시된다**(등급 변경·휴지통 복원·계정·감사 등은 읽지도 않는다). **토큰은 두 종류**다(13장): **본인이** 「내 계정」 화면에서 발급하는 **개인 토큰**(권장 — 누가 했는지 사람 단위로 남고 회수할 수 있다)과 서버 `.env` 의 **공용 토큰**(F-49, 이행용 — 삭제 창구는 쓸 수 없다) |
 | 범위·만료 (F-66) | 개인 토큰은 발급할 때 고른 **범위**(`read` · `read+upload` · `read+upload+delete`)만큼만 창구를 열고, 발급 시각 + **180일**에 만료된다. 범위 밖 창구 → `403 {"error":"이 토큰의 범위에 없는 창구입니다 — 범위가 더 넓은 토큰을 발급하세요"}` · 만료된 토큰 → `401 {"error":"만료된 API 토큰입니다 — 내 계정에서 새로 발급하세요"}`(틀린·회수된 토큰의 401 문구와 다르다). 범위는 창구를 좁힐 뿐이고 파일 한 건의 판정은 요청마다 그대로 한다 — 토큰이 계정보다 커질 수 없다. 공용 토큰은 범위·만료가 없고 `read+upload` 로 본다(이행용). 어느 장이 어느 범위인지는 각 장의 「범위(F-66)」 줄 |
-| 세션 | 로그인 성공 시 쿠키 `tbox_session` (HttpOnly·Secure·SameSite=Lax). 이후 요청에 그 쿠키를 함께 보낸다. 유휴 30분·최대 8시간 |
+| 세션 | 로그인 성공 시 쿠키 **`__Host-tbox_session`** (HttpOnly·Secure·SameSite=Lax·Path=/·Domain 없음). 이후 요청에 그 쿠키를 함께 보낸다. 유휴 30분·최대 8시간. **v2.31 부터 이름이 바뀌었다**(전: `tbox_session`) — 옛 이름은 서버가 읽지 않고 만료 머리로 치우므로, 쿠키 이름을 글자로 적어 둔 프로그램은 새 이름으로 고친다(프로그램용 토큰 `X-API-Token` 은 그대로) |
 | CSRF | 상태를 바꾸는 요청(POST·PATCH·DELETE)은 헤더 `X-CSRF-Token: <토큰>` 필수. 토큰은 `GET /api/me` 의 `csrf_token`. 없거나 틀리면 `403 {"error":"권한이 없습니다"}` |
 | 오류 응답 | 항상 `{"error":"<한국어 문구>"}`. 권한 없음은 언제나 403 + 같은 문구(대상 정보 없음). 서버 오류는 500 `{"error":"서버 오류"}` — 원인은 응답에 나오지 않는다 |
 | 속도 제한 | `POST /api/login` 은 IP 당 분당 30회(순간 10회까지 허용), 넘으면 429. 비밀번호 5회 실패 → 계정 10분 잠금(423) |
@@ -89,7 +89,7 @@ curl -s -w '\n[%{http_code}]\n' https://changkwon.mso.so/tbox/api/health
 |---|---|
 | 인증 | 없음 |
 | 요청 | `Content-Type: application/json` **필수**(폼 인코딩은 400). 본문 `{"username":"…","password":"…","otp":"123456"}` — `otp` 는 2단계 인증 코드 6자리(모든 계정 필수) |
-| 성공 | `200` `{"ok":true,"next":null}` + `Set-Cookie: tbox_session=…`. `next` 가 `"password_change"` 또는 `"mfa_setup"` 이면 그 절차를 마쳐야 다른 API 가 열린다(그 전엔 403 `{"error":…,"next":"…"}`) |
+| 성공 | `200` `{"ok":true,"next":null}` + `Set-Cookie: __Host-tbox_session=…`. `next` 가 `"password_change"` 또는 `"mfa_setup"` 이면 그 절차를 마쳐야 다른 API 가 열린다(그 전엔 403 `{"error":…,"next":"…"}`) |
 | 코드 누락 | `401` `{"error":"2단계 인증 코드가 필요합니다","mfa_required":true}` — 비밀번호는 맞았고 `otp` 만 더 보내면 된다 |
 | 실패 | `401 {"error":"아이디 또는 비밀번호가 올바르지 않습니다"}` · `423`(잠금) · `429`(속도 제한) · `400`(형식 오류) |
 | 주의 | 같은 30초 창의 코드는 **한 번만** 쓸 수 있다. 두 번째 로그인은 다음 창까지 기다린다 |

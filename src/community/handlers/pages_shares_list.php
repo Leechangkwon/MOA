@@ -37,7 +37,8 @@ $gate = community_history_gate($user, (string) $params[0]);
 $row  = $gate['row'];
 
 [$mayManage] = CommunityAuthz::decidePageShare($user, $row);
-$mayNames    = $gate['may_change'] === true;
+// 디버깅 묶음 S2 검토 M-1 과 같은 부류 — 공유받은 사람들의 이름은 쓸 수 있는 사람(공유를 관리하는 쪽)에게만. 손님은 수만 본다.
+$mayNames    = $gate['may_change'] === true && Authz::canCommunityWrite($user);
 
 $all = community_page_shares((int) $row['id']);
 
@@ -59,7 +60,7 @@ Http::json([
     'my_level'    => $myLevel,
     'share_level' => CommunityAuthz::shareLevelFor($user, $row),
     // 5-A″ — 팀 공간도 관리 자격(그 팀원)이면 사람을 더하고 뺀다.
-    'can_manage'  => $mayManage,
+    'can_manage'  => $mayManage && Authz::canCommunityWrite($user),   // S2 — 사람 추가·등급 바꾸기는 쓰기 창구(PUT … `community.write`)
     // 「내 공유 빼기」가 보낼 계정명 — 화면이 내가 누구인지 따로 알고 있지 않다.
     'me'          => (string) $user['username'],
 ]);

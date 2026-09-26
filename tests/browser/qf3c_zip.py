@@ -67,7 +67,7 @@ def host():
 
 
 def api(method, path, body=None, raw=None, ctype=None, csrf=""):
-    h = {"User-Agent": UA, "Cookie": "tbox_session=" + E1}
+    h = {"User-Agent": UA, "Cookie": "__Host-tbox_session=" + E1}
     if csrf:
         h["X-CSRF-Token"] = csrf
     data = raw
@@ -99,8 +99,8 @@ def upload(name, csrf):
 def context(browser, scheme="light", width=1280, height=900, touch=False):
     ctx = browser.new_context(user_agent=UA, viewport={"width": width, "height": height}, color_scheme=scheme,
                               has_touch=touch, is_mobile=touch, accept_downloads=True)
-    ctx.add_cookies([{"name": "tbox_session", "value": E1, "domain": host(), "path": "/",
-                      "httpOnly": True, "secure": False, "sameSite": "Lax"}])
+    ctx.add_cookies([{"name": "__Host-tbox_session", "value": E1, "domain": host(), "path": "/",
+                      "httpOnly": True, "secure": True, "sameSite": "Lax"}])
     page = ctx.new_page()
     page.on("pageerror", lambda e: pageerrors.append(str(e)))
     page.on("console", lambda m: console_errors.append(m.text)

@@ -66,6 +66,8 @@ scripts/     security_lint.sh · seed_users.php
 | 감사 로그 | `/audit` | `audit.read` | 육하원칙 6필터 + 기록 표 |
 | 위키 | `/wiki` · `/wiki/{book}` · `/wiki/{book}/{slug}` | `role:Admin` | 문서를 초보자 말로 다시 쓴 해설 — 책 셋(Qaredi · t-box · 커뮤니티)을 골라 들어간다. 옛 `/wiki/{slug}` 는 `/wiki/tbox/{slug}` 로 308 |
 
+> **v2.31 에서 한 번 다시 로그인합니다**(디버깅 묶음 S2 · 사용자 결정 d72 ①). 세션 쿠키 이름이 `__Host-tbox_session` 으로 바뀌어 (`SECURITY.md` R-108 — 다른 하위 도메인이 쿠키를 심지 못하게), 반영하는 순간 모든 기기의 로그인이 한 번 풀립니다. 다시 로그인하면 그대로 씁니다. 로그인하지 않은 채 연 첫 화면(`/`)에는 사이트 이름과 「로그인」 단추만 보이고, 앱 목록은 로그인한 뒤에 보입니다(R-98).
+
 ### 조직·권한 (`PRD.md` F-19 · `ARCHITECTURE.md` 5.9)
 
 `/org` 는 **관리자 전용**(`org.manage`)이며 세 가지를 합니다.

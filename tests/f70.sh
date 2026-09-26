@@ -541,21 +541,21 @@ for attempt in range(3):
         resp = urllib.request.urlopen(req, timeout=20)
         data = json.loads(resp.read().decode())
         for h in resp.headers.get_all("Set-Cookie") or []:
-            m = re.match(r"tbox_session=([^;]+)", h)
+            m = re.match(r"__Host-tbox_session=([^;]+)", h)
             if m: cookie = m.group(1)
     except Exception:
         pass
     if data.get("ok") is True and cookie:
         csrf = ""
         try:
-            me = urllib.request.Request(base + "/api/me", headers={"Cookie": "tbox_session=" + cookie, "User-Agent": ua})
+            me = urllib.request.Request(base + "/api/me", headers={"Cookie": "__Host-tbox_session=" + cookie, "User-Agent": ua})
             csrf = str(json.loads(urllib.request.urlopen(me, timeout=20).read().decode()).get("csrf_token") or "")
         except Exception:
             csrf = ""
         if not re.fullmatch(r"[0-9a-f]{16,128}", csrf):
             print("LOGIN_FAIL_CSRF"); sys.exit(1)
         old = os.umask(0o077)
-        with open(os.path.join(out, who + ".cookie"), "w") as f: f.write("Cookie: tbox_session=%s\n" % cookie)
+        with open(os.path.join(out, who + ".cookie"), "w") as f: f.write("Cookie: __Host-tbox_session=%s\n" % cookie)
         with open(os.path.join(out, who + ".csrf"), "w") as f: f.write("X-CSRF-Token: %s\n" % csrf)
         os.umask(old)
         print("LOGIN_OK"); sys.exit(0)
@@ -1359,7 +1359,7 @@ try:
     from playwright.sync_api import sync_playwright
 except Exception as e:
     print(json.dumps({'PLAYWRIGHT_MISSING': str(e)})); sys.exit(0)
-ck = open(cookiefile).read().strip().split('=', 1)[1]   # 「Cookie: tbox_session=…」 한 줄(0600 파일) — 값은 인자에 싣지 않는다
+ck = open(cookiefile).read().strip().split('=', 1)[1]   # 「Cookie: __Host-tbox_session=…」 한 줄(0600 파일) — 값은 인자에 싣지 않는다
 site = base.split('/tbox')[0]
 out = {'errors': [], 'push_api': [], 'overflow': {}}
 launch = {'args': ['--no-sandbox']}
@@ -1369,7 +1369,8 @@ with sync_playwright() as p:
     b = p.chromium.launch(**launch)
     for name, scheme, w, h in [('light', 'light', 1440, 1000), ('dark', 'dark', 1440, 1000), ('390', 'light', 390, 844)]:
         ctx = b.new_context(user_agent=ua, viewport={'width': w, 'height': h}, color_scheme=scheme)
-        ctx.add_cookies([{'name': 'tbox_session', 'value': ck, 'url': site + '/', 'secure': True, 'httpOnly': True, 'sameSite': 'Lax'}])
+        # `__Host-` 쿠키는 url 로 넣으면 Playwright 가 http 에서 secure 를 거짓으로 덮어써 거부된다 → 호스트·경로·secure(S2)
+        ctx.add_cookies([{'name': '__Host-tbox_session', 'value': ck, 'domain': site.split('//')[1].split(':')[0].split('/')[0], 'path': '/', 'secure': True, 'httpOnly': True, 'sameSite': 'Lax'}])
         page = ctx.new_page()
         page.on('console', lambda m: out['errors'].append(m.text) if m.type == 'error' and not m.text.startswith('Failed to load resource') else None)
         page.on('pageerror', lambda e: out['errors'].append('pageerror: ' + str(e)))

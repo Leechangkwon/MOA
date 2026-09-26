@@ -159,13 +159,13 @@ for attempt in range(3):
         resp = urllib.request.urlopen(req, timeout=10)
         data = json.loads(resp.read().decode())
         for h in resp.headers.get_all("Set-Cookie") or []:
-            m = re.match(r"tbox_session=([^;]+)", h)
+            m = re.match(r"__Host-tbox_session=([^;]+)", h)
             if m:
                 cookie = m.group(1)
     except Exception:
         pass
     if data.get("ok") is True and cookie:
-        raw = urllib.request.urlopen(urllib.request.Request(base + "/api/me", headers={"User-Agent": ua, "Cookie": "tbox_session=" + cookie}), timeout=10).read().decode()
+        raw = urllib.request.urlopen(urllib.request.Request(base + "/api/me", headers={"User-Agent": ua, "Cookie": "__Host-tbox_session=" + cookie}), timeout=10).read().decode()
         m = re.search(r'"csrf_token":"([0-9a-f]+)"', raw)
         print("SESSION=" + cookie)
         print("CSRF=" + (m.group(1) if m else ""))
@@ -184,8 +184,8 @@ PY
   ( umask 077
     printf '%s' "$session" > "$WORK/$who.session"
     printf '%s' "$csrf" > "$WORK/$who.csrf"
-    printf 'Cookie: tbox_session=%s\n' "$session" > "$WORK/$who.cookie.hdr"
-    printf 'Cookie: tbox_session=%s\nX-CSRF-Token: %s\n' "$session" "$csrf" > "$WORK/$who.write.hdr" )
+    printf 'Cookie: __Host-tbox_session=%s\n' "$session" > "$WORK/$who.cookie.hdr"
+    printf 'Cookie: __Host-tbox_session=%s\nX-CSRF-Token: %s\n' "$session" "$csrf" > "$WORK/$who.write.hdr" )
   expect "$who 로그인 — 세션 · CSRF 토큰을 받았다" "yes" "yes"
 }
 

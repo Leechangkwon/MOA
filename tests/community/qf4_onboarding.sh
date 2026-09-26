@@ -142,7 +142,7 @@ with sync_playwright() as p:
     b = p.chromium.launch()
     for theme, w, h in (("light", 1440, 900), ("dark", 1440, 900), ("light", 390, 844), ("dark", 390, 844)):
         ctx = b.new_context(user_agent=ua, viewport={"width": w, "height": h})
-        ctx.add_cookies([{"name": "tbox_session", "value": os.environ["SHOT_SESSION"], "domain": host, "path": "/", "httpOnly": True},
+        ctx.add_cookies([{"name": "__Host-tbox_session", "value": os.environ["SHOT_SESSION"], "domain": host, "path": "/", "httpOnly": True, "secure": True},
                          {"name": "tbox_theme", "value": theme, "domain": host, "path": "/"}])
         pg = ctx.new_page()
         pg.on("pageerror", lambda e: bad.append("pageerror " + str(e)[:120]))

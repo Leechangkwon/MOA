@@ -136,7 +136,8 @@ Http::json([
     'total'             => $total,
     'page'              => $pageNo,
     'per_page'          => $perPage,
-    'can_add_rows'      => CommunityAuthz::decidePageChange($user, $dbPage)[0],
-    'can_edit_values'   => CommunityAuthz::decidePageChange($user, $dbPage)[0],
-    'can_manage_schema' => CommunityAuthz::decidePageManage($user, $dbPage)[0],
+    // 디버깅 묶음 S2 — 손님은 쓰기 창구(`community.write`)에 닿지 못하므로 창구 값도 같은 함수와 AND(pages_get.php 와 같다)
+    'can_add_rows'      => Authz::canCommunityWrite($user) && CommunityAuthz::decidePageChange($user, $dbPage)[0],
+    'can_edit_values'   => Authz::canCommunityWrite($user) && CommunityAuthz::decidePageChange($user, $dbPage)[0],
+    'can_manage_schema' => Authz::canCommunityWrite($user) && CommunityAuthz::decidePageManage($user, $dbPage)[0],
 ]);

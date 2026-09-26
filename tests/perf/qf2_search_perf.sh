@@ -70,7 +70,7 @@ login() {   # $1 계정 $2 사이트
   done
   return 1
 }
-session_of() { awk '$6=="tbox_session"{print $7}' "$JAR_DIR/$1.jar" 2>/dev/null | tail -1; }
+session_of() { awk '$6=="__Host-tbox_session"{print $7}' "$JAR_DIR/$1.jar" 2>/dev/null | tail -1; }
 mkinst() {   # $1 원본 트리(폴더) $2 인스턴스 폴더 $3 포트 → 서버 pid
   local src="$1" dst="$2" port="$3"
   mkdir -p "$dst/app" "$dst/storage" "$dst/log"
@@ -116,7 +116,7 @@ site, ua, mode = sys.argv[1], sys.argv[2], sys.argv[3]
 names = sys.argv[4].split(',')
 S = {n: sys.stdin.readline().rstrip('\n') for n in names}
 def get(who, path):
-    r = urllib.request.Request(site + path, headers={'User-Agent': ua, 'Cookie': 'tbox_session=' + S[who]})
+    r = urllib.request.Request(site + path, headers={'User-Agent': ua, 'Cookie': '__Host-tbox_session=' + S[who]})
     t0 = time.perf_counter()
     try:
         with urllib.request.urlopen(r, timeout=90) as x: x.read(); c = x.status
@@ -253,7 +253,7 @@ done
 S_E1=$(session_of claude_employee01); S_E2=$(session_of claude_employee02); S_M1=$(session_of claude_manager01)
 S_A1=$(session_of claude_admin01); S_G1=$(session_of claude_guest01)
 for s in S_E1 S_E2 S_M1 S_A1; do
-  printf 'Cookie: tbox_session=%s\n' "${!s}" | curl -s -o /dev/null -H @- -A "$UA" "$SITE/community/api/me/space"
+  printf 'Cookie: __Host-tbox_session=%s\n' "${!s}" | curl -s -o /dev/null -H @- -A "$UA" "$SITE/community/api/me/space"
 done
 note "임시 DB $DB — 살아 있는 페이지 $(psqlq "SELECT count(*) FROM community.pages WHERE deleted_at IS NULL") · 파일 $(psqlq "SELECT count(*) FROM files WHERE deleted_at IS NULL") · 댓글 $(psqlq "SELECT count(*) FROM community.comments") · 활성 계정 $(psqlq "SELECT count(*) FROM users WHERE is_active")"
 
@@ -454,7 +454,7 @@ out = []; alls = []
 with sync_playwright() as p:
     b = p.chromium.launch()
     ctx = b.new_context(user_agent=sys.argv[2])
-    ctx.add_cookies([{'name': 'tbox_session', 'value': sess, 'url': site}])
+    ctx.add_cookies([{'name': '__Host-tbox_session', 'value': sess, 'domain': host, 'path': '/', 'secure': True, 'httpOnly': True, 'sameSite': 'Lax'}])   # S2 — `__Host-` 는 url 로 넣으면 http 에서 거부
     pg = ctx.new_page()
     # 재는 자리는 t-box 홈(두 앱 공통 창 — 같은 search.js). 커뮤니티 홈은 S1 에서 화면 자체가 몇 분 걸려(검색과 별개 —
     # 아래 「참고」) 워커를 붙잡으므로 **재기를 다 마친 뒤** 따로 연다.
@@ -502,7 +502,7 @@ goal "입력 멈춤(250ms) 뒤 첫 결과까지 최대(먼저 온 묶음)" "$(se
 note "두 묶음이 다 올 때까지 최대 $(sed -n 's/^UI_ALL_MAX=//p' "$WORK/ui.txt")ms (파일 전역 검색이 늦으면 이쪽이 길다 — J-2)"
 note "(참고) 커뮤니티 홈 열기(load) $(sed -n 's/^HOME_MS=//p' "$WORK/ui.txt") — 검색과 별개. 서버 기록의 커뮤니티 요청(끝난 것, 마지막 12줄):"
 grep -a '/community/' "$INST/server.log" | grep -a '\]: ' | tail -12 | sed 's/^/      /'
-home_time() { printf 'Cookie: tbox_session=%s\n' "$S_E1" | curl -s -o /dev/null -w '%{time_total}' -H @- -A "$UA" "$1/community/"; }
+home_time() { printf 'Cookie: __Host-tbox_session=%s\n' "$S_E1" | curl -s -o /dev/null -w '%{time_total}' -H @- -A "$UA" "$1/community/"; }
 
 if [ -n "${QF2_BASE_REF:-}" ]; then
   hr "④ 같은 S1 DB 에 고치기 전 코드($QF2_BASE_REF) — 전후 표"

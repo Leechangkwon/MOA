@@ -282,6 +282,8 @@ final class Audit
         'auth.login|deny|bad_credentials'         => '{target} 계정으로 로그인을 시도했지만 아이디 또는 비밀번호가 틀렸습니다',
         'auth.login|deny|locked'                  => '{target} 계정으로 로그인을 시도했지만 실패 5회로 10분 잠긴 계정입니다',
         'auth.login|deny|inactive'                => '{target} 계정으로 로그인을 시도했지만 비활성화된 계정입니다',
+        // 디버깅 묶음 S2 — 인증 실패가 한도(5회)에 막 닿아 계정이 잠긴 **순간** 한 행(Auth::countFailure · 경보 AL-2 가 센다)
+        'auth.lock|deny|failed_limit'             => '{target} 계정이 인증 실패 5회로 10분 동안 잠겼습니다',
         // 보안 넷 ④ (SECURITY R-39, 2026-09-26) — 비밀번호는 맞았지만 발급 72시간이 지난 임시 비밀번호. 비밀번호 값은 넣지 않는다.
         'auth.login|deny|temp_expired'            => '{target} 계정으로 로그인을 시도했지만 임시 비밀번호의 유효기간(발급 뒤 72시간)이 지났습니다',
         'auth.logout|allow'                       => '{actor} 이(가) 로그아웃했습니다',
@@ -1345,8 +1347,23 @@ final class Audit
          * 추가 모드(O_APPEND)로만 열 수 있고, **없으면 만들지 않는다**(root 가 만들면 주인이 root 가 되어 웹이 못 쓴다 —
          * logrotate `create 0640 tbox-php adm` 몫). 웹(tbox-php)·root 가 아닌 CLI 는 전과 같다 — 자기 폴더라 권한 경계가 없다.
          */
-        if (PHP_SAPI === 'cli' && function_exists('posix_geteuid') && posix_geteuid() === 0) {
-            self::appendLineNoFollow($path, $line . "\n", true, false, null);
+        /*
+         * 디버깅 묶음 S2 (검토 낮음) — root CLI 에서 파일 사본이 실패해도 **그 회차를 멈추지 않는다**.
+         * 이 함수는 toDatabase() **뒤**에 돈다 — DB 감사 행은 이미 남았다. 전에는 여기서 던진 예외가 root 배치(alerts.php)의
+         * 회차를 통째로 끝내, 폴더 주인(tbox-php)이 감사 파일 자리에 링크 하나를 심으면 그 뒤 모든 경보 규칙이 멈췄다
+         * (경보 로그 쓰기 실패에 M-3(a) 로 막은 길과 같은 모양). 이제 경고 한 줄(표준 오류)을 찍고 돌아간다 — 쓰기는 여전히
+         * 거부된다(링크를 따라가지 않는다). 웹·root 가 아닌 CLI 는 전과 같다(실패하면 예외 — 요청 500).
+         * posix 확장이 없으면 이 배치가 root 인지 알 수 없다 — 그때도 **링크를 따라가지 않는 쪽**으로 쓴다(getmyuid 대체 없음 · S2).
+         */
+        if (PHP_SAPI === 'cli' && (!function_exists('posix_geteuid') || posix_geteuid() === 0)) {
+            try {
+                self::appendLineNoFollow($path, $line . "\n", true, false, null);
+            } catch (RuntimeException | ErrorException $e) {
+                if (defined('STDERR')) {
+                    fwrite(STDERR, '[경고] 감사 파일 사본에 쓰지 못했다 — DB 감사 행은 남았다(' . $row['action'] . '): '
+                        . $e->getMessage() . "\n");
+                }
+            }
             return;
         }
         $written = file_put_contents($path, $line . "\n", FILE_APPEND | LOCK_EX);

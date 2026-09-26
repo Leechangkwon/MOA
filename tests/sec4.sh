@@ -119,7 +119,7 @@ try_login() {
   printf -v body '{"username":"%s","password":"%s"}' "$1" "$_tl_pw"
   curl_json_secret body -s -w '\n%{http_code}' -c "$3" -A "$UA" -H 'Content-Type: application/json' "$BASE/api/login"
 }
-session_in() { awk '$6=="tbox_session"{n++} END{print n+0}' "$1" 2>/dev/null; }
+session_in() { awk '$6=="__Host-tbox_session"{n++} END{print n+0}' "$1" 2>/dev/null; }
 set_issued() { psqlq "UPDATE users SET temp_password_issued_at = $2 WHERE username = '$1'" >/dev/null; }
 mark() { psqlq "SELECT coalesce(max(id),0) FROM audit_logs"; }
 

@@ -63,6 +63,9 @@ $allowedActions = [
     // 9단계 배치 행과 같은 이유로 「누가」 필터로는 찾을 수 없고 여기(어떻게)로 골라야 보인다.
     // 발급자는 detail.issued_by 에 있다.
     'share.create', 'share.revoke', 'share.download',
+    // 디버깅 묶음 S2 검토 L-4 — 잠금이 걸린 순간(`auth.lock`, S2 새 행동)과 16-1 재인증(`auth.reauth` — 표에는 있었으나 여기 빠져 있었다).
+    // 둘 다 AL-2 가 세는 행이라 「어떻게」로 골라 볼 수 있어야 한다.
+    'auth.lock', 'auth.reauth',
 ];
 
 /** 접근 등급 허용 목록 (PRD 4장) */

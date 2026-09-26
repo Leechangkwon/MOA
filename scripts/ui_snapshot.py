@@ -4,7 +4,7 @@
           · row_height(같은 줄의 버튼·입력 높이 불일치) · offscreen(뷰포트 오른쪽 밖으로 나간 요소)
           · undefined_class(어느 스타일시트에도 규칙이 없는 class)
 """
-import json, sys, time
+import json, sys, time, urllib.parse
 from playwright.sync_api import sync_playwright
 
 # 세션 쿠키는 인자가 아니라 표준입력 첫 줄로 받는다 — 인자는 ps·/proc 에 보인다(R-62 · 점검 봇 1-B-2, 1-B-1 독립 검토 중간).
@@ -81,7 +81,15 @@ def main():
         cookies = []
         for kv in COOKIES.split(";"):
             if "=" in kv:
-                n, v = kv.split("=", 1); cookies.append({"name": n, "value": v, "url": BASE})
+                n, v = kv.split("=", 1)
+                if n.startswith("__Host-"):
+                    # 세션 쿠키 `__Host-tbox_session`(디버깅 묶음 S2) — 접두 쿠키는 Secure · Path=/ · Domain 없음이어야 브라우저가 받는다.
+                    # `url` 로 넣으면 Playwright 가 http 주소에서 secure 를 거짓으로 덮어써 거부된다 → 호스트·경로·secure 로 넣는다
+                    # (Chromium 은 127.0.0.1 을 믿을 만한 출처로 보아 http 에서도 Secure 쿠키를 보낸다).
+                    cookies.append({"name": n, "value": v, "domain": urllib.parse.urlsplit(BASE).hostname, "path": "/",
+                                    "secure": True, "httpOnly": True, "sameSite": "Lax"})
+                else:
+                    cookies.append({"name": n, "value": v, "url": BASE})
         ctx.add_cookies(cookies)
         page = ctx.new_page()
         console = []

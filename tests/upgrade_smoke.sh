@@ -359,13 +359,13 @@ for attempt in range(3):
         resp = urllib.request.urlopen(req, timeout=10)
         data = json.loads(resp.read().decode())
         for h in resp.headers.get_all("Set-Cookie") or []:
-            m = re.match(r"tbox_session=([^;]+)", h)
+            m = re.match(r"__Host-tbox_session=([^;]+)", h)
             if m:
                 cookie = m.group(1)
     except Exception:
         pass
     if data.get("ok") is True and cookie:
-        raw = urllib.request.urlopen(urllib.request.Request(base + "/api/me", headers={"User-Agent": ua, "Cookie": "tbox_session=" + cookie}), timeout=10).read().decode()
+        raw = urllib.request.urlopen(urllib.request.Request(base + "/api/me", headers={"User-Agent": ua, "Cookie": "__Host-tbox_session=" + cookie}), timeout=10).read().decode()
         m = re.search(r"\"csrf_token\":\"([0-9a-f]+)\"", raw)
         print("SESSION=" + cookie)
         print("CSRF=" + (m.group(1) if m else ""))
@@ -385,7 +385,7 @@ unset LOGIN_OUT
 [ -n "$SESSION" ] || { echo "  ✖ $WHO 로그인 실패 — 중단"; exit 4; }
 expect "로그인 세션 · CSRF 토큰을 받았다" "yes" "$([ -n "$SESSION" ] && [ -n "$CSRF" ] && echo yes || echo no)"
 # 세션은 두 트리가 같은 임시 DB 의 sessions 행을 보므로 N 으로 바꿔도 그대로 쓴다(운영 배포와 같다)
-( umask 077; printf 'Cookie: tbox_session=%s\nX-CSRF-Token: %s\n' "$SESSION" "$CSRF" > "$WORK/write.hdr" )
+( umask 077; printf 'Cookie: __Host-tbox_session=%s\nX-CSRF-Token: %s\n' "$SESSION" "$CSRF" > "$WORK/write.hdr" )
 unset CSRF
 
 browser() {   # $1 = 단계 · $2 = 자산 기록 · 결과를 $WORK/<단계>.txt 에 · 표식은 브라우저가 흐름마다 처음 여는 화면 응답으로 대조한다

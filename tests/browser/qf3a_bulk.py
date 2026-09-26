@@ -87,8 +87,8 @@ def host():
 
 
 def set_session(ctx, session):
-    ctx.add_cookies([{"name": "tbox_session", "value": session, "domain": host(), "path": "/",
-                      "httpOnly": True, "secure": False, "sameSite": "Lax"}])
+    ctx.add_cookies([{"name": "__Host-tbox_session", "value": session, "domain": host(), "path": "/",
+                      "httpOnly": True, "secure": True, "sameSite": "Lax"}])
 
 
 def context(browser, session, scheme="light", width=1280, height=900, touch=False):
@@ -608,7 +608,7 @@ with sync_playwright() as p:
             if swapped["n"] == 2:
                 # 다른 탭에서 같은 계정으로 다시 로그인한 것과 같다 — 둘째 요청부터 둘째 세션 쿠키 + 이 탭의 옛 토큰(→ 403 토큰 불일치)
                 set_session(ctx, E1B)
-                route.continue_(headers={**route.request.headers, "cookie": "tbox_session=" + E1B})
+                route.continue_(headers={**route.request.headers, "cookie": "__Host-tbox_session=" + E1B})
                 return
         route.continue_()
     page.route("**/tbox/api/files/*/favorite", swap_on_second)
@@ -687,7 +687,7 @@ with sync_playwright() as p:
             cswap["n"] += 1
             if cswap["n"] == 2:
                 set_session(ctx, E2B)
-                route.continue_(headers={**route.request.headers, "cookie": "tbox_session=" + E2B})
+                route.continue_(headers={**route.request.headers, "cookie": "__Host-tbox_session=" + E2B})
                 return
         route.continue_()
     page.route("**/community/api/pages/*", cswap_on_second)

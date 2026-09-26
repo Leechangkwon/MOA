@@ -307,13 +307,13 @@ for attempt in range(3):
         resp = urllib.request.urlopen(req, timeout=15)
         data = json.loads(resp.read().decode())
         for h in resp.headers.get_all("Set-Cookie") or []:
-            m = re.match(r"tbox_session=([^;]+)", h)
+            m = re.match(r"__Host-tbox_session=([^;]+)", h)
             if m:
                 cookie = m.group(1)
     except Exception:
         pass
     if data.get("ok") is True and cookie:
-        raw = urllib.request.urlopen(urllib.request.Request(base + "/api/me", headers={"User-Agent": ua, "Cookie": "tbox_session=" + cookie}), timeout=15).read().decode()
+        raw = urllib.request.urlopen(urllib.request.Request(base + "/api/me", headers={"User-Agent": ua, "Cookie": "__Host-tbox_session=" + cookie}), timeout=15).read().decode()
         m = re.search(r'"csrf_token":"([0-9a-f]+)"', raw)
         nx = re.search(r'"next":(null|"[a-z_]*")', raw)
         print("SESSION=" + cookie)
@@ -331,8 +331,8 @@ PY
   CSRF=$(printf '%s\n' "$LOGIN_OUT" | sed -n 's/^CSRF=//p')
   NEXT=$(printf '%s\n' "$LOGIN_OUT" | sed -n 's/^NEXT=//p')
   [ -n "$SESSION" ] && [ -n "$CSRF" ] || { echo "  ✖ $WHO 로그인 실패 — 중단"; exit 4; }
-  ( umask 077; printf 'Cookie: tbox_session=%s\n' "$SESSION" > "$WORK/hdr/$WHO.cookie"
-    printf 'Cookie: tbox_session=%s\nX-CSRF-Token: %s\n' "$SESSION" "$CSRF" > "$WORK/hdr/$WHO.write" )
+  ( umask 077; printf 'Cookie: __Host-tbox_session=%s\n' "$SESSION" > "$WORK/hdr/$WHO.cookie"
+    printf 'Cookie: __Host-tbox_session=%s\nX-CSRF-Token: %s\n' "$SESSION" "$CSRF" > "$WORK/hdr/$WHO.write" )
   unset SESSION CSRF LOGIN_OUT
   expect "$WHO 로그인 (다음 단계 없음 — 관문에 막히지 않는다)" "null" "$NEXT"
 done
@@ -536,8 +536,8 @@ elif [ -z "$BR_PID" ]; then
   skip "편집기 heartbeat 브라우저 확인" "employee01 이 고칠 수 있는 페이지가 임시 DB 에 없다"
 else
   psqlq "DELETE FROM community.page_edit_sessions WHERE page_id = (SELECT id FROM community.pages WHERE public_id = '$BR_PID')" >/dev/null
-  SMOKE_E1="$(sed -n 's/^Cookie: tbox_session=//p' "$WORK/hdr/claude_employee01.cookie")" \
-  SMOKE_E2="$(sed -n 's/^Cookie: tbox_session=//p' "$WORK/hdr/claude_employee02.cookie")" \
+  SMOKE_E1="$(sed -n 's/^Cookie: __Host-tbox_session=//p' "$WORK/hdr/claude_employee01.cookie")" \
+  SMOKE_E2="$(sed -n 's/^Cookie: __Host-tbox_session=//p' "$WORK/hdr/claude_employee02.cookie")" \
     python3 "$ROOT/tests/browser/qf4b1_heartbeat.py" "$SITE" "$UA" "$BR_PID" claude_employee02 > "$WORK/browser.txt" 2>&1
   sed 's/^/    /' "$WORK/browser.txt"
   expect "브라우저 실패 0 (페이지 $BR_PID)" "0" "$(sed -n 's/^SMOKE_FAIL=//p' "$WORK/browser.txt" | tail -1)"

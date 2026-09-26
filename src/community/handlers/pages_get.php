@@ -110,6 +110,15 @@ if ($noticeBoard !== null && (string) $noticeBoard['board_kind'] === 'notice' &&
 // 인계를 시작할 수 있나 — 소유자 · 자기 팀원 것의 Manager · Admin(재인증은 창구가 다시 묻는다).
 [$mayHandover] = CommunityAuthz::decidePageHandover($user, $row);
 
+/* 디버깅 묶음 S2 (보안 검토 낮음) — 손님(Guest)은 커뮤니티 쓰기 창구에 닿지 못한다(라우트 정책 `community.write` →
+   `Authz::canCommunityWrite`). 그런데 위 판정은 개인 공간의 **주인**을 역할과 상관없이 참으로 봐서, 손님 자기 공간의
+   「시작하기」 페이지에서 `can_edit`·`can_manage` 등이 참으로 나갔다(창구는 403 — 권한 구멍은 아니고 값이 어긋남).
+   화면에 내보내는 쓰기 값은 전부 **같은 함수와 AND** 한다 — 판정 함수(CommunityAuthz)는 그대로 두고 창구 값만 맞춘다. */
+$mayWrite    = Authz::canCommunityWrite($user);
+$mayChange   = $mayChange && $mayWrite;
+$mayManage   = $mayManage && $mayWrite;
+$mayHandover = $mayHandover && $mayWrite;
+
 /* 「공개 범위」 단추를 열지 말지 고르는 값 (4-B). 개인 공간의 **주인**일 때만 참이다 —
    팀 공간의 페이지는 자기 범위가 없고(공간 등급을 따른다), 남의 페이지는 볼 수 있어도
    범위를 바꾸지 못한다. 판단 근거가 아니라 **서버가 이미 한 판단의 결과**다: 단추를
@@ -140,6 +149,11 @@ if ($boardOfPage !== null
 $isQa          = $boardOfPage !== null && (string) $boardOfPage['board_kind'] === 'qa';
 [$mayResolveBase, $resolveCode] = CommunityAuthz::decidePageManage($user, $row);
 $mayResolve    = $isQa && $mayResolveBase && $resolveCode === CommunityAuthz::CODE_OWNER;
+// S2 — 게시·게시 해제·숨기기·해결됨도 쓰기 창구다(위 $mayWrite 와 같은 AND)
+$mayPublish    = $mayPublish && $mayWrite;
+$mayUnpublish  = $mayUnpublish && $mayWrite;
+$mayHide       = $mayHide && $mayWrite;
+$mayResolve    = $mayResolve && $mayWrite;
 
 /* 5-A 인계 창의 「하위 페이지 n개도 함께 옮겨 갑니다」 — 넘길 수 있는 사람에게만 센다.
    재귀 CTE 한 번(`community_subtree_live_ids`)이고, 자기 자신을 뺀 수다. */
@@ -240,7 +254,8 @@ if ($row['database_id'] !== null && $row['db_public_id'] !== null) {
 }
 $templateScopes = [];
 foreach (CommunityAuthz::TEMPLATE_SCOPES as $tplScope) {
-    if (CommunityAuthz::decideTemplateSave($user, $row, $tplScope, $tplDbPage)[0]) {
+    // S2 — 템플릿 저장(`POST /api/templates`)도 쓰기 창구다
+    if ($mayWrite && CommunityAuthz::decideTemplateSave($user, $row, $tplScope, $tplDbPage)[0]) {
         $templateScopes[] = $tplScope;
     }
 }
@@ -304,7 +319,7 @@ Http::json([
     'can_manage'   => $mayManage,
     // 5-A″ — 팀 공간도 공유한다(관리 자격 = 그 팀원). 공개 범위는 여전히 개인 공간만이다.
     // 5-C — 게시판 글은 공유가 없다(`decidePageShare` — 게시판 등급이 곧 범위).
-    'can_share'    => CommunityAuthz::decidePageShare($user, $row)[0],
+    'can_share'    => $mayWrite && CommunityAuthz::decidePageShare($user, $row)[0],
     'can_handover' => $mayHandover,
     // 인계 창의 안내 — 함께 옮겨 갈 하위 페이지 수(넘길 수 없는 사람에게는 null).
     'subtree_count' => $subtreeCount,
@@ -367,7 +382,7 @@ Http::json([
         'relation_titles' => (($rt = community_db_ref_titles($rowSchema, [$rowVals], $user))[0] === [] ? new stdClass() : $rt[0]),
         'file_titles'     => ($rt[1] === [] ? new stdClass() : $rt[1]),
     ],
-    'can_comment'    => CommunityAuthz::decideCommentCreate($user, $row)[0],
+    'can_comment'    => $mayWrite && CommunityAuthz::decideCommentCreate($user, $row)[0],
     'can_view_reads' => CommunityAuthz::decideReadsView($user, $row)[0],
     'template_scopes' => $templateScopes,
     // 7-C — 렌더러 두 벌의 임베드 재료: 지금 허용 목록 · 틀을 여는가(코드 상수 — 끄면 모든 임베드가 「허용 대기」)

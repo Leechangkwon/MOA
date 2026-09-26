@@ -99,7 +99,7 @@ login() {
   done
   return 1
 }
-session_of() { awk '$6=="tbox_session"{print $7}' "$JAR_DIR/$1.jar" 2>/dev/null | tail -1; }
+session_of() { awk '$6=="__Host-tbox_session"{print $7}' "$JAR_DIR/$1.jar" 2>/dev/null | tail -1; }
 
 # ════════════════════════════════════════════════════════════════
 hr "Q:F-2 — 임시 인스턴스 준비 (운영 DB 에는 쓰지 않는다)"
@@ -441,7 +441,7 @@ def ok(name, cond, detail=''):
     if cond: P += 1; print('  ✔ ' + name)
     else: F += 1; print('  ✖ ' + name + ('  — ' + str(detail)[:300] if detail != '' else ''))
 def req(who, m, path, body=None):
-    h = {'User-Agent': UA, 'Cookie': 'tbox_session=' + S[who]}
+    h = {'User-Agent': UA, 'Cookie': '__Host-tbox_session=' + S[who]}
     if m != 'GET':
         h['X-CSRF-Token'] = CSRF.get(who, ''); h['Content-Type'] = 'application/json'
     data = None if body is None else json.dumps(body, ensure_ascii=False).encode('utf-8')

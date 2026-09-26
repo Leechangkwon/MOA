@@ -105,5 +105,5 @@ Http::json([
     'limit'    => $limit,
     // 화면의 「되돌리기」 단추를 열지 말지 고르는 값이다 — 판단 근거가 아니다 (DESIGN 원칙 1).
     // 단추를 되살려 창구를 불러도 `version_restore.php` 가 같은 함수로 다시 막는다.
-    'can_edit' => $gate['may_change'],
+    'can_edit' => $gate['may_change'] && Authz::canCommunityWrite($user),   // S2 — 되돌리기는 쓰기 창구(`community.write`)
 ]);

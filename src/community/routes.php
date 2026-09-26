@@ -3103,7 +3103,8 @@ function community_template_out(array $tpl, array $u, ?array $dbPage, bool $with
         'database'   => (string) $tpl['scope'] === 'database' ? (string) ($tpl['db_public_id'] ?? '') : null,
         'created_by' => $by,
         'created_at' => (string) $tpl['created_at'],
-        'can_delete' => CommunityAuthz::decideTemplateDelete($u, $tpl, $dbPage)[0],
+        // 디버깅 묶음 S2 검토 L-1 — 지우기는 쓰기 창구(`DELETE /api/templates/{id}` — community.write). 창구 값도 같은 함수와 AND
+        'can_delete' => Authz::canCommunityWrite($u) && CommunityAuthz::decideTemplateDelete($u, $tpl, $dbPage)[0],
     ];
     if ($withBody) {
         $doc = is_string($tpl['doc']) ? json_decode((string) $tpl['doc'], true) : $tpl['doc'];

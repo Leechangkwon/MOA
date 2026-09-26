@@ -162,7 +162,7 @@ if (Http::queryText('shared', 8) === 'me') {
             'parent_id'   => $r['parent_public_id'] === null ? null : (string) $r['parent_public_id'],
             'created_at'  => (string) $r['created_at'],
             'updated_at'  => (string) $r['updated_at'],
-            'can_edit'    => $canEditRow,
+            'can_edit'    => $canEditRow && Authz::canCommunityWrite($user),   // S2 — 손님은 쓰기 창구에 닿지 못한다
             // 어느 공간의 페이지인가 — 언제나 남의 공간이므로 화면이 그것을 말해야 한다.
             'space'       => [
                 'id'   => (int) $r['space_id'],
@@ -233,6 +233,8 @@ if (!$mayOpen) {
     'space_owner_user_id' => $space['owner_user_id'] ?? null,
     'space_team_id'       => $space['team_id'] ?? null,
 ]);
+// 디버깅 묶음 S2 — 손님(Guest)은 자기 공간·팀 공간이어도 쓰기 창구(`community.write`)에 닿지 못한다 — 창구 값도 같게
+$canWrite = $canWrite && Authz::canCommunityWrite($user);
 
 $spaceSummary = [
     'id'        => $spaceId,

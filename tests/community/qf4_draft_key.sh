@@ -125,13 +125,13 @@ for attempt in range(3):
         resp = urllib.request.urlopen(req, timeout=15)
         data = json.loads(resp.read().decode())
         for h in resp.headers.get_all("Set-Cookie") or []:
-            m = re.match(r"tbox_session=([^;]+)", h)
+            m = re.match(r"__Host-tbox_session=([^;]+)", h)
             if m:
                 cookie = m.group(1)
     except Exception:
         pass
     if data.get("ok") is True and cookie:
-        raw = urllib.request.urlopen(urllib.request.Request(base + "/api/me", headers={"User-Agent": ua, "Cookie": "tbox_session=" + cookie}), timeout=15).read().decode()
+        raw = urllib.request.urlopen(urllib.request.Request(base + "/api/me", headers={"User-Agent": ua, "Cookie": "__Host-tbox_session=" + cookie}), timeout=15).read().decode()
         m = re.search(r'"csrf_token":"([0-9a-f]+)"', raw)
         print("SESSION=" + cookie)
         print("CSRF=" + (m.group(1) if m else ""))
@@ -165,8 +165,8 @@ login_as() {
   LAST_STEP[$who]=$(( $(date +%s) / 30 ))
   [ -n "$session" ] && [ -n "$csrf" ] || { echo "  ✖ $who 로그인 실패 — 중단"; exit 4; }
   ( umask 077
-    printf 'Cookie: tbox_session=%s\n' "$session" > "$WORK/$tag.cookie"
-    printf 'Cookie: tbox_session=%s\nX-CSRF-Token: %s\n' "$session" "$csrf" > "$WORK/$tag.write"
+    printf 'Cookie: __Host-tbox_session=%s\n' "$session" > "$WORK/$tag.cookie"
+    printf 'Cookie: __Host-tbox_session=%s\nX-CSRF-Token: %s\n' "$session" "$csrf" > "$WORK/$tag.write"
     # 세션 행 id(= 쿠키 토큰의 sha256) — DB 가 들고 있는 값이다(쿠키로 되돌릴 수 없다). 행을 계정이 아니라 세션으로 찾는다.
     printf '%s' "$session" | sha256sum | cut -c1-64 > "$WORK/$tag.sid" )
   unset session csrf out

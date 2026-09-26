@@ -17,7 +17,7 @@ if not all(S.values()):
 CSRF = {}
 fails = 0
 def req(who, m, path, body=None):
-    h = {'User-Agent': UA, 'Cookie': 'tbox_session=' + S[who]}
+    h = {'User-Agent': UA, 'Cookie': '__Host-tbox_session=' + S[who]}
     if m != 'GET':
         h['X-CSRF-Token'] = CSRF[who]; h['Content-Type'] = 'application/json'
     r = urllib.request.Request(SITE + path, data=None if body is None else json.dumps(body).encode(), headers=h, method=m)

@@ -505,7 +505,7 @@ expect "COMMUNITY_DOC_STAGE 가 7 (7-C)" "7" \
 hr "브라우저 — 4-A 항목 (진짜 브라우저로 눌러 본다)"
 
 SMOKE_OUT="$WORK/smoke.txt"
-SESSION_VALUE=$(awk '$6=="tbox_session"{print $7}' "$JAR_DIR/claude_employee01.jar" 2>/dev/null)
+SESSION_VALUE=$(awk '$6=="__Host-tbox_session"{print $7}' "$JAR_DIR/claude_employee01.jar" 2>/dev/null)
 
 if ! python3 -c "import playwright" >/dev/null 2>&1; then
   skip "브라우저 스모크" "Playwright 가 없다 — **미검증**"

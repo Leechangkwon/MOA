@@ -94,8 +94,8 @@ const RAS_TOTP_FILE = '/etc/tbox-v2/qa-totp.txt';
  */
 const RAS_PENDING_FILE = '/etc/tbox-v2/.f71-pending';
 
-/** 세션 쿠키 이름 (src/Auth.php `COOKIE_NAME`) */
-const RAS_COOKIE = 'tbox_session';
+/** 세션 쿠키 이름 (src/Auth.php `COOKIE_NAME` — v2.31 디버깅 묶음 S2 부터 `__Host-` 접두. 옛 이름은 서버가 읽지 않는다) */
+const RAS_COOKIE = '__Host-tbox_session';
 
 /**
  * 받을 수 있는 계정 — 지시서 A 표 그대로(역할 · 팀 이름 · 「public 만 보이나」 대조 여부).
@@ -372,7 +372,7 @@ function ras_request(string $method, string $path, ?array $json, array &$s): arr
         }
         if (preg_match('#^HTTP/\d(?:\.\d)?\s+(\d{3})#', $h, $m) === 1) {
             $status = (int) $m[1];
-        } elseif (preg_match('/^Set-Cookie:\s*' . RAS_COOKIE . '=([^;]*)/i', $h, $m) === 1) {
+        } elseif (preg_match('/^Set-Cookie:\s*' . preg_quote(RAS_COOKIE, '/') . '=([^;]*)/i', $h, $m) === 1) {
             // 로그인은 새 토큰, 로그아웃은 빈 값(지우기)이다.
             $s['session'] = preg_match('/^[0-9a-f]{64}$/', $m[1]) === 1 ? $m[1] : null;
         }

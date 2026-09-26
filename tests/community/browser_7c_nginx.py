@@ -52,8 +52,8 @@ def host(site):
 
 def make_ctx(browser, site, fulfilled, aborted, width=1280):
     ctx = browser.new_context(user_agent=UA, viewport={"width": width, "height": 900})
-    ctx.add_cookies([{"name": "tbox_session", "value": E1, "domain": host(site), "path": "/",
-                      "httpOnly": True, "secure": False, "sameSite": "Lax"}])
+    ctx.add_cookies([{"name": "__Host-tbox_session", "value": E1, "domain": host(site), "path": "/",
+                      "httpOnly": True, "secure": True, "sameSite": "Lax"}])
 
     def outside(route):
         u = route.request.url

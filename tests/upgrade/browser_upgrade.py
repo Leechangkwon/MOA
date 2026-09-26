@@ -189,8 +189,8 @@ with sync_playwright() as p:
         browser = None
         ctx = p.chromium.launch_persistent_context(PROFILE, headless=True, user_agent=UA,
                                                    viewport={"width": 390, "height": 844})
-    ctx.add_cookies([{"name": "tbox_session", "value": COOKIE, "domain": HOST, "path": "/",
-                      "httpOnly": True, "secure": False, "sameSite": "Lax"}])
+    ctx.add_cookies([{"name": "__Host-tbox_session", "value": COOKIE, "domain": HOST, "path": "/",
+                      "httpOnly": True, "secure": True, "sameSite": "Lax"}])
     stopped = ""
     for flow in FLOW_LIST:
         if stopped:             # 앞 흐름에서 표식이 틀렸다 — 이 단계의 남은 흐름은 열지 않는다(쿠키를 더 보내지 않는다)

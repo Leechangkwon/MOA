@@ -188,8 +188,13 @@ function cli_write_private(string $path, string $contents): void
  */
 function cli_append_line(string $path, string $line): void
 {
-    $uid = function_exists('posix_geteuid') ? posix_geteuid() : getmyuid();
-    Audit::appendLineNoFollow($path, $line, false, true, is_int($uid) ? $uid : null);
+    /* 디버깅 묶음 S2 (검토 낮음) — posix 가 없으면 주인 대조를 할 수 없으므로 **쓰지 않는다**(getmyuid() 는 스크립트 파일의
+       주인이지 이 배치의 계정이 아니다 — 대신 쓰면 주인 검사가 엉뚱한 계정을 믿는다). 부르는 cli_alert 가 이 예외를 받아
+       경고 한 줄 · 감사 행에 `alerts_log_failed` 를 붙이고 다음 규칙으로 간다(경보를 조용히 잃지 않는다). */
+    if (!function_exists('posix_geteuid')) {
+        throw new RuntimeException('posix 확장이 없어 이 배치의 계정을 알 수 없다 — 주인을 확인할 수 없어 쓰지 않는다: ' . $path);
+    }
+    Audit::appendLineNoFollow($path, $line, false, true, posix_geteuid());
 }
 
 /**

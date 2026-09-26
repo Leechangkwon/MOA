@@ -90,7 +90,7 @@ login() {
   done
   return 1
 }
-session_of() { awk '$6=="tbox_session"{print $7}' "$JAR_DIR/$1.jar" 2>/dev/null | tail -1; }
+session_of() { awk '$6=="__Host-tbox_session"{print $7}' "$JAR_DIR/$1.jar" 2>/dev/null | tail -1; }
 
 # ════════════════════════════════════════════════════════════════
 hr "Q:F-3a 라운드 A (커뮤니티 · 화면) — 임시 인스턴스 준비 (운영 DB 에는 쓰지 않는다)"
@@ -192,7 +192,7 @@ def sql(q):
 CSRF = {}
 def req(who, m, path, body=None, csrf=True, cookie=True, raw_body=None):
     h = {'User-Agent': UA}
-    if cookie and who: h['Cookie'] = 'tbox_session=' + S[who]
+    if cookie and who: h['Cookie'] = '__Host-tbox_session=' + S[who]
     if m != 'GET' and csrf and who: h['X-CSRF-Token'] = CSRF.get(who, '')
     data = None
     if body is not None:
@@ -421,7 +421,7 @@ b = uuid.uuid4().hex
 parts = [('--%s\r\nContent-Disposition: form-data; name="%s"\r\n\r\n%s\r\n' % (b, k, v)).encode() for k, v in (('access_level', 'internal'), ('description', 'qf3a 화면 시험'))]
 parts.append(('--%s\r\nContent-Disposition: form-data; name="file"; filename="qf3a-화면-%s.txt"\r\nContent-Type: text/plain\r\n\r\n' % (b, tag)).encode() + b'qf3a\n\r\n')
 parts.append(('--%s--\r\n' % b).encode())
-h = {'User-Agent': UA, 'Cookie': 'tbox_session=' + S['e1'], 'X-CSRF-Token': CSRF['e1'], 'Content-Type': 'multipart/form-data; boundary=' + b}
+h = {'User-Agent': UA, 'Cookie': '__Host-tbox_session=' + S['e1'], 'X-CSRF-Token': CSRF['e1'], 'Content-Type': 'multipart/form-data; boundary=' + b}
 try:
     with urllib.request.urlopen(urllib.request.Request(SITE + '/tbox/api/files', data=b''.join(parts), headers=h, method='POST'), timeout=60) as x:
         up = json.loads(x.read()); upc = x.status

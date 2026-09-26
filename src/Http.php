@@ -549,10 +549,12 @@ final class Http
 
     /**
      * 세션 쿠키 발급 (PRD S-09-2, ARCH 4.0).
+     *   이름      — `__Host-tbox_session`(Auth::COOKIE_NAME, 디버깅 묶음 S2). 접두가 아래 셋을 브라우저에 강제한다
      *   HttpOnly  — JS 가 읽지 못한다 (XSS 로 토큰을 훔쳐 갈 수 없다)
      *   Secure    — 평문 http 로는 전송되지 않는다
      *   SameSite=Lax — 크로스사이트 POST 에 쿠키가 실리지 않는다
      *   Path=/    — 도메인 안 모든 경로
+     *   Domain 없음 — 발급한 호스트 한 곳에만(하위 도메인과 나누지 않는다). `__Host-` 는 Domain 이 있으면 거부된다
      *   만료 없음 — 브라우저 세션 쿠키. 수명 판단은 언제나 DB(sessions)가 한다
      */
     public static function setSessionCookie(string $token): void
@@ -566,11 +568,21 @@ final class Http
         self::sendCookie(Auth::COOKIE_NAME, '', true);
     }
 
+    /**
+     * v2.30 까지의 옛 이름 쿠키(`tbox_session`)를 치운다 (디버깅 묶음 S2 — Auth::dropLegacyCookie 가 부른다).
+     * 옛 쿠키도 같은 속성(Path=/ · Secure · HttpOnly · SameSite=Lax · Domain 없음)으로 발급됐으므로 같은 속성의 만료 머리로 지워진다.
+     */
+    public static function clearLegacySessionCookie(): void
+    {
+        self::sendCookie(Auth::LEGACY_COOKIE_NAME, '', true);
+    }
+
     private static function sendCookie(string $name, string $value, bool $expire): void
     {
         if (headers_sent()) {
             throw new RuntimeException('헤더가 이미 전송되어 쿠키를 설정할 수 없습니다');
         }
+        // `domain` 을 넣지 않는다 — 호스트 한정 쿠키(`__Host-` 의 조건). 넣으면 브라우저가 쿠키를 버린다.
         $options = [
             'path'     => '/',
             'secure'   => true,

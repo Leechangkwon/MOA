@@ -64,8 +64,8 @@ def run(browser, mode):
     """mode: 'fixed' | 'control'. 돌려주는 값: 관찰한 것들의 dict"""
     seen = {"pageerrors": [], "console": [], "served_old": [], "js": [], "posts": [], "trash_gets": [], "http_bad": []}
     ctx = browser.new_context(user_agent=UA, viewport={"width": 390, "height": 844})
-    ctx.add_cookies([{"name": "tbox_session", "value": E1, "domain": host(), "path": "/",
-                      "httpOnly": True, "secure": False, "sameSite": "Lax"}])
+    ctx.add_cookies([{"name": "__Host-tbox_session", "value": E1, "domain": host(), "path": "/",
+                      "httpOnly": True, "secure": True, "sameSite": "Lax"}])
 
     def on_asset(route, request):
         parts = urlsplit(request.url)

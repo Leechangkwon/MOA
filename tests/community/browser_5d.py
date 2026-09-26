@@ -42,8 +42,8 @@ def host():
 
 def context(browser, session):
     ctx = browser.new_context(user_agent=UA, viewport={"width": 1440, "height": 900})
-    ctx.add_cookies([{"name": "tbox_session", "value": session, "domain": host(), "path": "/",
-                      "httpOnly": True, "secure": False, "sameSite": "Lax"}])
+    ctx.add_cookies([{"name": "__Host-tbox_session", "value": session, "domain": host(), "path": "/",
+                      "httpOnly": True, "secure": True, "sameSite": "Lax"}])
     page = ctx.new_page()
     page.on("pageerror", lambda e: pageerrors.append(str(e)))
     page.on("console", lambda m: console_errors.append(m.text)

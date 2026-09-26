@@ -125,6 +125,9 @@ require __DIR__ . '/../views/shell_top.php';
           <option value="share.create">share.create</option>
           <option value="share.revoke">share.revoke</option>
           <option value="share.download">share.download</option>
+          <!-- 디버깅 묶음 S2 검토 L-4 — 잠금이 걸린 순간(auth.lock) · 관리 기능 재인증(auth.reauth, 16-1 — 전에 빠져 있었다) -->
+          <option value="auth.lock">auth.lock</option>
+          <option value="auth.reauth">auth.reauth</option>
         </select>
       </label>
       <label class="field">

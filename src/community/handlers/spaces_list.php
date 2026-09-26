@@ -46,7 +46,7 @@ if ($personal !== null) {
         'kind'      => 'personal',
         'name'      => (string) $personal['name'],
         'team_id'   => null,
-        'can_write' => true,
+        'can_write' => Authz::canCommunityWrite($user),   // S2 — 손님은 쓰기 창구에 닿지 못한다(전에는 늘 true)
     ];
 }
 
@@ -131,7 +131,7 @@ if ($myTeam !== null) {
             'name'      => (string) $teamSpace['name'],
             'team_id'   => (int) $teamSpace['team_id'],
             // 팀 공간은 그 팀원이면 함께 고친다 (PRD 4.1 「팀 공간의 페이지는 공간 등급을 따른다」).
-            'can_write' => true,
+            'can_write' => Authz::canCommunityWrite($user),   // S2 — 같은 까닭
         ];
     }
 }

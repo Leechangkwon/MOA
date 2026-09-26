@@ -97,7 +97,7 @@ login() {
   done
   return 1
 }
-session_of() { awk '$6=="tbox_session"{print $7}' "$JAR_DIR/$1.jar" 2>/dev/null | tail -1; }
+session_of() { awk '$6=="__Host-tbox_session"{print $7}' "$JAR_DIR/$1.jar" 2>/dev/null | tail -1; }
 
 # 임시 .env — DB 이름·저장·감사 경로를 임시로(+ 검사 끔). $1 원본 $2 대상 $3 저장 폴더 $4 감사 파일. 값은 출력하지 않는다.
 make_env() {
@@ -221,7 +221,7 @@ def sql(q):
 CSRF = {}
 def req(who, m, path, body=None, raw=None, ctype=None, csrf=True, extra=None):
     h = {'User-Agent': UA}
-    if who: h['Cookie'] = 'tbox_session=' + S[who]
+    if who: h['Cookie'] = '__Host-tbox_session=' + S[who]
     if m != 'GET' and csrf and who: h['X-CSRF-Token'] = CSRF.get(who, '')
     data = raw
     if body is not None:

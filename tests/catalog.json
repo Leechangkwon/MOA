@@ -1941,7 +1941,7 @@
       "risks": [],
       "est_sec": 240,
       "writes_prod": false,
-      "notes": "부르는 셸: community.stage3·stage4a·stage4b·stage4c(운영 8082 SITE)와 community.stage4d·stage5a(임시 SITE). 단독 실행 불가(인자 SITE UA 와 SMOKE_* 세션 환경 변수를 부르는 셸이 넘긴다). 결과 줄 SMOKE_FAIL=n. 만든 페이지는 앱 창구로 지운다. 인자 <SITE> <UA> <tbox_session> [samples php-render] — 뒤 두 인자로 C:T-19 JS 쪽 렌더러 동등성. 1-B-3(점검 봇): 세션은 인자가 아니라 **표준입력 첫 줄**로 받는다(argv 는 SITE UA [samples php-render] — 한 칸 당김). 부르는 셸 6곳은 py_secret 로 넘긴다. 빈 세션이면 rc 2 로 멈춘다."
+      "notes": "부르는 셸: community.stage3·stage4a·stage4b·stage4c(운영 8082 SITE)와 community.stage4d·stage5a(임시 SITE). 단독 실행 불가(인자 SITE UA 와 SMOKE_* 세션 환경 변수를 부르는 셸이 넘긴다). 결과 줄 SMOKE_FAIL=n. 만든 페이지는 앱 창구로 지운다. 인자 <SITE> <UA> <__Host-tbox_session> [samples php-render] — 뒤 두 인자로 C:T-19 JS 쪽 렌더러 동등성. 1-B-3(점검 봇): 세션은 인자가 아니라 **표준입력 첫 줄**로 받는다(argv 는 SITE UA [samples php-render] — 한 칸 당김). 부르는 셸 6곳은 py_secret 로 넘긴다. 빈 세션이면 rc 2 로 멈춘다."
     },
     {
       "id": "community.browser_5a2",

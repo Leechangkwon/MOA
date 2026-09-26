@@ -77,7 +77,7 @@ class Api:
         self.csrf = self.me.get("csrf_token", "")
 
     def req(self, method, path, body=None, raw=None, ctype=None):
-        h = {"User-Agent": UA, "Cookie": "tbox_session=" + self.sess}
+        h = {"User-Agent": UA, "Cookie": "__Host-tbox_session=" + self.sess}
         if self.csrf and method != "GET":
             h["X-CSRF-Token"] = self.csrf
         data = raw
@@ -246,7 +246,7 @@ def ctx(br, sess, w, theme):
                        has_touch=touch, is_mobile=touch, color_scheme="light")
     ck = [{"name": "tbox_theme", "value": theme, "domain": HOST, "path": "/"}]
     if sess:
-        ck.append({"name": "tbox_session", "value": sess, "domain": HOST, "path": "/", "httpOnly": True})
+        ck.append({"name": "__Host-tbox_session", "value": sess, "domain": HOST, "path": "/", "httpOnly": True, "secure": True})
     c.add_cookies(ck)
     return c
 

@@ -110,7 +110,7 @@ login() {
   done
   return 1
 }
-session_of() { awk '$6=="tbox_session"{print $7}' "$JAR_DIR/$1.jar" 2>/dev/null | tail -1; }
+session_of() { awk '$6=="__Host-tbox_session"{print $7}' "$JAR_DIR/$1.jar" 2>/dev/null | tail -1; }
 
 # 임시 .env — DB 이름·저장·감사 경로를 임시로(+ 검사 끔). $1 원본 $2 대상 $3 저장 폴더 $4 감사 파일. 값은 출력하지 않는다.
 make_env() {
@@ -280,7 +280,9 @@ def sql(q):
 CSRF = {}
 def req(who, m, path, body=None, raw=None, ctype=None, csrf=True, site=None, extra=None):
     h = {'User-Agent': UA}
-    if who: h['Cookie'] = 'tbox_session=' + S[who]
+    # 디버깅 묶음 S2 — 세션 쿠키 이름이 `__Host-tbox_session` 이 됐다. 기준 판(옛 코드, OSITE) 인스턴스는 옛 이름만 읽으므로
+    # 그쪽으로 가는 요청에만 옛 이름을 싣는다(값 = 같은 세션 토큰 · 같은 DB) — 옛 판·새 판 대조(C-T10)가 같은 사람으로 비교되게.
+    if who: h['Cookie'] = ('tbox_session=' if site == OSITE else '__Host-tbox_session=') + S[who]
     if m != 'GET' and csrf and who: h['X-CSRF-Token'] = CSRF.get(who, '')
     data = raw
     if body is not None:
@@ -574,7 +576,7 @@ BH = BSITE.replace('http://', '').split(':')
 def hold(who, ids):
     conn = http.client.HTTPConnection(BH[0], int(BH[1]), timeout=120)
     conn.request('POST', '/tbox/api/files/zip', body=json.dumps({'ids': ids}), headers={
-        'User-Agent': UA, 'Cookie': 'tbox_session=' + S[who], 'X-CSRF-Token': CSRF[who], 'Content-Type': 'application/json'})
+        'User-Agent': UA, 'Cookie': '__Host-tbox_session=' + S[who], 'X-CSRF-Token': CSRF[who], 'Content-Type': 'application/json'})
     t0 = time.time()
     r = conn.getresponse()   # 머리까지만 — 본문은 읽지 않는다(서버는 소켓이 차서 readfile 에서 멈추고 잠금을 쥔 채)
     return conn, r, time.time() - t0
@@ -612,7 +614,7 @@ ok('모두 끝난 뒤 zip-* 0 · 잠금 파일만(점 파일)', no_left(TMPD) an
 print('── 손님이 도중에 끊음')
 conn3 = http.client.HTTPConnection(BH[0], int(BH[1]), timeout=120)
 conn3.request('POST', '/tbox/api/files/zip', body=json.dumps({'ids': [B1, B2]}), headers={
-    'User-Agent': UA, 'Cookie': 'tbox_session=' + S['e1'], 'X-CSRF-Token': CSRF['e1'], 'Content-Type': 'application/json'})
+    'User-Agent': UA, 'Cookie': '__Host-tbox_session=' + S['e1'], 'X-CSRF-Token': CSRF['e1'], 'Content-Type': 'application/json'})
 r3 = conn3.getresponse()
 first = r3.read(1048576)
 # 끊기 — getresponse 뒤에는 소켓이 응답 쪽(r3.fp)으로 넘어가 conn3.sock 은 None 이다(1·3회차 시험 결함: conn3.close() 만으로는 안 끊겼다).
@@ -747,7 +749,7 @@ if os.environ.get('QF3C_BIG') == '1':
     conn = http.client.HTTPConnection(MH[0], int(MH[1]), timeout=300)
     t0 = time.time()
     conn.request('POST', '/tbox/api/files/zip', body=json.dumps({'ids': [x[0] for x in big]}), headers={
-        'User-Agent': UA, 'Cookie': 'tbox_session=' + S['e1'], 'X-CSRF-Token': CSRF['e1'], 'Content-Type': 'application/json'})
+        'User-Agent': UA, 'Cookie': '__Host-tbox_session=' + S['e1'], 'X-CSRF-Token': CSRF['e1'], 'Content-Type': 'application/json'})
     r = conn.getresponse(); t_head = time.time() - t0
     # 받은 500MB 는 루트 디스크가 아니라 /dev/shm(메모리 tmpfs)에 — 루트 여유를 1GB 위로 지킨다(R-80). 끝나면 지운다
     zdir = '/dev/shm' if os.path.isdir('/dev/shm') and os.access('/dev/shm', os.W_OK) else WORK

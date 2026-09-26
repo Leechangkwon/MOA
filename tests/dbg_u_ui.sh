@@ -82,7 +82,7 @@ login() {
   done
   return 1
 }
-session_of() { awk '$6=="tbox_session"{print $7}' "$JAR_DIR/$1.jar" 2>/dev/null | tail -1; }
+session_of() { awk '$6=="__Host-tbox_session"{print $7}' "$JAR_DIR/$1.jar" 2>/dev/null | tail -1; }
 csrf_of() { curl -s -b "$JAR_DIR/$1.jar" -A "$UA" "$BASE/api/me" | python3 -c 'import json,sys; print(json.load(sys.stdin).get("csrf_token",""))' 2>/dev/null; }
 me_field() { curl -s -b "$JAR_DIR/$1.jar" -A "$UA" "$BASE/api/me" | python3 -c 'import json,sys; v=json.load(sys.stdin).get(sys.argv[1], "(없음)"); print(json.dumps(v))' "$2" 2>/dev/null; }
 

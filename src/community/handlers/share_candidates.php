@@ -49,6 +49,14 @@ if ($row === null || $row['deleted_at'] !== null) {
     : CommunityAuthz::decidePageShare($user, $row);
 /* 5-A″ — 팀 공간도 공유 후보를 찾는다(관리 자격 = 그 팀원). 인계는 여전히 개인 공간만이다 —
    `decidePageHandover` 가 팀 공간을 `space_governed` 로 거짓을 주므로 위 판정이 이미 막는다. */
+/* 디버깅 묶음 S2 검토 M-1 — 공유·인계는 쓰기 창구(`PUT …/shares/{username}`·`POST …/handover` — community.write)다.
+   위 판정은 개인 공간 **주인**을 역할과 상관없이 참으로 보므로, 손님이 자기 「시작하기」 페이지 id 로 이 창구를 부르면 활성 사용자
+   전체(아이디·이름·역할)를 한 글자씩 찾아 뽑을 수 있었다(팀 공간 팀원인 손님도). 쓸 수 없는 사람은 후보도 받지 않는다 —
+   라우트 정책 `community.write` 가 부르는 그 함수(Authz::canCommunityWrite)로 같은 403. */
+if ($may && !Authz::canCommunityWrite($user)) {
+    $may  = false;
+    $code = CommunityAuthz::CODE_ROLE_NOT_PERMITTED;
+}
 if (!$may) {
     error_log('[tbox] request_id=' . TBOX_REQUEST_ID
         . ' community share-candidates deny for=' . $purpose . ' code=' . $code);

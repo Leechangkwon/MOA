@@ -12,7 +12,7 @@ S = {w: sys.stdin.readline().rstrip("\n") for w in ("e1", "e2", "m")}; CS = {}
 if not all(S.values()):
     print("세션 셋(직원1·직원2·Manager)을 표준입력으로 한 줄씩 주어야 한다 — 시작하지 않는다"); sys.exit(2)
 def req(w, m, p, b=None):
-    h = {"User-Agent": UA, "Cookie": "tbox_session=" + S[w]}
+    h = {"User-Agent": UA, "Cookie": "__Host-tbox_session=" + S[w]}
     if m != "GET":
         h["X-CSRF-Token"] = CS[w]; h["Content-Type"] = "application/json"
     r = urllib.request.Request(B + p, data=None if b is None else json.dumps(b).encode(), headers=h, method=m)

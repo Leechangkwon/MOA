@@ -16,7 +16,8 @@ declare(strict_types=1);
  *
  * 받는 변수
  *   · $launcherUser array|null  세션 사용자(없으면 null) — 읽기만 한 값
- *   · $launcherApps list<array> Apps::all()
+ *   · $launcherApps list<array> Apps::all() — 로그인 전이면 **빈 목록**(launcher_page.php 가 비운다 · R-98 · S2)
+ *   · $launcherLoginUrl string  로그인 화면 주소(고정) — 로그인 전에만 단추로 그린다
  */
 
 /** @var array<string,mixed>|null $launcherUser */
@@ -73,15 +74,24 @@ if (is_array($launcherUser)) {
     <header class="page-head">
       <div class="page-head__text">
         <h1 class="page-head__title">Qaredi</h1>
+<?php if (is_array($launcherUser)): ?>
         <p class="page-head__sub">사내 업무 도구 모음입니다. 쓸 기능을 고르세요.</p>
+<?php else: ?>
+        <p class="page-head__sub">로그인하면 쓸 수 있는 기능이 보입니다.</p>
+<?php endif; ?>
       </div>
 <?php if ($launcherWho !== ''): ?>
       <div class="page-head__actions">
         <span class="badge"><?= $launcherWho ?></span>
       </div>
+<?php elseif (!is_array($launcherUser)): ?>
+      <div class="page-head__actions">
+        <a class="btn" href="<?= $launcherEsc($launcherLoginUrl) ?>">로그인</a>
+      </div>
 <?php endif; ?>
     </header>
 
+<?php if ($launcherApps !== []): ?>
     <section class="card-grid">
 <?php foreach ($launcherApps as $launcherApp): ?>
 <?php   $launcherSoon = ($launcherApp['status'] ?? '') === 'soon'; ?>
@@ -108,6 +118,7 @@ if (is_array($launcherUser)) {
 <?php   endif; ?>
 <?php endforeach; ?>
     </section>
+<?php endif; ?>
   </main>
 </div>
 </body>

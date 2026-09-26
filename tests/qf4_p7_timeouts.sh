@@ -381,13 +381,13 @@ for attempt in range(3):
         resp = urllib.request.urlopen(req, timeout=20)
         data = json.loads(resp.read().decode())
         for h in resp.headers.get_all("Set-Cookie") or []:
-            m = re.match(r"tbox_session=([^;]+)", h)
+            m = re.match(r"__Host-tbox_session=([^;]+)", h)
             if m: cookie = m.group(1)
     except Exception:
         pass
     if data.get("ok") is True and cookie:
         old = os.umask(0o077)
-        with open(os.path.join(out, who + ".cookie"), "w") as f: f.write("Cookie: tbox_session=%s\n" % cookie)
+        with open(os.path.join(out, who + ".cookie"), "w") as f: f.write("Cookie: __Host-tbox_session=%s\n" % cookie)
         os.umask(old)
         print("LOGIN_OK"); sys.exit(0)
     time.sleep(31 - int(time.time()) % 30)

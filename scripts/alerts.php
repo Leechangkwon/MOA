@@ -157,8 +157,12 @@ $stateRaw = null;
 clearstatcache();
 $stateL = @lstat($stateFile);
 if ($stateL !== false) {
-    $euid = function_exists('posix_geteuid') ? posix_geteuid() : getmyuid();
-    if (($stateL['mode'] & 0170000) !== 0100000) {
+    /* 디버깅 묶음 S2 (검토 낮음) — posix 가 없으면 이 배치를 돌리는 계정을 알 수 없다. 전에는 getmyuid()(= **이 스크립트
+       파일의 주인**, 운영 changkwon)로 대신해, root 로 도는데도 changkwon 이 주인인 상태 파일을 믿을 수 있었다. 이제는 믿지 않는다. */
+    $euid = function_exists('posix_geteuid') ? posix_geteuid() : null;
+    if ($euid === null) {
+        cli_warn('[경고] posix 확장이 없어 이 배치를 돌리는 계정을 알 수 없다 — 경보 상태 파일을 믿지 않고 빈 상태로 판정한다: ' . $stateFile);
+    } elseif (($stateL['mode'] & 0170000) !== 0100000) {
         cli_warn('[경고] 경보 상태 파일이 보통 파일이 아니다(심볼릭 링크 등) — 읽지 않고 빈 상태로 판정한다(저장도 거부된다): ' . $stateFile);
     } elseif ($stateL['uid'] !== $euid || ($stateL['mode'] & 0022) !== 0 || $stateL['nlink'] !== 1) {
         cli_warn('[경고] 경보 상태 파일의 주인·권한이 맞지 않다(주인 = 이 배치 계정 · 그룹/다른 사람 쓰기 없음 · 하드 링크 하나) — 믿지 않고 빈 상태로 판정한다: ' . $stateFile);
@@ -473,12 +477,20 @@ if ($want('AL-1')) {
 //   Auth::login 도 이것은 실패 횟수에 세지 않는다, ARCH 4.0), `already_enabled`·`weak_password`·
 //   `same_password` (추측 시도가 아니다).
 //   임계값·창은 그대로다: 10분 20회 이상, 또는 그 창에 계정 잠금(`reason = 'locked'`)이 한 번이라도.
+//
+// ★ 디버깅 묶음 S2(2026-09-26, 로그인 시도 제한 점검 · R-06) — 「계정 잠금 발생」을 **잠긴 순간**으로도 본다.
+//   전에는 잠긴 계정으로 **다시** 로그인을 시도한 행(`auth.login deny locked`)만 잠금으로 셌다. 그래서 정확히 5번 틀리고
+//   10분 쉬기를 되풀이하는 잠금 DoS(한 IP 10분 5행 — 20회 기준 밑)와, 로그인 뒤 창구의 코드 추측으로 잠겨 세션이 끊긴 경우는
+//   경보가 조용했다. 이제 Auth::countFailure 가 카운터가 한도에 막 닿은 실패마다 `auth.lock deny failed_limit` 한 행을 남기고,
+//   여기서 그 행을 잠금 발생으로 센다. 검토 L-3 — 잠금 행은 **실패가 아니다**(실패 뒤의 결과) → 20회 기준의 수(`count`)·
+//   `locked`(잠긴 계정으로 다시 로그인한 행)·`after_login` 어디에도 넣지 않고 근거에 `lock_events` 로 따로 적는다. 발동 조건에만 들어간다.
 // ─────────────────────────────────────────────────────────────
 if ($want('AL-2')) {
     $rows = $db->run(
-        "SELECT host(ip) AS src, count(*) AS n,
-                count(*) FILTER (WHERE reason = 'locked') AS locked,
-                count(*) FILTER (WHERE action <> 'auth.login') AS after_login,
+        "SELECT host(ip) AS src, count(*) FILTER (WHERE action <> 'auth.lock') AS n,
+                count(*) FILTER (WHERE reason = 'locked' AND action <> 'auth.lock') AS locked,
+                count(*) FILTER (WHERE action = 'auth.lock') AS lock_events,
+                count(*) FILTER (WHERE action NOT IN ('auth.login', 'auth.lock')) AS after_login,
                 array_to_string(array_agg(DISTINCT action ORDER BY action), ',') AS actions,
                 max(happened_at) AS last_at,
                 string_agg(DISTINCT COALESCE(NULLIF(actor_name, ''), target_name, ''), chr(10)) AS accounts,
@@ -493,9 +505,12 @@ if ($want('AL-2')) {
                   OR (action = 'auth.mfa_disable'     AND reason IN ('bad_credentials','bad_code','code_reused'))
                   OR (action = 'auth.mfa_enroll'      AND reason IN ('bad_code','code_reused'))
                   OR (action = 'auth.reauth'          AND reason = 'bad_credentials')
+                  OR (action = 'auth.lock'            AND reason = 'failed_limit')
                 )
           GROUP BY host(ip)
-         HAVING count(*) >= 20 OR count(*) FILTER (WHERE reason = 'locked') > 0",
+         HAVING count(*) FILTER (WHERE action <> 'auth.lock') >= 20
+             OR count(*) FILTER (WHERE reason = 'locked' AND action <> 'auth.lock') > 0
+             OR count(*) FILTER (WHERE action = 'auth.lock') > 0",
         $reviewUa
     )->fetchAll();
     foreach ($rows as $r) {
@@ -504,9 +519,11 @@ if ($want('AL-2')) {
            출발지가 **이 서버 자신(루프백)** 일 때만 표식으로 센다 — 검토 시험은 늘 127.0.0.1:8082 로 들어온다. */
         $fromHere = in_array((string) $r['src'], ['127.0.0.1', '::1'], true);
         $raise('AL-2', (string) $r['src'], [
-            'rule_text'   => '인증 실패(로그인·비밀번호 변경·2단계 인증·재인증) 10분 내 20회 이상 또는 계정 잠금 발생',
+            'rule_text'   => '인증 실패(로그인·비밀번호 변경·2단계 인증·재인증) 10분 내 20회 이상 또는 계정 잠금 발생(잠긴 순간·잠긴 계정 로그인 시도)',
             'count'       => (int) $r['n'],
             'locked'      => (int) $r['locked'],
+            // S2 검토 L-3 — 잠금이 **걸린** 횟수(auth.lock 행). 위 count·locked 에는 들어가지 않는다
+            'lock_events' => (int) $r['lock_events'],
             // 로그인 창구가 아니라 **로그인 뒤** 창구에서 난 실패 수 — 세션 탈취 뒤의 추측과
             // 바깥에서의 무차별 대입을 한눈에 가른다 (R-48)
             'after_login' => (int) $r['after_login'],

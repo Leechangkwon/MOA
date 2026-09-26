@@ -14,7 +14,7 @@
 #   printf '%s\n' "$SESSION" | python3 tests/community/browser_smoke.py <SITE> <UA> [<samples.json> <php-render.json>]
 #   (시험은 tests/lib/secrets.sh 의 `py_secret SESSION -- python3 …/browser_smoke.py "$SITE" "$UA" …` 로 부른다)
 #     · SITE            http://127.0.0.1:8082 (커뮤니티는 SITE + /community)
-#     · 표준입력 첫 줄  검토 계정으로 로그인한 tbox_session 쿠키 값 (scripts/ui_snapshot.sh 와 같은 방식).
+#     · 표준입력 첫 줄  검토 계정으로 로그인한 __Host-tbox_session 쿠키 값 (scripts/ui_snapshot.sh 와 같은 방식).
 #                       **명령 인자로 받지 않는다** — 인자는 ps·/proc/<pid>/cmdline 으로 같은 호스트의 다른
 #                       계정도 읽는다(점검 봇 1-B-3 · SECURITY R-62 · 봇 규칙 R15). 표준입력은 이 한 줄 말고 쓰지 않는다.
 #     · 뒤 두 인자를 주면 C:T-19 의 **JS 쪽 렌더러 동등성**까지 같은 브라우저에서 잰다.
@@ -142,12 +142,12 @@ with sync_playwright() as p:
     # 쿠키는 부르는 쪽이 검토 계정으로 받아 표준입력으로 넘겨 준 것이다. 로컬은 http 라 secure=False 로 넣는다
     # (운영에서는 서버가 Secure 로 발급한다 — 이 시험은 127.0.0.1 전용이다).
     ctx.add_cookies([{
-        "name": "tbox_session",
+        "name": "__Host-tbox_session",
         "value": SESSION,
         "domain": host_of(SITE).split(":")[0],
         "path": "/",
         "httpOnly": True,
-        "secure": False,
+        "secure": True,
         "sameSite": "Lax",
     }])
     page = ctx.new_page()
@@ -1453,8 +1453,8 @@ with sync_playwright() as p:
         # ── 34. 보기 공유자의 화면 (둘째 계정, 별도 문맥) ─────────────────
         print("── 34. 보기 공유자 — 「공유받은 페이지」 묶음 → 열기 → 편집·체크가 안 된다 → 내 공유 빼기")
         ctx2 = browser.new_context(user_agent=UA, viewport={"width": 1440, "height": 900})
-        ctx2.add_cookies([{"name": "tbox_session", "value": SESSION2, "domain": host_of(SITE).split(":")[0],
-                           "path": "/", "httpOnly": True, "secure": False, "sameSite": "Lax"}])
+        ctx2.add_cookies([{"name": "__Host-tbox_session", "value": SESSION2, "domain": host_of(SITE).split(":")[0],
+                           "path": "/", "httpOnly": True, "secure": True, "sameSite": "Lax"}])
         p2 = ctx2.new_page()
         p2_errors = []
         p2.on("pageerror", lambda e: p2_errors.append(str(e)))

@@ -56,7 +56,23 @@ final class AuthTempPasswordExpiredException extends RuntimeException
  */
 final class Auth
 {
-    public const COOKIE_NAME = 'tbox_session';
+    /**
+     * 세션 쿠키 이름 — `__Host-` 접두 (디버깅 묶음 S2 · 사용자 결정 d72 ① · SECURITY 6.7 「세션 쿠키 `__Host-`」).
+     *
+     * 접두가 브라우저에게 약속을 강제한다: 이 이름의 쿠키는 **Secure · Path=/ · Domain 없음**(발급한 호스트 한 곳)일 때만
+     * 받아들여진다. 그래서 다른 `*.mso.so` 하위 도메인(인터넷 사이트)이 장악돼도 `Domain=mso.so` 로 **같은 이름의 쿠키를
+     * 심어**(세션 고정 · 로그인 바꿔치기) 이 사이트에 실어 보낼 수 없다 — 그쪽이 심을 수 있는 이름은 접두 없는 것뿐이고,
+     * 서버는 이 이름만 읽는다. 속성은 `Http::sendCookie` 한 곳이 늘 이 셋을 붙인다(Domain 은 붙이지 않는다).
+     * 이 값은 시험 틀(`tests/**`)도 같은 글자로 쓴다 — 바꾸면 `tests/dbg_s2_security.sh` 의 정적 대조가 알린다.
+     */
+    public const COOKIE_NAME = '__Host-tbox_session';
+
+    /**
+     * v2.30 까지의 옛 이름 — **읽지 않는다**. 실려 오면 만료 머리(Max-Age=0)만 보내 브라우저에서 치운다
+     * (`dropLegacyCookie`). 옛 쿠키로 로그인 상태가 이어지지 않으므로 반영 순간 모두 한 번 다시 로그인한다(d72 ① 받아들임).
+     * 옛 세션 행은 지우지 않는다 — 유휴 30분·절대 8시간에 스스로 끝나고, 다음 로그인의 만료 행 정리(SQL_PURGE_EXPIRED)가 치운다.
+     */
+    public const LEGACY_COOKIE_NAME = 'tbox_session';
 
     /** 쿠키 토큰: random_bytes(32) 의 hex → 정확히 64자의 소문자 16진수 */
     private const TOKEN_RE = '/^[0-9a-f]{64}$/';
@@ -383,6 +399,8 @@ final class Auth
      *
      * RETURNING 으로 **갱신된 뒤**의 잠금 여부를 돌려준다 — 호출자가 다시 SELECT 하지 않고
      * "이번 실패로 잠겼나" 를 알 수 있다(잠겼으면 세션 회수, SECURITY R-48).
+     * 디버깅 묶음 S2 — 갱신된 뒤의 `failed_count` 와 이름도 함께 돌려준다: 카운터가 **정확히 한도**(MAX_FAILED)에 닿은
+     * 이번 실패가 곧 「잠금이 걸린 순간」이다(countFailure 가 감사 `auth.lock` 한 행을 남긴다 — AL-2).
      */
     private const SQL_COUNT_FAILED = <<<'SQL'
         UPDATE users
@@ -397,7 +415,8 @@ final class Auth
                    ELSE locked_until
                END
          WHERE id = :id
-        RETURNING (locked_until IS NOT NULL AND locked_until > now()) AS is_locked
+        RETURNING (locked_until IS NOT NULL AND locked_until > now()) AS is_locked,
+                  failed_count, username
         SQL;
 
     /**
@@ -1409,14 +1428,40 @@ final class Auth
         return count($rows);
     }
 
-    /** 쿠키에 실려 온 토큰의 세션 해시. 형식이 어긋나면 null (DB 를 건드리지 않는다). */
+    /**
+     * 쿠키에 실려 온 토큰의 세션 해시. 형식이 어긋나면 null (DB 를 건드리지 않는다).
+     * 읽는 이름은 `COOKIE_NAME`(`__Host-`) 하나뿐이다 — 옛 이름은 값이 맞아도 세션으로 보지 않는다(S2).
+     */
     private static function cookieSessionId(): ?string
     {
+        self::dropLegacyCookie();
         $token = $_COOKIE[self::COOKIE_NAME] ?? null;
         if (!is_string($token) || preg_match(self::TOKEN_RE, $token) !== 1) {
             return null;
         }
         return hash('sha256', $token);
+    }
+
+    /** 이 요청에서 옛 이름 쿠키의 만료 머리를 이미 보냈나 (한 요청에 한 번) */
+    private static bool $legacyDropped = false;
+
+    /**
+     * 옛 이름(`LEGACY_COOKIE_NAME`) 쿠키가 실려 왔으면 **만료 머리**를 보내 브라우저에서 치운다 (디버깅 묶음 S2).
+     *
+     * 값은 보지 않는다(형식·DB 조회 0) — 이름이 있으면 그뿐이다. 세션으로 쓰지 않으므로 이 쿠키로는 로그인 상태가
+     * 이어지지 않는다(반영 뒤 모두 한 번 다시 로그인). 부르는 곳은 `cookieSessionId()` 하나이고, 그 함수는
+     * `currentUser()`(요청마다 한 번 — 런처·로그인 화면·모든 로그인 필요 창구)와 `login()` 이 부른다.
+     * 머리를 이미 보낸 뒤면(본문 출력 뒤) 조용히 건너뛴다 — 치우기는 정리이고, 그 때문에 요청이 500 이 되면 안 된다.
+     */
+    private static function dropLegacyCookie(): void
+    {
+        if (self::$legacyDropped || !array_key_exists(self::LEGACY_COOKIE_NAME, $_COOKIE)) {
+            return;
+        }
+        self::$legacyDropped = true;
+        if (!headers_sent()) {
+            Http::clearLegacySessionCookie();
+        }
     }
 
     /**
@@ -1481,7 +1526,30 @@ final class Auth
             ':lock_min'   => self::LOCK_MINUTES,
         ])->fetch();
 
-        return is_array($row) && $row['is_locked'] === true;
+        $locked = is_array($row) && $row['is_locked'] === true;
+
+        /*
+         * 디버깅 묶음 S2 (d72 ① 로그인 시도 제한 점검) — **잠금이 걸린 순간**을 감사에 한 행 남긴다.
+         *
+         * 전에는 잠금 자체가 기록되지 않았다. 경보 AL-2 의 「계정 잠금 발생」은 **잠긴 계정으로 다시 로그인을 시도한**
+         * 행(`auth.login deny locked`)으로만 보였으므로, 아이디만 아는 사람이 **정확히 5번** 틀리고 10분 쉬기를 되풀이하면
+         * (잠금 DoS — R-06) 한 IP 가 10분에 5행이라 20회 기준에도 닿지 않아 경보가 조용했다. 로그인 뒤 창구(토큰 발급·
+         * 실행 파일 받기 등)의 코드 추측으로 잠긴 경우도 같다(세션이 끊겨 다음 요청이 없다).
+         * 이제 카운터가 한도에 **막 닿은** 실패(`failed_count = MAX_FAILED` — 잠긴 동안의 추가 실패는 6·7… 이라 다시 남지 않는다)마다
+         * `auth.lock deny failed_limit` 한 행이 남고, AL-2 가 그 행을 「잠금 발생」으로 센다(scripts/alerts.php).
+         * 누가 했나(actor)는 부른 자리의 세션이다 — 로그인 전이면 비어 있고 대상 계정은 target_name 이다(auth.login 과 같다).
+         * 실패 원인(비밀번호·코드)은 이 행에 넣지 않는다 — 앞선 거부 행에 이미 있다.
+         */
+        if ($locked && (int) $row['failed_count'] === self::MAX_FAILED) {
+            Audit::deny('auth.lock', 'failed_limit', [
+                'target_type' => 'user',
+                'target_id'   => $userId,
+                'target_name' => (string) $row['username'],
+                'detail'      => ['lock_minutes' => self::LOCK_MINUTES],
+            ]);
+        }
+
+        return $locked;
     }
 
     /**

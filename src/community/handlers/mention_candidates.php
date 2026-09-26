@@ -22,6 +22,13 @@ if (preg_match('/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 }
 $gate = community_history_gate($user, $pageRaw);
 
+/* 디버깅 묶음 S2 검토 M-1 과 같은 부류 — 멘션은 댓글 쓰기(`POST …/comments` — community.write)에서만 쓴다. 쓸 수 없는 사람(손님)이
+   이 창구로 「그 페이지를 볼 수 있는 사람」의 아이디·이름을 한 글자씩 찾아 뽑지 못하게 같은 함수로 403(감사 없음 — 목록 조회). */
+if (!Authz::canCommunityWrite($user)) {
+    error_log('[tbox] request_id=' . TBOX_REQUEST_ID . ' community mention-candidates deny code=' . CommunityAuthz::CODE_ROLE_NOT_PERMITTED);
+    Http::error(403, Http::MSG_FORBIDDEN);
+}
+
 $q = (string) preg_replace('/^[\s\p{Z}]+|[\s\p{Z}]+$/u', '', Http::queryText('q', 64));
 if ($q === '') {
     Http::json(['candidates' => []]);
