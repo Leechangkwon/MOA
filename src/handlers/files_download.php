@@ -9,6 +9,11 @@ declare(strict_types=1);
  *   본문에는 파일명·레벨·존재 여부 어떤 것도 담지 않는다(PRD S-02 단건 조회, Q-6 결정).
  *   서버가 아는 값(대상·레벨·소유자·팀·해시)은 응답이 아니라 **감사 로그**에 남긴다(PRD S-07).
  *
+ * ★ Q:F-3a 라운드 C (2026-09-26) — 행 읽기 · 세 관문(권한 → F-65 → F-54) · 무결성 두 단계는
+ *   `_download_common.php` 로 **글자 그대로 옮겼다**. zip 으로 받기(`files_zip.php`)가 같은 함수를 부른다 —
+ *   받기 입구가 둘이어도 판정·추가 거부·감사 행은 한 벌이다(새 판정 0). 이 파일에 남은 것은
+ *   「거부 사유 → 이 창구의 응답」 표와 allow 기록·전송뿐이고, 응답·감사 행은 전과 같다.
+ *
  * 요구사항: PRD F-06, S-01 · S-02 · S-07, 8장 API 표, ARCH 5.3
  *
  * 그 밖에 지키는 것
@@ -26,6 +31,8 @@ declare(strict_types=1);
  * @var list<string>        $params $params[0] = public_id
  */
 
+require_once __DIR__ . '/_download_common.php';
+
 $publicId = $params[0] ?? '';
 
 // 라우터는 `[0-9a-f-]{36}` 까지만 좁힌다. UUIDv4 형태 재검사는 여기서 한다
@@ -34,136 +41,44 @@ if (!is_string($publicId) || !Storage::isValidUuid($publicId)) {
     Http::error(404, Http::MSG_NOT_FOUND);
 }
 
-$sqlFind = <<<'SQL'
-    SELECT f.id,
-           f.original_name,
-           f.stored_name,
-           f.mime,
-           f.access_level,
-           f.size_bytes,
-           f.team_id,
-           f.uploaded_by,
-           f.sha256,
-           f.scan_status,
-           f.exec_content
-      FROM files f
-     WHERE f.public_id = CAST(:pid AS uuid)
-       AND f.deleted_at IS NULL
-    SQL;
-
-$file = Db::instance()->run($sqlFind, [':pid' => $publicId])->fetch();
-if (!is_array($file)) {
+$file = tbox_download_find($publicId);
+if ($file === null) {
     Http::error(404, Http::MSG_NOT_FOUND);
 }
 
-// ─── [권한 ✔] 읽기 판정 — 저장소에 손대기 전 (ARCH 5.3, PRD S-01) ───
-// 판정과 근거 코드를 함께 받는다. 코드는 핸들러가 지어내지 않고 그대로 기록한다 (ARCH 4.1).
-[$mayRead, $readCode] = Authz::decideRead($user, $file);
-
-// 감사 로그의 "무엇을" 칸 — 어떤 내용의 파일이었나(sha256·크기), 누구 것이었나, 어느 팀 것이었나.
-// 사용자 응답에는 한 글자도 나가지 않고 로그에만 남는다 (PRD S-07 기록 원칙).
-$auditWhat = [
-    'owner_id'    => (int) $file['uploaded_by'],
-    'target_team' => $file['team_id'] === null ? null : (int) $file['team_id'],
-    'sha256'      => (string) $file['sha256'],
-    'size_bytes'  => (int) $file['size_bytes'],
-];
-
-if (!$mayRead) {
-    Audit::deny('file.download', $readCode, [
-        'target_type'  => 'file',
-        'target_id'    => (int) $file['id'],
-        'target_name'  => (string) $file['original_name'],
-        'access_level' => (string) $file['access_level'],
-        'detail'       => $auditWhat,
-    ]);
+/* ─── [권한 ✔] → [3-5] F-65 → [4] F-54 — 세 관문은 한 벌(_download_common.php) ───
+ *
+ * 거부면 관문이 `file.download deny <사유>` 를 이미 남겼다. 여기서는 사유마다 **이 창구의 응답**만 고른다.
+ *   role_not_permitted · team_mismatch   403 MSG_FORBIDDEN (IDOR 와 같은 문구 — 존재 여부를 알리지 않는다)
+ *   exec_content_token                   403 MSG_FORBIDDEN — 프로그램은 2단계 코드를 칠 수 없으므로 「다음에 무엇을 하라」가 없다 (API.md 9-1)
+ *   exec_ack_required                    403 `{error: MSG_EXEC_ACK_REQUIRED, next:"exec_ack"}` — 여기까지 온 사람은 admin-only 를
+ *                                        읽을 수 있는 Admin 이고, 받는 길(`POST …/exec-download`)이 따로 있다 (ARCH 5.29)
+ *   scan_infected                        403 MSG_SCAN_INFECTED — 격리는 **영구** 거부
+ *   scan_pending                         423 + `Retry-After` — 검사 중은 곧 풀리는 **일시** 상태 (F-57, ARCH 5.28)
+ * 표에 없는 사유가 오면(있어서는 안 된다) 403 통일 문구로 닫는다.
+ */
+[$denyReason, $readCode] = tbox_download_gate($user, $file);
+if ($denyReason !== null) {
+    if ($denyReason === 'exec_ack_required') {
+        Http::json(['error' => Http::MSG_EXEC_ACK_REQUIRED, 'next' => 'exec_ack'], 403);
+        exit;
+    }
+    if ($denyReason === 'scan_infected') {
+        Http::error(403, Http::MSG_SCAN_INFECTED);
+    }
+    if ($denyReason === 'scan_pending') {
+        Http::locked(Http::SCAN_RETRY_AFTER_SECONDS, Http::MSG_SCAN_PENDING);
+    }
     Http::error(403, Http::MSG_FORBIDDEN);
 }
 
-/* ─── [3-5] F-65 실행 파일이 든 압축본 관문 (ARCH 5.29 「받기」 표) ───
- *
- * 자리: `decideRead` **뒤** · `scan_status` 관문 **앞**. F-54 관문과 **같은 이유**로 이 자리다 —
- * 볼 자격이 없는 사람에게는 「그런 파일이 있다」조차 알려 주지 않아야 하고(그래서 권한 뒤),
- * 저장소에 손대기 전에 끝나야 한다(그래서 무결성 앞).
- *
- * 두 갈래다.
- *   · **토큰**(`TBOX_AUTH_METHOD` 정의됨) → 403 통일 문구. 프로그램은 2단계 코드를 칠 수
- *     없으므로 「다음에 무엇을 하라」가 없다 — 알려 줄 것도 없다 (API.md 9-1).
- *   · **세션** → 403 `{error: MSG_EXEC_ACK_REQUIRED, next:"exec_ack"}`. 여기까지 온 사람은
- *     admin-only 를 읽을 수 있는 Admin 이고, 받는 길(`POST …/exec-download`)이 따로 있다.
- */
-if ($file['exec_content'] === true) {
-    $execReason = defined('TBOX_AUTH_METHOD') ? 'exec_content_token' : 'exec_ack_required';
-    Audit::deny('file.download', $execReason, [
-        'target_type'  => 'file',
-        'target_id'    => (int) $file['id'],
-        'target_name'  => (string) $file['original_name'],
-        'access_level' => (string) $file['access_level'],
-        'detail'       => $auditWhat,
-    ]);
-    if ($execReason === 'exec_content_token') {
-        Http::error(403, Http::MSG_FORBIDDEN);
-    }
-    Http::json(['error' => Http::MSG_EXEC_ACK_REQUIRED, 'next' => 'exec_ack'], 403);
-    exit;
+// 실제 바이트 확인 → sha256 대조 → 감사 로그 → 전송 (순서를 바꾸지 않는다)
+[$integrityFail, $missingError] = tbox_download_integrity($file);
+if ($integrityFail === 'file_missing' && $missingError !== null) {
+    throw $missingError;   // bootstrap 예외 핸들러 → 500 + {"error":"서버 오류"} (전과 같다)
 }
-
-/* ─── [4] F-54 검사 상태 관문 (ARCH 5.3 [4] · 5.28, PRD F-54 ③) ─────
- *
- * 검사 전(`pending`)·격리(`infected`) 파일은 **아무도** 받지 못한다. 자리가 여기인 이유:
- *   · 권한 판정(`decideRead`)보다 **뒤** — 볼 자격이 없는 사람에게는 "그런 파일이 있다"
- *     조차 알려 주지 않아야 하고, 403 의 뜻(IDOR)이 섞이면 안 된다.
- *   · 저장소 접근(`assertExists`·sha256)보다 **앞** — 격리된 바이트는 이미 저장소에 없다.
- * 사유 코드는 상태에 따라 `scan_pending`·`scan_infected` 두 가지이고, 문장 틀은 Audit 표에 있다.
- */
-$scan = (string) ($file['scan_status'] ?? 'clean');
-if ($scan !== 'clean') {
-    $scanReason = $scan === 'infected' ? 'scan_infected' : 'scan_pending';
-    Audit::deny('file.download', $scanReason, [
-        'target_type'  => 'file',
-        'target_id'    => (int) $file['id'],
-        'target_name'  => (string) $file['original_name'],
-        'access_level' => (string) $file['access_level'],
-        'detail'       => $auditWhat + ['scan_status' => $scan],
-    ]);
-    // F-57: 격리(`infected`)는 **영구** 거부라 403, 검사 중(`pending`)은 곧 풀리는
-    // **일시** 상태라 423 + `Retry-After`. 다섯 창구(F-65 exec-download 포함)가 이 두 줄로 똑같다 (ARCH 5.28).
-    if ($scan === 'infected') {
-        Http::error(403, Http::MSG_SCAN_INFECTED);
-    }
-    Http::locked(Http::SCAN_RETRY_AFTER_SECONDS, Http::MSG_SCAN_PENDING);
-}
-
-$storedName = (string) $file['stored_name'];
-
-// 실제 바이트 확인 → 감사 로그 → 전송 (순서를 바꾸지 않는다)
-try {
-    Storage::assertExists($storedName);
-} catch (Throwable $e) {
-    Audit::error('file.download', 'file_missing', [
-        'target_type'  => 'file',
-        'target_id'    => (int) $file['id'],
-        'target_name'  => (string) $file['original_name'],
-        'access_level' => (string) $file['access_level'],
-    ]);
-    throw $e;   // bootstrap 예외 핸들러 → 500 + {"error":"서버 오류"}
-}
-
-// ─── sha256 대조 (6단계 필수, ARCH 5.3 [6], SECURITY R-13) ───────
-// 저장된 바이트가 업로드 당시의 기록과 같은지 **전송 전에** 확인한다. 서버가 뚫려 저장소 파일이
-// 악성 문서로 바뀌어도 여기서 멈춘다. 다르면 allow 를 남기지 않고 error(hash_mismatch) 만 남기며
-// (AL-6 경보 대상), 응답은 bootstrap 예외 경로와 같은 500 + {"error":"서버 오류"} 다 —
-// "해시가 달라서 막았다" 는 사실조차 응답으로 알려 주지 않는다.
-$actualHash = Storage::sha256($storedName);
-if (!hash_equals((string) $file['sha256'], $actualHash)) {
-    Audit::error('file.download', 'hash_mismatch', [
-        'target_type'  => 'file',
-        'target_id'    => (int) $file['id'],
-        'target_name'  => (string) $file['original_name'],
-        'access_level' => (string) $file['access_level'],
-        'detail'       => $auditWhat,
-    ]);
-    Http::error(500, '서버 오류');
+if ($integrityFail !== null) {
+    Http::error(500, '서버 오류');   // hash_mismatch — 응답은 bootstrap 예외 경로와 같은 500 (R-13)
 }
 
 Audit::allow('file.download', [
@@ -172,7 +87,7 @@ Audit::allow('file.download', [
     'target_name'  => (string) $file['original_name'],
     'access_level' => (string) $file['access_level'],
     // 허용에도 근거를 남긴다 — granted_by 가 없으면 "왜 허용됐나" 를 조사할 수 없다 (PRD S-07)
-    'detail'       => array_merge(['granted_by' => $readCode], $auditWhat),
+    'detail'       => array_merge(['granted_by' => $readCode], tbox_download_audit_what($file)),
 ]);
 
-Storage::stream($storedName, (string) $file['original_name'], (string) $file['mime']);
+Storage::stream((string) $file['stored_name'], (string) $file['original_name'], (string) $file['mime']);

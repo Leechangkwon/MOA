@@ -185,9 +185,15 @@ require __DIR__ . '/../views/shell_top.php';
          검색·정렬을 바꾸지 않는다 — 바꾸면 고른 것이 풀리는 것과 같은 뜻이다). 동작 단추는 행 동작과 **같은 아이콘 단추**
          (`.btn--icon` + aria-label = 툴팁 글 · 순서 고치기 → 이동 → ☆ → 삭제, DESIGN 2.1)라 폰 폭에서도 한 줄이다.
          ★ 새 서버 창구 0 — 누르면 app.js 가 **한 건 작업과 같은 창구**(`PATCH·DELETE /api/files/{id}` · `PUT·DELETE …/favorite`)를
-           항목마다 한 번씩, 차례로 부른다. 무엇을 할 수 있는지는 창구가 항목마다 판단하고, 거부 문장·감사도 한 건과 같다(PRD S-01). -->
+           항목마다 한 번씩, 차례로 부른다. 무엇을 할 수 있는지는 창구가 항목마다 판단하고, 거부 문장·감사도 한 건과 같다(PRD S-01).
+         라운드 C — 맨 앞 「zip 으로 받기」(행 동작 순서 보기 → **받기** → 고치기 → 이동 → 삭제, DESIGN 2.1 · 받기 = 파랑)만 창구 하나
+           (`POST /api/files/zip`)에 고른 id 를 **한 번에** 보낸다 — 파일 하나로 받아야 해서다. 넣을지는 서버가 파일마다 한 건 받기와
+           같은 판정으로 정하고, 뺀 파일은 개수만 알린다(결과 한 줄 `#files-ok`). -->
     <div class="toolbar" id="files-bulk-bar" role="group" aria-label="고른 파일로 할 일" hidden>
       <span id="files-bulk-count" aria-live="polite"></span>
+      <button id="files-bulk-zip" class="btn btn--icon" type="button" aria-label="zip 으로 받기">
+        <span class="icon" data-icon="download"></span>
+      </button>
       <button id="files-bulk-level" class="btn btn--icon" type="button" aria-label="등급·팀 바꾸기" aria-haspopup="dialog">
         <span class="icon" data-icon="edit"></span>
       </button>
@@ -207,6 +213,9 @@ require __DIR__ . '/../views/shell_top.php';
     </div>
     <!-- 막대 아래 한 줄(필요할 때만) — 100개에 닿았을 때 · 앞 작업이 도는 중일 때. 막대 안에 쓰면 폰 폭에서 막대가 두 줄로 꺾인다. -->
     <p id="files-bulk-note" class="help" aria-live="polite" hidden></p>
+    <!-- 라운드 C — 막대 동작(zip 으로 받기)이 거부된 까닭 한 줄. 화면 아래 `#msg` 는 긴 목록 끝이라 막대에서 누른 사람에게 안 보인다(스크린샷 확인).
+         모양은 `#msg` 와 같은 `.msg`(빨강 · 비면 높이 0) — 새 클래스 0. 글자는 서버 문장 그대로(textContent), 고른 것을 모두 풀면 비운다. -->
+    <p id="files-bulk-msg" class="msg" role="alert" aria-live="polite"></p>
     <!-- 일괄 진행 표 — 올리기 창의 진행 표(F-27 `.upload-status`)와 같은 칸·같은 상태 글자(대기 · 하는 중 · 완료 · 서버가 준 거부 문장).
          줄은 app.js 가 createElement + textContent 로만 만든다. 100줄까지라 표 칸은 줄 목록과 같은 높이(`.list--scroll` 480px)에서 스크롤한다.
          로그인이 끝나면(401) 멈추고 남은 줄을 그대로 둔 채 「이어서 하기」를 보인다(지시서 1.3 · QF3A-T7). -->

@@ -503,10 +503,13 @@ code {
 .btn--icon:hover { background: var(--muted-bg); color: var(--fg); border-color: transparent; }
 /* 행 동작 아이콘의 색은 **뜻**으로 나눈다 (DESIGN.md 2.1 · D-4 결정 2026-09-21):
    받기(주요 동작) = 파랑, 삭제(되돌릴 수 없음) = 빨강, 나머지(보기·고치기·공유·이동) = 회색.
-   순서대로 색을 입히는 방식(0→4 무지개)은 뜻이 없어 쓰지 않는다 — 0장 원칙 4. 라벨은 makeIconButton 이 넣는 aria-label. */
+   순서대로 색을 입히는 방식(0→4 무지개)은 뜻이 없어 쓰지 않는다 — 0장 원칙 4. 라벨은 makeIconButton 이 넣는 aria-label.
+   「zip 으로 받기」(Q:F-3a 라운드 C — 일괄 막대의 받기)도 받기라 같은 파랑이다(새 색 0 — 선택자만 더함). */
 .btn--icon[aria-label="다운로드"],
+.btn--icon[aria-label="zip 으로 받기"],
 .btn--icon[aria-label^="확인하고 받기"] { color: var(--accent); }
 .btn--icon[aria-label="다운로드"]:hover,
+.btn--icon[aria-label="zip 으로 받기"]:hover,
 .btn--icon[aria-label^="확인하고 받기"]:hover { background: var(--accent-soft); color: var(--accent-dark); }
 .btn--icon[aria-label="삭제"] { color: var(--danger); opacity: .8; }
 .btn--icon[aria-label="삭제"]:hover,

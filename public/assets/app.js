@@ -2825,6 +2825,8 @@ function initFiles(csrfToken, uploadLevels, canFetch, myTeamId) {
   var bulkBar = document.getElementById('files-bulk-bar');
   var bulkCountEl = document.getElementById('files-bulk-count');
   var bulkNote = document.getElementById('files-bulk-note');
+  var bulkZipBtn = document.getElementById('files-bulk-zip');   // 라운드 C — zip 으로 받기
+  var bulkMsg = document.getElementById('files-bulk-msg');       // 라운드 C — 막대 동작의 거부 문장(막대 바로 아래 · .msg)
   var bulkLevelBtn = document.getElementById('files-bulk-level');
   var bulkMoveBtn = document.getElementById('files-bulk-move');
   var bulkFavBtn = document.getElementById('files-bulk-fav');
@@ -2850,7 +2852,7 @@ function initFiles(csrfToken, uploadLevels, canFetch, myTeamId) {
   var bulkLevelMsg = document.getElementById('bulk-level-msg');
 
   /** 고른 것 — 고른 순서의 id 와 id → 목록 응답의 줄(이름 표시용). 쪽을 넘겨도 남는다. */
-  var bulk = { order: [], files: {}, anchor: null, job: null, username: null, undoTimer: null, undoItems: null, full: false };
+  var bulk = { order: [], files: {}, anchor: null, job: null, username: null, undoTimer: null, undoItems: null, full: false, zipBusy: false };
   /** 지금 표에 그린 줄 [{file, check}] — 머리 체크(이 쪽 전부)와 Shift+클릭 범위가 본다(clearRows 가 비운다) */
   var pageRows = [];
 
@@ -2951,6 +2953,8 @@ function initFiles(csrfToken, uploadLevels, canFetch, myTeamId) {
     var note = '';
     if (bulk.full) {
       note = '한 번에 ' + BULK_PICK_MAX + '개까지 고를 수 있습니다 — 더 고르려면 먼저 몇 개를 푸세요.';
+    } else if (bulk.zipBusy && n > 0) {
+      note = 'zip 을 만드는 중입니다 — 파일이 많거나 크면 시간이 걸립니다.';
     } else if (busy && n > 0) {
       note = '앞 작업이 끝나면 고른 파일로 할 수 있습니다.';
     }
@@ -2963,6 +2967,12 @@ function initFiles(csrfToken, uploadLevels, canFetch, myTeamId) {
         b.disabled = busy;
       }
     });
+    if (bulkZipBtn) {
+      bulkZipBtn.disabled = busy || bulk.zipBusy;   // zip 은 한 번에 하나(서버도 사람마다 하나 — 429)
+    }
+    if (n === 0) {
+      setText(bulkMsg, '');   // 고른 것을 모두 풀면 막대의 거부 문장도 지운다
+    }
     if (bulkFavBtn) {
       // 「즐겨찾기」 보기에서는 빼기, 그 밖에서는 넣기 — 아이콘도 따라간다(찬 별 = 빼기)
       var off = state.view === 'favorites';
@@ -3285,6 +3295,82 @@ function initFiles(csrfToken, uploadLevels, canFetch, myTeamId) {
         loadTree();
       }
     });
+  }
+
+  /* ─── zip 으로 받기 (Q:F-3a 라운드 C — 지시서 1.4 · 결정 M-5 · ARCH 5.34) ─────────────────────
+   *
+   * 고른 파일 id 를 **한 번에** `POST /api/files/zip {ids}` 로 보낸다 — 위 일괄 동작들(한 건 창구를 항목마다)과 다른 점은
+   * 결과가 파일 **하나**여야 한다는 것뿐이다. 무엇을 넣을지는 서버가 파일마다 한 건 받기와 같은 판정(권한 · 검사 중 · 실행 파일이
+   * 든 압축본)으로 정하고, 뺀 파일은 **개수만** 알려 준다(`X-Zip-Skipped` 머리 · 거부 본문의 `skipped`) — 이름·까닭은 서버 감사에만.
+   * 화면은 미리 거르지 않는다(검사 중인 파일을 골라도 보낸다 — 빼는 것은 서버다, PRD S-01).
+   * 받는 방법은 확인 다운로드(F-65)와 같은 fetch + blob + a[download](`saveBlob`) — CSRF 머리를 실어야 하는 POST 라 링크로는 못 받는다.
+   * 고른 것은 그대로 둔다(파일이 바뀌지 않는다 — 이어서 다른 동작을 할 수 있다). 결과 한 줄은 `#files-ok`, 거부 문장은 막대 바로 아래
+   * `#files-bulk-msg`(`.msg` — 서버 문장 그대로).
+   */
+  function zipNameFrom(disposition) {
+    // 서버가 만든 ASCII 이름만 받는다(`t-box-YYYYMMDD-HHMMSS.zip`) — 모양이 다르면 고정 이름
+    var m = (typeof disposition === 'string' ? disposition : '').match(/filename="([A-Za-z0-9._-]{1,100}\.zip)"/);
+    return m ? m[1] : 't-box.zip';
+  }
+
+  function zipDoneText(count, skipped) {
+    var line = (isFinite(count) && count > 0 ? count + '개를' : '고른 파일을') + ' zip 으로 받았습니다.';
+    if (isFinite(skipped) && skipped > 0) {
+      line += ' ' + skipped + '개는 받을 수 없어 뺐습니다 — 권한이 없거나 검사 중이거나 실행 파일이 든 압축본은 zip 에 넣지 않습니다.';
+    }
+    return line;
+  }
+
+  function bulkZip() {
+    var ids = bulk.order.slice();
+    if (ids.length === 0 || bulk.zipBusy || (bulk.job !== null && !bulk.job.finished)) {
+      return;
+    }
+    bulk.zipBusy = true;
+    setText(msg, '');
+    setText(bulkMsg, '');
+    showDone('');
+    syncBulkUi();
+    fetch(APP_BASE + '/api/files/zip', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken },
+      body: JSON.stringify({ ids: ids }),
+      credentials: 'same-origin',
+      cache: 'no-store'
+    })
+      .then(function (response) {
+        if (response.status === 401) {
+          toLogin();
+          return null;
+        }
+        if (response.status === 200) {
+          var count = parseInt(response.headers.get('X-Zip-Count') || '', 10);
+          var skipped = parseInt(response.headers.get('X-Zip-Skipped') || '', 10);
+          var name = zipNameFrom(response.headers.get('Content-Disposition'));
+          return response.blob().then(function (blob) {
+            saveBlob(blob, name);
+            showDone(zipDoneText(count, skipped));
+            return null;
+          });
+        }
+        // 400(100개 · 500MB) · 403(넣을 것 없음 — 뺀 개수가 문장 뒤에) · 429(만드는 중) · 503(공간) — 서버 문장 그대로(F-68).
+        // 자리는 막대 바로 아래 한 줄(#files-bulk-msg) — 화면 끝 #msg 는 긴 목록 아래라 누른 사람에게 안 보인다
+        return readJson(response).then(function (data) {
+          var line = errorMessage(data);
+          if (typeof data.skipped === 'number' && data.skipped > 0) {
+            line += ' (뺀 파일 ' + data.skipped + '개)';
+          }
+          setText(bulkMsg, line);
+          return null;
+        });
+      })
+      .catch(function () {
+        setText(bulkMsg, GENERIC_ERROR);
+      })
+      .then(function () {
+        bulk.zipBusy = false;
+        syncBulkUi();
+      });
   }
 
   /* ── 동작 넷 — 고르기 → 창(확인·폴더·등급) → 진행 표 ── */
@@ -4572,6 +4658,9 @@ function initFiles(csrfToken, uploadLevels, canFetch, myTeamId) {
       bulk.anchor = null;
       syncBulkUi();
     });
+  }
+  if (bulkZipBtn) {
+    bulkZipBtn.addEventListener('click', bulkZip);
   }
   if (bulkLevelBtn) {
     bulkLevelBtn.addEventListener('click', openBulkLevel);

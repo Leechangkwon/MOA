@@ -1641,6 +1641,38 @@ P-5c(쿠키 없는 `/`·308·404 세션 증가 0 · 쿠키 런처 동일 · DB �
   폴더 동작 줄의 「즐겨찾기에 넣기/빼기」 · 「최근」 보기의 시각 칸은 「마지막으로 연 때」. 별이 찬지는 창구가 준 목록에 있나 없나만 본다(화면은 판단하지 않는다).
 - 런처에는 보이지 않는다(결정 M-8 — 런처는 데이터 0).
 
+### 5.34 zip 으로 받기 — `POST /api/files/zip` (개발 대기열 6 · Q:F-3a 라운드 C, 2026-09-26)
+
+지시서 `../docs/qf3a-favorites-recent-bulk-directive.md` 1.4 · 3장 QF3A-T8 · 결정 M-5 · 구현 기록 `docs/qf3a-favorites-recent-implementation.md` 12장.
+**새 판정 코드 0** — 파일마다 한 건 받기(5.3)와 **같은 함수**를 부른다. `files_download.php` 안에 있던 행 읽기 · 세 관문 · 무결성은
+`src/handlers/_download_common.php` 로 글자 그대로 옮겼고(`tbox_download_find` · `tbox_download_gate` · `tbox_download_integrity`) 두 창구가 함께 쓴다.
+
+| 순서 | 무엇 | 끝나면 |
+|---|---|---|
+| [1] | 본문 `{ids:[UUIDv4 …]}` — 키는 `ids` 하나 · 목록 · 1~100 · 모두 UUIDv4 · 같은 id 는 하나로 | 형식 오류 400 통일 문구 · 101개 이상 400 「한 번에 100개까지 …」 |
+| [2] | 사람마다 한 번에 하나 — `Storage::tmpDir()/.zip-user-<id>.lock` `flock` (기다리지 않음) | 429 + `Retry-After: 10` · `file.zip deny busy`(kind `user`) |
+| [3] | 파일마다 `tbox_download_find` → `tbox_download_gate`(decideRead → F-65 → F-54) — 거부 행은 관문이 남긴다(detail `via: "zip"`) · 없는 id·지운 파일은 한 건 받기처럼 **감사 없이** 뺀다 | 그 파일만 뺀다(`skipped` +1) |
+| [4] | 통과한 게 없으면 · **통과한 파일만**의 DB 크기 합계가 500MB(524,288,000 B)를 넘으면 | 403 `{error, skipped}` · `file.zip deny nothing_allowed` / 400 「합계가 500MB 를 넘습니다 …」 · `file.zip deny too_large` |
+| [5] | 사이트 전체 슬롯 둘(`.zip-slot-0/1.lock`) · 10분 지난 `zip-*` 치우기 · 잡은 슬롯 파일에 **내 최악 크기 2 × 합계**를 적고 · 남은 공간 ≥ 2 × 합계 + **쥐어져 있는 다른 슬롯의 적힌 몫**(비었거나 숫자가 아니면 최악 2 × 500MB · 안 쥔 슬롯의 옛 값은 무시) + 1GB(zip 사본 + nginx 가 응답을 받아 두는 임시 파일, 그 뒤에도 1GB — R-80) — 검토 L-C1 | 429(kind `site`) · 503 「임시 공간이 모자라 …」 · `file.zip error no_space`(detail `reserved_bytes`) |
+| [6] | 파일마다 `tbox_download_integrity`(바이트 있나 · sha256 = DB) | 실패 파일만 뺀다 · `file.download error file_missing·hash_mismatch`(via zip — AL-6) |
+| [7] | `tempnam(Storage::tmpDir(), 'zip-')`(0600 · 폴더 0700 tbox-php) → `ZipArchive` 에 **압축 없이 담기**(`CM_STORE` — 시간이 크기에 비례) · 안 이름은 파일 이름만(아래) · 닫은 뒤 0600 다시 · 항목 수 확인 | 실패 500 · `file.zip error zip_failed`(detail `why`) · 임시 파일 지움 |
+| [8] | 먼저 시간 한도 — 요청 시작부터 `TBOX_ZIP_TIME_BUDGET`(50초)을 넘었으면 allow 행 없이 끝(nginx 60초 504 뒤 「받음」이 남지 않게 — 검토 L-C2). 그다음 감사 — 파일마다 `file.download allow`(한 건 받기와 같은 칸 + `via: "zip"`) · 묶음 한 줄 `file.zip allow`(requested·added·skipped·size_bytes) | 넘으면 503 「시간이 너무 걸려 …」 · 임시 파일 지움 · `file.zip error zip_failed`(why `time` · `elapsed_ms`) |
+| [9] | 전송 — `application/zip` · `Content-Disposition: attachment; filename="t-box-YYYYMMDD-HHMMSS.zip"; filename*=UTF-8''…`(한 건 받기와 같은 모양 · 서버가 만든 ASCII 이름) · `X-Zip-Count` · `X-Zip-Skipped` · `readfile` 뒤 지움 | 어디서 끝나든(오류·예외·손님이 끊음) shutdown 함수가 한 번 더 지운다 |
+
+- **안 이름**: F-05 정리 규칙(`\` → `/` 의 마지막 조각 · 제어 문자 지움 · 앞뒤 공백 · 255자) + zip 한 겹(`:` → `_` — Windows 드라이브·대체 데이터 흐름 ·
+  빈 이름·`.`·`..` → `file`). 같은 이름(대소문자 무시)은 `이름 (2).확장자`. 폴더 구조·절대 경로·`..` 조각은 zip 에 들어가지 않는다.
+- **응답에 나가는 것**: 넣은 수·뺀 수뿐. 뺀 파일의 이름·까닭·있고 없음은 응답에 없다(못 받으면 403 본문도 `{error, skipped}`) — 감사에만.
+  합계 한도는 **통과한 파일**로만 재므로 못 보는 파일의 크기가 400/200 갈림으로 새지 않는다.
+- **토큰 창구 아님**(결정 M-5) — `TBOX_API_TOKEN_ROUTES` 불변. `X-API-Token` 은 읽히지도 않고 세션 경로(없으면 401).
+- **시간·자원**: 실측(임시 인스턴스 · php -S) 100MB × 5 = 500MB — 머리까지 18.7초(sha256 500MB + 담기) · 끝까지 21.8초 · 최대 RSS 그대로(약 100MB —
+  크기에 따라 늘지 않는다). FPM `request_terminate_timeout 90s` · nginx `fastcgi_read_timeout 60s`(첫 바이트까지) 안이다. 동시 두 개가 겹치면
+  디스크를 나눠 쓰므로 머리까지 두 배 가까이(약 40초) 될 수 있다 — 60초와의 여유가 좁아지는 자리(구현 기록 12장 C-U 표).
+  nginx 는 응답을 `fastcgi_max_temp_file_size`(기본 1024m) 안에서 임시 파일로 받아 두므로 느린 손님이 PHP 워커를 붙잡지 않는다.
+  FPM 이 워커를 죽이면(90초) shutdown 함수도 돌지 않아 `zip-*` 가 남는다 — 다음 zip 요청이 10분 지난 것을 치운다.
+- **화면**(`home.php` · `app.js`): 일괄 막대 맨 앞 「zip 으로 받기」(`.btn--icon` · 아이콘 download · 받기 = 파랑 — `app.css` 뜻 색 선택자에 한 줄) →
+  fetch + blob + `a[download]`(F-65 확인 다운로드와 같은 `saveBlob`) · 만드는 동안 단추 잠김 + 막대 아래 한 줄 · 결과 한 줄 `#files-ok`(뺀 개수 포함) ·
+  거부 문장은 막대 바로 아래 `#files-bulk-msg`(`.msg`) · 고른 것은 그대로.
+
 ## 6. 저장 위치 — 파일 정보 vs 실제 파일
 
 ### 6.1 두 곳에 나눠 저장하는 이유
@@ -2164,6 +2196,12 @@ GRANT  USAGE, SELECT  ON SEQUENCE audit_logs_id_seq TO tbox_app;
 | `file.download_exec|deny|bad_request` | `{actor} 이(가) 실행 파일 확인 절차를 허용되지 않는 형식으로 요청하거나 실행 파일이 아닌 파일에 요청해서 거부했습니다` | F-65 |
 | `file.download|deny|exec_ack_required` | `{actor} 이(가) 실행 파일이 든 압축본 「{target}」 을(를) 확인 절차 없이 받으려 해서 확인을 요청했습니다` | F-65 — 미리보기 두 창구(`/preview`·`/preview/raw`)도 **action 까지 `file.download`** 로 같은 행을 쓴다(문장은 `action|result|reason` 으로 고르므로). 어느 창구였나는 `detail.route` 가 답한다. `exec-download` 창구의 권한·검사·무결성 거부도 5.3 과 같은 `file.download` 행이다 |
 | `file.download|deny|exec_content_token` | `{actor} 이(가) 프로그램 토큰으로 실행 파일이 든 압축본 「{target}」 을(를) 받으려 해서 거부했습니다 (이 파일은 사람이 2단계 코드를 넣어야 받을 수 있습니다)` | F-65 |
+| `file.zip|allow` | `{actor} 이(가) 파일 여러 개를 zip 「{target}」 하나로 묶어 내려받았습니다 (넣은 수·뺀 수는 상세 기록, 파일마다 내려받기 행이 따로 남습니다)` | Q:F-3a 라운드 C (5.34 [8]) — **묶음 한 줄**. {target} = 서버가 만든 zip 이름. 파일마다의 행은 위 `file.download` 행 그대로(detail `via: "zip"` — 새 사유 0. 실행 파일 압축본은 `exec_ack_required` 행이 「zip 에서 뺐다」는 뜻이 된다 — 어느 창구였나는 `via`·`route`) |
+| `file.zip|deny|nothing_allowed` | `{actor} 이(가) zip 으로 받으려 한 파일이 모두 받을 수 없는 파일이어서(권한·검사 중·실행 파일이 든 압축본·없는 파일) 만들지 않았습니다` | 5.34 [4] |
+| `file.zip|deny|too_large` | `{actor} 이(가) 합계 500MB 를 넘는 파일들을 zip 하나로 받으려 해서 거부했습니다` | 5.34 [4] |
+| `file.zip|deny|busy` | `{actor} 이(가) zip 을 받으려 했지만 다른 zip 을 만드는 중이어서 잠시 뒤 다시 하도록 했습니다` | 5.34 [2]·[5] (detail `kind` = `user`·`site`) |
+| `file.zip|error|no_space` | `{actor} 이(가) zip 을 받으려 했지만 서버의 임시 공간이 모자라 만들지 않았습니다 (점검 필요)` | 5.34 [5] |
+| `file.zip|error|zip_failed` | `{actor} 이(가) zip 을 받으려 했지만 묶는 중 서버 오류가 나서 임시 파일을 지웠습니다 (점검 필요)` | 5.34 [7]·[8] (detail `why` = `temp`·`open`·`add`·`close`·`count`·`size` · `time`(시간 한도 — `elapsed_ms`)) |
 | `share.download|deny|exec_content` | `실행 파일이 든 압축본 「{target}」 이(가) 공유 링크로 요청되어 거부했습니다 (이 파일은 링크로 나갈 수 없습니다)` | F-65 겹 방어 — 링크는 만들 수 없어 보통 닿지 않지만, 닿으면 404 와 함께 기록한다(actor 없음) |
 | `share.create|deny|exec_content` | `{actor} 이(가) 실행 파일이 든 압축본 「{target}」 의 공유 링크를 만들려 해서 거부했습니다 (이 파일은 링크로 나갈 수 없습니다)` | F-65 |
 | `file.update|deny|exec_content` | `{actor} 이(가) 실행 파일이 든 압축본 「{target}」 의 접근 등급을 바꾸려 해서 거부했습니다 (admin-only 로 고정됩니다)` | F-65 |
@@ -2292,6 +2330,12 @@ GRANT  USAGE, SELECT  ON SEQUENCE audit_logs_id_seq TO tbox_app;
 | `token_name` | 무엇을 | 발급·회수한 토큰의 **라벨**(「사무실 PC」). 사람이 붙인 이름이고 비밀이 아니다. 정확 일치 예외 | 핸들러 | `api_token.issue`·`api_token.revoke` (F-59) |
 | `token_scope` | 어떻게 | 토큰의 **범위** 분류어(`read`·`read+upload`·`read+upload+delete`). 코드가 정한 세 값 중 하나. `autoDetail()` 이 토큰 경로의 모든 행에, 발급·범위 거부 행에는 핸들러/Auth 가 붙인다. 이름에 `token` 이 들어 부분 일치 금지에 걸리므로 정확 일치 예외 | Audit·핸들러 | F-66 (ARCH 4.7) |
 | `space_kind` | 어디서 | 커뮤니티 공간 종류 `personal`·`team`·`board` — 이름·아이디는 넣지 않는다 | 핸들러 | `page.create deny not_owner·not_member`(대기열 10번 A.1, 2026-09-24) |
+| `via` | 어떻게 | 어느 입구로 받았나 — 지금은 `zip` 하나(5.34). 한 건 받기 행에는 없다(행이 전과 같다) | `files_zip` → `_download_common` | zip 요청의 `file.download` 모든 행 · `file.zip` 행 (Q:F-3a 라운드 C) |
+| `requested` · `skipped` | 무엇을 | zip 요청의 (같은 id 를 하나로 센) 파일 수 · 뺀 수(없는 id·지운 것·거부·무결성 실패). **개수만** — 이름·id 목록은 넣지 않는다(파일마다의 행이 따로 있다) | `files_zip` | `file.zip` 행 |
+| `added` | 무엇을 | (이미 있는 키 — 더한 줄 수) zip 에 넣은 파일 수 | `files_zip` | `file.zip allow` |
+| `free_bytes` | 왜 | zip 을 못 만든 순간 앱 임시 폴더의 남은 바이트(`disk_free_space`) — `size_bytes`(합계)와 나란히 「왜 모자랐나」 | `files_zip` | `file.zip error no_space` |
+| `reserved_bytes` | 왜 | 그 순간 **다른 슬롯이 잡아 둔** 바이트 합(쥐어진 슬롯 파일의 2 × 합계 · 모르면 최악) — 검토 L-C1 | `files_zip` | `file.zip error no_space` |
+| `elapsed_ms` | 왜 | 요청 시작부터 [8] 감사 직전까지 걸린 밀리초 — 시간 한도(50초)를 넘어 멈춘 행 | `files_zip` | `file.zip error zip_failed`(why `time`) |
 
 **검토 행동과 사용자 행동 가르기** — 두 조건 중 하나면 검토다. 둘 다 아니면 사용자(또는 침입자)다.
 

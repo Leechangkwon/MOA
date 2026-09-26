@@ -359,7 +359,9 @@ if [[ "$pp" =~ ^[0-9]+$ ]] && [[ "$pf" =~ ^[0-9]+$ ]]; then PASS=$((PASS + pp));
 
 hr "QF3A-T7 — 서버에 새 일괄 창구 0 · B-T0 정적 · 서버 로그"
 if git -C "$ROOT" rev-parse -q --verify "$BASE_REV" >/dev/null 2>&1; then
-  expect "public/index.php — 기준 판($BASE_REV) 대비 바뀐 줄 0(새 라우트 0)" "0" "$(git -C "$ROOT" diff "$BASE_REV" -- public/index.php | grep -c '^[-+][^-+]')"
+  # 라운드 C(zip — tests/qf3c_zip.sh 가 「정확히 한 줄」을 본다)가 더한 라우트 한 줄과 그 주석 줄은 뺀다 — 라운드 B 의 불변은 「새 **일괄** 창구 0」이다
+  expect "public/index.php — 기준 판($BASE_REV) 대비 바뀐 줄 0(새 라우트 0 · 라운드 C zip 한 줄·주석 제외)" "0" \
+    "$(git -C "$ROOT" diff "$BASE_REV" -- public/index.php | grep '^[-+][^-+]' | grep -v -e "^+ *\['POST', *'/api/files/zip', *'files_zip\.php', *'file\.read'\],\$" -e '^+ *//' | grep -c .)"
   expect "커뮤니티 라우트 표(src/community/routes.php) — 더하거나 뺀 라우트 줄 0" "0" \
     "$(git -C "$ROOT" diff "$BASE_REV" -- src/community/routes.php | grep -cE "^[-+] *\['(GET|POST|PUT|PATCH|DELETE)', *'/")"
   tokconst() { sed -n '/^const TBOX_API_TOKEN_\(ROUTES\|PERSONAL_ROUTES\|ONLY_ROUTES\) = \[/,/^\];/p'; }

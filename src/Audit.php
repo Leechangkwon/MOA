@@ -432,6 +432,19 @@ final class Audit
         'file.download|deny|scan_pending'         => '{actor} 이(가) 아직 검사 중인 파일 「{target}」 을(를) 내려받으려 해서 막았습니다',
         'file.download|deny|scan_infected'        => '{actor} 이(가) 악성코드로 격리된 파일 「{target}」 을(를) 내려받으려 해서 막았습니다',
 
+        /*
+         * zip 으로 받기 (files_zip — Q:F-3a 라운드 C, 결정 M-5, ARCH 5.34 · 7.4).
+         * 파일마다의 행은 위 `file.download` 행 그대로다(detail `via: "zip"` 한 칸만 더 — 새 사유 0).
+         * 여기 여섯은 **묶음 한 줄**이다. {target} 은 서버가 만든 zip 이름(`t-box-YYYYMMDD-HHMMSS.zip`)이라
+         * 요청 글자가 한 자도 들어가지 않는다. 넣은 수·뺀 수·크기는 detail(requested·added·skipped·size_bytes).
+         */
+        'file.zip|allow'                          => '{actor} 이(가) 파일 여러 개를 zip 「{target}」 하나로 묶어 내려받았습니다 (넣은 수·뺀 수는 상세 기록, 파일마다 내려받기 행이 따로 남습니다)',
+        'file.zip|deny|nothing_allowed'           => '{actor} 이(가) zip 으로 받으려 한 파일이 모두 받을 수 없는 파일이어서(권한·검사 중·실행 파일이 든 압축본·없는 파일) 만들지 않았습니다',
+        'file.zip|deny|too_large'                 => '{actor} 이(가) 합계 500MB 를 넘는 파일들을 zip 하나로 받으려 해서 거부했습니다',
+        'file.zip|deny|busy'                      => '{actor} 이(가) zip 을 받으려 했지만 다른 zip 을 만드는 중이어서 잠시 뒤 다시 하도록 했습니다',
+        'file.zip|error|no_space'                 => '{actor} 이(가) zip 을 받으려 했지만 서버의 임시 공간이 모자라 만들지 않았습니다 (점검 필요)',
+        'file.zip|error|zip_failed'               => '{actor} 이(가) zip 을 받으려 했지만 묶는 중 서버 오류가 나서 임시 파일을 지웠습니다 (점검 필요)',
+
         // ── 미리보기 (files_preview · files_preview_raw — 12-2, ARCH 7.4 file.preview 7행) ──
         'file.preview|allow'                      => '{actor} 이(가) {level} 등급 파일 「{target}」 을(를) 미리보기로 열었습니다',
         'file.preview|deny|role_not_permitted'    => '{actor} 이(가) {level} 등급 파일 「{target}」 을(를) 미리보기로 열려 했지만 권한이 없어 막았습니다',

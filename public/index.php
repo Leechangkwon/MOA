@@ -184,6 +184,10 @@ const TBOX_ROUTES = [
     ['GET',    '/api/folders/favorites',        'favorites_folders.php', 'file.read'],
     ['PUT',    '/api/folders/{num}/favorite',   'favorites_folders.php', 'file.read'],
     ['DELETE', '/api/folders/{num}/favorite',   'favorites_folders.php', 'file.read'],
+    // Q:F-3a 라운드 C — 고른 파일 여럿을 zip 하나로 받기 (지시서 1.4 · 결정 M-5, ARCH 5.34). 정책은 한 건 받기와 **같은 file.read**,
+    //   POST 라 [3] CSRF 를 지난다. 파일마다 한 건 받기와 같은 함수(`_download_common.php` — decideRead · F-65 · F-54 · 무결성)로
+    //   거르고 못 받는 파일은 **빼고 개수만** 알린다(새 판정 0). 토큰 창구 집합에 넣지 않는다 — 화면 전용(M-5).
+    ['POST',   '/api/files/zip',                'files_zip.php',         'file.read'],
 
     // 12단계 — 기능별 화면 분리 (PRD F-20, 8장 「화면(HTML)」 행, 10장 화면 요구사항).
     //   한 페이지에 쌓여 있던 기능을 화면 단위로 나눈 것이며 **권한 규칙은 그대로**다:
