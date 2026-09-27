@@ -115,6 +115,8 @@ try {
     // 디버깅 묶음 S-5 — 대상의 개인 프로그램 토큰도 전부 회수한다(같은 트랜잭션 · 토큰마다 감사 한 행,
     // `api_token.revoke allow password_reset`). 재발급은 「이 계정 자격이 새었을 수 있다」는 신호다 (R-91).
     Auth::revokeAllApiTokens($uid, (string) $target['username'], (int) $user['id'], 'password_reset');
+    // T:F-72 — 대상의 지문·얼굴 로그인 열쇠도 전부 해제한다(같은 트랜잭션 · 열쇠마다 감사 한 행 `auth.passkey_revoke allow password_reset`).
+    Auth::revokeAllPasskeys($uid, (string) $target['username'], (int) $user['id'], 'password_reset');
 
     Audit::allow('user.password_reset', $auditTarget + [
         'detail' => [

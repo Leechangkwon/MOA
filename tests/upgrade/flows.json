@@ -49,6 +49,12 @@
         { "click": "#nav-search" },
         { "fill": "#search-input", "text": "시험", "expect": { "method": "GET", "path": "/tbox/api/files", "query_has": ["q="] } }
       ]
+    },
+    {
+      "id": "tbox.settings_passkeys",
+      "url": "/tbox/settings",
+      "on_load": { "method": "GET", "path": "/tbox/api/me/passkeys" },
+      "steps": []
     }
   ]
 }

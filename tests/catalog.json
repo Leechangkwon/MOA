@@ -3376,6 +3376,168 @@
       "est_sec": 3000,
       "writes_prod": false,
       "notes": "부르는 셸: tbox.dbg_u2_ui. 단독 실행 불가(인자 SITE UA SHOTS 와 세션 셋·관리자 비밀번호를 표준입력 네 줄로 부르는 셸이 넘긴다). 결과 줄 SMOKE_FAIL=n. 넷째 인자 before 는 고치기 전 판 스크린샷용(종료 코드 0). 임시 DB 에 파일·페이지·계정 하나(재발급 시험용)를 만든다."
+    },
+    {
+      "id": "tbox.passkey",
+      "cmd": "bash tests/passkey.sh",
+      "module": "tbox",
+      "env": "temp-instance",
+      "status": "required",
+      "needs": [
+        "sudo",
+        "browser",
+        "totp_wait"
+      ],
+      "covers": [
+        "db/migrations/2026-10-06_passkeys.sql",
+        "deploy/sites/tbox-v2-local.conf",
+        "deploy/sites/tbox-v2.conf",
+        "public/assets/app.js",
+        "public/assets/community/editor.js",
+        "public/assets/passkey.js",
+        "public/index.php",
+        "scripts/alerts.php",
+        "src/Audit.php",
+        "src/Auth.php",
+        "src/Http.php",
+        "src/Passkey.php",
+        "src/community/handlers/home_page.php",
+        "src/community/routes.php",
+        "src/handlers/login_page.php",
+        "src/handlers/me.php",
+        "src/handlers/me_passkeys_list.php",
+        "src/handlers/me_passkeys_options.php",
+        "src/handlers/me_passkeys_register.php",
+        "src/handlers/me_passkeys_revoke.php",
+        "src/handlers/passkey_login.php",
+        "src/handlers/passkey_login_options.php",
+        "src/handlers/password_change.php",
+        "src/handlers/reauth_passkey.php",
+        "src/handlers/reauth_passkey_options.php",
+        "src/handlers/settings_page.php",
+        "src/handlers/site_manifest.php",
+        "src/handlers/users_mfa_reset.php",
+        "src/handlers/users_password_reset.php",
+        "src/handlers/users_update.php",
+        "src/views/launcher.php",
+        "src/views/shell_top.php",
+        "tests/browser/passkey.py",
+        "tests/lib/passkey_forge.py",
+        "tests/lib/return_path_vectors.txt",
+        "tests/passkey_api.py",
+        "tests/passkey_unit.php"
+      ],
+      "requirements": [],
+      "risks": [
+        "R-62",
+        "R-109"
+      ],
+      "est_sec": 1500,
+      "writes_prod": false,
+      "notes": "T:F-72 휴대폰 지문·얼굴로 로그인(패스키) + Q:F-7 B1-1 로그인하면 보던 곳으로 — 수락(지시서 /var/www/qaredi/docs/passkey-mobile-directive.md 4장 PK-T1~T14). 정적(php -l · 보안 린트 · 부품 버전 · 라우트 아홉·정책 · 토큰 창구 집합·강제 절차 허용 목록 불변 · nginx 다섯 창구×끝 슬래시×두 파일) · PK-T1 해석기(tests/passkey_unit.php — 파이썬 cryptography 표본 + 가상 인증기 표본) · PK-T2~T9 창구(tests/passkey_api.py) · PK-T10~T13 화면(tests/browser/passkey.py — 크롬 가상 인증기 · 360·412·820·1280 × 라이트·다크 · 누름 수). 임시 DB tbox_d3p_<포트>_test(운영 pg_dump 읽기만) · php -S 127.0.0.1:8301(localhost — RP ID) · 8302(APP_URL 이 IP) · 8303(다른 origin). 임시 .env 원본은 PK_ENV_SRC(0600 사본). 운영 감사 max(id)·alerts.log 줄 수·qa-totp mtime 을 시작·끝에 읽기만. 손잡이: PK_PORT·PK_PORT_IP·PK_PORT_ALT(8301~8309) · PK_SHOTS · PK_KEEP_SHOTS · PK_BROWSER_WRAP(브라우저·회귀 앞말 — 공용 잠금) · PK_SKIP_MAIN=1 · REGRESS=1(같은 인스턴스 — 기본 help_button api_whoami api_read f68 q_launcher) · REGRESS_TEMP=1(자기 인스턴스 시험을 8304~8309 · tbox_d3p_ 로 고친 사본 — 카탈로그 writes_prod·manual_only 거부). 운영 8082·80·8081 요청 0. 2026-09-27 T:F-72 로 넣음."
+    },
+    {
+      "id": "tbox.passkey_api",
+      "cmd": "python3 tests/passkey_api.py",
+      "module": "tbox",
+      "env": "temp-instance",
+      "status": "helper",
+      "needs": [
+        "sudo"
+      ],
+      "covers": [
+        "db/migrations/2026-10-06_passkeys.sql",
+        "deploy/sites/tbox-v2-local.conf",
+        "deploy/sites/tbox-v2.conf",
+        "public/index.php",
+        "scripts/alerts.php",
+        "src/Audit.php",
+        "src/Auth.php",
+        "src/Http.php",
+        "src/Passkey.php",
+        "src/community/handlers/home_page.php",
+        "src/community/routes.php",
+        "src/handlers/login_page.php",
+        "src/handlers/me.php",
+        "src/handlers/me_passkeys_list.php",
+        "src/handlers/me_passkeys_options.php",
+        "src/handlers/me_passkeys_register.php",
+        "src/handlers/me_passkeys_revoke.php",
+        "src/handlers/passkey_login.php",
+        "src/handlers/passkey_login_options.php",
+        "src/handlers/password_change.php",
+        "src/handlers/reauth_passkey.php",
+        "src/handlers/reauth_passkey_options.php",
+        "src/handlers/settings_page.php",
+        "src/handlers/site_manifest.php",
+        "src/handlers/users_mfa_reset.php",
+        "src/handlers/users_password_reset.php",
+        "src/handlers/users_update.php",
+        "src/views/launcher.php",
+        "src/views/shell_top.php",
+        "tests/lib/passkey_forge.py",
+        "tests/lib/return_path_vectors.txt",
+        "tests/passkey_api.py",
+        "tests/passkey_unit.php"
+      ],
+      "requirements": [],
+      "risks": [
+        "R-62",
+        "R-109"
+      ],
+      "est_sec": 300,
+      "writes_prod": false,
+      "notes": "부르는 셸: tbox.passkey. 단독 실행 불가(인자 SITE UA DB INST WORK [SITE_IP] 와 세션 다섯·비밀번호 다섯·2단계 비밀 다섯을 표준입력 열다섯 줄로 부르는 셸이 넘긴다). 결과 줄 API_PASS=n API_FAIL=m. 임시 DB 에 열쇠·챌린지 행을 만들고 계정 상태(잠금·비활성·임시 비밀번호 표시)를 바꿨다 되돌린다. 경보는 임시 사본 alerts.php --dry-run(임시 .env · 임시 상태 · --auth-log 빈 파일)."
+    },
+    {
+      "id": "tbox.browser_passkey",
+      "cmd": "python3 tests/browser/passkey.py",
+      "module": "tbox",
+      "env": "temp-instance",
+      "status": "helper",
+      "needs": [
+        "browser"
+      ],
+      "covers": [
+        "public/assets/app.js",
+        "public/assets/community/editor.js",
+        "public/assets/passkey.js",
+        "src/community/handlers/home_page.php",
+        "src/handlers/login_page.php",
+        "src/handlers/settings_page.php",
+        "src/handlers/site_manifest.php",
+        "src/views/launcher.php",
+        "src/views/shell_top.php",
+        "tests/lib/return_path_vectors.txt"
+      ],
+      "requirements": [],
+      "risks": [
+        "R-62"
+      ],
+      "est_sec": 900,
+      "writes_prod": false,
+      "notes": "부르는 셸: tbox.passkey. 단독 실행 불가(인자 SITE UA SHOTS DB WORK SITE_ALT 와 세션 넷·비밀번호 셋·2단계 비밀 셋을 표준입력 열 줄로). 결과 줄 SMOKE_FAIL=n · WORK/va-samples.json(가상 인증기 표본 — PK-T1 교차). 크롬 CDP WebAuthn 가상 인증기(탭마다 따로 — 마지막 판 열쇠를 옮긴다: 서명 횟수 역행 방지)."
+    },
+    {
+      "id": "tbox.passkey_unit",
+      "cmd": "php tests/passkey_unit.php",
+      "module": "tbox",
+      "env": "static",
+      "status": "helper",
+      "needs": [],
+      "covers": [
+        "src/Passkey.php",
+        "src/WebPush.php",
+        "tests/passkey_unit.php",
+        "tests/lib/passkey_forge.py"
+      ],
+      "requirements": [],
+      "risks": [
+        "R-109"
+      ],
+      "est_sec": 30,
+      "writes_prod": false,
+      "notes": "부르는 셸: tbox.passkey(PK-T1). 표본 파일이 인자로 필요하다(첫 파일 = python3 tests/lib/passkey_forge.py --samples localhost <origin> 출력). DB·네트워크 0 · 명령 실행 0."
     }
   ]
 }

@@ -363,3 +363,51 @@ CREATE TABLE folder_favorites (
     PRIMARY KEY (user_id, folder_id)
 );
 CREATE INDEX folder_favorites_folder_idx ON folder_favorites (folder_id);
+
+-- ─────────────────────────────────────────────────────────────
+-- passkeys · passkey_challenges — 휴대폰 지문·얼굴로 로그인 (T:F-72 패스키, ARCH 5.35, SECURITY R-109)
+--   passkeys: 등록한 열쇠의 **공개 키만**(SPKI DER). 행을 지우지 않는다(해제는 revoked_at — 앱 계정에 DELETE 없음).
+--             90일 안 쓴 열쇠는 찾는 SQL 조건으로 꺼진다(배치 없음). 한 사람 5개는 앱이 센다(사용자 행 잠금 뒤).
+--   passkey_challenges: 일회용 문제의 sha256 만. 한 문장으로 소비(used_at). 만료 정리는 앱이 옵션 창구마다.
+--   (기존 DB 는 db/migrations/2026-10-06_passkeys.sql 로 같은 모양이 된다.)
+-- ─────────────────────────────────────────────────────────────
+CREATE TABLE passkeys (
+    id              BIGSERIAL   PRIMARY KEY,
+    user_id         BIGINT      NOT NULL REFERENCES users(id),
+    credential_id   BYTEA       NOT NULL UNIQUE CHECK (octet_length(credential_id) BETWEEN 16 AND 1023),
+    public_key      BYTEA       NOT NULL CHECK (octet_length(public_key) BETWEEN 64 AND 1024),  -- SPKI DER (ES256 = 91)
+    alg             INTEGER     NOT NULL CHECK (alg IN (-7)),          -- PC 단계에서 -257
+    sign_count      BIGINT      NOT NULL DEFAULT 0 CHECK (sign_count BETWEEN 0 AND 4294967295),
+    user_handle     BYTEA       NOT NULL CHECK (octet_length(user_handle) = 32),
+    backup_eligible BOOLEAN     NOT NULL,
+    backed_up       BOOLEAN     NOT NULL,
+    transports      TEXT[]      NOT NULL DEFAULT '{}'
+                    CHECK (transports <@ ARRAY['internal','hybrid','usb','nfc','ble','smart-card']::text[]),
+    aaguid          UUID,                                              -- 기록만 (신뢰 근거 아님)
+    name            TEXT        NOT NULL CHECK (char_length(name) BETWEEN 1 AND 40
+                                AND name = btrim(name) AND name !~ '[[:cntrl:]]'),
+    device_hint     TEXT        NOT NULL CHECK (char_length(device_hint) <= 40),
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+    last_used_at    TIMESTAMPTZ,
+    revoked_at      TIMESTAMPTZ,
+    revoked_by      BIGINT      REFERENCES users(id),
+    revoke_reason   TEXT        CHECK (revoke_reason IN
+                    ('self','password_change','password_reset','mfa_reset','role_change','deactivate')),
+    CHECK ((revoked_at IS NULL) = (revoke_reason IS NULL))
+);
+CREATE INDEX passkeys_user_live_idx ON passkeys (user_id) WHERE revoked_at IS NULL;
+
+CREATE TABLE passkey_challenges (
+    id             BIGSERIAL   PRIMARY KEY,
+    challenge_hash CHAR(64)    NOT NULL UNIQUE,                        -- sha256 hex, 원문 저장 안 함
+    purpose        TEXT        NOT NULL CHECK (purpose IN ('register','login','reauth')),
+    user_id        BIGINT      REFERENCES users(id) ON DELETE CASCADE,
+    session_id     CHAR(64)    REFERENCES sessions(id) ON DELETE CASCADE,
+    binding_hash   CHAR(64),                                           -- 로그인 전 쿠키의 sha256
+    created_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
+    expires_at     TIMESTAMPTZ NOT NULL,
+    used_at        TIMESTAMPTZ,
+    CHECK ( (purpose = 'login' AND binding_hash IS NOT NULL AND user_id IS NULL AND session_id IS NULL)
+         OR (purpose <> 'login' AND binding_hash IS NULL AND user_id IS NOT NULL AND session_id IS NOT NULL) )
+);
+CREATE INDEX passkey_challenges_expires_idx ON passkey_challenges (expires_at);

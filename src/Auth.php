@@ -42,6 +42,15 @@ final class AuthTempPasswordExpiredException extends RuntimeException
 }
 
 /**
+ * 지문·얼굴 로그인에서 **열쇠의 주인임이 확인된 뒤** 그 열쇠가 해제됐거나 90일 동안 쓰지 않아 꺼졌을 때 던진다 (T:F-72 1.4 로그인 8).
+ * 핸들러(src/handlers/passkey_login.php)가 잡아서 401 + Http::MSG_PASSKEY_REVOKED 로 답한다 — 실패 응답 가운데 이것만 문장이 다르다.
+ * 서명이 맞은 사람(그 휴대폰을 쥔 사람)에게만 가는 정보라 새로 새는 것이 없고, 화면은 이 답을 보고 「이 기기 표시」를 끈다.
+ */
+final class AuthPasskeyRevokedException extends RuntimeException
+{
+}
+
+/**
  * src/Auth.php — "누구인가" (ARCH 4장 [1] · 4.0, PRD S-01, S-09-2, S-09-4, SECURITY R-10)
  *
  * 원칙
@@ -972,7 +981,32 @@ final class Auth
             $mfaStep = $step;
         }
 
-        // 8) 성공 — 세션 재발급 (ARCH 4.0)
+        // 8) 성공 — 세션 재발급 (ARCH 4.0). T:F-72 — 발급은 issueSession() 한 함수(지문·얼굴 로그인과 같이 부른다 — 두 벌 금지).
+        //    쓴 코드의 스텝을 기준선으로 올리는 일은 **같은 트랜잭션** 안에서 한다 — "세션은 났는데 기준선은 안 올라간" 틈이 없다 (R-45).
+        $userId = (int) $row['id'];
+        return self::issueSession($row, static function () use ($userId, $mfaStep): void {
+            if ($mfaStep !== null) {
+                self::markMfaStep($userId, $mfaStep);
+            }
+        }, null, []);
+    }
+
+    /**
+     * 로그인 성공 — **세션 발급 한 벌** (Auth::login 8) 을 뽑은 것 · T:F-72 지시서 1.4 로그인 9 「두 벌 금지」).
+     *
+     * 한 트랜잭션: 실패 횟수 0 · (부르는 쪽 일 — 2단계 코드 기준선 / 열쇠의 서명 횟수·마지막 사용) · 로그인 전에 들고 온 쿠키의
+     * 세션 버림(세션 고정 막기) · 만료 세션 정리 · 새 세션 · 감사 `auth.login allow`(지문이면 사유 `passkey`). 쿠키는 커밋 뒤에만.
+     * **로그인은 재인증 창을 열지 않는다** — 새 세션 행의 reauth_at 은 NULL 이고 아래 배열도 거짓으로 고정한다(ARCH 4.0).
+     *
+     * @param array<string,mixed> $row      SQL_LOAD_USER / SQL_LOAD_USER_BY_ID 의 한 줄(두 길이 같은 열 목록)
+     * @param callable            $inTx     트랜잭션 안에서 부를 일(없으면 빈 함수)
+     * @param string|null         $reason   감사 allow 사유(null · `passkey`)
+     * @param array<string,mixed> $detail   감사 detail(등록부 키만 — 지문이면 credential_no)
+     * @return array<string,mixed>
+     */
+    private static function issueSession(array $row, callable $inTx, ?string $reason, array $detail): array
+    {
+        $db     = Db::instance();
         $userId = (int) $row['id'];
         $oldId  = self::cookieSessionId();
         $token  = bin2hex(random_bytes(32));
@@ -981,11 +1015,7 @@ final class Auth
         $db->begin();
         try {
             $db->run(self::SQL_CLEAR_FAILED, [':id' => $userId]);
-            // 쓴 코드의 스텝을 기준선으로 올린다 — 같은 트랜잭션이라 "세션은 났는데 기준선은
-            // 안 올라간" 틈이 생기지 않는다 (SECURITY R-45).
-            if ($mfaStep !== null) {
-                self::markMfaStep($userId, $mfaStep);
-            }
+            $inTx();
             if ($oldId !== null) {
                 // 로그인 전에 들고 온 쿠키의 세션은 버린다 — 공격자가 미리 심어 둔 값이 살아남지 않는다
                 $db->run(self::SQL_DROP_SESSION, [':id' => $oldId]);
@@ -998,11 +1028,15 @@ final class Auth
                 ':ip'         => Http::clientIp(),
                 ':user_agent' => Http::userAgent(),
             ]);
-            Audit::allow('auth.login', [
+            $ctx = [
                 'target_type' => 'user',
                 'target_id'   => $userId,
                 'target_name' => (string) $row['username'],
-            ]);
+            ];
+            if ($detail !== []) {
+                $ctx['detail'] = $detail;
+            }
+            Audit::allow('auth.login', $ctx, $reason);
             $db->commit();
         } catch (Throwable $e) {
             $db->rollback();
@@ -1027,12 +1061,347 @@ final class Auth
              * 16-1 (PRD F-23) — **로그인은 재인증 창을 열지 않는다.**
              * SQL_INSERT_SESSION 에 reauth_at 이 없으므로 새 세션 행의 값은 NULL 이고,
              * 여기서도 거짓으로 고정한다. "관리 영역 첫 진입에 반드시 한 번 묻는다" 는
-             * 사용자 요구(ARCH 4.0 재인증 행)가 이 두 줄로 지켜진다.
+             * 사용자 요구(ARCH 4.0 재인증 행)가 이 두 줄로 지켜진다. 지문·얼굴 로그인도 같다(T:F-72 1.6).
              */
             'reauth_fresh' => false,
             'reauth_at'    => null,
         ];
         return self::$user;
+    }
+
+    /** 90일 판정·해제 여부를 **DB 시계**로 함께 읽는다 — 열쇠 id 는 바이트로 비교(decode) · 원문은 읽기만(로그 0) */
+    private const SQL_FIND_PASSKEY = <<<'SQL'
+        SELECT id, user_id, name, encode(public_key, 'hex') AS pk_hex, sign_count,
+               encode(user_handle, 'hex') AS uh_hex, backup_eligible,
+               (revoked_at IS NOT NULL) AS is_revoked,
+               (COALESCE(last_used_at, created_at) < now() - make_interval(days => CAST(:idle_days AS integer))) AS is_stale
+          FROM passkeys
+         WHERE credential_id = decode(:cid, 'hex')
+        SQL;
+
+    /**
+     * 지문 로그인·재인증 성공 — 서명 횟수·마지막 사용·동기화 표시 갱신(해제되지 않은 행만).
+     * **조건부**(`sign_count = :stored` — SQL_FIND_PASSKEY 로 읽어 7) 을 비교한 그 값일 때만): 같은 저장값을 읽은 두 요청이
+     * 함께 통과하는 창(TOCTOU)을 닫는다 — 먼저 커밋한 쪽이 값을 바꿨으면 뒤쪽은 0 행(독립 검토 RV-PK-1, 2026-09-27).
+     */
+    private const SQL_TOUCH_PASSKEY = <<<'SQL'
+        UPDATE passkeys
+           SET sign_count = :n, last_used_at = now(), backed_up = CAST(:bs AS boolean)
+         WHERE id = :id AND revoked_at IS NULL AND sign_count = :stored
+        RETURNING id
+        SQL;
+
+    /**
+     * T:F-72 — 휴대폰 지문·얼굴로 로그인 (지시서 1.4 「로그인」 1~9 · 1.6 · ARCH 5.35).
+     *
+     * 아이디 없이(열쇠가 계정을 알려 준다) — 순서(뒤로 갈수록 앞을 통과한 요청만 닿는다):
+     *   2) clientDataJSON: type `webauthn.get` → 챌린지 **소비**(로그인 전 쿠키 sha256 에 묶인 것 · 한 번) → origin 정확 일치 · crossOrigin
+     *   3) 열쇠 찾기(credential_id 바이트) → 없으면 `passkey_unknown`
+     *   4) 계정 — **SQL_LOAD_USER_BY_ID**(비밀번호 로그인의 SQL_LOAD_USER 와 한 글자도 다르지 않은 열 목록 · F-59 와 같은 규칙) ·
+     *      userHandle 이 있고 행의 user_handle 과 같아야(hash_equals)
+     *   5) authData: 정확히 37바이트(확장이면 끝까지 · 남는 바이트 0) · rpIdHash · UP · UV · AT 없음 · BE 가 등록 때와 같음
+     *   6) 서명 `openssl_verify === 1` 만
+     *   7) 서명 횟수: 둘 다 0 이면 통과 · 아니면 새 값 > 저장값 · 역행이면 `passkey_counter`(AL-23)
+     *      ─ 5)~7) 의 실패는 그 계정 실패 1회(Auth::countFailure — 잠긴 동안은 세지 않는다: 잠금을 늘리지 않게, 비밀번호 길과 같다)
+     *   8) 여기까지 = 열쇠의 주인. 해제·90일 → `passkey_revoked`(예외 — 화면에 「꺼진 열쇠」, 열쇠 주인에게만 가는 정보) ·
+     *      잠금 → 423 · 비활성 → 401 · Guest 만료 → `user.expired guest_expired` · **must_change_password → `forced_step`**
+     *      (임시 비밀번호 72시간 규칙 R-39 는 비밀번호 길에서만 걸리므로 지문 길로 우회하지 못하게)
+     *   9) 성공 — issueSession(비밀번호 로그인과 한 함수) + 같은 트랜잭션에서 서명 횟수·마지막 사용·BS 갱신 · 감사 `auth.login allow passkey`
+     * 실패 응답은 전부 401 한 문구(사유는 감사에만) — 「꺼진 열쇠」만 예외. 지문 로그인은 **2단계 인증을 충족**한다(F-52 — UV 필수).
+     *
+     * @return array<string,mixed>|null 성공이면 사용자, 실패면 null(호출자가 401)
+     * @throws AuthLockedException             잠긴 계정(열쇠 주인임이 확인된 뒤)
+     * @throws AuthPasskeyRevokedException     해제됐거나 90일 동안 쓰지 않아 꺼진 열쇠(열쇠 주인임이 확인된 뒤)
+     */
+    public static function loginWithPasskey(string $credentialId, string $clientDataJson, string $authData,
+                                            string $signature, ?string $userHandle, string $preCookie): ?array
+    {
+        require_once __DIR__ . '/Passkey.php';   // 쓰는 요청에서만 싣는다(부트스트랩 목록은 그대로)
+        $db      = Db::instance();
+        $unknown = '(알 수 없는 열쇠)';
+
+        // 2) clientDataJSON — type → 챌린지 소비(한 번) → origin
+        try {
+            $cd = Passkey::parseClientData($clientDataJson, 'webauthn.get');
+        } catch (PasskeyError $e) {
+            self::denyLogin($unknown, 'passkey_invalid');
+            return null;
+        }
+        if (!Passkey::consumeLogin($db, $cd['challenge'], $preCookie)) {
+            self::denyLogin($unknown, 'passkey_challenge');
+            return null;
+        }
+        if (!Passkey::originOk($cd['origin'])) {
+            self::denyLogin($unknown, 'passkey_invalid');
+            return null;
+        }
+
+        // 3) 열쇠
+        $pk = $db->run(self::SQL_FIND_PASSKEY, [
+            ':cid'       => bin2hex($credentialId),
+            ':idle_days' => Passkey::IDLE_DAYS,
+        ])->fetch();
+        if (!is_array($pk)) {
+            self::denyLogin($unknown, 'passkey_unknown');
+            return null;
+        }
+
+        // 4) 계정 — 비밀번호 로그인과 같은 열 목록(F-59 규칙) · userHandle
+        $row = $db->run(self::SQL_LOAD_USER_BY_ID, [':id' => (int) $pk['user_id']])->fetch();
+        if (!is_array($row)) {
+            self::denyLogin($unknown, 'passkey_unknown');
+            return null;
+        }
+        $name = (string) $row['username'];
+        $uh   = hex2bin((string) $pk['uh_hex']);
+        if ($userHandle === null || !is_string($uh) || !hash_equals($uh, $userHandle)) {
+            self::denyPasskeyLogin($row, 'passkey_invalid', (int) $pk['id'], false);
+            return null;
+        }
+
+        // 5) authData
+        try {
+            $ad = Passkey::parseAuthData($authData);
+        } catch (PasskeyError $e) {
+            self::denyPasskeyLogin($row, 'passkey_invalid', (int) $pk['id'], true);
+            return null;
+        }
+        if (!Passkey::rpIdHashOk($ad['rp_id_hash']) || !$ad['up'] || !$ad['uv'] || $ad['at']
+            || $ad['be'] !== ($pk['backup_eligible'] === true)
+        ) {
+            self::denyPasskeyLogin($row, 'passkey_invalid', (int) $pk['id'], true);
+            return null;
+        }
+
+        // 6) 서명 — === 1 만
+        $der = hex2bin((string) $pk['pk_hex']);
+        if (!is_string($der) || !Passkey::verifySignature($der, $authData, $clientDataJson, $signature)) {
+            self::denyPasskeyLogin($row, 'passkey_invalid', (int) $pk['id'], true);
+            return null;
+        }
+
+        // 7) 서명 횟수 — 둘 다 0 이면 통과(동기화되는 휴대폰 열쇠는 대개 늘 0) · 아니면 늘어야
+        $stored = (int) $pk['sign_count'];
+        $new    = (int) $ad['sign_count'];
+        if (!($stored === 0 && $new === 0) && $new <= $stored) {
+            self::denyPasskeyLogin($row, 'passkey_counter', (int) $pk['id'], true);
+            return null;
+        }
+
+        // 8) 열쇠 주인이다 — 그 뒤 열쇠·계정 상태
+        if ($pk['is_revoked'] === true || $pk['is_stale'] === true) {
+            self::denyPasskeyLogin($row, 'passkey_revoked', (int) $pk['id'], false);
+            throw new AuthPasskeyRevokedException('꺼진 열쇠');
+        }
+        if ($row['is_locked'] === true) {
+            self::denyLogin($name, 'locked');
+            throw new AuthLockedException('계정이 잠겨 있습니다');
+        }
+        if ($row['is_active'] !== true) {
+            self::denyLogin($name, 'inactive');
+            return null;
+        }
+        if ($row['is_expired'] === true) {
+            Audit::deny('user.expired', 'guest_expired', [
+                'target_type' => 'user',
+                'target_id'   => (int) $row['id'],
+                'target_name' => $name,
+            ]);
+            return null;
+        }
+        if ($row['must_change_password'] === true) {
+            self::denyPasskeyLogin($row, 'forced_step', (int) $pk['id'], false);
+            return null;
+        }
+
+        // 9) 성공 — 세션 발급 한 벌 + 같은 트랜잭션에서 열쇠 갱신(조건부 — 읽은 뒤 해제됐거나 다른 요청이 먼저 썼으면 되돌림)
+        $pkId = (int) $pk['id'];
+        try {
+            return self::issueSession($row, static function () use ($db, $pkId, $new, $stored, $ad): void {
+                $t = $db->run(self::SQL_TOUCH_PASSKEY, [
+                    ':n'      => $new,
+                    ':bs'     => $ad['bs'] ? 'true' : 'false',
+                    ':id'     => $pkId,
+                    ':stored' => $stored,
+                ])->fetch();
+                if (!is_array($t)) {
+                    throw new AuthPasskeyRevokedException('꺼졌거나 방금 쓰인 열쇠');
+                }
+            }, 'passkey', ['credential_no' => $pkId]);
+        } catch (AuthPasskeyRevokedException $e) {
+            // issueSession 이 이미 되돌렸다(세션·실패 초기화·감사 allow 0). 거부 한 행은 트랜잭션 밖에서 — 응답은 호출자의 401 통일 문구,
+            // 사유는 감사에만(RV-PK-1 — 7) 의 서명 횟수 검사를 쓰는 순간에 다시 한 것이라 같은 사유 · 같은 셈)
+            self::denyPasskeyLogin($row, 'passkey_counter', $pkId, true);
+            return null;
+        }
+    }
+
+    /**
+     * 지문 로그인 거부 한 행 — 대상은 **열쇠의 주인**(열쇠 id 원문 0) · 필요하면 그 계정 실패 1회.
+     * 잠긴 동안에는 세지 않는다(잠금 시각을 늘리지 않는다 — 비밀번호 길은 잠긴 계정에 닿지 않는 것과 같게).
+     *
+     * @param array<string,mixed> $row
+     */
+    private static function denyPasskeyLogin(array $row, string $reason, int $credentialNo, bool $count): void
+    {
+        Audit::deny('auth.login', $reason, [
+            'target_type' => 'user',
+            'target_id'   => (int) $row['id'],
+            'target_name' => (string) $row['username'],
+            'detail'      => ['credential_no' => $credentialNo],
+        ]);
+        if ($count && $row['is_locked'] !== true) {
+            self::countFailure((int) $row['id']);
+        }
+    }
+
+    /** 해제·재인증 사유 — ARCH 7.4 `auth.passkey_revoke|allow|<사유>` 와 같은 값 */
+    private const PASSKEY_REVOKE_CAUSES = ['password_change', 'password_reset', 'mfa_reset', 'role_change', 'deactivate'];
+
+    private const SQL_REVOKE_USER_PASSKEYS = <<<'SQL'
+        UPDATE passkeys
+           SET revoked_at = now(), revoked_by = :by, revoke_reason = :cause
+         WHERE user_id = :uid AND revoked_at IS NULL
+        RETURNING id, name
+        SQL;
+
+    /**
+     * T:F-72 — 그 계정의 **살아 있는 열쇠 전부** 해제 (지시서 1.6 「자동 해제」 — S 의 revokeAllApiTokens 바로 옆, 같은 트랜잭션).
+     *
+     * 본인 비밀번호 변경 · 관리자 임시 비밀번호 재발급 · 2단계 초기화 · 역할 변경 · 비활성화 = 「자격이 새었을 수 있다」 신호.
+     * 역할 변경은 직원일 때 비밀번호만으로 등록한 열쇠가 관리자 열쇠로 넘어가지 않게. 팀 변경·2단계 끄기는 해제하지 않는다.
+     * 행을 지우지 않는다(앱 계정에 DELETE 없음). 열쇠 하나에 감사 한 행 `auth.passkey_revoke allow <사유>` ·
+     * detail `credential_no`·`credential_label`(열쇠 id 원문·공개 키 0). 표가 아직 없으면(마이그레이션 전) 0 — 해제할 열쇠도 없다.
+     *
+     * @return int 해제한 열쇠 수
+     */
+    public static function revokeAllPasskeys(int $userId, string $targetName, int $byUserId, string $cause): int
+    {
+        require_once __DIR__ . '/Passkey.php';   // 쓰는 요청에서만 싣는다(부트스트랩 목록은 그대로)
+        if (!in_array($cause, self::PASSKEY_REVOKE_CAUSES, true)) {
+            throw new RuntimeException('열쇠 해제 사유가 아닙니다');
+        }
+        if (!Passkey::tablesReady()) {
+            return 0;
+        }
+        $rows = Db::instance()->run(self::SQL_REVOKE_USER_PASSKEYS, [
+            ':by'    => $byUserId,
+            ':cause' => $cause,
+            ':uid'   => $userId,
+        ])->fetchAll();
+        foreach ($rows as $r) {
+            Audit::allow('auth.passkey_revoke', [
+                'target_type' => 'user',
+                'target_id'   => $userId,
+                'target_name' => $targetName,
+                'detail'      => [
+                    'credential_no'    => (int) $r['id'],
+                    'credential_label' => (string) $r['name'],
+                ],
+            ], $cause);
+        }
+        return count($rows);
+    }
+
+    /**
+     * T:F-72 라운드 C — 관리 기능 재인증을 **지문·얼굴로** (지시서 1.4 「재인증」 · ARCH 4.0).
+     *
+     * 로그인의 2~7 과 같은 검사 + **열쇠 주인 = 세션의 사람**(아니면 거부) + 챌린지 묶음(이 세션 + 이 사람, 한 번).
+     * 성공이면 `SQL_SET_REAUTH`(지금 세션만 — 비밀번호 재인증과 같은 15분 창) · 실패 카운터 0 · 감사 `auth.reauth allow passkey`.
+     * 실패는 로그인 뒤 창구 규칙(R-48) — `countFailureAndRevoke`(5회면 잠금 + 그 계정 세션 전부 끊김). 해제·90일 열쇠도 거부.
+     * **권한을 만들지 않는다** — 관문 [3-2] 는 인가 뒤다(비밀번호 재인증과 같다).
+     *
+     * @param array<string,mixed> $user 지금 로그인한 사용자
+     * @return array{0:bool,1:?string} [성공, 창 끝 시각]
+     */
+    public static function reauthWithPasskey(array $user, string $credentialId, string $clientDataJson, string $authData,
+                                             string $signature): array
+    {
+        require_once __DIR__ . '/Passkey.php';   // 쓰는 요청에서만 싣는다(부트스트랩 목록은 그대로)
+        $db        = Db::instance();
+        $userId    = (int) $user['id'];
+        $sessionId = (string) ($user['session_id'] ?? '');
+        $target    = [
+            'target_type' => 'user',
+            'target_id'   => $userId,
+            'target_name' => (string) $user['username'],
+        ];
+        $fail = static function (string $reason, ?int $credentialNo, bool $count) use ($target, $userId): array {
+            Audit::deny('auth.reauth', $reason, $target + ($credentialNo === null ? [] : ['detail' => ['credential_no' => $credentialNo]]));
+            if ($count) {
+                self::countFailureAndRevoke($userId);
+            }
+            return [false, null];
+        };
+        if ($sessionId === '') {
+            throw new RuntimeException('재인증할 세션이 없습니다');
+        }
+
+        try {
+            $cd = Passkey::parseClientData($clientDataJson, 'webauthn.get');
+        } catch (PasskeyError $e) {
+            return $fail('passkey_invalid', null, false);   // 모양이 깨진 요청 — 추측이 아니다(세지 않는다)
+        }
+        if (!Passkey::consumeSession($db, $cd['challenge'], 'reauth', $userId, $sessionId)) {
+            return $fail('passkey_challenge', null, false);  // 시간이 지났거나 이미 쓴 문제 — 세지 않는다(서명을 보기 전이다)
+        }
+        if (!Passkey::originOk($cd['origin'])) {
+            return $fail('passkey_invalid', null, true);
+        }
+        $pk = $db->run(self::SQL_FIND_PASSKEY, [
+            ':cid'       => bin2hex($credentialId),
+            ':idle_days' => Passkey::IDLE_DAYS,
+        ])->fetch();
+        // 없는 열쇠 · 남의 열쇠 · 해제·90일 열쇠 — 모두 같은 사유(재인증 창구는 로그인한 사람만 닿는다)
+        if (!is_array($pk) || (int) $pk['user_id'] !== $userId || $pk['is_revoked'] === true || $pk['is_stale'] === true) {
+            return $fail('passkey_invalid', is_array($pk) && (int) $pk['user_id'] === $userId ? (int) $pk['id'] : null, true);
+        }
+        try {
+            $ad = Passkey::parseAuthData($authData);
+        } catch (PasskeyError $e) {
+            return $fail('passkey_invalid', (int) $pk['id'], true);
+        }
+        $der = hex2bin((string) $pk['pk_hex']);
+        if (!Passkey::rpIdHashOk($ad['rp_id_hash']) || !$ad['up'] || !$ad['uv'] || $ad['at']
+            || $ad['be'] !== ($pk['backup_eligible'] === true)
+            || !is_string($der) || !Passkey::verifySignature($der, $authData, $clientDataJson, $signature)
+        ) {
+            return $fail('passkey_invalid', (int) $pk['id'], true);
+        }
+        $stored = (int) $pk['sign_count'];
+        $new    = (int) $ad['sign_count'];
+        if (!($stored === 0 && $new === 0) && $new <= $stored) {
+            return $fail('passkey_counter', (int) $pk['id'], true);
+        }
+
+        $db->begin();
+        try {
+            // 조건부 갱신(읽은 저장값 그대로일 때만 — RV-PK-1) · 0 행이면 아래 passkey_invalid 갈래로 되돌림
+            $t = $db->run(self::SQL_TOUCH_PASSKEY, [
+                ':n'      => $new,
+                ':bs'     => $ad['bs'] ? 'true' : 'false',
+                ':id'     => (int) $pk['id'],
+                ':stored' => $stored,
+            ])->fetch();
+            $updated = is_array($t) ? $db->run(self::SQL_SET_REAUTH, [
+                ':id'         => $sessionId,
+                ':reauth_min' => self::REAUTH_MINUTES,
+            ])->fetch() : false;
+            if (!is_array($updated)) {
+                $db->rollback();
+                return $fail('passkey_invalid', (int) $pk['id'], false);
+            }
+            $db->run(self::SQL_CLEAR_FAILED, [':id' => $userId]);
+            Audit::allow('auth.reauth', $target + ['detail' => [
+                'window_minutes' => self::REAUTH_MINUTES,
+                'credential_no'  => (int) $pk['id'],
+            ]], 'passkey');
+            $db->commit();
+        } catch (Throwable $e) {
+            $db->rollback();
+            throw $e;
+        }
+        return [true, (string) $updated['reauth_until']];
     }
 
     /**
@@ -1124,11 +1493,13 @@ final class Auth
      *   4) 결과를 감사 로그에 남긴다. 비밀번호는 옛것도 새것도 남기지 않는다.
      *   5) (디버깅 묶음 S-5) 그 계정의 개인 프로그램 토큰을 **전부 회수**한다 — 같은 트랜잭션, 토큰마다
      *      `api_token.revoke allow password_change` 한 행(revokeAllApiTokens).
+     *   6) (T:F-72) 그 계정의 지문·얼굴 로그인 열쇠를 **전부 해제**한다 — 같은 트랜잭션, 열쇠마다
+     *      `auth.passkey_revoke allow password_change` 한 행(revokeAllPasskeys).
      *
      * 실패해도 응답 문구는 호출자가 정하고, 여기서는 **사유 코드**만 돌려준다.
      *
      * @param array<string,mixed> $actor 현재 로그인한 사용자 (요청 값이 아니다)
-     * @return array{0:bool,1:?string,2:int,3:int} [성공 여부, 사유 코드(bad_credentials·weak_password·same_password), 끊은 세션 수, 회수한 토큰 수]
+     * @return array{0:bool,1:?string,2:int,3:int,4:int} [성공 여부, 사유 코드(bad_credentials·weak_password·same_password), 끊은 세션 수, 회수한 토큰 수, 해제한 지문·얼굴 열쇠 수]
      */
     public static function changePassword(array $actor, string $current, string $new): array
     {
@@ -1152,7 +1523,7 @@ final class Auth
              * 기록(Audit::deny)을 먼저 하는 이유: 세션을 끊은 뒤에는 actor 를 읽을 수 없다.
              */
             self::countFailureAndRevoke($userId);
-            return [false, 'bad_credentials', 0, 0];
+            return [false, 'bad_credentials', 0, 0, 0];
         }
 
         /*
@@ -1171,7 +1542,7 @@ final class Auth
          */
         if (password_verify($new, (string) $row['password_hash'])) {
             Audit::deny('auth.password_change', 'same_password', $target);
-            return [false, 'same_password', 0, 0];
+            return [false, 'same_password', 0, 0, 0];
         }
 
         // 10자 이상 (PRD S-09-4). 글자 수로 센다 — 한글 10자도 10자다.
@@ -1180,7 +1551,7 @@ final class Auth
             || iconv_strlen($new, 'UTF-8') < self::MIN_PASSWORD_CHARS
         ) {
             Audit::deny('auth.password_change', 'weak_password', $target);
-            return [false, 'weak_password', 0, 0];
+            return [false, 'weak_password', 0, 0, 0];
         }
 
         $hash = password_hash($new, PASSWORD_ARGON2ID);
@@ -1188,9 +1559,10 @@ final class Auth
             throw new RuntimeException('비밀번호 해시를 만들 수 없습니다');
         }
 
-        $keep    = (string) ($actor['session_id'] ?? '');
-        $revoked = 0;
-        $tokens  = 0;
+        $keep     = (string) ($actor['session_id'] ?? '');
+        $revoked  = 0;
+        $tokens   = 0;
+        $passkeys = 0;
 
         $db->begin();
         try {
@@ -1208,13 +1580,15 @@ final class Auth
             // S-5 — 개인 프로그램 토큰도 전부 회수한다(같은 트랜잭션 · 토큰마다 감사 한 행).
             //        회수한 수는 응답(`tokens_revoked`)으로만 돌려준다 — 위 감사 detail 은 그대로 둔다.
             $tokens = self::revokeAllApiTokens($userId, (string) $actor['username'], $userId, 'password_change');
+            // T:F-72 — 지문·얼굴 로그인 열쇠도 전부 해제한다(같은 트랜잭션 · 열쇠마다 감사 한 행). 이 세션은 남는다.
+            $passkeys = self::revokeAllPasskeys($userId, (string) $actor['username'], $userId, 'password_change');
             $db->commit();
         } catch (Throwable $e) {
             $db->rollback();
             throw $e;
         }
 
-        return [true, null, $revoked, $tokens];
+        return [true, null, $revoked, $tokens, $passkeys];
     }
 
     /**

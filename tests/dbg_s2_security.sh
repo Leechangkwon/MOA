@@ -332,7 +332,7 @@ ok('  응답 Set-Cookie = 옛 이름 만료 한 줄(Max-Age=0 · path=/ · secur
 c, _, _, hd = req('GET', '/tbox/', cookie=ck('e1', OLD))
 ok('옛 이름 /tbox/ 화면 → 302 /tbox/login + 옛 이름 만료', c == 302 and hd.get('Location') == '/tbox/login' and only_old_expire(hd), (c, hd.get('Location'), sc(hd)))
 c, _, _, hd = req('GET', '/tbox/settings', cookie=ck('e1', OLD))
-ok('옛 이름 /tbox/settings → 302 /tbox/login + 옛 이름 만료', c == 302 and hd.get('Location') == '/tbox/login' and only_old_expire(hd), (c, hd.get('Location'), sc(hd)))
+ok('옛 이름 /tbox/settings → 302 /tbox/login?to=%2Ftbox%2Fsettings(B1-1 보던 곳 꼬리표) + 옛 이름 만료', c == 302 and hd.get('Location') == '/tbox/login?to=%2Ftbox%2Fsettings' and only_old_expire(hd), (c, hd.get('Location'), sc(hd)))
 c, _, _, hd = req('GET', '/community/', cookie=ck('e1', OLD))
 ok('옛 이름 /community/ 화면 → 302 로그인으로 + 옛 이름 만료', c == 302 and '/tbox/login' in (hd.get('Location') or '') and only_old_expire(hd), (c, hd.get('Location'), sc(hd)))
 c, _, _, hd = req('GET', '/community/api/me/space', cookie=ck('e1', OLD))
@@ -566,7 +566,8 @@ unlock "$U"
 
 sub "B-5 nginx 지킴(값 확인만 — 바꾸지 않는다: 제안안은 review-scripts/apply-nginx-login-limit-2026-09-26.sh)"
 expect "  zone tbox_login = IP 단위 30r/m(저장소 deploy/sites/tbox-common.conf)" "1" "$(grep -c '^limit_req_zone \$binary_remote_addr zone=tbox_login:1m rate=30r/m;' "$ROOT/deploy/sites/tbox-common.conf" | tr -d ' ')"
-expect "  tbox-v2.conf 의 tbox_login burst=10 nodelay 자리 12(login·password·mfa 셋·reauth × 끝 슬래시)" "12" "$(grep -c 'limit_req zone=tbox_login burst=10 nodelay;' "$ROOT/deploy/sites/tbox-v2.conf" | tr -d ' ')"
+# T:F-72(2026-09-27) 패스키 창구 다섯 × 끝 슬래시 = 10 자리를 같은 zone 에 더했다(지시서 1.6) — 12 → 22
+expect "  tbox-v2.conf 의 tbox_login burst=10 nodelay 자리 22(login·password·mfa 셋·reauth × 끝 슬래시 = 12 + 패스키 다섯 × 끝 슬래시 = 10)" "22" "$(grep -c 'limit_req zone=tbox_login burst=10 nodelay;' "$ROOT/deploy/sites/tbox-v2.conf" | tr -d ' ')"
 expect "  비밀번호·코드를 묻는 나머지 창구(api-tokens · exec-download · admin/permissions · fetch-hosts)에는 nginx 제한 없음(앱 잠금만 — 제안안 몫)" "0" \
   "$(grep -cE 'location .*(api-tokens|exec-download|admin/permissions|fetch-hosts)' "$ROOT/deploy/sites/tbox-v2.conf" | tr -d ' ')"
 for p in "conf.d/tbox-common.conf:tbox-common.conf" "sites-available/tbox-v2:tbox-v2.conf" "sites-available/tbox-v2-local:tbox-v2-local.conf"; do

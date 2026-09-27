@@ -40,13 +40,13 @@ import { inputRules, textblockTypeInputRule, InputRule } from './vendor/pm/prose
 import { dropCursor } from './vendor/pm/prosemirror-dropcursor.js?v=5823578fa61a';
 import { gapCursor } from './vendor/pm/prosemirror-gapcursor.js?v=5823578fa61a';
 
-import { renderDoc, embedHost } from './doc-render.js?v=0a3301b64e19';
-import { createDatabaseView } from './database.js?v=0a3301b64e19';
-import { bindTemplateGallery, createTemplateSave } from './templates.js?v=0a3301b64e19';
-import { bindEmbedAdmin } from './embeds.js?v=0a3301b64e19';
-import { bindPopular } from './popular.js?v=0a3301b64e19';
-import { schema, toDoc, fromDoc, uuid4, colorAllowed, schemeOkForEditor, COLORS, BLOCK_TYPES } from './editor-schema.js?v=0a3301b64e19';
-import { createDrafts } from './drafts.js?v=0a3301b64e19';
+import { renderDoc, embedHost } from './doc-render.js?v=ab9f533d84bb';
+import { createDatabaseView } from './database.js?v=ab9f533d84bb';
+import { bindTemplateGallery, createTemplateSave } from './templates.js?v=ab9f533d84bb';
+import { bindEmbedAdmin } from './embeds.js?v=ab9f533d84bb';
+import { bindPopular } from './popular.js?v=ab9f533d84bb';
+import { schema, toDoc, fromDoc, uuid4, colorAllowed, schemeOkForEditor, COLORS, BLOCK_TYPES } from './editor-schema.js?v=ab9f533d84bb';
+import { createDrafts } from './drafts.js?v=ab9f533d84bb';
 
 /* ─── 주소와 공통 도우미 ─────────────────────────────────────── */
 
@@ -156,8 +156,22 @@ function toLogin() {
   });
   const late = new Promise((resolve) => { window.setTimeout(resolve, 1500); });
   Promise.race([Promise.all(jobs), late]).then(() => {
-    window.location.assign(APP_BASE + '/login?to=community');
+    window.location.assign(APP_BASE + '/login?to=' + loginReturnTag());
   });
+}
+
+/**
+ * Q:F-7 B1-1 — 로그인 뒤 돌아올 곳의 꼬리표. 셸(app.js)의 `qarediReturnPath` 로 걸러 허용 목록 안이면 그 정규형(rawurlencode),
+ * 아니면 옛 키 `community`. 편집 중이었으면(쓸 수 있는 본문이 열려 있으면) `?edit=1` 을 붙여 — 로그인 뒤 그 페이지가 편집 모드로 열리고
+ * 임시저장 알림 줄(B1-2)이 뜬다. 거르기는 서버(login_page.php · Http::returnPath)가 한 번 더 한다.
+ */
+function loginReturnTag() {
+  const rp = typeof window.qarediReturnPath === 'function' ? window.qarediReturnPath : null;
+  const enc = typeof window.qarediRawEncode === 'function' ? window.qarediRawEncode : null;
+  if (rp === null || enc === null) { return 'community'; }
+  const editing = document.querySelector('#page-doc [contenteditable="true"], .ProseMirror[contenteditable="true"]') !== null;
+  const here = rp(window.location.pathname + (editing ? '?edit=1' : window.location.search));
+  return here !== null && here !== COMMUNITY_BASE + '/' ? enc(here) : 'community';
 }
 
 /**
@@ -692,6 +706,30 @@ function drawFavoritesNav(pages) {
   show(box, pages.length > 0);
 }
 
+/* T:F-72 라운드 C · 결정 PK-D5 — 좁은 폭(960px 미만) 「내 공간」 첫 화면 맨 위의 즐겨찾기(`#community-home-fav`, 홈 화면에만 있다).
+   사이드바와 **같은 답 · 같은 줄**(navPageRow — ☆ 로 빼기도 같다)을 한 번 더 그린다. 넓은 폭은 사이드바가 늘 보이므로 숨긴다. */
+const HOME_FAV_NARROW = '(max-width: 959.98px)';
+let homeFavPages = [];
+let homeFavWatch = false;
+function drawHomeFavorites(pages) {
+  const box = document.getElementById('community-home-fav');
+  const list = document.getElementById('community-home-fav-list');
+  if (!box || !list) { return; }
+  homeFavPages = pages;
+  clear(list);
+  const ul = document.createElement('ul');
+  ul.className = 'nav-tree';
+  for (const page of pages) { ul.appendChild(navPageRow(page, '').li); }
+  list.appendChild(ul);
+  let mq = null;
+  try { mq = window.matchMedia(HOME_FAV_NARROW); } catch (e) { mq = null; }
+  if (mq && !homeFavWatch && typeof mq.addEventListener === 'function') {
+    homeFavWatch = true;
+    mq.addEventListener('change', () => { drawHomeFavorites(homeFavPages); });
+  }
+  show(box, pages.length > 0 && mq !== null && mq.matches);
+}
+
 /** 즐겨찾기를 받아 사이드바를 그리고, 등록된 곳(☆ 메뉴)에 알린다 */
 function loadFavoritesNav() {
   return api('GET', '/api/me/favorites').then((result) => {
@@ -699,6 +737,7 @@ function loadFavoritesNav() {
     const pages = result.status === 200 && Array.isArray(result.data.pages) ? result.data.pages : [];
     favoriteIds = new Set(pages.map((p) => p.id));
     drawFavoritesNav(pages);
+    drawHomeFavorites(pages);
     for (const fn of favoriteListeners) { fn(); }
     return pages;
   }).catch(() => []);
@@ -2151,7 +2190,9 @@ function bindNewPage() {
         .then((result) => {
           if (result.status === 401) { toLogin(); return; }
           if (result.status === 201 && result.data.page && typeof result.data.page.id === 'string') {
-            window.location.assign(COMMUNITY_BASE + '/p/' + result.data.page.id);
+            /* T:F-72 2장 ① (취합 결정) — 「새 페이지」는 열자마자 편집 모드: 게시판 「새 글」과 같은 `?edit=1`
+               (페이지 화면이 창구의 can_edit 을 보고 편집을 켠 뒤 주소에서 꼬리표를 지운다). */
+            window.location.assign(COMMUNITY_BASE + '/p/' + result.data.page.id + '?edit=1');
             return;
           }
           setText(msg, errorMessage(result.data));

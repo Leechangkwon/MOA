@@ -20,7 +20,7 @@
 
 ## 1. 이 모듈에만 있는 규칙
 
-- **보안 핵심 파일**(지시서 「수정 파일」에 있을 때만): `src/Authz.php` `src/Auth.php` `src/Db.php` `src/Http.php` `src/Storage.php` `src/Upload.php` `src/Audit.php` `db/**` `deploy/**` `public/index.php`.
+- **보안 핵심 파일**(지시서 「수정 파일」에 있을 때만): `src/Authz.php` `src/Auth.php` `src/Db.php` `src/Http.php` `src/Storage.php` `src/Upload.php` `src/Audit.php` `src/Passkey.php`(T:F-72 지문·얼굴 로그인 검증 — 2026-09-27 취합 지시) `db/**` `deploy/**` `public/index.php`.
 - **일괄 진행 모드**(사용자 결정 2026-09-11): ① 구현 → ② 검토 → ④ 커밋으로 이어 가고 관문 ③(사용자 자기 공격)은 뒤에 일괄. ② 통과가 커밋 조건, ③ 결과는 커밋 뒤 `SECURITY.md` 7장·`STAGES.md` 에 추가.
 - **위키**: t-box·커뮤니티·사이트 단계가 끝나는 커밋에는 해당 책의 `wiki/<책>/stage-*.json`·`index.json` 갱신과 `php scripts/wiki_check.php` 0건 포함(2026-09-13 사고, 2026-09-23 책 셋 — 검사가 STAGES 0장 ✅ 단계와 글을 대조해 빠진 글을 실패로 잡는다). `Wiki::STAGE_MAX` 는 PRD 로드맵 끝과 같게.
 - **검토 표식**: 검토 요청 UA `tbox-review/<날짜>`, 계정 `claude_` 접두 5개(F-71, `/etc/tbox-v2/seed-accounts.txt`·`qa-totp.txt`, 판정 `tests/lib/review_accounts.sh`). 옛 `qa_` 계정은 꺼짐(사용자 결정 2026-09-24). 시드 계정(`admin01` …)은 사용자 몫.

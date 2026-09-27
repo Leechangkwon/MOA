@@ -16,7 +16,7 @@ declare(strict_types=1);
  *   new      새 비밀번호 — 10자 이상
  *
  * 응답
- *   200 `{ok, sessions_revoked, tokens_revoked}` — 바꾼 뒤 **이 세션만 남고** 다른 기기는 즉시 끊긴다.
+ *   200 `{ok, sessions_revoked, tokens_revoked, passkeys_revoked}` — 바꾼 뒤 **이 세션만 남고** 다른 기기는 즉시 끊긴다.
  *       디버깅 묶음 S-5: 그 계정의 개인 프로그램 토큰도 전부 회수된다(`tokens_revoked` = 개수)
  *   400 현재 비밀번호 오류(`bad_credentials`) · 새 비밀번호 규칙 위반(`weak_password`) ·
  *       현재와 같은 값(`same_password`, 11단계 F-16)
@@ -63,7 +63,7 @@ if (!is_string($current) || !is_string($new)
     Http::error(400, Http::MSG_BAD_REQUEST);
 }
 
-[$ok, $reason, $revoked, $tokensRevoked] = Auth::changePassword($user, $current, $new);
+[$ok, $reason, $revoked, $tokensRevoked, $passkeysRevoked] = Auth::changePassword($user, $current, $new);
 unset($current, $new, $body);   // 평문을 이 뒤 코드로 흘려보내지 않는다
 
 if (!$ok) {
@@ -74,4 +74,6 @@ if (!$ok) {
 }
 
 // S-5 — 회수한 개인 프로그램 토큰 수(개수만 — 토큰 번호·이름은 감사에). 화면이 결과 문장에 쓴다.
-Http::json(['ok' => true, 'sessions_revoked' => $revoked, 'tokens_revoked' => $tokensRevoked]);
+// T:F-72 — 해제한 지문·얼굴 로그인 열쇠 수(개수만 — 열쇠 번호·이름은 감사에).
+Http::json(['ok' => true, 'sessions_revoked' => $revoked, 'tokens_revoked' => $tokensRevoked,
+            'passkeys_revoked' => $passkeysRevoked]);

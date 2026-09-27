@@ -222,3 +222,27 @@ BEGIN
     GRANT SELECT                      ON public.file_favorites, public.folder_favorites TO tbox_backup;
 END
 $$;
+
+-- ─── 지문·얼굴 로그인 (T:F-72 패스키, ARCH 5.35 · 10장, SECURITY R-109) — 표 둘(passkeys · passkey_challenges).
+--     표를 만드는 것은 db/schema.sql(새 설치)·db/migrations/2026-10-06_passkeys.sql(기존 DB)이고, 이 절은 **같은 권한**을
+--     다시 건다(재실행 시 과거 권한이 남지 않게 회수 뒤 GRANT). 표가 없으면(마이그레이션 전) 아무것도 하지 않고 NOTICE 만 남긴다.
+--   tbox_app    passkeys SELECT·INSERT·UPDATE(★ DELETE 없음 — 해제는 revoked_at) · passkey_challenges SELECT·INSERT·UPDATE·DELETE
+--               (일회용 값 — 만료 정리) · 시퀀스 USAGE·SELECT
+--   tbox_backup 둘 다 SELECT(공개 키라 비밀 아님) · tbox_perm · tbox_push 0
+DO $$
+BEGIN
+    IF to_regclass('public.passkeys') IS NULL OR to_regclass('public.passkey_challenges') IS NULL THEN
+        RAISE NOTICE '패스키 표가 없다 — db/migrations/2026-10-06_passkeys.sql 을 먼저 돌린다(이 절은 건너뜀)';
+        RETURN;
+    END IF;
+    REVOKE ALL ON public.passkeys, public.passkey_challenges FROM tbox_app, tbox_backup, tbox_perm;
+    IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'tbox_push') THEN
+        REVOKE ALL ON public.passkeys, public.passkey_challenges FROM tbox_push;
+    END IF;
+    GRANT SELECT, INSERT, UPDATE         ON public.passkeys           TO tbox_app;
+    GRANT SELECT, INSERT, UPDATE, DELETE ON public.passkey_challenges TO tbox_app;
+    GRANT USAGE, SELECT ON SEQUENCE public.passkeys_id_seq, public.passkey_challenges_id_seq TO tbox_app;
+    GRANT SELECT ON public.passkeys, public.passkey_challenges TO tbox_backup;
+    GRANT SELECT ON SEQUENCE public.passkeys_id_seq, public.passkey_challenges_id_seq TO tbox_backup;
+END
+$$;

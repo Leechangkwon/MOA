@@ -67,6 +67,12 @@ if (is_array($launcherUser)) {
 <!-- 브라우저가 스스로 부르는 `/favicon.ico` 가 404 로 떨어지지 않게 문서 안에 둔다(셸과 같은 고정 문자열). -->
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath fill='%2314213d' d='M12 2 4 5v6c0 5 3.4 9.4 8 11 4.6-1.6 8-6 8-11V5z'/%3E%3C/svg%3E">
 <link rel="stylesheet" href="<?= $launcherEsc(Http::url('/assets/app.css')) ?>?v=<?= $launcherCssVersion ?>">
+<!-- T:F-72 라운드 C · 결정 PK-D5 — 홈 화면 「Qaredi」 앱(모든 사람) 매니페스트. 고정 글자뿐(데이터 0) · 서비스 워커 없음 · 스크립트 0 그대로 -->
+<link rel="manifest" href="<?= $launcherEsc(Http::url('/app.webmanifest')) ?>">
+<link rel="apple-touch-icon" href="<?= $launcherEsc(Http::url('/assets/qaredi-icon-192.png')) ?>?v=<?= (int) filemtime(__DIR__ . '/../../public/assets/qaredi-icon-192.png') ?>">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Qaredi">
 </head>
 <body>
 <div class="app">

@@ -60,7 +60,7 @@ scripts/     security_lint.sh · seed_users.php
 | 로그인 | `/login` | public | 아이디·비밀번호 → (2단계 인증을 켠 계정만) 6자리 코드 |
 | 파일 | `/` | authenticated | 목록·검색·정렬·페이지, 「파일 올리기」·「URL 로 가져오기」 **대화상자**(올릴 위치 = 지금 연 폴더), 행 작업(**미리보기**·다운로드·수정·삭제) |
 | 휴지통 | `/trash` | `role:Admin` | 삭제된 파일 목록과 복구 (30일) |
-| 내 계정 | `/settings` | authenticated | 내 정보(아이디·역할·팀) · 비밀번호 변경 · 2단계 인증 |
+| 내 계정 | `/settings` | authenticated | 내 정보(아이디·역할·팀) · 비밀번호 변경 · 지문·얼굴 로그인(휴대폰 등록·해제 — F-72) · 2단계 인증 |
 | 계정 관리 | `/users` | `user.manage` | 계정 생성·역할/팀/만료 변경·임시 비밀번호 재발급·2단계 인증 초기화 |
 | 조직·권한 | `/org` | `org.manage` | 팀 생성·이름 변경·비활성화, 구성원 표·배정, 권한 매트릭스 **조회** |
 | 감사 로그 | `/audit` | `audit.read` | 육하원칙 6필터 + 기록 표 |
@@ -879,6 +879,23 @@ curl -s -b jar https://changkwon.mso.so/tbox/api/files/trash
 curl -s -b jar -X POST -H 'Content-Type: application/json' -H "X-CSRF-Token: $TOKEN" \
   https://changkwon.mso.so/tbox/api/files/<파일UUID>/restore
 ```
+
+## 휴대폰 지문·얼굴로 로그인 — 패스키 (`PRD.md` F-72 · `ARCHITECTURE.md` 5.35 · `SECURITY.md` R-109)
+
+휴대폰에서 「내 계정」 → **「이 휴대폰 등록하기」**(기기 이름 · 현재 비밀번호 · 2단계를 켰으면 코드) → 휴대폰의 지문·얼굴 확인. 다음부터 로그인 화면을 열면
+지문 창이 곧바로 뜨고, 비밀번호·2단계 코드 없이 들어갑니다(2단계 충족 — Admin 포함). 한 사람 5개 · 90일 안 쓰면 꺼짐 · 비밀번호 변경·임시 비밀번호 재발급·2단계 초기화·
+역할 변경·비활성화 때 전부 해제. 지금은 **휴대폰에서만** 등록합니다(PC 는 화면에서만 숨김). 휴대폰 브라우저 메뉴 「홈 화면에 추가」로 「Qaredi」 앱을 두면 커뮤니티
+「내 공간」(좁은 폭은 즐겨찾기가 맨 위)이 열립니다.
+
+**업그레이드(운영 반영) 순서 — 반드시 DB → nginx → 저장소** (코드가 표보다 먼저 나가도 기능이 꺼진 채 돈다 — 창구 503 · 단추 숨김 · 자동 해제 건너뜀. 그래도 지시서 6장 순서를 지킨다):
+
+| 순서 | 무엇 | 명령(검토 뒤 `scripts/` 로 옮긴 이름) |
+|---|---|---|
+| ① | 표 둘 `passkeys` · `passkey_challenges` + 권한(앱 계정은 `passkeys` DELETE 없음) | `sudo bash scripts/apply-pk-db-2026-09-27.sh --dry-run <마이그레이션 사본>` → `--migrate <사본>` |
+| ② | nginx 새 창구 다섯 × 끝 슬래시에 로그인 속도 제한(두 사이트 파일) — **15분 자동 되돌림** | `sudo bash scripts/apply-nginx-pk-2026-09-27.sh --plan` → `--dry-run` → `--apply` → 확인 뒤 `--confirm` |
+| ③ | 저장소 패치 | `bash scripts/apply-pk-repo-2026-09-27.sh <패치> <sha256> --dry-run` → 본 실행 |
+
+되돌릴 때는 ③ 만 되돌려도 됩니다(`git apply -R` — 표는 남아도 무해). `.env` 의 `APP_URL` 이 `https://<호스트 이름>` 이 아니면(IP 등) 기능은 저절로 꺼집니다.
 
 ## 2단계 인증 (TOTP) — 10단계 · `SECURITY.md` R-05 · R-85
 

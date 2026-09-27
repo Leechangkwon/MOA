@@ -270,6 +270,18 @@ if (!headers_sent()) {
 <!-- Q:F-2 통합 검색 창 (사이트 PRD Q:F-2 — 두 앱 공통). 사이드바 「검색」·Ctrl+K(⌘K). 창과 동작은 search.js,
      무엇이 나오나는 각 앱의 서버(커뮤니티 search.php · t-box files_list.php 전역 검색). 일반 스크립트(defer). -->
 <script defer src="<?= Http::url('/assets/search.js') ?>?v=<?= (int) filemtime(__DIR__ . '/../../public/assets/search.js') ?>"></script>
+<!-- T:F-72 휴대폰 지문·얼굴로 로그인 — 「내 계정」 패널 · 재인증 창·화면의 「지문·얼굴로 확인」 · 권장 카드 · 로그아웃 표식(public/assets/passkey.js).
+     defer 라 본문 끝의 app.js 뒤에 돈다(그쪽이 내놓는 qarediMe · qarediOpenConfirm · qarediReauthTarget 를 쓴다). -->
+<script defer src="<?= Http::url('/assets/passkey.js') ?>?v=<?= (int) filemtime(__DIR__ . '/../../public/assets/passkey.js') ?>"></script>
+<?php if ($shellPwa !== 'alerts'): ?>
+<!-- T:F-72 라운드 C · 결정 PK-D5 — 홈 화면 「Qaredi」 앱(모든 사람 · 시작 커뮤니티 · 범위 `/`). 경보 화면은 아래 경보 앱 매니페스트 하나만.
+     매니페스트는 public 라우트(데이터 0 — 쿠키 없이 받아도 같다) · 서비스 워커 없음. 값은 전부 고정 글자다. -->
+<link rel="manifest" href="<?= Http::url('/app.webmanifest') ?>">
+<link rel="apple-touch-icon" href="<?= Http::url('/assets/qaredi-icon-192.png') ?>?v=<?= (int) filemtime(__DIR__ . '/../../public/assets/qaredi-icon-192.png') ?>">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Qaredi">
+<?php endif; ?>
 <?php if ($shellPwa === 'alerts'): ?>
 <!-- F-70 「Qaredi 경보」 설치형 웹 앱 (PRD F-70, ARCH 5.32) — 휴대폰 경보 화면(`/alerts-app`)만. 값은 전부 고정 글자다.
      매니페스트는 로그인·재인증 뒤에만 열리는 라우트라 쿠키를 싣는다(use-credentials — 같은 사이트 요청).

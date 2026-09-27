@@ -77,6 +77,16 @@ require __DIR__ . '/../../views/shell_top.php';
       </div>
     </header>
 
+    <!-- T:F-72 라운드 C · 결정 PK-D5(사용자 d71 「앱 + 즐겨찾기로 접근」) — 좁은 폭(960px 미만) 첫 화면 맨 위에 **즐겨찾기 먼저**.
+         폰에서는 사이드바가 ☰ 안이라 즐겨찾기가 두 번 눌러야 보였다. 항목은 사이드바와 같은 창구(`GET /community/api/me/favorites`)의
+         같은 답 · 같은 줄 모양(`.nav-tree`)을 editor.js 가 한 번 더 그린다(새 창구·새 클래스 0). 넓은 폭·즐겨찾기 0 이면 숨는다. -->
+    <section class="panel panel--tight" id="community-home-fav" aria-labelledby="community-home-fav-title" hidden>
+      <div class="panel__head">
+        <h2 class="panel__title" id="community-home-fav-title">즐겨찾기</h2>
+      </div>
+      <div id="community-home-fav-list"></div>
+    </section>
+
     <p id="msg" class="msg" role="alert" aria-live="polite"></p>
 
     <!-- 공간 고르개 (4-B) — 왼쪽 첫 자리다. 목록은 `<select>` 한 칸이고 항목은 창구

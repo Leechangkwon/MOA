@@ -278,8 +278,10 @@ else
   curl -s -b "$JAR_DIR/claude_employee01.jar" -A "$UA" "$BASE/api/me" > "$WORK/e_me.json"
   # Employee 세션 기준 키 집합 — can_fetch 가 false 라 fetch_hosts_public 는 애초에 없다.
   # F-66 (2026-09-22) 으로 `can_issue_tokens`·`token_scopes` 둘이 늘었다 (ARCH 4.7 「GET /api/me」).
-  expect "세션 /api/me 키 집합 (F-66: can_issue_tokens·token_scopes 추가)" \
-    "acting,acting_as,acting_idle_minutes,can_admin,can_fetch,can_issue_tokens,can_manage_org,can_manage_users,can_stop_acting,can_view_audit,can_view_trash,can_view_wiki,csrf_token,fetch_enabled,mfa_enabled,mfa_recommended,mfa_required,mfa_setup_required,must_change_password,next,real_role,reauth_fresh,role,team_id,team_name,token_scopes,upload_levels,username" \
+  # 디버깅 묶음 U (2026-09-26) `can_community_write` · T:F-72 (2026-09-27) `passkey_available`·`passkeys_active` — API.md 3장(화면 편의 값 · 권한 아님).
+  #   (can_community_write 는 U 반영 때 이 목록을 고치지 않아 기준 판 fd96aca 에서도 이 항목이 실패했다 — 2026-09-27 패스키 회귀에서 발견)
+  expect "세션 /api/me 키 집합 (F-66 · U · F-72 추가)" \
+    "acting,acting_as,acting_idle_minutes,can_admin,can_community_write,can_fetch,can_issue_tokens,can_manage_org,can_manage_users,can_stop_acting,can_view_audit,can_view_trash,can_view_wiki,csrf_token,fetch_enabled,mfa_enabled,mfa_recommended,mfa_required,mfa_setup_required,must_change_password,next,passkey_available,passkeys_active,real_role,reauth_fresh,role,team_id,team_name,token_scopes,upload_levels,username" \
     "$(jq_py '",".join(sorted(d.keys()))' < "$WORK/e_me.json")"
 fi
 

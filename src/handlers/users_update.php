@@ -309,6 +309,13 @@ try {
     $revoked = 0;
     if ($roleChanged || $teamChanged || ($activeChanged && !$newActive)) {
         $revoked = Auth::revokeAllSessions($uid);
+        /* T:F-72 (지시서 1.6 「자동 해제」) — 역할 변경·비활성화면 그 사람의 지문·얼굴 로그인 열쇠도 전부 해제한다(같은 트랜잭션 ·
+           열쇠마다 감사 한 행). 역할: 직원일 때 비밀번호만으로 등록한 열쇠가 관리자 열쇠로 넘어가지 않게. 팀 변경은 해제하지 않는다. */
+        if ($activeChanged && !$newActive) {
+            Auth::revokeAllPasskeys($uid, $targetName, (int) $user['id'], 'deactivate');
+        } elseif ($roleChanged) {
+            Auth::revokeAllPasskeys($uid, $targetName, (int) $user['id'], 'role_change');
+        }
     }
 
     Audit::allow($action, $auditTarget + [

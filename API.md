@@ -108,6 +108,7 @@ curl -s -c jar -H 'Content-Type: application/json' \
 | 인증 | 세션 쿠키 |
 | 응답 | `200` — 업로드 도구가 쓰는 키: `username`, `role`, `team_id`, **`csrf_token`**, **`upload_levels`**(내가 올릴 수 있는 접근 등급 목록, 예 `["public","internal","team"]`), `next`. 그 밖의 `can_*`·`acting*` 등은 화면용 편의 값이다 |
 | 커뮤니티 쓰기 자격 (2026-09-26 디버깅 묶음 U) | `can_community_write` — `true`/`false`. 커뮤니티에 **쓸 수 있는 역할인가**(새 페이지·템플릿·편집·댓글 등). 값은 커뮤니티 쓰기 라우트 정책 `community.write` 가 부르는 함수(`Authz::canCommunityWrite` — 권한 매트릭스의 올리기 자격, Guest 거짓)를 그대로 부른 결과다. 다른 `can_*` 와 같은 **화면 편의 값**이며 권한이 아니다 — 쓰는 창구는 전부 정책 `community.write` 와 행 단위 판정이 매 요청 다시 막는다(손님이 `POST /community/api/pages` → `403`) |
+| 지문·얼굴 로그인 (2026-09-27 T:F-72 — 16장) | `passkey_available` — 이 서버에서 쓸 수 있나(`APP_URL` 이 https 이름이고 표가 있다) · `passkeys_active` — 내 살아 있는 열쇠 수(해제·90일 제외). 둘 다 **화면 편의 값**이며 권한이 아니다 — 창구는 요청마다 다시 판정한다. 휴대폰인지는 화면이 정한다(서버는 가리지 않는다) |
 | 실패 | `401 {"error":"로그인이 필요합니다"}` |
 
 ```bash
@@ -697,6 +698,46 @@ curl -s -H "X-API-Token: $API_TOKEN" http://127.0.0.1:8082/tbox/api/whoami
 | 준비 안 됨 | 서버 쪽 반영(표 둘을 만드는 마이그레이션 — `apply-f70-host`) 전이면 받기 목록·등록·해지·시험 알림이 `503 {"error":"휴대폰 경보가 아직 준비되지 않았습니다 (서버 쪽 반영 전 — 관리자 작업이 끝나면 켤 수 있습니다)"}`(500 이 아니다). 공개 키 창구는 위 문구. 화면 `/tbox/alerts-app` 은 `200` 그대로 「준비 안 됨」 안내를 보이고 켜기·시험 단추를 막는다 |
 | 알림 내용 | 휴대폰에 가는 것은 규칙 번호·짧은 이름·출처(사람/시스템/Claude)·시각·개수뿐이다(계정·IP·파일 이름·명령 없음). 누르면 언제나 `/tbox/admin` 이 열린다 |
 | 감사 | `alert.push_subscribe allow|deny`(detail `{host, device_hint}` — 주소·키 없음) · `alert.push_unsubscribe` · `alert.push_test` · 배치의 `alert.push_send`·`alert.push_revoke`(ARCHITECTURE 7.4) |
+
+## 16. 지문·얼굴 로그인 — 패스키 (T:F-72, 2026-09-27 · 웹 화면 전용 · 세션)
+
+프로그램이 부르는 창구가 아니라 **로그인 화면·「내 계정」·재인증 화면**의 창구다(PRD F-72, ARCHITECTURE 5.35, SECURITY R-109).
+**X-API-Token 으로는 부를 수 없다**(토큰 창구 집합 불변). 브라우저의 `navigator.credentials`(WebAuthn)가 만든 값을 그대로 옮긴다 — 값의 이진 칸은 전부
+base64url(패딩 없음 · 엄격). 열쇠 id·공개 키·서명·챌린지는 어느 응답·감사에도 다시 나오지 않는다(목록은 행 번호·이름·날짜·상태·기기 요약·동기화 표시만).
+
+| 항목 | 내용 |
+|---|---|
+| 인증 | 로그인 둘(`/api/login/passkey/options` · `/api/login/passkey`)은 **로그인 전**(public · JSON 만 · nginx 속도 제한 30r/m burst 10). 나머지는 세션 쿠키 + `X-CSRF-Token`(POST·DELETE). 등록 옵션·재인증 둘도 같은 속도 제한 |
+| 설정 | RP ID = `APP_URL` 의 호스트(`changkwon.mso.so`) · origin = `https://changkwon.mso.so` 정확 일치. `APP_URL` 이 IP 거나 표가 없으면 모든 창구 `503 {"error":"지금은 지문·얼굴 로그인을 쓸 수 없습니다. 비밀번호로 로그인하세요."}` 이고 `/api/me` `passkey_available:false` |
+| 로그인 옵션 | `POST /api/login/passkey/options` 본문 `{}` → `200 {"publicKey":{"challenge","rpId","timeout":300000,"userVerification":"required","allowCredentials":[]}}` + 쿠키 `__Host-tbox_pk`(HttpOnly · Secure · SameSite=Strict · Max-Age 600 — 챌린지가 이 쿠키에 묶인다). **아이디를 받지 않고 열쇠 목록을 주지 않는다**. 살아 있는 로그인 챌린지가 5,000 을 넘으면 `503 {"error":"잠시 뒤 다시 시도하세요"}` |
+| 로그인 | `POST /api/login/passkey` 허용 키만 `{id, rawId, type:"public-key", clientDataJSON, authenticatorData, signature, userHandle, authenticatorAttachment?}`(`id = rawId` · attachment 는 `platform` 이나 null) → `200 {"ok":true,"next":…,"mfa_required":…,"mfa_recommended":…}` — **`/api/login` 과 같은 모양** · 새 세션 쿠키 · 로그인 전 쿠키 지움. 코드 칸 없음(2단계 충족 — F-52 ⑦) · 재인증 창은 열리지 않는다 |
+| 로그인 실패 | 전부 `401 {"error":"아이디 또는 비밀번호가 올바르지 않습니다"}`(없는 열쇠·서명 틀림·주소·챌린지·서명 횟수·비활성·Guest 만료·비밀번호 변경 먼저 — **본문이 바이트까지 같다**. 사유는 감사에만) · 잠긴 계정 `423` · **꺼진 열쇠**(해제·90일)만 `401 {"error":"이 휴대폰의 지문·얼굴 로그인은 꺼져 있습니다(해제했거나 90일 동안 쓰지 않음). …","passkey_off":true}` · 모양이 틀리면 `400 {"error":"잘못된 요청입니다"}`(실패로 세지 않는다) |
+| 내 목록 | `GET /api/me/passkeys` → `200 {"available":true,"passkeys":[{"id":<행 번호>,"name","device_hint","created_at","last_used_at"|null,"state":"active"|"stale","synced":<bool>}],"max":5}` — 해제한 열쇠는 없다 · `stale` = 90일 안 써서 꺼짐 |
+| 등록 옵션 | `POST /api/me/passkeys/options` `{"name":"1~40자","password":"…","otp":"6자리"(2단계 켠 계정만)}` → 비밀번호·코드를 **먼저** 확인(틀리면 `400` + 로그인과 같은 실패 카운터 — 5회면 잠금·세션 전부 끊김) → `200 {"name","publicKey":{challenge, rp:{id,name:"Qaredi"}, user:{id,name,displayName}, pubKeyCredParams:[{alg:-7}], timeout:120000, attestation:"none", authenticatorSelection:{authenticatorAttachment:"platform", residentKey:"required", requireResidentKey:true, userVerification:"required"}, excludeCredentials:[내 살아 있는 열쇠]}}`. 5개면 `400 {"error":"지문·얼굴 로그인 기기는 한 사람 5개까지입니다 — 먼저 하나를 해제하세요"}` |
+| 등록 | `POST /api/me/passkeys` `{name, id, rawId, type, clientDataJSON, attestationObject, transports?, authenticatorAttachment?}` → `201 {"ok":true,"passkey":{"id","name","device_hint","synced"}}`. 거부는 `400` — 「이 휴대폰을 등록하지 못했습니다. 창을 닫고 처음부터 다시 해 보세요」(챌린지·주소·증명 형식 `none` 밖·UV 없음 등) · 「이 휴대폰은 이미 등록되어 있습니다」 · 5개 문구 |
+| 해제 | `DELETE /api/me/passkeys/{num}` → `200 {"ok":true,"remaining":<남은 수>}` · 남의 번호·없는 번호·이미 해제 → `404 {"error":"찾을 수 없습니다"}`(같은 본문) |
+| 재인증 | `POST /api/me/reauth/passkey/options` `{}` → `200 {"publicKey":{challenge, rpId, timeout:120000, userVerification:"required", allowCredentials:[지금 사람의 살아 있는 열쇠]}}` · `POST /api/me/reauth/passkey` (로그인과 같은 키) → `200 {"ok":true,"reauth_until":"…"}`(지금 세션만 15분) · 남의 열쇠·틀린 서명 → `400`, 실패는 로그인 뒤 창구 규칙(5회면 잠금·세션 끊김) |
+| 홈 화면 앱 | `GET /tbox/app.webmanifest`(public · 데이터 0) → `application/manifest+json` — 이름 「Qaredi」 · 시작 `/community/` · 범위 `/` · standalone · 아이콘 192·512 · 바로가기 없음 · 서비스 워커 없음 |
+| 자동 해제 | 본인 비밀번호 변경(`POST /api/me/password` 응답에 `passkeys_revoked` 수) · 관리자 임시 비밀번호 재발급 · 2단계 초기화 · 역할 변경 · 비활성화 → 그 사람 열쇠 전부 |
+| 감사 | `auth.login allow passkey`·`deny passkey_*`·`forced_step` · `auth.reauth allow|deny passkey*` · `auth.passkey_register allow|deny` · `auth.passkey_revoke allow|deny` (ARCHITECTURE 7.4 · detail `credential_no`·`credential_label`·`device_hint`·`backed_up`) · 경보 AL-23 |
+| 넣지 않는 것 | 로그인 전 사람에게 「이 아이디에 열쇠가 있다」(아이디를 받지 않는다) · 열쇠 id 원문·공개 키·서명·챌린지·clientDataJSON·attestationObject(응답·감사·로그 0) |
+
+실제로 받은 응답(2026-09-27 임시 인스턴스 `http://localhost:8301` · 검토 계정 `claude_employee02` · 소프트웨어 인증기 — 챌린지·id 는 `…` 로 가림):
+
+```text
+POST /tbox/api/login/passkey/options {}      → 200 {"publicKey":{"challenge":"…","rpId":"localhost","timeout":300000,"userVerification":"required","allowCredentials":[]}}
+GET  /tbox/api/me/passkeys                   → 200 {"available":true,"passkeys":[],"max":5}
+POST /tbox/api/me/passkeys/options           → 200 {"name":"내 폴드","publicKey":{"challenge":"…","rp":{"id":"localhost","name":"Qaredi"},"user":{"id":"…","name":"claude_employee02","displayName":"claude_employee02"},"pubKeyCredParams":[{"type":"public-key","alg":-7}],"timeout":120000,"attestation":"none","authenticatorSelection":{"authenticatorAttachment":"platform","residentKey":"required","requireResidentKey":true,"userVerification":"required"},"excludeCredentials":[]}}
+POST /tbox/api/me/passkeys                   → 201 {"ok":true,"passkey":{"id":1,"name":"내 폴드","device_hint":"기타 브라우저","synced":true}}
+GET  /tbox/api/me/passkeys                   → 200 {"available":true,"passkeys":[{"id":1,"name":"내 폴드","device_hint":"기타 브라우저","created_at":"…","last_used_at":null,"state":"active","synced":true}],"max":5}
+POST /tbox/api/me/passkeys/options (틀린 비밀번호) → 400 {"error":"잘못된 요청입니다"}
+POST /tbox/api/login/passkey (없는 열쇠)     → 401 {"error":"아이디 또는 비밀번호가 올바르지 않습니다"}
+POST /tbox/api/login/passkey (맞는 서명)     → 200 {"ok":true,"next":null,"mfa_required":false,"mfa_recommended":true}
+POST /tbox/api/login/passkey {}              → 400 {"error":"잘못된 요청입니다"}
+GET  /tbox/api/me (두 값만)                  → 200 {"passkey_available":true,"passkeys_active":1}
+DELETE /tbox/api/me/passkeys/999999          → 404 {"error":"찾을 수 없습니다"}
+DELETE /tbox/api/me/passkeys/1               → 200 {"ok":true,"remaining":0}
+```
 
 ## 추가 규칙 (API 를 새로 적을 때)
 

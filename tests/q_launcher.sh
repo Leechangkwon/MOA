@@ -10,7 +10,7 @@
 #                              · `/foo` `/api/nope` `/tbox/nope` `/community/` → 404(리다이렉트 아님)
 #   Q:T-4 링크 접두            렌더된 HTML 의 `href|src|action="/…"` 가 전부 `/tbox/` 로 시작
 #                              (예외: 「Qaredi 홈」·커뮤니티 `/community/`) · `app.js` 절대 경로가 전부 `APP_BASE +` 뒤
-#   Q:T-5 리다이렉트 경로      미로그인 `/tbox/settings` → 302 `/tbox/login` · 재인증 전 `/tbox/admin` → 302 `/tbox/reauth?to=admin`
+#   Q:T-5 리다이렉트 경로      미로그인 `/tbox/settings` → 302 `/tbox/login?to=%2Ftbox%2Fsettings`(B1-1) · 재인증 전 `/tbox/admin` → 302 `/tbox/reauth?to=admin`
 #   Q:T-6 공유 링크            `POST …/share` 의 `url` 이 `APP_URL/tbox/s/` 로 시작하고 그 주소로 받아진다
 #   Q:T-7 쿠키·헤더 불변       `Set-Cookie` 이름 `__Host-tbox_session`(S2) · 속성(`Path=/; Secure; HttpOnly; SameSite=Lax` · Domain 없음) · 전역 CSP 문자열
 #   Q:T-8 그리드 단추          셸 화면 전부에 `<details class="appbar__apps">` · 항목 셋 · `.btn--icon[title]` 0
@@ -284,7 +284,8 @@ echo "※ 여기부터는 **로그인**이 필요하다. PHP 내장 서버에서
 sub "Q:T-5 — 미로그인 화면 요청은 /tbox/login 으로 302"
 curl -s -D "$WORK/set.head" -o /dev/null -A "$UA" "$BASE/settings"
 expect "GET /tbox/settings (미로그인) 상태" "302" "$(status_of "$WORK/set.head")"
-expect "GET /tbox/settings Location" "/tbox/login" "$(hdr Location "$WORK/set.head")"
+# Q:F-7 B1-1(2026-09-27 T:F-72 라운드 A) — 보던 화면이 허용 목록 안이면 꼬리표 ?to=<정규형 rawurlencode> 를 싣는다(ARCH 5.35 · Http::returnPath)
+expect "GET /tbox/settings Location" "/tbox/login?to=%2Ftbox%2Fsettings" "$(hdr Location "$WORK/set.head")"
 
 sub "로그인 화면"
 curl -s -D "$WORK/login.head" -o "$WORK/login.html" -A "$UA" "$BASE/login"

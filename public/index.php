@@ -270,6 +270,24 @@ const TBOX_ROUTES = [
     ['POST',   '/api/me/reauth',                 'reauth.php',           Authz::POLICY_AUTHENTICATED],
     ['GET',    '/reauth',                        'reauth_page.php',      Authz::POLICY_AUTHENTICATED],
 
+    /* T:F-72 — 휴대폰 지문·얼굴로 로그인(패스키, WebAuthn) — 지시서 1.8 · ARCH 5.35 · API.md 16장(웹 화면 전용 — 토큰 창구 아님).
+     *   로그인 둘은 public(비밀번호 로그인과 같다 — JSON 만 · nginx `tbox_login` 속도 제한 · 로그인 전 쿠키에 묶인 일회용 챌린지).
+     *   나머지는 authenticated — 대상은 언제나 세션의 본인이고, 상태를 바꾸는 넷은 [3] CSRF 를 지난다. 강제 절차 허용 목록 **불변**
+     *   (절차 중에는 [3-1] 이 등록·재인증 창구를 막는다) · `TBOX_API_TOKEN_ROUTES` **불변**(토큰으로는 못 부른다).
+     *   재인증 둘은 라운드 C — 성공이면 비밀번호 재인증과 같은 15분 창(지금 세션만). **권한을 만들지 않는다**(관문 [3-2] 는 인가 뒤).
+     *   `{num}` = 열쇠 행 번호(passkeys.id) — 내 것만, 남의 번호는 없는 번호와 같은 404. */
+    ['POST',   '/api/login/passkey/options',     'passkey_login_options.php',  Authz::POLICY_PUBLIC],
+    ['POST',   '/api/login/passkey',             'passkey_login.php',          Authz::POLICY_PUBLIC],
+    ['GET',    '/api/me/passkeys',               'me_passkeys_list.php',       Authz::POLICY_AUTHENTICATED],
+    ['POST',   '/api/me/passkeys/options',       'me_passkeys_options.php',    Authz::POLICY_AUTHENTICATED],
+    ['POST',   '/api/me/passkeys',               'me_passkeys_register.php',   Authz::POLICY_AUTHENTICATED],
+    ['DELETE', '/api/me/passkeys/{num}',         'me_passkeys_revoke.php',     Authz::POLICY_AUTHENTICATED],
+    ['POST',   '/api/me/reauth/passkey/options', 'reauth_passkey_options.php', Authz::POLICY_AUTHENTICATED],
+    ['POST',   '/api/me/reauth/passkey',         'reauth_passkey.php',         Authz::POLICY_AUTHENTICATED],
+    /* T:F-72 라운드 C · 결정 PK-D5 — 홈 화면 「Qaredi」 앱 매니페스트(모든 사람 · 데이터 0 — 고정 글자뿐). 로그인 화면·런처에도
+       붙으므로 public 이다(쿠키 없이 받는다). 시작 `/community/` · 범위 `/` · 서비스 워커 없음. */
+    ['GET',    '/app.webmanifest',               'site_manifest.php',          Authz::POLICY_PUBLIC],
+
     /* 26단계 — 「역할로 보기」 (PRD F-39 · 8장 `/api/me/act` 행, ARCH 5.20, SECURITY R-74).
      *
      * 두 줄의 정책이 **일부러 다르다**:
@@ -827,7 +845,11 @@ if ($policy !== Authz::POLICY_PUBLIC) {
     // 화면 경로에 감사 로그를 남기지 않는 이유 — 세션이 만료된 뒤의 첫 방문은 공격이 아니고,
     // 그런 요청까지 남기면 실제 공격 흔적이 묻힌다 (PRD S-07 취지).
     if (Auth::currentUser() === null && strpos($reqPath, '/api/') !== 0) {
-        Http::redirect(Http::url(TBOX_LOGIN_PATH));   // 접두는 내보낼 때 붙인다 (ARCH-launcher 3장)
+        /* Q:F-7 B1-1 — 보던 화면이 허용 목록(Http::returnPath) 안이면 꼬리표로 싣는다. 요청 주소 원문은 **그 함수만** 지나고,
+           Location 에는 그 정규형을 rawurlencode 한 글자만 들어간다(Http::redirect 가 한 번 더 확인). 첫 화면이면 꼬리표 없이. */
+        $tboxReturn = Http::returnPath((string) ($_SERVER['REQUEST_URI'] ?? ''));
+        Http::redirect(Http::url(TBOX_LOGIN_PATH)
+            . ($tboxReturn !== null && $tboxReturn !== Http::url(TBOX_HOME_PATH) ? '?to=' . rawurlencode($tboxReturn) : ''));
     }
     $user = Auth::requireLogin();          // 실패 시 401 + Audit::deny (Auth 안에서)
     Http::requireCsrf();                   // 상태 변경 요청의 토큰 검사 (PRD S-09-3)

@@ -262,6 +262,17 @@ final class Audit
          * 부분 일치에 걸리지 않지만, 등록부에 있는 키임을 코드에서도 드러내려고 여기 적는다.
          */
         'share_user', 'share_level', 'share_from', 'from_user', 'to_user', 'page_count', 'kept_level',
+        /*
+         * T:F-72 지문·얼굴 로그인(패스키) (지시서 1.6 「감사 detail 키」, ARCH 7.5 등록부).
+         *   credential_no       — 열쇠 행 번호(passkeys.id). 열쇠 id 원문·공개 키가 아니다 — 「어느 열쇠로」 를 목록에서 되짚는 열쇠
+         *   credential_label    — 사람이 붙인 기기 이름(「내 폴드」)
+         *   device_hint         — 서버가 UA 에서 고른 고정 낱말 기기 요약(「Android Samsung Internet」 — WebPush::deviceHint)
+         *   backed_up           — 등록 순간 「계정에 동기화됨」(BS 플래그, true/false)
+         *   credentials_revoked — 한 번에 해제한 열쇠 수(정수)
+         * ★ 이름에 `passkey` 를 쓰지 않는다 — 위 FORBIDDEN_DETAIL_KEYS 의 `pass` 부분 일치로 값이 지워진다(`token`·`session`·`hash` 도).
+         *   다섯 키 모두 부분 일치에 걸리지 않지만 등록부에 있는 키임을 코드에서도 드러내려고 적는다(preview_kind·part 와 같은 이유).
+         */
+        'credential_no', 'credential_label', 'device_hint', 'backed_up', 'credentials_revoked',
     ];
 
     private const RESULT_ALLOW = 'allow';
@@ -286,6 +297,34 @@ final class Audit
         'auth.lock|deny|failed_limit'             => '{target} 계정이 인증 실패 5회로 10분 동안 잠겼습니다',
         // 보안 넷 ④ (SECURITY R-39, 2026-09-26) — 비밀번호는 맞았지만 발급 72시간이 지난 임시 비밀번호. 비밀번호 값은 넣지 않는다.
         'auth.login|deny|temp_expired'            => '{target} 계정으로 로그인을 시도했지만 임시 비밀번호의 유효기간(발급 뒤 72시간)이 지났습니다',
+        // ── T:F-72 휴대폰 지문·얼굴로 로그인(패스키) — 지시서 1.8 감사 문장(ARCH 7.4). 열쇠 id·서명·본문은 어느 문장에도 없다 ──
+        'auth.login|allow|passkey'                => '{target} 이(가) 지문·얼굴로 로그인했습니다',
+        'auth.login|deny|passkey_unknown'         => '등록되지 않은 열쇠로 지문·얼굴 로그인을 시도했습니다 (대상 {target})',
+        'auth.login|deny|passkey_invalid'         => '{target} 계정의 열쇠로 로그인을 시도했지만 서명·주소·확인 표시가 맞지 않았습니다',
+        'auth.login|deny|passkey_challenge'       => '지문·얼굴 로그인의 확인 문제가 없거나 시간이 지났거나 이미 쓰였습니다 (대상 {target})',
+        'auth.login|deny|passkey_counter'         => '{target} 계정의 열쇠 서명 횟수가 뒤로 갔습니다 — 열쇠 복제가 의심됩니다',
+        'auth.login|deny|passkey_revoked'         => '{target} 계정의 해제되었거나 90일 동안 쓰지 않아 꺼진 열쇠로 로그인을 시도했습니다',
+        'auth.login|deny|forced_step'             => '{target} 계정은 비밀번호 변경이 먼저라 지문·얼굴 로그인을 받지 않았습니다',
+        'auth.reauth|allow|passkey'               => '{actor} 이(가) 관리 기능을 쓰려고 지문·얼굴로 다시 확인했습니다',
+        'auth.reauth|deny|passkey_invalid'        => '{actor} 이(가) 관리 기능을 쓰려고 지문·얼굴로 다시 확인했지만 열쇠·서명·주소가 맞지 않았습니다',
+        'auth.reauth|deny|passkey_challenge'      => '{actor} 이(가) 지문·얼굴로 다시 확인하려 했지만 확인 문제가 없거나 시간이 지났거나 이미 쓰였습니다',
+        'auth.reauth|deny|passkey_counter'        => '{actor} 이(가) 지문·얼굴로 다시 확인했지만 열쇠 서명 횟수가 뒤로 갔습니다 — 열쇠 복제가 의심됩니다',
+        'auth.passkey_register|allow'             => '{actor} 이(가) 지문·얼굴로 로그인할 기기를 등록했습니다 (기기 이름은 상세 기록)',
+        'auth.passkey_register|deny|bad_request'  => '{actor} 이(가) 지문·얼굴 로그인 기기를 등록하려 했지만 요청 모양(이름·칸)이 맞지 않았습니다',
+        'auth.passkey_register|deny|bad_credentials' => '{actor} 이(가) 지문·얼굴 로그인 기기를 등록하려 했지만 현재 비밀번호가 틀렸습니다',
+        'auth.passkey_register|deny|bad_code'     => '{actor} 이(가) 지문·얼굴 로그인 기기를 등록하려 했지만 2단계 인증 코드가 틀렸습니다',
+        'auth.passkey_register|deny|code_reused'  => '{actor} 이(가) 지문·얼굴 로그인 기기를 등록하려 했지만 이미 한 번 쓴 2단계 인증 코드를 다시 냈습니다',
+        'auth.passkey_register|deny|limit_exceeded' => '{actor} 이(가) 지문·얼굴 로그인 기기를 여섯 번째로 등록하려 해서 거부했습니다 (한 사람 5개까지)',
+        'auth.passkey_register|deny|passkey_invalid' => '{actor} 이(가) 지문·얼굴 로그인 기기를 등록하려 했지만 열쇠 정보·주소·확인 표시가 맞지 않았습니다',
+        'auth.passkey_register|deny|passkey_challenge' => '{actor} 이(가) 지문·얼굴 로그인 기기를 등록하려 했지만 확인 문제가 없거나 시간이 지났거나 이미 쓰였습니다',
+        'auth.passkey_register|deny|passkey_duplicate' => '{actor} 이(가) 이미 등록된 열쇠를 다시 등록하려 해서 거부했습니다',
+        'auth.passkey_revoke|allow|self'          => '{actor} 이(가) 자기 계정의 지문·얼굴 로그인 기기 하나를 해제했습니다 (기기 이름은 상세 기록)',
+        'auth.passkey_revoke|allow|password_change' => '{actor} 이(가) 비밀번호를 바꿔 계정 「{target}」 의 지문·얼굴 로그인 기기를 해제했습니다',
+        'auth.passkey_revoke|allow|password_reset' => '{actor} 이(가) 계정 「{target}」 의 임시 비밀번호를 재발급해 그 계정의 지문·얼굴 로그인 기기를 해제했습니다',
+        'auth.passkey_revoke|allow|mfa_reset'     => '{actor} 이(가) 계정 「{target}」 의 2단계 인증을 초기화해 그 계정의 지문·얼굴 로그인 기기를 해제했습니다',
+        'auth.passkey_revoke|allow|role_change'   => '{actor} 이(가) 계정 「{target}」 의 역할을 바꿔 그 계정의 지문·얼굴 로그인 기기를 해제했습니다',
+        'auth.passkey_revoke|allow|deactivate'    => '{actor} 이(가) 계정 「{target}」 을(를) 비활성화해 그 계정의 지문·얼굴 로그인 기기를 해제했습니다',
+        'auth.passkey_revoke|deny|not_found'      => '{actor} 이(가) 없는 지문·얼굴 로그인 기기를 해제하려 했습니다',
         'auth.logout|allow'                       => '{actor} 이(가) 로그아웃했습니다',
         'auth.required|deny|not_authenticated'    => '로그인하지 않은 채 {target} 에 접근하려 해서 막았습니다',
 

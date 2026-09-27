@@ -7,6 +7,7 @@ declare(strict_types=1);
  *   휴대폰 경보 전달 실패 AL-22 (PRD F-70 · 지시서 docs/f70-push-alerts-directive.md E-3, ARCH 11.4 — 받기 표의 fail_since, origin system)
  *   실행 파일이 든 압축본 AL-21 (PRD F-65 ⑤ · 7.11, ARCH 5.29 · 11.4 — `file.upload_exec allow` 1건이라도 즉시)
  *   개인 프로그램 토큰 AL-20 (PRD F-59 ⑦, ARCH 4.6 · 11.4 — `api_token.issue allow` 1건이라도 즉시)
+ *   지문·얼굴 로그인 AL-23 (T:F-72, ARCH 11.4 — `auth.passkey_register allow` 1건 · `auth.login deny passkey_counter` 1건이라도 즉시)
  *   악성코드 AL-19 (PRD F-54 ④, ARCH 5.28 · 11.4 — `file.scan deny infected` 1건이라도 즉시)
  *   ARCHITECTURE 11.1 (5분마다 cron) · 11.4 (경보 구성) · 7.4 `alert.raised|allow` · 7.5 `rule`·`evidence`
  *
@@ -473,6 +474,9 @@ if ($want('AL-1')) {
 //   훔친 쿠키를 쥐 사람에게는 비밀번호를 시험할 창구이고, 그 실패는 이미 계정 잠금 카운터에
 //   들어간다(Auth::countFailureAndRevoke). 세는 곳에서 빠져 있으면 "잠기는데 경보는 조용한"
 //   상태가 다시 생긴다 (SECURITY R-59, 13단계와 같은 이유).
+//   T:F-72(2026-09-27) — 지문·얼굴 로그인: 재인증 지문 실패(`auth.reauth deny passkey_*`)와 기기 등록의 비밀번호·코드 실패
+//   (`auth.passkey_register deny bad_credentials·bad_code·code_reused`)를 더했다 — 둘 다 세션만 있으면 닿고 계정 잠금 카운터에 든다.
+//   로그인 지문 실패(`auth.login deny passkey_*`)는 위 `action = 'auth.login'` 에 저절로 든다(IP 집계).
 //   빼는 것: `auth.mfa deny code_required` (순차 2단계 로그인의 정상 1단계다 — 실패가 아니다.
 //   Auth::login 도 이것은 실패 횟수에 세지 않는다, ARCH 4.0), `already_enabled`·`weak_password`·
 //   `same_password` (추측 시도가 아니다).
@@ -505,6 +509,8 @@ if ($want('AL-2')) {
                   OR (action = 'auth.mfa_disable'     AND reason IN ('bad_credentials','bad_code','code_reused'))
                   OR (action = 'auth.mfa_enroll'      AND reason IN ('bad_code','code_reused'))
                   OR (action = 'auth.reauth'          AND reason = 'bad_credentials')
+                  OR (action = 'auth.reauth'          AND reason IN ('passkey_invalid','passkey_challenge','passkey_counter'))
+                  OR (action = 'auth.passkey_register' AND reason IN ('bad_credentials','bad_code','code_reused'))
                   OR (action = 'auth.lock'            AND reason = 'failed_limit')
                 )
           GROUP BY host(ip)
@@ -876,6 +882,50 @@ if ($want('AL-21')) {
         ], Origin::ofGroup(al_accounts($r['accounts']), al_bool($r['all_marked'])));
     }
     cli_say(sprintf('AL-21 대상 %d건', count($rows)));
+}
+
+// ─────────────────────────────────────────────────────────────
+// AL-23 — 지문·얼굴 로그인 기기 등록 · 열쇠 복제 의심 (T:F-72 지시서 1.6, PRD 7.11, ARCH 11.4, SECURITY R-109)
+//   AL-20 과 **같은 형태**다: `auth.passkey_register allow` 가 **1건이라도** 있으면 즉시 — 새 로그인 수단이다. 세션을 훔친 사람이
+//   (비밀번호·코드까지 쥐고) 열쇠를 심으면 세션이 끊겨도 남는다(AL-20 토큰 발급과 같은 까닭). 또는 `auth.login deny passkey_counter`
+//   1건(열쇠 서명 횟수 역행 — 복제 의심). 대상(subject)은 등록은 한 사람(actor), 역행은 그 계정(target).
+//   근거: 등록한 사람 · 기기 요약 · 열쇠 행 번호 · 이름(열쇠 id 원문·공개 키 없음 — 감사에 애초에 없다).
+//   origin 은 F-69 판정 그대로(사람 → 휴대폰 즉시 · `claude_`+검토 UA → 18시 요약). 창 5분 · 중복 억제는 $raise.
+// ─────────────────────────────────────────────────────────────
+if ($want('AL-23')) {
+    $rows = $db->run(
+        "SELECT CASE WHEN action = 'auth.passkey_register' THEN COALESCE(actor_name, target_name) ELSE target_name END AS who,
+                action, count(*) AS n,
+                max(detail->>'credential_no')    AS credential_no,
+                max(detail->>'credential_label') AS credential_label,
+                max(detail->>'device_hint')      AS device_hint,
+                max(happened_at) AS last_at,
+                bool_and(COALESCE(user_agent, '') LIKE :review_ua) AS all_marked
+           FROM audit_logs
+          WHERE happened_at > now() - interval '5 minutes'
+            AND ((action = 'auth.passkey_register' AND result = 'allow')
+              OR (action = 'auth.login' AND result = 'deny' AND reason = 'passkey_counter'))
+          GROUP BY 1, action",
+        $reviewUa
+    )->fetchAll();
+    foreach ($rows as $r) {
+        $isRegister = (string) $r['action'] === 'auth.passkey_register';
+        $raise('AL-23', (string) ($r['who'] ?? '?'), [
+            'rule_text'        => $isRegister
+                ? '지문·얼굴 로그인 기기 등록 — 건수와 무관하게 즉시 알린다(새 로그인 수단)'
+                : '지문·얼굴 로그인 열쇠의 서명 횟수가 뒤로 갔다 — 열쇠 복제 의심',
+            'kind'             => $isRegister ? 'register' : 'counter',
+            'count'            => (int) $r['n'],
+            'account'          => (string) ($r['who'] ?? ''),
+            'device_hint'      => $r['device_hint'] === null ? '' : (string) $r['device_hint'],
+            'credential_no'    => $r['credential_no'] === null ? '' : (string) $r['credential_no'],
+            'credential_label' => $r['credential_label'] === null ? '' : (string) $r['credential_label'],
+            'window'           => '5 minutes',
+            'last_at'          => (string) $r['last_at'],
+        ], Origin::ofGroup([$r['who'] === null ? null : (string) $r['who']], al_bool($r['all_marked'])),
+           $isRegister ? 'register' : 'counter');
+    }
+    cli_say(sprintf('AL-23 대상 %d건', count($rows)));
 }
 
 // ─────────────────────────────────────────────────────────────

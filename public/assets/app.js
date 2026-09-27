@@ -91,6 +91,159 @@ var REAUTH_PATHS = {
   'alerts': APP_BASE + '/alerts-app'
 };
 
+/* ─── Q:F-7 B1-1 「로그인하면 보던 곳으로」 — 서버 `Http::returnPath()` 의 **짝** (T:F-72 라운드 A) ─────────
+ *
+ * 규칙은 서버와 글자 그대로 같다(허용 목록 · 길이 600바이트 · 퍼센트 디코딩 한 번 · 제어 문자·`\`·`//`·`..`·`@`·스킴 거부 ·
+ * 정규형 = 경로 + 고정 순서의 허용 쿼리, 값은 rawurlencode). 두 쪽을 `tests/lib/return_path_vectors.txt` 한 벌로 시험한다.
+ * 이 함수가 하는 일은 **이동할 곳을 거르는 것**뿐이다 — 로그인 화면의 `data-to`(서버가 이미 거른 값)를 한 번 더 걸러,
+ * 속성을 개발자도구로 고쳐도 목록 밖으로는 못 간다. 목록 밖은 첫 화면이다(오류 화면 아님).
+ */
+var RETURN_PATH_MAX = 600;
+var RETURN_UUID = '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}';
+var RETURN_RULES = [
+  [/^\/tbox\/$/, [['folder', /^[1-9][0-9]{0,8}$/], ['q', 'text200'], ['sort', /^(name|created_at|size)$/],
+    ['dir', /^(asc|desc)$/], ['page', /^[1-9][0-9]{0,5}$/]]],
+  [/^\/tbox\/(settings|activity)$/, []],
+  [/^\/community\/$/, [['space', /^[1-9][0-9]{0,17}$/]]],
+  [new RegExp('^/community/p/' + RETURN_UUID + '$'), [['edit', /^1$/]]],
+  [/^\/community\/b\/[1-9][0-9]{0,8}$/, []]
+];
+
+/** PHP rawurlencode 와 같은 글자 — 영숫자·`-_.~` 밖은 %XX(대문자) */
+function rawEncode(s) {
+  return encodeURIComponent(s).replace(/[!'()*]/g, function (c) {
+    return '%' + c.charCodeAt(0).toString(16).toUpperCase();
+  });
+}
+
+/** PHP rawurldecode 와 같은 한 번 — %XX 만 바이트로(`+` 는 그대로), 결과가 UTF-8 이 아니면 null */
+function rawDecodeOnce(s) {
+  var bytes;
+  try {
+    bytes = new TextEncoder().encode(s);
+  } catch (e) {
+    return null;
+  }
+  var out = [];
+  var hex = /^[0-9A-Fa-f]{2}$/;
+  for (var i = 0; i < bytes.length; i++) {
+    if (bytes[i] === 0x25 && i + 2 < bytes.length
+        && hex.test(String.fromCharCode(bytes[i + 1], bytes[i + 2]))) {
+      out.push(parseInt(String.fromCharCode(bytes[i + 1], bytes[i + 2]), 16));
+      i += 2;
+    } else {
+      out.push(bytes[i]);
+    }
+  }
+  try {
+    return new TextDecoder('utf-8', { fatal: true }).decode(new Uint8Array(out));
+  } catch (e) {
+    return null;
+  }
+}
+
+function returnPath(raw) {
+  if (typeof raw !== 'string' || raw === '') {
+    return null;
+  }
+  var byteLen;
+  try {
+    byteLen = new TextEncoder().encode(raw).length;
+  } catch (e) {
+    return null;
+  }
+  if (byteLen > RETURN_PATH_MAX) {
+    return null;
+  }
+  var dec = rawDecodeOnce(raw);
+  if (dec === null
+      || /[\x00-\x1f\x7f\\@]/.test(dec)
+      || dec.indexOf('//') !== -1
+      || dec.indexOf('..') !== -1
+      || /^[A-Za-z][A-Za-z0-9+.-]*:/.test(dec)
+      || /[/?&=][A-Za-z][A-Za-z0-9+.-]*:/.test(dec)) {
+    return null;
+  }
+  var q = raw.indexOf('?');
+  var path = q === -1 ? raw : raw.slice(0, q);
+  var query = q === -1 ? null : raw.slice(q + 1);
+  var allowed = null;
+  for (var r = 0; r < RETURN_RULES.length; r++) {
+    if (RETURN_RULES[r][0].test(path)) {
+      allowed = RETURN_RULES[r][1];
+      break;
+    }
+  }
+  if (allowed === null) {
+    return null;
+  }
+  if (query === null) {
+    return path;
+  }
+  if (query === '' || allowed.length === 0) {
+    return null;
+  }
+  var got = Object.create(null);
+  var pairs = query.split('&');
+  for (var p = 0; p < pairs.length; p++) {
+    var eq = pairs[p].indexOf('=');
+    if (eq === -1) {
+      return null;
+    }
+    var key = pairs[p].slice(0, eq);
+    var val = rawDecodeOnce(pairs[p].slice(eq + 1));
+    var rule = null;
+    for (var k = 0; k < allowed.length; k++) {
+      if (allowed[k][0] === key) {
+        rule = allowed[k][1];
+      }
+    }
+    if (rule === null || key in got || val === null || val === '') {
+      return null;
+    }
+    if (rule === 'text200') {
+      var cps = Array.from(val).length;
+      if (cps < 1 || cps > 200 || /^ *$/.test(val)) {
+        return null;
+      }
+    } else if (!rule.test(val)) {
+      return null;
+    }
+    got[key] = val;
+  }
+  var parts = [];
+  for (var a = 0; a < allowed.length; a++) {
+    if (allowed[a][0] in got) {
+      parts.push(allowed[a][0] + '=' + rawEncode(got[allowed[a][0]]));
+    }
+  }
+  return path + '?' + parts.join('&');
+}
+
+/**
+ * 로그인에 성공한 뒤 어디로 가나 — **비밀번호 로그인과 지문·얼굴 로그인이 같이 부르는 한 함수**(T:F-72 1.1 「원래 가던 곳으로」).
+ * `data-to` 가 옛 키(tbox·community)면 고정 맵, 경로면 `returnPath` 로 한 번 더 거른 값, 그 밖은 첫 화면.
+ */
+function loginDestination() {
+  var to = document.body ? document.body.getAttribute('data-to') : null;
+  if (to !== null && Object.prototype.hasOwnProperty.call(LOGIN_TO_PATHS, to)) {
+    return LOGIN_TO_PATHS[to];
+  }
+  var rp = to === null ? null : returnPath(to);
+  return rp !== null ? rp : HOME_PATH;
+}
+
+/* 지문·얼굴 로그인(passkey.js)·편집기(editor.js)도 같은 거르기와 같은 이동을 쓴다 — 이름만 내놓는다 */
+window.qarediReturnPath = returnPath;
+window.qarediRawEncode = rawEncode;
+window.qarediLoginGo = function () {
+  window.location.assign(loginDestination());
+};
+/* T:F-72 라운드 C — `/reauth` 화면의 지문·얼굴 확인(passkey.js)이 성공 뒤 갈 곳: 위 고정 맵의 값만(키가 없으면 첫 화면) */
+window.qarediReauthTarget = function (key) {
+  return typeof key === 'string' && Object.prototype.hasOwnProperty.call(REAUTH_PATHS, key) ? REAUTH_PATHS[key] : HOME_PATH;
+};
+
 /** 서버가 내려 준 파일 ID 형태 (UUIDv4). 링크를 만들기 전에 반드시 확인한다. */
 var UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 
@@ -563,7 +716,9 @@ function readJson(response) {
 
 function toLogin() {
   forgetMe();   // P-5a — 로그인 화면으로 가기 전에 나눠 쓰던 `/api/me` 답을 버린다(다음 화면은 새로 묻는다)
-  window.location.assign(LOGIN_PATH);
+  // Q:F-7 B1-1 — 지금 화면이 허용 목록 안이면 꼬리표로 싣는다(첫 화면이면 꼬리표 없이 — 로그인 뒤 기본값과 같다)
+  var here = returnPath(window.location.pathname + window.location.search);
+  window.location.assign(here !== null && here !== HOME_PATH ? LOGIN_PATH + '?to=' + rawEncode(here) : LOGIN_PATH);
 }
 
 /* ─── `GET /api/me` 는 한 화면에 한 번 (Q:F-4 P-5a) ─────────────────────────
@@ -883,6 +1038,18 @@ function openReauthModal(onDone) {
     value = '';
   });
 
+  /* T:F-72 라운드 C — 휴대폰이고 내 열쇠가 있으면 비밀번호 칸 위에 「지문·얼굴로 확인」(passkey.js 가 붙인다 — 없으면 아무 일 없음).
+     성공하면 비밀번호 확인과 같은 뒤처리(창 닫기 · `/api/me` 새로 · 막혔던 요청 다시). 막는 것은 여전히 서버 관문이다. */
+  if (typeof window.qarediPasskeyReauth === 'function') {
+    window.qarediPasskeyReauth(body, form, function () {
+      close();
+      forgetMe();
+      if (typeof onDone === 'function') {
+        onDone();
+      }
+    }, modalMsg);
+  }
+
   dialog.showModal();
   input.focus();
 }
@@ -1121,12 +1288,8 @@ function initLogin(form) {
              서버가 `?to=` 를 **허용 목록**으로 걸러 <body data-to> 에 넣어 준 키 하나를 읽고,
              그 키가 고정 맵에 있을 때만 맵의 값으로 간다. 주소를 data 속성 값으로 만들지
              않으므로, 속성을 개발자도구로 고쳐도 갈 수 있는 곳은 맵의 두 값뿐이다. */
-          var to = document.body ? document.body.getAttribute('data-to') : null;
-          window.location.assign(
-            to !== null && Object.prototype.hasOwnProperty.call(LOGIN_TO_PATHS, to)
-              ? LOGIN_TO_PATHS[to]
-              : HOME_PATH
-          );
+          // Q:F-7 B1-1 — 옛 키 둘 + 허용 목록 경로. 지문·얼굴 로그인(passkey.js)과 같은 한 함수다.
+          window.location.assign(loginDestination());
           return null;
         }
         return readJson(response).then(function (body) {
@@ -1388,6 +1551,8 @@ function openConfirm(opts, onYes) {
   // 처음 초점은 「닫기」 — Enter 를 잘못 눌러도 지워지지 않는다.
   box.cancel.focus();
 }
+/* T:F-72 — 「내 계정」 지문·얼굴 로그인 기기 해제(passkey.js)도 **같은 확인 창**을 쓴다(브라우저 기본 창 0 — DESIGN 2.7) */
+window.qarediOpenConfirm = openConfirm;
 
 function initFiles(csrfToken, uploadLevels, canFetch, myTeamId) {
   var msg = document.getElementById('msg');

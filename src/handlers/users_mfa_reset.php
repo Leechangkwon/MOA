@@ -100,6 +100,9 @@ try {
     // `api_token.revoke allow mfa_reset`). 토큰 발급에는 2단계 인증이 필요했는데(F-66), 그 인증이 초기화되면
     // 그 전에 받은 토큰도 믿을 근거가 없다 (R-91).
     Auth::revokeAllApiTokens($uid, (string) $target['username'], (int) $user['id'], 'mfa_reset');
+    // T:F-72 — 대상의 지문·얼굴 로그인 열쇠도 전부 해제한다(같은 트랜잭션 · 열쇠마다 감사 한 행 `auth.passkey_revoke allow mfa_reset`).
+    //          잃어버린 휴대폰은 관리자에게 2단계 초기화를 요청하면 열쇠가 전부 꺼진다(지시서 1.1 「관리」).
+    Auth::revokeAllPasskeys($uid, (string) $target['username'], (int) $user['id'], 'mfa_reset');
 
     Audit::allow('user.mfa_reset', $auditTarget + [
         'detail' => [

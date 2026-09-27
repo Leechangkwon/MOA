@@ -183,6 +183,26 @@ $mePayload = [
     'can_stop_acting'     => $acting,
 ];
 
+/*
+ * T:F-72 — 지문·얼굴 로그인(패스키) 두 값 (지시서 1.8 「/api/me」). 둘 다 **화면 편의 값**이며 권한이 아니다.
+ *   passkey_available  이 서버에서 쓸 수 있나(APP_URL 이 https 이름·시험용 localhost 이고 표가 있다) — 거짓이면 단추를 숨긴다
+ *   passkeys_active    내 살아 있는 열쇠 수(해제·90일 제외) — 재인증 창의 「지문·얼굴로 확인」 · 권장 카드가 본다
+ * 휴대폰인지는 화면이 정한다(PK-D1 — 서버는 가리지 않는다). 창구는 이 값과 무관하게 요청마다 다시 판정한다.
+ */
+require_once __DIR__ . '/../Passkey.php';
+$mePasskeyOn = Passkey::available();
+$mePayload['passkey_available'] = $mePasskeyOn;
+$mePayload['passkeys_active']   = 0;
+if ($mePasskeyOn) {
+    $mePkRow = Db::instance()->run(
+        'SELECT count(*) AS n FROM passkeys
+          WHERE user_id = :uid AND revoked_at IS NULL
+            AND COALESCE(last_used_at, created_at) >= now() - make_interval(days => CAST(:idle AS integer))',
+        [':uid' => (int) $user['id'], ':idle' => Passkey::IDLE_DAYS]
+    )->fetch();
+    $mePayload['passkeys_active'] = is_array($mePkRow) ? (int) $mePkRow['n'] : 0;
+}
+
 /* 허용 목록 자체는 자격이 있는 사람에게만 — Employee·Guest 응답에는 **키가 아예 없다**. */
 if ($canFetch) {
     $mePayload['fetch_hosts_public'] = $fetchHosts;

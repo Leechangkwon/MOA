@@ -376,7 +376,9 @@ for _mig in "summary|public.audit_logs|2026-09-10_audit_summary.sql" \
             "scope|public.api_tokens|2026-09-22_api_tokens_scope_expiry.sql" \
             "search_tsv|community.comments|2026-10-01_qf2_search.sql" \
             "search_tsv|public.files|2026-10-02_qf2b_files_search.sql" \
-            "created_at|community.page_versions|2026-09-23_community_version_squash.sql"; do
+            "created_at|community.page_versions|2026-09-23_community_version_squash.sql" \
+            "credential_id|public.passkeys|2026-10-06_passkeys.sql" \
+            "challenge_hash|public.passkey_challenges|2026-10-06_passkeys.sql"; do
   _col="${_mig%%|*}"; _rest="${_mig#*|}"; _st="${_rest%%|*}"; _file="${_rest##*|}"
   _sch="${_st%%.*}"; _tbl="${_st#*.}"
   if [ "$_sch" = "community" ] && [ "$HAS_COMMUNITY" = "0" ]; then continue; fi

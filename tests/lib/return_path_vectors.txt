@@ -1,0 +1,77 @@
+# tests/lib/return_path_vectors.txt — Q:F-7 B1-1 「로그인하면 보던 곳으로」 허용 목록의 **공통 벡터** (T:F-72 라운드 A)
+# 서버 `Http::returnPath()` 와 화면 `app.js returnPath()` 가 같은 줄에 같은 답을 내야 한다(tests/passkey.sh 가 둘 다 돌린다).
+# 형식: 입력<TAB>기대 — 기대가 `-` 이면 null(첫 화면). 입력은 returnPath 에 들어가는 글자 그대로
+#       (로그인 화면이면 PHP 가 `?to=` 를 한 번 디코딩한 값 · 미로그인 화면이면 REQUEST_URI 원문).
+# 줄 앞 `#` 은 주석. 제어 문자가 필요한 줄은 %XX 로 적는다(파일에 날 글자를 두지 않는다).
+# ── 허용 (정규형은 키 순서 고정 · 값 rawurlencode)
+/tbox/	/tbox/
+/tbox/settings	/tbox/settings
+/tbox/activity	/tbox/activity
+/tbox/?q=보고서	/tbox/?q=%EB%B3%B4%EA%B3%A0%EC%84%9C
+/tbox/?q=%EB%B3%B4%EA%B3%A0%EC%84%9C	/tbox/?q=%EB%B3%B4%EA%B3%A0%EC%84%9C
+/tbox/?page=2&folder=12&q=report	/tbox/?folder=12&q=report&page=2
+/tbox/?sort=size&dir=desc	/tbox/?sort=size&dir=desc
+/community/	/community/
+/community/?space=7	/community/?space=7
+/community/p/11111111-2222-4333-8444-555555555555	/community/p/11111111-2222-4333-8444-555555555555
+/community/p/11111111-2222-4333-8444-555555555555?edit=1	/community/p/11111111-2222-4333-8444-555555555555?edit=1
+/community/b/3	/community/b/3
+# ── 거부 — 열린 되돌리기 (지시서 완료 기준 ⑤)
+//evil.example	-
+/\evil.example	-
+%2F%2Fevil.example	-
+%252F%252Fevil	-
+https://evil.example	-
+javascript:alert(1)	-
+/tbox/../../etc	-
+/tbox/%2e%2e/admin	-
+/community/p/11111111-2222-4333-8444-555555555555%0d%0aSet-Cookie:x	-
+/community/p/11111111-2222-4333-8444-555555555555?edit=1%0d%0aSet-Cookie:x	-
+/tbox/admin	-
+/tbox/admin/permissions	-
+/tbox/users	-
+/tbox/audit	-
+/tbox/org	-
+/tbox/trash	-
+/tbox/wiki	-
+/tbox/alerts-app	-
+/tbox/reauth	-
+/tbox/api/files	-
+/community/api/pages	-
+/tbox/s/AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA	-
+/tbox/login?to=%2Ftbox%2Fsettings	-
+/tbox/login	-
+/community/p/11111111-2222-4333-8444-555555555555?x=1	-
+/community/p/11111111-2222-4333-8444-555555555555?edit=2	-
+/community/p/11111111-2222-4333-8444-555555555555?edit=1&edit=1	-
+/community/p/11111111-2222-4333-8444-555555555555?edit=1&	-
+/community/p/11111111-2222-4333-8444-555555555555?	-
+/community/p/11111111-2222-4333-8444-55555555555A	-
+/community/p/11111111-2222-4333-8444-555555555555/	-
+/community/b/0	-
+/community/b/12a	-
+/community/?space=0	-
+/community/?space=-1	-
+/tbox/?q=	-
+/tbox/?q=%20%20	-
+/tbox/?q=a@b	-
+/tbox/?q=x%5Cy	-
+/tbox/?q=%C0%AF	-
+/tbox/?q=note:1	-
+/tbox/?sort=owner	-
+/tbox/?folder=1e3	-
+/tbox/settings?x=1	-
+/TBOX/	-
+/tbox	-
+tbox/	-
+/tbox/%73ettings	-
+/%2Ftbox/	-
+@evil.example	-
+/tbox/?q=%00	-
+# ── 길이 — 600바이트 경계(q 200자 규칙과 함께)
+/tbox/?q=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa	/tbox/?q=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+/tbox/?q=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa	-
+/tbox/?q=%EA%B0%80%EA%B0%80%EA%B0%80%EA%B0%80%EA%B0%80%EA%B0%80%EA%B0%80%EA%B0%80%EA%B0%80%EA%B0%80%EA%B0%80%EA%B0%80%EA%B0%80%EA%B0%80%EA%B0%80%EA%B0%80%EA%B0%80%EA%B0%80%EA%B0%80%EA%B0%80%EA%B0%80%EA%B0%80%EA%B0%80%EA%B0%80%EA%B0%80%EA%B0%80%EA%B0%80%EA%B0%80%EA%B0%80%EA%B0%80%EA%B0%80%EA%B0%80%EA%B0%80%EA%B0%80%EA%B0%80%EA%B0%80%EA%B0%80%EA%B0%80%EA%B0%80%EA%B0%80%EA%B0%80%EA%B0%80%EA%B0%80%EA%B0%80%EA%B0%80%EA%B0%80%EA%B0%80%EA%B0%80%EA%B0%80%EA%B0%80%EA%B0%80%EA%B0%80%EA%B0%80%EA%B0%80%EA%B0%80%EA%B0%80%EA%B0%80%EA%B0%80%EA%B0%80%EA%B0%80%EA%B0%80%EA%B0%80%EA%B0%80%EA%B0%80%EA%B0%80	/tbox/?q=%EA%B0%80%EA%B0%80%EA%B0%80%EA%B0%80%EA%B0%80%EA%B0%80%EA%B0%80%EA%B0%80%EA%B0%80%EA%B0%80%EA%B0%80%EA%B0%80%EA%B0%80%EA%B0%80%EA%B0%80%EA%B0%80%EA%B0%80%EA%B0%80%EA%B0%80%EA%B0%80%EA%B0%80%EA%B0%80%EA%B0%80%EA%B0%80%EA%B0%80%EA%B0%80%EA%B0%80%EA%B0%80%EA%B0%80%EA%B0%80%EA%B0%80%EA%B0%80%EA%B0%80%EA%B0%80%EA%B0%80%EA%B0%80%EA%B0%80%EA%B0%80%EA%B0%80%EA%B0%80%EA%B0%80%EA%B0%80%EA%B0%80%EA%B0%80%EA%B0%80%EA%B0%80%EA%B0%80%EA%B0%80%EA%B0%80%EA%B0%80%EA%B0%80%EA%B0%80%EA%B0%80%EA%B0%80%EA%B0%80%EA%B0%80%EA%B0%80%EA%B0%80%EA%B0%80%EA%B0%80%EA%B0%80%EA%B0%80%EA%B0%80%EA%B0%80%EA%B0%80
+/tbox/?q=%EA%B0%80%EA%B0%80%EA%B0%80%EA%B0%80%EA%B0%80%EA%B0%80%EA%B0%80%EA%B0%80%EA%B0%80%EA%B0%80%EA%B0%80%EA%B0%80%EA%B0%80%EA%B0%80%EA%B0%80%EA%B0%80%EA%B0%80%EA%B0%80%EA%B0%80%EA%B0%80%EA%B0%80%EA%B0%80%EA%B0%80%EA%B0%80%EA%B0%80%EA%B0%80%EA%B0%80%EA%B0%80%EA%B0%80%EA%B0%80%EA%B0%80%EA%B0%80%EA%B0%80%EA%B0%80%EA%B0%80%EA%B0%80%EA%B0%80%EA%B0%80%EA%B0%80%EA%B0%80%EA%B0%80%EA%B0%80%EA%B0%80%EA%B0%80%EA%B0%80%EA%B0%80%EA%B0%80%EA%B0%80%EA%B0%80%EA%B0%80%EA%B0%80%EA%B0%80%EA%B0%80%EA%B0%80%EA%B0%80%EA%B0%80%EA%B0%80%EA%B0%80%EA%B0%80%EA%B0%80%EA%B0%80%EA%B0%80%EA%B0%80%EA%B0%80%EA%B0%80%EA%B0%80	-
+/community/p/11111111-2222-4333-8444-555555555555?edit=1&edit=1&edit=1&edit=1&edit=1&edit=1&edit=1&edit=1&edit=1&edit=1&edit=1&edit=1&edit=1&edit=1&edit=1&edit=1&edit=1&edit=1&edit=1&edit=1&edit=1&edit=1&edit=1&edit=1&edit=1&edit=1&edit=1&edit=1&edit=1&edit=1&edit=1&edit=1&edit=1&edit=1&edit=1&edit=1&edit=1&edit=1&edit=1&edit=1&edit=1&edit=1&edit=1&edit=1&edit=1&edit=1&edit=1&edit=1&edit=1&edit=1&edit=1&edit=1&edit=1&edit=1&edit=1&edit=1&edit=1&edit=1&edit=1&edit=1&edit=1&edit=1&edit=1&edit=1&edit=1&edit=1&edit=1&edit=1&edit=1&edit=1&edit=1&edit=1&edit=1&edit=1&edit=1&edit=1&edit=1&edit=1&edit=1&edit=1&edit=1	-
+/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa	-

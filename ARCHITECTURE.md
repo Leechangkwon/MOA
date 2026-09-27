@@ -1679,6 +1679,59 @@ P-5c(쿠키 없는 `/`·308·404 세션 증가 0 · 쿠키 런처 동일 · DB �
   fetch + blob + `a[download]`(F-65 확인 다운로드와 같은 `saveBlob`) · 만드는 동안 단추 잠김 + 막대 아래 한 줄 · 결과 한 줄 `#files-ok`(뺀 개수 포함) ·
   거부 문장은 막대 바로 아래 `#files-bulk-msg`(`.msg`) · 고른 것은 그대로.
 
+### 5.35 휴대폰 지문·얼굴로 로그인 — 패스키(WebAuthn) (PRD T:F-72 · 지시서 `/var/www/qaredi/docs/passkey-mobile-directive.md` · 2026-09-27, 복제본 · 검토 전)
+
+**한 줄**: 휴대폰 안의 이 사이트 전용 열쇠(공개 키 방식)로 로그인한다. 꺼낼 때마다 휴대폰이 지문·얼굴·화면 잠금 PIN 으로 주인을 확인(UV)하므로
+「가진 것 + 본인 확인」 두 요소 — **2단계 충족**(PRD F-52 ⑦). 서버에는 **공개 키만** 있다. 비밀번호·2단계 코드 길은 그대로 남는다.
+
+| 창구(`/tbox` 아래) | 정책 · 겹 | 하는 일 |
+|---|---|---|
+| `POST /api/login/passkey/options` | public · JSON `{}` 만 · nginx `tbox_login` | 로그인 챌린지(32바이트) + 로그인 전 쿠키 `__Host-tbox_pk`(64 hex · HttpOnly · Secure · **SameSite=Strict** · Max-Age 600 · 있으면 재사용). `allowCredentials: []`(로그인 전 사람에게 열쇠 목록 0). 옵션마다 만료 정리 · 살아 있는 로그인 챌린지 5,000 넘으면 503. 감사 없음 |
+| `POST /api/login/passkey` | public · JSON 만 · nginx `tbox_login` | `Auth::loginWithPasskey` — 아래 순서. 응답은 `/api/login` 과 같은 모양(`ok`·`next`·`mfa_required`·`mfa_recommended`) |
+| `GET /api/me/passkeys` | authenticated | 내 살아 있는 열쇠(해제 제외) — 번호·이름·기기 요약·등록일·마지막 사용·`state`(active·stale)·`synced`. 열쇠 id·공개 키 0 |
+| `POST /api/me/passkeys/options` | authenticated + CSRF · nginx `tbox_login` | **비밀번호(+켠 계정은 코드)를 먼저 확인**(PK-D3 · `verifyCurrentPassword`·`verifyOtpOnce` · 실패는 `countFailureAndRevoke`) → 등록 옵션(ES256 · platform · resident · UV required · attestation none · `excludeCredentials` = 내 살아 있는 열쇠 · `user.id` = 사람마다 고정 무작위 32바이트) |
+| `POST /api/me/passkeys` | authenticated + CSRF | 등록 검증(지시서 1.4 「등록」 1~7) → 한 트랜잭션(사용자 행 `FOR UPDATE` → 살아 있는 < 5 → INSERT → 감사) · 201 |
+| `DELETE /api/me/passkeys/{num}` | authenticated + CSRF | 내 것만 해제(`revoked_at`) — 남의 번호·없는 번호는 같은 404 |
+| `POST /api/me/reauth/passkey/options` · `POST /api/me/reauth/passkey` | authenticated + CSRF · nginx `tbox_login` | 재인증(라운드 C) — `allowCredentials` = 지금 사람의 살아 있는 열쇠 · 챌린지는 이 세션+이 사람 · 성공이면 `SQL_SET_REAUTH`(지금 세션만, 15분) |
+| `GET /app.webmanifest` | public · 데이터 0 | 홈 화면 앱 「Qaredi」 — 시작 `/community/` · 범위 `/` · standalone · PNG 192·512 · **서비스 워커 없음 · 바로가기 없음**(PK-D5) |
+
+**설정(`Passkey::config()`, 부팅 때 한 번)** — RP ID·origin 은 **`.env` `APP_URL` 에서만**(요청 머리 Host·Origin·Referer·X-Forwarded-* 0 — 공유 링크와 같은 한 값).
+`https://<호스트 이름>`(경로·쿼리·사용자정보 없음 · 포트 없거나 443) 또는 시험용 `http://localhost:<포트>` 만 켠다. IP·그 밖은 **꺼짐**(창구 503 · `/api/me`
+`passkey_available:false` → 단추 숨김). 표가 없어도(마이그레이션 전) 꺼짐. RP ID 는 호스트 그대로 — `mso.so` 로 넓히지 않는다(다른 `*.mso.so` 는 남의 사이트).
+
+**로그인 검증 순서(`Auth::loginWithPasskey`)** — ① 모양(허용 키만 · 엄격 base64url · 상한 clientDataJSON 2KB · authData 4KB · 서명 72 · rawId 16~1023 · `id = rawId`) ·
+로그인 전 쿠키 → ② clientDataJSON `type = webauthn.get` → 챌린지 **한 문장 소비**(`purpose login` · 쿠키 sha256 일치 · 미사용 · 만료 전) → `origin` 정확 일치 · `crossOrigin` 거짓 →
+③ 열쇠 찾기(`credential_id` 바이트 → `passkeys` → 사용자 열은 **`SQL_LOAD_USER` 와 같은 열 목록**(F-59 규칙) — 없으면 `passkey_unknown`) →
+④ `userHandle` 이 있고 행의 `user_handle` 과 `hash_equals` → ⑤ authData 정확히 37바이트(ED 면 끝까지) · rpIdHash = sha256(RP ID) · UP · UV · AT 없음 · BE 가 등록 때와 같음 →
+⑥ `openssl_verify(authData ‖ sha256(clientDataJSON)) === 1` **만** → ⑦ 서명 횟수: 둘 다 0 이면 통과 · 아니면 늘어야(역행 `passkey_counter` + AL-23) →
+⑧ 여기까지 = 열쇠 주인. 해제·90일 → 401 「꺼진 열쇠」 문장 + `passkey_off`(유일한 다른 문구) · 잠금 423 · 비활성 · Guest 만료 · `must_change_password` → `forced_step`(R-39 우회 금지) →
+⑨ **`Auth::issueSession`**(비밀번호 로그인 8)을 뽑아 둔 한 함수 — 세션 발급 두 벌 0) + 같은 트랜잭션에서 서명 횟수·마지막 사용·BS 갱신 · 로그인 전 쿠키 지움.
+실패는 전부 401 한 문구(`MSG_LOGIN_FAILED` — 「없는 열쇠」와 「서명 틀림」 본문이 바이트까지 같다). ⑤~⑦ 실패는 그 계정 실패 1회(`countFailure` — **잠긴 동안은 세지 않는다**, 비밀번호 길과 같다).
+모양 거부(①)는 400 이고 세지 않는다(잘못 만든 화면이 계정을 잠그지 않게).
+**서명 횟수 갱신은 조건부**(`SQL_TOUCH_PASSKEY … AND sign_count = <③에서 읽은 값>` — 독립 검토 RV-PK-1, 2026-09-27): 같은 저장값을 읽은 두 요청 가운데 뒤쪽은 0 행 → 로그인은 세션 발급 트랜잭션을 되돌리고 401 한 문구 · 감사 `passkey_counter`(실패 1회) · 재인증은 `passkey_invalid`(창 안 열림).
+
+**서버 검증은 직접 구현** — `src/Passkey.php`(★ 보안 핵심 · 외부 코드 0 · `openssl`·`hash` 만): CBOR 부분집합 해석기(입력 ≤ 4KB · 주 형식 0~5 와 7 의 false/true/null ·
+무한 길이·태그·실수·8바이트 길이 거부 · 깊이 ≤ 4 · 맵 키 정수·글자 · 중복 키 거부 · UTF-8 검사 · 남는 바이트 0 · 실패는 `PasskeyError` 하나) · authData 자르기 ·
+COSE EC2(kty 2 · alg -7 · crv 1 · x·y 32) → `0x04‖x‖y` → `WebPush::publicKeyFromRaw`(곡선 위 점 — **고치지 않고 부른다**) → SPKI DER 91바이트 저장 ·
+증명은 `fmt none` + 빈 `attStmt` 만(검사 흉내 0). 교차 확인은 파이썬 `cryptography` 가 만든 표본 + 크로미움 가상 인증기 표본(PK-T1).
+
+**챌린지 표 `passkey_challenges`** — 원문 저장 0(sha256 만) · 한 문장 소비 `UPDATE … SET used_at = now() WHERE challenge_hash = :h AND purpose = :p AND used_at IS NULL AND expires_at > now() AND <묶음> RETURNING` ·
+수명 로그인 5분(자동 완성은 화면이 4분마다 새로 받음) · 등록·재인증 2분 · 묶음: 로그인 = 로그인 전 쿠키 sha256 · 등록·재인증 = `sessions.id` + 사람 ·
+옵션 창구마다 `expires_at < now() - 10분` 정리.
+
+**자동 해제(`Auth::revokeAllPasskeys`)** — S 의 `revokeAllApiTokens` 를 부르는 세 곳 바로 옆(본인 비밀번호 변경 `changePassword` · 임시 비밀번호 재발급 · 2단계 초기화) +
+`users_update.php` 의 세션 끊는 조건(역할 변경 · 비활성화) 안 — **같은 트랜잭션**, 열쇠마다 `auth.passkey_revoke allow <사유>`. 팀 변경·2단계 끄기는 해제하지 않는다.
+90일 = 마지막 사용(없으면 등록일) 기준 찾는 SQL 조건(배치 없음 — 목록에 「90일 안 써서 꺼짐」).
+
+**화면(`public/assets/passkey.js` — 로그인·내 계정·재인증·권장 카드 공용)** — 휴대폰 판정(`userAgentData.mobile` · UA · 터치 맥) + `isUserVerifyingPlatformAuthenticatorAvailable()`
+둘 다 참일 때만 단추(PK-D1 — **화면 편의, 권한 아님**, 서버로 보내지 않는다). 「이 기기 표시」 localStorage `qaredi.passkey-here = 1`(계정 정보 0 · 서버 판단에 안 씀):
+있으면 로그인 화면이 열리자마자 지문 창(ⓒ) + 검정 「지문·얼굴로 로그인」 + 「비밀번호로 로그인」 · 없으면 폼 그대로 + 테두리 단추 + 아이디 칸 `autocomplete="username webauthn"`
+자동 완성(ⓑ — `AbortController` 로 ⓒ 가 끝난 뒤). ⓒ 를 하지 않는 때: 방금 로그아웃(`sessionStorage` 표식) · 이 탭에서 한 번 취소 · 연달아 두 번 취소(표시 꺼짐 — 0.3초 안의 거절은
+브라우저가 누름 없는 호출을 막은 것으로 보고 세지 않음) · 「꺼진 열쇠」 답(표시 꺼짐). 로그인 뒤 이동은 비밀번호 로그인과 **한 함수**(`app.js` `window.qarediLoginGo` — Q:F-7 B1-1).
+
+**nginx** — `tbox_login`(30r/m · burst 10)을 로그인 둘 · 등록 옵션 · 재인증 둘 = 다섯 창구 × 끝 슬래시 변형 = 10 자리, `tbox-v2.conf`·`tbox-v2-local.conf` 둘 다(8장).
+**DB** — 표 둘(`db/migrations/2026-10-06_passkeys.sql` · 10장). **감사** — 7.4 문장 · 7.5 새 키 다섯. **경보** — AL-23(11.4). **위험** — SECURITY R-109.
+
 ## 6. 저장 위치 — 파일 정보 vs 실제 파일
 
 ### 6.1 두 곳에 나눠 저장하는 이유
@@ -2068,6 +2121,33 @@ GRANT  USAGE, SELECT  ON SEQUENCE audit_logs_id_seq TO tbox_app;
 | `act.stop|allow` | `{actor} 이(가) 역할로 보기를 끝내고 원래 역할로 돌아왔습니다` | 26단계 `DELETE /api/me/act`. 끄기 **전** 상태에서 기록해 `detail.acting_as` 가 함께 남는다 |
 | `act.expire|allow` | `{actor} 의 역할로 보기가 자동으로 풀렸습니다 (사유는 상세 기록)` | 26단계 `Auth::currentUser()`. `detail.reason` = `idle`(활동 없는 30분) · `role_lost`(강등). 거부가 아니라 **서버가 판정한 사실**이라 allow |
 | `auth.reauth|deny|bad_credentials` | `{actor} 이(가) 관리 기능을 쓰려고 비밀번호를 다시 확인했지만 비밀번호가 틀렸습니다` | 16-1 (실패는 로그인 뒤 창구와 같은 카운터 — R-48) |
+| `auth.login|allow|passkey` | `{target} 이(가) 지문·얼굴로 로그인했습니다` | F-72 `POST /api/login/passkey` (5.35). `detail.credential_no` |
+| `auth.login|deny|passkey_unknown` | `등록되지 않은 열쇠로 지문·얼굴 로그인을 시도했습니다 (대상 {target})` | F-72. target 「(알 수 없는 열쇠)」 |
+| `auth.login|deny|passkey_invalid` | `{target} 계정의 열쇠로 로그인을 시도했지만 서명·주소·확인 표시가 맞지 않았습니다` | F-72. 열쇠 주인이 정해지기 전(모양·origin)이면 target 「(알 수 없는 열쇠)」 · 뒤(⑤⑥)면 실패 1회 |
+| `auth.login|deny|passkey_challenge` | `지문·얼굴 로그인의 확인 문제가 없거나 시간이 지났거나 이미 쓰였습니다 (대상 {target})` | F-72. 로그인 전 쿠키 없음·다른 값·재사용·만료 |
+| `auth.login|deny|passkey_counter` | `{target} 계정의 열쇠 서명 횟수가 뒤로 갔습니다 — 열쇠 복제가 의심됩니다` | F-72 · **AL-23** · 실패 1회 |
+| `auth.login|deny|passkey_revoked` | `{target} 계정의 해제되었거나 90일 동안 쓰지 않아 꺼진 열쇠로 로그인을 시도했습니다` | F-72. 응답만 「꺼진 열쇠」 문장(서명이 맞은 사람에게만) |
+| `auth.login|deny|forced_step` | `{target} 계정은 비밀번호 변경이 먼저라 지문·얼굴 로그인을 받지 않았습니다` | F-72. `must_change_password`(R-39 우회 금지) |
+| `auth.reauth|allow|passkey` | `{actor} 이(가) 관리 기능을 쓰려고 지문·얼굴로 다시 확인했습니다` | F-72 라운드 C `POST /api/me/reauth/passkey` |
+| `auth.reauth|deny|passkey_invalid` | `{actor} 이(가) 관리 기능을 쓰려고 지문·얼굴로 다시 확인했지만 열쇠·서명·주소가 맞지 않았습니다` | F-72 라운드 C. 실패는 `countFailureAndRevoke`(R-48) · AL-2 로그인 뒤 목록 |
+| `auth.reauth|deny|passkey_challenge` | `{actor} 이(가) 지문·얼굴로 다시 확인하려 했지만 확인 문제가 없거나 시간이 지났거나 이미 쓰였습니다` | F-72 라운드 C. 실패는 `countFailureAndRevoke`(R-48) · AL-2 로그인 뒤 목록 |
+| `auth.reauth|deny|passkey_counter` | `{actor} 이(가) 지문·얼굴로 다시 확인했지만 열쇠 서명 횟수가 뒤로 갔습니다 — 열쇠 복제가 의심됩니다` | F-72 라운드 C. 실패는 `countFailureAndRevoke`(R-48) · AL-2 로그인 뒤 목록 |
+| `auth.passkey_register|allow` | `{actor} 이(가) 지문·얼굴로 로그인할 기기를 등록했습니다 (기기 이름은 상세 기록)` | F-72 `POST /api/me/passkeys` · **AL-23** · `detail` credential_no·credential_label·device_hint·backed_up |
+| `auth.passkey_register|deny|bad_request` | `{actor} 이(가) 지문·얼굴 로그인 기기를 등록하려 했지만 요청 모양(이름·칸)이 맞지 않았습니다` | F-72 `POST /api/me/passkeys/options`·`POST /api/me/passkeys` |
+| `auth.passkey_register|deny|bad_credentials` | `{actor} 이(가) 지문·얼굴 로그인 기기를 등록하려 했지만 현재 비밀번호가 틀렸습니다` | F-72 `POST /api/me/passkeys/options`·`POST /api/me/passkeys` · AL-2 로그인 뒤 목록 |
+| `auth.passkey_register|deny|bad_code` | `{actor} 이(가) 지문·얼굴 로그인 기기를 등록하려 했지만 2단계 인증 코드가 틀렸습니다` | F-72 `POST /api/me/passkeys/options`·`POST /api/me/passkeys` · AL-2 로그인 뒤 목록 |
+| `auth.passkey_register|deny|code_reused` | `{actor} 이(가) 지문·얼굴 로그인 기기를 등록하려 했지만 이미 한 번 쓴 2단계 인증 코드를 다시 냈습니다` | F-72 `POST /api/me/passkeys/options`·`POST /api/me/passkeys` · AL-2 로그인 뒤 목록 |
+| `auth.passkey_register|deny|limit_exceeded` | `{actor} 이(가) 지문·얼굴 로그인 기기를 여섯 번째로 등록하려 해서 거부했습니다 (한 사람 5개까지)` | F-72 `POST /api/me/passkeys/options`·`POST /api/me/passkeys` |
+| `auth.passkey_register|deny|passkey_invalid` | `{actor} 이(가) 지문·얼굴 로그인 기기를 등록하려 했지만 열쇠 정보·주소·확인 표시가 맞지 않았습니다` | F-72 `POST /api/me/passkeys/options`·`POST /api/me/passkeys` |
+| `auth.passkey_register|deny|passkey_challenge` | `{actor} 이(가) 지문·얼굴 로그인 기기를 등록하려 했지만 확인 문제가 없거나 시간이 지났거나 이미 쓰였습니다` | F-72 `POST /api/me/passkeys/options`·`POST /api/me/passkeys` |
+| `auth.passkey_register|deny|passkey_duplicate` | `{actor} 이(가) 이미 등록된 열쇠를 다시 등록하려 해서 거부했습니다` | F-72 `POST /api/me/passkeys/options`·`POST /api/me/passkeys` |
+| `auth.passkey_revoke|allow|self` | `{actor} 이(가) 자기 계정의 지문·얼굴 로그인 기기 하나를 해제했습니다 (기기 이름은 상세 기록)` | F-72. 열쇠 하나에 한 행 · `detail` credential_no·credential_label |
+| `auth.passkey_revoke|allow|password_change` | `{actor} 이(가) 비밀번호를 바꿔 계정 「{target}」 의 지문·얼굴 로그인 기기를 해제했습니다` | F-72. 열쇠 하나에 한 행 · `detail` credential_no·credential_label |
+| `auth.passkey_revoke|allow|password_reset` | `{actor} 이(가) 계정 「{target}」 의 임시 비밀번호를 재발급해 그 계정의 지문·얼굴 로그인 기기를 해제했습니다` | F-72. 열쇠 하나에 한 행 · `detail` credential_no·credential_label |
+| `auth.passkey_revoke|allow|mfa_reset` | `{actor} 이(가) 계정 「{target}」 의 2단계 인증을 초기화해 그 계정의 지문·얼굴 로그인 기기를 해제했습니다` | F-72. 열쇠 하나에 한 행 · `detail` credential_no·credential_label |
+| `auth.passkey_revoke|allow|role_change` | `{actor} 이(가) 계정 「{target}」 의 역할을 바꿔 그 계정의 지문·얼굴 로그인 기기를 해제했습니다` | F-72. 열쇠 하나에 한 행 · `detail` credential_no·credential_label |
+| `auth.passkey_revoke|allow|deactivate` | `{actor} 이(가) 계정 「{target}」 을(를) 비활성화해 그 계정의 지문·얼굴 로그인 기기를 해제했습니다` | F-72. 열쇠 하나에 한 행 · `detail` credential_no·credential_label |
+| `auth.passkey_revoke|deny|not_found` | `{actor} 이(가) 없는 지문·얼굴 로그인 기기를 해제하려 했습니다` | F-72. 남의 번호도 같은 행·같은 404 |
 | `auth.password_change|deny|same_password` | `{actor} 이(가) 비밀번호를 현재와 같은 값으로 바꾸려 해서 거부했습니다` | 11단계 |
 | `user.password_reset|allow` | `{actor} 이(가) 계정 「{target}」 의 임시 비밀번호를 재발급하고 모든 세션을 끊었습니다 (사유는 상세 기록)` | 11단계 users (Admin) |
 | `user.password_reset|deny|self_change` | `{actor} 이(가) 자기 자신의 임시 비밀번호를 재발급하려 해서 거부했습니다` | 11단계 |
@@ -2307,7 +2387,14 @@ GRANT  USAGE, SELECT  ON SEQUENCE audit_logs_id_seq TO tbox_app;
 | `host` | 어디로 | 푸시 서버 호스트(`fcm.googleapis.com`·`web.push.apple.com`·`updates.push.services.mozilla.com`) — **받기 주소(endpoint) 전체가 아니다**(주소에는 받기 토큰이 있다) | 핸들러 · 배치 | `alert.push_subscribe`·`alert.push_unsubscribe`·`alert.push_revoke`·`alert.push_send` (F-70) |
 | `status` | 어떻게 | 푸시 서버 응답 상태 코드(정수) · 응답 전에 끊겼으면 null. 응답 본문·머리는 남기지 않는다 | 배치 | `alert.push_send` (F-70) |
 | `kind` | 무엇을 | 알림 종류 `alert`·`digest`·`test`·`more`(「외 n건」) | 배치 | `alert.push_send` (F-70) |
-| `device_hint` | 무엇으로 | 기기 요약 고정 글자(「Android Chrome」 등) — UA 원문 아님 | 핸들러 | `alert.push_subscribe`·`alert.push_unsubscribe` (F-70) |
+| `device_hint` | 무엇으로 | 기기 요약 고정 글자(「Android Chrome」 등) — UA 원문 아님 | 핸들러 | `alert.push_subscribe`·`alert.push_unsubscribe` (F-70) · `auth.passkey_register` (F-72) |
+| `credential_no` | 무엇을 | 지문·얼굴 로그인 열쇠의 **행 번호**(`passkeys.id`) — 열쇠 id 원문·공개 키가 아니다 | Auth · 핸들러 | `auth.login`(passkey*)·`auth.reauth`(passkey*)·`auth.passkey_register`·`auth.passkey_revoke` (F-72) |
+| `credential_label` | 무엇을 | 사람이 붙인 기기 이름(1~40자) | 핸들러 · Auth | `auth.passkey_register`·`auth.passkey_revoke` (F-72) |
+| `backed_up` | 어떻게 | 등록 순간 「계정에 동기화됨」(BS 플래그, true/false) | 핸들러 | `auth.passkey_register` (F-72) |
+| `credentials_revoked` | 얼마나 | 한 번에 해제한 열쇠 수(정수) | 핸들러 | 자동 해제 요약 (F-72) |
+
+> ★ F-72 새 키 이름에 `passkey` 를 쓰지 않는다 — `Audit::FORBIDDEN_DETAIL_KEYS` 의 `pass` 부분 일치로 값이 지워진다(`token`·`session`·`hash` 도 같음).
+
 | `revoked_reason` | 왜 | 받기 해지 사유 `user`·`not_admin`·`gone` | 핸들러 · 배치 | `alert.push_unsubscribe`·`alert.push_revoke` (F-70) |
 | `subscriptions` · `retry_after` | 얼마나 | 시험 알림을 받을 기기 수 · 다시 요청할 수 있을 때까지 초 | 핸들러 | `alert.push_test` (F-70) |
 | `step` | 어디서 | 배치가 **멈춘 단계** 이름 (`pg_dump`·`pg_restore`·`files_extract`·`consistency_check`…). 경로가 아니라 단계 이름이며 인자·비밀값은 넣지 않는다 | 배치 | `backup.run error`·`backup.restore error` (9단계 · 16-2) |
@@ -2556,6 +2643,7 @@ php_admin_value[disable_functions]   = fsockopen,pfsockopen,stream_socket_client
 | `tbox_perm` | 권한 매트릭스 편집 핸들러 **하나**(`admin_permissions_update.php`, 17단계 F-25) | `permissions`: SELECT/UPDATE 만 · 다른 표 0 · INSERT/DELETE 없음(16행 고정). `.env` `DB_PERM_USER/PASS`, `Db::perm()` 지연 연결 · **비영속**(앱 연결 `tbox_app` 만 워커마다 재사용 — 5.31) |
 | `tbox_app` (즐겨찾기 — 5.33) | 같은 앱 계정 | `file_favorites` · `folder_favorites`: SELECT · INSERT(사람·대상 칸만) · DELETE(빼기) — UPDATE 없음. 커뮤니티 `page_favorites`(+ position UPDATE) · `page_recent`(+ last_viewed_at UPDATE · DELETE — 기록이 아니라 화면 편의)는 커뮤니티 ARCH 21.24 |
 | `tbox_push` | 휴대폰 경보 **보내는 배치** 하나(`scripts/alert_push.php`, OS 계정 tbox-push — F-70 · 5.32) | `alert_push_subscriptions`: SELECT · UPDATE(last_ok_at·fail_count·fail_since·revoked_at·revoked_reason) · `alert_push_outbox`: SELECT · UPDATE(sent_at) · `users`: **(id, role, is_active) 세 칸만** SELECT · `audit_logs`: INSERT 만 · 그 밖 0. 마이그레이션이 NOLOGIN 으로 만들고 로그인·비밀번호(`/etc/tbox-v2/push.pgpass`)는 사용자 sudo 반영 스크립트가 표준입력으로 정한다 · 문장 15s · 유휴 트랜잭션 60s |
+| `tbox_app` (지문·얼굴 로그인 — 5.35, F-72) | 같은 앱 계정 | `passkeys`: SELECT·INSERT·UPDATE — **DELETE 없음**(해제는 `revoked_at`) · `passkey_challenges`: SELECT·INSERT·UPDATE·DELETE(일회용 값 — 만료 정리) · 두 시퀀스 USAGE·SELECT. `tbox_backup` 은 둘 다 SELECT(공개 키라 비밀 아님) · `tbox_perm`·`tbox_push` 0. `db/migrations/2026-10-06_passkeys.sql` · `db/schema.sql` · `db/grants.sql` · `deploy/install.sh` 4-4-1 확인 목록 |
 
 > 파일 삭제가 논리 삭제(UPDATE)이므로 앱 계정에 `DELETE` 권한 자체가 필요 없다. 30일 실제 정리는 `tbox_owner` 권한의 배치 스크립트가 수행한다.
 > (2026-09-24 코드 확인: t-box 휴지통 정리 `purge_trash.php` 는 **`tbox_app`** 으로 붙어 `files.purged_at` 만 UPDATE 하고 바이트는 파일 시스템에서 지운다 — 행은 남는다.
@@ -2693,6 +2781,8 @@ php_admin_value[disable_functions]   = fsockopen,pfsockopen,stream_socket_client
 `/var/log/tbox-push/error.log`(push.conf `ERROR_LOG`, tbox-push 0640 — cron 은 출력을 버린다)에 남는다.
 판정은 이 배치(alerts.php, root)가 한다 — 보내는 계정은 alerts.log 를 읽기만 한다(구현 기록 6). 받기 표가 없거나 읽을 수 없으면 AL-22 만 건너뛴다.
 auth.log 오프셋 읽기는 F-70 부터 `scripts/lib/log_tail.php` 한 벌이다(보내는 배치가 alerts.log 에 같은 함수를 쓴다 — 동작은 전과 같다).
+
+**AL-23 (F-72 2026-09-27 — 5.35)**: 5분 창에 `auth.passkey_register allow` 1건 이상 → 즉시(`AL-23|등록한 사람`) · 또는 `auth.login deny passkey_counter` 1건 → `AL-23|그 계정`. evidence 에 종류(register·counter)·건수·계정·기기 요약·열쇠 행 번호·기기 이름(열쇠 id 원문·공개 키 0 — 감사에 애초에 없다). AL-20 과 **같은 형태** — 새 로그인 수단은 세션이 끊겨도 남는다. origin 은 F-69 판정(`Origin::ofGroup` — 사람 → 휴대폰 즉시 · `claude_`+검토 UA → 18시 요약). **AL-2 로그인 뒤 실패 목록**에 `auth.reauth deny passkey_invalid·passkey_challenge·passkey_counter` 와 `auth.passkey_register deny bad_credentials·bad_code·code_reused` 를 더했다 (`auth.login deny passkey_*` 는 `action = 'auth.login'` IP 집계에 저절로 든다).
 
 **AL-18 (F-43 2026-09-15)**: 5분 창에 `fetch_host.change allow` 1건 이상 → 즉시(`AL-18|행위자`, evidence 에 바뀐 호스트 이름·사유). AL-13 과 **같은 형태**이고 임계값이 없는 이유도 같다 — 허용 호스트가 바뀌면 그 순간부터 서버가 나갈 수 있는 곳이 달라진다(S-05).
 

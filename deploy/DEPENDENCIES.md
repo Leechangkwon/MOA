@@ -58,6 +58,8 @@
 | 공급망 공격 표면을 0 으로 유지 | PRD S-10-C |
 | 업데이트 추적 대상이 OS 패키지 4개뿐 | 운영 부담 최소화 |
 
+> 지문·얼굴 로그인(T:F-72 패스키 · WebAuthn, 2026-09-27)도 **외부 코드 0** 을 지킨다 — 서버 검증은 `src/Passkey.php` 가 PHP 기본 `openssl`·`hash` 로 직접 하고(CBOR 부분집합 · authData · COSE → 공개 키 · `openssl_verify`), 브라우저 쪽은 표준 `navigator.credentials` 만 부른다(`public/assets/passkey.js`). WebAuthn 라이브러리(Composer)·`gmp`·`cbor` 확장을 넣지 않았다(지시서 1.5).
+
 ### 4.1 브라우저에서 도는 외부 코드 — ProseMirror (커뮤니티 3단계, 2026-09-22)
 
 **의존성 0 원칙의 첫 예외**다 (사용자 결정 Q-6 · D-1, 커뮤니티 PRD 12장). 노션식 블록 에디터를

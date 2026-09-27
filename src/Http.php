@@ -62,6 +62,20 @@ final class Http
     public const MSG_MFA_REQUIRED = '2단계 인증 코드가 필요합니다';
 
     /**
+     * T:F-72 지문·얼굴 로그인(패스키) 문구 (지시서 1.9).
+     *   MSG_PASSKEY_REVOKED     — 실패 응답 가운데 **유일하게** 문장이 다른 것. 서명이 맞은 사람(그 휴대폰을 쥔 사람)에게만 간다
+     *   MSG_PASSKEY_UNAVAILABLE — 설정(APP_URL)이 https 이름·시험용 localhost 가 아니거나 표가 없을 때(503 — 닫힌 쪽)
+     *   MSG_PASSKEY_BUSY        — 살아 있는 로그인 챌린지가 상한(5,000)을 넘었을 때(503)
+     *   MSG_PASSKEY_LIMIT       — 한 사람 5개 · MSG_PASSKEY_DUPLICATE — 같은 휴대폰 두 번 · MSG_PASSKEY_REGISTER_FAILED — 그 밖의 등록 실패
+     */
+    public const MSG_PASSKEY_REVOKED         = '이 휴대폰의 지문·얼굴 로그인은 꺼져 있습니다(해제했거나 90일 동안 쓰지 않음). 비밀번호로 로그인한 뒤 「내 계정」에서 다시 등록하세요.';
+    public const MSG_PASSKEY_UNAVAILABLE     = '지금은 지문·얼굴 로그인을 쓸 수 없습니다. 비밀번호로 로그인하세요.';
+    public const MSG_PASSKEY_BUSY            = '잠시 뒤 다시 시도하세요';
+    public const MSG_PASSKEY_LIMIT           = '지문·얼굴 로그인 기기는 한 사람 5개까지입니다 — 먼저 하나를 해제하세요';
+    public const MSG_PASSKEY_DUPLICATE       = '이 휴대폰은 이미 등록되어 있습니다';
+    public const MSG_PASSKEY_REGISTER_FAILED = '이 휴대폰을 등록하지 못했습니다. 창을 닫고 처음부터 다시 해 보세요';
+
+    /**
      * 최초 로그인 강제 절차의 관문 문구 (11단계, PRD F-16, ARCH 4.0 「최초 로그인 강제 절차」).
      *
      * 이 둘만 예외적으로 "무엇이 막았는지" 를 알려 준다 — 막힌 사람이 **본인**이고,
@@ -490,7 +504,16 @@ final class Http
      */
     public static function redirect(string $path): void
     {
-        if (preg_match('#^/[a-z0-9/_.-]*(\?to=[a-z]{1,16})?$#', $path) !== 1 || strpos($path, '//') !== false) {
+        /* Q:F-7 B1-1 (T:F-72 라운드 A) — 로그인 화면으로 보낼 때 「보던 곳」을 꼬리표로 싣는다. 넓힌 모양은 **하나**다:
+           `?to=` 뒤에 `returnPath()` 가 만든 값을 rawurlencode 한 글자(영숫자·`%`·`-_.~` — `&`·`=`·`/`·`?`·`:` 는 %XX 로만)이고,
+           그 값은 아래 `redirect` 안에서 **한 번 더** 디코딩해 `returnPath()` 에 넣었을 때 **같은 값**이 나와야 한다(허용 목록 밖은 예외).
+           옛 모양(`?to=` + 영문 소문자 1~16 — 재인증 키·로그인 키)은 그대로다. */
+        $ok = preg_match('#^/[a-z0-9/_.-]*(\?to=[a-z]{1,16})?$#', $path) === 1;
+        if (!$ok && preg_match('#^(/[a-z0-9/_.-]*)\?to=([A-Za-z0-9%._~-]{1,1800})$#', $path, $m) === 1) {
+            $inner = rawurldecode($m[2]);
+            $ok = self::returnPath($inner) === $inner;
+        }
+        if (!$ok || strpos($path, '//') !== false) {
             throw new RuntimeException('허용되지 않는 리다이렉트 경로입니다');
         }
         if (!headers_sent()) {
@@ -499,6 +522,123 @@ final class Http
             header('Cache-Control: no-store');
         }
         exit;
+    }
+
+    /**
+     * Q:F-7 B1-1 — 이미 로그인한 사람을 `returnPath()` 가 만든 「보던 곳」으로 302 (login_page.php 한 곳이 부른다).
+     * 값을 **다시** `returnPath()` 에 넣어 같은 값이 나올 때만 보낸다 — 허용 목록 밖이면 예외(부르는 쪽이 이미 거른 값이다).
+     */
+    public static function redirectReturn(string $canonical): void
+    {
+        if ($canonical === '' || self::returnPath($canonical) !== $canonical || strlen($canonical) > 600) {
+            throw new RuntimeException('허용되지 않는 리다이렉트 경로입니다');
+        }
+        if (!headers_sent()) {
+            http_response_code(302);
+            header('Location: ' . $canonical);
+            header('Cache-Control: no-store');
+        }
+        exit;
+    }
+
+    /** returnPath 의 길이 상한(바이트) — 디코딩 전 값 */
+    public const RETURN_PATH_MAX = 600;
+
+    /**
+     * Q:F-7 B1-1 — 「로그인하면 보던 곳으로」의 **허용 목록**(`docs/qf7-small-conveniences-directive.md` 라운드 C 설계 1·2,
+     * T:F-72 라운드 A). 화면 짝은 `public/assets/app.js` 의 같은 이름 함수이고, 두 쪽은 **같은 벡터 목록**
+     * (`tests/lib/return_path_vectors.txt`)으로 시험한다 — 한쪽만 바뀌면 시험이 알린다.
+     *
+     * 받는 값: 주소 모양 문자열(경로 + 선택 쿼리, 쿼리 값은 퍼센트 인코딩 가능). 로그인 화면의 `$_GET['to']`(PHP 가 이미 한 번
+     * 디코딩한 값)와 미로그인 화면 요청의 `REQUEST_URI` 원문이 들어온다.
+     * 돌려주는 값: 허용 목록 안이면 **정규형**(경로 + 고정 순서의 허용 쿼리, 값은 rawurlencode) — 그 밖은 null(부르는 쪽이 첫 화면으로).
+     *
+     * 규칙(지시서 그대로)
+     *   · 길이 ≤ 600 · 퍼센트 디코딩은 **한 번만**(쿼리 값을 풀 때 한 번 — 경로에는 `%` 자체가 허용되지 않는다)
+     *   · 한 번 디코딩한 전체에 제어 문자(\x00-\x1f\x7f)·`\`·`//`·`..`·`@`·스킴(`이름:`)이 있으면 null · UTF-8 이 아니면 null
+     *   · 경로는 아래 정규식 **정확 일치**만(startsWith 없음):
+     *       /tbox/                    쿼리 folder(정수) · q(1~200자) · sort(name|created_at|size) · dir(asc|desc) · page(정수)
+     *       /tbox/settings · /tbox/activity             쿼리 없음
+     *       /community/               쿼리 space(정수 — 편집기 currentSpaceId 와 같은 모양)
+     *       /community/p/<uuid 소문자>                   쿼리 edit=1 만
+     *       /community/b/<정수>                          쿼리 없음
+     *   · 관리 화면(/tbox/admin·users·audit·org·trash·wiki…)·로그인·로그아웃·재인증·/tbox/s/…(공유 받기)·…/api/… 는 목록에 **없다**
+     *   · 허용 밖 쿼리 키·같은 키 두 번·빈 값·`&` 로 빈 조각 → null (조용히 떼지 않는다 — 모양이 어긋난 주소는 첫 화면)
+     * 정규형은 영숫자·`/?&=%-_.~` 만 담는다(쿼리 값은 rawurlencode — 대문자 16진) — HTML 속성·Location 에 그대로 넣어도 되는 글자다.
+     */
+    public static function returnPath(?string $raw): ?string
+    {
+        if ($raw === null || $raw === '' || strlen($raw) > self::RETURN_PATH_MAX) {
+            return null;
+        }
+        // 한 번 디코딩한 전체 — 여기서 거르는 것은 모양 전체의 위험 글자다(쿼리 값 안에 숨긴 것도 이 한 번으로 드러난다)
+        $dec = rawurldecode($raw);
+        if (preg_match('//u', $dec) !== 1
+            || preg_match('/[\x00-\x1f\x7f\\\\@]/', $dec) === 1
+            || strpos($dec, '//') !== false
+            || strpos($dec, '..') !== false
+            || preg_match('#^[A-Za-z][A-Za-z0-9+.-]*:#', $dec) === 1
+            || preg_match('#[/?&=][A-Za-z][A-Za-z0-9+.-]*:#', $dec) === 1
+        ) {
+            return null;
+        }
+        $q     = strpos($raw, '?');
+        $path  = $q === false ? $raw : substr($raw, 0, $q);
+        $query = $q === false ? null : substr($raw, $q + 1);
+
+        $uuid = '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}';
+        $rules = [
+            '#^/tbox/$#'                 => ['folder' => '/^[1-9][0-9]{0,8}$/', 'q' => 'text200', 'sort' => '/^(name|created_at|size)$/',
+                                             'dir' => '/^(asc|desc)$/', 'page' => '/^[1-9][0-9]{0,5}$/'],
+            '#^/tbox/(settings|activity)$#' => [],
+            '#^/community/$#'            => ['space' => '/^[1-9][0-9]{0,17}$/'],
+            '#^/community/p/' . $uuid . '$#' => ['edit' => '/^1$/'],
+            '#^/community/b/[1-9][0-9]{0,8}$#' => [],
+        ];
+        $allowed = null;
+        foreach ($rules as $re => $keys) {
+            if (preg_match($re, $path) === 1) {
+                $allowed = $keys;
+                break;
+            }
+        }
+        if ($allowed === null) {
+            return null;
+        }
+        if ($query === null) {
+            return $path;
+        }
+        if ($query === '' || $allowed === []) {
+            return null;
+        }
+        $got = [];
+        foreach (explode('&', $query) as $pair) {
+            $eq = strpos($pair, '=');
+            if ($eq === false) {
+                return null;
+            }
+            $key = substr($pair, 0, $eq);
+            $val = rawurldecode(substr($pair, $eq + 1));   // 쿼리 값 — 여기서 **한 번** 푼다(위의 전체 디코딩과 같은 한 번)
+            if (!array_key_exists($key, $allowed) || array_key_exists($key, $got) || $val === '') {
+                return null;
+            }
+            $rule = $allowed[$key];
+            if ($rule === 'text200') {
+                if (preg_match('//u', $val) !== 1 || preg_match('/^.{1,200}$/su', $val) !== 1 || trim($val) === '') {
+                    return null;
+                }
+            } elseif (preg_match($rule, $val) !== 1) {
+                return null;
+            }
+            $got[$key] = $val;
+        }
+        $parts = [];
+        foreach (array_keys($allowed) as $key) {   // 정규형 — 키 순서는 허용 목록 순서(서버·화면이 같은 순서)
+            if (array_key_exists($key, $got)) {
+                $parts[] = $key . '=' . rawurlencode($got[$key]);
+            }
+        }
+        return $path . '?' . implode('&', $parts);
     }
 
     /**
@@ -575,6 +715,41 @@ final class Http
     public static function clearLegacySessionCookie(): void
     {
         self::sendCookie(Auth::LEGACY_COOKIE_NAME, '', true);
+    }
+
+    /**
+     * T:F-72 — 지문·얼굴 로그인의 **로그인 전 쿠키**(`__Host-tbox_pk`, 32바이트 hex) 발급 (지시서 1.3).
+     * 세션 쿠키와 다른 점 둘: **SameSite=Strict**(남의 사이트에서 시작된 요청에는 실리지 않는다 — 로그인 끼워 넣기 한 겹 더)와
+     * **Max-Age=600**(10분 — 로그인 챌린지 5분 + 여유). 나머지(Secure · HttpOnly · Path=/ · Domain 없음)는 같다.
+     * 값의 sha256 만 챌린지 표에 묶이고, 값 자체는 감사·로그·응답 본문에 나가지 않는다. 로그인 성공 때 지운다.
+     */
+    public static function setPasskeyPreCookie(string $value): void
+    {
+        if (headers_sent()) {
+            throw new RuntimeException('헤더가 이미 전송되어 쿠키를 설정할 수 없습니다');
+        }
+        setcookie(Passkey::PRE_COOKIE, $value, [
+            'expires'  => time() + Passkey::PRE_COOKIE_MAX_AGE,
+            'path'     => '/',
+            'secure'   => true,
+            'httponly' => true,
+            'samesite' => 'Strict',
+        ]);
+    }
+
+    /** 로그인 전 쿠키 지우기 — 발급과 같은 속성의 만료 머리 */
+    public static function clearPasskeyPreCookie(): void
+    {
+        if (headers_sent()) {
+            return;
+        }
+        setcookie(Passkey::PRE_COOKIE, '', [
+            'expires'  => 1,
+            'path'     => '/',
+            'secure'   => true,
+            'httponly' => true,
+            'samesite' => 'Strict',
+        ]);
     }
 
     private static function sendCookie(string $name, string $value, bool $expire): void

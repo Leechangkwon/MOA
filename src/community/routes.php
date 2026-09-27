@@ -2660,7 +2660,11 @@ function community_dispatch(string $modulePath, string $method): void
     // 화면 요청은 t-box 로그인 화면으로 보내고 돌아올 곳을 꼬리표로 남긴다 (ARCH 21.2).
     // 꼬리표 값은 **코드 상수**이고 요청에서 온 문자열이 아니다 — 오픈 리다이렉트가 생길 자리가 없다.
     if (Auth::currentUser() === null && !$isApi) {
-        Http::redirect(Http::url(TBOX_LOGIN_PATH) . '?to=' . COMMUNITY_LOGIN_TO);
+        /* Q:F-7 B1-1 — 보던 화면(페이지·게시판·공간)이 허용 목록(Http::returnPath) 안이면 그 정규형을, 아니면 옛 키를 싣는다.
+           요청 주소 원문은 그 함수만 지나고 Location 에는 정규형의 rawurlencode 글자만 들어간다(Http::redirect 가 한 번 더 확인). */
+        $communityReturn = Http::returnPath((string) ($_SERVER['REQUEST_URI'] ?? ''));
+        Http::redirect(Http::url(TBOX_LOGIN_PATH) . '?to='
+            . ($communityReturn !== null && $communityReturn !== COMMUNITY_BASE . '/' ? rawurlencode($communityReturn) : COMMUNITY_LOGIN_TO));
     }
     $user = Auth::requireLogin();          // 실패 시 401 + Audit::deny (Auth 안에서)
 
