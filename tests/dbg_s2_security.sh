@@ -568,7 +568,7 @@ sub "B-5 nginx 지킴(값 확인만 — 바꾸지 않는다: 제안안은 review
 expect "  zone tbox_login = IP 단위 30r/m(저장소 deploy/sites/tbox-common.conf)" "1" "$(grep -c '^limit_req_zone \$binary_remote_addr zone=tbox_login:1m rate=30r/m;' "$ROOT/deploy/sites/tbox-common.conf" | tr -d ' ')"
 # T:F-72(2026-09-27) 패스키 창구 다섯 × 끝 슬래시 = 10 자리를 같은 zone 에 더했다(지시서 1.6) — 12 → 22
 expect "  tbox-v2.conf 의 tbox_login burst=10 nodelay 자리 22(login·password·mfa 셋·reauth × 끝 슬래시 = 12 + 패스키 다섯 × 끝 슬래시 = 10)" "22" "$(grep -c 'limit_req zone=tbox_login burst=10 nodelay;' "$ROOT/deploy/sites/tbox-v2.conf" | tr -d ' ')"
-expect "  비밀번호·코드를 묻는 나머지 창구(api-tokens · exec-download · admin/permissions · fetch-hosts)에는 nginx 제한 없음(앱 잠금만 — 제안안 몫)" "0" \
+expect "  비밀번호·코드를 묻는 나머지 창구(api-tokens · exec-download · admin/permissions · fetch-hosts) — d75(2026-09-27 f106e30)로 비밀 창구 넷에 tbox_secret 제한 — 자리 7" "7" \
   "$(grep -cE 'location .*(api-tokens|exec-download|admin/permissions|fetch-hosts)' "$ROOT/deploy/sites/tbox-v2.conf" | tr -d ' ')"
 for p in "conf.d/tbox-common.conf:tbox-common.conf" "sites-available/tbox-v2:tbox-v2.conf" "sites-available/tbox-v2-local:tbox-v2-local.conf"; do
   expect "  설치본 /etc/nginx/${p%%:*} = 저장소 deploy/sites/${p#*:}(읽기만)" "same" "$(cmp -s "/etc/nginx/${p%%:*}" "$ROOT/deploy/sites/${p#*:}" && echo same || echo diff)"

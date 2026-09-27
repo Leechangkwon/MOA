@@ -3240,6 +3240,138 @@
       "notes": "운영 파일 쓰기 가드 단위 확인(디버깅 묶음 T 9번 · 2026-09-26 사고): tests/lib/prod_guard.sh(pg_target_kind · pg_is_prod_path · prod_write_guard) + f51·f52 의 비밀 파일 자리 결정 절·save_secret·qa_secret 과 stage26 의 저장소 자리 결정 절을 sed 로 떼어 **가짜 뿌리**(mktemp)에서 돌린다. sudo 는 셸 함수로 바꿔 끼워 가짜 파일에만 install. 운영 /etc/tbox-v2·/var/lib/tbox-v2·/var/log/tbox-v2 읽기·쓰기 0 · sudo·DB·네트워크 0. 복제본 실측 1초."
     },
     {
+      "id": "tbox.dbg_s_security",
+      "cmd": "bash tests/dbg_s_security.sh",
+      "module": "tbox",
+      "env": "temp-instance",
+      "status": "required",
+      "needs": [
+        "sudo"
+      ],
+      "covers": [
+        "public/assets/app.js",
+        "scripts/alerts.php",
+        "scripts/lib/alerts_lib.php",
+        "scripts/lib/cli_bootstrap.php",
+        "scripts/security_lint.sh",
+        "src/Audit.php",
+        "src/Auth.php",
+        "src/Authz.php",
+        "src/Upload.php",
+        "src/handlers/activity_list.php",
+        "src/handlers/api_whoami.php",
+        "src/handlers/files_delete.php",
+        "src/handlers/files_download.php",
+        "src/handlers/files_fetch.php",
+        "src/handlers/files_preview.php",
+        "src/handlers/files_update.php",
+        "src/handlers/files_upload.php",
+        "src/handlers/folders_list.php",
+        "src/handlers/login.php",
+        "src/handlers/me.php",
+        "src/handlers/password_change.php",
+        "src/handlers/reauth.php",
+        "src/handlers/settings_page.php",
+        "src/handlers/share_create.php",
+        "src/handlers/share_download.php",
+        "src/handlers/share_revoke.php",
+        "src/handlers/users_mfa_reset.php",
+        "src/handlers/users_password_reset.php",
+        "src/help/screens.php",
+        "tests/browser/dbg_s_screens.py"
+      ],
+      "requirements": [],
+      "risks": [
+        "R-62"
+      ],
+      "est_sec": 480,
+      "writes_prod": false,
+      "notes": "디버깅 묶음 S(보안 점검 2026-09-26 11:52 중간·낮음) 수락 — S-1 남의 공유 링크 회수 = 없는 링크 404(상태·머리·본문 같음) · 거부 감사·「내 활동」 거부 행 이름·등급 가림 · S-2 링크 받을 때마다 만든 사람 재판정(등급 올림·비활성·만료·팀 이동) · S-3 AL-9 명령별 억제(합성 auth.log 사본 · 임시 상태·경보 로그) · S-4 AL-7 주말(alerts_lib 판정 함수 · dry-run) · S-5 비밀번호 변경·재발급·2단계 초기화 → 그 계정 토큰 회수 · S-6 가져오기 URL userinfo 가림 · S-7 child_count 보이는 것만 · S-8 Admin 등급 내리기·링크 만들기 재인증 · S-9 root 쓰기 링크 거부·미래 시각 무시 · S-10 zip 항목 차단 · 정적(php -l 19 · 보안 린트 · Upload::checkExtension · app.js 구문 · 서버 로그). 임시 DB tbox_d1s_<포트>_test · php -S(기본 8211 — DBGS_PORT, 8211~8219). 임시 .env 원본 DBGS_ENV_SRC(또는 QF2_ENV_SRC — 복제본엔 .env 없음). 손잡이: DBGS_BROWSER=1(tests/browser/dbg_s_screens.py — 그때만 browser 필요) · DBGS_SHOTS · DBGS_SYNC_TOTP=1(임시 DB 만 맞춤) · DBGS_SKIP_BODY=1 REGRESS=1(S-5 가 계정 상태를 바꾸므로 회귀는 새 임시 DB 에서 따로 — REGRESS_LIST 기본 help_button api_whoami api_read api_folders f68 q_launcher, 카탈로그 writes_prod·manual_only 는 이름을 줘도 거부). 경보 배치는 임시 사본·임시 .env 로만. 운영 감사 max(id)·alerts.log 줄 수는 시작·끝 읽기만(머리 주석: 이 시험의 sudo psql 이 운영 cron 의 AL-9 에 줄을 남길 수 있다). SECURITY R-105(S-9)·R-106(S-7) 을 다루지만 머리 주석에 번호가 없어 risks 는 R-62 만. 운영 8082 요청 0 · 운영 감사 UA 행 0 단언. 2026-09-27 정리 묶음 D1 로 넣음(시험은 f333fc9 부터 저장소에 있었다)."
+    },
+    {
+      "id": "tbox.browser_dbg_s_screens",
+      "cmd": "python3 tests/browser/dbg_s_screens.py",
+      "module": "tbox",
+      "env": "temp-instance",
+      "status": "helper",
+      "needs": [
+        "browser"
+      ],
+      "covers": [
+        "src/handlers/activity_page.php",
+        "src/handlers/settings_page.php"
+      ],
+      "requirements": [],
+      "risks": [
+        "R-62"
+      ],
+      "est_sec": 120,
+      "writes_prod": false,
+      "notes": "부르는 셸: tbox.dbg_s_security(DBGS_BROWSER=1 일 때 — 몸통 뒤라 몸통이 만든 거부 행이 보인다). 단독 실행 불가(인자 SITE UA SHOTS · 세션은 표준입력 첫 줄 — R-62). ⓐ /tbox/activity 거부 행 「(볼 수 없는 대상)」 · 거부 행 글자에 admin-only 0 · 도움말 가림 안내 ⓑ /tbox/settings 비밀번호 칸·도움말의 「개인 프로그램 토큰도 모두 취소됩니다」 ⓒ 360·1280 × 라이트·다크 스크린샷 · 360 가로 넘침 0 · pageerror·console.error·HTTP≥400·기본 대화상자 0. 결과 줄 SMOKE_FAIL=n. 운영 8082 요청 0(머리 주석). 2026-09-27 정리 묶음 D1 로 넣음."
+    },
+    {
+      "id": "tbox.dbg_s2_security",
+      "cmd": "bash tests/dbg_s2_security.sh",
+      "module": "tbox",
+      "env": "temp-instance",
+      "status": "required",
+      "needs": [
+        "sudo",
+        "browser",
+        "nginx",
+        "totp_wait"
+      ],
+      "covers": [
+        "deploy/sites/tbox-common.conf",
+        "deploy/sites/tbox-v2-local.conf",
+        "deploy/sites/tbox-v2.conf",
+        "scripts/alerts.php",
+        "scripts/lib/cli_bootstrap.php",
+        "scripts/review_account_setup.php",
+        "scripts/security_lint.sh",
+        "src/Audit.php",
+        "src/Auth.php",
+        "src/Http.php",
+        "src/Totp.php",
+        "src/community/handlers/database_rows.php",
+        "src/community/handlers/home_page.php",
+        "src/community/handlers/mention_candidates.php",
+        "src/community/handlers/pages_create.php",
+        "src/community/handlers/pages_get.php",
+        "src/community/handlers/pages_list.php",
+        "src/community/handlers/pages_shares_list.php",
+        "src/community/handlers/pages_update.php",
+        "src/community/handlers/share_candidates.php",
+        "src/community/handlers/space_me.php",
+        "src/community/handlers/spaces_list.php",
+        "src/community/handlers/templates_create.php",
+        "src/community/handlers/templates_list.php",
+        "src/community/handlers/versions_list.php",
+        "src/handlers/audit_list.php",
+        "src/handlers/audit_page.php",
+        "src/handlers/folders_create.php",
+        "src/handlers/home.php",
+        "src/handlers/login.php",
+        "src/handlers/login_page.php",
+        "src/handlers/logout.php",
+        "src/handlers/me.php",
+        "src/handlers/reauth.php",
+        "src/handlers/settings_page.php",
+        "src/help/screens.php",
+        "src/site/launcher_page.php",
+        "src/views/launcher.php",
+        "tests/q_launcher.sh",
+        "tests/qf3c_zip.sh"
+      ],
+      "requirements": [],
+      "risks": [
+        "R-62"
+      ],
+      "est_sec": 600,
+      "writes_prod": false,
+      "notes": "디버깅 묶음 S2(사용자 결정 d72 ① + 2026-09-26 검토 낮음) 수락 — A 쿠키 이름 __Host-tbox_session(발급 속성 · 옛 이름 401·302 + 만료 머리 · 둘 다 실리면 새 이름 · 이름 흉내 거부 · 로그아웃 · 커뮤니티 · Chromium 저장·전송) · B 시도 제한(2단계 코드 5회 → 423 · auth.lock 1 · 재인증 5회 잠금 + 세션 끊김 · 정확히 5번 잠금 DoS 를 새 AL-2 가 잡음 — 기준 판 alerts.php(DBGS2_BASE_REV 기본 4d256f6)는 0줄 · B-5 nginx 값 확인: 저장소 deploy/sites 글자 대조 + /etc/nginx 설치본 셋과 cmp — 읽기만) · C 미로그인 런처 = 사이트 이름+로그인 단추 · D 손님 커뮤니티 쓰기 값 거짓 · 사람 찾기 창구 셋(공유·인계·멘션 후보) 403 · 공유 이름 null · root·posix 없는 CLI 감사 사본 실패 뒤 계속 · getmyuid 0 · 정적(php -l 15 · 보안 린트 · bash -n · 감사 조회 auth.lock·auth.reauth · 시험 틀 쿠키 이름). 임시 DB tbox_d2s_<포트>_test · php -S(기본 8261 — DBGS2_PORT, 8261~8269). sudo psql 은 표준입력·세 모양만. D-root 한 항목만 sudo -n php(임시 앱 · 임시 .env · 쓰는 파일 0). 잠금·경보 항목은 루프백 127.0.0.2~5 에서 보냄. 손잡이: DBGS2_ENV_SRC(복제본엔 .env 없음) · DBGS2_BROWSER=0(화면 절 끔 — 기본 켬) · DBGS2_SYNC_TOTP=1 · DBGS2_SKIP_BODY=1 · REGRESS=1(REGRESS_LIST — writes_prod·manual_only 거부) · REGRESS_TEMP=1(자기 임시 인스턴스를 띄우는 시험을 이 묶음 포트·접두로 고친 사본 — --shared 임시 복제에서, 원래 복제본 checkout 0). 운영 감사 max(id)·alerts.log 줄 수·qa-totp mtime 은 시작·끝 읽기만 · 운영 감사 UA 행 0 · qa-totp mtime 그대로 단언. SECURITY R-98·R-108·R-110 을 다루지만 머리 주석에 번호가 없어 risks 는 R-62 만. 운영 8082 요청 0. 2026-09-27 정리 묶음 D1 로 넣음(시험은 081af21 부터 저장소에 있었다)."
+    },
+    {
       "id": "tbox.dbg_u_ui",
       "cmd": "bash tests/dbg_u_ui.sh",
       "module": "tbox",

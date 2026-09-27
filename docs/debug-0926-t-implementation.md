@@ -64,7 +64,7 @@
 
 모두 `writes_prod: false`(임시 DB·임시 인스턴스만 — 운영에 닿는 것은 `pg_dump` 읽기와 `/etc/tbox-v2` 비밀 awk). covers 는 기존 규칙대로 스크립트가 이름으로 부르는 저장소 파일 + 부르는 창구의 핸들러(메서드가 분명한 것만).
 `requirements` 는 머리 주석에 T-·C:T-·Q:T- 번호가 없어 비움(QF3A-T·S4 번호 체계). 고친 항목(community.qf3a · tbox.qf4b1 · tbox.qf4_p7_timeouts · tbox.f70)의 notes 끝에 이번에 고친 것·손잡이를 한 줄씩.
-남은 카탈로그 밖: `tests/static/*.py`·`selftest.sh` 23개(점검 봇 정적 규칙 — 봇이 `tests/static/selftest.sh` 로 돌린다. 이번 범위 밖).
+남은 카탈로그 밖(2026-09-27 정리 묶음 D1 바로잡음): 이 묶음이 합쳐진 판(e88f690)에도 묶음 S 의 `tests/dbg_s_security.sh`·`tests/browser/dbg_s_screens.py` 가 밖이었고 뒤에 S2 의 `tests/dbg_s2_security.sh` 가 더해졌다 — 이 셋은 D1 이 `tbox.dbg_s_security`·`tbox.browser_dbg_s_screens`·`tbox.dbg_s2_security` 로 실었고, 지금 남은 것은 `tests/static/*.py` 22개·`selftest.sh` 모두 23개뿐이다(점검 봇 정적 규칙 — 봇이 `tests/static/selftest.sh` 로 돌린다 · `tests/run.sh list` 의 「카탈로그 밖 시험 23개」로 확인).
 
 ## 5. 9번(추가 — 오늘 사고) 운영 파일에 쓰는 시험의 가드
 
