@@ -35,7 +35,9 @@ declare(strict_types=1);
  *   그래서 이 창구는 400(`user.create deny reserved_prefix`)으로 막고, 검토 계정은 `scripts/seed_users.php`
  *   (CLI · root) 로만 만든다(F-71 K-1). 판정은 `Origin::isReviewAccount()` 한 곳 — 접두 목록을 두 벌로 두지 않는다.
  *   이름 규칙일 뿐 권한 판정이 아니다(이 판정으로 역할·접근을 정하지 않는다).
- *   계정 이름을 바꾸는 창구는 없다 — users_update 의 허용 키에 `username` 이 없다(바꿀 길이 없으니 막을 곳도 없다).
+ *   d74 (2026-09-27) — 관리자 아이디 바꾸기(`PATCH /api/users/{uid}` 의 `username`)가 생겨 아이디를 정하는 입구가 둘이 됐다.
+ *   그래서 형식·이미 있음·검토 접두 셋을 `_username_common.php` 한 벌로 옮겼고 이 파일과 users_update 가 **같은 함수**를 부른다
+ *   (순서·응답·감사 행은 전과 한 글자도 같다 — 비교만 `lower()` 로, 오늘 규칙(소문자만)에서는 결과가 같다).
  *
  * 절대 하지 않는 것
  *   · 비밀번호를 응답(생성 201 의 `temp_password` 제외)·감사 로그·app.log 에 남기지 않는다.
@@ -48,7 +50,7 @@ declare(strict_types=1);
  * @var list<string>        $params 경로 변수 없음
  */
 
-require_once dirname(__DIR__) . '/Origin.php';   // 2b — 검토 접두 판정 한 곳(isReviewAccount)
+require_once __DIR__ . '/_username_common.php';   // d74 — 아이디 규칙 한 벌(형식·이미 있음·검토 접두 — Origin::isReviewAccount 를 부른다)
 
 /** 허용 키 — 여기 없는 키가 오면 요청 전체를 거부한다 (SECURITY R-07 과 같은 원칙) */
 $allowedFields = ['username', 'role', 'team_id', 'expires_at', 'reason_text', 'display_name'];
@@ -74,7 +76,7 @@ if ($body === [] || array_diff(array_keys($body), $allowedFields) !== []) {
 
 // ─── [2] 아이디 ─────────────────────────────────────────────────
 $username = $body['username'] ?? null;
-if (!is_string($username) || preg_match(Auth::USERNAME_RE, $username) !== 1) {
+if (!tbox_username_format_ok($username)) {   // d74 — Auth::USERNAME_RE 한 벌(_username_common.php)
     $rejectBadRequest($body);
 }
 $username = (string) $username;
@@ -157,28 +159,24 @@ if ($teamId !== null) {
     }
 }
 
-// ─── [9] 같은 아이디가 이미 있나 (PRD 3장 "1인 1계정") ───────────
-$sqlExists = <<<'SQL'
-    SELECT 1 AS ok FROM users WHERE username = :username
-    SQL;
-if (is_array($db->run($sqlExists, [':username' => $username])->fetch())) {
+// ─── [9] 같은 아이디가 이미 있나 (PRD 3장 "1인 1계정") · [9b] 검토·시험 계정 접두 예약 (대기열 2b · PRD F-71 ③) ───
+//         판정은 `tbox_username_unavailable()` 한 곳(d74 — 아이디 바꾸기와 같은 함수). 순서는 전과 같다:
+//         이미 있음을 **먼저** 본다 — 이미 있는 아이디(검토 계정 포함)는 전과 같이 already_exists 로 끝난다
+//         (tests/f68.sh (a)8 이 `qa_employee01` 로 그 갈래를 본다). 문구는 요청 값 없이 코드 상수로만 만든다.
+$usernameWhy = tbox_username_unavailable($db, $username);
+if ($usernameWhy === 'already_exists') {
     Audit::deny('user.create', 'already_exists', [
         'target_type' => 'user',
         'target_name' => $username,
     ]);
-    Http::error(400, Http::reasonMessage('already_exists'));
+    Http::error(400, tbox_username_message('already_exists'));
 }
-
-// ─── [9b] 검토·시험 계정 접두 예약 (대기열 2b · PRD F-71 ③) ─────────
-//         [9] **뒤**에 둔다 — 이미 있는 아이디(검토 계정 포함)는 전과 같이 already_exists 로 끝난다
-//         (tests/f68.sh (a)8 이 `qa_employee01` 로 그 갈래를 본다). 문구는 요청 값 없이 코드 상수로만 만든다.
-if (Origin::isReviewAccount($username)) {
+if ($usernameWhy === 'reserved_prefix') {
     Audit::deny('user.create', 'reserved_prefix', [
         'target_type' => 'user',
         'target_name' => $username,
     ]);
-    Http::error(400, '검토·시험 계정 전용 접두(' . implode('·', Origin::reviewAccountPrefixes())
-        . ')로 시작하는 아이디는 만들 수 없습니다 — 사람 계정은 다른 이름으로 만드세요');
+    Http::error(400, tbox_username_message('reserved_prefix'));
 }
 
 // ─── [10] 저장 — 임시 비밀번호를 만들고 해시만 넣는다 (F-16 ①, PRD S-09-4, T-16) ───

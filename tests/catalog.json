@@ -3304,6 +3304,89 @@
       "notes": "부르는 셸: tbox.dbg_u_ui. 단독 실행 불가(인자 SITE UA SHOTS 와 세션 셋·비밀번호 둘·TOTP 비밀 하나를 표준입력 여섯 줄로 부르는 셸이 넘긴다). 결과 줄 SMOKE_FAIL=n. 넷째 인자 before 는 고치기 전 판 스크린샷용(종료 코드 0). 임시 DB 에 파일·페이지·템플릿·토큰을 만든다."
     },
     {
+      "id": "tbox.d74_username",
+      "cmd": "bash tests/d74_username.sh",
+      "module": "tbox",
+      "env": "temp-instance",
+      "status": "required",
+      "needs": [
+        "sudo",
+        "browser",
+        "totp_wait"
+      ],
+      "covers": [
+        "public/assets/app.js",
+        "scripts/seed_users.php",
+        "scripts/security_lint.sh",
+        "src/Audit.php",
+        "src/Origin.php",
+        "src/handlers/_username_common.php",
+        "src/handlers/users_create.php",
+        "src/handlers/users_page.php",
+        "src/handlers/users_update.php",
+        "tests/browser/d74_username.py",
+        "tests/d74_username_api.py",
+        "tests/static/r2_audit_crosscheck.py"
+      ],
+      "requirements": [],
+      "risks": [
+        "R-06",
+        "R-62",
+        "R-82"
+      ],
+      "est_sec": 1500,
+      "writes_prod": false,
+      "notes": "t-box d74 관리자 로그인 아이디 바꾸기 수락 — S 정적(php -l · 보안 린트 · R2 감사 대조 · 인라인 0 · 기본 창 0 · 라우트·판정·인증 파일 diff 0 · 아이디 규칙 한 곳) · A 창구(tests/d74_username_api.py — 양성·음성·공용 토큰 가드 켜짐/꺼짐·잠금·AL-1·AL-2·멘션·F-70·감사 거르기·노출·응답 시간) · D 시드 재실행 가드(빈 DB 15계정 · 사람 계정이 있는 DB 는 시드 사람 0 · install.sh 7절 모양 부르기) · B 화면(tests/browser/d74_username.py — 공용 flock 잠금 · 메모리 여유 700MB) · L 서버 로그 · 운영 대조(max(id)·alerts.log·qa-totp mtime 읽기만 · 대상 이름 d74… 행 0). 임시 DB tbox_d74_<포트>_test · 시드 빈 DB tbox_d74_<포트>_seed_test · 포트 8341~8349 · 임시 .env 는 D74_ENV_SRC(0600 사본)이고 공용 토큰 두 줄을 비운다. 운영 쓰기 0 — 운영 tbox_re 는 pg_dump·SELECT 로 읽기만."
+    },
+    {
+      "id": "tbox.d74_username_api",
+      "cmd": "python3 tests/d74_username_api.py",
+      "module": "tbox",
+      "env": "temp-instance",
+      "status": "helper",
+      "needs": [
+        "sudo",
+        "totp_wait"
+      ],
+      "covers": [
+        "src/handlers/_username_common.php",
+        "src/handlers/users_create.php",
+        "src/handlers/users_update.php",
+        "scripts/alerts.php"
+      ],
+      "requirements": [],
+      "risks": [
+        "R-06",
+        "R-62",
+        "R-82"
+      ],
+      "est_sec": 600,
+      "writes_prod": false,
+      "notes": "부르는 셸: tbox.d74_username. 단독 실행 불가(인자 SITE UA DB 임시.env 임시앱 작업폴더 와 검토 계정 다섯 줄을 표준입력으로 부르는 셸이 넘긴다). 임시 DB 에 사람 계정 둘(d74…)을 만들어 첫 로그인 절차를 창구로 마치고 이름을 바꾼다. 임시 .env 의 공용 토큰 두 줄을 시험용 48자 값으로 바꿨다 되돌린다. 경보는 임시 앱 alerts.php --dry-run 만. 결과 줄 SMOKE_FAIL=n."
+    },
+    {
+      "id": "tbox.browser_d74_username",
+      "cmd": "python3 tests/browser/d74_username.py",
+      "module": "tbox",
+      "env": "temp-instance",
+      "status": "helper",
+      "needs": [
+        "browser"
+      ],
+      "covers": [
+        "public/assets/app.js",
+        "src/handlers/users_page.php",
+        "tests/browser/dbg_u2_ui.py"
+      ],
+      "requirements": [],
+      "risks": [
+        "R-62"
+      ],
+      "est_sec": 600,
+      "writes_prod": false,
+      "notes": "부르는 셸: tbox.d74_username. 단독 실행 불가(인자 SITE UA SHOTS 저장소뿌리 와 관리자 세션·비밀번호를 표준입력 두 줄로 부르는 셸이 넘긴다 · 공용 flock 잠금 아래). 측정 도우미(창 단추 규칙·낱말·터치·넘침)는 dbg_u2_ui.py 의 것을 읽어 쓴다. 임시 DB 에 사람 계정 하나(d74w…)를 만들어 화면에서 이름을 바꾼다. 결과 줄 SMOKE_FAIL=n."
+    },
+    {
       "id": "tbox.dbg_u2_ui",
       "cmd": "bash tests/dbg_u2_ui.sh",
       "module": "tbox",

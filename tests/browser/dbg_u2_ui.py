@@ -723,8 +723,9 @@ with sync_playwright() as p:
             if not open_dialog_checks(pg, "user-manage-dialog", "계정 관리 상세", tag, narrow):
                 return
             acts = pg.evaluate("() => [...document.querySelectorAll('#user-manage-dialog [data-user-action]')].filter(b => !b.hidden).map(b => b.getAttribute('data-user-action'))")
-            step("M8 상세 창의 동작 다섯(바꾸기·임시 비밀번호·2단계 초기화·프로그램 토큰·활성) " + tag,
-                 sorted(acts) == sorted(["edit", "password", "mfa", "tokens", "active"]), acts)
+            # d74 (2026-09-27) — 「로그인 아이디 바꾸기」(username)가 더해져 여섯이다(화면 시험은 tests/browser/d74_username.py)
+            step("M8 상세 창의 동작 여섯(바꾸기·아이디·임시 비밀번호·2단계 초기화·프로그램 토큰·활성) " + tag,
+                 sorted(acts) == sorted(["edit", "username", "password", "mfa", "tokens", "active"]), acts)
             facts = pg.evaluate("() => (document.getElementById('user-manage-facts') || {}).innerText || ''")
             step("M8 상세 창에 계정 사실(역할 한글·팀·2단계) " + tag, "직원" in facts and "2단계" in facts, facts[:120])
             # 프로그램 토큰 → 상세 창을 닫고 토큰 창(겹쳐 열지 않음)

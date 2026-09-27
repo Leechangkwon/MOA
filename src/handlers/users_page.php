@@ -37,7 +37,7 @@ require __DIR__ . '/../views/shell_top.php';
     <header class="page-head">
       <div class="page-head__text">
         <h1 class="page-head__title">계정 관리</h1>
-        <p class="page-head__sub">계정 생성 · 이름·역할·팀·만료 변경 · 임시 비밀번호 재발급 · 2단계 인증 초기화</p>
+        <p class="page-head__sub">계정 생성 · 이름·역할·팀·만료 변경 · 로그인 아이디 바꾸기 · 임시 비밀번호 재발급 · 2단계 인증 초기화</p>
       </div>
       <div class="page-head__actions">
         <button type="button" class="btn btn--quiet" data-help-open>
@@ -170,13 +170,22 @@ require __DIR__ . '/../views/shell_top.php';
     </div>
     <div class="modal__body">
       <div id="user-manage-facts" class="info-grid"></div>
-      <p id="um-self" class="help" hidden>내 계정의 이름·역할·팀·상태는 여기서 바꿀 수 없습니다(다른 관리자가 바꿉니다). 프로그램 토큰은 보고 회수할 수 있습니다.</p>
+      <p id="um-self" class="help" hidden>내 계정의 이름·아이디·역할·팀·상태는 여기서 바꿀 수 없습니다(다른 관리자가 바꿉니다). 프로그램 토큰은 보고 회수할 수 있습니다.</p>
       <div class="card-stack">
         <button class="card card--link" type="button" data-user-action="edit">
           <span class="card__icon"><span class="icon" data-icon="edit"></span></span>
           <span class="card__body">
             <strong class="card__title">이름·역할·팀·만료 바꾸기</strong>
             <span class="card__desc">사유가 필요합니다. 역할·팀을 바꾸면 그 사람은 다시 로그인해야 합니다.</span>
+          </span>
+        </button>
+        <!-- d74 (2026-09-27) — 로그인 아이디 바꾸기. 고르면 이 창을 닫고 아이디 창(#user-rename)을 연다(2.7 — 겹쳐 열지 않는다).
+             본인 줄에서는 다른 바꾸기처럼 숨는다(서버 self_change). 검토 계정·공용 토큰 귀속 계정은 서버가 막고 그 창에 이유를 말한다. -->
+        <button class="card card--link" type="button" data-user-action="username">
+          <span class="card__icon"><span class="icon" data-icon="users"></span></span>
+          <span class="card__body">
+            <strong class="card__title">로그인 아이디 바꾸기</strong>
+            <span class="card__desc">사유가 필요합니다. 비밀번호·2단계 인증·로그인 상태는 그대로이고, 그 사람은 다음 로그인부터 새 아이디를 씁니다.</span>
           </span>
         </button>
         <button class="card card--link" type="button" data-user-action="password">
@@ -267,6 +276,38 @@ require __DIR__ . '/../views/shell_top.php';
       <div class="modal__foot">
         <button id="ue-cancel" class="btn btn--quiet" type="button">닫기</button>
         <button id="ue-submit" class="btn" type="submit">저장</button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- d74 로그인 아이디 바꾸기 창 (DESIGN 2.7 `.modal--form` — 바닥 오른쪽 끝 주요 단추 하나 · 그 왼쪽 「닫기」 · 머리 ✕).
+       `PATCH /api/users/{uid}` 에 `username` + `reason_text` 만 보낸다. 규칙(형식·이미 있음·검토 접두·검토 계정·공용 토큰)은
+       서버 한 곳(`_username_common.php`)이 정하고, 막히면 **서버 문구 그대로** 이 창 안에 말한다(창을 닫지 않는다 — 고쳐 다시 보낸다).
+       새 아이디는 입력칸 값으로만 있고 창이 닫히면 비운다 — 브라우저 입력 기억(autocomplete)도 끈다. -->
+  <dialog id="user-rename" class="modal modal--form" aria-labelledby="ur-title">
+    <form id="user-rename-form" class="form" autocomplete="off">
+      <div class="modal__head">
+        <h2 class="modal__title" id="ur-title">로그인 아이디 바꾸기</h2>
+        <button id="ur-x" class="btn btn--icon" type="button" aria-label="닫기">
+          <span class="icon" data-icon="x"></span>
+        </button>
+      </div>
+      <div class="modal__body">
+        <p class="muted">그 사람은 다음 로그인부터 새 아이디를 씁니다. 비밀번호·2단계 인증·지금 로그인한 기기·프로그램 토큰은 그대로입니다. 인증 앱에 보이는 계정 이름은 옛 아이디로 남지만 코드는 그대로 맞습니다.</p>
+        <label class="field">
+          <span class="field__label">새 아이디 (소문자·숫자·<code>_ . -</code>, 3~64자)</span>
+          <input id="ur-username" type="text" maxlength="64" inputmode="latin" autocomplete="off"
+                 autocapitalize="none" autocorrect="off" spellcheck="false">
+        </label>
+        <label class="field">
+          <span class="field__label">사유 (필수 · 500자)</span>
+          <textarea id="ur-reason" rows="3" maxlength="500"></textarea>
+        </label>
+        <p id="ur-msg" class="msg" role="alert" aria-live="polite"></p>
+      </div>
+      <div class="modal__foot">
+        <button id="ur-cancel" class="btn btn--quiet" type="button">닫기</button>
+        <button id="ur-submit" class="btn" type="submit">아이디 바꾸기</button>
       </div>
     </form>
   </dialog>

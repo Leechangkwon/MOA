@@ -29,7 +29,8 @@ declare(strict_types=1);
  *   (F-69 금지 패턴). 그래서 Authz·Auth·Audit 은 이 파일을 읽지 않는다 — origin 판정을 읽는 곳은
  *   화면에 내려 줄 값을 만드는 핸들러(`audit_list.php`)와 경보 배치(`scripts/alerts.php` ·
  *   `consistency_check.php` · `audit_chain.php`, `cli_raise_alert()` 경유)뿐이다.
- *   예외 하나 — `users_create.php` 는 **isReviewAccount() 이름 판정만** 읽어 사람 계정 이름에 검토 접두를
+ *   예외 하나 — 아이디 규칙 한 벌 `handlers/_username_common.php`(계정 만들기 `users_create.php` · d74 아이디 바꾸기
+ *   `users_update.php` 가 부른다)는 **isReviewAccount() 이름 판정만** 읽어 사람 계정 이름에 검토 접두를
  *   못 쓰게 막는다(대기열 2b · PRD F-71 ③). origin 판정(UA 포함)이 아니라 「이름 예약」 규칙이고,
  *   접두 목록을 두 벌로 두지 않으려고 같은 함수를 쓴다. 이 이름 판정으로 권한을 주거나 빼지 않는다.
  * ★ 시험의 R-73 사전 검사(`tests/lib/review_accounts.sh`)는 **계정 이름만** 본다 — 그쪽은 「사람이 쓰는

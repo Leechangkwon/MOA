@@ -608,9 +608,15 @@ final class Audit
         'user.expiry_change|allow'                => '{actor} 이(가) 계정 「{target}」 의 만료일을 바꿨습니다 (이전 → 새 값·사유는 상세 기록)',
         // 5-A″ (2026-09-23) — 계정 **이름**만 바꾼 일. 이름의 값은 문장에도 상세에도 남기지 않는다
         // (바뀐 칸 이름 `changed_fields` 만 — users_update.php 머리글 「감사 처리」).
-        'user.update|allow'                       => '{actor} 이(가) 계정 「{target}」 의 이름을 바꿨습니다 (바뀐 칸·사유는 상세 기록)',
-        'user.update|deny|bad_request'            => '{actor} 이(가) 계정 「{target}」 의 이름을 잘못된 형식(길이·제어 문자·사유 없음)으로 바꾸려 해서 거부했습니다',
-        'user.update|deny|self_change'            => '{actor} 이(가) 자기 자신의 계정 이름을 바꾸려 해서 거부했습니다 (본인은 보기만)',
+        // d74 (2026-09-27) — 로그인 **아이디**도 이 행(changed_fields 에 `username`). {target} 은 바꾸기 **전** 아이디이고,
+        // 새 아이디·시도한 아이디는 문장에도 상세에도 없다(users_update.php 머리글 「d74 아이디 — 감사 처리」).
+        'user.update|allow'                       => '{actor} 이(가) 계정 「{target}」 의 이름·아이디를 바꿨습니다 (바뀐 칸·사유는 상세 기록)',
+        'user.update|deny|bad_request'            => '{actor} 이(가) 계정 「{target}」 의 이름·아이디를 잘못된 형식(길이·글자·제어 문자·사유 없음)으로 바꾸려 해서 거부했습니다',
+        'user.update|deny|self_change'            => '{actor} 이(가) 자기 자신의 계정 이름·아이디를 바꾸려 해서 거부했습니다 (본인은 보기만)',
+        'user.update|deny|already_exists'         => '{actor} 이(가) 계정 「{target}」 의 아이디를 이미 있는 아이디로 바꾸려 해서 거부했습니다',
+        'user.update|deny|reserved_prefix'        => '{actor} 이(가) 계정 「{target}」 의 아이디를 검토·시험 계정 전용 접두로 시작하는 이름으로 바꾸려 해서 거부했습니다',
+        'user.update|deny|review_account'         => '{actor} 이(가) 검토·시험 계정 「{target}」 의 아이디를 바꾸려 해서 거부했습니다 (검토 표식이 깨지지 않게)',
+        'user.update|deny|shared_token_user'      => '{actor} 이(가) 계정 「{target}」 의 아이디를 바꾸려 했지만 공용 프로그램 토큰의 귀속 아이디에 닿아 거부했습니다 (공용 토큰을 먼저 정리)',
 
         // ── Guest 만료 (10단계 — SECURITY R-12) ──
         // 두 자리에서 막는다: 로그인 시도(guest_expired)와 **이미 살아 있던 세션**(session_expired).

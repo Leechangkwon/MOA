@@ -17,6 +17,12 @@ declare(strict_types=1);
  *   reason_text  **필수** 500자 — 사유 없는 관리자 행동은 400 (PRD S-07, SECURITY R-20)
  *   display_name 사람이 알아보는 **이름** (5-A″). `null`·빈 글자면 이름을 지운다. 규칙은
  *                `tbox_clean_display_name()` 한 벌(앞뒤 공백 제거 뒤 1~40자, 제어·서식 문자 거부 → 400)
+ *   username     **로그인 아이디** (d74, 2026-09-27 — SECURITY R-06 완화). 규칙은 계정 만들기와 **같은 함수**
+ *                (`_username_common.php` — 형식 400 bad_request · 이미 있음 400 already_exists · 검토 접두 400 reserved_prefix).
+ *                `reason_text`(와 `display_name`) 하고만 함께 보낸다 — 역할·팀·활성·만료와 섞으면 400(감사 행이 늘 `user.update` 가 되게).
+ *                지금과 같은 이름이면 「바뀐 것 없음」이다. 막는 것 둘이 더 있다: 지금 이름이 검토 계정(`qa_`·`claude_`)이면
+ *                400 review_account · 지금 이름이 공용 프로그램 토큰(`.env` API_TOKEN_USER — 글자로 계정을 찾는다)의 귀속 아이디면
+ *                409 shared_token_user(바꾸는 순간 그 토큰이 끊긴다 — 귀속 줄을 먼저 새 아이디로: 결정 d76 ②).
  *
  * 5-A″ 이름 — 감사 처리 (2026-09-23 지시서 「감사 user.update 에 바뀐 칸 이름만」)
  *   · 이름**만** 바꾸면 action 은 새 줄 `user.update`(「이름을 바꿨습니다」)다. 다른 칸과 함께 바뀌면
@@ -39,11 +45,20 @@ declare(strict_types=1);
  * 역할·팀이 바뀌거나 계정을 끄면 **그 사용자의 세션을 전부 삭제**한다 (SECURITY R-10, PRD T-22).
  * 낡은 세션이 살아 있으면 "권한을 거뒀는데 그 기기에서는 그대로" 가 된다.
  *
+ * d74 아이디 — 감사 처리 (이름 칸 5-A″ 관례 그대로 · 구현 기록 docs/d74-username-change-implementation.md)
+ *   · action 은 `user.update`, `changed_fields` 에 `username`. **아이디의 값은 새것도 옛것도 detail 에 넣지 않는다** —
+ *     이 행의 `target_name` 이 바꾸기 **전** 아이디이고(행 target 규칙 그대로), 새 아이디는 감사 어디에도 없다
+ *     (d74 의 목적이 새 아이디를 모르게 하는 것이다 — 누구든 계정 번호 `target_id` 로 지금 행을 찾는다).
+ *   · 세션·개인 토큰·2단계 비밀·잠금 칸은 전부 계정 **번호**에 묶여 있어 그대로다 — 세션을 끊지 않는다
+ *     (권한이 바뀐 것이 아니다. 이름 칸과 같다).
+ *
  * @var array<string,mixed> $user   라우터가 넘긴 현재 사용자 (Admin)
  * @var list<string>        $params $params[0] = users.id (정수 문자열)
  */
 
-$allowedFields = ['role', 'team_id', 'is_active', 'expires_at', 'reason_text', 'display_name'];
+$allowedFields = ['role', 'team_id', 'is_active', 'expires_at', 'reason_text', 'display_name', 'username'];
+
+require_once __DIR__ . '/_username_common.php';   // d74 — 아이디 규칙 한 벌(계정 만들기와 같은 함수)
 
 $uidRaw = $params[0] ?? '';
 if (!is_string($uidRaw) || preg_match('/^[0-9]{1,9}$/', $uidRaw) !== 1) {
@@ -88,10 +103,10 @@ if (array_key_exists('is_active', $body) && $body['is_active'] === false) {
     $denyAction = 'user.deactivate';
 } elseif (array_key_exists('is_active', $body) && $body['is_active'] === true) {
     $denyAction = 'user.activate';
-} elseif (array_key_exists('display_name', $body)
+} elseif ((array_key_exists('display_name', $body) || array_key_exists('username', $body))
     && array_intersect(array_keys($body), ['role', 'team_id', 'is_active', 'expires_at']) === []
 ) {
-    // 5-A″ — 이름만 바꾸려는 요청. 「역할 변경을 …」 문장이 남지 않게 따로 둔다.
+    // 5-A″ — 이름만 바꾸려는 요청. 「역할 변경을 …」 문장이 남지 않게 따로 둔다. d74 — 아이디도 같은 갈래.
     $denyAction = 'user.update';
 }
 
@@ -199,6 +214,21 @@ if (array_key_exists('display_name', $body)) {
     $newDisplayName = $cleanName;
 }
 
+// d74 아이디 — 형식은 계정 만들기와 같은 함수. 권한 칸(역할·팀·활성·만료)과는 섞지 않는다(감사 행이 늘 user.update).
+//   이미 있음·검토 접두·검토 계정·공용 토큰은 DB·설정을 보므로 권한 판단([5]) 뒤 [5b] 에서 본다.
+$newUsername = $targetName;
+if (array_key_exists('username', $body)) {
+    if (array_intersect(array_keys($body), ['role', 'team_id', 'is_active', 'expires_at']) !== []) {
+        $reject($denyAction, 'bad_request');
+    }
+    if (!tbox_username_format_ok($body['username'])) {
+        // 사유 코드는 형식 오류 그대로(bad_request) · 문구만 아이디 규칙을 말한다(화면이 고쳐 다시 보낼 수 있게 — 요청 값은 넣지 않는다)
+        Audit::deny('user.update', 'bad_request', $auditTarget);
+        Http::error(400, tbox_username_message('bad_format'));
+    }
+    $newUsername = (string) $body['username'];
+}
+
 // 역할이 정하는 규칙 (판단은 Authz 안에서) — Guest 는 팀 없음 · 만료일 필수
 if ($newTeam !== null && !Authz::allowsTeam($newRole)) {
     $reject($denyAction, 'bad_request');
@@ -226,9 +256,10 @@ $roleChanged = $newRole !== $current['role'];
 $teamChanged = $newTeam !== $current['team_id'];
 $activeChanged = $newActive !== $current['is_active'];
 $nameChanged   = $newDisplayName !== $currentDisplayName;
+$usernameChanged = $newUsername !== $targetName;   // d74 — 같은 이름이면 바뀐 것 없음
 // 만료일은 문자열 형식이 DB 출력과 달라 단순 비교가 통하지 않는다 —
 // "요청에 expires_at 이 있었나" 로만 변경 여부를 본다.
-if (!$roleChanged && !$teamChanged && !$activeChanged && !$expiresChanged && !$nameChanged) {
+if (!$roleChanged && !$teamChanged && !$activeChanged && !$expiresChanged && !$nameChanged && !$usernameChanged) {
     $reject($denyAction, 'bad_request');
 }
 
@@ -252,6 +283,29 @@ if (!$mayChange) {
     Http::error(400, Http::reasonMessage($changeCode));
 }
 
+// ─── [5b] d74 아이디 — 바꿀 수 있는 이름인가 (권한 판단 **뒤** — 권한 없는 사람에게 이름 사정을 먼저 알려 주지 않는다) ───
+//   감사 행은 늘 `user.update`, 대상은 바꾸려는 계정(지금 이름)이다. **시도한 새 이름은 감사에 남기지 않는다** — 새 아이디
+//   후보(오타 포함)가 기록에 쌓이면 d74 의 목적(새 아이디를 모르게)이 샌다. 문구는 코드 상수(_username_common.php).
+if ($usernameChanged) {
+    if (tbox_username_locked_review($targetName)) {
+        Audit::deny('user.update', 'review_account', $auditTarget);
+        Http::error(400, tbox_username_message('review_account'));
+    }
+    if (tbox_username_touches_shared_token($targetName)) {   // 지금 이름만(결정 d76 ② — _username_common.php ⑤)
+        Audit::deny('user.update', 'shared_token_user', $auditTarget);
+        Http::error(409, tbox_username_message('shared_token_user'));
+    }
+    $usernameWhy = tbox_username_unavailable($db, $newUsername);
+    if ($usernameWhy === 'already_exists') {
+        Audit::deny('user.update', 'already_exists', $auditTarget);
+        Http::error(400, tbox_username_message('already_exists'));
+    }
+    if ($usernameWhy === 'reserved_prefix') {
+        Audit::deny('user.update', 'reserved_prefix', $auditTarget);
+        Http::error(400, tbox_username_message('reserved_prefix'));
+    }
+}
+
 // ─── [6] 적용 ───────────────────────────────────────────────────
 // 고정 UPDATE 한 문장. 컬럼 이름은 코드에 적혀 있고 값은 전부 바인딩된다 (PRD S-04).
 $sqlUpdate = <<<'SQL'
@@ -261,6 +315,7 @@ $sqlUpdate = <<<'SQL'
            is_active  = CAST(:is_active AS boolean),
            expires_at = CAST(:expires_at AS timestamptz),
            display_name = :display_name,
+           username   = :username,
            updated_at = now()
      WHERE id = :id
     SQL;
@@ -273,8 +328,8 @@ $sqlUpdate = <<<'SQL'
 $action = 'user.role_change';
 if ($activeChanged) {
     $action = $newActive ? 'user.activate' : 'user.deactivate';
-} elseif ($nameChanged && !$expiresChanged && !$roleChanged && !$teamChanged) {
-    // 5-A″ — 바뀐 것이 이름뿐이다 (머리글 「감사 처리」)
+} elseif (($nameChanged || $usernameChanged) && !$expiresChanged && !$roleChanged && !$teamChanged) {
+    // 5-A″ — 바뀐 것이 이름뿐이다 (머리글 「감사 처리」). d74 — 아이디도 같은 행(권한 칸과 섞이지 않는다 — [3])
     $action = 'user.update';
 } elseif ($expiresChanged && !$roleChanged && !$teamChanged) {
     $action = 'user.expiry_change';
@@ -288,6 +343,7 @@ foreach ([
     'is_active'    => $activeChanged,
     'expires_at'   => $expiresChanged,
     'display_name' => $nameChanged,
+    'username'     => $usernameChanged,   // d74 — 칸 이름만(값은 새것도 옛것도 남기지 않는다 — 머리글)
 ] as $field => $did) {
     if ($did) {
         $changedFields[] = $field;
@@ -302,6 +358,7 @@ try {
         ':is_active'  => $newActive ? 'true' : 'false',
         ':expires_at' => $newExpires,
         ':display_name' => $newDisplayName,
+        ':username'   => $newUsername,
         ':id'         => $uid,
     ]);
 
@@ -336,6 +393,14 @@ try {
     ]);
 
     $db->commit();
+} catch (PDOException $e) {
+    $db->rollback();
+    // d74 — 23505 = unique_violation. [5b] 와 UPDATE 사이에 다른 요청이 같은 아이디를 먼저 가져간 경우다(계정 만들기와 같은 그물).
+    if ($usernameChanged && $e->getCode() === '23505') {
+        Audit::deny('user.update', 'already_exists', $auditTarget);
+        Http::error(400, tbox_username_message('already_exists'));
+    }
+    throw $e;   // bootstrap 예외 핸들러 → 500
 } catch (Throwable $e) {
     $db->rollback();
     throw $e;   // bootstrap 예외 핸들러 → 500
@@ -343,7 +408,7 @@ try {
 
 Http::json([
     'id'               => $uid,
-    'username'         => $targetName,
+    'username'         => $newUsername,   // d74 — 바꾼 뒤 이름(요청한 관리자에게만 — 이 창구는 Admin + 재인증)
     'display_name'     => $newDisplayName,
     'role'             => $newRole,
     'team_id'          => $newTeam,

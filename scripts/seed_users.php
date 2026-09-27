@@ -29,6 +29,14 @@ declare(strict_types=1);
  * 멱등성: **계정별**로 판단한다. 이미 있는 username 은 건드리지 않고(비밀번호를 바꾸지 않는다),
  * 없는 것만 만든다. 그래서 5계정이 이미 있는 DB 에 검토 계정 5개만 덧붙일 수 있다.
  *
+ * d74 (2026-09-27) — **사람 계정이 이미 있는 DB 에는 시드 사람 계정을 만들지 않는다.**
+ *   관리자 아이디 바꾸기(d74)가 생겨, 운영 관리자가 시드 표의 이름(아래 표 — 문서·저장소에 이미 적힌 이름)에서 다른 이름으로
+ *   옮겨 갈 수 있게 됐다. 그 뒤 이 스크립트를 `--claude-only` 없이 다시 돌리면(install.sh 7절이 부른다 — 재실행이 안전한 설치다)
+ *   「없는 계정」으로 보고 **옛 이름의 새 Admin** 을 만든다 — 잠금 표적이 되살아나고, 모르는 관리자가 하나 는다.
+ *   그래서 DB 에 사람 계정(검토 접두 `qa_`·`claude_` 가 아닌 것 — 판정 `Origin::isReviewAccount()` 한 곳)이 하나라도 있으면
+ *   시드 사람 계정 5개는 **만들지 않고** 그 사실을 표준오류에 한 줄 알린다. 검토 계정(모드가 허락하는 것)은 전처럼 없는 것만 만든다.
+ *   종료 코드는 0 이다 — install.sh 가 7절에서 멈추지 않게(재실행 설치는 계속 된다). 새 설치(빈 DB)는 전과 같다.
+ *
  * 왜 SQL 시드가 아니라 PHP 인가
  *   비밀번호는 Argon2id 해시로만 저장해야 하고(PRD S-09-4), 고정 해시를 db/seed.sql 에 적으면
  *   그 값이 저장소에 커밋되어 모든 설치본의 비밀번호가 같아진다(S-09-6 위반).
@@ -71,6 +79,7 @@ if ($seedArgs === ['--no-qa']) {
 $repoDir = dirname(__DIR__);
 require_once $repoDir . '/src/Env.php';
 require_once $repoDir . '/src/Db.php';
+require_once $repoDir . '/src/Origin.php';   // d74 — 검토 접두 판정 한 곳(isReviewAccount — 순수 함수, DB·파일에 닿지 않는다)
 
 // 설정 파일은 저장소 루트 .env 한 곳뿐이다 (PRD S-09-6. ARCH 3장).
 // changkwon:tbox-php 0640 이고 이 스크립트는 sudo(root) 로 실행하므로 읽을 수 있다.
@@ -145,12 +154,30 @@ $guestDays = 90;
  *   no-qa        시드만 (운영 배포 — 검토 계정 **전부** 안 만든다: qa 도 claude 도)
  *   claude-only  claude 5개만 — 시드·qa 는 이 표에 넣지 않으므로 존재 여부조차 묻지 않는다
  */
+/*
+ * d74 — 사람 계정이 이미 있는 DB 면 시드 사람 계정을 빼 둔다(머리글 「d74」). 판정은 이름 접두뿐이고(권한 판정 아님),
+ * 사람 계정 수만 센다 — 이름을 찍지 않는다. `--claude-only` 는 시드 표를 보지 않으므로 물을 것도 없다.
+ */
+if ($seedMode !== 'claude-only') {
+    $humans = 0;
+    foreach ($db->run('SELECT username FROM users')->fetchAll() as $u) {
+        if (!Origin::isReviewAccount((string) $u['username'])) {
+            $humans++;
+        }
+    }
+    if ($humans > 0) {
+        fwrite(STDERR, "시드 사람 계정은 만들지 않습니다 — 이 DB 에 사람 계정이 이미 " . $humans
+            . "개 있습니다(새 설치가 아닙니다 · d74). 검토 계정만 모드대로 확인합니다\n");
+        $accounts = [];
+    }
+}
+
 if ($seedMode === 'claude-only') {
     $accounts = $claudeAccounts;
 } elseif ($seedMode === 'all') {
     $accounts = array_merge($accounts, $qaAccounts, $claudeAccounts);
 }
-// 'no-qa' 는 시드 표 그대로다.
+// 'no-qa' 는 시드 표 그대로다(d74 — 사람 계정이 이미 있으면 빈 표).
 
 $sqlExists = <<<'SQL'
     SELECT 1 AS one FROM users WHERE username = :username

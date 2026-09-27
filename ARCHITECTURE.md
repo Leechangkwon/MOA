@@ -2106,9 +2106,13 @@ GRANT  USAGE, SELECT  ON SEQUENCE audit_logs_id_seq TO tbox_app;
 | `user.activate|allow` | `{actor} 이(가) 계정 「{target}」 을(를) 다시 활성화했습니다 (사유는 상세 기록)` | 10단계 |
 | `user.activate|deny|bad_request` | `{actor} 이(가) 계정 「{target}」 재활성화를 잘못된 형식(사유 없음 등)으로 요청해서 거부했습니다` | 10단계 (검토 보완 A) |
 | `user.expiry_change|allow` | `{actor} 이(가) 계정 「{target}」 의 만료일을 바꿨습니다 (이전 → 새 값·사유는 상세 기록)` | 10단계 — 역할·활성이 아니라 `expires_at` 만 바뀐 경우 (검토 보완 C) |
-| `user.update|allow` | `{actor} 이(가) 계정 「{target}」 의 이름을 바꿨습니다 (바뀐 칸·사유는 상세 기록)` | 5-A″ — 이름(`display_name`)만 바뀐 경우. **이름의 값은 남기지 않는다**(`changed_fields` 만) |
-| `user.update|deny|bad_request` | `{actor} 이(가) 계정 「{target}」 의 이름을 잘못된 형식(길이·제어 문자·사유 없음)으로 바꾸려 해서 거부했습니다` | 5-A″ — 41자 이상·제어·서식 문자·사유 없음 |
-| `user.update|deny|self_change` | `{actor} 이(가) 자기 자신의 계정 이름을 바꾸려 해서 거부했습니다 (본인은 보기만)` | 5-A″ — 역할과 같은 `self_change` 규칙 |
+| `user.update|allow` | `{actor} 이(가) 계정 「{target}」 의 이름·아이디를 바꿨습니다 (바뀐 칸·사유는 상세 기록)` | 5-A″ — 이름(`display_name`)만 바뀐 경우. **이름의 값은 남기지 않는다**(`changed_fields` 만). d74 — 로그인 아이디(`username`)도 이 행: `{target}` 은 바꾸기 **전** 아이디, 새 아이디는 문장·상세 어디에도 없다 |
+| `user.update|deny|bad_request` | `{actor} 이(가) 계정 「{target}」 의 이름·아이디를 잘못된 형식(길이·글자·제어 문자·사유 없음)으로 바꾸려 해서 거부했습니다` | 5-A″ — 41자 이상·제어·서식 문자·사유 없음. d74 — 아이디 형식(`Auth::USERNAME_RE` — 대문자 포함)·권한 칸과 섞은 요청 |
+| `user.update|deny|self_change` | `{actor} 이(가) 자기 자신의 계정 이름·아이디를 바꾸려 해서 거부했습니다 (본인은 보기만)` | 5-A″ — 역할과 같은 `self_change` 규칙(d74 아이디도) |
+| `user.update|deny|already_exists` | `{actor} 이(가) 계정 「{target}」 의 아이디를 이미 있는 아이디로 바꾸려 해서 거부했습니다` | d74 — 계정 만들기와 같은 함수(`tbox_username_unavailable`, 비교는 `lower()`) · 400 · **시도한 이름은 남기지 않는다** |
+| `user.update|deny|reserved_prefix` | `{actor} 이(가) 계정 「{target}」 의 아이디를 검토·시험 계정 전용 접두로 시작하는 이름으로 바꾸려 해서 거부했습니다` | d74 — `qa_`·`claude_`(`Origin::isReviewAccount()` 한 곳) · 400 |
+| `user.update|deny|review_account` | `{actor} 이(가) 검토·시험 계정 「{target}」 의 아이디를 바꾸려 해서 거부했습니다 (검토 표식이 깨지지 않게)` | d74 — 지금 이름이 검토 접두인 계정은 아이디를 바꾸지 않는다 · 400 |
+| `user.update|deny|shared_token_user` | `{actor} 이(가) 계정 「{target}」 의 아이디를 바꾸려 했지만 공용 프로그램 토큰의 귀속 아이디에 닿아 거부했습니다 (공용 토큰을 먼저 정리)` | d74 — 공용 토큰이 켜져 있고(`API_TOKEN` 32자 이상) **지금 이름**이 `API_TOKEN_USER` 와 같다(그 경로는 **글자**로 계정을 찾는다 — 4.2) · 409 · 닫힌 실패. 새 이름 쪽은 막지 않는다(결정 d76 ② — 귀속 줄을 먼저 새 아이디로 바꾸고 이 창구를 부른다) |
 | `user.expired|deny|session_expired` | `{actor} 의 Guest 계정이 만료되어 살아 있던 세션을 끊었습니다` | 10단계 재지시 — `Auth::currentUser()` 가 만료된 Guest 의 세션을 즉시 파기 (R-12) |
 | `auth.mfa_enroll|deny|bad_code` | `{actor} 이(가) 2단계 인증을 켜려 했지만 확인 코드가 틀렸습니다` | 10단계 (검토 보완 B) |
 | `auth.gate|deny|password_change_required` | `{target} 이(가) 비밀번호를 아직 바꾸지 않은 상태로 다른 기능을 요청해서 거부했습니다` | 11단계 관문 (target = 본인, route 패턴은 상세) |
@@ -2407,7 +2411,7 @@ GRANT  USAGE, SELECT  ON SEQUENCE audit_logs_id_seq TO tbox_app;
 | `expires_at` | 무엇을 | 계정 만료일(Guest 필수). 생성·변경 행에 값 그대로 | 핸들러 | `user.create`·`user.expiry_change`·`user.role_change` (10단계) |
 | `policy` | 어떻게 | 라우트에 붙은 정책 이름 | 라우터 | `authz.route` deny |
 | `reason_text` | 왜 | 관리자가 입력한 사유 (500자) | 핸들러 | 역할 변경·비활성화·강제 삭제·레벨 하향 (10단계) |
-| `changed_fields` | 무엇을 | 바뀐 **칸 이름** 목록(`role`·`team_id`·`is_active`·`expires_at`·`display_name`). 이름의 **값**은 어디에도 남기지 않는다(개인정보 · append-only) | 핸들러 | `user.update`·`user.role_change`·`user.activate`·`user.deactivate`·`user.expiry_change` (5-A″) |
+| `changed_fields` | 무엇을 | 바뀐 **칸 이름** 목록(`role`·`team_id`·`is_active`·`expires_at`·`display_name`·`username`(d74)). 이름의 **값**은 어디에도 남기지 않는다(개인정보 · append-only). d74 아이디도 같다 — 새 아이디는 어디에도 없고 옛 아이디는 그 행의 `target_name` 이다 | 핸들러 | `user.update`·`user.role_change`·`user.activate`·`user.deactivate`·`user.expiry_change` (5-A″) |
 | `display_name_set` | 무엇을 | `true`/`false` — 계정을 만들 때 이름을 넣었나(값은 남기지 않는다) | 핸들러 | `user.create` (5-A″) |
 | `owner_id` | 무엇을 | 파일을 올린 사용자 id — 삭제·다운로드 판정에 쓰인 값 | 핸들러 | `file.delete`·`file.download` |
 | `target_team` | 무엇을 | 파일의 `team_id` (team 레벨이 아니면 null) — `actor_team` 과 나란히 놓으면 `same_team`·`team_mismatch` 판정을 로그만으로 재검산할 수 있다 | 핸들러 | `file.download`·`file.delete`·`file.upload` |
@@ -2849,7 +2853,7 @@ SELECT actor_id, count(*) FROM audit_logs
 
 **줄 모양.** `{raised_at, rule, evidence, dispatch, request_id, origin, title}` — 앞 다섯 키는 그대로라 옛 파서가 그대로 읽는다. `title` 은 `claude-*` 면 `[Claude] ` + `evidence.rule_text`, 아니면 `rule_text`(없으면 규칙 번호) — `Origin::title()` 한 곳에서 만든다. `origin_hint`(`partial`)는 `evidence` 안에 둔다. 감사 `alert.raised` detail 에도 같은 `origin` 이 들어간다(`{rule, evidence, origin}`, 7.5). `cli_raise_alert(rule, evidence, origin, hint)` 는 값을 **고르지 않고** 모양만 본다 — 넷 밖의 값이나 `partial` 밖의 hint 는 예외다(조용히 `human` 으로 바꾸지 않는다). `verify_backup.sh` 가 직접 쓰는 AL-8 줄도 같은 키(`request_id` 만 없다) — `origin:"system"`, `title` = `rule_text`(「백업 검증 2회 연속 실패 — 복구 능력 상실」), 경보 로그 경로는 PHP 와 같은 규칙(저장소 `.env` 의 `AUDIT_LOG_FILE` 디렉터리 + `alerts.log`, 못 읽으면 `/var/log/tbox-v2/alerts.log`)이고, 시험용 인자 `--backup-root <절대 경로 디렉터리>` 하나가 생겼다(연속 실패 횟수 파일도 그 안 — 시험이 운영 횟수를 밀지 않게). `alerts.php --dry-run` 출력은 옛 줄 끝에 ` origin=…`(한쪽만이면 ` hint=partial`)만 붙는다 — 발동 목록이 옛 코드와 같은지 f69.sh T10 이 대조한다. **2026-09-24 전의 옛 줄(889줄)은 고치지 않는다**(append-only 증거) — 화면은 그 줄을 「출처 표기 전」으로 보이고, 옛 줄 분류 보고(`--classify-history`)는 K-4 로 넣지 않았다.
 
-★ `origin` 은 **보여 주기와 분류(F-70 즉시/하루 요약)에만** 쓴다. 경보를 남길지·감사를 남길지·중복 억제는 origin 과 무관하고(어떤 값이든 두 곳에 똑같이 남는다), 권한·차단에도 쓰지 않는다 — Authz·Auth·Audit 은 `Origin.php` 를 읽지 않는다. 예외 하나는 `users_create.php` 가 `isReviewAccount()` **이름 판정만** 읽어 사람 계정 이름에 검토 접두를 못 쓰게 막는 것(대기열 2b, 7.4 `user.create deny reserved_prefix`) — 판정이 아니라 「이름 예약」이고, 접두 목록을 두 벌로 두지 않으려고 같은 함수를 쓴다.
+★ `origin` 은 **보여 주기와 분류(F-70 즉시/하루 요약)에만** 쓴다. 경보를 남길지·감사를 남길지·중복 억제는 origin 과 무관하고(어떤 값이든 두 곳에 똑같이 남는다), 권한·차단에도 쓰지 않는다 — Authz·Auth·Audit 은 `Origin.php` 를 읽지 않는다. 예외 하나는 아이디 규칙 한 벌 `src/handlers/_username_common.php`(계정 만들기 `users_create.php` · 아이디 바꾸기 `users_update.php` 가 부른다 — d74)가 `isReviewAccount()` **이름 판정만** 읽어 사람 계정 이름에 검토 접두를 못 쓰게 막고(대기열 2b, 7.4 `user.create deny reserved_prefix`·`user.update deny reserved_prefix`) 검토 계정의 아이디를 바꾸지 못하게 하는 것(`user.update deny review_account`) — 판정이 아니라 「이름 예약」이고, 접두 목록을 두 벌로 두지 않으려고 같은 함수를 쓴다.
 
 **알려진 틈 — 이번에 고치지 않음(별도 과제).** AL-9 의 **발동** 정규식 `(^|/|\s)(psql|pg_dump|pg_restore|dropdb|truncate|chattr)\b|(^|\s)rm\s|find\b.*-delete` 는 auth.log 의 `COMMAND=` 가 늘 절대 경로라서 `COMMAND=/usr/bin/rm -rf …` 를 잡지 못한다(`rm` 앞 글자가 `/`). F-69 이전(16단계)부터의 모양이고 F-69 는 발동 조건을 바꾸지 않는다(경보 규칙 변경 금지). 그래서 f69.sh T3 은 「DB 이름 없는 명령 → `human`」 을 `find -delete` 로 확인하고, `rm` 줄은 발동했는지만 적는다.
 

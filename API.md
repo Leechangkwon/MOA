@@ -399,7 +399,7 @@ HTTP/1.1 200 OK
 | 감사 | 성공은 감사 행을 남기지 않는다(대상 없는 조회, `GET /api/me` 와 같다). 실패는 `auth.token deny`(`missing_header`·`bad_token`·`not_configured`·`user_invalid`) 로 남는다 |
 
 ```bash
-# 실측 2026-09-16 — 귀속을 검토 계정 qa_employee01(Employee, 팀 1)로 돌려 받은 값. 운영 귀속(admin01)이면 role=Admin, upload_levels 4개
+# 실측 2026-09-16 — 귀속을 검토 계정 qa_employee01(Employee, 팀 1)로 돌려 받은 값. 운영 귀속(관리자 계정 — 아이디는 d74 로 바뀜, 문서에 적지 않음)이면 role=Admin, upload_levels 4개
 curl -s -w '\n[%{http_code}]\n' -H "X-API-Token: $API_TOKEN" \
   https://changkwon.mso.so/tbox/api/whoami
 {"username":"qa_employee01","role":"Employee","team_id":1,"upload_levels":["public","internal","team"]}
@@ -672,7 +672,7 @@ curl -s -H "X-API-Token: $API_TOKEN" http://127.0.0.1:8082/tbox/api/whoami
 {"error":"권한이 없습니다"} [403]
 ```
 
-감사 로그(실측): `file.delete allow`·`folder.delete allow` 행에 `detail.auth=api_token`·`token_kind=personal`·`token_id=<번호>` 가 붙었다. 공용 토큰(`.env`, 귀속 admin01)으로 같은 DELETE 둘을 부른 실측(2026-09-17): `{"error":"이 창구는 개인 토큰으로만 쓸 수 있습니다"} [403]`, 감사 `auth.token deny shared_token_not_permitted` + `token_kind=shared`. 같은 토큰의 `GET /api/files` 는 200 그대로다.
+감사 로그(실측): `file.delete allow`·`folder.delete allow` 행에 `detail.auth=api_token`·`token_kind=personal`·`token_id=<번호>` 가 붙었다. 공용 토큰(`.env`, 귀속 관리자 계정 — 아이디는 d74 로 바뀜, 문서에 적지 않음)으로 같은 DELETE 둘을 부른 실측(2026-09-17): `{"error":"이 창구는 개인 토큰으로만 쓸 수 있습니다"} [403]`, 감사 `auth.token deny shared_token_not_permitted` + `token_kind=shared`. 같은 토큰의 `GET /api/files` 는 200 그대로다.
 
 > 토큰은 이 **열** 밖에서는 아무것도 열지 못한다 — 등급 변경·휴지통 복원·계정·감사 창구는 헤더를 읽지도 않는다(0장).
 
@@ -738,6 +738,41 @@ GET  /tbox/api/me (두 값만)                  → 200 {"passkey_available":tru
 DELETE /tbox/api/me/passkeys/999999          → 404 {"error":"찾을 수 없습니다"}
 DELETE /tbox/api/me/passkeys/1               → 200 {"ok":true,"remaining":0}
 ```
+
+## 17. 관리자 창구 — 로그인 아이디 바꾸기 — `PATCH /api/users/{uid}` 의 `username` (d74, 2026-09-27 · 세션)
+
+프로그램이 부르는 창구가 아니라 **계정 관리 화면(「관리」 → 「로그인 아이디 바꾸기」)**이 부르는 관리자 창구다(PRD F-10 d74 · SECURITY R-06 완화 · 구현 기록 `docs/d74-username-change-implementation.md`).
+기존 계정 수정 창구에 칸 하나를 더한 것이고 새 라우트는 없다. **X-API-Token 으로는 부를 수 없다**(토큰 창구 집합 밖).
+
+| 항목 | 내용 |
+|---|---|
+| 인증 | 세션 쿠키 + `X-CSRF-Token`. 정책 `user.manage`(Admin) — **재인증(15분 창) 관문**. 창이 닫혔으면 `403 {"error":"관리 기능을 쓰려면 비밀번호를 다시 확인해야 합니다","next":"reauth"}` · Admin 이 아니면 `403 {"error":"권한이 없습니다"}` · CSRF 가 없거나 남의 것이면 `403` |
+| 요청 | JSON `{"username":"<새 아이디>","reason_text":"<사유 1~500자>"}` — `display_name` 은 함께 보내도 된다. `role`·`team_id`·`is_active`·`expires_at` 과 **섞으면 400**. 자기 자신은 바꿀 수 없다(400 「자기 자신에게는 쓸 수 없습니다 — 내 계정 화면을 이용하세요」) |
+| 규칙 | 계정 만들기(`POST /api/users`)와 **같은 함수**: 소문자·숫자·`_ . -` 3~64자(대문자는 형식 오류) · 이미 있는 아이디 불가 · `claude_`·`qa_` 접두 불가. 더해서 — 지금 이름이 검토 계정이면 바꿀 수 없다 · 지금 이름이 공용 프로그램 토큰(`.env` `API_TOKEN_USER`)의 귀속 아이디면(공용 토큰이 켜져 있을 때) 409 — 귀속 줄을 먼저 새 아이디로 바꾸면(결정 d76 ② · 도우미 `apply-d74-rename-conf --env`) 통과하고 공용 토큰은 바꾼 계정으로 다시 이어진다 · 지금과 같은 이름이면 「바뀐 것 없음」 400 |
+| 성공 | `200 {"id":<번호>,"username":"<새 아이디>","display_name":…,"role":…,"team_id":…,"is_active":…,"expires_at":…,"sessions_revoked":0}` — **세션을 끊지 않는다**(그 사람의 로그인·개인 토큰·2단계 인증·패스키는 계정 번호에 묶여 그대로). 다음 로그인부터 새 아이디, 옛 아이디 로그인은 없는 아이디와 같은 401 |
+| 실패 | `400 {"error":"아이디 형식이 맞지 않습니다 — 소문자·숫자·_ . - 로 3~64자입니다"}` · `400 {"error":"이미 있는 아이디입니다"}` · `400 {"error":"검토·시험 계정 전용 접두(qa_·claude_)로 시작하는 아이디는 만들 수 없습니다 — 사람 계정은 다른 이름으로 만드세요"}` · `400 {"error":"검토·시험 계정의 아이디는 바꿀 수 없습니다 — 검토 요청과 사람 행동을 가르는 표식입니다"}` · `409 {"error":"이 계정은 공용 프로그램 토큰에 묶여 있어 아이디를 바꾸면 그 토큰이 끊깁니다 — 공용 토큰을 먼저 정리하세요"}` · 사유 없음·섞은 칸·같은 이름 `400 {"error":"잘못된 요청입니다"}` · 없는 번호 `404 {"error":"찾을 수 없습니다"}` |
+| 감사 | 성공 `user.update allow` — `detail.changed_fields = ["username"]`, 대상 이름(`target_name`)은 **바꾸기 전** 아이디. **새 아이디는 감사 어디에도 없다**(문장·상세). 거부 `user.update deny bad_request·already_exists·reserved_prefix·review_account·shared_token_user·self_change` — 대상은 바꾸려는 계정이고 **시도한 새 아이디는 남기지 않는다** |
+| 넣지 않는 것 | 응답·오류 문구에 요청한 아이디를 되찍지 않는다(성공 응답의 `username` 만 — 요청한 관리자에게) · 공용 토큰 값은 길이만 본다 |
+
+실측(2026-09-27, 임시 인스턴스 `tests/d74_username.sh` — 대상은 시험이 임시 DB 에 만든 사람 계정, 이름 자리는 `<아이디>` 로 가림):
+
+```text
+재인증 없음      → 403 {"error":"관리 기능을 쓰려면 비밀번호를 다시 확인해야 합니다","next":"reauth"}
+형식(대문자)     → 400 {"error":"아이디 형식이 맞지 않습니다 — 소문자·숫자·_ . - 로 3~64자입니다"}
+이미 있음        → 400 {"error":"이미 있는 아이디입니다"}
+검토 접두        → 400 {"error":"검토·시험 계정 전용 접두(qa_·claude_)로 시작하는 아이디는 만들 수 없습니다 — 사람 계정은 다른 이름으로 만드세요"}
+검토 계정 대상   → 400 {"error":"검토·시험 계정의 아이디는 바꿀 수 없습니다 — 검토 요청과 사람 행동을 가르는 표식입니다"}
+공용 토큰 귀속   → 409 {"error":"이 계정은 공용 프로그램 토큰에 묶여 있어 아이디를 바꾸면 그 토큰이 끊깁니다 — 공용 토큰을 먼저 정리하세요"}
+바꾸기 성공      → 200 {"id":35,"username":"<아이디>","display_name":null,"role":"Employee","team_id":1,"is_active":true,"expires_at":null,"sessions_revoked":0}
+```
+
+```bash
+# 요청 모양(관리자 세션 · 재인증 15분 창 · CSRF). 새 아이디·사유는 본문으로만 — 명령 인자에 비밀·새 아이디를 싣지 않는다(R-62)
+curl -s -w '\n[%{http_code}]\n' -X PATCH -b "$JAR" -H "X-CSRF-Token: $CSRF" -H 'Content-Type: application/json' \
+  --data-binary @body.json https://changkwon.mso.so/tbox/api/users/<번호>     # body.json = {"username":"…","reason_text":"…"}
+```
+
+> 공용 토큰 귀속 계정은 아이디 바꾸기 전에 공용 토큰 정리(F-59 ⑥) — 사용자 결정 **d76 ②**(2026-09-27): 공용 토큰은 두고 **귀속 줄만 새 아이디로**. 순서 ① 도우미 `--env`(`.env` 귀속 줄 — 공용 토큰 잠시 503) → ② 이 창구로 아이디 바꾸기 → ③ 공용 토큰 다시 200 → ④ 도우미 `--seed`(결정 d77 ②). `.env` 는 요청마다 읽혀 reload 가 필요 없다. 서버 파일이라 취합 세션이 root 로 한다.
 
 ## 추가 규칙 (API 를 새로 적을 때)
 

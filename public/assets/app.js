@@ -7069,6 +7069,153 @@ function initUsers(csrfToken) {
     });
   }
 
+  /* ─── d74 로그인 아이디 바꾸기 창 (#user-rename, 2026-09-27 — SECURITY R-06 완화) ─────────────────────────────
+   * `PATCH /api/users/{uid}` 에 `{ username, reason_text }` 만 보낸다. 규칙(형식·이미 있음·검토 접두·검토 계정·공용 토큰)은
+   * 서버 한 곳(`_username_common.php`)이 정한다 — 여기는 빈 칸·같은 이름만 먼저 말한다(요청 0).
+   * 막히면 **서버 문구 그대로** 이 창 안(#ur-msg)에 말하고 창을 연 채 둔다(고쳐 다시 보낸다). 성공하면 창을 닫고 목록을 다시 읽는다 —
+   * 목록·상세가 새 이름으로 보인다. 재인증 관문(403 next:"reauth")이면 공용 재인증 창을 띄우고, 통과하면 **같은 값을 다시** 보낸다.
+   * 새 아이디는 입력칸 값으로만 있고, 창이 닫히면(어느 길이든 — close 이벤트) 비운다. 알림 줄에도 새 아이디를 적지 않는다.
+   */
+  var urDialog = document.getElementById('user-rename');
+  var urForm = document.getElementById('user-rename-form');
+  var urTitle = document.getElementById('ur-title');
+  var urInput = document.getElementById('ur-username');
+  var urReason = document.getElementById('ur-reason');
+  var urMsg = document.getElementById('ur-msg');
+  var urSubmit = document.getElementById('ur-submit');
+  var urItem = null;   // 지금 아이디 창이 고치는 계정(서버가 준 행 그대로). 닫으면 비운다
+  var urBusy = false;  // 보내는 중에는 한 번 더 보내지 않는다
+
+  function closeRename(note) {
+    urItem = null;
+    if (urDialog && urDialog.open) {
+      urDialog.close();
+    }
+    if (typeof note === 'string') {
+      setText(msg, note);
+    }
+  }
+
+  function openRename(item) {
+    if (!urDialog || !urForm || !urInput || !urReason || typeof urDialog.showModal !== 'function') {
+      setText(msg, GENERIC_ERROR);
+      return;
+    }
+    urItem = item;
+    setText(msg, '');
+    setText(urTitle, '계정 「' + personLabel(item.display_name, item.username) + '」 로그인 아이디 바꾸기');
+    setText(urMsg, '');
+    urInput.value = '';
+    urReason.value = '';
+    urBusy = false;
+    if (urSubmit) {
+      urSubmit.disabled = false;
+    }
+    urDialog.showModal();
+    urInput.focus();
+  }
+
+  function sendRename(id, payload) {
+    if (typeof id !== 'number' || !isFinite(id) || id <= 0) {
+      setText(urMsg, GENERIC_ERROR);
+      return;
+    }
+    urBusy = true;
+    if (urSubmit) {
+      urSubmit.disabled = true;
+    }
+    fetch(APP_BASE + '/api/users/' + String(id), {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken },
+      body: JSON.stringify(payload),
+      credentials: 'same-origin',
+      cache: 'no-store'
+    })
+      .then(function (response) {
+        if (response.status === 401) {
+          toLogin();
+          return null;
+        }
+        return readJson(response).then(function (data) {
+          if (handleReauth(response, data, function () { sendRename(id, payload); })) {
+            return null;
+          }
+          if (toGate(response, data)) {
+            return null;
+          }
+          if (!response.ok) {
+            setText(urMsg, errorMessage(data));
+            return null;
+          }
+          closeRename('로그인 아이디를 바꿨습니다. 그 사람은 다음 로그인부터 새 아이디를 씁니다.');
+          load();
+          return null;
+        });
+      })
+      .catch(function () {
+        setText(urMsg, GENERIC_ERROR);
+      })
+      .then(function () {
+        urBusy = false;
+        if (urSubmit) {
+          urSubmit.disabled = false;
+        }
+      });
+  }
+
+  if (urForm) {
+    urForm.addEventListener('submit', function (event) {
+      event.preventDefault();
+      if (urBusy || !urItem) {
+        return;
+      }
+      var value = urInput.value.trim();
+      if (value === '') {
+        setText(urMsg, '새 아이디를 적어야 합니다.');
+        urInput.focus();
+        return;
+      }
+      if (value === urItem.username) {
+        setText(urMsg, '지금 아이디와 같습니다 — 바뀐 내용이 없습니다.');
+        urInput.focus();
+        return;
+      }
+      var reasonText = urReason.value;
+      if (reasonText.replace(/\s+/g, '') === '') {
+        setText(urMsg, '사유를 적어야 합니다.');
+        urReason.focus();
+        return;
+      }
+      setText(urMsg, '');
+      sendRename(urItem.id, { username: value, reason_text: reasonText });
+    });
+  }
+  if (urDialog) {
+    var urCancel = function () {
+      closeRename('취소했습니다');
+    };
+    document.getElementById('ur-cancel').addEventListener('click', urCancel);
+    document.getElementById('ur-x').addEventListener('click', urCancel);
+    urDialog.addEventListener('cancel', function (event) {
+      // Esc 로 닫아도 「취소했습니다」 가 남게 한다 (조용한 종료 금지 — 다른 창과 같다).
+      event.preventDefault();
+      urCancel();
+    });
+    urDialog.addEventListener('close', function () {
+      // 어느 길로 닫혀도 새 아이디·사유를 DOM 에 남기지 않는다.
+      if (urDialog.open) {
+        return;
+      }
+      if (urInput) {
+        urInput.value = '';
+      }
+      if (urReason) {
+        urReason.value = '';
+      }
+      setText(urMsg, '');
+    });
+  }
+
   /* ─── 계정 한 줄의 동작 — 디버깅 묶음 U2 M8 (2026-09-26) ──────────────────────────────
    * 전에는 줄마다 글자 단추 다섯(이름·역할·팀·만료 · 임시 비밀번호 재발급 · 2단계 인증 초기화 · 비활성화 · 프로그램 토큰)이었다 —
    * 표가 단추로 가득 차고 폴드 820 에서도 잘렸다. 이제 줄에는 「관리」 하나, 상세 창(#user-manage-dialog)에 그 계정의 사실과
@@ -7262,6 +7409,8 @@ function initUsers(csrfToken) {
         }
         if (action === 'edit') {
           openUserEdit(item);
+        } else if (action === 'username') {
+          openRename(item);   // d74 — 로그인 아이디 바꾸기 창
         } else if (action === 'password') {
           resetPassword(item);
         } else if (action === 'mfa') {
