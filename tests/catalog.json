@@ -3753,6 +3753,78 @@
       "est_sec": 30,
       "writes_prod": false,
       "notes": "부르는 셸: tbox.passkey(PK-T1). 표본 파일이 인자로 필요하다(첫 파일 = python3 tests/lib/passkey_forge.py --samples localhost <origin> 출력). DB·네트워크 0 · 명령 실행 0."
+    },
+    {
+      "id": "tbox.dbg_u3_ui",
+      "cmd": "bash tests/dbg_u3_ui.sh",
+      "module": "tbox",
+      "env": "temp-instance",
+      "status": "required",
+      "needs": [
+        "sudo",
+        "browser",
+        "totp_wait"
+      ],
+      "covers": [
+        "public/assets/app.css",
+        "public/assets/app.js",
+        "public/assets/community/community.css",
+        "public/assets/community/database.js",
+        "public/assets/community/editor.js",
+        "public/index.php",
+        "scripts/community_asset_version.php",
+        "scripts/security_lint.sh",
+        "src/community/handlers/home_page.php",
+        "src/community/handlers/page_view.php",
+        "src/community/handlers/pages_publish.php",
+        "src/community/handlers/pages_visibility.php",
+        "src/community/routes.php",
+        "src/handlers/audit_page.php",
+        "src/help/community.php",
+        "src/site/not_found_page.php",
+        "src/views/shell_top.php",
+        "tests/browser/dbg_u3_ui.py",
+        "tests/dbg_u_ui.sh"
+      ],
+      "requirements": [],
+      "risks": [
+        "R-62"
+      ],
+      "est_sec": 900,
+      "writes_prod": false,
+      "notes": "디버깅 묶음 U3(사용자 2026-09-26 22:5x 「커뮤니티 사용 방법이 어려워 보인다」 · 에이전트 시연) 수락 — U3-S 정적(php -l · 보안 린트 · 부품 버전 · 인라인 0 · 더한 JS 줄의 HTML 문자열 자리 0 · 판정·보안 핵심 파일 차이 0 · 라우터 두 파일은 404 갈래 모양만 · 댓글 링크 · 옛 시험 dbg_u_ui 기준 판 · 도움말 ↔ 단추 글자 · 터치 여백) · U3-H 서버(없는 주소 — 브라우저 화면 요청은 404 HTML, 그 밖은 전과 같은 404 JSON · 로그인 전·후 같은 바이트 · 새 쿠키 0 · 감사 행 0 · 403·302 그대로) · U3-B 화면(tests/browser/dbg_u3_ui.py — 360·412 폰·820 터치·1280 × 라이트·다크) · U3-L 서버 로그 · 운영 감사 UA·로컬 행 0 · 검토 계정 비밀 파일 시각 그대로. 정적 대조 기준 판은 운영 HEAD(복제본에 없으면 fd96aca) — 쌓인 복제본이면 판정·보안 핵심과 라우터 모양은 이 묶음 층(이 시험 파일을 더한 합침) 자기 차이로, 기준 판에 이 묶음이 이미 있으면 라우터 모양 둘은 「○ 건너뜀」(합계 줄 밖). 임시 DB tbox_d3u_<포트>_test · php -S(기본 8323 — DBGU3_PORT, 8321~8329). 손잡이: DBGU3_COMBOS · DBGU3_SHOTS · DBGU3_APP_TREE+DBGU3_BEFORE=1(고치기 전 판 스크린샷) · DBGU3_SYNC_TOTP=1 · DBGU3_SKIP_BROWSER=1 · DBGU3_BASE_REV · DBGU3_PROD_REPO · QAREDI_BROWSER_LOCK(있으면 화면·회귀를 그 잠금 아래) · REGRESS=1(기본 help_button q_launcher — 운영 쓰기 시험은 넣지 않는다). 운영 8082 요청 0. 2026-09-27 정리 묶음 D2 로 넣음(시험은 U3 묶음부터 저장소에 있었다)."
+    },
+    {
+      "id": "tbox.browser_dbg_u3_ui",
+      "cmd": "python3 tests/browser/dbg_u3_ui.py",
+      "module": "tbox",
+      "env": "temp-instance",
+      "status": "helper",
+      "needs": [
+        "browser"
+      ],
+      "covers": [
+        "public/assets/app.css",
+        "public/assets/app.js",
+        "public/assets/community/community.css",
+        "public/assets/community/database.js",
+        "public/assets/community/editor.js",
+        "src/community/handlers/home_page.php",
+        "src/community/handlers/page_view.php",
+        "src/community/handlers/pages_publish.php",
+        "src/community/handlers/pages_visibility.php",
+        "src/handlers/audit_page.php",
+        "src/help/community.php",
+        "src/site/not_found_page.php",
+        "src/views/shell_top.php"
+      ],
+      "requirements": [],
+      "risks": [
+        "R-62"
+      ],
+      "est_sec": 600,
+      "writes_prod": false,
+      "notes": "부르는 셸: tbox.dbg_u3_ui. 단독 실행 불가(인자 SITE UA SHOTS 와 세션 넷을 표준입력 네 줄로 부르는 셸이 넘긴다 · 관리자 세션은 셸이 재인증해 둔 것). 결과 줄 SMOKE_FAIL=n. 넷째 인자 before 는 고치기 전 판 스크린샷용(종료 코드 0). 임시 DB 에 페이지·게시판 글·댓글·보드 행·그림 파일을 만든다(공개 게시·범위 넓히기 거부 창구 400 file_narrower 확인 포함)."
     }
   ]
 }

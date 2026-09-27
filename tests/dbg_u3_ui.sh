@@ -4,6 +4,7 @@
 #   U3-S 정적      바뀐 PHP php -l · 보안 린트 0 · 커뮤니티 JS import 버전(--check) · 더한 줄의 인라인 style·script·on* 0 ·
 #                  라우터(public/index.php)·커뮤니티 라우터(routes.php) 차이는 **404 갈래 한 줄 → 없는 주소 함수 부르기**뿐 ·
 #                  판정·보안 핵심(Authz · CommunityAuthz · Auth · Http · Audit) 차이 0 · 댓글 본문을 문자열로 넣는 줄 0 ·
+#                  (쌓인 복제본이면 판정·보안 핵심과 라우터 모양은 이 묶음 층 자기 차이 · 기준 판에 이 묶음이 이미 있으면 라우터 모양 둘은 건너뜀) ·
 #                  옛 시험 dbg_u_ui.sh 기준 판 기본값이 운영 HEAD 를 따라감 · 도움말 문구 ↔ 하위 페이지·데이터베이스 단추 글자(좁은·넓은 폭)
 #   U3-H 서버      없는 주소 — 브라우저 화면 요청(Accept text/html · GET/HEAD · /api/ 아님)은 404 HTML 「찾을 수 없는 페이지」, 그 밖은 전과 같은 404 JSON ·
 #                  로그인 전·후 같은 바이트 · 새 쿠키 0 · 감사 행 0 · 있는데 권한 없는 주소(403)·로그인 전(302)은 전과 같음 ·
@@ -57,6 +58,8 @@ expect() {
   else printf '  ✖ %s  (기대=%s 실제=%s)\n' "$1" "$2" "$3"; FAIL=$((FAIL+1)); fi
 }
 note() { printf '  · %s\n' "$1"; }
+SKIP=0
+skip() { printf '  ○ 건너뜀 — %s  (%s)\n' "$1" "$2"; SKIP=$((SKIP+1)); }   # 통과로 세지 않는다 · 끝에 수만 적는다
 
 cleanup() {
   [ -n "$SPID" ] && { kill "$SPID" 2>/dev/null; wait "$SPID" 2>/dev/null; }
@@ -216,16 +219,36 @@ else
   php "$ROOT/scripts/community_asset_version.php" --check > "$WORK/assetver.txt" 2>&1
   expect "커뮤니티 JS import 버전 표시가 지금 내용과 맞다(--check)" "0" "$?"
   git -C "$ROOT" diff "$BASE_REV" -- src public > "$WORK/diff.txt" 2>/dev/null
-  INL=$(grep '^+' "$WORK/diff.txt" | grep -v '^+++' | grep -cE 'style="|<script>|<script [^s]| on[a-z]+="')
+  # 인라인만 센다 — `<script` 태그 안에 src= 가 있는 외부 파일(`<script defer src=…>` 등)은 빼고 `<script>`·src 없는 `<script …>`·style="·on…=" (네 시험 같은 식 · 정리 묶음 D2 2026-09-27)
+  INL=$(grep '^+' "$WORK/diff.txt" | grep -v '^+++' | grep -cE 'style="|<script([[:blank:]]+([^s>[:blank:]][^>[:blank:]]*|s[^r>[:blank:]][^>[:blank:]]*|sr[^c>[:blank:]][^>[:blank:]]*|src[^=>[:blank:]][^>[:blank:]]*|s|sr|src))*[[:blank:]]*>| on[a-z]+="')
   expect "더한 줄에 인라인 style·script·on* 속성 0" "0" "$INL"
   expect "더한 JS 줄에 문자열 → HTML 자리(innerHTML·outerHTML·insertAdjacentHTML·document.write) 0" "0" \
     "$(git -C "$ROOT" diff "$BASE_REV" -- 'public/assets/*.js' 'public/assets/community/*.js' 2>/dev/null | grep '^+' | grep -v '^+++' | grep -cE 'innerHTML|outerHTML|insertAdjacentHTML|document\.write')"
+  # 쌓인 복제본(운영 반영 순서로 묶음을 --no-ff 합침으로 쌓은 트리 — 통합 복제본 stackw 등)에서는 기준 판 대비 차이에 다른 층 몫이 섞인다
+  #   (아래 층 = 아직 운영에 없는 앞 묶음 — 예: 패스키의 Auth·Http·Audit·라우트 표 · d74 의 Audit 문장 표). 첫 부모 줄기에서 기준 판에 없는 합침 가운데
+  #   이 시험 파일을 **더한** 합침이 이 묶음 층이다 — 찾으면 아래 판정·보안 핵심 차이와 라우터 두 파일의 모양은 그 층 자기 차이(첫 부모 → 합침)
+  #   + 커밋 안 한 변경(HEAD → 작업 트리)으로 센다(tests/d74_username.sh 와 같은 규칙 · 정리 묶음 D2 2026-09-27). 못 찾으면 전처럼 기준 판 대비.
+  OWN_LAYER=""
+  for m in $(git -C "$ROOT" rev-list --first-parent --merges "$BASE_REV..HEAD" 2>/dev/null); do
+    git -C "$ROOT" diff --quiet --diff-filter=A "$m^1" "$m" -- tests/dbg_u3_ui.sh 2>/dev/null; [ "$?" = "1" ] && { OWN_LAYER="$m"; break; }
+  done
+  own_diff() {   # own_diff [git diff 선택지…] -- 경로… — 이 묶음 몫의 차이
+    local o=(); while [ "$#" -gt 0 ] && [ "$1" != "--" ]; do o+=("$1"); shift; done
+    if [ -n "$OWN_LAYER" ]; then
+      git -C "$ROOT" diff "${o[@]}" "$OWN_LAYER^1" "$OWN_LAYER" "$@" 2>/dev/null
+      git -C "$ROOT" diff "${o[@]}" HEAD "$@" 2>/dev/null
+    else
+      git -C "$ROOT" diff "${o[@]}" "$BASE_REV" "$@" 2>/dev/null
+    fi
+  }
+  CORE_FILES="src/Authz.php src/community/CommunityAuthz.php src/Auth.php src/Http.php src/Audit.php src/Db.php"
+  [ -n "$OWN_LAYER" ] && note "쌓인 복제본 — 이 묶음 층 = 합침 $(git -C "$ROOT" rev-parse --short "$OWN_LAYER")(첫 부모 $(git -C "$ROOT" rev-parse --short "$OWN_LAYER^1")) · 판정·보안 핵심 차이와 라우터 모양은 그 층 자기 차이 + 커밋 안 한 변경으로 센다(기준 판 $BASE_REV 대비 판정·보안 핵심 차이 $(git -C "$ROOT" diff "$BASE_REV" -- $CORE_FILES 2>/dev/null | wc -l)줄에는 다른 층 몫이 섞인다 — 참고)"
   expect "판정·보안 핵심 파일 차이 0 — Authz · CommunityAuthz · Auth · Http · Audit · Db" "0" \
-    "$(git -C "$ROOT" diff "$BASE_REV" -- src/Authz.php src/community/CommunityAuthz.php src/Auth.php src/Http.php src/Audit.php src/Db.php 2>/dev/null | wc -l)"
+    "$(own_diff -- $CORE_FILES | wc -l)"
   # 라우터 — 404 갈래만: 지운 줄은 `Http::error(404, Http::MSG_NOT_FOUND);` 뿐, 더한 줄은 주석 · require_once · qaredi_not_found(…) 뿐
   router_ok() {   # $1 파일  $2 지운 줄 수
     local d rm_all rm_ok add_all add_ok
-    d=$(git -C "$ROOT" diff -U0 "$BASE_REV" -- "$1" 2>/dev/null | grep -E '^[-+]' | grep -vE '^(\+\+\+|---) ')
+    d=$(own_diff -U0 -- "$1" | grep -E '^[-+]' | grep -vE '^(\+\+\+|---) ')
     rm_all=$(printf '%s\n' "$d" | grep -c '^-')
     rm_ok=$(printf '%s\n' "$d" | grep -cE '^-\s*Http::error\(404, Http::MSG_NOT_FOUND\);$')
     add_all=$(printf '%s\n' "$d" | grep -c '^+')
@@ -235,10 +258,16 @@ else
              + $(printf '%s\n' "$d" | grep -cE "^\+\s*qaredi_not_found\(strpos\(\\\$(reqPath|modulePath), '/api/'\) === 0\);$") ))
     printf '%s %s %s %s' "$rm_all" "$rm_ok" "$add_all" "$add_ok"
   }
+  # 기준 판에 이 묶음이 이미 들어 있으면(운영 반영 뒤 — 없는 주소 화면 파일이 기준 판에 있음) 이 묶음 차이가 비어 404 갈래 모양(양수 기대)을 볼 것이 없다 → 건너뜀
+  if [ -z "$OWN_LAYER" ] && git -C "$ROOT" cat-file -e "$BASE_REV:src/site/not_found_page.php" 2>/dev/null; then
+    skip "public/index.php 차이 = 404 갈래 두 곳만" "기준 판 $BASE_REV 에 이 묶음이 이미 들어 있다(src/site/not_found_page.php) — 셀 차이가 없다"
+    skip "src/community/routes.php 차이 = 404 갈래 한 곳만" "기준 판 $BASE_REV 에 이 묶음이 이미 들어 있다 — 셀 차이가 없다"
+  else
   R=$(router_ok public/index.php); set -- $R
   expect "public/index.php 차이 = 404 갈래 두 곳만(지운 줄 둘 모두 404 · 더한 줄 모두 주석·require·함수 부르기)" "2 2 yes" "$1 $2 $([ "$3" = "$4" ] && [ "$3" -gt 0 ] && echo yes || echo "no($3/$4)")"
   R=$(router_ok src/community/routes.php); set -- $R
   expect "src/community/routes.php 차이 = 404 갈래 한 곳만" "1 1 yes" "$1 $2 $([ "$3" = "$4" ] && [ "$3" -gt 0 ] && echo yes || echo "no($3/$4)")"
+  fi
   expect "댓글 본문을 한 덩어리 글자로 넣던 줄 0 · 글자 노드와 링크를 만드는 함수로" "0 1" \
     "$(grep -c 'else { body.textContent = c.body; }' "$ROOT/public/assets/community/editor.js") $(grep -c 'else { linkifyInto(body, c.body); }' "$ROOT/public/assets/community/editor.js")"
   expect "댓글 링크 — http·https 스킴 확인 · rel noopener noreferrer (editor.js)" "1 1" \
@@ -374,6 +403,9 @@ note "운영 감사 max(id) 끝 = ${PROD_A1:-?} (시작 ${PROD_A0:-?}) · 경보
 expect "검토 계정 비밀 파일 시각 그대로(이 시험은 /etc 에 쓰지 않는다)" "$TOTP_M0" "$TOTP_M1"
 expect "운영 감사에 이 시험의 UA($UA) · 로컬(127.0.0.1) 행이 늘지 않았다(시작 max 뒤)" "0" "${UA_ROWS:-?}"
 
+# 건너뜀은 합계 줄에 싣지 않는다 — 요약기(tests/lib/results.py)는 필수 시험의 건너뜀을 ③ skipped_by_test(미검증)로 올리는데,
+#   여기 건너뜀은 기준 판에 이 묶음이 이미 들어 있어 셀 차이가 없는 자리다(운영 반영 뒤 회귀에서 늘 생긴다 · 미검증이 아니다)
+[ "$SKIP" -gt 0 ] && printf '  · 건너뜀 %d (위 「○ 건너뜀」 줄 — 통과로 세지 않음)\n' "$SKIP"
 printf '\n통과 %d · 실패 %d\n' "$PASS" "$FAIL"
 [ "$BEFORE" = "1" ] && exit 0
 [ "$FAIL" -eq 0 ]

@@ -3,7 +3,7 @@
 #                          구현 기록 docs/d74-username-change-implementation.md)
 #
 #   S 정적      바뀐 PHP php -l · 보안 린트 0 · 감사 대조(R2 — 코드 호출 ↔ 문장표 ↔ ARCH 7.4) · 더한 줄의 인라인 style·script·on* 0 ·
-#               브라우저 기본 창 호출 0 · 라우트·판정·인증 파일(public/index.php · Authz · Auth · Http · Db) diff 0 ·
+#               브라우저 기본 창 호출 0 · 라우트·판정·인증 파일(public/index.php · Authz · Auth · Http · Db) diff 0(쌓인 복제본이면 이 묶음 층 자기 차이) ·
 #               아이디 규칙이 한 곳(_username_common.php)이고 두 핸들러가 그것을 부른다 · 새 아이디 값을 적은 문서·코드 0(시험용 이름 밖)
 #   A 창구      tests/d74_username_api.py — 양성·음성·공용 토큰 가드·「반영 전 확인」 항목(잠금·AL-1·AL-2·멘션·F-70·감사 거르기·노출·응답 시간)
 #   D 시드      scripts/seed_users.php 재실행 가드 — 새 설치(빈 DB)는 전처럼 15계정 · 사람 계정이 이미 있는 DB 는 시드 사람 계정 0 ·
@@ -23,6 +23,7 @@
 # ★ sudo psql 은 명령 줄이 늘 같은 모양(SQL 은 표준입력 — 운영 경보 AL-9): 임시 DB `psql -X -q -At -d tbox_d74_<포트>_test` ·
 #   시드 빈 DB `… -d tbox_d74_<포트>_seed_test` · 만들고 지우기 `… -d postgres` · 운영 읽기 `… -d tbox_re`(시작·끝 한 번씩).
 # 손잡이: D74_PORT · D74_SKIP_BROWSER=1 · D74_COMBOS(화면 조합) · D74_SHOTS(스크린샷 폴더) · REGRESS=1 · REGRESS_LIST · REGRESS_KEEP ·
+#         D74_BASE_REV(정적 대조 기준 판 — 기본 운영 HEAD) · D74_PROD_REPO · QAREDI_BROWSER_LOCK(공용 잠금 파일 — 기본 ~/.local/share/qaredi-dev/browser.lock) ·
 #         D74_REGRESS_ONLY=1(회귀만 — 창구 시험이 만든 사람 이름 계정이 회귀의 R-73 사전 검사를 멈추게 하므로 따로 돈다) ·
 #         D74_APP_TREE=<폴더>(D74_REGRESS_ONLY=1 과 함께만 — 기준 판 트리를 띄워 회귀 실패가 새것인지 대조)
 # 사용: sudo -v && D74_ENV_SRC=<0600 사본> bash tests/d74_username.sh
@@ -39,7 +40,13 @@ SRC_DB="tbox_re"                     # 운영 — **읽기만** 한다(pg_dump �
 DB="tbox_d74_${PORT}_test"           # 임시 — 여기에만 쓴다
 SEED_DB="tbox_d74_${PORT}_seed_test" # 시드 가드 시험용 빈 DB
 case "$DB" in tbox_d74_*_test) ;; *) echo "임시 DB 이름 규칙 밖 — 중단"; exit 3 ;; esac
-BASE_REV="${D74_BASE_REV:-f106e30}"  # 이 묶음을 얹은 운영 판(v2.31.0 fd96aca 위에 nginx 비밀 창구 속도 제한 f106e30)
+# 정적 대조의 기준 판 — 기본은 **운영 HEAD**(읽기만 — rev-parse · dbg_u3_ui.sh 와 같은 방식 · 정리 묶음 D2 2026-09-27). 이 복제본에 그 판이 없으면
+#   이 묶음을 얹은 운영 판 f106e30(v2.31.0 fd96aca 위에 nginx 비밀 창구 속도 제한). 고정값만 쓰면 다음 묶음이 운영에 들어간 뒤로 정적 대조가 그 묶음 몫을 센다.
+BASE_REV_DEFAULT=$(git -C "${D74_PROD_REPO:-/var/www/qaredi/tbox-v2}" rev-parse --short HEAD 2>/dev/null)
+git -C "$ROOT" cat-file -e "${BASE_REV_DEFAULT:-none}^{commit}" 2>/dev/null || BASE_REV_DEFAULT=f106e30
+BASE_REV="${D74_BASE_REV:-$BASE_REV_DEFAULT}"
+# 헤드리스 브라우저 공용 잠금 — 화면 시험(B)과 브라우저를 띄우는 회귀가 같은 파일을 쓴다(손잡이 이름은 dbg_u3_ui.sh 와 같음)
+LOCK="${QAREDI_BROWSER_LOCK:-$HOME/.local/share/qaredi-dev/browser.lock}"
 PROD_ALERTS="/var/log/tbox-v2/alerts.log"
 JAR_DIR="$(mktemp -d)"
 WORK="$(mktemp -d)"
@@ -172,12 +179,27 @@ expect "감사 대조 R2 table(코드 호출 ↔ 문장표 ↔ ARCH 7.4) 발견 
 python3 "$ROOT/tests/static/r2_audit_crosscheck.py" --root "$ROOT" --checks deny > "$WORK/r2d.txt" 2>&1; rc=$?
 R2D_NEW=$(grep '^FINDING' "$WORK/r2d.txt" | grep -cE 'users_update|users_create|_username_common')
 expect "감사 대조 R2 deny — 이 묶음 파일(users_update · users_create · _username_common)의 거부 갈래 감사 누락 0" "0" "$R2D_NEW"
-INL=$(git -C "$ROOT" diff "$BASE_REV" -- src public 2>/dev/null | grep '^+' | grep -v '^+++' | grep -cE 'style="|<script>|<script [^s]| on[a-z]+="')
+# 인라인만 센다 — `<script` 태그 안에 src= 가 있는 외부 파일(`<script defer src=…>` 등)은 빼고 `<script>`·src 없는 `<script …>`·style="·on…=" (네 시험 같은 식 · 정리 묶음 D2 2026-09-27)
+INL=$(git -C "$ROOT" diff "$BASE_REV" -- src public 2>/dev/null | grep '^+' | grep -v '^+++' | grep -cE 'style="|<script([[:blank:]]+([^s>[:blank:]][^>[:blank:]]*|s[^r>[:blank:]][^>[:blank:]]*|sr[^c>[:blank:]][^>[:blank:]]*|src[^=>[:blank:]][^>[:blank:]]*|s|sr|src))*[[:blank:]]*>| on[a-z]+="')
 expect "더한 줄에 인라인 style·script·on* 속성 0" "0" "$INL"
 CALLS=$(grep -rnE 'window\.(prompt|confirm|alert)\(' "$ROOT/public/assets" --include=*.js | grep -vE '^[^:]+:[0-9]+:\s*(\*|//|/\*)' | wc -l)
 expect "브라우저 기본 창 호출 0 (주석 제외)" "0" "$CALLS"
-expect "라우트·판정·인증 파일 diff 0 — public/index.php · Authz · Auth · Http · Db" "0" \
-  "$(git -C "$ROOT" diff "$BASE_REV" -- public/index.php src/Authz.php src/Auth.php src/Http.php src/Db.php 2>/dev/null | wc -l)"
+# 쌓인 복제본(운영 반영 순서로 묶음을 --no-ff 합침으로 쌓은 트리 — 통합 복제본 stackw 등)에서는 기준 판 대비 차이에 다른 층 몫이 섞인다:
+#   아래 층(아직 운영에 없는 앞 묶음)과 위 층(이 묶음 뒤에 쌓은 묶음 — 예: U3 의 404 갈래)이 같은 파일을 고쳤을 수 있다.
+#   첫 부모 줄기에서 기준 판에 없는 합침 가운데 이 시험 파일을 **더한** 합침이 이 묶음 층이다 — 찾으면 이 단언은 그 층 자기 차이
+#   (첫 부모 → 합침) + 커밋 안 한 변경(HEAD → 작업 트리)으로 센다. 못 찾으면(검토 복제본 · 운영 트리) 전처럼 기준 판 대비.
+OWN_LAYER=""
+for m in $(git -C "$ROOT" rev-list --first-parent --merges "$BASE_REV..HEAD" 2>/dev/null); do
+  git -C "$ROOT" diff --quiet --diff-filter=A "$m^1" "$m" -- tests/d74_username.sh 2>/dev/null; [ "$?" = "1" ] && { OWN_LAYER="$m"; break; }
+done
+PROT_FILES="public/index.php src/Authz.php src/Auth.php src/Http.php src/Db.php"
+if [ -n "$OWN_LAYER" ]; then
+  note "쌓인 복제본 — 이 묶음 층 = 합침 $(git -C "$ROOT" rev-parse --short "$OWN_LAYER")(첫 부모 $(git -C "$ROOT" rev-parse --short "$OWN_LAYER^1")) · 라우트·판정·인증 파일 단언은 그 층 자기 차이 + 커밋 안 한 변경으로 센다(기준 판 $BASE_REV 대비 차이 $(git -C "$ROOT" diff "$BASE_REV" -- $PROT_FILES 2>/dev/null | wc -l)줄에는 다른 층 몫이 섞인다 — 참고)"
+  PROT_DIFF=$( { git -C "$ROOT" diff "$OWN_LAYER^1" "$OWN_LAYER" -- $PROT_FILES; git -C "$ROOT" diff HEAD -- $PROT_FILES; } 2>/dev/null | wc -l)
+else
+  PROT_DIFF=$(git -C "$ROOT" diff "$BASE_REV" -- $PROT_FILES 2>/dev/null | wc -l)
+fi
+expect "라우트·판정·인증 파일 diff 0 — public/index.php · Authz · Auth · Http · Db" "0" "$PROT_DIFF"
 expect "아이디 형식 검사가 두 핸들러에 직접 없다(preg_match(Auth::USERNAME_RE …) = _username_common 한 곳)" "0|1" \
   "$(cat "$ROOT/src/handlers/users_create.php" "$ROOT/src/handlers/users_update.php" | grep -c 'preg_match(Auth::USERNAME_RE')|$(grep -c 'preg_match(Auth::USERNAME_RE' "$ROOT/src/handlers/_username_common.php")"
 expect "두 핸들러가 같은 아이디 규칙 파일을 싣는다" "2" \
@@ -237,7 +259,6 @@ hr "B 화면 — tests/browser/d74_username.py (공용 잠금 아래 한 번에 
 if [ "${D74_SKIP_BROWSER:-0}" = "1" ]; then
   note "D74_SKIP_BROWSER=1 — 화면 시험을 건너뛴다(통과로 세지 않는다)"
 else
-  LOCK=/tmp/claude-1001/-home-changkwon/810602d5-dec7-4514-b7a6-60a75cf245d5/scratchpad/browser.lock
   mkdir -p "$SHOTS"
   # 화면 시험용 관리자 세션 — 새로 로그인(재인증은 화면 시험 안에서)
   pwA=$(review_password claude_admin01); secA=$(review_secret claude_admin01)
@@ -296,7 +317,7 @@ if [ "${REGRESS:-0}" = "1" ]; then
     echo "  ▸ $s (시작 $(date +%T))"
     needs_browser=$(python3 -c 'import json,sys; c=json.load(open(sys.argv[1])); print(any("browser" in x.get("needs",[]) for x in c["tests"] if x.get("cmd","").split(" ")[-1] == "tests/" + sys.argv[2] + ".sh"))' "$CAT" "$s" 2>/dev/null)
     if [ "$needs_browser" = "True" ]; then   # 브라우저를 띄우는 회귀는 공용 잠금 아래에서(한 번에 하나)
-      flock /tmp/claude-1001/-home-changkwon/810602d5-dec7-4514-b7a6-60a75cf245d5/scratchpad/browser.lock bash "$dst" > "$WORK/regress_$s.txt" 2>&1
+      flock "$LOCK" bash "$dst" > "$WORK/regress_$s.txt" 2>&1
     else
       bash "$dst" > "$WORK/regress_$s.txt" 2>&1
     fi

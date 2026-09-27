@@ -200,7 +200,8 @@ php "$ROOT/scripts/community_asset_version.php" --check > "$WORK/assetver.txt" 2
 expect "커뮤니티 JS import 버전 표시가 지금 내용과 맞다(--check)" "0" "$?"
 expect "/api/me can_community_write = Authz::canCommunityWrite(\$user) 그대로" "1" \
   "$(grep -c "'can_community_write' => Authz::canCommunityWrite(\$user)," "$ROOT/src/handlers/me.php")"
-INL=$(git -C "$ROOT" diff "$BASE_REV" -- src public 2>/dev/null | grep '^+' | grep -v '^+++' | grep -cE 'style="|<script>|<script [^s]| on[a-z]+="')
+# 인라인만 센다 — `<script` 태그 안에 src= 가 있는 외부 파일(`<script defer src=…>` 등)은 빼고 `<script>`·src 없는 `<script …>`·style="·on…=" (네 시험 같은 식 · 정리 묶음 D2 2026-09-27)
+INL=$(git -C "$ROOT" diff "$BASE_REV" -- src public 2>/dev/null | grep '^+' | grep -v '^+++' | grep -cE 'style="|<script([[:blank:]]+([^s>[:blank:]][^>[:blank:]]*|s[^r>[:blank:]][^>[:blank:]]*|sr[^c>[:blank:]][^>[:blank:]]*|src[^=>[:blank:]][^>[:blank:]]*|s|sr|src))*[[:blank:]]*>| on[a-z]+="')
 expect "더한 줄에 인라인 style·script·on* 속성 0" "0" "$INL"
 expect "security_lint·쓰기 라우트 정책 무변경 — public/index.php · src/community/routes.php 차이 0" "0" \
   "$(git -C "$ROOT" diff "$BASE_REV" -- public/index.php src/community/routes.php src/Authz.php src/community/CommunityAuthz.php 2>/dev/null | wc -l)"

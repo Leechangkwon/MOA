@@ -180,7 +180,12 @@ ROUTES=$(php -r 'define("TBOX_BASE","/tbox"); $s = file_get_contents($argv[1]); 
 expect "라우트 아홉(로그인 둘 public · 내 것 넷 · 재인증 둘 authenticated · 매니페스트 public)" \
   "POST /api/login/passkey/options Authz::POLICY_PUBLIC|POST /api/login/passkey Authz::POLICY_PUBLIC|GET /api/me/passkeys Authz::POLICY_AUTHENTICATED|POST /api/me/passkeys/options Authz::POLICY_AUTHENTICATED|POST /api/me/passkeys Authz::POLICY_AUTHENTICATED|DELETE /api/me/passkeys/{num} Authz::POLICY_AUTHENTICATED|POST /api/me/reauth/passkey/options Authz::POLICY_AUTHENTICATED|POST /api/me/reauth/passkey Authz::POLICY_AUTHENTICATED|GET /app.webmanifest Authz::POLICY_PUBLIC" \
   "$(printf '%s' "$ROUTES" | paste -sd'|')"
-BASE_REV="${PK_BASE_REV:-f106e30}"   # 운영 판(2026-09-27 — fd96aca 위에 d75 nginx 비밀 창구 넷)
+# 기준 판 — 기본은 **운영 HEAD**(읽기만 — rev-parse · dbg_u3_ui.sh 와 같은 방식 · 정리 묶음 D2 2026-09-27). 이 복제본에 그 판이 없으면
+#   이 묶음을 얹은 운영 판 f106e30(fd96aca 위에 d75 nginx 비밀 창구 넷). PK_BASE_REV · PK_PROD_REPO 로 바꿀 수 있다.
+BASE_REV_DEFAULT=$(git -C "${PK_PROD_REPO:-/var/www/qaredi/tbox-v2}" rev-parse --short HEAD 2>/dev/null)
+git -C "$ROOT" cat-file -e "${BASE_REV_DEFAULT:-none}^{commit}" 2>/dev/null || BASE_REV_DEFAULT=f106e30
+BASE_REV="${PK_BASE_REV:-$BASE_REV_DEFAULT}"
+note "토큰 창구 집합 대조 기준 판 = $BASE_REV"
 for c in TBOX_API_TOKEN_ROUTES TBOX_API_TOKEN_ONLY_ROUTES TBOX_API_TOKEN_PERSONAL_ROUTES TBOX_GATE_ALLOW_PASSWORD_CHANGE TBOX_GATE_ALLOW_MFA_SETUP; do
   a=$(git -C "$ROOT" show "$BASE_REV:public/index.php" 2>/dev/null | awk -v c="const $c = \\\\[" '$0 ~ c{f=1} f{print} f && /^\];/{exit}' | md5sum)
   b=$(awk -v c="const $c = \\\\[" '$0 ~ c{f=1} f{print} f && /^\];/{exit}' "$ROOT/public/index.php" | md5sum)
