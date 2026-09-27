@@ -61,8 +61,10 @@ require __DIR__ . '/../../views/shell_top.php';
           <span class="icon" data-icon="help"></span><span>사용 방법</span>
         </button>
         <!-- 「이력」 (4-C) — 이 페이지를 **볼 수 있는 사람이면 누구나** 연다(읽기 판정과 같은 자격),
-             되돌리기 단추만 고칠 수 있는 사람에게 보인다. 늘 보이는 outline 하나(DESIGN 2.9 — 머리 단추 넷까지). -->
-        <button id="page-history" class="btn btn--quiet" type="button" aria-haspopup="dialog">
+             되돌리기 단추만 고칠 수 있는 사람에게 보인다. outline 하나(DESIGN 2.9 — 머리 단추 넷까지).
+             디버깅 묶음 U3 — 처음에는 숨기고 창구가 페이지를 **내준 뒤(200 — 읽기 판정 통과)** 에만 연다. 막힌(403)·없는(404) 페이지에서
+             「이력」이 보이던 것(취합 운영 확인 — 손님)을 닫는다. 이력 창구도 같은 읽기 판정(`community_history_gate`)이다. -->
+        <button id="page-history" class="btn btn--quiet" type="button" aria-haspopup="dialog" hidden>
           <span class="icon" data-icon="log"></span>이력
         </button>
         <!-- 더보기 (DESIGN 2.15, 2026-09-25 — 사용자 지적 「왤케 UI/UX 가 지저분하냐」) — 가끔 쓰는 동작을 담는다.
@@ -113,6 +115,15 @@ require __DIR__ . '/../../views/shell_top.php';
          배지를 담은 작은 단추이고, 고칠 수 없는 사람에게는 그 단추가 `disabled` 다.
          값도 잠금도 전부 창구가 준 것(`status`·`owner`·`can_set_properties`·`can_handover`)이고,
          화면에는 소유·역할을 따지는 코드가 없다 (PRD S-01, DESIGN 원칙 1). -->
+    <!-- 디버깅 묶음 U3 (사용자 지적 2026-09-26 「커뮤니티 사용 방법이 어려워 보인다」 · 폰 412 폭에서 속성 여섯 줄이 본문을 첫 화면 아래로 밀었다):
+         720px 미만에서는 속성 줄을 접고 **요약 한 줄 + 「속성 더보기」**만 보인다(DESIGN 2.9 「좁은 폭 글 화면」). 넓은 화면에서는 이 줄이 숨고
+         속성 줄이 전과 같다. 요약의 글자·배지는 속성 줄과 같은 창구 값을 editor.js 가 textContent·cloneNode 로 옮긴 것뿐이다. -->
+    <div id="page-props-summary" class="toolbar" hidden>
+      <span id="page-props-line" class="muted"></span>
+      <button id="page-props-toggle" class="btn btn--small btn--quiet" type="button" aria-expanded="false" aria-controls="page-props">
+        <span class="icon" data-icon="chevron"></span><span id="page-props-toggle-label">속성 더보기</span>
+      </button>
+    </div>
     <div id="page-props" class="page-props" hidden>
       <span class="page-props__group">
         <span class="muted">상태</span>
@@ -264,6 +275,8 @@ require __DIR__ . '/../../views/shell_top.php';
       </div>
       <!-- 6-B 보드 — 상태 열(없음 + 다섯). 카드를 다른 열로 끌거나, 카드를 골라 ← → 로 옮기면 상태가 바뀐다 -->
       <div id="db-board" class="db-board" hidden></div>
+      <!-- 디버깅 묶음 U3 — 보드가 옆으로 넘칠 때만 보이는 안내 한 줄(database.js 가 스크롤 폭으로 연다) -->
+      <p id="db-board-more" class="help" hidden>옆으로 밀면 열이 더 있습니다.</p>
       <!-- 6-B 리스트 — 한 줄 = 제목 + 속성 칩 -->
       <ul id="db-list" class="list db-list" hidden></ul>
       <form id="db-add-row" class="toolbar" hidden>
@@ -361,7 +374,7 @@ require __DIR__ . '/../../views/shell_top.php';
         <p>이 페이지와 하위 페이지가 목록에서 사라집니다.</p>
         <!-- 4-C — 되살리는 길이 생겼다(「내 공간」의 휴지통). 30일은 창구가 정한 값이고
              화면은 그 숫자를 되풀이해 적지 않는다(`GET /api/me/trash` 의 `keep_days`). -->
-        <p class="muted">30일 안에는 「내 공간」의 휴지통에서 되살릴 수 있습니다. 하위 페이지도 함께 돌아옵니다.</p>
+        <p class="muted">30일 안에는 사이드바 「내 휴지통」에서 되살릴 수 있습니다. 하위 페이지도 함께 돌아옵니다.</p>
       </div>
       <div class="form-actions">
         <button class="btn btn--quiet" type="button" data-delete-close>닫기</button>

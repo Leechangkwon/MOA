@@ -5510,6 +5510,45 @@ function initAudit() {
     row.appendChild(td);
   }
 
+  /**
+   * 역할 · 등급 · 결과 칸의 **보이는 글자**만 한글로(디버깅 묶음 U3 · DESIGN 5장 「등급·역할」 — 시연 2026-09-26 「Admin · allow 가 영어」).
+   * 원래 값은 `title` 에 남긴다(감사 기록·거르기와 대조하는 값 — 거르기 칸과 쿼리는 그대로). 표에 없는 값은 받은 글자 그대로.
+   */
+  var AUDIT_RESULT_LABELS = { 'allow': '허용', 'deny': '거부', 'error': '오류' };
+  function addLabelCell(row, value, table) {
+    var raw = value === null || value === undefined ? '' : String(value);
+    var shown = Object.prototype.hasOwnProperty.call(table, raw) ? table[raw] : raw;
+    var td = addCell(row, shown);
+    if (shown !== raw && raw !== '') {
+      td.setAttribute('title', raw);
+    }
+    return td;
+  }
+
+  /**
+   * 행동·사유 코드 칸(`page.visibility` · `reauth_required` …) — 코드는 그대로 두고 `.`·`_` 뒤에서만 줄이 꺾이게 `<wbr>` 을 끼운다
+   * (디버깅 묶음 U3 — 1280 폭 감사 표가 긴 코드 한 칸 때문에 넘쳤다). 글자는 textContent 조각, 꺾을 자리는 빈 요소뿐(문자열 → HTML 0).
+   */
+  function addCodeCell(row, value) {
+    var raw = value === null || value === undefined ? '' : String(value);
+    if (raw === '') {
+      return addCell(row, raw);
+    }
+    var td = document.createElement('td');
+    var parts = raw.split(/([._])/);
+    for (var i = 0; i < parts.length; i++) {
+      if (parts[i] === '') {
+        continue;
+      }
+      td.appendChild(document.createTextNode(parts[i]));
+      if (parts[i] === '.' || parts[i] === '_') {
+        td.appendChild(document.createElement('wbr'));
+      }
+    }
+    row.appendChild(td);
+    return td;
+  }
+
   /** "왜" 칸 — 거부는 reason, 허용은 detail.granted_by (PRD 7.7 "허용에도 근거") */
   function whyOf(data) {
     if (typeof data.reason === 'string' && data.reason !== '') {
@@ -5543,12 +5582,12 @@ function initAudit() {
       var row = document.createElement('tr');
       addWhenCell(row, item.happened_at);
       addActorCell(row, item);
-      addCell(row, item.actor_role);
-      addCell(row, item.action);
+      addLabelCell(row, item.actor_role, ROLE_LABELS);
+      addCodeCell(row, item.action);
       addCell(row, targetOf(item));
-      addCell(row, item.access_level);
-      addCell(row, item.result);
-      addCell(row, whyOf(item));
+      addLabelCell(row, item.access_level, LEVEL_BADGE_LABELS);
+      addLabelCell(row, item.result, AUDIT_RESULT_LABELS);
+      addCodeCell(row, whyOf(item));
       addCell(row, item.ip);
       addCell(row, item.summary);
       addDetailCell(row, item);

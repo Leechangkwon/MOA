@@ -30,7 +30,12 @@ BASE="$SITE/tbox"
 UA="tbox-review/$(date +%F)"
 SRC_DB="tbox_re"                     # 운영 — **읽기만** 한다(pg_dump · max(id))
 DB="tbox_d1u_${PORT}_test"           # 임시 — 여기에만 쓴다
-BASE_REV="${DBGU_BASE_REV:-e88f690}" # 이 묶음을 얹은 운영 판(v2.29.0 a57cf6b 위에 디버깅 묶음 S · T — 2026-09-26 합침)
+# 정적 대조의 기준 판 — 기본은 **운영 HEAD**(디버깅 묶음 U3 · 2026-09-27): 옛 고정값 e88f690(이 묶음을 얹은 v2.29.0 a57cf6b + S · T)은 운영이 앞서가면
+#   「라우트 파일 차이 0」 한 줄이 다른 묶음의 라우트 변경을 세어 늘 실패했다. 운영 저장소는 **읽기만**(rev-parse)이고, 그 판이 이 복제본에 없으면
+#   (운영이 더 앞섰는데 fetch 전) 고정 판 fd96aca(v2.31.0)로 — 그것도 없으면 git diff 가 실패해 대조 줄이 드러난다. DBGU_BASE_REV 로 바꿀 수 있다.
+BASE_REV_DEFAULT=$(git -C "${DBGU_PROD_REPO:-/var/www/qaredi/tbox-v2}" rev-parse --short HEAD 2>/dev/null)
+git -C "$ROOT" cat-file -e "${BASE_REV_DEFAULT:-none}^{commit}" 2>/dev/null || BASE_REV_DEFAULT=fd96aca
+BASE_REV="${DBGU_BASE_REV:-$BASE_REV_DEFAULT}"
 JAR_DIR="$(mktemp -d)"
 WORK="$(mktemp -d)"
 chmod 700 "$JAR_DIR" "$WORK"

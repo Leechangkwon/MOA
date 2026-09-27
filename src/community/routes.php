@@ -2643,7 +2643,9 @@ function community_dispatch(string $modulePath, string $method): void
             }
             Http::error(405, '허용되지 않는 메서드입니다');
         }
-        Http::error(404, Http::MSG_NOT_FOUND);
+        // 디버깅 묶음 U3 — t-box 라우터와 같은 갈래(브라우저 화면 요청이면 「찾을 수 없는 페이지」, 그 밖은 전과 같은 404 JSON)
+        require_once __DIR__ . '/../site/not_found_page.php';
+        qaredi_not_found(strpos($modulePath, '/api/') === 0);
     }
 
     [$handlerFile, $policy, $params, $routePattern] = $matched;

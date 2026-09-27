@@ -111,7 +111,18 @@ if (!community_file_refs_ok($pubFiles, CommunityAuthz::pageAudiences($row, $boar
         'target_name' => $pageTitle,
         'detail'      => ['page_title' => $pageTitle, 'board_id' => $boardId],
     ]);
-    Http::json(['error' => '이 게시판을 보는 사람이 볼 수 없는 파일이 붙어 있습니다. 파일 등급을 넓히거나 빼고 게시하세요', 'reason' => 'file_narrower'], 400);
+    /* 디버깅 묶음 U3 — 문장만 쉬운 말로(시연 2026-09-26 「사내 그림이 든 페이지를 공개 게시하면 무엇을 하라는지 모르겠다」). 거부·상태 코드·사유 코드·감사는 그대로.
+       문장에 드는 값은 **고른 게시판의 등급 이름 하나**(고정 표 넷 중 하나 — 게시하는 사람이 게시 창에서 이미 보는 배지 글자)뿐이다.
+       어느 파일인지·그 파일의 등급은 싣지 않는다(결정 E-5 — 없는·못 보는 파일과 같은 답 · F-68 「문장에 대상 이름·개수 넣지 않기」). */
+    $narrowLevelNames = ['public' => '공개', 'internal' => '사내', 'team' => '팀', 'admin-only' => '관리자'];
+    $narrowLevel = $narrowLevelNames[(string) $board['access_level']] ?? null;
+    Http::json([
+        'error' => $narrowLevel === null
+            ? '이 페이지에 이 게시판을 보는 사람이 볼 수 없는 그림이나 파일이 들어 있습니다. t-box 에서 그 파일의 등급을 올리거나, 페이지에서 빼고 다시 게시하세요'
+            : '이 페이지에 「' . $narrowLevel . '」 게시판에 올릴 수 없는 그림이나 파일이 들어 있습니다. t-box 에서 그 파일의 등급을 「' . $narrowLevel . '」'
+              . ($narrowLevel === '공개' ? '로' : ' 이상으로') . ' 올리거나, 페이지에서 빼고 다시 게시하세요',
+        'reason' => 'file_narrower',
+    ], 400);
     exit;
 }
 

@@ -507,6 +507,7 @@ details.page-tree__node[open] > summary > .page-tree__row > .page-tree__caret { 
 }
 .crumb__item { color: var(--muted); text-decoration: none; }
 .crumb__item:hover { text-decoration: underline; }
+span.crumb__item:hover { text-decoration: none; }   /* 링크가 아닌 첫 칸(남의 공간 이름 — 디버깅 묶음 U3)은 누르는 것처럼 보이지 않게 */
 .crumb__item.is-current { color: var(--fg); font-weight: 600; }
 .crumb__sep { color: var(--muted-2); }
 
@@ -636,6 +637,20 @@ details.page-tree__node[open] > summary > .page-tree__row > .page-tree__caret { 
   #page-children-wrap > .toolbar > .btn { height: 28px; padding: 0 10px; }
   #page-children-wrap > .toolbar > #page-new-child { margin-left: auto; }
 }
+/* 좁은 폭 글 화면 (디버깅 묶음 U3 · DESIGN 2.9 · 사용자 지적 2026-09-26 — 412 폭에서 속성 여섯 줄이 본문을 첫 화면 아래로 밀었다).
+   720px 미만: 속성 줄은 접고 요약 한 줄(배지 · 쓴 사람 · 게시판 · 태그 수 · 조회) + 「속성 더보기」. 펼치면 속성 줄이 전과 같다(단추·권한 그대로).
+   경로 줄의 마지막 칸(이 페이지 — 바로 아래 제목과 같은 글자)과 제목 아래 「상위: …」(경로 줄의 부모와 같은 글자)는 좁은 폭에서만 가린다. */
+@media (min-width: 720px) { #page-props-summary { display: none; } }
+@media (max-width: 719.98px) {
+  #page-props[data-folded] { display: none; }
+  #page-props-summary { flex-wrap: nowrap; align-items: center; margin: 0 0 12px; }
+  #page-props-line { flex: 1 1 auto; min-width: 0; display: flex; flex-wrap: wrap; align-items: center; gap: 2px 6px; font-size: 13px; }
+  #page-props-toggle { flex: 0 0 auto; }
+  #page-props-toggle .icon { transition: transform .15s ease; }
+  #page-props-toggle[aria-expanded="true"] .icon { transform: rotate(180deg); }
+  #page-crumb .crumb__item.is-current { display: none; }
+  #page-crumb:not([hidden]) + .page-head #page-sub { display: none; }
+}
 /* 5-C 태그 — 칩 줄과 입력 칸. 입력 칸은 도구줄 입력(`.toolbar input`)과 **같은 토큰**이고 높이만 같은 줄의
    작은 단추(32px)에 맞춘다. 좁은 화면에서는 태그 묶음이 제 안에서 줄을 바꾼다(칸을 밀지 않는다). */
 .page-props input[type="text"] {
@@ -753,7 +768,13 @@ details.page-tree__node[open] > summary > .page-tree__row > .page-tree__caret { 
   box-shadow: var(--shadow-xs);
 }
 .field textarea::placeholder { color: var(--muted); }
-#page-comments .list__body { white-space: pre-wrap; overflow-wrap: anywhere; }
+/* 댓글 본문은 글이다 — `.list__body` 의 flex(부제 조각을 나란히)를 풀어 글자·링크 조각이 한 흐름으로 이어지게(디버깅 묶음 U3 — 링크가 생기면 조각이 여럿이다) */
+#page-comments .list__body { display: block; white-space: pre-wrap; overflow-wrap: anywhere; }
+/* 댓글 속 주소 링크(디버깅 묶음 U3) — 파랑(링크 · 정보, 원칙 4) + 밑줄: 글자색만으로 가르지 않는다 */
+#page-comments .list__body a { color: var(--accent); text-decoration: underline; text-underline-offset: 2px; }
+/* 디버깅 묶음 U3 — 댓글 본문은 읽는 글이다: 목록 부제의 회색(`--muted`, 흰 바탕 4.8:1 — 가늘게 보였다) 대신 본문 글자색(`--fg`, 19:1 · 다크 18:1).
+   「지운 댓글입니다」·「숨긴 댓글입니다」 안내(.muted)는 회색 그대로 */
+#page-comments .list__body:not(.muted) { color: var(--fg); }
 /* 답글 한 단 — 목록 안에서 들여쓰기 한 번(인라인 style 0) */
 #page-comments .list__item.is-reply { padding-left: 32px; }
 #page-comments-wrap { margin-top: 20px; }
@@ -832,8 +853,16 @@ th.doc-table__cell { background: var(--surface-2); font-weight: 600; }
 .db-saved { display: inline-flex; flex-wrap: wrap; gap: 6px; }
 .db-view-form { display: inline-flex; gap: 6px; }
 .db-view-form .input { height: 30px; width: 10rem; }
-.db-board { display: flex; gap: 12px; overflow-x: auto; padding-bottom: 6px; }
-.db-board__col { flex: 0 0 15rem; display: flex; flex-direction: column; gap: 8px; padding: 10px; border: 1px solid var(--line); border-radius: var(--r-ctl); background: var(--surface-2); min-height: 6rem; }
+/* 보드 열 폭 (디버깅 묶음 U3 · 시연 2026-09-26 — 1280 폭에서 「완료」 열이 오른쪽 밖으로 밀려 안 보였고, 밀 수 있다는 것도 알기 어려웠다):
+   열 여섯(없음 + 상태 다섯)이 1280 폭 본문(사이드바 240 · 여백 뒤 ~930px)에 다 들어가게 열은 9rem 부터 늘어나고(18rem 까지) 사이는 8px.
+   그래도 넘치면(820 · 폰) 가장자리가 흐려지고(`data-more` — database.js 가 스크롤 위치로 단다) 스크롤 막대가 보이며, 아래 한 줄 안내가 뜬다.
+   가장자리 흐림은 mask 의 알파만 쓴다(`var(--fg)` 는 불투명하다는 뜻으로만 — 보이는 색이 아니다). */
+.db-board { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 6px; scrollbar-width: thin; scrollbar-color: var(--muted-2) transparent; }
+.db-board[data-more="right"] { -webkit-mask-image: linear-gradient(to right, var(--fg) calc(100% - 48px), transparent); mask-image: linear-gradient(to right, var(--fg) calc(100% - 48px), transparent); }
+.db-board[data-more="left"] { -webkit-mask-image: linear-gradient(to left, var(--fg) calc(100% - 48px), transparent); mask-image: linear-gradient(to left, var(--fg) calc(100% - 48px), transparent); }
+.db-board[data-more="both"] { -webkit-mask-image: linear-gradient(to right, transparent, var(--fg) 48px, var(--fg) calc(100% - 48px), transparent); mask-image: linear-gradient(to right, transparent, var(--fg) 48px, var(--fg) calc(100% - 48px), transparent); }
+.db-board__col { flex: 1 0 9rem; max-width: 18rem; min-width: 0; display: flex; flex-direction: column; gap: 8px; padding: 8px; border: 1px solid var(--line); border-radius: var(--r-ctl); background: var(--surface-2); min-height: 6rem; }
+.db-card__title, .db-card__prop { overflow-wrap: anywhere; }
 .db-board__col.is-over { border-color: var(--ring); }
 .db-board__head { margin: 0; font-size: 13px; font-weight: 600; color: var(--muted); }
 .db-card { display: flex; flex-direction: column; gap: 4px; padding: 8px 10px; cursor: grab; }

@@ -813,10 +813,16 @@ table.files tbody tr:hover .btn--icon { color: var(--fg-2); }
 /* 감사 로그 표는 열이 11개다 — 글자·여백을 조금 줄인다. 짧은 값(「allow」·계정명·IP)은
    절대 세로로 쪼개지 않고, 긴 파일명이 들어오는 대상(5)·사유(8)·요약(10) 열만 필요할 때 끊는다.
    요약은 가장 많이 읽는 열이라 최소 폭을 넉넉히 준다. 그래도 넘치면 .table-wrap 이 가로로 스크롤한다. */
-#audit-body td { padding: 10px 8px; font-size: 13px; }
-#audit-body td:nth-child(5)  { overflow-wrap: anywhere; min-width: 7rem; }
-#audit-body td:nth-child(8)  { overflow-wrap: anywhere; min-width: 6rem; }
-#audit-body td:nth-child(10) { overflow-wrap: anywhere; min-width: 11rem; }
+/* 디버깅 묶음 U3 (시연 2026-09-26 — 1280 폭에서 「요약」 칸이 오른쪽 밖으로 잘렸다: 표 1086px · 칸 950px): 역할·등급·결과 글자를 한글로
+   (Admin → 관리자 · admin-only → 관리자 · allow → 허용 — 좁아진다) · 칸 안 여백 8 → 6px · 시각 6.5 → 5.75rem · 대상 7 → 6rem · 요약 11 → 10rem.
+   1280 폭에서 열한 칸이 다 보인다(요약은 남는 폭을 받아 넓어진다). 더 좁은 화면은 전과 같이 .table-wrap 이 가로로 스크롤한다. */
+#audit-body td { padding: 10px 6px; font-size: 13px; }
+table.files:has(> #audit-body) th { padding: 0 6px; }
+#audit-body td:nth-child(1)  { min-width: 5.75rem; }
+#audit-body td:nth-child(5)  { overflow-wrap: anywhere; min-width: 6rem; }
+#audit-body td:nth-child(4)  { min-width: 5rem; }   /* 행동 코드 — `.`·`_` 뒤에서 꺾인다(app.js addCodeCell) */
+#audit-body td:nth-child(8)  { overflow-wrap: anywhere; min-width: 5.5rem; }
+#audit-body td:nth-child(10) { overflow-wrap: anywhere; min-width: 10rem; }
 #audit-body details > summary { color: var(--fg); font-weight: 500; cursor: pointer; white-space: nowrap; }
 #audit-body details > summary:hover { text-decoration: underline; text-underline-offset: 3px; }
 .audit-detail {
@@ -2064,6 +2070,9 @@ a.app-menu__app:hover { background: var(--muted-bg); text-decoration: none; }
   .crumbs__item { display: inline-flex; align-items: center; justify-content: center; min-height: 44px; min-width: 44px; }
   label:has(> input[type="checkbox"]), label:has(> input[type="radio"]),
   .field__label:has(> input[type="checkbox"]), .field__label:has(> input[type="radio"]) { min-height: 44px; }
-  /* ① 표 행 동작 아이콘 — 넓힌 자리(한쪽 6px)가 옆 아이콘에 닿지 않게 사이 12px */
+  /* ① 표 행 동작 아이콘 — 넓힌 자리(한쪽 6px)가 옆 아이콘에 닿지 않게 사이 12px.
+     위아래도 6px(디버깅 묶음 U3 · U2 검토 낮음): 폭 720 이상 터치 기기(폴드 펼침 820)에서 아이콘이 두 줄로 접히면 줄 사이가 4px(위아래 여백 2px 씩)라
+     넓힌 자리 6px 이 서로 겹쳐 위아래 2px 을 가져갔다 — 여백 6px 씩이면 줄 사이 12px 로 넓힌 자리(6 + 6)가 닿기만 하고 겹치지 않는다 */
   table.files td.actions .btn:not(:first-child) { margin-left: 12px; }
+  table.files td.actions .btn { margin-top: 6px; margin-bottom: 6px; }
 }

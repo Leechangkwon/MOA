@@ -454,6 +454,13 @@ if (!headers_sent()) {
       <button id="nav-community-new" class="nav__item" type="button"<?= $shellCommunityWrite ? '' : ' hidden' ?>>
         <span class="icon" data-icon="plus"></span><span>새 페이지</span>
       </button>
+      <!-- 디버깅 묶음 U3 — 「내 휴지통」: t-box 사이드바와 **같은 이름 · 같은 자리**(첫 묶음의 끝, DESIGN 2.9). 전에는 커뮤니티 첫 화면
+           「더보기 → 휴지통」에만 있었다. 누르면 커뮤니티 첫 화면의 휴지통 창이 열린다(꼬리표 `trash=1` — 고정 글자, 첫 화면에서는 이동 없이 창만).
+           목록은 전과 같이 창구 `GET /community/api/me/trash` 가 주는 것뿐이다. 쓰기 자격이 없는 사람(손님)은 지울 수 없어 늘 비어 있으므로
+           「새 페이지」와 같은 값으로 숨긴다(편의 — 창구가 다시 판단한다). -->
+      <a id="nav-community-trash" class="nav__item" href="<?= Http::communityUrl('/') ?>?trash=1"<?= $shellCommunityWrite ? '' : ' hidden' ?>>
+        <span class="icon" data-icon="trash"></span><span>내 휴지통</span>
+      </a>
       <!-- 팀 공간 (4-B) — 항목은 `editor.js` 가 창구 `GET /community/api/spaces` 의 답으로
            채운다. **이 파일에는 팀 판단이 없다**: 내 팀이 무엇인지도, 팀 공간이 있는지도
            서버가 정하고 화면은 받은 것만 그린다 (PRD S-01, DESIGN 원칙 1).

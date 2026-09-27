@@ -274,7 +274,8 @@ expect "app.js 절대 경로 중 APP_BASE 로 감싸이지 않은 것 0건" "0" 
 expect "app.js 에 APP_BASE 정의 1곳" "1" "$(grep -c '^var APP_BASE =' "$ROOT/public/assets/app.js" | tr -d ' ')"
 # 커뮤니티 3단계 — 「커뮤니티 준비 중」 안내(src/community/routes.php)에도 「Qaredi 홈」 링크가
 # 하나 있어 셋이 됐다. 전부 사이트 루트(`/`)이고 `/tbox` 접두를 타지 않는 것이 맞다.
-expect "서버 화면의 절대 경로 링크 중 Http::url 밖 (Qaredi 홈 셋 제외)" "3" \
+# 디버깅 묶음 U3 — 없는 주소 화면(src/site/not_found_page.php)의 「첫 화면으로」(`/` — 사이트 루트)로 넷.
+expect "서버 화면의 절대 경로 링크 중 Http::url 밖 (Qaredi 홈 셋 · 없는 주소 화면 「첫 화면으로」 하나 제외)" "4" \
   "$(grep -rhE 'href=\"/|action=\"/|src=\"/' "$ROOT/src" --include=*.php | grep -vc 'Http::url' | tr -d ' ')"
 
 # ════════════════════════════════════════════════════════════════

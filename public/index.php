@@ -725,7 +725,9 @@ if ($modulePath === null) {
         Http::redirectPermanent(TBOX_BASE . $reqUri);
     }
 
-    Http::error(404, Http::MSG_NOT_FOUND);
+    // 디버깅 묶음 U3 — 없는 주소: 브라우저 화면 요청이면 「찾을 수 없는 페이지」 한 장, 그 밖은 전과 같은 404 JSON(세션을 읽지 않는다)
+    require_once __DIR__ . '/../src/site/not_found_page.php';
+    qaredi_not_found(strpos($reqPath, '/api/') === 0);
 }
 
 // 이 줄부터 `$reqPath` 는 **모듈 경로**다 (접두를 뗀 뒤의 경로).
@@ -758,7 +760,9 @@ if ($matched === null) {
         }
         Http::error(405, '허용되지 않는 메서드입니다');
     }
-    Http::error(404, Http::MSG_NOT_FOUND);
+    // 디버깅 묶음 U3 — 위와 같은 갈래(인증 [2] 보다 앞이라 로그인 전·후가 같은 응답이다)
+    require_once __DIR__ . '/../src/site/not_found_page.php';
+    qaredi_not_found(strpos($reqPath, '/api/') === 0);
 }
 
 [$handlerFile, $policy, $params, $routePattern] = $matched;

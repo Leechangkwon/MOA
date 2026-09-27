@@ -637,6 +637,10 @@ with sync_playwright() as p:
                 pg.wait_for_timeout(600)
                 open_dialog_checks(pg, did, what, tag, narrow)
                 esc(pg)
+            # 디버깅 묶음 U3 — 폰 폭(720 미만)은 속성 줄이 접혀 있다(요약 한 줄 + 「속성 더보기」) — 펼친 뒤 누른다(넓은 폭은 단추가 없어 그대로)
+            if pg.evaluate("() => { const t = document.getElementById('page-props-toggle'); return !!t && t.getClientRects().length > 0 && t.getAttribute('aria-expanded') !== 'true'; }"):
+                pg.click("#page-props-toggle")
+                pg.wait_for_timeout(200)
             pg.click("#page-status")
             pg.wait_for_timeout(300)
             open_dialog_checks(pg, "status-dialog", "상태 바꾸기", tag, narrow)

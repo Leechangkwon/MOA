@@ -33,7 +33,11 @@ BASE="$SITE/tbox"
 UA="tbox-review/$(date +%F)"
 SRC_DB="tbox_re"                     # 운영 — **읽기만** 한다(pg_dump · max(id))
 DB="tbox_d2u_${PORT}_test"           # 임시 — 여기에만 쓴다
-BASE_REV="${DBGU2_BASE_REV:-081af21}" # 이 묶음을 얹은 운영 판(v2.30.0 4d256f6 위에 디버깅 묶음 S2 — 2026-09-26 합침)
+# 기준 판 기본값은 운영 저장소의 HEAD(읽기만 — rev-parse). 그 판이 이 복제본에 없으면 고정 판 081af21(이 묶음을 얹은 운영 판 — v2.30.0 위 S2).
+# 고정값이면 다음 묶음(U3 …)이 운영에 들어간 뒤로 「기준 판 대조」 한 줄이 늘 실패한다(dbg_u_ui 와 같은 방식 — U3 검토 뒤 고침 2026-09-27).
+BASE_REV_DEFAULT=$(git -C "${DBGU2_PROD_REPO:-/var/www/qaredi/tbox-v2}" rev-parse --short HEAD 2>/dev/null)
+git -C "$ROOT" cat-file -e "${BASE_REV_DEFAULT:-none}^{commit}" 2>/dev/null || BASE_REV_DEFAULT=081af21
+BASE_REV="${DBGU2_BASE_REV:-$BASE_REV_DEFAULT}"
 APP_TREE="${DBGU2_APP_TREE:-$ROOT}"  # 띄울 트리 — 기본은 이 복제본. 고치기 전 판을 찍을 때만 다른 폴더
 BEFORE="${DBGU2_BEFORE:-0}"
 JAR_DIR="$(mktemp -d)"

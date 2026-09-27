@@ -14,7 +14,7 @@
  * editor.js 가 `createDatabaseView(deps)` 로 한 번 만들고, 페이지를 읽을 때마다 `draw(data)` 를 부른다.
  * 7-B — 새 행 고르개(「빈 행」 + 이 DB 의 행 템플릿 · 고른 템플릿 지우기)는 `templates.js` 의 `createRowTemplatePicker` 가 맡는다.
  */
-import { createRowTemplatePicker } from './templates.js?v=ab9f533d84bb';
+import { createRowTemplatePicker } from './templates.js?v=246435054f7e';
 
 const TYPE_LABELS = {
   text: '글', number: '숫자', checkbox: '체크', url: '주소', email: '메일', phone: '전화',
@@ -497,6 +497,7 @@ export function createDatabaseView(deps) {
   /* ── 6-B 보는 모양 ── */
   const tableWrap = $('db-table-wrap');
   const boardEl = $('db-board');
+  const boardMore = $('db-board-more');   // 디버깅 묶음 U3 — 보드가 넘칠 때 안내 한 줄
   const listEl = $('db-list');
   const savedEl = $('db-saved');
   const viewForm = $('db-view-form');
@@ -507,6 +508,7 @@ export function createDatabaseView(deps) {
     show(boardEl, viewType === 'board');
     show(listEl, viewType === 'list');
     if (viewType === 'board') { drawBoard(); } else if (viewType === 'list') { drawList(); } else { drawTable(); }
+    paintBoardMore();
   }
 
   function drawViewBar() {
@@ -580,6 +582,21 @@ export function createDatabaseView(deps) {
       }
       boardEl.appendChild(col);
     }
+    paintBoardMore();
+  }
+  /* 디버깅 묶음 U3 — 보드가 넘치면 어느 쪽에 열이 더 있는지 표시(`data-more` → CSS 가장자리 흐림)와 안내 한 줄. 판단 0 — 스크롤 폭만 잰다 */
+  function paintBoardMore() {
+    if (!boardEl || boardEl.hidden) { show(boardMore, false); return; }
+    const over = boardEl.scrollWidth - boardEl.clientWidth > 1;
+    const left = over && boardEl.scrollLeft > 1;
+    const right = over && boardEl.scrollLeft + boardEl.clientWidth < boardEl.scrollWidth - 1;
+    const more = left && right ? 'both' : (right ? 'right' : (left ? 'left' : ''));
+    if (more) { boardEl.setAttribute('data-more', more); } else { boardEl.removeAttribute('data-more'); }
+    show(boardMore, over);
+  }
+  if (boardEl) {
+    boardEl.addEventListener('scroll', paintBoardMore, { passive: true });
+    window.addEventListener('resize', paintBoardMore);
   }
   function boardCard(r) {
     const card = document.createElement('div');

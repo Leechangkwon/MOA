@@ -40,13 +40,13 @@ import { inputRules, textblockTypeInputRule, InputRule } from './vendor/pm/prose
 import { dropCursor } from './vendor/pm/prosemirror-dropcursor.js?v=5823578fa61a';
 import { gapCursor } from './vendor/pm/prosemirror-gapcursor.js?v=5823578fa61a';
 
-import { renderDoc, embedHost } from './doc-render.js?v=ab9f533d84bb';
-import { createDatabaseView } from './database.js?v=ab9f533d84bb';
-import { bindTemplateGallery, createTemplateSave } from './templates.js?v=ab9f533d84bb';
-import { bindEmbedAdmin } from './embeds.js?v=ab9f533d84bb';
-import { bindPopular } from './popular.js?v=ab9f533d84bb';
-import { schema, toDoc, fromDoc, uuid4, colorAllowed, schemeOkForEditor, COLORS, BLOCK_TYPES } from './editor-schema.js?v=ab9f533d84bb';
-import { createDrafts } from './drafts.js?v=ab9f533d84bb';
+import { renderDoc, embedHost } from './doc-render.js?v=246435054f7e';
+import { createDatabaseView } from './database.js?v=246435054f7e';
+import { bindTemplateGallery, createTemplateSave } from './templates.js?v=246435054f7e';
+import { bindEmbedAdmin } from './embeds.js?v=246435054f7e';
+import { bindPopular } from './popular.js?v=246435054f7e';
+import { schema, toDoc, fromDoc, uuid4, colorAllowed, schemeOkForEditor, COLORS, BLOCK_TYPES } from './editor-schema.js?v=246435054f7e';
+import { createDrafts } from './drafts.js?v=246435054f7e';
 
 /* ─── 주소와 공통 도우미 ─────────────────────────────────────── */
 
@@ -1238,6 +1238,9 @@ function bulkTreeItems(pickedIds, pages) {
 
 /* ─── 내 공간 (community-home) ───────────────────────────────── */
 
+/** 손님 「내 공간」 설명 — home_page.php 가 서버에서 고르는 글자와 같은 문장(디버깅 묶음 U3) */
+const GUEST_SPACE_SUB = '손님 계정은 읽기만 합니다. 공유받은 페이지와 볼 수 있는 게시판 글을 읽을 수 있습니다.';
+
 function initHome() {
   const msg = document.getElementById('msg');
   const list = document.getElementById('community-list');
@@ -1275,9 +1278,12 @@ function initHome() {
   function drawSpaceHead(space) {
     if (!space) { return; }
     setText(headTitle, space.kind === 'team' ? space.name : '내 공간');
+    // 디버깅 묶음 U3 — 손님(쓰기 자격 없음 — `/api/me` 의 can_community_write, 서버 판정 값)에게는 할 수 없는 「공개 범위」 문장 대신 읽기 안내
     setText(headSub, space.kind === 'team'
       ? '팀이 함께 쓰는 공간입니다. 팀원 누구나 페이지를 만들고 고칠 수 있습니다.'
-      : '나만 보는 개인 업무 공간입니다. 페이지마다 공개 범위를 고를 수 있습니다.');
+      : (meCanWrite
+        ? '나만 보는 개인 업무 공간입니다. 페이지마다 공개 범위를 고를 수 있습니다.'
+        : GUEST_SPACE_SUB));
     document.title = (space.kind === 'team' ? space.name : '내 공간') + ' · 커뮤니티';
   }
 
@@ -2132,7 +2138,7 @@ function bindTrash(onRestored) {
     });
   }
 
-  button.addEventListener('click', () => {
+  function openTrash() {
     if (typeof dialog.showModal !== 'function') { return; }
     setText(msg, '');
     // 라운드 B — 창을 새로 열 때마다 고른 것·끝난 진행 표를 치운다(도는 중인 작업은 그대로 둔다)
@@ -2140,7 +2146,30 @@ function bindTrash(onRestored) {
     if (!trashRunner.busy()) { picked.clear(); full = false; }
     if (!dialog.open) { dialog.showModal(); }
     load().catch(() => setText(msg, GENERIC_ERROR));
-  });
+  }
+  button.addEventListener('click', openTrash);
+  /* 디버깅 묶음 U3 — 사이드바 「내 휴지통」(모든 커뮤니티 화면 · 주소 `/community/?trash=1`). 이 화면(첫 화면)에서는 옮겨 가지 않고
+     같은 창을 연다(좁은 폭이면 열린 서랍을 먼저 닫는다). 다른 화면에서 온 꼬리표는 창을 연 뒤 주소에서 뗀다 — 새로 고침이 창을 또 열지 않게. */
+  const navTrash = document.getElementById('nav-community-trash');
+  if (navTrash) {
+    navTrash.addEventListener('click', (event) => {
+      if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) { return; }
+      event.preventDefault();
+      const drawerToggle = document.getElementById('nav-toggle');
+      if (drawerToggle && drawerToggle.getAttribute('aria-expanded') === 'true') { drawerToggle.click(); }
+      openTrash();
+    });
+  }
+  let wantTrash = false;
+  try { wantTrash = new URLSearchParams(window.location.search).get('trash') === '1'; } catch (e) { wantTrash = false; }
+  if (wantTrash) {
+    try {
+      const u = new URL(window.location.href);
+      u.searchParams.delete('trash');
+      window.history.replaceState(window.history.state, '', u.pathname + u.search + u.hash);
+    } catch (e) { /* 주소를 못 고쳐도 창은 연다 */ }
+    openTrash();
+  }
   for (const close of dialog.querySelectorAll('[data-trash-close]')) {
     close.addEventListener('click', () => dialog.close());
   }
@@ -3994,6 +4023,12 @@ function initPage() {
   const statusBadgeEl = document.getElementById('page-status-badge');
   // 5-A — 「소유자」 칸과 「넘기기」, 공유받은 사람의 「공유 보기」
   const ownerNameEl = document.getElementById('page-owner-name');
+  // 디버깅 묶음 U3 — 좁은 폭(720 미만) 속성 요약 한 줄과 「속성 더보기」(넓은 화면에서는 CSS 가 요약을 숨기고 속성 줄을 그대로 보인다)
+  const propsSummary = document.getElementById('page-props-summary');
+  const propsLine = document.getElementById('page-props-line');
+  const propsToggle = document.getElementById('page-props-toggle');
+  const propsToggleLabel = document.getElementById('page-props-toggle-label');
+  let propsOpen = false;
   const handoverButton = document.getElementById('page-handover');
   const shareMineEl = document.getElementById('page-share-mine');
   const shareOpenButton = document.getElementById('page-share-open');
@@ -4234,22 +4269,41 @@ function initPage() {
     if (i >= 0) { event.preventDefault(); toggleTodo(i); }
   });
 
-  /** 경로(breadcrumb) — 「내 공간 › 부모 › 이 페이지」. 마지막 칸만 링크가 아니다. */
+  /**
+   * 경로 줄 첫 칸 — 이 페이지가 든 **실제 공간**(디버깅 묶음 U3 · 사용자 지적 2026-09-26 「늘 『내 공간 ›』」).
+   * 이름은 전부 창구가 준 값이다 — 게시판 글은 `board.name`(게시판을 볼 수 있을 때만 창구가 싣는다) · 팀 공간은 `space.name` ·
+   * 남의 개인 공간은 `space.name`(「아이디 의 공간」 — 공유받은 페이지 목록이 이미 보이는 글자) · 내 공간은 「내 공간」.
+   * 링크는 **그 사람이 열 수 있는 곳만**: 내 공간 → 커뮤니티 첫 화면 · 팀원 → 그 팀 공간 · 게시판 글 → 그 게시판.
+   * 남의 개인 공간·팀원이 아닌 팀 공간(공유·관리자 열람)은 들어갈 화면이 없어 글자만이다. 고르는 값 `granted_by` 는 창구가 한
+   * 판정의 결과이고 화면은 모양만 고른다 — 막는 것은 창구다(원칙 1).
+   */
+  function crumbRoot() {
+    const b = state.board;
+    const sp = state.space;
+    if (b && b.kind === 'post' && typeof b.name === 'string') {
+      return { text: b.name, href: COMMUNITY_BASE + '/b/' + String(b.id) };
+    }
+    if (sp && sp.kind === 'team' && typeof sp.name === 'string') {
+      return { text: sp.name, href: state.grantedBy === 'team_member' ? spaceHref(sp.id, 'team') : null };
+    }
+    if (sp && sp.kind === 'personal' && state.grantedBy !== 'owner' && typeof sp.name === 'string' && sp.name !== '') {
+      return { text: sp.name, href: null };
+    }
+    if (sp && sp.kind !== 'personal') { return { text: '게시판', href: null }; }   // 게시판 이름을 받지 못한 글(창구가 싣지 않음) — 이름을 짓지 않는다
+    return { text: '내 공간', href: COMMUNITY_BASE + '/' };
+  }
+
+  /** 경로(breadcrumb) — 「공간 › 부모 › 이 페이지」. 마지막 칸만 링크가 아니다. */
   function drawCrumb(breadcrumb) {
     if (!crumbEl) { return; }
     clear(crumbEl);
     const trail = Array.isArray(breadcrumb) ? breadcrumb : [];
 
-    const home = document.createElement('a');
+    const root = crumbRoot();
+    const home = document.createElement(root.href ? 'a' : 'span');
     home.className = 'crumb__item';
-    // 5-C — 게시판 글의 경로는 그 게시판에서 시작한다.
-    if (state.board && state.board.kind === 'post') {
-      home.setAttribute('href', COMMUNITY_BASE + '/b/' + String(state.board.id));
-      home.textContent = state.board.name;
-    } else {
-      home.setAttribute('href', COMMUNITY_BASE + '/');
-      home.textContent = '내 공간';
-    }
+    if (root.href) { home.setAttribute('href', root.href); }
+    home.textContent = root.text;
     crumbEl.appendChild(home);
 
     for (let i = 0; i < trail.length; i++) {
@@ -4363,6 +4417,8 @@ function initPage() {
       drawBacklinks(Array.isArray(result.data.backlinks) ? result.data.backlinks : []);
       state.visibility = typeof page.visibility === 'string' ? page.visibility : 'private';
       state.space = result.data.space || null;
+      // 디버깅 묶음 U3 — 이 페이지를 **무엇으로** 볼 수 있나(창구의 판정 결과 `granted_by`). 경로 줄 첫 칸의 이름·링크만 고른다(권한 판단 아님)
+      state.grantedBy = typeof result.data.granted_by === 'string' ? result.data.granted_by : '';
       state.canSetVisibility = w && result.data.can_set_visibility === true;
       state.status = typeof page.status === 'string' ? page.status : null;
       state.canSetProperties = w && result.data.can_set_properties === true;
@@ -4401,6 +4457,8 @@ function initPage() {
       templateSave.draw(pageId, result.data);
       showEditors(result.data.editors);
       show(editButton, state.canEdit && !state.editing);
+      // 디버깅 묶음 U3 — 「이력」은 창구가 이 페이지를 내준(읽기 판정 통과) 뒤에만. 막힌·없는 페이지에서는 숨은 채다(page_view.php 기본 hidden)
+      show(document.getElementById('page-history'), true);
       // 5-A — 지우기·옮기기는 **관리**다. 편집 공유자에게는 `can_edit` 이 참이어도 이 둘이 없다.
       show(deleteButton, state.canManage);
       // 5-C — 게시판 글은 트리가 없어 옮길 자리가 없다(창구도 `space_governed`). 지우기는 쓴 사람이 한다.
@@ -4658,6 +4716,51 @@ function initPage() {
     }
     show(tagInput, state.canTag);
     if (state.canTag && state.board) { fillTagOptions(tagOptions, state.board.id, ''); }
+    drawPropsSummary();
+  }
+
+  /* ── 좁은 폭 속성 요약 (디버깅 묶음 U3 · DESIGN 2.9 「좁은 폭 글 화면」) ──
+     720px 미만에서는 속성 줄(상태·쓴 사람·공개 범위·게시판·태그·조회 — 한 줄에 하나라 여섯 줄)이 본문을 첫 화면 아래로 밀었다.
+     그래서 속성 줄을 접고(`data-folded` — CSS 가 좁은 폭에서만 숨긴다) 요약 한 줄 + 「속성 더보기」를 둔다. 요약은 속성 줄이
+     **이미 그린 것**을 옮긴다 — 배지는 cloneNode, 이름·수는 textContent(새 값·새 판단 0). 단추·편집 권한은 속성 줄 그대로다
+     (펼치면 같은 단추가 같은 자리에 있다). 넓은 화면에서는 요약이 숨고 `data-folded` 는 아무 일도 하지 않는다. */
+  function paintPropsFold() {
+    if (!propsRow || !propsToggle) { return; }
+    propsRow.toggleAttribute('data-folded', !propsOpen);
+    propsToggle.setAttribute('aria-expanded', propsOpen ? 'true' : 'false');
+    setText(propsToggleLabel, propsOpen ? '속성 접기' : '속성 더보기');
+  }
+
+  function drawPropsSummary() {
+    if (!propsSummary || !propsLine) { return; }
+    clear(propsLine);
+    // 배지(상태 — 있을 때만 · 공개 범위)는 속성 줄의 것을 복제하고, 나머지는 글자 한 덩어리(「쓴 사람 … · 게시판 … · 태그 n · 조회 n」)
+    for (const el of [state.status ? statusBadgeEl : null, visibilityBadgeEl]) {
+      if (!el || el.hidden || el.textContent.trim() === '') { continue; }
+      const c = el.cloneNode(true);
+      c.removeAttribute('id');
+      propsLine.appendChild(c);
+    }
+    const words = [];
+    const who = ownerNameEl ? ownerNameEl.textContent.trim() : '';
+    if (who !== '' && who !== '—' && who !== '…') {
+      const label = document.getElementById('page-owner-label');
+      words.push((label ? label.textContent.trim() + ' ' : '') + who);
+    }
+    if (state.board && typeof state.board.name === 'string' && state.board.kind !== 'post') { words.push('게시판 ' + state.board.name); }
+    if (state.tags.length > 0) { words.push('태그 ' + String(state.tags.length)); }
+    if (state.board) { words.push('조회 ' + String(state.viewCount)); }
+    if (words.length > 0) {
+      const t = document.createElement('span');
+      t.textContent = words.join(' · ');
+      propsLine.appendChild(t);
+    }
+    paintPropsFold();
+    show(propsSummary, true);
+  }
+  if (propsToggle) {
+    // 초점은 「속성 접기」에 그대로 둔다 — 펼친 줄은 바로 아래라 Tab 한 번이면 닿고, 다시 접기도 쉽다
+    propsToggle.addEventListener('click', () => { propsOpen = !propsOpen; paintPropsFold(); });
   }
 
   function putTags(list) {
@@ -4772,6 +4875,44 @@ function initPage() {
     }).catch(() => { setText(commentsMsg, GENERIC_ERROR); return false; });
   }
 
+  /**
+   * 댓글 본문의 주소를 링크로 (디버깅 묶음 U3 · 시연 2026-09-26 「댓글 속 주소가 링크가 아니다」).
+   * 본문은 평문 그대로다(결정 D-1) — **글자 노드와 `<a>` 를 하나씩 만들어** 붙인다(문자열을 HTML 로 바꾸는 자리 0). 링크가 되는 것은
+   * `http://`·`https://` 로 시작하는 조각뿐이고(`javascript:`·`data:` 등 다른 스킴은 정규식에 걸리지 않아 글자로 남는다),
+   * 걸린 조각도 `new URL()` 로 다시 읽어 스킴이 http·https 인 것만 쓴다(doc-render 의 링크 규칙과 같은 두 스킴).
+   * 끝의 문장 부호(. , ) 」 등)는 주소에서 떼고, 한글이 붙으면 거기서 끊는다(「…/p/uuid에서」 — 복사한 주소는 한글이 %xx 로 바뀌어 있다).
+   * 사이트 안 주소(`location.origin` 과 같은 곳)는 같은 창, 밖 주소는 새 창 — 둘 다 `rel="noopener noreferrer"`. 아이디·비밀번호가 든 주소는 글자로.
+   */
+  const COMMENT_URL_SPLIT = /(https?:\/\/[^\s<>"'「」『』\u3131-\u318e\uac00-\ud7a3]+)/;
+  const COMMENT_URL_TAIL = /[.,;:!?)\]}'"。、…]+$/;
+  function linkifyInto(el, text) {
+    const parts = String(text).split(COMMENT_URL_SPLIT);
+    for (let i = 0; i < parts.length; i++) {
+      const piece = parts[i];
+      if (piece === '') { continue; }
+      if (i % 2 === 0) { el.appendChild(document.createTextNode(piece)); continue; }
+      let raw = piece;
+      let tail = '';
+      const cut = raw.replace(COMMENT_URL_TAIL, '');
+      if (cut !== raw) { tail = raw.slice(cut.length); raw = cut; }
+      let url = null;
+      try { url = new URL(raw); } catch (e) { url = null; }
+      // 아이디·비밀번호가 든 주소(`https://좋은곳@다른곳`)는 보이는 글자와 가는 곳이 달라 보일 수 있어 글자로 둔다
+      if (!url || (url.protocol !== 'https:' && url.protocol !== 'http:') || url.hostname === '' || url.username !== '' || url.password !== '') {
+        el.appendChild(document.createTextNode(piece));
+        continue;
+      }
+      // 클래스 없는 글 속 링크 — 터치 넓힘(app.css 끝 `a[class]`)이 윗줄·아랫줄 글자를 덮지 않게(DESIGN 4장 「글 속 링크는 규칙 밖」). 모양은 community.css
+      const a = document.createElement('a');
+      a.setAttribute('href', url.href);
+      a.setAttribute('rel', 'noopener noreferrer');
+      if (url.origin !== window.location.origin) { a.setAttribute('target', '_blank'); }
+      a.textContent = raw;
+      el.appendChild(a);
+      if (tail !== '') { el.appendChild(document.createTextNode(tail)); }
+    }
+  }
+
   function commentItem(c) {
     const li = document.createElement('li');
     li.className = 'list__item' + (c.parent_id ? ' is-reply' : '');
@@ -4814,7 +4955,7 @@ function initPage() {
     body.className = 'list__body';
     if (c.deleted) { body.textContent = '지운 댓글입니다.'; body.classList.add('muted'); }
     else if (c.body === null) { body.textContent = '숨긴 댓글입니다.'; body.classList.add('muted'); }
-    else { body.textContent = c.body; }
+    else { linkifyInto(body, c.body); }
     li.appendChild(body);
 
     if (!c.deleted) {

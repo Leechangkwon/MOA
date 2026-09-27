@@ -40,7 +40,8 @@ require __DIR__ . '/../../views/shell_top.php';
       <div class="page-head__text">
         <!-- 제목·설명은 고른 공간에 따라 editor.js 가 textContent 로 바꾼다 (4-B). -->
         <h1 id="community-space-title" class="page-head__title">내 공간</h1>
-        <p id="community-space-sub" class="page-head__sub">나만 보는 개인 업무 공간입니다. 페이지를 만들어 적어 두세요.</p>
+        <!-- 디버깅 묶음 U3 — 손님(쓰기 자격 없음 — 「새 페이지」를 숨기는 것과 같은 값 Authz::canCommunityWrite)에게는 읽기 안내(editor.js GUEST_SPACE_SUB 와 같은 글자) -->
+        <p id="community-space-sub" class="page-head__sub"><?= $homeWriteHidden === '' ? '나만 보는 개인 업무 공간입니다. 페이지를 만들어 적어 두세요.' : '손님 계정은 읽기만 합니다. 공유받은 페이지와 볼 수 있는 게시판 글을 읽을 수 있습니다.' ?></p>
       </div>
       <div class="page-head__actions">
         <button type="button" class="btn btn--quiet" data-help-open>
@@ -59,7 +60,7 @@ require __DIR__ . '/../../views/shell_top.php';
             <!-- 「휴지통」 (4-C). 목록은 창구 `GET /api/me/trash` 가 주는 것만이고, 화면에는
                  「내가 지운 것인가」를 따지는 코드가 한 줄도 없다 (PRD S-01). -->
             <button id="community-trash" class="menu__item" type="button" aria-haspopup="dialog">
-              <span class="icon" data-icon="trash"></span>휴지통
+              <span class="icon" data-icon="trash"></span>내 휴지통
             </button>
             <!-- 「많이 읽힌 문서」 (7-D1, N-34) — 창구 `GET /api/boards` 의 `can_manage` 가 참일 때만 보인다(Admin) -->
             <button id="community-popular" class="menu__item" type="button" aria-haspopup="dialog" hidden>
@@ -236,7 +237,7 @@ require __DIR__ . '/../../views/shell_top.php';
          표 내용은 editor.js 가 createElement/textContent 로 채운다. 본문 글자는 없다. -->
     <dialog id="trash-dialog" class="modal" aria-labelledby="trash-title">
       <div class="modal__head">
-        <h2 id="trash-title" class="modal__title">휴지통</h2>
+        <h2 id="trash-title" class="modal__title">내 휴지통</h2>
         <p id="trash-meta" class="muted"></p>
         <button class="btn btn--icon btn--plain" type="button" data-trash-close aria-label="닫기">
           <span class="icon" data-icon="x"></span>

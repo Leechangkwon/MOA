@@ -134,9 +134,9 @@ require __DIR__ . '/../views/shell_top.php';
         <span class="field__label">왜 — 결과</span>
         <select id="f-result">
           <option value="">(전체)</option>
-          <option value="allow">allow</option>
-          <option value="deny">deny</option>
-          <option value="error">error</option>
+          <option value="allow">허용</option>
+          <option value="deny">거부</option>
+          <option value="error">오류</option>
         </select>
       </label>
       <label class="field">
