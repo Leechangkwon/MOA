@@ -259,7 +259,9 @@ var LEVEL_LABELS = {
   'public': '공개 — 손님까지 모두',
   'internal': '사내 — 사내 구성원 모두',
   'team': '팀 — 고른 팀만',
-  'admin-only': '관리자 — 관리자만'
+  'admin-only': '관리자 — 관리자만',
+  // G-0 (PRD F-73) — 가장 좁은 등급이라 고르개의 **맨 끝**(서버가 준 upload_levels 순서 그대로). DESIGN 5장 낱말 표
+  'private': '개인 — 나와 지정한 사람만'
 };
 
 /** 아직 아무것도 고르지 않았을 때의 자리표시 문구 (사용자 피드백 ②) */
@@ -446,8 +448,21 @@ var LEVEL_BADGE_LABELS = {
   'public': '공개',
   'internal': '사내',
   'team': '팀',
-  'admin-only': '관리자'
+  'admin-only': '관리자',
+  'private': '개인'   // G-0 — 배지 색은 토큰 조합 하나(.badge--private · 새 색값 0) + 자물쇠 아이콘
 };
+
+/**
+ * G-0 — 「개인」 배지의 글자: 서버가 준 **직접 준 권한 수**가 있으면 「개인 · 2명」(0 이면 「개인」).
+ * 사람 수는 서버 값 그대로다 — 누가 보는지를 화면이 계산하지 않는다.
+ */
+function levelBadgeText(level, grants) {
+  var text = LEVEL_BADGE_LABELS[level];
+  if (level === 'private' && typeof grants === 'number' && grants > 0) {
+    text += ' · ' + grants + '명';
+  }
+  return text;
+}
 
 /**
  * 역할의 **화면 문구** (DESIGN 5장 「등급·역할」 — 한글로 보이고 원래 값은 title, 디버깅 묶음 U M7 · 2026-09-26).
@@ -512,14 +527,17 @@ function safeFileSrc(value) {
 }
 
 /** 접근 레벨 배지 하나를 만든다(표의 칸·미리보기 머리 양쪽에서 쓴다). 모르는 값이면 null. */
-function makeLevelBadge(level) {
+function makeLevelBadge(level, grants) {
   if (typeof level !== 'string' || !Object.prototype.hasOwnProperty.call(LEVEL_BADGE_LABELS, level)) {
     return null;
   }
   var badge = document.createElement('span');
   badge.className = 'badge badge--' + level;
   badge.setAttribute('title', level);
-  setText(badge, LEVEL_BADGE_LABELS[level]);
+  setText(badge, levelBadgeText(level, grants));
+  if (level === 'private') {
+    badge.insertBefore(makeIcon('lock'), badge.firstChild);   // G-0 — 자물쇠(글자와 함께 — 색만으로 뜻을 전하지 않는다)
+  }
   return badge;
 }
 
@@ -671,14 +689,10 @@ function addNameCell(row, name, sensitive, scanStatus, execContent) {
 }
 
 /** 표의 「레벨」 칸 — 배지 span 하나. 원래 값은 title 에 남겨 둔다(감사·문의용). */
-function addLevelCell(row, level) {
+function addLevelCell(row, level, grants) {
   var td = document.createElement('td');
   if (typeof level === 'string' && Object.prototype.hasOwnProperty.call(LEVEL_BADGE_LABELS, level)) {
-    var badge = document.createElement('span');
-    badge.className = 'badge badge--' + level;
-    badge.setAttribute('title', level);
-    setText(badge, LEVEL_BADGE_LABELS[level]);
-    td.appendChild(badge);
+    td.appendChild(makeLevelBadge(level, grants));   // G-0 — 배지 한 벌(개인이면 자물쇠 + 「개인 · n명」)
   } else {
     setText(td, level);
   }
@@ -1351,7 +1365,7 @@ function initLogin(form) {
  *   (`Authz::decideUploadAs` · `Authz::fitsUnderFolder`, PRD S-01).
  *   화면이 이 표를 무시하고 아무 값이나 보내도 서버가 403/400 으로 막는다.
  */
-var LEVEL_RANK = { 'public': 0, 'internal': 1, 'team': 2, 'admin-only': 3 };
+var LEVEL_RANK = { 'public': 0, 'internal': 1, 'team': 2, 'admin-only': 3, 'private': 4 };   // G-0 — 개인이 가장 좁다(Authz::LEVEL_RANK 와 같다)
 
 /** 한 번에 고를 수 있는 파일 개수 (F-27 화면 상수, ARCH 5.17) */
 var BULK_MAX = 50;
@@ -1421,7 +1435,7 @@ function fillLevelOptionsUnder(select, levels, minLevel, preferLevel) {
 function folderMeta(folder) {
   var meta = document.createElement('span');
   meta.className = 'foldertree__meta';
-  var badge = makeLevelBadge(folder.access_level);
+  var badge = makeLevelBadge(folder.access_level, folder.grants);
   if (badge) {
     meta.appendChild(badge);
   }
@@ -1643,7 +1657,8 @@ function initFiles(csrfToken, uploadLevels, canFetch, myTeamId) {
   var viewButtons = {
     files: document.getElementById('files-view-files'),
     favorites: document.getElementById('files-view-favorites'),
-    recent: document.getElementById('files-view-recent')
+    recent: document.getElementById('files-view-recent'),
+    shared: null   // G-0 — 공유받음은 사이드바 항목(`?view=shared`)으로 연다 — 보기 단추 줄에는 없다(폰 폭에서 한 줄 유지)
   };
   var favFoldersWrap = document.getElementById('fav-folders-wrap');
   var favFoldersList = document.getElementById('fav-folders');
@@ -1659,7 +1674,8 @@ function initFiles(csrfToken, uploadLevels, canFetch, myTeamId) {
   var EMPTY_TEXT = {
     files: '표시할 파일이 없습니다.',
     favorites: '즐겨찾기한 파일이 없습니다. 파일 줄 이름 앞의 별(☆)을 누르면 여기에 모입니다.',
-    recent: '최근 30일 동안 미리보기·받기로 연 파일이 없습니다.'
+    recent: '최근 30일 동안 미리보기·받기로 연 파일이 없습니다.',
+    shared: '나에게 직접 권한을 준 개인 파일이 없습니다.'
   };
 
   /* state.folder 는 **지금 열어 둔 폴더**(0 = 루트)이고, folderInfo·crumbs 는 서버가
@@ -1795,7 +1811,7 @@ function initFiles(csrfToken, uploadLevels, canFetch, myTeamId) {
     if (typeof current === 'string') {
       offered[current] = true;
     }
-    ['public', 'internal', 'team', 'admin-only'].forEach(function (level) {
+    ['public', 'internal', 'team', 'admin-only', 'private'].forEach(function (level) {
       if (offered[level] !== true || !Object.prototype.hasOwnProperty.call(LEVEL_LABELS, level)) {
         return;
       }
@@ -1829,8 +1845,10 @@ function initFiles(csrfToken, uploadLevels, canFetch, myTeamId) {
       editDesc.value = typeof file.description === 'string' ? file.description : '';
     }
     var locked = file.exec_content === true;
+    // G-0 — 개인 파일의 등급은 주인만 바꾼다(서버 decideLevelChange) — 「편집」 권한자에게는 등급 칸을 보이지 않는다(설명만)
+    var privateLocked = file.access_level === 'private' && file.can_manage_access !== true;
     if (editLevelField) {
-      editLevelField.hidden = locked;
+      editLevelField.hidden = locked || privateLocked;
     }
     if (editLevelNote) {
       editLevelNote.hidden = !locked;
@@ -2744,7 +2762,10 @@ function initFiles(csrfToken, uploadLevels, canFetch, myTeamId) {
            ★ F-65 — 「실행 파일 포함」 파일에는 이 단추를 **만들지 않는다**. 공유 링크는
              로그인하지 않은 사람이 OTP 없이 받는 길이라 서버가 400 으로 막는다
              (ARCH 5.29 「받기」 표). 단추를 지우는 것은 편의이고 근거는 서버다. */
-        if (file.exec_content !== true) {
+        /* G-0 — 개인 파일의 공유 링크·옮기기는 **주인만**(서버 decidePrivateOwner). 「편집」 권한자에게는 단추를 만들지 않는다 —
+           서버가 준 can_manage_access 만 본다(화면이 주인을 따지지 않는다). */
+        var privateNotOwner = file.access_level === 'private' && file.can_manage_access !== true;
+        if (file.exec_content !== true && !privateNotOwner) {
           var shareButton = makeIconButton('link', '공유 링크 만들기');
           shareButton.addEventListener('click', function () {
             openShare(file);
@@ -2755,11 +2776,23 @@ function initFiles(csrfToken, uploadLevels, canFetch, myTeamId) {
         /* 18-1 — 「폴더로 이동」도 **같은 can_edit** 로 갈린다 (PRD F-26: 파일을 옮기는 것은
            그 파일을 고칠 수 있는 사람). 단추가 보이든 안 보이든 서버가 다시 판단하고,
            대상 폴더를 읽을 수 있는지·불변 규칙 ①까지 서버가 본다. */
-        var moveButton = makeIconButton('files', '폴더로 이동');
-        moveButton.addEventListener('click', function () {
-          openMove(file);
+        if (!privateNotOwner) {
+          var moveButton = makeIconButton('files', '폴더로 이동');
+          moveButton.addEventListener('click', function () {
+            openMove(file);
+          });
+          td.appendChild(moveButton);
+        }
+      }
+
+      /* G-0 — 개인 파일이면 「권한」(받은 사람 보기 · 주인은 사람 추가·빼기). 보이는 사람은 누구나 목록을 본다 —
+         고치기 단추는 창구가 준 can_manage 로만 열린다(openGrants). */
+      if (file.access_level === 'private') {
+        var accessButton = makeIconButton('users', '권한 — 받은 사람');
+        accessButton.addEventListener('click', function () {
+          openGrants('file', file.id, file.name);
         });
-        td.appendChild(moveButton);
+        td.appendChild(accessButton);
       }
 
       // 삭제 버튼도 서버가 그 행에 대해 can_delete 를 참으로 준 경우에만 만든다.
@@ -2797,7 +2830,7 @@ function initFiles(csrfToken, uploadLevels, canFetch, myTeamId) {
       nameCell.insertBefore(check, nameCell.firstChild);
     }
     addCell(row, formatSize(file.size_bytes));
-    addLevelCell(row, file.access_level);
+    addLevelCell(row, file.access_level, file.grants);
     addCell(row, file.team_name === null || file.team_name === undefined ? '—' : file.team_name);
     if (showFolder) {
       // 서버가 준 folder_path 그대로. 루트면 「—」 (경로는 표시용이며 권한과 무관하다).
@@ -3066,9 +3099,10 @@ function initFiles(csrfToken, uploadLevels, canFetch, myTeamId) {
 
   /** 보기 바꾸기 — 고른 단추는 테두리 있는 outline, 나머지는 테두리를 걷는다(새 클래스 0) */
   function setView(view) {
-    if (view !== 'files' && view !== 'favorites' && view !== 'recent') {
+    if (view !== 'files' && view !== 'favorites' && view !== 'recent' && view !== 'shared') {
       return;
     }
+    accessHideForView(view);   // G-0 — 공유받음 묶음·요청 화면은 그 보기에서만
     state.view = view;
     Object.keys(viewButtons).forEach(function (key) {
       var button = viewButtons[key];
@@ -3091,7 +3125,7 @@ function initFiles(csrfToken, uploadLevels, canFetch, myTeamId) {
     if (next) {
       next.hidden = view !== 'files';
     }
-    setText(whenHead, view === 'recent' ? '마지막으로 연 때' : '올린 시각');
+    setText(whenHead, view === 'recent' ? '마지막으로 연 때' : (view === 'shared' ? '받은 때' : '올린 시각'));
     setText(empty, EMPTY_TEXT[view]);
     setText(msg, '');
     showDone('');
@@ -3154,6 +3188,10 @@ function initFiles(csrfToken, uploadLevels, canFetch, myTeamId) {
       loadFavoritesView();
       return;
     }
+    if (state.view === 'shared') {
+      loadSharedView();   // G-0
+      return;
+    }
     if (state.view === 'recent') {
       loadRecentView();
       return;
@@ -3189,9 +3227,16 @@ function initFiles(csrfToken, uploadLevels, canFetch, myTeamId) {
             return null;
           }
           if (!response.ok) {
+            // G-0 — 연 폴더를 볼 수 없으면(없는 번호도 같은 403) 이름 없이 권한 요청 화면을 연다
+            if (response.status === 403 && state.q === '' && state.folder !== 0) {
+              clearRows();
+              showAccessRequest('folder', String(state.folder));
+              return null;
+            }
             setText(msg, errorMessage(data));
             return null;
           }
+          accessRequestHide();
           renderFiles(data);
           return null;
         });
@@ -3199,6 +3244,707 @@ function initFiles(csrfToken, uploadLevels, canFetch, myTeamId) {
       .catch(function () {
         setText(msg, GENERIC_ERROR);
       });
+  }
+
+  /* ─── G-0 「개인」 등급 · 사람 지정 권한 · 권한 요청 (t-box PRD F-73 · DESIGN 2.4 「권한」 · 5장 낱말) ─────────────
+   * 화면은 판단하지 않는다 — 누가 보는지·누가 고칠 수 있는지는 창구(`…/grants` · `/api/grants/mine` · `/api/access-requests`)가
+   * 정하고 여기서는 그 답만 그린다(PRD S-01). 글자는 전부 textContent · 인라인 style 0 · 새 클래스 0(.list·.badge·.toolbar·.field).
+   *   권한 창     개인 폴더·파일의 받은 사람(직접 · 위 폴더에서 이어받음) — 주인(can_manage)에게만 사람 추가·보기/편집·빼기
+   *   요청 화면   주소로 연 폴더·파일을 볼 수 없을 때(없는 번호도 같은 화면) — 이름 없이 보기/편집 + 한 줄 메모
+   *   공유받음    나에게 준 권한으로 여는 폴더·파일 + 받은 권한 요청(허락·거절) + 보낸 권한 요청의 상태
+   */
+  var folderAccessBtn = document.getElementById('folder-access');
+  var folderAccessLabel = document.getElementById('folder-access-label');
+  var folderPutNote = document.getElementById('folder-put-note');
+  var folderPutRequest = document.getElementById('folder-put-request');
+  var grantsDialog = document.getElementById('grants-dialog');
+  var grantsItem = document.getElementById('grants-item');
+  var grantsMsg = document.getElementById('grants-msg');
+  var grantsAddWrap = document.getElementById('grants-add-wrap');
+  var grantsSearch = document.getElementById('grants-search');
+  var grantsLevel = document.getElementById('grants-level');
+  var grantsHint = document.getElementById('grants-hint');
+  var grantsCandidates = document.getElementById('grants-candidates');
+  var grantsCount = document.getElementById('grants-count');
+  var grantsList = document.getElementById('grants-list');
+  var grantsClose = document.getElementById('grants-close');
+  var grantsCloseX = document.getElementById('grants-close-x');
+  var accessPanel = document.getElementById('access-request');
+  var accessTitle = document.getElementById('access-request-title');
+  var accessForm = document.getElementById('access-request-form');
+  var accessMessage = document.getElementById('access-request-message');
+  var accessSend = document.getElementById('access-request-send');
+  var accessMsg = document.getElementById('access-request-msg');
+  var accessDone = document.getElementById('access-request-done');
+  var accessWriteLabel = document.getElementById('access-want-write-label');
+  var sharedFoldersWrap = document.getElementById('shared-folders-wrap');
+  var sharedFoldersList = document.getElementById('shared-folders');
+  var accessInWrap = document.getElementById('access-in-wrap');
+  var accessInTitle = document.getElementById('access-in-title');
+  var accessInList = document.getElementById('access-in-list');
+  var accessInEmpty = document.getElementById('access-in-empty');
+  var accessInMsg = document.getElementById('access-in-msg');
+  var accessOutWrap = document.getElementById('access-out-wrap');
+  var accessOutList = document.getElementById('access-out-list');
+  var accessOutEmpty = document.getElementById('access-out-empty');
+  /** 지금 권한 창이 보는 항목 {kind, key, name} · 요청 화면의 항목 {kind, key} */
+  var grantsTarget = null;
+  var grantsTimer = 0;
+  var accessTarget = null;
+  /** `?requests=in` 으로 열었나 — 받은 요청 묶음을 비어 있어도 보이고 제목에 초점 */
+  var accessFocusIn = false;
+  /** 편집 권한을 요청할 수 있나 — 올릴 수 있는 등급이 하나라도 있는 계정(손님은 보기만 · 서버가 다시 막는다) */
+  var canAskWrite = Array.isArray(uploadLevels) && uploadLevels.length > 0;
+  var ACCESS_STATUS = { pending: '기다리는 중', approved: '허락됨', rejected: '거절됨', cancelled: '거둠' };
+  var ACCESS_STATUS_BADGE = { pending: 'badge badge--internal', approved: 'badge badge--ok', rejected: 'badge badge--off', cancelled: 'badge badge--off' };
+
+  /** 권한 창구 공통 — 401 은 로그인, 403 next:reauth 는 재인증 창(통과하면 같은 요청을 한 번 더), 그 밖은 {ok,status,data} */
+  function accessFetch(method, url, payload) {
+    var options = { method: method, credentials: 'same-origin', cache: 'no-store' };
+    if (method !== 'GET') {
+      options.headers = csrfHeaders();
+      if (payload !== undefined) {
+        options.headers['Content-Type'] = 'application/json';
+        options.body = JSON.stringify(payload);
+      }
+    }
+    return fetch(url, options).then(function (response) {
+      if (response.status === 401) {
+        toLogin();
+        return null;
+      }
+      return readJson(response).then(function (data) {
+        if (handleReauth(response, data, function () { accessFetch(method, url, payload).then(accessAfterReauth); })) {
+          return null;
+        }
+        return { ok: response.ok, status: response.status, data: data };
+      });
+    });
+  }
+  /** 재인증 뒤 다시 보낸 요청의 뒤처리 — 창을 새로 그린다(열려 있는 것만) */
+  function accessAfterReauth() {
+    if (grantsDialog && grantsDialog.open) {
+      loadGrants();
+    }
+    if (state.view === 'shared') {
+      loadAccessRequests();
+    }
+  }
+
+  /** 개인 폴더의 「권한」 단추 · 보기 권한만일 때의 한 줄 · 올리기·새 폴더 잠금(서버가 준 can_put 그대로) */
+  function syncFolderAccess() {
+    var info = state.folderInfo;
+    var isPrivate = state.folder !== 0 && !!info && info.access_level === 'private';
+    if (folderAccessBtn) {
+      folderAccessBtn.hidden = !isPrivate;
+    }
+    if (isPrivate) {
+      setText(folderAccessLabel, typeof info.grants === 'number' && info.grants > 0 ? '권한 · ' + info.grants + '명' : '권한');
+    }
+    var blocked = state.folder !== 0 && !!info && info.can_put === false;
+    if (folderPutNote) {
+      folderPutNote.hidden = !(blocked && isPrivate);
+    }
+    if (uploadToggle) {
+      uploadToggle.disabled = blocked;
+    }
+    if (folderNewBtn) {
+      folderNewBtn.disabled = blocked;
+    }
+  }
+
+  function grantsUrl(target, userId) {
+    var base = target.kind === 'file'
+      ? APP_BASE + '/api/files/' + encodeURIComponent(target.key) + '/grants'
+      : APP_BASE + '/api/folders/' + encodeURIComponent(target.key) + '/grants';
+    return userId === undefined ? base : base + '/' + encodeURIComponent(String(userId));
+  }
+
+  /** 권한 창 열기 — 항목 종류와 서버가 준 번호(파일 UUID · 폴더 번호)만 받는다 */
+  function openGrants(kind, key, name) {
+    var ok = kind === 'file' ? UUID_RE.test(String(key)) : /^[1-9][0-9]{0,8}$/.test(String(key));
+    if (!ok || !grantsDialog || typeof grantsDialog.showModal !== 'function' || grantsDialog.open) {
+      return;
+    }
+    grantsTarget = { kind: kind, key: String(key), name: typeof name === 'string' ? name : '' };
+    setText(grantsItem, (kind === 'file' ? '파일 ' : '폴더 ') + '「' + grantsTarget.name + '」');
+    setText(grantsMsg, '');
+    setText(grantsCount, '불러오는 중입니다…');
+    if (grantsList) { grantsList.replaceChildren(); }
+    if (grantsAddWrap) { grantsAddWrap.hidden = true; }
+    if (grantsSearch) { grantsSearch.value = ''; }
+    if (grantsCandidates) { grantsCandidates.replaceChildren(); grantsCandidates.hidden = true; }
+    if (grantsHint) { grantsHint.hidden = false; }
+    grantsDialog.showModal();
+    loadGrants();
+  }
+
+  function closeGrants() {
+    if (grantsDialog && grantsDialog.open) {
+      grantsDialog.close();
+    }
+  }
+
+  function grantBadge(write) {
+    var badge = document.createElement('span');
+    badge.className = write ? 'badge badge--team' : 'badge badge--internal';
+    setText(badge, write ? '편집' : '보기');
+    return badge;
+  }
+
+  /** 권한 한 줄 — 이름(아이디) · 보기/편집 · 준 날 · (주인) 보기/편집 바꾸기 · 빼기. 이어받은 줄은 어디서 왔는지만 */
+  function grantRow(grant, canManage) {
+    var li = document.createElement('li');
+    li.className = 'list__item';
+    var head = document.createElement('div');
+    head.className = 'list__head';
+    var who = document.createElement('strong');
+    setText(who, personLabel(grant.display_name, grant.username) + (grant.active === false ? ' (쓰지 않는 계정)' : ''));
+    head.appendChild(who);
+    head.appendChild(grantBadge(grant.write === true));
+    li.appendChild(head);
+    var body = document.createElement('div');
+    body.className = 'list__body';
+    var when = document.createElement('span');
+    setText(when, '준 날 ' + shortWhen(grant.granted_at).text);
+    body.appendChild(when);
+    if (grant.inherited === true) {
+      var from = document.createElement('span');
+      setText(from, grant.from && typeof grant.from.name === 'string'
+        ? '위 폴더 「' + grant.from.name + '」 에서 이어받음'
+        : '위 폴더에서 이어받음');
+      body.appendChild(from);
+    } else if (canManage && typeof grant.user === 'number') {
+      var pick = document.createElement('select');
+      pick.setAttribute('aria-label', personLabel(grant.display_name, grant.username) + ' 의 권한');
+      [['view', '보기'], ['write', '편집']].forEach(function (pair) {
+        var option = document.createElement('option');
+        option.value = pair[0];
+        setText(option, pair[1]);
+        option.selected = (pair[0] === 'write') === (grant.write === true);
+        pick.appendChild(option);
+      });
+      pick.addEventListener('change', function () {
+        putGrant(grant.username, pick.value === 'write');
+      });
+      var remove = document.createElement('button');
+      remove.type = 'button';
+      remove.className = 'btn btn--quiet btn--small btn--danger';
+      setText(remove, '빼기');
+      remove.addEventListener('click', function () {
+        remove.disabled = true;
+        removeGrant(grant.user);
+      });
+      body.appendChild(pick);
+      body.appendChild(remove);
+    }
+    li.appendChild(body);
+    return li;
+  }
+
+  function loadGrants() {
+    var target = grantsTarget;
+    if (!target) {
+      return;
+    }
+    accessFetch('GET', grantsUrl(target))
+      .then(function (result) {
+        if (result === null || target !== grantsTarget) {
+          return;
+        }
+        if (!result.ok) {
+          setText(grantsCount, '');
+          setText(grantsMsg, errorMessage(result.data));
+          return;
+        }
+        var data = result.data || {};
+        if (data.item && typeof data.item.name === 'string') {
+          setText(grantsItem, (target.kind === 'file' ? '파일 ' : '폴더 ') + '「' + data.item.name + '」');
+        }
+        var canManage = data.can_manage === true && data.effective === true;
+        if (grantsAddWrap) {
+          grantsAddWrap.hidden = !canManage;
+        }
+        var rows = Array.isArray(data.grants) ? data.grants : [];
+        if (grantsList) {
+          grantsList.replaceChildren();
+          rows.forEach(function (grant) {
+            if (grant && typeof grant.username === 'string') {
+              grantsList.appendChild(grantRow(grant, canManage));
+            }
+          });
+        }
+        var inherited = rows.filter(function (grant) { return grant && grant.inherited === true; }).length;
+        if (data.effective !== true) {
+          setText(grantsCount, '이 항목은 지금 「개인」 등급이 아니어서 아래 줄은 효력이 없습니다(다시 개인으로 좁히면 되살아납니다).');
+        } else if (rows.length === 0) {
+          setText(grantsCount, '아직 권한을 준 사람이 없습니다 — 주인만 봅니다.');
+        } else {
+          setText(grantsCount, '권한을 받은 사람 ' + rows.length + '명'
+            + (inherited > 0 ? ' (위 폴더에서 이어받은 ' + inherited + '명 포함)' : ''));
+        }
+      })
+      .catch(function () {
+        setText(grantsMsg, GENERIC_ERROR);
+      });
+  }
+
+  /** 주거나 바꾸기 — 누르는 즉시 창구로 간다. 성공하면 창과 목록(「개인 · n명」)을 다시 그린다 */
+  function putGrant(username, write) {
+    var target = grantsTarget;
+    if (!target) {
+      return;
+    }
+    setText(grantsMsg, '');
+    accessFetch('POST', grantsUrl(target), { user: username, write: write === true })
+      .then(function (result) {
+        if (result === null) {
+          return;
+        }
+        if (!result.ok) {
+          setText(grantsMsg, errorMessage(result.data));
+          loadGrants();
+          return;
+        }
+        if (grantsSearch) { grantsSearch.value = ''; }
+        if (grantsCandidates) { grantsCandidates.replaceChildren(); grantsCandidates.hidden = true; }
+        if (grantsHint) { grantsHint.hidden = false; }
+        loadGrants();
+        loadFiles();
+        loadTree();
+      })
+      .catch(function () {
+        setText(grantsMsg, GENERIC_ERROR);
+      });
+  }
+
+  function removeGrant(userId) {
+    var target = grantsTarget;
+    if (!target) {
+      return;
+    }
+    setText(grantsMsg, '');
+    accessFetch('DELETE', grantsUrl(target, userId))
+      .then(function (result) {
+        if (result === null) {
+          return;
+        }
+        if (!result.ok) {
+          setText(grantsMsg, errorMessage(result.data));
+        }
+        loadGrants();
+        loadFiles();
+        loadTree();
+      })
+      .catch(function () {
+        setText(grantsMsg, GENERIC_ERROR);
+      });
+  }
+
+  /** 사람 후보 — 한 글자부터(커뮤니티 공유 창과 같은 모양). 고르면 곧바로 준다(보기/편집은 옆 고르개) */
+  function loadGrantCandidates() {
+    var q = grantsSearch ? grantsSearch.value.trim() : '';
+    if (grantsHint) {
+      grantsHint.hidden = q !== '';
+    }
+    if (q === '') {
+      if (grantsCandidates) { grantsCandidates.replaceChildren(); grantsCandidates.hidden = true; }
+      return;
+    }
+    accessFetch('GET', APP_BASE + '/api/access/people?q=' + encodeURIComponent(q))
+      .then(function (result) {
+        if (result === null || !grantsCandidates) {
+          return;
+        }
+        if (!result.ok) {
+          setText(grantsMsg, errorMessage(result.data));
+          return;
+        }
+        var people = result.data && Array.isArray(result.data.candidates) ? result.data.candidates : [];
+        grantsCandidates.replaceChildren();
+        people.forEach(function (person) {
+          if (!person || typeof person.username !== 'string') {
+            return;
+          }
+          var li = document.createElement('li');
+          li.className = 'list__item';
+          var button = document.createElement('button');
+          button.type = 'button';
+          button.className = 'btn btn--quiet btn--small';
+          setText(button, personLabel(person.display_name, person.username) + ' · ' + roleLabel(person.role) + ' — 추가');
+          button.addEventListener('click', function () {
+            button.disabled = true;
+            putGrant(person.username, grantsLevel ? grantsLevel.value === 'write' : false);
+          });
+          li.appendChild(button);
+          grantsCandidates.appendChild(li);
+        });
+        grantsCandidates.hidden = people.length === 0;
+        setText(grantsMsg, people.length === 0 ? '그런 아이디나 이름이 없습니다' : '');
+      })
+      .catch(function () {
+        setText(grantsMsg, GENERIC_ERROR);
+      });
+  }
+
+  /* ── 요청 화면 — 이름을 보이지 않는다(없는 번호도 같은 화면) ── */
+  function showAccessRequest(kind, key, wantWrite) {
+    if (!accessPanel) {
+      return;
+    }
+    accessTarget = { kind: kind, key: String(key) };
+    accessPanel.hidden = false;
+    if (accessForm) { accessForm.hidden = false; }
+    if (accessDone) { accessDone.hidden = true; setText(accessDone, ''); }
+    setText(accessMsg, '');
+    if (accessMessage) { accessMessage.value = ''; }
+    if (accessWriteLabel) { accessWriteLabel.hidden = !canAskWrite; }
+    var want = wantWrite === true && canAskWrite ? 'write' : 'view';
+    Array.prototype.forEach.call(document.querySelectorAll('input[name="access-want"]'), function (radio) {
+      radio.checked = radio.value === want;
+    });
+    if (empty) { empty.hidden = true; }
+    setText(pageInfo, '');
+    if (accessSend) { accessSend.disabled = false; }
+    if (accessTitle && typeof accessTitle.focus === 'function') {
+      accessTitle.focus();
+    }
+  }
+
+  function accessRequestHide() {
+    if (accessPanel) {
+      accessPanel.hidden = true;
+    }
+    accessTarget = null;
+  }
+
+  function submitAccessRequest(event) {
+    event.preventDefault();
+    var target = accessTarget;
+    if (!target) {
+      return;
+    }
+    var picked = document.querySelector('input[name="access-want"]:checked');
+    var payload = {
+      write: !!picked && picked.value === 'write',
+      message: accessMessage ? accessMessage.value.trim().slice(0, 200) : ''
+    };
+    if (target.kind === 'file') {
+      payload.file = target.key;
+    } else {
+      payload.folder = parseInt(target.key, 10);
+    }
+    setText(accessMsg, '');
+    if (accessSend) { accessSend.disabled = true; }
+    accessFetch('POST', APP_BASE + '/api/access-requests', payload)
+      .then(function (result) {
+        if (accessSend) { accessSend.disabled = false; }
+        if (result === null) {
+          return;
+        }
+        if (!result.ok) {
+          setText(accessMsg, errorMessage(result.data));
+          return;
+        }
+        if (accessForm) { accessForm.hidden = true; }
+        if (accessDone) {
+          accessDone.hidden = false;
+          setText(accessDone, result.data && typeof result.data.message === 'string' ? result.data.message : '요청을 보냈습니다');
+        }
+      })
+      .catch(function () {
+        if (accessSend) { accessSend.disabled = false; }
+        setText(accessMsg, GENERIC_ERROR);
+      });
+  }
+
+  /* ── 공유받음 보기 ── */
+  function accessHideForView(view) {
+    accessRequestHide();
+    if (view !== 'shared') {
+      [sharedFoldersWrap, accessInWrap, accessOutWrap].forEach(function (wrap) {
+        if (wrap) { wrap.hidden = true; }
+      });
+    }
+  }
+
+  function drawSharedFolders(folders) {
+    if (!sharedFoldersList || !sharedFoldersWrap) {
+      return;
+    }
+    sharedFoldersList.replaceChildren();
+    folders.forEach(function (folder) {
+      if (!folder || typeof folder.id !== 'number') {
+        return;
+      }
+      var li = document.createElement('li');
+      var button = document.createElement('button');
+      button.type = 'button';
+      button.className = 'foldertree__item';
+      var name = document.createElement('span');
+      name.className = 'foldertree__name';
+      setText(name, folder.name);
+      button.appendChild(name);
+      var meta = document.createElement('span');
+      meta.className = 'foldertree__meta';
+      meta.appendChild(grantBadge(folder.write === true));
+      var owner = document.createElement('span');
+      owner.className = 'foldertree__team';
+      setText(owner, folder.owner ? personLabel(folder.owner.display_name, folder.owner.username) : '');
+      meta.appendChild(owner);
+      button.appendChild(meta);
+      button.addEventListener('click', function () {
+        goToFolder(folder.id);
+      });
+      li.appendChild(button);
+      sharedFoldersList.appendChild(li);
+    });
+    sharedFoldersWrap.hidden = folders.length === 0;
+  }
+
+  /** 받은 파일 한 줄 — 서버가 준 칸을 표 한 줄 모양(fileRow)으로 옮긴다. 편집 권한이면 설명 고치기 단추(can_edit) */
+  function sharedFileRow(file) {
+    return {
+      id: file.id, name: file.name, size_bytes: file.size_bytes, access_level: 'private', grants: null,
+      team_name: null, folder_path: null, description: '',
+      uploaded_by: file.owner ? personLabel(file.owner.display_name, file.owner.username) : '',
+      created_at: file.granted_at, can_edit: file.write === true, can_delete: false, can_manage_access: false,
+      preview_kind: '', sensitive: false, scan_status: file.scan_status, exec_content: file.exec_content === true
+    };
+  }
+
+  function loadSharedView() {
+    var seq = ++loadSeq;
+    accessFetch('GET', APP_BASE + '/api/grants/mine')
+      .then(function (result) {
+        if (result === null || seq !== loadSeq || state.view !== 'shared') {
+          return;
+        }
+        if (!result.ok) {
+          clearRows();
+          setText(msg, errorMessage(result.data));
+          return;
+        }
+        var data = result.data || {};
+        drawSharedFolders(Array.isArray(data.folders) ? data.folders : []);
+        drawPlainList((Array.isArray(data.files) ? data.files : []).map(sharedFileRow), '공유받은 파일', 'created_at');
+      })
+      .catch(function () {
+        setText(msg, GENERIC_ERROR);
+      });
+    loadAccessRequests();
+  }
+
+  function accessStatusBadge(status) {
+    var badge = document.createElement('span');
+    badge.className = Object.prototype.hasOwnProperty.call(ACCESS_STATUS_BADGE, status) ? ACCESS_STATUS_BADGE[status] : 'badge';
+    setText(badge, Object.prototype.hasOwnProperty.call(ACCESS_STATUS, status) ? ACCESS_STATUS[status] : String(status));
+    return badge;
+  }
+
+  function accessItemText(item) {
+    if (!item || typeof item.name !== 'string' || item.name === '') {
+      return '볼 수 없는 항목';
+    }
+    var text = (item.kind === 'file' ? '파일 ' : '폴더 ') + '「' + (typeof item.path === 'string' && item.path !== '' ? item.path : item.name) + '」';
+    return text;
+  }
+
+  /** 받은 요청 한 줄 — 누가 · 무엇을 · 보기/편집 · 메모 · 때 · (기다리면) 허락(보기)·허락(편집)·거절 */
+  function accessInRow(req) {
+    var li = document.createElement('li');
+    li.className = 'list__item';
+    var head = document.createElement('div');
+    head.className = 'list__head';
+    var who = document.createElement('strong');
+    var rq = req.requester || {};
+    setText(who, personLabel(rq.display_name, rq.username) + ' 님이 ' + (req.want_write === true ? '편집' : '보기') + ' 권한을 요청');
+    head.appendChild(who);
+    head.appendChild(accessStatusBadge(req.status));
+    li.appendChild(head);
+    var body = document.createElement('div');
+    body.className = 'list__body';
+    var what = document.createElement('span');
+    setText(what, accessItemText(req.item));
+    body.appendChild(what);
+    if (typeof req.message === 'string' && req.message !== '') {
+      var note = document.createElement('span');
+      setText(note, '「' + req.message + '」');
+      body.appendChild(note);
+    }
+    var when = document.createElement('span');
+    setWhen(when, req.created_at);
+    body.appendChild(when);
+    li.appendChild(body);
+    if (req.status === 'pending' && typeof req.id === 'number') {
+      var bar = document.createElement('div');
+      bar.className = 'toolbar';
+      [['approve_view', '허락(보기)'], ['approve_write', '허락(편집)'], ['reject', '거절']].forEach(function (pair) {
+        var button = document.createElement('button');
+        button.type = 'button';
+        button.className = pair[0] === 'reject' ? 'btn btn--quiet btn--small btn--danger' : 'btn btn--quiet btn--small';
+        setText(button, pair[1]);
+        if (pair[0] === 'approve_write' && rq.can_write !== true) {
+          button.disabled = true;   // 손님에게는 편집을 줄 수 없다(서버가 다시 막는다)
+        }
+        button.addEventListener('click', function () {
+          Array.prototype.forEach.call(bar.querySelectorAll('button'), function (b) { b.disabled = true; });
+          decideAccess(req.id, pair[0]);
+        });
+        bar.appendChild(button);
+      });
+      li.appendChild(bar);
+    }
+    return li;
+  }
+
+  /** 보낸 요청 한 줄 — 무엇에(볼 수 있을 때만 이름) · 보기/편집 · 상태 · 허락되어 보이면 열기 */
+  function accessOutRow(req) {
+    var li = document.createElement('li');
+    li.className = 'list__item';
+    var head = document.createElement('div');
+    head.className = 'list__head';
+    var what = document.createElement('strong');
+    setText(what, accessItemText(req.item) + ' · ' + (req.want_write === true ? '편집' : '보기'));
+    head.appendChild(what);
+    head.appendChild(accessStatusBadge(req.status));
+    li.appendChild(head);
+    var body = document.createElement('div');
+    body.className = 'list__body';
+    var when = document.createElement('span');
+    setWhen(when, req.decided_at || req.created_at);
+    body.appendChild(when);
+    var item = req.item || {};
+    if (req.status === 'approved' && item.id !== null && item.id !== undefined) {
+      var open = document.createElement('button');
+      open.type = 'button';
+      open.className = 'btn btn--quiet btn--small';
+      setText(open, '열기');
+      open.addEventListener('click', function () {
+        if (item.kind === 'folder' && typeof item.id === 'number') {
+          goToFolder(item.id);
+        } else if (UUID_RE.test(String(item.id))) {
+          openPreview({ id: String(item.id), name: item.name, access_level: item.access_level });
+        }
+      });
+      body.appendChild(open);
+    }
+    li.appendChild(body);
+    return li;
+  }
+
+  function loadAccessRequests() {
+    accessFetch('GET', APP_BASE + '/api/access-requests?box=in')
+      .then(function (result) {
+        if (result === null || !accessInList || !accessInWrap) {
+          return;
+        }
+        if (!result.ok) {
+          accessInWrap.hidden = !accessFocusIn;
+          setText(accessInMsg, errorMessage(result.data));
+          return;
+        }
+        var reqs = result.data && Array.isArray(result.data.requests) ? result.data.requests : [];
+        accessInList.replaceChildren();
+        reqs.forEach(function (req) {
+          if (req && typeof req.id === 'number') {
+            accessInList.appendChild(accessInRow(req));
+          }
+        });
+        if (accessInEmpty) { accessInEmpty.hidden = reqs.length !== 0; }
+        accessInWrap.hidden = state.view !== 'shared' || (reqs.length === 0 && !accessFocusIn);
+        paintAccessRequestsNav(result.data && typeof result.data.pending === 'number' ? result.data.pending : 0, false);
+        if (accessFocusIn && accessInTitle && typeof accessInTitle.focus === 'function') {
+          accessFocusIn = false;
+          accessInTitle.focus();
+        }
+      })
+      .catch(function () {
+        setText(accessInMsg, GENERIC_ERROR);
+      });
+    accessFetch('GET', APP_BASE + '/api/access-requests?box=out')
+      .then(function (result) {
+        if (result === null || !result.ok || !accessOutList || !accessOutWrap) {
+          return;
+        }
+        var reqs = result.data && Array.isArray(result.data.requests) ? result.data.requests : [];
+        accessOutList.replaceChildren();
+        reqs.forEach(function (req) {
+          if (req && typeof req.id === 'number') {
+            accessOutList.appendChild(accessOutRow(req));
+          }
+        });
+        if (accessOutEmpty) { accessOutEmpty.hidden = reqs.length !== 0; }
+        accessOutWrap.hidden = state.view !== 'shared' || reqs.length === 0;
+      })
+      .catch(function () {});
+  }
+
+  function decideAccess(id, decision) {
+    setText(accessInMsg, '');
+    accessFetch('POST', APP_BASE + '/api/access-requests/' + encodeURIComponent(String(id)), { decision: decision })
+      .then(function (result) {
+        if (result === null) {
+          return;
+        }
+        if (!result.ok) {
+          setText(accessInMsg, errorMessage(result.data));
+        }
+        loadAccessRequests();
+      })
+      .catch(function () {
+        setText(accessInMsg, GENERIC_ERROR);
+      });
+  }
+
+  /** 주소로 연 파일(`?file=`) — 볼 수 있으면 미리보기, 아니면(없는 파일도) 요청 화면. 묻는 창구는 권한 줄 보기(감사 0 · 이름만) */
+  function openFileByAddress(id) {
+    accessFetch('GET', APP_BASE + '/api/files/' + encodeURIComponent(id) + '/grants')
+      .then(function (result) {
+        if (result === null) {
+          return;
+        }
+        if (!result.ok) {
+          showAccessRequest('file', id);
+          return;
+        }
+        var item = result.data && result.data.item ? result.data.item : {};
+        openPreview({ id: id, name: typeof item.name === 'string' ? item.name : '', access_level: item.access_level });
+      })
+      .catch(function () {
+        setText(msg, GENERIC_ERROR);
+      });
+  }
+
+  /** 주소 꼬리표 넷 — `?folder=번호` · `?file=UUID` · `?requests=in|out` · `?view=shared`. 읽은 뒤 주소에서 지운다(새로 고침에 다시 열리지 않게) */
+  function readAccessAddress() {
+    var out = { file: null, requests: null };
+    var params;
+    try {
+      params = new URLSearchParams(window.location.search);
+    } catch (e) {
+      return out;
+    }
+    var folderParam = params.get('folder');
+    var fileParam = params.get('file');
+    var reqParam = params.get('requests');
+    if (reqParam === null && params.get('view') === 'shared') {
+      reqParam = 'out';   // 사이드바 「공유받음」 — 받은 요청은 있을 때만 보인다
+    }
+    if (folderParam !== null && /^[1-9][0-9]{0,8}$/.test(folderParam)) {
+      state.folder = parseInt(folderParam, 10);
+    }
+    if (fileParam !== null && UUID_RE.test(fileParam)) {
+      out.file = fileParam;
+    }
+    if (reqParam === 'in' || reqParam === 'out') {
+      out.requests = reqParam;
+    }
+    if ((folderParam !== null || fileParam !== null || reqParam !== null || params.get('view') !== null) && params.get('q') === null
+        && window.history && typeof window.history.replaceState === 'function') {
+      window.history.replaceState(null, '', window.location.pathname);
+    }
+    return out;
   }
 
   /* ─── 일괄 작업 (개발 대기열 6 · Q:F-3a 라운드 B — 지시서 1.3 · 결정 M-4 · M-7) ─────────────────────
@@ -3923,6 +4669,7 @@ function initFiles(csrfToken, uploadLevels, canFetch, myTeamId) {
       folderActions.hidden = state.folder === 0;
     }
     syncFolderFav();
+    syncFolderAccess();   // G-0 — 개인 폴더의 「권한」 · 보기 권한만일 때의 한 줄
   }
 
   /** 지금 열어 둔 폴더의 등급(루트면 null) — 새 폴더·업로드 기본값에 쓴다. */
@@ -5399,11 +6146,58 @@ function initFiles(csrfToken, uploadLevels, canFetch, myTeamId) {
     state.q = wantQ;
   }
 
+  /* G-0 — 권한 창·요청 화면·공유받음의 단추들과 주소 꼬리표(`?folder=` · `?file=` · `?requests=`). 꼬리표는 첫 목록을 부르기 **전에**
+     읽는다(연 폴더를 그 번호로). 볼 수 없으면 요청 화면이 뜬다(없는 번호도 같은 화면 — 서버가 같은 403 을 준다). */
+  if (folderAccessBtn) {
+    folderAccessBtn.addEventListener('click', function () {
+      var info = state.folderInfo;
+      openGrants('folder', String(state.folder), info && typeof info.name === 'string' ? info.name : '');
+    });
+  }
+  if (folderPutRequest) {
+    folderPutRequest.addEventListener('click', function () {
+      if (state.folder !== 0) {
+        clearRows();
+        showAccessRequest('folder', String(state.folder), true);
+      }
+    });
+  }
+  if (grantsClose) {
+    grantsClose.addEventListener('click', closeGrants);
+  }
+  if (grantsCloseX) {
+    grantsCloseX.addEventListener('click', closeGrants);
+  }
+  if (grantsDialog) {
+    grantsDialog.addEventListener('close', function () {
+      grantsTarget = null;
+      window.clearTimeout(grantsTimer);
+    });
+  }
+  if (grantsSearch) {
+    grantsSearch.addEventListener('input', function () {
+      window.clearTimeout(grantsTimer);
+      grantsTimer = window.setTimeout(loadGrantCandidates, 300);
+    });
+  }
+  if (accessForm) {
+    accessForm.addEventListener('submit', submitAccessRequest);
+  }
+  var accessAddress = readAccessAddress();
+
   syncTeamField();
   syncFetchTeamField();
   loadTeams();
-  loadFiles();
+  if (accessAddress.requests !== null) {
+    accessFocusIn = accessAddress.requests === 'in';
+    setView('shared');
+  } else {
+    loadFiles();
+  }
   loadTree();
+  if (accessAddress.file !== null) {
+    openFileByAddress(accessAddress.file);
+  }
   // 개발 대기열 6 — 별 표시용 즐겨찾기 목록(표를 먼저 그리고, 목록이 오면 별만 맞춘다)
   loadFavoriteLists()
     .then(function (lists) {
@@ -10349,6 +11143,21 @@ function clearMyDrafts(owner) {
   }
 }
 
+/**
+ * G-0 (t-box PRD F-73 ④) — 사이드바 「권한 요청 n」. n 은 서버가 준 **기다리는 요청 수**(`/api/me` · 받은 요청 목록의 pending)뿐이고
+ * 0 이면 항목째 숨긴다. 강제 절차 중에는 다른 항목과 함께 닫힌다. 글자는 textContent.
+ */
+function paintAccessRequestsNav(count, inGate) {
+  var item = document.getElementById('nav-access-requests');
+  var badge = document.getElementById('nav-access-requests-count');
+  var n = typeof count === 'number' && count > 0 ? Math.floor(count) : 0;
+  if (item) {
+    item.hidden = inGate === true || n === 0;
+    item.setAttribute('aria-label', '권한 요청 — 기다리는 것 ' + n + '개');
+  }
+  setText(badge, n > 99 ? '99+' : String(n));
+}
+
 function initShell(me, csrfToken) {
   var msg = document.getElementById('msg');
   var sidebar = document.getElementById('sidebar');
@@ -10410,6 +11219,9 @@ function initShell(me, csrfToken) {
      둘 다 서버가 준 **표시용** 값이다 — 항목을 되살려도 보이는 행은 서버 SQL WHERE 가 정한다 (PRD S-01·S-02). */
   showNav('nav-my-trash', me.can_view_trash !== true
     && Array.isArray(me.upload_levels) && me.upload_levels.length > 0);
+  showNav('nav-shared', true);   // G-0 — 「공유받음」(강제 절차 중에는 다른 항목과 함께 닫힌다)
+  // G-0 — 「권한 요청 n」 은 기다리는 요청이 있을 때만(서버 값 그대로 · 새 요청 0)
+  paintAccessRequestsNav(typeof me.access_requests_pending === 'number' ? me.access_requests_pending : 0, inGate);
 
   // 「관리」 묶음은 그 안의 항목이 열릴 때만 제목째 보인다.
   var adminGroup = document.getElementById('nav-admin-group');

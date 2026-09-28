@@ -40,14 +40,14 @@ import { inputRules, textblockTypeInputRule, InputRule } from './vendor/pm/prose
 import { dropCursor } from './vendor/pm/prosemirror-dropcursor.js?v=5823578fa61a';
 import { gapCursor } from './vendor/pm/prosemirror-gapcursor.js?v=5823578fa61a';
 
-import { renderDoc, embedHost } from './doc-render.js?v=650963c0b731';
-import { createDatabaseView } from './database.js?v=650963c0b731';
-import { bindTemplateGallery, createTemplateSave } from './templates.js?v=650963c0b731';
-import { bindEmbedAdmin } from './embeds.js?v=650963c0b731';
-import { bindPopular } from './popular.js?v=650963c0b731';
-import { bindPalettes } from './palettes.js?v=650963c0b731';
-import { schema, toDoc, fromDoc, uuid4, colorAllowed, schemeOkForEditor, mentionAllowed, editorDomParser, clipboardDomParser, COLORS, BLOCK_TYPES } from './editor-schema.js?v=650963c0b731';
-import { createDrafts } from './drafts.js?v=650963c0b731';
+import { renderDoc, embedHost } from './doc-render.js?v=b8912ff90fa5';
+import { createDatabaseView } from './database.js?v=b8912ff90fa5';
+import { bindTemplateGallery, createTemplateSave } from './templates.js?v=b8912ff90fa5';
+import { bindEmbedAdmin } from './embeds.js?v=b8912ff90fa5';
+import { bindPopular } from './popular.js?v=b8912ff90fa5';
+import { bindPalettes } from './palettes.js?v=b8912ff90fa5';
+import { schema, toDoc, fromDoc, uuid4, colorAllowed, schemeOkForEditor, mentionAllowed, editorDomParser, clipboardDomParser, COLORS, BLOCK_TYPES } from './editor-schema.js?v=b8912ff90fa5';
+import { createDrafts } from './drafts.js?v=b8912ff90fa5';
 
 /* ─── 주소와 공통 도우미 ─────────────────────────────────────── */
 
@@ -2731,8 +2731,18 @@ const NOTIFY_TEXT = {
   mention: '님이 댓글에서 나를 불렀습니다',
   reply: '님이 내 댓글에 답글을 달았습니다',
   comment_on_my_page: '님이 내 페이지에 댓글을 달았습니다',
-  handover: '님이 페이지를 나에게 넘겼습니다'
+  handover: '님이 페이지를 나에게 넘겼습니다',
+  // t-box G-0 (F-73) — 권한 요청(페이지 없이 · 창구가 `access` 칸을 준다)
+  access_request: '님이 권한을 요청했습니다',
+  access_decided: '님이 권한 요청을 결정했습니다'
 };
+/** t-box G-0 — 결정 알림은 상태로 글자를 고른다(서버가 준 status 그대로) */
+const NOTIFY_DECIDED = { approved: '님이 권한 요청을 허락했습니다', rejected: '님이 권한 요청을 거절했습니다' };
+
+/** t-box G-0 — 권한 요청 알림이 가리키는 곳: 서버가 준 t-box 주소(`/tbox/…`)만 — 그 밖의 값은 링크로 만들지 않는다 */
+function notifyAccessHref(access) {
+  return access && typeof access.href === 'string' && access.href.indexOf('/tbox/') === 0 ? access.href : null;
+}
 
 function initNotifications() {
   const bell = document.getElementById('nav-community-bell');
@@ -2762,11 +2772,14 @@ function initNotifications() {
     li.className = 'list__item';
     const head = document.createElement('div');
     head.className = 'list__head';
-    const what = document.createElement(n.page ? 'a' : 'span');
+    const access = n.access && typeof n.access === 'object' ? n.access : null;   // t-box G-0
+    const accessHref = notifyAccessHref(access);
+    const what = document.createElement(n.page || accessHref ? 'a' : 'span');
     const who = n.actor ? personLabel(n.actor.display_name, n.actor.username) : '누군가';
-    what.textContent = who + ' ' + (NOTIFY_TEXT[n.kind] || '님의 알림');
-    if (n.page) {
-      what.setAttribute('href', COMMUNITY_BASE + '/p/' + n.page.id + (n.comment_id ? '#comment-' + n.comment_id : ''));
+    const decided = n.kind === 'access_decided' && access ? NOTIFY_DECIDED[access.status] : null;
+    what.textContent = who + ' ' + (decided || NOTIFY_TEXT[n.kind] || '님의 알림');
+    if (n.page || accessHref) {
+      what.setAttribute('href', n.page ? COMMUNITY_BASE + '/p/' + n.page.id + (n.comment_id ? '#comment-' + n.comment_id : '') : accessHref);
       what.addEventListener('click', () => {
         api('POST', '/api/notifications/read', { ids: [n.id] }).catch(() => {});
       });
@@ -2782,7 +2795,9 @@ function initNotifications() {
     const body = document.createElement('div');
     body.className = 'list__body';
     const page = document.createElement('span');
-    page.textContent = n.page ? '「' + n.page.title + '」' : '볼 수 없는 페이지';
+    page.textContent = n.page ? '「' + n.page.title + '」'
+      : (access ? (access.item ? '「' + access.item.name + '」' : (access.status === null ? '지워진 항목' : '볼 수 없는 항목'))
+        : '볼 수 없는 페이지');
     const when = document.createElement('span');
     when.className = 'muted';
     when.textContent = shortWhen(n.at);
