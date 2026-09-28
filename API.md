@@ -122,7 +122,7 @@ curl -s -b jar https://changkwon.mso.so/tbox/api/me
 | 항목 | 내용 |
 |---|---|
 | 인증 | 세션 쿠키 + `X-CSRF-Token` |
-| 필드 | `file`(파일, 필수) · `access_level`(필수: `public`·`internal`·`team`·`admin-only` — `upload_levels` 안의 값만) · `team_id`(`access_level=team` 일 때 필수, 양의 정수) · `description`(선택, 500자) · `folder_id`(선택, 폴더 번호) |
+| 필드 | `file`(파일, 필수) · `access_level`(필수: `public`·`internal`·`team`·`admin-only`·`private`(G-0 개인 — 나와 지정한 사람만 · 팀 없음) — `upload_levels` 안의 값만) · `team_id`(`access_level=team` 일 때 필수, 양의 정수) · `description`(선택, 500자) · `folder_id`(선택, 폴더 번호) |
 | 제한 | 100MB · 허용 확장자 `pdf docx xlsx pptx hwp hwpx txt csv md png jpg jpeg gif zip` · 내용(MIME)이 확장자와 맞아야 함 · 이중 확장자(`a.php.txt`) 거부 |
 | 성공 | `201` `{"id":"<UUID>","name":"<원래 파일명>"}` — 이후 다운로드·삭제는 이 `id` 로 |
 | 실패 | `400` — **사유마다 사람 문장**이다 (F-68, ARCHITECTURE 5.30 표가 원본): 확장자 `{"error":"허용되지 않는 확장자입니다 (허용: pdf docx xlsx pptx hwp hwpx txt csv md png jpg jpeg gif zip)"}` · 등급 `{"error":"level 값이 올바르지 않습니다 (public·internal·team·admin-only)"}` · 팀 `{"error":"team 등급은 team_id(활성 팀 번호)가 필요합니다"}` · 내용 검사 `{"error":"문서에 매크로가 들어 있어 올릴 수 없습니다"}` 등. **허용 키 밖·값의 형식 오류만** `{"error":"잘못된 요청입니다"}` · `403`(CSRF 없음 또는 그 등급·팀에 올릴 권한 없음 — Guest 는 업로드 불가) · `413`(크기) |
@@ -167,7 +167,7 @@ curl -s -b jar -H "X-CSRF-Token: $CSRF" -X POST https://changkwon.mso.so/tbox/ap
 |---|---|
 | 메서드·경로 | `POST /api/upload` |
 | 인증 | 헤더 **`X-API-Token: <토큰>`** 하나. 세션 쿠키도 `X-CSRF-Token` 도 필요 없다. 이 헤더가 통하는 창구는 **여기 하나뿐**이고 다른 경로는 읽지도 않는다(F-50·F-56 으로 넷, 0장). 토큰 값은 서버의 `.env` 에만 있다 — **서버에서 `cat .env` 로 확인**하고, 문서·채팅·소스에 적지 않는다 |
-| 요청 | `multipart/form-data`. `file`(필수) · `description`(선택, 500자) · `level`(선택: `public`·`internal`·`team`·`admin-only` — **없으면 `public`**) · `team_id`(`level=team` 이면 필수, 양의 정수) · `folder_id`(선택) |
+| 요청 | `multipart/form-data`. `file`(필수) · `description`(선택, 500자) · `level`(선택: `public`·`internal`·`team`·`admin-only`·`private` — **없으면 `public`**) · `team_id`(`level=team` 이면 필수, 양의 정수) · `folder_id`(선택) |
 | 제한 | 4장과 같다 — 100MB · 허용 확장자 `pdf docx xlsx pptx hwp hwpx txt csv md png jpg jpeg gif zip` · 내용(MIME)이 확장자와 맞아야 함 · 이중 확장자 거부 · 하루 총량 2GB · 민감정보가 보이면 `team`/`admin-only` 로만 |
 | 성공 | `201` `{"id":"<UUID>","name":"<원래 파일명>","level":"<등급>"}` — 4장과 달리 `level` 이 함께 온다(기본값 `public` 이 적용됐는지 프로그램이 확인할 수 있게). **`201` 을 받은 뒤 검사 창 동안(보통 30초 안팎) 9장 다운로드는 `423` 이다** — 잠시 뒤 다시 하면 200 이다(F-57, 9장 「왜 423 인가」) |
 | 실패 | `401`(헤더 없음·토큰 틀림) · `400`(형식·확장자·등급·팀·폴더) · `403`(그 등급·팀에 올릴 권한 없음) · `413`(100MB 초과·하루 총량 초과) — **이 네 가지는 이유를 알려 준다**(`{"error":"허용되지 않는 확장자입니다"}` 같은 한국어 한 줄). `503`(서버에 토큰이 설정되지 않음·연결 계정이 잘못됨) · `500` `{"error":"서버 오류"}` |
@@ -212,7 +212,7 @@ curl -s -w '\n[%{http_code}]\n' -H "X-API-Token: $API_TOKEN" \
 # -F 'level=team' 인데 team_id 없음
 {"error":"team 등급은 team_id(활성 팀 번호)가 필요합니다"}                 [400]
 # -F 'level=zzz'
-{"error":"level 값이 올바르지 않습니다 (public·internal·team·admin-only)"} [400]
+{"error":"level 값이 올바르지 않습니다 (public·internal·team·admin-only·private)"} [400]
 # x.exe
 {"error":"허용되지 않는 확장자입니다 (허용: pdf docx xlsx pptx hwp hwpx txt csv md png jpg jpeg gif zip)"} [400]
 # a.php.txt
@@ -810,6 +810,13 @@ PATCH … {"high_contrast":false}                                 → 200 {"high
 ```
 
 > 개인 프로그램 토큰(범위 `read`)으로 `PATCH` → `401 {"error":"로그인이 필요합니다"}`(같은 토큰의 `GET /api/whoami` 는 200) — 수락 시험 `tests/community/stage7d3.sh` C:T-210.
+
+## 19. 「개인」 등급 · 사람 지정 권한 · 권한 요청 (G-0 · PRD F-73, 2026-09-28 · 웹 화면 전용 · 세션)
+
+- 새 창구(`/api/folders/{num}/grants` · `/api/files/{id}/grants` · `/api/access/people` · `/api/grants/mine` · `/api/access-requests`)는 **세션 전용**이다 — 토큰 창구 집합(`TBOX_API_TOKEN_ROUTES`)에 넣지 않았다(사람에게 권한을 주는 결정은 프로그램 토큰으로 하지 않는다). 토큰으로 부르면 401.
+- 프로그램 토큰의 목록·검색·받기·폴더 목록은 **귀속 계정 기준으로 같은 판정**을 지난다 — 그 계정이 주인이거나 권한을 받은 개인 항목만 보이고, 나머지는 목록에 0 · 받기 403 · 폴더 403(없는 번호와 같은 본문). Admin 귀속 토큰도 목록에는 남의 개인 항목이 없다.
+- 올리기: `level=private`(`/api/upload`) · `access_level=private`(`/api/files`)는 손님이 아닌 계정이면 된다(팀 없음 — `team_id` 는 `team` 등급일 때만 읽으므로 함께 보내도 무시된다). 개인 폴더 안에는 개인만(`folder_id` 가 남의 개인 폴더면 주인·편집 권한자만 — 아니면 없는 폴더와 같은 400 `bad_folder`).
+- 자세한 창구 모양은 PRD 8장 G-0 행 · ARCHITECTURE 5.36.
 
 ## 추가 규칙 (API 를 새로 적을 때)
 

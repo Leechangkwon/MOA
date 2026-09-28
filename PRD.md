@@ -110,11 +110,13 @@
 | `internal` | 사내 전 직원 | Admin, Manager, Employee | 사내 공지, 사규 |
 | `team` | 특정 팀 내부 | Admin, **같은 팀**의 Manager·Employee | 팀 회의록, 진행 문서 |
 | `admin-only` | 관리자 전용 | Admin | 급여명세, 계약서, 인사 자료 |
+| `private` (G-0 · F-73) | 개인 — 나와 지정한 사람만 | **주인**(올린·만든 사람 · 위 개인 폴더의 주인) + **아이디·이름으로 권한을 받은 사람**(보기/편집). 권한 표(5.1)가 아니라 **사람**으로 판정한다. Admin 은 주소로 열 때만 특권으로 보고 감사에 남는다(목록에는 없다) | 기공료 내역 · 개인 메모 · 비공개 페이지의 파일 |
 
 **규칙**
 - `team` 파일은 `team_id`를 반드시 갖는다. (없으면 업로드 거부)
 - 레벨은 나중에 바꿀 수 있으나 **올린 사람 + Admin**만 가능하고, 변경 시 감사 로그에 남는다.
 - 레벨을 낮추는 변경(`admin-only` → `public`)은 **Admin만** 가능하다.
+- `private`(G-0, 5.5)은 가장 좁다 — 개인 폴더 안에는 개인만 들어가고, 개인 항목은 어느 폴더 안에든 들어간다. 팀이 없다(`team_id` NULL). 개인 → 다른 등급은 언제나 넓히기(Admin 만 · 15분 재인증).
 
 ---
 
@@ -168,6 +170,25 @@
 | 지문·얼굴 로그인 기기 등록·해제 (F-72) — **본인 것만**(남의 번호는 없는 번호와 같은 404 · 관리자가 남의 열쇠를 보는 화면은 없다 — 임시 비밀번호 재발급·2단계 초기화·역할 변경·비활성화가 전부 해제) | ✅ 본인 | ✅ 본인 | ✅ 본인 | ✅ 본인 |
 
 ¹ **본인 복구**(Q:F-4 U-2b, 사용자 확정 2026-09-24 — 사이트 `PRD.md` Q:F-4 묶음 1): `uploaded_by = 나` 이고 `deleted_by = 나` 인 파일, 30일 정리 전(`purged_at IS NULL`)만. 남이 지운 내 파일(관리자·Manager 가 지운 것)은 Admin 만 되살린다 — 누가 왜 지웠는지 판단이 필요한 경우라서. Manager 의 팀원 파일 복구는 넣지 않았다(넓히려면 새 기획 항목으로). 본인 휴지통(「내 휴지통」) 목록도 같은 조건의 SQL `WHERE` 로만 내려 준다(S-02 — 화면에서 거르지 않는다). 판정은 `Authz::decideRestore` 한 곳이고 목록 조건 `Authz::restorableFilesWhere` 가 같은 규칙을 SQL 로 옮긴 것이다. 남의 파일을 되살리려 하면 휴지통에 없는 파일과 **같은 404 문구·같은 감사 문장**(`not_found_in_trash`)이다 — 있다·없다를 가르지 않는다. 재인증(F-23): Admin 의 **전체** 휴지통은 전과 같이 15분 재인증, 본인 휴지통은 재인증 없음(본인 자료 — 커뮤니티 휴지통과 같다).
+
+### 5.5 「개인」 등급 · 사람 지정 권한 (G-0 · F-73, 2026-09-28)
+
+권한 표의 `private` 네 줄은 **읽기가 모두 ❌**(DB CHECK `permissions_private_by_people` — 매트릭스 편집으로도 켤 수 없다) · 올리기는 Admin·Manager·Employee ✅ · Guest ❌. 읽기는 아래 사람 표로만 열린다.
+
+| 누구 | 보기·받기 | 올리기·이름·설명 | 옮기기·등급·지우기·공유 링크·권한 주고 빼기 |
+|---|---|---|---|
+| 주인(파일 = 올린 사람 · 폴더 = 만든 사람 · **위 개인 폴더 어디든의 주인**) | ✅ | ✅ | ✅ |
+| 「편집」 권한을 받은 사람(이 항목이나 위 개인 폴더 어디든) | ✅ | ✅ | ❌ |
+| 「보기」 권한을 받은 사람 | ✅ | ❌ | ❌ |
+| Admin(주인·받은 사람 아님) | ✅ **주소로 열 때만**(목록·검색·즐겨찾기·최근·개수에는 없다 · 감사 `granted_by: admin_override`) | ❌ | 권한 주고 빼기만 ✅(특권 · 15분 재인증 · 감사) |
+| 그 밖 | ❌ (목록에 없음 · 403 동일 문구 — 없는 폴더 번호와 같은 403) | ❌ | ❌ |
+
+- 폴더에 준 권한은 **안의 모든 하위 폴더·파일에** 이어진다(깊이 ≤ 5). 권한은 개인 등급 항목에만 뜻이 있다 — 넓히면 줄은 남되 효력이 없고, 다시 좁히면 되살아난다.
+- 받을 수 있는 사람: 켜진 계정(만료 전). 손님은 **보기만**. 주인 자신·없는·꺼진 계정은 같은 400.
+- 다른 등급 → 개인(좁히기)은 **그 항목을 올린·만든 사람만**(팀장·Admin 도 남의 파일을 개인으로 돌리지 않는다).
+- 공유 링크(F-13): 개인 파일은 주인만 만든다 · 만든 사람이 주인이 아닌 옛 링크는 개인으로 좁혀지는 순간 끝난다(받을 때마다 다시 판정).
+- 커뮤니티 파일 카드: 개인 파일은 지금은 **파일 주인 = 페이지 주인인 비공개 페이지**에만 붙는다(그 밖 400 이유 문장 · 넓히기는 G-1).
+- 권한 요청: 볼 수 없는 개인 항목을 주소로 열면 이름 없이 「이 항목을 볼 권한이 없습니다」 + 보기/편집 + 한 줄 메모(200자) → 주인(꺼졌으면 Admin)에게 알림 → 허락(보기·편집)·거절. 같은 (항목, 요청자) 기다리는 요청 하나 · 한 사람 하루 20건. **없는 번호로 보내도 같은 답**(저장만 안 한다).
 
 ---
 
@@ -233,6 +254,7 @@
 | F-70 | **경보를 휴대폰으로 — 설치해 쓰는 경보 받기** (사용자 요청 2026-09-24, 취합 보고서 P-2 답 「휴대폰에 설치 가능한 알람 파일 필요」). 배경: 경보가 서버 파일에만 쌓이고 받는 사람이 없다(`MAILTO=""`, `ALERT_COMMAND` 비어 있음) | 방식 **확정(Q-28 ⓐ)**: 설치형 웹 앱(PWA, 「홈 화면에 추가」) + 웹 푸시(VAPID, 서버에서 푸시 서버로만 나감). 공통 조건: Admin 만 받는다(보낼 때마다 활성 Admin 인지 다시 보고 아니면 자동 해지) · 경보 내용에 비밀·개인정보 없음 — **규칙 번호·짧은 이름·출처(사람/시스템/Claude)·시각·개수만**, 계정·IP·파일명·명령은 넣지 않는다(잠금 화면·푸시 회사 쪽 기록 — 지시서 L-1 수락) · 받기 등록/해지는 재인증 + CSRF + 감사 · 한 사람 기기 3대 · F-69 `origin` 으로 사람·시스템 경보는 곧바로, Claude 경보는 18시 하루 요약(`DIGEST_RULES` 로 요약 규칙을 더할 수 있다 — 기본 AL-9, 사용자 결정 대기) · 즉시 알림 기기당 시간당 10건(넘으면 「외 n건」) · 전달이 24시간 실패하면 경보 AL-22 · F-46 생성기처럼 광고·스토어 없는 설치를 우선(사용자 2026-09-15 「휴대폰 인증 앱은 광고·결제 유도로 못 쓴다」). 나가는 곳은 푸시 서버 세 곳(코드 상수 — FCM·애플·모질라)뿐이고 보내는 것은 전용 계정 tbox-push 의 배치 하나다. 설계 ARCH 5.32 · 지시서 `docs/f70-push-alerts-directive.md` · 구현 기록 `docs/f70-push-alerts-implementation.md` · SECURITY R-99 | 필수(F-70) — 방식 확정(Q-28 ⓐ) · **구현** 2026-09-24~25(복제본 — 검토·운영 반영 전, 지시서 G 표 F70-T1~T10 · T9 실제 기기 대기) |
 | F-71 | **검토·시험 계정을 claude 이름으로** (사용자 결정 2026-09-24, 취합 보고서 「옛 커밋 작성자」 답: 「테스트 아이디 만들 때 claude 로 이름 지정. 지금부터 발생하는 테스트부터. Claude 계정 만들어 진행할 것」). 옛 커밋 작성자는 **바꾸지 않는다**(강제 push 없음) | ① 검토 계정 5개를 새로 만든다: `claude_admin01`·`claude_manager01`·`claude_employee01`·`claude_employee02`·`claude_guest01`(역할·팀은 `qa_` 대응 계정과 같게, 비밀번호·TOTP 는 `/etc/tbox-v2/seed-accounts.txt`·`qa-totp.txt` 와 같은 형식의 새 줄). 만들기는 Admin 창구 또는 `scripts/seed_users.php` — psql 직접 INSERT 금지. ② 이 날 뒤로 **새로 쓰거나 고치는 시험**은 `claude_` 계정을 쓴다. 옛 시험의 `qa_` 는 고칠 때마다 옮긴다(한꺼번에 바꾸지 않는다). `qa_` 계정은 옛 기록 확인용으로 남기되 새 시험에 쓰지 않는다. ③ 「검토 계정」 판정(`qa_` 접두)을 쓰는 곳 — `CLAUDE.md` 3장·공통 CLAUDE.md·시험의 R-73 사전 검사(`NOT LIKE 'qa\_%'`)·F-69 경보 `origin` 판정 — 을 **`qa_` 또는 `claude_`** 로 넓힌다. 거꾸로 **사람 계정 이름에는 `qa_`·`claude_` 접두를 쓸 수 없다** — Admin 계정 만들기 창구(`POST /api/users`)가 400 으로 거부하고 감사에 `user.create deny reserved_prefix` 를 남긴다(이미 있는 아이디는 전처럼 `already_exists`). 검토 계정은 `scripts/seed_users.php`(CLI)로만 만들며(① 의 「Admin 창구」 갈래는 이로써 닫힌다), 판정은 `src/Origin.php` 의 `isReviewAccount()` 한 곳이다. 계정 이름을 바꾸는 창구는 없었다(대기열 2b, 2026-09-24) — d74(2026-09-27)로 관리자의 아이디 바꾸기가 생겼고, 같은 규칙(검토 접두 금지)을 같은 함수로 따르며 **검토 계정 자신의 아이디는 바꾸지 못한다**(`user.update deny review_account`). ④ 감사 로그 화면에서 `claude_` 행은 사용자 행동과 갈라 보인다(F-69 와 같은 표기) | 필수(F-71, 지시서 대기) |
 | F-72 | **휴대폰 지문·얼굴로 로그인(패스키 · WebAuthn) — 모바일 먼저** (사용자 결정 2026-09-26 채팅 + 현황판 d69 「① 패스키」 · 「일단 모바일만」 · 목표 보정 「내 글을 올려서 정리할 때 접근 방식이 번거로우면 미루게 되니까」 — 휴대폰에서 매일 쓰기). 지시서 `/var/www/qaredi/docs/passkey-mobile-directive.md`(결정 PK-D1~D6 모두 정해짐) · 구현 기록 `docs/passkey-implementation.md` | ① **등록**: 「내 계정」 → 「지문·얼굴 로그인」 → 「이 휴대폰 등록하기」 — **등록마다 현재 비밀번호 + (켠 계정은) 2단계 코드**(PK-D3, 틀리면 로그인과 같은 실패 카운터) → 휴대폰의 지문·얼굴 확인. 한 사람 **5개** · 이름 1~40자 · 목록(이름·기기 요약·등록한 날·마지막 사용·상태·「계정에 동기화됨」) · 해제(공용 확인 창). PC 에서는 단추 대신 「지금은 휴대폰에서만 등록합니다」(PK-D1 — **화면에서만** 숨김, 서버는 휴대폰인지 가리지 않는다). ② **로그인**: 아이디 없이(열쇠가 계정을 알려 준다) · 로그인 화면이 열리면 이 브라우저에 「이 기기 표시」(localStorage 값 `1` — 계정 정보 없음)가 있을 때 **지문 창이 곧바로**(PK-D2 — 방금 로그아웃·이 탭에서 한 번 취소·두 번 연달아 취소면 단추로) · 없으면 「지문·얼굴로 로그인」 단추 + 아이디 칸 자동 완성. 성공하면 비밀번호 로그인과 **같은 세션**(유휴 30분 · 최대 8시간 — PK-D4 그대로)·**같은 이동 함수**(Q:F-7 B1-1 — 보던 곳으로). 지문 로그인은 **2단계 충족**(F-52 ⑦)이지만 **재인증 창을 열지 않는다**. ③ **재인증**: 관리 기능의 「비밀번호 다시 확인」 화면·창에 「지문·얼굴로 확인」(지금 로그인한 사람의 열쇠만 · 같은 15분 창). ④ **자동 해제**: 본인 비밀번호 변경 · 관리자 임시 비밀번호 재발급 · 2단계 초기화 · 역할 변경 · 비활성화 → 그 사람 열쇠 전부(같은 트랜잭션 · 열쇠마다 감사 한 행). 팀 변경·2단계 끄기는 그대로. 마지막 사용(없으면 등록일)이 **90일** 넘으면 꺼짐(찾는 조건 — 배치 없음). ⑤ **잠금**: 비밀번호와 같은 카운터(5회·10분) — 잠긴 동안은 지문 로그인도 423 · 열쇠 주인이 정해진 뒤의 서명 실패도 1회. `must_change_password` 계정은 지문 길도 막는다(`forced_step` — R-39 우회 금지). Guest 도 받는다(만료일이 지나면 로그인 자체가 막힘). ⑥ **홈 화면 앱**(PK-D5 · d71): 앱 하나 「Qaredi」(`/tbox/app.webmanifest` — 시작 `/community/` · 범위 `/` · 서비스 워커 없음 · 바로가기 없음) · 좁은 폭 「내 공간」 첫 화면 맨 위에 즐겨찾기. ⑦ **권장 카드**: 휴대폰 · 비밀번호로 로그인 · 열쇠 0 · 표시 없음 → 두 앱 첫 화면에 「다음부터 지문·얼굴로 로그인하기」(「나중에」 = 이 세션 동안 숨김, 서버 저장 0). ⑧ 서버 검증은 **직접 구현**(`src/Passkey.php` — 외부 코드 0 · 증명 `none` 만 · ES256 하나 · UV 필수 · RP ID·origin 은 `APP_URL` 에서만 · 챌린지 sha256 만 저장·한 문장 소비). 경보 **AL-23**(7.11) · 위험 SECURITY **R-109** | 필수(F-72, 복제본 구현 · 검토 전) |
+| F-73 | **「개인」 등급 · 사람 지정 권한 · 권한 요청** (G-0 · 사용자 결정 2026-09-28 13:0x 「아이디나 사용자 이름을 통해 접근 권한을 부여 · 지금 기공료 같은 건 개인 권한으로 · 권한이 없으면 호스트에게 권한 요청」). 지시서 `~/.local/share/qaredi-dev/prompt-g0-private-grants.txt` · 구현 기록 `docs/g0-implementation.md` | ① 등급 `private`(4장 · 5.5) — 올리기·새 폴더의 등급 고르기 좁은 쪽 끝 「개인 — 나와 지정한 사람만」 · 배지 「개인 · n명」(자물쇠). ② **사람 지정 권한** — 폴더·파일 정보의 「권한」 창: 받은 사람(이름·보기/편집·준 날·빼기) + 「사람 추가」(아이디·이름 한 글자부터 후보). 폴더 권한은 하위에 이어진다. 주인만 고친다(Admin 은 특권 + 15분 재인증 + 감사). ③ **공유받음** — 사이드바 「공유받음」 에 나에게 권한을 준 개인 폴더·파일. ④ **권한 요청** — 못 보는 개인 항목을 주소로 열면 이름 없이 요청 화면(보기/편집 · 메모 200자) · 보기 권한만 있는 개인 폴더에서 「편집 권한 요청」 → 주인에게 커뮤니티 알림 종 「○○ 님이 권한을 요청했습니다」 → 사이드바 「권한 요청 n」 → 허락(보기)·허락(편집)·거절 → 요청자에게 「허락됨/거절됨」 알림. 하루 20건 · 같은 항목 기다리는 요청 하나 · 없는 번호도 같은 답. ⑤ 판정 한 벌(`Authz::privateChainSql` — 목록 조건절 `visibleWhere` 와 판정 `decideRead` 가 같은 SQL 조각)·전수 대조 3400 사례 불일치 0 · 넣는 저장은 트랜잭션 안에서 폴더 행을 잠가 불변 ①을 다시 본다. ⑥ DB: 마이그레이션 `2026-10-10_access_grants.sql`(CHECK 넓힘 · 권한 표 네 줄 · 표 `access_grants`·`access_requests` · 알림 칸) — **코드보다 먼저**. 감사 `grant.add`·`grant.remove`·`access.request`·`access.decide` · 위험 SECURITY **R-111** | 필수(F-73, 복제본 구현 · 검토 전) |
 
 ---
 
@@ -663,6 +685,15 @@
 | POST | `/api/folders` | 폴더 만들기 `{name, parent_id?, access_level, team_id?}` (F-26). **F-58: `X-API-Token` 으로도**(허용 키 동일). 깊이 5·이름 규칙·중복·`decideUploadAs`·부모보다 넓지 않음(①) | `file.upload`(Guest 제외) | `folder.create` allow/deny |
 | PATCH | `/api/folders/{num}` | 이름 변경·이동·등급 변경 `{name?, parent_id?, access_level?, team_id?, cascade?, reason_text?}` (F-26). **F-58: `X-API-Token` 으로도** — 단 토큰 요청은 `name`·`parent_id` **만**(등급·팀·cascade·reason_text 는 400). 자손 아래 이동 금지, 이동·등급 변경은 불변 규칙 ①②③ | `file.update` → 핸들러 `decideFolderChange`(+ 등급은 `decideLevelChange` 규칙) | `folder.update`·`folder.level_change` allow/deny |
 | DELETE | `/api/folders/{num}` | 빈 폴더 삭제(살아 있는 파일 0·하위 0) (F-26). **F-59: 개인 `X-API-Token` 으로도**(`?move_trashed=1` 포함, 공용 토큰은 403). 행 삭제(파일이 참조하지 않음이 확인된 뒤) | `file.delete` → `decideFolderChange` | `folder.delete` allow/deny |
+| GET | `/api/folders/{num}/grants` · `/api/files/{id}/grants` | 개인 항목의 권한 줄(직접 준 것 + 위 개인 폴더에서 이어받은 것) · `can_manage` · `effective` (F-73) | `file.read` → `decideRead`(주인·받은 사람·Admin 특권) | 403(폴더는 없는 번호와 같은 403) / 404(없는 파일) |
+| POST | `/api/folders/{num}/grants` · `/api/files/{id}/grants` | 한 사람에게 보기·편집 주기 `{user: 아이디 또는 이름, write: bool}` — 같은 사람이면 바꾸기 · 같은 값이면 `changed:false`(감사 없음) (F-73) | `file.update` → `decideGrantManage`(주인 · Admin 특권은 15분 재인증) · 개인 등급만(400 `not_private`) · 받는 사람 켜진 계정(손님은 보기만) · CSRF · **토큰 창구 밖** | 400 / 403 |
+| DELETE | `/api/folders/{num}/grants/{num}` · `/api/files/{id}/grants/{num}` | 그 사람(사람 번호)에게 직접 준 권한 빼기 (F-73) | 위와 같음 | 400 / 403 / 404(없는 줄) |
+| GET | `/api/access/people?q=` | 권한 줄 사람 후보 — 한 글자부터 · 켜진 계정 · 최대 20 · 부른 사람 뺌(커뮤니티 공유 후보와 같은 모양) (F-73) | `file.update`(손님 403) | 403 |
+| GET | `/api/grants/mine` | 「공유받음」 — 나에게 직접 준 개인 폴더·파일 (F-73) | `file.read` → `canSeeInList` | — |
+| POST | `/api/access-requests` | 권한 요청 `{file: UUID \| folder: 번호, write?, message? ≤200}` — 없는 번호·개인 아님·중복도 **같은 200 · 같은 글자**(저장은 진짜 개인 항목만) (F-73) | `authenticated` · CSRF · 손님 편집 400 · 하루 20건(저장 안 한 요청도 셈) 429 | 400 / 429 |
+| GET | `/api/access-requests?box=in\|out` | 받은 요청(내가 주인 · 주인이 꺼진 항목은 Admin) · 보낸 요청 상태(못 보는 항목의 기다리는 줄은 없다) (F-73) | `authenticated` | — |
+| POST | `/api/access-requests/{num}` | 호스트의 결정 `{decision: approve_view \| approve_write \| reject}` → 허락이면 권한 한 줄 + 알림 (F-73) | `file.update` · 호스트만(아니면 404) · Admin 대리는 15분 재인증 | 400 / 404 |
+| DELETE | `/api/access-requests/{num}` | 보낸 사람이 기다리는 요청을 거둔다 (F-73) | `authenticated` · 본인 것만(아니면 404) | 404 |
 
 ---
 
@@ -672,15 +703,18 @@
 |---|---|---|
 | `users` | `id, username, password_hash, role, team_id, is_active, failed_count, locked_until, created_at` | 비밀번호는 해시만. 역할은 4종 제한 |
 | `teams` | `id, name` | Manager·Employee가 소속. `team` 레벨 판정에 필요 |
-| `permissions` | `role, access_level, can_read, can_upload` | 5.1·5.2 매트릭스를 **데이터**로 보관(16행). 앱 계정은 SELECT만 — 화면·API로 수정 불가(권한 상승 방지). 소유자·팀 규칙(5.3)은 코드(`Authz`) |
+| `permissions` | `role, access_level, can_read, can_upload` | 5.1·5.2 매트릭스를 **데이터**로 보관(16행 — G-0 부터 `private` 4행이 더해져 20행. 개인 줄은 읽기 전부 거짓(CHECK)이고 매트릭스 화면·편집 창구·조회 창구에는 싣지 않는다 — 화면은 16칸 그대로). 앱 계정은 SELECT만 — 화면·API로 수정 불가(권한 상승 방지). 소유자·팀 규칙(5.3)은 코드(`Authz`) |
 | `files` | `id, original_name, stored_name, mime, ext, size_bytes, sha256, description, access_level, team_id, uploaded_by, created_at, deleted_at, scan_status, sensitive_flags(text[], F-22), folder_id(→folders NULL=루트, F-26)` | 실제 파일은 DB에 넣지 않고 경로만 보관. `deleted_at`으로 논리 삭제 |
 | `audit_logs` | 7.7의 항목 전체 | Append-only |
 | `sessions` | `id(토큰 해시), user_id, created_at, last_seen_at, expires_at, ip, user_agent` | **DB 세션** (PHP 파일 세션 미사용). 쿠키에는 무작위 토큰만, DB에는 그 SHA-256. 비활성화·비밀번호 변경 시 해당 사용자 행 전체 삭제 → 모든 기기 즉시 로그아웃 (R-10) |
 | `share_links` | `id, token_hash(char64), file_id, created_by, expires_at, max_downloads, download_count, revoked_at, revoked_by, reason_text, created_at` | F-13. 토큰 원문은 저장하지 않는다. 앱 계정은 SELECT·INSERT·UPDATE 만(회수·횟수는 UPDATE, 행 삭제 없음 — 감사 추적) |
 | `folders` | `id, parent_id(→folders, NULL=루트), name, depth(1~5), access_level(4종, 파일과 같은 CHECK), team_id(team 이면 NOT NULL — 파일과 같은 CHECK), created_by, created_at, updated_at` | F-26. `UNIQUE(parent_id, name)`, `CHECK(depth BETWEEN 1 AND 5)`, 등급·팀 CHECK 는 `files` 와 동일. 앱 계정 SELECT·INSERT·UPDATE·**DELETE**(빈 폴더만, 파일이 참조하면 FK 가 막는다). 불변 규칙 ①(하위 ≥ 부모)은 앱이 지킨다 |
 
+| `access_grants` | `id, folder_id(→folders ON DELETE CASCADE) \| file_id(→files) — 둘 중 하나, user_id, can_write, granted_by, granted_at` | F-73 사람 지정 권한. (항목, 사람) 한 줄(부분 UNIQUE 둘). 개인 등급 항목에만 효력. 앱 계정 SELECT·INSERT·UPDATE·DELETE · 백업 SELECT |
+| `access_requests` | `id, folder_id \| file_id, requester_id, want_write, message(≤200), status(pending·approved·rejected·cancelled), decided_by, decided_at, created_at` | F-73 권한 요청. (항목, 요청자) 기다리는 줄 하나(부분 UNIQUE 둘). 커뮤니티 `notifications.access_request_id` 가 가리킨다(ON DELETE SET NULL) |
+
 **제약 조건**
-- `files.access_level` 은 `public|internal|team|admin-only` 중 하나 (DB CHECK 제약)
+- `files.access_level` 은 `public|internal|team|admin-only|private` 중 하나 (DB CHECK 제약 — `private` 은 G-0 · F-73, `team_id` NULL · CHECK `files_private_no_team`·`folders_private_no_team`)
 - `access_level = 'team'` 이면 `team_id` NOT NULL (DB 제약)
 - `users.role` 은 `Admin|Manager|Employee|Guest` 중 하나 (DB CHECK 제약)
 

@@ -432,7 +432,7 @@ CREATE INDEX passkey_challenges_expires_idx ON passkey_challenges (expires_at);
 -- access_grants · access_requests — G-0 「개인」 등급의 사람 지정 권한 · 권한 요청 (PRD F-73, ARCH 4.1 · 5.36)
 --   access_grants: 폴더 또는 파일 하나(둘 중 하나만) · 받은 사람 · 보기/편집. **개인 등급 항목에만 뜻이 있다**
 --     (다른 등급은 권한 표가 판정 — 줄은 남아도 무시. 넓혔다가 다시 좁히면 되살아난다).
---     폴더 줄은 안의 모든 하위 폴더·파일에 이어진다 — 판정은 앱 한 벌(Authz::privateReachSql: 판정 함수와 목록 조건절이
+--     폴더 줄은 안의 모든 하위 폴더·파일에 이어진다 — 판정은 앱 한 벌(Authz::privateChainSql: 판정 함수와 목록 조건절이
 --     같은 SQL 조각). 폴더 외래 키 ON DELETE CASCADE(빈 폴더는 행째 지워진다) · 파일 외래 키는 절 없음(파일 행은 남는다).
 --   access_requests: 주소로 연 개인 항목이 403 일 때 주인에게 보내는 요청. 같은 (항목, 요청자) pending 하나(부분 UNIQUE) ·
 --     한 사람 하루 20건(앱이 감사 행으로 센다 — 저장하지 않은 요청도 센다: 없는 id 와 못 보는 id 가 갈리지 않게).

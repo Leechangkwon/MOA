@@ -22,7 +22,7 @@
 --      + files_private_no_team · folders_private_no_team : 'private' 은 팀이 없다(team_id NULL)
 --   2. permissions 에 줄 넷(역할별) — can_read 전부 false · can_upload = Admin·Manager·Employee true · Guest false.
 --   3. public.access_grants — 사람 지정 권한(폴더 또는 파일 하나 · 한 사람 · 보기/편집). 폴더 줄은 안의 모든 하위에 이어진다
---      (판정은 앱 — Authz::privateReachSql 한 벌). 개인 등급 항목에만 뜻이 있다(다른 등급이면 줄이 남아도 무시).
+--      (판정은 앱 — Authz::privateChainSql 한 벌). 개인 등급 항목에만 뜻이 있다(다른 등급이면 줄이 남아도 무시).
 --      폴더 외래 키 ON DELETE CASCADE(빈 폴더는 행째 지워진다) · 파일 외래 키는 절 없음(파일 행은 지워지지 않는다 — purged_at).
 --   4. public.access_requests — 권한 요청(요청자 · 항목 · 보기/편집 · 메모 200자 · 상태 넷). 같은 (항목, 요청자) pending 하나.
 --   5. community.notifications — kind CHECK 에 'access_request'·'access_decided' 를 더하고 칸 access_request_id(페이지 없이)를 둔다.

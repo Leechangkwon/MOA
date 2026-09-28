@@ -218,7 +218,7 @@ final class Http
         'not_owner'            => '하위에 내가 바꿀 수 없는 폴더나 파일이 있어 함께 좁힐 수 없습니다',
         'bad_encoding'         => '파일 이름 또는 설명이 올바른 문자(UTF-8)가 아닙니다',
         'description_too_long' => '설명은 500자까지입니다',
-        'bad_access_level'     => 'level 값이 올바르지 않습니다 (public·internal·team·admin-only)',
+        'bad_access_level'     => 'level 값이 올바르지 않습니다 (public·internal·team·admin-only·private)',   // G-0 — 「개인」 도 올바른 값
         'bad_team'             => 'team 등급은 team_id(활성 팀 번호)가 필요합니다',
         'bad_folder'           => 'folder_id 가 없거나 접근할 수 없는 폴더입니다',
         'no_change'            => '바뀐 내용이 없습니다',

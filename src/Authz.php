@@ -300,7 +300,7 @@ final class Authz
             }
         }
 
-        /* G-0 (PRD F-73) — 「개인」 갈래. **decideRead 의 [P] 갈래와 짝**이다(privateReachSql 한 벌을 둘이 함께 쓴다):
+        /* G-0 (PRD F-73) — 「개인」 갈래. **decideRead 의 [P] 갈래와 짝**이다(privateChainSql 한 벌을 둘이 함께 쓴다):
          *   (x.access_level = 'private' AND 이 항목·위 개인 폴더의 주인이 나 · 또는 거기 나에게 준 권한)
          * 역할을 보지 않는다 — 표의 읽기 칸은 전부 거짓이고(DB CHECK permissions_private_by_people), 사람으로만 열린다.
          * ★ Admin 특권(`admin_override`)은 여기 **없다** — 목록·검색·즐겨찾기·최근·개수에는 내 것·받은 것만 나오고(지시서 ★),
