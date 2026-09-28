@@ -74,6 +74,15 @@ require __DIR__ . '/../../views/shell_top.php';
         <details id="page-more" class="menu">
           <summary class="btn btn--quiet"><span class="icon" data-icon="chevron"></span>더보기</summary>
           <div class="menu__list">
+            <!-- 사용감 라운드 1 UX-2 — 좁은 폭(720 미만) **편집 모드**에서는 머리의 「사용 방법」·「이력」이 이 메뉴 맨 위로 들어온다(DESIGN 2.9 「좁은 폭 편집 머리」).
+                 둘 다 처음에는 hidden 이고 editor.js 가 편집을 켤 때만 연다(「이력」은 머리의 「이력」이 열려 있을 때만 — 창구가 페이지를 내준 뒤).
+                 넓은 폭에서는 CSS 가 늘 숨긴다(머리 단추 그대로). 「사용 방법」은 머리 단추와 같은 `data-help-open`(app.js 위임 하나)이다. -->
+            <button id="page-more-help" class="menu__item" type="button" data-help-open aria-haspopup="dialog" hidden>
+              <span class="icon" data-icon="help"></span>사용 방법
+            </button>
+            <button id="page-more-history" class="menu__item" type="button" aria-haspopup="dialog" hidden>
+              <span class="icon" data-icon="log"></span>이력
+            </button>
             <!-- 개발 대기열 6 (Q:F-3a 라운드 A · 지시서 1.1) — 즐겨찾기 ☆. 머리 단추가 이미 넷이라(DESIGN 2.9 — 사용 방법 · 이력 ·
                  더보기 · 편집) 이 메뉴의 **맨 위** 항목으로 둔다. 볼 수 있는 사람이면 누구나 보인다 — 글자·별 모양은 editor.js 가
                  창구 `GET /community/api/me/favorites` 의 답(이 페이지가 들어 있나)으로 바꾼다. 넣을 수 있는지는 창구
@@ -189,10 +198,13 @@ require __DIR__ . '/../../views/shell_top.php';
 
     <p id="msg" class="msg" role="alert" aria-live="polite"></p>
 
-    <!-- 제목 고치기 (편집 모드에서만 보인다) -->
+    <!-- 제목 고치기 (편집 모드에서만 보인다).
+         사용감 라운드 1 UX-1 — 자리표시 「제목」: 서버 기본 제목(「제목 없는 페이지」 등)이면 editor.js 가 칸을 비워 두고 자리표시가 보인다.
+         새로 만든 페이지(`?edit=1&new=1`)는 커서가 이 칸에 있고, Enter 면 본문 첫 줄로 간다. 비워 두면 저장은 서버 값 그대로다.
+         UX-2 — 좁은 폭 편집 모드에서는 이 칸이 곧 제목이다(큰 글씨 · 테두리 없음 · 이름표는 화면 읽기용으로만 — community.css). -->
     <label class="field" id="page-title-field" hidden>
       <span class="field__label">제목</span>
-      <input id="page-title-input" type="text" maxlength="200" autocomplete="off" spellcheck="false">
+      <input id="page-title-input" type="text" maxlength="200" autocomplete="off" spellcheck="false" placeholder="제목" enterkeyhint="next">
     </label>
 
     <!-- 6-A 행 페이지의 속성 줄 — 이 페이지가 데이터베이스의 행이면 속성 이름과 값(고칠 수 있으면 눌러서 그 자리 편집).

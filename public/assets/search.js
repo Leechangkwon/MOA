@@ -292,6 +292,9 @@
     }
   });
   if (opener) { opener.addEventListener('click', open); }
+  // 사용감 라운드 1 UX-10 — 폰 윗줄의 검색 단추(shell_top.php `#appbar-search`)도 같은 창을 연다(입력 칸 초점)
+  var barOpener = document.getElementById('appbar-search');
+  if (barOpener) { barOpener.addEventListener('click', open); }
   var closeBtn = dialog.querySelector('[data-search-close]');
   if (closeBtn) { closeBtn.addEventListener('click', function () { dialog.close(); }); }
   // Ctrl+K / ⌘K — 어느 칸에 있든 연다(편집기 안에서도). 이미 열렸으면 입력 칸으로.

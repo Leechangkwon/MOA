@@ -94,6 +94,17 @@ require __DIR__ . '/../../views/shell_top.php';
       <div id="community-home-fav-list"></div>
     </section>
 
+    <!-- 사용감 라운드 1 UX-4 — 「최근」 다섯 줄(폰·넓은 폭 둘 다) — 어제 쓰던 글로 곧바로(전에는 ☰ 안의 사이드바에만 있었다).
+         항목은 사이드바 「최근」과 **같은 창구 · 같은 답**(`GET /community/api/me/recent` — 첫 화면이 이미 부른다, 새 요청 0)을
+         editor.js 가 같은 줄 모양(`.nav-tree` — ☆ 포함)으로 한 번 더 그린다. 줄을 누르면 그 페이지. 비었으면 판째 숨는다.
+         자리는 즐겨찾기 판 **다음**(결정 PK-D5 「좁은 폭 첫 화면 맨 위는 즐겨찾기 먼저」) · 공유받은 페이지·트리 **위**. 새 클래스 0. -->
+    <section class="panel panel--tight" id="community-home-recent" aria-labelledby="community-home-recent-title" hidden>
+      <div class="panel__head">
+        <h2 class="panel__title" id="community-home-recent-title">최근</h2>
+      </div>
+      <div id="community-home-recent-list"></div>
+    </section>
+
     <p id="msg" class="msg" role="alert" aria-live="polite"></p>
 
     <!-- 공간 고르개 (4-B) — 왼쪽 첫 자리다. 목록은 `<select>` 한 칸이고 항목은 창구

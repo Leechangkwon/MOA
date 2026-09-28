@@ -135,7 +135,33 @@ code {
   border-bottom: 1px solid var(--line);
 }
 .appbar__brand { font-size: 14px; font-weight: 600; }
-.appbar__page { color: var(--muted); font-size: 13px; }
+.appbar__page { color: var(--muted); font-size: 13px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* 사용감 라운드 1 (DESIGN 2.9 「폰 윗줄」) — 앱 이름은 **앱 전환 단추**(UX-12) · 오른쪽 끝에 검색(UX-10) · 커뮤니티는 알림 종(UX-3).
+   ☰ 와 앱 이름 사이 10px · 오른쪽 아이콘 사이 12px — 터치 넓힘(한쪽 6px, 4장 ①)이 이웃의 보이는 상자에 닿지 않는 값. 새 색값 0. */
+button.appbar__brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex: none;
+  height: 32px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: var(--r-ctl);
+  background: transparent;
+  color: var(--fg);
+  font: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+}
+button.appbar__brand:hover,
+button.appbar__brand[aria-expanded="true"] { background: var(--muted-bg); }
+button.appbar__brand:focus-visible { outline: none; box-shadow: 0 0 0 3px var(--ring-soft); }
+button.appbar__brand .icon { display: inline-flex; color: var(--muted); }
+.appbar__tools { display: flex; align-items: center; gap: 12px; flex: none; margin-left: auto; }
+/* 알림 종의 안 읽은 수 — 종 단추 오른쪽 위에 겹쳐 붙는 작은 배지(`.badge--internal` 색 그대로 · 글자 12px — 1.3 사다리의 가장 작은 칸) */
+#appbar-bell { position: relative; }
+#appbar-bell-count { position: absolute; top: -4px; right: -6px; height: 18px; min-width: 18px; padding: 0 4px; justify-content: center; font-size: 12px; line-height: 16px; }
 
 .sidebar {
   display: flex;
@@ -1819,6 +1845,12 @@ dialog.token-modal { width: min(720px, calc(100vw - 32px)); }
    찾은 글자 강조는 커뮤니티 문서 토큰 `--nt-yellow-bg`(community.css) — 그 파일이 없는 t-box 화면에서는 기존 토큰 `--warn-bg`. */
 .nav-search { width: 100%; border: 1px solid var(--line); background: var(--surface); font: inherit; text-align: left; cursor: pointer; margin-bottom: 4px; }
 .nav-search__key { margin-left: auto; padding: 0 6px; border: 1px solid var(--line); border-radius: var(--r-sm); color: var(--muted); font-family: var(--mono); font-size: 12px; line-height: 18px; }
+/* 사용감 라운드 1 UX-5 (DESIGN 2.4 「방금 올린 줄」) — 올리기가 모두 성공해 창이 닫히면 새 파일 줄을 2.5초 강조한다. 배경만(`--accent-soft` —
+   파랑 = 정보) · 움직임 0(전환·깜빡임 없음 — 「움직임 줄이기」와 무관하게 같은 모양). 좁은 폭에서 쌓인 행(카드)도 같은 배경. */
+#files-body > tr.is-fresh,
+#files-body > tr.is-fresh > td { background: var(--accent-soft); }
+/* 사용감 라운드 1 UX-10 — 터치가 주 포인터인 기기(폰·폴드)에는 누를 자판이 없다: 「Ctrl K」 글자를 숨긴다(단추 이름은 「검색」 그대로) */
+@media (pointer: coarse) { .nav-search__key { display: none; } }
 dialog.search-dialog { width: min(640px, calc(100vw - 32px)); margin-top: 12vh; padding: 0; }
 .search-dialog__bar { display: flex; align-items: center; gap: 10px; padding: 12px 16px; border-bottom: 1px solid var(--line); }
 .search-dialog__bar .icon { display: inline-flex; color: var(--muted); }

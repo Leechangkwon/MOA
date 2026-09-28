@@ -201,7 +201,7 @@ with sync_playwright() as pw:
     step("2 속성 줄 「쓴 사람」", page.locator("#page-owner-label").inner_text().strip() == "쓴 사람")
     step("2 게시판 칸 「자유게시판」 링크", page.locator("#page-board-link").inner_text().strip() == "자유게시판")
     step("2 경로 줄이 게시판에서 시작", page.locator("#page-crumb a").first.inner_text().strip() == "자유게시판")
-    step("2 공개 범위 자리 「게시판 등급 · 사내」", page.locator("#page-visibility").inner_text().strip() == "게시판 등급 · 사내")
+    step("2 공개 범위 자리 「게시됨 · 사내 모두 봄」(사용감 라운드 1 UX-6 — 전 「게시판 등급 · 사내」)", page.locator("#page-visibility").inner_text().strip() == "게시됨 · 사내 모두 봄")
     step("2 하위 페이지 만들기 없음 (게시판 글)", not page.locator("#page-new-child").is_visible())
     step("2 태그 칩 둘", page.locator("#page-tags button").count() == 2)
     page.fill("#page-tag-input", "추가태그")
