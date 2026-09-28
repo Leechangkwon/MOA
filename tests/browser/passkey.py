@@ -512,7 +512,11 @@ with sync_playwright() as p:
     ppa.click("#login-submit")
     ppa.wait_for_selector("#otp", state="visible", timeout=10000)
     ppa.fill("#otp", totp(SC_A1))
-    ppa.click("#login-submit")
+    # 사용감 라운드 1 UX-9 — 여섯 자리를 넣으면 로그인 화면이 스스로 제출한다(옛 판은 단추를 누른다)
+    try:
+        ppa.wait_for_url(re.compile(r".*/tbox/settings$"), timeout=4000)
+    except Exception:
+        ppa.click("#login-submit")
     ppa.wait_for_url(re.compile(r".*/tbox/settings$"), timeout=15000)
     step("2단계 켠 관리자 — 비밀번호 → 코드 → 보던 곳(/tbox/settings)", ppa.url.endswith("/tbox/settings"), ppa.url)
     cpa.close()

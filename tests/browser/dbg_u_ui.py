@@ -741,8 +741,11 @@ with sync_playwright() as p:
                     step("M13 2단계 칸이 열린다 " + tag, False, pg.inner_text("#msg"))
                     return
                 pg.fill("#otp", "000000")
-                pg.click("#login-submit")
                 pg.wait_for_timeout(1500)
+                # 사용감 라운드 1 UX-9 — 여섯 자리를 넣으면 스스로 제출하고 틀리면 칸을 비운다(비었으면 이미 갔다). 옛 판(자동 제출 없음)은 단추를 누른다
+                if pg.input_value("#otp") != "":
+                    pg.click("#login-submit")
+                    pg.wait_for_timeout(1500)
                 m = pg.inner_text("#msg").strip()
                 pw_kept = pg.evaluate("() => document.getElementById('password').value.length > 0")
                 # 독립 검토 L-4 — 비밀번호 칸을 비우지 않으니 문장이 비밀번호·인증 코드 둘 다를 가리킨다(계정 있음은 말하지 않는다)

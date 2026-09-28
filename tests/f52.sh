@@ -371,7 +371,9 @@ def sign_in(page):
     page.wait_for_timeout(1200)
     if otp != '-' and page.is_visible('#otp'):
         page.fill('#otp', otp)
-        page.click('#login-submit')
+        page.wait_for_timeout(1500)   # 사용감 라운드 1 UX-9 — 여섯 자리에서 로그인 화면이 스스로 제출한다(옛 판은 아래 단추)
+        if page.is_visible('#otp') and page.input_value('#otp') != '':
+            page.click('#login-submit')
         page.wait_for_timeout(1500)
 
 look = """() => {
@@ -516,7 +518,9 @@ with sync_playwright() as p:
     page.wait_for_timeout(1200)
     if page.is_visible('#otp'):
         page.fill('#otp', otp)
-        page.click('#login-submit')
+        page.wait_for_timeout(1500)   # 사용감 라운드 1 UX-9 — 여섯 자리에서 로그인 화면이 스스로 제출한다(옛 판은 아래 단추)
+        if page.is_visible('#otp') and page.input_value('#otp') != '':
+            page.click('#login-submit')
         page.wait_for_timeout(1800)
     page.goto(base + '/', wait_until='networkidle')
     page.wait_for_timeout(1200)

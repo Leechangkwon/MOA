@@ -1261,6 +1261,8 @@ function initLogin(form) {
   var sending = false;
   /** 자동 제출한 코드 — 같은 여섯 자리로 두 번 자동 제출하지 않는다(틀리면 칸이 비워지고 새로 넣은 코드만 다시 간다) */
   var autoSentCode = '';
+  /** 로그인에 성공해 화면을 떠나는 중 — 단추를 다시 열지 않는다(떠나는 사이 한 번 더 눌러 같은 코드를 다시 보내지 않게) */
+  var leaving = false;
 
   /** 지금 2단계(코드 입력) 화면인가 */
   function inStep2() {
@@ -1355,6 +1357,7 @@ function initLogin(form) {
       .then(function (response) {
         if (response.status === 200) {
           pendingPassword = null;
+          leaving = true;
           /* 어디로 돌아가나 (커뮤니티 ARCHITECTURE.md 21.2).
              서버가 `?to=` 를 **허용 목록**으로 걸러 <body data-to> 에 넣어 준 키 하나를 읽고,
              그 키가 고정 맵에 있을 때만 맵의 값으로 간다. 주소를 data 속성 값으로 만들지
@@ -1399,6 +1402,9 @@ function initLogin(form) {
         resetToStep1();
       })
       .then(function () {
+        if (leaving) {
+          return;   // UX-9 — 떠나는 중에는 보내는 중 표시를 그대로 둔다(두 번째 제출 0)
+        }
         sending = false;
         if (submit) {
           submit.disabled = false;
@@ -1408,6 +1414,18 @@ function initLogin(form) {
 
   // 화면을 새로 열 때는 언제나 1단계에서 시작한다(뒤로 가기로 되살아난 값 제거).
   resetToStep1();
+  // 뒤로 가기 캐시(bfcache)로 되살아나면 스크립트가 다시 돌지 않는다 — 떠나던 표시·잠근 단추를 풀고 1단계로(UX-9)
+  window.addEventListener('pageshow', function (event) {
+    if (!event.persisted) {
+      return;
+    }
+    leaving = false;
+    sending = false;
+    if (submit) {
+      submit.disabled = false;
+    }
+    resetToStep1();
+  });
 }
 
 /* ─── 파일 화면 (5단계) ───────────────────────────────────────
