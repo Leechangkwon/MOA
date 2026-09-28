@@ -1119,6 +1119,7 @@ with sync_playwright() as p:
         s = wait_state(ta, ("저장됨", "저장 못 함"))
         ta.wait_for_timeout(1500)
         txt = server_text()
+        note("S5′ 수치 — heartbeat 확인 /api/me %d · 늦은 저장 403 뒤 /api/me %d · 저장 다시 보내기 %d · 상태 「%s」" % (me_n(t0, t1), me_n(t1), patch_n(t1), s))
         step("Q:T-21 모의 S5′ 경합 — heartbeat 의 확인 /api/me 1 뒤, 옛 토큰 저장의 늦은 403 → /api/me 추가 0 · 저장 다시 1 · 저장됨 · 서버 본문에 「마」",
              len(hbr) >= 1 and len(svr) == 1 and ys == [403] and me_n(t0, t1) == 1 and me_n(t1) == 0 and patch_n(t1) == 1 and s == "저장됨" and " 마" in txt,
              (len(hbr), len(svr), ys, me_n(t0, t1), me_n(t1), patch_n(t1), s, " 마" in txt, ta.inner_text("#msg").strip()[:40]))
@@ -1156,6 +1157,7 @@ with sync_playwright() as p:
         ta.wait_for_timeout(130000)
         ls1 = session_seen(SID)
         n_hb, n_all, n_plain = hb_n(t0), me_n(t0), me_n(t0, bg="")
+        note("S7 수치 — heartbeat %d · /api/me %d(자동 표식 없는 것 %d) · 세션 활동 시각 %s → %s" % (n_hb, n_all, n_plain, ls0 or "?", ls1 or "?"))
         step("Q:T-21 모의 S7 첫 heartbeat 403 의 세션 확인 한 번은 자동 요청 — /api/me 1 · 자동 요청 표식", bool(hb_t) and boot_all == 1 and boot_bg == 1, (len(hb_t), boot_all, boot_bg))
         step("Q:T-21 모의 S7 130초 — heartbeat %d(403) · /api/me 자동 표식 없는 요청 0 · 같은 토큰이라 다시 묻지 않음(/api/me 0) · 세션 last_seen_at·act_last_seen_at 그대로" % n_hb,
              n_hb >= 4 and n_plain == 0 and n_all == 0 and ls0 != "" and ls1 == ls0, (n_hb, n_all, n_plain, ls0 != "", ls1 == ls0))
