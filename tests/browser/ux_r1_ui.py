@@ -419,6 +419,16 @@ with sync_playwright() as p:
                  pg.evaluate(VIS, "#community-home-recent") and 0 < len(got) <= 5 and [g[0] for g in got] == [(x.get("icon") + " " if x.get("icon") else "") + x["title"] for x in (rec.get("pages") or [])[:5]],
                  {"got": got[:5], "want": want})
             step("Q:T-14 「최근」 줄은 그 페이지 주소 " + tag, all(re.match(r"^/community/p/[0-9a-f-]{36}$", g[1] or "") for g in got), got[:2])
+            lay = pg.evaluate("""() => { const box = document.getElementById('community-home-recent'); if (!box) return null;
+              const t = document.getElementById('community-home-recent-title'); const rows = [...box.querySelectorAll('.nav-tree__row')];
+              const vis = (e) => { const cs = getComputedStyle(e); return cs.display !== 'none' && cs.visibility !== 'hidden' && e.getBoundingClientRect().width > 1; };
+              return {title: t ? Math.round(t.getBoundingClientRect().left) : null, n: rows.length,
+                      links: rows.map(r => Math.round(r.querySelector('.nav-tree__link').getBoundingClientRect().left)),
+                      expand: rows.filter(r => [...r.querySelectorAll('.nav-tree__toggle:not([data-fav-toggle])')].some(vis)).length,
+                      stars: rows.filter(r => { const s = r.querySelector('[data-fav-toggle]'); return !!s && vis(s); }).length}; }""")
+            step("Q:T-14 「최근」 줄 — 빈 펼침 자리 0 · 제목 글자가 판 제목과 같은 왼쪽 선(들여쓰기 0) · ☆ 그대로(터치 기기는 늘 보임) " + tag,
+                 bool(lay) and lay["n"] > 0 and lay["title"] is not None and lay["expand"] == 0 and all(abs(x - lay["title"]) <= 1 for x in lay["links"])
+                 and (lay["stars"] == lay["n"] if touchdev else True), lay)
             if narrowbar:
                 step("Q:T-16 · Q:T-18 폰 윗줄 — 앱 이름 단추 · 검색 · 알림 종이 보인다 " + tag,
                      all(pg.evaluate(VIS, s) for s in ("#appbar-apps", "#appbar-search", "#appbar-bell")),
@@ -1016,22 +1026,28 @@ with sync_playwright() as p:
         ta.close()
 
         # S3 저장 403 → /api/me 401 → 전과 같은 로그인 흐름(돌아올 주소 ?edit=1) · 임시저장 · 다시 보내기 0
+        #    로그인 화면 요청은 **요청 기록**으로 잡는다 — 실제 세션은 살아 있어 로그인 화면이 302 로 편집 화면에 되돌려 보낸다(주소 이동 사건에는 안 남는다).
+        #    그 요청이 나가면 곧바로 모의를 끈다(켜 둔 채면 되돌아온 화면이 다시 401 을 받아 로그인으로 — 모의가 만든 고리).
         ta = open_editor(None, [(PAGE, only("PATCH", DENY)), (HB, HB_OK)])
-        navs = []
-        ta.on("framenavigated", lambda f: navs.append((time.time(), f.url.replace(SITE, ""))) if f == ta.main_frame else None)
-        d0 = ta.evaluate("() => Object.keys(localStorage).filter(k => k.startsWith('qaredi-draft:')).length")
+        DRAFTS = "() => JSON.stringify(Object.keys(localStorage).filter(k => k.startsWith('qaredi-draft:')).sort().map(k => [k, localStorage.getItem(k)]))"
+        dv0 = ta.evaluate(DRAFTS)
         t0 = time.time()
         mm.mode = "401"
         type_body(ta, " 다")
-        ta.wait_for_timeout(6000)
+        logins = []
+        tw = time.time()
+        while time.time() - tw < 10 and not logins:
+            ta.wait_for_timeout(100)
+            logins = [r for r in mlog if r["m"] == "GET" and r["u"].startswith("/tbox/login?to=") and r["t"] >= t0]
         mm.mode = None
-        to_login = [x for x in navs if x[1].startswith("/tbox/login?to=")]
-        t_nav = to_login[0][0] if to_login else time.time()
-        d1 = ta.evaluate("() => Object.keys(localStorage).filter(k => k.startsWith('qaredi-draft:')).length")
+        ta.wait_for_timeout(3000)
+        t_nav = logins[0]["t"] if logins else time.time()
+        dv1 = ta.evaluate(DRAFTS)
         # 떠날 때의 PATCH 한 번(beforeunload flushSave — 전부터 있던 동작)은 받아 준다 · 401 갈래는 다시 보내지 않는다
-        step("Q:T-21 모의 S3 /api/me 401 → 로그인 화면(?to=…edit%3D1) · 그 전 /api/me 1 · 저장 2 이하(다시 보내기 0) · 임시저장 줄 늘어남",
-             bool(to_login) and "edit%3D1" in to_login[0][1] and me_n(t0, t_nav) == 1 and len([r for r in mlog if r["m"] == "PATCH" and r["u"] == PAGE and t0 <= r["t"] < t_nav + 0.5]) <= 2 and d1 > d0,
-             (to_login[:1], me_n(t0, t_nav), d0, d1))
+        n_p = len([r for r in mlog if r["m"] == "PATCH" and r["u"] == PAGE and t0 <= r["t"] <= t_nav + 0.5])
+        step("Q:T-21 모의 S3 /api/me 401 → 로그인 화면 요청(?to=…edit%3D1) · 그 전 /api/me 1 · 저장 2 이하(다시 보내기 0) · 임시저장 사본이 새로 쓰임",
+             bool(logins) and "edit%3D1" in logins[0]["u"] and me_n(t0, t_nav) == 1 and n_p <= 2 and dv1 != dv0 and dv1 != "[]",
+             (logins[0]["u"].replace(str(P_MOCK), "<P>")[:60] if logins else None, me_n(t0, t_nav), n_p, dv1 != dv0))
         ta.close()
 
         # S4 동시 403 둘(heartbeat · 저장 — 옛 토큰) → /api/me 한 번으로 묶임 · 둘 다 한 번씩만 다시 · 저장됨 (/api/me 0.8초 늦춤 · 늦춤 0)
@@ -1044,13 +1060,15 @@ with sync_playwright() as p:
                     held.append(route)
                 else:
                     route.continue_()
-            routes = [(PAGE, hold), (HB, hold)]
+            ta = open_editor("stale", [(PAGE, hold), (HB, hold)])
             if delay:
-                def slow_me(route, _d=delay):
-                    time.sleep(_d)
-                    route.continue_()
-                routes.append(("/tbox/api/me", slow_me))
-            ta = open_editor("stale", routes)
+                # 늦춤은 부팅 **뒤에** 건다(페이지 처리기가 먼저라, 부팅 때 걸면 부팅 /api/me 가 옛 토큰 모의를 건너뛴다)
+                def slow_after(d):
+                    def slow_me(route):          # 처리기는 인자 하나(둘이면 Playwright 가 request 를 넘긴다)
+                        time.sleep(d)
+                        route.continue_()
+                    return slow_me
+                ta.route("**/tbox/api/me", slow_after(delay))
             text = " 라%d" % int(delay * 10)
             type_body(ta, text)
             tw = time.time()

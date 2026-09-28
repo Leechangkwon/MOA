@@ -279,9 +279,9 @@ chk "세션 확인 도우미 한 곳(app.js) · 편집기가 부름 · 기본 �
   "$(cnt 'window.qarediSessionProbe = probeSession;' "$APP/public/assets/app.js") $(cnt "typeof window.qarediSessionProbe === 'function' ? window.qarediSessionProbe : null" "$APP/public/assets/community/editor.js") $(cnt "const DEFAULT_TITLES = ['제목 없는 페이지', '제목 없는 데이터베이스', '제목 없는 글'];" "$APP/public/assets/community/editor.js")"
 # HTTP — 화면·자산 요청만(감사 행 0). 주소는 고정 글자
 if SC=$(curl -s -A "$UA" -o "$T/app.js" -w '%{http_code}' "$L8082/tbox/assets/app.js"); then :; else SC="(curl-failed)"; fi
-chk "자산 app.js 200 · 새 글자(probeSession · 자동 제출)" "200 1 1" "$SC $(cnt 'function probeSession(expectUser, sentToken) {' "$T/app.js") $(cnt 'form.requestSubmit(submit || undefined);' "$T/app.js")"
+chk "자산 app.js 200 · 새 글자(probeSession · 자동 제출 · 자동 요청이 부른 확인의 표식)" "200 1 1 1" "$SC $(cnt 'function probeSession(expectUser, sentToken, opts) {' "$T/app.js") $(cnt 'form.requestSubmit(submit || undefined);' "$T/app.js") $(cnt 'init.headers[BACKGROUND_HEADER] = BACKGROUND_VALUE;' "$T/app.js")"
 if SC=$(curl -s -A "$UA" -o "$T/editor.js" -w '%{http_code}' "$L8082/tbox/assets/community/editor.js"); then :; else SC="(curl-failed)"; fi
-chk "자산 community/editor.js 200 · 새 글자(기본 제목 표 · 「최근」 판)" "200 1 1" "$SC $(cnt "const DEFAULT_TITLES = [" "$T/editor.js") $(cnt 'function drawHomeRecent(pages) {' "$T/editor.js")"
+chk "자산 community/editor.js 200 · 새 글자(기본 제목 표 · 「최근」 판 · 보낸 토큰으로 견줌)" "200 1 1 1" "$SC $(cnt "const DEFAULT_TITLES = [" "$T/editor.js") $(cnt 'function drawHomeRecent(pages) {' "$T/editor.js") $(cnt 'if (sent.token !== csrfToken) { return again(); }' "$T/editor.js")"
 chk "자산 search.js 200" "200" "$(code "$L8082/tbox/assets/search.js")"
 chk "미로그인 커뮤니티 화면 302(로그인으로)" "302" "$(code "$L8082/community/")"
 chk "t-box 로그인 화면 200" "200" "$(code "$L8082/tbox/login")"

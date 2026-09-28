@@ -4147,7 +4147,7 @@
       ],
       "est_sec": 900,
       "writes_prod": false,
-      "notes": "사용감 라운드 1 「빠른 승리」(사용자 2026-09-28 10:45 「사용감을 최적화하라」 · 실측 보고서 ux-audit-2026-09-28 · 구현 기록 docs/ux-r1-implementation.md). 임시 DB tbox_uxr1_<포트>_test(tbox_testdb 역할로 만들고 지움 · 운영은 pg_dump --no-owner 로 읽기만 — sudo 는 그 한 번) · 임시 인스턴스 php -S 127.0.0.1:8391~8395(기본 8393) · 검토 계정 claude_ 다섯 · 비밀은 표준입력으로만. 정적(바뀐 파일은 화면뿐 · 판정·저장·로그인 차이 0 · 세션 확인 도우미 한 곳 · 자동 제출 한 곳) · 서버 HTML · 화면(tests/browser/ux_r1_ui.py 8 조합 + 흐름) · 서버 로그. 운영 감사 max(id) 는 읽기 전용 역할 tbox_testread 로 수만 적는다(행 내용을 못 읽어 다른 세션 행과 가를 수 없다 — 이 시험의 주소는 839x 고정). Q:T-21(다른 탭에서 다시 로그인) 은 heartbeat 를 2분 30초 기다려 이 시험의 대부분 시간을 쓴다. 손잡이 UXR1_PORT · UXR1_COMBOS · UXR1_SHOTS · UXR1_BEFORE · UXR1_APP_TREE · REGRESS=1(REGRESS_LIST)"
+      "notes": "사용감 라운드 1 「빠른 승리」(사용자 2026-09-28 10:45 「사용감을 최적화하라」 · 실측 보고서 ux-audit-2026-09-28 · 구현 기록 docs/ux-r1-implementation.md). 임시 DB tbox_uxr1_<포트>_test(tbox_testdb 역할로 만들고 지움 · 운영은 pg_dump --no-owner 로 읽기만 — sudo 는 그 한 번) · 임시 인스턴스 php -S 127.0.0.1:8391~8395(기본 8393) · 검토 계정 claude_ 다섯 · 비밀은 표준입력으로만. 정적(바뀐 파일은 화면뿐 · 판정·저장·로그인 차이 0 · 세션 확인 도우미 한 곳 · 자동 제출 한 곳) · 서버 HTML · 화면(tests/browser/ux_r1_ui.py 8 조합 + 흐름) · 서버 로그. 운영 감사 max(id) 는 읽기 전용 역할 tbox_testread 로 수만 적는다(행 내용을 못 읽어 다른 세션 행과 가를 수 없다 — 이 시험의 주소는 839x 고정). Q:T-21(다른 탭에서 다시 로그인) 은 heartbeat 를 2분 30초 기다리고, 검토 반영(review-fix/ux-r1)의 경계 경우 route 모의(S1 고리 0 · S2 재인증 403 · S3 401 · S4 동시 403 묶기 · S5′ 경합 · S6 다른 계정 · S7 heartbeat 403 130초 — /api/me 자동 표식 없는 요청 0 · 임시 DB sessions 행 활동 시각 그대로 · S8 t-box writeFetch)가 약 5분 더 쓴다. 손잡이 UXR1_PORT · UXR1_COMBOS · UXR1_SHOTS · UXR1_BEFORE · UXR1_APP_TREE · UXR1_TPL_DB(운영 pg_dump 한 번으로 만든 틀 DB 를 복제 — 이 시험 안의 pg_dump 0) · REGRESS=1(REGRESS_LIST)"
     },
     {
       "id": "core.browser_ux_r1_ui",
@@ -4193,7 +4193,7 @@
       ],
       "est_sec": 780,
       "writes_prod": false,
-      "notes": "부르는 셸: core.ux_r1_ui. 단독 실행 불가(인자 SITE UA SHOTS · 세션 다섯과 직원 둘의 비밀번호·2단계 비밀을 표준입력 아홉 줄 — R-62 · UXR1_DB 로 임시 DB 감사 행을 센다). 결과 줄 SMOKE_FAIL=n. 넷째 인자 before 는 고치기 전 판 스크린샷용(종료 코드 0)."
+      "notes": "부르는 셸: core.ux_r1_ui. 단독 실행 불가(인자 SITE UA SHOTS · 세션 다섯과 직원 둘의 비밀번호·2단계 비밀을 표준입력 아홉 줄 — R-62 · UXR1_DB 로 임시 DB 감사 행을 센다). 결과 줄 SMOKE_FAIL=n. 넷째 인자 before 는 고치기 전 판 스크린샷용(종료 코드 0). Q:T-21 경계 경우는 Playwright route 로 이 브라우저 문맥의 답만 바꾼다(/tbox/api/me 모의 · 페이지 창구 403·붙잡기 — 서버에 가는 요청은 임시 인스턴스뿐)."
     }
   ]
 }

@@ -281,7 +281,7 @@ else
   [ "$BEFORE" = "1" ] && note "고치기 전 판의 화면 판정 실패 수 = ${bf:-?} (참고)" || expect "화면 시험 실패 수" "0" "${bf:-?}"
   bp=$(grep -c '^  ✔' "$WORK/browser.out")
   NCOMBO=$(printf '%s' "${UXR1_COMBOS:-360:light,360:dark,412:light,412:dark,820:light,820:dark,1280:light,1280:dark}" | tr ',' '\n' | grep -c .)
-  BMIN=$((62 + 14 * NCOMBO))   # 흐름 45 + Q:T-21 모의 경계 경우 17 · 조합마다 14
+  BMIN=$((62 + 15 * NCOMBO))   # 흐름 45 + Q:T-21 모의 경계 경우 17 · 조합마다 15(「최근」 줄 모양 하나 더)
   if [ "$BEFORE" != "1" ]; then
     [ "$bp" -ge "$BMIN" ] && expect "화면 시험이 헛돌지 않았다(✔ $BMIN 이상 — 조합 $NCOMBO)" "yes" "yes" || expect "화면 시험이 헛돌지 않았다(✔ $BMIN 이상 — 조합 $NCOMBO)" "yes" "no($bp)"
   fi
