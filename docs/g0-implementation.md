@@ -125,7 +125,11 @@
 
 ## 8. 시험
 
-- 수락 `tests/g0_private_grants.sh`(T-G0-1~12) + `tests/browser/g0_private_grants.py` — 4회차 **250 / 0 / 0**(브라우저 포함 · flock). 로그 `wk-g0/accept-1..4.log`.
+- 수락 `tests/g0_private_grants.sh`(T-G0-1~12) + `tests/browser/g0_private_grants.py` — 4회차 **250 / 0 / 0** · 6회차 **252 / 0 / 0**(브라우저 포함 · flock). 로그 `wk-g0/accept-1..6.log`.
+- **AL-9 소음 조치(메인 지시 2026-09-28 15:2x)**: 1~5회차와 회귀는 임시 DB 를 `sudo -u postgres psql/createdb/dropdb` 로 다뤄 운영 경보 로그 AL-9 가 13:05~15:25 사이 718줄 늘었다
+  (대부분 회귀의 옛 시험 — `psql -c '<SQL>'` 모양이 달라 명령마다 한 줄 · qf3c 252 · qf3b 86 · d1s 77 · qf3a 59 · 5a2 48 · 5e 37 · sec4 34 · qf4u2b 33 · qf2b 22 · 6b 20 · G-0 12 · tbox_re pg_dump 등 12 —
+  전부 log_only · 휴대폰 알림 0). 6회차부터 G-0 시험은 **시험 전용 역할 tbox_testdb** 로만 만들고·붓고·묻고·지운다(운영 사본은 `pg_dump --no-owner` 한 번을 틀 DB 에 · `createdb -T`) —
+  6회차 동안 alerts.log 더한 줄 **0**. 시험 역할은 `OWNER TO tbox_owner` 를 못 하므로 T-G0-1 은 그 두 줄만 뺀 사본을 붓고(차이 = 그 두 줄 확인), 소유자는 DB 반영 스크립트의 확인·모의 연습이 본다.
 - 브라우저 스크린샷 `~/.claude/ui-shots/g0/`(360 · 412 터치 · 820 터치 · 1280 × 라이트·다크 — 주인 폴더 · 권한 창 · 손님 요청 화면 · 공유받음 · 받은 요청) — 눈으로 봄.
 - 회귀: 10장.
 

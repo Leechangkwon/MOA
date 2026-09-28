@@ -4149,7 +4149,7 @@
       ],
       "est_sec": 480,
       "writes_prod": false,
-      "notes": "G-0 「개인」 등급 · 사람 지정 권한 · 권한 요청(PRD F-73) 수락 T-G0-1~12 — 스키마(마이그레이션 두 번 · CHECK · 권한 · db/grants.sql 은 G-0 절만) · 판정 ↔ 목록 조건절 짝 전수 대조 3400 사례 · 읽기 경로 전수(목록·트리·검색·받기·미리보기·zip·즐겨찾기·최근·공유받음·토큰) · 즉시 반영 · 편집 권한자 · 요청(존재 노출·한도) · 넓히기·좁히기 · 커뮤니티 · Admin 특권 · 자기 공격(여러 일꾼 서버 경쟁 — 포트+1) · 정적 · 브라우저(tests/browser/g0_private_grants.py). 임시 DB tbox_g0_<포트>_test(운영 pg_dump 를 읽어 붓기만) · 포트 8411~8415(기본 8413 · 경쟁 8414) · 부르는 쪽이 .env 0600 사본을 트리 뿌리(또는 G0_ENV_SRC)에. NO_BROWSER=1 · BROWSER_LOCK=<잠금 파일>. 2026-09-28 4회차 250/0/0."
+      "notes": "G-0 「개인」 등급 · 사람 지정 권한 · 권한 요청(PRD F-73) 수락 T-G0-1~12 — 스키마(마이그레이션 두 번 · CHECK · 권한 · db/grants.sql 은 G-0 절만) · 판정 ↔ 목록 조건절 짝 전수 대조 3400 사례 · 읽기 경로 전수(목록·트리·검색·받기·미리보기·zip·즐겨찾기·최근·공유받음·토큰) · 즉시 반영 · 편집 권한자 · 요청(존재 노출·한도) · 넓히기·좁히기 · 커뮤니티 · Admin 특권 · 자기 공격(여러 일꾼 서버 경쟁 — 포트+1) · 정적 · 브라우저(tests/browser/g0_private_grants.py). 임시 DB tbox_g0_<포트>_test — **시험 전용 역할 tbox_testdb** 로만(운영 pg_dump --no-owner 한 번을 틀 tbox_g0_tpl_test 에 붓고 createdb -T · sudo psql 0 → AL-9 0 · 마이그레이션은 OWNER TO 두 줄만 뺀 사본) · 포트 8411~8415(기본 8413 · 경쟁 8414) · 부르는 쪽이 .env 0600 사본을 트리 뿌리(또는 G0_ENV_SRC)에. NO_BROWSER=1 · BROWSER_LOCK=<잠금 파일>. 2026-09-28 6회차 252/0/0(tbox_testdb)."
     },
     {
       "id": "tbox.browser_g0_private_grants",

@@ -22,7 +22,10 @@
 #   T-G0-11 정적         php -l · 보안 린트 0 · 부품 버전 --check · wiki_check 0 · innerHTML·인라인 style 더함 0 · 토큰 창구 목록 그대로
 #   T-G0-12 브라우저     tests/browser/g0_private_grants.py(360·412 터치·820 터치·1280 × 라이트·다크)
 #
-# ★ 운영 DB 를 건드리지 않는다 — stage7d4.sh 와 같은 틀(임시 DB `tbox_g0_test`, 포트 8413) · 검토 계정 claude_(F-71).
+# ★ 운영 DB 를 건드리지 않는다 — 임시 DB `tbox_g0_<포트>_test`(포트 8413) · 검토 계정 claude_(F-71).
+#   ★ 임시 DB 는 **시험 전용 역할 tbox_testdb** 로만 만들고·붓고·묻고·지운다(PGPASSFILE=~/.config/qaredi/pgpass-testdb · -h 127.0.0.1 -U tbox_testdb -w —
+#     메인 지시 2026-09-28 15:2x: `sudo psql/createdb/dropdb` 는 명령마다 운영 경보 AL-9 줄을 쌓는다). 운영 사본은 `sudo -n -u postgres pg_dump -d tbox_re --no-owner`
+#     **한 번**을 파이프로 틀 DB(`tbox_g0_tpl_test`)에 붓고, 시험 DB 는 `createdb -T <틀>` 로 만든다(G0_KEEP_TPL=1 이면 틀을 남겨 다음 실행이 다시 쓴다 — 기본은 끝에 지움).
 #   운영 tbox_re 는 pg_dump 로 **읽기만** 한다(파이프 — 덤프 파일 0). 임시 `.env` 세 줄(DB_NAME·STORAGE_DIR·AUDIT_LOG_FILE)이 임시를
 #   가리키는지 서버를 띄우기 **전에** 보고, 아니면 exit 3. 임시 DB 에 G-0 마이그레이션을 **원본 그대로** 붓는다(postgres — 운영과 같은 계정).
 # 쓰는 법: bash tests/g0_private_grants.sh   (복제본에는 .env 가 없으므로 부르는 쪽이 0600 사본을 트리 뿌리에 두고 부른다 — 끝나면 지운다)
@@ -36,8 +39,10 @@ SITE="http://127.0.0.1:$PORT"
 BASE="$SITE/tbox"
 CBASE="$SITE/community"
 UA="tbox-review/$(date +%F)"
-SRC_DB="tbox_re"                 # 운영 — **읽기만** 한다
-DB="tbox_g0_${PORT}_test"        # 임시 — 여기에만 쓴다
+SRC_DB="tbox_re"                 # 운영 — **읽기만** 한다(pg_dump 한 번)
+DB="tbox_g0_${PORT}_test"        # 임시 — 여기에만 쓴다(주인 tbox_testdb)
+TPL="tbox_g0_tpl_test"           # 틀 — 운영 사본(--no-owner)을 한 번 붓고 createdb -T 로 복제한다
+TDB_PGPASS="${G0_PGPASS:-$HOME/.config/qaredi/pgpass-testdb}"
 BASE_REV="${BASE_REV:-c2b4d76}"  # 이 조각의 기준 판
 SHOTS="${SHOTS:-$HOME/.claude/ui-shots/g0}"
 JAR_DIR="$(mktemp -d)"
@@ -87,14 +92,17 @@ cleanup() {
   if [ -n "$SERVER_PID" ]; then kill "$SERVER_PID" 2>/dev/null; wait "$SERVER_PID" 2>/dev/null; fi
   # 여러 일꾼 서버(T-G0-10 ④) — 일꾼은 주 프로세스의 자식이라 주를 죽여도 남는다: 자식부터 이름(PID)으로 끈다
   if [ -n "$RACE_PID" ]; then pkill -P "$RACE_PID" 2>/dev/null; kill "$RACE_PID" 2>/dev/null; wait "$RACE_PID" 2>/dev/null; fi
-  ( cd / && sudo -n -u postgres dropdb --if-exists "$DB" >/dev/null 2>&1 )
+  tdb dropdb -h 127.0.0.1 -U tbox_testdb -w --if-exists "$DB" >/dev/null 2>&1
+  [ "${G0_KEEP_TPL:-0}" = "1" ] || tdb dropdb -h 127.0.0.1 -U tbox_testdb -w --if-exists "$TPL" >/dev/null 2>&1
   [ -n "$INST" ] && rm -rf "$INST"
   rm -rf "$JAR_DIR" "$WORK"
 }
 trap cleanup EXIT
 
-# ─── 임시 DB 에만 쓰는 psql — SQL 은 표준입력으로(명령 줄 한 모양 — AL-9) ───
-psqlq() { ( cd / && printf '%s\n' "$1" | sudo -n -u postgres psql -X -q -d "$DB" -t -A 2>&1 ); }
+# ─── 임시 DB 에만 쓰는 psql — 시험 전용 역할 tbox_testdb(sudo 0 → 운영 경보 AL-9 0) · SQL 은 표준입력으로 ───
+tdb() { env -u PGHOST -u PGPORT -u PGUSER -u PGDATABASE -u PGPASSWORD -u PGSERVICE -u PGOPTIONS PGPASSFILE="$TDB_PGPASS" "$@"; }
+tpsql() { tdb psql -h 127.0.0.1 -U tbox_testdb -w -X -q "$@"; }
+psqlq() { printf '%s\n' "$1" | tpsql -d "$DB" -t -A 2>&1; }
 mark()  { psqlq "SELECT coalesce(max(id),0) FROM audit_logs"; }
 jget() {
   python3 -c '
@@ -191,27 +199,39 @@ hr "G-0 — 임시 인스턴스 준비 (운영 DB 에는 쓰지 않는다)"
 avail_kb=$(df -Pk / | awk 'NR==2{print $4}')
 echo "루트 파티션 여유: $(df -Ph / | awk 'NR==2{print $4}') (${avail_kb}KB)"
 [ "$avail_kb" -ge 1258291 ] || { echo "루트 디스크 여유 1.2GB 미만 — 시험을 시작하지 않는다 (SECURITY R-80)"; exit 3; }
-( cd / && printf 'SELECT 1;\n' | sudo -n -u postgres psql -X -q -d "$SRC_DB" -tA >/dev/null 2>&1 ) \
-  || { echo "psql(postgres) 을 쓸 수 없다 — 이 시험은 임시 DB 가 없으면 성립하지 않는다"; exit 3; }
+[ -f "$TDB_PGPASS" ] && printf 'SELECT 1;\n' | tpsql -d postgres -tA >/dev/null 2>&1 \
+  || { echo "시험 역할 tbox_testdb 로 붙지 못했다($TDB_PGPASS) — 이 시험은 임시 DB 가 없으면 성립하지 않는다"; exit 3; }
 if ss -ltn 2>/dev/null | grep -qE "127\.0\.0\.1:$PORT "; then
   echo "포트 $PORT 이 이미 쓰이고 있다 — 앞선 시험이 남긴 서버를 먼저 내린다"; exit 3
 fi
 
-sub "① 운영 DB 를 **읽어** 임시 DB 를 만든다(파이프 — 덤프 파일 0)"
-( cd / && sudo -n -u postgres dropdb --if-exists "$DB" >/dev/null 2>&1 )
-( cd / && sudo -n -u postgres createdb -O tbox_owner "$DB" >/dev/null 2>&1 ) || { echo "임시 DB 를 만들 수 없다"; exit 3; }
-( cd / && sudo -n -u postgres pg_dump -d "$SRC_DB" 2>/dev/null \
-  | sudo -n -u postgres psql -q -d "$DB" -v ON_ERROR_STOP=0 >/dev/null 2>"$WORK/restore.err"; exit "${PIPESTATUS[0]}" )
-[ "$?" -eq 0 ] || { echo "운영 DB 를 읽지 못했다 (pg_dump)"; exit 3; }
+sub "① 운영 DB 를 **읽어** 틀 DB 에 한 번 붓고(파이프 — 덤프 파일 0 · --no-owner) 시험 DB 는 createdb -T 로"
+tdb dropdb -h 127.0.0.1 -U tbox_testdb -w --if-exists "$DB" >/dev/null 2>&1
+if [ "${G0_KEEP_TPL:-0}" = "1" ] && [ "$(printf "SELECT count(*) FROM pg_database WHERE datname = '%s';\n" "$TPL" | tpsql -d postgres -tA 2>/dev/null)" = "1" ]; then
+  note "틀 DB $TPL 를 다시 쓴다(G0_KEEP_TPL=1)"
+else
+  tdb dropdb -h 127.0.0.1 -U tbox_testdb -w --if-exists "$TPL" >/dev/null 2>&1
+  tdb createdb -h 127.0.0.1 -U tbox_testdb -w "$TPL" >/dev/null 2>&1 || { echo "틀 DB 를 만들 수 없다(tbox_testdb)"; exit 3; }
+  ( cd / && sudo -n -u postgres pg_dump -d "$SRC_DB" --no-owner 2>/dev/null \
+    | tpsql -d "$TPL" -v ON_ERROR_STOP=0 >/dev/null 2>"$WORK/restore.err"; exit "${PIPESTATUS[0]}" )
+  [ "$?" -eq 0 ] || { echo "운영 DB 를 읽지 못했다 (pg_dump)"; exit 3; }
+fi
+tdb createdb -h 127.0.0.1 -U tbox_testdb -w -T "$TPL" "$DB" >/dev/null 2>&1 || { echo "시험 DB 를 틀에서 만들 수 없다"; exit 3; }
 n_users=$(psqlq "SELECT count(*) FROM public.users")
 [ -n "$n_users" ] || { echo "임시 DB 로 옮기지 못했다"; exit 3; }
 echo "  · 임시 DB $DB — 계정 ${n_users}명"
 
-hr "T-G0-1  스키마 — 마이그레이션(원본 그대로 · postgres) 두 번 · CHECK · 행 · 권한"
-MIG="$ROOT/db/migrations/2026-10-10_access_grants.sql"
+hr "T-G0-1  스키마 — 마이그레이션(OWNER TO 두 줄만 뺀 사본 · 시험 역할) 두 번 · CHECK · 행 · 권한"
+# 시험 역할 tbox_testdb 는 tbox_owner 의 구성원이 아니라 `OWNER TO tbox_owner` 를 할 수 없다 — 그 **두 줄만** 뺀 사본을 붓는다(그 밖 한 글자도 같다).
+# 소유자는 운영 반영 스크립트(apply-g0-db — postgres 로 원본 그대로)의 확인 「새 표 둘 소유자 tbox_owner」 와 모의 반영 연습이 본다.
+MIG="$WORK/migration-testdb.sql"
+sed '/^ALTER TABLE public\.access_\(grants\|requests\) OWNER TO tbox_owner;$/d' "$ROOT/db/migrations/2026-10-10_access_grants.sql" > "$MIG"
+MIG_OWN=$(diff "$ROOT/db/migrations/2026-10-10_access_grants.sql" "$MIG" | grep -c '^< ALTER TABLE public\.access_\(grants\|requests\) OWNER TO tbox_owner;$')
+MIG_ALL=$(diff "$ROOT/db/migrations/2026-10-10_access_grants.sql" "$MIG" | grep -c '^[<>]')
+expect "마이그레이션 사본 — 뺀 줄은 OWNER TO 두 줄뿐(다른 차이 0)" "2 2" "$MIG_OWN $MIG_ALL"
 expect "적용 전 — access_grants 없음 · private 줄 0" "- 0" "$(psqlq "SELECT coalesce(to_regclass('public.access_grants')::text,'-'), (SELECT count(*) FROM permissions WHERE access_level='private')" | tr '|' ' ')"
-( cd / && sudo -n -u postgres psql -X -q -d "$DB" -v ON_ERROR_STOP=1 -f - ) < "$MIG" > "$WORK/mig1.txt" 2>&1; rc1=$?
-( cd / && sudo -n -u postgres psql -X -q -d "$DB" -v ON_ERROR_STOP=1 -f - ) < "$MIG" > "$WORK/mig2.txt" 2>&1; rc2=$?
+tpsql -d "$DB" -v ON_ERROR_STOP=1 -f - < "$MIG" > "$WORK/mig1.txt" 2>&1; rc1=$?
+tpsql -d "$DB" -v ON_ERROR_STOP=1 -f - < "$MIG" > "$WORK/mig2.txt" 2>&1; rc2=$?
 expect "마이그레이션 첫 번 · 두 번째(멱등) 종료 코드" "0 0" "$rc1 $rc2"
 grep -iE 'error|오류' "$WORK/mig1.txt" "$WORK/mig2.txt" | head -3 | sed 's/^/    /'
 expect "CHECK 셋 — 등급 다섯 값(permissions·files·folders)" "3" \
@@ -235,7 +255,7 @@ expect "알림 칸 access_request_id(→ access_requests · ON DELETE SET NULL)"
 #   `REVOKE/GRANT CONNECT ON DATABASE tbox_re` 문장이 있어, 임시 DB 에 붙어 돌려도 **운영 DB 의 접속 권한 목록**을 건드린다(qf3a 와 같은 방식으로 자른다).
 sed -n '/^-- ─── G-0 「개인」 등급/,$p' "$ROOT/db/grants.sql" > "$WORK/grants_g0.sql"
 expect "db/grants.sql G-0 절을 잘라 냈다(DO 블록 하나 · DATABASE 문장 0)" "1 0" "$(grep -c '^DO \$\$' "$WORK/grants_g0.sql") $(grep -ci 'DATABASE' "$WORK/grants_g0.sql")"
-( cd / && sudo -n -u postgres psql -X -q -d "$DB" -v ON_ERROR_STOP=1 -f - ) < "$WORK/grants_g0.sql" > "$WORK/grants.txt" 2>&1
+tpsql -d "$DB" -v ON_ERROR_STOP=1 -f - < "$WORK/grants_g0.sql" > "$WORK/grants.txt" 2>&1
 expect "db/grants.sql G-0 절 재실행 — 오류 0 · 권한 그대로(tbox_app 표 INSERT)" "0 t" "$(grep -ciE '^ERROR|오류:' "$WORK/grants.txt" | tr -d ' ') $(psqlq "SELECT has_table_privilege('tbox_app','public.access_grants','INSERT')")"
 
 sub "② 저장소를 임시 폴더로 복사하고 인스턴스를 띄운다"
