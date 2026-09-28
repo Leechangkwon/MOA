@@ -155,3 +155,35 @@
 - 등급 기본값(UX-5 뒷부분)·게시판 「새 글」 한 단계(UX-6 앞부분)·편집기 안 바로 올리기·빈 페이지 정리 — 라운드 2(지시 범위 밖).
 - 흐름 8 시간(7.60 → 3.37초)은 기계 입력이라 사람이 코드를 옮겨 치는 시간이 빠져 있다 — 줄어든 것은 「로그인」 누름 하나.
 - 운영 경보 로그: 이 작업 동안 AL-9 가 많이 늘었다 — 대부분 목록의 옛 회귀 시험(stage5a2 · stage7b · help_button · stage4c 사본)이 `sudo -u postgres psql -c '…'`(SQL 을 인자로)를 모양마다 부른 것이고, 이 묶음이 새로 쓴 셸(`ux_r1_ui.sh` · `regress.sh`)은 운영 읽기를 읽기 전용 역할 · 표준입력으로만 한다(`pg_dump` 한 번씩만 sudo).
+
+## 15. 검토 반영 (독립 검토 `review-uxr1-2026-09-28.md` · 판정 「조건부(고친 뒤 재확인)」 — 중간 1 · 낮음 2 · 권고 3)
+
+검토 판 `review-base/ux-r1` = 7aff949. 반영 커밋 dd00214 · 600e44c · aada748(복제본 uxr1w → 원격 `wip/ux-r1`). 지시 `prompt-uxr1-reviewfix.txt`(고칠 것 1~4) · 이어 하기 `prompt-uxr1-reviewfix-resume.txt`.
+
+| 발견 | 등급 | 고친 것 | 자리 |
+|---|---|---|---|
+| RV-UX1-1 편집 권한을 잃은 편집 탭 — heartbeat 403 의 세션 확인이 사람 요청 `/api/me` 가 되어 30분 무활동 로그아웃이 밀림 | 중간 · 필수 | ① 자동 요청(`{background:true}`)이 부른 확인은 `/api/me` 에도 `X-Qaredi-Background: 1`(`fetchMe(fresh, background)` — 셸 상수 `BACKGROUND_HEADER` 한 곳) ② 같은 토큰으로 `same` 을 한 번 받으면(`sessionSameToken`) 그 토큰이 바뀔 때까지 다시 묻지 않음 — 사람 요청의 403 도 확인 없이 원래 403 그대로 · 탭이 다시 보이면 한 번 다시 · t-box `writeFetch` 같은 규칙 | app.js `probeSession(expectUser, sentToken, opts)` · editor.js `api()` (dd00214) |
+| RV-UX1-2 동시 403 경합 — 옛 토큰으로 나간 저장을 다시 보내지 않음 | 낮음 · 함께 | `apiSend` 가 **보낸 토큰**을 결과와 함께 돌려주고(`sent.token`) 그것으로 견줌 — 보낸 토큰 ≠ 지금 토큰이면 `/api/me` 없이 지금 토큰으로 한 번만 다시 | editor.js `api()`·`apiSend()` (dd00214) |
+| RV-UX1-5 수락이 UX-11 경계 경우를 세지 않음 | 권고 · 함께 | 검토자 route 모의 S1~S8 을 수락 Q:T-21 에 옮김 — 고리 0(계속 403 → 재전송 1 뒤 멈춤) · 재인증 403(`next:reauth`) 비켜 감 · 401 → 로그인 흐름·임시저장 · 저장+heartbeat 동시 403 → `/api/me` 1 · S5′ 경합(→ `/api/me` 추가 0 · 저장 다시 1 · 저장됨) · 다른 계정 → 다시 0 + 안내 · S7 130초(heartbeat 403 · 사람 입력 0 → `/api/me` 자동 표식 없는 요청 0 · 세션 `last_seen_at`·`act_last_seen_at` 그대로 · 대조: 사람 요청 한 번이면 밀린다) · 수치 한 줄씩 찍음 · 틀 DB 손잡이 `UXR1_TPL_DB` | tests/browser/ux_r1_ui.py · tests/ux_r1_ui.sh (dd00214 · 600e44c · aada748) |
+| RV-UX1-6 둘째 — 폰 홈 「최근」 줄 왼쪽 약 46px 빈 자리 | 권고 · 할 수 있으면 | 「최근」 판 안에서만 빈 펼침 자리 0(기존 클래스 범위 CSS · 새 클래스 0) — 같은 모양의 ☆ `[data-fav-toggle]` 는 그대로 · 수락 Q:T-14 「최근」 줄 왼쪽 선 = 판 제목 | community.css (dd00214 · 600e44c) |
+| RV-UX1-3 같은 계정 판정이 번호가 아니라 아이디 글자(관리자 아이디 바꾸기 + 재사용 + 같은 브라우저가 겹치면) | 낮음 | **사람 판단** — `/api/me` 는 내부 id 를 내지 않는 설계(S-09-5)라 그대로 두고 SECURITY 7장 행에 한계로 적을지, 불투명 키를 더할지 | — |
+| RV-UX1-4 재인증 창의 확인 요청은 도우미 밖(전부터 있던 것) | 권고 | 라운드 2 목록(관리·내 계정·게시판 관리 재인증이 함께 낫는 한 곳) | — |
+| RV-UX1-6 첫째 — 720 이상 새 페이지 편집: 큰 제목 「제목 없는 페이지」 vs 제목 칸 자리표시 「제목」 | 권고 | 라운드 2 목록(넓은 폭은 이 라운드 범위 밖) | — |
+
+커뮤니티 부품 버전 다시 찍음(b86c56df7053 · `--check` 통과).
+
+### 15.1 재확인 — 이 문맥(클라우드 컨테이너 · 2026-09-28 18:xx KST · 서버 세션이 16:0x 한도로 끊긴 뒤 이어받음)
+
+서버가 아니라 **빈 DB 로 새로 설치한 임시 환경**에서 돌렸다(운영 DB 사본 0 · 운영 포트 0): PostgreSQL 16 · `db/schema.sql` + `seed.sql` + `community/schema.sql` + 마이그레이션 38(둘은 역할 변경이라 postgres 로) + `grants.sql` 둘 · 검토 계정 `claude_` 다섯은 `scripts/seed_users.php --claude-only` → `scripts/review_account_setup.php`(첫 로그인 절차를 창구로) · 시험 전용 역할 `tbox_testdb`·`tbox_testread` 와 pgpass 는 서버 `apply-d73` 과 같은 모양 · `/var/www/qaredi` 는 이 복제본으로 링크.
+
+| 확인 | 결과 | 비고 |
+|---|---|---|
+| 정적 — `security_lint` · `community_asset_version --check` · `wiki_check` · 바뀐 PHP `php -l` · 바뀐 JS `node --check` | 전부 통과(금지 패턴 0 · 부품 b86c56df7053 · 글 58 · 빠진 글 0) | |
+| 수락 `tests/ux_r1_ui.sh` 1회차(8393) | 통과 24 · 실패 5 | ✖ 둘은 **환경 차이** — 빈 DB 라 검토 계정의 개인 공간이 없어 `POST /community/api/pages` 가 409 「개인 공간을 먼저 엽니다」(서버는 운영 DB 사본이라 공간이 이미 있다). 앱의 자기 창구 `GET /community/api/me/space` 를 계정마다 한 번 불러 만든 뒤 다시(시험 코드 변경 0). ✖ 셋은 화면 절 — 아래 |
+| 수락 셸 절 2회차(8394 · `UXR1_SKIP_BROWSER=1`) | **통과 26 · 실패 0** | 정적 · 서버 HTML · 서버 로그 · 운영 대조 |
+| 수락 **화면 절**(`tests/browser/ux_r1_ui.py` 360 · 412 · 820 · 1280 × 라이트·다크 + 흐름 + Q:T-21 모의 S1~S8) | **미검증(이 문맥)** — Python `playwright` 가 없고 이 환경의 네트워크 정책이 pypi.org · files.pythonhosted.org 를 막아 설치할 수 없다(Node playwright 1.56 · Chromium 은 있음) | 서버의 마지막 기록은 검토 반영 도중 2회차 **통과 26 · 실패 3**(`wk-uxr1/rf-scratch-2.log` — 이 문맥에 없음) · 그 뒤 600e44c·aada748 이 S3·S4 틀과 「최근」 줄을 다듬었고 **그 판의 화면 절 결과는 아직 없다** |
+| S7 · S5′ 재확인 수치 | **미검증(이 문맥)** — 화면 절 안에 있다 | |
+| 회귀(닿는 것 — dbg_u3_ui · dbg_u_ui · stage5a2 · t-box 올리기 화면) | **미검증(이 문맥)** — 전부 브라우저 시험 | |
+| pins · `review-fix/ux-r1` 태그 · 패치·번들 · 모의 반영 연습 | **보류** — 화면 절이 통과한 판에서 찍는다(코드가 더 바뀌면 값이 바뀐다). `pins-uxr1-repo.sh eadabd8 aada748` 은 읽기만으로 돌려 봤고 제약(판정·핵심·라우트·DB 차이 0 · 뷰 셋·도움말 둘·자산만)을 통과한다 — PATCH_WANT 6fbc3d6c… | |
+
+다음: 이 환경에 pypi 허용이 들어오면(또는 서버 한도가 풀리면) 화면 절 → 실패가 있으면 원인부터(시험을 약화하지 않는다) → 전부 통과 → S7·S5′ 수치 → 회귀 → pins → 태그 → 산출물 → 모의 반영 연습(eadabd8 · c2b4d76 트리 각 한 번) → SECURITY 7장 행 · 위키 「로드맵 · 진척」 상태 갱신 → 운영 반영·발행은 서버에서(메인).
