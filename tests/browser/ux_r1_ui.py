@@ -24,6 +24,11 @@
 #   Q:T-20   게시판 글 상태 글자 — 「게시됨 · 사내 모두 봄」(title 원래 값) · 숨긴 글 「숨김 · 쓴 사람·게시판 관리자만 봄」 · 편집 모드 요약에도
 #   Q:T-21   다른 탭에서 다시 로그인 — 같은 계정: 옛 탭 저장 성공 · 그 사이 csrf deny ≤ 1 · heartbeat 2분 더 추가 deny 0 ·
 #            다른 계정: 옛 탭 저장은 한 번만 나가고(다시 보내지 않음) 안내 한 줄 · 그 뒤 쓰기 요청 0
+#            + 경계 경우(route 모의 — 이 브라우저 문맥 안에서만 답을 바꾼다): S1 서버가 계속 403 → 다시 1 뒤 멈춤(고리 0) · S2 재인증 403 비켜 감 ·
+#            S3 /api/me 401 → 로그인 흐름·임시저장 · S4 저장+heartbeat 동시 403 → /api/me 1 · S5′ 경합(보낸 토큰으로 견줌 → /api/me 추가 0 · 저장됨) ·
+#            S6 다른 계정 → 다시 0 + 안내 · S7 heartbeat 가 계속 403(130초 · 사람 입력 0) → /api/me 자동 표식 없는 요청 0 · 세션 활동 시각 그대로
+#            (임시 DB sessions 행 · 대조로 사람 요청 한 번이면 밀림) · 같은 토큰으로 same 뒤 사람 403 도 다시 묻지 않음 · 탭이 다시 보이면 한 번 다시(표식) ·
+#            S8 t-box 파일 화면 writeFetch(옛 토큰 → 한 번 다시 · 같은 토큰의 진짜 403 은 두 번째부터 묻지 않음)
 # 나가는 값: 마지막 줄 `SMOKE_FAIL=<n>` · 종료 코드 0/1
 import json
 import os
@@ -137,6 +142,49 @@ class Api:
             return code, {"_raw": txt[:200]}
 
 
+class MeMock:
+    """Q:T-21 모의 — 브라우저 문맥의 `/tbox/api/me` 답을 바꾼다(Playwright route · 임시 인스턴스). mode:
+       None 그대로 · 'stale' 토큰을 옛 값처럼(부팅 때 — 옛 탭 상태) · 'fresh-each' 부를 때마다 새 토큰 · 'other' 아이디를 다른 사람으로 · '401'
+       바꾼 토큰은 서버가 모르는 글자다(쓰기는 서버에서 403) — 값을 출력하지 않는다."""
+    def __init__(self):
+        self.mode = None
+        self.stale = "stale-" + uuid.uuid4().hex
+
+    def handle(self, route):
+        if self.mode is None:
+            return route.continue_()
+        if self.mode == "401":
+            return route.fulfill(status=401, headers={"Content-Type": "application/json", "Cache-Control": "no-store"}, body=json.dumps({"error": "로그인이 필요합니다"}))
+        resp = route.fetch()
+        try:
+            d = resp.json()
+        except Exception:
+            return route.fulfill(response=resp)
+        if self.mode == "stale":
+            d["csrf_token"] = self.stale
+        elif self.mode == "fresh-each":
+            d["csrf_token"] = "fake-" + uuid.uuid4().hex
+        elif self.mode == "other":
+            d["username"] = "claude_someone_else"
+        return route.fulfill(response=resp, body=json.dumps(d))
+
+
+def session_row_id(c):
+    """브라우저 문맥의 세션 쿠키 → sessions.id(서버와 같이 sha256 · 값은 출력하지 않는다)"""
+    for ck in c.cookies():
+        if ck.get("name") == "__Host-tbox_session" and ck.get("value"):
+            return hashlib.sha256(ck["value"].encode()).hexdigest()
+    return ""
+
+
+def session_seen(sid):
+    """임시 DB 의 그 세션 행 두 활동 시각(last_seen_at · act_last_seen_at) — 글자 하나로"""
+    if not re.match(r"^[0-9a-f]{64}$", sid or ""):
+        return ""
+    v = audit_q("SELECT coalesce(to_char(last_seen_at, 'YYYY-MM-DD HH24:MI:SS.US'), '-') || ' / ' || coalesce(to_char(act_last_seen_at, 'YYYY-MM-DD HH24:MI:SS.US'), '-') FROM sessions WHERE id = '%s';" % sid)
+    return v or ""
+
+
 def T(t):
     return [{"t": t, "m": []}]
 
@@ -188,6 +236,13 @@ P_SESS = pid_of(d)
 c, d = E.req("GET", "/community/api/pages/" + str(P_SESS))
 E.req("PATCH", "/community/api/pages/" + str(P_SESS), {"doc_version": (d.get("page") or {}).get("doc_version", 1), "title": "UXR1 세션 글 " + TAG,
       "doc": {"schema": 1, "blocks": [{"id": str(uuid.uuid4()), "type": "paragraph", "text": T("세션 시험 문단")}]}})
+# Q:T-21 모의(경계 경우) 전용 글
+c, d = E.req("POST", "/community/api/pages", {"title": "UXR1 세션 모의 " + TAG})
+P_MOCK = pid_of(d)
+c, d = E.req("GET", "/community/api/pages/" + str(P_MOCK))
+E.req("PATCH", "/community/api/pages/" + str(P_MOCK), {"doc_version": (d.get("page") or {}).get("doc_version", 1), "title": "UXR1 세션 모의 " + TAG,
+      "doc": {"schema": 1, "blocks": [{"id": str(uuid.uuid4()), "type": "paragraph", "text": T("모의 시험 문단")}]}})
+step("준비 — Q:T-21 모의 전용 글", bool(P_SESS and P_MOCK), (P_SESS, P_MOCK))
 # 최근: 직원이 P_EDIT 를 연다(창구가 최근 줄을 남긴다) · 손님은 최근을 지운다(빈 판 숨김 시험)
 E.req("GET", "/community/api/pages/" + str(P_EDIT))
 cg, _ = G.req("DELETE", "/community/api/me/recent", {})
@@ -866,6 +921,294 @@ with sync_playwright() as p:
           const j = await me.json(); await fetch('/tbox/api/logout', {method: 'POST', credentials: 'same-origin', headers: {'X-CSRF-Token': j.csrf_token}}); }""")
         c.close()
     guard("Q:T-21 세션", flow_session)
+
+    print("\n── Q:T-21 모의 — 경계 경우(route 모의 · 1280 · 새 세션 하나)", flush=True)
+
+    def flow_session_mock():
+        # 모의는 이 브라우저 문맥 안에서만 — `/tbox/api/me` 답(MeMock) · 페이지 창구 답(page.route). 서버에 가는 요청은 임시 인스턴스뿐.
+        c = ctx(br, None, 1280, "light")
+        mm = MeMock()
+        c.route("**/tbox/api/me", mm.handle)
+        tb = c.new_page()
+        tb.goto(SITE + "/tbox/login", wait_until="networkidle")
+        st = tb.evaluate(LOGIN_JS, [E1_NAME, PW_E1, fresh_code("claude_employee01", SEC_E1)])
+        tb.close()
+        step("Q:T-21 모의 준비 — 새 문맥에서 직원 로그인 200", st == 200, st)
+        SID = session_row_id(c)
+        mlog = []
+        PAGE = "/community/api/pages/" + str(P_MOCK)
+        HB = PAGE + "/heartbeat"
+
+        def logreq(r):
+            mlog.append({"m": r.method, "u": r.url.replace(SITE, ""), "bg": r.headers.get("x-qaredi-background") or "", "t": time.time()})
+
+        def me_n(since, until=None, bg=None):
+            return len([r for r in mlog if r["m"] == "GET" and r["u"].split("?")[0] == "/tbox/api/me" and r["t"] >= since
+                        and (until is None or r["t"] < until) and (bg is None or r["bg"] == bg)])
+
+        def patch_n(since):
+            return len([r for r in mlog if r["m"] == "PATCH" and r["u"] == PAGE and r["t"] >= since])
+
+        def hb_n(since):
+            return len([r for r in mlog if r["m"] == "POST" and r["u"] == HB and r["t"] >= since])
+
+        def save_state(pg):
+            return pg.evaluate("() => { const b = document.getElementById('page-save-state'); return b && !b.hidden ? b.textContent.trim() : ''; }")
+
+        def wait_state(pg, want, ms=15000):
+            t0 = time.time()
+            while time.time() - t0 < ms / 1000:
+                s = save_state(pg)
+                if s in want:
+                    return s
+                pg.wait_for_timeout(200)
+            return save_state(pg)
+
+        def type_body(pg, text):
+            pg.click(".ProseMirror p >> nth=-1")
+            pg.keyboard.press("End")
+            pg.keyboard.type(text)
+
+        def server_text():
+            cc, d = E.req("GET", "/community/api/pages/" + str(P_MOCK))
+            return json.dumps((d.get("page") or {}).get("doc") or {}, ensure_ascii=False)
+
+        def jr(status, body):
+            return lambda route: route.fulfill(status=status, headers={"Content-Type": "application/json"}, body=json.dumps(body, ensure_ascii=False))
+
+        HB_OK = jr(200, {"editors": []})
+        DENY = jr(403, {"error": "권한이 없습니다"})
+
+        def open_editor(boot_mode, page_routes):
+            """부팅 때 `/api/me` 모양(boot_mode) · 페이지 창구 모의(page_routes: [(주소 끝, 처리기)])는 **열기 전에** 건다(첫 heartbeat 도 모의)"""
+            mm.mode = boot_mode
+            pg = page_of(c)
+            pg.on("request", logreq)
+            for suffix, fn in page_routes:
+                pg.route("**" + suffix, fn)
+            pg.goto(SITE + "/community/p/%s?edit=1" % P_MOCK, wait_until="load")
+            pg.wait_for_selector(".ProseMirror[contenteditable=true]", timeout=15000)
+            pg.wait_for_timeout(800)
+            mm.mode = None
+            return pg
+
+        def only(method, fn):
+            return lambda route: fn(route) if route.request.method == method else route.continue_()
+
+        # S1 고리 0 — 서버(모의)가 저장을 늘 403 · `/api/me` 는 부를 때마다 새 토큰(같은 계정 · 토큰 다름이 끝없이)
+        ta = open_editor(None, [(PAGE, only("PATCH", DENY)), (HB, HB_OK)])
+        mm.mode = "fresh-each"
+        t0 = time.time()
+        type_body(ta, " 가")
+        s = wait_state(ta, ("저장 못 함",))
+        ta.wait_for_timeout(8000)
+        mm.mode = None
+        step("Q:T-21 모의 S1 고리 0 — 서버가 계속 403 이어도 저장은 원래 1 + 다시 1 에서 멈춤 · /api/me 1 · 「저장 못 함」(8초 더 기다림)",
+             patch_n(t0) == 2 and me_n(t0) == 1 and s == "저장 못 함", (patch_n(t0), me_n(t0), s))
+        ta.close()
+
+        # S2 재인증 요구 403(next: reauth) — 세션 확인 0 · 다시 보내기 0
+        ta = open_editor(None, [(PAGE, only("PATCH", jr(403, {"error": "비밀번호를 한 번 더 확인하세요", "next": "reauth"}))), (HB, HB_OK)])
+        t0 = time.time()
+        type_body(ta, " 나")
+        ta.wait_for_timeout(4000)
+        step("Q:T-21 모의 S2 재인증 요구 403(next: reauth)은 비켜 감 — 저장 1 · /api/me 0", patch_n(t0) == 1 and me_n(t0) == 0, (patch_n(t0), me_n(t0)))
+        ta.close()
+
+        # S3 저장 403 → /api/me 401 → 전과 같은 로그인 흐름(돌아올 주소 ?edit=1) · 임시저장 · 다시 보내기 0
+        ta = open_editor(None, [(PAGE, only("PATCH", DENY)), (HB, HB_OK)])
+        navs = []
+        ta.on("framenavigated", lambda f: navs.append((time.time(), f.url.replace(SITE, ""))) if f == ta.main_frame else None)
+        d0 = ta.evaluate("() => Object.keys(localStorage).filter(k => k.startsWith('qaredi-draft:')).length")
+        t0 = time.time()
+        mm.mode = "401"
+        type_body(ta, " 다")
+        ta.wait_for_timeout(6000)
+        mm.mode = None
+        to_login = [x for x in navs if x[1].startswith("/tbox/login?to=")]
+        t_nav = to_login[0][0] if to_login else time.time()
+        d1 = ta.evaluate("() => Object.keys(localStorage).filter(k => k.startsWith('qaredi-draft:')).length")
+        # 떠날 때의 PATCH 한 번(beforeunload flushSave — 전부터 있던 동작)은 받아 준다 · 401 갈래는 다시 보내지 않는다
+        step("Q:T-21 모의 S3 /api/me 401 → 로그인 화면(?to=…edit%3D1) · 그 전 /api/me 1 · 저장 2 이하(다시 보내기 0) · 임시저장 줄 늘어남",
+             bool(to_login) and "edit%3D1" in to_login[0][1] and me_n(t0, t_nav) == 1 and len([r for r in mlog if r["m"] == "PATCH" and r["u"] == PAGE and t0 <= r["t"] < t_nav + 0.5]) <= 2 and d1 > d0,
+             (to_login[:1], me_n(t0, t_nav), d0, d1))
+        ta.close()
+
+        # S4 동시 403 둘(heartbeat · 저장 — 옛 토큰) → /api/me 한 번으로 묶임 · 둘 다 한 번씩만 다시 · 저장됨 (/api/me 0.8초 늦춤 · 늦춤 0)
+        for delay in (0.8, 0.0):
+            held = []
+            done = [False]
+
+            def hold(route):
+                if not done[0] and route.request.method in ("PATCH", "POST"):
+                    held.append(route)
+                else:
+                    route.continue_()
+            routes = [(PAGE, hold), (HB, hold)]
+            if delay:
+                def slow_me(route, _d=delay):
+                    time.sleep(_d)
+                    route.continue_()
+                routes.append(("/tbox/api/me", slow_me))
+            ta = open_editor("stale", routes)
+            text = " 라%d" % int(delay * 10)
+            type_body(ta, text)
+            tw = time.time()
+            while time.time() - tw < 20 and not (any(r.request.url.endswith("/heartbeat") for r in held) and any(r.request.method == "PATCH" for r in held)):
+                ta.wait_for_timeout(250)
+            done[0] = True
+            nhb = len([r for r in held if r.request.url.endswith("/heartbeat")])
+            t0 = time.time()
+            resps = [r.fetch() for r in held]           # 서버에 옛 토큰 그대로 — 진짜 403
+            for r, x in zip(held, resps):
+                r.fulfill(response=x)
+            s = wait_state(ta, ("저장됨", "저장 못 함"))
+            ta.wait_for_timeout(1500)
+            txt = server_text()
+            step("Q:T-21 모의 S4 동시 403(늦춤 %.1f초) — 붙잡은 둘 다 서버 403 · /api/me 1 · 저장 다시 1 · heartbeat 다시 %d · 저장됨 · 서버 본문에 친 글자" % (delay, nhb),
+                 nhb >= 1 and all(x.status == 403 for x in resps) and me_n(t0) == 1 and patch_n(t0) == 1 and hb_n(t0) == nhb and s == "저장됨" and text in txt,
+                 ([x.status for x in resps], me_n(t0), patch_n(t0), hb_n(t0), nhb, s, text in txt))
+            ta.close()
+
+        # S5′ 경합 — heartbeat 403 이 먼저 토큰을 바꾸고 2.5초 뒤 옛 토큰으로 이미 나간 저장의 403 이 온다 → /api/me 없이 지금 토큰으로 한 번 다시
+        held = []
+        done = [False]
+
+        def hold2(route):
+            if not done[0] and route.request.method in ("PATCH", "POST"):
+                held.append(route)
+            else:
+                route.continue_()
+        ta = open_editor("stale", [(PAGE, hold2), (HB, hold2)])
+        type_body(ta, " 마")
+        tw = time.time()
+        while time.time() - tw < 20 and not (any(r.request.url.endswith("/heartbeat") for r in held) and any(r.request.method == "PATCH" for r in held)):
+            ta.wait_for_timeout(250)
+        done[0] = True
+        hbr = [r for r in held if r.request.url.endswith("/heartbeat")]
+        svr = [r for r in held if r.request.method == "PATCH"]
+        t0 = time.time()
+        for r in hbr:
+            x = r.fetch()
+            r.fulfill(response=x)
+        ta.wait_for_timeout(2500)
+        t1 = time.time()
+        ys = []
+        for r in svr:
+            y = r.fetch()
+            ys.append(y.status)
+            r.fulfill(response=y)
+        s = wait_state(ta, ("저장됨", "저장 못 함"))
+        ta.wait_for_timeout(1500)
+        txt = server_text()
+        step("Q:T-21 모의 S5′ 경합 — heartbeat 의 확인 /api/me 1 뒤, 옛 토큰 저장의 늦은 403 → /api/me 추가 0 · 저장 다시 1 · 저장됨 · 서버 본문에 「마」",
+             len(hbr) >= 1 and len(svr) == 1 and ys == [403] and me_n(t0, t1) == 1 and me_n(t1) == 0 and patch_n(t1) == 1 and s == "저장됨" and " 마" in txt,
+             (len(hbr), len(svr), ys, me_n(t0, t1), me_n(t1), patch_n(t1), s, " 마" in txt, ta.inner_text("#msg").strip()[:40]))
+        ta.close()
+
+        # S6 다른 계정(모의 — /api/me 아이디가 다름) — 저장 1 · 다시 0 · 안내 한 줄 · 그 뒤 쓰기 0
+        ta = open_editor("stale", [(HB, HB_OK)])
+        mm.mode = "other"
+        t0 = time.time()
+        type_body(ta, " 바")
+        s = wait_state(ta, ("저장 못 함",))
+        ta.wait_for_timeout(1500)
+        msg = ta.inner_text("#msg").strip()
+        n_w = patch_n(t0)
+        type_body(ta, " 사")
+        ta.wait_for_timeout(4000)
+        mm.mode = None
+        txt = server_text()
+        step("Q:T-21 모의 S6 다른 계정 — 저장 1 · 다시 0 · 「저장 못 함」 · 안내 한 줄 · 그 뒤 저장 요청 0 · 서버 본문에 「바」「사」 없음",
+             n_w == 1 and patch_n(t0) == 1 and s == "저장 못 함" and msg == "다른 계정으로 로그인되어 이 탭은 멈췄습니다 — 새로 고치세요" and " 바" not in txt and " 사" not in txt,
+             (n_w, patch_n(t0), s, msg[:40]))
+        ta.close()
+
+        # S7 자동 요청 조용함 — heartbeat 가 계속 403(같은 계정 · 같은 토큰 — 편집 권한을 잃은 탭) · 사람 입력 0 · 130초
+        tp = time.time()
+        ta = open_editor(None, [(HB, DENY)])
+        ta.wait_for_timeout(2000)
+        # 부팅의 /api/me(화면을 연 사람 요청)는 빼고 첫 heartbeat 뒤부터 센다
+        hb_t = [r["t"] for r in mlog if r["m"] == "POST" and r["u"] == HB and r["t"] >= tp]
+        th = hb_t[0] if hb_t else time.time()
+        boot_all, boot_bg = me_n(th), me_n(th, bg="1")
+        ls0 = session_seen(SID)
+        t0 = time.time()
+        note("S7 heartbeat 403 · 사람 입력 없이 130초 — %s" % time.strftime("%T"))
+        ta.wait_for_timeout(130000)
+        ls1 = session_seen(SID)
+        n_hb, n_all, n_plain = hb_n(t0), me_n(t0), me_n(t0, bg="")
+        step("Q:T-21 모의 S7 첫 heartbeat 403 의 세션 확인 한 번은 자동 요청 — /api/me 1 · 자동 요청 표식", bool(hb_t) and boot_all == 1 and boot_bg == 1, (len(hb_t), boot_all, boot_bg))
+        step("Q:T-21 모의 S7 130초 — heartbeat %d(403) · /api/me 자동 표식 없는 요청 0 · 같은 토큰이라 다시 묻지 않음(/api/me 0) · 세션 last_seen_at·act_last_seen_at 그대로" % n_hb,
+             n_hb >= 4 and n_plain == 0 and n_all == 0 and ls0 != "" and ls1 == ls0, (n_hb, n_all, n_plain, ls0 != "", ls1 == ls0))
+        # 사람 요청도 같은 토큰으로 이미 same 이면 다시 묻지 않는다(원래 403 그대로)
+        ta.route("**" + PAGE, only("PATCH", DENY))
+        t2 = time.time()
+        type_body(ta, " 차")
+        s = wait_state(ta, ("저장 못 함",))
+        ta.wait_for_timeout(1000)
+        step("Q:T-21 모의 S7 같은 토큰으로 이미 same — 사람 저장의 403 도 /api/me 없이 그대로 · 「저장 못 함」", patch_n(t2) >= 1 and me_n(t2) == 0 and s == "저장 못 함", (patch_n(t2), me_n(t2), s))
+        # 탭이 다시 보이면(숨어 있는 동안 다른 탭에서 다시 로그인했을 수 있다) 한 번 다시 묻는다 — 자동 요청이 부른 확인이라 표식 달고
+        t3 = time.time()
+        ta.evaluate("""() => { Object.defineProperty(document, 'hidden', {configurable: true, get: () => true});
+          Object.defineProperty(document, 'visibilityState', {configurable: true, get: () => 'hidden'});
+          document.dispatchEvent(new Event('visibilitychange')); }""")
+        ta.wait_for_timeout(1200)
+        ta.evaluate("""() => { delete document.hidden; delete document.visibilityState; document.dispatchEvent(new Event('visibilitychange')); }""")
+        ta.wait_for_timeout(2500)
+        step("Q:T-21 모의 S7 탭이 다시 보이면 heartbeat 403 을 한 번 다시 묻는다 — /api/me 1(자동 요청 표식) · 표식 없는 것 0",
+             hb_n(t3) >= 1 and me_n(t3) == 1 and me_n(t3, bg="1") == 1, (hb_n(t3), me_n(t3), me_n(t3, bg="1")))
+        ls2 = session_seen(SID)
+        # 대조 — 사람 요청(표식 없는 /api/me) 한 번이면 활동 시각이 밀린다(위 셈이 살아 있다)
+        ctl = ta.evaluate("() => fetch('/tbox/api/me', {credentials: 'same-origin', cache: 'no-store'}).then(r => r.status)")
+        ta.wait_for_timeout(500)
+        ls3 = session_seen(SID)
+        step("Q:T-21 모의 S7 사람 입력·다시 보임 뒤에도 활동 시각 그대로 · 대조: 사람 요청 한 번(%s)이면 last_seen_at 이 밀린다" % ctl,
+             ls2 == ls0 and ctl == 200 and ls3 != "" and ls3 != ls0, (ls2 == ls0, ctl, ls3 != ls0))
+        ta.close()
+
+        # S8 t-box 파일 화면(writeFetch) — 옛 토큰으로 새 폴더 → 같은 계정이면 한 번 다시 → 성공 · 같은 토큰의 진짜 403 은 두 번째부터 다시 묻지 않음
+        mm.mode = "stale"
+        tf = page_of(c)
+        tf.on("request", logreq)
+        tf.goto(SITE + "/tbox/", wait_until="networkidle")
+        tf.wait_for_timeout(600)
+        mm.mode = None
+
+        def folder_posts(since):
+            return len([r for r in mlog if r["m"] == "POST" and r["u"].split("?")[0] == "/tbox/api/folders" and r["t"] >= since])
+
+        def new_folder():
+            tf.click("#folder-new")
+            tf.wait_for_selector("#folder-dialog[open]", timeout=5000)
+            tf.fill("#folder-name", "uxr1-mock-" + uuid.uuid4().hex[:5])
+            opts = tf.evaluate("() => [...document.querySelectorAll('#folder-level-select option')].map(o => o.value).filter(v => v)")
+            if opts:
+                tf.select_option("#folder-level-select", "internal" if "internal" in opts else opts[0])
+            tf.click("#folder-submit")
+            tf.wait_for_timeout(2500)
+        t0 = time.time()
+        new_folder()
+        dlg = tf.evaluate("() => document.getElementById('folder-dialog').open")
+        step("Q:T-21 모의 S8 t-box 새 폴더(옛 토큰) — POST 2(원래 403 + 다시 1) · /api/me 1 · 성공(창 닫힘)", folder_posts(t0) == 2 and me_n(t0) == 1 and not dlg, (folder_posts(t0), me_n(t0), dlg))
+        if dlg:
+            tf.keyboard.press("Escape")
+        tf.route("**/tbox/api/folders", only("POST", DENY))
+        t1 = time.time()
+        new_folder()
+        tf.click("#folder-submit")
+        tf.wait_for_timeout(2000)
+        m = tf.inner_text("#folder-dialog-msg").strip() if tf.evaluate("() => document.getElementById('folder-dialog').open") else ""
+        step("Q:T-21 모의 S8 t-box 같은 토큰의 진짜 403 두 번 — POST 2(다시 보내기 0) · /api/me 1(두 번째는 묻지 않음) · 창에 까닭",
+             folder_posts(t1) == 2 and me_n(t1) == 1 and m != "", (folder_posts(t1), me_n(t1), m[:40]))
+        tf.close()
+        # 정리 — 이 문맥의 세션을 닫는다
+        lp = c.new_page()
+        lp.goto(SITE + "/tbox/login", wait_until="load")
+        lp.evaluate("""async () => { const me = await fetch('/tbox/api/me', {credentials: 'same-origin', cache: 'no-store'}); if (me.status !== 200) return;
+          const j = await me.json(); await fetch('/tbox/api/logout', {method: 'POST', credentials: 'same-origin', headers: {'X-CSRF-Token': j.csrf_token}}); }""")
+        c.close()
+    guard("Q:T-21 모의", flow_session_mock)
 
     # 손님 — 최근이 비면 판째 숨는다
     def guest():

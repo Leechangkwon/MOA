@@ -21,6 +21,7 @@
 #   sudo psql 은 SQL 을 **표준입력**으로만(명령 줄이 한 모양 — 운영 경보 AL-9).
 # ★ 서버 메모리(취합 규칙): 헤드리스 브라우저는 공용 잠금(QAREDI_BROWSER_LOCK — 있으면 flock) 아래 한 번에 하나, 여유 700MB 이상일 때만.
 # 쓰는 법: bash tests/ux_r1_ui.sh   환경 UXR1_PORT(8391~8395) · UXR1_SHOTS · UXR1_BASE_REV(기본 eadabd8) · UXR1_APP_TREE · UXR1_BEFORE=1 · UXR1_COMBOS · REGRESS=1
+#   UXR1_TPL_DB=tbox_uxr1_<이름> — 운영 pg_dump 한 번으로 미리 만든 틀 DB(tbox_testdb 소유)를 복제해 쓴다(이 시험 안의 pg_dump·sudo 0 · 여러 번 돌릴 때)
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 . "$ROOT/tests/lib/review_accounts.sh" || { echo "tests/lib/review_accounts.sh 를 읽지 못했다 — 시험을 시작하지 않는다"; exit 3; }
 . "$ROOT/tests/lib/secrets.sh" || { echo "tests/lib/secrets.sh 를 읽지 못했다 — 시험을 시작하지 않는다 (R-62)"; exit 3; }
@@ -157,9 +158,16 @@ TOTP_M0=$(sudo -n stat -c %y /etc/tbox-v2/qa-totp.txt 2>/dev/null || echo '?')
 note "운영 감사 max(id) 시작 = $PROD_A0 · 운영 경보 로그 줄 수 시작 = $ALERTS_L0 · 검토 계정 비밀 파일 시각 = $TOTP_M0 (셋 다 읽기만)"
 note "정적 대조 기준 판 = $BASE_REV"
 tdb dropdb -h 127.0.0.1 -p 5432 -U tbox_testdb -w --if-exists "$DB" >/dev/null 2>&1
-tdb createdb -h 127.0.0.1 -p 5432 -U tbox_testdb -w "$DB" >/dev/null 2>&1 || { echo "임시 DB 를 만들 수 없다(tbox_testdb)"; exit 3; }
-( cd / && sudo -n -u postgres pg_dump --no-owner -d "$SRC_DB" 2>/dev/null ) \
-  | tdb psql -h 127.0.0.1 -p 5432 -U tbox_testdb -w -X -q -d "$DB" -v ON_ERROR_STOP=0 >/dev/null 2>"$WORK/restore.err"
+TPL_DB="${UXR1_TPL_DB:-}"
+if [ -n "$TPL_DB" ]; then
+  # 틀 DB(운영 pg_dump 한 번으로 미리 만든 것 — tbox_testdb 소유)를 복제한다 — 이 시험 안의 pg_dump 0
+  [[ "$TPL_DB" =~ ^tbox_uxr1_[a-z0-9_]+$ ]] && [ "$TPL_DB" != "$DB" ] || { echo "UXR1_TPL_DB 는 tbox_uxr1_ 접두의 다른 DB 여야 한다 — $TPL_DB"; exit 3; }
+  tdb createdb -h 127.0.0.1 -p 5432 -U tbox_testdb -w -T "$TPL_DB" "$DB" >/dev/null 2>"$WORK/restore.err" || { echo "틀 DB 를 복제할 수 없다 — $(head -2 "$WORK/restore.err")"; exit 3; }
+else
+  tdb createdb -h 127.0.0.1 -p 5432 -U tbox_testdb -w "$DB" >/dev/null 2>&1 || { echo "임시 DB 를 만들 수 없다(tbox_testdb)"; exit 3; }
+  ( cd / && sudo -n -u postgres pg_dump --no-owner -d "$SRC_DB" 2>/dev/null ) \
+    | tdb psql -h 127.0.0.1 -p 5432 -U tbox_testdb -w -X -q -d "$DB" -v ON_ERROR_STOP=0 >/dev/null 2>"$WORK/restore.err"
+fi
 CNT=$(psqlq "SELECT (SELECT count(*) FROM users) || ' ' || (SELECT count(*) FROM community.pages);")
 [ -n "$CNT" ] && [ "${CNT%% *}" -gt 0 ] 2>/dev/null || { echo "임시 DB 로 옮기지 못했다 — $(head -2 "$WORK/restore.err")"; exit 3; }
 note "임시 DB $DB — 사용자 ${CNT%% *} · 페이지 ${CNT##* }"
@@ -213,6 +221,10 @@ else
   expect "UX-11 세션 확인 도우미는 한 곳(app.js probeSession · window.qarediSessionProbe) · 편집기는 그것을 부른다" "1 1 1" \
     "$(grep -c '^function probeSession(' "$AJS") $(grep -c '^window.qarediSessionProbe = probeSession;$' "$AJS") $(grep -c "typeof window.qarediSessionProbe === 'function' ? window.qarediSessionProbe : null" "$EJS")"
   expect "UX-11 일괄 작업은 그 길을 끈다(sessionRetry:false — 옮기기·즐겨찾기·지우기·되살리기 둘)" "5" "$(grep -c "send: (item) => api(.*{ sessionRetry: false })," "$EJS")"
+  expect "UX-11 자동 요청이 부른 세션 확인은 자동 요청(app.js 표식 상수 한 곳 · fetchMe 가 다는 곳 하나 · 편집기가 background 를 넘김)" "1 1 1" \
+    "$(grep -c "^var BACKGROUND_HEADER = 'X-Qaredi-Background';$" "$AJS") $(grep -c 'init.headers\[BACKGROUND_HEADER\] = BACKGROUND_VALUE;' "$AJS") $(grep -c "return probe(meUsername, sent.token, { background: !!(opts && opts.background === true) })" "$EJS")"
+  expect "UX-11 편집기는 그 요청이 보낸 토큰으로 견준다(apiSend 가 돌려줌 · 지금 토큰과 다르면 확인 없이 한 번 다시)" "1 1" \
+    "$(grep -c "readJson(response).then((data) => ({ status: response.status, data: data, token: token }))" "$EJS") $(grep -c "if (sent.token !== csrfToken) { return again(); }" "$EJS")"
   expect "UX-11 파일 화면의 일괄 요청(bulkFetch)은 전과 같은 fetch(「이어서 하기」 흐름 그대로)" "1" "$(grep -A12 '  function bulkFetch(method, url, payload) {' "$AJS" | grep -c '    return fetch(url, options);')"
   expect "UX-9 자동 제출은 로그인 화면 한 곳(form.requestSubmit 하나 · 다른 코드 칸 0)" "1" "$(grep -c 'form\.requestSubmit(' "$AJS")"
   expect "UX-1 기본 제목 표 = 서버 글자(「제목 없는 페이지」 · 「제목 없는 데이터베이스」 · 「제목 없는 글」)" "1 1 1" \
@@ -269,7 +281,7 @@ else
   [ "$BEFORE" = "1" ] && note "고치기 전 판의 화면 판정 실패 수 = ${bf:-?} (참고)" || expect "화면 시험 실패 수" "0" "${bf:-?}"
   bp=$(grep -c '^  ✔' "$WORK/browser.out")
   NCOMBO=$(printf '%s' "${UXR1_COMBOS:-360:light,360:dark,412:light,412:dark,820:light,820:dark,1280:light,1280:dark}" | tr ',' '\n' | grep -c .)
-  BMIN=$((45 + 14 * NCOMBO))
+  BMIN=$((62 + 14 * NCOMBO))   # 흐름 45 + Q:T-21 모의 경계 경우 17 · 조합마다 14
   if [ "$BEFORE" != "1" ]; then
     [ "$bp" -ge "$BMIN" ] && expect "화면 시험이 헛돌지 않았다(✔ $BMIN 이상 — 조합 $NCOMBO)" "yes" "yes" || expect "화면 시험이 헛돌지 않았다(✔ $BMIN 이상 — 조합 $NCOMBO)" "yes" "no($bp)"
   fi

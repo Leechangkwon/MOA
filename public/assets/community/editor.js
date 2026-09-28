@@ -40,14 +40,14 @@ import { inputRules, textblockTypeInputRule, InputRule } from './vendor/pm/prose
 import { dropCursor } from './vendor/pm/prosemirror-dropcursor.js?v=5823578fa61a';
 import { gapCursor } from './vendor/pm/prosemirror-gapcursor.js?v=5823578fa61a';
 
-import { renderDoc, embedHost } from './doc-render.js?v=24c037c2b38b';
-import { createDatabaseView } from './database.js?v=24c037c2b38b';
-import { bindTemplateGallery, createTemplateSave } from './templates.js?v=24c037c2b38b';
-import { bindEmbedAdmin } from './embeds.js?v=24c037c2b38b';
-import { bindPopular } from './popular.js?v=24c037c2b38b';
-import { bindPalettes } from './palettes.js?v=24c037c2b38b';
-import { schema, toDoc, fromDoc, uuid4, colorAllowed, schemeOkForEditor, mentionAllowed, editorDomParser, clipboardDomParser, COLORS, BLOCK_TYPES } from './editor-schema.js?v=24c037c2b38b';
-import { createDrafts } from './drafts.js?v=24c037c2b38b';
+import { renderDoc, embedHost } from './doc-render.js?v=b86c56df7053';
+import { createDatabaseView } from './database.js?v=b86c56df7053';
+import { bindTemplateGallery, createTemplateSave } from './templates.js?v=b86c56df7053';
+import { bindEmbedAdmin } from './embeds.js?v=b86c56df7053';
+import { bindPopular } from './popular.js?v=b86c56df7053';
+import { bindPalettes } from './palettes.js?v=b86c56df7053';
+import { schema, toDoc, fromDoc, uuid4, colorAllowed, schemeOkForEditor, mentionAllowed, editorDomParser, clipboardDomParser, COLORS, BLOCK_TYPES } from './editor-schema.js?v=b86c56df7053';
+import { createDrafts } from './drafts.js?v=b86c56df7053';
 
 /* ─── 주소와 공통 도우미 ─────────────────────────────────────── */
 
@@ -135,7 +135,10 @@ function haltNotice() {
  *   · 다른 계정 → 다시 보내지 않고 이 탭을 멈춘다(알림 한 줄) · 이 뒤의 쓰기는 보내지 않는다
  *   · 같은 계정인데 토큰이 다르다(다른 탭에서 다시 로그인) → 새 토큰으로 바꾸고(셸도 `qarediSetCsrf`) **그 요청을 한 번만** 다시 보낸다.
  *     다시 보낸 것도 403 이면 그대로 실패(고리 0)
- *   · 같은 계정 · 같은 토큰 → 진짜 거부 — 받은 답 그대로
+ *   · 같은 계정 · 같은 토큰 → 진짜 거부 — 받은 답 그대로(셸이 그 토큰을 기억해 같은 토큰의 다음 403 은 다시 묻지 않는다)
+ * 견주는 토큰은 **그 요청이 보낸 토큰**이다(`apiSend` 가 함께 돌려준다). 그 요청이 나가 있는 사이 다른 요청의 확인이 이미 토큰을 바꿨으면
+ * (보낸 토큰 ≠ 지금 토큰) 같은 계정 확인은 끝난 값이다 — `/api/me` 없이 지금 토큰으로 **한 번만** 다시 보낸다.
+ * 자동 요청(`{background: true}`)이 부른 확인은 자동 요청이다 — 셸이 `/api/me` 에도 자동 요청 표식을 단다(세션 활동 시각을 밀지 않는다).
  * 막는 것은 여전히 서버다 — 토큰은 같은 출처 `/api/me` 의 답에서만 오고, 교차 사이트 요청은 그 답을 읽을 수 없다(SECURITY 7장).
  * 일괄 작업은 `{sessionRetry: false}` 로 이 길을 끄고 제 `sessionCheck`(멈춤 · 「이어서 하기」)를 그대로 쓴다.
  *
@@ -151,16 +154,22 @@ function api(method, path, payload, opts) {
   if (tabHalted && opts && opts.background === true) {
     return Promise.resolve({ status: 0, data: {} });
   }
-  return apiSend(method, path, payload, opts).then((result) => {
+  // 부르는 쪽에는 상태·본문만 — 보낸 토큰은 이 함수 안에서만 쓴다
+  const answer = (sent) => ({ status: sent.status, data: sent.data });
+  const again = () => apiSend(method, path, payload, opts).then(answer);
+  return apiSend(method, path, payload, opts).then((sent) => {
+    const result = answer(sent);
     if (!write || result.status !== 403 || (opts && opts.sessionRetry === false)) { return result; }
     if (result.data && typeof result.data.next === 'string' && result.data.next !== '') { return result; }
     const probe = typeof window.qarediSessionProbe === 'function' ? window.qarediSessionProbe : null;
     if (probe === null || meUsername === null) { return result; }
-    return probe(meUsername, csrfToken).then((got) => {
+    if (tabHalted) { return { status: 403, data: { error: HALT_TEXT } }; }
+    if (sent.token !== csrfToken) { return again(); }
+    return probe(meUsername, sent.token, { background: !!(opts && opts.background === true) }).then((got) => {
       if (got.why === 'fresh') {
         csrfToken = got.token;
         if (typeof window.qarediSetCsrf === 'function') { window.qarediSetCsrf(got.token); }
-        return apiSend(method, path, payload, opts);
+        return again();
       }
       if (got.why === 'login') { return { status: 401, data: {} }; }
       if (got.why === 'other') {
@@ -173,7 +182,10 @@ function api(method, path, payload, opts) {
   });
 }
 
-/** 요청 한 번 — `api()` 만 부른다(위 세션 확인 뒤 한 번 다시 보낼 때도 이 함수) */
+/**
+ * 요청 한 번 — `api()` 만 부른다(위 세션 확인 뒤 한 번 다시 보낼 때도 이 함수).
+ * 돌려주는 값: `{status, data, token}` — `token` 은 이 요청이 실제로 보낸 CSRF 토큰(쓰기만 · 읽기는 null). `api()` 가 견주는 데만 쓰고 밖으로 내지 않는다.
+ */
 function apiSend(method, path, payload, opts) {
   const options = {
     method: method,
@@ -181,10 +193,12 @@ function apiSend(method, path, payload, opts) {
     cache: 'no-store',
     headers: {}
   };
+  let token = null;
   if (opts && opts.background === true) { options.headers[BACKGROUND_HEADER] = BACKGROUND_VALUE; }
   if (method !== 'GET' && method !== 'HEAD') {
     if (csrfToken === null) { return Promise.reject(new Error('no-csrf')); }
-    options.headers['X-CSRF-Token'] = csrfToken;
+    token = csrfToken;
+    options.headers['X-CSRF-Token'] = token;
     options.headers['Content-Type'] = 'application/json';
     options.body = JSON.stringify(payload === undefined ? {} : payload);
     if (opts && opts.keepalive === true && new TextEncoder().encode(options.body).length <= KEEPALIVE_MAX_BYTES) {
@@ -192,7 +206,7 @@ function apiSend(method, path, payload, opts) {
     }
   }
   return fetch(COMMUNITY_BASE + path, options).then((response) =>
-    readJson(response).then((data) => ({ status: response.status, data: data }))
+    readJson(response).then((data) => ({ status: response.status, data: data, token: token }))
   );
 }
 

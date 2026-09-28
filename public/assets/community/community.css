@@ -811,6 +811,9 @@ span.crumb__item:hover { text-decoration: none; }   /* 링크가 아닌 첫 칸(
   .nav-tree__row > [data-fav-toggle][aria-pressed="false"],
   #nav-community-fav .nav-tree__row > [data-fav-toggle][aria-pressed="true"] { visibility: visible; }
 }
+/* 사용감 라운드 1 UX-4 — 「내 공간」 「최근」 판(`#community-home-recent`)의 줄은 사이드바 줄(`navPageRow`)을 그대로 쓰지만 펼칠 하위가 없다:
+   판 안에서만 빈 펼침 자리(▸ 칸 — 폰·터치 44px)를 빼 들여쓰기 0(판 제목과 같은 왼쪽 선). 사이드바 트리는 그대로 · 새 클래스·색 0 */
+#community-home-recent .nav-tree__toggle { display: none; }
 
 /* ─── 검색 (5-B) 규칙은 Q:F-2(두 앱 공통 창)에서 app.css 「통합 검색」 절로 옮겼다 — t-box 화면에도 실리게. */
 

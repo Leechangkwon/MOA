@@ -736,18 +736,32 @@ function toLogin() {
  *     CSRF 토큰은 세션 id 에 묶여 있어 재인증으로는 바뀌지 않는다(Auth::csrfToken) — 그래도 한 번
  *     버려 두어, 그 뒤에 묻는 쪽은 서버의 지금 값을 받는다.
  *   · 권한은 여전히 서버가 요청마다 정한다. 이 값은 화면을 그리는 편의값이다 (PRD S-01).
+ *   · `background === true` 는 **사람이 누르지 않은 요청이 부른 확인**(UX-11 세션 확인 — heartbeat 가 받은 403 등)이다:
+ *     자동 요청 표식을 달아 서버가 세션 활동 시각을 밀지 않는다(Q:F-4 U-3 — 켜 두기만 한 탭의 30분 무활동 로그아웃 그대로).
  *
  * @return Promise<{status:number, me:(Object|null)}>  `me` 는 200 이고 JSON 객체일 때만, 아니면 null
  */
 var meShared = null;
 
+/**
+ * Q:F-4 U-3 — 자동 요청 표식. 서버 `Auth::BACKGROUND_HEADER`·`BACKGROUND_VALUE` 와 같은 이름·값이다(커뮤니티 editor.js 의 같은 이름 상수와도 같다).
+ * 이 파일에서는 여기 한 곳이고, 다는 곳은 `fetchMe(…, true)` 하나다.
+ */
+var BACKGROUND_HEADER = 'X-Qaredi-Background';
+var BACKGROUND_VALUE = '1';
+
 function forgetMe() {
   meShared = null;
 }
 
-function fetchMe(fresh) {
+function fetchMe(fresh, background) {
   if (fresh === true || meShared === null) {
-    var request = fetch(APP_BASE + '/api/me', { credentials: 'same-origin', cache: 'no-store' })
+    var init = { credentials: 'same-origin', cache: 'no-store' };
+    if (background === true) {
+      init.headers = {};
+      init.headers[BACKGROUND_HEADER] = BACKGROUND_VALUE;
+    }
+    var request = fetch(APP_BASE + '/api/me', init)
       .then(function (response) {
         return response.text().then(
           function (raw) { return { status: response.status, raw: raw }; },
@@ -887,13 +901,29 @@ function handleReauth(response, data, retry) {
  *   · 답: `{why:'login'}` 로그인 없음(401) · `{why:'other'}` 다른 계정 · `{why:'fresh', token}` 같은 계정인데 토큰이 다르다(다른 탭에서 다시 로그인) ·
  *         `{why:'same'}` 같은 계정 · 같은 토큰(진짜 거부) · `{why:'check'}` 묻지 못함(네트워크)
  *   · 계정을 견주는 값은 이 화면을 연 때의 `/api/me` 아이디(부르는 쪽이 넘긴다) — 역할로 보기 중에도 실제 계정이다.
+ *   · `opts.background === true` — 자동 요청(heartbeat 등)이 부른 확인은 **자동 요청**이다: `/api/me` 에도 자동 요청 표식을 단다(세션 활동 시각을 밀지 않는다).
+ *   · 같은 토큰으로 `same` 을 한 번 받으면 그 토큰으로 보낸 요청의 403 은 **다시 묻지 않고** `same` 이다(자동·사람 요청 모두 — `/api/me` 요청 0).
+ *     토큰이 바뀌면(fresh · 셸의 토큰 바꾸기) 그 기억은 저절로 맞지 않게 되고, **탭이 다시 보일 때** 도 버린다 — 숨어 있는 동안 다른 탭에서
+ *     다시 로그인했을 수 있어서다(그때는 한 번 다시 묻는다).
  * 토큰은 같은 출처 `/api/me` 의 답에서만 온다. 교차 사이트 요청은 그 답을 읽을 수 없으므로 CSRF 방어는 그대로다(SECURITY 7장). 막는 것은 서버다.
  */
 var sessionProbeInFlight = null;
+/** 같은 계정 · 같은 토큰(진짜 거부)이라는 답을 받은 토큰 — 이 화면 메모리에만(저장소 0) */
+var sessionSameToken = null;
 
-function probeSession(expectUser, sentToken) {
+document.addEventListener('visibilitychange', function () {
+  if (!document.hidden) {
+    sessionSameToken = null;
+  }
+});
+
+function probeSession(expectUser, sentToken, opts) {
+  var background = !!(opts && opts.background === true);
+  if (typeof sentToken === 'string' && sentToken !== '' && sentToken === sessionSameToken) {
+    return Promise.resolve({ why: 'same' });
+  }
   if (sessionProbeInFlight === null) {
-    var mine = fetchMe(true);
+    var mine = fetchMe(true, background);
     sessionProbeInFlight = mine;
     var done = function () {
       if (sessionProbeInFlight === mine) {
@@ -911,6 +941,9 @@ function probeSession(expectUser, sentToken) {
     }
     if (typeof result.me.csrf_token === 'string' && result.me.csrf_token !== '' && result.me.csrf_token !== sentToken) {
       return { why: 'fresh', token: result.me.csrf_token };
+    }
+    if (typeof sentToken === 'string' && sentToken !== '') {
+      sessionSameToken = sentToken;
     }
     return { why: 'same' };
   }, function () {
