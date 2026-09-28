@@ -40,14 +40,14 @@ import { inputRules, textblockTypeInputRule, InputRule } from './vendor/pm/prose
 import { dropCursor } from './vendor/pm/prosemirror-dropcursor.js?v=5823578fa61a';
 import { gapCursor } from './vendor/pm/prosemirror-gapcursor.js?v=5823578fa61a';
 
-import { renderDoc, embedHost } from './doc-render.js?v=2a7e19ebcd40';
-import { createDatabaseView } from './database.js?v=2a7e19ebcd40';
-import { bindTemplateGallery, createTemplateSave } from './templates.js?v=2a7e19ebcd40';
-import { bindEmbedAdmin } from './embeds.js?v=2a7e19ebcd40';
-import { bindPopular } from './popular.js?v=2a7e19ebcd40';
-import { bindPalettes } from './palettes.js?v=2a7e19ebcd40';
-import { schema, toDoc, fromDoc, uuid4, colorAllowed, schemeOkForEditor, mentionAllowed, editorDomParser, clipboardDomParser, COLORS, BLOCK_TYPES } from './editor-schema.js?v=2a7e19ebcd40';
-import { createDrafts } from './drafts.js?v=2a7e19ebcd40';
+import { renderDoc, embedHost } from './doc-render.js?v=24c037c2b38b';
+import { createDatabaseView } from './database.js?v=24c037c2b38b';
+import { bindTemplateGallery, createTemplateSave } from './templates.js?v=24c037c2b38b';
+import { bindEmbedAdmin } from './embeds.js?v=24c037c2b38b';
+import { bindPopular } from './popular.js?v=24c037c2b38b';
+import { bindPalettes } from './palettes.js?v=24c037c2b38b';
+import { schema, toDoc, fromDoc, uuid4, colorAllowed, schemeOkForEditor, mentionAllowed, editorDomParser, clipboardDomParser, COLORS, BLOCK_TYPES } from './editor-schema.js?v=24c037c2b38b';
+import { createDrafts } from './drafts.js?v=24c037c2b38b';
 
 /* ─── 주소와 공통 도우미 ─────────────────────────────────────── */
 
@@ -146,6 +146,10 @@ function api(method, path, payload, opts) {
   const write = method !== 'GET' && method !== 'HEAD';
   if (write && tabHalted) {
     return Promise.resolve({ status: 403, data: { error: HALT_TEXT } });
+  }
+  // 멈춘 탭의 자동 요청(알림 폴링 — 사람이 누르지 않은 것)도 보내지 않는다: 쿠키는 이미 다른 계정이라 그 계정의 알림 수가 이 탭에 그려진다
+  if (tabHalted && opts && opts.background === true) {
+    return Promise.resolve({ status: 0, data: {} });
   }
   return apiSend(method, path, payload, opts).then((result) => {
     if (!write || result.status !== 403 || (opts && opts.sessionRetry === false)) { return result; }
@@ -3325,13 +3329,20 @@ function createBlockDialog(getView, hooks) {
     items[i] = li;
   }
 
+  /** 고른 줄의 단추에 초점(목록 안에서 보이게) — 창을 열 때와 ↑↓ 때. Enter 는 초점 줄 = 고른 줄을 넣는다 */
+  function focusPicked() {
+    const button = items[index] ? items[index].querySelector('button') : null;
+    if (!button) { return; }
+    button.focus({ preventScroll: true });
+    if (typeof button.scrollIntoView === 'function') { button.scrollIntoView({ block: 'nearest' }); }
+  }
+
   /** 보이는 차례로 한 칸 옮긴다(↑↓) */
   function step(delta) {
     const at = order.indexOf(index);
     const next = ((at + delta) % order.length + order.length) % order.length;
     select(order[next]);
-    const button = items[order[next]] ? items[order[next]].querySelector('button') : null;
-    if (button && typeof button.scrollIntoView === 'function') { button.scrollIntoView({ block: 'nearest' }); }
+    focusPicked();
   }
 
   function select(i) {
@@ -3358,6 +3369,8 @@ function createBlockDialog(getView, hooks) {
     setText(insertButton, mode === 'change' ? '바꾸기' : '넣기');
     select(order[0]);
     if (typeof dialog.showModal === 'function' && !dialog.open) { dialog.showModal(); }
+    // 사용감 라운드 1 UX-7 — 처음 초점은 목록의 첫 줄(전에는 머리 ✕ 라 Enter 가 창을 닫았다). ↑↓ · Enter 로 곧바로 고르고 넣는다
+    focusPicked();
   }
 
   function commit() {

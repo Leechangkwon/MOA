@@ -416,8 +416,8 @@
 }
 @media (max-width: 720px) {
   .block-picker { grid-template-columns: minmax(0, 1fr); }
-  /* 사용감 라운드 1 UX-7 — 자주 쓰는 여섯(본문 · 제목 1 · 할 일 · 글머리 · 그림 · 파일)이 목록을 밀지 않고 보이는 높이(한 줄 40px × 6 + 다음 줄 조금 — 더 있다는 표시) */
-  .block-picker > .list { max-height: 16rem; }
+  /* 사용감 라운드 1 UX-7 — 자주 쓰는 여섯(본문 · 제목 1 · 할 일 · 글머리 · 그림 · 파일)이 목록을 밀지 않고 보이는 높이(터치 줄 44px × 6 + 다음 줄 조금 — 더 있다는 표시) */
+  .block-picker > .list { max-height: 17.5rem; }
 }
 
 /* ─── 인라인 툴바 — 「색」 「배경」 「링크」 셋 (DESIGN 2.14) ───
@@ -973,6 +973,10 @@ th.doc-table__cell { background: var(--surface-2); font-weight: 600; }
   .page-tree__row { min-height: 44px; padding-block: 0; }
   .page-tree__link { align-self: stretch; line-height: 44px; }
   .move-tree__pick { min-height: 44px; }
+  /* 사용감 라운드 1 — 「블록 추가」·「블록 고치기」·멘션 창의 목록 줄(`.block-pick`)도 **세로로 쌓이는 줄**(②)이다: 40px 줄에 넓힘 2px 이
+     다음 줄 위 끝을 가져갔다(수락 시험 ux_r1_ui 가 찾음) — 넓히지 않고 줄 자체를 44px 로 */
+  .block-pick::before { content: none; }
+  .block-pick { min-height: 44px; align-items: center; }
 }
 @media (max-width: 719.98px) {
   .page-props__group { min-height: 44px; align-items: center; }
