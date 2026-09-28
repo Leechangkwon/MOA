@@ -58,7 +58,7 @@ if (is_array($launcherUser)) {
 }
 ?>
 <!doctype html>
-<html lang="ko"<?= Http::themeAttr() ?>>
+<html lang="ko"<?= Http::themeAttr() ?><?= /* 7-D3 고대비(DESIGN 2.16) — 로그인했고 계정 칸이 참일 때만 고정 글자 · 새 함수 0 */ is_array($launcherUser) && ($launcherUser['high_contrast'] ?? false) === true ? ' data-contrast="high"' : '' ?>>
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">

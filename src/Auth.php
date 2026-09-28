@@ -172,6 +172,8 @@ final class Auth
                u.username      AS username,
                -- 5-A″ — 사람이 알아보는 이름(없으면 NULL). 셸의 사용자 칸이 보인다. 권한 판단에 쓰지 않는다.
                u.display_name  AS display_name,
+               -- 7-D3 — 화면 취향(고대비 화면 · DESIGN 2.16). 셸·런처가 <html data-contrast> 를 그린다. 권한 판단에 쓰지 않는다.
+               u.high_contrast AS high_contrast,
                u.role          AS role,
                u.team_id       AS team_id,
                u.is_active     AS is_active,
@@ -536,6 +538,9 @@ final class Auth
             'username'   => (string) $row['username'],
             // 5-A″ — 표시용 이름(없으면 null). **권한이 아니다** — 판정은 id·역할·팀만 본다.
             'display_name' => $row['display_name'] === null ? null : (string) $row['display_name'],
+            // 7-D3 — 화면 취향(고대비 화면 · DESIGN 2.16). **권한이 아니다** — 셸·런처가 속성 하나를 그릴 뿐이다.
+            //   「역할로 보기」 중에도 실제 사람의 users 행 값이다(H-8 — 따로 코드 0).
+            'high_contrast' => $row['high_contrast'] === true,
             // 유효 역할 — 보는 중이면 보는 값, 아니면 실제 값. 아래 real_* 가 언제나 실제 값이다.
             'role'       => $actValid ? $actRole : (string) $row['role'],
             'team_id'    => $actValid

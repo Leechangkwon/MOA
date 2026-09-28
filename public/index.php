@@ -142,6 +142,11 @@ const TBOX_ROUTES = [
     ['POST',   '/api/me/mfa/enroll',       'mfa_enroll.php',      Authz::POLICY_AUTHENTICATED],
     ['POST',   '/api/me/mfa/confirm',      'mfa_confirm.php',     Authz::POLICY_AUTHENTICATED],
     ['POST',   '/api/me/mfa/disable',      'mfa_disable.php',     Authz::POLICY_AUTHENTICATED],
+    // 커뮤니티 7-D3 — 내 화면 취향 「고대비 화면」 (지시서 2장 H-2 · DESIGN 2.16). 위 넷과 같은 본인 창구다 —
+    //   정책 authenticated · 상태를 바꾸므로 [3] CSRF · 대상은 언제나 **세션의 본인**(본문에 대상 계정 칸이 없다).
+    //   본문은 `{high_contrast: bool}` 한 칸뿐(다른 키·문자열 "true"·빈 본문 400) · 감사 `me.settings|allow`.
+    //   ★ `TBOX_API_TOKEN_ROUTES` 에 넣지 않는다 — 화면 취향은 사람의 세션으로만 바꾼다(토큰으로 부르면 세션이 없어 401).
+    ['PATCH',  '/api/me/settings',         'me_settings.php',     Authz::POLICY_AUTHENTICATED],
 
     // F-66 — 프로그램 토큰 **본인 창구 셋** (PRD F-66 ① · 8장 `/api/me/api-tokens` 세 행,
     //   ARCH 4.7 「본인 창구 셋」, API.md 13장, SECURITY R-97). 정책은 위 넷과 같은

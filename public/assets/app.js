@@ -8722,11 +8722,70 @@ function initActivity() {
   load();
 }
 
-function initSettings(me) {
+function initSettings(me, csrfToken) {
   var team = document.getElementById('me-team');
   if (team) {
     setText(team, typeof me.team_name === 'string' && me.team_name !== '' ? me.team_name : '—');
   }
+  initContrastToggle(me, csrfToken);
+}
+
+/* ─── 커뮤니티 7-D3 「고대비 화면」 — 「내 계정」 「화면」 패널 (DESIGN.md 2.16 · 지시서 2장 H-6) ───────────
+ *
+ * 체크의 처음 상태는 /api/me 의 high_contrast(계정 칸)다. 바꾸면 PATCH /api/me/settings 하나를 보내고,
+ * **200 을 받은 뒤에만** `<html>` 에 data-contrast="high" 를 놓거나 뗀다 — 새로 여는 화면은 서버가 같은 계정 칸으로
+ * 속성을 그리므로(셸·런처) 여기서 쿠키·저장소에 남기지 않는다. 실패면 체크를 되돌리고 서버 문구를 #msg 에(4장).
+ * 성공 알림은 없다(화면이 바뀌는 것이 곧 알림). 해/달 단추(data-theme)와는 독립이다.
+ * 보내는 값은 체크 상태 불린 하나뿐이고 대상 계정 칸이 없다 — 서버가 언제나 세션의 본인에게만 쓴다.
+ */
+function initContrastToggle(me, csrfToken) {
+  var box = document.getElementById('contrast-toggle');
+  if (!box || typeof csrfToken !== 'string') {
+    return;
+  }
+  var msg = document.getElementById('msg');
+  box.checked = me && me.high_contrast === true;
+  box.disabled = false;
+  box.addEventListener('change', function () {
+    var want = box.checked === true;
+    box.disabled = true;
+    setText(msg, '');
+    fetch(APP_BASE + '/api/me/settings', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken },
+      body: JSON.stringify({ high_contrast: want }),
+      credentials: 'same-origin',
+      cache: 'no-store'
+    })
+      .then(function (response) {
+        if (response.status === 401) {
+          toLogin();
+          return null;
+        }
+        return readJson(response).then(function (data) {
+          if (response.ok && data && typeof data.high_contrast === 'boolean') {
+            box.checked = data.high_contrast;
+            if (data.high_contrast) {
+              document.documentElement.setAttribute('data-contrast', 'high');
+            } else {
+              document.documentElement.removeAttribute('data-contrast');
+            }
+            forgetMe();   // 나눠 쓰던 /api/me 답의 high_contrast 가 옛 값이 되었다 — 다음에 묻는 쪽이 새로 받는다
+            return null;
+          }
+          box.checked = !want;
+          setText(msg, errorMessage(data));
+          return null;
+        });
+      })
+      .catch(function () {
+        box.checked = !want;
+        setText(msg, GENERIC_ERROR);
+      })
+      .then(function () {
+        box.disabled = false;
+      });
+  });
 }
 
 /* ─── 내 공유 링크 (15-2 — PRD F-13, ARCH 5.12 「회수·목록」) ──────────
@@ -10615,7 +10674,7 @@ function bootPage(page) {
           return null;
         }
         if (page === 'settings') {
-          initSettings(me);
+          initSettings(me, csrfToken);
           if (document.getElementById('password-form')) {
             initAccount(csrfToken, me.mfa_enabled === true, null, me.mfa_required === true);
           }

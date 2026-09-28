@@ -109,6 +109,7 @@ curl -s -c jar -H 'Content-Type: application/json' \
 | 응답 | `200` — 업로드 도구가 쓰는 키: `username`, `role`, `team_id`, **`csrf_token`**, **`upload_levels`**(내가 올릴 수 있는 접근 등급 목록, 예 `["public","internal","team"]`), `next`. 그 밖의 `can_*`·`acting*` 등은 화면용 편의 값이다 |
 | 커뮤니티 쓰기 자격 (2026-09-26 디버깅 묶음 U) | `can_community_write` — `true`/`false`. 커뮤니티에 **쓸 수 있는 역할인가**(새 페이지·템플릿·편집·댓글 등). 값은 커뮤니티 쓰기 라우트 정책 `community.write` 가 부르는 함수(`Authz::canCommunityWrite` — 권한 매트릭스의 올리기 자격, Guest 거짓)를 그대로 부른 결과다. 다른 `can_*` 와 같은 **화면 편의 값**이며 권한이 아니다 — 쓰는 창구는 전부 정책 `community.write` 와 행 단위 판정이 매 요청 다시 막는다(손님이 `POST /community/api/pages` → `403`) |
 | 지문·얼굴 로그인 (2026-09-27 T:F-72 — 16장) | `passkey_available` — 이 서버에서 쓸 수 있나(`APP_URL` 이 https 이름이고 표가 있다) · `passkeys_active` — 내 살아 있는 열쇠 수(해제·90일 제외). 둘 다 **화면 편의 값**이며 권한이 아니다 — 창구는 요청마다 다시 판정한다. 휴대폰인지는 화면이 정한다(서버는 가리지 않는다) |
+| 고대비 화면 (커뮤니티 7-D3 — 18장) | `high_contrast` — `true`/`false`. 「내 계정」 「화면」 체크가 처음 상태를 이 값으로 놓는다. 계정 칸(`users.high_contrast`)이라 어느 기기에서나 같다. **화면 편의 값**이며 권한이 아니다 — 어떤 판정도 이 값을 읽지 않고, `<html data-contrast="high">` 는 서버가 같은 칸으로 그린다 |
 | 실패 | `401 {"error":"로그인이 필요합니다"}` |
 
 ```bash
@@ -773,6 +774,42 @@ curl -s -w '\n[%{http_code}]\n' -X PATCH -b "$JAR" -H "X-CSRF-Token: $CSRF" -H '
 ```
 
 > 공용 토큰 귀속 계정은 아이디 바꾸기 전에 공용 토큰 정리(F-59 ⑥) — 사용자 결정 **d76 ②**(2026-09-27): 공용 토큰은 두고 **귀속 줄만 새 아이디로**. 순서 ① 도우미 `--env`(`.env` 귀속 줄 — 공용 토큰 잠시 503) → ② 이 창구로 아이디 바꾸기 → ③ 공용 토큰 다시 200 → ④ 도우미 `--seed`(결정 d77 ②). `.env` 는 요청마다 읽혀 reload 가 필요 없다. 서버 파일이라 취합 세션이 root 로 한다.
+
+## 18. 화면 설정 — 고대비 화면 — `PATCH /api/me/settings` (커뮤니티 7-D3, 2026-09-27 · 웹 화면 전용 · 세션)
+
+프로그램이 부르는 창구가 아니라 **「내 계정」 「화면」 패널의 「고대비 화면」 체크**가 부르는 본인 창구다(커뮤니티 지시서 `stage7d-palette-contrast-mention-directive.md` 2장 · DESIGN.md 2.16 · ARCHITECTURE 7.4 `me.settings|allow`).
+**X-API-Token 으로는 부를 수 없다**(토큰 창구 집합 밖 — 토큰만 보내면 세션이 없어 401). 대상은 언제나 **세션의 본인**이고 본문에 대상 계정 칸이 없다.
+
+| 항목 | 내용 |
+|---|---|
+| 인증 | 세션 쿠키 + `X-CSRF-Token`. 정책 `authenticated`(다른 `/api/me/*` 와 같은 자리). 최초 로그인 강제 절차 중이면 `403 {"error":"비밀번호를 먼저 변경해야 합니다","next":"password_change"}` |
+| 요청 | JSON `{"high_contrast": true}` 또는 `{"high_contrast": false}` — **이 한 칸뿐**(JSON 불린만 · `Content-Type: application/json`) |
+| 성공 | `200 {"high_contrast":<저장된 값>}` — 곧바로 `GET /api/me` 의 `high_contrast`(3장)와 셸·런처의 `<html data-contrast="high">` 가 이 값을 따른다. 성공 알림은 없다(화면이 바뀌는 것이 알림) |
+| 실패 | 세션 없음 `401 {"error":"로그인이 필요합니다"}` · CSRF 없음·틀림 `403 {"error":"권한이 없습니다"}` · 다른 키·둘 이상 키·문자열 `"true"`·`1`·`null`·배열·빈 본문·JSON 아님·JSON 머리 아님 `400 {"error":"잘못된 요청입니다"}`(값 그대로 · 기록 0) · GET 등 다른 메서드 `405` |
+| 감사 | 성공 한 행 `me.settings allow` — 대상 = 본인 계정 · `detail.high_contrast`(바꾼 뒤 값). 형식이 틀린 400 은 남기지 않는다(바뀐 것 0) |
+| 넣지 않는 것 | 다른 계정을 가리키는 칸(보내면 모르는 키라 400) · 쿠키·브라우저 저장소(고대비 판단은 계정 칸으로만) |
+
+```bash
+# 세션 잼 + CSRF(3장 csrf_token). 머리 값은 표준입력으로 — 명령 인자에 싣지 않는다(R-62)
+printf 'X-CSRF-Token: %s' "$CSRF" | curl -s -w '\n[%{http_code}]\n' -X PATCH -b jar -H @- -H 'Content-Type: application/json' \
+  --data-binary '{"high_contrast":true}' https://changkwon.mso.so/tbox/api/me/settings
+```
+
+실제로 받은 응답(2026-09-28 모의 인스턴스 `http://127.0.0.1:8108` · 7-D3 검토 반영 판 · 검토 계정 `claude_employee01` · 임시 DB):
+
+```text
+PATCH /tbox/api/me/settings (세션 없음)                         → 401 {"error":"로그인이 필요합니다"}
+PATCH … (CSRF 머리 없음)                                        → 403 {"error":"권한이 없습니다"}
+PATCH … {"high_contrast":true}                                  → 200 {"high_contrast":true}
+GET  /tbox/api/me (그 값만)                                     → 200 {"high_contrast": true}
+PATCH … {"high_contrast":"true"}                                → 400 {"error":"잘못된 요청입니다"}
+PATCH … {}                                                      → 400 {"error":"잘못된 요청입니다"}
+PATCH … {"high_contrast":true,"username":"claude_employee02"}   → 400 {"error":"잘못된 요청입니다"}
+GET  /tbox/api/me/settings                                      → 405 {"error":"허용되지 않는 메서드입니다"}
+PATCH … {"high_contrast":false}                                 → 200 {"high_contrast":false}
+```
+
+> 개인 프로그램 토큰(범위 `read`)으로 `PATCH` → `401 {"error":"로그인이 필요합니다"}`(같은 토큰의 `GET /api/whoami` 는 200) — 수락 시험 `tests/community/stage7d3.sh` C:T-210.
 
 ## 추가 규칙 (API 를 새로 적을 때)
 

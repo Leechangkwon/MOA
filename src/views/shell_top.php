@@ -252,7 +252,7 @@ if (!headers_sent()) {
 }
 ?>
 <!doctype html>
-<html lang="ko"<?= $themeAttr ?>>
+<html lang="ko"<?= $themeAttr ?><?= /* 7-D3 고대비(DESIGN 2.16) — 계정 칸이 참일 때만 고정 글자, 아니면 속성 없음 · 새 함수 0 */ ($shellUser['high_contrast'] ?? false) === true ? ' data-contrast="high"' : '' ?>>
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">

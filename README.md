@@ -899,6 +899,8 @@ curl -s -b jar -X POST -H 'Content-Type: application/json' -H "X-CSRF-Token: $TO
 
 되돌릴 때는 ③ 만 되돌려도 됩니다(`git apply -R` — 표는 남아도 무해). `.env` 의 `APP_URL` 이 `https://<호스트 이름>` 이 아니면(IP 등) 기능은 저절로 꺼집니다.
 
+**고대비 화면(커뮤니티 7-D3 · DESIGN.md 2.16)** — 「내 계정」 → 「화면」 → 「고대비 화면」. 마이그레이션 `db/migrations/2026-10-08_users_high_contrast.sql`(users 칸 하나 `high_contrast` · 권한 변경 0)은 **코드보다 먼저**입니다 — 세션 조회가 이 칸을 읽어, 칸 없이 코드가 나가면 로그인한 모든 요청이 500 입니다: `sudo bash scripts/apply-7d3-db-2026-09-27.sh --dry-run <마이그레이션 사본>` → `--migrate <사본>` → `bash scripts/apply-7d3-repo-2026-09-27.sh <패치> <sha256> --dry-run` → 본 실행. 되돌릴 때는 저장소 먼저 — 라우트 표가 든 `public/index.php` 를 먼저 되돌리고 3초 뒤 나머지(핸들러 파일은 마지막 · 명령 줄은 반영 스크립트 머리 「되돌리기」), 칸은 남아도 무해합니다.
+
 ## 2단계 인증 (TOTP) — 10단계 · `SECURITY.md` R-05 · R-85
 
 비밀번호 하나만으로는 Admin 계정이 털리면 급여·인사 자료가 통째로 넘어갑니다.

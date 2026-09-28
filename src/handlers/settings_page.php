@@ -84,6 +84,25 @@ require __DIR__ . '/../views/shell_top.php';
         </div>
       </section>
 
+      <!-- 커뮤니티 7-D3 「화면」 (DESIGN 2.16 · 지시서 2장 H-6) — 고대비 화면 켜고 끄기. 새 클래스 0(.panel · .form · .field · .help).
+           체크의 처음 상태는 /api/me 의 high_contrast 를 app.js(initSettings)가 놓고, 바꾸면 PATCH /api/me/settings 하나 →
+           200 이면 <html> 의 data-contrast 를 놓거나 뗀다 · 실패면 체크를 되돌리고 #msg 에 서버 문구. 값은 계정 칸이라 어느 기기에서나 같다. -->
+      <section class="panel">
+        <div class="panel__head">
+          <h2 class="panel__title">화면</h2>
+          <p class="panel__sub">이 화면에서만이 아니라 내 계정 전체에 적용됩니다.</p>
+        </div>
+        <div class="form">
+          <label class="field">
+            <span class="field__label">
+              <input id="contrast-toggle" type="checkbox" disabled>
+              고대비 화면
+            </span>
+          </label>
+          <p class="help">글자와 배경의 차이를 더 크게 합니다. 밝은 화면·어두운 화면 모두에 적용됩니다.</p>
+        </div>
+      </section>
+
       <section class="panel">
         <div class="panel__head">
           <h2 class="panel__title">비밀번호 변경</h2>

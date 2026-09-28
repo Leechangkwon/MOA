@@ -280,8 +280,9 @@ else
   # F-66 (2026-09-22) 으로 `can_issue_tokens`·`token_scopes` 둘이 늘었다 (ARCH 4.7 「GET /api/me」).
   # 디버깅 묶음 U (2026-09-26) `can_community_write` · T:F-72 (2026-09-27) `passkey_available`·`passkeys_active` — API.md 3장(화면 편의 값 · 권한 아님).
   #   (can_community_write 는 U 반영 때 이 목록을 고치지 않아 기준 판 fd96aca 에서도 이 항목이 실패했다 — 2026-09-27 패스키 회귀에서 발견)
-  expect "세션 /api/me 키 집합 (F-66 · U · F-72 추가)" \
-    "acting,acting_as,acting_idle_minutes,can_admin,can_community_write,can_fetch,can_issue_tokens,can_manage_org,can_manage_users,can_stop_acting,can_view_audit,can_view_trash,can_view_wiki,csrf_token,fetch_enabled,mfa_enabled,mfa_recommended,mfa_required,mfa_setup_required,must_change_password,next,passkey_available,passkeys_active,real_role,reauth_fresh,role,team_id,team_name,token_scopes,upload_levels,username" \
+  # 커뮤니티 7-D3 (2026-09-27) `high_contrast` — 고대비 화면 체크의 처음 상태(API.md 3장 · 화면 편의 값 · 권한 아님)
+  expect "세션 /api/me 키 집합 (F-66 · U · F-72 · 7-D3 추가)" \
+    "acting,acting_as,acting_idle_minutes,can_admin,can_community_write,can_fetch,can_issue_tokens,can_manage_org,can_manage_users,can_stop_acting,can_view_audit,can_view_trash,can_view_wiki,csrf_token,fetch_enabled,high_contrast,mfa_enabled,mfa_recommended,mfa_required,mfa_setup_required,must_change_password,next,passkey_available,passkeys_active,real_role,reauth_fresh,role,team_id,team_name,token_scopes,upload_levels,username" \
     "$(jq_py '",".join(sorted(d.keys()))' < "$WORK/e_me.json")"
 fi
 

@@ -122,6 +122,9 @@ $mePayload = [
     // 10단계 — 내 2단계 인증이 켜져 있나 (R-05). 권한이 아니라 상태이며,
     // 화면이 "켜기" 를 보일지 "끄기" 를 보일지 고르는 데만 쓴다.
     'mfa_enabled'      => ($user['mfa_enabled'] ?? false) === true,
+    // 커뮤니티 7-D3 — 내 화면 취향 「고대비 화면」(DESIGN 2.16). 「내 계정」 「화면」 패널의 체크가 이 값으로 처음 상태를 놓는다.
+    // **권한이 아니라 상태**다 — 셸·런처의 <html data-contrast> 는 서버가 같은 계정 칸으로 그린다(화면이 이 값으로 판단하지 않는다).
+    'high_contrast'    => ($user['high_contrast'] ?? false) === true,
     /*
      * F-66 — 「프로그램 토큰」 절이 쓰는 값 둘 (PRD F-66 ② ③, ARCH 4.7 「GET /api/me」).
      *

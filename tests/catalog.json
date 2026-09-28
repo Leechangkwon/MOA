@@ -3911,6 +3911,113 @@
       "est_sec": 600,
       "writes_prod": false,
       "notes": "부르는 셸: tbox.dbg_u3_ui. 단독 실행 불가(인자 SITE UA SHOTS 와 세션 넷을 표준입력 네 줄로 부르는 셸이 넘긴다 · 관리자 세션은 셸이 재인증해 둔 것). 결과 줄 SMOKE_FAIL=n. 넷째 인자 before 는 고치기 전 판 스크린샷용(종료 코드 0). 임시 DB 에 페이지·게시판 글·댓글·보드 행·그림 파일을 만든다(공개 게시·범위 넓히기 거부 창구 400 file_narrower 확인 포함)."
+    },
+    {
+      "id": "community.stage7d3",
+      "cmd": "REGRESS=0 bash tests/community/stage7d3.sh",
+      "module": "community",
+      "env": "temp-instance",
+      "status": "required",
+      "needs": [
+        "sudo",
+        "browser"
+      ],
+      "covers": [
+        "DESIGN.md",
+        "db/migrations/2026-10-08_users_high_contrast.sql",
+        "db/schema.sql",
+        "public/index.php",
+        "src/Auth.php",
+        "src/Audit.php",
+        "src/handlers/me_settings.php",
+        "src/handlers/me.php",
+        "src/handlers/settings_page.php",
+        "src/help/screens.php",
+        "src/views/shell_top.php",
+        "src/views/launcher.php",
+        "src/site/launcher_page.php",
+        "src/handlers/reauth_page.php",
+        "src/handlers/login_page.php",
+        "src/handlers/me_act_start.php",
+        "src/handlers/me_act_stop.php",
+        "src/handlers/api_whoami.php",
+        "src/handlers/files_upload.php",
+        "src/handlers/files_download.php",
+        "src/community/handlers/pages_create.php",
+        "src/community/handlers/pages_update.php",
+        "public/assets/app.css",
+        "public/assets/community/community.css",
+        "public/assets/app.js",
+        "tests/lib/contrast.py",
+        "tests/browser/hc_screens.py",
+        "tests/browser/dbg_s_screens.py",
+        "scripts/ui_snapshot.py",
+        "scripts/security_lint.sh",
+        "scripts/community_asset_version.php",
+        "scripts/wiki_check.php",
+        "scripts/totp_code.php"
+      ],
+      "requirements": [
+        "C:T-210",
+        "C:T-211",
+        "C:T-212",
+        "C:T-213",
+        "C:T-214"
+      ],
+      "risks": [
+        "R-62"
+      ],
+      "est_sec": 900,
+      "writes_prod": false,
+      "notes": "7-D3 고대비 화면(결정 J-5 · L-3 · DESIGN 2.16). 임시 인스턴스 **둘**: 새 판(기본 8106)과 기준 판(STAGE7D3_BASE_REV 기본 ad5a795 — git archive, 기본 8107)이 같은 임시 DB tbox_7d3_<포트>_test(운영 pg_dump 를 읽어 파이프로 붓기만)를 본다 · 이 라운드 포트는 8106~8108 만(다른 값은 exit 3). .env 는 STAGE7D3_ENV_SRC 로 받은 원본을 세 줄 치환 + SCAN_ENABLED=0(0600 · trap 정리). 정적(php -l · 보안 린트 · --check · wiki_check · 허용 목록 밖 파일 0 · 고치지 않는 것 차이 0 · 라우트 표 한 줄 · 토큰 창구·강제 절차 목록 그대로 · 더한 줄 인라인·innerHTML·쿠키·localStorage·filter 0 · 뷰 <html> 한 줄씩 새 함수 0 · 첫 커밋 DESIGN) → 마이그레이션을 임시 DB 에 두 번·되돌리기 줄 뒤 다시(칸이 없으면 새 코드의 로그인한 /api/me 500 을 일부러 확인 — 그 앞 서버 로그 줄은 끝 로그 확인에서 뺀다) → C:T-210 창구(401·403·200·400 열셋·감사 me.settings·다른 계정 표 대조·임시 DB 에 개인 토큰 한 줄 INSERT 해 whoami 200 · PATCH 401 · 관리자 역할로 보기 중 H-8) → C:T-211 contrast.py + 틀린 사본 여섯이 실패하는지 → C:T-212 curl <html> 줄(켬·끔 원문을 찍는다) → 준비(문서 페이지 · 관리자 admin-only 파일 · 직원 거부 행 둘) → C:T-213 hc_screens.py(+ C:T-214 토큰 대조) → C:T-214 ui_snapshot.py 1440·1280 기준 판·새 판(관리자 세션 하나를 표준입력으로 — 재인증 한 번) · 켬 1280 · dbg_s_screens.py. 검토 계정 claude_ 다섯 순차 로그인(자격 sudo -n awk /etc/tbox-v2). 브라우저는 QAREDI_BROWSER_LOCK(있으면 flock -x) 아래 · available 700MB 미만이면 1분씩 최대 15분 기다림. psql 은 표준입력으로만. 운영 감사 max(id)·경보 줄 수·비밀 파일 시각은 시작·끝 읽기만 · 운영 감사에 이 UA·로컬 행 0 확인. REGRESS 는 기본 0 — cmd 에 박아 둔다(회귀는 env=prod 시험을 이 인스턴스로 sed 치환해 돈다). 스크린샷은 STAGE7D3_SHOTS."
+    },
+    {
+      "id": "community.browser_hc_screens",
+      "cmd": "python3 tests/browser/hc_screens.py",
+      "module": "community",
+      "env": "temp-instance",
+      "status": "helper",
+      "needs": [
+        "browser"
+      ],
+      "covers": [
+        "src/handlers/settings_page.php",
+        "public/assets/app.js",
+        "public/assets/app.css",
+        "public/assets/community/community.css",
+        "src/views/shell_top.php",
+        "src/views/launcher.php",
+        "tests/lib/contrast.py"
+      ],
+      "requirements": [
+        "C:T-213",
+        "C:T-214"
+      ],
+      "risks": [
+        "R-62"
+      ],
+      "est_sec": 360,
+      "writes_prod": false,
+      "notes": "부르는 셸: community.stage7d3. 단독 실행 불가(인자 SITE UA SHOTS APP_CSS COMMUNITY_CSS · 세션은 표준입력 첫 줄 — R-62 · HC_PAGE·HC_BOARD·HC_BASE_SITE 는 셸이 준다). 내 계정 「화면」 체크 → 요청 하나 → 곧바로 data-contrast · 화면 일곱(런처·파일·내 계정·커뮤니티 홈·페이지·게시판·재인증) × 360t·412t·412m·820t·1280 × 라이트·다크 넘침·콘솔·기본 창·HTTP≥400 0 · 주요 단추 배경·문서 nt-red = 저장소 CSS 고대비 값(contrast.py 해석기) · 끄기 · route 로 500 흉내(그 한 줄의 콘솔만 뺀다) · HC_BASE_SITE 가 있으면 끈 상태 토큰 계산값 = 기준 판. 결과 줄 SMOKE_FAIL=n."
+    },
+    {
+      "id": "community.lib_contrast",
+      "cmd": "python3 tests/lib/contrast.py",
+      "module": "community",
+      "env": "static",
+      "status": "required",
+      "needs": [],
+      "covers": [
+        "public/assets/app.css",
+        "public/assets/community/community.css"
+      ],
+      "requirements": [
+        "C:T-211"
+      ],
+      "risks": [],
+      "est_sec": 2,
+      "writes_prod": false,
+      "notes": "저장소 CSS 두 파일의 고대비 세 블록을 읽어 WCAG 2.1 대비를 계산(외부 라이브러리 0) — 글자 ≥ 4.5 · 선·고리 ≥ 3 · 밝게·어둡게 · 블록 모양(새 이름 0 · 어두운 두 곳 같음 · 어두운 블록이 밝은 고대비 이름을 다 적음 · data-contrast 는 세 선택자에만). 결과 줄 CONTRAST_FAIL=n · 종료 코드 0/1/2. stage7d3.sh C:T-211 도 부른다(틀린 사본 여섯 포함)."
     }
   ]
 }

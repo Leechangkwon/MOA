@@ -92,6 +92,76 @@
   }
 }
 
+/* ─── 고대비 화면 (DESIGN.md 2.16 · 커뮤니티 7-D3) — 문서 토큰 18 의 값만 바꾼다 ────────────────
+ * app.css 의 세 블록과 같은 모양·같은 규칙: 서버가 <html data-contrast="high"> 를 그린 사람에게만 · 새 이름 0 · `--size-*` 그대로 ·
+ * 어두운 두 곳 같은 값 · 다크 기본 블록 뒤에 둔다(무게가 같은 밝은 고대비 블록이 이기므로 어두운 고대비 블록이 18 을 다 적는다).
+ * 기준(시험 tests/lib/contrast.py): 글자색 9 × `--bg` ≥ 4.5 · `--fg` × 배경색 9 ≥ 4.5 · 같은 색 글자 × 배경 ≥ 4.5 — 밝게·어둡게 각각. */
+:root[data-contrast="high"] {
+  --nt-gray:   #4a4a47;
+  --nt-brown:  #6b4633;
+  --nt-orange: #9a4a0a;
+  --nt-yellow: #7a5a12;
+  --nt-green:  #2f5a3f;
+  --nt-blue:   #1f4f7a;
+  --nt-purple: #5b3d85;
+  --nt-pink:   #8a2e5e;
+  --nt-red:    #9a2f2a;
+
+  --nt-gray-bg:   #ebebe8;
+  --nt-brown-bg:  #efe4de;
+  --nt-orange-bg: #f7e3cf;
+  --nt-yellow-bg: #f8edc8;
+  --nt-green-bg:  #e2ede0;
+  --nt-blue-bg:   #dcecf3;
+  --nt-purple-bg: #efe9f4;
+  --nt-pink-bg:   #f7e4ed;
+  --nt-red-bg:    #fbdfe0;
+}
+@media (prefers-color-scheme: dark) {
+  :root[data-contrast="high"]:not([data-theme="light"]) {
+    --nt-gray:   #c4c4c4;
+    --nt-brown:  #dcab96;
+    --nt-orange: #eda06b;
+    --nt-yellow: #e9c06b;
+    --nt-green:  #7fcf9f;
+    --nt-blue:   #93b6f0;
+    --nt-purple: #c6a0f0;
+    --nt-pink:   #f090c2;
+    --nt-red:    #ff928c;
+
+    --nt-gray-bg:   #2a2a2a;
+    --nt-brown-bg:  #3f2a21;
+    --nt-orange-bg: #4a2f1b;
+    --nt-yellow-bg: #463a26;
+    --nt-green-bg:  #1d3528;
+    --nt-blue-bg:   #102f40;
+    --nt-purple-bg: #33263e;
+    --nt-pink-bg:   #422533;
+    --nt-red-bg:    #462724;
+  }
+}
+:root[data-contrast="high"][data-theme="dark"] {
+  --nt-gray:   #c4c4c4;
+  --nt-brown:  #dcab96;
+  --nt-orange: #eda06b;
+  --nt-yellow: #e9c06b;
+  --nt-green:  #7fcf9f;
+  --nt-blue:   #93b6f0;
+  --nt-purple: #c6a0f0;
+  --nt-pink:   #f090c2;
+  --nt-red:    #ff928c;
+
+  --nt-gray-bg:   #2a2a2a;
+  --nt-brown-bg:  #3f2a21;
+  --nt-orange-bg: #4a2f1b;
+  --nt-yellow-bg: #463a26;
+  --nt-green-bg:  #1d3528;
+  --nt-blue-bg:   #102f40;
+  --nt-purple-bg: #33263e;
+  --nt-pink-bg:   #422533;
+  --nt-red-bg:    #462724;
+}
+
 /* ─── 글자색·배경색·크기·정렬 (이름 → 토큰) ─────────────────── */
 
 .nt-gray   { color: var(--nt-gray); }

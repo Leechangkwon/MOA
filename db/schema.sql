@@ -80,6 +80,10 @@ CREATE TABLE users (
             AND display_name = btrim(display_name)
             AND display_name !~ '[[:cntrl:]]')
     ),
+    -- 커뮤니티 7-D3 (2026-09-27, migrations/2026-10-08_users_high_contrast.sql) — 화면 취향 「고대비 화면」(DESIGN.md 2.16).
+    --   기본 끔(false). 켜면 셸·런처가 <html data-contrast="high"> 를 그린다. 쓰기는 본인 창구 PATCH /api/me/settings 하나.
+    --   **권한 판단에 쓰지 않는다** — 세션 조회(Auth::SQL_LOOKUP)가 함께 읽을 뿐이다. 표 단위 권한에 포함(열 단위 GRANT 0).
+    high_contrast        BOOLEAN     NOT NULL DEFAULT false,
     -- Guest 는 만료일 필수 (PRD 3장 Guest 생명주기, SECURITY R-12).
     -- 앱 코드가 한 군데라도 검사를 빠뜨려도 만료 없는 Guest 행은 존재할 수 없다.
     CONSTRAINT guest_requires_expires_at

@@ -659,6 +659,8 @@ final class Audit
         'auth.reauth|allow'                             => '{actor} 이(가) 관리 기능을 쓰려고 비밀번호를 다시 확인했습니다',
         'auth.reauth|deny|bad_credentials'              => '{actor} 이(가) 관리 기능을 쓰려고 비밀번호를 다시 확인했지만 비밀번호가 틀렸습니다',
         'auth.password_change|deny|same_password'       => '{actor} 이(가) 비밀번호를 현재와 같은 값으로 바꾸려 해서 거부했습니다',
+        // 커뮤니티 7-D3 — 내 화면 취향(고대비 화면 · DESIGN 2.16). 켰나 껐나는 detail.high_contrast(참/거짓)에만 남는다(S-07 — 계정 행을 바꾸는 쓰기)
+        'me.settings|allow'                             => '{actor} 이(가) 자기 계정의 화면 설정(고대비 화면)을 바꿨습니다 (켬·끔은 상세 기록)',
 
         // ── 「역할로 보기」 (26단계 — PRD F-39, ARCH 5.20 · 7.4, SECURITY R-74) ──────────
         // 실제 계정은 {actor}(= actor_role 열의 실제 역할)이고, 고른 역할·팀·지점은 detail 에 남는다.

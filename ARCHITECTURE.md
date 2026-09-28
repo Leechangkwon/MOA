@@ -2153,6 +2153,7 @@ GRANT  USAGE, SELECT  ON SEQUENCE audit_logs_id_seq TO tbox_app;
 | `auth.passkey_revoke|allow|deactivate` | `{actor} 이(가) 계정 「{target}」 을(를) 비활성화해 그 계정의 지문·얼굴 로그인 기기를 해제했습니다` | F-72. 열쇠 하나에 한 행 · `detail` credential_no·credential_label |
 | `auth.passkey_revoke|deny|not_found` | `{actor} 이(가) 없는 지문·얼굴 로그인 기기를 해제하려 했습니다` | F-72. 남의 번호도 같은 행·같은 404 |
 | `auth.password_change|deny|same_password` | `{actor} 이(가) 비밀번호를 현재와 같은 값으로 바꾸려 해서 거부했습니다` | 11단계 |
+| `me.settings|allow` | `{actor} 이(가) 자기 계정의 화면 설정(고대비 화면)을 바꿨습니다 (켬·끔은 상세 기록)` | 커뮤니티 7-D3 `PATCH /api/me/settings`(대상은 세션의 본인 — `target` = 본인 계정) · `detail.high_contrast` · 형식이 틀린 400 은 기록하지 않는다(바뀐 것 0) |
 | `user.password_reset|allow` | `{actor} 이(가) 계정 「{target}」 의 임시 비밀번호를 재발급하고 모든 세션을 끊었습니다 (사유는 상세 기록)` | 11단계 users (Admin) |
 | `user.password_reset|deny|self_change` | `{actor} 이(가) 자기 자신의 임시 비밀번호를 재발급하려 해서 거부했습니다` | 11단계 |
 | `user.password_reset|deny|bad_request` | `{actor} 이(가) 계정 「{target}」 임시 비밀번호 재발급을 사유 없이 요청해서 거부했습니다` | 11단계 |
@@ -2413,6 +2414,7 @@ GRANT  USAGE, SELECT  ON SEQUENCE audit_logs_id_seq TO tbox_app;
 | `reason_text` | 왜 | 관리자가 입력한 사유 (500자) | 핸들러 | 역할 변경·비활성화·강제 삭제·레벨 하향 (10단계) |
 | `changed_fields` | 무엇을 | 바뀐 **칸 이름** 목록(`role`·`team_id`·`is_active`·`expires_at`·`display_name`·`username`(d74)). 이름의 **값**은 어디에도 남기지 않는다(개인정보 · append-only). d74 아이디도 같다 — 새 아이디는 어디에도 없고 옛 아이디는 그 행의 `target_name` 이다 | 핸들러 | `user.update`·`user.role_change`·`user.activate`·`user.deactivate`·`user.expiry_change` (5-A″) |
 | `display_name_set` | 무엇을 | `true`/`false` — 계정을 만들 때 이름을 넣었나(값은 남기지 않는다) | 핸들러 | `user.create` (5-A″) |
+| `high_contrast` | 무엇을 | `true`/`false` — 바꾼 뒤 저장된 화면 취향(고대비 화면 켬·끔 · `UPDATE … RETURNING` 값). **권한이 아니다** — 어떤 판정도 이 값을 읽지 않는다 | 핸들러 | `me.settings allow` (커뮤니티 7-D3) |
 | `owner_id` | 무엇을 | 파일을 올린 사용자 id — 삭제·다운로드 판정에 쓰인 값 | 핸들러 | `file.delete`·`file.download` |
 | `target_team` | 무엇을 | 파일의 `team_id` (team 레벨이 아니면 null) — `actor_team` 과 나란히 놓으면 `same_team`·`team_mismatch` 판정을 로그만으로 재검산할 수 있다 | 핸들러 | `file.download`·`file.delete`·`file.upload` |
 | `ext` · `mime` | 무엇을 | 저장 확장자와 finfo 로 판별한 실제 MIME (DB `files.ext`·`files.mime` 과 같은 값) — 파일명이 아니라 내용 종류를 남긴다 (R-16) | 핸들러 | `file.upload`(allow) |
