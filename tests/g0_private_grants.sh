@@ -45,6 +45,7 @@ WORK="$(mktemp -d)"
 chmod 700 "$JAR_DIR" "$WORK"
 INST=""
 SERVER_PID=""
+RACE_PID=""
 PASS=0
 FAIL=0
 SKIP=0
@@ -84,6 +85,8 @@ browser_lock_off() { [ -n "${BROWSER_LOCK:-}" ] || return 0; flock -u 9; exec 9>
 
 cleanup() {
   if [ -n "$SERVER_PID" ]; then kill "$SERVER_PID" 2>/dev/null; wait "$SERVER_PID" 2>/dev/null; fi
+  # 여러 일꾼 서버(T-G0-10 ④) — 일꾼은 주 프로세스의 자식이라 주를 죽여도 남는다: 자식부터 이름(PID)으로 끈다
+  if [ -n "$RACE_PID" ]; then pkill -P "$RACE_PID" 2>/dev/null; kill "$RACE_PID" 2>/dev/null; wait "$RACE_PID" 2>/dev/null; fi
   ( cd / && sudo -n -u postgres dropdb --if-exists "$DB" >/dev/null 2>&1 )
   [ -n "$INST" ] && rm -rf "$INST"
   rm -rf "$JAR_DIR" "$WORK"
@@ -157,17 +160,15 @@ capi() { _call "$CBASE" "$@"; }
 # JSON 본문은 파이썬이 만든다(셸 따옴표에 한글이 섞이지 않게). $1 = 파이썬 식
 jbody() { python3 -c "import json;print(json.dumps($1, ensure_ascii=False))" > "$WORK/body.json"; }
 # 올리기 — $1 계정 $2 파일 이름 $3 등급 $4 폴더 번호(없으면 루트) $5 내용(없으면 이름) → 상태(본문은 $WORK/b)
-upload() {
-  local who="$1" name="$2" level="$3" folder="${4:-}" content="${5:-$2}" jar csrf
+upload() {   # $6 팀 번호(team 등급일 때 — 없으면 보내지 않는다)
+  local who="$1" name="$2" level="$3" folder="${4:-}" content="${5:-$2}" team="${6:-}" jar csrf
+  local -a extra=()
   jar="$JAR_DIR/$who.jar"; eval "csrf=\${CSRF_${who}:-}"
   printf '%s\n' "$content" > "$WORK/up.txt"
-  if [ -n "$folder" ]; then
-    curl -s -D "$WORK/h" -o "$WORK/b" -A "$UA" -b "$jar" -H 'Expect:' -H "X-CSRF-Token: $csrf" \
-      -F "file=@$WORK/up.txt;filename=$name" -F "access_level=$level" -F "folder_id=$folder" "$BASE/api/files"
-  else
-    curl -s -D "$WORK/h" -o "$WORK/b" -A "$UA" -b "$jar" -H 'Expect:' -H "X-CSRF-Token: $csrf" \
-      -F "file=@$WORK/up.txt;filename=$name" -F "access_level=$level" "$BASE/api/files"
-  fi
+  [ -n "$folder" ] && extra+=(-F "folder_id=$folder")
+  [ -n "$team" ] && extra+=(-F "team_id=$team")
+  curl -s -D "$WORK/h" -o "$WORK/b" -A "$UA" -b "$jar" -H 'Expect:' -H "X-CSRF-Token: $csrf" \
+    -F "file=@$WORK/up.txt;filename=$name" -F "access_level=$level" "${extra[@]}" "$BASE/api/files"
   status_of "$WORK/h"
 }
 uid() { psqlq "SELECT id FROM users WHERE username='$1'"; }
@@ -237,7 +238,7 @@ expect "db/grants.sql 재실행 — 오류 0 · 권한 그대로(tbox_app 표 IN
 sub "② 저장소를 임시 폴더로 복사하고 인스턴스를 띄운다"
 INST="$(mktemp -d)"
 chmod 700 "$INST"
-mkdir -p "$INST/app" "$INST/storage" "$INST/log"
+mkdir -p "$INST/app" "$INST/storage" "$INST/tmp" "$INST/log"   # tmp = Storage::tmpDir(저장소의 형제 — zip·가져오기)
 tar -C "$ROOT" -cf - --exclude=.git --exclude=jar --exclude=api-test.txt --exclude=./.env . | tar -C "$INST/app" -xf -
 ENV_SRC="${G0_ENV_SRC:-$ROOT/.env}"
 [ -f "$ENV_SRC" ] || { echo "$ENV_SRC 가 없다 — 임시 .env 를 만들 원본이 없어 시험을 시작하지 않는다"; exit 3; }
@@ -298,7 +299,7 @@ for who in claude_employee01 claude_employee02 claude_manager01 claude_admin01 c
   eval "CSRF_${who}='$tok'"
   echo "  ✔ $who"
 done
-U_E1=$(uid claude_employee01); U_E2=$(uid claude_employee02); U_M1=$(uid claude_manager01); U_A1=$(uid claude_admin01); U_G1=$(uid claude_guest01)
+U_E1=$(uid claude_employee01); T_E1=$(psqlq "SELECT team_id FROM users WHERE username='claude_employee01'"); U_E2=$(uid claude_employee02); U_M1=$(uid claude_manager01); U_A1=$(uid claude_admin01); U_G1=$(uid claude_guest01)
 note "계정 번호: employee01=$U_E1 employee02=$U_E2 manager01=$U_M1 admin01=$U_A1 guest01=$U_G1"
 # 이름(표시 이름) — 임시 DB 에서만: 직원2 에게 이름을 준다(이름으로 권한 주기 · 같은 이름 여럿)
 psqlq "UPDATE users SET display_name = '검토지공이' WHERE username = 'claude_employee02'" > /dev/null
@@ -545,7 +546,7 @@ expect "없는 줄 빼기 → 404" "404" "$(tapi DELETE "/api/folders/$A/grants/
 sub "파일 권한만 받은 사람 — 파일은 보이고 위 폴더 이름은 새지 않는다"
 jbody "{'user': 'claude_guest01'}"; expect "P 에 손님 보기 200" "200" "$(tapi POST "/api/files/$P/grants" claude_employee01 "$WORK/body.json")"
 st=$(tapi GET "/api/files?q=$SECRET" claude_guest01)
-expect "손님 검색 — P 한 건 · folder_id null · 경로 「…」" "1 None …" "$(jget "d['total']" < "$WORK/b") $(jget "d['files'][0]['folder_id']" < "$WORK/b") $(jget "d['files'][0]['folder_path']" < "$WORK/b")"
+expect "손님 검색 — P 한 건 · folder_id null · 경로 「…」" "1 None …" "$(jget "d['total']" < "$WORK/b") $(jget "str(d['files'][0]['folder_id'])" < "$WORK/b") $(jget "d['files'][0]['folder_path']" < "$WORK/b")"
 lacks "  손님 검색 응답에 폴더 A 이름 없음" "$FA" "$(cat "$WORK/b")"
 lacks "  손님 검색 응답에 폴더 B 이름 없음" "$FB" "$(cat "$WORK/b")"
 expect "손님 P 받기 200" "200" "$(tapi GET "/api/files/$P/download" claude_guest01)"
@@ -584,7 +585,7 @@ expect "꺼진 계정 = 없는 계정 = 주인 자신 — 같은 400 같은 글�
 jbody "{'user': '동명이인$TAG'}"; expect "같은 이름 여럿 → 400(아이디로)" "400" "$(tapi POST "/api/folders/$A/grants" claude_employee01 "$WORK/body.json")"
 contains "  문장" "아이디로" "$(cat "$WORK/b")"
 jbody "{'user': 'claude_employee02'}"; expect "개인이 아닌 항목(팀 파일)에 주기 → 400" "400" \
-  "$(upload claude_employee01 "$TAG-team.txt" team >/dev/null; tapi POST "/api/files/$(fid_of "$TAG-team.txt")/grants" claude_employee01 "$WORK/body.json")"
+  "$(upload claude_employee01 "$TAG-team.txt" team "" "$TAG-team" "$T_E1" >/dev/null; tapi POST "/api/files/$(fid_of "$TAG-team.txt")/grants" claude_employee01 "$WORK/body.json")"
 st=$(tapi GET "/api/access/people?q=" claude_employee01); expect "사람 후보 — 빈 검색어는 빈 목록" "200 0" "$st $(jget "len(d['candidates'])" < "$WORK/b")"
 st=$(tapi GET "/api/access/people?q=claude_e" claude_employee01); PEOPLE=$(jget "sorted(c['username'] for c in d['candidates'])" < "$WORK/b")
 contains "사람 후보 — 직원2 · 부른 사람(직원1) 빠짐" "claude_employee02" "$PEOPLE"; lacks "  부른 사람 빠짐" "claude_employee01" "$PEOPLE"
@@ -648,13 +649,15 @@ expect "관리자 주인의 개인 파일 R2 올리기 201" "201" "$(upload clau
 R2=$(fid_of "$TAG-R2.txt")
 jbody "{'user': 'claude_employee02'}"; tapi POST "/api/files/$R2/grants" claude_admin01 "$WORK/body.json" > /dev/null
 M7=$(mark)
-jbody "{'access_level': 'internal', 'reason_text': '사내에 알림'}"
+# 파일 등급 창구(PATCH /api/files/{id})의 허용 키는 description·access_level·team_id·folder_id 넷(R-07) — 사유 칸은 없다.
+# 개인 → 넓히기도 기존 R-20 그대로(Admin 만 · 15분 재인증 · 감사 before/after) — 새 키를 만들지 않는다.
+jbody "{'access_level': 'internal'}"
 st=$(tapi PATCH "/api/files/$R2" claude_admin01 "$WORK/body.json"); NEXT=$(jget "d.get('next')" < "$WORK/b")
 expect "관리자 넓히기 — 재인증 전 403 next reauth" "403 reauth" "$st $NEXT"
 expect "재인증 200" "200" "$(reauth claude_admin01)"
 expect "관리자 넓히기 200" "200" "$(tapi PATCH "/api/files/$R2" claude_admin01 "$WORK/body.json")"
-expect "감사 file.level_change allow · before private → after internal · 사유" "private internal 사내에 알림" \
-  "$(psqlq "SELECT detail->'before'->>'access_level', detail->'after'->>'access_level', detail->>'reason_text' FROM audit_logs WHERE id > $M7 AND action='file.level_change' AND result='allow' ORDER BY id DESC LIMIT 1" | tr '|' ' ')"
+expect "감사 file.level_change allow · before private → after internal · granted_by" "private internal matrix" \
+  "$(psqlq "SELECT detail->'before'->>'access_level', detail->'after'->>'access_level', detail->>'granted_by' FROM audit_logs WHERE id > $M7 AND action='file.level_change' AND result='allow' ORDER BY id DESC LIMIT 1" | tr '|' ' ')"
 expect "넓힌 뒤에도 권한 줄은 남는다" "1" "$(psqlq "SELECT count(*) FROM access_grants g JOIN files f ON f.id=g.file_id WHERE f.public_id='$R2'")"
 jbody "{'access_level': 'private'}"; expect "다시 좁히기(올린 사람) 200" "200" "$(tapi PATCH "/api/files/$R2" claude_admin01 "$WORK/body.json")"
 expect "되살아남 — 직원2 R2 받기 200 · 팀장 403" "200 403" "$(tapi GET "/api/files/$R2/download" claude_employee02) $(tapi GET "/api/files/$R2/download" claude_manager01)"
@@ -714,10 +717,13 @@ tapi DELETE "/api/files/$R/grants/$U_E2" claude_admin01 > /dev/null
 sub "공유 링크 — 주인은 만들고, 뒤에 개인으로 좁혀진 남의 링크는 끝난다"
 jbody "{'expires_hours': 1, 'max_downloads': 3}"; expect "주인 — R 공유 링크 201" "201" "$(tapi POST "/api/files/$R/share" claude_employee01 "$WORK/body.json")"
 LINK=$(jget "d.get('url') or ''" < "$WORK/b"); LPATH="/${LINK#*://*/}"
+[ -n "$LINK" ] || { echo "  ✖ 주인 링크 주소가 비었다 — 멈춘다"; exit 4; }
 expect "링크로 받기(로그인 없이) 200" "200" "$(curl -s -o /dev/null -w '%{http_code}' -A "$UA" "$SITE$LPATH")"
-upload claude_employee01 "$TAG-teamlink.txt" team > /dev/null; TL=$(fid_of "$TAG-teamlink.txt")
+expect "팀 파일(링크용) 올리기 201" "201" "$(upload claude_employee01 "$TAG-teamlink.txt" team "" "$TAG-teamlink" "$T_E1")"; TL=$(fid_of "$TAG-teamlink.txt")
+[ -n "$TL" ] || { echo "  ✖ 팀 파일 번호가 비었다 — 뒤 항목이 빈 주소로 나가지 않게 멈춘다"; exit 4; }
 jbody "{'expires_hours': 1, 'max_downloads': 3}"; tapi POST "/api/files/$TL/share" claude_manager01 "$WORK/body.json" > /dev/null
 TLINK=$(jget "d.get('url') or ''" < "$WORK/b"); TPATH="/${TLINK#*://*/}"
+[ -n "$TLINK" ] || { echo "  ✖ 팀장 링크 주소가 비었다 — 빈 주소(사이트 뿌리 200)로 판정하지 않게 멈춘다"; exit 4; }
 expect "팀장(팀 범위)이 만든 링크로 받기 200" "200" "$(curl -s -o /dev/null -w '%{http_code}' -A "$UA" "$SITE$TPATH")"
 jbody "{'access_level': 'private'}"; expect "올린 사람(직원1)이 개인으로 좁히기 200" "200" "$(tapi PATCH "/api/files/$TL" claude_employee01 "$WORK/body.json")"
 expect "팀장이 만든 옛 링크 → 404(만든 사람이 주인이 아니다)" "404" "$(curl -s -o /dev/null -w '%{http_code}' -A "$UA" "$SITE$TPATH")"
@@ -738,10 +744,65 @@ jbody "{'folder_id': $B}"; expect "직원2(보기) — 자기 개인 파일을 B
 expect "직원2(보기) — B 에 올리기 → 400" "400" "$(upload claude_employee02 "$TAG-push.txt" private "$B")"
 jbody "{'name': '$TAG-push-dir', 'access_level': 'private', 'parent_id': $B}"; expect "직원2(보기) — B 안에 폴더 만들기 → 403" "403" "$(tapi POST /api/folders claude_employee02 "$WORK/body.json")"
 sub "④ 등급 바꾸기 경쟁 — 두 요청을 동시에(넓히기·좁히기) — 최종 상태가 한쪽 규칙을 넘지 않는다"
-jbody "{'access_level': 'internal'}"; cp "$WORK/body.json" "$WORK/wide.json"
-jbody "{'description': '경쟁'}"; cp "$WORK/body.json" "$WORK/desc.json"
-( tapi PATCH "/api/files/$R" claude_employee01 "$WORK/wide.json" > "$WORK/race1" ) & ( tapi PATCH "/api/files/$R" claude_employee02 "$WORK/desc.json" > "$WORK/race2" ) & wait
-expect "직원 넓히기 403 · 권한 없는 사람 설명 403 · R 은 그대로 개인" "private" "$(psqlq "SELECT access_level FROM files WHERE public_id='$R'")"
+# 동시성은 **여러 일꾼 서버**(PHP_CLI_SERVER_WORKERS — 같은 앱·같은 임시 DB)로 만든다. 본 서버(한 일꾼)는 요청을 줄 세워 경쟁이 생기지 않는다.
+# 두 요청은 각자 머리·본문 파일에 쓰고, `wait` 는 **두 PID 만** 기다린다(인자 없는 wait 는 배경의 서버까지 기다려 끝나지 않는다).
+RPORT=$((PORT + 1))
+case "$RPORT" in 8412|8413|8414|8415) ;; *) RPORT="" ;; esac
+[ -n "$RPORT" ] && ss -ltn 2>/dev/null | grep -qE "127\.0\.0\.1:$RPORT " && RPORT=""
+RSITE=""
+if [ -n "$RPORT" ]; then
+  ( cd "$INST/app" && PHP_CLI_SERVER_WORKERS=4 exec php -S "127.0.0.1:$RPORT" -t public router.php > "$INST/race-server.log" 2>&1 ) &
+  RACE_PID=$!
+  for _ in 1 2 3 4 5 6 7 8 9 10; do
+    sleep 0.5; [ "$(curl -s -o /dev/null -w '%{http_code}' -A "$UA" "http://127.0.0.1:$RPORT/tbox/login")" = 200 ] && { RSITE="http://127.0.0.1:$RPORT"; break; }
+  done
+fi
+# rcall 계정 메서드 경로 본문파일(JSON — 빈 값이면 없음) 이름 [올리기: 폴더 등급 파일이름] → $WORK/<이름>.code · $WORK/<이름>.b
+rcall() {
+  local who="$1" m="$2" path="$3" bodyfile="$4" out="$5" csrf
+  eval "csrf=\${CSRF_${who}:-}"
+  if [ "$m" = "UPLOAD" ]; then
+    curl -s --max-time 30 -o "$WORK/$out.b" -w '%{http_code}' -A "$UA" -b "$JAR_DIR/$who.jar" -H 'Expect:' -H "X-CSRF-Token: $csrf" \
+      -F "file=@$WORK/race-up.txt;filename=$8" -F "access_level=$7" -F "folder_id=$6" "$RSITE/tbox/api/files" > "$WORK/$out.code"
+  else
+    curl -s --max-time 30 -o "$WORK/$out.b" -w '%{http_code}' -A "$UA" -b "$JAR_DIR/$who.jar" -X "$m" -H 'Expect:' -H 'Content-Type: application/json' \
+      -H "X-CSRF-Token: $csrf" --data-binary "@$bodyfile" "$RSITE/tbox$path" > "$WORK/$out.code"
+  fi
+}
+if [ -z "$RSITE" ]; then
+  skip "등급 바꾸기 경쟁" "여러 일꾼 서버를 띄우지 못했다(포트 $((PORT + 1)))"
+else
+  note "여러 일꾼 서버 $RSITE (일꾼 4)"
+  jbody "{'access_level': 'internal'}"; cp "$WORK/body.json" "$WORK/wide.json"
+  jbody "{'description': '경쟁'}"; cp "$WORK/body.json" "$WORK/desc.json"
+  rcall claude_employee01 PATCH "/api/files/$R" "$WORK/wide.json" race1 & rp1=$!
+  rcall claude_employee02 PATCH "/api/files/$R" "$WORK/desc.json" race2 & rp2=$!
+  wait "$rp1" "$rp2"
+  expect "직원 넓히기 · 권한 없는 사람 설명 — 동시에 둘 다 403 · R 은 그대로 개인" "403 403 private" \
+    "$(cat "$WORK/race1.code") $(cat "$WORK/race2.code") $(psqlq "SELECT access_level FROM files WHERE public_id='$R'")"
+  # (가) 폴더 좁히기(사내 → 개인) ↔ 같은 순간 그 폴더에 사내 파일 올리기(다른 사람) — 불변 ①(개인 폴더 안은 개인만)이 끝까지 선다.
+  #     고치기 전(트랜잭션 안 재확인 없음)에는 몇 번에 한 번 「개인 폴더 + 사내 파일」 이 남았다(구현 기록 docs/g0-implementation.md).
+  echo race > "$WORK/race-up.txt"
+  jbody "{'access_level': 'private'}"; cp "$WORK/body.json" "$WORK/narrow.json"
+  RB=0; R_NARROW=0; R_UP=0; R_OTHER=0
+  for i in $(seq 1 "${G0_RACE_N:-10}"); do
+    jbody "{'name': '$TAG-race-$i', 'access_level': 'internal'}"; tapi POST /api/folders claude_employee01 "$WORK/body.json" > /dev/null
+    X=$(fnum_of "$TAG-race-$i")
+    rcall claude_employee01 PATCH "/api/folders/$X" "$WORK/narrow.json" ra1 & rp1=$!
+    rcall claude_employee02 UPLOAD "" "" ra2 "$X" internal "$TAG-race-$i.txt" & rp2=$!
+    wait "$rp1" "$rp2"
+    fin=$(psqlq "SELECT d.access_level || ' ' || (SELECT count(*) FROM files f WHERE f.folder_id = d.id AND f.purged_at IS NULL AND f.access_level <> 'private') FROM folders d WHERE d.id = $X")
+    case "$(cat "$WORK/ra1.code") $(cat "$WORK/ra2.code") $fin" in
+      "200 400 private 0") R_NARROW=$((R_NARROW + 1)) ;;
+      "400 201 internal 1") R_UP=$((R_UP + 1)) ;;
+      *) R_OTHER=$((R_OTHER + 1)); echo "    · $i: 좁히기 $(cat "$WORK/ra1.code") · 올리기 $(cat "$WORK/ra2.code") · 끝 [$fin]" ;;
+    esac
+    case "$fin" in "private 0"|"internal "*) ;; *) RB=$((RB + 1)) ;; esac
+  done
+  note "경쟁 (가) ${G0_RACE_N:-10}회 — 좁히기가 이김 $R_NARROW · 올리기가 이김 $R_UP · 그 밖 $R_OTHER"
+  expect "경쟁 (가) — 「개인 폴더 안에 개인 아닌 파일」 이 남은 회수 0" "0" "$RB"
+  expect "경쟁 (가) — 모든 회차가 둘 중 한쪽만 이긴 깨끗한 끝(그 밖 0)" "0" "$R_OTHER"
+fi
 sub "⑤ 요청 폭주 — 위 T-G0-6 한도(21번째 429) · ⑥ 매트릭스로 개인 읽기 켜기 — T-G0-1 CHECK 거부"
 note "⑤⑥ 는 위 항목의 결과를 가리킨다(같은 줄을 두 번 세지 않는다)"
 
@@ -755,12 +816,17 @@ done
 expect "바뀐 PHP php -l 실패" "0" "$nbad"
 ( cd "$ROOT" && bash scripts/security_lint.sh > "$WORK/lint.txt" 2>&1 ); expect "보안 린트 종료 코드" "0" "$?"
 ( cd "$ROOT" && php scripts/community_asset_version.php --check > "$WORK/asset.txt" 2>&1 ); expect "부품 버전 --check" "0" "$?"
-( cd "$ROOT" && php scripts/wiki_check.php > "$WORK/wiki.txt" 2>&1 ); expect "wiki_check" "0" "$?"
+# wiki_check 는 사이트 STAGES 둘을 저장소 **바깥**(`scripts/../../`)에서 읽는다 — 복제본 자리에는 없으므로, 앱 사본($INST/app) 옆에
+# 운영 사이트의 두 파일을 **읽기 전용 링크**로 둔다(커뮤니티는 위 ② 의 community 링크가 이미 그 자리다).
+ln -s /var/www/qaredi/STAGES.md "$INST/STAGES.md" 2>/dev/null
+( cd "$INST/app" && php scripts/wiki_check.php > "$WORK/wiki.txt" 2>&1 ); expect "wiki_check" "0" "$?"
+grep -E '^\s+x ' "$WORK/wiki.txt" | head -5 | sed 's/^/    /'
 expect "esprima — app.js · editor.js 구문" "ok ok" "$(python3 -c 'import esprima,sys; esprima.parseScript(open(sys.argv[1],encoding="utf-8").read()); esprima.parseModule(open(sys.argv[2],encoding="utf-8").read()); print("ok ok")' "$ROOT/public/assets/app.js" "$ROOT/public/assets/community/editor.js" 2>&1 | tail -1)"
 expect "더한 줄에 innerHTML·인라인 style·on* 속성 0" "0" \
   "$(git -C "$ROOT" diff "$BASE_REV" -- public src | grep '^+' | grep -cE 'innerHTML|outerHTML| style="|\.style\.| on[a-z]+="' | tr -d ' ')"
-expect "새 권한 창구는 토큰 창구 집합 밖(TBOX_API_TOKEN_ROUTES 줄 변경 0)" "0" \
-  "$(git -C "$ROOT" diff "$BASE_REV" -- public/index.php | grep -E '^[+-]' | grep -c "TBOX_API_TOKEN" | tr -d ' ')"
+tok_block() { sed -n '/^const TBOX_API_TOKEN_ROUTES = \[/,/^\];/p'; }
+expect "새 권한 창구는 토큰 창구 집합 밖(TBOX_API_TOKEN_ROUTES 정의 블록이 기준 판과 한 글자도 같다)" "same" \
+  "$([ "$(git -C "$ROOT" show "$BASE_REV:public/index.php" | tok_block | sha256sum)" = "$(tok_block < "$ROOT/public/index.php" | sha256sum)" ] && [ -n "$(tok_block < "$ROOT/public/index.php")" ] && echo same || echo diff)"
 expect "새 색값 0(app.css 더한 줄에 #rgb·rgb( 없음)" "0" "$(git -C "$ROOT" diff "$BASE_REV" -- public/assets/app.css | grep '^+' | grep -cE '#[0-9a-fA-F]{3,8}\b|rgba?\(' | tr -d ' ')"
 
 # ════════════════════════════════════════════════════════════════

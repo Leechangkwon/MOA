@@ -195,6 +195,27 @@ $sqlInsert = <<<'SQL'
 
 $db->begin();
 try {
+    /* G-0 — 부모 행을 이 트랜잭션 안에서 FOR SHARE 로 잠그고 [권한 ✔ B]·[불변 ①] 을 다시 한다(_folder_lock.php).
+     * 같은 순간 부모가 좁혀져도(사내 → 개인) 개인 폴더 안에 넓은 폴더가 생기지 않는다. 거부는 트랜잭션 전과 같은 답. */
+    if ($parentId !== null) {
+        require_once __DIR__ . '/_folder_lock.php';
+        [$stillFits, $lockAt, $lockCode] = tbox_folder_lock_for_put($user, $parentId, $level, $teamId, true);
+        if (!$stillFits) {
+            $db->rollback();
+            // 트랜잭션 전 검사와 같은 답 — 없는 부모 400 bad_request · 못 넣는 부모 403 · 넓은 폴더 400 불변 ① 코드
+            if ($lockAt === 'gone') {
+                $reject('bad_request', 400, Http::MSG_BAD_REQUEST, $name, $level);
+            }
+            if ($lockAt === 'put') {
+                $reject($lockCode, 403, Http::MSG_FORBIDDEN, $name, $level, ['parent_id' => $parentId]);
+            }
+            $reject($lockCode, 400, Http::reasonMessage($lockCode), $name, $level, [
+                'parent_id'   => $parentId,
+                'target_team' => $teamId,
+            ]);
+        }
+    }
+
     $row = $db->run($sqlInsert, [
         ':parent'     => $parentId,
         ':name'       => $name,

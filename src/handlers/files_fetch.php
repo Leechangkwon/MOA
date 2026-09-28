@@ -424,6 +424,19 @@ $db    = Db::instance();
 $moved = false;
 $db->begin();
 try {
+    /* G-0 — 대상 폴더 행을 이 트랜잭션 안에서 FOR SHARE 로 잠그고 폴더 두 판정을 다시 한다(_folder_lock.php · 올리기와 같은 도우미).
+     * 같은 순간 그 폴더가 좁혀져도 불변 ① 이 깨지지 않는다. 거부는 트랜잭션 전 검사와 같은 답. */
+    if ($folderId !== null) {
+        require_once __DIR__ . '/_folder_lock.php';
+        [$stillFits, $lockAt, $lockCode] = tbox_folder_lock_for_put($user, $folderId, $level, $teamId, true);
+        if (!$stillFits) {
+            $db->rollback();
+            $cleanTmp();
+            // 트랜잭션 전 검사와 같은 답 — 없는 폴더·못 넣는 폴더는 `bad_folder`, 넓은 항목은 불변 ① 코드
+            $rejectFetch(400, $lockAt === 'fits' ? $lockCode : 'bad_folder', null, $level, ['folder_id' => $folderId]);
+        }
+    }
+
     $row = $db->run($sqlInsert, [
         ':original_name' => $original,
         ':stored_name'   => $storedName,

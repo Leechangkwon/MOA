@@ -568,6 +568,25 @@ $delta = $newDepth - $currentDepth;
 
 $db->begin();
 try {
+    /* G-0 — (새) 부모 행을 이 트랜잭션 안에서 FOR SHARE 로 잠그고 [3-5] 넣기 자격(옮길 때만)·불변 ① 을 다시 한다
+     * (_folder_lock.php). 같은 순간 부모가 좁혀져도 이 폴더가 부모보다 넓게 남지 않는다. 답은 트랜잭션 전과 같다. */
+    if ($newParent !== null && ($parentChanged || $levelChanged)) {
+        require_once __DIR__ . '/_folder_lock.php';
+        [$stillFits, $lockAt, $lockCode] = tbox_folder_lock_for_put($user, $newParent, $newLevel, $newTeam, $parentChanged);
+        if (!$stillFits) {
+            $db->rollback();
+            if ($lockAt === 'gone') {
+                $reject('bad_request', 400, Http::MSG_BAD_REQUEST);
+            }
+            if ($lockAt === 'put') {
+                $reject($lockCode, 403, Http::MSG_FORBIDDEN);
+            }
+            $rejectAs($levelAction, $lockCode, 400, Http::reasonMessage($lockCode), $newLevel, [
+                'parent_id' => $newParent,
+            ]);
+        }
+    }
+
     if ($delta !== 0) {
         $db->run($sqlShiftDepth, [':id' => $folderId, ':delta' => $delta]);
     }

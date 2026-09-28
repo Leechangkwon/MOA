@@ -466,6 +466,32 @@ if ($descriptionChanged && $levelChanged) {
 
 $db->begin();
 try {
+    /* G-0 — 최종 폴더 행을 이 트랜잭션 안에서 FOR SHARE 로 잠그고 [4-3] 넣기 자격(옮길 때만)·[4-5] 불변 ① 을 다시 한다
+     * (_folder_lock.php). 같은 순간 그 폴더가 좁혀져도(사내 → 개인) 파일이 폴더보다 넓게 남지 않는다. 답은 트랜잭션 전과 같다. */
+    if ($folderRow !== null && ($folderChanged || $levelChanged)) {
+        require_once __DIR__ . '/_folder_lock.php';
+        [$stillFits, $lockAt, $lockCode] = tbox_folder_lock_for_put($user, (int) $newFolderId, $newLevel, $newTeamId, $folderChanged);
+        if (!$stillFits) {
+            $db->rollback();
+            if ($lockAt !== 'fits') {
+                $reject('bad_folder');
+            }
+            Audit::deny($folderChanged ? 'file.update' : 'file.level_change', $lockCode, [
+                'target_type'  => 'file',
+                'target_id'    => $fileId,
+                'target_name'  => $currentName,
+                'access_level' => $newLevel,
+                'detail'       => [
+                    'folder_before' => $folderBefore,
+                    'folder_after'  => $folderAfter,
+                    'before'        => $before,
+                    'after'         => $after,
+                ] + $auditWhat,
+            ]);
+            Http::error(400, Http::MSG_BAD_REQUEST);
+        }
+    }
+
     if ($sqlApply !== null) {
         $affected = $db->run($sqlApply, $applyBind)->rowCount();
         if ($affected !== 1) {

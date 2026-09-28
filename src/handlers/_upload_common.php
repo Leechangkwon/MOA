@@ -399,6 +399,25 @@ function tbox_upload_run(array $user, string $levelField, string $levelDefault, 
     $moved = false;
     $db->begin();
     try {
+        /* G-0 — 대상 폴더 행을 이 트랜잭션 안에서 FOR SHARE 로 잠그고 [3-3]·[3-4] 두 판정을 다시 한다(_folder_lock.php).
+         * 같은 순간 그 폴더가 좁혀져도(사내 → 개인) 「개인 폴더 안에 사내 파일」 이 남지 않는다. 거부는 트랜잭션 전과 같은 답. */
+        if ($folderId !== null) {
+            require_once __DIR__ . '/_folder_lock.php';
+            [$stillFits, $lockAt, $lockCode] = tbox_folder_lock_for_put($user, $folderId, $level, $teamId, true);
+            if (!$stillFits) {
+                $db->rollback();
+                if ($lockAt !== 'fits') {
+                    $rejectBadRequest('bad_folder', $original, $level);   // [3-3] 과 같은 답(없는 폴더 = 못 넣는 폴더)
+                }
+                $reject($lockCode, 400, [
+                    'target_type'  => 'file',
+                    'target_name'  => $original,
+                    'access_level' => $level,
+                    'detail'       => ['folder_id' => $folderId, 'target_team' => $teamId],
+                ]);
+            }
+        }
+
         $row = $db->run($sqlInsert, [
             ':original_name' => $original,
             ':stored_name'   => $storedName,
