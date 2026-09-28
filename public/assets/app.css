@@ -862,6 +862,11 @@ table.files:has(> #audit-body) th { padding: 0 6px; }
    색만으로 뜻을 전하지 않는다 — 배지 앞에 자물쇠 아이콘 + 「개인 · n명」 글자(app.js makeLevelBadge). */
 .badge--private { background: var(--primary); color: var(--primary-fg); border-color: var(--primary); }
 .badge--private .icon svg { width: 12px; height: 12px; }
+/* G-0 — 요청 화면(주소로 연 항목을 볼 수 없을 때)이 떠 있는 동안은 아래 파일 목록 틀(검색 줄 · 빈 표 · 쪽 넘김)을 숨긴다 —
+   보여 줄 파일이 없고, 빈 표가 「이 폴더에 파일 0개」로 읽힌다. 새 클래스 0 · 요청 화면을 닫으면(hidden) 그대로 돌아온다. */
+.workspace__main:has(> #access-request:not([hidden])) > :is(#search-form, .card--flush:has(#files-body)) { display: none; }
+/* G-0 — 권한 창의 받은 사람 줄: 보기/편집 고르개·빼기 도구줄을 「준 날」 줄 아래에 조금 띄운다 */
+#grants-list .list__item > .toolbar { margin-top: 8px; }
 .badge--ok { background: var(--ok-bg); color: var(--ok-fg); border-color: var(--ok-line); }
 .badge--off { background: var(--muted-bg); color: var(--muted); }
 

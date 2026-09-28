@@ -156,6 +156,8 @@ with sync_playwright() as pw:
     if guest_row:
         pg.locator("#grants-list .list__item").nth(guest_row[0]).locator("button:has-text('빼기')").click()
     step("빼기 → 줄 사라짐", wait_until(lambda: "claude_guest01" not in text(pg, "#grants-list")))
+    hs = pg.evaluate("() => [document.querySelector('#grants-level'), document.querySelector('#grants-list .toolbar select')].map(e => e ? Math.round(e.getBoundingClientRect().height) : 0)")
+    step("줄의 보기/편집 고르개가 「사람 추가」 고르개와 같은 높이(도구줄 모양)", hs[0] > 0 and hs[0] == hs[1], hs)
     pg.screenshot(path=os.path.join(SHOTS, "g0-owner-grants-1280-light.png"))
     pg.keyboard.press("Escape")
     step("Esc 로 권한 창 닫힘", wait_until(lambda: not pg.evaluate("() => document.getElementById('grants-dialog').open")))
@@ -172,10 +174,12 @@ with sync_playwright() as pw:
     body = pg.evaluate("() => document.body.innerText")
     step("화면 글자에 폴더 이름·개인 파일 이름 0", FOLDER_A not in body and SECRET not in body)
     step("손님에게는 「편집」 고르기 없음", not visible(pg, "#access-want-write-label"))
+    # 누름 자리는 보내기 **전에** 잰다(보낸 뒤에는 고르기·단추가 숨고 「보냈습니다」 한 줄만 남는다)
+    touch(pg, "요청 화면(412 터치)", ["#access-request button", "#access-request input[type=radio]"])
+    step("요청 화면이 떠 있는 동안 아래 파일 목록 틀(검색 줄·빈 표) 숨김", not visible(pg, "#search-form") and not visible(pg, "#files-body"))
     pg.fill("#access-request-message", "현장 자료 확인이 필요합니다")
     pg.click("#access-request-send")
     step("보내기 → 「보냈습니다」", wait_until(lambda: "보냈습니다" in text(pg, "#access-request-done") and visible(pg, "#access-request-done")))
-    touch(pg, "요청 화면(412 터치)", ["#access-request button", "#access-request input[type=radio]"])
     pg.goto(TBOX + "/?file=%s" % R)
     step("주소 ?file= (못 보는 파일 R) → 요청 화면 · 미리보기 창 안 열림", wait_until(lambda: visible(pg, "#access-request"))
          and not pg.evaluate("() => document.getElementById('preview-dialog').open"))
@@ -226,7 +230,8 @@ with sync_playwright() as pw:
             wait_until(lambda: "claude_employee02" in text(pg, "#grants-list") or "검토지공이" in text(pg, "#grants-list"))
             no_overflow(pg, "권한 창 %s" % tag)
             if t or w < 720:
-                touch(pg, "권한 창 %s" % tag, ["#grants-dialog button", "#grants-dialog select"])
+                # DESIGN 4장 「터치 대상」 — 입력 칸·고르개(폭이 넓다)는 규칙 밖(셸 규칙과 같다). 단추만 잰다
+                touch(pg, "권한 창 %s" % tag, ["#grants-dialog button"])
             pg.screenshot(path=os.path.join(SHOTS, "g0-grants-%s.png" % tag))
             ctx.close()
             ctx, pg = context(browser, G1, scheme=scheme, width=w, height=h, touch=t)

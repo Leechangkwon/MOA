@@ -189,7 +189,7 @@ require __DIR__ . '/../views/shell_top.php';
           <span class="field__label">주인에게 한 줄 (선택, 200자)</span>
           <input id="access-request-message" type="text" maxlength="200" placeholder="왜 필요한지 적어 주세요">
         </label>
-        <div class="form-actions">
+        <div class="form-actions field--full">
           <button id="access-request-send" class="btn" type="submit">요청 보내기</button>
         </div>
       </form>

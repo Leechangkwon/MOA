@@ -3435,8 +3435,14 @@ function initFiles(csrfToken, uploadLevels, canFetch, myTeamId) {
         remove.disabled = true;
         removeGrant(grant.user);
       });
-      body.appendChild(pick);
-      body.appendChild(remove);
+      // 고르개·빼기는 도구줄 하나에(`.toolbar` — 고르개가 다른 창의 고르개와 같은 높이·테두리 · 새 클래스 0)
+      var tools = document.createElement('div');
+      tools.className = 'toolbar';
+      tools.appendChild(pick);
+      tools.appendChild(remove);
+      li.appendChild(body);
+      li.appendChild(tools);
+      return li;
     }
     li.appendChild(body);
     return li;
