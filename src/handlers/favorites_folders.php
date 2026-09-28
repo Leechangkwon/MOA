@@ -50,26 +50,10 @@ if ($method === 'GET') {
     $bind[':fav_me'] = $me;
     $rows = $db->run($sqlList . ' ' . $visibleFolders . $sqlTail, $bind)->fetchAll();
 
-    // 사람이 읽는 경로(`A / B`) — 표시용. 읽을 수 있는 폴더의 조상은 언제나 읽을 수 있다(불변 규칙 ①, ARCH 5.16).
-    $paths = [];
-    if ($rows !== []) {
-        $sqlPaths = <<<'SQL'
-            WITH RECURSIVE tree AS (
-                SELECT d.id, d.name AS path, 1 AS hops
-                  FROM folders d
-                 WHERE d.parent_id IS NULL
-                UNION ALL
-                SELECT c.id, tree.path || ' / ' || c.name, tree.hops + 1
-                  FROM folders c
-                  JOIN tree ON c.parent_id = tree.id
-                 WHERE tree.hops < 10
-            )
-            SELECT tree.id, tree.path FROM tree
-            SQL;
-        foreach ($db->run($sqlPaths)->fetchAll() as $p) {
-            $paths[(int) $p['id']] = (string) $p['path'];
-        }
-    }
+    // 사람이 읽는 경로(`A / B`) — 표시용. G-0: 보이는 폴더 이름만(`_folder_paths.php` — 사람 지정 권한으로 개인 폴더 하나에만
+    // 들어온 사람에게 그 위 남의 개인 폴더 이름이 새지 않게 · 못 보는 조상은 `…`).
+    require_once __DIR__ . '/_folder_paths.php';
+    $folderMap = $rows !== [] ? tbox_folder_map($user) : [];
 
     $folders = [];
     foreach ($rows as $row) {
@@ -80,7 +64,7 @@ if ($method === 'GET') {
             'access_level' => (string) $row['access_level'],
             'team_id'      => $row['team_id'] === null ? null : (int) $row['team_id'],
             'team_name'    => $row['team_name'] === null ? null : (string) $row['team_name'],
-            'path'         => $paths[$fid] ?? (string) $row['name'],
+            'path'         => tbox_folder_path_text($folderMap, $fid) ?? (string) $row['name'],
             'favorited_at' => (string) $row['favorited_at'],
         ];
     }
@@ -108,7 +92,8 @@ if ($method === 'DELETE') {
 
 // PUT — 넣기. 폴더 트리와 같은 칸을 읽고 같은 판정으로 묻는다.
 $sqlFind = <<<'SQL'
-    SELECT id, parent_id, name, depth, access_level, team_id
+    SELECT id, parent_id, name, depth, access_level, team_id,
+           'folder' AS item_kind   -- G-0 종류 표식(개인 등급 판정 — decideRead [P])
       FROM folders
      WHERE id = CAST(:id AS bigint)
     SQL;

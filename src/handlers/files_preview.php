@@ -46,7 +46,8 @@ $sqlFind = <<<'SQL'
            f.exec_content,
            f.created_at,
            t.name     AS team_name,
-           u.username AS uploader
+           u.username AS uploader,
+           'file' AS item_kind   -- G-0 종류 표식(개인 등급 판정 — Authz::decideRead [P])
       FROM files f
       JOIN users u ON u.id = f.uploaded_by
       LEFT JOIN teams t ON t.id = f.team_id

@@ -39,7 +39,8 @@ $folderId = isset($params[0]) && preg_match('/^[0-9]{1,9}$/', (string) $params[0
 $db = Db::instance();
 
 $sqlFind = <<<'SQL'
-    SELECT id, parent_id, name, depth, access_level, team_id, created_by
+    SELECT id, parent_id, name, depth, access_level, team_id, created_by,
+           'folder' AS item_kind   -- G-0 종류 표식(개인 등급 판정 — decideRead [P] · decideFolderChange 주인만)
       FROM folders
      WHERE id = CAST(:id AS bigint)
     SQL;
@@ -169,7 +170,8 @@ if ($trashedCount !== 0 && !$confirmMove) {
      */
     $sqlTrashed = <<<'SQL'
         SELECT f.public_id, f.original_name, f.deleted_at,
-               f.access_level, f.team_id, f.uploaded_by
+               f.access_level, f.team_id, f.uploaded_by,
+               f.id, 'file' AS item_kind   -- G-0 개인 등급 판정에 쓰는 번호·종류 표식
           FROM files f
          WHERE f.folder_id  = CAST(:id AS bigint)
            AND f.purged_at  IS NULL
@@ -181,7 +183,8 @@ if ($trashedCount !== 0 && !$confirmMove) {
     $visible = [];
     $others  = false;
     foreach ($trashedRows as $row) {
-        if (!Authz::canRead($user, $row)) {
+        // G-0 — 목록과 같은 뜻(canSeeInList: Admin 특권으로만 열리는 남의 개인 파일은 이름을 싣지 않는다)
+        if (!Authz::canSeeInList($user, $row)) {
             $others = true;
             continue;
         }

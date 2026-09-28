@@ -93,14 +93,18 @@ CREATE TABLE users (
 -- ─────────────────────────────────────────────────────────────
 -- permissions — 권한 매트릭스를 "데이터"로 (ARCH 6.2-1)
 --   앱 계정은 이 표에 SELECT 만 가진다 → 화면·API 로는 권한 표를 바꿀 수 없다(권한 상승 경로 차단)
---   16행 시드는 db/seed.sql
+--   16행 시드는 db/seed.sql (+ G-0 「개인」 4행 = 20행 — 매트릭스 화면·편집은 개인 줄을 빼고 16칸만 다룬다)
 -- ─────────────────────────────────────────────────────────────
 CREATE TABLE permissions (
     role         TEXT NOT NULL CHECK (role IN ('Admin','Manager','Employee','Guest')),
-    access_level TEXT NOT NULL CHECK (access_level IN ('public','internal','team','admin-only')),
+    access_level TEXT NOT NULL CONSTRAINT permissions_access_level_check
+                 CHECK (access_level IN ('public','internal','team','admin-only','private')),
     can_read     BOOLEAN NOT NULL DEFAULT false,   -- 목록·다운로드 (team 은 "같은 팀이면" 의 전제)
     can_upload   BOOLEAN NOT NULL DEFAULT false,   -- 이 레벨로 올릴 수 있나
-    PRIMARY KEY (role, access_level)
+    PRIMARY KEY (role, access_level),
+    -- G-0 (PRD F-73) — 「개인」 등급은 표가 아니라 **사람**(주인·받은 권한)으로 판정한다. 읽기 칸은 언제나 거짓이다 —
+    -- 권한 매트릭스 편집(F-25, tbox_perm)으로도 켤 수 없다(켜면 그 역할 전원이 남의 개인 파일을 읽는다).
+    CONSTRAINT permissions_private_by_people CHECK (access_level <> 'private' OR can_read = false)
 );
 
 -- ─────────────────────────────────────────────────────────────
@@ -118,9 +122,10 @@ CREATE TABLE folders (
     parent_id    BIGINT      REFERENCES folders(id) ON DELETE RESTRICT,   -- NULL = 루트 바로 아래
     name         TEXT        NOT NULL,
     depth        INT         NOT NULL,                  -- 부모 depth + 1
-    access_level TEXT        NOT NULL CHECK (access_level IN ('public','internal','team','admin-only')),
+    access_level TEXT        NOT NULL CONSTRAINT folders_access_level_check
+                             CHECK (access_level IN ('public','internal','team','admin-only','private')),
     team_id      BIGINT      REFERENCES teams(id),
-    created_by   BIGINT      NOT NULL REFERENCES users(id),   -- 관리 범위 판정 (decideFolderChange)
+    created_by   BIGINT      NOT NULL REFERENCES users(id),   -- 관리 범위 판정 (decideFolderChange) · G-0 개인 폴더의 주인
     created_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
     CONSTRAINT folders_name_len        CHECK (length(name) BETWEEN 1 AND 50),
@@ -128,7 +133,10 @@ CREATE TABLE folders (
     CONSTRAINT folders_not_self_parent CHECK (parent_id IS NULL OR parent_id <> id),
     -- team 등급이면 team_id 필수 (files 의 team_requires_team_id 와 같은 규칙)
     CONSTRAINT folders_team_requires_team_id
-        CHECK (access_level <> 'team' OR team_id IS NOT NULL)
+        CHECK (access_level <> 'team' OR team_id IS NOT NULL),
+    -- G-0 (PRD F-73) — 「개인」 은 팀이 없다 (files_private_no_team 과 같은 규칙)
+    CONSTRAINT folders_private_no_team
+        CHECK (access_level <> 'private' OR team_id IS NULL)
 );
 -- 같은 부모 안 이름 중복 금지. 루트는 parent_id 가 NULL 이라 하나의 UNIQUE(parent_id, name)
 -- 로는 막지 못한다(NULL 은 서로 같지 않다) → 부분 UNIQUE 인덱스 둘로 나눈다.
@@ -150,9 +158,10 @@ CREATE TABLE files (
     size_bytes    BIGINT      NOT NULL CHECK (size_bytes BETWEEN 1 AND 104857600),
     sha256        CHAR(64)    NOT NULL,                 -- 무결성 검사용
     description   TEXT        NOT NULL DEFAULT '' CHECK (length(description) <= 500),
-    access_level  TEXT        NOT NULL CHECK (access_level IN ('public','internal','team','admin-only')),
+    access_level  TEXT        NOT NULL CONSTRAINT files_access_level_check
+                              CHECK (access_level IN ('public','internal','team','admin-only','private')),
     team_id       BIGINT      REFERENCES teams(id),
-    uploaded_by   BIGINT      NOT NULL REFERENCES users(id),
+    uploaded_by   BIGINT      NOT NULL REFERENCES users(id),   -- G-0 개인 파일의 주인
     scan_status   TEXT        NOT NULL DEFAULT 'clean' CHECK (scan_status IN ('pending','clean','infected')),
     -- F-65 (ARCH 5.29) — 실행 파일이 든 압축본을 관리자가 확인 문구·비밀번호·OTP 로 확인하고
     -- 올린 파일이면 참. 참이면 공유 링크·프로그램 토큰·미리보기·등급 변경이 막히고, 받을 때도
@@ -182,7 +191,10 @@ CREATE TABLE files (
     search_tsv    TSVECTOR,
     -- team 레벨이면 team_id 필수 (PRD 4장 규칙을 DB가 강제)
     CONSTRAINT team_requires_team_id
-        CHECK (access_level <> 'team' OR team_id IS NOT NULL)
+        CHECK (access_level <> 'team' OR team_id IS NOT NULL),
+    -- G-0 (PRD F-73) — 「개인」 은 팀이 없다
+    CONSTRAINT files_private_no_team
+        CHECK (access_level <> 'private' OR team_id IS NULL)
 );
 CREATE INDEX files_visible_idx ON files (access_level, team_id) WHERE deleted_at IS NULL;
 CREATE INDEX files_name_idx    ON files (lower(original_name)) WHERE deleted_at IS NULL;
@@ -415,3 +427,51 @@ CREATE TABLE passkey_challenges (
          OR (purpose <> 'login' AND binding_hash IS NULL AND user_id IS NOT NULL AND session_id IS NOT NULL) )
 );
 CREATE INDEX passkey_challenges_expires_idx ON passkey_challenges (expires_at);
+
+-- ─────────────────────────────────────────────────────────────
+-- access_grants · access_requests — G-0 「개인」 등급의 사람 지정 권한 · 권한 요청 (PRD F-73, ARCH 4.1 · 5.36)
+--   access_grants: 폴더 또는 파일 하나(둘 중 하나만) · 받은 사람 · 보기/편집. **개인 등급 항목에만 뜻이 있다**
+--     (다른 등급은 권한 표가 판정 — 줄은 남아도 무시. 넓혔다가 다시 좁히면 되살아난다).
+--     폴더 줄은 안의 모든 하위 폴더·파일에 이어진다 — 판정은 앱 한 벌(Authz::privateReachSql: 판정 함수와 목록 조건절이
+--     같은 SQL 조각). 폴더 외래 키 ON DELETE CASCADE(빈 폴더는 행째 지워진다) · 파일 외래 키는 절 없음(파일 행은 남는다).
+--   access_requests: 주소로 연 개인 항목이 403 일 때 주인에게 보내는 요청. 같은 (항목, 요청자) pending 하나(부분 UNIQUE) ·
+--     한 사람 하루 20건(앱이 감사 행으로 센다 — 저장하지 않은 요청도 센다: 없는 id 와 못 보는 id 가 갈리지 않게).
+--   (기존 DB 는 db/migrations/2026-10-10_access_grants.sql 로 같은 모양이 된다.)
+-- ─────────────────────────────────────────────────────────────
+CREATE TABLE access_grants (
+    id         BIGSERIAL   PRIMARY KEY,
+    folder_id  BIGINT      REFERENCES folders(id) ON DELETE CASCADE,
+    file_id    BIGINT      REFERENCES files(id),
+    user_id    BIGINT      NOT NULL REFERENCES users(id),
+    can_write  BOOLEAN     NOT NULL DEFAULT false,
+    granted_by BIGINT      NOT NULL REFERENCES users(id),
+    granted_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    CONSTRAINT access_grants_one_target CHECK (num_nonnulls(folder_id, file_id) = 1)
+);
+CREATE UNIQUE INDEX access_grants_folder_user_uidx ON access_grants (folder_id, user_id) WHERE folder_id IS NOT NULL;
+CREATE UNIQUE INDEX access_grants_file_user_uidx   ON access_grants (file_id, user_id)   WHERE file_id IS NOT NULL;
+CREATE INDEX        access_grants_user_idx         ON access_grants (user_id);
+
+CREATE TABLE access_requests (
+    id           BIGSERIAL   PRIMARY KEY,
+    folder_id    BIGINT      REFERENCES folders(id) ON DELETE CASCADE,
+    file_id      BIGINT      REFERENCES files(id),
+    requester_id BIGINT      NOT NULL REFERENCES users(id),
+    want_write   BOOLEAN     NOT NULL DEFAULT false,
+    message      TEXT        NOT NULL DEFAULT '',
+    status       TEXT        NOT NULL DEFAULT 'pending',
+    decided_by   BIGINT      REFERENCES users(id),
+    decided_at   TIMESTAMPTZ,
+    created_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
+    CONSTRAINT access_requests_one_target  CHECK (num_nonnulls(folder_id, file_id) = 1),
+    CONSTRAINT access_requests_message_len CHECK (char_length(message) <= 200),
+    CONSTRAINT access_requests_status      CHECK (status IN ('pending','approved','rejected','cancelled')),
+    CONSTRAINT access_requests_decided_pair CHECK ((status = 'pending') = (decided_at IS NULL))
+);
+CREATE UNIQUE INDEX access_requests_folder_pending_uidx ON access_requests (folder_id, requester_id)
+    WHERE folder_id IS NOT NULL AND status = 'pending';
+CREATE UNIQUE INDEX access_requests_file_pending_uidx   ON access_requests (file_id, requester_id)
+    WHERE file_id IS NOT NULL AND status = 'pending';
+CREATE INDEX access_requests_requester_idx ON access_requests (requester_id, created_at DESC);
+CREATE INDEX access_requests_folder_idx    ON access_requests (folder_id) WHERE folder_id IS NOT NULL;
+CREATE INDEX access_requests_file_idx      ON access_requests (file_id)   WHERE file_id IS NOT NULL;

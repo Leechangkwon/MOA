@@ -197,8 +197,11 @@ $lockedCells = [
 foreach ($wanted as $key => $cell) {
     // (d) 역할·등급은 4×4 안 — 허용 목록을 **정확히** 통과한 값만 아래 SQL 에 바인딩된다.
     //     역할 목록은 Authz 가 갖고 있다(역할 판단은 그 파일 하나, ARCH 4.1).
+    // G-0 — 「개인」 줄은 이 창구가 받지 않는다(사람으로 판정하는 등급 · DB CHECK permissions_private_by_people 가 읽기 칸을
+    //        거짓으로 묶는다 — 여기서는 편집 대상 자체가 아니다). 4×4 밖과 같은 (d) 로 거부한다.
     if (!Authz::isAssignableRole($cell['role'])
         || !array_key_exists($cell['level'], Authz::LEVEL_RANK)
+        || $cell['level'] === Authz::LEVEL_PRIVATE
     ) {
         $reject('invariant', false, ['rule' => 'd']);
     }
@@ -218,6 +221,7 @@ foreach ($wanted as $key => $cell) {
 $sqlMatrix = <<<'SQL'
     SELECT role, access_level, can_read, can_upload
       FROM permissions
+     WHERE access_level <> 'private'   -- G-0 — 개인 4행은 편집 대상이 아니다(16칸 그대로)
      ORDER BY role, access_level
     SQL;
 
@@ -266,6 +270,9 @@ foreach ($effective as $key => $flags) {
 foreach ($readByRole as $levelsOfRole) {
     $gapSeen = false;
     foreach (array_keys(Authz::LEVEL_RANK) as $levelName) {
+        if ($levelName === Authz::LEVEL_PRIVATE) {
+            continue;   // G-0 — 개인은 표의 등급 순서 밖이다(읽기 칸은 언제나 거짓 · 사람으로 판정)
+        }
         $on = $levelsOfRole[$levelName] ?? false;
         if ($on && $gapSeen) {
             $reject('invariant', false, ['rule' => 'f']);

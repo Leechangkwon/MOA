@@ -54,7 +54,10 @@ if ($method === 'GET') {
                t.name       AS team_name,
                u.username   AS uploader,
                f.created_at,
-               fav.created_at AS favorited_at
+               fav.created_at AS favorited_at,
+               -- G-0 — 개인 등급 판정(can_edit·can_delete)이 쓰는 번호·종류 표식(응답에는 싣지 않는다)
+               f.id,
+               'file' AS item_kind
           FROM file_favorites fav
           JOIN files f ON f.id = fav.file_id
           JOIN users u ON u.id = f.uploaded_by
@@ -69,27 +72,12 @@ if ($method === 'GET') {
     $bind[':fav_me'] = $me;
     $rows = $db->run($sqlList . ' ' . $visibleWhere . $sqlTail, $bind)->fetchAll();
 
-    // 폴더 경로(표시용) — 파일 목록의 전역 검색과 같은 문장. 여기 온 행은 이미 보이는 파일이고, 불변 규칙 ①이
-    // 「파일이 보이면 그 폴더도 보인다」를 보장한다(ARCH 5.16). 폴더에 든 행이 없으면 묻지 않는다.
-    $sqlFolderPaths = <<<'SQL'
-        WITH RECURSIVE tree AS (
-            SELECT d.id, d.name AS path, 1 AS hops
-              FROM folders d
-             WHERE d.parent_id IS NULL
-            UNION ALL
-            SELECT c.id, tree.path || ' / ' || c.name, tree.hops + 1
-              FROM folders c
-              JOIN tree ON c.parent_id = tree.id
-             WHERE tree.hops < 10
-        )
-        SELECT tree.id, tree.path FROM tree
-        SQL;
-    $folderPaths = [];
+    // 폴더 경로(표시용) — G-0: 보이는 폴더 이름만(`_folder_paths.php` — 파일 목록·최근과 같은 함수). 폴더에 든 행이 없으면 묻지 않는다.
+    require_once __DIR__ . '/_folder_paths.php';
+    $folderMap = [];
     foreach ($rows as $row) {
         if ($row['folder_id'] !== null) {
-            foreach ($db->run($sqlFolderPaths)->fetchAll() as $pathRow) {
-                $folderPaths[(int) $pathRow['id']] = (string) $pathRow['path'];
-            }
+            $folderMap = tbox_folder_map($user);
             break;
         }
     }
@@ -104,8 +92,8 @@ if ($method === 'GET') {
             'access_level' => (string) $row['access_level'],
             'team_id'      => $row['team_id'] === null ? null : (int) $row['team_id'],
             'team_name'    => $row['team_name'] === null ? null : (string) $row['team_name'],
-            'folder_id'    => $row['folder_id'] === null ? null : (int) $row['folder_id'],
-            'folder_path'  => $row['folder_id'] === null ? null : ($folderPaths[(int) $row['folder_id']] ?? null),
+            'folder_id'    => tbox_folder_cells($folderMap, $row['folder_id'] === null ? null : (int) $row['folder_id'])[0],
+            'folder_path'  => tbox_folder_cells($folderMap, $row['folder_id'] === null ? null : (int) $row['folder_id'])[1],
             'uploaded_by'  => (string) $row['uploader'],
             'created_at'   => (string) $row['created_at'],
             // 화면 편의 값 — 단추를 보일지. 실제 삭제·수정은 그 창구가 다시 판단한다 (PRD S-01).
@@ -147,7 +135,8 @@ if ($method === 'DELETE') {
 
 // PUT — 넣기. 행을 읽고 **다운로드와 같은 판정**으로 묻는다. 지운 파일(`deleted_at`)은 없는 것과 같다.
 $sqlFind = <<<'SQL'
-    SELECT f.id, f.access_level, f.team_id
+    SELECT f.id, f.access_level, f.team_id,
+           'file' AS item_kind   -- G-0 종류 표식(개인 등급 판정 — Authz::decideRead [P])
       FROM files f
      WHERE f.public_id = CAST(:pid AS uuid)
        AND f.deleted_at IS NULL

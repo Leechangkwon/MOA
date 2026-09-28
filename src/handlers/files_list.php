@@ -80,7 +80,8 @@ $globalSearch = $q !== '' && !$folderGiven;
  * `visibleFilesWhere` 가 파일 등급으로 한 번 더 좁힌다(두 겹, PRD F-26).
  */
 $sqlFolderRow = <<<'SQL'
-    SELECT id, parent_id, name, depth, access_level, team_id
+    SELECT id, parent_id, name, depth, access_level, team_id, created_by,
+           'folder' AS item_kind   -- G-0 종류 표식(개인 등급 판정 — decideRead [P])
       FROM folders
      WHERE id = CAST(:id AS bigint)
     SQL;
@@ -137,7 +138,13 @@ $sqlList = <<<'SQL'
            f.uploaded_by,
            t.name       AS team_name,
            u.username   AS uploader,
-           f.created_at
+           f.created_at,
+           -- G-0 — 개인 등급 판정(can_edit·can_delete)이 이 행을 파일로 다시 읽는 번호·종류 표식(응답에는 싣지 않는다) ·
+           -- 개인 파일에 **직접** 준 권한 수(「개인 · 2명」 표시 — 폴더에서 이어받은 권한은 세지 않는다)
+           f.id,
+           'file' AS item_kind,
+           CASE WHEN f.access_level = 'private'
+                THEN (SELECT count(*) FROM access_grants g WHERE g.file_id = f.id) END AS grant_count
       FROM files f
       JOIN users u ON u.id = f.uploaded_by
       LEFT JOIN teams t ON t.id = f.team_id
@@ -235,27 +242,15 @@ $rows = $db->run(
  * 전역 검색에서는 결과가 여러 폴더에 흩어져 있으므로 `folder_id` 숫자만으로는 쓸모가 없다.
  * 루트부터 이어 붙인 이름(`A / B / C`)을 함께 내려 준다.
  *
- * 못 읽는 폴더의 경로가 새어 나갈 걱정은 없다 — 여기 온 행은 이미 `visibleFilesWhere` 를
- * 통과한 파일이고, 불변 규칙 ①이 "그 파일이 보이면 그 폴더도 보인다" 를 보장한다 (ARCH 5.16).
+ * (18-1 에는 「그 파일이 보이면 그 폴더도 보인다」(불변 ①)라 조상을 거르지 않았다. G-0 의 사람 지정 권한은 파일·개인 폴더
+ *  하나에만 들어온 사람을 만든다 — 그래서 아래처럼 보이는 폴더만으로 만든다.)
  * 경로는 **표시용**이며 권한 판단에 쓰이지 않는다. 화면은 이 값을 textContent 로만 그린다.
- *
- * 한 문장으로 모든 폴더의 경로를 만든다(깊이는 최대 5, 폴더 수가 적다). 폴더가 하나도
- * 걸리지 않은 목록에서는 아예 묻지 않는다.
  */
-$sqlFolderPaths = <<<'SQL'
-    WITH RECURSIVE tree AS (
-        SELECT d.id, d.name AS path, 1 AS hops
-          FROM folders d
-         WHERE d.parent_id IS NULL
-        UNION ALL
-        SELECT c.id, tree.path || ' / ' || c.name, tree.hops + 1
-          FROM folders c
-          JOIN tree ON c.parent_id = tree.id
-         WHERE tree.hops < 10
-    )
-    SELECT tree.id, tree.path FROM tree
-    SQL;
-
+require_once __DIR__ . '/_folder_paths.php';
+require_once __DIR__ . '/_access_common.php';
+/* G-0 — 경로는 **보이는 폴더 이름만**으로 만든다(`_folder_paths.php` — 목록 조건절 visibleWhere(d) 그대로). 사람 지정 권한으로
+ * 개인 폴더 하나에만 들어온 사람에게 그 위 남의 개인 폴더 이름이 새지 않게 — 못 보는 자리는 `…`, 번호는 null.
+ * 폴더가 하나도 걸리지 않은 목록에서는 묻지 않는다(전과 같다). */
 $needPaths = false;
 foreach ($rows as $row) {
     if ($row['folder_id'] !== null) {
@@ -263,13 +258,7 @@ foreach ($rows as $row) {
         break;
     }
 }
-
-$folderPaths = [];
-if ($needPaths) {
-    foreach ($db->run($sqlFolderPaths)->fetchAll() as $pathRow) {
-        $folderPaths[(int) $pathRow['id']] = (string) $pathRow['path'];
-    }
-}
+$folderMap = ($needPaths || $folder !== 0) ? tbox_folder_map($user) : [];
 
 $files = [];
 foreach ($rows as $row) {
@@ -283,18 +272,19 @@ foreach ($rows as $row) {
         'access_level' => (string) $row['access_level'],
         'team_id'     => $row['team_id'] === null ? null : (int) $row['team_id'],
         'team_name'   => $row['team_name'] === null ? null : (string) $row['team_name'],
-        // 18-1 (F-26) — 이 파일이 든 폴더. null 이면 루트다.
-        'folder_id'   => $row['folder_id'] === null ? null : (int) $row['folder_id'],
+        // 18-1 (F-26) — 이 파일이 든 폴더. null 이면 루트다. G-0 — 못 보는 폴더면 null(경로는 `…`).
+        'folder_id'   => tbox_folder_cells($folderMap, $row['folder_id'] === null ? null : (int) $row['folder_id'])[0],
         // 사람이 읽는 경로(`A / B`). 루트면 null. 표시용이며 권한 판단에 쓰이지 않는다.
-        'folder_path' => $row['folder_id'] === null
-            ? null
-            : ($folderPaths[(int) $row['folder_id']] ?? null),
+        'folder_path' => tbox_folder_cells($folderMap, $row['folder_id'] === null ? null : (int) $row['folder_id'])[1],
         'uploaded_by' => (string) $row['uploader'],
         'created_at'  => (string) $row['created_at'],
         'can_delete'  => Authz::decideDelete($user, $row)[0],
         // 5단계: 수정("설명·등급 바꾸기") 버튼을 보일지 정하는 같은 성격의 편의 값이다.
         // 실제 PATCH 는 files_update 가 decideRead → decideEdit → decideLevelChange 로 다시 판단한다.
         'can_edit'    => Authz::decideEdit($user, $row)[0],
+        // G-0 — 개인 파일에 직접 준 권한 수(개인이 아니면 null) · 권한을 주고 뺄 수 있나(주인 — 개인이 아니면 false)
+        'grants'            => $row['grant_count'] === null ? null : (int) $row['grant_count'],
+        'can_manage_access' => (string) $row['access_level'] === Authz::LEVEL_PRIVATE && Authz::decidePrivateOwner($user, $row)[0],
         // 12-2 (F-18): 이 파일을 미리보기로 열면 어떤 모양이 나오나 — 서버가 DB `ext` 로
         // 판정한 갈래다(Preview::kindFor). 화면은 확장자를 보지 않는다(ARCH 5.8).
         // 값이 'none' 이어도 미리보기는 열 수 있고, 정보 카드만 나온다.
@@ -321,34 +311,11 @@ foreach ($rows as $row) {
 }
 
 /* ─── breadcrumb (루트 → 지금 연 폴더) ─────────────────────────
- * 조상들은 따로 권한을 보지 않는다: 불변 규칙 ①(하위 등급 ≥ 부모 등급)이 지켜지는 한
- * **읽을 수 있는 폴더의 조상은 언제나 읽을 수 있다** (ARCH 5.16, F-25 불변 규칙 (f)).
- * hops 상한은 데이터가 어떤 이유로든 순환할 때 무한 재귀를 막는 안전장치다(깊이는 최대 5).
+ * G-0 — 조상은 **보이는 것만**(`tbox_folder_breadcrumb` — 목록 조건절 그대로). 18-1 은 「읽을 수 있는 폴더의 조상은 언제나
+ * 읽을 수 있다」를 믿고 거르지 않았지만, 사람 지정 권한은 개인 폴더 하나에만 들어온 사람을 만든다(그 위 폴더 이름이 새지 않게).
+ * 지금 연 폴더 자신은 언제나 넣는다(이미 decideRead 를 지났다).
  */
-$sqlBreadcrumb = <<<'SQL'
-    WITH RECURSIVE up AS (
-        SELECT b.id, b.parent_id, b.name, b.depth, b.access_level, 1 AS hops
-          FROM folders b
-         WHERE b.id = CAST(:id AS bigint)
-        UNION ALL
-        SELECT p.id, p.parent_id, p.name, p.depth, p.access_level, up.hops + 1
-          FROM folders p
-          JOIN up ON p.id = up.parent_id
-         WHERE up.hops < 10
-    )
-    SELECT up.id, up.name, up.access_level FROM up ORDER BY up.depth ASC
-    SQL;
-
-$breadcrumb = [];
-if ($folder !== 0) {
-    foreach ($db->run($sqlBreadcrumb, [':id' => $folder])->fetchAll() as $step) {
-        $breadcrumb[] = [
-            'id'           => (int) $step['id'],
-            'name'         => (string) $step['name'],
-            'access_level' => (string) $step['access_level'],
-        ];
-    }
-}
+$breadcrumb = $folder !== 0 ? tbox_folder_breadcrumb($folderMap, $folder) : [];
 
 /* ─── 26-2 (F-50) — 프로그램용 응답은 **간결한 배열** (PRD F-50, ARCH 4.3) ──────
  * 토큰 요청이면 최상위가 배열이고 원소 키는 다섯뿐이다: id·name·level·size·uploaded_at.
@@ -388,5 +355,16 @@ Http::json([
             ? null
             : (int) $folderRow['team_id'],
         'breadcrumb'   => $breadcrumb,
+        /* G-0 — 화면 편의 값 셋(권한이 아니다 — 창구가 다시 판단한다, PRD S-01):
+         *   can_put           이 폴더에 올리기·새 폴더를 할 수 있나(개인 폴더는 주인·편집 권한자 — decideFolderPut). 맨 위는 참
+         *   can_manage_access 이 폴더의 권한을 주고 뺄 수 있나(개인 폴더의 주인 — decidePrivateOwner)
+         *   grants            개인 폴더에 직접 준 권한 수(개인이 아니면 null) */
+        'can_put'           => $folderRow === null ? true : Authz::decideFolderPut($user, $folderRow)[0],
+        'can_manage_access' => $folderRow !== null
+            && (string) $folderRow['access_level'] === Authz::LEVEL_PRIVATE
+            && Authz::decidePrivateOwner($user, $folderRow)[0],
+        'grants'            => $folderRow !== null && (string) $folderRow['access_level'] === Authz::LEVEL_PRIVATE
+            ? tbox_direct_grant_count('folder', (int) $folderRow['id'])
+            : null,
     ],
 ]);

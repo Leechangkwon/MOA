@@ -69,7 +69,7 @@ $allowedActions = [
 ];
 
 /** 접근 등급 허용 목록 (PRD 4장) */
-$allowedLevels = ['public', 'internal', 'team', 'admin-only'];
+$allowedLevels = ['public', 'internal', 'team', 'admin-only', 'private'];   // G-0 — 「개인」 등급도 거르기 값
 
 /** 결과 허용 목록 (ARCH 7.2 CHECK 제약과 같은 3값) */
 $allowedResults = ['allow', 'deny', 'error'];

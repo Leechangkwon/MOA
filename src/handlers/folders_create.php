@@ -88,7 +88,7 @@ $db = Db::instance();
 
 // ─── [3] 등급·팀 (파일 업로드와 같은 규칙) ─────────────────────
 $rawLevel = $body['access_level'] ?? '';
-if (!in_array($rawLevel, ['public', 'internal', 'team', 'admin-only'], true)) {
+if (!in_array($rawLevel, ['public', 'internal', 'team', 'admin-only', 'private'], true)) {
     $reject('bad_request', 400, Http::MSG_BAD_REQUEST, $name);
 }
 $level = (string) $rawLevel;
@@ -131,7 +131,8 @@ if (array_key_exists('parent_id', $body) && $body['parent_id'] !== null) {
 }
 
 $sqlParent = <<<'SQL'
-    SELECT id, depth, access_level, team_id
+    SELECT id, depth, access_level, team_id,
+           'folder' AS item_kind   -- G-0 종류 표식(개인 폴더 넣기 판정 — decideFolderPut)
       FROM folders
      WHERE id = CAST(:id AS bigint)
     SQL;
@@ -146,7 +147,8 @@ if ($parentId !== null) {
 
     // ─── [권한 ✔ B] 부모를 읽을 수 있나 (파일과 같은 함수) ───
     // 못 읽는 폴더 안에 무언가를 만들 수는 없다. 403 동일 문구이고 사유는 로그에만 남는다.
-    [$mayReadParent, $parentCode] = Authz::decideRead($user, $parentRow);
+    // G-0 — 개인 폴더 안에는 그 주인·「편집」 권한자만 만든다(decideFolderPut — 개인이 아니면 decideRead 그대로).
+    [$mayReadParent, $parentCode] = Authz::decideFolderPut($user, $parentRow);
     if (!$mayReadParent) {
         $reject($parentCode, 403, Http::MSG_FORBIDDEN, $name, $level, ['parent_id' => $parentId]);
     }

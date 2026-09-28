@@ -62,7 +62,8 @@ $db = Db::instance();
 
 // ─── [1] 대상 폴더 ──────────────────────────────────────────────
 $sqlFind = <<<'SQL'
-    SELECT id, parent_id, name, depth, access_level, team_id, created_by
+    SELECT id, parent_id, name, depth, access_level, team_id, created_by,
+           'folder' AS item_kind   -- G-0 종류 표식(개인 등급 판정 — decideRead [P] · decideFolderChange 주인만)
       FROM folders
      WHERE id = CAST(:id AS bigint)
     SQL;
@@ -137,7 +138,12 @@ if (!$mayRead) {
 }
 
 // ─── [권한 ✔ 2] 만든 사람 · Manager(자기 팀) · Admin (ARCH 5.16) ───
-[$mayChange, $changeCode] = Authz::decideFolderChange($user, $folder);
+// G-0 — 개인 폴더는 **이름만** 바꾸는 요청이면 「편집」 권한자도 된다(decideFolderRename). 옮기기·등급은 주인만(decideFolderChange).
+// 어느 쪽인지는 요청에 실린 **키**로 가른다(값을 보기 전 — 이름 말고 다른 키가 하나라도 있으면 좁은 쪽 판정).
+$onlyRename = array_diff(array_keys($body), ['name', 'reason_text']) === [];
+[$mayChange, $changeCode] = $onlyRename
+    ? Authz::decideFolderRename($user, $folder)
+    : Authz::decideFolderChange($user, $folder);
 if (!$mayChange) {
     $reject($changeCode, 403, Http::MSG_FORBIDDEN);
 }
@@ -168,7 +174,7 @@ $sqlTeam = <<<'SQL'
 
 $newLevel = $currentLevel;
 if (array_key_exists('access_level', $body)) {
-    if (!in_array($body['access_level'], ['public', 'internal', 'team', 'admin-only'], true)) {
+    if (!in_array($body['access_level'], ['public', 'internal', 'team', 'admin-only', 'private'], true)) {
         $reject('bad_request', 400, Http::MSG_BAD_REQUEST);
     }
     $newLevel = (string) $body['access_level'];
@@ -279,7 +285,8 @@ if ($newParent !== null) {
     }
     if ($parentChanged) {
         // 새 부모도 읽을 수 있어야 한다 — 못 읽는 폴더 안으로 밀어 넣을 수 없다.
-        [$mayReadParent, $parentReadCode] = Authz::decideRead($user, $parentRow);
+        // G-0 — 개인 폴더 안으로는 그 주인·「편집」 권한자만 옮겨 넣는다(decideFolderPut — 개인이 아니면 decideRead 그대로).
+        [$mayReadParent, $parentReadCode] = Authz::decideFolderPut($user, $parentRow);
         if (!$mayReadParent) {
             $reject($parentReadCode, 403, Http::MSG_FORBIDDEN);
         }
@@ -414,9 +421,9 @@ $sqlIntegrity = <<<'SQL'
     SELECT count(*) AS bad
       FROM pairs
      WHERE (CASE pairs.lv  WHEN 'public' THEN 0 WHEN 'internal' THEN 1
-                           WHEN 'team' THEN 2 WHEN 'admin-only' THEN 3 ELSE 9 END)
+                           WHEN 'team' THEN 2 WHEN 'admin-only' THEN 3 WHEN 'private' THEN 4 ELSE 9 END)
          < (CASE pairs.plv WHEN 'public' THEN 0 WHEN 'internal' THEN 1
-                           WHEN 'team' THEN 2 WHEN 'admin-only' THEN 3 ELSE 9 END)
+                           WHEN 'team' THEN 2 WHEN 'admin-only' THEN 3 WHEN 'private' THEN 4 ELSE 9 END)
         OR (pairs.plv = 'team' AND (pairs.tm IS NULL OR pairs.tm <> pairs.ptm))
     SQL;
 
@@ -469,9 +476,16 @@ if ($doCascade) {
         $row = $v['kind'] === 'file'
             ? ['uploaded_by' => $v['owner_id'], 'team_id' => $v['team_id']]
             : ['created_by'  => $v['owner_id'], 'team_id' => $v['team_id']];
-        [$mayEditChild, $childCode] = $v['kind'] === 'file'
-            ? Authz::decideEdit($user, $row)
-            : Authz::decideFolderChange($user, $row);
+        if ($newLevel === Authz::LEVEL_PRIVATE) {
+            /* G-0 — 하위를 「개인」 으로 함께 좁히는 것은 **그 항목을 올린·만든 사람**일 때만이다(decideLevelChange 의 개인 규칙 —
+               남의 파일을 개인으로 돌리면 팀이 못 보게 된다). 하나라도 남의 것이면 전부 되돌린다(아래 not_owner). */
+            $row += ['item_kind' => $v['kind'], 'id' => $v['id'], 'access_level' => $v['level']];
+            [$mayEditChild, $childCode] = Authz::decideLevelChange($user, $row, Authz::LEVEL_PRIVATE, null);
+        } else {
+            [$mayEditChild, $childCode] = $v['kind'] === 'file'
+                ? Authz::decideEdit($user, $row)
+                : Authz::decideFolderChange($user, $row);
+        }
         if (!$mayEditChild) {
             $denied++;
             continue;

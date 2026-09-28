@@ -2475,7 +2475,9 @@ function community_file_refs_ok(array $fileIds, array $audiences, array $u): boo
     }
     $in  = implode(', ', $names);   // 개수로 만든 자리표시자 이름뿐 — 값은 전부 바인딩
     $sql = <<<SQL
-        SELECT f.public_id, f.access_level, f.team_id
+        SELECT f.public_id, f.access_level, f.team_id,
+               -- G-0 — 개인 등급: 판정(decideRead [P])이 쓰는 번호·종류 표식 + 주인(fitsFileRef — 파일 주인 = 페이지 주인일 때만)
+               f.id, f.uploaded_by, 'file' AS item_kind
           FROM public.files f
          WHERE f.deleted_at IS NULL
            AND f.public_id IN ({$in})
@@ -2497,6 +2499,45 @@ function community_file_refs_ok(array $fileIds, array $audiences, array $u): boo
     }
     return true;
 }
+
+/**
+ * G-0 — 붙이기가 거부된 까닭이 **내가 볼 수 있는 t-box 개인 파일**인가(거부 문장을 고르는 데만 쓴다 — 판정은 위 함수다).
+ * 내가 못 보는 파일은 여기서도 거짓이다 — 「개인 파일이다」를 못 보는 사람에게 알리지 않는다(파일 UUID 탐지기가 되지 않게).
+ *
+ * @param list<string>        $fileIds
+ * @param array<string,mixed> $u
+ */
+function community_file_refs_private_readable(array $fileIds, array $u): bool
+{
+    $ids = array_values(array_filter($fileIds, static fn ($f): bool =>
+        preg_match('/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/', (string) $f) === 1));
+    if ($ids === [] || count($ids) > 200) {
+        return false;
+    }
+    $names = [];
+    $bind  = [];
+    foreach ($ids as $i => $fid) {
+        $names[]         = 'CAST(:pf' . $i . ' AS uuid)';
+        $bind[':pf' . $i] = (string) $fid;
+    }
+    $in  = implode(', ', $names);
+    $sql = <<<SQL
+        SELECT f.id, f.access_level, f.team_id, f.uploaded_by, 'file' AS item_kind
+          FROM public.files f
+         WHERE f.deleted_at IS NULL
+           AND f.access_level = 'private'
+           AND f.public_id IN ({$in})
+        SQL;
+    foreach (Db::instance()->run($sql, $bind)->fetchAll() as $f) {
+        if (Authz::canSeeInList($u, $f)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+/** G-0 — 개인 파일을 비공개 페이지 밖에 붙이려 할 때의 400 문장(창구 넷이 같은 글자) */
+const COMMUNITY_PRIVATE_FILE_REFUSED = 't-box 의 「개인」 파일은 지금은 내 비공개 페이지에만 붙일 수 있습니다. 다른 사람이 보는 페이지에 붙이려면 t-box 에서 그 파일의 등급을 넓히세요';
 
 /**
  * 본문의 그림·파일 카드에 쓸 **파일 지도** — 보는 사람이 t-box 에서 볼 수 있는 파일만(`Authz::visibleFilesWhere`).

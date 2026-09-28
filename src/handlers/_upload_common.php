@@ -137,7 +137,7 @@ function tbox_upload_run(array $user, string $levelField, string $levelDefault, 
     if ($level === '' && $levelDefault !== '') {
         $level = $levelDefault;
     }
-    if (!in_array($level, ['public', 'internal', 'team', 'admin-only'], true)) {
+    if (!in_array($level, ['public', 'internal', 'team', 'admin-only', 'private'], true)) {
         $rejectBadRequest('bad_access_level', $original, null);
     }
 
@@ -177,7 +177,8 @@ function tbox_upload_run(array $user, string $levelField, string $levelDefault, 
             $rejectBadRequest('bad_folder', $original, $level);
         }
         $sqlFolder = <<<'SQL'
-            SELECT id, name, access_level, team_id
+            SELECT id, name, access_level, team_id,
+                   'folder' AS item_kind   -- G-0 종류 표식(개인 폴더 넣기 판정 — decideFolderPut)
               FROM folders
              WHERE id = CAST(:id AS bigint)
             SQL;
@@ -186,7 +187,9 @@ function tbox_upload_run(array $user, string $levelField, string $levelDefault, 
             $rejectBadRequest('bad_folder', $original, $level);
         }
         // 폴더도 파일과 **같은 함수**로 읽기 판정한다 (폴더도 등급을 갖는다, F-26).
-        if (!Authz::decideRead($user, $folderRow)[0]) {
+        // G-0 — 개인 폴더에는 주인·「편집」 권한자만 올린다(decideFolderPut · 개인이 아니면 decideRead 그대로).
+        //        보기 권한자·Admin 특권은 못 올린다 — 같은 400 `bad_folder`(없는 폴더와 갈리지 않는다).
+        if (!Authz::decideFolderPut($user, $folderRow)[0]) {
             $rejectBadRequest('bad_folder', $original, $level);
         }
         $folderId = (int) $folderRow['id'];

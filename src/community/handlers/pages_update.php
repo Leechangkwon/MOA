@@ -194,8 +194,11 @@ if (array_key_exists('doc', $body)) {
        편집 공유자가 자기가 못 보는 남의 첨부 때문에 저장하지 못하는 일이 없게). 없는·못 보는·좁은 파일은 같은 400. */
     $newFiles = array_values(array_diff(Doc::extract($doc)['files'], Doc::extract($currentDoc)['files']));
     if (!community_file_refs_ok($newFiles, CommunityAuthz::pageAudiences($row), $user)) {
+        // G-0 — 까닭이 「내가 볼 수 있는 개인 파일」이면 그 이유를 알린다(사유 코드·감사는 같은 file_ref)
         $reject('file_ref', 400, [
-            'error'  => '붙일 수 없는 파일이 있습니다. 내가 볼 수 있고, 이 페이지를 읽는 사람도 모두 볼 수 있는 파일만 붙입니다',
+            'error'  => community_file_refs_private_readable($newFiles, $user)
+                ? COMMUNITY_PRIVATE_FILE_REFUSED
+                : '붙일 수 없는 파일이 있습니다. 내가 볼 수 있고, 이 페이지를 읽는 사람도 모두 볼 수 있는 파일만 붙입니다',
             'reason' => 'file_ref',
         ], []);
     }

@@ -59,7 +59,8 @@ $sqlFind = <<<'SQL'
            f.uploaded_by,
            f.sha256,
            f.size_bytes,
-           f.exec_content
+           f.exec_content,
+           'file' AS item_kind   -- G-0 종류 표식(개인 등급 판정 — decideRead [P] · decidePrivateOwner)
       FROM files f
      WHERE f.public_id = CAST(:pid AS uuid)
        AND f.deleted_at IS NULL
@@ -98,6 +99,15 @@ if (!$mayRead) {
 [$mayEdit, $editCode] = Authz::decideEdit($user, $file);
 if (!$mayEdit) {
     Audit::deny('share.create', $editCode, $auditTarget + ['detail' => $auditWhat]);
+    Http::error(403, Http::MSG_FORBIDDEN);
+}
+
+// ─── [권한 ✔ 2-P] G-0 — 개인 파일의 공유 링크는 **주인만** 만든다(지시서 ★ · 편집 권한자·Admin 특권 모두 아니다) ───
+// 링크는 로그인하지 않은 사람에게 파일을 내보내는 길이다 — 「나와 지정한 사람만」 을 주인 말고 누가 넓히면 안 된다.
+// 개인이 아닌 파일은 이 판정이 빈 허용이라 지금까지와 같다.
+[$mayPrivate, $privateCode] = Authz::decidePrivateOwner($user, $file);
+if (!$mayPrivate) {
+    Audit::deny('share.create', $privateCode, $auditTarget + ['detail' => $auditWhat]);
     Http::error(403, Http::MSG_FORBIDDEN);
 }
 

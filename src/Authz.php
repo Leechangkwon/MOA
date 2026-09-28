@@ -121,6 +121,22 @@ final class Authz
      */
     public const CODE_NOT_FOUND_IN_TRASH = 'not_found_in_trash';
 
+    /*
+     * G-0 (PRD F-73, ARCH 4.1 「개인 등급」) — **허용 코드 셋**. 거부 코드는 새로 만들지 않는다:
+     *   읽기 거부 = `role_not_permitted`(표의 읽기 칸이 전부 거짓이다 — 사람으로도 닿지 않았다) ·
+     *   고치기·지우기·주인 몫 거부 = `not_owner`. 그래서 ARCH 7.4 문장 표의 기존 행이 그대로 성립한다.
+     *   허용 코드는 감사 `detail.granted_by` 로 남는다(ARCH 7.5).
+     */
+    /** 개인 항목 — 받은 권한(이 항목이나 위 개인 폴더에 준 보기·편집)으로 읽기 허용 */
+    public const CODE_GRANT          = 'grant';
+    /** 개인 항목 — 받은 「편집」 권한으로 올리기·이름·설명 고치기 허용 */
+    public const CODE_GRANT_WRITE    = 'grant_write';
+    /** 개인 항목 — 주인도 받은 사람도 아닌 Admin 의 특권 열람(주소로 열 때만 · 목록에는 없다 · 감사에 남는다) */
+    public const CODE_ADMIN_OVERRIDE = 'admin_override';
+
+    /** G-0 — 「개인」 등급 이름. 이 등급은 권한 표가 아니라 사람(주인·받은 권한)으로 판정한다. */
+    public const LEVEL_PRIVATE = 'private';
+
     /**
      * 10단계 — 계정에 줄 수 있는 역할 (PRD 3장 4종, db/schema.sql users_role_check 와 같은 값).
      *
@@ -130,7 +146,7 @@ final class Authz
     private const ROLES = ['Admin', 'Manager', 'Employee', 'Guest'];
 
     /** 화면 선택지(`/api/me` 의 upload_levels)에 쓰는 레벨 표시 순서 (PRD 4장 순서 그대로) */
-    private const LEVEL_ORDER = ['public', 'internal', 'team', 'admin-only'];
+    private const LEVEL_ORDER = ['public', 'internal', 'team', 'admin-only', 'private'];
 
     /**
      * 레벨의 "노출 범위" 순서 (PRD 4장). 숫자가 작을수록 더 많은 사람이 본다.
@@ -141,6 +157,9 @@ final class Authz
         'internal'   => 1,
         'team'       => 2,
         'admin-only' => 3,
+        // G-0 (PRD F-73) — 가장 좁다. 개인 폴더 아래에는 개인만 들어간다(fitsUnderFolder 가 rank 로 그대로 막는다) ·
+        // 개인 항목은 어느 폴더 아래든 들어간다. 개인 → 다른 등급은 언제나 「넓히기」다(R-20 — Admin 만 · 사유 · 감사).
+        'private'    => 4,
     ];
 
     private const SQL_MATRIX = <<<'SQL'
@@ -281,6 +300,18 @@ final class Authz
             }
         }
 
+        /* G-0 (PRD F-73) — 「개인」 갈래. **decideRead 의 [P] 갈래와 짝**이다(privateReachSql 한 벌을 둘이 함께 쓴다):
+         *   (x.access_level = 'private' AND 이 항목·위 개인 폴더의 주인이 나 · 또는 거기 나에게 준 권한)
+         * 역할을 보지 않는다 — 표의 읽기 칸은 전부 거짓이고(DB CHECK permissions_private_by_people), 사람으로만 열린다.
+         * ★ Admin 특권(`admin_override`)은 여기 **없다** — 목록·검색·즐겨찾기·최근·개수에는 내 것·받은 것만 나오고(지시서 ★),
+         *   Admin 이 남의 개인 항목을 보는 일은 주소로 하나씩 열 때만이며 그때마다 감사에 남는다(decideRead). */
+        $me = isset($u['id']) ? (int) $u['id'] : 0;
+        if ($me > 0) {
+            [$pvSql, $pvBind] = self::privateVisibleSql($alias, $me);
+            $clauses[] = $pvSql;
+            $params    = array_merge($params, $pvBind);
+        }
+
         if ($clauses === []) {
             // 볼 수 있는 것이 하나도 없는 경우에도 삭제 조건을 함께 둔다(형태를 하나로 유지).
             return ['(' . $alive . ' AND FALSE)', []];
@@ -301,6 +332,24 @@ final class Authz
     {
         $role  = self::roleOf($u);
         $level = (string) $file['access_level'];
+
+        /* [P] G-0 (PRD F-73) — 「개인」 은 표가 아니라 사람으로 판정한다. **visibleWhere 의 개인 갈래와 짝**:
+         *   주인·받은 권한(privateReach — 목록 조건절과 같은 SQL 조각) → 허용 `owner`·`grant` / 그 밖 Admin → `admin_override`
+         *   (목록에는 없는 갈래 — 주소로 열 때만 · 감사에 남는다) / 그 밖 → `role_not_permitted`(표의 읽기 칸이 거짓이다).
+         * 행에 종류 표식(`item_kind`)·번호가 없으면 닫힌 실패다 — 표식을 빠뜨린 호출부는 개인 항목을 **못 보는** 쪽으로 틀린다. */
+        if ($level === self::LEVEL_PRIVATE) {
+            $reach = self::privateReachOf($u, $file);
+            if ($reach === 'owner') {
+                return [true, self::CODE_OWNER];
+            }
+            if ($reach === 'write' || $reach === 'view') {
+                return [true, self::CODE_GRANT];
+            }
+            if (self::canAdmin($u)) {
+                return [true, self::CODE_ADMIN_OVERRIDE];
+            }
+            return [false, self::CODE_ROLE_NOT_PERMITTED];
+        }
 
         if (!self::flag($role, $level, 'read')) {
             return [false, self::CODE_ROLE_NOT_PERMITTED];
@@ -332,6 +381,10 @@ final class Authz
         if (!self::flag($role, $level, 'upload')) {
             return [false, self::CODE_ROLE_NOT_PERMITTED];
         }
+        if ($level === self::LEVEL_PRIVATE && $teamId !== null) {
+            // G-0 — 「개인」 은 팀이 없다(DB CHECK files_private_no_team · folders_private_no_team 과 같은 규칙)
+            return [false, self::CODE_TEAM_MISMATCH];
+        }
         if ($level !== 'team') {
             return [true, self::CODE_MATRIX];
         }
@@ -359,6 +412,10 @@ final class Authz
      */
     public static function decideDelete(array $u, array $file): array
     {
+        // G-0 — 개인 항목의 지우기는 **주인만**(지시서 ★ · 편집 권한자는 지우지 못한다 · Admin 특권 없음)
+        if ((string) ($file['access_level'] ?? '') === self::LEVEL_PRIVATE) {
+            return self::decidePrivateOwner($u, $file);
+        }
         return self::decideOwnership($u, $file);
     }
 
@@ -377,6 +434,19 @@ final class Authz
      */
     public static function decideEdit(array $u, array $file): array
     {
+        /* G-0 — 개인 항목은 주인(`owner`) · 「편집」 권한을 받은 사람(`grant_write`)이 고친다 — 이름·설명까지.
+         * 등급·팀·위치·공유 링크·권한 주기는 이것을 지난 **뒤** decidePrivateOwner 가 주인만으로 다시 좁힌다(지시서 ★).
+         * Admin 특권은 없다(읽기 특권만 — decideRead). */
+        if ((string) ($file['access_level'] ?? '') === self::LEVEL_PRIVATE) {
+            $reach = self::privateReachOf($u, $file);
+            if ($reach === 'owner') {
+                return [true, self::CODE_OWNER];
+            }
+            if ($reach === 'write') {
+                return [true, self::CODE_GRANT_WRITE];
+            }
+            return [false, self::CODE_NOT_OWNER];
+        }
         return self::decideOwnership($u, $file);
     }
 
@@ -397,6 +467,21 @@ final class Authz
     public static function decideLevelChange(array $u, array $file, string $newLevel, ?int $newTeamId): array
     {
         $current = (string) $file['access_level'];
+
+        /* G-0 — 「개인」 이 걸린 등급 바꾸기는 **주인만**이다(지시서 ★).
+         *   개인 → 다른 등급(넓히기): 주인(privateReach 'owner') — 그다음 아래 ① R-20(Admin 만 넓힌다)을 그대로 지난다.
+         *   다른 등급 → 개인(좁히기): 그 항목을 **올린·만든 사람**만 — 개인의 「나」 는 그 사람이다. 팀장이 팀원 파일을
+         *   개인으로 돌리면 팀장도 팀원도 못 보는 파일이 된다(주인 한 사람만 남는다) — 그 길을 만들지 않는다. */
+        if ($current === self::LEVEL_PRIVATE && $newLevel !== self::LEVEL_PRIVATE) {
+            [$isOwner, $ownerCode] = self::decidePrivateOwner($u, $file);
+            if (!$isOwner) {
+                return [false, $ownerCode];
+            }
+        } elseif ($current !== self::LEVEL_PRIVATE && $newLevel === self::LEVEL_PRIVATE) {
+            if (!self::isItemCreator($u, $file)) {
+                return [false, self::CODE_NOT_OWNER];
+            }
+        }
 
         if (isset(self::LEVEL_RANK[$newLevel], self::LEVEL_RANK[$current])
             && self::LEVEL_RANK[$newLevel] < self::LEVEL_RANK[$current]
@@ -515,6 +600,20 @@ final class Authz
     public static function canRead(array $u, array $file): bool
     {
         return self::decideRead($u, $file)[0];
+    }
+
+    /**
+     * G-0 — **목록과 같은 뜻**의 한 건 판정: decideRead 가 허용하되 Admin 특권(`admin_override`)으로만 열린 것은 뺀다.
+     * visibleWhere(목록 조건절)와 한 줄씩 짝이다 — 목록 대신 한 건씩 거르는 자리(폴더 지우기의 휴지통 목록 등)가 쓴다.
+     * 시험 g0_private_grants.sh 의 짝 대조가 「이 값 = 목록 조건절 포함 여부」를 전수로 본다.
+     *
+     * @param array<string,mixed> $u
+     * @param array<string,mixed> $row
+     */
+    public static function canSeeInList(array $u, array $row): bool
+    {
+        [$ok, $code] = self::decideRead($u, $row);
+        return $ok && $code !== self::CODE_ADMIN_OVERRIDE;
     }
 
     /**
@@ -846,6 +945,11 @@ final class Authz
      */
     public static function decideFolderChange(array $actor, array $folder): array
     {
+        /* G-0 — 개인 폴더의 옮기기·등급·지우기(이 함수의 나머지 쓰임)는 **주인만**이다. 이름만 바꾸는 요청은
+         * decideFolderRename 이 「편집」 권한자까지 연다(지시서 ★ — 편집 권한자는 올리기·이름까지). */
+        if ((string) ($folder['access_level'] ?? '') === self::LEVEL_PRIVATE) {
+            return self::decidePrivateOwner($actor, $folder + ['item_kind' => 'folder']);
+        }
         return self::decideOwnership($actor, [
             'uploaded_by' => $folder['created_by'],
             'team_id'     => $folder['team_id'] ?? null,
@@ -904,6 +1008,238 @@ final class Authz
             return [false, self::CODE_PARENT_NARROWER];
         }
         return [true, ''];
+    }
+
+    /* ─── G-0: 「개인」 등급 · 사람 지정 권한 (PRD F-73, ARCH 4.1 「개인 등급」 · 5.36) ─────────────────────────────
+     *
+     * 개인 항목(파일·폴더)은 권한 표가 아니라 **사람**으로 판정한다. 닿는 사람(= reach):
+     *   'owner' — 이 항목의 주인(파일 = 올린 사람 · 폴더 = 만든 사람) **또는 위 개인 폴더 어디든의 주인**(호스트).
+     *             위 폴더 주인을 넣는 까닭: 편집 권한을 받은 사람이 내 개인 폴더에 올린 파일은 그 사람 것이다 —
+     *             폴더 주인이 그것을 못 보면 내 폴더에 내가 못 보는 것이 생긴다(G-1 의 페이지 폴더가 바로 그 모양이다).
+     *   'write' — 이 항목이나 위 개인 폴더 어디든에 **편집** 권한을 받은 사람
+     *   'view'  — 같은 자리에 **보기** 권한을 받은 사람
+     *   null    — 그 밖(Admin 이면 decideRead 가 `admin_override` 로 연다 — 여기 값은 null 그대로다)
+     * 「위 개인 폴더」 는 이 항목에서 위로 올라가며 **개인 등급인 동안만** 센다(첫 개인 아닌 조상에서 멈춘다) — 개인 아닌
+     * 폴더의 주인·권한 줄은 개인 항목을 열지 않는다(권한은 개인 항목에만 뜻이 있다 · 개인 폴더 안에는 개인만 있으므로 개인
+     * 조상은 언제나 항목 바로 위부터 이어진 한 토막이다). 깊이 ≤ 5 라 조상 조인 다섯 번(파일)·네 번(폴더)으로 끝난다.
+     *
+     * ★ **판정 ↔ 목록 짝** — 아래 privateChainSql 이 만드는 조인·주인 식·권한 식 **한 벌**을 두 곳이 함께 쓴다:
+     *   목록 조건절 visibleWhere 의 개인 갈래 = EXISTS(… WHERE 주인 식 OR 권한 식(아무거나))           — privateVisibleSql
+     *   판정 decideRead [P] 의 privateReach  = CASE WHEN 주인 식 … WHEN 권한 식(편집) … WHEN 권한 식(아무거나) … END — privateReach
+     *   둘의 「null 아님」 ⇔ 「EXISTS 참」 은 같은 두 식의 OR 이다. 시험 tests/g0_private_grants.sh 가 계정 × 항목 × 깊이 ×
+     *   권한 자리 전부에서 둘을 대조한다(C:T-56 방식). 한쪽만 고치면 그 시험이 깨진다.
+     * ★ 캐시 0 — 권한을 주고 빼면 다음 요청부터 바로 반영된다(요청마다 DB 에 묻는다).
+     */
+
+    /**
+     * 개인 판정의 SQL 조각 한 벌 — 조인(`pv_c1`…) · 주인 후보 식 목록 · 권한 식(편집만/아무거나).
+     * 별칭은 코드 리터럴 둘(`f` 파일 · `d` 폴더)만 받는다(visibleWhere 와 같은 허용 목록). 자리표시자 이름은 부르는 쪽이
+     * 넘기는 접두(`$ph`)로 가른다 — 같은 이름을 한 문장에 두 번 쓰지 않는다(서버측 prepare — Db.php).
+     *
+     * @return array{joins:string,owner:string,grant:string,grantWrite:string,bind:array<string,int>}
+     */
+    private static function privateChainSql(string $alias, string $ph, int $me): array
+    {
+        if (!in_array($alias, ['f', 'd'], true) || preg_match('/^[a-z0-9_]{1,20}$/', $ph) !== 1) {
+            throw new RuntimeException('허용되지 않는 별칭·자리표시자입니다');
+        }
+        // 파일: 든 폴더부터 위로 다섯 · 폴더: 부모부터 위로 넷 (깊이 ≤ 5 — folders_depth_range)
+        $first = $alias === 'f' ? 'f.folder_id' : 'd.parent_id';
+        $hops  = $alias === 'f' ? 5 : 4;
+        $joins = '';
+        $prev  = $first;
+        $owners = [$alias === 'f' ? 'f.uploaded_by' : 'd.created_by'];
+        $nodes  = $alias === 'f' ? [] : ['d.id'];
+        for ($i = 1; $i <= $hops; $i++) {
+            $c = 'pv_c' . $i;
+            // 개인 등급인 동안만 잇는다 — 앞 조상이 비면(NULL) 뒤도 모두 빈다
+            $joins   .= " LEFT JOIN public.folders {$c} ON {$c}.id = {$prev} AND {$c}.access_level = 'private'";
+            $owners[] = $c . '.created_by';
+            $nodes[]  = $c . '.id';
+            $prev     = $c . '.parent_id';
+        }
+        $me1 = ':' . $ph . '_me1';
+        $me2 = ':' . $ph . '_me2';
+        $me3 = ':' . $ph . '_me3';
+        $target = ($alias === 'f' ? 'pv_g.file_id = f.id OR ' : '') . 'pv_g.folder_id IN (' . implode(', ', $nodes) . ')';
+        // 권한 식 — 고정 틀에 자리표시자 이름·대상 식(코드가 만든 별칭 조각)만 끼운다(요청 값 0 · strtr 한 번 치환)
+        $grantTpl = <<<'SQL'
+            (EXISTS (SELECT 1 FROM public.access_grants pv_g
+                      WHERE pv_g.user_id = CAST(@ME AS bigint)@WRITE AND (@TARGET)))
+            SQL;
+        return [
+            'joins'      => $joins,
+            // 주인 후보에 NULL 이 섞여도(빈 조상) `x IN (…, NULL)` 은 맞는 값이 있을 때만 참이다
+            'owner'      => 'CAST(' . $me1 . ' AS bigint) IN (' . implode(', ', $owners) . ')',
+            'grantWrite' => strtr($grantTpl, ['@ME' => $me2, '@WRITE' => ' AND pv_g.can_write', '@TARGET' => $target]),
+            'grant'      => strtr($grantTpl, ['@ME' => $me3, '@WRITE' => '', '@TARGET' => $target]),
+            'bind'       => [$me1 => $me, $me2 => $me, $me3 => $me],
+        ];
+    }
+
+    /**
+     * 목록 조건절의 개인 갈래 — visibleWhere 가 붙인다. **privateReach 와 짝**(같은 조각 · 주인 식 OR 권한 식).
+     *
+     * @return array{0:string,1:array<string,int>}
+     */
+    private static function privateVisibleSql(string $alias, int $me): array
+    {
+        $c = self::privateChainSql($alias, 'pv' . $alias, $me);
+        $bind = $c['bind'];
+        unset($bind[':pv' . $alias . '_me2']);   // 목록은 편집 식을 쓰지 않는다 — 쓰지 않는 자리표시자를 넘기지 않는다
+        $tpl = <<<'SQL'
+            (@A.access_level = 'private' AND EXISTS (SELECT 1 FROM (SELECT 1) AS pv_z@JOINS
+              WHERE @OWNER OR @GRANT))
+            SQL;
+        $sql = strtr($tpl, ['@A' => $alias, '@JOINS' => $c['joins'], '@OWNER' => $c['owner'], '@GRANT' => $c['grant']]);
+        return [$sql, $bind];
+    }
+
+    /**
+     * 이 사람이 이 개인 항목에 **어떻게 닿나** — 'owner'·'write'·'view'·null. **privateVisibleSql 과 짝**.
+     * 항목은 DB 에서 다시 읽는다(번호로) — 행에 실린 주인·폴더 값을 믿지 않는다. 개인이 아니면(그사이 넓혔으면) null.
+     */
+    public static function privateReach(array $u, string $kind, int $id): ?string
+    {
+        $me = isset($u['id']) ? (int) $u['id'] : 0;
+        if ($me <= 0 || $id <= 0 || !in_array($kind, ['file', 'folder'], true)) {
+            return null;
+        }
+        $alias = $kind === 'file' ? 'f' : 'd';
+        $table = $kind === 'file' ? 'public.files f' : 'public.folders d';
+        $c = self::privateChainSql($alias, 'pr', $me);
+        $tpl = <<<'SQL'
+            SELECT CASE WHEN @OWNER THEN 'owner' WHEN @GRANTW THEN 'write' WHEN @GRANT THEN 'view' ELSE NULL END AS reach
+              FROM @TABLE@JOINS
+             WHERE @A.id = CAST(:pr_id AS bigint) AND @A.access_level = 'private'
+            SQL;
+        $sql = strtr($tpl, [
+            '@OWNER' => $c['owner'], '@GRANTW' => $c['grantWrite'], '@GRANT' => $c['grant'],
+            '@TABLE' => $table, '@JOINS' => $c['joins'], '@A' => $alias,
+        ]);
+        $row = Db::instance()->run($sql, $c['bind'] + [':pr_id' => $id])->fetch();
+        if (!is_array($row) || !is_string($row['reach'] ?? null)) {
+            return null;
+        }
+        return in_array($row['reach'], ['owner', 'write', 'view'], true) ? $row['reach'] : null;
+    }
+
+    /**
+     * 행에서 종류·번호를 꺼내 privateReach 를 부른다. 종류 표식(`item_kind` — SELECT 가 리터럴로 싣는다)이 없거나
+     * 번호가 없으면 null — **닫힌 실패**(개인 항목을 못 보는 쪽으로 틀린다). 요청 값이 들어갈 자리가 없다(행은 DB 에서 왔다).
+     *
+     * @param array<string,mixed> $row
+     */
+    private static function privateReachOf(array $u, array $row): ?string
+    {
+        $kind = $row['item_kind'] ?? null;
+        $id   = $row['id'] ?? null;
+        if (!is_string($kind) || $id === null || !is_numeric($id)) {
+            return null;
+        }
+        return self::privateReach($u, $kind, (int) $id);
+    }
+
+    /**
+     * 개인 항목의 **주인 몫**(등급 바꾸기·위치 옮기기·지우기·공유 링크·권한 주고 빼기)을 할 수 있나 (지시서 ★ 주인만).
+     * 개인이 아닌 행이면 이 함수는 판단하지 않는다(허용·빈 코드) — 그 행은 원래 판정(decideOwnership 등)이 본다.
+     *
+     * @param array<string,mixed> $row item_kind · id 가 있는 행
+     * @return array{0:bool,1:string}
+     */
+    public static function decidePrivateOwner(array $u, array $row): array
+    {
+        if ((string) ($row['access_level'] ?? '') !== self::LEVEL_PRIVATE) {
+            return [true, ''];
+        }
+        return self::privateReachOf($u, $row) === 'owner'
+            ? [true, self::CODE_OWNER]
+            : [false, self::CODE_NOT_OWNER];
+    }
+
+    /**
+     * 이 항목을 **올린·만든 사람**인가 (다른 등급 → 개인으로 좁히기 · 요청을 받는 호스트). 폴더는 created_by, 파일은 uploaded_by.
+     *
+     * @param array<string,mixed> $row item_kind 가 있는 행
+     */
+    public static function isItemCreator(array $u, array $row): bool
+    {
+        $kind  = $row['item_kind'] ?? null;
+        $owner = $kind === 'folder' ? ($row['created_by'] ?? null) : ($kind === 'file' ? ($row['uploaded_by'] ?? null) : null);
+        return $owner !== null && isset($u['id']) && (int) $owner === (int) $u['id'] && (int) $owner > 0;
+    }
+
+    /**
+     * 폴더 **이름만** 바꾸기 (G-0). 개인 폴더는 주인 · 「편집」 권한자, 그 밖은 decideFolderChange 그대로.
+     *
+     * @param array<string,mixed> $folder
+     * @return array{0:bool,1:string}
+     */
+    public static function decideFolderRename(array $actor, array $folder): array
+    {
+        if ((string) ($folder['access_level'] ?? '') === self::LEVEL_PRIVATE) {
+            return self::decideEdit($actor, $folder + ['item_kind' => 'folder']);
+        }
+        return self::decideFolderChange($actor, $folder);
+    }
+
+    /**
+     * 이 폴더 **안에 무언가를 넣을** 수 있나 — 올리기 · URL 가져오기 · 하위 폴더 만들기 · 파일·폴더를 옮겨 넣기 (G-0).
+     *   개인 아닌 폴더: 지금까지와 같다 — 읽을 수 있으면 된다(decideRead).
+     *   개인 폴더: 주인 · 「편집」 권한자만(보기 권한자·Admin 특권은 넣지 못한다 — 남의 개인 폴더에 밀어 넣는 길을 닫는다).
+     * 들어가는 것의 등급은 따로 fitsUnderFolder 가 본다(개인 폴더 안은 개인만).
+     *
+     * @param array<string,mixed> $folder folders 행
+     * @return array{0:bool,1:string}
+     */
+    public static function decideFolderPut(array $u, array $folder): array
+    {
+        if ((string) ($folder['access_level'] ?? '') === self::LEVEL_PRIVATE) {
+            $reach = self::privateReachOf($u, $folder + ['item_kind' => 'folder']);
+            if ($reach === 'owner') {
+                return [true, self::CODE_OWNER];
+            }
+            if ($reach === 'write') {
+                return [true, self::CODE_GRANT_WRITE];
+            }
+            return [false, self::CODE_NOT_OWNER];
+        }
+        return self::decideRead($u, $folder);
+    }
+
+    /**
+     * 개인 항목의 **권한 주기·빼기**를 할 수 있나 (G-0 창구 `…/grants`).
+     *   주인(privateReach 'owner') → `owner` · 그 밖 Admin → `admin_override`(★ 특권 — 창구가 15분 재인증을 묻고 감사에 남긴다) ·
+     *   그 밖 → `not_owner`. 개인이 아닌 항목은 `not_owner` 가 아니라 창구가 먼저 400 으로 끝낸다(권한은 개인에만 뜻이 있다).
+     *
+     * @param array<string,mixed> $row item_kind · id 가 있는 행
+     * @return array{0:bool,1:string}
+     */
+    public static function decideGrantManage(array $u, array $row): array
+    {
+        if (self::privateReachOf($u, $row) === 'owner') {
+            return [true, self::CODE_OWNER];
+        }
+        if (self::canAdmin($u)) {
+            return [true, self::CODE_ADMIN_OVERRIDE];
+        }
+        return [false, self::CODE_NOT_OWNER];
+    }
+
+    /** 이 권한 창구 결정에 15분 재인증을 물어야 하나 — Admin 특권으로 남의 개인 항목을 고칠 때만 (shareCreateNeedsReauth 와 같은 모양) */
+    public static function grantManageNeedsReauth(string $code): bool
+    {
+        return $code === self::CODE_ADMIN_OVERRIDE;
+    }
+
+    /**
+     * 이 계정이 **편집** 권한을 받을 수 있나 — 쓰기 자격 있는 역할만(손님은 보기만 · 커뮤니티 5-A 규칙과 같다).
+     *
+     * @param array<string,mixed> $target users 행(role 필수)
+     */
+    public static function mayReceiveWriteGrant(array $target): bool
+    {
+        return self::canUploadAtAll($target);
     }
 
     /**

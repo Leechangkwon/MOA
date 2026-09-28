@@ -386,6 +386,27 @@ const TBOX_ROUTES = [
     ['POST',   '/api/folders',                   'folders_create.php',           'file.upload'],
     ['PATCH',  '/api/folders/{num}',             'folders_update.php',           'file.update'],
     ['DELETE', '/api/folders/{num}',             'folders_delete.php',           'file.delete'],
+
+    // G-0 — 「개인」 등급의 사람 지정 권한 · 권한 요청 (t-box PRD F-73, ARCH 5.36).
+    //   새 정책 이름 0 — 라우터는 「그 종류의 행동인가」까지만 보고, 그 항목에 대한 판단은 핸들러가 행을 읽은 뒤 Authz 로 한다:
+    //     file.read   : 권한 줄 보기 · 받은 목록 → decideRead / canSeeInList
+    //     file.update : 권한 주기·빼기 · 사람 후보 · 요청 결정 → decideGrantManage(주인 · Admin 특권은 핸들러가 15분 재인증) ·
+    //                   요청의 호스트(주인 · 주인이 꺼지면 Admin). 손님은 여기서 끝난다(무엇의 주인도 될 수 없다)
+    //     authenticated : 요청 보내기·목록·거두기 — 손님도 **보기** 권한은 요청할 수 있다(편집 요청은 핸들러가 400)
+    //   POST·DELETE 는 [3] CSRF 를 지난다. ★ 토큰 창구 집합(TBOX_API_TOKEN_ROUTES)에 넣지 않는다 — 세션으로만 부른다
+    //   (사람에게 권한을 주는 결정은 프로그램 토큰으로 하지 않는다). `{num}`(둘째) = 사람 번호(users.id) · 요청 번호.
+    ['GET',    '/api/folders/{num}/grants',          'access_grants.php',   'file.read'],
+    ['POST',   '/api/folders/{num}/grants',          'access_grants.php',   'file.update'],
+    ['DELETE', '/api/folders/{num}/grants/{num}',    'access_grants.php',   'file.update'],
+    ['GET',    '/api/files/{id}/grants',             'access_grants.php',   'file.read'],
+    ['POST',   '/api/files/{id}/grants',             'access_grants.php',   'file.update'],
+    ['DELETE', '/api/files/{id}/grants/{num}',       'access_grants.php',   'file.update'],
+    ['GET',    '/api/access/people',                 'access_people.php',   'file.update'],
+    ['GET',    '/api/grants/mine',                   'access_mine.php',     'file.read'],
+    ['POST',   '/api/access-requests',               'access_requests.php', Authz::POLICY_AUTHENTICATED],
+    ['GET',    '/api/access-requests',               'access_requests.php', Authz::POLICY_AUTHENTICATED],
+    ['POST',   '/api/access-requests/{num}',         'access_requests.php', 'file.update'],
+    ['DELETE', '/api/access-requests/{num}',         'access_requests.php', Authz::POLICY_AUTHENTICATED],
 ];
 
 /**

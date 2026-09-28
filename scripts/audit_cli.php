@@ -49,7 +49,7 @@ const CLI_ALLOWED_ACTIONS = [
 const CLI_TARGET_TYPES = ['file', 'user', 'system'];
 
 /** 접근 등급 (PRD 4장) */
-const CLI_LEVELS = ['public', 'internal', 'team', 'admin-only'];
+const CLI_LEVELS = ['public', 'internal', 'team', 'admin-only', 'private'];   // G-0 — 「개인」 등급
 
 $argv = $_SERVER['argv'];
 

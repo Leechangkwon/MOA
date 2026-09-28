@@ -63,6 +63,7 @@ $acting = ($user['acting'] ?? false) === true;
  *   목록에 없는 주소를 보내도, 허용 여부는 요청마다 서버가 Fetch::check 로 다시 판단하고
  *   라우트 정책 file.fetch 가 다시 막는다 (PRD S-01, T-56).
  */
+require_once __DIR__ . '/_access_common.php';   // G-0 — 기다리는 권한 요청 수(access_requests_pending)
 $canFetch   = Authz::canFetch($user);
 $fetchHosts = Fetch::publicHosts();
 
@@ -162,6 +163,9 @@ $mePayload = [
     // 띄울지 고르는 데만 쓴다. 값이 무엇이든 막는 것은 라우터 관문 [3-2] 이고,
     // 이 값을 true 로 고쳐 보내도 서버는 요청마다 DB(sessions.reauth_at)를 다시 본다 (PRD S-01).
     'reauth_fresh'         => ($user['reauth_fresh'] ?? false) === true,
+    // G-0 (t-box PRD F-73 ④) — 내가 호스트인 **기다리는 권한 요청** 수. 사이드바 「권한 요청 n」(n>0 일 때만)에 쓰는 화면 편의 값 —
+    // 목록·결정은 `GET·POST /api/access-requests` 가 요청마다 다시 판단한다(PRD S-01).
+    'access_requests_pending' => tbox_access_pending_count($user),
     /*
      * 26단계 — 「역할로 보기」 (PRD F-39, ARCH 5.20).
      *
