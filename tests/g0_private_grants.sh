@@ -231,9 +231,12 @@ contains "알림 kind CHECK 에 access_request·access_decided" "access_decided"
   "$(psqlq "SELECT pg_get_constraintdef(oid) FROM pg_constraint WHERE conname='notifications_kind_check'")"
 expect "알림 칸 access_request_id(→ access_requests · ON DELETE SET NULL)" "access_request_id|n" \
   "$(psqlq "SELECT a.attname, c.confdeltype FROM pg_constraint c JOIN pg_attribute a ON a.attrelid=c.conrelid AND a.attnum = ANY(c.conkey) WHERE c.conrelid='community.notifications'::regclass AND c.contype='f' AND c.confrelid='public.access_requests'::regclass")"
-# 커뮤니티 grants.sql 은 재실행해도 새 칸 권한이 그대로다(표 단위 권한)
-( cd / && sudo -n -u postgres psql -X -q -d "$DB" -v ON_ERROR_STOP=1 -f - ) < "$ROOT/db/grants.sql" > "$WORK/grants.txt" 2>&1
-expect "db/grants.sql 재실행 — 오류 0 · 권한 그대로(tbox_app 표 INSERT)" "0 t" "$(grep -ciE '^ERROR|오류:' "$WORK/grants.txt" | tr -d ' ') $(psqlq "SELECT has_table_privilege('tbox_app','public.access_grants','INSERT')")"
+# db/grants.sql 의 **G-0 절만** 다시 돌려도 권한이 그대로다. ★ 파일 전체는 돌리지 않는다 — 앞머리에 운영 DB 이름을 적은
+#   `REVOKE/GRANT CONNECT ON DATABASE tbox_re` 문장이 있어, 임시 DB 에 붙어 돌려도 **운영 DB 의 접속 권한 목록**을 건드린다(qf3a 와 같은 방식으로 자른다).
+sed -n '/^-- ─── G-0 「개인」 등급/,$p' "$ROOT/db/grants.sql" > "$WORK/grants_g0.sql"
+expect "db/grants.sql G-0 절을 잘라 냈다(DO 블록 하나 · DATABASE 문장 0)" "1 0" "$(grep -c '^DO \$\$' "$WORK/grants_g0.sql") $(grep -ci 'DATABASE' "$WORK/grants_g0.sql")"
+( cd / && sudo -n -u postgres psql -X -q -d "$DB" -v ON_ERROR_STOP=1 -f - ) < "$WORK/grants_g0.sql" > "$WORK/grants.txt" 2>&1
+expect "db/grants.sql G-0 절 재실행 — 오류 0 · 권한 그대로(tbox_app 표 INSERT)" "0 t" "$(grep -ciE '^ERROR|오류:' "$WORK/grants.txt" | tr -d ' ') $(psqlq "SELECT has_table_privilege('tbox_app','public.access_grants','INSERT')")"
 
 sub "② 저장소를 임시 폴더로 복사하고 인스턴스를 띄운다"
 INST="$(mktemp -d)"
