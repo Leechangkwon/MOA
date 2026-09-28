@@ -977,3 +977,18 @@ th.doc-table__cell { background: var(--surface-2); font-weight: 600; }
   .page-props__group { min-height: 44px; align-items: center; }
   .page-props__group > .muted:first-child { padding-top: 12px; }
 }
+
+/* ── 7-D4 글 안 멘션 (DESIGN 2.14 「글 안 멘션」 · 지시서 M-12 — 새 색값 0 · 편집기 안의 라벨은 data-label 로만, 인라인 style 0) ── */
+.doc-mention { color: var(--fg-2); background: var(--muted-bg); border-radius: var(--r-sm); padding: 0 .25em; }
+a.doc-mention { color: var(--accent); text-decoration: none; } a.doc-mention:hover { text-decoration: underline; }
+.doc-mention--unknown { color: var(--muted); background: none; }
+.editor .doc-mention::after { content: attr(data-label); }
+/* 7-D4 — 넷째 단추 「멘션」 뒤에도 닫힌 툴바가 한 줄 · 320px 이하(DESIGN 2.14 툴바 줄 · 메인 결정 2026-09-27): 툴바 안 단추 좌우 12 → 8px */
+.editor-toolbar__row > .btn--small { padding: 0 8px; }
+/* 7-D4 검토 반영 — 넓은 화면(툴바 오른쪽에 뜨는 갈래)의 멘션 줄: 폭 상한 = 툴바 오른쪽에서 화면 끝까지(100% = 툴바 폭 · 사이드바 +
+   본문 왼쪽 여백 32 이하 + 틈 6 + 오른쪽 16 + 스크롤 막대 18 이하 = 72). 넘치면 후보 목록이 다음 줄로(종류·찾기 칸은 줄지 않는다) ·
+   후보 라벨은 한 줄 말줄임. 같은 규칙을 쓰는 글자색·배경·링크 줄과 900px 이하(툴바 아래 갈래 · 라벨 줄바꿈)는 그대로 */
+@media (min-width: 900.02px) {
+  .editor-toolbar > #mention-row { flex-wrap: wrap; max-width: calc(100vw - 100% - var(--sidebar-w) - 72px); }
+  #mention-list .block-pick strong { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+}

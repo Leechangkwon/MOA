@@ -2311,6 +2311,84 @@
       "notes": "부르는 셸: community.stage7d2. 단독 실행 불가(인자 SITE UA WORK 편집기페이지 손님글 스크린샷폴더 + 표준입력 세 줄 = 관리자(재인증 뒤)·직원·손님 세션 쿠키 — 비밀은 인자·환경 변수에 싣지 않는다). WORK 의 samples206.json·php206.json 으로 doc-render.js 동등성(DIFF=n). 결과 줄 SMOKE_FAIL=n. 관리 창 더하기(#palette-css ?v= 갱신 · CSS 요청 1 · 견본 계산 색) · 대비 경고 · 편집기 색 줄 순서·aria-label · 읽기 화면 계산 색(라이트 · data-theme 다크 · OS 다크) · 빼기 두 번 누르기 뒤 부모 색 · 직원·손님 · 360·412(터치·마우스)·820·1280 × 라이트·다크 넘침 · 창 바닥 단추(DESIGN 2.7) · 폰 폭 누름 자리 44. 스크린샷 d2-*.png."
     },
     {
+      "id": "community.stage7d4",
+      "cmd": "REGRESS=0 bash tests/community/stage7d4.sh",
+      "module": "community",
+      "env": "temp-instance",
+      "status": "required",
+      "needs": [
+        "sudo",
+        "browser"
+      ],
+      "covers": [
+        "db/migrations/2026-10-07_community_palettes.sql",
+        "db/community/grants.sql",
+        "src/community/Doc.php",
+        "src/community/DocRender.php",
+        "src/community/routes.php",
+        "src/community/handlers/pages_get.php",
+        "src/community/handlers/version_get.php",
+        "src/community/handlers/mention_candidates.php",
+        "src/community/handlers/pages_update.php",
+        "src/community/handlers/templates_create.php",
+        "src/community/handlers/templates_get.php",
+        "src/community/handlers/pages_create.php",
+        "src/community/handlers/version_restore.php",
+        "src/community/handlers/search.php",
+        "public/assets/community/doc-schema.json",
+        "public/assets/community/doc-render.js",
+        "public/assets/community/editor-schema.js",
+        "public/assets/community/editor.js",
+        "public/assets/community/community.css",
+        "scripts/security_lint.sh",
+        "scripts/community_asset_version.php",
+        "scripts/lib/cli_bootstrap.php",
+        "src/handlers/login.php",
+        "src/handlers/reauth.php"
+      ],
+      "requirements": [
+        "C:T-220",
+        "C:T-221",
+        "C:T-222",
+        "C:T-223",
+        "C:T-224",
+        "C:T-225",
+        "C:T-226",
+        "C:T-227"
+      ],
+      "risks": [],
+      "est_sec": 900,
+      "writes_prod": false,
+      "notes": "7-D4 글 안 멘션(C:F-15 mention · 결정 J-7 · L-4). 임시 인스턴스(stage7d2 와 같은 틀): pg_dump tbox_re(읽기 · 파이프 — 덤프 파일 0) → 임시 DB tbox_7d4_test + 7-D2 팔레트 마이그레이션·grants · 포트 8109 · 임시 .env 세 줄 확인 뒤 기동 · claude_ 다섯. 임시 DB 에서만 display_name·is_active 를 바꾼다. 원본 doc-schema.json(사이트 저장소)이 옛 줄이면 ORIGIN_DIFF(기본 ~/.local/share/qaredi-dev/7d4-doc-schema-origin.diff)를 적용한 사본과 대조. C:T-221 손님 users 조회 0 은 PDO 계측(앱 연결의 PDO 를 SQL 을 적는 PDO 로 바꿔 끼움 — 임시 사본 · 읽기만). C:T-222 45 사례 표를 SHOTS/c222-table.txt 로, C:T-223 응답 두 벌을 SHOTS/c223-*.json 으로 남긴다. REGRESS=1 이면 끝에 stage3·help_button·api_whoami·api_read·api_folders·q_launcher·f68 를 같은 임시 인스턴스에서(8082 → 임시로 sed 치환). BROWSER_LOCK 이 있으면 브라우저 단계를 flock -x 아래에서."
+    },
+    {
+      "id": "community.browser_7d4",
+      "cmd": "python3 tests/community/browser_7d4.py",
+      "module": "community",
+      "env": "temp-instance",
+      "status": "helper",
+      "needs": [
+        "browser"
+      ],
+      "covers": [
+        "src/community/handlers/page_view.php",
+        "src/community/handlers/pages_get.php",
+        "src/community/handlers/mention_candidates.php",
+        "public/assets/community/editor.js",
+        "public/assets/community/editor-schema.js",
+        "public/assets/community/doc-render.js",
+        "public/assets/community/community.css"
+      ],
+      "requirements": [
+        "C:T-225",
+        "C:T-227"
+      ],
+      "risks": [],
+      "est_sec": 300,
+      "writes_prod": false,
+      "notes": "부르는 셸: community.stage7d4. 단독 실행 불가(인자 SITE UA WORK 편집기페이지 공유받은글 모음글 사내페이지 손님공유페이지 스크린샷폴더 + 표준입력 세 줄 = employee01·employee02·guest01 세션 쿠키 — 비밀은 인자·환경 변수에 싣지 않는다). WORK 의 samples225.json·php225.json 으로 doc-render.js 동등성(DIFF=n — 텍스트·클래스·링크 class·href·target). 결과 줄 SMOKE_FAIL=n. 편집기 「멘션」(사람 한 글자 · 페이지 · 날짜) · 뒤에 친 글자 · Backspace · HTML 붙여넣기 멘션 0 · 저장 JSON 이름 0 · 읽기 화면 라벨·링크 이동 · 못 보는 사람 「@볼 수 없음」 · 손님 · 툴바 한 줄 320 이하 · 360·412(터치·마우스)·820·1280 × 라이트·다크 + 고대비 한 조합(data-contrast 속성 — 토큰은 7-D3 판) 넘침 · 폰 폭 누름 자리 44 · 이웃 가로챔 0. 스크린샷 d4-*.png."
+    },
+    {
       "id": "community.stage5a_handover_self",
       "cmd": "python3 tests/community/stage5a_handover_self.py",
       "module": "community",

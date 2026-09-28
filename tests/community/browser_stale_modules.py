@@ -149,8 +149,9 @@ with sync_playwright() as p:
     b = run(browser, "control")
     show(b)
     step("B 옛 파일로 답한 부품이 있다(흉내가 실제로 걸렸다)", len(b["served_old"]) >= 1)
-    link_err = [e for e in b["pageerrors"] if "does not provide an export" in e and "embedHost" in e]
-    step("B 사고와 같은 모듈 연결 오류가 난다(embedHost export 없음)", len(link_err) >= 1,
+    # 빠진 이름은 옛 부품에 없는 새 export 집합 중 하나(7-C embedHost · 7-D4 editor-schema.js 셋) — 크롬이 어느 것을 먼저 알리는지에 묶지 않는다
+    link_err = [e for e in b["pageerrors"] if "does not provide an export" in e and re.search(r"\b(embedHost|mentionAllowed|editorDomParser|clipboardDomParser)\b", e)]
+    step("B 사고와 같은 모듈 연결 오류가 난다(옛 부품에 없는 새 export — embedHost · 7-D4 셋 중 하나)", len(link_err) >= 1,
          (b["pageerrors"] or ["-"])[0][:160])
     step("B 「새 페이지」·「휴지통」을 눌러도 요청 0", len(b["posts"]) == 0 and len(b["trash_gets"]) == 0,
          "POST %d · trash GET %d" % (len(b["posts"]), len(b["trash_gets"])))

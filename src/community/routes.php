@@ -2580,6 +2580,68 @@ function community_link_titles(array $pageIds, array $u): array
 }
 
 /**
+ * 7-D4 글 안 멘션의 **이름 지도** (지시서 M-3·M-4 · 결정 L-4) — 페이지 응답(`GET /api/pages/{id}`)과 판 보기(`…/versions/{num}`)의 `mention_labels`.
+ * 키는 `user:<id>`·`page:<uuid>`, 값은 `{label}`(페이지는 `{label, icon}`). **볼 수 있는 것만** 담는다 — 없는 것과 못 보는 것은 똑같이
+ * 지도에 자리가 없고(응답 모양·상태·문구가 같다), 렌더러 두 벌이 그 자리에 「@볼 수 없음」을 그린다. 라벨에 「@」 는 없다(렌더러가 붙인다).
+ *
+ *   · 사람 — 보는 사람이 **쓰기 자격**(`Authz::canCommunityWrite` — 댓글 @ 후보·공유 후보와 같은 함수 · S2 M-1 「손님에게 사람 목록 0」)이고
+ *     대상이 **활성 계정**이며 대상도 **쓰기 자격**(같은 함수 — 손님 계정 제외 · 댓글 @ 후보 `decideMentionTarget`·편집기 후보와 같은 범위)일 때만
+ *     「이름 (아이디)」(`tbox_person_label` — 이름이 없으면 아이디). 보는 사람이 쓰기 자격이 없으면 **SQL 을 부르지 않는다**.
+ *     새 판정·새 정책 이름은 만들지 않는다(있는 함수 하나를 보는 사람·대상에 한 번씩) — SQL 은 활성 조건만, 대상 자격은 PHP 한 줄.
+ *     손님 계정은 없는 계정과 똑같이 지도에 자리가 없다(「@볼 수 없음」). 보는 사람이 대상 자신이어도 같은 규칙.
+ *   · 페이지 — `community_link_titles`(5-E 페이지 링크 블록 제목 지도 · 목록 조건절 `community_visible_pages_where`) **그대로**. 관리자
+ *     특권 갈래도 그 조건절이 주는 대로다(규칙을 한 벌 더 적지 않는다 — 판정 ↔ SQL 짝).
+ *   · 날짜 — 지도에 없다(판정할 것이 없다 — 렌더러가 id 를 그대로 그린다).
+ * id 모양은 `Doc::mentionShapeOk` 로 한 번 더 보고(검증기와 같은 함수), 최대 `Doc::MENTIONS_MAX`(200)개만 본다.
+ * 감사 행은 남기지 않는다(읽기 응답의 곁가지 — `link_titles` 와 같다).
+ *
+ * @param  list<mixed>         $mentions `Doc::extract()['mentions']`
+ * @param  array<string,mixed> $u        보는 사람
+ * @return array<string,array{label:string,icon?:?string}>
+ */
+function community_mention_labels(array $mentions, array $u): array
+{
+    $userIds = [];
+    $pageIds = [];
+    foreach (array_slice($mentions, 0, Doc::MENTIONS_MAX) as $m) {
+        if (!Doc::mentionShapeOk($m)) {
+            continue;
+        }
+        if ($m['kind'] === 'user' && !in_array((int) $m['id'], $userIds, true)) {
+            $userIds[] = (int) $m['id'];
+        } elseif ($m['kind'] === 'page' && !in_array((string) $m['id'], $pageIds, true)) {
+            $pageIds[] = (string) $m['id'];
+        }
+    }
+
+    $out = [];
+    // 사람 — 쓰기 자격이 없으면 여기서 끝(표를 읽지 않는다). 값은 `bigint[]` 한 값으로 바인딩(정수만 — 위에서 모양을 봤다).
+    //   대상의 쓰기 자격은 판정 함수에 묻는다(역할 이름을 여기 적지 않는다 — `decideMentionTarget` 과 같은 모양의 대상 줄 id·role·team_id).
+    if ($userIds !== [] && Authz::canCommunityWrite($u)) {
+        $sql = <<<'SQL'
+            SELECT id, username, display_name, role, team_id
+              FROM public.users
+             WHERE id = ANY(CAST(:ids AS bigint[]))
+               AND is_active
+            SQL;
+        $idArray = '{' . implode(',', array_map('intval', $userIds)) . '}';
+        foreach (Db::instance()->run($sql, [':ids' => $idArray])->fetchAll() as $r) {
+            if (!Authz::canCommunityWrite(['id' => (int) $r['id'], 'role' => (string) $r['role'], 'team_id' => $r['team_id'] === null ? null : (int) $r['team_id']])) {
+                continue;
+            }
+            $out['user:' . (string) (int) $r['id']] = [
+                'label' => tbox_person_label($r['display_name'] === null ? null : (string) $r['display_name'], (string) $r['username']),
+            ];
+        }
+    }
+    // 페이지 — 5-E 제목 지도 그대로(볼 수 있는 것만 · 지운 것 없음)
+    foreach (community_link_titles($pageIds, $u) as $pid => $t) {
+        $out['page:' . (string) $pid] = ['label' => (string) $t['title'], 'icon' => $t['icon']];
+    }
+    return $out;
+}
+
+/**
  * 역참조 (F-23) — 이 페이지를 가리키는(링크 마크 `page:` · `link_to_page`) **볼 수 있는** 페이지들. 최대 50, 최근 고친 순.
  * 볼 수 없는 것은 목록에 없고, 몇 개가 가려졌는지도 말하지 않는다(결정 E-7).
  *

@@ -21,6 +21,8 @@ declare(strict_types=1);
  *
  * 하지 않는 것
  *   · DB 를 읽지 않는다(멘션 대상 확인·첨부 등급 검사는 5단계 블록과 함께 들어온다).
+ *     7-D4 글 안 멘션(`mention {kind, id}`)도 **모양만** 본다(`mention()`) — 대상이 있는지·볼 수 있는지는 저장 때 묻지 않고(M-5),
+ *     그릴 때 창구가 `community_mention_labels()` 로 「볼 수 있는 것만」 이름을 준다.
  *     7-D2 관리자 팔레트(`pal:<이름>`)도 **모양만** 본다(`isPaletteColor`) — 등록된 이름인지는 저장 창구가
  *     `extract()['palette_names']` 로 `community_palettes_ok()` 에 묻는다(7-C 임베드와 같은 자리 · 결정 L-2 · 지시서 P-8·P-9).
  *   · 값을 고치지 않는다. `validate()` 는 판단만 하고 입력을 돌려주지 않는다.
@@ -731,7 +733,7 @@ final class Doc
                 $add($sp . '.m', 'not_object');
                 continue;
             }
-            self::marks($seg['m'], $sp . '.m', $stage, $state, $add, $limits, $s);
+            self::marks($seg['m'], $sp . '.m', $stage, $state, $add, $limits, $s, $seg['t'] ?? null);
         }
     }
 
@@ -740,8 +742,9 @@ final class Doc
      *
      * @param array<string,mixed> $marks
      * @param array<string,mixed> $state
+     * @param mixed               $segText 이 세그먼트의 `t`(7-D4 멘션 — 글자는 정확히 「@」 여야 한다)
      */
-    private static function marks(array $marks, string $p, int $stage, array &$state, callable $add, array $limits, array $s): void
+    private static function marks(array $marks, string $p, int $stage, array &$state, callable $add, array $limits, array $s, $segText = null): void
     {
         foreach ($marks as $name => $value) {
             $key = (string) $name;
@@ -783,10 +786,134 @@ final class Doc
                 continue;
             }
 
+            if ($key === 'mention') {
+                self::mention($value, $mp, $add, $s, $segText, array_key_exists('link', $marks));
+                continue;
+            }
+
             // 나머지(bold·italic·underline·strike·code)는 참·거짓이다
             if (!is_bool($value)) {
                 $add($mp, 'bad_type');
             }
+        }
+    }
+
+    /** 7-D4 — 한 문서에서 이름을 풀어 줄 멘션의 최대 개수(`extract()['mentions']`) */
+    public const MENTIONS_MAX = 200;
+
+    /** 7-D4 멘션 `user` id 의 상한 — JSON 정수가 두 렌더러(JS 는 배정밀도)에서 같은 값으로 읽히는 끝(2⁵³) */
+    public const MENTION_USER_ID_MAX = 9007199254740992;
+
+    /**
+     * 7-D4 글 안 멘션 `{kind, id}` 의 **모양만** 본다(지시서 M-2 · ARCH 12.2). 대상이 있는지·볼 수 있는지는 보지 않는다(M-5 —
+     * 저장 창구가 남의 계정·페이지의 존재를 대답하지 않게. 판단은 그릴 때 `community_mention_labels` 가 한다).
+     *
+     *   · 키 정확히 둘(`kind`·`id`) · `kind` = `user`·`page`·`date`(doc-schema.json `marks.mention.kind`)
+     *   · `user` = JSON 정수 1 ~ 2⁵³(`users.id`) · `page` = 소문자 UUID 36자(렌더러 `UUID_RE` 와 같은 정규식) · `date` = `YYYY-MM-DD`(1900~2100, 있는 날)
+     *   · 그 세그먼트의 글자는 **정확히 「@」** — 이름·제목이 문서에 저장되지 않는 것을 여기서 보장한다
+     *   · `link` 마크와 함께 오지 않는다(링크 속 링크) · 다른 마크(색 등)는 함께 와도 된다
+     * 오류 경로는 모두 `…m.mention` 한 자리다(사유 글자가 무엇이 틀렸는지 말한다).
+     *
+     * @param mixed               $value
+     * @param array<string,mixed> $s
+     * @param mixed               $segText
+     */
+    private static function mention($value, string $mp, callable $add, array $s, $segText, bool $withLink): void
+    {
+        if (!self::isObjectish($value)) {
+            $add($mp, 'not_object');
+            return;
+        }
+        foreach (array_keys($value) as $k) {
+            if ($k !== 'kind' && $k !== 'id') {
+                $add($mp, 'unknown_key');
+                return;
+            }
+        }
+        if (!array_key_exists('kind', $value) || !array_key_exists('id', $value)) {
+            $add($mp, 'missing_key');
+            return;
+        }
+        $kinds = $s['marks']['mention']['kind'] ?? [];
+        if (!is_string($value['kind'])) {
+            $add($mp, 'bad_type');
+            return;
+        }
+        if (!is_array($kinds) || !in_array($value['kind'], $kinds, true)) {
+            $add($mp, 'bad_value');
+            return;
+        }
+        $id = $value['id'];
+        if ($value['kind'] === 'user') {
+            if (!is_int($id)) {
+                $add($mp, 'bad_type');
+                return;
+            }
+            if (!self::isMentionUserId($id)) {
+                $add($mp, 'bad_value');
+                return;
+            }
+        } else {
+            if (!is_string($id)) {
+                $add($mp, 'bad_type');
+                return;
+            }
+            if (!($value['kind'] === 'page' ? self::isMentionPageId($id) : self::isMentionDate($id))) {
+                $add($mp, 'bad_value');
+                return;
+            }
+        }
+        if ($segText !== '@' || $withLink) {
+            $add($mp, 'bad_value');
+        }
+    }
+
+    /**
+     * 7-D4 — 멘션 id 모양 셋. 검증기·이름 풀이(`community_mention_labels`)·서버 렌더러가 **같은 함수**를 부른다
+     * (doc-render.js·editor-schema.js 는 같은 규칙의 JS 한 벌).
+     *
+     * @param mixed $id
+     */
+    public static function isMentionUserId($id): bool
+    {
+        return is_int($id) && $id >= 1 && $id <= self::MENTION_USER_ID_MAX;
+    }
+
+    /** @param mixed $id */
+    public static function isMentionPageId($id): bool
+    {
+        return is_string($id) && preg_match('/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/D', $id) === 1;
+    }
+
+    /** @param mixed $id */
+    public static function isMentionDate($id): bool
+    {
+        if (!is_string($id) || preg_match('/^(\d{4})-(\d{2})-(\d{2})$/D', $id, $m) !== 1) {
+            return false;
+        }
+        $y = (int) $m[1];
+        return $y >= 1900 && $y <= 2100 && checkdate((int) $m[2], (int) $m[3], $y);
+    }
+
+    /**
+     * 멘션 마크 하나의 모양이 맞는가(글자·함께 온 마크는 보지 않는다 — 그리는 자리·추출이 쓴다).
+     *
+     * @param mixed $value
+     */
+    public static function mentionShapeOk($value): bool
+    {
+        if (!is_array($value) || count($value) !== 2 || !array_key_exists('kind', $value) || !array_key_exists('id', $value)) {
+            return false;
+        }
+        switch ($value['kind']) {
+            case 'user':
+                return self::isMentionUserId($value['id']);
+            case 'page':
+                return self::isMentionPageId($value['id']);
+            case 'date':
+                return self::isMentionDate($value['id']);
+            default:
+                return false;
         }
     }
 
@@ -864,12 +991,16 @@ final class Doc
      * `palette_names` 는 7-D2 에 생긴 칸이다 — 문서가 쓴 관리자 팔레트 이름(`pal:` 뒤, `_bg` 뗌 · 한 번씩). 저장 창구가
      * 「새로 넣은 이름」만 살아 있는 목록과 견준다(`community_palettes_ok`). 렌더러는 이 칸을 쓰지 않는다(목록을 모른다 — P-10).
      *
+     * `mentions` 는 7-D4 에 생긴 칸이다 — 글 안 멘션 마크의 `{kind, id}`(모양이 맞는 것만 · 같은 것은 한 번 · 최대 200). **이름 풀이에만** 쓴다
+     * (`community_mention_labels` — 페이지 응답·판 보기의 `mention_labels`). `links`(역참조 `page_links`)에는 넣지 않는다(결정 E-7 — 역참조는
+     * `link`·`link_to_page` 만). 멘션 세그먼트의 글자는 「@」 하나라 `plain_text`·발췌에도 이름·제목이 들어가지 않는다(M-8).
+     *
      * @param  array<string,mixed> $doc
-     * @return array{plain_text:string,blocks:list<array{block_id:string,block_type:string,ord:int,excerpt:string}>,links:list<array{from_block_id:string,to_page_id:string}>,child_pages:list<string>,todos:list<array{block_id:string,checked:bool,text:string}>,files:list<string>,embeds:list<string>,palette_names:list<string>}
+     * @return array{plain_text:string,blocks:list<array{block_id:string,block_type:string,ord:int,excerpt:string}>,links:list<array{from_block_id:string,to_page_id:string}>,child_pages:list<string>,todos:list<array{block_id:string,checked:bool,text:string}>,files:list<string>,embeds:list<string>,palette_names:list<string>,mentions:list<array{kind:string,id:int|string}>}
      */
     public static function extract(array $doc): array
     {
-        $out = ['plain_text' => '', 'blocks' => [], 'links' => [], 'child_pages' => [], 'todos' => [], 'files' => [], 'embeds' => [], 'palette_names' => []];
+        $out = ['plain_text' => '', 'blocks' => [], 'links' => [], 'child_pages' => [], 'todos' => [], 'files' => [], 'embeds' => [], 'palette_names' => [], 'mentions' => []];
         $ord = 0;
         $parts = [];
         self::collect(is_array($doc['blocks'] ?? null) ? $doc['blocks'] : [], $ord, $parts, $out);
@@ -1027,6 +1158,23 @@ final class Doc
                 }
             }
 
+            /* 7-D4 글 안 멘션 — 이름 풀이용 `{kind, id}`(본문 글 · 설명 · 표 칸 — 링크 마크와 같은 자리들). 모양이 맞는 것만 · 한 번씩 · 200 까지 */
+            foreach ($richs as $rich) {
+                foreach ($rich as $seg) {
+                    if (count($out['mentions']) >= self::MENTIONS_MAX) {
+                        break 2;
+                    }
+                    $mv = is_array($seg) && isset($seg['m']) && is_array($seg['m']) ? ($seg['m']['mention'] ?? null) : null;
+                    if (!self::mentionShapeOk($mv)) {
+                        continue;
+                    }
+                    $pair = ['kind' => (string) $mv['kind'], 'id' => $mv['id']];
+                    if (!in_array($pair, $out['mentions'], true)) {
+                        $out['mentions'][] = $pair;
+                    }
+                }
+            }
+
             // 7-C 임베드 — 주소 그대로(허용 목록 검사·「새로 넣은 임베드」 가르기는 창구가 한다)
             if ($type === 'embed' && isset($block['url']) && is_string($block['url'])) {
                 $out['embeds'][] = $block['url'];
@@ -1163,6 +1311,7 @@ final class Doc
      * 댓글은 본문이 아니라 처음부터 따라오지 않는다. 링크(`link_to_page`·링크 마크)는 남긴다 — 제목은 보는
      * 사람이 볼 수 있을 때만 그려진다(렌더러 두 벌이 이미 그렇게 한다).
      * 할 일(`to_do`)은 **체크를 푼다** — 템플릿은 빈 양식이다(쓰던 체크리스트를 저장해도 새 페이지는 처음부터).
+     * 7-D4 글 안 멘션은 **마크를 뗀다**(「@」 글자는 남는다 — M-10 · J-3b 「사람·관계·파일 빼고」와 같은 태도). 본문 글·설명·표 칸 모두.
      * 다 빼고 나서 뿌리가 비면 빈 문단 하나를 둔다(빈 문서는 없다).
      *
      * @param  array<string,mixed> $doc  검사를 지난 본문
@@ -1199,12 +1348,45 @@ final class Doc
             if ((string) ($block['type'] ?? '') === 'to_do') {
                 $block['checked'] = false;
             }
+            foreach (['text', 'caption'] as $rk) {
+                if (isset($block[$rk]) && is_array($block[$rk])) {
+                    $block[$rk] = self::dropMentions($block[$rk]);
+                }
+            }
+            if ((string) ($block['type'] ?? '') === 'table' && isset($block['rows']) && is_array($block['rows'])) {
+                foreach ($block['rows'] as $ri => $row) {
+                    if (!is_array($row) || !isset($row['cells']) || !is_array($row['cells'])) {
+                        continue;
+                    }
+                    foreach ($row['cells'] as $ci => $cell) {
+                        if (is_array($cell) && isset($cell['text']) && is_array($cell['text'])) {
+                            $block['rows'][$ri]['cells'][$ci]['text'] = self::dropMentions($cell['text']);
+                        }
+                    }
+                }
+            }
             if (isset($block['children']) && is_array($block['children'])) {
                 $block['children'] = self::stripForTemplate($block['children'], $dropped);
             }
             $out[] = $block;
         }
         return $out;
+    }
+
+    /**
+     * 7-D4 — 리치 텍스트에서 `mention` 마크만 뗀다(글자·다른 마크는 그대로). 템플릿에 담을 때(`templateBody`).
+     *
+     * @param  list<mixed> $rich
+     * @return list<mixed>
+     */
+    private static function dropMentions(array $rich): array
+    {
+        foreach ($rich as $i => $seg) {
+            if (is_array($seg) && isset($seg['m']) && is_array($seg['m']) && array_key_exists('mention', $seg['m'])) {
+                unset($rich[$i]['m']['mention']);
+            }
+        }
+        return $rich;
     }
 
     /** @param mixed $list */

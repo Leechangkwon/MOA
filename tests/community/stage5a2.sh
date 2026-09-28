@@ -723,8 +723,8 @@ python3 -c "import ast,io;ast.parse(io.open('$ROOT/tests/community/browser_5a2.p
   && expect "browser_5a2.py 문법" "0" "0"
 expect "커뮤니티 코드에 역할 문자열 비교 0" "0" \
   "$(grep -rnE "'(Admin|Manager|Employee|Guest)'" "$ROOT/src/community" | grep -vE '^[^:]+:[0-9]+:\s*(\*|//|/\*)' | wc -l | tr -d ' ')"
-expect "창구(JSON) 코드가 「이름 (아이디)」를 이어 붙이지 않는다 — tbox_person_label 은 서버 화면 두 파일(셸·런처)만" "2" \
-  "$(grep -rln 'tbox_person_label(' "$ROOT/src" | grep -v 'src/bootstrap.php' | wc -l | tr -d ' ')"
+expect "창구(JSON) 코드가 「이름 (아이디)」를 이어 붙이지 않는다 — tbox_person_label 은 서버 화면 두 파일(셸·런처)만 — 7-D4 멘션 이름 지도(routes.php — 지시서 M-4 · 두 렌더러가 같은 글자)까지 셋뿐" "src/community/routes.php src/views/launcher.php src/views/shell_top.php" \
+  "$(cd "$ROOT" && grep -rln 'tbox_person_label(' src | grep -vx 'src/bootstrap.php' | LC_ALL=C sort | tr '\n' ' ' | sed 's/ $//')"
 
 # ════════════════════════════════════════════════════════════════
 if [ "${REGRESS:-0}" = "1" ]; then

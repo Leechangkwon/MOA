@@ -40,14 +40,14 @@ import { inputRules, textblockTypeInputRule, InputRule } from './vendor/pm/prose
 import { dropCursor } from './vendor/pm/prosemirror-dropcursor.js?v=5823578fa61a';
 import { gapCursor } from './vendor/pm/prosemirror-gapcursor.js?v=5823578fa61a';
 
-import { renderDoc, embedHost } from './doc-render.js?v=06c32b371a63';
-import { createDatabaseView } from './database.js?v=06c32b371a63';
-import { bindTemplateGallery, createTemplateSave } from './templates.js?v=06c32b371a63';
-import { bindEmbedAdmin } from './embeds.js?v=06c32b371a63';
-import { bindPopular } from './popular.js?v=06c32b371a63';
-import { bindPalettes } from './palettes.js?v=06c32b371a63';
-import { schema, toDoc, fromDoc, uuid4, colorAllowed, schemeOkForEditor, COLORS, BLOCK_TYPES } from './editor-schema.js?v=06c32b371a63';
-import { createDrafts } from './drafts.js?v=06c32b371a63';
+import { renderDoc, embedHost } from './doc-render.js?v=650963c0b731';
+import { createDatabaseView } from './database.js?v=650963c0b731';
+import { bindTemplateGallery, createTemplateSave } from './templates.js?v=650963c0b731';
+import { bindEmbedAdmin } from './embeds.js?v=650963c0b731';
+import { bindPopular } from './popular.js?v=650963c0b731';
+import { bindPalettes } from './palettes.js?v=650963c0b731';
+import { schema, toDoc, fromDoc, uuid4, colorAllowed, schemeOkForEditor, mentionAllowed, editorDomParser, clipboardDomParser, COLORS, BLOCK_TYPES } from './editor-schema.js?v=650963c0b731';
+import { createDrafts } from './drafts.js?v=650963c0b731';
 
 /* ─── 주소와 공통 도우미 ─────────────────────────────────────── */
 
@@ -3766,7 +3766,7 @@ function atomAt(state) {
   return null;
 }
 
-/* ─── 인라인 툴바 — 「색」 「배경」 「링크」 셋 (지시서 1장) ───── */
+/* ─── 인라인 툴바 — 「색」 「배경」 「링크」 셋 (지시서 1장) + 7-D4 「멘션」 ───── */
 
 /**
  * 7-D2 — 편집기 색 줄에 더할 **살아 있는 팔레트 이름**(P-11). 편집기를 만들 때 한 번 받는다(화면 수명 동안 한 번 — 실패도 기억).
@@ -3788,9 +3788,11 @@ function loadPaletteNames() {
   return palettesLoading;
 }
 
-function createToolbar(view) {
+function createToolbar(view, opts) {
   const wrap = document.getElementById('inline-toolbar');
   if (!wrap) { return null; }
+  const pageId = opts && typeof opts.pageId === 'string' ? opts.pageId : '';
+  const rememberMention = opts && typeof opts.rememberMention === 'function' ? opts.rememberMention : () => {};
   loadPaletteNames();   // 7-D2 — 편집기를 만들 때 한 번(색 줄은 열 때 짓는다 — 그때까지 오면 이름 견본이 함께)
   // 「블록 추가」는 마크업에서 이 줄 안에 있다. 비우기 전에 붙잡아 두었다가 줄 맨 앞에 다시 놓는다
   // (단추의 click 은 initPage 가 걸어 두었으므로 요소를 새로 만들지 않는다).
@@ -3802,6 +3804,15 @@ function createToolbar(view) {
   let linkPanel = null;
   let linkInput = null;
   let linkNote = null;
+  // 7-D4 멘션 줄 — 종류 · 찾기(사람·페이지) 또는 날짜 · 후보 목록(줄 **안** — 떠 있는 목록이 아니다, 5-D 댓글 @ 후보와 같은 규칙)
+  let mentionPanel = null;
+  let mentionKind = null;
+  let mentionQ = null;
+  let mentionDate = null;
+  let mentionDateApply = null;
+  let mentionList = null;
+  let mentionTimer = null;
+  let mentionSerial = 0;
 
   function labelButton(id, text, onClick) {
     const button = document.createElement('button');
@@ -3950,21 +3961,217 @@ function createToolbar(view) {
     return row;
   }
 
+  /* ── 7-D4 글 안 멘션 (지시서 M-7) ──
+     커서 자리에 글자 「@」 하나 + `mention {kind, id}` 마크를 넣는다(이름은 저장하지 않는다 — 라벨은 편집기 안에서만 보인다).
+     후보는 창구가 준 것만: 사람 = `GET /api/mention-candidates?page=&q=`(그 페이지를 볼 수 있는 활성 사용자 — 댓글 @ 와 같은 창구),
+     페이지 = `GET /api/search?q=` 의 결과 앞 10(볼 수 있는 것만), 날짜 = 날짜 칸. `@` 키로 여는 길은 없다(3-B 교훈 — 단추만). */
+  function mentionItem(text, meta, onPick) {
+    const li = document.createElement('li');
+    li.className = 'list__item';
+    if (!onPick) {
+      li.textContent = text;
+      return li;
+    }
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'block-pick';
+    b.setAttribute('data-mention-pick', '');
+    const strong = document.createElement('strong');
+    strong.textContent = text;
+    b.appendChild(strong);
+    if (meta) {
+      const span = document.createElement('span');
+      span.className = 'block-pick__keys';
+      span.textContent = meta;
+      b.appendChild(span);
+    }
+    b.addEventListener('mousedown', (event) => { event.preventDefault(); });
+    b.addEventListener('click', onPick);
+    li.appendChild(b);
+    return li;
+  }
+
+  function insertMention(kind, id, label) {
+    if (!mentionAllowed(kind, id)) { return; }
+    const sel = view.state.selection;
+    const $to = sel.$to;
+    if (!$to.parent.inlineContent || !$to.parent.type.allowsMarkType(schema.marks.mention)) {
+      clear(mentionList);
+      mentionList.appendChild(mentionItem('글 안(문단·제목·목록)에 커서를 두고 넣으세요', '', null));
+      show(mentionList, true);
+      return;
+    }
+    const pos = sel.to;
+    const keep = $to.marks().filter((mk) => mk.type !== schema.marks.mention && mk.type !== schema.marks.link);
+    const mark = schema.marks.mention.create({ kind: kind, id: id, label: label, key: uuid4() });
+    const tr = view.state.tr.insert(pos, schema.text('@', keep.concat([mark])));
+    tr.setSelection(TextSelection.create(tr.doc, pos + 1));
+    tr.setStoredMarks(keep);
+    view.dispatch(tr.scrollIntoView());
+    if (kind !== 'date') { rememberMention((kind === 'user' ? 'user:' : 'page:') + String(id), { label: label }); }
+    closePanels();
+    view.focus();
+  }
+
+  function mentionSearch() {
+    const serial = ++mentionSerial;
+    const kind = mentionKind.value;
+    const q = mentionQ.value.trim();
+    clear(mentionList);
+    show(mentionList, false);
+    if (q === '' || kind === 'date') { return; }
+    const path = kind === 'user'
+      ? '/api/mention-candidates?page=' + encodeURIComponent(pageId) + '&q=' + encodeURIComponent(q)
+      : '/api/search?q=' + encodeURIComponent(q);
+    api('GET', path).then((result) => {
+      if (serial !== mentionSerial || mentionKind.value !== kind) { return; }
+      clear(mentionList);
+      if (result.status !== 200) {
+        mentionList.appendChild(mentionItem(errorMessage(result.data), '', null));
+        show(mentionList, true);
+        return;
+      }
+      if (kind === 'user') {
+        for (const p of Array.isArray(result.data.candidates) ? result.data.candidates : []) {
+          if (!p || !Number.isInteger(p.id) || typeof p.username !== 'string') { continue; }
+          const label = personLabel(p.display_name, p.username);
+          mentionList.appendChild(mentionItem(label, '', () => insertMention('user', p.id, label)));
+        }
+      } else {
+        const found = Array.isArray(result.data.results) ? result.data.results.slice(0, 10) : [];
+        for (const r of found) {
+          if (!r || typeof r.id !== 'string') { continue; }
+          const title = typeof r.title === 'string' ? r.title : '';
+          mentionList.appendChild(mentionItem(title !== '' ? title : '제목 없는 페이지', r.space && r.space.name ? r.space.name : '',
+            () => insertMention('page', r.id, title)));
+        }
+      }
+      if (!mentionList.firstChild) {
+        mentionList.appendChild(mentionItem(kind === 'user' ? '찾은 사람이 없습니다' : '찾은 페이지가 없습니다', '', null));
+      }
+      show(mentionList, true);
+    }).catch(() => {
+      if (serial !== mentionSerial) { return; }
+      clear(mentionList);
+      mentionList.appendChild(mentionItem(GENERIC_ERROR, '', null));
+      show(mentionList, true);
+    });
+  }
+
+  function drawMentionKind() {
+    const isDate = mentionKind.value === 'date';
+    show(mentionQ, !isDate);
+    show(mentionDate, isDate);
+    show(mentionDateApply, isDate);
+    mentionQ.setAttribute('placeholder', mentionKind.value === 'user' ? '이름이나 아이디' : '페이지 제목의 낱말');
+    mentionQ.value = '';
+    mentionSerial += 1;
+    clear(mentionList);
+    show(mentionList, false);
+  }
+
+  function buildMentionRow() {
+    const row = document.createElement('div');
+    row.className = 'editor-palette__row';
+    row.id = 'mention-row';
+    row.hidden = true;
+
+    mentionKind = document.createElement('select');
+    mentionKind.id = 'mention-kind';
+    mentionKind.className = 'input';
+    mentionKind.setAttribute('aria-label', '멘션 종류');
+    for (const [value, text] of [['user', '사람'], ['page', '페이지'], ['date', '날짜']]) {
+      const o = document.createElement('option');
+      o.value = value;
+      o.textContent = text;
+      mentionKind.appendChild(o);
+    }
+
+    mentionQ = document.createElement('input');
+    mentionQ.type = 'search';
+    mentionQ.id = 'mention-q';
+    mentionQ.className = 'input';
+    mentionQ.setAttribute('maxlength', '64');
+    mentionQ.setAttribute('autocomplete', 'off');
+    mentionQ.setAttribute('spellcheck', 'false');
+    mentionQ.setAttribute('aria-label', '찾을 말');
+
+    mentionDate = document.createElement('input');
+    mentionDate.type = 'date';
+    mentionDate.id = 'mention-date';
+    mentionDate.className = 'input';
+    mentionDate.setAttribute('min', '1900-01-01');
+    mentionDate.setAttribute('max', '2100-12-31');
+    mentionDate.setAttribute('aria-label', '날짜');
+
+    mentionDateApply = document.createElement('button');
+    mentionDateApply.type = 'button';
+    mentionDateApply.id = 'mention-date-apply';
+    mentionDateApply.className = 'btn btn--small';
+    mentionDateApply.textContent = '넣기';
+
+    mentionList = document.createElement('ul');
+    mentionList.id = 'mention-list';
+    mentionList.className = 'list list--scroll';
+    mentionList.setAttribute('aria-label', '멘션 후보');
+    mentionList.hidden = true;
+
+    const applyDate = () => {
+      const v = mentionDate.value;
+      if (!mentionAllowed('date', v)) { mentionDate.focus(); return; }
+      insertMention('date', v, v);
+    };
+    mentionKind.addEventListener('change', () => { drawMentionKind(); (mentionKind.value === 'date' ? mentionDate : mentionQ).focus(); });
+    mentionQ.addEventListener('input', () => {
+      if (mentionTimer !== null) { window.clearTimeout(mentionTimer); }
+      mentionTimer = window.setTimeout(mentionSearch, 200);
+    });
+    // Enter = 첫 후보 · Esc = 닫기 (링크 칸과 같은 손버릇)
+    mentionQ.addEventListener('keydown', (event) => {
+      if (event.key === 'Escape') { event.preventDefault(); closePanels(); view.focus(); return; }
+      if (event.key === 'Enter') {
+        event.preventDefault();
+        const first = mentionList.querySelector('[data-mention-pick]');
+        if (first) { first.click(); }
+      }
+    });
+    mentionDate.addEventListener('keydown', (event) => {
+      if (event.key === 'Escape') { event.preventDefault(); closePanels(); view.focus(); return; }
+      if (event.key === 'Enter') { event.preventDefault(); applyDate(); }
+    });
+    mentionDateApply.addEventListener('mousedown', (event) => { event.preventDefault(); applyDate(); });
+
+    row.appendChild(mentionKind);
+    row.appendChild(mentionQ);
+    row.appendChild(mentionDate);
+    row.appendChild(mentionDateApply);
+    row.appendChild(mentionList);
+    return row;
+  }
+
+  function mentionOpen() { return !!(mentionPanel && !mentionPanel.hidden); }
+
   function closePanels() {
     if (fgPanel) { fgPanel.hidden = true; }
     if (bgPanel) { bgPanel.hidden = true; }
     if (linkPanel) { linkPanel.hidden = true; }
     if (linkNote) { setText(linkNote, ''); }
+    if (mentionPanel) {
+      mentionPanel.hidden = true;
+      mentionSerial += 1;
+      if (mentionTimer !== null) { window.clearTimeout(mentionTimer); mentionTimer = null; }
+    }
   }
 
   function anyPanelOpen() {
-    return (fgPanel && !fgPanel.hidden) || (bgPanel && !bgPanel.hidden) || (linkPanel && !linkPanel.hidden);
+    return (fgPanel && !fgPanel.hidden) || (bgPanel && !bgPanel.hidden) || (linkPanel && !linkPanel.hidden) || mentionOpen();
   }
 
   function togglePanel(which) {
     const wasOpen = which === 'fg' ? (fgPanel && !fgPanel.hidden)
       : which === 'bg' ? (bgPanel && !bgPanel.hidden)
-        : (linkPanel && !linkPanel.hidden);
+        : which === 'mention' ? mentionOpen()
+          : (linkPanel && !linkPanel.hidden);
     closePanels();
     if (wasOpen) { return; }
     // 7-D2 — 팔레트 목록이 그 줄을 지은 뒤에 왔으면 새 목록으로 다시 짓는다(늦게 온 이름이 빠지지 않게)
@@ -3977,6 +4184,11 @@ function createToolbar(view) {
       if (stale(bgPanel)) { bgPanel.remove(); bgPanel = null; }
       if (!bgPanel) { bgPanel = buildPalette('_bg', '배경색'); wrap.appendChild(bgPanel); }
       bgPanel.hidden = false;
+    } else if (which === 'mention') {
+      if (!mentionPanel) { mentionPanel = buildMentionRow(); wrap.appendChild(mentionPanel); }
+      drawMentionKind();
+      mentionPanel.hidden = false;
+      (mentionKind.value === 'date' ? mentionDate : mentionQ).focus();
     } else {
       if (!linkPanel) { linkPanel = buildLinkRow(); wrap.appendChild(linkPanel); }
       linkPanel.hidden = false;
@@ -3992,6 +4204,8 @@ function createToolbar(view) {
     labelButton('tool-bg', '배경', () => togglePanel('bg')),
     labelButton('tool-link', '링크', () => togglePanel('link'))
   ];
+  // 7-D4 넷째 단추 — 글자를 고르지 않아도 쓸 수 있다(커서 자리에 넣는다)
+  const mentionTool = labelButton('tool-mention', '멘션', () => togglePanel('mention'));
   if (addBlock) {
     row.appendChild(addBlock);
     const sep = document.createElement('span');
@@ -4000,6 +4214,7 @@ function createToolbar(view) {
     row.appendChild(sep);
   }
   for (const tool of tools) { row.appendChild(tool); }
+  row.appendChild(mentionTool);
   wrap.appendChild(row);
 
   /* 자리는 **CSS 가 정한다**(편집 영역 위에 붙는 줄, 팔레트는 그 아래로 뜬다). 좌표를 JS 로
@@ -4010,7 +4225,8 @@ function createToolbar(view) {
        편집기의 선택은 그대로라 여기 판단이 바뀌지 않는다. */
   function refresh() {
     const empty = view.state.selection.empty;
-    if (empty && anyPanelOpen()) { closePanels(); }
+    // 멘션 줄은 커서만 있어도 연다 — 색·배경·링크 줄만 닫는다
+    if (empty && anyPanelOpen() && !mentionOpen()) { closePanels(); }
     for (const tool of tools) { tool.disabled = empty; }
   }
 
@@ -4093,6 +4309,8 @@ function initPage() {
     childTitles: {},
     // 5-E — 페이지 링크 · 붙인 파일의 제목 지도(창구가 **보는 사람 권한으로** 거른 것).
     linkTitles: {}, fileTitles: {}, embeds: { hosts: [], frames: false },
+    // 7-D4 — 글 안 멘션의 이름 지도(창구가 **보는 사람 기준으로** 거른 것 — 볼 수 있는 것만)
+    mentionLabels: {},
     // 4-B — 지금의 공개 범위와 이 페이지가 든 공간. 둘 다 창구가 준 값이다.
     visibility: 'private', space: null, canSetVisibility: false,
     // 4-D — 상태. 문자열 또는 null.
@@ -4204,7 +4422,7 @@ function initPage() {
   function readCtx() {
     return {
       child_titles: state.childTitles, link_titles: state.linkTitles, file_titles: state.fileTitles,
-      embeds: state.embeds, base: COMMUNITY_BASE, tbox_base: APP_BASE
+      embeds: state.embeds, base: COMMUNITY_BASE, tbox_base: APP_BASE, mention_labels: state.mentionLabels
     };
   }
 
@@ -4463,6 +4681,7 @@ function initPage() {
         : {};
       state.linkTitles = result.data.link_titles && typeof result.data.link_titles === 'object' ? result.data.link_titles : {};
       state.fileTitles = result.data.file_titles && typeof result.data.file_titles === 'object' ? result.data.file_titles : {};
+      state.mentionLabels = result.data.mention_labels && typeof result.data.mention_labels === 'object' ? result.data.mention_labels : {};
       // 7-C — 임베드 재료(허용 목록 · 틀을 여는가). 판단은 서버가 준 값뿐이다
       state.embeds = result.data.embeds && typeof result.data.embeds === 'object' ? result.data.embeds : { hosts: [], frames: false };
       drawBacklinks(Array.isArray(result.data.backlinks) ? result.data.backlinks : []);
@@ -5890,8 +6109,11 @@ function initPage() {
         setText(historyPreviewTitle, '판 ' + String(got.version) + (isCurrent ? ' (지금)' : '') + ' · ' + got.title);
         clear(historyPreviewDoc);
         /* 하위 페이지 카드의 제목 지도는 **지금 문서의 것**이다 — 지난 판이 가리키던 페이지가
-           그 뒤에 지워졌다면 지도에 없고, 렌더러가 「볼 수 없는 페이지」로 그린다. */
-        historyPreviewDoc.appendChild(renderDoc(got.doc, readCtx()));
+           그 뒤에 지워졌다면 지도에 없고, 렌더러가 「볼 수 없는 페이지」로 그린다.
+           7-D4 — 글 안 멘션의 이름은 **그 판** 응답의 지도(`mention_labels` — 볼 수 있는 것만)로 그린다. */
+        const verCtx = readCtx();
+        verCtx.mention_labels = result.data.mention_labels && typeof result.data.mention_labels === 'object' ? result.data.mention_labels : {};
+        historyPreviewDoc.appendChild(renderDoc(got.doc, verCtx));
         show(historyVersions, false);
         show(historyEvents, false);
         show(historyPreview, true);
@@ -6080,7 +6302,7 @@ function initPage() {
     let pmDoc;
     try {
       // 하위 페이지 카드에 제목을 보여 주려고 지도를 함께 넘긴다 (4-A).
-      pmDoc = fromDoc(state.doc, { child_titles: state.childTitles, link_titles: state.linkTitles, file_titles: state.fileTitles });
+      pmDoc = fromDoc(state.doc, { child_titles: state.childTitles, link_titles: state.linkTitles, file_titles: state.fileTitles, mention_labels: state.mentionLabels });
     } catch (e) {
       setText(msg, e && e.message ? e.message : GENERIC_ERROR);
       return;
@@ -6119,6 +6341,9 @@ function initPage() {
     view = new EditorView(editorEl, {
       state: editorState,
       attributes: { class: 'doc editor' },
+      // 7-D4 — 자기 DOM 을 다시 읽을 때만 멘션을 되살린다 · 붙여넣기·끌어 놓기는 스키마 그대로(멘션 0) — editor-schema.js 머리글
+      domParser: editorDomParser,
+      clipboardParser: clipboardDomParser,
       handleDoubleClickOn(v, p, node, nodePos, event, direct) {
         if (!direct || ATOM_TYPES.indexOf(node.type.name) === -1) { return false; }
         editAtom(node.type.name, node.attrs, nodePos);
@@ -6132,7 +6357,11 @@ function initPage() {
       }
     });
 
-    toolbar = createToolbar(view);
+    toolbar = createToolbar(view, {
+      pageId: pageId,
+      // 7-D4 — 새로 넣은 멘션의 라벨을 이름 지도에 넣어 두면 저장 뒤 읽기 화면이 곧바로 그린다(다음 `load()` 에서 서버 것으로 바뀐다)
+      rememberMention: (key, entry) => { state.mentionLabels[key] = entry; }
+    });
     drawStarter();
 
     show(docEl, false);
@@ -6169,7 +6398,7 @@ function initPage() {
   function applyPageDraft(data) {
     let node;
     try {
-      const pmDoc = fromDoc(data.doc, { child_titles: state.childTitles, link_titles: state.linkTitles, file_titles: state.fileTitles });
+      const pmDoc = fromDoc(data.doc, { child_titles: state.childTitles, link_titles: state.linkTitles, file_titles: state.fileTitles, mention_labels: state.mentionLabels });
       node = schema.nodeFromJSON(pmDoc);
     } catch (e) {
       return false;

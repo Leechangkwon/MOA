@@ -932,7 +932,7 @@ fi
 hr "C:T-186  권한 · 단계"
 expect "tbox_app 이 embed_domains DELETE → 42501" "42501" "$(appq "DELETE FROM community.embed_domains WHERE false" | sed -n 's/.*ERROR: *\([0-9A-Z]\{5\}\).*/\1/p')"
 expect "COMMUNITY_DOC_STAGE = 7" "7" "$(php -r 'require "'"$INST"'/app/src/bootstrap.php"; echo COMMUNITY_DOC_STAGE;' 2>/dev/null)"
-expect "글 안 mention 마크는 8단계로 미뤘다(7-D 전까지 400)" "400 mark_not_in_stage" "$(put_doc claude_employee01 "$P" "[{'id': u(), 'type': 'paragraph', 'text': [{'t': 'x', 'm': {'mention': {'kind': 'user', 'id': 1}}}]}]") $(errs)"
+expect "글 안 mention 마크 — 단계 6 문서에서는 단계 밖 · 단계 7(7-D4 에서 열림)에서는 글자가 「@」 가 아니면 400 bad_value" "mark_not_in_stage 400 bad_value" "$(php -r 'require "'"$ROOT"'/src/community/Doc.php"; $v = Doc::validate(["schema" => 1, "blocks" => [["id" => "7f0c1d2e-3a4b-4c5d-8e6f-0a1b2c3d4e5f", "type" => "paragraph", "text" => [["t" => "x", "m" => ["mention" => ["kind" => "user", "id" => 1]]]]]]], 6); echo $v["errors"][0]["reason"] ?? "ok";' 2>&1) $(put_doc claude_employee01 "$P" "[{'id': u(), 'type': 'paragraph', 'text': [{'t': 'x', 'm': {'mention': {'kind': 'user', 'id': 1}}}]}]") $(errs)"
 expect "문서 스키마 사본 = 원본(기획 폴더)" "0" "$(diff "$ROOT/public/assets/community/doc-schema.json" "$INST/community/doc-schema.json" >/dev/null 2>&1; echo $?)"
 expect "서버 로그에 잡히지 않은 예외 0" "0" "$(grep -c 'uncaught\|Fatal error' "$INST/server.log" 2>/dev/null | tr -d ' ')"
 
@@ -951,8 +951,8 @@ python3 -c "import ast,io;ast.parse(io.open('$ROOT/tests/community/browser_7c.py
   && expect "browser_7c.py 문법" "0" "0"
 expect "커뮤니티 코드에 역할 문자열 비교 0" "0" \
   "$(grep -rnE "'(Admin|Manager|Employee|Guest)'" "$ROOT/src/community" | grep -vE '^[^:]+:[0-9]+:\s*(\*|//|/\*)' | wc -l | tr -d ' ')"
-expect "창구(JSON) 코드가 「이름 (아이디)」를 이어 붙이지 않는다 — tbox_person_label 은 서버 화면 두 파일(셸·런처)만" "2" \
-  "$(grep -rln 'tbox_person_label(' "$ROOT/src" | grep -v 'src/bootstrap.php' | wc -l | tr -d ' ')"
+expect "창구(JSON) 코드가 「이름 (아이디)」를 이어 붙이지 않는다 — tbox_person_label 은 서버 화면 두 파일(셸·런처)만 — 7-D4 멘션 이름 지도(routes.php — 지시서 M-4 · 두 렌더러가 같은 글자)까지 셋뿐" "src/community/routes.php src/views/launcher.php src/views/shell_top.php" \
+  "$(cd "$ROOT" && grep -rln 'tbox_person_label(' src | grep -vx 'src/bootstrap.php' | LC_ALL=C sort | tr '\n' ' ' | sed 's/ $//')"
 
 # ════════════════════════════════════════════════════════════════
 if [ "${REGRESS:-0}" = "1" ]; then

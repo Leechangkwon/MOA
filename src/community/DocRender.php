@@ -26,7 +26,7 @@ final class DocRender
      *
      * @var list<string>
      */
-    private const MARK_ORDER = ['code', 'color', 'strike', 'underline', 'italic', 'bold', 'link'];
+    private const MARK_ORDER = ['code', 'color', 'strike', 'underline', 'italic', 'bold', 'link', 'mention'];
 
     /**
      * `child_page` 가 가리키는 페이지를 볼 수 없을 때의 문구 (4단계).
@@ -38,6 +38,11 @@ final class DocRender
     /** 7-C — 임베드 카드 문구. 클라이언트 렌더러와 같은 문구(C:T-19) */
     private const EMBED_WAITING = '허용 대기 · 새 탭에서 열기';
     private const EMBED_BLOCKED = '허용 목록 밖의 임베드';
+    /**
+     * 7-D4 — 글 안 멘션의 대상을 볼 수 없을 때(없는 대상·못 보는 대상·모양 밖 id 모두 같은 글자) 「@」 뒤에 붙는 문구.
+     * **클라이언트 렌더러(`doc-render.js`)의 같은 상수와 한 글자도 다르면 안 된다** — C:T-19 · C:T-225.
+     */
+    private const MENTION_UNREADABLE = '볼 수 없음';
 
     /**
      * 6-C — 합친 칸이 덮는 자리 `[행][열] => true`. doc-render.js `coveredCells` 와 같은 규칙(행 순서로 훑어 시작 칸만 덮는다).
@@ -150,7 +155,7 @@ final class DocRender
         $type  = (string) $block['type'];
         $id    = isset($block['id']) && is_string($block['id']) ? $block['id'] : '';
         $idAttr = $id === '' ? '' : ' id="block-' . self::esc($id) . '"';
-        $text  = isset($block['text']) && is_array($block['text']) ? self::rich($block['text']) : '';
+        $text  = isset($block['text']) && is_array($block['text']) ? self::rich($block['text'], $ctx) : '';
         $kids  = isset($block['children']) && is_array($block['children'])
             ? self::blocks($block['children'], $rootBlocks, $ctx)
             : '';
@@ -192,7 +197,7 @@ final class DocRender
             case 'code':
                 $code = isset($block['code']) && is_string($block['code']) ? $block['code'] : '';
                 $lang = isset($block['language']) && is_string($block['language']) ? $block['language'] : 'plain';
-                $cap  = isset($block['caption']) && is_array($block['caption']) ? self::rich($block['caption']) : '';
+                $cap  = isset($block['caption']) && is_array($block['caption']) ? self::rich($block['caption'], $ctx) : '';
                 $html = '<div class="doc-code"' . $idAttr . '>'
                       . '<span class="doc-code__lang">' . self::esc($lang) . '</span>'
                       . '<pre><code>' . self::esc($code) . '</code></pre>';
@@ -265,7 +270,7 @@ final class DocRender
                         $rs      = is_array($cell) && is_int($cell['rowspan'] ?? null) && $cell['rowspan'] > 1 ? ' rowspan="' . (int) $cell['rowspan'] . '"' : '';
                         $cs      = is_array($cell) && is_int($cell['colspan'] ?? null) && $cell['colspan'] > 1 ? ' colspan="' . (int) $cell['colspan'] . '"' : '';
                         $html   .= '<' . $tag . $rs . $cs . ' class="doc-table__cell' . ($cellCls === null ? '' : ' ' . self::esc($cellCls)) . '">'
-                                 . (is_array($cell) && isset($cell['text']) && is_array($cell['text']) ? self::rich($cell['text']) : '')
+                                 . (is_array($cell) && isset($cell['text']) && is_array($cell['text']) ? self::rich($cell['text'], $ctx) : '')
                                  . '</' . $tag . '>';
                     }
                     $html .= '</tr>';
@@ -297,7 +302,7 @@ final class DocRender
                     ? substr($block['file_ref'], 5) : '';
                 $fmap  = is_array($ctx['file_titles'] ?? null) ? $ctx['file_titles'] : [];
                 $fent  = is_array($fmap[$ref] ?? null) ? $fmap[$ref] : null;
-                $cap   = isset($block['caption']) && is_array($block['caption']) ? self::rich($block['caption']) : '';
+                $cap   = isset($block['caption']) && is_array($block['caption']) ? self::rich($block['caption'], $ctx) : '';
                 if ($fent === null) {
                     return '<div class="doc-file"' . $idAttr . '><div class="card card--soon">'
                          . '<span class="card__title">' . self::FILE_UNREADABLE . '</span></div></div>';
@@ -330,7 +335,7 @@ final class DocRender
                 $emb    = is_array($ctx['embeds'] ?? null) ? $ctx['embeds'] : [];
                 $ehosts = is_array($emb['hosts'] ?? null) ? $emb['hosts'] : [];
                 $listed = $ehost !== null && in_array($ehost, $ehosts, true);
-                $ecap   = isset($block['caption']) && is_array($block['caption']) ? self::rich($block['caption']) : '';
+                $ecap   = isset($block['caption']) && is_array($block['caption']) ? self::rich($block['caption'], $ctx) : '';
                 if ($listed && ($emb['frames'] ?? false) === true) {
                     return '<figure class="doc-embed"' . $idAttr . '>'
                          . '<iframe class="doc-embed__frame" src="' . self::esc($eurl) . '" sandbox="' . self::esc(COMMUNITY_EMBED_SANDBOX) . '"'
@@ -472,25 +477,68 @@ final class DocRender
     }
 
     /**
+     * 7-D4 글 안 멘션 한 조각 — [글자(「@」 + 라벨), 감쌀 여는 태그, 닫는 태그]. 지시서 M-6.
+     *   · 사람·페이지는 `$ctx['mention_labels']`(창구가 준 **볼 수 있는 것만**의 지도)에 있을 때만 이름 — 없으면 「@볼 수 없음」(글자만 · 링크 0)
+     *   · 페이지는 `<a class="doc-mention" href="<커뮤니티>/p/<uuid>">`(사이트 안 — `target` 없음) · 날짜는 판정 없이 id 그대로
+     *   · id 모양은 그리기 직전 한 번 더 본다(`Doc::mentionShapeOk` — 검증기와 같은 함수). 모양 밖은 「@볼 수 없음」
+     * `doc-render.js` 의 `mentionParts` 와 같은 규칙이다(C:T-225).
+     *
+     * @param  mixed               $value
+     * @param  array<string,mixed> $ctx
+     * @return array{0:string,1:string,2:string}
+     */
+    private static function mentionParts($value, array $ctx): array
+    {
+        $unknown = ['@' . self::MENTION_UNREADABLE, '<span class="doc-mention doc-mention--unknown">', '</span>'];
+        if (!Doc::mentionShapeOk($value)) {
+            return $unknown;
+        }
+        if ($value['kind'] === 'date') {
+            return ['@' . (string) $value['id'], '<span class="doc-mention">', '</span>'];
+        }
+        $labels = is_array($ctx['mention_labels'] ?? null) ? $ctx['mention_labels'] : [];
+        $key    = $value['kind'] === 'user' ? 'user:' . (string) $value['id'] : 'page:' . (string) $value['id'];
+        $entry  = is_array($labels[$key] ?? null) ? $labels[$key] : null;
+        if ($entry === null || !isset($entry['label']) || !is_string($entry['label'])) {
+            return $unknown;
+        }
+        if ($value['kind'] === 'page') {
+            return ['@' . $entry['label'],
+                    '<a class="doc-mention" href="' . self::esc(Http::communityUrl('/p/' . (string) $value['id'])) . '">', '</a>'];
+        }
+        return ['@' . $entry['label'], '<span class="doc-mention">', '</span>'];
+    }
+
+    /**
      * 리치 텍스트 → HTML. 세그먼트마다 마크를 **고정 순서**로 감싼다.
      *
-     * @param list<mixed> $text
+     * 7-D4 — `mention` 마크가 있는 세그먼트는 원문 글자(「@」)를 **라벨로 바꿔** 그리고(`mentionParts`), 멘션을 가장 바깥에 둔다.
+     * 멘션과 링크는 함께 오지 않는다(검증기) — 그래도 둘 다 있으면 링크는 그리지 않는다(링크 속 링크 0).
+     *
+     * @param list<mixed>         $text
+     * @param array<string,mixed> $ctx  `mention_labels` 지도(없으면 모든 사람·페이지 멘션이 「@볼 수 없음」)
      */
-    private static function rich(array $text): string
+    private static function rich(array $text, array $ctx = []): string
     {
         $out = '';
         foreach ($text as $seg) {
             if (!is_array($seg) || !isset($seg['t']) || !is_string($seg['t'])) {
                 continue;
             }
-            $inner = self::esc($seg['t']);
-            $marks = isset($seg['m']) && is_array($seg['m']) ? $seg['m'] : [];
+            $marks   = isset($seg['m']) && is_array($seg['m']) ? $seg['m'] : [];
+            $mention = array_key_exists('mention', $marks) ? self::mentionParts($marks['mention'], $ctx) : null;
+            $inner   = self::esc($mention === null ? $seg['t'] : $mention[0]);
 
             foreach (self::MARK_ORDER as $name) {
                 if (!array_key_exists($name, $marks)) {
                     continue;
                 }
                 $value = $marks[$name];
+
+                if ($name === 'mention') {
+                    $inner = $mention[1] . $inner . $mention[2];
+                    continue;
+                }
 
                 if ($name === 'color') {
                     if (!is_string($value)) {
@@ -505,7 +553,7 @@ final class DocRender
                 }
 
                 if ($name === 'link') {
-                    if (!is_array($value) || !isset($value['href']) || !is_string($value['href'])) {
+                    if ($mention !== null || !is_array($value) || !isset($value['href']) || !is_string($value['href'])) {
                         continue;
                     }
                     $href = $value['href'];

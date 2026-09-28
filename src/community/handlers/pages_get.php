@@ -364,6 +364,8 @@ Http::json([
     'file_titles' => ($ft = community_file_titles($docExtract['files'], $user)) === [] ? new stdClass() : $ft,
     'link_titles' => ($lt = community_link_titles(array_map(static fn (array $l): string => $l['to_page_id'], $docExtract['links']), $user)) === [] ? new stdClass() : $lt,
     'backlinks'   => community_backlinks((string) $row['public_id'], (int) $row['id'], $user),
+    /* 7-D4 — 글 안 멘션의 이름 지도(볼 수 있는 것만 · 사람은 쓰기 자격 있는 보는 사람에게만 — `community_mention_labels`). 없으면 {} */
+    'mention_labels' => ($ml = community_mention_labels($docExtract['mentions'], $user)) === [] ? new stdClass() : $ml,
     // 5-D — 댓글을 쓸 수 있나 · 공지 「읽은 사람 n/N」을 볼 수 있나(둘 다 창구가 같은 함수로 다시 막는다)
     /* 6-A — DB 페이지면 `database`(스키마·자격 — 행 목록은 `GET /api/databases/{id}/rows`),
        행이면 `row`(속한 DB · 스키마 · 값 · 고칠 수 있나). 둘 다 아니면 null. */

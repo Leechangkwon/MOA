@@ -18,6 +18,9 @@ declare(strict_types=1);
  *   없기 때문이다(아직 교체되지 않았다). 없는 번호·5분 합치기로 스냅샷이 남지 않은 번호는
  *   **404** 다: 우리가 갖고 있지 않은 것을 지어내지 않는다.
  *
+ * 7-D4 — 그 판 본문의 글 안 멘션 이름 지도 `mention_labels`(페이지 응답과 같은 함수 `community_mention_labels` — 볼 수 있는 것만).
+ *   이름은 **지금** 보는 사람 기준으로 푼다(판에 저장된 것은 `{kind, id}` 뿐이다).
+ *
  * @var array<string,mixed> $user   라우터가 넘긴 현재 사용자
  * @var list<string>        $params [0] = 페이지 public_id (UUID) · [1] = 판 번호(숫자)
  */
@@ -45,6 +48,7 @@ if ($want === (int) $row['doc_version']) {
             'doc'         => $doc,
             'block_count' => (int) $row['block_count'],
         ],
+        'mention_labels' => ($ml = community_mention_labels(Doc::extract($doc)['mentions'], $user)) === [] ? new stdClass() : $ml,
     ]);
     exit;
 }
@@ -82,4 +86,5 @@ Http::json([
         'doc'         => $doc,
         'block_count' => is_array($doc['blocks'] ?? null) ? count($doc['blocks']) : 0,
     ],
+    'mention_labels' => ($ml = community_mention_labels(Doc::extract($doc)['mentions'], $user)) === [] ? new stdClass() : $ml,
 ]);

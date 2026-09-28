@@ -70,7 +70,7 @@
   },
   "stage_marks": {
     "3": ["bold", "italic", "underline", "strike", "code", "color", "link"],
-    "8": ["mention"]
+    "7": ["mention"]
   },
   "languages": [
     "plain", "bash", "c", "cpp", "csharp", "css", "diff", "dockerfile", "go", "graphql",

@@ -12,6 +12,9 @@ declare(strict_types=1);
  *   · `q` 는 공백을 뗀 1~64자, 비면 빈 목록(한 글자부터 — 5-A″ 와 같다). `%`·`_`·`#` 는 글자로만.
  *   · 관리자 특권(`admin_all`)·숨긴 글 관리자(`board_moderator`)로만 볼 수 있는 사람은 후보가 아니다(좁은 쪽).
  *   · 돌려주는 것은 아이디·이름뿐, 최대 10명. 자기 자신은 빠진다.
+ *   · 7-D4 — 항목에 계정 번호 `id`(users.id 정수) 한 칸을 더한다(지시서 3.5 예외 · 메인 결정 2026-09-27): 글 안 멘션 마크 `{kind: user, id}` 가
+ *     이 값을 저장한다. 문서 JSON 의 마크 id 와 `mention_labels` 키(`user:<id>`)로 이미 그 글을 읽는 사람에게 나가는 값이고, 후보 범위·판정·
+ *     정렬·개수는 그대로라 새로 드러나는 사람은 없다. 댓글 @ 화면은 이 칸을 쓰지 않는다(`@아이디` 글자로 넣는다).
  *
  * @var array<string,mixed> $user 라우터가 넘긴 현재 사용자
  */
@@ -51,6 +54,7 @@ foreach (Db::instance()->run($sql, [':me' => (int) $user['id'], ':like' => $like
     $rowFor = community_page_row($pageRaw, (int) $t['id']);
     if ($rowFor !== null && CommunityAuthz::decideMentionTarget($t, $rowFor)[0]) {
         $out[] = [
+            'id'           => (int) $t['id'],
             'username'     => (string) $t['username'],
             'display_name' => $t['display_name'] === null ? null : (string) $t['display_name'],
         ];

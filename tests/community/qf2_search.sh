@@ -800,8 +800,8 @@ for f in src/SearchText.php src/community/routes.php src/community/handlers/sear
 done
 expect "php -l (바뀐 PHP) 실패 0" "0" "$nbad"
 # 5-A″ 규칙(커뮤니티 시험들과 같은 검사) — 창구(JSON)는 「이름 (아이디)」를 잇지 않는다(tbox_person_label 은 서버 화면 두 파일만)
-expect "창구 코드가 「이름 (아이디)」를 잇지 않는다 — tbox_person_label 은 셸·런처 두 파일만" "2" \
-  "$(grep -rln 'tbox_person_label(' "$ROOT/src" | grep -v 'src/bootstrap.php' | wc -l | tr -d ' ')"
+expect "창구 코드가 「이름 (아이디)」를 잇지 않는다 — tbox_person_label 은 셸·런처 두 파일만 — 7-D4 멘션 이름 지도(routes.php — 지시서 M-4 · 두 렌더러가 같은 글자)까지 셋뿐" "src/community/routes.php src/views/launcher.php src/views/shell_top.php" \
+  "$(cd "$ROOT" && grep -rln 'tbox_person_label(' src | grep -vx 'src/bootstrap.php' | LC_ALL=C sort | tr '\n' ' ' | sed 's/ $//')"
 # wiki_check 는 트리 형제 자리(../STAGES.md · ../community/STAGES.md — 사이트 문서)를 읽는다. 복제본에서는 그 자리가 비어 있으므로
 # 임시 인스턴스 폴더($INST — app 의 형제)에 사이트 문서 자리를 **읽기 전용 링크**로 흉내 낸다(QF2_SITE — 없으면 트리 형제, 그다음 운영 사이트 폴더).
 SITE_DOCS="${QF2_SITE:-$(cd "$ROOT/.." && pwd)}"

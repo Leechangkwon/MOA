@@ -14,7 +14,7 @@
 #                          claude_manager01(같은 팀) GET → 403 · claude_admin01 GET → 200 + 감사 `admin_all`
 #   C:T-18 쓰기 자격·CSRF  claude_guest01 `POST /api/pages` → 403 `authz.route deny` ·
 #                          쿠키만 보내고 `X-CSRF-Token` 없이 PATCH → 403 `csrf`
-#   C:T-19 렌더러 동등성   표본 문서 20개를 `DocRender.php` 와 `doc-render.js` 로 그려
+#   C:T-19 렌더러 동등성   표본 문서 24개(3단계 20 + 7-D4 글 안 멘션 4)를 `DocRender.php` 와 `doc-render.js` 로 그려
 #                          **텍스트 노드 열·클래스 집합**을 견준다. PHP 쪽은 여기서, JS 쪽은
 #                          아래 C:T-21 의 브라우저 안에서 잰다(Playwright 없으면 JS 쪽 미검증)
 #   C:T-21 브라우저 스모크 **진짜 브라우저로** 편집기를 눌러 보는 20항목(2026-09-23 전면 재작성,
@@ -568,7 +568,7 @@ expect "GET /community/ (Guest) 200 — 화면은 열리고 쓰기만 막힌다"
 fi
 
 # ════════════════════════════════════════════════════════════════
-hr "C:T-19 — 렌더러 동등성 (표본 20개)"
+hr "C:T-19 — 렌더러 동등성 (표본 24개 — 3단계 20 + 7-D4 멘션 4)"
 
 python3 - "$WORK" <<'PY'
 import json, os, sys, uuid
@@ -598,9 +598,15 @@ samples.append({"schema":1,"blocks":[{"id":u(),"type":"paragraph","text":seg("<i
 samples.append({"schema":1,"blocks":[{"id":u(),"type":"paragraph","text":seg("여러 줄\n둘째 줄")}]})
 while len(samples) < 20:
     samples.append({"schema":1,"blocks":[{"id":u(),"type":"paragraph","text":seg("채움 %d" % len(samples))}]})
+samples = samples[:20]
+# 7-D4 글 안 멘션 표본 4 — 곁가지(이름 지도) 없이 그린다: 사람·페이지는 두 렌더러 모두 「@볼 수 없음」, 날짜는 id 그대로(지시서 M-6)
+samples.append({"schema":1,"blocks":[{"id":u(),"type":"paragraph","text":[{"t":"안녕 ","m":{}},{"t":"@","m":{"mention":{"kind":"user","id":12}}},{"t":" 님","m":{}}]}]})
+samples.append({"schema":1,"blocks":[{"id":u(),"type":"paragraph","text":[{"t":"@","m":{"mention":{"kind":"page","id":"0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d"}}},{"t":" 참고","m":{}}]}]})
+samples.append({"schema":1,"blocks":[{"id":u(),"type":"bulleted","text":[{"t":"마감 ","m":{}},{"t":"@","m":{"mention":{"kind":"date","id":"2026-09-27"},"bold":True}}]}]})
+samples.append({"schema":1,"blocks":[{"id":u(),"type":"heading","level":2,"text":[{"t":"@","m":{"mention":{"kind":"user","id":7},"color":"red"}},{"t":"@","m":{"mention":{"kind":"date","id":"2028-02-29"}}}]}]})
 with open(os.path.join(work, "samples.json"), "w", encoding="utf-8") as f:
-    json.dump(samples[:20], f, ensure_ascii=False)
-print(len(samples[:20]), "표본")
+    json.dump(samples, f, ensure_ascii=False)
+print(len(samples), "표본")
 PY
 
 # 이 서버의 PHP CLI 에는 **dom 확장이 없다**(`php -m`: iconv·json·libxml …). 그래서
@@ -608,14 +614,16 @@ PY
 #   · 텍스트 노드 열 : 태그로 자른 뒤 남는 조각을 `html_entity_decode` 로 되돌린다
 #                      (렌더러의 출력에는 `>` 가 전부 `&gt;` 로 나가므로 태그 자르기가 안전하다)
 #   · 클래스 집합   : `class="…"` 를 모아 낱말로 쪼갠다
-ROOT="$ROOT" WORK="$WORK" php -r '
+# 앞 20 은 3단계로, 뒤 4(7-D4 멘션)는 지금 문서 단계(bootstrap 상수 — 멘션은 7단계부터)로 검사한다
+DOC_STAGE=$(sed -n 's/^const COMMUNITY_DOC_STAGE = \([0-9]*\);.*/\1/p' "$ROOT/src/bootstrap.php")
+ROOT="$ROOT" WORK="$WORK" STAGE="${DOC_STAGE:-7}" php -r '
 require getenv("ROOT") . "/src/community/Doc.php";
 require getenv("ROOT") . "/src/community/DocRender.php";
 $samples = json_decode(file_get_contents(getenv("WORK") . "/samples.json"), true);
 $out = [];
 $bad = 0;
-foreach ($samples as $doc) {
-    $v = Doc::validate($doc, 3);
+foreach ($samples as $i => $doc) {
+    $v = Doc::validate($doc, $i < 20 ? 3 : (int) getenv("STAGE"));
     if (!$v["ok"]) { $bad++; }
     $html = DocRender::html($doc);
 
@@ -641,7 +649,7 @@ file_put_contents(getenv("WORK") . "/php-render.json", json_encode($out, JSON_UN
 printf("표본 %d개 · 스키마를 통과하지 못한 것 %d개\n", count($samples), $bad);
 ' > "$WORK/parity-php.txt" 2>&1
 cat "$WORK/parity-php.txt"
-expect "표본 20개가 모두 스키마를 지난다" "표본 20개 · 스키마를 통과하지 못한 것 0개" "$(cat "$WORK/parity-php.txt")"
+expect "표본 24개가 모두 스키마를 지난다(앞 20 은 3단계 · 뒤 4 는 지금 단계)" "표본 24개 · 스키마를 통과하지 못한 것 0개" "$(cat "$WORK/parity-php.txt")"
 
 note "JS 쪽(doc-render.js)은 아래 C:T-21 의 브라우저 안에서 잰다 — 창을 두 번 띄우지 않는다"
 

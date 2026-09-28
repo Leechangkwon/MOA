@@ -25,7 +25,7 @@
  *   사용자가 쓴 구조가 말없이 사라진다.
  */
 
-import { Schema } from './vendor/pm/prosemirror-model.js?v=5823578fa61a';
+import { Schema, DOMParser } from './vendor/pm/prosemirror-model.js?v=5823578fa61a';
 
 /** 기본 색 9 — 배경은 `_bg` 를 붙인 값이다 (doc-schema.json 과 같은 목록) */
 export const COLORS = ['gray', 'brown', 'orange', 'yellow', 'green', 'blue', 'purple', 'pink', 'red'];
@@ -388,9 +388,80 @@ export const schema = new Schema({
         }
       }],
       toDOM: (mark) => ['a', { class: 'doc-link', href: mark.attrs.href }, 0]
+    },
+    /* 7-D4 글 안 멘션 — 글자는 「@」 하나, 이름은 저장하지 않는다(`label` 은 편집기 안에서만 · `key` 는 이웃한 같은 대상 멘션이 한 조각으로
+       합쳐지지 않게 하는 편집기 안 값). `inclusive: false` — 뒤에 친 글자가 멘션에 붙지 않는다. **`parseDOM` 없음** — 붙여넣기로는
+       멘션이 생기지 않는다(14.3). 링크와 함께 있을 수 없다(`excludes` — 서버 검증기도 400). 라벨은 CSS `.editor .doc-mention::after` 가
+       `data-label` 로 보인다(인라인 style 0). `data-mention-*` 셋은 편집기가 **자기 DOM 을 다시 읽을 때**(`editorDomParser` — 멘션 바로 뒤에 친
+       글자·한글 조합이 그 span 안에 들어가 ProseMirror 가 그 자리를 다시 읽는다) 마크를 되살리는 재료다 — 붙여넣기 파서에는 이 규칙이 없다. */
+    mention: {
+      attrs: { kind: {}, id: {}, label: { default: '' }, key: { default: null } },
+      inclusive: false,
+      excludes: 'mention link',
+      toDOM: (mark) => ['span', {
+        class: 'doc-mention', 'data-label': String(mark.attrs.label || ''),
+        'data-mention-kind': String(mark.attrs.kind), 'data-mention-id': String(mark.attrs.id), 'data-mention-key': String(mark.attrs.key || '')
+      }, 0]
     }
   }
 });
+
+/**
+ * 7-D4 글 안 멘션 `{kind, id}` 의 모양 — `Doc::mentionShapeOk`·`doc-render.js` `mentionShapeOk` 와 같은 규칙
+ * (사람 = 정수 1~2⁵³ · 페이지 = 소문자 UUID · 날짜 = YYYY-MM-DD 1900~2100 있는 날). 정규식은 `test()`·`match()` 로만.
+ */
+const MENTION_UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+const MENTION_DATE_RE = /^(\d{4})-(\d{2})-(\d{2})$/;
+export function mentionAllowed(kind, id) {
+  if (kind === 'user') { return Number.isInteger(id) && id >= 1 && id <= 9007199254740992; }
+  if (kind === 'page') { return typeof id === 'string' && MENTION_UUID_RE.test(id); }
+  if (kind !== 'date' || typeof id !== 'string') { return false; }
+  const m = id.match(MENTION_DATE_RE);
+  if (!m) { return false; }
+  const y = Number(m[1]);
+  const mo = Number(m[2]);
+  const d = Number(m[3]);
+  if (y < 1900 || y > 2100 || mo < 1 || mo > 12 || d < 1) { return false; }
+  const leap = (y % 4 === 0 && y % 100 !== 0) || y % 400 === 0;
+  return d <= [31, leap ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31][mo - 1];
+}
+function mentionValueOk(v) {
+  if (!v || typeof v !== 'object' || Array.isArray(v)) { return false; }
+  const keys = Object.keys(v);
+  return keys.length === 2 && keys.indexOf('kind') !== -1 && keys.indexOf('id') !== -1 && mentionAllowed(v.kind, v.id);
+}
+
+/** 7-D4 — 편집기 안에서 멘션 뒤에 보일 라벨(저장하지 않는다). 사람·페이지는 창구가 준 지도, 날짜는 id, 없으면 읽기 렌더러와 같은 「볼 수 없음」 */
+export const MENTION_UNREADABLE = '볼 수 없음';
+export function mentionLabel(kind, id, labels) {
+  if (kind === 'date') { return String(id); }
+  const map = labels && typeof labels === 'object' ? labels : {};
+  const key = (kind === 'user' ? 'user:' : 'page:') + String(id);
+  const entry = Object.prototype.hasOwnProperty.call(map, key) ? map[key] : null;
+  return entry && typeof entry === 'object' && typeof entry.label === 'string' ? entry.label : MENTION_UNREADABLE;
+}
+
+/**
+ * 7-D4 — 파서 두 벌(EditorView 에 넘긴다).
+ *   · `editorDomParser` — 편집기가 **자기 DOM** 을 다시 읽을 때(친 글자·조합)만 쓴다. 스키마 규칙 + 멘션 규칙 하나: 우리 `toDOM` 이 그린
+ *     `span.doc-mention[data-mention-kind]` 에서 kind·id 를 되읽고 모양이 맞을 때만 마크(아니면 글자). 이것이 없으면 멘션 바로 뒤에 친
+ *     글자가 span 안에 들어간 순간 그 자리를 다시 읽으며 「@」 의 마크가 사라진다(2026-09-27 첫 수락 시험에서 겪음).
+ *   · `clipboardDomParser` — 붙여넣기·끌어 놓기. **스키마 그대로**(멘션 규칙 없음 — `mention` 마크에 `parseDOM` 이 없다) — 붙여넣은 HTML
+ *     에서는 멘션이 생기지 않는다(지시서 M-7 · 14.3).
+ */
+const MENTION_DOM_RULE = {
+  tag: 'span.doc-mention[data-mention-kind]',
+  mark: 'mention',
+  getAttrs: (dom) => {
+    const kind = dom.getAttribute('data-mention-kind');
+    const raw = dom.getAttribute('data-mention-id') || '';
+    const id = kind === 'user' && /^[0-9]{1,16}$/.test(raw) ? Number(raw) : raw;
+    if (!mentionAllowed(kind, id)) { return false; }
+    return { kind: kind, id: id, label: dom.getAttribute('data-label') || '', key: dom.getAttribute('data-mention-key') || null };
+  }
+};
+export const clipboardDomParser = DOMParser.fromSchema(schema);
+export const editorDomParser = new DOMParser(schema, [MENTION_DOM_RULE].concat(clipboardDomParser.rules));
 
 /** 링크 스킴 검사 — `Doc::schemeOk`·`doc-render.js` 와 같은 규칙 */
 export function schemeOkForEditor(href) {
@@ -405,8 +476,11 @@ export function schemeOkForEditor(href) {
 
 /* ─── 우리 JSON → ProseMirror ──────────────────────────────────── */
 
-/** 리치 텍스트 → ProseMirror 의 text 노드 배열 */
-function richToPM(text) {
+/**
+ * 리치 텍스트 → ProseMirror 의 text 노드 배열.
+ * 7-D4 — 멘션 마크는 글자가 「@」 이고 모양이 맞을 때만 옮기고, 라벨은 창구가 준 `mention_labels`(없으면 「볼 수 없음」)에서 붙인다.
+ */
+function richToPM(text, labels) {
   const out = [];
   if (!Array.isArray(text)) { return out; }
   for (const seg of text) {
@@ -419,8 +493,12 @@ function richToPM(text) {
     if (typeof m.color === 'string' && colorAllowed(m.color)) {
       marks.push({ type: 'color', attrs: { color: m.color } });
     }
-    if (m.link && typeof m.link.href === 'string' && schemeOkForEditor(m.link.href)) {
+    const isMention = seg.t === '@' && mentionValueOk(m.mention) && !m.link;
+    if (!isMention && m.link && typeof m.link.href === 'string' && schemeOkForEditor(m.link.href)) {
       marks.push({ type: 'link', attrs: { href: m.link.href } });
+    }
+    if (isMention) {
+      marks.push({ type: 'mention', attrs: { kind: m.mention.kind, id: m.mention.id, label: mentionLabel(m.mention.kind, m.mention.id, labels), key: uuid4() } });
     }
     out.push({ type: 'text', text: seg.t, marks: marks });
   }
@@ -495,6 +573,8 @@ export function fromDoc(doc, ctx) {
   const content = [];
   // 4단계 — 하위 페이지 카드에 보여 줄 제목 지도(창구가 준 `child_titles`). 없어도 된다.
   const childTitles = ctx && ctx.child_titles && typeof ctx.child_titles === 'object' ? ctx.child_titles : {};
+  // 7-D4 — 글 안 멘션의 라벨 지도(창구가 준 `mention_labels` — 볼 수 있는 것만). 편집기 안에서만 보이고 저장되지 않는다.
+  const mentionLabels = ctx && ctx.mention_labels && typeof ctx.mention_labels === 'object' ? ctx.mention_labels : {};
 
   for (const b of blocks) {
     if (!b || typeof b.type !== 'string') {
@@ -612,19 +692,19 @@ export function fromDoc(doc, ctx) {
       continue;
     }
     if (['paragraph', 'bulleted', 'numbered', 'quote'].indexOf(b.type) !== -1) {
-      content.push({ type: b.type, attrs: attrs, content: richToPM(b.text) });
+      content.push({ type: b.type, attrs: attrs, content: richToPM(b.text, mentionLabels) });
       continue;
     }
     if (b.type === 'heading') {
       const level = b.level === 2 || b.level === 3 ? b.level : 1;
-      content.push({ type: 'heading', attrs: Object.assign({ level: level }, attrs), content: richToPM(b.text) });
+      content.push({ type: 'heading', attrs: Object.assign({ level: level }, attrs), content: richToPM(b.text, mentionLabels) });
       continue;
     }
     if (b.type === 'to_do') {
       content.push({
         type: 'to_do',
         attrs: Object.assign({ checked: b.checked === true }, attrs),
-        content: richToPM(b.text)
+        content: richToPM(b.text, mentionLabels)
       });
       continue;
     }
@@ -632,7 +712,7 @@ export function fromDoc(doc, ctx) {
       content.push({
         type: 'callout',
         attrs: Object.assign({ icon: typeof b.icon === 'string' && b.icon !== '' ? b.icon : '💡' }, attrs),
-        content: richToPM(b.text)
+        content: richToPM(b.text, mentionLabels)
       });
       continue;
     }
@@ -663,12 +743,17 @@ function pmToRich(content) {
         m.color = mark.attrs.color;
       } else if (mark.type === 'link' && mark.attrs && schemeOkForEditor(mark.attrs.href)) {
         m.link = { href: mark.attrs.href };
+      } else if (mark.type === 'mention' && mark.attrs && mentionAllowed(mark.attrs.kind, mark.attrs.id)) {
+        // 7-D4 — 저장하는 것은 `kind`·`id` 뿐(라벨·편집기 안 key 는 버린다)
+        m.mention = { kind: mark.attrs.kind, id: mark.attrs.id };
       }
     }
     // 줄바꿈이 아닌 제어문자는 우리 형식이 받지 않는다(서버가 400 이다). 저장 전에 지운다 —
     // **편집기가 만든 자기 출력**을 정리하는 것이고, 사용자가 쓴 글자를 바꾸는 것이 아니다.
     const clean = node.text.replace(/[\u0000-\u0009\u000b-\u001f\u007f]/g, '');
     if (clean === '') { continue; }
+    // 7-D4 — 멘션 마크가 「@」 한 글자가 아닌 조각(또는 링크와 함께)에 남았으면 마크를 떼고 글자만(서버는 400 — 편집기 자기 출력 정리)
+    if (m.mention && (clean !== '@' || m.link)) { delete m.mention; }
     out.push({ t: clean, m: m });
   }
   return out;

@@ -14,7 +14,7 @@
  */
 
 /** 마크를 감싸는 고정 순서(안쪽 → 바깥쪽). DocRender::MARK_ORDER 와 같아야 한다. */
-const MARK_ORDER = ['code', 'color', 'strike', 'underline', 'italic', 'bold', 'link'];
+const MARK_ORDER = ['code', 'color', 'strike', 'underline', 'italic', 'bold', 'link', 'mention'];
 
 const MARK_TAG = {
   code: 'code',
@@ -34,6 +34,11 @@ const FILE_UNREADABLE = '볼 수 없는 파일';
 /** 7-C — 임베드 카드 문구. 서버 렌더러 `DocRender::EMBED_*` 와 같은 문구(C:T-19) */
 const EMBED_WAITING = '허용 대기 · 새 탭에서 열기';
 const EMBED_BLOCKED = '허용 목록 밖의 임베드';
+/**
+ * 7-D4 — 글 안 멘션의 대상을 볼 수 없을 때(없는 대상·못 보는 대상·모양 밖 id 모두 같은 글자) 「@」 뒤에 붙는 문구.
+ * **서버 렌더러 `DocRender::MENTION_UNREADABLE` 과 한 글자도 다르면 안 된다** — C:T-19 · C:T-225.
+ */
+const MENTION_UNREADABLE = '볼 수 없음';
 /** 틀 sandbox 토큰 — 서버 `COMMUNITY_EMBED_SANDBOX`(src/bootstrap.php)와 **같은 글자**여야 한다(사용자 결정 2026-09-24 · stage7c 가 견준다) */
 const EMBED_SANDBOX = 'allow-scripts allow-same-origin allow-presentation allow-popups';
 /** 7-C — `Doc::embedHost` 와 같은 규칙(https · 소문자 ASCII 라벨 · 점 하나 이상 · IP·포트·사용자 정보 없음) */
@@ -57,6 +62,53 @@ function sizeText(bytes) {
 
 /** 5-E — 주소에 넣는 페이지·파일 id 의 모양 (DocRender.php 의 UUID_RE 와 같다) */
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+
+/**
+ * 7-D4 글 안 멘션 `{kind, id}` 의 모양 — `Doc::mentionShapeOk` 와 같은 규칙(키 정확히 둘 · 사람 = 정수 1~2⁵³ · 페이지 = 소문자 UUID ·
+ * 날짜 = YYYY-MM-DD 1900~2100 있는 날). 정규식은 `test()`·`match()` 로만 쓴다(보안 린트).
+ */
+const MENTION_USER_ID_MAX = 9007199254740992;
+const MENTION_DATE_RE = /^(\d{4})-(\d{2})-(\d{2})$/;
+function mentionDateOk(value) {
+  if (typeof value !== 'string') { return false; }
+  const m = value.match(MENTION_DATE_RE);
+  if (!m) { return false; }
+  const y = Number(m[1]);
+  const mo = Number(m[2]);
+  const d = Number(m[3]);
+  if (y < 1900 || y > 2100 || mo < 1 || mo > 12 || d < 1) { return false; }
+  const leap = (y % 4 === 0 && y % 100 !== 0) || y % 400 === 0;
+  const days = [31, leap ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+  return d <= days[mo - 1];
+}
+export function mentionShapeOk(value) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) { return false; }
+  const keys = Object.keys(value);
+  if (keys.length !== 2 || keys.indexOf('kind') === -1 || keys.indexOf('id') === -1) { return false; }
+  if (value.kind === 'user') { return Number.isInteger(value.id) && value.id >= 1 && value.id <= MENTION_USER_ID_MAX; }
+  if (value.kind === 'page') { return typeof value.id === 'string' && UUID_RE.test(value.id); }
+  if (value.kind === 'date') { return mentionDateOk(value.id); }
+  return false;
+}
+
+/**
+ * 7-D4 — 멘션 한 조각의 글자·감쌀 요소. `DocRender::mentionParts` 와 같은 규칙(지시서 M-6):
+ * 사람·페이지는 `ctx.mention_labels`(창구가 준 **볼 수 있는 것만**의 지도)에 있을 때만 「@라벨」 — 없으면 「@볼 수 없음」(글자만 · 링크 0) ·
+ * 페이지는 `a.doc-mention[href=<base>/p/<uuid>]`(사이트 안 — `target` 없음) · 날짜는 판정 없이 id 그대로 · 모양 밖 id 는 「@볼 수 없음」.
+ */
+function mentionParts(value, ctx) {
+  const unknown = { text: '@' + MENTION_UNREADABLE, tag: 'span', cls: 'doc-mention doc-mention--unknown', href: null };
+  if (!mentionShapeOk(value)) { return unknown; }
+  if (value.kind === 'date') { return { text: '@' + value.id, tag: 'span', cls: 'doc-mention', href: null }; }
+  const map = ctx && ctx.mention_labels && typeof ctx.mention_labels === 'object' ? ctx.mention_labels : {};
+  const key = (value.kind === 'user' ? 'user:' : 'page:') + String(value.id);
+  const entry = Object.prototype.hasOwnProperty.call(map, key) ? map[key] : null;
+  if (!entry || typeof entry !== 'object' || typeof entry.label !== 'string') { return unknown; }
+  if (value.kind === 'page') {
+    return { text: '@' + entry.label, tag: 'a', cls: 'doc-mention', href: (ctx && typeof ctx.base === 'string' ? ctx.base : '') + '/p/' + value.id };
+  }
+  return { text: '@' + entry.label, tag: 'span', cls: 'doc-mention', href: null };
+}
 
 /** 5-E 페이지 링크 카드 — 하위 페이지 카드와 같은 모양, 지도는 `ctx.link_titles`(볼 수 있는 것만) */
 function renderLinkPage(block, id, ctx) {
@@ -110,7 +162,7 @@ function renderEmbed(block, id, ctx) {
     if (hasCap) {
       const cap = document.createElement('figcaption');
       cap.className = 'doc-embed__caption';
-      appendRich(cap, block.caption);
+      appendRich(cap, block.caption, ctx);
       fig.appendChild(cap);
     }
     return fig;
@@ -136,7 +188,7 @@ function renderEmbed(block, id, ctx) {
     if (hasCap) {
       const p = document.createElement('p');
       p.className = 'doc-embed__caption';
-      appendRich(p, block.caption);
+      appendRich(p, block.caption, ctx);
       wrap.appendChild(p);
     }
     return wrap;
@@ -193,7 +245,7 @@ function renderFileBlock(block, id, ctx) {
     if (hasCap) {
       const cap = document.createElement('figcaption');
       cap.className = 'doc-image__caption';
-      appendRich(cap, block.caption);
+      appendRich(cap, block.caption, ctx);
       fig.appendChild(cap);
     }
     return fig;
@@ -216,7 +268,7 @@ function renderFileBlock(block, id, ctx) {
   if (hasCap) {
     const p = document.createElement('p');
     p.className = 'doc-file__caption';
-    appendRich(p, block.caption);
+    appendRich(p, block.caption, ctx);
     wrap.appendChild(p);
   }
   return wrap;
@@ -242,7 +294,7 @@ function coveredCells(rows) {
   return covered;
 }
 
-function renderTable(block, id) {
+function renderTable(block, id, ctx) {
   const wrap = document.createElement('div');
   wrap.className = 'doc-table-wrap';
   if (id) { wrap.id = 'block-' + id; }
@@ -264,7 +316,7 @@ function renderTable(block, id) {
       if (cell && Number.isInteger(cell.colspan) && cell.colspan > 1) { el.setAttribute('colspan', String(cell.colspan)); }
       const cc = cell && typeof cell === 'object' ? colorClass(cell.color) : null;
       el.className = 'doc-table__cell' + (cc ? ' ' + cc : '');
-      appendRich(el, cell && Array.isArray(cell.text) ? cell.text : []);
+      appendRich(el, cell && Array.isArray(cell.text) ? cell.text : [], ctx);
       tr.appendChild(el);
     });
     tbody.appendChild(tr);
@@ -339,14 +391,28 @@ function blockClass(base, block) {
   return out.join(' ');
 }
 
-/** 세그먼트 하나 → 노드 (마크를 고정 순서로 감싼다) */
-function renderSegment(seg) {
-  let node = document.createTextNode(typeof seg.t === 'string' ? seg.t : '');
+/**
+ * 세그먼트 하나 → 노드 (마크를 고정 순서로 감싼다).
+ * 7-D4 — `mention` 마크가 있으면 원문 글자(「@」)를 라벨로 바꿔 그리고(`mentionParts`) 가장 바깥에 둔다. 멘션과 링크는 함께 오지 않는다(검증기) —
+ * 그래도 둘 다 있으면 링크는 그리지 않는다(서버 렌더러와 같다).
+ */
+function renderSegment(seg, ctx) {
   const marks = seg && typeof seg.m === 'object' && seg.m !== null ? seg.m : {};
+  const mention = Object.prototype.hasOwnProperty.call(marks, 'mention') ? mentionParts(marks.mention, ctx) : null;
+  let node = document.createTextNode(mention ? mention.text : (typeof seg.t === 'string' ? seg.t : ''));
 
   for (const name of MARK_ORDER) {
     if (!Object.prototype.hasOwnProperty.call(marks, name)) { continue; }
     const value = marks[name];
+
+    if (name === 'mention') {
+      const el = document.createElement(mention.tag);
+      el.className = mention.cls;
+      if (mention.href !== null) { el.setAttribute('href', mention.href); }
+      el.appendChild(node);
+      node = el;
+      continue;
+    }
 
     if (name === 'color') {
       const klass = colorClass(value);
@@ -359,7 +425,7 @@ function renderSegment(seg) {
     }
 
     if (name === 'link') {
-      if (!value || typeof value.href !== 'string' || !schemeOk(value.href)) { continue; }
+      if (mention || !value || typeof value.href !== 'string' || !schemeOk(value.href)) { continue; }
       const a = document.createElement('a');
       a.className = 'doc-link';
       a.setAttribute('href', value.href);
@@ -382,12 +448,12 @@ function renderSegment(seg) {
   return node;
 }
 
-/** 리치 텍스트를 부모에 붙인다 */
-function appendRich(parent, text) {
+/** 리치 텍스트를 부모에 붙인다 (`ctx` — 7-D4 멘션 이름 지도 `mention_labels`·주소 접두 `base`) */
+function appendRich(parent, text, ctx) {
   if (!Array.isArray(text)) { return; }
   for (const seg of text) {
     if (!seg || typeof seg.t !== 'string') { continue; }
-    parent.appendChild(renderSegment(seg));
+    parent.appendChild(renderSegment(seg, ctx));
   }
 }
 
@@ -490,20 +556,20 @@ function renderBlock(block, rootBlocks, ctx) {
     const p = document.createElement('p');
     p.className = blockClass('doc-p', block);
     setId(p);
-    appendRich(p, block.text);
+    appendRich(p, block.text, ctx);
     nodes.push(p);
   } else if (type === 'heading') {
     const level = block.level === 2 || block.level === 3 ? block.level : 1;
     const h = document.createElement('h' + String(level));
     h.className = blockClass('doc-h' + String(level), block);
     setId(h);
-    appendRich(h, block.text);
+    appendRich(h, block.text, ctx);
     nodes.push(h);
   } else if (type === 'bulleted' || type === 'numbered') {
     const li = document.createElement('li');
     li.className = blockClass('doc-li', block);
     setId(li);
-    appendRich(li, block.text);
+    appendRich(li, block.text, ctx);
     if (kids) { li.appendChild(kids); }
     nodes.push(li);
     return nodes;   // 하위는 <li> 안에 들어간다 (서버 렌더러와 같다)
@@ -518,7 +584,7 @@ function renderBlock(block, rootBlocks, ctx) {
     box.textContent = done ? '✔' : '';
     const span = document.createElement('span');
     span.className = 'doc-todo__text';
-    appendRich(span, block.text);
+    appendRich(span, block.text, ctx);
     div.appendChild(box);
     div.appendChild(span);
     nodes.push(div);
@@ -526,7 +592,7 @@ function renderBlock(block, rootBlocks, ctx) {
     const q = document.createElement('blockquote');
     q.className = blockClass('doc-quote', block);
     setId(q);
-    appendRich(q, block.text);
+    appendRich(q, block.text, ctx);
     nodes.push(q);
   } else if (type === 'callout') {
     const div = document.createElement('div');
@@ -538,7 +604,7 @@ function renderBlock(block, rootBlocks, ctx) {
     icon.textContent = typeof block.icon === 'string' ? block.icon : '';
     const span = document.createElement('span');
     span.className = 'doc-callout__text';
-    appendRich(span, block.text);
+    appendRich(span, block.text, ctx);
     div.appendChild(icon);
     div.appendChild(span);
     nodes.push(div);
@@ -564,7 +630,7 @@ function renderBlock(block, rootBlocks, ctx) {
     if (Array.isArray(block.caption) && block.caption.length > 0) {
       const cap = document.createElement('p');
       cap.className = 'doc-code__caption';
-      appendRich(cap, block.caption);
+      appendRich(cap, block.caption, ctx);
       div.appendChild(cap);
     }
     nodes.push(div);
@@ -582,7 +648,7 @@ function renderBlock(block, rootBlocks, ctx) {
     setId(det);
     const sum = document.createElement('summary');
     sum.className = 'doc-toggle__summary';
-    appendRich(sum, block.text);
+    appendRich(sum, block.text, ctx);
     const inner = document.createElement('div');
     inner.className = 'doc-toggle__body';
     if (kids) { inner.appendChild(kids); }
@@ -606,7 +672,7 @@ function renderBlock(block, rootBlocks, ctx) {
     nodes.push(colEl);
     return nodes;
   } else if (type === 'table') {
-    nodes.push(renderTable(block, id));
+    nodes.push(renderTable(block, id, ctx));
     return nodes;
   } else if (type === 'link_to_page') {
     nodes.push(renderLinkPage(block, id, ctx));
@@ -666,6 +732,7 @@ function renderBlocks(list, rootBlocks, ctx) {
  * @param {object} [ctx] 그릴 때 필요한 곁가지 (4단계)
  *                       · `child_titles` 창구가 준 「볼 수 있는 하위 페이지」 제목 지도
  *                       · `base`         커뮤니티 주소 접두 (`/community`)
+ *                       · `mention_labels` 7-D4 창구가 준 글 안 멘션 이름 지도(`user:<id>`·`page:<uuid>` → `{label}` · 볼 수 있는 것만)
  * @returns {DocumentFragment} `<div class="doc">…</div>` 하나를 담은 조각
  */
 export function renderDoc(doc, ctx) {
