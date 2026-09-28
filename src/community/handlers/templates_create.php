@@ -107,6 +107,11 @@ if (!community_embeds_ok(Doc::extract($tplDoc)['embeds'])) {
     Http::json(['error' => COMMUNITY_EMBED_REFUSED, 'reason' => 'embed_not_allowed'], 400);
     exit;
 }
+// 7-D2 — 템플릿에 담는 팔레트 이름도 **담을 때** 살아 있는 목록과 견준다(쓸 때는 막지 않는다 — K-7 · 지시서 P-9)
+if (!community_palettes_ok(Doc::extract($tplDoc)['palette_names'])) {
+    Http::json(['error' => COMMUNITY_PALETTE_REFUSED, 'reason' => 'palette_not_found'], 400);
+    exit;
+}
 $docJson = json_encode($tplDoc, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
 // 본문 상한은 페이지와 같은 기준(빈칸 없는 JSON 바이트)으로 **앱이 먼저** 잰다 — DB CHECK 에 닿아 500 이 되지 않게(독립 검토 L-1)
 if ($docJson !== false && strlen($docJson) > Doc::limit('doc_bytes')) {

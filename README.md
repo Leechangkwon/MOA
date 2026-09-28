@@ -575,6 +575,7 @@ cd / && sudo -u tbox-php php /var/www/tbox-v2/scripts/qf2b_backfill_files.php --
 cd / && sudo -u tbox-php php /var/www/tbox-v2/scripts/qf2b_backfill_files.php             # 끝나면 --dry-run 이 「바꿀 0」 이어야 한다
 ```
 
+- 커뮤니티 7-D2 관리자 팔레트: `2026-10-07_community_palettes.sql`(표 `community.palettes` 하나 — 앱 SELECT·INSERT·UPDATE, **DELETE 없음**(빼기는 `removed_at`) · 백업 SELECT) — 운영은 **DB → 저장소** 차례로 `sudo bash scripts/apply-7d2-db-2026-09-27.sh --dry-run <마이그레이션 사본> <grants 사본>` → `--migrate …` 뒤 `bash scripts/apply-7d2-repo-2026-09-27.sh <패치> <sha256> --dry-run` → 본 실행(코드가 표보다 먼저 나가도 500 은 아니다 — 빈 색 CSS · 새 회사 색 저장 400 · 편집기는 기본 9색).
 - 역할에 닿는 것: `2026-09-29_app_role_timeouts.sql`(표·칸 없이 tbox_app 역할 설정만 — 문장 15초·유휴 60초 · 클러스터 공용) · `2026-09-30_f70_push.sql`(휴대폰 경보 표 둘 **과** 보내는 역할 tbox_push — 운영은 `apply-f70-host-2026-09-24.sh` 가 OS 계정·키와 함께).
 - 참고(2026-09-26 실측): 운영의 `api_tokens`·`fetch_hosts`·`folders`·`share_links`(와 그 시퀀스)는 소유가 `postgres`(그때 postgres 로 마이그레이션을 돌림), 새 설치는 `tbox_owner` 입니다. 앱 계정 권한(`tbox_app`·`tbox_backup`)은 같습니다 — 이 넷을 고치는 마이그레이션은 `tbox_owner` 가 아니라 postgres 로 돌려야 합니다.
 

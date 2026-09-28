@@ -21,6 +21,8 @@ declare(strict_types=1);
  *
  * 하지 않는 것
  *   · DB 를 읽지 않는다(멘션 대상 확인·첨부 등급 검사는 5단계 블록과 함께 들어온다).
+ *     7-D2 관리자 팔레트(`pal:<이름>`)도 **모양만** 본다(`isPaletteColor`) — 등록된 이름인지는 저장 창구가
+ *     `extract()['palette_names']` 로 `community_palettes_ok()` 에 묻는다(7-C 임베드와 같은 자리 · 결정 L-2 · 지시서 P-8·P-9).
  *   · 값을 고치지 않는다. `validate()` 는 판단만 하고 입력을 돌려주지 않는다.
  */
 final class Doc
@@ -106,7 +108,7 @@ final class Doc
         return $out;
     }
 
-    /** 기본 색 18값(글자 9 + 배경 9). 팔레트 이름(`pal:…`)은 4단계에 표가 생긴 뒤에 열린다. */
+    /** 기본 색 18값(글자 9 + 배경 9). 관리자 팔레트(`pal:…`)는 이 목록에 넣지 않고 `isPaletteColor()` 가 모양으로 본다(7-D2). */
     public static function colorValues(): array
     {
         $s      = self::schema();
@@ -117,6 +119,52 @@ final class Doc
             $out[] = (string) $c . $suffix;
         }
         return $out;
+    }
+
+    /**
+     * 7-D2 관리자 팔레트 이름의 모양 — `[a-z0-9-]{1,20}` 이고 **`-bg` 로 끝나지 않는다**.
+     *
+     * 끝 `-bg` 를 막는 까닭: 이름 `x-bg` 의 글자색 클래스(`pal-x-bg`)·변수(`--pal-x-bg`)가 이름 `x` 의 배경(`pal:x_bg` → `pal-x-bg`)과
+     * 같은 글자가 된다 — 두 뜻이 한 클래스에 겹치지 않게(지시서 C:T-204 「`pal:x-bg` 400」). 이 규칙으로 값 → 클래스가 하나씩 대응한다.
+     * 등록 창구(`palettes_add.php`)·검증기·렌더러 두 벌·편집기가 **같은 규칙**이다(JS 는 `doc-render.js`·`editor-schema.js`).
+     */
+    public static function isPaletteName(string $name): bool
+    {
+        return preg_match('/^[a-z0-9-]{1,20}$/D', $name) === 1 && substr($name, -3) !== '-bg';
+    }
+
+    /**
+     * 색 값이 관리자 팔레트 모양인가 — `pal:<이름>`(글자색) · `pal:<이름>_bg`(배경색) (지시서 P-4 · P-8).
+     * **목록을 보지 않는다** — 표에 있든 없든 모양이면 참이다(있는 이름인지는 저장 창구가, 색은 서버가 만든 CSS 가 정한다).
+     *
+     * @param mixed $value
+     */
+    public static function isPaletteColor($value): bool
+    {
+        return self::paletteName($value) !== null;
+    }
+
+    /**
+     * `pal:<이름>`·`pal:<이름>_bg` → 이름(`_bg` 를 뗀 것). 모양이 아니면 null.
+     *
+     * @param mixed $value
+     */
+    public static function paletteName($value): ?string
+    {
+        if (!is_string($value) || preg_match('/^pal:([a-z0-9-]{1,20})(_bg)?$/D', $value, $m) !== 1) {
+            return null;
+        }
+        return self::isPaletteName($m[1]) ? $m[1] : null;
+    }
+
+    /**
+     * 색 칸 하나가 허용되는가 — 기본 18값 **또는** 팔레트 모양. 블록 `color` · 표 행·칸 `color` · 마크 `color` 넷이 같은 이 함수다.
+     *
+     * @param array<string,mixed> $state
+     */
+    private static function colorOk(string $value, array $state): bool
+    {
+        return in_array($value, $state['colors'], true) || self::isPaletteColor($value);
     }
 
     /**
@@ -285,7 +333,7 @@ final class Doc
             if (array_key_exists('color', $block) && $block['color'] !== null) {
                 if (!is_string($block['color'])) {
                     $add($p . '.color', 'bad_type');
-                } elseif (!in_array($block['color'], $state['colors'], true)) {
+                } elseif (!self::colorOk($block['color'], $state)) {
                     $add($p . '.color', 'not_in_palette');
                 }
             }
@@ -551,7 +599,7 @@ final class Doc
                 return;
             }
             if (array_key_exists('color', $row) && $row['color'] !== null
-                && (!is_string($row['color']) || !in_array($row['color'], $state['colors'], true))) {
+                && (!is_string($row['color']) || !self::colorOk($row['color'], $state))) {
                 $add($rp . '.color', 'not_in_palette');
             }
             $cells = $row['cells'];
@@ -590,7 +638,7 @@ final class Doc
                     is_array($cell['text'] ?? null) && $cell['text'] === [],
                 ];
                 if (array_key_exists('color', $cell) && $cell['color'] !== null
-                    && (!is_string($cell['color']) || !in_array($cell['color'], $state['colors'], true))) {
+                    && (!is_string($cell['color']) || !self::colorOk($cell['color'], $state))) {
                     $add($cp . '.color', 'not_in_palette');
                 }
                 self::richtext($cell['text'], $cp . '.text', $stage, $state, $add, $limits, $s);
@@ -711,7 +759,7 @@ final class Doc
             if ($key === 'color') {
                 if (!is_string($value)) {
                     $add($mp, 'bad_type');
-                } elseif (!in_array($value, $state['colors'], true)) {
+                } elseif (!self::colorOk($value, $state)) {
                     $add($mp, 'not_in_palette');
                 }
                 continue;
@@ -813,12 +861,15 @@ final class Doc
      * `page_links`)이고, `child_page` 는 트리에 얹힌 **자식 페이지**라 쓰임이 다르다. 한 칸에
      * 섞으면 「본문에서 언급했을 뿐인 페이지」와 「하위 페이지」를 나중에 가를 수 없다.
      *
+     * `palette_names` 는 7-D2 에 생긴 칸이다 — 문서가 쓴 관리자 팔레트 이름(`pal:` 뒤, `_bg` 뗌 · 한 번씩). 저장 창구가
+     * 「새로 넣은 이름」만 살아 있는 목록과 견준다(`community_palettes_ok`). 렌더러는 이 칸을 쓰지 않는다(목록을 모른다 — P-10).
+     *
      * @param  array<string,mixed> $doc
-     * @return array{plain_text:string,blocks:list<array{block_id:string,block_type:string,ord:int,excerpt:string}>,links:list<array{from_block_id:string,to_page_id:string}>,child_pages:list<string>,todos:list<array{block_id:string,checked:bool,text:string}>}
+     * @return array{plain_text:string,blocks:list<array{block_id:string,block_type:string,ord:int,excerpt:string}>,links:list<array{from_block_id:string,to_page_id:string}>,child_pages:list<string>,todos:list<array{block_id:string,checked:bool,text:string}>,files:list<string>,embeds:list<string>,palette_names:list<string>}
      */
     public static function extract(array $doc): array
     {
-        $out = ['plain_text' => '', 'blocks' => [], 'links' => [], 'child_pages' => [], 'todos' => [], 'files' => [], 'embeds' => []];
+        $out = ['plain_text' => '', 'blocks' => [], 'links' => [], 'child_pages' => [], 'todos' => [], 'files' => [], 'embeds' => [], 'palette_names' => []];
         $ord = 0;
         $parts = [];
         self::collect(is_array($doc['blocks'] ?? null) ? $doc['blocks'] : [], $ord, $parts, $out);
@@ -941,6 +992,38 @@ final class Doc
                             'to_page_id'    => substr($link['href'], 5),
                         ];
                     }
+                }
+            }
+
+            /* 7-D2 팔레트 — 문서가 쓴 `pal:` 이름(블록 색 · 표 행·칸 색 · 글자 마크 색 — `_bg` 는 떼고 이름만, 한 번씩).
+               있는 이름인지·「새로 넣은 이름」 가르기는 저장 창구가 한다(P-9 — 7-C 임베드와 같은 자리). */
+            $colorVals = [];
+            if (isset($block['color']) && is_string($block['color'])) {
+                $colorVals[] = $block['color'];
+            }
+            if ($type === 'table' && isset($block['rows']) && is_array($block['rows'])) {
+                foreach ($block['rows'] as $row) {
+                    if (is_array($row) && isset($row['color']) && is_string($row['color'])) {
+                        $colorVals[] = $row['color'];
+                    }
+                    foreach (is_array($row) && isset($row['cells']) && is_array($row['cells']) ? $row['cells'] : [] as $cell) {
+                        if (is_array($cell) && isset($cell['color']) && is_string($cell['color'])) {
+                            $colorVals[] = $cell['color'];
+                        }
+                    }
+                }
+            }
+            foreach ($richs as $rich) {
+                foreach ($rich as $seg) {
+                    if (is_array($seg) && isset($seg['m']) && is_array($seg['m']) && isset($seg['m']['color']) && is_string($seg['m']['color'])) {
+                        $colorVals[] = $seg['m']['color'];
+                    }
+                }
+            }
+            foreach ($colorVals as $cv) {
+                $pn = self::paletteName($cv);
+                if ($pn !== null && !in_array($pn, $out['palette_names'], true)) {
+                    $out['palette_names'][] = $pn;
                 }
             }
 

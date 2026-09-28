@@ -36,6 +36,7 @@ $pageKey     = 'community-page';
 $pageHelp    = 'community-page';
 $pageCss     = ['community/community.css'];
 $shellModule = 'community';
+$pagePalette = community_palette_version();   // 7-D2 — 셸이 `<link id="palette-css" … ?v=>` 를 그린다(P-6·P-7)
 require __DIR__ . '/../../views/shell_top.php';
 ?>
     <!-- 경로(breadcrumb) — 뿌리부터 이 페이지까지 (4-A, DESIGN 2.14 `.crumb`).

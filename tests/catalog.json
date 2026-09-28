@@ -2225,6 +2225,92 @@
       "notes": "부르는 셸: community.stage7d1. 단독 실행 불가(인자 SITE UA 와 SMOKE_A1·SMOKE_E1·SMOKE_TITLE 환경 변수가 필수 — 없으면 KeyError. SMOKE_M1·SMOKE_A1_STALE·SMOKE_A1_PW·SMOKE_SHOTS 는 있을 때만 그 단계). 결과 줄 SMOKE_FAIL=n. 관리자 비밀번호를 SMOKE_A1_PW 환경 변수로 받아 셸 재인증 창에 넣는다(1-B B-1 「비밀은 표준입력으로」의 대상). 의도한 재인증 403(/community/api/admin/popular) 한 건은 HTTP 오류 수에서 뺀다. 390px 가로 넘침 확인, 스크린샷은 SMOKE_SHOTS 가 있을 때만(l1-popular.png). 운영 HEAD 에 조사표·1-A 뒤에 들어온 파일 — 원문으로 실음."
     },
     {
+      "id": "community.stage7d2",
+      "cmd": "REGRESS=0 bash tests/community/stage7d2.sh",
+      "module": "community",
+      "env": "temp-instance",
+      "status": "required",
+      "needs": [
+        "sudo",
+        "browser"
+      ],
+      "covers": [
+        "db/migrations/2026-10-06_passkeys.sql",
+        "db/migrations/2026-10-07_community_palettes.sql",
+        "db/community/grants.sql",
+        "src/community/Doc.php",
+        "src/community/DocRender.php",
+        "src/community/Palette.php",
+        "src/community/routes.php",
+        "src/Audit.php",
+        "src/views/shell_top.php",
+        "src/community/handlers/palettes_list.php",
+        "src/community/handlers/palettes_add.php",
+        "src/community/handlers/palettes_update.php",
+        "src/community/handlers/palettes_remove.php",
+        "src/community/handlers/palette_css.php",
+        "src/community/handlers/pages_update.php",
+        "src/community/handlers/pages_create.php",
+        "src/community/handlers/board_pages_create.php",
+        "src/community/handlers/version_restore.php",
+        "src/community/handlers/templates_create.php",
+        "src/community/handlers/home_page.php",
+        "src/community/handlers/page_view.php",
+        "src/community/handlers/board_view.php",
+        "public/assets/community/palettes.js",
+        "public/assets/community/doc-render.js",
+        "public/assets/community/editor-schema.js",
+        "public/assets/community/editor.js",
+        "public/assets/community/doc-schema.json",
+        "scripts/ui_snapshot.sh",
+        "scripts/security_lint.sh",
+        "scripts/community_asset_version.php",
+        "src/handlers/login.php",
+        "src/handlers/reauth.php"
+      ],
+      "requirements": [
+        "C:T-200",
+        "C:T-201",
+        "C:T-202",
+        "C:T-203",
+        "C:T-204",
+        "C:T-205",
+        "C:T-206",
+        "C:T-207",
+        "C:T-208"
+      ],
+      "risks": [],
+      "est_sec": 780,
+      "writes_prod": false,
+      "notes": "7-D2 관리자 팔레트(C:F-33 · 결정 L-2). 임시 인스턴스(stage7d1 과 같은 틀): pg_dump tbox_re(읽기 · 파이프 — 덤프 파일 0) → createdb -O tbox_owner tbox_7d2_test → 마이그레이션 2026-10-06_passkeys.sql(기준 판에 쌓인 표) · 2026-10-07_community_palettes.sql 두 번(멱등) · db/community/grants.sql(마이그레이션 뒤 모양·권한 md5 = grants 다시 돌린 뒤) → 복사본 + 트리의 .env 세 줄 치환(DB_NAME·STORAGE_DIR·AUDIT_LOG_FILE — 서버를 띄우기 전에 셋 다 임시인지 보고 아니면 exit 3 · 복제본에는 .env 가 없어 부르는 쪽이 0600 사본을 트리 뿌리에 둔다) → php -S 127.0.0.1:8100. ui_snapshot 기준 판 비교용 두 번째 인스턴스 127.0.0.1:8101(git archive BASE_REV — 기본 stack/2026-09-27 · 같은 임시 DB). 운영 8082 요청 0. SQL 은 표준입력으로(psql -c 0 — AL-9 한 모양). claude_ 검토 계정 다섯 순차 로그인(자격 sudo -n awk /etc/tbox-v2) · 관리자 재인증 세 번(15분 창). 임시 DB 에만 psql 로 직접 쓰는 것: page_versions.edited_at 10분 앞으로(5분 합치기 비키기) · palettes CHECK·고유 색인 거부 확인 INSERT(실패해야 함) · tbox_app 의 palettes SELECT 를 잠시 REVOKE(P-17 — 표를 못 읽는 창) 뒤 GRANT. browser_7d2.py 를 부른다(세션 쿠키 셋은 표준입력 — py_secret · playwright 없으면 SKIP · BROWSER_LOCK 가 있으면 flock -x 아래 + 메모리 여유 700MB 확인). REGRESS 는 기본 0 — 1 이면 stage3·help_button·api_whoami·api_read·api_folders·q_launcher·f68 을 같은 임시 인스턴스에서(8082 → 임시로 sed 치환)."
+    },
+    {
+      "id": "community.browser_7d2",
+      "cmd": "python3 tests/community/browser_7d2.py",
+      "module": "community",
+      "env": "temp-instance",
+      "status": "helper",
+      "needs": [
+        "browser"
+      ],
+      "covers": [
+        "src/community/handlers/home_page.php",
+        "src/community/handlers/page_view.php",
+        "src/community/handlers/palette_css.php",
+        "public/assets/community/palettes.js",
+        "public/assets/community/editor.js",
+        "public/assets/community/doc-render.js"
+      ],
+      "requirements": [
+        "C:T-206",
+        "C:T-208"
+      ],
+      "risks": [],
+      "est_sec": 240,
+      "writes_prod": false,
+      "notes": "부르는 셸: community.stage7d2. 단독 실행 불가(인자 SITE UA WORK 편집기페이지 손님글 스크린샷폴더 + 표준입력 세 줄 = 관리자(재인증 뒤)·직원·손님 세션 쿠키 — 비밀은 인자·환경 변수에 싣지 않는다). WORK 의 samples206.json·php206.json 으로 doc-render.js 동등성(DIFF=n). 결과 줄 SMOKE_FAIL=n. 관리 창 더하기(#palette-css ?v= 갱신 · CSS 요청 1 · 견본 계산 색) · 대비 경고 · 편집기 색 줄 순서·aria-label · 읽기 화면 계산 색(라이트 · data-theme 다크 · OS 다크) · 빼기 두 번 누르기 뒤 부모 색 · 직원·손님 · 360·412(터치·마우스)·820·1280 × 라이트·다크 넘침 · 창 바닥 단추(DESIGN 2.7) · 폰 폭 누름 자리 44. 스크린샷 d2-*.png."
+    },
+    {
       "id": "community.stage5a_handover_self",
       "cmd": "python3 tests/community/stage5a_handover_self.py",
       "module": "community",

@@ -34,6 +34,8 @@ $pageKey     = 'community-home';
 $pageHelp    = 'community-home';
 $pageCss     = ['community/community.css'];
 $shellModule = 'community';
+// 7-D2 — 관리자 팔레트 CSS 의 버전(내용 해시 12자리). 셸이 `<link id="palette-css" … ?v=>` 를 그린다(P-6·P-7 — 표를 못 읽으면 빈 목록의 버전)
+$pagePalette = community_palette_version();
 require __DIR__ . '/../../views/shell_top.php';
 ?>
     <header class="page-head">
@@ -69,6 +71,10 @@ require __DIR__ . '/../../views/shell_top.php';
             <!-- 「임베드 허용 목록」 (7-C, C:F-32) — 창구 `GET /api/embed-domains` 의 `can_manage` 가 참일 때만 보인다(Admin) -->
             <button id="community-embed-admin" class="menu__item" type="button" aria-haspopup="dialog" hidden>
               <span class="icon" data-icon="shield"></span>임베드 허용 목록
+            </button>
+            <!-- 「팔레트 관리」 (7-D2, C:F-33) — 창구 `GET /api/boards` 의 `can_manage` 가 참일 때만 보인다(Admin — 7-D1 과 같은 자리) -->
+            <button id="community-palettes" class="menu__item" type="button" aria-haspopup="dialog" hidden>
+              <span class="icon" data-icon="settings"></span>팔레트 관리
             </button>
           </div>
         </details>
@@ -344,6 +350,45 @@ require __DIR__ . '/../../views/shell_top.php';
       </div>
       <div class="form-actions">
         <button class="btn btn--quiet" type="button" data-embed-close>닫기</button>
+      </div>
+    </dialog>
+
+    <!-- 「팔레트 관리」 창 (7-D2 — DESIGN 2.7 `.modal--form.modal--stack` · 2.13 `.list` · 2.5 `.form--grid` — 게시판 관리 창과 같은 모양, 새 클래스 0).
+         위: 등록한 색 목록(줄마다 이름 · 견본 둘 · 값 · 대비 경고 · 라이트·다크 고르개 · 「고치기」 · 「빼기」 두 번 누르기) · 아래: 더하기 칸.
+         견본의 색은 서버가 만든 CSS(`#palette-css` — 클래스 `pal-<이름>`·`pal-<이름>-bg`)가 준다 — 인라인 style 0.
+         이름·한도(12)·값 모양·재인증은 서버가 막는다. 내용은 palettes.js 가 textContent 로 채운다. -->
+    <dialog id="palette-dialog" class="modal modal--form modal--stack" aria-labelledby="palette-title">
+      <div class="modal__head">
+        <h2 id="palette-title" class="modal__title">팔레트 관리</h2>
+        <button class="btn btn--icon btn--plain" type="button" data-palette-close aria-label="닫기">
+          <span class="icon" data-icon="x"></span>
+        </button>
+      </div>
+      <div class="modal__body">
+        <p id="palette-msg" class="msg" role="alert" aria-live="polite"></p>
+        <p class="muted">회사 색을 이름으로 12개까지 등록합니다. 글에는 이름이 저장되어, 색을 고치면 그 색을 쓴 글이 모두 새 색으로 보이고, 빼면 색 없이 보입니다. 이름은 나중에 바꿀 수 없습니다.</p>
+        <ul id="palette-list" class="list list--scroll" aria-label="등록한 색" hidden></ul>
+        <p id="palette-empty" class="muted" hidden>등록한 색이 없습니다.</p>
+        <form id="palette-form" class="form form--grid" novalidate>
+          <label class="field">
+            <span class="field__label">이름 (필수 — 영어 소문자·숫자·붙임표)</span>
+            <input id="palette-name" type="text" pattern="[a-z0-9-]{1,20}" maxlength="20" autocomplete="off" spellcheck="false" autocapitalize="off" placeholder="brand-blue">
+          </label>
+          <label class="field">
+            <span class="field__label">밝은 화면 색</span>
+            <input id="palette-light" type="color">
+          </label>
+          <label class="field">
+            <span class="field__label">어두운 화면 색</span>
+            <input id="palette-dark" type="color">
+          </label>
+          <p id="palette-form-warn" class="field--full"></p>
+          <p id="palette-count" class="muted field--full"></p>
+        </form>
+      </div>
+      <div class="form-actions">
+        <button class="btn btn--quiet" type="button" data-palette-close>닫기</button>
+        <button id="palette-add" class="btn" type="submit" form="palette-form">더하기</button>
       </div>
     </dialog>
 

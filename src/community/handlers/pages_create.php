@@ -172,6 +172,12 @@ if ($tpl === null && !community_embeds_ok($extract['embeds'])) {
     Http::json(['error' => COMMUNITY_EMBED_REFUSED, 'reason' => 'embed_not_allowed'], 400);
     exit;
 }
+/* 7-D2 — 첫 본문의 팔레트 이름도 모두 새것이다 — 살아 있는 목록 안이어야 한다(P-9). 템플릿 본문은 **담을 때** 견주었으므로
+   그 뒤에 뺀 이름이 있어도 막지 않는다(K-7 — 옛 글과 같다 · 색 없이 그려진다). */
+if ($tpl === null && !community_palettes_ok($extract['palette_names'])) {
+    Http::json(['error' => COMMUNITY_PALETTE_REFUSED, 'reason' => 'palette_not_found'], 400);
+    exit;
+}
 $docJson = json_encode($doc, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
 if ($docJson === false) {
     Http::error(400, Http::MSG_BAD_REQUEST);

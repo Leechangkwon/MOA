@@ -204,6 +204,12 @@ if (array_key_exists('doc', $body)) {
     if (!community_embeds_ok($newEmbeds)) {
         $reject('embed_not_allowed', 400, ['error' => COMMUNITY_EMBED_REFUSED, 'reason' => 'embed_not_allowed'], []);
     }
+    /* 7-D2 — **새로 넣은** 팔레트 이름만 살아 있는 목록과 견준다(P-9 — 뺀 이름이 이미 든 글도 다른 곳을 고쳐 저장할 수 있게).
+       모양은 검증기가 이미 보았다(`Doc::isPaletteColor`). 표를 못 읽으면 목록이 비어 새 이름은 모두 400(닫힌 쪽 — P-17). */
+    $newPalettes = array_values(array_diff(Doc::extract($doc)['palette_names'], Doc::extract($currentDoc)['palette_names']));
+    if (!community_palettes_ok($newPalettes)) {
+        $reject('palette_not_found', 400, ['error' => COMMUNITY_PALETTE_REFUSED, 'reason' => 'palette_not_found'], []);
+    }
 }
 
 $extract = Doc::extract($doc);

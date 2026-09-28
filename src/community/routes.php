@@ -37,6 +37,8 @@ require_once __DIR__ . '/Doc.php';
 require_once __DIR__ . '/DocRender.php';
 require_once __DIR__ . '/CommunityAuthz.php';
 require_once __DIR__ . '/DbProps.php';
+// 7-D2 — 관리자 팔레트의 순수 계산(배경값 · 버전 · CSS 글자). DB 는 아래 `community_palette_rows()` 가 읽는다
+require_once __DIR__ . '/Palette.php';
 // Q:F-2 — 검색 색인·검색어 토큰 한 벌(사이트 공통 — t-box 파일 색인도 나중에 같은 파일, 지시서 2.1)
 require_once __DIR__ . '/../SearchText.php';
 
@@ -117,6 +119,13 @@ const COMMUNITY_ROUTES = [
     ['DELETE', '/api/embed-domains/{num}',               'embed_domains_remove.php', 'role:Admin'],
     /* 7-D1 많이 읽힌 문서 (N-34 · 결정 J-6) — 관리자만(재인증), 사내 전체에 열린 페이지만, 수만 */
     ['GET',    '/api/admin/popular',                     'admin_popular.php',        'role:Admin'],
+    /* 7-D2 관리자 팔레트 (C:F-33 · 결정 L-2) — 읽기는 누구나(편집기가 이름을 알아야 한다 · 7-C 목록과 같은 까닭), 바꾸기는 Admin(재인증 — 정책이
+       `Authz::REAUTH_POLICIES` 안이라 저절로). `/palette.css` 는 서버가 그리는 색 CSS 한 장(`:root` 변수 — 인라인 style 0 · P-6). 새 정책 이름 0 */
+    ['GET',    '/palette.css',                           'palette_css.php',          'community.read'],
+    ['GET',    '/api/palettes',                          'palettes_list.php',        'community.read'],
+    ['POST',   '/api/palettes',                          'palettes_add.php',         'role:Admin'],
+    ['PATCH',  '/api/palettes/{num}',                    'palettes_update.php',      'role:Admin'],
+    ['DELETE', '/api/palettes/{num}',                    'palettes_remove.php',      'role:Admin'],
 
     /* ── 사람 지정 공유 · 인계 (5-A, PRD NG-8 해제 · F-28) ──
      * 목록은 `community.read` + 그 페이지의 `decidePageRead`, 바꾸는 셋은 `community.write` +
@@ -3307,4 +3316,113 @@ function community_embed_csp(): void
         return;
     }
     header('Content-Security-Policy: ' . $value);
+}
+
+/* ─── 7-D2 관리자 팔레트 (C:F-33 · 결정 L-2 · 지시서 1.1 P-6·P-7·P-9·P-17) ─────────────── */
+
+/** 400 — 등록되지 않은(또는 뺀) 팔레트 이름을 **새로** 넣은 저장 (창구 넷이 같은 문구 · 7-C `COMMUNITY_EMBED_REFUSED` 와 짝) */
+const COMMUNITY_PALETTE_REFUSED = '등록되지 않은 회사 색이 들어 있습니다. 관리자가 팔레트에 등록한 색만 새로 쓸 수 있습니다';
+
+/** 503 — 관리 창구 셋(더하기·고치기·빼기)이 팔레트 표를 쓸 수 없는 창(표 없음 · 앱 계정 권한 없음 — 반영 순서가 어긋남) */
+const COMMUNITY_PALETTE_UNAVAILABLE = '지금은 팔레트를 고칠 수 없습니다 (서버 쪽 반영 전 — DB 작업이 끝나면 다시 하세요)';
+
+/**
+ * 관리 창구 셋이 **팔레트 표 문장**에서 받은 예외가 SQLSTATE 42P01(표 없음)·42501(권한 없음)이면
+ * 503 `palette_unavailable` 로 닫고 끝낸다(`error_log` 한 줄 · 감사 0 — 쓰기 전에 실패했다 · P-17 과 같은 닫힌 쪽).
+ * 그 밖의 예외는 아무것도 하지 않고 돌아온다 — 부르는 쪽이 그대로 던진다(넓게 삼키지 않는다).
+ * 부르는 쪽은 트랜잭션을 되돌린 **뒤**, 감사 쓰기 **전** 문장의 예외에만 부른다(감사 표 쪽 문제를 이 문구로 가리지 않게).
+ */
+function community_palette_unavailable(PDOException $e): void
+{
+    $state = (string) $e->getCode();
+    if ($state !== '42P01' && $state !== '42501') {
+        return;
+    }
+    error_log('[tbox] request_id=' . TBOX_REQUEST_ID . ' community palettes unavailable (SQLSTATE ' . $state . ') — 관리 창구 503');
+    Http::json(['error' => COMMUNITY_PALETTE_UNAVAILABLE, 'reason' => 'palette_unavailable'], 503);
+    exit;
+}
+
+/**
+ * 살아 있는 팔레트 줄(이름순 — 바이트 순) `[{name, light, dark}]`. 한 요청 안에서는 한 번만 읽는다(`$fresh` 가 참이면 다시).
+ * ★ 표를 읽지 못하면(반영 순서가 어긋난 창 · 권한) **빈 목록으로 닫는다** — 페이지 열기는 500 이 아니라 빈 CSS · 새 `pal:` 저장 400 ·
+ *   편집기는 기본 9색(P-17 · 7-C M-2). 부르는 쪽 트랜잭션 **밖**에서만 부른다(실패한 SELECT 가 트랜잭션을 깨지 않게).
+ * ★ 그릴 때 한 번 더 모양을 본다 — 모양 밖 줄(DB 를 손으로 고친 경우 등)은 건너뛰고 **요청당** `error_log` 한 줄
+ *   (건너뛴 줄 수와 번호만 — 닫힌 쪽 · 값은 적지 않는다 · 한 요청에서 다시 읽어도 두 번 적지 않는다).
+ *
+ * @return list<array{name:string,light:string,dark:string}>
+ */
+function community_palette_rows(bool $fresh = false): array
+{
+    static $rows = null;
+    static $skipLogged = false;
+    if ($rows !== null && !$fresh) {
+        return $rows;
+    }
+    $sql = <<<'SQL'
+        SELECT p.id, p.name, p.light, p.dark FROM community.palettes p WHERE p.removed_at IS NULL
+        SQL;
+    try {
+        $raw = Db::instance()->run($sql)->fetchAll();
+    } catch (Throwable $e) {
+        error_log('[tbox] request_id=' . TBOX_REQUEST_ID . ' community palettes unreadable — 빈 목록으로 닫음');
+        $rows = [];
+        return $rows;
+    }
+    $out = [];
+    $skipped = [];
+    foreach ($raw as $r) {
+        $one = ['name' => (string) $r['name'], 'light' => (string) $r['light'], 'dark' => (string) $r['dark']];
+        if (!Palette::rowOk($one)) {
+            $skipped[] = (int) $r['id'];
+            continue;
+        }
+        $out[] = $one;
+    }
+    if ($skipped !== [] && !$skipLogged) {
+        $skipLogged = true;
+        sort($skipped);
+        error_log('[tbox] request_id=' . TBOX_REQUEST_ID . ' community palette rows skipped (모양 밖) n=' . count($skipped) . ' id=' . implode(',', $skipped));
+    }
+    $rows = Palette::sorted($out);
+    return $rows;
+}
+
+/**
+ * 살아 있는 팔레트 이름들 (저장 창구가 견준다 — P-9).
+ *
+ * @return list<string>
+ */
+function community_palette_names(): array
+{
+    return array_map(static fn (array $r): string => $r['name'], community_palette_rows());
+}
+
+/**
+ * 이 팔레트 이름들이 모두 살아 있는가 — 저장 창구는 **새로 넣은** 이름만 넘긴다(이미 든 이름은 막지 않는다 — 뺀 이름이 있는 글도
+ * 다른 곳을 고쳐 저장할 수 있게 · K-3 와 같은 태도). 빈 목록이면 표를 읽지 않고 참.
+ *
+ * @param list<string> $names
+ */
+function community_palettes_ok(array $names): bool
+{
+    if ($names === []) {
+        return true;
+    }
+    $live = community_palette_names();
+    foreach ($names as $n) {
+        if (!in_array((string) $n, $live, true)) {
+            return false;
+        }
+    }
+    return true;
+}
+
+/**
+ * 지금 팔레트의 버전(12자리) — 셸 `<link id="palette-css" … ?v=>` · CSS 창구 `ETag` · 목록 창구 `version` 이 같은 값(P-7 — 내용에서).
+ * 표를 못 읽으면 빈 목록의 버전(`e3b0c44298fc`)이다.
+ */
+function community_palette_version(bool $fresh = false): string
+{
+    return Palette::version(community_palette_rows($fresh));
 }

@@ -28,7 +28,7 @@ declare(strict_types=1);
  * ★ HTML 에 들어가는 동적 값은 **사용자명·역할·pageTitle·activeNav·pageKey 다섯 개뿐**이고
  *   전부 htmlspecialchars(ENT_QUOTES, 'UTF-8') 를 거친다 (PRD S-03).
  *   activeNav·pageKey 는 허용 목록 밖 값이면 빈 문자열로 바꾼다 — 핸들러의 오타가
- *   속성값으로 새어 나가지 않게 하는 자리다.
+ *   속성값으로 새어 나가지 않게 하는 자리다. (7-D2 팔레트 CSS 버전 `$pagePalette` 는 12자리 16진 글자만 통과한다 — 아래 `$shellPalette`)
  *
  * ★ 이 파일에 **역할 비교를 두지 않는다** (PRD S-01, ARCH 13장). 관리 항목은 `hidden` 인 채로
  *   나가고, `/api/me` 의 `can_admin` 이 참일 때만 app.js 가 연다. 개발자도구로 항목을 되살려도
@@ -224,6 +224,16 @@ if (isset($pageCss) && is_array($pageCss)) {
 }
 
 /**
+ * 7-D2 — 커뮤니티 관리자 팔레트 CSS (`$pagePalette`, 지시서 P-6·P-7). 커뮤니티 화면 셋(홈·페이지·게시판)의 핸들러가
+ * `community_palette_version()` 을 넘기면 `<link id="palette-css" rel="stylesheet">` 한 줄을 그린다(주소 = `COMMUNITY_BASE` + `/palette.css?v=<버전>`).
+ * **허용 목록 방식** — 값은 12자리 소문자 16진 글자만 통과하고, 아니면(없거나 다른 모양) 링크를 그리지 않는다. 주소는 코드 상수
+ * `COMMUNITY_BASE` + 고정 글자라 요청 값이 섞일 자리가 없다. 같은 출처 CSS 파일이라 CSP `style-src 'self'` 그대로(인라인 `<style>` 0).
+ * id 는 관리 창(palettes.js)이 더하기·고치기·빼기 뒤 `?v=` 를 바꿔 그 자리에서 다시 읽는 손잡이다.
+ */
+$shellPalette = isset($pagePalette) && is_string($pagePalette) && preg_match('/^[0-9a-f]{12}$/D', $pagePalette) === 1
+    && defined('COMMUNITY_BASE') ? $pagePalette : '';
+
+/**
  * F-70 — 설치형 웹 앱 화면 표시 (`$pageApp`). **허용 목록 한 값**(`alerts` — 휴대폰 경보 화면 push_app_page.php)만 통과하고,
  * 통과하면 머리에 매니페스트·아이폰 홈 화면 메타를, 바닥(shell_bottom)에 alerts-app.js 를 붙인다. 그 밖의 값은 빈 문자열.
  * 이름을 `$shellPwa` 로 둔 까닭: 아래 앱 그리드의 foreach 가 `$shellApp` 을 돌림 변수로 쓴다(겹치면 바닥에서 값이 바뀐다 — F-70 첫 시험에서 발견).
@@ -257,6 +267,9 @@ if (!headers_sent()) {
 <?php foreach ($shellPageCss as $shellCssName): ?>
 <link rel="stylesheet" href="<?= Http::url('/assets/') ?><?= $shellCssName ?>?v=<?= (int) filemtime(__DIR__ . '/../../public/assets/' . $shellCssName) ?>">
 <?php endforeach; ?>
+<?php if ($shellPalette !== ''): ?>
+<link id="palette-css" rel="stylesheet" href="<?= COMMUNITY_BASE ?>/palette.css?v=<?= $shellPalette ?>">
+<?php endif; ?>
 <?php if ($shellMod === 'community'): ?>
 <!-- 커뮤니티 화면의 동작 한 벌 (커뮤니티 ARCHITECTURE.md 21.3). `type="module"` 은 기본이
      defer 라 <head> 에 두어도 본문이 다 그려진 뒤 돌아간다 — shell_bottom 을 고치지 않고

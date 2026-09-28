@@ -139,6 +139,18 @@ if (!community_embeds_ok($restoreNewEmbeds)) {
     Http::json(['error' => COMMUNITY_EMBED_REFUSED, 'reason' => 'embed_not_allowed'], 400);
     exit;
 }
+/* 7-D2 — 되돌리는 판에 지금 본문에 없는 팔레트 이름이 있으면 새로 넣는 것과 같다 — 살아 있는 목록과 견준다(P-9). */
+$restoreNewPalettes = array_values(array_diff(Doc::extract($oldDoc)['palette_names'], Doc::extract(json_decode((string) $row['doc'], true) ?: [])['palette_names']));
+if (!community_palettes_ok($restoreNewPalettes)) {
+    Audit::deny('page.restore_version', 'palette_not_found', [
+        'target_type' => 'page',
+        'target_id'   => $pageId,
+        'target_name' => $pageTitle,
+        'detail'      => ['page_title' => $pageTitle, 'restored_from' => $want],
+    ]);
+    Http::json(['error' => COMMUNITY_PALETTE_REFUSED, 'reason' => 'palette_not_found'], 400);
+    exit;
+}
 
 $extract = Doc::extract($oldDoc);
 $docJson = json_encode($oldDoc, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);

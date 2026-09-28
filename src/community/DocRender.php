@@ -451,9 +451,17 @@ final class DocRender
     /**
      * 색 이름(`red`·`red_bg`) → 클래스(`nt-red`·`nt-red-bg`). 허용 목록 밖이면 null 이다 —
      * 그리기 직전에 한 번 더 보는 자리라, 값이 통과하지 못하면 클래스를 붙이지 않는다.
+     *
+     * 7-D2 관리자 팔레트 — `pal:<이름>` → `pal-<이름>` · `pal:<이름>_bg` → `pal-<이름>-bg`(모양은 `Doc::isPaletteColor` 한 곳).
+     * **목록을 보지 않는다**(P-10) — 뺀 이름은 서버가 만든 CSS(`/community/palette.css`)에 규칙이 없어 색 없이 그려진다.
+     * `doc-render.js` 의 `colorClass` 와 같은 규칙이다(C:T-206).
      */
     private static function colorClass(string $color): ?string
     {
+        $pal = Doc::paletteName($color);
+        if ($pal !== null) {
+            return 'pal-' . $pal . (substr($color, -3) === '_bg' ? '-bg' : '');
+        }
         if (!in_array($color, Doc::colorValues(), true)) {
             return null;
         }

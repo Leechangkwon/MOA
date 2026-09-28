@@ -1015,6 +1015,12 @@ final class Audit
         // 7-D1 많이 읽힌 문서 (관리자 — 수만, 누가 읽었는지는 없다)
         'page.popular|allow'                    => '{actor} 이(가) 많이 읽힌 문서 목록(지난 30일 · 사내 공개 페이지만)을 봤습니다',
         'embed.domain_remove|allow'             => '{actor} 이(가) 임베드 허용 목록에서 「{target}」 을(를) 뺐습니다',
+        // 7-D2 관리자 팔레트 (Admin — {target} 은 색 이름 · 값은 detail 의 name·light·dark, 고치기는 before 도)
+        'palette.add|allow'                     => '{actor} 이(가) 팔레트에 회사 색 「{target}」 을(를) 더했습니다 (값은 상세 기록)',
+        'palette.update|allow'                  => '{actor} 이(가) 팔레트의 회사 색 「{target}」 의 값을 고쳤습니다 (전후 값은 상세 기록)',
+        'palette.remove|allow'                  => '{actor} 이(가) 팔레트에서 회사 색 「{target}」 을(를) 뺐습니다 (그 색을 쓴 글은 색 없이 보입니다)',
+        'page.update|deny|palette_not_found'    => '{actor} 이(가) 페이지 「{target}」 에 팔레트에 없는 색을 넣으려 해서 거부했습니다',
+        'page.restore_version|deny|palette_not_found' => '{actor} 이(가) 페이지 「{target}」 을(를) 팔레트에 없는 색이 든 판으로 되돌리려 해서 거부했습니다',
         'page.update|deny|file_ref'             => '{actor} 이(가) 페이지 「{target}」 에 붙일 수 없는 파일을 붙이려 해서 거부했습니다',
         'page.publish|deny|file_narrower'       => '{actor} 이(가) 페이지 「{target}」 을(를) 게시하려 했지만 게시판을 보는 사람이 볼 수 없는 파일이 붙어 있어 거부했습니다 (게시판은 상세 기록)',
         'page.restore_version|deny|file_ref'    => '{actor} 이(가) 페이지 「{target}」 을(를) 지금 붙일 수 없는 파일이 든 판으로 되돌리려 해서 거부했습니다',

@@ -53,17 +53,54 @@ export function uuid4() {
   return s.slice(0, 8) + '-' + s.slice(8, 12) + '-' + s.slice(12, 16) + '-' + s.slice(16, 20) + '-' + s.slice(20);
 }
 
-/** 색 값이 허용 목록 안인가 (글자 9 + 배경 9) */
+/**
+ * 7-D2 관리자 팔레트 값의 모양 — `pal:<이름>`(글자) · `pal:<이름>_bg`(배경). 이름 `[a-z0-9-]{1,20}` · 끝 `-bg` 아님
+ * (Doc::isPaletteColor · doc-render.js `paletteClass` 와 같은 규칙). **목록은 보지 않는다** — 뺀 이름이 든 글도 그대로 열리고 저장된다(P-8·P-10).
+ * 정규식은 `match()` 로만 쓴다(보안 린트).
+ */
+const PALETTE_RE = /^pal:([a-z0-9-]{1,20})(_bg)?$/;
+function paletteParts(value) {
+  if (typeof value !== 'string') { return null; }
+  const m = value.match(PALETTE_RE);
+  if (!m || m[1].slice(-3) === '-bg') { return null; }
+  return { name: m[1], bg: !!m[2] };
+}
+
+/** 색 값이 허용 목록 안인가 (글자 9 + 배경 9 · 7-D2 팔레트 모양) */
 export function colorAllowed(value) {
   if (typeof value !== 'string') { return false; }
+  if (paletteParts(value)) { return true; }
   const base = value.slice(-3) === '_bg' ? value.slice(0, -3) : value;
   return COLORS.indexOf(base) !== -1;
 }
 
-/** 색 이름 → 클래스 (doc-render.js 의 `colorClass` 와 같은 규칙) */
+/** 색 이름 → 클래스 (doc-render.js 의 `colorClass` 와 같은 규칙 — 팔레트는 `pal-<이름>`·`pal-<이름>-bg`) */
 function colorClass(value) {
   if (!colorAllowed(value)) { return null; }
+  const pal = paletteParts(value);
+  if (pal) { return 'pal-' + pal.name + (pal.bg ? '-bg' : ''); }
   return value.slice(-3) === '_bg' ? 'nt-' + value.slice(0, -3) + '-bg' : 'nt-' + value;
+}
+
+/**
+ * 붙여넣은 DOM 의 클래스 하나 → 색 값 (없으면 null). `nt-<색>`·`nt-<색>-bg` 와 7-D2 `pal-<이름>`·`pal-<이름>-bg`.
+ * `pal-x-bg` 는 먼저 「x 의 배경」으로 읽고, 그 이름이 모양 밖이면(`pal-bg` = 이름 `bg` 의 글자색) 글자색으로 읽는다 —
+ * 이름이 `-bg` 로 끝날 수 없어서 두 읽기가 겹치지 않는다.
+ */
+function classColor(c) {
+  if (c.indexOf('nt-') === 0) {
+    const name = c.slice(-3) === '-bg' ? c.slice(3, -3) + '_bg' : c.slice(3);
+    return colorAllowed(name) && !paletteParts(name) ? name : null;
+  }
+  if (c.indexOf('pal-') === 0) {
+    if (c.slice(-3) === '-bg') {
+      const bg = 'pal:' + c.slice(4, -3) + '_bg';
+      if (paletteParts(bg)) { return bg; }
+    }
+    const fg = 'pal:' + c.slice(4);
+    return paletteParts(fg) ? fg : null;
+  }
+  return null;
 }
 
 /** 블록 공통 속성 — id·color·align·size */
@@ -91,9 +128,9 @@ function readCommon(dom) {
   let align = 'left';
   let size = 'normal';
   for (const c of cls) {
-    if (c.indexOf('nt-') === 0) {
-      const name = c.slice(-3) === '-bg' ? c.slice(3, -3) + '_bg' : c.slice(3);
-      if (colorAllowed(name)) { color = name; }
+    if (c.indexOf('nt-') === 0 || c.indexOf('pal-') === 0) {
+      const name = classColor(c);
+      if (name) { color = name; }
     } else if (c.indexOf('al-') === 0 && ALIGNS.indexOf(c.slice(3)) !== -1) {
       align = c.slice(3);
     } else if (c.indexOf('sz-') === 0 && SIZES.indexOf(c.slice(3)) !== -1) {
@@ -330,9 +367,8 @@ export const schema = new Schema({
         getAttrs: (dom) => {
           const cls = (dom.getAttribute('class') || '').split(/\s+/);
           for (const c of cls) {
-            if (c.indexOf('nt-') !== 0) { continue; }
-            const name = c.slice(-3) === '-bg' ? c.slice(3, -3) + '_bg' : c.slice(3);
-            if (colorAllowed(name)) { return { color: name }; }
+            const name = classColor(c);
+            if (name) { return { color: name }; }
           }
           return false;
         }

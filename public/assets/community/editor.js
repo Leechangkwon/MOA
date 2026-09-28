@@ -40,13 +40,14 @@ import { inputRules, textblockTypeInputRule, InputRule } from './vendor/pm/prose
 import { dropCursor } from './vendor/pm/prosemirror-dropcursor.js?v=5823578fa61a';
 import { gapCursor } from './vendor/pm/prosemirror-gapcursor.js?v=5823578fa61a';
 
-import { renderDoc, embedHost } from './doc-render.js?v=246435054f7e';
-import { createDatabaseView } from './database.js?v=246435054f7e';
-import { bindTemplateGallery, createTemplateSave } from './templates.js?v=246435054f7e';
-import { bindEmbedAdmin } from './embeds.js?v=246435054f7e';
-import { bindPopular } from './popular.js?v=246435054f7e';
-import { schema, toDoc, fromDoc, uuid4, colorAllowed, schemeOkForEditor, COLORS, BLOCK_TYPES } from './editor-schema.js?v=246435054f7e';
-import { createDrafts } from './drafts.js?v=246435054f7e';
+import { renderDoc, embedHost } from './doc-render.js?v=06c32b371a63';
+import { createDatabaseView } from './database.js?v=06c32b371a63';
+import { bindTemplateGallery, createTemplateSave } from './templates.js?v=06c32b371a63';
+import { bindEmbedAdmin } from './embeds.js?v=06c32b371a63';
+import { bindPopular } from './popular.js?v=06c32b371a63';
+import { bindPalettes } from './palettes.js?v=06c32b371a63';
+import { schema, toDoc, fromDoc, uuid4, colorAllowed, schemeOkForEditor, COLORS, BLOCK_TYPES } from './editor-schema.js?v=06c32b371a63';
+import { createDrafts } from './drafts.js?v=06c32b371a63';
 
 /* ─── 주소와 공통 도우미 ─────────────────────────────────────── */
 
@@ -1883,6 +1884,11 @@ function initHome() {
   bindPopular({
     api: api, setText: setText, show: show, clear: clear, errorMessage: errorMessage,
     genericError: GENERIC_ERROR, toLogin: toLogin, base: COMMUNITY_BASE
+  });
+  // 7-D2 — 「팔레트 관리」 창(메뉴 항목은 관리자에게만 — 판단은 창구가 준 can_manage, 막는 것은 서버)
+  bindPalettes({
+    api: api, setText: setText, show: show, clear: clear, errorMessage: errorMessage,
+    genericError: GENERIC_ERROR, toLogin: toLogin
   });
   // B1-2 — 「저장 안 된 글 n개」(B1-1 이 없어도 그 페이지로 찾아가게)
   drawHomeDrafts(msg);
@@ -3762,9 +3768,30 @@ function atomAt(state) {
 
 /* ─── 인라인 툴바 — 「색」 「배경」 「링크」 셋 (지시서 1장) ───── */
 
+/**
+ * 7-D2 — 편집기 색 줄에 더할 **살아 있는 팔레트 이름**(P-11). 편집기를 만들 때 한 번 받는다(화면 수명 동안 한 번 — 실패도 기억).
+ * 못 받으면(오류·표를 못 읽음) 기본 9색만 — 모양 밖 이름은 버린다. 색은 서버가 만든 CSS(`#palette-css`)가 클래스로 준다(인라인 style 0).
+ */
+let paletteNames = null;
+let palettesLoading = null;
+function loadPaletteNames() {
+  if (palettesLoading) { return palettesLoading; }
+  palettesLoading = api('GET', '/api/palettes').then((result) => {
+    const list = result.status === 200 && result.data && Array.isArray(result.data.palettes) ? result.data.palettes : [];
+    paletteNames = list.map((p) => (p && typeof p.name === 'string' ? p.name : ''))
+      .filter((n) => n !== '' && colorAllowed('pal:' + n));
+    return paletteNames;
+  }).catch(() => {
+    paletteNames = [];
+    return paletteNames;
+  });
+  return palettesLoading;
+}
+
 function createToolbar(view) {
   const wrap = document.getElementById('inline-toolbar');
   if (!wrap) { return null; }
+  loadPaletteNames();   // 7-D2 — 편집기를 만들 때 한 번(색 줄은 열 때 짓는다 — 그때까지 오면 이름 견본이 함께)
   // 「블록 추가」는 마크업에서 이 줄 안에 있다. 비우기 전에 붙잡아 두었다가 줄 맨 앞에 다시 놓는다
   // (단추의 click 은 initPage 가 걸어 두었으므로 요소를 새로 만들지 않는다).
   const addBlock = document.getElementById('page-add-block');
@@ -3797,11 +3824,13 @@ function createToolbar(view) {
     view.focus();
   }
 
-  /** 팔레트 한 줄 — 9색 + 「없앰」. 열었을 때만 만든다(닫힌 툴바의 단추는 셋뿐이다). */
+  /** 팔레트 한 줄 — 9색 + 관리자 팔레트(7-D2) + 「없앰」. 열었을 때만 만든다(닫힌 툴바의 단추는 셋뿐이다). */
   function buildPalette(suffix, label) {
     const panel = document.createElement('div');
     panel.className = 'editor-palette__row';
     panel.hidden = true;
+    // 어느 판의 팔레트 목록으로 지었나 — 목록이 늦게 오면 다음에 열 때 다시 짓는다(togglePanel)
+    panel.setAttribute('data-palettes', paletteNames === null ? 'none' : String(paletteNames.length));
 
     const title = document.createElement('span');
     title.className = 'muted';
@@ -3814,6 +3843,24 @@ function createToolbar(view) {
       swatch.type = 'button';
       swatch.className = 'btn btn--icon btn--plain ' + (suffix === '' ? 'nt-' + color : 'nt-' + color + '-bg');
       swatch.setAttribute('aria-label', label + ' ' + color);
+      swatch.setAttribute('data-color', value);
+      swatch.textContent = '●';
+      swatch.addEventListener('mousedown', (event) => {
+        event.preventDefault();
+        if (!colorAllowed(value)) { return; }
+        applyColor(value);
+      });
+      panel.appendChild(swatch);
+    }
+
+    /* 7-D2 — 기본 9색 뒤에 관리자 팔레트. 견본 클래스 `pal-<이름>`·`pal-<이름>-bg`(서버 CSS 가 색을 준다) · 값 `pal:<이름>[_bg]`.
+       뺀 이름은 목록에 없으니 새로 고를 수 없다 — 이미 글에 든 것은 그대로 둔다(P-11). */
+    for (const name of paletteNames || []) {
+      const value = 'pal:' + name + suffix;
+      const swatch = document.createElement('button');
+      swatch.type = 'button';
+      swatch.className = 'btn btn--icon btn--plain ' + (suffix === '' ? 'pal-' + name : 'pal-' + name + '-bg');
+      swatch.setAttribute('aria-label', label + ' ' + name);
       swatch.setAttribute('data-color', value);
       swatch.textContent = '●';
       swatch.addEventListener('mousedown', (event) => {
@@ -3920,10 +3967,14 @@ function createToolbar(view) {
         : (linkPanel && !linkPanel.hidden);
     closePanels();
     if (wasOpen) { return; }
+    // 7-D2 — 팔레트 목록이 그 줄을 지은 뒤에 왔으면 새 목록으로 다시 짓는다(늦게 온 이름이 빠지지 않게)
+    const stale = (panel) => panel && panel.getAttribute('data-palettes') !== (paletteNames === null ? 'none' : String(paletteNames.length));
     if (which === 'fg') {
+      if (stale(fgPanel)) { fgPanel.remove(); fgPanel = null; }
       if (!fgPanel) { fgPanel = buildPalette('', '글자색'); wrap.appendChild(fgPanel); }
       fgPanel.hidden = false;
     } else if (which === 'bg') {
+      if (stale(bgPanel)) { bgPanel.remove(); bgPanel = null; }
       if (!bgPanel) { bgPanel = buildPalette('_bg', '배경색'); wrap.appendChild(bgPanel); }
       bgPanel.hidden = false;
     } else {

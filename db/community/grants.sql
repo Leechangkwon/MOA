@@ -141,3 +141,28 @@ BEGIN
     GRANT SELECT                              ON community.page_favorites, community.page_recent TO tbox_backup;
 END
 $$;
+
+-- ─── 7-D2 관리자 팔레트 (커뮤니티 결정 L-2 · 지시서 1.2) — 표 하나(palettes).
+--     표를 만드는 것은 db/community/schema.sql(새 설치)·db/migrations/2026-10-07_community_palettes.sql(기존 DB)이고, 이 절은 **같은
+--     권한**을 다시 건다(마이그레이션 끝과 같은 줄 — 어느 쪽을 다시 돌려도 같은 권한). 표가 없으면(마이그레이션 전) 아무것도 하지 않고
+--     NOTICE 만 남긴다(위 목록에 넣지 않은 까닭 — 없는 표를 REVOKE 하면 이 파일 전체가 멈춘다).
+--   palettes  tbox_app SELECT · INSERT · UPDATE(★ DELETE 없음 — 빼기는 removed_at) + 시퀀스 USAGE·SELECT · tbox_backup SELECT 만 · tbox_perm·tbox_push 0
+DO $$
+BEGIN
+    IF to_regclass('community.palettes') IS NULL THEN
+        RAISE NOTICE '팔레트 표가 없다 — db/migrations/2026-10-07_community_palettes.sql 을 먼저 돌린다(이 절은 건너뜀)';
+        RETURN;
+    END IF;
+    REVOKE ALL ON community.palettes FROM tbox_app, tbox_backup;
+    IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'tbox_perm') THEN
+        EXECUTE 'REVOKE ALL ON community.palettes FROM tbox_perm';
+    END IF;
+    IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'tbox_push') THEN
+        EXECUTE 'REVOKE ALL ON community.palettes FROM tbox_push';
+    END IF;
+    GRANT SELECT, INSERT, UPDATE ON community.palettes TO tbox_app;
+    GRANT USAGE, SELECT ON SEQUENCE community.palettes_id_seq TO tbox_app;
+    GRANT SELECT ON community.palettes TO tbox_backup;
+    GRANT SELECT ON SEQUENCE community.palettes_id_seq TO tbox_backup;
+END
+$$;

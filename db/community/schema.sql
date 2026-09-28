@@ -14,7 +14,8 @@
 --   · pages : `cover_ref` · `published_space_id` · `published_at` · `database_id` · `properties`
 --             (4-D 에 `status`·`assignee_id` 가 더해졌다 — 새 설치는 이 파일 하나로 끝나고,
 --              이미 있는 DB 는 db/migrations/2026-09-23_community_page_properties.sql 이 같은 모양으로 만든다)
---   · 표    : `boards`(→ spaces 로 합쳤다) · `tags` · `page_tags` · `space_tags` · `palettes` · `page_reads`
+--   · 표    : `boards`(→ spaces 로 합쳤다) · `tags` · `page_tags` · `space_tags` · `page_reads`
+--             (`palettes` 는 7-D2 에 이 파일 끝에 더해졌다 — 이미 있는 DB 는 db/migrations/2026-10-07_community_palettes.sql)
 --
 -- 멱등하지 않다(초기 구축 전용). gen_random_uuid() 는 PostgreSQL 13+ 내장 함수다 —
 -- pgcrypto 확장을 설치하지 않는다(공급망 최소화, t-box PRD S-10-C 와 같은 판단).
@@ -441,3 +442,25 @@ CREATE TABLE community.page_recent (
 );
 CREATE INDEX page_recent_user_time_idx ON community.page_recent (user_id, last_viewed_at DESC);
 CREATE INDEX page_recent_page_idx ON community.page_recent (page_id);
+
+-- 7-D2 관리자 팔레트 (db/migrations/2026-10-07_community_palettes.sql 과 같은 모양 — 결정 L-2 · 지시서 1.2)
+--   이름 하나에 라이트·다크 값 둘(배경값은 앱이 계산 — 저장하지 않는다). 줄은 남고 빼기는 removed_at · 살아 있는 이름은 하나.
+--   예약 이름(기본 9색 · none)과 끝 `-bg` 금지는 앱만 막는다(이름 목록이 두 곳에 있지 않게).
+CREATE TABLE community.palettes (
+    id         BIGSERIAL   PRIMARY KEY,
+    name       TEXT        NOT NULL,
+    light      TEXT        NOT NULL,
+    dark       TEXT        NOT NULL,
+    added_by   BIGINT      NOT NULL REFERENCES public.users(id),
+    added_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_by BIGINT      REFERENCES public.users(id),
+    updated_at TIMESTAMPTZ,
+    removed_by BIGINT      REFERENCES public.users(id),
+    removed_at TIMESTAMPTZ,
+    CONSTRAINT palettes_name_shape  CHECK (name ~ '^[a-z0-9-]{1,20}$'),
+    CONSTRAINT palettes_light_shape CHECK (light ~ '^#[0-9a-f]{6}$'),
+    CONSTRAINT palettes_dark_shape  CHECK (dark ~ '^#[0-9a-f]{6}$'),
+    CONSTRAINT palettes_removed_pair CHECK ((removed_at IS NULL) = (removed_by IS NULL)),
+    CONSTRAINT palettes_updated_pair CHECK ((updated_at IS NULL) = (updated_by IS NULL))
+);
+CREATE UNIQUE INDEX palettes_live_name ON community.palettes (name) WHERE removed_at IS NULL;

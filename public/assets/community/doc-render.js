@@ -277,9 +277,24 @@ function renderTable(block, id) {
 /** 기본 색 9 — 배경은 `_bg` 를 붙인 값이다 (doc-schema.json `colors`·`color_suffix_bg`). */
 const COLORS = ['gray', 'brown', 'orange', 'yellow', 'green', 'blue', 'purple', 'pink', 'red'];
 
+/**
+ * 7-D2 관리자 팔레트 — `pal:<이름>`·`pal:<이름>_bg` 의 **모양만**(Doc::isPaletteColor 와 같은 규칙: 이름 `[a-z0-9-]{1,20}` · 끝 `-bg` 아님).
+ * 목록은 보지 않는다(P-10) — 뺀 이름은 서버 CSS(`/community/palette.css`)에 규칙이 없어 색 없이 그려진다.
+ * 정규식은 `match()` 로만 쓴다(`exec` 이름을 쓰지 않는다 — 보안 린트).
+ */
+const PALETTE_RE = /^pal:([a-z0-9-]{1,20})(_bg)?$/;
+export function paletteClass(value) {
+  if (typeof value !== 'string') { return null; }
+  const m = value.match(PALETTE_RE);
+  if (!m || m[1].slice(-3) === '-bg') { return null; }
+  return 'pal-' + m[1] + (m[2] ? '-bg' : '');
+}
+
 /** 색 이름 → 클래스. 허용 목록 밖이면 null (클래스를 붙이지 않는다). */
 export function colorClass(value) {
   if (typeof value !== 'string') { return null; }
+  const pal = paletteClass(value);
+  if (pal) { return pal; }
   if (value.slice(-3) === '_bg') {
     return COLORS.indexOf(value.slice(0, -3)) === -1 ? null : 'nt-' + value.slice(0, -3) + '-bg';
   }
