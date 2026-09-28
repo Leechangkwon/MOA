@@ -37,6 +37,9 @@
 #     반영 직후 다시 → 2(트리 더러움) · 끝에 되돌림 → 기준 판 차이 0. 경우 내내 0.2초 요청 줄기(미로그인 로그인 화면 · 런처 · app.js · 커뮤니티) 304회 중 500 1 —
 #     git apply 가 파일을 차례로 바꾸는 순간 라우터의 라우트 표 검사가 「핸들러 파일이 없다」로 한 요청을 거절(반영·되돌림 모두 같은 창 · 이 묶음만의 일이 아니다 —
 #     쓰는 사람이 없는 때(BUSY 확인)에 한다). 로그 wk-g0/rehearse-1.log.
+#   다시 찍은 뒤 연습(2026-09-28 15:4x · 찍은 판 8cedd6c · PATCH_WANT 07fc9e3b… — 수락 시험이 임시 DB 를 시험 역할로 다루게 바뀐 판 · 모의 DB 는 시험 역할 tbox_testdb 로
+#     만들고 붓고 마이그레이션(OWNER TO 두 줄 뺀 사본) — 사본은 경로 넷 + psq 의 psql 역할(tbox_testdb) 한 줄): DB 전 --dry-run → 3 · --dry-run → 0 · 본 실행 → 0(확인 ✔ 19 / ✖ 0 ·
+#     64 파일 = 검토 판) · 머리 「되돌리기」 → 기준 판 차이 0 · 요청 164회 중 500 1(같은 창 — 파일이 차례로 바뀌는 순간 자산 filemtime 실패). 로그 wk-g0/rehearse-2.log.
 set -euo pipefail
 # ★ pipefail 아래에서 `… | grep -q` · `… | head` · `… | awk '…exit'` 를 쓰지 않는다(읽는 쪽이 먼저 끝나면 SIGPIPE 로 파이프가 「실패」)
 USAGE="사용: bash $0 <PATCH> <SHA256> [--dry-run]"
@@ -55,9 +58,9 @@ APPLOG=/var/log/tbox-v2/app.log
 [ "$(id -un)" = "changkwon" ] || { echo "운영 트리의 주인(changkwon)으로 실행하세요"; exit 1; }
 
 # @@HASHES-BEGIN@@
-# 반영할 패치 = git diff c2b4d76 <검토 태그> -- . ':!review-scripts' — 찍은 판 2d394b6 과 내용이 같다(그 뒤 커밋은 review-scripts/ 만 바꾼다) ·
+# 반영할 패치 = git diff c2b4d76 <검토 태그> -- . ':!review-scripts' — 찍은 판 8cedd6c 과 내용이 같다(그 뒤 커밋은 review-scripts/ 만 바꾼다) ·
 #   pins-g0-repo.sh 가 찍음 · 인자로 받은 sha256 과 **둘 다** 같아야 한다
-PATCH_WANT=ba2235678c3956e6961fc4d925aa0eda78183b4e583077ab86c03e430c23da17
+PATCH_WANT=07fc9e3b7e980bda976635e993571c98ad676f4cacf7b89b7dc3cc0381425022
 # 고치는 파일의 반영 전 기준 판(c2b4d76) — 다르면 시작하지 않고, 되돌린 뒤 이 판으로 돌아왔는지 본다
 BASE_WANT="API.md=bcf1bb997149621927245c7cc5216816528337732bcce21083f7092e08ea974a
 ARCHITECTURE.md=660675361c15c1c03b8047fffa6123e142799c9f7c1dce694a5538fd18fd7789
@@ -123,7 +126,7 @@ db/grants.sql=0fb34dab3c71502088ec0145816a5ed3e88c94bad81127fec5167c1654be8b1e
 db/migrations/2026-10-10_access_grants.sql=7c78c49ebad9ac26643cb35b69140bc5c43cb2c213dccb1e12a9f6aa53481093
 db/schema.sql=193b980140a736c6e55946987830b3a9929510dd933aae66b3cd8d9691483520
 db/seed.sql=6e88f201d3efa7733a9506abcd208321346ae5b4702eca414b343821da817bb0
-docs/g0-implementation.md=57b50f58610995701329f15aa244e53e5e6cb3aa62a78fba873d5ac542cc0934
+docs/g0-implementation.md=2490dfd66ec7a24c5cf1f1dec5c3c546c60a4349cbdc66a8f5403fce5797a902
 public/assets/app.css=de7d99143e02463b633988a6e73de071dd48291bcc5d9d3c8a158029a0d9f35a
 public/assets/app.js=d0c6ba08d51817b56886c4776e8e1c4d602d077604f55f8ada09db72287bda89
 public/assets/community/database.js=d892c157da8165e6a8530e942924fe90206164017fa23045bdb6548f3bb20113
@@ -173,8 +176,8 @@ src/handlers/share_download.php=fae9d67a9b14cb21d010d248782db0a092b9366183be74cf
 src/help/screens.php=81733b1f1909ffc2712f9e7190e75b2dfd6b4843d05a2a7fb18ec418cf8fdf62
 src/views/shell_top.php=f7806e9268d0a62d99948820e157b19fcc0573e952150b170ac945cdeca57fb4
 tests/browser/g0_private_grants.py=de43eb76575e22009b1797ebdab02540e33a99450fb72857c003cea5c31e2a35
-tests/catalog.json=29d487e277939dacb7fcbf36701fcedeb2c1b279fedd95aef5d2f38386a10fc0
-tests/g0_private_grants.sh=5bacfb49c7d3ed1fe0137b13472fc7a2a77731876f297d9e18818058c5b25b96
+tests/catalog.json=e3ba3fb56563da700ca8a419c8739dabc5b5d371970c4b89e05ae2f97590f025
+tests/g0_private_grants.sh=1500747d7f528a4012e279642d92bfffab24622e5cb67cf7f65ae5c5d97cdbda
 wiki/tbox/guide-roles.json=a1958551455181e47678c9148078c15e7ee15a3aa9cb6b3981d07742ca0d2f29
 wiki/tbox/index.json=8392a471630801670815f500fbb22572fb6010bfdc269b73d100cf990fd9a77f"
 FILES_N=64
