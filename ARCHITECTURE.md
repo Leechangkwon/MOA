@@ -464,6 +464,45 @@ F-49 는 「공용 정적 토큰 하나」(설계 A)로 갔고, 그 한계(회�
 **남는 위험(R-97).** `read` 범위도 다운로드가 된다(정찰·유출은 범위로 못 막는다) · 만료 전 유출은 여전히 그 범위만큼 · 공용 토큰은 범위·만료가 없다(이행용, R-82 그대로) · 만료 뒤 갱신을 잊으면 프로그램이 멎는다(14일 안내로 완화).
 
 
+### 4.8 커뮤니티 창구 셋에 개인 토큰 — 범위 `community.write` (PRD F-74 · 사이트 Q:F-8, 사용자 결정 2026-09-28)
+
+**왜.** 사용자 요구 「주제를 말하면 AI 가 커뮤니티에 글을 써 준다」(Claude + PC 의 MCP 서버 · 글 자리는 **내 개인 공간 · 비공개**). 지금까지 `X-API-Token` 은 t-box 파일 창구 열한 개에서만 읽혔고, `/community…` 요청은 [2-T] 에 닿기 **전에** `community_dispatch()` 로 빠져 세션만 봤다. 그래서 AI 가 글을 쓸 길이 없었다.
+
+**관문이 둘이 된 까닭.** 라우터가 둘이다(`public/index.php` 의 t-box 표 · `src/community/routes.php` 의 커뮤니티 표). 토큰 관문을 한 곳에 모으려고 커뮤니티 요청을 t-box 갈래로 돌리면 두 표의 경로 규칙·감사 route 가 섞인다. 그래서 **라우터마다 한 곳씩** 두되 판정 함수는 새로 만들지 않고 같은 셋을 그대로 부른다 — `Http::apiTokenHeader()` · `Auth::requireApiToken($personalOnly)` · `Authz::tokenScopeAllows($scope, $policy)`. `public/index.php`·`Auth.php`·`Http.php` 는 한 글자도 바뀌지 않았다.
+
+**커뮤니티 [2-T] (routes.php `community_dispatch`, 라우트 매칭 **뒤** · 세션 조회 **앞**).**
+
+| 순서 | 무엇 | 결과 |
+|---|---|---|
+| 조건 | `메서드 + 모듈 라우트 패턴` ∈ `COMMUNITY_API_TOKEN_ROUTES`(`GET /api/me/space` · `POST /api/pages` · `GET /api/pages/{id}` — 상수 하나) **그리고** `X-API-Token` 헤더가 왔다 | 둘 중 하나라도 아니면 지금의 세션 경로 그대로(한 글자도 안 바뀜). 표 밖 라우트는 헤더를 **읽지 않는다** → 세션 없음 401 |
+| ① | `Auth::requireApiToken(true)` — **개인 토큰만**(F-59 인자) | 헤더 없음·틀림·회수 401 · 만료 401 `token_expired` · 계정 상태 403 · 공용(`.env`) 토큰 403 `shared_token_not_permitted` — 전부 그 함수 안의 감사 그대로. 틀린 값이면 세션으로 **되돌아가지 않는다** |
+| ② | `TBOX_AUTH_METHOD='api_token'` | 이 요청의 모든 감사 행에 `auth=api_token`·`token_kind`·`token_id`·`token_scope`(Audit::autoDetail — 새 문장 0) |
+| ③ | `Authz::tokenScopeAllows(TBOX_API_TOKEN_SCOPE, 라우트 정책)` | 거짓이면 403 `MSG_TOKEN_SCOPE` + `auth.token deny scope_not_permitted`(index.php [2-S] 와 같은 응답·같은 감사) |
+| 건너뜀 | 세션 조회 · CSRF · 최초 로그인 강제 절차 · 재인증 | 까닭은 4.2 와 같다(토큰은 브라우저가 자동으로 싣지 않는다 · 절차 중인 계정은 ① 이 이미 403) |
+| 그대로 | [4] `Authz::authorize` · [4-1] 준비 확인 · 핸들러의 행 단위 판정(`CommunityAuthz`) | 세션과 **같은 코드**다 — 토큰이 계정보다 커질 수 없다 |
+
+**범위 `community.write` — 독립 값.** `Authz::TOKEN_SCOPES` 의 넷째 값이지만 F-66 사다리(read → read+upload → read+upload+delete)의 칸이 **아니다**(`FILE_TOKEN_SCOPES` 가 사다리 셋).
+
+| 라우트 정책 | read | read+upload | read+upload+delete | community.write |
+|---|---|---|---|---|
+| `authenticated`(`GET /tbox/api/whoami` — 토큰 확인용) | ✔ | ✔ | ✔ | ✔ |
+| `file.read` | ✔ | ✔ | ✔ | ✖ |
+| `file.upload` · `file.update` | ✖ | ✔ | ✔ | ✖ |
+| `file.delete` | ✖ | ✖ | ✔ | ✖ |
+| `community.read` · `community.write`(창구 셋만) | ✖ | ✖ | ✖ | ✔ |
+
+고를 수 있는 사람은 `Authz::tokenScopesFor` 가 정한다 — `canCommunityWrite($u)`(= 커뮤니티 쓰기 자격, Guest 거짓)일 때만 목록 끝에 붙는다. 발급 핸들러는 그 목록으로 다시 막는다(목록 밖 400 `bad_request`).
+
+**토큰 모드의 `POST /api/pages`.** `pages_create.php` 가 `TBOX_AUTH_METHOD === 'api_token'` 이면 허용 키 일곱 중 `title`·`doc` 둘만 받는다 — `parent_id`·`space_id`·`database`·`properties`·`template_id` 가 **있기만 해도**(null 이어도) 400 `{"error":…,"reason":"token_scope_fields"}`. 그래서 결과는 언제나 **내 개인 공간 · `visibility=private` · 부모 없음**이다(세션 규칙 「부모 없으면 비공개」 그대로). 그 밖의 검사(제목 · `Doc::validate` · 파일·임베드·팔레트 · 개인 공간 없으면 409)와 응답 모양은 세션과 같다. `GET /api/me/space` 는 세션과 같이 없으면 만든다(멱등), `GET /api/pages/{id}` 는 `decidePageRead` 그대로(남의 비공개 글이면 세션과 같은 403/404 · 관리자 토큰이면 세션과 같은 `admin_all` 열람 + 감사 — C:R-02 와 같은 무게).
+
+**열지 않는 것.** 목록·검색·고치기·지우기·옮기기·공개 범위·공유·인계·댓글·게시·템플릿·DB — 전부 표 밖이라 헤더를 읽지 않는다(세션 없음 401). 「검색·목록」은 열지 않는다 — 글을 **찾을** 길이 없다. 다만 `GET /api/pages/{id}` 는 id 만 알면 세션과 **같은 판정**(`decidePageRead` — 사내 공개·팀·공유·관리자 `admin_all`)으로 읽히므로, 「AI 에게 나가는 것」은 사용자가 준 주제 · AI 가 쓴 글 · 그리고 **사용자(또는 AI)가 id 를 건넨 글**이다(독립 검토 RV-QF8-4 실측 — internal 글 200). id 는 화면 주소에 있으니 사용자가 붙여 넣으면 나간다.
+
+**표 `api_tokens`(6.2-5).** CHECK 가 네 값: `scope IN ('read','read+upload','read+upload+delete','community.write')` — 마이그레이션 `2026-10-11_api_tokens_scope_community.sql`(제약 하나를 지우고 다시 · 멱등 · 행 변경 0 · 되돌리기 절). 배포 순서는 **마이그레이션 → 코드**(코드가 먼저면 「커뮤니티 글쓰기」 발급만 500).
+
+**화면.** `/settings` 「프로그램 토큰」 발급 창의 범위 select 에 서버가 준 목록 그대로 한 줄이 더 보인다 — 라벨 「커뮤니티 글쓰기 — 내 개인 공간에 비공개 페이지 만들기·읽기(파일 창구 없음)」(`app.js` `TOKEN_SCOPE_LABELS` · 새 클래스·색 0).
+
+**남는 위험(R-112).** 토큰이 새면 180일 동안(또는 회수까지) 그 사람의 개인 공간에 비공개 글이 쌓이고, 그 토큰으로 만든 글은 다시 읽힌다 · 관리자가 이 범위를 발급하면 `GET /api/pages/{id}` 로 남의 비공개 글도 `admin_all` 로 읽힌다(id 를 알아야 한다 — 목록·검색이 닫혀 있다).
+
 ## 5. 네 가지 흐름 — 순서대로, 권한 검사 위치 표시
 
 표기: **[권한 ✔]** = 여기서 권한 검사 · **[DB]** = PostgreSQL · **[FS]** = 스토리지 디스크 · **[LOG]** = 감사 로그
@@ -1868,7 +1907,9 @@ CREATE TABLE api_tokens (
     revoked_by   BIGINT      REFERENCES users(id),
     reason_text  TEXT        CHECK (reason_text IS NULL OR length(reason_text) <= 500),
     -- F-66 (2026-09-22): 범위·만료. 마이그레이션 2026-09-22_api_tokens_scope_expiry.sql (기존 행은 read+upload+delete · created_at+180일)
-    scope        TEXT        NOT NULL CHECK (scope IN ('read','read+upload','read+upload+delete')),
+    -- Q:F-8 (2026-09-28): 넷째 값 community.write(독립 값 · 커뮤니티 창구 셋). 마이그레이션 2026-10-11_api_tokens_scope_community.sql (ARCH 4.8)
+    --   db/schema.sql 도 같은 네 값이다(메인 결정 2026-09-28 — 새 설치는 마이그레이션 없이 이 모양)
+    scope        TEXT        NOT NULL CHECK (scope IN ('read','read+upload','read+upload+delete','community.write')),
     expires_at   TIMESTAMPTZ NOT NULL           -- 발급 + 180일 고정 (ARCH 4.7)
 );
 CREATE INDEX api_tokens_user_idx ON api_tokens (user_id);

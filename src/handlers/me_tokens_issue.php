@@ -19,7 +19,9 @@ declare(strict_types=1);
  * 받는 값 (JSON, 허용 키 **다섯**, 전부 필수 — R-07 대량 할당 차단)
  *   name      라벨 「사무실 PC」 — 폴더 이름과 같은 규칙(trim 뒤 1~50자, 제어문자·`/`·`\` 금지)
  *   purpose   용도 — 필수 500자. DB 에는 F-59 와 같은 `reason_text` 열에 들어간다 (PRD S-07)
- *   scope     `read` · `read+upload` · `read+upload+delete` 중 **역할이 허용하는 것만**
+ *   scope     `read` · `read+upload` · `read+upload+delete` · `community.write`(Q:F-8 — 커뮤니티 글쓰기,
+ *             파일 창구 없음 · 독립 값) 중 **역할이 허용하는 것만**(`Authz::tokenScopesFor` — 커뮤니티에 쓸 수
+ *             없는 역할에게 `community.write` 는 목록 밖이라 400)
  *   password  현재 비밀번호 — 요청마다 확인한다(세션에 창을 남기지 않는다)
  *   otp       지금의 2단계 인증 코드 6자리
  *

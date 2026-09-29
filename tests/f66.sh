@@ -354,7 +354,8 @@ curl -s -b "$JAR_DIR/claude_employee01.jar" -A "$UA" "$BASE/api/me" > "$WORK/me.
 ME_SCOPES=$(jq_py "','.join(d.get('token_scopes',[]))" < "$WORK/me.json")
 ME_CAN=$(jq_py "str(d.get('can_issue_tokens','없음'))" < "$WORK/me.json")
 note "claude_employee01 token_scopes=[${ME_SCOPES:-?}] · can_issue_tokens=${ME_CAN:-?}"
-expect "준비 /api/me token_scopes (Employee 셋)" "read,read+upload,read+upload+delete" "${ME_SCOPES:-없음}"
+# Q:F-8(2026-09-28) — 쓰기 자격 있는 역할의 선택지 끝에 독립 값 community.write 가 붙는다(ARCH 4.8 · 이 조각이 의도한 값)
+expect "준비 /api/me token_scopes (Employee 파일 셋 + community.write)" "read,read+upload,read+upload+delete,community.write" "${ME_SCOPES:-없음}"
 expect "준비 /api/me can_issue_tokens (2단계 켜짐)" "True" "${ME_CAN:-없음}"
 
 # ─── (a) 발급 ────────────────────────────────────────────────────

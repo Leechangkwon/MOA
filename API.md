@@ -10,8 +10,8 @@ API 를 추가할 때마다 이 문서에 **이어서** 적는다(마지막 장�
 |---|---|
 | 기본 주소 | 공개: `https://changkwon.mso.so/tbox` · 서버 안 검토용: `http://127.0.0.1:8082/tbox` — **2026-09-22 바뀌었다**(아래 「주소 변경」 절). 도메인 루트(`/`)는 Qaredi 런처다 |
 | 형식 | 요청·응답은 JSON (`Content-Type: application/json; charset=utf-8`). 파일 업로드만 `multipart/form-data` |
-| 인증 | 기본은 **세션 쿠키**(아래 「세션」)다. 헤더 `X-API-Token` 이 통하는 창구는 **열**이다 — `POST /api/upload`(7장) · `GET /api/files`(8장) · `GET /api/files/{id}/download`(9장) · `GET /api/whoami`(10장) · `GET /api/folders`·`POST /api/folders`·`PATCH /api/folders/{num}`(11장) · `PATCH /api/files/{id}`(12장, 폴더 이동만) · `DELETE /api/files/{id}`·`DELETE /api/folders/{num}`(14장, **개인 토큰만**). 업로드와 whoami 둘은 토큰 전용이고(세션 쿠키로는 부를 수 없다 — 헤더가 없으면 401), 나머지 여덟은 화면도 쓰는 창구라 **헤더를 보내면 토큰으로, 안 보내면 세션으로** 판정한다. 그 헤더는 **그 밖의 창구에서는 무시된다**(등급 변경·휴지통 복원·계정·감사 등은 읽지도 않는다). **토큰은 두 종류**다(13장): **본인이** 「내 계정」 화면에서 발급하는 **개인 토큰**(권장 — 누가 했는지 사람 단위로 남고 회수할 수 있다)과 서버 `.env` 의 **공용 토큰**(F-49, 이행용 — 삭제 창구는 쓸 수 없다) |
-| 범위·만료 (F-66) | 개인 토큰은 발급할 때 고른 **범위**(`read` · `read+upload` · `read+upload+delete`)만큼만 창구를 열고, 발급 시각 + **180일**에 만료된다. 범위 밖 창구 → `403 {"error":"이 토큰의 범위에 없는 창구입니다 — 범위가 더 넓은 토큰을 발급하세요"}` · 만료된 토큰 → `401 {"error":"만료된 API 토큰입니다 — 내 계정에서 새로 발급하세요"}`(틀린·회수된 토큰의 401 문구와 다르다). 범위는 창구를 좁힐 뿐이고 파일 한 건의 판정은 요청마다 그대로 한다 — 토큰이 계정보다 커질 수 없다. 공용 토큰은 범위·만료가 없고 `read+upload` 로 본다(이행용). 어느 장이 어느 범위인지는 각 장의 「범위(F-66)」 줄 |
+| 인증 | 기본은 **세션 쿠키**(아래 「세션」)다. 헤더 `X-API-Token` 이 통하는 창구는 **열**이다 — `POST /api/upload`(7장) · `GET /api/files`(8장) · `GET /api/files/{id}/download`(9장) · `GET /api/whoami`(10장) · `GET /api/folders`·`POST /api/folders`·`PATCH /api/folders/{num}`(11장) · `PATCH /api/files/{id}`(12장, 폴더 이동만) · `DELETE /api/files/{id}`·`DELETE /api/folders/{num}`(14장, **개인 토큰만**) — 그리고 커뮤니티 **셋** `GET /community/api/me/space`·`POST /community/api/pages`·`GET /community/api/pages/{id}`(19장, Q:F-8 · **개인 토큰 · 범위 `community.write` 만**). 업로드와 whoami 둘은 토큰 전용이고(세션 쿠키로는 부를 수 없다 — 헤더가 없으면 401), 나머지 여덟은 화면도 쓰는 창구라 **헤더를 보내면 토큰으로, 안 보내면 세션으로** 판정한다. 그 헤더는 **그 밖의 창구에서는 무시된다**(등급 변경·휴지통 복원·계정·감사 등은 읽지도 않는다). **토큰은 두 종류**다(13장): **본인이** 「내 계정」 화면에서 발급하는 **개인 토큰**(권장 — 누가 했는지 사람 단위로 남고 회수할 수 있다)과 서버 `.env` 의 **공용 토큰**(F-49, 이행용 — 삭제 창구는 쓸 수 없다) |
+| 범위·만료 (F-66) | 개인 토큰은 발급할 때 고른 **범위**(`read` · `read+upload` · `read+upload+delete` · Q:F-8 의 `community.write` — 커뮤니티 창구 셋과 whoami 만, 파일 창구 없음 · 19장)만큼만 창구를 열고, 발급 시각 + **180일**에 만료된다. 범위 밖 창구 → `403 {"error":"이 토큰의 범위에 없는 창구입니다 — 범위가 더 넓은 토큰을 발급하세요"}` · 만료된 토큰 → `401 {"error":"만료된 API 토큰입니다 — 내 계정에서 새로 발급하세요"}`(틀린·회수된 토큰의 401 문구와 다르다). 범위는 창구를 좁힐 뿐이고 파일 한 건의 판정은 요청마다 그대로 한다 — 토큰이 계정보다 커질 수 없다. 공용 토큰은 범위·만료가 없고 `read+upload` 로 본다(이행용). 어느 장이 어느 범위인지는 각 장의 「범위(F-66)」 줄 |
 | 세션 | 로그인 성공 시 쿠키 **`__Host-tbox_session`** (HttpOnly·Secure·SameSite=Lax·Path=/·Domain 없음). 이후 요청에 그 쿠키를 함께 보낸다. 유휴 30분·최대 8시간. **v2.31 부터 이름이 바뀌었다**(전: `tbox_session`) — 옛 이름은 서버가 읽지 않고 만료 머리로 치우므로, 쿠키 이름을 글자로 적어 둔 프로그램은 새 이름으로 고친다(프로그램용 토큰 `X-API-Token` 은 그대로) |
 | CSRF | 상태를 바꾸는 요청(POST·PATCH·DELETE)은 헤더 `X-CSRF-Token: <토큰>` 필수. 토큰은 `GET /api/me` 의 `csrf_token`. 없거나 틀리면 `403 {"error":"권한이 없습니다"}` |
 | 오류 응답 | 항상 `{"error":"<한국어 문구>"}`. 권한 없음은 언제나 403 + 같은 문구(대상 정보 없음). 서버 오류는 500 `{"error":"서버 오류"}` — 원인은 응답에 나오지 않는다 |
@@ -582,7 +582,7 @@ F-66(2026-09-22)에서 세 가지가 바뀌었다.
 | 인증 | 세션 쿠키 + `X-CSRF-Token`(POST·DELETE). **로그인한 본인**이면 누구나(정책 `authenticated`) — 재인증 관문은 없다. 대상은 언제나 세션의 본인이고 요청에 계정을 받지 않는다 |
 | 목록 | `GET /api/me/api-tokens` → `200 {"tokens":[{"id":<정수>,"name":"…","hint":"<앞 6자>","purpose":"…|null","scope":"read|read+upload|read+upload+delete","created_at":"…","expires_at":"…","expires_soon":<true/false>,"last_used_at":"…|null","revoked_at":"…|null"}]}` — **토큰 값은 없다**. `expires_soon` 은 만료가 14일 안인가(화면이 안내 줄을 켜는 값) |
 | 발급 | `POST /api/me/api-tokens` JSON **허용 키 다섯** `{"name":"<1~50자>","purpose":"<필수, 500자>","scope":"<아래 셋 중 하나>","password":"<현재 비밀번호>","otp":"<6자리>"}` → `201 {"id":<정수>,"name":"…","hint":"…","scope":"…","expires_at":"…","token":"<48자>"}`. **`token` 은 이 응답에만 나온다** — 서버는 sha256 만 저장하므로 다시 보여 줄 수 없다. 잃으면 회수하고 새로 발급한다 |
-| 고를 수 있는 범위 | `read`(읽기만) · `read+upload`(읽기 + 올리기) · `read+upload+delete`(읽기 + 올리기 + 지우기). **역할이 허용하는 것만** 고를 수 있다 — 올릴 수 없는 역할(Guest)은 `read` 하나뿐이다. 그 목록은 `GET /api/me` 의 `token_scopes` 이고, 발급 폼을 보일지는 `can_issue_tokens`(= 2단계 인증이 켜졌나)가 정한다 |
+| 고를 수 있는 범위 | `read`(읽기만) · `read+upload`(읽기 + 올리기) · `read+upload+delete`(읽기 + 올리기 + 지우기) · **`community.write`**(커뮤니티 글쓰기 — 19장 · Q:F-8 2026-09-28 · 파일 창구 없음 · 커뮤니티에 쓸 수 있는 역할만). **역할이 허용하는 것만** 고를 수 있다 — 올릴 수 없는 역할(Guest)은 `read` 하나뿐이다. 그 목록은 `GET /api/me` 의 `token_scopes` 이고, 발급 폼을 보일지는 `can_issue_tokens`(= 2단계 인증이 켜졌나)가 정한다 |
 | 회수 | `DELETE /api/me/api-tokens/{tid}` → `200 {"ok":true}`. 그 순간부터 그 토큰은 401 「API 토큰이 올바르지 않습니다」. **비밀번호·코드를 묻지 않는다** — 닫는 방향은 자격을 줄이는 일이다 |
 | 자동 회수 | (2026-09-26 디버깅 묶음 S-5) **비밀번호를 바꾸면**(본인) · 관리자가 **임시 비밀번호를 재발급**하거나 **2단계 인증을 초기화**하면 그 계정의 살아 있는 토큰이 **전부** 회수된다 — 그 뒤 토큰 요청은 401 「API 토큰이 올바르지 않습니다」. 프로그램에는 새로 발급한 토큰을 다시 심는다. 감사 `api_token.revoke allow password_change|password_reset|mfa_reset`(토큰마다 한 행) |
 | 실패 | `400 {"error":"살아 있는 토큰이 상한에 이르렀습니다 — 먼저 하나를 회수하세요"}` — 살아 있는 토큰이 이미 5개(F-68, ARCHITECTURE 5.30) · `400 {"error":"잘못된 요청입니다"}` — 허용 외 키·이름 규칙·용도 없음·**역할 밖 범위나 모르는 범위**(역할 힌트를 주지 않는다), 그리고 **인증 실패 전부**(틀린 비밀번호·틀린 코드·이미 쓴 코드 — 세 사유가 한 문구다, ARCHITECTURE 5.30 예외 목록·R-48) · `403 {"error":"권한이 없습니다"}` — **2단계 인증이 꺼진 계정**(`mfa_not_enabled`, 실패로 세지 않는다) · CSRF 없음 · `404 {"error":"찾을 수 없습니다"}` — 내 토큰이 아닌 tid(그 번호가 있는지도 새지 않는다) · 이미 회수된 토큰은 `400 {"error":"잘못된 요청입니다"}` |
@@ -810,6 +810,54 @@ PATCH … {"high_contrast":false}                                 → 200 {"high
 ```
 
 > 개인 프로그램 토큰(범위 `read`)으로 `PATCH` → `401 {"error":"로그인이 필요합니다"}`(같은 토큰의 `GET /api/whoami` 는 200) — 수락 시험 `tests/community/stage7d3.sh` C:T-210.
+
+## 19. 프로그램용 커뮤니티 글쓰기 — `GET /community/api/me/space` · `POST /community/api/pages` · `GET /community/api/pages/{id}` (Q:F-8, 2026-09-28 · 개인 토큰만)
+
+「주제를 말하면 AI 가 커뮤니티에 글을 써 준다」(사이트 PRD Q:F-8 · t-box PRD F-74 · ARCHITECTURE 4.8)의 서버 창구다. PC 의 MCP 서버(`clients/mcp/`)가 이 **셋만** 부른다.
+화면이 쓰는 **같은 창구**이고, `X-API-Token` 헤더가 왔을 때만 토큰으로 판정한다(헤더가 없으면 지금까지와 똑같은 세션 창구다).
+만든 페이지는 언제나 **내 개인 공간 · 비공개 · 부모 없음**이다 — 공개·게시는 사람이 화면에서 한다.
+
+| 항목 | 내용 |
+|---|---|
+| 인증 | 헤더 **`X-API-Token: <개인 토큰>`** — 범위 **`community.write`** 인 개인 토큰만(13장에서 발급 · 180일). `X-CSRF-Token` 은 필요 없다. 공용 토큰(`.env`)은 403 |
+| 범위 | `community.write` 는 **독립 값**이다 — 이 셋과 `GET /tbox/api/whoami`(10장 — 토큰 확인용)만 연다. 파일 창구(7~9·11·12·14장)는 403 `이 토큰의 범위에 없는 창구입니다 …` 이고, 거꾸로 `read`·`read+upload`·`read+upload+delete` 토큰은 이 셋에서 403 이다 |
+| 내 공간 | `GET /community/api/me/space` → `200 {"space":{"id":<정수>,"name":"…","kind":"personal","created_at":"…","page_count":<정수>},"created":<true/false>,"start_page":{…}|null}` — 없으면 그 자리에서 만든다(멱등 · 세션과 같은 동작) |
+| 만들기 | `POST /community/api/pages` JSON **`{"title":"<1~200자>","doc":<블록 문서>}` 둘만**(둘 다 선택 — 없으면 「제목 없는 페이지」 · 빈 문단 하나). 블록 문서 모양은 `public/assets/community/doc-schema.json`(검증은 서버 `Doc::validate` 한 곳) → `201 {"page":{"id":"<uuid>","title":"…","visibility":"private","space":{"id":…,"kind":"personal","name":"…"},"parent_id":null,"url":"/community/p/<uuid>",…}}` — 응답 모양은 세션과 같다. 페이지 주소는 `{기본 주소}/community/p/{id}` |
+| 읽기 | `GET /community/api/pages/{id}` → `200 {"page":{…,"doc":<블록 문서>}, …}` — 세션과 같은 판정(`CommunityAuthz::decidePageRead`) |
+| 실패 | `400 {"error":"프로그램 토큰으로는 제목과 본문만 보냅니다 — 새 페이지는 내 개인 공간에 비공개로 만들어집니다","reason":"token_scope_fields"}` — `parent_id`·`space_id`·`database`·`properties`·`template_id` 가 **있으면**(null 이어도) · `400 {"error":"잘못된 요청입니다","errors":[{"path":"…","reason":"…"}]}` — 블록 문서 검증 실패(어느 자리가 왜) · `400 {"error":"잘못된 요청입니다"}` — 그 밖의 키(`visibility` 등)·제목 규칙 · `409 {"error":"개인 공간을 먼저 엽니다"}` — 개인 공간이 아직 없음(`GET …/me/space` 를 먼저 부르면 생긴다) · `401 {"error":"API 토큰이 올바르지 않습니다"}` — 틀린·회수된 토큰(세션으로 되돌아가지 않는다) · `401 {"error":"만료된 API 토큰입니다 — 내 계정에서 새로 발급하세요"}` · `403 {"error":"이 토큰의 범위에 없는 창구입니다 — 범위가 더 넓은 토큰을 발급하세요"}` — 범위가 `community.write` 가 아님 · `403 {"error":"이 창구는 개인 토큰으로만 쓸 수 있습니다"}` — 공용 토큰 · `403 {"error":"권한이 없습니다"}` — 남의 비공개 페이지 읽기(세션과 같은 답) · `404` — 없는 페이지 |
+| 감사 | 이 요청의 모든 행에 `detail.auth=api_token`·`token_kind=personal`·`token_id`·`token_scope=community.write` — 만들기는 `page.create allow`(행위자 = 토큰 주인), 범위 거부는 `auth.token deny scope_not_permitted` |
+| 열지 않는 것 | **목록·검색은 열지 않는다**(글을 **찾을** 길이 없다 — `GET /api/pages/{id}` 는 **id 를 아는 글**에 한해 세션과 같은 판정으로 읽힌다: 내 글 · 사내 공개 · 팀 · 공유받은 글 · 관리자는 `admin_all`. 독립 검토 RV-QF8-4 실측) — 목록(`GET /community/api/pages`)·검색·고치기·지우기·옮기기·공개 범위·공유·댓글·게시·템플릿·DB 창구는 토큰 헤더를 **읽지 않는다**(보내면 세션이 없어 `401 {"error":"로그인이 필요합니다"}`). 고치는 창구가 없으니 고친 글은 새 페이지로 다시 쓴다 |
+
+```bash
+# 개인 토큰(범위 community.write)을 환경 변수에만 두고, 머리 값은 표준입력으로 (명령 인자에 싣지 않는다 — R-62)
+printf 'X-API-Token: %s' "$QAREDI_TOKEN" | curl -s -w '\n[%{http_code}]\n' -H @- https://changkwon.mso.so/community/api/me/space
+printf 'X-API-Token: %s' "$QAREDI_TOKEN" | curl -s -w '\n[%{http_code}]\n' -H @- -H 'Content-Type: application/json' \
+  --data-binary '{"title":"AI 가 쓴 글","doc":{"schema":1,"blocks":[{"id":"<uuid4>","type":"paragraph","text":[{"t":"본문","m":{}}]}]}}' \
+  https://changkwon.mso.so/community/api/pages
+```
+
+실제로 받은 응답(2026-09-28 임시 인스턴스 `http://127.0.0.1:8401` · 임시 DB `tbox_qf8_8401_test` · 검토 계정 `claude_employee01` · `-A "tbox-review/2026-09-28"` · `tests/qf8_token_write.sh`). 토큰 값은 규칙(S-09-11)대로 어디에도 적지 않았다 — 시험이 만든 토큰은 끝에 회수했다.
+
+```text
+GET  /community/api/me/space   (community.write 토큰)   → 200 {"space":{"id":5,"name":"claude_employee01 의 공간","kind":"personal","created_at":"2026-09-28 09:38:40.0161+00","page_count":2},"created":false,"start_page":null}
+POST /community/api/pages {title, doc(제목·문단 둘·목록 둘)}  → 201 {"page":{"id":"0e2d2cab-7e6c-48ed-9da6-9d5495c4cfba","title":"QF8 토큰 글","doc_version":1,"block_count":5,"visibility":"private","space":{"id":5,"kind":"personal","name":"claude_employee01 의 공간"},"parent_id":null,"position":2,"created_at":"2026-09-28 22:58:02.363823+00","updated_at":"2026-09-28 22:58:02.363823+00","url":"/community/p/0e2d2cab-7e6c-48ed-9da6-9d5495c4cfba","database":null,"values":null}}
+GET  /community/api/pages/{그 id}                         → 200 (page.id 같음 · doc.blocks 5)
+GET  /community/api/pages/{claude_employee02 의 비공개 글} → 403 {"error":"권한이 없습니다"}   (같은 계정 세션도 403 — 같은 답)
+POST … {…, "space_id":null}  (parent_id·template_id·database·properties 도 각각 · 값이 있어도 같다)
+                                                          → 400 {"error":"프로그램 토큰으로는 제목과 본문만 보냅니다 — 새 페이지는 내 개인 공간에 비공개로 만들어집니다","reason":"token_scope_fields"}
+POST … {…, "visibility":"team"}                          → 400 {"error":"잘못된 요청입니다"}
+POST /community/api/pages   (read 토큰)                   → 403 {"error":"이 토큰의 범위에 없는 창구입니다 — 범위가 더 넓은 토큰을 발급하세요"}
+POST /community/api/pages   (공용 .env 토큰)              → 403 {"error":"이 창구는 개인 토큰으로만 쓸 수 있습니다"}
+GET  /community/api/me/space (틀린 값 — 세션 쿠키를 함께 보내도) → 401 {"error":"API 토큰이 올바르지 않습니다"}
+GET  /community/api/pages/{id} (만료된 토큰)              → 401 {"error":"만료된 API 토큰입니다 — 내 계정에서 새로 발급하세요"}
+GET  /community/api/pages · /api/search · /api/spaces · PATCH·DELETE /api/pages/{id} · POST /api/pages/{id}/comments (community.write 토큰)
+                                                          → 401 {"error":"로그인이 필요합니다"}   (헤더를 읽지 않는다 — 감사에 토큰 행 0)
+POST /tbox/api/upload · GET /tbox/api/files (community.write 토큰) → 403 {"error":"이 토큰의 범위에 없는 창구입니다 — 범위가 더 넓은 토큰을 발급하세요"}
+GET  /tbox/api/whoami        (community.write 토큰)       → 200 {"username":"claude_employee01", …}
+(회수 뒤) GET /community/api/pages/{id}                   → 401 {"error":"API 토큰이 올바르지 않습니다"}
+```
+
+감사 로그(임시 DB 실측): `page.create allow` 한 행 — actor `claude_employee01` · detail `auth=api_token`·`token_kind=personal`·`token_id=<발급 번호>`·`token_scope=community.write`·`route=POST /community/api/pages`. 범위 거부는 `auth.token deny scope_not_permitted`(detail `token_scope=read`·`auth=api_token`).
 
 ## 추가 규칙 (API 를 새로 적을 때)
 

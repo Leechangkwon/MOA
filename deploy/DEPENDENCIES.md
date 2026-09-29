@@ -208,6 +208,21 @@ PRD S-10-C 가 "배포판 패키지만·의존성 0 이 기본" 이라고 못박
   없으면 `ui_snapshot.sh` 만 실패한다 — 서비스는 그대로다 (PRD S-10-C 「의존성 0 이 기본」).
 - 브라우저는 headless_shell 대신 **정식 chromium 빌드**를 쓴다(디스크 절약 — shell 을 따로 받지 않는다).
 
+### 5.5 PC 클라이언트 — Qaredi MCP 서버 `clients/mcp/` (Q:F-8 조각 C, 2026-09-28)
+
+**PC 클라이언트 전용 · 서버에 설치하지 않는다.** 사용자의 PC 에서 Claude Desktop·Claude Code 가 띄우는 stdio 프로그램이고,
+`deploy/install.sh`·운영 서버·앱 코드는 이 패키지를 부르지 않는다(서버 런타임 의존성 0 그대로 — PRD S-10-C).
+HTTP 는 표준 라이브러리(`urllib` · `ssl.create_default_context()`)로 하고 외부 HTTP 라이브러리를 직접 쓰지 않는다.
+
+| 패키지 | 버전(고정) | 라이선스 | sha256 | 어디에 | 왜 |
+|---|---|---|---|---|---|
+| `mcp` (PyPI, Model Context Protocol 공식 Python SDK) | `1.12.4` (`clients/mcp/pyproject.toml`) — **판단 대기**: 이 문맥에서 PyPI 가 막혀(403) 이 번호의 존재·최신 여부를 확인하지 못했다. 반영 전 확인해 고친다 | MIT (반영 전 받은 배포본의 메타데이터로 확인) | **이 문맥에서 받지 못함 — 반영 전 채운다** (`pip download mcp==<버전> --no-deps` 뒤 `sha256sum`) | `clients/mcp/qaredi_mcp/server.py` 한 곳(`mcp.server.fastmcp.FastMCP` · `ToolError` · `mcp.types.ToolAnnotations`) | stdio MCP 서버 틀(도구 등록·스키마·전송) |
+| (`mcp` 가 끌어오는 것 — `pydantic` 등) | `mcp` 의 의존 선언을 따른다 | 각자 | 받지 못함 — 반영 전 `pip download mcp==<버전>` 로 목록·sha256 을 적는다 | 같은 PC 환경(`pipx` 로 따로 떨어진 환경 권장) | — |
+
+- 변환기(`markdown_doc.py`)·HTTP 클라이언트(`client.py`)는 표준 라이브러리만 쓴다 — 단위 시험은 `mcp` 없이 돈다.
+- Python 3.10 이상. 설치는 `pipx install ./clients/mcp`(README).
+- 버전을 올릴 때: 릴리스 노트에서 `FastMCP.tool(name=, description=, annotations=)` 서명이 그대로인지 확인 → `python3 -m unittest discover -s clients/mcp/tests` → Claude Code 에 붙여 `qaredi_whoami` 확인.
+
 ## 6. 갱신 규칙
 
 - 패키지·확장·외부 도구를 **하나라도** 추가하면 이 파일을 같은 커밋에서 갱신한다 (CLAUDE.md 7장).

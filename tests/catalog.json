@@ -4096,6 +4096,49 @@
       "est_sec": 2,
       "writes_prod": false,
       "notes": "저장소 CSS 두 파일의 고대비 세 블록을 읽어 WCAG 2.1 대비를 계산(외부 라이브러리 0) — 글자 ≥ 4.5 · 선·고리 ≥ 3 · 밝게·어둡게 · 블록 모양(새 이름 0 · 어두운 두 곳 같음 · 어두운 블록이 밝은 고대비 이름을 다 적음 · data-contrast 는 세 선택자에만). 결과 줄 CONTRAST_FAIL=n · 종료 코드 0/1/2. stage7d3.sh C:T-211 도 부른다(틀린 사본 여섯 포함)."
+    },
+    {
+      "id": "core.qf8_token_write",
+      "cmd": "bash tests/qf8_token_write.sh",
+      "module": "core",
+      "env": "temp-instance",
+      "status": "required",
+      "needs": [
+        "sudo",
+        "totp_wait"
+      ],
+      "covers": [
+        "src/community/routes.php",
+        "src/Authz.php",
+        "src/Auth.php",
+        "src/Http.php",
+        "src/Audit.php",
+        "src/community/handlers/pages_create.php",
+        "src/community/handlers/space_me.php",
+        "src/community/handlers/pages_get.php",
+        "src/handlers/me_tokens_issue.php",
+        "src/handlers/me.php",
+        "src/handlers/api_whoami.php",
+        "public/index.php",
+        "public/assets/app.js",
+        "db/migrations/2026-10-11_api_tokens_scope_community.sql"
+      ],
+      "requirements": [
+        "Q:F-8",
+        "F-74",
+        "F-59",
+        "F-66"
+      ],
+      "risks": [
+        "R-112",
+        "R-90",
+        "R-91",
+        "R-97",
+        "R-62"
+      ],
+      "est_sec": 240,
+      "writes_prod": false,
+      "notes": "Q:F-8 조각 S 수락 T-1~T-7(지시서 docs/qf8-ai-writer-directive.md). 임시 DB tbox_qf8_<포트>_test(운영 사본 pg_dump 읽기만) · 마이그레이션 두 번 · 임시 인스턴스 둘(새 코드 QF8_PORT 기본 8401 · 기준 판 QF8_BASE_REV 기본 c2b4d76 을 +1 포트 — 세션 불변 대조 · 포트는 8401~8405 안) · T-5 는 COMMUNITY_ROUTES 전수(허용 셋 밖 전부 401/302 · 토큰 감사 0 — 검토 RV-QF8-6) · 공용 토큰은 시험이 만든 난수(임시 .env). 발급 두 번에 TOTP 창 둘. REGRESS=1 이면 api_whoami · community/stage3 · community/stage5a2(8401~8405 빈 자리) · f66 을 같은 임시 인스턴스에서 사본으로."
     }
   ]
 }

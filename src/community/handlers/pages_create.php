@@ -27,8 +27,13 @@ declare(strict_types=1);
  *   팀 공간의 페이지는 자기 범위가 없다(공간 등급을 따른다) — 칸은 `private` 고정 문자열로
  *   채우되 **판정은 공간으로** 한다 (`CommunityAuthz::decidePageRead` 의 `team` 갈래).
  *
+ * ★ 프로그램 토큰으로 들어온 요청(Q:F-8 — 라우터 [2-T] 가 `TBOX_AUTH_METHOD` 를 세운다, ARCH 4.8)은 허용 키가
+ *   **`title` · `doc` 둘뿐**이다. `parent_id`·`space_id`·`database`·`properties`·`template_id` 가 **있으면**(null 이어도)
+ *   400 `token_scope_fields` — 그래서 토큰으로 만든 페이지는 언제나 **내 개인 공간 · 비공개 · 부모 없음**이다.
+ *   나머지 검사(제목·본문·임베드·팔레트·개인 공간 없으면 409)와 응답 모양은 세션과 같다.
+ *
  * 검사 순서
- *   [1] 허용 키 → [2] 제목 규칙 → [3] 본문 검사 → [4] 부모 → [5] 공간(부모의 공간, 없으면 내 개인 공간)
+ *   [1] 허용 키 (토큰이면 [1-1] 다섯 키 거부) → [2] 제목 규칙 → [3] 본문 검사 → [4] 부모 → [5] 공간(부모의 공간, 없으면 내 개인 공간)
  *   → [권한 ✔] 부모가 있으면 부모 행의 `decidePageChange`(5-A — 편집 공유자도 된다), 없으면 공간 →
  *   [6] 트랜잭션(INSERT + 파생 표 + 감사 `page.create allow`) → 201
  *
@@ -69,6 +74,18 @@ $maxDepth = 2 * (Doc::limit('depth') + 1) + 7;
 $body = Http::jsonBody($maxBody, $maxDepth);
 if (array_diff(array_keys($body), $allowedFields) !== []) {
     Http::error(400, Http::MSG_BAD_REQUEST);
+}
+
+// ─── [1-1] 토큰 모드 (Q:F-8, ARCH 4.8) — 자리를 고르는 키는 받지 않는다 ─────────
+//        판단 근거는 라우터가 세운 상수(요청 값이 아니다). 키가 **있기만** 해도(값이 null 이어도) 거부한다.
+if (defined('TBOX_AUTH_METHOD') && constant('TBOX_AUTH_METHOD') === 'api_token'
+    && array_intersect(array_keys($body), ['parent_id', 'space_id', 'database', 'properties', 'template_id']) !== []
+) {
+    Http::json([
+        'error'  => '프로그램 토큰으로는 제목과 본문만 보냅니다 — 새 페이지는 내 개인 공간에 비공개로 만들어집니다',
+        'reason' => 'token_scope_fields',
+    ], 400);
+    exit;
 }
 
 // 6-A — DB 로 만들기(참·거짓만)

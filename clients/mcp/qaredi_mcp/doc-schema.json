@@ -1,0 +1,89 @@
+{
+  "schema": 1,
+  "_about": "커뮤니티 블록 본문의 허용 목록 — 검증기(src/community/Doc.php)·렌더러 두 벌(DocRender.php·doc-render.js)·에디터(editor-schema.js)의 공통 진실. 이 폴더의 파일이 원본이고 tbox-v2/public/assets/community/doc-schema.json 은 사본이다(시험이 diff 로 같은지 본다). ARCHITECTURE.md 12.2.",
+  "limits": {
+    "blocks": 3000,
+    "depth": 10,
+    "segment_chars": 2000,
+    "segments_per_text": 100,
+    "doc_bytes": 1048576,
+    "code_chars": 50000,
+    "table_rows": 200,
+    "table_cols": 20,
+    "title_chars": 200,
+    "href_chars": 2048,
+    "icon_chars": 8,
+    "excerpt_chars": 200
+  },
+  "colors": ["gray", "brown", "orange", "yellow", "green", "blue", "purple", "pink", "red"],
+  "color_suffix_bg": "_bg",
+  "marks": {
+    "bold": "bool",
+    "italic": "bool",
+    "underline": "bool",
+    "strike": "bool",
+    "code": "bool",
+    "color": "color|palette",
+    "link": { "href": "url" },
+    "mention": { "kind": ["user", "page", "date"], "id": "uuid|int|date" }
+  },
+  "link_schemes": ["https", "http", "mailto", "page"],
+  "block_common": {
+    "id": "uuid4",
+    "color": "color|palette|null",
+    "align": ["left", "center", "right"],
+    "size": ["small", "normal", "large", "xlarge"]
+  },
+  "blocks": {
+    "paragraph": { "text": "richtext", "children": "blocks?" },
+    "heading": { "level": [1, 2, 3], "text": "richtext", "toggle": "bool?", "children": "blocks?" },
+    "bulleted": { "text": "richtext", "children": "blocks?" },
+    "numbered": { "text": "richtext", "start": "int?", "children": "blocks?" },
+    "to_do": { "text": "richtext", "checked": "bool", "children": "blocks?" },
+    "quote": { "text": "richtext", "children": "blocks?" },
+    "callout": { "text": "richtext", "icon": "emoji|icon", "children": "blocks?" },
+    "divider": {},
+    "code": { "code": "string", "language": "lang", "caption": "richtext?" },
+    "toc": {},
+    "toggle": { "text": "richtext", "children": "blocks" },
+    "table": {
+      "header_row": "bool",
+      "header_col": "bool",
+      "col_widths": "int[]?",
+      "rows": [{ "color": "color|null", "cells": [{ "text": "richtext", "color": "color|null", "rowspan": "int?", "colspan": "int?" }] }]
+    },
+    "child_page": { "page_id": "uuid" },
+    "link_to_page": { "page_id": "uuid" },
+    "image": { "file_ref": "tbox-ref", "caption": "richtext?", "width": ["full", "wide", "normal", "small"] },
+    "file": { "file_ref": "tbox-ref", "caption": "richtext?" },
+    "column_list": { "children": "columns" },
+    "column": { "ratio": "int?", "children": "blocks" },
+    "embed": { "url": "url", "caption": "richtext?" }
+  },
+  "children_allowed": ["paragraph", "heading", "bulleted", "numbered", "to_do", "quote", "callout", "toggle", "column"],
+  "stage": {
+    "3": ["paragraph", "heading", "bulleted", "numbered", "to_do", "quote", "callout", "divider", "code", "toc"],
+    "4": ["child_page"],
+    "5": ["toggle", "table", "image", "file", "link_to_page"],
+    "6": ["column_list", "column"],
+    "7": ["embed"]
+  },
+  "stage_marks": {
+    "3": ["bold", "italic", "underline", "strike", "code", "color", "link"],
+    "7": ["mention"]
+  },
+  "languages": [
+    "plain", "bash", "c", "cpp", "csharp", "css", "diff", "dockerfile", "go", "graphql",
+    "groovy", "html", "ini", "java", "javascript", "json", "kotlin", "latex", "lua", "makefile",
+    "markdown", "mermaid", "nginx", "objectivec", "perl", "php", "powershell", "python", "r", "ruby",
+    "rust", "scala", "shell", "sql", "swift", "toml", "typescript", "vbnet", "xml", "yaml"
+  ],
+  "reasons": [
+    "too_large", "bad_schema", "not_object", "not_array", "too_many_blocks", "too_deep",
+    "unknown_type", "type_not_in_stage", "unknown_key", "missing_key", "bad_type", "bad_value",
+    "bad_id", "duplicate_id", "too_long", "too_many_segments", "unknown_mark", "mark_not_in_stage",
+    "not_in_palette", "bad_scheme", "control_char", "children_not_allowed", "bad_encoding", "bad_ref", "ragged_row", "merge_not_in_stage",
+    "column_outside_list", "column_list_child", "nested_columns", "merge_overlap", "merge_out_of_table",
+    "bad_host"
+  ]
+}

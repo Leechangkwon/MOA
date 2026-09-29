@@ -13,6 +13,7 @@ declare(strict_types=1);
  *
  *   [0-1] 라우트 표 자체 검사   정책이 `Authz::KNOWN_POLICIES` 밖이면 어떤 요청도 처리하지 않는다
  *   [1]   경로 매칭            없으면 404, 경로는 맞고 메서드만 다르면 405
+ *   [2-T] 토큰 갈래             표 셋의 라우트 + `X-API-Token` 헤더가 왔을 때만 — 개인 토큰 · 범위 `community.write` (Q:F-8)
  *   [2]   인증                 화면은 302 `/tbox/login?to=community`, `/api/*` 는 401 JSON
  *   [3]   CSRF                 상태를 바꾸는 요청의 토큰 검사 (t-box 와 **같은 토큰**)
  *   [3-1] 최초 로그인 강제 절차 절차가 남았으면 커뮤니티는 통째로 막는다(허용 목록 0)
@@ -20,9 +21,10 @@ declare(strict_types=1);
  *   [4-1] 스키마 준비 확인      운영 DB 에 아직 표가 없으면 503 「커뮤니티 준비 중」
  *   [5]   핸들러 실행
  *
- * ★ 프로그램용 토큰(`X-API-Token`)은 커뮤니티에 **통하지 않는다.** 이 파일에는 그 헤더를 읽는
- *   코드가 한 줄도 없다 — 토큰 경로를 넓히는 일은 t-box 쪽 집합(`TBOX_API_TOKEN_ROUTES`)을
- *   고치는 별도의 판단이다 (SECURITY R-82·R-90·R-91).
+ * ★ 프로그램용 토큰(`X-API-Token`)은 커뮤니티에서 **창구 셋에만** 통한다(Q:F-8 · 2026-09-28 —
+ *   `COMMUNITY_API_TOKEN_ROUTES` · ARCH 4.8 · SECURITY R-112). 그 헤더를 읽는 곳은 아래 [2-T] **한 곳**이고,
+ *   거기 닿는 것은 표의 라우트 패턴과 맞은 요청뿐이다. 나머지 창구는 헤더를 읽지도 않는다 — 세션이
+ *   없으면 401 이다(R-82·R-90·R-91 과 같은 원칙). 넓히는 일은 그 표를 고치는 별도의 판단이다.
  * ★ 재인증(`Authz::REAUTH_POLICIES`)은 커뮤니티 정책 둘에 걸리지 않는다. 그래도 관문을
  *   빼지 않고 t-box 와 같은 함수를 부른다 — 나중에 관리 성격의 커뮤니티 정책이 생기면
  *   목록에 이름을 넣는 것만으로 재인증이 따라붙는다.
@@ -189,6 +191,24 @@ const COMMUNITY_ROUTES = [
     ['DELETE', '/api/pages/{id}/favorite',               'favorites.php',          'community.read'],
     ['GET',    '/api/me/recent',                         'recent_list.php',        'community.read'],
     ['DELETE', '/api/me/recent',                         'recent_clear.php',       'community.read'],   // 「최근 기록 지우기」 — 내 줄만
+];
+
+/**
+ * Q:F-8 — 개인 프로그램 토큰(`X-API-Token`)이 통하는 커뮤니티 창구 **셋** (사이트 PRD 10장 Q:F-8 · t-box PRD F-74,
+ * ARCH 4.8, SECURITY R-112).
+ *
+ * 값은 「메서드 + **모듈** 라우트 패턴」(`/community` 를 뗀 표기 — 위 표와 같은 글자)이다. 아래 [2-T] 가 이 표와만
+ * 견주므로 토큰 경로를 넓히려면 여기를 고쳐야 하고, 그것이 곧 검토 지점이다(`TBOX_API_TOKEN_ROUTES` 와 같은 원칙).
+ * 무엇이 **아닌지**가 이 표의 뜻이다: 목록·검색·고치기·지우기·댓글·공유·게시는 토큰으로 열리지 않는다
+ * (기존 글 읽기·검색은 열지 않는다 — 내 개인 공간에 비공개 페이지를 만들고, 그 페이지를 읽는 것까지).
+ *
+ * ★ 셋 모두 **개인 토큰만**(F-59 인자) · 범위 `community.write` 만(`Authz::tokenScopeAllows`) 이다.
+ * ★ 셋 다 화면도 쓰는 라우트라, 헤더가 **왔을 때만** 토큰 갈래로 간다 — 헤더가 없으면 세션 경로가 한 글자도 바뀌지 않는다.
+ */
+const COMMUNITY_API_TOKEN_ROUTES = [
+    'GET /api/me/space',
+    'POST /api/pages',
+    'GET /api/pages/{id}',
 ];
 
 /**
@@ -2729,6 +2749,39 @@ function community_dispatch(string $modulePath, string $method): void
 
     $isApi = strpos($modulePath, '/api/') === 0;
 
+    /* ─── [2-T] 개인 프로그램 토큰 갈래 (Q:F-8, ARCH 4.8 — `public/index.php` [2-T]·[2-S] 와 같은 순서·같은 함수) ──
+     *
+     * ★ 들어오는 조건은 둘 다 참일 때뿐이다: 라우터가 매칭한 **라우트 패턴**이 `COMMUNITY_API_TOKEN_ROUTES` 안이고,
+     *   `X-API-Token` 헤더가 실제로 왔다. 어느 라우트인가는 요청 값이 아니라 매칭 결과로만 판단한다.
+     *   헤더가 없으면 아래 세션 경로 그대로다(웹 동작 불변). 헤더가 왔는데 값이 틀리면 401 이고 세션으로
+     *   되돌아가지 않는다(보낸 인증 방법으로만 판정한다). 표 밖 라우트는 헤더를 읽지 않는다 → 세션 경로 → 401.
+     * ★ `requireApiToken(true)` — 개인 토큰만(공용 `.env` 토큰은 403 `shared_token_not_permitted`, F-59 ⑤).
+     *   만료 401 · 회수·틀림 401 · 계정 상태 403 은 그 함수 안에서 끝난다(감사도 그 안).
+     * ★ 범위는 `Authz::tokenScopeAllows(범위, 라우트 정책)` 한 곳 — `community.read`·`community.write` 정책은
+     *   범위 `community.write` 만 참이다. 밖이면 index.php [2-S] 와 같은 403 · 같은 감사 한 줄.
+     * 건너뛰는 것: 세션 조회 · CSRF([3]) · 최초 로그인 강제 절차([3-1]) · 재인증 — 까닭은 index.php [2-T] 주석 그대로
+     *   (토큰은 브라우저가 자동으로 싣지 않는다 · 절차 중인 계정은 requireApiToken 이 이미 403 으로 끊는다).
+     * 그대로 타는 것: 아래 [4] 인가 · [4-1] 준비 확인 · 핸들러의 행 단위 판정 — 세션과 **같은 코드**다.
+     */
+    $viaApiToken = false;
+    if (in_array($method . ' ' . $routePattern, COMMUNITY_API_TOKEN_ROUTES, true)
+        && Http::apiTokenHeader() !== null
+    ) {
+        $user        = Auth::requireApiToken(true);   // 실패 시 401·403 + Audit::deny (Auth 안에서)
+        $viaApiToken = true;
+        // 감사 로그가 모든 행에 자동으로 붙이는 분류어 (Audit::autoDetail — index.php [2-T] 와 같은 자리·같은 값).
+        define('TBOX_AUTH_METHOD', 'api_token');
+
+        if (!Authz::tokenScopeAllows(TBOX_API_TOKEN_SCOPE, $policy)) {
+            Audit::deny('auth.token', 'scope_not_permitted', [
+                'target_type' => 'system',
+                'target_name' => TBOX_ROUTE,
+                'detail'      => ['token_scope' => TBOX_API_TOKEN_SCOPE]
+                    + (defined('TBOX_API_TOKEN_ID') ? ['token_id' => constant('TBOX_API_TOKEN_ID')] : []),
+            ]);
+            Http::error(403, Http::MSG_TOKEN_SCOPE);
+        }
+    } else {
     // ─── [2] 인증 ─────────────────────────────────────────────
     // 화면 요청은 t-box 로그인 화면으로 보내고 돌아올 곳을 꼬리표로 남긴다 (ARCH 21.2).
     // 꼬리표 값은 **코드 상수**이고 요청에서 온 문자열이 아니다 — 오픈 리다이렉트가 생길 자리가 없다.
@@ -2766,6 +2819,7 @@ function community_dispatch(string $modulePath, string $method): void
         ], 403);
         exit;
     }
+    }   // ← [2-T] 토큰 갈래 / 세션 경로의 갈림 끝 (Q:F-8). 아래 [4] 인가부터는 **둘 다** 탄다.
 
     // ─── [4] 인가 ─────────────────────────────────────────────
     if (!Authz::authorize($policy, $user)) {
@@ -2779,7 +2833,8 @@ function community_dispatch(string $modulePath, string $method): void
 
     // 관리 성격의 커뮤니티 정책이 생기면 `Authz::REAUTH_POLICIES` 에 이름을 넣는 것만으로
     // 재인증이 따라붙는다. 지금 정책 둘은 그 목록에 없으므로 이 가지는 지나간다.
-    if (Authz::requiresReauth($policy) && ($user['reauth_fresh'] ?? false) !== true) {
+    // 토큰 갈래는 세션이 없어 「15분 안에 다시 확인했나」가 성립하지 않는다(index.php 와 같은 `!$viaApiToken`).
+    if (!$viaApiToken && Authz::requiresReauth($policy) && ($user['reauth_fresh'] ?? false) !== true) {
         Audit::deny('auth.gate', 'reauth_required', [
             'target_type' => 'user',
             'target_id'   => (int) $user['id'],

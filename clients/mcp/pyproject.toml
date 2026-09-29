@@ -1,0 +1,24 @@
+# Qaredi MCP 서버 (Q:F-8 조각 C) — PC 에서 도는 클라이언트. 서버(changkwon.mso.so)에는 설치하지 않는다.
+# 외부 패키지는 `mcp` 하나(버전 고정 · deploy/DEPENDENCIES.md 「Q:F-8 PC 클라이언트」 절). HTTP 는 표준 라이브러리(urllib).
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "qaredi-mcp"
+version = "0.1.0"
+description = "Qaredi 커뮤니티 — Markdown 글을 내 개인 공간에 비공개 페이지로 만드는 stdio MCP 서버"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "mcp==1.12.4",
+]
+
+[project.scripts]
+qaredi-mcp = "qaredi_mcp.server:main"
+
+[tool.setuptools]
+packages = ["qaredi_mcp"]
+
+[tool.setuptools.package-data]
+qaredi_mcp = ["doc-schema.json"]

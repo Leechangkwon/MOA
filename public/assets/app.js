@@ -6229,11 +6229,13 @@ function initTrash(csrfToken, onRestored) {
  *   문서에 글자로 심지 않는다 (PRD S-03, S-09-11).
  */
 
-/** 범위 세 값의 화면 라벨 (ARCH 4.7 · DESIGN 5장 「영어 약어는 한글 뜻을 붙인다」) */
+/** 범위 네 값의 화면 라벨 (ARCH 4.7 · 4.8 · DESIGN 5장 「영어 약어는 한글 뜻을 붙인다」) —
+    `community.write` 는 Q:F-8(파일 창구가 없는 독립 값). 선택지 자체는 서버의 `token_scopes` 가 정한다 */
 var TOKEN_SCOPE_LABELS = {
   'read': '읽기만',
   'read+upload': '읽기 + 올리기',
-  'read+upload+delete': '읽기 + 올리기 + 지우기'
+  'read+upload+delete': '읽기 + 올리기 + 지우기',
+  'community.write': '커뮤니티 글쓰기 — 내 개인 공간에 비공개 페이지 만들기·읽기(파일 창구 없음)'
 };
 
 /** 모르는 값이 오면 **서버가 준 값 그대로** 보인다 — 화면이 문장을 지어내지 않는다 */

@@ -943,17 +943,26 @@ final class Authz
     }
 
     /**
-     * F-66 — 개인 프로그램 토큰의 **범위** 세 값 (PRD F-66 ③, ARCH 4.7).
+     * F-66 — 개인 프로그램 토큰의 **파일 창구 범위** 세 값 (PRD F-66 ③, ARCH 4.7).
      *
-     * `api_tokens.scope` 의 CHECK 와 같은 세 값이고, 순서는 넓어지는 순서다.
+     * 순서는 넓어지는 순서다(사다리). 파일 창구(`file.*`)는 이 셋으로만 열린다.
+     */
+    public const FILE_TOKEN_SCOPES = ['read', 'read+upload', 'read+upload+delete'];
+
+    /**
+     * 개인 프로그램 토큰의 **범위** 전부 — F-66 의 셋 + Q:F-8 의 `community.write` (ARCH 4.7 · 4.8).
+     *
+     * `api_tokens.scope` 의 CHECK 와 같은 네 값이다. `community.write` 는 사다리의 넷째 칸이
+     * **아니다**(독립 값) — 파일 창구를 하나도 열지 않고, 파일 범위 셋은 커뮤니티 창구를 열지 않는다.
      * 이 목록을 늘리려면 DB CHECK(6.2-5)·`tokenScopeAllows`·화면 라벨을 함께 고쳐야 한다.
      */
-    public const TOKEN_SCOPES = ['read', 'read+upload', 'read+upload+delete'];
+    public const TOKEN_SCOPES = ['read', 'read+upload', 'read+upload+delete', 'community.write'];
 
     /**
      * F-66 — 이 계정이 **고를 수 있는** 범위 목록 (PRD F-66 ③, ARCH 4.7, `GET /api/me` 의 `token_scopes`).
      *
      * 올릴 수도 지울 수도 없는 역할(Guest — PRD 5.2·5.3)에게는 `read` 하나뿐이다.
+     * Q:F-8 — 커뮤니티에 쓸 수 있는 역할(`canCommunityWrite`)이면 `community.write` 가 끝에 붙는다.
      * 판단은 **역할 문자열이 아니라** `uploadableLevels()` 의 결과로 한다 — 권한 표
      * (`permissions` 16행)가 바뀌면 이 목록도 자동으로 따라 바뀐다(ARCH 6.2-1).
      *
@@ -967,7 +976,12 @@ final class Authz
     public static function tokenScopesFor(array $u): array
     {
         // 올릴 수 있는 등급이 하나도 없으면 「읽기만」 이다 (Guest 가 그 경우다).
-        return self::uploadableLevels($u) === [] ? ['read'] : self::TOKEN_SCOPES;
+        $scopes = self::uploadableLevels($u) === [] ? ['read'] : self::FILE_TOKEN_SCOPES;
+        // Q:F-8 — 커뮤니티에 쓸 수 있는 역할만 「커뮤니티 글쓰기」 를 고른다(Guest 0 — 판정은 canCommunityWrite 한 곳).
+        if (self::canCommunityWrite($u)) {
+            $scopes[] = 'community.write';
+        }
+        return $scopes;
     }
 
     /**
@@ -976,9 +990,12 @@ final class Authz
      * 창구 이름을 하나하나 적지 않고 **정책 문자열**로 정한다 — 새 토큰 창구가 늘어도
      * 이 표를 고칠 일이 없고, 창구와 범위가 어긋날 여지가 없다.
      *
-     *   `file.read` · `authenticated`  → 전부 허용 (`read` 이상)
+     *   `authenticated`                → 전부 허용 (네 값 — `GET /api/whoami` 는 토큰 확인용이다)
+     *   `file.read`                    → 파일 범위 셋 (`read` 이상 — `community.write` 는 거짓)
      *   `file.upload` · `file.update`  → `read+upload` 이상
      *   `file.delete`                  → `read+upload+delete` 만
+     *   `community.read` · `community.write` → `community.write` 만 (Q:F-8 — 파일 범위 셋은 거짓.
+     *                                    커뮤니티 라우터가 이 정책으로 부르는 창구는 셋뿐이다 — ARCH 4.8)
      *   그 밖(모르는 정책)             → **거부**(닫힌 실패). 토큰 집합이 넓어지는 날
      *                                    그 창구는 범위를 정할 때까지 열리지 않는다.
      *
@@ -991,8 +1008,10 @@ final class Authz
     {
         switch ($policy) {
             case self::POLICY_AUTHENTICATED:
-            case 'file.read':
                 return in_array($scope, self::TOKEN_SCOPES, true);
+
+            case 'file.read':
+                return in_array($scope, self::FILE_TOKEN_SCOPES, true);
 
             case 'file.upload':
             case 'file.update':
@@ -1000,6 +1019,11 @@ final class Authz
 
             case 'file.delete':
                 return $scope === 'read+upload+delete';
+
+            // Q:F-8 — 커뮤니티 창구 셋(ARCH 4.8). 독립 값이라 파일 범위 셋은 여기서 거짓이다.
+            case 'community.read':
+            case 'community.write':
+                return $scope === 'community.write';
 
             default:
                 // 모르는 정책은 통과시키지 않는다 (authorize() 의 default 와 같은 원칙).

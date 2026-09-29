@@ -311,7 +311,10 @@ CREATE TABLE api_tokens (
     --   expires_at 발급 + 180일 고정. 지난 토큰은 401 `token_expired`.
     -- (기존 DB 는 db/migrations/2026-09-22_api_tokens_scope_expiry.sql 로 같은 모양이 된다 —
     --  기존 행은 `read+upload+delete` · `created_at + 180일` 로 채운다.)
-    scope        TEXT        NOT NULL CHECK (scope IN ('read','read+upload','read+upload+delete')),
+    -- Q:F-8 (2026-09-28, ARCH 4.8): 넷째 값 `community.write`(독립 값 — 커뮤니티 창구 셋만, 파일 창구 없음).
+    --   db/migrations/2026-10-11_api_tokens_scope_community.sql 과 **같은 네 값**이다(제약 이름도 같은
+    --   `api_tokens_scope_check` — 열 CHECK 의 자동 이름). 새 설치는 마이그레이션 없이 이 모양이 된다.
+    scope        TEXT        NOT NULL CHECK (scope IN ('read','read+upload','read+upload+delete','community.write')),
     expires_at   TIMESTAMPTZ NOT NULL
 );
 -- token_hash 의 UNIQUE 가 조회 인덱스를 겸한다
