@@ -20,8 +20,9 @@ declare(strict_types=1);
  *   name      라벨 「사무실 PC」 — 폴더 이름과 같은 규칙(trim 뒤 1~50자, 제어문자·`/`·`\` 금지)
  *   purpose   용도 — 필수 500자. DB 에는 F-59 와 같은 `reason_text` 열에 들어간다 (PRD S-07)
  *   scope     `read` · `read+upload` · `read+upload+delete` · `community.write`(Q:F-8 — 커뮤니티 글쓰기,
- *             파일 창구 없음 · 독립 값) 중 **역할이 허용하는 것만**(`Authz::tokenScopesFor` — 커뮤니티에 쓸 수
- *             없는 역할에게 `community.write` 는 목록 밖이라 400)
+ *             파일 창구 없음 · 독립 값) · `session.open`(Q:F-9 — 「이 PC 로그인 전용」 · 지금 요청 IP 에 묶임 ·
+ *             같은 사람의 앞 로그인 전용 토큰 자동 회수 · 2단계 켜진 비Guest 만) 중 **역할이 허용하는 것만**
+ *             (`Authz::tokenScopesFor` — 목록 밖이면 400)
  *   password  현재 비밀번호 — 요청마다 확인한다(세션에 창을 남기지 않는다)
  *   otp       지금의 2단계 인증 코드 6자리
  *
@@ -126,6 +127,19 @@ if (!is_string($rawScope) || !in_array($rawScope, Authz::tokenScopesFor($user), 
 }
 $scope = $rawScope;
 
+// ─── [4-1] Q:F-9 — 「이 PC 로그인 전용」(session.open)은 **지금 이 요청의 IP** 에 묶는다 (t-box F-75 ②, ARCH 4.9) ──
+//        값은 Http::clientIp() 하나(REMOTE_ADDR — nginx 가 믿는 프록시에 대해서만 복원)이고 요청 머리·본문에서 읽지 않는다.
+//        알 수 없으면(null) 발급하지 않는다 — 비밀번호·코드를 확인하기 **전**에 끝낸다(코드를 태우지 않는다 · 실패로 세지 않는다).
+//        다른 범위의 토큰에는 IP 가 없다(DB CHECK `(scope = 'session.open') = (bound_ip IS NOT NULL)`).
+$boundIp = null;
+if ($scope === 'session.open') {
+    $boundIp = Http::clientIp();
+    if ($boundIp === null) {
+        Audit::deny('api_token.issue', 'ip_unknown', $auditTarget);
+        Http::error(400, '접속 IP 를 알 수 없어 발급하지 않습니다');
+    }
+}
+
 // ─── [5] 비밀번호·코드의 **형식** (인증 실패와 사유가 다르다 — ARCH 5.29 helper 주석) ──
 $password = $body['password'] ?? null;
 $otp      = $body['otp'] ?? null;
@@ -168,13 +182,18 @@ if ($otpResult !== 'ok') {
 unset($password, $otp, $body);
 
 // ─── [9] 살아 있는 토큰 상한 (PRD F-66 ⑤, ARCH 4.6) ─────────────
+//        Q:F-9 — 「이 PC 로그인 전용」을 새로 받으면 앞의 로그인 전용 토큰은 아래 [11] 에서 회수된다(1대 규칙).
+//        그래서 그 발급은 살아 있는 **로그인 전용 토큰을 빼고** 센다(n_other). 다른 범위의 발급은 전처럼 전부 센다.
 $sqlLive = <<<'SQL'
-    SELECT count(*) AS n
+    SELECT count(*) AS n,
+           count(*) FILTER (WHERE scope <> 'session.open') AS n_other
       FROM api_tokens
      WHERE user_id = :uid AND revoked_at IS NULL
     SQL;
 $live = $db->run($sqlLive, [':uid' => $userId])->fetch();
-if (!is_array($live) || (int) $live['n'] >= TBOX_API_TOKEN_MAX_LIVE) {
+$liveCount = !is_array($live) ? TBOX_API_TOKEN_MAX_LIVE
+    : ($scope === 'session.open' ? (int) $live['n_other'] : (int) $live['n']);
+if ($liveCount >= TBOX_API_TOKEN_MAX_LIVE) {
     $reject('limit_exceeded');
 }
 
@@ -200,53 +219,111 @@ $hint = substr($plain, 0, 6);
 //        만료는 **DB 시계**로 잰다(`now()`) — PHP 시계와 DB 시계를 섞지 않는다.
 //        180 은 `Auth::API_TOKEN_TTL_DAYS` 한 곳에만 적혀 있고 바인딩으로 넘어간다.
 $sqlInsert = <<<'SQL'
-    INSERT INTO api_tokens (user_id, name, token_hash, hint, created_by, reason_text, scope, expires_at)
-    VALUES (:uid, :name, :hash, :hint, :by, :purpose, :scope, now() + make_interval(days => :ttl))
+    INSERT INTO api_tokens (user_id, name, token_hash, hint, created_by, reason_text, scope, expires_at, bound_ip)
+    VALUES (:uid, :name, :hash, :hint, :by, :purpose, :scope, now() + make_interval(days => :ttl), CAST(:bound_ip AS inet))
     RETURNING id, expires_at
     SQL;
 
-$db->begin();
-try {
-    $row = $db->run($sqlInsert, [
-        ':uid'     => $userId,
-        ':name'    => $name,
-        ':hash'    => $hash,
-        ':hint'    => $hint,
-        // 발급한 사람도 본인이다 — F-59 는 여기가 관리자였다 (ARCH 4.7).
-        ':by'      => $userId,
-        ':purpose' => $purpose,
-        ':scope'   => $scope,
-        ':ttl'     => Auth::API_TOKEN_TTL_DAYS,
-    ])->fetch();
-    if (!is_array($row)) {
-        throw new RuntimeException('api_tokens INSERT 가 id 를 돌려주지 않았다');
-    }
-    $tokenId   = (int) $row['id'];
-    $expiresAt = (string) $row['expires_at'];
+// Q:F-9 — 1대 규칙: 같은 사람의 살아 있는 로그인 전용 토큰을 **전부** 회수한다(행은 지우지 않는다 — revoked_at·revoked_by).
+//   회수된 토큰으로 연 세션도 다음 요청에서 끝난다(Auth::SQL_LOOKUP 이 그 토큰이 살아 있는지 본다).
+$sqlReplace = <<<'SQL'
+    UPDATE api_tokens
+       SET revoked_at = now(),
+           revoked_by = :by
+     WHERE user_id = :uid
+       AND scope = 'session.open'
+       AND revoked_at IS NULL
+    RETURNING id, name
+    SQL;
 
-    // detail 에 토큰 원문도 hint 도 해시도 비밀번호도 코드도 넣지 않는다
-    // (PRD S-09-11 · 7.7, ARCH 4.7 · 7.5). `otp_verified` 는 「확인했다는 사실」뿐이다.
-    Audit::allow('api_token.issue', $auditTarget + [
-        'detail' => [
+/*
+ * 검토 RV-QF9-2 — 로그인 전용 발급 둘이 겹치면 DB 의 부분 유일 인덱스(api_tokens_one_session_open)가 뒤 INSERT 를 23505 로 막는다.
+ * 그때는 트랜잭션을 되돌리고 **한 번** 다시 한다(다시 할 때는 앞 발급의 새 행이 보여 회수된다). 그래도 겹치면 409.
+ * 비밀번호·코드 확인은 이미 끝났다 — 다시 묻지 않는다(같은 요청 안). 되돌린 시도의 감사 행은 DB 에서는 함께 사라지고
+ * 파일 사본(audit.log)에만 남을 수 있다(Audit 는 두 저장소에 쓴다 — 로그인 발급의 롤백과 같은 성질).
+ */
+$revokedPrevious = 0;
+for ($issueTry = 1; ; $issueTry++) {
+    $revokedPrevious = 0;
+    $db->begin();
+    try {
+        if ($scope === 'session.open') {
+            $replaced = $db->run($sqlReplace, [':by' => $userId, ':uid' => $userId])->fetchAll();
+            foreach ($replaced as $old) {
+                // 토큰 하나에 감사 한 행 — Auth::revokeAllApiTokens 와 같은 모양(번호·이름뿐 · 값·해시·hint 0)
+                Audit::allow('api_token.revoke', $auditTarget + [
+                    'detail' => [
+                        'token_id'   => (int) $old['id'],
+                        'token_name' => (string) $old['name'],
+                    ],
+                ], 'replaced');
+            }
+            $revokedPrevious = count($replaced);
+        }
+        $row = $db->run($sqlInsert, [
+            ':uid'     => $userId,
+            ':name'    => $name,
+            ':hash'    => $hash,
+            ':hint'    => $hint,
+            // 발급한 사람도 본인이다 — F-59 는 여기가 관리자였다 (ARCH 4.7).
+            ':by'      => $userId,
+            ':purpose' => $purpose,
+            ':scope'   => $scope,
+            ':ttl'     => Auth::API_TOKEN_TTL_DAYS,
+            // Q:F-9 — session.open 만 값이 있다(위 [4-1] — 서버가 본 IP). 나머지는 NULL.
+            ':bound_ip' => $boundIp,
+        ])->fetch();
+        if (!is_array($row)) {
+            throw new RuntimeException('api_tokens INSERT 가 id 를 돌려주지 않았다');
+        }
+        $tokenId   = (int) $row['id'];
+        $expiresAt = (string) $row['expires_at'];
+
+        // detail 에 토큰 원문도 hint 도 해시도 비밀번호도 코드도 넣지 않는다
+        // (PRD S-09-11 · 7.7, ARCH 4.7 · 7.5). `otp_verified` 는 「확인했다는 사실」뿐이다.
+        $issueDetail = [
             'token_id'     => $tokenId,
             'token_name'   => $name,
             'token_scope'  => $scope,
             'reason_text'  => $purpose,
             'otp_verified' => true,
-        ],
-    ]);
-    $db->commit();
-} catch (Throwable $e) {
-    $db->rollback();
-    throw $e;
+        ];
+        if ($boundIp !== null) {
+            // Q:F-9 — 묶인 IP(서버가 본 값 — 비밀이 아니다. 감사 행의 ip 칸과 같은 값). ARCH 7.5 `bound_ip`.
+            $issueDetail['bound_ip'] = $boundIp;
+        }
+        Audit::allow('api_token.issue', $auditTarget + ['detail' => $issueDetail]);
+        $db->commit();
+    } catch (PDOException $e) {
+        $db->rollback();
+        $oneOpen = $scope === 'session.open' && (string) $e->getCode() === '23505'
+            && strpos($e->getMessage(), 'api_tokens_one_session_open') !== false;
+        if (!$oneOpen) {
+            throw $e;
+        }
+        if ($issueTry >= 2) {
+            Http::error(409, '다른 발급과 겹쳤습니다 — 잠시 뒤 다시 발급하세요');
+        }
+        continue;
+    } catch (Throwable $e) {
+        $db->rollback();
+        throw $e;
+    }
+    break;
 }
 
 // ★ `token` 이 나가는 곳은 여기 **한 줄**뿐이다 (API.md 13장, PRD 7.7 예외).
-Http::json([
+$issued = [
     'id'         => $tokenId,
     'name'       => $name,
     'hint'       => $hint,
     'scope'      => $scope,
     'expires_at' => $expiresAt,
     'token'      => $plain,
-], 201);
+];
+if ($scope === 'session.open') {
+    // Q:F-9 — 사람이 확인하는 두 값: 어느 IP 에 묶였나 · 앞의 로그인 전용 토큰을 몇 개 회수했나 (API.md 20장).
+    $issued['bound_ip']         = $boundIp;
+    $issued['revoked_previous'] = $revokedPrevious;
+}
+Http::json($issued, 201);

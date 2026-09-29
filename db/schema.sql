@@ -250,8 +250,17 @@ CREATE TABLE sessions (
     act_team_id       BIGINT,
     act_started_at    TIMESTAMPTZ,
     act_last_seen_at  TIMESTAMPTZ,
+    -- Q:F-9 (2026-09-29, ARCH 4.9 · 6.2-2): 이 세션이 **어디서 났나**. `login` = 비밀번호(+2단계)·지문 로그인,
+    -- `token` = 「이 PC 로그인 전용」 토큰(api_tokens 범위 session.open)의 1회용 링크. token 세션은 유휴 10분 ·
+    -- 민감 동작 재인증 필수 · 그 토큰이 회수·만료되거나 묶인 IP 밖에서 쓰이면 조회되지 않는다(Auth::SQL_LOOKUP).
+    -- token_id 의 외래 키는 api_tokens 가 만들어진 **뒤**(아래 api_tokens 절 끝)에 건다 — 표 순서 때문이다.
+    -- (기존 DB 는 db/migrations/2026-10-12_session_open.sql 로 같은 모양이 된다.)
+    origin            TEXT        NOT NULL DEFAULT 'login',
+    token_id          BIGINT,
     CONSTRAINT sessions_act_role_check
-        CHECK (act_role IS NULL OR act_role IN ('Manager', 'Employee', 'Guest'))
+        CHECK (act_role IS NULL OR act_role IN ('Manager', 'Employee', 'Guest')),
+    CONSTRAINT sessions_origin_check
+        CHECK ((origin = 'login' AND token_id IS NULL) OR (origin = 'token' AND token_id IS NOT NULL))
 );
 CREATE INDEX sessions_user_idx ON sessions (user_id);
 
@@ -314,12 +323,50 @@ CREATE TABLE api_tokens (
     -- Q:F-8 (2026-09-28, ARCH 4.8): 넷째 값 `community.write`(독립 값 — 커뮤니티 창구 셋만, 파일 창구 없음).
     --   db/migrations/2026-10-11_api_tokens_scope_community.sql 과 **같은 네 값**이다(제약 이름도 같은
     --   `api_tokens_scope_check` — 열 CHECK 의 자동 이름). 새 설치는 마이그레이션 없이 이 모양이 된다.
-    scope        TEXT        NOT NULL CHECK (scope IN ('read','read+upload','read+upload+delete','community.write')),
-    expires_at   TIMESTAMPTZ NOT NULL
+    -- Q:F-9 (2026-09-29, ARCH 4.9): 다섯째 값 `session.open`(「이 PC 로그인 전용」 — 링크 창구 하나 · 독립 값)과
+    --   그 토큰이 묶인 공인 IP `bound_ip`(발급 때 서버가 본 Http::clientIp() — 요청 값 아님). 로그인 전용 토큰은 언제나
+    --   IP 에 묶이고 다른 범위에는 IP 가 없다(api_tokens_bound_ip_check). 제약 이름은 마이그레이션
+    --   db/migrations/2026-10-12_session_open.sql 과 같다(`api_tokens_scope_check` 는 지우고 다시 거는 이름이라 명시).
+    scope        TEXT        NOT NULL,
+    expires_at   TIMESTAMPTZ NOT NULL,
+    bound_ip     INET,
+    CONSTRAINT api_tokens_scope_check
+        CHECK (scope IN ('read', 'read+upload', 'read+upload+delete', 'community.write', 'session.open')),
+    CONSTRAINT api_tokens_bound_ip_check
+        CHECK ((scope = 'session.open') = (bound_ip IS NOT NULL))
 );
 -- token_hash 의 UNIQUE 가 조회 인덱스를 겸한다
 -- (`WHERE token_hash = … AND revoked_at IS NULL` 이 유일한 조회 경로 — ARCH 6.2-5)
 CREATE INDEX api_tokens_user_idx ON api_tokens (user_id);
+
+-- Q:F-9 검토 RV-QF9-2 — 한 사람의 살아 있는 로그인 전용 토큰은 하나(1대 규칙을 DB 가 지킨다 · 마이그레이션과 같은 이름)
+CREATE UNIQUE INDEX api_tokens_one_session_open
+    ON api_tokens (user_id) WHERE scope = 'session.open' AND revoked_at IS NULL;
+
+-- Q:F-9 — sessions.token_id 의 외래 키(sessions 가 api_tokens 보다 먼저 만들어져 여기서 건다 · 이름은 마이그레이션과 같다)
+ALTER TABLE sessions
+    ADD CONSTRAINT sessions_token_id_fkey
+    FOREIGN KEY (token_id) REFERENCES api_tokens(id) ON DELETE CASCADE;
+
+-- ─────────────────────────────────────────────────────────────
+-- session_links — 「이 PC 로그인 전용」 토큰의 1회용 30초 로그인 링크 (Q:F-9 · t-box F-75, ARCH 4.9, SECURITY R-113)
+--   **코드(32바이트 난수의 base64url 43자)의 sha256 만** 둔다 — 원문은 링크 응답에 한 번 나가고 서버 어디에도 남지 않는다
+--   (code 열 자체가 없다 — sessions·share_links 와 같은 방식). 한 문장으로 소비(used_at — UPDATE … WHERE used_at IS NULL).
+--   30초 상한은 앱이 넣고 CHECK 가 마지막 그물이다. 일회용 값이라 앱 계정이 정리(DELETE)할 수 있다.
+--   (기존 DB 는 db/migrations/2026-10-12_session_open.sql 로 같은 모양이 된다.)
+-- ─────────────────────────────────────────────────────────────
+CREATE TABLE session_links (
+    id          BIGSERIAL   PRIMARY KEY,
+    code_hash   CHAR(64)    NOT NULL UNIQUE,                                   -- 코드의 sha256 hex. 원문은 저장하지 않음
+    token_id    BIGINT      NOT NULL REFERENCES api_tokens(id) ON DELETE CASCADE,
+    user_id     BIGINT      NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    ip          INET        NOT NULL,                                          -- 링크를 받은 IP(= 그 토큰의 bound_ip)
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+    expires_at  TIMESTAMPTZ NOT NULL,
+    used_at     TIMESTAMPTZ,
+    CONSTRAINT session_links_expiry CHECK (expires_at > created_at AND expires_at <= created_at + interval '30 seconds')
+);
+CREATE INDEX session_links_token_idx ON session_links (token_id, created_at);
 
 -- ─────────────────────────────────────────────────────────────
 -- fetch_hosts — 「URL 로 가져오기」가 갈 수 있는 곳 (F-43, PRD F-43 · S-05 ③, ARCH 5.22)

@@ -4139,6 +4139,58 @@
       "est_sec": 240,
       "writes_prod": false,
       "notes": "Q:F-8 조각 S 수락 T-1~T-7(지시서 docs/qf8-ai-writer-directive.md). 임시 DB tbox_qf8_<포트>_test(운영 사본 pg_dump 읽기만) · 마이그레이션 두 번 · 임시 인스턴스 둘(새 코드 QF8_PORT 기본 8401 · 기준 판 QF8_BASE_REV 기본 c2b4d76 을 +1 포트 — 세션 불변 대조 · 포트는 8401~8405 안) · T-5 는 COMMUNITY_ROUTES 전수(허용 셋 밖 전부 401/302 · 토큰 감사 0 — 검토 RV-QF8-6) · 공용 토큰은 시험이 만든 난수(임시 .env). 발급 두 번에 TOTP 창 둘. REGRESS=1 이면 api_whoami · community/stage3 · community/stage5a2(8401~8405 빈 자리) · f66 을 같은 임시 인스턴스에서 사본으로."
+    },
+    {
+      "id": "core.qf9_pc_login",
+      "cmd": "bash tests/qf9_pc_login.sh",
+      "module": "core",
+      "env": "temp-instance",
+      "status": "required",
+      "needs": [
+        "sudo",
+        "totp_wait"
+      ],
+      "covers": [
+        "public/index.php",
+        "src/Auth.php",
+        "src/Authz.php",
+        "src/Audit.php",
+        "src/Http.php",
+        "src/handlers/me_session_link.php",
+        "src/handlers/session_open_page.php",
+        "src/handlers/me_tokens_issue.php",
+        "src/handlers/me_tokens_list.php",
+        "src/handlers/api_tokens_list.php",
+        "src/handlers/me.php",
+        "src/handlers/api_whoami.php",
+        "src/handlers/reauth.php",
+        "src/community/routes.php",
+        "public/assets/app.js",
+        "scripts/alerts.php",
+        "db/migrations/2026-10-12_session_open.sql",
+        "db/schema.sql",
+        "db/grants.sql"
+      ],
+      "requirements": [
+        "Q:F-9",
+        "F-75",
+        "F-49",
+        "F-59",
+        "F-66",
+        "F-23",
+        "S-09-2"
+      ],
+      "risks": [
+        "R-113",
+        "R-90",
+        "R-91",
+        "R-97",
+        "R-62",
+        "R-30"
+      ],
+      "est_sec": 330,
+      "writes_prod": false,
+      "notes": "Q:F-9 조각 S 수락 T-1~T-7(지시서 docs/qf9-pc-login-directive.md). 임시 DB tbox_qf9_<포트>_test(운영 사본 pg_dump 읽기만) · 마이그레이션 2026-10-12 두 번(멱등) · 임시 인스턴스 둘(새 코드 QF9_PORT 8421~8424 기본 8421 · 워커 넷 · 기준 판 QF9_BASE_REV 기본 b7f6da4 를 +1 포트 — 일반 로그인 불변 대조 · 포트 8421~8425 안) · 발급 두 번에 TOTP 창 둘 · 링크 만료 31초 대기 · read/community.write/관리자 session.open 토큰은 임시 DB 에 직접. REGRESS=1 이면 api_whoami · f66 을 같은 임시 인스턴스에서 사본으로."
     }
   ]
 }

@@ -503,6 +503,51 @@ F-49 는 「공용 정적 토큰 하나」(설계 A)로 갔고, 그 한계(회�
 
 **남는 위험(R-112).** 토큰이 새면 180일 동안(또는 회수까지) 그 사람의 개인 공간에 비공개 글이 쌓이고, 그 토큰으로 만든 글은 다시 읽힌다 · 관리자가 이 범위를 발급하면 `GET /api/pages/{id}` 로 남의 비공개 글도 `admin_all` 로 읽힌다(id 를 알아야 한다 — 목록·검색이 닫혀 있다).
 
+### 4.9 등록 PC 에서 토큰으로 바로 로그인 — 범위 `session.open` · 1회용 링크 · 토큰 출신 세션 (PRD F-75 · 사이트 Q:F-9, 사용자 결정 2026-09-29)
+
+**왜.** 사용자 요구 「AI 비서(tbox-buddy)에서 Ctrl+B 로 홈페이지를 열면 그 토큰으로 바로 로그인된 화면이면 좋겠다 — **고정으로 등록된 PC 에서만**」. 이것은 2단계 인증을 거치지 않는 세션 입구가 하나 생기는 일이다 — F-49 ① 「토큰은 좁은 열쇠(창구만 연다)」의 **예외**다. 그래서 두 겹(① PC 밖에서는 풀리지 않는 토큰 보관 — Windows DPAPI, 비서 몫 ② 서버가 본 공인 IP 에 묶음)과 여섯 완화(SECURITY R-113)를 함께 둔다.
+
+**흐름.**
+
+```
+[내 계정 화면 · 세션]  POST /api/me/api-tokens {scope:"session.open", password, otp, …}
+        │  bound_ip = Http::clientIp()  · 같은 사람의 앞 session.open 토큰 전부 회수(1대) · 감사 api_token.issue(bound_ip)
+        ▼
+[비서 · X-API-Token]   POST /api/me/session-link            ← [2-T] 토큰 전용·개인 전용 · [2-S] 범위 session.open 만 · [4] canOpenSessionByToken
+        │  지금 IP = bound_ip ? (DB 가 INET 비교) — 아니면 403 {"code":"ip_mismatch"} + session.link deny (10분 3회 → AL-24)
+        │  1분 5회 넘으면 429 · 코드 32바이트(base64url 43자) → session_links 에 sha256 만 · 30초 · 받은 IP
+        ▼  201 {"url": APP_URL + "/tbox/session/open?code=…", "expires_in": 30}
+[브라우저]            GET /tbox/session/open?code=…           ← 정책 public(자격은 코드) · CSRF 없음(GET · 부작용은 「내 세션 만들기」뿐)
+        │  Auth::openSessionFromLink: 해시로 한 줄 → 이미 씀·30초 지남·토큰 회수/만료·IP 다름·계정 상태 → 302 /tbox/login(사유는 감사에만)
+        │  한 트랜잭션: 링크 소비(UPDATE … WHERE used_at IS NULL) → 옛 쿠키 세션 버림 → 세션 INSERT(origin='token', token_id) → session.open allow
+        ▼  302 /tbox/  (?to= 는 Http::returnPath 허용 목록만) + 쿠키
+```
+
+**검토 반영(RV-QF9-1~4 · 8).** ① 브라우저에 **유효한 세션이 이미 있으면** 교환하지 않는다 — 링크를 소비하지 않고(30초 뒤 만료) `session.open deny already_logged_in` 뒤 `302 /tbox/`(지금 세션 그대로 · 로그인 CSRF 로 남의 계정에 갈아태우기 차단) ② 한 사람의 살아 있는 로그인 전용 토큰은 부분 유일 인덱스 `api_tokens_one_session_open` 이 하나로 지킨다(발급 경쟁은 23505 → 한 번 다시 → 409) ③ token 세션 조회에 `u.mfa_enabled` — 2단계를 끄면 열린 토큰 세션도 끝난다 ④ 분당 5회는 받은 링크 + **IP 불일치 거부**를 함께 세고 IP 확인보다 앞에서 본다 ⑤ **틀린 IP 시도는 링크를 소비하지 않는다**(링크 창구의 IP 불일치는 링크를 만들지 않고, 교환의 IP 불일치는 행을 그대로 둔다 — 그 뒤 맞는 IP 에서 30초 안이면 열린다).
+
+**세션 표의 새 열 둘(6.2-2).** `origin`(`login` 기본값 · `token`) · `token_id`(→ `api_tokens`, ON DELETE CASCADE). CHECK: `login` 이면 token_id NULL, `token` 이면 NOT NULL. 기존 행과 일반 로그인·지문 로그인은 전부 `login` 이다 — `issueSession` 의 일반 갈래는 한 글자도 바뀌지 않았다(시험 T-6 이 기준 판과 대조).
+
+**세션 조회(`Auth::SQL_LOOKUP`)가 token 세션에만 더 보는 것.** ① 유휴 **10분**(코드 상수 `Auth::TOKEN_SESSION_IDLE_MIN` — `.env SESSION_IDLE_MIN` 30분과 따로. 절대 만료 8시간은 같다) ② 그 토큰이 살아 있다(회수·만료 아님 · 범위 session.open) — **토큰을 회수하면 그 토큰으로 연 세션도 다음 요청에서 끝난다**(1대 규칙의 자동 회수 · 비밀번호 변경 · 관리자 회수 모두) ③ 세션을 만든 IP = 묶인 IP = **지금 요청의 IP**. 셋 중 하나라도 아니면 조회되지 않아 401(화면은 302 로그인). login 세션은 `s.origin = 'login' OR …` 의 앞쪽이라 전과 같다.
+
+**재인증 집합 둘(`Authz::requiresReauth($policy, $origin, $route)`).**
+
+| 세션 출신 | 재인증(15분 창)을 묻는 것 |
+|---|---|
+| `login`(일반) | `REAUTH_POLICIES` — user.manage · org.manage · audit.read · role:Admin (그대로) |
+| `token` | `TOKEN_SESSION_REAUTH_POLICIES`(위 넷 + `file.delete` — 파일·폴더 삭제) ∪ `TOKEN_SESSION_REAUTH_ROUTES`(라우트 24줄 — 비밀번호 변경 · 2단계 켜기/확정/끄기 · 프로그램 토큰 발급/회수 · 패스키 등록 옵션/등록/해제 · 공유 링크 만들기 · 커뮤니티 페이지·템플릿·댓글 지우기 · 옮기기 · 공개 범위·게시·게시 내리기·숨기기·댓글 숨기기 · 공유 넣기/빼기 · 인계) |
+
+t-box 라우터는 origin·라우트 패턴을 인자로 넘긴다. 커뮤니티 라우터는 정책만 넘기므로(이 조각은 `src/community/**` 를 고치지 않았다) 인자가 없으면 Authz 가 이미 해석된 현재 사용자(`session_origin`)와 `TBOX_ROUTE` 를 읽는다. 재인증 창구(`/api/me/reauth` 비밀번호 · `/api/me/reauth/passkey`)는 그대로이고, 재인증 뒤 15분은 일반 세션과 같다. 재인증은 여전히 권한을 만들지 않는다(인가 → 재인증 순서 그대로). 조회(토큰 목록 · 패스키 목록)와 화면 설정(고대비)은 민감한 「변경」이 아니라 집합에 넣지 않는다(메인 판단 2026-09-29).
+
+**감사.** 토큰 세션의 모든 행에 `auth=token_session` · `token_id`(Audit::autoDetail — 7.5). `TBOX_AUTH_METHOD` 는 세우지 않는다 — 그 상수는 핸들러가 「헤더 토큰 요청」으로 읽어 허용 키·목록 모양을 바꾸는데, 토큰 세션은 화면이 쓰는 쿠키 세션이라 그 갈래를 타면 안 된다. 새 문장 11줄(7.4 — `session.link|*` · `session.open|*` · `api_token.issue|deny|ip_unknown` · `api_token.revoke|allow|replaced`).
+
+**왜 IP 를 서버가 본 값으로만.** 요청 머리(X-Forwarded-For·X-Real-IP)나 본문은 보내는 쪽이 정한다 — 그 값을 믿으면 어디서든 「사무실 IP 입니다」라고 말할 수 있다. 앱이 읽는 것은 `Http::clientIp()`(REMOTE_ADDR) 하나이고, nginx 가 **믿는 프록시에 대해서만** 실제 주소를 복원한다(R-30·R-31). 비교도 DB 의 INET 끼리(IPv6 표기 차이 0). LAN·VPN 주소는 서버에 보이지 않으므로 쓰지 않는다(사용자 결정 ①).
+
+**왜 GET 인가.** 비서는 주소를 브라우저에 넘길 뿐이고 브라우저는 주소를 GET 으로 연다. 코드는 256비트 · 30초 · 1회 · 받은 IP 에서만이라 제3자 페이지가 이 주소를 불러도 만들 세션이 없다. 코드 원문은 저장·감사·앱 로그 어디에도 없다(`session_links` 에 code 열이 없다 — 해시만). nginx 접근 로그에는 쿼리가 남을 수 있다(앱 밖 — SECURITY 6장).
+
+**표 `session_links`(10장 권한).** tbox_app SELECT·INSERT·UPDATE·DELETE(일회용 값 — 하루 지난 행은 링크 창구가 지운다) · tbox_backup SELECT · 그 밖 0. 마이그레이션 `2026-10-12_session_open.sql`(멱등 · 행 변경 0 · 되돌리기 절). **배포 순서는 마이그레이션 → 코드**(코드가 먼저면 세션 조회가 없는 열을 읽어 모든 로그인 요청이 500).
+
+**화면.** `/settings` 「프로그램 토큰」 발급 창의 범위 select 에 「이 PC 로그인 전용 — 지금 접속한 IP 에서만 · 로그인 없이 화면 열기(민감한 일은 다시 인증)」(서버의 `token_scopes` 가 2단계 켜진 비Guest 에게만 준다) · 고르면 도움말 줄이 「지금 접속한 IP 에 묶입니다 …」로 바뀐다 · 발급 결과 줄 「묶인 IP <값> · 앞 토큰 n개 회수됨」 · 목록(본인·관리자)의 범위 칸에 「· 묶인 IP <값>」. 새 클래스·색 0.
+
 ## 5. 네 가지 흐름 — 순서대로, 권한 검사 위치 표시
 
 표기: **[권한 ✔]** = 여기서 권한 검사 · **[DB]** = PostgreSQL · **[FS]** = 스토리지 디스크 · **[LOG]** = 감사 로그
@@ -2383,6 +2428,18 @@ GRANT  USAGE, SELECT  ON SEQUENCE audit_logs_id_seq TO tbox_app;
 | `auth.token|deny|missing_header` | `API 토큰 없이 {target} 을(를) 부르려 해서 막았습니다` | 프로그램용 API 토큰 검사 requireApiToken (4장 API 토큰 절) |
 | `auth.token|deny|bad_token` | `틀린 API 토큰으로 {target} 을(를) 부르려 해서 막았습니다` | 프로그램용 API 토큰 검사 requireApiToken (4장 API 토큰 절) |
 | `auth.token|deny|user_invalid` | `{target} 의 API 토큰은 맞았지만 그 토큰에 연결된 계정이 없거나 쓸 수 없는 상태여서 막았습니다 (서버 설정 점검 필요)` | 프로그램용 API 토큰 검사 requireApiToken (4장 API 토큰 절) |
+| `session.link|allow` | `{actor} 이(가) 이 PC 로그인 전용 토큰으로 1회용 로그인 링크(30초)를 받았습니다` | Q:F-9 · F-75 (4.9 — me_session_link.php) |
+| `session.link|deny|ip_mismatch` | `{actor} 의 이 PC 로그인 전용 토큰이 묶인 IP 가 아닌 곳에서 로그인 링크를 요청해 막았습니다 (이 PC 를 다시 등록해야 합니다)` | Q:F-9 (4.9 — AL-24 가 센다) |
+| `session.link|deny|rate_limited` | `{actor} 의 이 PC 로그인 전용 토큰이 1분에 5번 넘게 로그인 링크를 요청해 막았습니다` | Q:F-9 (4.9) |
+| `session.open|allow` | `{target} 이(가) 이 PC 로그인 전용 토큰의 1회용 링크로 로그인했습니다 (민감한 일은 다시 인증)` | Q:F-9 (4.9 — Auth::openSessionFromLink · 행위자 = 토큰 주인) |
+| `session.open|deny|link_used` | `이미 쓴 1회용 로그인 링크가 다시 열려 막았습니다 (대상 {target})` | Q:F-9 (4.9) |
+| `session.open|deny|link_expired` | `30초가 지난 1회용 로그인 링크가 열려 막았습니다 (대상 {target})` | Q:F-9 (4.9) |
+| `session.open|deny|token_invalid` | `회수·만료된 로그인 전용 토큰의 1회용 링크가 열려 막았습니다 (대상 {target})` | Q:F-9 (4.9) |
+| `session.open|deny|ip_mismatch` | `1회용 로그인 링크가 받은 곳과 다른 IP 에서 열려 막았습니다 (대상 {target})` | Q:F-9 (4.9) |
+| `session.open|deny|already_logged_in` | `{actor} 이(가) 이미 로그인된 브라우저에서 1회용 로그인 링크(대상 {target})를 열어 갈아타지 않았습니다 (링크는 쓰지 않음)` | Q:F-9 검토 RV-QF9-1 (4.9 — 링크 소비 0) |
+| `session.open|deny|user_disabled` | `{target} 계정이 비활성·만료·절차 중이거나 2단계 인증이 꺼져 있어 1회용 로그인 링크를 막았습니다` | Q:F-9 (4.9) |
+| `api_token.issue|deny|ip_unknown` | `{actor} 이(가) 이 PC 로그인 전용 토큰을 발급하려 했지만 접속 IP 를 알 수 없어 거부했습니다` | Q:F-9 (4.9 — 비밀번호·코드 확인 전) |
+| `api_token.revoke|allow|replaced` | `{actor} 이(가) 이 PC 로그인 전용 토큰을 새로 발급해 계정 「{target}」 의 앞 로그인 전용 토큰을 회수했습니다 (한 사람 1대)` | Q:F-9 (4.9 — 1대 규칙 · 토큰마다 한 행) |
 
 > 7·8·9단계(URL 가져오기·감사 로그 조회·백업)의 행동은 그 단계 지시서에서 이 표에 행을 먼저 추가한 뒤 구현한다.
 
@@ -2479,6 +2536,8 @@ GRANT  USAGE, SELECT  ON SEQUENCE audit_logs_id_seq TO tbox_app;
 | `token_id` | 어떻게 | 개인 토큰의 **행 번호**(정수, `api_tokens.id`). 토큰 값·hint 가 아니다 — 「어느 토큰으로」 를 사람이 목록에서 되짚는 열쇠. 정확 일치 예외 | `Audit::autoDetail`(개인 토큰 경로) · `api_token.issue`·`api_token.revoke` 핸들러 | F-59 |
 | `token_name` | 무엇을 | 발급·회수한 토큰의 **라벨**(「사무실 PC」). 사람이 붙인 이름이고 비밀이 아니다. 정확 일치 예외 | 핸들러 | `api_token.issue`·`api_token.revoke` (F-59) |
 | `token_scope` | 어떻게 | 토큰의 **범위** 분류어(`read`·`read+upload`·`read+upload+delete`). 코드가 정한 세 값 중 하나. `autoDetail()` 이 토큰 경로의 모든 행에, 발급·범위 거부 행에는 핸들러/Auth 가 붙인다. 이름에 `token` 이 들어 부분 일치 금지에 걸리므로 정확 일치 예외 | Audit·핸들러 | F-66 (ARCH 4.7) |
+| `bound_ip` | 어디서 | 「이 PC 로그인 전용」 토큰(범위 `session.open`)이 묶인 공인 IP — 발급 때 서버가 본 `Http::clientIp()` 값(요청 값이 아니다 · 감사 행의 `ip` 칸과 같은 값). 비밀이 아니다 | me_tokens_issue.php | Q:F-9 (ARCH 4.9) · `api_token.issue allow` |
+| `auth` = `token_session` | 어떻게 | **토큰 출신 세션**(`sessions.origin='token'` — 「이 PC 로그인 전용」 1회용 링크로 연 쿠키 세션)의 모든 행. `autoDetail()` 이 `Auth::currentUser()` 의 `session_origin` 을 보고 붙이며 `token_id`(그 토큰 행 번호)도 함께 붙는다. 일반 로그인 세션에는 키가 생기지 않는다(행 불변). 헤더 토큰 경로의 `auth=api_token` 과 겹치지 않는다 | Audit | Q:F-9 (ARCH 4.9) |
 | `space_kind` | 어디서 | 커뮤니티 공간 종류 `personal`·`team`·`board` — 이름·아이디는 넣지 않는다 | 핸들러 | `page.create deny not_owner·not_member`(대기열 10번 A.1, 2026-09-24) |
 | `via` | 어떻게 | 어느 입구로 받았나 — 지금은 `zip` 하나(5.34). 한 건 받기 행에는 없다(행이 전과 같다) | `files_zip` → `_download_common` | zip 요청의 `file.download` 모든 행 · `file.zip` 행 (Q:F-3a 라운드 C) |
 | `requested` · `skipped` | 무엇을 | zip 요청의 (같은 id 를 하나로 센) 파일 수 · 뺀 수(없는 id·지운 것·거부·무결성 실패). **개수만** — 이름·id 목록은 넣지 않는다(파일마다의 행이 따로 있다) | `files_zip` | `file.zip` 행 |

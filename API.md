@@ -859,6 +859,61 @@ GET  /tbox/api/whoami        (community.write 토큰)       → 200 {"username":
 
 감사 로그(임시 DB 실측): `page.create allow` 한 행 — actor `claude_employee01` · detail `auth=api_token`·`token_kind=personal`·`token_id=<발급 번호>`·`token_scope=community.write`·`route=POST /community/api/pages`. 범위 거부는 `auth.token deny scope_not_permitted`(detail `token_scope=read`·`auth=api_token`).
 
+## 20. 등록 PC 에서 바로 로그인 — `POST /api/me/session-link` → `GET /session/open?code=…` (Q:F-9, 2026-09-29 · 「이 PC 로그인 전용」 토큰만)
+
+AI 비서(tbox-buddy)의 Ctrl+B 「t-box 열기」가 **로그인 화면 없이** 로그인된 화면을 열게 하는 창구다(사이트 PRD Q:F-9 · t-box PRD F-75 · ARCHITECTURE 4.9 · SECURITY R-113).
+세 걸음이다: ① 사람이 「내 계정 → 프로그램 토큰」에서 범위 **`session.open`**(「이 PC 로그인 전용」) 토큰을 발급한다 — 그 순간의 접속 IP 에 묶인다(13장 창구 그대로 · 비밀번호+2단계 코드) ② 비서가 그 토큰으로 **30초 · 1회용** 로그인 링크를 받는다 ③ 비서가 받은 주소를 **그대로** 브라우저로 열고 버린다 — 브라우저가 연 순간 세션이 생긴다.
+그 세션은 **토큰 출신**(`origin=token`)이라 유휴 10분이고, 민감한 일(삭제·공유 링크·토큰 발급/회수·패스키 등록/해제·비밀번호·2단계·관리·커뮤니티 지우기/옮기기/공개 범위/공유/인계)은 비밀번호를 다시 확인해야 한다(`403 {"next":"reauth"}` — 화면이 재인증 창을 띄운다).
+
+| 항목 | 내용 |
+|---|---|
+| 발급(①) | 13장 `POST /api/me/api-tokens` 에 `"scope":"session.open"` — 고를 수 있는 사람은 **2단계 인증이 켜진 비Guest** 뿐(`GET /api/me` 의 `token_scopes` 끝에 있을 때만 · 아니면 400). 응답에 두 칸이 더 온다: `"bound_ip":"<서버가 본 공인 IP>"` · `"revoked_previous":<n>` — **한 사람 1대**라 앞의 로그인 전용 토큰은 전부 회수된다(그 토큰으로 연 세션도 끝난다). 접속 IP 를 알 수 없으면 `400 {"error":"접속 IP 를 알 수 없어 발급하지 않습니다"}`(비밀번호·코드를 확인하기 전 — 코드를 태우지 않는다). 목록(13장 GET)의 줄마다 `"bound_ip"`(다른 범위는 `null`) |
+| 인증(②) | 헤더 **`X-API-Token: <로그인 전용 토큰>`** — **토큰 전용**(헤더가 없으면 세션 쿠키가 있어도 401) · **개인 토큰만**(공용 403) · 범위가 `session.open` 이 아니면 403. `X-CSRF-Token` 필요 없음 · 본문 없음 |
+| 링크(②) | `POST /tbox/api/me/session-link` → **`201 {"url":"<APP_URL>/tbox/session/open?code=<43자>","expires_in":30}`** — 서버가 본 지금 IP 가 그 토큰의 묶인 IP 일 때만. 주소의 호스트는 서버 설정(`APP_URL`) 한 값이다(요청 머리로 만들지 않는다). 코드는 서버에 **sha256 만** 남는다 |
+| 교환(③) | 브라우저가 `GET /tbox/session/open?code=…` → **`302 /tbox/`** + 세션 쿠키. `&to=<같은 출처 경로>` 가 있으면 로그인 화면의 「보던 곳으로」와 **같은 허용 목록**(`/tbox/` · `/tbox/settings` · `/tbox/activity` · `/community/…`)일 때만 그리로, 아니면 `/tbox/`. 실패는 전부 **`302 /tbox/login`**(사유를 주소에 싣지 않는다 — 감사에만): 이미 쓴 링크 · 30초 지남 · 토큰 회수/만료 · 링크를 받은 IP 와 다른 IP · 계정 비활성/만료/절차 중/2단계 꺼짐 · 모양이 틀린·없는 코드 |
+| 실패(②) | `401 {"error":"X-API-Token 헤더가 없습니다"}` · `401 {"error":"API 토큰이 올바르지 않습니다"}`(틀림·**회수** — 1대 규칙으로 회수된 앞 토큰도) · `401 {"error":"만료된 API 토큰입니다 — 내 계정에서 새로 발급하세요"}` · `403 {"error":"이 토큰의 범위에 없는 창구입니다 — 범위가 더 넓은 토큰을 발급하세요"}`(범위가 session.open 아님) · **`403 {"error":"이 토큰이 묶인 IP 가 아닌 곳에서 요청했습니다 — 이 PC 를 다시 등록하세요(내 계정 → 프로그램 토큰)","code":"ip_mismatch"}`** — 비서는 `code` 로 가른다 · `403 {"error":"이 창구는 개인 토큰으로만 쓸 수 있습니다"}`(공용) · `403 {"error":"권한이 없습니다"}` — 계정 비활성·만료·**절차 중**(Auth::requireApiToken 의 `user_disabled` — 503 이 아니다) 또는 그 사이 2단계를 끔 · **`429 {"error":"로그인 링크를 너무 자주 요청했습니다 — 잠시 뒤 다시 시도하세요","code":"rate_limited","retry_after":60}`** — 한 토큰 1분 5회 · `503 {"error":"서버 설정 문제로 로그인 링크를 만들 수 없습니다"}` — `APP_URL` 이 `scheme://host[:port]` 모양이 아님 |
+| 검토 반영 | **이미 로그인된 브라우저**가 링크를 열면 갈아타지 않는다 — 링크는 쓰이지 않고(30초 뒤 만료) `302 /tbox/`(지금 세션 그대로 · 감사 `session.open deny already_logged_in`) · **틀린 IP 시도는 링크를 소비하지 않는다** · 분당 5회는 받은 링크와 IP 불일치 거부를 함께 센다(넘으면 IP 가 맞아도 429) · 2단계를 끄면 열린 토큰 세션도 401 · 로그인 전용 발급이 겹치면 `409 {"error":"다른 발급과 겹쳤습니다 — 잠시 뒤 다시 발급하세요"}`(한 번 다시 시도한 뒤) |
+| 이 토큰으로 열리는 것 | 이 창구와 `GET /tbox/api/whoami`(10장 — 토큰 확인용) **둘뿐**이다. 파일(7~9·11·12·14장)·커뮤니티(19장) 창구는 전부 `403 … 범위에 없는 창구 …` |
+| 감사 | 링크: `session.link allow` / `deny ip_mismatch`(10분 3회면 경보 AL-24) / `deny rate_limited` — detail `auth=api_token`·`token_id`. 교환: `session.open allow`(행위자 = 토큰 주인) / `deny link_used·link_expired·token_invalid·ip_mismatch·user_disabled`. 토큰 세션의 **모든 행**에 `auth=token_session`·`token_id`. 발급: `api_token.issue allow`(detail `bound_ip`) · 앞 토큰 회수는 토큰마다 `api_token.revoke allow replaced` |
+
+**왜 GET 인가.** 비서는 주소를 브라우저에 넘길 뿐이고 브라우저는 주소를 GET 으로 연다. 부작용은 「그 코드의 주인으로 내 브라우저에 세션 만들기」 하나다. 코드는 256비트 난수 · 30초 · 한 번 · 링크를 받은 IP 에서만 통하므로, 다른 사이트가 이 주소를 불러도 만들 세션이 없다(CSRF 대상이 아니다). **코드는 30초 · 1회**다 — 비서는 받은 주소를 파일·로그·클립보드에 남기지 않고 곧바로 열고 버린다. 30초 안에 열리지 않으면 로그인 화면이 뜬다(그때는 비밀번호로 로그인하면 된다).
+
+```bash
+# 비서(tbox-buddy)가 하는 일과 같다 — 토큰은 환경 변수에만, 머리 값은 표준입력으로(명령 인자에 싣지 않는다 — R-62)
+printf 'X-API-Token: %s' "$QAREDI_LOGIN_TOKEN" | curl -s -w '\n[%{http_code}]\n' -H @- -X POST https://changkwon.mso.so/tbox/api/me/session-link
+# → 201 {"url":"https://changkwon.mso.so/tbox/session/open?code=…","expires_in":30}  — 이 url 을 브라우저로 연다(30초 안 · 한 번)
+```
+
+실제로 받은 응답(2026-09-29 임시 인스턴스 `http://127.0.0.1:8421` · 임시 DB `tbox_qf9_8421_test` · 검토 계정 `claude_employee01`·`claude_admin01` · `-A "tbox-review/2026-09-29"` · `tests/qf9_pc_login.sh` 통과 항목). 토큰·코드 값은 규칙(S-09-11)대로 적지 않았다(`<43자>`).
+
+```text
+POST /tbox/api/me/api-tokens {scope:"session.open", …}      → 201 {…,"scope":"session.open","bound_ip":"127.0.0.1","revoked_previous":0}
+(같은 사람이 한 번 더)                                        → 201 {…,"revoked_previous":1}   · 앞 토큰으로 링크 → 401 {"error":"API 토큰이 올바르지 않습니다"}
+POST /tbox/api/me/api-tokens {scope:"session.open"} (claude_guest01) → 400 {"error":"잘못된 요청입니다"}
+POST /tbox/api/me/session-link   (로그인 전용 토큰)          → 201 {"url":"<APP_URL>/tbox/session/open?code=<43자>","expires_in":30}
+POST /tbox/api/me/session-link   (헤더 없이 세션 쿠키+CSRF) → 401 {"error":"X-API-Token 헤더가 없습니다"}
+POST /tbox/api/me/session-link   (read · community.write 토큰) → 403 {"error":"이 토큰의 범위에 없는 창구입니다 — 범위가 더 넓은 토큰을 발급하세요"}
+POST /tbox/api/me/session-link   (공용 .env 토큰)            → 403 {"error":"이 창구는 개인 토큰으로만 쓸 수 있습니다"}
+POST /tbox/api/me/session-link   (묶인 IP 를 임시 DB 에서 10.20.30.40 으로 바꾼 뒤)
+                                                              → 403 {"error":"이 토큰이 묶인 IP 가 아닌 곳에서 요청했습니다 — 이 PC 를 다시 등록하세요(내 계정 → 프로그램 토큰)","code":"ip_mismatch"}
+POST /tbox/api/me/session-link   (같은 토큰 1분 안 6번째)    → 429 {…,"code":"rate_limited",…}
+GET /tbox/api/files · /api/folders · /api/upload · /community/api/me/space · POST /community/api/pages (로그인 전용 토큰)
+                                                              → 403 {"error":"이 토큰의 범위에 없는 창구입니다 — 범위가 더 넓은 토큰을 발급하세요"}
+GET /tbox/api/whoami             (로그인 전용 토큰)          → 200 {"username":"claude_employee01", …}
+GET /tbox/session/open?code=<43자>                            → 302 Location: /tbox/  + Set-Cookie __Host-tbox_session  → GET /tbox/api/me 200 (claude_employee01)
+(같은 주소 다시 · 31초 지난 주소 · 받은 IP 와 다른 IP · 모양 틀린·없는 코드) → 302 Location: /tbox/login
+GET /tbox/session/open?code=…&to=%2Ftbox%2Fsettings           → 302 Location: /tbox/settings   · to=https://evil.example/ → 302 /tbox/
+(같은 주소를 동시에 두 번)                                    → 하나만 302 /tbox/, 다른 하나 302 /tbox/login
+(토큰 세션) GET /tbox/api/files                               → 200
+(토큰 세션) DELETE /tbox/api/files/{id} · POST /tbox/api/me/api-tokens · POST /tbox/api/me/passkeys/options · DELETE /community/api/pages/{id} …
+                                                              → 403 {"error":"관리 기능을 쓰려면 비밀번호를 다시 확인해야 합니다","next":"reauth"}
+(같은 임시 DB 의 일반 세션) DELETE /tbox/api/files/{id}      → 200   (일반 세션은 전과 같다)
+(토큰 세션) GET /tbox/api/me/api-tokens · GET /tbox/api/me/passkeys · PATCH /tbox/api/me/settings → 200   (조회·화면 설정은 재인증 집합 밖)
+(토큰 세션) POST /tbox/api/me/reauth {password} 뒤 같은 DELETE → 200
+(토큰 세션 · 활동 없는 11분 뒤) GET /tbox/api/me             → 401   (일반 세션은 11분 뒤 200 — 30분)
+(그 토큰을 회수한 뒤 · 또는 묶인 IP 를 바꾼 뒤) 토큰 세션 GET /tbox/api/me → 401
+```
+
 ## 추가 규칙 (API 를 새로 적을 때)
 
 1. 장 번호를 이어서 붙이고 제목은 `## N. 이름 — 메서드 경로`.

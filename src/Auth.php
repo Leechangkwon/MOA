@@ -51,6 +51,14 @@ final class AuthPasskeyRevokedException extends RuntimeException
 }
 
 /**
+ * Q:F-9 — 1회용 로그인 링크를 소비하려는 순간 이미 쓰였거나 30초가 지났을 때(동시에 두 번 연 경우의 뒤 요청) 던진다.
+ * Auth::openSessionFromLink 안에서만 던지고 잡는다 — 세션 발급 트랜잭션을 되돌리는 신호다(밖으로 나가지 않는다).
+ */
+final class AuthSessionLinkUsedException extends RuntimeException
+{
+}
+
+/**
  * src/Auth.php — "누구인가" (ARCH 4장 [1] · 4.0, PRD S-01, S-09-2, S-09-4, SECURITY R-10)
  *
  * 원칙
@@ -141,6 +149,24 @@ final class Auth
     public const ACT_IDLE_MINUTES = 30;
 
     /**
+     * Q:F-9 — **토큰 출신 세션**(`sessions.origin = 'token'`)의 유휴 한도(분) (t-box F-75 ⑤, ARCH 4.9).
+     *
+     * 「이 PC 로그인 전용」 토큰의 1회용 링크로 만든 세션은 비밀번호·2단계 없이 생기므로 자리 비움의 창을 짧게 둔다.
+     * `.env SESSION_IDLE_MIN`(일반 세션 30분)과 **따로** 코드 상수다 — 운영 설정 한 줄로 이 창이 넓어지지 않게.
+     * 판정은 SQL_LOOKUP 이 DB 시계로 한다(origin 이 'token' 일 때만 이 값). 절대 만료(SESSION_MAX_HOURS 8시간)는 같다.
+     */
+    public const TOKEN_SESSION_IDLE_MIN = 10;
+
+    /** Q:F-9 — 1회용 로그인 링크 코드의 모양(32바이트 난수의 base64url 43자 — 공유 링크 `{token}` 과 같은 모양) */
+    public const SESSION_LINK_CODE_RE = '/^[A-Za-z0-9_-]{43}$/';
+
+    /** Q:F-9 — 1회용 로그인 링크의 수명(초). session_links 의 CHECK(30초 상한)와 같은 값 — 늘리려면 둘을 함께 */
+    public const SESSION_LINK_TTL_SECONDS = 30;
+
+    /** Q:F-9 — 한 토큰이 1분에 받을 수 있는 링크 수. 넘으면 429 (`session.link deny rate_limited`) */
+    public const SESSION_LINK_PER_MINUTE = 5;
+
+    /**
      * 「사람이 누르지 않은 주기 요청」의 표식 — 헤더 이름과 값 (Q:F-4 U-3, 2026-09-24, ARCH 4.0 · 5.20).
      *
      * 알림 폴링·편집 heartbeat 처럼 화면이 **저절로** 보내는 요청은 이 헤더를 단다(`editor.js`).
@@ -201,12 +227,33 @@ final class Auth
                (s.act_role IS NOT NULL AND u.role = 'Admin')            AS act_role_ok,
                (s.act_last_seen_at IS NOT NULL
                 AND s.act_last_seen_at > now() - make_interval(mins => CAST(:act_idle_min AS integer)))
-                              AS act_fresh
+                              AS act_fresh,
+               -- Q:F-9 (ARCH 4.9) — 이 세션이 어디서 났나(login · token)와 token 이면 그 토큰의 행 번호.
+               -- 감사 분류(auth=token_session · token_id)와 재인증 집합(Authz::requiresReauth)이 이 두 값을 본다.
+               s.origin        AS origin,
+               s.token_id      AS token_id
           FROM sessions s
           JOIN users   u ON u.id = s.user_id
+          -- Q:F-9 — token 세션만 그 토큰을 함께 본다(login 세션은 token_id 가 NULL 이라 붙는 행이 없다).
+          LEFT JOIN api_tokens t ON t.id = s.token_id
          WHERE s.id = :id
            AND s.expires_at   > now()
-           AND s.last_seen_at > now() - make_interval(mins => CAST(:idle_min AS integer))
+           -- 유휴 한도: login 세션은 `.env SESSION_IDLE_MIN` 그대로, token 세션만 코드 상수 TOKEN_SESSION_IDLE_MIN(10분).
+           AND s.last_seen_at > now() - make_interval(mins => CASE WHEN s.origin = 'token'
+                                                                   THEN CAST(:token_idle_min AS integer)
+                                                                   ELSE CAST(:idle_min AS integer) END)
+           -- Q:F-9 — login 세션은 이 줄의 앞쪽이 참이라 전과 같다. token 세션은 ① 그 토큰이 살아 있고(회수·만료 아님 ·
+           -- 범위 session.open) ② 세션을 만든 IP 가 그 토큰의 묶인 IP 이고 ③ **지금 요청의 IP** 도 그 IP 일 때만 조회된다.
+           -- 토큰을 회수하면(1대 규칙의 자동 회수 · 비밀번호 변경 · 관리자 회수) 그 토큰으로 연 세션도 다음 요청에서 끝난다.
+           AND (s.origin = 'login'
+                OR (s.origin = 'token'
+                    AND t.revoked_at IS NULL
+                    AND t.expires_at > now()
+                    AND t.scope = 'session.open'
+                    AND t.bound_ip = s.ip
+                    AND s.ip = CAST(:cur_ip AS inet)
+                    -- 검토 RV-QF9-3 — 2단계를 끄면 이미 연 토큰 세션도 끝난다(로그인 전용 토큰의 자격 = 2단계 켜짐).
+                    AND u.mfa_enabled))
         SQL;
 
     /**
@@ -448,6 +495,49 @@ final class Auth
                 CAST(:ip AS inet), :user_agent)
         SQL;
 
+    /**
+     * Q:F-9 — **토큰 출신 세션** 한 행 (ARCH 4.9). 일반 로그인의 SQL_INSERT_SESSION 과 다른 것은 `origin='token'` · `token_id` 둘뿐이다
+     * (절대 만료·IP·UA 는 같은 규칙). reauth_at 은 넣지 않는다 — NULL(로그인과 같다: 링크는 재인증 창을 열지 않는다).
+     */
+    private const SQL_INSERT_TOKEN_SESSION = <<<'SQL'
+        INSERT INTO sessions (id, user_id, expires_at, ip, user_agent, origin, token_id)
+        VALUES (:id, :user_id,
+                now() + make_interval(hours => CAST(:max_hours AS integer)),
+                CAST(:ip AS inet), :user_agent, 'token', :token_id)
+        SQL;
+
+    /**
+     * Q:F-9 — 1회용 로그인 링크 한 줄을 **코드의 sha256 으로만** 찾는다 (코드 원문은 서버 어디에도 없다).
+     * 판정에 쓰는 참/거짓은 전부 **DB 가 계산**한다(시계·IP 비교 — PHP 시계·문자열 비교를 섞지 않는다):
+     *   is_used   이미 쓴 링크 · is_expired 30초가 지났다 · token_ok 그 토큰이 지금도 살아 있고(회수·만료 아님 · 범위 session.open)
+     *   링크를 받은 IP 가 그 토큰의 묶인 IP 다 · ip_ok 지금 요청의 IP(Http::clientIp)가 링크를 받은 IP 다.
+     */
+    private const SQL_FIND_SESSION_LINK = <<<'SQL'
+        SELECT l.id, l.token_id, l.user_id, u.username,
+               (l.used_at IS NOT NULL)      AS is_used,
+               (l.expires_at <= now())      AS is_expired,
+               (t.revoked_at IS NULL AND t.expires_at > now() AND t.scope = 'session.open'
+                AND t.bound_ip = l.ip)      AS token_ok,
+               (l.ip = CAST(:cur_ip AS inet)) AS ip_ok
+          FROM session_links l
+          JOIN api_tokens t ON t.id = l.token_id
+          JOIN users      u ON u.id = l.user_id
+         WHERE l.code_hash = :hash
+        SQL;
+
+    /**
+     * Q:F-9 — 링크 **소비**. 한 문장이라 같은 코드로 동시에 두 번 열어도 하나만 행을 받는다(뒤 요청은 앞 트랜잭션이 끝난 뒤
+     * `used_at IS NULL` 을 다시 보고 0행). 만료도 같은 문장에서 다시 본다 — 조회와 소비 사이에 30초가 지나면 소비되지 않는다.
+     */
+    private const SQL_CONSUME_SESSION_LINK = <<<'SQL'
+        UPDATE session_links
+           SET used_at = now()
+         WHERE id = :id
+           AND used_at IS NULL
+           AND expires_at > now()
+        RETURNING id
+        SQL;
+
     /** @var array<string,mixed>|null */
     private static ?array $user = null;
     private static bool $resolved = false;
@@ -471,10 +561,13 @@ final class Auth
         }
         $db  = Db::instance();
         $row = $db->run(self::SQL_LOOKUP, [
-            ':id'           => $id,
-            ':idle_min'     => Env::getInt('SESSION_IDLE_MIN'),
-            ':reauth_min'   => self::REAUTH_MINUTES,
-            ':act_idle_min' => self::ACT_IDLE_MINUTES,
+            ':id'             => $id,
+            ':idle_min'       => Env::getInt('SESSION_IDLE_MIN'),
+            ':reauth_min'     => self::REAUTH_MINUTES,
+            ':act_idle_min'   => self::ACT_IDLE_MINUTES,
+            // Q:F-9 — token 세션만 쓰는 두 값(login 세션의 판정에는 닿지 않는다 — SQL 의 CASE·OR 앞쪽).
+            ':token_idle_min' => self::TOKEN_SESSION_IDLE_MIN,
+            ':cur_ip'         => Http::clientIp(),
         ])->fetch();
 
         if (!is_array($row)) {
@@ -569,6 +662,13 @@ final class Auth
              */
             'reauth_fresh' => $row['reauth_fresh'] === true,
             'reauth_at'    => $row['reauth_at'] === null ? null : (string) $row['reauth_at'],
+            /*
+             * Q:F-9 (ARCH 4.9) — 이 세션이 어디서 났나. `login`(비밀번호·지문) 또는 `token`(「이 PC 로그인 전용」 링크).
+             * 권한이 아니라 **출신**이다: 라우터가 재인증 집합을 고르는 데(Authz::requiresReauth)와 감사 분류
+             * (Audit::autoDetail — auth=token_session · token_id)에만 쓴다. 요청에서 읽지 않는다 — DB 의 세션 행 값이다.
+             */
+            'session_origin'   => (string) $row['origin'] === 'token' ? 'token' : 'login',
+            'session_token_id' => $row['token_id'] === null ? null : (int) $row['token_id'],
         ];
 
         /*
@@ -1007,9 +1107,11 @@ final class Auth
      * @param callable            $inTx     트랜잭션 안에서 부를 일(없으면 빈 함수)
      * @param string|null         $reason   감사 allow 사유(null · `passkey`)
      * @param array<string,mixed> $detail   감사 detail(등록부 키만 — 지문이면 credential_no)
+     * @param int|null            $tokenId  Q:F-9 — 「이 PC 로그인 전용」 링크로 여는 세션이면 그 토큰 행 번호(아니면 null = 일반 로그인).
+     *                                      null 이면 아래 코드는 **전과 한 글자도 다르지 않은 길**만 지난다(origin='login' 불변).
      * @return array<string,mixed>
      */
-    private static function issueSession(array $row, callable $inTx, ?string $reason, array $detail): array
+    private static function issueSession(array $row, callable $inTx, ?string $reason, array $detail, ?int $tokenId = null): array
     {
         $db     = Db::instance();
         $userId = (int) $row['id'];
@@ -1019,20 +1121,40 @@ final class Auth
 
         $db->begin();
         try {
-            $db->run(self::SQL_CLEAR_FAILED, [':id' => $userId]);
+            if ($tokenId === null) {
+                $db->run(self::SQL_CLEAR_FAILED, [':id' => $userId]);
+            }
+            // Q:F-9 — 링크 세션은 실패 횟수를 0 으로 돌리지 **않는다**: 비밀번호를 맞힌 일이 아니다(토큰을 쥔 사람이 링크로
+            //   잠금 직전의 카운터를 지우는 길을 만들지 않는다). 그 대신 $inTx 가 링크를 소비한다(같은 트랜잭션).
             $inTx();
             if ($oldId !== null) {
                 // 로그인 전에 들고 온 쿠키의 세션은 버린다 — 공격자가 미리 심어 둔 값이 살아남지 않는다
                 $db->run(self::SQL_DROP_SESSION, [':id' => $oldId]);
             }
             $db->run(self::SQL_PURGE_EXPIRED, [':idle_min' => Env::getInt('SESSION_IDLE_MIN')]);
-            $db->run(self::SQL_INSERT_SESSION, [
-                ':id'         => $newId,
-                ':user_id'    => $userId,
-                ':max_hours'  => Env::getInt('SESSION_MAX_HOURS'),
-                ':ip'         => Http::clientIp(),
-                ':user_agent' => Http::userAgent(),
-            ]);
+            if ($tokenId === null) {
+                $db->run(self::SQL_INSERT_SESSION, [
+                    ':id'         => $newId,
+                    ':user_id'    => $userId,
+                    ':max_hours'  => Env::getInt('SESSION_MAX_HOURS'),
+                    ':ip'         => Http::clientIp(),
+                    ':user_agent' => Http::userAgent(),
+                ]);
+            } else {
+                $db->run(self::SQL_INSERT_TOKEN_SESSION, [
+                    ':id'         => $newId,
+                    ':user_id'    => $userId,
+                    ':max_hours'  => Env::getInt('SESSION_MAX_HOURS'),
+                    ':ip'         => Http::clientIp(),
+                    ':user_agent' => Http::userAgent(),
+                    ':token_id'   => $tokenId,
+                ]);
+                /* 감사의 「누가」 가 **토큰 주인**이 되도록 새 세션의 사용자를 먼저 앉힌다(Audit::actor = currentUser).
+                   브라우저에 다른 사람의 옛 쿠키가 있었어도 그 사람이 행위자로 남지 않는다. autoDetail 이 이 배열의
+                   session_origin 을 보고 auth=token_session · token_id 를 붙인다(login_ref 는 새 세션에서 파생). */
+                self::$resolved = true;
+                self::$user     = self::sessionUserArray($row, $newId, $tokenId);
+            }
             $ctx = [
                 'target_type' => 'user',
                 'target_id'   => $userId,
@@ -1041,10 +1163,18 @@ final class Auth
             if ($detail !== []) {
                 $ctx['detail'] = $detail;
             }
-            Audit::allow('auth.login', $ctx, $reason);
+            if ($tokenId === null) {
+                Audit::allow('auth.login', $ctx, $reason);
+            } else {
+                Audit::allow('session.open', $ctx);
+            }
             $db->commit();
         } catch (Throwable $e) {
             $db->rollback();
+            if ($tokenId !== null) {
+                self::$resolved = false;
+                self::$user     = null;
+            }
             throw $e;
         }
 
@@ -1071,7 +1201,151 @@ final class Auth
             'reauth_fresh' => false,
             'reauth_at'    => null,
         ];
+        if ($tokenId !== null) {
+            self::$user = self::sessionUserArray($row, $newId, $tokenId);
+        }
         return self::$user;
+    }
+
+    /**
+     * Q:F-9 — 링크로 연 세션의 사용자 배열(issueSession 의 일반 배열 + 출신 두 칸). 로그인 배열과 같은 규칙이다 —
+     * 재인증 창은 열지 않는다(reauth_fresh 거짓 · reauth_at null).
+     *
+     * @param array<string,mixed> $row
+     * @return array<string,mixed>
+     */
+    private static function sessionUserArray(array $row, string $sessionId, int $tokenId): array
+    {
+        return [
+            'id'          => (int) $row['id'],
+            'username'    => (string) $row['username'],
+            'role'        => (string) $row['role'],
+            'team_id'     => $row['team_id'] === null ? null : (int) $row['team_id'],
+            'session_id'  => $sessionId,
+            'mfa_enabled' => $row['mfa_enabled'] === true,
+            'must_change_password' => $row['must_change_password'] === true,
+            'mfa_setup_required'   => $row['mfa_setup_required'] === true,
+            'reauth_fresh' => false,
+            'reauth_at'    => null,
+            'session_origin'   => 'token',
+            'session_token_id' => $tokenId,
+        ];
+    }
+
+    /**
+     * Q:F-9 — 1회용 30초 로그인 링크를 **세션으로 바꾼다** (t-box F-75 ④, ARCH 4.9, API.md 20장, SECURITY R-113).
+     *
+     * 부르는 곳은 `GET /session/open`(session_open_page.php, 정책 public) 하나다. 성공이면 쿠키를 내리고 사용자 배열을,
+     * 실패면 null 을 돌려준다(부르는 쪽은 어느 쪽이든 **고정 주소**로 302 — 실패 사유는 응답에 넣지 않는다).
+     *
+     * 판정 순서 — 뒤로 갈수록 앞 단계를 통과한 요청만 닿는다. 판정 값은 전부 DB 가 계산한다(SQL_FIND_SESSION_LINK).
+     *   ① 코드 모양(base64url 43자) — 아니면 null(조회·감사 0: 모양이 틀린 값은 링크가 아니다)
+     *   ② sha256(코드)로 한 줄 — 없으면 null(감사 0: 아무나 두드리는 공개 GET 이 감사 표를 채우지 않게. 코드는 256비트라 맞힐 수 없다)
+     *   ③ 이미 씀 → deny `link_used` · ④ 30초 지남 → deny `link_expired` · ⑤ 토큰 회수·만료·범위·IP 어긋남 → deny `token_invalid`
+     *   ⑥ 지금 요청 IP ≠ 링크를 받은 IP(= 묶인 IP) → deny `ip_mismatch`
+     *   ⑦ 계정: 없음·비활성·만료·강제 절차 중·2단계 꺼짐·Guest(Authz::canOpenSessionByToken) → deny `user_disabled`
+     *   ⑧ 한 트랜잭션: 링크 소비(UPDATE … WHERE used_at IS NULL — 동시 두 번 중 하나만) → 옛 쿠키 세션 버림 → 새 세션
+     *      (`origin='token'` · `token_id` · reauth_at NULL) → 감사 `session.open allow`(행위자 = 토큰 주인 · auth=token_session ·
+     *      token_id — autoDetail) → 커밋 뒤 쿠키. 소비가 0행이면(동시에 먼저 쓴 요청이 있었다) 롤백하고 deny `link_used`.
+     *
+     * ★ 코드 원문·해시는 어디에도 남기지 않는다(감사 detail·로그·응답 0) — 감사 행에는 대상 계정과 링크의 토큰 번호뿐이다.
+     * ★ IP 는 `Http::clientIp()` 한 곳에서만 읽는다(요청 머리·본문 0).
+     */
+    /**
+     * 검토 RV-QF9-1 — 브라우저에 **유효한 세션이 이미 있을 때** 링크가 열렸다. 갈아타지 않는다: 링크를 **소비하지 않고**
+     * (행 그대로 — 30초 뒤 만료) 감사 `session.open deny already_logged_in` 한 행만 남긴다(행위자 = 지금 쿠키의 주인 ·
+     * 대상 = 링크의 토큰 주인). 같은 공인 IP 안의 동료가 제 링크를 남의 브라우저에 열게 해 그 사람의 세션을 끊고 제 계정으로
+     * 갈아태우는 로그인 CSRF 를 막는다. 비서의 쓰임(이미 로그인된 브라우저면 그냥 열린다)에는 영향이 없다.
+     * 모양이 틀린·없는 코드는 감사 0(openSessionFromLink 와 같은 규칙). 코드 원문은 남기지 않는다.
+     */
+    public static function refuseLinkWhileLoggedIn(string $code): void
+    {
+        if (preg_match(self::SESSION_LINK_CODE_RE, $code) !== 1) {
+            return;
+        }
+        $link = Db::instance()->run(self::SQL_FIND_SESSION_LINK, [
+            ':hash'   => hash('sha256', $code),
+            ':cur_ip' => Http::clientIp(),
+        ])->fetch();
+        unset($code);
+        if (!is_array($link)) {
+            return;
+        }
+        Audit::deny('session.open', 'already_logged_in', [
+            'target_type' => 'user',
+            'target_id'   => (int) $link['user_id'],
+            'target_name' => (string) $link['username'],
+            'detail'      => ['token_id' => (int) $link['token_id']],
+        ]);
+    }
+
+    public static function openSessionFromLink(string $code): ?array
+    {
+        if (preg_match(self::SESSION_LINK_CODE_RE, $code) !== 1) {
+            return null;
+        }
+        $db   = Db::instance();
+        $link = $db->run(self::SQL_FIND_SESSION_LINK, [
+            ':hash'   => hash('sha256', $code),
+            ':cur_ip' => Http::clientIp(),
+        ])->fetch();
+        unset($code);   // 원문은 여기서 끝 — 아래 코드는 행 번호만 다룬다
+        if (!is_array($link)) {
+            return null;
+        }
+
+        $linkId  = (int) $link['id'];
+        $tokenId = (int) $link['token_id'];
+        $deny = static function (string $reason) use ($link, $tokenId): void {
+            Audit::deny('session.open', $reason, [
+                'target_type' => 'user',
+                'target_id'   => (int) $link['user_id'],
+                'target_name' => (string) $link['username'],
+                // 「어느 토큰의 링크였나」 — 행 번호뿐이다(토큰 원문·hint·코드 0 · ARCH 7.5 token_id).
+                'detail'      => ['token_id' => $tokenId],
+            ]);
+        };
+
+        if ($link['is_used'] === true) {
+            $deny('link_used');
+            return null;
+        }
+        if ($link['is_expired'] === true) {
+            $deny('link_expired');
+            return null;
+        }
+        if ($link['token_ok'] !== true) {
+            $deny('token_invalid');
+            return null;
+        }
+        if ($link['ip_ok'] !== true) {
+            $deny('ip_mismatch');
+            return null;
+        }
+
+        $row = $db->run(self::SQL_LOAD_USER_BY_ID, [':id' => (int) $link['user_id']])->fetch();
+        if (!is_array($row)
+            || $row['is_active'] !== true
+            || $row['is_expired'] === true
+            || self::nextStep($row) !== null
+            || !Authz::canOpenSessionByToken($row)
+        ) {
+            $deny('user_disabled');
+            return null;
+        }
+
+        try {
+            return self::issueSession($row, static function () use ($db, $linkId): void {
+                $used = $db->run(self::SQL_CONSUME_SESSION_LINK, [':id' => $linkId])->fetch();
+                if (!is_array($used)) {
+                    throw new AuthSessionLinkUsedException('링크가 이미 쓰였거나 만료됐습니다');
+                }
+            }, null, [], $tokenId);
+        } catch (AuthSessionLinkUsedException $e) {
+            // 조회와 소비 사이에 다른 요청이 먼저 썼거나 30초가 지났다 — 트랜잭션은 이미 되돌려졌다(세션 0 · 쿠키 0).
+            $deny('link_used');
+            return null;
+        }
     }
 
     /** 90일 판정·해제 여부를 **DB 시계**로 함께 읽는다 — 열쇠 id 는 바이트로 비교(decode) · 원문은 읽기만(로그 0) */

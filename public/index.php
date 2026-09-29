@@ -58,10 +58,10 @@ const TBOX_ROUTES = [
     // F-49 — 프로그램용 업로드 (PRD F-49 · 8장 `/api/upload` 행, ARCH 4.2, SECURITY R-82).
     //   정책은 웹 업로드와 **같은 file.upload** 다. 다른 것은 인증 방법 하나뿐이고(아래 [2] 의
     //   토큰 가지), 인가 [4] 와 등급 권한은 귀속 계정 기준으로 그대로 탄다.
-    //   ★ `X-API-Token` 이 통하는 라우트는 아래 `TBOX_API_TOKEN_ROUTES` 의 **열뿐**이다
+    //   ★ `X-API-Token` 이 통하는 라우트는 아래 `TBOX_API_TOKEN_ROUTES` 의 **열하나뿐**이다
     //     (F-49 의 이 한 줄 + F-50 의 둘 + F-56 의 whoami + F-58 의 폴더·파일 이동 넷
-    //      + F-59 의 삭제 둘) — 그 밖의 라우트는 그 헤더를 읽지도 않는다.
-    //     삭제 둘은 그중에서도 `TBOX_API_TOKEN_PERSONAL_ROUTES` 라 **개인 토큰만** 통한다.
+    //      + F-59 의 삭제 둘 + Q:F-9 의 로그인 링크 하나) — 그 밖의 라우트는 그 헤더를 읽지도 않는다.
+    //     삭제 둘과 로그인 링크는 그중에서도 `TBOX_API_TOKEN_PERSONAL_ROUTES` 라 **개인 토큰만** 통한다.
     ['POST',   '/api/upload',              'api_upload.php',     'file.upload'],
     // F-56 — 프로그램용 자기 확인 (PRD F-56 · 8장 `/api/whoami` 행, ARCH 4.4, SECURITY R-89).
     //   정책은 `authenticated` — 귀속 계정이 유효하면 누구든이고, 인가 [4] 는 그대로 탄다.
@@ -160,6 +160,18 @@ const TBOX_ROUTES = [
     ['GET',    '/api/me/api-tokens',         'me_tokens_list.php',   Authz::POLICY_AUTHENTICATED],
     ['POST',   '/api/me/api-tokens',         'me_tokens_issue.php',  Authz::POLICY_AUTHENTICATED],
     ['DELETE', '/api/me/api-tokens/{num}',   'me_tokens_revoke.php', Authz::POLICY_AUTHENTICATED],
+
+    /* Q:F-9 — 등록 PC 에서 토큰으로 바로 로그인 (t-box F-75 · 사이트 Q:F-9, ARCH 4.9, API.md 20장, SECURITY R-113).
+     *   POST /api/me/session-link  정책 `session.open` — 「이 PC 로그인 전용」 토큰(범위 session.open)만 여는 창구 하나.
+     *                              토큰 **전용**(아래 세 집합 전부 — ROUTES · ONLY_ROUTES · PERSONAL_ROUTES): 헤더가 없으면
+     *                              세션 쿠키가 있어도 401 · 공용(.env) 토큰 403. 범위 관문 [2-S] 가 다른 범위 넷을 403 으로 끝낸다.
+     *                              핸들러가 지금 IP ≠ 묶인 IP 면 403 ip_mismatch, 맞으면 30초·1회용 링크 한 줄(코드 sha256 만 저장).
+     *   GET  /session/open         정책 **public** — 링크를 여는 화면 주소(브라우저가 연다). 자격은 코드 자체가 대신한다(공유 링크
+     *                              `/s/{token}` 과 같은 자리). 로그인·CSRF·강제 절차 관문을 지나지 않는다 — 부작용은 「내 세션 만들기」
+     *                              뿐이고 GET 이라 CSRF 대상이 아니다. 판정은 Auth::openSessionFromLink 한 곳, 끝은 언제나 고정 주소 302.
+     *                              여기서 만든 세션은 `sessions.origin='token'` — 유휴 10분 · 민감 동작 재인증(아래 [3-2]). */
+    ['POST',   '/api/me/session-link',       'me_session_link.php',   'session.open'],
+    ['GET',    '/session/open',              'session_open_page.php', Authz::POLICY_PUBLIC],
 
     // 휴지통 (PRD 5.4 "삭제된 파일 복구(30일 내)" 각주 ¹, F-11).
     // `/api/files/trash` 는 `{id}`(UUID 36자)와 형태가 달라 `/api/files/{id}` 계열과 충돌하지 않지만,
@@ -504,8 +516,8 @@ const TBOX_HOME_PATH = '/';
  * 값은 `TBOX_ROUTE`(메서드 + 라우트 **패턴**)와 정확히 같은 표기여야 한다. 아래 [2-T] 가
  * 이 집합과만 견주므로, 토큰 경로를 넓히려면 여기를 고쳐야 하고 그것이 곧 검토 지점이다.
  *
- * F-50 에서 셋으로, F-56 에서 넷으로, F-58 에서 여덟으로, F-59 에서 **열로**.
- * 넓히려면 여기 + R-82/R-83/R-89/R-90/R-91 재검토.
+ * F-50 에서 셋으로, F-56 에서 넷으로, F-58 에서 여덟으로, F-59 에서 열로, Q:F-9 에서 **열하나로**.
+ * 넓히려면 여기 + R-82/R-83/R-89/R-90/R-91/R-113 재검토.
  */
 const TBOX_API_TOKEN_ROUTES = [
     'POST /api/upload',
@@ -520,6 +532,8 @@ const TBOX_API_TOKEN_ROUTES = [
     // F-59 — 삭제 둘 (ARCH 4.6, SECURITY R-91). 아래 PERSONAL_ROUTES 이기도 하다.
     'DELETE /api/files/{id}',
     'DELETE /api/folders/{num}',
+    // Q:F-9 — 1회용 로그인 링크 (ARCH 4.9, SECURITY R-113). 아래 두 집합(PERSONAL · ONLY)이기도 하다 — 열하나째.
+    'POST /api/me/session-link',
 ];
 
 /**
@@ -535,6 +549,8 @@ const TBOX_API_TOKEN_ROUTES = [
 const TBOX_API_TOKEN_PERSONAL_ROUTES = [
     'DELETE /api/files/{id}',
     'DELETE /api/folders/{num}',
+    // Q:F-9 — 로그인 링크는 사람 단위 토큰(범위 session.open)으로만. 공용 토큰은 403 shared_token_not_permitted.
+    'POST /api/me/session-link',
 ];
 
 /**
@@ -552,6 +568,8 @@ const TBOX_API_TOKEN_PERSONAL_ROUTES = [
 const TBOX_API_TOKEN_ONLY_ROUTES = [
     'POST /api/upload',
     'GET /api/whoami',
+    // Q:F-9 — 화면이 쓰지 않는 프로그램(비서) 전용 창구. 헤더가 없으면 세션 쿠키가 있어도 401 「헤더가 없습니다」.
+    'POST /api/me/session-link',
 ];
 
 /**
@@ -945,7 +963,13 @@ if ($policy !== Authz::POLICY_PUBLIC) {
      * 하나), 요청이 정하지 않는다 (PRD S-01). 대상 정책 목록은 Authz 한 곳에 있다 —
      * 라우터가 정책 이름을 직접 비교하지 않는다 (ARCH 4.1).
      */
-    if (!$viaApiToken && Authz::requiresReauth($policy) && ($user['reauth_fresh'] ?? false) !== true) {
+    /* Q:F-9 (ARCH 4.9) — 세션의 **출신**(`sessions.origin` — Auth::currentUser 가 실은 값)과 라우트 패턴을 함께 넘긴다.
+       일반 로그인 세션(`login`)이면 Authz 는 REAUTH_POLICIES 하나만 본다(전과 같은 답). 토큰 출신 세션(`token`)이면
+       넓은 집합(TOKEN_SESSION_REAUTH_POLICIES ∪ TOKEN_SESSION_REAUTH_ROUTES)을 본다. 막는 모양·감사는 아래 그대로다. */
+    if (!$viaApiToken
+        && Authz::requiresReauth($policy, (string) ($user['session_origin'] ?? 'login'), TBOX_ROUTE)
+        && ($user['reauth_fresh'] ?? false) !== true
+    ) {
         Audit::deny('auth.gate', 'reauth_required', [
             // 막힌 사람이 곧 대상이다 (ARCH 7.4 문장 틀의 {target}, 강제 절차 관문과 같은 모양).
             'target_type' => 'user',

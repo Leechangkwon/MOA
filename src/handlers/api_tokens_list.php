@@ -45,7 +45,8 @@ if (!is_array($db->run($sqlUser, [':id' => $uid])->fetch())) {
 // ─── [1] 목록 — id 오름차순(발급 순서) ───────────────────────────
 //        token_hash 는 **고르지도 않는다**: 뽑지 않은 값은 실수로 응답에 실릴 수 없다.
 $sqlList = <<<'SQL'
-    SELECT id, name, hint, scope, created_at, last_used_at, revoked_at, expires_at
+    SELECT id, name, hint, scope, created_at, last_used_at, revoked_at, expires_at,
+           host(bound_ip) AS bound_ip
       FROM api_tokens
      WHERE user_id = :uid
      ORDER BY id
@@ -66,6 +67,8 @@ foreach ($rows as $row) {
         'expires_at'   => (string) $row['expires_at'],
         'last_used_at' => $row['last_used_at'] === null ? null : (string) $row['last_used_at'],
         'revoked_at'   => $row['revoked_at'] === null ? null : (string) $row['revoked_at'],
+        // Q:F-9 (ARCH 4.9) — 「이 PC 로그인 전용」 토큰이 묶인 공인 IP(발급 때 서버가 본 값). 다른 범위는 null.
+        'bound_ip'     => $row['bound_ip'] === null ? null : (string) $row['bound_ip'],
     ];
 }
 

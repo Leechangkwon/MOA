@@ -54,6 +54,13 @@ final class Authz
          */
         'community.read',
         'community.write',
+        /*
+         * Q:F-9 (t-box F-75, ARCH 4.9) — 「이 PC 로그인 전용」 토큰이 1회용 로그인 링크를 받는 창구 하나
+         * (`POST /api/me/session-link`)의 정책. 토큰 범위 `session.open` 만 이 정책을 연다(tokenScopeAllows) —
+         * 이름을 따로 두는 까닭은 `authenticated` 를 재사용하면 **다른 범위의 토큰**도 이 창구를 열게 되기 때문이다.
+         * 계정 자격은 아래 authorize() 가 `canOpenSessionByToken`(2단계 켜짐 · 쓰기 자격 = Guest 0)으로 본다.
+         */
+        'session.open',
     ];
 
     /**
@@ -88,6 +95,76 @@ final class Authz
         'org.manage',
         'audit.read',
         'role:Admin',
+    ];
+
+    /**
+     * Q:F-9 — **토큰 출신 세션**(`sessions.origin = 'token'`)만 더 묻는 정책 (t-box F-75 ⑤, ARCH 4.9 「재인증 집합 둘」).
+     *
+     * 「이 PC 로그인 전용」 토큰의 1회용 링크로 만든 세션은 비밀번호도 2단계 코드도 치지 않고 생긴다(F-49 ① 의 예외 —
+     * SECURITY R-113). 그래서 일상 업무(보기·올리기·고치기)는 그대로 두되, **되돌리기 어려운 일**은 15분 창(비밀번호 재확인)을
+     * 먼저 요구한다. 일반 로그인 세션(`origin = 'login'`)은 이 목록을 **보지 않는다** — REAUTH_POLICIES 하나 그대로다.
+     *
+     *   REAUTH_POLICIES 전부(관리 영역 — 계정·조직·감사·role:Admin = `admin.*` 전부) + `file.delete`(파일 삭제 · 폴더 삭제 둘 다 이 정책)
+     *
+     * 라우트 정책 하나로 가를 수 없는 것(정책이 `authenticated`·`file.update`·`community.*` 처럼 일상 창구와 같은 것)은
+     * 아래 TOKEN_SESSION_REAUTH_ROUTES 의 **라우트 패턴**으로 가른다.
+     *
+     * @var list<string>
+     */
+    public const TOKEN_SESSION_REAUTH_POLICIES = [
+        'user.manage',
+        'org.manage',
+        'audit.read',
+        'role:Admin',
+        'file.delete',
+    ];
+
+    /**
+     * Q:F-9 — 토큰 출신 세션만 더 묻는 **라우트** (`TBOX_ROUTE` 표기 — `메서드 라우트패턴`, 커뮤니티는 `/community` 접두까지).
+     *
+     * 값은 두 라우트 표(`public/index.php` TBOX_ROUTES · `src/community/routes.php` COMMUNITY_ROUTES)에 **실제로 있는 줄**만 적는다
+     * (시험 `tests/qf9_pc_login.sh` T-7 이 한 줄씩 대조한다 — 오타로 죽은 줄이 되면 그 창구가 조용히 열린다).
+     * 목록(지시서 5 의 좁은 쪽 기본안 — 구현 기록 docs/qf9-implementation.md 에 확정 목록과 까닭):
+     *   · 내 계정 보안(바꾸는 창구만) — 비밀번호 변경 · 2단계 인증 켜기/확정/끄기 · 프로그램 토큰 발급/회수 · 지문·얼굴 기기 등록/해제
+     *     (메인 판단 2026-09-29: 토큰 목록·패스키 목록 **조회**와 화면 설정(고대비)은 민감한 「변경」이 아니라 뺐다)
+     *   · 파일 — 공유 링크 만들기(`file.update` 정책이라 라우트로)
+     *   · 커뮤니티 — 지우기(페이지·템플릿·댓글) · 옮기기 · 공개 범위(visibility·게시·게시 내리기·숨기기·댓글 숨기기) · 공유(넣기·빼기) · 인계
+     * 여기 **없는** 것(일부러): 로그아웃 · 재인증 창구 셋(비밀번호·지문 — 묻는 창구가 묻는 창구를 막으면 들어갈 길이 없다) ·
+     *   역할로 보기 끄기(권한을 줄이는 쪽) · 공유 링크 회수(닫는 쪽) · 휴지통에서 되살리기 · URL 가져오기 · 일상 읽기·쓰기.
+     *
+     * @var list<string>
+     */
+    public const TOKEN_SESSION_REAUTH_ROUTES = [
+        // 내 계정 보안
+        'POST /api/me/password',
+        'POST /api/me/mfa/enroll',
+        'POST /api/me/mfa/confirm',
+        'POST /api/me/mfa/disable',
+        'POST /api/me/api-tokens',
+        'DELETE /api/me/api-tokens/{num}',
+        'POST /api/me/passkeys/options',
+        'POST /api/me/passkeys',
+        'DELETE /api/me/passkeys/{num}',
+        // 파일 — 공유 링크 만들기
+        'POST /api/files/{id}/share',
+        // 커뮤니티 — 지우기
+        'DELETE /community/api/pages/{id}',
+        'DELETE /community/api/templates/{id}',
+        'DELETE /community/api/comments/{id}',
+        // 커뮤니티 — 옮기기
+        'PATCH /community/api/pages/{id}/move',
+        // 커뮤니티 — 공개 범위
+        'PATCH /community/api/pages/{id}/visibility',
+        'POST /community/api/pages/{id}/publish',
+        'DELETE /community/api/pages/{id}/publish',
+        'POST /community/api/pages/{id}/hide',
+        'DELETE /community/api/pages/{id}/hide',
+        'POST /community/api/comments/{id}/hide',
+        'DELETE /community/api/comments/{id}/hide',
+        // 커뮤니티 — 공유 · 인계
+        'PUT /community/api/pages/{id}/shares/{username}',
+        'DELETE /community/api/pages/{id}/shares/{username}',
+        'POST /community/api/pages/{id}/handover',
     ];
 
     /**
@@ -950,19 +1027,21 @@ final class Authz
     public const FILE_TOKEN_SCOPES = ['read', 'read+upload', 'read+upload+delete'];
 
     /**
-     * 개인 프로그램 토큰의 **범위** 전부 — F-66 의 셋 + Q:F-8 의 `community.write` (ARCH 4.7 · 4.8).
+     * 개인 프로그램 토큰의 **범위** 전부 — F-66 의 셋 + Q:F-8 의 `community.write` + Q:F-9 의 `session.open` (ARCH 4.7 · 4.8 · 4.9).
      *
-     * `api_tokens.scope` 의 CHECK 와 같은 네 값이다. `community.write` 는 사다리의 넷째 칸이
+     * `api_tokens.scope` 의 CHECK 와 같은 다섯 값이다. `community.write` 는 사다리의 넷째 칸이
      * **아니다**(독립 값) — 파일 창구를 하나도 열지 않고, 파일 범위 셋은 커뮤니티 창구를 열지 않는다.
+     * `session.open`(「이 PC 로그인 전용」)도 독립 값이다 — 1회용 로그인 링크 창구 하나와 whoami 만 연다.
      * 이 목록을 늘리려면 DB CHECK(6.2-5)·`tokenScopeAllows`·화면 라벨을 함께 고쳐야 한다.
      */
-    public const TOKEN_SCOPES = ['read', 'read+upload', 'read+upload+delete', 'community.write'];
+    public const TOKEN_SCOPES = ['read', 'read+upload', 'read+upload+delete', 'community.write', 'session.open'];
 
     /**
      * F-66 — 이 계정이 **고를 수 있는** 범위 목록 (PRD F-66 ③, ARCH 4.7, `GET /api/me` 의 `token_scopes`).
      *
      * 올릴 수도 지울 수도 없는 역할(Guest — PRD 5.2·5.3)에게는 `read` 하나뿐이다.
      * Q:F-8 — 커뮤니티에 쓸 수 있는 역할(`canCommunityWrite`)이면 `community.write` 가 끝에 붙는다.
+     * Q:F-9 — 2단계가 켜진 비Guest(`canOpenSessionByToken`)이면 그 뒤에 `session.open` 이 붙는다.
      * 판단은 **역할 문자열이 아니라** `uploadableLevels()` 의 결과로 한다 — 권한 표
      * (`permissions` 16행)가 바뀌면 이 목록도 자동으로 따라 바뀐다(ARCH 6.2-1).
      *
@@ -981,7 +1060,26 @@ final class Authz
         if (self::canCommunityWrite($u)) {
             $scopes[] = 'community.write';
         }
+        // Q:F-9 — 「이 PC 로그인 전용」은 2단계 인증이 켜진 계정 · Guest 가 아닌 계정만(판정은 canOpenSessionByToken 한 곳).
+        if (self::canOpenSessionByToken($u)) {
+            $scopes[] = 'session.open';
+        }
         return $scopes;
+    }
+
+    /**
+     * Q:F-9 — 이 계정이 「이 PC 로그인 전용」 토큰을 **가질 수 있나** (t-box F-75 ①, ARCH 4.9).
+     *
+     * 둘 다 참일 때만: ① 2단계 인증이 켜져 있다(`mfa_enabled` — 매 요청 DB 값) ② 쓰기 자격이 있다(`canUploadAtAll` —
+     * 권한 매트릭스에서 올릴 수 있는 등급이 하나라도 있는 역할, Guest 0). 역할 문자열을 보지 않는다.
+     * 쓰는 곳 셋: tokenScopesFor(고를 수 있나) · authorize('session.open')(링크를 받을 수 있나 — 토큰을 가진 뒤 2단계를 껐으면
+     * 여기서 끝) · Auth::openSessionFromLink(링크를 열 때 다시 — 그 사이 바뀐 계정 상태).
+     *
+     * @param array<string,mixed> $u
+     */
+    public static function canOpenSessionByToken(array $u): bool
+    {
+        return ($u['mfa_enabled'] ?? false) === true && self::canUploadAtAll($u);
     }
 
     /**
@@ -990,12 +1088,14 @@ final class Authz
      * 창구 이름을 하나하나 적지 않고 **정책 문자열**로 정한다 — 새 토큰 창구가 늘어도
      * 이 표를 고칠 일이 없고, 창구와 범위가 어긋날 여지가 없다.
      *
-     *   `authenticated`                → 전부 허용 (네 값 — `GET /api/whoami` 는 토큰 확인용이다)
+     *   `authenticated`                → 전부 허용 (다섯 값 — `GET /api/whoami` 는 토큰 확인용이다)
      *   `file.read`                    → 파일 범위 셋 (`read` 이상 — `community.write` 는 거짓)
      *   `file.upload` · `file.update`  → `read+upload` 이상
      *   `file.delete`                  → `read+upload+delete` 만
      *   `community.read` · `community.write` → `community.write` 만 (Q:F-8 — 파일 범위 셋은 거짓.
      *                                    커뮤니티 라우터가 이 정책으로 부르는 창구는 셋뿐이다 — ARCH 4.8)
+     *   `session.open`                 → `session.open` 만 (Q:F-9 — 1회용 로그인 링크 창구 하나 · ARCH 4.9.
+     *                                    `session.open` 범위는 이것과 `authenticated`(whoami) 밖에서 전부 거짓)
      *   그 밖(모르는 정책)             → **거부**(닫힌 실패). 토큰 집합이 넓어지는 날
      *                                    그 창구는 범위를 정할 때까지 열리지 않는다.
      *
@@ -1024,6 +1124,10 @@ final class Authz
             case 'community.read':
             case 'community.write':
                 return $scope === 'community.write';
+
+            // Q:F-9 — 1회용 로그인 링크 창구 하나(ARCH 4.9). 독립 값이라 다른 범위 넷은 여기서 거짓이다.
+            case 'session.open':
+                return $scope === 'session.open';
 
             default:
                 // 모르는 정책은 통과시키지 않는다 (authorize() 의 default 와 같은 원칙).
@@ -1100,10 +1204,40 @@ final class Authz
      * 권한·정책 판단이 Authz 밖으로 새어 나간다 (ARCH 4.1, CLAUDE.md 4장 금지 패턴).
      * 이 함수는 **권한을 판단하지 않는다**: "이 정책은 다시 물어야 하는 영역인가" 뿐이고,
      * 그 사람이 무엇을 할 수 있는지는 authorize() 가 이미 판단한 뒤다(관문 순서: 인가 → 재인증).
+     *
+     * Q:F-9 — 인자 둘이 늘었다: `$origin`(세션 출신 `login`·`token` — Auth::currentUser 의 session_origin)과
+     * `$route`(TBOX_ROUTE 표기). `login` 이면 답은 전과 같다(REAUTH_POLICIES 하나). `token` 이면
+     * TOKEN_SESSION_REAUTH_POLICIES ∪ TOKEN_SESSION_REAUTH_ROUTES 를 본다(ARCH 4.9 「재인증 집합 둘」).
+     * 인자를 주지 않으면(커뮤니티 라우터) 현재 사용자와 TBOX_ROUTE 를 읽는다.
      */
-    public static function requiresReauth(string $policy): bool
+    public static function requiresReauth(string $policy, ?string $origin = null, ?string $route = null): bool
     {
-        return in_array($policy, self::REAUTH_POLICIES, true);
+        // 일반 로그인 세션의 답은 이 한 줄이 전부다 — 전과 같은 목록·같은 결과(origin='login' 불변, Q:F-9 T-6).
+        if (in_array($policy, self::REAUTH_POLICIES, true)) {
+            return true;
+        }
+
+        /*
+         * Q:F-9 (t-box F-75 ⑤, ARCH 4.9) — **토큰 출신 세션**이면 집합이 넓어진다(TOKEN_SESSION_REAUTH_POLICIES ∪ 라우트 표).
+         *
+         * 세션이 어디서 났나(`origin`)는 요청 값이 아니라 `sessions.origin` 을 Auth::currentUser() 가 읽어 실어 준 값이다.
+         * t-box 라우터는 origin·라우트를 **인자로** 넘긴다. 커뮤니티 라우터(`src/community/routes.php`)는 정책 하나만 넘기므로
+         * (이 조각은 그 파일을 고치지 않는다) 인자가 없으면 이미 해석된 현재 사용자(requireLogin 뒤라 캐시 — DB 조회 0)와
+         * 라우터가 매칭 직후 세운 `TBOX_ROUTE` 를 읽는다. 둘 다 서버가 정한 값이다.
+         * 이 함수는 여전히 **권한을 판단하지 않는다** — 인가(authorize) 뒤에 「다시 물어야 하나」만 답한다.
+         */
+        if ($origin === null) {
+            $current = Auth::currentUser();
+            $origin  = is_array($current) ? (string) ($current['session_origin'] ?? 'login') : 'login';
+        }
+        if ($origin !== 'token') {
+            return false;
+        }
+        if ($route === null && defined('TBOX_ROUTE')) {
+            $route = (string) constant('TBOX_ROUTE');
+        }
+        return in_array($policy, self::TOKEN_SESSION_REAUTH_POLICIES, true)
+            || ($route !== null && in_array($route, self::TOKEN_SESSION_REAUTH_ROUTES, true));
     }
 
     /**
@@ -1174,6 +1308,11 @@ final class Authz
 
             case 'community.write':
                 return self::canCommunityWrite($u);
+
+            /* Q:F-9 (ARCH 4.9) — 1회용 로그인 링크 창구. 토큰 범위(`session.open`)는 [2-S] 가 이미 봤고, 여기서는 **계정**이
+               지금도 그 토큰을 가질 자격이 있나(2단계 켜짐 · Guest 아님)를 다시 본다 — 토큰을 받은 뒤 2단계를 끈 계정은 여기서 끝. */
+            case 'session.open':
+                return self::canOpenSessionByToken($u);
 
             default:
                 // 알 수 없는 정책 이름은 통과시키지 않는다 (기본 거부)

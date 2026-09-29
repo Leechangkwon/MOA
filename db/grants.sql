@@ -246,3 +246,27 @@ BEGIN
     GRANT SELECT ON SEQUENCE public.passkeys_id_seq, public.passkey_challenges_id_seq TO tbox_backup;
 END
 $$;
+
+-- ─── 「이 PC 로그인 전용」 1회용 로그인 링크 (Q:F-9 · t-box F-75, ARCH 4.9 · 10장, SECURITY R-113) — 표 하나(session_links).
+--     표를 만드는 것은 db/schema.sql(새 설치)·db/migrations/2026-10-12_session_open.sql(기존 DB)이고, 이 절은 **같은 권한**을
+--     다시 건다(재실행 시 과거 권한이 남지 않게 회수 뒤 GRANT). 표가 없으면(마이그레이션 전) 아무것도 하지 않고 NOTICE 만 남긴다.
+--   tbox_app    SELECT · INSERT · UPDATE(used_at 소비) · DELETE(일회용 값 — 만료 정리, passkey_challenges 와 같다) · 시퀀스 USAGE·SELECT
+--   tbox_backup SELECT(코드의 sha256 뿐 — 원문 없음) · tbox_perm · tbox_push 0
+--   sessions.origin·token_id 와 api_tokens.bound_ip 는 표 단위 권한(위 tbox_app 절)이 그대로 덮는다 — 여기서 따로 걸지 않는다.
+DO $$
+BEGIN
+    IF to_regclass('public.session_links') IS NULL THEN
+        RAISE NOTICE 'session_links 표가 없다 — db/migrations/2026-10-12_session_open.sql 을 먼저 돌린다(이 절은 건너뜀)';
+        RETURN;
+    END IF;
+    REVOKE ALL ON public.session_links FROM tbox_app, tbox_backup, tbox_perm;
+    REVOKE ALL ON SEQUENCE public.session_links_id_seq FROM tbox_app, tbox_backup, tbox_perm;
+    IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'tbox_push') THEN
+        REVOKE ALL ON public.session_links FROM tbox_push;
+    END IF;
+    GRANT SELECT, INSERT, UPDATE, DELETE ON public.session_links TO tbox_app;
+    GRANT USAGE, SELECT ON SEQUENCE public.session_links_id_seq TO tbox_app;
+    GRANT SELECT ON public.session_links TO tbox_backup;
+    GRANT SELECT ON SEQUENCE public.session_links_id_seq TO tbox_backup;
+END
+$$;

@@ -382,6 +382,20 @@ final class Audit
         'api_token.issue|deny|code_reused'        => '{actor} 이(가) 프로그램 토큰을 발급하려 했지만 이미 쓴 2단계 인증 코드여서 거부했습니다',
         'auth.token|deny|token_expired'           => '만료된 개인 토큰으로 {target} 을(를) 부르려 해서 막았습니다 (내 계정에서 새로 발급해야 합니다)',
         'auth.token|deny|scope_not_permitted'     => '개인 토큰의 범위에 없는 창구 {target} 을(를) 부르려 해서 막았습니다',
+        // Q:F-9 (t-box F-75, ARCH 4.9 · 7.4) — 「이 PC 로그인 전용」 토큰 · 1회용 로그인 링크 · 토큰 출신 세션.
+        //   코드·토큰 원문은 어느 문장에도 없다(자리표시자는 {actor}·{target} 뿐 — 계정 이름).
+        'session.link|allow'                      => '{actor} 이(가) 이 PC 로그인 전용 토큰으로 1회용 로그인 링크(30초)를 받았습니다',
+        'session.link|deny|ip_mismatch'           => '{actor} 의 이 PC 로그인 전용 토큰이 묶인 IP 가 아닌 곳에서 로그인 링크를 요청해 막았습니다 (이 PC 를 다시 등록해야 합니다)',
+        'session.link|deny|rate_limited'          => '{actor} 의 이 PC 로그인 전용 토큰이 1분에 5번 넘게 로그인 링크를 요청해 막았습니다',
+        'session.open|allow'                      => '{target} 이(가) 이 PC 로그인 전용 토큰의 1회용 링크로 로그인했습니다 (민감한 일은 다시 인증)',
+        'session.open|deny|link_used'             => '이미 쓴 1회용 로그인 링크가 다시 열려 막았습니다 (대상 {target})',
+        'session.open|deny|link_expired'          => '30초가 지난 1회용 로그인 링크가 열려 막았습니다 (대상 {target})',
+        'session.open|deny|token_invalid'         => '회수·만료된 로그인 전용 토큰의 1회용 링크가 열려 막았습니다 (대상 {target})',
+        'session.open|deny|ip_mismatch'           => '1회용 로그인 링크가 받은 곳과 다른 IP 에서 열려 막았습니다 (대상 {target})',
+        'session.open|deny|already_logged_in'     => '{actor} 이(가) 이미 로그인된 브라우저에서 1회용 로그인 링크(대상 {target})를 열어 갈아타지 않았습니다 (링크는 쓰지 않음)',
+        'session.open|deny|user_disabled'         => '{target} 계정이 비활성·만료·절차 중이거나 2단계 인증이 꺼져 있어 1회용 로그인 링크를 막았습니다',
+        'api_token.issue|deny|ip_unknown'         => '{actor} 이(가) 이 PC 로그인 전용 토큰을 발급하려 했지만 접속 IP 를 알 수 없어 거부했습니다',
+        'api_token.revoke|allow|replaced'         => '{actor} 이(가) 이 PC 로그인 전용 토큰을 새로 발급해 계정 「{target}」 의 앞 로그인 전용 토큰을 회수했습니다 (한 사람 1대)',
 
         // ── 공통 관문 (Http::requireCsrf, index.php 라우트 정책) ──
         'csrf|deny|token_mismatch'                => '{actor} 이(가) {target} 요청을 보냈지만 CSRF 토큰이 없거나 달라서 막았습니다 (다른 사이트에서 몰래 보낸 요청일 수 있음)',
@@ -1243,6 +1257,22 @@ final class Audit
         // F-66 (ARCH 4.7 「감사」) — 범위도 같은 자리에서. 공용 토큰은 `read+upload` 다.
         if (defined('TBOX_API_TOKEN_SCOPE')) {
             $out['token_scope'] = (string) constant('TBOX_API_TOKEN_SCOPE');
+        }
+
+        /*
+         * Q:F-9 (t-box F-75 ⑧, ARCH 4.9 · 7.5) — **토큰 출신 세션**의 모든 행에 `auth=token_session` · `token_id`.
+         * 「이 PC 로그인 전용」 링크로 연 세션은 쿠키 세션이지만 비밀번호·2단계 없이 생겼다 — 그 세션으로 한 일이
+         * 사람의 로그인 세션과 감사에서 갈라져 보여야 한다. 값은 Auth::currentUser() 가 `sessions.origin`·`token_id` 에서
+         * 실은 것(요청 값 아님)이고, 일반 로그인 세션(`session_origin = 'login'`)에는 키가 생기지 않는다(행 불변).
+         * 토큰 경로(TBOX_AUTH_METHOD — 헤더 토큰)와는 겹치지 않는다: 그 경로의 사용자 배열에는 session_origin 이 없다.
+         * ★ `TBOX_AUTH_METHOD` 를 세우지 않는 까닭 — 그 상수는 핸들러가 「헤더 토큰 요청」으로 읽어 허용 키·목록 모양을 바꾼다
+         *   (files_update·folders_update·files_list …). 토큰 세션은 화면이 쓰는 **쿠키 세션**이라 그 갈래를 타면 안 된다.
+         */
+        if (!defined('TBOX_AUTH_METHOD') && $user !== null && ($user['session_origin'] ?? 'login') === 'token') {
+            $out['auth'] = 'token_session';
+            if (isset($user['session_token_id'])) {
+                $out['token_id'] = (int) $user['session_token_id'];
+            }
         }
 
         // 미로그인 행(auth.login·auth.required)에는 누가에 해당하는 값이 없다 → 키를 넣지 않는다.

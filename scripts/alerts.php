@@ -8,6 +8,7 @@ declare(strict_types=1);
  *   실행 파일이 든 압축본 AL-21 (PRD F-65 ⑤ · 7.11, ARCH 5.29 · 11.4 — `file.upload_exec allow` 1건이라도 즉시)
  *   개인 프로그램 토큰 AL-20 (PRD F-59 ⑦, ARCH 4.6 · 11.4 — `api_token.issue allow` 1건이라도 즉시)
  *   지문·얼굴 로그인 AL-23 (T:F-72, ARCH 11.4 — `auth.passkey_register allow` 1건 · `auth.login deny passkey_counter` 1건이라도 즉시)
+ *   이 PC 로그인 전용 토큰 AL-24 (Q:F-9 · t-box F-75, ARCH 4.9 · 11.4 — 같은 토큰의 `session.link deny ip_mismatch` 10분 안 3회)
  *   악성코드 AL-19 (PRD F-54 ④, ARCH 5.28 · 11.4 — `file.scan deny infected` 1건이라도 즉시)
  *   ARCHITECTURE 11.1 (5분마다 cron) · 11.4 (경보 구성) · 7.4 `alert.raised|allow` · 7.5 `rule`·`evidence`
  *
@@ -926,6 +927,45 @@ if ($want('AL-23')) {
            $isRegister ? 'register' : 'counter');
     }
     cli_say(sprintf('AL-23 대상 %d건', count($rows)));
+}
+
+// ─────────────────────────────────────────────────────────────
+// AL-24 — 「이 PC 로그인 전용」 토큰이 묶인 IP 밖에서 거듭 쓰였다 (Q:F-9 · t-box F-75 ⑥, ARCH 4.9 · 11.4, SECURITY R-113)
+//   같은 토큰(detail.token_id)의 `session.link deny ip_mismatch` 가 **10분 안 3회 이상**. 한두 번은 회선 IP 가 바뀐 PC 의
+//   정상 재시도일 수 있다(비서가 「이 PC 다시 등록」을 안내한다) — 거듭되면 토큰이 PC 밖으로 새어 다른 곳에서 쓰이는 것이다.
+//   묶는 단위는 **토큰 하나**(대상 = 토큰 주인 계정 · 억제 키에 token_id). 근거: 토큰 번호 · 횟수 · 요청 IP 수(값 아님) · 시각.
+//   ★ 토큰 원문·hint·링크 코드는 담지 않는다 — 감사 로그에 애초에 없다(PRD S-09-11). 요청 IP 는 감사 행의 ip 칸에 있다.
+//   (지시서는 이 규칙을 AL-18 로 불렀지만 AL-18 은 이미 「URL 가져오기 허용 사이트 변경」이다 — 다음 빈 번호 AL-24 를 쓴다.)
+//   origin 은 F-69 판정 그대로(사람 → 휴대폰 즉시 · `claude_`+검토 UA → 18시 요약). 중복 억제는 $raise.
+// ─────────────────────────────────────────────────────────────
+if ($want('AL-24')) {
+    $rows = $db->run(
+        "SELECT detail->>'token_id' AS token_id,
+                max(actor_name) AS actor_name,
+                count(*) AS n,
+                count(DISTINCT host(ip)) AS ips,
+                max(happened_at) AS last_at,
+                bool_and(COALESCE(user_agent, '') LIKE :review_ua) AS all_marked
+           FROM audit_logs
+          WHERE action = 'session.link' AND result = 'deny' AND reason = 'ip_mismatch'
+            AND detail->>'token_id' IS NOT NULL
+            AND happened_at > now() - interval '10 minutes'
+          GROUP BY detail->>'token_id'
+         HAVING count(*) >= 3",
+        $reviewUa
+    )->fetchAll();
+    foreach ($rows as $r) {
+        $raise('AL-24', (string) ($r['actor_name'] ?? '?'), [
+            'rule_text' => '이 PC 로그인 전용 토큰이 묶인 IP 밖에서 10분 안 3회 이상 로그인 링크를 요청했다',
+            'token_id'  => (string) $r['token_id'],
+            'count'     => (int) $r['n'],
+            'ips'       => (int) $r['ips'],
+            'window'    => '10 minutes',
+            'last_at'   => (string) $r['last_at'],
+        ], Origin::ofGroup([$r['actor_name'] === null ? null : (string) $r['actor_name']], al_bool($r['all_marked'])),
+           (string) $r['token_id']);
+    }
+    cli_say(sprintf('AL-24 대상 %d건', count($rows)));
 }
 
 // ─────────────────────────────────────────────────────────────

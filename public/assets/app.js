@@ -6235,8 +6235,19 @@ var TOKEN_SCOPE_LABELS = {
   'read': '읽기만',
   'read+upload': '읽기 + 올리기',
   'read+upload+delete': '읽기 + 올리기 + 지우기',
-  'community.write': '커뮤니티 글쓰기 — 내 개인 공간에 비공개 페이지 만들기·읽기(파일 창구 없음)'
+  'community.write': '커뮤니티 글쓰기 — 내 개인 공간에 비공개 페이지 만들기·읽기(파일 창구 없음)',
+  /* Q:F-9 — 「이 PC 로그인 전용」(파일·커뮤니티 창구 없음 — 1회용 로그인 링크만). 묶인 IP 는 목록 칸에서 서버 값 그대로 */
+  'session.open': '이 PC 로그인 전용 — 지금 접속한 IP 에서만 · 로그인 없이 화면 열기(민감한 일은 다시 인증)'
 };
+
+/** Q:F-9 — 범위 칸 글자: 라벨 + 묶인 IP(서버가 준 `bound_ip` 그대로 — 화면이 IP 를 만들거나 고치지 않는다) */
+function tokenScopeCellText(token) {
+  var text = tokenScopeLabel(token ? token.scope : '');
+  if (token && typeof token.bound_ip === 'string' && token.bound_ip !== '') {
+    text += ' · 묶인 IP ' + token.bound_ip;
+  }
+  return text;
+}
 
 /** 모르는 값이 오면 **서버가 준 값 그대로** 보인다 — 화면이 문장을 지어내지 않는다 */
 function tokenScopeLabel(scope) {
@@ -6378,7 +6389,7 @@ function addTokenRowShared(ctx, token) {
     if (column === 'name')    { setText(td, token.name); }
     else if (column === 'purpose') { setText(td, token.purpose === null || token.purpose === undefined || token.purpose === '' ? '—' : token.purpose); }
     else if (column === 'hint')    { setText(td, token.hint === null || token.hint === undefined || token.hint === '' ? '—' : token.hint); }
-    else if (column === 'scope')   { setText(td, tokenScopeLabel(token.scope)); }
+    else if (column === 'scope')   { setText(td, tokenScopeCellText(token)); }
     else if (column === 'state')   { setText(td, live ? '살아있음' : '회수됨'); }
     else if (column === 'actions') {
       td.className = 'actions';
@@ -8871,6 +8882,23 @@ function initMyTokens(csrfToken, me) {
     });
   }
 
+  /* Q:F-9 — 「이 PC 로그인 전용」을 고르면 select 아래 도움말(기존 `.help` 한 줄)을 그 뜻으로 바꾼다. 다른 범위로 돌아가면
+     처음 글자로 되돌린다. 새 요소·새 클래스 0 — 있는 줄의 글자만 바꾼다(textContent). */
+  var scopeHelp = scopeSel && scopeSel.nextElementSibling && scopeSel.nextElementSibling.classList.contains('help')
+    ? scopeSel.nextElementSibling : null;
+  var scopeHelpDefault = scopeHelp ? scopeHelp.textContent : '';
+  function syncScopeHelp() {
+    if (!scopeHelp) { return; }
+    setText(scopeHelp, scopeSel.value === 'session.open'
+      ? '지금 접속한 IP 에 묶입니다 — 이 PC 에서만 로그인 없이 화면을 엽니다(민감한 일은 비밀번호를 다시 확인). '
+        + '앞서 받은 로그인 전용 토큰은 회수됩니다(한 사람 1대).'
+      : scopeHelpDefault);
+  }
+  if (scopeSel) {
+    scopeSel.addEventListener('change', syncScopeHelp);
+    syncScopeHelp();
+  }
+
   // 폼이냐 안내냐 — `can_issue_tokens`(= 2단계 인증이 켜졌나) 하나만 본다.
   var canIssue = me && me.can_issue_tokens === true;
   form.hidden = !canIssue;
@@ -8976,7 +9004,13 @@ function initMyTokens(csrfToken, me) {
         }
         if (nameEl) { nameEl.value = ''; }
         if (purpEl) { purpEl.value = ''; }
-        setText(msg, '토큰을 발급했습니다. 값은 지금만 보입니다.');
+        /* Q:F-9 — 로그인 전용이면 서버가 준 두 값(묶인 IP · 회수한 앞 토큰 수)을 그대로 덧붙인다(사람이 확인). */
+        var issuedNote = '';
+        if (result.data && result.data.scope === 'session.open') {
+          issuedNote = ' 묶인 IP ' + String(result.data.bound_ip || '—')
+            + ' · 앞 토큰 ' + String(typeof result.data.revoked_previous === 'number' ? result.data.revoked_previous : 0) + '개 회수됨.';
+        }
+        setText(msg, '토큰을 발급했습니다. 값은 지금만 보입니다.' + issuedNote);
         /* D-10 — 폼이 모달 안이므로 한 번만 보이는 토큰 상자도 **모달 안**(폼 바로 아래)에
            나온다. 그래서 성공에도 모달을 곧바로 닫지 않는다 — 값을 복사한 뒤 「닫기」 를
            누르면 상자와 함께 값이 사라진다. 실패도 모달을 연 채 `.msg` 만 바뀐다. */
