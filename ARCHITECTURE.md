@@ -424,6 +424,8 @@ F-49 는 「공용 정적 토큰 하나」(설계 A)로 갔고, 그 한계(회�
 
 ### 4.7 프로그램 토큰 본인 발급 — 범위(scope)·만료 180일 (PRD F-66 · Q-24, 사용자 결정 2026-09-21)
 
+> **Q:F-10(2026-09-29) 부터 범위는 원자 집합이다 — 이 절의 「범위 값」 표기는 그 시점의 것이고, 지금 모델·판정 표는 4.10.**
+
 **왜.** F-59 는 「관리자가 남의 토큰을 만든다」였다. 관리자 세션을 훔친 사람이 아무 계정의 자격을 만들 수 있고(R-91), 만든 토큰은 회수 전까지 영구였다. 사용자가 로컬 AI 비서에 admin01 토큰을 심어 쓰는 것을 계기로 「더 좋게」 — **토큰은 본인이, 비밀번호+OTP 를 치고, 필요한 만큼만, 180일까지**.
 
 **세 가지 변화.**
@@ -466,6 +468,8 @@ F-49 는 「공용 정적 토큰 하나」(설계 A)로 갔고, 그 한계(회�
 
 ### 4.8 커뮤니티 창구 셋에 개인 토큰 — 범위 `community.write` (PRD F-74 · 사이트 Q:F-8, 사용자 결정 2026-09-28)
 
+> **Q:F-10(2026-09-29) 부터 범위는 원자 집합이다 — 이 절의 「범위 값」 표기는 그 시점의 것이고, 지금 모델·판정 표는 4.10.**
+
 **왜.** 사용자 요구 「주제를 말하면 AI 가 커뮤니티에 글을 써 준다」(Claude + PC 의 MCP 서버 · 글 자리는 **내 개인 공간 · 비공개**). 지금까지 `X-API-Token` 은 t-box 파일 창구 열한 개에서만 읽혔고, `/community…` 요청은 [2-T] 에 닿기 **전에** `community_dispatch()` 로 빠져 세션만 봤다. 그래서 AI 가 글을 쓸 길이 없었다.
 
 **관문이 둘이 된 까닭.** 라우터가 둘이다(`public/index.php` 의 t-box 표 · `src/community/routes.php` 의 커뮤니티 표). 토큰 관문을 한 곳에 모으려고 커뮤니티 요청을 t-box 갈래로 돌리면 두 표의 경로 규칙·감사 route 가 섞인다. 그래서 **라우터마다 한 곳씩** 두되 판정 함수는 새로 만들지 않고 같은 셋을 그대로 부른다 — `Http::apiTokenHeader()` · `Auth::requireApiToken($personalOnly)` · `Authz::tokenScopeAllows($scope, $policy)`. `public/index.php`·`Auth.php`·`Http.php` 는 한 글자도 바뀌지 않았다.
@@ -504,6 +508,8 @@ F-49 는 「공용 정적 토큰 하나」(설계 A)로 갔고, 그 한계(회�
 **남는 위험(R-112).** 토큰이 새면 180일 동안(또는 회수까지) 그 사람의 개인 공간에 비공개 글이 쌓이고, 그 토큰으로 만든 글은 다시 읽힌다 · 관리자가 이 범위를 발급하면 `GET /api/pages/{id}` 로 남의 비공개 글도 `admin_all` 로 읽힌다(id 를 알아야 한다 — 목록·검색이 닫혀 있다).
 
 ### 4.9 등록 PC 에서 토큰으로 바로 로그인 — 범위 `session.open` · 1회용 링크 · 토큰 출신 세션 (PRD F-75 · 사이트 Q:F-9, 사용자 결정 2026-09-29)
+
+> **Q:F-10(2026-09-29) 부터 범위는 원자 집합이다 — 이 절의 「범위 값」 표기는 그 시점의 것이고, 지금 모델·판정 표는 4.10.**
 
 **왜.** 사용자 요구 「AI 비서(tbox-buddy)에서 Ctrl+B 로 홈페이지를 열면 그 토큰으로 바로 로그인된 화면이면 좋겠다 — **고정으로 등록된 PC 에서만**」. 이것은 2단계 인증을 거치지 않는 세션 입구가 하나 생기는 일이다 — F-49 ① 「토큰은 좁은 열쇠(창구만 연다)」의 **예외**다. 그래서 두 겹(① PC 밖에서는 풀리지 않는 토큰 보관 — Windows DPAPI, 비서 몫 ② 서버가 본 공인 IP 에 묶음)과 여섯 완화(SECURITY R-113)를 함께 둔다.
 
@@ -547,6 +553,45 @@ t-box 라우터는 origin·라우트 패턴을 인자로 넘긴다. 커뮤니티
 **표 `session_links`(10장 권한).** tbox_app SELECT·INSERT·UPDATE·DELETE(일회용 값 — 하루 지난 행은 링크 창구가 지운다) · tbox_backup SELECT · 그 밖 0. 마이그레이션 `2026-10-12_session_open.sql`(멱등 · 행 변경 0 · 되돌리기 절). **배포 순서는 마이그레이션 → 코드**(코드가 먼저면 세션 조회가 없는 열을 읽어 모든 로그인 요청이 500).
 
 **화면.** `/settings` 「프로그램 토큰」 발급 창의 범위 select 에 「이 PC 로그인 전용 — 지금 접속한 IP 에서만 · 로그인 없이 화면 열기(민감한 일은 다시 인증)」(서버의 `token_scopes` 가 2단계 켜진 비Guest 에게만 준다) · 고르면 도움말 줄이 「지금 접속한 IP 에 묶입니다 …」로 바뀐다 · 발급 결과 줄 「묶인 IP <값> · 앞 토큰 n개 회수됨」 · 목록(본인·관리자)의 범위 칸에 「· 묶인 IP <값>」. 새 클래스·색 0.
+
+### 4.10 토큰 하나에 범위 여럿 — 원자 집합 · 커뮤니티 읽기 창구 (PRD F-76 · 사이트 Q:F-10, 사용자 결정 2026-09-29)
+
+**왜.** Q:F-8·Q:F-9 로 PC 한 대에 토큰이 셋이 됐다(비서 파일용 · 비서 Ctrl+B 용 · MCP 글쓰기용) — 사용자 지적 「토큰이 너무 많이 필요해지는 거 아니야?」. 범위가 「다섯 값 중 하나」라 묶을 수가 없었다. 결정(2026-09-29 오후): ① 발급 때 범위를 **여러 개 골라** 한 토큰에 묶는다 ② 커뮤니티 **검색·읽기** 창구를 토큰에 연다 ③ 비서에서 커뮤니티 글을 검색해 바로 연다(조각 B·C) ④ 메신저는 별도 기획.
+
+**원자 여섯(`Authz::TOKEN_SCOPE_ATOMS` — 순서 = 정규화 순서).**
+
+| 원자 | 여는 것(라우트 정책) | 조건 |
+|---|---|---|
+| `read` | `file.read` — 파일 목록·검색·내려받기·폴더 목록 | 파일 원자의 바닥 |
+| `upload` | `file.upload` · `file.update` — 올리기·폴더 만들기/이름/이동·파일 이동 | `read` 필요 |
+| `delete` | `file.delete` — 파일·폴더 지우기(개인 토큰만 — 4.6) | `read` + `upload` 필요 |
+| `community.read` | `community.read` — 커뮤니티 토큰 창구 중 읽기(검색 · 공간 목록 · 한 공간의 목록 · 내 개인 공간 · 한 페이지) | 독립 |
+| `community.write` | `community.write` — `POST /community/api/pages`(4.8) + 읽기 포함 | 독립. 붙으면 정규화가 `community.read` 를 **덧붙인다** |
+| `session.open` | `session.open` — 1회용 로그인 링크(4.9) | 독립. 붙으면 `bound_ip` 필수 · 사람당 살아 있는 것 하나 · **그 토큰의 모든 창구가 묶인 IP 밖에서 401** |
+
+`authenticated`(`GET /api/whoami`)는 원자가 전부 아는 것이면 참이다. 모르는 조각이 하나라도 있으면(빈 글자 포함) **모든 정책에서 거짓**(닫힌 실패).
+
+**정규화 `Authz::normalizeScope(array|string): string`.** ① 배열(원소 16개 이하 · 전부 문자열) 또는 `+` 로 이은 문자열(옛 값 호환) ② 원소마다 원자 표 안의 글자(대소문자 그대로 — `READ` 는 모르는 원자) ③ 겹침은 하나로 · 빈 집합 거부 ④ `community.write` → `community.read` 덧붙임 ⑤ 의존 확인(`upload` → `read` · `delete` → `read`+`upload`) — 모자라면 **거부**(자동으로 채우지 않는다: 사용자가 고른 것보다 넓은 토큰을 조용히 만들지 않는다. 채우는 것은 화면의 체크 연동) ⑥ 표 순서로 정렬해 `+` 로 잇는다. 거부는 `InvalidArgumentException` 하나 → 발급 창구 400 `bad_request`(통일 문구 「잘못된 요청입니다」 · 비밀번호·코드 확인 **전** · 실패로 세지 않음).
+옛 다섯 값 중 넷(`read` · `read+upload` · `read+upload+delete` · `session.open`)은 정규형과 글자까지 같다. `community.write` 한 원자는 마이그레이션이 `community.read+community.write` 로 바꾸고, 판정은 옛 글자가 와도 쓰기를 읽기로 인정한다(이중 안전).
+
+**판정 `Authz::tokenScopeAllows(scope, policy)` — 서명 불변.** `explode('+')` → 집합 → 위 표. 역할을 보지 않는다. 의존은 판정이 다시 보지 않는다 — 발급이 지키고, DB 에 의존이 깨진 행이 직접 들어와도(예: `upload` 한 원자) 그 행은 **가진 원자만큼만** 연다(`file.read` 거짓 — 넓어지지 않는다).
+
+**고를 수 있는 원자 `Authz::tokenScopesFor($u)` → `GET /api/me` 의 `token_scopes`.** `read` 언제나 · `upload`·`delete` = `uploadableLevels($u) !== []`(옛 사다리 규칙 그대로) · `community.read`·`community.write` = `canCommunityWrite($u)`(커뮤니티 읽기 전용 판정 함수는 없다 — `authorize('community.read')` 는 「로그인했으면 참」이라 Guest 도 참이므로 지시서대로 쓰기 자격과 같은 판정, Guest 0) · `session.open` = `canOpenSessionByToken($u)`. 옛 상수 `FILE_TOKEN_SCOPES`·`TOKEN_SCOPES` 는 지웠다(두 진실 방지).
+
+**왜 TEXT 한 열을 유지했나.** 조회 경로(`WHERE token_hash = … AND revoked_at IS NULL`)가 그대로이고, 열·표 추가 0 · 권한 변경 0 · 옛 값 넷은 행 변경 0 이라 마이그레이션이 가장 작다. 배열 열(`text[]`)이나 원자 표로 가면 모든 조회·감사(`token_scope` 문자열)·화면이 함께 바뀐다. **CHECK 는 포함 여부만** 본다(`scope <> '' AND string_to_array(scope,'+') <@ ARRAY[원자 여섯]`) — 순서·의존은 앱이 보고 DB 는 마지막 그물이다(6.2-5). IP 짝은 `('session.open' = ANY (string_to_array(scope,'+'))) = (bound_ip IS NOT NULL)`, 사람당 하나는 같은 식의 부분 유일 인덱스(`api_tokens_one_session_open`). 마이그레이션 `2026-10-13_api_tokens_multi_scope.sql`(트랜잭션 하나 · 모르는 값이 있으면 RAISE · 멱등 · 되돌리기 절). **배포 순서는 코드 → 마이그레이션**(새 코드가 옛 값을 그대로 읽는다 — 거꾸로면 그 사이 옛 코드가 `community.read+community.write` 를 몰라 글쓰기 토큰이 403).
+
+**IP 묶음의 확장 — `Auth::requireApiToken`.** `SQL_FIND_API_TOKEN` 이 `ip_ok = (bound_ip IS NULL OR COALESCE(bound_ip = 지금 IP, false))` 를 함께 읽는다(비교는 DB · 지금 IP 는 `Http::clientIp()` 하나). 판정 순서: 만료 401 → **IP 401 `token_ip_mismatch`**(`{"error":…,"code":"token_ip_mismatch"}` + `auth.token deny ip_mismatch` — detail `token_id`·`token_scope`, 요청 IP 는 행의 ip 칸) → 계정 4조건. 계정보다 앞이라 틀린 곳의 요청으로는 계정을 읽지 않는다. 4.9 의 「고정 PC 에서만」 규칙이 그 토큰의 파일·커뮤니티 창구에도 똑같이 걸린다(사용자 결정의 자연스러운 확장). **예외 하나** — 링크 창구(`Auth::SESSION_LINK_ROUTE` = `POST /api/me/session-link`, 라우터가 매칭한 패턴 `TBOX_ROUTE` 와 견줌)에서는 `requireApiToken` 이 끝내지 않고 같은 판정 값(`Auth::apiTokenIpOk()`)만 넘긴다 — 링크 창구가 분당 셈(RV-QF9-4) 뒤에 Q:F-9 의 답(403 `ip_mismatch` · `session.link deny` · AL-24)으로 끝낸다. 판정 코드는 한 벌이다(링크 창구의 IP SQL 은 지웠다). 경보 AL-24 는 `session.link`·`auth.token` 두 행동의 `deny ip_mismatch` 를 토큰마다 함께 센다(10분 3회).
+토큰 출신 세션의 판정(`SQL_LOOKUP` — 그 토큰이 살아 있고 session.open 원자가 있다)·링크 교환(`token_ok`)·1대 규칙 회수·상한 셈(`n_other`)은 전부 `'session.open' = ANY (string_to_array(scope,'+'))` 한 모양이다. 토큰 세션의 제한(유휴 10분 · 재인증 집합)은 불변.
+**1대 규칙은 지금 그대로다** — session.open 원자가 든 토큰을 새로 받으면 같은 사람의 앞 session.open 원자 토큰(다른 원자가 섞였어도)이 **전부 회수**되고 응답에 `revoked_previous` 가 온다(409 는 발급 둘이 겹칠 때뿐). PC 를 바꾸는 것이 곧 묶음 전체를 바꾸는 일이다.
+
+**커뮤니티 토큰 창구 여섯(`COMMUNITY_API_TOKEN_ROUTES`).** 4.8 의 셋(`GET /api/me/space` · `POST /api/pages` · `GET /api/pages/{id}`)에 읽기 셋: `GET /api/search`(검색 — 비서 「커뮤니티 검색」 · MCP `qaredi_search_pages`) · `GET /api/pages`(한 공간의 목록 `?space=`) · `GET /api/spaces`(내가 볼 수 있는 공간). 정책은 라우트 표 값 그대로(`community.read`), 핸들러는 한 글자도 바뀌지 않았다 — 행 관문(검색 `community_search_pages_where` — 관리자 갈래 끔 · 목록 `community_visible_pages_where` · 공간 `community_space_gate`)이 세션과 **같은 코드**이고, 수락 시험이 같은 사람의 토큰·세션 답을 본문까지 대조한다. 여전히 닫힌 것: 고치기·지우기·옮기기·공개 범위·공유·인계·댓글·게시·즐겨찾기·최근 기록(표 밖 — 헤더를 읽지 않는다 → 세션 없음 401).
+비서의 「검색 결과 열기」는 링크 교환의 `?to=/community/p/<id>` — `Http::returnPath` 허용 목록에 이미 있다(Http.php 변경 0).
+
+**응답 칸.** 발급 201·내 목록·관리자 목록의 행: `scope`(정규형 문자열) + **`scopes`**(원자 배열 — 화면·비서가 쪼개지 않게). `GET /api/whoami`(토큰 전용): 키 넷 + **`token_scope`**(이 토큰이 쥔 범위 — 정규형) · **`token_scopes_held`**(그 원자 배열). 공용(.env) 토큰은 `read+upload`(4.7 이행 규칙). `GET /api/me`(세션)의 `token_scopes` 는 「고를 수 있는」 원자 — 이름이 다르다(API.md 21장 표).
+
+**화면.** `/settings` 발급 창의 범위 `<select>` 를 app.js 가 원자마다 체크박스 묶음(`div.field` role=group · 줄마다 기존 `.field__label` 체크박스 줄 — 새 클래스·색값 0)으로 바꾼다. 체크 연동: 올리기 → 읽기 · 지우기 → 읽기·올리기 · 커뮤니티 글쓰기 → 커뮤니티 읽기(끄면 기대는 원자도 끈다) — 편의일 뿐 규칙은 서버가 다시 본다. 「이 PC 로그인」 을 고르면 도움말에 「이 토큰의 다른 범위도 그 IP 에서만 통합니다」. 목록 칸은 원자 라벨을 「·」 로 잇는다(관리자 목록도 같은 함수).
+
+**남는 위험(R-114).** 묶음 토큰 하나가 새면 묶인 만큼 한꺼번에 열린다. 완화: 사용자가 고른 만큼만(서버가 고를 수 있는 원자로 다시 막는다) · session.open 이 들면 IP 묶음이 **전부**에 걸린다 · 만료 180일 · 회수 한 번에 전부 · 발급마다 비밀번호+2단계 · 경보 AL-20(발급)·AL-24(IP 밖 사용).
 
 ## 5. 네 가지 흐름 — 순서대로, 권한 검사 위치 표시
 
@@ -1953,11 +1998,21 @@ CREATE TABLE api_tokens (
     reason_text  TEXT        CHECK (reason_text IS NULL OR length(reason_text) <= 500),
     -- F-66 (2026-09-22): 범위·만료. 마이그레이션 2026-09-22_api_tokens_scope_expiry.sql (기존 행은 read+upload+delete · created_at+180일)
     -- Q:F-8 (2026-09-28): 넷째 값 community.write(독립 값 · 커뮤니티 창구 셋). 마이그레이션 2026-10-11_api_tokens_scope_community.sql (ARCH 4.8)
-    --   db/schema.sql 도 같은 네 값이다(메인 결정 2026-09-28 — 새 설치는 마이그레이션 없이 이 모양)
-    scope        TEXT        NOT NULL CHECK (scope IN ('read','read+upload','read+upload+delete','community.write')),
-    expires_at   TIMESTAMPTZ NOT NULL           -- 발급 + 180일 고정 (ARCH 4.7)
+    --   db/schema.sql 도 같은 모양이다(메인 결정 2026-09-28 — 새 설치는 마이그레이션 없이 이 모양)
+    -- Q:F-9 (2026-09-29): 다섯째 값 session.open + bound_ip INET. 마이그레이션 2026-10-12_session_open.sql (ARCH 4.9)
+    -- Q:F-10 (2026-09-29): 범위 = 원자 집합(+ 로 이은 정규형). CHECK 는 원자 포함 여부만 · 순서·의존은 앱. 마이그레이션 2026-10-13_api_tokens_multi_scope.sql (ARCH 4.10)
+    scope        TEXT        NOT NULL,
+    expires_at   TIMESTAMPTZ NOT NULL,          -- 발급 + 180일 고정 (ARCH 4.7)
+    bound_ip     INET,                          -- session.open 원자가 든 토큰만 (ARCH 4.9 · 4.10)
+    CONSTRAINT api_tokens_scope_check
+        CHECK (scope <> '' AND string_to_array(scope, '+')
+               <@ ARRAY['read','upload','delete','community.read','community.write','session.open']::text[]),
+    CONSTRAINT api_tokens_bound_ip_check
+        CHECK (('session.open' = ANY (string_to_array(scope, '+'))) = (bound_ip IS NOT NULL))
 );
 CREATE INDEX api_tokens_user_idx ON api_tokens (user_id);
+CREATE UNIQUE INDEX api_tokens_one_session_open ON api_tokens (user_id)
+    WHERE 'session.open' = ANY (string_to_array(scope, '+')) AND revoked_at IS NULL;   -- 사람당 살아 있는 로그인 전용 하나
 -- 권한: tbox_app 에 SELECT, INSERT, UPDATE 만 (DELETE 없음 — 회수는 revoked_at). 시퀀스 USAGE, SELECT.
 ```
 

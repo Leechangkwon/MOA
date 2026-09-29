@@ -327,21 +327,30 @@ CREATE TABLE api_tokens (
     --   그 토큰이 묶인 공인 IP `bound_ip`(발급 때 서버가 본 Http::clientIp() — 요청 값 아님). 로그인 전용 토큰은 언제나
     --   IP 에 묶이고 다른 범위에는 IP 가 없다(api_tokens_bound_ip_check). 제약 이름은 마이그레이션
     --   db/migrations/2026-10-12_session_open.sql 과 같다(`api_tokens_scope_check` 는 지우고 다시 거는 이름이라 명시).
+    -- Q:F-10 (2026-09-29, ARCH 4.10): 범위는 **원자 집합** — 원자 여섯(read · upload · delete · community.read ·
+    --   community.write · session.open)을 정규화 순서로 `+` 로 이은 문자열(Authz::normalizeScope). 열은 그대로 TEXT 한 열
+    --   (조회 경로 불변 · 마이그레이션 최소). CHECK 는 **원자 포함 여부만** 본다 — 순서·의존(upload 는 read · delete 는
+    --   read+upload · community.write 는 community.read 를 덧붙임)은 앱이 본다. DB 는 마지막 그물이고(ARCH 6.2-5) 판정
+    --   (Authz::tokenScopeAllows)은 행이 가진 원자만큼만 연다 — 의존이 깨진 행이 직접 들어와도 넓어지지 않는다.
+    --   session.open 원자가 들면 IP 에 묶이고(bound_ip_check) 사람당 살아 있는 것 하나(api_tokens_one_session_open).
+    --   db/migrations/2026-10-13_api_tokens_multi_scope.sql 과 같은 모양이다(제약·인덱스 이름 같음).
     scope        TEXT        NOT NULL,
     expires_at   TIMESTAMPTZ NOT NULL,
     bound_ip     INET,
     CONSTRAINT api_tokens_scope_check
-        CHECK (scope IN ('read', 'read+upload', 'read+upload+delete', 'community.write', 'session.open')),
+        CHECK (scope <> '' AND string_to_array(scope, '+')
+               <@ ARRAY['read','upload','delete','community.read','community.write','session.open']::text[]),
     CONSTRAINT api_tokens_bound_ip_check
-        CHECK ((scope = 'session.open') = (bound_ip IS NOT NULL))
+        CHECK (('session.open' = ANY (string_to_array(scope, '+'))) = (bound_ip IS NOT NULL))
 );
 -- token_hash 의 UNIQUE 가 조회 인덱스를 겸한다
 -- (`WHERE token_hash = … AND revoked_at IS NULL` 이 유일한 조회 경로 — ARCH 6.2-5)
 CREATE INDEX api_tokens_user_idx ON api_tokens (user_id);
 
 -- Q:F-9 검토 RV-QF9-2 — 한 사람의 살아 있는 로그인 전용 토큰은 하나(1대 규칙을 DB 가 지킨다 · 마이그레이션과 같은 이름)
+-- Q:F-10 — 「로그인 전용」 = session.open 원자가 든 토큰(다른 원자가 섞여도)
 CREATE UNIQUE INDEX api_tokens_one_session_open
-    ON api_tokens (user_id) WHERE scope = 'session.open' AND revoked_at IS NULL;
+    ON api_tokens (user_id) WHERE 'session.open' = ANY (string_to_array(scope, '+')) AND revoked_at IS NULL;
 
 -- Q:F-9 — sessions.token_id 의 외래 키(sessions 가 api_tokens 보다 먼저 만들어져 여기서 건다 · 이름은 마이그레이션과 같다)
 ALTER TABLE sessions

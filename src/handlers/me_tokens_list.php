@@ -52,6 +52,8 @@ foreach ($rows as $row) {
         // F-66 — 화면의 「용도」 열. DB 는 F-59 와 같은 reason_text 열이다.
         'purpose'      => $row['reason_text'] === null ? null : (string) $row['reason_text'],
         'scope'        => (string) $row['scope'],
+        // Q:F-10 — 같은 범위를 원자 배열로(화면이 문자열을 쪼개지 않게 · ARCH 4.10). 판정에는 쓰지 않는다.
+        'scopes'       => Authz::scopeAtoms((string) $row['scope']),
         'created_at'   => (string) $row['created_at'],
         'expires_at'   => (string) $row['expires_at'],
         // 회수된 토큰에도 그대로 둔다 — 화면의 「상태」 열이 회수를 먼저 보인다.

@@ -3,8 +3,9 @@
 Claude Desktop · Claude Code 가 이 프로그램을 띄워 표준입출력으로 말한다. 그래서 **표준출력에는
 아무것도 찍지 않는다**(프로토콜이 깨진다). 토큰·본문은 어디에도 찍지 않는다.
 
-도구 셋
-  qaredi_whoami()                       토큰의 계정 이름·역할
+도구 넷
+  qaredi_whoami()                       토큰의 계정 이름·역할(서버가 주면 이 토큰의 범위도)
+  qaredi_search_pages(q, limit=10)      커뮤니티 검색 → 「제목 — 공간 — snippet — id」 줄 (Q:F-10)
   qaredi_write_page(title, markdown)    Markdown → 블록 문서 → 내 개인 공간에 **비공개** 페이지
   qaredi_read_page(id)                  페이지 → Markdown (고치기 창구는 없다 — 새 페이지로 다시 쓴다)
 """
@@ -36,6 +37,14 @@ def _get_client() -> QarediClient:
     return _client
 
 
+def _run_text(fn, *args: Any) -> str:
+    """글자를 그대로 돌려주는 도구용 — 오류 갈래는 `_run` 과 같다(토큰·본문 없는 ToolError)."""
+    try:
+        return fn(_get_client(), *args)
+    except QarediError as exc:
+        raise ToolError(str(exc)) from None
+
+
 def _run(fn, *args: Any) -> str:
     try:
         result = fn(_get_client(), *args)
@@ -49,8 +58,8 @@ def _run(fn, *args: Any) -> str:
 @mcp.tool(
     name="qaredi_whoami",
     description=(
-        "Qaredi 토큰이 누구의 것인지(계정 이름·역할) 확인한다. 토큰 값은 돌려주지 않는다.\n"
-        "Show which Qaredi account (username, role) the configured token belongs to. Never returns the token."
+        "Qaredi 토큰이 누구의 것인지(계정 이름·역할, 서버가 알려 주면 토큰이 가진 범위 token_scopes_held) 확인한다. 토큰 값은 돌려주지 않는다.\n"
+        "Show which Qaredi account (username, role, and the token's scopes if the server reports them) the configured token belongs to. Never returns the token."
     ),
     annotations=ToolAnnotations(
         title="Qaredi: 나는 누구", readOnlyHint=True, destructiveHint=False, idempotentHint=True, openWorldHint=True
@@ -58,6 +67,24 @@ def _run(fn, *args: Any) -> str:
 )
 def qaredi_whoami() -> str:
     return _run(lambda c: c.whoami_summary())
+
+
+@mcp.tool(
+    name="qaredi_search_pages",
+    description=(
+        "Qaredi 커뮤니티에서 내가 볼 수 있는 페이지를 검색한다. 한 줄에 한 건: 「제목 — 공간 — snippet — id」. "
+        "id 는 qaredi_read_page 로 읽는다. 토큰 범위에 커뮤니티 읽기가 없으면 그 까닭 문장을 돌려준다.\n"
+        "Search Qaredi community pages I may see; one line per hit: title — space — snippet — id (read with qaredi_read_page)."
+    ),
+    annotations=ToolAnnotations(
+        title="Qaredi: 페이지 검색", readOnlyHint=True, destructiveHint=False, idempotentHint=True, openWorldHint=True
+    ),
+)
+def qaredi_search_pages(
+    q: Annotated[str, Field(description="찾을 말 (1~100자) · search text")],
+    limit: Annotated[int, Field(description="최대 건수 1~20 (기본 10) · max results", ge=1, le=20)] = 10,
+) -> str:
+    return _run_text(lambda c, qq, n: c.search_pages_text(qq, n), q, limit)
 
 
 @mcp.tool(

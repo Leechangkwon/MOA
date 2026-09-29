@@ -355,7 +355,8 @@ ME_SCOPES=$(jq_py "','.join(d.get('token_scopes',[]))" < "$WORK/me.json")
 ME_CAN=$(jq_py "str(d.get('can_issue_tokens','없음'))" < "$WORK/me.json")
 note "claude_employee01 token_scopes=[${ME_SCOPES:-?}] · can_issue_tokens=${ME_CAN:-?}"
 # Q:F-8(2026-09-28) — 쓰기 자격 있는 역할의 선택지 끝에 독립 값 community.write 가 붙는다(ARCH 4.8 · 이 조각이 의도한 값)
-expect "준비 /api/me token_scopes (Employee 파일 셋 + community.write)" "read,read+upload,read+upload+delete,community.write" "${ME_SCOPES:-없음}"
+# Q:F-10(2026-09-29) — token_scopes 는 고를 수 있는 **원자**(2단계가 켜진 Employee 라 session.open 까지 — ARCH 4.10)
+expect "준비 /api/me token_scopes (Employee — 원자 여섯)" "read,upload,delete,community.read,community.write,session.open" "${ME_SCOPES:-없음}"
 expect "준비 /api/me can_issue_tokens (2단계 켜짐)" "True" "${ME_CAN:-없음}"
 
 # ─── (a) 발급 ────────────────────────────────────────────────────
@@ -388,8 +389,9 @@ else
   expect "내 목록 상태" "200" "$(code_of "$R")"
   printf '%s' "$(body_of "$R")" > "$WORK/list.json"
   expect "내 목록에 그 행" "1" "$(jq_py "sum(1 for t in d['tokens'] if str(t['id'])=='$A_TID')" < "$WORK/list.json")"
+  # Q:F-9 가 bound_ip, Q:F-10 이 scopes(원자 배열)를 더했다(API.md 13장 · 21장)
   expect "내 목록 행의 키" \
-    "created_at,expires_at,expires_soon,hint,id,last_used_at,name,purpose,revoked_at,scope" \
+    "bound_ip,created_at,expires_at,expires_soon,hint,id,last_used_at,name,purpose,revoked_at,scope,scopes" \
     "$(jq_py "','.join(sorted(d['tokens'][0].keys())) if d['tokens'] else '(빈 목록)'" < "$WORK/list.json")"
   expect "내 목록에 token 키 없음" "0" "$(grep -c '"token"' "$WORK/list.json")"
   expect "방금 발급한 토큰 expires_soon:false" "False" \
@@ -904,8 +906,8 @@ else
   else
     note "재인증: claude_admin01 → $(reauth claude_admin01 "$ADM_CSRF")"
     curl -s -b "$JAR_DIR/claude_admin01.jar" -A "$UA" "$BASE/api/users/$EMP_UID/api-tokens" > "$WORK/alist.json"
-    expect "(f) 관리자 목록 행의 키 (scope·expires_at 추가)" \
-      "created_at,expires_at,hint,id,last_used_at,name,revoked_at,scope" \
+    expect "(f) 관리자 목록 행의 키 (scope·expires_at · Q:F-9 bound_ip · Q:F-10 scopes 추가)" \
+      "bound_ip,created_at,expires_at,hint,id,last_used_at,name,revoked_at,scope,scopes" \
       "$(jq_py "','.join(sorted(d['tokens'][0].keys())) if d.get('tokens') else '(빈 목록)'" < "$WORK/alist.json")"
     expect "(f) 관리자 목록에 token 키 없음" "0" "$(grep -c '"token"' "$WORK/alist.json")"
   fi

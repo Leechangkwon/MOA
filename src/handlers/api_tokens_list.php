@@ -63,6 +63,8 @@ foreach ($rows as $row) {
         // F-66 (ARCH 4.7 「관리자 창구」) — 범위·만료. 관리자는 남의 토큰이 무엇을 할 수
         // 있고 언제까지 사는지를 봐야 회수를 판단할 수 있다. 발급은 본인만 한다.
         'scope'        => (string) $row['scope'],
+        // Q:F-10 — 같은 범위를 원자 배열로(화면이 문자열을 쪼개지 않게 · ARCH 4.10). 판정에는 쓰지 않는다.
+        'scopes'       => Authz::scopeAtoms((string) $row['scope']),
         'created_at'   => (string) $row['created_at'],
         'expires_at'   => (string) $row['expires_at'],
         'last_used_at' => $row['last_used_at'] === null ? null : (string) $row['last_used_at'],

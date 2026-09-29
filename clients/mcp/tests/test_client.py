@@ -27,6 +27,14 @@ TOKEN = "tok_TEST_0123456789abcdef_SECRET"
 PAGE_ID = "1b4e28ba-2fa1-41d2-883f-0016d3cca427"
 BODY_SECRET = "본문에만있는문장XYZ"
 WRONG_TOKEN = "wrong_token_value_123"
+PAGE_ID2 = "2c5f39cb-3fb2-42e3-994f-1127e4ddb538"
+SEARCH_RESULTS = [
+    {"id": PAGE_ID, "title": "주간 회의", "icon": None, "space": {"kind": "personal", "name": "내 공간"},
+     "path": [], "snippet": "이번 주\n회의 내용", "in_title": True},
+    {"id": "not-a-uuid", "title": "버려질 행", "space": {"kind": "team"}, "snippet": "", "in_title": False},
+    {"id": PAGE_ID2.upper(), "title": "회의록\r\n둘째", "icon": "📝", "space": {"kind": "team", "name": ""},
+     "path": [{"id": PAGE_ID, "title": "주간 회의"}], "snippet": "", "in_title": True},
+]
 
 
 class Fake(BaseHTTPRequestHandler):
@@ -69,6 +77,10 @@ class Fake(BaseHTTPRequestHandler):
         if self.command == "GET" and self.path == "/community/api/pages/" + PAGE_ID:
             return self._send(200, {"page": {"id": PAGE_ID, "title": "t", "visibility": "private", "doc": {
                 "schema": 1, "blocks": [{"id": "a", "type": "heading", "level": 2, "text": [{"t": "안녕", "m": {}}]}]}}})
+        if self.command == "GET" and self.path.startswith("/community/api/search?"):
+            from urllib.parse import parse_qs, urlsplit
+            q = parse_qs(urlsplit(self.path).query).get("q", [""])[0]
+            return self._send(200, {"q": q, "comments": [], "results": SEARCH_RESULTS})
         return self._send(404, {"error": "찾을 수 없습니다"})
 
     do_GET = do_POST = do_PATCH = do_DELETE = _handle
@@ -170,6 +182,76 @@ class ClientTest(unittest.TestCase):
         self.assertEqual(cm.exception.status, 401)
         self.assertNotIn("wrong_token_value_123", str(cm.exception))
         self.assertNoSecret(str(cm.exception))
+
+    # ── Q:F-10 조각 C — 검색 · whoami 범위 ──────────────────────────────────
+
+    def test_search_lines_and_request(self):
+        out = self.c.search_pages_text("회의 & 결정/../x?y=1", 10)
+        self.assertEqual(out.split("\n"), [
+            "주간 회의 — 내 공간 — 이번 주 회의 내용 — " + PAGE_ID,
+            "회의록 둘째 — team —  — " + PAGE_ID2,
+        ])
+        self.assertEqual(len(Fake.hits), 1)
+        method, path, headers, body = Fake.hits[0]
+        self.assertEqual(method, "GET")
+        # 검색어는 쿼리 값 하나로만 — 경로는 고정, 특수 문자는 인코딩된다
+        self.assertTrue(path.startswith("/community/api/search?q="))
+        self.assertNotIn("/../", path)
+        self.assertEqual(path.count("?"), 1)
+        self.assertNotIn("&", path)
+        self.assertEqual(headers.get("x-api-token"), TOKEN)
+        self.assertEqual(body, b"")
+        self.assertNoSecret(out)
+
+    def test_search_limit_and_empty(self):
+        self.assertEqual(self.c.search_pages_text("회의", 1).count("\n"), 0)
+        self.assertEqual(self.c.search_pages_text("회의", 0).count("\n"), 0)       # 1 로 올린다
+        self.assertEqual(self.c.search_pages_text("회의", 999).count("\n"), 1)     # 20 으로 내린다(결과는 둘)
+        Fake.hits = []
+        self.assertIn("비었습니다", self.c.search_pages_text("  \n\t ", 10))
+        self.assertEqual(Fake.hits, [])                                             # 빈 말은 부르지 않는다
+        long_q = "가" * 300
+        self.c.search_pages_text(long_q, 10)
+        from urllib.parse import parse_qs, urlsplit
+        self.assertEqual(parse_qs(urlsplit(Fake.hits[0][1]).query)["q"][0], "가" * 100)
+
+    def test_search_no_results(self):
+        global SEARCH_RESULTS
+        old = SEARCH_RESULTS
+        try:
+            SEARCH_RESULTS = []
+            self.assertIn("검색 결과가 없습니다", self.c.search_pages_text("없는말", 10))
+        finally:
+            SEARCH_RESULTS = old
+
+    def test_search_scope_403_is_text_not_exception(self):
+        # 계약 모양 {"error":"token_scope"} · 서버 실제 모양(한국어 문구) 둘 다
+        for body in ({"error": "token_scope"}, {"error": "이 토큰의 범위에 없는 창구입니다 — 범위가 더 넓은 토큰을 발급하세요"}):
+            with self.subTest(body=body):
+                Fake.mode["/community/api/search?q=%ED%9A%8C%EC%9D%98"] = (403, body)
+                out = self.c.search_pages_text("회의", 10)
+                self.assertIsInstance(out, str)
+                self.assertIn("HTTP 403", out)
+                self.assertIn(body["error"], out)
+                self.assertNoSecret(out)
+                self.assertIn("커뮤니티 읽기", out)                   # 무엇이 필요한지 말한다
+
+    def test_search_other_errors_raise_without_token(self):
+        bad = QarediClient(self.base, WRONG_TOKEN, timeout=5)
+        with self.assertRaises(QarediError) as cm:
+            bad.search_pages_text("회의", 10)
+        self.assertEqual(cm.exception.status, 401)
+        self.assertNotIn(WRONG_TOKEN, str(cm.exception))
+
+    def test_whoami_scopes_held_when_present(self):
+        Fake.mode["/tbox/api/whoami"] = (200, {"username": "claude_employee01", "role": "Employee",
+                                               "token_scope": "read+community.read",
+                                               "token_scopes_held": ["read", "community.read"]})
+        out = self.c.whoami_summary()
+        self.assertEqual(out, {"username": "claude_employee01", "role": "Employee",
+                               "token_scopes_held": ["read", "community.read"]})
+        Fake.mode["/tbox/api/whoami"] = (200, {"username": "u", "role": "Employee", "token_scopes_held": "read"})
+        self.assertNotIn("token_scopes_held", self.c.whoami_summary())   # 배열이 아니면 싣지 않는다
 
     def test_redirect_not_followed(self):
         Fake.mode["/tbox/api/whoami"] = (302, {"error": "x"}, {"Location": self.base + "/community/api/me/space"})

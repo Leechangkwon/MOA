@@ -394,9 +394,9 @@ HTTP/1.1 200 OK
 | 메서드·경로 | `GET /api/whoami` |
 | 인증 | 헤더 **`X-API-Token: <토큰>`** 하나. **세션 쿠키는 받지 않는다** — 화면이 쓰지 않는 토큰 전용 창구라(7장과 같은 갈래), 로그인해 둔 브라우저로 불러도 헤더가 없으면 401 이다. 토큰 값은 서버의 `.env` 에만 있다(`cat .env` 로 확인, 문서·채팅·소스에 적지 않는다) |
 | 요청 | 본문·파라미터 없음 |
-| 성공 | `200` `{"username":"…","role":"…","team_id":<정수 또는 null>,"upload_levels":["public","internal",…]}` — 키는 **정확히 이 넷**, 이 순서다. 대상은 `.env` `API_TOKEN_USER` 의 귀속 계정이고, `upload_levels` 는 3장 `GET /api/me` 의 같은 이름 값과 **원소·순서까지 같다**(같은 함수 `Authz::uploadableLevels`) |
+| 성공 | `200` `{"username":"…","role":"…","team_id":<정수 또는 null>,"upload_levels":["public","internal",…],"token_scope":"<정규형>","token_scopes_held":["<원자>",…]}` — 키는 **정확히 이 여섯**(F-56 의 넷 + **Q:F-10 의 둘** — 이 토큰이 **쥔** 범위, 21장), 이 순서다. 대상은 `.env` `API_TOKEN_USER` 의 귀속 계정이고, `upload_levels` 는 3장 `GET /api/me` 의 같은 이름 값과 **원소·순서까지 같다**(같은 함수 `Authz::uploadableLevels`) |
 | 실패 | `401` `{"error":"X-API-Token 헤더가 없습니다"}`(헤더 없음 — 세션 쿠키만 보내도 같다) · `401` `{"error":"API 토큰이 올바르지 않습니다"}`(값이 틀림, 세션으로 되돌아가지 않는다) · `503`(서버에 토큰이 설정되지 않음·귀속 계정이 잘못됨). 문구·상태는 7장과 **한 글자도 같다** |
-| 넣지 않는 것 | `csrf_token`(세션이 없으니 뜻이 없다) · `can_*`·`next`·`acting*`·`team_name` 같은 화면 편의 값 · 세션 정보 · 내부 id · **토큰 값**. 넷 밖의 키는 하나도 오지 않는다 |
+| 넣지 않는 것 | `csrf_token`(세션이 없으니 뜻이 없다) · `can_*`·`next`·`acting*`·`team_name` 같은 화면 편의 값 · 세션 정보 · 내부 id · **토큰 값**. 여섯 밖의 키는 하나도 오지 않는다 |
 | 감사 | 성공은 감사 행을 남기지 않는다(대상 없는 조회, `GET /api/me` 와 같다). 실패는 `auth.token deny`(`missing_header`·`bad_token`·`not_configured`·`user_invalid`) 로 남는다 |
 
 ```bash
@@ -580,9 +580,9 @@ F-66(2026-09-22)에서 세 가지가 바뀌었다.
 | 항목 | 내용 |
 |---|---|
 | 인증 | 세션 쿠키 + `X-CSRF-Token`(POST·DELETE). **로그인한 본인**이면 누구나(정책 `authenticated`) — 재인증 관문은 없다. 대상은 언제나 세션의 본인이고 요청에 계정을 받지 않는다 |
-| 목록 | `GET /api/me/api-tokens` → `200 {"tokens":[{"id":<정수>,"name":"…","hint":"<앞 6자>","purpose":"…|null","scope":"read|read+upload|read+upload+delete","created_at":"…","expires_at":"…","expires_soon":<true/false>,"last_used_at":"…|null","revoked_at":"…|null"}]}` — **토큰 값은 없다**. `expires_soon` 은 만료가 14일 안인가(화면이 안내 줄을 켜는 값) |
-| 발급 | `POST /api/me/api-tokens` JSON **허용 키 다섯** `{"name":"<1~50자>","purpose":"<필수, 500자>","scope":"<아래 셋 중 하나>","password":"<현재 비밀번호>","otp":"<6자리>"}` → `201 {"id":<정수>,"name":"…","hint":"…","scope":"…","expires_at":"…","token":"<48자>"}`. **`token` 은 이 응답에만 나온다** — 서버는 sha256 만 저장하므로 다시 보여 줄 수 없다. 잃으면 회수하고 새로 발급한다 |
-| 고를 수 있는 범위 | `read`(읽기만) · `read+upload`(읽기 + 올리기) · `read+upload+delete`(읽기 + 올리기 + 지우기) · **`community.write`**(커뮤니티 글쓰기 — 19장 · Q:F-8 2026-09-28 · 파일 창구 없음 · 커뮤니티에 쓸 수 있는 역할만). **역할이 허용하는 것만** 고를 수 있다 — 올릴 수 없는 역할(Guest)은 `read` 하나뿐이다. 그 목록은 `GET /api/me` 의 `token_scopes` 이고, 발급 폼을 보일지는 `can_issue_tokens`(= 2단계 인증이 켜졌나)가 정한다 |
+| 목록 | `GET /api/me/api-tokens` → `200 {"tokens":[{"id":<정수>,"name":"…","hint":"<앞 6자>","purpose":"…|null","scope":"<정규형 — 21장>","scopes":["<원자>",…],"created_at":"…","expires_at":"…","expires_soon":<true/false>,"last_used_at":"…|null","revoked_at":"…|null"}]}` — **토큰 값은 없다**. `expires_soon` 은 만료가 14일 안인가(화면이 안내 줄을 켜는 값) |
+| 발급 | `POST /api/me/api-tokens` JSON **허용 키 다섯** `{"name":"<1~50자>","purpose":"<필수, 500자>","scope":["<원자>",…],"password":"<현재 비밀번호>","otp":"<6자리>"}`(Q:F-10 — `scope` 는 **원자 배열**, 옛 문자열 `"read+upload"` 도 받는다 · 21장) → `201 {"id":<정수>,"name":"…","hint":"…","scope":"<정규형>","scopes":["<원자>",…],"expires_at":"…","token":"<48자>"}`. **`token` 은 이 응답에만 나온다** — 서버는 sha256 만 저장하므로 다시 보여 줄 수 없다. 잃으면 회수하고 새로 발급한다 |
+| 고를 수 있는 범위 | **Q:F-10(2026-09-29) 부터 원자 여섯을 골라 묶는다** — `read`(파일 읽기) · `upload`(올리기 — `read` 필요) · `delete`(지우기 — `read`·`upload` 필요) · `community.read`(커뮤니티 검색·읽기) · `community.write`(커뮤니티 글쓰기 — 읽기를 덧붙임) · `session.open`(이 PC 로그인 — 20장). 규칙·판정 표는 **21장**. (옛 표기: `read` · `read+upload` · `read+upload+delete` · `community.write` — 그대로 받는다.) **역할이 허용하는 것만** 고를 수 있다 — 올릴 수 없는 역할(Guest)은 `read` 하나뿐이다. 그 목록은 `GET /api/me` 의 `token_scopes` 이고, 발급 폼을 보일지는 `can_issue_tokens`(= 2단계 인증이 켜졌나)가 정한다 |
 | 회수 | `DELETE /api/me/api-tokens/{tid}` → `200 {"ok":true}`. 그 순간부터 그 토큰은 401 「API 토큰이 올바르지 않습니다」. **비밀번호·코드를 묻지 않는다** — 닫는 방향은 자격을 줄이는 일이다 |
 | 자동 회수 | (2026-09-26 디버깅 묶음 S-5) **비밀번호를 바꾸면**(본인) · 관리자가 **임시 비밀번호를 재발급**하거나 **2단계 인증을 초기화**하면 그 계정의 살아 있는 토큰이 **전부** 회수된다 — 그 뒤 토큰 요청은 401 「API 토큰이 올바르지 않습니다」. 프로그램에는 새로 발급한 토큰을 다시 심는다. 감사 `api_token.revoke allow password_change|password_reset|mfa_reset`(토큰마다 한 행) |
 | 실패 | `400 {"error":"살아 있는 토큰이 상한에 이르렀습니다 — 먼저 하나를 회수하세요"}` — 살아 있는 토큰이 이미 5개(F-68, ARCHITECTURE 5.30) · `400 {"error":"잘못된 요청입니다"}` — 허용 외 키·이름 규칙·용도 없음·**역할 밖 범위나 모르는 범위**(역할 힌트를 주지 않는다), 그리고 **인증 실패 전부**(틀린 비밀번호·틀린 코드·이미 쓴 코드 — 세 사유가 한 문구다, ARCHITECTURE 5.30 예외 목록·R-48) · `403 {"error":"권한이 없습니다"}` — **2단계 인증이 꺼진 계정**(`mfa_not_enabled`, 실패로 세지 않는다) · CSRF 없음 · `404 {"error":"찾을 수 없습니다"}` — 내 토큰이 아닌 tid(그 번호가 있는지도 새지 않는다) · 이미 회수된 토큰은 `400 {"error":"잘못된 요청입니다"}` |
@@ -868,12 +868,12 @@ AI 비서(tbox-buddy)의 Ctrl+B 「t-box 열기」가 **로그인 화면 없이*
 | 항목 | 내용 |
 |---|---|
 | 발급(①) | 13장 `POST /api/me/api-tokens` 에 `"scope":"session.open"` — 고를 수 있는 사람은 **2단계 인증이 켜진 비Guest** 뿐(`GET /api/me` 의 `token_scopes` 끝에 있을 때만 · 아니면 400). 응답에 두 칸이 더 온다: `"bound_ip":"<서버가 본 공인 IP>"` · `"revoked_previous":<n>` — **한 사람 1대**라 앞의 로그인 전용 토큰은 전부 회수된다(그 토큰으로 연 세션도 끝난다). 접속 IP 를 알 수 없으면 `400 {"error":"접속 IP 를 알 수 없어 발급하지 않습니다"}`(비밀번호·코드를 확인하기 전 — 코드를 태우지 않는다). 목록(13장 GET)의 줄마다 `"bound_ip"`(다른 범위는 `null`) |
-| 인증(②) | 헤더 **`X-API-Token: <로그인 전용 토큰>`** — **토큰 전용**(헤더가 없으면 세션 쿠키가 있어도 401) · **개인 토큰만**(공용 403) · 범위가 `session.open` 이 아니면 403. `X-CSRF-Token` 필요 없음 · 본문 없음 |
+| 인증(②) | 헤더 **`X-API-Token: <로그인 전용 토큰>`** — **토큰 전용**(헤더가 없으면 세션 쿠키가 있어도 401) · **개인 토큰만**(공용 403) · 범위에 `session.open` 원자가 없으면 403(Q:F-10 — 다른 원자와 묶인 토큰도 된다 · 21장). `X-CSRF-Token` 필요 없음 · 본문 없음 |
 | 링크(②) | `POST /tbox/api/me/session-link` → **`201 {"url":"<APP_URL>/tbox/session/open?code=<43자>","expires_in":30}`** — 서버가 본 지금 IP 가 그 토큰의 묶인 IP 일 때만. 주소의 호스트는 서버 설정(`APP_URL`) 한 값이다(요청 머리로 만들지 않는다). 코드는 서버에 **sha256 만** 남는다 |
 | 교환(③) | 브라우저가 `GET /tbox/session/open?code=…` → **`302 /tbox/`** + 세션 쿠키. `&to=<같은 출처 경로>` 가 있으면 로그인 화면의 「보던 곳으로」와 **같은 허용 목록**(`/tbox/` · `/tbox/settings` · `/tbox/activity` · `/community/…`)일 때만 그리로, 아니면 `/tbox/`. 실패는 전부 **`302 /tbox/login`**(사유를 주소에 싣지 않는다 — 감사에만): 이미 쓴 링크 · 30초 지남 · 토큰 회수/만료 · 링크를 받은 IP 와 다른 IP · 계정 비활성/만료/절차 중/2단계 꺼짐 · 모양이 틀린·없는 코드 |
 | 실패(②) | `401 {"error":"X-API-Token 헤더가 없습니다"}` · `401 {"error":"API 토큰이 올바르지 않습니다"}`(틀림·**회수** — 1대 규칙으로 회수된 앞 토큰도) · `401 {"error":"만료된 API 토큰입니다 — 내 계정에서 새로 발급하세요"}` · `403 {"error":"이 토큰의 범위에 없는 창구입니다 — 범위가 더 넓은 토큰을 발급하세요"}`(범위가 session.open 아님) · **`403 {"error":"이 토큰이 묶인 IP 가 아닌 곳에서 요청했습니다 — 이 PC 를 다시 등록하세요(내 계정 → 프로그램 토큰)","code":"ip_mismatch"}`** — 비서는 `code` 로 가른다 · `403 {"error":"이 창구는 개인 토큰으로만 쓸 수 있습니다"}`(공용) · `403 {"error":"권한이 없습니다"}` — 계정 비활성·만료·**절차 중**(Auth::requireApiToken 의 `user_disabled` — 503 이 아니다) 또는 그 사이 2단계를 끔 · **`429 {"error":"로그인 링크를 너무 자주 요청했습니다 — 잠시 뒤 다시 시도하세요","code":"rate_limited","retry_after":60}`** — 한 토큰 1분 5회 · `503 {"error":"서버 설정 문제로 로그인 링크를 만들 수 없습니다"}` — `APP_URL` 이 `scheme://host[:port]` 모양이 아님 |
 | 검토 반영 | **이미 로그인된 브라우저**가 링크를 열면 갈아타지 않는다 — 링크는 쓰이지 않고(30초 뒤 만료) `302 /tbox/`(지금 세션 그대로 · 감사 `session.open deny already_logged_in`) · **틀린 IP 시도는 링크를 소비하지 않는다** · 분당 5회는 받은 링크와 IP 불일치 거부를 함께 센다(넘으면 IP 가 맞아도 429) · 2단계를 끄면 열린 토큰 세션도 401 · 로그인 전용 발급이 겹치면 `409 {"error":"다른 발급과 겹쳤습니다 — 잠시 뒤 다시 발급하세요"}`(한 번 다시 시도한 뒤) |
-| 이 토큰으로 열리는 것 | 이 창구와 `GET /tbox/api/whoami`(10장 — 토큰 확인용) **둘뿐**이다. 파일(7~9·11·12·14장)·커뮤니티(19장) 창구는 전부 `403 … 범위에 없는 창구 …` |
+| 이 토큰으로 열리는 것 | `session.open` **한 원자만** 든 토큰은 이 창구와 `GET /tbox/api/whoami`(10장 — 토큰 확인용) **둘뿐**이다. 파일(7~9·11·12·14장)·커뮤니티(19장) 창구는 전부 `403 … 범위에 없는 창구 …`. **Q:F-10** — 다른 원자와 묶으면 그 원자의 창구도 열린다. 대신 **묶인 IP 밖에서는 그 토큰의 모든 창구가 `401 {"error":"이 토큰이 묶인 IP 가 아닌 곳에서 요청했습니다 — 이 PC 를 다시 등록하세요(내 계정 → 프로그램 토큰)","code":"token_ip_mismatch"}`**(감사 `auth.token deny ip_mismatch` · AL-24 가 함께 센다). 이 링크 창구만은 위 표 그대로 `403 … "code":"ip_mismatch"`(분당 셈 뒤) — 21장 |
 | 감사 | 링크: `session.link allow` / `deny ip_mismatch`(10분 3회면 경보 AL-24) / `deny rate_limited` — detail `auth=api_token`·`token_id`. 교환: `session.open allow`(행위자 = 토큰 주인) / `deny link_used·link_expired·token_invalid·ip_mismatch·user_disabled`. 토큰 세션의 **모든 행**에 `auth=token_session`·`token_id`. 발급: `api_token.issue allow`(detail `bound_ip`) · 앞 토큰 회수는 토큰마다 `api_token.revoke allow replaced` |
 
 **왜 GET 인가.** 비서는 주소를 브라우저에 넘길 뿐이고 브라우저는 주소를 GET 으로 연다. 부작용은 「그 코드의 주인으로 내 브라우저에 세션 만들기」 하나다. 코드는 256비트 난수 · 30초 · 한 번 · 링크를 받은 IP 에서만 통하므로, 다른 사이트가 이 주소를 불러도 만들 세션이 없다(CSRF 대상이 아니다). **코드는 30초 · 1회**다 — 비서는 받은 주소를 파일·로그·클립보드에 남기지 않고 곧바로 열고 버린다. 30초 안에 열리지 않으면 로그인 화면이 뜬다(그때는 비밀번호로 로그인하면 된다).
@@ -912,6 +912,101 @@ GET /tbox/session/open?code=…&to=%2Ftbox%2Fsettings           → 302 Location
 (토큰 세션) POST /tbox/api/me/reauth {password} 뒤 같은 DELETE → 200
 (토큰 세션 · 활동 없는 11분 뒤) GET /tbox/api/me             → 401   (일반 세션은 11분 뒤 200 — 30분)
 (그 토큰을 회수한 뒤 · 또는 묶인 IP 를 바꾼 뒤) 토큰 세션 GET /tbox/api/me → 401
+```
+
+## 21. 토큰 하나에 범위 여럿 · 커뮤니티 검색·읽기 창구 (Q:F-10, 2026-09-29 · 개인 토큰)
+
+PC 한 대에 토큰이 셋(비서 파일용 · 비서 Ctrl+B 용 · MCP 글쓰기용)이던 것을 **하나로** 묶는다(사이트 PRD Q:F-10 · t-box PRD F-76 · ARCHITECTURE 4.10 · SECURITY R-114).
+발급 때 범위를 **여러 개 고르고**(원자 배열), 커뮤니티 **검색·읽기** 창구 셋이 토큰에 열린다. 비서의 「커뮤니티 검색 → 결과 열기」와 MCP 의 `qaredi_search_pages` 가 이 장의 창구를 쓴다.
+
+**원자 여섯 — 순서가 곧 정규화 순서다.**
+
+| 원자 | 뜻 | 조건 |
+|---|---|---|
+| `read` | 파일 읽기 — 목록·검색·내려받기·폴더 목록 | 파일 원자의 바닥 |
+| `upload` | 파일 올리기 — 올리기·폴더 만들기/이름/이동·파일 이동 | `read` 필요 |
+| `delete` | 파일·폴더 지우기(개인 토큰만 — 14장) | `read` + `upload` 필요 |
+| `community.read` | 커뮤니티 검색·읽기(아래 창구 표) | 독립 |
+| `community.write` | 커뮤니티 글쓰기(19장) + 읽기 | 독립 · 서버가 `community.read` 를 **덧붙인다** |
+| `session.open` | 이 PC 로그인 — 1회용 로그인 링크(20장) | 독립 · 지금 접속 IP 에 묶임 · 한 사람 하나 · **그 토큰의 모든 창구가 묶인 IP 에서만** |
+
+**정규화 규칙(서버 `Authz::normalizeScope` — 발급 창구가 부른다).**
+1. `scope` 는 원자의 **배열**(16개 이하 · 전부 문자열). 옛 **문자열**(`"read+upload"`)도 받는다 — `+` 로 쪼갠다.
+2. 원자마다 위 표의 글자 그대로여야 한다(대소문자 그대로 · 빈 글자 안 됨). 모르는 원자 → 400.
+3. 겹친 원자는 하나로. 빈 집합 → 400.
+4. `community.write` 가 있으면 `community.read` 를 덧붙인다.
+5. `upload` 에 `read` 가 없거나 `delete` 에 `read`·`upload` 가 없으면 → **400**(서버가 채워 주지 않는다 — 고른 것보다 넓은 토큰을 조용히 만들지 않는다. 화면의 체크박스는 연동해서 함께 켠다).
+6. 위 표의 순서로 정렬해 `+` 로 이은 문자열이 저장·응답의 `scope` 다(예: `["session.open","read","upload","community.read"]` → `read+upload+community.read+session.open`).
+7. 정규형의 원자가 전부 **이 사람이 고를 수 있는 것**(`GET /api/me` 의 `token_scopes`)이어야 한다 — 아니면 400.
+400 은 전부 `{"error":"잘못된 요청입니다"}` 하나이고(힌트 없음) 비밀번호·코드 확인 **전**이라 실패로 세지 않는다. 옛 값 다섯 중 넷은 정규형과 글자까지 같다. `community.write` 한 원자로 저장된 옛 토큰은 마이그레이션이 `community.read+community.write` 로 바꾸고, 바뀌기 전에도 읽기 창구가 통한다.
+
+**창구 → 필요한 원자(`Authz::tokenScopeAllows(범위, 라우트 정책)` 한 곳).**
+
+| 라우트 정책 | 필요한 원자 | 창구 |
+|---|---|---|
+| `authenticated` | 아무것(원자가 전부 아는 것) | `GET /tbox/api/whoami` |
+| `file.read` | `read` | `GET /tbox/api/files` · `…/{id}/download` · `GET /tbox/api/folders` |
+| `file.upload` · `file.update` | `upload` | `POST /tbox/api/upload` · `POST /tbox/api/folders` · `PATCH /tbox/api/folders/{num}` · `PATCH /tbox/api/files/{id}` |
+| `file.delete` | `delete` | `DELETE /tbox/api/files/{id}` · `DELETE /tbox/api/folders/{num}` |
+| `community.read` | `community.read` 또는 `community.write` | `GET /community/api/search?q=` · `GET /community/api/pages?space=` · `GET /community/api/spaces` · `GET /community/api/me/space` · `GET /community/api/pages/{id}` |
+| `community.write` | `community.write` | `POST /community/api/pages`(19장 — `title`·`doc` 만) |
+| `session.open` | `session.open` | `POST /tbox/api/me/session-link`(20장) |
+
+범위 밖 → `403 {"error":"이 토큰의 범위에 없는 창구입니다 — 범위가 더 넓은 토큰을 발급하세요"}` + 감사 `auth.token deny scope_not_permitted`(지금 모양 그대로 — 판별 칸은 없다. 프로그램은 403 과 이 문장으로 가른다). 모르는 조각이 든 범위(DB CHECK 가 막아 생기지 않는다)는 모든 창구에서 거짓이다. 표 밖 커뮤니티 창구(고치기·지우기·옮기기·공개 범위·공유·인계·댓글·즐겨찾기·최근 기록·게시판)는 토큰 헤더를 읽지 않는다 → `401 {"error":"로그인이 필요합니다"}`.
+
+**커뮤니티 읽기 창구 셋(새로 열림).** 응답은 화면(세션)과 **같다** — 같은 핸들러·같은 행 관문이다. 볼 수 없는 페이지는 결과·개수·조각 어디에도 없다(검색은 관리자 특권 갈래를 쓰지 않는다 — 관리자 토큰으로도 남의 비공개 글은 검색에 나오지 않는다).
+
+| 창구 | 받는 값 | 성공 |
+|---|---|---|
+| `GET /community/api/search?q=<1~100자>` | `q` — 빈 글자·기호만이면 빈 결과 | `200 {"results":[{"id","title","icon","space":{"kind","name"},"path":[{"id","title"}],"snippet","in_title"}],"comments":[…],"q"}` — 페이지 최대 20 · 댓글 최대 20 |
+| `GET /community/api/pages?space=<공간 번호>` | 화면과 같은 쿼리(`page`·`q`·`status`·`parent`·`tree`) | `200 {"pages":[…],"total","page","per_page",…}` · 볼 수 없는 공간 → `403 {"error":"권한이 없습니다"}` |
+| `GET /community/api/spaces` | 없음 | `200 {"spaces":[{"id","name","kind","team_id","page_count","can_write"}],"created"}` — `created` 는 이 요청이 팀 공간을 처음 만들었나(화면과 같은 게으른 만들기 — 감사 `space.create` 에 `auth=api_token`) |
+
+**쥔 범위 확인 — `GET /tbox/api/whoami`(10장).** `token_scope`(정규형 문자열) · `token_scopes_held`(원자 배열)가 온다. 이름이 비슷한 `GET /api/me` 의 `token_scopes` 와 다르다:
+
+| 칸 | 어디 | 뜻 |
+|---|---|---|
+| `token_scopes` | `GET /tbox/api/me`(세션 — 화면) | 이 사람이 **고를 수 있는** 원자(발급 폼의 체크박스) |
+| `token_scope` · `token_scopes_held` | `GET /tbox/api/whoami`(토큰) | 이 요청을 연 토큰이 **쥔** 범위 — 세션 응답에는 없다 |
+| `scope` · `scopes` | 발급 201 · `GET /tbox/api/me/api-tokens` · 관리자 목록 | 그 토큰 행의 범위(정규형 문자열 · 원자 배열) |
+
+**IP 묶음(`session.open` 이 든 토큰).** 묶인 IP 밖에서는 **어느 창구든** `401 {"error":"이 토큰이 묶인 IP 가 아닌 곳에서 요청했습니다 — 이 PC 를 다시 등록하세요(내 계정 → 프로그램 토큰)","code":"token_ip_mismatch"}` — 만료 판정 다음, 계정을 읽기 전이다. 예외는 링크 창구 하나(20장의 `403 … "code":"ip_mismatch"` 그대로). 1대 규칙도 원자 기준 — `session.open` 이 든 토큰을 새로 받으면 앞의 `session.open` 이 든 토큰은 다른 원자가 섞였어도 **통째로 회수**된다(`revoked_previous`).
+
+**비서·MCP 가 쓰는 순서.** ① 사람이 「내 계정 → 프로그램 토큰」에서 체크박스를 골라 **한 개** 발급(예: 파일 읽기·올리기 · 커뮤니티 읽기 · 이 PC 로그인) ② 프로그램은 시작할 때(또는 토큰을 바꾼 뒤) `GET /tbox/api/whoami` 로 `token_scopes_held` 를 읽어 **메모리에만** 둔다 — 어떤 기능을 켤지 고르는 참고값이고, 허용은 서버가 요청마다 다시 본다 ③ 커뮤니티 검색 `GET /community/api/search?q=` → 결과의 `id` ④ 열기: 브라우저 세션이 있으면 `/community/p/<id>` 를 바로, 없으면 `POST /tbox/api/me/session-link` 로 받은 `url` 에 `&to=` + URL 인코딩한 `/community/p/<id>` 를 이어 연다(로그인 화면의 「보던 곳으로」와 같은 허용 목록) ⑤ `403 … 범위에 없는 창구 …` 이면 「이 토큰의 범위에 없는 창구입니다 — 내 계정 → 프로그램 토큰에서 범위를 묶어 다시 발급하세요」, `401 token_ip_mismatch` 면 「이 PC 다시 등록」을 안내한다.
+
+```bash
+# 발급 — 원자 배열(세션 · CSRF · 비밀번호+코드는 13장 그대로)
+curl -s -b jar -H "X-CSRF-Token: $CSRF" -H 'Content-Type: application/json' \
+  -d '{"name":"사무실 PC","purpose":"비서·MCP 한 개로","scope":["read","upload","community.read","session.open"],"password":"<현재 비밀번호>","otp":"123456"}' \
+  https://changkwon.mso.so/tbox/api/me/api-tokens
+# 검색 — 토큰은 표준입력으로(명령 인자에 싣지 않는다 — R-62)
+printf 'X-API-Token: %s' "$QAREDI_TOKEN" | curl -s -H @- 'https://changkwon.mso.so/community/api/search?q=%ED%9A%8C%EC%9D%98'
+```
+
+실제로 받은 응답(2026-09-29 임시 인스턴스 `http://127.0.0.1:8451` · 임시 DB `tbox_qf10_8451_test` · 검토 계정 `claude_employee01`·`claude_employee02`·`claude_guest01` · `-A "tbox-review/2026-09-29"` · `tests/qf10_multi_scope.sh` 통과 항목). 토큰 값은 적지 않았다.
+
+```text
+POST /tbox/api/me/api-tokens scope=["upload"] · ["delete","read"] · ["x"] · [] · [1] · {"a":"read"} · ["READ"] · "read+" · "" · "read+admin" · null · 7
+                                                              → 400 {"error":"잘못된 요청입니다"}   (실패 집계 그대로 · 감사 api_token.issue deny bad_request)
+POST /tbox/api/me/api-tokens scope=["community.read"] (claude_guest01) → 400
+POST /tbox/api/me/api-tokens scope=["upload","read"]          → 201 {…,"scope":"read+upload","scopes":["read","upload"],…}
+POST /tbox/api/me/api-tokens scope=["community.write"]        → 201 {…,"scope":"community.read+community.write","scopes":["community.read","community.write"],…}
+POST /tbox/api/me/api-tokens scope="read+upload+delete"       → 201 {…,"scope":"read+upload+delete",…}
+POST /tbox/api/me/api-tokens scope=["read","upload","community.read","session.open"]
+                                                              → 201 {…,"scope":"read+upload+community.read+session.open","scopes":[…],"bound_ip":"127.0.0.1","revoked_previous":0}
+(그 묶음 토큰) GET /tbox/api/files 200 · POST /tbox/api/upload 201 · GET /community/api/search?q=… 200 · POST /tbox/api/me/session-link 201
+(그 묶음 토큰) DELETE /tbox/api/files/{id} · POST /community/api/pages → 403 {"error":"이 토큰의 범위에 없는 창구입니다 — 범위가 더 넓은 토큰을 발급하세요"}
+(그 묶음 토큰) GET /tbox/api/whoami                           → 200 {…,"token_scope":"read+upload+community.read+session.open","token_scopes_held":["read","upload","community.read","session.open"]}
+GET /tbox/session/open?code=<43자>&to=%2Fcommunity%2Fp%2F<id>  → 302 Location: /community/p/<id>
+(묶인 IP 를 임시 DB 에서 10.9.9.9 로) GET /tbox/api/files · GET /community/api/search · GET /tbox/api/whoami
+                                                              → 401 {"error":"이 토큰이 묶인 IP 가 아닌 곳에서 요청했습니다 — 이 PC 를 다시 등록하세요(내 계정 → 프로그램 토큰)","code":"token_ip_mismatch"}
+(같은 때) POST /tbox/api/me/session-link                      → 403 {…,"code":"ip_mismatch"}   · 묶이지 않은 read+upload 토큰 GET /tbox/api/files → 200
+POST /tbox/api/me/api-tokens scope=["community.read","session.open"] (묶음이 살아 있을 때) → 201 {…,"revoked_previous":1}  · 앞 묶음 토큰 → 401 {"error":"API 토큰이 올바르지 않습니다"}
+(claude_employee02 · community.read 토큰) GET /community/api/search · /api/spaces · /api/pages?space=<내 공간> · /api/pages/{내 것} → 200 (세션과 본문까지 같음)
+(같은 토큰) GET /community/api/pages?space=<남의 개인 공간> · /api/pages/{남의 비공개} → 403 {"error":"권한이 없습니다"} (세션과 같음)
+(같은 토큰) POST /community/api/pages · GET /tbox/api/files · POST /tbox/api/me/session-link → 403 범위 밖
+(같은 토큰) PATCH·DELETE /community/api/pages/{id} · GET /community/api/me/favorites · /api/me/recent · POST …/comments · GET /api/boards/1/pages → 401
+(같은 토큰) GET /tbox/api/whoami → 200 {"username":"claude_employee02",…,"token_scope":"community.read","token_scopes_held":["community.read"]}
 ```
 
 ## 추가 규칙 (API 를 새로 적을 때)

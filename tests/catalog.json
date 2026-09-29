@@ -256,6 +256,43 @@
       "notes": "F-47 버전·변경 이력. 운영 8082 에 claude_admin01 로 한 번 로그인, GET·정적 검사뿐(데이터 0). git clone \"$ROOT\" 한 임시 클론 안에서 release.sh --dry-run(.git 없는 복사본에서는 못 돎). 끝에 tests/help_button.sh 를 회귀로 부른다(→ scripts/ui_snapshot.sh, sudo). 출력 기본 ~/.claude/ui-shots/changelog. R-73·R-80 가드 없음. (1-B-1 9dcd2e7 뒤 검토 계정 claude_ — 자격 파일 이름 qa-totp.txt·seed-accounts.txt 는 그대로)"
     },
     {
+      "id": "tbox.changelog_admin_only",
+      "cmd": "bash tests/changelog_admin_only.sh",
+      "module": "tbox",
+      "env": "temp-instance",
+      "status": "required",
+      "needs": [
+        "sudo"
+      ],
+      "covers": [
+        "src/views/shell_bottom.php",
+        "src/views/shell_top.php",
+        "src/Changelog.php",
+        "src/Authz.php",
+        "src/handlers/me.php",
+        "src/handlers/home.php",
+        "src/community/handlers/home_page.php",
+        "src/handlers/reauth.php",
+        "src/handlers/me_act_start.php",
+        "src/handlers/me_act_stop.php",
+        "src/handlers/login_page.php",
+        "CHANGELOG.json",
+        "public/assets/app.js",
+        "scripts/security_lint.sh"
+      ],
+      "requirements": [
+        "F-47",
+        "S-01",
+        "S-03"
+      ],
+      "risks": [
+        "R-62"
+      ],
+      "est_sec": 20,
+      "writes_prod": false,
+      "notes": "F-47 변경 이력 창의 변경 내용 목록은 관리자에게만(사용자 결정 2026-09-29). 임시 DB tbox_cladm_<포트>_test(운영 사본 pg_dump 읽기만 · CLADM_MIG_FROM 기본 2026-10-12 부터의 마이그레이션을 임시 DB 에만) · 임시 인스턴스 하나(CLADM_PORT 8431~8433 기본 8431). claude_admin01·claude_employee01 로 /tbox/·/community/ 셸 HTML 을 받아 changelog__list 유무·첫 변경 문장 유무를 grep. 보는 중(재인증 → POST /api/me/act Employee → DELETE)은 임시 DB 세션 행만 바뀐다."
+    },
+    {
       "id": "tbox.f46",
       "cmd": "bash tests/f46.sh",
       "module": "tbox",
@@ -4121,7 +4158,9 @@
         "src/handlers/api_whoami.php",
         "public/index.php",
         "public/assets/app.js",
-        "db/migrations/2026-10-11_api_tokens_scope_community.sql"
+        "db/migrations/2026-10-11_api_tokens_scope_community.sql",
+        "db/migrations/2026-10-12_session_open.sql",
+        "db/migrations/2026-10-13_api_tokens_multi_scope.sql"
       ],
       "requirements": [
         "Q:F-8",
@@ -4138,7 +4177,7 @@
       ],
       "est_sec": 240,
       "writes_prod": false,
-      "notes": "Q:F-8 조각 S 수락 T-1~T-7(지시서 docs/qf8-ai-writer-directive.md). 임시 DB tbox_qf8_<포트>_test(운영 사본 pg_dump 읽기만) · 마이그레이션 두 번 · 임시 인스턴스 둘(새 코드 QF8_PORT 기본 8401 · 기준 판 QF8_BASE_REV 기본 c2b4d76 을 +1 포트 — 세션 불변 대조 · 포트는 8401~8405 안) · T-5 는 COMMUNITY_ROUTES 전수(허용 셋 밖 전부 401/302 · 토큰 감사 0 — 검토 RV-QF8-6) · 공용 토큰은 시험이 만든 난수(임시 .env). 발급 두 번에 TOTP 창 둘. REGRESS=1 이면 api_whoami · community/stage3 · community/stage5a2(8401~8405 빈 자리) · f66 을 같은 임시 인스턴스에서 사본으로."
+      "notes": "Q:F-8 조각 S 수락 T-1~T-7(지시서 docs/qf8-ai-writer-directive.md). 임시 DB tbox_qf8_<포트>_test(운영 사본 pg_dump 읽기만) · 마이그레이션 두 번 · 임시 인스턴스 둘(새 코드 QF8_PORT 기본 8401 · 기준 판 QF8_BASE_REV 기본 c2b4d76 을 +1 포트 — 세션 불변 대조 · 포트는 8401~8405 안) · T-5 는 COMMUNITY_ROUTES 전수(허용 셋 밖 전부 401/302 · 토큰 감사 0 — 검토 RV-QF8-6) · 공용 토큰은 시험이 만든 난수(임시 .env). 발급 두 번에 TOTP 창 둘. REGRESS=1 이면 api_whoami · community/stage3 · community/stage5a2(8401~8405 빈 자리) · f66 을 같은 임시 인스턴스에서 사본으로. · Q:F-10(2026-09-29): 임시 DB 에 뒤 조각 마이그레이션(2026-10-12 · 2026-10-13)도 적용(기준 판 b2ee066 부터 500 이던 결함 수정) · 정적 기대값을 원자 모델·창구 여섯에 맞춤."
     },
     {
       "id": "core.qf9_pc_login",
@@ -4191,6 +4230,65 @@
       "est_sec": 330,
       "writes_prod": false,
       "notes": "Q:F-9 조각 S 수락 T-1~T-7(지시서 docs/qf9-pc-login-directive.md). 임시 DB tbox_qf9_<포트>_test(운영 사본 pg_dump 읽기만) · 마이그레이션 2026-10-12 두 번(멱등) · 임시 인스턴스 둘(새 코드 QF9_PORT 8421~8424 기본 8421 · 워커 넷 · 기준 판 QF9_BASE_REV 기본 b7f6da4 를 +1 포트 — 일반 로그인 불변 대조 · 포트 8421~8425 안) · 발급 두 번에 TOTP 창 둘 · 링크 만료 31초 대기 · read/community.write/관리자 session.open 토큰은 임시 DB 에 직접. REGRESS=1 이면 api_whoami · f66 을 같은 임시 인스턴스에서 사본으로."
+    },
+    {
+      "id": "core.qf10_multi_scope",
+      "cmd": "bash tests/qf10_multi_scope.sh",
+      "module": "core",
+      "env": "temp-instance",
+      "status": "required",
+      "needs": [
+        "sudo",
+        "totp_wait"
+      ],
+      "covers": [
+        "src/Authz.php",
+        "src/Auth.php",
+        "src/Audit.php",
+        "src/handlers/me_tokens_issue.php",
+        "src/handlers/me_tokens_list.php",
+        "src/handlers/api_tokens_list.php",
+        "src/handlers/me.php",
+        "src/handlers/api_whoami.php",
+        "src/handlers/me_session_link.php",
+        "src/handlers/session_open_page.php",
+        "src/handlers/files_list.php",
+        "src/handlers/api_upload.php",
+        "src/community/routes.php",
+        "src/community/handlers/search.php",
+        "src/community/handlers/pages_list.php",
+        "src/community/handlers/spaces_list.php",
+        "src/community/handlers/pages_get.php",
+        "src/community/handlers/space_me.php",
+        "src/community/handlers/pages_create.php",
+        "public/index.php",
+        "public/assets/app.js",
+        "scripts/alerts.php",
+        "scripts/security_lint.sh",
+        "db/schema.sql",
+        "db/migrations/2026-10-12_session_open.sql",
+        "db/migrations/2026-10-13_api_tokens_multi_scope.sql"
+      ],
+      "requirements": [
+        "Q:F-10",
+        "F-76",
+        "F-75",
+        "F-74",
+        "F-66",
+        "F-59",
+        "F-56"
+      ],
+      "risks": [
+        "R-114",
+        "R-113",
+        "R-112",
+        "R-97",
+        "R-91",
+        "R-62"
+      ],
+      "est_sec": 330,
+      "writes_prod": false,
+      "notes": "Q:F-10 조각 S 수락 T-1~T-8(지시서 docs/qf10-multi-scope-directive.md S-6). 임시 DB tbox_qf10_<포트>_test(운영 사본 pg_dump 읽기만) + 새 설치 대조용 tbox_qf10_<포트>_schema(db/schema.sql) · 마이그레이션 2026-10-12 뒤 옛 다섯 값 행을 직접 넣고 2026-10-13 두 번(멱등)·모르는 값이면 멈춤(임시 DB 에서만 CHECK 를 잠깐 뗌) · 임시 인스턴스 하나(QF10_PORT 8451~8455 기본 8451 · 워커 넷) · 발급 여섯에 TOTP 창 여섯 · 묶음 토큰의 bound_ip 는 임시 DB 에서 바꿔 IP 밖을 흉내 · T-6 은 같은 사람의 토큰·세션 답을 본문까지 대조. REGRESS=1 이면 api_tokens · api_whoami 를 같은 임시 인스턴스에서 사본으로(qf8·qf9 는 각자 스크립트)."
     }
   ]
 }
