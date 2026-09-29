@@ -944,17 +944,22 @@ if ($want('AL-23')) {
 // ─────────────────────────────────────────────────────────────
 if ($want('AL-24')) {
     $rows = $db->run(
-        "SELECT detail->>'token_id' AS token_id,
-                max(actor_name) AS actor_name,
+        // 검토 RV-QF10-1 — `auth.token deny ip_mismatch` 는 계정을 읽기 **전**의 거부라 actor_name 이 NULL 이다. 이름은 토큰 번호로
+        //   api_tokens → users 를 이어 **토큰 주인**을 쓴다(행위자 이름은 주인 이름이 없을 때만). 잇기는 글자 비교(t.id::text) —
+        //   detail 값을 숫자로 바꾸지 않아 모양이 틀린 detail 이 문장을 깨뜨리지 않는다.
+        "SELECT a.detail->>'token_id' AS token_id,
+                COALESCE(max(u.username), max(a.actor_name)) AS actor_name,
                 count(*) AS n,
-                count(DISTINCT host(ip)) AS ips,
-                max(happened_at) AS last_at,
-                bool_and(COALESCE(user_agent, '') LIKE :review_ua) AS all_marked
-           FROM audit_logs
-          WHERE action IN ('session.link', 'auth.token') AND result = 'deny' AND reason = 'ip_mismatch'
-            AND detail->>'token_id' IS NOT NULL
-            AND happened_at > now() - interval '10 minutes'
-          GROUP BY detail->>'token_id'
+                count(DISTINCT host(a.ip)) AS ips,
+                max(a.happened_at) AS last_at,
+                bool_and(COALESCE(a.user_agent, '') LIKE :review_ua) AS all_marked
+           FROM audit_logs a
+           LEFT JOIN api_tokens t ON t.id::text = a.detail->>'token_id'
+           LEFT JOIN users u      ON u.id = t.user_id
+          WHERE a.action IN ('session.link', 'auth.token') AND a.result = 'deny' AND a.reason = 'ip_mismatch'
+            AND a.detail->>'token_id' IS NOT NULL
+            AND a.happened_at > now() - interval '10 minutes'
+          GROUP BY a.detail->>'token_id'
          HAVING count(*) >= 3",
         $reviewUa
     )->fetchAll();

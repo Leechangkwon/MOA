@@ -492,6 +492,18 @@ expect "alerts.php --rule AL-24 --dry-run → 한 줄(auth.token 셋 + session.l
 expect "  경보 출력에 토큰 원문 0" "0" "$(grep -v '^$' "$SEEN_TOKS" | grep -c -F -f - "$WORK/al24.out")"
 psqlq "UPDATE api_tokens SET bound_ip = '127.0.0.1' WHERE id = ${B_ID:-0}" >/dev/null
 C=$(treq TOK_B GET "$BASE/api/files"); expect "IP 를 되돌리면 → 200" "200" "$C"
+# 검토 RV-QF10-1 — 링크 창구를 한 번도 안 부르고 파일 창구만 다른 IP 로 두드린 토큰(auth.token 행만 — actor_name NULL)도
+#   경보에 **토큰 주인 이름**이 나온다(alerts.php 가 token_id 로 api_tokens → users 를 잇는다). 토큰은 임시 DB 에 직접(10.8.8.8 에 묶음).
+make_token TOK_E2IP claude_employee02 'read+session.open' '10.8.8.8'; E2IP_ID="$MADE_ID"
+for i in 1 2 3; do treq TOK_E2IP GET "$BASE/api/files" >/dev/null; done
+expect "  파일 창구만 세 번 → auth.token deny ip_mismatch 세 행(actor_name NULL) · session.link 행 0" "3 3 0" \
+  "$(psqlq "SELECT count(*) FROM audit_logs WHERE action = 'auth.token' AND reason = 'ip_mismatch' AND detail->>'token_id' = '${E2IP_ID:-0}'") $(psqlq "SELECT count(*) FROM audit_logs WHERE action = 'auth.token' AND reason = 'ip_mismatch' AND detail->>'token_id' = '${E2IP_ID:-0}' AND actor_name IS NULL") $(psqlq "SELECT count(*) FROM audit_logs WHERE action = 'session.link' AND detail->>'token_id' = '${E2IP_ID:-0}'")"
+( cd / && php "$INST/app/scripts/alerts.php" --rule AL-24 --dry-run --state "$WORK/al-state2.json" --auth-log "$WORK/empty-auth.log" ) > "$WORK/al24b.out" 2>&1
+grep "token_id\":\"${E2IP_ID:-0}\"" "$WORK/al24b.out" | head -1 | cut -c1-200 | sed 's/^/    /'
+expect "  alerts.php --rule AL-24 --dry-run → 그 토큰 줄에 주인 이름 claude_employee02(? 아님)" "1 0" \
+  "$(grep -c "\[dry-run\] AL-24 claude_employee02 .*\"token_id\":\"${E2IP_ID:-0}\"" "$WORK/al24b.out") $(grep -c "\[dry-run\] AL-24 ? .*\"token_id\":\"${E2IP_ID:-0}\"" "$WORK/al24b.out")"
+psqlq "UPDATE api_tokens SET revoked_at = now() WHERE id = ${E2IP_ID:-0}" >/dev/null
+TOK_E2IP=''
 
 # ════════════════════════════════════════════════════════════════
 hr "T-4 하나 규칙 — session.open 이 든 토큰은 사람당 살아 있는 것 하나"

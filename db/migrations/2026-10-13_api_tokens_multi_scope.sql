@@ -34,8 +34,11 @@
 --   SELECT indexdef FROM pg_indexes WHERE indexname = 'api_tokens_one_session_open';
 --   SELECT scope, count(*) FROM api_tokens GROUP BY scope ORDER BY 1;   → community.write 한 원자 행 0
 --
--- 되돌리기(코드를 먼저 되돌린 뒤 · 옛 다섯 값 밖의 행 — 묶음 토큰 — 이 남아 있으면 옛 CHECK 에서 실패한다. 그 행을 회수만 할지
---   지울지는 사용자 판단 · 회수된 행도 CHECK 를 받는다):
+-- 되돌리기(순서는 반영의 거꾸로 **DB → 코드** — 이 SQL 을 먼저, 그다음 코드를 되돌린다. 코드만 먼저 되돌리면 옛 코드가
+--   `community.read+community.write` 를 모르는 값으로 보아 그 사이 커뮤니티 글쓰기 토큰이 403 이다(반영 스크립트 연습 ㉑ 실측 ·
+--   검토 RV-QF10 ② 반영). 새 코드는 옛 값을 그대로 읽으므로 DB 를 먼저 되돌려도 막히지 않는다.
+--   옛 다섯 값 밖의 행 — 묶음 토큰 — 이 남아 있으면 옛 CHECK 에서 실패한다. 그 행을 회수만 할지 지울지는 사용자 판단 ·
+--   회수된 행도 CHECK 를 받는다):
 --   BEGIN;
 --   UPDATE api_tokens SET scope = 'community.write' WHERE scope = 'community.read+community.write';
 --   DROP INDEX IF EXISTS api_tokens_one_session_open;
