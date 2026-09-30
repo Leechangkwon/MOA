@@ -1,5 +1,16 @@
 # DESIGN.md — t-box 화면 디자인 규칙
 
+> **2026-10-01 사용자 결정 — Astra 테마 배포.** 아래 zinc 규칙은 `Claude` 모드의 원본이다. 공통 테마 계층 `public/assets/design.css`·`design.js`와 `src/Design.php`를 추가한다. 신규 브라우저 기본값은 Astra이며 Claude·Astra·Aurora·Bloom·Nova를 선택하고 브라우저 기본값으로 저장할 수 있다. 이 결정은 아래의 검정 단추·새 색/클래스 금지보다 우선한다. 인증·권한·문서 팔레트와 기존 app.css는 보존한다.
+
+### 공통 테마 구성 요소와 모션
+
+- `.q-hero`·`.q-wordmark`·`.q-art`: 런처/로그인 브랜드 영역. 로그인 전 런처에는 앱 이름·경로를 추가하지 않는다.
+- `.q-design-open`·`.q-design-dialog`·`.q-theme-grid`·`.q-theme-option`: 전역 테마 선택. native dialog, 키보드/Escape/초점 복귀. 선택 시 미리보기, 저장 시 허용 목록 쿠키(1년, Path=/, SameSite=Lax, HTTPS Secure). 닫으면 저장 전 선택은 되돌린다.
+- Astra(코발트·민트), Aurora(에메랄드·골드), Bloom(코랄·크림), Nova(잉크·스펙트럼). 밝기 선택과 테마 선택은 독립적이다. Claude의 원본 토큰·배치를 보존한다.
+- 주요 단추는 원래의 동작 구분을 따른다. 빨강 삭제·등급 배지 의미는 그대로다. `--bg`는 문서 팔레트 계산의 기준이므로 그대로 두고 바깥 작업 영역에 `--q-canvas`를 쓴다.
+- Nova의 QAREDI·t-box·커뮤니티는 빛 흐름, 주요 단추는 광택/hover 반응, 브랜드 아트는 궤도 모션. 자동 모션은 4.5초 이내 1회 종료한다. OS의 reduced-motion과 선택창의 「움직임 줄이기」가 모두 우선한다. 고대비에서는 장식을 끄고 원본 고대비 토큰을 쓴다.
+- 기존 문서 표·편집 영역에는 움직임을 넣지 않는다. 외부 자산/CDN·inline JS/style·innerHTML·DB 쓰기 없음. 세부 규격과 감사는 `docs/DESIGN-AUDIT-2026-10-01.md`.
+
 이 문서는 **화면을 만들 때 무엇을 어떤 모양으로 쓰는지**를 정한다. 어떤 기능이 있어야 하는지는
 `PRD.md` 10장, 어디서 권한을 검사하는지는 `ARCHITECTURE.md` 가 정한다. 이 문서는 그 위에 얹는
 **표현의 규칙**이다 — 같은 뜻은 같은 모양으로, 다른 뜻은 다른 모양으로.

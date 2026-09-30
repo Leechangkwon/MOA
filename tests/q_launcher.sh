@@ -2,7 +2,7 @@
 # tests/q_launcher.sh — Qaredi C 수락 기준 실행 (사이트 PRD.md 9장 Q:T-1 · 3 · 4 · 5 · 6 · 7 · 8 · 9,
 #                        설계 ../docs/launcher/ARCHITECTURE.md, 지시서 ../docs/launcher/c-launcher-basepath-directive.md)
 #
-#   Q:T-1 런처 `GET /`         200 HTML · `<script` 0 · `Set-Cookie` 0 · `POST /` 405 ·
+#   Q:T-1 런처 `GET /`         200 HTML · 자체 테마 `<script` 1 · `Set-Cookie` 0 · `POST /` 405 ·
 #                              미로그인이면 **사이트 이름 + 로그인 단추만**(앱 이름·설명·경로·타일 0 — 디버깅 묶음 S2 · R-98) ·
 #                              로그인하면 타일 t-box·커뮤니티(둘 다 링크) + 사용자 배지(표시 이름) · 옛 이름 쿠키면 만료 머리 하나
 #   Q:T-3 옛 주소 308          `/api/health` `/login` `POST /api/login` `/s/{43자}` `/settings` `/assets/app.css`
@@ -139,6 +139,8 @@ echo "루트 파티션 여유: $(df -Ph / | awk 'NR==2{print $4}') (${avail_kb}K
 [ "$avail_kb" -ge 1048576 ] || { echo "루트 디스크 여유 1GB 미만 — 시험을 시작하지 않는다 (SECURITY R-80)"; exit 3; }
 
 HAVE_PSQL=0
+# Read-only public checks need no operational DB, auth or share creation. Full mode keeps its activity guard.
+if [ "${QLAUNCHER_PUBLIC_ONLY:-0}" != "1" ]; then
 if psqlq "SELECT 1" >/dev/null 2>&1; then HAVE_PSQL=1; fi
 
 if [ "$HAVE_PSQL" -eq 1 ]; then
@@ -168,6 +170,8 @@ if [ "$HAVE_PSQL" -eq 1 ]; then
 fi
 
 # ════════════════════════════════════════════════════════════════
+fi
+
 hr "Q:T-1 — 런처 GET /"
 
 curl -s -D "$WORK/root.head" -o "$WORK/root.html" -A "$UA" "$SITE/"
@@ -175,7 +179,7 @@ expect "GET / 상태" "200" "$(status_of "$WORK/root.head")"
 contains "Content-Type" "text/html" "$(hdr Content-Type "$WORK/root.head")"
 contains "Cache-Control no-store" "no-store" "$(hdr Cache-Control "$WORK/root.head")"
 expect "Set-Cookie 0건 (쿠키 발행 0)" "0" "$(grep -ci '^Set-Cookie:' "$WORK/root.head" | tr -d ' ')"
-expect "<script 0건 (스크립트 0)" "0" "$(grep -c '<script' "$WORK/root.html" | tr -d ' ')"
+expect "테마 설정용 외부 script 1건" "1" "$(grep -c '<script' "$WORK/root.html" | tr -d ' ')"
 expect "인라인 style= 0건 (CSP)" "0" "$(grep -cE '<[^>]+ style="' "$WORK/root.html" | tr -d ' ')"
 expect "인라인 on…= 0건 (CSP)" "0" "$(grep -cE '<[^>]+ on[a-z]+=' "$WORK/root.html" | tr -d ' ')"
 # 디버깅 묶음 S2 (사용자 결정 d72 ① · R-98) — 로그인 전에는 **사이트 이름 + 로그인 단추만**. 앱 이름·설명·경로·타일 0.
@@ -185,7 +189,7 @@ expect "미로그인 — 앱 설명(사내 파일 공유 · 개인 업무 공간
 expect "미로그인 — 타일·격자 0(card-grid · card--link)" "0 0" "$(grep -c 'card-grid' "$WORK/root.html" | tr -d ' ') $(grep -c 'card--link' "$WORK/root.html" | tr -d ' ')"
 expect "미로그인 — 앱 경로 링크 0(href=\"/tbox/\" · href=\"/community/\")" "0 0" "$(grep -c 'href="/tbox/"' "$WORK/root.html" | tr -d ' ') $(grep -c 'href="/community/"' "$WORK/root.html" | tr -d ' ')"
 expect "미로그인 — 로그인 단추 하나(href=\"/tbox/login\" · .btn)" "1" "$(grep -c '<a class="btn" href="/tbox/login">로그인</a>' "$WORK/root.html" | tr -d ' ')"
-expect "화면 전용 클래스 launcher- 0건 (DESIGN 원칙 6)" "0" "$(grep -c 'launcher-' "$WORK/root.html" | tr -d ' ')"
+expect "공통 브랜드 hero 하나 (사용자 테마 결정 2026-10-01)" "1" "$(grep -c '<section class="q-hero"' "$WORK/root.html" | tr -d ' ')"
 expect "미로그인 — 사용자 배지 없음(badge 0) · 단추 자리는 page-head__actions 하나" "0 1" "$(grep -c 'class="badge"' "$WORK/root.html" | tr -d ' ') $(grep -c 'page-head__actions' "$WORK/root.html" | tr -d ' ')"
 expect "런처에 userchip 0건 (DESIGN 2.9 — 배지 하나만)" "0" "$(grep -c 'userchip' "$WORK/root.html" | tr -d ' ')"
 
@@ -238,7 +242,7 @@ for p in /foo /api/nope /tbox/nope /community/nope; do
   expect "GET $p Location 없음" "" "$(hdr Location "$WORK/r.head")"
 done
 
-sub "커뮤니티 갈래 (3단계, 2026-09-22) — 전에는 `/community/` 가 404 였다"
+sub '커뮤니티 갈래 (3단계, 2026-09-22) — 전에는 `/community/` 가 404 였다'
 curl -s -D "$WORK/r.head" -o /dev/null -A "$UA" "$SITE/community/"
 expect "GET /community/ (미로그인) 상태" "302" "$(status_of "$WORK/r.head")"
 expect "GET /community/ Location" "/tbox/login?to=community" "$(hdr Location "$WORK/r.head")"
@@ -279,6 +283,11 @@ expect "서버 화면의 절대 경로 링크 중 Http::url 밖 (Qaredi 홈 셋 
   "$(grep -rhE 'href=\"/|action=\"/|src=\"/' "$ROOT/src" --include=*.php | grep -vc 'Http::url' | tr -d ' ')"
 
 # ════════════════════════════════════════════════════════════════
+if [ "${QLAUNCHER_PUBLIC_ONLY:-0}" = "1" ]; then
+  printf '\n공개 런처 검사: 통과 %s · 실패 %s · 건너뜀 %s\n' "$PASS" "$FAIL" "$SKIP"
+  [ "$FAIL" -eq 0 ]; exit $?
+fi
+
 hr "Q:T-8 — 셸 그리드 단추 · Q:T-5 리다이렉트 · Q:T-1 로그인 뒤 런처 · Q:T-6 공유 링크 · Q:T-7 쿠키·헤더"
 echo "※ 여기부터는 **로그인**이 필요하다. PHP 내장 서버에서는 세션이 서지 않으므로 nginx 적용 뒤에 돌린다."
 
@@ -387,7 +396,7 @@ if [ -n "$ADM_CSRF" ]; then
   expect "로그인 상태 런처에 사용자 배지 (page-head__actions 1)" "1" "$(grep -c 'page-head__actions' "$WORK/root2.html" | tr -d ' ')"
   expect "로그인 상태 런처에도 userchip 0건" "0" "$(grep -c 'userchip' "$WORK/root2.html" | tr -d ' ')"
   contains "칩에 표시 이름" "claude_admin01" "$(cat "$WORK/root2.html")"
-  expect "로그인 상태 런처에도 <script 0건" "0" "$(grep -c '<script' "$WORK/root2.html" | tr -d ' ')"
+  expect "로그인 상태 런처에도 테마 설정 script 1건" "1" "$(grep -c '<script' "$WORK/root2.html" | tr -d ' ')"
   # 로그인 뒤는 전과 같다 — 타일 둘(링크)·격자 · 로그인 단추 0 (S2 는 로그인 전만 바꿨다)
   contains "로그인 뒤 타일 t-box" "t-box" "$(cat "$WORK/root2.html")"
   contains "로그인 뒤 타일 커뮤니티" "커뮤니티" "$(cat "$WORK/root2.html")"

@@ -4191,6 +4191,119 @@
       "est_sec": 330,
       "writes_prod": false,
       "notes": "Q:F-9 조각 S 수락 T-1~T-7(지시서 docs/qf9-pc-login-directive.md). 임시 DB tbox_qf9_<포트>_test(운영 사본 pg_dump 읽기만) · 마이그레이션 2026-10-12 두 번(멱등) · 임시 인스턴스 둘(새 코드 QF9_PORT 8421~8424 기본 8421 · 워커 넷 · 기준 판 QF9_BASE_REV 기본 b7f6da4 를 +1 포트 — 일반 로그인 불변 대조 · 포트 8421~8425 안) · 발급 두 번에 TOTP 창 둘 · 링크 만료 31초 대기 · read/community.write/관리자 session.open 토큰은 임시 DB 에 직접. REGRESS=1 이면 api_whoami · f66 을 같은 임시 인스턴스에서 사본으로."
+    },
+    {
+      "id": "design.allowlist",
+      "cmd": "php tests/design_themes.php",
+      "module": "launcher",
+      "env": "static",
+      "status": "required",
+      "needs": [],
+      "covers": [
+        "src/Design.php",
+        "src/views/design_controls.php",
+        "public/assets/design.css",
+        "public/assets/design.js",
+        "src/views/shell_top.php",
+        "src/views/launcher.php",
+        "src/handlers/login_page.php",
+        "src/handlers/settings_page.php"
+      ],
+      "requirements": [
+        "Q:T-1",
+        "Q:T-4"
+      ],
+      "risks": [],
+      "est_sec": 5,
+      "writes_prod": false,
+      "notes": "공통 테마 전용 검사. browser는 운영 API/세션/DB 없이 실제 뷰를 렌더한다. live는 검토 계정으로 인증 후 GET과 취향 쿠키만 사용한다."
+    },
+    {
+      "id": "design.browser",
+      "cmd": "python3 tests/design_themes_browser.py",
+      "module": "launcher",
+      "env": "temp-instance",
+      "status": "required",
+      "needs": [
+        "browser"
+      ],
+      "covers": [
+        "src/Design.php",
+        "src/views/design_controls.php",
+        "public/assets/design.css",
+        "public/assets/design.js",
+        "src/views/shell_top.php",
+        "src/views/launcher.php",
+        "src/handlers/login_page.php",
+        "src/handlers/settings_page.php"
+      ],
+      "requirements": [
+        "Q:T-1",
+        "Q:T-4"
+      ],
+      "risks": [],
+      "est_sec": 180,
+      "writes_prod": false,
+      "notes": "공통 테마 전용 검사. browser는 운영 API/세션/DB 없이 실제 뷰를 렌더한다. live는 검토 계정으로 인증 후 GET과 취향 쿠키만 사용한다."
+    },
+    {
+      "id": "design.live",
+      "cmd": "bash tests/design_live.sh",
+      "module": "launcher",
+      "env": "prod",
+      "status": "required",
+      "needs": [
+        "sudo",
+        "browser",
+        "nginx"
+      ],
+      "covers": [
+        "src/Design.php",
+        "src/views/design_controls.php",
+        "public/assets/design.css",
+        "public/assets/design.js",
+        "src/views/shell_top.php",
+        "src/views/launcher.php",
+        "src/handlers/login_page.php",
+        "src/handlers/settings_page.php"
+      ],
+      "requirements": [
+        "Q:T-1",
+        "Q:T-4"
+      ],
+      "risks": [],
+      "est_sec": 180,
+      "writes_prod": false,
+      "notes": "공통 테마 전용 검사. browser는 운영 API/세션/DB 없이 실제 뷰를 렌더한다. live는 검토 계정으로 인증 후 GET과 취향 쿠키만 사용한다."
+    },
+    {
+      "id": "design.public_launcher",
+      "cmd": "QLAUNCHER_PUBLIC_ONLY=1 bash tests/q_launcher.sh",
+      "module": "launcher",
+      "env": "prod",
+      "status": "required",
+      "needs": [
+        "nginx"
+      ],
+      "covers": [
+        "src/views/launcher.php",
+        "src/site/not_found_page.php",
+        "src/Design.php",
+        "public/assets/design.js"
+      ],
+      "requirements": [
+        "Q:T-1",
+        "Q:T-3",
+        "Q:T-4",
+        "Q:T-5",
+        "Q:T-9"
+      ],
+      "risks": [
+        "R-98"
+      ],
+      "est_sec": 15,
+      "writes_prod": false,
+      "notes": "공개 읽기 부분만 실행한다. 기존 전체 모드는 사용자 활동 관문과 검토 계정/공유 링크 검사를 그대로 유지한다."
     }
   ]
 }

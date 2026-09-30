@@ -1,5 +1,6 @@
 <?php
 declare(strict_types=1);
+require_once __DIR__ . '/../Design.php';
 
 /**
  * src/views/shell_top.php — 공통 셸의 윗부분 (PRD F-20 · 10장 「공통 셸」, ARCH 3장 `src/views/`)
@@ -252,7 +253,7 @@ if (!headers_sent()) {
 }
 ?>
 <!doctype html>
-<html lang="ko"<?= $themeAttr ?><?= /* 7-D3 고대비(DESIGN 2.16) — 계정 칸이 참일 때만 고정 글자, 아니면 속성 없음 · 새 함수 0 */ ($shellUser['high_contrast'] ?? false) === true ? ' data-contrast="high"' : '' ?>>
+<html lang="ko"<?= $themeAttr ?><?= Design::attrs() ?><?= /* 7-D3 고대비(DESIGN 2.16) — 계정 칸이 참일 때만 고정 글자, 아니면 속성 없음 · 새 함수 0 */ ($shellUser['high_contrast'] ?? false) === true ? ' data-contrast="high"' : '' ?>>
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -305,6 +306,7 @@ if (!headers_sent()) {
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="Qaredi 경보">
 <?php endif; ?>
+<?= Design::assets() ?>
 </head>
 <body data-page="<?= $shellPage ?>" data-base="<?= TBOX_BASE ?>"<?= $shellMod === '' ? '' : ' data-community-base="' . COMMUNITY_BASE . '"' ?>>
 <a class="skip" href="#main">본문으로 건너뛰기</a>
@@ -568,6 +570,7 @@ if (!headers_sent()) {
 <?php endif; ?>
 
     <div class="sidebar__spacer"></div>
+    <button type="button" class="btn btn--quiet q-design-open" data-design-open aria-haspopup="dialog" aria-controls="q-design-dialog"><span class="q-design-dot" aria-hidden="true"></span><span data-design-name>Astra</span><span>테마</span></button>
 
     <!-- F-47 「변경 이력」 여는 단추 (PRD F-47, ARCH 5.23).
          누르면 shell_bottom.php 가 그린 #changelog-dialog 가 열린다 — 요청도 권한 판단도 없고,

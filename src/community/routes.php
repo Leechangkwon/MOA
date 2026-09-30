@@ -1,5 +1,6 @@
 <?php
 declare(strict_types=1);
+require_once __DIR__ . '/../Design.php';
 
 /**
  * src/community/routes.php — 커뮤니티 모듈의 라우트 표와 관문
@@ -358,12 +359,12 @@ function community_not_ready(bool $isApi): void
     }
     $css = htmlspecialchars(Http::url('/assets/app.css'), ENT_QUOTES, 'UTF-8');
     echo '<!doctype html>' . "\n"
-       . '<html lang="ko"' . Http::themeAttr() . '>' . "\n"
+       . '<html lang="ko"' . Http::themeAttr() . Design::attrs() . '>' . "\n"
        . '<head><meta charset="utf-8">'
        . '<meta name="viewport" content="width=device-width, initial-scale=1">'
        . '<meta name="color-scheme" content="light dark">'
        . '<title>커뮤니티 · Qaredi</title>'
-       . '<link rel="stylesheet" href="' . $css . '"></head>' . "\n"
+       . '<link rel="stylesheet" href="' . $css . '">' . Design::assets(false) . '</head>' . "\n"
        . '<body><div class="app"><main class="main">'
        . '<header class="page-head"><div class="page-head__text">'
        . '<h1 class="page-head__title">커뮤니티</h1>'

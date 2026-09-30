@@ -104,6 +104,11 @@ require __DIR__ . '/../views/shell_top.php';
       </section>
 
       <section class="panel">
+        <div class="panel__head"><h2 class="panel__title">디자인 테마</h2><p class="panel__sub">색과 움직임을 골라 나만의 업무 공간을 만드세요.</p></div>
+        <button type="button" class="btn btn--quiet q-design-open" data-design-open aria-haspopup="dialog" aria-controls="q-design-dialog"><span class="q-design-dot" aria-hidden="true"></span><span data-design-name>Astra</span> · 테마 고르기</button>
+        <p class="help">기본 테마는 이 브라우저에 저장됩니다. 고대비 설정은 계정 전체에 적용됩니다.</p>
+      </section>
+      <section class="panel">
         <div class="panel__head">
           <h2 class="panel__title">비밀번호 변경</h2>
           <p class="panel__sub">바꾸면 <strong>다른 기기의 세션이 모두 끊기고 개인 프로그램 토큰도 모두 취소됩니다</strong>(지금 이 창은 유지됩니다).</p>

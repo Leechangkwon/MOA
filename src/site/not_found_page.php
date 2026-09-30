@@ -1,5 +1,6 @@
 <?php
 declare(strict_types=1);
+require_once __DIR__ . '/../Design.php';
 
 /**
  * src/site/not_found_page.php — 라우터가 「없는 주소」로 끝낸 요청의 응답 (디버깅 묶음 U3 · 시연 2026-09-26)
@@ -53,13 +54,13 @@ function qaredi_not_found(bool $isApi): void
     $css = htmlspecialchars(Http::url('/assets/app.css'), ENT_QUOTES, 'UTF-8');
     $ver = (int) filemtime(__DIR__ . '/../../public/assets/app.css');
     echo '<!doctype html>' . "\n"
-       . '<html lang="ko"' . Http::themeAttr() . '>' . "\n"
+       . '<html lang="ko"' . Http::themeAttr() . Design::attrs() . '>' . "\n"
        . '<head><meta charset="utf-8">'
        . '<meta name="viewport" content="width=device-width, initial-scale=1">'
        . '<meta name="color-scheme" content="light dark">'
        . '<meta name="robots" content="noindex">'
        . '<title>찾을 수 없는 페이지 · Qaredi</title>'
-       . '<link rel="stylesheet" href="' . $css . '?v=' . $ver . '"></head>' . "\n"
+       . '<link rel="stylesheet" href="' . $css . '?v=' . $ver . '">' . Design::assets(false) . '</head>' . "\n"
        . '<body><div class="app"><main class="main" id="not-found">'
        . '<header class="page-head"><div class="page-head__text">'
        . '<h1 class="page-head__title">찾을 수 없는 페이지</h1>'

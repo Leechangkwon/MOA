@@ -1,0 +1,23 @@
+<?php
+declare(strict_types=1);
+require_once __DIR__ . '/../Design.php';
+?>
+<dialog id="q-design-dialog" class="q-design-dialog" aria-labelledby="q-design-title" aria-describedby="q-design-description">
+  <div class="q-design-heading">
+    <div><p class="q-eyebrow">YOUR SPACE, YOUR STYLE</p><h2 id="q-design-title">나에게 맞는 Qaredi</h2></div>
+    <button type="button" class="btn btn--quiet" data-design-close aria-label="테마 선택 닫기">닫기</button>
+  </div>
+  <p id="q-design-description" class="q-design-description">테마를 눌러 미리 보세요. 기본으로 저장하면 이 브라우저의 모든 화면에 적용됩니다.</p>
+  <div class="q-theme-grid" role="group" aria-label="디자인 테마">
+<?php foreach (Design::THEMES as $qDesignKey => $qDesignDetails): ?>
+    <button type="button" class="q-theme-option" data-design-choice="<?= $qDesignKey ?>" aria-pressed="<?= Design::theme() === $qDesignKey ? 'true' : 'false' ?>">
+      <span class="q-theme-swatch" aria-hidden="true"><span>Q</span><i></i><i></i><i></i></span>
+      <span class="q-theme-label"><strong><?= $qDesignDetails[0] ?></strong><?php if ($qDesignKey === 'nova'): ?><span class="q-theme-tag">시그니처</span><?php endif; ?></span>
+      <span class="q-theme-desc"><?= $qDesignDetails[1] ?></span>
+    </button>
+<?php endforeach; ?>
+  </div>
+  <label class="q-motion-control"><input type="checkbox" id="q-motion-reduce"> 움직임 줄이기<span>기기의 모션 설정도 따릅니다.</span></label>
+  <p class="q-design-status" id="q-design-status" role="status" aria-live="polite"></p>
+  <div class="q-design-footer"><span>밝은 화면 · 어두운 화면 모두 지원</span><button type="button" class="btn" id="q-design-save">기본으로 저장</button></div>
+</dialog>

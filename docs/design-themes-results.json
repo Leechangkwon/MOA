@@ -1,0 +1,41 @@
+{
+  "checks": 1090,
+  "failures": [],
+  "console": [],
+  "scope": "isolated rendered production views; original auth/API scripts excluded; live regression separate",
+  "allowlist": {
+    "pass": 19,
+    "fail": 0
+  },
+  "live": {
+    "checks": 252,
+    "failures": [],
+    "console": [],
+    "http_5xx": [],
+    "scope": "live original JS/API; reserved review account; readonly GET navigation and preference cookies"
+  },
+  "public_https": {
+    "http": 200,
+    "persisted": "nova",
+    "cookies_secure": true
+  },
+  "regression": {
+    "help_button": {
+      "pass": 16,
+      "fail": 0
+    },
+    "community_asset_version": {
+      "pass": 37,
+      "fail": 0
+    },
+    "security_lint": 0,
+    "wiki_check": 0,
+    "public_launcher": {
+      "pass": 61,
+      "fail": 0,
+      "skip": 1,
+      "scope": "public-only; no auth/share operations or operational DB reads"
+    }
+  },
+  "full_launcher": "Not run: operating activity guard found 4 recent human actions. Public subset and reserved-account readonly live browser used."
+}

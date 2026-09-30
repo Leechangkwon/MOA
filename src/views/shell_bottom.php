@@ -174,5 +174,6 @@ $shellChangelog = Changelog::entries();
      `$shellPwa` 는 shell_top.php 가 허용 목록 한 값으로 좁힌 것이다. -->
 <script src="<?= Http::url('/assets/alerts-app.js') ?>?v=<?= (int) filemtime(__DIR__ . '/../../public/assets/alerts-app.js') ?>"></script>
 <?php endif; ?>
+<?php include __DIR__ . '/design_controls.php'; ?>
 </body>
 </html>

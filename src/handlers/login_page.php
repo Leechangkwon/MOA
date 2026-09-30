@@ -1,5 +1,6 @@
 <?php
 declare(strict_types=1);
+require_once __DIR__ . '/../Design.php';
 
 /**
  * src/handlers/login_page.php — GET /login (정책: public)
@@ -85,7 +86,7 @@ $loginApps = [
 $loginApp = $loginApps[$loginPane === '' ? 'tbox' : $loginPane];
 ?>
 <!doctype html>
-<html lang="ko"<?= $themeAttr ?>>
+<html lang="ko"<?= $themeAttr ?><?= Design::attrs() ?>>
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -99,9 +100,11 @@ $loginApp = $loginApps[$loginPane === '' ? 'tbox' : $loginPane];
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="Qaredi">
+<?= Design::assets() ?>
 </head>
 <body data-page="login" data-base="<?= TBOX_BASE ?>" data-community-base="<?= COMMUNITY_BASE ?>"<?= $loginDataTo === '' ? '' : ' data-to="' . htmlspecialchars($loginDataTo, ENT_QUOTES, 'UTF-8') . '"' ?>>
 <div class="login">
+  <button type="button" class="btn btn--quiet q-design-open q-login-design" data-design-open aria-haspopup="dialog" aria-controls="q-design-dialog"><span class="q-design-dot" aria-hidden="true"></span><span data-design-name>Astra</span> · 테마</button>
   <!-- D-5 (DESIGN.md 2.12) — 로그인 화면에는 셸이 없으므로 같은 단추를 오른쪽 위 구석에 둔다.
        자리는 CSS(.login .theme-toggle)가 정하고, 해·달 중 무엇을 보일지도 CSS 가 정한다. -->
   <button type="button" class="btn btn--icon btn--plain theme-toggle" data-theme-toggle
@@ -114,13 +117,14 @@ $loginApp = $loginApps[$loginPane === '' ? 'tbox' : $loginPane];
       <span class="login__mark"><span class="icon" data-icon="<?= $loginApp['icon'] ?>"></span></span>
       <span class="brand__text">
         <span class="login__brand-name"><?= htmlspecialchars($loginApp['name'], ENT_QUOTES, 'UTF-8') ?></span>
-        <span class="login__brand-sub">Qaredi</span>
+        <span class="login__brand-sub q-wordmark">Qaredi</span>
       </span>
     </div>
     <div>
       <h2 class="login__lead"><?= htmlspecialchars($loginApp['sub'], ENT_QUOTES, 'UTF-8') ?></h2>
       <p class="login__brand-sub">Qaredi 계정 하나로 t-box 와 커뮤니티를 함께 씁니다. 한 번 로그인하면 둘 다 열립니다.</p>
     </div>
+    <div class="q-login-art" aria-hidden="true"><img class="q-art" src="<?= Http::url('/assets/design/orbit.svg') ?>" width="600" height="540" alt=""></div>
     <!-- Qaredi C — 로그인 화면에는 「Qaredi 홈」 텍스트 링크 하나만 (ARCH-launcher 6장).
          런처는 로그인 전에도 열리므로 이 링크가 막다른 화면을 만들지 않는다. 주소는
          사이트 루트라 `/tbox` 접두를 타지 않는다(이 화면에서 접두 없는 링크는 이것뿐이다). -->
@@ -193,5 +197,6 @@ $loginApp = $loginApps[$loginPane === '' ? 'tbox' : $loginPane];
 
 <script src="<?= Http::url('/assets/app.js') ?>?v=<?= $loginJsVersion ?>"></script>
 <script src="<?= Http::url('/assets/passkey.js') ?>?v=<?= $loginPkVersion ?>"></script>
+<?php include __DIR__ . '/../views/design_controls.php'; ?>
 </body>
 </html>

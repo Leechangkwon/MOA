@@ -1,15 +1,16 @@
 <?php
 declare(strict_types=1);
+require_once __DIR__ . '/../Design.php';
 
 /**
  * src/views/launcher.php — Qaredi 런처 화면 (Q:F-1, ARCH-launcher 5장, DESIGN.md 2.3 · 2.10 · 2.11 · 2.12)
  *
  * 셸(사이드바)을 쓰지 않는 **독립 화면**이다 — 로그인 화면(DESIGN 2.10)과 같은 층.
- * 화면 전용 클래스를 하나도 만들지 않는다(DESIGN 원칙 6): 배치는 `.app` + `.main`,
+ * Claude 원본 구성 요소를 보존하고 공통 브랜드 `.q-hero`와 테마 선택기를 얹는다(2026-10-01 사용자 결정): 배치는 `.app` + `.main`,
  * 머리는 `.page-head`, 타일은 `.card-grid` > `.card.card--link`(2.3), 「준비 중」은 `.badge`(2.2) 다.
  *
- * ★ `<script>` 0 · 인라인 `style=` 0 · `on*` 0 (CSP, DESIGN 원칙 2).
- * ★ 아이콘은 서버가 그리는 **인라인 SVG** 다 — 스크립트가 없어 `<template>` 복제를 못 쓴다.
+ * ★ 디자인 설정용 외부 `<script>` 1개(사용자 결정 2026-10-01) · 인라인 `style=` 0 · `on*` 0 (CSP, DESIGN 원칙 2).
+ * ★ 아이콘은 서버가 그리는 **인라인 SVG** 다 — 취향 스크립트는 앱 아이콘을 다루지 않는다.
  *   path 데이터는 `Apps::ICON_PATHS` 한 벌이고 전부 고정 문자열이다(요청 값 0).
  * ★ HTML 로 나가는 동적 값은 앱 목록(저장소 파일)과 사용자명·역할 둘뿐이고 전부
  *   htmlspecialchars(ENT_QUOTES, 'UTF-8') 를 거친다 (PRD S-03).
@@ -58,7 +59,7 @@ if (is_array($launcherUser)) {
 }
 ?>
 <!doctype html>
-<html lang="ko"<?= Http::themeAttr() ?><?= /* 7-D3 고대비(DESIGN 2.16) — 로그인했고 계정 칸이 참일 때만 고정 글자 · 새 함수 0 */ is_array($launcherUser) && ($launcherUser['high_contrast'] ?? false) === true ? ' data-contrast="high"' : '' ?>>
+<html lang="ko"<?= Http::themeAttr() ?><?= Design::attrs() ?><?= /* 7-D3 고대비(DESIGN 2.16) — 로그인했고 계정 칸이 참일 때만 고정 글자 · 새 함수 0 */ is_array($launcherUser) && ($launcherUser['high_contrast'] ?? false) === true ? ' data-contrast="high"' : '' ?>>
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -67,19 +68,20 @@ if (is_array($launcherUser)) {
 <!-- 브라우저가 스스로 부르는 `/favicon.ico` 가 404 로 떨어지지 않게 문서 안에 둔다(셸과 같은 고정 문자열). -->
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath fill='%2314213d' d='M12 2 4 5v6c0 5 3.4 9.4 8 11 4.6-1.6 8-6 8-11V5z'/%3E%3C/svg%3E">
 <link rel="stylesheet" href="<?= $launcherEsc(Http::url('/assets/app.css')) ?>?v=<?= $launcherCssVersion ?>">
-<!-- T:F-72 라운드 C · 결정 PK-D5 — 홈 화면 「Qaredi」 앱(모든 사람) 매니페스트. 고정 글자뿐(데이터 0) · 서비스 워커 없음 · 스크립트 0 그대로 -->
+<!-- T:F-72 라운드 C · 결정 PK-D5 — 홈 화면 「Qaredi」 앱(모든 사람) 매니페스트. 고정 글자뿐(데이터 0) · 서비스 워커 없음 · 취향 스크립트만 -->
 <link rel="manifest" href="<?= $launcherEsc(Http::url('/app.webmanifest')) ?>">
 <link rel="apple-touch-icon" href="<?= $launcherEsc(Http::url('/assets/qaredi-icon-192.png')) ?>?v=<?= (int) filemtime(__DIR__ . '/../../public/assets/qaredi-icon-192.png') ?>">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="Qaredi">
+<?= Design::assets() ?>
 </head>
-<body>
+<body class="q-launcher">
 <div class="app">
   <main class="main">
     <header class="page-head">
       <div class="page-head__text">
-        <h1 class="page-head__title">Qaredi</h1>
+        <h1 class="page-head__title q-wordmark">Qaredi</h1>
 <?php if (is_array($launcherUser)): ?>
         <p class="page-head__sub">사내 업무 도구 모음입니다. 쓸 기능을 고르세요.</p>
 <?php else: ?>
@@ -96,16 +98,22 @@ if (is_array($launcherUser)) {
       </div>
 <?php endif; ?>
     </header>
+    <div class="q-launcher-tools"><button type="button" class="btn btn--quiet q-design-open" data-design-open aria-haspopup="dialog" aria-controls="q-design-dialog"><span class="q-design-dot" aria-hidden="true"></span><span data-design-name>Astra</span> · 테마 고르기</button></div>
+    <section class="q-hero" aria-label="Qaredi 업무 공간">
+      <div class="q-hero-copy"><p class="q-eyebrow">A LITTLE SPACE. A BIG POSSIBILITY.</p><h2>오늘의 일을,<br><span>새로운 빛으로.</span></h2><p>아이디어가 기록이 되고,<br>함께하는 일이 더 가벼워지는 공간.</p>
+<?php if (!is_array($launcherUser)): ?><a class="btn q-hero-cta" href="<?= $launcherEsc($launcherLoginUrl) ?>">내 공간으로 들어가기 <span aria-hidden="true">↗</span></a><?php else: ?><span class="q-hero-note">아래에서 오늘의 작업을 시작하세요 <span aria-hidden="true">↘</span></span><?php endif; ?>
+      </div><div class="q-hero-art" aria-hidden="true"><div class="q-orbit q-orbit--one"></div><div class="q-orbit q-orbit--two"></div><img class="q-art" src="<?= $launcherEsc(Http::url('/assets/design/orbit.svg')) ?>" width="600" height="540" alt=""><span class="q-art-caption">Q / CONNECTED POSSIBILITIES</span></div>
+    </section>
 
 <?php if ($launcherApps !== []): ?>
-    <section class="card-grid">
+    <section class="card-grid q-module-grid" aria-label="업무 도구">
 <?php foreach ($launcherApps as $launcherApp): ?>
 <?php   $launcherSoon = ($launcherApp['status'] ?? '') === 'soon'; ?>
 <?php   $launcherIcon = Apps::ICON_PATHS[$launcherApp['icon']]; ?>
 <?php   if ($launcherSoon): ?>
       <div class="card card--link card--soon">
 <?php   else: ?>
-      <a class="card card--link" href="<?= $launcherEsc($launcherApp['path']) ?>">
+      <a class="card card--link q-module-card" href="<?= $launcherEsc($launcherApp['path']) ?>">
 <?php   endif; ?>
         <span class="card__icon"><span class="icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="<?= $launcherIcon ?>"/></svg></span></span>
         <span class="card__body">
@@ -127,5 +135,6 @@ if (is_array($launcherUser)) {
 <?php endif; ?>
   </main>
 </div>
+<?php include __DIR__ . '/design_controls.php'; ?>
 </body>
 </html>

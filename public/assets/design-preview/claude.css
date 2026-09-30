@@ -1,0 +1,2144 @@
+/* public/assets/app.css — 12단계(12-1) 공통 셸 · 기능별 화면 · 디자인 토큰 (PRD F-20)
+ *
+ * 규칙
+ *   · 외부 폰트·CDN·이미지 URL 을 하나도 불러오지 않는다 (CSP `default-src 'self'`).
+ *     서체는 OS 에 이미 있는 것만 쓴다.
+ *   · 화면 코드(HTML·JS)에는 인라인 `style=""` 이 없다 (CSP `style-src 'self'`).
+ *     보이고 안 보이고는 전부 **클래스와 `hidden` 속성**으로만 바꾼다.
+ *   · 이 파일은 **표현만** 담는다. 무엇을 보여 줄지는 서버가 내려 준 값(`/api/me` 의 `can_*`)이
+ *     정하고, 허용 여부는 언제나 서버 Authz 가 매 요청 다시 판단한다 (PRD S-01, 10장).
+ */
+
+/* ─── 토큰 (디자인 캔버스에서 옮겨 온 값) ──────────────────────────── */
+:root {
+  /* DESIGN 2.12 (2026-09-25 보완) — 「밝게·어둡게 둘 다 스스로 그린다」고 밝힌다(`light` 만 쓰면 브라우저가 여전히 뒤집는다 — 헤드리스 강제 다크로 확인). 어두운 쪽은 아래 두 블록이 `dark` 로 좁힌다.
+     `<meta name="color-scheme" content="light dark">`(셸·로그인·런처·커뮤니티 오류 화면 head)와 짝 — 브라우저의 강제 다크가 손대지 않게. */
+  color-scheme: only light;
+  /* 2026-09-21 — shadcn/ui(new-york · zinc) 의 색·간격 체계로 옮겼다.
+     중립 회색은 zinc, 기본 단추는 거의 검정, 테두리는 얇고 그림자는 낮다.
+     외부 CSS·폰트는 여전히 하나도 안 불러온다 (CSP). */
+  --bg: #ffffff;              /* background */
+  --surface: #ffffff;         /* card · popover */
+  --surface-2: #fafafa;       /* zinc-50 — 사이드바 · 모달 본문 */
+  --muted-bg: #f4f4f5;        /* zinc-100 — muted · secondary · accent */
+  --fg: #09090b;              /* zinc-950 — foreground */
+  --fg-2: #3f3f46;            /* zinc-700 — 내비 글자 */
+  --muted: #71717a;           /* zinc-500 — muted-foreground */
+  --muted-2: #a1a1aa;         /* zinc-400 */
+  --line: #e4e4e7;            /* zinc-200 — border · input */
+  --primary: #18181b;         /* zinc-900 — primary */
+  --primary-hover: #27272a;   /* zinc-800 */
+  --primary-fg: #fafafa;      /* primary-foreground */
+  --ring: #a1a1aa;            /* zinc-400 — focus ring */
+  --ring-soft: rgba(161, 161, 170, .35);
+
+  --accent: #2563eb;          /* blue-600 — 링크 · 정보 */
+  --accent-soft: #eff6ff;     /* blue-50 */
+  --accent-line: #bfdbfe;     /* blue-200 */
+  --accent-dark: #1d4ed8;     /* blue-700 */
+  --danger: #dc2626;          /* red-600 — destructive */
+  --danger-soft: #fef2f2;     /* red-50 */
+  --danger-line: #fecaca;     /* red-200 */
+  --warn-fg: #b45309;         /* amber-700 */
+  --warn-bg: #fffbeb;         /* amber-50 */
+  --warn-line: #fde68a;       /* amber-200 */
+  --ok-fg: #15803d;           /* green-700 */
+  --ok-bg: #f0fdf4;           /* green-50 */
+  --ok-line: #bbf7d0;         /* green-200 */
+  --violet-fg: #6d28d9;       /* violet-700 — 팀 등급 */
+  --violet-bg: #f5f3ff;       /* violet-50 */
+  --violet-line: #ddd6fe;     /* violet-200 */
+  --brand-navy: #09090b;      /* 로그인 좌측 판 (이름은 호환용으로 유지) */
+
+  --shadow-xs: 0 1px 2px 0 rgb(0 0 0 / .05);
+  --shadow-sm: 0 1px 3px 0 rgb(0 0 0 / .06), 0 1px 2px -1px rgb(0 0 0 / .06);
+  --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / .1), 0 4px 6px -4px rgb(0 0 0 / .1);
+
+  --r-card: 12px;             /* rounded-xl */
+  --r-ctl: 8px;               /* rounded-md */
+  --r-sm: 6px;                /* rounded-sm */
+  --r-pill: 999px;
+  --sidebar-w: 240px;
+  --h-input: 36px;            /* h-9 */
+  --h-btn: 36px;              /* h-9 */
+  --h-icon: 32px;             /* h-8 */
+
+  --font: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Apple SD Gothic Neo", "Malgun Gothic", "Noto Sans KR", sans-serif;
+  --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+}
+
+* { box-sizing: border-box; }
+
+/* [hidden] 은 브라우저 기본 스타일이지만 flex/grid 가 그것을 덮는다.
+   JS 가 el.hidden 으로만 표시를 바꾸므로 여기서 우선순위를 되돌린다. */
+[hidden] { display: none !important; }
+
+html, body { height: 100%; }
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--fg);
+  font-family: var(--font);
+  font-size: 14px;
+  line-height: 1.5;
+  word-break: keep-all;          /* 한글은 어절 단위로 줄을 바꾼다 */
+  -webkit-font-smoothing: antialiased;
+}
+
+a { color: var(--accent); text-decoration: none; text-underline-offset: 3px; }
+a:hover { color: var(--accent-dark); text-decoration: underline; }
+
+h1, h2, h3 { margin: 0; letter-spacing: -.02em; }
+strong, b { font-weight: 600; }   /* 굵기는 600 까지 — 브라우저 기본 bold(700) 가 튀지 않게 */
+
+code {
+  padding: .15rem .35rem;
+  background: var(--muted-bg);
+  border-radius: var(--r-sm);
+  font-family: var(--mono);
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--fg);
+}
+.mono { font-family: var(--mono); }
+.muted { color: var(--muted); font-size: 13px; }
+
+/* 키보드 사용자를 위한 본문 건너뛰기 — 초점을 받을 때만 보인다 */
+.skip {
+  position: absolute;
+  left: -9999px;
+  top: 0;
+  z-index: 50;
+  padding: 8px 14px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--r-ctl);
+  box-shadow: var(--shadow-sm);
+}
+.skip:focus { left: 8px; top: 8px; }
+
+/* ─── 공통 셸 — 좌측 내비 + 본문 (PRD 10장 「공통 셸」, F-20) ───────── */
+.app { display: flex; min-height: 100%; }
+
+/* 좁은 화면에서만 보이는 상단 바. 넓은 화면에서는 미디어 쿼리가 감춘다. */
+.appbar {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: 52px;
+  padding: 0 12px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--line);
+}
+.appbar__brand { font-size: 14px; font-weight: 600; }
+.appbar__page { color: var(--muted); font-size: 13px; }
+
+.sidebar {
+  display: flex;
+  flex-direction: column;
+  width: var(--sidebar-w);
+  flex-shrink: 0;
+  padding: 16px 12px 12px;
+  background: var(--surface-2);
+  border-right: 1px solid var(--line);
+  overflow-y: auto;            /* 2026-09-15: 관리 링크 7개가 늘어 낮은 화면(768px)에서 「관리」 묶음이 화면 밖으로 밀리던 것 — 사이드바 자체가 스크롤한다 */
+  scrollbar-width: thin;
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 4px 8px 16px;
+}
+.brand__mark {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  flex-shrink: 0;
+  border-radius: var(--r-ctl);
+  background: var(--primary);
+  color: var(--primary-fg);
+}
+.brand__text { display: flex; flex-direction: column; min-width: 0; }
+.brand__name { font-size: 14px; font-weight: 600; line-height: 1.3; }
+.brand__sub { font-size: 12px; color: var(--muted); line-height: 1.3; }
+
+.nav-title {
+  margin: 12px 8px 4px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--muted);
+}
+.nav { display: flex; flex-direction: column; gap: 1px; }
+.nav__item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 32px;
+  padding: 0 8px;
+  border-radius: var(--r-sm);
+  color: var(--fg-2);
+  font-size: 14px;
+  font-weight: 500;
+}
+.nav__item:hover { background: var(--muted-bg); color: var(--fg); text-decoration: none; }
+.nav__item.is-active { background: var(--muted-bg); color: var(--fg); font-weight: 600; }
+.nav__item .icon { display: inline-flex; flex-shrink: 0; color: var(--muted); }
+.nav__item:hover .icon, .nav__item.is-active .icon { color: var(--fg); }
+
+.sidebar__spacer { flex-grow: 1; min-height: 12px; }
+
+.userchip {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 8px 0;
+  border-top: 1px solid var(--line);
+}
+.userchip__avatar {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  flex-shrink: 0;
+  border-radius: var(--r-ctl);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  color: var(--fg);
+  font-size: 13px;
+  font-weight: 600;
+}
+.userchip__text { display: flex; flex-direction: column; flex-grow: 1; min-width: 0; }
+.userchip__name { font-size: 14px; font-weight: 600; overflow-wrap: anywhere; line-height: 1.3; }
+.userchip__role { font-size: 12px; color: var(--muted); line-height: 1.3; }
+
+.main {
+  display: flex;
+  flex-direction: column;
+  flex-grow: 1;
+  min-width: 0;
+  gap: 20px;
+  padding: 28px 32px 40px;
+}
+
+.page-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+.page-head__text { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.page-head__title { font-size: 24px; font-weight: 600; letter-spacing: -.025em; line-height: 1.25; }
+.page-head__sub { margin: 0; color: var(--muted); font-size: 14px; }
+.page-head__actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+/* DESIGN 2.9 (2026-09-25 보완) — 720px 미만은 제목이 한 줄을 다 쓰고 동작 줄은 아래로(오른쪽 정렬) */
+@media (max-width: 719.98px) {
+  .page-head__text { flex: 1 1 100%; }
+  .page-head__actions { flex: 1 1 100%; justify-content: flex-end; }
+  /* 동작 줄은 한 줄 — 「사용 방법」은 ? 아이콘만(글자는 화면 읽기용으로 남긴다: 가리기만, display:none 아님) */
+  .page-head__actions [data-help-open] { width: var(--h-btn); padding: 0; justify-content: center; }
+  .page-head__actions [data-help-open] > span:not(.icon) {
+    position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0;
+  }
+}
+/* 480px 미만(접은 폴드·작은 폰) — 머리 동작 한 줄을 지키려고 단추 안 여백만 줄인다(글자는 그대로) */
+@media (max-width: 479.98px) {
+  .page-head__actions { gap: 6px; }
+  /* 머리 단추 높이 36→32px(작은 단추와 같은 높이) — 2026-09-25 사용자 「단추가 너무 크다」 */
+  .page-head__actions .btn { height: 32px; }
+  .page-head__actions [data-help-open] { width: 32px; }
+  .page-head__actions .btn:not([data-help-open]) { padding: 0 10px; gap: 6px; }
+}
+
+/* 좁은 화면에서만 가리는 글자 — 화면 읽기용으로는 남는다(display:none 아님). 긴 단추 이름을 줄일 때(DESIGN 2.9) */
+@media (max-width: 719.98px) {
+  .narrow-hide { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
+}
+
+/* ─── 더보기 메뉴 `.menu` (DESIGN 2.15, 2026-09-25) ─────────────────
+   화면 머리의 동작이 넷을 넘을 때 나머지를 담는다. 여닫기는 <details> 가 하고(스크립트 0),
+   밖 누르기·Esc·항목 누르기로 닫는 것만 app.js 한 곳이 한다. 새 색·간격 0 — 토큰만. */
+.menu { position: relative; }
+.menu > summary { list-style: none; }
+.menu > summary::-webkit-details-marker { display: none; }
+.menu > summary .icon { transition: transform .15s ease; }
+.menu[open] > summary .icon { transform: rotate(180deg); }
+.menu[open] > summary { background: var(--muted-bg); }
+.menu__list {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 40;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 12rem;
+  padding: 6px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--r-card);
+  box-shadow: var(--shadow-lg);
+}
+/* 칸을 밀지 않는다(DESIGN 2.8 ★) — 앵커를 아는 브라우저는 화면 기준으로 띄우고 자리만 단추에 맞춘다 */
+@supports (anchor-name: --menu) and (anchor-scope: --menu) {
+  .menu { anchor-scope: --menu; }
+  .menu > summary { anchor-name: --menu; }
+  .menu__list {
+    position: fixed;
+    position-anchor: --menu;
+    inset: auto;
+    margin: 6px 0;
+    position-area: bottom span-left;
+    position-try-fallbacks: bottom span-right, top span-left, top span-right;
+  }
+}
+.menu__item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  height: 32px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: var(--r-sm);
+  background: transparent;
+  color: var(--fg);
+  font: inherit;
+  font-size: 14px;
+  text-align: left;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.menu__item .icon { display: inline-flex; flex-shrink: 0; }   /* 단추 아이콘과 같은 규칙(.btn .icon) — 글자와 한 줄로 */
+.menu__item:hover { background: var(--muted-bg); }
+.menu__item:focus-visible { outline: none; box-shadow: 0 0 0 3px var(--ring-soft); }
+.menu__item--danger { color: var(--danger); }
+.menu__sep { width: 100%; height: 1px; margin: 4px 0; border: 0; background: var(--line); }
+/* 구분선은 **앞뒤 모두** 보이는 항목이 있을 때만(맨 위·맨 아래에 홀로 남지 않게 — 검토 M-2) ·
+   항목이 모두 숨으면 「더보기」 자체가 숨는다(보이고 숨는 것은 창구의 can_* 가 정한다) */
+.menu__sep { display: none; }
+.menu__item:not([hidden]) ~ .menu__sep:has(~ .menu__item:not([hidden])) { display: block; }
+.menu:not(:has(.menu__item:not([hidden]))) { display: none; }
+
+/* ─── 카드 · 패널 ──────────────────────────────────────────────── */
+.card {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--r-card);
+  box-shadow: var(--shadow-sm);
+}
+.card--pad { padding: 24px; }
+.card--flush { overflow: hidden; }
+/* 여백 없는 카드 안의 빈 목록 안내 한 줄(「(무엇)이 없습니다」 — DESIGN 2.4)은 표 머리·바닥(.table-foot) 글자와 같은 12px 안쪽에서
+   시작한다 — 카드 테두리에 글자가 붙어 있었다(Q:F-3a 라운드 A 디자인 지적 「빈 즐겨찾기 안내 글 왼쪽 여백 0」, 파일·휴지통 화면). */
+.card--flush > p.muted { margin: 0; padding: 12px; }
+
+/* 누를 수 있는 카드 (DESIGN 2.3) — 관리자 허브 · 팀 카드 · 위키 단계 카드가 전부 이 한 벌이다.
+   <a> 또는 <button>. 구조: .card__icon(선택) + .card__body > .card__head(.card__title + 배지) · .card__desc · .card__meta */
+.card--link {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  width: 100%;
+  padding: 16px;
+  text-align: left;
+  font: inherit;
+  color: inherit;
+  text-decoration: none;
+  box-shadow: var(--shadow-xs);
+  cursor: pointer;
+  transition: background-color .12s, border-color .12s;
+}
+.card--link:hover { background: var(--surface-2); border-color: var(--muted-2); color: inherit; text-decoration: none; }
+.card--link:focus-visible { outline: none; border-color: var(--ring); box-shadow: 0 0 0 3px var(--ring-soft); }
+.card--link.is-selected { border-color: var(--primary); background: var(--surface-2); }
+.card--soon { background: var(--surface); border-style: dashed; box-shadow: none; cursor: default; }
+.card--soon:hover { background: var(--surface); border-color: var(--line); }
+.card__icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 36px;
+  height: 36px;
+  border-radius: var(--r-ctl);
+  background: var(--muted-bg);
+  color: var(--fg);
+  font-size: 13px;
+  font-weight: 600;
+}
+.card--warn .card__icon { background: var(--danger-soft); color: var(--danger); }
+.card--soon .card__icon { color: var(--muted-2); }
+.card__body { display: flex; flex-direction: column; gap: 3px; min-width: 0; flex: 1 1 auto; }
+.card__head { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.card__title { font-size: 14px; font-weight: 600; overflow-wrap: anywhere; }
+.card__desc { font-size: 13px; color: var(--muted); line-height: 1.5; overflow-wrap: anywhere; }
+.card__meta { display: flex; flex-wrap: wrap; gap: 4px 12px; font-size: 13px; color: var(--muted); }
+.card__meta strong { color: var(--fg); font-weight: 600; }
+/* 카드 배치 둘 — 격자(관리자 허브·위키 차례) · 세로 쌓기(팀 목록) */
+.card-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 12px; }
+.card-stack { display: flex; flex-direction: column; gap: 10px; }
+
+/* 줄 목록 (DESIGN 2.13) — 경보처럼 「한 줄이 한 건」인 목록. 표가 아니어도 되는 것 */
+.list { list-style: none; margin: 0; padding: 0; border: 1px solid var(--line); border-radius: var(--r-ctl); }
+.list--scroll { max-height: 480px; overflow-y: auto; scrollbar-width: thin; }
+.list__item { padding: 10px 14px; border-bottom: 1px solid var(--line); font-size: 13px; overflow-wrap: anywhere; }
+.list__item:last-child { border-bottom: 0; }
+.list__item:hover { background: var(--surface-2); }
+.list__head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 10px; }
+.list__head strong { font-weight: 600; }
+.list__body { display: flex; flex-wrap: wrap; gap: 2px 14px; margin-top: 3px; color: var(--muted); }
+
+/* 표 셀 도움 — 줄 바꾸지 않을 짧은 값(위키 참고 표의 위치 열) */
+.nowrap { white-space: nowrap; }
+
+.panel {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 24px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--r-card);
+  box-shadow: var(--shadow-sm);
+}
+/* 배치 변형 — 화면 이름이 아닌 「모양」으로 이름 붙인다 */
+.panel--narrow { width: 100%; max-width: 400px; }          /* 칸 하나짜리 폼(재인증·로그인) — 가로 flex 안에서도 폭을 채운다 */
+.panel--tight { padding: 16px; gap: 12px; }                /* 좁은 세로 목록 카드(폴더 트리) */
+.panel--tight .panel__head { gap: 2px; }
+/* 480px 미만(접은 폴드·작은 폰) — 패널 안 여백 24→16px (DESIGN 2.9). 기본 `.panel` **뒤에** 둔다(같은 무게) */
+@media (max-width: 479.98px) { .panel { padding: 16px; } }
+.panel__head { display: flex; flex-direction: column; gap: 4px; }
+.panel__title { font-size: 16px; font-weight: 600; letter-spacing: -.01em; line-height: 1.3; }
+.panel__sub { margin: 0; color: var(--muted); font-size: 14px; }
+
+.grid-2 {
+  display: grid;
+  /* min(…, 100%) — 좁은 화면(360px)에서 한 칸 최소 폭 22rem 이 화면보다 넓어 카드가 오른쪽으로 넘쳤다(2026-09-25) */
+  grid-template-columns: repeat(auto-fit, minmax(min(22rem, 100%), 1fr));
+  gap: 20px;
+  align-items: stretch;        /* 나란히 놓인 카드는 높이를 맞춘다 (2026-09-21 사용자 지적) */
+}
+.span-all { grid-column: 1 / -1; }
+
+/* 내 정보 카드의 값 (아이디·역할·팀) — 상자 세 개가 2+1 로 어긋나던 것을 「이름 · 값」 목록으로.
+   옆 카드(비밀번호 변경)와 높이를 맞춘 뒤에도 빈 자리가 어색하지 않다 (2026-09-21 사용자 지적). */
+.info-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 8px;
+}
+.info-item {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  padding: 10px 14px;
+  border-radius: var(--r-ctl);
+  background: var(--muted-bg);
+}
+.info-item > .field__label { flex: 0 0 4.5rem; color: var(--muted); font-size: 13px; }
+.info-item__value { font-size: 14px; font-weight: 600; overflow-wrap: anywhere; }
+
+/* ─── 버튼 ─────────────────────────────────────────────────────── */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  height: var(--h-btn);
+  padding: 0 16px;
+  border: 1px solid var(--primary);
+  border-radius: var(--r-ctl);
+  background: var(--primary);
+  color: var(--primary-fg);
+  font: inherit;
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 1;
+  white-space: nowrap;
+  cursor: pointer;
+  box-shadow: var(--shadow-xs);
+  transition: background-color .12s, border-color .12s, color .12s, box-shadow .12s;
+}
+.btn:hover { background: var(--primary-hover); border-color: var(--primary-hover); color: var(--primary-fg); text-decoration: none; }
+.btn:disabled { cursor: default; opacity: .5; pointer-events: none; }
+.btn .icon { display: inline-flex; flex-shrink: 0; }
+
+/* outline 변형 */
+.btn--quiet {
+  background: var(--surface);
+  color: var(--fg);
+  border-color: var(--line);
+}
+.btn--quiet:hover { background: var(--muted-bg); color: var(--fg); border-color: var(--line); }
+
+/* destructive(outline) 변형 */
+.btn--danger {
+  background: var(--surface);
+  color: var(--danger);
+  border-color: var(--line);
+}
+.btn--danger:hover { background: var(--danger-soft); color: var(--danger); border-color: var(--danger-line); }
+
+/* ghost · icon 변형 — 표 안의 행 동작 단추. 테두리 없이 두어 표가 조용해진다 */
+.btn--icon {
+  width: var(--h-icon);
+  height: var(--h-icon);
+  padding: 0;
+  border-radius: var(--r-sm);
+  background: transparent;
+  color: var(--muted);
+  border-color: transparent;
+  box-shadow: none;
+}
+.btn--icon:hover { background: var(--muted-bg); color: var(--fg); border-color: transparent; }
+/* 행 동작 아이콘의 색은 **뜻**으로 나눈다 (DESIGN.md 2.1 · D-4 결정 2026-09-21):
+   받기(주요 동작) = 파랑, 지우기(되돌릴 수 없음) = 빨강, 나머지(보기·고치기·공유·이동) = 회색.
+   순서대로 색을 입히는 방식(0→4 무지개)은 뜻이 없어 쓰지 않는다 — 0장 원칙 4. 라벨은 makeIconButton 이 넣는 aria-label.
+   「zip 으로 받기」(Q:F-3a 라운드 C — 일괄 막대의 받기)도 받기라 같은 파랑이다(새 색 0 — 선택자만 더함). */
+.btn--icon[aria-label="받기"],
+.btn--icon[aria-label="zip 으로 받기"],
+.btn--icon[aria-label^="확인하고 받기"] { color: var(--accent); }
+.btn--icon[aria-label="받기"]:hover,
+.btn--icon[aria-label="zip 으로 받기"]:hover,
+.btn--icon[aria-label^="확인하고 받기"]:hover { background: var(--accent-soft); color: var(--accent-dark); }
+.btn--icon[aria-label="지우기"] { color: var(--danger); opacity: .8; }
+.btn--icon[aria-label="지우기"]:hover,
+.btn--icon[aria-label="지우기"]:focus-visible { background: var(--danger-soft); color: var(--danger); opacity: 1; }
+/* 행 hover 로 아이콘이 진해질 때도 뜻 색은 유지된다 */
+table.files tbody tr:hover .btn--icon[aria-label="받기"],
+table.files tbody tr:hover .btn--icon[aria-label^="확인하고 받기"] { color: var(--accent); }
+table.files tbody tr:hover .btn--icon[aria-label="지우기"] { color: var(--danger); }
+
+/* 아이콘 단추 툴팁 — app.js 가 모든 아이콘 단추에 넣는 aria-label 을 그대로 글자로 보인다.
+   브라우저 기본 title 툴팁은 1초 뒤에야 뜨고 눈에 잘 안 띄어, 올리는 즉시 단추 아래에 보여 준다.
+   문자열은 attr() 로만 읽으므로 HTML 변환도, 인라인 style 도 없다 (CSP). */
+.btn--icon[aria-label] { position: relative; }
+.btn--icon[aria-label]::after {
+  content: attr(aria-label);
+  position: absolute;
+  left: 50%;
+  top: calc(100% + 6px);
+  transform: translateX(-50%);
+  z-index: 30;
+  padding: 4px 8px;
+  border-radius: var(--r-sm);
+  background: var(--primary);
+  color: var(--primary-fg);
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.3;
+  white-space: nowrap;
+  pointer-events: none;
+  /* visibility:hidden 이면 안 보여도 자리(스크롤 영역)를 차지해 마지막 행 아래로 표가 세로 스크롤됐다 —
+     그래서 display 로 켠다·끈다 (2026-09-21) */
+  display: none;
+}
+.btn--icon[aria-label]:focus-visible::after { display: block; }
+/* 올려서 보는 툴팁은 **마우스 같은 정밀한 포인터**가 주 입력인 기기에서만 (디버깅 묶음 U L4 · 2026-09-26).
+   터치 화면은 누른 뒤에도 :hover 가 그 단추에 남아, 「zip 으로 받기」를 누른 뒤 툴팁이 막대 아래 안내 문장을 가렸다(운영 폰 스크린샷).
+   터치에서는 이름이 aria-label(화면 읽기)로 남고, 키보드 초점(:focus-visible)의 툴팁은 그대로다. */
+@media (hover: hover) and (pointer: fine) {
+  .btn--icon[aria-label]:hover::after { display: block; }
+}
+/* 독립 검토 L-3 — 폴드처럼 **hover 를 알리는 터치 기기**(삼성 인터넷은 S펜 때문에 hover: hover · 주 포인터 fine 으로 알린다)도
+   누른 뒤 :hover 가 남는다. 트리 「하위 추가」 규칙(community.css)과 같이 `any-pointer: coarse` 도 보고 올려서 보는 툴팁을 끈다.
+   키보드 초점 툴팁은 그대로(:focus-visible 은 빼지 않는다). 한계: 터치 화면이 달린 노트북은 마우스로 올려도 툴팁이 안 뜬다(이름은 aria-label). */
+@media (hover: none), (any-pointer: coarse) {
+  .btn--icon[aria-label]:hover:not(:focus-visible)::after { display: none; }
+}
+/* 표 마지막 열의 단추는 툴팁이 오른쪽으로 새지 않게 오른끝을 맞춘다 */
+td.actions .btn--icon:last-child::after,
+.modal__head .btn--icon::after { left: auto; right: 0; transform: none; }
+
+/* ★ 툴팁이 칸을 밀던 것 (사용자 지적 2026-09-23 「로그아웃에 올리면 아래에 이름이 뜨는데 스크롤해야
+   보이고 칸이 밀린다」 · 「t-box 미리보기도 하단에 설명이 뜨며 같은 일이 생긴다」).
+   위의 툴팁은 단추에 붙은 absolute 조각이라, 스크롤이 있는 칸(사이드바·표 감싸개) 안 맨 아래
+   단추에서는 그 조각만큼 **칸의 스크롤 영역이 늘었다**. 앵커 위치 지정을 아는 브라우저에서는
+   툴팁을 **화면 기준(fixed)** 으로 띄우고 자리만 단추에 맞춘다 — fixed 는 어느 칸의 스크롤 영역에도
+   들어가지 않고 칸에 잘리지도 않는다. 아래에 자리가 없으면 위로 뒤집는다(flip-block).
+   `anchor-scope` 가 단추마다 이름을 가둬, 같은 이름을 쓰는 단추 수백 개가 서로 섞이지 않는다.
+   모르는 브라우저는 위 규칙 그대로다. 스크립트·인라인 style 0 (CSP). */
+@supports (anchor-name: --tip) and (anchor-scope: --tip) {
+  .btn--icon[aria-label] { anchor-name: --tip; anchor-scope: --tip; }
+  .btn--icon[aria-label]::after,
+  td.actions .btn--icon:last-child::after,
+  .modal__head .btn--icon::after {
+    position: fixed;
+    position-anchor: --tip;
+    inset: auto;
+    transform: none;
+    margin: 6px 0;
+    /* 단추 바로 아래 가운데. 화면 가장자리면 안쪽으로 비키고, 아래가 모자라면 위로 */
+    position-area: bottom;
+    position-try-fallbacks: bottom span-right, bottom span-left, top, top span-right, top span-left;
+    z-index: 1000;
+  }
+}
+
+.btn--small { height: 32px; padding: 0 12px; font-size: 13px; border-radius: var(--r-sm); }
+.btn--block { width: 100%; }   /* 독립 화면의 칸 하나~셋짜리 폼(로그인·재인증)의 제출 단추 */
+
+/* 단추 위계 — 화면 머리에서 「파일 올리기」(검정) 하나만 주요 동작이고, 「URL 로 가져오기」는 outline,
+   「사용 방법」 도움말은 ghost 로 한 단계 더 물린다. 셋이 같은 무게로 나란히 서 있던 것을 푼다. */
+.btn[data-help-open] { background: transparent; border-color: transparent; box-shadow: none; color: var(--muted); }
+.btn[data-help-open]:hover { background: var(--muted-bg); color: var(--fg); border-color: transparent; }
+.btn--plain { border-color: transparent; background: transparent; box-shadow: none; }
+.btn--plain:hover { border-color: transparent; background: var(--muted-bg); }
+
+/* 초점 고리 — shadcn 의 ring(zinc-400, 3px) */
+.btn:focus-visible,
+.nav__item:focus-visible,
+a:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible,
+summary:focus-visible {
+  outline: none;
+  border-color: var(--ring);
+  box-shadow: 0 0 0 3px var(--ring-soft);
+}
+a:focus-visible, .nav__item:focus-visible, summary:focus-visible { border-radius: var(--r-sm); }
+
+/* ─── 폼 ───────────────────────────────────────────────────────── */
+.form { display: grid; gap: 14px; margin: 0; }
+.form--grid {
+  grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr));
+  align-items: end;
+}
+.form--grid > .btn { justify-self: start; }
+.field { display: grid; gap: 6px; min-width: 0; }
+.field--full { grid-column: 1 / -1; }
+.field__label { font-size: 14px; font-weight: 500; color: var(--fg); line-height: 1.3; }
+
+.field input,
+.field select,
+.input {
+  height: var(--h-input);
+  padding: 0 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-ctl);
+  background: var(--surface);
+  color: var(--fg);
+  font: inherit;
+  font-size: 14px;
+  min-width: 0;
+  box-shadow: var(--shadow-xs);
+  transition: border-color .12s, box-shadow .12s;
+}
+.field input::placeholder,
+.toolbar input::placeholder { color: var(--muted); }
+/* 라디오·체크박스는 입력 칸이 아니다 — 위 규칙(높이 36px·테두리·그림자)이 걸리면 동그라미가 36px 상자
+   위쪽에 떠서 설명 글자와 한 줄로 맞지 않았다(2026-09-23 공개 범위·인계 모달 실측). 글자 앞에 한 줄로 둔다. */
+.field input[type="radio"],
+.field input[type="checkbox"] {
+  width: auto;
+  height: auto;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  box-shadow: none;
+  flex-shrink: 0;
+  accent-color: var(--primary);
+}
+/* 일괄 고르기 체크(Q:F-3a 라운드 B — 두 앱의 줄·머리 체크, 표시는 `data-bulk` 속성 · 새 클래스 0): 폼 체크와 같은 --primary 색
+   (브라우저 기본 파랑은 DESIGN 0장 4 의 「정보·링크」 뜻이라 쓰지 않는다) · 글자와 가운데 한 줄 · 뒤 간격 6px. */
+input[type="checkbox"][data-bulk] { accent-color: var(--primary); vertical-align: middle; margin: 0 6px 0 0; cursor: pointer; }
+.field__label:has(> input[type="radio"]),
+.field__label:has(> input[type="checkbox"]) {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 400;
+  cursor: pointer;
+}
+.field input:disabled,
+.field select:disabled { opacity: .5; cursor: not-allowed; }
+.field input[type="file"] {
+  height: auto;
+  padding: 7px 12px;
+  font-size: 14px;
+  color: var(--muted);
+}
+.field input[type="date"] { padding-right: 8px; }
+
+.form-actions { display: flex; flex-wrap: wrap; gap: 8px; justify-content: flex-end; }
+
+.toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+.toolbar input[type="search"],
+.toolbar select {
+  height: var(--h-input);
+  padding: 0 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-ctl);
+  background: var(--surface);
+  color: var(--fg);
+  font: inherit;
+  font-size: 14px;
+  box-shadow: var(--shadow-xs);
+  transition: border-color .12s, box-shadow .12s;
+}
+.toolbar input[type="search"] { flex: 1 1 16rem; min-width: 0; }
+/* 720px 미만 — 이름표가 있는 도구줄의 찾기 칸은 한 줄을 다 쓴다: 이름표(「상태」)와 고르개가 다른 줄로 갈라지지 않게.
+   이름표 없는 도구줄(공유 창 「사람 추가」 칸 + 권한 고르개)은 그대로 한 줄에 둔다(DESIGN 2.9, 2026-09-25 폴드 접은 화면).
+   기본 규칙 **뒤에** 둔다 — 같은 무게라 앞에 두면 기본의 16rem 이 이긴다. */
+@media (max-width: 719.98px) { .toolbar:has(> label) input[type="search"] { flex-basis: 100%; } }
+
+/* ─── 표 ───────────────────────────────────────────────────────── */
+.table-wrap { overflow-x: auto; }
+table.files {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+}
+table.files th {
+  height: 40px;
+  padding: 0 12px;
+  text-align: left;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--muted);
+  border-bottom: 1px solid var(--line);
+  white-space: nowrap;
+  vertical-align: middle;
+}
+table.files td {
+  padding: 10px;
+  text-align: left;
+  vertical-align: middle;
+  border-bottom: 1px solid var(--line);
+  /* 2026-09-21: `overflow-wrap: anywhere` 는 브라우저가 열의 최소 폭을 한 글자로 계산하게
+     해서 「allo/w」·「qa_ad/min0/1」 처럼 단어가 세로로 쪼개졌다. 이제 단어 안에서는 자르지
+     않는다 — 열은 가장 긴 단어보다 좁아지지 않고, 그래도 넘치면 .table-wrap 이 가로로 스크롤한다. */
+  overflow-wrap: break-word;
+  font-variant-numeric: tabular-nums;
+}
+table.files tbody tr { transition: background-color .12s; }
+table.files tbody tr:hover td { background: var(--surface-2); }
+table.files tbody tr:last-child td { border-bottom: 0; }
+/* 행 동작 단추 — 한 줄에 다 안 들어가면 두 줄로 흐른다(예전엔 nowrap 이라 다른 열이 짓눌렸다).
+   최소 폭을 주지 않으면 브라우저가 이 열을 단추 하나 폭으로 줄여 여섯 줄로 쌓아 버린다 —
+   아이콘 단추 표는 3개(7.5rem). 계정 표는 「관리」 하나라(디버깅 묶음 U2 M8) 따로 폭을 주지 않는다 — 전엔 글자 단추 다섯에 20rem. */
+table.files td.actions { white-space: normal; text-align: right; min-width: 7.5rem; }
+#users-body td.actions { min-width: 0; white-space: nowrap; }
+table.files td.actions .btn { margin: 2px 0 2px 2px; vertical-align: middle; }
+table.files td.actions .btn:first-child { margin-left: 0; }
+/* 행 위에 마우스가 오면 아이콘이 진해져 「여기 누를 수 있는 것들이 있다」 가 드러난다 */
+table.files tbody tr:hover .btn--icon { color: var(--fg-2); }
+
+/* 값이 길어질 수 있는 열만 단어 안에서 끊어도 되게 푼다 — 파일명·계정명(끊을 자리가 없는 한 덩어리)과
+   마이크로초까지 붙은 시각. 열 순서는 각 화면의 <thead> 와 같다. 짧은 값이 든 열은 그대로 두어
+   「allo/w」 식 세로 쪼개짐이 다시 생기지 않는다. */
+#files-body td:nth-child(1), #trash-body td:nth-child(1) { overflow-wrap: anywhere; min-width: 9rem; }   /* 이름 */
+/* 시각 열 — D-1 뒤 값은 「2026-09-21 17:22:02」 19자. 날짜의 하이픈이 줄바꿈 자리라 좁으면 「2026-09-」 에서 끊기므로
+   날짜 한 덩이(10자)가 들어갈 최소 폭(6.5rem)만 준다: 자리가 있으면 한 줄, 좁으면 날짜 줄 · 시간 줄 두 줄까지 */
+#files-body td:nth-child(6), #trash-body td:nth-child(6),
+#users-body td:nth-child(6), #users-body td:nth-child(8),
+#audit-body td:nth-child(1), #activity-body td:nth-child(1) { min-width: 6.5rem; }
+#users-body td:nth-child(2) { overflow-wrap: anywhere; min-width: 7rem; }                                /* 아이디 */
+/* 만료(6) · 만든 시각(8): 같은 이유로 규칙 없음 */
+
+/* 머리만 있는 표는 보이지 않는다(DESIGN 2.4 「빈 표」 · D-6) — 줄이 하나도 없으면 감싸개째 숨고 아래 「(무엇)이 없습니다」 한 줄만 남는다.
+   좁은 폭에서 빈 표의 머리 줄만 가로로 밀리던 것(내 공유 링크 · 임베드 허용 목록, 디버깅 묶음 U 2026-09-26). */
+.table-wrap:has(> table.files > tbody:empty) { display: none; }
+
+/* ─── 좁은 폭의 표 — 행을 쌓는다 (DESIGN 2.4 「좁은 폭」, 디버깅 묶음 U H1 · 2026-09-26) ──────────────
+   폰(360·412)에서 행 동작(받기·공유·복구·되살리기·만들기·회수)이 가로 스크롤 **뒤**에 있어 보이지 않았다.
+   행 동작 칸(`td.actions`)이 있는 표는 720px 미만에서 한 행을 **이름 줄 → 값 줄 → 동작 줄**로 쌓는다.
+   · 고르는 것은 마크업이 아니라 이 한 규칙이다(`:has(> tbody > tr > td.actions)`) — 화면마다 클래스를 달지 않는다.
+     창 안의 표(커뮤니티 휴지통·템플릿·이력·임베드, 계정의 토큰 창)도 같은 규칙이라 `.list`(2.13) 와 같은 모양이 된다.
+   · 이름 줄 = 첫 칸. 값 칸 앞의 작은 이름표는 표 머리 글자다 — app.js `labelStackTables` 가 머리(th)의 글자를 칸의
+     `data-label` 로 옮겨 적고 CSS 가 `attr()` 로 그린다(글자만 · 인라인 style 0). 빈 칸은 숨긴다.
+   · 머리 줄은 숨긴다 — 「모두 고르기」 체크가 든 머리 칸만 남는다.
+   · 계정 표도 720px 미만부터다(디버깅 묶음 U2 M8 — 줄 동작이 「관리」 하나가 되어 폴드 820 에서 표로 들어간다. 묶음 U 의 960 규칙은 뺐다).
+   ★ 한계: `:has` 를 모르는 옛 브라우저(Firefox 121·Safari 15.4 전)는 예전처럼 가로 스크롤 표로 남는다(2.15 와 같은 한계). */
+@media (max-width: 719.98px) {
+  table.files:has(> tbody > tr > td.actions),
+  table.files:has(> tbody > tr > td.actions) > tbody { display: block; }
+  table.files:has(> tbody > tr > td.actions) > thead { display: none; }
+  table.files:has(> tbody > tr > td.actions) > thead:has(input[type="checkbox"]) { display: block; }
+  table.files:has(> tbody > tr > td.actions) > thead > tr { display: flex; }
+  table.files:has(> tbody > tr > td.actions) > thead th { display: none; }
+  table.files:has(> tbody > tr > td.actions) > thead th:has(> input[type="checkbox"]) { display: flex; align-items: center; gap: 8px; flex: 1 1 100%; padding: 0 14px; }
+  table.files:has(> tbody > tr > td.actions) > tbody > tr {
+    display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px;
+    padding: 10px 14px; border-bottom: 1px solid var(--line);
+  }
+  table.files:has(> tbody > tr > td.actions) > tbody > tr:last-child { border-bottom: 0; }
+  table.files:has(> tbody > tr > td.actions) > tbody > tr:hover { background: var(--surface-2); }
+  table.files:has(> tbody > tr > td.actions) > tbody > tr > td { display: block; min-width: 0; padding: 0; border: 0; background: transparent; }
+  /* 표 모양일 때의 열 최소 폭(위 `#… td:nth-child(n)` — id 라 더 무겁다)은 쌓이면 뜻이 없다 — 짧은 값 뒤에 빈 폭이 남았다 */
+  :is(#files-body, #trash-body, #users-body) > tr > td:nth-child(n) { min-width: 0; }
+  table.files:has(> tbody > tr > td.actions) > tbody > tr > td:empty { display: none; }
+  table.files:has(> tbody > tr > td.actions) > tbody > tr > td:first-child { flex: 1 1 100%; font-weight: 500; }
+  table.files:has(> tbody > tr > td.actions) > tbody > tr > td:not(:first-child):not(.actions) { font-size: 13px; }
+  table.files:has(> tbody > tr > td.actions) > tbody > tr > td[data-label]:not(:first-child):not(.actions)::before {
+    content: attr(data-label); margin-right: 6px; color: var(--muted);
+  }
+  table.files:has(> tbody > tr > td.actions) > tbody > tr > td.actions { flex: 1 1 100%; min-width: 0; text-align: left; }
+  table.files:has(> tbody > tr > td.actions) > tbody > tr > td.actions .btn:first-child { margin-left: 0; }
+  /* 첫 칸이 짧은 번호인 표(계정 id) — 번호와 이름이 한 줄 */
+  #users-body > tr > td:first-child { flex: 0 0 auto; color: var(--muted); font-weight: 400; }
+  #users-body > tr > td:nth-child(2) { flex: 1 1 calc(100% - 4rem); font-size: 14px; font-weight: 500; }
+  #users-body > tr > td:nth-child(2)::before { content: none; }
+  #users-body > tr > td.actions { min-width: 0; }
+}
+.table-foot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 12px 12px 4px;
+  color: var(--muted);
+  font-size: 13px;
+  border-top: 1px solid var(--line);
+}
+.pager { display: flex; gap: 6px; align-items: center; }
+
+/* 감사 로그 표는 열이 11개다 — 글자·여백을 조금 줄인다. 짧은 값(「allow」·계정명·IP)은
+   절대 세로로 쪼개지 않고, 긴 파일명이 들어오는 대상(5)·사유(8)·요약(10) 열만 필요할 때 끊는다.
+   요약은 가장 많이 읽는 열이라 최소 폭을 넉넉히 준다. 그래도 넘치면 .table-wrap 이 가로로 스크롤한다. */
+/* 디버깅 묶음 U3 (시연 2026-09-26 — 1280 폭에서 「요약」 칸이 오른쪽 밖으로 잘렸다: 표 1086px · 칸 950px): 역할·등급·결과 글자를 한글로
+   (Admin → 관리자 · admin-only → 관리자 · allow → 허용 — 좁아진다) · 칸 안 여백 8 → 6px · 시각 6.5 → 5.75rem · 대상 7 → 6rem · 요약 11 → 10rem.
+   1280 폭에서 열한 칸이 다 보인다(요약은 남는 폭을 받아 넓어진다). 더 좁은 화면은 전과 같이 .table-wrap 이 가로로 스크롤한다. */
+#audit-body td { padding: 10px 6px; font-size: 13px; }
+table.files:has(> #audit-body) th { padding: 0 6px; }
+#audit-body td:nth-child(1)  { min-width: 5.75rem; }
+#audit-body td:nth-child(5)  { overflow-wrap: anywhere; min-width: 6rem; }
+#audit-body td:nth-child(4)  { min-width: 5rem; }   /* 행동 코드 — `.`·`_` 뒤에서 꺾인다(app.js addCodeCell) */
+#audit-body td:nth-child(8)  { overflow-wrap: anywhere; min-width: 5.5rem; }
+#audit-body td:nth-child(10) { overflow-wrap: anywhere; min-width: 10rem; }
+#audit-body details > summary { color: var(--fg); font-weight: 500; cursor: pointer; white-space: nowrap; }
+#audit-body details > summary:hover { text-decoration: underline; text-underline-offset: 3px; }
+.audit-detail {
+  max-width: 28rem;
+  margin: .4rem 0 0;
+  padding: .5rem .6rem;
+  background: var(--muted-bg);
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  font-family: var(--mono);
+  font-size: 13px;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+/* ─── 배지 — 접근 레벨 (한글 라벨, title 에 원래 값) ─────────────── */
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 22px;
+  padding: 0 8px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1;
+  white-space: nowrap;
+  background: var(--muted-bg);
+  color: var(--fg-2);
+}
+.badge--public { background: var(--ok-bg); color: var(--ok-fg); border-color: var(--ok-line); }
+.badge--internal { background: var(--accent-soft); color: var(--accent-dark); border-color: var(--accent-line); }
+.badge--team { background: var(--violet-bg); color: var(--violet-fg); border-color: var(--violet-line); }
+.badge--admin-only { background: var(--danger-soft); color: var(--danger); border-color: var(--danger-line); }
+.badge--ok { background: var(--ok-bg); color: var(--ok-fg); border-color: var(--ok-line); }
+.badge--off { background: var(--muted-bg); color: var(--muted); }
+
+/* ─── 알림 · 안내 ──────────────────────────────────────────────── */
+.msg {
+  min-height: 1.4em;
+  margin: 0;
+  color: var(--danger);
+  font-size: 14px;
+}
+.msg:empty { min-height: 0; }
+
+.notice {
+  margin: 0;
+  padding: 12px 16px;
+  color: var(--warn-fg);
+  background: var(--warn-bg);
+  border: 1px solid var(--warn-line);
+  border-radius: var(--r-ctl);
+  font-size: 14px;
+  line-height: 1.6;
+}
+.notice__title { margin: 0 0 .3rem; font-weight: 600; }
+.notice__list { margin: 0; padding-left: 1.1rem; }
+.notice__list li { margin: .18rem 0; }
+
+/* 2단계 인증 권장 카드 (F-52) — 경고(주황)가 아니라 **권함**이므로 강조색 계열로 두고,
+   왼쪽 강조선으로 다른 알림과 구분한다. 색은 토큰만 쓴다. */
+.notice--recommend {
+  margin: 0 0 14px;
+  color: var(--fg);
+  background: var(--surface);
+  border-color: var(--line);
+  border-left: 3px solid var(--accent);
+  box-shadow: var(--shadow-xs);
+}
+.notice--recommend p { margin: 0; }
+.notice--recommend .notice__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  margin: 10px 0 0;
+}
+
+.warn {
+  margin: 0;
+  padding: 12px 16px;
+  color: var(--danger);
+  background: var(--danger-soft);
+  border: 1px solid var(--danger-line);
+  border-radius: var(--r-ctl);
+  font-size: 14px;
+  line-height: 1.6;
+}
+.ok-note {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 16px;
+  border: 1px solid var(--ok-line);
+  border-radius: var(--r-ctl);
+  background: var(--ok-bg);
+  color: var(--ok-fg);
+  font-size: 14px;
+}
+
+.steps { margin: .2rem 0 .6rem; padding-left: 1.3rem; font-size: 14px; }
+.steps li { margin: .3rem 0; }
+
+/* 임시 비밀번호를 한 번만 보여 주는 읽기 전용 칸 (11단계 F-16) */
+.temp-password {
+  width: 100%;
+  height: var(--h-input);
+  margin: .3rem 0 .5rem;
+  padding: 0 12px;
+  font-family: var(--mono);
+  font-size: 14px;
+  letter-spacing: .06em;
+  color: var(--fg);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--r-ctl);
+}
+
+/* 2단계 인증 묶음 */
+.mfa { display: flex; flex-direction: column; gap: 12px; }
+.mfa .audit-detail { max-width: 34rem; }
+#mfa-uri-link { font-size: 14px; font-weight: 600; }
+/* 등록 QR (F-51) — 어두운 테마에서도 **흰 바탕 · 검정 모듈**이어야 인증 앱이 읽는다.
+   그래서 배경색만은 색 토큰을 쓰지 않는다. 칸 경계가 뭉개지지 않게 pixelated. */
+.mfa-qr {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  image-rendering: pixelated;
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: var(--r-ctl);
+}
+
+/* ─── 모달 (<dialog>) — 12-2 미리보기가 쓴다 ────────────────────── */
+dialog.modal {
+  width: min(960px, calc(100vw - 32px));
+  max-width: none;
+  max-height: calc(100vh - 64px);
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: var(--r-card);
+  background: var(--surface);
+  color: var(--fg);
+  overflow: hidden;
+  box-shadow: var(--shadow-lg);
+}
+dialog.modal::backdrop { background: rgba(0, 0, 0, .5); }
+.modal__head {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 16px 24px;
+  border-bottom: 1px solid var(--line);
+}
+.modal__head { flex-wrap: wrap; }
+.modal__title { font-size: 16px; font-weight: 600; letter-spacing: -.01em; overflow-wrap: anywhere; }
+.modal__meta { display: flex; min-width: 0; flex-wrap: wrap; align-items: center; gap: 8px; font-size: 13px; color: var(--muted); }
+/* 머리 바로 아래에 제목·메타가 나란히 있을 때(재인증 모달): 메타가 긴 문장이면 제목을 접지 않고 다음 줄로 내려간다.
+   미리보기·올리기 모달처럼 .preview__headtext(세로 묶음) 안에 든 경우는 이 규칙이 닿지 않는다 — 세로로 늘어나 빈칸이 생겼던 일(2026-09-22) */
+.modal__head > .modal__title { flex: 1 1 auto; }
+.modal__head > .modal__meta { flex: 1 1 16rem; }
+/* 마크 + 세로 묶음(제목·메타) 꼴의 머리(올리기·새 폴더·D-10 모달들): 묶음이 남은 폭을 갖고 줄을 바꾸며,
+   메타가 길어도 ✕ 를 다음 줄로 밀어내지 않는다 (2026-09-22 D-10 검토) */
+.modal__head > .preview__headtext { flex: 1 1 16rem; min-width: 0; }
+.modal__head > .btn--icon { margin-left: auto; }
+.modal__body { padding: 20px 24px; overflow: auto; background: var(--surface-2); }
+.modal__foot {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 16px 24px;
+  border-top: 1px solid var(--line);
+}
+/* 모달 바로 아래에 놓인 `.form-actions` 는 바닥 줄이다 — `.modal__foot` 과 같은 여백·구분선을 준다.
+   커뮤니티 모달들이 이 꼴이라 단추가 창 테두리에 붙어 있었다(2026-09-23). */
+dialog.modal > .form-actions { padding: 16px 24px; border-top: 1px solid var(--line); }
+
+/* ─── 미리보기 (12-2, F-18) — 모달 본문 + 우측 정보 패널 ─────────── */
+.preview__mark {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  flex-shrink: 0;
+  border-radius: var(--r-ctl);
+  background: var(--muted-bg);
+  color: var(--fg);
+}
+.preview__headtext { display: flex; flex-direction: column; gap: 3px; flex-grow: 1; min-width: 0; }
+.preview__main { display: flex; align-items: stretch; min-height: 0; }
+.preview__body {
+  flex-grow: 1;
+  min-width: 0;
+  max-height: calc(100vh - 260px);
+  min-height: 240px;
+}
+.preview__info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  width: 248px;
+  flex-shrink: 0;
+  padding: 20px;
+  border-left: 1px solid var(--line);
+  background: var(--surface);
+  overflow: auto;
+}
+.preview__label {
+  margin-top: 10px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--muted);
+}
+.preview__label:first-child { margin-top: 0; }
+.preview__value { font-size: 14px; color: var(--fg); overflow-wrap: anywhere; }
+.preview__warn {
+  margin: 16px 0 0;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: var(--warn-bg);
+  border: 1px solid var(--warn-line);
+  color: var(--warn-fg);
+  font-size: 13px;
+  line-height: 1.55;
+}
+.preview__msg { flex-grow: 1; }
+
+/* 본문 갈래별 */
+.preview-pre {
+  margin: 0;
+  padding: 14px 16px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--r-ctl);
+  font-family: var(--mono);
+  font-size: 13px;
+  line-height: 1.7;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.preview-scroll {
+  overflow-x: auto;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--r-ctl);
+}
+.preview-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.preview-table th {
+  padding: 8px 12px;
+  text-align: left;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
+  background: var(--surface-2);
+  border-bottom: 1px solid var(--line);
+  white-space: nowrap;
+}
+.preview-table td {
+  padding: 7px 12px;
+  border-bottom: 1px solid var(--line);
+  vertical-align: top;
+  overflow-wrap: anywhere;
+}
+.preview-table tr:last-child td { border-bottom: 0; }
+.preview-img {
+  display: block;
+  max-width: 100%;
+  max-height: calc(100vh - 300px);
+  margin: 0 auto;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--r-ctl);
+}
+.preview-frame {
+  display: block;
+  width: 100%;
+  height: calc(100vh - 300px);
+  min-height: 320px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--r-ctl);
+}
+.preview-card {
+  padding: 22px 24px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--r-ctl);
+  text-align: center;
+}
+.preview-card__text { margin: 0; font-size: 14px; font-weight: 600; }
+.preview-card__sub { margin: .45rem 0 0; font-size: 13px; color: var(--muted); }
+.preview-note {
+  margin: 0 0 10px;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+@media (max-width: 860px) {
+  .preview__main { flex-direction: column; }
+  .preview__info { width: auto; border-left: 0; border-top: 1px solid var(--line); }
+  .preview__body { max-height: 52vh; }
+}
+
+/* ─── 로그인 화면 ──────────────────────────────────────────────── */
+.login { display: flex; min-height: 100%; }
+.login__brand {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 32px;
+  width: 42%;
+  max-width: 560px;
+  flex-shrink: 0;
+  padding: 48px 56px;
+  background: var(--brand-navy);
+  color: #fff;
+}
+.login__brand-top { display: flex; align-items: center; gap: 12px; }
+.login__mark {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border-radius: var(--r-ctl);
+  background: #fafafa;
+  color: #09090b;
+}
+.login__brand-name { font-size: 16px; font-weight: 600; }
+.login__brand-sub { font-size: 13px; color: #a1a1aa; }
+.login__lead { margin: 0; font-size: 32px; line-height: 1.2; font-weight: 600; letter-spacing: -.03em; }
+.login__foot { margin: 0; font-size: 13px; color: #71717a; }
+
+.login__pane {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-grow: 1;
+  padding: 32px 20px;
+}
+
+/* 2단계 인증 코드 칸 — 서버가 mfa_required 로 답했을 때만 app.js 가 연다 */
+.otp-box {
+  display: grid;
+  gap: 6px;
+  padding: 14px;
+  border-radius: var(--r-ctl);
+  background: var(--muted-bg);
+  border: 1px solid var(--line);
+}
+.otp-box .field__label { display: flex; align-items: center; gap: 8px; color: var(--fg); }
+.otp-box .field__label .icon { display: inline-flex; }
+.otp-box input {
+  font-family: var(--mono);
+  font-size: 20px;
+  letter-spacing: .35em;
+  text-align: center;
+}
+
+/* ─── 조직·권한 (12-3, F-19) — 좌측 팀 카드 · 우측 상세 + 매트릭스 ───
+ *
+ * 표현만 담는다. 무엇이 보이는지는 서버가 내려 준 값(`can_manage_org`·`/api/org/*`)이 정하고,
+ * 허용 여부는 언제나 서버 Authz 가 매 요청 다시 판단한다 (PRD S-01).
+ */
+.org-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 320px) minmax(0, 1fr);
+  gap: 18px;
+  align-items: start;
+}
+.org-side { display: flex; flex-direction: column; gap: 18px; min-width: 0; }
+
+.org-teams__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.org-detail { display: flex; flex-direction: column; gap: 16px; }
+.org-detail__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.org-detail__text { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; min-width: 0; }
+.org-detail__text > .muted { flex: 1 1 100%; font-size: 14px; }   /* 설명 문장은 제목 아래 한 줄 — .panel__sub 와 같은 꼴 */
+.org-detail__name { font-size: 16px; font-weight: 600; overflow-wrap: anywhere; }
+.org-detail__actions { display: flex; flex-wrap: wrap; gap: 8px; }
+#org-detail { display: flex; flex-direction: column; gap: 16px; }
+
+.org-matrix { display: flex; flex-direction: column; gap: 16px; }
+.org-matrix__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.org-matrix__head .badge .icon { display: inline-flex; }
+.matrix-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 18px;
+}
+.matrix-block { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+table.matrix td.matrix__cell { text-align: center; }
+table.matrix td.matrix__cell .icon { display: inline-flex; color: var(--ok-fg); }
+#org-matrix-rules { font-size: 13px; }
+
+/* 폼을 담은 모달 — 12-2 미리보기 모달보다 좁다(입력 칸 몇 개뿐이다) */
+dialog.modal--form { width: min(520px, calc(100vw - 32px)); }
+dialog.modal--form .modal__body { display: grid; gap: 14px; background: var(--surface); }
+/* ★ 폼 모달은 머리·바닥을 고정하고 **본문만 스크롤**한다 (2026-09-23 사용자 지적 「소유자 넘기기에서 확인 단추가
+   짤려서 설정을 완료 못한 느낌」). `dialog.modal` 은 높이 상한(100vh − 64px) + `overflow: hidden` 이라, 본문이
+   길면 바닥 단추 줄이 통째로 잘려 보이지 않았다. `.modal--stack`(18-3 올리기)과 같은 방식이다. */
+dialog.modal--form[open] { display: flex; flex-direction: column; }
+dialog.modal--form > .modal__head,
+dialog.modal--form > .modal__foot,
+dialog.modal--form > .form-actions { flex: 0 0 auto; }
+dialog.modal--form > .modal__body { flex: 1 1 auto; min-height: 0; overflow-y: auto; grid-auto-rows: max-content; align-content: start; }
+/* ↑ `grid-auto-rows: max-content` — 본문 높이가 모자라면 격자가 스크롤 목록(`.list--scroll`, 최소 높이 0)을
+     먼저 2px 로 눌러 버렸다(390px 실측 — 넘기기 후보가 보이지 않았다). 줄은 제 내용 높이를 지키고 넘치는 만큼 본문이 스크롤한다. */
+
+/* ─── 18-3 올리기·가져오기 대화상자 ──────────────────────────────────────
+ * 폼 모달을 **세로 flex** 로 만들어 머리·바닥을 고정하고 본문만 스크롤시킨다.
+ * (dialog 기본은 display:block 이라 본문의 overflow:auto 가 높이를 못 받는다 —
+ *  키가 큰 올리기 폼에서 「닫기」 단추가 잘려 보이는 것을 막는다.)
+ * `[open]` 을 붙이는 이유: 붙이지 않으면 닫힌 <dialog> 까지 화면에 나온다.
+ */
+dialog.modal--stack[open] { display: flex; flex-direction: column; }
+dialog.modal--stack .modal__head,
+dialog.modal--stack .modal__foot { flex: 0 0 auto; }
+dialog.modal--stack .modal__body { flex: 1 1 auto; min-height: 0; }
+/* 격자 칸이 제 내용만큼 벌어져 대화상자를 넓히지 못하게 한다(표는 .table-wrap 이 가로 스크롤). */
+dialog.modal--stack .modal__body > * { min-width: 0; }
+.modal__foot .msg { margin-right: auto; }   /* 오류 한 줄은 왼쪽, 단추는 오른쪽 — 모든 모달 공통 */
+/* 좁은 폭(720 미만) — 오류 한 줄이 있으면 그 줄이 바닥 첫 줄을 다 쓰고 단추는 다음 줄 오른쪽(디버깅 묶음 U2 — 360 에서 문장이
+   단추 옆 좁은 칸에 네 줄로 눌렸다). 비어 있으면(:empty) 자리를 차지하지 않는다 */
+@media (max-width: 719.98px) {
+  .modal__foot { flex-wrap: wrap; }
+  .modal__foot > .msg:not(:empty) { flex: 1 1 100%; }
+}
+
+/* 올리기는 안내 문구와 파일별 진행 표까지 담아 조금 넓다. 폭은 언제나
+   calc(100vw - 32px) 이하라 폰 너비(~400px)에서도 가로 스크롤이 생기지 않는다. */
+dialog.modal--upload { width: min(660px, calc(100vw - 32px)); }
+dialog.modal--upload .upload-status { font-size: 14px; }
+
+/* 좁은 화면 — 대화상자 좌우 여백을 줄여 입력 칸이 눌리지 않게 한다 */
+@media (max-width: 520px) {
+  dialog.modal--stack .modal__head { padding: 14px 16px; gap: 10px; }
+  dialog.modal--stack .modal__body { padding: 16px; }
+  dialog.modal--stack .modal__foot { padding: 12px 16px; flex-wrap: wrap; }
+}
+/* 720px 미만 — ✕ 는 언제나 머리 첫 줄 오른끝 (디버깅 묶음 U M4 · 2026-09-26).
+   제목 옆 설명(`p.muted`·`.modal__meta`)이 길면 둘째 줄로 내려가고, 그 뒤의 ✕ 가 **혼자 셋째 줄**로 밀렸다
+   (임베드 허용 목록·휴지통·많이 읽힌 문서 창, 412·360). 머리 오른쪽에 ✕ 자리(32px + 간격)를 비워 두고 거기에 붙인다.
+   제목·설명은 남은 폭에서 줄을 바꾼다(`min-width: 0`). 넓은 화면은 위 규칙 그대로다.
+   이 자리(520 규칙 **뒤**)에 두는 이유: `dialog.modal--stack .modal__head` 의 좁은 여백(14px 16px)과 같은 무게라 뒤에 와야 이긴다. */
+@media (max-width: 719.98px) {
+  dialog.modal > .modal__head { position: relative; padding-right: 56px; }
+  .modal__head > .modal__title, .modal__head > .modal__meta, .modal__head > p { min-width: 0; }
+  /* 마크 + 세로 묶음 꼴(올리기·새 폴더·파일 고치기): 묶음이 마크 옆 남은 폭을 쓴다 — 16rem 기준 폭 때문에 마크만 한 줄을 차지했다 */
+  .modal__head > .preview__headtext { flex: 1 1 0; }
+  .modal__head > .btn--icon:last-child { position: absolute; top: 12px; right: 12px; margin: 0; }
+}
+
+/* ─── 위키 (14단계, F-21) — 차례와 글 한 편 ────────────────────────
+ *
+ * 서버(src/Wiki.php)가 `wiki/*.json` 을 이스케이프해 그린 마크업의 표현만 담는다.
+ * 글에서 온 문자열은 전부 htmlspecialchars 를 거친 뒤 여기 클래스로만 꾸며진다 (PRD S-03).
+ * 말풍선의 접두 글자(왜·어떻게·확인·위험·해보기·용어)도 HTML 이 아니라 이 파일이 붙인다 —
+ * 글 내용과 화면 장식이 섞이지 않게 하기 위해서다.
+ */
+.wiki-group { margin-bottom: 18px; }
+
+/* 안내 글 — 한 줄에 제목 + 한 줄 요약 */
+.wiki-guides { display: flex; flex-direction: column; gap: 2px; margin: 0; padding: 0; list-style: none; }
+.wiki-guide {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 10px;
+  padding: 10px 4px;
+  border-bottom: 1px solid var(--line);
+}
+.wiki-guide:last-child { border-bottom: 0; }
+.wiki-guide__title { font-size: 14px; font-weight: 600; overflow-wrap: anywhere; }
+.wiki-guide__title--soon { color: var(--muted-2); font-weight: 500; }
+.wiki-guide__sub { flex: 1 1 16rem; min-width: 0; color: var(--muted); font-size: 14px; }
+.wiki-guide__date { flex-shrink: 0; }
+
+/* ─── 글 한 편 ─────────────────────────────────────────────────── */
+.wiki-article { max-width: 54rem; }
+.wiki-head { display: flex; flex-direction: column; gap: 6px; margin-bottom: 18px; }
+.wiki-crumb { margin: 0; font-size: 13px; }
+.wiki-title { font-size: 24px; font-weight: 600; letter-spacing: -.015em; overflow-wrap: anywhere; }
+.wiki-summary { margin: 0; color: var(--muted); font-size: 14px; }
+.wiki-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 2px 0 0; }
+
+/* 이 글의 차례 — 절 앵커(#wiki-…) 목록 */
+.wiki-toc {
+  padding: 14px 18px;
+  margin-bottom: 20px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--r-card);
+}
+.wiki-toc__title { margin: 0 0 6px; font-size: 13px; font-weight: 600; color: var(--muted); letter-spacing: .02em; }
+.wiki-toc__list { margin: 0; padding-left: 1.2rem; font-size: 14px; }
+.wiki-toc__list li { margin: 2px 0; }
+
+.wiki-section {
+  padding: 18px 20px;
+  margin-bottom: 14px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--r-card);
+  scroll-margin-top: 12px;
+}
+.wiki-h2 { margin-bottom: 10px; font-size: 16px; font-weight: 600; overflow-wrap: anywhere; }
+.wiki-p { margin: 0 0 10px; font-size: 14px; line-height: 1.75; overflow-wrap: anywhere; }
+.wiki-section > :last-child { margin-bottom: 0; }
+.wiki-list, .wiki-steps { margin: 0 0 10px; padding-left: 1.35rem; font-size: 14px; line-height: 1.7; }
+.wiki-list li, .wiki-steps li { margin: 3px 0; overflow-wrap: anywhere; }
+.wiki-code {
+  margin: 0 0 10px;
+  padding: 12px 14px;
+  overflow-x: auto;
+  background: var(--primary);
+  border-radius: var(--r-ctl);
+  color: var(--primary-fg);
+  font-family: var(--mono);
+  font-size: 13px;
+  line-height: 1.6;
+}
+.wiki-code code { padding: 0; background: none; border: 0; color: inherit; font-size: inherit; }
+
+/* 용어 풀이 */
+.wiki-terms { margin: 0 0 10px; font-size: 14px; }
+.wiki-terms dt { margin-top: 8px; font-weight: 600; }
+.wiki-terms dt:first-child { margin-top: 0; }
+.wiki-terms dd { margin: 2px 0 0; color: var(--muted); overflow-wrap: anywhere; }
+
+/* 말풍선 여섯 가지. 접두 글자는 여기서 붙인다(HTML 에는 글 내용만 있다) */
+.wiki-callout {
+  display: block;
+  padding: 12px 14px;
+  margin: 0 0 10px;
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--muted-2);
+  border-radius: var(--r-ctl);
+}
+.wiki-callout__title { margin: 0; font-size: 14px; font-weight: 600; overflow-wrap: anywhere; }
+/* 접두 딱지의 글자(content)는 아래 종류별 규칙이 정한다 — 종류 클래스가 없으면 딱지도 없다 */
+.wiki-callout__title::before {
+  display: inline-block;
+  margin-right: 6px;
+  padding: 1px 7px;
+  border-radius: var(--r-pill);
+  font-size: 12px;
+  font-weight: 600;
+  vertical-align: 1px;
+}
+.wiki-callout__text { margin: 4px 0 0; font-size: 14px; line-height: 1.7; overflow-wrap: anywhere; }
+
+.wiki-callout--why { border-left-color: var(--accent); }
+.wiki-callout--why .wiki-callout__title::before { content: "왜"; background: var(--accent-soft); color: var(--accent); }
+.wiki-callout--how { border-left-color: var(--violet-fg); }
+.wiki-callout--how .wiki-callout__title::before { content: "어떻게"; background: var(--violet-bg); color: var(--violet-fg); }
+.wiki-callout--check { border-left-color: var(--ok-fg); }
+.wiki-callout--check .wiki-callout__title::before { content: "확인"; background: var(--ok-bg); color: var(--ok-fg); }
+.wiki-callout--risk { border-left-color: var(--danger); }
+.wiki-callout--risk .wiki-callout__title::before { content: "위험"; background: var(--danger-soft); color: var(--danger); }
+.wiki-callout--try { border-left-color: var(--warn-fg); }
+.wiki-callout--try .wiki-callout__title::before { content: "해보기"; background: var(--warn-bg); color: var(--warn-fg); }
+.wiki-callout--term { border-left-color: var(--muted); }
+.wiki-callout--term .wiki-callout__title::before { content: "용어"; background: var(--muted-bg); color: var(--muted); }
+
+/* 다른 글로 가는 줄. 차례에 없는 글은 링크가 되지 않고 글자만 남는다 (Wiki::renderBlock) */
+.wiki-link { margin: 0 0 10px; font-size: 14px; font-weight: 600; }
+.wiki-link--plain { color: var(--muted-2); font-weight: 500; }
+
+/* 이전 / 다음 */
+.wiki-nav { display: flex; gap: 10px; margin-top: 18px; }
+.wiki-nav__item {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1 1 0;
+  min-width: 0;
+  padding: 12px 14px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--r-card);
+  color: inherit;
+}
+.wiki-nav__item:hover { background: var(--surface-2); color: inherit; text-decoration: none; }
+.wiki-nav__item--next { text-align: right; }
+.wiki-nav__gap { flex: 1 1 0; }
+.wiki-nav__dir { color: var(--muted); font-size: 12px; }
+.wiki-nav__title { font-size: 14px; font-weight: 600; overflow-wrap: anywhere; }
+
+@media (max-width: 1199.98px) {
+  .org-layout { grid-template-columns: minmax(0, 1fr); }
+}
+
+/* ─── 반응형 — 960px 미만은 상단 바 + 접이식 내비 ────────────────── */
+@media (max-width: 959.98px) {
+  .app { flex-direction: column; }
+  .sidebar {
+    width: auto;
+    border-right: 0;
+    border-bottom: 1px solid var(--line);
+  }
+  /* 접혀 있는 상태: app.js 가 aria-expanded 와 함께 hidden 을 토글한다 */
+  .sidebar__spacer { display: none; }
+  /* F-47 버전 단추도 여백(spacer)과 같은 처리 — 좁은 화면의 사이드바는 위에서 아래로
+     흐르는 상단 바라 「아래에 붙은 한 줄」이라는 자리가 없다. 변경 이력은 넓은 화면에서 본다. */
+  .sidebar__version { display: none; }
+  .main { padding: 20px 16px 32px; }
+  .login { flex-direction: column; }
+  .login__brand {
+    width: auto;
+    max-width: none;
+    padding: 24px 20px;
+    gap: 18px;
+  }
+  .login__lead { font-size: 24px; }
+  .login .panel { border: 0; box-shadow: none; padding: 24px 16px; }
+  /* 매트릭스 두 표는 좁은 화면에서 위아래로 쌓는다 (12-3) */
+  .matrix-grid { grid-template-columns: minmax(0, 1fr); }
+  /* 위키 단계 카드·이전다음도 좁은 화면에서는 한 줄씩 쌓는다 (14단계) */
+    .wiki-nav { flex-direction: column; }
+  .wiki-nav__item--next { text-align: left; }
+  .wiki-nav__gap { display: none; }
+}
+
+@media (min-width: 960px) {
+  .appbar { display: none; }
+  .sidebar {
+    position: sticky;
+    top: 0;
+    height: 100vh;
+  }
+  /* 넓은 화면에서는 내비가 늘 열려 있다 — 좁은 화면의 hidden 토글을 무시한다 */
+  .sidebar[hidden] { display: flex !important; }
+}
+
+/* 「민감」 배지 (15-3 — PRD F-22 · 10장, SECURITY R-58).
+   레벨 배지(.badge--public 등)와 같은 모양을 쓰되 색만 경고 계열로 둔다.
+   배지는 **표시일 뿐**이고 등급 규칙은 서버가 막는다 (PRD 10장 "버튼 표시는 권한의 근거가 아님"). */
+.badge--sensitive { background: var(--danger-soft); color: var(--danger); border-color: var(--danger-line); }
+
+/* 「검사 중」·「격리됨」 배지 (F-54 — PRD F-54 ③, ARCHITECTURE 5.28).
+   색은 **이미 있는 토큰만** 쓴다(고정 색값을 새로 만들지 않는다): 검사 중은 회색
+   (`--bg` 바탕 + `--muted` 글자, "아직 모른다"), 격리는 빨강(`--danger-soft`/`--danger`,
+   「민감」과 같은 계열 — 둘 다 "이 파일은 그냥 받지 마라" 는 뜻이다).
+   배지도 비활성 단추도 **표시일 뿐**이고, 실제 차단은 서버의 403 이다 (PRD 10장). */
+.badge--scan-pending  { background: var(--surface); color: var(--muted); }
+.badge--scan-infected { background: var(--danger-soft); color: var(--danger); border-color: var(--danger-line); }
+
+/* 「실행 파일 포함」 배지와 확인 블록 (F-65 — PRD F-65 ②③, ARCHITECTURE 5.29).
+   색은 **이미 있는 토큰만** 쓴다: 경고 계열(`--warn-bg`/`--warn-fg`) — 「격리됨」의 빨강은
+   "받지 마라" 지만 이 파일은 "알고 받아라" 라서 한 단계 낮은 주의색이 맞다.
+   배지도 확인 블록도 **표시일 뿐**이고, 실제 차단·확인은 서버의 관문 여섯과
+   요청마다의 비밀번호·2단계 코드다 (PRD 10장 「버튼 표시는 권한의 근거가 아님」).
+   인라인 style 은 한 곳도 없다 — app.js 는 class 만 붙인다 (PRD S-03). */
+.badge--exec { background: var(--warn-bg); color: var(--warn-fg); }
+
+/* 올리기 창의 확인 블록 (진행 표 아래 줄) · 확인 다운로드 창의 경고 문장 */
+.upload-exec {
+  display: grid;
+  gap: 8px;
+  padding: 12px;
+  border: 1px solid var(--warn-line);
+  border-radius: var(--r-ctl);
+  background: var(--warn-bg);
+}
+.upload-exec__warn { margin: 0; font-size: 13px; color: var(--warn-fg); }
+.upload-exec__list { margin: 0; padding-left: 20px; font-size: 13px; }
+.upload-exec__ack { display: flex; gap: 8px; align-items: flex-start; font-size: 13px; }
+.upload-exec__field { display: grid; gap: 4px; font-size: 13px; }
+.upload-exec__field input { height: var(--h-input); }
+.upload-exec__msg { margin: 0; font-size: 13px; color: var(--danger); }
+.upload-exec .btn { justify-self: start; }
+.upload-exec__row td { background: transparent; }
+
+/* 확인 다운로드 창의 「올린 사람·올린 날짜」 */
+.exec-dl__meta { display: grid; grid-template-columns: auto 1fr; gap: 4px 12px; margin: 0 0 12px; font-size: 13px; }
+.exec-dl__meta dt { color: var(--muted); }
+.exec-dl__meta dd { margin: 0; }
+
+/* ─── 관리 기능 재인증 — sudo 모드 (16-1, PRD F-23 · 10장 「재인증」) ───
+ *
+ * 화면(`/reauth`)과 모달(관리 화면에서 15분 창이 닫혔을 때) 둘 다 같은 폼 한 벌을 쓴다.
+ * 여기 있는 것은 **표현뿐**이다 — 막고 여는 판단은 서버 관문 [3-2] 가 한다 (PRD S-01).
+ * 모달은 app.js 가 createElement 로 만들고(문자열 → HTML 변환 0), 아래 클래스만 붙인다.
+ */
+
+dialogdialogdialog
+/* ─── 17-1 관리자 허브 (`/admin`, PRD F-24 · 10장, ARCH 5.14) ───
+ *
+ * 카드 여섯 개와 두 목록(공유 링크 전체·최근 경보)의 최소 표현이다.
+ * 여기 있는 것은 **표현뿐**이다 — 무엇이 보이고 무엇이 되는지는 서버가 정한다 (PRD S-01).
+ */
+
+/* ─── 17-2 권한 매트릭스 편집 (`/admin/permissions`, PRD F-25, ARCH 5.15) ───
+ *
+ * 칸마다 「읽기」·「올리기」 체크상자 두 개. 잠긴 칸(관리자 행·손님의 관리자 등급)은 서버가
+ * `locked` 로 알려 주고 app.js 가 disabled + 자물쇠를 붙인다 — **막는 것은 서버**다 (T-39).
+ */
+.perm-edit { display: flex; flex-direction: column; gap: 14px; }
+table.perm-table td { vertical-align: top; }
+/* 2026-09-21: 예전엔 .perm-cell 에 display:flex 를 걸어 <td> 가 표 칸이 아니게 되어
+   열 네 개가 전부 첫 열 아래로 세로로 쌓였다. 칸은 표 칸으로 두고, 안의 토글만 한 줄씩 세운다. */
+.perm-cell { vertical-align: top; }
+.perm-cell > .icon { display: block; margin-bottom: 4px; }
+.perm-cell.is-locked { color: var(--muted); }
+.perm-cell.is-locked .icon { color: var(--muted); }
+.perm-toggle { display: flex; align-items: center; gap: 6px; margin: 2px 0; font-size: 13px; cursor: pointer; }
+.perm-toggle.is-locked { cursor: not-allowed; color: var(--muted); }
+.perm-preview { display: flex; flex-direction: column; gap: 8px; }
+.perm-form { display: grid; gap: 12px; max-width: 560px; }
+.perm-form__actions { display: flex; gap: 8px; }
+
+/* ─── 보안 테스트 체크리스트 (위키 `checklist` 블록, 2026-09-13) ───
+ *
+ * 행 = 검토 항목, 열 = 차수. 한 줄이 <details> 라 **누르면 펼쳐진다** — 자바스크립트 없이
+ * 브라우저 기본 기능만 쓴다(CSP 와 무관하고, 스크립트가 막혀도 내용이 사라지지 않는다).
+ * 기호·툴팁 문구는 Wiki::CHECK_MARKS(코드 상수)가 정한다 — 여기 CSS 는 색과 자리만 맡는다.
+ */
+.wiki-check { display: flex; flex-direction: column; gap: 6px; margin: 14px 0; }
+
+.wiki-check__head,
+.wiki-check__row {
+  display: grid;
+  align-items: center;
+  gap: 6px;
+}
+/* 차수 개수만큼 열을 연다. 개수는 서버가 클래스(wiki-check--N)로 알려 준다 —
+   인라인 style 은 CSP(style-src 'self')가 막으므로 쓰지 않는다. */
+.wiki-check--1 .wiki-check__head, .wiki-check--1 .wiki-check__row { grid-template-columns: minmax(0,1fr) repeat(1, 64px); }
+.wiki-check--2 .wiki-check__head, .wiki-check--2 .wiki-check__row { grid-template-columns: minmax(0,1fr) repeat(2, 64px); }
+.wiki-check--3 .wiki-check__head, .wiki-check--3 .wiki-check__row { grid-template-columns: minmax(0,1fr) repeat(3, 64px); }
+.wiki-check--4 .wiki-check__head, .wiki-check--4 .wiki-check__row { grid-template-columns: minmax(0,1fr) repeat(4, 64px); }
+.wiki-check--5 .wiki-check__head, .wiki-check--5 .wiki-check__row { grid-template-columns: minmax(0,1fr) repeat(5, 64px); }
+.wiki-check--6 .wiki-check__head, .wiki-check--6 .wiki-check__row { grid-template-columns: minmax(0,1fr) repeat(6, 64px); }
+.wiki-check--7 .wiki-check__head, .wiki-check--7 .wiki-check__row { grid-template-columns: minmax(0,1fr) repeat(7, 64px); }
+.wiki-check--8 .wiki-check__head, .wiki-check--8 .wiki-check__row { grid-template-columns: minmax(0,1fr) repeat(8, 64px); }
+.wiki-check__head {
+  font-size: 12px;
+  color: var(--muted);
+  padding: 0 12px 2px;
+  margin: 0;
+}
+.wiki-check__head-round { text-align: center; overflow-wrap: anywhere; line-height: 1.25; }
+
+.wiki-check__item {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--surface);
+  overflow: hidden;
+}
+.wiki-check__item[open] { border-color: var(--muted-2); }
+.wiki-check__row {
+  cursor: pointer;
+  padding: 10px 12px;
+  list-style: none;
+  font-size: 13px;
+}
+.wiki-check__row::-webkit-details-marker { display: none; }
+.wiki-check__item:hover .wiki-check__row { background: var(--surface-2); }
+.wiki-check__row:focus-visible { outline: none; box-shadow: inset 0 0 0 3px var(--ring-soft); }
+.wiki-check__label { font-weight: 600; overflow-wrap: anywhere; }
+
+/* 칸 하나 — 기호는 코드 상수, 색만 여기서 준다 */
+.wiki-check__mark {
+  justify-self: center;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px; height: 26px;
+  border-radius: var(--r-pill);
+  font-size: 13px; font-weight: 600;
+}
+.wiki-check__mark--ok   { background: var(--ok-bg);     color: var(--ok-fg); }
+.wiki-check__mark--open { background: var(--danger-soft); color: var(--danger); }
+.wiki-check__mark--todo { background: var(--warn-bg);   color: var(--warn-fg); }
+.wiki-check__mark--na   { background: var(--surface-2); color: var(--muted-2); }
+
+.wiki-check__body {
+  padding: 4px 14px 14px;
+  border-top: 1px solid var(--line);
+  font-size: 13px;
+}
+.wiki-check__how { margin: 10px 0; padding-left: 18px; display: flex; flex-direction: column; gap: 6px; }
+.wiki-check__body .wiki-code { margin: 0; }
+
+/* 좁은 화면 — 차수 칸을 줄이고 항목 이름을 한 줄 위로 올린다 */
+@media (max-width: 720px) {
+  /* 좁은 화면에서는 격자를 버리고 한 줄로 흐르게 둔다 (머리줄은 감춘다 —
+     칸마다 title 툴팁에 차수 이름이 들어 있다). */
+  .wiki-check__head { display: none; }
+  .wiki-check__row,
+  .wiki-check--1 .wiki-check__row, .wiki-check--2 .wiki-check__row,
+  .wiki-check--3 .wiki-check__row, .wiki-check--4 .wiki-check__row,
+  .wiki-check--5 .wiki-check__row, .wiki-check--6 .wiki-check__row,
+  .wiki-check--7 .wiki-check__row, .wiki-check--8 .wiki-check__row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+  .wiki-check__label { flex: 1 1 100%; }
+}
+
+/* ─── 폴더 트리 · 경로 (18-1 — PRD F-26 · 10장 「폴더」) ──────────────── */
+/* 파일 화면을 좌측 트리 + 본문 두 칸으로 나눈다. 좁은 화면에서는 한 칸으로 접힌다. */
+.workspace {
+  display: grid;
+  grid-template-columns: 240px minmax(0, 1fr);
+  gap: 16px;
+  align-items: stretch;        /* 폴더 카드가 오른쪽 표 높이에 맞춰 늘어난다 (2026-09-21 사용자 지적) */
+}
+.workspace__main { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+
+.foldertree { min-width: 0; }   /* 카드 껍데기는 .panel.panel--tight 가 맡는다 (DESIGN 원칙 6 · C-5) */
+.foldertree__head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.foldertree__list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
+.foldertree__item {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  width: 100%;
+  padding: 7px 9px;
+  border: 1px solid transparent;
+  border-radius: var(--r-sm);
+  background: transparent;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.foldertree__item:hover { background: var(--muted-bg); }
+.foldertree__item--up { color: var(--muted); font-size: 13px; }
+.foldertree__name { font-size: 14px; font-weight: 600; overflow-wrap: anywhere; }
+.foldertree__meta { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.foldertree__team,
+.foldertree__count { font-size: 12px; color: var(--muted); }
+.foldertree__actions { display: flex; flex-wrap: wrap; gap: 6px; }
+
+.crumbs { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; }
+.crumbs__item {
+  padding: 2px 6px;
+  border: 0;
+  border-radius: var(--r-sm);
+  background: transparent;
+  font: inherit;
+  font-size: 13px;
+  color: var(--muted);
+  cursor: pointer;
+  overflow-wrap: anywhere;
+}
+.crumbs__item:hover { background: var(--muted-bg); color: var(--fg); }
+.crumbs__item.is-current { color: var(--fg); font-weight: 500; cursor: default; }
+.crumbs__item.is-current:hover { background: transparent; }
+.crumbs__sep { color: var(--muted-2); font-size: 12px; }
+
+/* ─── 일괄 업로드 (18-2 — PRD F-27 · 10장 「일괄 업로드」) ────────────── */
+.dropzone {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 18px 14px;
+  border: 1px dashed var(--muted-2);
+  border-radius: var(--r-ctl);
+  background: var(--surface-2);
+  text-align: center;
+}
+.dropzone.is-over { border-color: var(--primary); background: var(--muted-bg); }
+.dropzone__text { margin: 0; font-size: 13px; color: var(--muted); text-align: center; }
+/* 폰 폭(360)에서 끌어 놓기 칸이 창 오른쪽 밖으로 밀리던 것(디버깅 묶음 U2 — 파일 고르기 칸의 고유 폭이 격자 칸을 넓혔다) */
+.dropzone { min-width: 0; }
+.dropzone input[type="file"] { max-width: 100%; min-width: 0; }
+
+/* 파일별 진행 표 — 상태 글자는 서버가 준 문구 그대로 들어간다 (textContent) */
+.upload-status td { vertical-align: top; }
+.upload-status__state { font-size: 13px; overflow-wrap: anywhere; }
+.upload-status__state.is-busy { color: var(--accent); }
+.upload-status__state.is-ok { color: var(--ok-fg); font-weight: 600; }
+.upload-status__state.is-deny { color: var(--danger); }
+
+/* 1600px 이상 넓은 화면 — 행 동작 아이콘 여섯 개가 한 줄에 다 들어갈 자리가 있으니 한 줄로 */
+@media (min-width: 1600px) {
+  table.files td.actions { min-width: 14rem; }
+}
+/* 1366px 이하 노트북 — 폴더 트리와 본문 여백을 조금 좁히고 표 글자를 한 단계 줄여
+   여덟 열짜리 파일 표가 가로 스크롤 없이 들어가게 한다 */
+@media (max-width: 1366px) {
+  .workspace { grid-template-columns: 200px minmax(0, 1fr); }
+  .main { padding: 24px 20px 32px; }
+  table.files { font-size: 13px; }
+  table.files td { padding: 8px; }
+  table.files th { padding: 0 8px; }
+}
+@media (max-width: 900px) {
+  .workspace { grid-template-columns: minmax(0, 1fr); }
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+ * 표 아래 얇은 설명 (`.help`)
+ *
+ * 25단계에 「공통 조각」으로 모아 두었던 조각들(배지 색·탭·칩·도구줄·KPI·숫자 셀·
+ * 2단 배치·파일 고르기·사이드바 소제목)은 그것을 쓰던 화면이 2026-09-21 에 없어져
+ * 함께 지웠다. 남은 것은 t-box 화면이 지금도 쓰는 이 한 조각뿐이다.
+ * ═══════════════════════════════════════════════════════════════════ */
+.help { margin: 0; color: var(--muted); font-size: 13px; line-height: 1.6; }
+details.help > summary { cursor: pointer; font-weight: 600; }
+details.help[open] > summary { margin-bottom: 6px; }
+
+/* ─── 「사용 방법」 도움말 모달 (PRD F-38, ARCH 5.19) ───────────────
+   본문만 스크롤하고 머리·바닥은 늘 보인다. 글은 셸이 이스케이프해 그린 글자뿐이다. */
+dialog.help-dialog { width: min(640px, 92vw); }
+dialog.help-dialog .modal__title { flex-grow: 1; min-width: 0; }
+dialog.help-dialog .modal__body { max-height: 70vh; }
+.help-dialog__title { margin: 18px 0 0; color: var(--fg); font-size: 14px; font-weight: 600; }
+.help-dialog__title:first-child { margin-top: 0; }
+.help-dialog__list { margin: 6px 0 0; padding-left: 20px; font-size: 14px; line-height: 1.7; }
+.help-dialog__list li { margin: 5px 0; overflow-wrap: anywhere; }
+
+/* ─── F-47 버전 단추와 「변경 이력」 모달 (PRD F-47, ARCH 5.23) ─────
+   단추는 사이드바 아래(사용자 칩 위)에 조용히 놓인다 — 내비 항목이 아니라 **표시**라서
+   배경도 테두리도 없고, 누를 수 있다는 것만 hover 밑줄로 알린다.
+   모달은 「사용 방법」과 같은 폭·같은 뼈대를 쓰고 항목 사이만 선으로 가른다. */
+.sidebar__version {
+  align-self: flex-start;
+  margin: 0 0 8px;
+  padding: 2px 12px;
+  border: 0;
+  background: none;
+  color: var(--muted-2);
+  font-family: var(--mono);
+  font-size: 12px;
+  line-height: 1.4;
+  text-align: left;
+  cursor: pointer;
+}
+.sidebar__version:hover { color: var(--muted); text-decoration: underline; }
+
+dialog.changelog-dialog { width: min(640px, 92vw); }
+dialog.changelog-dialog .modal__title { flex-grow: 1; min-width: 0; }
+dialog.changelog-dialog .modal__body { max-height: 70vh; }
+.changelog__entry { padding: 16px 0; border-top: 1px solid var(--line); }
+.changelog__entry:first-child { padding-top: 0; border-top: 0; }
+.changelog__ver {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+}
+.changelog__num { font-family: var(--mono); font-size: 14px; font-weight: 600; }
+.changelog__at { color: var(--muted); font-size: 13px; }
+.changelog__title { margin: 8px 0 0; font-size: 14px; font-weight: 600; overflow-wrap: anywhere; }
+.changelog__list { margin: 6px 0 0; padding-left: 20px; font-size: 14px; line-height: 1.7; }
+.changelog__list li { margin: 5px 0; overflow-wrap: anywhere; }
+.changelog__empty { color: var(--muted); font-size: 14px; }
+
+/* ─── 26단계 「역할로 보기」 띠 (F-39) — 셸이 그린다. 상태 띠이므로 .notice 색을 빌리되 한 줄 정렬 ── */
+.act-banner { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+.act-banner b { font-weight: 600; }
+.act-banner .btn { margin-left: auto; }
+
+/* ─── F-59 「프로그램 토큰」 전용 모달 (PRD F-59 ②, ARCH 4.6) ──────────────────
+   계정 화면의 **모든 행**(자기 자신 포함)이 여는 모달이다 — 관리자 자신의 PC 프로그램이
+   첫 용례라 계정 편집 모달 안에 둘 수 없었다(그 모달은 자기 행에서 열리지 않는다).
+   색·간격은 기존 토큰만 쓰고 새 색을 만들지 않는다. */
+dialog.token-modal { width: min(720px, calc(100vw - 32px)); }
+.token-box { display: flex; flex-direction: column; gap: 12px; margin: 0; }
+.token-box__table { width: 100%; font-size: 13px; }
+
+/* ─── 통합 검색 (5-B 2026-09-23 → Q:F-2 두 앱 공통, DESIGN 2.14) — 사이드바 단추 · Ctrl+K 창 ─────────────
+   community.css 에 있던 규칙을 **그대로 옮겼다**(t-box 셸에도 창이 실린다). 토큰만(새 색값 0). 창은 위쪽에 붙은 넓은
+   모달 — 결과가 늘어도 입력 칸이 움직이지 않는다. 묶음 제목은 `.nav-title`, 「더 보기」는 `.btn--small.btn--quiet`(새 클래스 0).
+   찾은 글자 강조는 커뮤니티 문서 토큰 `--nt-yellow-bg`(community.css) — 그 파일이 없는 t-box 화면에서는 기존 토큰 `--warn-bg`. */
+.nav-search { width: 100%; border: 1px solid var(--line); background: var(--surface); font: inherit; text-align: left; cursor: pointer; margin-bottom: 4px; }
+.nav-search__key { margin-left: auto; padding: 0 6px; border: 1px solid var(--line); border-radius: var(--r-sm); color: var(--muted); font-family: var(--mono); font-size: 12px; line-height: 18px; }
+dialog.search-dialog { width: min(640px, calc(100vw - 32px)); margin-top: 12vh; padding: 0; }
+.search-dialog__bar { display: flex; align-items: center; gap: 10px; padding: 12px 16px; border-bottom: 1px solid var(--line); }
+.search-dialog__bar .icon { display: inline-flex; color: var(--muted); }
+.search-dialog__bar input { flex: 1 1 auto; min-width: 0; height: 32px; border: 0; outline: none; background: transparent; color: var(--fg); font: inherit; font-size: 16px; }
+.search-results { max-height: 55vh; margin: 0; padding: 6px; overflow-y: auto; list-style: none; }
+.search-results:empty { display: none; }
+.search-results > li { border-radius: var(--r-ctl); }
+.search-results > li.is-active { background: var(--muted-bg); }
+.search-results > li.nav-title { margin: 8px 10px 2px; }
+.search-results > li > .btn { margin: 2px 10px 6px; }
+.search-hit { display: flex; flex-direction: column; gap: 2px; padding: 8px 10px; color: var(--fg); }
+.search-hit:hover { text-decoration: none; }
+.search-hit__title { font-size: 14px; font-weight: 600; overflow-wrap: anywhere; }
+.search-hit__path { font-size: 12px; color: var(--muted); overflow-wrap: anywhere; }
+.search-hit__snippet { font-size: 13px; color: var(--fg-2); overflow-wrap: anywhere; }
+.search-hit mark { padding: 0 1px; border-radius: 3px; background: var(--nt-yellow-bg, var(--warn-bg)); color: inherit; }
+.search-dialog__note { margin: 0; padding: 10px 16px 14px; font-size: 13px; }
+/* 검색 칸은 창 머리줄 자체가 칸이다 — 공통 초점 고리를 겹쳐 그리지 않는다(두 겹 테두리) */
+.search-dialog__bar input:focus,
+.search-dialog__bar input:focus-visible { border: 0; box-shadow: none; outline: none; }
+.search-dialog__bar:focus-within { box-shadow: inset 0 -2px 0 var(--ring-soft); }
+
+/* ─── 다크 모드 (DESIGN.md 2.12, D-5 결정 2026-09-21) ─────────────────────────
+ * 색은 전부 토큰이라 여기서 값만 바꾼다. 화면 CSS 는 손대지 않는다.
+ *   · 저장된 선택이 없으면 OS 설정(prefers-color-scheme)을 따른다 — 단, html[data-theme="light"] 가 아닐 때만.
+ *   · 해/달 단추가 html[data-theme] 을 dark|light 로 바꾸고 쿠키에 남긴다. 서버(shell_top·login_page)가
+ *     그 쿠키를 허용 목록(dark|light)으로 걸러 <html data-theme> 에 처음부터 넣으므로 첫 그림이 깜빡이지 않는다.
+ *   · 값은 shadcn/ui 다크(zinc-950 배경 · zinc-900 카드 · zinc-800 테두리). 의미색은 한 단계 밝은 400 계열이고
+ *     연한 바탕은 그 색의 12%·테두리는 35% 투명도 — 새 색값을 늘리지 않기 위해서다. */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --bg: #09090b;
+    --surface: #18181b;
+    --surface-2: #1f1f23;
+    --muted-bg: #27272a;
+    --fg: #fafafa;
+    --fg-2: #d4d4d8;
+    --muted: #a1a1aa;
+    --muted-2: #71717a;
+    --line: #27272a;
+    --primary: #fafafa;
+    --primary-hover: #e4e4e7;
+    --primary-fg: #18181b;
+    --ring: #71717a;
+    --ring-soft: rgba(113, 113, 122, .45);
+    --accent: #60a5fa;
+    --accent-soft: rgba(96, 165, 250, .12);
+    --accent-line: rgba(96, 165, 250, .35);
+    --accent-dark: #93c5fd;
+    --danger: #f87171;
+    --danger-soft: rgba(248, 113, 113, .12);
+    --danger-line: rgba(248, 113, 113, .35);
+    --warn-fg: #fbbf24;
+    --warn-bg: rgba(251, 191, 36, .12);
+    --warn-line: rgba(251, 191, 36, .35);
+    --ok-fg: #4ade80;
+    --ok-bg: rgba(74, 222, 128, .12);
+    --ok-line: rgba(74, 222, 128, .35);
+    --violet-fg: #a78bfa;
+    --violet-bg: rgba(167, 139, 250, .12);
+    --violet-line: rgba(167, 139, 250, .35);
+    --brand-navy: #000000;
+    --shadow-xs: 0 1px 2px 0 rgb(0 0 0 / .4);
+    --shadow-sm: 0 1px 3px 0 rgb(0 0 0 / .5), 0 1px 2px -1px rgb(0 0 0 / .5);
+    --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / .6), 0 4px 6px -4px rgb(0 0 0 / .6);
+  }
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #09090b;
+  --surface: #18181b;
+  --surface-2: #1f1f23;
+  --muted-bg: #27272a;
+  --fg: #fafafa;
+  --fg-2: #d4d4d8;
+  --muted: #a1a1aa;
+  --muted-2: #71717a;
+  --line: #27272a;
+  --primary: #fafafa;
+  --primary-hover: #e4e4e7;
+  --primary-fg: #18181b;
+  --ring: #71717a;
+  --ring-soft: rgba(113, 113, 122, .45);
+  --accent: #60a5fa;
+  --accent-soft: rgba(96, 165, 250, .12);
+  --accent-line: rgba(96, 165, 250, .35);
+  --accent-dark: #93c5fd;
+  --danger: #f87171;
+  --danger-soft: rgba(248, 113, 113, .12);
+  --danger-line: rgba(248, 113, 113, .35);
+  --warn-fg: #fbbf24;
+  --warn-bg: rgba(251, 191, 36, .12);
+  --warn-line: rgba(251, 191, 36, .35);
+  --ok-fg: #4ade80;
+  --ok-bg: rgba(74, 222, 128, .12);
+  --ok-line: rgba(74, 222, 128, .35);
+  --violet-fg: #a78bfa;
+  --violet-bg: rgba(167, 139, 250, .12);
+  --violet-line: rgba(167, 139, 250, .35);
+  --brand-navy: #000000;
+  --shadow-xs: 0 1px 2px 0 rgb(0 0 0 / .4);
+  --shadow-sm: 0 1px 3px 0 rgb(0 0 0 / .5), 0 1px 2px -1px rgb(0 0 0 / .5);
+  --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / .6), 0 4px 6px -4px rgb(0 0 0 / .6);
+}
+/* ─── 고대비 화면 (DESIGN.md 2.16 · 커뮤니티 7-D3 — 결정 J-5 · L-3) ─────────────────────────────
+ * 「내 계정」 → 「화면」 → 「고대비 화면」을 켠 사람에게만 서버(셸·런처)가 <html data-contrast="high"> 를 그린다.
+ * **토큰 값만 바꾼다** — 새 토큰 이름 0 · 화면 CSS 에 [data-contrast] 갈래 0(이 세 블록뿐) · 다크(2.12)와 같은 모양, 어두운 두 곳 같은 값.
+ * 이 블록들은 다크 기본 블록 **뒤**에 있어야 한다: 밝은 고대비(:root[data-contrast]) 는 다크 기본(:root[data-theme]) 과 무게가 같아
+ * 뒤에 있는 쪽이 이긴다 — 그래서 어두운 고대비 블록(무게 하나 더)은 밝은 고대비 블록이 바꾼 이름을 **빠짐없이** 다시 적는다.
+ * 대비는 시험이 계산한다(tests/lib/contrast.py — 글자 ≥ 4.5 · 선·고리 ≥ 3, 밝게·어둡게 각각). 연한 바탕(-soft·-bg·-line)은 그대로 둔다. */
+:root[data-contrast="high"] {
+  --fg: #000000;
+  --fg-2: #18181b;
+  --muted: #3f3f46;
+  --muted-2: #52525b;
+  --line: #71717a;
+  --ring: #000000;
+  --ring-soft: rgba(0, 0, 0, .45);
+  --primary: #000000;
+  --accent: #1d4ed8;
+  --accent-dark: #1e3a8a;
+  --danger: #b91c1c;
+  --warn-fg: #92400e;
+  --ok-fg: #166534;
+  --violet-fg: #5b21b6;
+}
+@media (prefers-color-scheme: dark) {
+  :root[data-contrast="high"]:not([data-theme="light"]) {
+    --bg: #000000;
+    --surface: #000000;
+    --surface-2: #0a0a0a;
+    --muted-bg: #1f1f23;
+    --fg: #ffffff;
+    --fg-2: #f4f4f5;
+    --muted: #d4d4d8;
+    --muted-2: #a1a1aa;
+    --line: #a1a1aa;
+    --ring: #ffffff;
+    --ring-soft: rgba(255, 255, 255, .45);
+    --primary: #ffffff;
+    --primary-fg: #000000;
+    --accent: #93c5fd;
+    --accent-dark: #bfdbfe;
+    --danger: #fca5a5;
+    --warn-fg: #fcd34d;
+    --ok-fg: #86efac;
+    --violet-fg: #c4b5fd;
+  }
+}
+:root[data-contrast="high"][data-theme="dark"] {
+  --bg: #000000;
+  --surface: #000000;
+  --surface-2: #0a0a0a;
+  --muted-bg: #1f1f23;
+  --fg: #ffffff;
+  --fg-2: #f4f4f5;
+  --muted: #d4d4d8;
+  --muted-2: #a1a1aa;
+  --line: #a1a1aa;
+  --ring: #ffffff;
+  --ring-soft: rgba(255, 255, 255, .45);
+  --primary: #ffffff;
+  --primary-fg: #000000;
+  --accent: #93c5fd;
+  --accent-dark: #bfdbfe;
+  --danger: #fca5a5;
+  --warn-fg: #fcd34d;
+  --ok-fg: #86efac;
+  --violet-fg: #c4b5fd;
+}
+/* 어두운 화면에서도 로그인 좌측 판은 검정, 마크는 밝은 사각 — 토큰이 뒤집혀도 그대로다(값 고정) */
+
+/* ─── 테마 전환 단추 (해/달) — 사이드바 아래 버전 표기 옆. app.js 가 aria-label 을 상태에 맞게 바꾼다 ── */
+.theme-toggle { margin-left: auto; }
+/* 버전 글자(21px)와 아이콘 단추(32px)가 한 줄에 서므로 줄 높이를 단추에 맞추고, 아래 여백은 줄이 가진다 */
+.sidebar__foot { display: flex; align-items: center; gap: 4px; margin: 0 0 8px; }
+.sidebar__foot .sidebar__version { align-self: auto; display: inline-flex; align-items: center; min-height: var(--h-icon); margin: 0; }
+/* 사이드바 오른쪽 경계·로그인 화면 오른쪽 위에서는 툴팁을 오른끝에 맞춘다(잘림 방지) */
+.sidebar__foot .theme-toggle::after,
+.login .theme-toggle::after { left: auto; right: 0; transform: none; }
+/* 밝을 때는 달, 어두울 때는 해만 보인다 — 두 아이콘을 다 넣고 CSS 로 하나를 감춘다(JS 가 아이콘을 갈아 끼우지 않는다) */
+.theme-toggle .icon--sun { display: none; }
+:root[data-theme="dark"] .theme-toggle .icon--moon { display: none; }
+:root[data-theme="dark"] .theme-toggle .icon--sun { display: inline-flex; }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .theme-toggle .icon--moon { display: none; }
+  :root:not([data-theme="light"]) .theme-toggle .icon--sun { display: inline-flex; }
+}
+/* 로그인 화면에는 셸이 없으므로 오른쪽 위 구석에 같은 단추를 띄운다 (.login 이 기준 상자) */
+.login { position: relative; }
+.login .theme-toggle { position: absolute; top: 12px; right: 12px; color: var(--muted); }
+
+/* ─── 앱 그리드 단추 (Qaredi C — DESIGN.md 2.9 「자리 정정 2026-09-22」, ../docs/launcher/ARCHITECTURE.md 6장) ───
+   자리는 **사이드바 `.brand` 줄 오른쪽** 하나다(`header.appbar` 는 넓은 화면에서 숨겨진다).
+   `.brand` 는 이미 flex 이므로 `margin-left: auto` 한 줄이 단추를 오른끝으로 보낸다.
+   `<details>` 의 기본 동작으로 스크립트 0 으로 열린다. 여기서 정하는 것은 **자리와 배치**뿐이고,
+   색·간격·모서리는 `.btn--icon.btn--plain`·`.panel`·`.list` 와 `:root` 토큰이 그대로 낸다
+   (원칙 6 — 화면 전용 색·간격을 만들지 않는다. 다크 모드도 토큰이 따라온다 — 2.12). */
+/* 2026-09-23 — 브랜드 덩어리 **전체**가 단추다(사용자 지시 「박스가 조그매서 눈에 안 띈다」).
+   메뉴 하나에 앱 전환 · 계정(내 계정 설정·내 활동) · 관리자 페이지 · 로그아웃. 색·간격·모서리는
+   `:root` 토큰뿐이고 다크 모드도 토큰이 따라온다 (원칙 6 · 2.12). */
+.appbar__apps { position: relative; flex: 1 1 auto; min-width: 0; }
+.appbar__apps > summary { list-style: none; cursor: pointer; }
+.appbar__apps > summary::-webkit-details-marker { display: none; }
+.brand__switch {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 8px;
+  margin: -6px -8px;
+  border-radius: var(--r-ctl);
+}
+.brand__switch:hover,
+.appbar__apps[open] > .brand__switch { background: var(--muted-bg); }
+.brand__switch:focus-visible { outline: none; box-shadow: 0 0 0 3px var(--ring-soft); }
+.brand__switch .brand__text { flex: 1 1 auto; }
+.brand__chev { display: inline-flex; flex-shrink: 0; color: var(--muted); transition: transform .15s ease; }
+.appbar__apps[open] .brand__chev { transform: rotate(180deg); }
+/* 펼침 메뉴는 브랜드 줄 **아래**로, 사이드바 폭 안에서 편다(가로 스크롤 0). 사이드바에는 z-index 가 없어 이 한 칸이면 내비 위에 선다. */
+.app-menu {
+  position: absolute;
+  top: calc(100% + 10px);
+  left: -8px;
+  right: -8px;
+  z-index: 30;
+  gap: 4px;
+  padding: 8px;
+  box-shadow: var(--shadow-lg);
+}
+/* 좁은 화면(960px 미만)에서는 사이드바가 서랍이라 떠 있는 메뉴가 서랍 칸에 잘린다 — 서랍 안에서 아래로 편다 */
+@media (max-width: 959.98px) {
+  .app-menu { position: static; margin: 12px -8px 0; box-shadow: none; }
+}
+.app-menu__label { margin: 6px 8px 2px; font-size: 12px; font-weight: 500; color: var(--muted); }
+.app-menu__apps { display: flex; flex-direction: column; gap: 2px; margin: 0; padding: 0; list-style: none; }
+.app-menu__app {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px;
+  border-radius: var(--r-sm);
+  color: var(--fg);
+}
+a.app-menu__app:hover { background: var(--muted-bg); text-decoration: none; }
+.app-menu__app[aria-current="page"] { background: var(--muted-bg); }
+.app-menu__app.is-soon { color: var(--muted); }
+.app-menu__icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 32px;
+  height: 32px;
+  border-radius: var(--r-ctl);
+  border: 1px solid var(--line);
+  background: var(--surface);
+}
+.app-menu__text { display: flex; flex-direction: column; flex: 1 1 auto; min-width: 0; }
+.app-menu__name { font-size: 14px; font-weight: 600; line-height: 1.3; }
+.app-menu__desc { font-size: 12px; color: var(--muted); line-height: 1.3; }
+.app-menu__check { display: inline-flex; flex-shrink: 0; color: var(--fg); }
+.app-menu__me { display: flex; align-items: center; gap: 10px; padding: 4px 8px 6px; }
+.app-menu__avatar {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 32px;
+  height: 32px;
+  border-radius: var(--r-ctl);
+  border: 1px solid var(--line);
+  background: var(--surface);
+  font-size: 13px;
+  font-weight: 600;
+}
+.app-menu__logout {
+  width: 100%;
+  margin-top: 4px;
+  border: 0;
+  border-top: 1px solid var(--line);
+  border-radius: 0 0 var(--r-sm) var(--r-sm);
+  background: none;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+/* ─── 터치 대상 44px (DESIGN 4장 「터치 대상」 · 디버깅 묶음 U2 M12 · 2026-09-26 — 독립 검토 중간 한 건 반영) ──────────────
+   폰 폭(720px 미만)과 터치가 주 포인터인 기기(`pointer: coarse`)에서 누르는 것 — 단추 · 클래스가 붙은 링크(단추 모양·카드) ·
+   접기 머리(summary) · 체크 · 라디오 — 의 **누르는 자리**를 44×44px 이상으로(점검 2026-09-26: 폰 화면의 누르는 것 86개 중 84개가 44 미만).
+   두 가지 길이다 — 어느 쪽이든 **보이는 상자 안 어디를 눌러도 그 자신**이어야 한다(이웃의 넓힌 자리가 가져가면 안 된다):
+   ① 따로 떨어진 것(머리 단추 32 · 아이콘 단추 · 표 줄 체크 13 …) — 보이는 크기는 그대로, 모자란 만큼 보이지 않는 `::before` 가 사방으로 넓힌다.
+      넓힌 폭(한쪽 최대 6~16px)이 이웃에 닿지 않게 사이를 둔다(표 행 동작 아이콘 사이 12px). `:where()` 라 무게 0 — 자리를 정하는 기존 규칙이 이긴다.
+   ② **세로로 쌓이는 줄**(내비·메뉴 항목 · 폴더 목록 · 경로 조각 · 체크·라디오가 든 이름표 · 커뮤니티 트리 줄 — community.css)은 넓히지 않는다 —
+      줄 사이가 0~4px 라 넓힌 자리가 **다음 줄**을 가져갔다(독립 검토 실측: 사이드바 트리 줄 아래 8px · 페이지 트리 7px · 내비 6px).
+      대신 줄 자체를 44px 로 키운다(보이는 줄 간격이 넓어진다 — 폰은 그 편이 낫다).
+   글 속 링크(클래스 없는 `<a>` · 문서 본문 `.doc`)와 입력 칸·고르개(폭이 넓다)는 규칙 밖.
+   ★ 한계: 체크 상자의 `::before` 는 Chromium·WebKit 만 그린다(Firefox 는 보이는 크기 그대로). */
+@media (max-width: 719.98px), (pointer: coarse) {
+  :where(button, summary, a[class]:not(.doc a), input[type="checkbox"], input[type="radio"]) { position: relative; }
+  :where(button, summary, a[class]:not(.doc a), input[type="checkbox"], input[type="radio"])::before {
+    content: "";
+    position: absolute;
+    top: min(0px, calc((100% - 44px) / 2));
+    bottom: min(0px, calc((100% - 44px) / 2));
+    left: min(0px, calc((100% - 44px) / 2));
+    right: min(0px, calc((100% - 44px) / 2));
+  }
+  /* ② 세로로 쌓이는 줄 — 넓히지 않고 줄을 키운다 */
+  :is(.nav__item, .menu__item, .foldertree__item, .crumbs__item)::before,
+  label input[type="checkbox"]::before, label input[type="radio"]::before { content: none; }
+  .nav__item, .menu__item { height: 44px; }
+  .foldertree__item { min-height: 44px; justify-content: center; }
+  .crumbs__item { display: inline-flex; align-items: center; justify-content: center; min-height: 44px; min-width: 44px; }
+  label:has(> input[type="checkbox"]), label:has(> input[type="radio"]),
+  .field__label:has(> input[type="checkbox"]), .field__label:has(> input[type="radio"]) { min-height: 44px; }
+  /* ① 표 행 동작 아이콘 — 넓힌 자리(한쪽 6px)가 옆 아이콘에 닿지 않게 사이 12px.
+     위아래도 6px(디버깅 묶음 U3 · U2 검토 낮음): 폭 720 이상 터치 기기(폴드 펼침 820)에서 아이콘이 두 줄로 접히면 줄 사이가 4px(위아래 여백 2px 씩)라
+     넓힌 자리 6px 이 서로 겹쳐 위아래 2px 을 가져갔다 — 여백 6px 씩이면 줄 사이 12px 로 넓힌 자리(6 + 6)가 닿기만 하고 겹치지 않는다 */
+  table.files td.actions .btn:not(:first-child) { margin-left: 12px; }
+  table.files td.actions .btn { margin-top: 6px; margin-bottom: 6px; }
+}
