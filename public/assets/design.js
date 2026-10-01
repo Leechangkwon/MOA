@@ -64,5 +64,9 @@
     const box = dialog.getBoundingClientRect();
     if (event.clientX < box.left || event.clientX > box.right || event.clientY < box.top || event.clientY > box.bottom) dialog.close();
   });
+  document.querySelectorAll('[data-ux-community-start]').forEach(button => button.addEventListener('click', () => {
+    const original = document.getElementById('community-new');
+    if (original && !original.hidden && !original.disabled) original.click();
+  }));
   sync();
 })();

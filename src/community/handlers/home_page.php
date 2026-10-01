@@ -195,7 +195,7 @@ require __DIR__ . '/../../views/shell_top.php';
 
     <!-- 찾기 결과가 들어오는 자리. 3단계의 카드 목록 그대로다. -->
     <section id="community-list" class="card-grid" aria-live="polite" hidden></section>
-    <p id="community-empty" class="muted" hidden>아직 페이지가 없습니다. 「새 페이지」로 시작하세요.</p>
+    <div class="q-empty-state"><span class="q-empty-icon" aria-hidden="true">✧</span><p id="community-empty" class="muted" hidden>아직 페이지가 없습니다. 「새 페이지」로 시작하세요.</p><button type="button" class="btn btn--quiet q-empty-community" data-ux-community-start<?= $homeWriteHidden ?>>새 페이지로 시작하기</button></div>
 
     <!-- 라운드 B — 고른 페이지 옮기기 창. 페이지 화면의 「옮기기」 창(page_view.php)과 **같은 모양**(`.move-tree` — 4-A)이다.
          이 공간의 트리를 그리되 고른 페이지와 그 하위는 새 부모 후보에서 뺀다 — 그래도 **막는 것은 서버**다(`decidePageMove` —

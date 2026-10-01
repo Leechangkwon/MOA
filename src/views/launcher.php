@@ -75,6 +75,7 @@ if (is_array($launcherUser)) {
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="Qaredi">
 <?= Design::assets() ?>
+<?php if (is_array($launcherUser)): ?><script defer src="<?= $launcherEsc(Http::url('/assets/start.js')) ?>?v=<?= (int) filemtime(__DIR__ . '/../../public/assets/start.js') ?>"></script><?php endif; ?>
 </head>
 <body class="q-launcher">
 <div class="app">
@@ -131,6 +132,13 @@ if (is_array($launcherUser)) {
       </a>
 <?php   endif; ?>
 <?php endforeach; ?>
+    </section>
+<?php endif; ?>
+<?php if (is_array($launcherUser)): ?>
+    <section class="q-start" id="q-start" data-base="<?= $launcherEsc(TBOX_BASE) ?>" data-community-base="<?= $launcherEsc(COMMUNITY_BASE) ?>" aria-labelledby="q-start-title">
+      <div class="q-start-head"><div><p class="q-eyebrow">PICK UP WHERE YOU LEFT OFF</p><h2 id="q-start-title">내 작업 이어가기</h2></div><button type="button" class="btn btn--quiet btn--small" id="q-start-retry">다시 불러오기</button></div>
+      <div class="toolbar" role="group" aria-label="이어 볼 작업"><button type="button" class="btn btn--quiet btn--small" data-start-view="recent" aria-pressed="true">최근 작업</button><button type="button" class="btn btn--quiet btn--small" data-start-view="favorites" aria-pressed="false">즐겨찾기</button></div>
+      <div id="q-start-list" class="q-start-list"></div><p id="q-start-status" class="help" role="status" aria-live="polite"></p>
     </section>
 <?php endif; ?>
   </main>

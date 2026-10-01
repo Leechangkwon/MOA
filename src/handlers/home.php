@@ -123,7 +123,8 @@ require __DIR__ . '/../views/shell_top.php';
           <button id="folder-new" class="btn btn--quiet btn--small" type="button" hidden>새 폴더</button>
         </div>
         <!-- 폴더 이름은 **읽을 수 있는 사람 모두**에게 보이는 메타데이터다 (SECURITY R-63). -->
-        <p class="panel__sub">폴더 이름에는 민감한 말(사람 이름·금액·사건명)을 넣지 마세요. 이름은 그 폴더를 볼 수 있는 사람 모두에게 보입니다.</p>
+        <p class="panel__sub q-folder-warning">폴더 이름에는 민감한 말(사람 이름·금액·사건명)을 넣지 마세요. 이름은 그 폴더를 볼 수 있는 사람 모두에게 보입니다.</p>
+        <details class="q-folder-help"><summary>폴더 이름을 정할 때</summary><p class="help">폴더 이름에는 민감한 말(사람 이름·금액·사건명)을 넣지 마세요. 이름은 그 폴더를 볼 수 있는 사람 모두에게 보입니다.</p></details>
         <nav class="crumbs" id="folder-crumbs" aria-label="폴더 경로"></nav>
         <ul class="foldertree__list" id="folder-list"></ul>
         <p id="folder-empty" class="muted" hidden>하위 폴더가 없습니다.</p>
@@ -141,6 +142,7 @@ require __DIR__ . '/../views/shell_top.php';
       </aside>
 
       <div class="workspace__main">
+        <div class="q-location" aria-label="현재 파일 위치"><div><p class="q-eyebrow">FILE SPACE</p><h2 id="q-location-title">맨 위</h2></div><p id="q-location-count" class="muted" role="status"></p></div>
     <!-- 개발 대기열 6 (Q:F-3a 라운드 A · 지시서 1.1 · 1.2) — 목록 위 보기 셋: 「파일」(폴더·검색) · 「즐겨찾기」 · 「최근」.
          새 클래스 0 — 고른 것은 outline 작은 단추(`.btn--quiet.btn--small`), 나머지는 테두리를 걷은 같은 단추(`.btn--plain`) ·
          `aria-pressed` 로 화면 읽기에도 알린다(DESIGN 2.1 · 커뮤니티 DB 보기 단추와 같은 모양). 무엇이 나오나는 서버가 정한다 —
@@ -254,7 +256,7 @@ require __DIR__ . '/../views/shell_top.php';
 
     <section class="card card--flush">
       <div class="table-wrap">
-        <table class="files">
+        <table class="files q-file-table">
           <thead>
             <tr>
               <!-- 라운드 B — 머리 체크는 **이 쪽(지금 보이는 줄) 전부**를 고르고 푼다. 줄 체크는 이름 칸 맨 앞(☆ 앞)에 app.js 가 넣는다 —
@@ -263,21 +265,21 @@ require __DIR__ . '/../views/shell_top.php';
               <th scope="col" aria-labelledby="files-name-head"><input type="checkbox" id="files-check-all" data-bulk aria-label="이 쪽 파일 모두 고르기"><span id="files-name-head">이름</span></th>
               <th scope="col">크기</th>
               <th scope="col">등급</th>
-              <th scope="col">팀</th>
+              <th scope="col" class="q-file-team-head">팀</th>
               <!-- 18-1 — 검색 결과일 때만 보이는 「폴더」 경로 열. 값은 서버가 준
                    folder_path 를 app.js 가 textContent 로 넣는다 (PRD S-03). -->
               <th scope="col" id="files-folder-head" hidden>폴더</th>
               <th scope="col">올린 사람</th>
               <!-- 「최근」 보기에서는 app.js 가 글자를 「마지막으로 연 때」로 바꾼다(값은 서버가 준 last_used_at). -->
               <th scope="col" id="files-when-head">올린 시각</th>
-              <th scope="col">설명</th>
+              <th scope="col" class="q-file-description-head">설명</th>
               <th scope="col">작업</th>
             </tr>
           </thead>
           <tbody id="files-body"></tbody>
         </table>
       </div>
-      <p id="files-empty" class="muted" hidden>표시할 파일이 없습니다.</p>
+      <div class="q-empty-state" id="q-files-empty-state"><span class="q-empty-icon" aria-hidden="true">↗</span><p id="files-empty" class="muted" hidden>표시할 파일이 없습니다.</p><p id="q-files-empty-hint" class="help"></p><button id="q-files-empty-action" class="btn btn--quiet" type="button" hidden>파일 올리기</button></div>
       <div class="table-foot">
         <span id="page-info" class="muted"></span>
         <div class="pager">
@@ -290,6 +292,11 @@ require __DIR__ . '/../views/shell_top.php';
     
       </div>
     </div>
+
+    <dialog id="q-file-actions-dialog" class="modal modal--form q-file-actions-dialog" aria-labelledby="q-file-actions-title">
+      <div class="modal__head"><div><p class="q-eyebrow">FILE ACTIONS</p><h2 id="q-file-actions-title" class="modal__title"></h2></div><button type="button" class="btn btn--quiet" id="q-file-actions-close">닫기</button></div>
+      <p class="help">이 파일에서 할 수 있는 작업을 고르세요.</p><div id="q-file-actions-list" class="q-file-actions-list"></div>
+    </dialog>
 
     <!-- ─── 파일 올리기 대화상자 (18-3 — PRD F-26·F-27, ARCH 5.16·5.17) ──────
          **올릴 위치는 고르지 않는다.** 지금 열어 둔 폴더에 올라가고, 그 경로는 서버가

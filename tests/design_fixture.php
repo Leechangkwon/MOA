@@ -11,7 +11,9 @@ define('TBOX_HOME_PATH', '/community/');
 require $root . '/src/Http.php';
 require $root . '/src/Apps.php';
 final class Auth { public static function currentUser(): ?array { return null; } }
-final class Authz { public static function canCommunityWrite(array $user): bool { return true; } }
+final class Authz { public static function canCommunityWrite(array $user): bool { return ($_GET['guest'] ?? '') !== '1'; } }
+function community_palette_version(): string { return 'fixture'; }
+function community_embed_csp(): void {}
 function tbox_person_label(?string $name, string $username): string { return $name ? $name . ' (' . $username . ')' : $username; }
 $user = ['username'=>'design_review', 'display_name'=>'디자인 검토', 'role'=>'Employee', 'high_contrast'=>($_GET['hc'] ?? '')==='1'];
 $params = [];
@@ -27,6 +29,11 @@ if ($screen === 'launcher' || $screen === 'anonymous') {
     require $root . '/src/handlers/home.php';
 } elseif ($screen === 'settings') {
     require $root . '/src/handlers/settings_page.php';
+} elseif ($screen === 'community-home') {
+    require $root . '/src/community/handlers/home_page.php';
+} elseif ($screen === 'community-page') {
+    $params = ['10000000-0000-4000-8000-000000000001'];
+    require $root . '/src/community/handlers/page_view.php';
 } elseif ($screen === 'community') {
     $shellModule = 'community';
     $pageTitle = '업무 공간'; $pageKey = 'community-home'; $activeNav = 'community-home';

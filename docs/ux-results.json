@@ -1,0 +1,92 @@
+{
+  "date": "2026-10-01",
+  "version_target": "2.40.0",
+  "ux_browser": {
+    "checks": 292,
+    "failures": [],
+    "errors": [],
+    "write_requests": [],
+    "scope": "rendered PHP, actual app/design/start JS with synthetic readonly APIs; layout and interaction, not production authorization"
+  },
+  "theme_regression": {
+    "checks": 1090,
+    "failures": [],
+    "console": [],
+    "scope": "isolated rendered production views; original auth/API scripts excluded; live regression separate"
+  },
+  "security_lint": {
+    "forbidden_patterns": 0
+  },
+  "php_lint": {
+    "errors": 0
+  },
+  "wiki": {
+    "articles": 65,
+    "structure_errors": 0,
+    "missing": 0
+  },
+  "help_button": {
+    "passed": 16,
+    "failed": 0
+  },
+  "community_asset_version": "650963c0b731",
+  "app_css_sha256": "548c3cccdaf66c7f7874ef02e35f8a4f52572c6dc205375ea344e2e24e72cc1c",
+  "live": {
+    "checks": 342,
+    "failed": 0,
+    "batches": [
+      {
+        "checks": 130,
+        "themes": [
+          "claude",
+          "astra"
+        ],
+        "failures": [],
+        "console": [],
+        "http_5xx": [],
+        "mutations": [],
+        "scope": "live original JS/API; reserved review account; readonly GET navigation and preference cookies"
+      },
+      {
+        "checks": 130,
+        "themes": [
+          "aurora",
+          "bloom"
+        ],
+        "failures": [],
+        "console": [],
+        "http_5xx": [],
+        "mutations": [],
+        "scope": "live original JS/API; reserved review account; readonly GET navigation and preference cookies"
+      },
+      {
+        "checks": 82,
+        "themes": [
+          "nova"
+        ],
+        "failures": [],
+        "console": [],
+        "http_5xx": [],
+        "mutations": [],
+        "scope": "live original JS/API; reserved review account; readonly GET navigation and preference cookies"
+      }
+    ]
+  },
+  "https": {
+    "root_status": 200,
+    "anonymous_personal_absent": true,
+    "nova_persisted": true,
+    "secure_preference_cookie": true,
+    "errors": []
+  },
+  "public_launcher": {
+    "passed": 61,
+    "failed": 0,
+    "skipped": 1,
+    "scope": "public readonly subset; operating DB comparison skipped, no share/create/delete tests"
+  },
+  "design_allowlist": {
+    "passed": 19,
+    "failed": 0
+  }
+}

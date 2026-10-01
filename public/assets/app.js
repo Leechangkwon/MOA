@@ -2773,7 +2773,61 @@ function initFiles(csrfToken, uploadLevels, canFetch, myTeamId) {
       }
     }
 
+    // Shared dialog exposes only buttons already allowed by the response. Claude keeps its original icons.
+    var secondaryButtons = Array.prototype.slice.call(td.children, 2);
+    if (secondaryButtons.length > 0) {
+      var secondary = document.createElement('span');
+      secondary.className = 'q-file-secondary';
+      secondaryButtons.forEach(function (button) { secondary.appendChild(button); });
+      td.appendChild(secondary);
+      var more = document.createElement('button');
+      more.type = 'button';
+      more.className = 'btn btn--icon q-file-more';
+      more.setAttribute('aria-label', '더보기 — ' + file.name);
+      more.setAttribute('aria-haspopup', 'dialog');
+      more.setAttribute('aria-controls', 'q-file-actions-dialog');
+      more.setAttribute('aria-expanded', 'false');
+      setText(more, '···');
+      more.addEventListener('click', function () { openFileActions(file, secondaryButtons, more); });
+      td.appendChild(more);
+    }
     row.appendChild(td);
+  }
+
+  var fileActionsDialog = document.getElementById('q-file-actions-dialog');
+  var fileActionsList = document.getElementById('q-file-actions-list');
+  var fileActionsInvoker = null;
+  function openFileActions(file, buttons, invoker) {
+    if (!fileActionsDialog || !fileActionsList || fileActionsDialog.open) { return; }
+    setText(document.getElementById('q-file-actions-title'), file.name);
+    fileActionsList.replaceChildren();
+    buttons.forEach(function (source) {
+      var action = source.cloneNode(true);
+      action.classList.add('q-file-operation');
+      var label = document.createElement('span');
+      setText(label, source.getAttribute('aria-label') || '작업');
+      action.appendChild(label);
+      action.addEventListener('click', function () {
+        fileActionsDialog.close();
+        source.click(); // Original handler retains confirmation, reauthentication and request semantics.
+      });
+      fileActionsList.appendChild(action);
+    });
+    fileActionsInvoker = invoker;
+    invoker.setAttribute('aria-expanded', 'true');
+    fileActionsDialog.showModal();
+    var first = fileActionsList.querySelector('button:not(:disabled)');
+    if (first) { first.focus(); }
+  }
+  if (fileActionsDialog) {
+    document.getElementById('q-file-actions-close').addEventListener('click', function () { fileActionsDialog.close(); });
+    fileActionsDialog.addEventListener('close', function () {
+      fileActionsList.replaceChildren();
+      if (fileActionsInvoker) {
+        fileActionsInvoker.setAttribute('aria-expanded', 'false');
+        if (fileActionsInvoker.isConnected && !document.querySelector('dialog[open]')) { fileActionsInvoker.focus(); }
+      }
+    });
   }
 
   /**
@@ -2786,28 +2840,44 @@ function initFiles(csrfToken, uploadLevels, canFetch, myTeamId) {
     // F-54 — 「검사 중」·「격리됨」 배지도 서버가 준 scan_status 하나만 보고 붙인다.
     // F-65 — 「실행 파일 포함」 배지도 서버가 준 exec_content 하나만 보고 붙인다.
     var nameCell = addNameCell(row, file.name, file.sensitive === true, file.scan_status, file.exec_content === true);
+    nameCell.classList.add('q-file-name-cell');
+    var filename = nameCell.firstChild;
+    filename.classList.add('q-file-name');
+    var nameLine = document.createElement('span');
+    nameLine.className = 'q-file-name-line';
+    nameCell.insertBefore(nameLine, filename);
+    nameLine.appendChild(filename);
+    var detailParts = [];
+    if (typeof file.team_name === 'string' && file.team_name !== '') { detailParts.push('팀: ' + file.team_name); }
+    if (typeof file.description === 'string' && file.description !== '') { detailParts.push(file.description); }
+    if (detailParts.length > 0) {
+      var detail = document.createElement('span');
+      detail.className = 'q-file-name-detail';
+      setText(detail, detailParts.join(' · '));
+      nameCell.appendChild(detail);
+    }
     // 개발 대기열 6 — 이름 앞의 별(즐겨찾기 넣기·빼기). 행 동작 칸(보기→받기→…→삭제, DESIGN 2.1)은 그대로 둔다.
     var star = makeFileStar(file);
     if (star !== null) {
-      nameCell.insertBefore(star, nameCell.firstChild);
+      nameLine.insertBefore(star, nameLine.firstChild);
     }
     // 라운드 B — 줄 체크(일괄 작업 고르기)는 별보다 앞 · 이름 칸 안(열을 늘리지 않는다 — DESIGN 2.4 폭 규칙 그대로)
     var check = makeRowCheck(file);
     if (check !== null) {
-      nameCell.insertBefore(check, nameCell.firstChild);
+      nameLine.insertBefore(check, nameLine.firstChild);
     }
-    addCell(row, formatSize(file.size_bytes));
+    addCell(row, formatSize(file.size_bytes)).className = 'q-file-size';
     addLevelCell(row, file.access_level);
-    addCell(row, file.team_name === null || file.team_name === undefined ? '—' : file.team_name);
+    addCell(row, file.team_name === null || file.team_name === undefined ? '—' : file.team_name).className = 'q-file-team';
     if (showFolder) {
       // 서버가 준 folder_path 그대로. 루트면 「—」 (경로는 표시용이며 권한과 무관하다).
       addCell(row, typeof file.folder_path === 'string' && file.folder_path !== ''
         ? file.folder_path
         : '—');
     }
-    addCell(row, file.uploaded_by);
-    addWhenCell(row, whenValue);
-    addCell(row, file.description);
+    addCell(row, file.uploaded_by).className = 'q-file-uploader';
+    addWhenCell(row, whenValue).className = 'q-file-when';
+    addCell(row, file.description).className = 'q-file-description';
     addActions(row, file);
     return row;
   }
@@ -3025,6 +3095,8 @@ function initFiles(csrfToken, uploadLevels, canFetch, myTeamId) {
     if (empty) {
       empty.hidden = files.length !== 0;
     }
+    syncFileContext(files.length, false);
+    syncEmptyAction();
     setText(pageInfo, label + ' ' + files.length + '건');
     syncBulkUi();   // 라운드 B — 머리 체크를 새 줄에 맞춘다
   }
@@ -3099,6 +3171,32 @@ function initFiles(csrfToken, uploadLevels, canFetch, myTeamId) {
     loadFiles();
   }
 
+  function syncFileContext(count, searching) {
+    var title = state.view === 'favorites' ? '즐겨찾기' : state.view === 'recent' ? '최근 파일'
+      : searching ? '검색 결과' : state.crumbs.length ? state.crumbs[state.crumbs.length - 1].name : '맨 위';
+    setText(document.getElementById('q-location-title'), title);
+    setText(document.getElementById('q-location-count'), (searching ? '전체 폴더에서 ' : '') + count + '개의 파일');
+  }
+
+  function syncEmptyAction() {
+    var action = document.getElementById('q-files-empty-action');
+    if (!action) { return; }
+    var filtered = state.view === 'files' && state.q !== '';
+    setText(empty, filtered ? '검색 결과가 없습니다.' : EMPTY_TEXT[state.view]);
+    setText(document.getElementById('q-files-empty-hint'), filtered ? '검색어를 바꾸거나 지워서 다시 찾아보세요.'
+      : state.view === 'files' ? '이 폴더에 첫 파일을 올려 업무를 시작하세요.' : '파일 보기에서 미리보기·받기 또는 별 표시를 사용해 보세요.');
+    setText(action, filtered ? '검색 지우기' : state.view !== 'files' ? '파일 보기' : '파일 올리기');
+    action.hidden = !empty || empty.hidden || (state.view === 'files' && !filtered && uploadLevels.length === 0);
+  }
+  var emptyAction = document.getElementById('q-files-empty-action');
+  if (emptyAction) {
+    emptyAction.addEventListener('click', function () {
+      if (state.view !== 'files') { setView('files'); }
+      else if (state.q !== '') { state.q = ''; state.page = 1; if (qInput) { qInput.value = ''; } loadFiles(); }
+      else if (uploadLevels.length > 0) { document.getElementById('upload-toggle').click(); }
+    });
+  }
+
   function renderFiles(data) {
     clearRows();
     var files = data && Array.isArray(data.files) ? data.files : [];
@@ -3137,6 +3235,8 @@ function initFiles(csrfToken, uploadLevels, canFetch, myTeamId) {
       empty.hidden = files.length !== 0;
     }
 
+    syncFileContext(state.total, searching);
+    syncEmptyAction();
     var lastPage = state.total === 0 ? 1 : Math.ceil(state.total / state.perPage);
     setText(pageInfo, state.page + ' / ' + lastPage + ' 페이지 · 전체 ' + state.total + '건');
     if (prev) {
