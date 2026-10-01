@@ -150,6 +150,16 @@ $loginApp = $loginApps[$loginPane === '' ? 'tbox' : $loginPane];
         </button>
         <button id="passkey-password-open" class="btn btn--block btn--quiet" type="button" hidden>비밀번호로 로그인</button>
 
+        <details id="passkey-recovery" class="help" hidden>
+          <summary>지문 로그인이 안 되나요?</summary>
+          <p>「사용 가능한 로그인 정보 없음」은 휴대폰의 인증 서비스가 이 사이트의 패스키를 찾지 못했다는 뜻입니다. Samsung Pass와 Google 비밀번호 관리자에 저장된 패스키는 다를 수 있습니다.</p>
+          <ol>
+            <li>패스키를 등록했던 앱이나 브라우저에서 다시 시도하세요.</li>
+            <li>계속 안 되면 아래에서 비밀번호로 로그인하세요.</li>
+            <li>「내 계정 → 지문·얼굴 로그인 → 이 휴대폰 등록하기」에서 새 패스키를 추가하고, 등록 창의 저장 서비스를 확인하세요. 기존 등록은 먼저 해제하지 않아도 됩니다.</li>
+          </ol>
+        </details>
+
         <label class="field">
           <span class="field__label">아이디</span>
           <input id="username" name="username" type="text" inputmode="latin"

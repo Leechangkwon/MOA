@@ -140,6 +140,7 @@
     var submit = document.getElementById('login-submit');
     var user = document.getElementById('username');
     var pass = document.getElementById('password');
+    var recovery = document.getElementById('passkey-recovery');
     if (!form || !btn || !pwOpen) { return; }
     var pwParts = [user ? user.closest('label') : null, pass ? pass.closest('label') : null, submit];
     var justOut = ssGet(OUT_KEY) === '1';
@@ -262,6 +263,9 @@
             }
           } else if (name === 'NotAllowedError' || name === 'AbortError') {
             setText(msg, MSG_FAIL);
+            // 취소·시간 초과·열쇠 없음은 같은 오류로 올 수 있다. 삭제를 단정하지 않고 비밀번호 복구 길을 보여 준다.
+            if (recovery) { recovery.hidden = false; recovery.open = false; }
+            showPassword();
           } else {
             setText(msg, err && err.message && err.message !== 'none' && name === '' ? err.message : MSG_FAIL);
           }

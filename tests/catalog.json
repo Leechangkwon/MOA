@@ -4304,6 +4304,29 @@
       "est_sec": 15,
       "writes_prod": false,
       "notes": "공개 읽기 부분만 실행한다. 기존 전체 모드는 사용자 활동 관문과 검토 계정/공유 링크 검사를 그대로 유지한다."
+    },
+    {
+      "id": "tbox.passkey_recovery_ui",
+      "cmd": "python3 tests/passkey_recovery_browser.py",
+      "module": "tbox",
+      "env": "temp-instance",
+      "status": "required",
+      "needs": [
+        "browser"
+      ],
+      "covers": [
+        "public/assets/passkey.js",
+        "src/handlers/login_page.php"
+      ],
+      "requirements": [
+        "T:F-72"
+      ],
+      "risks": [
+        "R-109"
+      ],
+      "est_sec": 20,
+      "writes_prod": false,
+      "notes": "실제 PHP/JS + 합성 열쇠 없음·취소. 운영 인증 쓰기 없음."
     }
   ]
 }
