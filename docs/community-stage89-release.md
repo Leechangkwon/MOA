@@ -1,6 +1,6 @@
 # 커뮤니티 8~9단계 반영 인계서
 
-상태: **사용자 「반영해」 승인에 따라 v2.41.0 운영 DB·권한·78파일 적용 완료, 5분 cron 등록·첫 자연 실행 확인, 공개 UI 최종 확인 중**(2026-10-01). 기능923개와 최초 배포 모의53개를 각각 통과했고 기능·파일 적용 도구 독립 검토도 통과했다. 원본 공통8묶음 전체회귀를 실행했다는 뜻은 아니다. 모바일 긴 제목의 가로 넘침을 보정하는 CSS3줄 후속판2.41.1을 준비 중이다.
+상태: **8~9단계 운영 반영·예약 실행·공개 화면 검증 완료, 현재 v2.41.1**(2026-10-01). 사용자 「반영해」 승인으로 v2.41.0 DB·권한·78파일을 반영하고, 모바일 긴 제목 표시를 보정한 v2.41.1까지 운영에 적용했다. 반영 전 기능923개·최초 배포 모의53개, 운영 기능82개, CSS대체 없는 공개 HTTPS 화면42개를 각각 통과했다. 원본 공통8묶음 전체회귀와 사용자 자기 공격을 완료했다는 뜻은 아니다.
 
 ## 운영 반영 기록
 
@@ -11,13 +11,17 @@
 - 근거: 작업 부모 `production-deployment-latest.json`, 백업 `production-backup-20261001-212134/`의 `migration.log`, `code-apply.json`, `code-verify.json`, `before-counts.json`, `after-counts.json`.
 - cron:21:29:22에 기존73줄을 보존하고 주석3줄·실행1줄을 추가했다. root:root0644·새 SHA `29d0d1163400caa2de11e4b0c98108d8bb539f9d493ac377adab4432ec4c1c66`. tbox-php 수동 첫 실행은 처리0·작업0·생성0이었다(`production-validation/cron-installed.json`). 21:30:01 첫 자연 실행은 journald의 tbox-php CMD와 cursor 갱신으로 확인했다. 자연 실행의 종료코드는 직접 수집하지 않았다(수동 첫 실행exit0과 구분). 증거는 `reviewer-cron-observation.json`·`reviewer-cron-first-tick.json`이다.
 - 운영 스모크: 실제 nginx/FPM/API에서82통과·0실패(`production-validation/production-smoke-results.json`). 내보내기, 자동화 실행/되돌리기, 개인 토큰 파일명 변경409·다운로드 원본 바이트 보존을 확인하고 시험 fixture·토큰을 정리했다. 브라우저8화면(390다크·1280라이트)은 CSS후보를 대체해 검사했으므로 CSS 운영 적용 후 공개 HTTPS 화면 검증과 구분한다.
-- 남은 확인: 후속2.41.1 CSS 발행·반영과 공개 HTTPS 브라우저 최종 검사.
+- 후속판: v2.41.1(`44e0fa4aa6d06d5a70be6c6e7cb85c7be1e2b3c8`) main·태그 push 완료. 모바일 긴 제목 줄바꿈 CSS와 VERSION/CHANGELOG4파일을 운영에 적용해 SHA가 모두 일치했다. 백업은 `production-mobile-hotfix-backup-20261001-213247/`, 적용 기록은 `production-validation/mobile-hotfix-applied.json`이다.
+- 공개 화면: `https://changkwon.mso.so`에서 CSS대체 없이42통과·0실패. 오늘·절차서·자동 작업·긴 제목의8화면(390다크·1280라이트), 가로 넘침0·2.41.1 HTML 표시·CSS원본 바이트 및 캐시값·미처리 JS오류0을 확인했다. 시험 문서를 정리하고 로그아웃했다(`production-validation/production-public-ui-results.json`). 공개 `/tbox/api/health`도200이었다.
+- 남는 한계: 첫 자연 cron 종료코드 자체는 직접 수집하지 않았고 CMD·cursor 갱신으로 확인했다. 원본 공통8 전체·TLS/속도제한 전체 경계·실제 장애 주입·사용자 자기 공격은 아래 한계를 유지한다.
 
-## 불변 후보 패키지와 파일 적용 도구
+## 불변 발행 패키지와 파일 적용 도구
 
 `deploy/community-stage89-apply.py`가 검토한 명시적 파일 목록과 기능 기준선7ef69bed·운영 이전값 a39ec15+F2코드5개로 **새 디렉터리**에 payload·manifest·고정 실행기를 만든다. 대상에 추적하지 않은 배포 파일이 있으면 명시 목록 없는 준비는 거부한다. 최종 커밋 뒤에는 추적된 변경만으로 새 패키지를 만들 수 있다. 이미 생성한 패키지를 갱신하지 않는다. 적용한 최종 발행 파일과 manifest SHA256은 위 운영 기록에 고정했다.
 
 첫 후보는 작업 부모 `stage89-release-candidate`(75파일), 최종 발행본 경로는 `stage89-release-v2.41.0`이다. 후보 모의검사53/0·재적용0변경 및 운영 읽기전용75파일 이전 해시 일치를 확인했다. 증거는 `deploy-package-results-01/`에 보관한다. 최종 발행본78파일도 모의검사51통과·0실패·조건부1건너뜀으로 확인했다. 건너뛴 미추적 파일 검사는 최초 후보에서 통과했다. 새 패키지에는 `.env`·저장파일·로그·시험파일이 포함되지 않는다. 실행기는 기본값이 **읽기 전용 검증**이다. manifest SHA와 모든 payload SHA, 운영 파일의 예상 이전/새 해시, 기존F2파일5개의 기준선을 검사하고 드리프트·경로 탈출·심볼릭링크·비정규파일을 거부한다.
+
+아래 검증 명령은 v2.41.0 반영 당시의 기록이다. v2.41.1 후속4파일과 최종 운영 기록 문서는 의도적으로 달라졌다. 현재78파일은 `production-validation/final-runtime-manifest.json`의 최종 커밋·운영 해시로 대조하며, 후속4파일의 적용 경위는 `mobile-hotfix-applied.json`에 보존한다. 옛 패키지로 최신 파일을 덮어쓰지 않는다.
 
 ```bash
 python3 /home/changkwon/qaredi-community-stage89-20261001/stage89-release-v2.41.0/apply.py \
