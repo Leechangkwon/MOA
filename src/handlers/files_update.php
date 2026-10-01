@@ -9,7 +9,8 @@ declare(strict_types=1);
  * 이 핸들러가 막는 것 세 가지
  *   [2] **대량 할당(mass assignment, SECURITY R-07)** — 요청 JSON 을 순회하며 컬럼에 대응시키지
  *       않는다. 바꿀 수 있는 항목은 `description`·`access_level`·`team_id`·`folder_id`(18-1)
- *       넷뿐이고, 그 밖의 키가 하나라도 있으면 읽지도 않고 400 이다. `uploaded_by`·`sha256`·
+ *       넷이며, 개인 이름 변경은 `name`·`expected_name` 두 키만 별도 분기로 받는다.
+ *       허용 밖의 키가 하나라도 있으면 읽지도 않고 400 이다. `uploaded_by`·`sha256`·
  *       `stored_name` 같은 컬럼은 요청으로 바뀌는 통로 자체가 없다 — UPDATE 문은 아래 고정 조각
  *       4개뿐이다.
  *   [권한 ✔ 1·2] 남의 파일 수정 — decideRead(볼 수 없으면 존재 여부도 알려 주지 않는다)
@@ -53,13 +54,51 @@ $db = Db::instance();
 // 그래서 이 거부 기록에는 대상이 없다 — 문장 틀의 {target} 은 '?' 로 남는다 (ARCH 7.4).
 // F-58 — **토큰 요청은 허용 키가 더 좁다** (ARCH 4.5, SECURITY R-90).
 //   `X-API-Token` 으로 들어온 요청(라우터 [2-T] 가 TBOX_AUTH_METHOD 를 세운다)에는 폴더 이동
-//   (`folder_id`)만 열고, 설명·등급·팀은 허용 목록에서 뺀다 — 등급 변경은 사람의 결정이라
+//   (`folder_id`)과 아래의 개인 소유 파일 이름 변경만 열고, 설명·등급·팀은 허용 목록에서 뺀다 — 등급 변경은 사람의 결정이라
 //   프로그램 창구로 우회시키지 않는다. 아래 판정·감사·응답은 두 경로가 같은 코드다.
+$body = Http::jsonBody();
+// Rename is a separate mutation: never combine it with folder, level or description changes.
+if (array_key_exists('name', $body) || array_key_exists('expected_name', $body)) {
+    if (count($body) !== 2 || array_diff(array_keys($body), ['name', 'expected_name']) !== []
+        || !is_string($body['name'] ?? null) || !is_string($body['expected_name'] ?? null)
+    ) {
+        Audit::deny('file.rename', 'bad_request', ['target_type' => 'file']);
+        Http::json(['error' => Http::MSG_BAD_REQUEST, 'code' => 'bad_request'], 400);
+        return;
+    }
+    if (!defined('TBOX_AUTH_METHOD') || !defined('TBOX_API_TOKEN_KIND')
+        || constant('TBOX_API_TOKEN_KIND') !== 'personal' || !defined('TBOX_API_TOKEN_ID')
+    ) {
+        Audit::deny('file.rename', 'personal_token_required', ['target_type' => 'file']);
+        Http::json(['error' => Http::MSG_FORBIDDEN, 'code' => 'forbidden'], 403);
+        return;
+    }
+    try {
+        Http::json(FileRename::apply($user, $publicId, $body['name'], $body['expected_name']));
+    } catch (FileRenameFailure $e) {
+        // The transaction has rolled back. A rejected mutation still gets one denial record.
+        Audit::deny('file.rename', $e->reason, $e->auditTarget + ['target_type' => 'file']);
+        $publicCode = match ($e->status) {
+            403 => 'forbidden', 401 => 'authentication_required', 404 => 'not_found',
+            default => $e->reason,
+        };
+        $message = match ($e->status) {
+            403 => Http::MSG_FORBIDDEN,
+            401 => 'API 토큰이 올바르지 않거나 만료되었습니다',
+            404 => Http::MSG_NOT_FOUND,
+            409 => '파일 이름이 변경되었습니다. 목록을 새로고침한 뒤 다시 시도하세요.',
+            default => $e->reason === 'extension_changed'
+                ? '파일 확장자는 변경할 수 없습니다' : '파일 이름 또는 요청 형식이 올바르지 않습니다',
+        };
+        Http::json(['error' => $message, 'code' => $publicCode], $e->status);
+    }
+    return;
+}
+
 $allowedFields = defined('TBOX_AUTH_METHOD')
     ? ['folder_id']
     : ['description', 'access_level', 'team_id', 'folder_id'];
 
-$body = Http::jsonBody();
 if ($body === [] || array_diff(array_keys($body), $allowedFields) !== []) {
     Audit::deny('file.update', 'bad_request', [
         'target_type' => 'file',
@@ -451,6 +490,19 @@ if ($descriptionChanged && $levelChanged) {
 
 $db->begin();
 try {
+    // Serialize with rename and use the latest name when rebuilding a description's index.
+    $sqlLockName = <<<'SQL'
+        SELECT original_name FROM files WHERE id = :id AND deleted_at IS NULL FOR UPDATE
+        SQL;
+    $lockedFile = $db->run($sqlLockName, [':id' => $fileId])->fetch();
+    if (!is_array($lockedFile)) {
+        $db->rollback();
+        Http::error(404, Http::MSG_NOT_FOUND);
+    }
+    $currentName = (string) $lockedFile['original_name'];
+    if ($descriptionChanged) {
+        $applyBind[':tsv'] = SearchText::indexTextFile([$currentName, $newDescription], 'file ' . $fileId);
+    }
     if ($sqlApply !== null) {
         $affected = $db->run($sqlApply, $applyBind)->rowCount();
         if ($affected !== 1) {

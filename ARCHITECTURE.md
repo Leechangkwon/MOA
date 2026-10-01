@@ -831,6 +831,10 @@ final class Fetch
 > 화면: 목록 행의 `can_edit`(서버 계산) 가 참일 때만 "수정" 버튼을 만든다. 버튼은 편의이며, PATCH 는 위 순서대로 서버가 다시 판단한다.
 
 
+#### 개인 파일 표시 이름 변경 — 2026-10-01
+
+같은 PATCH 라우트의 별도 분기에서 개인 파일 토큰의 name+expected_name만 받는다. 기존 file.update scope/계정 관문을 지난 뒤 FileRename이 트랜잭션 안에서 현재 사용자 FOR SHARE, 파일 FOR UPDATE, 개인 토큰 FOR SHARE를 조회한다. Authz::decideRename은 현재 읽기/수정 자격과 정확한 업로더 소유권을 함께 확인한다. 파일 잠금 대기 뒤 토큰의 회수·만료·scope를 다시 검사한다. 이전 이름 불일치409. 고정 UPDATE는 original_name/search_tsv만 바꾸고 file.rename 감사와 함께 commit한다. 감사 실패는 전체 rollback이다. 확장자는 Upload의 화이트리스트/이중 확장자 검사와 기존 ext 일치를 사용한다. 폴더/등급/바이트/UUID는 바꾸지 않는다. 기존 설명 PATCH도 잠근 행의 현재 이름으로 색인을 재생성해 동시에 실행된 rename의 이름을 되돌리지 않는다.
+
 ### 5.8 미리보기 — `GET /api/files/{id}/preview` · `/preview/raw` (PRD F-18, S-03 · 12-2, 2026-09-12)
 
 "내려받지 않고 무슨 파일인지 본다". 권한은 **다운로드(5.3)와 한 글자도 다르지 않다** — 같은 `Authz::decideRead`, 같은 403 문구, 같은 sha256 대조. 다른 것은 **응답의 모양**뿐이다.

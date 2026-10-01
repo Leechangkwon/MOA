@@ -4327,6 +4327,31 @@
       "est_sec": 20,
       "writes_prod": false,
       "notes": "실제 PHP/JS + 합성 열쇠 없음·취소. 운영 인증 쓰기 없음."
+    },
+    {
+      "id": "tbox.file_rename",
+      "cmd": "bash tests/file_rename.sh",
+      "module": "tbox",
+      "env": "temp-instance",
+      "status": "required",
+      "needs": [],
+      "covers": [
+        "src/FileRename.php",
+        "src/handlers/files_update.php",
+        "src/Authz.php",
+        "src/Audit.php",
+        "src/bootstrap.php",
+        "src/handlers/files_list.php",
+        "src/handlers/files_download.php"
+      ],
+      "requirements": [],
+      "risks": [
+        "R-07",
+        "R-90"
+      ],
+      "est_sec": 30,
+      "writes_prod": false,
+      "notes": "Empty synthetic DB only, dedicated tbox_testdb; local 8495/8496. No production records/bytes/tokens. Actual HTTP CAS/ownership/scope/search/download/audit/folder/description regressions."
     }
   ]
 }

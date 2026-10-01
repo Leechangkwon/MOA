@@ -535,7 +535,7 @@ curl -s -w '\n[%{http_code}]\n' -X PATCH -H "X-API-Token: $API_TOKEN" -H 'Conten
 ## 12. 프로그램용 파일 이동 — `PATCH /api/files/{id}`
 
 8장이 돌려준 파일 `id` 를 **다른 폴더로 옮기는** 창구다 (PRD F-58, ARCHITECTURE 4.5). 화면의 「이동」과 같은 창구·같은 판정이다.
-같은 경로가 화면에서는 설명·등급 변경도 하지만, **토큰 요청은 `folder_id` 하나만** 받는다.
+같은 경로가 화면에서는 설명·등급 변경도 한다. 토큰 요청은 아래의 폴더 이동 또는 12.1의 개인 파일명 변경 중 하나만 받는다.
 
 **범위(F-66)** — 이 창구는 `read+upload` 이상의 범위가 필요하다. `read` 토큰으로 부르면 `403 {"error":"이 토큰의 범위에 없는 창구입니다 — 범위가 더 넓은 토큰을 발급하세요"}` 다 (13장 · ARCHITECTURE 4.7).
 
@@ -564,6 +564,18 @@ curl -s -w '\n[%{http_code}]\n' -X PATCH -H "X-API-Token: $API_TOKEN" -H 'Conten
 # 못 읽는(admin-only) 폴더 S 로 {"folder_id":<S>} → 400 (없는 폴더와 같은 응답 — 존재를 알리지 않는다)
 {"error":"folder_id 가 없거나 접근할 수 없는 폴더입니다"} [400]
 ```
+
+### 12.1 개인 파일 표시 이름 변경
+
+개인 `read+upload` 또는 `read+upload+delete` 토큰으로 본인이 올린 파일만 변경한다. 공용 토큰과 쿠키 전용 요청은 거부한다. 폴더/설명/등급 변경과 혼합하지 않는다.
+
+```json
+{"name":"8월_보고서.xlsx","expected_name":"보고서.xlsx"}
+```
+
+성공200은 `{"id":"선택한 파일 UUID","name":"8월_보고서.xlsx"}`다. `expected_name`은 목록의 현재 이름을 그대로 보내며 불일치409 `code:"name_conflict"`다. 같은 이름 재시도는200이고 추가 변경 감사는 없다. 경로 없는 UTF-8 파일명은 최대255자이며 확장자를 유지한다. 빈 이름·앞뒤 공백·제어 문자·경로·위험 이중 확장자는400, 확장자 변경은400 `code:"extension_changed"`다. 형식/이름 검사는400, 개인 토큰/소유권 검사는403, 없는/삭제된 파일은404다. 라우터의 기존 인증·scope 오류는 기존 문자열 `error` 형태를 유지하므로 모든 오류에 `code`가 있다고 가정하지 않는다.
+
+UUID·폴더·등급·팀·원본 바이트·저장 파일명은 그대로다. 검색은 새 이름을, 다운로드는 새 Content-Disposition 파일명을 반환한다. 실제 HTTP 샘플과 상세 계약: `docs/file-rename-contract.md`. `assistant.run/files.rename` 신설은 이 기능의 선행조건이 아니다.
 
 ## 13. 개인 프로그램 토큰 — 본인 발급·목록·회수 (내 계정 화면·세션)
 

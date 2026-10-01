@@ -457,6 +457,19 @@ final class Authz
         return self::decideOwnership($u, $file);
     }
 
+    /** Personal rename: existing read/edit rules plus exact uploader ownership. */
+    public static function decideRename(array $u, array $file): array
+    {
+        [$mayRead, $readCode] = self::decideRead($u, $file);
+        if (!$mayRead) {
+            return [false, $readCode];
+        }
+        if ((int) $file['uploaded_by'] !== (int) $u['id']) {
+            return [false, self::CODE_NOT_OWNER];
+        }
+        return self::decideEdit($u, $file);
+    }
+
     /**
      * PRD 5.3 레벨 변경 — `decideEdit` 통과가 전제 (ARCH 4.1 "5단계 추가", 5.7 [권한 ✔ 3]).
      *
