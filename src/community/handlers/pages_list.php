@@ -70,6 +70,24 @@ $statusBind = [
     // 빈 문자열은 CHECK 가 막는 값이라 어떤 행의 `status` 와도 같지 않다.
     ':svalue' => $statusValue,
 ];
+$verifyFilter = Http::queryText('verify', 20);
+$kindFilter = Http::queryText('kind', 20);
+if (in_array($verifyFilter, ['verified','expired','none'], true)) {
+    $statusWhere .= " AND (CASE WHEN p.verified_at IS NULL THEN 'none' WHEN p.verify_expires_at <= now() THEN 'expired' ELSE 'verified' END)=:verify_filter";
+    $statusBind[':verify_filter'] = $verifyFilter;
+}
+if ($kindFilter === 'procedure') { $statusWhere .= " AND p.page_kind='procedure'"; }
+
+$dueFilter=Http::queryText('due',12);
+if (in_array($dueFilter,['overdue','today','week'],true)) {
+    $statusWhere .= " AND p.due_date IS NOT NULL AND (p.status IS NULL OR p.status NOT IN ('done','hold'))
+        AND ((:due_over AND p.due_date<CURRENT_DATE) OR (:due_today AND p.due_date=CURRENT_DATE)
+            OR (:due_week AND p.due_date BETWEEN CURRENT_DATE AND CURRENT_DATE+6))";
+    $statusBind[':due_over']=$dueFilter==='overdue' ? 'true':'false';
+    $statusBind[':due_today']=$dueFilter==='today' ? 'true':'false';
+    $statusBind[':due_week']=$dueFilter==='week' ? 'true':'false';
+}
+
 
 /* ─── [0-1] 「공유받은 페이지」 (5-A — 4-D 「내가 담당인 페이지」 자리) ──────
  *
@@ -98,7 +116,7 @@ if (Http::queryText('shared', 8) === 'me') {
 
     $sqlShared = <<<SQL
         SELECT p.public_id, p.title, p.icon, p.block_count, p.doc_version,
-               p.created_at, p.updated_at, p.visibility, p.status, p.published_from,
+               p.created_at, p.updated_at, p.visibility, p.status, p.due_date, p.page_kind, CASE WHEN p.verified_at IS NULL THEN 'none' WHEN p.verify_expires_at <= now() THEN 'expired' ELSE 'verified' END AS verify_state, p.published_from,
                s.id AS space_id, s.kind AS space_kind, s.name AS space_name,
                s.owner_user_id AS space_owner_user_id, s.team_id AS space_team_id,
                owner.username AS owner_name,
@@ -151,6 +169,7 @@ if (Http::queryText('shared', 8) === 'me') {
             'doc_version' => (int) $r['doc_version'],
             'visibility'  => (string) $r['visibility'],
             'status'      => $r['status'] === null ? null : (string) $r['status'],
+            'due' => $r['due_date'], 'page_kind' => $r['page_kind'], 'verify_state' => $r['verify_state'],
             // 이 페이지에 직접 준 등급과, 조상까지 따진 가장 강한 등급(판정이 쓰는 값).
             'share_level' => $level,
             'direct_level' => (string) $r['direct_level'],
@@ -258,7 +277,7 @@ $spaceSummary = [
  */
 if (Http::queryText('tree', 4) === '1') {
     $sqlTree = <<<SQL
-        SELECT p.public_id, p.title, p.icon, p.position, p.updated_at, p.visibility, p.status,
+        SELECT p.public_id, p.title, p.icon, p.position, p.updated_at, p.visibility, p.status, p.due_date, p.page_kind, CASE WHEN p.verified_at IS NULL THEN 'none' WHEN p.verify_expires_at <= now() THEN 'expired' ELSE 'verified' END AS verify_state,
                parent.public_id AS parent_public_id,
                who.username AS assignee_name, who.role AS assignee_role
           FROM community.pages p
@@ -288,6 +307,7 @@ if (Http::queryText('tree', 4) === '1') {
             'icon'       => $r['icon'] === null ? null : (string) $r['icon'],
             'visibility' => (string) $r['visibility'],
             // 4-D — 상태 배지·담당자. 둘 다 없음(null)이 기본이다.
+            'due' => $r['due_date'], 'page_kind' => $r['page_kind'], 'verify_state' => $r['verify_state'],
             'status'     => $r['status'] === null ? null : (string) $r['status'],
             'assignee'   => $r['assignee_name'] === null ? null : [
                 'username' => (string) $r['assignee_name'],
@@ -367,7 +387,7 @@ $total    = is_array($countRow) ? (int) $countRow['n'] : 0;
 
 $sqlList = <<<SQL
     SELECT p.public_id, p.title, p.icon, p.block_count, p.doc_version,
-           p.created_at, p.updated_at, p.visibility, p.status,
+           p.created_at, p.updated_at, p.visibility, p.status, p.due_date, p.page_kind, CASE WHEN p.verified_at IS NULL THEN 'none' WHEN p.verify_expires_at <= now() THEN 'expired' ELSE 'verified' END AS verify_state,
            parent.public_id AS parent_public_id,
            who.username AS assignee_name, who.role AS assignee_role,
            left(p.plain_text, 160) AS excerpt
@@ -407,6 +427,7 @@ foreach ($rows as $r) {
         'visibility'  => (string) $r['visibility'],
         // 4-D — 상태 배지·담당자. 둘 다 없음(null)이 기본이다.
         'status'      => $r['status'] === null ? null : (string) $r['status'],
+            'due' => $r['due_date'], 'page_kind' => $r['page_kind'], 'verify_state' => $r['verify_state'],
         'assignee'    => $r['assignee_name'] === null ? null : [
             'username' => (string) $r['assignee_name'],
             'role'     => (string) $r['assignee_role'],

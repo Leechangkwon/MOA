@@ -40,14 +40,17 @@ import { inputRules, textblockTypeInputRule, InputRule } from './vendor/pm/prose
 import { dropCursor } from './vendor/pm/prosemirror-dropcursor.js?v=5823578fa61a';
 import { gapCursor } from './vendor/pm/prosemirror-gapcursor.js?v=5823578fa61a';
 
-import { renderDoc, embedHost } from './doc-render.js?v=650963c0b731';
-import { createDatabaseView } from './database.js?v=650963c0b731';
-import { bindTemplateGallery, createTemplateSave } from './templates.js?v=650963c0b731';
-import { bindEmbedAdmin } from './embeds.js?v=650963c0b731';
-import { bindPopular } from './popular.js?v=650963c0b731';
-import { bindPalettes } from './palettes.js?v=650963c0b731';
-import { schema, toDoc, fromDoc, uuid4, colorAllowed, schemeOkForEditor, mentionAllowed, editorDomParser, clipboardDomParser, COLORS, BLOCK_TYPES } from './editor-schema.js?v=650963c0b731';
-import { createDrafts } from './drafts.js?v=650963c0b731';
+import { renderDoc, embedHost } from './doc-render.js?v=767842765b8c';
+import { createDatabaseView } from './database.js?v=767842765b8c';
+import { bindTemplateGallery, createTemplateSave } from './templates.js?v=767842765b8c';
+import { bindEmbedAdmin } from './embeds.js?v=767842765b8c';
+import { bindPopular } from './popular.js?v=767842765b8c';
+import { bindPalettes } from './palettes.js?v=767842765b8c';
+import { schema, toDoc, fromDoc, uuid4, colorAllowed, schemeOkForEditor, mentionAllowed, editorDomParser, clipboardDomParser, COLORS, BLOCK_TYPES } from './editor-schema.js?v=767842765b8c';
+import { drawAutomationPage, drawAutomationSpace, bindAutomations, loadAutomations } from './automations.js?v=767842765b8c';
+import { drawTrust, bindProcedures } from './procedures.js?v=767842765b8c';
+import { createPageExport } from './export.js?v=767842765b8c';
+import { createDrafts } from './drafts.js?v=767842765b8c';
 
 /* ─── 주소와 공통 도우미 ─────────────────────────────────────── */
 
@@ -1242,6 +1245,12 @@ function bulkTreeItems(pickedIds, pages) {
 /** 손님 「내 공간」 설명 — home_page.php 가 서버에서 고르는 글자와 같은 문장(디버깅 묶음 U3) */
 const GUEST_SPACE_SUB = '손님 계정은 읽기만 합니다. 공유받은 페이지와 볼 수 있는 게시판 글을 읽을 수 있습니다.';
 
+function trustListBadges(page,box) {
+  for (const text of [page.page_kind==='procedure' ? '절차서' : '',
+    ({verified:'검증됨',expired:'검증 만료'})[page.verify_state] || '',page.due ? '기한 '+page.due : '']) {
+    if (!text) continue;const badge=document.createElement('span');badge.className='badge badge--internal';badge.textContent=text;box.appendChild(badge);
+  }
+}
 function initHome() {
   const msg = document.getElementById('msg');
   const list = document.getElementById('community-list');
@@ -1254,6 +1263,8 @@ function initHome() {
   const headTitle = document.getElementById('community-space-title');
   const headSub = document.getElementById('community-space-sub');
   const statusSelect = document.getElementById('community-status');
+  const verifySelect = document.getElementById('community-verify');
+  const dueSelect = document.getElementById('community-due');
   const sharedWrap = document.getElementById('community-shared-wrap');
   const sharedBox = document.getElementById('community-shared');
   const sharedCount = document.getElementById('community-shared-count');
@@ -1271,6 +1282,8 @@ function initHome() {
     if (spaceId !== '') { parts.push('space=' + encodeURIComponent(spaceId)); }
     const status = pickedStatus();
     if (status !== '') { parts.push('status=' + encodeURIComponent(status)); }
+    if (verifySelect && verifySelect.value) parts.push('verify=' + encodeURIComponent(verifySelect.value));
+    if (dueSelect && dueSelect.value) parts.push('due=' + encodeURIComponent(dueSelect.value));
     if (extra) { parts.push(extra); }
     return '/api/pages' + (parts.length > 0 ? '?' + parts.join('&') : '');
   }
@@ -1278,6 +1291,7 @@ function initHome() {
   /** 화면 머리를 창구가 준 공간 요약으로 바꾼다. 화면이 이름을 지어내지 않는다. */
   function drawSpaceHead(space) {
     if (!space) { return; }
+    drawAutomationSpace(space, api);
     setText(headTitle, space.kind === 'team' ? space.name : '내 공간');
     // 디버깅 묶음 U3 — 손님(쓰기 자격 없음 — `/api/me` 의 can_community_write, 서버 판정 값)에게는 할 수 없는 「공개 범위」 문장 대신 읽기 안내
     setText(headSub, space.kind === 'team'
@@ -1310,6 +1324,7 @@ function initHome() {
 
     a.appendChild(title);
     a.appendChild(desc);
+    trustListBadges(page,a);
     // 공개 범위 배지 (4-B). 팀 공간의 페이지에는 자기 범위가 없어 값이 와도 그리지 않는다.
     const mark = spaceKind === 'team' ? null : visibilityBadge(page.visibility);
     if (mark) { a.appendChild(mark); }
@@ -1342,6 +1357,7 @@ function initHome() {
     const st = statusBadge(page.status);
     if (st) { head.appendChild(st); }
     bodyBox.appendChild(head);
+    trustListBadges(page,bodyBox);
 
     const where = document.createElement('span');
     where.className = 'card__desc';
@@ -1421,6 +1437,7 @@ function initHome() {
 
     row.appendChild(caret);
     row.appendChild(link);
+    trustListBadges(node,row);
     if (mark) { row.appendChild(mark); }
     // 상태 배지 (4-D) — 창구가 준 값이고, 없으면 아무것도 붙지 않는다.
     const st = statusBadge(node.status);
@@ -1860,8 +1877,8 @@ function initHome() {
   }
 
   // 상태 거르개 (4-D) — 고르면 창구를 다시 부른다. 화면이 목록에서 줄을 빼지 않는다.
-  if (statusSelect) {
-    statusSelect.addEventListener('change', () => {
+  for (const filter of [statusSelect,verifySelect,dueSelect].filter(Boolean)) {
+    filter.addEventListener('change', () => {
       sel.picked.clear();   // 라운드 B — 목록이 바뀌면 고른 것이 풀린다(M-4)
       sel.full = false;
       load(search ? search.value : '').catch(() => setText(msg, GENERIC_ERROR));
@@ -1873,7 +1890,7 @@ function initHome() {
   // 7-B — 「템플릿에서」 창. 만든 페이지는 지금 보고 있는 공간에 생긴다(「새 페이지」와 같은 규칙 — 창구가 다시 판단한다)
   bindTemplateGallery({
     api: api, setText: setText, show: show, clear: clear, errorMessage: errorMessage,
-    genericError: GENERIC_ERROR, toLogin: toLogin, base: COMMUNITY_BASE, currentSpaceId: currentSpaceId
+    genericError: GENERIC_ERROR, toLogin: toLogin, base: COMMUNITY_BASE, currentSpaceId: currentSpaceId, canWrite: meCanWrite
   });
   // 7-C — 「임베드 허용 목록」 창(단추는 창구가 준 `can_manage` 일 때만)
   bindEmbedAdmin({
@@ -2731,7 +2748,12 @@ const NOTIFY_TEXT = {
   mention: '님이 댓글에서 나를 불렀습니다',
   reply: '님이 내 댓글에 답글을 달았습니다',
   comment_on_my_page: '님이 내 페이지에 댓글을 달았습니다',
-  handover: '님이 페이지를 나에게 넘겼습니다'
+  handover: '님이 페이지를 나에게 넘겼습니다',
+  recurring_created: '반복 페이지가 만들어졌습니다',
+  review_requested: '검토할 문서가 있습니다',
+  due_tomorrow: '내일 기한인 문서가 있습니다',
+  automation_denied: '자동 작업의 권한을 확인해 주세요',
+  automation_disabled: '자동 작업이 꺼졌습니다'
 };
 
 function initNotifications() {
@@ -2762,11 +2784,12 @@ function initNotifications() {
     li.className = 'list__item';
     const head = document.createElement('div');
     head.className = 'list__head';
-    const what = document.createElement(n.page ? 'a' : 'span');
+    const automationStatus = n.automation_status === true;
+    const what = document.createElement(n.page || automationStatus ? 'a' : 'span');
     const who = n.actor ? personLabel(n.actor.display_name, n.actor.username) : '누군가';
-    what.textContent = who + ' ' + (NOTIFY_TEXT[n.kind] || '님의 알림');
-    if (n.page) {
-      what.setAttribute('href', COMMUNITY_BASE + '/p/' + n.page.id + (n.comment_id ? '#comment-' + n.comment_id : ''));
+    what.textContent = automationStatus ? NOTIFY_TEXT[n.kind] : n.kind === 'verify_expired' ? '검증이 만료됐습니다' : who + ' ' + (NOTIFY_TEXT[n.kind] || '님의 알림');
+    if (n.page || automationStatus) {
+      what.setAttribute('href', automationStatus ? COMMUNITY_BASE + '/automations' : COMMUNITY_BASE + '/p/' + n.page.id + (n.comment_id ? '#comment-' + n.comment_id : ''));
       what.addEventListener('click', () => {
         api('POST', '/api/notifications/read', { ids: [n.id] }).catch(() => {});
       });
@@ -2782,7 +2805,7 @@ function initNotifications() {
     const body = document.createElement('div');
     body.className = 'list__body';
     const page = document.createElement('span');
-    page.textContent = n.page ? '「' + n.page.title + '」' : '볼 수 없는 페이지';
+    page.textContent = automationStatus ? '자동 작업에서 실행 기록을 확인하세요.' : n.page ? '「' + n.page.title + '」' : '볼 수 없는 페이지';
     const when = document.createElement('span');
     when.className = 'muted';
     when.textContent = shortWhen(n.at);
@@ -3360,7 +3383,7 @@ function createBlockDialog(getView, hooks) {
  * 그대로 부른다. 고른 이름은 `remember*` 로 제목 지도에 넣어 둔다 — 읽기 화면이 저장 뒤 곧바로 이름을 그리게.
  * 등급 규칙(파일이 페이지를 읽는 범위보다 좁으면 안 된다)은 **서버가 저장할 때** 판정한다 — 여기서 걸러 보이지 않는다.
  */
-const ATOM_TYPES = ['toggle', 'table', 'link_to_page', 'image', 'file', 'columns', 'embed'];
+const ATOM_TYPES = ['button','toggle', 'table', 'link_to_page', 'image', 'file', 'columns', 'embed'];
 const TABLE_MAX_ROWS = 200;
 const TABLE_MAX_COLS = 20;
 
@@ -3373,6 +3396,11 @@ function createAtomDialog(getView, hooks) {
   const commitButton = $('atom-commit');
   const panes = { toggle: $('atom-toggle'), table: $('atom-table'), link_to_page: $('atom-link'), image: $('atom-file'), file: $('atom-file'), columns: $('atom-columns'), embed: $('atom-embed') };
   // 7-C 임베드 — 주소 · 설명 · 허용된 사이트 안내(창구 `GET /api/embed-domains` 의 `hosts` — 서버가 그릴 때 쓰는 판정 그대로)
+  const buttonPane = document.createElement('div'); buttonPane.className='atom-pane'; buttonPane.hidden=true;
+  const buttonLabel=document.createElement('input');buttonLabel.type='text';buttonLabel.maxLength=30;
+  const buttonChoice=document.createElement('select');
+  for (const [text,control] of [['단추 문구',buttonLabel],['이 페이지에 묶인 내 버튼 작업',buttonChoice]]) { control.setAttribute('aria-label',text); const label=document.createElement('label');label.className='field';const span=document.createElement('span');span.className='field__label';span.textContent=text;label.append(span,control);buttonPane.appendChild(label); }
+  $('atom-embed').parentElement.appendChild(buttonPane);panes.button=buttonPane;
   const embedUrl = $('atom-embed-url');
   const embedCaption = $('atom-embed-caption');
   const embedHosts = $('atom-embed-hosts');
@@ -3602,7 +3630,7 @@ function createAtomDialog(getView, hooks) {
   fileQ.addEventListener('input', debounce(searchFiles));
   $('atom-file-refresh').addEventListener('click', searchFiles);
 
-  const LABELS = { toggle: '토글', table: '표', link_to_page: '페이지 링크', image: '그림', file: '파일', columns: '단 나누기', embed: '임베드' };
+  const LABELS = { button:'버튼', toggle: '토글', table: '표', link_to_page: '페이지 링크', image: '그림', file: '파일', columns: '단 나누기', embed: '임베드' };
 
   /** 7-C — 허용된 사이트 안내. 판단은 서버가 저장할 때 한다 — 여기서는 무엇을 넣을 수 있는지 알려 주고, 받은 목록 밖이면
       넣기 전에 알린다(목록 밖을 넣으면 그 뒤 자동 저장이 전부 400 이 된다 — 독립 검토 7-C L-5). 목록을 못 받으면 서버에 맡긴다.
@@ -3653,6 +3681,15 @@ function createAtomDialog(getView, hooks) {
     } else if (type === 'link_to_page') {
       linkQ.value = '';
       clear(linkList);
+    } else if (type === 'button') {
+      buttonLabel.value=cur.label||'';buttonChoice.replaceChildren();
+      loadAutomations(api).then(result=>{
+        for(const r of result.automations||[]) { if(r.kind!=='button'||r.scope_page_id!==currentPageId())continue;const option=document.createElement('option');option.value=r.id;option.textContent=r.name;option.selected=r.id===cur.automation_id;buttonChoice.appendChild(option); }
+        if (cur.automation_id && !Array.from(buttonChoice.options).some(o => o.value === cur.automation_id)) {
+          const existing = document.createElement('option'); existing.value = cur.automation_id; existing.textContent = '현재 연결된 작업'; existing.selected = true; buttonChoice.appendChild(existing);
+        }
+        if(buttonChoice.children.length===0)setText(msgEl,'이 페이지의 더보기에서 버튼 작업을 먼저 만드세요.');
+      }).catch(()=>setText(msgEl,GENERIC_ERROR));
     } else if (type === 'embed') {
       embedUrl.value = cur.url || '';
       embedCaption.value = cur.caption || '';
@@ -3692,6 +3729,10 @@ function createAtomDialog(getView, hooks) {
         cols.push({ id: old[i] && old[i].id ? old[i].id : null, kids: lines.map((t, k) => ({ id: oldKids[k] && oldKids[k].id ? oldKids[k].id : null, text: t })) });
       }
       return { id: id, cols: cols };
+    }
+    if (type === 'button') {
+      if(!buttonChoice.value || !buttonLabel.value.trim()) { setText(msgEl,'단추 문구와 작업을 선택하세요.');return null; }
+      return {id:id,label:buttonLabel.value.trim(),automation_id:buttonChoice.value};
     }
     if (type === 'embed') {
       /* 주소는 브라우저의 URL 규칙으로 맞춰 보낸다 — 호스트 소문자·국제 도메인 punycode·경로의 비 ASCII 퍼센트 인코딩.
@@ -4276,6 +4317,10 @@ function initPage() {
     canWrite: () => meCanWrite
   });
   const moveButton = document.getElementById('page-move');
+  const pageExport = createPageExport({ base: COMMUNITY_BASE, pageId, beforeOpen: async () => {
+    await flushSave();
+    if (serial !== savedSerial || pendingConflict) throw new Error('저장을 마친 뒤 다시 내보내 주세요.');
+  } });
   // 7-B — 「템플릿으로 저장」. 고를 수 있는 범위는 창구가 준 `template_scopes` 뿐이다.
   const templateSave = createTemplateSave({
     api: api, setText: setText, show: show, clear: clear, errorMessage: errorMessage,
@@ -4422,7 +4467,16 @@ function initPage() {
   function readCtx() {
     return {
       child_titles: state.childTitles, link_titles: state.linkTitles, file_titles: state.fileTitles,
-      embeds: state.embeds, base: COMMUNITY_BASE, tbox_base: APP_BASE, mention_labels: state.mentionLabels
+      embeds: state.embeds, base: COMMUNITY_BASE, tbox_base: APP_BASE, mention_labels: state.mentionLabels, buttons: state.buttons, pressButton: async (id, button) => {
+        button.disabled=true;
+        try { const result=await api('POST','/api/automations/'+id+'/run',{page_id:pageId});
+          if (result.status === 200) {
+            if (result.data.status !== 'ok') { setText(msg, result.data.status === 'partial' ? '일부 작업만 완료했습니다. 자동 작업의 실행 기록을 확인해 주세요.' : '작업을 실행하지 못했습니다. 원본과 현재 권한을 확인해 주세요.'); return; }
+            const p = (result.data.created_pages || [])[0]; if (p) location.assign(COMMUNITY_BASE + '/p/' + p.id); else setText(msg, '실행했습니다.');
+          }
+          else setText(msg,errorMessage(result.data));
+        } catch(e) { setText(msg,GENERIC_ERROR); } finally {button.disabled=false;}
+      }
     };
   }
 
@@ -4670,6 +4724,9 @@ function initPage() {
         return;
       }
       const page = result.data.page;
+      drawTrust(result.data, pageId, api, load);
+      drawAutomationPage(result.data, pageId, api, load);
+      state.procedureCount = result.data.procedures_in_branch || 0;
       state.doc = page.doc;
       state.version = page.doc_version;
       state.title = page.title;
@@ -4681,6 +4738,7 @@ function initPage() {
         : {};
       state.linkTitles = result.data.link_titles && typeof result.data.link_titles === 'object' ? result.data.link_titles : {};
       state.fileTitles = result.data.file_titles && typeof result.data.file_titles === 'object' ? result.data.file_titles : {};
+      state.buttons = result.data.buttons || {};
       state.mentionLabels = result.data.mention_labels && typeof result.data.mention_labels === 'object' ? result.data.mention_labels : {};
       // 7-C — 임베드 재료(허용 목록 · 틀을 여는가). 판단은 서버가 준 값뿐이다
       state.embeds = result.data.embeds && typeof result.data.embeds === 'object' ? result.data.embeds : { hosts: [], frames: false };
@@ -4725,6 +4783,7 @@ function initPage() {
       drawChildren(result.data.children);
       dbView.draw(pageId, result.data);
       templateSave.draw(pageId, result.data);
+      pageExport.draw(result.data);
       showEditors(result.data.editors);
       show(editButton, state.canEdit && !state.editing);
       // 디버깅 묶음 U3 — 「이력」은 창구가 이 페이지를 내준(읽기 판정 통과) 뒤에만. 막힌·없는 페이지에서는 숨은 채다(page_view.php 기본 hidden)
@@ -5830,7 +5889,7 @@ function initPage() {
     if (handoverSearch) { handoverSearch.value = ''; }
     const n = typeof state.subtreeCount === 'number' ? state.subtreeCount : 0;
     setText(handoverLead, n > 0
-      ? '이 페이지와 하위 페이지 ' + String(n) + '개가 받는 사람의 공간 맨 위로 옮겨 갑니다.'
+      ? '이 페이지와 하위 페이지 ' + String(n) + '개(그중 절차서 ' + String(state.procedureCount || 0) + '건)가 받는 사람의 공간 맨 위로 옮겨 갑니다.'
       : '이 페이지가 받는 사람의 공간 맨 위로 옮겨 갑니다.');
     handoverArm();
     if (!handoverDialog.open) { handoverDialog.showModal(); }
@@ -6033,7 +6092,7 @@ function initPage() {
       what.textContent = event.to === 'resolved' ? '해결됨으로 표시' : '해결됨 표시를 뺌';
     } else if (event.kind === 'property') {
       // 4-D — 「상태: 할 일 → 진행」·「담당자: 없음 → qa_employee01」(담당자는 5-A 전의 옛 기록)
-      what.textContent = (event.prop === 'assignee' ? '담당자' : '상태') + ': '
+      what.textContent = ({assignee:'담당자',status:'상태',verified:'검증',kind:'문서 종류',due:'기한'}[event.prop] || event.prop) + ': '
         + propValueText(event.prop, event.from) + ' → ' + propValueText(event.prop, event.to);
     } else if (event.kind === 'handover') {
       // 5-A — 「소유자: qa_employee01 → qa_employee02」
@@ -6604,6 +6663,7 @@ function initPage() {
           state.version = result.data.doc_version;
           state.title = result.data.title;
           state.doc = doc;
+          state.buttons = result.data.buttons || {};
           savedSerial = mySerial;
           setText(titleEl, state.title);
           // 사이드바 트리의 지금 페이지 줄도 새 제목으로 (5-A′) — 다시 불러오지 않는다
@@ -6990,7 +7050,7 @@ function boot() {
         loadFavoritesNav();
         if (page !== 'community-page') { loadRecentNav(); }
         if (page === 'community-home') {
-          initHome();
+          if (location.pathname === COMMUNITY_BASE + '/automations') { bindAutomations(api, COMMUNITY_BASE); loadSpaces(); } else if (location.pathname === COMMUNITY_BASE + '/procedures') { bindProcedures(api, COMMUNITY_BASE); loadSpaces(); } else { initHome(); }
         } else if (page === 'community-board') {
           // 5-C — 게시판 화면. 사이드바의 공간·게시판 묶음은 여기서 함께 채운다.
           loadSpaces();

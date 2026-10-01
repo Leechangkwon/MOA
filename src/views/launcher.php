@@ -106,6 +106,9 @@ if (is_array($launcherUser)) {
       </div><div class="q-hero-art" aria-hidden="true"><div class="q-orbit q-orbit--one"></div><div class="q-orbit q-orbit--two"></div><img class="q-art" src="<?= $launcherEsc(Http::url('/assets/design/orbit.svg')) ?>" width="600" height="540" alt=""><span class="q-art-caption">Q / CONNECTED POSSIBILITIES</span></div>
     </section>
 
+<?php if (is_int($launcherBriefingCount)): ?>
+    <p><a id="launcher-briefing" class="btn btn--quiet" href="<?= $launcherEsc(Http::communityUrl('/today')) ?>">오늘 <?= $launcherBriefingCount ?>건 →</a></p>
+<?php endif; ?>
 <?php if ($launcherApps !== []): ?>
     <section class="card-grid q-module-grid" aria-label="업무 도구">
 <?php foreach ($launcherApps as $launcherApp): ?>

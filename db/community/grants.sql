@@ -166,3 +166,13 @@ BEGIN
     GRANT SELECT ON SEQUENCE community.palettes_id_seq TO tbox_backup;
 END
 $$;
+
+-- Stage 9 immutable execution log; undo is the only mutable run metadata.
+REVOKE ALL ON community.automations, community.automation_runs, community.automation_queue FROM tbox_app;
+GRANT SELECT, INSERT, UPDATE ON community.automations TO tbox_app;
+GRANT SELECT, INSERT ON community.automation_runs, community.automation_queue TO tbox_app;
+GRANT UPDATE(undone_at,undone_by) ON community.automation_runs TO tbox_app;
+GRANT UPDATE(taken_at) ON community.automation_queue TO tbox_app;
+GRANT USAGE, SELECT ON SEQUENCE community.automations_id_seq, community.automation_runs_id_seq, community.automation_queue_id_seq TO tbox_app;
+GRANT SELECT ON community.automations, community.automation_runs, community.automation_queue TO tbox_backup;
+GRANT SELECT ON SEQUENCE community.automations_id_seq, community.automation_runs_id_seq, community.automation_queue_id_seq TO tbox_backup;

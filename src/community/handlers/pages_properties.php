@@ -46,13 +46,22 @@ $pid = (string) $params[0];
 // ─── [1] 허용 키·값 ───────────────────────────────────────────
 $body = Http::jsonBody();
 // 허용 키는 `status`·`resolved`(5-C) 둘이다. `assignee` 는 5-A 에서 빠졌다 — 오면 400 (DB 불변).
-if (array_diff(array_keys($body), ['status', 'resolved']) !== []) {
+if (array_diff(array_keys($body), ['status', 'resolved', 'verify', 'kind', 'due']) !== []) {
     Http::error(400, Http::MSG_BAD_REQUEST);
 }
 $hasStatus   = array_key_exists('status', $body);
 $hasResolved = array_key_exists('resolved', $body);
 // 아무 칸도 주지 않은 요청은 「무엇을 바꾸라는 것인가」가 없다.
-if (!$hasStatus && !$hasResolved) {
+$hasVerify = array_key_exists('verify', $body);
+$hasKind = array_key_exists('kind', $body);
+$hasDue = array_key_exists('due', $body);
+if ($hasDue && $body['due'] !== null) {
+    $d = is_string($body['due']) ? DateTimeImmutable::createFromFormat('!Y-m-d', $body['due']) : false;
+    if (!$d || $d->format('Y-m-d') !== $body['due']) { Http::error(400, Http::MSG_BAD_REQUEST); }
+}
+if ($hasVerify && $body['verify'] !== null && (!is_int($body['verify']) || !in_array($body['verify'], [0,30,90,180], true))) { Http::error(400, Http::MSG_BAD_REQUEST); }
+if ($hasKind && (!is_string($body['kind']) || !in_array($body['kind'], ['page','procedure'], true))) { Http::error(400, Http::MSG_BAD_REQUEST); }
+if (!$hasStatus && !$hasResolved && !$hasVerify && !$hasKind && !$hasDue) {
     Http::error(400, Http::MSG_BAD_REQUEST);
 }
 
@@ -74,6 +83,17 @@ if ($hasResolved) {
     }
     $wantResolved = $body['resolved'];
 }
+
+// Serialize property mutations before reading values or checking current permissions.
+$db->begin();
+$locked = $db->run('SELECT id FROM community.pages WHERE public_id=CAST(:pid AS uuid) AND deleted_at IS NULL FOR UPDATE'
+, [':pid' => $pid])->fetch();
+if (!is_array($locked)) { $db->rollback(); Http::error(404, Http::MSG_NOT_FOUND); }
+$freshUser = community_user_by_id($me);
+if ($freshUser === null || !$freshUser['is_active'] || ($freshUser['expires_at'] !== null && strtotime($freshUser['expires_at']) <= time())) { $db->rollback(); Http::error(403, Http::MSG_FORBIDDEN); }
+// Role preview may narrow the current role; never replace it with the database's administrator role.
+if ($freshUser['role'] !== ($user['real_role'] ?? $user['role'])) { $db->rollback(); Http::error(403, Http::MSG_FORBIDDEN); }
+$user = array_merge($user, ['team_id' => $freshUser['team_id'], 'is_active' => $freshUser['is_active']]);
 
 // ─── [2] 행 + 공간 ────────────────────────────────────────────
 $row = community_page_row($pid, (int) $user['id']);
@@ -108,7 +128,7 @@ if (!$mayRead) {
 // ─── [권한 ✔ B] 고칠 수 있나 (C:T-51) ─────────────────────────
 /* 볼 수 있는 것과 고칠 수 있는 것은 다른 물음이다. 사내로 열어 둔 페이지의 상태를 아무나
    바꿀 수 있으면, 그 상태는 더 이상 주인의 기록이 아니다 (PRD 4.1 「누가 고치나」). */
-[$mayChange, $changeCode] = $hasStatus
+[$mayChange, $changeCode] = ($hasStatus || $hasVerify || $hasKind || $hasDue)
     ? CommunityAuthz::decidePageChange($user, $row)
     : [true, CommunityAuthz::CODE_OWNER];
 
@@ -123,7 +143,7 @@ if ($hasResolved) {
     [$mayResolve, $resolveCode] = CommunityAuthz::decidePageManage($user, $row);
     if (!$mayResolve || $resolveCode !== CommunityAuthz::CODE_OWNER) {
         $mayChange = false;
-    } elseif (!$hasStatus) {
+    } elseif (!$hasStatus && !$hasVerify && !$hasKind && !$hasDue) {
         $changeCode = $resolveCode;
     }
 }
@@ -146,7 +166,11 @@ $toResolved   = $hasResolved ? (bool) $wantResolved : $fromResolved;
 $sqlSet = <<<'SQL'
     UPDATE community.pages
        SET status = :status,
-           resolved = CAST(:resolved AS boolean)
+           resolved = CAST(:resolved AS boolean),
+           page_kind = :kind, due_date = CAST(:due AS date),
+           verified_by = CASE WHEN CAST(:vset AS boolean) THEN CAST(:vby AS bigint) ELSE verified_by END,
+           verified_at = CASE WHEN CAST(:vset AS boolean) THEN CASE WHEN CAST(:vby AS bigint) IS NULL THEN NULL ELSE now() END ELSE verified_at END,
+           verify_expires_at = CASE WHEN CAST(:vset AS boolean) THEN CASE WHEN CAST(:days AS integer) > 0 THEN now() + CAST(:days AS integer) * interval '1 day' ELSE NULL END ELSE verify_expires_at END
      WHERE id = CAST(:pid AS bigint)
        AND deleted_at IS NULL
     SQL;
@@ -170,12 +194,16 @@ use ($pageId, $pageTitle, $changeCode): void {
 
 $changed = [];
 
-$db->begin();
 try {
     $n = $db->run($sqlSet, [
         ':status'   => $toStatus,
         ':resolved' => $toResolved ? 'true' : 'false',
         ':pid'      => $pageId,
+        ':due' => $hasDue ? $body['due'] : $row['due_date'],
+        ':kind' => $hasKind ? $body['kind'] : $row['page_kind'],
+        ':vset' => $hasVerify ? 'true' : 'false',
+        ':vby' => $hasVerify && $body['verify'] !== null ? $me : null,
+        ':days' => $hasVerify ? $body['verify'] : null,
     ])->rowCount();
     if ($n < 1) {
         // 읽고 나서 여기 오기까지 사이에 다른 요청이 먼저 지웠다 — 없는 것과 같다.
@@ -187,6 +215,10 @@ try {
         community_insert_property_event($pageId, 'status', $fromStatus, $toStatus, $me);
         $auditChange('status', $fromStatus, $toStatus);
         $changed[] = 'status';
+        if ($toStatus === 'review') {
+            $db->run("INSERT INTO community.automation_queue(automation_id,page_id,event_id) SELECT a.id,:page,e.id FROM community.automations a JOIN community.page_property_events e ON e.page_id=:event_page AND e.prop='status' WHERE a.kind='on_status' AND a.is_enabled AND a.deleted_at IS NULL AND (a.scope_page_id=:scope_page OR a.scope_space_id=:space) AND e.id=(SELECT max(id) FROM community.page_property_events WHERE page_id=:last_page AND prop='status') ON CONFLICT DO NOTHING"
+, [':page'=>$pageId,':event_page'=>$pageId,':scope_page'=>$pageId,':space'=>(int)$row['space_id'],':last_page'=>$pageId]);
+        }
     }
     // 5-C 「해결됨」 — 값은 사람이 읽는 글자 둘(`resolved`·`open`)로 남긴다.
     if ($toResolved !== $fromResolved) {
@@ -197,6 +229,23 @@ try {
         $changed[] = 'resolved';
     }
 
+    if ($hasKind && $body['kind'] !== $row['page_kind']) {
+        community_insert_property_event($pageId, 'kind', $row['page_kind'], $body['kind'], $me);
+        $auditChange('kind', $row['page_kind'], $body['kind']);
+        $changed[] = 'kind';
+    }
+    if ($hasVerify && ($body['verify'] !== null || $row['verified_at'] !== null)) {
+        $newRow = community_page_row($pid, $me);
+        $verifiedValue = static fn(array $p): ?string => $p['verified_at'] === null ? null : ($p['verify_expires_at'] === null ? 'none' : substr($p['verify_expires_at'], 0, 10));
+        $from = $verifiedValue($row); $to = $verifiedValue($newRow);
+        community_insert_property_event($pageId, 'verified', $from, $to, $me);
+        $auditChange('verified', $from, $to);
+        $changed[] = 'verified';
+    }
+    if ($hasDue && $body['due'] !== $row['due_date']) {
+        community_insert_property_event($pageId, 'due', $row['due_date'], $body['due'], $me);
+        $auditChange('due', $row['due_date'], $body['due']); $changed[] = 'due';
+    }
     $db->commit();
 } catch (Throwable $e) {
     $db->rollback();
@@ -211,4 +260,6 @@ Http::json([
     ],
     // 무엇이 실제로 바뀌었나 — 화면이 「바뀐 것이 없습니다」를 스스로 판단하지 않게 한다.
     'changed' => $changed,
+    'verify' => community_verify_info(community_page_row($pid, $me)),
+    'page_kind' => $hasKind ? $body['kind'] : $row['page_kind'],
 ]);

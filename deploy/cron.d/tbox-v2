@@ -71,3 +71,7 @@ SHELL=/bin/bash
 #         설정 /etc/tbox-v2/push.conf · DB 역할 tbox_push · 자기 감사 사본 /var/log/tbox-push/audit.log · 상태 /var/lib/tbox-push.
 #         실패해도 종료 코드 0(메일 없음) — 대신 감사 alert.push_send · 24시간 실패면 alerts.php 가 AL-22.
 *    *   *   *  *     tbox-push  php  /var/www/qaredi/tbox-v2/scripts/alert_push.php
+
+# 커뮤니티 반복·검토/기한 알림 — K9-2. 웹과 같은 앱 계정, 5분마다.
+# 코드·DB 검증 후 사용자가 /etc/cron.d 에 설치한다. 잠금과 실행 몫으로 중복을 막는다.
+*/5  *   *   *  *     tbox-php  /usr/bin/php /var/www/qaredi/tbox-v2/scripts/community_automations.php

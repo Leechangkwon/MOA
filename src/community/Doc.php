@@ -428,6 +428,9 @@ final class Doc
         $base     = $optional ? substr($shape, 0, -1) : $shape;
 
         switch ($base) {
+            case 'button-label':
+                if (!is_string($value) || preg_match('//u', $value) !== 1 || preg_match('/\p{C}/u', $value) || iconv_strlen(trim($value), 'UTF-8') < 1 || iconv_strlen($value, 'UTF-8') > 30) { $add($p, 'bad_value'); }
+                return;
             case 'richtext':
                 self::richtext($value, $p, $stage, $state, $add, $limits, $s);
                 return;
@@ -1328,7 +1331,7 @@ final class Doc
     }
 
     /** 템플릿에 담지 않는 블록 */
-    private const TEMPLATE_DROP = ['image', 'file', 'child_page'];
+    private const TEMPLATE_DROP = ['image', 'file', 'child_page', 'button'];
 
     /**
      * @param  list<mixed> $list

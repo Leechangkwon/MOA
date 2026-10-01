@@ -992,3 +992,7 @@ a.doc-mention { color: var(--accent); text-decoration: none; } a.doc-mention:hov
   .editor-toolbar > #mention-row { flex-wrap: wrap; max-width: calc(100vw - 100% - var(--sidebar-w) - 72px); }
   #mention-list .block-pick strong { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 }
+/* 8-B: app chrome does not belong on a printed document. Dedicated print route is SSR. */
+@media print {
+  #page-more, #page-export-dialog { display:none !important; }
+}

@@ -107,6 +107,14 @@ require __DIR__ . '/../../views/shell_top.php';
              autocomplete="off" spellcheck="false">
       <!-- 상태 거르개 (4-D). 거르는 일은 **서버가 SQL 로** 한다 — 이 칸은 창구에 붙일
            꼬리표(`?status=`)를 고를 뿐이고, 화면이 목록에서 줄을 빼지 않는다 (C:S-02). -->
+      <label class="muted" for="community-verify">검증</label>
+      <select id="community-verify" aria-label="검증으로 거르기">
+        <option value="">전체</option><option value="verified">검증됨</option><option value="expired">검증 만료</option><option value="none">검증 없음</option>
+      </select>
+      <label class="muted" for="community-due">기한</label>
+      <select id="community-due" aria-label="기한으로 거르기">
+        <option value="">전체</option><option value="overdue">기한 지남</option><option value="today">오늘</option><option value="week">이번 7일</option>
+      </select>
       <label id="community-status-label" class="muted" for="community-status">상태</label>
       <select id="community-status" aria-label="상태로 거르기">
         <option value="">전체</option>

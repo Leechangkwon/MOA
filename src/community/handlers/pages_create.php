@@ -176,6 +176,7 @@ if (array_key_exists('doc', $body)) {
     }
 }
 
+if (!community_buttons_ok($doc, [], '', $user)) { Http::json(['error'=>'페이지를 만든 뒤 버튼을 붙입니다.', 'reason'=>'button_not_allowed'],400); exit; }
 $extract = Doc::extract($doc);
 /* 5-E — 첫 본문에 t-box 파일이 있으면 붙이는 것과 같은 규칙이다. 새 페이지의 범위는 아래에서 정해지므로(부모와 같게·비공개)
    여기서는 **가장 좁은 쪽**(비공개 — 범위 검사 없음)이 아니라 부모의 범위로 견줄 수 없어, 파일이 든 첫 본문은 받지 않는다. */

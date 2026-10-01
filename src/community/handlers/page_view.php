@@ -84,6 +84,9 @@ require __DIR__ . '/../../views/shell_top.php';
             <button id="page-move" class="menu__item" type="button" hidden>
               <span class="icon" data-icon="files"></span>옮기기
             </button>
+            <button id="page-export" class="menu__item" type="button" aria-haspopup="dialog" hidden>
+              <span class="icon" data-icon="download"></span>내보내기
+            </button>
             <!-- 7-B — 「템플릿으로 저장」. 창구가 준 `template_scopes` 가 비어 있으면 숨은 채다. -->
             <button id="page-save-template" class="menu__item" type="button" aria-haspopup="dialog" hidden>
               <span class="icon" data-icon="download"></span>템플릿으로 저장

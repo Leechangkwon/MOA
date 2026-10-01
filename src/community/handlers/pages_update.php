@@ -200,6 +200,7 @@ if (array_key_exists('doc', $body)) {
         ], []);
     }
     /* 7-C — **새로 넣은** 임베드만 허용 목록과 견준다(K-3 — 목록에서 빠진 호스트의 옛 임베드는 저장을 막지 않는다). */
+    if (!community_buttons_ok($doc, $currentDoc, $pid, $user)) { $reject('button_not_allowed', 400, ['error'=>'이 페이지에 묶인 내 버튼 작업만 추가할 수 있습니다.', 'reason'=>'button_not_allowed'], []); }
     $newEmbeds = array_values(array_diff(Doc::extract($doc)['embeds'], Doc::extract($currentDoc)['embeds']));
     if (!community_embeds_ok($newEmbeds)) {
         $reject('embed_not_allowed', 400, ['error' => COMMUNITY_EMBED_REFUSED, 'reason' => 'embed_not_allowed'], []);
@@ -324,6 +325,7 @@ try {
 }
 
 Http::json([
+    'buttons' => community_button_map($doc, $row, $user),
     'doc_version' => $newVersion,
     'title'       => $title,
     'block_count' => count($extract['blocks']),

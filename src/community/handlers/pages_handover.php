@@ -152,6 +152,7 @@ $toName = (string) $target['username'];
 
 // ─── [4] 옮기기 ───────────────────────────────────────────────
 $ids = community_subtree_live_ids($pageId);
+$procedureCount = community_procedure_count($pageId);
 if ($ids === []) {
     Http::error(404, Http::MSG_NOT_FOUND);
 }
@@ -227,6 +228,17 @@ try {
     }
     $newSpaceId = (int) $space['id'];
 
+    $sqlAutomations = <<<'SQL'
+        UPDATE community.automations a
+           SET owner_user_id=:uid,is_enabled=false,last_dry_run_at=NULL,updated_at=now()
+         WHERE a.deleted_at IS NULL
+           AND (a.scope_page_id=ANY(CAST(:ids AS bigint[])) OR EXISTS (
+               SELECT 1 FROM jsonb_array_elements(a.actions) action
+               JOIN community.pages source ON source.public_id::text=action->'source'->>'page'
+               WHERE source.id=ANY(CAST(:source_ids AS bigint[]))))
+        SQL;
+    $automationCount = $db->run($sqlAutomations,
+        [':uid'=>$toId,':ids'=>$idArray,':source_ids'=>$idArray])->rowCount();
     // ② 가지 전체를 새 공간으로. 뿌리는 새 공간 뿌리들의 **맨 뒤**에 놓는다.
     $moved = $db->run($sqlMove, [':space' => $newSpaceId, ':ids' => $idArray])->rowCount();
     if ($moved < 1) {
@@ -274,6 +286,8 @@ try {
             'from_user'  => $fromName,
             'to_user'    => $toName,
             'page_count' => $moved,
+    'procedure_count' => $procedureCount,
+    'automations' => $automationCount,
             'kept_level' => $keptLevel,
         ],
     ], $code === CommunityAuthz::CODE_OWNER ? null : $code);
@@ -302,5 +316,7 @@ Http::json([
     // 5-A″ — 받는 사람의 이름(없으면 null). 화면이 「이름 (아이디)」로 잇는다.
     'to_display_name' => $target['display_name'] === null ? null : (string) $target['display_name'],
     'page_count' => $moved,
+    'procedure_count' => $procedureCount,
+    'automations' => $automationCount,
     'kept'       => $keptLevel,
 ]);

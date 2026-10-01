@@ -72,6 +72,22 @@ declare(strict_types=1);
  */
 final class CommunityAuthz
 {
+    /** Export never turns exceptional administrator visibility into a bulk data grant. */
+    public static function decidePageExport(array $u, array $row): array
+    {
+        [$allowed, $reason] = self::decidePageRead($u, $row);
+        if (!$allowed) {
+            return [false, $reason];
+        }
+        if (!Authz::canCommunityWrite($u)) {
+            return [false, self::CODE_ROLE_NOT_PERMITTED];
+        }
+        if (in_array($reason, [self::CODE_ADMIN_ALL, self::CODE_BOARD_MODERATOR], true)) {
+            return [false, 'privileged_only'];
+        }
+        return [true, $reason];
+    }
+
     /** 허용 코드 — 페이지 주인이다 */
     public const CODE_OWNER = 'owner';
     /** 허용 코드 — Admin 이라서 열린다(개인 페이지 열람. 감사에 남는다) */
@@ -1408,4 +1424,17 @@ final class CommunityAuthz
         }
         return (int) $owner === (int) $u['id'];
     }
+    /** Automation objects never grant the administrator a second user's execution privileges. */
+    public static function decideAutomationManage(array $u, array $rule): array
+    {
+        if (($rule['deleted_at'] ?? null) !== null) { return [false, self::CODE_NOT_FOUND]; }
+        return (int)($u['id'] ?? 0) === (int)$rule['owner_user_id']
+            ? [true, self::CODE_OWNER] : [false, self::CODE_NOT_FOUND];
+    }
+    public static function decideAutomationUndo(array $u, array $run): array
+    {
+        return (int)($u['id'] ?? 0) === (int)$run['run_by']
+            ? [true, self::CODE_OWNER] : [false, self::CODE_NOT_FOUND];
+    }
+
 }

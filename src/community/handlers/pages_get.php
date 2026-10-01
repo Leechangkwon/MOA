@@ -230,6 +230,7 @@ foreach (array_slice(Doc::extract($doc)['child_pages'], 0, 200) as $uuid) {
 }
 if ($names !== []) {
     $sqlTitles = 'SELECT p.public_id, p.title, p.icon'
+
         . ' FROM community.pages p'
         . ' JOIN community.spaces s ON s.id = p.space_id'
         . ' LEFT JOIN public.users owner ON owner.id = s.owner_user_id'
@@ -309,6 +310,7 @@ Http::json([
     // 화면이 「편집」 단추를 열지 말지 고르는 값이다 — 판단 근거가 아니다 (DESIGN 원칙 1).
     // 단추를 되살려 PATCH 를 불러도 서버가 같은 함수로 다시 막는다.
     'can_edit'   => $mayChange,
+    'can_export' => CommunityAuthz::decidePageExport($user, $row)[0],
     // 4-B — 「공개 범위」 단추를 보일지. 값은 위 판정의 결과이고 화면은 그대로 따른다.
     'can_set_visibility' => $maySetVisibility,
     /* 4-D — 상태 배지·담당자 칩을 **누를 수 있게** 할지. 고칠 수 있는 사람과 같은 자격이다
@@ -323,6 +325,13 @@ Http::json([
     'can_handover' => $mayHandover,
     // 인계 창의 안내 — 함께 옮겨 갈 하위 페이지 수(넘길 수 없는 사람에게는 null).
     'subtree_count' => $subtreeCount,
+    'procedures_in_branch' => $mayHandover ? community_procedure_count((int) $row['id']) : null,
+    'page_kind' => (string) $row['page_kind'],
+    'verify' => community_verify_info($row),
+    'due' => $row['due_date'],
+    'repeat' => community_automation_repeat_info((int)$row['id'],$user),
+    'completed_at' => $row['status'] === 'done' ? ($db->run("SELECT at FROM community.page_property_events WHERE page_id=:id AND prop='status' AND to_value='done' ORDER BY id DESC LIMIT 1"
+, [':id'=>(int)$row['id']])->fetchColumn() ?: null) : null,
     // 나에게 준 공유 등급(`view`·`edit`, 이 페이지나 조상에서 가장 강한 것). 없으면 null.
     'share_level'  => CommunityAuthz::shareLevelFor($user, $row),
     'granted_by' => $readCode,
@@ -365,6 +374,7 @@ Http::json([
     'link_titles' => ($lt = community_link_titles(array_map(static fn (array $l): string => $l['to_page_id'], $docExtract['links']), $user)) === [] ? new stdClass() : $lt,
     'backlinks'   => community_backlinks((string) $row['public_id'], (int) $row['id'], $user),
     /* 7-D4 — 글 안 멘션의 이름 지도(볼 수 있는 것만 · 사람은 쓰기 자격 있는 보는 사람에게만 — `community_mention_labels`). 없으면 {} */
+    'buttons' => ($bm = community_button_map($doc, $row, $user)) === [] ? new stdClass() : $bm,
     'mention_labels' => ($ml = community_mention_labels($docExtract['mentions'], $user)) === [] ? new stdClass() : $ml,
     // 5-D — 댓글을 쓸 수 있나 · 공지 「읽은 사람 n/N」을 볼 수 있나(둘 다 창구가 같은 함수로 다시 막는다)
     /* 6-A — DB 페이지면 `database`(스키마·자격 — 행 목록은 `GET /api/databases/{id}/rows`),

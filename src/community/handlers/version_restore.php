@@ -152,6 +152,12 @@ if (!community_palettes_ok($restoreNewPalettes)) {
     exit;
 }
 
+// Stage 9-C: restoring a removed button is an insertion under current binding/ownership rules.
+if (!community_buttons_ok($oldDoc, $currentDoc, $pid, $user)) {
+    Http::json(['error' => Http::MSG_BAD_REQUEST, 'reason' => 'button_not_allowed'], 400);
+    exit;
+}
+
 $extract = Doc::extract($oldDoc);
 $docJson = json_encode($oldDoc, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
 if ($docJson === false) {

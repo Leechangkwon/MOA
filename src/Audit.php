@@ -48,7 +48,19 @@ final class Audit
      *
      * @var list<string>
      */
+    private static ?array $automationActor = null;
+
+    /** Worker-only actor, re-read from the database; inaccessible through HTTP. */
+    public static function automationActor(?int $id): void
+    {
+        if (PHP_SAPI !== 'cli') { throw new LogicException('CLI only'); }
+        self::$automationActor = $id === null ? null : (Db::instance()->run('SELECT id,username,role,team_id FROM users WHERE id=CAST(:id AS bigint)'
+, [':id'=>$id])->fetch() ?: null);
+    }
+
     private const ALLOWED_DETAIL_KEYS = [
+        'format','tree','pages','skipped','bytes','page_ids',
+        'automation_id', 'run_id', 'automations', 'procedure_count',
         'sessions_revoked',
         /*
          * 11단계 (PRD F-16, ARCH 7.5). 셋 다 등록부에 있는 키이고 값에 비밀이 없다.
@@ -261,7 +273,7 @@ final class Audit
          * 본문 글자·계정 id 는 어느 쪽에도 들어가지 않는다. 여섯 키 모두 FORBIDDEN_DETAIL_KEYS
          * 부분 일치에 걸리지 않지만, 등록부에 있는 키임을 코드에서도 드러내려고 여기 적는다.
          */
-        'share_user', 'share_level', 'share_from', 'from_user', 'to_user', 'page_count', 'kept_level',
+        'share_user', 'share_level', 'share_from', 'from_user', 'to_user', 'page_count', 'procedure_count', 'kept_level',
         /*
          * T:F-72 지문·얼굴 로그인(패스키) (지시서 1.6 「감사 detail 키」, ARCH 7.5 등록부).
          *   credential_no       — 열쇠 행 번호(passkeys.id). 열쇠 id 원문·공개 키가 아니다 — 「어느 열쇠로」 를 목록에서 되짚는 열쇠
@@ -854,12 +866,26 @@ final class Audit
          *   · 저장·삭제는 언제나 남는다. 본문 글자는 어디에도 넣지 않는다 —
          *     남는 것은 제목·판 번호·블록 수·어긋난 자리뿐이다 (ARCH 7.5 등록부).
          */
+        'automation.save|allow' => '{actor} 이(가) 자동 작업 「{target}」 을(를) 저장했습니다',
+        'automation.delete|allow' => '{actor} 이(가) 자동 작업 「{target}」 을(를) 껐습니다',
+        'automation.run|allow' => '{actor} 이(가) 자동 작업 「{target}」 을(를) 실행했습니다',
+        'automation.run|allow|partial' => '{actor} 이(가) 자동 작업 「{target}」 의 일부 동작을 실행했습니다',
+        'automation.run|deny|denied' => '{actor} 의 현재 권한으로 자동 작업 「{target}」 을(를) 실행할 수 없습니다',
+        'automation.undo|allow' => '{actor} 이(가) 자동 작업 「{target}」 의 실행을 되돌렸습니다',
+        'page.export|allow'                     => '{actor} 이(가) 페이지 「{target}」 을(를) 내보냈습니다',
+        'page.export|deny|not_owner'            => '{actor} 이(가) 볼 수 없는 페이지를 내보내려 해서 막았습니다',
+        'page.export|deny|not_member'           => '{actor} 이(가) 볼 수 없는 팀 페이지를 내보내려 해서 막았습니다',
+        'page.export|deny|role_not_permitted'   => '{actor} 이(가) 내보내기 권한이 없어 막았습니다',
+        'page.export|deny|privileged_only'      => '{actor} 이(가) 관리자 특권으로만 보이는 페이지를 내보내려 해서 막았습니다',
+        'page.export|deny|not_found'            => '{actor} 이(가) 없거나 삭제된 페이지를 내보내려 해서 막았습니다',
+        'page.export|deny|too_large'            => '{actor} 이(가) 내보내기 한도를 넘는 페이지 묶음을 요청해 막았습니다',
         'page.create|allow'                     => '{actor} 이(가) 페이지 「{target}」 을(를) 만들었습니다',
         'page.read|allow|admin_all'             => '{actor} 이(가) 관리자 권한으로 다른 사람의 개인 페이지 「{target}」 을(를) 열어 봤습니다',
         'page.read|deny|not_owner'              => '{actor} 이(가) 다른 사람의 개인 페이지 「{target}」 을(를) 열려 해서 막았습니다',
         'page.update|allow'                     => '{actor} 이(가) 페이지 「{target}」 의 내용을 저장했습니다 (판 번호·블록 수는 상세 기록)',
         'page.update|deny|not_owner'            => '{actor} 이(가) 다른 사람의 개인 페이지 「{target}」 을(를) 고치려 해서 막았습니다',
         'page.update|deny|version_conflict'     => '{actor} 이(가) 페이지 「{target}」 을(를) 저장하려 했지만 그 사이 다른 곳에서 먼저 저장되어 되돌렸습니다',
+        'page.update|deny|button_not_allowed' => '{actor} 이(가) 이 페이지에 묶이지 않은 버튼 작업을 저장하려 해서 막았습니다',
         'page.update|deny|invalid_doc'          => '{actor} 이(가) 페이지 「{target}」 에 형식에 맞지 않는 본문을 저장하려 해서 거부했습니다 (어긋난 자리는 상세 기록)',
         'page.delete|allow'                     => '{actor} 이(가) 페이지 「{target}」 을(를) 휴지통으로 옮겼습니다',
         'space.create|allow'                    => '{actor} 이(가) 자기 개인 업무 공간을 만들었습니다',
@@ -944,8 +970,8 @@ final class Audit
         'template.delete|deny|role_not_permitted' => '{actor} 이(가) 관리자만 지우는 사이트 기본 템플릿 「{target}」 을(를) 지우려 해서 막았습니다',
         'page.values|allow'                     => '{actor} 이(가) 데이터베이스 행 「{target}」 의 속성 값을 바꿨습니다 (어느 속성·이전→새값은 상세 기록)',
         'page.values|deny|not_owner'            => '{actor} 이(가) 고칠 수 없는 데이터베이스 행 「{target}」 의 속성 값을 바꾸려 해서 막았습니다',
-        'page.property|allow'                   => '{actor} 이(가) 페이지 「{target}」 의 상태 또는 담당자를 바꿨습니다 (어느 칸·이전→새값은 상세 기록)',
-        'page.property|deny|not_owner'          => '{actor} 이(가) 다른 사람의 페이지 「{target}」 의 상태 또는 담당자를 바꾸려 해서 막았습니다',
+        'page.property|allow'                   => '{actor} 이(가) 페이지 「{target}」 의 속성(상태·검증·절차서 표시 등)를 바꿨습니다 (어느 칸·이전→새값은 상세 기록)',
+        'page.property|deny|not_owner'          => '{actor} 이(가) 다른 사람의 페이지 「{target}」 의 속성(상태·검증·절차서 표시 등)를 바꾸려 해서 막았습니다',
         'page.property|deny|assignee_not_permitted' => '{actor} 이(가) 페이지 「{target}」 을(를) 볼 수 없는 사람을 담당자로 지정하려 해서 거부했습니다 (고른 계정은 상세 기록)',
         'page.restore|allow'                    => '{actor} 이(가) 휴지통에서 페이지 「{target}」 을(를) 되살렸습니다 (함께 돌아온 하위 수는 상세 기록)',
         'page.restore|deny|not_owner'           => '{actor} 이(가) 다른 사람이 지운 페이지 「{target}」 을(를) 되살리려 해서 막았습니다',
@@ -1204,7 +1230,7 @@ final class Audit
             // User-Agent 는 공격자가 마음대로 정하는 값이다. Http::userAgent() 는 바이트로 자르므로
             // 깨진 UTF-8 이 그대로 올 수 있고, 그 값이 DB(UTF8 인코딩)에 닿으면 INSERT 가 거부되어
             // 기록이 통째로 사라진다 — 여기서 한 번 더 씻는다 (SECURITY R-47 과 같은 이유).
-            'user_agent'   => self::cutNullable(Http::userAgent(), self::VALUE_MAX_CHARS),
+            'user_agent'   => self::cutNullable(PHP_SAPI === 'cli' && self::$automationActor !== null ? 'qaredi-automation/stage9' : Http::userAgent(), self::VALUE_MAX_CHARS),
         ];
 
         // 요약 문장을 두 저장소보다 **먼저** 만든다 (ARCH 7.4).
@@ -1551,7 +1577,7 @@ final class Audit
      */
     private static function actor(): ?array
     {
-        return Auth::currentUser();
+        return PHP_SAPI === 'cli' && self::$automationActor !== null ? self::$automationActor : Auth::currentUser();
     }
 
     private static function requestId(): string

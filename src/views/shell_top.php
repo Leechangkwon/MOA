@@ -54,7 +54,7 @@ $shellKeys = [
     'files', 'trash', 'settings', 'activity', 'users', 'org', 'audit', 'wiki', 'admin',
     // 커뮤니티 3단계 (커뮤니티 ARCHITECTURE.md 21.3) — 모듈 모드의 화면 둘.
     // app.js 는 이 두 키를 만나면 셸만 그리고 물러난다(t-box 화면 JS 가 돌지 않는다).
-    'community-home', 'community-page',
+    'community-home', 'community-page', 'community-today',
     // 커뮤니티 5-C — 게시판 화면
     'community-board',
 ];
@@ -271,7 +271,9 @@ if (!headers_sent()) {
 <?php if ($shellPalette !== ''): ?>
 <link id="palette-css" rel="stylesheet" href="<?= COMMUNITY_BASE ?>/palette.css?v=<?= $shellPalette ?>">
 <?php endif; ?>
-<?php if ($shellMod === 'community'): ?>
+<?php if ($shellMod === 'community' && $shellPage === 'community-today'): ?>
+<script type="module" src="<?= Http::url('/assets/community/briefing.js') ?>?v=<?= (int) filemtime(__DIR__ . '/../../public/assets/community/briefing.js') ?>"></script>
+<?php elseif ($shellMod === 'community'): ?>
 <!-- 커뮤니티 화면의 동작 한 벌 (커뮤니티 ARCHITECTURE.md 21.3). `type="module"` 은 기본이
      defer 라 <head> 에 두어도 본문이 다 그려진 뒤 돌아간다 — shell_bottom 을 고치지 않고
      모듈 스크립트를 싣는 자리다. CSP 는 `script-src 'self'` 그대로이고 import map 을 쓰지
@@ -404,7 +406,10 @@ if (!headers_sent()) {
          앱 사이 이동은 위 그리드 단추가 맡는다. -->
     <!-- 알림 (5-D, PRD F-22) — 종 아이콘 + 안 읽은 수. 30초마다 `GET /community/api/notifications?unread=1`.
          누르면 알림 창 — 목록은 창구가 **지금도 볼 수 있는 페이지만** 제목을 준다(아니면 「볼 수 없는 페이지」). -->
-    <nav class="nav" aria-label="알림">
+    <nav class="nav" aria-label="오늘의 업무">
+      <a id="nav-community-today" class="<?= $shellNavClass('community-today') ?>" href="<?= Http::communityUrl('/today') ?>"><span class="icon" data-icon="check"></span><span>오늘</span></a>
+    </nav>
+    <nav class="nav" aria-label="알림"<?= $shellPage === 'community-today' ? ' hidden' : '' ?>>
       <button id="nav-community-bell" class="nav__item" type="button" aria-haspopup="dialog">
         <span class="icon" data-icon="bell"></span><span>알림</span>
         <span id="nav-community-bell-count" class="badge badge--internal" hidden></span>
@@ -464,6 +469,8 @@ if (!headers_sent()) {
       <a id="nav-community-home" class="<?= $shellNavClass('community-home') ?>" href="<?= Http::communityUrl('/') ?>">
         <span class="icon" data-icon="files"></span><span>내 공간</span>
       </a>
+      <a class="nav__item" href="<?= Http::communityUrl('/automations') ?>"><span class="icon" data-icon="log"></span><span>자동 작업</span></a>
+      <a class="nav__item" href="<?= Http::communityUrl('/procedures') ?>"><span class="icon" data-icon="files"></span><span>절차서</span></a>
       <!-- 내 페이지 트리 (5-A′) — editor.js 가 `?tree=1` 의 답으로 채운다 -->
       <div id="nav-community-tree" class="nav-tree-box"></div>
       <button id="nav-community-new" class="nav__item" type="button"<?= $shellCommunityWrite ? '' : ' hidden' ?>>

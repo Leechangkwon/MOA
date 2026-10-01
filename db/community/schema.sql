@@ -464,3 +464,88 @@ CREATE TABLE community.palettes (
     CONSTRAINT palettes_updated_pair CHECK ((updated_at IS NULL) = (updated_by IS NULL))
 );
 CREATE UNIQUE INDEX palettes_live_name ON community.palettes (name) WHERE removed_at IS NULL;
+
+-- 8-A fresh-install trust metadata (same as the additive migration).
+-- C:F-38/39, stage8-trust-handover-directive: additive, idempotent.
+-- Rollback: retain columns/history, revert application files first. Do not erase verification events.
+ALTER TABLE community.pages
+ ADD COLUMN IF NOT EXISTS verified_by BIGINT REFERENCES public.users(id),
+ ADD COLUMN IF NOT EXISTS verified_at TIMESTAMPTZ,
+ ADD COLUMN IF NOT EXISTS verify_expires_at TIMESTAMPTZ,
+ ADD COLUMN IF NOT EXISTS page_kind TEXT NOT NULL DEFAULT 'page';
+DO $$ DECLARE r record; BEGIN
+ IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conrelid='community.pages'::regclass AND conname='pages_verify_shape') THEN
+  ALTER TABLE community.pages ADD CONSTRAINT pages_verify_shape CHECK
+   ((verified_by IS NULL) = (verified_at IS NULL) AND
+    (verify_expires_at IS NULL OR (verified_at IS NOT NULL AND verify_expires_at > verified_at)));
+ END IF;
+ IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conrelid='community.pages'::regclass AND conname='pages_page_kind_check') THEN
+  ALTER TABLE community.pages ADD CONSTRAINT pages_page_kind_check CHECK(page_kind IN ('page','procedure'));
+ END IF;
+ FOR r IN SELECT conname FROM pg_constraint WHERE conrelid='community.page_property_events'::regclass AND contype='c' AND pg_get_constraintdef(oid) LIKE '%prop%' LOOP
+  EXECUTE format('ALTER TABLE community.page_property_events DROP CONSTRAINT %I',r.conname);
+ END LOOP;
+ ALTER TABLE community.page_property_events ADD CONSTRAINT page_property_events_prop_check
+  CHECK(prop IN ('status','assignee','publish','hide','resolved','verified','kind') OR prop ~ '^db:[a-z0-9_]{1,30}$');
+ FOR r IN SELECT conname FROM pg_constraint WHERE conrelid='community.notifications'::regclass AND contype='c' AND pg_get_constraintdef(oid) LIKE '%kind%' LOOP
+  EXECUTE format('ALTER TABLE community.notifications DROP CONSTRAINT %I',r.conname);
+ END LOOP;
+ ALTER TABLE community.notifications ADD CONSTRAINT notifications_kind_check
+  CHECK(kind IN ('mention','reply','comment_on_my_page','handover','verify_expired'));
+END $$;
+CREATE INDEX IF NOT EXISTS pages_verify_expiry_idx ON community.pages(verify_expires_at) WHERE verify_expires_at IS NOT NULL AND deleted_at IS NULL;
+CREATE INDEX IF NOT EXISTS pages_kind_idx ON community.pages(page_kind) WHERE page_kind <> 'page';
+
+-- 9-A fresh install.
+-- Stage 9: additive/idempotent. Rollback application first; preserve rules and immutable run history.
+ALTER TABLE community.pages ADD COLUMN IF NOT EXISTS due_date DATE;
+ALTER TABLE community.notifications ADD COLUMN IF NOT EXISTS retracted_at TIMESTAMPTZ;
+CREATE TABLE IF NOT EXISTS community.automations (
+ id BIGSERIAL PRIMARY KEY, public_id UUID NOT NULL UNIQUE,
+ owner_user_id BIGINT NOT NULL REFERENCES public.users(id),
+ kind TEXT NOT NULL CHECK(kind IN ('recurring','on_status','due_reminder','button')),
+ name TEXT NOT NULL CHECK(char_length(name) BETWEEN 1 AND 100),
+ scope_page_id BIGINT REFERENCES community.pages(id), scope_space_id BIGINT REFERENCES community.spaces(id),
+ trigger JSONB NOT NULL CHECK(jsonb_typeof(trigger)='object'),
+ actions JSONB NOT NULL CHECK(jsonb_typeof(actions)='array' AND jsonb_array_length(actions) BETWEEN 1 AND 5),
+ press_scope TEXT CHECK(press_scope IN ('owner','editors')),
+ is_enabled BOOLEAN NOT NULL DEFAULT false, last_dry_run_at TIMESTAMPTZ,
+ denied_streak INTEGER NOT NULL DEFAULT 0 CHECK(denied_streak>=0),
+ created_at TIMESTAMPTZ NOT NULL DEFAULT now(), updated_at TIMESTAMPTZ NOT NULL DEFAULT now(), deleted_at TIMESTAMPTZ,
+ CONSTRAINT automations_press_shape CHECK ((kind='button' AND press_scope IS NOT NULL) OR (kind<>'button' AND press_scope IS NULL)),
+ CONSTRAINT automations_scope_shape CHECK (scope_page_id IS NULL OR scope_space_id IS NULL)
+);
+CREATE TABLE IF NOT EXISTS community.automation_runs (
+ id BIGSERIAL PRIMARY KEY, public_id UUID NOT NULL UNIQUE,
+ automation_id BIGINT NOT NULL REFERENCES community.automations(id), run_by BIGINT NOT NULL REFERENCES public.users(id),
+ trigger_kind TEXT NOT NULL, slot TIMESTAMPTZ, dry_run BOOLEAN NOT NULL,
+ started_at TIMESTAMPTZ NOT NULL DEFAULT now(), finished_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+ status TEXT NOT NULL CHECK(status IN ('ok','partial','denied','failed')),
+ steps JSONB NOT NULL CHECK(jsonb_typeof(steps)='array'),
+ created_page_ids BIGINT[] NOT NULL DEFAULT '{}', notification_ids BIGINT[] NOT NULL DEFAULT '{}',
+ undone_at TIMESTAMPTZ, undone_by BIGINT REFERENCES public.users(id),
+ CHECK((undone_at IS NULL)=(undone_by IS NULL))
+);
+CREATE UNIQUE INDEX IF NOT EXISTS automation_runs_slot_uidx ON community.automation_runs(automation_id,slot) WHERE NOT dry_run AND slot IS NOT NULL;
+CREATE INDEX IF NOT EXISTS automation_runs_rule_idx ON community.automation_runs(automation_id,started_at DESC);
+CREATE TABLE IF NOT EXISTS community.automation_queue (
+ id BIGSERIAL PRIMARY KEY, automation_id BIGINT NOT NULL REFERENCES community.automations(id),
+ page_id BIGINT NOT NULL REFERENCES community.pages(id), event_id BIGINT NOT NULL REFERENCES community.page_property_events(id),
+ created_at TIMESTAMPTZ NOT NULL DEFAULT now(), taken_at TIMESTAMPTZ,
+ UNIQUE(automation_id,event_id)
+);
+CREATE INDEX IF NOT EXISTS automation_queue_pending_idx ON community.automation_queue(id) WHERE taken_at IS NULL;
+CREATE INDEX IF NOT EXISTS automations_enabled_idx ON community.automations(is_enabled,kind) WHERE deleted_at IS NULL;
+CREATE INDEX IF NOT EXISTS pages_due_idx ON community.pages(due_date) WHERE due_date IS NOT NULL AND deleted_at IS NULL;
+DO $$ DECLARE r record; BEGIN
+ FOR r IN SELECT conname FROM pg_constraint WHERE conrelid='community.page_property_events'::regclass AND contype='c' AND pg_get_constraintdef(oid) LIKE '%prop%' LOOP
+  EXECUTE format('ALTER TABLE community.page_property_events DROP CONSTRAINT %I',r.conname);
+ END LOOP;
+ ALTER TABLE community.page_property_events ADD CONSTRAINT page_property_events_prop_check
+  CHECK(prop IN ('status','assignee','publish','hide','resolved','verified','kind','due') OR prop ~ '^db:[a-z0-9_]{1,30}$');
+ FOR r IN SELECT conname FROM pg_constraint WHERE conrelid='community.notifications'::regclass AND contype='c' AND pg_get_constraintdef(oid) LIKE '%kind%' LOOP
+  EXECUTE format('ALTER TABLE community.notifications DROP CONSTRAINT %I',r.conname);
+ END LOOP;
+ ALTER TABLE community.notifications ADD CONSTRAINT notifications_kind_check
+  CHECK(kind IN ('mention','reply','comment_on_my_page','handover','verify_expired','recurring_created','review_requested','due_tomorrow','automation_denied','automation_disabled'));
+END $$;

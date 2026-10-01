@@ -251,6 +251,10 @@ export const schema = new Schema({
       toDOM: (node) => ['pre', { class: 'doc-code', 'data-lang': node.attrs.language }, ['code', 0]]
     },
 
+    button: {
+      group:'block', atom:true, selectable:true, attrs:{id:{default:null},label:{default:''},automation_id:{default:null}},
+      toDOM: node => ['button',{type:'button',class:'btn',disabled:'disabled'},node.attrs.label]
+    },
     toc: {
       group: 'block',
       atom: true,
@@ -667,6 +671,7 @@ export function fromDoc(doc, ctx) {
       content.push({ type: 'link_to_page', attrs: { id: attrs.id, page_id: pid, title: ent && typeof ent.title === 'string' ? ent.title : '볼 수 없는 페이지' } });
       continue;
     }
+    if (b.type === 'button') { content.push({type:'button',attrs:{id:attrs.id,label:b.label,automation_id:b.automation_id}}); continue; }
     if (b.type === 'embed') {
       content.push({ type: 'embed', attrs: { id: attrs.id, url: typeof b.url === 'string' ? b.url : '', caption: plainOf(b.caption) } });
       continue;
@@ -777,7 +782,7 @@ export function toDoc(pmDoc) {
     const block = { id: typeof a.id === 'string' && a.id !== '' ? a.id : uuid4(), type: ourType };
 
     // 글자를 담지 않는 덩어리에는 꾸밈 세 가지를 얹지 않는다.
-    const isAtom = ['divider', 'toc', 'child_page', 'toggle', 'table', 'link_to_page', 'image', 'file', 'columns', 'embed'].indexOf(ourType) !== -1;
+    const isAtom = ['button','divider', 'toc', 'child_page', 'toggle', 'table', 'link_to_page', 'image', 'file', 'columns', 'embed'].indexOf(ourType) !== -1;
     // 6-C — 편집기의 `columns` 덩어리 → 문서의 column_list > column > 문단들
     if (ourType === 'columns') {
       block.type = 'column_list';
@@ -845,6 +850,7 @@ export function toDoc(pmDoc) {
       blocks.push(block);
       continue;
     }
+    if (ourType === 'button') { block.label=a.label;block.automation_id=a.automation_id;blocks.push(block);continue; }
     if (ourType === 'embed') {
       if (typeof a.url !== 'string' || a.url === '') { continue; }
       block.url = a.url;
@@ -924,6 +930,7 @@ export function toDoc(pmDoc) {
  *         번호는 노션과 같다 — 0 본문 · 1~3 제목 · 4 할 일 · 5 글머리 · 6 번호 · 8 코드. 7 인용 · 9 강조 상자.
  */
 export const BLOCK_TYPES = [
+  {type:'button',label:'버튼',editsAtom:true,desc:'현재 페이지에 묶인 내 버튼 작업을 실행합니다.',sample:{schema:1,blocks:[{type:'button',label:'이번 달 시작',automation_id:'00000000-0000-4000-8000-000000000001'}]}},
   {
     type: 'paragraph', label: '본문',
     md: 'Enter', key: 'Mod-Alt-0',

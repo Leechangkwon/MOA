@@ -680,6 +680,12 @@ function renderBlock(block, rootBlocks, ctx) {
   } else if (type === 'image' || type === 'file') {
     nodes.push(renderFileBlock(block, id, ctx));
     return nodes;
+  } else if (type === 'button') {
+    const b=document.createElement('button'); b.type='button'; b.className='btn'; setId(b); b.textContent=String(block.label || '');
+    b.dataset.automationId=String(block.automation_id || '');
+    b.disabled=!(ctx.buttons && ctx.buttons[block.automation_id] && ctx.buttons[block.automation_id].can_press===true);
+    if (!b.disabled && typeof ctx.pressButton==='function') b.addEventListener('click',()=>ctx.pressButton(block.automation_id,b));
+    nodes.push(b); return nodes;
   } else if (type === 'embed') {
     nodes.push(renderEmbed(block, id, ctx));
     return nodes;

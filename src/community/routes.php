@@ -37,11 +37,17 @@ require_once __DIR__ . '/../Design.php';
  * 부르는 이유는, t-box 요청 하나하나가 쓰지도 않는 파일을 읽지 않게 하려는 것이다.
  */
 require_once __DIR__ . '/Doc.php';
+require_once __DIR__ . '/Automation.php';
 require_once __DIR__ . '/DocRender.php';
+require_once __DIR__ . '/DocMarkdown.php';
+require_once __DIR__ . '/DocExport.php';
+require_once __DIR__ . '/export_helpers.php';
 require_once __DIR__ . '/CommunityAuthz.php';
 require_once __DIR__ . '/DbProps.php';
 // 7-D2 — 관리자 팔레트의 순수 계산(배경값 · 버전 · CSS 글자). DB 는 아래 `community_palette_rows()` 가 읽는다
 require_once __DIR__ . '/Palette.php';
+require_once __DIR__ . '/BriefingText.php';
+require_once __DIR__ . '/Briefing.php';
 // Q:F-2 — 검색 색인·검색어 토큰 한 벌(사이트 공통 — t-box 파일 색인도 나중에 같은 파일, 지시서 2.1)
 require_once __DIR__ . '/../SearchText.php';
 
@@ -55,10 +61,26 @@ require_once __DIR__ . '/../SearchText.php';
  * 4-B 범위: 화면 둘 · API 열(4-A 의 여덟 + `GET /api/spaces` + `PATCH /api/pages/{id}/visibility`).
  */
 const COMMUNITY_ROUTES = [
+    ['GET', '/today', 'today_page.php', 'community.read'],
+    ['GET', '/api/briefing', 'briefing.php', 'community.read'],
     // ── 화면 ─────────────────────────────────────────────────
     ['GET',    '/',                          'home_page.php',       'community.read'],
     ['GET',    '/p/{id}',                    'page_view.php',       'community.read'],
+    ['GET', '/p/{id}/print', 'page_print.php', 'community.write'],
+    ['GET', '/api/pages/{id}/export', 'pages_export.php', 'community.write'],
 
+    ['GET', '/automations', 'home_page.php', 'community.read'],
+    ['GET', '/api/automations', 'automations_list.php', 'community.read'],
+    ['POST', '/api/automations', 'automations_save.php', 'community.write'],
+    ['GET', '/api/automations/{id}', 'automations_get.php', 'community.read'],
+    ['PATCH', '/api/automations/{id}', 'automations_save.php', 'community.write'],
+    ['DELETE', '/api/automations/{id}', 'automations_delete.php', 'community.write'],
+    ['POST', '/api/automations/{id}/dry-run', 'automations_dry_run.php', 'community.write'],
+    ['POST', '/api/automations/{id}/run', 'automations_run.php', 'community.write'],
+    ['GET', '/api/automations/{id}/runs', 'automations_runs.php', 'community.read'],
+    ['POST', '/api/automation-runs/{id}/undo', 'automation_runs_undo.php', 'community.write'],
+    ['GET', '/api/admin/automations', 'automations_admin.php', 'role:Admin'],
+    ['POST', '/api/admin/automations/{id}/disable', 'automations_admin.php', 'role:Admin'],
     // ── API ──────────────────────────────────────────────────
     // 개인 공간 — 없으면 만든다(「시작하기」 페이지와 함께). ARCH 13.3 의 설계 그대로다.
     ['GET',    '/api/me/space',              'space_me.php',        'community.read'],
@@ -68,6 +90,8 @@ const COMMUNITY_ROUTES = [
     // 목록은 **한 공간 안**만 본다(`?space=`, 기본 내 개인 공간). 볼 수 없는 행은 SQL 이 거른다 (C:S-02).
     ['GET',    '/api/pages',                 'pages_list.php',      'community.read'],
     // 5-B 검색 (2026-09-23) — 공간을 가리지 않고 행 관문(목록 조건절)만, 관리자 특권 갈래는 끈다
+    ['GET',    '/api/procedures',             'procedures_list.php', 'community.read'],
+    ['GET',    '/procedures',                 'home_page.php', 'community.read'],
     ['GET',    '/api/search',                'search.php',          'community.read'],
     ['POST',   '/api/pages',                 'pages_create.php',    'community.write'],
     ['GET',    '/api/pages/{id}',            'pages_get.php',       'community.read'],
@@ -529,7 +553,9 @@ function community_page_row_sql(bool $withDoc): string
                editor.username AS last_edited_by_name,
                editor.display_name AS last_edited_by_display_name,
                -- 4-D: 상태 칸 + (멈춘) 담당자 칸의 옛 값. 5-A 부터 담당자는 **읽기만** 한다.
-               p.status, p.assignee_id,
+               p.status, p.assignee_id, p.due_date, p.page_kind, p.verified_by, p.verified_at, p.verify_expires_at,
+               verifier.display_name AS verified_by_display_name, verifier.username AS verified_by_name,
+               CASE WHEN p.verified_at IS NULL THEN 'none' WHEN p.verify_expires_at <= now() THEN 'expired' ELSE 'verified' END AS verify_state,
                assignee.username  AS assignee_name,
                assignee.role      AS assignee_role,
                assignee.is_active AS assignee_active,
@@ -564,6 +590,7 @@ function community_page_row_sql(bool $withDoc): string
           LEFT JOIN public.users editor   ON editor.id   = p.last_edited_by
           LEFT JOIN public.users assignee ON assignee.id = p.assignee_id
           LEFT JOIN public.users author   ON author.id   = p.author_id
+          LEFT JOIN public.users verifier ON verifier.id = p.verified_by
           LEFT JOIN community.spaces pb   ON pb.id       = p.published_board_id
           LEFT JOIN community.databases dbself ON dbself.page_id = p.id
           LEFT JOIN community.databases dbrow  ON dbrow.id       = p.database_id
@@ -1928,7 +1955,7 @@ function community_share_candidates(string $q, int $limit, ?int $excludeId, bool
 function community_user_by_name(string $username): ?array
 {
     $sql = <<<'SQL'
-        SELECT u.id, u.username, u.display_name, u.role, u.team_id, u.is_active
+        SELECT u.id, u.username, u.display_name, u.role, u.team_id, u.is_active, u.expires_at
           FROM public.users u
          WHERE u.username = :name
         SQL;
@@ -2415,8 +2442,9 @@ function community_comment_gate(array $u, string $commentPublicId): array
  *
  * @param array<string,mixed> $pageRow 아무 사람 몫의 페이지 행(공유 등급은 여기서 받는 사람 몫으로 다시 읽는다)
  */
-function community_notify(int $userId, string $kind, array $pageRow, ?int $commentId, int $actorId): bool
+function community_notify(int $userId, string $kind, array $pageRow, ?int $commentId, ?int $actorId, ?int &$notificationId = null): bool
 {
+    $notificationId = null;
     if ($userId === $actorId || $userId <= 0) {
         return false;
     }
@@ -2427,11 +2455,11 @@ function community_notify(int $userId, string $kind, array $pageRow, ?int $comme
     }
     $sql = <<<'SQL'
         INSERT INTO community.notifications (user_id, kind, page_id, comment_id, actor_id)
-        VALUES (CAST(:uid AS bigint), :kind, CAST(:pid AS bigint), CAST(:cid AS bigint), CAST(:aid AS bigint))
+        VALUES (CAST(:uid AS bigint), :kind, CAST(:pid AS bigint), CAST(:cid AS bigint), CAST(:aid AS bigint)) RETURNING id
         SQL;
-    Db::instance()->run($sql, [
+    $notificationId = (int) Db::instance()->run($sql, [
         ':uid' => $userId, ':kind' => $kind, ':pid' => (int) $row['id'], ':cid' => $commentId, ':aid' => $actorId,
-    ]);
+    ])->fetchColumn();
     return true;
 }
 
@@ -2443,7 +2471,7 @@ function community_notify(int $userId, string $kind, array $pageRow, ?int $comme
 function community_user_by_id(int $userId): ?array
 {
     $sql = <<<'SQL'
-        SELECT u.id, u.username, u.display_name, u.role, u.team_id, u.is_active
+        SELECT u.id, u.username, u.display_name, u.role, u.team_id, u.is_active, u.expires_at
           FROM public.users u
          WHERE u.id = CAST(:id AS bigint)
         SQL;
@@ -2698,6 +2726,58 @@ function community_backlinks(string $pagePublicId, int $pageId, array $u): array
  * @param string $modulePath `/community` 를 뗀 경로 (`/`, `/api/pages`, `/p/<uuid>` …)
  * @param string $method     요청 메서드
  */
+/** 8-A: shared verification metadata for API and export. IDs never leave this result. */
+function community_verify_info(array $row): array
+{
+    $at = $row['verified_at'] ?? null;
+    $expires = $row['verify_expires_at'] ?? null;
+    $state = $row['verify_state'] ?? ($at === null ? 'none' : ($expires !== null && strtotime((string) $expires) <= time() ? 'expired' : 'verified'));
+    return ['state' => $state,
+        'by' => $at === null ? null : ['name' => (string) ($row['verified_by_display_name'] ?: $row['verified_by_name'] ?? '')],
+        'at' => $at, 'expires_at' => $expires,
+        'edited_after' => $at !== null && strtotime((string) $row['updated_at']) > strtotime((string) $at)];
+}
+
+function community_procedure_count(int $pageId): int
+{
+    $sql = <<<'SQL'
+        WITH RECURSIVE branch AS (
+          SELECT id, page_kind FROM community.pages WHERE id=CAST(:id AS bigint) AND deleted_at IS NULL
+          UNION ALL SELECT p.id,p.page_kind FROM community.pages p JOIN branch b ON p.parent_page_id=b.id WHERE p.deleted_at IS NULL
+        ) SELECT count(*) FROM branch WHERE page_kind='procedure'
+        SQL;
+    return (int) Db::instance()->run($sql, [':id' => $pageId])->fetchColumn();
+}
+
+/** Lazy expiry notification, once per verification cycle, serialized per recipient. */
+function community_expiry_notifications(int $userId): void
+{
+    $db = Db::instance();
+    $db->begin();
+    try {
+        $db->run('SELECT pg_advisory_xact_lock(8301, CAST(:uid AS integer))'
+, [':uid' => $userId]);
+        $u=community_user_by_id($userId);
+        if ($u===null) { $db->commit(); return; }
+        [$visible,$bind]=community_search_pages_where($u);
+        $bind[':expiry_uid']=$userId;
+        $sql = <<<SQL
+          SELECT p.public_id FROM community.pages p JOIN community.spaces s ON s.id=p.space_id
+          LEFT JOIN public.users owner ON owner.id=s.owner_user_id
+          WHERE p.deleted_at IS NULL AND p.verify_expires_at <= now() AND
+            {$visible}
+            AND CASE WHEN s.kind='personal' THEN s.owner_user_id WHEN s.kind='team' THEN p.verified_by ELSE p.author_id END = CAST(:expiry_uid AS bigint)
+            AND NOT EXISTS (SELECT 1 FROM community.notifications n WHERE n.user_id=CAST(:expiry_uid AS bigint) AND n.page_id=p.id AND n.kind='verify_expired' AND n.created_at >= p.verified_at)
+          ORDER BY p.verify_expires_at,p.id LIMIT 20
+          SQL;
+        foreach ($db->run($sql, $bind)->fetchAll() as $r) {
+            $page = community_page_row((string) $r['public_id'], $userId);
+            if ($page !== null) { community_notify($userId, 'verify_expired', $page, null, null); }
+        }
+        $db->commit();
+    } catch (Throwable $e) { $db->rollback(); throw $e; }
+}
+
 function community_dispatch(string $modulePath, string $method): void
 {
     // ─── [0-1] 라우트 표 자체 검사 ─────────────────────────────
@@ -2824,6 +2904,7 @@ function community_dispatch(string $modulePath, string $method): void
 
     // ─── [4] 인가 ─────────────────────────────────────────────
     if (!Authz::authorize($policy, $user)) {
+        if (in_array($handlerFile, ['pages_export.php','page_print.php'], true)) { Audit::deny('page.export','role_not_permitted',['target_type'=>'page']); Http::error(403,Http::MSG_FORBIDDEN); }
         Audit::deny('authz.route', 'role_not_permitted', [
             'target_type' => 'system',
             'target_name' => TBOX_ROUTE,
@@ -3203,9 +3284,12 @@ function community_template_count(string $scope, ?int $key): int
         return 0;
     }
     $sqls = [
-        'owner_user_id' => "SELECT count(*) AS n FROM community.templates t WHERE t.scope = 'personal' AND t.deleted_at IS NULL AND t.owner_user_id = CAST(:k AS bigint)",
-        'team_id'       => "SELECT count(*) AS n FROM community.templates t WHERE t.scope = 'team' AND t.deleted_at IS NULL AND t.team_id = CAST(:k AS bigint)",
-        'database_id'   => "SELECT count(*) AS n FROM community.templates t WHERE t.scope = 'database' AND t.deleted_at IS NULL AND t.database_id = CAST(:k AS bigint)",
+        'owner_user_id' => "SELECT count(*) AS n FROM community.templates t WHERE t.scope = 'personal' AND t.deleted_at IS NULL AND t.owner_user_id = CAST(:k AS bigint)"
+,
+        'team_id'       => "SELECT count(*) AS n FROM community.templates t WHERE t.scope = 'team' AND t.deleted_at IS NULL AND t.team_id = CAST(:k AS bigint)"
+,
+        'database_id'   => "SELECT count(*) AS n FROM community.templates t WHERE t.scope = 'database' AND t.deleted_at IS NULL AND t.database_id = CAST(:k AS bigint)"
+,
     ];
     $r = Db::instance()->run($sqls[$col], [':k' => $key])->fetch();
     return is_array($r) ? (int) $r['n'] : 0;
@@ -3543,4 +3627,329 @@ function community_palettes_ok(array $names): bool
 function community_palette_version(bool $fresh = false): string
 {
     return Palette::version(community_palette_rows($fresh));
+}
+
+/** 9-A common rule loader. Only public page UUIDs leave the API. */
+/** Shared query: owner list and single rule receive the same latest real-run metadata. */
+function community_automation_select_sql(): string
+{
+    return <<<'SQL'
+        SELECT a.*,p.public_id AS scope_page_uuid,
+               latest.status AS last_status,latest.started_at AS last_started_at,
+               latest.undone_at AS last_undone_at,latest.slot AS last_slot
+        FROM community.automations a
+        LEFT JOIN community.pages p ON p.id=a.scope_page_id
+        LEFT JOIN LATERAL (
+            SELECT status,started_at,undone_at,slot FROM community.automation_runs
+            WHERE automation_id=a.id AND NOT dry_run ORDER BY id DESC LIMIT 1
+        ) latest ON true
+        SQL;
+}
+function community_automation_row(string $id): ?array
+{
+    $sql=community_automation_select_sql() . ' WHERE a.public_id=CAST(:id AS uuid)';
+    $r=Db::instance()->run($sql, [':id'=>$id])->fetch();
+    return is_array($r) ? $r : null;
+}
+function community_automation_rule(array $r): array
+{
+    return ['kind'=>$r['kind'],'name'=>$r['name'],'scope_page_id'=>$r['scope_page_uuid'],
+        'scope_space_id'=>$r['scope_space_id'] === null ? null : (int)$r['scope_space_id'],
+        'trigger'=>json_decode($r['trigger'],true), 'actions'=>json_decode($r['actions'],true), 'press_scope'=>$r['press_scope']];
+}
+function community_automation_out(array $r): array
+{
+    $rule=community_automation_rule($r); $next=null;
+    $now=new DateTimeImmutable('now',new DateTimeZone('Asia/Seoul'));
+    if ($r['is_enabled'] && $r['kind']==='recurring') {
+        $candidate=Automation::latestSlot($rule['trigger'],$now);
+        $pending=$candidate>=new DateTimeImmutable($r['created_at'])
+            && (($r['last_slot'] ?? null)===null || $candidate>new DateTimeImmutable($r['last_slot']));
+        $next=($pending ? $candidate : Automation::nextSlot($rule['trigger'],$now))->format(DATE_ATOM);
+    } elseif ($r['is_enabled'] && $r['kind']==='due_reminder') {
+        $candidate=$now->setTime(9,0);
+        $next=($candidate>$now ? $candidate : $candidate->modify('+1 day'))->format(DATE_ATOM);
+    }
+    $last=($r['last_status'] ?? null)===null ? null :
+        ['status'=>$r['last_status'],'started_at'=>$r['last_started_at'],'undone_at'=>$r['last_undone_at']];
+    return array_merge($rule, ['id'=>$r['public_id'],'is_enabled'=>$r['is_enabled'],
+        'last_dry_run_at'=>$r['last_dry_run_at'],'updated_at'=>$r['updated_at'],'denied_streak'=>(int)$r['denied_streak'],
+        'next_run_at'=>$next,'last_result'=>$last]);
+}
+/** Only a source currently readable without privilege may appear as a repeat-page link. */
+function community_automation_repeat_info(int $pageId, array $u): ?array
+{
+    $sql=<<<'SQL'
+        SELECT a.name,r.steps,p.public_id AS created_page_uuid
+        FROM community.automation_runs r JOIN community.automations a ON a.id=r.automation_id
+        JOIN community.pages p ON p.id=ANY(r.created_page_ids)
+        WHERE p.id=CAST(:id AS bigint) AND NOT r.dry_run ORDER BY r.id DESC LIMIT 1
+        SQL;
+    $row=Db::instance()->run($sql,[':id'=>$pageId])->fetch();
+    if (!is_array($row)) { return null; }
+    $source=null;
+    // The saved successful step is immutable; editing the rule must not rewrite history.
+    foreach (json_decode($row['steps'],true) as $step) {
+        if (($step['type'] ?? '')!=='create_page' || ($step['status'] ?? '')!=='ok'
+            || ($step['created_page'] ?? null)!==$row['created_page_uuid']) { continue; }
+        $snapshot=$step['source'] ?? [];
+        if (isset($snapshot['page'])) {
+            $p=community_page_row($snapshot['page'],(int)$u['id']);
+            if ($p!==null && CommunityAuthz::decideMentionTarget($u+['is_active'=>true],$p)[0]) {
+                $source=['kind'=>'page','id'=>$p['public_id'],'title'=>$p['title'],
+                    'url'=>Http::communityUrl('/p/'.$p['public_id'])];
+            }
+        } elseif (isset($snapshot['template'])) {
+            $t=community_template_row($snapshot['template']);
+            if ($t!==null && CommunityAuthz::decideTemplateRead($u,$t,community_template_db_page($t,(int)$u['id']))[0]) {
+                $source=['kind'=>'template','id'=>$t['public_id'],'title'=>$t['name'],
+                    'url'=>Http::communityUrl('/?template='.$t['public_id'])];
+            }
+        }
+        break;
+    }
+    return ['name'=>$row['name'],'source'=>$source];
+}
+function community_automation_owned(string $id, array $u): array
+{
+    $row = community_automation_row($id);
+    if ($row === null || !CommunityAuthz::decideAutomationManage($u,$row)[0]) { Http::error(404,Http::MSG_NOT_FOUND); }
+    return $row;
+}
+/** Ordinary source/parent gates; no administrator-only read may drive copied pages. */
+function community_automation_plan(array $a, array $u, DateTimeImmutable $now): array
+{
+    $me = (int)$u['id']; $template=isset($a['source']['template']);
+    $source=$template ? community_template_row($a['source']['template']) : community_page_row($a['source']['page'],$me);
+    $templateDb=$template && $source!==null ? community_template_db_page($source,$me) : null;
+    if ($source===null || ($template
+        ? !CommunityAuthz::decideTemplateRead($u,$source,$templateDb)[0]
+        : (!CommunityAuthz::decideMentionTarget($u+['is_active'=>true],$source)[0] || $source['page_kind']!=='procedure'))) {
+        throw new InvalidArgumentException('source_denied');
+    }
+    $parentUuid=$a['parent'];
+    // 7-B: database templates always create rows in their own database, including omitted parents.
+    if ($template && $source['scope']==='database') {
+        if ($templateDb===null || ($parentUuid!==null && $parentUuid!==$templateDb['public_id'])) { throw new InvalidArgumentException('template_db_mismatch'); }
+        $parentUuid=$templateDb['public_id'];
+    }
+    $parent=$parentUuid===null ? null : community_page_row($parentUuid,$me);
+    if ($parentUuid!==null && ($parent===null || !CommunityAuthz::decidePageChange($u,$parent)[0])) { throw new InvalidArgumentException('parent_denied'); }
+    if ($parent!==null && ($parent['space_kind']==='board' || $parent['database_id']!==null || community_page_depth((int)$parent['id'])>=CommunityAuthz::MAX_DEPTH)) { throw new InvalidArgumentException('parent_shape'); }
+    if (!$template && ($parent===null || !in_array((int)$parent['id'],community_subtree_live_ids((int)$source['id']),true))) { throw new InvalidArgumentException('source_scope'); }
+    $space=$parent===null ? community_my_personal_space($me) : community_space_row((int)$parent['space_id']);
+    if ($space===null || $space['kind']==='board') { throw new InvalidArgumentException('space_denied'); }
+    // C:T-405: an editable parent in a different team does not widen a team template.
+    if ($template && $source['scope']==='team' && $space['kind']==='team' && (int)$space['team_id']!==(int)$source['team_id']) { throw new InvalidArgumentException('template_scope'); }
+    $rowDbId=null; $rowProps=null;
+    if ($parent!==null && $parent['dbself_public_id']!==null) {
+        $dbInfo=community_db_row($parent['dbself_public_id']);
+        if ($dbInfo===null) { throw new InvalidArgumentException('parent_denied'); }
+        $rowDbId=(int)$dbInfo['id'];
+        if (community_db_row_count($rowDbId)>=DbProps::MAX_ROWS) { throw new InvalidArgumentException('too_many_rows'); }
+        $rowProps=$template && $source['scope']==='database'
+            ? community_template_props(community_db_schema_of($dbInfo['schema']),$source['properties']) : [];
+    }
+    [$doc]=Doc::templateBody(json_decode($source['doc'],true));
+    $doc=Doc::freshIds($doc);
+    if (!Doc::validate($doc,COMMUNITY_DOC_STAGE)['ok']) { throw new InvalidArgumentException('document_invalid'); }
+    return ['title'=>Automation::title($a['title_pattern'],$source['title'],$now),'parent_title'=>$parent['title'] ?? null,
+        'parent'=>$parent,'space'=>$space,'doc'=>$doc,'status'=>$a['status'] ?? null,
+        'database_id'=>$rowDbId,'properties'=>$rowProps,'icon'=>$template ? $source['icon'] : null,
+        'due'=>isset($a['due_in_days']) ? $now->modify('+' . $a['due_in_days'] . ' days')->format('Y-m-d') : null];
+}
+function community_automation_scope(array $rule, array $u, bool $validateActions=true): array
+{
+    $page = null; $spaceId = null;
+    if (($rule['scope_page_id'] ?? null) !== null) {
+        $page = community_page_row($rule['scope_page_id'],(int)$u['id']);
+        if ($page === null || !CommunityAuthz::decidePageChange($u,$page)[0]) { throw new InvalidArgumentException('scope_denied'); }
+        if (in_array($rule['kind'],['on_status','due_reminder'],true)) {
+            if (!(($page['space_kind']==='personal' && (int)$page['space_owner_user_id']===(int)$u['id'])
+                || ($page['space_kind']==='team' && (int)$page['space_team_id']===(int)($u['team_id'] ?? 0)))) { throw new InvalidArgumentException('scope_owner_required'); }
+        }
+    }
+    if (($rule['scope_space_id'] ?? null) !== null) {
+        $space = community_space_row((int)$rule['scope_space_id']);
+        if ($space === null || !(($space['kind']==='personal' && (int)$space['owner_user_id']===(int)$u['id'])
+            || ($space['kind']==='team' && (int)$space['team_id']===(int)($u['team_id'] ?? 0)))) { throw new InvalidArgumentException('scope_denied'); }
+        $spaceId = (int)$space['id'];
+    }
+    foreach ($validateActions ? $rule['actions'] : [] as $a) {
+        if ($a['type']==='create_page') { community_automation_plan($a,$u,new DateTimeImmutable('now',new DateTimeZone('Asia/Seoul'))); }
+        if (in_array($rule['kind'],['on_status','due_reminder'],true) && ($a['type']!=='notify' || $a['text_key']!==($rule['kind']==='on_status' ? 'review_requested':'due_tomorrow'))) { throw new InvalidArgumentException('fixed_rule'); }
+    }
+    return [$page === null ? null : (int)$page['id'],$spaceId];
+}
+function community_automation_create_page(array $plan, array $u, string $automationId, string $runId): array
+{
+    $db = Db::instance(); $uuid = tbox_uuid_v4(); $space=$plan['space']; $parent=$plan['parent']; $extract=Doc::extract($plan['doc']);
+    if ($plan['database_id']!==null) {
+        $currentSchema=$db->run('SELECT schema FROM community.databases WHERE id=CAST(:db AS bigint) FOR UPDATE'
+            ,[':db'=>$plan['database_id']])->fetchColumn();
+        $plan['properties']=community_template_props(community_db_schema_of($currentSchema),$plan['properties']);
+        if (community_db_row_count($plan['database_id'])>=DbProps::MAX_ROWS) { throw new InvalidArgumentException('too_many_rows'); }
+    }
+    $visibility = $space['kind']==='personal' && $parent !== null ? CommunityAuthz::baseVisibility($parent) : 'private';
+    $sql=<<<'SQL'
+      INSERT INTO community.pages(public_id,space_id,parent_page_id,position,title,visibility,doc,plain_text,block_count,author_id,last_edited_by,status,due_date,database_id,properties,icon,search_tsv)
+      VALUES(CAST(:uuid AS uuid),:space,:parent,:pos,:title,:visibility,CAST(:doc AS jsonb),:plain,:blocks,:user,:editor,:status,CAST(:due AS date),CAST(:dbid AS bigint),CAST(:props AS jsonb),:icon,strip(to_tsvector('simple',:search))) RETURNING id
+      SQL;
+    $pid=(int)$db->run($sql,[':uuid'=>$uuid,':space'=>(int)$space['id'],':parent'=>$parent['id'] ?? null,
+        ':pos'=>community_next_position((int)$space['id'],$parent===null ? null:(int)$parent['id']),':title'=>$plan['title'],':visibility'=>$visibility,
+        ':doc'=>json_encode($plan['doc'],JSON_UNESCAPED_UNICODE|JSON_THROW_ON_ERROR),':plain'=>$extract['plain_text'],':blocks'=>count($extract['blocks']),
+        ':user'=>(int)$u['id'],':editor'=>(int)$u['id'],':status'=>$plan['status'],':due'=>$plan['due'],
+        ':dbid'=>$plan['database_id'],':props'=>$plan['properties']===null ? null : json_encode($plan['properties']===[] ? new stdClass() : $plan['properties'],JSON_THROW_ON_ERROR),':icon'=>$plan['icon'],
+        ':search'=>community_search_text($plan['title'],$extract['plain_text'])])->fetchColumn();
+    community_rewrite_derived($pid,$extract);
+    Audit::allow('page.create',['target_type'=>'page','target_id'=>$pid,'target_name'=>community_target_title($plan['title']),
+        'detail'=>['automation_id'=>$automationId,'run_id'=>$runId,'space_kind'=>$space['kind']]]);
+    return community_page_row($uuid,(int)$u['id']);
+}
+/** Same executor for dry-run, HTTP button presses and CLI. All writes, including run log, commit together. */
+function community_automation_execute(array $initial, int $executorId, bool $dry, ?DateTimeImmutable $slot=null, ?array $eventPage=null, ?int $eventActor=null, ?array $requestUser=null, ?DateTimeImmutable $clock=null, ?int $pageBudget=null, ?string $expectedKind=null): array
+{
+    $db=Db::instance(); $db->begin();
+    try {
+        $db->run('SELECT id FROM community.automations WHERE id=CAST(:id AS bigint) FOR UPDATE'
+,[':id'=>(int)$initial['id']]);
+        $r=community_automation_row($initial['public_id']);
+        if ($r===null || $r['deleted_at']!==null || (!$dry && !$r['is_enabled'])) { throw new InvalidArgumentException('disabled'); }
+        if ($expectedKind!==null && $r['kind']!==$expectedKind) { $db->commit(); return ['skipped'=>true,'reason'=>'trigger_changed']; }
+        $u=$db->run('SELECT id,username,display_name,role,team_id,is_active,expires_at FROM users WHERE id=CAST(:id AS bigint) FOR SHARE'
+,[':id'=>$executorId])->fetch();
+        if (!is_array($u)) { throw new InvalidArgumentException('executor_missing'); }
+        if ($requestUser !== null) {
+            if ($u['role'] !== ($requestUser['real_role'] ?? $requestUser['role'])) { throw new InvalidArgumentException('executor_changed'); }
+            $u['role']=$requestUser['role'];
+        }
+        if (PHP_SAPI==='cli') { Audit::automationActor($executorId); }
+        $now=($clock ?? new DateTimeImmutable('now',new DateTimeZone('Asia/Seoul')))->setTimezone(new DateTimeZone('Asia/Seoul'));
+        if ($slot!==null && !$dry && $db->run('SELECT 1 FROM community.automation_runs WHERE automation_id=:aid AND slot=CAST(:slot AS timestamptz) AND NOT dry_run'
+,[':aid'=>(int)$r['id'],':slot'=>$slot->format(DATE_ATOM)])->fetchColumn()) { $db->commit(); return ['skipped'=>true]; }
+        if ($r['kind']==='button' && !$dry && $db->run("SELECT 1 FROM community.automation_runs WHERE automation_id=:aid AND run_by=:uid AND NOT dry_run AND started_at>now()-interval '10 seconds'"
+,[':aid'=>(int)$r['id'],':uid'=>$executorId])->fetchColumn()) { throw new InvalidArgumentException('duplicate_press'); }
+        $active=$u['is_active'] && ($u['expires_at']===null || strtotime($u['expires_at'])>time()) && Authz::canCommunityWrite($u);
+        $runId=tbox_uuid_v4(); $steps=[]; $pages=[]; $publicPages=[]; $notices=[]; $wouldCreate=[]; $wouldNotify=[]; $denied=0;
+        $rule=community_automation_rule($r);
+        if (!$dry && $pageBudget!==null && count(array_filter($rule['actions'],static fn(array $a): bool => $a['type']==='create_page'))>$pageBudget) {
+            $db->commit(); return ['skipped'=>true,'deferred'=>true];
+        }
+        // Recheck scope for non-button triggers on every invocation. Button caller separately gates its bound page.
+        $scopeAllowed=true;
+        if ($r['kind']!=='button') {
+            try { community_automation_scope($rule,$u,false); } catch (InvalidArgumentException $e) { $scopeAllowed=false; }
+        }
+        if ($r['kind']==='button' && !$dry) {
+            $bound=community_page_row($r['scope_page_uuid'], $executorId);
+            if ($bound===null || !CommunityAuthz::decidePageRead($u,$bound)[0] || !($r['press_scope']==='owner' ? (int)$r['owner_user_id']===$executorId : CommunityAuthz::decidePageChange($u,$bound)[0])) { throw new InvalidArgumentException('button_denied'); }
+        }
+        $eventValid=true;
+        if ($eventPage!==null) {
+            $db->run('SELECT id FROM community.pages WHERE public_id=CAST(:uuid AS uuid) FOR SHARE'
+                , [':uuid'=>$eventPage['public_id']]);
+            $eventPage=community_page_row($eventPage['public_id'], $executorId);
+            $eventValid=$eventPage!==null && CommunityAuthz::decideMentionTarget($u,$eventPage)[0]
+                && ((int)($r['scope_page_id'] ?? 0)===(int)$eventPage['id'] || (int)($r['scope_space_id'] ?? 0)===(int)$eventPage['space_id']);
+            if ($eventValid && $r['kind']==='on_status') { $eventValid=$eventPage['status']==='review'; }
+            if ($eventValid && $r['kind']==='due_reminder') { $eventValid=$eventPage['due_date']===$now->modify('+1 day')->format('Y-m-d') && !in_array($eventPage['status'],['done','hold'],true); }
+        }
+        $lastPage=$eventPage;
+        foreach ($rule['actions'] as $a) {
+            try {
+                if (!$active || !$scopeAllowed || !$eventValid) { throw new InvalidArgumentException('executor_denied'); }
+                if ($a['type']==='create_page') {
+                    if (count($pages)>=50 || count($wouldCreate)>=50) { throw new InvalidArgumentException('page_limit'); }
+                    $plan=community_automation_plan($a,$u,$slot ?? $now);
+                    $wouldCreate[]=['title'=>$plan['title'],'parent_title'=>$plan['parent_title']];
+                    if (!$dry) { $lastPage=community_automation_create_page($plan,$u,$r['public_id'],$runId); $pages[]=(int)$lastPage['id']; $publicPages[]=['id'=>$lastPage['public_id'],'title'=>$lastPage['title']]; }
+                } else {
+                    $targetPage=$lastPage;
+                    if ($targetPage===null && $r['scope_page_uuid']!==null) { $targetPage=community_page_row($r['scope_page_uuid'],$executorId); }
+                    $recipient=$r['owner_user_id'];
+                    if ($eventPage!==null) { $recipient=$eventPage['space_kind']==='personal' ? $eventPage['space_owner_user_id']:$eventPage['author_id']; }
+                    $recipientUser=community_user_by_id((int)$recipient);
+                    if ($targetPage!==null && ($recipientUser===null || !CommunityAuthz::decideMentionTarget($recipientUser,community_page_row($targetPage['public_id'],(int)$recipient) ?? [])[0])) { throw new InvalidArgumentException('recipient_denied'); }
+                    $wouldNotify[]=(string)($recipientUser['display_name'] ?: $recipientUser['username']);
+                    if (!$dry && $targetPage!==null) {
+                        if ($r['kind']==='due_reminder' && $db->run("SELECT 1 FROM community.notifications WHERE user_id=:uid AND page_id=:pid AND kind='due_tomorrow' AND created_at >= CAST(:day AS date)::timestamptz"
+,[':uid'=>(int)$recipient,':pid'=>(int)$targetPage['id'],':day'=>$now->format('Y-m-d')])->fetchColumn()) { $steps[]=['type'=>$a['type'],'status'=>'skipped','reason'=>'already_notified']; continue; }
+                        $notificationId=null;
+                        if (community_notify((int)$recipient,$a['text_key'],$targetPage,null,$eventActor,$notificationId)) {
+                            $notices[]=$notificationId;
+                        }
+                    }
+                }
+                $step=['type'=>$a['type'],'status'=>'ok'];
+                if ($a['type']==='create_page' && !$dry) { $step['source']=$a['source']; $step['created_page']=$lastPage['public_id']; }
+                $steps[]=$step;
+            } catch (InvalidArgumentException $e) { $denied++; $steps[]=['type'=>$a['type'],'status'=>'denied','reason'=>$e->getMessage()]; }
+        }
+        $status=$denied===0 ? 'ok':($denied===count($rule['actions']) ? 'denied':'partial');
+        $sql=<<<'SQL'
+          INSERT INTO community.automation_runs(public_id,automation_id,run_by,trigger_kind,slot,dry_run,status,steps,created_page_ids,notification_ids)
+          VALUES(CAST(:uuid AS uuid),:aid,:uid,:kind,CAST(:slot AS timestamptz),CAST(:dry AS boolean),:status,CAST(:steps AS jsonb),CAST(:pages AS bigint[]),CAST(:notifications AS bigint[]))
+          SQL;
+        $db->run($sql,[':uuid'=>$runId,':aid'=>(int)$r['id'],':uid'=>$executorId,':kind'=>$r['kind'],':slot'=>$slot?->format(DATE_ATOM),':dry'=>$dry?'true':'false',':status'=>$status,
+            ':steps'=>json_encode($steps,JSON_THROW_ON_ERROR),':pages'=>'{'.implode(',',$pages).'}',':notifications'=>'{'.implode(',',$notices).'}']);
+        if ($dry) { $db->run('UPDATE community.automations SET last_dry_run_at=clock_timestamp() WHERE id=:id'
+,[':id'=>(int)$r['id']]); }
+        else {
+            $streak=$denied>0 ? (int)$r['denied_streak']+1:0;
+            $disable=!$active || $streak>=3;
+            $db->run('UPDATE community.automations SET denied_streak=:streak,is_enabled=CASE WHEN CAST(:disable AS boolean) THEN false ELSE is_enabled END WHERE id=:id'
+,[':streak'=>$streak,':disable'=>$disable?'true':'false',':id'=>(int)$r['id']]);
+            if ($denied>0) {
+                $kind=$disable?'automation_disabled':'automation_denied';
+                $already=$db->run("SELECT 1 FROM community.automation_runs WHERE automation_id=:id AND NOT dry_run AND public_id<>CAST(:uuid AS uuid) AND status IN ('partial','denied') AND started_at>=CURRENT_DATE"
+,[':id'=>(int)$r['id'],':uuid'=>$runId])->fetchColumn();
+                if (!$already || $disable) {
+                    // The owner can inspect their rule even after losing the source. No source ID/title is copied.
+                    $db->run('INSERT INTO community.notifications(user_id,kind,page_id,comment_id,actor_id) VALUES(:uid,:kind,NULL,NULL,NULL)',
+                        [':uid'=>(int)$r['owner_user_id'],':kind'=>$kind]);
+                }
+            }
+        }
+        $ctx=['target_type'=>'automation','target_id'=>(int)$r['id'],'target_name'=>community_target_title($r['name']),'detail'=>['automation_id'=>$r['public_id'],'run_id'=>$runId]];
+        if ($status==='denied') { Audit::deny('automation.run','denied',$ctx); }
+        else { Audit::allow('automation.run',$ctx,$status==='partial'?'partial':null); }
+        $db->commit();
+        return ['id'=>$runId,'status'=>$status,'dry_run'=>$dry,'steps'=>$steps,'would_create'=>$wouldCreate,'would_notify'=>$wouldNotify,'created_pages'=>$publicPages];
+    } catch (Throwable $e) { $db->rollback(); throw $e; }
+    finally { if (PHP_SAPI==='cli') { Audit::automationActor(null); } }
+}
+
+/** Button references retain immutable binding semantics across body edits. */
+function community_doc_buttons(array $doc): array
+{
+    $out=[];
+    $walk=static function(array $blocks) use (&$walk,&$out): void {
+        foreach ($blocks as $b) {
+            if (!is_array($b)) { continue; }
+            if (($b['type'] ?? '')==='button') { $out[(string)$b['id']]=(string)$b['automation_id']; }
+            if (isset($b['children']) && is_array($b['children'])) { $walk($b['children']); }
+        }
+    };
+    $walk($doc['blocks'] ?? []); return $out;
+}
+function community_buttons_ok(array $doc, array $old, string $pageId, array $u): bool
+{
+    $existing=community_doc_buttons($old);
+    foreach (community_doc_buttons($doc) as $blockId=>$id) {
+        if (($existing[$blockId] ?? null)===$id) { continue; }
+        $r=community_automation_row($id);
+        if ($r===null || !CommunityAuthz::decideAutomationManage($u,$r)[0] || $r['kind']!=='button' || $r['scope_page_uuid']!==$pageId) { return false; }
+    }
+    return true;
+}
+function community_button_map(array $doc, array $page, array $u): array
+{
+    $out=[];
+    foreach (array_unique(array_values(community_doc_buttons($doc))) as $id) {
+        $r=community_automation_row($id);
+        $can=$r!==null && $r['kind']==='button' && $r['deleted_at']===null && $r['is_enabled'] && $r['scope_page_uuid']===$page['public_id'] && Authz::canCommunityWrite($u)
+            && ($r['press_scope']==='owner' ? (int)$r['owner_user_id']===(int)$u['id'] : CommunityAuthz::decidePageChange($u,$page)[0]);
+        $out[$id]=['can_press'=>$can,'reason'=>$can?null:'누를 수 없음'];
+    }
+    return $out===[] ? []:$out;
 }

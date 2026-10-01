@@ -10774,7 +10774,7 @@ function bootPage(page) {
            (type="module") 가 맡는다. 이 두 키를 여기서 무시하지 않으면 아래 갈래가 없는 채로
            흘러가므로 지금도 아무 일이 없지만, 나중에 t-box 화면 키가 늘 때 섞이지 않도록
            **뜻을 코드에 적어 둔다**. */
-        if (page === 'community-home' || page === 'community-page' || page === 'community-board') {
+        if (page === 'community-home' || page === 'community-page' || page === 'community-board' || page === 'community-today') {
           return null;
         }
 

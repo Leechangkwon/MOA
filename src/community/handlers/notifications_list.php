@@ -15,9 +15,10 @@ declare(strict_types=1);
 
 $db = Db::instance();
 $me = (int) $user['id'];
+community_expiry_notifications($me);
 
 $sqlCount = <<<'SQL'
-    SELECT count(*) AS n FROM community.notifications WHERE user_id = CAST(:me AS bigint) AND read_at IS NULL
+    SELECT count(*) AS n FROM community.notifications WHERE user_id = CAST(:me AS bigint) AND read_at IS NULL AND retracted_at IS NULL
     SQL;
 $countRow = $db->run($sqlCount, [':me' => $me])->fetch();
 $unread   = is_array($countRow) ? (int) $countRow['n'] : 0;
@@ -34,7 +35,7 @@ $sql = <<<'SQL'
       LEFT JOIN community.pages p    ON p.id = n.page_id
       LEFT JOIN community.comments c ON c.id = n.comment_id
       LEFT JOIN public.users a       ON a.id = n.actor_id
-     WHERE n.user_id = CAST(:me AS bigint)
+     WHERE n.user_id = CAST(:me AS bigint) AND n.retracted_at IS NULL
      ORDER BY n.created_at DESC, n.id DESC
      LIMIT 50
     SQL;
@@ -62,6 +63,8 @@ foreach ($db->run($sql, [':me' => $me])->fetchAll() as $n) {
         'read'       => $n['read_at'] !== null,
         // 지금도 볼 수 있을 때만 제목·주소 — 아니면 null(화면은 「볼 수 없는 페이지」)
         'page'       => $page,
+        // Rule status is safe without retaining any inaccessible document title.
+        'automation_status' => $n['page_public_id'] === null && in_array($n['kind'], ['automation_denied', 'automation_disabled'], true),
         'comment_id' => $page !== null && $n['comment_public_id'] !== null ? (string) $n['comment_public_id'] : null,
         'actor'      => $n['actor_name'] === null ? null : [
             'username'     => (string) $n['actor_name'],

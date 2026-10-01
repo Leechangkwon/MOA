@@ -152,6 +152,12 @@ final class DocRender
      */
     private static function block(array $block, array $rootBlocks, array $ctx = []): string
     {
+        if (($ctx['export'] ?? false) === true || ($ctx['print'] ?? false) === true) {
+            $resource = self::exportResource($block, $rootBlocks, $ctx);
+            if ($resource !== null) {
+                return $resource;
+            }
+        }
         $type  = (string) $block['type'];
         $id    = isset($block['id']) && is_string($block['id']) ? $block['id'] : '';
         $idAttr = $id === '' ? '' : ' id="block-' . self::esc($id) . '"';
@@ -161,6 +167,10 @@ final class DocRender
             : '';
 
         switch ($type) {
+            case 'button':
+                $aid = (string) ($block['automation_id'] ?? '');
+                $can = ($ctx['buttons'][$aid]['can_press'] ?? false) === true;
+                return '<button type="button" class="btn"' . $idAttr . ' data-automation-id="' . self::esc($aid) . '"' . ($can ? '' : ' disabled') . '>' . self::esc((string) ($block['label'] ?? '')) . '</button>';
             case 'paragraph':
                 return '<p class="' . self::cls('doc-p', $block) . '"' . $idAttr . '>' . $text . '</p>' . $kids;
 
@@ -239,7 +249,8 @@ final class DocRender
 
             // 토글 — 펼치고 접는 것은 `<details>` 가 한다(스크립트 0). 하위 블록은 **안에** 들어간다.
             case 'toggle':
-                return '<details class="' . self::cls('doc-toggle', $block) . '"' . $idAttr . '>'
+                return '<details class="' . self::cls('doc-toggle', $block) . '"' . $idAttr
+                     . ((($ctx['print'] ?? false) === true || ($ctx['export'] ?? false) === true) ? ' open' : '') . '>'
                      . '<summary class="doc-toggle__summary">' . $text . '</summary>'
                      . '<div class="doc-toggle__body">' . $kids . '</div></details>';
 
@@ -503,6 +514,11 @@ final class DocRender
             return $unknown;
         }
         if ($value['kind'] === 'page') {
+            if (($ctx['export'] ?? false) === true || ($ctx['print'] ?? false) === true) {
+                $href = DocMarkdown::safeHref($ctx['page_href'][$value['id']] ?? null);
+                return $href === null ? $unknown : ['@' . $entry['label'],
+                    '<a class="doc-mention" href="' . self::esc($href) . '">', '</a>'];
+            }
             return ['@' . $entry['label'],
                     '<a class="doc-mention" href="' . self::esc(Http::communityUrl('/p/' . (string) $value['id'])) . '">', '</a>'];
         }
@@ -557,6 +573,14 @@ final class DocRender
                         continue;
                     }
                     $href = $value['href'];
+                    if ((($ctx['export'] ?? false) === true || ($ctx['print'] ?? false) === true)
+                        && str_starts_with($href, 'page:')) {
+                        $mapped = Doc::schemeOk($href)
+                            ? DocMarkdown::safeHref($ctx['page_href'][substr($href, 5)] ?? null) : null;
+                        $inner = $mapped === null ? self::CHILD_PAGE_UNREADABLE
+                            : '<a class="doc-link" href="' . self::esc($mapped) . '">' . $inner . '</a>';
+                        continue;
+                    }
                     // ★ 그리기 직전 스킴 재검사 (ARCH 12.4). 통과하지 못하면 링크를 만들지 않고
                     //   글자만 남긴다 — 「모르는 주소」는 주소가 아니라 글자다.
                     if (!Doc::schemeOk($href)) {
@@ -586,5 +610,77 @@ final class DocRender
     private static function esc(string $v): string
     {
         return htmlspecialchars($v, ENT_QUOTES, 'UTF-8');
+    }
+
+    /** Export/print resources use pre-authorized maps; normal rendering stays identical. */
+    private static function exportResource(array $block, array $root, array $ctx): ?string
+    {
+        $type = $block['type'] ?? '';
+        if ($type === 'child_page' || $type === 'link_to_page') {
+            $id = is_string($block['page_id'] ?? null) ? $block['page_id'] : '';
+            $entry = $ctx[$type === 'child_page' ? 'child_titles' : 'link_titles'][$id] ?? null;
+            $href = DocMarkdown::safeHref($ctx['page_href'][$id] ?? null);
+            if (!is_array($entry) || $href === null) {
+                return '<p>' . self::CHILD_PAGE_UNREADABLE . '</p>';
+            }
+            $label = (string) ($entry['icon'] ?? '') . ' ' . (string) ($entry['title'] ?? '');
+            return '<p><a href="' . self::esc($href) . '">' . self::esc(trim($label)) . '</a></p>';
+        }
+        if ($type === 'file' || $type === 'image') {
+            $ref = is_string($block['file_ref'] ?? null) && str_starts_with($block['file_ref'], 'tbox:')
+                ? substr($block['file_ref'], 5) : '';
+            $entry = $ctx['file_titles'][$ref] ?? null;
+            $href = DocMarkdown::safeHref($ctx['file_href'][$ref] ?? null);
+            if (!is_array($entry) || $href === null) {
+                return '<p>' . self::FILE_UNREADABLE . '</p>';
+            }
+            // Print alone may load the same-site preview, which rechecks file access.
+            if ($type === 'image' && ($ctx['print'] ?? false) === true && ($entry['image'] ?? false) === true) {
+                return null;
+            }
+            $label = ($type === 'image' ? '그림: ' : '파일: ') . (string) ($entry['name'] ?? '');
+            if ($type === 'file') {
+                $label .= ' (' . self::sizeText((int) ($entry['size'] ?? 0)) . ')';
+            }
+            $caption = self::rich(is_array($block['caption'] ?? null) ? $block['caption'] : [], $ctx);
+            return '<p><a href="' . self::esc($href) . '">' . self::esc($label) . '</a></p>'
+                . ($caption === '' ? '' : '<p>' . $caption . '</p>');
+        }
+        if ($type === 'embed') {
+            $url = is_string($block['url'] ?? null) ? $block['url'] : '';
+            $host = Doc::embedHost($url);
+            if ($host === null || !in_array($host, $ctx['embeds']['hosts'] ?? [], true)) {
+                return '<p>' . self::EMBED_BLOCKED . '</p>';
+            }
+            $caption = self::rich(is_array($block['caption'] ?? null) ? $block['caption'] : [], $ctx);
+            return '<p><a href="' . self::esc($url) . '" rel="noopener noreferrer">'
+                . self::esc('임베드: ' . $host) . '</a></p>' . ($caption === '' ? '' : '<p>' . $caption . '</p>');
+        }
+        if ($type === 'toc') {
+            return '<nav class="doc-toc"><ul>' . self::exportHeadings($root, $ctx) . '</ul></nav>';
+        }
+        if ($type === 'button') {
+            return '<p>' . self::esc('[버튼: ' . (string) ($block['label'] ?? '') . ']') . '</p>';
+        }
+        return null;
+    }
+
+    private static function exportHeadings(array $blocks, array $ctx): string
+    {
+        $out = '';
+        foreach ($blocks as $block) {
+            if (!is_array($block)) {
+                continue;
+            }
+            if (($block['type'] ?? '') === 'heading') {
+                // The normal plain-text projection contains cached labels. Resolve first.
+                $label = strip_tags(self::rich(is_array($block['text'] ?? null) ? $block['text'] : [], $ctx));
+                $out .= '<li><a href="#block-' . self::esc((string) ($block['id'] ?? '')) . '">' . $label . '</a></li>';
+            }
+            if (is_array($block['children'] ?? null)) {
+                $out .= self::exportHeadings($block['children'], $ctx);
+            }
+        }
+        return $out;
     }
 }

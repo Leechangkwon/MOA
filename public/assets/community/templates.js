@@ -11,7 +11,9 @@
  * ★ 미리보기는 읽기 렌더러(`renderDoc`)가 그린다 — 보이는 것과 만들어지는 것이 같다.
  *   글자는 전부 textContent 로 넣는다(HTML 문자열을 넣는 자리가 없다).
  */
-import { renderDoc } from './doc-render.js?v=650963c0b731';
+import { renderDoc } from './doc-render.js?v=767842765b8c';
+
+import { repeatDialog } from './automations.js?v=767842765b8c';
 
 const SCOPE_LABELS = {
   site: '사이트 기본',
@@ -54,6 +56,18 @@ export function bindTemplateGallery(d) {
   const previewBack = document.getElementById('template-preview-back');
   const previewUse = document.getElementById('template-preview-use');
   if (!button || !dialog || !tbody) { return; }
+  const repeat = document.createElement('button');
+  repeat.type='button';repeat.className='btn btn--quiet';repeat.textContent='이 템플릿으로 반복 만들기';repeat.hidden=true;
+  previewUse.parentElement.appendChild(repeat);
+  repeat.addEventListener('click', async () => {
+    if (!previewing || repeat.disabled) return;
+    repeat.disabled=true;
+    try {
+      const template = previewing; dialog.close();
+      repeatDialog(d.api, null, { template });
+    } catch (_) { d.setText(msg,d.genericError); }
+    finally { repeat.disabled=false; }
+  });
   let previewing = null;
   let lastLook = null;   // 미리보기를 연 단추 — 「목록으로」 뒤 초점을 돌려준다(독립 검토 L-8)
 
@@ -101,6 +115,7 @@ export function bindTemplateGallery(d) {
       d.show(listWrap, false);
       d.show(preview, true);
       previewUse.disabled = false;
+      repeat.hidden = d.canWrite !== true;
       previewBack.focus();
     }).catch(() => d.setText(msg, d.genericError));
   }
@@ -187,6 +202,12 @@ export function bindTemplateGallery(d) {
     if (lastLook && lastLook.isConnected) { lastLook.focus(); }
   });
   previewUse.addEventListener('click', () => { if (previewing) { use(previewing, previewUse); } });
+  const initialTemplate=new URLSearchParams(window.location.search).get('template');
+  if (initialTemplate && /^[0-9a-f-]{36}$/.test(initialTemplate)) {
+    if (!dialog.open) dialog.showModal();
+    openPreview({id:initialTemplate});
+  }
+
   for (const close of dialog.querySelectorAll('[data-template-close]')) {
     close.addEventListener('click', () => dialog.close());
   }
@@ -279,12 +300,20 @@ export function createRowTemplatePicker(d, select, delButton, msgEl) {
   let dbId = '';
   let byId = {};
   let armed = false;
+  const repeat = document.createElement('button');
+  repeat.type = 'button'; repeat.className = 'btn btn--quiet'; repeat.textContent = '행 템플릿으로 반복 만들기'; repeat.hidden = true;
+  if (select) select.parentElement.appendChild(repeat);
+  repeat.addEventListener('click', () => {
+    const template = select && byId[select.value];
+    if (template) repeatDialog(d.api, null, { template });
+  });
 
   function disarm() { armed = false; if (delButton) { delButton.textContent = '템플릿 지우기'; } }
   function syncDelete() {
     disarm();
     const t = select ? byId[select.value] : null;
     if (delButton) { d.show(delButton, !!t && t.can_delete === true); }
+    repeat.hidden = !t;
   }
 
   function load(id) {
