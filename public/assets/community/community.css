@@ -996,3 +996,6 @@ a.doc-mention { color: var(--accent); text-decoration: none; } a.doc-mention:hov
 @media print {
   #page-more, #page-export-dialog { display:none !important; }
 }
+
+/* Keep long unbroken document titles readable on narrow screens. */
+#page-title { overflow-wrap: anywhere; }
