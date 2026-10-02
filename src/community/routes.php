@@ -48,6 +48,7 @@ require_once __DIR__ . '/DbProps.php';
 require_once __DIR__ . '/Palette.php';
 require_once __DIR__ . '/BriefingText.php';
 require_once __DIR__ . '/Briefing.php';
+require_once __DIR__ . '/Memories.php';
 // Q:F-2 — 검색 색인·검색어 토큰 한 벌(사이트 공통 — t-box 파일 색인도 나중에 같은 파일, 지시서 2.1)
 require_once __DIR__ . '/../SearchText.php';
 
@@ -61,10 +62,31 @@ require_once __DIR__ . '/../SearchText.php';
  * 4-B 범위: 화면 둘 · API 열(4-A 의 여덟 + `GET /api/spaces` + `PATCH /api/pages/{id}/visibility`).
  */
 const COMMUNITY_ROUTES = [
+    // Travel memories: session routes plus a narrow, read-only link capability.
+    ['GET', '/memories', 'memories_page.php', 'community.read'],
+    ['GET', '/memories/u/{username}', 'memories_page.php', 'community.read'],
+    ['GET', '/memories/p/{id}', 'memories_page.php', 'community.read'],
+    ['GET', '/memories/s/{token}', 'memories_shared.php', 'public'],
+    ['GET', '/memories/s/{token}/feed', 'memories_shared.php', 'public'],
+    ['GET', '/memories/s/{token}/media/{id}', 'memories_shared.php', 'public'],
+    ['GET', '/api/memories', 'memories_api.php', 'community.read'],
+    ['POST', '/api/memories', 'memories_api.php', 'community.write'],
+    ['POST', '/api/memories/media', 'memories_api.php', 'community.write'],
+    ['GET', '/api/memories/media/{id}', 'memories_api.php', 'community.read'],
+    ['POST', '/api/memories/links', 'memories_api.php', 'community.write'],
+    ['DELETE', '/api/memories/links', 'memories_api.php', 'community.write'],
+    ['GET', '/api/memories/{id}', 'memories_api.php', 'community.read'],
+    ['PATCH', '/api/memories/{id}', 'memories_api.php', 'community.write'],
+    ['DELETE', '/api/memories/{id}', 'memories_api.php', 'community.write'],
+    ['POST', '/api/memories/{id}/like', 'memories_api.php', 'community.write'],
+    ['DELETE', '/api/memories/{id}/like', 'memories_api.php', 'community.write'],
+    ['GET', '/api/memories/{id}/comments', 'memories_api.php', 'community.read'],
+    ['POST', '/api/memories/{id}/comments', 'memories_api.php', 'community.write'],
     ['GET', '/today', 'today_page.php', 'community.read'],
     ['GET', '/api/briefing', 'briefing.php', 'community.read'],
     // ── 화면 ─────────────────────────────────────────────────
-    ['GET',    '/',                          'home_page.php',       'community.read'],
+    ['GET',    '/',                          'memories_page.php',   'community.read'],
+    ['GET', '/workspace', 'home_page.php', 'community.read'],
     ['GET',    '/p/{id}',                    'page_view.php',       'community.read'],
     ['GET', '/p/{id}/print', 'page_print.php', 'community.write'],
     ['GET', '/api/pages/{id}/export', 'pages_export.php', 'community.write'],
@@ -2829,6 +2851,15 @@ function community_dispatch(string $modulePath, string $method): void
     define('TBOX_ROUTE', $method . ' ' . COMMUNITY_BASE . $routePattern);
 
     $isApi = strpos($modulePath, '/api/') === 0;
+
+    // Public access is restricted to this handler, GET, and the three literal patterns.
+    // memory_links + post visibility + active owner are checked inside the handler.
+    if ($method === 'GET' && $handlerFile === 'memories_shared.php' && $policy === 'public'
+        && in_array($routePattern, ['/memories/s/{token}', '/memories/s/{token}/feed', '/memories/s/{token}/media/{id}'], true)) {
+        require COMMUNITY_HANDLER_DIR . 'memories_shared.php';
+        exit;
+    }
+
 
     /* ─── [2-T] 개인 프로그램 토큰 갈래 (Q:F-8, ARCH 4.8 — `public/index.php` [2-T]·[2-S] 와 같은 순서·같은 함수) ──
      *

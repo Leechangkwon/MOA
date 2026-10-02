@@ -14,6 +14,11 @@
    "slug": "guide-blocks",
    "title": "블록 문서 모델 — 본문은 HTML 이 아니라 JSON",
    "summary": "페이지 본문은 블록 JSON 하나로 저장된다. 허용 목록 파일(`doc-schema.json`) 하나가 검증기·편집기·렌더러의 공통 진실이고, 모르는 것은 조용히 바꾸지 않고 400 이다."
+  },
+  {
+   "slug": "guide-memories",
+   "title": "여행의 조각 — 사진으로 남기는 나의 여행",
+   "summary": "촬영과 앨범 선택, 짧은 글, 개인 피드, 친구에게 보낼 공유 링크, ChatGPT로 추억 다듬기."
   }
  ],
  "stage": [

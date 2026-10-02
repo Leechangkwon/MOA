@@ -2707,3 +2707,9 @@ HTTP 시험(T-77 (a)~(e))은 **미실행** — 운영 DB 에 `files.exec_content
 사용자 요청: F2/명시적 비서 명령은 기존 파일 API를 직접 사용하며 assistant.run/files.rename 신설은 후속으로 분리한다. PATCH name+expected_name만 별도 허용, 개인 read+upload 이상 + 업로더 본인 + 현재 읽기/수정 권한. UUID/바이트/저장 이름/폴더/등급 유지. 409 CAS, 잠금 후 토큰 재검사, 감사 실패 rollback, 설명 PATCH의 현재 이름 색인 재생성.
 
 검증: 임시 PostgreSQL 16 빈 DB + 가짜 파일/claude_ 검토 계정 + 127.0.0.1:8495 HTTP 123 통과/0 실패. 보안 린트0, PHP6파일 문법, 자산37/0, 위키0, nginx 설정 정적 검사0, 패스키 단위137/0, 디자인 허용목록19/0. 운영 계정/원본 복사·운영 DB 변경·MVP 변경0. 상세 명령·HTTP 샘플·배포 상태는 docs/file-rename-handoff.md와 외부 runtime-deployment.json. 브라우저/F2는 서버 세션에서 미검증이며 로컬 담당의31개 시험과 구분한다.
+
+## 여행 기록 추가 작업 — 운영 반영 전
+
+사용자 요청: qaredi 앱에서 촬영·짧은 글·개인 앨범·친구 공유·GPT를 통한 추억 꾸미기. `feat/travel-memories` 작업 범위와 적용 순서는 `docs/travel-memories-directive.md`, `docs/travel-memories-release.md`를 따른다. 커뮤니티 위키 `guide-memories`를 추가했다. 기존 번호 단계의 완료 상태를 바꾸거나 출시 버전을 올리지 않았다.
+
+구현: 여행 피드/개인 페이지, 원본 보존, 미디어 업로드, 서버 공개 범위와 만료 capability, 임시 저장, 댓글·좋아요, ChatGPT 가져가기/결과 반영. 소스 검토와 합성 응답을 쓰는 Chromium 12개 시나리오, JS 구문, 보안 린트는 통과. PHP/DB/nginx 및 위키/공통 회귀 검사는 해당 런타임이 없어 미실행이며 배포 준비 완료를 뜻하지 않는다.

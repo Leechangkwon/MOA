@@ -176,3 +176,11 @@ GRANT UPDATE(taken_at) ON community.automation_queue TO tbox_app;
 GRANT USAGE, SELECT ON SEQUENCE community.automations_id_seq, community.automation_runs_id_seq, community.automation_queue_id_seq TO tbox_app;
 GRANT SELECT ON community.automations, community.automation_runs, community.automation_queue TO tbox_backup;
 GRANT SELECT ON SEQUENCE community.automations_id_seq, community.automation_runs_id_seq, community.automation_queue_id_seq TO tbox_backup;
+
+-- Travel records. Conditional so existing installations can apply grants before the feature migration.
+DO $$ BEGIN
+ IF to_regclass('community.memory_links') IS NOT NULL THEN
+  GRANT SELECT,INSERT,UPDATE,DELETE ON community.memory_posts,community.memory_media,community.memory_likes,community.memory_comments,community.memory_links TO tbox_app;
+  GRANT SELECT ON community.memory_posts,community.memory_media,community.memory_likes,community.memory_comments,community.memory_links TO tbox_backup;
+ END IF;
+END $$;

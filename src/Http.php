@@ -592,6 +592,10 @@ final class Http
                                              'dir' => '/^(asc|desc)$/', 'page' => '/^[1-9][0-9]{0,5}$/'],
             '#^/tbox/(settings|activity)$#' => [],
             '#^/community/$#'            => ['space' => '/^[1-9][0-9]{0,17}$/'],
+            '#^/community/workspace$#' => ['space' => '/^[1-9][0-9]{0,17}$/', 'trash' => '/^1$/'],
+            '#^/community/memories$#' => ['view' => '/^mine$/'],
+            '#^/community/memories/u/[a-z0-9_.-]{3,64}$#' => [],
+            '#^/community/memories/p/' . $uuid . '$#' => [],
             '#^/community/p/' . $uuid . '$#' => ['edit' => '/^1$/'],
             '#^/community/b/[1-9][0-9]{0,8}$#' => [],
         ];

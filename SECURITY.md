@@ -687,3 +687,11 @@
 사용자 요청: F2/명시적 비서 명령은 기존 파일 API를 직접 사용하며 assistant.run/files.rename 신설은 후속으로 분리한다. PATCH name+expected_name만 별도 허용, 개인 read+upload 이상 + 업로더 본인 + 현재 읽기/수정 권한. UUID/바이트/저장 이름/폴더/등급 유지. 409 CAS, 잠금 후 토큰 재검사, 감사 실패 rollback, 설명 PATCH의 현재 이름 색인 재생성.
 
 검증: 임시 PostgreSQL 16 빈 DB + 가짜 파일/claude_ 검토 계정 + 127.0.0.1:8495 HTTP 123 통과/0 실패. 보안 린트0, PHP6파일 문법, 자산37/0, 위키0, nginx 설정 정적 검사0, 패스키 단위137/0, 디자인 허용목록19/0. 운영 계정/원본 복사·운영 DB 변경·MVP 변경0. 상세 명령·HTTP 샘플·배포 상태는 docs/file-rename-handoff.md와 외부 runtime-deployment.json. 브라우저/F2는 서버 세션에서 미검증이며 로컬 담당의31개 시험과 구분한다.
+
+## 여행 기록 소스 검토 — 운영 검증 대기
+
+기존 세션·CSRF·community.read/write 관문 뒤에 여행 API를 둔다. 비공개·소유권은 서버가 판정하고 요청의 owner_user_id를 받지 않는다. 미디어는 실제 MIME과 크기, UUID를 검증해 public 밖 0600 파일로 저장한다. 미디어 응답마다 현재 글 권한과 활성 계정을 확인한다. 소유자만 원본 메모와 원본 파일 목록을 받는다. 외부 공유는 세 GET 경로만 세션 대신 256비트 capability를 검증하며, DB에는 SHA-256만 저장한다. 30일 만료/해제/공개 범위 축소/삭제를 매번 확인한다. 본문과 위치는 textContent, SQL 입력은 바인딩한다. 게시 요청 UUID 재시도와 revision 충돌 검사를 포함한다.
+
+검토 중 보완: 문서 화면 복귀 URL 허용 목록, 잘못된 UUID의 DB 캐스트 전 거부, owner→post→media 잠금 순서, 공개 범위를 좁힐 때 글별 링크 폐기, nginx 이중 CSP 때문에 blob 미리보기가 막히는 문제, 백업 역할의 새 표 읽기 권한과 기존 정합성 검사의 여행 미디어 SHA-256 대조. 감사 등록은 memory.change 한 가지와 operation 상세다. 외부 공유 경로의 nginx 접근 로그는 제외하며 앞단 프록시 로그 제외는 서버 적용 사항이다.
+
+보안 린트 및 브라우저의 실패/재시도·XSS 문자열·읽기 전용 UI 검증을 수행했다. **PHP/PostgreSQL/nginx 실제 실행은 미검증**이다. 브라우저 모의 응답은 서버 인가 검증이 아니다. 실행할 권한/공유/Range/DB/회귀 항목을 `docs/travel-memories-release.md`에 구체적으로 남겼다. 운영 데이터와 실제 서버는 변경하지 않았다.

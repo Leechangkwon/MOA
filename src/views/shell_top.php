@@ -466,7 +466,7 @@ if (!headers_sent()) {
     </dialog>
     <p class="nav-title">내 공간</p>
     <nav class="nav" aria-label="커뮤니티">
-      <a id="nav-community-home" class="<?= $shellNavClass('community-home') ?>" href="<?= Http::communityUrl('/') ?>">
+      <a id="nav-community-home" class="<?= $shellNavClass('community-home') ?>" href="<?= Http::communityUrl('/workspace') ?>">
         <span class="icon" data-icon="files"></span><span>내 공간</span>
       </a>
       <a class="nav__item" href="<?= Http::communityUrl('/automations') ?>"><span class="icon" data-icon="log"></span><span>자동 작업</span></a>
@@ -480,7 +480,7 @@ if (!headers_sent()) {
            「더보기 → 휴지통」에만 있었다. 누르면 커뮤니티 첫 화면의 휴지통 창이 열린다(꼬리표 `trash=1` — 고정 글자, 첫 화면에서는 이동 없이 창만).
            목록은 전과 같이 창구 `GET /community/api/me/trash` 가 주는 것뿐이다. 쓰기 자격이 없는 사람(손님)은 지울 수 없어 늘 비어 있으므로
            「새 페이지」와 같은 값으로 숨긴다(편의 — 창구가 다시 판단한다). -->
-      <a id="nav-community-trash" class="nav__item" href="<?= Http::communityUrl('/') ?>?trash=1"<?= $shellCommunityWrite ? '' : ' hidden' ?>>
+      <a id="nav-community-trash" class="nav__item" href="<?= Http::communityUrl('/workspace') ?>?trash=1"<?= $shellCommunityWrite ? '' : ' hidden' ?>>
         <span class="icon" data-icon="trash"></span><span>내 휴지통</span>
       </a>
       <!-- 팀 공간 (4-B) — 항목은 `editor.js` 가 창구 `GET /community/api/spaces` 의 답으로

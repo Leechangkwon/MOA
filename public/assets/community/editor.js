@@ -40,17 +40,17 @@ import { inputRules, textblockTypeInputRule, InputRule } from './vendor/pm/prose
 import { dropCursor } from './vendor/pm/prosemirror-dropcursor.js?v=5823578fa61a';
 import { gapCursor } from './vendor/pm/prosemirror-gapcursor.js?v=5823578fa61a';
 
-import { renderDoc, embedHost } from './doc-render.js?v=767842765b8c';
-import { createDatabaseView } from './database.js?v=767842765b8c';
-import { bindTemplateGallery, createTemplateSave } from './templates.js?v=767842765b8c';
-import { bindEmbedAdmin } from './embeds.js?v=767842765b8c';
-import { bindPopular } from './popular.js?v=767842765b8c';
-import { bindPalettes } from './palettes.js?v=767842765b8c';
-import { schema, toDoc, fromDoc, uuid4, colorAllowed, schemeOkForEditor, mentionAllowed, editorDomParser, clipboardDomParser, COLORS, BLOCK_TYPES } from './editor-schema.js?v=767842765b8c';
-import { drawAutomationPage, drawAutomationSpace, bindAutomations, loadAutomations } from './automations.js?v=767842765b8c';
-import { drawTrust, bindProcedures } from './procedures.js?v=767842765b8c';
-import { createPageExport } from './export.js?v=767842765b8c';
-import { createDrafts } from './drafts.js?v=767842765b8c';
+import { renderDoc, embedHost } from './doc-render.js?v=fa0603069058';
+import { createDatabaseView } from './database.js?v=fa0603069058';
+import { bindTemplateGallery, createTemplateSave } from './templates.js?v=fa0603069058';
+import { bindEmbedAdmin } from './embeds.js?v=fa0603069058';
+import { bindPopular } from './popular.js?v=fa0603069058';
+import { bindPalettes } from './palettes.js?v=fa0603069058';
+import { schema, toDoc, fromDoc, uuid4, colorAllowed, schemeOkForEditor, mentionAllowed, editorDomParser, clipboardDomParser, COLORS, BLOCK_TYPES } from './editor-schema.js?v=fa0603069058';
+import { drawAutomationPage, drawAutomationSpace, bindAutomations, loadAutomations } from './automations.js?v=fa0603069058';
+import { drawTrust, bindProcedures } from './procedures.js?v=fa0603069058';
+import { createPageExport } from './export.js?v=fa0603069058';
+import { createDrafts } from './drafts.js?v=fa0603069058';
 
 /* ─── 주소와 공통 도우미 ─────────────────────────────────────── */
 
@@ -380,7 +380,7 @@ function currentSpaceId() {
 
 /** 공간 하나의 주소. 개인 공간(기본)은 꼬리표 없이 둔다. */
 function spaceHref(id, kind) {
-  return COMMUNITY_BASE + '/' + (kind === 'personal' ? '' : '?space=' + String(id));
+  return COMMUNITY_BASE + '/workspace' + (kind === 'personal' ? '' : '?space=' + String(id));
 }
 
 /**
@@ -4613,7 +4613,7 @@ function initPage() {
       return { text: sp.name, href: null };
     }
     if (sp && sp.kind !== 'personal') { return { text: '게시판', href: null }; }   // 게시판 이름을 받지 못한 글(창구가 싣지 않음) — 이름을 짓지 않는다
-    return { text: '내 공간', href: COMMUNITY_BASE + '/' };
+    return { text: '내 공간', href: COMMUNITY_BASE + '/workspace' };
   }
 
   /** 경로(breadcrumb) — 「공간 › 부모 › 이 페이지」. 마지막 칸만 링크가 아니다. */
@@ -4928,7 +4928,7 @@ function initPage() {
         return api('GET', '/api/pages/' + pageId).then((again) => {
           if (again.status === 200) { return load().then(() => setText(msg, okText)); }
           // 해제·숨김 뒤 더는 볼 수 없으면(게시판 등급으로만 보던 관리자) 게시판으로 돌아간다.
-          window.location.assign(state.board ? COMMUNITY_BASE + '/b/' + String(state.board.id) : COMMUNITY_BASE + '/');
+          window.location.assign(state.board ? COMMUNITY_BASE + '/b/' + String(state.board.id) : COMMUNITY_BASE + '/workspace');
           return null;
         });
       }
@@ -5746,7 +5746,7 @@ function initPage() {
           visibilityDialog.close();
           return api('GET', '/api/pages/' + pageId).then((again) => {
             if (again.status === 200) { return load(); }
-            window.location.assign(COMMUNITY_BASE + '/');
+            window.location.assign(COMMUNITY_BASE + '/workspace');
             return null;
           });
         })
@@ -5925,7 +5925,7 @@ function initPage() {
                   return load().then(() => setText(msg, '넘겼습니다. 새 소유자: '
                     + personLabel(result.data.to_display_name, result.data.to)));
                 }
-                window.location.assign(COMMUNITY_BASE + '/');
+                window.location.assign(COMMUNITY_BASE + '/workspace');
                 return null;
               });
             }
@@ -6937,7 +6937,7 @@ function initPage() {
         api('DELETE', '/api/pages/' + pageId, {})
           .then((result) => {
             if (result.status === 401) { toLogin(); return; }
-            if (result.status === 200) { window.location.assign(COMMUNITY_BASE + '/'); return; }
+            if (result.status === 200) { window.location.assign(COMMUNITY_BASE + '/workspace'); return; }
             setText(msg, errorMessage(result.data));
             confirmButton.disabled = false;
           })
