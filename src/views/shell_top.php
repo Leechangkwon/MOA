@@ -471,6 +471,7 @@ if (!headers_sent()) {
       </a>
       <a class="nav__item" href="<?= Http::communityUrl('/automations') ?>"><span class="icon" data-icon="log"></span><span>자동 작업</span></a>
       <a class="nav__item" href="<?= Http::communityUrl('/procedures') ?>"><span class="icon" data-icon="files"></span><span>절차서</span></a>
+      <a class="nav__item" href="<?= Http::communityUrl('/suggestions') ?>"<?= $shellCommunityWrite ? '' : ' hidden' ?>><span class="icon" data-icon="files"></span><span>내 제안</span></a>
       <!-- 내 페이지 트리 (5-A′) — editor.js 가 `?tree=1` 의 답으로 채운다 -->
       <div id="nav-community-tree" class="nav-tree-box"></div>
       <button id="nav-community-new" class="nav__item" type="button"<?= $shellCommunityWrite ? '' : ' hidden' ?>>

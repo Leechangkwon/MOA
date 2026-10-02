@@ -549,3 +549,71 @@ DO $$ DECLARE r record; BEGIN
  ALTER TABLE community.notifications ADD CONSTRAINT notifications_kind_check
   CHECK(kind IN ('mention','reply','comment_on_my_page','handover','verify_expired','recurring_created','review_requested','due_tomorrow','automation_denied','automation_disabled'));
 END $$;
+
+-- C:F-46: proposal content is immutable to the application after insertion.
+CREATE TABLE IF NOT EXISTS community.page_suggestions (
+    id BIGSERIAL PRIMARY KEY,
+    public_id UUID NOT NULL UNIQUE,
+    page_id BIGINT NOT NULL REFERENCES community.pages(id),
+    author_id BIGINT NOT NULL REFERENCES public.users(id),
+    base_version INT NOT NULL CHECK (base_version > 0),
+    ops JSONB NOT NULL CHECK (jsonb_typeof(ops) = 'array' AND jsonb_array_length(ops) BETWEEN 1 AND 50),
+    base_blocks JSONB NOT NULL CHECK (jsonb_typeof(base_blocks) = 'object'),
+    note TEXT CHECK (length(note) <= 500),
+    status TEXT NOT NULL DEFAULT 'open' CHECK (status IN ('open','accepted','rejected','stale','withdrawn')),
+    decided_by BIGINT REFERENCES public.users(id),
+    decided_at TIMESTAMPTZ,
+    decision_note TEXT CHECK (length(decision_note) <= 500),
+    applied_version INT,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    CHECK (octet_length(ops::text) + octet_length(base_blocks::text) <= 1048576)
+);
+CREATE INDEX IF NOT EXISTS page_suggestions_page_status ON community.page_suggestions(page_id,status);
+CREATE INDEX IF NOT EXISTS page_suggestions_author_status ON community.page_suggestions(author_id,status);
+DO $$
+DECLARE item record; definition text;
+BEGIN
+    FOR item IN SELECT conname, pg_get_constraintdef(oid) AS def
+                  FROM pg_constraint WHERE conrelid='community.notifications'::regclass
+                   AND contype='c' AND pg_get_constraintdef(oid) LIKE '%kind%'
+    LOOP
+        definition := item.def;
+        IF position('suggestion_new' in definition) = 0 THEN
+            EXECUTE format('ALTER TABLE community.notifications DROP CONSTRAINT %I', item.conname);
+            EXECUTE format('ALTER TABLE community.notifications ADD CONSTRAINT %I CHECK ((%s) OR kind IN (''suggestion_new'',''suggestion_accepted'',''suggestion_rejected'',''suggestion_stale''))',
+                item.conname, substring(definition from 7));
+        END IF;
+    END LOOP;
+END
+$$;
+
+-- Stage 11 adds fixed response anonymity and dashboard kind.
+-- Stage 11: additive and idempotent. Roll back code only; preserve responses and their anonymity.
+ALTER TABLE community.pages ADD COLUMN IF NOT EXISTS form_view_id TEXT;
+ALTER TABLE community.pages ADD COLUMN IF NOT EXISTS form_anonymous BOOLEAN;
+DO $$ DECLARE c record; expression text; BEGIN
+ IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conrelid='community.pages'::regclass AND conname='pages_form_shape_check') THEN
+  ALTER TABLE community.pages ADD CONSTRAINT pages_form_shape_check
+   CHECK ((form_view_id IS NULL AND form_anonymous IS NULL) OR (form_view_id IS NOT NULL AND form_view_id ~ '^v[0-9a-f]{8}$' AND form_anonymous IS NOT NULL));
+ END IF;
+ FOR c IN SELECT conname, pg_get_constraintdef(oid) AS definition FROM pg_constraint
+           WHERE conrelid='community.pages'::regclass AND contype='c' AND pg_get_constraintdef(oid) LIKE '%page_kind%'
+ LOOP
+  IF position('dashboard' in c.definition) = 0 THEN
+   expression := substring(c.definition from 8 for length(c.definition)-8);
+   EXECUTE format('ALTER TABLE community.pages DROP CONSTRAINT %I', c.conname);
+   EXECUTE format('ALTER TABLE community.pages ADD CONSTRAINT %I CHECK ((%s) OR page_kind = ''dashboard'')', c.conname, expression);
+  END IF;
+ END LOOP;
+ FOR c IN SELECT conname, pg_get_constraintdef(oid) AS definition FROM pg_constraint
+           WHERE conrelid='community.notifications'::regclass AND contype='c' AND pg_get_constraintdef(oid) LIKE '%kind%'
+ LOOP
+  IF position('form_response' in c.definition) = 0 THEN
+   expression := substring(c.definition from 8 for length(c.definition)-8);
+   EXECUTE format('ALTER TABLE community.notifications DROP CONSTRAINT %I', c.conname);
+   EXECUTE format('ALTER TABLE community.notifications ADD CONSTRAINT %I CHECK ((%s) OR kind = ''form_response'')', c.conname, expression);
+  END IF;
+ END LOOP;
+END $$;
+CREATE INDEX IF NOT EXISTS pages_form_rate_idx
+ ON community.pages(database_id,form_view_id,author_id,created_at) WHERE form_view_id IS NOT NULL;

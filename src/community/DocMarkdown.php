@@ -227,6 +227,10 @@ final class DocMarkdown
                         }
                     }
                     break;
+                case 'db_view':
+                    $widget=$ctx['db_views'][$block['id']] ?? null;
+                    $out .= self::escape($widget===null ? '[볼 수 없는 데이터베이스]' : '[데이터베이스 보기: ' . $widget['title'] . ' · ' . $widget['name'] . ']') . "\n\n";
+                    break;
                 case 'button':
                     // Stage 9-C exports an inert label, never an automation identifier.
                     $out .= self::escape('[버튼: ' . (string) ($block['label'] ?? '') . ']') . "\n\n";

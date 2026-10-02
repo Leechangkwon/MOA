@@ -226,6 +226,7 @@ final class Doc
         // ─── [3] 재귀 한 벌 ────────────────────────────────────────
         $state = [
             'count'  => 0,
+            'db_views' => 0,
             'ids'    => [],
             'types'  => self::typesForStage($stage),
             'marks'  => self::marksForStage($stage),
@@ -295,6 +296,7 @@ final class Doc
                 continue;
             }
 
+            if ($type==='db_view' && ++$state['db_views'] > 12) { $add($p,'too_many_db_views'); }
             $spec = $s['blocks'][$type];
 
             // ── 키 집합 정확히 (공통 키 + 그 타입의 키) ──
@@ -428,6 +430,9 @@ final class Doc
         $base     = $optional ? substr($shape, 0, -1) : $shape;
 
         switch ($base) {
+            case 'view-id':
+                if (!is_string($value) || preg_match('/^v[0-9a-f]{8}$/',$value)!==1) { $add($p,'bad_id'); }
+                return;
             case 'button-label':
                 if (!is_string($value) || preg_match('//u', $value) !== 1 || preg_match('/\p{C}/u', $value) || iconv_strlen(trim($value), 'UTF-8') < 1 || iconv_strlen($value, 'UTF-8') > 30) { $add($p, 'bad_value'); }
                 return;
@@ -1331,7 +1336,7 @@ final class Doc
     }
 
     /** 템플릿에 담지 않는 블록 */
-    private const TEMPLATE_DROP = ['image', 'file', 'child_page', 'button'];
+    private const TEMPLATE_DROP = ['image', 'file', 'child_page', 'button', 'db_view'];
 
     /**
      * @param  list<mixed> $list

@@ -13,7 +13,8 @@
     "title_chars": 200,
     "href_chars": 2048,
     "icon_chars": 8,
-    "excerpt_chars": 200
+    "excerpt_chars": 200,
+    "db_views": 12
   },
   "colors": [
     "gray",
@@ -168,6 +169,10 @@
     "button": {
       "label": "button-label",
       "automation_id": "uuid"
+    },
+    "db_view": {
+      "database_id": "uuid",
+      "view_id": "view-id"
     }
   },
   "children_allowed": [
@@ -213,6 +218,9 @@
     ],
     "8": [
       "button"
+    ],
+    "9": [
+      "db_view"
     ]
   },
   "stage_marks": {
@@ -303,6 +311,7 @@
     "nested_columns",
     "merge_overlap",
     "merge_out_of_table",
-    "bad_host"
+    "bad_host",
+    "too_many_db_views"
   ]
 }

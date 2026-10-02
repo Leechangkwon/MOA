@@ -88,6 +88,29 @@ final class CommunityAuthz
         return [true, $reason];
     }
 
+    /** Stage 11: internal forms expose questions only; privileged-only readers cannot submit. */
+    public static function decideFormSubmit(array $u, array $dbPage, array $view): array
+    {
+        if (($view['type'] ?? null) !== 'form' || ($view['open'] ?? false) !== true
+            || ($dbPage['deleted_at'] ?? null) !== null || !Authz::canCommunityWrite($u)) {
+            return [false, self::CODE_NOT_FOUND];
+        }
+        if (($view['audience'] ?? 'readers') === 'internal') {
+            return [true, self::CODE_MATRIX];
+        }
+        [$read, $reason] = self::decidePageRead($u, $dbPage);
+        return $read && !in_array($reason, [self::CODE_ADMIN_ALL, self::CODE_BOARD_MODERATOR], true)
+            ? [true, $reason] : [false, self::CODE_NOT_FOUND];
+    }
+
+    /** Anonymity is recorded on each response, not taken from the current form settings. */
+    public static function canSeeFormIdentity(array $u, array $dbPage): bool
+    {
+        $responsible = $dbPage['assignee_id'] ?? (($dbPage['space_kind'] ?? '') === 'personal'
+            ? ($dbPage['space_owner_user_id'] ?? null) : ($dbPage['author_id'] ?? null));
+        return Authz::canAdmin($u) || ($responsible !== null && (int)$u['id'] === (int)$responsible);
+    }
+
     /** 허용 코드 — 페이지 주인이다 */
     public const CODE_OWNER = 'owner';
     /** 허용 코드 — Admin 이라서 열린다(개인 페이지 열람. 감사에 남는다) */
@@ -229,6 +252,16 @@ final class CommunityAuthz
             return [false, self::CODE_NOT_FOUND];
         }
 
+        // Form responses do not inherit a database's view-only sharing grant.
+        if (($row['form_view_id'] ?? null) !== null) {
+            [$edit, $reason] = self::decidePageChange($u, $row);
+            if ($edit) { return [true, $reason]; }
+            if (($row['form_direct_share'] ?? false) === true && (int)($row['share_user_id'] ?? 0) === (int)$u['id']) {
+                return [true, self::CODE_SHARED];
+            }
+            return Authz::canAdmin($u) ? [true, self::CODE_ADMIN_ALL] : [false, self::CODE_NOT_OWNER];
+        }
+
         $kind = (string) ($row['space_kind'] ?? '');
 
         /* [1] 팀 공간 — 페이지에 자기 범위가 없다. 공간 하나로 판정이 끝난다 (PRD 4.1). */
@@ -307,6 +340,36 @@ final class CommunityAuthz
         }
 
         return [false, self::CODE_NOT_OWNER];
+    }
+
+    /** C:F-46: proposal visibility is narrower than ordinary privileged reading. */
+    public static function decideSuggestionCreate(array $u, array $row): array
+    {
+        [$read, $code] = self::decidePageRead($u, $row);
+        if (!$read) { return [false, $code]; }
+        if (!Authz::canCommunityWrite($u) || in_array($code, [self::CODE_ADMIN_ALL, self::CODE_BOARD_MODERATOR], true)) {
+            return [false, self::CODE_ROLE_NOT_PERMITTED];
+        }
+        if (($row['space_kind'] ?? '') === 'board' && ($row['space_is_active'] ?? false) !== true) {
+            return [false, self::CODE_BOARD_INACTIVE];
+        }
+        if (self::decidePageChange($u, $row)[0]) { return [false, 'can_edit']; }
+        return [true, $code];
+    }
+
+    public static function decideSuggestionDecide(array $u, array $row): array
+    {
+        if (!Authz::canCommunityWrite($u)) { return [false, self::CODE_ROLE_NOT_PERMITTED]; }
+        [$read, $code] = self::decidePageRead($u, $row);
+        return $read ? self::decidePageChange($u, $row) : [false, $code];
+    }
+
+    public static function decideSuggestionView(array $u, array $row, array $suggestion): array
+    {
+        if (!self::decidePageRead($u, $row)[0]) { return [false, self::CODE_NOT_FOUND]; }
+        if (self::decideSuggestionDecide($u, $row)[0]) { return [true, 'editor']; }
+        if ((int) ($suggestion['author_id'] ?? 0) === (int) ($u['id'] ?? 0)) { return [true, 'author']; }
+        return [false, self::CODE_NOT_FOUND];
     }
 
     /**

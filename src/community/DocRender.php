@@ -167,6 +167,9 @@ final class DocRender
             : '';
 
         switch ($type) {
+            case 'db_view':
+                $widget=$ctx['db_views'][$block['id']] ?? null;
+                return '<section class="panel db-widget"' . $idAttr . '><h3 class="panel__title">' . self::esc($widget===null ? '볼 수 없는 데이터베이스' : $widget['title'] . ' · ' . $widget['name']) . '</h3></section>';
             case 'button':
                 $aid = (string) ($block['automation_id'] ?? '');
                 $can = ($ctx['buttons'][$aid]['can_press'] ?? false) === true;
@@ -658,6 +661,10 @@ final class DocRender
         }
         if ($type === 'toc') {
             return '<nav class="doc-toc"><ul>' . self::exportHeadings($root, $ctx) . '</ul></nav>';
+        }
+        if ($type === 'db_view') {
+            $widget=$ctx['db_views'][$block['id']] ?? null;
+            return '<p>' . self::esc($widget===null ? '[볼 수 없는 데이터베이스]' : '[데이터베이스 보기: ' . $widget['title'] . ' · ' . $widget['name'] . ']') . '</p>';
         }
         if ($type === 'button') {
             return '<p>' . self::esc('[버튼: ' . (string) ($block['label'] ?? '') . ']') . '</p>';

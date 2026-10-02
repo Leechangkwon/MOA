@@ -28,8 +28,8 @@ if ($dbRow === null) {
 }
 
 $body = Http::jsonBody();
-$ops  = array_values(array_intersect(array_keys($body), ['add', 'rename', 'options', 'remove']));
-if (array_diff(array_keys($body), ['add', 'rename', 'options', 'remove', 'version']) !== [] || count($ops) !== 1
+$ops  = array_values(array_intersect(array_keys($body), ['add', 'rename', 'options', 'remove', 'depends']));
+if (array_diff(array_keys($body), ['add', 'rename', 'options', 'remove', 'depends', 'version']) !== [] || count($ops) !== 1
     || !is_array($body[$ops[0]])) {
     Http::error(400, Http::MSG_BAD_REQUEST);
 }
@@ -76,7 +76,7 @@ $findIndex = static function (array $schema, $key): ?int {
 $propName = '';
 switch ($op) {
     case 'add':
-        if (array_diff(array_keys($arg), ['name', 'type', 'options', 'target']) !== []) {
+        if (array_diff(array_keys($arg), ['name', 'type', 'options', 'target', 'depends']) !== []) {
             Http::error(400, Http::MSG_BAD_REQUEST);
         }
         if (count($schema) >= DbProps::MAX_PROPS) {
@@ -116,10 +116,20 @@ switch ($op) {
         } elseif (array_key_exists('target', $arg)) {
             $bad('대상은 관계 속성에만 있습니다', 'bad_target');
         }
+        if (array_key_exists('depends',$arg)) {
+            if ($type!=='relation' || !is_bool($arg['depends']) || $new['target']!==$dbRow['public_id']) { $bad('선후행 관계는 같은 데이터베이스만 가리킵니다','bad_target'); }
+            $new['depends']=$arg['depends'];
+        }
         $schema[] = $new;
         $propName = $name;
         break;
 
+    case 'depends':
+        if (array_diff(array_keys($arg),['key','depends'])!==[] || !is_bool($arg['depends'] ?? null)) { $bad('선후행 관계 설정이 맞지 않습니다','bad_value'); }
+        $i=$findIndex($schema,$arg['key'] ?? null);
+        if ($i===null || $schema[$i]['type']!=='relation' || ($schema[$i]['target'] ?? '')!==$dbRow['public_id']) { $bad('같은 데이터베이스 관계만 가능합니다','bad_target'); }
+        $schema[$i]['depends']=$arg['depends']; $propName=$schema[$i]['name'];
+        break;
     case 'rename':
         if (array_diff(array_keys($arg), ['key', 'name']) !== []) {
             Http::error(400, Http::MSG_BAD_REQUEST);
@@ -183,6 +193,15 @@ $sqlSet = <<<'SQL'
 
 $db->begin();
 try {
+    $lock=<<<'SQL'
+        SELECT id FROM community.databases WHERE id=CAST(:db AS bigint) FOR UPDATE
+        SQL;
+    $db->run($lock,[':db'=>(int)$dbRow['id']]);
+    foreach ($schema as $prop) {
+        if (($prop['depends'] ?? false) && !community_dependency_ok((int)$dbRow['id'],$prop['key'])) {
+            $db->rollback(); $bad('기존 관계가 순환하거나 깊이 한도를 넘습니다','dependency_cycle');
+        }
+    }
     $done = $db->run($sqlSet, [':schema' => $schemaJson, ':id' => (int) $dbRow['id'], ':seen' => (string) $dbRow['updated_at']])->fetch();
     if (!is_array($done)) {
         $db->rollback();

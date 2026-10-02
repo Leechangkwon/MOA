@@ -176,3 +176,10 @@ GRANT UPDATE(taken_at) ON community.automation_queue TO tbox_app;
 GRANT USAGE, SELECT ON SEQUENCE community.automations_id_seq, community.automation_runs_id_seq, community.automation_queue_id_seq TO tbox_app;
 GRANT SELECT ON community.automations, community.automation_runs, community.automation_queue TO tbox_backup;
 GRANT SELECT ON SEQUENCE community.automations_id_seq, community.automation_runs_id_seq, community.automation_queue_id_seq TO tbox_backup;
+
+REVOKE ALL ON community.page_suggestions FROM tbox_app, tbox_backup;
+GRANT SELECT, INSERT ON community.page_suggestions TO tbox_app;
+GRANT UPDATE(status,decided_by,decided_at,decision_note,applied_version) ON community.page_suggestions TO tbox_app;
+GRANT USAGE, SELECT ON SEQUENCE community.page_suggestions_id_seq TO tbox_app;
+GRANT SELECT ON community.page_suggestions TO tbox_backup;
+GRANT SELECT ON SEQUENCE community.page_suggestions_id_seq TO tbox_backup;

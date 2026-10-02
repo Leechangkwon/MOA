@@ -680,6 +680,10 @@ function renderBlock(block, rootBlocks, ctx) {
   } else if (type === 'image' || type === 'file') {
     nodes.push(renderFileBlock(block, id, ctx));
     return nodes;
+  } else if (type === 'db_view') {
+    const card=document.createElement('section');card.className='panel db-widget';setId(card);
+    const title=document.createElement('h3');title.className='panel__title';const entry=ctx.db_views&&ctx.db_views[block.id];
+    title.textContent=entry?entry.title+' · '+entry.name:'볼 수 없는 데이터베이스';card.appendChild(title);nodes.push(card);return nodes;
   } else if (type === 'button') {
     const b=document.createElement('button'); b.type='button'; b.className='btn'; setId(b); b.textContent=String(block.label || '');
     b.dataset.automationId=String(block.automation_id || '');

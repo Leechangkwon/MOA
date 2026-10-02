@@ -60,7 +60,7 @@ final class Audit
 
     private const ALLOWED_DETAIL_KEYS = [
         'format','tree','pages','skipped','bytes','page_ids',
-        'automation_id', 'run_id', 'automations', 'procedure_count',
+        'automation_id', 'run_id', 'automations', 'procedure_count', 'suggestion_id',
         'sessions_revoked',
         /*
          * 11단계 (PRD F-16, ARCH 7.5). 셋 다 등록부에 있는 키이고 값에 비밀이 없다.
@@ -882,6 +882,11 @@ final class Audit
         'page.create|allow'                     => '{actor} 이(가) 페이지 「{target}」 을(를) 만들었습니다',
         'page.read|allow|admin_all'             => '{actor} 이(가) 관리자 권한으로 다른 사람의 개인 페이지 「{target}」 을(를) 열어 봤습니다',
         'page.read|deny|not_owner'              => '{actor} 이(가) 다른 사람의 개인 페이지 「{target}」 을(를) 열려 해서 막았습니다',
+        'suggestion.create|allow' => '{actor} 이(가) 페이지 「{target}」 에 수정 제안을 보냈습니다',
+        'suggestion.accept|allow' => '{actor} 이(가) 페이지 「{target}」 의 수정 제안을 받아들였습니다',
+        'suggestion.reject|allow' => '{actor} 이(가) 페이지 「{target}」 의 수정 제안을 거절했습니다',
+        'suggestion.withdraw|allow' => '{actor} 이(가) 페이지 「{target}」 의 수정 제안을 거두었습니다',
+        'suggestion.stale|allow' => '{actor} 이(가) 페이지 「{target}」 의 수정 제안이 오래되었음을 확인했습니다',
         'page.update|allow'                     => '{actor} 이(가) 페이지 「{target}」 의 내용을 저장했습니다 (판 번호·블록 수는 상세 기록)',
         'page.update|deny|not_owner'            => '{actor} 이(가) 다른 사람의 개인 페이지 「{target}」 을(를) 고치려 해서 막았습니다',
         'page.update|deny|version_conflict'     => '{actor} 이(가) 페이지 「{target}」 을(를) 저장하려 했지만 그 사이 다른 곳에서 먼저 저장되어 되돌렸습니다',

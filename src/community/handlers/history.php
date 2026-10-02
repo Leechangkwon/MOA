@@ -207,7 +207,9 @@ if (count($events) > $limit) {
     $events = array_slice($events, 0, $limit);
 }
 
-Http::json([
+$suggestionVersions = community_suggestion_versions((int) $row['id'], $gate['since']);
+community_form_json([
+    'suggestions' => array_values($suggestionVersions),
     'page' => [
         'id'          => (string) $row['public_id'],
         'title'       => (string) $row['title'],
@@ -216,4 +218,4 @@ Http::json([
     'events' => $events,
     'total'  => count($events),
     'limit'  => $limit,
-]);
+], $user, $row);

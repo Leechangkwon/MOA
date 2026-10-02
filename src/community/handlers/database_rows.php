@@ -67,8 +67,17 @@ try {
     exit;
 }
 
+$calendar = $view !== null && in_array($view['type'],['calendar','timeline'],true);
+$rangeSql = 'TRUE'; $rangeBind=[];
+if ($calendar || Http::queryText('from',20)!=='' || Http::queryText('to',20)!=='') {
+    try { [$rangeSql,$rangeBind]=DbViews::dateRange($view['date_prop'] ?? (Http::queryText('date_prop',20) ?: 'due'),$schema,Http::queryText('from',20),Http::queryText('to',20)); }
+    catch (InvalidArgumentException $e) { Http::json(['error'=>'날짜 범위를 400일 안으로 지정해 주세요','reason'=>'bad_date_range'],400); exit; }
+}
+$filterSql = '(' . $filterSql . ') AND (' . $rangeSql . ')';
+$filterBind = array_merge($filterBind,$rangeBind);
 $pageNo  = Http::queryInt('page', 1, 1, 100000);
-$perPage = 100;
+$perPage = $calendar ? 500 : 100;
+if ($calendar) { $pageNo=1; }
 [$visible, $visBind] = community_visible_pages_where($user);
 
 $bind = array_merge([':db' => (int) $dbRow['id']], $visBind, $filterBind);
@@ -86,12 +95,14 @@ $sqlCount = <<<SQL
 $countRow = Db::instance()->run($sqlCount, $bind)->fetch();
 $total    = is_array($countRow) ? (int) $countRow['n'] : 0;
 
+$canSeeIdentity=CommunityAuthz::canSeeFormIdentity($user,$dbPage);
 $sqlList = <<<SQL
-    SELECT p.public_id, p.title, p.icon, p.status, p.properties, p.created_at, p.updated_at,
+    SELECT p.public_id, p.title, p.icon, p.form_view_id, p.form_anonymous, author.username AS author_name, author.display_name AS author_display_name, p.status, p.properties, p.due_date, p.verified_at, p.verify_expires_at, p.created_at, p.updated_at,
            owner.username AS owner_name, owner.display_name AS owner_display_name
       FROM community.pages p
       JOIN community.spaces s ON s.id = p.space_id
       LEFT JOIN public.users owner ON owner.id = s.owner_user_id
+      LEFT JOIN public.users author ON author.id=p.author_id
      WHERE p.database_id = CAST(:db AS bigint)
        AND p.deleted_at IS NULL
        AND {$visible}
@@ -107,11 +118,16 @@ foreach (Db::instance()->run($sqlList, $listBind)->fetchAll() as $r) {
         'id'         => (string) $r['public_id'],
         'title'      => (string) $r['title'],
         'icon'       => $r['icon'] === null ? null : (string) $r['icon'],
+        'due'        => $r['due_date'],
+        'verified'   => $r['verified_at'] === null ? 'none' : ($r['verify_expires_at'] !== null && strtotime($r['verify_expires_at']) < time() ? 'expired' : 'verified'),
         'status'     => $r['status'] === null ? null : (string) $r['status'],
         'owner'      => $r['owner_name'] === null ? null : [
             'username'     => (string) $r['owner_name'],
             'display_name' => $r['owner_display_name'] === null ? null : (string) $r['owner_display_name'],
         ],
+        'form_response' => $r['form_view_id']===null ? null : ['anonymous'=>$r['form_anonymous']===true,'hidden'=>$r['form_anonymous']===true&&!$canSeeIdentity,
+            'username'=>$r['form_anonymous']===true&&!$canSeeIdentity ? null : $r['author_name'],
+            'display_name'=>$r['form_anonymous']===true&&!$canSeeIdentity ? '익명 응답' : $r['author_display_name']],
         'values'     => community_db_values_out($schema, $r['properties']),
         'created_at' => (string) $r['created_at'],
         'updated_at' => (string) $r['updated_at'],
@@ -120,6 +136,12 @@ foreach (Db::instance()->run($sqlList, $listBind)->fetchAll() as $r) {
 
 // 6-B — 관계·파일 값의 제목은 **보는 사람 권한으로** 거른 지도로만(못 보는 행·파일은 지도에 없다)
 [$relTitles, $fileTitles] = community_db_ref_titles($schema, array_map(static fn (array $r) => $r['values'], $rows), $user);
+
+// 선후행 연결은 제목 지도뿐 아니라 원문 UUID 배열도 현재 읽기 권한으로 거른다.
+foreach ($rows as &$outRow) {
+    $outRow['values'] = community_db_values_visible($schema, (array) $outRow['values'], $user, $relTitles);
+}
+unset($outRow);
 
 // 화면 편의 값 — 행마다 판정하지 않고 DB 페이지의 판정을 보인다(행 값 창구가 행마다 다시 막는다).
 Http::json([
@@ -134,6 +156,7 @@ Http::json([
     ],
     'rows'              => $rows,
     'total'             => $total,
+    'truncated'         => $calendar && $total > 500,
     'page'              => $pageNo,
     'per_page'          => $perPage,
     // 디버깅 묶음 S2 — 손님은 쓰기 창구(`community.write`)에 닿지 못하므로 창구 값도 같은 함수와 AND(pages_get.php 와 같다)

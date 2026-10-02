@@ -4935,6 +4935,150 @@
       "est_sec": 20,
       "writes_prod": false,
       "notes": "No repository wrapper invokes this standalone deployment simulation, so orphan follows the existing catalog convention and is excluded by default. Manual invocation requires all three arguments: --source <repo> --package <fixed-package> --output <new-private-directory>. The output directory must not exist and its parent must exist. Uses Git baseline archives and a fixed prepared package; only fresh private filesystem fixtures are modified, with no application/database/production execution. Paths under /var/www are refused. Bare catalog cmd intentionally cannot run without explicit arguments; do not promote to required without a safe parameterized caller. Latest separately recorded simulation: 53 pass, 0 fail, 0 skip; registration does not rerun it."
+    },
+    {
+      "id": "community.stage10_suggestions",
+      "cmd": "bash tests/community/stage10.sh",
+      "module": "community",
+      "env": "temp-instance",
+      "status": "required",
+      "needs": [
+        "browser"
+      ],
+      "covers": [
+        "src/community/routes.php",
+        "src/community/CommunityAuthz.php",
+        "src/community/Doc.php",
+        "src/community/SaveDoc.php",
+        "src/community/Suggestion.php",
+        "src/community/suggestion_helpers.php",
+        "src/Audit.php",
+        "db/community/schema.sql",
+        "db/community/grants.sql",
+        "db/migrations/2026-10-01_community_suggestions.sql",
+        "src/community/handlers/pages_update.php",
+        "src/community/handlers/pages_get.php",
+        "src/community/handlers/versions_list.php",
+        "src/community/handlers/history.php",
+        "src/community/handlers/suggestions_create.php",
+        "src/community/handlers/suggestions_list.php",
+        "src/community/handlers/suggestion_get.php",
+        "src/community/handlers/suggestion_accept.php",
+        "src/community/handlers/suggestion_reject.php",
+        "src/community/handlers/suggestion_withdraw.php",
+        "src/community/handlers/me_suggestions.php",
+        "src/views/shell_top.php",
+        "public/assets/community/editor.js",
+        "public/assets/community/suggestions.js",
+        "tests/community/stage10.sh",
+        "tests/community/stage10_harness.py",
+        "tests/community/stage10_fixture.php",
+        "tests/community/stage10_http.py",
+        "tests/community/stage10_compat.py",
+        "tests/community/browser_10.py",
+        "tests/community/export_router.php"
+      ],
+      "requirements": [
+        "C:T-500",
+        "C:T-501",
+        "C:T-502",
+        "C:T-503",
+        "C:T-504",
+        "C:T-505",
+        "C:T-506",
+        "C:T-507",
+        "C:T-508",
+        "C:T-509",
+        "C:T-510",
+        "C:T-511",
+        "C:T-512"
+      ],
+      "risks": [],
+      "writes_prod": false,
+      "est_sec": 120,
+      "notes": "Creates empty synthetic tbox_stage10_test_ DB and owned 8658/8659 PHP listeners; refuses occupied ports. No production dump, service/config/account/business-data writes. HTTP C:T-500–512, affected compatibility subset and actual browser. Baseline comparison is a separate stage10_harness.py --baseline-code --suite stage10_compat.py invocation against 905d352. Test-only purge owner is tbox_testdb; product migration retains tbox_owner."
+    },
+    {
+      "id": "community.stage10_helper_stage10_harness",
+      "cmd": "python3 tests/community/stage10_harness.py",
+      "module": "community",
+      "env": "temp-instance",
+      "status": "helper",
+      "needs": [],
+      "covers": [
+        "tests/community/stage10_harness.py"
+      ],
+      "requirements": [],
+      "risks": [],
+      "writes_prod": false,
+      "est_sec": 1,
+      "notes": "Called by community.stage10_suggestions only. Requires its owned synthetic DB/config/FILE_RENAME_MANIFEST/FILE_RENAME_OUTPUT; not a standalone automatic test."
+    },
+    {
+      "id": "community.stage10_helper_stage10_fixture",
+      "cmd": "php tests/community/stage10_fixture.php",
+      "module": "community",
+      "env": "temp-instance",
+      "status": "helper",
+      "needs": [],
+      "covers": [
+        "tests/community/stage10_fixture.php"
+      ],
+      "requirements": [],
+      "risks": [],
+      "writes_prod": false,
+      "est_sec": 1,
+      "notes": "Called by community.stage10_suggestions only. Requires its owned synthetic DB/config/FILE_RENAME_MANIFEST/FILE_RENAME_OUTPUT; not a standalone automatic test."
+    },
+    {
+      "id": "community.stage10_helper_stage10_http",
+      "cmd": "python3 tests/community/stage10_http.py",
+      "module": "community",
+      "env": "temp-instance",
+      "status": "helper",
+      "needs": [],
+      "covers": [
+        "tests/community/stage10_http.py"
+      ],
+      "requirements": [],
+      "risks": [],
+      "writes_prod": false,
+      "est_sec": 1,
+      "notes": "Called by community.stage10_suggestions only. Requires its owned synthetic DB/config/FILE_RENAME_MANIFEST/FILE_RENAME_OUTPUT; not a standalone automatic test."
+    },
+    {
+      "id": "community.stage10_helper_stage10_compat",
+      "cmd": "python3 tests/community/stage10_compat.py",
+      "module": "community",
+      "env": "temp-instance",
+      "status": "helper",
+      "needs": [],
+      "covers": [
+        "tests/community/stage10_compat.py"
+      ],
+      "requirements": [],
+      "risks": [],
+      "writes_prod": false,
+      "est_sec": 1,
+      "notes": "Called by community.stage10_suggestions only. Requires its owned synthetic DB/config/FILE_RENAME_MANIFEST/FILE_RENAME_OUTPUT; not a standalone automatic test."
+    },
+    {
+      "id": "community.stage10_helper_browser_10",
+      "cmd": "python3 tests/community/browser_10.py",
+      "module": "community",
+      "env": "temp-instance",
+      "status": "helper",
+      "needs": [
+        "browser"
+      ],
+      "covers": [
+        "tests/community/browser_10.py"
+      ],
+      "requirements": [],
+      "risks": [],
+      "writes_prod": false,
+      "est_sec": 1,
+      "notes": "Called by community.stage10_suggestions only. Requires its owned synthetic DB/config/FILE_RENAME_MANIFEST/FILE_RENAME_OUTPUT; not a standalone automatic test."
     }
   ]
 }

@@ -38,12 +38,18 @@ require_once __DIR__ . '/../Design.php';
  */
 require_once __DIR__ . '/Doc.php';
 require_once __DIR__ . '/Automation.php';
+require_once __DIR__ . '/Suggestion.php';
+require_once __DIR__ . '/SaveDoc.php';
+require_once __DIR__ . '/suggestion_helpers.php';
 require_once __DIR__ . '/DocRender.php';
 require_once __DIR__ . '/DocMarkdown.php';
 require_once __DIR__ . '/DocExport.php';
 require_once __DIR__ . '/export_helpers.php';
 require_once __DIR__ . '/CommunityAuthz.php';
 require_once __DIR__ . '/DbProps.php';
+require_once __DIR__ . '/DbViews.php';
+require_once __DIR__ . '/forms_helpers.php';
+require_once __DIR__ . '/views_helpers.php';
 // 7-D2 — 관리자 팔레트의 순수 계산(배경값 · 버전 · CSS 글자). DB 는 아래 `community_palette_rows()` 가 읽는다
 require_once __DIR__ . '/Palette.php';
 require_once __DIR__ . '/BriefingText.php';
@@ -61,6 +67,18 @@ require_once __DIR__ . '/../SearchText.php';
  * 4-B 범위: 화면 둘 · API 열(4-A 의 여덟 + `GET /api/spaces` + `PATCH /api/pages/{id}/visibility`).
  */
 const COMMUNITY_ROUTES = [
+    ['POST', '/api/pages/{id}/suggestions', 'suggestions_create.php', 'community.write'],
+    ['GET', '/api/pages/{id}/suggestions', 'suggestions_list.php', 'community.read'],
+    ['GET', '/api/suggestions/{id}', 'suggestion_get.php', 'community.read'],
+    ['POST', '/api/suggestions/{id}/accept', 'suggestion_accept.php', 'community.write'],
+    ['POST', '/api/suggestions/{id}/reject', 'suggestion_reject.php', 'community.write'],
+    ['POST', '/api/suggestions/{id}/withdraw', 'suggestion_withdraw.php', 'community.write'],
+    ['GET', '/api/me/suggestions', 'me_suggestions.php', 'community.read'],
+    ['GET', '/suggestions', 'home_page.php', 'community.read'],
+    ['GET', '/api/databases/{id}/chart', 'database_chart.php', 'community.read'],
+    ['GET', '/f/{id}/{view}', 'form_view.php', 'community.read'],
+    ['GET', '/api/forms/{id}/{view}', 'form_get.php', 'community.read'],
+    ['POST', '/api/forms/{id}/{view}/submit', 'form_submit.php', 'community.read'],
     ['GET', '/today', 'today_page.php', 'community.read'],
     ['GET', '/api/briefing', 'briefing.php', 'community.read'],
     // ── 화면 ─────────────────────────────────────────────────
@@ -245,6 +263,7 @@ const COMMUNITY_API_TOKEN_ROUTES = [
  * 파일 경로·SQL 조각이 되지 않는다. 형태가 다르면 라우트에 맞지 않아 404 다.
  */
 const COMMUNITY_PATH_PATTERNS = [
+    '{view}' => 'v[0-9a-f]{8}',
     '{username}' => '[a-z0-9_.-]{3,64}',
 ];
 
@@ -532,7 +551,7 @@ function community_page_row_sql(bool $withDoc): string
         SELECT p.id, p.public_id, p.space_id, p.parent_page_id, p.position,
                p.title, p.icon, p.font, p.small_text, p.full_width, p.visibility,
                {$docCol}p.doc_version, p.block_count,
-               p.author_id, p.last_edited_by, p.created_at, p.updated_at,
+               p.author_id, p.last_edited_by, p.created_at, p.updated_at, p.form_view_id, p.form_anonymous,
                p.deleted_at, p.deleted_by,
                s.kind          AS space_kind,
                s.owner_user_id AS space_owner_user_id,
@@ -561,6 +580,7 @@ function community_page_row_sql(bool $withDoc): string
                assignee.is_active AS assignee_active,
                -- 5-A: 이 사람 몫의 가장 강한 공유 등급(번호). 아래에서 이름으로 바꾼다.
                {$shareRank} AS share_rank,
+               EXISTS(SELECT 1 FROM community.page_shares fs WHERE fs.page_id=p.id AND fs.user_id=CAST(:viewer AS bigint)) AS form_direct_share,
                -- 5-C: 게시판 공간이면 그 게시판의 활성·종류(게시판 글의 판정 재료)
                s.is_active     AS space_is_active,
                s.board_kind    AS space_board_kind,
@@ -1052,6 +1072,16 @@ function community_visible_pages_where(array $u): array
    OR (s.kind = 'board' AND p.hidden_at IS NOT NULL AND {$modS})
 )
 SQL;
+
+    // Form rows remain private to their editors and explicitly shared recipients.
+    $formScope = <<<SQL
+        (p.form_view_id IS NULL OR CAST(:vis_admin AS boolean)
+         OR (s.kind='personal' AND s.owner_user_id=CAST(:vis_me AS bigint))
+         OR (s.kind='team' AND s.team_id=CAST(:vis_team AS bigint))
+         OR (CAST(:vis_write AS boolean) AND {$shared}=2)
+         OR EXISTS(SELECT 1 FROM community.page_shares fs WHERE fs.page_id=p.id AND fs.user_id=CAST(:vis_me AS bigint)))
+        SQL;
+    $sql = '(' . $sql . ') AND ' . $formScope;
 
     return [$sql, array_merge([
         ':vis_me'     => (int) $u['id'],
@@ -2979,6 +3009,25 @@ function community_db_values_out(array $schema, $propsJson)
         }
     }
     return $out === [] ? new stdClass() : $out;
+}
+
+/** Response-only projection: never return relationship UUIDs without current read access.
+ * Passing the batch title map avoids one query per row; stored values are not rewritten.
+ */
+function community_db_values_visible(array $schema, $propsJson, array $user, ?array $relationTitles = null)
+{
+    $values = (array) community_db_values_out($schema, $propsJson);
+    if ($relationTitles === null) {
+        [$relationTitles] = community_db_ref_titles($schema, [$values], $user);
+    }
+    foreach ($schema as $prop) {
+        $key = (string) $prop['key'];
+        if ($prop['type'] === 'relation' && isset($values[$key]) && is_array($values[$key])) {
+            $values[$key] = array_values(array_filter($values[$key],
+                static fn(string $id): bool => isset($relationTitles[$id])));
+        }
+    }
+    return $values === [] ? new stdClass() : $values;
 }
 
 /**

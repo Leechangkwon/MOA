@@ -412,54 +412,16 @@ if ($parentVisibility !== null && in_array($parentVisibility, CommunityAuthz::VI
 }
 
 // ─── [6] 저장 — 기록이 실패하면 페이지도 남지 않는다 (PRD S-07) ───
-$sqlInsert = <<<'SQL'
-    INSERT INTO community.pages
-        (space_id, parent_page_id, title, doc, doc_version, plain_text, search_tsv, block_count,
-         author_id, last_edited_by, visibility, position, database_id, properties, icon)
-    VALUES
-        (CAST(:space AS bigint), CAST(:parent AS bigint), :title, CAST(:doc AS jsonb), 1, :plain,
-         strip(to_tsvector('simple', :tsv)), CAST(:blocks AS int),
-         CAST(:author AS bigint), CAST(:editor AS bigint), :vis, CAST(:pos AS int),
-         CAST(:dbid AS bigint), CAST(:props AS jsonb), :icon)
-    RETURNING id, public_id, created_at, updated_at
-    SQL;
-
 $db->begin();
 try {
-    // 6-A — 행 한도를 **잠근 뒤 다시** 센다(동시에 만들어 5,000 을 넘지 않게 — 독립 검토 L-1)
-    if ($rowDbId !== null) {
-        $lockDb = <<<'SQL'
-            SELECT id FROM community.databases WHERE id = CAST(:db AS bigint) FOR UPDATE
-            SQL;
-        $db->run($lockDb, [':db' => $rowDbId]);
-        if (community_db_row_count($rowDbId) >= DbProps::MAX_ROWS) {
-            $db->rollback();
-            Http::json(['error' => '한 데이터베이스에는 행을 ' . DbProps::MAX_ROWS . '개까지 둡니다', 'reason' => 'too_many_rows'], 400);
-            exit;
-        }
-    }
-    $row = $db->run($sqlInsert, [
-        ':space'  => $spaceId,
-        ':parent' => $parentId,
-        ':pos'    => $position,
-        ':vis'    => $visibility,
-        ':title'  => $title,
-        ':doc'    => $docJson,
-        ':plain'  => $extract['plain_text'],
-        ':tsv'    => community_search_text($title, $extract['plain_text']),   // Q:F-2 — 새 페이지라 태그 없음
-        ':blocks' => count($extract['blocks']),
-        ':author' => $me,
-        ':editor' => $me,
-        ':dbid'   => $rowDbId,
-        ':props'  => $rowProps === null ? null : json_encode($rowProps === [] ? new stdClass() : $rowProps, JSON_UNESCAPED_UNICODE),
-        ':icon'   => $tpl !== null && $tpl['icon'] !== null ? (string) $tpl['icon'] : null,
-    ])->fetch();
-    if (!is_array($row)) {
-        throw new RuntimeException('페이지를 만들지 못했습니다');
-    }
-    $pageId = (int) $row['id'];
-
-    community_rewrite_derived($pageId, $extract);
+    $row = community_insert_page([
+        'space_id'=>$spaceId,'parent_id'=>$parentId,'position'=>$position,'visibility'=>$visibility,
+        'title'=>$title,'doc_json'=>$docJson,'database_id'=>$rowDbId,'properties'=>$rowProps,
+        'icon'=>$tpl !== null && $tpl['icon'] !== null ? (string)$tpl['icon'] : null,
+    ], $extract, $user, $createCode, $tpl === null ? [] : [
+        'template_name'=>community_target_title((string)$tpl['name']), 'template_scope'=>(string)$tpl['scope'],
+    ]);
+    $pageId = (int)$row['id'];
 
     // 6-A — DB 페이지면 `databases` 한 줄(빈 스키마 — 기본 열 제목·상태·소유자는 늘 있다)
     $newDb = null;
@@ -478,24 +440,10 @@ try {
         ]);
     }
 
-    Audit::allow('page.create', [
-        'target_type' => 'page',
-        'target_id'   => $pageId,
-        'target_name' => community_target_title($title),
-        'detail'      => [
-            // 무엇을 근거로 만들었나 — `owner`·`team_member`·`shared_edit`(편집 공유자의 하위 페이지, 5-A)
-            'granted_by'  => $createCode,
-            'page_title'  => community_target_title($title),
-            'doc_version' => 1,
-            'block_count' => count($extract['blocks']),
-            // 7-B — 템플릿에서 만들었으면 그 이름·범위(없으면 두 키가 없다)
-        ] + ($tpl === null ? [] : [
-            'template_name'  => community_target_title((string) $tpl['name']),
-            'template_scope' => (string) $tpl['scope'],
-        ]),
-    ]);
-
     $db->commit();
+} catch (DomainException $e) {
+    $db->rollback();
+    Http::json(['error'=>'행 한도를 넘었습니다','reason'=>$e->getMessage()],400); exit;
 } catch (Throwable $e) {
     $db->rollback();
     throw $e;   // bootstrap 예외 핸들러 → 500 + {"error":"서버 오류"}

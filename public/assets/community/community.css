@@ -999,3 +999,28 @@ a.doc-mention { color: var(--accent); text-decoration: none; } a.doc-mention:hov
 
 /* Keep long unbroken document titles readable on narrow screens. */
 #page-title { overflow-wrap: anywhere; }
+
+/* Stage 11 layouts reuse existing color tokens; responsive wrappers prevent page overflow. */
+.db-calendar { display:grid; grid-template-columns:repeat(7,minmax(0,1fr)); gap:var(--space-2,8px); }
+.db-calendar__day { min-width:0; min-height:100px; border:1px solid var(--line); padding:6px; border-radius:var(--radius-sm,6px); }
+.db-calendar__item { display:block; overflow-wrap:anywhere; margin-block:4px; }
+.db-timeline { display:grid; gap:6px; }
+.db-timeline__graphic,.db-chart { display:block; width:100%; max-height:560px; color:var(--accent); }
+.db-timeline__graphic text { fill:var(--fg); font-size:11px; }
+.db-timeline__bar,.db-chart__bar { fill:currentColor; }
+.db-timeline__arrow,.db-chart__line { fill:none; stroke:currentColor; stroke-width:2; }
+.db-chart__slice { fill:none; stroke:currentColor; }
+.db-chart__series-1 { opacity:.8; }.db-chart__series-2 { opacity:.6; }.db-chart__series-3 { opacity:.4; }.db-chart__series-4 { opacity:.2; }
+.db-chart__number { font-size:2rem; }
+.db-widget { min-width:0; overflow:hidden; }
+.db-view-config { display:grid; gap:12px; max-height:65vh; overflow:auto; }
+.db-timeline-canvas { max-width:100%; overflow-x:auto; }
+@media(max-width:600px) {
+  .db-calendar { grid-template-columns:1fr; }
+  .db-calendar > span { display:none; }
+  .db-calendar__day { min-height:48px; }
+  .db-timeline__graphic { width:720px; min-width:720px; }
+}
+
+#community-response-form { max-width:640px; margin-inline:auto; }
+.db-chart__point { fill:currentColor; }

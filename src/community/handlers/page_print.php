@@ -6,7 +6,7 @@ $root = community_export_gate((string) $params[0], $user);
 [$row, $doc] = community_export_document($root, $user);
 $ctx = community_export_context($doc, $user, [], '');
 $ctx['print'] = true;
-$meta = community_export_meta($row, gmdate('c'));
+$meta = community_export_meta($row, gmdate('c'), $user);
 $esc = static fn(string $s): string => htmlspecialchars($s, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
 $html = '<!doctype html><html lang="ko"><head><meta charset="utf-8">'
     . '<meta name="viewport" content="width=device-width, initial-scale=1"><meta name="referrer" content="no-referrer">'

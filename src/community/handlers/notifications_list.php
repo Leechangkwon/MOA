@@ -43,6 +43,7 @@ $sql = <<<'SQL'
 $items = [];
 foreach ($db->run($sql, [':me' => $me])->fetchAll() as $n) {
     $page = null;
+    $row = null;
     if ($n['page_public_id'] !== null) {
         $row = community_page_row((string) $n['page_public_id'], $me);
         if ($row !== null) {
@@ -66,7 +67,7 @@ foreach ($db->run($sql, [':me' => $me])->fetchAll() as $n) {
         // Rule status is safe without retaining any inaccessible document title.
         'automation_status' => $n['page_public_id'] === null && in_array($n['kind'], ['automation_denied', 'automation_disabled'], true),
         'comment_id' => $page !== null && $n['comment_public_id'] !== null ? (string) $n['comment_public_id'] : null,
-        'actor'      => $n['actor_name'] === null ? null : [
+        'actor'      => $n['actor_name'] === null || ($n['page_public_id'] !== null && ($row === null || community_form_identity_hidden($user,$row))) ? null : [
             'username'     => (string) $n['actor_name'],
             'display_name' => $n['actor_display_name'] === null ? null : (string) $n['actor_display_name'],
         ],

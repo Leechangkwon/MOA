@@ -15,6 +15,7 @@ export function drawTrust(data, pageId, api, reload) {
   badge.dataset.trust = 'badge';
   const parts = [];
   if (data.page_kind === 'procedure') parts.push('절차서');
+  if (data.page_kind === 'dashboard') parts.push('대시보드');
   if (v.state !== 'none') {
     parts.push(v.state === 'expired' ? '⚠ 검증 만료' : '✓ 검증됨');
     if (v.by) parts.push(v.by.name);
@@ -62,7 +63,7 @@ export function drawTrust(data, pageId, api, reload) {
   });
   menu.appendChild(verify);
   const msg = node('p', '', 'msg'); msg.dataset.trust = 'msg'; props.appendChild(msg);
-  for (const [text, payload] of [['검증 해제', {verify:null}], [data.page_kind === 'procedure' ? '절차서 표시 빼기' : '절차서로 표시', {kind:data.page_kind === 'procedure' ? 'page':'procedure'}]]) {
+  for (const [text, payload] of [[data.page_kind==='dashboard'?'대시보드 표시 빼기':'대시보드로 표시',{kind:data.page_kind==='dashboard'?'page':'dashboard'}],['검증 해제', {verify:null}], [data.page_kind === 'procedure' ? '절차서 표시 빼기' : '절차서로 표시', {kind:data.page_kind === 'procedure' ? 'page':'procedure'}]]) {
     const button = node('button', text, 'menu__item'); button.type = 'button'; button.dataset.trust = 'action';
     button.onclick = () => patch(payload, msg).catch(() => { msg.textContent = '연결하지 못했습니다.'; }); menu.appendChild(button);
   }
