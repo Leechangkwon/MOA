@@ -2710,6 +2710,6 @@ HTTP 시험(T-77 (a)~(e))은 **미실행** — 운영 DB 에 `files.exec_content
 
 ## 여행 기록 추가 작업 — 운영 반영 전
 
-사용자 요청: qaredi 앱에서 촬영·짧은 글·개인 앨범·친구 공유·GPT를 통한 추억 꾸미기. `feat/travel-memories` 작업 범위와 적용 순서는 `docs/travel-memories-directive.md`, `docs/travel-memories-release.md`를 따른다. 커뮤니티 위키 `guide-memories`를 추가했다. 기존 번호 단계의 완료 상태를 바꾸거나 출시 버전을 올리지 않았다.
+사용자 요청: qaredi 앱에서 촬영·짧은 글·개인 앨범·친구 공유·GPT를 통한 추억 꾸미기. `insta` 작업 범위와 적용 순서는 `docs/travel-memories-directive.md`, `docs/travel-memories-release.md`를 따른다. 커뮤니티 위키 `guide-memories`를 추가했다. 기존 번호 단계의 완료 상태를 바꾸거나 출시 버전을 올리지 않았다.
 
 구현: 여행 피드/개인 페이지, 원본 보존, 미디어 업로드, 서버 공개 범위와 만료 capability, 임시 저장, 댓글·좋아요, ChatGPT 가져가기/결과 반영. 소스 검토와 합성 응답을 쓰는 Chromium 12개 시나리오, JS 구문, 보안 린트는 통과. PHP/DB/nginx 및 위키/공통 회귀 검사는 해당 런타임이 없어 미실행이며 배포 준비 완료를 뜻하지 않는다.
