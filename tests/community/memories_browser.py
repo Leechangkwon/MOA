@@ -19,18 +19,36 @@ MEDIA = '22222222-2222-4222-8222-222222222222'
 TOKEN = 'A' * 43
 
 
-def page_html(shared='', profile='', post=''):
-    if shutil.which('php') and not any((shared, profile, post)):
-        return subprocess.check_output(['php', str(ROOT / 'tests/community/memories_render.php')], text=True)
-    source = (ROOT / 'src/community/handlers/memories_page.php').read_text().split('<!doctype html>', 1)[1]
-    source = '<!doctype html>' + source
+def render_expressions(source, shared='', profile='', post=''):
     source = re.sub(r"<\?= Http::url\('([^']*)'\) \?>", lambda m: '/tbox' + m[1], source)
     source = re.sub(r"<\?= Http::communityUrl\('([^']*)'\) \?>", lambda m: '/community' + m[1], source)
-    for k, v in {'$cssVersion': 'test', '$jsVersion': 'test', '$e($sharedToken)': shared, '$e($profileName)': profile, '$e($postId)': post}.items():
+    for k, v in {'$cssVersion':'test', '$jsVersion':'test', '$e($sharedToken)':shared, '$e($profileName)':profile, '$e($postId)':post}.items():
         source = source.replace('<?= ' + k + ' ?>', v)
     source = source.replace("<?= $e(rtrim(Http::communityUrl('/'), '/')) ?>", '/community')
-    assert '<?' not in source
+    source = source.replace("<?= htmlspecialchars(rtrim(Http::communityUrl('/'), '/'), ENT_QUOTES, 'UTF-8') ?>", '/community')
+    source = re.sub(r"<\?= \(int\) filemtime\(.*?\) \?>", 'test', source)
     return source
+
+
+def page_html(shared='', profile='', post=''):
+    # Actual thread + modal markup/styles/scripts, with a reduced native-shell fixture.
+    # PHP rendering is checked separately when PHP is installed; no server test is claimed here.
+    source = (ROOT / 'src/community/handlers/memories_page.php').read_text()
+    component = source[source.index('<section id="community-threads"'):source.index("<?php if ($isShared): ?></body>")]
+    component = render_expressions(component, shared, profile, post)
+    css = '<link rel="stylesheet" href="/tbox/assets/app.css"><link rel="stylesheet" href="/tbox/assets/community/community.css"><link rel="stylesheet" href="/tbox/assets/community/memories.css"><link rel="stylesheet" href="/tbox/assets/community/messenger.css">'
+    head = '<!doctype html><html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">'+css+'</head>'
+    if shared:
+        return head+'<body class="threads-public">'+component+'</body></html>'
+    shell = (ROOT / 'src/views/shell_top.php').read_text()
+    nav = shell[shell.index('    <p class="nav-title">우리의 이야기'):shell.index('    <p class="nav-title">내 공간')]
+    nav = render_expressions(nav)
+    wrapper = '<body data-page="community-threads" data-base="/tbox" data-community-base="/community"><div class="app"><header class="appbar"><span class="appbar__brand">커뮤니티</span><button class="btn btn--quiet" data-messenger-open>메신저</button></header><aside class="sidebar"><div class="brand"><span class="brand__name">커뮤니티</span></div><p class="brand__sub">일상 · 이야기 · 함께하는 공간</p>'+nav+'<p class="nav-title">내 공간</p><nav class="nav"><a class="nav__item" href="/community/workspace">내 공간</a><a class="nav__item" href="/community/today">오늘</a><a class="nav__item" href="/community/workspace?space=team">팀 공간</a><a class="nav__item" href="/community/workspace">게시판</a></nav></aside><main id="main" class="main">'
+    messenger = render_expressions((ROOT / 'src/views/community_messenger.php').read_text())
+    messenger = messenger.replace('<?php declare(strict_types=1); ?>', '')
+    result = head+wrapper+component+'</main></div>'+messenger+'</body></html>'
+    assert '<?' not in result
+    return result
 
 
 def photo():
@@ -123,7 +141,7 @@ def main():
         page.set_viewport_size({'width':390,'height':844})
         assert page.evaluate('document.documentElement.scrollWidth <= innerWidth'), 'mobile overflow'
         page.screenshot(path=str(args.output/'mobile-empty.png'), full_page=True); ok('390px mobile has no horizontal overflow')
-        page.locator('.capture-nav').click(); page.locator('#compose-dialog').wait_for(state='visible')
+        page.locator('.threads-write').click(); page.locator('#compose-dialog').wait_for(state='visible')
         assert page.locator('#camera-input').get_attribute('capture')=='environment'
         assert page.locator('#video-input').get_attribute('capture')=='environment'
         page.locator('#caption').fill('내일의 여행을 기다리는 마음 <script>bad()</script>')
@@ -181,13 +199,13 @@ def main():
         assert page.locator('[data-compose]:visible').count()==0
         assert page.locator('.owner-actions').count()==0
         assert page.locator('.post-actions').count()==0
-        assert page.locator('#profile-title').text_content()=='여행자의 여행 기록'
+        assert page.locator('#profile-title').text_content()=='여행자의 스레드'
         ok('Anonymous shared-page UI is read-only and has no originals')
         mock.me['username']='another-user'; page.goto(ORIGIN+'/community/'); page.locator('.post').wait_for(); assert page.locator('#resume-draft').is_hidden(); ok('Drafts are scoped to the signed-in account')
         mock.me['can_write']=False; page.reload(); page.locator('.post').wait_for(); assert page.locator('[data-compose]:visible').count()==0; ok('Read-only accounts have no composer')
         assert not errors, errors
         browser.close()
-    (args.output/'ui-results.json').write_text(json.dumps({'coverage':'mocked HTTP, real Chromium; PHP/PostgreSQL not executed','checks':checks},ensure_ascii=False,indent=2)+'\n')
+    (args.output/'ui-results.json').write_text(json.dumps({'coverage':'mocked HTTP, actual components with native shell fixture, real Chromium; PHP/PostgreSQL not executed','checks':checks},ensure_ascii=False,indent=2)+'\n')
     print(f'{len(checks)} browser checks passed. Screenshots: {args.output}')
 
 if __name__=='__main__': main()

@@ -54,7 +54,7 @@ $shellKeys = [
     'files', 'trash', 'settings', 'activity', 'users', 'org', 'audit', 'wiki', 'admin',
     // 커뮤니티 3단계 (커뮤니티 ARCHITECTURE.md 21.3) — 모듈 모드의 화면 둘.
     // app.js 는 이 두 키를 만나면 셸만 그리고 물러난다(t-box 화면 JS 가 돌지 않는다).
-    'community-home', 'community-page', 'community-today',
+    'community-home', 'community-page', 'community-today', 'community-threads',
     // 커뮤니티 5-C — 게시판 화면
     'community-board',
 ];
@@ -74,7 +74,7 @@ $shellMod = isset($shellModule) && is_string($shellModule) && in_array($shellMod
 
 /** 셸이 보이는 이름 — 브랜드·`<title>` 꼬리표·그리드의 현재 앱이 이 값 하나를 따른다 */
 $shellBrandName = $shellMod === 'community' ? '커뮤니티' : 't-box';
-$shellBrandSub  = $shellMod === 'community' ? '개인 업무 공간' : '사내 파일 공유';
+$shellBrandSub  = $shellMod === 'community' ? '일상 · 이야기 · 함께하는 공간' : '사내 파일 공유';
 $shellBrandIcon = $shellMod === 'community' ? 'grid' : 'shield';
 /** 그리드 팝업에서 `aria-current="page"` 가 붙는 앱의 key (`config/apps.json` 의 key) */
 $shellCurrentApp = $shellMod === 'community' ? 'community' : 'tbox';
@@ -211,7 +211,7 @@ $shellApps = Apps::all();
 $shellCssAllowed = [
     // 커뮤니티 3단계 — 문서 토큰·블록 클래스 한 벌 (DESIGN.md 2.14). 이름은 `public/assets/`
     // 기준의 **정확한 상대 경로**이고, 허용 목록 안의 값만 통과하므로 경로가 조립되지 않는다.
-    'community/community.css',
+    'community/community.css', 'community/memories.css',
 ];
 $shellPageCss    = [];
 if (isset($pageCss) && is_array($pageCss)) {
@@ -271,6 +271,9 @@ if (!headers_sent()) {
 <?php if ($shellPalette !== ''): ?>
 <link id="palette-css" rel="stylesheet" href="<?= COMMUNITY_BASE ?>/palette.css?v=<?= $shellPalette ?>">
 <?php endif; ?>
+<?php if ($shellMod === 'community'): ?>
+<link rel="stylesheet" href="<?= Http::url('/assets/community/messenger.css') ?>?v=<?= (int) filemtime(__DIR__ . '/../../public/assets/community/messenger.css') ?>">
+<?php endif; ?>
 <?php if ($shellMod === 'community' && $shellPage === 'community-today'): ?>
 <script type="module" src="<?= Http::url('/assets/community/briefing.js') ?>?v=<?= (int) filemtime(__DIR__ . '/../../public/assets/community/briefing.js') ?>"></script>
 <?php elseif ($shellMod === 'community'): ?>
@@ -322,6 +325,7 @@ if (!headers_sent()) {
     </button>
     <span class="appbar__brand"><?= htmlspecialchars($shellBrandName, ENT_QUOTES, 'UTF-8') ?></span>
     <span class="appbar__page"><?= $shellTitle ?></span>
+<?php if ($shellMod === 'community'): ?><button class="btn btn--quiet" data-messenger-open type="button">메신저</button><?php endif; ?>
   </header>
 
   <aside id="sidebar" class="sidebar" hidden>
@@ -464,6 +468,13 @@ if (!headers_sent()) {
         <button class="btn btn--quiet" type="button" data-recent-close>닫기</button>
       </div>
     </dialog>
+    <p class="nav-title">우리의 이야기</p>
+    <nav class="nav" aria-label="스레드와 대화">
+      <a class="nav__item" data-thread-nav="feed" href="<?= Http::communityUrl('/') ?>"><span class="icon" data-icon="home"></span><span>모든 스레드</span></a>
+      <a class="nav__item" data-thread-nav="mine" href="<?= Http::communityUrl('/') ?>?view=mine"><span class="icon" data-icon="users"></span><span>나의 스레드</span></a>
+      <a class="nav__item" data-thread-nav="shared" href="<?= Http::communityUrl('/') ?>?view=shared"><span class="icon" data-icon="link"></span><span>공유 스레드</span></a>
+      <button class="nav__item" data-messenger-open type="button" aria-haspopup="dialog"><span class="icon" data-icon="bell"></span><span>메신저 · 회원 / GPT</span><span data-message-unread hidden></span></button>
+    </nav>
     <p class="nav-title">내 공간</p>
     <nav class="nav" aria-label="커뮤니티">
       <a id="nav-community-home" class="<?= $shellNavClass('community-home') ?>" href="<?= Http::communityUrl('/workspace') ?>">

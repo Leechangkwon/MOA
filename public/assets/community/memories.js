@@ -1,9 +1,11 @@
 (() => {
   'use strict';
+  const surface = document.getElementById('community-threads');
+  if (!surface) return;
   const $ = (id) => document.getElementById(id);
-  const base = document.body.dataset.base;
-  const shared = document.body.dataset.shared;
-  const state = { me: null, posts: [], view: 'feed', grid: false, profile: document.body.dataset.profile || '', post: document.body.dataset.post || '', next: null, search: '', request: 0, controller: null };
+  const base = surface.dataset.base;
+  const shared = surface.dataset.shared;
+  const state = { me: null, posts: [], view: 'feed', grid: false, profile: surface.dataset.profile || '', post: surface.dataset.post || '', next: null, search: '', request: 0, controller: null };
   let draft = null, editing = null, media = [], busy = false, draftTimer, dbPromise, commentPost, studioPost, imported = [], confirmAction;
   let toastTimer;
   const localUrls = new Set();
@@ -15,7 +17,7 @@
   function icon(name) { const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg'); const use = document.createElementNS(svg.namespaceURI, 'use'); use.setAttribute('href', '#i-' + name); svg.setAttribute('aria-hidden', 'true'); svg.append(use); return svg; }
   function button(label, className, handler, glyph) { const n = el('button', className); n.type = 'button'; if (glyph) n.append(icon(glyph)); if (label) n.append(el('span', '', label)); if (handler) n.addEventListener('click', handler); return n; }
   function iconButton(label, glyph, handler) { const n = button('', 'icon-button', handler, glyph); n.setAttribute('aria-label', label); n.title = label; return n; }
-  function toast(message) { clearTimeout(toastTimer); $('toast').textContent = message; $('toast').hidden = false; toastTimer = setTimeout(() => { $('toast').hidden = true; }, 4500); }
+  function toast(message) { clearTimeout(toastTimer); $('memory-toast').textContent = message; $('memory-toast').hidden = false; toastTimer = setTimeout(() => { $('memory-toast').hidden = true; }, 4500); }
   function errorText(error) { return error.message || '연결을 확인하고 다시 시도해 주세요.'; }
   async function api(path, options = {}) {
     const headers = { Accept: 'application/json', ...(options.headers || {}) };
@@ -29,19 +31,20 @@
     if (!response.ok) throw new Error(response.status === 401 ? '로그인이 만료됐어요. 이 기기의 임시 저장을 확인하고 다시 로그인해 주세요.' : data.error || '요청을 처리하지 못했어요.');
     return data;
   }
-  function writerElements() { document.querySelectorAll('[data-writer]').forEach((n) => { n.hidden = !state.me?.can_write || Boolean(shared); }); }
+  function writerElements() { surface.querySelectorAll('[data-writer]').forEach((n) => { n.hidden = !state.me?.can_write || Boolean(shared); }); }
   function profileLayout(stats = {}) {
     const isProfile = state.view === 'mine' || Boolean(state.profile) || Boolean(shared);
     $('hero').hidden = isProfile || Boolean(state.post);
     $('profile-panel').hidden = !isProfile;
-    $('feed-title').textContent = state.post ? '간직하고 싶은 순간' : isProfile ? '차곡차곡, 나의 순간들' : '함께 나누는 순간';
+    $('feed-title').textContent = state.post ? '스레드' : isProfile ? '나의 스레드' : state.view === 'shared' ? '공유 스레드' : '모든 스레드';
     $('feed-kicker').textContent = isProfile ? 'COLLECTED MOMENTS' : 'OUR MOMENTS';
     const name = shared ? (state.sharedProfile?.display_name || state.sharedProfile?.username || '친구') : state.view === 'mine' ? (state.me?.display_name || state.me?.username || '나') : state.profile;
-    $('profile-title').textContent = name + '의 여행 기록';
+    $('profile-title').textContent = name + '의 스레드';
     $('profile-avatar').textContent = Array.from(name || '나')[0];
     $('share-profile').hidden = Boolean(shared) || !state.me?.can_write || (state.view !== 'mine' && state.profile !== state.me?.username);
     $('profile-stats').replaceChildren(...[['posts', '기록'], ['moments', '사진·영상'], ['trips', '여행']].map(([key, title]) => { const n = el('span'); n.append(el('strong', '', String(stats[key] || 0)), document.createTextNode(title)); return n; }));
-    document.querySelectorAll('[data-view]').forEach((n) => n.classList.toggle('active', n.dataset.view === state.view));
+    surface.querySelectorAll('[data-view]').forEach((n) => { n.classList.toggle('active', n.dataset.view === state.view); n.setAttribute('aria-pressed', String(n.dataset.view === state.view)); });
+    document.querySelectorAll('[data-thread-nav]').forEach((n) => { const active = n.dataset.threadNav === state.view && !state.profile; n.classList.toggle('is-active', active); if (active) n.setAttribute('aria-current', 'page'); else n.removeAttribute('aria-current'); });
     $('empty-title').textContent = state.search ? '아직 찾지 못한 순간' : '아직 비어 있는 첫 페이지';
     $('empty-copy').textContent = state.search ? '다른 장소나 여행 이름으로 찾아보세요.' : shared ? '이 페이지에 공유한 기록이 아직 없어요.' : '완벽한 사진이 아니어도 괜찮아요. 지금 남기는 한 장이, 내일의 추억이 될 테니까요.';
   }
@@ -52,13 +55,13 @@
     $('load-more').disabled = true;
     if (!append) { state.posts = []; $('feed').replaceChildren(); $('empty').hidden = true; }
     const query = new URLSearchParams({ offset: String(append ? state.next || 0 : 0) });
-    if (state.view === 'mine') query.set('view', 'mine');
+    if (['mine', 'shared'].includes(state.view)) query.set('view', state.view);
     if (state.profile) query.set('profile', state.profile);
     if (state.search) query.set('q', state.search);
     try {
       const data = await api((shared ? '/memories/s/' + shared + '/feed' : '/api/memories') + '?' + query, { signal: state.controller.signal });
       if (request !== state.request) return;
-      if (data.me) { state.me = data.me; document.querySelectorAll('[data-my-name]').forEach((n) => { n.textContent = data.me.display_name || data.me.username; }); document.querySelectorAll('[data-my-initial]').forEach((n) => { n.textContent = Array.from(data.me.display_name || data.me.username)[0]; }); }
+      if (data.me) { state.me = data.me; surface.querySelectorAll('[data-my-name]').forEach((n) => { n.textContent = data.me.display_name || data.me.username; }); surface.querySelectorAll('[data-my-initial]').forEach((n) => { n.textContent = Array.from(data.me.display_name || data.me.username)[0]; }); }
       state.sharedProfile = data.profile;
       let posts = data.posts;
       if (state.post && !shared) { const result = await api('/api/memories/' + state.post, { signal: state.controller.signal }); if (request !== state.request) return; posts = [result.post]; }
@@ -136,7 +139,7 @@
   }
   function showDialog(id) { const d = $(id); if (!d.open) d.showModal(); }
   function closeDialog(id) { if (busy && id === 'compose-dialog') return; if (id === 'compose-dialog') saveDraft(); $(id).close(); }
-  async function setView(view) { if (view === 'mine' && shared) return; state.view = view; state.profile = ''; state.post = ''; state.search = ''; $('search').value = ''; if (!shared) history.replaceState(null, '', base + (view === 'mine' ? '/memories?view=mine' : '/')); await load(); }
+  async function setView(view) { if (view === 'mine' && shared) return; state.view = view; state.profile = ''; state.post = ''; state.search = ''; $('search').value = ''; if (!shared) history.replaceState(null, '', base + (view === 'feed' ? '/' : '/?view=' + view)); await load(); }
   function makeLocal(file) { const url = URL.createObjectURL(file); localUrls.add(url); return { file, mime: file.type || (file.name.toLowerCase().endsWith('.mov') ? 'video/quicktime' : 'image/jpeg'), filename: file.name, bytes: file.size, url }; }
   function releaseLocal() { localUrls.forEach((url) => URL.revokeObjectURL(url)); localUrls.clear(); }
   function fillCompose(value) {
@@ -279,9 +282,9 @@
     showDialog('studio-dialog');
   }
   function confirm(title, description, label, action) { $('confirm-title').textContent = title; $('confirm-description').textContent = description; $('confirm-ok').textContent = label; confirmAction = action; showDialog('confirm-dialog'); }
-  document.querySelectorAll('[data-view]').forEach((n) => n.addEventListener('click', () => setView(n.dataset.view)));
-  document.querySelectorAll('[data-compose]').forEach((n) => n.addEventListener('click', () => openCompose()));
-  document.querySelectorAll('[data-close]').forEach((n) => n.addEventListener('click', () => closeDialog(n.dataset.close)));
+  surface.querySelectorAll('[data-view]').forEach((n) => n.addEventListener('click', () => setView(n.dataset.view)));
+  surface.querySelectorAll('[data-compose]').forEach((n) => n.addEventListener('click', () => openCompose()));
+  surface.querySelectorAll('[data-close]').forEach((n) => n.addEventListener('click', () => closeDialog(n.dataset.close)));
   $('compose-dialog').addEventListener('cancel', (e) => { e.preventDefault(); closeDialog('compose-dialog'); });
   $('compose-dialog').addEventListener('close', () => { $('resume-draft').hidden = !draft; });
   $('compose-form').addEventListener('submit', publish);
@@ -300,6 +303,8 @@
   $('native-share').addEventListener('click', async () => { try { if (navigator.share) await navigator.share({ title: '나의 여행 기록 · Qaredi', url: $('share-url').value }); else $('copy-link').click(); } catch (e) { if (e.name !== 'AbortError') $('share-feedback').textContent = '기기 공유를 열지 못했어요. 링크를 복사해 보내 주세요.'; } });
   $('revoke-links').addEventListener('click', () => confirm('모든 여행 공유 링크를 해제할까요?', '이전에 친구에게 보낸 여행 링크는 더 이상 열리지 않아요. 새 링크는 나중에 만들 수 있어요.', '공유 해제', async () => { await api('/api/memories/links', { method: 'DELETE' }); $('share-dialog').close(); toast('기존 여행 공유 링크를 해제했어요.'); }));
   $('comment-form').addEventListener('submit', async (e) => { e.preventDefault(); const submit = e.submitter; if (submit) submit.disabled = true; const post = commentPost; try { const data = await api('/api/memories/' + post.id + '/comments', { method: 'POST', body: JSON.stringify({ body: $('comment-body').value }) }); if (commentPost?.id === post.id) { renderComments(data.comments); $('comment-body').value = ''; $('comment-error').textContent = ''; } post.comments++; } catch (err) { $('comment-error').textContent = errorText(err); } finally { if (submit) submit.disabled = false; } });
+  $('studio-chat').addEventListener('click', () => { $('studio-dialog').close(); window.dispatchEvent(new CustomEvent('qaredi:messenger', { detail: { mode: 'gpt', prompt: $('studio-prompt').value } })); });
+  window.addEventListener('qaredi:gpt-result', (event) => { if (!studioPost || typeof event.detail?.text !== 'string') return; $('studio-result').value = event.detail.text.slice(0, 5000); showDialog('studio-dialog'); });
   $('studio-kind').addEventListener('change', studioPrompt); $('studio-tone').addEventListener('change', studioPrompt);
   $('copy-prompt').addEventListener('click', async () => { $('studio-error').textContent = await clipboard($('studio-prompt').value, $('studio-prompt')) ? '요청문을 복사했어요. ChatGPT에 원본 파일과 함께 붙여 넣어 주세요.' : '요청문을 길게 눌러 복사해 주세요.'; });
   $('studio-import').addEventListener('click', () => $('studio-files').click());
@@ -319,7 +324,8 @@
   document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') saveDraft(); });
   window.addEventListener('beforeunload', (e) => { if (busy) { e.preventDefault(); e.returnValue = ''; } });
   $('today').textContent = new Intl.DateTimeFormat('ko-KR', { month: 'long', day: 'numeric', weekday: 'short' }).format(new Date());
-  if (shared) document.body.classList.add('shared-mode');
-  if (new URLSearchParams(location.search).get('view') === 'mine') state.view = 'mine';
+  if (shared) surface.classList.add('shared-mode');
+  const initialView = new URLSearchParams(location.search).get('view');
+  if (['mine', 'shared'].includes(initialView)) state.view = initialView;
   load();
 })();

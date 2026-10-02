@@ -1,7 +1,7 @@
 <?php
 declare(strict_types=1);
 
-/** Travel records are separate from business documents and their file permissions. */
+/** Photo and text threads within the community; document permissions stay on their existing routes. */
 final class Memories
 {
     public const TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/gif', 'video/mp4', 'video/webm', 'video/quicktime'];
@@ -150,6 +150,7 @@ final class Memories
             $where[] = "(p.owner_user_id=:viewer OR p.visibility IN ('community','shared'))";
             $bind[':viewer'] = (int) $user['id'];
             if (($_GET['view'] ?? '') === 'mine') { $where[] = 'p.owner_user_id=:mine'; $bind[':mine'] = (int) $user['id']; }
+            if (($_GET['view'] ?? '') === 'shared') { $where[] = "p.visibility IN ('community','shared')"; }
             $profile = $_GET['profile'] ?? '';
             if ($profile !== '') { $where[] = 'u.username=:profile'; $bind[':profile'] = self::text($profile, 64); }
         }

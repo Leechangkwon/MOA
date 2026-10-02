@@ -10,7 +10,7 @@
   {
     "key": "community",
     "name": "커뮤니티",
-    "desc": "개인 업무 공간 · 게시판 · 인계",
+    "desc": "일상과 여행 · 나의 스레드 · 함께 쓰는 공간",
     "path": "/community/",
     "icon": "grid",
     "order": 2

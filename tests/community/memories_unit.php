@@ -53,4 +53,25 @@ invalid(array_replace($valid, ['media_ids' => [$post['id'], $post['id']]]), 'dup
 invalid(array_replace($valid, ['media_ids' => [['id' => $post['id']]]]), 'nested media identifiers rejected');
 invalid(array_replace($valid, ['media_ids' => ['bad']]), 'invalid attachment identifier rejected');
 invalid(array_replace($valid, ['caption' => "bad\0caption"]), 'null byte rejected');
+require __DIR__ . '/../../src/community/Messenger.php';
+$conversation = ['user_low' => 10, 'user_high' => 11];
+check(Messenger::participant($conversation, ['id' => 10]), 'first participant can access conversation');
+check(Messenger::participant($conversation, ['id' => '11']), 'second participant can access conversation');
+check(!Messenger::participant($conversation, ['id' => 12]), 'unrelated member cannot access conversation');
+check(!Messenger::participant($conversation, []), 'anonymous cannot access conversation');
+$message = ['body' => '안녕, 내일 여행을 떠나!', 'request_id' => $post['id']];
+Http::$body = $message;
+check(Messenger::payload(4000)['body'] === $message['body'], 'Korean message accepted');
+foreach ([
+    array_merge($message, ['sender_id' => 11]),
+    array_merge($message, ['conversation_id' => $post['id']]),
+    array_merge($message, ['body' => '   ']),
+    array_merge($message, ['body' => str_repeat('a', 4001)]),
+    array_merge($message, ['body' => "bad\0message"]),
+    array_merge($message, ['request_id' => '../secret']),
+] as $input) {
+    Http::$body = $input; $denied = false;
+    try { Messenger::payload(4000); } catch (RuntimeException $e) { $denied = $e->getCode() === 400; }
+    check($denied, 'invalid message or mass-assignment rejected');
+}
 echo "$count checks passed\n";

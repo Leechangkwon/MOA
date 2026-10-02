@@ -49,6 +49,7 @@ require_once __DIR__ . '/Palette.php';
 require_once __DIR__ . '/BriefingText.php';
 require_once __DIR__ . '/Briefing.php';
 require_once __DIR__ . '/Memories.php';
+require_once __DIR__ . '/Messenger.php';
 // Q:F-2 — 검색 색인·검색어 토큰 한 벌(사이트 공통 — t-box 파일 색인도 나중에 같은 파일, 지시서 2.1)
 require_once __DIR__ . '/../SearchText.php';
 
@@ -62,7 +63,15 @@ require_once __DIR__ . '/../SearchText.php';
  * 4-B 범위: 화면 둘 · API 열(4-A 의 여덟 + `GET /api/spaces` + `PATCH /api/pages/{id}/visibility`).
  */
 const COMMUNITY_ROUTES = [
-    // Travel memories: session routes plus a narrow, read-only link capability.
+    ['GET', '/api/messenger', 'messenger_api.php', 'community.write'],
+    ['GET', '/api/messenger/members', 'messenger_api.php', 'community.write'],
+    ['POST', '/api/messenger/conversations', 'messenger_api.php', 'community.write'],
+    ['GET', '/api/messenger/gpt', 'messenger_api.php', 'community.write'],
+    ['POST', '/api/messenger/gpt', 'messenger_api.php', 'community.write'],
+    ['GET', '/api/messenger/conversations/{id}', 'messenger_api.php', 'community.write'],
+    ['POST', '/api/messenger/conversations/{id}/messages', 'messenger_api.php', 'community.write'],
+    ['POST', '/api/messenger/conversations/{id}/read', 'messenger_api.php', 'community.write'],
+    // Community threads: session routes plus a narrow, read-only link capability.
     ['GET', '/memories', 'memories_page.php', 'community.read'],
     ['GET', '/memories/u/{username}', 'memories_page.php', 'community.read'],
     ['GET', '/memories/p/{id}', 'memories_page.php', 'community.read'],

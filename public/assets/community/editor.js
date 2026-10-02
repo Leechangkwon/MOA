@@ -40,17 +40,17 @@ import { inputRules, textblockTypeInputRule, InputRule } from './vendor/pm/prose
 import { dropCursor } from './vendor/pm/prosemirror-dropcursor.js?v=5823578fa61a';
 import { gapCursor } from './vendor/pm/prosemirror-gapcursor.js?v=5823578fa61a';
 
-import { renderDoc, embedHost } from './doc-render.js?v=fa0603069058';
-import { createDatabaseView } from './database.js?v=fa0603069058';
-import { bindTemplateGallery, createTemplateSave } from './templates.js?v=fa0603069058';
-import { bindEmbedAdmin } from './embeds.js?v=fa0603069058';
-import { bindPopular } from './popular.js?v=fa0603069058';
-import { bindPalettes } from './palettes.js?v=fa0603069058';
-import { schema, toDoc, fromDoc, uuid4, colorAllowed, schemeOkForEditor, mentionAllowed, editorDomParser, clipboardDomParser, COLORS, BLOCK_TYPES } from './editor-schema.js?v=fa0603069058';
-import { drawAutomationPage, drawAutomationSpace, bindAutomations, loadAutomations } from './automations.js?v=fa0603069058';
-import { drawTrust, bindProcedures } from './procedures.js?v=fa0603069058';
-import { createPageExport } from './export.js?v=fa0603069058';
-import { createDrafts } from './drafts.js?v=fa0603069058';
+import { renderDoc, embedHost } from './doc-render.js?v=4faf2f126cbc';
+import { createDatabaseView } from './database.js?v=4faf2f126cbc';
+import { bindTemplateGallery, createTemplateSave } from './templates.js?v=4faf2f126cbc';
+import { bindEmbedAdmin } from './embeds.js?v=4faf2f126cbc';
+import { bindPopular } from './popular.js?v=4faf2f126cbc';
+import { bindPalettes } from './palettes.js?v=4faf2f126cbc';
+import { schema, toDoc, fromDoc, uuid4, colorAllowed, schemeOkForEditor, mentionAllowed, editorDomParser, clipboardDomParser, COLORS, BLOCK_TYPES } from './editor-schema.js?v=4faf2f126cbc';
+import { drawAutomationPage, drawAutomationSpace, bindAutomations, loadAutomations } from './automations.js?v=4faf2f126cbc';
+import { drawTrust, bindProcedures } from './procedures.js?v=4faf2f126cbc';
+import { createPageExport } from './export.js?v=4faf2f126cbc';
+import { createDrafts } from './drafts.js?v=4faf2f126cbc';
 
 /* ─── 주소와 공통 도우미 ─────────────────────────────────────── */
 
@@ -7024,7 +7024,7 @@ function boot() {
   booted = true;
 
   const page = body && body.dataset ? body.dataset.page : '';
-  if (page !== 'community-home' && page !== 'community-page' && page !== 'community-board') { return; }
+  if (page !== 'community-home' && page !== 'community-page' && page !== 'community-board' && page !== 'community-threads') { return; }
   if (COMMUNITY_BASE === '' || APP_BASE === '') { return; }
 
   // CSRF 토큰은 t-box 창구가 준다 — 한 앱·한 세션이라 같은 토큰이 커뮤니티 창구에도 통한다.
@@ -7051,6 +7051,8 @@ function boot() {
         if (page !== 'community-page') { loadRecentNav(); }
         if (page === 'community-home') {
           if (location.pathname === COMMUNITY_BASE + '/automations') { bindAutomations(api, COMMUNITY_BASE); loadSpaces(); } else if (location.pathname === COMMUNITY_BASE + '/procedures') { bindProcedures(api, COMMUNITY_BASE); loadSpaces(); } else { initHome(); }
+        } else if (page === 'community-threads') {
+          loadSpaces();
         } else if (page === 'community-board') {
           // 5-C — 게시판 화면. 사이드바의 공간·게시판 묶음은 여기서 함께 채운다.
           loadSpaces();

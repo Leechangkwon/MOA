@@ -184,3 +184,13 @@ DO $$ BEGIN
   GRANT SELECT ON community.memory_posts,community.memory_media,community.memory_likes,community.memory_comments,community.memory_links TO tbox_backup;
  END IF;
 END $$;
+
+-- Apply messenger migration before these optional grants.
+DO $$ BEGIN
+ IF to_regclass('community.gpt_turns') IS NOT NULL THEN
+  GRANT SELECT,INSERT,UPDATE,DELETE ON community.conversations,community.messages,community.gpt_turns TO tbox_app;
+  GRANT USAGE,SELECT ON SEQUENCE community.messages_id_seq,community.gpt_turns_id_seq TO tbox_app;
+  GRANT SELECT ON community.conversations,community.messages,community.gpt_turns TO tbox_backup;
+  GRANT SELECT ON SEQUENCE community.messages_id_seq,community.gpt_turns_id_seq TO tbox_backup;
+ END IF;
+END $$;

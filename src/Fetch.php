@@ -70,6 +70,40 @@ final class FetchDenied extends RuntimeException
 
 final class Fetch
 {
+    /** Fixed GPT endpoint; no caller-supplied URL, proxy, redirects, or raw error logging. */
+    public static function communityGptAvailable(): bool
+    {
+        return function_exists('curl_init');
+    }
+
+    public static function communityGpt(string $body, string $key): string
+    {
+        if (!self::communityGptAvailable() || strlen($body) > 524288 || $key === '' || strlen($key) > 1024
+            || preg_match('/[\x00-\x20\x7f]/', $key)) {
+            throw new FetchDenied('bad_request');
+        }
+        $host = 'api.openai.com';
+        // Same DNS/private-address gate and pinned connection used by pushSend/check.
+        $ip = self::publicIpOf($host);
+        $ch = curl_init('https://api.openai.com/v1/chat/completions');
+        if ($ch === false) { throw new FetchDenied('fetch_failed'); }
+        $response = '';
+        curl_setopt_array($ch, [CURLOPT_POST => true, CURLOPT_FOLLOWLOCATION => false,
+            CURLOPT_PROTOCOLS => CURLPROTO_HTTPS, CURLOPT_REDIR_PROTOCOLS => 0,
+            CURLOPT_RESOLVE => [$host . ':443:' . $ip], CURLOPT_PROXY => '',
+            CURLOPT_CONNECTTIMEOUT => 5, CURLOPT_TIMEOUT => 25, CURLOPT_SSL_VERIFYPEER => true, CURLOPT_SSL_VERIFYHOST => 2,
+            CURLOPT_HTTPHEADER => ['Content-Type: application/json', 'Authorization: Bearer ' . $key],
+            CURLOPT_POSTFIELDS => $body,
+            CURLOPT_WRITEFUNCTION => static function ($handle, string $chunk) use (&$response): int {
+                if (strlen($response) + strlen($chunk) > 262144) { return 0; }
+                $response .= $chunk; return strlen($chunk);
+            },
+        ]);
+        $ok = curl_exec($ch); $status = curl_getinfo($ch, CURLINFO_RESPONSE_CODE); curl_close($ch);
+        if ($ok === false || $status !== 200) { throw new FetchDenied('fetch_failed'); }
+        return $response;
+    }
+
     /** 받을 수 있는 최대 바이트 — 업로드와 같은 100MB (PRD S-05 ⑧ · S-06) */
     public const MAX_BYTES = 104857600;
 

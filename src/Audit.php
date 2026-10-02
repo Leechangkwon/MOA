@@ -414,6 +414,7 @@ final class Audit
         'authz.route|deny|role_not_permitted'     => '{actor} 이(가) 권한이 없는 기능({target})을 쓰려 해서 막았습니다',
 
         // ── 업로드 (files_upload, Upload) ──
+        'messenger.change|allow' => '{actor} 이(가) 메신저를 사용했습니다',
         'memory.change|allow'                     => '{actor} 이(가) 여행 기록을 변경했습니다',
         'file.upload|allow'                       => '{actor} 이(가) 파일 「{target}」 을(를) {level} 등급으로 올렸습니다',
         'file.upload|deny|role_not_permitted'     => '{actor} 이(가) 파일 「{target}」 을(를) {level} 등급으로 올리려 했지만 그 등급으로 올릴 권한이 없어 막았습니다',
