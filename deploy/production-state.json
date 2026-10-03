@@ -1,0 +1,34 @@
+{
+  "schema_version": 1,
+  "version": "2.45.0",
+  "verified_runtime_commit": "6ae8d1683501342199cc0e87147f36ea10387433",
+  "verified_checkout_commit": "dd9611ac7f9e83a7ab707e96029cfd4b63d1dd49",
+  "verified_at": "2026-10-03T22:25:10+09:00",
+  "record_type": "last_verified_server_snapshot_not_live_status",
+  "verification": {
+    "https_pass": 43,
+    "https_fail": 0,
+    "records_unchanged": true,
+    "changed_files_verified": true,
+    "migration": "db/migrations/2026-10-03_memory_story.sql",
+    "gd_installed": true
+  },
+  "evidence": [
+    "docs/thread-story-2026-10-03.md",
+    "docs/completion-release-2026-10-03.md"
+  ],
+  "automatic_deployment": false,
+  "server_only": [
+    "database",
+    "storage",
+    "secrets",
+    "service_configuration"
+  ],
+  "remaining": [
+    "real_handset_user_check",
+    "photo_video_editor",
+    "thread_read_write_mcp_connection",
+    "legacy_g0_qf10_integration_review",
+    "windows_assistant_validation"
+  ]
+}

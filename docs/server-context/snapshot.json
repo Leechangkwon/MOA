@@ -1,0 +1,51 @@
+{
+  "captured_at": "2026-10-03T14:01:59.772388+00:00",
+  "source_commit": "93d924314e2ac2640b5e8f553cf01af7e02b26b9",
+  "files": [
+    {
+      "source": "CLAUDE.md",
+      "copy": "site-rules.md",
+      "sha256": "4a73ee0fa0c4cc774d0e40a0dd84ae094fad7ea3f6e2d578719d0f702c3c3a45"
+    },
+    {
+      "source": "PRD.md",
+      "copy": "PRD.md",
+      "sha256": "c4ad56bebeb554c725caad70f3c4794fa9083351b5c212ce4dd0e95effcddf8e"
+    },
+    {
+      "source": "STAGES.md",
+      "copy": "STAGES.md",
+      "sha256": "d7486bd03876b3eab74c6218eabb07bda41a35561498a422ea3af7e26abc0113"
+    },
+    {
+      "source": "community/PRD.md",
+      "copy": "community/PRD.md",
+      "sha256": "5ada5e9f773c5b1a0892c58c62c17851c4781d3cbd392a02b0cd25acc3eb97fb"
+    },
+    {
+      "source": "community/ARCHITECTURE.md",
+      "copy": "community/ARCHITECTURE.md",
+      "sha256": "2854c900f0e5707fe4d16d581f1b7dbbd00d177ab0b8f82b8539ddccd76437d4"
+    },
+    {
+      "source": "community/SECURITY.md",
+      "copy": "community/SECURITY.md",
+      "sha256": "703bc5f28420604d11a4412c287b574c29be9ce45b273fac446e5e9deca80829"
+    },
+    {
+      "source": "community/STAGES.md",
+      "copy": "community/STAGES.md",
+      "sha256": "5527bde43ebf2f74eb830a695761a81d1573f59dcd478ef0330ee7b41887ac32"
+    },
+    {
+      "source": "community/notion-structure-and-design.md",
+      "copy": "community/notion-structure-and-design.md",
+      "sha256": "2db5fd1869cf37006e18f833178e4132ec8031911a13f28b40e789ea52b52d7c"
+    },
+    {
+      "source": "docs/launcher/ARCHITECTURE.md",
+      "copy": "launcher/ARCHITECTURE.md",
+      "sha256": "54179b18e4c549c12024b546a3453f29873816098e7e97aaa285c747bb454c95"
+    }
+  ]
+}

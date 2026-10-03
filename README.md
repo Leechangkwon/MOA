@@ -1,5 +1,7 @@
 # T-Box_Re — 사내 파일 공유 서비스 t-box 재구축
 
+> **현재 운영·클라우드 작업 기준 (2026-10-03):** Qaredi v2.45.0 운영 중입니다. 아래 초기 실습 소개보다 최신 상태는 [클라우드 인계](docs/CLOUD-HANDOFF.md), [배포 기록](deploy/production-state.json), [AI 작업 지침](AGENTS.md)을 먼저 확인하세요. Git push와 서버 배포는 별도이며 `python3 scripts/work_status.py`로 마지막 배포 기록과 현재 작업본을 비교할 수 있습니다.
+
 교육용으로 일부러 취약하게 만든 t-box(해킹 실습 대상)를, **실습에서 뚫린 5가지 취약점이 없는 형태**로 처음부터 다시 만드는 과제 저장소입니다.
 
 | 항목 | 내용 |

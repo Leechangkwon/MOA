@@ -54,10 +54,13 @@ require_once dirname(__DIR__) . '/src/Wiki.php';
  * 2장 2026-09-22 폴더 구조 결정). 파일이 없으면 조용히 건너뛰지 않고 **문제**로 올린다 —
  * 검사를 못 한 것을 「빠진 글 0」으로 보이게 하면 이 검사를 만든 이유가 사라진다.
  */
+// A Git-only checkout has no server parent repository. Use the explicit, versioned
+// context copy and keep all missing-stage checks; do not silently skip a book.
+const WIKI_SERVER_CONTEXT = __DIR__ . '/../docs/server-context';
 const WIKI_STAGES_FILES = [
     'tbox'      => __DIR__ . '/../STAGES.md',
-    'community' => __DIR__ . '/../../community/STAGES.md',
-    'qaredi'    => __DIR__ . '/../../STAGES.md',
+    'community' => WIKI_SERVER_CONTEXT . '/community/STAGES.md',
+    'qaredi'    => WIKI_SERVER_CONTEXT . '/STAGES.md',
 ];
 
 /**
@@ -374,6 +377,14 @@ foreach (array_keys(Wiki::BOOKS) as $book) {
 /* ─── ⑧ 빠진 글 — STAGES 0장의 「완료」 단계 × 위키 단계 글 ───────── */
 echo "\n-- 빠진 글 검사 (STAGES 0장 ✅ × 위키 단계 글) --\n";
 foreach (WIKI_STAGES_FILES as $book => $path) {
+    if ($book !== 'tbox') {
+        $livePath = $book === 'community' ? __DIR__ . '/../../community/STAGES.md' : __DIR__ . '/../../STAGES.md';
+        if (is_file($livePath)) {
+            $path = $livePath;
+        } else {
+            echo "  · {$book}: 서버 부모 문서 없음 — Git 전달 사본으로 검사합니다.\n";
+        }
+    }
     $shown = $book . ' ← ' . (realpath($path) ?: $path);
     if (!is_file($path)) {
         wiki_check_add($problems, $shown, '(STAGES)', '파일이 없다 — 빠진 글 검사를 할 수 없다');
