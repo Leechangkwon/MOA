@@ -4,7 +4,7 @@ import argparse
 import json
 import os
 from pathlib import Path
-from playwright.sync_api import sync_playwright
+from playwright.sync_api import sync_playwright, expect
 from memories_browser import Mock, ORIGIN, photo
 
 
@@ -37,7 +37,7 @@ def main():
             assert '1개 선택됨' in page.locator('#media-selection-status').text_content()
             page.locator('#publish').click();page.locator('#compose-dialog').wait_for(state='hidden')
             assert mock.uploads==1 and len(mock.saves[-1]['media_ids'])==1
-            assert page.locator('.post-media img').count()==1
+            expect(page.locator('.post-media img')).to_have_count(1)
             page.locator('[data-view=mine]').click();page.wait_for_function("() => document.querySelector('#profile-stats').textContent.includes('1사진·영상')")
             ok(f'{mime or "empty MIME"} photo previews, uploads, saves and appears in feed/count');ctx.close()
         ctx,page,mock=draft();choose(page,'unsupported.HEIC','image/heic')
