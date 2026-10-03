@@ -1,45 +1,12 @@
 {
   "schema_version": 1,
-  "version": "2.46.0",
-  "verified_runtime_commit": "c69c45e4afaf0b6875bd20d4f1f1d2e664a61d36",
-  "verified_checkout_commit": "c69c45e4afaf0b6875bd20d4f1f1d2e664a61d36",
-  "verified_at": "2026-10-03T23:49:09+09:00",
+  "version": "2.47.0",
+  "verified_runtime_commit": "d75a5d511d0bd38a54cbab1c348a30d08a4e3818",
+  "verified_checkout_commit": "d75a5d511d0bd38a54cbab1c348a30d08a4e3818",
+  "verified_tree": "b8dc66f374356c6b4c8ad3892dff65d540bd1e0b",
+  "verified_at": "2026-10-04T07:03:31+09:00",
   "record_type": "last_verified_server_snapshot_not_live_status",
-  "verification": {
-    "https_pass": 53,
-    "https_fail": 0,
-    "records_unchanged": true,
-    "changed_files_verified": true,
-    "deployment_changed_files": 152,
-    "migrations": [
-      "db/migrations/2026-10-10_access_grants.sql",
-      "db/migrations/2026-10-13_api_tokens_multi_scope.sql"
-    ],
-    "gd_installed": true,
-    "services_active": [
-      "nginx",
-      "php8.1-fpm",
-      "postgresql"
-    ],
-    "g0_pass": 252,
-    "qf10_pass": 116,
-    "ux_browser_pass": 305,
-    "ux_shell_pass": 29,
-    "cross_pass": 160,
-    "story_pass": 64,
-    "rename_pass": 123,
-    "assistant_http_pass": 376,
-    "assistant_unit_pass": 52,
-    "mcp_pass": 105,
-    "integration_unit_pass": 26,
-    "migration_rehearsal_passes": 2,
-    "original_database_owners_preserved": true
-  },
-  "evidence": [
-    "docs/work-items/vacation-integration-2026-10-03.md",
-    "docs/thread-story-2026-10-03.md",
-    "docs/completion-release-2026-10-03.md"
-  ],
+  "release_commit": "d75a5d511d0bd38a54cbab1c348a30d08a4e3818",
   "automatic_deployment": false,
   "server_only": [
     "database",
@@ -47,12 +14,46 @@
     "secrets",
     "service_configuration"
   ],
+  "verification": {
+    "https_pass": 70,
+    "https_fail": 0,
+    "records_unchanged": true,
+    "changed_files_verified": true,
+    "deployment_changed_files": 108,
+    "migrations": [
+      "db/migrations/2026-10-14_optional_member_auth.sql",
+      "db/migrations/2026-10-14_memory_social.sql",
+      "db/migrations/2026-10-14_travel_plans.sql",
+      "db/migrations/2026-10-14_travel_scopes.sql",
+      "db/migrations/2026-10-14_usage_guide.sql"
+    ],
+    "services_active": [
+      "nginx",
+      "php8.1-fpm",
+      "postgresql"
+    ],
+    "original_database_owners_preserved": true,
+    "storage_files_preserved": 1018,
+    "new_php_unit_pass": 83,
+    "social_http_pass": 134,
+    "travel_http_pass": 59,
+    "story_pass": 65,
+    "memories_http_pass": 138,
+    "onboarding_pass": 53,
+    "passkey_api_pass": 157,
+    "passkey_browser_pass": 67,
+    "token_pass": 123,
+    "mcp_pass": 114,
+    "cross_pass": 162,
+    "migration_rehearsal_passes": 2
+  },
+  "evidence": [
+    "docs/work-items/community-member-experience.md"
+  ],
   "remaining": [
     "real_handset_user_check",
-    "photo_video_editor",
-    "thread_read_write_mcp_connection",
-    "windows_assistant_validation"
-  ],
-  "release_commit": "56a4ae177865e3bbce44f67856f87553c8d36b53",
-  "verified_tree": "9410daf89d1c15cd267030250b6f39d09b11cef6"
+    "windows_assistant_installer_validation",
+    "chat_mcp_connection",
+    "photo_video_editor"
+  ]
 }

@@ -114,3 +114,6 @@ https://changkwon.mso.so/            Qaredi 런처 (Q:F-1)  — 로그인 전에
 ## 2026-10-03 회원 경험 요청 (구현 중·미배포)
 
 초대 회원의 OTP/패스키 및 비서 설치는 선택, 첫 방문은 제품 전체 기능 안내와 동의형 상세 가이드. 등록한 보호 수단은 로그인 때 검증하되 패스키에 OTP를 중복 요구하지 않는다. 관리자의 강제 보안/복구는 보존한다. `docs/community-member-experience-directive.md`를 기준으로 구현한다.
+
+
+2026-10-04 서버 통합 결과: 회원 경험 PR #3은 v2.47.0 `d75a5d5`로 운영 배포됐다. 공통 교차 회귀162·운영 HTTPS70 통과, DB migration5개·변경108파일 반영, 기존 행/owner/ACL·저장 원본1018파일 보존. 최신 근거는 `deploy/production-state.json`과 `docs/work-items/community-member-experience.md`. 실물 휴대폰/Windows 및 채팅 MCP 연결은 별도 미완료다.

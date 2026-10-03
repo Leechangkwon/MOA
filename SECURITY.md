@@ -822,3 +822,5 @@ insta6bdbdf3 서버 검증: HTTP138·실제화면19·합성브라우저38·공�
 4. **다음 조치:** 잔여 검증과 배포 준비를 마친 뒤 운영 반영 여부를 정한다. 현재 운영 v2.46.0 및 production-state.json은 변경하지 않았다.
 
 2026-10-04 배포 승인 후 추가 검증: 공통 경로 교차 회귀162/162, 기존 회원의 신규 안내 저장/다시 열기와 기존 도움말/파일/역할/토큰 회귀 확인. 코드·설정·DB·storage 암호화 백업과 복호화·아카이브 구조 확인 완료. 기능 코드는 기존 검증 후보와 같고 공통 회귀 시험만 새 둘러보기 UI에 맞췄다. 운영 반영 결과는 완료 뒤 별도 기록한다.
+
+2026-10-04 운영 완료: v2.47.0 `d75a5d5`, 변경108파일·migration5개·PHP-FPM reload, 운영HTTPS70/70. 기존 행/표 소유권/ACL 및 저장 원본1018파일 해시 보존. nginx/PHP-FPM/PostgreSQL active, 운영 JS 오류0/5xx0. 백업 `/var/backups/tbox-v2/member-20261004`, 세부 증거 `docs/work-items/community-member-experience.md`. 실물 기기/Windows 설치물/채팅 MCP는 미검증·미완료로 유지한다. followers 생성 후 구버전으로의 단순 복귀 금지는 그대로다.

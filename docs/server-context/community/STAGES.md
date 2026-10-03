@@ -759,3 +759,6 @@ v2.46.0(56a4ae1)에 개인 파일 권한과 문서 첨부 인가, 권한 요청 
 | 2026-10-03 | 구현 | cloud/community-member-experience 후보. 기존 원문/사진 보존, 발견 게시 opt-in, 여행 계획 독립 소유·MCP 범위 | `docs/work-items/community-member-experience.md`, `wiki/community/guide-memories.json` |
 
 PHP·격리 PostgreSQL·실물 기기·운영 HTTPS는 미검증이며 기존 운영 완료 표를 변경하지 않는다.
+
+
+2026-10-04 서버 통합 결과: 회원 경험 PR #3은 v2.47.0 `d75a5d5`로 운영 배포됐다. 공통 교차 회귀162·운영 HTTPS70 통과, DB migration5개·변경108파일 반영, 기존 행/owner/ACL·저장 원본1018파일 보존. 최신 근거는 `deploy/production-state.json`과 `docs/work-items/community-member-experience.md`. 실물 휴대폰/Windows 및 채팅 MCP 연결은 별도 미완료다.

@@ -269,3 +269,6 @@
 | 2026-10-03 | 구현 | 웹앱은 로그인 세션으로 연결, 독립 Windows 배포 자격/일반용 설치파일은 미확인. 관리자 복구 구분 유지 | `docs/work-items/community-member-experience.md`, `wiki/qaredi/guide-start.json` |
 
 서버 부모 원본과 병합해야 하는 클라우드 사본 기록이다. 기존 v2.46.0 운영 기록을 바꾸지 않는다.
+
+
+2026-10-04 서버 통합 결과: 회원 경험 PR #3은 v2.47.0 `d75a5d5`로 운영 배포됐다. 공통 교차 회귀162·운영 HTTPS70 통과, DB migration5개·변경108파일 반영, 기존 행/owner/ACL·저장 원본1018파일 보존. 최신 근거는 `deploy/production-state.json`과 `docs/work-items/community-member-experience.md`. 실물 휴대폰/Windows 및 채팅 MCP 연결은 별도 미완료다.

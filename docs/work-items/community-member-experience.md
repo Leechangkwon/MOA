@@ -1,6 +1,6 @@
 # 가입·팔로우·여행 기록의 회원 경험 개선
 
-- 상태: 서버 PHP·격리 DB 주요 수락/회귀 검증 완료, 잔여 검증·운영 배포 대기
+- 상태: v2.47.0 운영 배포 완료 (2026-10-04)
 - 작업 브랜치: `cloud/community-member-experience`
 - 기준 main 커밋: `7c874502ef4026a052380eb05ce68d706c92d8e5`
 - 후보 커밋: 이 문서를 포함한 PR의 마지막 커밋으로 고정한다.
@@ -97,4 +97,14 @@ PHP·PostgreSQL·nginx 실행 환경이 없고 운영 서버 도메인으로 접
 
 2026-10-04 사용자 ‘배포 해’ 지시로 운영 반영을 진행한다. 추가 공통 경로 교차 회귀162/162 통과(실제 PHP/DB, 역할보기·재인증·파일/폴더·토큰·오류/감사·안내·모바일). 새 둘러보기 화면은 기존 도움말 대신 계정별 사용 안내 열기/닫기/저장으로 검증한다. 이 검사는 옛 common8 원본 스크립트 전체 항목을 실행했다는 뜻은 아니다. 백업 `/var/backups/tbox-v2/member-20261004`: DB·코드/설정·storage 암호화, SHA-256·복호화 및 DB/압축 아카이브 구조 확인 완료. 배포 증거는 `/home/changkwon/qaredi-member-deploy-20261004`에 기록한다.
 
-잔여: 파일 모의 적용/드리프트 검사와 운영 반영 후 HTTPS, 이번 후보의 실제 Gemini 호출, 실물 휴대폰/Windows 확인. 이 채팅의 MCP 연결과 Windows 일반 설치파일도 여전히 미완료다. 서버 주요 검사의 통과를 운영 배포 완료로 간주하지 않는다.
+### 운영 반영 완료 — 2026-10-04
+
+사용자 배포 지시에 따라 v2.47.0 `d75a5d511d0bd38a54cbab1c348a30d08a4e3818`을 main·버전 태그에 전송하고 실제 운영에 반영했다. 운영/원격 드리프트 없음, 변경108파일의 모의 적용·PHP 구문·해시 일치 확인 후 신규 migration5개를 순서대로 적용하고 코드를 전환해 PHP-FPM을 reload했다. nginx 설정 검사와 nginx/PHP-FPM/PostgreSQL active 확인.
+
+기존 users/files/folders/api_tokens/sessions/permissions/access_grants/access_requests/community.pages/memory_posts/memory_media의 행 수·내용 해시(추가 열 제외), 기존 표/시퀀스 소유권·ACL, storage 원본1018파일의 SHA-256 모두 보존됐다. DB/사진 복원이나 재시드는 하지 않았다. 백업은 위 암호화 경로에 있고, 임시 검증 DB와 소유 서버는 정리했다.
+
+실제 HTTPS70/70 통과: 익명/인증 경계·새 자산 바이트·검토 계정 로그인/로그아웃·기존 토큰 범위+여행 범위·팔로우/여행/가이드 API·기존 회원에게 자동 안내를 소급하지 않음·전체 기능 입구/스레드/업무/설정·PC1280/모바일390px·브라우저 JS 오류0/5xx0. 기존 Gemini 준비 상태는 정상이며 이번 배포에서 실제 생성 요청은 하지 않았다. 운영 데이터와 비밀을 Git에 넣지 않고 `/home/changkwon/qaredi-member-deploy-20261004`에 비공개 증거를 남겼다. `deploy/production-state.json`을 실제 결과로 갱신했다.
+
+잔여: 실물 휴대폰·Windows 확인, Windows 일반 설치파일, 이 채팅의 MCP 연결. 이 기능 배포는 독립 비서 설치/채팅 MCP 연결 완료를 뜻하지 않는다. 옛 common8 원본 전체가 아닌 변경 관련 공통 경로162개를 실행했다.
+
+Git2 상태: 기능 브랜치 `cd333fd`를 포함하는 발행 커밋 `d75a5d5`를 main에 fast-forward push했다. Git2의 수동 병합 표시는 저장소에서 허용되지 않았고 일반 병합 API도405를 반환하여, main에 포함됨을 ancestry로 확인한 뒤 PR #3을 closed로 정리했다. Git2 merged 플래그는 false이며 코드의 main/운영 반영과 구분한다.

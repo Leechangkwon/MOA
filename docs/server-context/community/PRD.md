@@ -396,3 +396,6 @@ t-box PRD 7장의 S-01~S-04·S-07·S-09 를 **그대로 상속**한다(같은 �
 ## 2026-10-03 회원 경험 요청 (구현 중·미배포)
 
 커뮤니티 입구에서 업무와 일상 기능을 모두 안내한다. 개인 기록에 팔로우/팔로워와 소유자 공개 범위, 팔로잉 피드 및 명시적 게시 기반 발견 피드, 수정 가능한 여행 계획을 더한다. 긴 사진 이야기는 요약 카드와 상세 모달로 분리하고 원본은 유지한다. `docs/community-member-experience-directive.md` 참조.
+
+
+2026-10-04 서버 통합 결과: 회원 경험 PR #3은 v2.47.0 `d75a5d5`로 운영 배포됐다. 공통 교차 회귀162·운영 HTTPS70 통과, DB migration5개·변경108파일 반영, 기존 행/owner/ACL·저장 원본1018파일 보존. 최신 근거는 `deploy/production-state.json`과 `docs/work-items/community-member-experience.md`. 실물 휴대폰/Windows 및 채팅 MCP 연결은 별도 미완료다.
