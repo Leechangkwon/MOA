@@ -19,6 +19,9 @@ try:
    resp=tab.goto(site+'/',wait_until='networkidle')
    check('http://127.0.0.1:43821' not in resp.headers.get('content-security-policy',''),'other pages retain strict connect policy '+str(width))
    tab.goto(base+'/memories',wait_until='networkidle');expect(tab.locator('.threads-write')).to_be_visible()
+   if width == 1280:
+    tab.get_by_role('button',name='나중에 볼게요',exact=True).click()
+    expect(tab.locator('.usage-guide-dialog')).to_have_count(0)
    check(tab.locator('body').evaluate('(e)=>e.scrollWidth<=innerWidth+1'),'thread viewport '+str(width))
    tab.locator('.threads-write').click();expect(tab.locator('#compose-dialog')).to_be_visible();tab.locator('#caption').fill('실제 PHP 화면 사진 저장 '+str(width))
    tab.locator('#media-input').set_input_files({'name':'합성.png','mimeType':'image/png','buffer':png});expect(tab.locator('#visibility')).to_have_value('private')

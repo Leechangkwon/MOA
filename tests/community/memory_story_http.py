@@ -37,6 +37,10 @@ try:
   ctx.add_cookies([{'name':'__Host-tbox_session','value':users['employee']['session'],'domain':urlsplit(site).hostname,'path':'/','secure':True,'httpOnly':True}])
   tab=ctx.new_page();errors=[];tab.on('pageerror',lambda e:errors.append(str(e)))
   tab.goto(base+'/memories',wait_until='networkidle');expect(tab.locator('#feed .post-cover img')).to_have_count(1)
+  # Newly created fixture members receive the optional first-visit guide.
+  # Dismiss it through the UI before exercising the underlying story controls.
+  tab.get_by_role('button',name='나중에 볼게요',exact=True).click()
+  expect(tab.locator('.usage-guide-dialog')).to_have_count(0)
   check(tab.locator('#feed .photo-story').count()==0,'saved ten-photo story uses one compact cover in feed')
   tab.locator('#feed .read-more').click();expect(tab.locator('#detail-content .story-scene')).to_have_count(5)
   check(tab.locator('#detail-content .photo-story img').count()==10 and tab.locator('#detail-content .photo-story script').count()==0,'detail modal displays all ten photos and escapes text')

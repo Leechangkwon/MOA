@@ -270,7 +270,7 @@ with sync_playwright() as p:
     step("감사 auth.login allow passkey(e2)", sql("SELECT count(*) FROM audit_logs WHERE action='auth.login' AND reason='passkey' AND target_name='claude_employee02' AND happened_at > now() - interval '2 minutes'") != "0")
 
     # ═══ PK-T13 누름 수 — 새 탭(표시 있음) · 로그아웃 상태 · 시작 주소 /community/ ═══════
-    sub("PK-T13 목표 지표 — 홈 화면 「Qaredi」(시작 /community/) → 지문 → 「새 페이지」 → 편집")
+    sub("PK-T13 목표 지표 — 홈 화면 → 지문 → 둘러보기 → 문서 공간 → 새 페이지")
     c1.clear_cookies()
     pg2 = c1.new_page()
     watch(pg2, "taps")
@@ -287,16 +287,21 @@ with sync_playwright() as p:
     taps["n"] += 1
     pg2.click("#passkey-login-btn")
     pg2.wait_for_url(re.compile(r".*/community/$"), timeout=20000)
+    pg2.wait_for_selector("#community-overview", timeout=10000)
+    step("패스키 선택 → 커뮤니티 둘러보기", pg2.url.endswith("/community/") and taps["n"] == 2, pg2.url)
+    taps["n"] += 1
+    pg2.click("#overview-workspace a")
+    pg2.wait_for_url(re.compile(r".*/community/workspace$"), timeout=10000)
     pg2.wait_for_selector("#community-new:not([hidden])", timeout=10000)
-    step("패스키 선택 → 로그인 → 「내 공간」(/community/)", pg2.url.endswith("/community/") and taps["n"] == 2, pg2.url)
+    step("둘러보기에서 문서 공간 열기", pg2.url.endswith("/community/workspace") and taps["n"] == 3, pg2.url)
     step("  로그인 창구 요청 1 · 사용자가 로그인 방법을 선택", passkey_reqs(log2, "/tbox/api/login/passkey") == 1)
     taps["n"] += 1
     pg2.click("#community-new")
     pg2.wait_for_url(re.compile(r".*/community/p/[0-9a-f-]{36}(\?edit=1)?$"), timeout=15000)
     pg2.wait_for_selector("[contenteditable='true']", timeout=15000)
     step("「새 페이지」 → 곧바로 편집 모드(쓸 수 있는 본문 · 주소의 ?edit=1 은 지움)", pg2.is_visible("[contenteditable='true']") and "?edit" not in pg2.url, pg2.url)
-    print("  · PK-T13 누름 %d · 지문 1 · 글자 %d (목표 3 · 편집 한 줄이면 2 — 지시서 0.1)" % (taps["n"], taps["chars"]), flush=True)
-    step("PK-T13 누름 ≤ 3 · 글자 0", taps["n"] <= 3 and taps["chars"] == 0, taps)
+    print("  · PK-T13 누름 %d · 지문 1 · 글자 %d (전체 기능 둘러보기에서 문서 공간 선택 포함)" % (taps["n"], taps["chars"]), flush=True)
+    step("PK-T13 둘러보기 포함 누름 ≤ 4 · 글자 0", taps["n"] <= 4 and taps["chars"] == 0, taps)
     new_page_id = pg2.url.rsplit("/", 1)[1].split("?")[0]
     snap(va2)
     pg2.close()
@@ -478,7 +483,7 @@ with sync_playwright() as p:
     pk_ = ck.new_page()
     watch(pk_, "card")
     authenticator(pk_)
-    pk_.goto(SITE + "/community/")
+    pk_.goto(SITE + "/community/workspace")
     pk_.wait_for_selector("#passkey-recommend", timeout=10000)
     step("커뮤니티 첫 화면에 권장 카드", pk_.is_visible("#passkey-recommend"))
     shot(pk_, "card-412-light")
@@ -535,7 +540,7 @@ with sync_playwright() as p:
     csrf = pf.request.get(SITE + "/tbox/api/me").json().get("csrf_token", "")
     r = pf.request.put(SITE + "/community/api/pages/%s/favorite" % new_page_id, headers={"X-CSRF-Token": csrf})
     step("(준비) 새 페이지를 즐겨찾기에(PUT 200·201·204)", r.status in (200, 201, 204), r.status)
-    pf.goto(SITE + "/community/")
+    pf.goto(SITE + "/community/workspace")
     pf.wait_for_selector("#community-home-fav:not([hidden])", timeout=10000)
     step("412 — 첫 화면 맨 위 「즐겨찾기」 패널에 그 페이지 링크", pf.evaluate(
         "(id) => !!document.querySelector('#community-home-fav a[href$=\"/community/p/' + id + '\"]')", new_page_id))
@@ -553,8 +558,8 @@ with sync_playwright() as p:
     pm = cm.new_page()
     r = pm.request.get(SITE + "/tbox/app.webmanifest")
     m = r.json() if r.status == 200 else {}
-    step("GET /tbox/app.webmanifest 200 · 이름 Qaredi · 시작 /community/ · 범위 / · standalone · 아이콘 둘 · 바로가기 없음",
-         r.status == 200 and m.get("name") == "Qaredi" and m.get("start_url") == "/community/" and m.get("scope") == "/"
+    step("GET /tbox/app.webmanifest 200 · 이름 모아 · 시작 /community/ · 범위 / · standalone · 아이콘 둘 · 바로가기 없음",
+         r.status == 200 and m.get("name") == "모아" and m.get("short_name") == "모아" and m.get("start_url") == "/community/" and m.get("scope") == "/"
          and m.get("display") == "standalone" and len(m.get("icons", [])) == 2 and "shortcuts" not in m, m)
     ic = pm.request.get(SITE + m["icons"][0]["src"]) if m.get("icons") else None
     step("아이콘 PNG 200", ic is not None and ic.status == 200 and ic.headers.get("content-type", "").startswith("image/png"))

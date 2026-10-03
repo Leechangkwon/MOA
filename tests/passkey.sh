@@ -224,13 +224,13 @@ PROD_L0=$(prod_alerts_lines)
 PROD_T0=$(prod_totp_mtime)
 note "운영 감사 max(id) 시작 = ${PROD_A0:-?} · 운영 alerts.log 줄 수 시작 = ${PROD_L0:-?} · qa-totp mtime 시작 = ${PROD_T0:-?} (읽기만)"
 
-sub "① 운영 DB 를 **읽어** 임시 DB 를 만든다(파이프) + 마이그레이션(2026-10-01~10-06 — 패스키 표 포함)"
+sub "① 운영 DB 를 **읽어** 임시 DB 를 만든다(파이프) + 패스키·회원 경험 후보 마이그레이션"
 pg_admin "DROP DATABASE IF EXISTS $DB;
 CREATE DATABASE $DB OWNER tbox_owner;" >/dev/null 2>&1 || { echo "임시 DB 를 만들 수 없다"; exit 3; }
 sudo -n -u postgres pg_dump -d "$SRC_DB" 2>/dev/null | sudo -n -u postgres psql -X -q -At -d "$DB" >/dev/null 2>"$WORK/restore.err"
 [ -n "$(psqlq "SELECT count(*) FROM files")" ] || { echo "임시 DB 로 옮기지 못했다 — $(head -2 "$WORK/restore.err")"; exit 3; }
 { printf '\\set ON_ERROR_STOP on\n'
-  for m in 2026-10-01_qf2_search.sql 2026-10-02_qf2b_files_search.sql 2026-10-03_qf3a_favorites_recent.sql 2026-10-04_users_temp_password_issued_at.sql 2026-10-05_qf3b_purge_favorites.sql 2026-10-06_passkeys.sql; do
+  for m in 2026-10-01_qf2_search.sql 2026-10-02_qf2b_files_search.sql 2026-10-03_qf3a_favorites_recent.sql 2026-10-04_users_temp_password_issued_at.sql 2026-10-05_qf3b_purge_favorites.sql 2026-10-06_passkeys.sql 2026-10-14_optional_member_auth.sql 2026-10-14_memory_social.sql 2026-10-14_travel_plans.sql 2026-10-14_travel_scopes.sql 2026-10-14_usage_guide.sql; do
     [ -f "$ROOT/db/migrations/$m" ] && cat "$ROOT/db/migrations/$m" && printf '\n'
   done; } | sudo -n -u postgres psql -X -q -At -d "$DB" > "$WORK/mig.out" 2>&1
 grep -v 'could not change directory\|already exists, skipping\|^$' "$WORK/mig.out" | head -5 | sed 's/^/    /'

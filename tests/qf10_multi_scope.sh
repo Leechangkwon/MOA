@@ -3,8 +3,8 @@
 #                              (지시서 docs/qf10-multi-scope-directive.md 「조각 S」 S-6 · ARCHITECTURE 4.10 · API.md 21장 ·
 #                               t-box PRD F-76 · 사이트 PRD Q:F-10 · SECURITY R-114)
 #
-#   정적     Authz 원자 표·정규화·판정 표(옛 다섯 값 + 묶음) · 옛 상수 둘(FILE_TOKEN_SCOPES·TOKEN_SCOPES) 0 · 토큰 창구 표 여섯 ·
-#            public/index.php·Http·Db·grants 차이 0(기준 b2ee066) · security_lint 0 · 바뀐 PHP php -l · app.js node --check
+#   정적     Authz 원자 표·정규화·판정 표(옛 다섯 값 + 묶음) · 옛 상수 둘(FILE_TOKEN_SCOPES·TOKEN_SCOPES) 0 · 토큰 창구 11개 ·
+#            public/index.php·Db·grants·기존 문서 읽기 핸들러 차이 0(기준 7c87450) · security_lint 0 · 바뀐 PHP php -l · app.js node --check
 #   T-5 옛 값  임시 DB 에 마이그레이션 2026-10-12(Q:F-9 모양) → 옛 다섯 값 행 직접 INSERT → 2026-10-13 **두 번**(멱등) →
 #            community.write 행만 바뀜 · 모르는 값이 있으면 멈춤(바뀐 것 없음) · db/schema.sql 새 설치 모양 = 마이그레이션 모양 ·
 #            CHECK 가 모르는 원자·빈 글자·IP 짝 어긋남을 막음 · 의존이 깨진 행(DB 직접 `upload`)은 가진 원자만큼만 연다
@@ -25,7 +25,7 @@
 #   UA `tbox-review/<날짜>` · 비밀(비밀번호·TOTP·토큰·CSRF·링크 주소)은 표준입력으로만(R-62 · tests/lib/secrets.sh).
 #   임시 .env 는 운영 .env 를 mktemp 폴더(0700)에 0600 으로 복사해 DB_NAME·STORAGE_DIR·AUDIT_LOG_FILE 을 임시로, 공용 토큰을
 #   이 시험이 만든 난수(claude_employee01 귀속)로 바꾼다. 끝에 지운다. 틀은 tests/qf9_pc_login.sh 와 같다.
-# 쓰는 법: bash tests/qf10_multi_scope.sh     환경 QF10_PORT(8451~8455 · 기본 8451) · QF10_BASE_REV(기본 b2ee066 — v2.38.0) ·
+# 쓰는 법: bash tests/qf10_multi_scope.sh     환경 QF10_PORT(8451~8455 · 기본 8451) · QF10_BASE_REV(기본 7c87450 — 회원 경험 기준 main) ·
 #          REGRESS=1 이면 REGRESS_LIST(기본 api_tokens api_whoami)를 사본으로(8082 → 이 인스턴스 · tbox_re → 임시 DB) · REGRESS_KEEP=<폴더>
 set -u
 
@@ -42,7 +42,7 @@ UA="tbox-review/$(date +%F)"
 SRC_DB="tbox_re"                      # 운영 사본 — pg_dump 로 **읽기만**
 DB="tbox_qf10_${PORT}_test"           # 임시 — 여기에만 쓴다
 SDB="tbox_qf10_${PORT}_schema"        # 임시 — db/schema.sql 새 설치 모양 대조용
-BASE_REV="${QF10_BASE_REV:-b2ee066}"  # 기준 판(v2.38.0 — 이 조각의 출발점)
+BASE_REV="${QF10_BASE_REV:-7c87450}"  # 통합 main: 회원 경험 PR의 기준 판
 MIG9="$ROOT/db/migrations/2026-10-12_session_open.sql"
 MIG="$ROOT/db/migrations/2026-10-13_api_tokens_multi_scope.sql"
 MIG_TRAVEL="$ROOT/db/migrations/2026-10-14_travel_scopes.sql"
@@ -257,12 +257,13 @@ expect "normalizeScope 벡터(X = 거부)" \
 expect "옛 상수 둘(FILE_TOKEN_SCOPES · TOKEN_SCOPES)을 쓰는 코드 0(src · public · scripts)" "0" \
   "$(grep -rnE 'FILE_TOKEN_SCOPES|[^_]TOKEN_SCOPES\b' "$ROOT/src" "$ROOT/public" "$ROOT/scripts" 2>/dev/null | grep -c .)"
 CR="$ROOT/src/community/routes.php"
-expect "커뮤니티 토큰 창구 표 여섯(Q:F-8 셋 + Q:F-10 읽기 셋)" "6 1 1 1" \
-  "$(sed -n '/^const COMMUNITY_API_TOKEN_ROUTES = \[$/,/^\];$/p' "$CR" | grep -cE "^    '(GET|POST) /api/") $(sed -n '/^const COMMUNITY_API_TOKEN_ROUTES = \[$/,/^\];$/p' "$CR" | grep -c "^    'GET /api/search',") $(sed -n '/^const COMMUNITY_API_TOKEN_ROUTES = \[$/,/^\];$/p' "$CR" | grep -c "^    'GET /api/pages',") $(sed -n '/^const COMMUNITY_API_TOKEN_ROUTES = \[$/,/^\];$/p' "$CR" | grep -c "^    'GET /api/spaces',")"
+expect "커뮤니티 토큰 창구 11개(기존6 + 여행5), 기존 읽기 셋 유지" "11 1 1 1" \
+  "$(sed -n '/^const COMMUNITY_API_TOKEN_ROUTES = \[$/,/^\];$/p' "$CR" | grep -cE "^    '(GET|POST|PATCH|DELETE) /api/") $(sed -n '/^const COMMUNITY_API_TOKEN_ROUTES = \[$/,/^\];$/p' "$CR" | grep -c "^    'GET /api/search',") $(sed -n '/^const COMMUNITY_API_TOKEN_ROUTES = \[$/,/^\];$/p' "$CR" | grep -c "^    'GET /api/pages',") $(sed -n '/^const COMMUNITY_API_TOKEN_ROUTES = \[$/,/^\];$/p' "$CR" | grep -c "^    'GET /api/spaces',")"
 expect "새 읽기 셋의 라우트 정책 = community.read(라우트 표 값 그대로)" "3" \
   "$(grep -cE "^\s*\['GET',\s*'/api/(search|pages|spaces)',\s*'(search|pages_list|spaces_list)\.php',\s*'community\.read'\]," "$CR")"
-expect "고치지 않는 파일 차이 0 (public/index.php · Http · Db · db/grants.sql · 커뮤니티 핸들러 셋)" "0" \
-  "$(git -C "$ROOT" diff "$BASE_REV" -- public/index.php src/Http.php src/Db.php db/grants.sql src/community/handlers/search.php src/community/handlers/pages_list.php src/community/handlers/spaces_list.php 2>/dev/null | wc -l)"
+# Http.php intentionally adds safe return paths for the new community entry points.
+expect "통합 main 대비 공통 라우터·Db·grants·문서 읽기 핸들러 차이 0" "0" \
+  "$(git -C "$ROOT" diff "$BASE_REV" -- public/index.php src/Db.php db/grants.sql src/community/handlers/search.php src/community/handlers/pages_list.php src/community/handlers/spaces_list.php 2>/dev/null | wc -l)"
 PHPBAD=0
 for f in $(git -C "$ROOT" diff --name-only "$BASE_REV" -- '*.php' 2>/dev/null) $(git -C "$ROOT" ls-files --others --exclude-standard -- '*.php' 2>/dev/null); do
   [ -f "$ROOT/$f" ] || continue
@@ -296,8 +297,10 @@ tdb createdb -h 127.0.0.1 -p 5432 -U tbox_testdb -w "$DB" >/dev/null 2>&1 || { e
 CNT=$(psqlq "SELECT (SELECT count(*) FROM users) || ' ' || (SELECT count(*) FROM api_tokens);")
 [ -n "$CNT" ] && [ "${CNT%% *}" -gt 0 ] 2>/dev/null || { echo "임시 DB 로 옮기지 못했다 — $(head -2 "$WORK/restore.err")"; exit 3; }
 note "임시 DB $DB — 사용자 ${CNT%% *} · 토큰 ${CNT##* }"
-# Only the isolated copy: remove old review-token counts from this test's initial state.
-psqlq "UPDATE api_tokens SET revoked_at=now() WHERE user_id IN (SELECT id FROM users WHERE username IN ('claude_employee01','claude_employee02','claude_guest01')) AND revoked_at IS NULL" >/dev/null
+# Only the disposable copy: this historical migration predates multi-scope and
+# assistant tokens. Normalize copied token fixtures to its old read-only shape.
+# Preservation of real token values is checked separately in the migration rehearsal.
+psqlq "UPDATE api_tokens SET scope='read',bound_ip=NULL,revoked_at=coalesce(revoked_at,now())" >/dev/null
 M0=$(tdb psql -h 127.0.0.1 -p 5432 -U tbox_testdb -w -X -q -d "$DB" -v ON_ERROR_STOP=1 -f "$MIG9" 2>&1 >/dev/null; echo "rc=$?")
 expect "Q:F-9 마이그레이션(2026-10-12 — 이 조각 앞 모양) 적용 rc" "rc=0" "$(printf '%s' "$M0" | tail -1)"
 

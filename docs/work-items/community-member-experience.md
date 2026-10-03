@@ -1,6 +1,6 @@
 # 가입·팔로우·여행 기록의 회원 경험 개선
 
-- 상태: 클라우드 검증 완료·서버 검증 대기 (운영 미배포)
+- 상태: 서버 PHP·격리 DB 주요 수락/회귀 검증 완료, 잔여 검증·운영 배포 대기
 - 작업 브랜치: `cloud/community-member-experience`
 - 기준 main 커밋: `7c874502ef4026a052380eb05ce68d706c92d8e5`
 - 후보 커밋: 이 문서를 포함한 PR의 마지막 커밋으로 고정한다.
@@ -66,4 +66,33 @@ PHP·PostgreSQL·nginx 실행 환경이 없고 운영 서버 도메인으로 접
 
 ## 배포 결과 (서버에서만 작성)
 
-서버 검증·배포 대기. Git2 push는 운영 반영이 아니다.
+2026-10-04 서버 검증: 후보 `029f753a2a3377928630a68e7c3c7c41ea3b63fc`를 운영 경로 밖 `/home/changkwon/qaredi-member-review-20261004`에서 검증했다. PHP 8.1.2, PostgreSQL, nginx/PHP-FPM/PostgreSQL active 확인. 운영 checkout은 `7c87450`, 앱 버전 v2.46.0을 유지한다. 코드 전환·운영 DB migration·서비스 재시작·main 병합은 수행하지 않았다.
+
+| 실행한 검사 | 결과 |
+|---|---|
+| 변경 PHP `php -l` | 32파일 통과 |
+| optional_member_auth / memory_social / travel_plans / usage_guide PHP 단위 | 18 / 36 / 18 / 11 통과 |
+| `optional_member_auth_migration.py` | 격리 DB 8상태·backfill 재적용 통과 |
+| `memories_harness.py --suite memory_social_http.py` | 실제 PHP/PostgreSQL HTTP 134/134 |
+| 같은 harness `travel_plans_http.py` | 59/59, 교차 계정·토큰 범위·충돌·원본 보존 |
+| 같은 harness `memories_http.py` | 기존 사진·첨부·공개 범위 138/138 |
+| 같은 harness `memory_story_http.py` | 시험 보정 후 65/65, 실제 PHP/DB·390px·합성 AI 공급자 |
+| 같은 harness `memories_runtime_browser.py` | 시험 보정 후 19/19, 실제 PHP·1280/390px·사진 저장·메신저 |
+| `member_onboarding.py` | 운영의 격리 DB 사본에서 53/53, 가입·OTP 선택/등록·토큰 보호·메신저; PHP runtime 오류 0 |
+| `passkey_forge.py --samples` + `php tests/passkey_unit.php` | 137/137, 서명/해석기 검증; 실제 인증기 시험과 구분 |
+| MCP unittest | 114/114 |
+| `bash tests/qf10_multi_scope.sh` | 시험 기준/격리 초기 상태 보정 후 123/123, 기존 토큰 발급·IP·회수·문서/파일 범위 |
+| `tests/passkey.sh`의 실제 HTTP API 묶음 | 157/157, 소프트웨어 인증기·초기화 복구·권한 변경/회수·실패 롤백 |
+| 같은 패스키 틀의 브라우저 묶음 분리 실행 | Chromium 가상 인증기 화면 67/67, 화면 실행 틀 100/100, 가상 인증기 표본 PHP 검증 171/171; 실물 인증기와 구분 |
+| `Http::returnPath()` 공통 벡터 | PHP 79/79 |
+| 보안 린트·공식 PHP 자산 버전·위키 검사 | 금지 패턴 0, 자산 일치, 구조/누락 0 |
+
+운영 DB를 읽어 만든 격리 사본에서 신규 migration 5개를 순서대로 각각 두 번 적용했다. 기존 users/files/folders/api_tokens/sessions/community.pages/memory_posts/memory_media의 행 수·내용 해시(추가 열 제외)가 보존됐다. 기존 표/시퀀스 owner·ACL, 신규 표 앱 권한, 기존 글 discoverable=false도 확인했다. 운영 DB에는 쓰지 않았으며 임시 DB/서버/자격 파일은 종료 시 제거했다. 원문 로그와 재현 runner는 서버 비공개 `/home/changkwon/qaredi-member-results-20261004`에 있다. 운영 데이터·비밀은 Git에 넣지 않는다.
+
+실행 중 발견한 시험 문제: 신규 합성 회원에게 표시되는 첫 방문 안내창이 사진 시험의 클릭을 가로막았다. 두 실제 화면 시험에서 안내창의 실제 ‘나중에 볼게요’ 버튼을 누르고 닫힘을 확인하도록 보정했다. 앱 동작을 우회하거나 운영 코드를 변경하지 않았다. 원본 실패 로그도 별도 보존했다.
+
+추가 회귀 보정: Q:F-10 시험의 기준을 이 PR의 main으로 고정하고 여행 토큰 경로를 포함했다. 과거 Q:F-9 제약을 시험하는 격리 DB의 복사된 토큰만 회수/정규화해 역사적 초기 상태를 만들었다. 실제 토큰 보존은 위 migration 사본 검사에서 별도로 검증했다. 최초 토큰 실행은 이전 기대값 실패와 실행 중 스크립트 수정으로 인한 중단을 포함하므로 통과 증거에서 제외하고, 수정 완료 뒤 전체 123개를 다시 실행했다.
+
+패스키 시험은 후보 migration을 적용하도록 하고, 관리자 OTP 초기화 뒤 실제 enroll/confirm을 거쳐야 다음 검사를 진행하도록 보정했다. 복구 전 일반 기능/패스키 등록 차단, 복구 후 접근 복원 5개 검사를 추가했다. API 최종 157/157이며 화면 시험은 독립 실행해 결과를 분리한다. 문서 첫 화면 시험은 새 둘러보기에서 문서 공간 링크를 누르는 실제 경로(총4회) 및 `/community/workspace`를 사용한다. 웹앱 이름 기대값도 기존 운영 명칭인 ‘모아’로 맞췄다. 최종 화면67/67·실행 틀100/100·표본171/171 통과, 기본 대화창/콘솔 오류0. 실행용 runner와 실패/성공 로그는 위 비공개 결과 폴더에 보존한다. 임시 인스턴스/DB/자격 파일은 모두 정리했다.
+
+잔여: 전체 기존 모듈 회귀, 배포 전 백업/복호화·모의 적용/드리프트 검사와 배포 후 HTTPS, 실제 Gemini 호출, 실물 휴대폰/Windows 확인. 이 채팅의 MCP 연결과 Windows 일반 설치파일도 여전히 미완료다. 서버 주요 검사의 통과를 운영 배포 완료로 간주하지 않는다.

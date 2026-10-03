@@ -749,6 +749,26 @@ for label, method, path, body, cause in [
     c, d, _, _ = req(method, path, cookies=admin.ck(), body=body, csrf=admin.csrf)
     ok("  (%s 창구 %d)" % (label, c), c == 200, (c, d))
     check_revoked(label, cause, a0, n)
+    if cause == "mfa_reset":
+        # Administrator recovery is now independent of the old setup hint.
+        # Complete the real recovery flow before testing unrelated revocations.
+        recovery = S("e2", login_pw("e2"))
+        c, _, _, _ = recovery.get("/tbox/api/files")
+        ok("관리자 초기화 뒤 일반 기능은 복구 전까지 차단", c == 403)
+        c, _, _, _ = reg_options(recovery)
+        ok("관리자 초기화 뒤 패스키 등록으로 복구를 우회할 수 없음", c == 403)
+        c, enrolled, _, _ = recovery.post("/tbox/api/me/mfa/enroll")
+        ok("관리자 초기화 뒤 OTP 재등록 가능", c == 200)
+        if c != 200:
+            raise RuntimeError("Recovery enrollment fixture failed")
+        while 30 - (time.time() % 30) < 5:
+            time.sleep(0.5)
+        c, _, _, _ = recovery.post("/tbox/api/me/mfa/confirm", {"otp": totp(enrolled["secret"])})
+        ok("OTP 확인 뒤 복구 플래그 해제", c == 200 and sql("SELECT mfa_recovery_required FROM users WHERE id = %d" % e2id) == "f")
+        c, _, _, _ = recovery.get("/tbox/api/files")
+        ok("복구 완료 뒤 일반 기능 접근 복원", c == 200)
+        # Restore only this disposable fixture's original OTP setting.
+        sql("UPDATE users SET mfa_enabled=false,mfa_secret=NULL,mfa_last_step=NULL WHERE id=%d" % e2id)
 sql("UPDATE users SET password_hash = '%s', must_change_password = false, temp_password_issued_at = NULL, role = 'Employee', "
     "is_active = true, mfa_setup_required = false WHERE username = 'claude_employee02'" % E2_HASH)
 s["e2"] = S("e2", login_pw("e2"))
