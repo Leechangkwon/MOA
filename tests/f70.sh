@@ -1172,7 +1172,9 @@ with sync_playwright() as p:
     page.goto(base + '/login', wait_until='networkidle')
     page.fill('#username', who); page.fill('#password', pw); page.click('#login-submit'); page.wait_for_timeout(1200)
     if page.is_visible('#otp'):
-        page.fill('#otp', fresh_code()); page.click('#login-submit'); page.wait_for_timeout(2000)
+        page.fill('#otp', fresh_code()); page.wait_for_timeout(1500)   # 사용감 라운드 1 UX-9 — 여섯 자리에서 스스로 제출(옛 판은 아래 단추)
+        if page.is_visible('#otp') and page.input_value('#otp') != '': page.click('#login-submit')
+        page.wait_for_timeout(2000)
     step('alerts-app')
     page.goto(base + '/alerts-app', wait_until='networkidle')
     pass_reauth(page)

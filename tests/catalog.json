@@ -5290,6 +5290,104 @@
       "est_sec": 330,
       "writes_prod": false,
       "notes": "Q:F-10 조각 S 수락 T-1~T-8(지시서 docs/qf10-multi-scope-directive.md S-6). 임시 DB tbox_qf10_<포트>_test(운영 사본 pg_dump 읽기만) + 새 설치 대조용 tbox_qf10_<포트>_schema(db/schema.sql) · 마이그레이션 2026-10-12 뒤 옛 다섯 값 행을 직접 넣고 2026-10-13 두 번(멱등)·모르는 값이면 멈춤(임시 DB 에서만 CHECK 를 잠깐 뗌) · 임시 인스턴스 하나(QF10_PORT 8451~8455 기본 8451 · 워커 넷) · 발급 여섯에 TOTP 창 여섯 · 묶음 토큰의 bound_ip 는 임시 DB 에서 바꿔 IP 밖을 흉내 · T-6 은 같은 사람의 토큰·세션 답을 본문까지 대조. REGRESS=1 이면 api_tokens · api_whoami 를 같은 임시 인스턴스에서 사본으로(qf8·qf9 는 각자 스크립트)."
+    },
+    {
+      "id": "core.ux_r1_ui",
+      "cmd": "bash tests/ux_r1_ui.sh",
+      "module": "core",
+      "env": "temp-instance",
+      "status": "required",
+      "needs": [
+        "sudo",
+        "browser",
+        "totp_wait"
+      ],
+      "covers": [
+        "DESIGN.md",
+        "docs/design-guide.html",
+        "public/assets/app.css",
+        "public/assets/app.js",
+        "public/assets/search.js",
+        "public/assets/community/community.css",
+        "public/assets/community/editor.js",
+        "public/assets/community/database.js",
+        "public/assets/community/templates.js",
+        "scripts/community_asset_version.php",
+        "scripts/security_lint.sh",
+        "src/community/handlers/home_page.php",
+        "src/community/handlers/page_view.php",
+        "src/community/handlers/pages_create.php",
+        "src/community/handlers/board_pages_create.php",
+        "src/help/community.php",
+        "src/help/screens.php",
+        "src/views/shell_top.php",
+        "tests/browser/ux_r1_ui.py"
+      ],
+      "requirements": [
+        "Q:T-11",
+        "Q:T-12",
+        "Q:T-13",
+        "Q:T-14",
+        "Q:T-15",
+        "Q:T-16",
+        "Q:T-17",
+        "Q:T-18",
+        "Q:T-19",
+        "Q:T-20",
+        "Q:T-21"
+      ],
+      "risks": [
+        "R-62"
+      ],
+      "est_sec": 900,
+      "writes_prod": false,
+      "notes": "사용감 라운드 1 「빠른 승리」(사용자 2026-09-28 10:45 「사용감을 최적화하라」 · 실측 보고서 ux-audit-2026-09-28 · 구현 기록 docs/ux-r1-implementation.md). 임시 DB tbox_uxr1_<포트>_test(tbox_testdb 역할로 만들고 지움 · 운영은 pg_dump --no-owner 로 읽기만 — sudo 는 그 한 번) · 임시 인스턴스 php -S 127.0.0.1:8391~8395(기본 8393) · 검토 계정 claude_ 다섯 · 비밀은 표준입력으로만. 정적(바뀐 파일은 화면뿐 · 판정·저장·로그인 차이 0 · 세션 확인 도우미 한 곳 · 자동 제출 한 곳) · 서버 HTML · 화면(tests/browser/ux_r1_ui.py 8 조합 + 흐름) · 서버 로그. 운영 감사 max(id) 는 읽기 전용 역할 tbox_testread 로 수만 적는다(행 내용을 못 읽어 다른 세션 행과 가를 수 없다 — 이 시험의 주소는 839x 고정). Q:T-21(다른 탭에서 다시 로그인) 은 heartbeat 를 2분 30초 기다리고, 검토 반영(review-fix/ux-r1)의 경계 경우 route 모의(S1 고리 0 · S2 재인증 403 · S3 401 · S4 동시 403 묶기 · S5′ 경합 · S6 다른 계정 · S7 heartbeat 403 130초 — /api/me 자동 표식 없는 요청 0 · 임시 DB sessions 행 활동 시각 그대로 · S8 t-box writeFetch)가 약 5분 더 쓴다. 손잡이 UXR1_PORT · UXR1_COMBOS · UXR1_SHOTS · UXR1_BEFORE · UXR1_APP_TREE · UXR1_TPL_DB(운영 pg_dump 한 번으로 만든 틀 DB 를 복제 — 이 시험 안의 pg_dump 0) · REGRESS=1(REGRESS_LIST)"
+    },
+    {
+      "id": "core.browser_ux_r1_ui",
+      "cmd": "python3 tests/browser/ux_r1_ui.py",
+      "module": "core",
+      "env": "temp-instance",
+      "status": "helper",
+      "needs": [
+        "browser",
+        "totp_wait"
+      ],
+      "covers": [
+        "public/assets/app.css",
+        "public/assets/app.js",
+        "public/assets/search.js",
+        "public/assets/community/community.css",
+        "public/assets/community/editor.js",
+        "public/assets/community/database.js",
+        "public/assets/community/templates.js",
+        "src/community/handlers/home_page.php",
+        "src/community/handlers/page_view.php",
+        "src/community/handlers/pages_create.php",
+        "src/community/handlers/board_pages_create.php",
+        "src/help/community.php",
+        "src/help/screens.php",
+        "src/views/shell_top.php"
+      ],
+      "requirements": [
+        "Q:T-11",
+        "Q:T-12",
+        "Q:T-13",
+        "Q:T-14",
+        "Q:T-15",
+        "Q:T-16",
+        "Q:T-17",
+        "Q:T-18",
+        "Q:T-19",
+        "Q:T-20",
+        "Q:T-21"
+      ],
+      "risks": [
+        "R-62"
+      ],
+      "est_sec": 780,
+      "writes_prod": false,
+      "notes": "부르는 셸: core.ux_r1_ui. 단독 실행 불가(인자 SITE UA SHOTS · 세션 다섯과 직원 둘의 비밀번호·2단계 비밀을 표준입력 아홉 줄 — R-62 · UXR1_DB 로 임시 DB 감사 행을 센다). 결과 줄 SMOKE_FAIL=n. 넷째 인자 before 는 고치기 전 판 스크린샷용(종료 코드 0). Q:T-21 경계 경우는 Playwright route 로 이 브라우저 문맥의 답만 바꾼다(/tbox/api/me 모의 · 페이지 창구 403·붙잡기 — 서버에 가는 요청은 임시 인스턴스뿐)."
     }
   ]
 }

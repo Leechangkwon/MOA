@@ -1,4 +1,4 @@
-import { hydrateDashboard } from './dashboard.js?v=70d2c3f41d1d';
+import { hydrateDashboard } from './dashboard.js?v=7034b0d483ad';
 /**
  * public/assets/community/editor.js — 커뮤니티 화면의 동작 한 벌 (모듈 스크립트)
  *
@@ -41,20 +41,20 @@ import { inputRules, textblockTypeInputRule, InputRule } from './vendor/pm/prose
 import { dropCursor } from './vendor/pm/prosemirror-dropcursor.js?v=5823578fa61a';
 import { gapCursor } from './vendor/pm/prosemirror-gapcursor.js?v=5823578fa61a';
 
-import { createSuggestions, bindMySuggestions, buildSuggestionOps, suggestionTypeAllowed, suggestionEqual } from './suggestions.js?v=70d2c3f41d1d';
-import { renderDoc, embedHost } from './doc-render.js?v=70d2c3f41d1d';
-import { createDatabaseView } from './database.js?v=70d2c3f41d1d';
-import { bindTemplateGallery, createTemplateSave } from './templates.js?v=70d2c3f41d1d';
-import { bindEmbedAdmin } from './embeds.js?v=70d2c3f41d1d';
-import { bindPopular } from './popular.js?v=70d2c3f41d1d';
-import { bindPalettes } from './palettes.js?v=70d2c3f41d1d';
-import { schema, toDoc, fromDoc, uuid4, colorAllowed, schemeOkForEditor, mentionAllowed, editorDomParser, clipboardDomParser, COLORS, BLOCK_TYPES } from './editor-schema.js?v=70d2c3f41d1d';
-import { drawAutomationPage, drawAutomationSpace, bindAutomations, loadAutomations } from './automations.js?v=70d2c3f41d1d';
-import { drawTrust, bindProcedures } from './procedures.js?v=70d2c3f41d1d';
-import { createPageExport } from './export.js?v=70d2c3f41d1d';
-import { createDrafts } from './drafts.js?v=70d2c3f41d1d';
-import { drawPageAi, bindAiCenter } from './ai.js?v=70d2c3f41d1d';
-import { drawIntegrations, bindIntegrations } from './integrations.js?v=70d2c3f41d1d';
+import { createSuggestions, bindMySuggestions, buildSuggestionOps, suggestionTypeAllowed, suggestionEqual } from './suggestions.js?v=7034b0d483ad';
+import { renderDoc, embedHost } from './doc-render.js?v=7034b0d483ad';
+import { createDatabaseView } from './database.js?v=7034b0d483ad';
+import { bindTemplateGallery, createTemplateSave } from './templates.js?v=7034b0d483ad';
+import { bindEmbedAdmin } from './embeds.js?v=7034b0d483ad';
+import { bindPopular } from './popular.js?v=7034b0d483ad';
+import { bindPalettes } from './palettes.js?v=7034b0d483ad';
+import { schema, toDoc, fromDoc, uuid4, colorAllowed, schemeOkForEditor, mentionAllowed, editorDomParser, clipboardDomParser, COLORS, BLOCK_TYPES } from './editor-schema.js?v=7034b0d483ad';
+import { drawAutomationPage, drawAutomationSpace, bindAutomations, loadAutomations } from './automations.js?v=7034b0d483ad';
+import { drawTrust, bindProcedures } from './procedures.js?v=7034b0d483ad';
+import { createPageExport } from './export.js?v=7034b0d483ad';
+import { createDrafts } from './drafts.js?v=7034b0d483ad';
+import { drawPageAi, bindAiCenter } from './ai.js?v=7034b0d483ad';
+import { drawIntegrations, bindIntegrations } from './integrations.js?v=7034b0d483ad';
 
 /* ─── 주소와 공통 도우미 ─────────────────────────────────────── */
 
@@ -122,21 +122,90 @@ const BACKGROUND_VALUE = '1';
 const KEEPALIVE_MAX_BYTES = 60000;
 
 /**
+ * 사용감 라운드 1 UX-11 — 다른 탭에서 **다른 계정**으로 로그인해 이 탭을 멈췄는가. 참이면 쓰기 요청을 보내지 않는다(요청 0 ·
+ * 옛 토큰으로 30초마다 쌓이던 `csrf|deny` 감사 행도 0). 새로 고치면 풀린다(이 변수는 화면 수명 동안만).
+ */
+let tabHalted = false;
+const HALT_TEXT = '다른 계정으로 로그인되어 이 탭은 멈췄습니다 — 새로 고치세요';
+
+/** 멈춘 까닭을 화면 알림 줄에 한 번 적는다(글자만 — 서버 요청 0) */
+function haltNotice() {
+  setText(document.getElementById('msg'), HALT_TEXT);
+}
+
+/**
  * 커뮤니티 창구 부르기. 경로는 코드에 적힌 모듈 경로이고 접두는 여기서 한 번만 붙는다.
  *
- * @param {Object} [opts]  `{background: true}` — 자동 요청 표식(U-3) · `{keepalive: true}` — 창을 닫는 중에도 끝까지 보낸다(B1-2 설계 7)
+ * 사용감 라운드 1 UX-11 — 쓰기 요청(POST·PUT·PATCH·DELETE)이 403 이고 재인증·강제 절차(`next`)가 아니면 셸의 `qarediSessionProbe`
+ * (app.js — `/api/me` no-store 를 **한 번**, 진행 중이면 그 약속을 나눠 쓴다)로 세션을 본다:
+ *   · 로그인이 없다 → 401 로 돌려준다(부르는 쪽이 전처럼 로그인 흐름 — 임시저장 지킴 · 자동 요청은 조용히 그대로)
+ *   · 다른 계정 → 다시 보내지 않고 이 탭을 멈춘다(알림 한 줄) · 이 뒤의 쓰기는 보내지 않는다
+ *   · 같은 계정인데 토큰이 다르다(다른 탭에서 다시 로그인) → 새 토큰으로 바꾸고(셸도 `qarediSetCsrf`) **그 요청을 한 번만** 다시 보낸다.
+ *     다시 보낸 것도 403 이면 그대로 실패(고리 0)
+ *   · 같은 계정 · 같은 토큰 → 진짜 거부 — 받은 답 그대로(셸이 그 토큰을 기억해 같은 토큰의 다음 403 은 다시 묻지 않는다)
+ * 견주는 토큰은 **그 요청이 보낸 토큰**이다(`apiSend` 가 함께 돌려준다). 그 요청이 나가 있는 사이 다른 요청의 확인이 이미 토큰을 바꿨으면
+ * (보낸 토큰 ≠ 지금 토큰) 같은 계정 확인은 끝난 값이다 — `/api/me` 없이 지금 토큰으로 **한 번만** 다시 보낸다.
+ * 자동 요청(`{background: true}`)이 부른 확인은 자동 요청이다 — 셸이 `/api/me` 에도 자동 요청 표식을 단다(세션 활동 시각을 밀지 않는다).
+ * 막는 것은 여전히 서버다 — 토큰은 같은 출처 `/api/me` 의 답에서만 오고, 교차 사이트 요청은 그 답을 읽을 수 없다(SECURITY 7장).
+ * 일괄 작업은 `{sessionRetry: false}` 로 이 길을 끄고 제 `sessionCheck`(멈춤 · 「이어서 하기」)를 그대로 쓴다.
+ *
+ * @param {Object} [opts]  `{background: true}` — 자동 요청 표식(U-3) · `{keepalive: true}` — 창을 닫는 중에도 끝까지 보낸다(B1-2 설계 7) ·
+ *                         `{sessionRetry: false}` — 위 세션 확인·한 번 다시 보내기를 하지 않는다(일괄 작업)
  */
 function api(method, path, payload, opts) {
+  const write = method !== 'GET' && method !== 'HEAD';
+  if (write && tabHalted) {
+    return Promise.resolve({ status: 403, data: { error: HALT_TEXT } });
+  }
+  // 멈춘 탭의 자동 요청(알림 폴링 — 사람이 누르지 않은 것)도 보내지 않는다: 쿠키는 이미 다른 계정이라 그 계정의 알림 수가 이 탭에 그려진다
+  if (tabHalted && opts && opts.background === true) {
+    return Promise.resolve({ status: 0, data: {} });
+  }
+  // 부르는 쪽에는 상태·본문만 — 보낸 토큰은 이 함수 안에서만 쓴다
+  const answer = (sent) => ({ status: sent.status, data: sent.data });
+  const again = () => apiSend(method, path, payload, opts).then(answer);
+  return apiSend(method, path, payload, opts).then((sent) => {
+    const result = answer(sent);
+    if (!write || result.status !== 403 || (opts && opts.sessionRetry === false)) { return result; }
+    if (result.data && typeof result.data.next === 'string' && result.data.next !== '') { return result; }
+    const probe = typeof window.qarediSessionProbe === 'function' ? window.qarediSessionProbe : null;
+    if (probe === null || meUsername === null) { return result; }
+    if (tabHalted) { return { status: 403, data: { error: HALT_TEXT } }; }
+    if (sent.token !== csrfToken) { return again(); }
+    return probe(meUsername, sent.token, { background: !!(opts && opts.background === true) }).then((got) => {
+      if (got.why === 'fresh') {
+        csrfToken = got.token;
+        if (typeof window.qarediSetCsrf === 'function') { window.qarediSetCsrf(got.token); }
+        return again();
+      }
+      if (got.why === 'login') { return { status: 401, data: {} }; }
+      if (got.why === 'other') {
+        tabHalted = true;
+        haltNotice();
+        return { status: 403, data: { error: HALT_TEXT } };
+      }
+      return result;
+    }, () => result);
+  });
+}
+
+/**
+ * 요청 한 번 — `api()` 만 부른다(위 세션 확인 뒤 한 번 다시 보낼 때도 이 함수).
+ * 돌려주는 값: `{status, data, token}` — `token` 은 이 요청이 실제로 보낸 CSRF 토큰(쓰기만 · 읽기는 null). `api()` 가 견주는 데만 쓰고 밖으로 내지 않는다.
+ */
+function apiSend(method, path, payload, opts) {
   const options = {
     method: method,
     credentials: 'same-origin',
     cache: 'no-store',
     headers: {}
   };
+  let token = null;
   if (opts && opts.background === true) { options.headers[BACKGROUND_HEADER] = BACKGROUND_VALUE; }
   if (method !== 'GET' && method !== 'HEAD') {
     if (csrfToken === null) { return Promise.reject(new Error('no-csrf')); }
-    options.headers['X-CSRF-Token'] = csrfToken;
+    token = csrfToken;
+    options.headers['X-CSRF-Token'] = token;
     options.headers['Content-Type'] = 'application/json';
     options.body = JSON.stringify(payload === undefined ? {} : payload);
     if (opts && opts.keepalive === true && new TextEncoder().encode(options.body).length <= KEEPALIVE_MAX_BYTES) {
@@ -144,7 +213,7 @@ function api(method, path, payload, opts) {
     }
   }
   return fetch(COMMUNITY_BASE + path, options).then((response) =>
-    readJson(response).then((data) => ({ status: response.status, data: data }))
+    readJson(response).then((data) => ({ status: response.status, data: data, token: token }))
   );
 }
 
@@ -238,6 +307,20 @@ function whileVisible(fn, ms) {
       disarm();
     }
   };
+}
+
+/* ─── 새 페이지 제목 (사용감 라운드 1 UX-1) ───────────────────────
+ * 서버가 제목 없이 만든 페이지에 붙이는 기본 제목(`pages_create.php` · `board_pages_create.php` 의 글자와 같다).
+ * 편집 모드에서 제목 값이 이 셋 중 하나면 칸을 **비워** 자리표시 「제목」이 보이게 한다 — 지우는 데 탭이 더 들지 않게.
+ * 칸을 비운 채 두면 저장은 전과 같이 지금 제목(`state.title` = 서버 값)을 보낸다 — 저장 창구·규칙은 그대로다.
+ * 이 표는 보이는 칸의 편의일 뿐 판정이 아니다(DESIGN 원칙 1).
+ */
+const DEFAULT_TITLES = ['제목 없는 페이지', '제목 없는 데이터베이스', '제목 없는 글'];
+
+/** 편집 칸에 넣을 제목 — 서버 기본 제목이면 빈 글자(자리표시가 보인다) */
+function titleForInput(title) {
+  const t = typeof title === 'string' ? title : '';
+  return DEFAULT_TITLES.indexOf(t) >= 0 ? '' : t;
 }
 
 /* ─── 공개 범위 (4-B) ────────────────────────────────────────────
@@ -790,6 +873,21 @@ function drawRecentNav(pages) {
   }
   show(nav, pages.length > 0);
   show(title, pages.length > 0);
+  drawHomeRecent(pages);
+}
+
+/* 사용감 라운드 1 UX-4 — 「내 공간」 첫 화면 맨 위(즐겨찾기 판 다음)의 「최근」 다섯 줄(`#community-home-recent`, 홈 화면에만 있다).
+   사이드바 「최근」과 **같은 답 · 같은 줄**(navPageRow — ☆ 도 같다)을 한 번 더 그린다(새 창구 · 새 요청 0). 폰·넓은 폭 둘 다 보이고, 비었으면 숨는다. */
+function drawHomeRecent(pages) {
+  const box = document.getElementById('community-home-recent');
+  const list = document.getElementById('community-home-recent-list');
+  if (!box || !list) { return; }
+  clear(list);
+  const ul = document.createElement('ul');
+  ul.className = 'nav-tree';
+  for (const page of pages.slice(0, 5)) { ul.appendChild(navPageRow(page, '').li); }
+  list.appendChild(ul);
+  show(box, pages.length > 0);
 }
 
 function loadRecentNav() {
@@ -1429,7 +1527,8 @@ function initHome() {
         .then((result) => {
           if (result.status === 401) { toLogin(); return; }
           if (result.status === 201 && result.data.page && typeof result.data.page.id === 'string') {
-            window.location.assign(COMMUNITY_BASE + '/p/' + result.data.page.id);
+            // 사용감 라운드 1 UX-1 — 트리의 「하위 추가」도 「새 페이지」와 같이 곧바로 편집 모드 · 제목 칸부터
+            window.location.assign(COMMUNITY_BASE + '/p/' + result.data.page.id + '?edit=1&new=1');
             return;
           }
           setText(msg, errorMessage(result.data));
@@ -1716,7 +1815,7 @@ function initHome() {
       okText: '옮김',
       withParentText: '부모와 함께 옮겨짐',
       parentFailText: '옮기지 않음 — 부모를 옮기지 못했습니다',
-      send: (item) => api('PATCH', '/api/pages/' + item.id + '/move', { parent_id: target }),
+      send: (item) => api('PATCH', '/api/pages/' + item.id + '/move', { parent_id: target }, { sessionRetry: false }),
       done: () => { afterBulk(); }
     });
   }
@@ -1728,7 +1827,7 @@ function initHome() {
       title: '즐겨찾기에 넣기',
       items: items,
       okText: (data) => (data && data.listed === false ? '넣음 — 목록에는 나오지 않습니다' : '넣음'),
-      send: (item) => api('PUT', '/api/pages/' + item.id + '/favorite', {}),
+      send: (item) => api('PUT', '/api/pages/' + item.id + '/favorite', {}, { sessionRetry: false }),
       done: () => { loadFavoritesNav(); afterBulk(); }
     });
   }
@@ -1750,13 +1849,13 @@ function initHome() {
       okText: '휴지통으로 옮김',
       withParentText: '부모와 함께 지워짐',
       parentFailText: '지우지 않음 — 부모를 지우지 못했습니다',
-      send: (item) => api('DELETE', '/api/pages/' + item.id, {}),
+      send: (item) => api('DELETE', '/api/pages/' + item.id, {}, { sessionRetry: false }),
       // M-7 — 커뮤니티는 바로: 10초 동안 「되돌리기」 = 지운 페이지마다 되살리기(하위는 함께 돌아온다)
       undo: (done) => ({
         title: '되돌리기 — 휴지통에서 되살리기',
         items: done.map((d) => ({ id: d.id, name: d.name, parent: null })),
         okText: (data) => (data && data.moved_to_root === true ? '되살림 — 맨 위로 올렸습니다' : '되살림'),
-        send: (item) => api('POST', '/api/pages/' + item.id + '/restore', {}),
+        send: (item) => api('POST', '/api/pages/' + item.id + '/restore', {}, { sessionRetry: false }),
         done: () => { afterBulk(); }
       }),
       done: () => { afterBulk(); loadFavoritesNav(); }
@@ -2083,7 +2182,7 @@ function bindTrash(onRestored) {
         okText: (data) => (data && data.moved_to_root === true
           ? (TRASH_MOVE_REASONS[data.moved_reason] || '되살렸습니다. 원래 자리로 돌아갈 수 없어 맨 위로 올렸습니다')
           : '되살림'),
-        send: (item) => api('POST', '/api/pages/' + item.id + '/restore', {}),
+        send: (item) => api('POST', '/api/pages/' + item.id + '/restore', {}, { sessionRetry: false }),
         done: () => {
           // 고른 것은 시작할 때 풀렸다 — 도는 동안 새로 고른 것은 남기고, 목록에서 사라진 줄은 load 가 뺀다
           loadSpaces();   // 사이드바 트리도 새 답으로
@@ -2248,7 +2347,8 @@ function bindNewPage() {
           if (result.status === 201 && result.data.page && typeof result.data.page.id === 'string') {
             /* T:F-72 2장 ① (취합 결정) — 「새 페이지」는 열자마자 편집 모드: 게시판 「새 글」과 같은 `?edit=1`
                (페이지 화면이 창구의 can_edit 을 보고 편집을 켠 뒤 주소에서 꼬리표를 지운다). */
-            window.location.assign(COMMUNITY_BASE + '/p/' + result.data.page.id + '?edit=1');
+            // 사용감 라운드 1 UX-1 — `new=1`: 편집기가 커서를 **제목 칸**에 둔다(읽은 뒤 주소에서 지운다)
+            window.location.assign(COMMUNITY_BASE + '/p/' + result.data.page.id + '?edit=1&new=1');
             return;
           }
           setText(msg, errorMessage(result.data));
@@ -2267,10 +2367,11 @@ function bindNewPage() {
  * ★ 등급 배지의 색은 t-box 파일 등급 배지 그대로다(DESIGN 2.2 — 새 색값 0).
  */
 const BOARD_LEVEL_LABELS = {
-  public: { text: '공개', badge: 'badge--public' },
-  internal: { text: '사내', badge: 'badge--internal' },
-  team: { text: '팀', badge: 'badge--team' },
-  'admin-only': { text: '관리자', badge: 'badge--admin-only' }
+  // audience — 게시판 글의 상태 글자 「게시됨 · …」(사용감 라운드 1 UX-6). 등급 낱말은 DESIGN 5장(app.js LEVEL_LABELS 「공개 — 손님까지 모두」 …)을 줄인 것
+  public: { text: '공개', badge: 'badge--public', audience: '손님까지 모두 봄' },
+  internal: { text: '사내', badge: 'badge--internal', audience: '사내 모두 봄' },
+  team: { text: '팀', badge: 'badge--team', audience: '게시판 팀만 봄' },
+  'admin-only': { text: '관리자', badge: 'badge--admin-only', audience: '관리자만 봄' }
 };
 const BOARD_KIND_LABELS = {
   notice: { text: '공지', icon: 'log' },
@@ -2785,11 +2886,22 @@ function initNotifications() {
   const empty = document.getElementById('notify-empty');
   const msg = document.getElementById('notify-msg');
   const allRead = document.getElementById('notify-all-read');
+  // 사용감 라운드 1 UX-3 — 폰 윗줄(960 미만에서만 보인다)의 종과 ☰ 단추. 숫자는 **같은 폴링 한 벌**이 세 자리에 함께 그린다(새 요청 0).
+  const barBell = document.getElementById('appbar-bell');
+  const barCount = document.getElementById('appbar-bell-count');
+  const navToggle = document.getElementById('nav-toggle');
 
   function paintCount(n) {
-    setText(count, n > 99 ? '99+' : String(n));
+    const text = n > 99 ? '99+' : String(n);
+    const label = n > 0 ? '알림 — 안 읽은 것 ' + String(n) + '개' : '알림';
+    setText(count, text);
     show(count, n > 0);
-    bell.setAttribute('aria-label', n > 0 ? '알림 — 안 읽은 것 ' + String(n) + '개' : '알림');
+    bell.setAttribute('aria-label', label);
+    setText(barCount, text);
+    show(barCount, n > 0);
+    if (barBell) { barBell.setAttribute('aria-label', label); }
+    // ☰ — 서랍 안의 「알림」 숫자를 화면 읽기로도 알린다(보이는 숫자는 옆의 종이 맡는다 — 두 벌로 그리지 않는다)
+    if (navToggle) { navToggle.setAttribute('aria-label', n > 0 ? '메뉴 열기 · 안 읽은 알림 ' + String(n) : '메뉴 열기'); }
   }
   // U-3 — 30초 폴링은 사람이 누른 것이 아니다: 표식을 달아 세션을 늘리지 않는다(창을 열어 목록을 보는 open() 은 사람 요청).
   function poll() {
@@ -2851,6 +2963,7 @@ function initNotifications() {
     if (typeof dialog.showModal === 'function' && !dialog.open) { dialog.showModal(); }
   }
   bell.addEventListener('click', open);
+  if (barBell) { barBell.addEventListener('click', open); }   // UX-3 — 윗줄 종도 같은 창
   for (const close of dialog.querySelectorAll('[data-notify-close]')) {
     close.addEventListener('click', () => dialog.close());
   }
@@ -3230,8 +3343,20 @@ function createBlockDialog(getView, hooks) {
   let targetPos = null;
   const items = [];
 
+  /* 사용감 라운드 1 UX-7 — 창의 **보이는 순서**는 자주 쓰는 것 먼저: 본문 · 제목 1 · 할 일 · 글머리 목록 · 그림 · 파일 · 번호 목록 · 나머지는 전 순서.
+     `BLOCK_TYPES` 배열(단축키 · 빈 페이지 안내 · `data-block-index` 가 쓰는 번호)은 그대로 두고 그리는 차례만 바꾼다. ↑↓ 도 이 차례로 움직인다. */
+  const FIRST = [['paragraph', null], ['heading', 1], ['to_do', null], ['bulleted', null], ['image', null], ['file', null], ['numbered', null]];
+  const order = [];
+  for (const [type, level] of FIRST) {
+    const i = BLOCK_TYPES.findIndex((e) => e.type === type && (level === null || (e.attrs && e.attrs.level === level)));
+    if (i >= 0 && order.indexOf(i) === -1) { order.push(i); }
+  }
+  for (let i = 0; i < BLOCK_TYPES.length; i++) { if (order.indexOf(i) === -1) { order.push(i); } }
+  /** 값을 먼저 정하는 블록(다음 창 · 새 페이지)은 고르면 미리보기 → 「넣기」 두 단계 그대로. 나머지는 한 번 누르면 곧바로 넣고 닫는다 */
+  const oneTap = (entry) => !entry.makesPage && !entry.editsAtom;
+
   /** 목록을 한 번만 그린다 — 종류는 늘 같다 */
-  for (let i = 0; i < BLOCK_TYPES.length; i++) {
+  for (const i of order) {
     const entry = BLOCK_TYPES[i];
     const li = document.createElement('li');
     li.className = 'list__item';
@@ -3253,16 +3378,37 @@ function createBlockDialog(getView, hooks) {
       keys.textContent = hint;
       button.appendChild(keys);
     }
-    button.addEventListener('click', () => { select(i); });
+    // UX-7 — 값이 필요 없는 블록은 누르는 것이 곧 「넣기」(블록 바꾸기 창이면 「바꾸기」). 키보드는 ↑↓ 로 고르고 Enter 로 넣는다(아래 keydown)
+    button.addEventListener('click', () => {
+      select(i);
+      if (oneTap(entry)) { commit(); }
+    });
 
     li.appendChild(button);
     listEl.appendChild(li);
-    items.push(li);
+    items[i] = li;
+  }
+
+  /** 고른 줄의 단추에 초점(목록 안에서 보이게) — 창을 열 때와 ↑↓ 때. Enter 는 초점 줄 = 고른 줄을 넣는다 */
+  function focusPicked() {
+    const button = items[index] ? items[index].querySelector('button') : null;
+    if (!button) { return; }
+    button.focus({ preventScroll: true });
+    if (typeof button.scrollIntoView === 'function') { button.scrollIntoView({ block: 'nearest' }); }
+  }
+
+  /** 보이는 차례로 한 칸 옮긴다(↑↓) */
+  function step(delta) {
+    const at = order.indexOf(index);
+    const next = ((at + delta) % order.length + order.length) % order.length;
+    select(order[next]);
+    focusPicked();
   }
 
   function select(i) {
     index = ((i % BLOCK_TYPES.length) + BLOCK_TYPES.length) % BLOCK_TYPES.length;
     for (let k = 0; k < items.length; k++) {
+      if (!items[k]) { continue; }
       const on = k === index;
       items[k].className = 'list__item' + (on ? ' is-active' : '');
       items[k].setAttribute('aria-selected', on ? 'true' : 'false');
@@ -3286,8 +3432,10 @@ function createBlockDialog(getView, hooks) {
     targetPos = mode === 'change' ? pos : null;
     setText(titleEl, mode === 'change' ? '블록 바꾸기' : '블록 추가');
     setText(insertButton, mode === 'change' ? '바꾸기' : '넣기');
-    select(0);
+    select(order[0]);
     if (typeof dialog.showModal === 'function' && !dialog.open) { dialog.showModal(); }
+    // 사용감 라운드 1 UX-7 — 처음 초점은 목록의 첫 줄(전에는 머리 ✕ 라 Enter 가 창을 닫았다). ↑↓ · Enter 로 곧바로 고르고 넣는다
+    focusPicked();
   }
 
   function commit() {
@@ -3380,8 +3528,8 @@ function createBlockDialog(getView, hooks) {
 
   // 키보드: ↑↓ 옮기기 · Enter 넣기 · Esc 닫기(<dialog> 가 스스로 한다)
   dialog.addEventListener('keydown', (event) => {
-    if (event.key === 'ArrowDown') { event.preventDefault(); select(index + 1); return; }
-    if (event.key === 'ArrowUp') { event.preventDefault(); select(index - 1); return; }
+    if (event.key === 'ArrowDown') { event.preventDefault(); step(1); return; }
+    if (event.key === 'ArrowUp') { event.preventDefault(); step(-1); return; }
     if (event.key === 'Enter') {
       const target = event.target;
       if (target && target.hasAttribute && target.hasAttribute('data-block-close')) { return; }
@@ -3395,7 +3543,7 @@ function createBlockDialog(getView, hooks) {
     close.addEventListener('click', () => dialog.close());
   }
 
-  select(0);
+  select(order[0]);
   return {
     open: open,
     close: () => { if (dialog.open) { dialog.close(); } },
@@ -4358,6 +4506,11 @@ function initPage() {
   const editorEl = document.getElementById('page-editor');
   const titleField = document.getElementById('page-title-field');
   const titleInput = document.getElementById('page-title-input');
+  // 사용감 라운드 1 UX-2 — 좁은 폭 편집 모드에서 「더보기」 맨 위로 들어오는 「사용 방법」·「이력」(넓은 폭은 CSS 가 숨긴다)
+  const moreHelpItem = document.getElementById('page-more-help');
+  const moreHistoryItem = document.getElementById('page-more-history');
+  // UX-1 — 새로 만든 페이지(`?edit=1&new=1`)로 열렸으면 편집을 켤 때 커서를 제목 칸에 한 번 둔다
+  let focusTitleOnce = false;
   const editButton = document.getElementById('page-edit');
   const doneButton = document.getElementById('page-done');
   const addBlockButton = document.getElementById('page-add-block');
@@ -4897,6 +5050,7 @@ function initPage() {
       show(editButton, state.canEdit && !state.editing);
       // 디버깅 묶음 U3 — 「이력」은 창구가 이 페이지를 내준(읽기 판정 통과) 뒤에만. 막힌·없는 페이지에서는 숨은 채다(page_view.php 기본 hidden)
       show(document.getElementById('page-history'), true);
+      show(moreHistoryItem, state.editing);   // UX-2 — 편집 중이면 「더보기」 안의 「이력」도(좁은 폭에서만 보인다 — CSS)
       // 5-A — 지우기·옮기기는 **관리**다. 편집 공유자에게는 `can_edit` 이 참이어도 이 둘이 없다.
       show(deleteButton, state.canManage);
       // 5-C — 게시판 글은 트리가 없어 옮길 자리가 없다(창구도 `space_governed`). 지우기는 쓴 사람이 한다.
@@ -4931,9 +5085,13 @@ function initPage() {
     if (state.board && state.board.kind === 'post') {
       const level = BOARD_LEVEL_LABELS[state.board.access_level];
       if (visibilityBadgeEl && level) {
-        visibilityBadgeEl.className = 'badge ' + level.badge;
-        visibilityBadgeEl.setAttribute('title', state.board.access_level);
-        setText(visibilityBadgeEl, '게시판 등급 · ' + level.text);
+        /* 사용감 라운드 1 UX-6 — 게시판 글은 만들면 곧바로 보인다(5-C · 「게시」 단추가 없다) — 그래서 상태 글자가 **누가 보는지**를 말한다.
+           값은 창구가 준 `board.access_level` · `board.hidden` 뿐이다(추측 0): 숨긴 글은 쓴 사람과 그 게시판 관리자만 본다
+           (CommunityAuthz::decideBoardPostRead — 숨기면 게시판 갈래가 꺼진다) · 아니면 게시판 등급의 사람들(DESIGN 5장 등급 낱말). */
+        const hidden = state.board.hidden === true;
+        visibilityBadgeEl.className = 'badge ' + (hidden ? 'badge--off' : level.badge);
+        visibilityBadgeEl.setAttribute('title', state.board.access_level + (hidden ? ' · hidden' : ''));
+        setText(visibilityBadgeEl, hidden ? '숨김 · 쓴 사람·게시판 관리자만 봄' : '게시됨 · ' + level.audience);
         show(visibilityBadgeEl, true);
       }
       return;
@@ -6336,6 +6494,7 @@ function initPage() {
 
   if (historyButton && historyDialog) {
     historyButton.addEventListener('click', openHistory);
+    if (moreHistoryItem) { moreHistoryItem.addEventListener('click', openHistory); }   // UX-2 — 좁은 폭 편집 모드의 「더보기 → 이력」
     for (const close of historyDialog.querySelectorAll('[data-history-close]')) {
       close.addEventListener('click', () => historyDialog.close());
     }
@@ -6543,18 +6702,28 @@ function initPage() {
     show(docEl, false);
     show(editorEl, true);
     show(titleField, !proposal);
-    if (titleInput) { titleInput.value = state.title; }
+    // UX-1 — 서버 기본 제목이면 빈 칸 + 자리표시 「제목」(비워 두면 저장은 지금 제목 그대로 — save 의 titleNow 규칙)
+    if (titleInput) { titleInput.value = titleForInput(state.title); }
     show(editButton, false);
     show(doneButton, true);
     show(addBlockButton, true);
     state.editing = true;
+    // UX-2 — 좁은 폭 편집 머리(CSS 가 이 표식으로 큰 제목·경로·이름표를 가리고 「사용 방법」·「이력」을 「더보기」로 옮긴다 — 넓은 폭은 그대로)
+    body.setAttribute('data-page-editing', '');
+    show(moreHelpItem, true);
+    show(moreHistoryItem, !!document.getElementById('page-history') && !document.getElementById('page-history').hidden);
     serial = 0;
     savedSerial = 0;
     sentSerial = -1;
     badge(proposal ? '제안 중 — 원문은 바뀌지 않습니다' : '저장됨', proposal ? 'badge--internal' : 'badge--ok');
     doneButton.textContent=proposal?'제안 보내기':'편집 마침';
     show(proposalCancel,!!proposal);show(proposalButton,false);show(proposalsButton,false);
-    view.focus();
+    if (focusTitleOnce && titleInput) {
+      focusTitleOnce = false;
+      titleInput.focus();
+    } else {
+      view.focus();
+    }
     startHeartbeat();
     // B1-2 — 편집 모드에 들어갈 때 임시저장 열쇠를 받는다(한 화면에 한 번). 못 받으면(503·막힌 브라우저) 쓰지 않고 배지로 알린다.
     if (drafts && !proposal) {
@@ -6583,7 +6752,7 @@ function initPage() {
     }
     if (!state.editing) { startEditing(); }
     if (view === null) { return false; }
-    if (titleInput) { titleInput.value = typeof data.title === 'string' && data.title.trim() !== '' ? data.title : state.title; }
+    if (titleInput) { titleInput.value = titleForInput(typeof data.title === 'string' && data.title.trim() !== '' ? data.title : state.title); }
     state.version = data.base_version;
     // 문서 전체를 사본으로 바꾸는 편집 한 번 → dispatchTransaction 이 markDirty → 평소 저장. Ctrl+Z 로 서버 판으로 되돌릴 수 있다.
     view.dispatch(view.state.tr.replaceWith(0, view.state.doc.content.size, node.content).scrollIntoView());
@@ -6711,6 +6880,10 @@ function initPage() {
       state.editing = false;proposal=null;serial=savedSerial;badge('','');
       show(proposalCancel,false);show(proposalButton,state.canSuggest);
       show(proposalsButton,state.canEdit && Number(state.suggestionsOpen)>0);
+
+      body.removeAttribute('data-page-editing');
+      show(moreHelpItem, false);
+      show(moreHistoryItem, false);
       show(editorEl, false);
       show(titleField, false);
       show(docEl, true);
@@ -6898,6 +7071,14 @@ function initPage() {
   }
   if (titleInput) {
     titleInput.addEventListener('input', () => { markDirty(); });
+    /* 사용감 라운드 1 UX-1 — 제목 칸에서 Enter 면 본문 첫 줄로(커서는 첫 블록 맨 앞). 한글 조합 중의 Enter(조합 끝내기)는 건드리지 않는다. */
+    titleInput.addEventListener('keydown', (event) => {
+      if (event.key !== 'Enter' || event.isComposing || event.keyCode === 229 || event.shiftKey || event.altKey || event.ctrlKey || event.metaKey) { return; }
+      if (view === null) { return; }
+      event.preventDefault();
+      view.focus();
+      view.dispatch(view.state.tr.setSelection(TextSelection.atStart(view.state.doc)).scrollIntoView());
+    });
   }
 
   /* ── 「하위 페이지 만들기」 (4-A) ──
@@ -7114,7 +7295,11 @@ function initPage() {
     // B1-2 설계 5 — 이 사람·이 페이지의 임시저장이 있으면 알림 줄로 묻는다(불러오기는 사람이 누를 때만)
     offerDrafts();
     let wantEdit = false;
-    try { wantEdit = new URLSearchParams(window.location.search).get('edit') === '1'; } catch (e) { wantEdit = false; }
+    try {
+      const q = new URLSearchParams(window.location.search);
+      wantEdit = q.get('edit') === '1';
+      focusTitleOnce = wantEdit && q.get('new') === '1';   // UX-1 — 만든 쪽이 붙인 표식(주소에서 함께 지운다)
+    } catch (e) { wantEdit = false; }
     if (!wantEdit) { return; }
     try { window.history.replaceState(null, '', window.location.pathname); } catch (e) { /* 주소 정리는 편의일 뿐 */ }
     if (state.canEdit && !state.editing) { startEditing(); }

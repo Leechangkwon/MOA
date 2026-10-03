@@ -324,9 +324,27 @@ if (!headers_sent()) {
             aria-expanded="false" aria-controls="sidebar" aria-label="메뉴 열기">
       <span class="icon" data-icon="menu"></span>
     </button>
-    <span class="appbar__brand"><?= htmlspecialchars($shellBrandName, ENT_QUOTES, 'UTF-8') ?></span>
+    <!-- 사용감 라운드 1 UX-12 — 앱 이름이 곧 **앱 전환** 단추다: 누르면 서랍을 열고 그 안의 앱 메뉴(아래 `.appbar__apps`)를 펼쳐
+         다른 앱에 초점을 둔다(app.js initShell). ☰ → 앱 전환 → t-box 세 번이 두 번이 된다. 스크립트가 없으면 아무 일도 하지 않는
+         단추일 뿐이다(서랍의 앱 메뉴는 그대로). 글자는 셸 이름 그대로(동적 값 0). -->
+    <button id="appbar-apps" class="appbar__brand" type="button" aria-controls="sidebar" aria-expanded="false"
+            aria-label="<?= htmlspecialchars($shellBrandName, ENT_QUOTES, 'UTF-8') ?> — 앱 전환"><?= htmlspecialchars($shellBrandName, ENT_QUOTES, 'UTF-8') ?><span class="icon" data-icon="chevron"></span></button>
     <span class="appbar__page"><?= $shellTitle ?></span>
 <?php if ($shellMod === 'community'): ?><button class="btn btn--quiet" data-messenger-open type="button">메신저</button><?php endif; ?>
+
+    <!-- 사용감 라운드 1 UX-10 · UX-3 — 폰 윗줄 오른쪽: 검색(누르면 사이드바와 **같은** 검색 창 · 입력 칸 초점 — search.js) ·
+         커뮤니티는 알림 종(누르면 사이드바 「알림」과 **같은** 창 · 숫자는 같은 30초 폴링 한 벌이 두 자리에 그린다 — editor.js initNotifications ·
+         새 요청 0). 이 줄은 960px 미만에서만 보인다(넓은 화면은 사이드바가 늘 보인다). 아이콘 단추는 DESIGN 4장 터치 ①(따로 떨어진 것 — `::before` 로 44). -->
+    <span class="appbar__tools">
+      <button id="appbar-search" class="btn btn--icon btn--plain" type="button" aria-haspopup="dialog" aria-controls="search-dialog" aria-label="검색">
+        <span class="icon" data-icon="search"></span>
+      </button>
+<?php if ($shellMod === 'community'): ?>
+      <button id="appbar-bell" class="btn btn--icon btn--plain" type="button" aria-haspopup="dialog" aria-label="알림">
+        <span class="icon" data-icon="bell"></span><span id="appbar-bell-count" class="badge badge--internal" hidden></span>
+      </button>
+<?php endif; ?>
+    </span>
   </header>
 
   <aside id="sidebar" class="sidebar" hidden>

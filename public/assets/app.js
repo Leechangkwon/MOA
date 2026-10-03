@@ -750,18 +750,32 @@ function toLogin() {
  *     CSRF 토큰은 세션 id 에 묶여 있어 재인증으로는 바뀌지 않는다(Auth::csrfToken) — 그래도 한 번
  *     버려 두어, 그 뒤에 묻는 쪽은 서버의 지금 값을 받는다.
  *   · 권한은 여전히 서버가 요청마다 정한다. 이 값은 화면을 그리는 편의값이다 (PRD S-01).
+ *   · `background === true` 는 **사람이 누르지 않은 요청이 부른 확인**(UX-11 세션 확인 — heartbeat 가 받은 403 등)이다:
+ *     자동 요청 표식을 달아 서버가 세션 활동 시각을 밀지 않는다(Q:F-4 U-3 — 켜 두기만 한 탭의 30분 무활동 로그아웃 그대로).
  *
  * @return Promise<{status:number, me:(Object|null)}>  `me` 는 200 이고 JSON 객체일 때만, 아니면 null
  */
 var meShared = null;
 
+/**
+ * Q:F-4 U-3 — 자동 요청 표식. 서버 `Auth::BACKGROUND_HEADER`·`BACKGROUND_VALUE` 와 같은 이름·값이다(커뮤니티 editor.js 의 같은 이름 상수와도 같다).
+ * 이 파일에서는 여기 한 곳이고, 다는 곳은 `fetchMe(…, true)` 하나다.
+ */
+var BACKGROUND_HEADER = 'X-Qaredi-Background';
+var BACKGROUND_VALUE = '1';
+
 function forgetMe() {
   meShared = null;
 }
 
-function fetchMe(fresh) {
+function fetchMe(fresh, background) {
   if (fresh === true || meShared === null) {
-    var request = fetch(APP_BASE + '/api/me', { credentials: 'same-origin', cache: 'no-store' })
+    var init = { credentials: 'same-origin', cache: 'no-store' };
+    if (background === true) {
+      init.headers = {};
+      init.headers[BACKGROUND_HEADER] = BACKGROUND_VALUE;
+    }
+    var request = fetch(APP_BASE + '/api/me', init)
       .then(function (response) {
         return response.text().then(
           function (raw) { return { status: response.status, raw: raw }; },
@@ -893,6 +907,68 @@ function handleReauth(response, data, retry) {
   });
   return true;
 }
+
+/**
+ * 사용감 라운드 1 UX-11 — 쓰기 요청이 403(재인증·강제 절차 아님)을 받았을 때 **세션이 바뀌었나** 한 번 본다. 두 앱이 같이 쓰는 한 곳이다
+ * (커뮤니티 editor.js 의 `api()` · 파일 화면의 `writeFetch`).
+ *   · `/api/me` 를 새로 묻는다(no-store · fetchMe(true)). 한 탭에서 동시에 여러 요청이 403 을 받아도 **묻는 것은 한 번** — 진행 중인 약속을 나눠 쓴다.
+ *   · 답: `{why:'login'}` 로그인 없음(401) · `{why:'other'}` 다른 계정 · `{why:'fresh', token}` 같은 계정인데 토큰이 다르다(다른 탭에서 다시 로그인) ·
+ *         `{why:'same'}` 같은 계정 · 같은 토큰(진짜 거부) · `{why:'check'}` 묻지 못함(네트워크)
+ *   · 계정을 견주는 값은 이 화면을 연 때의 `/api/me` 아이디(부르는 쪽이 넘긴다) — 역할로 보기 중에도 실제 계정이다.
+ *   · `opts.background === true` — 자동 요청(heartbeat 등)이 부른 확인은 **자동 요청**이다: `/api/me` 에도 자동 요청 표식을 단다(세션 활동 시각을 밀지 않는다).
+ *   · 같은 토큰으로 `same` 을 한 번 받으면 그 토큰으로 보낸 요청의 403 은 **다시 묻지 않고** `same` 이다(자동·사람 요청 모두 — `/api/me` 요청 0).
+ *     토큰이 바뀌면(fresh · 셸의 토큰 바꾸기) 그 기억은 저절로 맞지 않게 되고, **탭이 다시 보일 때** 도 버린다 — 숨어 있는 동안 다른 탭에서
+ *     다시 로그인했을 수 있어서다(그때는 한 번 다시 묻는다).
+ * 토큰은 같은 출처 `/api/me` 의 답에서만 온다. 교차 사이트 요청은 그 답을 읽을 수 없으므로 CSRF 방어는 그대로다(SECURITY 7장). 막는 것은 서버다.
+ */
+var sessionProbeInFlight = null;
+/** 같은 계정 · 같은 토큰(진짜 거부)이라는 답을 받은 토큰 — 이 화면 메모리에만(저장소 0) */
+var sessionSameToken = null;
+
+document.addEventListener('visibilitychange', function () {
+  if (!document.hidden) {
+    sessionSameToken = null;
+  }
+});
+
+function probeSession(expectUser, sentToken, opts) {
+  var background = !!(opts && opts.background === true);
+  if (typeof sentToken === 'string' && sentToken !== '' && sentToken === sessionSameToken) {
+    return Promise.resolve({ why: 'same' });
+  }
+  if (sessionProbeInFlight === null) {
+    var mine = fetchMe(true, background);
+    sessionProbeInFlight = mine;
+    var done = function () {
+      if (sessionProbeInFlight === mine) {
+        sessionProbeInFlight = null;
+      }
+    };
+    mine.then(done, done);
+  }
+  return sessionProbeInFlight.then(function (result) {
+    if (result.status === 401 || result.me === null) {
+      return { why: 'login' };
+    }
+    if (typeof expectUser !== 'string' || expectUser === '' || result.me.username !== expectUser) {
+      return { why: 'other' };
+    }
+    if (typeof result.me.csrf_token === 'string' && result.me.csrf_token !== '' && result.me.csrf_token !== sentToken) {
+      return { why: 'fresh', token: result.me.csrf_token };
+    }
+    if (typeof sentToken === 'string' && sentToken !== '') {
+      sessionSameToken = sentToken;
+    }
+    return { why: 'same' };
+  }, function () {
+    return { why: 'check' };
+  });
+}
+
+window.qarediSessionProbe = probeSession;
+
+/** UX-11 — 다른 계정으로 로그인해 멈춘 탭의 안내(커뮤니티 editor.js 의 HALT_TEXT 와 같은 글자) */
+var HALT_TEXT = '다른 계정으로 로그인되어 이 탭은 멈췄습니다 — 새로 고치세요';
 
 /* 커뮤니티 5-C — 게시판 관리 창(editor.js, 모듈 스크립트)도 **같은 재인증 창**을 쓴다(DESIGN 2.7 D-9 —
    「15분 창이 닫혀 API 가 403 을 돌려줄 때 뜨는 모달과 같은 모달」). 모듈은 이 파일의 함수를 이름으로
@@ -1228,6 +1304,13 @@ function initLogin(form) {
   /** 1단계에서 받은 비밀번호를 2단계 요청까지만 들고 있는 자리 (저장소에 쓰지 않는다) */
   var pendingPassword = null;
 
+  /** 보내는 중인가 — 참이면 두 번째 제출(Enter 연타 · 자동 제출과 단추가 겹침)을 보내지 않는다 (사용감 라운드 1 UX-9) */
+  var sending = false;
+  /** 자동 제출한 코드 — 같은 여섯 자리로 두 번 자동 제출하지 않는다(틀리면 칸이 비워지고 새로 넣은 코드만 다시 간다) */
+  var autoSentCode = '';
+  /** 로그인에 성공해 화면을 떠나는 중 — 단추를 다시 열지 않는다(떠나는 사이 한 번 더 눌러 같은 코드를 다시 보내지 않게) */
+  var leaving = false;
+
   /** 지금 2단계(코드 입력) 화면인가 */
   function inStep2() {
     return otpField !== null && otpField.hidden !== true;
@@ -1236,6 +1319,7 @@ function initLogin(form) {
   /** 1단계로 되돌린다 — 들고 있던 비밀번호를 버리고 코드 칸을 닫는다 */
   function resetToStep1() {
     pendingPassword = null;
+    autoSentCode = '';
     if (otpField) {
       otpField.hidden = true;
     }
@@ -1266,9 +1350,31 @@ function initLogin(form) {
     }
   }
 
+  /* 사용감 라운드 1 UX-9 — 2단계 코드 칸에 **여섯 자리 숫자**가 다 들어오면(치기 · 붙여넣기 · 문자 자동 채움 모두 `input` 한 길) 한 번만
+     스스로 제출한다. 1단계(칸이 숨은 때)에는 하지 않는다 · 보내는 중이면 하지 않는다 · 같은 코드로 두 번 하지 않는다. 틀리면 전처럼 칸을 비우고
+     초점을 준다(아래 401 갈래) — 새 코드를 넣으면 다시 한 번. 보내는 요청·서버 검사(실패 횟수·재사용 거부)는 단추로 보낼 때와 같다(SECURITY 7장). */
+  if (otpInput) {
+    otpInput.addEventListener('input', function () {
+      var code = String(otpInput.value);
+      if (!inStep2() || sending || !/^[0-9]{6}$/.test(code) || code === autoSentCode) {
+        return;
+      }
+      autoSentCode = code;
+      if (typeof form.requestSubmit === 'function') {
+        form.requestSubmit(submit || undefined);
+      } else if (submit) {
+        submit.click();
+      }
+    });
+  }
+
   form.addEventListener('submit', function (event) {
     // 브라우저 기본 폼 전송(폼 인코딩)을 막는다 — 서버는 JSON 만 받는다 (ARCH 4.0).
     event.preventDefault();
+    if (sending) {
+      return;   // UX-9 — 보내는 중의 두 번째 제출은 버린다(요청 한 번)
+    }
+    sending = true;
     setText(msg, '');
     if (submit) {
       submit.disabled = true;
@@ -1298,6 +1404,7 @@ function initLogin(form) {
       .then(function (response) {
         if (response.status === 200) {
           pendingPassword = null;
+          leaving = true;
           /* 어디로 돌아가나 (커뮤니티 ARCHITECTURE.md 21.2).
              서버가 `?to=` 를 **허용 목록**으로 걸러 <body data-to> 에 넣어 준 키 하나를 읽고,
              그 키가 고정 맵에 있을 때만 맵의 값으로 간다. 주소를 data 속성 값으로 만들지
@@ -1344,6 +1451,10 @@ function initLogin(form) {
         resetToStep1();
       })
       .then(function () {
+        if (leaving) {
+          return;   // UX-9 — 떠나는 중에는 보내는 중 표시를 그대로 둔다(두 번째 제출 0)
+        }
+        sending = false;
         if (submit) {
           submit.disabled = false;
         }
@@ -1352,6 +1463,18 @@ function initLogin(form) {
 
   // 화면을 새로 열 때는 언제나 1단계에서 시작한다(뒤로 가기로 되살아난 값 제거).
   resetToStep1();
+  // 뒤로 가기 캐시(bfcache)로 되살아나면 스크립트가 다시 돌지 않는다 — 떠나던 표시·잠근 단추를 풀고 1단계로(UX-9)
+  window.addEventListener('pageshow', function (event) {
+    if (!event.persisted) {
+      return;
+    }
+    leaving = false;
+    sending = false;
+    if (submit) {
+      submit.disabled = false;
+    }
+    resetToStep1();
+  });
 }
 
 /* ─── 파일 화면 (5단계) ───────────────────────────────────────
@@ -1694,9 +1817,96 @@ function initFiles(csrfToken, uploadLevels, canFetch, myTeamId) {
   /** 파일 이동 모달이 지금 펼쳐 보고 있는 폴더(0 = 루트)와 옮길 파일 */
   var movePick = { folder: 0, crumbs: [], file: null, bulk: null };   // bulk — 라운드 B 「고른 파일 여럿」(openBulkMove)
 
+  /* 사용감 라운드 1 UX-5 — 올리기가 **모두** 성공해 창을 닫은 뒤, 목록을 다시 그리면 새 파일 줄로 데려가 잠깐 강조한다.
+     줄은 이 화면이 방금 그린 것(pageRows)에서 서버가 준 id 로 찾는다(선택자 조립 0). 강조는 `.is-fresh`(DESIGN 2.4 「방금 올린 줄」 — 배경만,
+     움직임 0) 2.5초 · 스크롤은 「움직임 줄이기」 설정이면 곧바로(부드럽게 0). 새 파일이 이 쪽에 없으면(정렬·쪽) 아무 일도 하지 않는다. */
+  var freshIds = null;
+  function showFresh() {
+    if (freshIds === null) {
+      return;
+    }
+    var want = freshIds;
+    freshIds = null;
+    var rows = [];
+    pageRows.forEach(function (entry) {
+      if (entry && entry.file && want.indexOf(entry.file.id) >= 0 && entry.check) {
+        var tr = entry.check.closest('tr');
+        if (tr) {
+          rows.push(tr);
+        }
+      }
+    });
+    if (rows.length === 0) {
+      return;
+    }
+    var reduce = false;
+    try {
+      reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    } catch (e) {
+      reduce = false;
+    }
+    rows.forEach(function (tr) {
+      tr.classList.add('is-fresh');
+    });
+    rows[0].scrollIntoView({ block: 'center', behavior: reduce ? 'auto' : 'smooth' });
+    window.setTimeout(function () {
+      rows.forEach(function (tr) {
+        tr.classList.remove('is-fresh');
+      });
+    }, 2500);
+  }
+
   /** 상태 변경 요청 공통 헤더 (PRD S-09-3) */
   function csrfHeaders() {
     return { 'X-CSRF-Token': csrfToken };
+  }
+
+  /**
+   * 사용감 라운드 1 UX-11 — 이 화면의 **한 건** 쓰기 요청(올리기 · 지우기 · 공유 · 고치기 · 옮기기 · 즐겨찾기 …)을 보내는 한 곳.
+   * 403 이고 재인증·강제 절차(`next`)가 아니면 셸의 `probeSession`(`/api/me` 한 번 — 진행 중이면 나눠 씀)으로 세션을 본다:
+   * 같은 계정 · 새 토큰 → 이 화면(csrfToken)과 셸(setSessionCsrf)의 토큰을 바꾸고 **그 요청을 한 번만** 다시 보낸다(또 403 이면 그대로) ·
+   * 다른 계정 → 다시 보내지 않고 이 탭을 멈춘다(뒤의 쓰기도 요청 0 · 안내 한 줄은 부르는 쪽이 늘 하던 대로 서버 문장 자리에 보인다) ·
+   * 로그인 없음 → 받은 답 그대로(부르는 쪽의 401·로그인 흐름은 전과 같다). 일괄 작업(bulkFetch)은 제 「이어서 하기」 흐름을 그대로 쓴다.
+   * 헤더는 부르는 쪽이 만든 글자 객체이고, 다시 보낼 때 X-CSRF-Token 한 칸만 새 값으로 바꾼다(본문은 같은 것 — JSON 글자·FormData).
+   */
+  var filesHalted = false;
+  function haltedResponse() {
+    return new Response(JSON.stringify({ error: HALT_TEXT }), { status: 403, headers: { 'Content-Type': 'application/json' } });
+  }
+  function writeFetch(url, options) {
+    if (filesHalted) {
+      return Promise.resolve(haltedResponse());
+    }
+    var sentToken = options && options.headers ? options.headers['X-CSRF-Token'] : null;
+    return fetch(url, options).then(function (response) {
+      if (response.status !== 403) {
+        return response;
+      }
+      return response.clone().json().then(function (d) { return d; }, function () { return {}; }).then(function (data) {
+        if (data && typeof data.next === 'string' && data.next !== '') {
+          return response;
+        }
+        return fetchMe().then(function (r) { return r.me && typeof r.me.username === 'string' ? r.me.username : null; }, function () { return null; })
+          .then(function (who) { return probeSession(bulk.username !== null ? bulk.username : who, sentToken); })
+          .then(function (got) {
+            if (got.why === 'fresh') {
+              csrfToken = got.token;
+              setSessionCsrf(got.token);
+              var again = {};
+              Object.keys(options).forEach(function (k) { again[k] = options[k]; });
+              again.headers = {};
+              Object.keys(options.headers).forEach(function (k) { again.headers[k] = options.headers[k]; });
+              again.headers['X-CSRF-Token'] = got.token;
+              return fetch(url, again);
+            }
+            if (got.why === 'other') {
+              filesHalted = true;
+              return haltedResponse();
+            }
+            return response;
+          });
+      });
+    });
   }
 
   function clearRows() {
@@ -1746,7 +1956,7 @@ function initFiles(csrfToken, uploadLevels, canFetch, myTeamId) {
 
   function sendDelete(id, name) {
     setText(msg, '');
-    fetch(APP_BASE + '/api/files/' + id, {
+    writeFetch(APP_BASE + '/api/files/' + id, {
       method: 'DELETE',
       headers: csrfHeaders(),
       credentials: 'same-origin',
@@ -1932,7 +2142,7 @@ function initFiles(csrfToken, uploadLevels, canFetch, myTeamId) {
       if (editSubmit) {
         editSubmit.disabled = true;
       }
-      fetch(APP_BASE + '/api/files/' + file.id, {
+      writeFetch(APP_BASE + '/api/files/' + file.id, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken },
         body: JSON.stringify(payload),
@@ -2463,7 +2673,7 @@ function initFiles(csrfToken, uploadLevels, canFetch, myTeamId) {
         shareSubmit.disabled = true;
       }
 
-      fetch(APP_BASE + '/api/files/' + shareTargetId + '/share', {
+      writeFetch(APP_BASE + '/api/files/' + shareTargetId + '/share', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken },
         body: JSON.stringify(payload),
@@ -2650,7 +2860,7 @@ function initFiles(csrfToken, uploadLevels, canFetch, myTeamId) {
         execSubmit.disabled = true;
       }
 
-      fetch(APP_BASE + '/api/files/' + target.id + '/exec-download', {
+      writeFetch(APP_BASE + '/api/files/' + target.id + '/exec-download', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken },
         body: JSON.stringify(payload),
@@ -2949,7 +3159,7 @@ function initFiles(csrfToken, uploadLevels, canFetch, myTeamId) {
     if (method !== 'GET') {
       options.headers = csrfHeaders();
     }
-    return fetch(url, options).then(function (response) {
+    return (method === 'GET' ? fetch(url, options) : writeFetch(url, options)).then(function (response) {
       if (response.status === 401) {
         toLogin();
         return null;
@@ -3266,6 +3476,7 @@ function initFiles(csrfToken, uploadLevels, canFetch, myTeamId) {
     files.forEach(function (file) {
       body.appendChild(fileRow(file, searching, file.created_at));
     });
+    showFresh();
 
     if (empty) {
       empty.hidden = files.length !== 0;
@@ -4585,7 +4796,7 @@ function initFiles(csrfToken, uploadLevels, canFetch, myTeamId) {
     setText(bulkMsg, '');
     showDone('');
     syncBulkUi();
-    fetch(APP_BASE + '/api/files/zip', {
+    writeFetch(APP_BASE + '/api/files/zip', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken },
       body: JSON.stringify({ ids: ids }),
@@ -5049,7 +5260,7 @@ function initFiles(csrfToken, uploadLevels, canFetch, myTeamId) {
     if (folderSubmit) {
       folderSubmit.disabled = true;
     }
-    fetch(path, {
+    writeFetch(path, {
       method: method,
       headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken },
       body: JSON.stringify(payload),
@@ -5207,7 +5418,7 @@ function initFiles(csrfToken, uploadLevels, canFetch, myTeamId) {
       setText(folderMsg, '');
       var path = APP_BASE + '/api/folders/' + encodeURIComponent(String(folderId))
         + (confirmMove ? '?move_trashed=1' : '');
-      fetch(path, {
+      writeFetch(path, {
         method: 'DELETE',
         headers: csrfHeaders(),
         credentials: 'same-origin',
@@ -5397,7 +5608,7 @@ function initFiles(csrfToken, uploadLevels, canFetch, myTeamId) {
     }
     setText(moveMsg, '');
     var body = { folder_id: movePick.folder === 0 ? null : movePick.folder };
-    fetch(APP_BASE + '/api/files/' + movePick.file.id, {
+    writeFetch(APP_BASE + '/api/files/' + movePick.file.id, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken },
       body: JSON.stringify(body),
@@ -5523,7 +5734,7 @@ function initFiles(csrfToken, uploadLevels, canFetch, myTeamId) {
     }
 
     fetchSubmit.disabled = true;
-    fetch(APP_BASE + '/api/files/fetch', {
+    writeFetch(APP_BASE + '/api/files/fetch', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken },
       body: JSON.stringify(payload),
@@ -5639,7 +5850,7 @@ function initFiles(csrfToken, uploadLevels, canFetch, myTeamId) {
       form.append('otp', exec.otp);
     }
     // headers 에 Content-Type 을 넣지 않는다 — 브라우저가 boundary 를 붙여야 한다.
-    return fetch(APP_BASE + '/api/files', {
+    return writeFetch(APP_BASE + '/api/files', {
       method: 'POST',
       headers: csrfHeaders(),
       body: form,
@@ -5834,11 +6045,27 @@ function initFiles(csrfToken, uploadLevels, canFetch, myTeamId) {
     /* 순차 전송 — 한 번에 하나. 다음 요청은 앞 요청의 응답을 받은 뒤에 시작한다. */
     var index = 0;
     var stopped = false;
+    /* 사용감 라운드 1 UX-5 — **모두** 201 로 끝났나(하나라도 거부·확인 필요·중단·오류면 거짓). 참이면 창을 닫고 새 줄로 데려간다 */
+    var madeIds = [];
+    var allOk = true;
 
     function finish() {
       uploadSubmit.disabled = false;
       setUploadBusy(false);
       state.page = 1;
+      if (allOk && !stopped && madeIds.length === queue.length && uploadDialog && uploadDialog.open) {
+        // 다음에 열었을 때 방금 올린 파일이 그대로 골라져 있지 않게 칸을 비운다(진행 표도) — 설명·등급 고른 값은 둔다
+        setPicked([]);
+        if (fileInput) {
+          fileInput.value = '';
+        }
+        uploadStatusBody.replaceChildren();
+        if (uploadProgress) {
+          uploadProgress.hidden = true;
+        }
+        freshIds = madeIds.slice();
+        closeDialog(uploadDialog);
+      }
       // 완료 뒤 목록·트리 새로 고침은 **지금 폴더 기준**이다 (state.folder 를 바꾸지 않는다).
       loadFiles();
       loadTree();
@@ -5863,6 +6090,11 @@ function initFiles(csrfToken, uploadLevels, canFetch, myTeamId) {
           }
           if (result.status === 201) {
             setters[i].set('완료', 'is-ok');
+            if (result.data && typeof result.data.id === 'string' && UUID_RE.test(result.data.id)) {
+              madeIds.push(result.data.id);
+            } else {
+              allOk = false;
+            }
           } else if (result.status === 403) {
             // 권한 문제는 나머지 파일도 같은 결과다 → 멈춘다 (ARCH 5.17).
             setters[i].set(errorMessage(result.data), 'is-deny');
@@ -5884,8 +6116,12 @@ function initFiles(csrfToken, uploadLevels, canFetch, myTeamId) {
             // 400 계열 — 이 파일만 거부하고 다음으로 계속한다.
             setters[i].set(errorMessage(result.data), 'is-deny');
           }
+          if (result.status !== 201) {
+            allOk = false;   // UX-5 — 창을 열어 둔다(무엇이 왜 안 됐는지가 진행 표에 남는다)
+          }
         })
         .catch(function () {
+          allOk = false;
           setters[i].set(GENERIC_ERROR, 'is-deny');
         })
         .then(function () {
@@ -11463,6 +11699,8 @@ function initShell(me, csrfToken) {
 
   /* 좁은 화면(960px 미만)의 접이식 내비. 넓은 화면에서는 CSS 가 내비를 늘 펼쳐 두므로
      여기서 hidden 을 켜 두어도 영향이 없다 (app.css 의 min-width: 960px 규칙). */
+  var appsButton = document.getElementById('appbar-apps');
+  var appsBox = sidebar ? sidebar.querySelector('details.appbar__apps') : null;
   if (sidebar && navToggle) {
     sidebar.hidden = true;
     navToggle.setAttribute('aria-expanded', 'false');
@@ -11470,6 +11708,36 @@ function initShell(me, csrfToken) {
       var open = sidebar.hidden === true;
       sidebar.hidden = !open;
       navToggle.setAttribute('aria-expanded', open ? 'true' : 'false');
+      if (appsButton) {
+        appsButton.setAttribute('aria-expanded', open && appsBox && appsBox.open ? 'true' : 'false');
+      }
+    });
+  }
+
+  /* 사용감 라운드 1 UX-12 (DESIGN 2.9 「폰 윗줄」) — 윗줄 앱 이름 = 앱 전환. 서랍을 열고 그 안의 앱 메뉴(`<details class="appbar__apps">`)를
+     펼친 뒤 **다른 앱**(지금 앱이 아닌 첫 줄)에 초점을 둔다 → ☰ · 앱 전환 · t-box 세 번이 앱 이름 · t-box 두 번. 이미 펼쳐 있으면 접고 서랍을 닫는다.
+     새 메뉴를 만들지 않는다 — 앱 목록은 서랍의 그 메뉴 한 벌(Apps::all)이고, 이동은 그 링크다(권한 판단 0). */
+  if (appsButton && sidebar && navToggle && appsBox) {
+    appsButton.addEventListener('click', function () {
+      var showing = sidebar.hidden !== true && appsBox.open === true;
+      if (showing) {
+        appsBox.open = false;
+        sidebar.hidden = true;
+        navToggle.setAttribute('aria-expanded', 'false');
+        appsButton.setAttribute('aria-expanded', 'false');
+        return;
+      }
+      sidebar.hidden = false;
+      navToggle.setAttribute('aria-expanded', 'true');
+      appsBox.open = true;
+      appsButton.setAttribute('aria-expanded', 'true');
+      var other = appsBox.querySelector('a.app-menu__app:not([aria-current])[href]:not([href="/"])');
+      if (other) {
+        other.focus();
+      }
+    });
+    appsBox.addEventListener('toggle', function () {
+      appsButton.setAttribute('aria-expanded', sidebar.hidden !== true && appsBox.open ? 'true' : 'false');
     });
   }
 

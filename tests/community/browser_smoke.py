@@ -412,21 +412,28 @@ with sync_playwright() as p:
     # 5-E 덩어리 다섯(토글·표·페이지 링크·그림·파일)은 넣기 전에 「블록 고치기」 창이 먼저 열린다 —
     # 여기서는 건너뛰고 browser_5e.py 가 창까지 눌러 본다.
     atom_types = ("toggle", "table", "link_to_page", "image", "file", "columns", "embed")
+    one_tap_open = []   # 사용감 라운드 1 UX-7 — 값이 필요 없는 블록은 한 번 누르면 곧바로 들어가고 창이 닫힌다(하위 페이지만 「넣기」 두 단계)
     for i in range(n_items):
-        if page.locator('#block-list .block-pick[data-block-index="%d"]' % i).get_attribute("data-block-type") in atom_types:
+        btype = page.locator('#block-list .block-pick[data-block-index="%d"]' % i).get_attribute("data-block-type")
+        if btype in atom_types:
             continue
         page.click("#page-add-block")
         page.wait_for_selector("#block-dialog[open]", timeout=5000)
         page.locator('#block-list .block-pick[data-block-index="%d"]' % i).click()
         page.wait_for_timeout(80)
         labels.append(page.locator("#block-preview-name").inner_text().strip())
-        page.click("#block-insert")
+        if btype == "child_page":
+            page.click("#block-insert")
+        elif page.locator("#block-dialog[open]").count():
+            one_tap_open.append(btype)
+            page.click("#block-insert")
         page.wait_for_timeout(150)
         page.keyboard.type("블록%02d" % i)
         page.wait_for_timeout(60)
     wait_saved()
     blocks = saved_doc(page_id)["blocks"]
     types = [b["type"] for b in blocks]
+    step("값이 필요 없는 블록은 한 번 누르면 곧바로 넣고 창을 닫는다(UX-7)", one_tap_open == [], "창이 남은 종류=%r" % one_tap_open)
     want = ["paragraph", "heading", "bulleted", "numbered", "to_do",
             "quote", "callout", "divider", "code", "toc"]
     missing = [t for t in want if t not in types]
@@ -447,9 +454,10 @@ with sync_playwright() as p:
     page.wait_for_selector("#block-dialog[open]", timeout=5000)
     step("창의 제목이 「블록 바꾸기」", page.locator("#block-dialog-title").inner_text().strip() == "블록 바꾸기",
          page.locator("#block-dialog-title").inner_text().strip())
-    page.locator('#block-list .block-pick[data-block-index="2"]').click()   # 제목 2
+    page.locator('#block-list .block-pick[data-block-index="2"]').click()   # 제목 2 — 한 번 누르면 곧바로 바뀐다(UX-7)
     page.wait_for_timeout(80)
-    page.click("#block-insert")
+    if page.locator("#block-dialog[open]").count():
+        page.click("#block-insert")
     page.wait_for_timeout(250)
     step("DOM 의 블록 종류가 h2 로 바뀌었다", kinds() == ["h2"], "블록=%r" % kinds())
     wait_saved()
@@ -624,8 +632,9 @@ with sync_playwright() as p:
          "화면 안=%r scrollY=%r" % (in_view, scrolled))
     page.click("#page-add-block")
     page.wait_for_selector("#block-dialog[open]", timeout=5000)
-    page.locator("#block-list .block-pick", has_text="구분선").first.click()
-    page.click("#block-insert")
+    page.locator("#block-list .block-pick", has_text="구분선").first.click()   # 한 번 누르면 곧바로(UX-7)
+    if page.locator("#block-dialog[open]").count():
+        page.click("#block-insert")
     page.wait_for_timeout(300)
     scrolled_after = page.evaluate("() => window.scrollY")
     k = kinds()
