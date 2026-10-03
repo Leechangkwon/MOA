@@ -1,5 +1,14 @@
 [
     {
+        "version": "2.43.1",
+        "level": "patch",
+        "released_at": "2026-10-03 15:53",
+        "title": "PC 비서 연결 보완",
+        "changes": [
+            "메신저에서 직접 연결한 PC 비서에 문장을 전달할 수 있도록 연결 설정을 보완했어요."
+        ]
+    },
+    {
         "version": "2.43.0",
         "level": "minor",
         "released_at": "2026-10-03 15:43",
