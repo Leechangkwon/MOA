@@ -1,5 +1,5 @@
 /** C:F-46: comparison/list UI and original-ID based proposal operations. */
-import { renderDoc } from './doc-render.js?v=f0f3a6fcb0e8';
+import { renderDoc } from './doc-render.js?v=f4a3631080fd';
 
 const TYPES = new Set(['paragraph','heading','bulleted','numbered','to_do','quote','callout','code','divider','toc','toggle','table','column_list','column']);
 const STATES = {open:'검토 기다림',accepted:'받아들임',rejected:'거절',stale:'오래됨',withdrawn:'거둠'};

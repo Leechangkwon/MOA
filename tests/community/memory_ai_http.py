@@ -74,7 +74,7 @@ try:
   ctx.add_cookies([{'name':'__Host-tbox_session','value':users['employee']['session'],'domain':urlsplit(site).hostname,'path':'/','secure':True,'httpOnly':True}])
   tab=ctx.new_page();tab.goto(base+'/',wait_until='networkidle')
   tab.get_by_role('button',name='AI로 꾸미기',exact=True).click();expect(tab.locator('#gemini-generate')).to_be_enabled()
-  tab.locator('#gemini-generate').click();expect(tab.locator('#studio-result')).to_have_value('합성 사진을 참고한 추가 초안입니다.')
+  tab.locator('#gemini-photos input').uncheck();tab.locator('#gemini-generate').click();expect(tab.locator('#studio-result')).to_have_value('합성 사진을 참고한 추가 초안입니다.')
   check(post(pid)==before,'390px actual PHP preview never autosaves')
   tab.locator('#studio-append').click();expect(tab.locator('#caption')).to_have_value(before['caption']+'\n\n합성 사진을 참고한 추가 초안입니다.')
   expect(tab.locator('#media-preview img')).to_have_count(1)

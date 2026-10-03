@@ -64,9 +64,9 @@ def main():
         page.locator('#studio-result').fill('x'*5000);page.locator('#studio-append').click();expect(page.locator('#studio-error')).to_contain_text('5,000자')
         assert page.locator('#studio-dialog').is_visible() and not mock.saves
         ok('Append length check preserves the original instead of truncating it');ctx.close()
-        mock=GeminiMock();mock.posts[0]['media']=[dict(record()['media'][0],id=f'{i}2222222-2222-4222-8222-222222222222') for i in range(5)]
-        ctx,page,mock=setup(mock);assert page.locator('#gemini-photos input:checked').count()==4
-        page.locator('#gemini-photos input').last.check();page.locator('#gemini-generate').click();expect(page.locator('#studio-error')).to_contain_text('최대 4장')
+        mock=GeminiMock();mock.posts[0]['media']=[dict(record()['media'][0],id=f'{i:08x}-2222-4222-8222-222222222222') for i in range(11)]
+        ctx,page,mock=setup(mock);assert page.locator('#gemini-photos input:checked').count()==10
+        page.locator('#gemini-photos input').last.check();page.locator('#gemini-generate').click();expect(page.locator('#studio-error')).to_contain_text('최대 10장')
         assert not mock.requests
         ok('Photo limit is visible and excessive selection never calls the provider');ctx.close()
         ctx,page,mock=setup()

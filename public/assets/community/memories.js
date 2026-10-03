@@ -10,6 +10,7 @@
   let toastTimer;
   let selectionError = '';
   let studioSession = 0, captionRequest = null, captionBusy = false;
+  let composeStory = null, studioStory = null, registeredStory = null, suggestedStory = null, suggestedOrder = false;
   const mediaTypes = { jpg: 'image/jpeg', jpeg: 'image/jpeg', jpe: 'image/jpeg', png: 'image/png', webp: 'image/webp', gif: 'image/gif', mp4: 'video/mp4', mov: 'video/quicktime', webm: 'video/webm' };
   function fileMime(file) {
     const type = (file.type || '').toLowerCase();
@@ -36,7 +37,7 @@
     catch (e) { if (e.name === 'AbortError') throw e; throw new Error('인터넷 연결을 확인해 주세요. 작성 중인 내용은 그대로 남아 있어요.'); }
     let data;
     try { data = await response.json(); } catch { throw new Error('서버 응답을 읽지 못했어요. 잠시 뒤 다시 시도해 주세요.'); }
-    if (!response.ok) throw new Error(response.status === 401 ? '로그인이 만료됐어요. 이 기기의 임시 저장을 확인하고 다시 로그인해 주세요.' : data.error || '요청을 처리하지 못했어요.');
+    if (!response.ok) { const error = new Error(response.status === 401 ? '로그인이 만료됐어요. 이 기기의 임시 저장을 확인하고 다시 로그인해 주세요.' : data.error || '요청을 처리하지 못했어요.'); error.status = response.status; throw error; }
     return data;
   }
   function writerElements() { surface.querySelectorAll('[data-writer]').forEach((n) => { n.hidden = !state.me?.can_write || Boolean(shared); }); }
@@ -104,6 +105,52 @@
     if (post.media[0]) { const m = mediaElement(post.media[0]); if (m.tagName === 'VIDEO') { m.controls = false; m.tabIndex = -1; } n.append(m); }
     n.append(el('span', 'grid-caption', post.trip || post.location || post.caption)); return n;
   }
+  const copyStory = (value) => value ? JSON.parse(JSON.stringify(value)) : null;
+  function storyElement(story, items) {
+    const article = el('section', 'photo-story');
+    article.append(el('h2', 'story-title', story.title));
+    if (story.intro) article.append(el('p', 'story-intro', story.intro));
+    const map = new Map(items.map((item) => [item.id, item])), seen = new Set();
+    story.scenes.forEach((scene) => {
+      const section = el('section', 'story-scene'), photos = el('div', 'story-photos');
+      scene.media_ids.forEach((id) => { const item = map.get(id); if (item) { photos.append(mediaElement(item)); seen.add(id); } });
+      photos.dataset.count = photos.children.length;
+      section.append(photos, el('h3', '', scene.title), el('p', 'story-copy', scene.text)); article.append(section);
+    });
+    const remaining = items.filter((item) => !seen.has(item.id));
+    if (remaining.length) { const photos = el('div', 'story-photos'); remaining.forEach((item) => photos.append(mediaElement(item))); article.append(photos); }
+    return article;
+  }
+  function storyEditor(target, story, items, changed) {
+    target.replaceChildren(); if (!story) return;
+    const field = (label, value, max, update, rows = 2) => {
+      const wrap = el('label', 'field', label), input = el('textarea'); input.value = value; input.maxLength = max; input.rows = rows;
+      input.addEventListener('input', () => { update(input.value); changed(); }); wrap.append(input); return wrap;
+    };
+    target.append(field('제목', story.title, 80, (value) => { story.title = value; }, 1), field('도입', story.intro, 300, (value) => { story.intro = value; }));
+    const map = new Map(items.map((item) => [item.id, item]));
+    story.scenes.forEach((scene, index) => {
+      const section = el('section', 'story-edit-scene'), thumbs = el('div', 'story-edit-photos');
+      scene.media_ids.forEach((id) => { const item = map.get(id); if (item) { const figure = el('figure'); figure.append(mediaElement(item), el('figcaption', '', '사진 ' + (items.findIndex((m) => m.id === id) + 1))); thumbs.append(figure); } });
+      section.append(el('p', 'eyebrow', '장면 ' + (index + 1)), thumbs, field('소제목', scene.title, 60, (value) => { scene.title = value; }, 1), field('장면의 글', scene.text, 600, (value) => { scene.text = value; }, 3)); target.append(section);
+    });
+  }
+  function renderComposeStory() {
+    $('compose-story-section').hidden = !composeStory;
+    storyEditor($('compose-story-editor'), composeStory, media, scheduleDraft);
+  }
+  function renderStudioStory() {
+    $('studio-story-section').hidden = !studioStory; $('studio-text-result').hidden = Boolean(studioStory);
+    $('studio-order-toggle').hidden = !suggestedStory;
+    $('studio-order-toggle').textContent = suggestedOrder ? '등록순으로 돌아가기' : '제안 순서 미리보기';
+    $('studio-append').textContent = studioStory ? '이 구성으로 편집' : '기존 글에 추가하기';
+    const update = () => {
+      if (!studioStory) return;
+      $('studio-story-preview').replaceChildren(storyElement(studioStory, studioPost.media));
+      $('studio-result').value = [studioStory.title, studioStory.intro, ...studioStory.scenes.map((scene) => scene.title + '\n' + scene.text)].filter(Boolean).join('\n\n');
+    };
+    storyEditor($('studio-story-editor'), studioStory, studioPost.media, update); update();
+  }
   function postCard(post) {
     const card = el('article', 'post'); card.id = 'memory-' + post.id;
     const header = el('header', 'post-header');
@@ -115,7 +162,8 @@
     const place = el('div', 'post-place'); if (post.location) place.append(icon('pin')); place.append(document.createTextNode(post.location || '어느 좋은 날')); author.append(place);
     const time = el('time', 'post-date', date(post.taken_on)); time.dateTime = post.taken_on;
     header.append(avatar, author, time); card.append(header);
-    if (post.media.length) {
+    if (post.story) card.append(storyElement(post.story, post.media));
+    if (post.media.length && !post.story) {
       const gallery = el('div', 'post-media'); gallery.setAttribute('aria-label', '사진과 영상, 옆으로 넘겨 보세요'); gallery.tabIndex = 0;
       post.media.forEach((item, index) => { const slide = el('div', 'media-slide'); slide.append(mediaElement(item)); if (post.media.length > 1) slide.append(el('span', 'slide-count', `${index + 1} / ${post.media.length}`)); gallery.append(slide); });
       card.append(gallery);
@@ -134,8 +182,9 @@
       card.append(actions);
     }
     const body = el('div', 'post-body'); const count = el('p', 'likes-label', `좋아요 ${post.likes}개`); body.append(count);
-    const caption = el('p', 'post-caption', post.caption); body.append(caption);
-    if (post.caption.length > 160 || post.caption.split('\n').length > 3) body.append(button('이야기 더 보기', 'read-more', (event) => { caption.classList.toggle('expanded'); event.currentTarget.textContent = caption.classList.contains('expanded') ? '접기' : '이야기 더 보기'; }));
+    const caption = el('p', 'post-caption', post.caption);
+    if (post.story) { const note = el('details', 'story-original'); caption.classList.add('expanded'); note.append(el('summary', '', '기존 메모'), caption); body.append(note); } else body.append(caption);
+    if (!post.story && (post.caption.length > 160 || post.caption.split('\n').length > 3)) body.append(button('이야기 더 보기', 'read-more', (event) => { caption.classList.toggle('expanded'); event.currentTarget.textContent = caption.classList.contains('expanded') ? '접기' : '이야기 더 보기'; }));
     const trip = el('div', 'post-trip', post.trip ? '# ' + post.trip : '조금 더 오래 기억하고 싶은 날');
     if (!shared) trip.append(el('span', 'privacy-badge', labels[post.visibility])); body.append(trip);
     if (post.mine && state.me?.can_write) {
@@ -153,8 +202,8 @@
   function fillCompose(value) {
     $('caption').value = value.caption || ''; $('location').value = value.location || ''; $('trip').value = value.trip || ''; $('taken-on').value = value.taken_on || today(); $('visibility').value = value.visibility || 'private';
     $('compose-title').textContent = editing ? '순간 다듬기' : '새로운 순간'; $('publish').querySelector('span').textContent = editing ? '변경 저장하기' : '순간 저장하기';
-    selectionError = value.selection_error || '';
-    $('compose-error').textContent = ''; $('draft-status').textContent = ''; updateCaption(); visibilityHint(); renderMedia();
+    selectionError = value.selection_error || ''; composeStory = copyStory(value.story);
+    $('compose-error').textContent = ''; $('draft-status').textContent = ''; updateCaption(); visibilityHint(); renderMedia(); renderComposeStory();
   }
   async function openCompose(post = null, fromDraft = false) {
     if (!state.me?.can_write) { toast('로그인과 쓰기 권한을 확인해 주세요.'); return; }
@@ -176,9 +225,9 @@
     $('skip-rejected-media').hidden = !selectionError;
     $('media-preview').replaceChildren(...media.map((item, index) => {
       const n = el('div', 'preview-item'); n.append(mediaElement(item, true));
-      const remove = button('×', 'remove-media', () => { media.splice(index, 1); if (localUrls.has(item.url)) { URL.revokeObjectURL(item.url); localUrls.delete(item.url); } renderMedia(); scheduleDraft(); }); remove.setAttribute('aria-label', `${item.filename} 빼기`); n.append(remove);
+      const remove = button('×', 'remove-media', () => { if (composeStory) { toast('사진을 빼려면 먼저 이야기 구성을 해제해 주세요.'); return; } media.splice(index, 1); if (localUrls.has(item.url)) { URL.revokeObjectURL(item.url); localUrls.delete(item.url); } renderMedia(); scheduleDraft(); }); remove.setAttribute('aria-label', `${item.filename} 빼기`); n.append(remove);
       if (index === 0) n.append(el('span', 'cover-label', '표지'));
-      if (index > 0) n.append(button('← 앞으로', 'media-order', () => { [media[index - 1], media[index]] = [media[index], media[index - 1]]; renderMedia(); scheduleDraft(); }));
+      if (index > 0 && !composeStory) n.append(button('← 앞으로', 'media-order', () => { [media[index - 1], media[index]] = [media[index], media[index - 1]]; renderMedia(); scheduleDraft(); }));
       return n;
     }));
   }
@@ -202,7 +251,7 @@
   }
   function updateCaption() { $('caption-count').textContent = `${Array.from($('caption').value).length.toLocaleString()} / 5,000`; }
   function visibilityHint() { $('visibility-hint').textContent = { private: '나만 볼 수 있어요. 나중에 공개 범위를 바꿀 수 있습니다.', community: 'qaredi에 로그인한 사람들이 피드에서 볼 수 있어요.', shared: '커뮤니티와 공유 링크에서 볼 수 있어요. 저장 후 ‘공유’로 로그인 없는 친구에게 보내세요.' }[$('visibility').value]; }
-  function currentDraft() { return { request_id: draft?.request_id || uuid(), editing, selection_error: selectionError, caption: $('caption').value, location: $('location').value, trip: $('trip').value, taken_on: $('taken-on').value, visibility: $('visibility').value, media: media.map(({ file, id, mime, filename, bytes, url }) => ({ file, id, mime, filename, bytes, url: file ? '' : url })), saved_at: Date.now() }; }
+  function currentDraft() { return { request_id: draft?.request_id || uuid(), editing, story: composeStory, selection_error: selectionError, caption: $('caption').value, location: $('location').value, trip: $('trip').value, taken_on: $('taken-on').value, visibility: $('visibility').value, media: media.map(({ file, id, mime, filename, bytes, url }) => ({ file, id, mime, filename, bytes, url: file ? '' : url })), saved_at: Date.now() }; }
   function openDb() {
     if (!dbPromise) dbPromise = new Promise((resolve, reject) => { const req = indexedDB.open('qaredi-travel-drafts', 1); req.onupgradeneeded = () => req.result.createObjectStore('drafts'); req.onsuccess = () => resolve(req.result); req.onerror = () => reject(req.error); });
     return dbPromise;
@@ -255,13 +304,13 @@
         media[i] = { ...uploaded }; await saveDraft();
       }
       const value = currentDraft();
-      const body = { caption: value.caption, location: value.location, trip: value.trip, taken_on: value.taken_on, visibility: value.visibility, media_ids: media.map((m) => m.id), request_id: value.request_id };
+      const body = { caption: value.caption, location: value.location, trip: value.trip, taken_on: value.taken_on, visibility: value.visibility, media_ids: media.map((m) => m.id), story: value.story, request_id: value.request_id };
       if (editing) body.revision = editing.revision;
       const response = await api('/api/memories' + (editing ? '/' + editing.id : ''), { method: editing ? 'PATCH' : 'POST', body: JSON.stringify(body) });
       clearTimeout(draftTimer); try { await draftStore('delete'); } catch { /* Server save is already confirmed. */ }
       draft = null; editing = null; media = []; releaseLocal(); $('compose-dialog').close(); $('resume-draft').hidden = true;
       state.view = 'mine'; state.profile = ''; state.post = ''; state.search = ''; $('search').value = ''; await load();
-      toast('한 순간을 소중히 간직했어요.');
+      toast('기록을 저장했어요.');
       if (body.visibility === 'shared') { const saved = state.posts.find((p) => p.id === response.id); if (saved) await sharePost(saved); }
     } catch (e) { $('compose-error').textContent = errorText(e); await saveDraft(); }
     finally { busy = false; $('compose-form').querySelectorAll('input,textarea,select,button').forEach((n) => { n.disabled = false; }); $('upload-progress').hidden = true; }
@@ -302,24 +351,24 @@
     if (draft && (draft.caption || draft.media?.length)) {
       toast('쓰다 만 기록을 먼저 저장하거나 버린 뒤 꾸미기를 열어 주세요.'); return;
     }
-    studioPost = post; imported = []; $('studio-files').value = ''; $('studio-result').value = ''; $('studio-replace').checked = false; $('studio-imported').textContent = ''; $('studio-error').textContent = '';
+    studioPost = post; studioStory = null; registeredStory = null; suggestedStory = null; suggestedOrder = false; renderStudioStory(); imported = []; $('studio-files').value = ''; $('studio-result').value = ''; $('studio-replace').checked = false; $('studio-imported').textContent = ''; $('studio-error').textContent = '';
     const session = ++studioSession; captionRequest = null; captionBusy = false;
     $('studio-external').open = false;
     $('studio-dialog').querySelectorAll('input,textarea,select,button').forEach((n) => { n.disabled = false; });
     $('gemini-generate').disabled = true; $('gemini-generate').textContent = 'Gemini로 글쓰기';
     $('gemini-status').textContent = 'Gemini 연결을 확인하고 있어요.';
-    $('gemini-wish').value = '사진에 담긴 순간을 참고해서 행복한 오늘의 기록을 따뜻하게 덧붙여 줘.';
+    $('gemini-wish').value = '사진 전체를 보고 장면이 자연스럽게 이어지는 짧은 사진 이야기를 만들어 줘. 과장된 감상 없이, 사진에 보이는 구체적인 모습과 내 메모를 중심으로.';
     const photos = post.media.filter((m) => ['image/jpeg', 'image/png', 'image/webp'].includes(m.mime));
     $('gemini-photos').replaceChildren(...photos.map((m, i) => {
-      const label = el('label', 'check-label'), input = el('input'); input.type = 'checkbox'; input.value = m.id; input.checked = i < 4;
+      const label = el('label', 'check-label'), input = el('input'); input.type = 'checkbox'; input.value = m.id; input.checked = i < 10;
       const preview = el('img'); preview.src = m.url; preview.width = 56; preview.alt = `참조 사진 ${i + 1}`;
       label.append(input, preview, el('span', '', `사진 ${i + 1}`)); return label;
     }));
-    if (!photos.length) $('gemini-photos').textContent = '참조할 JPG·PNG·WebP 사진이 없어요. 현재 메모로 글을 작성할 수 있어요.';
+    if (!photos.length) $('gemini-photos').textContent = '사진이 없으면 현재 메모를 바탕으로 짧은 글을 작성해요.';
     api('/api/memories/ai').then((data) => {
       if (session !== studioSession) return;
       $('gemini-generate').disabled = !data.ready;
-      $('gemini-status').textContent = data.ready ? '선택한 사진과 현재 메모를 참고해 추가할 글을 만들어요.' : data.notice || 'Gemini 연결을 준비 중입니다.';
+      $('gemini-status').textContent = data.ready ? '사진 전체를 등록순으로 읽고, 장면별 글과 구성을 제안해요.' : data.notice || 'Gemini 연결을 준비 중입니다.';
     }).catch((e) => { if (session === studioSession) $('gemini-status').textContent = errorText(e); });
     studioPrompt();
     $('studio-originals').replaceChildren(...(post.original_media || post.media).map((m) => { const row = el('div', 'original-file'); const a = el('a', '', '원본 받기 ↓'); a.href = m.url + '?download=1'; a.download = m.filename; row.append(el('span', '', m.filename), a); return row; }));
@@ -330,8 +379,9 @@
     const post = studioPost, session = studioSession;
     const mediaIds = Array.from($('gemini-photos').querySelectorAll('input:checked'), (n) => n.value);
     const wish = $('gemini-wish').value.trim();
-    if (!wish || mediaIds.length > 4) { $('studio-error').textContent = !wish ? '어떤 글을 남기고 싶은지 적어 주세요.' : '참조할 사진은 최대 4장까지 골라 주세요.'; return; }
+    if (!wish || mediaIds.length > 10) { $('studio-error').textContent = !wish ? '어떤 글을 남기고 싶은지 적어 주세요.' : '참조할 사진은 최대 10장까지 골라 주세요.'; return; }
     const body = { revision: post.revision, media_ids: mediaIds, wish, tone: $('studio-tone').value, consent: true };
+    if (mediaIds.length) body.format = 'story';
     const signature = JSON.stringify(body);
     if (!captionRequest || captionRequest.signature !== signature) captionRequest = { signature, id: uuid() };
     body.request_id = captionRequest.id;
@@ -343,14 +393,15 @@
       const result = await api('/api/memories/' + post.id + '/caption', { method: 'POST', body: JSON.stringify(body) });
       if (session !== studioSession) return;
       if (result.state === 'complete') {
-        $('studio-result').value = result.text; captionRequest = null;
-        $('gemini-status').textContent = '초안이 준비됐어요. 내용을 확인하고 기존 글에 추가해 주세요. 아직 게시글에는 저장되지 않았어요.';
+        $('studio-result').value = result.text; captionRequest = null; registeredStory = copyStory(result.story); suggestedStory = copyStory(result.suggested_story); studioStory = copyStory(registeredStory); suggestedOrder = false;
+        $('studio-order-reason').textContent = result.order_reason || '등록순으로 구성했어요.'; renderStudioStory();
+        $('gemini-status').textContent = '초안을 확인해 주세요. 장면별 글을 고치거나 제안 순서를 미리 볼 수 있어요. 저장 전까지 게시글은 그대로예요.';
       } else if (result.state === 'pending') {
         $('gemini-status').textContent = '아직 작성 중이에요. 잠시 뒤 다시 누르면 같은 요청의 결과를 확인해요.';
       } else {
         captionRequest = null; throw new Error(result.error || '글을 만들지 못했어요. 요청을 바꾸어 다시 시도해 주세요.');
       }
-    } catch (e) { if (session === studioSession) { $('studio-error').textContent = errorText(e); $('gemini-status').textContent = '내용은 그대로 남아 있어요. 다시 눌러 결과를 확인하거나 재시도해 주세요.'; } }
+    } catch (e) { if (session === studioSession) { if ([400,409,413,422].includes(e.status)) captionRequest = null; $('studio-error').textContent = errorText(e); $('gemini-status').textContent = '내용은 그대로 남아 있어요. 다시 눌러 결과를 확인하거나 재시도해 주세요.'; } }
     finally { if (session === studioSession) { captionBusy = false; $('gemini-generate').disabled = false; controls.forEach((n) => { n.disabled = false; }); } }
   }
   function confirm(title, description, label, action) { $('confirm-title').textContent = title; $('confirm-description').textContent = description; $('confirm-ok').textContent = label; confirmAction = action; showDialog('confirm-dialog'); }
@@ -378,8 +429,16 @@
   $('comment-form').addEventListener('submit', async (e) => { e.preventDefault(); const submit = e.submitter; if (submit) submit.disabled = true; const post = commentPost; try { const data = await api('/api/memories/' + post.id + '/comments', { method: 'POST', body: JSON.stringify({ body: $('comment-body').value }) }); if (commentPost?.id === post.id) { renderComments(data.comments); $('comment-body').value = ''; $('comment-error').textContent = ''; } post.comments++; } catch (err) { $('comment-error').textContent = errorText(err); } finally { if (submit) submit.disabled = false; } });
   $('studio-chat').addEventListener('click', () => { $('studio-dialog').close(); window.dispatchEvent(new CustomEvent('qaredi:messenger', { detail: { mode: 'gpt', prompt: $('studio-prompt').value } })); });
   $('gemini-generate').addEventListener('click', generateCaption);
+  $('studio-order-toggle').addEventListener('click', () => { if (suggestedOrder) suggestedStory = copyStory(studioStory); else registeredStory = copyStory(studioStory); suggestedOrder = !suggestedOrder; studioStory = copyStory(suggestedOrder ? suggestedStory : registeredStory); renderStudioStory(); });
+  $('compose-story-clear').addEventListener('click', () => confirm('이야기 구성을 해제할까요?', '장면별 편집한 글은 사라져요. 기존 메모와 사진은 유지됩니다.', '구성 해제', () => { composeStory = null; renderComposeStory(); renderMedia(); scheduleDraft(); }));
   $('studio-append').addEventListener('click', async () => {
     const post = studioPost, result = $('studio-result').value.trim();
+    if (studioStory) {
+      const selected = copyStory(studioStory), ids = selected.scenes.flatMap((scene) => scene.media_ids);
+      $('studio-dialog').close(); await openCompose(post); composeStory = selected;
+      if (suggestedOrder) { const map = new Map(media.map((item) => [item.id, item])); let cursor = 0; media = media.map((item) => ids.includes(item.id) ? map.get(ids[cursor++]) : item); }
+      renderMedia(); renderComposeStory(); scheduleDraft(); return;
+    }
     if (!result) { $('studio-error').textContent = '먼저 추가할 글을 작성해 주세요.'; return; }
     const caption = [post.caption.trim(), result].filter(Boolean).join('\n\n');
     if (Array.from(caption).length > 5000) { $('studio-error').textContent = '기존 글과 합쳐 5,000자까지 저장할 수 있어요. 초안을 조금 줄여 주세요.'; return; }
@@ -396,11 +455,11 @@
     if (!$('studio-result').value.trim() && !imported.length) { $('studio-error').textContent = '다듬은 글을 붙여 넣거나 새 파일을 골라 주세요.'; return; }
     const result = $('studio-result').value; const files = imported.slice(); const post = studioPost;
     $('studio-dialog').close(); await openCompose(post);
-    if (result.trim()) $('caption').value = result;
+    composeStory = null; renderComposeStory(); if (result.trim()) $('caption').value = result;
     if (files.length) { if (replace) media = []; media.push(...files.map(makeLocal)); }
     updateCaption(); renderMedia(); scheduleDraft();
   });
-  $('restore-original').addEventListener('click', async () => { const post = studioPost; $('studio-dialog').close(); await openCompose(post); $('caption').value = post.original_caption ?? post.caption; media = (post.original_media || post.media).map((m) => ({ ...m })); updateCaption(); renderMedia(); scheduleDraft(); });
+  $('restore-original').addEventListener('click', async () => { const post = studioPost; $('studio-dialog').close(); await openCompose(post); composeStory = null; renderComposeStory(); $('caption').value = post.original_caption ?? post.caption; media = (post.original_media || post.media).map((m) => ({ ...m })); updateCaption(); renderMedia(); scheduleDraft(); });
   const online = () => { $('connection').hidden = navigator.onLine; }; window.addEventListener('online', online); window.addEventListener('offline', online); online();
   document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') saveDraft(); });
   window.addEventListener('beforeunload', (e) => { if (busy) { e.preventDefault(); e.returnValue = ''; } });

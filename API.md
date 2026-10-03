@@ -990,3 +990,8 @@ GET /tbox/session/open?code=…&to=%2Ftbox%2Fsettings           → 302 Location
 - 세션·CSRF·community.write·모아 메신저 자격(역할 보기 제외)·글 소유권 적용. 남의 공개 글도 생성 불가. 일반 파일/커뮤니티 글쓰기 API 토큰을 허용하는 표는 넓히지 않는다.
 - 같은 사용자/요청 UUID/참조 입력은 기존 AI 결과로 중복을 막는다. 새 내용으로 같은 UUID를 사용하면 409. 판 충돌409, 부적격 첨부404/400, 사진 용량413, 공통 AI 한도429, 미설정503. 초안 확인 후 기존 게시글 PATCH로 저장한다.
 - 서버 적용과 보관 범위: `docs/thread-gemini-writing-2026-10-03.md`.
+
+
+### 2026-10-03 사진과 글의 이야기 구성
+
+POST /community/api/memories/{id}/caption에 선택적 format=story 추가. 최대10장의 번호별 참조 이미지와 최초 메모로 title/intro/scenes 구조를 생성하며 story/suggested_story/order_reason/text를 반환. 기본 scene 순서는 입력 사진 순서를 보존하고 제안은 별도다. 생성 결과는 게시하지 않는다. POST/PATCH memories의 story는 null 또는 {title,intro,scenes:[{media_ids,title,text}]}이며 현재 첨부의 중복 없는 부분집합/순서를 검증한다. 생략 시 기존 story 유지, 충돌409. 공개 응답도 저장된 story만 반환하고 원본은 소유자만 조회한다.

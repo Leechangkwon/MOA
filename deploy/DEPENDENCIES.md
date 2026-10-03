@@ -232,3 +232,7 @@ HTTP 는 표준 라이브러리(`urllib` · `ssl.create_default_context()`)로 �
 
 ## 커뮤니티 12단계 (2026-10-01)
 외부 라이브러리 추가 없음. 기존 PHP cURL/OpenSSL/PostgreSQL 및 ProseMirror 고정 의존성을 사용한다. 공개 화면은 스크립트·외부 자산을 읽지 않는다. 메신저/연결 비밀 파일은 `/etc/tbox-v2/hooks/<id>.url`, `/etc/tbox-v2/connectors/<id>.key`의 root:tbox-php 0640이며 저장소 밖이다. 실제 연결 대상은 추후 지정한다.
+
+
+## 사진 이야기 참조 이미지 (2026-10-03)
+Ubuntu 배포판 php8.1-gd 8.1.2-1ubuntu2.26 / libgd3 2.3.0-2ubuntu2.3를 사용한다(PHP License / libgd BSD 계열). PHP 런타임 버전은 유지한다. 운영 gd.so SHA-256 `d31d9e4ccb91744cce73397f88260a357147a637628ee30649a84af92159b780`. 새 설치는 `php8.1-gd`를 설치하고 PHP-FPM에 로드한다. GD는 원본을 읽어 메모리 안에서 최대1280px JPEG 참조본을 만들며 원본 파일을 쓰거나 전송본을 저장하지 않는다. 원본 무결성·사진 MIME/해상도·메모리 예산을 확인한다. 기존 FPM open_basedir/disable_functions 및 네트워크 제한은 그대로다.

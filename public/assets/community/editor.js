@@ -1,4 +1,4 @@
-import { hydrateDashboard } from './dashboard.js?v=f0f3a6fcb0e8';
+import { hydrateDashboard } from './dashboard.js?v=f4a3631080fd';
 /**
  * public/assets/community/editor.js — 커뮤니티 화면의 동작 한 벌 (모듈 스크립트)
  *
@@ -41,20 +41,20 @@ import { inputRules, textblockTypeInputRule, InputRule } from './vendor/pm/prose
 import { dropCursor } from './vendor/pm/prosemirror-dropcursor.js?v=5823578fa61a';
 import { gapCursor } from './vendor/pm/prosemirror-gapcursor.js?v=5823578fa61a';
 
-import { createSuggestions, bindMySuggestions, buildSuggestionOps, suggestionTypeAllowed, suggestionEqual } from './suggestions.js?v=f0f3a6fcb0e8';
-import { renderDoc, embedHost } from './doc-render.js?v=f0f3a6fcb0e8';
-import { createDatabaseView } from './database.js?v=f0f3a6fcb0e8';
-import { bindTemplateGallery, createTemplateSave } from './templates.js?v=f0f3a6fcb0e8';
-import { bindEmbedAdmin } from './embeds.js?v=f0f3a6fcb0e8';
-import { bindPopular } from './popular.js?v=f0f3a6fcb0e8';
-import { bindPalettes } from './palettes.js?v=f0f3a6fcb0e8';
-import { schema, toDoc, fromDoc, uuid4, colorAllowed, schemeOkForEditor, mentionAllowed, editorDomParser, clipboardDomParser, COLORS, BLOCK_TYPES } from './editor-schema.js?v=f0f3a6fcb0e8';
-import { drawAutomationPage, drawAutomationSpace, bindAutomations, loadAutomations } from './automations.js?v=f0f3a6fcb0e8';
-import { drawTrust, bindProcedures } from './procedures.js?v=f0f3a6fcb0e8';
-import { createPageExport } from './export.js?v=f0f3a6fcb0e8';
-import { createDrafts } from './drafts.js?v=f0f3a6fcb0e8';
-import { drawPageAi, bindAiCenter } from './ai.js?v=f0f3a6fcb0e8';
-import { drawIntegrations, bindIntegrations } from './integrations.js?v=f0f3a6fcb0e8';
+import { createSuggestions, bindMySuggestions, buildSuggestionOps, suggestionTypeAllowed, suggestionEqual } from './suggestions.js?v=f4a3631080fd';
+import { renderDoc, embedHost } from './doc-render.js?v=f4a3631080fd';
+import { createDatabaseView } from './database.js?v=f4a3631080fd';
+import { bindTemplateGallery, createTemplateSave } from './templates.js?v=f4a3631080fd';
+import { bindEmbedAdmin } from './embeds.js?v=f4a3631080fd';
+import { bindPopular } from './popular.js?v=f4a3631080fd';
+import { bindPalettes } from './palettes.js?v=f4a3631080fd';
+import { schema, toDoc, fromDoc, uuid4, colorAllowed, schemeOkForEditor, mentionAllowed, editorDomParser, clipboardDomParser, COLORS, BLOCK_TYPES } from './editor-schema.js?v=f4a3631080fd';
+import { drawAutomationPage, drawAutomationSpace, bindAutomations, loadAutomations } from './automations.js?v=f4a3631080fd';
+import { drawTrust, bindProcedures } from './procedures.js?v=f4a3631080fd';
+import { createPageExport } from './export.js?v=f4a3631080fd';
+import { createDrafts } from './drafts.js?v=f4a3631080fd';
+import { drawPageAi, bindAiCenter } from './ai.js?v=f4a3631080fd';
+import { drawIntegrations, bindIntegrations } from './integrations.js?v=f4a3631080fd';
 
 /* ─── 주소와 공통 도우미 ─────────────────────────────────────── */
 

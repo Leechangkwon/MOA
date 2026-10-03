@@ -6,4 +6,12 @@ $mode=json_decode(file_get_contents($dir.'/transport-mode.json'),true);
 file_put_contents($dir.'/transport-capture.jsonl',json_encode($payload)."\n",FILE_APPEND);
 if (!empty($mode['delay'])) usleep(1500000);
 if (!empty($mode['error'])) throw new FetchDenied('synthetic', (int)$mode['error']);
-return ['candidates'=>[['finishReason'=>'STOP','content'=>['parts'=>[['text'=>'합성 사진을 참고한 추가 초안입니다.']]]]],'usageMetadata'=>['totalTokenCount'=>10]];
+$answer='합성 사진을 참고한 추가 초안입니다.';
+if(isset($payload['generationConfig']['responseJsonSchema'])) {
+ $count=count(array_filter($payload['contents'][0]['parts'],static fn($p)=>isset($p['inlineData'])));
+ $scenes=[];for($i=1;$i<=$count;$i+=2)$scenes[]=['photos'=>range($i,min($i+1,$count)),'title'=>'장면 '.count($scenes),'text'=>'사진에 보이는 장면의 짧은 기록. <script>는 글자다.'];
+ if(($mode['bad']??'')==='missing')array_pop($scenes[count($scenes)-1]['photos']);
+ if(($mode['bad']??'')==='duplicate')$scenes[0]['photos'][]=1;
+ $answer=json_encode(['title'=>'사진으로 이어지는 하루','intro'=>'서로 다른 장면이 한 기록에 모였다.','scenes'=>$scenes,'suggested_scene_order'=>array_reverse(range(1,count($scenes))),'order_reason'=>'가까운 장면에서 넓은 장면으로 시선을 옮기는 구성.'],JSON_UNESCAPED_UNICODE);
+}
+return ['candidates' =>[['finishReason'=>'STOP','content'=>['parts'=>[['text'=>$answer]]]]],'usageMetadata'=>['totalTokenCount'=>10]];

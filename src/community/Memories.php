@@ -1,5 +1,6 @@
 <?php
 declare(strict_types=1);
+require_once __DIR__ . '/MemoryStory.php';
 
 /** Photo and text threads within the community; document permissions stay on their existing routes. */
 final class Memories
@@ -36,7 +37,7 @@ final class Memories
     public static function body(): array
     {
         $body = Http::jsonBody(40000, 8);
-        $allowed = ['caption', 'location', 'trip', 'taken_on', 'visibility', 'media_ids', 'revision', 'request_id'];
+        $allowed = ['caption', 'location', 'trip', 'taken_on', 'visibility', 'media_ids', 'revision', 'request_id', 'story'];
         if (array_diff(array_keys($body), $allowed)) {
             Http::error(400, Http::MSG_BAD_REQUEST);
         }
@@ -129,6 +130,7 @@ final class Memories
             SQL;
         $counts = Db::instance()->run($sql, [':liked' => $row['id'], ':commented' => $row['id'], ':post' => $row['id'], ':viewer' => (int) ($user['id'] ?? 0)])->fetch();
         $out = array_intersect_key($row, array_flip(['id', 'caption', 'location', 'trip', 'taken_on', 'visibility', 'created_at', 'username', 'display_name']));
+        $out['story'] = isset($row['story']) ? json_decode($row['story'], true) : null;
         $out += ['mine' => $owner, 'revision' => (int) $row['revision'], 'media' => self::mediaList(json_decode($row['media_ids'], true), $prefix),
             'likes' => (int) $counts['likes'], 'comments' => (int) $counts['comments'], 'liked' => (bool) $counts['liked']];
         if ($owner) {
@@ -156,7 +158,7 @@ final class Memories
         }
         $search = $_GET['q'] ?? '';
         if ($search !== '') {
-            $where[] = "strpos(lower(p.caption || ' ' || p.location || ' ' || p.trip),lower(:search))>0";
+            $where[] = "strpos(lower(p.caption || ' ' || COALESCE(p.story::text,'') || ' ' || p.location || ' ' || p.trip),lower(:search))>0";
             $bind[':search'] = self::text($search, 100);
         }
         $offset = filter_var($_GET['offset'] ?? 0, FILTER_VALIDATE_INT);
@@ -211,17 +213,22 @@ final class Memories
                 $db->rollback(); Http::error(400, '이 기록에 사용할 수 없는 첨부파일이에요. 다시 골라 주세요.');
             }
         }
+        try {
+            $story = MemoryStory::validate(array_key_exists('story',$body) ? $body['story'] : ($old && isset($old['story']) ? json_decode($old['story'],true) : null), $body['media_ids']);
+        } catch (InvalidArgumentException $e) {
+            $db->rollback(); Http::error(409, '사진 순서와 이야기 구성을 확인해 주세요. 구성을 해제한 뒤 사진을 바꿀 수 있어요.');
+        }
         $bind = [':id' => $id, ':caption' => $body['caption'], ':location' => $body['location'], ':trip' => $body['trip'],
-            ':taken' => $body['taken_on'], ':visibility' => $body['visibility'], ':media' => json_encode($body['media_ids'])];
+            ':taken' => $body['taken_on'], ':visibility' => $body['visibility'], ':media' => json_encode($body['media_ids']), ':story' => $story===null ? null : json_encode($story,JSON_UNESCAPED_UNICODE|JSON_THROW_ON_ERROR)];
         if ($old) {
             $sql = <<<'SQL'
                 UPDATE community.memory_posts SET caption=:caption,location=:location,trip=:trip,taken_on=:taken,
-                visibility=:visibility,media_ids=CAST(:media AS jsonb),revision=revision+1,updated_at=now() WHERE id=CAST(:id AS uuid)
+                visibility=:visibility,media_ids=CAST(:media AS jsonb),story=CAST(:story AS jsonb),revision=revision+1,updated_at=now() WHERE id=CAST(:id AS uuid)
                 SQL;
         } else {
             $sql = <<<'SQL'
-                INSERT INTO community.memory_posts(id,owner_user_id,caption,original_caption,location,trip,taken_on,visibility,media_ids,original_media_ids,request_id)
-                VALUES(CAST(:id AS uuid),:owner,:caption,:original,:location,:trip,:taken,:visibility,CAST(:media AS jsonb),CAST(:original_media AS jsonb),CAST(:request AS uuid))
+                INSERT INTO community.memory_posts(id,owner_user_id,caption,original_caption,location,trip,taken_on,visibility,media_ids,original_media_ids,request_id,story)
+                VALUES(CAST(:id AS uuid),:owner,:caption,:original,:location,:trip,:taken,:visibility,CAST(:media AS jsonb),CAST(:original_media AS jsonb),CAST(:request AS uuid),CAST(:story AS jsonb))
                 SQL;
             $bind += [':owner' => (int) $user['id'], ':original' => $body['caption'], ':original_media' => json_encode($body['media_ids']), ':request' => $body['request_id']];
         }
