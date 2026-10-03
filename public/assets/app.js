@@ -103,7 +103,7 @@ var RETURN_UUID = '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}'
 var RETURN_RULES = [
   [/^\/tbox\/$/, [['folder', /^[1-9][0-9]{0,8}$/], ['q', 'text200'], ['sort', /^(name|created_at|size)$/],
     ['dir', /^(asc|desc)$/], ['page', /^[1-9][0-9]{0,5}$/]]],
-  [/^\/tbox\/(settings|activity)$/, []],
+  [/^\/tbox\/(settings|activity|welcome|messages)$/, []],
   [/^\/community\/$/, [['space', /^[1-9][0-9]{0,17}$/]]],
   [new RegExp('^/community/p/' + RETURN_UUID + '$'), [['edit', /^1$/]]],
   [/^\/community\/b\/[1-9][0-9]{0,8}$/, []]
@@ -1289,8 +1289,10 @@ function initLogin(form) {
              그 키가 고정 맵에 있을 때만 맵의 값으로 간다. 주소를 data 속성 값으로 만들지
              않으므로, 속성을 개발자도구로 고쳐도 갈 수 있는 곳은 맵의 두 값뿐이다. */
           // Q:F-7 B1-1 — 옛 키 둘 + 허용 목록 경로. 지문·얼굴 로그인(passkey.js)과 같은 한 함수다.
-          window.location.assign(loginDestination());
-          return null;
+          return readJson(response).then(function (data) {
+            window.location.assign(data && data.next === 'mfa_setup' ? APP_BASE + '/welcome' : data && data.next === 'password_change' ? HOME_PATH : loginDestination());
+            return null;
+          });
         }
         return readJson(response).then(function (body) {
           if (body && body.mfa_required === true) {
@@ -6337,7 +6339,8 @@ var TOKEN_SCOPE_LABELS = {
   'read+upload+delete': '읽기 + 올리기 + 지우기',
   'community.write': '커뮤니티 글쓰기 — 내 개인 공간에 비공개 페이지 만들기·읽기(파일 창구 없음)',
   /* Q:F-9 — 「이 PC 로그인 전용」(파일·커뮤니티 창구 없음 — 1회용 로그인 링크만). 묶인 IP 는 목록 칸에서 서버 값 그대로 */
-  'session.open': '이 PC 로그인 전용 — 지금 접속한 IP 에서만 · 로그인 없이 화면 열기(민감한 일은 다시 인증)'
+  'session.open': '이 PC 로그인 전용 — 지금 접속한 IP 에서만 · 로그인 없이 화면 열기(민감한 일은 다시 인증)',
+  'assistant.run': '비서 실행 — 읽기 전용 파일 검색·근거 조회와 내 실행 상태(파일·로그인 토큰과 별도)'
 };
 
 /** Q:F-9 — 범위 칸 글자: 라벨 + 묶인 IP(서버가 준 `bound_ip` 그대로 — 화면이 IP 를 만들거나 고치지 않는다) */
@@ -10774,7 +10777,7 @@ function bootPage(page) {
            (type="module") 가 맡는다. 이 두 키를 여기서 무시하지 않으면 아래 갈래가 없는 채로
            흘러가므로 지금도 아무 일이 없지만, 나중에 t-box 화면 키가 늘 때 섞이지 않도록
            **뜻을 코드에 적어 둔다**. */
-        if (page === 'community-home' || page === 'community-page' || page === 'community-board' || page === 'community-today') {
+        if (page === 'community-home' || page === 'community-page' || page === 'community-board' || page === 'community-today' || page === 'community-threads' || page === 'community-ai') {
           return null;
         }
 

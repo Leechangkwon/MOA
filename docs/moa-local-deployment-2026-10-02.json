@@ -1,0 +1,146 @@
+{
+  "deployed_at": "2026-10-02T09:48:43.998643+00:00",
+  "web_branch": "main",
+  "buddy_branch": "AI-비서(로컬)",
+  "buddy_head": "da4ce9a02eafdc138a974b7db8b8355aca2b75c5",
+  "mode": "manual_transfer_only",
+  "commit": null,
+  "pushed": false,
+  "database_changes": false,
+  "service_configuration_changes": false,
+  "backup_directory": "/tmp/moa-local-handoff-tqa7soex/web-before",
+  "files": [
+    {
+      "path": "src/views/member_local_buddy.php",
+      "before_sha256": null,
+      "after_sha256": "5c9abf5d9df5cb65fef740c8e9b09d3d7913b7157b6b09fd09bc1fae303391a0"
+    },
+    {
+      "path": "public/assets/moa.css",
+      "before_sha256": "c55f85dbb3f4c6552647ede16e9c5fbf91ee8c1e69b5c6e34c7c4446718dd78e",
+      "after_sha256": "44d23e05d41fc7a9ef9313f4453d74a6b038b83372959d360aed9d6e41ebbd92"
+    },
+    {
+      "path": "src/views/member_assist.php",
+      "before_sha256": "1402618347d3f74ed6ec8f5a84ab9f347fda1da50af5f0d1d989182979e2da14",
+      "after_sha256": "be20a584ace265b70d5380297f16f5e7be16f2c8e98a4672c3b8a256108099b5"
+    },
+    {
+      "path": "src/handlers/member_welcome_page.php",
+      "before_sha256": "54d0c3b6cafc94ac4ba1590823612aa7e55b1fdccd255a2eb6f9fcd908575235",
+      "after_sha256": "1ce5ec89b5033eca979e14324fe8c4c1e73ccd4bd65d9a86687df231bccccfd9"
+    },
+    {
+      "path": "src/handlers/member_messages_page.php",
+      "before_sha256": "5292e2c40a8935fe3c75f56df8ac979008f90fb06ac84a1ebfdc9f3441d9d10c",
+      "after_sha256": "71998f7b894dc2246092f3fde260f7cbedee5530a6ea0a3e2adcf7ae17571dc8"
+    },
+    {
+      "path": "public/assets/member.js",
+      "before_sha256": "2dfff0e1436b1a22f7e7e61bdf0e732d1f505bcdcf8754fc60d2fe11f7a023cd",
+      "after_sha256": "1d3c79ecc00631b878be50dd688d4d3fb60d6d59da1337c03fda7dff972a0102"
+    },
+    {
+      "path": "public/assets/member-assist.js",
+      "before_sha256": "24d1d17ca685d3e5f1532d209e7dadc065503d625e71ae98a547e24bc5a43c4e",
+      "after_sha256": "cf0c11a959dda947cd5de7ac8386877ad59ea87aa030b136fd23bc13b2584c0e"
+    },
+    {
+      "path": "DESIGN.md",
+      "before_sha256": "5bc02c083f7ec455ee4de1f5a3ee6131b6523278c96ae8afae227616f10119bd",
+      "after_sha256": "a6d5041d0561867d91d53be3911d6976cbb1b460e96002965f1ac5279aa0fdf3"
+    },
+    {
+      "path": "ARCHITECTURE.md",
+      "before_sha256": "414f7b7e42192b499c81afd3b988f2441a5411adccd2fabf5b9bf3846fdd1e81",
+      "after_sha256": "e260e4062d8105b83949cb97491be80be2268123306f338bbb3055b5c2b699df"
+    },
+    {
+      "path": "API.md",
+      "before_sha256": "42ed50e9d197a73d31f84afdbdf42123ce36d82a241414bebbe1aae39e3b0803",
+      "after_sha256": "2546bfabc031d50ce6710de03ea8ecc064122423c28f11b800764fd8e0276747"
+    },
+    {
+      "path": "SECURITY.md",
+      "before_sha256": "46b7f451039b74ea1d3b050b909bea04b7a46f6b62d8dd731956e4973f0b1337",
+      "after_sha256": "c053d61249ee0dc5c6e154db0aeef8a4c905510ec8a01df17cb2c861ee173ee0"
+    },
+    {
+      "path": "docs/moa-implementation-plan.txt",
+      "before_sha256": "aecd485e0ea033a327d2f883c01bec7bc4de59c2aefc7d56d5c87736fb337a9f",
+      "after_sha256": "fdaffcf801fe99193d560d95fc5f03a299ab7c88ecab04ce4552786ce377d9a8"
+    },
+    {
+      "path": "tests/moa_local_assist.py",
+      "before_sha256": null,
+      "after_sha256": "572da85f0d42c4b9db036d6b32cedbd744c4ab4b9c326ba293554cde6801f0e5"
+    },
+    {
+      "path": "tests/moa_local_permissions.py",
+      "before_sha256": null,
+      "after_sha256": "acbf924948bd99412ab5021748f67834bd6d9fa00c9626a8a93e597f45f7dcc8"
+    },
+    {
+      "path": "tests/fixtures/moa_member_render.php",
+      "before_sha256": null,
+      "after_sha256": "cc290997f764211770d5d8848742f01aa09d9914d7f673e3c6cb668761444101"
+    },
+    {
+      "path": "docs/moa-local-chatgpt-2026-10-02.txt",
+      "before_sha256": null,
+      "after_sha256": "09d30474405adcd40dbad3c50eabe8a632d723adbfd2d9dd5d6171bbc96008fb"
+    },
+    {
+      "path": "docs/tbox-buddy-bridge-prompt.txt",
+      "before_sha256": null,
+      "after_sha256": "6183bc12a2b77bd1937c26c008669b2a27373c3a97ac65fdec0fbc17fdd1d0d8"
+    }
+  ],
+  "verification": {
+    "browser_fixture_checks": 54,
+    "isolated_http_permission_checks": 28,
+    "php_syntax_files": 5,
+    "js_syntax_files": 2,
+    "security_lint": "passed",
+    "production_http": [
+      {
+        "path": "/tbox/assets/member-assist.js",
+        "status": 200,
+        "matches_deployed_file": true
+      },
+      {
+        "path": "/tbox/assets/member.js",
+        "status": 200,
+        "matches_deployed_file": true
+      },
+      {
+        "path": "/tbox/assets/moa.css",
+        "status": 200,
+        "matches_deployed_file": true
+      },
+      {
+        "path": "/",
+        "status": 200
+      },
+      {
+        "path": "/tbox/messages",
+        "status": 302
+      },
+      {
+        "path": "/tbox/welcome",
+        "status": 302
+      }
+    ],
+    "deployed_source_browser_fixture_checks": 54,
+    "deployed_source_security_lint": "passed: 0 forbidden patterns",
+    "git_diff_check": "passed"
+  },
+  "cleanup": {
+    "isolated_php_server": "stopped",
+    "temporary_credentials": "removed",
+    "isolated_test_database": "dropped",
+    "production_database": "unchanged"
+  },
+  "site_stage_record": "/var/www/qaredi/STAGES.md",
+  "completed_at": "2026-10-02T09:51:23.441584+00:00"
+}

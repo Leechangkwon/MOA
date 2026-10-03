@@ -125,6 +125,11 @@ final class DocMarkdown
             $kids = self::blocks($children, $root, $ctx);
             $caption = self::rich(is_array($block['caption'] ?? null) ? $block['caption'] : [], $ctx);
             switch ($block['type']) {
+                case 'synced_source':
+                    $out.=$kids;break;
+                case 'synced_ref':
+                    $source=$ctx['synced'][$block['source_id']??'']??['message'=>'볼 수 없는 원본'];
+                    $out.=isset($source['blocks'])?self::blocks($source['blocks'],$source['blocks'],$ctx):self::escape($source['message'])."\n\n";break;
                 case 'paragraph':
                     $out .= $text . "\n\n" . $kids;
                     break;

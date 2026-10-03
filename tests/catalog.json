@@ -5079,6 +5079,44 @@
       "writes_prod": false,
       "est_sec": 1,
       "notes": "Called by community.stage10_suggestions only. Requires its owned synthetic DB/config/FILE_RENAME_MANIFEST/FILE_RENAME_OUTPUT; not a standalone automatic test."
+    },
+    {
+      "id": "tbox.assistant_mvp",
+      "cmd": "bash tests/assistant/mvp.sh",
+      "module": "tbox",
+      "env": "temp-instance",
+      "status": "required",
+      "needs": [],
+      "covers": [
+        "public/index.php",
+        "src/Authz.php",
+        "src/Http.php",
+        "src/Audit.php",
+        "src/handlers/assistant_runs.php",
+        "scripts/assistant_worker.php",
+        "db/assistant.sql",
+        "db/migrations/2026-10-13_assistant_runs.sql",
+        "src/assistant/Error.php",
+        "src/assistant/Files.php",
+        "src/assistant/Provider.php",
+        "src/assistant/Request.php",
+        "src/assistant/Service.php",
+        "src/assistant/Store.php",
+        "src/assistant/Worker.php",
+        "src/assistant/bootstrap.php"
+      ],
+      "requirements": [
+        "T:S-01",
+        "T:S-02",
+        "T:S-03",
+        "T:S-04",
+        "T:S-07",
+        "T:S-09"
+      ],
+      "risks": [],
+      "est_sec": 30,
+      "writes_prod": false,
+      "notes": "전용 tbox_testdb 자격(PGPASSFILE), PHP CLI/PDO PostgreSQL, Python requests 필요. 운영 DB 덤프/계정/서비스/포트 사용 없이 합성 DB와 localhost8497만 만들고 제거. 원문 비밀 출력0. unit52 및 실제 HTTP/워커/마이그레이션 검증."
     }
   ]
 }

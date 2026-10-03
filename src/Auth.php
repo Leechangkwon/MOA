@@ -208,6 +208,7 @@ final class Auth
                -- 라우터 관문이 요청마다 보는 값이라 세션 조회에 함께 싣는다(쿼리 1회 유지).
                u.must_change_password AS must_change_password,
                u.mfa_setup_required   AS mfa_setup_required,
+               u.invited_account AS invited_account,
                (u.expires_at IS NOT NULL AND u.expires_at < now()) AS is_expired,
                -- 16-1 (PRD F-23) — 관리 기능 재인증(sudo 모드).
                -- 판정을 앱이 아니라 **DB 시계 하나**로 한다: 앱 서버와 DB 의 시계가 어긋나도
@@ -313,7 +314,7 @@ final class Auth
         SELECT id, username, password_hash, role, team_id, is_active,
                failed_count, locked_until,
                mfa_enabled, mfa_secret, mfa_last_step,
-               must_change_password, mfa_setup_required,
+               must_change_password, mfa_setup_required, invited_account,
                (locked_until IS NOT NULL AND locked_until > now()) AS is_locked,
                (expires_at IS NOT NULL AND expires_at < now())     AS is_expired
           FROM users
@@ -331,7 +332,7 @@ final class Auth
         SELECT id, username, password_hash, role, team_id, is_active,
                failed_count, locked_until,
                mfa_enabled, mfa_secret, mfa_last_step,
-               must_change_password, mfa_setup_required,
+               must_change_password, mfa_setup_required, invited_account,
                (locked_until IS NOT NULL AND locked_until > now()) AS is_locked,
                (expires_at IS NOT NULL AND expires_at < now())     AS is_expired
           FROM users
@@ -653,6 +654,7 @@ final class Auth
             // **요청에서 읽지 않는다** — 언제나 DB 의 현재 값이다 (PRD S-01).
             'must_change_password' => $row['must_change_password'] === true,
             'mfa_setup_required'   => $row['mfa_setup_required'] === true,
+            'invited_account' => ($row['invited_account'] ?? false) === true,
             /*
              * 16-1 — 관리 기능 재인증 (PRD F-23, ARCH 4.0). 라우터 관문 [3-2] 가 보는 값이다.
              *   reauth_fresh — 15분 창 안인가. 판정은 위 SQL 이 DB 시계로 했고 앱은 참/거짓만 읽는다.
@@ -1192,6 +1194,7 @@ final class Auth
             // 11단계 — 로그인 응답의 `next` 를 계산하는 값 (PRD F-16, ARCH 4.0)
             'must_change_password' => $row['must_change_password'] === true,
             'mfa_setup_required'   => $row['mfa_setup_required'] === true,
+            'invited_account' => ($row['invited_account'] ?? false) === true,
             /*
              * 16-1 (PRD F-23) — **로그인은 재인증 창을 열지 않는다.**
              * SQL_INSERT_SESSION 에 reauth_at 이 없으므로 새 세션 행의 값은 NULL 이고,
@@ -1225,6 +1228,7 @@ final class Auth
             'mfa_enabled' => $row['mfa_enabled'] === true,
             'must_change_password' => $row['must_change_password'] === true,
             'mfa_setup_required'   => $row['mfa_setup_required'] === true,
+            'invited_account' => ($row['invited_account'] ?? false) === true,
             'reauth_fresh' => false,
             'reauth_at'    => null,
             'session_origin'   => 'token',
@@ -1696,7 +1700,7 @@ final class Auth
     public static function mfaRequired(array $user): bool
     {
         $role = (string) ($user['real_role'] ?? $user['role'] ?? '');
-        return in_array($role, self::MFA_REQUIRED_ROLES, true);
+        return in_array($role, self::MFA_REQUIRED_ROLES, true) || ($user['invited_account'] ?? false) === true;
     }
 
     /**

@@ -92,6 +92,7 @@ final class DocRender
      */
     public static function html(array $doc, array $ctx = []): string
     {
+        if (($ctx['public']??false)===true) { $doc=self::publicDocument($doc,$ctx); }
         $blocks = is_array($doc['blocks'] ?? null) ? $doc['blocks'] : [];
         return '<div class="doc">' . self::blocks($blocks, $blocks, $ctx) . '</div>';
     }
@@ -159,6 +160,11 @@ final class DocRender
             }
         }
         $type  = (string) $block['type'];
+        if ($type==='synced_source') { return '<div class="doc-synced">'.self::blocks($block['children']??[],$rootBlocks,$ctx).'</div>'; }
+        if ($type==='synced_ref') {
+            $s=$ctx['synced'][$block['source_id']??'']??['message'=>'볼 수 없는 원본'];
+            return '<div class="doc-synced">'.(isset($s['blocks'])?self::blocks($s['blocks'],$s['blocks'],$ctx):'<p>'.self::esc($s['message']).'</p>').(isset($s['page_id'])?'<a href="'.self::esc(($ctx['base']??'/community').'/p/'.$s['page_id']).'">원본에서 고치기</a>':'').'</div>';
+        }
         $id    = isset($block['id']) && is_string($block['id']) ? $block['id'] : '';
         $idAttr = $id === '' ? '' : ' id="block-' . self::esc($id) . '"';
         $text  = isset($block['text']) && is_array($block['text']) ? self::rich($block['text'], $ctx) : '';
@@ -608,6 +614,43 @@ final class DocRender
             $out .= $inner;
         }
         return $out;
+    }
+
+
+    /** Remove private resources before any normal rendering. No private IDs survive. */
+    private static function publicDocument(array $doc,array $ctx): array
+    {
+        $rich=static function(array $segments) use($ctx):array {
+            $out=[];foreach($segments as $s) {
+                $m=$s['m']??[];
+                if(isset($m['mention'])) { $s['t']='@';unset($m['mention']); }
+                $href=$m['link']['href']??null;
+                if(is_string($href) && str_starts_with($href,'page:')) {
+                    $e=$ctx['public_links'][substr($href,5)]??null;
+                    if($e===null) { $s['t']='비공개 페이지';unset($m['link']); }
+                    else { $s['t']=$e['title'];$m['link']=['href'=>$e['url']]; }
+                }
+                $s['m']=$m;$out[]=$s;
+            }return $out;
+        };
+        $walk=static function(array $blocks) use (&$walk,$rich,$ctx):array {
+            $out=[];foreach($blocks as $b) {
+                $type=$b['type']??'';$label=null;$href=null;
+                if(in_array($type,['file','image'],true)) { $label='로그인이 필요한 파일'; }
+                elseif($type==='db_view') { $label='로그인 필요'; }
+                elseif($type==='button') { $label=$b['label']??'버튼'; }
+                elseif(in_array($type,['child_page','link_to_page'],true)) { $e=$ctx['public_links'][$b['page_id']??'']??null;$label=$e['title']??'비공개 페이지';$href=$e['url']??null; }
+                elseif($type==='embed') { $host=Doc::embedHost($b['url']??'');$allowed=$host!==null && in_array($host,$ctx['embed_domains']??[],true);$label=$allowed?'임베드: '.$host:'허용 목록 밖의 임베드';$href=$allowed?$b['url']:null; }
+                elseif($type==='synced_ref') { $s=$ctx['synced'][$b['source_id']??'']??[];if(isset($s['blocks'])) { $out=array_merge($out,$walk($s['blocks']));continue; }$label='볼 수 없는 원본'; }
+                elseif($type==='synced_source') { $out=array_merge($out,$walk($b['children']??[]));continue; }
+                if($label!==null) { $b=['type'=>'paragraph','text'=>[['t'=>$label,'m'=>$href===null?[]:['link'=>['href'=>$href]]]]]; }
+                foreach(['text','caption'] as $key) { if(isset($b[$key])) { $b[$key]=$rich($b[$key]); } }
+                if(isset($b['rows'])) { foreach($b['rows'] as &$r) { foreach($r['cells'] as &$c) { $c['text']=$rich($c['text']??[]); }unset($c); }unset($r); }
+                if(isset($b['children'])) { $b['children']=$walk($b['children']); }
+                $out[]=$b;
+            }return $out;
+        };
+        return ['schema'=>1,'blocks'=>$walk($doc['blocks']??[])];
     }
 
     private static function esc(string $v): string

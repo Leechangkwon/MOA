@@ -255,6 +255,14 @@ export const schema = new Schema({
       group:'block',atom:true,selectable:true,attrs:{id:{default:null},database_id:{default:null},view_id:{default:null}},
       toDOM: () => ['div',{class:'panel db-widget',contenteditable:'false'},'데이터베이스 뷰']
     },
+    synced_source: {
+      group:'block',content:'block+',defining:true,attrs:{...commonAttrs,source_id:{default:null}},
+      toDOM:node=>['section',{class:'doc-synced','data-source':node.attrs.source_id},0]
+    },
+    synced_ref: {
+      group:'block',atom:true,attrs:{...commonAttrs,source_id:{default:null}},
+      toDOM:node=>['div',{class:'doc-synced',contenteditable:'false'},'동기화 참조 · 원본에서 고치기']
+    },
     button: {
       group:'block', atom:true, selectable:true, attrs:{id:{default:null},label:{default:''},automation_id:{default:null}},
       toDOM: node => ['button',{type:'button',class:'btn',disabled:'disabled'},node.attrs.label]
@@ -588,7 +596,7 @@ export function fromDoc(doc, ctx) {
     if (!b || typeof b.type !== 'string') {
       throw new Error('모르는 블록이 들어 있습니다');
     }
-    if (Array.isArray(b.children) && b.children.length > 0 && b.type !== 'toggle' && b.type !== 'column_list') {
+    if (Array.isArray(b.children) && b.children.length > 0 && b.type !== 'toggle' && b.type !== 'column_list' && b.type !== 'synced_source') {
       throw new Error('하위 블록이 들어 있는 문서는 아직 편집할 수 없습니다');
     }
     const attrs = {
@@ -676,6 +684,8 @@ export function fromDoc(doc, ctx) {
       continue;
     }
     if (b.type === 'db_view') { content.push({type:'db_view',attrs:{id:attrs.id,database_id:b.database_id,view_id:b.view_id}}); continue; }
+    if (b.type === 'synced_source') { content.push({type:b.type,attrs:{...attrs,source_id:b.source_id},content:fromDoc({blocks:b.children || []},ctx).content});continue; }
+    if (b.type === 'synced_ref') { content.push({type:b.type,attrs:{...attrs,source_id:b.source_id}});continue; }
     if (b.type === 'button') { content.push({type:'button',attrs:{id:attrs.id,label:b.label,automation_id:b.automation_id}}); continue; }
     if (b.type === 'embed') {
       content.push({ type: 'embed', attrs: { id: attrs.id, url: typeof b.url === 'string' ? b.url : '', caption: plainOf(b.caption) } });
@@ -856,6 +866,7 @@ export function toDoc(pmDoc) {
       continue;
     }
     if (ourType === 'db_view') { block.database_id=a.database_id;block.view_id=a.view_id;blocks.push(block);continue; }
+    if (ourType === 'synced_source' || ourType === 'synced_ref') { block.source_id=a.source_id;if(ourType==='synced_source'){block.children=toDoc({content:node.content}).blocks;}blocks.push(block);continue; }
     if (ourType === 'button') { block.label=a.label;block.automation_id=a.automation_id;blocks.push(block);continue; }
     if (ourType === 'embed') {
       if (typeof a.url !== 'string' || a.url === '') { continue; }

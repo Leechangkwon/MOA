@@ -40,6 +40,7 @@ if ($row['database_id'] === null) {
     Http::json(['error' => '데이터베이스의 행만 속성 값이 있습니다', 'reason' => 'not_row'], 400);
     exit;
 }
+if (($row['external_key']??null)!==null) { Http::json(['error'=>'외부에서 가져온 값은 원본에서 고칩니다','reason'=>'external_readonly'],400);exit; }
 $pageId    = (int) $row['id'];
 $pageTitle = community_target_title((string) $row['title']);
 

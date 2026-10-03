@@ -33,7 +33,7 @@ require_once __DIR__ . '/../Design.php';
  *   속성을 개발자도구로 고쳐도 목록 밖으로는 못 간다. 값은 htmlspecialchars 를 거쳐 속성에만 들어간다.
  */
 $loginToAllowed = ['tbox', 'community'];
-$loginToRaw     = $_GET['to'] ?? '';
+$loginToRaw     = $_GET['to'] ?? 'community';
 $loginTo        = '';
 $loginReturn    = null;   // 허용 목록 경로의 정규형(있으면)
 if (is_string($loginToRaw) && in_array($loginToRaw, $loginToAllowed, true)) {
@@ -47,7 +47,7 @@ if (Auth::currentUser() !== null) {
     if ($loginReturn !== null) {
         Http::redirectReturn($loginReturn);
     }
-    Http::redirect(Http::url(TBOX_HOME_PATH));   // 접두는 내보낼 때 (ARCH-launcher 3장)
+    Http::redirect($loginTo === 'community' ? Http::communityUrl('/') : Http::url(TBOX_HOME_PATH));
 }
 
 if (!headers_sent()) {
@@ -80,8 +80,8 @@ if ($loginReturn !== null && strpos($loginReturn, COMMUNITY_BASE . '/') === 0) {
    커뮤니티 타일을 누른 사람도 t-box 로 가는 줄 알았다. 글자는 **고정 표**에서만 고른다 — 요청 값은
    위 허용 목록을 지난 키뿐이다. */
 $loginApps = [
-    'tbox'      => ['name' => 't-box',  'into' => 't-box 로',  'sub' => '사내 파일 공유',                  'icon' => 'shield'],
-    'community' => ['name' => '커뮤니티', 'into' => '커뮤니티로', 'sub' => '개인 업무 공간 · 게시판 · 인계', 'icon' => 'grid'],
+    'tbox'      => ['name' => '모아 자료실',  'into' => '자료실로',  'sub' => '사내 파일 공유',                  'icon' => 'shield'],
+    'community' => ['name' => '커뮤니티', 'into' => '커뮤니티로', 'sub' => '함께라서 더 좋은 일상', 'icon' => 'grid'],
 ];
 $loginApp = $loginApps[$loginPane === '' ? 'tbox' : $loginPane];
 ?>
@@ -91,7 +91,7 @@ $loginApp = $loginApps[$loginPane === '' ? 'tbox' : $loginPane];
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="color-scheme" content="light dark">
-<title>로그인 · <?= htmlspecialchars($loginApp['name'], ENT_QUOTES, 'UTF-8') ?> · Qaredi</title>
+<title>로그인 · <?= htmlspecialchars($loginApp['name'], ENT_QUOTES, 'UTF-8') ?> · 모아</title>
 <link rel="stylesheet" href="<?= Http::url('/assets/app.css') ?>?v=<?= $loginCssVersion ?>">
 <!-- T:F-72 라운드 C · 결정 PK-D5 — 홈 화면 「Qaredi」 앱(모든 사람). 로그인 화면이 앱 범위(`/`) 안이라 지문 창이 앱 안에서 뜬다.
      매니페스트는 public 라우트(데이터 0) · 서비스 워커 없음. 값은 전부 고정 글자다. -->
@@ -117,18 +117,18 @@ $loginApp = $loginApps[$loginPane === '' ? 'tbox' : $loginPane];
       <span class="login__mark"><span class="icon" data-icon="<?= $loginApp['icon'] ?>"></span></span>
       <span class="brand__text">
         <span class="login__brand-name"><?= htmlspecialchars($loginApp['name'], ENT_QUOTES, 'UTF-8') ?></span>
-        <span class="login__brand-sub q-wordmark">Qaredi</span>
+        <span class="login__brand-sub q-wordmark">모아</span>
       </span>
     </div>
     <div>
       <h2 class="login__lead"><?= htmlspecialchars($loginApp['sub'], ENT_QUOTES, 'UTF-8') ?></h2>
-      <p class="login__brand-sub">Qaredi 계정 하나로 t-box 와 커뮤니티를 함께 씁니다. 한 번 로그인하면 둘 다 열립니다.</p>
+      <p class="login__brand-sub">소소한 이야기부터 함께 쓰는 자료까지. 모아에서 우리의 일상을 이어가세요.</p>
     </div>
-    <div class="q-login-art" aria-hidden="true"><img class="q-art" src="<?= Http::url('/assets/design/orbit.svg') ?>" width="600" height="540" alt=""></div>
+
     <!-- Qaredi C — 로그인 화면에는 「Qaredi 홈」 텍스트 링크 하나만 (ARCH-launcher 6장).
          런처는 로그인 전에도 열리므로 이 링크가 막다른 화면을 만들지 않는다. 주소는
          사이트 루트라 `/tbox` 접두를 타지 않는다(이 화면에서 접두 없는 링크는 이것뿐이다). -->
-    <p class="login__foot"><a href="/">Qaredi 홈</a> · 거부되거나 잘 안 되면 관리자에게 문의하세요.</p>
+    <p class="login__foot"><a href="/">모아 홈</a> · 거부되거나 잘 안 되면 관리자에게 문의하세요.</p>
   </section>
 
   <section class="login__pane">
@@ -184,12 +184,13 @@ $loginApp = $loginApps[$loginPane === '' ? 'tbox' : $loginPane];
           <input id="otp" name="otp" type="text" inputmode="numeric"
                  autocomplete="one-time-code" pattern="[0-9]{6}"
                  maxlength="6" spellcheck="false">
-        
+
         </label>
 
         <button id="login-submit" class="btn btn--block" type="submit">로그인</button>
         <p id="msg" class="msg" role="alert" aria-live="polite"></p>
       </form>
+      <p class="moa-login-join">처음 오셨나요? <a href="<?= Http::url('/join') ?>">초대 링크로 회원가입 →</a></p>
     </section>
   </section>
 </div>

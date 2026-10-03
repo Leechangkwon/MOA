@@ -20,10 +20,10 @@ function community_insert_page(array $data, array $extract, ?array $actor, strin
     $sql = <<<'SQL'
         INSERT INTO community.pages
             (space_id,parent_page_id,title,doc,doc_version,plain_text,search_tsv,block_count,
-             author_id,last_edited_by,visibility,position,database_id,properties,icon,form_view_id,form_anonymous)
+             author_id,last_edited_by,visibility,position,database_id,properties,icon,form_view_id,form_anonymous,public_form_response)
         VALUES (CAST(:space AS bigint),CAST(:parent AS bigint),:title,CAST(:doc AS jsonb),1,:plain,
                 strip(to_tsvector('simple',:tsv)),CAST(:blocks AS int),CAST(:author AS bigint),CAST(:author AS bigint),
-                :vis,CAST(:position AS int),CAST(:db AS bigint),CAST(:properties AS jsonb),:icon,:form,CAST(:anonymous AS boolean))
+                :vis,CAST(:position AS int),CAST(:db AS bigint),CAST(:properties AS jsonb),:icon,:form,CAST(:anonymous AS boolean),CAST(:public_form AS boolean))
         RETURNING id,public_id,created_at,updated_at
         SQL;
     $row = $db->run($sql, [
@@ -34,15 +34,17 @@ function community_insert_page(array $data, array $extract, ?array $actor, strin
         ':db' => $data['database_id'] ?? null, ':properties' => ($data['properties'] ?? null) === null ? null
             : json_encode($data['properties'] === [] ? new stdClass() : $data['properties'], JSON_UNESCAPED_UNICODE),
         ':icon' => $data['icon'] ?? null, ':form' => $data['form_view_id'] ?? null,
+        ':public_form' => ($data['public_form_response'] ?? false) ? 'true' : 'false',
         ':anonymous' => isset($data['form_anonymous']) ? ($data['form_anonymous'] ? 'true' : 'false') : null,
     ])->fetch();
     if (!is_array($row)) { throw new RuntimeException('Page insertion failed'); }
     community_rewrite_derived((int) $row['id'], $extract);
-    Audit::allow('page.create', [
+    if ($actor !== null) { Audit::allow('page.create', [
         'target_type' => 'page', 'target_id' => (int) $row['id'], 'target_name' => community_target_title($data['title']),
         'detail' => ['granted_by' => $grantCode, 'page_title' => community_target_title($data['title']),
             'doc_version' => 1, 'block_count' => count($extract['blocks'])] + $auditExtra,
     ]);
+    }
     return $row;
 }
 
@@ -89,7 +91,7 @@ function community_form_create_response(array $dbRow, array $dbPage, array $view
         'title'=>$clean['title'],'doc_json'=>json_encode($doc),'visibility'=>'private',
         'position'=>community_next_position((int)$dbPage['space_id'],(int)$dbPage['id']),
         'database_id'=>(int)$dbRow['id'],'properties'=>$clean['properties'],
-        'form_view_id'=>$view['id'],'form_anonymous'=>$view['anonymous']];
+        'form_view_id'=>$view['id'],'form_anonymous'=>$view['anonymous'],'public_form_response'=>$actor===null];
     $row = community_insert_page($data, Doc::extract($doc), $actor, $grantCode);
     $page = community_page_row((string)$row['public_id'], (int)($actor['id'] ?? 0));
     $shared = false;
@@ -171,6 +173,7 @@ function community_form_json(array $payload,array $user,array $row,int $status=2
 function community_form_response_identity(array $user,array $row): ?array
 {
     if (($row['form_view_id'] ?? null)===null) { return null; }
+    if (($row['public_form_response']??false)===true) { return ['anonymous'=>true,'hidden'=>true,'username'=>null,'display_name'=>'공개 응답']; }
     $hidden=community_form_identity_hidden($user,$row);
     return ['anonymous'=>$row['form_anonymous']===true,'hidden'=>$hidden,
         'username'=>$hidden ? null : ($row['author_name'] ?? null),

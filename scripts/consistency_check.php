@@ -72,6 +72,20 @@ foreach ($rows as $r) {
     $byStored[(string) $r['stored_name']] = $r;
 }
 
+// Travel media is backed up under storage/memories and must participate in integrity checks.
+// UUID-only names cannot collide with the original extension-bearing t-box storage names.
+$memoryReady = $db->run("SELECT to_regclass('community.memory_media') IS NOT NULL")->fetchColumn();
+if ($memoryReady) {
+    $memorySql = <<<'SQL'
+        SELECT 0 AS id, m.id::text AS stored_name, m.sha256,
+               (p.deleted_at IS NULL) AS alive, false AS purged, 'clean' AS scan_status
+          FROM community.memory_media m LEFT JOIN community.memory_posts p ON p.id=m.post_id
+        SQL;
+    foreach ($db->run($memorySql)->fetchAll() as $memoryRow) {
+        $byStored[$memoryRow['stored_name']] = $memoryRow;
+    }
+}
+
 // ─── [2] 저장소 쪽: 실제 파일 이름을 모두 훑는다 ───
 $onDisk = [];
 $it = new RecursiveIteratorIterator(
@@ -80,6 +94,10 @@ $it = new RecursiveIteratorIterator(
 );
 foreach ($it as $fileInfo) {
     /** @var SplFileInfo $fileInfo */
+    // Community AI credentials are configuration, not uploaded file records.
+    if (str_starts_with($fileInfo->getPathname(), $base . '/private-ai/')) {
+        continue;
+    }
     if (!$fileInfo->isFile()) {
         continue;
     }

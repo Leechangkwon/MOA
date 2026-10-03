@@ -183,3 +183,42 @@ GRANT UPDATE(status,decided_by,decided_at,decision_note,applied_version) ON comm
 GRANT USAGE, SELECT ON SEQUENCE community.page_suggestions_id_seq TO tbox_app;
 GRANT SELECT ON community.page_suggestions TO tbox_backup;
 GRANT SELECT ON SEQUENCE community.page_suggestions_id_seq TO tbox_backup;
+
+-- Stage 12: immutable events/publications use restricted grants.
+GRANT SELECT,INSERT,UPDATE,DELETE ON community.collections,community.collection_items,community.share_group_members,community.synced_references,community.user_messenger TO tbox_app;
+GRANT SELECT,INSERT ON community.group_member_events,community.web_publication_pages,community.public_form_uses TO tbox_app;
+GRANT SELECT,INSERT,UPDATE ON community.web_publications,community.public_rate_buckets,community.messenger_hooks,community.notification_outbox,community.data_connectors TO tbox_app;
+GRANT USAGE,SELECT ON SEQUENCE community.collections_id_seq,community.share_groups_id_seq,community.group_member_events_id_seq,community.synced_sources_id_seq,community.web_publications_id_seq,community.messenger_hooks_id_seq,community.notification_outbox_id_seq,community.data_connectors_id_seq TO tbox_app;
+REVOKE UPDATE,DELETE ON community.group_member_events,community.public_form_uses,community.web_publication_pages FROM tbox_app;
+REVOKE DELETE ON community.web_publications FROM tbox_app;
+
+REVOKE DELETE ON community.share_groups,community.synced_sources FROM tbox_app;
+GRANT SELECT,INSERT,UPDATE ON community.share_groups,community.synced_sources TO tbox_app;
+GRANT SELECT ON community.collections,community.collection_items,community.share_groups,community.share_group_members,community.group_member_events,community.synced_sources,community.synced_references,community.web_publications,community.web_publication_pages,community.public_form_uses,community.public_rate_buckets,community.messenger_hooks,community.user_messenger,community.notification_outbox,community.data_connectors TO tbox_backup;
+GRANT SELECT ON SEQUENCE community.collections_id_seq,community.share_groups_id_seq,community.group_member_events_id_seq,community.synced_sources_id_seq,community.web_publications_id_seq,community.messenger_hooks_id_seq,community.notification_outbox_id_seq,community.data_connectors_id_seq TO tbox_backup;
+
+-- AI history is append-only for every application connection.
+REVOKE ALL ON community.ai_settings,community.ai_page_permissions,community.ai_requests,community.ai_log,community.page_embeddings,community.embedding_queue FROM PUBLIC,tbox_app,tbox_backup;
+GRANT SELECT,UPDATE ON community.ai_settings TO tbox_app;
+GRANT SELECT,INSERT,UPDATE,DELETE ON community.ai_page_permissions,community.page_embeddings,community.embedding_queue TO tbox_app;
+GRANT SELECT,INSERT ON community.ai_requests,community.ai_log TO tbox_app;
+GRANT USAGE,SELECT ON SEQUENCE community.ai_requests_id_seq,community.ai_log_id_seq TO tbox_app;
+GRANT SELECT ON community.ai_settings,community.ai_page_permissions,community.ai_requests,community.ai_log,community.page_embeddings,community.embedding_queue TO tbox_backup;
+GRANT SELECT ON SEQUENCE community.ai_requests_id_seq,community.ai_log_id_seq TO tbox_backup;
+-- Travel records. Conditional so existing installations can apply grants before the feature migration.
+DO $$ BEGIN
+ IF to_regclass('community.memory_links') IS NOT NULL THEN
+  GRANT SELECT,INSERT,UPDATE,DELETE ON community.memory_posts,community.memory_media,community.memory_likes,community.memory_comments,community.memory_links TO tbox_app;
+  GRANT SELECT ON community.memory_posts,community.memory_media,community.memory_likes,community.memory_comments,community.memory_links TO tbox_backup;
+ END IF;
+END $$;
+
+-- Apply messenger migration before these optional grants.
+DO $$ BEGIN
+ IF to_regclass('community.gpt_turns') IS NOT NULL THEN
+  GRANT SELECT,INSERT,UPDATE,DELETE ON community.conversations,community.messages,community.gpt_turns TO tbox_app;
+  GRANT USAGE,SELECT ON SEQUENCE community.messages_id_seq,community.gpt_turns_id_seq TO tbox_app;
+  GRANT SELECT ON community.conversations,community.messages,community.gpt_turns TO tbox_backup;
+  GRANT SELECT ON SEQUENCE community.messages_id_seq,community.gpt_turns_id_seq TO tbox_backup;
+ END IF;
+END $$;

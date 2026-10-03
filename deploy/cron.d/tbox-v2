@@ -73,5 +73,8 @@ SHELL=/bin/bash
 *    *   *   *  *     tbox-push  php  /var/www/qaredi/tbox-v2/scripts/alert_push.php
 
 # 커뮤니티 반복·검토/기한 알림 — K9-2. 웹과 같은 앱 계정, 5분마다.
-# 코드·DB 검증 후 사용자가 /etc/cron.d 에 설치한다. 잠금과 실행 몫으로 중복을 막는다.
+# 코드·DB 검증 후 메인 에이전트가 /etc/cron.d 에 반영한다. 잠금과 실행 몫으로 중복을 막는다.
 */5  *   *   *  *     tbox-php  /usr/bin/php /var/www/qaredi/tbox-v2/scripts/community_automations.php
+
+# 비서의 명시적 파일 검색·근거 조회 대기열. AI 공급자 없이 읽기 도구만 실행한다.
+*    *   *   *  *     tbox-php  /usr/bin/php /var/www/qaredi/tbox-v2/scripts/assistant_worker.php --drain

@@ -25,12 +25,12 @@ check "PDO::query / exec 직접 호출 (Db::run 만 허용)"          '->(query|
 check "원격 URL 열기: file_get_contents('http / fopen('http"   "(file_get_contents|fopen|readfile)\(\s*['\"](https?|ftp|gopher|dict|file):" 'S-05'
 check "변수 URL 열기: file_get_contents(\$url) 등"               "(file_get_contents|fopen|readfile|copy)\(\s*\\\$[A-Za-z_]*(url|uri|link|src|href|remote)" 'S-05'
 check "소켓 함수 (fsockopen 등)"                                'fsockopen|pfsockopen|stream_socket_client|stream_socket_server'  'S-05'
-# cURL 은 src/Fetch.php 한 파일에서만 허용 (PRD S-05 ⑬)
-curl_hits=$(grep -rnE "${INCLUDE[@]}" "${EXCLUDE[@]}" -- 'curl_(init|exec|multi_exec|setopt)' "$ROOT" 2>/dev/null | grep -v '/src/Fetch\.php:' || true)
+# cURL 은 Fetch.php(일반 가져오기)와 Ai.php(고정 Gemini 통로)에서만 허용 (S-05 ⑬ · C:13)
+curl_hits=$(grep -rnE "${INCLUDE[@]}" "${EXCLUDE[@]}" -- 'curl_(init|exec|multi_exec|setopt)' "$ROOT" 2>/dev/null | grep -vE '/src/(Fetch|Ai)\.php:' || true)
 if [ -n "$curl_hits" ]; then
-  echo "✖ cURL 사용이 src/Fetch.php 밖에 있음  [S-05 ⑬]"; echo "$curl_hits" | sed 's/^/    /'; fail=1
+  echo "✖ cURL 사용이 승인된 Fetch.php·Ai.php 밖에 있음  [S-05 ⑬]"; echo "$curl_hits" | sed 's/^/    /'; fail=1
 else
-  echo "✔ cURL 사용이 src/Fetch.php 밖에 있음  [S-05 ⑬]"
+  echo "✔ cURL 사용이 승인된 Fetch.php·Ai.php 밖에 있음  [S-05 ⑬]"
 fi
 # 권한 매트릭스 쓰기 연결(tbox_perm)은 핸들러 한 파일에서만 허용 (17-2 — PRD F-25 ⑤, ARCH 5.15,
 # SECURITY R-60). cURL 규칙과 같은 방식이다: 이름이 나온 곳을 전부 찾은 뒤 허용 파일만 뺀다.
@@ -74,8 +74,8 @@ fi
 #        단계별 검사(https · 443 · 허용 호스트 · 사설 IP)가 **한 번도** 일어나지 않는다.
 #        리다이렉트를 따라가는 것 자체는 F-43 이 허용했지만, 따라가는 주체는 언제나 우리다.
 #     ② `curl_exec` 가 있는 파일에 `check(` 호출이 없음 — 검사 없이 밖으로 나가는 코드.
-#        cURL 은 src/Fetch.php 한 파일에서만 허용되므로(위 S-05 ⑬ 규칙) 실질적으로
-#        "그 파일이 check() 를 잃어버리지 않았는가" 를 지킨다.
+#        cURL 은 src/Fetch.php·Ai.php 두 파일에서만 허용되므로(위 S-05 ⑬ 규칙) 실질적으로
+#        "각 파일이 check() 를 잃어버리지 않았는가" 를 지킨다.
 follow_hits=$(grep -rnE "${INCLUDE[@]}" "${EXCLUDE[@]}" -- 'CURLOPT_FOLLOWLOCATION[[:space:]]*=>[[:space:]]*true|CURLOPT_FOLLOWLOCATION[^,;]*,[[:space:]]*true' "$ROOT" 2>/dev/null || true)
 nocheck_hits=""
 for f in $(grep -rlE "${INCLUDE[@]}" "${EXCLUDE[@]}" -- 'curl_exec\(' "$ROOT" 2>/dev/null || true); do

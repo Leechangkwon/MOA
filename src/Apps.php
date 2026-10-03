@@ -37,6 +37,10 @@ final class Apps
      * 요청 값이 한 글자도 섞이지 않는다.
      */
     public const ICON_PATHS = [
+        'library' => 'M4 8V5a2 2 0 0 1 2-2h8l4 4v3M13 3v5h5M3 9h6l2 3h10l-2 8H5a2 2 0 0 1-2-2V9zM7 6h3',
+        'community' => 'M13 15H8l-5 4V7a3 3 0 0 1 3-3h8a3 3 0 0 1 3 3v5a3 3 0 0 1-3 3zM8 19h7l5 3V11a3 3 0 0 0-1-2M7 8h6M7 11h4',
+        'messages' => 'M5 4h14a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H8l-5 3V6a2 2 0 0 1 2-2zM7 9h10M7 13h6',
+        'assistant' => 'M12 2l2.5 6.5L21 11l-6.5 2.5L12 20l-2.5-6.5L3 11l6.5-2.5L12 2zM20 17v5M17.5 19.5h5',
         // 셸의 tpl-icon-shield 와 같은 path
         'shield' => 'M12 2 4 5v6c0 5 3.4 9.4 8 11 4.6-1.6 8-6 8-11V5z',
         // 셸의 tpl-icon-grid 와 같은 path (3×3 사각형 — 앱 그리드)

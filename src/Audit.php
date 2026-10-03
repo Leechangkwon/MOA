@@ -32,7 +32,7 @@ final class Audit
     /** detail 에서 값을 지울 키 (부분 일치, 대소문자 무시) */
     private const FORBIDDEN_DETAIL_KEYS = [
         'password', 'passwd', 'pass', 'token', 'cookie', 'secret',
-        'authorization', 'session', 'hash', 'csrf',
+        'authorization', 'session', 'hash', 'csrf', 'api_key',
         // 10단계 (SECURITY R-05) — 2단계 인증의 비밀·코드는 어떤 이름으로도 남지 않는다.
         // 'secret' 은 이미 위에 있고, 여기 둘은 `otp`·`mfa_secret`·`mfa_code` 같은 이름을 막는다.
         'otp', 'mfa',
@@ -54,8 +54,8 @@ final class Audit
     public static function automationActor(?int $id): void
     {
         if (PHP_SAPI !== 'cli') { throw new LogicException('CLI only'); }
-        self::$automationActor = $id === null ? null : (Db::instance()->run('SELECT id,username,role,team_id FROM users WHERE id=CAST(:id AS bigint)'
-, [':id'=>$id])->fetch() ?: null);
+        self::$automationActor = $id === null ? null : (Db::instance()->run('SELECT id,username,role,team_id FROM users WHERE id=CAST(:id AS bigint)',
+        [':id'=>$id])->fetch() ?: null);
     }
 
     private const ALLOWED_DETAIL_KEYS = [
@@ -285,6 +285,8 @@ final class Audit
          *   다섯 키 모두 부분 일치에 걸리지 않지만 등록부에 있는 키임을 코드에서도 드러내려고 적는다(preview_kind·part 와 같은 이유).
          */
         'credential_no', 'credential_label', 'device_hint', 'backed_up', 'credentials_revoked',
+        // 비서 MVP — ARCH 7.5. 실행 번호·고정 상태만, 요청 내용은 남기지 않는다.
+        'run_id', 'run_status',
     ];
 
     private const RESULT_ALLOW = 'allow';
@@ -300,6 +302,24 @@ final class Audit
      * @var array<string,string>
      */
     private const SUMMARY_TEMPLATES = [
+        'group.create|allow' => '권한 그룹을 만들었습니다',
+        'group.member_add|allow' => '그룹 구성원을 추가했습니다',
+        'group.member_remove|allow' => '그룹 구성원을 제거했습니다',
+        'group.delete|allow' => '권한 그룹을 삭제했습니다',
+        'page.web_publish|allow' => '페이지를 웹에 공개했습니다',
+        'page.web_unpublish|allow' => '웹 공개를 회수했습니다',
+        'pub.view|allow' => '공개 페이지를 조회했습니다',
+        'pub.submit|allow' => '공개 폼을 제출했습니다',
+        'space.web_publish|allow' => '공간의 웹 게시 허용을 변경했습니다',
+        'integration.configure|allow' => '외부 연동 설정을 변경했습니다',
+        'integration.result|allow' => '외부 연동 작업을 기록했습니다',
+
+        'assistant.create|allow' => '{actor} 이(가) 읽기 전용 비서 실행을 접수했습니다',
+        'assistant.cancel|allow' => '{actor} 이(가) 비서 실행 취소를 요청했습니다',
+        'assistant.confirm|allow' => '{actor} 이(가) 비서 실행 계획에 응답했습니다',
+        'assistant.request|deny|not_permitted' => '{actor} 이(가) 비서 실행에 접근했지만 권한 또는 대상이 유효하지 않습니다',
+        'assistant.request|deny|invalid_state' => '{actor} 이(가) 비서 실행을 요청했지만 현재 상태 또는 계획과 일치하지 않습니다',
+        'assistant.request|deny|quota' => '{actor} 이(가) 비서 실행 요청 한도를 넘었습니다',
         // ── 인증 (Auth) ──
         'auth.login|allow'                        => '{target} 이(가) 로그인했습니다',
         'auth.login|deny|bad_credentials'         => '{target} 계정으로 로그인을 시도했지만 아이디 또는 비밀번호가 틀렸습니다',
@@ -414,6 +434,8 @@ final class Audit
         'authz.route|deny|role_not_permitted'     => '{actor} 이(가) 권한이 없는 기능({target})을 쓰려 해서 막았습니다',
 
         // ── 업로드 (files_upload, Upload) ──
+        'messenger.change|allow' => '{actor} 이(가) 메신저를 사용했습니다',
+        'memory.change|allow'                     => '{actor} 이(가) 여행 기록을 변경했습니다',
         'file.upload|allow'                       => '{actor} 이(가) 파일 「{target}」 을(를) {level} 등급으로 올렸습니다',
         'file.upload|deny|role_not_permitted'     => '{actor} 이(가) 파일 「{target}」 을(를) {level} 등급으로 올리려 했지만 그 등급으로 올릴 권한이 없어 막았습니다',
         'file.upload|deny|team_mismatch'          => '{actor} 이(가) 파일 「{target}」 을(를) 자기 팀이 아닌 팀의 team 등급으로 올리려 해서 막았습니다',
@@ -629,6 +651,16 @@ final class Audit
 
         // ── 계정 관리 (10단계 users_* — F-10, Admin 만. PRD S-07 "관리자 행동 사유") ──
         // 사유(detail.reason_text)·이전값/새값(detail.before/after)·끊은 세션 수는 전부 상세에 남는다.
+        'member.invite.create|allow' => '{actor} 이(가) 가입 초대를 만들었습니다',
+        'member.invite.revoke|allow' => '{actor} 이(가) 가입 초대를 회수했습니다',
+        'member.installer.update|allow' => '{actor} 이(가) 비서 설치 주소를 바꿨습니다',
+        'member.message.send|allow' => '{actor} 이(가) 메시지를 보냈습니다',
+        'member.ai.send|allow' => '{actor} 이(가) AI와 대화했습니다',
+        'member.ai.send|deny' => '{actor} 의 AI 대화 요청을 완료하지 못했습니다',
+        'member.ai.configure|allow' => '{actor} 이(가) 메신저 AI 연결을 설정했습니다',
+        'member.ai.assist|allow' => '{actor} 이(가) 메시지 AI 도구를 사용했습니다',
+        'member.ai.assist|deny' => '{actor} 의 메시지 AI 도구 요청을 완료하지 못했습니다',
+        'member.ai.image.view|allow' => '{actor} 이(가) 메신저 AI 이미지를 열었습니다',
         'user.create|allow'                       => '{actor} 이(가) 계정 「{target}」 을(를) 만들었습니다 (역할·팀·사유는 상세 기록)',
         'user.create|deny|bad_request'            => '{actor} 이(가) 계정 생성 요청을 잘못된 형식(아이디·비밀번호·역할·팀·사유)으로 보내 거부했습니다',
         'user.create|deny|already_exists'         => '{actor} 이(가) 이미 있는 아이디 「{target}」 로 계정을 만들려 해서 거부했습니다',
@@ -882,6 +914,14 @@ final class Audit
         'page.create|allow'                     => '{actor} 이(가) 페이지 「{target}」 을(를) 만들었습니다',
         'page.read|allow|admin_all'             => '{actor} 이(가) 관리자 권한으로 다른 사람의 개인 페이지 「{target}」 을(를) 열어 봤습니다',
         'page.read|deny|not_owner'              => '{actor} 이(가) 다른 사람의 개인 페이지 「{target}」 을(를) 열려 해서 막았습니다',
+        'page.update|deny|synced_source_owner' => '{actor} 이(가) 다른 페이지의 동기화 원본을 변경하려 해 거부되었습니다',
+        'ai.request|allow' => '{actor} 이(가) AI 요청을 처리했습니다',
+        'ai.request|deny|unavailable' => '{actor} 의 AI 요청을 완료하지 못했습니다',
+        'ai.permission|allow' => '{actor} 이(가) 문서의 외부 AI 사용 허용을 변경했습니다',
+        'ai.settings|allow' => '{actor} 이(가) AI 설정을 변경했습니다',
+        'ai.key_update|allow' => '{actor} 이(가) AI 연결 키를 등록했습니다',
+        'ai.log_read|allow' => '{actor} 이(가) 전체 AI 기록을 조회했습니다',
+        'ai.insert|allow' => '{actor} 이(가) AI 초안을 문서에 넣었습니다',
         'suggestion.create|allow' => '{actor} 이(가) 페이지 「{target}」 에 수정 제안을 보냈습니다',
         'suggestion.accept|allow' => '{actor} 이(가) 페이지 「{target}」 의 수정 제안을 받아들였습니다',
         'suggestion.reject|allow' => '{actor} 이(가) 페이지 「{target}」 의 수정 제안을 거절했습니다',
@@ -1235,7 +1275,7 @@ final class Audit
             // User-Agent 는 공격자가 마음대로 정하는 값이다. Http::userAgent() 는 바이트로 자르므로
             // 깨진 UTF-8 이 그대로 올 수 있고, 그 값이 DB(UTF8 인코딩)에 닿으면 INSERT 가 거부되어
             // 기록이 통째로 사라진다 — 여기서 한 번 더 씻는다 (SECURITY R-47 과 같은 이유).
-            'user_agent'   => self::cutNullable(PHP_SAPI === 'cli' && self::$automationActor !== null ? 'qaredi-automation/stage9' : Http::userAgent(), self::VALUE_MAX_CHARS),
+            'user_agent'   => defined('COMMUNITY_PUBLIC_REQUEST') ? null : self::cutNullable(PHP_SAPI === 'cli' && self::$automationActor !== null ? 'qaredi-automation/stage9' : Http::userAgent(), self::VALUE_MAX_CHARS),
         ];
 
         // 요약 문장을 두 저장소보다 **먼저** 만든다 (ARCH 7.4).
@@ -1582,6 +1622,7 @@ final class Audit
      */
     private static function actor(): ?array
     {
+        if (defined('COMMUNITY_PUBLIC_REQUEST') && COMMUNITY_PUBLIC_REQUEST) { return null; }
         return PHP_SAPI === 'cli' && self::$automationActor !== null ? self::$automationActor : Auth::currentUser();
     }
 

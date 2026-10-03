@@ -1,18 +1,18 @@
 [
   {
     "key": "tbox",
-    "name": "t-box",
-    "desc": "사내 파일 공유",
+    "name": "자료실",
+    "desc": "파일 보관 · 찾기 · 공유",
     "path": "/tbox/",
-    "icon": "shield",
-    "order": 1
+    "icon": "library",
+    "order": 2
   },
   {
     "key": "community",
     "name": "커뮤니티",
-    "desc": "개인 업무 공간 · 게시판 · 인계",
+    "desc": "일상과 여행 · 나의 스레드 · 함께 쓰는 공간",
     "path": "/community/",
-    "icon": "grid",
-    "order": 2
+    "icon": "community",
+    "order": 1
   }
 ]

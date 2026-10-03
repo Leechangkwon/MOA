@@ -173,6 +173,13 @@
     "db_view": {
       "database_id": "uuid",
       "view_id": "view-id"
+    },
+    "synced_source": {
+      "source_id": "uuid",
+      "children": "blocks"
+    },
+    "synced_ref": {
+      "source_id": "uuid"
     }
   },
   "children_allowed": [
@@ -184,7 +191,8 @@
     "quote",
     "callout",
     "toggle",
-    "column"
+    "column",
+    "synced_source"
   ],
   "stage": {
     "3": [
@@ -221,6 +229,10 @@
     ],
     "9": [
       "db_view"
+    ],
+    "10": [
+      "synced_source",
+      "synced_ref"
     ]
   },
   "stage_marks": {

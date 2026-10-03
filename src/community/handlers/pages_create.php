@@ -422,6 +422,7 @@ try {
         'template_name'=>community_target_title((string)$tpl['name']), 'template_scope'=>(string)$tpl['scope'],
     ]);
     $pageId = (int)$row['id'];
+    community_sync_after_save($user,$row,$doc,$extract,1);
 
     // 6-A — DB 페이지면 `databases` 한 줄(빈 스키마 — 기본 열 제목·상태·소유자는 늘 있다)
     $newDb = null;

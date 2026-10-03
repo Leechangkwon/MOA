@@ -435,6 +435,8 @@
   box-shadow: var(--shadow-lg);
 }
 .editor-toolbar__row { display: flex; align-items: center; gap: 4px; }
+.editor-paper-mode { display: inline-flex; align-items: center; gap: 6px; margin-right: 6px; color: var(--muted); font-size: 12px; white-space: nowrap; }
+.editor-paper-mode__select { width: auto; min-height: 32px; padding: 4px 26px 4px 8px; color: var(--fg); font: inherit; }
 .editor-toolbar__sep { align-self: stretch; width: 1px; margin: 4px 2px; background: var(--line); }
 .editor-toolbar .btn--icon { font-weight: 600; }
 .editor-toolbar .muted { font-size: 12px; }
@@ -1000,6 +1002,16 @@ a.doc-mention { color: var(--accent); text-decoration: none; } a.doc-mention:hov
 /* Keep long unbroken document titles readable on narrow screens. */
 #page-title { overflow-wrap: anywhere; }
 
+#main:has(#page-editor[data-paper-mode]) { overflow-x: auto; }
+#page-editor { box-sizing: border-box; width: 100%; min-width: 794px; min-height: 1123px; margin-inline: auto; }
+#page-editor[data-paper-mode="a3"] { min-width: 1123px; min-height: 1587px; }
+#page-editor[data-paper-mode="letter"] { min-width: 816px; min-height: 1056px; }
+#page-editor[data-paper-mode="wide"] { min-width: 0; min-height: 70vh; }
+@media(max-width: 600px) {
+  #page-editor, #page-editor[data-paper-mode="a3"], #page-editor[data-paper-mode="letter"] { min-height: 70vh; }
+  .editor-paper-mode { margin-left: auto; }
+}
+
 /* Stage 11 layouts reuse existing color tokens; responsive wrappers prevent page overflow. */
 .db-calendar { display:grid; grid-template-columns:repeat(7,minmax(0,1fr)); gap:var(--space-2,8px); }
 .db-calendar__day { min-width:0; min-height:100px; border:1px solid var(--line); padding:6px; border-radius:var(--radius-sm,6px); }
@@ -1024,3 +1036,7 @@ a.doc-mention { color: var(--accent); text-decoration: none; } a.doc-mention:hov
 
 #community-response-form { max-width:640px; margin-inline:auto; }
 .db-chart__point { fill:currentColor; }
+
+.doc-synced { border-inline-start: 2px solid var(--line); padding-inline-start: 1rem; }
+
+.ai-result { white-space: pre-wrap; overflow-wrap: anywhere; font: inherit; max-width: 100%; }

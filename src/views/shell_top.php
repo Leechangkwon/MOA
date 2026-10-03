@@ -54,7 +54,7 @@ $shellKeys = [
     'files', 'trash', 'settings', 'activity', 'users', 'org', 'audit', 'wiki', 'admin',
     // 커뮤니티 3단계 (커뮤니티 ARCHITECTURE.md 21.3) — 모듈 모드의 화면 둘.
     // app.js 는 이 두 키를 만나면 셸만 그리고 물러난다(t-box 화면 JS 가 돌지 않는다).
-    'community-home', 'community-page', 'community-today',
+    'community-home', 'community-page', 'community-today', 'community-ai', 'community-threads',
     // 커뮤니티 5-C — 게시판 화면
     'community-board',
 ];
@@ -73,9 +73,9 @@ $shellMod = isset($shellModule) && is_string($shellModule) && in_array($shellMod
     : '';
 
 /** 셸이 보이는 이름 — 브랜드·`<title>` 꼬리표·그리드의 현재 앱이 이 값 하나를 따른다 */
-$shellBrandName = $shellMod === 'community' ? '커뮤니티' : 't-box';
-$shellBrandSub  = $shellMod === 'community' ? '개인 업무 공간' : '사내 파일 공유';
-$shellBrandIcon = $shellMod === 'community' ? 'grid' : 'shield';
+$shellBrandName = $shellMod === 'community' ? '모아 커뮤니티' : '모아 자료실';
+$shellBrandSub  = $shellMod === 'community' ? '소식 · 질문 · 함께 쓰는 문서' : '파일 보관 · 찾기 · 공유';
+$shellBrandIcon = $shellMod === 'community' ? 'community' : 'library';
 /** 그리드 팝업에서 `aria-current="page"` 가 붙는 앱의 key (`config/apps.json` 의 key) */
 $shellCurrentApp = $shellMod === 'community' ? 'community' : 'tbox';
 
@@ -211,7 +211,7 @@ $shellApps = Apps::all();
 $shellCssAllowed = [
     // 커뮤니티 3단계 — 문서 토큰·블록 클래스 한 벌 (DESIGN.md 2.14). 이름은 `public/assets/`
     // 기준의 **정확한 상대 경로**이고, 허용 목록 안의 값만 통과하므로 경로가 조립되지 않는다.
-    'community/community.css',
+    'community/community.css', 'community/memories.css',
 ];
 $shellPageCss    = [];
 if (isset($pageCss) && is_array($pageCss)) {
@@ -271,6 +271,9 @@ if (!headers_sent()) {
 <?php if ($shellPalette !== ''): ?>
 <link id="palette-css" rel="stylesheet" href="<?= COMMUNITY_BASE ?>/palette.css?v=<?= $shellPalette ?>">
 <?php endif; ?>
+<?php if ($shellMod === 'community'): ?>
+<link rel="stylesheet" href="<?= Http::url('/assets/community/messenger.css') ?>?v=<?= (int) filemtime(__DIR__ . '/../../public/assets/community/messenger.css') ?>">
+<?php endif; ?>
 <?php if ($shellMod === 'community' && $shellPage === 'community-today'): ?>
 <script type="module" src="<?= Http::url('/assets/community/briefing.js') ?>?v=<?= (int) filemtime(__DIR__ . '/../../public/assets/community/briefing.js') ?>"></script>
 <?php elseif ($shellMod === 'community'): ?>
@@ -286,6 +289,7 @@ if (!headers_sent()) {
 <!-- Q:F-2 통합 검색 창 (사이트 PRD Q:F-2 — 두 앱 공통). 사이드바 「검색」·Ctrl+K(⌘K). 창과 동작은 search.js,
      무엇이 나오나는 각 앱의 서버(커뮤니티 search.php · t-box files_list.php 전역 검색). 일반 스크립트(defer). -->
 <script defer src="<?= Http::url('/assets/search.js') ?>?v=<?= (int) filemtime(__DIR__ . '/../../public/assets/search.js') ?>"></script>
+<?php if (in_array($shellPage, ['files','community-home'], true)): ?><script defer src="<?= Http::url('/assets/moa-usage.js') ?>?v=<?= (int) filemtime(__DIR__.'/../../public/assets/moa-usage.js') ?>"></script><?php endif; ?>
 <!-- T:F-72 휴대폰 지문·얼굴로 로그인 — 「내 계정」 패널 · 재인증 창·화면의 「지문·얼굴로 확인」 · 권장 카드 · 로그아웃 표식(public/assets/passkey.js).
      defer 라 본문 끝의 app.js 뒤에 돈다(그쪽이 내놓는 qarediMe · qarediOpenConfirm · qarediReauthTarget 를 쓴다). -->
 <script defer src="<?= Http::url('/assets/passkey.js') ?>?v=<?= (int) filemtime(__DIR__ . '/../../public/assets/passkey.js') ?>"></script>
@@ -296,7 +300,7 @@ if (!headers_sent()) {
 <link rel="apple-touch-icon" href="<?= Http::url('/assets/qaredi-icon-192.png') ?>?v=<?= (int) filemtime(__DIR__ . '/../../public/assets/qaredi-icon-192.png') ?>">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-title" content="Qaredi">
+<meta name="apple-mobile-web-app-title" content="모아">
 <?php endif; ?>
 <?php if ($shellPwa === 'alerts'): ?>
 <!-- F-70 「Qaredi 경보」 설치형 웹 앱 (PRD F-70, ARCH 5.32) — 휴대폰 경보 화면(`/alerts-app`)만. 값은 전부 고정 글자다.
@@ -322,10 +326,16 @@ if (!headers_sent()) {
     </button>
     <span class="appbar__brand"><?= htmlspecialchars($shellBrandName, ENT_QUOTES, 'UTF-8') ?></span>
     <span class="appbar__page"><?= $shellTitle ?></span>
+<?php if ($shellMod === 'community'): ?><button class="btn btn--quiet" data-messenger-open type="button">메신저</button><?php endif; ?>
   </header>
 
   <aside id="sidebar" class="sidebar" hidden>
-    <div class="brand">
+    <div class="moa-shell-links"><a href="/">모아 홈</a><a href="<?= Http::url('/welcome') ?>">계정·비서 설정</a></div>
+    <div class="brand moa-brand">
+      <a class="moa-brand-home" href="<?= $shellMod === 'community' ? Http::communityUrl('/') : Http::url('/') ?>" aria-label="<?= htmlspecialchars($shellBrandName, ENT_QUOTES, 'UTF-8') ?> 첫 화면으로">
+        <span class="brand__mark moa-module-mark moa-module-mark--<?= $shellCurrentApp ?>"><?php $moaIcon=$shellBrandIcon; require __DIR__.'/moa_icon.php'; ?></span>
+        <span class="brand__text"><span class="brand__name"><?= htmlspecialchars($shellBrandName, ENT_QUOTES, 'UTF-8') ?></span><span class="brand__sub"><?= htmlspecialchars($shellBrandSub, ENT_QUOTES, 'UTF-8') ?></span></span>
+      </a>
       <!-- ─── 앱 메뉴 (사용자 지시 2026-09-23) ───────────────────────────────────
            「로그아웃은 Qaredi 홈·t-box·커뮤니티로 전환하는 곳에 — 관리자 페이지·설정도 거기에 —
            박스가 조그매서 눈에 안 띄니 더 직관적이고 큰 것으로」. 전에는 브랜드 줄 오른쪽의 작은
@@ -336,18 +346,14 @@ if (!headers_sent()) {
            관리자 페이지 줄의 열고 닫음은 사이드바 관리 링크와 같은 표시용 값(`can_admin`)을
            app.js 가 쓰고, 막는 것은 여전히 라우트 정책·재인증 관문이다 (PRD S-01). -->
       <details class="appbar__apps">
-        <summary class="brand__switch" aria-label="앱 전환과 계정 메뉴">
-          <span class="brand__mark"><span class="icon" data-icon="<?= htmlspecialchars($shellBrandIcon, ENT_QUOTES, 'UTF-8') ?>"></span></span>
-          <span class="brand__text">
-            <span class="brand__name"><?= htmlspecialchars($shellBrandName, ENT_QUOTES, 'UTF-8') ?></span>
-            <span class="brand__sub"><?= htmlspecialchars($shellBrandSub, ENT_QUOTES, 'UTF-8') ?></span>
-          </span>
+        <summary class="brand__switch moa-brand-menu" aria-label="계정과 공간 이동 메뉴" title="계정과 공간 이동 메뉴">
+          <span>메뉴</span>
           <span class="brand__chev icon" data-icon="chevron"></span>
         </summary>
         <div class="panel app-menu">
           <p class="app-menu__label">앱</p>
           <ul class="app-menu__apps">
-            <li><a class="app-menu__app" href="/"><span class="app-menu__icon icon" data-icon="home"></span><span class="app-menu__text"><span class="app-menu__name">Qaredi 홈</span><span class="app-menu__desc">앱 고르는 첫 화면</span></span></a></li>
+            <li><a class="app-menu__app" href="/"><span class="app-menu__icon icon" data-icon="home"></span><span class="app-menu__text"><span class="app-menu__name">모아 홈</span><span class="app-menu__desc">이야기와 풍경이 모이는 곳</span></span></a></li>
 <?php foreach ($shellApps as $shellApp): ?>
 <?php   $shellAppName = htmlspecialchars((string) $shellApp['name'], ENT_QUOTES, 'UTF-8'); ?>
 <?php   $shellAppDesc = htmlspecialchars((string) ($shellApp['desc'] ?? ''), ENT_QUOTES, 'UTF-8'); ?>
@@ -381,6 +387,12 @@ if (!headers_sent()) {
       </details>
     </div>
 
+    <nav class="moa-space-nav" aria-label="모아 공간 이동">
+      <a href="<?= Http::communityUrl('/') ?>"<?= $shellMod === 'community' ? ' aria-current="page"' : '' ?>><span class="icon" data-icon="community"></span><span><strong>커뮤니티</strong><small>소식과 문서 나누기</small></span></a>
+      <a href="<?= Http::url('/') ?>"<?= $shellMod !== 'community' ? ' aria-current="page"' : '' ?>><span class="icon" data-icon="library"></span><span><strong>자료실</strong><small>파일 찾고 공유하기</small></span></a>
+      <?php if ($shellCommunityWrite && !$shellActing): ?><a href="<?= Http::url('/messages') ?>"><span class="icon" data-icon="messages"></span><span><strong>메신저</strong><small>동료·AI와 대화하기</small></span></a><?php endif; ?>
+    </nav>
+
     <!-- 검색 (5-B → Q:F-2 두 앱 공통) — 누르거나 Ctrl+K(⌘K). 창과 동작은 search.js, 무엇이 나오나는 각 앱의 서버
          (커뮤니티 search.php — 페이지·댓글 / t-box files_list.php — 파일 전역 검색). 창에 커뮤니티 기준 주소를 싣는다
          (t-box 화면의 <body> 에는 커뮤니티 기준이 없다). 값은 고정 상수다. -->
@@ -407,7 +419,7 @@ if (!headers_sent()) {
     <!-- 알림 (5-D, PRD F-22) — 종 아이콘 + 안 읽은 수. 30초마다 `GET /community/api/notifications?unread=1`.
          누르면 알림 창 — 목록은 창구가 **지금도 볼 수 있는 페이지만** 제목을 준다(아니면 「볼 수 없는 페이지」). -->
     <nav class="nav" aria-label="오늘의 업무">
-      <a id="nav-community-today" class="<?= $shellNavClass('community-today') ?>" href="<?= Http::communityUrl('/today') ?>"><span class="icon" data-icon="check"></span><span>오늘</span></a>
+      <a id="nav-community-today" class="<?= $shellNavClass('community-today') ?>" href="<?= Http::communityUrl('/today') ?>"><span class="icon" data-icon="check"></span><span>오늘 할 일</span></a>
     </nav>
     <nav class="nav" aria-label="알림"<?= $shellPage === 'community-today' ? ' hidden' : '' ?>>
       <button id="nav-community-bell" class="nav__item" type="button" aria-haspopup="dialog">
@@ -464,24 +476,33 @@ if (!headers_sent()) {
         <button class="btn btn--quiet" type="button" data-recent-close>닫기</button>
       </div>
     </dialog>
+    <p class="nav-title">우리의 이야기</p>
+    <nav class="nav" aria-label="스레드와 대화">
+      <a class="nav__item" data-thread-nav="feed" href="<?= Http::communityUrl('/') ?>"><span class="icon" data-icon="home"></span><span>모든 스레드</span></a>
+      <a class="nav__item" data-thread-nav="mine" href="<?= Http::communityUrl('/') ?>?view=mine"><span class="icon" data-icon="users"></span><span>나의 스레드</span></a>
+      <a class="nav__item" data-thread-nav="shared" href="<?= Http::communityUrl('/') ?>?view=shared"><span class="icon" data-icon="link"></span><span>공유 스레드</span></a>
+      <button class="nav__item" data-messenger-open type="button" aria-haspopup="dialog"><span class="icon" data-icon="bell"></span><span>메신저 · 회원 / GPT</span><span data-message-unread hidden></span></button>
+    </nav>
     <p class="nav-title">내 공간</p>
     <nav class="nav" aria-label="커뮤니티">
-      <a id="nav-community-home" class="<?= $shellNavClass('community-home') ?>" href="<?= Http::communityUrl('/') ?>">
-        <span class="icon" data-icon="files"></span><span>내 공간</span>
+      <a id="nav-community-home" class="<?= $shellNavClass('community-home') ?>" href="<?= Http::communityUrl('/workspace') ?>">
+        <span class="icon" data-icon="files"></span><span>내 문서</span>
       </a>
       <a class="nav__item" href="<?= Http::communityUrl('/automations') ?>"><span class="icon" data-icon="log"></span><span>자동 작업</span></a>
       <a class="nav__item" href="<?= Http::communityUrl('/procedures') ?>"><span class="icon" data-icon="files"></span><span>절차서</span></a>
       <a class="nav__item" href="<?= Http::communityUrl('/suggestions') ?>"<?= $shellCommunityWrite ? '' : ' hidden' ?>><span class="icon" data-icon="files"></span><span>내 제안</span></a>
+      <a class="nav__item" href="<?= Http::communityUrl('/integrations') ?>"><span class="icon" data-icon="files"></span><span>공유·연동 설정</span></a>
+      <a class="nav__item" href="<?= Http::communityUrl('/ai') ?>"><span class="icon" data-icon="files"></span><span>문서 AI</span></a>
       <!-- 내 페이지 트리 (5-A′) — editor.js 가 `?tree=1` 의 답으로 채운다 -->
       <div id="nav-community-tree" class="nav-tree-box"></div>
       <button id="nav-community-new" class="nav__item" type="button"<?= $shellCommunityWrite ? '' : ' hidden' ?>>
-        <span class="icon" data-icon="plus"></span><span>새 페이지</span>
+        <span class="icon" data-icon="plus"></span><span>새 문서</span>
       </button>
       <!-- 디버깅 묶음 U3 — 「내 휴지통」: t-box 사이드바와 **같은 이름 · 같은 자리**(첫 묶음의 끝, DESIGN 2.9). 전에는 커뮤니티 첫 화면
            「더보기 → 휴지통」에만 있었다. 누르면 커뮤니티 첫 화면의 휴지통 창이 열린다(꼬리표 `trash=1` — 고정 글자, 첫 화면에서는 이동 없이 창만).
            목록은 전과 같이 창구 `GET /community/api/me/trash` 가 주는 것뿐이다. 쓰기 자격이 없는 사람(손님)은 지울 수 없어 늘 비어 있으므로
            「새 페이지」와 같은 값으로 숨긴다(편의 — 창구가 다시 판단한다). -->
-      <a id="nav-community-trash" class="nav__item" href="<?= Http::communityUrl('/') ?>?trash=1"<?= $shellCommunityWrite ? '' : ' hidden' ?>>
+      <a id="nav-community-trash" class="nav__item" href="<?= Http::communityUrl('/workspace') ?>?trash=1"<?= $shellCommunityWrite ? '' : ' hidden' ?>>
         <span class="icon" data-icon="trash"></span><span>내 휴지통</span>
       </a>
       <!-- 팀 공간 (4-B) — 항목은 `editor.js` 가 창구 `GET /community/api/spaces` 의 답으로

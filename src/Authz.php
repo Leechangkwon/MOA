@@ -61,6 +61,7 @@ final class Authz
          * 계정 자격은 아래 authorize() 가 `canOpenSessionByToken`(2단계 켜짐 · 쓰기 자격 = Guest 0)으로 본다.
          */
         'session.open',
+        'assistant.run', // 별도 개인 비서 범위. 파일·로그인 범위와 독립이다.
     ];
 
     /**
@@ -226,6 +227,12 @@ final class Authz
 
     /** @var array<string,array{read:bool,upload:bool}>|null  "역할|레벨" => 플래그 */
     private static ?array $matrix = null;
+
+    /** 오래 사는 비서 워커/SSE는 단계마다 권한 표를 다시 읽는다. 판정 규칙은 그대로다. */
+    public static function refreshPermissions(): void
+    {
+        self::$matrix = null;
+    }
 
     /** 요청 1회당 permissions 조회 1회 */
     private static function matrix(): array
@@ -1047,7 +1054,7 @@ final class Authz
      * `session.open`(「이 PC 로그인 전용」)도 독립 값이다 — 1회용 로그인 링크 창구 하나와 whoami 만 연다.
      * 이 목록을 늘리려면 DB CHECK(6.2-5)·`tokenScopeAllows`·화면 라벨을 함께 고쳐야 한다.
      */
-    public const TOKEN_SCOPES = ['read', 'read+upload', 'read+upload+delete', 'community.write', 'session.open'];
+    public const TOKEN_SCOPES = ['read', 'read+upload', 'read+upload+delete', 'community.write', 'session.open', 'assistant.run'];
 
     /**
      * F-66 — 이 계정이 **고를 수 있는** 범위 목록 (PRD F-66 ③, ARCH 4.7, `GET /api/me` 의 `token_scopes`).
@@ -1077,6 +1084,7 @@ final class Authz
         if (self::canOpenSessionByToken($u)) {
             $scopes[] = 'session.open';
         }
+        if (Env::getOrEmpty('ASSISTANT_ENABLED') === '1') $scopes[] = 'assistant.run';
         return $scopes;
     }
 
@@ -1141,6 +1149,9 @@ final class Authz
             // Q:F-9 — 1회용 로그인 링크 창구 하나(ARCH 4.9). 독립 값이라 다른 범위 넷은 여기서 거짓이다.
             case 'session.open':
                 return $scope === 'session.open';
+
+            case 'assistant.run':
+                return $scope === 'assistant.run';
 
             default:
                 // 모르는 정책은 통과시키지 않는다 (authorize() 의 default 와 같은 원칙).
@@ -1326,6 +1337,9 @@ final class Authz
                지금도 그 토큰을 가질 자격이 있나(2단계 켜짐 · Guest 아님)를 다시 본다 — 토큰을 받은 뒤 2단계를 끈 계정은 여기서 끝. */
             case 'session.open':
                 return self::canOpenSessionByToken($u);
+
+            case 'assistant.run':
+                return true; // 토큰/활성 사용자 관문은 앞에서, 본인/파일 판정은 실행 서비스에서.
 
             default:
                 // 알 수 없는 정책 이름은 통과시키지 않는다 (기본 거부)

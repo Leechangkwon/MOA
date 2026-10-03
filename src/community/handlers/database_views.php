@@ -132,6 +132,15 @@ switch ($op) {
         break;
 }
 
+foreach ($views as $candidate) {
+    if (($candidate['type'] ?? '')==='form' && ($candidate['public'] ?? false)) {
+        if (!community_form_public_allowed($dbPage,$user)) { Http::error(403,Http::MSG_FORBIDDEN); }
+        foreach ($candidate['questions'] as $q) {
+            $type=$q['prop']==='title' ? 'text' : (DbProps::find($schema,$q['prop'])['type'] ?? '');
+            if (!in_array($type,['text','number','checkbox','date','select','multi_select'],true)) { $bad('공개 폼에 넣을 수 없는 질문입니다'); }
+        }
+    }
+}
 $sqlSet = <<<'SQL'
     UPDATE community.databases
        SET views = CAST(:views AS jsonb), updated_at = now()

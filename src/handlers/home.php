@@ -28,7 +28,7 @@ declare(strict_types=1);
  * @var list<string>        $params 경로 변수 없음
  */
 
-$pageTitle = '파일';
+$pageTitle = '자료실';
 $activeNav = 'files';
 $pageKey   = 'files';
 /* 「사용 방법」 도움말의 키 — 글은 `src/help/screens.php` 한 벌이고 셸이 그린다 (PRD F-38, ARCH 5.19). */
@@ -37,8 +37,8 @@ require __DIR__ . '/../views/shell_top.php';
 ?>
     <header class="page-head">
       <div class="page-head__text">
-        <h1 class="page-head__title">파일</h1>
-        <p class="page-head__sub">내 파일과 팀 파일을 올리고 받습니다.</p>
+        <h1 class="page-head__title">자료실</h1>
+        <p class="page-head__sub">문서·사진·업무 파일을 보관하고, 필요한 사람에게 공유하세요.</p>
       </div>
       <div class="page-head__actions">
         <button type="button" class="btn btn--quiet" data-help-open>
@@ -116,7 +116,8 @@ require __DIR__ . '/../views/shell_top.php';
          좌측은 **읽을 수 있는 폴더만** 담긴 트리다. 못 읽는 폴더는 감춰진 것이 아니라
          서버 응답에 아예 없다 (PRD S-02). 이름·등급 배지는 전부 textContent 로 들어간다.
          트리는 `GET /api/folders?parent=` 로 **한 층씩** 받는다. -->
-    <div class="workspace">
+    <?php $moaGuide='files'; require __DIR__.'/../views/moa_usage.php'; ?>
+    <div class="workspace" id="moa-file-list" tabindex="-1">
       <aside class="panel panel--tight foldertree" id="folder-pane" aria-label="폴더">
         <div class="foldertree__head">
           <h2 class="panel__title">폴더</h2>

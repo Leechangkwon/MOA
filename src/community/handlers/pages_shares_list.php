@@ -55,6 +55,7 @@ Http::json([
         'id'    => (string) $row['public_id'],
         'title' => (string) $row['title'],
     ],
+    'groups'      => community_group_shares($row,$user),
     'count'       => count($all),
     'shares'      => $mayNames ? $all : null,
     'my_level'    => $myLevel,

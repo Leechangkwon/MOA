@@ -5,6 +5,7 @@ declare(strict_types=1);
 final class Design
 {
     public const THEMES = [
+        'moa' => ['모아', '숲빛 그린 · 따뜻한 여백'],
         'claude' => ['Claude', '기존의 차분한 흑백'],
         'astra' => ['Astra', '코발트 블루 · 민트'],
         'aurora' => ['Aurora', '에메랄드 · 골드'],
@@ -15,7 +16,7 @@ final class Design
     public static function theme(): string
     {
         $value = $_COOKIE['qaredi_design'] ?? null;
-        return is_string($value) && isset(self::THEMES[$value]) ? $value : 'astra';
+        return is_string($value) && isset(self::THEMES[$value]) ? $value : 'moa';
     }
 
     public static function attrs(): string
@@ -30,6 +31,7 @@ final class Design
         $css = (int) filemtime(__DIR__ . '/../public/assets/design.css');
         $js = (int) filemtime(__DIR__ . '/../public/assets/design.js');
         return '<link rel="stylesheet" href="' . $base . 'design.css?v=' . $css . '">'
+            . '<link rel="stylesheet" href="' . $base . 'moa.css?v=' . (int) filemtime(__DIR__ . '/../public/assets/moa.css') . '">'
             . ($interactive ? '<script defer src="' . $base . 'design.js?v=' . $js . '"></script>' : '');
     }
 }

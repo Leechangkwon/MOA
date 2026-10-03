@@ -1,0 +1,20 @@
+[
+  {
+    "file": "lake.jpg",
+    "source": "https://images.unsplash.com/photo-1470770841072-f978cf4d019e",
+    "downloaded": "2026-10-02",
+    "sha256": "cc526b36e5fb297171b983db891951fd6e6be5231bc30a6533c69ca02bfdb7e6"
+  },
+  {
+    "file": "forest.jpg",
+    "source": "https://images.unsplash.com/photo-1441974231531-c6227db76b6e",
+    "downloaded": "2026-10-02",
+    "sha256": "26c13db65e38df4e87844f826ca9074c3c682792207f4a446875c1927bd2a993"
+  },
+  {
+    "file": "ocean.jpg",
+    "source": "https://images.unsplash.com/photo-1518837695005-2083093ee35b",
+    "downloaded": "2026-10-02",
+    "sha256": "253f207f0088b1672f05b3c262457d9b68e7cbc2c94c44e01b094a497d464256"
+  }
+]

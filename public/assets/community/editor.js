@@ -1,4 +1,4 @@
-import { hydrateDashboard } from './dashboard.js?v=edf3af524d72';
+import { hydrateDashboard } from './dashboard.js?v=dd0021574d1b';
 /**
  * public/assets/community/editor.js — 커뮤니티 화면의 동작 한 벌 (모듈 스크립트)
  *
@@ -41,18 +41,20 @@ import { inputRules, textblockTypeInputRule, InputRule } from './vendor/pm/prose
 import { dropCursor } from './vendor/pm/prosemirror-dropcursor.js?v=5823578fa61a';
 import { gapCursor } from './vendor/pm/prosemirror-gapcursor.js?v=5823578fa61a';
 
-import { createSuggestions, bindMySuggestions, buildSuggestionOps, suggestionTypeAllowed, suggestionEqual } from './suggestions.js?v=edf3af524d72';
-import { renderDoc, embedHost } from './doc-render.js?v=edf3af524d72';
-import { createDatabaseView } from './database.js?v=edf3af524d72';
-import { bindTemplateGallery, createTemplateSave } from './templates.js?v=edf3af524d72';
-import { bindEmbedAdmin } from './embeds.js?v=edf3af524d72';
-import { bindPopular } from './popular.js?v=edf3af524d72';
-import { bindPalettes } from './palettes.js?v=edf3af524d72';
-import { schema, toDoc, fromDoc, uuid4, colorAllowed, schemeOkForEditor, mentionAllowed, editorDomParser, clipboardDomParser, COLORS, BLOCK_TYPES } from './editor-schema.js?v=edf3af524d72';
-import { drawAutomationPage, drawAutomationSpace, bindAutomations, loadAutomations } from './automations.js?v=edf3af524d72';
-import { drawTrust, bindProcedures } from './procedures.js?v=edf3af524d72';
-import { createPageExport } from './export.js?v=edf3af524d72';
-import { createDrafts } from './drafts.js?v=edf3af524d72';
+import { createSuggestions, bindMySuggestions, buildSuggestionOps, suggestionTypeAllowed, suggestionEqual } from './suggestions.js?v=dd0021574d1b';
+import { renderDoc, embedHost } from './doc-render.js?v=dd0021574d1b';
+import { createDatabaseView } from './database.js?v=dd0021574d1b';
+import { bindTemplateGallery, createTemplateSave } from './templates.js?v=dd0021574d1b';
+import { bindEmbedAdmin } from './embeds.js?v=dd0021574d1b';
+import { bindPopular } from './popular.js?v=dd0021574d1b';
+import { bindPalettes } from './palettes.js?v=dd0021574d1b';
+import { schema, toDoc, fromDoc, uuid4, colorAllowed, schemeOkForEditor, mentionAllowed, editorDomParser, clipboardDomParser, COLORS, BLOCK_TYPES } from './editor-schema.js?v=dd0021574d1b';
+import { drawAutomationPage, drawAutomationSpace, bindAutomations, loadAutomations } from './automations.js?v=dd0021574d1b';
+import { drawTrust, bindProcedures } from './procedures.js?v=dd0021574d1b';
+import { createPageExport } from './export.js?v=dd0021574d1b';
+import { createDrafts } from './drafts.js?v=dd0021574d1b';
+import { drawPageAi, bindAiCenter } from './ai.js?v=dd0021574d1b';
+import { drawIntegrations, bindIntegrations } from './integrations.js?v=dd0021574d1b';
 
 /* ─── 주소와 공통 도우미 ─────────────────────────────────────── */
 
@@ -382,7 +384,7 @@ function currentSpaceId() {
 
 /** 공간 하나의 주소. 개인 공간(기본)은 꼬리표 없이 둔다. */
 function spaceHref(id, kind) {
-  return COMMUNITY_BASE + '/' + (kind === 'personal' ? '' : '?space=' + String(id));
+  return COMMUNITY_BASE + '/workspace' + (kind === 'personal' ? '' : '?space=' + String(id));
 }
 
 /**
@@ -1294,14 +1296,14 @@ function initHome() {
   function drawSpaceHead(space) {
     if (!space) { return; }
     drawAutomationSpace(space, api);
-    setText(headTitle, space.kind === 'team' ? space.name : '내 공간');
+    setText(headTitle, space.kind === 'team' ? space.name + ' · 팀 문서' : '내 문서');
     // 디버깅 묶음 U3 — 손님(쓰기 자격 없음 — `/api/me` 의 can_community_write, 서버 판정 값)에게는 할 수 없는 「공개 범위」 문장 대신 읽기 안내
     setText(headSub, space.kind === 'team'
-      ? '팀이 함께 쓰는 공간입니다. 팀원 누구나 페이지를 만들고 고칠 수 있습니다.'
+      ? '팀이 함께 쓰는 문서입니다. 새 문서를 작성하면 지금 선택한 팀 공간에 만들어집니다.'
       : (meCanWrite
-        ? '나만 보는 개인 업무 공간입니다. 페이지마다 공개 범위를 고를 수 있습니다.'
+        ? '메모·업무 방법·인수인계를 문서로 남기세요. 개인 문서는 비공개로 시작하고, 문서마다 공개 범위를 고를 수 있어요.'
         : GUEST_SPACE_SUB));
-    document.title = (space.kind === 'team' ? space.name : '내 공간') + ' · 커뮤니티';
+    document.title = (space.kind === 'team' ? space.name : '내 문서') + ' · 모아 커뮤니티';
   }
 
   // 지금 보고 있는 공간의 종류. 창구가 준 값이고 화면이 정하지 않는다.
@@ -4261,6 +4263,31 @@ function createToolbar(view, opts) {
 
   const row = document.createElement('div');
   row.className = 'editor-toolbar__row';
+  const paperLabel = document.createElement('label');
+  paperLabel.className = 'editor-paper-mode';
+  const paperText = document.createElement('span');
+  paperText.textContent = '용지';
+  const paperSelect = document.createElement('select');
+  paperSelect.className = 'input editor-paper-mode__select';
+  paperSelect.setAttribute('aria-label', '편집 용지 크기');
+  for (const [value, label] of [['a4', 'A4'], ['a3', 'A3'], ['letter', 'Letter'], ['wide', '넓게']]) {
+    const option = document.createElement('option');
+    option.value = value;
+    option.textContent = label;
+    paperSelect.appendChild(option);
+  }
+  const savedPaper = (() => {
+    try { return localStorage.getItem('community-editor-paper') || 'a4'; } catch (_) { return 'a4'; }
+  })();
+  paperSelect.value = ['a4', 'a3', 'letter', 'wide'].includes(savedPaper) ? savedPaper : 'a4';
+  const editorPanel = document.getElementById('page-editor');
+  if (editorPanel) { editorPanel.setAttribute('data-paper-mode', paperSelect.value); }
+  paperSelect.addEventListener('change', () => {
+    if (editorPanel) { editorPanel.setAttribute('data-paper-mode', paperSelect.value); }
+    try { localStorage.setItem('community-editor-paper', paperSelect.value); } catch (_) {}
+  });
+  paperLabel.append(paperText, paperSelect);
+  row.appendChild(paperLabel);
   const tools = [
     labelButton('tool-color', '색', () => togglePanel('fg')),
     labelButton('tool-bg', '배경', () => togglePanel('bg')),
@@ -4524,7 +4551,7 @@ function initPage() {
   function readCtx() {
     return {
       child_titles: state.childTitles, link_titles: state.linkTitles, file_titles: state.fileTitles,
-      embeds: state.embeds, base: COMMUNITY_BASE, tbox_base: APP_BASE, mention_labels: state.mentionLabels, db_views: state.dbViews, buttons: state.buttons, pressButton: async (id, button) => {
+      synced: state.synced, embeds: state.embeds, base: COMMUNITY_BASE, tbox_base: APP_BASE, mention_labels: state.mentionLabels, db_views: state.dbViews, buttons: state.buttons, pressButton: async (id, button) => {
         button.disabled=true;
         try { const result=await api('POST','/api/automations/'+id+'/run',{page_id:pageId});
           if (result.status === 200) {
@@ -4671,7 +4698,7 @@ function initPage() {
       return { text: sp.name, href: null };
     }
     if (sp && sp.kind !== 'personal') { return { text: '게시판', href: null }; }   // 게시판 이름을 받지 못한 글(창구가 싣지 않음) — 이름을 짓지 않는다
-    return { text: '내 공간', href: COMMUNITY_BASE + '/' };
+    return { text: '내 공간', href: COMMUNITY_BASE + '/workspace' };
   }
 
   /** 경로(breadcrumb) — 「공간 › 부모 › 이 페이지」. 마지막 칸만 링크가 아니다. */
@@ -4783,6 +4810,8 @@ function initPage() {
       }
       const page = result.data.page;
       drawTrust(result.data, pageId, api, load);
+      drawIntegrations(result.data,pageId,api,load);
+      drawPageAi(result.data,pageId,api,load,()=>state.editing);
       drawAutomationPage(result.data, pageId, api, load);
       state.procedureCount = result.data.procedures_in_branch || 0;
       state.doc = page.doc;
@@ -4801,6 +4830,7 @@ function initPage() {
         : {};
       state.linkTitles = result.data.link_titles && typeof result.data.link_titles === 'object' ? result.data.link_titles : {};
       state.fileTitles = result.data.file_titles && typeof result.data.file_titles === 'object' ? result.data.file_titles : {};
+      state.synced = result.data.synced || {};
       state.buttons = result.data.buttons || {};
       state.dbViews = result.data.db_views || {};
       state.mentionLabels = result.data.mention_labels && typeof result.data.mention_labels === 'object' ? result.data.mention_labels : {};
@@ -4992,7 +5022,7 @@ function initPage() {
         return api('GET', '/api/pages/' + pageId).then((again) => {
           if (again.status === 200) { return load().then(() => setText(msg, okText)); }
           // 해제·숨김 뒤 더는 볼 수 없으면(게시판 등급으로만 보던 관리자) 게시판으로 돌아간다.
-          window.location.assign(state.board ? COMMUNITY_BASE + '/b/' + String(state.board.id) : COMMUNITY_BASE + '/');
+          window.location.assign(state.board ? COMMUNITY_BASE + '/b/' + String(state.board.id) : COMMUNITY_BASE + '/workspace');
           return null;
         });
       }
@@ -5810,7 +5840,7 @@ function initPage() {
           visibilityDialog.close();
           return api('GET', '/api/pages/' + pageId).then((again) => {
             if (again.status === 200) { return load(); }
-            window.location.assign(COMMUNITY_BASE + '/');
+            window.location.assign(COMMUNITY_BASE + '/workspace');
             return null;
           });
         })
@@ -5989,7 +6019,7 @@ function initPage() {
                   return load().then(() => setText(msg, '넘겼습니다. 새 소유자: '
                     + personLabel(result.data.to_display_name, result.data.to)));
                 }
-                window.location.assign(COMMUNITY_BASE + '/');
+                window.location.assign(COMMUNITY_BASE + '/workspace');
                 return null;
               });
             }
@@ -7021,7 +7051,7 @@ function initPage() {
         api('DELETE', '/api/pages/' + pageId, {})
           .then((result) => {
             if (result.status === 401) { toLogin(); return; }
-            if (result.status === 200) { window.location.assign(COMMUNITY_BASE + '/'); return; }
+            if (result.status === 200) { window.location.assign(COMMUNITY_BASE + '/workspace'); return; }
             setText(msg, errorMessage(result.data));
             confirmButton.disabled = false;
           })
@@ -7108,7 +7138,7 @@ function boot() {
   booted = true;
 
   const page = body && body.dataset ? body.dataset.page : '';
-  if (page !== 'community-home' && page !== 'community-page' && page !== 'community-board') { return; }
+  if (page !== 'community-home' && page !== 'community-page' && page !== 'community-board' && page !== 'community-ai' && page !== 'community-threads') { return; }
   if (COMMUNITY_BASE === '' || APP_BASE === '') { return; }
 
   // CSRF 토큰은 t-box 창구가 준다 — 한 앱·한 세션이라 같은 토큰이 커뮤니티 창구에도 통한다.
@@ -7129,12 +7159,15 @@ function boot() {
         meCanWrite = me.can_community_write !== false;
         drafts.sweep();
         bindNewPage();
+        bindIntegrations(api).catch(() => {});
+        bindAiCenter(api).catch(() => {});
         // 개발 대기열 6 — 사이드바 「즐겨찾기」「최근」(세 화면 공통). 페이지 화면의 「최근」은 그 페이지를 연 뒤 initPage 가 받는다.
         bindFavoritesFold();
         loadFavoritesNav();
         if (page !== 'community-page') { loadRecentNav(); }
-        if (page === 'community-home') {
-          if (location.pathname === COMMUNITY_BASE + '/suggestions') { bindMySuggestions(api, COMMUNITY_BASE); loadSpaces(); } else if (location.pathname === COMMUNITY_BASE + '/automations') { bindAutomations(api, COMMUNITY_BASE); loadSpaces(); } else if (location.pathname === COMMUNITY_BASE + '/procedures') { bindProcedures(api, COMMUNITY_BASE); loadSpaces(); } else { initHome(); }
+        if (page === 'community-ai' || page === 'community-threads') { loadSpaces(); }
+        else if (page === 'community-home') {
+          if (location.pathname === COMMUNITY_BASE + '/ai') { loadSpaces(); } else if (location.pathname === COMMUNITY_BASE + '/integrations') { loadSpaces(); } else if (location.pathname === COMMUNITY_BASE + '/suggestions') { bindMySuggestions(api, COMMUNITY_BASE); loadSpaces(); } else if (location.pathname === COMMUNITY_BASE + '/automations') { bindAutomations(api, COMMUNITY_BASE); loadSpaces(); } else if (location.pathname === COMMUNITY_BASE + '/procedures') { bindProcedures(api, COMMUNITY_BASE); loadSpaces(); } else { initHome(); }
         } else if (page === 'community-board') {
           // 5-C — 게시판 화면. 사이드바의 공간·게시판 묶음은 여기서 함께 채운다.
           loadSpaces();

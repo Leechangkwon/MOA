@@ -54,6 +54,13 @@ require_once __DIR__ . '/views_helpers.php';
 require_once __DIR__ . '/Palette.php';
 require_once __DIR__ . '/BriefingText.php';
 require_once __DIR__ . '/Briefing.php';
+require_once __DIR__ . '/Integrations.php';
+require_once __DIR__ . '/../Ai.php';
+require_once __DIR__ . '/AiService.php';
+require_once __DIR__ . '/AiIndex.php';
+require_once __DIR__ . '/ai_helpers.php';
+require_once __DIR__ . '/Memories.php';
+require_once __DIR__ . '/Messenger.php';
 // Q:F-2 — 검색 색인·검색어 토큰 한 벌(사이트 공통 — t-box 파일 색인도 나중에 같은 파일, 지시서 2.1)
 require_once __DIR__ . '/../SearchText.php';
 
@@ -79,10 +86,73 @@ const COMMUNITY_ROUTES = [
     ['GET', '/f/{id}/{view}', 'form_view.php', 'community.read'],
     ['GET', '/api/forms/{id}/{view}', 'form_get.php', 'community.read'],
     ['POST', '/api/forms/{id}/{view}/submit', 'form_submit.php', 'community.read'],
+    ['GET','/api/collections','collections.php','community.read'],
+    ['POST','/api/collections','collections.php','community.read'],
+    ['GET','/api/collections/{num}','collections.php','community.read'],
+    ['PATCH','/api/collections/{num}','collections.php','community.read'],
+    ['DELETE','/api/collections/{num}','collections.php','community.read'],
+    ['PUT','/api/collections/{num}/items/{id}','collections.php','community.read'],
+    ['DELETE','/api/collections/{num}/items/{id}','collections.php','community.read'],
+    ['GET','/api/groups','groups.php','community.read'],
+    ['POST','/api/groups','groups.php','community.write'],
+    ['GET','/api/groups/{id}','groups.php','community.read'],
+    ['PATCH','/api/groups/{id}','groups.php','community.write'],
+    ['DELETE','/api/groups/{id}','groups.php','community.write'],
+    ['PUT','/api/pages/{id}/group-shares/{gid}','pages_group_share.php','community.write'],
+    ['DELETE','/api/pages/{id}/group-shares/{gid}','pages_group_share.php','community.write'],
+    ['POST','/api/pages/{id}/web-publish','web_publish.php','community.write'],
+    ['DELETE','/api/pages/{id}/web-publish/{num}','web_publish.php','community.write'],
+    ['PATCH','/api/pages/{id}/web-publish/{num}','web_publish.php','role:Admin'],
+    ['GET','/api/me/web-publications','web_publish.php','community.read'],
+    ['GET','/api/admin/web-publications','web_publish.php','role:Admin'],
+    ['PATCH','/api/spaces/{num}/web-publish','space_web_publish.php','role:Admin'],
+    ['GET','/pub/{pubtoken}','pub_view.php','public'],
+    ['GET','/pub/{pubtoken}/p/{id}','pub_view.php','public'],
+    ['GET','/pub/{pubtoken}/form/{viewid}','pub_form.php','public'],
+    ['POST','/pub/{pubtoken}/form/{viewid}/submit','pub_form_submit.php','public'],
+    ['GET','/api/me/messenger','integration_settings.php','community.read'],
+    ['PUT','/api/me/messenger','integration_settings.php','community.read'],
+    ['GET','/api/admin/messenger-hooks','integration_settings.php','role:Admin'],
+    ['POST','/api/admin/messenger-hooks','integration_settings.php','role:Admin'],
+    ['PATCH','/api/admin/messenger-hooks/{num}','integration_settings.php','role:Admin'],
+    ['GET','/api/admin/connectors','integration_settings.php','role:Admin'],
+    ['POST','/api/admin/connectors','integration_settings.php','role:Admin'],
+    ['PATCH','/api/admin/connectors/{id}','integration_settings.php','role:Admin'],
+    ['GET','/integrations','integrations_page.php','community.read'],
+
+    ['GET', '/api/messenger', 'messenger_api.php', 'community.write'],
+    ['GET', '/api/messenger/members', 'messenger_api.php', 'community.write'],
+    ['POST', '/api/messenger/conversations', 'messenger_api.php', 'community.write'],
+    ['GET', '/api/messenger/gpt', 'messenger_api.php', 'community.write'],
+    ['POST', '/api/messenger/gpt', 'messenger_api.php', 'community.write'],
+    ['GET', '/api/messenger/conversations/{id}', 'messenger_api.php', 'community.write'],
+    ['POST', '/api/messenger/conversations/{id}/messages', 'messenger_api.php', 'community.write'],
+    ['POST', '/api/messenger/conversations/{id}/read', 'messenger_api.php', 'community.write'],
+    // Community threads: session routes plus a narrow, read-only link capability.
+    ['GET', '/memories', 'memories_page.php', 'community.read'],
+    ['GET', '/memories/u/{username}', 'memories_page.php', 'community.read'],
+    ['GET', '/memories/p/{id}', 'memories_page.php', 'community.read'],
+    ['GET', '/memories/s/{token}', 'memories_shared.php', 'public'],
+    ['GET', '/memories/s/{token}/feed', 'memories_shared.php', 'public'],
+    ['GET', '/memories/s/{token}/media/{id}', 'memories_shared.php', 'public'],
+    ['GET', '/api/memories', 'memories_api.php', 'community.read'],
+    ['POST', '/api/memories', 'memories_api.php', 'community.write'],
+    ['POST', '/api/memories/media', 'memories_api.php', 'community.write'],
+    ['GET', '/api/memories/media/{id}', 'memories_api.php', 'community.read'],
+    ['POST', '/api/memories/links', 'memories_api.php', 'community.write'],
+    ['DELETE', '/api/memories/links', 'memories_api.php', 'community.write'],
+    ['GET', '/api/memories/{id}', 'memories_api.php', 'community.read'],
+    ['PATCH', '/api/memories/{id}', 'memories_api.php', 'community.write'],
+    ['DELETE', '/api/memories/{id}', 'memories_api.php', 'community.write'],
+    ['POST', '/api/memories/{id}/like', 'memories_api.php', 'community.write'],
+    ['DELETE', '/api/memories/{id}/like', 'memories_api.php', 'community.write'],
+    ['GET', '/api/memories/{id}/comments', 'memories_api.php', 'community.read'],
+    ['POST', '/api/memories/{id}/comments', 'memories_api.php', 'community.write'],
     ['GET', '/today', 'today_page.php', 'community.read'],
     ['GET', '/api/briefing', 'briefing.php', 'community.read'],
     // ── 화면 ─────────────────────────────────────────────────
-    ['GET',    '/',                          'home_page.php',       'community.read'],
+    ['GET',    '/',                          'memories_page.php',   'community.read'],
+    ['GET', '/workspace', 'home_page.php', 'community.read'],
     ['GET',    '/p/{id}',                    'page_view.php',       'community.read'],
     ['GET', '/p/{id}/print', 'page_print.php', 'community.write'],
     ['GET', '/api/pages/{id}/export', 'pages_export.php', 'community.write'],
@@ -110,6 +180,22 @@ const COMMUNITY_ROUTES = [
     // 5-B 검색 (2026-09-23) — 공간을 가리지 않고 행 관문(목록 조건절)만, 관리자 특권 갈래는 끈다
     ['GET',    '/api/procedures',             'procedures_list.php', 'community.read'],
     ['GET',    '/procedures',                 'home_page.php', 'community.read'],
+    ['GET', '/ai', 'ai_page.php', 'community.read'],
+    ['GET', '/api/ai/status', 'ai_status.php', 'community.read'],
+    ['GET', '/api/admin/ai/settings', 'ai_settings_get.php', 'role:Admin'],
+    ['PATCH', '/api/admin/ai/settings', 'ai_settings_update.php', 'role:Admin'],
+    ['POST', '/api/admin/ai/key', 'ai_key.php', 'role:Admin'],
+    ['POST', '/api/admin/ai/health', 'ai_health.php', 'role:Admin'],
+    ['GET', '/api/pages/{id}/ai-permission', 'ai_permission_get.php', 'community.read'],
+    ['PATCH', '/api/pages/{id}/ai-permission', 'ai_permission_update.php', 'community.write'],
+    ['POST', '/api/pages/{id}/ai-summary', 'ai_summary.php', 'community.read'],
+    ['POST', '/api/ai/assistant', 'ai_assistant.php', 'community.read'],
+    ['POST', '/api/ai/briefing', 'ai_briefing.php', 'community.read'],
+    ['POST', '/api/ai/search', 'ai_search.php', 'community.read'],
+    ['POST', '/api/ai/transcribe', 'ai_transcribe.php', 'community.read'],
+    ['POST', '/api/pages/{id}/ai-insert', 'ai_insert.php', 'community.write'],
+    ['GET', '/api/me/ai-log', 'ai_my_log.php', 'community.read'],
+    ['GET', '/api/admin/ai-log', 'ai_admin_log.php', 'role:Admin'],
     ['GET',    '/api/search',                'search.php',          'community.read'],
     ['POST',   '/api/pages',                 'pages_create.php',    'community.write'],
     ['GET',    '/api/pages/{id}',            'pages_get.php',       'community.read'],
@@ -264,6 +350,9 @@ const COMMUNITY_API_TOKEN_ROUTES = [
  */
 const COMMUNITY_PATH_PATTERNS = [
     '{view}' => 'v[0-9a-f]{8}',
+    '{gid}'=>'[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}',
+    '{pubtoken}'=>'[A-Za-z0-9_-]{43}',
+    '{viewid}'=>'v[0-9a-f]{8}',
     '{username}' => '[a-z0-9_.-]{3,64}',
 ];
 
@@ -461,8 +550,10 @@ const COMMUNITY_SHARE_RANK_SQL = <<<'SQL'
          )
          SELECT id FROM up) chain
    JOIN community.page_shares sh ON sh.page_id = chain.id
-   JOIN public.users su ON su.id = sh.user_id AND su.is_active = true
-  WHERE sh.user_id = CAST(@USER@ AS bigint))
+   JOIN public.users su ON su.id = CAST(@USER@ AS bigint) AND su.is_active = true
+  WHERE sh.user_id = su.id OR EXISTS (
+    SELECT 1 FROM community.share_group_members gm JOIN community.share_groups sg ON sg.id=gm.group_id
+    WHERE gm.group_id=sh.group_id AND gm.user_id=su.id AND sg.deleted_at IS NULL))
 SQL;
 
 function community_share_rank_sql(string $pageExpr, string $userParam): string
@@ -551,13 +642,13 @@ function community_page_row_sql(bool $withDoc): string
         SELECT p.id, p.public_id, p.space_id, p.parent_page_id, p.position,
                p.title, p.icon, p.font, p.small_text, p.full_width, p.visibility,
                {$docCol}p.doc_version, p.block_count,
-               p.author_id, p.last_edited_by, p.created_at, p.updated_at, p.form_view_id, p.form_anonymous,
+               p.author_id, p.last_edited_by, p.created_at, p.updated_at, p.form_view_id, p.form_anonymous, p.public_form_response,
                p.deleted_at, p.deleted_by,
                s.kind          AS space_kind,
                s.owner_user_id AS space_owner_user_id,
                s.access_level  AS space_access_level,
                s.team_id       AS space_team_id,
-               s.name          AS space_name,
+               s.name          AS space_name, s.web_publish_allowed, p.external_key, p.external_missing,
                -- 4-B: 개인 공간 **주인의 t-box 팀**. `visibility='team'` 판정이 이 값과
                -- 보는 사람의 팀을 견준다(PRD 4.1 「소유자의 t-box 팀」). 팀 판정을 위해
                -- t-box 사용자 표를 읽는 자리는 여기 하나다 — 핸들러가 따로 묻지 않는다.
@@ -580,7 +671,10 @@ function community_page_row_sql(bool $withDoc): string
                assignee.is_active AS assignee_active,
                -- 5-A: 이 사람 몫의 가장 강한 공유 등급(번호). 아래에서 이름으로 바꾼다.
                {$shareRank} AS share_rank,
-               EXISTS(SELECT 1 FROM community.page_shares fs WHERE fs.page_id=p.id AND fs.user_id=CAST(:viewer AS bigint)) AS form_direct_share,
+               EXISTS(SELECT 1 FROM community.page_shares fs WHERE fs.page_id=p.id AND (fs.user_id=CAST(:viewer AS bigint) OR EXISTS(
+                   SELECT 1 FROM community.share_group_members fm JOIN community.share_groups fg ON fg.id=fm.group_id
+                   JOIN public.users fu ON fu.id=fm.user_id AND fu.is_active
+                   WHERE fm.group_id=fs.group_id AND fm.user_id=CAST(:viewer AS bigint) AND fg.deleted_at IS NULL))) AS form_direct_share,
                -- 5-C: 게시판 공간이면 그 게시판의 활성·종류(게시판 글의 판정 재료)
                s.is_active     AS space_is_active,
                s.board_kind    AS space_board_kind,
@@ -1073,16 +1167,17 @@ function community_visible_pages_where(array $u): array
 )
 SQL;
 
-    // Form rows remain private to their editors and explicitly shared recipients.
     $formScope = <<<SQL
         (p.form_view_id IS NULL OR CAST(:vis_admin AS boolean)
          OR (s.kind='personal' AND s.owner_user_id=CAST(:vis_me AS bigint))
          OR (s.kind='team' AND s.team_id=CAST(:vis_team AS bigint))
          OR (CAST(:vis_write AS boolean) AND {$shared}=2)
-         OR EXISTS(SELECT 1 FROM community.page_shares fs WHERE fs.page_id=p.id AND fs.user_id=CAST(:vis_me AS bigint)))
+         OR EXISTS(SELECT 1 FROM community.page_shares fs WHERE fs.page_id=p.id AND (fs.user_id=CAST(:vis_me AS bigint) OR EXISTS(
+                   SELECT 1 FROM community.share_group_members fm JOIN community.share_groups fg ON fg.id=fm.group_id
+                   JOIN public.users fu ON fu.id=fm.user_id AND fu.is_active
+                   WHERE fm.group_id=fs.group_id AND fm.user_id=CAST(:vis_me AS bigint) AND fg.deleted_at IS NULL))))
         SQL;
     $sql = '(' . $sql . ') AND ' . $formScope;
-
     return [$sql, array_merge([
         ':vis_me'     => (int) $u['id'],
         ':vis_share'  => (int) $u['id'],
@@ -2785,8 +2880,8 @@ function community_expiry_notifications(int $userId): void
     $db = Db::instance();
     $db->begin();
     try {
-        $db->run('SELECT pg_advisory_xact_lock(8301, CAST(:uid AS integer))'
-, [':uid' => $userId]);
+        $db->run('SELECT pg_advisory_xact_lock(8301, CAST(:uid AS integer))',
+        [':uid' => $userId]);
         $u=community_user_by_id($userId);
         if ($u===null) { $db->commit(); return; }
         [$visible,$bind]=community_search_pages_where($u);
@@ -2810,6 +2905,9 @@ function community_expiry_notifications(int $userId): void
 
 function community_dispatch(string $modulePath, string $method): void
 {
+    $decodedPublic=rawurldecode(rawurldecode($modulePath));
+    $publicPrefix=$decodedPublic==='/pub' || str_starts_with($decodedPublic,'/pub/');
+    if ($publicPrefix) { define('COMMUNITY_PUBLIC_REQUEST',true); community_public_headers(); }
     // ─── [0-1] 라우트 표 자체 검사 ─────────────────────────────
     $problems = community_validate_routes();
     if ($problems !== []) {
@@ -2839,6 +2937,7 @@ function community_dispatch(string $modulePath, string $method): void
     }
 
     if ($matched === null) {
+        if ($publicPrefix && !$pathMatched) { community_public_missing(); }
         if ($pathMatched) {
             if (!headers_sent()) {
                 header('Allow: ' . implode(', ', array_unique($allowedMethods)));
@@ -2859,6 +2958,22 @@ function community_dispatch(string $modulePath, string $method): void
     define('TBOX_ROUTE', $method . ' ' . COMMUNITY_BASE . $routePattern);
 
     $isApi = strpos($modulePath, '/api/') === 0;
+    // Public routes deliberately precede every session, CSRF and personalized shell call.
+    if ($policy === Authz::POLICY_PUBLIC) {
+        if (!defined('COMMUNITY_PUBLIC_REQUEST')) { define('COMMUNITY_PUBLIC_REQUEST', true); }
+        community_public_headers();
+        (static function(array $params,string $file): void { require $file; })($params,COMMUNITY_HANDLER_DIR.$handlerFile);
+        exit;
+    }
+
+    // Public access is restricted to this handler, GET, and the three literal patterns.
+    // memory_links + post visibility + active owner are checked inside the handler.
+    if ($method === 'GET' && $handlerFile === 'memories_shared.php' && $policy === 'public'
+        && in_array($routePattern, ['/memories/s/{token}', '/memories/s/{token}/feed', '/memories/s/{token}/media/{id}'], true)) {
+        require COMMUNITY_HANDLER_DIR . 'memories_shared.php';
+        exit;
+    }
+
 
     /* ─── [2-T] 개인 프로그램 토큰 갈래 (Q:F-8, ARCH 4.8 — `public/index.php` [2-T]·[2-S] 와 같은 순서·같은 함수) ──
      *
@@ -3834,8 +3949,8 @@ function community_automation_create_page(array $plan, array $u, string $automat
 {
     $db = Db::instance(); $uuid = tbox_uuid_v4(); $space=$plan['space']; $parent=$plan['parent']; $extract=Doc::extract($plan['doc']);
     if ($plan['database_id']!==null) {
-        $currentSchema=$db->run('SELECT schema FROM community.databases WHERE id=CAST(:db AS bigint) FOR UPDATE'
-            ,[':db'=>$plan['database_id']])->fetchColumn();
+        $currentSchema=$db->run('SELECT schema FROM community.databases WHERE id=CAST(:db AS bigint) FOR UPDATE',
+        [':db'=>$plan['database_id']])->fetchColumn();
         $plan['properties']=community_template_props(community_db_schema_of($currentSchema),$plan['properties']);
         if (community_db_row_count($plan['database_id'])>=DbProps::MAX_ROWS) { throw new InvalidArgumentException('too_many_rows'); }
     }
@@ -3860,13 +3975,13 @@ function community_automation_execute(array $initial, int $executorId, bool $dry
 {
     $db=Db::instance(); $db->begin();
     try {
-        $db->run('SELECT id FROM community.automations WHERE id=CAST(:id AS bigint) FOR UPDATE'
-,[':id'=>(int)$initial['id']]);
+        $db->run('SELECT id FROM community.automations WHERE id=CAST(:id AS bigint) FOR UPDATE',
+        [':id'=>(int)$initial['id']]);
         $r=community_automation_row($initial['public_id']);
         if ($r===null || $r['deleted_at']!==null || (!$dry && !$r['is_enabled'])) { throw new InvalidArgumentException('disabled'); }
         if ($expectedKind!==null && $r['kind']!==$expectedKind) { $db->commit(); return ['skipped'=>true,'reason'=>'trigger_changed']; }
-        $u=$db->run('SELECT id,username,display_name,role,team_id,is_active,expires_at FROM users WHERE id=CAST(:id AS bigint) FOR SHARE'
-,[':id'=>$executorId])->fetch();
+        $u=$db->run('SELECT id,username,display_name,role,team_id,is_active,expires_at FROM users WHERE id=CAST(:id AS bigint) FOR SHARE',
+        [':id'=>$executorId])->fetch();
         if (!is_array($u)) { throw new InvalidArgumentException('executor_missing'); }
         if ($requestUser !== null) {
             if ($u['role'] !== ($requestUser['real_role'] ?? $requestUser['role'])) { throw new InvalidArgumentException('executor_changed'); }
@@ -3874,10 +3989,10 @@ function community_automation_execute(array $initial, int $executorId, bool $dry
         }
         if (PHP_SAPI==='cli') { Audit::automationActor($executorId); }
         $now=($clock ?? new DateTimeImmutable('now',new DateTimeZone('Asia/Seoul')))->setTimezone(new DateTimeZone('Asia/Seoul'));
-        if ($slot!==null && !$dry && $db->run('SELECT 1 FROM community.automation_runs WHERE automation_id=:aid AND slot=CAST(:slot AS timestamptz) AND NOT dry_run'
-,[':aid'=>(int)$r['id'],':slot'=>$slot->format(DATE_ATOM)])->fetchColumn()) { $db->commit(); return ['skipped'=>true]; }
-        if ($r['kind']==='button' && !$dry && $db->run("SELECT 1 FROM community.automation_runs WHERE automation_id=:aid AND run_by=:uid AND NOT dry_run AND started_at>now()-interval '10 seconds'"
-,[':aid'=>(int)$r['id'],':uid'=>$executorId])->fetchColumn()) { throw new InvalidArgumentException('duplicate_press'); }
+        if ($slot!==null && !$dry && $db->run('SELECT 1 FROM community.automation_runs WHERE automation_id=:aid AND slot=CAST(:slot AS timestamptz) AND NOT dry_run',
+        [':aid'=>(int)$r['id'],':slot'=>$slot->format(DATE_ATOM)])->fetchColumn()) { $db->commit(); return ['skipped'=>true]; }
+        if ($r['kind']==='button' && !$dry && $db->run("SELECT 1 FROM community.automation_runs WHERE automation_id=:aid AND run_by=:uid AND NOT dry_run AND started_at>now()-interval '10 seconds'",
+        [':aid'=>(int)$r['id'],':uid'=>$executorId])->fetchColumn()) { throw new InvalidArgumentException('duplicate_press'); }
         $active=$u['is_active'] && ($u['expires_at']===null || strtotime($u['expires_at'])>time()) && Authz::canCommunityWrite($u);
         $runId=tbox_uuid_v4(); $steps=[]; $pages=[]; $publicPages=[]; $notices=[]; $wouldCreate=[]; $wouldNotify=[]; $denied=0;
         $rule=community_automation_rule($r);
@@ -3895,8 +4010,8 @@ function community_automation_execute(array $initial, int $executorId, bool $dry
         }
         $eventValid=true;
         if ($eventPage!==null) {
-            $db->run('SELECT id FROM community.pages WHERE public_id=CAST(:uuid AS uuid) FOR SHARE'
-                , [':uuid'=>$eventPage['public_id']]);
+            $db->run('SELECT id FROM community.pages WHERE public_id=CAST(:uuid AS uuid) FOR SHARE',
+        [':uuid'=>$eventPage['public_id']]);
             $eventPage=community_page_row($eventPage['public_id'], $executorId);
             $eventValid=$eventPage!==null && CommunityAuthz::decideMentionTarget($u,$eventPage)[0]
                 && ((int)($r['scope_page_id'] ?? 0)===(int)$eventPage['id'] || (int)($r['scope_space_id'] ?? 0)===(int)$eventPage['space_id']);
@@ -3921,8 +4036,8 @@ function community_automation_execute(array $initial, int $executorId, bool $dry
                     if ($targetPage!==null && ($recipientUser===null || !CommunityAuthz::decideMentionTarget($recipientUser,community_page_row($targetPage['public_id'],(int)$recipient) ?? [])[0])) { throw new InvalidArgumentException('recipient_denied'); }
                     $wouldNotify[]=(string)($recipientUser['display_name'] ?: $recipientUser['username']);
                     if (!$dry && $targetPage!==null) {
-                        if ($r['kind']==='due_reminder' && $db->run("SELECT 1 FROM community.notifications WHERE user_id=:uid AND page_id=:pid AND kind='due_tomorrow' AND created_at >= CAST(:day AS date)::timestamptz"
-,[':uid'=>(int)$recipient,':pid'=>(int)$targetPage['id'],':day'=>$now->format('Y-m-d')])->fetchColumn()) { $steps[]=['type'=>$a['type'],'status'=>'skipped','reason'=>'already_notified']; continue; }
+                        if ($r['kind']==='due_reminder' && $db->run("SELECT 1 FROM community.notifications WHERE user_id=:uid AND page_id=:pid AND kind='due_tomorrow' AND created_at >= CAST(:day AS date)::timestamptz",
+        [':uid'=>(int)$recipient,':pid'=>(int)$targetPage['id'],':day'=>$now->format('Y-m-d')])->fetchColumn()) { $steps[]=['type'=>$a['type'],'status'=>'skipped','reason'=>'already_notified']; continue; }
                         $notificationId=null;
                         if (community_notify((int)$recipient,$a['text_key'],$targetPage,null,$eventActor,$notificationId)) {
                             $notices[]=$notificationId;
@@ -3941,21 +4056,21 @@ function community_automation_execute(array $initial, int $executorId, bool $dry
           SQL;
         $db->run($sql,[':uuid'=>$runId,':aid'=>(int)$r['id'],':uid'=>$executorId,':kind'=>$r['kind'],':slot'=>$slot?->format(DATE_ATOM),':dry'=>$dry?'true':'false',':status'=>$status,
             ':steps'=>json_encode($steps,JSON_THROW_ON_ERROR),':pages'=>'{'.implode(',',$pages).'}',':notifications'=>'{'.implode(',',$notices).'}']);
-        if ($dry) { $db->run('UPDATE community.automations SET last_dry_run_at=clock_timestamp() WHERE id=:id'
-,[':id'=>(int)$r['id']]); }
+        if ($dry) { $db->run('UPDATE community.automations SET last_dry_run_at=clock_timestamp() WHERE id=:id',
+        [':id'=>(int)$r['id']]); }
         else {
             $streak=$denied>0 ? (int)$r['denied_streak']+1:0;
             $disable=!$active || $streak>=3;
-            $db->run('UPDATE community.automations SET denied_streak=:streak,is_enabled=CASE WHEN CAST(:disable AS boolean) THEN false ELSE is_enabled END WHERE id=:id'
-,[':streak'=>$streak,':disable'=>$disable?'true':'false',':id'=>(int)$r['id']]);
+            $db->run('UPDATE community.automations SET denied_streak=:streak,is_enabled=CASE WHEN CAST(:disable AS boolean) THEN false ELSE is_enabled END WHERE id=:id',
+        [':streak'=>$streak,':disable'=>$disable?'true':'false',':id'=>(int)$r['id']]);
             if ($denied>0) {
                 $kind=$disable?'automation_disabled':'automation_denied';
-                $already=$db->run("SELECT 1 FROM community.automation_runs WHERE automation_id=:id AND NOT dry_run AND public_id<>CAST(:uuid AS uuid) AND status IN ('partial','denied') AND started_at>=CURRENT_DATE"
-,[':id'=>(int)$r['id'],':uuid'=>$runId])->fetchColumn();
+                $already=$db->run("SELECT 1 FROM community.automation_runs WHERE automation_id=:id AND NOT dry_run AND public_id<>CAST(:uuid AS uuid) AND status IN ('partial','denied') AND started_at>=CURRENT_DATE",
+        [':id'=>(int)$r['id'],':uuid'=>$runId])->fetchColumn();
                 if (!$already || $disable) {
                     // The owner can inspect their rule even after losing the source. No source ID/title is copied.
                     $db->run('INSERT INTO community.notifications(user_id,kind,page_id,comment_id,actor_id) VALUES(:uid,:kind,NULL,NULL,NULL)',
-                        [':uid'=>(int)$r['owner_user_id'],':kind'=>$kind]);
+        [':uid'=>(int)$r['owner_user_id'],':kind'=>$kind]);
                 }
             }
         }

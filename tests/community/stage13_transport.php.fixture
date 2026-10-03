@@ -1,0 +1,115 @@
+<?php
+declare(strict_types=1);
+// Isolated transport contract test: php -n -d extension=iconv; no HTTP is sent.
+if (extension_loaded('curl')) { fwrite(STDERR, "Run with php -n: real HTTP is forbidden in this fixture\n"); exit(2); }
+foreach (['CURLOPT_URL','CURLOPT_PROTOCOLS','CURLOPT_REDIR_PROTOCOLS','CURLOPT_FOLLOWLOCATION','CURLOPT_MAXREDIRS',
+    'CURLOPT_PROXY','CURLOPT_RESOLVE','CURLOPT_CONNECTTIMEOUT','CURLOPT_TIMEOUT','CURLOPT_SSL_VERIFYPEER','CURLOPT_SSL_VERIFYHOST',
+    'CURLOPT_HTTPHEADER','CURLOPT_WRITEFUNCTION','CURLOPT_POST','CURLOPT_POSTFIELDS','CURLINFO_RESPONSE_CODE','CURLPROTO_HTTPS'] as $i=>$name) { define($name,$i+1); }
+$fixture=['status'=>200,'body'=>[], 'options'=>[], 'calls'=>0];
+function curl_init(): object { return new stdClass(); }
+function curl_setopt_array($handle,array $options): bool { $GLOBALS['fixture']['options']=$options; return true; }
+function curl_setopt($handle,int $key,mixed $value): bool { $GLOBALS['fixture']['options'][$key]=$value; return true; }
+function curl_getinfo($handle,int $key): int { return $GLOBALS['fixture']['status']; }
+function curl_close($handle): void {}
+function curl_exec($handle): bool {
+    $GLOBALS['fixture']['calls']++;
+    $body=$GLOBALS['fixture']['body'];
+    $bytes=is_string($body)?$body:json_encode($body,JSON_UNESCAPED_UNICODE|JSON_THROW_ON_ERROR);
+    return $GLOBALS['fixture']['options'][CURLOPT_WRITEFUNCTION]($handle,$bytes)===strlen($bytes);
+}
+final class Env { public static function get(string $key): string { return $GLOBALS['storage']; } }
+$repo=$argv[1]??'';
+$storage=$argv[2]??'';
+if (!is_dir($storage) || !is_file($repo.'/src/Ai.php')) { exit(2); }
+require $repo.'/src/Fetch.php';
+require $repo.'/src/Ai.php';
+$passed=0;
+function check(bool $ok,string $label): void {
+    if (!$ok) { throw new RuntimeException('FAIL '.$label); }
+    $GLOBALS['passed']++; echo 'PASS '.$label."\n";
+}
+function rejects(callable $call,string $class,string $label,?string $reason=null): void {
+    try { $call(); } catch (Throwable $error) {
+        check($error instanceof $class && ($reason===null || ($error->reason??'')===$reason),$label); return;
+    }
+    check(false,$label);
+}
+function answer(string $text='요약 시험'): array { return ['candidates'=>[['finishReason'=>'STOP','content'=>['parts'=>[['text'=>$text]]]]]]; }
+check(!Ai::configured(),'missing key closed');
+check(Ai::health()['reason']==='not_configured','health no key no request');
+check($fixture['calls']===0,'missing key causes no outbound');
+rejects(fn()=>Ai::setApiKey("abc\r\nX-Test: bad"),InvalidArgumentException::class,'header injection key rejected');
+Ai::setApiKey(str_repeat('A',39));
+check(Ai::configured(),'key registration');
+check((fileperms($storage.'/private-ai')&0777)===0700,'private directory 0700');
+check((fileperms($storage.'/private-ai/gemini.key')&0777)===0600,'key 0600');
+Ai::setApiKey(str_repeat('B',39));
+check(file_get_contents($storage.'/private-ai/gemini.key')===str_repeat('B',39),'key rotation atomic');
+$fixture['body']=answer(); $reserved=0;
+$result=Ai::generate('공개 가능한 시험 문서입니다.','summary',function()use(&$reserved){$reserved++;});
+check($result['text']==='요약 시험'&&$reserved===1,'summary and reservation');
+$opts=$fixture['options']; $body=json_decode($opts[CURLOPT_POSTFIELDS],true);
+check($opts[CURLOPT_URL]==='https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash:generateContent','fixed Gemini model and host');
+check(!str_contains($opts[CURLOPT_URL],str_repeat('B',39)),'key absent from URL');
+check($opts[CURLOPT_FOLLOWLOCATION]===false&&$opts[CURLOPT_MAXREDIRS]===0,'no redirects');
+check($opts[CURLOPT_SSL_VERIFYPEER]===true&&$opts[CURLOPT_SSL_VERIFYHOST]===2,'TLS checked');
+check($opts[CURLOPT_PROXY]===''&&count($opts[CURLOPT_RESOLVE])===1,'proxy disabled DNS pinned');
+check(!isset($body['tools'])&&!isset($body['toolConfig'])&&count($body['contents'])===1,'single turn no tools');
+check($opts[CURLOPT_TIMEOUT]===120&&$body['generationConfig']['maxOutputTokens']===4096,'generation bounded');
+rejects(fn()=>Ai::generate('x','tool'),InvalidArgumentException::class,'instruction allowlist');
+rejects(fn()=>Ai::generate(str_repeat('x',20001),'summary'),InvalidArgumentException::class,'input limit');
+$fixture['body']=['name'=>'models/gemini-3.5-flash'];
+check(Ai::health()['available']===true&&!isset($fixture['options'][CURLOPT_POSTFIELDS]),'health metadata GET only');
+$fixture['status']=302;
+rejects(fn()=>Ai::generate('x','summary'),AiUnavailable::class,'redirect refused');
+$fixture['status']=429;
+rejects(fn()=>Ai::generate('x','summary'),AiUnavailable::class,'quota response', 'provider_limit');
+$fixture['status']=403;
+rejects(fn()=>Ai::generate('x','summary'),AiUnavailable::class,'credentials response generic','invalid_key');
+$fixture['status']=200; $fixture['body']='not json';
+rejects(fn()=>Ai::generate('x','summary'),AiUnavailable::class,'malformed JSON');
+$fixture['body']=str_repeat('X',2097153);
+rejects(fn()=>Ai::generate('x','summary'),AiUnavailable::class,'response size bound');
+$fixture['body']=answer(str_repeat('x',20001));
+rejects(fn()=>Ai::generate('x','summary'),AiUnavailable::class,'output character limit');
+$fixture['body']=answer();$fixture['body']['candidates'][0]['finishReason']='MAX_TOKENS';
+rejects(fn()=>Ai::generate('x','summary'),AiUnavailable::class,'partial output refused');
+foreach (['functionCall','functionResponse','inlineData','executableCode','fileData'] as $kind) {
+    $fixture['body']=answer();$fixture['body']['candidates'][0]['content']['parts'][]=[$kind=>['x'=>'y']];
+    rejects(fn()=>Ai::generate('x','summary'),AiUnavailable::class,'non-text '.$kind.' refused');
+}
+$fixture['body']=answer(); array_unshift($fixture['body']['candidates'][0]['content']['parts'],['thought'=>true,'text'=>'internal thought']);
+check(Ai::generate('x','summary')['text']==='요약 시험','thought omitted');
+$fixture['body']=['embedding'=>['values'=>array_fill(0,768,0.25)]];
+$result=Ai::embed(['공개 검색 시험'],null,'query');
+$opts=$fixture['options'];$body=json_decode($opts[CURLOPT_POSTFIELDS],true);
+check(count($result['vectors'][0])===768&&abs(array_sum(array_map(fn($v)=>$v*$v,$result['vectors'][0]))-1)<0.000001,'768 dimensions normalized');
+check(str_starts_with($body['content']['parts'][0]['text'],'task: search result | query: '),'retrieval query prefix');
+check($opts[CURLOPT_TIMEOUT]===10&&$body['outputDimensionality']===768,'embedding bounded');
+rejects(fn()=>Ai::embed(['a','b']),InvalidArgumentException::class,'one embedding chunk only');
+$fixture['body']=['embedding'=>['values'=>array_fill(0,768,0)]];
+rejects(fn()=>Ai::embed(['a']),AiUnavailable::class,'zero vector refused');
+$fixture['body']=answer('녹음 시험');$audio='RIFF'.str_repeat('A',100);
+$result=Ai::transcribe($audio,'ko','audio/x-wav');
+$body=json_decode($fixture['options'][CURLOPT_POSTFIELDS],true);
+check($result['bytes']===strlen($audio)&&$result['model']===Ai::MODEL,'transcript measured bytes');
+check($body['contents'][0]['parts'][1]['inlineData']['mimeType']==='audio/wav','audio MIME normalized');
+check(base64_decode($body['contents'][0]['parts'][1]['inlineData']['data'])===$audio,'inline audio no Files API');
+rejects(fn()=>Ai::transcribe($audio,'ko','text/html'),InvalidArgumentException::class,'audio MIME allowlist');
+rejects(fn()=>Ai::transcribe(str_repeat('A',10485761),'ko','audio/wav'),InvalidArgumentException::class,'audio byte limit');
+$fixture['body']=answer();
+$calls=$fixture['calls'];
+rejects(fn()=>Ai::generate('x','summary',fn()=>throw new InvalidArgumentException('deny')),InvalidArgumentException::class,'before-send rejection');
+check($calls===$fixture['calls'],'before-send rejection prevents outbound');
+check(Ai::generate('x','summary')['text']==='요약 시험','lock released after failure');
+$lock=fopen($storage.'/private-ai/request.lock','c');flock($lock,LOCK_EX);
+rejects(fn()=>Ai::generate('x','summary'),AiUnavailable::class,'busy slot refused','busy');
+flock($lock,LOCK_UN);fclose($lock);
+chmod($storage.'/private-ai/gemini.key',0644);clearstatcache();
+check(!Ai::configured(),'world-readable key refused');
+chmod($storage.'/private-ai/gemini.key',0600);clearstatcache();
+rename($storage.'/private-ai/gemini.key',$storage.'/private-ai/saved.key');
+symlink($storage.'/private-ai/saved.key',$storage.'/private-ai/gemini.key');
+check(!Ai::configured(),'key symlink refused');
+rejects(fn()=>Ai::setApiKey(str_repeat('C',39)),AiUnavailable::class,'key symlink overwrite refused');
+echo json_encode(['passed'=>$passed,'failed'=>0,'actual_http_requests'=>0],JSON_THROW_ON_ERROR)."\n";

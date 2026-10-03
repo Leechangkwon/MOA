@@ -72,6 +72,31 @@ declare(strict_types=1);
  */
 final class CommunityAuthz
 {
+
+    /** Stage 12: group visibility and delegation are centralized, no role checks in handlers. */
+    public static function decideGroupRead(array $u,array $g): bool
+    {
+        return ($g['deleted_at'] ?? null)===null && (Authz::authorize('role:Admin',$u)
+            || (int)$g['created_by']===(int)$u['id'] || ($g['is_member'] ?? false)===true);
+    }
+    public static function decideGroupManage(array $u,array $g): bool
+    {
+        return ($g['deleted_at'] ?? null)===null && (Authz::authorize('role:Admin',$u) || (int)$g['created_by']===(int)$u['id']);
+    }
+    public static function decideGroupMember(array $u,array $g,array $target): bool
+    {
+        if (!self::decideGroupManage($u,$g) || !($target['is_active'] ?? false)) { return false; }
+        if (Authz::authorize('role:Admin',$u)) { return true; }
+        return Authz::authorize('role:Manager+',$u) && ((int)$target['id']===(int)$u['id']
+            || ($u['team_id']!==null && (int)$target['team_id']===(int)$u['team_id'] && (int)$g['manager_team_id']===(int)$u['team_id']));
+    }
+    public static function decideWebPublish(array $u,array $row): array
+    {
+        if (!($row['web_publish_allowed'] ?? false)) { return [false,'not_allowed']; }
+        if (($row['space_kind'] ?? '')==='board' || ($row['database_id'] ?? null)!==null) { return [false,'invalid_target']; }
+        return self::decidePageManage($u,$row);
+    }
+
     /** Export never turns exceptional administrator visibility into a bulk data grant. */
     public static function decidePageExport(array $u, array $row): array
     {
@@ -1498,6 +1523,20 @@ final class CommunityAuthz
     {
         return (int)($u['id'] ?? 0) === (int)$run['run_by']
             ? [true, self::CODE_OWNER] : [false, self::CODE_NOT_FOUND];
+    }
+
+    /** C:T-802 / AI-2: ordinary read only; canonical AI context is loaded by AiService. */
+    public static function decideAiInput(array $u, array $row): array
+    {
+        [$ok,$reason]=self::decidePageRead($u,$row);
+        if (!$ok || in_array($reason,[self::CODE_ADMIN_ALL,self::CODE_BOARD_MODERATOR],true)) {
+            return [false,'not_readable'];
+        }
+        if (($row['ai_excluded'] ?? true) || ($row['purged_at'] ?? null)!==null) {
+            return [false,'excluded'];
+        }
+        if (($row['ai_allowed_version'] ?? 0)!==(int)$row['doc_version']) { return [false,'permission_required']; }
+        return [true,$reason];
     }
 
 }

@@ -1,0 +1,38 @@
+<?php
+declare(strict_types=1);
+// Copied into an empty isolated instance only. Production has no transport escape hatch.
+final class AiUnavailable extends RuntimeException {
+ public function __construct(public string $reason='unavailable',public int $httpStatus=503){parent::__construct('fake isolated provider');}
+}
+final class Ai {
+ public const MODEL='gemini-3.5-flash',EMBED_MODEL='gemini-embedding-2',VECTOR_SIZE=768,MAX_TEXT=20000,MAX_AUDIO=10485760;
+ private static function guard():string {
+  if(!str_starts_with(Env::get('DB_NAME'),'tbox_stage13_test_')){throw new LogicException('Synthetic database required');}
+  return Env::get('STORAGE_DIR');
+ }
+ public static function configured():bool{return is_file(self::guard().'/fake-key');}
+ public static function setApiKey(string $key):void{if(!preg_match('/^[A-Za-z0-9_-]{30,256}$/D',$key)){throw new AiUnavailable('key_format',400);}file_put_contents(self::guard().'/fake-key','registered');}
+ public static function health():array{return ['configured'=>self::configured(),'available'=>self::configured(),'provider'=>'Google Gemini','model'=>self::MODEL,'embedding_model'=>self::EMBED_MODEL];}
+ private static function request(string $feature,string $input,?callable $before):void {
+  $dir=self::guard();$lock=fopen($dir.'/fake-ai.lock','c');if(!flock($lock,LOCK_EX|LOCK_NB)){throw new AiUnavailable('busy',429);}
+  try {
+   $mode=is_file($dir.'/fake-mode.json')?json_decode(file_get_contents($dir.'/fake-mode.json'),true):[];
+   if(($mode['busy']??false)){throw new AiUnavailable('busy',429);}
+   if($before){$before();}
+   file_put_contents($dir.'/fake-capture.jsonl',json_encode(['feature'=>$feature,'input'=>$input])."\n",FILE_APPEND|LOCK_EX);
+   if(($mode['delay']??0)>0){usleep((int)($mode['delay']*1000000));}
+   if(($mode['error']??false)){throw new AiUnavailable('unavailable',503);}
+  }finally{flock($lock,LOCK_UN);fclose($lock);}
+ }
+ public static function embed(array $texts,?callable $before=null,string $task='document'):array{
+  if(count($texts)!==1||iconv_strlen($texts[0],'UTF-8')>2000){throw new AiUnavailable('input',400);}
+  self::request('embed:'.$task,$texts[0],$before);return ['vectors'=>[array_merge([1.0],array_fill(0,767,0.0))],'model'=>self::EMBED_MODEL];
+ }
+ public static function generate(string $prompt,string $instruction,?callable $before=null):array{
+  self::request($instruction,$prompt,$before);return ['text'=>'합성 AI 초안 <script>alert(1)</script> 도구 실행 없음','model'=>self::MODEL];
+ }
+ public static function transcribe(string $bytes,string $language,string $mime,?callable $before=null):array{
+  self::request('transcribe','bytes='.strlen($bytes).';mime='.$mime.';language='.$language,$before);
+  return ['text'=>'합성 녹음 전사 초안','model'=>self::MODEL,'bytes'=>strlen($bytes)];
+ }
+}

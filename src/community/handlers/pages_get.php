@@ -315,6 +315,10 @@ community_form_json([
     ],
     // 화면이 「편집」 단추를 열지 말지 고르는 값이다 — 판단 근거가 아니다 (DESIGN 원칙 1).
     // 단추를 되살려 PATCH 를 불러도 서버가 같은 함수로 다시 막는다.
+    'synced' => ($sync=community_sync_map($doc,$user))===[] ? new stdClass():$sync,
+    'web_publications' => $db->run('SELECT w.id,w.expires_at FROM community.web_publications w JOIN community.spaces s ON s.id=:space WHERE w.page_id=:page AND s.web_publish_allowed AND w.revoked_at IS NULL AND (w.expires_at IS NULL OR w.expires_at>now())',
+        [':space'=>(int)$row['space_id'],':page'=>(int)$row['id']])->fetchAll(),
+    'can_web_publish' => CommunityAuthz::decideWebPublish($user,$row)[0],
     'can_edit'   => $mayChange,
     'can_suggest' => CommunityAuthz::decideSuggestionCreate($user, $row)[0],
     ...$suggestionInfo,
@@ -338,8 +342,8 @@ community_form_json([
     'verify' => community_verify_info($row),
     'due' => $row['due_date'],
     'repeat' => community_automation_repeat_info((int)$row['id'],$user),
-    'completed_at' => $row['status'] === 'done' ? ($db->run("SELECT at FROM community.page_property_events WHERE page_id=:id AND prop='status' AND to_value='done' ORDER BY id DESC LIMIT 1"
-, [':id'=>(int)$row['id']])->fetchColumn() ?: null) : null,
+    'completed_at' => $row['status'] === 'done' ? ($db->run("SELECT at FROM community.page_property_events WHERE page_id=:id AND prop='status' AND to_value='done' ORDER BY id DESC LIMIT 1",
+        [':id'=>(int)$row['id']])->fetchColumn() ?: null) : null,
     // 나에게 준 공유 등급(`view`·`edit`, 이 페이지나 조상에서 가장 강한 것). 없으면 null.
     'share_level'  => CommunityAuthz::shareLevelFor($user, $row),
     'granted_by' => $readCode,
@@ -382,6 +386,7 @@ community_form_json([
        역참조(이 페이지를 가리키는 볼 수 있는 페이지). 지도에 없는 것은 렌더러가 「볼 수 없는 …」 한 장으로 그린다. */
     'file_titles' => ($ft = community_file_titles($docExtract['files'], $user)) === [] ? new stdClass() : $ft,
     'link_titles' => ($lt = community_link_titles(array_map(static fn (array $l): string => $l['to_page_id'], $docExtract['links']), $user)) === [] ? new stdClass() : $lt,
+    'synced_uses' => community_sync_uses($row,$user),
     'backlinks'   => community_backlinks((string) $row['public_id'], (int) $row['id'], $user),
     /* 7-D4 — 글 안 멘션의 이름 지도(볼 수 있는 것만 · 사람은 쓰기 자격 있는 보는 사람에게만 — `community_mention_labels`). 없으면 {} */
     'buttons' => ($bm = community_button_map($doc, $row, $user)) === [] ? new stdClass() : $bm,
@@ -396,10 +401,12 @@ community_form_json([
         'can_manage_schema' => $mayManage,
     ],
     'row' => $row['database_id'] === null ? null : [
+        'external_readonly' => ($row['external_key']??null)!==null,
+        'external_missing' => ($row['external_missing']??false)===true,
         'database_id' => (string) $row['db_public_id'],
         'schema'      => ($rowSchema = community_db_schema_of($row['db_schema'])),
         'values'      => ($rowVals = community_db_values_visible($rowSchema, $row['properties'], $user)),
-        'can_edit'    => $mayChange,
+        'can_edit'    => $mayChange && ($row['external_key']??null)===null,
         // 6-B — 관계·파일 값의 제목(보는 사람 권한으로 거른 것만)
         'relation_titles' => (($rt = community_db_ref_titles($rowSchema, [$rowVals], $user))[0] === [] ? new stdClass() : $rt[0]),
         'file_titles'     => ($rt[1] === [] ? new stdClass() : $rt[1]),

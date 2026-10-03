@@ -9,7 +9,7 @@ final class DbViews
     public static function viewFields(string $type): array
     {
         $fields = [
-            'form' => ['questions', 'intro', 'audience', 'anonymous', 'open', 'notify'],
+            'form' => ['questions', 'intro', 'audience', 'anonymous', 'open', 'notify', 'public'],
             'calendar' => ['date_prop', 'mode'],
             'timeline' => ['date_prop', 'depends_prop', 'scale'],
             'chart' => ['kind', 'group_by', 'bucket', 'aggregate', 'on_prop'],
@@ -52,11 +52,11 @@ final class DbViews
             $intro = $raw['intro'] ?? '';
             if (!is_string($intro) || preg_match('//u', $intro) !== 1 || iconv_strlen($intro, 'UTF-8') > 500
                 || preg_match('/[^\P{C}\n]/u', $intro) === 1 || !in_array($raw['audience'] ?? 'readers', ['readers', 'internal'], true)) { return null; }
-            foreach (['anonymous', 'open', 'notify'] as $key) {
+            foreach (['anonymous', 'open', 'notify', 'public'] as $key) {
                 if (array_key_exists($key, $raw) && !is_bool($raw[$key])) { return null; }
             }
             return ['questions' => $out, 'intro' => $intro, 'audience' => $raw['audience'] ?? 'readers',
-                'anonymous' => $raw['anonymous'] ?? false, 'open' => $raw['open'] ?? false, 'notify' => $raw['notify'] ?? true];
+                'anonymous' => $raw['anonymous'] ?? false, 'open' => $raw['open'] ?? false, 'notify' => $raw['notify'] ?? true, 'public' => $raw['public'] ?? false];
         }
         if ($type === 'calendar' || $type === 'timeline') {
             $key = $raw['date_prop'] ?? null;
