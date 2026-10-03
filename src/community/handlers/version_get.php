@@ -37,7 +37,7 @@ if ($want === (int) $row['doc_version']) {
     if (!is_array($doc)) {
         throw new RuntimeException('저장된 본문을 읽을 수 없습니다');
     }
-    Http::json([
+    community_form_json([
         'version' => [
             'version'     => $want,
             'is_current'  => true,
@@ -49,7 +49,7 @@ if ($want === (int) $row['doc_version']) {
             'block_count' => (int) $row['block_count'],
         ],
         'mention_labels' => ($ml = community_mention_labels(Doc::extract($doc)['mentions'], $user)) === [] ? new stdClass() : $ml,
-    ]);
+    ], $user, $row);
     exit;
 }
 
@@ -75,7 +75,7 @@ if (!is_array($doc)) {
     throw new RuntimeException('저장된 본문을 읽을 수 없습니다');
 }
 
-Http::json([
+community_form_json([
     'version' => [
         'version'     => (int) $found['version'],
         'is_current'  => false,
@@ -87,4 +87,4 @@ Http::json([
         'block_count' => is_array($doc['blocks'] ?? null) ? count($doc['blocks']) : 0,
     ],
     'mention_labels' => ($ml = community_mention_labels(Doc::extract($doc)['mentions'], $user)) === [] ? new stdClass() : $ml,
-]);
+], $user, $row);

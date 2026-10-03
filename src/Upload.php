@@ -65,6 +65,7 @@ final class Upload
         'pdf', 'docx', 'xlsx', 'pptx', 'hwp', 'hwpx',
         'txt', 'csv', 'md',
         'png', 'jpg', 'jpeg', 'gif', 'zip',
+        'wav', 'mp3', 'm4a', 'ogg',
     ];
 
     /**
@@ -145,6 +146,10 @@ final class Upload
         'jpeg' => ['image/jpeg'],
         'gif'  => ['image/gif'],
         'zip'  => ['application/zip'],
+        'wav'  => ['audio/wav', 'audio/x-wav', 'audio/vnd.wave'],
+        'mp3'  => ['audio/mpeg', 'audio/mp3'],
+        'm4a'  => ['audio/mp4', 'audio/x-m4a'],
+        'ogg'  => ['audio/ogg', 'application/ogg'],
     ];
 
     /** 단일 파일 최대 크기 — 정확히 100MB. 이 값을 **넘을 때만** 거부한다 (PRD S-06) */
@@ -256,6 +261,7 @@ final class Upload
 
         $ext  = self::checkExtension($originalName);
         $mime = self::checkMime($tmpPath, $ext);
+        self::checkAudioSignature($tmpPath, $ext);
         // F-53 — 속 검사 (ARCH 5.27). 실패는 사유 코드 예외.
         // F-65 — 참으로 불렀으면 차단 항목 이름이 돌아온다(거부되지 않은 것들). 거짓이면 언제나 빈 배열이다.
         $execEntries = self::inspectContent($tmpPath, $ext, (int) $size, $allowBlockedEntries);
@@ -276,6 +282,71 @@ final class Upload
             $out['exec_entries'] = $execEntries;
         }
         return $out;
+    }
+
+    /** Additional container signature check; malware scanning and download gates still apply. */
+    private static function checkAudioSignature(string $path, string $ext): void
+    {
+        if (!in_array($ext, ['wav','mp3','m4a','ogg'], true)) { return; }
+        $head = file_get_contents($path, false, null, 0, 256);
+        if (!is_string($head) || strlen($head) < 12) { throw new RuntimeException('audio_signature'); }
+        $ok = match ($ext) {
+            'wav' => substr($head, 0, 4) === 'RIFF' && substr($head, 8, 4) === 'WAVE',
+            'mp3' => substr($head, 0, 3) === 'ID3'
+                || (ord($head[0]) === 0xff && (ord($head[1]) & 0xe0) === 0xe0
+                    && (ord($head[1]) & 0x06) !== 0 && (ord($head[2]) & 0xf0) !== 0xf0),
+            'm4a' => substr($head, 4, 4) === 'ftyp'
+                && in_array(substr($head, 8, 4), ['M4A ', 'M4B ', 'isom', 'iso2', 'mp41', 'mp42'], true)
+                && self::m4aAudioOnly($path),
+            'ogg' => substr($head, 0, 5) === "OggS\x00"
+                && (strpos($head, 'OpusHead') !== false || strpos($head, "\x01vorbis") !== false),
+            default => false,
+        };
+        if (!$ok) { throw new RuntimeException('audio_signature'); }
+    }
+
+    /** Read bounded MP4 atom headers, not codec bytes; every track must be audio. */
+    private static function m4aAudioOnly(string $path): bool
+    {
+        $handle = fopen($path, 'rb');
+        if ($handle === false) { return false; }
+        $size = filesize($path); $atoms = 0; $tracks = 0; $audio = 0;
+        $walk = static function (int $start, int $end, array $parents) use (&$walk, $handle, &$atoms, &$tracks, &$audio): bool {
+            if (count($parents) > 4) { return false; }
+            for ($offset = $start; $offset < $end;) {
+                if (++$atoms > 10000 || $end - $offset < 8 || fseek($handle, $offset) !== 0) { return false; }
+                $header = fread($handle, 8);
+                if ($header === false || strlen($header) !== 8) { return false; }
+                $length = unpack('N', substr($header, 0, 4))[1]; $type = substr($header, 4, 4); $headerSize = 8;
+                if ($length === 1) {
+                    $extended = fread($handle, 8);
+                    if ($extended === false || strlen($extended) !== 8) { return false; }
+                    $words = unpack('Nhigh/Nlow', $extended);
+                    if ($words['high'] !== 0) { return false; }
+                    $length = $words['low']; $headerSize = 16;
+                } elseif ($length === 0) { $length = $end - $offset; }
+                if ($length < $headerSize || $length > $end - $offset) { return false; }
+                if ($type === 'trak' && $parents !== ['moov']) { return false; }
+                if ($type === 'mdia' && $parents !== ['moov','trak']) { return false; }
+                if ($type === 'moov' && $parents !== []) { return false; }
+                if ($type === 'trak') { $tracks++; }
+                if ($type === 'hdlr' && $parents === ['moov','trak','mdia']) {
+                    if ($length < $headerSize + 12) { return false; }
+                    $fields = fread($handle, 12);
+                    if ($fields === false || strlen($fields) !== 12 || substr($fields, 8, 4) !== 'soun') { return false; }
+                    $audio++;
+                }
+                if (in_array($type, ['moov','trak','mdia'], true)) {
+                    $before = $audio;
+                    if (!$walk($offset + $headerSize, $offset + $length, array_merge($parents, [$type]))) { return false; }
+                    if ($type === 'trak' && $audio !== $before + 1) { return false; }
+                }
+                $offset += $length;
+            }
+            return true;
+        };
+        try { return is_int($size) && $walk(0, $size, []) && $tracks > 0 && $tracks === $audio; }
+        finally { fclose($handle); }
     }
 
     /**
@@ -384,6 +455,11 @@ final class Upload
         // 이 검사는 종전의 "application/zip 이면 통과" 보다 엄격하다 — 이제 zip 이어도 구조가 맞아야 한다.
         if (isset(self::OOXML_MARKERS[$ext]) && ($mime === self::DEFAULT_MIME || $mime === 'application/zip')) {
             $mime = self::ooxmlMime($tmpPath, $ext) ?? $mime;
+        }
+
+        // Generic MP4 branding can make finfo say video/mp4 even for an audio-only M4A.
+        if ($ext === 'm4a' && $mime === 'video/mp4' && self::m4aAudioOnly($tmpPath)) {
+            $mime = 'audio/mp4';
         }
 
         if (!in_array($mime, $allowed, true)) {

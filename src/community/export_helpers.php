@@ -117,9 +117,9 @@ function community_export_context(array $doc, array $user, array $paths, string 
             unset($mentions[$key]);
         }
     }
-    return ['child_titles' => $titles, 'link_titles' => $titles, 'page_href' => $hrefs,
+    return ['synced'=>community_sync_map($doc,$user), 'child_titles' => $titles, 'link_titles' => $titles, 'page_href' => $hrefs,
         'file_titles' => $files, 'file_href' => $fileHrefs, 'mention_labels' => $mentions,
-        'embeds' => community_embed_ctx()];
+        'db_views'=>community_db_widget_context($doc,$user), 'embeds' => community_embed_ctx()];
 }
 
 function community_export_reference_doc(array $value): array
@@ -134,10 +134,11 @@ function community_export_reference_doc(array $value): array
     return $value;
 }
 
-function community_export_meta(array $row, string $now): array
+function community_export_meta(array $row, string $now, ?array $user=null): array
 {
     $owner = $row['space_owner_name'] ?? $row['author_name'] ?? '';
     $display = $row['space_owner_display_name'] ?? $row['author_display_name'] ?? null;
+    if ($user!==null && community_form_identity_hidden($user,$row) && ($row['space_kind'] ?? '')!=='personal') { $owner=''; $display=null; }
     $meta = ['title' => (string) $row['title'], 'kind' => $row['page_kind'] ?? 'page',
         'source' => community_export_url(Http::communityUrl('/p/' . $row['public_id'])),
         'exported_at' => $now, 'owner' => tbox_person_label($display, (string) $owner),

@@ -14,7 +14,7 @@ if (in_array($verify, ['verified','expired','none'], true)) {
 $bind[':qoff'] = $q === '' ? 'true' : 'false';
 $bind[':q'] = '%' . str_replace(['#','%','_'], ['##','#%','#_'], $q) . '%';
 $bind[':off'] = ($page - 1) * 20;
-$sql = "SELECT p.public_id,p.title,p.icon,p.updated_at,s.kind AS space_kind,s.name AS space_name,
+$sql = "SELECT p.public_id,p.form_anonymous,p.title,p.icon,p.updated_at,s.kind AS space_kind,s.name AS space_name,
         coalesce(owner.display_name,owner.username,author.display_name,author.username,'') AS owner_name,
         {$state} AS verify_state
         FROM community.pages p JOIN community.spaces s ON s.id=p.space_id
@@ -27,6 +27,7 @@ $sql = "SELECT p.public_id,p.title,p.icon,p.updated_at,s.kind AS space_kind,s.na
         ORDER BY p.updated_at DESC,p.id DESC LIMIT 20 OFFSET CAST(:off AS integer)";
 $items = [];
 foreach (Db::instance()->run($sql, $bind)->fetchAll() as $r) {
+    if ($r['form_anonymous']===true && $r['space_kind']!=='personal') { $identityRow=community_page_row((string)$r['public_id'],(int)$user['id']); if ($identityRow===null || community_form_identity_hidden($user,$identityRow)) { $r['owner_name']='익명 응답'; } }
     $items[] = ['id' => $r['public_id'], 'title' => $r['title'], 'icon' => $r['icon'],
         'space' => ['kind' => $r['space_kind'], 'name' => $r['space_name']],
         'owner' => ['name' => $r['owner_name']], 'verify_state' => $r['verify_state'],

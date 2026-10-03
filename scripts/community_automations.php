@@ -21,15 +21,17 @@ try {
         if ($work>=Automation::BATCH_WORK_LIMIT) { break; }
         if ($lane==='queue') {
             $queue=$db->run('SELECT q.id,q.page_id,q.event_id,a.public_id,e.by_user_id FROM community.automation_queue q JOIN community.automations a ON a.id=q.automation_id JOIN community.page_property_events e ON e.id=q.event_id WHERE q.taken_at IS NULL ORDER BY q.id LIMIT CAST(:limit AS integer)',
-                [':limit'=>Automation::BATCH_WORK_LIMIT-$work])->fetchAll();
+        [':limit'=>Automation::BATCH_WORK_LIMIT-$work])->fetchAll();
             foreach ($queue as $q) {
                 $db->begin();
                 try {
-                    $taken=$db->run('UPDATE community.automation_queue SET taken_at=now() WHERE id=:id AND taken_at IS NULL',[':id'=>(int)$q['id']])->rowCount();
+                    $taken=$db->run('UPDATE community.automation_queue SET taken_at=now() WHERE id=:id AND taken_at IS NULL',
+        [':id'=>(int)$q['id']])->rowCount();
                     $r=community_automation_row($q['public_id']);
                     if ($taken) { $work++; }
                     if ($taken && $r!==null && $r['is_enabled'] && $r['deleted_at']===null && $r['kind']==='on_status') {
-                        $uuid=$db->run('SELECT public_id FROM community.pages WHERE id=:id',[':id'=>(int)$q['page_id']])->fetchColumn();
+                        $uuid=$db->run('SELECT public_id FROM community.pages WHERE id=:id',
+        [':id'=>(int)$q['page_id']])->fetchColumn();
                         $page=$uuid ? community_page_row($uuid,(int)$r['owner_user_id']) : null;
                         if ($page!==null) {
                             $result=community_automation_execute($r,(int)$r['owner_user_id'],false,null,$page,(int)$q['by_user_id'],null,$now,Automation::BATCH_PAGE_LIMIT-$created,'on_status');
@@ -43,7 +45,8 @@ try {
             continue;
         }
         // At most 200 rules are inspected; a durable round-robin cursor reaches later users next time.
-        $rows=$db->run("SELECT id,public_id FROM community.automations WHERE is_enabled AND deleted_at IS NULL AND kind IN ('recurring','due_reminder') ORDER BY CASE WHEN id>:cursor THEN 0 ELSE 1 END,id LIMIT 200",[':cursor'=>$cursor])->fetchAll();
+        $rows=$db->run("SELECT id,public_id FROM community.automations WHERE is_enabled AND deleted_at IS NULL AND kind IN ('recurring','due_reminder') ORDER BY CASE WHEN id>:cursor THEN 0 ELSE 1 END,id LIMIT 200",
+        [':cursor'=>$cursor])->fetchAll();
         foreach ($rows as $row) {
             if ($work>=Automation::BATCH_WORK_LIMIT) { break; }
             $r=community_automation_row($row['public_id']);
@@ -89,6 +92,7 @@ try {
             $cursor=(int)$row['id'];
         }
     }
+    if (function_exists('community_run_integrations')) { cli_say('Integrations: '.json_encode(community_run_integrations())); }
     cli_say('Processed runs: '.$runs.'; work: '.$work.'; created pages: '.$created);
 } finally {
     // Fixed app-owned path only. A crash before this write can rescan but cannot duplicate committed slots.
@@ -96,3 +100,6 @@ try {
     if (file_put_contents($statePath.'.tmp',$json)===false || !rename($statePath.'.tmp',$statePath)) { cli_warn('Could not persist automation scan cursor'); }
     flock($lock,LOCK_UN); fclose($lock);
 }
+
+// Stage 13: bounded indexing runs after ordinary automation has released its lock.
+community_run_ai_index();

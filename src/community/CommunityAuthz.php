@@ -72,6 +72,31 @@ declare(strict_types=1);
  */
 final class CommunityAuthz
 {
+
+    /** Stage 12: group visibility and delegation are centralized, no role checks in handlers. */
+    public static function decideGroupRead(array $u,array $g): bool
+    {
+        return ($g['deleted_at'] ?? null)===null && (Authz::authorize('role:Admin',$u)
+            || (int)$g['created_by']===(int)$u['id'] || ($g['is_member'] ?? false)===true);
+    }
+    public static function decideGroupManage(array $u,array $g): bool
+    {
+        return ($g['deleted_at'] ?? null)===null && (Authz::authorize('role:Admin',$u) || (int)$g['created_by']===(int)$u['id']);
+    }
+    public static function decideGroupMember(array $u,array $g,array $target): bool
+    {
+        if (!self::decideGroupManage($u,$g) || !($target['is_active'] ?? false)) { return false; }
+        if (Authz::authorize('role:Admin',$u)) { return true; }
+        return Authz::authorize('role:Manager+',$u) && ((int)$target['id']===(int)$u['id']
+            || ($u['team_id']!==null && (int)$target['team_id']===(int)$u['team_id'] && (int)$g['manager_team_id']===(int)$u['team_id']));
+    }
+    public static function decideWebPublish(array $u,array $row): array
+    {
+        if (!($row['web_publish_allowed'] ?? false)) { return [false,'not_allowed']; }
+        if (($row['space_kind'] ?? '')==='board' || ($row['database_id'] ?? null)!==null) { return [false,'invalid_target']; }
+        return self::decidePageManage($u,$row);
+    }
+
     /** Export never turns exceptional administrator visibility into a bulk data grant. */
     public static function decidePageExport(array $u, array $row): array
     {
@@ -86,6 +111,29 @@ final class CommunityAuthz
             return [false, 'privileged_only'];
         }
         return [true, $reason];
+    }
+
+    /** Stage 11: internal forms expose questions only; privileged-only readers cannot submit. */
+    public static function decideFormSubmit(array $u, array $dbPage, array $view): array
+    {
+        if (($view['type'] ?? null) !== 'form' || ($view['open'] ?? false) !== true
+            || ($dbPage['deleted_at'] ?? null) !== null || !Authz::canCommunityWrite($u)) {
+            return [false, self::CODE_NOT_FOUND];
+        }
+        if (($view['audience'] ?? 'readers') === 'internal') {
+            return [true, self::CODE_MATRIX];
+        }
+        [$read, $reason] = self::decidePageRead($u, $dbPage);
+        return $read && !in_array($reason, [self::CODE_ADMIN_ALL, self::CODE_BOARD_MODERATOR], true)
+            ? [true, $reason] : [false, self::CODE_NOT_FOUND];
+    }
+
+    /** Anonymity is recorded on each response, not taken from the current form settings. */
+    public static function canSeeFormIdentity(array $u, array $dbPage): bool
+    {
+        $responsible = $dbPage['assignee_id'] ?? (($dbPage['space_kind'] ?? '') === 'personal'
+            ? ($dbPage['space_owner_user_id'] ?? null) : ($dbPage['author_id'] ?? null));
+        return Authz::canAdmin($u) || ($responsible !== null && (int)$u['id'] === (int)$responsible);
     }
 
     /** 허용 코드 — 페이지 주인이다 */
@@ -229,6 +277,16 @@ final class CommunityAuthz
             return [false, self::CODE_NOT_FOUND];
         }
 
+        // Form responses do not inherit a database's view-only sharing grant.
+        if (($row['form_view_id'] ?? null) !== null) {
+            [$edit, $reason] = self::decidePageChange($u, $row);
+            if ($edit) { return [true, $reason]; }
+            if (($row['form_direct_share'] ?? false) === true && (int)($row['share_user_id'] ?? 0) === (int)$u['id']) {
+                return [true, self::CODE_SHARED];
+            }
+            return Authz::canAdmin($u) ? [true, self::CODE_ADMIN_ALL] : [false, self::CODE_NOT_OWNER];
+        }
+
         $kind = (string) ($row['space_kind'] ?? '');
 
         /* [1] 팀 공간 — 페이지에 자기 범위가 없다. 공간 하나로 판정이 끝난다 (PRD 4.1). */
@@ -307,6 +365,36 @@ final class CommunityAuthz
         }
 
         return [false, self::CODE_NOT_OWNER];
+    }
+
+    /** C:F-46: proposal visibility is narrower than ordinary privileged reading. */
+    public static function decideSuggestionCreate(array $u, array $row): array
+    {
+        [$read, $code] = self::decidePageRead($u, $row);
+        if (!$read) { return [false, $code]; }
+        if (!Authz::canCommunityWrite($u) || in_array($code, [self::CODE_ADMIN_ALL, self::CODE_BOARD_MODERATOR], true)) {
+            return [false, self::CODE_ROLE_NOT_PERMITTED];
+        }
+        if (($row['space_kind'] ?? '') === 'board' && ($row['space_is_active'] ?? false) !== true) {
+            return [false, self::CODE_BOARD_INACTIVE];
+        }
+        if (self::decidePageChange($u, $row)[0]) { return [false, 'can_edit']; }
+        return [true, $code];
+    }
+
+    public static function decideSuggestionDecide(array $u, array $row): array
+    {
+        if (!Authz::canCommunityWrite($u)) { return [false, self::CODE_ROLE_NOT_PERMITTED]; }
+        [$read, $code] = self::decidePageRead($u, $row);
+        return $read ? self::decidePageChange($u, $row) : [false, $code];
+    }
+
+    public static function decideSuggestionView(array $u, array $row, array $suggestion): array
+    {
+        if (!self::decidePageRead($u, $row)[0]) { return [false, self::CODE_NOT_FOUND]; }
+        if (self::decideSuggestionDecide($u, $row)[0]) { return [true, 'editor']; }
+        if ((int) ($suggestion['author_id'] ?? 0) === (int) ($u['id'] ?? 0)) { return [true, 'author']; }
+        return [false, self::CODE_NOT_FOUND];
     }
 
     /**
@@ -1435,6 +1523,20 @@ final class CommunityAuthz
     {
         return (int)($u['id'] ?? 0) === (int)$run['run_by']
             ? [true, self::CODE_OWNER] : [false, self::CODE_NOT_FOUND];
+    }
+
+    /** C:T-802 / AI-2: ordinary read only; canonical AI context is loaded by AiService. */
+    public static function decideAiInput(array $u, array $row): array
+    {
+        [$ok,$reason]=self::decidePageRead($u,$row);
+        if (!$ok || in_array($reason,[self::CODE_ADMIN_ALL,self::CODE_BOARD_MODERATOR],true)) {
+            return [false,'not_readable'];
+        }
+        if (($row['ai_excluded'] ?? true) || ($row['purged_at'] ?? null)!==null) {
+            return [false,'excluded'];
+        }
+        if (($row['ai_allowed_version'] ?? 0)!==(int)$row['doc_version']) { return [false,'permission_required']; }
+        return [true,$reason];
     }
 
 }

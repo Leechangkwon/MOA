@@ -546,6 +546,14 @@ function renderChildPage(block, id, ctx) {
 
 /** 블록 하나 → 노드 배열 (하위 블록이 있으면 형제로 뒤에 붙는다 — 서버 렌더러와 같은 모양) */
 function renderBlock(block, rootBlocks, ctx) {
+  if (block && (block.type === 'synced_source' || block.type === 'synced_ref')) {
+    const el = document.createElement('div'); el.className = 'doc-synced';
+    const source = block.type === 'synced_source' ? {blocks:block.children || []} : ((ctx && ctx.synced || {})[block.source_id] || {message:'볼 수 없는 원본'});
+    if (source.blocks) { el.appendChild(renderBlocks(source.blocks,source.blocks,ctx)); }
+    else { const p=document.createElement('p'); p.textContent=source.message;el.appendChild(p); }
+    if (source.page_id) { const a=document.createElement('a');a.href=(ctx.base||'/community')+'/p/'+source.page_id;a.textContent='원본에서 고치기';el.appendChild(a); }
+    return [el];
+  }
   const nodes = [];
   const type = block.type;
   const id = typeof block.id === 'string' ? block.id : '';
@@ -680,6 +688,10 @@ function renderBlock(block, rootBlocks, ctx) {
   } else if (type === 'image' || type === 'file') {
     nodes.push(renderFileBlock(block, id, ctx));
     return nodes;
+  } else if (type === 'db_view') {
+    const card=document.createElement('section');card.className='panel db-widget';setId(card);
+    const title=document.createElement('h3');title.className='panel__title';const entry=ctx.db_views&&ctx.db_views[block.id];
+    title.textContent=entry?entry.title+' · '+entry.name:'볼 수 없는 데이터베이스';card.appendChild(title);nodes.push(card);return nodes;
   } else if (type === 'button') {
     const b=document.createElement('button'); b.type='button'; b.className='btn'; setId(b); b.textContent=String(block.label || '');
     b.dataset.automationId=String(block.automation_id || '');

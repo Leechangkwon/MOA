@@ -50,10 +50,10 @@ class MessengerMock(Mock):
 
 
 def main():
-    out=Path('/workspace/scratch/memories-preview');out.mkdir(parents=True,exist_ok=True); checks=[]
+    out=Path('/tmp/qaredi-memories-preview');out.mkdir(parents=True,exist_ok=True); checks=[]
     def ok(x): checks.append(x);print('PASS',x,flush=True)
     with sync_playwright() as p:
-        browser=p.chromium.launch(executable_path='/usr/bin/chromium',headless=True,args=['--no-sandbox'])
+        browser=p.chromium.launch(headless=True,args=['--no-sandbox'])
         ctx=browser.new_context(viewport={'width':1440,'height':1000});mock=MessengerMock();ctx.route(ORIGIN+'/**',mock.route)
         page=ctx.new_page();errors=[];page.on('pageerror',lambda e:errors.append(str(e)));page.goto(ORIGIN+'/community/');page.locator('.post').wait_for()
         assert page.locator('aside.sidebar [data-thread-nav]').count()==3

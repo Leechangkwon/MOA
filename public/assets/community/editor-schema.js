@@ -251,6 +251,18 @@ export const schema = new Schema({
       toDOM: (node) => ['pre', { class: 'doc-code', 'data-lang': node.attrs.language }, ['code', 0]]
     },
 
+    db_view: {
+      group:'block',atom:true,selectable:true,attrs:{id:{default:null},database_id:{default:null},view_id:{default:null}},
+      toDOM: () => ['div',{class:'panel db-widget',contenteditable:'false'},'데이터베이스 뷰']
+    },
+    synced_source: {
+      group:'block',content:'block+',defining:true,attrs:{...commonAttrs,source_id:{default:null}},
+      toDOM:node=>['section',{class:'doc-synced','data-source':node.attrs.source_id},0]
+    },
+    synced_ref: {
+      group:'block',atom:true,attrs:{...commonAttrs,source_id:{default:null}},
+      toDOM:node=>['div',{class:'doc-synced',contenteditable:'false'},'동기화 참조 · 원본에서 고치기']
+    },
     button: {
       group:'block', atom:true, selectable:true, attrs:{id:{default:null},label:{default:''},automation_id:{default:null}},
       toDOM: node => ['button',{type:'button',class:'btn',disabled:'disabled'},node.attrs.label]
@@ -584,7 +596,7 @@ export function fromDoc(doc, ctx) {
     if (!b || typeof b.type !== 'string') {
       throw new Error('모르는 블록이 들어 있습니다');
     }
-    if (Array.isArray(b.children) && b.children.length > 0 && b.type !== 'toggle' && b.type !== 'column_list') {
+    if (Array.isArray(b.children) && b.children.length > 0 && b.type !== 'toggle' && b.type !== 'column_list' && b.type !== 'synced_source') {
       throw new Error('하위 블록이 들어 있는 문서는 아직 편집할 수 없습니다');
     }
     const attrs = {
@@ -671,6 +683,9 @@ export function fromDoc(doc, ctx) {
       content.push({ type: 'link_to_page', attrs: { id: attrs.id, page_id: pid, title: ent && typeof ent.title === 'string' ? ent.title : '볼 수 없는 페이지' } });
       continue;
     }
+    if (b.type === 'db_view') { content.push({type:'db_view',attrs:{id:attrs.id,database_id:b.database_id,view_id:b.view_id}}); continue; }
+    if (b.type === 'synced_source') { content.push({type:b.type,attrs:{...attrs,source_id:b.source_id},content:fromDoc({blocks:b.children || []},ctx).content});continue; }
+    if (b.type === 'synced_ref') { content.push({type:b.type,attrs:{...attrs,source_id:b.source_id}});continue; }
     if (b.type === 'button') { content.push({type:'button',attrs:{id:attrs.id,label:b.label,automation_id:b.automation_id}}); continue; }
     if (b.type === 'embed') {
       content.push({ type: 'embed', attrs: { id: attrs.id, url: typeof b.url === 'string' ? b.url : '', caption: plainOf(b.caption) } });
@@ -850,6 +865,8 @@ export function toDoc(pmDoc) {
       blocks.push(block);
       continue;
     }
+    if (ourType === 'db_view') { block.database_id=a.database_id;block.view_id=a.view_id;blocks.push(block);continue; }
+    if (ourType === 'synced_source' || ourType === 'synced_ref') { block.source_id=a.source_id;if(ourType==='synced_source'){block.children=toDoc({content:node.content}).blocks;}blocks.push(block);continue; }
     if (ourType === 'button') { block.label=a.label;block.automation_id=a.automation_id;blocks.push(block);continue; }
     if (ourType === 'embed') {
       if (typeof a.url !== 'string' || a.url === '') { continue; }
@@ -930,6 +947,7 @@ export function toDoc(pmDoc) {
  *         번호는 노션과 같다 — 0 본문 · 1~3 제목 · 4 할 일 · 5 글머리 · 6 번호 · 8 코드. 7 인용 · 9 강조 상자.
  */
 export const BLOCK_TYPES = [
+  {type:'db_view',label:'데이터베이스 뷰',editsAtom:true,desc:'읽을 수 있는 데이터베이스의 저장된 뷰를 보여 줍니다.',sample:{schema:1,blocks:[]}},
   {type:'button',label:'버튼',editsAtom:true,desc:'현재 페이지에 묶인 내 버튼 작업을 실행합니다.',sample:{schema:1,blocks:[{type:'button',label:'이번 달 시작',automation_id:'00000000-0000-4000-8000-000000000001'}]}},
   {
     type: 'paragraph', label: '본문',

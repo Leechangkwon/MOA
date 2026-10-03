@@ -27,9 +27,9 @@ $icon = static function (string $file, string $size) use ($assetDir): array {
 
 $manifest = [
     'id'          => Http::communityUrl('/'),
-    'name'        => 'Qaredi',
-    'short_name'  => 'Qaredi',
-    'description' => 'Qaredi — 내 공간·게시판·파일을 휴대폰에서 바로 엽니다',
+    'name'        => '모아',
+    'short_name'  => '모아',
+    'description' => '모아 — 우리의 이야기와 함께하는 공간',
     'lang'        => 'ko',
     'dir'         => 'ltr',
     'start_url'   => Http::communityUrl('/'),

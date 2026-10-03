@@ -4,8 +4,8 @@
   const root = document.documentElement;
   const dialog = document.getElementById('q-design-dialog');
   if (!dialog) return;
-  const themes = ['claude', 'astra', 'aurora', 'bloom', 'nova'];
-  const names = { claude: 'Claude', astra: 'Astra', aurora: 'Aurora', bloom: 'Bloom', nova: 'Nova' };
+  const themes = ['moa', 'claude', 'astra', 'aurora', 'bloom', 'nova'];
+  const names = { moa: '모아', claude: 'Claude', astra: 'Astra', aurora: 'Aurora', bloom: 'Bloom', nova: 'Nova' };
   const choices = [...dialog.querySelectorAll('[data-design-choice]')];
   const motion = document.getElementById('q-motion-reduce');
   const status = document.getElementById('q-design-status');

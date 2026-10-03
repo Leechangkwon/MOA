@@ -1,151 +1,47 @@
 <?php
 declare(strict_types=1);
-require_once __DIR__ . '/../Design.php';
-
-/**
- * src/views/launcher.php — Qaredi 런처 화면 (Q:F-1, ARCH-launcher 5장, DESIGN.md 2.3 · 2.10 · 2.11 · 2.12)
- *
- * 셸(사이드바)을 쓰지 않는 **독립 화면**이다 — 로그인 화면(DESIGN 2.10)과 같은 층.
- * Claude 원본 구성 요소를 보존하고 공통 브랜드 `.q-hero`와 테마 선택기를 얹는다(2026-10-01 사용자 결정): 배치는 `.app` + `.main`,
- * 머리는 `.page-head`, 타일은 `.card-grid` > `.card.card--link`(2.3), 「준비 중」은 `.badge`(2.2) 다.
- *
- * ★ 디자인 설정용 외부 `<script>` 1개(사용자 결정 2026-10-01) · 인라인 `style=` 0 · `on*` 0 (CSP, DESIGN 원칙 2).
- * ★ 아이콘은 서버가 그리는 **인라인 SVG** 다 — 취향 스크립트는 앱 아이콘을 다루지 않는다.
- *   path 데이터는 `Apps::ICON_PATHS` 한 벌이고 전부 고정 문자열이다(요청 값 0).
- * ★ HTML 로 나가는 동적 값은 앱 목록(저장소 파일)과 사용자명·역할 둘뿐이고 전부
- *   htmlspecialchars(ENT_QUOTES, 'UTF-8') 를 거친다 (PRD S-03).
- *
- * 받는 변수
- *   · $launcherUser array|null  세션 사용자(없으면 null) — 읽기만 한 값
- *   · $launcherApps list<array> Apps::all() — 로그인 전이면 **빈 목록**(launcher_page.php 가 비운다 · R-98 · S2)
- *   · $launcherLoginUrl string  로그인 화면 주소(고정) — 로그인 전에만 단추로 그린다
- */
-
-/** @var array<string,mixed>|null $launcherUser */
-/** @var list<array<string,mixed>> $launcherApps */
-
-$launcherEsc = static function ($v): string {
-    return htmlspecialchars((string) $v, ENT_QUOTES, 'UTF-8');
-};
-
-/** 자산 주소에 파일이 마지막으로 바뀐 시각을 붙인다 (셸·로그인 화면과 같은 방식) */
-$launcherCssVersion = (int) filemtime(__DIR__ . '/../../public/assets/app.css');
-
-/*
- * 로그인 사용자 표시 (DESIGN.md 2.9 「자리 정정 2026-09-22」) — 배지 하나다.
- *
- * `.userchip` 을 쓰지 않는 이유: 그 구성 요소는 사이드바 **바닥**용이라 위 테두리와 위 여백을
- * 갖고 있어 화면 머리에서는 칩 위에 가로선이 보인다. 화면 머리에 들어가는 한 조각은
- * `.page-head__actions` 안의 `.badge`(2.2) 다 — 새 클래스를 만들지 않는다(원칙 6).
- *
- * 내용은 표시 이름과 **유효 역할** 둘뿐이다(데이터 0 — 사이트 PRD 4장).
- */
-$launcherWho = '';
-if (is_array($launcherUser)) {
-    // 5-A″ — 「이름 (아이디)」, 이름이 없으면 「아이디」(bootstrap `tbox_person_label` 한 벌)
-    $launcherNameRaw = tbox_person_label(
-        isset($launcherUser['display_name']) && is_string($launcherUser['display_name']) ? $launcherUser['display_name'] : null,
-        (string) ($launcherUser['username'] ?? '')
-    );
-    // 역할은 한글로 보인다(DESIGN 5장 · 디버깅 묶음 U M7 — 셸 `shell_top.php` 와 같은 표, 값은 그대로)
-    $launcherRoleNames = ['Admin' => '관리자', 'Manager' => '팀장', 'Employee' => '직원', 'Guest' => '손님'];
-    $launcherRoleRaw = (string) ($launcherUser['role'] ?? '');
-    $launcherRoleRaw = $launcherRoleNames[$launcherRoleRaw] ?? $launcherRoleRaw;
-    if ($launcherNameRaw !== '') {
-        $launcherWho = $launcherEsc(
-            $launcherRoleRaw === '' ? $launcherNameRaw : $launcherNameRaw . ' · ' . $launcherRoleRaw
-        );
-    }
-}
+require_once __DIR__.'/../Design.php';
+$e=static fn($v)=>htmlspecialchars((string)$v,ENT_QUOTES,'UTF-8');
+$signed=is_array($launcherUser);
+$communityHref=$signed?Http::communityUrl('/'):Http::url('/login?to=community');
+$name=$signed?(($launcherUser['display_name']??'')?:$launcherUser['username']):'';
 ?>
-<!doctype html>
-<html lang="ko"<?= Http::themeAttr() ?><?= Design::attrs() ?><?= /* 7-D3 고대비(DESIGN 2.16) — 로그인했고 계정 칸이 참일 때만 고정 글자 · 새 함수 0 */ is_array($launcherUser) && ($launcherUser['high_contrast'] ?? false) === true ? ' data-contrast="high"' : '' ?>>
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<meta name="color-scheme" content="light dark">
-<title>Qaredi</title>
-<!-- 브라우저가 스스로 부르는 `/favicon.ico` 가 404 로 떨어지지 않게 문서 안에 둔다(셸과 같은 고정 문자열). -->
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath fill='%2314213d' d='M12 2 4 5v6c0 5 3.4 9.4 8 11 4.6-1.6 8-6 8-11V5z'/%3E%3C/svg%3E">
-<link rel="stylesheet" href="<?= $launcherEsc(Http::url('/assets/app.css')) ?>?v=<?= $launcherCssVersion ?>">
-<!-- T:F-72 라운드 C · 결정 PK-D5 — 홈 화면 「Qaredi」 앱(모든 사람) 매니페스트. 고정 글자뿐(데이터 0) · 서비스 워커 없음 · 취향 스크립트만 -->
-<link rel="manifest" href="<?= $launcherEsc(Http::url('/app.webmanifest')) ?>">
-<link rel="apple-touch-icon" href="<?= $launcherEsc(Http::url('/assets/qaredi-icon-192.png')) ?>?v=<?= (int) filemtime(__DIR__ . '/../../public/assets/qaredi-icon-192.png') ?>">
-<meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-title" content="Qaredi">
+<!doctype html><html lang="ko"<?= Http::themeAttr() ?><?= Design::attrs() ?><?= $signed&&($launcherUser['high_contrast']??false)?' data-contrast="high"':'' ?>>
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="color-scheme" content="light dark"><meta name="description" content="좋아하는 풍경, 소소한 이야기, 함께하는 사람들. 우리의 일상이 모이는 커뮤니티, 모아."><title>모아 — 함께라서 더 좋은 일상</title>
+<link rel="stylesheet" href="<?= Http::url('/assets/app.css') ?>?v=<?= filemtime(__DIR__.'/../../public/assets/app.css') ?>">
+<link rel="manifest" href="<?= Http::url('/app.webmanifest') ?>">
 <?= Design::assets() ?>
-<?php if (is_array($launcherUser)): ?><script defer src="<?= $launcherEsc(Http::url('/assets/start.js')) ?>?v=<?= (int) filemtime(__DIR__ . '/../../public/assets/start.js') ?>"></script><?php endif; ?>
-</head>
-<body class="q-launcher">
-<div class="app">
-  <main class="main">
-    <header class="page-head">
-      <div class="page-head__text">
-        <h1 class="page-head__title q-wordmark">Qaredi</h1>
-<?php if (is_array($launcherUser)): ?>
-        <p class="page-head__sub">사내 업무 도구 모음입니다. 쓸 기능을 고르세요.</p>
-<?php else: ?>
-        <p class="page-head__sub">로그인하면 쓸 수 있는 기능이 보입니다.</p>
-<?php endif; ?>
-      </div>
-<?php if ($launcherWho !== ''): ?>
-      <div class="page-head__actions">
-        <span class="badge"><?= $launcherWho ?></span>
-      </div>
-<?php elseif (!is_array($launcherUser)): ?>
-      <div class="page-head__actions">
-        <a class="btn" href="<?= $launcherEsc($launcherLoginUrl) ?>">로그인</a>
-      </div>
-<?php endif; ?>
-    </header>
-    <div class="q-launcher-tools"><button type="button" class="btn btn--quiet q-design-open" data-design-open aria-haspopup="dialog" aria-controls="q-design-dialog"><span class="q-design-dot" aria-hidden="true"></span><span data-design-name>Astra</span> · 테마 고르기</button></div>
-    <section class="q-hero" aria-label="Qaredi 업무 공간">
-      <div class="q-hero-copy"><p class="q-eyebrow">A LITTLE SPACE. A BIG POSSIBILITY.</p><h2>오늘의 일을,<br><span>새로운 빛으로.</span></h2><p>아이디어가 기록이 되고,<br>함께하는 일이 더 가벼워지는 공간.</p>
-<?php if (!is_array($launcherUser)): ?><a class="btn q-hero-cta" href="<?= $launcherEsc($launcherLoginUrl) ?>">내 공간으로 들어가기 <span aria-hidden="true">↗</span></a><?php else: ?><span class="q-hero-note">아래에서 오늘의 작업을 시작하세요 <span aria-hidden="true">↘</span></span><?php endif; ?>
-      </div><div class="q-hero-art" aria-hidden="true"><div class="q-orbit q-orbit--one"></div><div class="q-orbit q-orbit--two"></div><img class="q-art" src="<?= $launcherEsc(Http::url('/assets/design/orbit.svg')) ?>" width="600" height="540" alt=""><span class="q-art-caption">Q / CONNECTED POSSIBILITIES</span></div>
-    </section>
-
-<?php if (is_int($launcherBriefingCount)): ?>
-    <p><a id="launcher-briefing" class="btn btn--quiet" href="<?= $launcherEsc(Http::communityUrl('/today')) ?>">오늘 <?= $launcherBriefingCount ?>건 →</a></p>
-<?php endif; ?>
-<?php if ($launcherApps !== []): ?>
-    <section class="card-grid q-module-grid" aria-label="업무 도구">
-<?php foreach ($launcherApps as $launcherApp): ?>
-<?php   $launcherSoon = ($launcherApp['status'] ?? '') === 'soon'; ?>
-<?php   $launcherIcon = Apps::ICON_PATHS[$launcherApp['icon']]; ?>
-<?php   if ($launcherSoon): ?>
-      <div class="card card--link card--soon">
-<?php   else: ?>
-      <a class="card card--link q-module-card" href="<?= $launcherEsc($launcherApp['path']) ?>">
-<?php   endif; ?>
-        <span class="card__icon"><span class="icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="<?= $launcherIcon ?>"/></svg></span></span>
-        <span class="card__body">
-          <span class="card__head">
-            <strong class="card__title"><?= $launcherEsc($launcherApp['name']) ?></strong>
-<?php   if ($launcherSoon): ?>
-            <span class="badge">준비 중</span>
-<?php   endif; ?>
-          </span>
-          <span class="card__desc"><?= $launcherEsc($launcherApp['desc']) ?></span>
-        </span>
-<?php   if ($launcherSoon): ?>
-      </div>
-<?php   else: ?>
-      </a>
-<?php   endif; ?>
-<?php endforeach; ?>
-    </section>
-<?php endif; ?>
-<?php if (is_array($launcherUser)): ?>
-    <section class="q-start" id="q-start" data-base="<?= $launcherEsc(TBOX_BASE) ?>" data-community-base="<?= $launcherEsc(COMMUNITY_BASE) ?>" aria-labelledby="q-start-title">
-      <div class="q-start-head"><div><p class="q-eyebrow">PICK UP WHERE YOU LEFT OFF</p><h2 id="q-start-title">내 작업 이어가기</h2></div><button type="button" class="btn btn--quiet btn--small" id="q-start-retry">다시 불러오기</button></div>
-      <div class="toolbar" role="group" aria-label="이어 볼 작업"><button type="button" class="btn btn--quiet btn--small" data-start-view="recent" aria-pressed="true">최근 작업</button><button type="button" class="btn btn--quiet btn--small" data-start-view="favorites" aria-pressed="false">즐겨찾기</button></div>
-      <div id="q-start-list" class="q-start-list"></div><p id="q-start-status" class="help" role="status" aria-live="polite"></p>
-    </section>
-<?php endif; ?>
-  </main>
-</div>
-<?php include __DIR__ . '/design_controls.php'; ?>
-</body>
-</html>
+<script defer src="<?= Http::url('/assets/moa.js') ?>?v=<?= filemtime(__DIR__.'/../../public/assets/moa.js') ?>"></script>
+<?php if($signed): ?><script defer src="<?= Http::url('/assets/start.js') ?>?v=<?= filemtime(__DIR__.'/../../public/assets/start.js') ?>"></script><?php endif; ?>
+</head><body class="moa-site moa-home" data-base="<?= TBOX_BASE ?>" data-community-base="<?= COMMUNITY_BASE ?>" data-signed="<?= $signed?'yes':'no' ?>">
+<a class="skip" href="#moa-main">본문으로 건너뛰기</a>
+<header class="moa-nav"><a class="moa-logo" href="/"><span class="moa-symbol" aria-hidden="true">m.</span>모아<span class="moa-logo-note">우리의 이야기가 모이는 곳</span></a><nav aria-label="주 메뉴"><a href="#discover" aria-current="page">발견</a><a href="<?= $e($communityHref) ?>">커뮤니티</a><?php if($signed): ?><a href="<?= Http::url('/messages') ?>">메신저</a><a class="moa-account" href="<?= Http::url('/settings') ?>"><?= $e($name) ?> 님</a><?php else: ?><a href="<?= Http::url('/login?to=community') ?>">로그인</a><a class="btn moa-nav-join" href="<?= Http::url('/join') ?>">초대받고 시작하기 ↗</a><?php endif; ?></nav></header>
+<main class="moa-container" id="moa-main">
+<div class="moa-greeting"><p><span class="moa-live-dot" aria-hidden="true"></span><?= $signed?$e($name).' 님, 오늘도 반가워요.':'취향이 모이고, 이야기가 시작되는 곳' ?></p><button class="moa-theme-button" type="button" data-design-open aria-controls="q-design-dialog" aria-haspopup="dialog">화면 꾸미기 <span aria-hidden="true">☼</span></button></div>
+<section class="moa-hero" aria-labelledby="moa-hero-title"><img src="<?= Http::url('/assets/moa/lake.jpg') ?>" width="1800" height="1200" fetchpriority="high" alt="잔잔한 호수에 비친 산과 작은 집, 초록빛 풍경"><div class="moa-hero-shade"></div><div class="moa-hero-copy"><span class="moa-overline">EVERYDAY, A LITTLE MORE TOGETHER</span><h1 id="moa-hero-title">좋은 순간은,<br>함께 모아.</h1><p>마음에 드는 풍경 하나, 나누고 싶은 이야기 하나.<br>우리의 일상에 작은 즐거움을 더해 보세요.</p><a class="moa-white-button" href="<?= $e($communityHref) ?>">커뮤니티 둘러보기 <span aria-hidden="true">↗</span></a></div><div class="moa-hero-caption"><span>잠깐, 쉬어 가도 괜찮아요.</span><span>오늘의 풍경 · 호숫가에서</span></div><span class="moa-hero-stamp" aria-hidden="true">일상의<br>작은 발견 ✳</span></section>
+<section class="moa-choose" aria-labelledby="moa-choose-title"><div class="moa-section-head"><div><p class="moa-kicker">모아에서 할 수 있는 일</p><h2 id="moa-choose-title">지금 필요한 곳으로.</h2></div><span class="moa-muted">아이콘과 이름을 누르면 해당 공간으로 이동해요.</span></div>
+<nav class="moa-shortcuts" aria-label="목적에 맞는 공간 선택">
+<a href="<?= $e($communityHref) ?>"><span class="moa-shortcut-icon moa-peach"><?php $moaIcon='community'; require __DIR__.'/moa_icon.php'; ?></span><span><strong>커뮤니티</strong><small>소식 · 질문 · 함께 쓰는 문서</small></span><b aria-hidden="true">↗</b></a>
+<a href="<?= Http::url('/') ?>"><span class="moa-shortcut-icon moa-sand"><?php $moaIcon='library'; require __DIR__.'/moa_icon.php'; ?></span><span><strong>자료실</strong><small>파일 보관 · 찾기 · 공유</small></span><b aria-hidden="true">↗</b></a>
+<a href="<?= Http::url('/messages') ?>"><span class="moa-shortcut-icon moa-lilac"><?php $moaIcon='messages'; require __DIR__.'/moa_icon.php'; ?></span><span><strong>메신저 · 모아 AI</strong><small>동료에게 연락 · AI에게 질문</small></span><b aria-hidden="true">↗</b></a>
+<a href="<?= Http::url('/welcome') ?>"><span class="moa-shortcut-icon moa-mint"><?php $moaIcon='assistant'; require __DIR__.'/moa_icon.php'; ?></span><span><strong>PC 비서 연결</strong><small>tbox-buddy 설치 · 내 계정 연결</small></span><b aria-hidden="true">↗</b></a>
+</nav></section>
+<div class="moa-content-grid"><div class="moa-main-column">
+<section id="discover" class="moa-discover"><div class="moa-section-head"><div><p class="moa-kicker">A LITTLE INSPIRATION</p><h2>오늘, 이런 여유 어때요?</h2></div><span class="moa-muted">모아 에디터의 작은 제안</span></div><div class="moa-tabs" role="group" aria-label="읽을거리 주제"><button type="button" data-topic="all" aria-pressed="true">전체</button><button type="button" data-topic="nature" aria-pressed="false">풍경과 산책</button><button type="button" data-topic="rest" aria-pressed="false">잠깐의 쉼</button></div>
+<div class="moa-story-grid">
+<button type="button" class="moa-story" data-story="lake" data-category="nature" aria-haspopup="dialog"><div class="moa-story-photo"><img src="<?= Http::url('/assets/moa/lake.jpg') ?>" width="600" height="450" loading="lazy" alt="산 아래 호수에 비친 작은 집"><span>풍경 수집</span><b aria-hidden="true">↗</b></div><p class="moa-story-meta">SLOW MOMENTS · 1분 읽기</p><h3>가만히 바라보는 것만으로<br>충분한 순간</h3><p>호수에 비친 풍경처럼, 잠깐 마음을 비워요.</p></button>
+<button type="button" class="moa-story" data-story="forest" data-category="nature" aria-haspopup="dialog"><div class="moa-story-photo"><img src="<?= Http::url('/assets/moa/forest.jpg') ?>" width="600" height="450" loading="lazy" alt="초록 숲 사이로 들어오는 햇살"><span>산책의 기쁨</span><b aria-hidden="true">↗</b></div><p class="moa-story-meta">INTO THE GREEN · 1분 읽기</p><h3>늘 걷던 길에서<br>새로운 초록을 찾는 법</h3><p>멀리 떠나지 않아도 발견은 시작되니까요.</p></button>
+<button type="button" class="moa-story" data-story="ocean" data-category="rest" aria-haspopup="dialog"><div class="moa-story-photo"><img src="<?= Http::url('/assets/moa/ocean.jpg') ?>" width="600" height="450" loading="lazy" alt="잔잔하게 밀려오는 푸른 바다의 파도"><span>쉬어 가기</span><b aria-hidden="true">↗</b></div><p class="moa-story-meta">TAKE A BREATH · 1분 읽기</p><h3>바쁜 하루 사이,<br>나를 위한 작은 쉼표</h3><p>화면에서 눈을 떼고, 오늘의 여유를 찾아요.</p></button>
+</div></section>
+<section class="moa-community-feed" aria-labelledby="moa-feed-title"><div class="moa-section-head"><div><p class="moa-kicker">OUR CONVERSATIONS</p><h2 id="moa-feed-title">지금, 우리들의 이야기</h2></div><a href="<?= $e($communityHref) ?>">커뮤니티 전체 보기 ↗</a></div>
+<?php if($signed): ?><div id="moa-board-tabs" class="moa-tabs" role="group" aria-label="게시판"></div><div id="moa-feed"></div><p id="moa-feed-status" role="status" aria-live="polite">이야기를 불러오고 있어요.</p><?php else: ?><div class="moa-community-preview"><div class="moa-avatar-stack" aria-hidden="true"><span>봄</span><span>온</span><span>결</span></div><div><h3>우리끼리 나누는 이야기는 여기서.</h3><p>함께 쓰는 글과 자료는 로그인 후에 볼 수 있어요.<br>초대 링크를 받았다면, 지금 당신의 이야기를 시작해 보세요.</p><a class="btn" href="<?= Http::url('/join') ?>">모아에 함께하기 →</a></div></div><?php endif; ?></section>
+<?php if($signed): ?><section class="q-start moa-recent" id="q-start" data-base="<?= TBOX_BASE ?>" data-community-base="<?= COMMUNITY_BASE ?>" aria-labelledby="q-start-title"><div class="q-start-head"><h2 id="q-start-title">최근 작업 · 즐겨찾기</h2><button type="button" class="btn btn--quiet btn--small" id="q-start-retry">새로고침</button></div><div class="toolbar"><button type="button" class="btn btn--quiet btn--small" data-start-view="recent" aria-pressed="true">최근</button><button type="button" class="btn btn--quiet btn--small" data-start-view="favorites" aria-pressed="false">즐겨찾기</button></div><div id="q-start-list" class="q-start-list"></div><p id="q-start-status" class="help" role="status"></p></section><?php endif; ?>
+</div><aside class="moa-side-column"><section class="moa-prompt-card"><span class="moa-kicker">TODAY'S QUESTION</span><span class="moa-prompt-doodle" aria-hidden="true">“</span><h2>요즘 당신을<br>웃게 만든 것은<br>무엇인가요?</h2><p>맛있었던 점심, 우연히 들은 노래,<br>별것 아닌 순간도 좋아요.</p><a href="<?= $e($communityHref) ?>">우리 이야기로 이어가기 <span aria-hidden="true">↗</span></a></section>
+<section class="moa-side-card"><span class="moa-kicker">HELLO, NEW FRIEND</span><h3><?= $signed?'모아를 더 편하게':'처음 오셨나요?' ?></h3><p>가입부터 OTP, 비서 연결까지.<br>차근차근 함께 시작해요.</p><ol><li><span>01</span>내 계정 만들기</li><li><span>02</span>OTP로 안전하게</li><li><span>03</span>AI 비서와 연결하기</li></ol><a class="btn btn--quiet" href="<?= Http::url($signed?'/welcome':'/join') ?>">시작 안내 보기 →</a></section>
+<?php if(is_int($launcherBriefingCount)): ?><a class="moa-briefing" href="<?= Http::communityUrl('/today') ?>"><span>오늘 챙길 일</span><strong><?= $launcherBriefingCount ?><small>건</small></strong><span>차근차근 살펴볼까요? ↗</span></a><?php endif; ?>
+<div class="moa-side-note"><span aria-hidden="true">✳</span><p>작은 이야기가 모여<br>우리의 하루가 됩니다.</p></div></aside></div>
+<section class="moa-bottom-banner"><div><p class="moa-kicker">BETTER, TOGETHER</p><h2>당신의 일상도, 여기에 모아.</h2><p>오늘의 발견을 함께 나누고 내일의 이야기를 만들어 보세요.</p></div><a class="moa-white-button" href="<?= $e($communityHref) ?>">이야기 시작하기 ↗</a></section>
+</main><footer class="moa-footer"><a class="moa-logo" href="/">모아 <span>moa.</span></a><p>좋아하는 것들과 함께하는 사람들.</p><span>풍경 사진 · Unsplash</span></footer>
+<dialog class="moa-story-dialog" id="moa-story-dialog" aria-labelledby="moa-story-title"><button class="moa-dialog-close" type="button" id="moa-story-close" aria-label="읽을거리 닫기">×</button><img id="moa-story-image" alt=""><div><p class="moa-kicker">모아의 작은 발견</p><h2 id="moa-story-title"></h2><div id="moa-story-body"></div><a class="btn" href="<?= $e($communityHref) ?>">나의 이야기도 나누기 ↗</a></div></dialog>
+<?php include __DIR__.'/design_controls.php'; ?>
+</body></html>

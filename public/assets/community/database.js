@@ -1,3 +1,6 @@
+import { drawCalendar, rangeFor, shifted } from './calendar.js?v=dd0021574d1b';
+import { drawChart } from './charts.js?v=dd0021574d1b';
+import { openViewSettings } from './db-view-config.js?v=dd0021574d1b';
 /*
  * public/assets/community/database.js — 데이터베이스(6-A) 화면: DB 페이지의 **표**와 행 페이지의 **속성 줄**.
  *
@@ -14,7 +17,7 @@
  * editor.js 가 `createDatabaseView(deps)` 로 한 번 만들고, 페이지를 읽을 때마다 `draw(data)` 를 부른다.
  * 7-B — 새 행 고르개(「빈 행」 + 이 DB 의 행 템플릿 · 고른 템플릿 지우기)는 `templates.js` 의 `createRowTemplatePicker` 가 맡는다.
  */
-import { createRowTemplatePicker } from './templates.js?v=4faf2f126cbc';
+import { createRowTemplatePicker } from './templates.js?v=dd0021574d1b';
 
 const TYPE_LABELS = {
   text: '글', number: '숫자', checkbox: '체크', url: '주소', email: '메일', phone: '전화',
@@ -40,6 +43,7 @@ const OPS = {
   relation: ['empty', 'not_empty'],
   file: ['empty', 'not_empty'],
   title: ['contains', 'not_contains', 'eq'],
+  verified: ['eq','ne'],
   status: ['eq', 'ne', 'empty', 'not_empty']
 };
 const STATUS_ORDER = ['todo', 'doing', 'review', 'done', 'hold'];
@@ -85,6 +89,10 @@ export function createDatabaseView(deps) {
   let savedViews = [];
   let viewId = null;
   let summary = null;
+  let calendarAnchor=new Date().toISOString().slice(0,10);
+  const advanced=document.createElement('div');advanced.className='panel db-widget';wrap.appendChild(advanced);
+  const addView=document.createElement('button');addView.type='button';addView.className='btn btn--quiet';addView.textContent='폼 · 일정 · 차트 추가';wrap.appendChild(addView);
+  addView.addEventListener('click',()=>openViewSettings(db,api,views=>{savedViews=views;const v=views[views.length-1];viewId=v.id;viewType=v.type;loadRows();}));
 
   /* ── 값 → 보이는 글자·요소 ── */
   function valueNode(prop, v) {
@@ -466,6 +474,8 @@ export function createDatabaseView(deps) {
   function query() {
     const q = [];
     if (viewId) { q.push('view=' + encodeURIComponent(viewId)); }
+    const selected=savedViews.find(v=>v.id===viewId);
+    if(selected&&['calendar','timeline'].includes(selected.type)){const range=rangeFor(selected,calendarAnchor);q.push('from='+range[0],'to='+range[1]);}
     if (filter) { q.push('filter=' + encodeURIComponent(JSON.stringify(filter))); }
     return q;
   }
@@ -483,10 +493,11 @@ export function createDatabaseView(deps) {
       Object.assign(titles.rel, r.data.relation_titles || {});
       Object.assign(titles.file, r.data.file_titles || {});
       savedViews = Array.isArray(r.data.views) ? r.data.views : [];
-      setText(countEl, '행 ' + String(r.data.total) + '개' + (filter || viewId ? ' (거른 결과)' : ''));
+      setText(countEl, (r.data.truncated?'500개까지 표시 · ':'') + '행 ' + String(r.data.total) + '개' + (filter || viewId ? ' (거른 결과)' : ''));
       show(addRowForm, db.can_add_rows);
       show(addPropButton, db.can_manage_schema);
       show(viewForm, db.can_edit_values);
+      show(addView,db.can_edit_values);
       drawFilterProps();
       drawViewBar();
       drawCurrent();
@@ -504,6 +515,19 @@ export function createDatabaseView(deps) {
   const viewName = $('db-view-name');
 
   function drawCurrent() {
+    const selected=savedViews.find(v=>v.id===viewId);show(advanced,!!selected&&!['table','board','list'].includes(selected.type));
+    advanced.replaceChildren();
+    if(selected&&!['table','board','list'].includes(selected.type)){
+      const tools=document.createElement('div');tools.className='toolbar';advanced.appendChild(tools);
+      if(db.can_manage_schema||selected.type!=='form'&&db.can_edit_values){const settings=document.createElement('button');settings.type='button';settings.className='btn btn--quiet';settings.textContent='뷰 설정';settings.addEventListener('click',()=>openViewSettings(db,api,views=>{savedViews=views;loadRows();},selected));tools.appendChild(settings);}
+      const content=document.createElement('div');advanced.appendChild(content);
+      if(selected.type==='form'){const link=document.createElement('a');link.className='btn';link.href=base+'/f/'+db.id+'/'+selected.id;link.textContent=selected.open?'폼 열기':'응답 받기가 꺼져 있습니다';content.appendChild(link);const address=document.createElement('input');address.className='input';address.readOnly=true;address.value=new URL(link.href,location.origin).href;address.setAttribute('aria-label','폼 주소');const copy=document.createElement('button');copy.type='button';copy.className='btn btn--quiet';copy.textContent='폼 주소 복사';copy.addEventListener('click',()=>{navigator.clipboard.writeText(address.value).then(()=>setText(msgEl,'폼 주소를 복사했습니다')).catch(()=>{address.select();setText(msgEl,'주소를 선택했습니다. 복사 단축키를 누르세요.');});});content.append(address,copy);}
+      else if(selected.type==='chart'){api('GET','/api/databases/'+db.id+'/chart?view='+selected.id).then(r=>{if(r.status===200)drawChart(content,r.data.chart);else setText(msgEl,errorMessage(r.data));});}
+      else {for(const [label,delta] of [['이전',-1],['다음',1]]){const b=document.createElement('button');b.type='button';b.className='btn btn--quiet';b.textContent=label;b.addEventListener('click',()=>{if((selected.mode||selected.scale)==='week'){calendarAnchor=shifted(calendarAnchor,delta*7);}else{const next=new Date(calendarAnchor+'T12:00:00Z');next.setUTCDate(1);next.setUTCMonth(next.getUTCMonth()+delta);calendarAnchor=next.toISOString().slice(0,10);}loadRows();});tools.appendChild(b);}
+        const range=rangeFor(selected,calendarAnchor);const caption=document.createElement('span');caption.textContent=range.join(' ~ ');tools.appendChild(caption);
+        drawCalendar(content,selected,rows,range,{base,edit:db.can_edit_values,error:e=>setText(msgEl,e.message),save:async(id,key,value)=>{const r=await api('PATCH','/api/pages/'+id+'/values',{values:{[key]:value}});if(r.status!==200)throw new Error(errorMessage(r.data));await loadRows();}});
+      }
+    }
     show(tableWrap, viewType === 'table');
     show(boardEl, viewType === 'board');
     show(listEl, viewType === 'list');
@@ -527,7 +551,7 @@ export function createDatabaseView(deps) {
       b.textContent = v.name;
       b.addEventListener('click', () => {
         // 저장한 뷰를 누르면 그 뷰(모양·거르기·정렬)로 — 다시 누르면 뷰를 푼다
-        if (viewId === v.id) { viewId = null; } else { viewId = v.id; viewType = v.type; filter = null; sort = null; show(fClear, false); }
+        if (viewId === v.id) { viewId = null; viewType='table'; } else { viewId = v.id; viewType = v.type; filter = null; sort = null; show(fClear, false); }
         loadRows();
       });
       savedEl.appendChild(b);
@@ -724,7 +748,7 @@ export function createDatabaseView(deps) {
 
   /* ── 거르기·정렬 ── */
   function filterable() {
-    const list = [{ key: 'title', name: '제목', type: 'title' }, { key: 'status', name: '상태', type: 'status' }];
+    const list = [{ key: 'title', name: '제목', type: 'title' }, { key: 'status', name: '상태', type: 'status' },{key:'due',name:'기한',type:'date'},{key:'verified',name:'검증',type:'verified'}];
     return list.concat(db.schema);
   }
   function drawFilterProps() {
@@ -761,9 +785,9 @@ export function createDatabaseView(deps) {
       el = document.createElement('input');
       el.type = 'text';
       el.disabled = true;
-    } else if (p.type === 'select' || p.type === 'multi_select' || p.type === 'status' || p.type === 'checkbox') {
+    } else if (p.type === 'select' || p.type === 'multi_select' || p.type === 'status' || p.type === 'verified' || p.type === 'checkbox') {
       el = document.createElement('select');
-      const opts = p.type === 'status' ? STATUS_ORDER.map((k) => [k, statusLabels[k].text])
+      const opts = p.type==='verified' ? [['none','미검증'],['verified','검증됨'],['expired','만료']] : p.type === 'status' ? STATUS_ORDER.map((k) => [k, statusLabels[k].text])
         : p.type === 'checkbox' ? [['true', '예'], ['false', '아니오']] : (p.options || []).map((o) => [o, o]);
       for (const [v, t] of opts) { el.appendChild(new Option(t, v)); }
     } else {
@@ -833,10 +857,12 @@ export function createDatabaseView(deps) {
   for (const t of Object.keys(TYPE_LABELS)) { dType.appendChild(new Option(TYPE_LABELS[t], t)); }
   const dTargetField = $('db-prop-target-field');
   const dTarget = $('db-prop-target');
+  const dDependsField=document.createElement('label');dDependsField.className='field';const dDepends=document.createElement('input');dDepends.type='checkbox';dDependsField.append(dDepends,document.createTextNode('같은 DB의 선후행 관계'));dTargetField.after(dDependsField);
   const syncOpts = () => {
     show(dOptsField, ['select', 'multi_select'].indexOf(editing ? editing.type : dType.value) !== -1);
     const rel = !editing && dType.value === 'relation';
     show(dTargetField, rel);
+    show(dDependsField,(editing?editing.type:dType.value)==='relation');
     if (rel && dTarget.options.length === 0) {
       // 같은 공간에서 볼 수 있는 DB(자기 자신 포함 — 같은 DB 안의 행끼리도 잇는다)
       api('GET', '/api/databases?space=' + encodeURIComponent(String(spaceId()))).then((r) => {
@@ -859,6 +885,7 @@ export function createDatabaseView(deps) {
     show(dTypeField, !prop);
     dName.value = prop ? prop.name : '';
     dType.value = prop ? prop.type : 'text';
+    dDepends.checked=!!(prop&&prop.depends);
     dOpts.value = prop && prop.options ? prop.options.join('\n') : '';
     syncOpts();
     if (typeof dialog.showModal === 'function' && !dialog.open) { dialog.showModal(); }
@@ -886,10 +913,11 @@ export function createDatabaseView(deps) {
     if (!editing) {
       const add = { name: name, type: dType.value };
       if (['select', 'multi_select'].indexOf(dType.value) !== -1) { add.options = optionsFromText(); }
-      if (dType.value === 'relation') { add.target = dTarget.value; }
+      if (dType.value === 'relation') { add.target = dTarget.value; if(dDepends.checked)add.depends=true; }
       chain = sendSchema({ add: add });
     } else {
       chain = Promise.resolve(true);
+      if(editing.type==='relation'&&dDepends.checked!==!!editing.depends){chain=chain.then(ok=>ok&&sendSchema({depends:{key:editing.key,depends:dDepends.checked}}));}
       if (name !== editing.name) { chain = chain.then((ok) => ok && sendSchema({ rename: { key: editing.key, name: name } })); }
       if (['select', 'multi_select'].indexOf(editing.type) !== -1 && optionsFromText().join('\n') !== (editing.options || []).join('\n')) {
         chain = chain.then((ok) => ok && sendSchema({ options: { key: editing.key, options: optionsFromText() } }));

@@ -3043,3 +3043,62 @@ AL-6 줄에는 `rule_text`(「정합성 검사에서 누락·sha256 불일치·�
 | ☐ | 오류 메시지에 DB 오류·경로·스택 트레이스가 섞여 나가나? |
 | ☐ | 새 패키지·라이브러리·외부 도구를 추가했나? → `deploy/DEPENDENCIES.md` 갱신 + EOL 확인 (S-10-C) |
 | ☐ | 새 기능이 만드는 이벤트가 경보 규칙(AL-x)에 필요하진 않나? (S-11-A) |
+
+## 모아 초대 가입·메신저 — 2026-10-02
+
+추가 마이그레이션: `db/migrations/2026-10-02_moa.sql`. users.invited_account=false 기본값으로 기존 계정의 MFA 정책을 보존한다. 새 초대 계정만 true이며 Auth::mfaRequired가 Admin 또는 초대 계정에 OTP를 요구한다. 로그인·세션·API 토큰의 사용자 조회가 같은 칸을 읽는다. `/welcome` 화면은 첫 로그인 관문 중 허용하고, 실제 데이터·토큰·메신저 API 관문은 유지한다.
+
+member_invites에는 256비트 코드의 SHA-256만 저장한다. 원문은 관리자에게 발급 시 한 번 표시한다. 코드가 URL fragment로 전달되어 접근 로그에 실리지 않으며 가입 화면이 fragment를 제거한다. 가입은 별도의 Secure/HttpOnly/SameSite=Strict `__Host-moa_join` 쿠키와 X-Join-CSRF를 대조한다. 사용자명 공통 검증·비밀번호 길이·입력 필드 허용 목록·IP당 분당 10회 제한 후 초대 유효성/발급자 활성 관리자/팀 활성 여부를 검사한다. 비밀번호 Argon2id 해시는 잠금 전에 계산하고, 초대 행 `FOR UPDATE`와 계정 생성·사용 횟수 증가를 한 트랜잭션으로 수행한다. 역할은 Employee로 고정한다. 기존 계정 삭제·재시딩은 하지 않는다.
+
+초대 관리·설치 주소 설정은 user.manage 정책, 세션 CSRF, 기존 재인증 관문을 사용한다. 토큰 설정은 기존 `/api/me/api-tokens`의 비밀번호·일회 OTP 확인을 그대로 사용한다. 설치 주소는 관리자가 정한 HTTPS 링크이며 서버가 원격 파일을 가져오지 않는다.
+
+member_messages는 sender_id·recipient_id·body·sent_at·read_at만 보관한다. 조회·읽음 처리는 언제나 현재 세션 사용자가 당사자인 행으로 제한한다. 구성원 조회와 메시지는 community 쓰기 가능 사용자에게만 허용하며 역할로 보기에서는 닫힌다. 메시지 4,000자·발신자당 분당 30회, 최근 60개·이전 대화 커서, 8초 폴링(숨긴 탭 중지, X-Qaredi-Background)이다. 메시지는 textContent로 표시하며 감사에 본문을 남기지 않는다. 삭제·첨부·단체방·푸시·tbox-buddy 내부 메신저는 이번 웹 메신저 범위에 없다.
+
+## 모아 메신저 AI (2026-10-02)
+
+`MemberAi` → `Fetch::geminiGenerate` → 고정 `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash:generateContent`. API키는 `x-goog-api-key` 헤더에만 전달. DNS의 모든 주소를 공용IP로 확인하고 실제IP고정, TLS검증, 프록시/리다이렉트금지. 5초연결/55초전체, 요청180KB/응답512KiB. curl은 Fetch.php에만있다.
+
+키는 `dirname(Storage::baseDir())/private-messenger-ai/gemini.key`에만 저장(운영 `/var/lib/tbox-v2/private-messenger-ai/gemini.key`). 디렉터리0700/파일0600, 임시파일+rename으로 교체. 웹루트와 업로드트리 밖, DB/로그/응답에 원문없음. 서버파일 백업이 필요하며 DB복원만 하면 관리자 화면에서 키를 다시 등록해야 한다.
+
+`member_ai_settings`(singleton,기본off), `member_ai_threads`(소유자), `member_ai_turns`(질문·답변·상태·사용량). 모든 기록조회에 로그인사용자 조건. thread_id,user_id 복합FK와 user_id,request_id UNIQUE. 예약트랜잭션은 설정행을 잠그고 일일/동시한도와 멱등키를 확인한 후 pending을 저장한다. 네트워크 전에 커밋하므로 AI대기중 DB잠금없음. 응답실패/불확실 요청도 일일횟수포함, 자동 재시도없음. 120초 넘은 pending은 사용자에게 실패로 표시하고 다음 예약 때 정리.
+
+기본 사용자40회/일·사이트300회/일(한국자정), 사용자4회/분·사이트12회/분, 사용자동시1·사이트동시2. 이 한도는 모아 요청수 제한이며 Google 프로젝트 한도/요금과 별개. 실제응답 usageMetadata만기록하고 미확인 사용량을 비용으로 추산하지 않는다. 원격 호출중 브라우저가 닫혀도 가능한한 결과기록을 마친다.
+
+최대 최근10개 완료turn과 새질문 합계16,000자; 새질문4,000자, 출력4096tokens/20,000자. 사용자AI대화만전송, 사람메신저·파일·문서 자동접근/도구실행/웹검색 없음. 모델사고part는 버리고 textContent로 출력한다. 감사액션 `member.ai.send` allow/deny, `member.ai.configure` allow; 본문/키/원격오류는 감사에 담지 않는다.
+
+### 모아 AI 도구와 이미지 (2026-10-02)
+
+MemberAssist는 작성 문장 또는 명시적으로 고른 참여자 메시지 한 건만 처리한다. member_ai_assists에 요청자/상대/UUID/종류/결과를 보관하고 member_messages.ai_attachment_id로 생성 이미지의 수동 전송을 연결한다. 전송 전 결과는 요청자에게만 보인다. 채팅과 도구 모두 MemberAi::reserveCapacity의 같은 singleton 설정 잠금·공통 집계로 일일/동시 요청을 예약한 후 커밋하고 네트워크를 호출한다. 실제 전송은 별도 사용자 클릭과 기존 메시지 API에서만 일어난다.
+
+이미지는 Fetch의 고정 Google Interactions URL·고정 모델을 사용한다. 응답 최대 12MiB, 이미지 최대 6MiB/4M pixels, PNG/JPEG 실제 MIME 확인, Storage 난수 이름/권한으로 보관. 사이트 512MiB 보관 상한(진행 중 요청도 6MiB 예약), 일일 생성 기본 사용자3/사이트20, 관리자 명시적 사용 켜기. 자동 삭제 배치는 추가하지 않았다. 감사는 프롬프트·결과·키를 포함하지 않는다.
+
+로컬 tbox-buddy ChatGPT 구독 흐름은 별도 PC 세션에서 구현할 범위다. 웹은 수동 요청문 복사·ChatGPT 열기만 제공하며 사용자 OAuth 토큰을 보관/프록시하지 않는다. 구현 지시서 docs/tbox-buddy-chatgpt-prompt.txt.
+
+
+## 개인 ChatGPT 로컬 수동 전달 — 2026-10-02
+
+기존 member-assist 모달에 제공자 선택과 수동 가져오기를 추가한다. 공용 Gemini 처리 계층은 유지하며, 개인 ChatGPT 원문/결과는 사용자의 클립보드 동작과 브라우저 메모리에만 있다. 명시적으로 작성란에 적용한 뒤 별도 전송하면 기존 메시지 API로 저장된다. 웹 서버는 ChatGPT OAuth/토큰/계정/추론을 중계하지 않는다.
+
+`src/views/member_local_buddy.php`를 메신저·시작 안내에서 공유한다. 독립 AI-비서(로컬) 배포본과 원래 모아 파일/업무 토큰을 구분한다. 공유본의 mode=unconfirmed를 보존하며 연결 성공을 추정하지 않는다. 원문/결과는 Unicode 코드 포인트 4000자 이내, 변경 시 미리보기 무효화, 대화 상대·작성란 변경 시 적용 차단.
+
+후속 자동 전달 설계는 `docs/moa-local-chatgpt-2026-10-02.txt`와 `docs/tbox-buddy-bridge-prompt.txt`. 현재 CSP default-src 'self'는 loopback fetch를 차단하므로 향후 메신저에 한정한 connect-src 검토와 브라우저 LNA/CORS 시험이 필요하다. 이번 배포는 리스너/페어링 API/CSP 변경을 포함하지 않는다.
+
+
+## 비서 실행 MVP — 2026-10-01 (검증 사본)
+
+비서 실행은 src/assistant에 격리. API 여섯 경로는 개인 토큰 전용 assistant.run 정책. PostgreSQL 실행/이벤트 저장, 별도 CLI 워커, 현재 권한 재투영. 상세 docs/assistant-contract.md. 외부 호출/파일 쓰기0.
+
+7.4 감사 문장 추가(비서 MVP): `assistant.create|allow` = `{actor} 이(가) 읽기 전용 비서 실행을 접수했습니다`, `assistant.cancel|allow` = `{actor} 이(가) 비서 실행 취소를 요청했습니다`, `assistant.confirm|allow` = `{actor} 이(가) 비서 실행 계획에 응답했습니다`. 요청 상태 변경과 감사 INSERT는 같은 트랜잭션으로 묶는다. 요청·검색문·파일명·토큰 원문은 문장에 넣지 않는다.
+
+7.5 detail 등록 추가: `run_id` = 소유권 검사한 실행 UUID, `run_status` = 서버가 정한 실행 상태. 세 감사 행만 사용한다. 기존 `token_id`/`token_kind` 자동 detail을 그대로 사용하고 비밀은 넣지 않는다.
+
+| action/result/reason | 7.4 등록 문장 |
+|---|---|
+| `assistant.create\|allow` | `{actor} 이(가) 읽기 전용 비서 실행을 접수했습니다` |
+| `assistant.cancel\|allow` | `{actor} 이(가) 비서 실행 취소를 요청했습니다` |
+| `assistant.confirm\|allow` | `{actor} 이(가) 비서 실행 계획에 응답했습니다` |
+| `assistant.request\|deny\|not_permitted` | `{actor} 이(가) 비서 실행에 접근했지만 권한 또는 대상이 유효하지 않습니다` |
+| `assistant.request\|deny\|invalid_state` | `{actor} 이(가) 비서 실행을 요청했지만 현재 상태 또는 계획과 일치하지 않습니다` |
+| `assistant.request\|deny\|quota` | `{actor} 이(가) 비서 실행 요청 한도를 넘었습니다` |
+
+7.5 `run_id`와 `run_status`는 성공 행의 UUID/고정 상태만 받는다. 인증·토큰 범위 거부는 기존 auth.token 문장을 유지한다. 핸들러의 403/404/409/429는 위 assistant.request 고정 문장을 사용하고 요청 내용이나 남의 실행 ID를 detail에 넣지 않는다. 형식 오류/서비스 미연결에는 감사 쓰기 없이 구조화 오류를 응답한다.

@@ -1,3 +1,4 @@
+import { hydrateDashboard } from './dashboard.js?v=dd0021574d1b';
 /**
  * public/assets/community/editor.js — 커뮤니티 화면의 동작 한 벌 (모듈 스크립트)
  *
@@ -40,17 +41,20 @@ import { inputRules, textblockTypeInputRule, InputRule } from './vendor/pm/prose
 import { dropCursor } from './vendor/pm/prosemirror-dropcursor.js?v=5823578fa61a';
 import { gapCursor } from './vendor/pm/prosemirror-gapcursor.js?v=5823578fa61a';
 
-import { renderDoc, embedHost } from './doc-render.js?v=4faf2f126cbc';
-import { createDatabaseView } from './database.js?v=4faf2f126cbc';
-import { bindTemplateGallery, createTemplateSave } from './templates.js?v=4faf2f126cbc';
-import { bindEmbedAdmin } from './embeds.js?v=4faf2f126cbc';
-import { bindPopular } from './popular.js?v=4faf2f126cbc';
-import { bindPalettes } from './palettes.js?v=4faf2f126cbc';
-import { schema, toDoc, fromDoc, uuid4, colorAllowed, schemeOkForEditor, mentionAllowed, editorDomParser, clipboardDomParser, COLORS, BLOCK_TYPES } from './editor-schema.js?v=4faf2f126cbc';
-import { drawAutomationPage, drawAutomationSpace, bindAutomations, loadAutomations } from './automations.js?v=4faf2f126cbc';
-import { drawTrust, bindProcedures } from './procedures.js?v=4faf2f126cbc';
-import { createPageExport } from './export.js?v=4faf2f126cbc';
-import { createDrafts } from './drafts.js?v=4faf2f126cbc';
+import { createSuggestions, bindMySuggestions, buildSuggestionOps, suggestionTypeAllowed, suggestionEqual } from './suggestions.js?v=dd0021574d1b';
+import { renderDoc, embedHost } from './doc-render.js?v=dd0021574d1b';
+import { createDatabaseView } from './database.js?v=dd0021574d1b';
+import { bindTemplateGallery, createTemplateSave } from './templates.js?v=dd0021574d1b';
+import { bindEmbedAdmin } from './embeds.js?v=dd0021574d1b';
+import { bindPopular } from './popular.js?v=dd0021574d1b';
+import { bindPalettes } from './palettes.js?v=dd0021574d1b';
+import { schema, toDoc, fromDoc, uuid4, colorAllowed, schemeOkForEditor, mentionAllowed, editorDomParser, clipboardDomParser, COLORS, BLOCK_TYPES } from './editor-schema.js?v=dd0021574d1b';
+import { drawAutomationPage, drawAutomationSpace, bindAutomations, loadAutomations } from './automations.js?v=dd0021574d1b';
+import { drawTrust, bindProcedures } from './procedures.js?v=dd0021574d1b';
+import { createPageExport } from './export.js?v=dd0021574d1b';
+import { createDrafts } from './drafts.js?v=dd0021574d1b';
+import { drawPageAi, bindAiCenter } from './ai.js?v=dd0021574d1b';
+import { drawIntegrations, bindIntegrations } from './integrations.js?v=dd0021574d1b';
 
 /* ─── 주소와 공통 도우미 ─────────────────────────────────────── */
 
@@ -1292,14 +1296,14 @@ function initHome() {
   function drawSpaceHead(space) {
     if (!space) { return; }
     drawAutomationSpace(space, api);
-    setText(headTitle, space.kind === 'team' ? space.name : '내 공간');
+    setText(headTitle, space.kind === 'team' ? space.name + ' · 팀 문서' : '내 문서');
     // 디버깅 묶음 U3 — 손님(쓰기 자격 없음 — `/api/me` 의 can_community_write, 서버 판정 값)에게는 할 수 없는 「공개 범위」 문장 대신 읽기 안내
     setText(headSub, space.kind === 'team'
-      ? '팀이 함께 쓰는 공간입니다. 팀원 누구나 페이지를 만들고 고칠 수 있습니다.'
+      ? '팀이 함께 쓰는 문서입니다. 새 문서를 작성하면 지금 선택한 팀 공간에 만들어집니다.'
       : (meCanWrite
-        ? '나만 보는 개인 업무 공간입니다. 페이지마다 공개 범위를 고를 수 있습니다.'
+        ? '메모·업무 방법·인수인계를 문서로 남기세요. 개인 문서는 비공개로 시작하고, 문서마다 공개 범위를 고를 수 있어요.'
         : GUEST_SPACE_SUB));
-    document.title = (space.kind === 'team' ? space.name : '내 공간') + ' · 커뮤니티';
+    document.title = (space.kind === 'team' ? space.name : '내 문서') + ' · 모아 커뮤니티';
   }
 
   // 지금 보고 있는 공간의 종류. 창구가 준 값이고 화면이 정하지 않는다.
@@ -2753,7 +2757,11 @@ const NOTIFY_TEXT = {
   review_requested: '검토할 문서가 있습니다',
   due_tomorrow: '내일 기한인 문서가 있습니다',
   automation_denied: '자동 작업의 권한을 확인해 주세요',
-  automation_disabled: '자동 작업이 꺼졌습니다'
+  automation_disabled: '자동 작업이 꺼졌습니다',
+  suggestion_new: '님이 수정 제안을 보냈습니다',
+  suggestion_accepted: '님이 수정 제안을 받아들였습니다',
+  suggestion_rejected: '님이 수정 제안을 거절했습니다',
+  suggestion_stale: '수정 제안의 원문이 바뀌었습니다'
 };
 
 function initNotifications() {
@@ -3245,6 +3253,7 @@ function createBlockDialog(getView, hooks) {
       items[k].setAttribute('aria-selected', on ? 'true' : 'false');
     }
     const entry = BLOCK_TYPES[index];
+    insertButton.disabled = !!(hooks && hooks.suggestionMode && hooks.suggestionMode() && !suggestionTypeAllowed(entry.type));
     setText(nameEl, entry.label);
     setText(descEl, entry.desc);
     setText(keysEl, shortcutSentence(entry));
@@ -3254,6 +3263,10 @@ function createBlockDialog(getView, hooks) {
   }
 
   function open(kind, pos) {
+    for (let i=0;i<items.length;i++) {
+      const disabled=!!(hooks && hooks.suggestionMode && hooks.suggestionMode() && !suggestionTypeAllowed(BLOCK_TYPES[i].type));
+      const button=items[i].querySelector('button');button.disabled=disabled;button.title=disabled?'제안에서는 글 블록만 넣거나 바꿀 수 있습니다':'';
+    }
     mode = kind === 'change' ? 'change' : 'insert';
     targetPos = mode === 'change' ? pos : null;
     setText(titleEl, mode === 'change' ? '블록 바꾸기' : '블록 추가');
@@ -3266,6 +3279,7 @@ function createBlockDialog(getView, hooks) {
     const view = getView();
     const entry = BLOCK_TYPES[index];
     if (!view || !entry) { dialog.close(); return; }
+    if (hooks && hooks.suggestionMode && hooks.suggestionMode() && !suggestionTypeAllowed(entry.type)) return;
 
     /* 4단계 「하위 페이지」만 **넣기 전에 서버를 부른다** — 빈 페이지를 먼저 만들고 그 id 로
        블록을 넣는다. 만들지 못하면 블록도 넣지 않는다(가리킬 곳이 없는 카드를 만들지 않는다).
@@ -3383,7 +3397,7 @@ function createBlockDialog(getView, hooks) {
  * 그대로 부른다. 고른 이름은 `remember*` 로 제목 지도에 넣어 둔다 — 읽기 화면이 저장 뒤 곧바로 이름을 그리게.
  * 등급 규칙(파일이 페이지를 읽는 범위보다 좁으면 안 된다)은 **서버가 저장할 때** 판정한다 — 여기서 걸러 보이지 않는다.
  */
-const ATOM_TYPES = ['button','toggle', 'table', 'link_to_page', 'image', 'file', 'columns', 'embed'];
+const ATOM_TYPES = ['db_view','button','toggle', 'table', 'link_to_page', 'image', 'file', 'columns', 'embed'];
 const TABLE_MAX_ROWS = 200;
 const TABLE_MAX_COLS = 20;
 
@@ -3401,6 +3415,12 @@ function createAtomDialog(getView, hooks) {
   const buttonChoice=document.createElement('select');
   for (const [text,control] of [['단추 문구',buttonLabel],['이 페이지에 묶인 내 버튼 작업',buttonChoice]]) { control.setAttribute('aria-label',text); const label=document.createElement('label');label.className='field';const span=document.createElement('span');span.className='field__label';span.textContent=text;label.append(span,control);buttonPane.appendChild(label); }
   $('atom-embed').parentElement.appendChild(buttonPane);panes.button=buttonPane;
+  const dbPane=document.createElement('div');dbPane.className='atom-pane';dbPane.hidden=true;
+  const dbChoice=document.createElement('select');dbChoice.className='input';dbChoice.setAttribute('aria-label','데이터베이스');
+  const dbViewChoice=document.createElement('select');dbViewChoice.className='input';dbViewChoice.setAttribute('aria-label','저장된 뷰');
+  dbPane.append(dbChoice,dbViewChoice);$('atom-embed').parentElement.appendChild(dbPane);panes.db_view=dbPane;
+  async function loadWidgetViews(){dbViewChoice.replaceChildren();if(!dbChoice.value)return;const r=await api('GET','/api/databases/'+dbChoice.value+'/rows');if(r.status!==200){setText(msgEl,errorMessage(r.data));return;}for(const v of r.data.views||[]){if(v.type==='form')continue;const o=document.createElement('option');o.value=v.id;o.textContent=v.name;o.selected=v.id===cur.view_id;dbViewChoice.append(o);}}
+  dbChoice.addEventListener('change',()=>loadWidgetViews().catch(()=>setText(msgEl,GENERIC_ERROR)));
   const embedUrl = $('atom-embed-url');
   const embedCaption = $('atom-embed-caption');
   const embedHosts = $('atom-embed-hosts');
@@ -3630,7 +3650,7 @@ function createAtomDialog(getView, hooks) {
   fileQ.addEventListener('input', debounce(searchFiles));
   $('atom-file-refresh').addEventListener('click', searchFiles);
 
-  const LABELS = { button:'버튼', toggle: '토글', table: '표', link_to_page: '페이지 링크', image: '그림', file: '파일', columns: '단 나누기', embed: '임베드' };
+  const LABELS = { db_view:'데이터베이스 뷰', button:'버튼', toggle: '토글', table: '표', link_to_page: '페이지 링크', image: '그림', file: '파일', columns: '단 나누기', embed: '임베드' };
 
   /** 7-C — 허용된 사이트 안내. 판단은 서버가 저장할 때 한다 — 여기서는 무엇을 넣을 수 있는지 알려 주고, 받은 목록 밖이면
       넣기 전에 알린다(목록 밖을 넣으면 그 뒤 자동 저장이 전부 400 이 된다 — 독립 검토 7-C L-5). 목록을 못 받으면 서버에 맡긴다.
@@ -3681,6 +3701,8 @@ function createAtomDialog(getView, hooks) {
     } else if (type === 'link_to_page') {
       linkQ.value = '';
       clear(linkList);
+    } else if (type === 'db_view') {
+      dbChoice.replaceChildren();api('GET','/api/databases').then(async r=>{if(r.status!==200){setText(msgEl,errorMessage(r.data));return;}for(const d of r.data.databases||[]){const o=document.createElement('option');o.value=d.id;o.textContent=d.title;o.selected=d.id===cur.database_id;dbChoice.append(o);}await loadWidgetViews();}).catch(()=>setText(msgEl,GENERIC_ERROR));
     } else if (type === 'button') {
       buttonLabel.value=cur.label||'';buttonChoice.replaceChildren();
       loadAutomations(api).then(result=>{
@@ -3730,6 +3752,7 @@ function createAtomDialog(getView, hooks) {
       }
       return { id: id, cols: cols };
     }
+    if(type==='db_view'){if(!dbChoice.value||!dbViewChoice.value){setText(msgEl,'데이터베이스와 저장된 뷰를 선택하세요');return null;}return {id,database_id:dbChoice.value,view_id:dbViewChoice.value};}
     if (type === 'button') {
       if(!buttonChoice.value || !buttonLabel.value.trim()) { setText(msgEl,'단추 문구와 작업을 선택하세요.');return null; }
       return {id:id,label:buttonLabel.value.trim(),automation_id:buttonChoice.value};
@@ -4240,6 +4263,31 @@ function createToolbar(view, opts) {
 
   const row = document.createElement('div');
   row.className = 'editor-toolbar__row';
+  const paperLabel = document.createElement('label');
+  paperLabel.className = 'editor-paper-mode';
+  const paperText = document.createElement('span');
+  paperText.textContent = '용지';
+  const paperSelect = document.createElement('select');
+  paperSelect.className = 'input editor-paper-mode__select';
+  paperSelect.setAttribute('aria-label', '편집 용지 크기');
+  for (const [value, label] of [['a4', 'A4'], ['a3', 'A3'], ['letter', 'Letter'], ['wide', '넓게']]) {
+    const option = document.createElement('option');
+    option.value = value;
+    option.textContent = label;
+    paperSelect.appendChild(option);
+  }
+  const savedPaper = (() => {
+    try { return localStorage.getItem('community-editor-paper') || 'a4'; } catch (_) { return 'a4'; }
+  })();
+  paperSelect.value = ['a4', 'a3', 'letter', 'wide'].includes(savedPaper) ? savedPaper : 'a4';
+  const editorPanel = document.getElementById('page-editor');
+  if (editorPanel) { editorPanel.setAttribute('data-paper-mode', paperSelect.value); }
+  paperSelect.addEventListener('change', () => {
+    if (editorPanel) { editorPanel.setAttribute('data-paper-mode', paperSelect.value); }
+    try { localStorage.setItem('community-editor-paper', paperSelect.value); } catch (_) {}
+  });
+  paperLabel.append(paperText, paperSelect);
+  row.appendChild(paperLabel);
   const tools = [
     labelButton('tool-color', '색', () => togglePanel('fg')),
     labelButton('tool-bg', '배경', () => togglePanel('bg')),
@@ -4374,6 +4422,42 @@ function initPage() {
   let saveTimer = null;
   let heartbeat = null;
   let pendingConflict = null;
+  let proposal = null;
+  const proposalButton=document.createElement('button'), proposalsButton=document.createElement('button'), proposalCancel=document.createElement('button');
+  for (const [button,id,text] of [[proposalButton,'page-suggest','수정 제안'],[proposalsButton,'page-suggestions','제안'],[proposalCancel,'page-suggestion-cancel','취소']]) {
+    button.type='button';button.id=id;button.className='btn btn--quiet btn--small';button.textContent=text;button.hidden=true;
+    if(editButton && editButton.parentNode)editButton.parentNode.appendChild(button);
+  }
+  const suggestions=createSuggestions({api,base:COMMUNITY_BASE,pageId,refresh:()=>load()});
+  proposalButton.addEventListener('click',()=>{
+    if(!state.canSuggest || state.editing)return;
+    proposal={original:structuredClone(state.doc),version:state.version};startEditing();
+    if(!view)proposal=null;
+  });
+  proposalsButton.addEventListener('click',()=>suggestions.list().catch(e=>setText(msg,e.message)));
+  proposalCancel.addEventListener('click',()=>stopEditing());
+
+  function proposalPlugin() {
+    return new Plugin({
+      filterTransaction(tr) {
+        if(!proposal || !tr.docChanged)return true;
+        try { buildSuggestionOps(proposal.original,toDoc(tr.doc.toJSON()));return true; }
+        catch(e) { setText(msg,e.message);return false; }
+      },
+      props:{decorations(pmState) {
+        if(!proposal)return null;
+        const old=new Map(proposal.original.blocks.map(b=>[b.id,b]));
+        const doc=toDoc(pmState.doc.toJSON()),marks=[];
+        let index=0;
+        pmState.doc.forEach((node,pos)=>{
+          const block=doc.blocks[index++];
+          if(block && !suggestionEqual(old.get(block.id),block))marks.push(Decoration.widget(pos,()=>{
+            const label=document.createElement('span');label.className='badge badge--internal';label.textContent='제안';label.contentEditable='false';return label;
+          },{side:-1}));
+        });return DecorationSet.create(pmState.doc,marks);
+      }}
+    });
+  }
 
   /* ── 저장 경합을 막는 번호 (지시서 4장) ──
      `serial`   변경이 있을 때마다 1 오른다.
@@ -4434,7 +4518,7 @@ function initPage() {
 
   /** 지금 편집기의 저장 안 된 사본을 쓴다. 쓸 것이 없으면(저장됨·편집 중 아님·열쇠 없음) 아무것도 하지 않는다. */
   function writePageDraft() {
-    if (!drafts || draftPageKey === null || !state.editing || view === null || serial === savedSerial || !drafts.hasKey()) {
+    if (proposal || !drafts || draftPageKey === null || !state.editing || view === null || serial === savedSerial || !drafts.hasKey()) {
       return Promise.resolve();
     }
     const mySerial = serial;
@@ -4467,7 +4551,7 @@ function initPage() {
   function readCtx() {
     return {
       child_titles: state.childTitles, link_titles: state.linkTitles, file_titles: state.fileTitles,
-      embeds: state.embeds, base: COMMUNITY_BASE, tbox_base: APP_BASE, mention_labels: state.mentionLabels, buttons: state.buttons, pressButton: async (id, button) => {
+      synced: state.synced, embeds: state.embeds, base: COMMUNITY_BASE, tbox_base: APP_BASE, mention_labels: state.mentionLabels, db_views: state.dbViews, buttons: state.buttons, pressButton: async (id, button) => {
         button.disabled=true;
         try { const result=await api('POST','/api/automations/'+id+'/run',{page_id:pageId});
           if (result.status === 200) {
@@ -4503,6 +4587,7 @@ function initPage() {
     clear(docEl);
     if (state.doc) {
       docEl.appendChild(renderDoc(state.doc, readCtx()));
+      hydrateDashboard(docEl,state.doc,readCtx(),api);
     }
     armTodos();
   }
@@ -4725,6 +4810,8 @@ function initPage() {
       }
       const page = result.data.page;
       drawTrust(result.data, pageId, api, load);
+      drawIntegrations(result.data,pageId,api,load);
+      drawPageAi(result.data,pageId,api,load,()=>state.editing);
       drawAutomationPage(result.data, pageId, api, load);
       state.procedureCount = result.data.procedures_in_branch || 0;
       state.doc = page.doc;
@@ -4733,12 +4820,19 @@ function initPage() {
       // 디버깅 묶음 U H3 — 쓰는 단추는 페이지별 값과 `/api/me` 의 쓰기 자격이 **둘 다** 참일 때만(위 `meCanWrite`)
       const w = meCanWrite;
       state.canEdit = w && result.data.can_edit === true;
+      state.canSuggest = w && result.data.can_suggest === true;
+      state.suggestionsOpen = result.data.suggestions_open;
+      show(proposalButton,state.canSuggest && !state.editing);
+      show(proposalsButton,state.canEdit && Number(state.suggestionsOpen)>0 && !state.editing);
+      proposalsButton.textContent='제안 '+String(state.suggestionsOpen || 0);
       state.childTitles = result.data.child_titles && typeof result.data.child_titles === 'object'
         ? result.data.child_titles
         : {};
       state.linkTitles = result.data.link_titles && typeof result.data.link_titles === 'object' ? result.data.link_titles : {};
       state.fileTitles = result.data.file_titles && typeof result.data.file_titles === 'object' ? result.data.file_titles : {};
+      state.synced = result.data.synced || {};
       state.buttons = result.data.buttons || {};
+      state.dbViews = result.data.db_views || {};
       state.mentionLabels = result.data.mention_labels && typeof result.data.mention_labels === 'object' ? result.data.mention_labels : {};
       // 7-C — 임베드 재료(허용 목록 · 틀을 여는가). 판단은 서버가 준 값뿐이다
       state.embeds = result.data.embeds && typeof result.data.embeds === 'object' ? result.data.embeds : { hosts: [], frames: false };
@@ -4776,7 +4870,7 @@ function initPage() {
       loadReads();
       setText(titleEl, page.title);
       document.title = page.title + ' · 커뮤니티';
-      setText(subEl, page.parent ? '상위: ' + page.parent.title : '');
+      setText(subEl, result.data.form_response && result.data.form_response.hidden ? '익명 응답' : (page.parent ? '상위: ' + page.parent.title : ''));
       drawCrumb(result.data.breadcrumb);
       drawRead();
       state.database = result.data.database || null;
@@ -6068,7 +6162,11 @@ function initPage() {
       historyCanEdit = meCanWrite && result.data.can_edit === true;   // 디버깅 묶음 U H3
       const list = Array.isArray(result.data.versions) ? result.data.versions : [];
       clear(historyVersionsBody);
-      for (const entry of list) { historyVersionsBody.appendChild(historyRow(entry)); }
+      for (const entry of list) {
+        const row=historyRow(entry);
+        if(entry.suggestion){const cell=row.querySelector('td');const info=document.createElement('p');info.className='muted';info.textContent='제안: '+(entry.suggestion.author ? entry.suggestion.author.username : '익명')+' · 수락: '+(entry.suggestion.accepted_by ? entry.suggestion.accepted_by.username : '익명');cell.appendChild(info);}
+        historyVersionsBody.appendChild(row);
+      }
       // 지금 판 한 줄만 있으면 「지난 판이 없다」는 뜻이다.
       show(historyVersionsEmpty, list.length <= 1);
       setText(historyMeta, '판 ' + String(result.data.page.doc_version) + ' · 기록 ' + String(list.length) + '개');
@@ -6152,7 +6250,9 @@ function initPage() {
       const list = Array.isArray(result.data.events) ? result.data.events : [];
       clear(historyEventsList);
       for (const event of list) { historyEventsList.appendChild(historyEventItem(event)); }
-      show(historyEventsEmpty, list.length === 0);
+      const accepted=Array.isArray(result.data.suggestions)?result.data.suggestions:[];
+      for(const entry of accepted){const li=document.createElement('li');li.className='list__item';li.textContent='판 '+entry.version+' · 제안: '+(entry.author ? entry.author.username : '익명')+' · 수락: '+(entry.accepted_by ? entry.accepted_by.username : '익명');historyEventsList.appendChild(li);}
+      show(historyEventsEmpty, list.length === 0 && accepted.length===0);
     });
   }
 
@@ -6271,7 +6371,8 @@ function initPage() {
     rememberLink: (id, entry) => { state.linkTitles[id] = entry; },
     rememberFile: (id, entry) => { state.fileTitles[id] = entry; }
   });
-  function editAtom(type, attrs, pos) { if (atomDialog) { atomDialog.open(type, attrs, pos); } }
+  function editAtom(type, attrs, pos) {
+    if(proposal && !suggestionTypeAllowed(type)){setText(msg,'제안에서는 글 블록만 넣거나 바꿀 수 있습니다.');return;} if (atomDialog) { atomDialog.open(type, attrs, pos); } }
   function commandAtomEdit(pmState) {
     const hit = atomAt(pmState);
     if (!hit) { return false; }
@@ -6279,7 +6380,7 @@ function initPage() {
     return true;
   }
 
-  const blockDialog = createBlockDialog(() => view, { createChildPage: createChildPage, editAtom: editAtom });
+  const blockDialog = createBlockDialog(() => view, { createChildPage: createChildPage, editAtom: editAtom, suggestionMode:()=>proposal!==null });
 
   /* ── 편집 모드 ── */
 
@@ -6356,12 +6457,13 @@ function initPage() {
 
   function startEditing() {
     // ★ 편집기는 **한 번만** 만든다 (지시서 4장) — 두 벌이 겹치면 친 글자가 사라진다.
-    if (state.editing || view !== null) { return; }
+    if (state.editing || view !== null || (!state.canEdit && !proposal)) { return; }
 
     let pmDoc;
     try {
       // 하위 페이지 카드에 제목을 보여 주려고 지도를 함께 넘긴다 (4-A).
       pmDoc = fromDoc(state.doc, { child_titles: state.childTitles, link_titles: state.linkTitles, file_titles: state.fileTitles, mention_labels: state.mentionLabels });
+      if(proposal)proposal.original=toDoc(pmDoc); // Compare the editor's canonical round trip; untouched atoms remain untouched.
     } catch (e) {
       setText(msg, e && e.message ? e.message : GENERIC_ERROR);
       return;
@@ -6392,7 +6494,7 @@ function initPage() {
         gapCursor(),
         uniqueBlockIds,
         blockHandles,
-        todoToggle,
+        ...(proposal ? [proposalPlugin()] : [todoToggle]),
         liveToc
       ]
     });
@@ -6425,7 +6527,7 @@ function initPage() {
 
     show(docEl, false);
     show(editorEl, true);
-    show(titleField, true);
+    show(titleField, !proposal);
     if (titleInput) { titleInput.value = state.title; }
     show(editButton, false);
     show(doneButton, true);
@@ -6434,11 +6536,13 @@ function initPage() {
     serial = 0;
     savedSerial = 0;
     sentSerial = -1;
-    badge('저장됨', 'badge--ok');
+    badge(proposal ? '제안 중 — 원문은 바뀌지 않습니다' : '저장됨', proposal ? 'badge--internal' : 'badge--ok');
+    doneButton.textContent=proposal?'제안 보내기':'편집 마침';
+    show(proposalCancel,!!proposal);show(proposalButton,false);show(proposalsButton,false);
     view.focus();
     startHeartbeat();
     // B1-2 — 편집 모드에 들어갈 때 임시저장 열쇠를 받는다(한 화면에 한 번). 못 받으면(503·막힌 브라우저) 쓰지 않고 배지로 알린다.
-    if (drafts) {
+    if (drafts && !proposal) {
       if (!drafts.available()) {
         draftOff(true);
       } else {
@@ -6581,7 +6685,7 @@ function initPage() {
   }
 
   function stopEditing() {
-    flushSave().then(() => {
+    return flushSave().then(() => {
       if (blockDialog) { blockDialog.close(); }
       if (atomDialog) { atomDialog.close(); }
       if (toolbar) { toolbar.hide(); toolbar = null; }
@@ -6589,7 +6693,9 @@ function initPage() {
       if (view) { view.destroy(); view = null; }
       clear(editorEl);
       stopHeartbeat();
-      state.editing = false;
+      state.editing = false;proposal=null;serial=savedSerial;badge('','');
+      show(proposalCancel,false);show(proposalButton,state.canSuggest);
+      show(proposalsButton,state.canEdit && Number(state.suggestionsOpen)>0);
       show(editorEl, false);
       show(titleField, false);
       show(docEl, true);
@@ -6607,6 +6713,7 @@ function initPage() {
 
   function markDirty() {
     serial += 1;
+    if(proposal){badge('제안 중 — 원문은 바뀌지 않습니다','badge--internal');return;}
     badge('저장 중…', '');
     const now = Date.now();
     if (firstDirtyAt === 0) { firstDirtyAt = now; }
@@ -6625,6 +6732,7 @@ function initPage() {
    * @param {boolean} [closing] 창을 닫거나 탭이 숨는 중 — 요청에 `keepalive` 를 단다(B1-2 설계 7, 닫히면서 취소되지 않게)
    */
   function flushSave(closing) {
+    if(proposal)return Promise.resolve();
     window.clearTimeout(saveTimer);
     if (saving) { return inFlight || Promise.resolve(); }
     if (serial === savedSerial) { return Promise.resolve(); }
@@ -6642,6 +6750,7 @@ function initPage() {
    *   409(충돌)일 때는 이어서 보내지 않는다 — 무엇을 할지는 사람이 모달에서 고른다.
    */
   function save(closing) {
+    if(proposal)return Promise.resolve();
     if (saving) { return inFlight || Promise.resolve(); }
     saving = true;
 
@@ -6664,6 +6773,7 @@ function initPage() {
           state.title = result.data.title;
           state.doc = doc;
           state.buttons = result.data.buttons || {};
+      state.dbViews = result.data.db_views || {};
           savedSerial = mySerial;
           setText(titleEl, state.title);
           // 사이드바 트리의 지금 페이지 줄도 새 제목으로 (5-A′) — 다시 불러오지 않는다
@@ -6745,6 +6855,7 @@ function initPage() {
      숨어 있는 동안 서버의 「편집 중」 표시는 기존 만료 규칙(마지막 신호 뒤 2분, pages_heartbeat.php)대로
      다른 사람 화면에서 사라질 수 있다 — 받아들인 동작이다(지시서 P-4a ④). */
   function startHeartbeat() {
+    if(proposal)return;
     if (heartbeat === null) {
       // U-3 — heartbeat 도 자동 요청이다(표식). 편집 모드로 켜 두기만 한 탭은 30분 뒤 로그아웃되고, 쓰던 글은 임시저장이 지킨다.
       heartbeat = whileVisible(() => {
@@ -6763,7 +6874,10 @@ function initPage() {
   /* ── 단추 ── */
 
   if (editButton) { editButton.addEventListener('click', startEditing); }
-  if (doneButton) { doneButton.addEventListener('click', stopEditing); }
+  if (doneButton) { doneButton.addEventListener('click',()=>{
+    if(!proposal){stopEditing();return;}
+    suggestions.send(proposal.original,currentDoc(),proposal.version,()=>stopEditing().then(()=>{setText(msg,'제안을 보냈습니다.');return load();})).catch(e=>setText(msg,e.message));
+  }); }
   if (addBlockButton && blockDialog) {
     addBlockButton.addEventListener('click', () => { blockDialog.open('insert', null); });
   }
@@ -7024,7 +7138,7 @@ function boot() {
   booted = true;
 
   const page = body && body.dataset ? body.dataset.page : '';
-  if (page !== 'community-home' && page !== 'community-page' && page !== 'community-board' && page !== 'community-threads') { return; }
+  if (page !== 'community-home' && page !== 'community-page' && page !== 'community-board' && page !== 'community-ai' && page !== 'community-threads') { return; }
   if (COMMUNITY_BASE === '' || APP_BASE === '') { return; }
 
   // CSRF 토큰은 t-box 창구가 준다 — 한 앱·한 세션이라 같은 토큰이 커뮤니티 창구에도 통한다.
@@ -7045,14 +7159,15 @@ function boot() {
         meCanWrite = me.can_community_write !== false;
         drafts.sweep();
         bindNewPage();
+        bindIntegrations(api).catch(() => {});
+        bindAiCenter(api).catch(() => {});
         // 개발 대기열 6 — 사이드바 「즐겨찾기」「최근」(세 화면 공통). 페이지 화면의 「최근」은 그 페이지를 연 뒤 initPage 가 받는다.
         bindFavoritesFold();
         loadFavoritesNav();
         if (page !== 'community-page') { loadRecentNav(); }
-        if (page === 'community-home') {
-          if (location.pathname === COMMUNITY_BASE + '/automations') { bindAutomations(api, COMMUNITY_BASE); loadSpaces(); } else if (location.pathname === COMMUNITY_BASE + '/procedures') { bindProcedures(api, COMMUNITY_BASE); loadSpaces(); } else { initHome(); }
-        } else if (page === 'community-threads') {
-          loadSpaces();
+        if (page === 'community-ai' || page === 'community-threads') { loadSpaces(); }
+        else if (page === 'community-home') {
+          if (location.pathname === COMMUNITY_BASE + '/ai') { loadSpaces(); } else if (location.pathname === COMMUNITY_BASE + '/integrations') { loadSpaces(); } else if (location.pathname === COMMUNITY_BASE + '/suggestions') { bindMySuggestions(api, COMMUNITY_BASE); loadSpaces(); } else if (location.pathname === COMMUNITY_BASE + '/automations') { bindAutomations(api, COMMUNITY_BASE); loadSpaces(); } else if (location.pathname === COMMUNITY_BASE + '/procedures') { bindProcedures(api, COMMUNITY_BASE); loadSpaces(); } else { initHome(); }
         } else if (page === 'community-board') {
           // 5-C — 게시판 화면. 사이드바의 공간·게시판 묶음은 여기서 함께 채운다.
           loadSpaces();

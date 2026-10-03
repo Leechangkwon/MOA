@@ -60,7 +60,7 @@ if ($hasDue && $body['due'] !== null) {
     if (!$d || $d->format('Y-m-d') !== $body['due']) { Http::error(400, Http::MSG_BAD_REQUEST); }
 }
 if ($hasVerify && $body['verify'] !== null && (!is_int($body['verify']) || !in_array($body['verify'], [0,30,90,180], true))) { Http::error(400, Http::MSG_BAD_REQUEST); }
-if ($hasKind && (!is_string($body['kind']) || !in_array($body['kind'], ['page','procedure'], true))) { Http::error(400, Http::MSG_BAD_REQUEST); }
+if ($hasKind && (!is_string($body['kind']) || !in_array($body['kind'], ['page','procedure','dashboard'], true))) { Http::error(400, Http::MSG_BAD_REQUEST); }
 if (!$hasStatus && !$hasResolved && !$hasVerify && !$hasKind && !$hasDue) {
     Http::error(400, Http::MSG_BAD_REQUEST);
 }

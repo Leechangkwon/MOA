@@ -37,6 +37,11 @@ require_once __DIR__ . '/CloudLink.php';
  *   check() 와 **같은 함수**(parseTarget · publicIpOf · CURLOPT_RESOLVE)를 쓴다. 부르는 곳은 보내는 배치
  *   scripts/alert_push.php 하나뿐이고 웹 요청은 부르지 않는다. Db·Env 없이 돈다(배치는 .env 를 읽지 않는다).
  *
+ * Moa messenger AI (2026-10-02): geminiGenerate() adds a fixed, server-authenticated
+ * Google generateContent POST. It reuses publicIpOf and IP pinning, disallows redirects
+ * and proxies, and bounds request/response sizes and time. Only the AI service receives
+ * successful JSON; it extracts visible text. Provider error bodies are discarded.
+ *
  * 이 파일이 하지 않는 것
  *   · 권한·속도 제한·감사 로그 — 핸들러(src/handlers/files_fetch.php)의 몫이다.
  *   · 사용자에게 무엇을 보여 줄지 결정하기 — 실패는 예외(FetchDenied)로만 알리고,
@@ -70,6 +75,73 @@ final class FetchDenied extends RuntimeException
 
 final class Fetch
 {
+    /** Messenger AI: fixed Google endpoint only. Keys never enter URLs or logs. */
+    public static function geminiGenerate(string $key, array $payload): array
+    {
+        return self::geminiRequest($key, $payload, false);
+    }
+
+    /** Images use a separate, fixed model and endpoint; callers cannot supply URLs. */
+    public static function geminiImage(string $key, string $prompt, string $aspect): array
+    {
+        if (!in_array($aspect, ['1:1', '16:9', '9:16'], true)) throw new FetchDenied('bad_request');
+        return self::geminiRequest($key, [
+            'model' => 'gemini-3.1-flash-lite-image',
+            'input' => [['type' => 'text', 'text' => $prompt]],
+            'response_format' => ['type' => 'image', 'mime_type' => 'image/png', 'aspect_ratio' => $aspect],
+            'store' => false,
+        ], true);
+    }
+
+    private static function geminiRequest(string $key, array $payload, bool $image): array
+    {
+        $host = 'generativelanguage.googleapis.com';
+        if (preg_match('/\A[\x21-\x7E]{20,4096}\z/', $key) !== 1) {
+            throw new FetchDenied('bad_key');
+        }
+        $body = json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
+        if (strlen($body) > 180000) throw new FetchDenied('too_large');
+        $ip = self::publicIpOf($host);
+        $ch = curl_init($image
+            ? 'https://generativelanguage.googleapis.com/v1beta/interactions'
+            : 'https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash:generateContent');
+        if ($ch === false) throw new FetchDenied('fetch_failed');
+        $response = '';
+        $maxResponse = $image ? 12582912 : 524288;
+        curl_setopt_array($ch, [
+            CURLOPT_PROTOCOLS => CURLPROTO_HTTPS,
+            CURLOPT_REDIR_PROTOCOLS => 0,
+            CURLOPT_FOLLOWLOCATION => false,
+            CURLOPT_PROXY => '',
+            CURLOPT_RESOLVE => [$host . ':443:' . $ip],
+            CURLOPT_CONNECTTIMEOUT => 5,
+            CURLOPT_TIMEOUT => 55,
+            CURLOPT_SSL_VERIFYPEER => true,
+            CURLOPT_SSL_VERIFYHOST => 2,
+            CURLOPT_USERAGENT => 'moa-messenger/1',
+            CURLOPT_POST => true,
+            CURLOPT_POSTFIELDS => $body,
+            CURLOPT_HTTPHEADER => ['Content-Type: application/json', 'x-goog-api-key: ' . $key],
+            CURLOPT_WRITEFUNCTION => static function ($handle, string $chunk) use (&$response, $maxResponse): int {
+                if (strlen($response) + strlen($chunk) > $maxResponse) return 0;
+                $response .= $chunk;
+                return strlen($chunk);
+            },
+        ]);
+        try {
+            $ok = curl_exec($ch);
+            $code = (int) curl_getinfo($ch, CURLINFO_RESPONSE_CODE);
+        } finally {
+            curl_close($ch);
+        }
+        if ($ok === false) throw new FetchDenied('fetch_failed');
+        // Provider error text may contain credentials or user data: discard it entirely.
+        if ($code !== 200) throw new FetchDenied('provider_error', $code);
+        $data = json_decode($response, true, 64, JSON_THROW_ON_ERROR);
+        if (!is_array($data)) throw new FetchDenied('bad_response');
+        return $data;
+    }
+
     /** Fixed GPT endpoint; no caller-supplied URL, proxy, redirects, or raw error logging. */
     public static function communityGptAvailable(): bool
     {
@@ -205,6 +277,62 @@ final class Fetch
      *
      * @return list<string>
      */
+
+    /** Stage 12: purpose lists never fall back to file-fetch hosts. */
+    public static function integrationTarget(string $url,string $purpose,bool $resolve=true): array
+    {
+        [$host,$parts]=self::parseTarget($url);
+        if (!in_array($purpose,['messenger','connector'],true)) { throw new FetchDenied('host_not_allowed'); }
+        $sql=$purpose==='messenger' ? 'SELECT 1 FROM community.messenger_hooks WHERE url_host=:host AND is_active'
+            : 'SELECT 1 FROM community.data_connectors WHERE url_host=:host AND is_active';
+        if (!Db::instance()->run($sql,[':host'=>$host])->fetchColumn()) { throw new FetchDenied('host_not_allowed',null,$host); }
+        return ['host'=>$host,'url'=>self::rebuild($host,$parts),'ip'=>$resolve ? self::publicIpOf($host) : null];
+    }
+    /** Registration validates syntax only; every transfer rechecks DNS and its distinct list. */
+    public static function integrationHost(string $host,string $path='/'): bool
+    {
+        try { [$h,$p]=self::parseTarget('https://'.$host.$path); return $h===$host && !isset($p['query']) && !isset($p['fragment']) && str_starts_with($path,'/') && !str_starts_with($path,'//'); }
+        catch(FetchDenied $e) { return false; }
+    }
+    public static function post(string $url,array $payload): array
+    {
+        return self::integrationRequest($url,'messenger',json_encode($payload,JSON_UNESCAPED_UNICODE|JSON_THROW_ON_ERROR),null);
+    }
+    public static function getJson(string $url,?string $key=null): array
+    {
+        $result=self::integrationRequest($url,'connector',null,$key);
+        try { $rows=json_decode($result['body'],true,64,JSON_THROW_ON_ERROR); }
+        catch(JsonException $e) { throw new FetchDenied('bad_request'); }
+        if (!is_array($rows) || !array_is_list($rows) || count($rows)>5000) { throw new FetchDenied('too_large'); }
+        return $rows;
+    }
+    private static function integrationRequest(string $url,string $purpose,?string $body,?string $key): array
+    {
+        if ($body!==null && strlen($body)>4096) { throw new FetchDenied('too_large'); }
+        $target=self::integrationTarget($url,$purpose); $host=$target['host'];
+        $headers=['Content-Type: application/json','Accept: application/json'];
+        if ($key!==null) {
+            if ($key==='' || strlen($key)>2048 || preg_match('/[\x00-\x20\x7f]/',$key)) { throw new FetchDenied('bad_request'); }
+            $headers[]='Authorization: Bearer '.$key;
+        }
+        $bytes=0; $response=''; $cap=$purpose==='connector' ? 5*1024*1024 : 8192;
+        $ch=curl_init($target['url']);
+        if ($ch===false) { throw new FetchDenied('fetch_failed'); }
+        curl_setopt_array($ch,[CURLOPT_PROTOCOLS=>CURLPROTO_HTTPS,CURLOPT_REDIR_PROTOCOLS=>0,CURLOPT_FOLLOWLOCATION=>false,
+            CURLOPT_RESOLVE=>[$host.':443:'.$target['ip']],CURLOPT_CONNECTTIMEOUT=>3,CURLOPT_TIMEOUT=>$purpose==='messenger' ? 5:10,
+            CURLOPT_SSL_VERIFYPEER=>true,CURLOPT_SSL_VERIFYHOST=>2,CURLOPT_PROXY=>'',CURLOPT_USERAGENT=>'qaredi-integrations/1',
+            CURLOPT_FORBID_REUSE=>true,CURLOPT_HTTPHEADER=>$headers,CURLOPT_WRITEFUNCTION=>static function($c,string $chunk) use (&$bytes,&$response,$cap,$purpose): int {
+                $bytes+=strlen($chunk); if ($bytes>$cap) { return 0; }
+                if ($purpose==='connector') { $response.=$chunk; } return strlen($chunk);
+            }]);
+        if ($body!==null) { curl_setopt_array($ch,[CURLOPT_POST=>true,CURLOPT_POSTFIELDS=>$body]); }
+        $ok=curl_exec($ch); $status=(int)curl_getinfo($ch,CURLINFO_RESPONSE_CODE); curl_close($ch);
+        if ($bytes>$cap) { throw new FetchDenied('too_large',$status,$host); }
+        if ($status>=300 && $status<400) { throw new FetchDenied('redirect',$status,$host); }
+        if ($ok===false || $status<200 || $status>=300) { throw new FetchDenied('fetch_failed',$status?:null,$host); }
+        return ['status'=>$status,'body'=>$response];
+    }
+
     public static function allowedHosts(): array
     {
         $out = [];

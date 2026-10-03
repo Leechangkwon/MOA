@@ -51,7 +51,7 @@
     const items=[];
     for (const file of files.status === 200 && Array.isArray(files.data?.files) ? files.data.files : []) {
       if (!file || !uuid.test(file.id) || typeof file.name !== 'string' || !file.name.trim()) continue;
-      items.push({kind:'t-box',title:file.name,href:base+'/?q='+encodeURIComponent(file.name.slice(0,200)),time:Date.parse(file.last_used_at)||0});
+      items.push({kind:'자료실',title:file.name,href:base+'/?q='+encodeURIComponent(file.name.slice(0,200)),time:Date.parse(file.last_used_at)||0});
     }
     for (const page of pages.status === 200 && Array.isArray(pages.data?.pages) ? pages.data.pages : []) {
       if (!page || !uuid.test(page.id) || typeof page.title !== 'string') continue;

@@ -53,6 +53,10 @@ BEGIN
         RETURN;
     END IF;
 
+    IF to_regclass('community.synced_sources') IS NOT NULL THEN
+        DELETE FROM community.synced_references WHERE page_id=ANY(ids);
+        DELETE FROM community.synced_sources WHERE page_id=ANY(ids);
+    END IF;
     DELETE FROM community.notifications n
      WHERE n.page_id = ANY (ids)
         OR n.comment_id IN (SELECT c.id FROM community.comments c WHERE c.page_id = ANY (ids));

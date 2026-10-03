@@ -31,7 +31,7 @@ try {
     foreach ($entries as $entry) {
         [$row, $doc] = community_export_document($entry['row'], $user);
         $ctx = community_export_context($doc, $user, $paths, $entry['path']);
-        $meta = community_export_meta($row, $now);
+        $meta = community_export_meta($row, $now, $user);
         $body = $format === 'md' ? DocExport::markdown($doc, $meta, $ctx) : DocExport::html($doc, $meta, $ctx, $css);
         $bytes += strlen($body);
         if ($bytes > DocExport::MAX_BYTES) {

@@ -108,7 +108,14 @@ if (Http::queryText('shared', 8) === 'me') {
           FROM community.pages p
           JOIN community.spaces s ON s.id = p.space_id
           LEFT JOIN public.users owner ON owner.id = s.owner_user_id
-          JOIN community.page_shares sh ON sh.page_id = p.id AND sh.user_id = CAST(:me AS bigint)
+          JOIN LATERAL (
+              SELECT CASE max(CASE ds.level WHEN 'edit' THEN 2 ELSE 1 END) WHEN 2 THEN 'edit' WHEN 1 THEN 'view' END AS level
+              FROM community.page_shares ds WHERE ds.page_id=p.id AND
+              (ds.user_id=CAST(:me AS bigint) OR EXISTS(
+                SELECT 1 FROM community.share_group_members gm JOIN community.share_groups gg ON gg.id=gm.group_id
+                JOIN public.users gu ON gu.id=gm.user_id AND gu.is_active
+                WHERE gm.group_id=ds.group_id AND gm.user_id=CAST(:me AS bigint) AND gg.deleted_at IS NULL))
+          ) sh ON sh.level IS NOT NULL
          WHERE p.deleted_at IS NULL
            AND {$visShared}
         {$statusWhere}
@@ -128,7 +135,14 @@ if (Http::queryText('shared', 8) === 'me') {
           FROM community.pages p
           JOIN community.spaces s ON s.id = p.space_id
           LEFT JOIN public.users owner ON owner.id = s.owner_user_id
-          JOIN community.page_shares sh ON sh.page_id = p.id AND sh.user_id = CAST(:me AS bigint)
+          JOIN LATERAL (
+              SELECT CASE max(CASE ds.level WHEN 'edit' THEN 2 ELSE 1 END) WHEN 2 THEN 'edit' WHEN 1 THEN 'view' END AS level
+              FROM community.page_shares ds WHERE ds.page_id=p.id AND
+              (ds.user_id=CAST(:me AS bigint) OR EXISTS(
+                SELECT 1 FROM community.share_group_members gm JOIN community.share_groups gg ON gg.id=gm.group_id
+                JOIN public.users gu ON gu.id=gm.user_id AND gu.is_active
+                WHERE gm.group_id=ds.group_id AND gm.user_id=CAST(:me AS bigint) AND gg.deleted_at IS NULL))
+          ) sh ON sh.level IS NOT NULL
           LEFT JOIN community.pages parent ON parent.id = p.parent_page_id
          WHERE p.deleted_at IS NULL
            AND {$visShared}

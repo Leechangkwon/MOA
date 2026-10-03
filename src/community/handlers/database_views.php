@@ -69,6 +69,10 @@ $find = static function (array $views, $id): ?int {
     return null;
 };
 
+$targetView = null;
+foreach ($views as $v) { if ($v['id'] === ($arg['id'] ?? null)) { $targetView = $v; break; } }
+if ((($arg['type'] ?? null) === 'form' || ($targetView['type'] ?? null) === 'form')
+    && !CommunityAuthz::decidePageManage($user,$dbPage)[0]) { Http::error(403,Http::MSG_FORBIDDEN); }
 $viewName = '';
 switch ($op) {
     case 'add':
@@ -93,7 +97,8 @@ switch ($op) {
             $bad('없는 뷰입니다');
         }
         $merged = array_diff_key($views[$i], ['id' => 1]);
-        foreach (['name', 'type', 'filter', 'sort', 'hidden'] as $k) {
+        if (isset($arg['type']) && is_string($arg['type']) && $arg['type']!==$merged['type']) { $merged=array_intersect_key($merged,array_flip(DbViews::viewFields($arg['type']))); }
+        foreach (DbViews::viewFields((string)($arg['type'] ?? $merged['type'])) as $k) {
             if (array_key_exists($k, $arg)) {
                 if ($arg[$k] === null) {
                     unset($merged[$k]);
@@ -102,7 +107,7 @@ switch ($op) {
                 }
             }
         }
-        if (array_diff(array_keys($arg), ['id', 'name', 'type', 'filter', 'sort', 'hidden']) !== []) {
+        if (array_diff(array_keys($arg), array_merge(['id'],DbViews::viewFields((string)($arg['type'] ?? $merged['type'])))) !== []) {
             Http::error(400, Http::MSG_BAD_REQUEST);
         }
         $clean = DbProps::cleanView($merged, $schema);
@@ -127,6 +132,15 @@ switch ($op) {
         break;
 }
 
+foreach ($views as $candidate) {
+    if (($candidate['type'] ?? '')==='form' && ($candidate['public'] ?? false)) {
+        if (!community_form_public_allowed($dbPage,$user)) { Http::error(403,Http::MSG_FORBIDDEN); }
+        foreach ($candidate['questions'] as $q) {
+            $type=$q['prop']==='title' ? 'text' : (DbProps::find($schema,$q['prop'])['type'] ?? '');
+            if (!in_array($type,['text','number','checkbox','date','select','multi_select'],true)) { $bad('공개 폼에 넣을 수 없는 질문입니다'); }
+        }
+    }
+}
 $sqlSet = <<<'SQL'
     UPDATE community.databases
        SET views = CAST(:views AS jsonb), updated_at = now()

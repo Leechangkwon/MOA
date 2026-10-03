@@ -149,7 +149,7 @@ const COMMUNITY_BASE = '/community';
  * 7-C(2026-09-24)에 **7** 로 올렸다 — `embed`(허용 목록 도메인만)가 열린다. 글 안 `mention` 마크는 7-D 까지
  * **8단계로** 미뤘다(같은 까닭 — 그리지 못하는 마크를 열지 않는다, 결정 K-6).
  */
-const COMMUNITY_DOC_STAGE = 8;
+const COMMUNITY_DOC_STAGE = 10;
 
 /**
  * 임베드를 **틀(iframe)로 그릴지** (7-C 결정 K-5). **코드 상수 — 켬(사용자 「임베드 허용해라」 2026-09-24).**

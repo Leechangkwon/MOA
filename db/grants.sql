@@ -21,6 +21,17 @@
 
 \set ON_ERROR_STOP on
 
+-- 비서 MVP 표가 있는 설치에서만 적용. 기존 표/역할의 권한은 넓히지 않는다.
+DO $$
+BEGIN
+    IF to_regclass('public.assistant_runs') IS NOT NULL AND to_regclass('public.assistant_events') IS NOT NULL THEN
+        GRANT SELECT,INSERT,UPDATE ON public.assistant_runs TO tbox_app;
+        GRANT SELECT,INSERT ON public.assistant_events TO tbox_app;
+        GRANT SELECT ON public.assistant_runs,public.assistant_events TO tbox_backup;
+    END IF;
+END
+$$;
+
 -- 스키마 사용 권한.
 -- `REVOKE ALL ON SCHEMA public FROM PUBLIC` 은 하지 않되(USAGE 를 통째로 끊으면 확장·도구 동작을
 -- 예측 불가하게 바꾼다), CREATE 와 CONNECT 는 회수한다. 아래 두 REVOKE 가 그것이다.
@@ -270,3 +281,18 @@ BEGIN
     GRANT SELECT ON SEQUENCE public.session_links_id_seq TO tbox_backup;
 END
 $$;
+
+-- Moa: invitation-only onboarding and member messages (2026-10-02).
+GRANT SELECT,INSERT,UPDATE ON public.member_invites,public.member_rate_limits,public.member_settings,public.member_messages TO tbox_app;
+GRANT USAGE,SELECT ON SEQUENCE public.member_invites_id_seq,public.member_messages_id_seq TO tbox_app;
+GRANT SELECT ON public.member_invites,public.member_rate_limits,public.member_settings,public.member_messages TO tbox_backup;
+GRANT SELECT ON SEQUENCE public.member_invites_id_seq,public.member_messages_id_seq TO tbox_backup;
+
+-- Moa messenger AI (2026-10-02).
+GRANT SELECT,INSERT,UPDATE ON public.member_ai_settings,public.member_ai_threads,public.member_ai_turns TO tbox_app;
+GRANT USAGE,SELECT ON SEQUENCE public.member_ai_threads_id_seq,public.member_ai_turns_id_seq TO tbox_app;
+GRANT SELECT ON public.member_ai_settings,public.member_ai_threads,public.member_ai_turns TO tbox_backup;
+GRANT SELECT ON SEQUENCE public.member_ai_threads_id_seq,public.member_ai_turns_id_seq TO tbox_backup;
+
+GRANT SELECT,INSERT,UPDATE ON public.member_ai_assists TO tbox_app;
+GRANT SELECT ON public.member_ai_assists TO tbox_backup;

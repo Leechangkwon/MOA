@@ -549,3 +549,210 @@ DO $$ DECLARE r record; BEGIN
  ALTER TABLE community.notifications ADD CONSTRAINT notifications_kind_check
   CHECK(kind IN ('mention','reply','comment_on_my_page','handover','verify_expired','recurring_created','review_requested','due_tomorrow','automation_denied','automation_disabled'));
 END $$;
+
+-- C:F-46: proposal content is immutable to the application after insertion.
+CREATE TABLE IF NOT EXISTS community.page_suggestions (
+    id BIGSERIAL PRIMARY KEY,
+    public_id UUID NOT NULL UNIQUE,
+    page_id BIGINT NOT NULL REFERENCES community.pages(id),
+    author_id BIGINT NOT NULL REFERENCES public.users(id),
+    base_version INT NOT NULL CHECK (base_version > 0),
+    ops JSONB NOT NULL CHECK (jsonb_typeof(ops) = 'array' AND jsonb_array_length(ops) BETWEEN 1 AND 50),
+    base_blocks JSONB NOT NULL CHECK (jsonb_typeof(base_blocks) = 'object'),
+    note TEXT CHECK (length(note) <= 500),
+    status TEXT NOT NULL DEFAULT 'open' CHECK (status IN ('open','accepted','rejected','stale','withdrawn')),
+    decided_by BIGINT REFERENCES public.users(id),
+    decided_at TIMESTAMPTZ,
+    decision_note TEXT CHECK (length(decision_note) <= 500),
+    applied_version INT,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    CHECK (octet_length(ops::text) + octet_length(base_blocks::text) <= 1048576)
+);
+CREATE INDEX IF NOT EXISTS page_suggestions_page_status ON community.page_suggestions(page_id,status);
+CREATE INDEX IF NOT EXISTS page_suggestions_author_status ON community.page_suggestions(author_id,status);
+DO $$
+DECLARE item record; definition text;
+BEGIN
+    FOR item IN SELECT conname, pg_get_constraintdef(oid) AS def
+                  FROM pg_constraint WHERE conrelid='community.notifications'::regclass
+                   AND contype='c' AND pg_get_constraintdef(oid) LIKE '%kind%'
+    LOOP
+        definition := item.def;
+        IF position('suggestion_new' in definition) = 0 THEN
+            EXECUTE format('ALTER TABLE community.notifications DROP CONSTRAINT %I', item.conname);
+            EXECUTE format('ALTER TABLE community.notifications ADD CONSTRAINT %I CHECK ((%s) OR kind IN (''suggestion_new'',''suggestion_accepted'',''suggestion_rejected'',''suggestion_stale''))',
+                item.conname, substring(definition from 7));
+        END IF;
+    END LOOP;
+END
+$$;
+
+-- Stage 11 adds fixed response anonymity and dashboard kind.
+-- Stage 11: additive and idempotent. Roll back code only; preserve responses and their anonymity.
+ALTER TABLE community.pages ADD COLUMN IF NOT EXISTS form_view_id TEXT;
+ALTER TABLE community.pages ADD COLUMN IF NOT EXISTS form_anonymous BOOLEAN;
+DO $$ DECLARE c record; expression text; BEGIN
+ IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conrelid='community.pages'::regclass AND conname='pages_form_shape_check') THEN
+  ALTER TABLE community.pages ADD CONSTRAINT pages_form_shape_check
+   CHECK ((form_view_id IS NULL AND form_anonymous IS NULL) OR (form_view_id IS NOT NULL AND form_view_id ~ '^v[0-9a-f]{8}$' AND form_anonymous IS NOT NULL));
+ END IF;
+ FOR c IN SELECT conname, pg_get_constraintdef(oid) AS definition FROM pg_constraint
+           WHERE conrelid='community.pages'::regclass AND contype='c' AND pg_get_constraintdef(oid) LIKE '%page_kind%'
+ LOOP
+  IF position('dashboard' in c.definition) = 0 THEN
+   expression := substring(c.definition from 8 for length(c.definition)-8);
+   EXECUTE format('ALTER TABLE community.pages DROP CONSTRAINT %I', c.conname);
+   EXECUTE format('ALTER TABLE community.pages ADD CONSTRAINT %I CHECK ((%s) OR page_kind = ''dashboard'')', c.conname, expression);
+  END IF;
+ END LOOP;
+ FOR c IN SELECT conname, pg_get_constraintdef(oid) AS definition FROM pg_constraint
+           WHERE conrelid='community.notifications'::regclass AND contype='c' AND pg_get_constraintdef(oid) LIKE '%kind%'
+ LOOP
+  IF position('form_response' in c.definition) = 0 THEN
+   expression := substring(c.definition from 8 for length(c.definition)-8);
+   EXECUTE format('ALTER TABLE community.notifications DROP CONSTRAINT %I', c.conname);
+   EXECUTE format('ALTER TABLE community.notifications ADD CONSTRAINT %I CHECK ((%s) OR kind = ''form_response'')', c.conname, expression);
+  END IF;
+ END LOOP;
+END $$;
+CREATE INDEX IF NOT EXISTS pages_form_rate_idx
+ ON community.pages(database_id,form_view_id,author_id,created_at) WHERE form_view_id IS NOT NULL;
+
+-- Stage 12 current fresh-install shape.
+
+-- Stage 12 A/B/C. Run as tbox_owner; repeated application is safe.
+
+BEGIN;
+CREATE TABLE IF NOT EXISTS community.collections (
+ id bigserial PRIMARY KEY, owner_user_id bigint NOT NULL REFERENCES public.users(id),
+ name text NOT NULL CHECK(length(name) BETWEEN 1 AND 50), parent_id bigint REFERENCES community.collections(id) ON DELETE CASCADE,
+ position integer NOT NULL DEFAULT 0, created_at timestamptz NOT NULL DEFAULT now());
+CREATE INDEX IF NOT EXISTS collections_owner ON community.collections(owner_user_id);
+CREATE TABLE IF NOT EXISTS community.collection_items (
+ collection_id bigint REFERENCES community.collections(id) ON DELETE CASCADE, page_id bigint REFERENCES community.pages(id) ON DELETE CASCADE,
+ position integer NOT NULL DEFAULT 0, added_at timestamptz NOT NULL DEFAULT now(), PRIMARY KEY(collection_id,page_id));
+CREATE TABLE IF NOT EXISTS community.share_groups (
+ id bigserial PRIMARY KEY,public_id uuid NOT NULL UNIQUE DEFAULT gen_random_uuid(),name text NOT NULL CHECK(length(name) BETWEEN 1 AND 50),
+ created_by bigint NOT NULL REFERENCES public.users(id),kind text NOT NULL CHECK(kind IN ('admin','manager')),
+ manager_team_id bigint REFERENCES public.teams(id),created_at timestamptz NOT NULL DEFAULT now(),deleted_at timestamptz);
+CREATE UNIQUE INDEX IF NOT EXISTS share_groups_name ON community.share_groups(lower(name)) WHERE deleted_at IS NULL;
+CREATE TABLE IF NOT EXISTS community.share_group_members (
+ group_id bigint REFERENCES community.share_groups(id),user_id bigint REFERENCES public.users(id),added_by bigint NOT NULL REFERENCES public.users(id),
+ added_at timestamptz NOT NULL DEFAULT now(),PRIMARY KEY(group_id,user_id));
+CREATE TABLE IF NOT EXISTS community.group_member_events (
+ id bigserial PRIMARY KEY,group_id bigint NOT NULL REFERENCES community.share_groups(id),user_id bigint NOT NULL REFERENCES public.users(id),
+ action text NOT NULL CHECK(action IN ('add','remove')),by_user_id bigint NOT NULL REFERENCES public.users(id),at timestamptz NOT NULL DEFAULT now());
+ALTER TABLE community.page_shares ALTER COLUMN user_id DROP NOT NULL;
+ALTER TABLE community.page_shares ADD COLUMN IF NOT EXISTS group_id bigint REFERENCES community.share_groups(id);
+DO $$ BEGIN IF NOT EXISTS(SELECT 1 FROM pg_constraint WHERE conrelid='community.page_shares'::regclass AND conname='page_shares_one_target') THEN
+ ALTER TABLE community.page_shares ADD CONSTRAINT page_shares_one_target CHECK ((user_id IS NULL) <> (group_id IS NULL)); END IF; END $$;
+CREATE UNIQUE INDEX IF NOT EXISTS page_shares_group ON community.page_shares(page_id,group_id);
+CREATE TABLE IF NOT EXISTS community.synced_sources (
+ id bigserial PRIMARY KEY,public_id uuid NOT NULL UNIQUE,page_id bigint NOT NULL REFERENCES community.pages(id),blocks jsonb NOT NULL CHECK(jsonb_typeof(blocks)='array'),
+ version integer NOT NULL DEFAULT 1,updated_by bigint NOT NULL REFERENCES public.users(id),updated_at timestamptz NOT NULL DEFAULT now(),deleted_at timestamptz);
+CREATE TABLE IF NOT EXISTS community.synced_references (
+ page_id bigint REFERENCES community.pages(id),source_id uuid NOT NULL,PRIMARY KEY(page_id,source_id));
+COMMIT;
+
+-- Stage 12 D. Public forms use stage 11 form metadata and no stored raw token.
+
+BEGIN;
+ALTER TABLE community.spaces ADD COLUMN IF NOT EXISTS web_publish_allowed boolean NOT NULL DEFAULT false;
+CREATE TABLE IF NOT EXISTS community.web_publications (
+ id bigserial PRIMARY KEY, token_hash char(64) NOT NULL UNIQUE,page_id bigint NOT NULL REFERENCES community.pages(id),
+ created_by bigint NOT NULL REFERENCES public.users(id),created_at timestamptz NOT NULL DEFAULT now(),expires_at timestamptz,revoked_at timestamptz,
+ revoked_by bigint REFERENCES public.users(id),allow_index boolean NOT NULL DEFAULT false,view_count integer NOT NULL DEFAULT 0,last_viewed_at timestamptz);
+CREATE TABLE IF NOT EXISTS community.web_publication_pages (
+ publication_id bigint REFERENCES community.web_publications(id),page_id bigint REFERENCES community.pages(id),PRIMARY KEY(publication_id,page_id));
+CREATE TABLE IF NOT EXISTS community.public_form_uses (
+ nonce_hash char(64) PRIMARY KEY,publication_id bigint NOT NULL REFERENCES community.web_publications(id),used_at timestamptz NOT NULL DEFAULT now());
+-- Only hashes of IPs appear in this rate bucket; raw IP is audit-only.
+CREATE TABLE IF NOT EXISTS community.public_rate_buckets (
+ key_hash char(64) PRIMARY KEY,bucket bigint NOT NULL,hits integer NOT NULL DEFAULT 0);
+ALTER TABLE community.pages ADD COLUMN IF NOT EXISTS form_view_id text;
+ALTER TABLE community.pages ADD COLUMN IF NOT EXISTS public_form_response boolean NOT NULL DEFAULT false;
+ALTER TABLE community.pages ALTER COLUMN author_id DROP NOT NULL;
+ALTER TABLE community.pages ALTER COLUMN last_edited_by DROP NOT NULL;
+DO $$ BEGIN IF NOT EXISTS(SELECT 1 FROM pg_constraint WHERE conrelid='community.pages'::regclass AND conname='pages_anonymous_form_only') THEN
+ ALTER TABLE community.pages ADD CONSTRAINT pages_anonymous_form_only CHECK (author_id IS NOT NULL OR (form_view_id IS NOT NULL AND public_form_response AND (database_id IS NOT NULL OR purged_at IS NOT NULL))); END IF; END $$;
+COMMIT;
+
+-- Stage 12 E/F. Secret URLs/keys are fixed server files, never database columns.
+
+BEGIN;
+CREATE TABLE IF NOT EXISTS community.messenger_hooks (
+ id bigserial PRIMARY KEY,name text NOT NULL CHECK(length(name) BETWEEN 1 AND 50),url_host text NOT NULL CHECK(url_host ~ '^[a-z0-9][a-z0-9.-]+$'),
+ is_active boolean NOT NULL DEFAULT false,created_by bigint NOT NULL REFERENCES public.users(id),created_at timestamptz NOT NULL DEFAULT now());
+CREATE TABLE IF NOT EXISTS community.user_messenger (
+ user_id bigint REFERENCES public.users(id),hook_id bigint REFERENCES community.messenger_hooks(id),kinds text[] NOT NULL DEFAULT '{}',PRIMARY KEY(user_id,hook_id));
+CREATE TABLE IF NOT EXISTS community.notification_outbox (
+ id bigserial PRIMARY KEY,notification_id bigint REFERENCES community.notifications(id) ON DELETE CASCADE,hook_id bigint REFERENCES community.messenger_hooks(id),
+ status text NOT NULL DEFAULT 'pending' CHECK(status IN ('pending','sent','skipped','failed')),tries integer NOT NULL DEFAULT 0,
+ next_at timestamptz NOT NULL DEFAULT now(),sent_at timestamptz,last_reason text,UNIQUE(notification_id,hook_id));
+CREATE TABLE IF NOT EXISTS community.data_connectors (
+ id bigserial PRIMARY KEY,public_id uuid NOT NULL UNIQUE DEFAULT gen_random_uuid(),name text NOT NULL CHECK(length(name) BETWEEN 1 AND 50),
+ database_id bigint NOT NULL REFERENCES community.databases(id),url_host text NOT NULL,url_path text NOT NULL,
+ runner_user_id bigint NOT NULL REFERENCES public.users(id),schedule jsonb NOT NULL,field_map jsonb NOT NULL,
+ is_active boolean NOT NULL DEFAULT false,created_by bigint NOT NULL REFERENCES public.users(id),created_at timestamptz NOT NULL DEFAULT now(),last_run_at timestamptz,last_status text);
+ALTER TABLE community.pages ADD COLUMN IF NOT EXISTS external_key text;
+ALTER TABLE community.pages ADD COLUMN IF NOT EXISTS external_missing boolean NOT NULL DEFAULT false;
+ALTER TABLE community.pages ADD COLUMN IF NOT EXISTS external_connector_id bigint REFERENCES community.data_connectors(id);
+CREATE UNIQUE INDEX IF NOT EXISTS pages_external_key ON community.pages(database_id,external_key);
+CREATE OR REPLACE FUNCTION community.enqueue_messenger() RETURNS trigger LANGUAGE plpgsql SECURITY INVOKER SET search_path=pg_catalog,community AS $$
+ BEGIN INSERT INTO community.notification_outbox(notification_id,hook_id)
+ SELECT NEW.id,m.hook_id FROM community.user_messenger m JOIN community.messenger_hooks h ON h.id=m.hook_id
+ WHERE m.user_id=NEW.user_id AND NEW.kind=ANY(m.kinds) AND h.is_active;
+ RETURN NEW; END $$;
+DROP TRIGGER IF EXISTS notifications_messenger ON community.notifications;
+CREATE TRIGGER notifications_messenger AFTER INSERT ON community.notifications FOR EACH ROW EXECUTE FUNCTION community.enqueue_messenger();
+REVOKE ALL ON FUNCTION community.enqueue_messenger() FROM PUBLIC;
+COMMIT;
+
+-- Stage 13: external AI defaults off; no existing document is implicitly approved.
+ALTER TABLE community.databases ADD COLUMN IF NOT EXISTS tool TEXT;
+CREATE TABLE IF NOT EXISTS community.ai_settings (
+    singleton BOOLEAN PRIMARY KEY DEFAULT true CHECK(singleton),
+    external_data_mode TEXT NOT NULL DEFAULT 'unconfigured' CHECK(external_data_mode IN ('unconfigured','free_public','paid_private')),
+    search_enabled BOOLEAN NOT NULL DEFAULT false,
+    summary_enabled BOOLEAN NOT NULL DEFAULT false,
+    assistant_enabled BOOLEAN NOT NULL DEFAULT false,
+    transcribe_enabled BOOLEAN NOT NULL DEFAULT false,
+    briefing_enabled BOOLEAN NOT NULL DEFAULT false,
+    updated_by BIGINT REFERENCES public.users(id), updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+INSERT INTO community.ai_settings(singleton) VALUES(true) ON CONFLICT DO NOTHING;
+CREATE TABLE IF NOT EXISTS community.ai_page_permissions (
+    page_id BIGINT PRIMARY KEY REFERENCES community.pages(id), version INTEGER NOT NULL CHECK(version>0),
+    allowed_by BIGINT NOT NULL REFERENCES public.users(id), allowed_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE TABLE IF NOT EXISTS community.ai_requests (
+    id BIGSERIAL PRIMARY KEY, user_id BIGINT NOT NULL REFERENCES public.users(id),
+    day DATE NOT NULL DEFAULT ((now() AT TIME ZONE 'Asia/Seoul')::date),
+    feature TEXT NOT NULL CHECK(feature IN ('search','index','summary','assistant','transcribe','briefing')),
+    started_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS ai_requests_quota_idx ON community.ai_requests(user_id,day);
+CREATE TABLE IF NOT EXISTS community.ai_log (
+    id BIGSERIAL PRIMARY KEY, public_id UUID NOT NULL UNIQUE DEFAULT gen_random_uuid(),
+    request_id BIGINT REFERENCES community.ai_requests(id), user_id BIGINT NOT NULL REFERENCES public.users(id),
+    feature TEXT NOT NULL CHECK(feature IN ('search','index','summary','assistant','transcribe','briefing')),
+    page_refs JSONB NOT NULL DEFAULT '[]', file_refs JSONB NOT NULL DEFAULT '[]',
+    input_text TEXT NOT NULL DEFAULT '', output_text TEXT NOT NULL DEFAULT '',
+    model TEXT NOT NULL, started_at TIMESTAMPTZ NOT NULL, finished_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    status TEXT NOT NULL, chars_in INTEGER NOT NULL, chars_out INTEGER NOT NULL,
+    scrubbed_at TIMESTAMPTZ,
+    CHECK(jsonb_typeof(page_refs)='array' AND jsonb_typeof(file_refs)='array')
+);
+CREATE INDEX IF NOT EXISTS ai_log_user_idx ON community.ai_log(user_id,id DESC);
+CREATE TABLE IF NOT EXISTS community.page_embeddings (
+    page_id BIGINT NOT NULL REFERENCES community.pages(id), chunk_no INTEGER NOT NULL CHECK(chunk_no>=0),
+    version INTEGER NOT NULL CHECK(version>0), vec REAL[] NOT NULL CHECK(array_length(vec,1)=768),
+    PRIMARY KEY(page_id,chunk_no)
+);
+CREATE TABLE IF NOT EXISTS community.embedding_queue (
+    page_id BIGINT PRIMARY KEY REFERENCES community.pages(id), version INTEGER NOT NULL,
+    next_chunk INTEGER NOT NULL DEFAULT 0, total_chunks INTEGER NOT NULL DEFAULT 0,
+    state TEXT NOT NULL DEFAULT 'pending' CHECK(state IN ('pending','done','blocked')),
+    available_at TIMESTAMPTZ NOT NULL DEFAULT now(), updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS embedding_queue_pending_idx ON community.embedding_queue(available_at,page_id) WHERE state='pending';

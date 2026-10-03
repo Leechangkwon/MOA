@@ -1,0 +1,28 @@
+2026-10-02 user authorized: MOA visual redesign, community-first home, invitation-only self signup, password / OTP / tbox-buddy onboarding, member messenger.
+Preserve preexisting uncommitted changes. No commit/push of others' work.
+New routes: public register + registration API; authenticated welcome; admin invitation APIs (user.manage + reauth); authenticated messenger APIs with participant checks.
+Invite uses: hash only, expiry, atomic row lock, fixed Employee role, optional admin-selected team, no arbitrary role input. No public private content.
+Registration csrf double-submit cookie + custom header; bounded attempts in database; request JSON whitelist.
+Messenger: active users only, require completed account gates, own conversations only, plain text, no attachments, unread tracking, bounded polling.
+Installer: admin-configured HTTPS URL, no fake download. Token issuance reuses existing password+OTP API.
+
+2026-10-02 Messenger AI requested: Gemini 3.5 Flash; user confirms Google AI Studio API key. Shared server-side provider key, per-account conversations, no other users or community/file data sent automatically.
+Scope: src/MemberAi.php, src/Fetch.php fixed Gemini transport, src/handlers/member_ai*.php, public/index.php, src/Audit.php, db/migrations/2026-10-02_moa_ai.sql, db/schema.sql, db/grants.sql, messenger/admin view+JS+CSS, deployment documentation.
+Key: administrator write-only password input; private file outside webroot, 0700 directory/0600 file; no key in DB/browser/readback/logs. Disabled until configured.
+Limits: 4 requests/minute per user, 12/minute site; one outstanding per user/two site; daily user/site request budgets, reserve before API, failed/uncertain calls also counted; bounded recent context/output; no automatic retries.
+Concurrency: short PostgreSQL transaction locks the singleton config during reservation, inserts pending turn and commits before external network. Request UUID idempotency per user; own-user predicates on every history query.
+New_ERP2 main 758ec21: Gemini source not located in tree/config or commit search; successful branch/location requested.
+
+2026-10-02 user requests intuitive module icons and clearer identity/use guidance: library=file storage/sharing, community=posts/questions/documents/task coordination. Replace module shield/grid with folder-document and conversation bubbles; brand link navigates home; separate menu control; expose direct module links. Add task-oriented guides and real action buttons, mirror existing authorized board navigation only. Preserve roles/data/auth and existing dynamic DOM ids.
+AI key correction: accept opaque printable ASCII keys 20..4096 bytes including periods (new Google authorization-key format), reject whitespace/control characters. Increase password field/request/file-read bounds; distinguish missing/format/authentication errors.
+
+2026-10-02 user requests composer AI tools (polish/spelling/translation/image) and GPT free API / personal subscriptions.
+Scope: src/MemberAssist.php, src/handlers/member_assist*.php, src/handlers/member_messages*.php, src/handlers/member_ai_settings.php, src/MemberAi.php (shared usage/reservations), src/Fetch.php (fixed Google interactions image transport), src/Audit.php, public/index.php, db/migrations/2026-10-02_moa_assists.sql, db/schema.sql, db/grants.sql, public/assets/member-assist.js/member.js/moa.css, src/views/member_top.php/member_invites.php/member_assist.php, docs/API/ARCHITECTURE/DESIGN/SECURITY/STAGES.
+Text sends only explicitly selected draft/message, private result preview, manual apply/send. Member scope/CSRF, per-user request UUID, owner/participant checks, shared limits across chat+tools, image enable default false with additional daily caps, bounded raster decoding/storage, attachment sender+recipient authorization, no public attachment URLs. No paid provider call during implementation.
+OpenAI: public API is metered; current Sign in with ChatGPT supports eligible local/open-source apps with user plan usage; remote-hosted apps need interest/partner process. Do not claim subscription APIs universally impossible. No unsupported credential reuse. Add manual copy + official ChatGPT link as an explicitly external option; research note for official buddy OAuth.
+
+2026-10-02 user authorizes follow-up web/manual ChatGPT integration and verification.
+Remote local branch AI-비서(로컬) confirmed da4ce9a02eafdc138a974b7db8b8355aca2b75c5, separately cloned. Its deployment mode stays unconfirmed; no Windows inference claims.
+Scope: public/assets/member-assist.js, member.js, moa.css; src/views/member_assist.php, member_local_buddy.php; src/handlers/member_welcome_page.php, member_messages_page.php; tests/moa_local_assist.py, tests/moa_local_permissions.py, tests/fixtures/moa_member_render.php; DESIGN/ARCHITECTURE/API/SECURITY and docs/moa-local-chatgpt-2026-10-02.txt, docs/tbox-buddy-bridge-prompt.txt, docs/moa-local-deployment-2026-10-02.json; parent STAGES.
+Flow: explicit provider (shared Gemini / personal local buddy / external ChatGPT website), original/action/language review, exact original copy for buddy, manual result paste/preview/explicit apply, original restoration and separate message Send. No clipboard reads, local connection checks, fake successes or new endpoints. Unicode code point 4000 limit, no silent truncation; fail-safe clipboard selection and stale result/peer guards.
+Validation: real PHP templates with browser/API fixtures (no paid calls), bounded isolated authorization checks, PHP/JS syntax and security lint. Preserve previous Gemini text/image and external prompt path. Deploy only scoped files after baseline drift check; other uncommitted work must remain untouched.

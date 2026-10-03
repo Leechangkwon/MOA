@@ -14,9 +14,10 @@ $sharedToken = ($argv[1] ?? '') === 'shared' ? str_repeat('A', 43) : '';
 ob_start();
 require __DIR__ . '/../../src/community/handlers/memories_page.php';
 $html = (string) ob_get_clean();
-if (substr_count($html, '<body') !== 1 || substr_count($html, 'id="community-threads"') !== 1
-    || substr_count($html, 'id="community-messenger"') !== ($sharedToken === '' ? 1 : 0)) {
-    fwrite(STDERR, "FAIL: integrated shell or public reader markup\n"); exit(1);
+$markup = (string) preg_replace('/<!--.*?-->/s', '', $html);
+if (substr_count($markup, '<body') !== 1 || substr_count($markup, 'id="community-threads"') !== 1
+    || substr_count($markup, 'id="community-messenger"') !== ($sharedToken === '' ? 1 : 0)) {
+    fwrite(STDERR, "FAIL: integrated shell or public reader markup: " . json_encode([substr_count($markup, '<body'),substr_count($markup, 'id="community-threads"'),substr_count($markup, 'id="community-messenger"')]) . "\n"); exit(1);
 }
 preg_match_all('/\sid="([^"]+)"/', (string) preg_replace('/<!--.*?-->/s', '', $html), $ids);
 if (count($ids[1]) !== count(array_unique($ids[1]))) { fwrite(STDERR, "FAIL: duplicate element IDs\n"); exit(1); }

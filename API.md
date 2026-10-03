@@ -934,3 +934,51 @@ GET /tbox/session/open?code=…&to=%2Ftbox%2Fsettings           → 302 Location
 4. `PRD.md` 8장 API 표에 같은 행이 있어야 한다 — 문서가 먼저, 구현이 다음.
 
 > 예시 응답은 2026-09-15 에 검토 계정 `qa_employee01` 로 서버 안 검토 포트에서 실제로 받은 값이다(업로드한 시험 파일은 곧바로 휴지통으로 보냈다).
+
+## 모아 회원 초대·시작 안내·웹 메신저 (2026-10-02)
+
+아래 API는 **브라우저 세션 전용**이다. 기존 X-API-Token 허용 범위를 넓히지 않는다.
+
+| 경로 (`/tbox` 뒤) | 용도 | 인증 |
+|---|---|---|
+| GET `/join` | 초대 가입 화면. 링크 `#invite=<code>` 자동 입력 | 공개 |
+| POST `/api/register` | `{invite,username,display_name,password}` → 가입·세션·OTP 안내 | 전용 가입 CSRF |
+| GET `/welcome` | OTP 등록·비서 설치·기능별 토큰 발급 안내 | 세션, 관문 중 허용 |
+| GET/POST `/api/invites` | 초대 목록 / `{label,team_id,max_uses,days}` 발급 | 관리자·재인증·CSRF |
+| DELETE `/api/invites/{num}` | 초대 회수 | 관리자·재인증·CSRF |
+| POST `/api/member-installer` | `{url}` HTTPS 설치 주소, 빈 문자열은 해제 | 관리자·재인증·CSRF |
+| GET `/messages` | 웹 1:1 메신저 | 구성원 세션 |
+| GET `/api/messages?q=` | 대화 가능 구성원·미읽음 수 | 구성원 세션 |
+| GET `/api/messages/{num}?before=` | 나와 해당 구성원의 최근/이전 메시지 60개 | 구성원 세션 |
+| POST `/api/messages/{num}` | `{text}` 전송, 최대 4,000자 | 구성원 세션·CSRF |
+| PATCH `/api/messages/{num}` | `{through}` 지정 메시지까지 수신 메시지 읽음 처리 | 구성원 세션·CSRF |
+
+`/api/me`에는 `member_id`(본인 번호)가 추가된다. 비서 설치 파일은 별도 배포 주소가 있어야 다운로드할 수 있다. 웹 화면은 PC 프로그램 설치 완료나 연결 성공을 자동 판정하지 않는다.
+
+## 모아 메신저 AI (2026-10-02)
+
+- `GET /api/messages/ai`: 로그인한 구성원의 AI 대화 기록. `thread` 생략=최근 대화, `0`=새 대화 화면, 양수=본인 대화. `before`는 이전 turn id. 최근 30개 질문/답변, `has_more`; 본인 대화 선택 목록 최근100개. 다른 사용자 id를 받지 않는다.
+- `POST /api/messages/ai`: `{text, thread_id, request_id}`. thread_id는 신규일 때null, request_id는 브라우저가 생성한UUIDv4. 세션·CSRF·구성원 권한 필수. 요청UUID는 사용자별 고유하므로 재전송은 기존 turn을 반환한다. 완료/실패200, 처리중202; 실제 상태는 `turn.state`. 사용 한도429, 본인 외 대화404.
+- `GET/POST /api/member-ai-settings`: `user.manage`+재인증. POST `{api_key, enabled, user_daily, site_daily}`; 빈키는기존유지. 키원문조회없음, configured만반환. 모델고정`gemini-3.5-flash`.
+- X-API-Token/tbox-buddy 토큰으로 이 API를 호출할 수 없다. 이번 범위는 웹 메신저의 AI 대화다.
+
+### 모아 메시지 AI 도구 (2026-10-02)
+
+- `GET /api/messages/assist?peer=<user_id>[&request=<UUIDv4>]`: 로그인 사용자·현재 상대에 묶인 최근 도구 결과 8건과 요청 상태, 남은 공통/이미지 한도.
+- `POST /api/messages/assist`: 정확한 JSON `{request_id,peer_id,action,source_id,text,language,aspect}`. action=polish/spelling/translate/image, language=ko/en/ja/zh/vi/es, aspect=1:1/16:9/9:16. source_id는 번역만 허용하며 서버에서 참여자 범위를 확인해 원문을 조회한다. 일반 text는 1~4,000자. 동일 사용자+request_id 중복 억제. 결과는 요청자에게만 제공한다.
+- `GET /api/messages/attachments/<UUID>`: 생성자는 미리보기 가능, 전송 후 해당 메시지 참여자만 이미지에 접근 가능. UUID는 권한을 대체하지 않는다. 캐시 금지·SHA-256 확인 후 PNG/JPEG 인증 스트림.
+- 기존 `POST /api/messages/<user_id>`에 선택적 `attachment_id`(UUID/null) 추가. 완료한 본인 이미지와 해당 상대 일치 검증. 첨부만 보낼 때 기본 본문 표시, 이미지 재전송 중복 억제. GET 메시지에 ai_attachment_id/image_url 추가.
+- 관리자 `/api/member-ai-settings`는 image_enabled/image_user_daily(1~20)/image_site_daily(1~200) 추가. 기존 4필드 요청은 이미지 설정을 보존한다. 기본 false/3/20.
+- 모두 기존 세션·CSRF·가입 완료 관문 및 메신저 권한을 적용. Guest/역할 보기/일반 파일 API 토큰으로 우회 불가.
+
+
+### 개인 ChatGPT 수동 전달 (2026-10-02)
+
+새 서버 API는 없다. 메신저 AI 모달에서 공용 Gemini/PC 로컬 비서/외부 ChatGPT 웹을 선택한다. 로컬 경로는 원문만 복사하고 결과를 직접 붙여 넣어 미리보기·명시적 적용·별도 전송한다. 파일 API 토큰이나 assistant.run 권한은 메신저 호출 권한이 아니다. 기존 브라우저 세션·CSRF·참여자 검사를 유지한다.
+
+후속 loopback API는 아직 제안이며 호출할 수 없다. JSON v1 계약, 독립 페어링, 만료/중복 처리 및 Windows 구현 지시서는 `docs/tbox-buddy-bridge-prompt.txt`. OAuth callback을 작업 수신기로 쓰지 않는다.
+
+
+## 비서 실행 MVP — 2026-10-01 (검증 사본)
+
+비서 API 확장(운영 미적용): docs/assistant-minimum-contract.md를 계약 기준으로 한다. POST/GET runs, GET 단건/events, POST cancel/confirm. 독립 assistant.run만 허용. 기존 토큰 범위 불변.

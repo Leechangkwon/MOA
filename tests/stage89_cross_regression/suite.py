@@ -62,7 +62,7 @@ try:
     # Q launcher: anonymous disclosure, authenticated tiles, method/legacy-path handling.
     public=call('GET','/',user=None,expected=200)
     check('Set-Cookie' not in public.headers,'anonymous launcher creates no session')
-    check('href="/tbox/"' not in public.text and 'href="/community/"' not in public.text and 'card--link' not in public.text,'anonymous launcher hides application tiles')
+    check('data-signed="no"' in public.text and 'id="moa-feed"' not in public.text and 'id="q-start-list"' not in public.text and '/assets/start.js' not in public.text,'anonymous Moa home hides member feed and recent work')
     check('/tbox/login' in public.text and 'no-store' in public.headers.get('Cache-Control',''),'anonymous launcher login and no-store')
     call('POST','/',user=None,expected=405)
     for path in ['/api/health?x=1','/login','/settings']:

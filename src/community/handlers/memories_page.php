@@ -18,7 +18,7 @@ header("Content-Security-Policy: default-src 'self'; script-src 'self'; style-sr
 $pageTitle = '스레드';
 $activeNav = 'community-threads';
 $pageKey = 'community-threads';
-$pageHelp = 'community-home';
+$pageHelp = 'community-threads';
 $pageCss = ['community/community.css', 'community/memories.css'];
 $shellModule = 'community';
 $pagePalette = $isShared ? '' : community_palette_version();
@@ -61,7 +61,7 @@ $jsVersion = filemtime(__DIR__ . '/../../../public/assets/community/memories.js'
 <symbol id="i-video" viewBox="0 0 24 24"><path d="M3 6h12v12H3Zm12 4 6-4v12l-6-4"/></symbol>
 </defs></svg>
 <div id="connection" class="connection" role="status" hidden>인터넷 연결이 끊겼어요. 작성한 기록은 이 기기에 임시 저장할 수 있어요.</div>
-<header class="threads-heading" id="hero"><div><p class="eyebrow">OUR COMMUNITY</p><h1>우리의 하루가 모이는 곳</h1><p class="hero-sub">일상의 한 줄부터 여행의 한 장까지, 함께 나눠요.</p></div><span id="today" class="muted"></span></header>
+<header class="threads-heading" id="hero"><div><p class="eyebrow">OUR COMMUNITY</p><h1>우리의 하루가 모이는 곳</h1><p class="hero-sub">일상의 한 줄부터 여행의 한 장까지, 함께 나눠요.</p></div><span id="today" class="muted"></span><?php if (!$isShared): ?><button type="button" class="btn btn--quiet" data-help-open>사용 방법</button><?php endif; ?></header>
 <nav class="threads-tabs" aria-label="스레드 메뉴"><button data-view="feed" class="active">모든 스레드</button><button data-view="mine" data-member>나의 스레드</button><button data-view="shared">공유 스레드</button></nav>
 <div class="threads-quick" data-member><button class="threads-write" data-compose data-writer hidden><span class="avatar" data-my-initial>나</span><span>지금 어떤 이야기를 남기고 싶나요?</span><svg><use href="#i-camera"/></svg></button><button class="secondary" data-messenger-open>메신저</button></div>
 <section class="profile-panel" id="profile-panel" hidden><div class="profile-cover"></div><div class="profile-content"><span class="avatar profile-avatar" id="profile-avatar">나</span><div><p class="eyebrow">MY THREADS</p><h1 id="profile-title">나의 스레드</h1><p class="muted" id="profile-description">평범한 하루도, 낯선 여행도. 내가 사랑한 순간들.</p></div><button class="secondary" id="share-profile" data-writer hidden><svg><use href="#i-share"/></svg>페이지 공유</button></div><div class="profile-stats" id="profile-stats"></div></section>

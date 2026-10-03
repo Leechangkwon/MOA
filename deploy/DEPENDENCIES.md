@@ -228,3 +228,7 @@ HTTP 는 표준 라이브러리(`urllib` · `ssl.create_default_context()`)로 �
 - 패키지·확장·외부 도구를 **하나라도** 추가하면 이 파일을 같은 커밋에서 갱신한다 (CLAUDE.md 7장).
 - 버전을 올리면: EOL 확인 → 스테이징에서 T-1~T-23 재실행 → 운영. "작년에 통과했으니 안전" 은 근거가 아니다.
 - 분기마다 이 표의 EOL 을 다시 확인한다 (PRD S-11-B 운영 캘린더).
+
+
+## 커뮤니티 12단계 (2026-10-01)
+외부 라이브러리 추가 없음. 기존 PHP cURL/OpenSSL/PostgreSQL 및 ProseMirror 고정 의존성을 사용한다. 공개 화면은 스크립트·외부 자산을 읽지 않는다. 메신저/연결 비밀 파일은 `/etc/tbox-v2/hooks/<id>.url`, `/etc/tbox-v2/connectors/<id>.key`의 root:tbox-php 0640이며 저장소 밖이다. 실제 연결 대상은 추후 지정한다.

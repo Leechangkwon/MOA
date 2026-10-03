@@ -226,6 +226,7 @@ final class Doc
         // ─── [3] 재귀 한 벌 ────────────────────────────────────────
         $state = [
             'count'  => 0,
+            'db_views' => 0,
             'ids'    => [],
             'types'  => self::typesForStage($stage),
             'marks'  => self::marksForStage($stage),
@@ -295,6 +296,18 @@ final class Doc
                 continue;
             }
 
+            if ($type==='db_view' && ++$state['db_views'] > 12) { $add($p,'too_many_db_views'); }
+
+            if (in_array($type,['synced_source','synced_ref'],true)) {
+                $state[$type]=($state[$type]??0)+1;
+                if ($type==='synced_source' && isset($block['source_id']) && is_string($block['source_id'])) {
+                    if(isset($state['source_ids'][$block['source_id']])) { $add($p,'duplicate_id'); }
+                    $state['source_ids'][$block['source_id']]=true;
+                }
+                if ($state[$type]>20) { $add($p,'too_many_blocks'); }
+                if (($state['in_synced']??0)>0) { $add($p,'bad_ref'); }
+                if ($type==='synced_source' && self::countBlocks($block['children']??[])>200) { $add($p,'too_many_blocks'); }
+            }
             $spec = $s['blocks'][$type];
 
             // ── 키 집합 정확히 (공통 키 + 그 타입의 키) ──
@@ -400,7 +413,9 @@ final class Doc
             if ($type === 'column') {
                 $state['in_column'] = ($state['in_column'] ?? 0) + 1;
             }
+            if ($type==='synced_source') { $state['in_synced']=($state['in_synced']??0)+1; }
             self::walk($value, $p, $depth + 1, $stage, $state, $add, $limits, $s);
+            if ($type==='synced_source') { $state['in_synced']--; }
             if ($type === 'column') {
                 $state['in_column']--;
             }
@@ -428,6 +443,9 @@ final class Doc
         $base     = $optional ? substr($shape, 0, -1) : $shape;
 
         switch ($base) {
+            case 'view-id':
+                if (!is_string($value) || preg_match('/^v[0-9a-f]{8}$/',$value)!==1) { $add($p,'bad_id'); }
+                return;
             case 'button-label':
                 if (!is_string($value) || preg_match('//u', $value) !== 1 || preg_match('/\p{C}/u', $value) || iconv_strlen(trim($value), 'UTF-8') < 1 || iconv_strlen($value, 'UTF-8') > 30) { $add($p, 'bad_value'); }
                 return;
@@ -1331,7 +1349,7 @@ final class Doc
     }
 
     /** 템플릿에 담지 않는 블록 */
-    private const TEMPLATE_DROP = ['image', 'file', 'child_page', 'button'];
+    private const TEMPLATE_DROP = ['image', 'file', 'child_page', 'button', 'db_view'];
 
     /**
      * @param  list<mixed> $list
@@ -1348,6 +1366,7 @@ final class Doc
                 $dropped += 1 + self::countBlocks($block['children'] ?? []);
                 continue;
             }
+            if (($block['type']??'')==='synced_source') { $out=array_merge($out,self::stripForTemplate($block['children']??[],$dropped));continue; }
             if ((string) ($block['type'] ?? '') === 'to_do') {
                 $block['checked'] = false;
             }

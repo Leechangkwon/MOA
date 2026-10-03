@@ -94,6 +94,10 @@ $it = new RecursiveIteratorIterator(
 );
 foreach ($it as $fileInfo) {
     /** @var SplFileInfo $fileInfo */
+    // Community AI credentials are configuration, not uploaded file records.
+    if (str_starts_with($fileInfo->getPathname(), $base . '/private-ai/')) {
+        continue;
+    }
     if (!$fileInfo->isFile()) {
         continue;
     }

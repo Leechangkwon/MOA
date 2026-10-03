@@ -40,6 +40,7 @@ if ($row['database_id'] === null) {
     Http::json(['error' => '데이터베이스의 행만 속성 값이 있습니다', 'reason' => 'not_row'], 400);
     exit;
 }
+if (($row['external_key']??null)!==null) { Http::json(['error'=>'외부에서 가져온 값은 원본에서 고칩니다','reason'=>'external_readonly'],400);exit; }
 $pageId    = (int) $row['id'];
 $pageTitle = community_target_title((string) $row['title']);
 
@@ -58,7 +59,13 @@ $schema = community_db_schema_of($row['db_schema']);
 $set    = [];
 $del    = [];
 $props  = [];
+$dueSet=false; $dueValue=null;
 foreach ($body['values'] as $k => $v) {
+    if ($k==='due') {
+        $raw=is_array($v) ? ($v['start'] ?? null) : $v;
+        if ($raw!==null && DbViews::day($raw)===null) { Http::json(['error'=>'기한 날짜가 올바르지 않습니다','reason'=>'bad_value'],400); exit; }
+        $dueSet=true; $dueValue=$raw; continue;
+    }
     $prop = DbProps::find($schema, (string) $k);
     if ($prop === null) {
         Http::json(['error' => '없는 속성입니다', 'reason' => 'unknown_prop'], 400);
@@ -90,13 +97,14 @@ foreach ($body['values'] as $k => $v) {
 }
 
 $sqlLock = <<<'SQL'
-    SELECT properties FROM community.pages
+    SELECT properties,due_date FROM community.pages
      WHERE id = CAST(:pid AS bigint) AND deleted_at IS NULL AND database_id = CAST(:db AS bigint)
      FOR UPDATE
     SQL;
 $sqlSet = <<<'SQL'
     UPDATE community.pages
-       SET properties = (coalesce(properties, '{}'::jsonb) || CAST(:set AS jsonb)) - CAST(:del AS text[])
+       SET properties = (coalesce(properties, '{}'::jsonb) || CAST(:set AS jsonb)) - CAST(:del AS text[]),
+           due_date = CASE WHEN CAST(:due_set AS boolean) THEN CAST(:due AS date) ELSE due_date END
      WHERE id = CAST(:pid AS bigint)
     RETURNING properties
     SQL;
@@ -115,20 +123,37 @@ $canon = static function ($v) use (&$canon): string {
 $changed = [];
 $db->begin();
 try {
+    $databaseLock=<<<'SQL'
+        SELECT id,schema FROM community.databases WHERE id=CAST(:db AS bigint) FOR UPDATE
+        SQL;
+    $currentDatabase=$db->run($databaseLock,[':db'=>(int)$row['database_id']])->fetch();
+    if (!is_array($currentDatabase) || community_db_schema_of($currentDatabase['schema'])!==$schema) {
+        $db->rollback(); Http::json(['error'=>'속성이 변경되었습니다. 새로 고친 뒤 다시 시도하세요','reason'=>'changed'],409); exit;
+    }
+    foreach ($props as $key=>$prop) {
+        if (($prop['depends'] ?? false) && !community_dependency_ok((int)$row['database_id'],$key,$pid,$set[$key] ?? [])) {
+            $db->rollback(); Http::json(['error'=>'선후행 관계가 순환하거나 깊이 한도를 넘습니다','reason'=>'dependency_cycle'],400); exit;
+        }
+    }
     $cur = $db->run($sqlLock, [':pid' => $pageId, ':db' => (int) $row['database_id']])->fetch();
     if (!is_array($cur)) {
         // 사이에 지워졌거나 행이 아니게 됐다(옮기기)
         $db->rollback();
         Http::error(404, Http::MSG_NOT_FOUND);
     }
+    $fresh=community_page_row($pid,$me);
+    if ($fresh===null || !CommunityAuthz::decidePageChange($user,$fresh)[0]) { $db->rollback(); Http::error(403,Http::MSG_FORBIDDEN); }
     $before = json_decode((string) $cur['properties'], true) ?: [];
     $delArr = '{' . implode(',', array_map(static fn (string $k): string => '"' . $k . '"', $del)) . '}';   // key 는 p+8hex 뿐
     $after  = $db->run($sqlSet, [
         ':set' => json_encode($set === [] ? new stdClass() : $set, JSON_UNESCAPED_UNICODE),
         ':del' => $delArr,
-        ':pid' => $pageId,
+        ':pid' => $pageId, ':due_set'=>$dueSet?'true':'false', ':due'=>$dueValue,
     ])->fetch();
 
+    if ($dueSet && $cur['due_date']!==$dueValue) {
+        community_insert_property_event($pageId,'due',$cur['due_date'],$dueValue,$me); $changed[]='기한';
+    }
     foreach ($props as $k => $prop) {
         $from = array_key_exists($k, $before) ? $before[$k] : null;
         $to   = $set[$k] ?? null;
@@ -156,6 +181,6 @@ try {
 }
 
 Http::json([
-    'values'  => community_db_values_out($schema, is_array($after) ? $after['properties'] : null),
+    'values'  => community_db_values_visible($schema, is_array($after) ? $after['properties'] : null, $user),
     'changed' => $changed,
 ]);

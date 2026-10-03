@@ -57,6 +57,7 @@ require __DIR__ . '/../views/shell_top.php';
       </div>
     </header>
 
+    <p><a class="btn btn--quiet" href="<?= Http::url('/welcome') ?>">시작 안내 · OTP · AI 비서 연결 →</a></p>
     <div class="grid-2">
       <section class="panel">
         <div class="panel__head">

@@ -67,6 +67,7 @@ $canFetch   = Authz::canFetch($user);
 $fetchHosts = Fetch::publicHosts();
 
 $mePayload = [
+    'member_id' => (int) $user['id'],
     'username'   => (string) $user['username'],
     'role'       => (string) $user['role'],
     'team_id'    => $user['team_id'],

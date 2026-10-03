@@ -36,6 +36,31 @@ require_once dirname(__DIR__) . '/src/bootstrap.php';
  * `/` 는 1단계의 public 에서 authenticated 로 바뀌었다 — 로그인 없이는 아무것도 못 본다.
  */
 const TBOX_ROUTES = [
+    ['GET', '/join', 'member_join_page.php', Authz::POLICY_PUBLIC],
+    ['POST', '/api/register', 'member_register.php', Authz::POLICY_PUBLIC],
+    ['GET', '/welcome', 'member_welcome_page.php', Authz::POLICY_AUTHENTICATED],
+    ['GET', '/api/invites', 'member_invites.php', 'user.manage'],
+    ['POST', '/api/invites', 'member_invites.php', 'user.manage'],
+    ['DELETE', '/api/invites/{num}', 'member_invites.php', 'user.manage'],
+    ['POST', '/api/member-installer', 'member_installer.php', 'user.manage'],
+    ['GET', '/messages', 'member_messages_page.php', Authz::POLICY_AUTHENTICATED],
+    ['GET', '/api/messages/ai', 'member_ai.php', Authz::POLICY_AUTHENTICATED],
+    ['POST', '/api/messages/ai', 'member_ai.php', Authz::POLICY_AUTHENTICATED],
+    ['GET', '/api/messages/assist', 'member_assist.php', Authz::POLICY_AUTHENTICATED],
+    ['POST', '/api/messages/assist', 'member_assist.php', Authz::POLICY_AUTHENTICATED],
+    ['GET', '/api/messages/attachments/{id}', 'member_assist_image.php', Authz::POLICY_AUTHENTICATED],
+    ['GET', '/api/member-ai-settings', 'member_ai_settings.php', 'user.manage'],
+    ['POST', '/api/member-ai-settings', 'member_ai_settings.php', 'user.manage'],
+    ['GET', '/api/messages', 'member_messages.php', Authz::POLICY_AUTHENTICATED],
+    ['GET', '/api/messages/{num}', 'member_messages.php', Authz::POLICY_AUTHENTICATED],
+    ['POST', '/api/messages/{num}', 'member_messages.php', Authz::POLICY_AUTHENTICATED],
+    ['PATCH', '/api/messages/{num}', 'member_messages.php', Authz::POLICY_AUTHENTICATED],
+    ['POST', '/api/assistant/runs',              'assistant_runs.php', 'assistant.run'],
+    ['GET',  '/api/assistant/runs',              'assistant_runs.php', 'assistant.run'],
+    ['GET',  '/api/assistant/runs/{id}',         'assistant_runs.php', 'assistant.run'],
+    ['GET',  '/api/assistant/runs/{id}/events',  'assistant_runs.php', 'assistant.run'],
+    ['POST', '/api/assistant/runs/{id}/cancel',  'assistant_runs.php', 'assistant.run'],
+    ['POST', '/api/assistant/runs/{id}/confirm', 'assistant_runs.php', 'assistant.run'],
     ['GET',  '/',            'home.php',       Authz::POLICY_AUTHENTICATED],
     ['GET',  '/login',       'login_page.php', Authz::POLICY_PUBLIC],
     ['POST', '/api/login',   'login.php',      Authz::POLICY_PUBLIC],
@@ -463,6 +488,7 @@ const TBOX_REAUTH_PATH = '/reauth';
  * `GET /login` 은 정책이 public 이라 관문 자체를 지나지 않는다(그래서 목록에 없다).
  */
 const TBOX_GATE_ALLOW_PASSWORD_CHANGE = [
+    'GET /welcome',
     'GET /',                    // 홈 — 화면이 강제 절차 화면만 그린다
     'GET /api/me',              // 지금 무엇을 해야 하나(`next`)
     'POST /api/logout',         // 절차를 미루고 나가는 길은 언제나 열어 둔다
@@ -519,7 +545,14 @@ const TBOX_HOME_PATH = '/';
  * F-50 에서 셋으로, F-56 에서 넷으로, F-58 에서 여덟으로, F-59 에서 열로, Q:F-9 에서 **열하나로**.
  * 넓히려면 여기 + R-82/R-83/R-89/R-90/R-91/R-113 재검토.
  */
+const TBOX_ASSISTANT_API_ROUTES = [
+    'POST /api/assistant/runs', 'GET /api/assistant/runs',
+    'GET /api/assistant/runs/{id}', 'GET /api/assistant/runs/{id}/events',
+    'POST /api/assistant/runs/{id}/cancel', 'POST /api/assistant/runs/{id}/confirm',
+];
+
 const TBOX_API_TOKEN_ROUTES = [
+    ...TBOX_ASSISTANT_API_ROUTES,
     'POST /api/upload',
     'GET /api/files',
     'GET /api/files/{id}/download',
@@ -547,6 +580,7 @@ const TBOX_API_TOKEN_ROUTES = [
  *   판단하고, 삭제 핸들러에는 토큰 종류를 보는 코드가 한 줄도 없다(세션과 같은 코드다).
  */
 const TBOX_API_TOKEN_PERSONAL_ROUTES = [
+    ...TBOX_ASSISTANT_API_ROUTES,
     'DELETE /api/files/{id}',
     'DELETE /api/folders/{num}',
     // Q:F-9 — 로그인 링크는 사람 단위 토큰(범위 session.open)으로만. 공용 토큰은 403 shared_token_not_permitted.
@@ -566,6 +600,7 @@ const TBOX_API_TOKEN_PERSONAL_ROUTES = [
  * 되돌아가지 않는다(보낸 인증 방법으로만 판정한다).
  */
 const TBOX_API_TOKEN_ONLY_ROUTES = [
+    ...TBOX_ASSISTANT_API_ROUTES,
     'POST /api/upload',
     'GET /api/whoami',
     // Q:F-9 — 화면이 쓰지 않는 프로그램(비서) 전용 창구. 헤더가 없으면 세션 쿠키가 있어도 401 「헤더가 없습니다」.

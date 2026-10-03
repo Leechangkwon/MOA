@@ -127,11 +127,11 @@ class Mock:
 
 
 def main():
-    parser = argparse.ArgumentParser(); parser.add_argument('--output', type=Path, default=Path('/workspace/scratch/memories-preview')); args = parser.parse_args(); args.output.mkdir(parents=True, exist_ok=True)
+    parser = argparse.ArgumentParser(); parser.add_argument('--output', type=Path, default=Path('/tmp/qaredi-memories-preview')); args = parser.parse_args(); args.output.mkdir(parents=True, exist_ok=True)
     checks=[]
     def ok(label): checks.append(label); print('PASS', label, flush=True)
     with sync_playwright() as p:
-        browser = p.chromium.launch(executable_path='/usr/bin/chromium', headless=True, args=['--no-sandbox'])
+        browser = p.chromium.launch(headless=True, args=['--no-sandbox'])
         ctx = browser.new_context(viewport={'width':1440,'height':1100}, device_scale_factor=1)
         mock=Mock(); ctx.route(ORIGIN+'/**', mock.route)
         page=ctx.new_page(); errors=[]; page.on('pageerror', lambda e: errors.append(str(e)))

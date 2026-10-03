@@ -18,7 +18,7 @@ $sql = <<<SQL
       JOIN community.pages p ON p.id = d.page_id
       JOIN community.spaces s ON s.id = p.space_id
       LEFT JOIN public.users owner ON owner.id = s.owner_user_id
-     WHERE p.space_id = CAST(:space AS bigint)
+     WHERE (CAST(:space AS bigint)=0 OR p.space_id = CAST(:space AS bigint))
        AND p.deleted_at IS NULL
        AND {$visible}
      ORDER BY p.title, p.id
