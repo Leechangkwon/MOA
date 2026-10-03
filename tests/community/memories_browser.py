@@ -173,7 +173,7 @@ def main():
         page.locator('.post-actions button[aria-label^="댓글"]').click(); page.locator('#comment-body').fill('오래 기억하고 싶은 풍경이네요.'); page.locator('#comment-form button[type="submit"]').click(); page.locator('.comment').wait_for()
         assert mock.comments[-1]['body'].startswith('오래')
         page.locator('[data-close="comments-dialog"]').click(); ok('Like and comment actions use CSRF-protected requests')
-        page.locator('button',has_text='GPT로 꾸미기').click()
+        page.locator('button',has_text='AI로 꾸미기').click(); page.locator('#studio-external summary').click()
         assert '바닷가에 왔다' in page.locator('#studio-prompt').input_value()
         page.locator('#studio-kind').select_option('video'); assert '타임라인' in page.locator('#studio-prompt').input_value()
         assert page.locator('#studio-originals a').get_attribute('href').endswith('?download=1')

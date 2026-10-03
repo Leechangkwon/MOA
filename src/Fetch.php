@@ -81,6 +81,12 @@ final class Fetch
         return self::geminiRequest($key, $payload, false);
     }
 
+    /** Owner-checked thread photos, inline bytes only; same fixed text model. */
+    public static function geminiDescribe(string $key, array $payload): array
+    {
+        return self::geminiRequest($key, $payload, false, true);
+    }
+
     /** Images use a separate, fixed model and endpoint; callers cannot supply URLs. */
     public static function geminiImage(string $key, string $prompt, string $aspect): array
     {
@@ -93,14 +99,14 @@ final class Fetch
         ], true);
     }
 
-    private static function geminiRequest(string $key, array $payload, bool $image): array
+    private static function geminiRequest(string $key, array $payload, bool $image, bool $photos = false): array
     {
         $host = 'generativelanguage.googleapis.com';
         if (preg_match('/\A[\x21-\x7E]{20,4096}\z/', $key) !== 1) {
             throw new FetchDenied('bad_key');
         }
         $body = json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
-        if (strlen($body) > 180000) throw new FetchDenied('too_large');
+        if (strlen($body) > ($photos ? 17825792 : 180000)) throw new FetchDenied('too_large');
         $ip = self::publicIpOf($host);
         $ch = curl_init($image
             ? 'https://generativelanguage.googleapis.com/v1beta/interactions'

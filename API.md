@@ -982,3 +982,11 @@ GET /tbox/session/open?code=…&to=%2Ftbox%2Fsettings           → 302 Location
 ## 비서 실행 MVP — 2026-10-01 (검증 사본)
 
 비서 API 확장(운영 미적용): docs/assistant-minimum-contract.md를 계약 기준으로 한다. POST/GET runs, GET 단건/events, POST cancel/confirm. 독립 assistant.run만 허용. 기존 토큰 범위 불변.
+
+## 스레드 Gemini 글쓰기 (2026-10-03, 운영 반영 전)
+
+- `GET /community/api/memories/ai`: 모아 Gemini의 `ready`, `model`, 미설정 `notice`. 키 값은 반환하지 않는다.
+- `POST /community/api/memories/{id}/caption`: 정확한 JSON `{request_id, revision, media_ids, tone, wish, consent}`. consent는 true, request_id는 UUID, revision은 현재 정수 판, wish는 1~500자다. tone은 화면의 네 분위기 값. 현재 글의 JPG/PNG/WebP ID를 0~4개 선택한다(한 장10MiB/합계12MiB). 결과 `{state, text, error, model, photo_count, revision}`, pending이면 202, complete/failed면 200이다. 게시글은 수정하지 않는다.
+- 세션·CSRF·community.write·모아 메신저 자격(역할 보기 제외)·글 소유권 적용. 남의 공개 글도 생성 불가. 일반 파일/커뮤니티 글쓰기 API 토큰을 허용하는 표는 넓히지 않는다.
+- 같은 사용자/요청 UUID/참조 입력은 기존 AI 결과로 중복을 막는다. 새 내용으로 같은 UUID를 사용하면 409. 판 충돌409, 부적격 첨부404/400, 사진 용량413, 공통 AI 한도429, 미설정503. 초안 확인 후 기존 게시글 PATCH로 저장한다.
+- 서버 적용과 보관 범위: `docs/thread-gemini-writing-2026-10-03.md`.

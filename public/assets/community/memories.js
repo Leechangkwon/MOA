@@ -9,6 +9,7 @@
   let draft = null, editing = null, media = [], busy = false, draftTimer, dbPromise, commentPost, studioPost, imported = [], confirmAction;
   let toastTimer;
   let selectionError = '';
+  let studioSession = 0, captionRequest = null, captionBusy = false;
   const mediaTypes = { jpg: 'image/jpeg', jpeg: 'image/jpeg', jpe: 'image/jpeg', png: 'image/png', webp: 'image/webp', gif: 'image/gif', mp4: 'video/mp4', mov: 'video/quicktime', webm: 'video/webm' };
   function fileMime(file) {
     const type = (file.type || '').toLowerCase();
@@ -139,7 +140,7 @@
     if (!shared) trip.append(el('span', 'privacy-badge', labels[post.visibility])); body.append(trip);
     if (post.mine && state.me?.can_write) {
       const owner = el('div', 'owner-actions');
-      owner.append(button('GPT로 꾸미기', 'text-button', () => openStudio(post), 'spark'), button('수정', 'text-button', () => openCompose(post)), button('삭제', 'text-button danger', () => confirm('이 순간을 지울까요?', '피드와 공유 링크에서 더 이상 보이지 않아요.', '삭제하기', async () => { await api('/api/memories/' + post.id, { method: 'DELETE' }); if (state.post === post.id) state.post = ''; await load(); toast('기록을 삭제했어요.'); })));
+      owner.append(button('AI로 꾸미기', 'text-button', () => openStudio(post), 'spark'), button('수정', 'text-button', () => openCompose(post)), button('삭제', 'text-button danger', () => confirm('이 순간을 지울까요?', '피드와 공유 링크에서 더 이상 보이지 않아요.', '삭제하기', async () => { await api('/api/memories/' + post.id, { method: 'DELETE' }); if (state.post === post.id) state.post = ''; await load(); toast('기록을 삭제했어요.'); })));
       body.append(owner);
     }
     card.append(body); return card;
@@ -302,9 +303,55 @@
       toast('쓰다 만 기록을 먼저 저장하거나 버린 뒤 꾸미기를 열어 주세요.'); return;
     }
     studioPost = post; imported = []; $('studio-files').value = ''; $('studio-result').value = ''; $('studio-replace').checked = false; $('studio-imported').textContent = ''; $('studio-error').textContent = '';
+    const session = ++studioSession; captionRequest = null; captionBusy = false;
+    $('studio-external').open = false;
+    $('studio-dialog').querySelectorAll('input,textarea,select,button').forEach((n) => { n.disabled = false; });
+    $('gemini-generate').disabled = true; $('gemini-generate').textContent = 'Gemini로 글쓰기';
+    $('gemini-status').textContent = 'Gemini 연결을 확인하고 있어요.';
+    $('gemini-wish').value = '사진에 담긴 순간을 참고해서 행복한 오늘의 기록을 따뜻하게 덧붙여 줘.';
+    const photos = post.media.filter((m) => ['image/jpeg', 'image/png', 'image/webp'].includes(m.mime));
+    $('gemini-photos').replaceChildren(...photos.map((m, i) => {
+      const label = el('label', 'check-label'), input = el('input'); input.type = 'checkbox'; input.value = m.id; input.checked = i < 4;
+      const preview = el('img'); preview.src = m.url; preview.width = 56; preview.alt = `참조 사진 ${i + 1}`;
+      label.append(input, preview, el('span', '', `사진 ${i + 1}`)); return label;
+    }));
+    if (!photos.length) $('gemini-photos').textContent = '참조할 JPG·PNG·WebP 사진이 없어요. 현재 메모로 글을 작성할 수 있어요.';
+    api('/api/memories/ai').then((data) => {
+      if (session !== studioSession) return;
+      $('gemini-generate').disabled = !data.ready;
+      $('gemini-status').textContent = data.ready ? '선택한 사진과 현재 메모를 참고해 추가할 글을 만들어요.' : data.notice || 'Gemini 연결을 준비 중입니다.';
+    }).catch((e) => { if (session === studioSession) $('gemini-status').textContent = errorText(e); });
     studioPrompt();
     $('studio-originals').replaceChildren(...(post.original_media || post.media).map((m) => { const row = el('div', 'original-file'); const a = el('a', '', '원본 받기 ↓'); a.href = m.url + '?download=1'; a.download = m.filename; row.append(el('span', '', m.filename), a); return row; }));
     showDialog('studio-dialog');
+  }
+  async function generateCaption() {
+    if (captionBusy || !studioPost) return;
+    const post = studioPost, session = studioSession;
+    const mediaIds = Array.from($('gemini-photos').querySelectorAll('input:checked'), (n) => n.value);
+    const wish = $('gemini-wish').value.trim();
+    if (!wish || mediaIds.length > 4) { $('studio-error').textContent = !wish ? '어떤 글을 남기고 싶은지 적어 주세요.' : '참조할 사진은 최대 4장까지 골라 주세요.'; return; }
+    const body = { revision: post.revision, media_ids: mediaIds, wish, tone: $('studio-tone').value, consent: true };
+    const signature = JSON.stringify(body);
+    if (!captionRequest || captionRequest.signature !== signature) captionRequest = { signature, id: uuid() };
+    body.request_id = captionRequest.id;
+    captionBusy = true; $('gemini-generate').disabled = true; $('studio-error').textContent = '';
+    $('gemini-status').textContent = mediaIds.length ? `사진 ${mediaIds.length}장과 메모로 글을 쓰고 있어요…` : '현재 메모로 글을 쓰고 있어요…';
+    const controls = Array.from($('studio-dialog').querySelectorAll('input,textarea,select,button:not([data-close])'));
+    controls.forEach((n) => { n.disabled = true; });
+    try {
+      const result = await api('/api/memories/' + post.id + '/caption', { method: 'POST', body: JSON.stringify(body) });
+      if (session !== studioSession) return;
+      if (result.state === 'complete') {
+        $('studio-result').value = result.text; captionRequest = null;
+        $('gemini-status').textContent = '초안이 준비됐어요. 내용을 확인하고 기존 글에 추가해 주세요. 아직 게시글에는 저장되지 않았어요.';
+      } else if (result.state === 'pending') {
+        $('gemini-status').textContent = '아직 작성 중이에요. 잠시 뒤 다시 누르면 같은 요청의 결과를 확인해요.';
+      } else {
+        captionRequest = null; throw new Error(result.error || '글을 만들지 못했어요. 요청을 바꾸어 다시 시도해 주세요.');
+      }
+    } catch (e) { if (session === studioSession) { $('studio-error').textContent = errorText(e); $('gemini-status').textContent = '내용은 그대로 남아 있어요. 다시 눌러 결과를 확인하거나 재시도해 주세요.'; } }
+    finally { if (session === studioSession) { captionBusy = false; $('gemini-generate').disabled = false; controls.forEach((n) => { n.disabled = false; }); } }
   }
   function confirm(title, description, label, action) { $('confirm-title').textContent = title; $('confirm-description').textContent = description; $('confirm-ok').textContent = label; confirmAction = action; showDialog('confirm-dialog'); }
   surface.querySelectorAll('[data-view]').forEach((n) => n.addEventListener('click', () => setView(n.dataset.view)));
@@ -330,6 +377,14 @@
   $('revoke-links').addEventListener('click', () => confirm('모든 여행 공유 링크를 해제할까요?', '이전에 친구에게 보낸 여행 링크는 더 이상 열리지 않아요. 새 링크는 나중에 만들 수 있어요.', '공유 해제', async () => { await api('/api/memories/links', { method: 'DELETE' }); $('share-dialog').close(); toast('기존 여행 공유 링크를 해제했어요.'); }));
   $('comment-form').addEventListener('submit', async (e) => { e.preventDefault(); const submit = e.submitter; if (submit) submit.disabled = true; const post = commentPost; try { const data = await api('/api/memories/' + post.id + '/comments', { method: 'POST', body: JSON.stringify({ body: $('comment-body').value }) }); if (commentPost?.id === post.id) { renderComments(data.comments); $('comment-body').value = ''; $('comment-error').textContent = ''; } post.comments++; } catch (err) { $('comment-error').textContent = errorText(err); } finally { if (submit) submit.disabled = false; } });
   $('studio-chat').addEventListener('click', () => { $('studio-dialog').close(); window.dispatchEvent(new CustomEvent('qaredi:messenger', { detail: { mode: 'gpt', prompt: $('studio-prompt').value } })); });
+  $('gemini-generate').addEventListener('click', generateCaption);
+  $('studio-append').addEventListener('click', async () => {
+    const post = studioPost, result = $('studio-result').value.trim();
+    if (!result) { $('studio-error').textContent = '먼저 추가할 글을 작성해 주세요.'; return; }
+    const caption = [post.caption.trim(), result].filter(Boolean).join('\n\n');
+    if (Array.from(caption).length > 5000) { $('studio-error').textContent = '기존 글과 합쳐 5,000자까지 저장할 수 있어요. 초안을 조금 줄여 주세요.'; return; }
+    $('studio-dialog').close(); await openCompose(post); $('caption').value = caption; updateCaption(); renderMedia(); scheduleDraft();
+  });
   window.addEventListener('qaredi:gpt-result', (event) => { if (!studioPost || typeof event.detail?.text !== 'string') return; $('studio-result').value = event.detail.text.slice(0, 5000); showDialog('studio-dialog'); });
   $('studio-kind').addEventListener('change', studioPrompt); $('studio-tone').addEventListener('change', studioPrompt);
   $('copy-prompt').addEventListener('click', async () => { $('studio-error').textContent = await clipboard($('studio-prompt').value, $('studio-prompt')) ? '요청문을 복사했어요. ChatGPT에 원본 파일과 함께 붙여 넣어 주세요.' : '요청문을 길게 눌러 복사해 주세요.'; });

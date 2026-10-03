@@ -92,7 +92,7 @@ def main():
         page.locator('#messenger-gpt-tab').click();page.locator('#messenger-gpt-messages .messenger-bubble').first.wait_for();assert page.locator('#messenger-gpt-messages .messenger-bubble').count()==2
         ok('Late GPT response cannot overwrite a member draft; only explicitly submitted GPT text is sent')
         mock.messages[0]['body']='여행 잘 다녀와! 사진도 많이 보여 줘.'
-        page.locator('#messenger-close').click();page.locator('button',has_text='GPT로 꾸미기').click();page.locator('#studio-chat').click();page.locator('#community-messenger').wait_for()
+        page.locator('#messenger-close').click();page.locator('button',has_text='AI로 꾸미기').click(); page.locator('#studio-external summary').click();page.locator('#studio-chat').click();page.locator('#community-messenger').wait_for()
         page.wait_for_function("() => document.querySelector('#messenger-body').value.includes('바닷가에 왔다')")
         page.locator('#messenger-send').click();page.wait_for_function("() => document.querySelector('#messenger-gpt-messages').textContent.includes('바람이 머문')")
         page.locator('#messenger-gpt-messages button',has_text='꾸미기 화면으로').last.click();page.locator('#studio-dialog').wait_for();assert page.locator('#studio-result').input_value().startswith('바람이 머문')
