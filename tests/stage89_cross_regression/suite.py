@@ -224,6 +224,16 @@ try:
         page=ctx.new_page();errors=[];page.on('pageerror',lambda error:errors.append(str(error)))
         for route in ['/tbox/','/tbox/settings','/community/','/community/today']:
             response=page.goto(origin+route);check(response.status==200,'browser route '+route)
+            if route == '/community/':
+                page.locator('#overview-welcome [data-usage-guide-open]').click()
+                guide=page.locator('.usage-guide-dialog');expect(guide).to_be_visible()
+                check(len(guide.inner_text().strip())>25,'visible overview guided help text')
+                with page.expect_response(lambda r: r.url.endswith('/community/api/me/guide') and r.request.method=='PATCH'):
+                    page.keyboard.press('Escape')
+                expect(guide).to_have_count(0)
+                state=call('GET','/community/api/me/guide',expected=200).json()
+                check(state['guide']['status']=='dismissed','overview guide dismissal persists for member')
+                continue
             opener=page.locator('[data-help-open]');expect(opener).to_have_count(1);opener.click()
             dialog=page.locator('#help-dialog');expect(dialog).to_be_visible()
             check(len(dialog.inner_text().strip())>25,'visible help text '+route)

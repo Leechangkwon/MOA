@@ -41,7 +41,7 @@ def main():
         logs=[sqlfile(instance/'db/schema.sql').stdout]
         pg('psql',['-X','-d',db_name,'-v','ON_ERROR_STOP=1'],input=b'CREATE SCHEMA community;')
         logs.append(sqlfile(instance/'db/community/schema.sql').stdout)
-        for name in ['2026-09-29_community_trust.sql','2026-09-30_community_automation.sql']:
+        for name in ['2026-09-29_community_trust.sql','2026-09-30_community_automation.sql','2026-10-14_usage_guide.sql']:
             logs.append(sqlfile(instance/'db/migrations'/name).stdout)
         grants=(instance/'db/grants.sql').read_text().replace('tbox_re',db_name)
         assert 'DATABASE tbox_re ' not in grants and db_name.startswith('tbox_stage89_test_')
@@ -51,6 +51,9 @@ def main():
         auth=work/'credentials.json'; testenv=dict(os.environ,FILE_RENAME_FIXTURE_CONFIG=str(instance/'.stage89-fixture.env'))
         for path in ['tests/community/stage89_fixture.php','tests/stage89_cross_regression/fixture.php']:
             subprocess.run(['php',path,'init'],cwd=instance,env=testenv,input=str(auth).encode(),stdout=subprocess.PIPE,stderr=subprocess.PIPE,check=True)
+        # Common regression represents existing members; first-signup consent has
+        # separate acceptance tests. Keep synthetic account age before activation.
+        pg('psql',['-X','-d',db_name,'-v','ON_ERROR_STOP=1'],input=b"UPDATE users SET created_at=now()-interval '1 day';")
         manifest=dict(base_url=config['APP_URL']+'/tbox',database=db_name,instance=str(instance),credentials_file=str(auth),shared_token=config['API_TOKEN'])
         helpers.private_write(work/'manifest.json',json.dumps(manifest))
         source_hashes={str(f.relative_to(instance)):hashlib.sha256(f.read_bytes()).hexdigest() for directory in ['src','public','db'] for f in sorted((instance/directory).rglob('*')) if f.is_file()}
