@@ -50,3 +50,10 @@ v2.43.0 / 302bef7a8f11bdc875d89847c225813d0a071aa0를 운영에 반영했다. DB
 실제 HTTPS에서 PHP와 nginx CSP 두 벌 중 PHP가 PC 연결을 차단하는 누락을 발견했다. 로그인한 /tbox/messages 핸들러에만 connect-src의 고정 loopback 주소를 추가하는 보정을 진행했다. 단순 합성 브라우저 통과와 실제 배포 수락을 구분하여 기록한다. 최종 배포 커밋과 HTTPS 검증은 PR #2 및 results/post-deploy.json에 남긴다.
 
 보정 후보의 실제 PHP 브라우저 검사는 17/17 통과했다(`memories-runtime-browser-final/browser-results.json`). 메신저 페이지 허용과 다른 페이지의 엄격한 정책 유지를 PC·모바일에서 각각 확인했다.
+
+
+## 최종 운영 확인
+
+2026-10-03 **v2.43.1 / 1de8313bb3176fc79cdd4469e42d7425446f2aad** 운영 반영 및 Git2 main·태그 push 완료. 검토 계정의 실제 HTTPS 검사 **41/41**, 런타임 JavaScript 예외·HTTP 5xx 0, 메신저의 PHP/nginx CSP 두 벌 확인. 운영 Git 작업 트리도 검증된 소스와 일치하며 깨끗하다. 로컬 비서 브랜치는 **f7caeb4** push 완료.
+
+PR #2 댓글 API는 `403: token does not have at least one of required scope(s): [write:issue]`로 거부했다. 저장소 읽기·push 권한과 댓글 권한은 다르다. 댓글이 등록됐다고 보고하지 않으며, 작성한 원문은 `docs/completion-pr2-result.txt`에 보관한다. 사용자에게 토큰 원문 대신 write:issue 권한이 있는 서버 파일 경로를 요청했다. 실제 GPT 키·Windows 실계정·외부 연결의 미검증 범위는 위 기록과 같다.

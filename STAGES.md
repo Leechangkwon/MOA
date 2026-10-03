@@ -2733,3 +2733,5 @@ HTTP 시험(T-77 (a)~(e))은 **미실행** — 운영 DB 에 `files.exec_content
 |2026-10-03|요청·검토|남은 작업 전부 및 insta PR #2 통합. GPT 키 없음에 따라 비활성 유지|`docs/completion-release-2026-10-03.md`; 격리 HTTP127·실제화면13·공통149·PC전달62·연결13·nginx10 통과. 원본 common8 전체 및 Windows 실계정 실행과 구분|
 |2026-10-03|수정|스레드 도움말 복구, 공유 토큰 로그 보호, AI 설정파일의 업로드 정합성 오탐 수정|실제 화면·nginx·변조 실패 검사 실행. 기존 운영 파일과 데이터 보존|
 |2026-10-03|운영·보정|v2.43.0 반영 후 HTTPS에서 PHP CSP가 PC 연결을 차단하는 누락 발견. 메신저 화면만 허용하는 수정|`docs/completion-release-2026-10-03.md`; DB 주요4표 건수 보존, Windows 실계정 미검증 유지|
+
+2026-10-03 최종: v2.43.1 `1de8313` 운영 반영·main/태그 전송, 실제 HTTPS41/41 통과. PC비서 `f7caeb4` 전송. PR #2 댓글은 write:issue 권한 부족(403)으로 미등록이며 본문을 docs/completion-pr2-result.txt에 보관.
