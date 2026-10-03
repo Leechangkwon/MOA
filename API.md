@@ -926,7 +926,7 @@ GET /tbox/session/open?code=…&to=%2Ftbox%2Fsettings           → 302 Location
 (그 토큰을 회수한 뒤 · 또는 묶인 IP 를 바꾼 뒤) 토큰 세션 GET /tbox/api/me → 401
 ```
 
-## 19. 「개인」 등급 · 사람 지정 권한 · 권한 요청 (G-0 · PRD F-73, 2026-09-28 · 웹 화면 전용 · 세션)
+## G-0. 「개인」 등급 · 사람 지정 권한 · 권한 요청 (G-0 · PRD F-73, 2026-09-28 · 웹 화면 전용 · 세션)
 
 - 새 창구(`/api/folders/{num}/grants` · `/api/files/{id}/grants` · `/api/access/people` · `/api/grants/mine` · `/api/access-requests`)는 **세션 전용**이다 — 토큰 창구 집합(`TBOX_API_TOKEN_ROUTES`)에 넣지 않았다(사람에게 권한을 주는 결정은 프로그램 토큰으로 하지 않는다). 토큰으로 부르면 401.
 - 프로그램 토큰의 목록·검색·받기·폴더 목록은 **귀속 계정 기준으로 같은 판정**을 지난다 — 그 계정이 주인이거나 권한을 받은 개인 항목만 보이고, 나머지는 목록에 0 · 받기 403 · 폴더 403(없는 번호와 같은 본문). Admin 귀속 토큰도 목록에는 남의 개인 항목이 없다.
@@ -1085,7 +1085,7 @@ POST /tbox/api/me/api-tokens scope=["community.read","session.open"] (묶음이 
 
 비서 API 확장(운영 미적용): docs/assistant-minimum-contract.md를 계약 기준으로 한다. POST/GET runs, GET 단건/events, POST cancel/confirm. 독립 assistant.run만 허용. 기존 토큰 범위 불변.
 
-## 스레드 Gemini 글쓰기 (2026-10-03, 운영 반영 전)
+## 스레드 Gemini 글쓰기 (2026-10-03, v2.45.0 운영 반영)
 
 - `GET /community/api/memories/ai`: 모아 Gemini의 `ready`, `model`, 미설정 `notice`. 키 값은 반환하지 않는다.
 - `POST /community/api/memories/{id}/caption`: 정확한 JSON `{request_id, revision, media_ids, tone, wish, consent}`. consent는 true, request_id는 UUID, revision은 현재 정수 판, wish는 1~500자다. tone은 화면의 네 분위기 값. 현재 글의 JPG/PNG/WebP ID를 0~4개 선택한다(한 장10MiB/합계12MiB). 결과 `{state, text, error, model, photo_count, revision}`, pending이면 202, complete/failed면 200이다. 게시글은 수정하지 않는다.

@@ -406,7 +406,7 @@ with sync_playwright() as p:
             c = ctx(br, S_E1, w, theme)
             reqs = []
             pg = page_of(c, reqs)
-            go(pg, "/community/")
+            go(pg, "/community/workspace")
             pg.wait_for_timeout(500)
             no_overflow(pg, "「내 공간」 " + tag)
             shot(pg, "home-%s" % tag)
@@ -435,6 +435,7 @@ with sync_playwright() as p:
                      [pg.evaluate(VIS, s) for s in ("#appbar-apps", "#appbar-search", "#appbar-bell")])
                 if touchdev:
                     touch(pg, "폰 윗줄(☰ · 앱 이름 · 검색 · 종) " + tag, ["#nav-toggle", "#appbar-apps", "#appbar-search", "#appbar-bell"])
+                    pg.locator("#community-home-recent").scroll_into_view_if_needed()
                     touch(pg, "「최근」 줄 " + tag, ["#community-home-recent a.nav-tree__link", "#community-home-recent [data-fav-toggle]"])
             else:
                 step("1280 — 윗줄이 없다(앱 이름·검색·종 숨김) " + tag, not any(pg.evaluate(VIS, s) for s in ("#appbar-apps", "#appbar-search", "#appbar-bell")))
@@ -515,7 +516,7 @@ with sync_playwright() as p:
             c = ctx(br, S_M1, w, theme)
             reqs = []
             pg = page_of(c, reqs)
-            go(pg, "/community/")
+            go(pg, "/community/workspace")
             pg.wait_for_timeout(700)
             no_overflow(pg, "팀장 첫 화면 " + tag)
             shot(pg, "manager-home-%s" % tag)
@@ -584,7 +585,7 @@ with sync_playwright() as p:
     def flow_title():
         c = ctx(br, S_E1, 412, "light")
         pg = page_of(c)
-        go(pg, "/community/")
+        go(pg, "/community/workspace")
         pg.click("#community-new")
         pg.wait_for_url(re.compile(r"/community/p/[0-9a-f-]{36}$"), timeout=15000)
         pg.wait_for_selector(".ProseMirror[contenteditable=true]", timeout=10000)
@@ -602,7 +603,7 @@ with sync_playwright() as p:
         first = "".join(x.get("t", "") for x in ((pgd.get("doc") or {}).get("blocks") or [{}])[0].get("text", []))
         step("Q:T-11 저장 — 제목 · 본문 첫 줄이 친 그대로", s == "저장됨" and pgd.get("title") == "UXR1 제목부터 " + TAG and first == "본문 첫 줄 " + TAG, (s, pgd.get("title"), first))
         # 제목을 비운 채 본문만
-        go(pg, "/community/")
+        go(pg, "/community/workspace")
         pg.click("#community-new")
         pg.wait_for_url(re.compile(r"/community/p/[0-9a-f-]{36}$"), timeout=15000)
         pg.wait_for_selector(".ProseMirror[contenteditable=true]", timeout=10000)
@@ -630,7 +631,7 @@ with sync_playwright() as p:
     def flow_child():
         c = ctx(br, S_E1, 1280, "light")
         pg = page_of(c)
-        go(pg, "/community/")
+        go(pg, "/community/workspace")
         row = pg.locator("#community-tree .page-tree__row", has=pg.locator("a.page-tree__link", has_text="UXR1 글 " + TAG)).first
         row.hover()
         pg.wait_for_timeout(150)
@@ -719,7 +720,7 @@ with sync_playwright() as p:
     def flow_switch():
         c = ctx(br, S_E1, 412, "light")
         pg = page_of(c)
-        go(pg, "/community/")
+        go(pg, "/community/workspace")
         pg.click("#appbar-apps")
         pg.wait_for_timeout(300)
         v = pg.evaluate("""() => { const s = document.getElementById('sidebar'), d = document.querySelector('details.appbar__apps'), a = document.activeElement;
@@ -738,7 +739,7 @@ with sync_playwright() as p:
         pg.wait_for_timeout(200)
         step("Q:T-16 다시 누르면 접고 서랍을 닫는다", pg.evaluate("() => document.getElementById('sidebar').hidden && !document.querySelector('details.appbar__apps').open"))
         # Q:T-18 검색
-        go(pg, "/community/")
+        go(pg, "/community/workspace")
         pg.click("#appbar-search")
         pg.wait_for_timeout(300)
         v = pg.evaluate("() => ({open: document.getElementById('search-dialog').open, active: document.activeElement && document.activeElement.id})")
@@ -822,6 +823,7 @@ with sync_playwright() as p:
         pg.wait_for_timeout(1500)
         v = pg.evaluate("() => ({value: document.getElementById('otp').value, active: document.activeElement && document.activeElement.id, msg: document.getElementById('msg').textContent.trim(), url: location.pathname})")
         step("Q:T-17 여섯 자리를 치면 한 번 자동 제출 · 틀리면 칸 비움 · 초점 · 문장", len(posts) - n0 == 1 and v["value"] == "" and v["active"] == "otp" and v["msg"] != "" and v["url"].endswith("/login"), (len(posts) - n0, v))
+        code = fresh_code("claude_employee02", SEC_E2)
         n1 = len(posts)
         pg.keyboard.type(code[:5])
         pg.wait_for_timeout(300)
@@ -1234,7 +1236,7 @@ with sync_playwright() as p:
     def guest():
         c = ctx(br, S_G1, 412, "light")
         pg = page_of(c)
-        go(pg, "/community/")
+        go(pg, "/community/workspace")
         cc, d = G.req("GET", "/community/api/me/recent")
         empty = len(d.get("pages") or []) == 0
         step("Q:T-14 최근이 비면 「최근」 판 숨김(손님 — 지운 뒤)", empty and not pg.evaluate(VIS, "#community-home-recent"), (empty, pg.evaluate(VIS, "#community-home-recent")))

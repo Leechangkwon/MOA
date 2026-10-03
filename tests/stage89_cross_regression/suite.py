@@ -99,7 +99,7 @@ try:
     api('GET','/api/whoami',token='invalid-synthetic-token',expected=401)
     api('GET','/api/users',user=None,token=token(),expected=401)
     who=api('GET','/api/whoami',user=None,token=token(),expected=200).json()
-    check(set(who)=={'username','role','team_id','upload_levels'},'whoami fixed minimal projection')
+    check(set(who)=={'username','role','team_id','upload_levels','token_scope','token_scopes_held'},'whoami fixed minimal projection including explicit token scope')
     me=api('GET','/api/me',expected=200).json()
     check(who['username']==users['employee']['username'] and who['upload_levels']==me['upload_levels'],'token and session upload capabilities agree')
     api('GET','/api/files',user=None,token=token(scope='community.write'),expected=403)
@@ -173,6 +173,21 @@ try:
     sql(f"UPDATE sessions SET act_last_seen_at=now()-interval '31 minutes' WHERE id='{sid}'")
     check(not api('GET','/api/me',user='admin',expected=200).json()['acting'],'idle role view expires using current clock')
     check(sql("SELECT detail->>'reason' FROM audit_logs WHERE action='act.expire' ORDER BY id DESC LIMIT 1")=='idle','idle expiry audited')
+
+    # A PC-token session must reauthenticate before changing private sharing.
+    esid=hashlib.sha256(users['employee']['session'].encode()).hexdigest()
+    link_token=users['employee']['session.open']['id']
+    sql(f"UPDATE sessions SET origin='token',token_id={int(link_token)},reauth_at=NULL WHERE id='{esid}'")
+    private_routes=[('POST',f"/api/files/{files['main']['id']}/grants"),
+                    ('DELETE',f"/api/files/{files['main']['id']}/grants/999999"),
+                    ('POST',f"/api/folders/{fixture['folders']['a']['id']}/grants"),
+                    ('DELETE',f"/api/folders/{fixture['folders']['a']['id']}/grants/999999"),
+                    ('POST','/api/access-requests/999999')]
+    for method,path in private_routes:
+        denied=api(method,path,body={},expected=403)
+        check(denied.json().get('next')=='reauth','private sharing requires PC-token session reauthentication '+method+' '+path)
+    check(sql('SELECT count(*) FROM access_grants')=='0','blocked token sessions created no private grants')
+    sql(f"UPDATE sessions SET origin='login',token_id=NULL,reauth_at=NULL WHERE id='{esid}'")
 
     # F66 real issuance+OTP reuse, permissions, redaction and revocation.
     api('DELETE',f"/api/me/api-tokens/{users['employee']['session.open']['id']}",expected=200)

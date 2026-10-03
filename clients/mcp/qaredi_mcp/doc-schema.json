@@ -13,9 +13,20 @@
     "title_chars": 200,
     "href_chars": 2048,
     "icon_chars": 8,
-    "excerpt_chars": 200
+    "excerpt_chars": 200,
+    "db_views": 12
   },
-  "colors": ["gray", "brown", "orange", "yellow", "green", "blue", "purple", "pink", "red"],
+  "colors": [
+    "gray",
+    "brown",
+    "orange",
+    "yellow",
+    "green",
+    "blue",
+    "purple",
+    "pink",
+    "red"
+  ],
   "color_suffix_bg": "_bg",
   "marks": {
     "bold": "bool",
@@ -24,66 +35,295 @@
     "strike": "bool",
     "code": "bool",
     "color": "color|palette",
-    "link": { "href": "url" },
-    "mention": { "kind": ["user", "page", "date"], "id": "uuid|int|date" }
+    "link": {
+      "href": "url"
+    },
+    "mention": {
+      "kind": [
+        "user",
+        "page",
+        "date"
+      ],
+      "id": "uuid|int|date"
+    }
   },
-  "link_schemes": ["https", "http", "mailto", "page"],
+  "link_schemes": [
+    "https",
+    "http",
+    "mailto",
+    "page"
+  ],
   "block_common": {
     "id": "uuid4",
     "color": "color|palette|null",
-    "align": ["left", "center", "right"],
-    "size": ["small", "normal", "large", "xlarge"]
+    "align": [
+      "left",
+      "center",
+      "right"
+    ],
+    "size": [
+      "small",
+      "normal",
+      "large",
+      "xlarge"
+    ]
   },
   "blocks": {
-    "paragraph": { "text": "richtext", "children": "blocks?" },
-    "heading": { "level": [1, 2, 3], "text": "richtext", "toggle": "bool?", "children": "blocks?" },
-    "bulleted": { "text": "richtext", "children": "blocks?" },
-    "numbered": { "text": "richtext", "start": "int?", "children": "blocks?" },
-    "to_do": { "text": "richtext", "checked": "bool", "children": "blocks?" },
-    "quote": { "text": "richtext", "children": "blocks?" },
-    "callout": { "text": "richtext", "icon": "emoji|icon", "children": "blocks?" },
+    "paragraph": {
+      "text": "richtext",
+      "children": "blocks?"
+    },
+    "heading": {
+      "level": [
+        1,
+        2,
+        3
+      ],
+      "text": "richtext",
+      "toggle": "bool?",
+      "children": "blocks?"
+    },
+    "bulleted": {
+      "text": "richtext",
+      "children": "blocks?"
+    },
+    "numbered": {
+      "text": "richtext",
+      "start": "int?",
+      "children": "blocks?"
+    },
+    "to_do": {
+      "text": "richtext",
+      "checked": "bool",
+      "children": "blocks?"
+    },
+    "quote": {
+      "text": "richtext",
+      "children": "blocks?"
+    },
+    "callout": {
+      "text": "richtext",
+      "icon": "emoji|icon",
+      "children": "blocks?"
+    },
     "divider": {},
-    "code": { "code": "string", "language": "lang", "caption": "richtext?" },
+    "code": {
+      "code": "string",
+      "language": "lang",
+      "caption": "richtext?"
+    },
     "toc": {},
-    "toggle": { "text": "richtext", "children": "blocks" },
+    "toggle": {
+      "text": "richtext",
+      "children": "blocks"
+    },
     "table": {
       "header_row": "bool",
       "header_col": "bool",
       "col_widths": "int[]?",
-      "rows": [{ "color": "color|null", "cells": [{ "text": "richtext", "color": "color|null", "rowspan": "int?", "colspan": "int?" }] }]
+      "rows": [
+        {
+          "color": "color|null",
+          "cells": [
+            {
+              "text": "richtext",
+              "color": "color|null",
+              "rowspan": "int?",
+              "colspan": "int?"
+            }
+          ]
+        }
+      ]
     },
-    "child_page": { "page_id": "uuid" },
-    "link_to_page": { "page_id": "uuid" },
-    "image": { "file_ref": "tbox-ref", "caption": "richtext?", "width": ["full", "wide", "normal", "small"] },
-    "file": { "file_ref": "tbox-ref", "caption": "richtext?" },
-    "column_list": { "children": "columns" },
-    "column": { "ratio": "int?", "children": "blocks" },
-    "embed": { "url": "url", "caption": "richtext?" }
+    "child_page": {
+      "page_id": "uuid"
+    },
+    "link_to_page": {
+      "page_id": "uuid"
+    },
+    "image": {
+      "file_ref": "tbox-ref",
+      "caption": "richtext?",
+      "width": [
+        "full",
+        "wide",
+        "normal",
+        "small"
+      ]
+    },
+    "file": {
+      "file_ref": "tbox-ref",
+      "caption": "richtext?"
+    },
+    "column_list": {
+      "children": "columns"
+    },
+    "column": {
+      "ratio": "int?",
+      "children": "blocks"
+    },
+    "embed": {
+      "url": "url",
+      "caption": "richtext?"
+    },
+    "button": {
+      "label": "button-label",
+      "automation_id": "uuid"
+    },
+    "db_view": {
+      "database_id": "uuid",
+      "view_id": "view-id"
+    },
+    "synced_source": {
+      "source_id": "uuid",
+      "children": "blocks"
+    },
+    "synced_ref": {
+      "source_id": "uuid"
+    }
   },
-  "children_allowed": ["paragraph", "heading", "bulleted", "numbered", "to_do", "quote", "callout", "toggle", "column"],
+  "children_allowed": [
+    "paragraph",
+    "heading",
+    "bulleted",
+    "numbered",
+    "to_do",
+    "quote",
+    "callout",
+    "toggle",
+    "column",
+    "synced_source"
+  ],
   "stage": {
-    "3": ["paragraph", "heading", "bulleted", "numbered", "to_do", "quote", "callout", "divider", "code", "toc"],
-    "4": ["child_page"],
-    "5": ["toggle", "table", "image", "file", "link_to_page"],
-    "6": ["column_list", "column"],
-    "7": ["embed"]
+    "3": [
+      "paragraph",
+      "heading",
+      "bulleted",
+      "numbered",
+      "to_do",
+      "quote",
+      "callout",
+      "divider",
+      "code",
+      "toc"
+    ],
+    "4": [
+      "child_page"
+    ],
+    "5": [
+      "toggle",
+      "table",
+      "image",
+      "file",
+      "link_to_page"
+    ],
+    "6": [
+      "column_list",
+      "column"
+    ],
+    "7": [
+      "embed"
+    ],
+    "8": [
+      "button"
+    ],
+    "9": [
+      "db_view"
+    ],
+    "10": [
+      "synced_source",
+      "synced_ref"
+    ]
   },
   "stage_marks": {
-    "3": ["bold", "italic", "underline", "strike", "code", "color", "link"],
-    "7": ["mention"]
+    "3": [
+      "bold",
+      "italic",
+      "underline",
+      "strike",
+      "code",
+      "color",
+      "link"
+    ],
+    "7": [
+      "mention"
+    ]
   },
   "languages": [
-    "plain", "bash", "c", "cpp", "csharp", "css", "diff", "dockerfile", "go", "graphql",
-    "groovy", "html", "ini", "java", "javascript", "json", "kotlin", "latex", "lua", "makefile",
-    "markdown", "mermaid", "nginx", "objectivec", "perl", "php", "powershell", "python", "r", "ruby",
-    "rust", "scala", "shell", "sql", "swift", "toml", "typescript", "vbnet", "xml", "yaml"
+    "plain",
+    "bash",
+    "c",
+    "cpp",
+    "csharp",
+    "css",
+    "diff",
+    "dockerfile",
+    "go",
+    "graphql",
+    "groovy",
+    "html",
+    "ini",
+    "java",
+    "javascript",
+    "json",
+    "kotlin",
+    "latex",
+    "lua",
+    "makefile",
+    "markdown",
+    "mermaid",
+    "nginx",
+    "objectivec",
+    "perl",
+    "php",
+    "powershell",
+    "python",
+    "r",
+    "ruby",
+    "rust",
+    "scala",
+    "shell",
+    "sql",
+    "swift",
+    "toml",
+    "typescript",
+    "vbnet",
+    "xml",
+    "yaml"
   ],
   "reasons": [
-    "too_large", "bad_schema", "not_object", "not_array", "too_many_blocks", "too_deep",
-    "unknown_type", "type_not_in_stage", "unknown_key", "missing_key", "bad_type", "bad_value",
-    "bad_id", "duplicate_id", "too_long", "too_many_segments", "unknown_mark", "mark_not_in_stage",
-    "not_in_palette", "bad_scheme", "control_char", "children_not_allowed", "bad_encoding", "bad_ref", "ragged_row", "merge_not_in_stage",
-    "column_outside_list", "column_list_child", "nested_columns", "merge_overlap", "merge_out_of_table",
-    "bad_host"
+    "too_large",
+    "bad_schema",
+    "not_object",
+    "not_array",
+    "too_many_blocks",
+    "too_deep",
+    "unknown_type",
+    "type_not_in_stage",
+    "unknown_key",
+    "missing_key",
+    "bad_type",
+    "bad_value",
+    "bad_id",
+    "duplicate_id",
+    "too_long",
+    "too_many_segments",
+    "unknown_mark",
+    "mark_not_in_stage",
+    "not_in_palette",
+    "bad_scheme",
+    "control_char",
+    "children_not_allowed",
+    "bad_encoding",
+    "bad_ref",
+    "ragged_row",
+    "merge_not_in_stage",
+    "column_outside_list",
+    "column_list_child",
+    "nested_columns",
+    "merge_overlap",
+    "merge_out_of_table",
+    "bad_host",
+    "too_many_db_views"
   ]
 }

@@ -69,7 +69,7 @@ psqle() { printf '%s\n' "$1" | tdb psql -h 127.0.0.1 -p 5432 -U tbox_testdb -w -
 port_busy() { (exec 3<>"/dev/tcp/127.0.0.1/$1") 2>/dev/null; }
 
 cleanup() {
-  [ -n "$SPID" ] && { kill "$SPID" 2>/dev/null; wait "$SPID" 2>/dev/null; }
+  [ -n "$SPID" ] && { kill -- "-$SPID" 2>/dev/null; wait "$SPID" 2>/dev/null; }
   tdb dropdb -h 127.0.0.1 -p 5432 -U tbox_testdb -w --if-exists "$DB" >/dev/null 2>&1
   tdb dropdb -h 127.0.0.1 -p 5432 -U tbox_testdb -w --if-exists "$SDB" >/dev/null 2>&1
   [ -n "$INST" ] && rm -rf "$INST"
@@ -224,7 +224,7 @@ require $root . '/index.php';
 PHP
 }
 start_inst() {   # $1 인스턴스 폴더 · $2 포트 → 전역 LAST_PID
-  ( cd "$1/app" && PHP_CLI_SERVER_WORKERS=4 exec php -S "127.0.0.1:$2" -t public router.php > "$1/server.log" 2>&1 ) &
+  ( cd "$1/app" && exec setsid env PHP_CLI_SERVER_WORKERS=4 php -S "127.0.0.1:$2" -t public router.php > "$1/server.log" 2>&1 ) &
   LAST_PID=$!
   local c="" i
   for i in $(seq 1 30); do sleep 0.3; c=$(curl -s -o /dev/null -w '%{http_code}' -A "$UA" "http://127.0.0.1:$2/tbox/login"); [ "$c" = "200" ] && break; done
@@ -243,7 +243,7 @@ echo "ATOMS=", implode(",", Authz::TOKEN_SCOPE_ATOMS);
 ' "$ROOT/src/Authz.php" 2>&1)
 #            열: read · r+u · r+u+d · c.write(옛) · s.open · c.read · c.read+c.write · 묶음 · upload(DB 직접) · read+admin · 빈 글자
 expect "tokenScopeAllows 표(옛 다섯 + 묶음 + 의존이 깨진 행 + 모르는 원자 + 빈 글자)" \
-  "authenticated=11111111100 file.read=11100001000 file.upload=01100001100 file.update=01100001100 file.delete=00100000000 community.read=00010111000 community.write=00010010000 session.open=00001001000 role:Admin=00000000000 file.fetch=00000000000 ATOMS=read,upload,delete,community.read,community.write,session.open" "$AZ"
+  "authenticated=11111111100 file.read=11100001000 file.upload=01100001100 file.update=01100001100 file.delete=00100000000 community.read=00010111000 community.write=00010010000 session.open=00001001000 role:Admin=00000000000 file.fetch=00000000000 ATOMS=read,upload,delete,community.read,community.write,session.open,assistant.run" "$AZ"
 NZ=$(php -r '
 require $argv[1];
 $cases = [["upload"], ["delete","read"], ["upload","read"], ["community.write"], ["x"], [], "read+upload+delete", "community.write",
@@ -294,8 +294,14 @@ tdb createdb -h 127.0.0.1 -p 5432 -U tbox_testdb -w "$DB" >/dev/null 2>&1 || { e
 CNT=$(psqlq "SELECT (SELECT count(*) FROM users) || ' ' || (SELECT count(*) FROM api_tokens);")
 [ -n "$CNT" ] && [ "${CNT%% *}" -gt 0 ] 2>/dev/null || { echo "임시 DB 로 옮기지 못했다 — $(head -2 "$WORK/restore.err")"; exit 3; }
 note "임시 DB $DB — 사용자 ${CNT%% *} · 토큰 ${CNT##* }"
+# Only the isolated copy: remove old review-token counts from this test's initial state.
+psqlq "UPDATE api_tokens SET revoked_at=now() WHERE user_id IN (SELECT id FROM users WHERE username IN ('claude_employee01','claude_employee02','claude_guest01')) AND revoked_at IS NULL" >/dev/null
 M0=$(tdb psql -h 127.0.0.1 -p 5432 -U tbox_testdb -w -X -q -d "$DB" -v ON_ERROR_STOP=1 -f "$MIG9" 2>&1 >/dev/null; echo "rc=$?")
 expect "Q:F-9 마이그레이션(2026-10-12 — 이 조각 앞 모양) 적용 rc" "rc=0" "$(printf '%s' "$M0" | tail -1)"
+
+# Integrated candidate also needs the private-file schema before HTTP requests.
+sed '/^ALTER TABLE public\.access_\(grants\|requests\) OWNER TO tbox_owner;$/d' "$ROOT/db/migrations/2026-10-10_access_grants.sql" > "$WORK/g0.sql"
+tdb psql -h 127.0.0.1 -p 5432 -U tbox_testdb -w -X -q -d "$DB" -v ON_ERROR_STOP=1 -f "$WORK/g0.sql" > "$WORK/g0.log" 2>&1 || { echo "G-0 test schema failed"; exit 3; }
 
 # ════════════════════════════════════════════════════════════════
 hr "T-5 옛 값 — 마이그레이션 2026-10-13 (두 번 · 멱등 · 모르는 값이면 멈춤)"
@@ -383,12 +389,12 @@ note "세션 셋(claude_employee01 · claude_employee02 · claude_guest01)"
 # ════════════════════════════════════════════════════════════════
 hr "T-7(세션 갈래) — GET /api/me 의 token_scopes 는 원자 · 쥔 범위 두 칸은 없다"
 curl -s -b "$JAR_DIR/claude_employee01.jar" -A "$UA" "$BASE/api/me" > "$WORK/me.json"
-expect "claude_employee01 token_scopes = 원자 여섯(2단계 켜짐 · 쓰기 자격)" "read,upload,delete,community.read,community.write,session.open" \
+expect "claude_employee01 token_scopes = 원자 여섯(2단계 켜짐 · 쓰기 자격)" "read,upload,delete,community.read,community.write,session.open,assistant.run" \
   "$(jf "$WORK/me.json" "','.join(d.get('token_scopes',[]))")"
 expect "세션 /api/me 에 token_scope · token_scopes_held 없음" "0 0" \
   "$(jf "$WORK/me.json" "int('token_scope' in d)") $(jf "$WORK/me.json" "int('token_scopes_held' in d)")"
 curl -s -b "$JAR_DIR/claude_guest01.jar" -A "$UA" "$BASE/api/me" > "$WORK/gme.json"
-expect "claude_guest01 token_scopes = read 하나(Guest — 커뮤니티·로그인 전용 0)" "read" "$(jf "$WORK/gme.json" "','.join(d.get('token_scopes',[]))")"
+expect "claude_guest01 token_scopes = read 하나(Guest — 커뮤니티·로그인 전용 0)" "read,assistant.run" "$(jf "$WORK/gme.json" "','.join(d.get('token_scopes',[]))")"
 
 # ════════════════════════════════════════════════════════════════
 hr "T-1 정규화 — 발급 창구"
@@ -486,9 +492,9 @@ C=$(treq TOK_RU GET "$BASE/api/files"); expect "묶이지 않은 토큰(read+upl
 C=$(treq SHARED_TOK GET "$BASE/api/files"); expect "공용(.env) 토큰도 영향 0 → 200" "200" "$C"
 touch "$WORK/empty-auth.log"
 ( cd / && php "$INST/app/scripts/alerts.php" --rule AL-24 --dry-run --state "$WORK/al-state.json" --auth-log "$WORK/empty-auth.log" ) > "$WORK/al24.out" 2>&1
-tail -2 "$WORK/al24.out" | sed 's/^/    /'
+grep "\[dry-run\] AL-24" "$WORK/al24.out" | sed 's/^/    /'
 expect "alerts.php --rule AL-24 --dry-run → 한 줄(auth.token 셋 + session.link 하나 = 네 번 · 이 토큰)" "1 1" \
-  "$(grep -c "\[dry-run\] AL-24 claude_employee01 .*\"token_id\":\"${B_ID:-0}\".*\"count\":4" "$WORK/al24.out") $(grep -c 'AL-24 대상 1건' "$WORK/al24.out")"
+  "$(LC_ALL=C grep -c "\[dry-run\] AL-24 claude_employee01 .*\"token_id\":\"${B_ID:-0}\".*\"count\":4" "$WORK/al24.out") $(grep -c 'AL-24 대상 1건' "$WORK/al24.out")"
 expect "  경보 출력에 토큰 원문 0" "0" "$(grep -v '^$' "$SEEN_TOKS" | grep -c -F -f - "$WORK/al24.out")"
 psqlq "UPDATE api_tokens SET bound_ip = '127.0.0.1' WHERE id = ${B_ID:-0}" >/dev/null
 C=$(treq TOK_B GET "$BASE/api/files"); expect "IP 를 되돌리면 → 200" "200" "$C"
@@ -499,9 +505,9 @@ for i in 1 2 3; do treq TOK_E2IP GET "$BASE/api/files" >/dev/null; done
 expect "  파일 창구만 세 번 → auth.token deny ip_mismatch 세 행(actor_name NULL) · session.link 행 0" "3 3 0" \
   "$(psqlq "SELECT count(*) FROM audit_logs WHERE action = 'auth.token' AND reason = 'ip_mismatch' AND detail->>'token_id' = '${E2IP_ID:-0}'") $(psqlq "SELECT count(*) FROM audit_logs WHERE action = 'auth.token' AND reason = 'ip_mismatch' AND detail->>'token_id' = '${E2IP_ID:-0}' AND actor_name IS NULL") $(psqlq "SELECT count(*) FROM audit_logs WHERE action = 'session.link' AND detail->>'token_id' = '${E2IP_ID:-0}'")"
 ( cd / && php "$INST/app/scripts/alerts.php" --rule AL-24 --dry-run --state "$WORK/al-state2.json" --auth-log "$WORK/empty-auth.log" ) > "$WORK/al24b.out" 2>&1
-grep "token_id\":\"${E2IP_ID:-0}\"" "$WORK/al24b.out" | head -1 | cut -c1-200 | sed 's/^/    /'
+grep "token_id\":\"${E2IP_ID:-0}\"" "$WORK/al24b.out" | head -1 | sed 's/^/    /'
 expect "  alerts.php --rule AL-24 --dry-run → 그 토큰 줄에 주인 이름 claude_employee02(? 아님)" "1 0" \
-  "$(grep -c "\[dry-run\] AL-24 claude_employee02 .*\"token_id\":\"${E2IP_ID:-0}\"" "$WORK/al24b.out") $(grep -c "\[dry-run\] AL-24 ? .*\"token_id\":\"${E2IP_ID:-0}\"" "$WORK/al24b.out")"
+  "$(LC_ALL=C grep -c "\[dry-run\] AL-24 claude_employee02 .*\"token_id\":\"${E2IP_ID:-0}\"" "$WORK/al24b.out") $(LC_ALL=C grep -c "\[dry-run\] AL-24 ? .*\"token_id\":\"${E2IP_ID:-0}\"" "$WORK/al24b.out")"
 psqlq "UPDATE api_tokens SET revoked_at = now() WHERE id = ${E2IP_ID:-0}" >/dev/null
 TOK_E2IP=''
 

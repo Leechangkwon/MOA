@@ -1067,7 +1067,7 @@ a.doc-mention { color: var(--accent); text-decoration: none; } a.doc-mention:hov
   body[data-page-editing] #page-sub,
   body[data-page-editing] .page-head__actions > [data-help-open],
   body[data-page-editing] #page-history { display: none; }
-  body[data-page-editing] .main { gap: 12px; }
+  body[data-page-editing] .main { gap: 8px; }
   body[data-page-editing] .page-head { flex-wrap: nowrap; align-items: center; gap: 12px; }
   body[data-page-editing] .page-head__text { flex: 1 1 auto; }
   body[data-page-editing] .page-head__actions { flex: 0 0 auto; flex-wrap: nowrap; }
@@ -1076,7 +1076,7 @@ a.doc-mention { color: var(--accent); text-decoration: none; } a.doc-mention:hov
   body[data-page-editing] #page-props-line > .badge { flex: none; }
   body[data-page-editing] #page-props-line > :not(.badge) { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
   /* 비어 있는 알림 줄(#msg — 높이 0)이 칸 사이를 한 번 더 먹지 않게(글자가 들어오면 전처럼 제자리 · 화면 읽기 알림 그대로) */
-  body[data-page-editing] #msg:empty { margin-top: -12px; }
+  body[data-page-editing] #msg:empty { margin-top: -8px; }
   body[data-page-editing] #page-title-field { gap: 0; }
   body[data-page-editing] #page-title-field > .field__label {
     position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0;

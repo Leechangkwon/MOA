@@ -46,10 +46,14 @@ DO $$ DECLARE r record; BEGIN
  END LOOP;
  ALTER TABLE community.page_property_events ADD CONSTRAINT page_property_events_prop_check
   CHECK(prop IN ('status','assignee','publish','hide','resolved','verified','kind','due') OR prop ~ '^db:[a-z0-9_]{1,30}$');
- FOR r IN SELECT conname FROM pg_constraint WHERE conrelid='community.notifications'::regclass AND contype='c' AND pg_get_constraintdef(oid) LIKE '%kind%' LOOP
-  EXECUTE format('ALTER TABLE community.notifications DROP CONSTRAINT %I',r.conname);
+ -- Extend the existing constraint so reapplying this migration preserves newer kinds.
+ FOR r IN SELECT conname, pg_get_constraintdef(oid) AS definition FROM pg_constraint
+  WHERE conrelid='community.notifications'::regclass AND contype='c' AND pg_get_constraintdef(oid) LIKE '%kind%' LOOP
+  IF position('automation_disabled' in r.definition) = 0 OR position('verify_expired' in r.definition) = 0 THEN
+   EXECUTE format('ALTER TABLE community.notifications DROP CONSTRAINT %I',r.conname);
+   EXECUTE format('ALTER TABLE community.notifications ADD CONSTRAINT %I CHECK ((%s) OR kind IN (''handover'',''verify_expired'',''recurring_created'',''review_requested'',''due_tomorrow'',''automation_denied'',''automation_disabled''))',
+     r.conname, substring(r.definition from 7));
+  END IF;
  END LOOP;
- ALTER TABLE community.notifications ADD CONSTRAINT notifications_kind_check
-  CHECK(kind IN ('mention','reply','comment_on_my_page','handover','verify_expired','recurring_created','review_requested','due_tomorrow','automation_denied','automation_disabled'));
 END $$;
 COMMIT;

@@ -2183,3 +2183,6 @@ a.app-menu__app:hover { background: var(--muted-bg); text-decoration: none; }
   table.files td.actions .btn:not(:first-child) { margin-left: 12px; }
   table.files td.actions .btn { margin-top: 6px; margin-bottom: 6px; }
 }
+
+/* Private access controls must remain usable on phones and touch tablets. */
+#grants-dialog .btn, #access-request .btn { min-height: 44px; min-width: 44px; }

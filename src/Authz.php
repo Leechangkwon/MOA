@@ -148,6 +148,12 @@ final class Authz
         'DELETE /api/me/passkeys/{num}',
         // 파일 — 공유 링크 만들기
         'POST /api/files/{id}/share',
+        // Sharing private items changes who can read them, including approval of a request.
+        'POST /api/files/{id}/grants',
+        'DELETE /api/files/{id}/grants/{num}',
+        'POST /api/folders/{num}/grants',
+        'DELETE /api/folders/{num}/grants/{num}',
+        'POST /api/access-requests/{num}',
         // 커뮤니티 — 지우기
         'DELETE /community/api/pages/{id}',
         'DELETE /community/api/templates/{id}',

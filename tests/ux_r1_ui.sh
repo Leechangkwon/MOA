@@ -172,6 +172,11 @@ CNT=$(psqlq "SELECT (SELECT count(*) FROM users) || ' ' || (SELECT count(*) FROM
 [ -n "$CNT" ] && [ "${CNT%% *}" -gt 0 ] 2>/dev/null || { echo "임시 DB 로 옮기지 못했다 — $(head -2 "$WORK/restore.err")"; exit 3; }
 note "임시 DB $DB — 사용자 ${CNT%% *} · 페이지 ${CNT##* }"
 
+# Latest application reads G-0 grants and accepts Q:F-10 combined token scopes.
+sed '/^ALTER TABLE public\.access_\(grants\|requests\) OWNER TO tbox_owner;$/d' "$ROOT/db/migrations/2026-10-10_access_grants.sql" > "$WORK/g0.sql"
+tdb psql -h 127.0.0.1 -p 5432 -U tbox_testdb -w -X -q -d "$DB" -v ON_ERROR_STOP=1 -f "$WORK/g0.sql" > "$WORK/g0.log" 2>&1 || { echo "G-0 test schema failed"; exit 3; }
+tdb psql -h 127.0.0.1 -p 5432 -U tbox_testdb -w -X -q -d "$DB" -v ON_ERROR_STOP=1 -f "$ROOT/db/migrations/2026-10-13_api_tokens_multi_scope.sql" > "$WORK/qf10.log" 2>&1 || { echo "Q:F-10 test schema failed"; exit 3; }
+
 INST="$(mktemp -d)"; chmod 700 "$INST"
 mkdir -p "$INST/app" "$INST/storage" "$INST/log"
 tar -C "$APP_TREE" -cf - --exclude=.git --exclude=jar --exclude=api-test.txt --exclude=./.env --exclude=./.claude --exclude=__pycache__ . | tar -C "$INST/app" -xf -
@@ -197,7 +202,7 @@ if [ "$BEFORE" = "1" ]; then
   note "UXR1_BEFORE=1 — 고치기 전 판을 띄웠다. 정적 시험은 이 복제본(고친 판)을 보므로 건너뛴다"
 else
   PHPBAD=0
-  for f in $(git -C "$ROOT" diff --name-only "$BASE_REV" -- '*.php' 2>/dev/null); do
+  for f in $(git -C "$ROOT" diff --name-only "$BASE_REV" "${UXR1_DIFF_REV:-HEAD}" -- '*.php' 2>/dev/null); do
     [ -f "$ROOT/$f" ] || continue
     php -l "$ROOT/$f" >/dev/null 2>&1 || { PHPBAD=$((PHPBAD+1)); echo "    php -l 실패: $f"; }
   done
@@ -206,17 +211,17 @@ else
   expect "보안 린트 통과(금지 패턴 0건)" "1" "$(grep -c '결과: 통과' "$WORK/lint.txt")"
   php "$ROOT/scripts/community_asset_version.php" --check > "$WORK/assetver.txt" 2>&1
   expect "커뮤니티 JS import 버전 표시가 지금 내용과 맞다(--check)" "0" "$?"
-  git -C "$ROOT" diff "$BASE_REV" -- src public > "$WORK/diff.txt" 2>/dev/null
+  git -C "$ROOT" diff "$BASE_REV" "${UXR1_DIFF_REV:-HEAD}" -- src public > "$WORK/diff.txt" 2>/dev/null
   INL=$(grep '^+' "$WORK/diff.txt" | grep -v '^+++' | grep -cE 'style="|<script([[:blank:]]+([^s>[:blank:]][^>[:blank:]]*|s[^r>[:blank:]][^>[:blank:]]*|sr[^c>[:blank:]][^>[:blank:]]*|src[^=>[:blank:]][^>[:blank:]]*|s|sr|src))*[[:blank:]]*>| on[a-z]+="')
   expect "더한 줄에 인라인 style·script·on* 속성 0" "0" "$INL"
   expect "더한 JS 줄에 문자열 → HTML 자리(innerHTML·outerHTML·insertAdjacentHTML·document.write) 0" "0" \
-    "$(git -C "$ROOT" diff "$BASE_REV" -- 'public/assets/*.js' 'public/assets/community/*.js' 2>/dev/null | grep '^+' | grep -v '^+++' | grep -cE 'innerHTML|outerHTML|insertAdjacentHTML|document\.write')"
+    "$(git -C "$ROOT" diff "$BASE_REV" "${UXR1_DIFF_REV:-HEAD}" -- 'public/assets/*.js' 'public/assets/community/*.js' 2>/dev/null | grep '^+' | grep -v '^+++' | grep -cE 'innerHTML|outerHTML|insertAdjacentHTML|document\.write')"
   # 바뀐 파일은 화면뿐 — 뷰 셋과 자산. 창구(핸들러)·권한·저장·DB·배포·라우트는 0
-  ALLOWED='^(public/assets/(app\.css|app\.js|search\.js|community/(community\.css|editor\.js|database\.js|templates\.js))|src/views/shell_top\.php|src/community/handlers/(page_view|home_page)\.php|src/help/[a-z_]+\.php)$'
-  OUTSIDE=$(git -C "$ROOT" diff --name-only "$BASE_REV" -- src public db deploy config 2>/dev/null | grep -vE "$ALLOWED")
+  ALLOWED='^(public/assets/(app\.css|app\.js|search\.js|community/(community\.css|editor\.js|database\.js|templates\.js|dashboard\.js|suggestions\.js))|src/views/shell_top\.php|src/community/handlers/(page_view|home_page)\.php|src/help/[a-z_]+\.php)$'
+  OUTSIDE=$(git -C "$ROOT" diff --name-only "$BASE_REV" "${UXR1_DIFF_REV:-HEAD}" -- src public db deploy config 2>/dev/null | grep -vE "$ALLOWED")
   expect "바뀐 파일은 화면(뷰 셋 · 자산 · 도움말)뿐 — 창구·권한·저장·DB·배포·라우트 차이 0" "" "$OUTSIDE"
   CORE_FILES="src/Authz.php src/community/CommunityAuthz.php src/Auth.php src/Http.php src/Audit.php src/Db.php src/Upload.php src/Storage.php src/Passkey.php public/index.php src/community/routes.php src/community/handlers/pages_create.php src/community/handlers/board_pages_create.php src/community/handlers/pages_update.php src/handlers/login.php src/handlers/login_page.php"
-  expect "판정·보안 핵심 · 저장 창구 · 로그인 파일 차이 0" "0" "$(git -C "$ROOT" diff "$BASE_REV" -- $CORE_FILES 2>/dev/null | wc -l)"
+  expect "판정·보안 핵심 · 저장 창구 · 로그인 파일 차이 0" "0" "$(git -C "$ROOT" diff "$BASE_REV" "${UXR1_DIFF_REV:-HEAD}" -- $CORE_FILES 2>/dev/null | wc -l)"
   AJS="$ROOT/public/assets/app.js"; EJS="$ROOT/public/assets/community/editor.js"
   expect "UX-11 세션 확인 도우미는 한 곳(app.js probeSession · window.qarediSessionProbe) · 편집기는 그것을 부른다" "1 1 1" \
     "$(grep -c '^function probeSession(' "$AJS") $(grep -c '^window.qarediSessionProbe = probeSession;$' "$AJS") $(grep -c "typeof window.qarediSessionProbe === 'function' ? window.qarediSessionProbe : null" "$EJS")"
@@ -235,7 +240,7 @@ else
 fi
 
 hr "UXR1-H 서버 — 셸·화면 HTML (고정 글자 · 동적 값 0)"
-curl -s -b "$JAR_DIR/claude_employee01.jar" -A "$UA" "$SITE/community/" > "$WORK/home.html"
+curl -s -b "$JAR_DIR/claude_employee01.jar" -A "$UA" "$SITE/community/workspace" > "$WORK/home.html"
 curl -s -b "$JAR_DIR/claude_employee01.jar" -A "$UA" "$BASE/" > "$WORK/tbox.html"
 E1_CSRF=$(curl -s -b "$JAR_DIR/claude_employee01.jar" -A "$UA" "$BASE/api/me" | python3 -c 'import json,sys; print(json.load(sys.stdin).get("csrf_token",""))')
 # CSRF 토큰은 명령 인자로 넘기지 않는다(R-62 · R15) — 헤더는 표준입력으로(tests/lib/secrets.sh curl_hdr_secret)
@@ -253,7 +258,7 @@ expect "「내 공간」 — 「최근」 판(처음 hidden · 목록 자리)" "
   "$(grep -c '<section class="panel panel--tight" id="community-home-recent" aria-labelledby="community-home-recent-title" hidden>' "$WORK/home.html") $(grep -c '<div id="community-home-recent-list"></div>' "$WORK/home.html")"
 expect "페이지 — 제목 칸 자리표시 「제목」 · 더보기 맨 위 사용 방법·이력(처음 hidden)" "1 1 1" \
   "$(grep -c 'id="page-title-input" type="text" maxlength="200" autocomplete="off" spellcheck="false" placeholder="제목" enterkeyhint="next">' "$WORK/page.html") $(grep -c '<button id="page-more-help" class="menu__item" type="button" data-help-open aria-haspopup="dialog" hidden>' "$WORK/page.html") $(grep -c '<button id="page-more-history" class="menu__item" type="button" aria-haspopup="dialog" hidden>' "$WORK/page.html")"
-expect "화면 HTML 에 계정 이름이 셸 글자 밖으로 새지 않는다(윗줄 단추 aria-label 은 앱 이름뿐)" "1" "$(grep -c 'aria-label="커뮤니티 — 앱 전환"' "$WORK/home.html")"
+expect "화면 HTML 에 계정 이름이 셸 글자 밖으로 새지 않는다(윗줄 단추 aria-label 은 앱 이름뿐)" "1" "$(grep -c 'aria-label="모아 커뮤니티 — 앱 전환"' "$WORK/home.html")"
 
 hr "UXR1-B 화면 — tests/browser/ux_r1_ui.py (360 · 412 · 820 터치 · 1280 × 라이트 · 다크 + 흐름)"
 if [ "${UXR1_SKIP_BROWSER:-0}" = "1" ]; then

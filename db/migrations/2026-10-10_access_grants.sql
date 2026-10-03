@@ -6,7 +6,7 @@
 --
 -- 실행 계정: postgres (표를 만든 뒤 소유자를 다른 표와 같은 tbox_owner 로 넘긴다 — 2026-10-03_qf3a_… 와 같은 방식).
 -- 실행 예:  sudo -u postgres psql -d tbox_re -v ON_ERROR_STOP=1 -f - < db/migrations/2026-10-10_access_grants.sql
---   ★ 운영 반영은 사용자 sudo 스크립트(review-scripts/apply-g0-db-2026-09-28.sh — 검토 뒤 /var/www/qaredi/scripts/)로 한다.
+--   ★ 운영 반영은 서버에서 검증·백업·모의 적용·드리프트 확인 후 수행한다(docs/CLOUD-HANDOFF.md).
 --   ★ **코드보다 먼저** 적용한다. 새 코드는 목록 조건절부터 access_grants 를 읽는다 — 표가 없는 DB 에서 새 코드를 돌리면
 --     파일 목록이 500 이다. 반대로 이 파일만 먼저 적용하고 옛 코드가 도는 동안은 거의 아무 일도 없다 — 옛 코드는
 --     `private` 행을 만들지 않고, 옛 읽기 판정은 can_read 가 참인 줄만 쓴다(새 줄은 전부 거짓). **예외 하나**: 옛 권한
@@ -36,32 +36,9 @@
 -- 새로 설치하는 DB 는 db/schema.sql · db/seed.sql · db/community/schema.sql 이 같은 모양을 만든다 — 그 뒤에 이 파일을 돌려도
 --   아무 일도 하지 않는다.
 --
--- 되돌리기 (코드를 먼저 되돌린 뒤 — 새 코드는 이 표들을 읽는다):
---   ★ **개인 등급 행이 하나라도 있으면 되돌리기 전에 멈춘다.** 옛 CHECK 를 다시 걸면 그 행 때문에 실패하고(다행),
---     억지로 등급을 바꾸면 그 파일·폴더가 **넓은 등급으로 새어 나간다**. 먼저 세어 본다:
---       SELECT (SELECT count(*) FROM files WHERE access_level = 'private') AS files,
---              (SELECT count(*) FROM folders WHERE access_level = 'private') AS folders;
---     0·0 이 아니면 되돌리지 말고 사람이 판단한다(주인에게 알리고 admin-only 로 좁히는 것이 가장 안전한 쪽이다).
---   0·0 일 때만:
---   BEGIN;
---   ALTER TABLE community.notifications DROP COLUMN IF EXISTS access_request_id;
---   DELETE FROM community.notifications WHERE kind IN ('access_request','access_decided');
---   ALTER TABLE community.notifications DROP CONSTRAINT IF EXISTS notifications_kind_check;
---   ALTER TABLE community.notifications ADD CONSTRAINT notifications_kind_check
---       CHECK (kind IN ('mention','reply','comment_on_my_page','handover'));
---   DROP TABLE IF EXISTS public.access_requests; DROP TABLE IF EXISTS public.access_grants;
---   DELETE FROM public.permissions WHERE access_level = 'private';
---   ALTER TABLE public.permissions DROP CONSTRAINT IF EXISTS permissions_private_by_people;
---   ALTER TABLE public.files   DROP CONSTRAINT IF EXISTS files_private_no_team;
---   ALTER TABLE public.folders DROP CONSTRAINT IF EXISTS folders_private_no_team;
---   ALTER TABLE public.permissions DROP CONSTRAINT permissions_access_level_check;
---   ALTER TABLE public.permissions ADD CONSTRAINT permissions_access_level_check CHECK (access_level IN ('public','internal','team','admin-only'));
---   ALTER TABLE public.files DROP CONSTRAINT files_access_level_check;
---   ALTER TABLE public.files ADD CONSTRAINT files_access_level_check CHECK (access_level IN ('public','internal','team','admin-only'));
---   ALTER TABLE public.folders DROP CONSTRAINT folders_access_level_check;
---   ALTER TABLE public.folders ADD CONSTRAINT folders_access_level_check CHECK (access_level IN ('public','internal','team','admin-only'));
---   COMMIT;
---   (받은 권한·요청 줄은 사라진다 — 개인 행이 0 이면 그 줄들은 이미 아무것도 열지 않는다.)
+-- 실패 대응: 신규 표·권한 요청·감사·알림을 삭제하지 않는다. 현재 상태를 확인하고 전진 보정한다.
+-- 개인 등급 행이나 새 공유가 생긴 뒤에는 구버전 코드로 단순 되돌릴 수 없다.
+-- 광범위 등급으로 바꾸거나 DB를 재시드/복원하는 자동 조치는 하지 않는다.
 
 \set ON_ERROR_STOP on
 BEGIN;

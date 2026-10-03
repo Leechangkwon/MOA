@@ -5388,6 +5388,26 @@
       "est_sec": 780,
       "writes_prod": false,
       "notes": "부르는 셸: core.ux_r1_ui. 단독 실행 불가(인자 SITE UA SHOTS · 세션 다섯과 직원 둘의 비밀번호·2단계 비밀을 표준입력 아홉 줄 — R-62 · UXR1_DB 로 임시 DB 감사 행을 센다). 결과 줄 SMOKE_FAIL=n. 넷째 인자 before 는 고치기 전 판 스크린샷용(종료 코드 0). Q:T-21 경계 경우는 Playwright route 로 이 브라우저 문맥의 답만 바꾼다(/tbox/api/me 모의 · 페이지 창구 403·붙잡기 — 서버에 가는 요청은 임시 인스턴스뿐)."
+    },
+    {
+      "id": "core.vacation_integration_unit",
+      "cmd": "php tests/vacation_integration_unit.php",
+      "module": "core",
+      "env": "static",
+      "status": "required",
+      "needs": [],
+      "covers": [
+        "src/Authz.php"
+      ],
+      "requirements": [
+        "G-0",
+        "Q:F-9",
+        "Q:F-10"
+      ],
+      "risks": [],
+      "est_sec": 1,
+      "writes_prod": false,
+      "notes": "독립 assistant.run과 혼합 범위 거부, 토큰 출신 세션의 개인 공유 재인증 경계26항목. HTTP 경계는 stage89_cross_regression이 검증한다."
     }
   ]
 }
