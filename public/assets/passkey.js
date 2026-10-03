@@ -1,8 +1,8 @@
 'use strict';
 /* public/assets/passkey.js — T:F-72 휴대폰 지문·얼굴로 로그인(패스키 · WebAuthn) — 로그인 · 내 계정 · 재인증 · 권장 카드 공용
  *
- * 지시서 /var/www/qaredi/docs/passkey-mobile-directive.md 1.1 · 1.2 · 1.9 · 결정 PK-D1(PC 는 화면에서만 숨김) ·
- * PK-D2(로그인 화면이 열리면 「이 기기 표시」가 있을 때 곧바로 지문 창) · PK-D3(등록마다 비밀번호 + 2단계 코드) · PK-D5(앱 하나).
+ * 기존 WebAuthn 검증·등록 보호를 유지한다. 2026-10-03 회원 경험: 휴대폰/PC 플랫폼 인증기 지원,
+ * 로그인 방법은 직접 선택, 가입 화면에서도 OTP 없이 최초 패스키 등록(이미 OTP를 켠 계정은 등록 때 확인).
  *
  * ★ 화면은 판단하지 않는다(DESIGN 0장 1). 휴대폰인지·열쇠가 있는지는 **단추를 보일지** 고르는 편의일 뿐이고, 서버가 요청마다
  *   챌린지(한 번 · 묶음)·origin·서명·서명 횟수·계정 상태를 다시 본다. 휴대폰 판정은 서버로 보내지 않는다.
@@ -22,7 +22,7 @@
   var TAB_CANCEL_KEY = 'qaredi.passkey-tab-cancel'; // sessionStorage — 이 탭에서 곧바로 뜬 창을 한 번 취소했다
   var LATER_KEY = 'qaredi.passkey-card-later';   // sessionStorage — 권장 카드 「나중에」
   var TRANSPORTS = ['internal', 'hybrid', 'usb', 'nfc', 'ble', 'smart-card'];
-  var MSG_FAIL = '지문·얼굴 로그인이 되지 않았습니다. 다시 누르거나 비밀번호로 로그인하세요. 이 휴대폰을 아직 등록하지 않았다면 비밀번호로 로그인한 뒤 「내 계정」에서 등록하세요.';
+  var MSG_FAIL = '지문·얼굴 로그인이 되지 않았습니다. 다시 누르거나 비밀번호로 로그인하세요. 이 기기를 아직 등록하지 않았다면 비밀번호로 로그인한 뒤 「내 계정」에서 등록하세요.';
   var GENERIC = '요청을 처리할 수 없습니다. 잠시 후 다시 시도하세요';
 
   // ─── 작은 도우미 ─────────────────────────────────────────────
@@ -57,24 +57,9 @@
       && typeof navigator.credentials.get === 'function' && window.isSecureContext === true;
   }
 
-  /** 휴대폰·태블릿인가(PK-D1 — 화면 편의, 권한 아님): userAgentData.mobile · UA · 터치 맥(iPad) · 손가락만 있는 기기(폴드 데스크톱 모드) */
-  function isMobile() {
-    try {
-      if (navigator.userAgentData && navigator.userAgentData.mobile === true) { return true; }
-    } catch (e) { /* 무시 */ }
-    var ua = navigator.userAgent || '';
-    if (/Android|iPhone|iPad|iPod|Mobile/i.test(ua)) { return true; }
-    if (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1) { return true; }
-    try {
-      return window.matchMedia('(pointer: coarse)').matches && !window.matchMedia('(any-pointer: fine)').matches;
-    } catch (e) {
-      return false;
-    }
-  }
-
-  /** 이 기기에 지문·얼굴 확인 인증기가 있나(휴대폰 판정과 둘 다 참일 때만 단추) */
+  /** 이 기기에 지문·얼굴 확인 인증기가 있나(지원하는 휴대폰과 PC에서 단추) */
   function platformReady() {
-    if (!supported() || !isMobile()) { return Promise.resolve(false); }
+    if (!supported()) { return Promise.resolve(false); }
     try {
       return window.PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable()
         .then(function (ok) { return ok === true; }, function () { return false; });
@@ -147,7 +132,7 @@
     ssDel(OUT_KEY);   // 탭마다 한 번
 
     platformReady().then(function (ready) {
-      if (!ready) { return; }   // PC·지원 안 함 — 지금 폼 그대로(단추·자동 완성 0)
+      if (!ready) { return; }   // 지원 안 함 — 지금 폼 그대로(단추·자동 완성 0)
       var here = hasHere();
       var conditional = null;   // 자동 완성(ⓑ)의 AbortController
       var busy = false;
@@ -274,12 +259,9 @@
       }
       btn.addEventListener('click', function () { modal(false); });
 
-      // ⓒ 곧바로 — 표시가 있고 · 방금 로그아웃하지 않았고 · 이 탭에서 취소한 적이 없을 때만. 끝난(취소된) 뒤에 ⓑ
-      if (here && !justOut && ssGet(TAB_CANCEL_KEY) !== '1') {
-        modal(true);
-      } else {
-        armConditional();
-      }
+      // Login is a choice: never open a biometric dialog without a user action.
+      // Conditional mediation only offers an item when the user uses autofill.
+      armConditional();
     });
   }
 
@@ -287,7 +269,7 @@
   function deviceGuess() {
     var ua = navigator.userAgent || '';
     var dev = /iPhone/.test(ua) ? 'iPhone' : (/iPad/.test(ua) || (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1)) ? 'iPad'
-      : /Android/.test(ua) ? 'Android' : '휴대폰';
+      : /Android/.test(ua) ? 'Android' : /Windows/.test(ua) ? 'Windows' : /Macintosh/.test(ua) ? 'Mac' : '내 기기';
     var br = /SamsungBrowser/.test(ua) ? 'Samsung Internet' : /Edg\//.test(ua) ? 'Edge' : /Firefox|FxiOS/.test(ua) ? 'Firefox'
       : /Chrome|CriOS/.test(ua) ? 'Chrome' : /Safari/.test(ua) ? 'Safari' : '';
     return (dev + (br === '' || dev === 'iPhone' || dev === 'iPad' ? '' : ' ' + br)).slice(0, 40);
@@ -457,7 +439,7 @@
         }, function (err) {
           submit.disabled = false;
           var n = err && err.name ? err.name : '';
-          setText(dMsg, n === 'InvalidStateError' ? '이 휴대폰은 이미 등록되어 있습니다'
+          setText(dMsg, n === 'InvalidStateError' ? '이 기기는 이미 등록되어 있습니다'
             : '등록하지 않았습니다(지문·얼굴 확인을 취소했거나 시간이 지났습니다). 다시 「등록하기」를 누르면 처음부터 합니다.');
           return null;
         }).then(function (res2) {
@@ -466,7 +448,7 @@
           if (res2.status === 201) {
             markHere();
             closeDialog();
-            setText(ok, '다음부터 이 휴대폰에서 지문·얼굴로 로그인합니다.');
+            setText(ok, '다음부터 이 기기에서 지문·얼굴로 로그인합니다.');
             ok.hidden = false;
             load();
             return;
@@ -548,7 +530,7 @@
       var strong = document.createElement('strong');
       setText(strong, '다음부터 지문·얼굴로 로그인하기');
       p1.appendChild(strong);
-      p1.appendChild(document.createTextNode(' 이 휴대폰을 등록하면 비밀번호와 2단계 코드 없이 지문이나 얼굴로 들어옵니다.'));
+      p1.appendChild(document.createTextNode(' 이 기기를 등록하면 비밀번호와 2단계 코드 없이 지문이나 얼굴로 들어옵니다.'));
       card.appendChild(p1);
       var p2 = document.createElement('p');
       p2.className = 'notice__actions';
@@ -567,6 +549,42 @@
       headEl.parentNode.insertBefore(card, headEl.nextSibling);
     });
   }
+
+  // Welcome uses the same server registration ceremony and strict binary conversion.
+  // No credential, password, OTP or token is persisted by this helper.
+  window.QarediPasskey = Object.freeze({
+    available: platformReady,
+    register: async function (payload, csrf) {
+      var res = await postJson('/api/me/passkeys/options', payload, csrf);
+      payload.password = '';
+      delete payload.otp;
+      if (res.status !== 200 || !res.data.publicKey) { throw new Error(errText(res.data)); }
+      var pk = res.data.publicKey, name = res.data.name, cred;
+      try {
+        cred = await navigator.credentials.create({ publicKey: {
+          challenge: b64uToBuf(pk.challenge), rp: pk.rp,
+          user: { id: b64uToBuf(pk.user.id), name: pk.user.name, displayName: pk.user.displayName },
+          pubKeyCredParams: pk.pubKeyCredParams, timeout: pk.timeout, attestation: 'none',
+          authenticatorSelection: pk.authenticatorSelection,
+          excludeCredentials: (pk.excludeCredentials || []).map(function (c) {
+            return { type: 'public-key', id: b64uToBuf(c.id), transports: c.transports || [] };
+          })
+        }});
+        if (!cred) { throw new Error('empty'); }
+      } catch (err) {
+        throw new Error(err && err.name === 'InvalidStateError' ? '이 기기는 이미 등록되어 있습니다.' : '기기 등록을 완료하지 않았어요. 다시 시도하거나 나중에 설정하세요.');
+      }
+      var r = cred.response, tr = typeof r.getTransports === 'function' ? r.getTransports() : [];
+      var saved = await postJson('/api/me/passkeys', {
+        name: name, id: cred.id, rawId: bufToB64u(cred.rawId), type: cred.type,
+        clientDataJSON: bufToB64u(r.clientDataJSON), attestationObject: bufToB64u(r.attestationObject),
+        transports: (Array.isArray(tr) ? tr : []).filter(function (t, i, all) { return TRANSPORTS.indexOf(t) !== -1 && all.indexOf(t) === i; }),
+        authenticatorAttachment: cred.authenticatorAttachment || null
+      }, csrf);
+      if (saved.status !== 201) { throw new Error(errText(saved.data)); }
+      markHere();
+    }
+  });
 
   // ═══ 시작 ═════════════════════════════════════════════════════════════════════════════════
   var pageKey = document.body ? document.body.getAttribute('data-page') : '';

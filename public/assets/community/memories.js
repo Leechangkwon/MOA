@@ -5,9 +5,11 @@
   const $ = (id) => document.getElementById(id);
   const base = surface.dataset.base;
   const shared = surface.dataset.shared;
-  const state = { me: null, posts: [], view: 'feed', grid: false, profile: surface.dataset.profile || '', post: surface.dataset.post || '', next: null, search: '', request: 0, controller: null };
+  const state = { me: null, posts: [], view: 'feed', grid: false, profile: surface.dataset.profile || '', post: surface.dataset.post || '', next: null, cursor: null, search: '', request: 0, controller: null };
   let draft = null, editing = null, media = [], busy = false, draftTimer, dbPromise, commentPost, studioPost, imported = [], confirmAction;
-  let toastTimer;
+  let toastTimer, detailOpener = null, shareTarget = null;
+  const detailReturnFocus = new Map();
+  let socialView = 'members', socialProfile = '', socialOffset = 0, socialRequest = 0;
   let selectionError = '';
   let studioSession = 0, captionRequest = null, captionBusy = false;
   let composeStory = null, studioStory = null, registeredStory = null, suggestedStory = null, suggestedOrder = false;
@@ -18,7 +20,7 @@
     return type === 'image/jpg' ? 'image/jpeg' : type;
   }
   const localUrls = new Set();
-  const labels = { private: '나만 보기', community: '커뮤니티', shared: '링크 공유' };
+  const labels = { private: '나만 보기', followers: '내 팔로워', community: '커뮤니티', shared: '링크 공유' };
   const date = (value) => new Intl.DateTimeFormat('ko-KR', { month: 'long', day: 'numeric' }).format(new Date(value.length === 10 ? value + 'T12:00:00' : value));
   const today = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
   const uuid = () => crypto.randomUUID ? crypto.randomUUID() : '10000000-1000-4000-8000-100000000000'.replace(/[018]/g, (c) => (Number(c) ^ crypto.getRandomValues(new Uint8Array(1))[0] & 15 >> Number(c) / 4).toString(16));
@@ -45,17 +47,28 @@
     const isProfile = state.view === 'mine' || Boolean(state.profile) || Boolean(shared);
     $('hero').hidden = isProfile || Boolean(state.post);
     $('profile-panel').hidden = !isProfile;
-    $('feed-title').textContent = state.post ? '스레드' : isProfile ? '나의 스레드' : state.view === 'shared' ? '공유 스레드' : '모든 스레드';
+    $('feed-title').textContent = state.post ? '스레드' : isProfile ? (state.view === 'mine' ? '나의 스레드' : '이 사람의 스레드') : state.view === 'discover' ? '새로운 이야기 발견' : '팔로잉의 이야기';
     $('feed-kicker').textContent = isProfile ? 'COLLECTED MOMENTS' : 'OUR MOMENTS';
-    const name = shared ? (state.sharedProfile?.display_name || state.sharedProfile?.username || '친구') : state.view === 'mine' ? (state.me?.display_name || state.me?.username || '나') : state.profile;
+    const profile = state.sharedProfile || {}, mine = state.view === 'mine' || profile.mine || state.profile === state.me?.username;
+    const name = shared ? (state.sharedProfile?.display_name || state.sharedProfile?.username || '친구') : state.view === 'mine' ? (state.me?.display_name || state.me?.username || '나') : (profile.display_name || state.profile);
     $('profile-title').textContent = name + '의 스레드';
     $('profile-avatar').textContent = Array.from(name || '나')[0];
-    $('share-profile').hidden = Boolean(shared) || !state.me?.can_write || (state.view !== 'mine' && state.profile !== state.me?.username);
+    $('follow-profile').hidden = Boolean(shared) || mine || !state.profile;
+    $('follow-profile').textContent = profile.following ? '팔로잉' : '팔로우';
+    $('follow-profile').setAttribute('aria-pressed', String(Boolean(profile.following)));
+    $('profile-settings').hidden = Boolean(shared) || !mine || !state.me?.can_write;
+    surface.querySelectorAll('[data-travel-open]').forEach((n) => { n.hidden = Boolean(shared) || !mine || !state.me?.can_write; });
     $('profile-stats').replaceChildren(...[['posts', '기록'], ['moments', '사진·영상'], ['trips', '여행']].map(([key, title]) => { const n = el('span'); n.append(el('strong', '', String(stats[key] || 0)), document.createTextNode(title)); return n; }));
+    if (!shared) {
+      for (const [key, label] of [['followers', '팔로워'], ['following', '팔로잉']]) {
+        const stat = button('', 'social-stat', () => openSocial(key, profile.username || state.profile || state.me?.username));
+        stat.append(el('strong', '', String(profile[key + '_count'] || 0)), document.createTextNode(label)); $('profile-stats').append(stat);
+      }
+    }
     surface.querySelectorAll('[data-view]').forEach((n) => { n.classList.toggle('active', n.dataset.view === state.view); n.setAttribute('aria-pressed', String(n.dataset.view === state.view)); });
     document.querySelectorAll('[data-thread-nav]').forEach((n) => { const active = n.dataset.threadNav === state.view && !state.profile; n.classList.toggle('is-active', active); if (active) n.setAttribute('aria-current', 'page'); else n.removeAttribute('aria-current'); });
     $('empty-title').textContent = state.search ? '아직 찾지 못한 순간' : '아직 비어 있는 첫 페이지';
-    $('empty-copy').textContent = state.search ? '다른 장소나 여행 이름으로 찾아보세요.' : shared ? '이 페이지에 공유한 기록이 아직 없어요.' : '완벽한 사진이 아니어도 괜찮아요. 지금 남기는 한 장이, 내일의 추억이 될 테니까요.';
+    $('empty-copy').textContent = state.search ? '다른 장소나 여행 이름으로 찾아보세요.' : shared ? '이 페이지에 공유한 기록이 아직 없어요.' : state.view === 'discover' ? '발견에 공개한 이야기가 아직 없어요. 공개 범위와 발견 게시는 작성자가 직접 선택합니다.' : state.view === 'feed' ? '팔로우한 사람과 나의 기록이 모여요. 사람 찾기에서 친구를 팔로우하거나 발견에서 새로운 이야기를 만나보세요.' : '완벽한 사진이 아니어도 괜찮아요. 지금 남기는 한 장이, 내일의 추억이 될 테니까요.';
   }
   async function load(append = false) {
     const request = ++state.request;
@@ -64,7 +77,8 @@
     $('load-more').disabled = true;
     if (!append) { state.posts = []; $('feed').replaceChildren(); $('empty').hidden = true; }
     const query = new URLSearchParams({ offset: String(append ? state.next || 0 : 0) });
-    if (['mine', 'shared'].includes(state.view)) query.set('view', state.view);
+    if (['mine', 'shared', 'discover'].includes(state.view)) query.set('view', state.view);
+    if (append && state.cursor) query.set('cursor', state.cursor);
     if (state.profile) query.set('profile', state.profile);
     if (state.search) query.set('q', state.search);
     try {
@@ -76,6 +90,7 @@
       if (state.post && !shared) { const result = await api('/api/memories/' + state.post, { signal: state.controller.signal }); if (request !== state.request) return; posts = [result.post]; }
       state.posts = append ? state.posts.concat(posts) : posts;
       state.next = state.post ? null : data.next_offset;
+      state.cursor = state.post ? null : data.next_cursor;
       writerElements(); profileLayout(data.stats); render();
       $('feed-status').hidden = true;
       if (!draft && state.me?.can_write) await recoverDraft();
@@ -86,7 +101,7 @@
     $('feed').classList.toggle('grid', state.grid);
     $('feed').replaceChildren(...state.posts.map(state.grid ? gridCard : postCard));
     $('empty').hidden = state.posts.length !== 0;
-    $('load-more').hidden = state.next === null;
+    $('load-more').hidden = state.next == null && !state.cursor;
     $('list-view').classList.toggle('selected', !state.grid); $('grid-view').classList.toggle('selected', state.grid);
     $('list-view').setAttribute('aria-pressed', String(!state.grid)); $('grid-view').setAttribute('aria-pressed', String(state.grid));
   }
@@ -100,7 +115,7 @@
     return n;
   }
   function gridCard(post) {
-    const n = button('', 'grid-tile' + (post.media.length ? '' : ' text-only'), () => { state.grid = false; render(); requestAnimationFrame(() => document.getElementById('memory-' + post.id)?.scrollIntoView({ block: 'center', behavior: 'instant' })); });
+    const n = button('', 'grid-tile' + (post.media.length ? '' : ' text-only'), () => openDetail(post));
     n.setAttribute('aria-label', (post.caption || post.location || '여행 기록').slice(0, 80) + ' 열기');
     if (post.media[0]) { const m = mediaElement(post.media[0]); if (m.tagName === 'VIDEO') { m.controls = false; m.tabIndex = -1; } n.append(m); }
     n.append(el('span', 'grid-caption', post.trip || post.location || post.caption)); return n;
@@ -151,42 +166,55 @@
     };
     storyEditor($('studio-story-editor'), studioStory, studioPost.media, update); update();
   }
-  function postCard(post) {
-    const card = el('article', 'post'); card.id = 'memory-' + post.id;
-    const header = el('header', 'post-header');
-    const name = post.display_name || post.username;
-    const avatar = el('span', 'avatar', Array.from(name)[0]);
-    const author = el(shared ? 'div' : 'a');
+  function postCard(post, detailed = false) {
+    const card = el('article', 'post' + (detailed ? ' post-detail' : ' post-preview'));
+    if (!detailed) card.id = 'memory-' + post.id;
+    const header = el('header', 'post-header'), name = post.display_name || post.username;
+    const avatar = el('span', 'avatar', Array.from(name)[0]), author = el(shared ? 'div' : 'a');
     if (!shared) author.href = base + '/memories/u/' + encodeURIComponent(post.username);
     author.append(el('div', 'post-author', name));
     const place = el('div', 'post-place'); if (post.location) place.append(icon('pin')); place.append(document.createTextNode(post.location || '어느 좋은 날')); author.append(place);
     const time = el('time', 'post-date', date(post.taken_on)); time.dateTime = post.taken_on;
     header.append(avatar, author, time); card.append(header);
-    if (post.story) card.append(storyElement(post.story, post.media));
-    if (post.media.length && !post.story) {
-      const gallery = el('div', 'post-media'); gallery.setAttribute('aria-label', '사진과 영상, 옆으로 넘겨 보세요'); gallery.tabIndex = 0;
-      post.media.forEach((item, index) => { const slide = el('div', 'media-slide'); slide.append(mediaElement(item)); if (post.media.length > 1) slide.append(el('span', 'slide-count', `${index + 1} / ${post.media.length}`)); gallery.append(slide); });
+    if (detailed && post.story) card.append(storyElement(post.story, post.media));
+    else if (post.media.length) {
+      const gallery = el('div', detailed ? 'post-media' : 'post-cover');
+      if (detailed) { gallery.setAttribute('aria-label', '사진과 영상, 옆으로 넘겨 보세요'); gallery.tabIndex = 0; }
+      (detailed ? post.media : post.media.slice(0, 1)).forEach((item, index) => {
+        const slide = el('div', 'media-slide'); slide.append(mediaElement(item));
+        if (post.media.length > 1) slide.append(detailed ? el('span', 'slide-count', `${index + 1} / ${post.media.length}`) : button(`사진·영상 ${post.media.length}개 · 전체 보기`, 'slide-count', () => openDetail(post)));
+        gallery.append(slide);
+      });
       card.append(gallery);
     }
+    const body = el('div', 'post-body');
+    if (!detailed && post.story) body.append(el('h3', 'preview-title', post.story.title));
+    const summary = post.story ? (post.story.intro || post.story.scenes.map((scene) => scene.text).join(' ')) : post.caption;
+    const caption = el('p', 'post-caption' + (detailed ? ' expanded' : ''), detailed ? post.caption : summary);
+    if (detailed && post.story) { const note = el('details', 'story-original'); note.append(el('summary', '', '기존 메모'), caption); body.append(note); }
+    else body.append(caption);
+    if (!detailed) body.append(button('내용 더 보기' + (post.story ? ' · 이야기 전체' : ''), 'read-more', () => openDetail(post), 'arrow'));
     const actions = el('div', 'post-actions');
     if (!shared) {
+      if (!detailed) actions.append(iconButton('내용 더 보기', 'photo', () => openDetail(post)));
       const like = iconButton('좋아요', 'heart', async () => {
         if (!state.me?.can_write) { toast('읽기 전용 계정에서는 마음을 남길 수 없어요.'); return; }
         like.disabled = true;
-        try { await api('/api/memories/' + post.id + '/like', { method: post.liked ? 'DELETE' : 'POST' }); post.likes += post.liked ? -1 : 1; post.liked = !post.liked; like.classList.toggle('liked', post.liked); like.setAttribute('aria-pressed', String(post.liked)); count.textContent = `좋아요 ${post.likes}개`; }
-        catch (e) { toast(errorText(e)); } finally { like.disabled = false; }
+        try {
+          await api('/api/memories/' + post.id + '/like', { method: post.liked ? 'DELETE' : 'POST' });
+          post.likes += post.liked ? -1 : 1; post.liked = !post.liked;
+          surface.querySelectorAll('[data-like-post]').forEach((n) => { if (n.dataset.likePost === post.id) { n.classList.toggle('liked', post.liked); n.setAttribute('aria-pressed', String(post.liked)); } });
+          surface.querySelectorAll('[data-like-count]').forEach((n) => { if (n.dataset.likeCount === post.id) n.textContent = `좋아요 ${post.likes}개`; });
+        } catch (e) { toast(errorText(e)); } finally { like.disabled = false; }
       });
-      like.classList.toggle('liked', post.liked); like.setAttribute('aria-pressed', String(post.liked));
-      actions.append(like, iconButton(`댓글 ${post.comments}개 보기`, 'comment', () => openComments(post)));
+      like.dataset.likePost = post.id; like.classList.toggle('liked', post.liked); like.setAttribute('aria-pressed', String(post.liked));
+      const comments = iconButton(`댓글 ${post.comments}개 보기`, 'comment', () => openComments(post)); comments.dataset.commentPost = post.id; actions.append(like, comments);
       const share = iconButton('기록 공유', 'share', () => sharePost(post)); share.classList.add('share-post'); actions.append(share);
-      card.append(actions);
+      body.append(actions);
     }
-    const body = el('div', 'post-body'); const count = el('p', 'likes-label', `좋아요 ${post.likes}개`); body.append(count);
-    const caption = el('p', 'post-caption', post.caption);
-    if (post.story) { const note = el('details', 'story-original'); caption.classList.add('expanded'); note.append(el('summary', '', '기존 메모'), caption); body.append(note); } else body.append(caption);
-    if (!post.story && (post.caption.length > 160 || post.caption.split('\n').length > 3)) body.append(button('이야기 더 보기', 'read-more', (event) => { caption.classList.toggle('expanded'); event.currentTarget.textContent = caption.classList.contains('expanded') ? '접기' : '이야기 더 보기'; }));
+    const count = el('p', 'likes-label', `좋아요 ${post.likes}개`); count.dataset.likeCount = post.id; body.append(count);
     const trip = el('div', 'post-trip', post.trip ? '# ' + post.trip : '조금 더 오래 기억하고 싶은 날');
-    if (!shared) trip.append(el('span', 'privacy-badge', labels[post.visibility])); body.append(trip);
+    if (!shared) trip.append(el('span', 'privacy-badge', (labels[post.visibility] || '') + (post.discoverable ? ' · 발견' : ''))); body.append(trip);
     if (post.mine && state.me?.can_write) {
       const owner = el('div', 'owner-actions');
       owner.append(button('AI로 꾸미기', 'text-button', () => openStudio(post), 'spark'), button('수정', 'text-button', () => openCompose(post)), button('삭제', 'text-button danger', () => confirm('이 순간을 지울까요?', '피드와 공유 링크에서 더 이상 보이지 않아요.', '삭제하기', async () => { await api('/api/memories/' + post.id, { method: 'DELETE' }); if (state.post === post.id) state.post = ''; await load(); toast('기록을 삭제했어요.'); })));
@@ -194,13 +222,55 @@
     }
     card.append(body); return card;
   }
-  function showDialog(id) { const d = $(id); if (!d.open) d.showModal(); }
+  function openDetail(post) {
+    detailOpener = document.activeElement;
+    $('detail-title').textContent = post.story?.title || '기록 자세히 보기';
+    $('detail-content').replaceChildren(postCard(post, true)); showDialog('detail-dialog'); $('detail-dialog').scrollTop = 0;
+  }
+  async function toggleFollow(username, following, trigger) {
+    if (!state.me?.can_write) { toast('읽기 전용 계정에서는 팔로우를 바꿀 수 없어요.'); return; }
+    trigger.disabled = true;
+    try {
+      await api('/api/memories/follow', { method: following ? 'DELETE' : 'POST', body: JSON.stringify({ username }) });
+      if ($('social-dialog').open) await loadSocial(false);
+      await load();
+    } catch (e) { toast(errorText(e)); } finally { trigger.disabled = false; }
+  }
+  async function openSocial(view = 'members', profile = '') {
+    socialView = view; socialProfile = profile; socialOffset = 0; $('social-search').value = '';
+    $('social-title').textContent = { members: '사람 찾기', followers: '팔로워', following: '팔로잉' }[view];
+    $('social-search-label').hidden = view !== 'members'; showDialog('social-dialog'); await loadSocial(false);
+  }
+  async function loadSocial(append = false) {
+    const request = ++socialRequest;
+    $('social-status').textContent = '사람들을 불러오고 있어요…'; $('social-more').disabled = true;
+    if (!append) { socialOffset = 0; $('social-list').replaceChildren(); }
+    const query = new URLSearchParams({ list: socialView, offset: String(socialOffset), q: $('social-search').value.trim() });
+    if (socialProfile) query.set('profile', socialProfile);
+    try {
+      const result = await api('/api/memories/social?' + query);
+      if (request !== socialRequest) return;
+      result.members.forEach((person) => {
+        const row = el('div', 'social-person'), link = el('a', '', person.display_name || person.username);
+        link.href = base + '/memories/u/' + encodeURIComponent(person.username); row.append(link);
+        if (!person.mine) { const follow = button(person.following ? '팔로잉' : '팔로우', 'secondary', () => toggleFollow(person.username, person.following, follow)); follow.setAttribute('aria-pressed', String(person.following)); row.append(follow); }
+        $('social-list').append(row);
+      });
+      socialOffset = result.next_offset;
+      $('social-more').hidden = socialOffset == null; $('social-status').textContent = $('social-list').children.length ? '' : '아직 표시할 사람이 없어요.';
+    } catch (e) { if (request === socialRequest) $('social-status').textContent = errorText(e); }
+    finally { if (request === socialRequest) $('social-more').disabled = false; }
+  }
+  function showDialog(id) {
+    if (id !== 'detail-dialog' && $('detail-dialog').open) { detailReturnFocus.set(id, detailOpener); $('detail-dialog').close(); }
+    const d = $(id); if (!d.open) d.showModal();
+  }
   function closeDialog(id) { if (busy && id === 'compose-dialog') return; if (id === 'compose-dialog') saveDraft(); $(id).close(); }
-  async function setView(view) { if (view === 'mine' && shared) return; state.view = view; state.profile = ''; state.post = ''; state.search = ''; $('search').value = ''; if (!shared) history.replaceState(null, '', base + (view === 'feed' ? '/' : '/?view=' + view)); await load(); }
+  async function setView(view) { if (view === 'mine' && shared) return; state.view = view; state.profile = ''; state.post = ''; state.search = ''; $('search').value = ''; if (!shared) history.replaceState(null, '', base + '/memories' + (view === 'feed' ? '' : '?view=' + encodeURIComponent(view))); await load(); }
   function makeLocal(file) { const url = URL.createObjectURL(file); localUrls.add(url); return { file, mime: fileMime(file), filename: file.name, bytes: file.size, url }; }
   function releaseLocal() { localUrls.forEach((url) => URL.revokeObjectURL(url)); localUrls.clear(); }
   function fillCompose(value) {
-    $('caption').value = value.caption || ''; $('location').value = value.location || ''; $('trip').value = value.trip || ''; $('taken-on').value = value.taken_on || today(); $('visibility').value = value.visibility || 'private';
+    $('caption').value = value.caption || ''; $('location').value = value.location || ''; $('trip').value = value.trip || ''; $('taken-on').value = value.taken_on || today(); $('visibility').value = value.visibility || state.me?.default_visibility || 'private'; $('discoverable').checked = Boolean(value.discoverable); window.MemoryTravel?.setSelection(value.travel || null);
     $('compose-title').textContent = editing ? '순간 다듬기' : '새로운 순간'; $('publish').querySelector('span').textContent = editing ? '변경 저장하기' : '순간 저장하기';
     selectionError = value.selection_error || ''; composeStory = copyStory(value.story);
     $('compose-error').textContent = ''; $('draft-status').textContent = ''; updateCaption(); visibilityHint(); renderMedia(); renderComposeStory();
@@ -250,8 +320,13 @@
     renderMedia(); scheduleDraft(); input.value = '';
   }
   function updateCaption() { $('caption-count').textContent = `${Array.from($('caption').value).length.toLocaleString()} / 5,000`; }
-  function visibilityHint() { $('visibility-hint').textContent = { private: '나만 볼 수 있어요. 나중에 공개 범위를 바꿀 수 있습니다.', community: 'qaredi에 로그인한 사람들이 피드에서 볼 수 있어요.', shared: '커뮤니티와 공유 링크에서 볼 수 있어요. 저장 후 ‘공유’로 로그인 없는 친구에게 보내세요.' }[$('visibility').value]; }
-  function currentDraft() { return { request_id: draft?.request_id || uuid(), editing, story: composeStory, selection_error: selectionError, caption: $('caption').value, location: $('location').value, trip: $('trip').value, taken_on: $('taken-on').value, visibility: $('visibility').value, media: media.map(({ file, id, mime, filename, bytes, url }) => ({ file, id, mime, filename, bytes, url: file ? '' : url })), saved_at: Date.now() }; }
+  function visibilityHint() {
+    const visibility = $('visibility').value;
+    $('visibility-hint').textContent = { private: '나만 볼 수 있어요. 나중에 공개 범위를 바꿀 수 있습니다.', followers: '나를 팔로우한 회원이 볼 수 있어요. 발견이나 로그인 없는 공유 링크에는 나타나지 않아요.', community: '로그인한 회원에게 공개돼요. 팔로워의 피드와 내 페이지에서 볼 수 있어요.', shared: '회원과 공유 링크를 가진 사람에게 공개돼요. 저장 후 공유에서 로그인 없는 친구에게 보내세요.' }[visibility];
+    const allowed = ['community', 'shared'].includes(visibility);
+    $('discoverable').disabled = !allowed; if (!allowed) $('discoverable').checked = false;
+  }
+  function currentDraft() { return { request_id: draft?.request_id || uuid(), editing, story: composeStory, selection_error: selectionError, caption: $('caption').value, location: $('location').value, trip: $('trip').value, taken_on: $('taken-on').value, visibility: $('visibility').value, discoverable: $('discoverable').checked, travel: window.MemoryTravel?.getSelection() || null, media: media.map(({ file, id, mime, filename, bytes, url }) => ({ file, id, mime, filename, bytes, url: file ? '' : url })), saved_at: Date.now() }; }
   function openDb() {
     if (!dbPromise) dbPromise = new Promise((resolve, reject) => { const req = indexedDB.open('qaredi-travel-drafts', 1); req.onupgradeneeded = () => req.result.createObjectStore('drafts'); req.onsuccess = () => resolve(req.result); req.onerror = () => reject(req.error); });
     return dbPromise;
@@ -304,16 +379,17 @@
         media[i] = { ...uploaded }; await saveDraft();
       }
       const value = currentDraft();
-      const body = { caption: value.caption, location: value.location, trip: value.trip, taken_on: value.taken_on, visibility: value.visibility, media_ids: media.map((m) => m.id), story: value.story, request_id: value.request_id };
+      const body = { caption: value.caption, location: value.location, trip: value.trip, taken_on: value.taken_on, visibility: value.visibility, discoverable: value.discoverable, media_ids: media.map((m) => m.id), story: value.story, request_id: value.request_id };
       if (editing) body.revision = editing.revision;
       const response = await api('/api/memories' + (editing ? '/' + editing.id : ''), { method: editing ? 'PATCH' : 'POST', body: JSON.stringify(body) });
       clearTimeout(draftTimer); try { await draftStore('delete'); } catch { /* Server save is already confirmed. */ }
       draft = null; editing = null; media = []; releaseLocal(); $('compose-dialog').close(); $('resume-draft').hidden = true;
-      state.view = 'mine'; state.profile = ''; state.post = ''; state.search = ''; $('search').value = ''; await load();
+      state.view = 'mine'; state.profile = ''; state.post = ''; state.search = ''; $('search').value = ''; history.replaceState(null, '', base + '/memories?view=mine'); await load();
       toast('기록을 저장했어요.');
+      window.dispatchEvent(new CustomEvent('memory:saved', { detail: { postId: response.id, selection: value.travel } }));
       if (body.visibility === 'shared') { const saved = state.posts.find((p) => p.id === response.id); if (saved) await sharePost(saved); }
     } catch (e) { $('compose-error').textContent = errorText(e); await saveDraft(); }
-    finally { busy = false; $('compose-form').querySelectorAll('input,textarea,select,button').forEach((n) => { n.disabled = false; }); $('upload-progress').hidden = true; }
+    finally { busy = false; $('compose-form').querySelectorAll('input,textarea,select,button').forEach((n) => { n.disabled = false; }); $('upload-progress').hidden = true; visibilityHint(); }
   }
   async function clipboard(text, field) {
     try { await navigator.clipboard.writeText(text); return true; }
@@ -321,7 +397,14 @@
   }
   async function sharePost(post) {
     if (post.mine && post.visibility === 'shared') { await createShare(post.id); return; }
-    if (post.visibility === 'private') { toast('이 기록은 나만 보기예요. 수정에서 ‘링크 공유’로 바꾼 뒤 나눠 주세요.'); return; }
+    shareTarget = post;
+    const privatePost = post.visibility === 'private';
+    $('share-link-field').hidden = privatePost; $('share-link-actions').hidden = privatePost;
+    $('share-edit-privacy').hidden = !post.mine;
+    if (privatePost) {
+      $('share-description').textContent = '현재 나만 보는 기록이에요. 팔로워에게 공개하거나 발견에 게시하려면 공개 범위를 바꿔 저장해 주세요. 로그인 없는 친구에게 보낼 때는 링크 공유를 선택하세요.';
+      $('revoke-links').hidden = true; $('share-feedback').textContent = ''; showDialog('share-dialog'); return;
+    }
     $('share-url').value = location.origin + base + '/memories/p/' + post.id;
     $('share-description').textContent = 'qaredi에 로그인하고 이 기록을 볼 권한이 있는 사람에게 보내는 링크예요.';
     $('revoke-links').hidden = true; $('share-feedback').textContent = ''; showDialog('share-dialog');
@@ -329,6 +412,7 @@
   async function createShare(postId = null) {
     try {
       const result = await api('/api/memories/links', { method: 'POST', body: JSON.stringify({ post_id: postId }) });
+      $('share-link-field').hidden = false; $('share-link-actions').hidden = false; $('share-edit-privacy').hidden = true;
       $('share-url').value = location.origin + result.path;
       $('share-description').textContent = `‘링크 공유’로 저장한 기록만 계정 없이 볼 수 있어요. ${date(result.expires_at)}까지 유효합니다.`;
       $('revoke-links').hidden = false; $('share-feedback').textContent = ''; showDialog('share-dialog');
@@ -408,6 +492,10 @@
   surface.querySelectorAll('[data-view]').forEach((n) => n.addEventListener('click', () => setView(n.dataset.view)));
   surface.querySelectorAll('[data-compose]').forEach((n) => n.addEventListener('click', () => openCompose()));
   surface.querySelectorAll('[data-close]').forEach((n) => n.addEventListener('click', () => closeDialog(n.dataset.close)));
+  surface.querySelectorAll('dialog').forEach((dialog) => dialog.addEventListener('close', () => {
+    const opener = detailReturnFocus.get(dialog.id); detailReturnFocus.delete(dialog.id);
+    if (opener && !surface.querySelector('dialog[open]')) (opener.isConnected ? opener : $('list-view')).focus({ preventScroll: true });
+  }));
   $('compose-dialog').addEventListener('cancel', (e) => { e.preventDefault(); closeDialog('compose-dialog'); });
   $('compose-dialog').addEventListener('close', () => { $('resume-draft').hidden = !draft; });
   $('compose-form').addEventListener('submit', publish);
@@ -422,11 +510,22 @@
   $('list-view').addEventListener('click', () => { state.grid = false; render(); }); $('grid-view').addEventListener('click', () => { state.grid = true; render(); });
   $('refresh').addEventListener('click', () => load()); $('load-more').addEventListener('click', () => load(true));
   let searchTimer; $('search').addEventListener('input', () => { clearTimeout(searchTimer); searchTimer = setTimeout(() => { state.search = $('search').value.trim(); state.post = ''; load(); }, 300); });
-  $('share-profile').addEventListener('click', () => createShare());
+  $('find-people').addEventListener('click', () => openSocial());
+  $('follow-profile').addEventListener('click', (event) => toggleFollow(state.profile, Boolean(state.sharedProfile?.following), event.currentTarget));
+  $('social-more').addEventListener('click', () => loadSocial(true));
+  let socialTimer; $('social-search').addEventListener('input', () => { clearTimeout(socialTimer); socialTimer = setTimeout(() => loadSocial(false), 250); });
+  $('profile-settings').addEventListener('click', () => { $('default-visibility').value = state.me?.default_visibility || 'private'; $('privacy-error').textContent = ''; showDialog('privacy-dialog'); });
+  $('privacy-form').addEventListener('submit', async (event) => {
+    event.preventDefault(); const submit = event.submitter; submit.disabled = true;
+    try { await api('/api/memories/preferences', { method: 'PATCH', body: JSON.stringify({ default_visibility: $('default-visibility').value }) }); state.me.default_visibility = $('default-visibility').value; $('privacy-dialog').close(); toast('새 기록의 기본 공개 범위를 저장했어요.'); }
+    catch (e) { $('privacy-error').textContent = errorText(e); } finally { submit.disabled = false; }
+  });
+  $('share-edit-privacy').addEventListener('click', () => { $('share-dialog').close(); openCompose(shareTarget); });
+  $('detail-dialog').addEventListener('close', () => { $('detail-content').querySelectorAll('video').forEach((video) => video.pause()); $('detail-content').replaceChildren(); if (!surface.querySelector('dialog[open]') && detailOpener?.isConnected) detailOpener.focus({ preventScroll: true }); });
   $('copy-link').addEventListener('click', async () => { $('share-feedback').textContent = await clipboard($('share-url').value, $('share-url')) ? '링크를 복사했어요.' : '주소를 길게 눌러 복사해 주세요.'; });
   $('native-share').addEventListener('click', async () => { try { if (navigator.share) await navigator.share({ title: '나의 여행 기록 · Qaredi', url: $('share-url').value }); else $('copy-link').click(); } catch (e) { if (e.name !== 'AbortError') $('share-feedback').textContent = '기기 공유를 열지 못했어요. 링크를 복사해 보내 주세요.'; } });
   $('revoke-links').addEventListener('click', () => confirm('모든 여행 공유 링크를 해제할까요?', '이전에 친구에게 보낸 여행 링크는 더 이상 열리지 않아요. 새 링크는 나중에 만들 수 있어요.', '공유 해제', async () => { await api('/api/memories/links', { method: 'DELETE' }); $('share-dialog').close(); toast('기존 여행 공유 링크를 해제했어요.'); }));
-  $('comment-form').addEventListener('submit', async (e) => { e.preventDefault(); const submit = e.submitter; if (submit) submit.disabled = true; const post = commentPost; try { const data = await api('/api/memories/' + post.id + '/comments', { method: 'POST', body: JSON.stringify({ body: $('comment-body').value }) }); if (commentPost?.id === post.id) { renderComments(data.comments); $('comment-body').value = ''; $('comment-error').textContent = ''; } post.comments++; } catch (err) { $('comment-error').textContent = errorText(err); } finally { if (submit) submit.disabled = false; } });
+  $('comment-form').addEventListener('submit', async (e) => { e.preventDefault(); const submit = e.submitter; if (submit) submit.disabled = true; const post = commentPost; try { const data = await api('/api/memories/' + post.id + '/comments', { method: 'POST', body: JSON.stringify({ body: $('comment-body').value }) }); if (commentPost?.id === post.id) { renderComments(data.comments); $('comment-body').value = ''; $('comment-error').textContent = ''; } post.comments++; surface.querySelectorAll('[data-comment-post]').forEach((button) => { if (button.dataset.commentPost === post.id) { button.setAttribute('aria-label', `댓글 ${post.comments}개 보기`); button.title = `댓글 ${post.comments}개 보기`; } }); } catch (err) { $('comment-error').textContent = errorText(err); } finally { if (submit) submit.disabled = false; } });
   $('studio-chat').addEventListener('click', () => { $('studio-dialog').close(); window.dispatchEvent(new CustomEvent('qaredi:messenger', { detail: { mode: 'gpt', prompt: $('studio-prompt').value } })); });
   $('gemini-generate').addEventListener('click', generateCaption);
   $('studio-order-toggle').addEventListener('click', () => { if (suggestedOrder) suggestedStory = copyStory(studioStory); else registeredStory = copyStory(studioStory); suggestedOrder = !suggestedOrder; studioStory = copyStory(suggestedOrder ? suggestedStory : registeredStory); renderStudioStory(); });
@@ -460,12 +559,13 @@
     updateCaption(); renderMedia(); scheduleDraft();
   });
   $('restore-original').addEventListener('click', async () => { const post = studioPost; $('studio-dialog').close(); await openCompose(post); composeStory = null; renderComposeStory(); $('caption').value = post.original_caption ?? post.caption; media = (post.original_media || post.media).map((m) => ({ ...m })); updateCaption(); renderMedia(); scheduleDraft(); });
+  window.MemoryComposer = { open: async () => { if (!$('compose-dialog').open) await openCompose(); return $('compose-dialog').open; }, close: () => { if (busy) return false; closeDialog('compose-dialog'); return true; } };
   const online = () => { $('connection').hidden = navigator.onLine; }; window.addEventListener('online', online); window.addEventListener('offline', online); online();
   document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') saveDraft(); });
   window.addEventListener('beforeunload', (e) => { if (busy) { e.preventDefault(); e.returnValue = ''; } });
   $('today').textContent = new Intl.DateTimeFormat('ko-KR', { month: 'long', day: 'numeric', weekday: 'short' }).format(new Date());
   if (shared) surface.classList.add('shared-mode');
   const initialView = new URLSearchParams(location.search).get('view');
-  if (['mine', 'shared'].includes(initialView)) state.view = initialView;
+  if (['mine', 'shared', 'discover'].includes(initialView)) state.view = initialView === 'shared' ? 'feed' : initialView;
   load();
 })();

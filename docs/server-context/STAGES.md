@@ -260,3 +260,12 @@
 |2026-10-03|운영|v2.46.0 발행56a4ae1, 변경152파일 모의적용·해시검증, G-0/Q:F-10 DB반영, PHP reload. HTTPS53/53|사용자32·파일1037·폴더18·문서954·사진글3·첨부12·기존권한/토큰 의미 보존. 암호화/복호화 백업 vacation-20261003|
 |2026-10-03|인계|Git2 main에서 cloud/기능명 브랜치, 작업별검사/DB/배포대기 기록. 서버에서만 검증배포 기록 갱신|tbox-v2/AGENTS.md·docs/CLOUD-HANDOFF.md·deploy/production-state.json·scripts/work_status.py. 상위 원격 없는 문서는 docs/server-context 사본으로 전달|
 |2026-10-03|남은 범위|실물 휴대폰 저장·Windows 실기기 검증 미보고. 사진/영상 편집·채팅의 스레드 읽기/수정 MCP는 신규 기능|문서 MCP 검색 확장과 스레드 연결은 별개. GPT/문서 AI/비서 추론 설정 미완료 유지|
+
+## 2026-10-03 가입·설치·로그인 선택 개선 후보 (서버 검증·배포 대기)
+
+| 날짜 | 구분 | 내용 | 해소·근거 |
+|---|---|---|---|
+| 2026-10-03 | 요청 | 초대 OTP/지문 선택 등록·선택 로그인, 비서 설치/토큰 선택, 모바일·PC 안내와 첫 방문 상세 가이드 | `docs/community-member-experience-directive.md` |
+| 2026-10-03 | 구현 | 웹앱은 로그인 세션으로 연결, 독립 Windows 배포 자격/일반용 설치파일은 미확인. 관리자 복구 구분 유지 | `docs/work-items/community-member-experience.md`, `wiki/qaredi/guide-start.json` |
+
+서버 부모 원본과 병합해야 하는 클라우드 사본 기록이다. 기존 v2.46.0 운영 기록을 바꾸지 않는다.

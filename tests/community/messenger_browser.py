@@ -56,13 +56,14 @@ def main():
     with sync_playwright() as p:
         browser=p.chromium.launch(executable_path=os.environ.get('CHROMIUM_EXECUTABLE'),headless=True,args=['--no-sandbox'])
         ctx=browser.new_context(viewport={'width':1440,'height':1000});mock=MessengerMock();ctx.route(ORIGIN+'/**',mock.route)
-        page=ctx.new_page();errors=[];page.on('pageerror',lambda e:errors.append(str(e)));page.goto(ORIGIN+'/community/');page.locator('.post').wait_for()
+        page=ctx.new_page();errors=[];page.on('pageerror',lambda e:errors.append(str(e)));page.goto(ORIGIN+'/community/memories');page.locator('.post').wait_for()
         assert page.locator('aside.sidebar [data-thread-nav]').count()==3
-        page.locator('[data-view="shared"]').click();page.wait_for_function("() => document.querySelector('#feed-title').textContent==='공유 스레드'")
-        assert page.url.endswith('?view=shared')
+        page.locator('[data-view="discover"]').click();page.wait_for_function("() => document.querySelector('#feed-title').textContent==='새로운 이야기 발견'")
+        assert page.url==ORIGIN+'/community/memories?view=discover'
         page.locator('[data-view="mine"]').click();page.locator('#profile-panel').wait_for(state='visible')
         assert page.locator('aside.sidebar [data-thread-nav=mine]').get_attribute('aria-current')=='page'
-        ok('My/shared thread views and existing community navigation stay together')
+        assert page.url==ORIGIN+'/community/memories?view=mine'
+        ok('Personal/discovery views retain canonical URLs and existing community navigation')
         url=page.url;page.locator('.threads-quick [data-messenger-open]').click();page.locator('#community-messenger').wait_for(state='visible');page.locator('#messenger-conversations button').wait_for()
         assert page.url==url
         page.locator('#messenger-conversations button').click();page.locator('#messenger-messages .messenger-bubble').wait_for()

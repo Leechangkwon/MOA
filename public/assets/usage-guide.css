@@ -1,0 +1,22 @@
+.usage-guide-launch { position:fixed; bottom:calc(16px + env(safe-area-inset-bottom)); right:16px; z-index:45; display:flex; align-items:center; gap:7px; min-height:40px; padding:8px 14px; border:1px solid var(--line,#ddd); border-radius:999px; background:var(--surface,#fff); color:var(--fg,#111); box-shadow:0 3px 12px #0002; font:inherit; font-size:13px; cursor:pointer; }
+dialog .usage-guide-modal-help { align-self:flex-start; flex-shrink:0; margin:8px 12px; padding:6px 10px; min-height:40px; background:var(--surface,#fff); color:var(--fg,#111); border:1px solid var(--line,#ddd); border-radius:8px; font:inherit; cursor:pointer; }
+.usage-guide-notice { position:fixed; bottom:70px; right:16px; z-index:100; max-width:min(380px,calc(100vw - 32px)); padding:12px; border:1px solid var(--line,#ddd); border-radius:8px; background:var(--surface,#fff); color:var(--fg,#111); }
+dialog.usage-guide-dialog { position:fixed; inset:0; margin:0; padding:0; width:100vw; max-width:none; height:100dvh; max-height:none; border:0; background:transparent; color:var(--fg,#111); overflow:hidden; }
+.usage-guide-dialog::backdrop { background:transparent; }
+.usage-guide-shade { position:absolute; inset:0; width:100%; height:100%; pointer-events:none; }
+.usage-guide-dim { fill:rgba(0,0,0,.62); }
+.usage-guide-outline { fill:none; stroke:#b8eed6; stroke-width:3; }
+.usage-guide-card { position:absolute; bottom:max(14px,env(safe-area-inset-bottom)); left:50%; transform:translateX(-50%); width:min(540px,calc(100% - 28px)); max-height:calc(55dvh - 24px); padding:20px; overflow-y:auto; background:var(--surface,#fff); color:var(--fg,#111); border:1px solid var(--line,#ddd); border-radius:12px; box-shadow:0 10px 40px #0006; }
+.usage-guide-dialog.is-top .usage-guide-card { top:max(14px,env(safe-area-inset-top)); bottom:auto; }
+.usage-guide-dialog.is-consent .usage-guide-card { top:50%; bottom:auto; transform:translate(-50%,-50%); max-height:calc(100dvh - 40px); }
+.usage-guide-card h2 { margin:4px 0 10px; font-size:20px; line-height:1.45; }
+.usage-guide-card p { margin:8px 0; line-height:1.65; }
+.usage-guide-progress { color:var(--fg-2,#444); font-size:12px; }
+.usage-guide-actions { display:flex; flex-wrap:wrap; gap:10px; justify-content:flex-end; align-items:center; margin-top:18px; }
+.usage-guide-actions button { font:inherit; min-height:42px; padding:8px 14px; border:1px solid var(--line,#ccc); border-radius:8px; background:var(--surface,#fff); color:var(--fg,#111); cursor:pointer; }
+.usage-guide-actions .usage-guide-primary { background:var(--primary,#111); color:var(--primary-fg,#fff); border-color:var(--primary,#111); }
+.usage-guide-actions button:disabled { opacity:.55; cursor:wait; }
+.usage-guide-actions button:focus-visible,.usage-guide-launch:focus-visible,.usage-guide-modal-help:focus-visible { outline:3px solid var(--accent,#2464db); outline-offset:3px; }
+.usage-guide-error { color:var(--danger,#b00); font-size:13px; }
+@media(max-width:480px) { .usage-guide-card { padding:16px; } .usage-guide-card h2 { font-size:18px; } .usage-guide-launch span { display:none; } .usage-guide-launch { width:40px; justify-content:center; padding:8px; } }
+@media(prefers-reduced-motion:reduce) { .usage-guide-dialog * { scroll-behavior:auto; } }

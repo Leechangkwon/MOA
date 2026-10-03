@@ -213,6 +213,23 @@ DO $$ BEGIN
  END IF;
 END $$;
 
+-- Follow, travel and guide data use the same narrow application/backup grants as migrations.
+DO $$ BEGIN
+ IF to_regclass('community.memory_follows') IS NOT NULL THEN
+  GRANT SELECT,INSERT,UPDATE,DELETE ON community.memory_follows,community.memory_preferences TO tbox_app;
+  GRANT SELECT ON community.memory_follows,community.memory_preferences TO tbox_backup;
+ END IF;
+ IF to_regclass('community.travel_plans') IS NOT NULL THEN
+  GRANT SELECT,INSERT,UPDATE,DELETE ON community.travel_plans,community.travel_plan_records TO tbox_app;
+  GRANT SELECT ON community.travel_plans,community.travel_plan_records TO tbox_backup;
+ END IF;
+ IF to_regclass('community.usage_guides') IS NOT NULL THEN
+  GRANT SELECT ON community.usage_guide_versions TO tbox_app;
+  GRANT SELECT,INSERT,UPDATE ON community.usage_guides TO tbox_app;
+  GRANT SELECT ON community.usage_guide_versions,community.usage_guides TO tbox_backup;
+ END IF;
+END $$;
+
 -- Apply messenger migration before these optional grants.
 DO $$ BEGIN
  IF to_regclass('community.gpt_turns') IS NOT NULL THEN

@@ -54,7 +54,7 @@ $shellKeys = [
     'files', 'trash', 'settings', 'activity', 'users', 'org', 'audit', 'wiki', 'admin',
     // 커뮤니티 3단계 (커뮤니티 ARCHITECTURE.md 21.3) — 모듈 모드의 화면 둘.
     // app.js 는 이 두 키를 만나면 셸만 그리고 물러난다(t-box 화면 JS 가 돌지 않는다).
-    'community-home', 'community-page', 'community-today', 'community-ai', 'community-threads',
+    'community-home', 'community-page', 'community-today', 'community-ai', 'community-threads', 'community-overview',
     // 커뮤니티 5-C — 게시판 화면
     'community-board',
 ];
@@ -211,7 +211,7 @@ $shellApps = Apps::all();
 $shellCssAllowed = [
     // 커뮤니티 3단계 — 문서 토큰·블록 클래스 한 벌 (DESIGN.md 2.14). 이름은 `public/assets/`
     // 기준의 **정확한 상대 경로**이고, 허용 목록 안의 값만 통과하므로 경로가 조립되지 않는다.
-    'community/community.css', 'community/memories.css',
+    'community/community.css', 'community/memories.css', 'community/overview.css', 'community/travel-plans.css',
 ];
 $shellPageCss    = [];
 if (isset($pageCss) && is_array($pageCss)) {
@@ -496,9 +496,10 @@ if (!headers_sent()) {
     </dialog>
     <p class="nav-title">우리의 이야기</p>
     <nav class="nav" aria-label="스레드와 대화">
-      <a class="nav__item" data-thread-nav="feed" href="<?= Http::communityUrl('/') ?>"><span class="icon" data-icon="home"></span><span>모든 스레드</span></a>
-      <a class="nav__item" data-thread-nav="mine" href="<?= Http::communityUrl('/') ?>?view=mine"><span class="icon" data-icon="users"></span><span>나의 스레드</span></a>
-      <a class="nav__item" data-thread-nav="shared" href="<?= Http::communityUrl('/') ?>?view=shared"><span class="icon" data-icon="link"></span><span>공유 스레드</span></a>
+      <a class="nav__item" href="<?= Http::communityUrl('/') ?>"><span class="icon" data-icon="grid"></span><span>커뮤니티 둘러보기</span></a>
+      <a class="nav__item" data-thread-nav="mine" href="<?= Http::communityUrl('/memories') ?>?view=mine"><span class="icon" data-icon="users"></span><span>나의 스레드</span></a>
+      <a class="nav__item" data-thread-nav="feed" href="<?= Http::communityUrl('/memories') ?>"><span class="icon" data-icon="home"></span><span>팔로잉 스레드</span></a>
+      <a class="nav__item" data-thread-nav="discover" href="<?= Http::communityUrl('/memories') ?>?view=discover"><span class="icon" data-icon="search"></span><span>새로운 이야기 발견</span></a>
       <button class="nav__item" data-messenger-open type="button" aria-haspopup="dialog"><span class="icon" data-icon="bell"></span><span>메신저 · 회원 / GPT</span><span data-message-unread hidden></span></button>
     </nav>
     <p class="nav-title">내 공간</p>

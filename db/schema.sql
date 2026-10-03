@@ -65,6 +65,7 @@ CREATE TABLE users (
     --                          마이그레이션의 이행 조건이자 R-33("시드 비밀번호 파일 수명") 판단 근거다
     must_change_password BOOLEAN NOT NULL DEFAULT false,
     mfa_setup_required   BOOLEAN NOT NULL DEFAULT false,
+    mfa_recovery_required BOOLEAN NOT NULL DEFAULT false, -- explicit administrator recovery, distinct from optional invitation setup
     password_changed_at  TIMESTAMPTZ,
     -- 임시 비밀번호 유효기간 (SECURITY R-39 · 보안 넷 ④ 2026-09-26, migrations/2026-10-04_users_temp_password_issued_at.sql).
     --   Admin 이 임시 비밀번호를 발급한 때(계정 만들기·재발급). 본인이 비밀번호를 바꾸면 NULL.
@@ -352,7 +353,7 @@ CREATE TABLE api_tokens (
     bound_ip     INET,
     CONSTRAINT api_tokens_scope_check
         CHECK (scope = 'assistant.run' OR scope <> '' AND string_to_array(scope, '+')
-               <@ ARRAY['read','upload','delete','community.read','community.write','session.open']::text[]),
+               <@ ARRAY['read','upload','delete','community.read','community.write','session.open','travel.read','travel.write']::text[]),
     CONSTRAINT api_tokens_bound_ip_check
         CHECK (('session.open' = ANY (string_to_array(scope, '+'))) = (bound_ip IS NOT NULL))
 );

@@ -13,9 +13,8 @@ declare(strict_types=1);
  * 필요하므로). 그때 Admin 이 비밀을 지우고 다시 등록하게 한다.
  *
  *   · `mfa_secret = NULL`, `mfa_enabled = false` — 옛 비밀로 만든 코드는 그 순간 무효다
- *   · `mfa_setup_required = true` — 대상이 **필수 역할(Admin)이면** 다음 로그인 뒤 관문이
- *     반드시 다시 등록하게 하고, 아니면 홈의 권장 카드로 권한다 (F-16 ③ → F-52 2026-09-16:
- *     필수는 Admin 만, 나머지는 권장). 초기화가 "필수를 면제받는 방법" 이 되면 안 된다
+ *   · `mfa_setup_required = true`, `mfa_recovery_required = true` — 관리자가 지정한 복구 절차는
+ *     초대 가입의 선택 설정과 구별해 다시 등록하게 한다. OTP 확인 성공만 복구 플래그를 내린다.
  *   · 대상의 **모든 세션을 끊는다** (R-10) — 코드 없이 들어가 있던 창을 남기지 않는다
  *
  * 받는 값 (JSON, 허용 키 **하나**): `reason_text` — 필수 500자. 없으면 400.
@@ -88,6 +87,7 @@ $sqlReset = <<<'SQL'
        SET mfa_secret         = NULL,
            mfa_enabled        = false,
            mfa_setup_required = true,
+           mfa_recovery_required = true,
            updated_at         = now()
      WHERE id = :id
     SQL;

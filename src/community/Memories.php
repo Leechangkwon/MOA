@@ -1,6 +1,7 @@
 <?php
 declare(strict_types=1);
 require_once __DIR__ . '/MemoryStory.php';
+require_once __DIR__ . '/MemorySocial.php';
 
 /** Photo and text threads within the community; document permissions stay on their existing routes. */
 final class Memories
@@ -9,7 +10,8 @@ final class Memories
 
     public static function ready(): bool
     {
-        return (bool) Db::instance()->run("SELECT to_regclass('community.memory_links') IS NOT NULL AS ready")->fetchColumn();
+        $sql = "SELECT to_regclass('community.memory_links') IS NOT NULL AND to_regclass('community.memory_follows') IS NOT NULL AND to_regclass('community.memory_preferences') IS NOT NULL AS ready";
+        return (bool) Db::instance()->run($sql)->fetchColumn();
     }
 
     public static function requireReady(): void
@@ -37,7 +39,7 @@ final class Memories
     public static function body(): array
     {
         $body = Http::jsonBody(40000, 8);
-        $allowed = ['caption', 'location', 'trip', 'taken_on', 'visibility', 'media_ids', 'revision', 'request_id', 'story'];
+        $allowed = ['caption', 'location', 'trip', 'taken_on', 'visibility', 'media_ids', 'revision', 'request_id', 'story', 'discoverable'];
         if (array_diff(array_keys($body), $allowed)) {
             Http::error(400, Http::MSG_BAD_REQUEST);
         }
@@ -50,8 +52,12 @@ final class Memories
         $body['location'] = self::text($body['location'], 100);
         $body['trip'] = self::text($body['trip'], 80);
         $date = is_string($body['taken_on']) ? DateTimeImmutable::createFromFormat('!Y-m-d', $body['taken_on']) : false;
-        if (!$date || (int) $date->format('Y') < 1 || $date->format('Y-m-d') !== $body['taken_on'] || !in_array($body['visibility'], ['private', 'community', 'shared'], true)) {
+        if (!$date || (int) $date->format('Y') < 1 || $date->format('Y-m-d') !== $body['taken_on'] || !in_array($body['visibility'], MemorySocial::VISIBILITIES, true)) {
             Http::error(400, Http::MSG_BAD_REQUEST);
+        }
+        if (array_key_exists('discoverable', $body) && !is_bool($body['discoverable'])) { Http::error(400, Http::MSG_BAD_REQUEST); }
+        if (($body['discoverable'] ?? false) && !in_array($body['visibility'], ['community', 'shared'], true)) {
+            Http::error(400, '발견에 게시하려면 공개 범위를 커뮤니티 또는 링크 공유로 선택해 주세요.');
         }
         $ids = $body['media_ids'];
         if (!is_array($ids) || array_values($ids) !== $ids || count($ids) > 10 || count(array_unique($ids, SORT_REGULAR)) !== count($ids)) {
@@ -100,7 +106,11 @@ final class Memories
             return $post['visibility'] === 'shared' && (int) $post['owner_user_id'] === (int) $link['owner_user_id']
                 && ($link['post_id'] === null || $link['post_id'] === $post['id']);
         }
-        return $user !== null && ((int) $post['owner_user_id'] === (int) $user['id'] || $post['visibility'] !== 'private');
+        if ($user === null) { return false; }
+        if ((int) $post['owner_user_id'] === (int) $user['id']) { return true; }
+        if (in_array($post['visibility'], ['community', 'shared'], true)) { return true; }
+        return $post['visibility'] === 'followers'
+            && MemorySocial::follows((int) $user['id'], (int) $post['owner_user_id']);
     }
 
     public static function mediaList(array $ids, string $prefix): array
@@ -131,6 +141,8 @@ final class Memories
         $counts = Db::instance()->run($sql, [':liked' => $row['id'], ':commented' => $row['id'], ':post' => $row['id'], ':viewer' => (int) ($user['id'] ?? 0)])->fetch();
         $out = array_intersect_key($row, array_flip(['id', 'caption', 'location', 'trip', 'taken_on', 'visibility', 'created_at', 'username', 'display_name']));
         $out['story'] = isset($row['story']) ? json_decode($row['story'], true) : null;
+        $out['discoverable'] = (bool) ($row['discoverable'] ?? false);
+        $out['following'] = $user !== null && MemorySocial::follows((int) $user['id'], (int) $row['owner_user_id']);
         $out += ['mine' => $owner, 'revision' => (int) $row['revision'], 'media' => self::mediaList(json_decode($row['media_ids'], true), $prefix),
             'likes' => (int) $counts['likes'], 'comments' => (int) $counts['comments'], 'liked' => (bool) $counts['liked']];
         if ($owner) {
@@ -144,38 +156,76 @@ final class Memories
     {
         $where = ['p.deleted_at IS NULL', 'u.is_active', '(u.expires_at IS NULL OR u.expires_at>now())'];
         $bind = [];
+        $view = $_GET['view'] ?? 'feed';
+        $profile = Memories::text($_GET['profile'] ?? '', 64);
+        $search = Memories::text($_GET['q'] ?? '', 100);
+        if (!is_string($view) || !in_array($view, ['feed', 'following', 'mine', 'shared', 'discover'], true)) {
+            Http::error(400, Http::MSG_BAD_REQUEST);
+        }
         if ($link) {
             $where[] = "p.visibility='shared' AND p.owner_user_id=:owner";
             $bind[':owner'] = (int) $link['owner_user_id'];
             if ($link['post_id'] !== null) { $where[] = 'p.id=CAST(:shared_post AS uuid)'; $bind[':shared_post'] = $link['post_id']; }
         } else {
-            $where[] = "(p.owner_user_id=:viewer OR p.visibility IN ('community','shared'))";
-            $bind[':viewer'] = (int) $user['id'];
-            if (($_GET['view'] ?? '') === 'mine') { $where[] = 'p.owner_user_id=:mine'; $bind[':mine'] = (int) $user['id']; }
-            if (($_GET['view'] ?? '') === 'shared') { $where[] = "p.visibility IN ('community','shared')"; }
-            $profile = $_GET['profile'] ?? '';
-            if ($profile !== '') { $where[] = 'u.username=:profile'; $bind[':profile'] = self::text($profile, 64); }
+            if ($user === null) { Http::error(401, '로그인해 주세요.'); }
+            // Keep this predicate in step with canRead: the graph only opens followers posts.
+            $where[] = "(p.owner_user_id=:viewer OR p.visibility IN ('community','shared') OR (p.visibility='followers' AND EXISTS(SELECT 1 FROM community.memory_follows f WHERE f.follower_user_id=:follower AND f.followed_user_id=p.owner_user_id)))";
+            $bind[':viewer'] = (int) $user['id']; $bind[':follower'] = (int) $user['id'];
+            if ($view === 'mine') {
+                $where[] = 'p.owner_user_id=:mine'; $bind[':mine'] = (int) $user['id'];
+            } elseif ($view === 'discover') {
+                $where[] = "p.discoverable AND p.visibility IN ('community','shared')";
+            } elseif ($profile === '') {
+                $where[] = '(p.owner_user_id=:own_feed OR EXISTS(SELECT 1 FROM community.memory_follows f WHERE f.follower_user_id=:feed_follower AND f.followed_user_id=p.owner_user_id))';
+                $bind[':own_feed'] = (int) $user['id']; $bind[':feed_follower'] = (int) $user['id'];
+            }
+            if ($profile !== '') { $where[] = 'u.username=:profile'; $bind[':profile'] = $profile; }
         }
-        $search = $_GET['q'] ?? '';
         if ($search !== '') {
             $where[] = "strpos(lower(p.caption || ' ' || COALESCE(p.story::text,'') || ' ' || p.location || ' ' || p.trip),lower(:search))>0";
-            $bind[':search'] = self::text($search, 100);
+            $bind[':search'] = $search;
         }
         $offset = filter_var($_GET['offset'] ?? 0, FILTER_VALIDATE_INT);
         if ($offset === false || $offset < 0 || $offset > 10000) { Http::error(400, Http::MSG_BAD_REQUEST); }
+        $scope = hash('sha256', json_encode([$view, $profile, $search, (int) ($user['id'] ?? 0), $link['token_hash'] ?? '']));
+        $cursor = MemorySocial::cursor($_GET['cursor'] ?? null, $scope);
+        $snapshot = $cursor['snapshot'] ?? (string) Db::instance()->run('SELECT clock_timestamp()::text')->fetchColumn();
+        $where[] = 'p.created_at<=CAST(:snapshot AS timestamptz)'; $bind[':snapshot'] = $snapshot;
         $base = ' FROM community.memory_posts p JOIN public.users u ON u.id=p.owner_user_id WHERE ';
         $base .= implode(' AND ', $where);
-        $statsSql = 'SELECT count(*) AS posts, count(DISTINCT NULLIF(p.trip,\'\')) AS trips, coalesce(sum(jsonb_array_length(p.media_ids)),0) AS moments';
+        $statsSql = "SELECT count(*) AS posts, count(DISTINCT NULLIF(p.trip,'')) AS trips, coalesce(sum(jsonb_array_length(p.media_ids)),0) AS moments";
         $stats = Db::instance()->run($statsSql . $base, $bind)->fetch();
-        $query = 'SELECT p.*,u.username,u.display_name';
-        $query .= $base . ' ORDER BY p.created_at DESC,p.id DESC LIMIT 21 OFFSET CAST(:offset AS integer)';
+
+        // Freshness plus a small deterministic author/viewer/day rotation, not inferred interests.
+        // Freeze the day and creation cutoff in the cursor. Likes/comments do not reorder later pages.
+        $rank = 'floor(extract(epoch FROM p.created_at))::bigint';
+        if (!$link && $view === 'discover') {
+            $rank .= " + ((('x' || substr(md5(CAST(:rank_viewer AS text) || ':' || p.owner_user_id::text || ':' || :rank_day),1,8))::bit(32)::bigint) % 21600)";
+            $bind[':rank_viewer'] = (int) $user['id'];
+            $bind[':rank_day'] = (new DateTimeImmutable($snapshot))->format('Y-m-d');
+        }
+        $query = 'WITH visible AS (SELECT p.*,u.username,u.display_name,';
+        $query .= $rank . ' AS feed_rank' . $base . ')';
+        $query .= ' SELECT * FROM visible';
+        if ($cursor !== null) {
+            $query .= ' WHERE (feed_rank,created_at,id)<(CAST(:last_rank AS bigint),CAST(:last_created AS timestamptz),CAST(:last_id AS uuid))';
+            $bind[':last_rank'] = $cursor['rank']; $bind[':last_created'] = $cursor['created']; $bind[':last_id'] = $cursor['id'];
+            $offset = 0;
+        }
+        $query .= ' ORDER BY feed_rank DESC,created_at DESC,id DESC LIMIT 21 OFFSET CAST(:offset AS integer)';
         $rows = Db::instance()->run($query, $bind + [':offset' => $offset])->fetchAll();
         $more = count($rows) > 20;
+        $page = array_slice($rows, 0, 20);
         $prefix = Http::communityUrl($link ? '/memories/s/' . $token . '/media/' : '/api/memories/media/');
-        $out = ['posts' => array_map(static fn ($r) => self::output($r, $user, $prefix), array_slice($rows, 0, 20)),
-            'next_offset' => $more ? $offset + 20 : null, 'stats' => array_map('intval', $stats)];
+        $out = ['posts' => array_map(static fn ($r) => self::output($r, $user, $prefix), $page),
+            'next_offset' => $more ? $offset + 20 : null,
+            'next_cursor' => $more ? MemorySocial::encodeCursor($scope, $snapshot, $page[19]) : null,
+            'stats' => array_map('intval', $stats)];
         if ($user) {
-            $out['me'] = ['username' => $user['username'], 'display_name' => $user['display_name'] ?? null, 'can_write' => Authz::canCommunityWrite($user), 'csrf_token' => Auth::csrfToken()];
+            $out['me'] = ['username' => $user['username'], 'display_name' => $user['display_name'] ?? null,
+                'can_write' => Authz::canCommunityWrite($user), 'csrf_token' => Auth::csrfToken(),
+                'default_visibility' => MemorySocial::defaultVisibility((int) $user['id'])];
+            $out['profile'] = MemorySocial::profile($profile !== '' ? MemorySocial::member($profile) : $user, $user);
         } else {
             $out['profile'] = ['username' => $link['username'], 'display_name' => $link['display_name']];
         }
@@ -218,17 +268,21 @@ final class Memories
         } catch (InvalidArgumentException $e) {
             $db->rollback(); Http::error(409, '사진 순서와 이야기 구성을 확인해 주세요. 구성을 해제한 뒤 사진을 바꿀 수 있어요.');
         }
+        // Narrowing a post also removes discovery, including edits from older clients.
+        $discoverable = in_array($body['visibility'], ['community', 'shared'], true)
+            && ($body['discoverable'] ?? (bool) ($old['discoverable'] ?? false));
         $bind = [':id' => $id, ':caption' => $body['caption'], ':location' => $body['location'], ':trip' => $body['trip'],
-            ':taken' => $body['taken_on'], ':visibility' => $body['visibility'], ':media' => json_encode($body['media_ids']), ':story' => $story===null ? null : json_encode($story,JSON_UNESCAPED_UNICODE|JSON_THROW_ON_ERROR)];
+            ':taken' => $body['taken_on'], ':visibility' => $body['visibility'], ':discoverable' => $discoverable ? 'true' : 'false',
+            ':media' => json_encode($body['media_ids']), ':story' => $story===null ? null : json_encode($story,JSON_UNESCAPED_UNICODE|JSON_THROW_ON_ERROR)];
         if ($old) {
             $sql = <<<'SQL'
                 UPDATE community.memory_posts SET caption=:caption,location=:location,trip=:trip,taken_on=:taken,
-                visibility=:visibility,media_ids=CAST(:media AS jsonb),story=CAST(:story AS jsonb),revision=revision+1,updated_at=now() WHERE id=CAST(:id AS uuid)
+                visibility=:visibility,discoverable=CAST(:discoverable AS boolean),media_ids=CAST(:media AS jsonb),story=CAST(:story AS jsonb),revision=revision+1,updated_at=now() WHERE id=CAST(:id AS uuid)
                 SQL;
         } else {
             $sql = <<<'SQL'
-                INSERT INTO community.memory_posts(id,owner_user_id,caption,original_caption,location,trip,taken_on,visibility,media_ids,original_media_ids,request_id,story)
-                VALUES(CAST(:id AS uuid),:owner,:caption,:original,:location,:trip,:taken,:visibility,CAST(:media AS jsonb),CAST(:original_media AS jsonb),CAST(:request AS uuid),CAST(:story AS jsonb))
+                INSERT INTO community.memory_posts(id,owner_user_id,caption,original_caption,location,trip,taken_on,visibility,discoverable,media_ids,original_media_ids,request_id,story)
+                VALUES(CAST(:id AS uuid),:owner,:caption,:original,:location,:trip,:taken,:visibility,CAST(:discoverable AS boolean),CAST(:media AS jsonb),CAST(:original_media AS jsonb),CAST(:request AS uuid),CAST(:story AS jsonb))
                 SQL;
             $bind += [':owner' => (int) $user['id'], ':original' => $body['caption'], ':original_media' => json_encode($body['media_ids']), ':request' => $body['request_id']];
         }

@@ -34,7 +34,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--port', type=int, default=8768, choices=(8768,))
     parser.add_argument('--output', type=Path, required=True)
-    parser.add_argument('--suite', choices=('memories_http.py','memories_runtime_browser.py','memory_ai_http.py','memory_story_http.py'), default='memories_http.py')
+    parser.add_argument('--suite', choices=('memories_http.py','memories_runtime_browser.py','memory_ai_http.py','memory_story_http.py','memory_social_http.py','travel_plans_http.py'), default='memories_http.py')
     parser.add_argument('--baseline-code', action='store_true')
     args = parser.parse_args()
     args.output = args.output.resolve()
@@ -113,9 +113,16 @@ def main():
         db_cmd('psql', ['-X','-d',db_name,'-v','ON_ERROR_STOP=1'], input=b'CREATE SCHEMA community;')
         community_schema = instance / 'db/community/schema.sql'
         logs.append(sql_file(community_schema).stdout)
-        # Apply both new migrations twice to verify idempotence on the fresh-install shape.
+        # Run feature migrations twice to verify reapplication on the fresh-install shape.
+        migrations = ['2026-09-29_community_trust.sql', '2026-09-30_community_automation.sql']
+        if not args.baseline_code:
+            migrations += ['2026-10-01_community_suggestions.sql', '2026-10-18_community_ai.sql',
+                           '2026-10-03_community_memories.sql', '2026-10-03_community_messenger.sql',
+                           '2026-10-03_memory_story.sql', '2026-10-14_memory_social.sql',
+                           '2026-10-14_optional_member_auth.sql', '2026-10-14_usage_guide.sql',
+                           '2026-10-14_travel_plans.sql', '2026-10-14_travel_scopes.sql']
         for _ in range(2):
-            for migration in (('2026-09-29_community_trust.sql','2026-09-30_community_automation.sql') if args.baseline_code else ('2026-09-29_community_trust.sql','2026-09-30_community_automation.sql','2026-10-01_community_suggestions.sql','2026-10-18_community_ai.sql','2026-10-03_community_memories.sql','2026-10-03_community_messenger.sql','2026-10-03_memory_story.sql')):
+            for migration in migrations:
                 logs.append(sql_file(instance / 'db/migrations' / migration).stdout)
         grants = (instance / 'db/grants.sql').read_text().replace('tbox_re', db_name)
         if 'DATABASE tbox_re ' in grants or not db_name.startswith('tbox_memories_test_'):

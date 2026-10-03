@@ -750,3 +750,12 @@ insta f78b018의 일상/여행 스레드·미디어·친구 링크·회원/GPT �
 ## 2026-10-03 휴가 전 통합 운영 기록
 
 v2.46.0(56a4ae1)에 개인 파일 권한과 문서 첨부 인가, 권한 요청 알림, 토큰 문서 검색/읽기, 모바일 편집/로그인·세션 복구를 최신 사진 이야기·제안·자동화와 함께 반영했다. 알림 종류 제약은 기존 값을 보존하여 확장한다. 모바일305·공통160·사진64·운영HTTPS53 통과, 기존 문서954개/사진글3개/첨부12개 해시 보존. 실제 휴대폰 저장 확인과 새 사진/영상 편집·스레드 MCP 연결은 남는다. 상세: tbox-v2/docs/work-items/vacation-integration-2026-10-03.md.
+
+## 2026-10-03 회원 경험 개선 후보 (서버 검증·배포 대기)
+
+| 날짜 | 구분 | 내용 | 해소·근거 |
+|---|---|---|---|
+| 2026-10-03 | 요청 | 커뮤니티 전체 기능 입구, 팔로우·팔로워와 공개 범위, 첫 가입자 강조 안내, 유연한 여행 계획, 긴 스토리 요약/상세 모달, 다크 흰 카드 수정 | `docs/community-member-experience-directive.md` |
+| 2026-10-03 | 구현 | cloud/community-member-experience 후보. 기존 원문/사진 보존, 발견 게시 opt-in, 여행 계획 독립 소유·MCP 범위 | `docs/work-items/community-member-experience.md`, `wiki/community/guide-memories.json` |
+
+PHP·격리 PostgreSQL·실물 기기·운영 HTTPS는 미검증이며 기존 운영 완료 표를 변경하지 않는다.

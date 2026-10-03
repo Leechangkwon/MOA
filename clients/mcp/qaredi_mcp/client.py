@@ -1,6 +1,7 @@
 """Qaredi 창구 클라이언트 (Q:F-8 조각 C) — 표준 라이브러리(urllib)만 쓴다.
 
-부르는 곳은 **정해진 다섯뿐**이다(지시서 「계약」). 주소는 코드 상수 + 검사한 페이지 id · urlencode 한 검색어로만 만든다:
+문서 창구는 아래 다섯이다. 여행 확장은 고정 /community/api/travel-plans 경로와 검사한 UUID만 추가한다.
+주소는 코드 상수 + 검사한 id · urlencode 한 검색어로만 만든다:
     GET  /tbox/api/whoami
     GET  /community/api/me/space
     POST /community/api/pages          {title, doc}
@@ -22,6 +23,7 @@ import json
 import os
 import re
 import stat
+import uuid
 import ssl
 import urllib.error
 import urllib.parse
@@ -187,7 +189,7 @@ class QarediClient:
             )
         return cls(base, _Secret(os.environ["QAREDI_TOKEN"]))
 
-    # ── 창구 다섯 ────────────────────────────────────────────────────────────
+    # ── 문서 창구 ────────────────────────────────────────────────────────────
 
     def whoami(self) -> dict[str, Any]:
         return self._call("GET", "/tbox/api/whoami")
@@ -206,6 +208,47 @@ class QarediClient:
 
     def page_url(self, page_id: str) -> str:
         return self.base_url + "/community/p/" + page_id_from(page_id)
+
+    # Travel is opt-in: existing community scopes never grant these private endpoints.
+    def list_travel_plans(self) -> dict[str, Any]:
+        return self._call("GET", "/community/api/travel-plans")
+
+    @staticmethod
+    def _travel_id(value: str) -> str:
+        if not isinstance(value, str) or not _UUID.fullmatch(value):
+            raise QarediError("여행 계획과 기록의 id 는 UUID여야 합니다")
+        return value.lower()
+
+    def get_travel_plan(self, plan_id: str) -> dict[str, Any]:
+        return self._call("GET", "/community/api/travel-plans/" + self._travel_id(plan_id))
+
+    def save_travel_plan(self, plan: dict[str, Any], plan_id: str | None = None,
+                         revision: int | None = None, request_id: str | None = None) -> dict[str, Any]:
+        if not isinstance(plan, dict) or set(plan) - {"title", "destination", "starts_on", "ends_on", "notes", "steps"}:
+            raise QarediError("계획은 title, destination, starts_on, ends_on, notes, steps만 받습니다")
+        body = dict(plan)
+        if not isinstance(body.get("title"), str) or not body["title"].strip():
+            raise QarediError("여행 이름 title을 적어 주세요")
+        steps = body.get("steps", [])
+        if not isinstance(steps, list) or len(steps) > 100 or not all(isinstance(s, dict) for s in steps):
+            raise QarediError("steps는 일정 객체를 최대 100개 담는 배열입니다")
+        # New activities receive stable IDs in the saved result. Existing IDs are preserved.
+        body["steps"] = [dict(step, id=step.get("id") or str(uuid.uuid4())) for step in steps]
+        if plan_id is None:
+            body["request_id"] = self._travel_id(request_id) if request_id else str(uuid.uuid4())
+            path, method = "/community/api/travel-plans", "POST"
+        else:
+            if not isinstance(revision, int) or isinstance(revision, bool) or revision < 1:
+                raise QarediError("먼저 계획을 읽고 현재 revision 번호를 넣어 주세요")
+            body["revision"] = revision
+            path, method = "/community/api/travel-plans/" + self._travel_id(plan_id), "PATCH"
+        if len(json.dumps(body, ensure_ascii=False).encode("utf-8")) > 240000:
+            raise QarediError("여행 계획이 너무 큽니다")
+        return self._call(method, path, body)
+
+    def link_travel_record(self, plan_id: str, post_id: str, step_id: str | None = None) -> dict[str, Any]:
+        return self._call("POST", "/community/api/travel-plans/" + self._travel_id(plan_id) + "/records",
+                          {"post_id": self._travel_id(post_id), "step_id": self._travel_id(step_id) if step_id else None})
 
     # ── 도구가 쓰는 흐름 ────────────────────────────────────────────────────
 
@@ -390,6 +433,15 @@ def _http_error(status: int, raw: bytes, method: str, path: str) -> QarediError:
         ]
         parts.append("검증 오류 " + ", ".join(shown) + (" …" if len(errors) > 10 else ""))
     scope_denied = reason == "token_scope" or (status == 403 and err.get("error") == "token_scope")
+    if "/api/travel-plans" in path and status in (401, 403, 404, 409):
+        travel_hint = {
+            401: "여행 권한을 선택해 발급한 개인 토큰의 만료·회수를 확인하세요",
+            403: "여행 읽기에는 travel.read, 저장·연결에는 travel.write 권한을 직접 선택한 토큰이 필요합니다. 기존 커뮤니티 토큰은 여행을 열지 않습니다",
+            404: "없거나 내 소유가 아닌 여행 계획·기록입니다",
+            409: "계획의 최신 내용을 읽고 변경 사항을 확인한 뒤 새 revision으로 다시 저장하세요",
+        }
+        parts.append(travel_hint[status])
+        return QarediError(" · ".join(parts), status, reason)
     hint = (
         "권한 범위 밖입니다 — 이 일에 맞는 범위(글쓰기는 「커뮤니티 글쓰기」, 검색은 「커뮤니티 읽기」 이상)를 가진 토큰이 필요합니다"
         if scope_denied else _HINTS.get(status)

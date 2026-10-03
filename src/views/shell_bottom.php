@@ -191,6 +191,7 @@ $shellChangelog = $shellChangelogFull ? Changelog::entries() : Changelog::headli
 <script src="<?= Http::url('/assets/alerts-app.js') ?>?v=<?= (int) filemtime(__DIR__ . '/../../public/assets/alerts-app.js') ?>"></script>
 <?php endif; ?>
 <?php if ($shellMod === 'community'): require __DIR__ . '/community_messenger.php'; endif; ?>
+<?php require __DIR__ . '/usage_guide.php'; ?>
 <?php include __DIR__ . '/design_controls.php'; ?>
 </body>
 </html>

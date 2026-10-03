@@ -24,7 +24,7 @@ try {
     $invite=$db->run($validSql.' FOR UPDATE OF i',
         $bind)->fetch();
     if (!$invite) { $db->rollback(); Http::error(410,'초대가 만료되었거나 사용할 수 없습니다. 새 초대 링크를 받아 주세요.'); }
-    $row=$db->run("INSERT INTO users(username,display_name,password_hash,role,team_id,must_change_password,mfa_setup_required,password_changed_at,invited_account) VALUES(:username,:name,:hash,'Employee',:team,false,true,now(),true) RETURNING id",
+    $row=$db->run("INSERT INTO users(username,display_name,password_hash,role,team_id,must_change_password,mfa_setup_required,password_changed_at,invited_account) VALUES(:username,:name,:hash,'Employee',:team,false,false,now(),true) RETURNING id",
         [':username'=>$username,':name'=>trim($name),':hash'=>$hash,':team'=>$invite['team_id']])->fetch();
     $db->run('UPDATE member_invites SET used_count=used_count+1 WHERE id=:id',
         [':id'=>$invite['id']]);
@@ -38,4 +38,8 @@ try {
 } catch (Throwable $e) { $db->rollback(); throw $e; }
 // Account is durable even if a later session creation fails; the user can log in normally.
 $result=Auth::login($username,$password); unset($password,$hash);
-Http::json(['ok'=>true,'next'=>'mfa_setup','redirect'=>Http::url('/welcome')],201);
+if ($result === null) {
+    Http::json(['ok'=>true,'next'=>'login','redirect'=>Http::url('/login')],201);
+    return;
+}
+Http::json(['ok'=>true,'next'=>Auth::nextStep($result),'redirect'=>Http::url('/welcome')],201);

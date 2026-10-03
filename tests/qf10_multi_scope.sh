@@ -45,6 +45,8 @@ SDB="tbox_qf10_${PORT}_schema"        # 임시 — db/schema.sql 새 설치 모�
 BASE_REV="${QF10_BASE_REV:-b2ee066}"  # 기준 판(v2.38.0 — 이 조각의 출발점)
 MIG9="$ROOT/db/migrations/2026-10-12_session_open.sql"
 MIG="$ROOT/db/migrations/2026-10-13_api_tokens_multi_scope.sql"
+MIG_TRAVEL="$ROOT/db/migrations/2026-10-14_travel_scopes.sql"
+MIG_OPTIONAL_AUTH="$ROOT/db/migrations/2026-10-14_optional_member_auth.sql"
 PGP_TEST="$HOME/.config/qaredi/pgpass-testdb"
 JAR_DIR="$(mktemp -d)"
 WORK="$(mktemp -d)"
@@ -243,7 +245,7 @@ echo "ATOMS=", implode(",", Authz::TOKEN_SCOPE_ATOMS);
 ' "$ROOT/src/Authz.php" 2>&1)
 #            열: read · r+u · r+u+d · c.write(옛) · s.open · c.read · c.read+c.write · 묶음 · upload(DB 직접) · read+admin · 빈 글자
 expect "tokenScopeAllows 표(옛 다섯 + 묶음 + 의존이 깨진 행 + 모르는 원자 + 빈 글자)" \
-  "authenticated=11111111100 file.read=11100001000 file.upload=01100001100 file.update=01100001100 file.delete=00100000000 community.read=00010111000 community.write=00010010000 session.open=00001001000 role:Admin=00000000000 file.fetch=00000000000 ATOMS=read,upload,delete,community.read,community.write,session.open,assistant.run" "$AZ"
+  "authenticated=11111111100 file.read=11100001000 file.upload=01100001100 file.update=01100001100 file.delete=00100000000 community.read=00010111000 community.write=00010010000 session.open=00001001000 role:Admin=00000000000 file.fetch=00000000000 ATOMS=read,upload,delete,community.read,community.write,session.open,assistant.run,travel.read,travel.write" "$AZ"
 NZ=$(php -r '
 require $argv[1];
 $cases = [["upload"], ["delete","read"], ["upload","read"], ["community.write"], ["x"], [], "read+upload+delete", "community.write",
@@ -334,13 +336,6 @@ expect "옛 다섯 값 → community.write 행만 community.read+community.write
 expect "  (앞) 행 모양" "${OT1_ID}:read:- ${OT2_ID}:read+upload:- ${OT3_ID}:read+upload+delete:- ${OT4_ID}:community.write:- ${OT5_ID}:session.open:10.1.2.3" "$BEFORE"
 expect "마이그레이션 — 트랜잭션 하나 · 앞 검사 RAISE · 되돌리기 절 · UPDATE 는 community.write 한 줄뿐 · DELETE·TRUNCATE 0" "1 1 1 1 1 0" \
   "$(grep -c '^BEGIN;$' "$MIG") $(grep -c '^COMMIT;$' "$MIG") $(grep -v '^--' "$MIG" | grep -c 'RAISE EXCEPTION') $(grep -c '^-- 되돌리기' "$MIG") $(grep -v '^--' "$MIG" | grep -ciE '^\s*UPDATE\b.*WHERE scope = .community\.write.;$') $(grep -v '^--' "$MIG" | grep -ciE '^\s*(DELETE|TRUNCATE)\b')"
-# 새 설치(db/schema.sql)의 모양 = 마이그레이션 뒤 모양
-tdb dropdb -h 127.0.0.1 -p 5432 -U tbox_testdb -w --if-exists "$SDB" >/dev/null 2>&1
-tdb createdb -h 127.0.0.1 -p 5432 -U tbox_testdb -w "$SDB" >/dev/null 2>&1
-SL=$(tdb psql -h 127.0.0.1 -p 5432 -U tbox_testdb -w -X -q -d "$SDB" -v ON_ERROR_STOP=1 -f "$ROOT/db/schema.sql" 2>&1 >/dev/null; echo "rc=$?")
-expect "db/schema.sql 새 설치 rc" "rc=0" "$(printf '%s' "$SL" | tail -1)"
-expect "db/schema.sql 의 제약·인덱스 = 마이그레이션 뒤 모양" "$(printf '%s\n' "$S2" | sed -n 1,2p)" \
-  "$(printf '%s\n' "SELECT string_agg(conname || '=' || pg_get_constraintdef(oid), ' | ' ORDER BY conname) FROM pg_constraint WHERE conname IN ('api_tokens_scope_check','api_tokens_bound_ip_check') UNION ALL SELECT indexdef FROM pg_indexes WHERE indexname = 'api_tokens_one_session_open';" | tdb psql -h 127.0.0.1 -p 5432 -U tbox_testdb -w -X -q -At -d "$SDB" 2>/dev/null)"
 # CHECK — 마지막 그물(포함 여부 · IP 짝)
 UH=$(printf 'e%.0s' $(seq 1 64))
 ins_err() {   # $1 범위 · $2 IP(없으면 빈 글자) · $3 해시 앞 글자 → 오류 글자(성공이면 빈 글자)
@@ -349,6 +344,7 @@ ins_err() {   # $1 범위 · $2 IP(없으면 빈 글자) · $3 해시 앞 글자
                 $( [ -n "$2" ] && printf "CAST('%s' AS inet)" "$2" || printf 'NULL' ), now() FROM users WHERE username = 'claude_employee01'"
 }
 expect "CHECK — 모르는 원자(read+admin) 거부" "1" "$(ins_err 'read+admin' '' 'a' | grep -c 'api_tokens_scope_check')"
+expect "옛 QF10 CHECK — 여행 원자는 아직 거부(과거 계약 보존)" "1" "$(ins_err 'travel.read' '' '1' | grep -c 'api_tokens_scope_check')"
 expect "CHECK — 빈 글자 거부" "1" "$(ins_err '' '' 'b' | grep -c 'api_tokens_scope_check')"
 expect "CHECK — session.open 원자인데 IP 없음 거부" "1" "$(ins_err 'read+session.open' '' 'c' | grep -c 'api_tokens_bound_ip_check')"
 expect "CHECK — IP 가 있는데 session.open 원자 없음 거부" "1" "$(ins_err 'read+upload' '10.0.0.1' 'd' | grep -c 'api_tokens_bound_ip_check')"
@@ -366,6 +362,27 @@ psqlq "DELETE FROM api_tokens WHERE id = ${BAD_ID:-0}" >/dev/null
 M4=$(tdb psql -h 127.0.0.1 -p 5432 -U tbox_testdb -w -X -q -d "$DB" -v ON_ERROR_STOP=1 -f "$MIG" 2>&1 >/dev/null; echo "rc=$?")
 expect "그 행을 지운 뒤 다시 → rc=0 · 모양이 첫 적용과 같다 · community.write 행 정규화" "rc=0 1 community.read+community.write" \
   "$(printf '%s' "$M4" | tail -1) $([ "$(psqlq "$SHAPE")" = "$S1" ] && echo 1 || echo 0) $(psqlq "SELECT scope FROM api_tokens WHERE id = ${OT4_ID:-0}")"
+# Preserve every historical QF10 assertion above, then test the additive travel migration.
+# This comparison never expands an existing token's actual held scopes.
+PRE_TRAVEL_ROWS=$(psqlq "$ROWS_Q")
+FORWARD1=$(tdb psql -h 127.0.0.1 -p 5432 -U tbox_testdb -w -X -q -d "$DB" -v ON_ERROR_STOP=1 -f "$MIG_TRAVEL" 2>&1 >/dev/null; echo "rc=$?")
+expect "여행 범위 추가 마이그레이션 rc" "rc=0" "$(printf '%s' "$FORWARD1" | tail -1)"
+CURRENT_SCOPE_SHAPE=$(psqlq "$SHAPE")
+expect "여행 마이그레이션은 기존 토큰 범위를 넓히지 않음" "$PRE_TRAVEL_ROWS" "$(psqlq "$ROWS_Q")"
+expect "여행 마이그레이션은 열·권한을 유지" "$(printf '%s\n' "$S2" | sed -n 3,4p)" "$(printf '%s\n' "$CURRENT_SCOPE_SHAPE" | sed -n 3,4p)"
+FORWARD2=$(tdb psql -h 127.0.0.1 -p 5432 -U tbox_testdb -w -X -q -d "$DB" -v ON_ERROR_STOP=1 -f "$MIG_TRAVEL" 2>&1 >/dev/null; echo "rc=$?")
+expect "여행 마이그레이션 재실행 rc" "rc=0" "$(printf '%s' "$FORWARD2" | tail -1)"
+expect "여행 마이그레이션 멱등" "$CURRENT_SCOPE_SHAPE" "$(psqlq "$SHAPE")"
+# Current fresh schema matches the complete forward migration chain, not the historical QF10 checkpoint.
+tdb dropdb -h 127.0.0.1 -p 5432 -U tbox_testdb -w --if-exists "$SDB" >/dev/null 2>&1
+tdb createdb -h 127.0.0.1 -p 5432 -U tbox_testdb -w "$SDB" >/dev/null 2>&1
+SL=$(tdb psql -h 127.0.0.1 -p 5432 -U tbox_testdb -w -X -q -d "$SDB" -v ON_ERROR_STOP=1 -f "$ROOT/db/schema.sql" 2>&1 >/dev/null; echo "rc=$?")
+expect "db/schema.sql 새 설치 rc" "rc=0" "$(printf '%s' "$SL" | tail -1)"
+expect "db/schema.sql 의 제약·인덱스 = 마이그레이션 뒤 모양" "$(printf '%s\n' "$CURRENT_SCOPE_SHAPE" | sed -n 1,2p)" \
+  "$(printf '%s\n' "SELECT string_agg(conname || '=' || pg_get_constraintdef(oid), ' | ' ORDER BY conname) FROM pg_constraint WHERE conname IN ('api_tokens_scope_check','api_tokens_bound_ip_check') UNION ALL SELECT indexdef FROM pg_indexes WHERE indexname = 'api_tokens_one_session_open';" | tdb psql -h 127.0.0.1 -p 5432 -U tbox_testdb -w -X -q -At -d "$SDB" 2>/dev/null)"
+# Current Auth.php reads its new explicit recovery column even in this token suite.
+AUTH_SCHEMA=$(tdb psql -h 127.0.0.1 -p 5432 -U tbox_testdb -w -X -q -d "$DB" -v ON_ERROR_STOP=1 -f "$MIG_OPTIONAL_AUTH" 2>&1 >/dev/null; echo "rc=$?")
+expect "선택 인증/관리자 복구 스키마 rc" "rc=0" "$(printf '%s' "$AUTH_SCHEMA" | tail -1)"
 # 옛 다섯 행은 회수해 둔다(살아 있는 토큰 상한 5 · session.open 하나 규칙이 뒤 발급을 막지 않게 — 임시 DB)
 psqlq "UPDATE api_tokens SET revoked_at = now() WHERE id IN ($OLDIDS) AND revoked_at IS NULL" >/dev/null
 
@@ -389,7 +406,7 @@ note "세션 셋(claude_employee01 · claude_employee02 · claude_guest01)"
 # ════════════════════════════════════════════════════════════════
 hr "T-7(세션 갈래) — GET /api/me 의 token_scopes 는 원자 · 쥔 범위 두 칸은 없다"
 curl -s -b "$JAR_DIR/claude_employee01.jar" -A "$UA" "$BASE/api/me" > "$WORK/me.json"
-expect "claude_employee01 token_scopes = 원자 여섯(2단계 켜짐 · 쓰기 자격)" "read,upload,delete,community.read,community.write,session.open,assistant.run" \
+expect "claude_employee01 token_scopes = 현재 원자(2단계 켜짐 · 쓰기 자격 · 여행 포함)" "read,upload,delete,community.read,community.write,session.open,assistant.run,travel.read,travel.write" \
   "$(jf "$WORK/me.json" "','.join(d.get('token_scopes',[]))")"
 expect "세션 /api/me 에 token_scope · token_scopes_held 없음" "0 0" \
   "$(jf "$WORK/me.json" "int('token_scope' in d)") $(jf "$WORK/me.json" "int('token_scopes_held' in d)")"

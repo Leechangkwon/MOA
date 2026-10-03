@@ -1097,3 +1097,21 @@ POST /tbox/api/me/api-tokens scope=["community.read","session.open"] (묶음이 
 ### 2026-10-03 사진과 글의 이야기 구성
 
 POST /community/api/memories/{id}/caption에 선택적 format=story 추가. 최대10장의 번호별 참조 이미지와 최초 메모로 title/intro/scenes 구조를 생성하며 story/suggested_story/order_reason/text를 반환. 기본 scene 순서는 입력 사진 순서를 보존하고 제안은 별도다. 생성 결과는 게시하지 않는다. POST/PATCH memories의 story는 null 또는 {title,intro,scenes:[{media_ids,title,text}]}이며 현재 첨부의 중복 없는 부분집합/순서를 검증한다. 생략 시 기존 story 유지, 충돌409. 공개 응답도 저장된 story만 반환하고 원본은 소유자만 조회한다.
+
+## 회원 경험 개선 후보 — 팔로우·여행 (2026-10-03, 서버 검증 대기)
+
+웹 세션 API는 CSRF와 기존 커뮤니티 관문을 따른다. 소셜은 프로그램 토큰에 열리지 않는다.
+
+| 경로(`/community` 접두) | 메서드 | 기능 |
+|---|---|---|
+| `/api/memories/social` | GET | `profile`, `list=following/followers/members`, `q`, `offset`로 프로필/관계 목록 |
+| `/api/memories/follow` | POST/DELETE | `{username}` 팔로우/해제 |
+| `/api/memories/preferences` | PATCH | `{default_visibility}` 새 글의 기본 공개 범위 |
+| `/api/me/guide` | GET/PATCH | 본인의 동의형 사용 안내 상태(세션 전용) |
+| `/api/travel-plans` | GET/POST | 본인 계획 목록/생성 |
+| `/api/travel-plans/{id}` | GET/PATCH/DELETE | 본인 계획 읽기/판 번호 기반 수정/소프트 삭제 |
+| `/api/travel-plans/{id}/records` | POST/DELETE | 본인 글을 일정 또는 여행 전체에 연결/해제 |
+
+기록 저장은 `visibility=private/followers/community/shared`와 boolean `discoverable`을 받는다. 발견 게시에는 community 또는 shared가 필요하다. 목록 `view=feed`는 본인+팔로잉, `view=discover`는 명시 게시된 공개 글, `view=mine`은 본인 기록이다. 응답 `next_cursor`를 다음 요청의 `cursor`로 보낸다. 프로필·검색·열람자가 달라지면 커서를 재사용하지 않는다. 기존 링크 capability는 shared만 계속 허용한다.
+
+여행 GET/POST/PATCH 및 기록 POST는 `X-API-Token` 개인 토큰도 받는다. GET은 `travel.read` 또는 `travel.write`, 쓰기는 `travel.write`가 있어야 한다. `travel.write` 발급은 `travel.read`를 포함한다. 기존 문서/파일/assistant.run 토큰에는 여행 권한이 생기지 않는다. 여행 DELETE는 웹 세션 전용이다. API 전체 계약과 MCP 도구 이름은 `clients/mcp` 구현·README를 함께 확인한다. 사진 자체의 게시글 읽기/수정 MCP는 이번 여행 도구와 별개다.

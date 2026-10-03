@@ -85,9 +85,9 @@ class ServerTools(unittest.TestCase):
             return {t.name: {"description": t.description, "annotations": t.annotations} for t in listed}
         return server.mcp.tools
 
-    def test_stub_or_real_four_tools(self):
+    def test_stub_or_real_tools(self):
         tools = self._tools()
-        self.assertEqual(set(tools), {"qaredi_whoami", "qaredi_write_page", "qaredi_read_page", "qaredi_search_pages"})
+        self.assertEqual(set(tools), {"qaredi_whoami", "qaredi_write_page", "qaredi_read_page", "qaredi_search_pages", "qaredi_list_travel_plans", "qaredi_read_travel_plan", "qaredi_save_travel_plan", "qaredi_link_travel_record"})
         for name, t in tools.items():
             with self.subTest(tool=name):
                 lines = t["description"].split("\n")

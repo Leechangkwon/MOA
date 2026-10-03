@@ -132,3 +132,11 @@ $ curl -s -o /dev/null -w '%{http_code}' https://pypi.org/simple/mcp/
   시험: `traceback.TracebackException(..., capture_locals=True)` 로 401·400·302·연결 실패·모양 틀린 토큰 다섯 경우 토큰 글자 0(지역 변수가 실제로 찍혔는지도 확인).
   본문(Markdown)은 도구 입력 그 자체라 호출 프레임에 남는다 — 이 항목의 대상 밖(판단 대기로 남기지 않음 · 참고).
 - 시험: `python3 -m unittest discover -s clients/mcp/tests` → 83 OK(55 → 83: TokenSecrecy 2 · TokenFile 4 · 하위 사례 포함).
+
+## 2026-10-14 개인 여행 계획 확장
+
+현재 클라이언트는 기존 문서 도구 네 개와 여행 도구 네 개를 제공합니다. 여행 목록·상세·생성·수정·기존 게시글 연결의 고정 경로(`/community/api/travel-plans`, `/{uuid}`, `/{uuid}/records`)만 추가합니다. 삭제·게시·공유·남의 기록 접근 도구는 추가하지 않습니다. 서버는 별도 `travel.read`/`travel.write` 범위와 매 요청의 소유자 조건을 함께 검사합니다. 기존 커뮤니티 토큰은 여행 권한이 자동으로 늘어나지 않습니다.
+
+수정은 전체 계획과 현재 `revision`을 보내며 충돌 시 자동 재시도하지 않습니다. 생성은 `request_id`로 재시도 가능하고 새 일정은 UUID를 부여합니다. 원문·사진·공개 범위는 바꾸지 않으며, 날짜·순서·진행 상태는 자유롭게 수정합니다. 새 외부 패키지나 AI 공급자 호출은 없습니다. AI가 이 도구를 사용하려면 사용 중인 채팅 앱에 이 MCP 클라이언트를 별도로 연결해야 합니다.
+
+검증: `python3 -m unittest discover -s clients/mcp/tests -p 'test_*.py' -q` **114개 통과**(실제 설치된 FastMCP와 localhost HTTP 모의 서버). 여행 추가 9개: 범위 오류, 수정 충돌, UUID 경로 주입 거부, 소유자·공개 필드 주입 거부, 일정 ID 보존, 본문 크기, 기록 연결. PHP/PostgreSQL·운영 HTTPS 검증은 이 클라우드 환경에서 미실행이며 `tests/community/travel_plans_http.py`를 격리 harness로 실행해야 합니다.

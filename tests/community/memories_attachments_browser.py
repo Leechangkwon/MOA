@@ -29,7 +29,7 @@ def main():
         def draft():
             ctx=browser.new_context(viewport={'width':390,'height':844});mock=Mock();ctx.route(ORIGIN+'/**',mock.route)
             page=ctx.new_page();page.on('pageerror',lambda e:errors.append(str(e)))
-            page.goto(ORIGIN+'/community/');page.locator('.threads-write').wait_for(state='visible');page.locator('.threads-write').click();page.locator('#caption').fill('남한산성 여행 기록')
+            page.goto(ORIGIN+'/community/memories');page.locator('.threads-write').wait_for(state='visible');page.locator('.threads-write').click();page.locator('#caption').fill('남한산성 여행 기록')
             return ctx,page,mock
         for name,mime in [('IMG_20261003.JPG',''),('IMG_20261003.jpg','application/octet-stream'),('camera.jpg','image/jpg')]:
             ctx,page,mock=draft();choose(page,name,mime)
@@ -37,7 +37,7 @@ def main():
             assert '1개 선택됨' in page.locator('#media-selection-status').text_content()
             page.locator('#publish').click();page.locator('#compose-dialog').wait_for(state='hidden')
             assert mock.uploads==1 and len(mock.saves[-1]['media_ids'])==1
-            expect(page.locator('.post-media img')).to_have_count(1)
+            expect(page.locator('.post-cover img')).to_have_count(1)
             page.locator('[data-view=mine]').click();page.wait_for_function("() => document.querySelector('#profile-stats').textContent.includes('1사진·영상')")
             ok(f'{mime or "empty MIME"} photo previews, uploads, saves and appears in feed/count');ctx.close()
         ctx,page,mock=draft();choose(page,'unsupported.HEIC','image/heic')

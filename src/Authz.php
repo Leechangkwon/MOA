@@ -54,6 +54,8 @@ final class Authz
          */
         'community.read',
         'community.write',
+        'travel.read',
+        'travel.write',
         /*
          * Q:F-9 (t-box F-75, ARCH 4.9) — 「이 PC 로그인 전용」 토큰이 1회용 로그인 링크를 받는 창구 하나
          * (`POST /api/me/session-link`)의 정책. 토큰 범위 `session.open` 만 이 정책을 연다(tokenScopeAllows) —
@@ -1402,7 +1404,7 @@ final class Authz
      * 이 표를 늘리려면 DB CHECK(`db/schema.sql` api_tokens_scope_check)·`tokenScopeAllows`·`tokenScopesFor`·화면 라벨
      * (`app.js` TOKEN_SCOPE_LABELS)을 함께 고쳐야 한다.
      */
-    public const TOKEN_SCOPE_ATOMS = ['read', 'upload', 'delete', 'community.read', 'community.write', 'session.open', 'assistant.run'];
+    public const TOKEN_SCOPE_ATOMS = ['read', 'upload', 'delete', 'community.read', 'community.write', 'session.open', 'assistant.run', 'travel.read', 'travel.write'];
 
     /** Q:F-10 — 원자 → 함께 있어야 하는 원자(없으면 정규화가 거부한다 — 「올리기만」「지우기만」 토큰은 없다). */
     private const TOKEN_SCOPE_REQUIRES = [
@@ -1413,6 +1415,7 @@ final class Authz
     /** Q:F-10 — 원자 → 정규화가 **덧붙이는** 원자(쓰기는 읽기를 품는다 — 저장 문자열에 둘 다 있어 판정이 단순해진다). */
     private const TOKEN_SCOPE_IMPLIES = [
         'community.write' => ['community.read'],
+        'travel.write' => ['travel.read'],
     ];
 
     /** 요청 한 번에 받는 범위 원소 수의 상한 — 원자는 여섯이고, 그보다 많이 온 요청은 모양부터 틀렸다. */
@@ -1546,13 +1549,15 @@ final class Authz
         if (self::canCommunityWrite($u)) {
             $atoms[] = 'community.read';
             $atoms[] = 'community.write';
+            $atoms[] = 'travel.read';
+            $atoms[] = 'travel.write';
         }
         // Q:F-9 — 「이 PC 로그인 전용」은 2단계 인증이 켜진 계정 · Guest 가 아닌 계정만(판정은 canOpenSessionByToken 한 곳).
         if (self::canOpenSessionByToken($u)) {
             $atoms[] = 'session.open';
         }
         if (Env::getOrEmpty('ASSISTANT_ENABLED') === '1') $atoms[] = 'assistant.run';
-        return $atoms;
+        return array_values(array_intersect(self::TOKEN_SCOPE_ATOMS, $atoms));
     }
 
     /**
@@ -1626,6 +1631,12 @@ final class Authz
 
             case 'community.write':
                 return in_array('community.write', $held, true);
+
+            case 'travel.read':
+                return in_array('travel.read', $held, true) || in_array('travel.write', $held, true);
+
+            case 'travel.write':
+                return in_array('travel.write', $held, true);
 
             // Q:F-9 — 1회용 로그인 링크 창구 하나(ARCH 4.9).
             case 'session.open':
@@ -1812,6 +1823,8 @@ final class Authz
                 return true;     // 라우터가 이미 requireLogin() 을 통과시켰다 (authenticated 와 같다)
 
             case 'community.write':
+            case 'travel.read':
+            case 'travel.write':
                 return self::canCommunityWrite($u);
 
             /* Q:F-9 (ARCH 4.9) — 1회용 로그인 링크 창구. 토큰 범위(`session.open`)는 [2-S] 가 이미 봤고, 여기서는 **계정**이

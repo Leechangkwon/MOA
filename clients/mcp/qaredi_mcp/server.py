@@ -3,7 +3,7 @@
 Claude Desktop · Claude Code 가 이 프로그램을 띄워 표준입출력으로 말한다. 그래서 **표준출력에는
 아무것도 찍지 않는다**(프로토콜이 깨진다). 토큰·본문은 어디에도 찍지 않는다.
 
-도구 넷
+문서 도구 넷 (여행 도구 넷은 아래 opt-in travel.* 범위로 별도 제공)
   qaredi_whoami()                       토큰의 계정 이름·역할(서버가 주면 이 토큰의 범위도)
   qaredi_search_pages(q, limit=10)      커뮤니티 검색 → 「제목 — 공간 — snippet — id」 줄 (Q:F-10)
   qaredi_write_page(title, markdown)    Markdown → 블록 문서 → 내 개인 공간에 **비공개** 페이지
@@ -121,6 +121,59 @@ def qaredi_read_page(
     id: Annotated[str, Field(description="페이지 id(UUID) 또는 …/community/p/<id> 주소 · page id or page URL")],  # noqa: A002
 ) -> str:
     return _run(lambda c, i: c.read_page_markdown(i), id)
+
+
+@mcp.tool(
+    name="qaredi_list_travel_plans",
+    description="내 비공개 여행 계획 목록을 읽는다. travel.read 권한을 선택한 개인 토큰이 필요하다.\nList my private travel plans; requires the opt-in travel.read scope.",
+    annotations=ToolAnnotations(title="모아: 내 여행 목록", readOnlyHint=True, destructiveHint=False, idempotentHint=True, openWorldHint=True),
+)
+def qaredi_list_travel_plans() -> str:
+    return _run(lambda c: c.list_travel_plans())
+
+
+@mcp.tool(
+    name="qaredi_read_travel_plan",
+    description="내 여행 계획의 일정과 연결한 기록을 읽는다. travel.read 필요. 계획은 항상 비공개다.\nRead my private itinerary and linked memories; requires travel.read.",
+    annotations=ToolAnnotations(title="모아: 여행 계획 읽기", readOnlyHint=True, destructiveHint=False, idempotentHint=True, openWorldHint=True),
+)
+def qaredi_read_travel_plan(plan_id: Annotated[str, Field(description="여행 계획 UUID")]) -> str:
+    return _run(lambda c, i: c.get_travel_plan(i), plan_id)
+
+
+@mcp.tool(
+    name="qaredi_save_travel_plan",
+    description=(
+        "내 비공개 여행 계획을 만들거나 수정한다. 사용자 요청 범위에서만 저장한다. travel.write 필요. "
+        "수정 전 read로 최신 계획을 읽고 전체 필드와 revision을 보낸다. 게시글·사진·공개 범위는 바꾸지 않는다.\n"
+        "Create or replace my private itinerary with explicit travel.write access; read first and supply revision when updating. "
+        "Keep existing activity IDs; omitted activities are removed from the plan but their memories remain. "
+        "plan keys: title (required), destination, starts_on/ends_on (YYYY-MM-DD or null), notes, steps (up to 100). "
+        "Each step: id (UUID, omit for new), title, date (nullable), status (planned/done/skipped), notes. "
+        "Dates may stay unknown or move outside the original trip dates. Reuse request_id for a retried create."
+    ),
+    annotations=ToolAnnotations(title="모아: 여행 계획 저장", readOnlyHint=False, destructiveHint=True, idempotentHint=False, openWorldHint=True),
+)
+def qaredi_save_travel_plan(
+    plan: Annotated[dict[str, Any], Field(description="전체 계획과 일정. 기존 일정을 유지하려면 원래 id와 내용을 포함")],
+    plan_id: Annotated[str | None, Field(description="새 계획은 생략; 수정할 계획 UUID")] = None,
+    revision: Annotated[int | None, Field(description="수정 전 읽은 revision")] = None,
+    request_id: Annotated[str | None, Field(description="생성 재시도의 동일 UUID; 새 요청은 생략 가능")] = None,
+) -> str:
+    return _run(lambda c, p, i, r, q: c.save_travel_plan(p, i, r, q), plan, plan_id, revision, request_id)
+
+
+@mcp.tool(
+    name="qaredi_link_travel_record",
+    description="내 기존 게시글을 내 여행 또는 일정에 연결한다. 공개 범위와 원본은 유지한다. travel.write 필요.\nLink my existing memory to my private trip or activity; preserves its visibility and original content. Requires travel.write.",
+    annotations=ToolAnnotations(title="모아: 여행 기록 연결", readOnlyHint=False, destructiveHint=False, idempotentHint=True, openWorldHint=True),
+)
+def qaredi_link_travel_record(
+    plan_id: Annotated[str, Field(description="여행 계획 UUID")],
+    post_id: Annotated[str, Field(description="내 게시글 UUID")],
+    step_id: Annotated[str | None, Field(description="일정 UUID; 여행 전체나 계획 밖 순간은 생략")] = None,
+) -> str:
+    return _run(lambda c, p, m, s: c.link_travel_record(p, m, s), plan_id, post_id, step_id)
 
 
 def main() -> None:

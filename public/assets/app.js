@@ -104,7 +104,11 @@ var RETURN_RULES = [
   [/^\/tbox\/$/, [['folder', /^[1-9][0-9]{0,8}$/], ['q', 'text200'], ['sort', /^(name|created_at|size)$/],
     ['dir', /^(asc|desc)$/], ['page', /^[1-9][0-9]{0,5}$/]]],
   [/^\/tbox\/(settings|activity|welcome|messages)$/, []],
-  [/^\/community\/$/, [['space', /^[1-9][0-9]{0,17}$/]]],
+  [/^\/community\/$/, [['space', /^[1-9][0-9]{0,17}$/], ['view', /^(mine|shared)$/]]],
+  [/^\/community\/workspace$/, [['space', /^[1-9][0-9]{0,17}$/], ['trash', /^1$/]]],
+  [/^\/community\/memories$/, [['view', /^(mine|shared|feed|discover)$/], ['travel', /^1$/]]],
+  [/^\/community\/memories\/u\/[a-z0-9_.-]{3,64}$/, []],
+  [new RegExp('^/community/memories/p/' + RETURN_UUID + '$'), []],
   [new RegExp('^/community/p/' + RETURN_UUID + '$'), [['edit', /^1$/]]],
   [/^\/community\/b\/[1-9][0-9]{0,8}$/, []]
 ];
@@ -7377,6 +7381,8 @@ var TOKEN_SCOPE_LABELS = {
   'delete': '파일 지우기',
   'community.read': '커뮤니티 읽기',
   'community.write': '커뮤니티 글쓰기',
+  'travel.read': '내 여행 계획 읽기',
+  'travel.write': '내 여행 계획 수정',
   'assistant.run': '비서 실행 (단독)',
   'session.open': '이 PC 로그인'
 };
@@ -7388,6 +7394,8 @@ var TOKEN_SCOPE_NOTES = {
   'delete': '지우기 (파일 읽기·올리기 포함)',
   'community.read': '검색·공간 목록·글 읽기',
   'community.write': '내 개인 공간에 비공개 페이지 만들기 (커뮤니티 읽기 포함)',
+  'travel.read': '내 여행 일정과 연결 기록 조회 · 다른 사람의 계획은 열리지 않습니다.',
+  'travel.write': '내 여행 계획 만들기·수정·기록 연결 (여행 계획 읽기 포함)',
   'assistant.run': '읽기 전용 파일 검색·근거 조회와 내 실행 상태. 다른 범위와 함께 발급하지 않습니다.',
   'session.open': '지금 접속한 IP 에서만 · 로그인 없이 화면 열기(민감한 일은 다시 인증)'
 };
@@ -7396,7 +7404,8 @@ var TOKEN_SCOPE_NOTES = {
 var TOKEN_SCOPE_NEEDS = {
   'upload': ['read'],
   'delete': ['read', 'upload'],
-  'community.write': ['community.read']
+  'community.write': ['community.read'],
+  'travel.write': ['travel.read']
 };
 
 /** Q:F-9 — 범위 칸 글자: 라벨 + 묶인 IP(서버가 준 `bound_ip` 그대로 — 화면이 IP 를 만들거나 고치지 않는다) */
@@ -11950,7 +11959,7 @@ function bootPage(page) {
            (type="module") 가 맡는다. 이 두 키를 여기서 무시하지 않으면 아래 갈래가 없는 채로
            흘러가므로 지금도 아무 일이 없지만, 나중에 t-box 화면 키가 늘 때 섞이지 않도록
            **뜻을 코드에 적어 둔다**. */
-        if (page === 'community-home' || page === 'community-page' || page === 'community-board' || page === 'community-today' || page === 'community-threads' || page === 'community-ai') {
+        if (page === 'community-home' || page === 'community-page' || page === 'community-board' || page === 'community-today' || page === 'community-threads' || page === 'community-ai' || page === 'community-overview') {
           return null;
         }
 

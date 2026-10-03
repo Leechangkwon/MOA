@@ -32,7 +32,7 @@ def main():
         errors=[]
         def setup(mock=None):
             ctx=browser.new_context(viewport={'width':390,'height':844});mock=mock or GeminiMock();ctx.route(ORIGIN+'/**',mock.route)
-            page=ctx.new_page();page.on('pageerror',lambda e:errors.append(str(e)));page.goto(ORIGIN+'/community/')
+            page=ctx.new_page();page.on('pageerror',lambda e:errors.append(str(e)));page.goto(ORIGIN+'/community/memories')
             page.locator('button',has_text='AI로 꾸미기').click();expect(page.locator('#gemini-status')).not_to_contain_text('확인하고')
             return ctx,page,mock
         ctx,page,mock=setup();assert not mock.requests and not mock.saves

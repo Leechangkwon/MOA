@@ -3229,3 +3229,11 @@ MemberAssist는 작성 문장 또는 명시적으로 고른 참여자 메시지 
 | `assistant.request\|deny\|quota` | `{actor} 이(가) 비서 실행 요청 한도를 넘었습니다` |
 
 7.5 `run_id`와 `run_status`는 성공 행의 UUID/고정 상태만 받는다. 인증·토큰 범위 거부는 기존 auth.token 문장을 유지한다. 핸들러의 403/404/409/429는 위 assistant.request 고정 문장을 사용하고 요청 내용이나 남의 실행 ID를 detail에 넣지 않는다. 형식 오류/서비스 미연결에는 감사 쓰기 없이 구조화 오류를 응답한다.
+
+## 회원 경험 개선 후보 — 2026-10-03 (운영 미반영)
+
+초대 회원의 MFA 필수 여부는 초대 사실에서 분리한다. `Auth::mfaRequired`는 관리자 역할 또는 명시적 `mfa_recovery_required`로 판단하며 이미 켠 OTP 비밀번호 로그인과 패스키 UV 검증은 유지한다. 마이그레이션은 과거 초대 계정의 미완료 관리자 초기화를 감사 이력으로 구분하고 확실하지 않은 복구 상태를 완화하지 않는다. 세션·API·패스키가 같은 사용자 조회를 재사용한다.
+
+커뮤니티 `/`는 기능 개요이며 `/memories`가 스레드의 정규 주소다. `memory_follows` 관계와 글의 공개 범위를 SQL 목록 및 직접 행/미디어 판정에서 함께 검사한다. 기존 `private/community/shared` 의미를 유지하고 `followers`를 추가한다. `discoverable`은 공개 가능한 글에만 true이며 기본 false다. 공개 범위를 좁히는 저장은 발견 게시를 해제한다. 시간 스냅샷과 순위/생성시각/UUID 커서로 목록을 이어 읽으며 커서는 인가를 대체하지 않는다.
+
+여행은 `travel_plans`/`travel_plan_records`에 별도 저장한다. 계획 소유자는 항상 세션·개인 토큰 주인이다. 계획과 연결 글 양쪽의 소유권을 재검사하며 일정 삭제는 기록을 삭제하지 않는다. 수정 판 번호로 충돌을 거부한다. `travel.read/write` 정책·토큰 범위는 기존 `community.read/write`와 독립이다. 안내 상태는 `usage_guides`의 본인 행에만 저장하고 권한에 사용하지 않는다. 상세 적용/검증 한계는 `docs/work-items/community-member-experience.md`.

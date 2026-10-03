@@ -20,23 +20,51 @@
   const node=(tag,text,cls)=>{const e=document.createElement(tag);if(text!==undefined)e.textContent=text;if(cls)e.className=cls;return e;};
   const label=p=>p.display_name||p.username;
   const date=s=>new Date(s).toLocaleString('ko-KR',{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'});
-  const scopes={'read':'파일 읽기','read+upload':'파일 읽기·업로드 (비서 파일 기능)','read+upload+delete':'파일 읽기·업로드·삭제','community.write':'커뮤니티 글쓰기','session.open':'이 PC에서 바로 로그인'};
+  const scopes={'read':'파일 읽기','read+upload':'파일 읽기·업로드 (비서 파일 기능)','read+upload+delete':'파일 읽기·업로드·삭제','community.read':'커뮤니티 읽기','community.write':'커뮤니티 읽기·쓰기','travel.read':'여행 계획 읽기','travel.write':'여행 계획 읽기·쓰기','assistant.run':'비서 실행','session.open':'이 PC에서 바로 로그인'};
   if(page==='join'){
     const fragment=new URLSearchParams(location.hash.slice(1)), invite=fragment.get('invite');
     if(invite&&/^[a-f0-9]{64}$/.test(invite)){$('join-invite').value=invite;history.replaceState(null,'',location.pathname);}
     $('join-form').addEventListener('submit',e=>{e.preventDefault();busy(e.currentTarget,async()=>{
       if($('join-password').value!==$('join-confirm').value)throw Error('비밀번호가 서로 다릅니다. 다시 확인해 주세요.');
       say('계정을 만들고 있어요…');
-      await api('/api/register','POST',{invite:$('join-invite').value.trim(),username:$('join-username').value.trim(),display_name:$('join-name').value.trim(),password:$('join-password').value},true);
-      $('join-password').value='';$('join-confirm').value='';location.assign(base+'/welcome');
+      const registered=await api('/api/register','POST',{invite:$('join-invite').value.trim(),username:$('join-username').value.trim(),display_name:$('join-name').value.trim(),password:$('join-password').value},true);
+      $('join-password').value='';$('join-confirm').value='';location.assign(base+(registered.next==='login'?'/login':'/welcome'));
     });});return;
   }
   async function welcome(){
     if(me.next==='password_change'){location.assign(base+'/');return;}
-    const mfa=!me.mfa_enabled;
-    $('welcome-mfa').hidden=!mfa;$('welcome-buddy').hidden=mfa;
-    const steps=$('welcome-steps').children;steps[1].toggleAttribute('aria-current',mfa);steps[2].toggleAttribute('aria-current',!mfa);
-    if(!mfa){for(const scope of me.token_scopes||[]){const opt=node('option',scopes[scope]||scope);opt.value=scope;$('welcome-scope').append(opt);}if((me.token_scopes||[]).includes('read+upload'))$('welcome-scope').value='read+upload';say('계정과 OTP 설정이 완료됐어요. 비서를 연결하거나 모아를 시작하세요.');}
+    const required=me.next==='mfa_setup', mfaOn=me.mfa_enabled===true;
+    $('welcome-buddy').hidden=required;
+    $('welcome-security-later').hidden=required;
+    $('welcome-mfa').hidden=!required;
+    $('welcome-choose-otp').hidden=mfaOn;
+    $('welcome-token-form').hidden=me.can_issue_tokens!==true;
+    $('welcome-token-protection').hidden=me.can_issue_tokens===true;
+    if(required)$('welcome-security-note').textContent=me.mfa_recovery_required?'관리자가 계정 복구를 시작했어요. OTP를 다시 등록하면 계속 사용할 수 있습니다.':'관리자 계정은 OTP 설정을 완료해야 합니다.';
+    else if(mfaOn)$('welcome-security-note').textContent='OTP를 사용 중이에요. 패스키를 추가하면 다음 로그인부터 OTP 없이 기기에서 확인할 수 있습니다.';
+    if(me.passkeys_active>0)$('welcome-choose-passkey').textContent='다른 기기 패스키 추가';
+    for(const atom of me.token_scopes||[]){const scope=atom==='upload'?'read+upload':atom==='delete'?'read+upload+delete':atom;const opt=node('option',scopes[scope]||scope);opt.value=scope;$('welcome-scope').append(opt);}
+    if((me.token_scopes||[]).includes('read'))$('welcome-scope').value='read';
+    say(required?'계정 보호 설정을 완료해 주세요.':'가입이 완료됐어요. 로그인 방법과 비서 연결은 필요한 것만 선택하세요.');
+    $('welcome-choose-otp').addEventListener('click',()=>{$('welcome-mfa').hidden=false;$('welcome-passkey').hidden=true;$('welcome-enroll').focus();});
+    $('welcome-security-later').addEventListener('click',()=>{$('welcome-mfa').hidden=true;$('welcome-passkey').hidden=true;$('welcome-passkey-password').value='';$('welcome-passkey-otp').value='';$('welcome-secret').textContent='';$('welcome-qr-area').hidden=true;$('welcome-enroll').hidden=false;});
+    const passkey=window.QarediPasskey;
+    if(!required){
+      const ready=me.passkey_available===true&&passkey&&await passkey.available();
+      $('welcome-choose-passkey').hidden=!ready;$('welcome-passkey-unavailable').hidden=Boolean(ready);
+    }
+    $('welcome-choose-passkey').addEventListener('click',()=>{
+      $('welcome-passkey').hidden=false;$('welcome-mfa').hidden=true;
+      $('welcome-passkey-otp-field').hidden=!mfaOn;$('welcome-passkey-otp-note').hidden=!mfaOn;$('welcome-passkey-otp').required=mfaOn;
+      $('welcome-passkey-password').focus();
+    });
+    $('welcome-passkey-cancel').addEventListener('click',()=>{$('welcome-passkey').hidden=true;$('welcome-passkey-password').value='';$('welcome-passkey-otp').value='';$('welcome-choose-passkey').focus();});
+    $('welcome-passkey-form').addEventListener('submit',e=>{e.preventDefault();busy(e.currentTarget,async()=>{
+      const payload={name:$('welcome-passkey-name').value.trim(),password:$('welcome-passkey-password').value};
+      if(mfaOn)payload.otp=$('welcome-passkey-otp').value.trim();
+      try{await passkey.register(payload,csrf);}finally{$('welcome-passkey-password').value='';$('welcome-passkey-otp').value='';payload.password='';delete payload.otp;}
+      $('welcome-passkey').hidden=true;say('패스키를 등록했어요. 다음 로그인에서 지문·얼굴·기기 잠금 또는 비밀번호를 선택하세요.');
+    });});
     $('welcome-enroll').addEventListener('click',()=>busy($('welcome-mfa'),async()=>{
       const data=await api('/api/me/mfa/enroll','POST',{});$('welcome-qr-area').hidden=false;$('welcome-enroll').hidden=true;
       $('welcome-secret').textContent=data.secret;
@@ -50,7 +78,7 @@
       const scope=$('welcome-scope').value;
       let data;try{data=await api('/api/me/api-tokens','POST',{name:$('welcome-token-name').value,purpose:'tbox-buddy 비서 연결',scope,password:$('welcome-password').value,otp:$('welcome-token-otp').value});}finally{$('welcome-password').value='';$('welcome-token-otp').value='';}
       $('welcome-token').value=data.token;$('welcome-token-result').hidden=false;$('welcome-token-label').textContent=scopes[scope]+' 토큰';$('welcome-token-expiry').textContent='유효기간: '+date(data.expires_at)+(data.bound_ip?' · 등록 IP: '+data.bound_ip:'');
-      say('토큰을 발급했습니다. 비서 설정에 붙여넣어 주세요. 다른 기능은 OTP가 바뀐 뒤 발급하세요.');$('welcome-token-result').scrollIntoView({behavior:'smooth',block:'nearest'});
+      say('연결 토큰을 발급했습니다. 이 기능을 지원하는 외부 비서에만 입력해 주세요.');$('welcome-token-result').scrollIntoView({behavior:'smooth',block:'nearest'});
     });});
     $('welcome-token-copy').addEventListener('click',()=>copy($('welcome-token')));
     addEventListener('pagehide',()=>{$('welcome-token').value='';$('welcome-secret').textContent='';});

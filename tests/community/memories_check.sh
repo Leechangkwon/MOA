@@ -22,6 +22,7 @@ php tests/community/memories_render.php shared >/dev/null
 php scripts/community_asset_version.php --check
 php scripts/wiki_check.php
 python3 tests/community/memories_browser.py
+python3 tests/community/memories_social_browser.py
 python3 tests/community/memories_attachments_browser.py
 python3 tests/community/memory_ai_browser.py
 python3 tests/community/messenger_browser.py

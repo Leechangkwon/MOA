@@ -36,9 +36,11 @@ def page_html(shared='', profile='', post=''):
     # PHP rendering is checked separately when PHP is installed; no server test is claimed here.
     source = (ROOT / 'src/community/handlers/memories_page.php').read_text()
     component = source[source.index('<section id="community-threads"'):source.index("<?php if ($isShared): ?></body>")]
+    travel = (ROOT / 'src/community/handlers/travel_plans_panel.php').read_text().replace('<?php declare(strict_types=1); ?>', '')
+    component = component.replace("<?php if (!$isShared): require __DIR__ . '/travel_plans_panel.php'; endif; ?>", '' if shared else travel)
     component = re.sub(r'<\?php if \(!\$isShared\): \?>(.*?)<\?php endif; \?>', lambda m: '' if shared else m[1], component, flags=re.S)
     component = render_expressions(component, shared, profile, post)
-    css = '<link rel="stylesheet" href="/tbox/assets/app.css"><link rel="stylesheet" href="/tbox/assets/community/community.css"><link rel="stylesheet" href="/tbox/assets/community/memories.css"><link rel="stylesheet" href="/tbox/assets/community/messenger.css">'
+    css = '<link rel="stylesheet" href="/tbox/assets/app.css"><link rel="stylesheet" href="/tbox/assets/community/community.css"><link rel="stylesheet" href="/tbox/assets/community/memories.css"><link rel="stylesheet" href="/tbox/assets/community/messenger.css"><link rel="stylesheet" href="/tbox/assets/design.css"><link rel="stylesheet" href="/tbox/assets/community/travel-plans.css">'
     head = '<!doctype html><html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">'+css+'</head>'
     if shared:
         return head+'<body class="threads-public">'+component+'</body></html>'
@@ -137,7 +139,7 @@ def main():
         ctx = browser.new_context(viewport={'width':1440,'height':1100}, device_scale_factor=1)
         mock=Mock(); ctx.route(ORIGIN+'/**', mock.route)
         page=ctx.new_page(); errors=[]; page.on('pageerror', lambda e: errors.append(str(e)))
-        page.goto(ORIGIN+'/community/'); page.locator('#empty').wait_for(state='visible')
+        page.goto(ORIGIN+'/community/memories'); page.locator('#empty').wait_for(state='visible')
         assert not errors, errors
         page.screenshot(path=str(args.output/'desktop-empty.png'), full_page=True); ok('Desktop empty state and no JavaScript errors')
         page.set_viewport_size({'width':390,'height':844})
@@ -168,7 +170,7 @@ def main():
         assert '<script>' in page.locator('.post-caption').text_content()
         assert not errors, errors
         ok('Upload failure retains draft; save retry reuses request/media IDs; default private; XSS stays text')
-        mock.posts=[record()]; page.goto(ORIGIN+'/community/'); page.locator('.post').wait_for()
+        mock.posts=[record()]; page.goto(ORIGIN+'/community/memories'); page.locator('.post').wait_for()
         page.locator('.post-actions button[aria-label="좋아요"]').click(); page.wait_for_function("() => document.querySelector('.likes-label').textContent.includes('4')")
         page.locator('.post-actions button[aria-label^="댓글"]').click(); page.locator('#comment-body').fill('오래 기억하고 싶은 풍경이네요.'); page.locator('#comment-form button[type="submit"]').click(); page.locator('.comment').wait_for()
         assert mock.comments[-1]['body'].startswith('오래')
@@ -184,7 +186,7 @@ def main():
         page.locator('#visibility').select_option('private'); page.locator('#publish').click(); page.locator('#compose-dialog').wait_for(state='hidden')
         assert mock.saves[-1]['revision']==1
         ok('ChatGPT prompt uses original; video capability limits clear; imported text goes through revision-aware edit')
-        mock.posts=[record()]; page.goto(ORIGIN+'/community/'); page.locator('.post').wait_for()
+        mock.posts=[record()]; page.goto(ORIGIN+'/community/memories'); page.locator('.post').wait_for()
         page.locator('.share-post').click(); page.locator('#share-dialog').wait_for()
         assert TOKEN in page.locator('#share-url').input_value()
         page.locator('#revoke-links').click(); page.locator('#confirm-ok').click(); page.locator('#confirm-dialog').wait_for(state='hidden')
@@ -193,7 +195,7 @@ def main():
         page.goto(ORIGIN+'/community/memories?view=mine'); page.locator('.post').wait_for(); page.locator('#grid-view').click(); assert page.locator('.grid-tile').count()==1
         page.locator('.grid-tile').click(); assert page.locator('.post').count()==1
         page.screenshot(path=str(args.output/'mobile-profile.png'), full_page=True); ok('Personal profile, album grid, back to feed')
-        page.set_viewport_size({'width':1440,'height':1100}); page.goto(ORIGIN+'/community/'); page.locator('.post').wait_for(); page.screenshot(path=str(args.output/'desktop-feed.png'),full_page=True)
+        page.set_viewport_size({'width':1440,'height':1100}); page.goto(ORIGIN+'/community/memories'); page.locator('.post').wait_for(); page.screenshot(path=str(args.output/'desktop-feed.png'),full_page=True)
         for width in (320,390,768,1024):
             page.set_viewport_size({'width':width,'height':900}); assert page.evaluate('document.documentElement.scrollWidth <= innerWidth'), f'overflow {width}'
         ok('320 / 390 / 768 / 1024px responsive layouts')
@@ -203,7 +205,7 @@ def main():
         assert page.locator('.post-actions').count()==0
         assert page.locator('#profile-title').text_content()=='여행자의 스레드'
         ok('Anonymous shared-page UI is read-only and has no originals')
-        mock.me['username']='another-user'; page.goto(ORIGIN+'/community/'); page.locator('.post').wait_for(); assert page.locator('#resume-draft').is_hidden(); ok('Drafts are scoped to the signed-in account')
+        mock.me['username']='another-user'; page.goto(ORIGIN+'/community/memories'); page.locator('.post').wait_for(); assert page.locator('#resume-draft').is_hidden(); ok('Drafts are scoped to the signed-in account')
         mock.me['can_write']=False; page.reload(); page.locator('.post').wait_for(); assert page.locator('[data-compose]:visible').count()==0; ok('Read-only accounts have no composer')
         assert not errors, errors
         browser.close()

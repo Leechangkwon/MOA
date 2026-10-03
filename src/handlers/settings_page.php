@@ -220,7 +220,7 @@ require __DIR__ . '/../views/shell_top.php';
       </section>
 
       <!-- T:F-72 지문·얼굴 로그인 (지시서 1.9 「내 계정」 · 결정 PK-D1 · PK-D3). 패널은 처음 hidden 이고 passkey.js 가 `/api/me` 의
-           passkey_available 이 참일 때만 켠다. 「이 휴대폰 등록하기」는 휴대폰 + 지문·얼굴 확인 인증기가 있을 때만(PC 는 안내 한 줄) —
+           passkey_available 이 참일 때만 켠다. 「이 기기 등록하기」는 휴대폰 + 지문·얼굴 확인 인증기가 있을 때만(PC 는 안내 한 줄) —
            화면 편의일 뿐 서버는 휴대폰을 가리지 않는다. 표는 **내 것만**(`GET /api/me/passkeys`) · 줄의 「해제」는 공용 확인 창
            (`#confirm-dialog` · 「해제하기」 빨강). 첫 칸이 이름 · 동작은 `td.actions`(좁은 폭 쌓기 — DESIGN 2.4). 글자는 전부 textContent. -->
       <section class="panel span-all" id="passkey-panel" hidden>
@@ -230,9 +230,9 @@ require __DIR__ . '/../views/shell_top.php';
             <p class="panel__sub">이 휴대폰을 등록하면 다음부터 비밀번호와 2단계 코드 없이 지문이나 얼굴로 로그인합니다.</p>
           </div>
           <button id="passkey-register-open" class="btn btn--quiet" type="button"
-                  aria-haspopup="dialog" aria-controls="passkey-register-dialog" hidden>이 휴대폰 등록하기</button>
+                  aria-haspopup="dialog" aria-controls="passkey-register-dialog" hidden>이 기기 등록하기</button>
         </div>
-        <p id="passkey-pc-note" class="muted" hidden>지금은 휴대폰에서만 등록합니다. 휴대폰 브라우저로 이 화면을 열어 등록하세요.</p>
+        <p id="passkey-pc-note" class="muted" hidden>이 브라우저에서 기기 인증을 지원하지 않습니다. 지문·얼굴·기기 잠금을 지원하는 휴대폰이나 PC의 기본 브라우저로 열어 주세요.</p>
         <div id="passkey-ok" class="ok-note" role="status" hidden></div>
         <div class="table-wrap">
           <table class="files">
@@ -280,7 +280,7 @@ require __DIR__ . '/../views/shell_top.php';
       </section>
     </div>
 
-    <!-- ─── 「이 휴대폰 등록하기」 창 (T:F-72 지시서 1.1 등록 · 1.9 — DESIGN 2.7 · `.modal--form` 520) ─────────────
+    <!-- ─── 「이 기기 등록하기」 창 (T:F-72 지시서 1.1 등록 · 1.9 — DESIGN 2.7 · `.modal--form` 520) ─────────────
          칸: 기기 이름(기본값 = 기기 요약, 1~40자) · 현재 비밀번호 · 2단계 코드(켠 계정만 — passkey.js 가 hidden 을 내린다).
          「등록하기」 → 서버가 비밀번호·코드를 **먼저** 확인(틀리면 로그인과 같은 카운터로 실패 1회) → 휴대폰이 지문 창 → 서버 검증 → 목록.
          바닥 = 알림 줄 · 「닫기」(테두리) · 「등록하기」(검정 — 오른쪽 끝, 폼 밖이라 form="…"). 머리 ✕. 비밀번호·코드는 보낸 뒤 칸을 비운다. -->
@@ -288,7 +288,7 @@ require __DIR__ . '/../views/shell_top.php';
       <div class="modal__head">
         <span class="preview__mark"><span class="icon" data-icon="key"></span></span>
         <div class="preview__headtext">
-          <h2 class="modal__title" id="passkey-register-title">이 휴대폰 등록하기</h2>
+          <h2 class="modal__title" id="passkey-register-title">이 기기 등록하기</h2>
           <div class="modal__meta"><span>등록할 때마다 현재 비밀번호(2단계 인증을 켰으면 코드도)를 확인합니다</span></div>
         </div>
         <button id="passkey-register-x" class="btn btn--icon" type="button" aria-label="닫기">

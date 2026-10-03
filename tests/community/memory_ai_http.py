@@ -72,7 +72,7 @@ try:
  with sync_playwright() as pw:
   browser=pw.chromium.launch();ctx=browser.new_context(viewport={'width':390,'height':844},user_agent=headers['User-Agent'])
   ctx.add_cookies([{'name':'__Host-tbox_session','value':users['employee']['session'],'domain':urlsplit(site).hostname,'path':'/','secure':True,'httpOnly':True}])
-  tab=ctx.new_page();tab.goto(base+'/',wait_until='networkidle')
+  tab=ctx.new_page();tab.goto(base+'/memories',wait_until='networkidle')
   tab.get_by_role('button',name='AI로 꾸미기',exact=True).click();expect(tab.locator('#gemini-generate')).to_be_enabled()
   tab.locator('#gemini-photos input').uncheck();tab.locator('#gemini-generate').click();expect(tab.locator('#studio-result')).to_have_value('합성 사진을 참고한 추가 초안입니다.')
   check(post(pid)==before,'390px actual PHP preview never autosaves')

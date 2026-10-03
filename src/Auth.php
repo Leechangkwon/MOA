@@ -222,6 +222,7 @@ final class Auth
                u.must_change_password AS must_change_password,
                u.mfa_setup_required   AS mfa_setup_required,
                u.invited_account AS invited_account,
+               u.mfa_recovery_required AS mfa_recovery_required,
                (u.expires_at IS NOT NULL AND u.expires_at < now()) AS is_expired,
                -- 16-1 (PRD F-23) — 관리 기능 재인증(sudo 모드).
                -- 판정을 앱이 아니라 **DB 시계 하나**로 한다: 앱 서버와 DB 의 시계가 어긋나도
@@ -328,7 +329,7 @@ final class Auth
         SELECT id, username, password_hash, role, team_id, is_active,
                failed_count, locked_until,
                mfa_enabled, mfa_secret, mfa_last_step,
-               must_change_password, mfa_setup_required, invited_account,
+               must_change_password, mfa_setup_required, invited_account, mfa_recovery_required,
                (locked_until IS NOT NULL AND locked_until > now()) AS is_locked,
                (expires_at IS NOT NULL AND expires_at < now())     AS is_expired
           FROM users
@@ -346,7 +347,7 @@ final class Auth
         SELECT id, username, password_hash, role, team_id, is_active,
                failed_count, locked_until,
                mfa_enabled, mfa_secret, mfa_last_step,
-               must_change_password, mfa_setup_required, invited_account,
+               must_change_password, mfa_setup_required, invited_account, mfa_recovery_required,
                (locked_until IS NOT NULL AND locked_until > now()) AS is_locked,
                (expires_at IS NOT NULL AND expires_at < now())     AS is_expired
           FROM users
@@ -677,6 +678,7 @@ final class Auth
             'must_change_password' => $row['must_change_password'] === true,
             'mfa_setup_required'   => $row['mfa_setup_required'] === true,
             'invited_account' => ($row['invited_account'] ?? false) === true,
+            'mfa_recovery_required' => ($row['mfa_recovery_required'] ?? false) === true,
             /*
              * 16-1 — 관리 기능 재인증 (PRD F-23, ARCH 4.0). 라우터 관문 [3-2] 가 보는 값이다.
              *   reauth_fresh — 15분 창 안인가. 판정은 위 SQL 이 DB 시계로 했고 앱은 참/거짓만 읽는다.
@@ -1259,6 +1261,7 @@ final class Auth
             'must_change_password' => $row['must_change_password'] === true,
             'mfa_setup_required'   => $row['mfa_setup_required'] === true,
             'invited_account' => ($row['invited_account'] ?? false) === true,
+            'mfa_recovery_required' => ($row['mfa_recovery_required'] ?? false) === true,
             /*
              * 16-1 (PRD F-23) — **로그인은 재인증 창을 열지 않는다.**
              * SQL_INSERT_SESSION 에 reauth_at 이 없으므로 새 세션 행의 값은 NULL 이고,
@@ -1293,6 +1296,7 @@ final class Auth
             'must_change_password' => $row['must_change_password'] === true,
             'mfa_setup_required'   => $row['mfa_setup_required'] === true,
             'invited_account' => ($row['invited_account'] ?? false) === true,
+            'mfa_recovery_required' => ($row['mfa_recovery_required'] ?? false) === true,
             'reauth_fresh' => false,
             'reauth_at'    => null,
             'session_origin'   => 'token',
@@ -1752,7 +1756,7 @@ final class Auth
     }
 
     /**
-     * 이 사용자에게 2단계 인증이 **필수**인가 (PRD F-52, ARCH 5.26).
+     * 이 사용자에게 2단계 인증이 **필수**인가 — 관리자 역할 또는 관리자가 초기화한 복구 절차. 초대 가입 자체는 선택이다. (PRD F-52, ARCH 5.26).
      *
      * 판정은 **실제 역할**로 한다 — 「역할로 보기」(5.20) 중에는 `role` 이 흉내 역할이고
      * `real_role` 이 진짜다. Employee 를 흉내 내는 Admin 이 관문을 빠져나가면 안 된다.
@@ -1764,7 +1768,7 @@ final class Auth
     public static function mfaRequired(array $user): bool
     {
         $role = (string) ($user['real_role'] ?? $user['role'] ?? '');
-        return in_array($role, self::MFA_REQUIRED_ROLES, true) || ($user['invited_account'] ?? false) === true;
+        return in_array($role, self::MFA_REQUIRED_ROLES, true) || ($user['mfa_recovery_required'] ?? false) === true;
     }
 
     /**
@@ -1787,7 +1791,7 @@ final class Auth
      * 값은 언제나 DB 에서 읽은 사용자 배열에서 나오며 요청 값은 섞이지 않는다 (PRD S-01).
      *
      * F-52 (2026-09-16, ARCH 5.26) — `mfa_setup` 갈래는 **필수 역할**(MFA_REQUIRED_ROLES)
-     * 에만 걸린다. 그리고 보는 값은 `mfa_setup_required` 플래그가 아니라 `mfa_enabled` 다:
+     * 과 명시적인 `mfa_recovery_required` 복구 계정에 걸린다. 일반 `mfa_setup_required` 힌트만으로 강제하지 않는다:
      * 플래그는 생성·해제·초기화가 켜고 확정이 끄는 값이라 보통 `!mfa_enabled` 와 같지만,
      * 어긋난 순간(마이그레이션·수동 수정)에 관문이 **열리면** 안 된다. 켜져 있는지는
      * `mfa_enabled` 가 진실이다. 플래그는 그대로 남아 감사 `forced` 와 안내 문구에 쓰인다.

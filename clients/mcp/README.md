@@ -120,3 +120,18 @@ bash tests/validate_with_php.sh               # 변환 결과를 저장소의 �
 
 `qaredi_mcp/doc-schema.json` 은 저장소 `public/assets/community/doc-schema.json` 의 사본입니다(설치된 PC 에는 저장소가 없다).
 원본이 바뀌면 복사해 맞춥니다 — 단위 시험이 두 파일이 같은지 봅니다.
+
+## 개인 여행 계획 (선택 연결)
+
+기존 문서 권한만 든 토큰으로는 여행 계획에 접근할 수 없습니다. 여행 기능이 배포된 서버의 **내 계정 → 프로그램 토큰**에서 `travel.read`(여행 계획 읽기), 필요하면 `travel.write`(여행 계획 저장·기록 연결)를 직접 선택해 발급하고 같은 `QAREDI_TOKEN_FILE` 설정에 넣으세요. 쓰기는 읽기를 포함합니다. 문서도 사용하려면 필요한 `community.read`/`community.write`를 별도로 선택합니다. `assistant.run` 전용 토큰과는 묶지 않습니다.
+
+| 도구 | 동작 | 범위 |
+|---|---|---|
+| `qaredi_list_travel_plans` | 내 여행의 요약 목록 | `travel.read` |
+| `qaredi_read_travel_plan` | 일정과 연결한 내 기록 읽기 | `travel.read` |
+| `qaredi_save_travel_plan` | 계획 생성 또는 전체 계획 수정 | `travel.write` |
+| `qaredi_link_travel_record` | 내 기존 게시글을 여행·일정에 연결 | `travel.write` |
+
+계획은 항상 비공개이며, 기록 연결은 게시글의 공개 범위나 원문·사진을 바꾸지 않습니다. 수정 전 읽기 도구로 현재 내용을 읽고 `revision`과 전체 계획을 보냅니다. 유지할 일정의 `id`를 그대로 넣고, 새 일정은 `id`를 생략할 수 있습니다. 빠진 일정은 계획에서 제외되지만 연결한 글은 여행 전체에 남습니다. 날짜를 정하지 않거나 기존 여행 기간 밖으로 옮겨도 됩니다. 상태는 `planned`(예정), `done`(다녀옴), `skipped`(건너뜀)입니다. 생성 재시도에는 같은 UUID의 `request_id`를 사용하면 중복 생성을 막을 수 있습니다.
+
+예: “내 제주 여행 계획을 읽고, 내일 비가 오면 실내 코스로 바꾸는 안을 제안해 줘. 내가 고른 내용으로만 저장해 줘.” 변경 충돌(409)은 최신 내용을 다시 읽어 사람의 변경을 확인한 뒤 처리하며 자동 덮어쓰지 않습니다. 이 저장소에 MCP 도구가 추가되어도 현재 사용하는 ChatGPT/Claude 채팅에 자동 연결되지는 않습니다. 사용하는 앱에서 MCP 클라이언트를 설치·설정해야 합니다.

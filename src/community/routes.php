@@ -74,6 +74,19 @@ require_once __DIR__ . '/../SearchText.php';
  * 4-B 범위: 화면 둘 · API 열(4-A 의 여덟 + `GET /api/spaces` + `PATCH /api/pages/{id}/visibility`).
  */
 const COMMUNITY_ROUTES = [
+    ['GET', '/api/travel-plans', 'travel_plans_api.php', 'travel.read'],
+    ['POST', '/api/travel-plans', 'travel_plans_api.php', 'travel.write'],
+    ['GET', '/api/travel-plans/{id}', 'travel_plans_api.php', 'travel.read'],
+    ['PATCH', '/api/travel-plans/{id}', 'travel_plans_api.php', 'travel.write'],
+    ['DELETE', '/api/travel-plans/{id}', 'travel_plans_api.php', 'travel.write'],
+    ['POST', '/api/travel-plans/{id}/records', 'travel_plans_api.php', 'travel.write'],
+    ['DELETE', '/api/travel-plans/{id}/records', 'travel_plans_api.php', 'travel.write'],
+    ['GET', '/api/me/guide', 'usage_guide_api.php', 'community.read'],
+    ['PATCH', '/api/me/guide', 'usage_guide_api.php', 'community.read'],
+    ['GET', '/api/memories/social', 'memories_social.php', 'community.read'],
+    ['POST', '/api/memories/follow', 'memories_social.php', 'community.write'],
+    ['DELETE', '/api/memories/follow', 'memories_social.php', 'community.write'],
+    ['PATCH', '/api/memories/preferences', 'memories_social.php', 'community.write'],
     ['POST', '/api/pages/{id}/suggestions', 'suggestions_create.php', 'community.write'],
     ['GET', '/api/pages/{id}/suggestions', 'suggestions_list.php', 'community.read'],
     ['GET', '/api/suggestions/{id}', 'suggestion_get.php', 'community.read'],
@@ -153,7 +166,7 @@ const COMMUNITY_ROUTES = [
     ['GET', '/today', 'today_page.php', 'community.read'],
     ['GET', '/api/briefing', 'briefing.php', 'community.read'],
     // ── 화면 ─────────────────────────────────────────────────
-    ['GET',    '/',                          'memories_page.php',   'community.read'],
+    ['GET',    '/',                          'overview_page.php',   'community.read'],
     ['GET', '/workspace', 'home_page.php', 'community.read'],
     ['GET',    '/p/{id}',                    'page_view.php',       'community.read'],
     ['GET', '/p/{id}/print', 'page_print.php', 'community.write'],
@@ -343,6 +356,11 @@ const COMMUNITY_ROUTES = [
  * ★ 전부 화면도 쓰는 라우트라, 헤더가 **왔을 때만** 토큰 갈래로 간다 — 헤더가 없으면 세션 경로가 한 글자도 바뀌지 않는다.
  */
 const COMMUNITY_API_TOKEN_ROUTES = [
+    'GET /api/travel-plans',
+    'POST /api/travel-plans',
+    'GET /api/travel-plans/{id}',
+    'PATCH /api/travel-plans/{id}',
+    'POST /api/travel-plans/{id}/records',
     'GET /api/me/space',
     'POST /api/pages',
     'GET /api/pages/{id}',

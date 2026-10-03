@@ -159,6 +159,7 @@ $mePayload = [
     // 둘 다 위의 셋과 같은 **상태**이지 권한이 아니다. 판정은 Auth 안에서만 하므로 화면은
     // 역할 문자열을 비교하지 않고, 화면이 이 값을 무시해도 관문은 서버가 막는다 (PRD S-01).
     'mfa_required'         => Auth::mfaRequired($user),
+    'mfa_recovery_required' => ($user['mfa_recovery_required'] ?? false) === true,
     'mfa_recommended'      => Auth::mfaRecommended($user),
     // 16-1 — 관리 기능 재인증 (PRD F-23, ARCH 4.0). 이 세션의 창이 지금 열려 있나.
     // 다른 can_* 와 같은 **화면 편의 값**이다: 화면이 관리 링크를 누르기 전에 모달을 미리

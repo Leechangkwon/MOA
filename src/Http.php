@@ -603,7 +603,7 @@ final class Http
             '#^/tbox/(settings|activity|welcome|messages)$#' => [],
             '#^/community/$#'            => ['space' => '/^[1-9][0-9]{0,17}$/', 'view' => '/^(mine|shared)$/'],
             '#^/community/workspace$#' => ['space' => '/^[1-9][0-9]{0,17}$/', 'trash' => '/^1$/'],
-            '#^/community/memories$#' => ['view' => '/^(mine|shared)$/'],
+            '#^/community/memories$#' => ['view' => '/^(mine|shared|feed|discover)$/', 'travel' => '/^1$/'],
             '#^/community/memories/u/[a-z0-9_.-]{3,64}$#' => [],
             '#^/community/memories/p/' . $uuid . '$#' => [],
             '#^/community/p/' . $uuid . '$#' => ['edit' => '/^1$/'],

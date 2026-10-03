@@ -136,17 +136,14 @@ $loginApp = $loginApps[$loginPane === '' ? 'tbox' : $loginPane];
       <form id="login-form" class="form" method="post" action="<?= Http::url('/api/login') ?>" autocomplete="off">
         <div class="page-head__text">
           <h1 class="page-head__title">로그인</h1>
-          <p class="page-head__sub">아이디와 비밀번호를 입력하세요. 로그인하면 <b><?= htmlspecialchars($loginApp['into'], ENT_QUOTES, 'UTF-8') ?></b> 들어갑니다.</p>
+          <p class="page-head__sub">패스키 또는 비밀번호로 로그인하세요. OTP는 설정한 계정의 비밀번호 로그인에서만 입력합니다. 로그인하면 <b><?= htmlspecialchars($loginApp['into'], ENT_QUOTES, 'UTF-8') ?></b> 들어갑니다.</p>
         </div>
 
-        <!-- T:F-72 휴대폰 지문·얼굴로 로그인 (지시서 1.2 · 결정 PK-D1 · PK-D2). 처음에는 둘 다 hidden 이고 passkey.js 가
-             **휴대폰 + 지문·얼굴 확인 인증기가 있을 때만** 켠다(PC 는 지금 폼 그대로 — 화면 편의일 뿐 서버는 가리지 않는다).
-             「이 기기 표시」가 있으면 검정 「지문·얼굴로 로그인」 + 아래 「비밀번호로 로그인」(누르면 칸이 펼쳐짐) + 곧바로 지문 창,
-             없으면 이 단추가 테두리(.btn--quiet)로 폼 위에 있고 아이디 칸에 자동 완성(conditional mediation)이 걸린다.
-             아이디 칸의 `autocomplete="username webauthn"` · 비밀번호 칸의 `current-password` 가 자동 완성의 필수 조건이다
-             (폼의 autocomplete="off" 보다 칸의 값이 이긴다 — PK-T10). -->
+        <!-- Platform passkeys and password are selectable alternatives on mobile/PC.
+             A remembered-device hint folds the password fields; it never opens a biometric prompt.
+             autocomplete=username webauthn keeps user-initiated passkey autofill available. -->
         <button id="passkey-login-btn" class="btn btn--block btn--quiet" type="button" hidden>
-          <span class="icon" data-icon="fingerprint"></span>지문·얼굴로 로그인
+          <span class="icon" data-icon="fingerprint"></span>지문·얼굴·기기 잠금으로 로그인
         </button>
         <button id="passkey-password-open" class="btn btn--block btn--quiet" type="button" hidden>비밀번호로 로그인</button>
 
