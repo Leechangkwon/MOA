@@ -26,13 +26,13 @@ def main():
     if subprocess.run(['git', 'merge-base', '--is-ancestor', base, 'HEAD'], cwd=ROOT).returncode:
         print('주의: 배포 기준의 후손이 아닙니다. 오래된 브랜치/분기 여부를 먼저 확인하세요.')
     # Compare tracked runtime files including staged and unstaged edits; docs/tests are separate.
-    paths = ['src', 'public', 'db', 'config', 'VERSION']
+    paths = ['src', 'public', 'db', 'config', 'wiki', 'VERSION', 'CHANGELOG.json']
     changed = git('diff', '--name-only', base, '--', *paths).splitlines()
-    others = git('diff', '--name-only', base, '--', 'deploy', 'scripts', 'clients').splitlines()
+    others = git('diff', '--name-only', base, '--', 'deploy', 'scripts', 'clients', ':(exclude)deploy/production-state.json').splitlines()
     print('운영 앱 파일 차이:', len(changed))
     for path in changed:
         print('  ', path)
-    print('배포/도구/클라이언트 파일 차이(별도 검토):', len(others))
+    print('배포/도구/클라이언트 파일 차이(배포 기록 파일 제외):', len(others))
     for path in others:
         print('  ', path)
     dirty = git('status', '--porcelain')

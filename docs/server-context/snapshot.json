@@ -1,6 +1,6 @@
 {
-  "captured_at": "2026-10-03T14:01:59.772388+00:00",
-  "source_commit": "93d924314e2ac2640b5e8f553cf01af7e02b26b9",
+  "captured_at": "2026-10-03T14:47:07.193756+00:00",
+  "source_commit": "d5364b175a1edb223fd7840abba04646b7a0f23d",
   "files": [
     {
       "source": "CLAUDE.md",
@@ -15,7 +15,7 @@
     {
       "source": "STAGES.md",
       "copy": "STAGES.md",
-      "sha256": "d7486bd03876b3eab74c6218eabb07bda41a35561498a422ea3af7e26abc0113"
+      "sha256": "f13fc06fa7e1e90d8cf516832394a5bdec6845af828922bc46d3d5f594ce538d"
     },
     {
       "source": "community/PRD.md",
@@ -35,7 +35,7 @@
     {
       "source": "community/STAGES.md",
       "copy": "community/STAGES.md",
-      "sha256": "5527bde43ebf2f74eb830a695761a81d1573f59dcd478ef0330ee7b41887ac32"
+      "sha256": "3a29efaf2354c90eb3e2871ec292611096f030d6bd7803d41de1aec139e85a45"
     },
     {
       "source": "community/notion-structure-and-design.md",
@@ -47,5 +47,6 @@
       "copy": "launcher/ARCHITECTURE.md",
       "sha256": "54179b18e4c549c12024b546a3453f29873816098e7e97aaa285c747bb454c95"
     }
-  ]
+  ],
+  "previous_source_commit": "93d924314e2ac2640b5e8f553cf01af7e02b26b9"
 }
