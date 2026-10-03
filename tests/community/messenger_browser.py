@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Real modal/components in Chromium; mocked HTTP. Backend authorization is NOT simulated as proof."""
 import json
+import os
 from pathlib import Path
 from urllib.parse import urlparse, parse_qs
 from playwright.sync_api import sync_playwright
@@ -53,7 +54,7 @@ def main():
     out=Path('/tmp/qaredi-memories-preview');out.mkdir(parents=True,exist_ok=True); checks=[]
     def ok(x): checks.append(x);print('PASS',x,flush=True)
     with sync_playwright() as p:
-        browser=p.chromium.launch(headless=True,args=['--no-sandbox'])
+        browser=p.chromium.launch(executable_path=os.environ.get('CHROMIUM_EXECUTABLE'),headless=True,args=['--no-sandbox'])
         ctx=browser.new_context(viewport={'width':1440,'height':1000});mock=MessengerMock();ctx.route(ORIGIN+'/**',mock.route)
         page=ctx.new_page();errors=[];page.on('pageerror',lambda e:errors.append(str(e)));page.goto(ORIGIN+'/community/');page.locator('.post').wait_for()
         assert page.locator('aside.sidebar [data-thread-nav]').count()==3
@@ -91,7 +92,7 @@ def main():
         page.locator('#messenger-gpt-tab').click();page.locator('#messenger-gpt-messages .messenger-bubble').first.wait_for();assert page.locator('#messenger-gpt-messages .messenger-bubble').count()==2
         ok('Late GPT response cannot overwrite a member draft; only explicitly submitted GPT text is sent')
         mock.messages[0]['body']='여행 잘 다녀와! 사진도 많이 보여 줘.'
-        page.locator('#messenger-close').click();page.locator('button',has_text='GPT로 꾸미기').click();page.locator('#studio-chat').click();page.locator('#community-messenger').wait_for()
+        page.locator('#messenger-close').click();page.locator('button',has_text='AI로 꾸미기').click(); page.locator('#studio-external summary').click();page.locator('#studio-chat').click();page.locator('#community-messenger').wait_for()
         page.wait_for_function("() => document.querySelector('#messenger-body').value.includes('바닷가에 왔다')")
         page.locator('#messenger-send').click();page.wait_for_function("() => document.querySelector('#messenger-gpt-messages').textContent.includes('바람이 머문')")
         page.locator('#messenger-gpt-messages button',has_text='꾸미기 화면으로').last.click();page.locator('#studio-dialog').wait_for();assert page.locator('#studio-result').input_value().startswith('바람이 머문')

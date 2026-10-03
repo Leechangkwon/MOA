@@ -138,6 +138,8 @@ const COMMUNITY_ROUTES = [
     ['GET', '/api/memories', 'memories_api.php', 'community.read'],
     ['POST', '/api/memories', 'memories_api.php', 'community.write'],
     ['POST', '/api/memories/media', 'memories_api.php', 'community.write'],
+    ['GET', '/api/memories/ai', 'memories_ai.php', 'community.write'],
+    ['POST', '/api/memories/{id}/caption', 'memories_ai.php', 'community.write'],
     ['GET', '/api/memories/media/{id}', 'memories_api.php', 'community.read'],
     ['POST', '/api/memories/links', 'memories_api.php', 'community.write'],
     ['DELETE', '/api/memories/links', 'memories_api.php', 'community.write'],

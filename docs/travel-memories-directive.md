@@ -19,3 +19,9 @@
 - 보안 핵심: `db/migrations/2026-10-03_community_messenger.sql`, `db/community/grants.sql`에 대화/메시지/GPT 이력 및 최소 권한. `src/Audit.php`에 본문 없는 메신저 감사 종류.
 - `src/Fetch.php`에 고정 OpenAI HTTPS 목적지만 허용하는 POST. 기존 DNS 사설 IP 차단, IP 고정, TLS 검증, 리다이렉트 차단 재사용. `.env.example`에 기본 비활성 설정. API 키·대화 본문은 로그에 남기지 않는다.
 - 회원 대화는 두 참여자, GPT 이력은 본인만 접근. 세션/CSRF/쓰기 자격은 기존 관문을 그대로 사용한다.
+
+## 스레드 Gemini 사진 글쓰기 후속 (2026-10-03)
+
+사용자 요청: 이미 올린 사진을 참조해 행복한 오늘의 글을 추가한다. MCP와 별개로 앱의 기존 모아 Gemini 설정·키·요청 한도를 재사용한다. 소유자가 선택한 현재 게시물 사진과 메모만 전송하며, 생성 결과는 미리보고 편집 화면에서 명시적으로 저장한다.
+
+수정 파일: `src/community/MemoryAi.php`, `handlers/memories_ai.php`, `routes.php`, `public/assets/community/memories.js`, `handlers/memories_page.php`, `src/MemberAi.php`, `src/Fetch.php`, 테스트·문서·위키 및 import 캐시 버전. 기존 AI 요청 장부와 중복 방지/공통 한도를 재사용하여 DB migration은 추가하지 않는다. Fetch의 새 사진 설명 호출만 크기가 제한된 inline 이미지 요청을 허용하고 기존 텍스트/이미지 생성 호출의 상한은 유지한다. 파일 경로·외부 URL·시스템 지시문은 클라이언트에서 받지 않는다. 운영 설정·키·배포 변경은 이 클라우드에서 수행하지 않는다.

@@ -1,0 +1,9 @@
+<?php
+// Installed only by the disposable DB test; never a production transport switch.
+if (!str_starts_with(Env::get('DB_NAME'), 'tbox_memories_test_')) throw new LogicException('Test DB required');
+$dir=Storage::baseDir();
+$mode=json_decode(file_get_contents($dir.'/transport-mode.json'),true);
+file_put_contents($dir.'/transport-capture.jsonl',json_encode($payload)."\n",FILE_APPEND);
+if (!empty($mode['delay'])) usleep(1500000);
+if (!empty($mode['error'])) throw new FetchDenied('synthetic', (int)$mode['error']);
+return ['candidates'=>[['finishReason'=>'STOP','content'=>['parts'=>[['text'=>'합성 사진을 참고한 추가 초안입니다.']]]]],'usageMetadata'=>['totalTokenCount'=>10]];

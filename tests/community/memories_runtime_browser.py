@@ -9,7 +9,7 @@ try:
  for u in users:
   users[u]['username']=sql('SELECT username FROM users WHERE id='+str(users[u]['id']));call('GET','/api/me/space',user=u)
  with sync_playwright() as pw:
-  browser=pw.chromium.launch()
+  browser=pw.chromium.launch(executable_path=os.environ.get('CHROMIUM_EXECUTABLE'))
   for width in (1280,390):
    ctx=browser.new_context(viewport={'width':width,'height':950},locale='ko-KR',user_agent='tbox-review/'+time.strftime('%Y-%m-%d'))
    ctx.add_cookies([{'name':'__Host-tbox_session','value':users['employee']['session'],'domain':host,'path':'/','secure':True,'httpOnly':True,'sameSite':'Lax'}])
@@ -24,6 +24,17 @@ try:
    tab.locator('#media-input').set_input_files({'name':'합성.png','mimeType':'image/png','buffer':png});expect(tab.locator('#visibility')).to_have_value('private')
    tab.locator('#publish').click();expect(tab.locator('#compose-dialog')).not_to_be_visible(timeout=15000)
    expect(tab.locator('#feed')).to_contain_text('실제 PHP 화면 사진 저장 '+str(width));tab.locator('#feed img').first.scroll_into_view_if_needed();tab.wait_for_function("document.querySelector('#feed img')?.naturalWidth > 0");check(tab.locator('#feed img').first.evaluate('(e)=>e.complete && e.naturalWidth>0'),'saved media loads from authorized route '+str(width))
+   tab.locator('.threads-write').click();tab.locator('#caption').fill('형식 정보 없는 사진 '+str(width))
+   tab.evaluate('''bytes => {
+     const input=document.querySelector('#media-input'), transfer=new DataTransfer();
+     transfer.items.add(new File([new Uint8Array(bytes)], '합성.PNG', {type:''}));
+     input.files=transfer.files;input.dispatchEvent(new Event('change',{bubbles:true}));
+   }''',list(png))
+   tab.wait_for_function("document.querySelector('#media-preview img')?.naturalWidth > 0")
+   tab.locator('#publish').click();expect(tab.locator('#compose-dialog')).not_to_be_visible(timeout=15000)
+   saved=tab.locator('.post').filter(has_text='형식 정보 없는 사진 '+str(width));expect(saved).to_have_count(1)
+   saved.locator('img').scroll_into_view_if_needed();expect(saved.locator('img')).to_have_js_property('naturalWidth',1)
+   check(True,'empty MIME photo previews, saves and loads through real PHP '+str(width))
    tab.locator('.threads-quick [data-messenger-open]').click();expect(tab.locator('#community-messenger')).to_be_visible();tab.locator('#messenger-search').fill(users['other']['username'])
    tab.locator('#messenger-members button').first.click();tab.locator('#messenger-body').fill('실제 모달 전송 '+str(width));tab.locator('#messenger-send').click();expect(tab.locator('#messenger-messages')).to_contain_text('실제 모달 전송 '+str(width))
    check(tab.url==base+'/','modal stays on community page '+str(width))

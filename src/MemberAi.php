@@ -171,8 +171,11 @@ final class MemberAi
     }
 
     /** Reserve before calling Google. No SQL locks are held while waiting for the network. */
-    public static function send(int $uid, ?int $thread, string $text, string $request): array
+    public static function send(int $uid, ?int $thread, string $text, string $request, ?callable $prepare = null): array
     {
+        // An internal photo preview starts its own private thread. The callback loads
+        // owner-checked bytes immediately before sending; HTTP callers cannot supply it.
+        if ($prepare !== null && $thread !== null) throw new MemberAiDenied('request_conflict', 409);
         $db = Db::instance();
         $db->begin();
         try {
@@ -221,12 +224,16 @@ final class MemberAi
                     ['role' => 'model', 'parts' => [['text' => $previous['answer']]]]);
             }
             $contents[] = ['role' => 'user', 'parts' => [['text' => $text]]];
-            $response = Fetch::geminiGenerate($key, [
+            $payload = [
                 'systemInstruction' => ['parts' => [['text' => '당신은 모아 커뮤니티의 AI 대화 도우미입니다. 기본적으로 한국어로 친근하고 명확하게 답하세요. 사용자가 이 대화에 직접 입력한 내용만 알 수 있습니다. 다른 사용자의 메시지, 사내 파일, 커뮤니티 문서, PC에 접근할 수 없습니다. 웹 검색과 작업 실행 도구도 없습니다. 정보를 조회했거나 작업을 완료했다고 꾸미지 마세요. 최신 사실은 확인이 필요하다고 알려 주세요. 글 다듬기, 정리, 아이디어, 일반 질문을 도와주세요.']]],
                 'contents' => $contents,
                 'generationConfig' => ['maxOutputTokens' => 4096, 'thinkingConfig' => ['thinkingLevel' => 'MINIMAL']],
-            ]);
+            ];
+            $response = $prepare === null ? Fetch::geminiGenerate($key, $payload) : Fetch::geminiDescribe($key, $prepare());
             $candidate = $response['candidates'][0] ?? [];
+            if ($prepare !== null && ($candidate['finishReason'] ?? '') !== 'STOP') {
+                throw new MemberAiDenied('blocked', 422);
+            }
             if (!in_array($candidate['finishReason'] ?? '', ['STOP', 'MAX_TOKENS'], true)) {
                 throw new MemberAiDenied('blocked', 422);
             }

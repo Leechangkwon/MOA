@@ -4,6 +4,7 @@ import argparse
 import copy
 import io
 import json
+import os
 from pathlib import Path
 import re
 import shutil
@@ -35,6 +36,7 @@ def page_html(shared='', profile='', post=''):
     # PHP rendering is checked separately when PHP is installed; no server test is claimed here.
     source = (ROOT / 'src/community/handlers/memories_page.php').read_text()
     component = source[source.index('<section id="community-threads"'):source.index("<?php if ($isShared): ?></body>")]
+    component = re.sub(r'<\?php if \(!\$isShared\): \?>(.*?)<\?php endif; \?>', lambda m: '' if shared else m[1], component, flags=re.S)
     component = render_expressions(component, shared, profile, post)
     css = '<link rel="stylesheet" href="/tbox/assets/app.css"><link rel="stylesheet" href="/tbox/assets/community/community.css"><link rel="stylesheet" href="/tbox/assets/community/memories.css"><link rel="stylesheet" href="/tbox/assets/community/messenger.css">'
     head = '<!doctype html><html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">'+css+'</head>'
@@ -131,7 +133,7 @@ def main():
     checks=[]
     def ok(label): checks.append(label); print('PASS', label, flush=True)
     with sync_playwright() as p:
-        browser = p.chromium.launch(headless=True, args=['--no-sandbox'])
+        browser = p.chromium.launch(executable_path=os.environ.get('CHROMIUM_EXECUTABLE'), headless=True, args=['--no-sandbox'])
         ctx = browser.new_context(viewport={'width':1440,'height':1100}, device_scale_factor=1)
         mock=Mock(); ctx.route(ORIGIN+'/**', mock.route)
         page=ctx.new_page(); errors=[]; page.on('pageerror', lambda e: errors.append(str(e)))
@@ -171,7 +173,7 @@ def main():
         page.locator('.post-actions button[aria-label^="댓글"]').click(); page.locator('#comment-body').fill('오래 기억하고 싶은 풍경이네요.'); page.locator('#comment-form button[type="submit"]').click(); page.locator('.comment').wait_for()
         assert mock.comments[-1]['body'].startswith('오래')
         page.locator('[data-close="comments-dialog"]').click(); ok('Like and comment actions use CSRF-protected requests')
-        page.locator('button',has_text='GPT로 꾸미기').click()
+        page.locator('button',has_text='AI로 꾸미기').click(); page.locator('#studio-external summary').click()
         assert '바닷가에 왔다' in page.locator('#studio-prompt').input_value()
         page.locator('#studio-kind').select_option('video'); assert '타임라인' in page.locator('#studio-prompt').input_value()
         assert page.locator('#studio-originals a').get_attribute('href').endswith('?download=1')
