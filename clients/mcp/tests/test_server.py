@@ -85,9 +85,9 @@ class ServerTools(unittest.TestCase):
             return {t.name: {"description": t.description, "annotations": t.annotations} for t in listed}
         return server.mcp.tools
 
-    def test_stub_or_real_three_tools(self):
+    def test_stub_or_real_four_tools(self):
         tools = self._tools()
-        self.assertEqual(set(tools), {"qaredi_whoami", "qaredi_write_page", "qaredi_read_page"})
+        self.assertEqual(set(tools), {"qaredi_whoami", "qaredi_write_page", "qaredi_read_page", "qaredi_search_pages"})
         for name, t in tools.items():
             with self.subTest(tool=name):
                 lines = t["description"].split("\n")
@@ -99,6 +99,8 @@ class ServerTools(unittest.TestCase):
         self.assertTrue(tools["qaredi_whoami"]["annotations"].readOnlyHint)
         self.assertFalse(tools["qaredi_write_page"]["annotations"].readOnlyHint)
         self.assertFalse(tools["qaredi_write_page"]["annotations"].destructiveHint)
+        self.assertTrue(tools["qaredi_search_pages"]["annotations"].readOnlyHint)
+        self.assertFalse(tools["qaredi_search_pages"]["annotations"].destructiveHint)
 
 
 class ServerCalls(unittest.TestCase):
@@ -144,6 +146,31 @@ class ServerCalls(unittest.TestCase):
             server.qaredi_write_page("t", "\n\n".join([tc.BODY_SECRET] * 3001))
         self.assertIn("blocks", str(cm.exception))
         self.assertNotIn(tc.BODY_SECRET, str(cm.exception))
+
+    def test_search_tool(self):
+        out = server.qaredi_search_pages("회의")
+        self.assertEqual(out.split("\n")[0], "주간 회의 — 내 공간 — 이번 주 회의 내용 — " + tc.PAGE_ID)
+        self.assertEqual(server.qaredi_search_pages("회의", limit=1).count("\n"), 0)
+        self.assertNotIn(tc.TOKEN, out)
+
+    def test_search_tool_scope_403_is_text(self):
+        tc.Fake.mode["/community/api/search?q=%ED%9A%8C%EC%9D%98"] = (403, {"error": "token_scope"})
+        out = server.qaredi_search_pages("회의")          # 예외가 아니다
+        self.assertIn("HTTP 403", out)
+        self.assertIn("token_scope", out)
+        self.assertNotIn(tc.TOKEN, out)
+
+    def test_search_tool_401_is_tool_error_without_token(self):
+        tc.Fake.mode["/community/api/search?q=%ED%9A%8C%EC%9D%98"] = (401, {"error": "만료된 API 토큰입니다"})
+        with self.assertRaises(ToolError) as cm:
+            server.qaredi_search_pages("회의")
+        self.assertNotIn(tc.TOKEN, str(cm.exception))
+
+    def test_whoami_tool_scopes_held(self):
+        tc.Fake.mode["/tbox/api/whoami"] = (200, {"username": "claude_employee01", "role": "Employee",
+                                                  "token_scopes_held": ["community.read", "community.write"]})
+        out = json.loads(server.qaredi_whoami())
+        self.assertEqual(out["token_scopes_held"], ["community.read", "community.write"])
 
     def test_missing_token_env(self):
         os.environ.pop("QAREDI_TOKEN")

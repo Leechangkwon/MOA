@@ -3,7 +3,7 @@
 #                         30초·1회용 링크 · 토큰 출신 세션의 재인증·유휴 10분)
 #                         (지시서 docs/qf9-pc-login-directive.md 「조각 S」 · ARCHITECTURE 4.9 · API.md 20장 · SECURITY R-113)
 #
-#   T-7 정적   라우트 둘 · 토큰 허용 표 셋에 링크 창구 · IP 는 Http::clientIp() 로만 · Http·Db·community·deploy 차이 0 ·
+#   T-7 정적   라우트 둘 · 토큰 허용 표 셋에 링크 창구 · IP 는 Http::clientIp() 로만 · Q:F-9 커밋이 Http·Db·community 를 고치지 않음 · deploy 는 nginx session/open 덩이 하나 ·
 #              security_lint 0 · 바뀐 PHP php -l · app.js node --check · tokenScopeAllows 표(범위 다섯 × 정책) ·
 #              토큰 세션 재인증 라우트 표의 줄이 전부 실제 라우트 · 마이그레이션 UPDATE·DELETE·TRUNCATE 0
 #   준비       임시 DB `tbox_qf9_<포트>_test`(tbox_testdb · 운영 사본 tbox_re 는 pg_dump 로 **읽기만**) · 마이그레이션 2026-10-12 **두 번**
@@ -273,10 +273,17 @@ NEWF="src/handlers/me_session_link.php src/handlers/session_open_page.php src/ha
 expect "IP 를 요청 값에서 읽는 곳 0(REMOTE_ADDR·X-Forwarded·HTTP_X_REAL 직접 — 바뀐 파일)" "0" \
   "$(cd "$ROOT" && cat $NEWF | grep -v '^\s*\*\|^\s*//' | grep -cE "REMOTE_ADDR|HTTP_X_FORWARDED|X-Forwarded-For|HTTP_X_REAL_IP|HTTP_CLIENT_IP")"
 codeln() { grep -v '^\s*\*\|^\s*//\|^\s*/\*' "$1" | grep -c "$2"; }
-expect "IP 는 Http::clientIp() 로만 — 코드 줄 수(링크 창구 2 · 발급 1 · Auth: 세션 조회·링크 조회 둘(교환·이미 로그인)·세션 두 INSERT 다섯)" "2 1 5" \
+# Q:F-10(2026-09-29) — 링크 창구의 IP 비교는 토큰 조회 한 곳(Auth::requireApiToken 의 SQL_FIND_API_TOKEN)으로 옮겼다(링크 창구 2→1 · Auth 5→6)
+expect "IP 는 Http::clientIp() 로만 — 코드 줄 수(링크 창구 1(링크 INSERT) · 발급 1 · Auth: 세션 조회·링크 조회 둘(교환·이미 로그인)·세션 두 INSERT·토큰 조회 여섯)" "1 1 6" \
   "$(codeln "$ROOT/src/handlers/me_session_link.php" 'Http::clientIp()') $(codeln "$ROOT/src/handlers/me_tokens_issue.php" 'Http::clientIp()') $(codeln "$ROOT/src/Auth.php" 'Http::clientIp()')"
-expect "고치지 않는 파일 차이 0 (Http · Db · src/community · deploy)" "0" \
-  "$(git -C "$ROOT" diff "$BASE_REV" -- src/Http.php src/Db.php src/community deploy 2>/dev/null | wc -l)"
+# 이 조각(Q:F-9 커밋 1223715)이 고치지 않은 파일 — 커밋 그 자체로 본다(뒤 조각 Q:F-10 이 src/community 를 고쳤다 · 지금 트리로 보면 헛실패).
+#   deploy 는 Q:F-9 커밋이 nginx `location = /tbox/session/open` 한 덩이(12줄)를 함께 넣었다(메인 결정 — 커밋 제목 「nginx session/open 창구」) — 그 덩이만 허용.
+expect "Q:F-9 커밋이 고치지 않은 파일 차이 0 (Http · Db · src/community)" "0" \
+  "$(git -C "$ROOT" diff "$BASE_REV" 1223715 -- src/Http.php src/Db.php src/community 2>/dev/null | wc -l)"
+expect "Q:F-9 커밋의 deploy 차이 = nginx session/open 덩이 하나(빈 줄 뺀 더한 줄 11 · 지운 줄 0 · location 한 줄)" "11 0 1" \
+  "$(git -C "$ROOT" diff "$BASE_REV" 1223715 -- deploy 2>/dev/null | grep -c '^+[^+]') $(git -C "$ROOT" diff "$BASE_REV" 1223715 -- deploy 2>/dev/null | grep -c '^-[^-]') $(git -C "$ROOT" diff "$BASE_REV" 1223715 -- deploy 2>/dev/null | grep -c '^+    location = /tbox/session/open {$')"
+expect "지금 트리 — Http · Db 차이 0 · deploy 는 Q:F-9 커밋 그대로" "0 0" \
+  "$(git -C "$ROOT" diff "$BASE_REV" -- src/Http.php src/Db.php 2>/dev/null | wc -l) $(git -C "$ROOT" diff 1223715 -- deploy ':(exclude)deploy/DEPENDENCIES.md' 2>/dev/null | wc -l)"
 PHPBAD=0
 for f in $(git -C "$ROOT" diff --name-only "$BASE_REV" -- '*.php' 2>/dev/null) $(git -C "$ROOT" ls-files --others --exclude-standard -- '*.php' 2>/dev/null); do
   [ -f "$ROOT/$f" ] || continue
@@ -290,13 +297,14 @@ expect "더한 JS 줄에 문자열 → HTML 자리 0" "0" \
   "$(git -C "$ROOT" diff "$BASE_REV" -- 'public/assets/*.js' 2>/dev/null | grep '^+' | grep -v '^+++' | grep -cE 'innerHTML|outerHTML|insertAdjacentHTML|document\.write')"
 AZ=$(php -r '
 require $argv[1];
-$scopes = ["read", "read+upload", "read+upload+delete", "community.write", "session.open"];
+$scopes = ["read", "read+upload", "read+upload+delete", "community.write", "session.open"];   // 옛 다섯 값 — Q:F-10 원자 모델에서도 같은 답이어야 한다
 $pols = ["authenticated", "file.read", "file.upload", "file.update", "file.delete", "community.read", "community.write", "session.open", "role:Admin", "file.fetch"];
 foreach ($pols as $p) { $row = []; foreach ($scopes as $s) { $row[] = Authz::tokenScopeAllows($s, $p) ? "1" : "0"; } echo $p, "=", implode("", $row), " "; }
-echo "SCOPES=", implode(",", Authz::TOKEN_SCOPES), " KNOWN=", in_array("session.open", Authz::KNOWN_POLICIES, true) ? 1 : 0;
+echo "ATOMS=", implode(",", Authz::TOKEN_SCOPE_ATOMS), " KNOWN=", in_array("session.open", Authz::KNOWN_POLICIES, true) ? 1 : 0;
 ' "$ROOT/src/Authz.php" 2>&1)
-expect "tokenScopeAllows 표(read · read+upload · read+upload+delete · community.write · session.open)" \
-  "authenticated=11111 file.read=11100 file.upload=01100 file.update=01100 file.delete=00100 community.read=00010 community.write=00010 session.open=00001 role:Admin=00000 file.fetch=00000 SCOPES=read,read+upload,read+upload+delete,community.write,session.open KNOWN=1" "$AZ"
+# Q:F-10 — 옛 상수 TOKEN_SCOPES 는 지웠다(원자 표 TOKEN_SCOPE_ATOMS 하나). 옛 다섯 값의 판정 표는 그대로다.
+expect "tokenScopeAllows 표(옛 다섯 값 read · read+upload · read+upload+delete · community.write · session.open)" \
+  "authenticated=11111 file.read=11100 file.upload=01100 file.update=01100 file.delete=00100 community.read=00010 community.write=00010 session.open=00001 role:Admin=00000 file.fetch=00000 ATOMS=read,upload,delete,community.read,community.write,session.open KNOWN=1" "$AZ"
 # 토큰 세션 재인증 라우트 표 — 줄마다 실제 라우트인가(t-box 표 · 커뮤니티 표). 오타는 조용히 열린 창구가 된다
 python3 - "$ROOT" > "$WORK/reauth_routes.txt" <<'PY'
 import re, sys
@@ -687,7 +695,8 @@ cmp_pair() {   # $1 설명 · $2 메서드 · $3 모듈 경로 · $4 새 잼 · 
   expect "$1 — 본문 모양 새=기준" "$bs" "$ns"
 }
 cmp_pair "GET /api/me(일반 세션)"                        GET  "/tbox/api/me"        n_e1 b_e1
-expect "  (값) token_scopes — 새 판은 끝에 session.open 하나가 더(설계 1 — 의도된 변화)" "$(jf "$WORK/b.json" "','.join(d['token_scopes']+['session.open'])")" "$(jf "$WORK/n.json" "','.join(d['token_scopes'])")"
+# Q:F-10 — token_scopes 는 원자 목록이 됐다(기준 판은 옛 사다리 값). 끝이 session.open 인 것은 그대로
+expect "  (값) token_scopes — 새 판은 원자 여섯(Q:F-10) · 기준 판은 옛 사다리 넷" "read,upload,delete,community.read,community.write,session.open | read,read+upload,read+upload+delete,community.write" "$(jf "$WORK/n.json" "','.join(d['token_scopes'])") | $(jf "$WORK/b.json" "','.join(d['token_scopes'])")"
 cmp_pair "GET /api/files(일반 세션)"                     GET  "/tbox/api/files"     n_e1 b_e1
 cmp_pair "GET /api/users(Employee — 인가 403)"           GET  "/tbox/api/users"     n_e1 b_e1
 cmp_pair "GET /api/users(관리자 · 재인증 전 — 403 reauth)" GET  "/tbox/api/users"     n_adm b_adm

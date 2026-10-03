@@ -330,16 +330,26 @@ const COMMUNITY_ROUTES = [
  *
  * 값은 「메서드 + **모듈** 라우트 패턴」(`/community` 를 뗀 표기 — 위 표와 같은 글자)이다. 아래 [2-T] 가 이 표와만
  * 견주므로 토큰 경로를 넓히려면 여기를 고쳐야 하고, 그것이 곧 검토 지점이다(`TBOX_API_TOKEN_ROUTES` 와 같은 원칙).
- * 무엇이 **아닌지**가 이 표의 뜻이다: 목록·검색·고치기·지우기·댓글·공유·게시는 토큰으로 열리지 않는다
- * (기존 글 읽기·검색은 열지 않는다 — 내 개인 공간에 비공개 페이지를 만들고, 그 페이지를 읽는 것까지).
+ * 무엇이 **아닌지**가 이 표의 뜻이다(Q:F-8 때): 목록·검색·고치기·지우기·댓글·공유·게시는 토큰으로 열리지 않았다
+ * (내 개인 공간에 비공개 페이지를 만들고, 그 페이지를 읽는 것까지). 목록·검색은 Q:F-10 에서 열렸다(아래).
  *
- * ★ 셋 모두 **개인 토큰만**(F-59 인자) · 범위 `community.write` 만(`Authz::tokenScopeAllows`) 이다.
- * ★ 셋 다 화면도 쓰는 라우트라, 헤더가 **왔을 때만** 토큰 갈래로 간다 — 헤더가 없으면 세션 경로가 한 글자도 바뀌지 않는다.
+ * Q:F-10 (사이트 PRD Q:F-10 · t-box F-76, ARCH 4.10, SECURITY R-114) — **읽기 셋**을 더했다: 검색 · 한 공간의 목록 · 내가 볼 수
+ * 있는 공간. 정책은 아래 라우트 표의 값 그대로(`community.read`)이고 핸들러는 한 글자도 바뀌지 않았다 — 행 관문(검색·목록의
+ * SQL 조건절 `community_search_pages_where`·`community_visible_pages_where` · 공간 관문 `community_space_gate`)이 세션과 같은 코드다.
+ * 여전히 열리지 않는 것: 고치기·지우기·옮기기·댓글·공유·게시·즐겨찾기·최근 기록.
+ *
+ * ★ 전부 **개인 토큰만**(F-59 인자) · 범위는 `Authz::tokenScopeAllows(범위, 라우트 정책)` 한 곳 — `community.read` 정책은
+ *   원자 `community.read`(또는 그것을 품는 `community.write`), `community.write` 정책은 원자 `community.write` 만 참이다.
+ * ★ 전부 화면도 쓰는 라우트라, 헤더가 **왔을 때만** 토큰 갈래로 간다 — 헤더가 없으면 세션 경로가 한 글자도 바뀌지 않는다.
  */
 const COMMUNITY_API_TOKEN_ROUTES = [
     'GET /api/me/space',
     'POST /api/pages',
     'GET /api/pages/{id}',
+    // Q:F-10 — 읽기 셋(정책 community.read)
+    'GET /api/search',            // 검색 — 비서 「커뮤니티 검색」 · MCP qaredi_search_pages
+    'GET /api/pages',             // 한 공간의 목록(?space=)
+    'GET /api/spaces',            // 내가 볼 수 있는 공간
 ];
 
 /**
@@ -3026,8 +3036,9 @@ function community_dispatch(string $modulePath, string $method): void
      *   되돌아가지 않는다(보낸 인증 방법으로만 판정한다). 표 밖 라우트는 헤더를 읽지 않는다 → 세션 경로 → 401.
      * ★ `requireApiToken(true)` — 개인 토큰만(공용 `.env` 토큰은 403 `shared_token_not_permitted`, F-59 ⑤).
      *   만료 401 · 회수·틀림 401 · 계정 상태 403 은 그 함수 안에서 끝난다(감사도 그 안).
-     * ★ 범위는 `Authz::tokenScopeAllows(범위, 라우트 정책)` 한 곳 — `community.read`·`community.write` 정책은
-     *   범위 `community.write` 만 참이다. 밖이면 index.php [2-S] 와 같은 403 · 같은 감사 한 줄.
+     * ★ 범위는 `Authz::tokenScopeAllows(범위, 라우트 정책)` 한 곳 — Q:F-10 부터 원자 집합: `community.read` 정책은
+     *   원자 `community.read` 또는 `community.write`, `community.write` 정책은 `community.write` 만 참이다.
+     *   밖이면 index.php [2-S] 와 같은 403 · 같은 감사 한 줄.
      * 건너뛰는 것: 세션 조회 · CSRF([3]) · 최초 로그인 강제 절차([3-1]) · 재인증 — 까닭은 index.php [2-T] 주석 그대로
      *   (토큰은 브라우저가 자동으로 싣지 않는다 · 절차 중인 계정은 requireApiToken 이 이미 403 으로 끊는다).
      * 그대로 타는 것: 아래 [4] 인가 · [4-1] 준비 확인 · 핸들러의 행 단위 판정 — 세션과 **같은 코드**다.

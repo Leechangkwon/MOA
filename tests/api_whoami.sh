@@ -2,7 +2,7 @@
 # tests/api_whoami.sh — F-56 「프로그램용 자기 확인」 수락 기준 실행 (PRD 12.2 T-68)
 #
 #   (a) 토큰으로 GET /api/whoami → 200 · 최상위가 **객체** · 키가 정확히
-#       {username,role,team_id,upload_levels} 넷(csrf_token·can_*·next 없음) ·
+#       {username,role,team_id,upload_levels} 넷 + Q:F-10 의 둘(token_scope·token_scopes_held · csrf_token·can_*·next 없음) ·
 #       username == .env 의 API_TOKEN_USER.
 #   (b) 그 upload_levels 가 **같은 계정 세션** GET /api/me 의 upload_levels 와
 #       원소·순서까지 같다(중복 구현이 없다는 증거 — Authz::uploadableLevels 하나).
@@ -198,9 +198,10 @@ else
   echo "  응답: $BODY"
   expect "상태" "200" "$CODE"
   expect "최상위가 객체" "dict" "$(jq_py 'type(d).__name__' < "$WORK/a.json")"
-  expect "키가 정확히 넷" "role,team_id,upload_levels,username" \
+  # Q:F-10 · F-76 (2026-09-29) — 넷 + 이 토큰이 쥔 범위 둘(token_scope · token_scopes_held). T-68 (a) 문구도 같이 고쳤다.
+  expect "키가 정확히 넷 + Q:F-10 의 둘" "role,team_id,token_scope,token_scopes_held,upload_levels,username" \
     "$(jq_py '",".join(sorted(d.keys()))' < "$WORK/a.json")"
-  expect "키 순서(문서와 같은 순서)" "username,role,team_id,upload_levels" \
+  expect "키 순서(문서와 같은 순서)" "username,role,team_id,upload_levels,token_scope,token_scopes_held" \
     "$(jq_py '",".join(d.keys())' < "$WORK/a.json")"
   expect "username == 토큰 귀속 계정(.env API_TOKEN_USER 또는 시험 전용 토큰 파일)" "$TOKEN_USER" "$(jq_py 'd["username"]' < "$WORK/a.json")"
   note "role=$(jq_py 'd["role"]' < "$WORK/a.json")  team_id=$(jq_py 'd["team_id"]' < "$WORK/a.json")  upload_levels=$(jq_py 'json.dumps(d["upload_levels"])' < "$WORK/a.json")"

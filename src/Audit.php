@@ -414,6 +414,8 @@ final class Audit
         'api_token.issue|deny|code_reused'        => '{actor} 이(가) 프로그램 토큰을 발급하려 했지만 이미 쓴 2단계 인증 코드여서 거부했습니다',
         'auth.token|deny|token_expired'           => '만료된 개인 토큰으로 {target} 을(를) 부르려 해서 막았습니다 (내 계정에서 새로 발급해야 합니다)',
         'auth.token|deny|scope_not_permitted'     => '개인 토큰의 범위에 없는 창구 {target} 을(를) 부르려 해서 막았습니다',
+        // Q:F-10 (ARCH 4.10 · SECURITY R-114) — IP 에 묶인 토큰(「이 PC 로그인 전용」 원자가 든 토큰)을 그 IP 밖에서 썼다. 요청 IP 는 행의 ip 칸.
+        'auth.token|deny|ip_mismatch'             => 'IP 에 묶인 개인 토큰을 묶인 IP 가 아닌 곳에서 {target} 에 쓰려 해서 막았습니다 (이 PC 를 다시 등록해야 합니다)',
         // Q:F-9 (t-box F-75, ARCH 4.9 · 7.4) — 「이 PC 로그인 전용」 토큰 · 1회용 로그인 링크 · 토큰 출신 세션.
         //   코드·토큰 원문은 어느 문장에도 없다(자리표시자는 {actor}·{target} 뿐 — 계정 이름).
         'session.link|allow'                      => '{actor} 이(가) 이 PC 로그인 전용 토큰으로 1회용 로그인 링크(30초)를 받았습니다',

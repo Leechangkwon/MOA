@@ -1,10 +1,11 @@
 """Qaredi 창구 클라이언트 (Q:F-8 조각 C) — 표준 라이브러리(urllib)만 쓴다.
 
-부르는 곳은 **정해진 넷뿐**이다(지시서 「계약」). 주소는 코드 상수 + 검사한 페이지 id 로만 만든다:
+부르는 곳은 **정해진 다섯뿐**이다(지시서 「계약」). 주소는 코드 상수 + 검사한 페이지 id · urlencode 한 검색어로만 만든다:
     GET  /tbox/api/whoami
     GET  /community/api/me/space
     POST /community/api/pages          {title, doc}
     GET  /community/api/pages/{uuid}
+    GET  /community/api/search?q=…     (Q:F-10 — 검색어는 쿼리 값 하나로만, 경로에는 들어가지 않는다)
 
 지키는 것
   · 토큰은 `QAREDI_TOKEN_FILE`(내 계정만 읽는 한 줄 파일 — 권장) 또는 환경 변수 `QAREDI_TOKEN` 로 받는다. 이 프로그램은 토큰을
@@ -34,6 +35,8 @@ DEFAULT_URL = "https://changkwon.mso.so"
 USER_AGENT = f"qaredi-mcp/{__version__}"
 MAX_RESPONSE_BYTES = 4 * 1024 * 1024
 TIMEOUT_SECONDS = 30
+SEARCH_Q_MAX = 100          # 서버 `Http::queryText('q', 100)` 와 같은 상한
+SEARCH_LIMIT_MAX = 20       # 서버가 페이지 결과를 최대 20건 준다
 
 _UUID = re.compile(r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}")
 _LOOPBACK = {"127.0.0.1", "localhost", "::1"}
@@ -184,7 +187,7 @@ class QarediClient:
             )
         return cls(base, _Secret(os.environ["QAREDI_TOKEN"]))
 
-    # ── 창구 넷 ──────────────────────────────────────────────────────────────
+    # ── 창구 다섯 ────────────────────────────────────────────────────────────
 
     def whoami(self) -> dict[str, Any]:
         return self._call("GET", "/tbox/api/whoami")
@@ -198,6 +201,9 @@ class QarediClient:
     def get_page(self, page_id: str) -> dict[str, Any]:
         return self._call("GET", "/community/api/pages/" + page_id_from(page_id))
 
+    def search(self, q: str) -> dict[str, Any]:
+        return self._call("GET", "/community/api/search?" + urllib.parse.urlencode({"q": q}))
+
     def page_url(self, page_id: str) -> str:
         return self.base_url + "/community/p/" + page_id_from(page_id)
 
@@ -205,7 +211,54 @@ class QarediClient:
 
     def whoami_summary(self) -> dict[str, Any]:
         data = self.whoami()
-        return {"username": data.get("username"), "role": data.get("role")}
+        out: dict[str, Any] = {"username": data.get("username"), "role": data.get("role")}
+        # Q:F-10 — 서버가 이 토큰이 가진 범위(원자 배열)를 주면 함께 보인다. 없으면(옛 서버) 칸을 만들지 않는다.
+        held = data.get("token_scopes_held")
+        if isinstance(held, list) and all(isinstance(x, str) for x in held):
+            out["token_scopes_held"] = [x[:64] for x in held[:32]]
+        return out
+
+    def search_pages_text(self, q: str, limit: int = 10) -> str:
+        """검색 → 「제목 — 공간 — snippet — id」 한 줄씩. 범위 밖 403 은 **예외가 아니라 문장**으로 돌려준다(C-1)."""
+        query = _one_line(q if isinstance(q, str) else "")[:SEARCH_Q_MAX].strip()
+        if query == "":
+            return "찾을 말이 비었습니다 — 한 글자 이상 적으세요"
+        try:
+            n = int(limit)
+        except (TypeError, ValueError):
+            n = 10
+        n = max(1, min(SEARCH_LIMIT_MAX, n))
+        try:
+            data = self.search(query)
+        except QarediError as exc:
+            if exc.status == 403:
+                # 범위 밖 — 도구 오류가 아니라 까닭 문장으로(C-1). 검색 창구에는 행 단위 403 이 없다(볼 수 없는 글은 결과에서 빠진다).
+                msg = str(exc)
+                if "커뮤니티 읽기" not in msg:
+                    msg += " · 검색에는 범위 「커뮤니티 읽기」 이상이 든 토큰이 필요합니다"
+                return msg
+            raise
+        results = data.get("results") if isinstance(data.get("results"), list) else []
+        lines = []
+        for r in results:
+            if not isinstance(r, dict):
+                continue
+            pid = str(r.get("id", ""))
+            if not _UUID.fullmatch(pid):
+                continue
+            space = r.get("space") if isinstance(r.get("space"), dict) else {}
+            space_name = space.get("name") if isinstance(space.get("name"), str) and space.get("name") else space.get("kind")
+            lines.append(" — ".join([
+                _one_line(r.get("title"))[:200] or "(제목 없음)",
+                _one_line(space_name)[:100] or "(공간 없음)",
+                _one_line(r.get("snippet"))[:300],
+                pid.lower(),
+            ]))
+            if len(lines) >= n:
+                break
+        if not lines:
+            return f"「{query}」 검색 결과가 없습니다(내가 볼 수 있는 페이지 안에서)"
+        return "\n".join(lines)
 
     def write_page(self, title: str, markdown: str) -> dict[str, Any]:
         doc = markdown_to_doc(markdown)             # 상한을 넘으면 DocLimitError — 부르기 전에 멈춘다
@@ -281,6 +334,13 @@ class QarediClient:
         return parsed
 
 
+def _one_line(value: Any) -> str:
+    """서버가 준 글자를 한 줄로 — 줄바꿈·제어 문자는 빈칸으로(결과 한 건 = 한 줄이 흐트러지지 않게)."""
+    if not isinstance(value, str):
+        return ""
+    return re.sub(r"[\x00-\x1f\x7f]+", " ", value).strip()
+
+
 class _Masked:
     """요청 객체를 든 지역 변수의 repr 을 가린다 — capture_locals 가 `req` 의 속성을 펼쳐 찍는 도구(rich 등)에도 헤더가 나가지 않게."""
 
@@ -329,7 +389,11 @@ def _http_error(status: int, raw: bytes, method: str, path: str) -> QarediError:
             for e in errors[:10] if isinstance(e, dict)
         ]
         parts.append("검증 오류 " + ", ".join(shown) + (" …" if len(errors) > 10 else ""))
-    hint = "권한 범위 밖입니다 — 범위 「커뮤니티 글쓰기」 토큰이 필요합니다" if reason == "token_scope" else _HINTS.get(status)
+    scope_denied = reason == "token_scope" or (status == 403 and err.get("error") == "token_scope")
+    hint = (
+        "권한 범위 밖입니다 — 이 일에 맞는 범위(글쓰기는 「커뮤니티 글쓰기」, 검색은 「커뮤니티 읽기」 이상)를 가진 토큰이 필요합니다"
+        if scope_denied else _HINTS.get(status)
+    )
     if hint:
         parts.append(hint)
     return QarediError(" · ".join(parts), status, reason)

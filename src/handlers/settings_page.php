@@ -338,7 +338,7 @@ require __DIR__ . '/../views/shell_top.php';
         </button>
       </div>
       <div class="modal__body">
-        <!-- 범위 <select> 의 옵션은 app.js 가 /api/me 의 token_scopes 로 채운다(고정 목록 0). -->
+        <!-- 범위 <select> 는 app.js 가 /api/me 의 token_scopes(원자)마다 체크박스 한 줄인 묶음으로 바꾼다(Q:F-10 · 고정 목록 0). -->
         <form id="token-issue-form" class="form form--grid" autocomplete="off" hidden>
           <label class="field">
             <span class="field__label">이름 (필수)</span>

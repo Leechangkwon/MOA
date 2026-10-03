@@ -1376,52 +1376,177 @@ final class Authz
     }
 
     /**
-     * F-66 — 개인 프로그램 토큰의 **파일 창구 범위** 세 값 (PRD F-66 ③, ARCH 4.7).
+     * Q:F-10 — 개인 프로그램 토큰 범위의 **원자** 여섯 (사이트 PRD Q:F-10 · t-box PRD F-76, ARCH 4.10).
      *
-     * 순서는 넓어지는 순서다(사다리). 파일 창구(`file.*`)는 이 셋으로만 열린다.
+     * 토큰 하나의 범위는 이 원자들의 **집합**이고, DB(`api_tokens.scope`)에는 이 표의 순서로 정렬해 `+` 로 이은
+     * 문자열 하나로 저장한다(`normalizeScope` 가 만든다). 표의 순서가 곧 정규화 순서다.
+     *
+     *   read             파일 읽기·목록·내려받기 — 파일 원자의 바닥
+     *   upload           파일 올리기·이름 바꾸기·옮기기(`file.upload`·`file.update`) — `read` 필요
+     *   delete           파일 지우기(`file.delete`) — `read`·`upload` 필요
+     *   community.read   커뮤니티 검색·읽기(`community.read` 정책의 토큰 창구) — 독립
+     *   community.write  커뮤니티 쓰기(`community.write` 정책) — 독립. 정규화가 `community.read` 를 **덧붙인다**
+     *   session.open     1회용 로그인 링크(`session.open` 정책) — 독립. 붙으면 `bound_ip` 필수 · 사람당 살아 있는 것 하나 ·
+     *                    그 토큰의 **모든 창구**가 묶인 IP 밖에서는 401(`Auth::requireApiToken`, ARCH 4.9 · 4.10)
+     *
+     * 옛 다섯 값(`read` · `read+upload` · `read+upload+delete` · `community.write` · `session.open`)은 이 모델에서 그대로 뜻이
+     * 통한다 — 넷은 정규화 결과와 글자까지 같고, `community.write` 한 원자로 저장된 옛 행은 마이그레이션
+     * (`2026-10-13_api_tokens_multi_scope.sql`)이 `community.read+community.write` 로 바꾼다. 판정(`tokenScopeAllows`)은
+     * 옛 문자열이 그대로 와도 `community.write` 를 읽기로 인정한다(이중 안전).
+     * 이 표를 늘리려면 DB CHECK(`db/schema.sql` api_tokens_scope_check)·`tokenScopeAllows`·`tokenScopesFor`·화면 라벨
+     * (`app.js` TOKEN_SCOPE_LABELS)을 함께 고쳐야 한다.
      */
-    public const FILE_TOKEN_SCOPES = ['read', 'read+upload', 'read+upload+delete'];
+    public const TOKEN_SCOPE_ATOMS = ['read', 'upload', 'delete', 'community.read', 'community.write', 'session.open', 'assistant.run'];
+
+    /** Q:F-10 — 원자 → 함께 있어야 하는 원자(없으면 정규화가 거부한다 — 「올리기만」「지우기만」 토큰은 없다). */
+    private const TOKEN_SCOPE_REQUIRES = [
+        'upload' => ['read'],
+        'delete' => ['read', 'upload'],
+    ];
+
+    /** Q:F-10 — 원자 → 정규화가 **덧붙이는** 원자(쓰기는 읽기를 품는다 — 저장 문자열에 둘 다 있어 판정이 단순해진다). */
+    private const TOKEN_SCOPE_IMPLIES = [
+        'community.write' => ['community.read'],
+    ];
+
+    /** 요청 한 번에 받는 범위 원소 수의 상한 — 원자는 여섯이고, 그보다 많이 온 요청은 모양부터 틀렸다. */
+    private const TOKEN_SCOPE_MAX_ITEMS = 16;
 
     /**
-     * 개인 프로그램 토큰의 **범위** 전부 — F-66 의 셋 + Q:F-8 의 `community.write` + Q:F-9 의 `session.open` (ARCH 4.7 · 4.8 · 4.9).
+     * Q:F-10 — 범위(원자 배열 또는 `+` 로 이은 문자열)를 **정규형 문자열**로 (ARCH 4.10).
      *
-     * `api_tokens.scope` 의 CHECK 와 같은 다섯 값이다. `community.write` 는 사다리의 넷째 칸이
-     * **아니다**(독립 값) — 파일 창구를 하나도 열지 않고, 파일 범위 셋은 커뮤니티 창구를 열지 않는다.
-     * `session.open`(「이 PC 로그인 전용」)도 독립 값이다 — 1회용 로그인 링크 창구 하나와 whoami 만 연다.
-     * 이 목록을 늘리려면 DB CHECK(6.2-5)·`tokenScopeAllows`·화면 라벨을 함께 고쳐야 한다.
+     * 규칙(순서대로):
+     *   ① 배열이면 원소가 전부 문자열이어야 하고(16개 이하), 문자열이면 `+` 로 쪼갠다(옛 값 `read+upload` 호환)
+     *   ② 원소마다 `TOKEN_SCOPE_ATOMS` 안의 글자여야 한다 — 모르는 원자(빈 글자·대소문자 다른 글자 포함)는 거부
+     *   ③ 겹친 원소는 하나로 · 빈 집합은 거부
+     *   ④ `TOKEN_SCOPE_IMPLIES` 로 덧붙인다(`community.write` → `community.read`)
+     *   ⑤ `TOKEN_SCOPE_REQUIRES` 를 본다(`upload` 는 `read` · `delete` 는 `read`+`upload`) — 모자라면 거부(자동으로 채우지 않는다:
+     *      「지우기」를 골랐는데 「올리기」까지 조용히 열리면 사용자가 고른 것보다 넓은 토큰이 된다. 채우는 것은 화면의 몫 — 체크 연동)
+     *   ⑥ `TOKEN_SCOPE_ATOMS` 순서로 정렬해 `+` 로 잇는다
+     *
+     * 거부는 `InvalidArgumentException` 하나다(발급 창구가 400 으로 바꾼다). 역할을 보지 않는다 — 「이 사람이 고를 수
+     * 있나」는 `tokenScopesFor` 가 따로 본다.
+     *
+     * @param list<mixed>|string $scope
+     * @throws InvalidArgumentException
      */
-    public const TOKEN_SCOPES = ['read', 'read+upload', 'read+upload+delete', 'community.write', 'session.open', 'assistant.run'];
+    public static function normalizeScope(array|string $scope): string
+    {
+        if (is_string($scope)) {
+            $items = explode('+', $scope);
+        } else {
+            if (!array_is_list($scope) || count($scope) > self::TOKEN_SCOPE_MAX_ITEMS) {
+                throw new InvalidArgumentException('범위 모양이 올바르지 않다');
+            }
+            $items = $scope;
+        }
+
+        $set = [];
+        foreach ($items as $item) {
+            if (!is_string($item) || !in_array($item, self::TOKEN_SCOPE_ATOMS, true)) {
+                throw new InvalidArgumentException('모르는 범위 원자');
+            }
+            $set[$item] = true;
+        }
+        if ($set === []) {
+            throw new InvalidArgumentException('빈 범위');
+        }
+        if (isset($set['assistant.run']) && count($set) !== 1) {
+            throw new InvalidArgumentException('비서 실행 토큰은 별도로 발급합니다');
+        }
+        foreach (self::TOKEN_SCOPE_IMPLIES as $atom => $adds) {
+            if (isset($set[$atom])) {
+                foreach ($adds as $add) {
+                    $set[$add] = true;
+                }
+            }
+        }
+        foreach (self::TOKEN_SCOPE_REQUIRES as $atom => $needs) {
+            if (isset($set[$atom])) {
+                foreach ($needs as $need) {
+                    if (!isset($set[$need])) {
+                        throw new InvalidArgumentException('범위 의존 조건 위반');
+                    }
+                }
+            }
+        }
+
+        $out = [];
+        foreach (self::TOKEN_SCOPE_ATOMS as $atom) {
+            if (isset($set[$atom])) {
+                $out[] = $atom;
+            }
+        }
+        return implode('+', $out);
+    }
 
     /**
-     * F-66 — 이 계정이 **고를 수 있는** 범위 목록 (PRD F-66 ③, ARCH 4.7, `GET /api/me` 의 `token_scopes`).
+     * Q:F-10 — 저장된 범위 문자열 → 원자 배열(표의 순서). 목록·발급 응답의 `scopes` 칸과 `GET /api/whoami` 의
+     * `token_scopes_held` 가 쓴다 — 화면·비서가 문자열을 스스로 쪼개지 않게 한다.
+     * 정규형이 아닌 옛 문자열(`community.write` 한 원자)도 그대로 원자로 돌려준다 — **판정에는 쓰지 않는다**
+     * (판정은 `tokenScopeAllows` 한 곳). 모르는 조각은 버린다(DB CHECK 가 있어 생기지 않는다).
      *
-     * 올릴 수도 지울 수도 없는 역할(Guest — PRD 5.2·5.3)에게는 `read` 하나뿐이다.
-     * Q:F-8 — 커뮤니티에 쓸 수 있는 역할(`canCommunityWrite`)이면 `community.write` 가 끝에 붙는다.
-     * Q:F-9 — 2단계가 켜진 비Guest(`canOpenSessionByToken`)이면 그 뒤에 `session.open` 이 붙는다.
-     * 판단은 **역할 문자열이 아니라** `uploadableLevels()` 의 결과로 한다 — 권한 표
-     * (`permissions` 16행)가 바뀌면 이 목록도 자동으로 따라 바뀐다(ARCH 6.2-1).
+     * @return list<string>
+     */
+    public static function scopeAtoms(string $scope): array
+    {
+        $parts = explode('+', $scope);
+        $out   = [];
+        foreach (self::TOKEN_SCOPE_ATOMS as $atom) {
+            if (in_array($atom, $parts, true)) {
+                $out[] = $atom;
+            }
+        }
+        return $out;
+    }
+
+    /**
+     * Q:F-10 — 이 범위에 「이 PC 로그인 전용」 원자가 있나 (IP 묶음 · 사람당 하나 · 상한 셈의 갈림 — ARCH 4.9 · 4.10).
+     * SQL 쪽 같은 판정은 `'session.open' = ANY (string_to_array(scope, '+'))` 한 모양이다.
+     */
+    public static function scopeHasSessionOpen(string $scope): bool
+    {
+        return in_array('session.open', explode('+', $scope), true);
+    }
+
+    /**
+     * F-66 · Q:F-8 · Q:F-9 · **Q:F-10** — 이 계정이 **고를 수 있는 원자** 목록 (ARCH 4.7 · 4.10, `GET /api/me` 의 `token_scopes`).
      *
-     * ★ `upload_levels` 와 같은 성격의 **선택지**이며 권한이 아니다: 화면이 목록에 없는
-     *   값을 보내도 발급 핸들러가 이 함수로 다시 판단하고(`bad_request`), 범위 안이라도
-     *   파일별 판정은 요청마다 `decide*()` 가 다시 한다 (PRD S-01, ARCH 4.7).
+     * Q:F-10 부터 값은 **원자** 배열이다(발급 폼의 체크박스 하나가 원자 하나). 판단은 역할 문자열이 아니라 판정 함수로 한다:
+     *   read             언제나
+     *   upload · delete  `uploadableLevels()` 가 비어 있지 않을 때(옛 사다리 규칙 그대로 — 올릴 수 있으면 셋 다 골랐다.
+     *                    지우기를 고르는 조건이 올리기와 달랐던 적이 없다)
+     *   community.read   `canCommunityWrite` — 커뮤니티 읽기 전용 판정 함수가 따로 없다(`authorize('community.read')` 는
+     *                    「로그인했으면 참」이라 Guest 도 참이다). 지시서 S-1 대로 **쓰기 자격과 같은 판정**(Guest 0)을 쓴다
+     *   community.write  `canCommunityWrite`
+     *   session.open     `canOpenSessionByToken`(2단계 켜짐 · Guest 0)
+     * 순서는 `TOKEN_SCOPE_ATOMS` 와 같다.
+     *
+     * ★ `upload_levels` 와 같은 성격의 **선택지**이며 권한이 아니다: 화면이 목록에 없는 원자를 보내도 발급 핸들러가
+     *   이 함수로 다시 판단하고(`bad_request`), 범위 안이라도 파일·페이지 한 건의 판정은 요청마다 `decide*()` 가 다시 한다.
      *
      * @param array<string,mixed> $u
      * @return list<string>
      */
     public static function tokenScopesFor(array $u): array
     {
+        $atoms = ['read'];
         // 올릴 수 있는 등급이 하나도 없으면 「읽기만」 이다 (Guest 가 그 경우다).
-        $scopes = self::uploadableLevels($u) === [] ? ['read'] : self::FILE_TOKEN_SCOPES;
-        // Q:F-8 — 커뮤니티에 쓸 수 있는 역할만 「커뮤니티 글쓰기」 를 고른다(Guest 0 — 판정은 canCommunityWrite 한 곳).
+        if (self::uploadableLevels($u) !== []) {
+            $atoms[] = 'upload';
+            $atoms[] = 'delete';
+        }
+        // 커뮤니티 읽기·쓰기 — 둘 다 canCommunityWrite 한 곳(Guest 0).
         if (self::canCommunityWrite($u)) {
-            $scopes[] = 'community.write';
+            $atoms[] = 'community.read';
+            $atoms[] = 'community.write';
         }
         // Q:F-9 — 「이 PC 로그인 전용」은 2단계 인증이 켜진 계정 · Guest 가 아닌 계정만(판정은 canOpenSessionByToken 한 곳).
         if (self::canOpenSessionByToken($u)) {
-            $scopes[] = 'session.open';
+            $atoms[] = 'session.open';
         }
-        if (Env::getOrEmpty('ASSISTANT_ENABLED') === '1') $scopes[] = 'assistant.run';
-        return $scopes;
+        if (Env::getOrEmpty('ASSISTANT_ENABLED') === '1') $atoms[] = 'assistant.run';
+        return $atoms;
     }
 
     /**
@@ -1440,51 +1565,65 @@ final class Authz
     }
 
     /**
-     * F-66 — **라우트 정책**이 요구하는 범위를 이 토큰이 갖고 있나 (ARCH 4.7 표).
+     * F-66 · **Q:F-10** — **라우트 정책**이 요구하는 원자를 이 토큰이 갖고 있나 (ARCH 4.7 · 4.10 표).
      *
-     * 창구 이름을 하나하나 적지 않고 **정책 문자열**로 정한다 — 새 토큰 창구가 늘어도
-     * 이 표를 고칠 일이 없고, 창구와 범위가 어긋날 여지가 없다.
+     * 범위 문자열을 `+` 로 쪼갠 **원자 집합**으로 본다. 창구 이름을 하나하나 적지 않고 **정책 문자열**로 정한다 —
+     * 새 토큰 창구가 늘어도 이 표를 고칠 일이 없고, 창구와 범위가 어긋날 여지가 없다.
      *
-     *   `authenticated`                → 전부 허용 (다섯 값 — `GET /api/whoami` 는 토큰 확인용이다)
-     *   `file.read`                    → 파일 범위 셋 (`read` 이상 — `community.write` 는 거짓)
-     *   `file.upload` · `file.update`  → `read+upload` 이상
-     *   `file.delete`                  → `read+upload+delete` 만
-     *   `community.read` · `community.write` → `community.write` 만 (Q:F-8 — 파일 범위 셋은 거짓.
-     *                                    커뮤니티 라우터가 이 정책으로 부르는 창구는 셋뿐이다 — ARCH 4.8)
-     *   `session.open`                 → `session.open` 만 (Q:F-9 — 1회용 로그인 링크 창구 하나 · ARCH 4.9.
-     *                                    `session.open` 범위는 이것과 `authenticated`(whoami) 밖에서 전부 거짓)
-     *   그 밖(모르는 정책)             → **거부**(닫힌 실패). 토큰 집합이 넓어지는 날
-     *                                    그 창구는 범위를 정할 때까지 열리지 않는다.
+     *   (먼저) 모르는 조각이 하나라도 있으면 **모든 정책에서 거짓**(닫힌 실패 — 빈 글자도 모르는 조각이다)
+     *   `authenticated`                → 참(원자가 전부 아는 것 — `GET /api/whoami` 는 토큰 확인용이다)
+     *   `file.read`                    → `read`
+     *   `file.upload` · `file.update`  → `upload`
+     *   `file.delete`                  → `delete`
+     *   `community.read`               → `community.read` 또는 `community.write`(옛 행 `community.write` 한 원자 — 이중 안전)
+     *   `community.write`              → `community.write`
+     *   `session.open`                 → `session.open`
+     *   그 밖(모르는 정책)             → **거부**(닫힌 실패). 토큰 집합이 넓어지는 날 그 창구는 범위를 정할 때까지 열리지 않는다.
      *
-     * ★ 이 함수는 「이 **토큰**이 무엇을 할 수 있나」만 본다. 「이 **계정**이 무엇을 할 수
-     *   있나」는 그 뒤의 `authorize()` 이고, 파일 한 건의 판정은 핸들러의 `decide*()` 다.
-     *   셋이 모두 통과해야 요청이 산다 — 토큰이 계정보다 커질 수 없다(ARCH 4.7).
-     * ★ 역할을 보지 않는다. 인자는 문자열 둘뿐이다.
+     * 원자 사이의 의존(`upload` 는 `read` 필요 등)은 **발급 때** `normalizeScope` 가 지킨다. 여기서는 정책이 요구하는 원자
+     * 하나만 본다 — DB CHECK 는 원자 포함 여부만 보므로(ARCH 6.2-5 「DB 는 마지막 그물」) 의존이 깨진 행이 DB 에 직접 들어와도
+     * 그 행은 자기가 가진 원자만큼만 연다(넓어지지 않는다).
+     *
+     * ★ 이 함수는 「이 **토큰**이 무엇을 할 수 있나」만 본다. 「이 **계정**이 무엇을 할 수 있나」는 그 뒤의 `authorize()` 이고,
+     *   파일 한 건의 판정은 핸들러의 `decide*()` 다. 셋이 모두 통과해야 요청이 산다 — 토큰이 계정보다 커질 수 없다(ARCH 4.7).
+     * ★ 역할을 보지 않는다. 인자는 문자열 둘뿐이다(서명 불변 — Q:F-10).
      */
     public static function tokenScopeAllows(string $scope, string $policy): bool
     {
+        $held = explode('+', $scope);
+        // 모르는 조각(빈 글자 포함)이 하나라도 있으면 그 범위는 **아무 창구도** 열지 않는다(닫힌 실패) — DB CHECK 가 있어
+        // 생기지 않는 값이지만, 생겼다면 「아는 원자만 골라 쓰기」보다 전부 거부가 안전하다.
+        foreach ($held as $atom) {
+            if (!in_array($atom, self::TOKEN_SCOPE_ATOMS, true)) {
+                return false;
+            }
+        }
+
+        if (in_array('assistant.run', $held, true) && count($held) !== 1) return false;
         switch ($policy) {
             case self::POLICY_AUTHENTICATED:
-                return in_array($scope, self::TOKEN_SCOPES, true);
+                return true;     // 위에서 원자가 전부 아는 것임을 봤다(explode 는 빈 배열을 돌려주지 않는다)
 
             case 'file.read':
-                return in_array($scope, self::FILE_TOKEN_SCOPES, true);
+                return in_array('read', $held, true);
 
             case 'file.upload':
             case 'file.update':
-                return $scope === 'read+upload' || $scope === 'read+upload+delete';
+                return in_array('upload', $held, true);
 
             case 'file.delete':
-                return $scope === 'read+upload+delete';
+                return in_array('delete', $held, true);
 
-            // Q:F-8 — 커뮤니티 창구 셋(ARCH 4.8). 독립 값이라 파일 범위 셋은 여기서 거짓이다.
+            // Q:F-8 · Q:F-10 — 커뮤니티 읽기 창구(검색·목록·공간·한 페이지 — ARCH 4.8 · 4.10). 쓰기는 읽기를 품는다.
             case 'community.read':
-            case 'community.write':
-                return $scope === 'community.write';
+                return in_array('community.read', $held, true) || in_array('community.write', $held, true);
 
-            // Q:F-9 — 1회용 로그인 링크 창구 하나(ARCH 4.9). 독립 값이라 다른 범위 넷은 여기서 거짓이다.
+            case 'community.write':
+                return in_array('community.write', $held, true);
+
+            // Q:F-9 — 1회용 로그인 링크 창구 하나(ARCH 4.9).
             case 'session.open':
-                return $scope === 'session.open';
+                return in_array('session.open', $held, true);
 
             case 'assistant.run':
                 return $scope === 'assistant.run';

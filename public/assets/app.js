@@ -7127,36 +7127,59 @@ function initTrash(csrfToken, onRestored) {
  *
  * ★ 이 조각에는 역할 비교가 한 줄도 없다. 무엇이 보이는지는 서버가 내려 준 값
  *   (`can_issue_tokens`·`token_scopes`)과 라우트 정책이 정한다 (DESIGN 0장 1, PRD S-01).
+ * ★ Q:F-10 — 범위는 **원자 집합**이다(ARCH 4.10). 발급 폼은 원자마다 체크박스 하나, 목록 칸은 원자 라벨을 「·」 로 잇는다.
+ *   체크 연동(올리기 → 읽기 등)은 편의일 뿐이고 규칙은 서버 `Authz::normalizeScope` 가 다시 본다(모자라면 400).
  * ★ 값은 전부 `setText`(textContent)다. 발급된 토큰만 읽기 전용 칸의 `value` 로 들어간다 —
  *   문서에 글자로 심지 않는다 (PRD S-03, S-09-11).
  */
 
-/** 범위 네 값의 화면 라벨 (ARCH 4.7 · 4.8 · DESIGN 5장 「영어 약어는 한글 뜻을 붙인다」) —
-    `community.write` 는 Q:F-8(파일 창구가 없는 독립 값). 선택지 자체는 서버의 `token_scopes` 가 정한다 */
+/** Q:F-10 — 범위 **원자** 여섯의 짧은 이름(목록 칸 · 체크박스 앞머리) — ARCH 4.10 · DESIGN 5장 「영어 약어는 한글 뜻을 붙인다」.
+    순서는 서버 `Authz::TOKEN_SCOPE_ATOMS` 와 같다. 선택지 자체는 서버의 `token_scopes` 가 정한다(이 표는 글자만). */
 var TOKEN_SCOPE_LABELS = {
-  'read': '읽기만',
-  'read+upload': '읽기 + 올리기',
-  'read+upload+delete': '읽기 + 올리기 + 지우기',
-  'community.write': '커뮤니티 글쓰기 — 내 개인 공간에 비공개 페이지 만들기·읽기(파일 창구 없음)',
-  /* Q:F-9 — 「이 PC 로그인 전용」(파일·커뮤니티 창구 없음 — 1회용 로그인 링크만). 묶인 IP 는 목록 칸에서 서버 값 그대로 */
-  'session.open': '이 PC 로그인 전용 — 지금 접속한 IP 에서만 · 로그인 없이 화면 열기(민감한 일은 다시 인증)',
-  'assistant.run': '비서 실행 — 읽기 전용 파일 검색·근거 조회와 내 실행 상태(파일·로그인 토큰과 별도)'
+  'read': '파일 읽기',
+  'upload': '파일 올리기',
+  'delete': '파일 지우기',
+  'community.read': '커뮤니티 읽기',
+  'community.write': '커뮤니티 글쓰기',
+  'assistant.run': '비서 실행 (단독)',
+  'session.open': '이 PC 로그인'
+};
+
+/** Q:F-10 — 체크박스 뒤에 붙는 뜻 한 줄(무엇이 열리나 · 무엇을 함께 고르나) */
+var TOKEN_SCOPE_NOTES = {
+  'read': '목록·검색·내려받기',
+  'upload': '올리기·이름 바꾸기·옮기기 (파일 읽기 포함)',
+  'delete': '지우기 (파일 읽기·올리기 포함)',
+  'community.read': '검색·공간 목록·글 읽기',
+  'community.write': '내 개인 공간에 비공개 페이지 만들기 (커뮤니티 읽기 포함)',
+  'assistant.run': '읽기 전용 파일 검색·근거 조회와 내 실행 상태. 다른 범위와 함께 발급하지 않습니다.',
+  'session.open': '지금 접속한 IP 에서만 · 로그인 없이 화면 열기(민감한 일은 다시 인증)'
+};
+
+/** Q:F-10 — 원자 → 함께 켜지는 원자(체크 연동 — 서버 규칙 normalizeScope 와 같은 뜻 · 편의일 뿐 권한이 아니다) */
+var TOKEN_SCOPE_NEEDS = {
+  'upload': ['read'],
+  'delete': ['read', 'upload'],
+  'community.write': ['community.read']
 };
 
 /** Q:F-9 — 범위 칸 글자: 라벨 + 묶인 IP(서버가 준 `bound_ip` 그대로 — 화면이 IP 를 만들거나 고치지 않는다) */
 function tokenScopeCellText(token) {
-  var text = tokenScopeLabel(token ? token.scope : '');
+  var text = tokenScopeLabel(token ? (Array.isArray(token.scopes) ? token.scopes : token.scope) : '');
   if (token && typeof token.bound_ip === 'string' && token.bound_ip !== '') {
     text += ' · 묶인 IP ' + token.bound_ip;
   }
   return text;
 }
 
-/** 모르는 값이 오면 **서버가 준 값 그대로** 보인다 — 화면이 문장을 지어내지 않는다 */
+/** Q:F-10 — 범위(원자 배열 또는 `+` 로 이은 문자열) → 원자 라벨을 「·」 로 이은 글자.
+    모르는 원자는 **서버가 준 글자 그대로** 보인다 — 화면이 문장을 지어내지 않는다 */
 function tokenScopeLabel(scope) {
-  if (typeof scope !== 'string' || scope === '') { return '—'; }
-  return Object.prototype.hasOwnProperty.call(TOKEN_SCOPE_LABELS, scope)
-    ? TOKEN_SCOPE_LABELS[scope] : scope;
+  var atoms = Array.isArray(scope) ? scope : (typeof scope === 'string' && scope !== '' ? scope.split('+') : []);
+  if (atoms.length === 0) { return '—'; }
+  return atoms.map(function (atom) {
+    return Object.prototype.hasOwnProperty.call(TOKEN_SCOPE_LABELS, atom) ? TOKEN_SCOPE_LABELS[atom] : String(atom);
+  }).join(' · ');
 }
 
 /**
@@ -9737,7 +9760,7 @@ function initMyTokens(csrfToken, me) {
   var expiring = document.getElementById('tokens-expiring');
   var blocked  = document.getElementById('token-issue-blocked');
   var msg      = document.getElementById('token-issue-msg');
-  var scopeSel = document.getElementById('token-scope');
+  var scopeSel = document.getElementById('token-scope');   // 화면 틀의 <select> — Q:F-10 부터 아래에서 체크박스 묶음으로 바꾼다
   var nameEl   = document.getElementById('token-name');
   var purpEl   = document.getElementById('token-purpose');
   var pwEl     = document.getElementById('token-password');
@@ -9771,36 +9794,95 @@ function initMyTokens(csrfToken, me) {
     }
   }
 
-  // 범위 선택지 — **서버가 내려 준 목록만**. 화면에 고정 목록을 두지 않는다.
+  /* 범위 선택지 — **서버가 내려 준 원자 목록만**(`token_scopes`). 화면에 고정 목록을 두지 않는다.
+     Q:F-10 — 원자마다 체크박스 하나(여러 개를 골라 한 토큰에 묶는다 · ARCH 4.10). 화면 틀의 `<label class="field">` 안
+     `<select>` 를 같은 클래스의 묶음(`div.field` · role=group)으로 바꾸고, 줄마다 기존 체크박스 줄 모양
+     (`.field__label` 안 체크박스 — settings 「고대비 화면」 과 같은 규칙)을 쓴다. 새 클래스·색값 0 · 글자는 전부 textContent. */
   var scopes = me && Array.isArray(me.token_scopes) ? me.token_scopes : [];
-  if (scopeSel) {
-    while (scopeSel.firstChild) {
-      scopeSel.removeChild(scopeSel.firstChild);
+  var scopeChecks = {};
+  var scopeHelp = null;
+  if (scopeSel && scopeSel.parentNode) {
+    var scopeBox = scopeSel;
+    if (scopeSel.tagName === 'SELECT') {
+      var scopeField = scopeSel.parentNode;
+      var scopeGroup = document.createElement('div');
+      scopeGroup.className = scopeField.className;
+      scopeGroup.setAttribute('role', 'group');
+      while (scopeField.firstChild) {
+        scopeGroup.appendChild(scopeField.firstChild);
+      }
+      if (scopeField.parentNode) {
+        scopeField.parentNode.replaceChild(scopeGroup, scopeField);
+      }
+      var scopeTitle = scopeGroup.querySelector('.field__label');
+      if (scopeTitle) {
+        scopeTitle.id = 'token-scope-title';
+        scopeGroup.setAttribute('aria-labelledby', 'token-scope-title');
+      }
+      scopeBox = document.createElement('div');
+      scopeGroup.replaceChild(scopeBox, scopeSel);
+      scopeBox.id = 'token-scope';
     }
-    scopes.forEach(function (scope) {
-      var option = document.createElement('option');
-      option.value = scope;
-      setText(option, tokenScopeLabel(scope));
-      scopeSel.appendChild(option);
+    while (scopeBox.firstChild) {
+      scopeBox.removeChild(scopeBox.firstChild);
+    }
+    scopes.forEach(function (atom) {
+      var row = document.createElement('label');
+      row.className = 'field__label';
+      var box = document.createElement('input');
+      box.type = 'checkbox';
+      box.value = String(atom);
+      box.checked = atom === 'read';          // 처음에는 「파일 읽기」 하나(옛 select 의 첫 값과 같은 자리)
+      row.appendChild(box);
+      var note = Object.prototype.hasOwnProperty.call(TOKEN_SCOPE_NOTES, atom) ? ' — ' + TOKEN_SCOPE_NOTES[atom] : '';
+      row.appendChild(document.createTextNode(tokenScopeLabel([atom]) + note));
+      scopeBox.appendChild(row);
+      scopeChecks[atom] = box;
+    });
+    scopeHelp = scopeBox.nextElementSibling && scopeBox.nextElementSibling.classList.contains('help')
+      ? scopeBox.nextElementSibling : null;
+  }
+
+  /** 체크 연동 — 켜면 필요한 원자를 함께 켜고, 끄면 그 원자에 기대는 원자를 함께 끈다(서버 규칙과 같은 뜻). */
+  function syncScopeDeps(atom, on) {
+    if (on && atom === 'assistant.run') {
+      Object.keys(scopeChecks).forEach(function (key) { if (key !== atom) scopeChecks[key].checked = false; });
+    } else if (on && scopeChecks['assistant.run']) {
+      scopeChecks['assistant.run'].checked = false;
+    }
+    Object.keys(TOKEN_SCOPE_NEEDS).forEach(function (child) {
+      var needs = TOKEN_SCOPE_NEEDS[child];
+      if (on && child === atom) {
+        needs.forEach(function (need) { if (scopeChecks[need]) { scopeChecks[need].checked = true; } });
+      }
+      if (!on && needs.indexOf(atom) !== -1 && scopeChecks[child]) {
+        scopeChecks[child].checked = false;
+      }
     });
   }
 
-  /* Q:F-9 — 「이 PC 로그인 전용」을 고르면 select 아래 도움말(기존 `.help` 한 줄)을 그 뜻으로 바꾼다. 다른 범위로 돌아가면
-     처음 글자로 되돌린다. 새 요소·새 클래스 0 — 있는 줄의 글자만 바꾼다(textContent). */
-  var scopeHelp = scopeSel && scopeSel.nextElementSibling && scopeSel.nextElementSibling.classList.contains('help')
-    ? scopeSel.nextElementSibling : null;
+  /** 고른 원자 — 서버 표의 순서 그대로(체크박스가 그 순서로 그려졌다) */
+  function checkedScopes() {
+    return scopes.filter(function (atom) { return scopeChecks[atom] && scopeChecks[atom].checked; });
+  }
+
+  /* Q:F-9 · Q:F-10 — 「이 PC 로그인」 을 고르면 묶음 아래 도움말(기존 `.help` 한 줄)을 그 뜻으로 바꾼다. 풀면 처음 글자로
+     되돌린다. 새 요소·새 클래스 0 — 있는 줄의 글자만 바꾼다(textContent). */
   var scopeHelpDefault = scopeHelp ? scopeHelp.textContent : '';
   function syncScopeHelp() {
     if (!scopeHelp) { return; }
-    setText(scopeHelp, scopeSel.value === 'session.open'
+    setText(scopeHelp, scopeChecks['session.open'] && scopeChecks['session.open'].checked
       ? '지금 접속한 IP 에 묶입니다 — 이 PC 에서만 로그인 없이 화면을 엽니다(민감한 일은 비밀번호를 다시 확인). '
-        + '앞서 받은 로그인 전용 토큰은 회수됩니다(한 사람 1대).'
+        + '이 토큰의 다른 범위도 그 IP 에서만 통합니다. 앞서 받은 로그인 전용 토큰은 회수됩니다(한 사람 1대).'
       : scopeHelpDefault);
   }
-  if (scopeSel) {
-    scopeSel.addEventListener('change', syncScopeHelp);
-    syncScopeHelp();
-  }
+  Object.keys(scopeChecks).forEach(function (atom) {
+    scopeChecks[atom].addEventListener('change', function () {
+      syncScopeDeps(atom, scopeChecks[atom].checked);
+      syncScopeHelp();
+    });
+  });
+  syncScopeHelp();
 
   // 폼이냐 안내냐 — `can_issue_tokens`(= 2단계 인증이 켜졌나) 하나만 본다.
   var canIssue = me && me.can_issue_tokens === true;
@@ -9886,10 +9968,15 @@ function initMyTokens(csrfToken, me) {
 
   form.addEventListener('submit', function (event) {
     event.preventDefault();
+    var chosen = checkedScopes();
+    if (chosen.length === 0) {
+      setText(msg, '범위를 하나 이상 고르세요.');
+      return;
+    }
     var payload = {
       name: nameEl ? nameEl.value : '',
       purpose: purpEl ? purpEl.value : '',
-      scope: scopeSel ? scopeSel.value : '',
+      scope: chosen,                          // Q:F-10 — 원자 배열(서버가 정규화한다)
       password: pwEl ? pwEl.value : '',
       otp: otpEl ? otpEl.value : ''
     };
@@ -9909,7 +9996,7 @@ function initMyTokens(csrfToken, me) {
         if (purpEl) { purpEl.value = ''; }
         /* Q:F-9 — 로그인 전용이면 서버가 준 두 값(묶인 IP · 회수한 앞 토큰 수)을 그대로 덧붙인다(사람이 확인). */
         var issuedNote = '';
-        if (result.data && result.data.scope === 'session.open') {
+        if (result.data && Array.isArray(result.data.scopes) && result.data.scopes.indexOf('session.open') !== -1) {
           issuedNote = ' 묶인 IP ' + String(result.data.bound_ip || '—')
             + ' · 앞 토큰 ' + String(typeof result.data.revoked_previous === 'number' ? result.data.revoked_previous : 0) + '개 회수됨.';
         }

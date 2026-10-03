@@ -2,17 +2,18 @@
 
 Claude Desktop · Claude Code 에서 「○○ 주제로 글 써서 올려」라고 하면, Claude 가 Markdown 으로 쓴 글을
 Qaredi 커뮤니티 **내 개인 공간에 비공개 페이지**로 만듭니다(Q:F-8).
-**공개·게시는 사람이 화면에서** 합니다 — 이 프로그램은 비공개 페이지를 만들고 읽는 일만 합니다.
+**공개·게시는 사람이 화면에서** 합니다 — 이 프로그램은 비공개 페이지를 만들고 읽는 일, 그리고 내가 볼 수 있는 페이지를 **검색**하는 일(Q:F-10)만 합니다.
 
 - PC 에서 도는 프로그램입니다(표준입출력 stdio). Qaredi 서버에는 설치하지 않습니다.
-- 부르는 창구는 넷뿐입니다: `GET /tbox/api/whoami` · `GET /community/api/me/space` · `POST /community/api/pages` · `GET /community/api/pages/{id}`.
+- 부르는 창구는 다섯뿐입니다: `GET /tbox/api/whoami` · `GET /community/api/me/space` · `POST /community/api/pages` · `GET /community/api/pages/{id}` · `GET /community/api/search?q=`.
 - 필요한 것: Python 3.10 이상 · 외부 패키지 `mcp`(버전 고정 — `pyproject.toml`).
 
 ## 도구
 
 | 도구 | 하는 일 |
 |---|---|
-| `qaredi_whoami()` | 토큰이 누구의 것인지(계정 이름·역할). 토큰 값은 돌려주지 않습니다 |
+| `qaredi_whoami()` | 토큰이 누구의 것인지(계정 이름·역할). 서버가 알려 주면 이 토큰이 가진 범위 `token_scopes_held` 도 함께. 토큰 값은 돌려주지 않습니다 |
+| `qaredi_search_pages(q, limit=10)` | 커뮤니티에서 **내가 볼 수 있는** 페이지를 검색(찾을 말 1~100자, 건수 1~20). 한 줄에 한 건 `제목 — 공간 — snippet — id` — id 는 `qaredi_read_page` 로 읽습니다. 범위가 없으면(403) 오류 대신 까닭 문장을 돌려줍니다 |
 | `qaredi_write_page(title, markdown)` | Markdown → 블록 문서 → 내 개인 공간에 비공개 페이지. 돌려줌 `{id, url, title, visibility, space, blocks}` |
 | `qaredi_read_page(id)` | 페이지(id 또는 `…/community/p/<id>` 주소)를 Markdown 으로. 고치는 창구는 없습니다 — 새 페이지로 다시 씁니다 |
 
@@ -26,6 +27,8 @@ Markdown 에서 되는 것: 제목 `#`~`###`(넷째 이상은 셋째로) · 문�
 
 1. Qaredi 에 로그인 → **내 계정 → 프로그램 토큰 → 발급**.
 2. 범위는 **「커뮤니티 글쓰기」**(내 개인 공간에 비공개 페이지 만들기·읽기 — 파일 창구는 열리지 않습니다).
+   검색(`qaredi_search_pages`)은 **「커뮤니티 읽기」** 이상이 필요합니다 — 한 토큰에 범위를 여럿 고를 수 있으니(Q:F-10)
+   글쓰기를 고르면 읽기가 함께 들어갑니다. 비서(tbox-buddy)와 같은 토큰 하나를 써도 됩니다.
 3. 토큰은 **한 번만** 보입니다. **나만 읽는 토큰 파일** 하나에 넣습니다(아래). 채팅·문서·명령 줄에 적지 않습니다.
 4. 만료는 발급 뒤 **180일**. 새어 나갔다고 생각되면 같은 화면에서 **회수**하고 새로 발급합니다.
 
@@ -101,6 +104,7 @@ claude mcp add qaredi -e QAREDI_URL=https://changkwon.mso.so -e QAREDI_TOKEN_FIL
 | `HTTP 401` | 토큰이 없거나 틀리거나 만료·회수됨 → 새로 발급 |
 | `QAREDI_TOKEN_FILE …` | 토큰 파일 검사에서 멈춤 — 문장이 까닭을 말한다(권한이면 `chmod 600 <경로>`) |
 | `HTTP 403 reason=token_scope` | 범위가 「커뮤니티 글쓰기」가 아님 → 그 범위로 발급 |
+| `HTTP 403 …` (검색 결과 대신) | 토큰에 「커뮤니티 읽기」 범위가 없음 → 그 범위를 넣어 새로 발급 |
 | `HTTP 403` / `404` (읽기) | 없거나 내가 볼 수 없는 페이지 |
 | `HTTP 400 … 검증 오류 path:reason` | 서버가 문서를 받지 않음(제목 1~200자 등) — 까닭 그대로 |
 | `문서 상한(blocks)` 등 | 올리기 전에 멈춤 — 글을 나눠 여러 페이지로 |

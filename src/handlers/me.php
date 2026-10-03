@@ -130,7 +130,8 @@ $mePayload = [
     /*
      * F-66 — 「프로그램 토큰」 절이 쓰는 값 둘 (PRD F-66 ② ③, ARCH 4.7 「GET /api/me」).
      *
-     *   token_scopes     이 역할이 **고를 수 있는** 범위 배열. 발급 폼의 <select> 를 채운다.
+     *   token_scopes     이 역할이 **고를 수 있는** 범위 **원자** 배열(Q:F-10 — ARCH 4.10). 발급 폼의 체크박스를 채운다.
+     *                    (쥔 범위가 아니다 — 토큰이 쥔 범위는 `GET /api/whoami` 의 `token_scope`·`token_scopes_held`.)
      *                    upload_levels 와 **똑같은 성격**이다 — 화면이 고정 목록을 들고 있으면
      *                    역할 판단이 화면에 생기므로 서버가 내려 준다. 목록에 없는 값을 보내도
      *                    발급 핸들러가 Authz::tokenScopesFor 로 다시 막는다 (PRD S-01).

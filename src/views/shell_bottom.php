@@ -96,9 +96,20 @@ if (isset($pageHelp) && is_string($pageHelp) && $pageHelp !== '') {
  * 값은 저장소 루트 `CHANGELOG.json` 에서 온 **형식 검사를 통과한 문자열**뿐이고,
  * 여기서 전부 htmlspecialchars 를 거친다 (PRD S-03). 요청 값·DB·경로 조립이 한 군데도 없다.
  * 본문(`<main>`) 밖에 둔다 — 닫혀 있는 <dialog> 가 화면 문구 검사에 섞이지 않게.
+ *
+ * 변경 내용 목록은 **관리자에게만** (사용자 결정 2026-09-29 — 「상세 패치 내용은 관리자만, 일반 사용자는 제목만.
+ * 로그인 구조 같은 민감한 내용이 다 보인다」). 일반 사용자에게는 버전·등급·날짜·제목 한 줄만 그린다.
+ *
+ * ★ 역할 비교는 여기에도 없다. 값은 `/api/me` 의 `can_admin` 을 만드는 **그 함수**(`Authz::canAdmin`)를 그대로 부른
+ *   결과다 — shell_top.php 의 `$shellCommunityWrite` 와 같은 원칙(PRD S-01). 「보는 중」이면 유효 역할이 Admin 이
+ *   아니므로 목록이 숨는 것이 맞다.
+ * ★ 숨김은 CSS·스크립트가 아니라 **서버가 아예 내보내지 않는 것**이다 — 일반 사용자 셸에는 `Changelog::headlines()`
+ *   (변경 문장을 뺀 모양)만 건네므로, 개발자도구로 무엇을 되살려도 HTML 안에 문장이 없다.
+ *   CHANGELOG.json 은 한 벌 그대로다(진실은 하나).
  */
 require_once __DIR__ . '/../Changelog.php';
-$shellChangelog = Changelog::entries();
+$shellChangelogFull = $shellUser !== [] && Authz::canAdmin($shellUser);
+$shellChangelog = $shellChangelogFull ? Changelog::entries() : Changelog::headlines();
 ?>
 <dialog id="changelog-dialog" class="modal changelog-dialog" aria-labelledby="changelog-title">
   <div class="modal__head">
@@ -119,11 +130,13 @@ $shellChangelog = Changelog::entries();
         <time class="changelog__at"><?= htmlspecialchars($shellClEntry['released_at'], ENT_QUOTES, 'UTF-8') ?></time>
       </h3>
       <p class="changelog__title"><?= htmlspecialchars($shellClEntry['title'], ENT_QUOTES, 'UTF-8') ?></p>
+<?php   if ($shellChangelogFull && isset($shellClEntry['changes'])): ?>
       <ul class="changelog__list">
-<?php   foreach ($shellClEntry['changes'] as $shellClChange): ?>
+<?php     foreach ($shellClEntry['changes'] as $shellClChange): ?>
         <li><?= htmlspecialchars($shellClChange, ENT_QUOTES, 'UTF-8') ?></li>
-<?php   endforeach; ?>
+<?php     endforeach; ?>
       </ul>
+<?php   endif; ?>
     </section>
 <?php endforeach; ?>
 <?php endif; ?>

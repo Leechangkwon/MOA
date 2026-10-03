@@ -8,7 +8,7 @@ declare(strict_types=1);
  *   실행 파일이 든 압축본 AL-21 (PRD F-65 ⑤ · 7.11, ARCH 5.29 · 11.4 — `file.upload_exec allow` 1건이라도 즉시)
  *   개인 프로그램 토큰 AL-20 (PRD F-59 ⑦, ARCH 4.6 · 11.4 — `api_token.issue allow` 1건이라도 즉시)
  *   지문·얼굴 로그인 AL-23 (T:F-72, ARCH 11.4 — `auth.passkey_register allow` 1건 · `auth.login deny passkey_counter` 1건이라도 즉시)
- *   이 PC 로그인 전용 토큰 AL-24 (Q:F-9 · t-box F-75, ARCH 4.9 · 11.4 — 같은 토큰의 `session.link deny ip_mismatch` 10분 안 3회)
+ *   이 PC 로그인 전용 토큰 AL-24 (Q:F-9 · t-box F-75, ARCH 4.9 · 11.4 — 같은 토큰의 `session.link`·`auth.token`(Q:F-10) `deny ip_mismatch` 10분 안 3회)
  *   악성코드 AL-19 (PRD F-54 ④, ARCH 5.28 · 11.4 — `file.scan deny infected` 1건이라도 즉시)
  *   ARCHITECTURE 11.1 (5분마다 cron) · 11.4 (경보 구성) · 7.4 `alert.raised|allow` · 7.5 `rule`·`evidence`
  *
@@ -936,27 +936,36 @@ if ($want('AL-23')) {
 //   묶는 단위는 **토큰 하나**(대상 = 토큰 주인 계정 · 억제 키에 token_id). 근거: 토큰 번호 · 횟수 · 요청 IP 수(값 아님) · 시각.
 //   ★ 토큰 원문·hint·링크 코드는 담지 않는다 — 감사 로그에 애초에 없다(PRD S-09-11). 요청 IP 는 감사 행의 ip 칸에 있다.
 //   (지시서는 이 규칙을 AL-18 로 불렀지만 AL-18 은 이미 「URL 가져오기 허용 사이트 변경」이다 — 다음 빈 번호 AL-24 를 쓴다.)
+//   Q:F-10 (ARCH 4.10, SECURITY R-114) — 「로그인 전용」 = session.open 원자가 든 토큰이다(다른 원자가 섞여도). 그 토큰은 **모든 창구**가
+//   묶인 IP 밖에서 401 이고 그 거부는 `auth.token deny ip_mismatch`(detail.token_id) 로 남는다 — 같은 신호(토큰이 PC 밖에서 쓰인다)라
+//   두 행을 **함께** 센다(링크 창구는 여전히 `session.link deny ip_mismatch`). 판정에 범위 문자열을 쓰지 않는다 — 두 거부 행은 묶인
+//   IP 가 있는 토큰에서만 나온다(bound_ip ⇔ session.open 원자 — DB CHECK).
 //   origin 은 F-69 판정 그대로(사람 → 휴대폰 즉시 · `claude_`+검토 UA → 18시 요약). 중복 억제는 $raise.
 // ─────────────────────────────────────────────────────────────
 if ($want('AL-24')) {
     $rows = $db->run(
-        "SELECT detail->>'token_id' AS token_id,
-                max(actor_name) AS actor_name,
+        // 검토 RV-QF10-1 — `auth.token deny ip_mismatch` 는 계정을 읽기 **전**의 거부라 actor_name 이 NULL 이다. 이름은 토큰 번호로
+        //   api_tokens → users 를 이어 **토큰 주인**을 쓴다(행위자 이름은 주인 이름이 없을 때만). 잇기는 글자 비교(t.id::text) —
+        //   detail 값을 숫자로 바꾸지 않아 모양이 틀린 detail 이 문장을 깨뜨리지 않는다.
+        "SELECT a.detail->>'token_id' AS token_id,
+                COALESCE(max(u.username), max(a.actor_name)) AS actor_name,
                 count(*) AS n,
-                count(DISTINCT host(ip)) AS ips,
-                max(happened_at) AS last_at,
-                bool_and(COALESCE(user_agent, '') LIKE :review_ua) AS all_marked
-           FROM audit_logs
-          WHERE action = 'session.link' AND result = 'deny' AND reason = 'ip_mismatch'
-            AND detail->>'token_id' IS NOT NULL
-            AND happened_at > now() - interval '10 minutes'
-          GROUP BY detail->>'token_id'
+                count(DISTINCT host(a.ip)) AS ips,
+                max(a.happened_at) AS last_at,
+                bool_and(COALESCE(a.user_agent, '') LIKE :review_ua) AS all_marked
+           FROM audit_logs a
+           LEFT JOIN api_tokens t ON t.id::text = a.detail->>'token_id'
+           LEFT JOIN users u      ON u.id = t.user_id
+          WHERE a.action IN ('session.link', 'auth.token') AND a.result = 'deny' AND a.reason = 'ip_mismatch'
+            AND a.detail->>'token_id' IS NOT NULL
+            AND a.happened_at > now() - interval '10 minutes'
+          GROUP BY a.detail->>'token_id'
          HAVING count(*) >= 3",
         $reviewUa
     )->fetchAll();
     foreach ($rows as $r) {
         $raise('AL-24', (string) ($r['actor_name'] ?? '?'), [
-            'rule_text' => '이 PC 로그인 전용 토큰이 묶인 IP 밖에서 10분 안 3회 이상 로그인 링크를 요청했다',
+            'rule_text' => '이 PC 로그인 전용(IP 에 묶인) 토큰이 묶인 IP 밖에서 10분 안 3회 이상 쓰였다(로그인 링크·파일·커뮤니티 창구)',
             'token_id'  => (string) $r['token_id'],
             'count'     => (int) $r['n'],
             'ips'       => (int) $r['ips'],

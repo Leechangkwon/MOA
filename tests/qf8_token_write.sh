@@ -215,17 +215,22 @@ start_inst() {   # $1 인스턴스 폴더 · $2 포트 → 전역 LAST_PID
 # ════════════════════════════════════════════════════════════════
 hr "T-7 정적 (저장소 — 기준 판 $BASE_REV 대비)"
 RT="$ROOT/src/community/routes.php"
-expect "허용 표는 상수 하나(COMMUNITY_API_TOKEN_ROUTES) · 항목 셋" "1 3" \
+# Q:F-10(2026-09-29) — 읽기 셋(검색 · 한 공간의 목록 · 공간 목록)이 더해져 여섯이다(ARCH 4.10 · API.md 21장)
+expect "허용 표는 상수 하나(COMMUNITY_API_TOKEN_ROUTES) · 항목 여섯(Q:F-8 셋 + Q:F-10 읽기 셋)" "1 6" \
   "$(grep -c '^const COMMUNITY_API_TOKEN_ROUTES = \[$' "$RT") $(sed -n '/^const COMMUNITY_API_TOKEN_ROUTES = \[$/,/^\];$/p' "$RT" | grep -cE "^    '(GET|POST) /api/")"
-expect "표의 셋 = GET /api/me/space · POST /api/pages · GET /api/pages/{id}" "GET /api/me/space|POST /api/pages|GET /api/pages/{id}" \
-  "$(sed -n '/^const COMMUNITY_API_TOKEN_ROUTES = \[$/,/^\];$/p' "$RT" | sed -n "s/^    '\([^']*\)',$/\1/p" | paste -sd'|')"
+expect "표의 여섯 = GET /api/me/space · POST /api/pages · GET /api/pages/{id} · GET /api/search · GET /api/pages · GET /api/spaces" "GET /api/me/space|POST /api/pages|GET /api/pages/{id}|GET /api/search|GET /api/pages|GET /api/spaces" \
+  "$(sed -n '/^const COMMUNITY_API_TOKEN_ROUTES = \[$/,/^\];$/p' "$RT" | sed -n "s/^    '\([^']*\)',.*$/\1/p" | paste -sd'|')"
 expect "X-API-Token 을 읽는 곳 — routes.php 에 한 곳(Http::apiTokenHeader) · 커뮤니티 폴더의 다른 파일 0 · \$_SERVER 직접 0" "1 0 0" \
   "$(grep -c 'Http::apiTokenHeader()' "$RT") $(grep -rl 'apiTokenHeader\|HTTP_X_API_TOKEN' "$ROOT/src/community" | grep -vc '/routes.php$') $(grep -rc 'HTTP_X_API_TOKEN' "$ROOT/src/community" | awk -F: '{s+=$2} END{print s+0}')"
 expect "토큰 갈래의 판정 함수는 기존 셋 그대로(requireApiToken(true) · tokenScopeAllows · MSG_TOKEN_SCOPE)" "1 1 1" \
   "$(grep -c 'Auth::requireApiToken(true)' "$RT") $(grep -c 'Authz::tokenScopeAllows(TBOX_API_TOKEN_SCOPE, \$policy)' "$RT") $(grep -c 'Http::error(403, Http::MSG_TOKEN_SCOPE);' "$RT")"
 # deploy/DEPENDENCIES.md 는 같은 묶음의 조각 C 몫(파이썬 패키지 절)이라 뺀다 — 조각 S 는 deploy/** 를 고치지 않는다
-expect "고치지 않는 파일 차이 0 (index.php · Auth · Http · Db · CommunityAuthz · grants · deploy — 조각 C 의 DEPENDENCIES.md 제외)" "0" \
-  "$(git -C "$ROOT" diff "$BASE_REV" -- public/index.php src/Auth.php src/Http.php src/Db.php src/community/CommunityAuthz.php db/grants.sql deploy ':(exclude)deploy/DEPENDENCIES.md' 2>/dev/null | wc -l)"
+# 이 조각(Q:F-8 커밋 537f4af)이 고치지 않은 파일 — 커밋 그 자체로 본다. 뒤 조각(Q:F-9 · Q:F-10)은 index.php·Auth·grants·deploy(nginx)를
+#   지시서대로 고쳤다 — 지금 트리로 보면 헛실패라, 지금 트리는 어느 조각도 고치지 않는 셋(Http · Db · CommunityAuthz)만 본다.
+expect "Q:F-8 커밋이 고치지 않은 파일 차이 0 (index.php · Auth · Http · Db · CommunityAuthz · grants · deploy — 조각 C 의 DEPENDENCIES.md 제외)" "0" \
+  "$(git -C "$ROOT" diff "$BASE_REV" 537f4af -- public/index.php src/Auth.php src/Http.php src/Db.php src/community/CommunityAuthz.php db/grants.sql deploy ':(exclude)deploy/DEPENDENCIES.md' 2>/dev/null | wc -l)"
+expect "지금 트리 — Http · Db · CommunityAuthz 차이 0" "0" \
+  "$(git -C "$ROOT" diff "$BASE_REV" -- src/Http.php src/Db.php src/community/CommunityAuthz.php 2>/dev/null | wc -l)"
 PHPBAD=0
 for f in $(git -C "$ROOT" diff --name-only "$BASE_REV" -- '*.php' 2>/dev/null) $(git -C "$ROOT" ls-files --others --exclude-standard -- '*.php' 2>/dev/null); do
   [ -f "$ROOT/$f" ] || continue
@@ -243,10 +248,10 @@ require $argv[1];
 $scopes = ["read", "read+upload", "read+upload+delete", "community.write"];
 $pols = ["authenticated", "file.read", "file.upload", "file.update", "file.delete", "community.read", "community.write", "role:Admin", "file.fetch"];
 foreach ($pols as $p) { $row = []; foreach ($scopes as $s) { $row[] = Authz::tokenScopeAllows($s, $p) ? "1" : "0"; } echo $p, "=", implode("", $row), " "; }
-echo "SCOPES=", implode(",", Authz::TOKEN_SCOPES);
+echo "ATOMS=", implode(",", Authz::TOKEN_SCOPE_ATOMS);   // Q:F-10 — 옛 상수 TOKEN_SCOPES 는 지웠다(원자 표 하나)
 ' "$ROOT/src/Authz.php" 2>&1)
 expect "tokenScopeAllows 표(read · read+upload · read+upload+delete · community.write)" \
-  "authenticated=1111 file.read=1110 file.upload=0110 file.update=0110 file.delete=0010 community.read=0001 community.write=0001 role:Admin=0000 file.fetch=0000 SCOPES=read,read+upload,read+upload+delete,community.write" "$AZ"
+  "authenticated=1111 file.read=1110 file.upload=0110 file.update=0110 file.delete=0010 community.read=0001 community.write=0001 role:Admin=0000 file.fetch=0000 ATOMS=read,upload,delete,community.read,community.write,session.open" "$AZ"
 expect "마이그레이션 — 제약 하나를 지우고 다시(네 값) · UPDATE·DELETE·TRUNCATE 0 · 되돌리기 절" "1 1 0 1" \
   "$(grep -c '^ALTER TABLE api_tokens DROP CONSTRAINT IF EXISTS api_tokens_scope_check;$' "$MIG") $(grep -c "CHECK (scope IN ('read', 'read+upload', 'read+upload+delete', 'community.write'))" "$MIG") $(grep -v '^--' "$MIG" | grep -ciE '^\s*(UPDATE|DELETE|TRUNCATE)\b') $(grep -c '^-- 되돌리기' "$MIG")"
 
@@ -280,6 +285,12 @@ expect "마이그레이션 둘째 적용 rc(멱등)" "rc=0" "$M2"
 expect "두 번 적용 뒤 scope CHECK 하나 · 네 값" "1 CHECK ((scope = ANY (ARRAY['read'::text, 'read+upload'::text, 'read+upload+delete'::text, 'community.write'::text])))" "$C2"
 expect "첫 적용과 둘째 적용의 결과가 같다" "$C1" "$C2"
 expect "기존 토큰 행의 범위는 그대로(네 값 밖 0)" "0" "$(psqlq "SELECT count(*) FROM api_tokens WHERE scope NOT IN ('read','read+upload','read+upload+delete','community.write')")"
+# 이 판의 코드는 뒤 조각의 스키마(Q:F-9 2026-10-12 — sessions.origin·token_id · bound_ip · session_links / Q:F-10 2026-10-13 — 원자 CHECK)가
+#   있어야 돈다. 전에는 10-11 하나만 적용해 기준 판 b2ee066 부터 /api/me 가 500 이었다(Q:F-10 조각 S 에서 발견 · 메인 지시로 고침).
+for extra in 2026-10-12_session_open.sql 2026-10-13_api_tokens_multi_scope.sql; do
+  MX=$(tdb psql -h 127.0.0.1 -p 5432 -U tbox_testdb -w -X -q -d "$DB" -v ON_ERROR_STOP=1 -f "$ROOT/db/migrations/$extra" 2>&1 >/dev/null; echo "rc=$?")
+  expect "뒤 조각 마이그레이션 $extra 적용 rc" "rc=0" "$(printf '%s' "$MX" | tail -1)"
+done
 
 INST="$(mktemp -d)"; chmod 700 "$INST"; mkdir -p "$INST/app" "$INST/storage" "$INST/log"
 tar -C "$ROOT" -cf - --exclude=.git --exclude=jar --exclude=api-test.txt --exclude=./.env --exclude=./.claude --exclude=__pycache__ --exclude=./clients . | tar -C "$INST/app" -xf -
@@ -307,7 +318,8 @@ note "세션 셋(claude_employee01 · claude_employee02 · claude_guest01)"
 # ════════════════════════════════════════════════════════════════
 hr "T-1 발급 — 범위 community.write"
 curl -s -b "$JAR_DIR/claude_employee01.jar" -A "$UA" "$BASE/api/me" > "$WORK/me.json"
-expect "claude_employee01 token_scopes(파일 셋 + community.write)" "read,read+upload,read+upload+delete,community.write" "$(jf "$WORK/me.json" "','.join(d.get('token_scopes',[]))")"
+# Q:F-10 — token_scopes 는 고를 수 있는 **원자**(2단계가 켜진 비Guest 라 session.open 까지)
+expect "claude_employee01 token_scopes(원자 — 파일 셋 + 커뮤니티 둘 + 이 PC 로그인)" "read,upload,delete,community.read,community.write,session.open" "$(jf "$WORK/me.json" "','.join(d.get('token_scopes',[]))")"
 curl -s -b "$JAR_DIR/claude_guest01.jar" -A "$UA" "$BASE/api/me" > "$WORK/gme.json"
 expect "claude_guest01 token_scopes 는 read 하나(커뮤니티 쓰기 자격 없음)" "read" "$(jf "$WORK/gme.json" "','.join(d.get('token_scopes',[]))")"
 A0=$(maxaudit)
@@ -315,13 +327,14 @@ issue_as claude_guest01 TOK_G community.write 000000
 expect "Guest 가 community.write 발급 → 400(허용 목록 밖 · 비밀번호 확인 전에 끝남)" "400" "$ISSUED_CODE"
 issue_as claude_employee01 TOK_X community.admin 000000
 expect "모르는 범위 값 → 400" "400" "$ISSUED_CODE"
-issue_as claude_employee01 TOK_X 'read+community.write' 000000
-expect "사다리에 끼운 값(read+community.write) → 400" "400" "$ISSUED_CODE"
+# Q:F-10 — read+community.write 는 이제 합법(묶음)이다. 의존이 모자란 묶음(upload 에 read 없음)으로 거부를 본다
+issue_as claude_employee01 TOK_X 'upload+community.write' 000000
+expect "의존이 모자란 묶음(upload+community.write — upload 에 read 없음) → 400" "400" "$ISSUED_CODE"
 expect "위 세 거부는 실패 집계 0(claude_employee01 failed_count)" "0" "$(psqlq "SELECT failed_count FROM users WHERE username='claude_employee01'")"
 issue_as claude_employee01 TOK_CW community.write next
-expect "claude_employee01 community.write 발급 → 201" "201 community.write" "$ISSUED_CODE $ISSUED_SCOPE"
+expect "claude_employee01 community.write 발급 → 201 · 정규형 community.read+community.write(Q:F-10 — 쓰기는 읽기를 품는다)" "201 community.read+community.write" "$ISSUED_CODE $ISSUED_SCOPE"
 CW_ID="$ISSUED_ID"
-expect "DB 행 범위 · 만료 180일" "community.write 180" "$(psqlq "SELECT scope || ' ' || round(extract(epoch FROM expires_at - created_at) / 86400) FROM api_tokens WHERE id = ${CW_ID:-0}")"
+expect "DB 행 범위 · 만료 180일" "community.read+community.write 180" "$(psqlq "SELECT scope || ' ' || round(extract(epoch FROM expires_at - created_at) / 86400) FROM api_tokens WHERE id = ${CW_ID:-0}")"
 issue_as claude_employee01 TOK_R read next
 expect "claude_employee01 read 발급 → 201(T-4 범위 거부용)" "201 read" "$ISSUED_CODE $ISSUED_SCOPE"
 R_ID="$ISSUED_ID"
@@ -361,7 +374,7 @@ expect "응답 space.kind · visibility · parent_id · 내 공간 번호" "pers
 expect "임시 DB 행 — 개인 공간 · 비공개 · 부모 없음 · 작성자 claude_employee01 · 블록 5" "personal private true $UID1 5" \
   "$(psqlq "SELECT s.kind || ' ' || p.visibility || ' ' || (p.parent_page_id IS NULL) || ' ' || p.author_id || ' ' || p.block_count FROM community.pages p JOIN community.spaces s ON s.id = p.space_id WHERE p.public_id = CAST('${PID_T:-00000000-0000-0000-0000-000000000000}' AS uuid)")"
 expect "감사 page.create allow 한 행 — auth=api_token · token_kind=personal · token_id · token_scope · 행위자 claude_employee01 · UA" "1" \
-  "$(psqlq "SELECT count(*) FROM audit_logs WHERE id > $A1 AND action = 'page.create' AND result = 'allow' AND detail->>'auth' = 'api_token' AND detail->>'token_kind' = 'personal' AND detail->>'token_id' = '${CW_ID:-0}' AND detail->>'token_scope' = 'community.write' AND actor_name = 'claude_employee01' AND user_agent = '$UA'")"
+  "$(psqlq "SELECT count(*) FROM audit_logs WHERE id > $A1 AND action = 'page.create' AND result = 'allow' AND detail->>'auth' = 'api_token' AND detail->>'token_kind' = 'personal' AND detail->>'token_id' = '${CW_ID:-0}' AND detail->>'token_scope' = 'community.read+community.write' AND actor_name = 'claude_employee01' AND user_agent = '$UA'")"
 expect "감사 route = POST /community/api/pages" "POST /community/api/pages" \
   "$(psqlq "SELECT detail->>'route' FROM audit_logs WHERE id > $A1 AND action = 'page.create' ORDER BY id DESC LIMIT 1")"
 
@@ -443,7 +456,7 @@ PY2
 printf '{}' > "$WORK/empty.json"
 NROUTES=$(grep -c "^\s*\['\(GET\|POST\|PATCH\|PUT\|DELETE\)'," "$RT")
 NCLOSED=$(grep -c . "$WORK/closed.tsv")
-expect "전수 대상 = 라우트 표 줄 수 − 허용 셋(중복 없음)" "$((NROUTES - 3))" "$NCLOSED"
+expect "전수 대상 = 라우트 표 줄 수 − 허용 여섯(중복 없음)" "$((NROUTES - 6))" "$NCLOSED"
 A3=$(maxaudit)
 BAD=0; NAPI=0; NSCR=0
 while IFS=$'\t' read -r m pat path; do
@@ -453,10 +466,12 @@ while IFS=$'\t' read -r m pat path; do
     *)      NSCR=$((NSCR+1)); [ "$C" = "302" ] || { BAD=$((BAD+1)); echo "    ✖ $m $pat → $C"; } ;;
   esac
 done < "$WORK/closed.tsv"
-note "전수: API $NAPI 개 · 화면 $NSCR 개 (허용 셋 3 제외 · 라우트 표 $NROUTES 줄)"
+note "전수: API $NAPI 개 · 화면 $NSCR 개 (허용 여섯 제외 · 라우트 표 $NROUTES 줄)"
 expect "허용 셋 밖 커뮤니티 창구 전부 — community.write 토큰만으로 API 401 「로그인이 필요합니다」 · 화면 302(로그인)" "0" "$BAD"
 [ "$NCLOSED" -gt 50 ] && expect "전수 목록이 헛돌지 않았다(50 개 넘게)" "yes" "yes" || expect "전수 목록이 헛돌지 않았다(50 개 넘게)" "yes" "no($NCLOSED)"
-C=$(treq TOK_CW GET "$CBASE/api/search?q=QF8");            expect "토큰 GET /community/api/search?q=… → 401(쿼리 붙은 모양도)" "401 로그인이 필요합니다" "$C $(err_of)"
+# Q:F-10 — 검색은 토큰 창구가 됐다(community.write 는 읽기를 품어 200). 쿼리 붙은 닫힌 창구는 최근 기록으로 본다
+C=$(treq TOK_CW GET "$CBASE/api/me/recent?limit=5");       expect "토큰 GET /community/api/me/recent?limit=… → 401(쿼리 붙은 모양도)" "401 로그인이 필요합니다" "$C $(err_of)"
+C=$(treq TOK_CW GET "$CBASE/api/search?q=QF8");            expect "토큰 GET /community/api/search?q=… → 200(Q:F-10 읽기 창구 — 쓰기 토큰은 읽기를 품는다)" "200" "$C"
 expect "닫힌 창구의 토큰 사용 기록 0(auth=api_token 행 0 — 헤더를 읽지 않았다)" "0" \
   "$(psqlq "SELECT count(*) FROM audit_logs WHERE id > $A3 AND detail->>'auth' = 'api_token'")"
 expect "그 페이지는 그대로(지워지지 않고 제목 그대로)" "QF8 토큰 글 true" "$(psqlq "SELECT title || ' ' || (deleted_at IS NULL) FROM community.pages WHERE public_id = CAST('${PID_T:-00000000-0000-0000-0000-000000000000}' AS uuid)")"

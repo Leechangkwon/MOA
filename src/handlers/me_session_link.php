@@ -14,13 +14,14 @@ declare(strict_types=1);
  * 여기 닿기 전에 라우터가 끝낸 것([2-T] · [2-S] · [4]):
  *   · `X-API-Token` 헤더 필수(없으면 401 — 세션 쿠키로 되돌아가지 않는다) · 개인 토큰만(공용 403) · 틀림·회수 401 · 만료 401 ·
  *     계정 비활성·만료·절차 중 403(Auth::requireApiToken)
- *   · 범위가 `session.open` 이 아니면 403 token_scope(Authz::tokenScopeAllows)
+ *   · 범위에 `session.open` 원자가 없으면 403 token_scope(Authz::tokenScopeAllows)
  *   · 계정이 지금도 자격이 있나 — 2단계 켜짐 · Guest 아님(Authz::authorize('session.open') = canOpenSessionByToken)
  *
  * 순서
  *   ⓪ 한 토큰 1분 5회 — 받은 링크 + IP 불일치 거부를 함께 센다(검토 RV-QF9-4 · IP 확인보다 앞) → 넘으면 429
  *   ① **지금 요청의 IP**(Http::clientIp — REMOTE_ADDR, nginx 가 믿는 프록시에 대해서만 복원)가 그 토큰의 `bound_ip` 인가 —
- *      비교는 DB 가 한다(INET = INET, IPv6 표기 차이 없음). 아니면 **403** `{"error":…, "code":"ip_mismatch"}` +
+ *      비교는 DB 가 한다(INET = INET, IPv6 표기 차이 없음). Q:F-10 부터 비교는 토큰 조회 한 곳(Auth::requireApiToken)이 하고
+ *      여기서는 그 값(Auth::apiTokenIpOk)만 읽는다 — 다른 창구는 같은 판정으로 401 token_ip_mismatch, 이 창구만 아래 답. 아니면 **403** `{"error":…, "code":"ip_mismatch"}` +
  *      `session.link deny ip_mismatch`(요청 IP 는 감사 행의 ip 칸 · token_id 는 autoDetail). 비서는 이 답을 보고 「이 PC 다시 등록」을 안내한다.
  *      10분 안 3회면 경보 AL-24(scripts/alerts.php).
  *   ② 한 토큰 1분 5회 — 넘으면 **429** + `session.link deny rate_limited`(세는 재료는 session_links 의 최근 60초 행 — DB 시계)
@@ -69,22 +70,13 @@ if (!is_array($rate) || (int) $rate['n'] >= Auth::SESSION_LINK_PER_MINUTE) {
     exit;
 }
 
-// ─── [2] 지금 IP = 묶인 IP (비교는 DB — 판정 값은 서버가 본 IP 뿐) ─────
+// ─── [2] 지금 IP = 묶인 IP ─────
 //        틀린 IP 의 시도는 링크를 만들지도 소비하지도 않는다(검토 RV-QF9-8) — 거부 행 하나와 위 [1] 의 셈에만 든다.
-$sqlBound = <<<'SQL'
-    SELECT (bound_ip = CAST(:cur_ip AS inet)) AS ip_ok
-      FROM api_tokens
-     WHERE id = :id
-       AND user_id = :uid
-       AND scope = 'session.open'
-       AND revoked_at IS NULL
-    SQL;
-$bound = $tokenId > 0
-    ? $db->run($sqlBound, [':cur_ip' => Http::clientIp(), ':id' => $tokenId, ':uid' => $userId])->fetch()
-    : false;
-// 행이 없는 갈래는 라우터 관문([2-T] 해시 조회 · [2-S] 범위)과 CHECK(session.open ⇔ bound_ip)가 있어 닿을 수 없다 —
-// 닿더라도 **닫힌 쪽**(IP 불일치와 같은 답)으로 끝낸다.
-if (!is_array($bound) || $bound['ip_ok'] !== true) {
+//        Q:F-10 (ARCH 4.10) — 비교는 토큰 조회 한 곳(Auth::requireApiToken 의 SQL `ip_ok` — INET = INET, 서버가 본 IP 뿐)이 이미 했고
+//        이 창구만 그 자리에서 끝내지 않고 값을 넘겨받는다(Auth::SESSION_LINK_ROUTE) — 분당 셈 뒤에 이 창구의 답(403 ip_mismatch ·
+//        session.link deny · 경보 AL-24)으로 끝내려고. 판정 코드는 한 벌이다. 범위에 session.open 이 있는지는 라우터 [2-S] 가 봤고,
+//        그 원자가 있으면 DB CHECK 가 bound_ip 를 강제한다 — 묶인 IP 가 없어 참이 되는 갈래는 닿을 수 없다.
+if ($tokenId <= 0 || !Auth::apiTokenIpOk()) {
     Audit::deny('session.link', 'ip_mismatch', $auditTarget);
     Http::json(['error' => TBOX_SESSION_LINK_MSG_IP, 'code' => 'ip_mismatch'], 403);
     exit;

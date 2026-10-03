@@ -5194,6 +5194,102 @@
       "est_sec": 150,
       "writes_prod": false,
       "notes": "부르는 셸: tbox.g0_private_grants. 단독 실행 불가(인자 SITE UA SHOTS IDS_JSON · 세션 셋(직원1·직원2·손님)을 표준입력 세 줄로). 결과 줄 SMOKE_FAIL=n. 360·412 터치·820 터치·1280 × 라이트·다크 스크린샷(~/.claude/ui-shots/g0)."
+    },
+    {
+      "id": "tbox.changelog_admin_only",
+      "cmd": "bash tests/changelog_admin_only.sh",
+      "module": "tbox",
+      "env": "temp-instance",
+      "status": "required",
+      "needs": [
+        "sudo"
+      ],
+      "covers": [
+        "src/views/shell_bottom.php",
+        "src/views/shell_top.php",
+        "src/Changelog.php",
+        "src/Authz.php",
+        "src/handlers/me.php",
+        "src/handlers/home.php",
+        "src/community/handlers/home_page.php",
+        "src/handlers/reauth.php",
+        "src/handlers/me_act_start.php",
+        "src/handlers/me_act_stop.php",
+        "src/handlers/login_page.php",
+        "CHANGELOG.json",
+        "public/assets/app.js",
+        "scripts/security_lint.sh"
+      ],
+      "requirements": [
+        "F-47",
+        "S-01",
+        "S-03"
+      ],
+      "risks": [
+        "R-62"
+      ],
+      "est_sec": 20,
+      "writes_prod": false,
+      "notes": "F-47 변경 이력 창의 변경 내용 목록은 관리자에게만(사용자 결정 2026-09-29). 임시 DB tbox_cladm_<포트>_test(운영 사본 pg_dump 읽기만 · CLADM_MIG_FROM 기본 2026-10-12 부터의 마이그레이션을 임시 DB 에만) · 임시 인스턴스 하나(CLADM_PORT 8431~8433 기본 8431). claude_admin01·claude_employee01 로 /tbox/·/community/ 셸 HTML 을 받아 changelog__list 유무·첫 변경 문장 유무를 grep. 보는 중(재인증 → POST /api/me/act Employee → DELETE)은 임시 DB 세션 행만 바뀐다."
+    },
+    {
+      "id": "core.qf10_multi_scope",
+      "cmd": "bash tests/qf10_multi_scope.sh",
+      "module": "core",
+      "env": "temp-instance",
+      "status": "required",
+      "needs": [
+        "sudo",
+        "totp_wait"
+      ],
+      "covers": [
+        "src/Authz.php",
+        "src/Auth.php",
+        "src/Audit.php",
+        "src/handlers/me_tokens_issue.php",
+        "src/handlers/me_tokens_list.php",
+        "src/handlers/api_tokens_list.php",
+        "src/handlers/me.php",
+        "src/handlers/api_whoami.php",
+        "src/handlers/me_session_link.php",
+        "src/handlers/session_open_page.php",
+        "src/handlers/files_list.php",
+        "src/handlers/api_upload.php",
+        "src/community/routes.php",
+        "src/community/handlers/search.php",
+        "src/community/handlers/pages_list.php",
+        "src/community/handlers/spaces_list.php",
+        "src/community/handlers/pages_get.php",
+        "src/community/handlers/space_me.php",
+        "src/community/handlers/pages_create.php",
+        "public/index.php",
+        "public/assets/app.js",
+        "scripts/alerts.php",
+        "scripts/security_lint.sh",
+        "db/schema.sql",
+        "db/migrations/2026-10-12_session_open.sql",
+        "db/migrations/2026-10-13_api_tokens_multi_scope.sql"
+      ],
+      "requirements": [
+        "Q:F-10",
+        "F-76",
+        "F-75",
+        "F-74",
+        "F-66",
+        "F-59",
+        "F-56"
+      ],
+      "risks": [
+        "R-114",
+        "R-113",
+        "R-112",
+        "R-97",
+        "R-91",
+        "R-62"
+      ],
+      "est_sec": 330,
+      "writes_prod": false,
+      "notes": "Q:F-10 조각 S 수락 T-1~T-8(지시서 docs/qf10-multi-scope-directive.md S-6). 임시 DB tbox_qf10_<포트>_test(운영 사본 pg_dump 읽기만) + 새 설치 대조용 tbox_qf10_<포트>_schema(db/schema.sql) · 마이그레이션 2026-10-12 뒤 옛 다섯 값 행을 직접 넣고 2026-10-13 두 번(멱등)·모르는 값이면 멈춤(임시 DB 에서만 CHECK 를 잠깐 뗌) · 임시 인스턴스 하나(QF10_PORT 8451~8455 기본 8451 · 워커 넷) · 발급 여섯에 TOTP 창 여섯 · 묶음 토큰의 bound_ip 는 임시 DB 에서 바꿔 IP 밖을 흉내 · T-6 은 같은 사람의 토큰·세션 답을 본문까지 대조. REGRESS=1 이면 api_tokens · api_whoami 를 같은 임시 인스턴스에서 사본으로(qf8·qf9 는 각자 스크립트)."
     }
   ]
 }

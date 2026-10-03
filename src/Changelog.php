@@ -118,6 +118,29 @@ final class Changelog
     }
 
     /**
+     * 변경 이력의 **제목만** 모양 — `entries()` 에서 변경 문장(`changes`)을 뺀 네 칸.
+     *
+     * 관리자가 아닌 사용자의 셸이 받는 값이다(사용자 결정 2026-09-29 — 상세 패치 내용은 관리자만).
+     * 누구에게 무엇을 줄지는 부르는 쪽이 `Authz` 함수로 정한다 — 이 클래스는 역할을 모른다.
+     * 진실은 여전히 `CHANGELOG.json` 한 벌이고, 여기서는 같은 검사를 통과한 항목에서 칸을 덜어 낼 뿐이다.
+     *
+     * @return array<int, array{version:string, level:string, released_at:string, title:string}>
+     */
+    public static function headlines(): array
+    {
+        $out = [];
+        foreach (self::entries() as $entry) {
+            $out[] = [
+                'version'     => $entry['version'],
+                'level'       => $entry['level'],
+                'released_at' => $entry['released_at'],
+                'title'       => $entry['title'],
+            ];
+        }
+        return $out;
+    }
+
+    /**
      * 등급의 한국어 이름. 표에 없는 값이면 빈 문자열 — 화면에 낯선 영어가 그대로 나가지 않게 한다.
      */
     public static function levelLabel(string $level): string

@@ -31,7 +31,7 @@
 #       401 셋을 실측한다.
 #   (g) 닫힘·회귀  개인 토큰으로 POST /api/users/{uid}/api-tokens → 401(라우트 집합 밖) ·
 #       개인 토큰으로 PATCH /api/files/{id} {access_level} → 400 불변 · 세션 DELETE
-#       /api/files/{id} CSRF 없이 → 403(웹 불변) · GET /api/whoami 키 넷 불변 ·
+#       /api/files/{id} CSRF 없이 → 403(웹 불변) · GET /api/whoami 키 넷 + Q:F-10 의 둘 ·
 #       `\dp api_tokens` = `tbox_app=arw`(DELETE 없음) · alerts.php --rule AL-20 1건 ·
 #       scripts/security_lint.sh 0 · php -l · bash -n.
 #
@@ -400,7 +400,8 @@ R=$(curl -s -w '\n%{http_code}' -b "$JAR_DIR/claude_admin01.jar" -A "$UA" "$BASE
 CODE=$(code_of "$R"); printf '%s' "$(body_of "$R")" > "$WORK/list.json"
 expect "목록 상태" "200" "$CODE"
 expect "목록에 방금 발급한 행" "1" "$(jq_py "sum(1 for t in d['tokens'] if str(t['id'])=='$TID')" < "$WORK/list.json")"
-expect "목록 행의 키 (F-66: scope·expires_at 추가)" "created_at,expires_at,hint,id,last_used_at,name,revoked_at,scope" \
+# Q:F-9 가 bound_ip(로그인 전용 토큰의 묶인 IP), Q:F-10 이 scopes(원자 배열)를 더했다(API.md 13장 · 21장)
+expect "목록 행의 키 (F-66: scope·expires_at · Q:F-9: bound_ip · Q:F-10: scopes 추가)" "bound_ip,created_at,expires_at,hint,id,last_used_at,name,revoked_at,scope,scopes" \
   "$(jq_py "','.join(sorted(d['tokens'][0].keys())) if d['tokens'] else '(빈 목록)'" < "$WORK/list.json")"
 expect "목록에 token 키 없음" "0" "$(grep -c '"token"' "$WORK/list.json")"
 
@@ -478,7 +479,8 @@ else
   expect "whoami 상태" "200" "$(code_of "$R")"
   expect "whoami username" "claude_employee01" \
     "$(printf '%s' "$(body_of "$R")" | sed -n 's/.*"username":"\([^"]*\)".*/\1/p')"
-  expect "whoami 키 넷 (T-68 불변)" "role,team_id,upload_levels,username" \
+  # Q:F-10 · F-76 (2026-09-29) — T-68 (a) 가 「넷 + 쥔 범위 둘」로 바뀌었다
+  expect "whoami 키 넷 + Q:F-10 의 둘 (T-68)" "role,team_id,token_scope,token_scopes_held,upload_levels,username" \
     "$(printf '%s' "$(body_of "$R")" | jq_py "','.join(sorted(d.keys()))")"
 
   R=$(curl_hdr_secret X-API-Token TOK -s -w '\n%{http_code}' -A "$UA" "$BASE/api/files?limit=5")

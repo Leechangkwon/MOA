@@ -167,6 +167,19 @@ final class Auth
     public const SESSION_LINK_PER_MINUTE = 5;
 
     /**
+     * Q:F-10 (ARCH 4.9 · 4.10) — 묶인 IP 판정을 **스스로 답하는** 창구 하나: 1회용 로그인 링크(`me_session_link.php`).
+     *
+     * 이 창구는 IP 가 틀린 요청을 분당 셈(RV-QF9-4)에 넣은 뒤 403 `ip_mismatch` + `session.link deny ip_mismatch`(경보 AL-24 의 재료)로
+     * 답한다 — 비서가 그 답을 보고 「이 PC 다시 등록」을 안내한다(Q:F-9 계약). 그래서 `requireApiToken` 은 이 라우트에서만 IP 불일치로
+     * 끝내지 않고 판정 값(`apiTokenIpOk()`)만 넘긴다. 비교는 같은 SQL(`SQL_FIND_API_TOKEN` 의 `ip_ok`) 한 번이다 — 판정 코드는 한 벌.
+     * 값은 라우터가 매칭한 **라우트 패턴**(`TBOX_ROUTE` — 코드가 정한 표의 글자)과 견주며 요청 값이 아니다.
+     */
+    public const SESSION_LINK_ROUTE = 'POST /api/me/session-link';
+
+    /** Q:F-10 — 묶인 IP 밖에서 쓴 토큰의 401 문장(비서가 사람에게 그대로 보인다 · 무엇을 하면 되나). 코드 `token_ip_mismatch`. */
+    public const MSG_TOKEN_IP_MISMATCH = '이 토큰이 묶인 IP 가 아닌 곳에서 요청했습니다 — 이 PC 를 다시 등록하세요(내 계정 → 프로그램 토큰)';
+
+    /**
      * 「사람이 누르지 않은 주기 요청」의 표식 — 헤더 이름과 값 (Q:F-4 U-3, 2026-09-24, ARCH 4.0 · 5.20).
      *
      * 알림 폴링·편집 heartbeat 처럼 화면이 **저절로** 보내는 요청은 이 헤더를 단다(`editor.js`).
@@ -250,7 +263,8 @@ final class Auth
                 OR (s.origin = 'token'
                     AND t.revoked_at IS NULL
                     AND t.expires_at > now()
-                    AND t.scope = 'session.open'
+                    -- Q:F-10 — 범위는 원자 집합(ARCH 4.10). 「이 PC 로그인 전용」 원자가 들어 있으면 된다.
+                    AND 'session.open' = ANY (string_to_array(t.scope, '+'))
                     AND t.bound_ip = s.ip
                     AND s.ip = CAST(:cur_ip AS inet)
                     -- 검토 RV-QF9-3 — 2단계를 끄면 이미 연 토큰 세션도 끝난다(로그인 전용 토큰의 자격 = 2단계 켜짐).
@@ -354,7 +368,11 @@ final class Auth
      */
     private const SQL_FIND_API_TOKEN = <<<'SQL'
         SELECT id, user_id, scope,
-               (expires_at <= now()) AS is_expired
+               (expires_at <= now()) AS is_expired,
+               -- Q:F-10 (ARCH 4.9 · 4.10) — 묶인 IP 가 있는 토큰(「이 PC 로그인 전용」 원자가 든 토큰)은 **지금 요청의 IP** 가
+               -- 그 IP 일 때만 참. 비교는 DB 가 한다(INET = INET — IPv6 표기 차이 없음). 묶인 IP 가 없으면 언제나 참.
+               -- 요청 IP 를 알 수 없으면(NULL) 묶인 토큰은 거짓(COALESCE — 닫힌 쪽).
+               (bound_ip IS NULL OR COALESCE(bound_ip = CAST(:cur_ip AS inet), false)) AS ip_ok
           FROM api_tokens
          WHERE token_hash = :hash AND revoked_at IS NULL
         SQL;
@@ -517,7 +535,8 @@ final class Auth
         SELECT l.id, l.token_id, l.user_id, u.username,
                (l.used_at IS NOT NULL)      AS is_used,
                (l.expires_at <= now())      AS is_expired,
-               (t.revoked_at IS NULL AND t.expires_at > now() AND t.scope = 'session.open'
+               (t.revoked_at IS NULL AND t.expires_at > now()
+                AND 'session.open' = ANY (string_to_array(t.scope, '+'))   -- Q:F-10 원자 집합(ARCH 4.10)
                 AND t.bound_ip = l.ip)      AS token_ok,
                (l.ip = CAST(:cur_ip AS inet)) AS ip_ok
           FROM session_links l
@@ -542,6 +561,9 @@ final class Auth
     /** @var array<string,mixed>|null */
     private static ?array $user = null;
     private static bool $resolved = false;
+
+    /** Q:F-10 — 이 요청의 개인 토큰이 묶인 IP 판정을 통과했나(`requireApiToken` 이 한 번 세운다 · 묶인 IP 없는 토큰은 참). */
+    private static bool $apiTokenIpOk = false;
 
     /**
      * 지금 요청의 사용자. 없으면 null. 요청 1회당 DB 조회 1회로 캐시한다.
@@ -825,7 +847,11 @@ final class Auth
         $scope   = '';
 
         // ② 개인 토큰 — 해시로만 찾는다 (F-59, ARCH 4.6)
-        $found = $db->run(self::SQL_FIND_API_TOKEN, [':hash' => hash('sha256', $sent)])->fetch();
+        $found = $db->run(self::SQL_FIND_API_TOKEN, [
+            ':hash'   => hash('sha256', $sent),
+            // Q:F-10 — 묶인 IP 비교에 쓰는 지금 요청의 IP(REMOTE_ADDR — nginx 가 믿는 프록시에 대해서만 복원). 요청 머리를 읽지 않는다.
+            ':cur_ip' => Http::clientIp(),
+        ])->fetch();
 
         if (is_array($found)) {
             /* F-66 — **만료**는 계정보다 먼저 본다 (ARCH 4.7 판정 순서).
@@ -848,6 +874,29 @@ final class Auth
                 ]);
                 // 틀린 토큰의 401 과 **문구가 다르다** — 쥔 쪽이 우리 프로그램이라 이유를 준다.
                 Http::error(401, Http::MSG_TOKEN_EXPIRED);
+            }
+
+            /* Q:F-10 (ARCH 4.9 · 4.10, SECURITY R-114) — 묶인 IP 가 있는 토큰(「이 PC 로그인 전용」 원자가 든 토큰)은 그 IP 밖에서
+             * **어느 창구도** 열지 않는다(사용자 결정 「고정 PC 에서만」의 확장 — 범위를 묶어도 IP 묶음이 전부에 걸린다).
+             * 만료 다음 · 계정 읽기 앞이다: 틀린 곳에서 온 요청으로는 계정 상태를 읽지 않는다. 판정 값은 SQL 의 `ip_ok` 하나.
+             * 예외는 링크 창구 하나(SESSION_LINK_ROUTE) — 그 핸들러가 같은 값(`apiTokenIpOk()`)으로 분당 셈 뒤에 스스로 답한다. */
+            self::$apiTokenIpOk = $found['ip_ok'] === true;
+            if (!self::$apiTokenIpOk
+                && !(defined('TBOX_ROUTE') && constant('TBOX_ROUTE') === self::SESSION_LINK_ROUTE)
+            ) {
+                Audit::deny('auth.token', 'ip_mismatch', [
+                    'target_type' => 'system',
+                    'target_name' => defined('TBOX_ROUTE')
+                        ? (string) constant('TBOX_ROUTE')
+                        : Http::method() . ' ' . Http::path(),
+                    // 요청 IP 는 감사 행의 ip 칸(Audit 가 Http::clientIp 로 채운다) — detail 에는 어느 토큰이었나만.
+                    'detail'      => [
+                        'token_id'    => (int) $found['id'],
+                        'token_scope' => (string) $found['scope'],
+                    ],
+                ]);
+                Http::json(['error' => self::MSG_TOKEN_IP_MISMATCH, 'code' => 'token_ip_mismatch'], 401);
+                exit;
             }
 
             $row = $db->run(self::SQL_LOAD_USER_BY_ID, [':id' => (int) $found['user_id']])->fetch();
@@ -896,6 +945,11 @@ final class Auth
             $scope = 'read+upload';
         }
 
+        if ($kind === 'shared') {
+            // 공용 토큰에는 묶인 IP 가 없다(범위 열도 없다 — 위 ③).
+            self::$apiTokenIpOk = true;
+        }
+
         // 인증 값은 들고 다니지 않는다 — 토큰 경로가 쓰는 것은 id·username·role·team_id 다.
         unset($row['password_hash'], $row['mfa_secret'], $row['mfa_last_step']);
 
@@ -927,6 +981,16 @@ final class Auth
         }
 
         return $row;
+    }
+
+    /**
+     * Q:F-10 — 이 요청의 개인 토큰이 **묶인 IP 판정**을 통과했나(`requireApiToken` 이 `SQL_FIND_API_TOKEN` 의 `ip_ok` 로 세운 값).
+     * 묶인 IP 가 없는 토큰·공용 토큰은 참. 토큰 갈래가 아닌 요청에서는 거짓(닫힌 쪽).
+     * 쓰는 곳: 링크 창구(`me_session_link.php`) — `SESSION_LINK_ROUTE` 에서만 requireApiToken 이 끝내지 않고 이 값을 넘긴다.
+     */
+    public static function apiTokenIpOk(): bool
+    {
+        return defined('TBOX_API_TOKEN_KIND') && self::$apiTokenIpOk;
     }
 
     /**

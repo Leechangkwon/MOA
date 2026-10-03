@@ -19,10 +19,13 @@ declare(strict_types=1);
  * 받는 값 (JSON, 허용 키 **다섯**, 전부 필수 — R-07 대량 할당 차단)
  *   name      라벨 「사무실 PC」 — 폴더 이름과 같은 규칙(trim 뒤 1~50자, 제어문자·`/`·`\` 금지)
  *   purpose   용도 — 필수 500자. DB 에는 F-59 와 같은 `reason_text` 열에 들어간다 (PRD S-07)
- *   scope     `read` · `read+upload` · `read+upload+delete` · `community.write`(Q:F-8 — 커뮤니티 글쓰기,
- *             파일 창구 없음 · 독립 값) · `session.open`(Q:F-9 — 「이 PC 로그인 전용」 · 지금 요청 IP 에 묶임 ·
- *             같은 사람의 앞 로그인 전용 토큰 자동 회수 · 2단계 켜진 비Guest 만) 중 **역할이 허용하는 것만**
- *             (`Authz::tokenScopesFor` — 목록 밖이면 400)
+ *   scope     Q:F-10 — **원자의 배열**(예: `["read","upload","community.read","session.open"]`) 또는 옛 문자열
+ *             (`"read+upload"` — `+` 로 쪼갠다). 원자: `read` · `upload` · `delete` · `community.read` · `community.write` ·
+ *             `session.open`(ARCH 4.10). `Authz::normalizeScope` 가 정규형 문자열로 바꾼다(모르는 원자 · 빈 집합 ·
+ *             `upload` 만 · `delete` 에 `upload` 없음 → 400 · `community.write` 는 `community.read` 를 덧붙인다).
+ *             정규형의 원자가 전부 **이 사람이 고를 수 있는 것**이어야 한다(`Authz::tokenScopesFor` — 밖이면 400).
+ *             `session.open` 원자가 들면 「이 PC 로그인 전용」: 지금 요청 IP 에 묶임(그 토큰의 **모든 창구**가 그 IP 에서만) ·
+ *             같은 사람의 앞 로그인 전용(session.open 포함) 토큰 자동 회수 · 2단계 켜진 비Guest 만
  *   password  현재 비밀번호 — 요청마다 확인한다(세션에 창을 남기지 않는다)
  *   otp       지금의 2단계 인증 코드 6자리
  *
@@ -118,21 +121,36 @@ if ($purpose === '' || iconv_strlen($purpose, 'UTF-8') > 500) {
     $reject('bad_request');
 }
 
-// ─── [4] 범위 — **이 역할이 고를 수 있는 것만** (PRD F-66 ③, ARCH 4.7) ──
+// ─── [4] 범위 — 정규화 뒤 **이 역할이 고를 수 있는 원자만** (PRD F-66 ③ · F-76, ARCH 4.7 · 4.10) ──
 //        모르는 값도 역할 밖 값도 같은 `bad_request` 다 — 「그 범위는 당신 역할 밖」 이라는
-//        힌트를 주지 않는다. 판단은 Authz 한 곳이고 여기에 역할 비교가 없다.
+//        힌트를 주지 않는다. 판단은 Authz 두 함수(normalizeScope · tokenScopesFor)이고 여기에 역할 비교가 없다.
+//        요청 값은 정규화를 지난 뒤에만 쓴다 — 저장되는 것은 언제나 정규형 문자열이다.
 $rawScope = $body['scope'] ?? null;
-if (!is_string($rawScope) || !in_array($rawScope, Authz::tokenScopesFor($user), true)) {
+$scope    = '';
+try {
+    if (is_string($rawScope) && strlen($rawScope) <= 200) {
+        $scope = Authz::normalizeScope($rawScope);
+    } elseif (is_array($rawScope)) {
+        $scope = Authz::normalizeScope($rawScope);
+    } else {
+        throw new InvalidArgumentException('범위 모양이 올바르지 않다');
+    }
+} catch (InvalidArgumentException $e) {
     $reject('bad_request');
 }
-$scope = $rawScope;
+if (array_diff(Authz::scopeAtoms($scope), Authz::tokenScopesFor($user)) !== []) {
+    $reject('bad_request');
+}
+// Q:F-10 — 「이 PC 로그인 전용」 원자가 들었나(IP 묶음 · 1대 규칙 · 상한 셈이 이 값 하나로 갈린다).
+$hasSessionOpen = Authz::scopeHasSessionOpen($scope);
 
 // ─── [4-1] Q:F-9 — 「이 PC 로그인 전용」(session.open)은 **지금 이 요청의 IP** 에 묶는다 (t-box F-75 ②, ARCH 4.9) ──
 //        값은 Http::clientIp() 하나(REMOTE_ADDR — nginx 가 믿는 프록시에 대해서만 복원)이고 요청 머리·본문에서 읽지 않는다.
 //        알 수 없으면(null) 발급하지 않는다 — 비밀번호·코드를 확인하기 **전**에 끝낸다(코드를 태우지 않는다 · 실패로 세지 않는다).
-//        다른 범위의 토큰에는 IP 가 없다(DB CHECK `(scope = 'session.open') = (bound_ip IS NOT NULL)`).
+//        Q:F-10 — session.open 원자가 든 토큰이면 다른 원자가 섞여도 묶는다(그 토큰의 모든 창구가 이 IP 에서만 — Auth::requireApiToken).
+//        그 원자가 없는 토큰에는 IP 가 없다(DB CHECK `('session.open' = ANY (string_to_array(scope, '+'))) = (bound_ip IS NOT NULL)`).
 $boundIp = null;
-if ($scope === 'session.open') {
+if ($hasSessionOpen) {
     $boundIp = Http::clientIp();
     if ($boundIp === null) {
         Audit::deny('api_token.issue', 'ip_unknown', $auditTarget);
@@ -184,15 +202,16 @@ unset($password, $otp, $body);
 // ─── [9] 살아 있는 토큰 상한 (PRD F-66 ⑤, ARCH 4.6) ─────────────
 //        Q:F-9 — 「이 PC 로그인 전용」을 새로 받으면 앞의 로그인 전용 토큰은 아래 [11] 에서 회수된다(1대 규칙).
 //        그래서 그 발급은 살아 있는 **로그인 전용 토큰을 빼고** 센다(n_other). 다른 범위의 발급은 전처럼 전부 센다.
+//        Q:F-10 — 「로그인 전용」은 이제 「session.open 원자가 든」 토큰이다(다른 원자가 섞여도 1대 규칙으로 회수된다).
 $sqlLive = <<<'SQL'
     SELECT count(*) AS n,
-           count(*) FILTER (WHERE scope <> 'session.open') AS n_other
+           count(*) FILTER (WHERE NOT ('session.open' = ANY (string_to_array(scope, '+')))) AS n_other
       FROM api_tokens
      WHERE user_id = :uid AND revoked_at IS NULL
     SQL;
 $live = $db->run($sqlLive, [':uid' => $userId])->fetch();
 $liveCount = !is_array($live) ? TBOX_API_TOKEN_MAX_LIVE
-    : ($scope === 'session.open' ? (int) $live['n_other'] : (int) $live['n']);
+    : ($hasSessionOpen ? (int) $live['n_other'] : (int) $live['n']);
 if ($liveCount >= TBOX_API_TOKEN_MAX_LIVE) {
     $reject('limit_exceeded');
 }
@@ -231,7 +250,7 @@ $sqlReplace = <<<'SQL'
        SET revoked_at = now(),
            revoked_by = :by
      WHERE user_id = :uid
-       AND scope = 'session.open'
+       AND 'session.open' = ANY (string_to_array(scope, '+'))   -- Q:F-10 원자 집합(ARCH 4.10)
        AND revoked_at IS NULL
     RETURNING id, name
     SQL;
@@ -247,7 +266,7 @@ for ($issueTry = 1; ; $issueTry++) {
     $revokedPrevious = 0;
     $db->begin();
     try {
-        if ($scope === 'session.open') {
+        if ($hasSessionOpen) {
             $replaced = $db->run($sqlReplace, [':by' => $userId, ':uid' => $userId])->fetchAll();
             foreach ($replaced as $old) {
                 // 토큰 하나에 감사 한 행 — Auth::revokeAllApiTokens 와 같은 모양(번호·이름뿐 · 값·해시·hint 0)
@@ -270,7 +289,7 @@ for ($issueTry = 1; ; $issueTry++) {
             ':purpose' => $purpose,
             ':scope'   => $scope,
             ':ttl'     => Auth::API_TOKEN_TTL_DAYS,
-            // Q:F-9 — session.open 만 값이 있다(위 [4-1] — 서버가 본 IP). 나머지는 NULL.
+            // Q:F-9 · Q:F-10 — session.open 원자가 든 토큰만 값이 있다(위 [4-1] — 서버가 본 IP). 나머지는 NULL.
             ':bound_ip' => $boundIp,
         ])->fetch();
         if (!is_array($row)) {
@@ -296,7 +315,7 @@ for ($issueTry = 1; ; $issueTry++) {
         $db->commit();
     } catch (PDOException $e) {
         $db->rollback();
-        $oneOpen = $scope === 'session.open' && (string) $e->getCode() === '23505'
+        $oneOpen = $hasSessionOpen && (string) $e->getCode() === '23505'
             && strpos($e->getMessage(), 'api_tokens_one_session_open') !== false;
         if (!$oneOpen) {
             throw $e;
@@ -318,10 +337,12 @@ $issued = [
     'name'       => $name,
     'hint'       => $hint,
     'scope'      => $scope,
+    // Q:F-10 — 같은 범위를 원자 배열로(화면·비서가 문자열을 쪼개지 않게 · API.md 20장·21장).
+    'scopes'     => Authz::scopeAtoms($scope),
     'expires_at' => $expiresAt,
     'token'      => $plain,
 ];
-if ($scope === 'session.open') {
+if ($hasSessionOpen) {
     // Q:F-9 — 사람이 확인하는 두 값: 어느 IP 에 묶였나 · 앞의 로그인 전용 토큰을 몇 개 회수했나 (API.md 20장).
     $issued['bound_ip']         = $boundIp;
     $issued['revoked_previous'] = $revokedPrevious;
