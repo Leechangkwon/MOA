@@ -4,6 +4,7 @@ import argparse
 import copy
 import io
 import json
+import os
 from pathlib import Path
 import re
 import shutil
@@ -35,6 +36,7 @@ def page_html(shared='', profile='', post=''):
     # PHP rendering is checked separately when PHP is installed; no server test is claimed here.
     source = (ROOT / 'src/community/handlers/memories_page.php').read_text()
     component = source[source.index('<section id="community-threads"'):source.index("<?php if ($isShared): ?></body>")]
+    component = re.sub(r'<\?php if \(!\$isShared\): \?>(.*?)<\?php endif; \?>', lambda m: '' if shared else m[1], component, flags=re.S)
     component = render_expressions(component, shared, profile, post)
     css = '<link rel="stylesheet" href="/tbox/assets/app.css"><link rel="stylesheet" href="/tbox/assets/community/community.css"><link rel="stylesheet" href="/tbox/assets/community/memories.css"><link rel="stylesheet" href="/tbox/assets/community/messenger.css">'
     head = '<!doctype html><html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">'+css+'</head>'
@@ -131,7 +133,7 @@ def main():
     checks=[]
     def ok(label): checks.append(label); print('PASS', label, flush=True)
     with sync_playwright() as p:
-        browser = p.chromium.launch(headless=True, args=['--no-sandbox'])
+        browser = p.chromium.launch(executable_path=os.environ.get('CHROMIUM_EXECUTABLE'), headless=True, args=['--no-sandbox'])
         ctx = browser.new_context(viewport={'width':1440,'height':1100}, device_scale_factor=1)
         mock=Mock(); ctx.route(ORIGIN+'/**', mock.route)
         page=ctx.new_page(); errors=[]; page.on('pageerror', lambda e: errors.append(str(e)))

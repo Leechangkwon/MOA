@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Real modal/components in Chromium; mocked HTTP. Backend authorization is NOT simulated as proof."""
 import json
+import os
 from pathlib import Path
 from urllib.parse import urlparse, parse_qs
 from playwright.sync_api import sync_playwright
@@ -53,7 +54,7 @@ def main():
     out=Path('/tmp/qaredi-memories-preview');out.mkdir(parents=True,exist_ok=True); checks=[]
     def ok(x): checks.append(x);print('PASS',x,flush=True)
     with sync_playwright() as p:
-        browser=p.chromium.launch(headless=True,args=['--no-sandbox'])
+        browser=p.chromium.launch(executable_path=os.environ.get('CHROMIUM_EXECUTABLE'),headless=True,args=['--no-sandbox'])
         ctx=browser.new_context(viewport={'width':1440,'height':1000});mock=MessengerMock();ctx.route(ORIGIN+'/**',mock.route)
         page=ctx.new_page();errors=[];page.on('pageerror',lambda e:errors.append(str(e)));page.goto(ORIGIN+'/community/');page.locator('.post').wait_for()
         assert page.locator('aside.sidebar [data-thread-nav]').count()==3

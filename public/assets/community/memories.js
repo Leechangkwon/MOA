@@ -8,6 +8,13 @@
   const state = { me: null, posts: [], view: 'feed', grid: false, profile: surface.dataset.profile || '', post: surface.dataset.post || '', next: null, search: '', request: 0, controller: null };
   let draft = null, editing = null, media = [], busy = false, draftTimer, dbPromise, commentPost, studioPost, imported = [], confirmAction;
   let toastTimer;
+  let selectionError = '';
+  const mediaTypes = { jpg: 'image/jpeg', jpeg: 'image/jpeg', jpe: 'image/jpeg', png: 'image/png', webp: 'image/webp', gif: 'image/gif', mp4: 'video/mp4', mov: 'video/quicktime', webm: 'video/webm' };
+  function fileMime(file) {
+    const type = (file.type || '').toLowerCase();
+    if (!type || type === 'application/octet-stream' || type === 'image/*' || type === 'video/*') return mediaTypes[file.name.split('.').pop().toLowerCase()] || '';
+    return type === 'image/jpg' ? 'image/jpeg' : type;
+  }
   const localUrls = new Set();
   const labels = { private: '나만 보기', community: '커뮤니티', shared: '링크 공유' };
   const date = (value) => new Intl.DateTimeFormat('ko-KR', { month: 'long', day: 'numeric' }).format(new Date(value.length === 10 ? value + 'T12:00:00' : value));
@@ -140,11 +147,12 @@
   function showDialog(id) { const d = $(id); if (!d.open) d.showModal(); }
   function closeDialog(id) { if (busy && id === 'compose-dialog') return; if (id === 'compose-dialog') saveDraft(); $(id).close(); }
   async function setView(view) { if (view === 'mine' && shared) return; state.view = view; state.profile = ''; state.post = ''; state.search = ''; $('search').value = ''; if (!shared) history.replaceState(null, '', base + (view === 'feed' ? '/' : '/?view=' + view)); await load(); }
-  function makeLocal(file) { const url = URL.createObjectURL(file); localUrls.add(url); return { file, mime: file.type || (file.name.toLowerCase().endsWith('.mov') ? 'video/quicktime' : 'image/jpeg'), filename: file.name, bytes: file.size, url }; }
+  function makeLocal(file) { const url = URL.createObjectURL(file); localUrls.add(url); return { file, mime: fileMime(file), filename: file.name, bytes: file.size, url }; }
   function releaseLocal() { localUrls.forEach((url) => URL.revokeObjectURL(url)); localUrls.clear(); }
   function fillCompose(value) {
     $('caption').value = value.caption || ''; $('location').value = value.location || ''; $('trip').value = value.trip || ''; $('taken-on').value = value.taken_on || today(); $('visibility').value = value.visibility || 'private';
     $('compose-title').textContent = editing ? '순간 다듬기' : '새로운 순간'; $('publish').querySelector('span').textContent = editing ? '변경 저장하기' : '순간 저장하기';
+    selectionError = value.selection_error || '';
     $('compose-error').textContent = ''; $('draft-status').textContent = ''; updateCaption(); visibilityHint(); renderMedia();
   }
   async function openCompose(post = null, fromDraft = false) {
@@ -161,6 +169,10 @@
     showDialog('compose-dialog'); $('resume-draft').hidden = true;
   }
   function renderMedia() {
+    $('media-selection-status').textContent = media.length ? `사진·영상 ${media.length}개 선택됨 · 저장할 때 함께 올려요` : '선택된 사진·영상이 없어요';
+    $('media-selection-error').textContent = selectionError;
+    $('media-selection-error').hidden = !selectionError;
+    $('skip-rejected-media').hidden = !selectionError;
     $('media-preview').replaceChildren(...media.map((item, index) => {
       const n = el('div', 'preview-item'); n.append(mediaElement(item, true));
       const remove = button('×', 'remove-media', () => { media.splice(index, 1); if (localUrls.has(item.url)) { URL.revokeObjectURL(item.url); localUrls.delete(item.url); } renderMedia(); scheduleDraft(); }); remove.setAttribute('aria-label', `${item.filename} 빼기`); n.append(remove);
@@ -172,15 +184,24 @@
   function checkFiles(files, count = media.length) {
     if (files.length + count > 10) throw new Error('한 기록에 사진과 영상은 최대 10개까지 넣을 수 있어요.');
     for (const file of files) {
-      const video = file.type.startsWith('video/') || /\.(mp4|mov|webm)$/i.test(file.name);
+      const mime = fileMime(file), video = mime.startsWith('video/');
+      if (!Object.values(mediaTypes).includes(mime)) throw new Error(`${file.name}: JPG·PNG·WebP·GIF 사진이나 MP4·MOV·WebM 영상을 골라 주세요. HEIC 사진은 JPG로 내보내 주세요.`);
       if (!file.size || file.size > (video ? 100 : 20) * 1024 * 1024) throw new Error(`${file.name}: 사진 20MB, 영상 100MB 이내로 골라 주세요.`);
-      if (!video && !file.type.startsWith('image/')) throw new Error('사진 또는 영상 파일을 골라 주세요.');
     }
   }
-  function addFiles(input) { try { const files = Array.from(input.files || []); checkFiles(files); media.push(...files.map(makeLocal)); renderMedia(); scheduleDraft(); } catch (e) { $('compose-error').textContent = errorText(e); } input.value = ''; }
+  function addFiles(input) {
+    const files = Array.from(input.files || []);
+    if (!files.length) return; // Cancelling the picker must not dismiss a previous failure.
+    try {
+      checkFiles(files); media.push(...files.map(makeLocal)); selectionError = ''; $('compose-error').textContent = '';
+    } catch (e) {
+      selectionError = errorText(e); $('compose-error').textContent = selectionError;
+    }
+    renderMedia(); scheduleDraft(); input.value = '';
+  }
   function updateCaption() { $('caption-count').textContent = `${Array.from($('caption').value).length.toLocaleString()} / 5,000`; }
   function visibilityHint() { $('visibility-hint').textContent = { private: '나만 볼 수 있어요. 나중에 공개 범위를 바꿀 수 있습니다.', community: 'qaredi에 로그인한 사람들이 피드에서 볼 수 있어요.', shared: '커뮤니티와 공유 링크에서 볼 수 있어요. 저장 후 ‘공유’로 로그인 없는 친구에게 보내세요.' }[$('visibility').value]; }
-  function currentDraft() { return { request_id: draft?.request_id || uuid(), editing, caption: $('caption').value, location: $('location').value, trip: $('trip').value, taken_on: $('taken-on').value, visibility: $('visibility').value, media: media.map(({ file, id, mime, filename, bytes, url }) => ({ file, id, mime, filename, bytes, url: file ? '' : url })), saved_at: Date.now() }; }
+  function currentDraft() { return { request_id: draft?.request_id || uuid(), editing, selection_error: selectionError, caption: $('caption').value, location: $('location').value, trip: $('trip').value, taken_on: $('taken-on').value, visibility: $('visibility').value, media: media.map(({ file, id, mime, filename, bytes, url }) => ({ file, id, mime, filename, bytes, url: file ? '' : url })), saved_at: Date.now() }; }
   function openDb() {
     if (!dbPromise) dbPromise = new Promise((resolve, reject) => { const req = indexedDB.open('qaredi-travel-drafts', 1); req.onupgradeneeded = () => req.result.createObjectStore('drafts'); req.onsuccess = () => resolve(req.result); req.onerror = () => reject(req.error); });
     return dbPromise;
@@ -215,6 +236,10 @@
   }
   async function publish(event) {
     event.preventDefault(); if (busy) return;
+    if (selectionError) {
+      $('compose-error').textContent = '추가하지 못한 사진·영상이 있어요. 다시 고르거나 해당 파일을 제외할지 확인해 주세요.';
+      $('media-selection-error').scrollIntoView({ block: 'center' }); await saveDraft(); return;
+    }
     if (!$('caption').value.trim() && !media.length) { $('compose-error').textContent = '사진이나 짧은 글을 하나 남겨 주세요.'; return; }
     if (!navigator.onLine) { await saveDraft(); $('compose-error').textContent = '인터넷에 연결되면 저장해 주세요. 지금 내용은 임시 저장을 시도했어요.'; return; }
     busy = true; $('compose-error').textContent = ''; $('publish').disabled = true;
@@ -291,6 +316,7 @@
   $('compose-form').addEventListener('input', () => { updateCaption(); visibilityHint(); scheduleDraft(); });
   $('compose-form').addEventListener('change', scheduleDraft);
   for (const [trigger, input] of [['take-photo', 'camera-input'], ['take-video', 'video-input'], ['pick-media', 'media-input']]) { $(trigger).addEventListener('click', () => $(input).click()); $(input).addEventListener('change', () => addFiles($(input))); }
+  $('skip-rejected-media').addEventListener('click', () => { selectionError = ''; $('compose-error').textContent = ''; renderMedia(); scheduleDraft(); });
   $('caption-prompt').addEventListener('click', () => { if (!$('caption').value) { $('caption').placeholder = '지금 보이는 풍경은? 가장 기억하고 싶은 느낌은? 함께한 사람에게 해 주고 싶은 말은?'; $('caption').focus(); } else toast('풍경 하나, 느낌 하나, 오래 기억할 한마디를 덧붙여 보세요.'); });
   $('resume-draft').addEventListener('click', resumeDraft);
   $('discard-draft').addEventListener('click', () => confirm('쓰던 내용을 버릴까요?', '이 기기에 임시 저장한 글과 선택한 파일을 비워요. 이미 게시한 기록은 그대로예요.', '버리기', async () => { clearTimeout(draftTimer); await draftStore('delete'); draft = null; editing = null; media = []; releaseLocal(); $('compose-dialog').close(); $('resume-draft').hidden = true; }));
