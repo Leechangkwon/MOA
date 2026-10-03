@@ -119,7 +119,8 @@ $sqlFind = <<<'SQL'
            f.sha256,
            f.size_bytes,
            f.exec_content,
-           cardinality(f.sensitive_flags) > 0 AS has_sensitive
+           cardinality(f.sensitive_flags) > 0 AS has_sensitive,
+           'file' AS item_kind   -- G-0 종류 표식(개인 등급 판정 — decideRead [P] · decideEdit · decidePrivateOwner)
       FROM files f
      WHERE f.public_id = CAST(:pid AS uuid)
        AND f.deleted_at IS NULL
@@ -208,7 +209,7 @@ if (array_key_exists('description', $body)) {
 $newLevel = $currentLevel;
 if (array_key_exists('access_level', $body)) {
     $rawLevel = $body['access_level'];
-    if (!in_array($rawLevel, ['public', 'internal', 'team', 'admin-only'], true)) {
+    if (!in_array($rawLevel, ['public', 'internal', 'team', 'admin-only', 'private'], true)) {
         $reject('bad_access_level');
     }
     $newLevel = (string) $rawLevel;
@@ -286,7 +287,10 @@ if ($newFolderId !== null) {
         $reject('bad_folder');
     }
     // 대상 폴더를 읽을 수 있나 — 파일과 **같은 함수**다 (폴더도 등급을 갖는다, F-26).
-    if (!Authz::decideRead($user, $folderRow)[0]) {
+    // G-0 — 개인 폴더는 읽기가 아니라 **넣기**(주인·「편집」 권한자)로 본다(decideFolderPut — 개인이 아니면 decideRead 그대로).
+    //        이 검사는 **폴더가 바뀔 때만**이다 — 옮기지 않으면 아무것도 넣지 않는다. 개인이 아닌 파일은 「파일이 보이면 폴더도
+    //        보인다」(불변 ①)라 전과 결과가 같고, 개인 파일은 주인이 위 개인 폴더의 권한을 잃은 뒤에도 자기 파일의 설명을 고칠 수 있다.
+    if ($newFolderId !== $currentFolderId && !Authz::decideFolderPut($user, $folderRow)[0]) {
         $reject('bad_folder');
     }
 }
@@ -312,6 +316,17 @@ if ($changed === []) {
 $descriptionChanged = in_array('description', $changed, true);
 $levelChanged       = in_array('access_level', $changed, true) || in_array('team_id', $changed, true);
 $folderChanged      = in_array('folder_id', $changed, true);
+
+/* ─── [권한 ✔ 2-P] G-0 — 개인 파일을 **옮기는** 것은 주인만이다(지시서 ★ · 편집 권한자는 설명 고치기까지).
+ * 옮기면 위 개인 폴더가 바뀌어 누가 보는지(이어받는 권한)가 달라진다 — 그 결정은 주인 몫이다. 등급 바꾸기의 주인 판정은
+ * 아래 decideLevelChange 가 한다. 개인이 아닌 파일은 빈 허용이라 지금까지와 같다. */
+if ($folderChanged) {
+    [$mayMovePrivate, $movePrivateCode] = Authz::decidePrivateOwner($user, $file);
+    if (!$mayMovePrivate) {
+        Audit::deny('file.update', $movePrivateCode, $auditTarget + ['detail' => $auditWhat]);
+        Http::error(403, Http::MSG_FORBIDDEN);
+    }
+}
 
 // 감사 detail 의 "어느 폴더에서 어디로" (ARCH 7.5 folder_before·folder_after)
 $folderBefore = $currentFolderId;
@@ -503,6 +518,33 @@ try {
     if ($descriptionChanged) {
         $applyBind[':tsv'] = SearchText::indexTextFile([$currentName, $newDescription], 'file ' . $fileId);
     }
+
+    /* G-0 — 최종 폴더 행을 이 트랜잭션 안에서 FOR SHARE 로 잠그고 [4-3] 넣기 자격(옮길 때만)·[4-5] 불변 ① 을 다시 한다
+     * (_folder_lock.php). 같은 순간 그 폴더가 좁혀져도(사내 → 개인) 파일이 폴더보다 넓게 남지 않는다. 답은 트랜잭션 전과 같다. */
+    if ($folderRow !== null && ($folderChanged || $levelChanged)) {
+        require_once __DIR__ . '/_folder_lock.php';
+        [$stillFits, $lockAt, $lockCode] = tbox_folder_lock_for_put($user, (int) $newFolderId, $newLevel, $newTeamId, $folderChanged);
+        if (!$stillFits) {
+            $db->rollback();
+            if ($lockAt !== 'fits') {
+                $reject('bad_folder');
+            }
+            Audit::deny($folderChanged ? 'file.update' : 'file.level_change', $lockCode, [
+                'target_type'  => 'file',
+                'target_id'    => $fileId,
+                'target_name'  => $currentName,
+                'access_level' => $newLevel,
+                'detail'       => [
+                    'folder_before' => $folderBefore,
+                    'folder_after'  => $folderAfter,
+                    'before'        => $before,
+                    'after'         => $after,
+                ] + $auditWhat,
+            ]);
+            Http::error(400, Http::MSG_BAD_REQUEST);
+        }
+    }
+
     if ($sqlApply !== null) {
         $affected = $db->run($sqlApply, $applyBind)->rowCount();
         if ($affected !== 1) {

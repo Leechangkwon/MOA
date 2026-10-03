@@ -1121,8 +1121,12 @@ final class CommunityAuthz
 
     /**
      * 이 페이지를 **읽는 범위들** (5-E) — 첨부 파일이 들어맞아야 할 t-box 등급 모양(`level`·`team_id`) 목록.
-     * 비어 있으면 「주인(과 관리자)만」이라 어떤 파일이든 된다. 여럿이면 **모두**에 들어맞아야 한다(게시 중이면 원래 범위 +
-     * 게시판 등급). 사람 지정 공유는 넣지 않는다 — 파일은 t-box 가 사람마다 다시 판정한다(E-3).
+     * 여럿이면 **모두**에 들어맞아야 한다(게시 중이면 원래 범위 + 게시판 등급). 사람 지정 공유는 넣지 않는다 — 파일은 t-box 가
+     * 사람마다 다시 판정한다(E-3).
+     * G-0 — 비공개 개인 페이지(「주인(과 관리자)만」)는 전에는 빈 목록이었다(어떤 파일이든 된다). 이제 `private` 범위 하나를
+     * 싣는다(`owner_id` = 그 공간의 주인) — 개인 등급이 아닌 파일은 전과 같이 무엇이든 들어맞고(가장 좁은 범위라서), **t-box 개인
+     * 파일은 파일 주인이 페이지 주인과 같을 때만** 들어맞는다(fitsFileRef). 그 밖의 페이지에는 개인 파일이 붙지 않는다
+     * (페이지 독자 전원이 권한을 받았는지 계산하는 것은 G-1 몫).
      *
      * @param  array<string,mixed> $row
      * @param  array<string,mixed>|null $extraBoard 게시하려는 게시판(게시 창구가 미리 견줄 때)
@@ -1145,6 +1149,10 @@ final class CommunityAuthz
                 $out[] = ['level' => 'team', 'team_id' => ($row['space_owner_team_id'] ?? null) === null ? null : (int) $row['space_owner_team_id']];
             } elseif ($base === 'internal') {
                 $out[] = ['level' => 'internal', 'team_id' => null];
+            } elseif ($base === 'private') {
+                // G-0 — 「주인만」 범위. owner_id 가 없으면(모르는 행) 개인 파일은 들어맞지 않는다(fitsFileRef)
+                $owner = $row['space_owner_user_id'] ?? null;
+                $out[] = ['level' => 'private', 'team_id' => null, 'owner_id' => $owner === null ? null : (int) $owner];
             }
             $pub = (string) ($row['visibility'] ?? '') === 'published' ? self::publishedBoardOf($row) : null;
             foreach ([$pub, $extraBoard] as $b) {
@@ -1169,7 +1177,16 @@ final class CommunityAuthz
         $f = Authz::LEVEL_RANK[(string) ($file['access_level'] ?? '')] ?? null;
         $a = Authz::LEVEL_RANK[(string) ($aud['level'] ?? '')] ?? null;
         if ($f === null || $a === null || $f > $a) {
+            // G-0 — t-box 개인 파일(rank 4)은 여기서 `private` 범위 말고는 전부 거짓이다(가장 좁다)
             return false;
+        }
+        /* G-0 — 개인 파일은 비공개 개인 페이지(`private` 범위)에만, 그리고 **파일 주인 = 페이지 주인**일 때만 들어맞는다
+           (지시서 ★ — 그 밖의 페이지의 독자 권한 계산은 G-1). 주인 번호가 없으면(모르는 행) 거짓. */
+        if ((string) $file['access_level'] === Authz::LEVEL_PRIVATE) {
+            $fileOwner = $file['uploaded_by'] ?? null;
+            $pageOwner = $aud['owner_id'] ?? null;
+            return (string) $aud['level'] === Authz::LEVEL_PRIVATE
+                && $fileOwner !== null && $pageOwner !== null && (int) $fileOwner === (int) $pageOwner;
         }
         if ((string) $file['access_level'] === 'team' && (string) $aud['level'] === 'team') {
             return $file['team_id'] !== null && $aud['team_id'] !== null && (int) $file['team_id'] === (int) $aud['team_id'];

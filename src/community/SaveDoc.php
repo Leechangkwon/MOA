@@ -154,7 +154,7 @@ function community_save_doc(array $user, string $publicId, array $body, array $o
             $newFiles = array_values(array_diff(Doc::extract($doc)['files'], Doc::extract($currentDoc)['files']));
             if (!community_file_refs_ok($newFiles, CommunityAuthz::pageAudiences($row), $user)) {
                 $reject('file_ref', 400, [
-                    'error'  => '붙일 수 없는 파일이 있습니다. 내가 볼 수 있고, 이 페이지를 읽는 사람도 모두 볼 수 있는 파일만 붙입니다',
+                    'error'  => community_file_refs_private_readable($newFiles, $user) ? COMMUNITY_PRIVATE_FILE_REFUSED : '붙일 수 없는 파일이 있습니다. 내가 볼 수 있고, 이 페이지를 읽는 사람도 모두 볼 수 있는 파일만 붙입니다',
                     'reason' => 'file_ref',
                 ], []);
             }

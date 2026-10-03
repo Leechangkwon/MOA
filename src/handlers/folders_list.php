@@ -24,9 +24,9 @@ declare(strict_types=1);
  * 전에는 하위를 조건 없이 세어, 못 보는 admin-only 하위 폴더가 있다는 사실(과 개수)이 숫자로 새었다.
  * 지금은 그 층을 펼쳤을 때(`?parent=<id>`) 돌아오는 폴더 수와 같다.
  *
- * breadcrumb 의 조상들은 따로 검사하지 않는다: 불변 규칙 ①(하위 등급 ≥ 부모 등급)이 지켜지는
- * 한 **읽을 수 있는 폴더의 조상은 언제나 읽을 수 있다**(조상은 자기보다 넓거나 같은 등급이고,
- * 매트릭스는 등급 순서에 단조다 — ARCH 5.16, F-25 불변 규칙 (f)).
+ * breadcrumb 의 조상들은 **보이는 것만** 싣는다(G-0). 18-1 에는 불변 규칙 ①(하위 등급 ≥ 부모 등급)과 매트릭스 단조로
+ * 「읽을 수 있는 폴더의 조상은 언제나 읽을 수 있다」가 성립해 거르지 않았지만, 사람 지정 권한(개인 등급)은 개인 폴더
+ * 하나에만 들어온 사람을 만든다 — 그 위 남의 개인 폴더 이름이 새지 않게 `_folder_paths.php` 가 목록 조건절로 거른다.
  *
  * 한 층씩만 받는다(전체 트리를 한 번에 내리지 않는다) — 폴더 개수에 상한이 없어 깊은 트리를
  * 통째로 내리면 응답이 얼마든지 커질 수 있기 때문이다.
@@ -44,7 +44,8 @@ $parent = Http::queryInt('parent', 0, 0, 999999999);
 $db = Db::instance();
 
 $sqlFolder = <<<'SQL'
-    SELECT id, parent_id, name, depth, access_level, team_id, created_by
+    SELECT id, parent_id, name, depth, access_level, team_id, created_by,
+           'folder' AS item_kind   -- G-0 종류 표식(개인 등급 판정 — decideRead [P])
       FROM folders
      WHERE id = CAST(:id AS bigint)
     SQL;
@@ -90,7 +91,10 @@ $sqlChildren = <<<'SQL'
            d.depth,
            d.access_level,
            d.team_id,
-           t.name AS team_name
+           t.name AS team_name,
+           -- G-0 — 개인 폴더에 **직접** 준 권한 수(「개인 · 2명」 표시). 개인이 아니면 NULL
+           CASE WHEN d.access_level = 'private'
+                THEN (SELECT count(*) FROM access_grants g WHERE g.folder_id = d.id) END AS grant_count
       FROM folders d
       LEFT JOIN teams t ON t.id = d.team_id
      WHERE d.parent_id IS NOT DISTINCT FROM CAST(:parent AS bigint)
@@ -170,36 +174,19 @@ foreach ($rows as $row) {
         'child_count'  => $childCounts[$fid] ?? 0,
         // 호출자가 볼 수 있는 파일 수. 안 보이는 파일은 여기 세지지 않는다 (PRD S-02).
         'file_count'   => $counts[$fid] ?? 0,
+        // G-0 — 개인 폴더에 직접 준 권한 수(개인이 아니면 null)
+        'grants'       => $row['grant_count'] === null ? null : (int) $row['grant_count'],
     ];
 }
 
 // ─── breadcrumb (루트 → 현재) ─────────────────────────────────
-// 재귀 CTE 로 부모를 따라 올라간 뒤 depth 오름차순으로 뒤집는다. hops 상한은 데이터가 어떤
-// 이유로든 순환할 때 무한 재귀에 빠지지 않게 하는 안전장치다(깊이는 최대 5).
-$sqlBreadcrumb = <<<'SQL'
-    WITH RECURSIVE up AS (
-        SELECT b.id, b.parent_id, b.name, b.depth, b.access_level, 1 AS hops
-          FROM folders b
-         WHERE b.id = CAST(:id AS bigint)
-        UNION ALL
-        SELECT p.id, p.parent_id, p.name, p.depth, p.access_level, up.hops + 1
-          FROM folders p
-          JOIN up ON p.id = up.parent_id
-         WHERE up.hops < 10
-    )
-    SELECT up.id, up.name, up.access_level FROM up ORDER BY up.depth ASC
-    SQL;
-
+// G-0 — 조상은 **보이는 것만**(`_folder_paths.php` — 목록 조건절 그대로). 사람 지정 권한으로 개인 폴더 하나에만 들어온
+// 사람에게 그 위 남의 개인 폴더 이름이 새지 않게. 지금 연 폴더 자신은 언제나 넣는다(위 [권한 ✔ 1] 을 지났다).
+require_once __DIR__ . '/_folder_paths.php';
 $breadcrumb = [];
 $current    = null;
 if ($parent !== 0) {
-    foreach ($db->run($sqlBreadcrumb, [':id' => $parent])->fetchAll() as $row) {
-        $breadcrumb[] = [
-            'id'           => (int) $row['id'],
-            'name'         => (string) $row['name'],
-            'access_level' => (string) $row['access_level'],
-        ];
-    }
+    $breadcrumb = tbox_folder_breadcrumb(tbox_folder_map($user), $parent);
     if ($breadcrumb !== []) {
         $current = $breadcrumb[count($breadcrumb) - 1];
     }

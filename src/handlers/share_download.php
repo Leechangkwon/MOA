@@ -170,35 +170,36 @@ if ($link['deleted_at'] !== null || $link['purged_at'] !== null) {
 if ($link['issuer_active'] !== true || $link['issuer_expired'] === true) {
     $rejectShare('issuer_inactive', $target, $detail);
 }
-[$issuerMayRead, $issuerReadCode] = Authz::decideRead(
-    [
-        'role'    => (string) $link['issuer_role'],
-        'team_id' => $link['issuer_team_id'] === null ? null : (int) $link['issuer_team_id'],
-    ],
-    [
-        'access_level' => (string) $link['access_level'],
-        'team_id'      => $link['team_id'] === null ? null : (int) $link['team_id'],
-    ]
-);
+/* G-0 — 판정에 넘기는 두 배열에 개인 등급 판정이 읽는 칸(만든 사람 번호 · 파일 번호 · 종류 표식)을 더한다. 개인 파일이면
+ * 만든 사람이 **지금도 그 파일의 주인**이어야 한다(아래 ⑤-A-P) — 만든 뒤 개인으로 좁혀졌거나(주인이 아닌 사람이 만든 링크),
+ * 판정이 Admin 특권(`admin_override`)으로만 열리는 경우 링크는 끝난다(개인 파일의 링크는 주인만 — 지시서 ★). */
+$issuerRow = [
+    'id'      => (int) $link['issuer_id'],
+    'role'    => (string) $link['issuer_role'],
+    'team_id' => $link['issuer_team_id'] === null ? null : (int) $link['issuer_team_id'],
+];
+$fileRow = [
+    'id'           => (int) $link['file_id'],
+    'item_kind'    => 'file',
+    'uploaded_by'  => (int) $link['uploaded_by'],
+    'access_level' => (string) $link['access_level'],
+    'team_id'      => $link['team_id'] === null ? null : (int) $link['team_id'],
+];
+[$issuerMayRead, $issuerReadCode] = Authz::decideRead($issuerRow, $fileRow);
 if (!$issuerMayRead) {
     $rejectShare($issuerReadCode, $target, $detail);
 }
 // 검토 L-2 — 만들 때의 조건(share_create 의 decideRead → **decideEdit**)과 같게, 고칠 수 있는 사람인지도 다시 본다.
 // 만든 사람의 역할·팀이 바뀌어 그 파일을 더는 고칠 수 없으면(예: Manager 가 다른 팀으로) 링크도 끝난다. 코드는 decideEdit 그대로
 // (`not_owner`·`team_mismatch`·`role_not_permitted`).
-[$issuerMayEdit, $issuerEditCode] = Authz::decideEdit(
-    [
-        'id'      => (int) $link['issuer_id'],
-        'role'    => (string) $link['issuer_role'],
-        'team_id' => $link['issuer_team_id'] === null ? null : (int) $link['issuer_team_id'],
-    ],
-    [
-        'uploaded_by' => (int) $link['uploaded_by'],
-        'team_id'     => $link['team_id'] === null ? null : (int) $link['team_id'],
-    ]
-);
+[$issuerMayEdit, $issuerEditCode] = Authz::decideEdit($issuerRow, $fileRow);
 if (!$issuerMayEdit) {
     $rejectShare($issuerEditCode, $target, $detail);
+}
+// ⑤-A-P G-0 — 개인 파일이면 만든 사람이 지금도 주인이어야 한다(share_create 의 [권한 ✔ 2-P] 와 같은 판정 · 개인이 아니면 빈 허용)
+[$issuerIsOwner, $issuerOwnerCode] = Authz::decidePrivateOwner($issuerRow, $fileRow);
+if (!$issuerIsOwner) {
+    $rejectShare($issuerOwnerCode, $target, $detail);
 }
 
 /* ─── ⑤-0 F-65 실행 파일이 든 압축본 (ARCH 5.29 「받기」 표, **겹 방어**) ─────

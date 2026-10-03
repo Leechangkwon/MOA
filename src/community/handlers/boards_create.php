@@ -59,7 +59,8 @@ if (array_key_exists('description', $body) && $body['description'] !== null) {
 }
 
 $level = $body['access_level'] ?? null;
-if (!is_string($level) || !array_key_exists($level, Authz::LEVEL_RANK)) {
+// G-0 — t-box 의 「개인」 등급은 게시판 등급이 아니다(사람으로 판정하는 등급 — 게시판은 표로 판정한다 · spaces CHECK 도 네 값).
+if (!is_string($level) || !array_key_exists($level, Authz::LEVEL_RANK) || $level === Authz::LEVEL_PRIVATE) {
     Http::error(400, Http::MSG_BAD_REQUEST);
 }
 $kind = $body['board_kind'] ?? null;

@@ -40,11 +40,14 @@ $orgRules = [
     '팀 등급의 ✓ 는 「같은 팀일 때」라는 뜻입니다. 관리자는 모든 팀을 봅니다.',
     '지우기·고치기는 관리자가 모든 파일, 팀장은 본인이 올린 파일과 자기 팀 파일, 직원은 본인이 올린 파일만, 손님은 할 수 없습니다.',
     '등급을 낮추는 변경(보는 사람이 늘어나는 변경)은 관리자만 할 수 있습니다.',
+    '「개인」 등급은 이 표에 없습니다 — 주인과 주인이 권한을 준 사람만 봅니다(관리자도 목록에는 보이지 않고, 주소로 열면 감사에 남습니다).',
 ];
 
+// G-0 — 「개인」 4행은 싣지 않는다(사람으로 판정하는 등급 — admin_permissions_get.php 와 같은 까닭). 화면은 4×4 그대로다.
 $sqlMatrix = <<<'SQL'
     SELECT role, access_level, can_read, can_upload
       FROM permissions
+     WHERE access_level <> 'private'
      ORDER BY role, access_level
     SQL;
 

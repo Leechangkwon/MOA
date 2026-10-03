@@ -97,7 +97,8 @@ $sqlFind = <<<'SQL'
            f.uploaded_by,
            f.sha256,
            f.scan_status,
-           f.exec_content
+           f.exec_content,
+           'file' AS item_kind   -- G-0 종류 표식(개인 등급 판정 — Authz::decideRead [P])
       FROM files f
      WHERE f.public_id = CAST(:pid AS uuid)
        AND f.deleted_at IS NULL

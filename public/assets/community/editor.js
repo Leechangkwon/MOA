@@ -1,4 +1,4 @@
-import { hydrateDashboard } from './dashboard.js?v=f4a3631080fd';
+import { hydrateDashboard } from './dashboard.js?v=70d2c3f41d1d';
 /**
  * public/assets/community/editor.js — 커뮤니티 화면의 동작 한 벌 (모듈 스크립트)
  *
@@ -41,20 +41,20 @@ import { inputRules, textblockTypeInputRule, InputRule } from './vendor/pm/prose
 import { dropCursor } from './vendor/pm/prosemirror-dropcursor.js?v=5823578fa61a';
 import { gapCursor } from './vendor/pm/prosemirror-gapcursor.js?v=5823578fa61a';
 
-import { createSuggestions, bindMySuggestions, buildSuggestionOps, suggestionTypeAllowed, suggestionEqual } from './suggestions.js?v=f4a3631080fd';
-import { renderDoc, embedHost } from './doc-render.js?v=f4a3631080fd';
-import { createDatabaseView } from './database.js?v=f4a3631080fd';
-import { bindTemplateGallery, createTemplateSave } from './templates.js?v=f4a3631080fd';
-import { bindEmbedAdmin } from './embeds.js?v=f4a3631080fd';
-import { bindPopular } from './popular.js?v=f4a3631080fd';
-import { bindPalettes } from './palettes.js?v=f4a3631080fd';
-import { schema, toDoc, fromDoc, uuid4, colorAllowed, schemeOkForEditor, mentionAllowed, editorDomParser, clipboardDomParser, COLORS, BLOCK_TYPES } from './editor-schema.js?v=f4a3631080fd';
-import { drawAutomationPage, drawAutomationSpace, bindAutomations, loadAutomations } from './automations.js?v=f4a3631080fd';
-import { drawTrust, bindProcedures } from './procedures.js?v=f4a3631080fd';
-import { createPageExport } from './export.js?v=f4a3631080fd';
-import { createDrafts } from './drafts.js?v=f4a3631080fd';
-import { drawPageAi, bindAiCenter } from './ai.js?v=f4a3631080fd';
-import { drawIntegrations, bindIntegrations } from './integrations.js?v=f4a3631080fd';
+import { createSuggestions, bindMySuggestions, buildSuggestionOps, suggestionTypeAllowed, suggestionEqual } from './suggestions.js?v=70d2c3f41d1d';
+import { renderDoc, embedHost } from './doc-render.js?v=70d2c3f41d1d';
+import { createDatabaseView } from './database.js?v=70d2c3f41d1d';
+import { bindTemplateGallery, createTemplateSave } from './templates.js?v=70d2c3f41d1d';
+import { bindEmbedAdmin } from './embeds.js?v=70d2c3f41d1d';
+import { bindPopular } from './popular.js?v=70d2c3f41d1d';
+import { bindPalettes } from './palettes.js?v=70d2c3f41d1d';
+import { schema, toDoc, fromDoc, uuid4, colorAllowed, schemeOkForEditor, mentionAllowed, editorDomParser, clipboardDomParser, COLORS, BLOCK_TYPES } from './editor-schema.js?v=70d2c3f41d1d';
+import { drawAutomationPage, drawAutomationSpace, bindAutomations, loadAutomations } from './automations.js?v=70d2c3f41d1d';
+import { drawTrust, bindProcedures } from './procedures.js?v=70d2c3f41d1d';
+import { createPageExport } from './export.js?v=70d2c3f41d1d';
+import { createDrafts } from './drafts.js?v=70d2c3f41d1d';
+import { drawPageAi, bindAiCenter } from './ai.js?v=70d2c3f41d1d';
+import { drawIntegrations, bindIntegrations } from './integrations.js?v=70d2c3f41d1d';
 
 /* ─── 주소와 공통 도우미 ─────────────────────────────────────── */
 
@@ -2761,8 +2761,18 @@ const NOTIFY_TEXT = {
   suggestion_new: '님이 수정 제안을 보냈습니다',
   suggestion_accepted: '님이 수정 제안을 받아들였습니다',
   suggestion_rejected: '님이 수정 제안을 거절했습니다',
-  suggestion_stale: '수정 제안의 원문이 바뀌었습니다'
+  suggestion_stale: '수정 제안의 원문이 바뀌었습니다',
+  // t-box G-0 (F-73) — 권한 요청(페이지 없이 · 창구가 `access` 칸을 준다)
+  access_request: '님이 권한을 요청했습니다',
+  access_decided: '님이 권한 요청을 결정했습니다'
 };
+/** t-box G-0 — 결정 알림은 상태로 글자를 고른다(서버가 준 status 그대로) */
+const NOTIFY_DECIDED = { approved: '님이 권한 요청을 허락했습니다', rejected: '님이 권한 요청을 거절했습니다' };
+
+/** t-box G-0 — 권한 요청 알림이 가리키는 곳: 서버가 준 t-box 주소(`/tbox/…`)만 — 그 밖의 값은 링크로 만들지 않는다 */
+function notifyAccessHref(access) {
+  return access && typeof access.href === 'string' && access.href.indexOf('/tbox/') === 0 ? access.href : null;
+}
 
 function initNotifications() {
   const bell = document.getElementById('nav-community-bell');
@@ -2793,11 +2803,14 @@ function initNotifications() {
     const head = document.createElement('div');
     head.className = 'list__head';
     const automationStatus = n.automation_status === true;
-    const what = document.createElement(n.page || automationStatus ? 'a' : 'span');
+    const access = n.access && typeof n.access === 'object' ? n.access : null;
+    const accessHref = notifyAccessHref(access);
+    const what = document.createElement(n.page || automationStatus || accessHref ? 'a' : 'span');
     const who = n.actor ? personLabel(n.actor.display_name, n.actor.username) : '누군가';
-    what.textContent = automationStatus ? NOTIFY_TEXT[n.kind] : n.kind === 'verify_expired' ? '검증이 만료됐습니다' : who + ' ' + (NOTIFY_TEXT[n.kind] || '님의 알림');
-    if (n.page || automationStatus) {
-      what.setAttribute('href', automationStatus ? COMMUNITY_BASE + '/automations' : COMMUNITY_BASE + '/p/' + n.page.id + (n.comment_id ? '#comment-' + n.comment_id : ''));
+    const decided = n.kind === 'access_decided' && access ? NOTIFY_DECIDED[access.status] : null;
+    what.textContent = automationStatus ? NOTIFY_TEXT[n.kind] : n.kind === 'verify_expired' ? '검증이 만료됐습니다' : who + ' ' + (decided || NOTIFY_TEXT[n.kind] || '님의 알림');
+    if (n.page || automationStatus || accessHref) {
+      what.setAttribute('href', automationStatus ? COMMUNITY_BASE + '/automations' : n.page ? COMMUNITY_BASE + '/p/' + n.page.id + (n.comment_id ? '#comment-' + n.comment_id : '') : accessHref);
       what.addEventListener('click', () => {
         api('POST', '/api/notifications/read', { ids: [n.id] }).catch(() => {});
       });
@@ -2813,7 +2826,9 @@ function initNotifications() {
     const body = document.createElement('div');
     body.className = 'list__body';
     const page = document.createElement('span');
-    page.textContent = automationStatus ? '자동 작업에서 실행 기록을 확인하세요.' : n.page ? '「' + n.page.title + '」' : '볼 수 없는 페이지';
+    page.textContent = automationStatus ? '자동 작업에서 실행 기록을 확인하세요.' : n.page ? '「' + n.page.title + '」'
+      : (access ? (access.item ? '「' + access.item.name + '」' : (access.status === null ? '지워진 항목' : '볼 수 없는 항목'))
+        : '볼 수 없는 페이지');
     const when = document.createElement('span');
     when.className = 'muted';
     when.textContent = shortWhen(n.at);

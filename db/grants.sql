@@ -296,3 +296,27 @@ GRANT SELECT ON SEQUENCE public.member_ai_threads_id_seq,public.member_ai_turns_
 
 GRANT SELECT,INSERT,UPDATE ON public.member_ai_assists TO tbox_app;
 GRANT SELECT ON public.member_ai_assists TO tbox_backup;
+
+-- ─── G-0 「개인」 등급 · 사람 지정 권한 · 권한 요청 (PRD F-73, ARCH 4.1 · 5.36 · 10장) — 표 둘(access_grants · access_requests).
+--     표를 만드는 것은 db/schema.sql(새 설치)·db/migrations/2026-10-10_access_grants.sql(기존 DB)이고, 이 절은 **같은 권한**을
+--     다시 건다(재실행 시 과거 권한이 남지 않게 회수 뒤 GRANT). 표가 없으면(마이그레이션 전) 아무것도 하지 않고 NOTICE 만 남긴다.
+--   tbox_app    둘 다 SELECT · INSERT · UPDATE · DELETE(권한 빼기는 줄을 지운다 — 누가 언제 뺐는지는 감사 grant.remove 에 남는다) ·
+--               시퀀스 USAGE·SELECT
+--   tbox_backup SELECT 만 · tbox_perm · tbox_push 0
+DO $$
+BEGIN
+    IF to_regclass('public.access_grants') IS NULL OR to_regclass('public.access_requests') IS NULL THEN
+        RAISE NOTICE '권한 표가 없다 — db/migrations/2026-10-10_access_grants.sql 을 먼저 돌린다(이 절은 건너뜀)';
+        RETURN;
+    END IF;
+    REVOKE ALL ON public.access_grants, public.access_requests FROM tbox_app, tbox_backup, tbox_perm;
+    REVOKE ALL ON SEQUENCE public.access_grants_id_seq, public.access_requests_id_seq FROM tbox_app, tbox_backup, tbox_perm;
+    IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'tbox_push') THEN
+        REVOKE ALL ON public.access_grants, public.access_requests FROM tbox_push;
+    END IF;
+    GRANT SELECT, INSERT, UPDATE, DELETE ON public.access_grants, public.access_requests TO tbox_app;
+    GRANT USAGE, SELECT ON SEQUENCE public.access_grants_id_seq, public.access_requests_id_seq TO tbox_app;
+    GRANT SELECT ON public.access_grants, public.access_requests TO tbox_backup;
+    GRANT SELECT ON SEQUENCE public.access_grants_id_seq, public.access_requests_id_seq TO tbox_backup;
+END
+$$;

@@ -11,9 +11,9 @@
  * ★ 미리보기는 읽기 렌더러(`renderDoc`)가 그린다 — 보이는 것과 만들어지는 것이 같다.
  *   글자는 전부 textContent 로 넣는다(HTML 문자열을 넣는 자리가 없다).
  */
-import { renderDoc } from './doc-render.js?v=f4a3631080fd';
+import { renderDoc } from './doc-render.js?v=70d2c3f41d1d';
 
-import { repeatDialog } from './automations.js?v=f4a3631080fd';
+import { repeatDialog } from './automations.js?v=70d2c3f41d1d';
 
 const SCOPE_LABELS = {
   site: '사이트 기본',

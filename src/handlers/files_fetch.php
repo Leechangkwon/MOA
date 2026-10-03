@@ -147,7 +147,7 @@ if (iconv_strlen($description, 'UTF-8') > 500) {
 
 $rawLevel = $body['access_level'] ?? '';
 $level    = is_string($rawLevel) ? $rawLevel : '';
-if (!in_array($level, ['public', 'internal', 'team', 'admin-only'], true)) {
+if (!in_array($level, ['public', 'internal', 'team', 'admin-only', 'private'], true)) {
     $rejectFetch(400, 'bad_request', null, null);
 }
 
@@ -178,7 +178,8 @@ if ($level === 'team') {
  * 실패 응답은 다른 fetch 실패와 똑같은 문구 하나뿐이고 사유는 감사 로그에만 남는다 (S-05 ⑩).
  */
 $sqlFolder = <<<'SQL'
-    SELECT id, name, access_level, team_id
+    SELECT id, name, access_level, team_id,
+           'folder' AS item_kind   -- G-0 종류 표식(개인 폴더 넣기 판정 — decideFolderPut)
       FROM folders
      WHERE id = CAST(:id AS bigint)
     SQL;
@@ -195,7 +196,8 @@ if (array_key_exists('folder_id', $body) && $body['folder_id'] !== null) {
     if (!is_array($folderRow)) {
         $rejectFetch(400, 'bad_folder', null, $level);
     }
-    if (!Authz::decideRead($user, $folderRow)[0]) {
+    // G-0 — 개인 폴더에는 주인·「편집」 권한자만 넣는다(decideFolderPut · 개인이 아니면 decideRead 그대로 · 올리기와 같은 함수)
+    if (!Authz::decideFolderPut($user, $folderRow)[0]) {
         $rejectFetch(400, 'bad_folder', null, $level);
     }
     [$fits, $fitCode] = Authz::fitsUnderFolder($level, $teamId, $folderRow);
@@ -422,6 +424,19 @@ $db    = Db::instance();
 $moved = false;
 $db->begin();
 try {
+    /* G-0 — 대상 폴더 행을 이 트랜잭션 안에서 FOR SHARE 로 잠그고 폴더 두 판정을 다시 한다(_folder_lock.php · 올리기와 같은 도우미).
+     * 같은 순간 그 폴더가 좁혀져도 불변 ① 이 깨지지 않는다. 거부는 트랜잭션 전 검사와 같은 답. */
+    if ($folderId !== null) {
+        require_once __DIR__ . '/_folder_lock.php';
+        [$stillFits, $lockAt, $lockCode] = tbox_folder_lock_for_put($user, $folderId, $level, $teamId, true);
+        if (!$stillFits) {
+            $db->rollback();
+            $cleanTmp();
+            // 트랜잭션 전 검사와 같은 답 — 없는 폴더·못 넣는 폴더는 `bad_folder`, 넓은 항목은 불변 ① 코드
+            $rejectFetch(400, $lockAt === 'fits' ? $lockCode : 'bad_folder', null, $level, ['folder_id' => $folderId]);
+        }
+    }
+
     $row = $db->run($sqlInsert, [
         ':original_name' => $original,
         ':stored_name'   => $storedName,

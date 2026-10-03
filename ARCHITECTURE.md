@@ -270,12 +270,19 @@ public static function canRead(array $u, array $file): bool { return self::decid
 | 거부 | `team_mismatch` | team 레벨인데 다른 팀 | `reason` |
 | 거부 | `not_owner` | 삭제: 남이 올린 파일 (Employee), Manager 는 남의 팀 파일이면 `team_mismatch` | `reason` |
 | 거부 | `downgrade_not_permitted` | 레벨 변경(5단계): 등급을 **낮추는** 변경(`admin-only`→`team`→`internal`→`public` 방향)은 Admin 만 (PRD 4장·5.3) | `reason` |
+| 허용 | `grant` | G-0 개인 항목: 이 항목이나 위 개인 폴더에 받은 권한(보기·편집)으로 읽기 (5.36) | `detail.granted_by` |
+| 허용 | `grant_write` | G-0 개인 항목: 받은 「편집」 권한으로 올리기·이름·설명 | `detail.granted_by` |
+| 허용 | `admin_override` | G-0 개인 항목: 주인도 받은 사람도 아닌 Admin 의 특권 열람 — **주소로 열 때만**(목록 조건절에는 없다) · 권한 창구에서는 15분 재인증 | `detail.granted_by` |
 
 **5단계 추가 — 수정(PATCH) 판정 (2026-09-11)**
 - `decideEdit(array $u, array $file): array` — 설명·레벨을 고칠 수 있는 기본 자격. `decideDelete` 와 같은 소유자·팀 규칙(PRD 5.3: Admin 모두 `admin_all`, Manager 본인 `owner`·자기 팀 `team_scope`, Employee 본인 `owner`, Guest 불가). 목록의 `can_edit` 도 이 함수로 계산한다.
 - `decideLevelChange(array $u, array $file, string $newLevel, ?int $newTeamId): array` — `decideEdit` 통과가 전제. 새 등급이 현재보다 **낮으면**(순서 `admin-only` > `team` > `internal` > `public`) Admin 이 아닌 한 `downgrade_not_permitted`; 그 뒤 새 등급·팀을 지정할 자격은 `decideUploadAs($u, $newLevel, $newTeamId)` 와 같다(코드 재사용). 허용 코드는 `decideUploadAs` 의 것(`matrix`·`same_team`·`all_teams`).
 
 핸들러는 이 코드를 **그대로** `Audit::allow(..., ['detail' => ['granted_by' => $code]])` 또는 `Audit::deny($action, $code, ...)` 에 넘긴다. 핸들러가 코드를 지어내거나 바꾸면 린트 대상이다. 거부 코드는 7.4 문장 표의 `reason` 과 같은 값이어야 한다(표에 없는 조합은 기록 실패 = 요청 실패).
+
+**G-0 추가 — 「개인」 등급 (2026-09-28, PRD F-73)**: `LEVEL_RANK['private'] = 4`(가장 좁다). 개인 항목의 읽기·고치기는 표가 아니라 **사람**으로 판정한다 —
+`privateChainSql` 한 벌을 목록 조건절(`visibleWhere` 개인 갈래)과 판정(`decideRead` [P] · `privateReach`)이 함께 쓴다(짝 · 전수 대조). 거부 코드는 새로 만들지 않는다
+(읽기 = `role_not_permitted` · 주인 몫 = `not_owner`). 자세한 것은 5.36.
 
 > **초보자 메모**: "권한이 이상하다" 싶으면 볼 파일은 이거 하나다. 매트릭스(PRD 5장)와 이 파일이 1:1로 맞는지 코드 리뷰 때 항상 비교한다.
 
@@ -1552,7 +1559,7 @@ authentication failed for user "tbox_app"` 같은 형태다 — 호스트·포�
 | `not_owner` (**400 자리만**) | 폴더 등급 cascade 중 내가 못 바꾸는 하위 (`folders_update`) | 하위에 내가 바꿀 수 없는 폴더나 파일이 있어 함께 좁힐 수 없습니다 |
 | `bad_encoding` | 업로드·파일 정보 | 파일 이름 또는 설명이 올바른 문자(UTF-8)가 아닙니다 |
 | `description_too_long` | 업로드·파일 정보 | 설명은 500자까지입니다 |
-| `bad_access_level` | 업로드·파일 정보 | level 값이 올바르지 않습니다 (public·internal·team·admin-only) |
+| `bad_access_level` | 업로드·파일 정보 | level 값이 올바르지 않습니다 (public·internal·team·admin-only·private) — G-0 에서 private 더함 |
 | `bad_team` | 업로드·파일 정보 | team 등급은 team_id(활성 팀 번호)가 필요합니다 |
 | `bad_folder` | 업로드·파일 정보 | folder_id 가 없거나 접근할 수 없는 폴더입니다 |
 | `no_change` | 파일 정보 (`files_update`) | 바뀐 내용이 없습니다 |
@@ -1819,6 +1826,41 @@ COSE EC2(kty 2 · alg -7 · crv 1 · x·y 32) → `0x04‖x‖y` → `WebPush::p
 
 **nginx** — `tbox_login`(30r/m · burst 10)을 로그인 둘 · 등록 옵션 · 재인증 둘 = 다섯 창구 × 끝 슬래시 변형 = 10 자리, `tbox-v2.conf`·`tbox-v2-local.conf` 둘 다(8장).
 **DB** — 표 둘(`db/migrations/2026-10-06_passkeys.sql` · 10장). **감사** — 7.4 문장 · 7.5 새 키 다섯. **경보** — AL-23(11.4). **위험** — SECURITY R-109.
+
+### 5.36 「개인」 등급 · 사람 지정 권한 · 권한 요청 (PRD F-73 · G-0 · 2026-09-28, 복제본 · 검토 전)
+
+**한 줄**: 등급 `private` 은 권한 표가 아니라 **사람**으로 판정한다 — 주인(올린·만든 사람 · 위 개인 폴더의 주인)과 `access_grants` 에 이름이 있는 사람(이 항목이나
+위 개인 폴더 어디든 · 보기/편집). 표의 개인 네 줄은 읽기가 전부 거짓이다(DB CHECK `permissions_private_by_people`). 구현 기록 `docs/g0-implementation.md`.
+
+**판정 ↔ 목록 조건절 짝** — `Authz::privateChainSql($alias, $ph, $me)` 한 벌이 조상 조인(파일 다섯 · 폴더 넷 — **개인인 동안만** 잇고 첫 개인 아닌 조상에서 멈춘다) ·
+주인 식 · 권한 식(편집만 / 아무거나)을 만든다. 두 곳이 그 조각을 그대로 쓴다.
+
+| 쪽 | 함수 | 식 |
+|---|---|---|
+| 목록 조건절(목록·검색·트리·개수·즐겨찾기·최근·경로·커뮤니티 파일 지도) | `visibleWhere` 의 개인 갈래(`privateVisibleSql`) | `x.access_level = 'private' AND EXISTS(… 주인 식 OR 권한 식)` — **Admin 특권 없음** |
+| 한 건 판정(받기·미리보기·zip·링크·권한 창·고치기 앞) | `decideRead` [P] → `privateReach` | `CASE 주인 → owner · 편집 → write · 보기 → view` → 허용 `owner`·`grant` / 그 밖 Admin `admin_override` / 그 밖 `role_not_permitted` |
+| 한 건 목록 판정(휴지통 이름 · 공유받음 · 알림 이름 · 요청 목록) | `canSeeInList` | `decideRead` 에서 `admin_override` 만 뺀 것 = 목록 조건절과 같은 뜻 |
+| 고치기 | `decideEdit`(주인·편집) · `decidePrivateOwner`(주인만 — 옮기기·등급·지우기·링크) · `decideFolderRename` · `decideFolderPut`(넣기 — 주인·편집) · `decideGrantManage` | 같은 `privateReach` |
+
+행에 종류 표식(`'file' AS item_kind` · `'folder' AS item_kind`)·번호가 없으면 `privateReachOf` 가 null — **못 보는 쪽으로** 틀린다(닫힌 실패). 캐시 0(요청마다 묻는다).
+전수 대조(tests/g0_private_grants.sh T-G0-2): 역할 넷 × 권한 자리 열 × 깊이 1~5 × 항목 열일곱 = 3400 사례 · 불일치 0. 읽기 경로 호출부 32 자리 목록은 구현 기록 5장.
+
+**넣는 저장의 잠금 재확인** — `src/handlers/_folder_lock.php` `tbox_folder_lock_for_put()`: 올리기 · URL 가져오기 · 폴더 만들기 · 파일/폴더 옮기기·등급 바꾸기는
+저장 트랜잭션 **안에서** 대상 폴더 행을 `FOR SHARE` 로 잠그고 `decideFolderPut`·`fitsUnderFolder` 를 다시 부른다(같은 함수 · 같은 답). 좁히는 쪽(`folders_update` 의 UPDATE)이
+먼저면 기다렸다가 바뀐 행으로 거부, 넣는 쪽이 먼저면 좁히는 쪽이 기다렸다가 「마지막 그물」(UPDATE 뒤 새 스냅숏)이 되돌린다 — 동시 요청에도 「개인 폴더 안은 개인만」(불변 ①).
+
+| 창구(`/tbox` 아래) | 정책 | 하는 일 |
+|---|---|---|
+| `GET·POST /api/folders/{num}/grants` · `DELETE …/grants/{num}` · 파일 `…/api/files/{id}/grants…` | 보기 `file.read` · 고치기 `file.update` · CSRF · **토큰 창구 밖** | 권한 줄(직접 + 이어받은 것) · 주기(아이디 또는 이름 — 같은 이름 여럿 400) · 빼기. 주인만(Admin 특권 = 15분 재인증 + 감사) · 개인 등급만 |
+| `GET /api/access/people?q=` | `file.update` | 사람 후보(한 글자부터 · 켜진 계정 · 20) — 커뮤니티 공유 후보와 같은 모양 |
+| `GET /api/grants/mine` | `file.read` | 「공유받음」 — 나에게 직접 준 개인 폴더·파일 |
+| `POST·GET /api/access-requests` · `POST·DELETE /api/access-requests/{num}` | 보내기·목록·거두기 `authenticated` · 결정 `file.update` | 요청(없는 번호·개인 아님·중복 = 같은 200 · 같은 글자 · 하루 20건 — 저장 안 한 요청도 감사 행으로 센다) · 호스트 = 주인(꺼지면 켜진 Admin 전원) · 허락 = 권한 한 줄 · 알림은 `tbox_access_notify` 한 함수(커뮤니티 알림 `access_request`·`access_decided`) |
+
+**공유 링크** — 만들기는 개인 파일이면 주인만(`share_create` [권한 ✔ 2-P]) · 받을 때마다 만든 사람이 **지금도 주인인가**(`share_download` ⑤-A-P) — 만든 뒤 개인으로 좁혀진 남의 옛 링크는 끝난다.
+**커뮤니티** — `CommunityAuthz::fitsFileRef` · `community_file_refs_ok`: 개인 파일은 파일 주인 = 페이지 주인인 비공개 페이지에만(G-1 이 넓힌다). 파일 지도는 `visibleFilesWhere` 그대로.
+**경로·breadcrumb** — `src/handlers/_folder_paths.php`: 사람 지정 권한은 「보이는 폴더의 조상은 보인다」 를 깬다(C 에만 권한 → C 를 담은 남의 B 는 못 본다) — 경로 줄은 **보이는 폴더 이름만**(못 보는 조상은 「…」), 목록 조건절 `visibleWhere(d)` 그대로.
+**DB** — 마이그레이션 `db/migrations/2026-10-10_access_grants.sql`(CHECK 셋 넓힘 + 새 CHECK 셋 · 권한 표 네 줄 · 표 둘 · 커뮤니티 알림 CHECK·칸 · 권한). **코드보다 먼저** — 새 코드는 목록 조건절부터 `access_grants` 를 읽는다.
+**감사** — 7.4 G-0 행(`grant.add`·`grant.remove`·`access.request`·`access.decide` + 거부 두 갈래) · 허용 코드 `owner`·`grant`·`grant_write`·`admin_override` 는 `detail.granted_by`.
 
 ## 6. 저장 위치 — 파일 정보 vs 실제 파일
 
@@ -2445,6 +2487,31 @@ GRANT  USAGE, SELECT  ON SEQUENCE audit_logs_id_seq TO tbox_app;
 | `api_token.issue|deny|ip_unknown` | `{actor} 이(가) 이 PC 로그인 전용 토큰을 발급하려 했지만 접속 IP 를 알 수 없어 거부했습니다` | Q:F-9 (4.9 — 비밀번호·코드 확인 전) |
 | `api_token.revoke|allow|replaced` | `{actor} 이(가) 이 PC 로그인 전용 토큰을 새로 발급해 계정 「{target}」 의 앞 로그인 전용 토큰을 회수했습니다 (한 사람 1대)` | Q:F-9 (4.9 — 1대 규칙 · 토큰마다 한 행) |
 
+| `folder.level_change|deny|not_owner` | `{actor} 이(가) 폴더 「{target}」 의 등급을 {level} 등급으로 바꾸려 했지만 자기가 바꿀 수 없는 항목(개인 등급이 걸린 폴더 자신 또는 함께 좁히려던 하위)이 있어 막았습니다 (개수는 상세 기록)` | G-0 `folders_update` 「하위에도 적용」 개인 좁히기 — 남의 항목 |
+| `file.level_change|deny|not_owner` | `{actor} 이(가) 파일 「{target}」 의 접근 등급을 {level} 등급으로 바꾸려 했지만 개인 등급이 걸린 변경은 그 파일의 주인만 할 수 있어 막았습니다` | G-0 `decideLevelChange` — 개인 등급이 걸린 변경은 주인만 |
+| `folder.create|deny|not_owner` | `{actor} 이(가) 편집 권한이 없는 개인 폴더 안에 폴더 「{target}」 을(를) 만들려 해서 막았습니다` | G-0 `decideFolderPut` — 편집 권한 없는 개인 폴더 안 |
+| `grant.add|allow` | `{actor} 이(가) {level} 등급 항목 「{target}」 의 권한을 다른 사람에게 주었습니다 (받은 사람·보기/편집은 상세 기록)` | G-0 `POST …/grants` (5.36) |
+| `grant.add|deny|not_owner` | `{actor} 이(가) 자기가 주인이 아닌 항목 「{target}」 의 권한을 주려 해서 막았습니다` | G-0 `POST …/grants` (5.36) |
+| `grant.add|deny|not_private` | `{actor} 이(가) 개인 등급이 아닌 항목 「{target}」 에 사람 지정 권한을 주려 해서 거부했습니다 (권한은 개인 등급에만 뜻이 있습니다)` | G-0 `POST …/grants` (5.36) |
+| `grant.add|deny|bad_user` | `{actor} 이(가) 없는·꺼진·주인 자신인 계정에 항목 「{target}」 의 권한을 주려 해서 거부했습니다 (적은 이름은 상세 기록)` | G-0 `POST …/grants` (5.36) |
+| `grant.add|deny|write_not_allowed` | `{actor} 이(가) 편집 권한을 받을 수 없는 계정(손님)에게 항목 「{target}」 의 편집 권한을 주려 해서 거부했습니다` | G-0 `POST …/grants` (5.36) |
+| `grant.add|deny|bad_request` | `{actor} 이(가) 권한 주기를 허용되지 않는 형식(모르는 항목·빈 이름·편집 값)으로 요청해서 거부했습니다` | G-0 `POST …/grants` (5.36) |
+| `grant.remove|allow` | `{actor} 이(가) 항목 「{target}」 에 준 권한을 뺐습니다 (뺀 사람은 상세 기록)` | G-0 `DELETE …/grants/{num}` (5.36) |
+| `grant.remove|deny|not_owner` | `{actor} 이(가) 자기가 주인이 아닌 항목 「{target}」 의 권한을 빼려 해서 막았습니다` | G-0 `DELETE …/grants/{num}` (5.36) |
+| `grant.remove|deny|not_private` | `{actor} 이(가) 개인 등급이 아닌 항목 「{target}」 의 사람 지정 권한을 빼려 해서 거부했습니다 (개인 등급일 때만 고칩니다)` | G-0 `DELETE …/grants/{num}` (5.36) |
+| `grant.remove|deny|not_found` | `{actor} 이(가) 항목 「{target}」 에 없는 권한 줄을 빼려 해서 거부했습니다` | G-0 `DELETE …/grants/{num}` (5.36) |
+| `access.request|allow` | `{actor} 이(가) 개인 항목 「{target}」 의 권한을 주인에게 요청했습니다 (보기/편집·메모 길이는 상세 기록)` | G-0 `POST /api/access-requests` (5.36 · 없는 항목도 같은 답 — 저장 0) |
+| `access.request|deny|not_found` | `{actor} 이(가) 없는 항목의 권한을 요청해서 저장하지 않았습니다 (요청한 사람에게는 보낸 것과 같은 답)` | G-0 `POST /api/access-requests` (5.36 · 없는 항목도 같은 답 — 저장 0) |
+| `access.request|deny|not_private` | `{actor} 이(가) 개인 등급이 아닌 항목 「{target}」 의 권한을 요청해서 저장하지 않았습니다 (요청한 사람에게는 보낸 것과 같은 답)` | G-0 `POST /api/access-requests` (5.36 · 없는 항목도 같은 답 — 저장 0) |
+| `access.request|deny|duplicate` | `{actor} 이(가) 이미 기다리는 요청이 있는 항목 「{target}」 의 권한을 다시 요청해서 새로 저장하지 않았습니다` | G-0 `POST /api/access-requests` (5.36 · 없는 항목도 같은 답 — 저장 0) |
+| `access.request|deny|already` | `{actor} 이(가) 이미 권한이 있는 항목 「{target}」 의 권한을 요청해서 저장하지 않았습니다` | G-0 `POST /api/access-requests` (5.36 · 없는 항목도 같은 답 — 저장 0) |
+| `access.request|deny|rate_limited` | `{actor} 이(가) 하루 요청 한도(20건)를 넘겨 권한을 요청해서 막았습니다` | G-0 `POST /api/access-requests` (5.36 · 없는 항목도 같은 답 — 저장 0) |
+| `access.request|deny|bad_request` | `{actor} 이(가) 권한 요청을 허용되지 않는 형식(모르는 항목·메모 길이·손님의 편집 요청)으로 보내서 거부했습니다` | G-0 `POST /api/access-requests` (5.36 · 없는 항목도 같은 답 — 저장 0) |
+| `access.decide|allow` | `{actor} 이(가) 항목 「{target}」 의 권한 요청을 처리했습니다 (허락·거절·취소와 요청한 사람은 상세 기록)` | G-0 `POST·DELETE /api/access-requests/{num}` (5.36) |
+| `access.decide|deny|not_found` | `{actor} 이(가) 없거나 자기가 처리할 수 없는 권한 요청을 처리하려 해서 거부했습니다` | G-0 `POST·DELETE /api/access-requests/{num}` (5.36) |
+| `access.decide|deny|bad_request` | `{actor} 이(가) 권한 요청 처리를 허용되지 않는 형식(모르는 결정·이미 끝난 요청·손님에게 편집)으로 보내서 거부했습니다` | G-0 `POST·DELETE /api/access-requests/{num}` (5.36) |
+| `access.decide|deny|not_private` | `{actor} 이(가) 이제 개인 등급이 아니거나 지워진 항목 「{target}」 의 권한 요청을 허락하려 해서 거부했습니다` | G-0 `POST·DELETE /api/access-requests/{num}` (5.36) |
+
 > 7·8·9단계(URL 가져오기·감사 로그 조회·백업)의 행동은 그 단계 지시서에서 이 표에 행을 먼저 추가한 뒤 구현한다.
 
 **기존 DB 반영**: `deploy/install.sh` 는 표가 이미 있으면 `schema.sql` 을 건너뛴다. 따라서 컬럼 추가는 `db/migrations/2026-09-10_audit_summary.sql` 로 하고, 소유자 계정으로 한 번 실행한다(기존 행은 같은 문장 표로 채운 뒤 `NOT NULL` 을 건다). 실행: `sudo -u postgres psql -d tbox_re -v ON_ERROR_STOP=1 -f db/migrations/2026-09-10_audit_summary.sql`. 새로 설치하는 DB 는 `schema.sql` 에 컬럼이 이미 들어 있으므로 마이그레이션이 필요 없다.
@@ -2549,6 +2616,10 @@ GRANT  USAGE, SELECT  ON SEQUENCE audit_logs_id_seq TO tbox_app;
 | `free_bytes` | 왜 | zip 을 못 만든 순간 앱 임시 폴더의 남은 바이트(`disk_free_space`) — `size_bytes`(합계)와 나란히 「왜 모자랐나」 | `files_zip` | `file.zip error no_space` |
 | `reserved_bytes` | 왜 | 그 순간 **다른 슬롯이 잡아 둔** 바이트 합(쥐어진 슬롯 파일의 2 × 합계 · 모르면 최악) — 검토 L-C1 | `files_zip` | `file.zip error no_space` |
 | `elapsed_ms` | 왜 | 요청 시작부터 [8] 감사 직전까지 걸린 밀리초 — 시간 한도(50초)를 넘어 멈춘 행 | `files_zip` | `file.zip error zip_failed`(why `time`) |
+| `item_kind` | 무엇을 | G-0 `file`·`folder` — 권한·요청이 어느 종류 항목의 것인가 | `access_grants` · `access_requests` | `grant.*` · `access.*` |
+| `grantee` | 누구에게 | G-0 권한을 받은·받으려던 사람의 계정명(없는 이름을 적었으면 비움) | `access_grants` · `access_requests`(허락) | `grant.add|allow` · `grant.remove|allow` · `grant.add|deny|write_not_allowed` · `access.decide|allow` |
+| `can_write` | 무엇을 | G-0 준·뺀 권한이 「편집」 인가(`before` 에 바꾸기 전 값) | `access_grants` | `grant.add|allow` · `grant.remove|allow` |
+| `request_no` · `decision` · `want_write` · `message_len` | 무엇을·왜 | G-0 요청 줄 번호 · 결정(`approve_view`·`approve_write`·`reject`·`cancel`) · 편집을 청했나 · 메모 글자 수(**메모 원문은 남기지 않는다**) | `access_requests` | `access.request` · `access.decide` |
 
 **검토 행동과 사용자 행동 가르기** — 두 조건 중 하나면 검토다. 둘 다 아니면 사용자(또는 침입자)다.
 
@@ -2754,6 +2825,7 @@ php_admin_value[disable_functions]   = fsockopen,pfsockopen,stream_socket_client
 | `tbox_app` (즐겨찾기 — 5.33) | 같은 앱 계정 | `file_favorites` · `folder_favorites`: SELECT · INSERT(사람·대상 칸만) · DELETE(빼기) — UPDATE 없음. 커뮤니티 `page_favorites`(+ position UPDATE) · `page_recent`(+ last_viewed_at UPDATE · DELETE — 기록이 아니라 화면 편의)는 커뮤니티 ARCH 21.24 |
 | `tbox_push` | 휴대폰 경보 **보내는 배치** 하나(`scripts/alert_push.php`, OS 계정 tbox-push — F-70 · 5.32) | `alert_push_subscriptions`: SELECT · UPDATE(last_ok_at·fail_count·fail_since·revoked_at·revoked_reason) · `alert_push_outbox`: SELECT · UPDATE(sent_at) · `users`: **(id, role, is_active) 세 칸만** SELECT · `audit_logs`: INSERT 만 · 그 밖 0. 마이그레이션이 NOLOGIN 으로 만들고 로그인·비밀번호(`/etc/tbox-v2/push.pgpass`)는 사용자 sudo 반영 스크립트가 표준입력으로 정한다 · 문장 15s · 유휴 트랜잭션 60s |
 | `tbox_app` (지문·얼굴 로그인 — 5.35, F-72) | 같은 앱 계정 | `passkeys`: SELECT·INSERT·UPDATE — **DELETE 없음**(해제는 `revoked_at`) · `passkey_challenges`: SELECT·INSERT·UPDATE·DELETE(일회용 값 — 만료 정리) · 두 시퀀스 USAGE·SELECT. `tbox_backup` 은 둘 다 SELECT(공개 키라 비밀 아님) · `tbox_perm`·`tbox_push` 0. `db/migrations/2026-10-06_passkeys.sql` · `db/schema.sql` · `db/grants.sql` · `deploy/install.sh` 4-4-1 확인 목록 |
+| `tbox_app` (개인 등급·사람 권한 — 5.36, F-73) | 같은 앱 계정 | `access_grants` · `access_requests`: SELECT·INSERT·UPDATE·DELETE(권한 빼기는 줄을 지운다 — 누가 언제는 감사 `grant.remove`) + 시퀀스 USAGE·SELECT · `permissions` 는 그대로 SELECT 만(개인 네 줄도 — 읽기 칸은 CHECK 로 거짓) · `tbox_backup` SELECT · `tbox_perm`·`tbox_push` 0. 커뮤니티 `notifications.access_request_id` 는 표 단위 권한 그대로 |
 
 > 파일 삭제가 논리 삭제(UPDATE)이므로 앱 계정에 `DELETE` 권한 자체가 필요 없다. 30일 실제 정리는 `tbox_owner` 권한의 배치 스크립트가 수행한다.
 > (2026-09-24 코드 확인: t-box 휴지통 정리 `purge_trash.php` 는 **`tbox_app`** 으로 붙어 `files.purged_at` 만 UPDATE 하고 바이트는 파일 시스템에서 지운다 — 행은 남는다.

@@ -540,6 +540,19 @@ if (!headers_sent()) {
       <a id="nav-my-trash" class="<?= $shellNavClass('trash') ?>" href="<?= Http::url('/trash') ?>" data-no-reauth hidden>
         <span class="icon" data-icon="trash"></span><span>내 휴지통</span>
       </a>
+      <!-- G-0 (t-box PRD F-73) — 「공유받음」: 나에게 준 권한으로 여는 개인 폴더·파일(`GET /api/grants/mine`) + 받은·보낸 권한 요청.
+           권한은 폴더 하나에만 받을 수 있어 트리를 내려가서는 닿지 못한다 — 받은 자리를 한곳에 모은다(커뮤니티 「공유받은 페이지」와 같은 까닭).
+           파일 화면의 보기 단추 줄에 두면 폰 폭(412)에서 줄이 두 줄로 꺾여 사이드바 항목으로 둔다. 목록은 창구가 정한다(PRD S-02). -->
+      <a id="nav-shared" class="nav__item" href="<?= Http::url('/') ?>?view=shared">
+        <span class="icon" data-icon="users"></span><span>공유받음</span>
+      </a>
+      <!-- G-0 (t-box PRD F-73 ④) — 「권한 요청 n」: 내 개인 폴더·파일에 온 **기다리는** 요청이 있을 때만 app.js 가 연다
+           (`/api/me` 의 access_requests_pending — 알림 종과 같은 값 · 새 요청 0). 누르면 파일 화면의 받은 요청 목록.
+           숫자 배지는 알림 종과 같은 `.badge` — 새 클래스 0. 목록·허락·거절은 창구가 요청마다 다시 판단한다(PRD S-01). -->
+      <a id="nav-access-requests" class="nav__item" href="<?= Http::url('/') ?>?requests=in" hidden>
+        <span class="icon" data-icon="users"></span><span>권한 요청</span>
+        <span id="nav-access-requests-count" class="badge badge--internal"></span>
+      </a>
     </nav>
 
     <p class="nav-title">설정</p>

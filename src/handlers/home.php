@@ -135,11 +135,21 @@ require __DIR__ . '/../views/shell_top.php';
           <button id="folder-fav" class="btn btn--quiet btn--small" type="button" aria-pressed="false">
             <span class="icon" data-icon="star"></span><span id="folder-fav-label">즐겨찾기에 넣기</span>
           </button>
+          <!-- G-0 — 개인 폴더의 「권한」(받은 사람 목록 · 주인은 사람 추가·빼기). 개인 폴더를 열었을 때만 app.js 가 연다.
+               누가 볼 수 있는지·고칠 수 있는지는 창구(`GET·POST·DELETE /api/folders/{num}/grants`)가 판단한다(PRD S-01). -->
+          <button id="folder-access" class="btn btn--quiet btn--small" type="button" aria-haspopup="dialog" hidden>
+            <span class="icon" data-icon="users"></span><span id="folder-access-label">권한</span>
+          </button>
           <button id="folder-rename" class="btn btn--quiet btn--small" type="button">이름 바꾸기</button>
           <button id="folder-level" class="btn btn--quiet btn--small" type="button">등급 바꾸기</button>
           <button id="folder-delete" class="btn btn--quiet btn--small" type="button">지우기</button>
         </div>
         <p id="folder-msg" class="msg"></p>
+        <!-- G-0 — 개인 폴더에 **보기** 권한만 있을 때(올리기·새 폴더가 막힌다) 한 줄 + 편집 권한 요청 단추. app.js 가 창구의 `can_put` 을 보고 연다. -->
+        <div id="folder-put-note" class="help" hidden>
+          <p>이 폴더에는 보기 권한만 있습니다 — 올리려면 주인에게 편집 권한을 요청하세요.</p>
+          <button id="folder-put-request" class="btn btn--quiet btn--small" type="button">편집 권한 요청</button>
+        </div>
       </aside>
 
       <div class="workspace__main">
@@ -159,6 +169,60 @@ require __DIR__ . '/../views/shell_top.php';
         <span class="icon" data-icon="log"></span>최근
       </button>
     </div>
+    <!-- G-0 — 주소로 연 폴더·파일을 볼 수 없을 때(403 · 없는 번호도 **같은 화면**) — 이름을 보이지 않고 요청만 받는다.
+         보기/편집 고르기 + 한 줄 메모(200자). 보내면 창구가 **없는 항목이어도 같은 답**(「보냈습니다」)을 준다(존재가 갈리지 않게). -->
+    <section class="panel" id="access-request" aria-labelledby="access-request-title" hidden>
+      <div class="panel__head">
+        <h2 class="panel__title" id="access-request-title" tabindex="-1">이 항목을 볼 권한이 없습니다</h2>
+        <p class="panel__sub">주인에게 권한을 요청할 수 있습니다. 주인이 허락하면 알림으로 알려 드립니다.</p>
+      </div>
+      <form id="access-request-form" class="form form--grid" autocomplete="off">
+        <p class="field__label field--full">어떤 권한이 필요하세요?</p>
+        <label class="field field--full">
+          <span class="field__label">
+            <input type="radio" name="access-want" value="view" checked> 보기 — 열고 받기
+          </span>
+        </label>
+        <label class="field field--full" id="access-want-write-label">
+          <span class="field__label">
+            <input type="radio" name="access-want" value="write"> 편집 — 올리기·이름·설명 고치기까지
+          </span>
+        </label>
+        <label class="field field--full">
+          <span class="field__label">주인에게 한 줄 (선택, 200자)</span>
+          <input id="access-request-message" type="text" maxlength="200" placeholder="왜 필요한지 적어 주세요">
+        </label>
+        <div class="form-actions field--full">
+          <button id="access-request-send" class="btn" type="submit">요청 보내기</button>
+        </div>
+      </form>
+      <p id="access-request-msg" class="msg" role="alert" aria-live="polite"></p>
+      <div id="access-request-done" class="ok-note" role="status" aria-live="polite" hidden></div>
+    </section>
+    <!-- G-0 — 「공유받음」 보기의 폴더 묶음(즐겨찾기 폴더와 같은 줄 모양) · 받은 권한 요청 · 보낸 권한 요청. 줄은 app.js 가 만든다(textContent). -->
+    <section class="panel panel--tight" id="shared-folders-wrap" aria-labelledby="shared-folders-title" hidden>
+      <div class="panel__head">
+        <h2 class="panel__title" id="shared-folders-title">공유받은 폴더</h2>
+      </div>
+      <ul class="foldertree__list" id="shared-folders"></ul>
+    </section>
+    <section class="panel panel--tight" id="access-in-wrap" aria-labelledby="access-in-title" hidden>
+      <div class="panel__head">
+        <h2 class="panel__title" id="access-in-title" tabindex="-1">받은 권한 요청</h2>
+        <p class="panel__sub">내 개인 폴더·파일을 보려는 요청입니다. 허락하면 그 사람이 곧바로 볼 수 있습니다.</p>
+      </div>
+      <p id="access-in-msg" class="msg" role="alert" aria-live="polite"></p>
+      <ul class="list" id="access-in-list" aria-label="받은 권한 요청"></ul>
+      <p id="access-in-empty" class="muted" hidden>받은 요청이 없습니다.</p>
+    </section>
+    <section class="panel panel--tight" id="access-out-wrap" aria-labelledby="access-out-title" hidden>
+      <div class="panel__head">
+        <h2 class="panel__title" id="access-out-title">보낸 권한 요청</h2>
+        <p class="panel__sub">주인이 결정한 요청과, 볼 수 있는 항목에 보낸 요청만 보입니다. 결정되면 알림으로도 알려 드립니다.</p>
+      </div>
+      <ul class="list" id="access-out-list" aria-label="보낸 권한 요청"></ul>
+      <p id="access-out-empty" class="muted" hidden>보낸 요청이 없습니다.</p>
+    </section>
     <!-- 「즐겨찾기」 보기의 폴더 묶음 — 이름을 누르면 그 폴더를 「파일」 보기로 연다. 줄은 app.js 가 createElement/textContent 로
          만든다(폴더 트리와 같은 줄 모양 `.foldertree__item`). 없으면 묶음째 숨는다. -->
     <section class="panel panel--tight" id="fav-folders-wrap" aria-labelledby="fav-folders-title" hidden>
@@ -692,6 +756,46 @@ require __DIR__ . '/../views/shell_top.php';
 
          「새 탭에서 열기」는 이미지·PDF 일 때만 보인다 — 브라우저가 sandbox iframe 안에서
          PDF 를 그리지 못하는 경우의 대안이며, 그 응답에도 같은 CSP 가 그대로 붙는다. -->
+    <!-- ─── 권한 — 개인 폴더·파일의 받은 사람 (G-0, t-box PRD F-73 ②) ───────────────
+         목록은 `GET …/grants` 가 준 것만(직접 준 것 + 위 개인 폴더에서 이어받은 것 — 이어받은 것은 여기서 못 뺀다).
+         주인(또는 관리자 특권)에게만 「사람 추가」·보기/편집 바꾸기·빼기가 열린다(`can_manage`). 후보는 `GET /api/access/people`
+         (한 글자부터 — 커뮤니티 공유 창과 같은 모양). 누르는 즉시 창구로 간다. 새 클래스 0(.field·.toolbar·.list·.badge). -->
+    <dialog id="grants-dialog" class="modal modal--form" aria-labelledby="grants-title">
+      <div class="modal__head">
+        <span class="preview__mark"><span class="icon" data-icon="users"></span></span>
+        <div class="preview__headtext">
+          <h2 class="modal__title" id="grants-title">권한</h2>
+          <div class="modal__meta"><span id="grants-item"></span></div>
+        </div>
+        <button id="grants-close-x" class="btn btn--icon" type="button" aria-label="닫기">
+          <span class="icon" data-icon="x"></span>
+        </button>
+      </div>
+      <div class="modal__body">
+        <p id="grants-lead" class="muted">「개인」 등급은 주인과 여기 적힌 사람만 봅니다. 폴더에 준 권한은 안의 폴더·파일에도 이어집니다.</p>
+        <p id="grants-msg" class="msg" role="alert" aria-live="polite"></p>
+        <section id="grants-add-wrap" aria-labelledby="grants-add-title" hidden>
+          <p id="grants-add-title" class="field__label">사람 추가</p>
+          <div id="grants-add" class="toolbar">
+            <input id="grants-search" type="search" placeholder="아이디나 이름으로 찾기" maxlength="64"
+                   autocomplete="off" spellcheck="false" aria-label="권한을 줄 사람 찾기">
+            <select id="grants-level" aria-label="줄 권한">
+              <option value="view">보기</option>
+              <option value="write">편집</option>
+            </select>
+          </div>
+          <p id="grants-hint" class="muted">아이디나 이름을 한 글자 이상 입력하세요</p>
+          <ul id="grants-candidates" class="list list--scroll" aria-label="찾은 사람" hidden></ul>
+        </section>
+        <p id="grants-count" class="muted"></p>
+        <ul id="grants-list" class="list" aria-label="권한을 받은 사람"></ul>
+        <p class="muted">「편집」을 받은 사람은 올리기·이름·설명 고치기까지 합니다 — 지우기·옮기기·등급·공유 링크·권한 주기는 주인만 합니다. 손님 계정은 보기만 받습니다.</p>
+      </div>
+      <div class="modal__foot">
+        <button id="grants-close" class="btn btn--quiet" type="button">닫기</button>
+      </div>
+    </dialog>
+
     <dialog id="preview-dialog" class="modal" aria-labelledby="preview-name">
       <div class="modal__head">
         <span class="preview__mark"><span class="icon" data-icon="eye"></span></span>

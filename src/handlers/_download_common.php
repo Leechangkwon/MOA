@@ -40,7 +40,9 @@ function tbox_download_find(string $publicId): ?array
                f.uploaded_by,
                f.sha256,
                f.scan_status,
-               f.exec_content
+               f.exec_content,
+               -- G-0 — 종류 표식: 개인 등급 판정(Authz::decideRead [P])이 이 행을 파일로 다시 읽는다(없으면 닫힌 실패)
+               'file' AS item_kind
           FROM files f
          WHERE f.public_id = CAST(:pid AS uuid)
            AND f.deleted_at IS NULL

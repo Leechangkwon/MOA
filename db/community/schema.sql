@@ -313,13 +313,19 @@ CREATE TABLE community.comment_reactions (
 CREATE TABLE community.notifications (
     id         BIGSERIAL   PRIMARY KEY,
     user_id    BIGINT      NOT NULL REFERENCES public.users(id),
-    kind       TEXT        NOT NULL CHECK (kind IN ('mention','reply','comment_on_my_page','handover')),
+    -- G-0 (t-box PRD F-73) — 'access_request'(주인에게: 누가 권한을 요청했다) · 'access_decided'(요청자에게: 허락·거절).
+    --   이 둘은 페이지가 없고 access_request_id 로 t-box 요청 줄을 가리킨다(migrations/2026-10-10_access_grants.sql).
+    kind       TEXT        NOT NULL CONSTRAINT notifications_kind_check
+                           CHECK (kind IN ('mention','reply','comment_on_my_page','handover','access_request','access_decided')),
     page_id    BIGINT      REFERENCES community.pages(id),
     comment_id BIGINT      REFERENCES community.comments(id),
     actor_id   BIGINT      REFERENCES public.users(id),
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-    read_at    TIMESTAMPTZ
+    read_at    TIMESTAMPTZ,
+    access_request_id BIGINT REFERENCES public.access_requests(id) ON DELETE SET NULL
 );
+CREATE INDEX notifications_access_request_idx ON community.notifications (access_request_id)
+    WHERE access_request_id IS NOT NULL;
 CREATE INDEX notifications_user_idx ON community.notifications (user_id, created_at DESC);
 CREATE INDEX notifications_unread_idx ON community.notifications (user_id) WHERE read_at IS NULL;
 
@@ -491,7 +497,7 @@ DO $$ DECLARE r record; BEGIN
   EXECUTE format('ALTER TABLE community.notifications DROP CONSTRAINT %I',r.conname);
  END LOOP;
  ALTER TABLE community.notifications ADD CONSTRAINT notifications_kind_check
-  CHECK(kind IN ('mention','reply','comment_on_my_page','handover','verify_expired'));
+  CHECK(kind IN ('mention','reply','comment_on_my_page','handover','access_request','access_decided','verify_expired'));
 END $$;
 CREATE INDEX IF NOT EXISTS pages_verify_expiry_idx ON community.pages(verify_expires_at) WHERE verify_expires_at IS NOT NULL AND deleted_at IS NULL;
 CREATE INDEX IF NOT EXISTS pages_kind_idx ON community.pages(page_kind) WHERE page_kind <> 'page';
@@ -547,7 +553,7 @@ DO $$ DECLARE r record; BEGIN
   EXECUTE format('ALTER TABLE community.notifications DROP CONSTRAINT %I',r.conname);
  END LOOP;
  ALTER TABLE community.notifications ADD CONSTRAINT notifications_kind_check
-  CHECK(kind IN ('mention','reply','comment_on_my_page','handover','verify_expired','recurring_created','review_requested','due_tomorrow','automation_denied','automation_disabled'));
+  CHECK(kind IN ('mention','reply','comment_on_my_page','handover','access_request','access_decided','verify_expired','recurring_created','review_requested','due_tomorrow','automation_denied','automation_disabled'));
 END $$;
 
 -- C:F-46: proposal content is immutable to the application after insertion.

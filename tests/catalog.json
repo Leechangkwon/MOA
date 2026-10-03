@@ -5117,6 +5117,83 @@
       "est_sec": 30,
       "writes_prod": false,
       "notes": "전용 tbox_testdb 자격(PGPASSFILE), PHP CLI/PDO PostgreSQL, Python requests 필요. 운영 DB 덤프/계정/서비스/포트 사용 없이 합성 DB와 localhost8497만 만들고 제거. 원문 비밀 출력0. unit52 및 실제 HTTP/워커/마이그레이션 검증."
+    },
+    {
+      "id": "tbox.g0_private_grants",
+      "cmd": "bash tests/g0_private_grants.sh",
+      "module": "tbox",
+      "env": "temp-instance",
+      "status": "required",
+      "needs": [
+        "sudo",
+        "browser"
+      ],
+      "covers": [
+        "db/grants.sql",
+        "db/migrations/2026-10-10_access_grants.sql",
+        "public/assets/app.css",
+        "public/assets/app.js",
+        "public/index.php",
+        "scripts/community_asset_version.php",
+        "scripts/security_lint.sh",
+        "scripts/wiki_check.php",
+        "src/Audit.php",
+        "src/Authz.php",
+        "src/community/CommunityAuthz.php",
+        "src/community/handlers/notifications_list.php",
+        "src/community/routes.php",
+        "src/handlers/_access_common.php",
+        "src/handlers/_download_common.php",
+        "src/handlers/_folder_lock.php",
+        "src/handlers/_folder_paths.php",
+        "src/handlers/_upload_common.php",
+        "src/handlers/access_grants.php",
+        "src/handlers/access_mine.php",
+        "src/handlers/access_people.php",
+        "src/handlers/access_requests.php",
+        "src/handlers/favorites_files.php",
+        "src/handlers/files_list.php",
+        "src/handlers/files_recent.php",
+        "src/handlers/files_update.php",
+        "src/handlers/files_zip.php",
+        "src/handlers/folders_create.php",
+        "src/handlers/folders_list.php",
+        "src/handlers/folders_update.php",
+        "src/handlers/share_create.php",
+        "src/handlers/share_download.php",
+        "tests/browser/g0_private_grants.py"
+      ],
+      "requirements": [],
+      "risks": [
+        "R-62",
+        "R-111"
+      ],
+      "est_sec": 480,
+      "writes_prod": false,
+      "notes": "G-0 「개인」 등급 · 사람 지정 권한 · 권한 요청(PRD F-73) 수락 T-G0-1~12 — 스키마(마이그레이션 두 번 · CHECK · 권한 · db/grants.sql 은 G-0 절만) · 판정 ↔ 목록 조건절 짝 전수 대조 3400 사례 · 읽기 경로 전수(목록·트리·검색·받기·미리보기·zip·즐겨찾기·최근·공유받음·토큰) · 즉시 반영 · 편집 권한자 · 요청(존재 노출·한도) · 넓히기·좁히기 · 커뮤니티 · Admin 특권 · 자기 공격(여러 일꾼 서버 경쟁 — 포트+1) · 정적 · 브라우저(tests/browser/g0_private_grants.py). 임시 DB tbox_g0_<포트>_test — **시험 전용 역할 tbox_testdb** 로만(운영 pg_dump --no-owner 한 번을 틀 tbox_g0_tpl_test 에 붓고 createdb -T · sudo psql 0 → AL-9 0 · 마이그레이션은 OWNER TO 두 줄만 뺀 사본) · 포트 8411~8415(기본 8413 · 경쟁 8414) · 부르는 쪽이 .env 0600 사본을 트리 뿌리(또는 G0_ENV_SRC)에. NO_BROWSER=1 · BROWSER_LOCK=<잠금 파일>. 2026-09-28 6회차 252/0/0(tbox_testdb)."
+    },
+    {
+      "id": "tbox.browser_g0_private_grants",
+      "cmd": "python3 tests/browser/g0_private_grants.py",
+      "module": "tbox",
+      "env": "temp-instance",
+      "status": "helper",
+      "needs": [
+        "browser"
+      ],
+      "covers": [
+        "public/assets/app.css",
+        "public/assets/app.js",
+        "src/handlers/home.php",
+        "src/views/shell_top.php"
+      ],
+      "requirements": [],
+      "risks": [
+        "R-62"
+      ],
+      "est_sec": 150,
+      "writes_prod": false,
+      "notes": "부르는 셸: tbox.g0_private_grants. 단독 실행 불가(인자 SITE UA SHOTS IDS_JSON · 세션 셋(직원1·직원2·손님)을 표준입력 세 줄로). 결과 줄 SMOKE_FAIL=n. 360·412 터치·820 터치·1280 × 라이트·다크 스크린샷(~/.claude/ui-shots/g0)."
     }
   ]
 }

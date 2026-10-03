@@ -37,7 +37,8 @@ $sqlFind = <<<'SQL'
            f.team_id,
            f.uploaded_by,
            f.sha256,
-           f.size_bytes
+           f.size_bytes,
+           'file' AS item_kind   -- G-0 종류 표식(개인 등급: decideRead [P] · decideDelete 주인만)
       FROM files f
      WHERE f.public_id = CAST(:pid AS uuid)
        AND f.deleted_at IS NULL

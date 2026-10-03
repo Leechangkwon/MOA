@@ -879,7 +879,7 @@ final class Audit
         'folder.level_change|deny|team_mismatch'        => '{actor} 이(가) 폴더 「{target}」 을(를) 자기 팀이 아닌 팀의 team 등급으로 바꾸려 해서 막았습니다',
         'folder.level_change|deny|parent_narrower'      => '{actor} 이(가) 폴더 「{target}」 의 등급을 부모 폴더보다 넓은 {level} 등급으로 바꾸려 해서 거부했습니다',
         'folder.level_change|deny|children_exceed'      => '{actor} 이(가) 폴더 「{target}」 을(를) {level} 등급으로 좁히려 했지만 그보다 넓은 하위 폴더·파일이 남아 있어 거부했습니다 (개수는 상세 기록)',
-        'folder.level_change|deny|not_owner'            => '{actor} 이(가) 폴더 「{target}」 의 등급을 하위까지 함께 좁히려 했지만 자기가 고칠 수 없는 항목이 있어 전부 되돌렸습니다 (개수는 상세 기록)',
+        'folder.level_change|deny|not_owner'            => '{actor} 이(가) 폴더 「{target}」 의 등급을 {level} 등급으로 바꾸려 했지만 자기가 바꿀 수 없는 항목(개인 등급이 걸린 폴더 자신 또는 함께 좁히려던 하위)이 있어 막았습니다 (개수는 상세 기록)',
 
         'folder.delete|allow'                           => '{actor} 이(가) 빈 폴더 「{target}」 을(를) 지웠습니다 (부모·깊이는 상세 기록)',
         'folder.delete|deny|not_found'                  => '{actor} 이(가) 없는 폴더를 지우려 해서 거부했습니다',
@@ -903,6 +903,38 @@ final class Audit
         'file.update|deny|bad_folder'                   => '{actor} 이(가) 파일 「{target}」 을(를) 없는 폴더 또는 볼 수 없는 폴더로 옮기려 해서 거부했습니다',
         'file.update|deny|parent_narrower'              => '{actor} 이(가) 파일 「{target}」 을(를) 자기보다 좁은 등급의 폴더로 옮기려 해서 거부했습니다',
         'file.level_change|deny|parent_narrower'        => '{actor} 이(가) 파일 「{target}」 의 접근 등급을 그 파일이 든 폴더보다 넓은 {level} 등급으로 바꾸려 해서 거부했습니다',
+
+        /* ── G-0 「개인」 등급 · 사람 지정 권한 · 권한 요청 (t-box PRD F-73, ARCH 7.4 G-0 행) ──
+         *
+         * 읽기·고치기의 **거부**는 새 사유를 만들지 않는다(표의 읽기 칸이 거짓 = `role_not_permitted` · 주인 몫 = `not_owner`) —
+         * 위 기존 문장이 그대로 쓰인다. 허용 근거(`owner`·`grant`·`grant_write`·`admin_override`)는 detail.granted_by 에 남는다.
+         * 여기 행은 새 행동 넷(grant.add·grant.remove·access.request·access.decide)과 기존 행동에 새로 생긴 거부 두 갈래다.
+         * detail: grantee(받은·받으려던 사람 계정명) · can_write · item_kind · request_no(요청 줄 번호) · decision · want_write ·
+         *         message_len(메모 글자 수 — 메모 원문은 남기지 않는다). {target} = 항목 이름(없는 항목이면 비었다).
+         */
+        'file.level_change|deny|not_owner'              => '{actor} 이(가) 파일 「{target}」 의 접근 등급을 {level} 등급으로 바꾸려 했지만 개인 등급이 걸린 변경은 그 파일의 주인만 할 수 있어 막았습니다',
+        'folder.create|deny|not_owner'                  => '{actor} 이(가) 편집 권한이 없는 개인 폴더 안에 폴더 「{target}」 을(를) 만들려 해서 막았습니다',
+        'grant.add|allow'                               => '{actor} 이(가) {level} 등급 항목 「{target}」 의 권한을 다른 사람에게 주었습니다 (받은 사람·보기/편집은 상세 기록)',
+        'grant.add|deny|not_owner'                      => '{actor} 이(가) 자기가 주인이 아닌 항목 「{target}」 의 권한을 주려 해서 막았습니다',
+        'grant.add|deny|not_private'                    => '{actor} 이(가) 개인 등급이 아닌 항목 「{target}」 에 사람 지정 권한을 주려 해서 거부했습니다 (권한은 개인 등급에만 뜻이 있습니다)',
+        'grant.add|deny|bad_user'                       => '{actor} 이(가) 없는·꺼진·주인 자신인 계정에 항목 「{target}」 의 권한을 주려 해서 거부했습니다 (적은 이름은 상세 기록)',
+        'grant.add|deny|write_not_allowed'              => '{actor} 이(가) 편집 권한을 받을 수 없는 계정(손님)에게 항목 「{target}」 의 편집 권한을 주려 해서 거부했습니다',
+        'grant.add|deny|bad_request'                    => '{actor} 이(가) 권한 주기를 허용되지 않는 형식(모르는 항목·빈 이름·편집 값)으로 요청해서 거부했습니다',
+        'grant.remove|allow'                            => '{actor} 이(가) 항목 「{target}」 에 준 권한을 뺐습니다 (뺀 사람은 상세 기록)',
+        'grant.remove|deny|not_owner'                   => '{actor} 이(가) 자기가 주인이 아닌 항목 「{target}」 의 권한을 빼려 해서 막았습니다',
+        'grant.remove|deny|not_private'                 => '{actor} 이(가) 개인 등급이 아닌 항목 「{target}」 의 사람 지정 권한을 빼려 해서 거부했습니다 (개인 등급일 때만 고칩니다)',
+        'grant.remove|deny|not_found'                   => '{actor} 이(가) 항목 「{target}」 에 없는 권한 줄을 빼려 해서 거부했습니다',
+        'access.request|allow'                          => '{actor} 이(가) 개인 항목 「{target}」 의 권한을 주인에게 요청했습니다 (보기/편집·메모 길이는 상세 기록)',
+        'access.request|deny|not_found'                 => '{actor} 이(가) 없는 항목의 권한을 요청해서 저장하지 않았습니다 (요청한 사람에게는 보낸 것과 같은 답)',
+        'access.request|deny|not_private'               => '{actor} 이(가) 개인 등급이 아닌 항목 「{target}」 의 권한을 요청해서 저장하지 않았습니다 (요청한 사람에게는 보낸 것과 같은 답)',
+        'access.request|deny|duplicate'                 => '{actor} 이(가) 이미 기다리는 요청이 있는 항목 「{target}」 의 권한을 다시 요청해서 새로 저장하지 않았습니다',
+        'access.request|deny|already'                   => '{actor} 이(가) 이미 권한이 있는 항목 「{target}」 의 권한을 요청해서 저장하지 않았습니다',
+        'access.request|deny|rate_limited'              => '{actor} 이(가) 하루 요청 한도(20건)를 넘겨 권한을 요청해서 막았습니다',
+        'access.request|deny|bad_request'               => '{actor} 이(가) 권한 요청을 허용되지 않는 형식(모르는 항목·메모 길이·손님의 편집 요청)으로 보내서 거부했습니다',
+        'access.decide|allow'                           => '{actor} 이(가) 항목 「{target}」 의 권한 요청을 처리했습니다 (허락·거절·취소와 요청한 사람은 상세 기록)',
+        'access.decide|deny|not_found'                  => '{actor} 이(가) 없거나 자기가 처리할 수 없는 권한 요청을 처리하려 해서 거부했습니다',
+        'access.decide|deny|bad_request'                => '{actor} 이(가) 권한 요청 처리를 허용되지 않는 형식(모르는 결정·이미 끝난 요청·손님에게 편집)으로 보내서 거부했습니다',
+        'access.decide|deny|not_private'                => '{actor} 이(가) 이제 개인 등급이 아니거나 지워진 항목 「{target}」 의 권한 요청을 허락하려 해서 거부했습니다',
 
         /* ── 커뮤니티 3단계 — 개인 업무 공간·블록 본문 (커뮤니티 ARCHITECTURE.md 21.3 표) ──
          *
