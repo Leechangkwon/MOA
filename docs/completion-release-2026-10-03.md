@@ -41,3 +41,12 @@
 운영 기준은 production-baseline.json의 파일별 SHA-256이며 기존 변경 누락 0건을 확인했다. 암호화 코드·설정·DB·storage 백업은 /var/backups/tbox-v2/completion-20261003에 있고 체크섬과 전체 복호화를 검사했다. deployment-plan.json은 커밋·파일 해시·마이그레이션 목록을 고정한다. 배포 실행 결과·실제 커밋은 results/deployment.json과 PR #2에 후속 기록한다. 기존 계정·문서·파일을 재시드하거나 삭제/복원하지 않는다.
 
 미검증/미연결: 서버 GPT 키 없음, 문서 AI 공급자 키/동의 설정 없음, 외부 메신저·데이터 연결 대상 없음. 실제 Windows 설치·OAuth·구독 추론·휴대폰 카메라·영상 코덱·운영 앞단 프록시 로그는 이 서버에서 확인하지 않았다. Linux에서 Windows 전용 전체 시험을 시도했으나 msvcrt/tkinter 부재로 실행 불가였으며, 독립 연결 시험 13개만 통과로 기록한다. 사용자 자기 공격 결과는 미보고다. 기존 Windows ZIP은 이 서버에 없고 알려준 PC 경로를 다운로드 URL로 가장하지 않는다.
+
+
+## 최초 운영 반영 결과와 보정
+
+v2.43.0 / 302bef7a8f11bdc875d89847c225813d0a071aa0를 운영에 반영했다. DB 8개 업데이트 및 지정 파일230개 반영, nginx/FPM reload, 계정32·파일1037·폴더18·문서954 건수 유지, 비서 워커 processed=0 확인. 기존 public.api_tokens의 소유자가 postgres여서 해당 제약 변경만 관리자 권한으로 처리하고 새 assistant 표는 tbox_owner 소유로 고정했다. 소유권·ACL을 유지한 구조 복제에서도 업데이트 두 번 통과했다.
+
+실제 HTTPS에서 PHP와 nginx CSP 두 벌 중 PHP가 PC 연결을 차단하는 누락을 발견했다. 로그인한 /tbox/messages 핸들러에만 connect-src의 고정 loopback 주소를 추가하는 보정을 진행했다. 단순 합성 브라우저 통과와 실제 배포 수락을 구분하여 기록한다. 최종 배포 커밋과 HTTPS 검증은 PR #2 및 results/post-deploy.json에 남긴다.
+
+보정 후보의 실제 PHP 브라우저 검사는 17/17 통과했다(`memories-runtime-browser-final/browser-results.json`). 메신저 페이지 허용과 다른 페이지의 엄격한 정책 유지를 PC·모바일에서 각각 확인했다.

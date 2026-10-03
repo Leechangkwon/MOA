@@ -1,6 +1,8 @@
 <?php
 declare(strict_types=1);
 require_once __DIR__.'/../Member.php'; Member::requireMessenger($user);
+// Only the authenticated messenger may connect to the explicitly paired PC helper.
+header("Content-Security-Policy: default-src 'self'; connect-src 'self' http://127.0.0.1:43821; script-src 'self'; style-src 'self'; img-src 'self' data:; object-src 'none'; base-uri 'none'; frame-ancestors 'none'");
 $memberTitle='메신저';$memberPage='messages'; require __DIR__.'/../views/member_top.php';
 ?>
 <div class="moa-section-head"><div><p class="moa-kicker">SAY HELLO</p><h1>마음을 잇는 대화</h1><p class="moa-muted">함께하는 사람에게, 때로는 든든한 AI에게. 편하게 말을 걸어 보세요.</p></div><a href="/" class="btn btn--quiet">홈으로</a></div>
