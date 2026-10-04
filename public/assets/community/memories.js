@@ -99,7 +99,7 @@
   }
   function render() {
     $('feed').classList.toggle('grid', state.grid);
-    $('feed').replaceChildren(...state.posts.map(state.grid ? gridCard : postCard));
+    $('feed').replaceChildren(...state.posts.map((post) => state.grid ? gridCard(post) : postCard(post)));
     $('empty').hidden = state.posts.length !== 0;
     $('load-more').hidden = state.next == null && !state.cursor;
     $('list-view').classList.toggle('selected', !state.grid); $('grid-view').classList.toggle('selected', state.grid);
