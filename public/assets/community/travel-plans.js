@@ -107,11 +107,23 @@
       card.append(tools); return card;
     }));
   }
+  function applyRecords(plan, planId) {
+    if (active?.id !== planId || plan?.id !== planId) return;
+    const fields = ['title', 'destination', 'starts_on', 'ends_on', 'notes', 'steps'];
+    const sameBaseline = fields.every((field) => JSON.stringify(active[field]) === JSON.stringify(plan[field]));
+    // Advance only for this one link change. A concurrent edit must still conflict with the open form.
+    if (Number.isSafeInteger(active.revision) && plan.revision === active.revision + 1 && sameBaseline) {
+      active.revision = plan.revision;
+    } else {
+      notice('계획도 다른 곳에서 바뀌었어요. 작성 중인 내용을 복사해 두고 계획을 새로 열어 주세요.', true);
+    }
+    active.records = plan.records; renderRecords();
+  }
   function renderRecords() {
     $('travel-records').replaceChildren(...(active?.records || []).map((record) => {
       const row = node('div', undefined, 'travel-record-row'), link = node('a', record.caption || record.location || record.taken_on || '여행 기록');
       link.href = base + '/memories/p/' + record.post_id;
-      row.append(link, action('연결 해제', async () => { if (editorBusy) return; const planId = active.id; setBusy(true); try { const result = await api('/' + planId + '/records', 'DELETE', { post_id: record.post_id }); if (active?.id === planId) { active.records = result.plan.records; renderRecords(); } } catch (e) { $('travel-error').textContent = e.message; } finally { setBusy(false); } })); return row;
+      row.append(link, action('연결 해제', async () => { if (editorBusy) return; const planId = active.id; setBusy(true); try { const result = await api('/' + planId + '/records', 'DELETE', { post_id: record.post_id }); applyRecords(result.plan, planId); } catch (e) { $('travel-error').textContent = e.message; } finally { setBusy(false); } })); return row;
     }));
   }
   function planBody() { return { title: $('travel-title').value, destination: $('travel-destination').value, starts_on: $('travel-start').value || null, ends_on: $('travel-end').value || null, notes: $('travel-notes').value, steps, ...(active ? { revision: active.revision } : { request_id: requestId }) }; }
@@ -150,7 +162,8 @@
   async function attachRecord(postId, value = selection) {
     if (!value || !postId) return;
     if (!csrf) await refresh();
-    await api('/' + value.plan_id + '/records', 'POST', { post_id: postId, step_id: value.step_id || null });
+    const result = await api('/' + value.plan_id + '/records', 'POST', { post_id: postId, step_id: value.step_id || null });
+    applyRecords(result.plan, value.plan_id);
   }
   function renderPrompt() { $('travel-ai-prompt').value = `나만의 여행 계획을 함께 다듬어 주세요. 여행: ${$('travel-title').value || '아직 미정'}. 장소: ${$('travel-destination').value || '추천해 주세요'}. 기간: ${$('travel-start').value || '미정'} ~ ${$('travel-end').value || '미정'}. ${$('travel-notes').value}\n무리하지 않는 일정과 대안을 제안해 주세요. 운영시간·가격은 확인이 필요하면 표시하고, 내 확인을 거쳐 저장해 주세요.`; }
   async function openDialog() { if (editorBusy) return; if (!dialog.open) dialog.showModal(); setBusy(true); $('travel-status').textContent = '여행 계획을 불러오고 있어요…'; try { await refresh(); } catch (e) { $('travel-status').textContent = e.message; } finally { setBusy(false); } }
@@ -174,7 +187,7 @@
     });
   });
   $('travel-load-posts').addEventListener('click', async () => { if (editorBusy) return; setBusy(true); try { const data = await request('/api/memories?view=mine', { headers: { Accept: 'application/json' } }); $('travel-existing').replaceChildren(node('option', '최근 내 기록을 고르세요')); $('travel-existing').firstChild.value = ''; (data.posts || []).forEach((post) => { const option = node('option', (post.caption || post.location || '사진 기록').slice(0, 80)); option.value = post.id; $('travel-existing').append(option); }); } catch (e) { $('travel-error').textContent = e.message; } finally { setBusy(false); } });
-  $('travel-link').addEventListener('click', async () => { if (editorBusy || !active || !$('travel-existing').value) return; const planId = active.id; setBusy(true); try { const result = await api('/' + planId + '/records', 'POST', { post_id: $('travel-existing').value, step_id: null }); if (active?.id === planId) { active.records = result.plan.records; renderRecords(); } } catch (e) { $('travel-error').textContent = e.message; } finally { setBusy(false); } });
+  $('travel-link').addEventListener('click', async () => { if (editorBusy || !active || !$('travel-existing').value) return; const planId = active.id; setBusy(true); try { const result = await api('/' + planId + '/records', 'POST', { post_id: $('travel-existing').value, step_id: null }); applyRecords(result.plan, planId); } catch (e) { $('travel-error').textContent = e.message; } finally { setBusy(false); } });
   $('travel-copy-prompt').addEventListener('click', async () => { renderPrompt(); try { await navigator.clipboard.writeText($('travel-ai-prompt').value); notice('요청문을 복사했어요. AI 채팅에 붙여 넣어 주세요.'); } catch { $('travel-ai-prompt').focus(); $('travel-ai-prompt').select(); notice('요청문을 선택했어요. 길게 눌러 복사해 주세요.'); } });
   window.MemoryTravel = { getSelection: () => copy(selection), setSelection: (value) => { selection = value && typeof value.plan_id === 'string' ? copy(value) : null; renderChoice(); if (!plans.length) refresh().catch(() => {}); }, attachRecord };
   window.addEventListener('memory:saved', async (event) => { const value = event.detail.selection || null; if (!value) return; try { await attachRecord(event.detail.postId, value); notice('기록을 여행 계획에 연결했어요.'); } catch (e) { notice('게시글은 저장됐지만 계획 연결은 완료하지 못했어요. 여행 계획에서 기존 기록을 연결해 주세요. ' + e.message, true); } });

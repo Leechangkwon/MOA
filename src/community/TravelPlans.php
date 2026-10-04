@@ -88,7 +88,7 @@ final class TravelPlans
         return $out;
     }
 
-    public static function listing(array $user): array
+    public static function listing(array $user, bool $withCsrf = true): array
     {
         // List summaries, not the potentially large notes of every itinerary.
         $sql = <<<'SQL'
@@ -98,7 +98,7 @@ final class TravelPlans
             ORDER BY updated_at DESC,id DESC LIMIT 200
             SQL;
         $rows = Db::instance()->run($sql, [':owner'=>(int)$user['id']])->fetchAll();
-        return ['plans'=>$rows] + (defined('TBOX_API_TOKEN_SCOPE') ? [] : ['csrf_token'=>Auth::csrfToken()]);
+        return ['plans'=>$rows] + (!$withCsrf || defined('TBOX_API_TOKEN_SCOPE') ? [] : ['csrf_token'=>Auth::csrfToken()]);
     }
 
     public static function save(array $user, ?string $id, array $body): array
@@ -178,6 +178,9 @@ final class TravelPlans
             $db->run('INSERT INTO community.travel_plan_records(plan_id,post_id,step_id) VALUES(CAST(:plan AS uuid),CAST(:post AS uuid),CAST(:step AS uuid)) ON CONFLICT(plan_id,post_id) DO UPDATE SET step_id=EXCLUDED.step_id',
                 [':plan'=>$id, ':post'=>$body['post_id'], ':step'=>$stepId]);
         }
+        // Records are part of the returned plan: every client must advance its revision on link changes.
+        $revisionSql = 'UPDATE community.travel_plans SET revision=revision+1,updated_at=now() WHERE id=CAST(:id AS uuid) AND owner_user_id=:owner RETURNING *';
+        $plan = $db->run($revisionSql, [':id'=>$id, ':owner'=>(int)$user['id']])->fetch();
         self::audit($remove ? 'travel_unlink':'travel_link'); $db->commit();
         return ['plan'=>self::output($plan,$user)];
     }

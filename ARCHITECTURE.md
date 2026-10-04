@@ -3237,3 +3237,17 @@ MemberAssist는 작성 문장 또는 명시적으로 고른 참여자 메시지 
 커뮤니티 `/`는 기능 개요이며 `/memories`가 스레드의 정규 주소다. `memory_follows` 관계와 글의 공개 범위를 SQL 목록 및 직접 행/미디어 판정에서 함께 검사한다. 기존 `private/community/shared` 의미를 유지하고 `followers`를 추가한다. `discoverable`은 공개 가능한 글에만 true이며 기본 false다. 공개 범위를 좁히는 저장은 발견 게시를 해제한다. 시간 스냅샷과 순위/생성시각/UUID 커서로 목록을 이어 읽으며 커서는 인가를 대체하지 않는다.
 
 여행은 `travel_plans`/`travel_plan_records`에 별도 저장한다. 계획 소유자는 항상 세션·개인 토큰 주인이다. 계획과 연결 글 양쪽의 소유권을 재검사하며 일정 삭제는 기록을 삭제하지 않는다. 수정 판 번호로 충돌을 거부한다. `travel.read/write` 정책·토큰 범위는 기존 `community.read/write`와 독립이다. 안내 상태는 `usage_guides`의 본인 행에만 저장하고 권한에 사용하지 않는다. 상세 적용/검증 한계는 `docs/work-items/community-member-experience.md`.
+
+
+## ChatGPT 원격 MCP — 2026-10-04 후보
+
+`/mcp`는 기존 세션/X-API-Token 라우터 앞의 명시적 별도 dispatcher에서 Bearer 자격만 받는다. OAuth 승인 화면과 연결 관리만 세션·CSRF를 사용한다. issuer/resource/endpoint는 설정 APP_URL로 고정하고 동적 client 등록은 운영자가 정한 정확한 HTTPS callback만 허용한다. 외부 metadata/JWKS/provider 요청을 새로 만들지 않는다.
+
+별도 OAuth grant와 해시된 code/access/refresh 자격, 짧은 수명 및 회전/재사용 회수를 사용한다. 계정 보안 상태 변화는 영구 epoch로 기존 연결을 무효화한다. 정상 계정/초기 관문/역할 보기·토큰 출신 세션 제한을 승인/교환/갱신/사용 시 구분해 검사한다. OAuth 요청 감사는 쿠키 계정이 아니라 검증된 grant 계정에 귀속한다.
+
+MCP는 stateless Streamable HTTP JSON 응답이며 initialize/ping/notifications/도구 목록·호출만 구현한다. 지원하지 않는 요청과 잘못된 형식은 JSON-RPC 오류, 도구의 업무 오류는 isError 콘텐츠로 처리한다. 요청/응답 본문 및 사진은 로그에 넣지 않는다. 도구는 본인 소유 SQL 조건과 scope를 다시 검사하고 미디어 URL/서버경로 없는 출력만 만든다. 기존 Memories/TravelPlans 저장 검증·트랜잭션을 재사용해 원본을 보존한다.
+
+정확한 endpoint/수명/설정·migration·검증 한계는 `docs/work-items/chatgpt-remote-mcp.md`; 사용자 흐름은 `docs/chatgpt-remote-mcp.md`.
+
+
+원격 감사 문장 등록부: `mcp.connect|allow`, `mcp.disconnect|allow`, `mcp.auth|deny|invalid_token`, `mcp.oauth|deny|rejected`, `mcp.refresh|deny|reuse`, `mcp.revoke|allow`, `mcp.tool|allow`, `mcp.tool|deny|denied`. `auth=mcp_oauth`와 검증된 grant_id, 고정 도구 이름만 기록하고 incidental 세션 쿠키·요청 본문·자격·사진·UA는 귀속/상세에 사용하지 않는다. 저장 결과 생성 및 도구 감사가 실패하면 바깥 트랜잭션이 함께 rollback한다. 연결 변경도 `TravelPlans::record` 한곳에서 revision을 증가시킨다.

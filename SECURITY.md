@@ -824,3 +824,13 @@ insta6bdbdf3 서버 검증: HTTP138·실제화면19·합성브라우저38·공�
 2026-10-04 배포 승인 후 추가 검증: 공통 경로 교차 회귀162/162, 기존 회원의 신규 안내 저장/다시 열기와 기존 도움말/파일/역할/토큰 회귀 확인. 코드·설정·DB·storage 암호화 백업과 복호화·아카이브 구조 확인 완료. 기능 코드는 기존 검증 후보와 같고 공통 회귀 시험만 새 둘러보기 UI에 맞췄다. 운영 반영 결과는 완료 뒤 별도 기록한다.
 
 2026-10-04 운영 완료: v2.47.0 `d75a5d5`, 변경108파일·migration5개·PHP-FPM reload, 운영HTTPS70/70. 기존 행/표 소유권/ACL 및 저장 원본1018파일 해시 보존. nginx/PHP-FPM/PostgreSQL active, 운영 JS 오류0/5xx0. 백업 `/var/backups/tbox-v2/member-20261004`, 세부 증거 `docs/work-items/community-member-experience.md`. 실물 기기/Windows 설치물/채팅 MCP는 미검증·미완료로 유지한다. followers 생성 후 구버전으로의 단순 복귀 금지는 그대로다.
+
+
+### Q:MCP — 2026-10-04 원격 ChatGPT 연결 후보 검토
+
+1. **실행 증거**: 별도 문맥 검토자가 변경 전체를 검토했다. 보안 린트0, 실제 JS return-path85, 운영 접근 방지23, 합성 연결 UI48·여행 UI15, 기존 로그인 선택36·stdio MCP114, 변경 JS/Python/JSON 구문과 공백 검사 통과. 이 결과는 PHP/DB/운영 보안 승인과 구분한다. 상세 `docs/work-items/chatgpt-remote-mcp.md`.
+2. **검토 보정·남는 위험**: 익명 미승인 client의 장기 잔류를 정리하고 인증/도구 거부·읽기의 안전한 감사를 추가했다. 웹의 여행 기록 연결도 revision을 증가시켜 오래된 MCP 요청을 거부한다. 승인받은 쓰기 클라이언트는 유효한 저장 요청을 실행할 수 있으며 매 저장 전 사람 확인은 클라이언트/도구 설명에 의존한다. 서버는 별도 사람 승인 토큰을 강제하지 않는다. ChatGPT에 이미 전달한 데이터는 모아 연결 해제로 회수되지 않는다.
+3. **미검증**: PHP 구문/실행, 실제 PostgreSQL migration/owner/ACL/잠금과 동시 교환, GD/EXIF, 실제 HTTP, nginx/TLS·외부 프록시 로그, 최신 ChatGPT 등록·도구·실물 휴대폰. 관련 시험 코드는 준비됐지만 클라우드에 실행 도구/접속이 없다. 사용자 자기 공격 결과는 미보고다.
+4. **다음 조치**: 기본 비활성을 유지하고 격리 후보에서 준비된 PHP/DB/GD/HTTP·기존 공통 회귀, 자산/위키/nginx 검사를 수행한다. 백업·모의 적용·드리프트 확인 뒤 실제 HTTPS·ChatGPT 로그인/범위/회수와 콘텐츠 보존을 확인한 후에만 운영 완료로 기록한다.
+
+앱 밖 변경: nginx의 정확한 well-known/MCP/OAuth 위치, IP 요청 제한, OAuth 관련 query/UA 로그 제거 및 해당 위치 error log 억제. 앞단 프록시에도 같은 민감 값 보호가 필요한지 실측한다. 새 outbound 또는 실행 패키지 없음. 원격 감사는 OAuth 계정/`auth=mcp_oauth`/grant_id로 귀속하고 사용자 입력 도구 이름·본문·사진·자격·UA를 기록하지 않는다. 고정 이벤트 `mcp.connect|allow`, `mcp.disconnect|allow`, `mcp.auth|deny|invalid_token`, `mcp.oauth|deny|rejected`, `mcp.refresh|deny|reuse`, `mcp.revoke|allow`, `mcp.tool|allow`, `mcp.tool|deny|denied`를 사용한다. 권한 있는 감사 로그에서 실패/재사용/과다 요청을 점검하고 기존 로그 보호/보관 정책을 적용한다.

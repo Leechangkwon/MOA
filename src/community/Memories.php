@@ -36,9 +36,9 @@ final class Memories
         return trim($value);
     }
 
-    public static function body(): array
+    public static function body(?array $input = null): array
     {
-        $body = Http::jsonBody(40000, 8);
+        $body = $input ?? Http::jsonBody(40000, 8);
         $allowed = ['caption', 'location', 'trip', 'taken_on', 'visibility', 'media_ids', 'revision', 'request_id', 'story', 'discoverable'];
         if (array_diff(array_keys($body), $allowed)) {
             Http::error(400, Http::MSG_BAD_REQUEST);
@@ -232,9 +232,9 @@ final class Memories
         return $out;
     }
 
-    public static function save(array $user, ?string $id): array
+    public static function save(array $user, ?string $id, ?array $input = null): array
     {
-        $body = self::body();
+        $body = self::body($input);
         $db = Db::instance();
         $db->begin();
         // One owner lock serializes saves/uploads, caps quota and makes retries idempotent.

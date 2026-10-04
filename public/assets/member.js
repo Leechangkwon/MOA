@@ -11,9 +11,16 @@
     const headers={};
     if(method!=='GET'){headers['Content-Type']='application/json';headers[join?'X-Join-CSRF':'X-CSRF-Token']=join?document.body.dataset.joinCsrf:csrf;}
     if(passive)headers['X-Qaredi-Background']='1';
-    const r=await fetch(base+path,{method,headers,credentials:'same-origin',cache:'no-store',body:body===undefined?undefined:JSON.stringify(body)});
-    let data;try{data=await r.json();}catch(_){throw Error('응답을 받지 못했습니다. 잠시 뒤 다시 시도해 주세요.');}
-    if(!r.ok){if(r.status===401&&!join){say('로그인이 만료되었습니다. 다시 로그인해 주세요.');}const error=Error(data.next==='reauth'?'관리자 인증 시간이 지났습니다. 관리자 인증 갱신 링크에서 다시 인증해 주세요.':data.error||'요청을 처리하지 못했습니다.');error.status=r.status;throw error;}return data;
+    const controller=page==='mcp-connect'?new AbortController():null;
+    const timer=controller?setTimeout(()=>controller.abort(),30000):null;
+    try{
+      const options={method,headers,credentials:'same-origin',cache:'no-store',body:body===undefined?undefined:JSON.stringify(body)};
+      if(controller)options.signal=controller.signal;
+      const r=await fetch(base+path,options);
+      let data;try{data=await r.json();}catch(error){if(error.name==='AbortError')throw error;throw Error('응답을 받지 못했습니다. 잠시 뒤 다시 시도해 주세요.');}
+      if(!r.ok){if(r.status===401&&!join){say('로그인이 만료되었습니다. 다시 로그인해 주세요.');}const error=Error(data.next==='reauth'?'관리자 인증 시간이 지났습니다. 관리자 인증 갱신 링크에서 다시 인증해 주세요.':data.error||'요청을 처리하지 못했습니다.');error.status=r.status;throw error;}return data;
+    }catch(error){if(controller&&error.name==='AbortError')throw Error('응답 시간이 지났습니다. 승인 여부를 확인하려면 ChatGPT에서 연결을 다시 시작해 주세요.');throw error;}
+    finally{if(timer!==null)clearTimeout(timer);}
   }
   async function busy(form,work){const buttons=[...form.querySelectorAll('button')];buttons.forEach(b=>b.disabled=true);try{await work();}catch(e){say(e.message);}finally{buttons.forEach(b=>b.disabled=false);}}
   async function copy(input){try{await navigator.clipboard.writeText(input.value);say('복사했습니다.');}catch(_){input.type='text';input.select();say('자동 복사가 제한되었습니다. 선택된 값을 직접 복사해 주세요.');}}
@@ -187,5 +194,5 @@
     addEventListener('pagehide',()=>{$('ai-settings-key').value='';});
     try{paint(await api('/api/member-ai-settings'));}catch(error){notice.textContent=error.message;}
   }
-  api('/api/me').then(async data=>{me=data;csrf=data.csrf_token;if(page==='welcome')await welcome();if(admin)await Promise.all([initInvites(),initAiSettings()]);if(page==='messages')await messenger();}).catch(e=>say(e.message));
+  api('/api/me').then(async data=>{me=data;csrf=data.csrf_token;if(page==='mcp-connect')await window.MoaMcpConnect.init({api,me});if(page==='welcome')await welcome();if(admin)await Promise.all([initInvites(),initAiSettings()]);if(page==='messages')await messenger();}).catch(e=>{if(page==='mcp-connect'&&window.MoaMcpConnect)window.MoaMcpConnect.failure(e);else say(e.message);});
 })();

@@ -86,3 +86,11 @@ tbox/	-
 /community/memories?travel=2	-
 /community/memories?to=https%3A%2F%2Fevil.example	-
 /community/memories?view=mine&view=discover	-
+
+# Remote MCP: a bounded pending handle, never an OAuth redirect URL.
+/tbox/mcp-connect	/tbox/mcp-connect
+/tbox/mcp-connect?pending=AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA	/tbox/mcp-connect?pending=AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+/tbox/mcp-connect?pending=AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA&pending=AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA	-
+/tbox/mcp-connect?pending=short	-
+/tbox/mcp-connect?redirect_uri=https%3A%2F%2Fevil.test	-
+/tbox/oauth/authorize	-

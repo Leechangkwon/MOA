@@ -48,7 +48,7 @@ require __DIR__ . '/../views/shell_top.php';
     <header class="page-head">
       <div class="page-head__text">
         <h1 class="page-head__title">내 계정</h1>
-        <p class="page-head__sub">비밀번호 · 2단계 인증 · 프로그램 토큰을 관리합니다.</p>
+        <p class="page-head__sub">비밀번호 · 2단계 인증 · 프로그램 토큰 · ChatGPT 연결을 관리합니다.</p>
       </div>
       <div class="page-head__actions">
         <button type="button" class="btn btn--quiet" data-help-open>
@@ -59,6 +59,10 @@ require __DIR__ . '/../views/shell_top.php';
 
     <p><a class="btn btn--quiet" href="<?= Http::url('/welcome') ?>">시작 안내 · OTP · AI 비서 연결 →</a></p>
     <div class="grid-2">
+      <section class="panel span-all">
+        <div class="panel__head"><h2 class="panel__title">ChatGPT 연결</h2><p class="panel__sub">ChatGPT에서 내 글·사진과 여행 계획을 읽고, 선택한 경우 저장하도록 허용합니다. 서버 준비 상태와 승인한 연결을 확인하거나 해제할 수 있습니다.</p></div>
+        <p><a class="btn btn--quiet" href="<?= Http::url('/mcp-connect') ?>">ChatGPT 연결 설정하기</a></p>
+      </section>
       <section class="panel">
         <div class="panel__head">
           <h2 class="panel__title">내 정보</h2>
