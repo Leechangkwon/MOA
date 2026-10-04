@@ -2799,3 +2799,5 @@ insta6bdbdf3 서버 검증: HTTP138·실제화면19·합성브라우저38·공�
 | 2026-10-04 | 지적 | 첫 첨부의 이전 사진 이야기가 여전히 길게 펼쳐지고 최신 글만 내용 더 보기로 요약됨 | 목록 인덱스가 상세 보기 인수로 전달되는 문제. `docs/story-preview-fix-directive.md` |
 | 2026-10-04 | 구현 중 | 순서·작성 시점과 무관하게 모든 카드 요약, 상세 모달에서만 전체 사진/본문 표시 | `cloud/story-preview-fix`, `docs/work-items/story-preview-fix.md`. 글·원본 사진 재저장 불필요 |
 | 2026-10-04 | 검토·인계 | 여러 글 실패 독립 재현 후 수정판12시나리오(40테마/너비 포함)·JS/JSON·보안린트0·독립 자산 검산 통과, 차단 지적 없음 | `docs/work-items/story-preview-fix.md`. PHP 공식 검사/실제 HTTPS/실물 기기 미검증; 서버 검증·배포 대기 |
+
+| 2026-10-04 | 운영 완료 | PR #5 v2.47.1 6c5b9df, 변경18파일·DB 변경 없음, 합성12·실제화면19·HTTPS105/105 | 기존 공개 글3개 요약/모달390·1440px, 원본1028파일/DB행/owner/ACL 보존. `docs/work-items/story-preview-fix.md` |
