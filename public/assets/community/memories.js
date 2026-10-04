@@ -114,6 +114,46 @@
     n.addEventListener('error', () => { n.title = '미디어를 불러오지 못했어요. 새로 보기로 다시 시도해 주세요.'; });
     return n;
   }
+  function previewGallery(post) {
+    const gallery = el('div', 'post-cover'), track = el('div', 'post-media');
+    gallery.dataset.previewGallery = ''; track.dataset.previewTrack = '';
+    const slides = post.media.map((item, index) => {
+      const slide = el('div', 'media-slide');
+      slide.setAttribute('role', 'group'); slide.setAttribute('aria-label', `${index + 1} / ${post.media.length}`);
+      slide.append(mediaElement(item)); track.append(slide); return slide;
+    });
+    gallery.append(track);
+    if (slides.length === 1) return gallery;
+    track.tabIndex = 0; track.setAttribute('role', 'region');
+    track.setAttribute('aria-label', '사진과 영상, 좌우 방향키로 넘겨 보세요');
+    const count = el('span'); count.dataset.previewCount = '';
+    count.setAttribute('role', 'status'); count.setAttribute('aria-live', 'polite'); count.setAttribute('aria-atomic', 'true');
+    const full = button('', 'slide-count', () => openDetail(post));
+    full.append(count, document.createTextNode(' · 전체 보기'));
+    let current = 0;
+    const sync = () => {
+      current = Math.max(0, Math.min(slides.length - 1, Math.round(track.scrollLeft / (track.clientWidth || 1))));
+      const label = `${current + 1} / ${slides.length}`;
+      if (count.textContent !== label) count.textContent = label;
+      previous.disabled = current === 0; next.disabled = current === slides.length - 1;
+      slides.forEach((slide, index) => {
+        slide.inert = index !== current;
+        if (index !== current) slide.querySelector('video')?.pause();
+      });
+    };
+    const move = (index) => { track.scrollTo({ left: Math.max(0, Math.min(slides.length - 1, index)) * track.clientWidth, behavior: 'auto' }); sync(); };
+    const previous = iconButton('이전 사진·영상', 'arrow', () => move(current - 1)); previous.dataset.previewPrevious = '';
+    const next = iconButton('다음 사진·영상', 'arrow', () => move(current + 1)); next.dataset.previewNext = '';
+    track.addEventListener('scroll', sync, { passive: true });
+    track.addEventListener('keydown', (event) => {
+      // Native video controls keep their own arrow/seek and playback shortcuts.
+      if (event.target !== track || event.altKey || event.ctrlKey || event.metaKey) return;
+      const index = { ArrowLeft: current - 1, ArrowRight: current + 1, Home: 0, End: slides.length - 1 }[event.key];
+      if (index === undefined) return;
+      event.preventDefault(); move(index);
+    });
+    gallery.append(full, previous, next); sync(); return gallery;
+  }
   function gridCard(post) {
     const n = button('', 'grid-tile' + (post.media.length ? '' : ' text-only'), () => openDetail(post));
     n.setAttribute('aria-label', (post.caption || post.location || '여행 기록').slice(0, 80) + ' 열기');
@@ -177,12 +217,13 @@
     const time = el('time', 'post-date', date(post.taken_on)); time.dateTime = post.taken_on;
     header.append(avatar, author, time); card.append(header);
     if (detailed && post.story) card.append(storyElement(post.story, post.media));
+    else if (!detailed && post.media.length) card.append(previewGallery(post));
     else if (post.media.length) {
-      const gallery = el('div', detailed ? 'post-media' : 'post-cover');
-      if (detailed) { gallery.setAttribute('aria-label', '사진과 영상, 옆으로 넘겨 보세요'); gallery.tabIndex = 0; }
-      (detailed ? post.media : post.media.slice(0, 1)).forEach((item, index) => {
+      const gallery = el('div', 'post-media');
+      gallery.setAttribute('aria-label', '사진과 영상, 옆으로 넘겨 보세요'); gallery.tabIndex = 0;
+      post.media.forEach((item, index) => {
         const slide = el('div', 'media-slide'); slide.append(mediaElement(item));
-        if (post.media.length > 1) slide.append(detailed ? el('span', 'slide-count', `${index + 1} / ${post.media.length}`) : button(`사진·영상 ${post.media.length}개 · 전체 보기`, 'slide-count', () => openDetail(post)));
+        if (post.media.length > 1) slide.append(el('span', 'slide-count', `${index + 1} / ${post.media.length}`));
         gallery.append(slide);
       });
       card.append(gallery);

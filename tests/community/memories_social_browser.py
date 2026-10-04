@@ -81,6 +81,26 @@ class SocialMock(Mock):
         super().route(route)
 
 
+def preview_window(card, count, label):
+    """All attachments are available, but only one occupies the compact viewport."""
+    assert card.locator('.post-cover img, .post-cover video').count() == count, label
+    if not count:
+        assert card.locator('.post-cover').count() == 0, label
+        return
+    layout = card.locator('[data-preview-track]').evaluate('''track => {
+      const bounds = track.getBoundingClientRect();
+      const media = [...track.querySelectorAll('img, video')];
+      return {height: bounds.height, expected: Math.max(210, Math.min(innerWidth * .44, 340)),
+        visible: media.filter(item => {
+          const box = item.getBoundingClientRect();
+          return Math.min(box.right, bounds.right) - Math.max(box.left, bounds.left) > 1;
+        }).length,
+        fits: media.every(item => getComputedStyle(item).objectFit === 'contain')};
+    }''')
+    assert layout['visible'] == 1 and layout['fits'], (label, layout)
+    assert abs(layout['height'] - layout['expected']) <= 1, (label, layout)
+
+
 def compact_previews(page, posts, label):
     cards = page.locator('#feed .post')
     expect(cards).to_have_count(len(posts))
@@ -94,7 +114,7 @@ def compact_previews(page, posts, label):
     for index, post in enumerate(posts):
         card = cards.nth(index)
         assert card.get_attribute('id') == 'memory-' + post['id'], (label, index)
-        assert card.locator('img').count() == min(1, len(post['media'])), (label, index)
+        preview_window(card, len(post['media']), (label, index))
         assert card.locator('.read-more').count() == 1, (label, index)
         assert card.bounding_box()['height'] < (820 if post['media'] else 400), (label, snapshot)
         assert card.locator('.post-caption').bounding_box()['height'] < 120, (label, index)
@@ -200,7 +220,7 @@ def main():
                     assert contrast(page,'#feed .post-author','#feed .post')>=4.5,(width,theme,design,'author')
                     assert contrast(page,'#feed .post-actions button','#feed .post')>=3,(width,theme,design,'action')
                     assert page.locator('#feed .post').bounding_box()['height']<820,(width,theme,design)
-                    assert page.locator('#feed img').count()==1
+                    preview_window(page.locator('#feed .post'), 10, (width, theme, design))
         checks.append('40 viewport/theme combinations: no overflow, bounded ten-photo preview, text contrast >=4.5 and icons >=3')
         page.set_viewport_size({'width':390,'height':844})
         page.evaluate("document.documentElement.dataset.design='aurora'")
