@@ -2810,3 +2810,5 @@ insta6bdbdf3 서버 검증: HTTP138·실제화면19·합성브라우저38·공�
 | 2026-10-04 | 요청 | 현재 요약 카드와 펼친 화면은 만족하며, 요약 화면에서만 사진을 좌우로 넘기고 싶음 | 최신 main 6dc6ec2(v2.47.1) 기준, `docs/story-preview-gallery-directive.md` |
 | 2026-10-04 | 구현 중 | 사진 칸 높이·글 요약 유지, 스와이프·이전/다음·번호 제공 | `docs/work-items/story-preview-gallery.md`, 서버 배포 대기 |
 | 2026-10-04 | 검토·인계 | 사진 넘김8·기존social12(40테마/너비)·첨부9·보안린트0, 독립 기준 비교의 카드 높이/상세 DOM 동일 | `docs/work-items/story-preview-gallery.md`. PHP 공식 검사·실물·운영 HTTPS는 미검증, 서버 검증·배포 대기 |
+
+| 2026-10-04 | 서버 후보 검증 | PR #6 394d452, gallery8·social12·격리PHP19·공통162 및 공식자산/위키/보안 통과, 암호화 백업·복호화 완료 | `docs/work-items/story-preview-gallery.md`; 운영 반영 준비 |
