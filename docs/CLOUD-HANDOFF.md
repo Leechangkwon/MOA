@@ -1,5 +1,8 @@
 # 휴가 중 클라우드 작업 인계 — 2026-10-03
 
+> 2026-10-04 최신 운영: PR #6 v2.48.0 `941cb84` 배포 완료. 요약 카드 사진 스와이프·이전/다음·번호 표시. gallery8/social12/격리PHP19/공통162/운영HTTPS128, 데이터·원본1028파일 보존. `docs/work-items/story-preview-gallery.md`와 `deploy/production-state.json` 참조. 아래 기록은 이전 배포다.
+
+
 > 2026-10-04 최신 핫픽스: PR #5 v2.47.1 `6c5b9df` 운영 배포 완료. 기존 글 전체를 요약 카드로 표시하고 상세 모달로 연다. HTTPS105/105, 데이터/사진 보존. `docs/work-items/story-preview-fix.md`와 `deploy/production-state.json` 참조. 아래 v2.47.0 기록은 앞선 배포다.
 
 > 2026-10-04 최신 운영: 회원 경험 PR #3의 v2.47.0 `d75a5d5` 배포 완료. OTP/패스키 선택, 커뮤니티 둘러보기/가이드, 팔로우/공개 범위/발견, 여행 계획/MCP 여행 도구, 이야기 요약/상세가 반영됐다. 공통 교차 회귀162·운영HTTPS70 통과, 기존 데이터/권한/저장 원본1018파일 보존. 최신 상태는 `deploy/production-state.json`, 상세는 `docs/work-items/community-member-experience.md`를 따른다. 아래 v2.46.0 표와 미구현 범위는 2026-10-03 당시 기록이다. 실제 기기·Windows 일반 설치물과 이 채팅 MCP 연결은 여전히 별도다.

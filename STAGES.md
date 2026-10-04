@@ -2812,3 +2812,5 @@ insta6bdbdf3 서버 검증: HTTP138·실제화면19·합성브라우저38·공�
 | 2026-10-04 | 검토·인계 | 사진 넘김8·기존social12(40테마/너비)·첨부9·보안린트0, 독립 기준 비교의 카드 높이/상세 DOM 동일 | `docs/work-items/story-preview-gallery.md`. PHP 공식 검사·실물·운영 HTTPS는 미검증, 서버 검증·배포 대기 |
 
 | 2026-10-04 | 서버 후보 검증 | PR #6 394d452, gallery8·social12·격리PHP19·공통162 및 공식자산/위키/보안 통과, 암호화 백업·복호화 완료 | `docs/work-items/story-preview-gallery.md`; 운영 반영 준비 |
+
+| 2026-10-04 | 운영 완료 | PR #6 v2.48.0 941cb84, gallery8/social12/격리PHP19/공통162/HTTPS128, 데이터·원본1028파일 보존 | `docs/work-items/story-preview-gallery.md`; 실물 기기는 미보고 |

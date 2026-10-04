@@ -1,12 +1,12 @@
 {
   "schema_version": 1,
-  "version": "2.47.1",
-  "verified_runtime_commit": "6c5b9dfd67fc264ba42662fc04b66fc538fe057b",
-  "verified_checkout_commit": "6c5b9dfd67fc264ba42662fc04b66fc538fe057b",
-  "verified_tree": "8a559d20843706e0758c0e38454448ae32076cc3",
-  "verified_at": "2026-10-04T15:46:24+09:00",
+  "version": "2.48.0",
+  "verified_runtime_commit": "941cb848411c3743c49ba77eeadd912303409054",
+  "verified_checkout_commit": "941cb848411c3743c49ba77eeadd912303409054",
+  "verified_tree": "a51d9ed7512d667d0f64477811ed39542b2e32d9",
+  "verified_at": "2026-10-04T20:31:15+09:00",
   "record_type": "last_verified_server_snapshot_not_live_status",
-  "release_commit": "6c5b9dfd67fc264ba42662fc04b66fc538fe057b",
+  "release_commit": "941cb848411c3743c49ba77eeadd912303409054",
   "automatic_deployment": false,
   "server_only": [
     "database",
@@ -15,11 +15,11 @@
     "service_configuration"
   ],
   "verification": {
-    "https_pass": 105,
+    "https_pass": 128,
     "https_fail": 0,
     "records_unchanged": true,
     "changed_files_verified": true,
-    "deployment_changed_files": 18,
+    "deployment_changed_files": 20,
     "migrations": [],
     "services_active": [
       "nginx",
@@ -36,11 +36,14 @@
       1440
     ],
     "live_js_errors": 0,
-    "live_5xx": 0
+    "live_5xx": 0,
+    "synthetic_gallery_scenarios": 8,
+    "cross_regression_pass": 162,
+    "live_mobile_touch_swipe": true
   },
   "evidence": [
-    "docs/work-items/story-preview-fix.md",
-    "docs/work-items/community-member-experience.md"
+    "docs/work-items/story-preview-gallery.md",
+    "docs/work-items/story-preview-fix.md"
   ],
   "remaining": [
     "real_handset_user_check",
