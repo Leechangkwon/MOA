@@ -36,12 +36,14 @@ try:
   browser=pw.chromium.launch();ctx=browser.new_context(viewport={'width':390,'height':844},user_agent='tbox-review/'+time.strftime('%Y-%m-%d'))
   ctx.add_cookies([{'name':'__Host-tbox_session','value':users['employee']['session'],'domain':urlsplit(site).hostname,'path':'/','secure':True,'httpOnly':True}])
   tab=ctx.new_page();errors=[];tab.on('pageerror',lambda e:errors.append(str(e)))
-  tab.goto(base+'/memories',wait_until='networkidle');expect(tab.locator('#feed .post-cover img')).to_have_count(1)
+  # v2.48.0 (PR #6): the compact card cover is a swipe gallery of every photo, starting at 1 / 10.
+  tab.goto(base+'/memories',wait_until='networkidle');expect(tab.locator('#feed .post-cover img')).to_have_count(10)
+  expect(tab.locator('#feed [data-preview-count]')).to_have_text('1 / 10')
   # Newly created fixture members receive the optional first-visit guide.
   # Dismiss it through the UI before exercising the underlying story controls.
   tab.get_by_role('button',name='나중에 볼게요',exact=True).click()
   expect(tab.locator('.usage-guide-dialog')).to_have_count(0)
-  check(tab.locator('#feed .photo-story').count()==0,'saved ten-photo story uses one compact cover in feed')
+  check(tab.locator('#feed .photo-story').count()==0,'saved ten-photo story stays a compact swipe cover in feed')
   tab.locator('#feed .read-more').click();expect(tab.locator('#detail-content .story-scene')).to_have_count(5)
   check(tab.locator('#detail-content .photo-story img').count()==10 and tab.locator('#detail-content .photo-story script').count()==0,'detail modal displays all ten photos and escapes text')
   tab.locator('[data-close=detail-dialog]').click()
