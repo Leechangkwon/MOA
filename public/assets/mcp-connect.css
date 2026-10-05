@@ -1,0 +1,4 @@
+/* DESIGN: existing components; this page adds only a single-column layout. */
+.mcp-connect-layout { display: grid; grid-template-columns: minmax(0, 1fr); gap: 20px; }
+.mcp-connect-layout > .grid-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+@media (max-width: 719.98px) { .mcp-connect-layout > .grid-2 { grid-template-columns: minmax(0, 1fr); } }

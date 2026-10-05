@@ -104,6 +104,7 @@ var RETURN_RULES = [
   [/^\/tbox\/$/, [['folder', /^[1-9][0-9]{0,8}$/], ['q', 'text200'], ['sort', /^(name|created_at|size)$/],
     ['dir', /^(asc|desc)$/], ['page', /^[1-9][0-9]{0,5}$/]]],
   [/^\/tbox\/(settings|activity|welcome|messages)$/, []],
+  [/^\/tbox\/mcp-connect$/, [['pending', /^[A-Za-z0-9_-]{43}$/]]],
   [/^\/community\/$/, [['space', /^[1-9][0-9]{0,17}$/], ['view', /^(mine|shared)$/]]],
   [/^\/community\/workspace$/, [['space', /^[1-9][0-9]{0,17}$/], ['trash', /^1$/]]],
   [/^\/community\/memories$/, [['view', /^(mine|shared|feed|discover)$/], ['travel', /^1$/]]],

@@ -49,6 +49,7 @@ class TravelMock(Mock):
                 self.plans[PLAN]['records'] = [dict(body, caption='여행 기록', taken_on='2026-10-03', location='제주')]
             else:
                 self.plans[PLAN]['records'] = []
+            self.plans[PLAN]['revision'] += 1
             return send({'plan': self.plans[PLAN]})
         if req.method in ('POST', 'PATCH'):
             body = req.post_data_json; self.travel_saves.append(copy.deepcopy(body))
@@ -117,6 +118,25 @@ def main():
         page.locator('[data-travel-open]').first.click(); page.locator('#travel-list button').first.click()
         page.locator('#travel-records a').wait_for()
         assert page.locator('#travel-records a').get_attribute('href').endswith('/memories/p/' + POST)
+        stable_revision = mock.plans[PLAN]['revision']
+        page.locator('#travel-notes').fill('연결 해제 후에도 보존할 작성 중 메모')
+        page.locator('#travel-records button').click()
+        page.wait_for_function("() => document.querySelector('#travel-records').children.length === 0 && !document.querySelector('#travel-save').disabled")
+        page.locator('#travel-save').click()
+        page.wait_for_function("() => document.querySelector('#travel-error').textContent === '' && !document.querySelector('#travel-save').disabled")
+        assert mock.travel_saves[-1]['revision'] == stable_revision + 1
+        assert mock.plans[PLAN]['notes'] == '연결 해제 후에도 보존할 작성 중 메모'
+        ok('Own unlink adopts its single new revision while preserving dirty form text')
+        page.locator('#travel-load-posts').click(); page.locator('#travel-existing option[value="' + POST + '"]').wait_for(state='attached')
+        page.locator('#travel-existing').select_option(POST)
+        stable_revision = mock.plans[PLAN]['revision']
+        page.locator('#travel-notes').fill('연결 후에도 보존할 작성 중 메모')
+        page.locator('#travel-link').click(); page.locator('#travel-records a').wait_for()
+        page.locator('#travel-save').click()
+        page.wait_for_function("() => document.querySelector('#travel-error').textContent === '' && !document.querySelector('#travel-save').disabled")
+        assert mock.travel_saves[-1]['revision'] == stable_revision + 1
+        assert mock.plans[PLAN]['notes'] == '연결 후에도 보존할 작성 중 메모'
+        ok('Own link adopts its single new revision without reloading or discarding dirty text')
         stale_revision = mock.plans[PLAN]['revision']
         mock.plans[PLAN]['revision'] += 1
         mock.plans[PLAN]['notes'] = '다른 기기에서 바꾼 메모'

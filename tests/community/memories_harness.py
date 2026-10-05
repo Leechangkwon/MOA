@@ -34,7 +34,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--port', type=int, default=8768, choices=(8768,))
     parser.add_argument('--output', type=Path, required=True)
-    parser.add_argument('--suite', choices=('memories_http.py','memories_runtime_browser.py','memory_ai_http.py','memory_story_http.py','memory_social_http.py','travel_plans_http.py'), default='memories_http.py')
+    parser.add_argument('--suite', choices=('memories_http.py','memories_runtime_browser.py','memory_ai_http.py','memory_story_http.py','memory_social_http.py','travel_plans_http.py','remote_http.py'), default='memories_http.py')
     parser.add_argument('--baseline-code', action='store_true')
     args = parser.parse_args()
     args.output = args.output.resolve()
@@ -101,6 +101,11 @@ def main():
                       STORAGE_DIR=str(work / 'storage'), AUDIT_LOG_FILE=str(work / 'logs/audit.log'),
                       APP_URL='http://127.0.0.1:{}'.format(args.port), API_TOKEN=secrets.token_hex(24),
                       API_TOKEN_USER='claude_employee01', SCAN_ENABLED='0', ALERT_COMMAND='')
+        if args.suite == 'remote_http.py':
+            # OAuth issuer stays HTTPS; tests connect directly to the owned loopback
+            # PHP listener and never resolve/follow this reserved .invalid origin.
+            config.update(APP_URL='https://mcp-fixture.invalid', MCP_REMOTE_ENABLED='1',
+                          MCP_OAUTH_REDIRECT_URIS='["https://mcp-fixture.invalid/oauth/callback"]')
 
         def write_config(path, data):
             private_write(path, ''.join('{}={}\n'.format(k, v) for k, v in data.items()))
@@ -120,7 +125,8 @@ def main():
                            '2026-10-03_community_memories.sql', '2026-10-03_community_messenger.sql',
                            '2026-10-03_memory_story.sql', '2026-10-14_memory_social.sql',
                            '2026-10-14_optional_member_auth.sql', '2026-10-14_usage_guide.sql',
-                           '2026-10-14_travel_plans.sql', '2026-10-14_travel_scopes.sql']
+                           '2026-10-14_travel_plans.sql', '2026-10-14_travel_scopes.sql',
+                           '2026-10-15_remote_mcp.sql']
         for _ in range(2):
             for migration in migrations:
                 logs.append(sql_file(instance / 'db/migrations' / migration).stdout)
@@ -140,7 +146,7 @@ def main():
         (args.output / 'fixture.log').write_bytes(fixture.stdout)
         if not auth_path.is_file():
             raise RuntimeError('Synthetic fixture creation failed')
-        manifest = dict(base_url=config['APP_URL'] + '/tbox', database=db_name,
+        manifest = dict(base_url='http://127.0.0.1:{}/tbox'.format(args.port), database=db_name,
                         instance=str(instance), credentials_file=str(auth_path), shared_token=config['API_TOKEN'])
         private_write(work / 'manifest.json', json.dumps(manifest))
         with (work / 'logs/php.log').open('wb') as server_log:
@@ -159,9 +165,11 @@ def main():
             else:
                 raise RuntimeError('Test HTTP startup timed out')
             print('SYNTHETIC_DB_CREATED=1; PRODUCTION_RECORDS_COPIED=0', flush=True)
-            result = subprocess.run([sys.executable, str(ROOT / 'tests/community' / args.suite)],
+            suite_directory = 'tests/mcp' if args.suite == 'remote_http.py' else 'tests/community'
+            result = subprocess.run([sys.executable, str(ROOT / suite_directory / args.suite)],
                                     env=dict(fixture_env, FILE_RENAME_MANIFEST=str(work / 'manifest.json'),
-                                             FILE_RENAME_OUTPUT=str(args.output), STAGE89_SECOND_PORT=str(args.port+1)), cwd=instance)
+                                             FILE_RENAME_OUTPUT=str(args.output), STAGE89_SECOND_PORT=str(args.port+1),
+                                             REMOTE_MCP_HARNESS='1' if args.suite == 'remote_http.py' else '0'), cwd=instance)
             server_log.flush()
             (args.output / 'http.log').write_bytes((work / 'logs/php.log').read_bytes())
             if result.returncode:

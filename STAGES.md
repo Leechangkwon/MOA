@@ -2814,3 +2814,14 @@ insta6bdbdf3 서버 검증: HTTP138·실제화면19·합성브라우저38·공�
 | 2026-10-04 | 서버 후보 검증 | PR #6 394d452, gallery8·social12·격리PHP19·공통162 및 공식자산/위키/보안 통과, 암호화 백업·복호화 완료 | `docs/work-items/story-preview-gallery.md`; 운영 반영 준비 |
 
 | 2026-10-04 | 운영 완료 | PR #6 v2.48.0 941cb84, gallery8/social12/격리PHP19/공통162/HTTPS128, 데이터·원본1028파일 보존 | `docs/work-items/story-preview-gallery.md`; 실물 기기는 미보고 |
+
+## ChatGPT 원격 MCP — 2026-10-04 개발 후보
+
+| 날짜 | 구분 | 내용 | 해소·근거 |
+|---|---|---|---|
+| 2026-10-04 | 궁금 | GPT 연결을 어떻게 하는지 질문 | 모아 내부 API 메신저와 ChatGPT에서 모아를 사용하는 MCP 연결을 구분; 기존 stdio만으로 모바일 원격 연결 완료가 아님 |
+| 2026-10-04 | 결정 | “1번!” — ChatGPT 원격 MCP 선택 | `docs/chatgpt-remote-mcp-directive.md`, 최신 main b4e2ad6 기준 새 cloud 브랜치 |
+| 2026-10-04 | 구현 중 | 별도 OAuth 동의/연결 해제, 본인 기록·사진·여행 도구 | `docs/work-items/chatgpt-remote-mcp.md`; 실제 서버·ChatGPT·휴대폰은 검증 전 |
+
+| 2026-10-04 | 검토·보정 | 익명 client 보존, 원격 감사, 웹/MCP 여행 연결 revision 일관성 보정 후 남은 정적 차단 지적 없음 | 연결48·여행15·로그인36 합성 화면, return-path85·guard23·기존MCP114, lint0. PHP/DB/실제HTTP/ChatGPT/실물 미검증; 서버 검사 전 기본 비활성 |
+| 2026-10-04 | 인계 | Git2 cloud/chatgpt-remote-mcp 후보, 사용 안내·서버 수락/동시성/감사·설정·복귀 절차 준비 | `docs/chatgpt-remote-mcp.md`, `docs/work-items/chatgpt-remote-mcp.md`; 운영/현재 채팅 연결 완료를 뜻하지 않음 |

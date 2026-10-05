@@ -320,3 +320,11 @@ BEGIN
     GRANT SELECT ON SEQUENCE public.access_grants_id_seq, public.access_requests_id_seq TO tbox_backup;
 END
 $$;
+
+-- Remote MCP additive migration, preserving all existing table owners.
+DO $$ BEGIN
+ IF to_regclass('public.mcp_tokens') IS NOT NULL THEN
+  GRANT SELECT,INSERT,UPDATE,DELETE ON public.mcp_clients,public.mcp_pending,public.mcp_grants,public.mcp_codes,public.mcp_tokens TO tbox_app;
+  GRANT SELECT ON public.mcp_clients,public.mcp_pending,public.mcp_grants,public.mcp_codes,public.mcp_tokens TO tbox_backup;
+ END IF;
+END $$;

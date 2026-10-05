@@ -86,9 +86,12 @@ try:
     call('POST',url+'/records',{'post_id':post_id,'step_id':str(uuid.uuid4())},expected=400)
     linked=call('POST',url+'/records',{'post_id':post_id,'step_id':data['steps'][0]['id']})['plan']
     check(len(linked['records'])==1,'owned plan and post link')
-    call('POST',url+'/records',{'post_id':post_id,'step_id':data['steps'][0]['id']})
+    check(linked['revision']==changed['revision']+1,'link advances shared plan revision')
+    replay=call('POST',url+'/records',{'post_id':post_id,'step_id':data['steps'][0]['id']})['plan']
+    check(replay['revision']==linked['revision']+1,'link retry returns current advanced revision')
     check(len(call('GET',url)['plan']['records'])==1,'link retries idempotent')
-    newer=call('PATCH',url,dict(data,revision=changed['revision'],steps=[]))['plan']
+    call('PATCH',url,dict(data,revision=changed['revision'],steps=[]),expected=409)
+    newer=call('PATCH',url,dict(data,revision=replay['revision'],steps=[]))['plan']
     check(newer['records'][0]['step_id'] is None,'removing activity retains memory on whole trip')
     preserved=call('GET','/api/memories/'+post_id)['post']
     check(preserved['caption']==post['caption'] and preserved['original_caption']==post['caption'] and preserved['visibility']=='private','plan edits preserve memory content and visibility')

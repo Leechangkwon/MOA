@@ -748,6 +748,14 @@ if ($routeProblems !== []) {
 $reqMethod = Http::method();
 $reqPath   = Http::path();
 
+// Remote MCP is a separate, explicit Bearer/OAuth/session boundary, before legacy routing.
+if ($reqPath === '/mcp' || strpos($reqPath, '/.well-known/oauth-') === 0
+    || strpos($reqPath, '/tbox/oauth/') === 0 || $reqPath === '/tbox/mcp-connect'
+    || $reqPath === '/tbox/api/mcp/connections' || strpos($reqPath, '/tbox/api/mcp/connections/') === 0) {
+    require __DIR__ . '/../src/mcp/dispatch.php';
+    mcp_dispatch($reqPath, $reqMethod);
+}
+
 /** 접두 아래 요청이면 그 접두를 뗀 모듈 경로, 아니면 null */
 $modulePath = null;
 if ($reqPath === TBOX_BASE || strpos($reqPath, TBOX_BASE . '/') === 0) {

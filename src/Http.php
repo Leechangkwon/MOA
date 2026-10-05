@@ -314,6 +314,10 @@ final class Http
     /** 오류 응답 후 즉시 종료한다. 호출한 쪽이 실수로 계속 진행하는 것을 막는다. */
     public static function error(int $code, string $message): void
     {
+        // Only the active MCP tool call converts domain errors to structured tool results.
+        if (class_exists('RemoteMcp', false) && RemoteMcp::isToolCall()) {
+            throw new McpToolError($code, $message);
+        }
         if (defined('TBOX_ROUTE') && strpos((string) TBOX_ROUTE, ' /api/assistant/runs') !== false) {
             $kind = match ($code) {
                 400 => 'invalid_request', 401 => 'authentication_required', 403 => 'forbidden',
@@ -601,6 +605,7 @@ final class Http
             '#^/tbox/$#'                 => ['folder' => '/^[1-9][0-9]{0,8}$/', 'q' => 'text200', 'sort' => '/^(name|created_at|size)$/',
                                              'dir' => '/^(asc|desc)$/', 'page' => '/^[1-9][0-9]{0,5}$/'],
             '#^/tbox/(settings|activity|welcome|messages)$#' => [],
+            '#^/tbox/mcp-connect$#' => ['pending' => '/^[A-Za-z0-9_-]{43}$/D'],
             '#^/community/$#'            => ['space' => '/^[1-9][0-9]{0,17}$/', 'view' => '/^(mine|shared)$/'],
             '#^/community/workspace$#' => ['space' => '/^[1-9][0-9]{0,17}$/', 'trash' => '/^1$/'],
             '#^/community/memories$#' => ['view' => '/^(mine|shared|feed|discover)$/', 'travel' => '/^1$/'],

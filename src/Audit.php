@@ -49,6 +49,18 @@ final class Audit
      * @var list<string>
      */
     private static ?array $automationActor = null;
+    private static bool $remoteMcpRequest = false;
+    private static ?array $remoteMcpUser = null;
+    private static ?string $remoteMcpGrant = null;
+
+    /** Called only by the remote dispatcher/authenticator, never from request input. */
+    public static function remoteMcpActor(?array $user, ?string $grantId = null): void
+    {
+        self::$remoteMcpRequest = true;
+        self::$remoteMcpUser = $user;
+        self::$remoteMcpGrant = $grantId;
+    }
+
 
     /** Worker-only actor, re-read from the database; inaccessible through HTTP. */
     public static function automationActor(?int $id): void
@@ -302,6 +314,14 @@ final class Audit
      * @var array<string,string>
      */
     private const SUMMARY_TEMPLATES = [
+        'mcp.auth|deny|invalid_token' => 'ChatGPT 연결 인증이 거부되었습니다',
+        'mcp.oauth|deny|rejected' => 'ChatGPT 연결의 OAuth 요청이 거부되었습니다',
+        'mcp.refresh|deny|reuse' => '재사용된 갱신 자격으로 ChatGPT 연결이 회수되었습니다',
+        'mcp.revoke|allow' => 'ChatGPT 클라이언트가 연결을 회수했습니다',
+        'mcp.tool|allow' => '{actor} 이(가) ChatGPT 도구를 실행했습니다',
+        'mcp.tool|deny|denied' => '{actor} 의 ChatGPT 도구 실행이 거부되었습니다',
+        'mcp.connect|allow' => '{actor} 이(가) ChatGPT 연결을 승인했습니다',
+        'mcp.disconnect|allow' => '{actor} 이(가) ChatGPT 연결을 해제했습니다',
         'group.create|allow' => '권한 그룹을 만들었습니다',
         'group.member_add|allow' => '그룹 구성원을 추가했습니다',
         'group.member_remove|allow' => '그룹 구성원을 제거했습니다',
@@ -1326,7 +1346,7 @@ final class Audit
             // User-Agent 는 공격자가 마음대로 정하는 값이다. Http::userAgent() 는 바이트로 자르므로
             // 깨진 UTF-8 이 그대로 올 수 있고, 그 값이 DB(UTF8 인코딩)에 닿으면 INSERT 가 거부되어
             // 기록이 통째로 사라진다 — 여기서 한 번 더 씻는다 (SECURITY R-47 과 같은 이유).
-            'user_agent'   => defined('COMMUNITY_PUBLIC_REQUEST') ? null : self::cutNullable(PHP_SAPI === 'cli' && self::$automationActor !== null ? 'qaredi-automation/stage9' : Http::userAgent(), self::VALUE_MAX_CHARS),
+            'user_agent'   => (defined('COMMUNITY_PUBLIC_REQUEST') || self::$remoteMcpRequest) ? null : self::cutNullable(PHP_SAPI === 'cli' && self::$automationActor !== null ? 'qaredi-automation/stage9' : Http::userAgent(), self::VALUE_MAX_CHARS),
         ];
 
         // 요약 문장을 두 저장소보다 **먼저** 만든다 (ARCH 7.4).
@@ -1353,6 +1373,10 @@ final class Audit
     private static function autoDetail(?array $user): array
     {
         $out = [];
+        if (self::$remoteMcpRequest) {
+            $out['auth'] = 'mcp_oauth';
+            if (self::$remoteMcpGrant !== null) { $out['grant_id'] = self::$remoteMcpGrant; }
+        }
 
         $route = null;
         if (defined('TBOX_ROUTE')) {
@@ -1673,6 +1697,7 @@ final class Audit
      */
     private static function actor(): ?array
     {
+        if (self::$remoteMcpRequest) { return self::$remoteMcpUser; }
         if (defined('COMMUNITY_PUBLIC_REQUEST') && COMMUNITY_PUBLIC_REQUEST) { return null; }
         return PHP_SAPI === 'cli' && self::$automationActor !== null ? self::$automationActor : Auth::currentUser();
     }

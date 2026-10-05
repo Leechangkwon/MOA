@@ -272,3 +272,8 @@
 
 
 2026-10-04 서버 통합 결과: 회원 경험 PR #3은 v2.47.0 `d75a5d5`로 운영 배포됐다. 공통 교차 회귀162·운영 HTTPS70 통과, DB migration5개·변경108파일 반영, 기존 행/owner/ACL·저장 원본1018파일 보존. 최신 근거는 `deploy/production-state.json`과 `docs/work-items/community-member-experience.md`. 실물 휴대폰/Windows 및 채팅 MCP 연결은 별도 미완료다.
+
+
+## ChatGPT 원격 MCP — 2026-10-04 클라우드 후보
+
+사용자 “GPT 연결” 질문 후 원격 MCP 방식을 선택(“1번!”). 최신 main b4e2ad6(v2.47.0 배포 기록)에서 `cloud/chatgpt-remote-mcp`로 진행한다. OAuth 로그인·권한별 승인·본인 글/사진/여행 도구와 해제를 구현하고 별도 검토한다. Git2 push는 배포·현재 채팅 연결을 의미하지 않는다. 상세 `tbox-v2/docs/work-items/chatgpt-remote-mcp.md`, 사용자 안내 `tbox-v2/docs/chatgpt-remote-mcp.md`. 서버 부모 원본에 이 절을 diff 병합한다.
