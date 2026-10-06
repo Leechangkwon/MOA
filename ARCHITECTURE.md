@@ -600,6 +600,17 @@ t-box 라우터는 origin·라우트 패턴을 인자로 넘긴다. 커뮤니티
 
 **남는 위험(R-114).** 묶음 토큰 하나가 새면 묶인 만큼 한꺼번에 열린다. 완화: 사용자가 고른 만큼만(서버가 고를 수 있는 원자로 다시 막는다) · session.open 이 들면 IP 묶음이 **전부**에 걸린다 · 만료 180일 · 회수 한 번에 전부 · 발급마다 비밀번호+2단계 · 경보 AL-20(발급)·AL-24(IP 밖 사용).
 
+### 4.11 처리방침·약관 동의 관문 (사이트 Q:F-13 P1 · 기획 `../docs/privacy-terms-plan.md` 5.2, 2026-10-07)
+
+| 단계 | 규칙 |
+|---|---|
+| 자리 | `Auth::requireLogin()` 안의 `requireConsent()` — t-box·커뮤니티 두 라우터의 **세션 경로가 모두** 이 함수를 지난다. 프로그램 토큰 경로([2-T] `requireApiToken`)·런처·공개 화면은 지나지 않는다 |
+| 순서 | 최초 로그인 절차(비밀번호 변경·2단계 등록 — `nextStep`)가 남았으면 그 관문이 먼저(이 관문은 지나간다 — 서로 돌려보내는 고리 0) → 열어 둔 다섯(`GET /consent` · `GET /api/me` · `GET|POST /api/me/consents` · `POST /api/logout`) → `Legal::needsConsent`(DB `user_consents` 문서별 마지막 줄 = 지금 판 agree 인가) |
+| 막힘 | 화면 → 302 `/tbox/consent`(`?to=` 는 `Http::returnPath` 허용 목록만) · API → 403 `{error, next:"consent", code:"consent_required"}` · 감사 `auth.gate|deny|consent_required` |
+| 기록 | `public.user_consents`(문서 `terms`·`privacy`·`age14`·`ai_overseas` · 판 · `agree`/`withdraw` · IP) — 앱 계정 **SELECT·INSERT 만**. 판은 서버가 `config/legal.json` 에서 정한다(요청 값 0). 가입은 `member_register.php` 가 같은 트랜잭션에서 세 줄 |
+| AI 국외 전송 | Gemini 로 보내는 네 길(`MemberAi` · `MemberAssist` · `MemoryAi` · `CommunityAi::perform`)이 **외부 호출 앞에서** `Legal::requireAiConsent` → 없으면 409 `ai_consent_required`(공급자 호출 0) |
+| 문서 | `/tbox/privacy` · `/tbox/terms`(공개 · 쿠키 0 · `/privacy`·`/terms` 는 308) — 파일은 `config/legal.json` 목록의 이름만(`Legal::html` — realpath·폴더 안·링크 아님 확인) · 이전 판 `?v=` 는 목록에 있는 것만 |
+
 ## 5. 네 가지 흐름 — 순서대로, 권한 검사 위치 표시
 
 표기: **[권한 ✔]** = 여기서 권한 검사 · **[DB]** = PostgreSQL · **[FS]** = 스토리지 디스크 · **[LOG]** = 감사 로그
