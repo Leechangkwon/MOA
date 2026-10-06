@@ -767,6 +767,8 @@ $shellProjectsShown = $shellProjects['items'] !== [] || $shellCommunityWrite;
         <span class="icon icon--moon" data-icon="moon"></span><span class="icon icon--sun" data-icon="sun"></span>
       </button>
     </div>
+    <!-- 사이트 Q:F-13 P1 — 약관 링크 줄(셸 사이드바 바닥 · 버전 줄 아래 · 처리방침은 굵게). 고정 주소뿐이다. -->
+    <p class="legal-links"><a href="<?= Http::url('/privacy') ?>"><strong>개인정보 처리방침</strong></a> · <a href="<?= Http::url('/terms') ?>">이용약관</a></p>
 
     <div class="userchip">
       <span class="userchip__avatar" aria-hidden="true"><?= $shellInitial ?></span>

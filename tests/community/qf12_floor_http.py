@@ -404,6 +404,9 @@ try:
     mx_hash = hashlib.sha256(mx_session.encode()).hexdigest()
     sql("INSERT INTO sessions(id,user_id,expires_at,ip,user_agent) VALUES('" + mx_hash + "'," + str(mx_id)
         + ",clock_timestamp()+interval '8 hours','127.0.0.1','tbox-review/" + time.strftime('%Y-%m-%d') + "')")
+    # 사이트 Q:F-13 P1 — MX 도 fixture claude_ 처럼 「이미 동의한 기존 회원」이다(동의 관문은 이 시험의 대상이 아니다 — 같은 동의 줄을 옮겨 둔다)
+    sql("INSERT INTO user_consents(user_id,doc,version,action) SELECT " + str(mx_id) + ",doc,version,action FROM user_consents"
+        + " WHERE user_id=(SELECT id FROM users WHERE username='claude_admin01') ORDER BY id")
     users['admin_x'] = {'id': mx_id, 'session': mx_session,
                         'csrf': php("echo hash_hmac('sha256','csrf:" + mx_hash + "',Env::get('APP_SECRET'));")}
     NAMES['MX'] = 'admin_x'

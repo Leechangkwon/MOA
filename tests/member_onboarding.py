@@ -32,7 +32,7 @@ if r.status_code!=201:print(r.text);raise SystemExit(1)
 invite=r.json();code=invite['path'].split('=')[-1]
 r=req(admin,'/api/invites');check('list has no invite code',code not in r.text and 'code_hash' not in r.text)
 fresh=session();page=req(fresh,'/join');csrf=re.search('data-join-csrf="([a-f0-9]+)"',page.text).group(1)
-name='moareview_'+secrets.token_hex(3);body={'invite':code,'username':name,'display_name':'모아 가입 검토','password':PW}
+name='moareview_'+secrets.token_hex(3);body={'invite':code,'username':name,'display_name':'모아 가입 검토','password':PW,'agree_terms':True,'age14':True}  # Q:F-13 P1 — 필수 동의 둘
 check('registration CSRF rejected',req(fresh,'/api/register','POST',body).status_code==403)
 fresh.headers['X-Join-CSRF']=csrf
 check('role injection rejected',req(fresh,'/api/register','POST',body|{'role':'Admin'}).status_code==400)

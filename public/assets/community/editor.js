@@ -1,4 +1,4 @@
-import { hydrateDashboard } from './dashboard.js?v=3cdf1225a5b6';
+import { hydrateDashboard } from './dashboard.js?v=98028bf77ecd';
 /**
  * public/assets/community/editor.js — 커뮤니티 화면의 동작 한 벌 (모듈 스크립트)
  *
@@ -41,22 +41,22 @@ import { inputRules, textblockTypeInputRule, InputRule } from './vendor/pm/prose
 import { dropCursor } from './vendor/pm/prosemirror-dropcursor.js?v=5823578fa61a';
 import { gapCursor } from './vendor/pm/prosemirror-gapcursor.js?v=5823578fa61a';
 
-import { createSuggestions, bindMySuggestions, buildSuggestionOps, suggestionTypeAllowed, suggestionEqual } from './suggestions.js?v=3cdf1225a5b6';
-import { renderDoc, embedHost } from './doc-render.js?v=3cdf1225a5b6';
-import { createDatabaseView } from './database.js?v=3cdf1225a5b6';
-import { bindTemplateGallery, createTemplateSave } from './templates.js?v=3cdf1225a5b6';
-import { bindEmbedAdmin } from './embeds.js?v=3cdf1225a5b6';
-import { bindPopular } from './popular.js?v=3cdf1225a5b6';
-import { bindPalettes } from './palettes.js?v=3cdf1225a5b6';
-import { schema, toDoc, fromDoc, uuid4, colorAllowed, schemeOkForEditor, mentionAllowed, editorDomParser, clipboardDomParser, COLORS, BLOCK_TYPES } from './editor-schema.js?v=3cdf1225a5b6';
-import { drawAutomationPage, drawAutomationSpace, bindAutomations, loadAutomations } from './automations.js?v=3cdf1225a5b6';
-import { drawTrust, bindProcedures } from './procedures.js?v=3cdf1225a5b6';
-import { createPageExport } from './export.js?v=3cdf1225a5b6';
-import { createDrafts } from './drafts.js?v=3cdf1225a5b6';
-import { drawPageAi, bindAiCenter } from './ai.js?v=3cdf1225a5b6';
-import { drawIntegrations, bindIntegrations } from './integrations.js?v=3cdf1225a5b6';
+import { createSuggestions, bindMySuggestions, buildSuggestionOps, suggestionTypeAllowed, suggestionEqual } from './suggestions.js?v=98028bf77ecd';
+import { renderDoc, embedHost } from './doc-render.js?v=98028bf77ecd';
+import { createDatabaseView } from './database.js?v=98028bf77ecd';
+import { bindTemplateGallery, createTemplateSave } from './templates.js?v=98028bf77ecd';
+import { bindEmbedAdmin } from './embeds.js?v=98028bf77ecd';
+import { bindPopular } from './popular.js?v=98028bf77ecd';
+import { bindPalettes } from './palettes.js?v=98028bf77ecd';
+import { schema, toDoc, fromDoc, uuid4, colorAllowed, schemeOkForEditor, mentionAllowed, editorDomParser, clipboardDomParser, COLORS, BLOCK_TYPES } from './editor-schema.js?v=98028bf77ecd';
+import { drawAutomationPage, drawAutomationSpace, bindAutomations, loadAutomations } from './automations.js?v=98028bf77ecd';
+import { drawTrust, bindProcedures } from './procedures.js?v=98028bf77ecd';
+import { createPageExport } from './export.js?v=98028bf77ecd';
+import { createDrafts } from './drafts.js?v=98028bf77ecd';
+import { drawPageAi, bindAiCenter } from './ai.js?v=98028bf77ecd';
+import { drawIntegrations, bindIntegrations } from './integrations.js?v=98028bf77ecd';
 // Q:F-12 D — 업무 화면(홈 · 내 작업 · 프로젝트 목록 · 작업 상세 칸 · 포트폴리오 · 「새로 만들기」). 이 파일은 고리 몇 개만 이어 준다
-import { createWork } from './work.js?v=3cdf1225a5b6';
+import { createWork } from './work.js?v=98028bf77ecd';
 
 /* ─── 주소와 공통 도우미 ─────────────────────────────────────── */
 
@@ -168,6 +168,11 @@ function api(method, path, payload, opts) {
   const again = () => apiSend(method, path, payload, opts).then(answer);
   return apiSend(method, path, payload, opts).then((sent) => {
     const result = answer(sent);
+    // 사이트 Q:F-13 P1 — AI 국외 전송 동의가 없어 서버가 409 로 막은 요청(커뮤니티 AI): 동의 창 → 동의하면 같은 요청을 한 번만 다시(again 은 이 갈래를 지나지 않는다)
+    if (write && result.status === 409 && result.data && result.data.code === 'ai_consent_required') {
+      return aiConsentDialog(result.data.notice).then((agreed) => (agreed ? again()
+        : { status: 409, data: { error: 'AI 국외 전송에 동의하지 않아 AI 기능을 쓸 수 없어요. 다른 기능은 그대로 쓸 수 있어요.' } }));
+    }
     if (!write || result.status !== 403 || (opts && opts.sessionRetry === false)) { return result; }
     if (result.data && typeof result.data.next === 'string' && result.data.next !== '') { return result; }
     const probe = typeof window.qarediSessionProbe === 'function' ? window.qarediSessionProbe : null;
@@ -188,6 +193,66 @@ function api(method, path, payload, opts) {
       }
       return result;
     }, () => result);
+  });
+}
+
+/**
+ * 사이트 Q:F-13 P1 — AI 국외 전송 동의 창(결정 PT-8). 서버가 409 `{code:"ai_consent_required", notice}` 로 막은 요청에서만 연다.
+ * 글자는 서버가 준 notice(처리방침 제7조를 줄로 나눈 것 — src/Legal.php 한 곳)를 textContent 로 그린다. 「동의하고 계속하기」면
+ * t-box 창구 `POST /api/me/consents {doc:"ai_overseas"}`(같은 세션·같은 CSRF 토큰)를 보내고 참 — api() 가 막혔던 요청을 한 번 다시 보낸다.
+ * 닫기 · ✕ · Esc 는 거짓. 막는 것은 서버다. 구성 요소는 공용 창(dialog.modal.modal--form · DESIGN 2.7). AI 창 위에 겹쳐 뜬다 —
+ * 공용 재인증 창과 같은 예외(아래 창에 적어 둔 값이 그대로 남아야 같은 요청을 다시 보낸다).
+ */
+function aiConsentDialog(notice) {
+  return new Promise((resolve) => {
+    const n = notice && typeof notice === 'object' ? notice : {};
+    const el = (tag, text, cls) => { const e = document.createElement(tag); if (text !== undefined) { e.textContent = text; } if (cls) { e.className = cls; } return e; };
+    const d = el('dialog', undefined, 'modal modal--form');
+    const head = el('div', undefined, 'modal__head');
+    const title = el('h2', typeof n.title === 'string' ? n.title : 'AI 기능 — 국외 전송 동의', 'modal__title');
+    title.id = 'ai-consent-title';
+    d.setAttribute('aria-labelledby', title.id);
+    const x = el('button', '×', 'btn btn--icon btn--plain'); x.type = 'button'; x.setAttribute('aria-label', '닫기');
+    head.append(title, x);
+    const box = el('div', undefined, 'modal__body');
+    box.append(el('p', 'AI 기능을 처음 쓸 때 한 번 묻습니다. 요청한 내용이 아래처럼 국외로 전송됩니다.', 'help'));
+    const grid = el('div', undefined, 'info-grid');
+    (Array.isArray(n.rows) ? n.rows : []).forEach((row) => {
+      if (!Array.isArray(row) || typeof row[0] !== 'string' || typeof row[1] !== 'string') { return; }
+      const item = el('div', undefined, 'info-item');
+      item.append(el('span', row[0], 'field__label'), el('span', row[1], 'info-item__value'));
+      grid.append(item);
+    });
+    box.append(grid);
+    box.append(el('p', typeof n.note === 'string' ? n.note : '', 'help'));
+    if (typeof n.policy_url === 'string' && /^\/tbox\/privacy(#[a-z0-9-]+)?$/.test(n.policy_url)) {
+      const links = el('p', undefined, 'legal-links');
+      const a = el('a', '개인정보 처리방침 제7조 보기'); a.href = n.policy_url; a.target = '_blank'; a.rel = 'noopener'; links.append(a); box.append(links);
+    }
+    const foot = el('div', undefined, 'modal__foot');
+    const msg = el('p', '', 'msg'); msg.setAttribute('role', 'alert');
+    const close = el('button', '닫기', 'btn btn--quiet'); close.type = 'button';
+    const ok = el('button', '동의하고 계속하기', 'btn'); ok.type = 'button';
+    foot.append(msg, close, ok);
+    d.append(head, box, foot);
+    let agreed = false;
+    const shut = () => { if (d.open) { d.close(); } };
+    x.addEventListener('click', shut);
+    close.addEventListener('click', shut);
+    ok.addEventListener('click', () => {
+      ok.disabled = true; close.disabled = true; msg.textContent = '';
+      fetch((APP_BASE || '/tbox') + '/api/me/consents', { method: 'POST', credentials: 'same-origin', cache: 'no-store',
+        headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken === null ? '' : csrfToken }, body: JSON.stringify({ doc: 'ai_overseas' }) })
+        .then((r) => readJson(r).then((got) => {
+          if (r.status !== 200 || !got || got.ai_overseas !== true) { msg.textContent = (got && typeof got.error === 'string') ? got.error : GENERIC_ERROR; return; }
+          agreed = true; shut();
+        }), () => { msg.textContent = GENERIC_ERROR; })
+        .finally(() => { ok.disabled = false; close.disabled = false; });
+    });
+    d.addEventListener('close', () => { d.remove(); resolve(agreed); });
+    document.body.append(d);
+    d.showModal();
+    close.focus();
   });
 }
 

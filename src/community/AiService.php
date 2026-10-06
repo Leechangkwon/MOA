@@ -3,6 +3,8 @@ declare(strict_types=1);
 
 /** Stage 13 / C:F-56: permissions, immutable evidence and bounded AI orchestration.
  * The only network implementation is Ai.php. No model text is ever executable. */
+require_once __DIR__ . '/../Legal.php';
+
 final class CommunityAiError extends RuntimeException
 {
     public function __construct(public string $reason, public int $httpStatus=400)
@@ -140,6 +142,12 @@ final class CommunityAi
     /** invoke($beforeSend) and finish($result) are fixed PHP callables, never request data. */
     public static function perform(array $user,string $feature,string $input,array $refs,array $files,callable $invoke,?callable $finish=null): array
     {
+        // 사이트 Q:F-13 P1 (PT-8) — 커뮤니티 AI 의 모든 외부 호출(요약·비서·브리핑·받아쓰기·뜻 검색·색인)이 지나는 한 자리.
+        // 동의가 지금 상태가 아니면 웹 요청은 409 ai_consent_required(기록·예약·호출 0), 배치(색인 — 허락한 사람 기준)는 거부로 끝낸다.
+        if(!Legal::aiAgreed((int)$user['id'])){
+            if(PHP_SAPI==='cli'){throw new CommunityAiError('ai_consent_required',409);}
+            Legal::requireAiConsent((int)$user['id']);
+        }
         self::ready($feature);self::checkRefs($user,$refs,$files);
         if(self::length($input)>Ai::MAX_TEXT){throw new CommunityAiError('input_too_long',400);}
         $request=null;$start=gmdate(DATE_ATOM);$sent=false;

@@ -28,7 +28,7 @@
  *   · PC 도우미(내 PC 의 loopback 주소)는 `/messages` 에서만 — 이 파일에는 그 주소가 없다(member-assist.js 가 창에서는 안내만 보인다).
  *   · 역할 비교 0 — `/api/me` 의 `can_community_write`·`acting` 만 본다(근거는 서버 `Member::requireMessenger`).
  */
-import { createDrafts } from './community/drafts.js?v=3cdf1225a5b6';
+import { createDrafts } from './community/drafts.js?v=98028bf77ecd';
 
 /** 창 상태 열쇠 접두 — 뒤에 진짜 사용자 아이디(`/api/me` 의 username — 역할로 보기 중에도 실제 계정) */
 const STATE_PREFIX = 'qaredi-messenger:v1:';
@@ -393,6 +393,65 @@ function leadership(owner, onChange) {
   };
 }
 
+/** 사이트 Q:F-13 P1 — 동의 창을 닫았을 때(동의하지 않음) 막혔던 요청이 내는 문장 */
+const AI_CONSENT_DECLINED = 'AI 국외 전송에 동의하지 않아 AI 기능을 쓸 수 없어요. 다른 기능은 그대로 쓸 수 있어요.';
+
+/**
+ * 사이트 Q:F-13 P1 — AI 국외 전송 동의 창(결정 PT-8). 서버가 409 `{code:"ai_consent_required", notice}` 로 막은 요청에서만 연다.
+ * 글자는 서버가 준 notice(처리방침 제7조를 줄로 나눈 것 — src/Legal.php 한 곳)를 textContent 로 그린다. 「동의하고 계속하기」면
+ * `agree()`(= `POST /api/me/consents {doc:"ai_overseas"}`)를 부르고 참을 돌려준다 — 부르는 쪽이 막혔던 요청을 **한 번** 다시 보낸다.
+ * 닫기 · ✕ · Esc 는 거짓. 막는 것은 서버다(이 창은 안내와 기록 요청뿐). 구성 요소: dialog.modal.modal--form · .info-grid · .help · .msg · .btn
+ * (DESIGN 2.7 — 바닥 오른쪽 끝 주요 하나 · 그 왼쪽 「닫기」 · 머리 ✕ · 처음 초점은 「닫기」).
+ */
+function aiConsentDialog(notice, agree) {
+  return new Promise((resolve) => {
+    const n = plainObject(notice) ? notice : {};
+    const el = (tag, text, cls) => { const e = document.createElement(tag); if (text !== undefined) { e.textContent = text; } if (cls) { e.className = cls; } return e; };
+    const d = el('dialog', undefined, 'modal modal--form');
+    const head = el('div', undefined, 'modal__head');
+    const title = el('h2', typeof n.title === 'string' ? n.title : 'AI 기능 — 국외 전송 동의', 'modal__title');
+    title.id = 'ai-consent-title';
+    d.setAttribute('aria-labelledby', title.id);
+    const x = el('button', '×', 'btn btn--icon btn--plain'); x.type = 'button'; x.setAttribute('aria-label', '닫기');
+    head.append(title, x);
+    const body = el('div', undefined, 'modal__body');
+    body.append(el('p', 'AI 기능을 처음 쓸 때 한 번 묻습니다. 요청한 내용이 아래처럼 국외로 전송됩니다.', 'help'));
+    const grid = el('div', undefined, 'info-grid');
+    for (const row of Array.isArray(n.rows) ? n.rows : []) {
+      if (!Array.isArray(row) || typeof row[0] !== 'string' || typeof row[1] !== 'string') { continue; }
+      const item = el('div', undefined, 'info-item');
+      item.append(el('span', row[0], 'field__label'), el('span', row[1], 'info-item__value'));
+      grid.append(item);
+    }
+    body.append(grid);
+    body.append(el('p', typeof n.note === 'string' ? n.note : '', 'help'));
+    if (typeof n.policy_url === 'string' && /^\/tbox\/privacy(#[a-z0-9-]+)?$/.test(n.policy_url)) {
+      const links = el('p', undefined, 'legal-links');
+      const a = el('a', '개인정보 처리방침 제7조 보기'); a.href = n.policy_url; a.target = '_blank'; a.rel = 'noopener'; links.append(a); body.append(links);
+    }
+    const foot = el('div', undefined, 'modal__foot');
+    const msg = el('p', '', 'msg'); msg.setAttribute('role', 'alert');
+    const close = el('button', '닫기', 'btn btn--quiet'); close.type = 'button';
+    const ok = el('button', '동의하고 계속하기', 'btn'); ok.type = 'button';
+    foot.append(msg, close, ok);
+    d.append(head, body, foot);
+    let agreed = false;
+    const shut = () => { if (d.open) { d.close(); } };
+    x.addEventListener('click', shut);
+    close.addEventListener('click', shut);
+    ok.addEventListener('click', async () => {
+      ok.disabled = true; close.disabled = true; msg.textContent = '';
+      try { await agree(); agreed = true; shut(); }
+      catch (e) { msg.textContent = e && e.message ? e.message : '동의를 저장하지 못했습니다. 다시 시도해 주세요.'; }
+      finally { ok.disabled = false; close.disabled = false; }
+    });
+    d.addEventListener('close', () => { d.remove(); resolve(agreed); });
+    document.body.append(d);
+    d.showModal();
+    close.focus();
+  });
+}
+
 /**
  * 떠 있는 창용 헬퍼 — member.js 가 없는 화면(셸·런처·시작 안내)에서 같은 모양의 `api()`·`node()`·`say()`·`date()`·`label()`.
  * `/messages`(붙박이)는 member.js 의 것을 그대로 받는다(A-1 — 복제 0). 이 화면들에는 member.js 가 없거나 메신저를 부르지 않는다.
@@ -413,6 +472,9 @@ function windowKit(base, status) {
       const error = new Error(data && data.next === 'reauth' ? '관리자 인증 시간이 지났습니다. 관리자 인증 갱신 링크에서 다시 인증해 주세요.'
         : (data && typeof data.error === 'string' ? data.error : '요청을 처리하지 못했습니다.'));
       error.status = r.status;
+      // 사이트 Q:F-13 P1 — 409 ai_consent_required 의 분류어와 동의 창 글자(notice)를 call() 이 읽는다(member.js 의 api 와 같은 모양)
+      error.code = data && typeof data.code === 'string' ? data.code : '';
+      error.data = data;
       throw error;
     }
     return data;
@@ -485,6 +547,12 @@ async function mount(options) {
   /** 401(세션 만료)을 받은 그 순간 — 열쇠가 이미 메모리에 있으면 쓰던 글을 남긴다(커뮤니티 「401 그 순간」 규칙). 창은 폴링을 멈춘다 */
   const call = (path, method = 'GET', body, join = false, passive = false) => api(path, method, body, join, passive).catch((error) => {
     if (error && error.status === 401 && !loggedOut) { store.flushAll(); saveState(); if (isWindow) { halted = true; schedule(null); } }
+    // 사이트 Q:F-13 P1 — AI 국외 전송 동의가 없어 서버가 409 로 막은 요청(모아 AI · 메시지 AI 도구): 동의 창 → 동의하면 같은 요청을 한 번 다시.
+    // 다시 보낸 요청은 call 이 아니라 api 로 보낸다(고리 0). 자동 요청(passive)은 창을 띄우지 않는다.
+    if (error && error.status === 409 && error.code === 'ai_consent_required' && !passive) {
+      return aiConsentDialog(error.data && error.data.notice, () => api('/api/me/consents', 'POST', { doc: 'ai_overseas' }))
+        .then((agreed) => { if (agreed) { return api(path, method, body, join, passive); } throw new Error(AI_CONSENT_DECLINED); });
+    }
     throw error;
   });
 

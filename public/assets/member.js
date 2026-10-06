@@ -18,7 +18,12 @@
       if(controller)options.signal=controller.signal;
       const r=await fetch(base+path,options);
       let data;try{data=await r.json();}catch(error){if(error.name==='AbortError')throw error;throw Error('응답을 받지 못했습니다. 잠시 뒤 다시 시도해 주세요.');}
-      if(!r.ok){if(r.status===401&&!join){say('로그인이 만료되었습니다. 다시 로그인해 주세요.');}const error=Error(data.next==='reauth'?'관리자 인증 시간이 지났습니다. 관리자 인증 갱신 링크에서 다시 인증해 주세요.':data.error||'요청을 처리하지 못했습니다.');error.status=r.status;throw error;}return data;
+      if(!r.ok){if(r.status===401&&!join){say('로그인이 만료되었습니다. 다시 로그인해 주세요.');}
+        // 사이트 Q:F-13 P1 — 약관 동의 관문(403 next:"consent")이면 동의 화면으로. 막는 것은 서버이고 이 줄은 안내다.
+        if(r.status===403&&data.next==='consent'&&page!=='consent'){location.assign(base+'/consent');}
+        const error=Error(data.next==='reauth'?'관리자 인증 시간이 지났습니다. 관리자 인증 갱신 링크에서 다시 인증해 주세요.':data.error||'요청을 처리하지 못했습니다.');error.status=r.status;
+        // 사이트 Q:F-13 P1 — 409 ai_consent_required 의 분류어와 동의 창 글자(notice)를 부르는 쪽(메신저)이 읽는다
+        error.code=typeof data.code==='string'?data.code:'';error.data=data;throw error;}return data;
     }catch(error){if(controller&&error.name==='AbortError')throw Error('응답 시간이 지났습니다. 승인 여부를 확인하려면 ChatGPT에서 연결을 다시 시작해 주세요.');throw error;}
     finally{if(timer!==null)clearTimeout(timer);}
   }
@@ -34,7 +39,8 @@
     $('join-form').addEventListener('submit',e=>{e.preventDefault();busy(e.currentTarget,async()=>{
       if($('join-password').value!==$('join-confirm').value)throw Error('비밀번호가 서로 다릅니다. 다시 확인해 주세요.');
       say('계정을 만들고 있어요…');
-      const registered=await api('/api/register','POST',{invite:$('join-invite').value.trim(),username:$('join-username').value.trim(),display_name:$('join-name').value.trim(),password:$('join-password').value},true);
+      // 사이트 Q:F-13 P1 — 체크 둘(약관 동의 · 만 14세 이상)의 참/거짓을 그대로 보낸다. 둘 다 참이 아니면 서버가 400 으로 거부한다(화면은 판단하지 않는다).
+      const registered=await api('/api/register','POST',{invite:$('join-invite').value.trim(),username:$('join-username').value.trim(),display_name:$('join-name').value.trim(),password:$('join-password').value,agree_terms:$('join-terms').checked,age14:$('join-age14').checked},true);
       $('join-password').value='';$('join-confirm').value='';location.assign(base+(registered.next==='login'?'/login':'/welcome'));
     });});return;
   }
@@ -90,6 +96,27 @@
     $('welcome-token-copy').addEventListener('click',()=>copy($('welcome-token')));
     addEventListener('pagehide',()=>{$('welcome-token').value='';$('welcome-secret').textContent='';});
   }
+  /* 사이트 Q:F-13 P1 — 「약관·동의」 화면(/consent). 약관 동의 + 처리방침 확인(한 묶음) · 로그아웃 · AI 국외 전송 동의·철회.
+     돌아갈 곳(data-consent-to)은 서버가 허용 목록(Http::returnPath)으로 거른 값 — 여기서도 모듈 경로 모양만 받고 그 밖은 첫 화면. */
+  async function consent(){
+    const to=document.body.dataset.consentTo||'';
+    const next=/^\/(?:tbox|community)\//.test(to)&&!to.includes('//')?to:'/';
+    const form=$('consent-form');
+    if(form){
+      form.addEventListener('submit',e=>{e.preventDefault();busy(form,async()=>{
+        if(!$('consent-terms').checked||!$('consent-privacy').checked)throw Error('두 항목을 모두 확인해 주세요.');
+        say('동의를 저장하고 있어요…');
+        await api('/api/me/consents','POST',{doc:'terms'});
+        location.assign(next);
+      });});
+      $('consent-logout').addEventListener('click',()=>busy(form.parentElement,async()=>{await api('/api/logout','POST',{});location.assign('/');}));
+    }
+    const agree=$('consent-ai-agree'),withdraw=$('consent-ai-withdraw');
+    if(!agree||!withdraw)return;
+    const paint=on=>{agree.hidden=on;withdraw.hidden=!on;$('consent-ai-state').textContent=on?'동의함':'동의하지 않음';};
+    agree.addEventListener('click',()=>busy($('consent-ai'),async()=>{const d=await api('/api/me/consents','POST',{doc:'ai_overseas'});paint(d.ai_overseas===true);say('AI 국외 전송에 동의했어요.');withdraw.focus();}));
+    withdraw.addEventListener('click',()=>busy($('consent-ai'),async()=>{const d=await api('/api/me/consents','POST',{doc:'ai_overseas',action:'withdraw'});paint(d.ai_overseas===true);say('AI 국외 전송 동의를 철회했어요. AI 기능을 쓰면 그때 다시 물어요.');agree.focus();}));
+  }
   async function invitations(){
     const data=await api('/api/invites');$('installer-url').value=data.buddy_download_url||'';
     $('invite-list').replaceChildren();
@@ -126,5 +153,5 @@
     addEventListener('pagehide',()=>{$('ai-settings-key').value='';});
     try{paint(await api('/api/member-ai-settings'));}catch(error){notice.textContent=error.message;}
   }
-  api('/api/me').then(async data=>{me=data;csrf=data.csrf_token;if(page==='mcp-connect')await window.MoaMcpConnect.init({api,me});if(page==='welcome')await welcome();if(admin)await Promise.all([initInvites(),initAiSettings()]);if(page==='messages'){if(!window.MoaMessenger)throw Error('메신저를 불러오지 못했습니다. 새로고침해 주세요.');await window.MoaMessenger.mount({api,me,node,say,date,label,mode:'page'});}}).catch(e=>{if(page==='mcp-connect'&&window.MoaMcpConnect)window.MoaMcpConnect.failure(e);else say(e.message);});
+  api('/api/me').then(async data=>{me=data;csrf=data.csrf_token;if(page==='mcp-connect')await window.MoaMcpConnect.init({api,me});if(page==='welcome')await welcome();if(page==='consent')await consent();if(admin)await Promise.all([initInvites(),initAiSettings()]);if(page==='messages'){if(!window.MoaMessenger)throw Error('메신저를 불러오지 못했습니다. 새로고침해 주세요.');await window.MoaMessenger.mount({api,me,node,say,date,label,mode:'page'});}}).catch(e=>{if(page==='mcp-connect'&&window.MoaMcpConnect)window.MoaMcpConnect.failure(e);else say(e.message);});
 })();

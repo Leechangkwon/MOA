@@ -772,6 +772,13 @@ final class Audit
         // 커뮤니티 7-D3 — 내 화면 취향(고대비 화면 · DESIGN 2.16). 켰나 껐나는 detail.high_contrast(참/거짓)에만 남는다(S-07 — 계정 행을 바꾸는 쓰기)
         'me.settings|allow'                             => '{actor} 이(가) 자기 계정의 화면 설정(고대비 화면)을 바꿨습니다 (켬·끔은 상세 기록)',
 
+        // ── 처리방침·약관 동의 (사이트 Q:F-13 지시서 P1 · src/Legal.php) ──
+        // 동의한 사람이 곧 대상이다 — 가입 때는 아직 로그인 전이라 {actor} 가 비므로 {target} 을 쓴다. 문서·판은 detail.consents 에만.
+        // 관문(auth.gate)은 Auth::requireLogin 한 곳에서만 기록한다(강제 절차·재인증 관문과 같은 모양).
+        'consent.agree|allow'                           => '{target} 이(가) 약관·방침 동의를 남겼습니다 (문서·판은 상세 기록)',
+        'consent.withdraw|allow'                        => '{target} 이(가) AI 국외 전송 동의를 철회했습니다 (판은 상세 기록)',
+        'auth.gate|deny|consent_required'               => '{target} 이(가) 이용약관 동의·개인정보 처리방침 확인을 마치지 않은 상태로 다른 기능을 요청해서 거부했습니다',
+
         // ── 「역할로 보기」 (26단계 — PRD F-39, ARCH 5.20 · 7.4, SECURITY R-74) ──────────
         // 실제 계정은 {actor}(= actor_role 열의 실제 역할)이고, 고른 역할·팀·지점은 detail 에 남는다.
         // 자동 해제(act.expire)는 사용자가 누른 행동이 아니라 **서버가 판정한 사실**이라

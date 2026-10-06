@@ -162,6 +162,8 @@ with sync_playwright() as pw:
     page.goto(ORIGIN+'/tbox/join')
     for selector,value in [('#join-invite','a'*64),('#join-name','Review'),('#join-username','synthetic_review'),('#join-password','Synthetic-password!'),('#join-confirm','Synthetic-password!')]:
         page.locator(selector).fill(value)
+    # 사이트 Q:F-13 P1 — 가입 양식의 필수 체크 둘(이용약관 동의 · 만 14세 이상). 체크하지 않으면 브라우저가 제출을 막는다(서버도 400).
+    page.locator('#join-terms').check(); page.locator('#join-age14').check()
     page.locator('#join-form button[type=submit]').click()
     page.wait_for_url(ORIGIN+'/tbox/login')
     check('durable signup without session goes to login', page.url.endswith('/tbox/login'))

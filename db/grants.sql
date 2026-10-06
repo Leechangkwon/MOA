@@ -321,6 +321,29 @@ BEGIN
 END
 $$;
 
+-- ─── 처리방침·약관 동의 기록 (사이트 Q:F-13 지시서 P1 · src/Legal.php) — 표 하나(user_consents).
+--     표를 만드는 것은 db/schema.sql(새 설치)·db/migrations/2026-10-20_user_consents.sql(기존 DB)이고, 이 절은 **같은 권한**을
+--     다시 건다(재실행 시 과거 권한이 남지 않게 회수 뒤 GRANT). 표가 없으면(마이그레이션 전) 아무것도 하지 않고 NOTICE 만 남긴다.
+--   tbox_app    SELECT · INSERT 만 — ★ UPDATE · DELETE · TRUNCATE 없음(추가만 하는 기록 — audit_logs 와 같다) · 시퀀스 USAGE·SELECT
+--   tbox_backup SELECT 만 · tbox_perm · tbox_push 0
+DO $$
+BEGIN
+    IF to_regclass('public.user_consents') IS NULL THEN
+        RAISE NOTICE 'user_consents 표가 없다 — db/migrations/2026-10-20_user_consents.sql 을 먼저 돌린다(이 절은 건너뜀)';
+        RETURN;
+    END IF;
+    REVOKE ALL ON public.user_consents FROM tbox_app, tbox_backup, tbox_perm;
+    REVOKE ALL ON SEQUENCE public.user_consents_id_seq FROM tbox_app, tbox_backup, tbox_perm;
+    IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'tbox_push') THEN
+        REVOKE ALL ON public.user_consents FROM tbox_push;
+    END IF;
+    GRANT SELECT, INSERT ON public.user_consents TO tbox_app;
+    GRANT USAGE, SELECT ON SEQUENCE public.user_consents_id_seq TO tbox_app;
+    GRANT SELECT ON public.user_consents TO tbox_backup;
+    GRANT SELECT ON SEQUENCE public.user_consents_id_seq TO tbox_backup;
+END
+$$;
+
 -- Remote MCP additive migration, preserving all existing table owners.
 DO $$ BEGIN
  IF to_regclass('public.mcp_tokens') IS NOT NULL THEN

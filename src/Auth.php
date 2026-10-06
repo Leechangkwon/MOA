@@ -1,6 +1,9 @@
 <?php
 declare(strict_types=1);
 
+// 사이트 Q:F-13 P1 — 처리방침·약관 동의 관문(requireLogin)이 판정 값을 읽는 곳. 부트스트랩 목록에 줄을 더하지 않고 여기서 읽는다.
+require_once __DIR__ . '/Legal.php';
+
 /**
  * 로그인 시도가 계정 잠금(PRD F-01, S-09-4)에 걸렸을 때 던진다.
  * 핸들러(src/handlers/login.php)가 잡아서 423 으로 답한다.
@@ -765,7 +768,71 @@ final class Auth
             ]);
             Http::error(401, Http::MSG_UNAUTHORIZED);
         }
+        self::requireConsent($u);
         return $u;
+    }
+
+    /**
+     * 사이트 Q:F-13 P1 — 처리방침·약관 동의 관문이 열어 두는 **세션 창구**(라우트 패턴 = TBOX_ROUTE 와 같은 표기).
+     * 동의하러 가는 화면 · 동의 창구 · 지금 상태(`/api/me`) · 나가는 길(로그아웃)만. 커뮤니티 라우트는 하나도 없다(`/community…` 패턴).
+     */
+    public const CONSENT_GATE_ALLOW = [
+        'GET /consent',
+        'GET /api/me',
+        'GET /api/me/consents',
+        'POST /api/me/consents',
+        'POST /api/logout',
+    ];
+
+    /**
+     * 처리방침·약관 동의 관문 (사이트 Q:F-13 P1 · 기획 5.2 「기존 회원」 · 결정 PT-4).
+     *
+     * 자리가 requireLogin 인 이유: **세션 경로의 두 라우터**(t-box `public/index.php` [2] · 커뮤니티 `routes.php` [2])가 모두 이 함수
+     * 하나를 부른다 — 「계정 절차」 넘김(최초 로그인 관문 [3-1])은 두 라우터에 따로 있어, 그 자리에 두면 한쪽을 빠뜨린다.
+     * **프로그램 토큰 창구는 이 함수를 지나지 않는다**(두 라우터의 [2-T] 는 requireApiToken 만 부른다) — 토큰은 웹에서 만든 것이라
+     * 다음 웹 로그인 때 동의한다(기획 5.2). 런처(`/`)와 공개 화면은 requireLogin 을 부르지 않는다.
+     *
+     * 순서: 최초 로그인 절차(비밀번호 변경 · 2단계 등록)가 남은 사람은 **그 관문이 먼저**다 — 여기서는 지나가고 [3-1] 이 막는다
+     * (두 관문이 서로를 /consent ↔ / 로 돌려보내는 고리를 만들지 않는다). 절차를 마친 다음 요청부터 이 관문이 본다.
+     * 판정 값은 언제나 DB(user_consents 의 문서별 마지막 줄 — Legal::needsConsent)이고 요청 값은 한 글자도 섞이지 않는다.
+     *
+     * 막힌 것이 **화면**이면 `/tbox/consent`(보던 곳이 허용 목록 안이면 `?to=` 꼬리표 — Http::returnPath 그대로)로 302,
+     * API 면 403 `{error, next:"consent", code:"consent_required"}`. 감사 `auth.gate|deny|consent_required`(다른 관문과 같은 모양).
+     *
+     * @param array<string,mixed> $u currentUser() 가 돌려준 값
+     */
+    private static function requireConsent(array $u): void
+    {
+        if (self::nextStep($u) !== null) {
+            return;
+        }
+        $route = defined('TBOX_ROUTE') ? (string) constant('TBOX_ROUTE') : '';
+        if (in_array($route, self::CONSENT_GATE_ALLOW, true)) {
+            return;
+        }
+        if (!Legal::needsConsent((int) $u['id'])) {
+            return;
+        }
+        Audit::deny('auth.gate', 'consent_required', [
+            'target_type' => 'user',
+            'target_id'   => (int) $u['id'],
+            'target_name' => (string) $u['username'],
+            'detail'      => ['next' => 'consent'],
+        ]);
+        // 라우트 패턴의 경로 쪽이 API 인가 — t-box 는 `/api/…`, 커뮤니티는 `/community/api/…`(두 라우터의 `/api/` 갈림과 같은 기준).
+        // 라우트를 모르면(TBOX_ROUTE 없음) API 로 본다 — 302 보다 403 이 닫힌 쪽이다.
+        $isApi = $route === '' || preg_match('#\A[A-Z]+ (?:' . preg_quote(COMMUNITY_BASE, '#') . ')?/api/#', $route) === 1;
+        if (!$isApi) {
+            $back = Http::returnPath((string) ($_SERVER['REQUEST_URI'] ?? ''));
+            Http::redirect(Http::url('/consent')
+                . ($back !== null && $back !== Http::url('/') ? '?to=' . rawurlencode($back) : ''));
+        }
+        Http::json([
+            'error' => Legal::MSG_CONSENT_REQUIRED,
+            'next'  => 'consent',
+            'code'  => 'consent_required',
+        ], 403);
+        exit;
     }
 
     /** 프로그램용 업로드 토큰의 최소 길이 (PRD F-49 ①, ARCH 4.2 「설정 확인」) */

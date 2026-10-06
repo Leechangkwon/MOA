@@ -65,6 +65,8 @@ final class MemberAssist
 
     public static function run(int $uid, array $input): array
     {
+        // 사이트 Q:F-13 P1 (PT-8) — 메시지 AI 도구(다듬기·맞춤법·번역·이미지)도 Google 로 보낸다. 동의가 없으면 409 로 여기서 끝(예약·기록·호출 0).
+        Legal::requireAiConsent($uid);
         $db = Db::instance(); $db->begin();
         try {
             $config = $db->run('SELECT * FROM member_ai_settings WHERE id=1 FOR UPDATE')->fetch();

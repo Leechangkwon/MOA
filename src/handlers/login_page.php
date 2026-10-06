@@ -194,6 +194,8 @@ $loginApp = $loginApps[$loginPane === '' ? 'tbox' : $loginPane];
         <p id="msg" class="msg" role="alert" aria-live="polite"></p>
       </form>
       <p class="moa-login-join">처음 오셨나요? <a href="<?= Http::url('/join') ?>">초대 링크로 회원가입 →</a></p>
+      <!-- 사이트 Q:F-13 P1 — 약관 링크 줄(로그인 화면 · 처리방침은 굵게). 고정 주소뿐이다. -->
+      <p class="legal-links"><a href="<?= Http::url('/privacy') ?>"><strong>개인정보 처리방침</strong></a> · <a href="<?= Http::url('/terms') ?>">이용약관</a></p>
     </section>
   </section>
 </div>

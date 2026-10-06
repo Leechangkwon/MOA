@@ -70,6 +70,20 @@ const TBOX_ROUTES = [
     // F-42 — 오프라인 코드 생성기가 시계를 맞추는 창구. 시각과 주기만 내준다 (ARCH 5.21).
     ['GET',  '/api/time',    'time.php',       Authz::POLICY_PUBLIC],
 
+    /* 사이트 Q:F-13 P1 — 개인정보 처리방침 · 이용약관 (기획 ../docs/privacy-terms-plan.md 5.2 · src/Legal.php).
+     *   GET  /privacy · /terms   정책 **public** — 로그인 없이 연다(런처와 같은 공개 화면 규칙: 세션을 읽지 않는다 · 개인 데이터 0 ·
+     *                            Set-Cookie 0 · CSP 그대로). 옛 경로 규칙(사이트 층 [1-0])대로 `/privacy` 는 `/tbox/privacy` 로 308.
+     *                            이전 판 `?v=YYYY-MM-DD` 는 목록(config/legal.json)에 **있는 판 글자**만 — 그 밖은 404(경로를 요청 값으로 만들지 않는다).
+     *   GET  /consent            정책 authenticated — 기존 회원 안내 화면(약관 동의 + 처리방침 확인 · AI 국외 전송 동의·철회).
+     *   GET·POST /api/me/consents 정책 authenticated — 지금 동의 상태 · 동의 줄 더하기(추가만). 대상은 언제나 **세션의 본인**.
+     *   ★ 동의 관문(Auth::requireLogin → requireConsent)은 `/consent`·`/api/me/consents` 둘·`/api/me`·`/api/logout` 만 열어 둔다.
+     *   ★ `TBOX_API_TOKEN_ROUTES` 에 넣지 않는다 — 동의는 사람이 세션으로 한다(토큰으로 부르면 세션이 없어 401). */
+    ['GET',  '/privacy',         'legal_page.php',   Authz::POLICY_PUBLIC],
+    ['GET',  '/terms',           'legal_page.php',   Authz::POLICY_PUBLIC],
+    ['GET',  '/consent',         'consent_page.php', Authz::POLICY_AUTHENTICATED],
+    ['GET',  '/api/me/consents', 'me_consents.php',  Authz::POLICY_AUTHENTICATED],
+    ['POST', '/api/me/consents', 'me_consents.php',  Authz::POLICY_AUTHENTICATED],
+
     // 4단계 라우트 — 파일 관련 라우트는 역할·팀 정책을 쓴다 (PRD S-01, 13장 4단계).
     // 여기(라우터)의 정책은 "이 역할이 그 종류의 행위를 할 수 있는가"까지만 본다 —
     // 대상 파일을 아직 읽지 않았기 때문이다. 특정 파일에 대한 판단은 핸들러가 행을 읽은 뒤

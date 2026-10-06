@@ -2,6 +2,7 @@
 declare(strict_types=1);
 
 require_once __DIR__ . '/Member.php';
+require_once __DIR__ . '/Legal.php';
 
 final class MemberAiDenied extends RuntimeException
 {
@@ -173,6 +174,9 @@ final class MemberAi
     /** Reserve before calling Google. No SQL locks are held while waiting for the network. */
     public static function send(int $uid, ?int $thread, string $text, string $request, ?callable $prepare = null): array
     {
+        // 사이트 Q:F-13 P1 (PT-8) — AI 국외 전송 동의가 지금 상태가 아니면 409 ai_consent_required 로 여기서 끝난다:
+        // 예약 · 대화 기록 · Google 호출 어느 것도 일어나지 않는다(트랜잭션 밖 · 첫 줄). 사진 이야기(MemoryAi)도 이 길을 지난다.
+        Legal::requireAiConsent($uid);
         // An internal photo preview starts its own private thread. The callback loads
         // owner-checked bytes immediately before sending; HTTP callers cannot supply it.
         if ($prepare !== null && $thread !== null) throw new MemberAiDenied('request_conflict', 409);

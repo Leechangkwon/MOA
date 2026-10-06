@@ -30,7 +30,53 @@
   function iconButton(label, glyph, handler) { const n = button('', 'icon-button', handler, glyph); n.setAttribute('aria-label', label); n.title = label; return n; }
   function toast(message) { clearTimeout(toastTimer); $('memory-toast').textContent = message; $('memory-toast').hidden = false; toastTimer = setTimeout(() => { $('memory-toast').hidden = true; }, 4500); }
   function errorText(error) { return error.message || '연결을 확인하고 다시 시도해 주세요.'; }
-  async function api(path, options = {}) {
+  /* 사이트 Q:F-13 P1 — AI 국외 전송 동의 창(결정 PT-8). 서버가 409 `{code:"ai_consent_required", notice}` 로 막은 요청에서만 연다.
+     글자는 서버가 준 notice(src/Legal.php 한 곳)를 textContent 로. 「동의하고 계속하기」면 `POST /tbox/api/me/consents {doc:"ai_overseas"}` 뒤 참 —
+     api() 가 막혔던 요청을 한 번 다시 보낸다. 닫기 · ✕ · Esc 는 거짓. 막는 것은 서버다. 구성 요소는 공용 창(dialog.modal.modal--form · DESIGN 2.7) —
+     꾸미기 창 위에 겹쳐 뜬다(공용 재인증 창과 같은 예외 — 아래 창에 적어 둔 값이 그대로 남아야 같은 요청을 다시 보낸다). */
+  function aiConsentDialog(notice) {
+    return new Promise((resolve) => {
+      const n = notice && typeof notice === 'object' ? notice : {};
+      const d = el('dialog', 'modal modal--form');
+      const head = el('div', 'modal__head');
+      const title = el('h2', 'modal__title', typeof n.title === 'string' ? n.title : 'AI 기능 — 국외 전송 동의'); title.id = 'ai-consent-title';
+      d.setAttribute('aria-labelledby', title.id);
+      const x = el('button', 'btn btn--icon btn--plain', '×'); x.type = 'button'; x.setAttribute('aria-label', '닫기');
+      head.append(title, x);
+      const body = el('div', 'modal__body');
+      body.append(el('p', 'help', 'AI 기능을 처음 쓸 때 한 번 묻습니다. 요청한 내용이 아래처럼 국외로 전송됩니다.'));
+      const grid = el('div', 'info-grid');
+      (Array.isArray(n.rows) ? n.rows : []).forEach((row) => {
+        if (!Array.isArray(row) || typeof row[0] !== 'string' || typeof row[1] !== 'string') return;
+        const item = el('div', 'info-item'); item.append(el('span', 'field__label', row[0]), el('span', 'info-item__value', row[1])); grid.append(item);
+      });
+      body.append(grid);
+      body.append(el('p', 'help', typeof n.note === 'string' ? n.note : ''));
+      if (typeof n.policy_url === 'string' && /^\/tbox\/privacy(#[a-z0-9-]+)?$/.test(n.policy_url)) { const links = el('p', 'legal-links'); const a = el('a', '', '개인정보 처리방침 제7조 보기'); a.href = n.policy_url; a.target = '_blank'; a.rel = 'noopener'; links.append(a); body.append(links); }
+      const foot = el('div', 'modal__foot');
+      const msg = el('p', 'msg', ''); msg.setAttribute('role', 'alert');
+      const close = el('button', 'btn btn--quiet', '닫기'); close.type = 'button';
+      const ok = el('button', 'btn', '동의하고 계속하기'); ok.type = 'button';
+      foot.append(msg, close, ok); d.append(head, body, foot);
+      let agreed = false;
+      const shut = () => { if (d.open) d.close(); };
+      x.addEventListener('click', shut); close.addEventListener('click', shut);
+      ok.addEventListener('click', async () => {
+        ok.disabled = true; close.disabled = true; msg.textContent = '';
+        try {
+          const r = await fetch((document.body.dataset.base || '/tbox') + '/api/me/consents', { method: 'POST', credentials: 'same-origin', cache: 'no-store',
+            headers: { Accept: 'application/json', 'Content-Type': 'application/json', 'X-CSRF-Token': state.me?.csrf_token || '' }, body: JSON.stringify({ doc: 'ai_overseas' }) });
+          const got = await r.json().catch(() => ({}));
+          if (!r.ok || got.ai_overseas !== true) throw new Error(got.error || '동의를 저장하지 못했어요. 잠시 뒤 다시 시도해 주세요.');
+          agreed = true; shut();
+        } catch (e) { msg.textContent = errorText(e); }
+        finally { ok.disabled = false; close.disabled = false; }
+      });
+      d.addEventListener('close', () => { d.remove(); resolve(agreed); });
+      document.body.append(d); d.showModal(); close.focus();
+    });
+  }
+  async function api(path, options = {}, consentRetried = false) {
     const headers = { Accept: 'application/json', ...(options.headers || {}) };
     if (options.body && !(options.body instanceof FormData)) headers['Content-Type'] = 'application/json';
     if (options.method && options.method !== 'GET') headers['X-CSRF-Token'] = state.me?.csrf_token || '';
@@ -39,6 +85,11 @@
     catch (e) { if (e.name === 'AbortError') throw e; throw new Error('인터넷 연결을 확인해 주세요. 작성 중인 내용은 그대로 남아 있어요.'); }
     let data;
     try { data = await response.json(); } catch { throw new Error('서버 응답을 읽지 못했어요. 잠시 뒤 다시 시도해 주세요.'); }
+    // 사이트 Q:F-13 P1 — AI 국외 전송 동의가 없어 서버가 409 로 막은 요청(Gemini 글쓰기): 동의 창 → 동의하면 같은 요청을 한 번만 다시
+    if (response.status === 409 && data && data.code === 'ai_consent_required' && !consentRetried) {
+      if (await aiConsentDialog(data.notice)) return api(path, options, true);
+      throw new Error('AI 국외 전송에 동의하지 않아 Gemini 글쓰기를 쓸 수 없어요. 다른 기능은 그대로 쓸 수 있어요.');
+    }
     if (!response.ok) { const error = new Error(response.status === 401 ? '로그인이 만료됐어요. 이 기기의 임시 저장을 확인하고 다시 로그인해 주세요.' : data.error || '요청을 처리하지 못했어요.'); error.status = response.status; throw error; }
     return data;
   }

@@ -2,11 +2,15 @@
 declare(strict_types=1);
 require_once __DIR__.'/../Member.php';
 require_once __DIR__.'/_username_common.php';
+require_once __DIR__.'/../Legal.php';
 Member::requireJoinCsrf();
 if (Auth::currentUser() !== null) Http::error(409, '이미 로그인되어 있습니다.');
 Member::rate('join', Http::clientIp() ?? 'unknown', 10);
 $body=Http::jsonBody(8192);
-if (array_diff(array_keys($body), ['invite','username','display_name','password']) !== []) Http::error(400, Http::MSG_BAD_REQUEST);
+if (array_diff(array_keys($body), ['invite','username','display_name','password','agree_terms','age14']) !== []) Http::error(400, Http::MSG_BAD_REQUEST);
+// 사이트 Q:F-13 P1 (결정 PT-4 · PT-9) — 이용약관 동의와 만 14세 이상 확인은 **서버가 강제**한다: 둘 다 JSON true 가 아니면(빠짐 · false · "true" 글자) 400 · 계정 0.
+// 화면의 체크는 편의다. 동의 줄 셋(terms · privacy(=확인) · age14)은 아래 계정 만들기와 **같은 트랜잭션**에 남는다(하나라도 실패하면 계정도 없다).
+if (($body['agree_terms'] ?? null) !== true || ($body['age14'] ?? null) !== true) Http::error(400, '이용약관 동의와 만 14세 이상 확인이 필요합니다.');
 $code=$body['invite']??null; $username=$body['username']??null; $name=$body['display_name']??null; $password=$body['password']??null;
 if (!is_string($code) || !preg_match('/\A[a-f0-9]{64}\z/',$code)) Http::error(400,'초대 링크를 다시 확인해 주세요.');
 if (!tbox_username_format_ok($username)) Http::error(400,tbox_username_message('bad_format'));
@@ -30,6 +34,7 @@ try {
         [':id'=>$invite['id']]);
     Audit::allow('user.create',
         ['target_type'=>'user','target_id'=>(int)$row['id'],'target_name'=>$username,'detail'=>['target_role'=>'Employee','target_team'=>$invite['team_id'],'reason_text'=>'초대 링크로 본인 가입','display_name_set'=>true]]);
+    Legal::record(['id'=>(int)$row['id'],'username'=>$username], ['terms','privacy','age14'], 'agree', ['via'=>'register']);
     $db->commit();
 } catch (PDOException $e) {
     $db->rollback();

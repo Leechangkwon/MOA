@@ -1162,6 +1162,70 @@ POST /tbox/api/me/api-tokens scope=["community.read","session.open"] (묶음이 
 - `PATCH /community/api/databases/{id}/views` 의 `board`·`list` 보기가 `group_by` 를 받는다 — 값은 `"status"` 또는 **그 데이터베이스의 select 칸 key** 만(글·다중 선택·없는 key, 그 밖 보기 종류의 `group_by` 는 400 `bad_view`). 저장 모양 `{"id","name","type":"board","group_by":"section"}` — 행 목록 응답(`GET …/rows` 의 `views`)에 그대로 나온다. 행 응답은 그대로이고 묶기는 화면이 한다: 보드는 고른 저장 보드의 `group_by` 가 select 칸이면 그 선택지 순서로 열을 그리고(빈 값 열 「섹션 없음」 — 섹션이 아닌 칸이면 「<칸 이름> 없음」), 카드 옮기기는 그 select 값을 `PATCH /api/pages/{id}/values` 로 쓴다(사건 `db:<key>` — 섹션이면 `db:section`). `group_by` 가 없거나 `status` 면 전처럼 상태 열.
 - 내장 칸 `assignee`(= `pages.assignee_id`) — 거르기 `eq`(계정명 — 「나」는 화면이 자기 계정명을 보낸다) · `empty` · `not_empty` 와 정렬(계정명). **값 쓰기는 22-1 창구 한 곳**이다 — `PATCH …/values {"assignee": …}` 는 400 `unknown_prop`. 행 목록 응답에는 담당 값이 아직 없다(`database_rows.php` 는 이 조각의 수정 파일이 아니다 — D 에서 필요하면 그때).
 
+## 23. 처리방침·약관 — 공개 화면 · 동의 기록 · AI 국외 전송 동의 (사이트 Q:F-13 P1, 2026-10-07 · 웹 화면 · 세션)
+
+기획 `../docs/privacy-terms-plan.md` 5.2 · 결정 PT-1~PT-4 · PT-7~PT-9 · 판정 한 곳 `src/Legal.php` · 표 `user_consents`(앱 계정 SELECT·INSERT 만).
+**토큰 창구 집합(`TBOX_API_TOKEN_ROUTES`)은 그대로다** — 아래 창구는 사람의 세션으로만 부르고, 프로그램 토큰 창구는 동의 관문을 지나지 않는다.
+
+### 23-1. 공개 화면 — `GET /tbox/privacy` · `GET /tbox/terms`
+
+| 항목 | 값 |
+|---|---|
+| 인증 | 없음(public) — 세션을 읽지 않는다 · `Set-Cookie` 0 · 스크립트 0. 옛 경로 `/privacy`·`/terms` 는 사이트 층 규칙대로 308 → `/tbox/…` |
+| 요청 | 선택 `?v=YYYY-MM-DD` — `config/legal.json` 목록에 **글자 그대로 있는 판**만. 읽는 파일은 언제나 목록이 준 이름(`content/legal/<문서>-<판>.html`) |
+| 성공 | 200 HTML — 제목 · `시행일 <판>` · 지금/이전 판 표시 · 판 목록(둘 이상일 때) · 문서 조각 · 바닥 약관 링크 |
+| 실패 | 목록에 없는 판(`1999-01-01`·`../x`·빈 값·배열 등) 404 · POST 405 · 목록 모양이 어긋나면 500(조용히 넘기지 않는다) |
+
+### 23-2. 동의 관문 — 세션이 있는 모든 요청(t-box · 커뮤니티)
+
+로그인 뒤 지금 판의 `terms`·`privacy` 동의 줄(문서별 마지막 줄이 agree 이고 판이 지금 판)이 없으면 `Auth::requireLogin` 이 막는다.
+열린 창구는 `GET /consent` · `GET|POST /api/me/consents` · `GET /api/me` · `POST /api/logout` 뿐. 최초 로그인 절차(비밀번호 변경 · 2단계 등록)가 남았으면 그 관문이 먼저다.
+
+| 막힌 것 | 응답 |
+|---|---|
+| 화면(`/tbox/…` · `/community/…`, `/api/` 아님) | 302 `Location: /tbox/consent` — 보던 곳이 `Http::returnPath` 허용 목록 안이면 `?to=<정규형>` |
+| API | 403 `{"error":"이용약관 동의와 개인정보 처리방침 확인을 먼저 마쳐 주세요","next":"consent","code":"consent_required"}` · 감사 `auth.gate|deny|consent_required` |
+
+실제 응답(격리 틀 `tests/qf13_consent_http.py` · 합성 계정 · 판 자리 값 `0000-00-00`, 2026-10-07):
+
+```
+GET /tbox/settings            → 302 Location: /tbox/consent?to=%2Ftbox%2Fsettings
+GET /tbox/api/files           → 403 {"error":"이용약관 동의와 개인정보 처리방침 확인을 먼저 마쳐 주세요","next":"consent","code":"consent_required"}
+GET /tbox/api/files (X-API-Token, 같은 계정) → 200 (토큰 창구는 막지 않는다)
+```
+
+### 23-3. 동의 상태 · 동의 줄 더하기 — `GET|POST /tbox/api/me/consents`
+
+| 항목 | 값 |
+|---|---|
+| 인증 | 세션(authenticated) · POST 는 `X-CSRF-Token` · 대상은 언제나 세션의 본인(본문에 사람 칸 없음) |
+| 요청 | GET 없음 · POST `{"doc":"terms"}`(약관 동의 + 처리방침 확인 — 두 줄) · `{"doc":"ai_overseas"}`(AI 국외 전송 동의) · `{"doc":"ai_overseas","action":"withdraw"}`(철회). 그 밖의 키·값 400 |
+| 성공 | 200 `{current:{terms,privacy}, required, ai_overseas, consents:{terms|privacy|age14|ai_overseas: {version,action,at}|null}}` (+ GET 은 `notice` · POST 는 `ok`·`changed`). 이미 그 상태면 줄을 더하지 않고 `changed:false` |
+| 실패 | 400 「잘못된 요청입니다」 · CSRF 403 · 로그인 없음 401 |
+| 넣지 않는 것 | 동의 줄의 IP |
+
+```
+POST /tbox/api/me/consents {"doc":"terms"}
+→ 200 {"ok":true,"changed":true,"current":{"terms":"0000-00-00","privacy":"0000-00-00"},"required":false,"ai_overseas":false,
+       "consents":{"terms":{"version":"0000-00-00","action":"agree","at":"2026-10-07 07:03:35.898914+09"},"privacy":{"version":"0000-00-00","action":"agree","at":"2026-10-07 07:03:35.898914+09"},"age14":null,"ai_overseas":null}}
+POST /tbox/api/me/consents {"doc":"privacy"} → 400 {"error":"잘못된 요청입니다"}
+```
+
+### 23-4. AI 국외 전송 동의 — 409 `ai_consent_required`
+
+모아 AI(`POST /tbox/api/messages/ai`) · 메시지 AI 도구(`POST /tbox/api/messages/assist`) · 사진 이야기(`POST /community/api/memories/{id}/caption`) ·
+커뮤니티 AI(`POST /community/api/ai/*` · `/api/pages/{id}/ai-summary`)는 외부 호출 **전에** `ai_overseas` 지금 상태(마지막 줄 agree)를 본다.
+아니면 예약·기록·Google 호출 0 으로 409 — 화면(messenger.js · memories.js · editor.js)이 `notice` 로 동의 창을 띄우고, 동의하면 같은 요청을 한 번 다시 보낸다.
+
+```
+POST /tbox/api/messages/ai {"thread_id":null,"text":"…","request_id":"<UUIDv4>"}
+→ 409 {"error":"AI 기능을 쓰려면 먼저 Google 로 보내는 국외 전송에 동의해 주세요","code":"ai_consent_required",
+       "notice":{"title":"AI 기능 — 국외 전송 동의","rows":[["받는 곳","Google LLC (Gemini API)"],["나라","미국 등"],["보내는 것","질문·앞 대화(최대 10턴)·다듬을 글(상대 메시지 포함 가능)·사진(위치 정보 제거)·장소·날짜"],["언제·어떻게","AI 기능을 실행할 때 암호화된 통신으로"],["보유","Google 의 정책에 따름"],["거부하면","AI 기능만 쓸 수 없고, 서비스의 다른 기능은 그대로 쓸 수 있습니다"]],
+                 "note":"동의는 「약관·동의」 화면에서 언제든 철회할 수 있습니다.","policy_url":"/tbox/privacy#privacy-7"}}
+```
+
+감사: `consent.agree|allow` · `consent.withdraw|allow`(대상 = 동의한 사람 · `detail.consents` = 문서·판 목록 · 가입은 `detail.via=register`) · `auth.gate|deny|consent_required`.
+
 ## 추가 규칙 (API 를 새로 적을 때)
 
 1. 장 번호를 이어서 붙이고 제목은 `## N. 이름 — 메서드 경로`.
@@ -1178,7 +1242,7 @@ POST /tbox/api/me/api-tokens scope=["community.read","session.open"] (묶음이 
 | 경로 (`/tbox` 뒤) | 용도 | 인증 |
 |---|---|---|
 | GET `/join` | 초대 가입 화면. 링크 `#invite=<code>` 자동 입력 | 공개 |
-| POST `/api/register` | `{invite,username,display_name,password}` → 가입·세션·OTP 안내 | 전용 가입 CSRF |
+| POST `/api/register` | `{invite,username,display_name,password,agree_terms,age14}` → 가입·세션·OTP 안내. **Q:F-13 P1**: `agree_terms`·`age14` 둘 다 JSON `true` 가 아니면 400 「이용약관 동의와 만 14세 이상 확인이 필요합니다.」·계정 0 — 성공하면 같은 트랜잭션에 동의 줄 셋(23장) | 전용 가입 CSRF |
 | GET `/welcome` | OTP 등록·비서 설치·기능별 토큰 발급 안내 | 세션, 관문 중 허용 |
 | GET/POST `/api/invites` | 초대 목록 / `{label,team_id,max_uses,days}` 발급 | 관리자·재인증·CSRF |
 | DELETE `/api/invites/{num}` | 초대 회수 | 관리자·재인증·CSRF |

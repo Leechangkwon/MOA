@@ -198,6 +198,8 @@ PROMPT]]], 'contents'=>[['role'=>'user','parts'=>$parts]],'generationConfig'=>['
 
     public static function generate(array $user, string $id, array $input): array
     {
+        // 사이트 Q:F-13 P1 (PT-8) — 사진·글을 Google 로 보내기 전에, 사진을 읽거나 다시 인코딩하기도 전에 동의부터 본다(없으면 409 · 호출 0).
+        Legal::requireAiConsent((int) $user['id']);
         $snapshot = self::snapshot($user, $id, $input);
         $fingerprint = hash('sha256', json_encode([$id, $input['revision'], $input['wish'], $input['tone'],
             'story-v1', $input['format'] ?? 'text', $snapshot['post']['caption'], $snapshot['post']['original_caption'], $snapshot['post']['location'], $snapshot['post']['trip'], $snapshot['post']['taken_on'], $snapshot['photos']], JSON_THROW_ON_ERROR));

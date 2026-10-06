@@ -47,6 +47,13 @@ if (($argv[1] ?? '') === 'init') {
                 ':scope'=>$scope, ':ip'=>$scope === 'session.open' ? '127.0.0.1':null])->fetch()['id'];
             $item[$scope] = ['token'=>$token, 'id'=>$tid];
         }
+        // 사이트 Q:F-13 P1 — 이 합성 계정들은 「이미 동의한 기존 회원」이다: 약관 동의 · 처리방침 확인 · 만 14세 · AI 국외 전송(지금 판) 줄을 둔다.
+        // 동의 줄이 없는 회원·AI 동의가 없는 회원은 tests/qf13_consent_http.py 가 따로 만들어 시험한다(이 줄은 기존 시험의 기대값을 바꾸지 않기 위한 준비).
+        require_once dirname(__DIR__, 2) . '/src/Legal.php';
+        foreach (['terms','privacy','age14','ai_overseas'] as $consentDoc) {
+            $db->run("INSERT INTO user_consents(user_id,doc,version,action,ip) VALUES(:user,:doc,:version,'agree','127.0.0.1')",
+                [':user'=>$id, ':doc'=>$consentDoc, ':version'=>Legal::current($consentDoc)]);
+        }
         $data['users'][$key] = $item;
     }
     foreach (['a','b'] as $key) {

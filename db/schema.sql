@@ -630,3 +630,21 @@ CREATE UNIQUE INDEX access_requests_file_pending_uidx   ON access_requests (file
 CREATE INDEX access_requests_requester_idx ON access_requests (requester_id, created_at DESC);
 CREATE INDEX access_requests_folder_idx    ON access_requests (folder_id) WHERE folder_id IS NOT NULL;
 CREATE INDEX access_requests_file_idx      ON access_requests (file_id)   WHERE file_id IS NOT NULL;
+
+-- ─────────────────────────────────────────────────────────────
+-- user_consents — 처리방침·약관 동의 기록 (사이트 Q:F-13 지시서 P1 · 기획 ../docs/privacy-terms-plan.md 5.2 「동의 기록」 · src/Legal.php)
+--   누가 · 어느 문서(terms · privacy · age14 · ai_overseas)의 · 어느 판(config/legal.json 의 판 글자)에 · agree/withdraw 를 · 언제 · 어느 IP 에서.
+--   **추가만 하는 기록** — 앱 계정은 SELECT · INSERT 만(db/grants.sql). 지금 상태 = 문서별 마지막 줄. 철회는 ai_overseas 만(CHECK).
+--   (기존 DB 는 db/migrations/2026-10-20_user_consents.sql 로 같은 모양이 된다.)
+-- ─────────────────────────────────────────────────────────────
+CREATE TABLE user_consents (
+    id       BIGSERIAL   PRIMARY KEY,
+    user_id  BIGINT      NOT NULL REFERENCES users(id),
+    doc      TEXT        NOT NULL CHECK (doc IN ('terms', 'privacy', 'age14', 'ai_overseas')),
+    version  TEXT        NOT NULL CHECK (version ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}$'),
+    action   TEXT        NOT NULL CHECK (action IN ('agree', 'withdraw')),
+    at       TIMESTAMPTZ NOT NULL DEFAULT now(),
+    ip       INET,
+    CONSTRAINT user_consents_withdraw_ai_only CHECK (action = 'agree' OR doc = 'ai_overseas')
+);
+CREATE INDEX user_consents_user_doc_idx ON user_consents (user_id, doc, id DESC);
