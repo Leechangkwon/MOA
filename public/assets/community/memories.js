@@ -567,7 +567,8 @@
   $('native-share').addEventListener('click', async () => { try { if (navigator.share) await navigator.share({ title: '나의 여행 기록 · Qaredi', url: $('share-url').value }); else $('copy-link').click(); } catch (e) { if (e.name !== 'AbortError') $('share-feedback').textContent = '기기 공유를 열지 못했어요. 링크를 복사해 보내 주세요.'; } });
   $('revoke-links').addEventListener('click', () => confirm('모든 여행 공유 링크를 해제할까요?', '이전에 친구에게 보낸 여행 링크는 더 이상 열리지 않아요. 새 링크는 나중에 만들 수 있어요.', '공유 해제', async () => { await api('/api/memories/links', { method: 'DELETE' }); $('share-dialog').close(); toast('기존 여행 공유 링크를 해제했어요.'); }));
   $('comment-form').addEventListener('submit', async (e) => { e.preventDefault(); const submit = e.submitter; if (submit) submit.disabled = true; const post = commentPost; try { const data = await api('/api/memories/' + post.id + '/comments', { method: 'POST', body: JSON.stringify({ body: $('comment-body').value }) }); if (commentPost?.id === post.id) { renderComments(data.comments); $('comment-body').value = ''; $('comment-error').textContent = ''; } post.comments++; surface.querySelectorAll('[data-comment-post]').forEach((button) => { if (button.dataset.commentPost === post.id) { button.setAttribute('aria-label', `댓글 ${post.comments}개 보기`); button.title = `댓글 ${post.comments}개 보기`; } }); } catch (err) { $('comment-error').textContent = errorText(err); } finally { if (submit) submit.disabled = false; } });
-  $('studio-chat').addEventListener('click', () => { $('studio-dialog').close(); window.dispatchEvent(new CustomEvent('qaredi:messenger', { detail: { mode: 'gpt', prompt: $('studio-prompt').value } })); });
+  // Q:F-11 B-4 — 떠 있는 메신저 창의 모아 AI 칸에 요청문을 미리 채운다(보내기는 사람이 누른다). 답변의 「꾸미기 화면으로」가 qaredi:ai-result 로 돌아온다.
+  $('studio-chat').addEventListener('click', () => { $('studio-dialog').close(); window.dispatchEvent(new CustomEvent('qaredi:messenger', { detail: { mode: 'ai', prompt: $('studio-prompt').value } })); });
   $('gemini-generate').addEventListener('click', generateCaption);
   $('studio-order-toggle').addEventListener('click', () => { if (suggestedOrder) suggestedStory = copyStory(studioStory); else registeredStory = copyStory(studioStory); suggestedOrder = !suggestedOrder; studioStory = copyStory(suggestedOrder ? suggestedStory : registeredStory); renderStudioStory(); });
   $('compose-story-clear').addEventListener('click', () => confirm('이야기 구성을 해제할까요?', '장면별 편집한 글은 사라져요. 기존 메모와 사진은 유지됩니다.', '구성 해제', () => { composeStory = null; renderComposeStory(); renderMedia(); scheduleDraft(); }));
@@ -584,7 +585,7 @@
     if (Array.from(caption).length > 5000) { $('studio-error').textContent = '기존 글과 합쳐 5,000자까지 저장할 수 있어요. 초안을 조금 줄여 주세요.'; return; }
     $('studio-dialog').close(); await openCompose(post); $('caption').value = caption; updateCaption(); renderMedia(); scheduleDraft();
   });
-  window.addEventListener('qaredi:gpt-result', (event) => { if (!studioPost || typeof event.detail?.text !== 'string') return; $('studio-result').value = event.detail.text.slice(0, 5000); showDialog('studio-dialog'); });
+  window.addEventListener('qaredi:ai-result', (event) => { if (!studioPost || typeof event.detail?.text !== 'string') return; $('studio-result').value = event.detail.text.slice(0, 5000); showDialog('studio-dialog'); });
   $('studio-kind').addEventListener('change', studioPrompt); $('studio-tone').addEventListener('change', studioPrompt);
   $('copy-prompt').addEventListener('click', async () => { $('studio-error').textContent = await clipboard($('studio-prompt').value, $('studio-prompt')) ? '요청문을 복사했어요. ChatGPT에 원본 파일과 함께 붙여 넣어 주세요.' : '요청문을 길게 눌러 복사해 주세요.'; });
   $('studio-import').addEventListener('click', () => $('studio-files').click());

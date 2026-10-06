@@ -1,7 +1,11 @@
 <?php
 declare(strict_types=1);
 
-/** Shared-shell messenger; participant authorization is checked on every operation. */
+/**
+ * 커뮤니티 메신저 — 사이트 Q:F-11(지시서 B-4)부터 **휴면 GPT** 몫만 남는다(`requireReady`·`payload`·`gptEnabled`·`gptHistory`·`gpt`·`audit`).
+ * 사람 대화 함수(`member`·`conversation`·`message`)는 그 창구와 함께 지웠다 — 대화는 모아 메신저(`/tbox/api/messages*`) 하나.
+ * `participant` 는 순수 함수로 남는다: 저장소의 단위 시험(tests/community/memories_unit.php)이 부르고 있어 이번 지시서의 수정 범위 밖이다.
+ */
 final class Messenger
 {
     public static function requireReady(): void
@@ -10,30 +14,6 @@ final class Messenger
         if (!Db::instance()->run($sql)->fetchColumn()) {
             Http::error(503, '메신저 업데이트를 준비하고 있어요. 잠시 뒤 다시 열어 주세요.');
         }
-    }
-
-    public static function member(string $username, array $viewer): array
-    {
-        $sql = 'SELECT id,username,display_name,role,is_active,expires_at FROM public.users WHERE username=:name AND is_active AND (expires_at IS NULL OR expires_at>now())';
-        $row = Db::instance()->run($sql, [':name' => $username])->fetch();
-        if (!$row || (int) $row['id'] === (int) $viewer['id'] || !Authz::canCommunityWrite($row)) {
-            Http::error(404, '대화할 수 있는 회원을 찾지 못했어요.');
-        }
-        return $row;
-    }
-
-    public static function conversation(string $id, array $viewer): array
-    {
-        if (!Memories::uuid($id)) { Http::error(404, Http::MSG_NOT_FOUND); }
-        $sql = <<<'SQL'
-            SELECT c.*,u.username,u.display_name FROM community.conversations c
-            JOIN public.users u ON u.id=CASE WHEN c.user_low=:viewer THEN c.user_high ELSE c.user_low END
-            WHERE c.id=CAST(:id AS uuid) AND :participant IN (c.user_low,c.user_high)
-              AND u.is_active AND (u.expires_at IS NULL OR u.expires_at>now())
-            SQL;
-        $row = Db::instance()->run($sql, [':viewer' => (int) $viewer['id'], ':participant' => (int) $viewer['id'], ':id' => $id])->fetch();
-        if (!$row || !self::participant($row, $viewer)) { Http::error(404, Http::MSG_NOT_FOUND); }
-        return $row;
     }
 
     public static function participant(array $conversation, array $viewer): bool
@@ -51,12 +31,6 @@ final class Messenger
         $body['body'] = Memories::text($body['body'] ?? null, $max);
         if ($body['body'] === '') { Http::error(400, '보낼 내용을 입력해 주세요.'); }
         return $body;
-    }
-
-    public static function message(array $row, int $viewer): array
-    {
-        return ['id' => (string) $row['id'], 'body' => $row['body'], 'mine' => (int) $row['sender_id'] === $viewer,
-            'created_at' => $row['created_at']];
     }
 
     public static function gptEnabled(): bool

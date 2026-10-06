@@ -34,7 +34,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--port', type=int, default=8768, choices=(8768,))
     parser.add_argument('--output', type=Path, required=True)
-    parser.add_argument('--suite', choices=('memories_http.py','memories_runtime_browser.py','memory_ai_http.py','memory_story_http.py','memory_social_http.py','travel_plans_http.py','remote_http.py','messenger_http.py','messenger_store_browser.py'), default='memories_http.py')
+    parser.add_argument('--suite', choices=('memories_http.py','memories_runtime_browser.py','memory_ai_http.py','memory_story_http.py','memory_social_http.py','travel_plans_http.py','remote_http.py','messenger_http.py','messenger_store_browser.py','messenger_window_browser.py'), default='memories_http.py')
     parser.add_argument('--baseline-code', action='store_true')
     args = parser.parse_args()
     args.output = args.output.resolve()

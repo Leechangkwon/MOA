@@ -24,6 +24,9 @@ $shellModule = 'community';
 $pagePalette = $isShared ? '' : community_palette_version();
 $cssVersion = filemtime(__DIR__ . '/../../../public/assets/community/memories.css');
 $jsVersion = filemtime(__DIR__ . '/../../../public/assets/community/memories.js');
+// 사이트 Q:F-11 (지시서 B-4) — 떠 있는 메신저 창이 있는 사람(쓰기 자격 · 역할로 보기 아님 — 셸 `$shellMessenger` 와 같은 조건)에게만
+// 스레드의 「메신저」 단추와 꾸미기의 「모아 AI 에게 묻기」가 보인다. 공유 링크 화면에는 셸·창이 없다. 역할 비교 0.
+$threadsMessenger = !$isShared && isset($user) && is_array($user) && Authz::canCommunityWrite($user) && ($user['acting'] ?? false) !== true;
 
 ?>
 <?php if ($isShared): ?>
@@ -63,7 +66,7 @@ $jsVersion = filemtime(__DIR__ . '/../../../public/assets/community/memories.js'
 <div id="connection" class="connection" role="status" hidden>인터넷 연결이 끊겼어요. 작성한 기록은 이 기기에 임시 저장할 수 있어요.</div>
 <header class="threads-heading" id="hero"><div><p class="eyebrow">OUR COMMUNITY</p><h1>우리의 하루가 모이는 곳</h1><p class="hero-sub">일상의 한 줄부터 여행의 한 장까지, 함께 나눠요.</p></div><span id="today" class="muted"></span><?php if (!$isShared): ?><button type="button" class="btn btn--quiet" data-help-open>사용 방법</button><?php endif; ?></header>
 <nav class="threads-tabs" aria-label="스레드 메뉴"><button data-view="feed" class="active">팔로잉</button><button data-view="mine" data-member>나의 스레드</button><button data-view="discover">발견</button></nav>
-<div class="threads-quick" data-member><button class="threads-write" data-compose data-writer hidden><span class="avatar" data-my-initial>나</span><span>지금 어떤 이야기를 남기고 싶나요?</span><svg><use href="#i-camera"/></svg></button><button class="secondary" data-messenger-open>메신저</button></div>
+<div class="threads-quick" data-member><button class="threads-write" data-compose data-writer hidden><span class="avatar" data-my-initial>나</span><span>지금 어떤 이야기를 남기고 싶나요?</span><svg><use href="#i-camera"/></svg></button><?php if ($threadsMessenger): ?><button class="secondary" type="button" data-messenger-open aria-haspopup="dialog" aria-controls="messenger-window" aria-expanded="false">메신저</button><?php endif; ?></div>
 <section class="profile-panel" id="profile-panel" hidden><div class="profile-cover"></div><div class="profile-content"><span class="avatar profile-avatar" id="profile-avatar">나</span><div><p class="eyebrow">MY THREADS</p><h1 id="profile-title">나의 스레드</h1><p class="muted" id="profile-description">평범한 하루도, 낯선 여행도. 내가 사랑한 순간들.</p></div><div class="profile-actions"><button class="secondary" id="follow-profile" hidden>팔로우</button><button class="secondary" id="profile-settings" data-writer hidden>공개 범위 설정</button><button class="secondary" type="button" data-travel-open data-writer hidden>여행 계획</button></div></div><div class="profile-stats" id="profile-stats"></div></section>
 <div class="main-columns"><section class="feed-column" aria-label="커뮤니티 스레드">
 <div class="feed-head"><div><p class="eyebrow" id="feed-kicker">OUR MOMENTS</p><h2 id="feed-title">함께 나누는 순간</h2></div><div class="view-toggle" aria-label="기록 보기 방식"><button id="list-view" class="icon-button selected" aria-label="피드로 보기" aria-pressed="true"><svg><use href="#i-home"/></svg></button><button id="grid-view" class="icon-button" aria-label="앨범으로 보기" aria-pressed="false"><svg><use href="#i-grid"/></svg></button></div></div>
@@ -105,8 +108,8 @@ $jsVersion = filemtime(__DIR__ . '/../../../public/assets/community/memories.js'
 <ol class="studio-steps"><li><b>01</b><span>요청문을 복사하고 원본 사진·영상을 받아요.</span></li><li><b>02</b><span>ChatGPT에 요청문과 파일을 함께 보내 다듬어요.</span></li><li><b>03</b><span>완성한 글과 사진·영상을 이 기록에 적용해요.</span></li></ol>
 <label class="field">꾸미고 싶은 것<select id="studio-kind"><option value="caption">감성적인 여행 글</option><option value="photo">사진 색감과 분위기</option><option value="video">짧은 여행 영상</option></select></label>
 <label class="field">ChatGPT에 보낼 요청문<textarea id="studio-prompt" rows="8"></textarea></label>
-<div class="studio-actions"><button class="primary" id="studio-chat" type="button" data-member>GPT 메신저로 보내기</button><button class="secondary" id="copy-prompt">요청문 복사</button><a class="secondary" href="https://chatgpt.com/" target="_blank" rel="noopener noreferrer">ChatGPT 열기 ↗</a></div>
-<div id="studio-originals" class="original-files"></div><p class="field-hint">GPT 메신저에는 확인 후 전송한 글만 전달돼요. 사진·영상 편집은 ChatGPT에서 파일과 함께 진행한 뒤 결과를 가져오세요. 다듬은 글은 위 미리보기에 붙여 넣으세요.</p>
+<div class="studio-actions"><button class="primary" id="studio-chat" type="button" data-member<?= $threadsMessenger ? '' : ' hidden' ?>>모아 AI 에게 묻기</button><button class="secondary" id="copy-prompt">요청문 복사</button><a class="secondary" href="https://chatgpt.com/" target="_blank" rel="noopener noreferrer">ChatGPT 열기 ↗</a></div>
+<div id="studio-originals" class="original-files"></div><p class="field-hint">「모아 AI 에게 묻기」는 요청문을 메신저의 모아 AI 칸에 넣기만 해요. 보내기를 누르면 그 내용과 최근 AI 대화가 Google로 전송되고, 사진·영상은 전송되지 않아요. 무료 API에는 개인정보·기밀을 입력하지 마세요. 사진·영상 편집은 ChatGPT에서 파일과 함께 진행한 뒤 결과를 가져오세요. 다듬은 글은 위 미리보기에 붙여 넣으세요.</p>
 <button class="secondary" id="studio-import">다듬은 사진·영상 고르기</button><input type="file" id="studio-files" accept="image/*,video/mp4,video/webm,video/quicktime" multiple hidden><div id="studio-imported" class="field-hint"></div>
 <label class="check-label"><input type="checkbox" id="studio-replace">새 파일로 게시물의 사진·영상을 교체하기 (원본 보관)</label></details>
 <p class="form-error" id="studio-error" role="alert"></p></div>

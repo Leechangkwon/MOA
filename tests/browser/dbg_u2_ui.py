@@ -144,7 +144,8 @@ MODAL_RULE = r"""(onlyOpen) => {
     const head = d.querySelector(':scope > .modal__head, :scope > form > .modal__head');
     const x = head && [...head.querySelectorAll('button')].find(b => b.matches('.btn--icon') && b.getAttribute('aria-label') === '닫기');
     if (!x) bad.push([id, '머리에 ✕ 없음']);
-    const foots = d.querySelectorAll(':scope > .modal__foot, :scope > .form-actions, :scope > form > .modal__foot, :scope > form > .form-actions');
+    // 떠 있는 창(DESIGN 2.17 · 사이트 Q:F-11)의 바닥은 입력 줄 form 하나다 — 입력 칸 + 「닫기」(좁은 폭 시트) + 검정 「보내기」. 규칙은 같게 센다.
+    const foots = d.querySelectorAll(d.matches('dialog.floating') ? ':scope > form' : ':scope > .modal__foot, :scope > .form-actions, :scope > form > .modal__foot, :scope > form > .form-actions');
     if (foots.length !== 1) { bad.push([id, '바닥 ' + foots.length]); continue; }
     const foot = foots[0];
     const btns = [...foot.querySelectorAll(':scope > button, :scope > a.btn')].filter(shown);

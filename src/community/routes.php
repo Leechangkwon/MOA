@@ -133,14 +133,8 @@ const COMMUNITY_ROUTES = [
     ['PATCH','/api/admin/connectors/{id}','integration_settings.php','role:Admin'],
     ['GET','/integrations','integrations_page.php','community.read'],
 
-    ['GET', '/api/messenger', 'messenger_api.php', 'community.write'],
-    ['GET', '/api/messenger/members', 'messenger_api.php', 'community.write'],
-    ['POST', '/api/messenger/conversations', 'messenger_api.php', 'community.write'],
     ['GET', '/api/messenger/gpt', 'messenger_api.php', 'community.write'],
     ['POST', '/api/messenger/gpt', 'messenger_api.php', 'community.write'],
-    ['GET', '/api/messenger/conversations/{id}', 'messenger_api.php', 'community.write'],
-    ['POST', '/api/messenger/conversations/{id}/messages', 'messenger_api.php', 'community.write'],
-    ['POST', '/api/messenger/conversations/{id}/read', 'messenger_api.php', 'community.write'],
     // Community threads: session routes plus a narrow, read-only link capability.
     ['GET', '/memories', 'memories_page.php', 'community.read'],
     ['GET', '/memories/u/{username}', 'memories_page.php', 'community.read'],

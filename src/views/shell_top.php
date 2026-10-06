@@ -118,6 +118,13 @@ $shellActing = ($shellUser['acting'] ?? false) === true;
 $shellCommunityWrite = $shellUser !== [] && Authz::canCommunityWrite($shellUser);
 
 /*
+ * 사이트 Q:F-11 (지시서 B · DESIGN 2.17) — 떠 있는 메신저 창을 여는 단추(사이드바 · 폰 윗줄)는 **두 모드 공용**이고,
+ * 창(`messenger_window.php`)을 그리는 조건과 같다: 쓰기 자격(판정 함수) · 「역할로 보기」가 아님. 역할 비교 0.
+ * 근거는 서버 — `/tbox/api/messages*` 는 `Member::requireMessenger` 가 같은 조건으로 403 을 준다. 숨김은 편의다.
+ */
+$shellMessenger = $shellCommunityWrite && !$shellActing;
+
+/*
  * 역할의 **화면 표기** — 한글로 보이고 원래 값은 title 로 (DESIGN 5장 「등급·역할」, 디버깅 묶음 U M7 · 2026-09-26).
  * 값(세션·DB·창구의 `role`)은 그대로다 — 여기는 보이는 글자만 바꾼다. 표에 없는 값은 받은 그대로 보인다.
  * 새 PHP 함수를 만들지 않고 이 파일 안의 배열로 둔다(반영 직후 opcache 가 옛 파일을 쥐는 2초 동안 새 함수를 부르는 화면이
@@ -271,9 +278,6 @@ if (!headers_sent()) {
 <?php if ($shellPalette !== ''): ?>
 <link id="palette-css" rel="stylesheet" href="<?= COMMUNITY_BASE ?>/palette.css?v=<?= $shellPalette ?>">
 <?php endif; ?>
-<?php if ($shellMod === 'community'): ?>
-<link rel="stylesheet" href="<?= Http::url('/assets/community/messenger.css') ?>?v=<?= (int) filemtime(__DIR__ . '/../../public/assets/community/messenger.css') ?>">
-<?php endif; ?>
 <?php if ($shellMod === 'community' && $shellPage === 'community-today'): ?>
 <script type="module" src="<?= Http::url('/assets/community/briefing.js') ?>?v=<?= (int) filemtime(__DIR__ . '/../../public/assets/community/briefing.js') ?>"></script>
 <?php elseif ($shellMod === 'community'): ?>
@@ -330,7 +334,6 @@ if (!headers_sent()) {
     <button id="appbar-apps" class="appbar__brand" type="button" aria-controls="sidebar" aria-expanded="false"
             aria-label="<?= htmlspecialchars($shellBrandName, ENT_QUOTES, 'UTF-8') ?> — 앱 전환"><?= htmlspecialchars($shellBrandName, ENT_QUOTES, 'UTF-8') ?><span class="icon" data-icon="chevron"></span></button>
     <span class="appbar__page"><?= $shellTitle ?></span>
-<?php if ($shellMod === 'community'): ?><button class="btn btn--quiet" data-messenger-open type="button">메신저</button><?php endif; ?>
 
     <!-- 사용감 라운드 1 UX-10 · UX-3 — 폰 윗줄 오른쪽: 검색(누르면 사이드바와 **같은** 검색 창 · 입력 칸 초점 — search.js) ·
          커뮤니티는 알림 종(누르면 사이드바 「알림」과 **같은** 창 · 숫자는 같은 30초 폴링 한 벌이 두 자리에 그린다 — editor.js initNotifications ·
@@ -339,6 +342,12 @@ if (!headers_sent()) {
       <button id="appbar-search" class="btn btn--icon btn--plain" type="button" aria-haspopup="dialog" aria-controls="search-dialog" aria-label="검색">
         <span class="icon" data-icon="search"></span>
       </button>
+<?php if ($shellMessenger): ?>
+      <!-- Q:F-11 — 떠 있는 메신저 창(DESIGN 2.17). 두 모드 공용 · 종 옆(사이 12px — 터치 ①). 숫자는 창과 같은 한 벌의 폴링이 그린다(messenger.js). -->
+      <button id="appbar-messenger" class="btn btn--icon btn--plain" type="button" data-messenger-open aria-haspopup="dialog" aria-controls="messenger-window" aria-expanded="false" aria-label="메신저">
+        <span class="icon" data-icon="messages"></span><span class="badge badge--internal" data-message-unread hidden></span>
+      </button>
+<?php endif; ?>
 <?php if ($shellMod === 'community'): ?>
       <button id="appbar-bell" class="btn btn--icon btn--plain" type="button" aria-haspopup="dialog" aria-label="알림">
         <span class="icon" data-icon="bell"></span><span id="appbar-bell-count" class="badge badge--internal" hidden></span>
@@ -427,6 +436,14 @@ if (!headers_sent()) {
       <ul id="search-results" class="search-results" role="listbox" aria-label="검색 결과"></ul>
       <p id="search-note" class="search-dialog__note muted" role="status"></p>
     </dialog>
+<?php if ($shellMessenger): ?>
+    <!-- Q:F-11 — 메신저(떠 있는 창, DESIGN 2.17). 두 모드 공용 · 같은 자리(검색 바로 아래). 창은 shell_bottom 이 messenger_window.php 로 붙인다. -->
+    <nav class="nav" aria-label="메신저">
+      <button id="messenger-open" class="nav__item" type="button" data-messenger-open aria-haspopup="dialog" aria-controls="messenger-window" aria-expanded="false">
+        <span class="icon" data-icon="messages"></span><span>메신저</span><span class="badge badge--internal" data-message-unread hidden></span>
+      </button>
+    </nav>
+<?php endif; ?>
 <?php if ($shellMod === 'community'): ?>
     <!-- ─── 커뮤니티 모듈의 내비 (커뮤니티 ARCHITECTURE.md 21.3) ───────────────────
          항목 둘이다. 「내 공간」은 링크, 「새 페이지」는 만들자마자 그 페이지로 가야 해서
@@ -500,7 +517,6 @@ if (!headers_sent()) {
       <a class="nav__item" data-thread-nav="mine" href="<?= Http::communityUrl('/memories') ?>?view=mine"><span class="icon" data-icon="users"></span><span>나의 스레드</span></a>
       <a class="nav__item" data-thread-nav="feed" href="<?= Http::communityUrl('/memories') ?>"><span class="icon" data-icon="home"></span><span>팔로잉 스레드</span></a>
       <a class="nav__item" data-thread-nav="discover" href="<?= Http::communityUrl('/memories') ?>?view=discover"><span class="icon" data-icon="search"></span><span>새로운 이야기 발견</span></a>
-      <button class="nav__item" data-messenger-open type="button" aria-haspopup="dialog"><span class="icon" data-icon="bell"></span><span>메신저 · 회원 / GPT</span><span data-message-unread hidden></span></button>
     </nav>
     <p class="nav-title">내 공간</p>
     <nav class="nav" aria-label="커뮤니티">

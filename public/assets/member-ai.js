@@ -4,13 +4,18 @@
 // Q:F-11 (지시서 A): the messenger module may pass `drafts` — a Map-like {get,set,delete} keyed by
 // thread number (0 = new conversation) that keeps the text encrypted in this browser (without it, memory only) —
 // and `onState`, told when the open thread is known (loaded, or created by the first answer) so the tab can resume it.
-window.MoaAiConversation = function ({api, me, say, node, date, activate, drafts: store, onState}) {
+// Q:F-11 (지시서 B-4): the floating window may pass `claim` (asked once after a question is accepted: was it the one
+// prefilled from the photo studio?) and `onResult(answer)`. Only answers to claimed questions get 「꾸미기 화면으로」 —
+// without these two callbacks (the /messages page) no such button is drawn.
+window.MoaAiConversation = function ({api, me, say, node, date, activate, drafts: store, onState, claim, onResult}) {
   const $ = id => document.getElementById(id);
   let active = false, generation = 0, thread = null, oldest = null, ready = false;
   let sending = false, loading = false, pending = false, lastAttempt = null, optimistic = null;
   let refreshedAt = 0, filled = false;
   let turns = new Map();
   const drafts = store || new Map();
+  /** request_id of questions sent from the photo studio request (this page only) */
+  const fromStudio = new Set();
   const notify = () => { if (typeof onState === 'function') onState(); };
   const key = () => thread || 0;
 
@@ -53,7 +58,16 @@ window.MoaAiConversation = function ({api, me, say, node, date, activate, drafts
     list.replaceChildren();
     for (const turn of [...turns.values()].sort((a, b) => a.id - b.id)) {
       list.append(bubble(true, turn.prompt, turn.created_at, '전송됨'));
-      if (turn.state === 'complete') list.append(bubble(false, turn.answer, turn.finished_at, ''));
+      if (turn.state === 'complete') {
+        const answer = bubble(false, turn.answer, turn.finished_at, '');
+        if (typeof onResult === 'function' && fromStudio.has(turn.request_id)) {
+          const back = node('button', '꾸미기 화면으로', 'btn btn--quiet btn--small');
+          back.type = 'button';
+          back.addEventListener('click', () => onResult(turn.answer));
+          answer.append(back);
+        }
+        list.append(answer);
+      }
       else if (turn.state === 'failed') {
         const error = bubble(false, turn.error, turn.finished_at, '응답 실패');
         const retry = node('button', '질문을 다시 입력하기', 'btn btn--quiet btn--small');
@@ -152,6 +166,7 @@ window.MoaAiConversation = function ({api, me, say, node, date, activate, drafts
     try {
       const result = await api('/api/messages/ai', 'POST', attempt);
       lastAttempt = null;
+      if (typeof claim === 'function' && claim()) fromStudio.add(attempt.request_id);
       if (!active || ticket !== generation) return;
       const turn = result.turn; thread = turn.thread_id; optimistic = null; turns.set(turn.id, turn); notify();
       pending = turn.state === 'pending';

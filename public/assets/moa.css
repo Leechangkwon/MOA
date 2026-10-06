@@ -317,3 +317,25 @@ html[data-theme="dark"] .moa-module-mark--tbox { color:#edb978; }
   .moa-ai-prompts>.btn { padding:9px 10px; font-size:10px; }
   .moa-bubble { max-width:92%; }
 }
+
+/* 떠 있는 메신저 창(DESIGN 2.17 · 사이트 Q:F-11 지시서 B-2) — 안쪽은 위 메신저 블록을 그대로 쓰고, 폭 400 에 맞는 보정만.
+   목록(사람·AI) ↔ 대화를 한 번에 하나만(`data-view` — messenger.js). 새 색·새 클래스 0. 바닥 「닫기」는 720px 미만 시트에만. */
+dialog.floating .moa-messenger { display:flex; flex-direction:column; flex:1 1 auto; height:auto; min-height:0; max-height:none; border:0; border-radius:0; }
+dialog.floating .moa-people { flex:1 1 auto; min-height:0; max-height:none; overflow:auto; padding:12px 16px; border:0; }
+dialog.floating .moa-person { display:grid; width:100%; }
+dialog.floating .moa-person--ai { margin-bottom:12px; }
+dialog.floating .moa-conversation { flex:1 1 auto; min-height:0; }
+dialog.floating .moa-conversation>header { padding:12px 16px; }
+dialog.floating .moa-conversation h3 { margin:0; font-size:16px; overflow-wrap:anywhere; }
+dialog.floating .moa-ai-notice { padding:8px 16px; }
+dialog.floating .moa-message-list { padding:16px; }
+dialog.floating .moa-bubble { max-width:88%; }
+dialog.floating>.moa-compose-tools { flex:none; padding:8px 16px; }
+dialog.floating>.moa-compose { flex:none; padding:12px 16px; gap:8px 12px; grid-template-columns:minmax(0,1fr) auto; }
+dialog.floating>.moa-compose>[data-messenger-close] { display:none; }
+dialog.floating .moa-compose textarea { display:block; width:100%; min-height:44px; padding:10px 12px; border:1px solid var(--line); border-radius:var(--r-ctl); background:var(--surface); color:var(--fg); font:inherit; font-size:13px; line-height:1.5; }
+dialog.floating[data-view="list"] .moa-conversation,dialog.floating[data-view="list"]>.moa-compose-tools,dialog.floating[data-view="list"]>.moa-compose>:not([data-messenger-close]) { display:none; }
+dialog.floating[data-view="conversation"] .moa-people { display:none; }
+@media(min-width:720px){dialog.floating[data-view="list"]>.moa-compose { display:none; }}
+@media(max-width:719.98px),(pointer:coarse){dialog.floating>.moa-compose>.btn { min-height:44px; }dialog.floating .moa-compose textarea { font-size:16px; }}
+@media(max-width:719.98px){dialog.floating>.moa-compose { grid-template-columns:minmax(0,1fr) auto auto; }dialog.floating>.moa-compose>.field { grid-column:1/-1; }dialog.floating>.moa-compose>[data-messenger-close] { display:inline-flex; grid-column:2; }dialog.floating>.moa-compose>#message-send { grid-column:3; }dialog.floating[data-view="list"]>.moa-compose { border-top:1px solid var(--line); padding-top:12px; }}

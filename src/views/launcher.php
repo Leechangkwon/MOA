@@ -5,6 +5,9 @@ $e=static fn($v)=>htmlspecialchars((string)$v,ENT_QUOTES,'UTF-8');
 $signed=is_array($launcherUser);
 $communityHref=$signed?Http::communityUrl('/'):Http::url('/login?to=community');
 $name=$signed?(($launcherUser['display_name']??'')?:$launcherUser['username']):'';
+// 사이트 Q:F-11 (지시서 B-1 · 결정 Q-10) — 로그인했고 쓰기 자격이 있고 「역할로 보기」가 아닐 때만 떠 있는 메신저 창 + 스크립트 셋.
+// 미로그인 런처는 창 마크업·스크립트 0 · 세션은 읽기만(Set-Cookie 0 — launcher_page.php 그대로). 역할 비교 0(판정 함수).
+$launcherMessenger=$signed&&Authz::canCommunityWrite($launcherUser)&&($launcherUser['acting']??false)!==true;
 ?>
 <!doctype html><html lang="ko"<?= Http::themeAttr() ?><?= Design::attrs() ?><?= $signed&&($launcherUser['high_contrast']??false)?' data-contrast="high"':'' ?>>
 <head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="color-scheme" content="light dark"><meta name="description" content="좋아하는 풍경, 소소한 이야기, 함께하는 사람들. 우리의 일상이 모이는 커뮤니티, 모아."><title>모아 — 함께라서 더 좋은 일상</title>
@@ -23,7 +26,7 @@ $name=$signed?(($launcherUser['display_name']??'')?:$launcherUser['username']):'
 <nav class="moa-shortcuts" aria-label="목적에 맞는 공간 선택">
 <a href="<?= $e($communityHref) ?>"><span class="moa-shortcut-icon moa-peach"><?php $moaIcon='community'; require __DIR__.'/moa_icon.php'; ?></span><span><strong>커뮤니티</strong><small>소식 · 질문 · 함께 쓰는 문서</small></span><b aria-hidden="true">↗</b></a>
 <a href="<?= Http::url('/') ?>"><span class="moa-shortcut-icon moa-sand"><?php $moaIcon='library'; require __DIR__.'/moa_icon.php'; ?></span><span><strong>자료실</strong><small>파일 보관 · 찾기 · 공유</small></span><b aria-hidden="true">↗</b></a>
-<a href="<?= Http::url('/messages') ?>"><span class="moa-shortcut-icon moa-lilac"><?php $moaIcon='messages'; require __DIR__.'/moa_icon.php'; ?></span><span><strong>메신저 · 모아 AI</strong><small>동료에게 연락 · AI에게 질문</small></span><b aria-hidden="true">↗</b></a>
+<?php if($launcherMessenger): /* 타일이 창을 연다(스크립트가 붙기 전·없을 때는 링크 그대로 — /messages) */ ?><a id="messenger-open" href="<?= Http::url('/messages') ?>" data-messenger-open aria-haspopup="dialog" aria-controls="messenger-window" aria-expanded="false"><span class="moa-shortcut-icon moa-lilac"><?php $moaIcon='messages'; require __DIR__.'/moa_icon.php'; ?></span><span><strong>메신저 · 모아 AI <span class="badge badge--internal" data-message-unread hidden></span></strong><small>동료에게 연락 · AI에게 질문</small></span><b aria-hidden="true">↗</b></a><?php else: ?><a href="<?= Http::url('/messages') ?>"><span class="moa-shortcut-icon moa-lilac"><?php $moaIcon='messages'; require __DIR__.'/moa_icon.php'; ?></span><span><strong>메신저 · 모아 AI</strong><small>동료에게 연락 · AI에게 질문</small></span><b aria-hidden="true">↗</b></a><?php endif; ?>
 <a href="<?= Http::url('/welcome') ?>"><span class="moa-shortcut-icon moa-mint"><?php $moaIcon='assistant'; require __DIR__.'/moa_icon.php'; ?></span><span><strong>PC 비서 연결</strong><small>tbox-buddy 설치 · 내 계정 연결</small></span><b aria-hidden="true">↗</b></a>
 </nav></section>
 <div class="moa-content-grid"><div class="moa-main-column">
@@ -43,5 +46,8 @@ $name=$signed?(($launcherUser['display_name']??'')?:$launcherUser['username']):'
 <section class="moa-bottom-banner"><div><p class="moa-kicker">BETTER, TOGETHER</p><h2>당신의 일상도, 여기에 모아.</h2><p>오늘의 발견을 함께 나누고 내일의 이야기를 만들어 보세요.</p></div><a class="moa-white-button" href="<?= $e($communityHref) ?>">이야기 시작하기 ↗</a></section>
 </main><footer class="moa-footer"><a class="moa-logo" href="/">모아 <span>moa.</span></a><p>좋아하는 것들과 함께하는 사람들.</p><span>풍경 사진 · Unsplash</span></footer>
 <dialog class="moa-story-dialog" id="moa-story-dialog" aria-labelledby="moa-story-title"><button class="moa-dialog-close" type="button" id="moa-story-close" aria-label="읽을거리 닫기">×</button><img id="moa-story-image" alt=""><div><p class="moa-kicker">모아의 작은 발견</p><h2 id="moa-story-title"></h2><div id="moa-story-body"></div><a class="btn" href="<?= $e($communityHref) ?>">나의 이야기도 나누기 ↗</a></div></dialog>
+<?php if($launcherMessenger): $messengerUser=$launcherUser; ?>
+<?php require __DIR__.'/messenger_window.php'; ?>
+<?php endif; ?>
 <?php include __DIR__.'/design_controls.php'; ?>
 </body></html>

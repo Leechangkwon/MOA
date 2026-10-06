@@ -2,6 +2,7 @@
 declare(strict_types=1);
 require_once __DIR__.'/../Member.php';
 $memberTitle='시작 안내'; $memberPage='welcome'; $installer=Member::installer();
+$memberWindow=true; // 사이트 Q:F-11 B-1 — 이 화면에도 떠 있는 메신저 창(nav 「메신저」가 연다)
 require __DIR__.'/../views/member_top.php';
 ?>
 <div class="moa-setup-heading"><p class="moa-kicker">MAKE YOURSELF AT HOME</p><h1>우리, 여기서 시작해요.</h1><p>계정 보호부터 비서 연결까지 한 걸음씩 안내할게요.</p></div>
@@ -31,4 +32,6 @@ require __DIR__.'/../views/member_top.php';
 <p class="moa-muted">원격 연결을 사용하면 모아 계정으로 읽기·사진·쓰기 권한을 고르고 언제든 해제할 수 있어요. ChatGPT 메뉴와 요금제·조직 설정에 따라 이용 가능 여부가 달라지며, 휴대폰 지원은 실제 계정에서 확인해 주세요.</p>
 <p><a class="btn btn--quiet" href="<?= Http::url('/mcp-connect') ?>">ChatGPT 연결 안내와 설정 →</a></p>
 <div class="moa-setup-actions"><a class="btn moa-primary" href="/">설정 없이 모아 둘러보기 →</a><a href="<?= Http::communityUrl('/') ?>">커뮤니티로 가기</a><a href="<?= Http::url('/messages') ?>">동료에게 인사하기</a></div><p class="moa-muted">비서 연결은 나중에 해도 됩니다. 내 계정의 ‘시작 안내’에서 이어갈 수 있어요.</p>
-</section></main></body></html>
+</section>
+<?php if ($memberMessenger): $messengerUser = $user; require __DIR__ . '/../views/messenger_window.php'; endif; ?>
+</main></body></html>

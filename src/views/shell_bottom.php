@@ -190,7 +190,14 @@ $shellChangelog = $shellChangelogFull ? Changelog::entries() : Changelog::headli
      `$shellPwa` 는 shell_top.php 가 허용 목록 한 값으로 좁힌 것이다. -->
 <script src="<?= Http::url('/assets/alerts-app.js') ?>?v=<?= (int) filemtime(__DIR__ . '/../../public/assets/alerts-app.js') ?>"></script>
 <?php endif; ?>
-<?php if ($shellMod === 'community'): require __DIR__ . '/community_messenger.php'; endif; ?>
+<?php
+/* 사이트 Q:F-11 (지시서 B-1 · DESIGN 2.17) — 떠 있는 메신저 창 + 스크립트 셋(member-ai · member-assist · messenger 모듈). 로그인 셸 전부(두 모드).
+   조건은 shell_top 의 `$shellMessenger`(쓰기 자격 · 역할로 보기 아님) 하나 — 단추와 창이 함께 나가고 함께 빠진다. app.js 뒤라 `window.qarediMe` 를 쓴다. */
+if (isset($shellMessenger) && $shellMessenger === true) {
+    $messengerUser = $shellUser;
+    require __DIR__ . '/messenger_window.php';
+}
+?>
 <?php require __DIR__ . '/usage_guide.php'; ?>
 <?php include __DIR__ . '/design_controls.php'; ?>
 </body>
