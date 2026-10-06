@@ -606,7 +606,9 @@ t-box 라우터는 origin·라우트 패턴을 인자로 넘긴다. 커뮤니티
 |---|---|
 | 자리 | `Auth::requireLogin()` 안의 `requireConsent()` — t-box·커뮤니티 두 라우터의 **세션 경로가 모두** 이 함수를 지난다. 프로그램 토큰 경로([2-T] `requireApiToken`)·런처·공개 화면은 지나지 않는다 |
 | 순서 | 최초 로그인 절차(비밀번호 변경·2단계 등록 — `nextStep`)가 남았으면 그 관문이 먼저(이 관문은 지나간다 — 서로 돌려보내는 고리 0) → 열어 둔 다섯(`GET /consent` · `GET /api/me` · `GET|POST /api/me/consents` · `POST /api/logout`) → `Legal::needsConsent`(DB `user_consents` 문서별 마지막 줄 = 지금 판 agree 인가) |
-| 막힘 | 화면 → 302 `/tbox/consent`(`?to=` 는 `Http::returnPath` 허용 목록만) · API → 403 `{error, next:"consent", code:"consent_required"}` · 감사 `auth.gate|deny|consent_required` |
+| 막힘 | 화면 → 302 `/tbox/consent`(`?to=` 는 `Http::returnPath` 허용 목록만) · API → 403 `{error, next:"consent", code:"consent_required"}` · 감사 `auth.gate|deny|consent_required` — **배경 요청(`X-Qaredi-Background: 1`)은 감사 없이 같은 403**(P2-a) |
+| 탈퇴 | **동의하지 않은 사람도 탈퇴는 요청할 수 있다**(약관 제3조) — `GET|POST /api/me/delete-request` 를 열어 둔 목록에 넣고, 동의 화면에 「탈퇴 요청」 길(재인증 포함)을 둔다(P2 검토 RV-P2-1). 처리는 관리자(`role:Admin` + 재인증) · 처리 즉시 비활성·로그인 수단 회수 · 30일 뒤 `privacy_purge_accounts` 가 익명화(`deleted-<번호>` · 「탈퇴한 사용자 #번호」)와 개인 공간 삭제 |
+| 보관 기간 | `scripts/privacy_purge.php`(cron 04:40, root → 소유자 계정 `owner.pgpass`) → 소유자만 부르는 함수 `public.privacy_purge_expired` · `public.privacy_purge_accounts` · `community.privacy_purge_pages` · `community.privacy_purge_memory_posts`(모두 `SECURITY INVOKER`, 소유자 `tbox_owner`, PUBLIC 실행 회수) — 기획 5.1 표 · 감사 파일 사본 logrotate `rotate 1096` · 일별 해시 사슬은 3년 지난 날을 접어 「시작점」을 적고 검증 |
 | 기록 | `public.user_consents`(문서 `terms`·`privacy`·`age14`·`ai_overseas` · 판 · `agree`/`withdraw` · IP) — 앱 계정 **SELECT·INSERT 만**. 판은 서버가 `config/legal.json` 에서 정한다(요청 값 0). 가입은 `member_register.php` 가 같은 트랜잭션에서 세 줄 |
 | AI 국외 전송 | Gemini 로 보내는 네 길(`MemberAi` · `MemberAssist` · `MemoryAi` · `CommunityAi::perform`)이 **외부 호출 앞에서** `Legal::requireAiConsent` → 없으면 409 `ai_consent_required`(공급자 호출 0) |
 | 문서 | `/tbox/privacy` · `/tbox/terms`(공개 · 쿠키 0 · `/privacy`·`/terms` 는 308) — 파일은 `config/legal.json` 목록의 이름만(`Legal::html` — realpath·폴더 안·링크 아님 확인) · 이전 판 `?v=` 는 목록에 있는 것만 |

@@ -128,3 +128,19 @@ v2.50.1 `073ff04`(태그 `v2.50.1`, 기준 `selftest-base/qf13h`=d23db4b · 검�
 | 탈퇴 | 요청(재인증 없으면 거부) → 관리자 처리(재인증) → 즉시 로그인 불가 · 세션·패스키·토큰·OTP 0 → 30일 당긴 뒤 파기: 아이디 `deleted-<번호>` · 표시 이름 「탈퇴한 사용자 #번호」 · 개인 공간 문서·사진·여행 0 · 팀 공간·게시판 글·자료실 파일 남음(작성자 표시 바뀜) · 감사 셋 |
 | G-2 | GPS 든 JPEG·PNG 를 사진 기록에 올림 → 저장된 파일에 EXIF/GPS 0 · 화면 표시 정상 |
 | 감사 사슬 | 파기 뒤 `audit_chain.php` 검증 통과(시작점부터) |
+
+### P2-R1 검토 반영 — 재지시 1 (2026-10-07 · 메인 독립 검토 `SECURITY.md` 7장)
+
+```
+목표        : 독립 검토 보정 셋 — 동의하지 않은 사람의 탈퇴 길, `deleted-` 아이디 예약, 탈퇴 재인증 문구.
+요구사항    : ARCHITECTURE 4.11 「탈퇴」 행(고친 판) · DESIGN 2.23 「탈퇴」 · 약관 제3조(「바뀐 약관에 동의하지 않는 회원은 … 탈퇴를 요청할 수 있습니다」).
+수정 파일   : ★ src/Auth.php(CONSENT_GATE_ALLOW 에 `GET /api/me/delete-request` · `POST /api/me/delete-request` 두 줄만) ·
+              src/handlers/consent_page.php(「동의하지 않으면 … 로그아웃」 옆 「탈퇴 요청」 길 — 지금 재인증·확인 창 재사용) · public/assets/member.js(그 단추 연결, 최소) ·
+              src/handlers/users_create.php · src/handlers/member_register.php · src/handlers/users_update.php(아이디가 `deleted-` 로 시작하면 400 — 같은 문구) ·
+              public/assets/app.js(탈퇴 요청의 재인증 창 문구만 — 「탈퇴를 요청하려면 비밀번호를 다시 확인해 주세요」) ·
+              tests/qf13_retention_http.py · tests/qf13_consent_http.py(시험 추가) · (탈퇴 경로가 member.js 를 거치면) tests 의 해당 브라우저 시험
+              여기 없는 파일 금지.
+금지 패턴   : 「공통」 표. 동의 관문은 두 줄 말고 열지 않는다.
+완료 기준   : ① 동의하지 않은 회원이 동의 화면에서 탈퇴 요청(재인증 → 201)·관리자 처리까지 · 그 밖 창구는 여전히 403/302 ② `deleted-` 접두 아이디 만들기·가입·이름 바꾸기 400 ③ 재인증 창 문구 원문 · `qf13_retention_http` · `qf13_consent_http` 전부 + lint 0 + php -l + node --check + git diff --check.
+보고 형식   : 「공통」. 확정한 값: 바꾼 줄 · 문구 원문 · 커밋 해시.
+```
