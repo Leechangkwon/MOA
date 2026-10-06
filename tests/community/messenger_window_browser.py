@@ -281,7 +281,8 @@ try:
    check(not t.is_open() and t.state(E)['open'] is False,'Q:T-12 Esc (focus inside) closes; state open:false kept')
    t.go('/tbox/');check(not t.is_open(),'Q:T-12 closed window stays closed on the next screen')
    t.open();expect(p.locator('#message-peer-name')).to_have_text('모아 AI')
-   check(p.locator('#message-text').input_value()=='AI 초안','Q:T-12 reopening returns to the same AI thread and draft')
+   expect(p.locator('#message-text')).to_have_value('AI 초안',timeout=8000)   # 제목은 열 때 바로, 입력 칸은 그 스레드를 읽은 뒤에 채워진다
+   check(p.locator('#message-text').input_value()=='AI 초안' and t.state(E)['thread']==thread,'Q:T-12 reopening returns to the same AI thread and draft')
    check(t.clean('t12'),'Q:T-12 no page errors / 5xx / script console output')
    ctx.close()
 
