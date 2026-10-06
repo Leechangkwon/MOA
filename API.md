@@ -1035,7 +1035,7 @@ POST /tbox/api/me/api-tokens scope=["community.read","session.open"] (묶음이 
 **새 권한이 없다** — 담당은 「맡은 사람」 표시일 뿐 볼·고칠 권한을 주지 않고, 포트폴리오는 프로젝트를 볼 권한을 주지 않는다.
 판정은 `CommunityAuthz::decidePageAssign` · `decideAssignTarget` · `decidePortfolioRead` · `decidePortfolioManage` · `decidePortfolioAdd` 다섯과
 기존 `decidePageRead` · `decidePageChange` 뿐이다. 아래 응답 모양·문구는 격리 틀 시험 `tests/community/qf12_floor_http.py`(Q:T-24~28 · 33~37)가
-단언한 키·값이다 — 운영 응답 원문은 묶음 끝 검토에서 붙인다(추정 응답을 적지 않는다).
+단언한 키·값이다(지시서 B 의 22-6~22-10 은 `tests/community/qf12_server_http.py` — Q:T-29~32) — 운영 응답 원문은 묶음 끝 검토에서 붙인다(추정 응답을 적지 않는다).
 
 ### 22-1. 담당 정하기 — `PATCH /community/api/pages/{id}/properties` 의 `assignee`
 
@@ -1113,6 +1113,54 @@ POST /tbox/api/me/api-tokens scope=["community.read","session.open"] (묶음이 
 
 변경마다 `portfolio_events`(`create`·`rename`·`add`·`remove`·`delete` — 지울 수 없는 기록, 앱 계정 SELECT · INSERT 만) 한 줄 + 감사 `portfolio.create|rename|delete|add|remove|allow`.
 화면 `GET /community/portfolios/{id}` 는 지시서 D 몫이다.
+
+### 22-6. 내 작업 — `GET /community/api/my-tasks` (지시서 B · ARCH 23.4 · C:R-17)
+
+| 항목 | 내용 |
+|---|---|
+| 인증 | 세션 · 정책 `community.read`(손님은 빈 목록) |
+| 요청 | `?done=0`(기본 — 끝나지 않은 것) · `?done=1`(끝난 것만) · `?bucket=<키>`(그 묶음만) · `?cursor=<n>`(그 묶음 안에서 이미 받은 줄 수 — `bucket` 과 함께만, 0~10000). 그 밖의 값은 400 |
+| 대상 | ① 담당이 나 ② 담당 없음 + **내 것**(개인 공간 소유자 · 팀·게시판은 작성자) + 상태 또는 기한이 있음. 공통 — 지우지 않았음 · **보는 사람의 검색 조건절(`community_search_pages_where` — 관리자·게시판 관리자 갈래를 끈 판) 안에서만**: 담당이 나여도 볼 수 없는 작업은 없고, Admin 에게도 남의 비공개 작업은 섞이지 않는다. 담당이 권한을 잃으면(공유 회수·팀 이동) 그 줄은 목록에서 빠진다(`assignee_id` 는 남는다) |
+| 묶음 | 서버가 **Asia/Seoul** 날짜로 가른다 — `overdue` 「지난 기한」(기한 < 오늘) · `today` 「오늘」 · `this_week` 「이번 주」(내일 ~ 이번 주 일요일) · `later` 「나중에」 · `no_due` 「기한 없음」. 묶음마다 기한 오름차순 → 고친 때 내림차순, 한 번에 100줄 |
+| 성공 | 200 `{"today":"Y-m-d","done":false,"buckets":[{"key","name","items":[<줄>…],"next_cursor":"100"\|null}…]}` — `bucket` 을 주면 그 묶음 하나만 |
+| 줄 | `{"public_id","title","status","due","project":{"public_id","title","color"}\|null,"doc_space":"문서 · <공간 이름>"\|null,"assigned_by":"<표시 이름>"\|null,"comments_n","sub_done","sub_total"}` — `project` = 행이면 그 데이터베이스 페이지(그 페이지를 **볼 수 있을 때만**, 아니면 null) · `doc_space` = 행이 아닌 문서의 「문서 · 공간 이름」 · `assigned_by` = 마지막 담당 사건이 나에게 맡긴 것이고 내가 한 일이 아닐 때 그 사람의 이름(없으면 계정명) · `comments_n` = 지우거나 숨기지 않은 댓글 수 · `sub_done`/`sub_total` = **볼 수 있는** 하위 페이지 중 끝난 것/전체 |
+| 실패 | 400 `{"error":"잘못된 요청입니다"}` · 401 |
+
+### 22-7. 「오늘」 — 공지는 작업 칸에서 빠진다 · 옛 주소 넘김 (지시서 B · WK-8 ②)
+
+- `GET /community/api/briefing` 모양은 그대로다. 바뀐 것: 공지(`kind: "notice"`)는 `top`·`missed` 를 차지하지 않고 `others` 에만 남는다(읽지 않은 공지 · 게시판 읽기 판정 그대로 · 최대 20). `count`(런처의 「오늘 n건」 = `top`+`missed`)에 공지가 들지 않는다. 홈의 「공지 한 줄」은 이 `others` 의 `notice` 줄로 새 창구 없이 채울 수 있다(게시판 창구 `GET /api/boards/{num}/pages` 에는 읽음 여부 칸이 없다).
+- `GET /community/today` → **308** `Location: /community/my-tasks`(고정 대상 — 요청의 쿼리·머리는 Location 에 닿지 않는다). 미로그인은 전처럼 302 로그인 화면. 화면 `/community/my-tasks` 는 지시서 D 몫이다.
+
+### 22-8. 프로젝트 만들기 · 「프로젝트로 쓰기」 (지시서 B · WK-5 · WK-16 A · ARCH 23.5)
+
+**만들기** — `POST /community/api/pages {"database": true, "preset": "project", "title", "space_id"?, "parent_id"?}`. 판정은 보통 페이지 만들기 그대로(부모 행 또는 공간의 `decidePageChange`). `preset` 은 `"project"` 하나뿐이고 `database:true` 와 함께만(그 밖 400). 칸·보기·색은 **서버 상수에서만** 채운다 — 요청에서 칸·보기 모양을 받지 않는다:
+
+| 무엇 | 값(원문) |
+|---|---|
+| 칸 | `{"key":"section","name":"섹션","type":"select","options":["00. 준비","01. 진행","02. 마무리"]}` — 섹션 key 는 서버가 정한 고정 `section`(속성 더하기로는 만들 수 없다). 섹션 추가·이름·순서 = 보통 스키마 변경(`options`·`rename` — `decidePageManage`, 편집 공유자는 403) |
+| 보기 넷 | `{"name":"목록","type":"list","group_by":"section"}` · `{"name":"보드","type":"board","group_by":"section"}` · `{"name":"타임라인","type":"timeline","date_prop":"due","scale":"month"}` · `{"name":"달력","type":"calendar","date_prop":"due","mode":"month"}` (보기 id 는 서버가 새로) |
+| 색 | `peach` → `lilac` → `mint` → `sand` 차례 — 그 공간에서 **만드는 사람이 볼 수 있는** 프로젝트(쓰임이 있는 데이터베이스) 수로 고른다 |
+| 쓰임 | `databases.purpose = 'project'` |
+
+성공 201 — 보통 응답의 `page.database` 에 `"purpose":"project","color":"<색>"` 이 더해진다. 감사 `database.create|allow`(`detail.preset = "project"`).
+
+**「프로젝트로 쓰기」·「표로 쓰기」** — `PATCH /community/api/databases/{id}/schema {"use_as": "project" | "table"}`(다른 동작 키와 함께 주면 400 · `version` 은 전처럼 선택). 자격은 스키마 변경과 같은 `decidePageManage`(아니면 403 + 감사 `database.schema|deny|not_owner`).
+- `"project"`: `purpose='project'` · 섹션 칸이 없으면 더함 · 기본 보기 넷 중 **같은 이름(대소문자 무시)의 보기가 없는 것만** 더함 · 색이 없으면 차례 색. 다시 불러도 칸·보기가 겹치지 않는다(멱등 — `changed:false`). 「섹션」 이름의 다른 칸이 있으면 400 `name_taken` · 칸 30개 넘음 400 `too_many_props` · 보기 20개 넘음 400 `too_many_views`.
+- `"table"`: `purpose = NULL` **만**(칸·보기·색은 그대로).
+- 「내 할 일」(`purpose='my_tasks'`)은 바꾸지 않는다 — 400 `{"reason":"my_tasks"}`.
+- 성공 200 `{"database":{"id","purpose","color","schema","views","version"},"added":{"prop":true|false,"views":["목록",…]},"changed":true|false}` · 바뀐 때만 감사 `database.schema|allow`(`detail.op = "use_as"`, `to`, `added_prop`, `added_views`).
+
+### 22-9. 「내 할 일」 빠른 추가 — `POST /community/api/pages {"my_tasks": true, "title", "due"?}` (지시서 B · WK-4 · ARCH 23.5)
+
+- 함께 줄 수 있는 키는 `title` · `due`(`Y-m-d` 또는 null) 뿐이다(그 밖 400 · `my_tasks` 는 `true` 만 · `due` 는 `my_tasks` 와 함께만). 프로그램 토큰으로는 `my_tasks`·`preset`·`due` 를 받지 않는다(400 `token_scope_fields` — Q:F-8 그대로).
+- 처음이면 내 개인 공간 최상위에 **비공개** 프로젝트 「내 할 일」(`purpose='my_tasks'` · 칸·보기는 프로젝트 preset 과 같음 · 색 차례)을 만들고 `my_tasks_projects` 에 적는다. 두 요청이 겹치면 늦은 쪽은 PK 충돌 → 자기가 만든 프로젝트를 통째로 되돌리고 먼저 적힌 프로젝트를 다시 읽어 쓴다(사람마다 하나). 적어 둔 프로젝트를 휴지통에 넣었거나 내 개인 공간 밖으로 옮겼으면 적어 둔 줄만 지우고 새로 만든다.
+- 그다음은 그 프로젝트의 **행**을 보통 만들기 길(부모 행의 `decidePageChange` · 행 한도 · 감사 `page.create`)로 만든다 — 상태 `todo` · 준 기한으로 시작(만들 때의 첫 값이라 변경 사건은 없다).
+- 성공 201 — 보통 응답 + `page.status`·`page.due` + 맨 위 `"my_tasks":{"project_id":"<프로젝트 public_id>","created":true|false}`. 준비하지 못하면 409 `{"reason":"my_tasks_busy"}`.
+
+### 22-10. 보드·목록 묶기 · 내장 담당 칸 (지시서 B · ARCH 23.5)
+
+- `PATCH /community/api/databases/{id}/views` 의 `board`·`list` 보기가 `group_by` 를 받는다 — 값은 `"status"` 또는 **그 데이터베이스의 select 칸 key** 만(글·다중 선택·없는 key, 그 밖 보기 종류의 `group_by` 는 400 `bad_view`). 저장 모양 `{"id","name","type":"board","group_by":"section"}` — 행 목록 응답(`GET …/rows` 의 `views`)에 그대로 나온다. 행 응답은 그대로이고 묶기는 화면이 한다: 보드는 고른 저장 보드의 `group_by` 가 select 칸이면 그 선택지 순서로 열을 그리고(빈 값 열 「섹션 없음」 — 섹션이 아닌 칸이면 「<칸 이름> 없음」), 카드 옮기기는 그 select 값을 `PATCH /api/pages/{id}/values` 로 쓴다(사건 `db:<key>` — 섹션이면 `db:section`). `group_by` 가 없거나 `status` 면 전처럼 상태 열.
+- 내장 칸 `assignee`(= `pages.assignee_id`) — 거르기 `eq`(계정명 — 「나」는 화면이 자기 계정명을 보낸다) · `empty` · `not_empty` 와 정렬(계정명). **값 쓰기는 22-1 창구 한 곳**이다 — `PATCH …/values {"assignee": …}` 는 400 `unknown_prop`. 행 목록 응답에는 담당 값이 아직 없다(`database_rows.php` 는 이 조각의 수정 파일이 아니다 — D 에서 필요하면 그때).
 
 ## 추가 규칙 (API 를 새로 적을 때)
 

@@ -14,6 +14,12 @@ declare(strict_types=1);
  *   space_id  공간 번호 (선택, 4-B). 없으면 **내 개인 공간**. 팀 공간이면 그 팀원만
  *   database  `true` 면 **데이터베이스 페이지**로 만든다(6-A — `databases` 한 줄이 함께 생긴다). DB 페이지 아래에는 못 만든다
  *   properties 행의 속성 값(6-A, 선택). **부모가 DB 페이지일 때만** — 「DB 페이지 바로 아래 페이지 = 행」이다
+ *   preset    Q:F-12 (ARCH 23.5) `"project"` 하나 — `database:true` 와 함께만. 서버 상수(`DbProps::PROJECT_*`)가 섹션 select 칸 ·
+ *             기본 보기 넷 · 색(그 공간에서 내가 볼 수 있는 프로젝트 수 차례) · `purpose='project'` 를 채운다. 칸·보기 모양은 요청에서 받지 않는다
+ *   my_tasks  Q:F-12 (ARCH 23.5) `true` — 「내 할 일」 빠른 추가. 함께 줄 수 있는 키는 `title` · `due`(Y-m-d 또는 null) 뿐이다.
+ *             처음이면 내 개인 공간 최상위에 **비공개** 프로젝트 「내 할 일」(`purpose='my_tasks'`)을 만들어 `my_tasks_projects` 에 적고
+ *             (두 요청이 겹치면 한쪽은 PK 충돌 → 자기 것을 되돌리고 다시 읽는다), 그 프로젝트의 **행**으로 만든다(상태 `todo` · 기한).
+ *             프로젝트를 휴지통에 넣었거나 내 개인 공간 밖으로 옮겼으면 적어 둔 줄만 지우고 새로 만든다
  *   template_id 템플릿(7-B, 선택, UUID). 제목(주지 않으면)·아이콘·본문을 템플릿으로 채운다 — `doc`·`database` 와 함께 주면 400.
  *             DB 행 템플릿이면 부모는 **그 DB 페이지**다(주지 않으면 그리로, 다른 부모면 400) · 속성 값은 템플릿 값 위에 요청 값.
  *             ★ 템플릿은 **자리와 범위를 정하지 않는다** — 아래 규칙 그대로(부모가 없으면 내 개인 공간 · 비공개).
@@ -48,7 +54,7 @@ declare(strict_types=1);
  * @var list<string>        $params 경로 변수 없음
  */
 
-$allowedFields = ['title', 'doc', 'parent_id', 'space_id', 'database', 'properties', 'template_id'];
+$allowedFields = ['title', 'doc', 'parent_id', 'space_id', 'database', 'properties', 'template_id', 'preset', 'my_tasks', 'due'];
 
 /*
  * 본문 상한 (관문 ② 실측 2026-09-22) — `Http::jsonBody()` 의 기본 상한은 64KB 인데 문서 스키마는
@@ -79,7 +85,7 @@ if (array_diff(array_keys($body), $allowedFields) !== []) {
 // ─── [1-1] 토큰 모드 (Q:F-8, ARCH 4.8) — 자리를 고르는 키는 받지 않는다 ─────────
 //        판단 근거는 라우터가 세운 상수(요청 값이 아니다). 키가 **있기만** 해도(값이 null 이어도) 거부한다.
 if (defined('TBOX_AUTH_METHOD') && constant('TBOX_AUTH_METHOD') === 'api_token'
-    && array_intersect(array_keys($body), ['parent_id', 'space_id', 'database', 'properties', 'template_id']) !== []
+    && array_intersect(array_keys($body), ['parent_id', 'space_id', 'database', 'properties', 'template_id', 'preset', 'my_tasks', 'due']) !== []
 ) {
     Http::json([
         'error'  => '프로그램 토큰으로는 제목과 본문만 보냅니다 — 새 페이지는 내 개인 공간에 비공개로 만들어집니다',
@@ -95,6 +101,30 @@ if (array_key_exists('database', $body)) {
         Http::error(400, Http::MSG_BAD_REQUEST);
     }
     $makeDb = $body['database'];
+}
+
+// Q:F-12 (ARCH 23.5) — 프로젝트 만들기는 preset 이름 하나만 받는다(칸·보기·색은 서버 상수). DB 로 만들 때만.
+$preset = null;
+if (array_key_exists('preset', $body)) {
+    if ($body['preset'] !== 'project' || !$makeDb) {
+        Http::error(400, Http::MSG_BAD_REQUEST);
+    }
+    $preset = 'project';
+}
+// Q:F-12 — 「내 할 일」 빠른 추가: 함께 오는 키는 제목·기한뿐이다(자리·범위·속성은 요청이 정하지 않는다)
+$myTasks = false;
+if (array_key_exists('my_tasks', $body)) {
+    if ($body['my_tasks'] !== true || array_diff(array_keys($body), ['my_tasks', 'title', 'due']) !== []) {
+        Http::error(400, Http::MSG_BAD_REQUEST);
+    }
+    $myTasks = true;
+}
+$wantDue = null;
+if (array_key_exists('due', $body)) {
+    if (!$myTasks || ($body['due'] !== null && DbViews::day($body['due']) === null)) {
+        Http::error(400, Http::MSG_BAD_REQUEST);
+    }
+    $wantDue = $body['due'];
 }
 
 // ─── [1-2] 템플릿 (7-B) — 본문을 채울 틀. 판정을 먼저 지나야 제목·본문을 읽는다 ─────────
@@ -203,6 +233,106 @@ if ($docJson === false) {
 
 $db = Db::instance();
 $me = (int) $user['id'];
+
+// ─── [3-1] Q:F-12 「내 할 일」 — 프로젝트를 찾거나(없으면 만들고) 그 DB 페이지를 부모로 둔다 ─────────
+/* 만든 뒤의 행 만들기는 아래 [4]~[6] 의 보통 길 그대로다(부모 행의 `decidePageChange` · 행 한도 · 감사) — 판정 두 벌 0.
+   프로젝트 만들기 판정도 「내 개인 공간 최상위에 만들기」와 같은 `decidePageChange`(공간 주인)다. */
+$myTasksInfo = null;
+if ($myTasks) {
+    $readMyTasks = static function (int $uid): ?array {
+        $sql = <<<'SQL'
+            SELECT m.page_id, p.public_id, p.deleted_at, s.kind AS space_kind, s.owner_user_id, d.purpose
+              FROM community.my_tasks_projects m
+              JOIN community.pages p ON p.id = m.page_id
+              JOIN community.spaces s ON s.id = p.space_id
+              LEFT JOIN community.databases d ON d.page_id = p.id
+             WHERE m.user_id = CAST(:uid AS bigint)
+            SQL;
+        $r = Db::instance()->run($sql, [':uid' => $uid])->fetch();
+        return is_array($r) ? $r : null;
+    };
+    $usable = static fn (?array $r): bool => $r !== null && $r['deleted_at'] === null && (string) $r['space_kind'] === 'personal'
+        && (int) $r['owner_user_id'] === $me && $r['purpose'] === 'my_tasks';
+
+    $mt = $readMyTasks($me);
+    if ($mt !== null && !$usable($mt)) {
+        // 휴지통·인계·옮김 — 적어 둔 줄만 정리한다(그 페이지 자체는 건드리지 않는다). 다음 줄에서 새로 만든다.
+        $sqlForget = <<<'SQL'
+            DELETE FROM community.my_tasks_projects WHERE user_id = CAST(:uid AS bigint) AND page_id = CAST(:pid AS bigint)
+            SQL;
+        $db->run($sqlForget, [':uid' => $me, ':pid' => (int) $mt['page_id']]);
+        $mt = null;
+    }
+    $mtCreated = false;
+    if ($mt === null) {
+        $mtSpace = community_my_personal_space($me);
+        if ($mtSpace === null) {
+            Http::error(409, '개인 공간을 먼저 엽니다');
+        }
+        [$mayMt, $mtCode] = CommunityAuthz::decidePageChange($user, [
+            'deleted_at'          => null,
+            'space_kind'          => (string) $mtSpace['kind'],
+            'space_owner_user_id' => $mtSpace['owner_user_id'] ?? null,
+            'space_team_id'       => $mtSpace['team_id'] ?? null,
+        ]);
+        if (!$mayMt) {
+            Http::error(403, Http::MSG_FORBIDDEN);
+        }
+        $mtPreset = DbProps::projectPreset([], []);
+        $mtColor  = community_project_color($user, (int) $mtSpace['id']);
+        $mtDoc    = ['schema' => 1, 'blocks' => [['id' => Doc::uuid4(), 'type' => 'paragraph', 'text' => []]]];
+        $mtExtract = Doc::extract($mtDoc);
+        $db->begin();
+        try {
+            $mtRow = community_insert_page([
+                'space_id' => (int) $mtSpace['id'], 'parent_id' => null,
+                'position' => community_next_position((int) $mtSpace['id'], null), 'visibility' => 'private',
+                'title' => '내 할 일', 'doc_json' => json_encode($mtDoc, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
+                'database_id' => null, 'properties' => null,
+            ], $mtExtract, $user, $mtCode);
+            community_sync_after_save($user, $mtRow, $mtDoc, $mtExtract, 1);
+            $sqlMtDb = <<<'SQL'
+                INSERT INTO community.databases (page_id, schema, views, created_by, purpose, color)
+                VALUES (CAST(:pid AS bigint), CAST(:schema AS jsonb), CAST(:views AS jsonb), CAST(:me AS bigint), 'my_tasks', :color)
+                SQL;
+            $db->run($sqlMtDb, [
+                ':pid' => (int) $mtRow['id'], ':me' => $me, ':color' => $mtColor,
+                ':schema' => json_encode($mtPreset['schema'], JSON_UNESCAPED_UNICODE),
+                ':views'  => json_encode($mtPreset['views'], JSON_UNESCAPED_UNICODE),
+            ]);
+            Audit::allow('database.create', [
+                'target_type' => 'page',
+                'target_id'   => (int) $mtRow['id'],
+                'target_name' => '내 할 일',
+                'detail'      => ['page_title' => '내 할 일', 'granted_by' => $mtCode],
+            ]);
+            // 사람마다 하나 — 겹친 요청이 먼저 적었으면(PK 충돌) 내 것은 통째로 되돌리고 그쪽 프로젝트를 쓴다
+            $sqlClaim = <<<'SQL'
+                INSERT INTO community.my_tasks_projects (user_id, page_id)
+                VALUES (CAST(:uid AS bigint), CAST(:pid AS bigint))
+                ON CONFLICT DO NOTHING
+                RETURNING user_id
+                SQL;
+            $claimed = $db->run($sqlClaim, [':uid' => $me, ':pid' => (int) $mtRow['id']])->fetch();
+            if (is_array($claimed)) {
+                $db->commit();
+                $mtCreated = true;
+            } else {
+                $db->rollback();
+            }
+        } catch (Throwable $e) {
+            $db->rollback();
+            throw $e;
+        }
+        $mt = $readMyTasks($me);
+        if (!$usable($mt)) {
+            Http::json(['error' => '「내 할 일」을 준비하지 못했습니다. 잠시 뒤 다시 하세요', 'reason' => 'my_tasks_busy'], 409);
+            exit;
+        }
+    }
+    $body['parent_id'] = (string) $mt['public_id'];
+    $myTasksInfo = ['project_id' => (string) $mt['public_id'], 'created' => $mtCreated];
+}
 
 // ─── [4] 부모 (먼저 읽는다 — 5-A) ─────────────────────────────
 /* 5-A — 하위 페이지 만들기는 **권한대로**다(사용자 결정 3): 편집 공유를 받은 사람은 그 페이지
@@ -411,6 +541,10 @@ if ($parentVisibility !== null && in_array($parentVisibility, CommunityAuthz::VI
     $visibility = $parentVisibility;
 }
 
+// Q:F-12 — 프로젝트 preset 의 칸·보기·색(서버 상수 · 만드는 사람이 볼 수 있는 그 공간의 프로젝트 수 차례)
+$presetShape = $preset === 'project' ? DbProps::projectPreset([], []) : null;
+$presetColor = $preset === 'project' ? community_project_color($user, $spaceId) : null;
+
 // ─── [6] 저장 — 기록이 실패하면 페이지도 남지 않는다 (PRD S-07) ───
 $db->begin();
 try {
@@ -423,10 +557,29 @@ try {
     ]);
     $pageId = (int)$row['id'];
     community_sync_after_save($user,$row,$doc,$extract,1);
+    // Q:F-12 「내 할 일」 행 — 할 일로 시작한다(상태 todo · 준 기한). 만들 때의 첫 값이라 변경 사건은 없다(DB 행의 첫 값과 같다).
+    if ($myTasks) {
+        $sqlTask = <<<'SQL'
+            UPDATE community.pages SET status = 'todo', due_date = CAST(:due AS date) WHERE id = CAST(:pid AS bigint)
+            SQL;
+        $db->run($sqlTask, [':due' => $wantDue, ':pid' => $pageId]);
+    }
 
     // 6-A — DB 페이지면 `databases` 한 줄(빈 스키마 — 기본 열 제목·상태·소유자는 늘 있다)
     $newDb = null;
-    if ($makeDb) {
+    if ($makeDb && $presetShape !== null) {
+        // Q:F-12 프로젝트 — 칸·보기·색·쓰임은 서버 상수에서만
+        $sqlDb = <<<'SQL'
+            INSERT INTO community.databases (page_id, schema, views, created_by, purpose, color)
+            VALUES (CAST(:pid AS bigint), CAST(:schema AS jsonb), CAST(:views AS jsonb), CAST(:me AS bigint), 'project', :color)
+            RETURNING public_id
+            SQL;
+        $newDb = $db->run($sqlDb, [
+            ':pid' => $pageId, ':me' => $me, ':color' => $presetColor,
+            ':schema' => json_encode($presetShape['schema'], JSON_UNESCAPED_UNICODE),
+            ':views'  => json_encode($presetShape['views'], JSON_UNESCAPED_UNICODE),
+        ])->fetch();
+    } elseif ($makeDb) {
         $sqlDb = <<<'SQL'
             INSERT INTO community.databases (page_id, schema, created_by)
             VALUES (CAST(:pid AS bigint), '[]'::jsonb, CAST(:me AS bigint))
@@ -437,7 +590,8 @@ try {
             'target_type' => 'page',
             'target_id'   => $pageId,
             'target_name' => community_target_title($title),
-            'detail'      => ['page_title' => community_target_title($title), 'granted_by' => $createCode],
+            'detail'      => ['page_title' => community_target_title($title), 'granted_by' => $createCode]
+                + ($preset === null ? [] : ['preset' => $preset]),
         ]);
     }
 
@@ -470,7 +624,8 @@ Http::json([
         'updated_at'  => (string) $row['updated_at'],
         'url'         => Http::communityUrl('/p/' . (string) $row['public_id']),
         // 6-A — 만든 DB(없으면 null) · 행이면 그 값
-        'database'    => is_array($newDb ?? null) ? ['id' => (string) $newDb['public_id']] : null,
+        'database'    => is_array($newDb ?? null) ? ['id' => (string) $newDb['public_id']]
+            + ($preset === null ? [] : ['purpose' => 'project', 'color' => $presetColor]) : null,
         'values'      => $rowProps === null ? null : ($rowProps === [] ? new stdClass() : $rowProps),
-    ],
-], 201);
+    ] + ($myTasks ? ['status' => 'todo', 'due' => $wantDue] : []),
+] + ($myTasksInfo === null ? [] : ['my_tasks' => $myTasksInfo]), 201);

@@ -578,19 +578,36 @@ export function createDatabaseView(deps) {
     }).catch(() => setText(msgEl, genericError));
   });
 
-  /** 보드 — 상태 열 여섯(없음 + 다섯). 고칠 수 있으면 카드를 끌거나 골라서 ← → 로 옮긴다(= 상태 바꾸기) */
+  /* Q:F-12 (ARCH 23.5) — 고른 저장 보드의 `group_by` 가 이 DB 의 select 칸이면 그 칸의 선택지 순서로 열을 그린다(빈 값 열 「섹션 없음」).
+     없거나 `status` 면 전과 같은 상태 열. 묶는 칸은 서버가 검사해 저장한 값이다 — 화면은 스키마에서 찾기만 한다. */
+  function boardGroup() {
+    const selected = savedViews.find((v) => v.id === viewId);
+    const key = selected && selected.type === 'board' ? selected.group_by : null;
+    if (!key || key === 'status') { return null; }
+    return (db.schema || []).find((p) => p.key === key && p.type === 'select' && Array.isArray(p.options)) || null;
+  }
+  function boardColumns(gp) { return [null].concat(gp ? gp.options : STATUS_ORDER); }
+  function boardValue(gp, r) {
+    if (!gp) { return r.status || null; }
+    const v = r.values ? r.values[gp.key] : null;
+    return gp.options.includes(v) ? v : null;   // 지운 선택지의 값은 빈 값 열에
+  }
+
+  /** 보드 — 상태 열 여섯(없음 + 다섯) 또는 묶는 select 칸의 열. 고칠 수 있으면 카드를 끌거나 골라서 ← → 로 옮긴다(= 그 값 바꾸기) */
   function drawBoard() {
     clear(boardEl);
-    const cols = [null].concat(STATUS_ORDER);
+    const gp = boardGroup();
+    const cols = boardColumns(gp);
     for (const st of cols) {
       const col = document.createElement('section');
       col.className = 'db-board__col';
       col.setAttribute('data-status', st || '');
       const h = document.createElement('p');
       h.className = 'db-board__head';
-      const lab = st ? statusLabels[st] : null;
-      const inCol = rows.filter((r) => (r.status || null) === st);
-      h.textContent = (lab ? lab.text : '없음') + ' ' + String(inCol.length);
+      const lab = !gp && st ? statusLabels[st] : null;
+      const inCol = rows.filter((r) => boardValue(gp, r) === st);
+      const empty = gp ? (gp.key === 'section' ? '섹션 없음' : gp.name + ' 없음') : '없음';
+      h.textContent = (gp ? (st || empty) : (lab ? lab.text : empty)) + ' ' + String(inCol.length);
       col.appendChild(h);
       for (const r of inCol) { col.appendChild(boardCard(r)); }
       if (db.can_edit_values) {
@@ -638,24 +655,28 @@ export function createDatabaseView(deps) {
       card.appendChild(line);
     }
     if (db.can_edit_values) {
+      const gp = boardGroup();
       card.draggable = true;
       card.tabIndex = 0;
-      card.setAttribute('aria-label', r.title + ' — ← → 로 상태 옮기기');
+      card.setAttribute('aria-label', r.title + ' — ← → 로 ' + (gp ? gp.name : '상태') + ' 옮기기');
       card.addEventListener('dragstart', (e) => { e.dataTransfer.setData('text/plain', r.id); });
       card.addEventListener('keydown', (e) => {
         if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') { return; }
         e.preventDefault();
-        const order = [null].concat(STATUS_ORDER);
-        const at = order.indexOf(r.status || null) + (e.key === 'ArrowRight' ? 1 : -1);
+        const order = boardColumns(gp);
+        const at = order.indexOf(boardValue(gp, r)) + (e.key === 'ArrowRight' ? 1 : -1);
         if (at >= 0 && at < order.length) { moveCard(r, order[at], true); }
       });
     }
     return card;
   }
   function moveCard(r, st, refocus) {
-    if ((r.status || null) === st) { return; }
-    saveStatus(r.id, st).then(() => {
-      r.status = st;
+    const gp = boardGroup();
+    if (boardValue(gp, r) === st) { return; }
+    // 묶는 칸이 select 면 그 값을 행 값 창구로(사건 `db:<key>`), 아니면 전처럼 상태 창구로
+    const save = gp ? saveValue(r.id, gp, st).then((values) => { if (values) { r.values = values; } })
+      : saveStatus(r.id, st).then(() => { r.status = st; });
+    save.then(() => {
       setText(msgEl, '');
       drawBoard();
       loadSummary();

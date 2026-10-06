@@ -21,8 +21,9 @@ require_once __DIR__ . '/DbViews.php';
 final class DbProps
 {
     public const TYPES = ['text', 'number', 'checkbox', 'url', 'email', 'phone', 'date', 'select', 'multi_select', 'person', 'relation', 'file'];
-    /** 스키마에 없는, 모든 DB 에 있는 기본 열 — 거르기·정렬에서 이 이름으로 부른다 */
-    public const BUILTINS = ['title', 'status', 'owner', 'created', 'updated', 'due', 'verified'];
+    /** 스키마에 없는, 모든 DB 에 있는 기본 열 — 거르기·정렬에서 이 이름으로 부른다.
+     *  Q:F-12 `assignee` = `pages.assignee_id`(담당) — **거르기·정렬만**. 값 쓰기는 `PATCH …/properties` 의 `assignee` 한 곳(ARCH 23.5) */
+    public const BUILTINS = ['title', 'status', 'owner', 'created', 'updated', 'due', 'verified', 'assignee'];
     public const RESERVED_NAMES = ['제목', '상태', '소유자', '만든 때', '고친 때', '기한', '검증'];
 
     public const MAX_PROPS   = 30;
@@ -41,6 +42,22 @@ final class DbProps
     private const UUID_RE     = '/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/';
 
     private const KEY_RE  = '/^p[0-9a-f]{8}$/';
+
+    /* ── Q:F-12 프로젝트 (ARCH 23.5 · WK-5 · WK-16) ──
+     * 섹션 = 서버가 정한 **고정 key 하나**(`section`)의 select 칸. 요청이 key 를 정하는 길은 없다(속성 더하기는 `newKey()`) —
+     * 이 key 는 프로젝트 만들기(preset)와 「프로젝트로 쓰기」만 넣는다. 섹션 추가·이름·순서는 보통 스키마 변경(`decidePageManage`).
+     * 기본 칸·보기·색은 **이 상수에서만** 온다 — 요청에서 칸·보기 모양을 받지 않는다. */
+    public const SECTION_KEY      = 'section';
+    public const PROJECT_SECTION  = ['key' => 'section', 'name' => '섹션', 'type' => 'select', 'options' => ['00. 준비', '01. 진행', '02. 마무리']];
+    /** 기본 보기 넷 — 목록·보드는 섹션으로 묶고, 타임라인·달력은 기한(`due`)으로 */
+    public const PROJECT_VIEWS = [
+        ['name' => '목록', 'type' => 'list', 'group_by' => 'section'],
+        ['name' => '보드', 'type' => 'board', 'group_by' => 'section'],
+        ['name' => '타임라인', 'type' => 'timeline', 'date_prop' => 'due'],
+        ['name' => '달력', 'type' => 'calendar', 'date_prop' => 'due'],
+    ];
+    /** 프로젝트 색 — DB CHECK(`databases_color_check`)·DESIGN 2.22 의 네 가지, 만든 차례로 돈다 */
+    public const PROJECT_COLORS = ['peach', 'lilac', 'mint', 'sand'];
     private const DATE_RE = '/^(\d{4})-(\d{2})-(\d{2})(T([01]\d|2[0-3]):[0-5]\d)?$/';
     /** 정렬 머리 — ORDER BY 글자는 여기 한 줄에만 있다(security_lint S-04: 키워드와 변수를 한 줄에 두지 않는다) */
     public const ORDER_HEAD = ' ORDER BY ';
@@ -287,6 +304,8 @@ final class DbProps
         'updated'      => ['before', 'after', 'on'],
         'due'          => ['before', 'after', 'on', 'empty', 'not_empty'],
         'verified'     => ['eq', 'ne'],
+        // Q:F-12 담당(계정명 · 「나」는 화면이 자기 계정명을 보낸다)
+        'assignee'     => ['eq', 'empty', 'not_empty'],
     ];
 
     /**
@@ -336,6 +355,10 @@ final class DbProps
         'updated.before'     => "p.updated_at < CAST({v} AS date)",
         'updated.after'      => "p.updated_at >= CAST({v} AS date) + 1",
         'updated.on'         => "CAST(p.updated_at AS date) = CAST({v} AS date)",
+        // Q:F-12 담당 — 행 질의에 조인을 더하지 않도록 계정 표는 부분 질의로 본다(값은 바인딩)
+        'assignee.eq'        => "p.assignee_id = (SELECT au.id FROM public.users au WHERE au.username = CAST({v} AS text))",
+        'assignee.empty'     => "p.assignee_id IS NULL",
+        'assignee.not_empty' => "p.assignee_id IS NOT NULL",
     ];
 
     /**
@@ -412,6 +435,12 @@ final class DbProps
             case 'verified':
                 if (!is_string($v) || !in_array($v, ['none', 'expired', 'verified'], true)) { throw new InvalidArgumentException('value'); }
                 return $v;
+            case 'assignee':
+                // 계정명 모양만(사람 칸과 같은 글자 집합) — 없는 계정이면 맞는 행이 없을 뿐이다
+                if (!is_string($v) || preg_match('/^[A-Za-z0-9_.\-]{1,64}$/', $v) !== 1) {
+                    throw new InvalidArgumentException('value');
+                }
+                return $v;
             case 'status':
                 if (!is_string($v) || !in_array($v, COMMUNITY_STATUSES, true)) {
                     throw new InvalidArgumentException('value');
@@ -450,6 +479,7 @@ final class DbProps
         'owner'    => "owner.username",
         'created'  => "p.created_at",
         'updated'  => "p.updated_at",
+        'assignee' => "(SELECT au.username FROM public.users au WHERE au.id = p.assignee_id)",
     ];
 
     /**
@@ -499,7 +529,7 @@ final class DbProps
         if (in_array($name, self::BUILTINS, true)) {
             return [$name, null];
         }
-        if (preg_match(self::KEY_RE, $name) !== 1) {
+        if (!self::isPropKey($name)) {
             throw new InvalidArgumentException('prop');
         }
         $p = self::find($schema, $name);
@@ -509,11 +539,67 @@ final class DbProps
         return [(string) $p['type'], $p];
     }
 
+    /** 속성 key 모양 — 서버가 만든 `p` + 8 hex 이거나 Q:F-12 섹션 고정 key */
+    public static function isPropKey(string $key): bool
+    {
+        return preg_match(self::KEY_RE, $key) === 1 || $key === self::SECTION_KEY;
+    }
+
+    /**
+     * Q:F-12 「프로젝트로 쓰기」·프로젝트 만들기의 기본 칸·보기를 **없는 것만** 더한다(있는 칸·보기는 그대로 — 두 번 불러도 같은 결과).
+     *   칸: 섹션 key 가 없으면 `PROJECT_SECTION` 을 더한다 — 이름 「섹션」이 다른 칸에 쓰였으면 `name_taken`, 칸이 가득이면 `too_many_props`.
+     *   보기: `PROJECT_VIEWS` 중 **같은 이름(대소문자 무시)의 보기가 없는 것**만 새 id 로 더한다 — 넘치면 `too_many_views`.
+     * 보기는 `cleanView` 를 지난 모양으로 저장한다(다른 보기와 같은 검사). 순수 함수 — DB 를 읽지 않는다.
+     *
+     * @param  list<array<string,mixed>> $schema 지금 스키마(`community_db_schema_of` 를 지난 것)
+     * @param  list<array<string,mixed>> $views  지금 보기(`community_db_views_of` 를 지난 것)
+     * @return array{schema:list<array<string,mixed>>,views:list<array<string,mixed>>,added_prop:bool,added_views:list<string>}
+     * @throws DomainException `name_taken` · `too_many_props` · `too_many_views`
+     */
+    public static function projectPreset(array $schema, array $views): array
+    {
+        $addedProp = false;
+        if (self::find($schema, self::SECTION_KEY) === null) {
+            if (count($schema) >= self::MAX_PROPS) {
+                throw new DomainException('too_many_props');
+            }
+            if (!self::nameFree($schema, self::PROJECT_SECTION['name'])) {
+                throw new DomainException('name_taken');
+            }
+            $schema[]  = self::PROJECT_SECTION;
+            $addedProp = true;
+        }
+        $have = [];
+        foreach ($views as $v) {
+            $have[self::lower((string) ($v['name'] ?? ''))] = true;
+        }
+        $addedViews = [];
+        foreach (self::PROJECT_VIEWS as $raw) {
+            if (isset($have[self::lower($raw['name'])])) {
+                continue;
+            }
+            $clean = self::cleanView($raw, $schema);
+            if ($clean === null) {
+                throw new DomainException('bad_preset');   // 상수가 검사를 못 지나면 코드 결함이다
+            }
+            $views[]      = ['id' => self::newViewId()] + $clean;
+            $addedViews[] = $raw['name'];
+        }
+        if (count($views) > self::MAX_VIEWS) {
+            throw new DomainException('too_many_views');
+        }
+        return ['schema' => array_values($schema), 'views' => array_values($views), 'added_prop' => $addedProp, 'added_views' => $addedViews];
+    }
+
     /** 스키마 한 줄이 이 파일이 아는 모양인가 (저장 전 마지막 확인) */
     public static function propShapeOk($p): bool
     {
-        if (!is_array($p) || preg_match(self::KEY_RE, (string) ($p['key'] ?? '')) !== 1
+        if (!is_array($p) || !self::isPropKey((string) ($p['key'] ?? ''))
             || self::cleanName($p['name'] ?? null) === null || !in_array($p['type'] ?? null, self::TYPES, true)) {
+            return false;
+        }
+        // Q:F-12 — 섹션 key 는 select 칸으로만 있다(보드 묶기·카드 옮기기가 select 값을 쓴다)
+        if ($p['key'] === self::SECTION_KEY && $p['type'] !== 'select') {
             return false;
         }
         $needsOptions = in_array($p['type'], ['select', 'multi_select'], true);
@@ -538,6 +624,8 @@ final class DbProps
     /**
      * 뷰 한 줄 `{name, type, filter?, sort?, hidden?}` 을 검사한다 — 거르기·정렬은 **지금 스키마로 컴파일이 되는지**까지 본다.
      * 틀리면 null. `id` 는 부르는 쪽이 붙인다.
+     * Q:F-12 — board·list 보기는 `group_by`(`status` 또는 이 DB 의 select 칸 key)를 받는다. 모양 검사는 종류별 칸과 함께
+     * `DbViews::cleanViewOptions` 가 한다(글 칸·없는 key·다른 보기 종류의 group_by 는 null → 400).
      *
      * @return array<string,mixed>|null
      */

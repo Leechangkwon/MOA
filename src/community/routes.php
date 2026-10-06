@@ -157,7 +157,10 @@ const COMMUNITY_ROUTES = [
     ['DELETE', '/api/memories/{id}/like', 'memories_api.php', 'community.write'],
     ['GET', '/api/memories/{id}/comments', 'memories_api.php', 'community.read'],
     ['POST', '/api/memories/{id}/comments', 'memories_api.php', 'community.write'],
+    /* Q:F-12 (WK-8 ② · ARCH 23.8) — 옛 「오늘」 화면은 「내 작업」으로 308 넘김(로그인 관문은 그대로 — 미로그인은 302 로그인).
+       「내 작업」 창구는 담당이 나이거나(①) 담당 없는 내 것 중 상태·기한이 있는 것(②) — 보는 사람의 검색 조건절 안에서만(ARCH 23.4). */
     ['GET', '/today', 'today_page.php', 'community.read'],
+    ['GET', '/api/my-tasks', 'my_tasks.php', 'community.read'],
     ['GET', '/api/briefing', 'briefing.php', 'community.read'],
     // ── 화면 ─────────────────────────────────────────────────
     ['GET',    '/',                          'overview_page.php',   'community.read'],
@@ -2826,6 +2829,111 @@ function community_portfolio_items(int $portfolioId, array $viewer): array
         ];
     }
     return ['items' => $items, 'total' => count($items), 'by_status' => $byStatus];
+}
+
+/* ══════════════════════════════════════════════════════════════════
+ * Q:F-12 B — 「내 작업」 질의 · 프로젝트 색 (커뮤니티 ARCHITECTURE 23.4 · 23.5)
+ *
+ * 판정은 여기 없다 — 목록은 언제나 `community_search_pages_where(보는 사람)`(관리자·게시판 관리자 갈래를 끈 판) 안에서만.
+ * 담당이어도 볼 수 없으면 없고, Admin 이어도 남의 비공개 작업은 섞이지 않는다(C:R-17).
+ * ══════════════════════════════════════════════════════════════════ */
+
+/** 「내 작업」 묶음 — 키와 화면 이름(서버가 Asia/Seoul 날짜로 가른다). 순서 = 화면 순서 */
+const COMMUNITY_MY_TASK_BUCKETS = [
+    'overdue'   => '지난 기한',
+    'today'     => '오늘',
+    'this_week' => '이번 주',
+    'later'     => '나중에',
+    'no_due'    => '기한 없음',
+];
+/** 묶음 하나에 한 번에 내는 줄 수 — 그 밖은 `cursor`(그 묶음 안의 자리 수)로 더 본다 */
+const COMMUNITY_MY_TASK_PAGE = 100;
+/** cursor 상한(자리 수) — 한 사람 작업이 이보다 많은 일은 없다고 보고, 큰 OFFSET 으로 DB 를 오래 붙잡지 않게 */
+const COMMUNITY_MY_TASK_CURSOR_MAX = 10000;
+
+/**
+ * 「내 작업」 행 질의(SQL + 바인딩) — ARCH 23.4 「대상」 그대로.
+ *   ① `p.assignee_id = 나` ② 담당 없음 + **내 것**(개인 공간 소유자 · 팀·게시판은 작성자 — `Briefing::MINE` 과 같은 정의) +
+ *   상태 또는 기한이 있음. 공통: 지우지 않았음 · 기본 `status <> 'done'`(`$done` 이면 `done` 만) ·
+ *   **`community_search_pages_where($u)` AND**. 묶음(`bucket`)은 SQL 이 날짜로 가르고, 묶음마다 `row_number()` 로 자리를 센다.
+ * 글자로 들어가는 것은 이 함수의 고정 조각뿐이고, 날짜·자리·묶음 값은 전부 바인딩이다.
+ *
+ * @param  array<string,mixed> $u
+ * @param  string      $today  Asia/Seoul 오늘(Y-m-d)
+ * @param  string      $sunday 이번 주 일요일(Y-m-d, 오늘이 일요일이면 오늘)
+ * @param  string|null $bucket 한 묶음만(키 — 부르는 쪽이 `COMMUNITY_MY_TASK_BUCKETS` 로 거른 값) 또는 null(다섯 모두)
+ * @return array{0:string,1:array<string,mixed>}
+ */
+function community_my_tasks_sql(array $u, bool $done, string $today, string $sunday, ?string $bucket, int $offset): array
+{
+    [$visible, $visBind] = community_search_pages_where($u);
+    $doneSql   = $done ? "p.status = 'done'" : "p.status IS DISTINCT FROM 'done'";
+    $bucketSql = $bucket === null ? '' : 'AND ranked.bucket = CAST(:mt_bucket AS text)';
+    $sql = <<<SQL
+        WITH mine AS (
+            SELECT p.id, p.public_id, p.title, p.status, p.due_date, p.updated_at, p.database_id, p.assignee_id,
+                   s.kind AS space_kind, s.name AS space_name,
+                   CASE WHEN p.due_date IS NULL THEN 'no_due'
+                        WHEN p.due_date <  CAST(:mt_today AS date)  THEN 'overdue'
+                        WHEN p.due_date =  CAST(:mt_today2 AS date) THEN 'today'
+                        WHEN p.due_date <= CAST(:mt_sunday AS date) THEN 'this_week'
+                        ELSE 'later' END AS bucket
+              FROM community.pages p
+              JOIN community.spaces s ON s.id = p.space_id
+              LEFT JOIN public.users owner ON owner.id = s.owner_user_id
+             WHERE p.deleted_at IS NULL
+               AND (   p.assignee_id = CAST(:mt_me AS bigint)
+                    OR (    p.assignee_id IS NULL
+                        AND CASE WHEN s.kind = 'personal' THEN s.owner_user_id ELSE p.author_id END = CAST(:mt_me2 AS bigint)
+                        AND (p.status IS NOT NULL OR p.due_date IS NOT NULL)))
+               AND {$doneSql}
+               AND {$visible}
+        ), ranked AS (
+            SELECT mine.*, row_number() OVER (PARTITION BY mine.bucket
+                                              ORDER BY mine.due_date ASC NULLS LAST, mine.updated_at DESC, mine.id DESC) AS rn
+              FROM mine
+        )
+        SELECT ranked.id, ranked.public_id, ranked.title, ranked.status, ranked.due_date, ranked.database_id, ranked.assignee_id,
+               ranked.space_kind, ranked.space_name, ranked.bucket, ranked.rn
+          FROM ranked
+         WHERE ranked.rn > CAST(:mt_off AS int) AND ranked.rn <= CAST(:mt_lim AS int)
+           {$bucketSql}
+         ORDER BY ranked.bucket, ranked.rn
+        SQL;
+    $bind = array_merge($visBind, [
+        ':mt_today' => $today, ':mt_today2' => $today, ':mt_sunday' => $sunday,
+        ':mt_me' => (int) $u['id'], ':mt_me2' => (int) $u['id'],
+        ':mt_off' => $offset, ':mt_lim' => $offset + COMMUNITY_MY_TASK_PAGE + 1,
+    ]);
+    if ($bucket !== null) {
+        $bind[':mt_bucket'] = $bucket;
+    }
+    return [$sql, $bind];
+}
+
+/**
+ * 새 프로젝트(「내 할 일」 포함)의 색 — `DbProps::PROJECT_COLORS` 를 그 공간의 프로젝트 수 차례로 돈다(ARCH 23.5).
+ * 수는 **만드는 사람이 볼 수 있는** 프로젝트만 센다(목록·수는 가시성 조건절 안에서만 — 남의 비공개 프로젝트 수가 색으로 새지 않게).
+ *
+ * @param array<string,mixed> $u
+ */
+function community_project_color(array $u, int $spaceId): string
+{
+    [$visible, $visBind] = community_search_pages_where($u);
+    $sql = <<<SQL
+        SELECT count(*) AS n
+          FROM community.databases d
+          JOIN community.pages p ON p.id = d.page_id
+          JOIN community.spaces s ON s.id = p.space_id
+          LEFT JOIN public.users owner ON owner.id = s.owner_user_id
+         WHERE d.purpose IS NOT NULL
+           AND p.space_id = CAST(:pc_space AS bigint)
+           AND p.deleted_at IS NULL
+           AND {$visible}
+        SQL;
+    $r = Db::instance()->run($sql, array_merge($visBind, [':pc_space' => $spaceId]))->fetch();
+    $n = is_array($r) ? (int) $r['n'] : 0;
+    return DbProps::PROJECT_COLORS[$n % count(DbProps::PROJECT_COLORS)];
 }
 
 /**

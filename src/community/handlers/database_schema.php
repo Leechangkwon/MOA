@@ -12,6 +12,10 @@ declare(strict_types=1);
  *   rename   {key, name}              이름 바꾸기
  *   options  {key, options}           선택지 바꾸기(select·multi_select 만). 빠진 선택지를 쓰던 행 값은 그대로 남는다
  *   remove   {key}                    지우기 — 스키마에서만 뺀다. 행의 값은 칸에 남고 화면·창구에서 사라진다(G-4)
+ *   use_as   "project" | "table"      Q:F-12 (WK-16 A · ARCH 23.5) 「프로젝트로 쓰기」 = `purpose='project'` + 섹션 칸(`section`)이 없으면
+ *                                     더하기 + 기본 보기 넷 중 **같은 이름이 없는 것**만 더하기 + 색이 없으면 차례 색 — 다시 불러도 칸·보기가
+ *                                     겹치지 않는다(멱등). 「표로 쓰기」 = `purpose=NULL` **만**(칸·보기·색은 그대로). 「내 할 일」은 바꾸지 않는다(400).
+ *                                     칸·보기 모양은 서버 상수(`DbProps::PROJECT_*`)에서만 — 요청은 이름 하나만 고른다
  *   version  (선택) 읽은 때의 `updated_at` — 다르면 409(두 사람이 같은 스키마를 동시에 고칠 때)
  *
  * 자격: **DB 페이지의 `decidePageManage`**(소유자·팀 공간 팀원) — 편집 공유자는 행을 고칠 수 있지만 스키마는 못 바꾼다.
@@ -28,9 +32,9 @@ if ($dbRow === null) {
 }
 
 $body = Http::jsonBody();
-$ops  = array_values(array_intersect(array_keys($body), ['add', 'rename', 'options', 'remove', 'depends']));
-if (array_diff(array_keys($body), ['add', 'rename', 'options', 'remove', 'depends', 'version']) !== [] || count($ops) !== 1
-    || !is_array($body[$ops[0]])) {
+$ops  = array_values(array_intersect(array_keys($body), ['add', 'rename', 'options', 'remove', 'depends', 'use_as']));
+if (array_diff(array_keys($body), ['add', 'rename', 'options', 'remove', 'depends', 'use_as', 'version']) !== [] || count($ops) !== 1
+    || ($ops[0] === 'use_as' ? !in_array($body['use_as'], ['project', 'table'], true) : !is_array($body[$ops[0]]))) {
     Http::error(400, Http::MSG_BAD_REQUEST);
 }
 $op  = $ops[0];
@@ -72,6 +76,95 @@ $findIndex = static function (array $schema, $key): ?int {
     }
     return null;
 };
+
+/* ─── Q:F-12 「프로젝트로 쓰기」·「표로 쓰기」 (판정은 위 `decidePageManage` 그대로 — 스키마 변경과 같은 자격) ─── */
+if ($op === 'use_as') {
+    $sqlPurpose = <<<'SQL'
+        SELECT d.purpose, d.color FROM community.databases d WHERE d.id = CAST(:id AS bigint)
+        SQL;
+    $cur = $db->run($sqlPurpose, [':id' => (int) $dbRow['id']])->fetch();
+    if (!is_array($cur)) {
+        Http::error(404, Http::MSG_NOT_FOUND);
+    }
+    if ($cur['purpose'] === 'my_tasks') {
+        $bad('「내 할 일」은 프로젝트·표로 바꾸지 않습니다', 'my_tasks');
+    }
+    $views     = community_db_views_of($dbRow['views'], $schema);
+    $toPurpose = $arg === 'project' ? 'project' : null;
+    $color     = $cur['color'] === null ? null : (string) $cur['color'];
+    $added     = ['prop' => false, 'views' => []];
+    if ($toPurpose === 'project') {
+        try {
+            $shape = DbProps::projectPreset($schema, $views);
+        } catch (DomainException $e) {
+            $msg = ['name_taken' => '「섹션」 이름의 속성이 이미 있습니다. 그 속성 이름을 바꾼 뒤 다시 하세요',
+                    'too_many_props' => '속성은 ' . DbProps::MAX_PROPS . '개까지 둡니다',
+                    'too_many_views' => '보기는 ' . DbProps::MAX_VIEWS . '개까지 둡니다'][$e->getMessage()] ?? Http::MSG_BAD_REQUEST;
+            $bad($msg, $e->getMessage());
+        }
+        $schema = $shape['schema'];
+        $views  = $shape['views'];
+        $added  = ['prop' => $shape['added_prop'], 'views' => $shape['added_views']];
+        $color ??= community_project_color($user, (int) $dbPage['space_id']);
+    }
+    $shapeChanged = $added['prop'] || $added['views'] !== [];
+    $changed      = $shapeChanged || $cur['purpose'] !== $toPurpose || $color !== ($cur['color'] === null ? null : (string) $cur['color']);
+    $version      = (string) $dbRow['updated_at'];
+    if ($changed) {
+        // 읽은 스키마·보기가 그대로일 때만 쓴다(다른 스키마 고치기와 같은 낙관 잠금 — 사이에 고쳤으면 0행 → 409)
+        $sqlUse = <<<'SQL'
+            UPDATE community.databases
+               SET purpose = :purpose, color = :color,
+                   schema = CASE WHEN CAST(:shape AS boolean) THEN CAST(:schema AS jsonb) ELSE schema END,
+                   views  = CASE WHEN CAST(:shape2 AS boolean) THEN CAST(:views AS jsonb) ELSE views END,
+                   updated_at = CASE WHEN CAST(:shape3 AS boolean) THEN now() ELSE updated_at END
+             WHERE id = CAST(:id AS bigint)
+               AND updated_at = CAST(:seen AS timestamptz)
+            RETURNING updated_at
+            SQL;
+        $db->begin();
+        try {
+            $done = $db->run($sqlUse, [
+                ':purpose' => $toPurpose, ':color' => $color,
+                ':shape' => $shapeChanged ? 'true' : 'false', ':shape2' => $shapeChanged ? 'true' : 'false',
+                ':shape3' => $shapeChanged ? 'true' : 'false',
+                ':schema' => json_encode(array_values($schema), JSON_UNESCAPED_UNICODE),
+                ':views'  => json_encode(array_values($views), JSON_UNESCAPED_UNICODE),
+                ':id' => (int) $dbRow['id'], ':seen' => (string) $dbRow['updated_at'],
+            ])->fetch();
+            if (!is_array($done)) {
+                $db->rollback();
+                Http::json(['error' => '그 사이 다른 사람이 속성을 바꿨습니다. 새로 고친 뒤 다시 하세요', 'reason' => 'changed'], 409);
+                exit;
+            }
+            Audit::allow('database.schema', [
+                'target_type' => 'page',
+                'target_id'   => (int) $dbPage['id'],
+                'target_name' => $pageTitle,
+                'detail'      => ['page_title' => $pageTitle, 'granted_by' => $manageCode, 'op' => 'use_as', 'to' => (string) $arg,
+                                  'added_prop' => $added['prop'], 'added_views' => $added['views']],
+            ]);
+            $db->commit();
+        } catch (Throwable $e) {
+            $db->rollback();
+            throw $e;
+        }
+        $version = (string) $done['updated_at'];
+    }
+    Http::json([
+        'database' => [
+            'id'      => (string) $dbRow['public_id'],
+            'purpose' => $toPurpose,
+            'color'   => $color,
+            'schema'  => array_values($schema),
+            'views'   => array_values($views),
+            'version' => $version,
+        ],
+        'added'   => $added,
+        'changed' => $changed,
+    ]);
+    exit;
+}
 
 $propName = '';
 switch ($op) {

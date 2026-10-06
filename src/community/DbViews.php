@@ -13,6 +13,9 @@ final class DbViews
             'calendar' => ['date_prop', 'mode'],
             'timeline' => ['date_prop', 'depends_prop', 'scale'],
             'chart' => ['kind', 'group_by', 'bucket', 'aggregate', 'on_prop'],
+            // Q:F-12 (ARCH 23.5) — 보드·목록을 섹션(또는 status · 다른 select 칸)으로 묶는다
+            'board' => ['group_by'],
+            'list' => ['group_by'],
         ];
         return array_merge(self::BASE_FIELDS, $fields[$type] ?? []);
     }
@@ -97,6 +100,14 @@ final class DbViews
                 } elseif (isset($raw['bucket'])) { return null; }
             } elseif (isset($raw['bucket'])) { return null; }
             return $out;
+        }
+        if ($type === 'board' || $type === 'list') {
+            // Q:F-12 — 묶는 칸은 `status` 또는 이 DB 의 **select** 칸 key 만(글 칸·다중 선택·없는 key 는 null → 400).
+            // 행 응답은 그대로이고 묶기는 화면이 한다(database.js drawBoard) — 저장 모양 `{"group_by": "<key>"}`.
+            if (!isset($raw['group_by'])) { return []; }
+            $g = $raw['group_by'];
+            if (!is_string($g) || ($g !== 'status' && (DbProps::find($schema, $g)['type'] ?? null) !== 'select')) { return null; }
+            return ['group_by' => $g];
         }
         return [];
     }

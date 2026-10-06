@@ -173,7 +173,12 @@ final class Briefing
         return $out;
     }
 
-    /** Pure ordering/deduplication. One source action never appears in two groups. */
+    /**
+     * Pure ordering/deduplication. One source action never appears in two groups.
+     * Q:F-12 (WK-8 ② · ARCH 23.4) — 공지(`notice`)는 `top`·`missed` 를 차지하지 않는다(작업 칸에서 뺀다). 공지는 홈의 공지 한 줄과
+     * 받은 알림으로 본다 — 줄 자체는 `others` 에 남아(읽지 않은 공지 · 게시판 읽기 판정 그대로) 홈이 새 창구 없이 쓸 수 있다.
+     * `count`(런처의 「오늘 n건」)는 `top`+`missed` 라 공지를 세지 않는다.
+     */
     public static function group(array $items, DateTimeImmutable $now): array
     {
         $rank = static fn(array $i): int => ['overdue' => 0, 'due_today' => 1, 'review' => 2, 'mention' => 3][$i['kind']] ?? 4;
@@ -188,11 +193,13 @@ final class Briefing
             }
         }
         $items = array_values($unique);
-        $top = array_splice($items, 0, 3);
+        $top = [];
         $missed = [];
         $others = [];
         foreach ($items as $item) {
-            if ($item['missed'] && count($missed) < 2) { $missed[] = $item; }
+            if ($item['kind'] === 'notice') { $others[] = $item; }
+            elseif (count($top) < 3) { $top[] = $item; }
+            elseif ($item['missed'] && count($missed) < 2) { $missed[] = $item; }
             else { $others[] = $item; }
         }
         return ['generated_at' => $now->format(DATE_ATOM), 'top' => $top, 'missed' => $missed,
