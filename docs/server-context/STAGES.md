@@ -277,3 +277,7 @@
 ## ChatGPT 원격 MCP — 2026-10-04 클라우드 후보
 
 사용자 “GPT 연결” 질문 후 원격 MCP 방식을 선택(“1번!”). 최신 main b4e2ad6(v2.47.0 배포 기록)에서 `cloud/chatgpt-remote-mcp`로 진행한다. OAuth 로그인·권한별 승인·본인 글/사진/여행 도구와 해제를 구현하고 별도 검토한다. Git2 push는 배포·현재 채팅 연결을 의미하지 않는다. 상세 `tbox-v2/docs/work-items/chatgpt-remote-mcp.md`, 사용자 안내 `tbox-v2/docs/chatgpt-remote-mcp.md`. 서버 부모 원본에 이 절을 diff 병합한다.
+
+### 2026-10-06 Q:F-11 어느 화면에서나 이어지는 메신저 — v2.50.0 운영 반영
+
+사용자 결정(공용 창 = 모아 메신저 하나 · 이어 열기 + 떠 있는 창 · 커뮤니티 대화 창 대체 · 꾸미기 → 모아 AI · 전송 시도 분당 120 상한 · 사이드바 옛 링크 빼기 · AI 도구 창 단추 테두리 유지)으로 지시서 A(바닥)·B(창)·C(정리)·보정 D 를 Opus 가 격리 worktree 에서 구현, Fable 이 바닥을 먼저 · 묶음을 한 번 · 보정을 확인(차단·중요 0). 운영 v2.50.0 `03f77ac` — migration1·코드59+삭제4·nginx0, 운영 HTTPS 78/78, 데이터·원본1029파일 보존. 실물 휴대폰·자기 공격 미검증. 상세 `docs/qf11-floating-messenger-directive.md` 끝 「운영 반영 결과」.

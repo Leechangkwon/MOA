@@ -233,3 +233,9 @@ B 가 끝나면 멈춘다 — 메인 세션이 묶음 전체 diff 로 독립 검
 | D-1 이어 열 상대 404(검토 ①) | 창 모드에서 저장된 상대가 `GET /api/messages/{num}` 404 이면 상태만 지우고 `peer` 변수가 남아 `pagehide` 의 `saveState()` 가 그 번호를 다시 쓴다 → 화면마다 404 GET 반복 · 숨은 머리 「불러오는 중…」 · 입력 칸 enabled. `messenger.js:823`(또는 `:665`) 의 404 갈래에서 `peer=null; peerProfile=null;` 세대 증가 · 입력 칸 disabled · 목록 보기로. 단언: 없는 상대 번호를 상태에 넣고 화면 둘을 옮겨 다님 → 404 요청 **1회** · 다음 화면 상태에 그 번호 0 · 입력 칸 disabled · 콘솔 0 |
 | D-2 옛 창을 부르는 시험(검토 ②) | `tests/community/memories_http.py:91-116`(`GET /api/messenger` 401 기대 → 이제 404) 를 「사람 대화 6 라우트 404 · GPT 2 라우트 휴면(GET 200 `{enabled:false}` · POST 503)」 확인으로 바꾸고, `tests/community/memories_runtime_browser.py:41-47` 의 `#community-messenger` 대기를 떠 있는 창(`#messenger-window` · `[data-messenger-open]`)으로 바꾼다. 두 스위트가 끝까지 도는 출력 원문 |
 | D-3 부품 판 시험(검토 ③) | `tests/community/asset_version.sh` `fresh_copy()`(:39-43) 가 `public/assets/messenger.js` 도 임시 사본에 복사 → ② 통과(기준선 36/0 과 같은 수) |
+
+---
+
+## 운영 반영 결과 (2026-10-06 · 메인 세션)
+
+v2.50.0 `03f77ac`(태그 `v2.50.0`, 검토 기준 `selftest-base/qf11`=9390322 · `review-base/qf11`=e031622 · 번들 sha256 2847…8a65). 순서: 운영 DB 사본 마이그레이션 2회(행·소유자·ACL 보존) → 암호화 백업(`/var/backups/tbox-v2/qf11-messenger-20261006`, 복호화 확인) → 임시 사본 적용 연습(파일 59·삭제 4) → 마이그레이션 → 코드 ff-merge · php-fpm reload → 운영 HTTPS 78/78 → push(main · v2.50.0 · 검토 태그 둘). 표 15개 행 해시·소유자·ACL·저장 원본 1029파일 보존, nginx 변경 0. 결과 원문 `~/qaredi-qf11-results-20261006/deploy/`·`post/`. 남은 것: 실물 휴대폰 · 사용자 자기 공격(관문 ③) · `q_launcher.sh` 옛 기대값 17건 정리(이번 변경과 무관 — SECURITY 7장 Q:F-11 절 5).
