@@ -35,11 +35,13 @@ contains() {
 }
 ver() { php "$SCRIPT" --print --root "$1" | sed -n "s/^$2=//p"; }
 
-# 임시 사본 — 커뮤니티 부품 폴더만(스크립트는 --root 로 이 사본을 본다)
+# 임시 사본 — 커뮤니티 부품 폴더 + 폴더 밖 진입 파일 messenger.js(스크립트는 --root 로 이 사본을 본다 ·
+# 스크립트의 OUTSIDE_ENTRIES 가 이 파일을 반드시 찾는다 — Q:F-11 보정 D-3)
 fresh_copy() {
   rm -rf "$TMP/app"
   mkdir -p "$TMP/app/public/assets"
   cp -a "$ROOT/public/assets/community" "$TMP/app/public/assets/"
+  cp -a "$ROOT/public/assets/messenger.js" "$TMP/app/public/assets/"
 }
 
 hr "① 저장소 그대로"
