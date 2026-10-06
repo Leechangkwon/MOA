@@ -130,6 +130,8 @@ if (!$mayRead) {
         Http::error(404, Http::MSG_NOT_FOUND);
     }
     if ($readCode === CommunityAuthz::CODE_NOT_OWNER) {
+        // 거부 감사는 되돌린 **뒤** 쓴다 — 열린 트랜잭션 안에서 쓰면 요청 끝 되돌림에 감사 행도 사라진다(RV-A2).
+        $db->rollback();
         Audit::deny('page.read', CommunityAuthz::CODE_NOT_OWNER, [
             'target_type' => 'page',
             'target_id'   => $pageId,
@@ -203,6 +205,7 @@ if ($hasResolved) {
 }
 
 if (!$mayChange) {
+    $db->rollback();   // 위 담당 거부와 같은 모양 — 되돌린 뒤 감사(RV-A2)
     Audit::deny('page.property', CommunityAuthz::CODE_NOT_OWNER, [
         'target_type' => 'page',
         'target_id'   => $pageId,

@@ -2741,7 +2741,9 @@ function community_portfolio_event(int $portfolioId, string $kind, ?int $pageId,
 /**
  * 포트폴리오의 항목 · 총수 · 상태별 수 · 진행률 — **보는 사람이 볼 수 있는 프로젝트만** (ARCH 23.7 「질의」, C:R-16).
  *
- * ★ 항목은 `community_visible_pages_where(보는 사람)` 안에서만 읽는다 — 볼 수 없는 프로젝트는 줄이 없다.
+ * ★ 항목은 `community_search_pages_where(보는 사람)` 안에서만 읽는다 — 볼 수 없는 프로젝트는 줄이 없다.
+ *   관리자·게시판 관리자 갈래가 **꺼진** 판이다(A 독립 검토 RV-A1) — 켜진 판이면 관리자가 남의 비공개 프로젝트 이름·상태 글·
+ *   진행을 문서별 열람 감사 없이 본다. 관리자도 자기 몫으로 볼 수 있는 프로젝트만 보인다.
  *   총수·상태별 수는 **그 결과에서만** 센다(「n개 숨김」 같은 수를 만들지 않는다 — 숨은 것의 존재가 새지 않게).
  * ★ 진행률 = 그 DB 의 행 중 **같은 조건절**을 지난 것의 done/전체 — 사람마다 다를 수 있다(화면 안내, DESIGN 2.22).
  *   최근 상태 = `project_status_updates` 의 마지막 줄. 프로젝트 담당 = 소유자(개인 공간)·작성자(그 밖)의 아이디·이름.
@@ -2752,7 +2754,7 @@ function community_portfolio_event(int $portfolioId, string $kind, ?int $pageId,
 function community_portfolio_items(int $portfolioId, array $viewer): array
 {
     $db = Db::instance();
-    [$visible, $visBind] = community_visible_pages_where($viewer);
+    [$visible, $visBind] = community_search_pages_where($viewer);
     $sqlItems = <<<SQL
         SELECT p.id, p.public_id, p.title, p.icon, p.due_date, s.kind AS space_kind,
                owner.username  AS owner_name,  owner.display_name  AS owner_display_name,

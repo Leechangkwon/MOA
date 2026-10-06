@@ -386,6 +386,95 @@ try:
     check(pb_['owner'] == {'username': 'claude_employee01', 'display_name': None} and pb_['project']['color'] == 'sand',
           'Q:T-37 project owner = space owner · color')
 
+    # ════════ A-8 검토 반영(재지시 1) — RV-A1 · RV-A2 ═════════════════════
+    # 고치기 전 판(b9e3c2c)에서 둘 다 실패함을 한 번에 보이려고, 이 절의 단언은 **모아 두었다가** 절 끝에서 한꺼번에 판정한다
+    # (앞 단언이 실패해도 RV-A2 까지 돌아 FAIL 줄이 모두 찍힌다). 결과 파일에는 이름·참/거짓만 남는 것은 같다.
+    a8_failed = []
+
+    def soft(ok, name):
+        checks.append({'pass': bool(ok), 'name': name})
+        print(('PASS ' if ok else 'FAIL ') + name, flush=True)
+        if not ok:
+            a8_failed.append(name)
+
+    # 팀 X 구성원이기도 한 Admin MX — 시험 준비로만 한 줄(fixture 와 같은 모양의 세션 · CSRF, 결과 파일에 값 0)
+    mx_id = n("INSERT INTO users(username,password_hash,role,team_id,mfa_secret,mfa_enabled,expires_at) VALUES('claude_qf12_admin_x','x','Admin',"
+              + str(team_x) + ",'JBSWY3DPEHPK3PXP',true,clock_timestamp()+interval '1 day') RETURNING id")
+    mx_session = uuid.uuid4().hex + uuid.uuid4().hex
+    mx_hash = hashlib.sha256(mx_session.encode()).hexdigest()
+    sql("INSERT INTO sessions(id,user_id,expires_at,ip,user_agent) VALUES('" + mx_hash + "'," + str(mx_id)
+        + ",clock_timestamp()+interval '8 hours','127.0.0.1','tbox-review/" + time.strftime('%Y-%m-%d') + "')")
+    users['admin_x'] = {'id': mx_id, 'session': mx_session,
+                        'csrf': php("echo hash_hmac('sha256','csrf:" + mx_hash + "',Env::get('APP_SECRET'));")}
+    NAMES['MX'] = 'admin_x'
+    check(req('GET', '/api/me/space', None, 'MX').status_code == 200 and n("SELECT team_id FROM users WHERE id=" + str(mx_id)) == team_x
+          and n("SELECT team_id FROM users WHERE username='claude_admin01'") == 0, 'A-8 fixture: Admin MX in team X (session works) · Admin M without team')
+
+    # RV-A1 준비 — 사내 공개 프로젝트 PI(A 개인 공간): 행 4개 중 2개(완료 1 · 미완료 1)를 비공개로. M 은 관리자 특권 없이도
+    # 사내 공개로 PI 를 보므로, 「관리자 열람으로만 보이는 행이 진행률 분모에 들어가는가」를 M 에게서도 잰다.
+    PI = make_project('QF12 사내 프로젝트 PI', color='peach')
+    expect('PATCH', '/api/pages/' + PI['id'] + '/visibility', {'visibility': 'internal'}, 'A', 200, 'A-8 PI visibility internal')
+    pi_rows = [expect('POST', '/api/pages', {'title': 'QF12 PI 행 ' + str(i), 'parent_id': PI['id'], 'properties': {}}, 'A', 201,
+                      'A-8 PI row ' + str(i)).json()['page']['id'] for i in range(1, 5)]
+    for r_ in pi_rows[:2]:
+        expect('PATCH', '/api/pages/' + r_ + '/properties', {'status': 'done'}, 'A', 200, 'A-8 PI row done')
+    for r_ in (pi_rows[0], pi_rows[2]):
+        expect('PATCH', '/api/pages/' + r_ + '/visibility', {'visibility': 'private'}, 'A', 200, 'A-8 PI hide row (private child)')
+    check(req('GET', '/api/pages/' + pi_rows[0], None, 'C').status_code == 403 and req('GET', '/api/pages/' + pi_rows[1], None, 'C').status_code == 200
+          and req('GET', '/api/pages/' + pi_rows[0], None, 'M').status_code == 200,
+          'A-8 fixture: hidden PI rows unreadable for a writer (C) · readable for Admin M only by admin_all')
+    expect('POST', '/api/portfolios/' + PF + '/items', {'project': PI['id']}, 'A', 201, 'A-8 add PI to PF')
+    pa_title, pa_note = 'QF12 비밀 프로젝트 PA', '비밀 진행'
+
+    for label, viewer in [('Admin M (admin_all, no team)', 'M'), ('Admin MX (also team X member)', 'MX')]:
+        rr = req('GET', '/api/portfolios/' + PF, None, viewer)
+        soft(rr.status_code == 200, 'RV-A1 ' + label + ' reads PF → 200 (got ' + str(rr.status_code) + ')')
+        body = rr.json() if rr.status_code == 200 else {'items': [], 'total': -1, 'by_status': {}}
+        ids = [i['project']['id'] for i in body['items']]
+        soft(PA['id'] not in ids, 'RV-A1 ' + label + ': A private project PA row 0')
+        soft(body['total'] == len(ids) and body['by_status'].get('off_track', -1) == 0 and sum(body['by_status'].values()) == len(ids),
+             'RV-A1 ' + label + ': total · by_status do not count PA (off_track 0)')
+        soft(pa_title not in rr.text and PA['id'] not in rr.text and pa_note not in rr.text,
+             'RV-A1 ' + label + ': raw response has no PA title · public_id · status note')
+        pi_item = next((i for i in body['items'] if i['project']['id'] == PI['id']), None)
+        soft(pi_item is not None and pi_item['progress'] == {'done': 1, 'total': 2},
+             'RV-A1 ' + label + ': PI progress 1/2 — rows visible only by admin_all are not in numerator/denominator')
+        codes['rv_a1_' + viewer] = {'ids': sorted('PA' if x == PA['id'] else 'PX' if x == PX['id'] else 'PQ' if x == PQ['id'] else 'PI' if x == PI['id'] else '?' for x in ids),
+                                    'total': body['total'], 'off_track': body['by_status'].get('off_track'),
+                                    'pi_progress': None if pi_item is None else pi_item['progress'],
+                                    'pq_progress': next((i['progress'] for i in body['items'] if i['project']['id'] == PQ['id']), None)}
+    soft(codes['rv_a1_M']['ids'] == ['PI'], 'RV-A1 Admin M (no team) sees exactly the project it can see as itself (PI) — not PA · PX · PQ')
+    soft(codes['rv_a1_MX']['ids'] == ['PI', 'PQ', 'PX'] and codes['rv_a1_MX']['pq_progress'] == {'done': 2, 'total': 3},
+         'RV-A1 Admin MX (team X) sees PI · PQ · PX like a member · PQ progress 2/3 (same as member B)')
+    vb2 = req('GET', '/api/portfolios/' + PF, None, 'B').json()
+    soft(sorted(i['project']['id'] for i in vb2['items']) == sorted([PX['id'], PQ['id'], PI['id']]), 'RV-A1 member B unchanged: PX · PQ · PI')
+
+    # RV-A2 ① 볼 수 없는 사람(C → A 의 비공개 P1)이 속성 바꾸기 → 403 · 감사 page.read|deny|not_owner DB 행 +1
+    p1i = pk(P1)
+    before_read = audits('page.read', 'deny', 'not_owner', 'claude_employee02', p1i)
+    r_ = req('PATCH', '/api/pages/' + P1 + '/properties', {'status': 'done'}, 'C')
+    soft(r_.status_code == 403, 'RV-A2 C (cannot read P1) PATCH properties → 403 (got ' + str(r_.status_code) + ')')
+    after_read = audits('page.read', 'deny', 'not_owner', 'claude_employee02', p1i)
+    codes['rv_a2_page_read_rows'] = str(before_read) + '→' + str(after_read)
+    soft(after_read == before_read + 1, 'RV-A2 audit_logs page.read|deny|not_owner DB row +1 (' + codes['rv_a2_page_read_rows'] + ')')
+    soft(q1("SELECT coalesce(status,'∅') FROM community.pages WHERE id=" + str(p1i)) == '∅', 'RV-A2 P1 status unchanged')
+
+    # RV-A2 ② 볼 수는 있으나 고칠 수 없는 사람(C → A 의 사내 공개 페이지) → 403 · 감사 page.property|deny|not_owner DB 행 +1 · 값 불변
+    PN = new_page('QF12 사내 공개 문서')['id']
+    expect('PATCH', '/api/pages/' + PN + '/visibility', {'visibility': 'internal'}, 'A', 200, 'RV-A2 PN visibility internal')
+    pni = pk(PN)
+    check(req('GET', '/api/pages/' + PN, None, 'C').status_code == 200, 'RV-A2 fixture: C can read internal PN')
+    before_prop = audits('page.property', 'deny', 'not_owner', 'claude_employee02', pni)
+    r_ = req('PATCH', '/api/pages/' + PN + '/properties', {'status': 'doing'}, 'C')
+    soft(r_.status_code == 403, 'RV-A2 C (reads, cannot change PN) PATCH properties → 403 (got ' + str(r_.status_code) + ')')
+    after_prop = audits('page.property', 'deny', 'not_owner', 'claude_employee02', pni)
+    codes['rv_a2_page_property_rows'] = str(before_prop) + '→' + str(after_prop)
+    soft(after_prop == before_prop + 1, 'RV-A2 audit_logs page.property|deny|not_owner DB row +1 (' + codes['rv_a2_page_property_rows'] + ')')
+    soft(q1("SELECT coalesce(status,'∅') FROM community.pages WHERE id=" + str(pni)) == '∅'
+         and n("SELECT count(*) FROM community.page_property_events WHERE page_id=" + str(pni)) == 0, 'RV-A2 PN status unchanged · no property event')
+    if a8_failed:
+        raise AssertionError('A-8: ' + str(len(a8_failed)) + ' failed')
+
     # ════════ 한도 ════════════════════════════════════════════════════
     filler = [n("INSERT INTO community.pages(space_id,title,doc,author_id,last_edited_by) VALUES("
                 + str(space_x) + ",'QF12 채움 " + str(i) + "','{\"schema\":1,\"blocks\":[]}'," + str(uid('A')) + ',' + str(uid('A')) + ') RETURNING id')

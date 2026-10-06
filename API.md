@@ -1100,7 +1100,7 @@ POST /tbox/api/me/api-tokens scope=["community.read","session.open"] (묶음이 
 | 보기 | `decidePortfolioRead` — 지워짐 `not_found` · 그 팀 공간의 구성원 `team_member` · Admin `admin_all`(읽기만 — 감사 `portfolio.read\|allow\|admin_all`, 목록·한 건 모두) · 그 밖 `not_member`(감사 `portfolio.read\|deny\|not_member`) |
 | 만들기·이름·지우기·빼기 | `decidePortfolioManage` — 구성원 + 쓰기 자격. Admin(구성원이 아니면)·손님은 거부 |
 | 넣기 | `decidePortfolioAdd` — 관리 자격 + 넣는 사람이 그 프로젝트를 **관리자 특권(`admin_all`·`board_moderator`) 말고** 볼 수 있음(`project_not_readable`) + `purpose='project'`(`not_project` → 400) |
-| 항목 · 수 · 진행률 | **보는 사람의 목록 조건절(`community_visible_pages_where`) 안에서만** — 볼 수 없는 프로젝트는 줄이 없고 `total`·`by_status` 도 그 결과에서만 센다(「n개 숨김」 같은 칸 0). 진행률 = 그 DB 의 행 중 같은 조건절을 지난 것의 `done`/전체 — 사람마다 다를 수 있다 |
+| 항목 · 수 · 진행률 | **보는 사람의 검색 조건절(`community_search_pages_where` — 관리자·게시판 관리자 갈래를 끈 판) 안에서만** — 볼 수 없는 프로젝트는 줄이 없고 `total`·`by_status` 도 그 결과에서만 센다(「n개 숨김」 같은 칸 0). **관리자도 자기 몫으로 볼 수 있는 프로젝트만** 보인다(포트폴리오를 `admin_all` 로 읽어도 남의 비공개 프로젝트 줄은 없다 — A 검토 RV-A1). 진행률 = 그 DB 의 행 중 같은 조건절을 지난 것의 `done`/전체 — 사람마다 다를 수 있다 |
 | 빼기 | 빼는 사람이 그 프로젝트를 (관리자 특권 없이) 볼 수 있을 때만 줄을 찾는다(`community_search_pages_where`) — 아니면 404 |
 
 | 실패 | 응답 |
