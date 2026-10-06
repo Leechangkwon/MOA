@@ -39,8 +39,11 @@ def page_html(shared='', profile='', post=''):
     travel = (ROOT / 'src/community/handlers/travel_plans_panel.php').read_text().replace('<?php declare(strict_types=1); ?>', '')
     component = component.replace("<?php if (!$isShared): require __DIR__ . '/travel_plans_panel.php'; endif; ?>", '' if shared else travel)
     component = re.sub(r'<\?php if \(!\$isShared\): \?>(.*?)<\?php endif; \?>', lambda m: '' if shared else m[1], component, flags=re.S)
+    # Q:F-11 B: 메신저 단추·「모아 AI 에게 묻기」는 서버 $threadsMessenger(쓰기 자격 · 역할로 보기 아님 · 공유 보기 아님)일 때만 — 고정 사용자는 쓰기 가능
+    component = re.sub(r'<\?php if \(\$threadsMessenger\): \?>(.*?)<\?php endif; \?>', lambda m: '' if shared else m[1], component, flags=re.S)
+    component = component.replace("<?= $threadsMessenger ? '' : ' hidden' ?>", ' hidden' if shared else '')
     component = render_expressions(component, shared, profile, post)
-    css = '<link rel="stylesheet" href="/tbox/assets/app.css"><link rel="stylesheet" href="/tbox/assets/community/community.css"><link rel="stylesheet" href="/tbox/assets/community/memories.css"><link rel="stylesheet" href="/tbox/assets/community/messenger.css"><link rel="stylesheet" href="/tbox/assets/design.css"><link rel="stylesheet" href="/tbox/assets/community/travel-plans.css">'
+    css = '<link rel="stylesheet" href="/tbox/assets/app.css"><link rel="stylesheet" href="/tbox/assets/community/community.css"><link rel="stylesheet" href="/tbox/assets/community/memories.css"><link rel="stylesheet" href="/tbox/assets/design.css"><link rel="stylesheet" href="/tbox/assets/community/travel-plans.css">'
     head = '<!doctype html><html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">'+css+'</head>'
     if shared:
         return head+'<body class="threads-public">'+component+'</body></html>'
@@ -48,9 +51,7 @@ def page_html(shared='', profile='', post=''):
     nav = shell[shell.index('    <p class="nav-title">우리의 이야기'):shell.index('    <p class="nav-title">내 공간')]
     nav = render_expressions(nav)
     wrapper = '<body data-page="community-threads" data-base="/tbox" data-community-base="/community"><div class="app"><header class="appbar"><span class="appbar__brand">커뮤니티</span><button class="btn btn--quiet" data-messenger-open>메신저</button></header><aside class="sidebar"><div class="brand"><span class="brand__name">커뮤니티</span></div><p class="brand__sub">일상 · 이야기 · 함께하는 공간</p>'+nav+'<p class="nav-title">내 공간</p><nav class="nav"><a class="nav__item" href="/community/workspace">내 공간</a><a class="nav__item" href="/community/today">오늘</a><a class="nav__item" href="/community/workspace?space=team">팀 공간</a><a class="nav__item" href="/community/workspace">게시판</a></nav></aside><main id="main" class="main">'
-    messenger = render_expressions((ROOT / 'src/views/community_messenger.php').read_text())
-    messenger = messenger.replace('<?php declare(strict_types=1); ?>', '')
-    result = head+wrapper+component+'</main></div>'+messenger+'</body></html>'
+    result = head+wrapper+component+'</main></div></body></html>'
     assert '<?' not in result
     return result
 
