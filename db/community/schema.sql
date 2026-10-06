@@ -762,3 +762,81 @@ CREATE TABLE IF NOT EXISTS community.embedding_queue (
     available_at TIMESTAMPTZ NOT NULL DEFAULT now(), updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS embedding_queue_pending_idx ON community.embedding_queue(available_at,page_id) WHERE state='pending';
+
+-- ─────────────────────────────────────────────────────────────
+-- Q:F-12 업무 화면 — 담당자 · 프로젝트 · 포트폴리오 (지시서 A · 커뮤니티 ARCHITECTURE 23.2)
+--   이미 있는 DB 는 db/migrations/2026-10-19_qf12_work.sql 이 **같은 모양**을 만든다(이 절은 그 파일의 1~5 절과
+--   같은 문장이다 — 권한 6 절은 db/community/grants.sql 끝 절). `pages.assignee_id` 는 4-D 의 열 그대로 다시 쓴다.
+--   ★ project_status_updates · portfolio_events 는 앱 계정 SELECT · INSERT 만(지울 수 없는 기록 — grants.sql).
+-- ─────────────────────────────────────────────────────────────
+ALTER TABLE community.databases ADD COLUMN IF NOT EXISTS purpose TEXT
+    CONSTRAINT databases_purpose_check CHECK (purpose IN ('project','my_tasks'));
+ALTER TABLE community.databases ADD COLUMN IF NOT EXISTS color TEXT
+    CONSTRAINT databases_color_check CHECK (color IN ('peach','lilac','mint','sand'));
+
+CREATE TABLE IF NOT EXISTS community.my_tasks_projects (
+    user_id BIGINT PRIMARY KEY REFERENCES public.users(id),
+    page_id BIGINT NOT NULL UNIQUE REFERENCES community.pages(id)
+);
+
+CREATE TABLE IF NOT EXISTS community.project_status_updates (
+    id         BIGSERIAL   PRIMARY KEY,
+    page_id    BIGINT      NOT NULL REFERENCES community.pages(id),
+    status     TEXT        NOT NULL CONSTRAINT project_status_updates_status_check
+                           CHECK (status IN ('on_track','at_risk','off_track','on_hold','complete')),
+    note       TEXT        NOT NULL DEFAULT '' CONSTRAINT project_status_updates_note_check
+                           CHECK (char_length(note) <= 280),
+    by_user_id BIGINT      NOT NULL REFERENCES public.users(id),
+    at         TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS project_status_updates_page_at ON community.project_status_updates (page_id, at DESC);
+
+CREATE TABLE IF NOT EXISTS community.portfolios (
+    id         BIGSERIAL   PRIMARY KEY,
+    public_id  UUID        NOT NULL UNIQUE DEFAULT gen_random_uuid(),
+    space_id   BIGINT      NOT NULL REFERENCES community.spaces(id),
+    name       TEXT        NOT NULL CONSTRAINT portfolios_name_check CHECK (char_length(name) BETWEEN 1 AND 80),
+    created_by BIGINT      NOT NULL REFERENCES public.users(id),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    deleted_at TIMESTAMPTZ
+);
+CREATE UNIQUE INDEX IF NOT EXISTS portfolios_space_name ON community.portfolios (space_id, lower(name)) WHERE deleted_at IS NULL;
+
+CREATE TABLE IF NOT EXISTS community.portfolio_items (
+    portfolio_id BIGINT      NOT NULL REFERENCES community.portfolios(id),
+    page_id      BIGINT      NOT NULL REFERENCES community.pages(id),
+    position     INT         NOT NULL DEFAULT 0,
+    added_by     BIGINT      NOT NULL REFERENCES public.users(id),
+    added_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
+    PRIMARY KEY (portfolio_id, page_id)
+);
+
+CREATE TABLE IF NOT EXISTS community.portfolio_events (
+    id           BIGSERIAL   PRIMARY KEY,
+    portfolio_id BIGINT      NOT NULL REFERENCES community.portfolios(id),
+    kind         TEXT        NOT NULL CONSTRAINT portfolio_events_kind_check
+                             CHECK (kind IN ('create','rename','add','remove','delete')),
+    page_id      BIGINT      REFERENCES community.pages(id),
+    from_value   TEXT,
+    to_value     TEXT,
+    by_user_id   BIGINT      NOT NULL REFERENCES public.users(id),
+    at           TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS portfolio_events_portfolio_at ON community.portfolio_events (portfolio_id, at DESC);
+
+-- 알림 종류 'assigned' — 누적 CHECK 의 다음 판(지금 정의를 읽어 OR 로 잇는다. 마이그레이션 5 절과 같은 문장)
+DO $$
+DECLARE c record;
+BEGIN
+    FOR c IN SELECT conname, pg_get_constraintdef(oid) AS definition FROM pg_constraint
+              WHERE conrelid = 'community.notifications'::regclass AND contype = 'c'
+                AND pg_get_constraintdef(oid) LIKE '%kind%'
+    LOOP
+        IF position('''assigned''' in c.definition) = 0 THEN
+            EXECUTE format('ALTER TABLE community.notifications DROP CONSTRAINT %I', c.conname);
+            EXECUTE format('ALTER TABLE community.notifications ADD CONSTRAINT %I CHECK ((%s) OR kind = ''assigned'')',
+                c.conname, substring(c.definition from 8 for length(c.definition) - 8));
+        END IF;
+    END LOOP;
+END
+$$;

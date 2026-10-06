@@ -239,3 +239,40 @@ DO $$ BEGIN
   GRANT SELECT ON SEQUENCE community.messages_id_seq,community.gpt_turns_id_seq TO tbox_backup;
  END IF;
 END $$;
+
+-- ─── Q:F-12 업무 화면 (지시서 A · 커뮤니티 ARCHITECTURE 23.2) — 표 다섯.
+--     표를 만드는 것은 db/community/schema.sql(새 설치)·db/migrations/2026-10-19_qf12_work.sql(기존 DB)이고, 이 절은 **같은
+--     권한**을 다시 건다(마이그레이션 6 절과 같은 줄). 표가 없으면(마이그레이션 전) NOTICE 만 남기고 건너뛴다.
+--   my_tasks_projects       SELECT · INSERT · DELETE(지운 페이지 정리 — UPDATE 없음)
+--   project_status_updates  ★ SELECT · INSERT 만(지울 수 없는 기록 — page_property_events 와 같은 취급)
+--   portfolios              SELECT · INSERT · UPDATE(이름 · deleted_at) — ★ DELETE 없음(지우기 = deleted_at)
+--   portfolio_items         SELECT · INSERT · UPDATE(position) · DELETE(빼기 — 사건은 portfolio_events)
+--   portfolio_events        ★ SELECT · INSERT 만
+--   tbox_backup             SELECT 만 · tbox_perm · tbox_push 0
+DO $$
+BEGIN
+    IF to_regclass('community.portfolio_events') IS NULL OR to_regclass('community.my_tasks_projects') IS NULL THEN
+        RAISE NOTICE 'Q:F-12 표가 없다 — db/migrations/2026-10-19_qf12_work.sql 을 먼저 돌린다(이 절은 건너뜀)';
+        RETURN;
+    END IF;
+    REVOKE ALL ON community.my_tasks_projects, community.project_status_updates, community.portfolios,
+                  community.portfolio_items, community.portfolio_events FROM tbox_app, tbox_backup;
+    IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'tbox_perm') THEN
+        EXECUTE 'REVOKE ALL ON community.my_tasks_projects, community.project_status_updates, community.portfolios, community.portfolio_items, community.portfolio_events FROM tbox_perm';
+    END IF;
+    IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'tbox_push') THEN
+        EXECUTE 'REVOKE ALL ON community.my_tasks_projects, community.project_status_updates, community.portfolios, community.portfolio_items, community.portfolio_events FROM tbox_push';
+    END IF;
+    GRANT SELECT, INSERT, DELETE         ON community.my_tasks_projects      TO tbox_app;
+    GRANT SELECT, INSERT                 ON community.project_status_updates TO tbox_app;
+    GRANT SELECT, INSERT, UPDATE         ON community.portfolios             TO tbox_app;
+    GRANT SELECT, INSERT, UPDATE, DELETE ON community.portfolio_items        TO tbox_app;
+    GRANT SELECT, INSERT                 ON community.portfolio_events       TO tbox_app;
+    GRANT USAGE, SELECT ON SEQUENCE community.project_status_updates_id_seq, community.portfolios_id_seq,
+                                    community.portfolio_events_id_seq TO tbox_app;
+    GRANT SELECT ON community.my_tasks_projects, community.project_status_updates, community.portfolios,
+                    community.portfolio_items, community.portfolio_events TO tbox_backup;
+    GRANT SELECT ON SEQUENCE community.project_status_updates_id_seq, community.portfolios_id_seq,
+                             community.portfolio_events_id_seq TO tbox_backup;
+END
+$$;

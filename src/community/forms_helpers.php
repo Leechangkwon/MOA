@@ -108,7 +108,8 @@ function community_form_create_response(array $dbRow, array $dbPage, array $view
         $shared = true;
     }
     if ($view['notify']) {
-        $recipient = $dbPage['assignee_id'] ?? (($dbPage['space_kind'] ?? '') === 'personal' ? $dbPage['space_owner_user_id'] : $dbPage['author_id']);
+        // Q:F-12 (C:R-15) — 소유자(개인 공간)/작성자(그 밖)만. 담당(assignee_id)은 응답 알림을 받는 권한이 아니다.
+        $recipient = ($dbPage['space_kind'] ?? '') === 'personal' ? $dbPage['space_owner_user_id'] : $dbPage['author_id'];
         if ($recipient !== null) { community_notify((int)$recipient, 'form_response', $page, null, isset($actor['id']) ? (int)$actor['id'] : null); }
     }
     $canRead = $actor !== null && !$view['anonymous'] && ($shared || CommunityAuthz::decidePageRead($actor,$page)[0]);

@@ -232,8 +232,27 @@ const COMMUNITY_ROUTES = [
     /* ── 상태 칸 (4-D, C:F-37) ──
      * 바꾸는 창구는 `community.write` + 행 단위 `decidePageChange`(소유자·편집 공유자·팀원).
      * 5-A — **담당자 지정은 멈췄다**(사용자 결정: 담당자 = 소유자, 바꾸는 일은 인계다).
-     * 그래서 `GET /api/assignees` 는 표에서 빠졌고, 이 창구는 `status` 한 칸만 받는다. */
+     * 그래서 `GET /api/assignees` 는 표에서 빠졌고, 이 창구는 `status` 한 칸만 받는다.
+     * Q:F-12 (WK-3 ② · WK-14 A, ARCH 23.3) — 담당을 **소유자와 따로** 다시 쓴다. 담당 쓰기는 이 창구의 `assignee` 키 한 곳
+     * (`decidePageAssign` → `decideAssignTarget`), 후보는 `…/assignee-candidates`(정책 community.write — 맡기는 화면에서만 쓴다,
+     * 판정은 같은 두 함수). 담당은 볼·고칠 권한을 주지 않는다. */
     ['PATCH',  '/api/pages/{id}/properties',             'pages_properties.php', 'community.write'],
+    ['GET',    '/api/pages/{id}/assignee-candidates',    'assignee_candidates.php', 'community.write'],
+
+    /* ── Q:F-12 프로젝트 상태 · 포트폴리오 (WK-12 · WK-13, ARCH 23.6 · 23.7) ──
+     * `{id}` 는 프로젝트(데이터베이스 페이지)·포트폴리오의 public_id(UUID), `{num}` 은 공간 번호(공간 창구와 같은 식별자).
+     * 상태 쓰기 = `decidePageChange`, 읽기 = `decidePageRead` — 고치기·지우기 창구는 없다(권한도 SELECT·INSERT 만).
+     * 포트폴리오 판정 = `CommunityAuthz::decidePortfolioRead/Manage/Add`, 항목·수·진행률은 보는 사람의 목록 조건절 안에서만.
+     * 못 보는 포트폴리오와 없는 포트폴리오는 같은 404 문구. 화면 `GET /portfolios/{id}` 는 지시서 D 몫. */
+    ['POST',   '/api/projects/{id}/status',              'project_status.php',   'community.write'],
+    ['GET',    '/api/projects/{id}/status',              'project_status.php',   'community.read'],
+    ['GET',    '/api/spaces/{num}/portfolios',           'portfolios.php',       'community.read'],
+    ['POST',   '/api/portfolios',                        'portfolios.php',       'community.write'],
+    ['GET',    '/api/portfolios/{id}',                   'portfolios.php',       'community.read'],
+    ['PATCH',  '/api/portfolios/{id}',                   'portfolios.php',       'community.write'],
+    ['DELETE', '/api/portfolios/{id}',                   'portfolios.php',       'community.write'],
+    ['POST',   '/api/portfolios/{id}/items',             'portfolios.php',       'community.write'],
+    ['DELETE', '/api/portfolios/{id}/items/{id}',        'portfolios.php',       'community.write'],
 
     /* ── 데이터베이스 (6-A, PRD F-27) ──
      * DB 는 `POST /api/pages {database:true}` 로 만든다(DB 페이지 + `databases` 한 줄). 「DB 페이지 바로 아래
@@ -2626,6 +2645,185 @@ function community_user_by_id(int $userId): ?array
         SQL;
     $row = Db::instance()->run($sql, [':id' => $userId])->fetch();
     return is_array($row) ? $row : null;
+}
+
+/* ══════════════════════════════════════════════════════════════════
+ * Q:F-12 업무 화면 — 프로젝트 상태 · 포트폴리오 도우미 (커뮤니티 ARCHITECTURE 23.6 · 23.7)
+ *
+ * 판정은 여기 없다 — `CommunityAuthz::decidePortfolio*` · `decidePageRead` · `decidePageChange` 가 한다.
+ * 여기는 행을 읽고(판정 재료), 목록·수를 **보는 사람의 목록 조건절 안에서만** 세고, 지울 수 없는 사건 한 줄을 쓴다.
+ * ══════════════════════════════════════════════════════════════════ */
+
+/**
+ * 담당으로 고를 수 없을 때의 응답 문구 **하나** (ARCH 23.3) — 없는 계정 · 형식 틀림 · 비활성 · 손님 · 그 작업을 고칠 수 없는
+ * 사람을 응답이 가르지 않는다(있는 계정인지·누가 고칠 수 있는지가 새지 않게). 이유 코드는 감사 `page.assign deny` 에만.
+ */
+const COMMUNITY_ASSIGN_REFUSED = '이 사람에게는 맡길 수 없어요';
+
+/** 프로젝트 상태 다섯 값 — DB CHECK(`project_status_updates_status_check`)와 같은 목록 */
+const COMMUNITY_PROJECT_STATUSES = ['on_track', 'at_risk', 'off_track', 'on_hold', 'complete'];
+/** 상태 글 최대 글자 수 — DB CHECK(`char_length(note) <= 280`)와 같은 값 */
+const COMMUNITY_PROJECT_NOTE_MAX = 280;
+/** 한도 — 팀 공간 하나의 살아 있는 포트폴리오 수 · 포트폴리오 하나의 프로젝트 수 (ARCH 23.7) */
+const COMMUNITY_PORTFOLIO_MAX_PER_SPACE = 50;
+const COMMUNITY_PORTFOLIO_MAX_ITEMS     = 100;
+/** 포트폴리오 이름 최대 글자 수 — DB CHECK(`portfolios_name_check`)와 같은 값 */
+const COMMUNITY_PORTFOLIO_NAME_MAX = 80;
+
+/**
+ * 페이지 행(`community_page_row` — 보는 사람 몫) + 그 페이지가 **데이터베이스 페이지**면 그 DB 의 쓰임·색.
+ * 칸 셋을 더한다: `dbself_id` · `dbself_purpose`(`project`·`my_tasks`·NULL) · `dbself_color`. DB 페이지가 아니면 셋 다 NULL.
+ * 판정(`decidePortfolioAdd` 의 「프로젝트인가」)과 프로젝트 상태 창구의 「프로젝트가 아니면 400」이 이 값을 본다.
+ *
+ * @return array<string,mixed>|null
+ */
+function community_project_row(string $publicId, int $viewerId): ?array
+{
+    $row = community_page_row($publicId, $viewerId);
+    if ($row === null) {
+        return null;
+    }
+    $row['dbself_id'] = null;
+    $row['dbself_purpose'] = null;
+    $row['dbself_color'] = null;
+    if (($row['dbself_public_id'] ?? null) !== null) {
+        $sql = <<<'SQL'
+            SELECT d.id, d.purpose, d.color FROM community.databases d WHERE d.page_id = CAST(:pid AS bigint)
+            SQL;
+        $d = Db::instance()->run($sql, [':pid' => (int) $row['id']])->fetch();
+        if (is_array($d)) {
+            $row['dbself_id'] = (int) $d['id'];
+            $row['dbself_purpose'] = $d['purpose'] === null ? null : (string) $d['purpose'];
+            $row['dbself_color'] = $d['color'] === null ? null : (string) $d['color'];
+        }
+    }
+    return $row;
+}
+
+/**
+ * 포트폴리오 한 건 + 그 공간(종류·팀·이름). 없으면 `null`. 지운 것도 돌려준다 — 「없음」과 「지워짐」을 가르는 것은
+ * 판정(`decidePortfolioRead` → `not_found`)의 몫이다. `$lock` 이면 포트폴리오 줄을 잠근다(같은 포트폴리오의 쓰기를 한 줄로).
+ *
+ * @return array<string,mixed>|null
+ */
+function community_portfolio_row(string $publicId, bool $lock = false): ?array
+{
+    $sql = <<<'SQL'
+        SELECT pf.id, pf.public_id, pf.space_id, pf.name, pf.created_by, pf.created_at, pf.deleted_at,
+               s.kind AS space_kind, s.team_id AS space_team_id, s.name AS space_name
+          FROM community.portfolios pf
+          JOIN community.spaces s ON s.id = pf.space_id
+         WHERE pf.public_id = CAST(:pid AS uuid)
+        SQL;
+    if ($lock) {
+        $sql .= ' FOR UPDATE OF pf';
+    }
+    $row = Db::instance()->run($sql, [':pid' => $publicId])->fetch();
+    return is_array($row) ? $row : null;
+}
+
+/**
+ * 포트폴리오 변경 한 줄 — **지울 수 없는 사건**(앱 계정 SELECT · INSERT 만). 부르는 쪽의 트랜잭션 안에서 부른다.
+ * 값은 이름(만들기·이름 바꾸기·지우기)이고, 넣기·빼기는 `page_id` 가 무엇인지를 말한다.
+ */
+function community_portfolio_event(int $portfolioId, string $kind, ?int $pageId, ?string $from, ?string $to, int $byUserId): void
+{
+    $sql = <<<'SQL'
+        INSERT INTO community.portfolio_events (portfolio_id, kind, page_id, from_value, to_value, by_user_id)
+        VALUES (CAST(:pf AS bigint), :kind, CAST(:page AS bigint), :from_value, :to_value, CAST(:by AS bigint))
+        SQL;
+    Db::instance()->run($sql, [
+        ':pf' => $portfolioId, ':kind' => $kind, ':page' => $pageId,
+        ':from_value' => $from, ':to_value' => $to, ':by' => $byUserId,
+    ]);
+}
+
+/**
+ * 포트폴리오의 항목 · 총수 · 상태별 수 · 진행률 — **보는 사람이 볼 수 있는 프로젝트만** (ARCH 23.7 「질의」, C:R-16).
+ *
+ * ★ 항목은 `community_visible_pages_where(보는 사람)` 안에서만 읽는다 — 볼 수 없는 프로젝트는 줄이 없다.
+ *   총수·상태별 수는 **그 결과에서만** 센다(「n개 숨김」 같은 수를 만들지 않는다 — 숨은 것의 존재가 새지 않게).
+ * ★ 진행률 = 그 DB 의 행 중 **같은 조건절**을 지난 것의 done/전체 — 사람마다 다를 수 있다(화면 안내, DESIGN 2.22).
+ *   최근 상태 = `project_status_updates` 의 마지막 줄. 프로젝트 담당 = 소유자(개인 공간)·작성자(그 밖)의 아이디·이름.
+ *
+ * @param  array<string,mixed> $viewer
+ * @return array{items:list<array<string,mixed>>,total:int,by_status:array<string,int>}
+ */
+function community_portfolio_items(int $portfolioId, array $viewer): array
+{
+    $db = Db::instance();
+    [$visible, $visBind] = community_visible_pages_where($viewer);
+    $sqlItems = <<<SQL
+        SELECT p.id, p.public_id, p.title, p.icon, p.due_date, s.kind AS space_kind,
+               owner.username  AS owner_name,  owner.display_name  AS owner_display_name,
+               author.username AS author_name, author.display_name AS author_display_name,
+               d.id AS db_id, d.color AS db_color,
+               st.status AS st_status, st.note AS st_note, st.at AS st_at
+          FROM community.portfolio_items i
+          JOIN community.pages p     ON p.id = i.page_id
+          JOIN community.spaces s    ON s.id = p.space_id
+          LEFT JOIN public.users owner  ON owner.id  = s.owner_user_id
+          LEFT JOIN public.users author ON author.id = p.author_id
+          JOIN community.databases d ON d.page_id = p.id
+          LEFT JOIN LATERAL (
+                SELECT u.status, u.note, u.at FROM community.project_status_updates u
+                 WHERE u.page_id = p.id ORDER BY u.at DESC, u.id DESC LIMIT 1) st ON true
+         WHERE i.portfolio_id = CAST(:pf AS bigint)
+           AND p.deleted_at IS NULL
+           AND {$visible}
+         ORDER BY i.position, i.added_at, p.id
+        SQL;
+    $rows = $db->run($sqlItems, array_merge([':pf' => $portfolioId], $visBind))->fetchAll();
+
+    // 진행률 — 보이는 항목의 DB 번호(DB 가 준 정수)만 모아 한 번에 센다. 행도 같은 조건절 안에서만.
+    $progress = [];
+    $dbIds = array_map(static fn (array $r): int => (int) $r['db_id'], $rows);
+    if ($dbIds !== []) {
+        $sqlProgress = <<<SQL
+            SELECT p.database_id, count(*) AS total, count(*) FILTER (WHERE p.status = 'done') AS done
+              FROM community.pages p
+              JOIN community.spaces s ON s.id = p.space_id
+              LEFT JOIN public.users owner ON owner.id = s.owner_user_id
+             WHERE p.database_id = ANY (CAST(string_to_array(CAST(:dbs AS text), ',') AS bigint[]))
+               AND p.deleted_at IS NULL
+               AND {$visible}
+             GROUP BY p.database_id
+            SQL;
+        $bind = array_merge([':dbs' => implode(',', $dbIds)], $visBind);
+        foreach ($db->run($sqlProgress, $bind)->fetchAll() as $g) {
+            $progress[(int) $g['database_id']] = ['done' => (int) $g['done'], 'total' => (int) $g['total']];
+        }
+    }
+
+    $byStatus = array_fill_keys(array_merge(COMMUNITY_PROJECT_STATUSES, ['none']), 0);
+    $items = [];
+    foreach ($rows as $r) {
+        $personal = (string) $r['space_kind'] === 'personal';
+        $ownerName = $personal ? $r['owner_name'] : $r['author_name'];
+        $ownerDisplay = $personal ? $r['owner_display_name'] : $r['author_display_name'];
+        $status = $r['st_status'] === null ? null : (string) $r['st_status'];
+        $byStatus[$status ?? 'none']++;
+        $items[] = [
+            'project'  => [
+                'id'    => (string) $r['public_id'],
+                'title' => (string) $r['title'],
+                'icon'  => $r['icon'] === null ? null : (string) $r['icon'],
+                'color' => $r['db_color'] === null ? null : (string) $r['db_color'],
+            ],
+            'status'   => $status === null ? null : [
+                'status' => $status,
+                'note'   => (string) $r['st_note'],
+                'at'     => (string) $r['st_at'],
+            ],
+            'progress' => $progress[(int) $r['db_id']] ?? ['done' => 0, 'total' => 0],
+            'owner'    => $ownerName === null ? null : [
+                'username'     => (string) $ownerName,
+                'display_name' => $ownerDisplay === null ? null : (string) $ownerDisplay,
+            ],
+            'due'      => $r['due_date'] === null ? null : (string) $r['due_date'],
+        ];
+    }
+    return ['items' => $items, 'total' => count($items), 'by_status' => $byStatus];
 }
 
 /**

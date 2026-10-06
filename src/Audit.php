@@ -1123,6 +1123,50 @@ final class Audit
         'page.handover|deny|reauth_required'    => '{actor} 이(가) 비밀번호를 다시 확인하지 않고 관리자 권한으로 페이지 「{target}」 을(를) 넘기려 해서 막았습니다',
         'space.create|allow|handover'           => '{actor} 이(가) 인계를 받을 사람의 개인 업무 공간 「{target}」 을(를) 만들었습니다',
 
+        /* ── Q:F-12 업무 화면 — 담당자 · 프로젝트 상태 · 포트폴리오 (커뮤니티 ARCHITECTURE 23.9, 지시서 A-6) ──
+         *
+         * `page.assign|allow` — 담당을 정하거나 바꾸거나 비운 일. 근거는 `detail.granted_by`(= `decidePageChange` 의 코드),
+         *   옛 담당·새 담당은 `detail.from`·`detail.to`(계정명, 없으면 null). **바뀐 일만** 남는다(같은 값이면 행 0).
+         * `page.assign|deny|…` — 정하는 사람의 거부(`decidePageAssign` — 게시판 글 `space_governed`, 그 밖 `decidePageChange` 의
+         *   코드) · 대상의 거부(`decideAssignTarget` — `inactive`(없는 계정 포함 — 응답은 가르지 않는다) · `not_writer` ·
+         *   `assignee_cannot_edit`). 대상 거부의 응답 문구는 하나이고, 이유 코드는 여기에만 남는다.
+         * `project.status|allow|deny` — 프로젝트 상태 한 줄(상태 값은 `detail.status`, 글은 남기지 않는다).
+         * `portfolio.read` — 관리자 특권 열람(`admin_all`)과 거부만 남긴다(`page.read` 관례). `portfolio.create|rename|add|remove|delete`
+         *   는 허용·거부 모두 — 변경마다 `portfolio_events` 한 줄과 함께. */
+        'page.assign|allow'                     => '{actor} 이(가) 페이지 「{target}」 의 담당자를 바꿨습니다 (근거·이전→새 담당자는 상세 기록)',
+        'page.assign|deny|not_owner'            => '{actor} 이(가) 고칠 수 없는 페이지 「{target}」 의 담당자를 정하려 해서 막았습니다',
+        'page.assign|deny|not_member'           => '{actor} 이(가) 자기 팀이 아닌 팀 공간의 페이지 「{target}」 의 담당자를 정하려 해서 막았습니다',
+        'page.assign|deny|role_not_permitted'   => '{actor} 이(가) 담당자를 정할 수 없는 페이지 「{target}」 의 담당자를 정하려 해서 막았습니다',
+        'page.assign|deny|space_governed'       => '{actor} 이(가) 게시판 글 「{target}」 의 담당자를 정하려 해서 거부했습니다 (게시판 글에는 담당자가 없습니다)',
+        'page.assign|deny|not_found'            => '{actor} 이(가) 지워진 페이지 「{target}」 의 담당자를 정하려 해서 거부했습니다',
+        'page.assign|deny|inactive'             => '{actor} 이(가) 페이지 「{target}」 을(를) 없거나 비활성인 계정에 맡기려 해서 거부했습니다 (고른 계정은 상세 기록)',
+        'page.assign|deny|not_writer'           => '{actor} 이(가) 페이지 「{target}」 을(를) 쓰기 자격이 없는 계정(손님)에게 맡기려 해서 거부했습니다 (고른 계정은 상세 기록)',
+        'page.assign|deny|assignee_cannot_edit' => '{actor} 이(가) 페이지 「{target}」 을(를) 그 페이지를 고칠 수 없는 사람에게 맡기려 해서 거부했습니다 (고른 계정은 상세 기록)',
+        'project.status|allow'                  => '{actor} 이(가) 프로젝트 「{target}」 의 상태를 남겼습니다 (상태 값은 상세 기록)',
+        'project.status|deny|not_owner'         => '{actor} 이(가) 고칠 수 없는 프로젝트 「{target}」 의 상태를 남기려 해서 막았습니다',
+        'project.status|deny|not_member'        => '{actor} 이(가) 자기 팀이 아닌 팀 공간의 프로젝트 「{target}」 의 상태를 남기려 해서 막았습니다',
+        'project.status|deny|role_not_permitted' => '{actor} 이(가) 상태를 남길 수 없는 프로젝트 「{target}」 의 상태를 남기려 해서 막았습니다',
+        'project.status|deny|not_author'        => '{actor} 이(가) 자기가 쓰지 않은 게시판 프로젝트 「{target}」 의 상태를 남기려 해서 막았습니다',
+        'project.status|deny|board_inactive'    => '{actor} 이(가) 보관 중인 게시판의 프로젝트 「{target}」 의 상태를 남기려 해서 막았습니다',
+        'portfolio.read|allow|admin_all'        => '{actor} 이(가) 관리자 권한으로 팀 공간의 포트폴리오 「{target}」 을(를) 봤습니다 (포트폴리오 하나·공간의 목록 — 상세 기록)',
+        'portfolio.read|deny|not_member'        => '{actor} 이(가) 볼 수 없는 공간의 포트폴리오 「{target}」 을(를) 열려 해서 막았습니다 (포트폴리오 하나·공간의 목록 — 상세 기록)',
+        'portfolio.create|allow'                => '{actor} 이(가) 포트폴리오 「{target}」 을(를) 만들었습니다 (공간은 상세 기록)',
+        'portfolio.create|deny|not_member'      => '{actor} 이(가) 구성원이 아닌 팀 공간에 포트폴리오 「{target}」 을(를) 만들려 해서 막았습니다',
+        'portfolio.create|deny|role_not_permitted' => '{actor} 이(가) 쓰기 자격 없이 포트폴리오 「{target}」 을(를) 만들려 해서 막았습니다',
+        'portfolio.rename|allow'                => '{actor} 이(가) 포트폴리오 「{target}」 의 이름을 바꿨습니다 (이전→새 이름은 상세 기록)',
+        'portfolio.rename|deny|not_member'      => '{actor} 이(가) 구성원이 아닌 팀 공간의 포트폴리오 「{target}」 의 이름을 바꾸려 해서 막았습니다',
+        'portfolio.rename|deny|role_not_permitted' => '{actor} 이(가) 쓰기 자격 없이 포트폴리오 「{target}」 의 이름을 바꾸려 해서 막았습니다',
+        'portfolio.delete|allow'                => '{actor} 이(가) 포트폴리오 「{target}」 을(를) 지웠습니다',
+        'portfolio.delete|deny|not_member'      => '{actor} 이(가) 구성원이 아닌 팀 공간의 포트폴리오 「{target}」 을(를) 지우려 해서 막았습니다',
+        'portfolio.delete|deny|role_not_permitted' => '{actor} 이(가) 쓰기 자격 없이 포트폴리오 「{target}」 을(를) 지우려 해서 막았습니다',
+        'portfolio.add|allow'                   => '{actor} 이(가) 포트폴리오 「{target}」 에 프로젝트를 넣었습니다 (프로젝트는 상세 기록)',
+        'portfolio.add|deny|not_member'         => '{actor} 이(가) 구성원이 아닌 팀 공간의 포트폴리오 「{target}」 에 프로젝트를 넣으려 해서 막았습니다',
+        'portfolio.add|deny|role_not_permitted' => '{actor} 이(가) 쓰기 자격 없이 포트폴리오 「{target}」 에 프로젝트를 넣으려 해서 막았습니다',
+        'portfolio.add|deny|project_not_readable' => '{actor} 이(가) 포트폴리오 「{target}」 에 자기가 (관리자 권한 말고는) 볼 수 없는 프로젝트를 넣으려 해서 막았습니다',
+        'portfolio.remove|allow'                => '{actor} 이(가) 포트폴리오 「{target}」 에서 프로젝트를 뺐습니다 (프로젝트는 상세 기록)',
+        'portfolio.remove|deny|not_member'      => '{actor} 이(가) 구성원이 아닌 팀 공간의 포트폴리오 「{target}」 에서 프로젝트를 빼려 해서 막았습니다',
+        'portfolio.remove|deny|role_not_permitted' => '{actor} 이(가) 쓰기 자격 없이 포트폴리오 「{target}」 에서 프로젝트를 빼려 해서 막았습니다',
+
         /* ── 커뮤니티 5-C — 게시판 · 새 글 · 게시 · 숨김 · 태그 (5-C 지시서, PRD 4장 · F-09 · F-18) ──
          *
          * `{target}` 은 페이지 제목(30자)이고, `board.*` 줄만 **게시판 이름**이다. `{level}` 은 게시판 등급.

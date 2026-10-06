@@ -19,6 +19,13 @@ declare(strict_types=1);
  *   일은 인계다 → `POST …/handover`). `assignee` 키는 이제 허용 키가 아니므로 400 이다.
  *   `pages.assignee_id` 칸은 지우지 않았고(열 삭제 0), 이미 든 값과 `page_property_events` 의
  *   담당자 줄은 「처리 이력」에 그대로 남는다 — 이 창구가 새 담당자 줄을 만들지 않을 뿐이다.
+ * ★ Q:F-12 (WK-3 ② · WK-14 A, 커뮤니티 ARCH 23.3) — **담당을 소유자와 따로 다시 쓴다.** 허용 키에
+ *   `assignee`(계정명 문자열 또는 `null` = 비우기)가 돌아왔다. 담당은 「맡은 사람」 표시일 뿐 볼·고칠 권한을 주지 않는다.
+ *   순서: 행 잠금·읽기(요청자) → `decidePageAssign`(403 + 감사 `page.assign deny`) → 대상 찾기 → **대상 몫으로 다시 읽은
+ *   행** → `decideAssignTarget`(400 「이 사람에게는 맡길 수 없어요」 하나 — 없는 계정·형식 틀림도 같은 문구, 이유 코드는
+ *   감사에만) → 같은 값이면 변경 없음 200 → `UPDATE pages.assignee_id` + `page_property_events(prop='assignee', 계정명)` +
+ *   감사 `page.assign allow` — 한 트랜잭션 → 커밋 뒤 알림 `assigned`(`community_notify` — 받는 사람 기준 다시 판정, 자기 자신 제외).
+ *   거부 감사는 **트랜잭션을 되돌린 뒤** 쓴다(같은 연결이라 되돌리면 감사 행도 사라진다).
  *
  * 검사 순서
  *   [1] 허용 키·값 → [2] 행+공간 → 404
@@ -45,8 +52,8 @@ $pid = (string) $params[0];
 
 // ─── [1] 허용 키·값 ───────────────────────────────────────────
 $body = Http::jsonBody();
-// 허용 키는 `status`·`resolved`(5-C) 둘이다. `assignee` 는 5-A 에서 빠졌다 — 오면 400 (DB 불변).
-if (array_diff(array_keys($body), ['status', 'resolved', 'verify', 'kind', 'due']) !== []) {
+// 허용 키 — `status`·`resolved`(5-C)·`verify`·`kind`·`due` + Q:F-12 의 `assignee`(5-A 에서 빠졌다가 소유자와 따로 돌아왔다).
+if (array_diff(array_keys($body), ['status', 'resolved', 'verify', 'kind', 'due', 'assignee']) !== []) {
     Http::error(400, Http::MSG_BAD_REQUEST);
 }
 $hasStatus   = array_key_exists('status', $body);
@@ -55,13 +62,24 @@ $hasResolved = array_key_exists('resolved', $body);
 $hasVerify = array_key_exists('verify', $body);
 $hasKind = array_key_exists('kind', $body);
 $hasDue = array_key_exists('due', $body);
+$hasAssignee = array_key_exists('assignee', $body);
+/* Q:F-12 — 담당은 계정명(`Auth::USERNAME_RE`) 또는 `null`(비우기). 모양이 틀린 값은 어떤 계정도 아니므로 「없는 계정」과
+   **같은 문구**로 400 이다(있는 계정인지·맡길 수 있는 사람인지를 응답이 가르지 않는다 — 감사 없음, 형식 거부). */
+$wantAssignee = null;
+if ($hasAssignee && $body['assignee'] !== null) {
+    if (!is_string($body['assignee']) || preg_match(Auth::USERNAME_RE, $body['assignee']) !== 1) {
+        Http::json(['error' => COMMUNITY_ASSIGN_REFUSED], 400);
+        exit;
+    }
+    $wantAssignee = $body['assignee'];
+}
 if ($hasDue && $body['due'] !== null) {
     $d = is_string($body['due']) ? DateTimeImmutable::createFromFormat('!Y-m-d', $body['due']) : false;
     if (!$d || $d->format('Y-m-d') !== $body['due']) { Http::error(400, Http::MSG_BAD_REQUEST); }
 }
 if ($hasVerify && $body['verify'] !== null && (!is_int($body['verify']) || !in_array($body['verify'], [0,30,90,180], true))) { Http::error(400, Http::MSG_BAD_REQUEST); }
 if ($hasKind && (!is_string($body['kind']) || !in_array($body['kind'], ['page','procedure','dashboard'], true))) { Http::error(400, Http::MSG_BAD_REQUEST); }
-if (!$hasStatus && !$hasResolved && !$hasVerify && !$hasKind && !$hasDue) {
+if (!$hasStatus && !$hasResolved && !$hasVerify && !$hasKind && !$hasDue && !$hasAssignee) {
     Http::error(400, Http::MSG_BAD_REQUEST);
 }
 
@@ -123,6 +141,42 @@ if (!$mayRead) {
     error_log('[tbox] request_id=' . TBOX_REQUEST_ID
         . ' community page.read deny code=' . $readCode . ' (4-D 에 없는 조합)');
     Http::error(403, Http::MSG_FORBIDDEN);
+}
+
+// ─── [권한 ✔ 담당] 정할 수 있나 · 그 사람이 될 수 있나 (Q:F-12, ARCH 23.3) ──────
+/* 판정은 `CommunityAuthz` 두 함수뿐이다 — 여기서 팀·소유를 견주지 않는다. 지금 담당이 누구인지는 판정 재료가 아니다
+   (맡은 사람이라서 다시 맡길 수 있는 갈래 0). 거부 감사는 되돌린 뒤 쓴다 — 감사 행은 같은 연결의 같은 트랜잭션에 실린다. */
+$assignTarget = null;
+$assignCode   = '';
+if ($hasAssignee) {
+    [$mayAssign, $assignCode] = CommunityAuthz::decidePageAssign($user, $row);
+    if (!$mayAssign) {
+        $db->rollback();
+        Audit::deny('page.assign', $assignCode, [
+            'target_type' => 'page',
+            'target_id'   => $pageId,
+            'target_name' => $pageTitle,
+            'detail'      => ['page_title' => $pageTitle, 'to' => $wantAssignee],
+        ]);
+        Http::error(403, Http::MSG_FORBIDDEN);
+    }
+    if ($wantAssignee !== null) {
+        $assignTarget = community_user_by_name($wantAssignee);
+        // 대상 몫으로 **다시 읽은** 행 — 공유 등급이 그 사람 몫이어야 「고칠 수 있나」가 맞다(없는 계정이면 판정이 `inactive`).
+        $rowForTarget = $assignTarget === null ? $row : community_page_row($pid, (int) $assignTarget['id']);
+        [$targetOk, $targetCode] = CommunityAuthz::decideAssignTarget($assignTarget, $rowForTarget ?? $row);
+        if (!$targetOk) {
+            $db->rollback();
+            Audit::deny('page.assign', $targetCode, [
+                'target_type' => 'page',
+                'target_id'   => $pageId,
+                'target_name' => $pageTitle,
+                'detail'      => ['page_title' => $pageTitle, 'to' => $wantAssignee],
+            ]);
+            Http::json(['error' => COMMUNITY_ASSIGN_REFUSED], 400);
+            exit;
+        }
+    }
 }
 
 // ─── [권한 ✔ B] 고칠 수 있나 (C:T-51) ─────────────────────────
@@ -246,20 +300,66 @@ try {
         community_insert_property_event($pageId, 'due', $row['due_date'], $body['due'], $me);
         $auditChange('due', $row['due_date'], $body['due']); $changed[] = 'due';
     }
+    /* Q:F-12 담당 — 같은 사람이면 변경 없음(기록 0). 바뀌었으면 칸 + 지울 수 없는 줄(값은 계정명) + 감사 한 줄. */
+    $notifyAssignee = null;
+    if ($hasAssignee) {
+        $oldAssigneeId = $row['assignee_id'] === null ? null : (int) $row['assignee_id'];
+        $newAssigneeId = $assignTarget === null ? null : (int) $assignTarget['id'];
+        if ($oldAssigneeId !== $newAssigneeId) {
+            $sqlAssign = <<<'SQL'
+                UPDATE community.pages SET assignee_id = CAST(:aid AS bigint)
+                 WHERE id = CAST(:pid AS bigint) AND deleted_at IS NULL
+                SQL;
+            $db->run($sqlAssign, [':aid' => $newAssigneeId, ':pid' => $pageId]);
+            $fromAssignee = $row['assignee_name'] === null ? null : (string) $row['assignee_name'];
+            $toAssignee   = $assignTarget === null ? null : (string) $assignTarget['username'];
+            community_insert_property_event($pageId, 'assignee', $fromAssignee, $toAssignee, $me);
+            Audit::allow('page.assign', [
+                'target_type' => 'page',
+                'target_id'   => $pageId,
+                'target_name' => $pageTitle,
+                'detail'      => [
+                    'granted_by' => $assignCode,
+                    'page_title' => $pageTitle,
+                    'from'       => $fromAssignee,
+                    'to'         => $toAssignee,
+                ],
+            ]);
+            $changed[] = 'assignee';
+            $notifyAssignee = $newAssigneeId;
+        }
+    }
     $db->commit();
 } catch (Throwable $e) {
     $db->rollback();
     throw $e;   // bootstrap 예외 핸들러 → 500 + {"error":"서버 오류"}
 }
 
+/* Q:F-12 — 맡긴 사람에게 알림 하나(커밋 뒤). `community_notify` 가 받는 사람 몫으로 다시 읽어 다시 판정하고, 자기 자신은
+   건너뛴다. 옛 담당·비운 일에는 알리지 않는다(ARCH 23.9). 알림이 실패해도 맡긴 일은 이미 기록됐다. */
+if ($notifyAssignee !== null) {
+    try {
+        community_notify($notifyAssignee, 'assigned', $row, null, $me);
+    } catch (Throwable $e) {
+        error_log('[tbox] request_id=' . TBOX_REQUEST_ID . ' community assigned notification failed: ' . get_class($e));
+    }
+}
+
+$after = community_page_row($pid, $me);
 Http::json([
     'page' => [
         'id'       => $pid,
         'status'   => $toStatus,
         'resolved' => $toResolved,
+        // Q:F-12 — 지금 담당(pages_get 의 `assignee` 와 같은 모양). 없으면 null.
+        'assignee' => $after === null || $after['assignee_name'] === null ? null : [
+            'username'  => (string) $after['assignee_name'],
+            'role'      => (string) $after['assignee_role'],
+            'is_active' => $after['assignee_active'] === true,
+        ],
     ],
     // 무엇이 실제로 바뀌었나 — 화면이 「바뀐 것이 없습니다」를 스스로 판단하지 않게 한다.
     'changed' => $changed,
-    'verify' => community_verify_info(community_page_row($pid, $me)),
+    'verify' => community_verify_info($after ?? community_page_row($pid, $me)),
     'page_kind' => $hasKind ? $body['kind'] : $row['page_kind'],
 ]);

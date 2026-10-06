@@ -1028,6 +1028,92 @@ POST /tbox/api/me/api-tokens scope=["community.read","session.open"] (묶음이 
 (같은 토큰) GET /tbox/api/whoami → 200 {"username":"claude_employee02",…,"token_scope":"community.read","token_scopes_held":["community.read"]}
 ```
 
+## 22. 업무 화면 창구 (Q:F-12) — 담당 · 프로젝트 상태 · 포트폴리오 (지시서 A, 2026-10-07 · 웹 화면 전용 · 세션)
+
+사이트 Q:F-12 WK-3 · WK-12 · WK-13 · WK-14 · 커뮤니티 `../community/ARCHITECTURE.md` 23.3 · 23.6 · 23.7 · 23.9 · SECURITY C:R-15 · C:R-16.
+전부 **세션 전용**이다(`COMMUNITY_API_TOKEN_ROUTES` 에 넣지 않았다 — 프로그램 토큰으로는 401). 바꾸는 요청은 CSRF(`X-CSRF-Token`).
+**새 권한이 없다** — 담당은 「맡은 사람」 표시일 뿐 볼·고칠 권한을 주지 않고, 포트폴리오는 프로젝트를 볼 권한을 주지 않는다.
+판정은 `CommunityAuthz::decidePageAssign` · `decideAssignTarget` · `decidePortfolioRead` · `decidePortfolioManage` · `decidePortfolioAdd` 다섯과
+기존 `decidePageRead` · `decidePageChange` 뿐이다. 아래 응답 모양·문구는 격리 틀 시험 `tests/community/qf12_floor_http.py`(Q:T-24~28 · 33~37)가
+단언한 키·값이다 — 운영 응답 원문은 묶음 끝 검토에서 붙인다(추정 응답을 적지 않는다).
+
+### 22-1. 담당 정하기 — `PATCH /community/api/pages/{id}/properties` 의 `assignee`
+
+| 항목 | 내용 |
+|---|---|
+| 인증 | 세션 · 정책 `community.write`(손님 403) · CSRF |
+| 요청 | `{"assignee": "<계정명>"}` 또는 `{"assignee": null}`(비우기). 다른 속성 키(`status`·`due` …)와 함께 보낼 수 있다 — 그 키들은 전처럼 `decidePageChange` |
+| 판정 순서 | 행 잠금·읽기 → `decidePageRead`(못 보면 403·404) → **`decidePageAssign`**(게시판 글 `space_governed` · 그 밖 `decidePageChange` 그대로 — Admin 은 남의 작업 담당을 못 정한다) → 대상 찾기 → **대상 몫으로 다시 읽은 행**에 `decideAssignTarget`(활성 · 쓰기 자격 · 그 작업을 **고칠 수 있는** 사람 — WK-14 A) → 같은 사람이면 변경 없음 |
+| 성공 | 200 `{"page":{"id","status","resolved","assignee":{"username","role","is_active"}\|null},"changed":[…,"assignee"],"verify",…,"page_kind"}` · 바뀌었으면 한 트랜잭션에 `pages.assignee_id` + `page_property_events`(`prop='assignee'`, 값 = 계정명) + 감사 `page.assign\|allow`(`detail.granted_by`·`from`·`to`), 커밋 뒤 알림 `assigned` 하나(받는 사람 기준 다시 판정 · 자기 자신 제외 · 옛 담당·비운 일은 알리지 않음). 같은 값이면 `changed` 에 없고 기록 0 |
+| 실패 | 403 `{"error":"권한이 없습니다"}` — 정할 수 없는 사람(감사 `page.assign\|deny\|<코드>` — `not_owner`·`not_member`·`role_not_permitted`·`space_governed`) · **400 `{"error":"이 사람에게는 맡길 수 없어요"}` 하나** — 없는 계정 · 모양이 틀린 값(문자열 아님 · `Auth::USERNAME_RE` 밖) · 비활성 · 손님 · 그 작업을 고칠 수 없는 사람을 응답이 가르지 않는다(이유 코드 `inactive`·`not_writer`·`assignee_cannot_edit` 는 감사에만, 모양 틀림은 감사 없음) |
+| 넣지 않는 것 | 대상이 왜 안 되는지 · 대상 계정의 번호·팀 |
+
+**정해 둔 동작**: 담당이 나중에 권한을 잃어도(공유 회수·팀 이동) `assignee_id` 는 남는다 — 자동으로 풀지 않고 아래 `assignee_can_edit=false` 로 알린다.
+담당은 `page_values` 로 쓰지 않는다(쓰기는 이 창구 한 곳).
+
+### 22-2. 담당 후보 — `GET /community/api/pages/{id}/assignee-candidates?q=`
+
+| 항목 | 내용 |
+|---|---|
+| 인증 | 세션 · 정책 `community.write`(맡기는 화면에서만 쓴다 — 손님 403) |
+| 요청 | `q` 공백을 뗀 1~64자(아이디·이름 부분 일치, `%`·`_` 는 글자로). 비면 빈 목록 |
+| 판정 | 그 페이지를 볼 수 있어야(`community_history_gate` — 403·404) + **부르는 사람이 `decidePageAssign` 통과**(아니면 403, 목록 조회라 감사 없음). 활성 사용자 20명을 찾아 한 명씩 `decideAssignTarget`(그 사람 몫으로 다시 읽은 행) — 통과한 사람만 10명까지. 자기 자신도 후보(「나에게 맡기기」) |
+| 성공 | 200 `{"candidates":[{"username","display_name"}]}` — 키는 이 둘뿐(계정 번호·역할·팀 0) |
+| 실패 | 403 `{"error":"권한이 없습니다"}` · 404 `{"error":"찾을 수 없습니다"}` |
+
+### 22-3. 페이지 응답에 더한 두 칸 — `GET /community/api/pages/{id}`
+
+`can_assign`(요청자의 `decidePageAssign` · 쓰기 자격과 AND) · `assignee_can_edit`(지금 담당이 그 작업을 고칠 수 있나 — 담당 몫으로 다시 읽은 행에 `decideAssignTarget`, 담당이 없으면 `null`).
+기존 `page.assignee` 객체 모양(`{"username","role","is_active"}`)은 그대로다.
+
+### 22-4. 프로젝트 상태 — `POST|GET /community/api/projects/{id}/status`
+
+`{id}` = 프로젝트(데이터베이스 페이지)의 public_id. 데이터베이스의 `purpose='project'` 가 아니면(일반 페이지·그냥 표) **400** `{"error":"프로젝트에서만 상태를 쓰고 볼 수 있습니다"}`.
+
+| 항목 | POST | GET |
+|---|---|---|
+| 인증 | 세션 · `community.write` · CSRF | 세션 · `community.read` |
+| 요청 | `{"status": "on_track"\|"at_risk"\|"off_track"\|"on_hold"\|"complete", "note": "…"}` — 키는 이 둘뿐, `note` 선택(기본 빈 글) · 280자(코드 포인트) 이하 · 줄바꿈 말고 제어 문자 0 | `?limit=` 1~50(기본 20) |
+| 판정 | 페이지 관문(`decidePageRead`) → **`decidePageChange`**(고칠 수 있는 사람 — Admin 의 열람만으로는 안 된다) → 프로젝트인가 | 페이지 관문(`decidePageRead`) → 프로젝트인가 |
+| 성공 | 200 `{"status":{"status","note","at","by":{"username","display_name"}}}` · 감사 `project.status\|allow`(`detail.status`, 글은 남기지 않음) · 알림 없음 | 200 `{"current": <줄>\|null, "updates": [<줄>…]}` — 줄 = `{"status","note","at","by":{…}\|null}`, 지금 상태 = 마지막 줄(`at`·`id` 내림) |
+| 실패 | 400(모양 · 값 밖 · 281자 · 남는 키 · 프로젝트 아님) · 403(감사 `project.status\|deny\|<코드>` — `not_owner`·`not_member`·`role_not_permitted`·`not_author`·`board_inactive`) · 404 | 400(limit · 프로젝트 아님) · 403 · 404 |
+
+고치기·지우기 창구는 없다(`PATCH`·`DELETE` → 405) — 앱 계정은 `project_status_updates` 에 SELECT · INSERT 만이다.
+
+### 22-5. 포트폴리오 — 팀 공간에서 팀이 함께 보는 프로젝트 묶음
+
+| 메서드 경로 | 정책 | 요청 | 성공 |
+|---|---|---|---|
+| `GET /community/api/spaces/{num}/portfolios` | `community.read` | `{num}` = 공간 번호(공간 창구와 같은 식별자) | 200 `{"space":{"id","name","kind"},"portfolios":[{"id","name","created_at"}],"can_create"}` |
+| `POST /community/api/portfolios` | `community.write` | `{"space": <번호>, "name": "…"}` — 이름 앞뒤 공백 뗀 1~80자 · 제어·서식 문자 0 · 키는 이 둘뿐 | 201 `{"portfolio":{"id","name","space":{"id","name"},"created_at"},"can_manage":true}` |
+| `GET /community/api/portfolios/{id}` | `community.read` | — | 200 `{"portfolio":{…},"can_manage","total","by_status":{"on_track","at_risk","off_track","on_hold","complete","none"},"items":[…]}` |
+| `PATCH /community/api/portfolios/{id}` | `community.write` | `{"name": "…"}` | 200 `{"portfolio":{…},"changed":true\|false}` |
+| `DELETE /community/api/portfolios/{id}` | `community.write` | — | 200 `{"deleted":true}`(= `deleted_at`, 줄은 남는다) |
+| `POST /community/api/portfolios/{id}/items` | `community.write` | `{"project": "<프로젝트 public_id>"}` | 201 `{"added":true}` · 이미 있으면 200 `{"added":false}` |
+| `DELETE /community/api/portfolios/{id}/items/{id}` | `community.write` | 두 번째 `{id}` = 프로젝트 public_id | 200 `{"removed":true}` |
+
+`items` 한 줄 = `{"project":{"id","title","icon","color"},"status":{"status","note","at"}|null,"progress":{"done","total"},"owner":{"username","display_name"}|null,"due"}`
+(`owner` = 프로젝트 페이지의 소유자(개인 공간)·작성자(그 밖) · `status` = 마지막 상태 줄 · `color` = `peach`·`lilac`·`mint`·`sand`·null).
+
+| 판정 | 내용 |
+|---|---|
+| 보기 | `decidePortfolioRead` — 지워짐 `not_found` · 그 팀 공간의 구성원 `team_member` · Admin `admin_all`(읽기만 — 감사 `portfolio.read\|allow\|admin_all`, 목록·한 건 모두) · 그 밖 `not_member`(감사 `portfolio.read\|deny\|not_member`) |
+| 만들기·이름·지우기·빼기 | `decidePortfolioManage` — 구성원 + 쓰기 자격. Admin(구성원이 아니면)·손님은 거부 |
+| 넣기 | `decidePortfolioAdd` — 관리 자격 + 넣는 사람이 그 프로젝트를 **관리자 특권(`admin_all`·`board_moderator`) 말고** 볼 수 있음(`project_not_readable`) + `purpose='project'`(`not_project` → 400) |
+| 항목 · 수 · 진행률 | **보는 사람의 목록 조건절(`community_visible_pages_where`) 안에서만** — 볼 수 없는 프로젝트는 줄이 없고 `total`·`by_status` 도 그 결과에서만 센다(「n개 숨김」 같은 칸 0). 진행률 = 그 DB 의 행 중 같은 조건절을 지난 것의 `done`/전체 — 사람마다 다를 수 있다 |
+| 빼기 | 빼는 사람이 그 프로젝트를 (관리자 특권 없이) 볼 수 있을 때만 줄을 찾는다(`community_search_pages_where`) — 아니면 404 |
+
+| 실패 | 응답 |
+|---|---|
+| 못 보는 포트폴리오 · 지운 포트폴리오 · 없는 포트폴리오 · 구성원이 아닌 공간·개인 공간에 만들기 | **404 `{"error":"찾을 수 없습니다"}` — 같은 문구**(있는지도 알리지 않는다) |
+| 볼 수는 있으나 관리 못 함(Admin 의 열람) · 넣는 사람이 볼 수 없는 프로젝트 | 403 `{"error":"권한이 없습니다"}` + 감사 `portfolio.<동작>\|deny\|<코드>` |
+| 모양 · 프로젝트 아님 | 400 `{"error":"잘못된 요청입니다"}` · `{"error":"프로젝트만 포트폴리오에 넣을 수 있습니다"}` |
+| 살아 있는 같은 이름(대소문자 무시) | 409 `{"error":"같은 이름의 포트폴리오가 이미 있습니다"}` |
+| 한도 — 팀 공간당 50 · 포트폴리오당 프로젝트 100 | 400 `{"error":"팀 공간 하나에 포트폴리오는 50개까지 만들 수 있습니다"}` · `{"error":"포트폴리오 하나에 프로젝트는 100개까지 넣을 수 있습니다"}` |
+
+변경마다 `portfolio_events`(`create`·`rename`·`add`·`remove`·`delete` — 지울 수 없는 기록, 앱 계정 SELECT · INSERT 만) 한 줄 + 감사 `portfolio.create|rename|delete|add|remove|allow`.
+화면 `GET /community/portfolios/{id}` 는 지시서 D 몫이다.
+
 ## 추가 규칙 (API 를 새로 적을 때)
 
 1. 장 번호를 이어서 붙이고 제목은 `## N. 이름 — 메서드 경로`.

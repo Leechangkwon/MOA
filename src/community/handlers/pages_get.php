@@ -119,6 +119,17 @@ $mayChange   = $mayChange && $mayWrite;
 $mayManage   = $mayManage && $mayWrite;
 $mayHandover = $mayHandover && $mayWrite;
 
+/* Q:F-12 (ARCH 23.3) — 담당 고르기 단추를 열지(`can_assign` — 요청자의 `decidePageAssign`, 쓰기 창구라 S2 와 같은 AND) ·
+   지금 담당이 그 작업을 고칠 수 있나(`assignee_can_edit` — 담당 몫으로 **다시 읽은 행**에 `decideAssignTarget`, 담당이 없으면 null).
+   권한을 잃은 담당은 자동으로 풀지 않고 이 값으로 「다시 맡기세요」를 띄운다. 둘 다 판단 근거가 아니라 서버가 이미 한 판단의 결과다. */
+$mayAssign = $mayWrite && CommunityAuthz::decidePageAssign($user, $row)[0];
+$assigneeCanEdit = null;
+if ($row['assignee_id'] !== null) {
+    $assigneeUser = community_user_by_id((int) $row['assignee_id']);
+    $assigneeRow  = $assigneeUser === null ? null : community_page_row_nodoc($pid, (int) $assigneeUser['id']);
+    $assigneeCanEdit = $assigneeRow !== null && CommunityAuthz::decideAssignTarget($assigneeUser, $assigneeRow)[0];
+}
+
 /* 「공개 범위」 단추를 열지 말지 고르는 값 (4-B). 개인 공간의 **주인**일 때만 참이다 —
    팀 공간의 페이지는 자기 범위가 없고(공간 등급을 따른다), 남의 페이지는 볼 수 있어도
    범위를 바꾸지 못한다. 판단 근거가 아니라 **서버가 이미 한 판단의 결과**다: 단추를
@@ -298,7 +309,8 @@ community_form_json([
                 'is_active' => $row['space_owner_active'] === true,
             ]
             : ['kind' => (string) $row['space_kind'], 'name' => (string) $row['space_name']],
-        // 4-D 담당자 칸의 **옛 값**(읽기만). 5-A 부터 새로 지정하지 않는다 — 화면은 이 값을 그리지 않는다.
+        // 4-D 담당자 칸. 5-A 에 멈췄다가 Q:F-12 에서 소유자와 따로 다시 쓴다(쓰기는 `PATCH …/properties {assignee}` 한 곳).
+        // 모양은 그대로 — 고칠 수 있는지는 아래 `assignee_can_edit`.
         'assignee'    => $row['assignee_name'] === null ? null : [
             'username' => (string) $row['assignee_name'],
             'role'     => (string) $row['assignee_role'],
@@ -328,6 +340,9 @@ community_form_json([
     /* 4-D — 상태 배지·담당자 칩을 **누를 수 있게** 할지. 고칠 수 있는 사람과 같은 자격이다
        (`decidePageChange`) — 창구 `PATCH …/properties` 가 같은 함수로 다시 막는다 (C:T-51). */
     'can_set_properties' => $mayChange,
+    // Q:F-12 — 담당 고르기(창구 `PATCH …/properties {assignee}` 가 같은 함수로 다시 막는다) · 지금 담당이 고칠 수 있나(없으면 null)
+    'can_assign'        => $mayAssign,
+    'assignee_can_edit' => $assigneeCanEdit,
     /* 5-A — 「관리」 단추(삭제·옮기기)·「사람 추가」·「넘기기」를 보일지. 셋 다 서버가 이미 한
        판단의 결과이고, 되살려 눌러도 창구가 같은 함수로 다시 막는다 (C:T-53). */
     'can_manage'   => $mayManage,

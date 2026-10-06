@@ -128,11 +128,16 @@ final class CommunityAuthz
             ? [true, $reason] : [false, self::CODE_NOT_FOUND];
     }
 
-    /** Anonymity is recorded on each response, not taken from the current form settings. */
+    /**
+     * Anonymity is recorded on each response, not taken from the current form settings.
+     *
+     * Q:F-12 (C:R-15 · ARCH 23.3) — 책임자는 **소유자(개인 공간)/작성자(그 밖)만**이다. 전에는 `assignee_id ??` 가 앞에
+     * 있어서, 담당을 다시 쓰는 순간 「맡기기」가 양식 응답자 신원 보기 권한이 되었다. 담당은 표시일 뿐 권한이 아니다.
+     */
     public static function canSeeFormIdentity(array $u, array $dbPage): bool
     {
-        $responsible = $dbPage['assignee_id'] ?? (($dbPage['space_kind'] ?? '') === 'personal'
-            ? ($dbPage['space_owner_user_id'] ?? null) : ($dbPage['author_id'] ?? null));
+        $responsible = ($dbPage['space_kind'] ?? '') === 'personal'
+            ? ($dbPage['space_owner_user_id'] ?? null) : ($dbPage['author_id'] ?? null);
         return Authz::canAdmin($u) || ($responsible !== null && (int)$u['id'] === (int)$responsible);
     }
 
@@ -1111,6 +1116,177 @@ final class CommunityAuthz
            — 검색(5-B)과 같은 좁은 쪽. 남의 비공개 페이지 제목이 멘션 한 번으로 관리자 알림함에 쌓이지 않게. */
         if (!$ok || $code === self::CODE_ADMIN_ALL || $code === self::CODE_BOARD_MODERATOR) {
             return [false, self::CODE_TARGET_NOT_PERMITTED];
+        }
+        return [true, $code];
+    }
+
+    /* ══════════════════════════════════════════════════════════════════
+     * Q:F-12 업무 화면 — 담당자 · 포트폴리오 (커뮤니티 ARCHITECTURE 23.3 · 23.7, SECURITY C:R-15 · C:R-16)
+     *
+     * ★ 새 권한을 만들지 않는다(ARCH 23.1). 담당은 「맡은 사람」 표시일 뿐 읽기·고치기·관리 권한을 주지 않고,
+     *   포트폴리오는 프로젝트를 볼 권한을 주지 않는다. 그래서 아래 다섯 함수 어디에도 `assignee_id` 나 포트폴리오
+     *   소속이 「허용」의 이유로 나오지 않는다 — 판정은 전부 이미 있는 `decidePageChange` · `decidePageRead` ·
+     *   `isTeamMember` · `Authz::canCommunityWrite` 를 빌린다(판정 두 벌 금지).
+     * ══════════════════════════════════════════════════════════════════ */
+
+    /** 허용 코드 — 담당이 될 사람이 그 작업을 **고칠 수 있다** (WK-14 A) */
+    public const CODE_CAN_EDIT = 'can_edit';
+    /** 거부 코드 — 담당 대상이 없거나 비활성 계정이다 */
+    public const CODE_INACTIVE = 'inactive';
+    /** 거부 코드 — 담당 대상이 쓰기 자격 없는 역할(Guest)이다 */
+    public const CODE_NOT_WRITER = 'not_writer';
+    /** 거부 코드 — 담당 대상이 **그 사람 몫으로 다시 읽은 행**에서 그 작업을 고칠 수 없다 */
+    public const CODE_ASSIGNEE_CANNOT_EDIT = 'assignee_cannot_edit';
+    /** 거부 코드 — 포트폴리오에 넣는 사람이 그 프로젝트를 (관리자 특권 말고는) 볼 수 없다 */
+    public const CODE_PROJECT_NOT_READABLE = 'project_not_readable';
+    /** 거부 코드 — 프로젝트(`databases.purpose='project'` 인 데이터베이스 페이지)가 아니다 */
+    public const CODE_NOT_PROJECT = 'not_project';
+
+    /**
+     * 이 사람이 이 작업의 **담당을 정할 수 있나** (ARCH 23.3 `decidePageAssign`).
+     *
+     *   게시판 글                → `space_governed` (게시판 글에는 담당이 없다)
+     *   그 밖                    → `decidePageChange` 결과 **그대로** — 고칠 수 있는 사람이 정한다.
+     *                              Admin 은 change 가 없으므로 남의 작업 담당을 못 정한다(`not_owner`).
+     *
+     * 담당이 지금 누구인지(`assignee_id`)는 이 판정에 들어가지 않는다 — 맡은 사람이라서 다시 맡길 수 있는 갈래 0.
+     *
+     * @param  array<string,mixed> $u
+     * @param  array<string,mixed> $row 요청자 몫으로 읽은 페이지 행(`community_page_row($id, 요청자)`)
+     * @return array{0:bool,1:string}
+     */
+    public static function decidePageAssign(array $u, array $row): array
+    {
+        if ((string) ($row['space_kind'] ?? '') === 'board') {
+            return [false, self::CODE_SPACE_GOVERNED];
+        }
+        return self::decidePageChange($u, $row);
+    }
+
+    /**
+     * 이 사람이 이 작업의 **담당이 될 수 있나** (ARCH 23.3 `decideAssignTarget` · WK-14 A 「고칠 수 있는 사람만」).
+     *
+     *   없음 · 비활성                      → `inactive`
+     *   쓰기 자격 없는 역할(Guest)         → `not_writer`   (`Authz::canCommunityWrite` — 역할 문자열 비교 0)
+     *   대상 몫으로 다시 읽은 행에서 `decidePageChange` 거부 → `assignee_cannot_edit`
+     *   그 밖                              → `can_edit`
+     *
+     * `$rowForTarget` 은 **대상 몫으로** 읽은 행이다(`community_page_row($id, 대상 id)`) — 공유 등급이 그 사람 몫이어야
+     * 판정이 맞는다(`decideMentionTarget` 과 같은 틀, 「읽기」 대신 「고치기」). 대상의 팀은 세션이 아니라 DB 의 값이다.
+     *
+     * @param  array<string,mixed>|null $target `public.users` 한 줄(`id`·`role`·`team_id`·`is_active`)
+     * @param  array<string,mixed>      $rowForTarget
+     * @return array{0:bool,1:string}
+     */
+    public static function decideAssignTarget(?array $target, array $rowForTarget): array
+    {
+        if ($target === null || ($target['is_active'] ?? false) !== true) {
+            return [false, self::CODE_INACTIVE];
+        }
+        $tu = [
+            'id'      => (int) $target['id'],
+            'role'    => (string) ($target['role'] ?? ''),
+            'team_id' => ($target['team_id'] ?? null) === null ? null : (int) $target['team_id'],
+        ];
+        if (!Authz::canCommunityWrite($tu)) {
+            return [false, self::CODE_NOT_WRITER];
+        }
+        if (!self::decidePageChange($tu, $rowForTarget)[0]) {
+            return [false, self::CODE_ASSIGNEE_CANNOT_EDIT];
+        }
+        return [true, self::CODE_CAN_EDIT];
+    }
+
+    /**
+     * 이 사람이 이 **포트폴리오를 볼 수 있나** (ARCH 23.7 `decidePortfolioRead` · WK-13 ②).
+     *
+     *   지워짐                                    → `not_found`
+     *   공간이 `team` 이고 그 팀 구성원            → `team_member` (`isTeamMember` — 팀 없음은 맞지 않는다)
+     *   Admin                                     → `admin_all`   (읽기만 — 부르는 쪽이 감사 `portfolio.read|allow|admin_all`)
+     *   그 밖                                     → `not_member`
+     *
+     * 팀 공간 페이지의 「사람 지정 공유」 갈래는 포트폴리오에 없다(공유는 이번 범위 밖).
+     * `$pf` 모양 — `deleted_at` · `space_kind` · `space_team_id`(공간 행에서 읽은 값). 공간 종류가 `team` 인지는
+     * 여기서만 본다(핸들러가 비교하지 않는다).
+     *
+     * @param  array<string,mixed> $u
+     * @param  array<string,mixed> $pf
+     * @return array{0:bool,1:string}
+     */
+    public static function decidePortfolioRead(array $u, array $pf): array
+    {
+        if (($pf['deleted_at'] ?? null) !== null) {
+            return [false, self::CODE_NOT_FOUND];
+        }
+        if ((string) ($pf['space_kind'] ?? '') === 'team' && self::isTeamMember($u, $pf['space_team_id'] ?? null)) {
+            return [true, self::CODE_TEAM_MEMBER];
+        }
+        if (Authz::canAdmin($u)) {
+            return [true, self::CODE_ADMIN_ALL];
+        }
+        return [false, self::CODE_NOT_MEMBER];
+    }
+
+    /**
+     * 이 사람이 이 **포트폴리오를 만들고·고치고·지울 수 있나** (ARCH 23.7 `decidePortfolioManage`).
+     *
+     *   `team_member` + 쓰기 자격(`Authz::canCommunityWrite`) → `team_member`
+     *   볼 수 없음                                            → 읽기 판정의 코드(`not_found`·`not_member`)
+     *   Admin 의 열람(`admin_all`)                            → `not_member` (Admin 은 읽기만 — 관리 불가)
+     *   구성원이지만 쓰기 자격 없음(Guest)                    → `role_not_permitted`
+     *
+     * 팀 공간 페이지의 관리 결(「구성원만」 — `decidePageManage`)과 같다. 만들기는 아직 행이 없으므로 부르는 쪽이
+     * 그 공간의 값으로 같은 모양(`deleted_at` null · `space_kind` · `space_team_id`)을 만들어 묻는다.
+     *
+     * @param  array<string,mixed> $u
+     * @param  array<string,mixed> $pf
+     * @return array{0:bool,1:string}
+     */
+    public static function decidePortfolioManage(array $u, array $pf): array
+    {
+        [$mayRead, $code] = self::decidePortfolioRead($u, $pf);
+        if (!$mayRead) {
+            return [false, $code];
+        }
+        if ($code !== self::CODE_TEAM_MEMBER) {
+            return [false, self::CODE_NOT_MEMBER];
+        }
+        if (!Authz::canCommunityWrite($u)) {
+            return [false, self::CODE_ROLE_NOT_PERMITTED];
+        }
+        return [true, self::CODE_TEAM_MEMBER];
+    }
+
+    /**
+     * 이 사람이 이 **프로젝트를 이 포트폴리오에 넣을 수 있나** (ARCH 23.7 `decidePortfolioAdd`).
+     *
+     *   [1] `decidePortfolioManage` 거부                       → 그 코드
+     *   [2] 넣는 사람이 그 프로젝트를 볼 수 없다 · **관리자 특권(`admin_all`)·숨긴 글 관리자(`board_moderator`)로만**
+     *       본다                                               → `project_not_readable`
+     *       (`decideMentionTarget` 과 같은 까닭 — 관리자 열람으로 남의 비공개 프로젝트를 팀 화면에 걸지 못하게)
+     *   [3] `databases.purpose='project'` 인 데이터베이스 페이지가 아니다 → `not_project`
+     *   그 밖                                                  → manage 의 코드(`team_member`)
+     *
+     * [2] 를 [3] 앞에 두는 까닭: 볼 수 없는 페이지가 프로젝트인지 아닌지(400 과 403 의 차이)가 새지 않게.
+     * 넣은 뒤에도 그 프로젝트는 보는 사람마다 목록 SQL 로 다시 걸러진다 — 포트폴리오는 볼 권한을 주지 않는다.
+     *
+     * @param  array<string,mixed> $u
+     * @param  array<string,mixed> $pf
+     * @param  array<string,mixed> $projectRow 넣는 사람 몫으로 읽은 페이지 행 + `dbself_purpose`(`community_project_row`)
+     * @return array{0:bool,1:string}
+     */
+    public static function decidePortfolioAdd(array $u, array $pf, array $projectRow): array
+    {
+        [$mayManage, $code] = self::decidePortfolioManage($u, $pf);
+        if (!$mayManage) {
+            return [false, $code];
+        }
+        [$mayRead, $readCode] = self::decidePageRead($u, $projectRow);
+        if (!$mayRead || $readCode === self::CODE_ADMIN_ALL || $readCode === self::CODE_BOARD_MODERATOR) {
+            return [false, self::CODE_PROJECT_NOT_READABLE];
+        }
+        if (($projectRow['dbself_public_id'] ?? null) === null || ($projectRow['dbself_purpose'] ?? null) !== 'project') {
+            return [false, self::CODE_NOT_PROJECT];
         }
         return [true, $code];
     }
