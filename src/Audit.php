@@ -779,6 +779,22 @@ final class Audit
         'consent.withdraw|allow'                        => '{target} 이(가) AI 국외 전송 동의를 철회했습니다 (판은 상세 기록)',
         'auth.gate|deny|consent_required'               => '{target} 이(가) 이용약관 동의·개인정보 처리방침 확인을 마치지 않은 상태로 다른 기능을 요청해서 거부했습니다',
 
+        // ── 보관 기간 정리 · 탈퇴 · 감사 3년 (사이트 Q:F-13 지시서 P2 · 기획 ../docs/privacy-terms-plan.md 5.1 · 5.2) ──
+        // 탈퇴 요청은 본인({actor} = {target}) · 처리는 관리자({actor}) · 파기는 배치(행위자 없음). 건수는 detail 에만(내용·이름 0).
+        'account.delete_request|allow'                  => '{actor} 이(가) 탈퇴를 요청했습니다 (요청 번호는 상세 기록)',
+        'account.delete_request|deny|already_requested' => '{actor} 이(가) 이미 처리 중인 탈퇴 요청이 있는데 다시 요청해서 거부했습니다',
+        'account.delete_process|allow'                  => '{actor} 이(가) 계정 「{target}」 의 탈퇴를 처리했습니다 — 비활성화하고 로그인 수단을 지웠습니다 (건수는 상세 기록)',
+        'account.delete_process|deny|not_found'         => '{actor} 이(가) 없는 탈퇴 요청을 처리하려 해서 거부했습니다',
+        'account.delete_process|deny|not_pending'       => '{actor} 이(가) 이미 처리한 계정 「{target}」 의 탈퇴 요청을 다시 처리하려 해서 거부했습니다',
+        'account.delete_process|deny|self_change'       => '{actor} 이(가) 자기 자신의 탈퇴 요청을 처리하려 해서 거부했습니다 (다른 관리자가 처리합니다)',
+        'account.delete_process|deny|last_admin'        => '{actor} 이(가) 마지막 활성 관리자 계정 「{target}」 의 탈퇴를 처리하려 해서 거부했습니다 (관리자 0명 방지)',
+        'account.purge|allow'                           => '배치가 탈퇴 처리 30일이 지난 계정 「{target}」 을(를) 익명화하고 개인 공간 자료를 삭제했습니다 (건수는 상세 기록)',
+        'account.purge|error|still_active'              => '탈퇴 처리한 계정 「{target}」 이(가) 다시 활성 상태라 배치가 익명화하지 않고 건너뛰었습니다 (점검 필요)',
+        'account.purge|error|name_conflict'             => '탈퇴 계정 「{target}」 을(를) 익명화하려 했지만 바꿀 아이디를 다른 계정이 이미 써서 건너뛰었습니다 (점검 필요)',
+        'privacy.purge|allow'                           => '배치가 보관 기간이 지난 기록을 파기했습니다 (종류별 건수는 상세 기록)',
+        'privacy.purge|error|purge_failed'              => '보관 기간이 지난 기록을 파기하던 중 오류가 나서 멈췄습니다 (점검 필요)',
+        'audit.chain_trim|allow'                        => '감사 로그 해시 체인에서 3년이 지난 날을 접고 검증 시작점을 옮겼습니다 (시작점은 상세 기록)',
+
         // ── 「역할로 보기」 (26단계 — PRD F-39, ARCH 5.20 · 7.4, SECURITY R-74) ──────────
         // 실제 계정은 {actor}(= actor_role 열의 실제 역할)이고, 고른 역할·팀·지점은 detail 에 남는다.
         // 자동 해제(act.expire)는 사용자가 누른 행동이 아니라 **서버가 판정한 사실**이라

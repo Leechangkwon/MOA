@@ -344,6 +344,42 @@ BEGIN
 END
 $$;
 
+-- ─── 탈퇴 요청 · 보관 기간 파기 함수 (사이트 Q:F-13 지시서 P2 · 기획 ../docs/privacy-terms-plan.md 5.2 「탈퇴」 「보관 기간 파기」 「감사 3년」).
+--     표를 만드는 것은 db/schema.sql(새 설치)·db/migrations/2026-10-21_privacy_retention.sql(기존 DB)이고, 이 절은 **같은 권한**을
+--     다시 건다(재실행 시 과거 권한이 남지 않게 회수 뒤 GRANT). 표·함수가 없으면(마이그레이션 전) 그 부분은 NOTICE 만 남기고 건너뛴다.
+--   account_deletion_requests
+--     tbox_app    SELECT · INSERT(user_id 한 칸 — 상태·처리 칸은 기본값만) · UPDATE(status · processed_by · processed_at) ·
+--                 시퀀스 USAGE·SELECT — ★ DELETE 없음 · purged_at 칸 UPDATE 없음(파기 표시는 소유자 함수만)
+--     tbox_backup SELECT 만 · tbox_perm · tbox_push 0
+--   파기 함수 넷(public.privacy_purge_expired · public.privacy_purge_accounts · community.privacy_purge_memory_posts ·
+--   community.privacy_purge_pages) — ★ 소유자(tbox_owner)만 부른다. PUBLIC·tbox_app 의 EXECUTE 를 걷는다(앱 계정 권한을 넓히지 않는다 —
+--   audit_logs 는 위 절 그대로 SELECT·INSERT 만).
+DO $$
+BEGIN
+    IF to_regclass('public.account_deletion_requests') IS NULL THEN
+        RAISE NOTICE 'account_deletion_requests 표가 없다 — db/migrations/2026-10-21_privacy_retention.sql 을 먼저 돌린다(이 절은 건너뜀)';
+    ELSE
+        REVOKE ALL ON public.account_deletion_requests FROM tbox_app, tbox_backup, tbox_perm;
+        REVOKE ALL ON SEQUENCE public.account_deletion_requests_id_seq FROM tbox_app, tbox_backup, tbox_perm;
+        IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'tbox_push') THEN
+            REVOKE ALL ON public.account_deletion_requests FROM tbox_push;
+        END IF;
+        GRANT SELECT                                      ON public.account_deletion_requests TO tbox_app;
+        GRANT INSERT (user_id)                            ON public.account_deletion_requests TO tbox_app;
+        GRANT UPDATE (status, processed_by, processed_at) ON public.account_deletion_requests TO tbox_app;
+        GRANT USAGE, SELECT ON SEQUENCE public.account_deletion_requests_id_seq TO tbox_app;
+        GRANT SELECT ON public.account_deletion_requests TO tbox_backup;
+        GRANT SELECT ON SEQUENCE public.account_deletion_requests_id_seq TO tbox_backup;
+    END IF;
+    IF to_regprocedure('public.privacy_purge_expired(boolean,integer)') IS NOT NULL THEN
+        REVOKE ALL ON FUNCTION public.privacy_purge_expired(boolean, integer)  FROM PUBLIC, tbox_app;
+        REVOKE ALL ON FUNCTION public.privacy_purge_accounts(boolean, integer) FROM PUBLIC, tbox_app;
+        REVOKE ALL ON FUNCTION community.privacy_purge_memory_posts(uuid[])    FROM PUBLIC, tbox_app;
+        REVOKE ALL ON FUNCTION community.privacy_purge_pages(bigint[])         FROM PUBLIC, tbox_app;
+    END IF;
+END
+$$;
+
 -- Remote MCP additive migration, preserving all existing table owners.
 DO $$ BEGIN
  IF to_regclass('public.mcp_tokens') IS NOT NULL THEN

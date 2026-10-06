@@ -13,8 +13,12 @@
     su tbox-php adm
     # 일 단위 회전 (ARCH 7.1 표)
     daily
-    # 365개 보관 = 보존 1년 (PRD S-07 "보존 기간 1년")
-    rotate 365
+    # 1096개 보관 = 보존 3년 (사이트 Q:F-13 P2 · 기획 privacy-terms-plan 5.1 「감사 기록 3년」 — 윤년이 든 3년도 덮는 1096일.
+    # 이전 값 365 = 1년, PRD S-07). DB audit_logs 의 3년 지난 줄은 scripts/privacy_purge.php(소유자 함수)가 지운다.
+    rotate 1096
+    # 빈 날(notifempty)이 있어도 3년보다 오래 남지 않게 — 회전할 때 1096일 지난 옛 파일을 지운다.
+    # 해시 체인(audit_chain.php)은 3년 지난 날의 항목을 「검증 시작점」으로 접어 검산이 그대로 통과한다.
+    maxage 1096
     # 옛 파일은 압축해 디스크를 아낀다
     compress
     # 바로 직전 파일은 압축하지 않는다 — 사고 직후 tail 로 바로 읽기 위해

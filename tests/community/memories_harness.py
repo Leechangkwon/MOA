@@ -34,7 +34,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--port', type=int, default=8768, choices=(8768,))
     parser.add_argument('--output', type=Path, required=True)
-    parser.add_argument('--suite', choices=('memories_http.py','memories_runtime_browser.py','memory_ai_http.py','memory_story_http.py','memory_social_http.py','travel_plans_http.py','remote_http.py','messenger_http.py','messenger_store_browser.py','messenger_window_browser.py','qf12_floor_http.py','qf12_server_http.py','qf12_shell_browser.py','qf12_work_browser.py','memories_http.py','qf13h_privacy_browser.py'), default='memories_http.py')
+    parser.add_argument('--suite', choices=('memories_http.py','memories_runtime_browser.py','memory_ai_http.py','memory_story_http.py','memory_social_http.py','travel_plans_http.py','remote_http.py','messenger_http.py','messenger_store_browser.py','messenger_window_browser.py','qf12_floor_http.py','qf12_server_http.py','qf12_shell_browser.py','qf12_work_browser.py','memories_http.py','qf13h_privacy_browser.py','qf13_retention_http.py'), default='memories_http.py')
     parser.add_argument('--baseline-code', action='store_true')
     args = parser.parse_args()
     args.output = args.output.resolve()
@@ -68,7 +68,7 @@ def main():
                               stdout=subprocess.PIPE, stderr=subprocess.PIPE, **kwargs)
 
     def sql_file(path):
-        if path.name in ('2026-10-01_community_suggestions.sql','2026-10-18_community_ai.sql'):
+        if path.name in ('2026-10-01_community_suggestions.sql','2026-10-18_community_ai.sql','2026-10-21_privacy_retention.sql'):
             # Isolated DB owner only; production migration retains tbox_owner unchanged.
             adapted = work / 'test-owner-suggestions.sql'
             adapted.write_text(path.read_text().replace('OWNER TO tbox_owner;', 'OWNER TO tbox_testdb;'))
@@ -126,7 +126,9 @@ def main():
                            '2026-10-03_memory_story.sql', '2026-10-14_memory_social.sql',
                            '2026-10-14_optional_member_auth.sql', '2026-10-14_usage_guide.sql',
                            '2026-10-14_travel_plans.sql', '2026-10-14_travel_scopes.sql',
-                           '2026-10-15_remote_mcp.sql', '2026-10-19_qf12_work.sql']
+                           '2026-10-15_remote_mcp.sql', '2026-10-19_qf12_work.sql',
+                           # Q:F-13 P2 — 탈퇴 요청 표 · 소유자 전용 파기 함수(합성 DB 에서는 소유자 = tbox_testdb, 위 갈음)
+                           '2026-10-21_privacy_retention.sql']
         for _ in range(2):
             for migration in migrations:
                 logs.append(sql_file(instance / 'db/migrations' / migration).stdout)
@@ -165,7 +167,8 @@ def main():
             else:
                 raise RuntimeError('Test HTTP startup timed out')
             print('SYNTHETIC_DB_CREATED=1; PRODUCTION_RECORDS_COPIED=0', flush=True)
-            suite_directory = 'tests/mcp' if args.suite == 'remote_http.py' else 'tests/community'
+            suite_directory = ('tests/mcp' if args.suite == 'remote_http.py'
+                               else 'tests' if args.suite == 'qf13_retention_http.py' else 'tests/community')
             result = subprocess.run([sys.executable, str(ROOT / suite_directory / args.suite)],
                                     env=dict(fixture_env, FILE_RENAME_MANIFEST=str(work / 'manifest.json'),
                                              FILE_RENAME_OUTPUT=str(args.output), STAGE89_SECOND_PORT=str(args.port+1),

@@ -813,12 +813,16 @@ final class Auth
         if (!Legal::needsConsent((int) $u['id'])) {
             return;
         }
-        Audit::deny('auth.gate', 'consent_required', [
-            'target_type' => 'user',
-            'target_id'   => (int) $u['id'],
-            'target_name' => (string) $u['username'],
-            'detail'      => ['next' => 'consent'],
-        ]);
+        // Q:F-13 P2-a — 감사는 **사람이 누른 요청만**. 배경 폴링(`X-Qaredi-Background: 1` — 알림·편집 heartbeat)은 같은 403 을 받되
+        // 줄을 남기지 않는다(동의 전 탭을 켜 두면 몇 초마다 거부 줄이 쌓였다). 헤더를 빼면 감사가 남을 뿐 — 막는 판정은 같다.
+        if (!self::isBackgroundRequest()) {
+            Audit::deny('auth.gate', 'consent_required', [
+                'target_type' => 'user',
+                'target_id'   => (int) $u['id'],
+                'target_name' => (string) $u['username'],
+                'detail'      => ['next' => 'consent'],
+            ]);
+        }
         // 라우트 패턴의 경로 쪽이 API 인가 — t-box 는 `/api/…`, 커뮤니티는 `/community/api/…`(두 라우터의 `/api/` 갈림과 같은 기준).
         // 라우트를 모르면(TBOX_ROUTE 없음) API 로 본다 — 302 보다 403 이 닫힌 쪽이다.
         $isApi = $route === '' || preg_match('#\A[A-Z]+ (?:' . preg_quote(COMMUNITY_BASE, '#') . ')?/api/#', $route) === 1;

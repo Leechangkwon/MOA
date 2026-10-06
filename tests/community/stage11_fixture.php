@@ -47,6 +47,15 @@ if (($argv[1] ?? '') === 'init') {
                 ':scope'=>$scope, ':ip'=>$scope === 'session.open' ? '127.0.0.1':null])->fetch()['id'];
             $item[$scope] = ['token'=>$token, 'id'=>$tid];
         }
+        // 사이트 Q:F-13 P2-d — 이 합성 계정들은 「이미 동의한 기존 회원」이다(P1 동의 관문 — 지금 판 동의 줄이 없으면 세션 API 가 403 consent_required).
+        // 약관·동의 표가 없는 옛 코드(--baseline-code)에서는 건너뛴다. 동의 줄 없는 회원의 시험은 tests/qf13_consent_http.py 몫이다.
+        if (is_file(dirname(__DIR__, 2) . '/src/Legal.php') && $db->run("SELECT to_regclass('public.user_consents') IS NOT NULL")->fetchColumn()) {
+            require_once dirname(__DIR__, 2) . '/src/Legal.php';
+            foreach (['terms', 'privacy', 'age14', 'ai_overseas'] as $consentDoc) {
+                $db->run("INSERT INTO user_consents(user_id,doc,version,action,ip) VALUES(:user,:doc,:version,'agree','127.0.0.1')",
+                    [':user' => $id, ':doc' => $consentDoc, ':version' => Legal::current($consentDoc)]);
+            }
+        }
         $data['users'][$key] = $item;
     }
     foreach (['a','b'] as $key) {

@@ -1226,6 +1226,62 @@ POST /tbox/api/messages/ai {"thread_id":null,"text":"…","request_id":"<UUIDv4>
 
 감사: `consent.agree|allow` · `consent.withdraw|allow`(대상 = 동의한 사람 · `detail.consents` = 문서·판 목록 · 가입은 `detail.via=register`) · `auth.gate|deny|consent_required`.
 
+## 24. 보관 기간 정리 · 탈퇴 요청·처리 (사이트 Q:F-13 P2, 2026-10-07 · 웹 화면 · 세션)
+
+기획 `../docs/privacy-terms-plan.md` 5.1(보관 기간 표) · 5.2 「탈퇴」 「보관 기간 파기」 「감사 3년」 · 표 `account_deletion_requests`(앱 계정 SELECT · INSERT(user_id) · UPDATE(status·processed_by·processed_at) — DELETE 없음).
+**토큰 창구 집합(`TBOX_API_TOKEN_ROUTES`)은 그대로다** — 아래 창구는 사람의 세션으로만 부른다. 동의 관문(23-2)도 그대로 지난다(약관 동의 전에는 탈퇴 요청도 403 `consent_required`).
+파기(1년 · 30일 · 3년 · 탈퇴 30일 뒤 익명화)는 창구가 없다 — root cron 04:40 `scripts/privacy_purge.php --run` 이 **표 소유자 전용 함수** 둘(`public.privacy_purge_expired` · `public.privacy_purge_accounts`)을 부른다(앱 계정은 42501).
+
+### 24-1. 내 탈퇴 요청 — `GET|POST /tbox/api/me/delete-request`
+
+| 항목 | 값 |
+|---|---|
+| 인증 | 세션(authenticated) · POST 는 `X-CSRF-Token` · 대상은 언제나 세션의 본인(본문에 사람 칸 없음) · POST 는 **비밀번호 재확인 15분 창** 안이어야 한다(핸들러가 묻는다 — 관문 [3-2] 와 같은 403 모양) |
+| 요청 | GET 없음 · POST `{"confirm":true}` 한 칸만(그 밖 키·값 400) |
+| 성공 | GET 200 `{request:{id,status,requested_at,processed_at}|null}`(대기 · 처리됨만) · POST 201 `{request:{…, status:"pending"}}` |
+| 실패 | 재확인 없음 403 `{error, next:"reauth"}` + 감사 `auth.gate|deny|reauth_required` · 이미 열린 요청 409 + 감사 `account.delete_request|deny|already_requested` · 형식 400 · CSRF 403 · 로그인 없음 401 |
+| 하지 않는 것 | 요청만으로는 아무것도 지우거나 막지 않는다 — 관리자가 처리할 때까지 그대로 쓴다 |
+
+실제 응답(격리 틀 `tests/qf13_retention_http.py` · 합성 계정, 2026-10-07):
+
+```
+POST /tbox/api/me/delete-request {"confirm":true}   (재확인 전)
+→ 403 {"error":"탈퇴를 요청하려면 비밀번호를 다시 확인해야 합니다","next":"reauth"}
+POST /tbox/api/me/reauth {"password":"…"} → 200
+POST /tbox/api/me/delete-request {"confirm":true}
+→ 201 {"request":{"id":1,"status":"pending","requested_at":"2026-10-07 08:27:19.447393+09","processed_at":null}}
+POST /tbox/api/me/delete-request {"confirm":true} → 409 {"error":"이미 탈퇴를 요청했습니다. 관리자가 처리할 때까지 기다려 주세요."}
+```
+
+### 24-2. 탈퇴 요청 목록 · 처리 — `GET /tbox/api/admin/deletion-requests` · `POST /tbox/api/admin/deletion-requests/{번호}`
+
+| 항목 | 값 |
+|---|---|
+| 인증 | 세션 · 정책 `role:Admin` — **재인증 관문 [3-2]** 가 자동으로 붙는다(15분 창 밖이면 403 `next:"reauth"`) · POST 는 `X-CSRF-Token` |
+| 요청 | GET 없음 · POST `{"confirm":true}` 한 칸만 · `{번호}` 는 요청 번호(`[0-9]{1,9}`) |
+| 성공 | GET 200 `{requests:[{id,user_id,username,display_name,status,requested_at,processed_at,purge_after,purged_at,processed_by_name,remaining:{personal_pages,memory_posts,travel_plans}|null}], purge_days:30}` — 대기 · 처리됨 전부 + 90일 안에 파기된 것 · `remaining` 은 열린 요청만(인계할 것 확인용) · POST 200 `{request:{id,status:"processed",requested_at,processed_at,purge_after}}` |
+| 처리하는 것(한 트랜잭션) | 계정 비활성 · 비밀번호를 아무도 모르는 값의 Argon2id 해시로 · 2단계 비밀값 지움 · 세션 전부 끊기 · 지문·얼굴 열쇠 해제(열쇠마다 감사 `auth.passkey_revoke|allow|deactivate`) · 개인 토큰 회수 · 로그인 링크 · 일회용 문제 · ChatGPT 연결 지움 · 휴대폰 경보 받기 해지 · 요청 `processed`(처리 때는 DB 트리거가 now() 로 고정) · 감사 `account.delete_process|allow`(detail `request_no` · `sessions_revoked` · `device_keys_revoked` · `program_keys_revoked` · `purge_after_days`) |
+| 실패 | 없는 번호 404 `not_found` · 대기 아님 409 `not_pending` · 자기 자신 400 `self_change` · 마지막 활성 관리자 400 `last_admin`(문구는 `Http::reasonMessage`) · 재인증 403 · Admin 아님 403 |
+
+```
+POST /tbox/api/admin/deletion-requests/1 {"confirm":true}   (재확인 전) → 403 {"error":"관리 기능을 쓰려면 비밀번호를 다시 확인해야 합니다","next":"reauth"}
+GET  /tbox/api/admin/deletion-requests
+→ 200 {"requests":[{"id":1,"user_id":8,"username":"qf13r_member","display_name":"합성 qf13r_member","status":"pending",
+       "requested_at":"2026-10-07 08:27:19.447393+09","processed_at":null,"purge_after":null,"purged_at":null,"processed_by_name":null,
+       "remaining":{"personal_pages":3,"memory_posts":1,"travel_plans":1}}, …],"purge_days":30}
+POST /tbox/api/admin/deletion-requests/1 {"confirm":true}
+→ 200 {"request":{"id":1,"status":"processed","requested_at":"2026-10-07 08:27:19.447393+09","processed_at":"2026-10-07 08:27:20.730378+09","purge_after":"2026-11-06 08:27:20.730378+09"}}
+POST /tbox/api/admin/deletion-requests/<자기 요청> {"confirm":true} → 400 {"error":"자기 자신에게는 쓸 수 없습니다 — 내 계정 화면을 이용하세요"}
+```
+
+### 24-3. 30일 뒤(배치) · 보관 기간(배치) — 창구 없음
+
+| 무엇 | 결과 |
+|---|---|
+| 탈퇴 처리 30일 뒤 | 아이디 `deleted-<번호>` · 표시 이름 `탈퇴한 사용자 #<번호>` · 개인 공간 이름 `탈퇴한 사용자 #<번호> 의 공간` · 개인 공간 문서 내용 삭제(게시판에 게시한 글 제외 — 행은 「영구 삭제된 페이지」) · 사진 기록 전부(사진 파일 포함) · 여행 계획 · 팔로우 · 공유 링크 · 받은 알림 · 남은 패스키·토큰·세션 행 삭제 · 요청 `purged` · 감사 `account.purge|allow`. 건너뜀: 다시 켠 계정 `account.purge|error|still_active` · 아이디 충돌 `…|name_conflict` |
+| 남는 것 | 팀 공간 · 게시판 글 · 댓글 · 자료실 파일 — 작성자 칸이 같은 사람이라 화면에 `deleted-<번호>` / `탈퇴한 사용자 #<번호>` 로 보인다. 예: 게시판 글 `GET /community/api/pages/{id}` → `"writer":{"username":"deleted-8","display_name":"탈퇴한 사용자 #8"}` |
+| 보관 기간 | 1:1 메시지(모아 · 커뮤니티 대화 창) 보낸 날부터 1년 · 모아 AI 대화 · AI 도구 · 커뮤니티 GPT · 커뮤니티 AI 입력·출력 1년 · 지운 사진 기록(파일까지) · 여행 계획 30일 · 감사 기록 3년 — 감사 `privacy.purge|allow`(detail `counts` = 종류별 건수 · `files` · `accounts`) · 실패 `privacy.purge|error|purge_failed` |
+
 ## 추가 규칙 (API 를 새로 적을 때)
 
 1. 장 번호를 이어서 붙이고 제목은 `## N. 이름 — 메서드 경로`.

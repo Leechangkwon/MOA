@@ -5913,6 +5913,50 @@
       "est_sec": 240,
       "writes_prod": false,
       "notes": "사이트 Q:F-13 지시서 P1 — 자기 시험 틀(빈 합성 DB tbox_memories_test_qf13_<pid> + 마이그레이션 시험 DB · 저장소 임시 사본 · 로컬 php -S 127.0.0.1:8786 · Chromium) · fixture claude_ 와 이 시험의 qf13_ 합성 계정만 · 외부 요청 0(사본의 Fetch.php·Ai.php 만 합성 provider). 마이그레이션: main 스키마 위 2회 적용 = 새 설치 모양 · 기존 계정 줄 0. 공개: /tbox/privacy·/tbox/terms 로그인 없이 200 · Set-Cookie 0 · 운영자·책임자 이메일·시행일 · ?v= 목록 밖 404 · 로그인해도 같은 바이트. 가입: 체크 둘 중 하나라도 빠지면 400·계정 0 · 둘 다면 201·동의 줄 셋·감사. 기존 회원: 화면 302 /tbox/consent(?to= 허용 목록) · 세션 API 403 consent_required(t-box·커뮤니티) · /api/me·동의·로그아웃 열림 · 토큰 창구 그대로 · 계정 절차가 먼저 · 판이 바뀌면 다시. AI: 모아 AI·메시지 도구·사진 이야기·커뮤니티 AI 409 ai_consent_required · 합성 provider 0 → 동의 뒤 200(호출 4) → 철회 뒤 409(호출 0). 기록: 앱 계정 UPDATE/DELETE/TRUNCATE 42501 · 감사 셋. 화면: 바닥 링크 다섯 자리(+공개 화면) · 동의 화면 360·412·820·1440 × 밝게·어둡게 × 고대비 가로 넘침 0·콘솔 0 · 동의 뒤 보던 곳 · 메신저 AI 동의 창(동의 → 같은 요청 1회 · Esc → 호출 0 · 412 화면 안). 앱 접속 키 넷만 memories_harness.py 와 같은 자리에서 읽는다. 결과: results.json(단언·참거짓) · samples.json(403/409/200 본문 견본 — 개인 데이터 0) · 화면 PNG."
+    },
+    {
+      "id": "tbox.qf13_retention_http",
+      "cmd": "python3 tests/community/memories_harness.py --suite qf13_retention_http.py --output /tmp/qaredi-qf13-retention-results",
+      "module": "tbox",
+      "env": "temp-instance",
+      "status": "required",
+      "needs": [
+        "browser"
+      ],
+      "covers": [
+        "scripts/privacy_purge.php",
+        "scripts/audit_chain.php",
+        "db/migrations/2026-10-21_privacy_retention.sql",
+        "db/schema.sql",
+        "db/grants.sql",
+        "db/community/schema.sql",
+        "db/community/grants.sql",
+        "deploy/cron.d/tbox-v2",
+        "deploy/logrotate.d/tbox-v2",
+        "src/handlers/me_delete_request.php",
+        "src/handlers/admin_deletion_requests.php",
+        "public/index.php",
+        "src/handlers/settings_page.php",
+        "src/handlers/admin_page.php",
+        "public/assets/app.js",
+        "src/community/Memories.php",
+        "src/Audit.php",
+        "src/Auth.php",
+        "src/Legal.php",
+        "config/legal.json",
+        "content/legal/privacy-0000-00-00.html",
+        "tests/qf13_retention_http.py",
+        "tests/community/memories_harness.py",
+        "tests/community/memories_http.py",
+        "tests/community/memories_fixture.php",
+        "tests/community/export_router.php",
+        ".env.example"
+      ],
+      "requirements": [],
+      "risks": [],
+      "est_sec": 150,
+      "writes_prod": false,
+      "notes": "사이트 Q:F-13 지시서 P2 — memories_harness 의 빈 합성 DB + 로컬 php -S(127.0.0.1:8768·8769) + Chromium(CHROMIUM_EXECUTABLE) · fixture claude_ 와 이 시험의 qf13r_ 합성 계정만 · 외부 요청 0. 소유자 함수는 합성 DB 소유자(tbox_testdb)로 부른다(작업 폴더의 0600 pgpass · TBOX_OWNER_PGPASS/ROLE — 시험 끝에 작업 폴더째 지움) · 체인 파일은 TBOX_AUDIT_CHAIN_FILE 로 작업 폴더에. 파기: 366일·31일·3년+1일 줄과 경계 안 줄(364일·29일·3년−1일) → dry 는 수만 · --run 뒤 지난 것만 0 · 사진·AI 그림 파일 0 · 두 번째 0 · 정합성 --strict 통과 · 출력·감사에 내용 0. 권한: 앱 계정 함수 넷·audit_logs DELETE/UPDATE·탈퇴 요청 DELETE/purged_at/상태 INSERT 42501 · 처리 때 당기기·되돌리기 트리거 P0001 · 함수 소유자만 EXECUTE. 탈퇴: 요청 재인증 403 → 201 → 409 · 관리자 재인증 403 → 목록(남은 자료 수) → 자기 자신 400 · 처리 200 → 즉시 비활성·OTP·비밀번호·세션·패스키·토큰 0 · 로그인·옛 세션·토큰 거부 → 30일 당긴 뒤 deleted-<번호>·「탈퇴한 사용자 #번호」·개인 공간 문서·사진(파일)·여행 0 · 팀 글·게시판 글·댓글·자료실 파일 남음(게시판 writer 표시 바뀜) · 감사 셋 · 이름 충돌·다시 켠 계정 건너뜀. G-2: GPS·XMP·주석·뒤 그림이 든 JPEG · eXIf/tEXt/iTXt PNG · EXIF/XMP WebP → 저장 파일 메타 0 · 픽셀 같음 · JPEG 방향만 남김 · DB 지문 = 저장 파일 · 옛 사진 그대로. 감사 사슬: 3년 지난 날 접기(start 줄) · 검증 통과 · 파기 뒤 통과 · 남은 날 변조·가짜 시작점은 실패. 마이그레이션: main 스키마 위 2회 = 새 설치 모양. P2-a~e. 화면: 「내 계정」 탈퇴(확인 창 → 재인증 창 → 한 번) · 관리자 「탈퇴 요청」(확인 창 → 처리) · 360·412·820·1440 × 밝게·어둡게 · 고대비 가로 넘침 0 · 콘솔 0. 결과: qf13-retention-results.json(단언·참거짓) · samples.json(응답 견본 — 개인 데이터 0) · 명령 출력(건수만) · 화면 PNG. 앱 접속 키 넷만 memories_harness.py 와 같은 자리에서 읽는다."
     }
   ]
 }

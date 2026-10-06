@@ -338,6 +338,18 @@ final class Memories
         $name = iconv_substr($name, 0, 200, 'UTF-8') ?: 'memory';
         if (!move_uploaded_file($file['tmp_name'], $path)) { $db->rollback(); throw new RuntimeException('Memory upload failed'); }
         chmod($path, 0600);
+        if ($isPhoto) {
+            // Q:F-13 G-2 — 저장하는 판에서 위치·촬영 정보(EXIF·GPS·XMP·IPTC·주석)를 뗀다. 크기·지문은 뗀 판으로 다시 잰다.
+            try {
+                self::stripPhotoMetadata($path, $mime);
+            } catch (Throwable $e) {
+                $db->rollback();
+                if (is_file($path)) { unlink($path); }
+                Http::error(400, '이 사진을 읽을 수 없어요. 다른 사진을 골라 주세요.');
+            }
+            clearstatcache(true, $path);
+            $bytes = (int) filesize($path);
+        }
         $digest = hash_file('sha256', $path);
         if ($digest === false) { $db->rollback(); unlink($path); throw new RuntimeException('Cannot hash memory media'); }
         try {
@@ -349,6 +361,281 @@ final class Memories
             $db->commit();
         } catch (Throwable $e) { $db->rollback(); unlink($path); throw $e; }
         return ['id' => $id, 'mime' => $mime, 'filename' => $name, 'bytes' => $bytes, 'url' => Http::communityUrl('/api/memories/media/' . $id)];
+    }
+
+    /**
+     * Q:F-13 G-2 (기획 ../docs/privacy-terms-plan.md 5.2 「G-2 사진 위치 정보」) — 사진 기록에 **올리는** 사진의 메타데이터를 뗀 판을 저장한다.
+     *
+     *   JPEG  조각 단위로 **무손실**: APP1(Exif · XMP — GPS 가 여기 든다) · APP13(IPTC·Photoshop) · COM(주석) · APP2 MPF(여러 장 색인) ·
+     *         그 밖 APPn(APP0 JFIF · APP2 ICC 색 프로필 · APP14 Adobe 색 변환만 남긴다)을 빼고, 영상 데이터(스캔)는 바이트 그대로 옮긴다.
+     *         첫 그림의 EOI 뒤(휴대폰이 붙이는 둘째 그림·썸네일 — 그 안에 또 Exif 가 있다)는 버린다. 방향(Orientation)만은 화면이
+     *         옆으로 누워 보이지 않게 **그 한 칸만 든 Exif** 로 다시 넣는다(위치·기기·시각 0).
+     *   PNG   덩어리 단위로 무손실: tEXt · zTXt · iTXt(XMP) · eXIf · tIME 를 빼고 IEND 뒤를 버린다(그림 덩어리 IDAT 는 바이트 그대로).
+     *   WebP  RIFF 덩어리 단위로 무손실: EXIF · XMP 를 빼고 VP8X 의 두 표시 비트를 끈다.
+     *   GIF   표준 위치 칸이 없어 손대지 않는다(움직이는 GIF 를 다시 인코딩하면 움직임이 사라진다).
+     *   위 해석이 실패한 깨진 파일은 GD 로 **다시 인코딩**해 메타데이터를 남기지 않는다(화질은 조금 달라진다) — 그것도 안 되면 예외(→ 400).
+     * 영상(MP4·MOV·WebM)은 이번 범위 밖이다(사용자 데이터 변경 · 따로 묻는다). 이미 저장된 옛 사진은 고치지 않는다(새로 올리는 것만).
+     */
+    private static function stripPhotoMetadata(string $path, string $mime): void
+    {
+        if (!in_array($mime, ['image/jpeg', 'image/png', 'image/webp'], true)) {
+            return;
+        }
+        if (is_link($path) || !is_file($path)) {
+            throw new RuntimeException('Memory photo is not a regular file');
+        }
+        $bytes = file_get_contents($path);
+        if (!is_string($bytes) || $bytes === '') {
+            throw new RuntimeException('Cannot read memory photo');
+        }
+        $clean = match ($mime) {
+            'image/jpeg' => self::stripJpeg($bytes),
+            'image/png'  => self::stripPng($bytes),
+            'image/webp' => self::stripWebp($bytes),
+        };
+        if ($clean === null) {
+            $clean = self::reencodePhoto($bytes, $mime);
+        }
+        if ($clean === $bytes) {
+            return;
+        }
+        $tmp = $path . '.' . bin2hex(random_bytes(6)) . '.part';
+        $old = umask(0077);
+        try {
+            $fh = fopen($tmp, 'x');
+        } finally {
+            umask($old);
+        }
+        if ($fh === false) {
+            throw new RuntimeException('Cannot write memory photo');
+        }
+        $ok = fwrite($fh, $clean) === strlen($clean) && fflush($fh);
+        fclose($fh);
+        if (!$ok || !rename($tmp, $path)) {
+            if (is_file($tmp)) { unlink($tmp); }
+            throw new RuntimeException('Cannot replace memory photo');
+        }
+    }
+
+    /** JPEG 조각 거르기 — 해석할 수 없으면 null(부르는 쪽이 다시 인코딩) */
+    private static function stripJpeg(string $b): ?string
+    {
+        $len = strlen($b);
+        if ($len < 4 || substr($b, 0, 2) !== "\xFF\xD8") {
+            return null;
+        }
+        $head = "\xFF\xD8";   // SOI + APP0(JFIF) — 방향 Exif 는 이 뒤에 넣는다
+        $body = '';
+        $orientation = null;
+        $pos = 2;
+        $seenOther = false;
+        while ($pos < $len) {
+            if (ord($b[$pos]) !== 0xFF) {
+                return null;
+            }
+            while ($pos < $len && ord($b[$pos]) === 0xFF) {
+                $pos++;
+            }
+            if ($pos >= $len) {
+                return null;
+            }
+            $marker = ord($b[$pos]);
+            $pos++;
+            if ($marker === 0xD9) {                       // EOI — 첫 그림의 끝. 그 뒤(둘째 그림·덧붙인 자료)는 버린다
+                $exif = ($orientation !== null && $orientation >= 2 && $orientation <= 8) ? self::orientationExif($orientation) : '';
+                return $head . $exif . $body . "\xFF\xD9";
+            }
+            if ($marker === 0x01 || ($marker >= 0xD0 && $marker <= 0xD7)) {
+                $body .= "\xFF" . chr($marker);
+                continue;
+            }
+            if ($marker === 0xD8 || $pos + 2 > $len) {
+                return null;
+            }
+            $segLen = unpack('n', substr($b, $pos, 2))[1];
+            if ($segLen < 2 || $pos + $segLen > $len) {
+                return null;
+            }
+            $payload = substr($b, $pos + 2, $segLen - 2);
+            $segment = "\xFF" . chr($marker) . substr($b, $pos, $segLen);
+            $pos += $segLen;
+            if ($marker >= 0xE0 && $marker <= 0xEF) {     // APPn
+                if ($marker === 0xE1 && strncmp($payload, "Exif\0\0", 6) === 0 && $orientation === null) {
+                    $orientation = self::exifOrientation(substr($payload, 6));
+                }
+                $keep = ($marker === 0xE0) || ($marker === 0xEE)
+                    || ($marker === 0xE2 && strncmp($payload, "ICC_PROFILE\0", 12) === 0);
+                if (!$keep) {
+                    continue;                              // Exif · XMP · IPTC · MPF · 그 밖 제조사 조각
+                }
+                if ($marker === 0xE0 && !$seenOther) {
+                    $head .= $segment;
+                    continue;
+                }
+                $body .= $segment;
+                continue;
+            }
+            if ($marker === 0xFE) {                        // COM — 주석
+                continue;
+            }
+            $seenOther = true;
+            $body .= $segment;
+            if ($marker === 0xDA) {                        // SOS — 스캔 데이터는 다음 진짜 표지까지 바이트 그대로
+                $start = $pos;
+                while (true) {
+                    $ff = strpos($b, "\xFF", $pos);
+                    if ($ff === false || $ff + 1 >= $len) {
+                        return null;
+                    }
+                    $next = ord($b[$ff + 1]);
+                    if ($next === 0x00 || ($next >= 0xD0 && $next <= 0xD7)) {
+                        $pos = $ff + 2;
+                        continue;
+                    }
+                    if ($next === 0xFF) {
+                        $pos = $ff + 1;
+                        continue;
+                    }
+                    $body .= substr($b, $start, $ff - $start);
+                    $pos = $ff;
+                    break;
+                }
+            }
+        }
+        return null;
+    }
+
+    /** Exif(TIFF) 의 IFD0 에서 Orientation(0x0112) 한 칸만 읽는다 — 없거나 모양이 틀리면 null */
+    private static function exifOrientation(string $tiff): ?int
+    {
+        if (strlen($tiff) < 8) {
+            return null;
+        }
+        $order = substr($tiff, 0, 2);
+        if ($order !== 'II' && $order !== 'MM') {
+            return null;
+        }
+        $u16 = static fn (int $at): int => unpack($order === 'II' ? 'v' : 'n', substr($tiff, $at, 2))[1];
+        $u32 = static fn (int $at): int => unpack($order === 'II' ? 'V' : 'N', substr($tiff, $at, 4))[1];
+        if ($u16(2) !== 42) {
+            return null;
+        }
+        $ifd = $u32(4);
+        if ($ifd < 8 || $ifd + 2 > strlen($tiff)) {
+            return null;
+        }
+        $count = $u16($ifd);
+        for ($i = 0; $i < $count && $i < 512; $i++) {
+            $at = $ifd + 2 + $i * 12;
+            if ($at + 12 > strlen($tiff)) {
+                return null;
+            }
+            if ($u16($at) === 0x0112 && $u16($at + 2) === 3 && $u32($at + 4) === 1) {
+                $value = $u16($at + 8);
+                return ($value >= 1 && $value <= 8) ? $value : null;
+            }
+        }
+        return null;
+    }
+
+    /** 방향 한 칸만 든 최소 Exif APP1 조각(빅 엔디언 TIFF · IFD0 한 칸 · 다음 IFD 없음) */
+    private static function orientationExif(int $orientation): string
+    {
+        $tiff = "MM\x00\x2A\x00\x00\x00\x08" . "\x00\x01" . "\x01\x12\x00\x03\x00\x00\x00\x01" . pack('n', $orientation) . "\x00\x00" . "\x00\x00\x00\x00";
+        $payload = "Exif\0\0" . $tiff;
+        return "\xFF\xE1" . pack('n', strlen($payload) + 2) . $payload;
+    }
+
+    /** PNG 덩어리 거르기 — 해석할 수 없으면 null */
+    private static function stripPng(string $b): ?string
+    {
+        $sig = "\x89PNG\r\n\x1a\n";
+        $len = strlen($b);
+        if ($len < 8 || substr($b, 0, 8) !== $sig) {
+            return null;
+        }
+        $out = $sig;
+        $pos = 8;
+        while ($pos + 12 <= $len) {
+            $size = unpack('N', substr($b, $pos, 4))[1];
+            $type = substr($b, $pos + 4, 4);
+            if ($size > $len - $pos - 12 || preg_match('/\A[A-Za-z]{4}\z/', $type) !== 1) {
+                return null;
+            }
+            $chunk = substr($b, $pos, 12 + $size);
+            $pos += 12 + $size;
+            if (in_array($type, ['tEXt', 'zTXt', 'iTXt', 'eXIf', 'tIME'], true)) {
+                continue;
+            }
+            $out .= $chunk;
+            if ($type === 'IEND') {
+                return $out;
+            }
+        }
+        return null;
+    }
+
+    /** WebP(RIFF) 덩어리 거르기 — 해석할 수 없으면 null */
+    private static function stripWebp(string $b): ?string
+    {
+        $len = strlen($b);
+        if ($len < 20 || substr($b, 0, 4) !== 'RIFF' || substr($b, 8, 4) !== 'WEBP') {
+            return null;
+        }
+        $end = min($len, 8 + unpack('V', substr($b, 4, 4))[1]);
+        $out = '';
+        $pos = 12;
+        while ($pos + 8 <= $end) {
+            $fourcc = substr($b, $pos, 4);
+            $size = unpack('V', substr($b, $pos + 4, 4))[1];
+            if ($size > $end - $pos - 8) {
+                return null;
+            }
+            $data = substr($b, $pos + 8, $size);
+            $pos += 8 + $size + ($size & 1);
+            if ($fourcc === 'EXIF' || $fourcc === 'XMP ') {
+                continue;
+            }
+            if ($fourcc === 'VP8X' && $size >= 10) {
+                $data[0] = chr(ord($data[0]) & ~0x0C);     // EXIF(0x08) · XMP(0x04) 표시 끄기
+            }
+            $out .= $fourcc . pack('V', $size) . $data . (($size & 1) === 1 ? "\0" : '');
+        }
+        if ($out === '') {
+            return null;
+        }
+        return 'RIFF' . pack('V', 4 + strlen($out)) . 'WEBP' . $out;
+    }
+
+    /** 해석이 안 되는 사진 — GD 로 다시 인코딩(메타데이터는 따라오지 않는다). 그것도 안 되면 예외 */
+    private static function reencodePhoto(string $bytes, string $mime): string
+    {
+        if (!function_exists('imagecreatefromstring')) {
+            throw new RuntimeException('Image library unavailable');
+        }
+        $image = @imagecreatefromstring($bytes);
+        if ($image === false) {
+            throw new RuntimeException('Cannot decode memory photo');
+        }
+        if ($mime !== 'image/jpeg') {
+            imagesavealpha($image, true);
+        }
+        ob_start();
+        try {
+            $ok = match ($mime) {
+                'image/jpeg' => imagejpeg($image, null, 92),
+                'image/png'  => imagepng($image),
+                'image/webp' => imagewebp($image, null, 90),
+            };
+            $out = (string) ob_get_contents();
+        } finally {
+            ob_end_clean();
+            imagedestroy($image);
+        }
+        if (!$ok || $out === '') {
+            throw new RuntimeException('Cannot encode memory photo');
+        }
+        return $out;
     }
 
     public static function stream(string $id, ?array $user, ?array $link = null): void

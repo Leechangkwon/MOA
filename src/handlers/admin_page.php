@@ -142,6 +142,37 @@ require __DIR__ . '/../views/shell_top.php';
       <p id="act-msg" class="muted"></p>
     </section>
 
+    <!-- 사이트 Q:F-13 P2 「탈퇴 요청」 (기획 privacy-terms-plan 5.1 · 5.2 「탈퇴」 — DESIGN 2.3 카드 · 2.4 표(첫 칸 이름 · td.actions) ·
+         2.6 · 2.7 공용 확인 창). 목록은 GET /api/admin/deletion-requests 를 app.js(initAdminDeletions)가 textContent 로만 그린다.
+         「처리」(대기 줄만 · `.btn--danger`) → 공용 확인 창(남은 자료 수 · 30일 뒤 삭제 안내) → POST …/{번호} {confirm:true} —
+         재인증 15분 창이 닫혀 있으면 서버가 403 next:reauth 를 주고 공용 재인증 창이 뜬 뒤 같은 요청을 한 번 더 보낸다. 새 클래스 0. -->
+    <section class="card card--pad">
+      <div class="org-matrix__head">
+        <div class="panel__head">
+          <h2 class="panel__title">탈퇴 요청</h2>
+          <p class="panel__sub">처리하면 그 계정은 바로 로그인할 수 없습니다. 30일 뒤 이름이 「탈퇴한 사용자 #번호」로 바뀌고 개인 공간 문서 · 사진 기록 · 여행 계획이 삭제됩니다 — 남길 자료는 그 전에 인계하세요.</p>
+        </div>
+      </div>
+      <div id="admin-deletions-ok" class="ok-note" role="status" hidden></div>
+      <div class="table-wrap">
+        <table class="files">
+          <thead>
+            <tr>
+              <th scope="col">계정</th>
+              <th scope="col">요청한 때</th>
+              <th scope="col">상태</th>
+              <th scope="col">남은 자료</th>
+              <th scope="col">삭제 예정</th>
+              <th scope="col">작업</th>
+            </tr>
+          </thead>
+          <tbody id="admin-deletions"></tbody>
+        </table>
+      </div>
+      <p id="admin-deletions-empty" class="muted" hidden>탈퇴 요청이 없습니다.</p>
+      <p id="admin-deletions-msg" class="msg" role="alert"></p>
+    </section>
+
     <section class="card card--pad">
       <div class="org-matrix__head">
         <div class="panel__head">

@@ -123,9 +123,13 @@ try:
  for label,data in (('small',small),('large',large)):
   e=Image.open(io.BytesIO(data)).getexif()
   check(0xE1 in app_markers(data) and b'Exif\x00\x00' in data and MARK in data and XMP in data and dict(e.get_ifd(0x8825)).get(1)=='N','G-1 control: '+label+' original carries EXIF camera mark, XMP and GPS')
-  digest=hashlib.sha256(data).hexdigest()
   m=upload(data=data,name='qf13h-'+label+'.jpg');gid=save(dict(payload(),media_ids=[m['id']]));gpost=post(gid)
-  check(m['mime']=='image/jpeg' and sql("SELECT sha256 FROM community.memory_media WHERE id='"+m['id']+"'")==digest,'G-1 '+label+': stored with the uploaded sha256')
+  # Q:F-13 P2 G-2 — 사진 기록은 이제 **올릴 때** 메타데이터를 뗀 판을 저장한다(H 때의 「저장 원본 그대로」 규칙을 바꾼다).
+  # 그래서 저장 지문은 올린 바이트의 지문이 아니라 저장된 파일의 지문이고, 그 파일에는 EXIF·GPS·XMP·카메라 표식이 없다.
+  stored0=(root.parent/'storage/memories'/m['id']).read_bytes();digest=hashlib.sha256(stored0).hexdigest()
+  check(m['mime']=='image/jpeg' and sql("SELECT sha256 FROM community.memory_media WHERE id='"+m['id']+"'")==digest and digest!=hashlib.sha256(data).hexdigest()
+        and b'Exif\x00\x00' not in stored0 and MARK not in stored0 and b'ns.adobe.com' not in stored0 and not dict(Image.open(io.BytesIO(stored0)).getexif().get_ifd(0x8825)),
+        'G-1 '+label+': stored as the metadata-stripped photo (G-2: no EXIF/GPS/XMP/camera mark) with that file sha256')
   for fmt in ('story','text'):
    b=body(gpost)
    if fmt=='story':b['format']='story'
@@ -136,7 +140,7 @@ try:
    check(len(images)==1 and images[0]['mimeType']=='image/jpeg' and sent!=data and ok,'G-1 '+label+' '+fmt+': outbound photo is a re-encoded JPEG with no EXIF/XMP/GPS/camera mark')
    check(size==((900,600) if label=='small' else (1280,853)),'G-1 '+label+' '+fmt+': resolution cap kept (small unchanged, large longest side 1280)')
   stored=(root.parent/'storage/memories'/m['id']).read_bytes();served=raw('GET','/api/memories/media/'+m['id'])
-  check(hashlib.sha256(stored).hexdigest()==digest and served.status_code==200 and hashlib.sha256(served.content).hexdigest()==digest and post(gid)==gpost,'G-1 '+label+': stored original file, served bytes and post unchanged (sha256 same)')
+  check(hashlib.sha256(stored).hexdigest()==digest and served.status_code==200 and hashlib.sha256(served.content).hexdigest()==digest and post(gid)==gpost,'G-1 '+label+': stored file, served bytes and post unchanged by generation (sha256 same as at upload)')
  # 디코딩되지 않는 사진(머리만 맞는 PNG)은 원본째 보내지 않는다 — 제공자 요청 0, 실패한 미리보기로 끝난다
  m=upload(data=corrupt_png,name='qf13h-corrupt.png');gid=save(dict(payload(),media_ids=[m['id']]));gpost=post(gid)
  for fmt in ('story','text'):

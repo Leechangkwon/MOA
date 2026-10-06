@@ -9913,6 +9913,111 @@ function initSettings(me, csrfToken) {
     setText(team, typeof me.team_name === 'string' && me.team_name !== '' ? me.team_name : '—');
   }
   initContrastToggle(me, csrfToken);
+  initDeleteRequest(csrfToken);
+}
+
+/* ─── 사이트 Q:F-13 P2 「탈퇴」 — 「내 계정」 패널 (기획 privacy-terms-plan 5.1 · 5.2 「탈퇴」, DESIGN 2.1 · 2.6 · 2.7) ───────────
+ *
+ * 상태는 GET /api/me/delete-request(서버가 세션 본인으로 고정)에서만 온다. 「탈퇴 요청」 → 공용 확인 창(openConfirm) → POST {confirm:true}.
+ * 비밀번호 확인이 15분 안에 없으면 서버가 403 next:reauth 로 막고, 공용 재인증 창(handleReauth)이 통과하면 **같은 요청을 한 번 더** 보낸다.
+ * 막는 것도 여는 것도 서버다 — 단추를 숨겨도·보여도 판정은 그대로다(PRD S-01). 글자는 textContent 로만(PRD S-03).
+ */
+function initDeleteRequest(csrfToken) {
+  var open = document.getElementById('delete-request-open');
+  var state = document.getElementById('delete-request-state');
+  var msg = document.getElementById('delete-request-msg');
+  if (!open || !state || typeof csrfToken !== 'string') {
+    return;
+  }
+
+  function show(request) {
+    if (request && typeof request.status === 'string') {
+      open.hidden = true;
+      state.hidden = false;
+      state.replaceChildren();
+      var lead = document.createElement('span');
+      setText(lead, '탈퇴를 요청했습니다 — 관리자가 처리하기 전까지는 지금처럼 쓸 수 있습니다. 요청한 때: ');
+      state.appendChild(lead);
+      var when = document.createElement('span');
+      setWhen(when, request.requested_at);
+      state.appendChild(when);
+      return;
+    }
+    state.hidden = true;
+    open.hidden = false;
+  }
+
+  function load() {
+    fetch(APP_BASE + '/api/me/delete-request', { credentials: 'same-origin', cache: 'no-store' })
+      .then(function (response) {
+        if (response.status === 401) {
+          toLogin();
+          return null;
+        }
+        return readJson(response).then(function (data) {
+          if (toGate(response, data)) {
+            return null;
+          }
+          if (!response.ok) {
+            setText(msg, errorMessage(data));
+            return null;
+          }
+          show(data && data.request ? data.request : null);
+          return null;
+        });
+      })
+      .catch(function () {
+        setText(msg, GENERIC_ERROR);
+      });
+  }
+
+  function send() {
+    setText(msg, '');
+    open.disabled = true;
+    fetch(APP_BASE + '/api/me/delete-request', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken },
+      body: JSON.stringify({ confirm: true }),
+      credentials: 'same-origin',
+      cache: 'no-store'
+    })
+      .then(function (response) {
+        if (response.status === 401) {
+          toLogin();
+          return null;
+        }
+        return readJson(response).then(function (data) {
+          open.disabled = false;
+          if (handleReauth(response, data, send)) {   // 확인이 끝나면 같은 요청을 한 번 더
+            return null;
+          }
+          if (toGate(response, data)) {
+            return null;
+          }
+          if (!response.ok) {
+            setText(msg, errorMessage(data));        // 서버가 준 문구만
+            load();
+            return null;
+          }
+          show(data && data.request ? data.request : null);
+          return null;
+        });
+      })
+      .catch(function () {
+        open.disabled = false;
+        setText(msg, GENERIC_ERROR);
+      });
+  }
+
+  open.addEventListener('click', function () {
+    openConfirm({
+      title: '탈퇴를 요청할까요?',
+      lead: '관리자가 처리하면 바로 로그인할 수 없게 됩니다. 남길 자료는 미리 내려받거나 다른 사람에게 넘겨 주세요.',
+      note: '최근에 비밀번호를 확인하지 않았다면 비밀번호를 한 번 더 묻습니다.',
+      okLabel: '탈퇴 요청'
+    }, send);
+  });
+  load();
 }
 
 /* ─── 커뮤니티 7-D3 「고대비 화면」 — 「내 계정」 「화면」 패널 (DESIGN.md 2.16 · 지시서 2장 H-6) ───────────
@@ -10598,7 +10703,13 @@ function initAdmin(csrfToken, me) {
     }
   }
 
+  /* 사이트 Q:F-13 P2 「탈퇴 요청」 표 — 아래 initAdminDeletions 가 그린다. 재인증 뒤 다시 읽기(load)에 함께 묶는다. */
+  var loadDeletions = initAdminDeletions(csrfToken, getJson);
+
   function load() {
+    if (loadDeletions !== null) {
+      loadDeletions();
+    }
     getJson(APP_BASE + '/api/admin/shares')
       .then(function (result) {
         if (result === null) {
@@ -10727,6 +10838,145 @@ function initAdmin(csrfToken, me) {
   // 재인증 모달이 닫힌 뒤 다시 읽을 로더를 등록한다 (16-1 과 같은 방식).
   setReauthRetry(load);
   load();
+}
+
+/* ─── 사이트 Q:F-13 P2 「탈퇴 요청」 — 관리자 페이지 표 (기획 privacy-terms-plan 5.1 · 5.2 「탈퇴」, DESIGN 2.4 · 2.6 · 2.7) ─────────
+ *
+ * 목록은 GET /api/admin/deletion-requests(role:Admin + 재인증). 줄 = 계정(첫 칸) · 요청한 때 · 상태 · 남은 자료(인계할 것 확인용) ·
+ * 삭제 예정(처리 + 30일, 파기된 줄은 파기한 때) · 작업(td.actions — 대기 줄만 「탈퇴 처리」 `.btn--danger`).
+ * 「탈퇴 처리」 → 공용 확인 창(남은 자료 수와 30일 뒤 삭제 안내) → POST …/{번호} {confirm:true}. 재인증 창이 닫혀 있으면 서버가 403
+ * next:reauth 를 주고 공용 재인증 창이 통과하면 같은 요청을 한 번 더. 자기 자신·마지막 관리자는 서버가 400 으로 막는다(문구는 서버 것).
+ * 글자는 전부 textContent(PRD S-03) · 역할 비교 0.
+ *
+ * @return function|null 다시 읽기 — 표가 없는 화면이면 null
+ */
+function initAdminDeletions(csrfToken, getJson) {
+  var body = document.getElementById('admin-deletions');
+  var empty = document.getElementById('admin-deletions-empty');
+  var msg = document.getElementById('admin-deletions-msg');
+  var ok = document.getElementById('admin-deletions-ok');
+  if (!body || typeof csrfToken !== 'string') {
+    return null;
+  }
+  var STATUS = { pending: '처리 대기', processed: '처리됨 · 30일 뒤 삭제', purged: '삭제됨' };
+
+  function remainingText(r) {
+    if (!r || typeof r !== 'object') {
+      return '—';
+    }
+    return '개인 문서 ' + String(r.personal_pages) + ' · 사진 기록 ' + String(r.memory_posts) + ' · 여행 계획 ' + String(r.travel_plans);
+  }
+
+  function render(rows) {
+    body.replaceChildren();
+    rows.forEach(function (item) {
+      var row = document.createElement('tr');
+      var who = document.createElement('td');
+      setText(who, personLabel(item.display_name, item.username));
+      row.appendChild(who);
+      addWhenCell(row, item.requested_at);
+      var st = document.createElement('td');
+      var badge = document.createElement('span');
+      badge.className = item.status === 'pending' ? 'badge' : 'badge badge--off';
+      setText(badge, Object.prototype.hasOwnProperty.call(STATUS, item.status) ? STATUS[item.status] : item.status);
+      st.appendChild(badge);
+      row.appendChild(st);
+      var rest = document.createElement('td');
+      setText(rest, remainingText(item.remaining));
+      row.appendChild(rest);
+      addWhenCell(row, item.status === 'purged' ? item.purged_at : item.purge_after);
+      var actions = document.createElement('td');
+      actions.className = 'actions';
+      if (item.status === 'pending') {
+        var go = document.createElement('button');
+        go.type = 'button';
+        go.className = 'btn btn--danger btn--small';
+        go.setAttribute('aria-haspopup', 'dialog');
+        setText(go, '탈퇴 처리');
+        go.addEventListener('click', function () {
+          openConfirm({
+            title: '탈퇴 처리',
+            lead: '「' + personLabel(item.display_name, item.username) + '」 계정을 지금 비활성화하고 로그인 수단(비밀번호 · 2단계 인증 · 지문·얼굴 로그인 · 프로그램 토큰 · 접속)을 지웁니다.',
+            note: '30일 뒤 ' + remainingText(item.remaining) + ' 이(가) 삭제되고 이름이 「탈퇴한 사용자 #번호」로 바뀝니다. 남길 자료는 그 전에 인계하세요.',
+            okLabel: '탈퇴 처리'
+          }, function () {
+            process(item.id, go);
+          });
+        });
+        actions.appendChild(go);
+      }
+      row.appendChild(actions);
+      body.appendChild(row);
+    });
+    if (empty) {
+      empty.hidden = rows.length !== 0;
+    }
+  }
+
+  function load() {
+    getJson(APP_BASE + '/api/admin/deletion-requests')
+      .then(function (result) {
+        if (result === null) {
+          return null;
+        }
+        if (!result.ok) {
+          setText(msg, errorMessage(result.data));
+          return null;
+        }
+        render(result.data && Array.isArray(result.data.requests) ? result.data.requests : []);
+        return null;
+      })
+      .catch(function () {
+        setText(msg, GENERIC_ERROR);
+      });
+  }
+
+  function process(id, button) {
+    setText(msg, '');
+    if (ok) {
+      ok.hidden = true;
+    }
+    button.disabled = true;
+    fetch(APP_BASE + '/api/admin/deletion-requests/' + encodeURIComponent(String(id)), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken },
+      body: JSON.stringify({ confirm: true }),
+      credentials: 'same-origin',
+      cache: 'no-store'
+    })
+      .then(function (response) {
+        if (response.status === 401) {
+          toLogin();
+          return null;
+        }
+        return readJson(response).then(function (data) {
+          button.disabled = false;
+          if (handleReauth(response, data, function () { process(id, button); })) {
+            return null;
+          }
+          if (toGate(response, data)) {
+            return null;
+          }
+          if (!response.ok) {
+            setText(msg, errorMessage(data));
+            load();
+            return null;
+          }
+          if (ok) {
+            setText(ok, '탈퇴를 처리했습니다 — 그 계정은 이제 로그인할 수 없고, 30일 뒤 개인 자료가 삭제됩니다.');
+            ok.hidden = false;
+          }
+          load();
+          return null;
+        });
+      })
+      .catch(function () {
+        button.disabled = false;
+        setText(msg, GENERIC_ERROR);
+      });
+  }
+
+  return load;
 }
 
 /* ─── 17-2 권한 매트릭스 편집 — `/admin/permissions` (PRD F-25, ARCH 5.15) ──────

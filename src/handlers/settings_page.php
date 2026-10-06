@@ -282,6 +282,34 @@ require __DIR__ . '/../views/shell_top.php';
           <p class="muted">스마트폰이 어려우면 <a href="<?= Http::url('/assets/totp-generator.html') ?>">2단계 코드 생성기</a>를 받아서 PC 에 두고 쓸 수 있습니다.</p>
         </div>
       </section>
+
+      <!-- 사이트 Q:F-13 P2-c — 약관 · 처리방침 · AI 국외 전송 동의는 동의 화면 한 곳(`/tbox/consent`)에서 보고 철회한다. 새 클래스 0. -->
+      <section class="panel">
+        <div class="panel__head">
+          <h2 class="panel__title">약관 · 개인정보 처리방침 · AI 국외 전송 동의</h2>
+          <p class="panel__sub">동의한 판을 확인하고, AI 국외 전송 동의를 철회할 수 있습니다.</p>
+        </div>
+        <p><a class="btn btn--quiet" href="<?= Http::url('/consent') ?>">약관·동의 화면 열기</a></p>
+      </section>
+
+      <!-- 사이트 Q:F-13 P2 「탈퇴」 (기획 privacy-terms-plan 5.1 · 5.2 — DESIGN 2.1 `.btn--danger` · 2.6 · 2.7 공용 확인 창).
+           상태는 GET /api/me/delete-request(본인 것만)를 app.js(initDeleteRequest)가 받아 그린다. 「탈퇴 요청」 → 공용 확인 창(openConfirm) →
+           POST {confirm:true} → 비밀번호 확인이 15분 안에 없으면 서버가 403 next:reauth → 공용 재인증 창 → 통과하면 같은 요청을 한 번 더.
+           단추는 상태를 받은 뒤에만 보인다(처음 hidden). 글자는 전부 textContent. 새 클래스 0. -->
+      <section class="panel" id="delete-request-panel">
+        <div class="panel__head">
+          <h2 class="panel__title">탈퇴</h2>
+          <p class="panel__sub">탈퇴를 요청하면 관리자가 확인한 뒤 처리합니다.</p>
+        </div>
+        <p class="help">처리되면 바로 로그인할 수 없고 로그인 수단(비밀번호 · 2단계 인증 · 지문·얼굴 로그인 · 프로그램 토큰)이 지워집니다.
+          30일 뒤 이름과 아이디가 「탈퇴한 사용자 #번호」로 바뀌고 개인 공간의 문서 · 사진 기록 · 여행 계획이 삭제됩니다.
+          팀 공간 · 게시판에 쓴 글과 댓글, 자료실 파일은 남고 작성자가 「탈퇴한 사용자」로 보입니다.</p>
+        <p id="delete-request-state" class="muted" role="status" hidden></p>
+        <div class="toolbar">
+          <button id="delete-request-open" class="btn btn--danger" type="button" aria-haspopup="dialog" hidden>탈퇴 요청</button>
+        </div>
+        <p id="delete-request-msg" class="msg" role="alert"></p>
+      </section>
     </div>
 
     <!-- ─── 「이 기기 등록하기」 창 (T:F-72 지시서 1.1 등록 · 1.9 — DESIGN 2.7 · `.modal--form` 520) ─────────────

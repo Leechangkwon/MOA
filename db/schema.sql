@@ -648,3 +648,60 @@ CREATE TABLE user_consents (
     CONSTRAINT user_consents_withdraw_ai_only CHECK (action = 'agree' OR doc = 'ai_overseas')
 );
 CREATE INDEX user_consents_user_doc_idx ON user_consents (user_id, doc, id DESC);
+
+-- ─────────────────────────────────────────────────────────────
+-- account_deletion_requests — 탈퇴 요청 (사이트 Q:F-13 지시서 P2 · 기획 ../docs/privacy-terms-plan.md 5.1 「탈퇴」 · 5.2 「탈퇴」)
+--   사람 · 요청 때 · 상태(pending 대기 → processed 처리 → purged 30일 뒤 파기) · 처리자 · 처리 때 · 파기 때.
+--   앱 계정은 SELECT · INSERT(user_id) · UPDATE(status · processed_by · processed_at) 만(db/grants.sql) — DELETE 없음.
+--   트리거가 상태를 한 방향으로만 움직이고 processed_at 을 처리 순간의 DB 시각으로 고정한다. purged 는 소유자 파기 함수만
+--   (db/migrations/2026-10-21_privacy_retention.sql — public.privacy_purge_accounts · scripts/privacy_purge.php).
+--   (기존 DB 는 그 마이그레이션으로 같은 모양이 된다. 파기 함수 넷은 커뮤니티 표를 가리키므로 마이그레이션에만 있다.)
+-- ─────────────────────────────────────────────────────────────
+CREATE TABLE account_deletion_requests (
+    id           BIGSERIAL   PRIMARY KEY,
+    user_id      BIGINT      NOT NULL REFERENCES users(id),
+    status       TEXT        NOT NULL DEFAULT 'pending',
+    requested_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    processed_by BIGINT      REFERENCES users(id),
+    processed_at TIMESTAMPTZ,
+    purged_at    TIMESTAMPTZ,
+    CONSTRAINT account_deletion_requests_status CHECK (status IN ('pending', 'processed', 'purged')),
+    CONSTRAINT account_deletion_requests_shape CHECK (
+           (status = 'pending'   AND processed_by IS NULL     AND processed_at IS NULL     AND purged_at IS NULL)
+        OR (status = 'processed' AND processed_by IS NOT NULL AND processed_at IS NOT NULL AND purged_at IS NULL)
+        OR (status = 'purged'    AND processed_by IS NOT NULL AND processed_at IS NOT NULL AND purged_at IS NOT NULL))
+);
+CREATE UNIQUE INDEX account_deletion_requests_open_uidx
+    ON account_deletion_requests (user_id) WHERE status IN ('pending', 'processed');
+CREATE INDEX account_deletion_requests_due_idx
+    ON account_deletion_requests (processed_at) WHERE status = 'processed';
+-- 파기 조건(보낸 날부터 1년)을 받치는 인덱스 — 마이그레이션과 같은 이름
+CREATE INDEX member_messages_sent_idx ON member_messages (sent_at);
+
+CREATE FUNCTION account_deletion_requests_guard()
+RETURNS trigger
+LANGUAGE plpgsql
+SET search_path = public, pg_temp
+AS $fn$
+BEGIN
+    IF NEW.user_id IS DISTINCT FROM OLD.user_id OR NEW.requested_at IS DISTINCT FROM OLD.requested_at THEN
+        RAISE EXCEPTION '탈퇴 요청의 사람·요청 때는 바꿀 수 없다';
+    END IF;
+    IF OLD.status = 'pending' AND NEW.status = 'processed' THEN
+        NEW.processed_at := now();                 -- 앱이 보낸 값을 쓰지 않는다(30일 시계)
+    ELSIF OLD.status = 'processed' AND NEW.status = 'purged' THEN
+        IF NEW.processed_at IS DISTINCT FROM OLD.processed_at OR NEW.processed_by IS DISTINCT FROM OLD.processed_by THEN
+            RAISE EXCEPTION '처리한 사람·때는 바꿀 수 없다';
+        END IF;
+    ELSIF NEW.status IS DISTINCT FROM OLD.status
+       OR NEW.processed_at IS DISTINCT FROM OLD.processed_at
+       OR NEW.processed_by IS DISTINCT FROM OLD.processed_by
+       OR NEW.purged_at IS DISTINCT FROM OLD.purged_at THEN
+        RAISE EXCEPTION '탈퇴 요청 상태는 대기 → 처리 → 파기 한 방향으로만 바뀐다';
+    END IF;
+    RETURN NEW;
+END
+$fn$;
+REVOKE ALL ON FUNCTION account_deletion_requests_guard() FROM PUBLIC;
+CREATE TRIGGER account_deletion_requests_guard BEFORE UPDATE ON account_deletion_requests
+    FOR EACH ROW EXECUTE FUNCTION account_deletion_requests_guard();

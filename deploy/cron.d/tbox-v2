@@ -42,6 +42,10 @@ SHELL=/bin/bash
 20   4   *   *  *     root  php  /var/www/qaredi/tbox-v2/scripts/memories_cleanup.php --apply
 # 04:30  백업 검증 (sha256sum -c + gpg 복호화 시험). 2회 연속 실패 → AL-8
 30   4   *   *  *     root  bash /var/www/qaredi/tbox-v2/scripts/verify_backup.sh
+# 04:40  보관 기간 정리 (Q:F-13 P2 · 기획 privacy-terms-plan 5.1) — 1:1 메시지·AI 대화·AI 도구·커뮤니티 AI 입출력 1년 · 지운 사진 기록·여행 계획 30일(파일까지) ·
+#         감사 기록 DB 3년 · 탈퇴 처리 30일 뒤 익명화(deleted-<번호>)·개인 공간 삭제. 소유자 전용 함수 둘을 owner.pgpass 로 부른다(community_purge 와 같은 방식).
+#         인자 없이 돌리면 dry(건수만). 결과는 감사 privacy.purge · account.purge — 내용 0, 건수만.
+40   4   *   *  *     root  php  /var/www/qaredi/tbox-v2/scripts/privacy_purge.php --run
 # 00:05  감사 로그 해시 체인 — **어제**(logrotate 가 00:00 에 회전시킨 파일)를 봉인한다.
 #         인자가 없으면 어제다(= --yesterday). 오늘 파일은 하루 종일 자라므로 적지 않는다.
 #         2026-09-12 이전에는 인자 없이 **오늘**을 적어, 회전 직후의 빈 파일(0줄)이 봉인되고

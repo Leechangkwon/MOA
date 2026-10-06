@@ -15,8 +15,10 @@ declare(strict_types=1);
  *    고치거나 지우는 코드가 이 저장소에 없다. 지금 상태 = 문서별 **마지막 줄**.
  *      terms · privacy  가입 · 기존 회원 안내 화면에서 agree(처리방침은 「확인」). 필요 조건 = 마지막 줄이 agree 이고 판이 **지금 판**
  *      age14            가입 때만 agree (약관 판을 적는다 — 약관 제4조)
- *      ai_overseas      AI 를 처음 쓸 때 agree · 「약관·동의」 화면에서 withdraw (처리방침 판을 적는다 — 처리방침 제7조).
- *                       필요 조건 = 마지막 줄이 agree(판과 무관 — 처리방침 판이 바뀌어도 다시 묻지 않는다. 다시 묻기는 결정 필요)
+ *      ai_overseas      AI 를 처음 쓸 때 agree · 「약관·동의」 화면에서 withdraw. 판은 목록의 **따로 둔 판**(`ai_overseas.version` —
+ *                       Q:F-13 P2-b). 필요 조건 = 마지막 줄이 agree 이고 판이 **지금 AI 판**. 받는 곳·나라·등급(처리방침 제7조)이
+ *                       바뀌면 이 판을 올린다 → 옛 판의 agree 는 「동의 없음」으로 보여(state() 가 null 로 접는다) 다시 묻는다.
+ *                       처리방침 판이 바뀌는 것만으로는 다시 묻지 않는다(두 판은 따로 움직인다).
  * ③ 관문 판정 값만 낸다. 막는 자리는 Auth::requireLogin(세션 관문) · AI 서버 길 넷(MemberAi · MemberAssist · MemoryAi · CommunityAi)이다.
  *
  * 이 파일은 HTTP 요청을 만들지 않는다(외부 요청 0). 부트스트랩 require 목록에 새 줄을 더하지 않고 쓰는 곳에서 읽어 온다(Apps.php 와 같다).
@@ -38,8 +40,11 @@ final class Legal
     /** 기존 회원이 다음 로그인 때 한 번 하는 것(PT-4) — 둘 다 지금 판에 agree 여야 관문이 열린다 */
     public const REQUIRED_DOCS = ['terms', 'privacy'];
 
-    /** 동의 줄의 판은 어느 문서의 판을 적나 */
-    private const VERSION_OF = ['terms' => 'terms', 'privacy' => 'privacy', 'age14' => 'terms', 'ai_overseas' => 'privacy'];
+    /** 동의 줄의 판은 어느 문서의 판을 적나 — ai_overseas 는 목록의 따로 둔 판(aiVersion, P2-b) */
+    private const VERSION_OF = ['terms' => 'terms', 'privacy' => 'privacy', 'age14' => 'terms'];
+
+    /** 목록 파일의 최상위 키 — 게시 문서 둘 + AI 국외 전송 판(P2-b) */
+    private const LIST_KEYS = ['privacy', 'terms', 'ai_overseas'];
 
     /** 세션 관문(Auth::requireLogin)이 막을 때의 문장 — 403 `{error, next:"consent", code:"consent_required"}` */
     public const MSG_CONSENT_REQUIRED = '이용약관 동의와 개인정보 처리방침 확인을 먼저 마쳐 주세요';
@@ -72,6 +77,8 @@ final class Legal
 
     /** 한 요청 안에서 목록을 두 번 읽지 않는다 */
     private static ?array $catalog = null;
+    /** AI 국외 전송 동의의 지금 판(목록의 `ai_overseas.version` — DB CHECK 와 같은 YYYY-MM-DD 모양) */
+    private static ?string $aiVersion = null;
     /** 한 요청 안의 동의 상태 캐시(사람 번호 → 상태). 기록하면 그 사람 것을 지운다 */
     private static array $state = [];
 
@@ -90,8 +97,13 @@ final class Legal
             throw new RuntimeException('약관 목록 파일을 읽을 수 없습니다');
         }
         $data = json_decode($raw, true);
-        if (!is_array($data) || array_keys($data) !== self::DOCS) {
+        if (!is_array($data) || array_keys($data) !== self::LIST_KEYS) {
             throw new RuntimeException('약관 목록의 문서 키가 올바르지 않습니다');
+        }
+        $ai = $data['ai_overseas'];
+        if (!is_array($ai) || array_keys($ai) !== ['version'] || !is_string($ai['version'])
+            || preg_match(self::VERSION_RE, $ai['version']) !== 1) {
+            throw new RuntimeException('약관 목록의 AI 국외 전송 판이 올바르지 않습니다');
         }
         $out = [];
         foreach (self::DOCS as $doc) {
@@ -112,6 +124,7 @@ final class Legal
                 $out[$doc][] = ['version' => $item['version'], 'file' => $item['file']];
             }
         }
+        self::$aiVersion = $ai['version'];
         return self::$catalog = $out;
     }
 
@@ -140,6 +153,10 @@ final class Legal
     /** 동의 문서(terms·privacy·age14·ai_overseas)의 지금 판 글자 */
     public static function current(string $consentDoc): string
     {
+        if ($consentDoc === 'ai_overseas') {
+            self::catalog();
+            return (string) self::$aiVersion;
+        }
         $doc = self::VERSION_OF[$consentDoc] ?? null;
         if ($doc === null) {
             throw new InvalidArgumentException('알 수 없는 동의 문서');
@@ -194,6 +211,11 @@ final class Legal
                 $out[(string) $row['doc']] = ['version' => (string) $row['version'], 'action' => (string) $row['action'], 'at' => (string) $row['at']];
             }
         }
+        // P2-b — AI 국외 전송은 **지금 AI 판**의 줄만 지금 상태다. 옛 판의 줄(동의든 철회든)은 「아직 이 판에 답하지 않음」(null)으로 접는다 —
+        // 그래야 관문(aiAgreed)·동의 창구(me_consents 의 「이미 그 상태인가」)·「약관·동의」 화면이 모두 다시 묻는다. 기록 줄은 그대로다.
+        if ($out['ai_overseas'] !== null && !hash_equals(self::current('ai_overseas'), $out['ai_overseas']['version'])) {
+            $out['ai_overseas'] = null;
+        }
         return self::$state[$userId] = $out;
     }
 
@@ -210,11 +232,11 @@ final class Legal
         return false;
     }
 
-    /** AI 국외 전송의 지금 상태가 동의인가 */
+    /** AI 국외 전송의 지금 상태가 동의인가 — 지금 AI 판의 마지막 줄이 agree(옛 판은 state() 가 이미 null 로 접었다) */
     public static function aiAgreed(int $userId): bool
     {
         $last = self::state($userId)['ai_overseas'];
-        return $last !== null && $last['action'] === 'agree';
+        return $last !== null && $last['action'] === 'agree' && hash_equals(self::current('ai_overseas'), $last['version']);
     }
 
     /**

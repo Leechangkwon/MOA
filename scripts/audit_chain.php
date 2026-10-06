@@ -14,6 +14,16 @@ declare(strict_types=1);
  *   sudo php scripts/audit_chain.php --verify               ← 체인 파일 전체를 재검산한다
  *   sudo php scripts/audit_chain.php --reseal YYYY-MM-DD    ← 닫힌 날을 **다시 봉인**한다 (일회성, 사람 판단)
  *
+ * ★ 3년 지난 날 접기 — 「검증 시작점」 (사이트 Q:F-13 P2 · 기획 ../docs/privacy-terms-plan.md 5.1 「감사 기록 3년」)
+ *   감사 파일 사본은 logrotate 가 1096일 뒤 지우고(deploy/logrotate.d/tbox-v2 `rotate 1096` · `maxage 1096`), DB 의 3년 지난 줄은
+ *   scripts/privacy_purge.php(소유자 함수)가 지운다. 체인의 그 날 항목도 3년이 지나면 **접는다**: 기본 실행(cron 00:05, 어제 봉인)이
+ *   봉인 **전에** 「오늘 − 3년」보다 앞선 날짜의 항목을 체인에서 빼고, 뺀 것 중 마지막 항목의 날짜·해시를 체인 파일 머리의
+ *   `start <날짜> <해시>` 한 줄(검증 시작점)로 적는다. `--verify` 는 GENESIS 대신 이 해시에서 연결을 확인하기 시작한다 —
+ *   남은 첫 항목의 prev 가 시작점 해시와 같아야 하므로, 접힌 앞부분을 몰래 바꿔 끼우는 것은 여전히 드러난다.
+ *   접을 때 `audit.chain_trim allow`(detail log_date·chain_hash = 새 시작점 · checked = 접은 항목 수)를 **먼저** 남기고 파일을 쓴다.
+ *   `--date` · `--reseal` · `--verify` 는 접지 않는다(사람이 부르는 명령은 체인 모양을 몰래 바꾸지 않는다). 시작점보다 앞선
+ *   날짜를 `--date` 로 봉인하려 하면 사용법 오류다.
+ *
  * ★ 왜 기본이 "어제" 인가 (13단계 — SECURITY R-50, PRD T-29)
  *   전에는 인자가 없으면 **오늘** 날짜를 적었다. cron 은 00:05 에 도는데 logrotate 는 00:00 에
  *   회전하므로, 그 시각의 "오늘 파일" 은 방금 만들어진 **빈 파일**이다. 결과로 체인에는 0줄짜리
@@ -55,12 +65,26 @@ declare(strict_types=1);
  *   `--reseal` 은 날짜를 하나만 받는다. 사람이 그 날의 파일을 확인한 뒤 부르는 명령이다.
  *
  * 체인 파일 `/var/lib/tbox-v2/audit-chain.txt` (0600 root)
- *   한 줄에 `날짜 sha256 직전해시 줄수 바이트수` — 공백 구분. 첫 줄의 직전해시는 0 64개(GENESIS).
+ *   한 줄에 `날짜 sha256 직전해시 줄수 바이트수` — 공백 구분. 첫 줄의 직전해시는 0 64개(GENESIS) · 시작점이 있으면 그 해시.
+ *   시작점 줄은 `start 날짜 sha256`(많아야 한 줄, 항목보다 앞). 시험만 환경 변수 TBOX_AUDIT_CHAIN_FILE(절대 경로)로 자리를 바꾼다.
  */
 
 require_once __DIR__ . '/lib/cli_bootstrap.php';
 
-const CHAIN_FILE   = '/var/lib/tbox-v2/audit-chain.txt';
+/** 체인 파일 자리 — 운영은 고정 경로. 시험만 TBOX_AUDIT_CHAIN_FILE(절대 경로, `.txt`)로 임시 폴더를 가리킨다(cron 은 이 변수를 쓰지 않는다) */
+define('CHAIN_FILE', (static function (): string {
+    $override = getenv('TBOX_AUDIT_CHAIN_FILE');
+    if (is_string($override) && $override !== '') {
+        if (preg_match('#\A/[A-Za-z0-9._/-]+\.txt\z#', $override) !== 1 || strpos($override, '..') !== false) {
+            fwrite(STDERR, "[설정 오류] TBOX_AUDIT_CHAIN_FILE 은 .txt 로 끝나는 절대 경로\n");
+            exit(3);
+        }
+        return $override;
+    }
+    return '/var/lib/tbox-v2/audit-chain.txt';
+})());
+/** 감사 기록 보존 — 3년(5.1). 이보다 앞선 날의 체인 항목은 기본 실행이 접어 시작점으로 옮긴다 */
+const CHAIN_RETENTION = '-3 years';
 const CHAIN_GENESIS = '0000000000000000000000000000000000000000000000000000000000000000';
 /** 해시에서 빼는 줄의 표식 — 이 배치 자신이 남긴 감사 기록 (위 주석 ★) */
 const CHAIN_SELF_MARK = '"route":"cli:audit_chain.php"';
@@ -165,8 +189,8 @@ function chain_read(): array
     }
     $out = [];
     foreach ($raw as $n => $line) {
-        if ($line === '' || $line[0] === '#') {
-            continue;
+        if ($line === '' || $line[0] === '#' || strncmp($line, 'start ', 6) === 0) {
+            continue;                     // 주석 · 검증 시작점(chain_read_start 가 읽는다)
         }
         $p = preg_split('/\s+/', trim($line));
         if ($p === false || count($p) < 3) {
@@ -183,11 +207,55 @@ function chain_read(): array
     return $out;
 }
 
-/** @param list<array{date:string,hash:string,prev:string,lines:int,bytes:int}> $chain */
-function chain_write(array $chain): void
+/**
+ * 검증 시작점 — `start 날짜 sha256` 한 줄(없으면 null). 둘 이상이거나 모양이 틀리면 예외(조용히 넘기지 않는다).
+ *
+ * @return array{date:string,hash:string}|null
+ */
+function chain_read_start(): ?array
 {
+    if (!is_file(CHAIN_FILE)) {
+        return null;
+    }
+    $raw = file(CHAIN_FILE, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
+    if ($raw === false) {
+        throw new RuntimeException('체인 파일을 읽을 수 없습니다: ' . CHAIN_FILE);
+    }
+    $start = null;
+    foreach ($raw as $line) {
+        if (strncmp($line, 'start ', 6) !== 0) {
+            continue;
+        }
+        $p = preg_split('/\s+/', trim($line));
+        if ($start !== null || $p === false || count($p) !== 3
+            || preg_match('/\A[0-9]{4}-[0-9]{2}-[0-9]{2}\z/', $p[1]) !== 1 || preg_match('/\A[0-9a-f]{64}\z/', $p[2]) !== 1) {
+            throw new RuntimeException('체인 파일의 검증 시작점 줄이 올바르지 않습니다');
+        }
+        $start = ['date' => $p[1], 'hash' => $p[2]];
+    }
+    return $start;
+}
+
+/** 연결 확인의 첫 prev — 시작점이 있으면 그 해시, 없으면 GENESIS */
+function chain_first_prev(?array $start): string
+{
+    return $start === null ? CHAIN_GENESIS : $start['hash'];
+}
+
+/**
+ * @param list<array{date:string,hash:string,prev:string,lines:int,bytes:int}> $chain
+ * @param array{date:string,hash:string}|null|false $start false = 지금 파일의 시작점을 그대로 둔다
+ */
+function chain_write(array $chain, $start = false): void
+{
+    if ($start === false) {
+        $start = chain_read_start();
+    }
     $body = "# t-box 감사 로그 해시 체인 (scripts/audit_chain.php, ARCH 7.1 · R-11)\n"
-          . "# 날짜 sha256 직전해시 줄수 바이트수\n";
+          . "# 날짜 sha256 직전해시 줄수 바이트수 · start 줄 = 검증 시작점(3년 지난 날을 접은 자리)\n";
+    if (is_array($start)) {
+        $body .= sprintf("start %s %s\n", $start['date'], $start['hash']);
+    }
     foreach ($chain as $e) {
         $body .= sprintf("%s %s %s %d %d\n", $e['date'], $e['hash'], $e['prev'], $e['lines'], $e['bytes']);
     }
@@ -205,9 +273,13 @@ if (cli_flag($argv, 'verify')) {
         exit(TBOX_CLI_OK);
     }
     $bad   = [];
-    $prev  = CHAIN_GENESIS;
+    $start = chain_read_start();
+    $prev  = chain_first_prev($start);   // 시작점이 있으면 그 해시부터 연결을 본다(3년 지난 날은 접혀 있다)
     $today = date('Y-m-d');
     $open  = false;          // 오늘(열린 날) 항목이 체인에 있었나 — 결과 줄에 함께 적는다
+    if ($start !== null) {
+        cli_say(sprintf('  검증 시작점 %s (%s…) — 그 앞은 3년이 지나 접었다', $start['date'], substr($start['hash'], 0, 12)));
+    }
     foreach ($chain as $i => $e) {
         if (!hash_equals($prev, $e['prev'])) {
             $bad[] = ['date' => $e['date'], 'kind' => 'prev_broken'];
@@ -249,8 +321,9 @@ if (cli_flag($argv, 'verify')) {
             'target_name' => 'audit_chain_verify',
             'detail'      => ['checked' => $checked, 'mismatches' => 0],
         ]);
-        cli_say(sprintf('결과: 통과 (%d일치 연결·해시 일치%s)',
-            $checked, $open ? ', 오늘은 열린 날이라 검산 제외' : ''));
+        cli_say(sprintf('결과: 통과 (%d일치 연결·해시 일치%s%s)',
+            $checked, $open ? ', 오늘은 열린 날이라 검산 제외' : '',
+            $start !== null ? ', 시작점 ' . $start['date'] . ' 부터' : ''));
         exit(TBOX_CLI_OK);
     }
 
@@ -399,6 +472,46 @@ if ($date >= date('Y-m-d')) {
     exit(TBOX_CLI_BAD_USAGE);
 }
 
+/*
+ * ★ 3년 지난 날 접기 (Q:F-13 P2 — 위 머리글 「검증 시작점」). **기본 실행(cron)만** — `--date` 로 부른 사람 명령은 접지 않는다.
+ *   봉인보다 먼저 한다: 접은 뒤의 체인에 어제를 이어 붙인다. 감사 한 줄을 먼저 남기고(기록 없는 변경 0) 파일을 쓴다.
+ */
+if ($dateOpt === null) {
+    $trimBefore = date('Y-m-d', (int) strtotime(CHAIN_RETENTION));
+    $chainNow   = chain_read();
+    $keep       = [];
+    $folded     = [];
+    foreach ($chainNow as $e) {
+        if ($e['date'] < $trimBefore) {
+            $folded[] = $e;
+        } else {
+            $keep[] = $e;
+        }
+    }
+    if ($folded !== []) {
+        $last     = $folded[count($folded) - 1];
+        $newStart = ['date' => $last['date'], 'hash' => $last['hash']];
+        Audit::allow('audit.chain_trim', [
+            'target_type' => 'system',
+            'target_name' => 'audit_chain_trim',
+            'detail'      => [
+                'checked'    => count($folded),
+                'log_date'   => $newStart['date'],
+                'chain_hash' => $newStart['hash'],
+                'mismatches' => 0,
+            ],
+        ]);
+        chain_write($keep, $newStart);
+        cli_say(sprintf('3년 지난 날 %d개를 접었다 — 검증 시작점 %s (%s…)', count($folded), $newStart['date'], substr($newStart['hash'], 0, 12)));
+    }
+}
+
+$chainStart = chain_read_start();
+if ($chainStart !== null && $date <= $chainStart['date']) {
+    cli_warn(sprintf('[사용법 오류] %s 는 검증 시작점(%s) 앞이라 봉인하지 않는다 — 3년 지난 날은 접혀 있다', $date, $chainStart['date']));
+    exit(TBOX_CLI_BAD_USAGE);
+}
+
 $path = chain_file_for($date);
 if ($path === null) {
     cli_say(sprintf('%s 의 감사 로그 파일이 없다 — 체인에 적지 않는다.', $date));
@@ -413,7 +526,7 @@ $chain = chain_read();
 //   ① 값이 같다              → 아무것도 하지 않는다 (같은 날 두 번 돌려도 안전)
 //   ② 빈 자리표시였다        → 처음 봉인하듯 갈아 끼운다 (경보 없음, 옛 값은 detail 에)
 //   ③ 그 밖에 값이 달라졌다  → 변조 신호다. 경보 AL-6 를 남기고 체인은 고치지 않는다
-$prev  = CHAIN_GENESIS;
+$prev  = chain_first_prev($chainStart);
 $found = null;
 foreach ($chain as $i => $e) {
     if ($e['date'] === $date) {
@@ -490,7 +603,7 @@ if ($found !== null) {
     // 둘이 같지만, 뒤 날짜가 이미 있는 상태에서 앞 날짜를 끼워 넣으면 연결이 어긋났다
     // (13단계, SECURITY R-50). 뒤따르는 항목의 prev 는 **고치지 않는다** — 그 재연결은 사람이
     // 판단하는 `--reseal` 의 일이고, 여기서 조용히 맞춰 버리면 변조 신호까지 함께 지워진다.
-    $prev = CHAIN_GENESIS;
+    $prev = chain_first_prev($chainStart);   // 시작점이 있으면 그 해시에서 잇는다
     foreach ($chain as $e) {
         if ($e['date'] < $date) {
             $prev = $e['hash'];
