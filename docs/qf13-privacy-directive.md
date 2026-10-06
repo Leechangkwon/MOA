@@ -96,6 +96,14 @@ v2.50.1 `073ff04`(태그 `v2.50.1`, 기준 `selftest-base/qf13h`=d23db4b · 검�
 | 기록 | 앱 계정으로 `user_consents` UPDATE/DELETE → permission denied · 감사 `consent.agree`·`consent.withdraw` |
 | 화면 | 바닥 링크 다섯 자리 · 동의 화면 360·412·820·1440 가로 넘침 0 · 콘솔 0 · 고대비 |
 
+**P1 결과(2026-10-07 · `ac36b5c`·`d2be3c8` · 메인 독립 검토 통과 — `SECURITY.md` 7장)와 P2 에 더하는 것**
+- P1 확정 값: 라우트 `/tbox/privacy` · `/tbox/terms`(공개, `/privacy`·`/terms` 308) · `/tbox/consent` · `GET|POST /tbox/api/me/consents` · 문서 파일은 시행일 자리 `0000-00-00`(발행 날 메인이 `sed` + `git mv`) · 관문 `Auth::requireConsent`.
+- **P2-a**(경미 ①): `Auth::requireConsent` 의 거부 감사가 배경 폴링(`X-Qaredi-Background: 1`)마다 쌓이지 않게 — 배경 요청은 감사 없이 403(사람이 누른 요청만 감사). `src/Auth.php` 를 P2 수정 파일에 더한다(그 함수만).
+- **P2-b**(경미 ②): `ai_overseas` 에 판을 둔다 — `config/legal.json` 에 `ai_overseas` 판(예: `gemini-2026-10`)을 두고 `Legal::aiAgreed` 는 **지금 판과 같은 agree** 만 유효. 받는 곳·등급이 바뀌면 판을 올려 다시 묻는다. `src/Legal.php` · `config/legal.json` 을 더한다.
+- **P2-c**(경미 ③): 「내 계정」(`settings_page.php` — 이미 P2 목록)에 「약관 · 개인정보 처리방침 · AI 국외 전송 동의」 줄(→ `/tbox/consent`).
+- **P2-d**: 동의 줄 없이 세션을 만드는 시험 준비(stage10~13 · export · file_rename · assistant 등 — 찾아서 목록 보고)에 「이미 동의한 회원」 줄만 더한다(시험 준비 파일만).
+- **P2-e**: 처리방침 제4조의 「[법령에 따라 보존해야 하는 경우 그 근거와 기간]」 → 「다른 법령이 보존을 요구하는 경우에는 그 법령이 정한 기간 동안 다른 정보와 분리해 보관합니다.」(`content/legal/privacy-0000-00-00.html` 그 문장만). 제7조의 두 표시(나라 · 보유)는 사용자 답(Gemini 키 등급) 뒤 메인이 고친다 — **건드리지 않는다**.
+
 ## 지시서 P2 — 보관 기간 정리 · 탈퇴 · 사진 위치 정보(G-2) · 감사 3년(G-8)
 
 ```
@@ -105,7 +113,8 @@ v2.50.1 `073ff04`(태그 `v2.50.1`, 기준 `selftest-base/qf13h`=d23db4b · 검�
               ★ deploy/cron.d/tbox-v2(한 줄) · ★ deploy/logrotate.d/tbox-v2(감사 파일 3년) · scripts/audit_chain.php(검증 시작점) ·
               src/handlers/me_delete_request.php(새) · src/handlers/admin_deletion_requests.php(새) · ★ public/index.php(그 창구 라우트) · src/handlers/settings_page.php · src/handlers/admin_page.php(목록 자리) ·
               public/assets/app.js(탈퇴 요청 · 관리자 처리 화면 — 지금 재인증·확인 창 재사용) · src/community/Memories.php(올릴 때 메타데이터 지운 판 저장) ·
-              ★ src/Audit.php(새 감사 이름 등록만) · API.md · tests/qf13_retention_http.py(새) · tests/community/memories_harness.py(choices) · tests/catalog.json
+              ★ src/Audit.php(새 감사 이름 등록만) · API.md · tests/qf13_retention_http.py(새) · tests/community/memories_harness.py(choices) · tests/catalog.json ·
+              (P2-a~e) ★ src/Auth.php(requireConsent 만) · src/Legal.php · config/legal.json · content/legal/privacy-0000-00-00.html(제4조 한 문장) · 동의 줄이 필요한 시험 준비 파일
               여기 없는 파일 금지.
 금지 패턴   : CLAUDE.md 2장 + 파기를 앱 계정 권한을 넓혀 하지 않는다(소유자 함수) · 운영 데이터를 시험하지 않는다 · 이미 저장된 옛 사진은 고치지 않는다 · 감사 기록 파기는 3년 지난 줄만.
 완료 기준   : P2 시험 전부 + stage89 교차 회귀 + 사진 기록·메신저·AI 기존 시험 전과 같은 수 + security_lint 0 + php -l + node --check + git diff --check.
