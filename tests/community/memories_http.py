@@ -88,33 +88,24 @@ try:
  sql("UPDATE community.memory_links SET expires_at=now()-interval '1 second' WHERE token_hash='"+hashlib.sha256(token.encode()).hexdigest()+"'");call('GET',exp+'/feed',user=None,expected=404)
  call('DELETE','/api/memories/links',{});call('GET',profile+'/feed',user=None,expected=404)
  check(sql("SELECT has_table_privilege('tbox_backup','community.memory_posts','SELECT') AND has_table_privilege('tbox_backup','community.messages','SELECT')")=='t','backup role reads new tables')
- call('GET','/api/messenger',user=None,expected=401);call('GET','/api/messenger',user='guest',expected=403)
- call('GET','/api/messenger/members?q=x');call('POST','/api/messenger/conversations',{'username':users['other']['username']},csrf=False,expected=403)
- cid=call('POST','/api/messenger/conversations',{'username':users['other']['username']})['id']
- check(call('POST','/api/messenger/conversations',{'username':users['other']['username']})['id']==cid,'conversation unique pair')
- for u in ('manager','guest',None):
-  status=404 if u=='manager' else 403 if u=='guest' else 401
-  for method,suffix,body in [('GET','',None),('POST','/messages',{'body':'secret','request_id':str(uuid.uuid4())}),('POST','/read',{'last_id':1})]:call(method,'/api/messenger/conversations/'+cid+suffix,body,user=u,expected=status)
- msg={'body':'비공개 합성 메시지 <script>문자</script>','request_id':str(uuid.uuid4())};path='/api/messenger/conversations/'+cid
- sent=call('POST',path+'/messages',msg,expected=201)['message'];check(call('POST',path+'/messages',msg)['message']['id']==sent['id'],'message retry returns same ID')
- call('POST',path+'/messages',dict(msg,body='different'),expected=409);call('POST',path+'/messages',dict(msg,sender_id=1),expected=400)
- call('POST',path+'/messages',msg,csrf=False,expected=403)
- incoming=call('GET',path,user='other')['messages'];check(incoming[0]['body']==msg['body'] and incoming[0]['mine'] is False,'participant reads literal message with sender flag')
- call('POST',path+'/read',{'last_id':int(sent['id'])},user='other');check(call('GET','/api/messenger',user='other')['conversations'][0]['unread']==0,'read cursor clears received only')
- cid2=call('POST','/api/messenger/conversations',{'username':users['manager']['username']})['id'];m2=call('POST','/api/messenger/conversations/'+cid2+'/messages',{'body':'다른 대화','request_id':str(uuid.uuid4())},expected=201)['message']
- before=sql("SELECT low_read||':'||high_read FROM community.conversations WHERE id='"+cid+"'");call('POST',path+'/read',{'last_id':int(m2['id'])},user='other');check(sql("SELECT low_read||':'||high_read FROM community.conversations WHERE id='"+cid+"'")==before,'foreign conversation read ID rejected')
- sql('UPDATE users SET is_active=false WHERE id='+str(users['other']['id']));call('GET',path,expected=404);call('POST',path+'/messages',{'body':'inactive','request_id':str(uuid.uuid4())},expected=404);sql('UPDATE users SET is_active=true WHERE id='+str(users['other']['id']))
- sql("UPDATE users SET expires_at=now()-interval '1 second' WHERE id="+str(users['other']['id']));call('GET',path,expected=404);sql('UPDATE users SET expires_at=NULL WHERE id='+str(users['other']['id']))
- sql("INSERT INTO community.messages(conversation_id,sender_id,request_id,body) SELECT '"+cid+"',"+str(users['employee']['id'])+",gen_random_uuid(),'page'||n FROM generate_series(1,51) n")
- first=call('GET',path);second=call('GET',path+'?before='+first['messages'][0]['id']);check(first['has_more'] and not(set(x['id'] for x in first['messages'])&set(x['id'] for x in second['messages'])),'message pagination no duplicates')
- call('POST',path+'/messages',{'body':'rate','request_id':str(uuid.uuid4())},expected=429)
+ # Q:F-11 보정 D-2 — 커뮤니티 대화 창은 떠 있는 모아 메신저로 대체됐다: 사람 대화 6 라우트는 라우트 표에 없어 누구에게나 404 ·
+ # GPT 2 라우트는 휴면 그대로(GET 200 enabled:false · POST 503 · 쓰기 자격) · 옛 표(conversations · messages · gpt_turns)는 보존
+ fake=str(uuid.uuid4());msg={'body':'비공개 합성 메시지 <script>문자</script>','request_id':str(uuid.uuid4())}
+ counts="SELECT (SELECT count(*) FROM community.conversations)||':'||(SELECT count(*) FROM community.messages)";kept=sql(counts)
+ removed=[('GET','/api/messenger',None),('GET','/api/messenger/members?q=x',None),('POST','/api/messenger/conversations',{'username':users['other']['username']}),
+          ('GET','/api/messenger/conversations/'+fake,None),('POST','/api/messenger/conversations/'+fake+'/messages',msg),('POST','/api/messenger/conversations/'+fake+'/read',{'last_id':1})]
+ for u in ('employee','guest',None):
+  for method,path,body in removed:call(method,path,body,user=u,expected=404)
+ check(sql(counts)==kept and sql("SELECT to_regclass('community.conversations') IS NOT NULL AND to_regclass('community.messages') IS NOT NULL AND to_regclass('community.gpt_turns') IS NOT NULL")=='t','removed person-chat routes write nothing; old tables kept')
  g=call('GET','/api/messenger/gpt');check(g['enabled'] is False and g['turns']==[],'GPT remains disabled without server key')
+ call('GET','/api/messenger/gpt',user=None,expected=401);call('GET','/api/messenger/gpt',user='guest',expected=403)
  call('POST','/api/messenger/gpt',{'body':'must not leave server','request_id':str(uuid.uuid4())},expected=503)
+ call('POST','/api/messenger/gpt',{'body':'must not leave server','request_id':str(uuid.uuid4())},csrf=False,expected=403)
  sql("INSERT INTO community.gpt_turns(user_id,request_id,prompt,reply) VALUES("+str(users['employee']['id'])+",gen_random_uuid(),'synthetic own prompt','synthetic own reply')")
  check(call('GET','/api/messenger/gpt',user='other')['turns']==[],'other user cannot see GPT history')
  check(len(call('GET','/api/messenger/gpt')['turns'])==1,'owner reads own GPT history even disabled')
  for url in ['/', '/workspace','/?space=1','/today','/ai']:
-  r=raw('GET',url);check(r.status_code==200 and 'id="community-messenger"' in r.text,'common messenger actual PHP '+url)
+  r=raw('GET',url);check(r.status_code==200 and 'id="community-messenger"' not in r.text and r.text.count('id="messenger-window"')==1 and 'data-messenger-open' in r.text,'floating messenger replaces the old community window, actual PHP '+url)
  private=root.parent/'storage/private-ai';private.mkdir(mode=0o700);(private/'gemini.key').write_text('synthetic-credential-not-an-upload')
  integrity=subprocess.run(['php','scripts/consistency_check.php','--strict','--quiet'],cwd=root,capture_output=True)
  check(integrity.returncode==0,'media integrity check excludes private AI configuration')

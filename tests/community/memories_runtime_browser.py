@@ -8,6 +8,8 @@ host=urlsplit(site).hostname
 try:
  for u in users:
   users[u]['username']=sql('SELECT username FROM users WHERE id='+str(users[u]['id']));call('GET','/api/me/space',user=u)
+ # 대화 상대 — 사람 목록 SQL 이 claude_ 아이디를 빼므로 이 합성 DB 에만 로그인 없는 구성원 하나(messenger_window_browser.py 와 같은 방식)
+ sql("INSERT INTO users(username,password_hash,role,display_name,expires_at) VALUES('synthetic_runtime_peer','!synthetic-no-login','Employee','합성 대화 상대',clock_timestamp()+interval '14 days')")
  with sync_playwright() as pw:
   browser=pw.chromium.launch(executable_path=os.environ.get('CHROMIUM_EXECUTABLE'))
   for width in (1280,390):
@@ -22,6 +24,8 @@ try:
    if width == 1280:
     tab.get_by_role('button',name='나중에 볼게요',exact=True).click()
     expect(tab.locator('.usage-guide-dialog')).to_have_count(0)
+   # 보정 D-2 — 방금 떠난 /tbox/messages(붙박이)가 open:true 를 남겨 떠 있는 창이 이어 열려 있다(B-3). 휴대폰 폭은 아래 시트가 화면을 덮으니 닫고 시작한다
+   if tab.locator('#messenger-window').is_visible():tab.locator('#messenger-window [data-messenger-close].btn--icon').click();expect(tab.locator('#messenger-window')).not_to_be_visible()
    check(tab.locator('body').evaluate('(e)=>e.scrollWidth<=innerWidth+1'),'thread viewport '+str(width))
    tab.locator('.threads-write').click();expect(tab.locator('#compose-dialog')).to_be_visible();tab.locator('#caption').fill('실제 PHP 화면 사진 저장 '+str(width))
    tab.locator('#media-input').set_input_files({'name':'합성.png','mimeType':'image/png','buffer':png});expect(tab.locator('#visibility')).to_have_value('private')
@@ -38,13 +42,19 @@ try:
    saved=tab.locator('.post').filter(has_text='형식 정보 없는 사진 '+str(width));expect(saved).to_have_count(1)
    saved.locator('img').scroll_into_view_if_needed();expect(saved.locator('img')).to_have_js_property('naturalWidth',1)
    check(True,'empty MIME photo previews, saves and loads through real PHP '+str(width))
-   tab.locator('.threads-quick [data-messenger-open]').click();expect(tab.locator('#community-messenger')).to_be_visible();tab.locator('#messenger-search').fill(users['other']['username'])
-   tab.locator('#messenger-members button').first.click();tab.locator('#messenger-body').fill('실제 모달 전송 '+str(width));tab.locator('#messenger-send').click();expect(tab.locator('#messenger-messages')).to_contain_text('실제 모달 전송 '+str(width))
-   check(tab.url==base+'/memories?view=mine','modal stays on the saved personal feed '+str(width))
-   tab.locator('#messenger-gpt-tab').click();expect(tab.locator('#messenger-gpt-unavailable')).to_be_visible();expect(tab.locator('#messenger-send')).to_be_disabled()
-   tab.screenshot(path=str(out/f'messenger-real-{width}.png'),full_page=True);tab.locator('#messenger-close').click()
+   # Q:F-11 보정 D-2 — 커뮤니티 대화 창은 떠 있는 모아 메신저(#messenger-window)로 대체됐다: 스레드의 메신저 단추가 창을 제자리에서 연다
+   tab.locator('.threads-quick [data-messenger-open]').click();expect(tab.locator('#messenger-window')).to_be_visible();check(tab.locator('#community-messenger').count()==0,'old community messenger markup gone '+str(width))
+   # 앞서 들른 /tbox/messages(붙박이)가 떠날 때 open:true 를 남겨 창이 모아 AI 대화로 이어 열려 있을 수 있다(B-3) — 목록으로
+   if tab.locator('#messenger-back').is_visible():tab.locator('#messenger-back').click()
+   tab.locator('#message-search').fill('합성 대화 상대');tab.locator('#message-people button').filter(has_text='합성 대화 상대').first.click();expect(tab.locator('#message-peer-name')).to_contain_text('합성 대화 상대')
+   tab.locator('#message-text').fill('실제 창 전송 '+str(width));tab.locator('#message-send').click();expect(tab.locator('#message-list')).to_contain_text('실제 창 전송 '+str(width))
+   check(tab.url==base+'/memories?view=mine' and sql("SELECT count(*) FROM member_messages WHERE body='실제 창 전송 "+str(width)+"'")=='1','floating window stays on the saved personal feed, one row sent '+str(width))
+   tab.locator('#messenger-back').click();tab.locator('#message-ai').click();expect(tab.locator('#message-peer-name')).to_have_text('모아 AI')
+   expect(tab.locator('#messenger-window-status')).to_contain_text('Gemini 키');expect(tab.locator('#message-send')).to_be_disabled()
+   tab.screenshot(path=str(out/f'messenger-real-{width}.png'),full_page=True);tab.locator('#messenger-window [data-messenger-close].btn--icon').click();expect(tab.locator('#messenger-window')).not_to_be_visible()
    tab.screenshot(path=str(out/f'threads-real-{width}.png'),full_page=True)
-   tab.goto(base+'/workspace',wait_until='networkidle');tab.locator('[data-messenger-open]:visible').first.click();expect(tab.locator('#community-messenger')).to_be_visible();tab.locator('#messenger-close').click()
+   tab.goto(base+'/workspace',wait_until='networkidle');tab.locator('[data-messenger-open]:visible').first.click();expect(tab.locator('#messenger-window')).to_be_visible()
+   tab.locator('#messenger-window [data-messenger-close].btn--icon').click();expect(tab.locator('#messenger-window')).not_to_be_visible()
    check(not errors and not bad,'real common shell no JS/500 errors '+str(width));ctx.close()
   browser.close()
 finally:
