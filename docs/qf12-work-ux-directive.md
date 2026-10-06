@@ -182,6 +182,11 @@ B 가 끝나면 C 로 이어 간다(검토는 묶음 끝).
 
 C 가 끝나면 D 로 이어 간다.
 
+**C 결과(2026-10-07 · `57ff801`)와 D 로 넘기는 것** — `qf12_shell_browser.py` 430/0 · `messenger_window_browser` 456/0 · 교차 회귀 164/0 · 아이콘 줄 글자 대비 7.78 이상(테마 여섯 × 밝게·어둡게·고대비). 메인이 받아들인 차이(DESIGN 먼저 고침): 아이콘 줄 초점 고리 `--rail-fg`(2.18) · 「＋ 새 이야기」 연결은 `app.js` 의 `[data-story-compose]` → `window.MemoryComposer.open()` · 문서 묶음에 페이지 트리·게시판 목록(2.19) · 셸의 `briefing.js` 갈래 제거 · 이야기 셸에 알림 종·`editor.js` 없음(2.19).
+- **D 가 쓸 자리**: 사이드바 「내 작업」 = 셸 키 `community-today` · 「홈」 = `community-overview` · 숨겨 둔 묶음 `#nav-work-projects`·`#nav-work-portfolios`(제목 포함, 채우는 JS 는 D) · 새로 만들기 메뉴의 `#nav-new-task`·`#nav-new-project`(지금 `hidden`).
+- **D 수정 파일에 더한다**: `src/community/handlers/home_page.php`(화면 제목 「커뮤니티」 → 「내 문서」) · `src/handlers/login_page.php`(「커뮤니티로」 → 업무 이름) · `src/views/launcher.php`(본문 문구 — 「커뮤니티 둘러보기」 등을 업무·이야기로).
+- **묶음 끝 검토로**: 운영 8082·운영 DB 사본이 필요해 C 가 돌리지 못한 카탈로그 시험(changelog · fetch_hosts · help_button · stage4b · design.live · q_launcher · stage7d2 · stage7d3 · qf2_search · qf3a · qf3b · dbg_u_ui · dbg_u2_ui · dbg_u3_ui · passkey · changelog_admin_only · ux_r1_ui) — 기대값을 고친 것 포함.
+
 ---
 
 ## 지시서 D — 업무 화면: 홈 · 내 작업 · 프로젝트(작업 목록 + 상세 칸) · 포트폴리오 · 새로 만들기
@@ -200,6 +205,7 @@ C 가 끝나면 D 로 이어 간다.
               public/assets/community/editor.js(상세 칸 안 본문 편집 재사용에 필요한 최소 변경 — 바꾼 함수 목록을 보고) ·
               public/assets/app.css(DESIGN 2.20~2.22 구성 요소) · src/views/shell_top.php(업무 사이드바의 프로젝트·포트폴리오 묶음 채우기 자리만) ·
               src/help/community.php · public/assets/usage-guide.js(업무 홈·내 작업 투어) · wiki/community/*.json(새 화면 안내) ·
+              src/community/handlers/home_page.php(제목) · src/handlers/login_page.php(문구) · src/views/launcher.php(본문 문구) ·
               DESIGN.md(2.20~2.22 「확인 결과」 줄만) · docs/design-guide.html(작업 목록·상세 칸·진행률 견본) ·
               tests/community/qf12_work_browser.py(새) · tests/community/memories_harness.py(choices) · tests/catalog.json ·
               기대값이 바뀌는 시험(overview 를 보는 것 — usage_guide_browser.py · stage89 suite.py:225-236 · passkey.py:284-296 등, 바꾼 이유를 보고) ·
