@@ -184,6 +184,9 @@ try:
    if gpt:metrics['gpt-'+path]=gpt
    helpgpt=[m.group(0).strip() for m in re.finditer(r'.{0,40}(?:(?<!Chat)GPT|OpenAI).{0,20}',help_block.group(0) if help_block else '')]
    if helpgpt:metrics['help-gpt-'+path]=helpgpt
+   if path=='/community/memories':
+    hb=help_block.group(0) if help_block else ''
+    check(not helpgpt and '떠 있는 창' in hb and 'Google로 전송' in hb and '크게 보기' in hb,'C-4 스레드 도움말: floating messenger + 모아 AI Google notice, no 「GPT」/「OpenAI」')
    check(not gpt,'Q:T-19 '+label+': no standalone 「GPT」/「OpenAI」 text on the screen (help dialog counted separately)')
   r=requests.get(TB+'/messages',headers={'User-Agent':UA,'Cookie':'__Host-tbox_session='+users['employee']['session']},timeout=35)
   check(r.status_code==200 and 'id="messenger-window"' not in r.text and 'id="messenger-open"' not in r.text and 'id="message-form"' in r.text,'Q:T-11 /messages is the page itself (no floating window, no opener)')
