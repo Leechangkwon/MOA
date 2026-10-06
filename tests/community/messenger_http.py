@@ -11,6 +11,7 @@ memories_harness.py 만 부른다(합성 DB `tbox_memories_test_*` · 임시 복
   ⑦ 첨부 갈래 ①~③                                           ⑧ 손님·역할로 보기 403 · 로그인 없음 401 · CSRF 403
   ⑨ GET 응답 모양 불변(request_id 를 내지 않는다)              ⑩ 마이그레이션 2회 멱등 · 기존 행 NULL 보존
   ⑪ 감사 member.message.send 는 새 행에만 1건
+  ⑫ (지시서 C-1) 전송 시도 상한 — 모든 POST 시도 분당 120(400·404·409·재전송 포함) · 121번째 429 Retry-After 60 · 새 행 30 그대로 · 다른 사람 영향 0
 """
 from pathlib import Path
 exec(compile(Path(__file__).with_name('memories_http.py').read_text().split('try:\n for u in users:')[0],__file__,'exec'))
@@ -185,6 +186,48 @@ try:
  check(by_request(r10)==1 and count('request_id IS NOT NULL')==1,'⑩ third application keeps new request_id values')
  legacy=send('other',{'text':'옛 요청은 거절'})
  check(legacy.status_code==400,'⑩ old client without request_id still 400 after migration')
+
+ # ⑫ 전송 시도 상한(지시서 C-1 · R-118) — 모든 POST 시도 분당 120(모양 틀림·재전송·충돌·없는 상대·자기 자신 포함, 트랜잭션 밖).
+ #    새 행 30 은 그대로(31번째 새 글 429). 121번째 시도는 무엇이든 429 + Retry-After: 60. 다른 사람은 영향 0. 실측 번호를 단언 이름에 남긴다.
+ reset_rate()
+ def attempt_hits(key):
+  h=hashlib.sha256(('message-attempt:'+str(uid(key))).encode()).hexdigest()
+  return int(sql("SELECT coalesce(max(hits),0) FROM member_rate_limits WHERE key_hash='"+h+"'"))
+ nobody=int(sql('SELECT coalesce(max(id),0)+1000 FROM users'))
+ rows12=[];first12=None;t12=time.time()
+ def attempt(kind,fn):
+  res=fn();rows12.append((len(rows12)+1,kind,res.status_code,(res.json().get('id') if res.status_code in (200,201) else None),res.headers.get('Retry-After')))
+  return res
+ for i in range(30):
+  r=rid();attempt('new',lambda r=r,i=i:send('other',{'text':'시도 상한 '+str(i),'request_id':r}))
+  if i==0:first12=(r,rows12[-1][3])
+ attempt('new-31st',lambda:send('other',{'text':'시도 상한 31번째 새 글','request_id':rid()}))
+ kinds=[('bad-shape',lambda:send('other',{'text':'x','request_id':'not-a-uuid'})),
+        ('unknown-peer',lambda:tb('POST','/api/messages/'+str(nobody),{'text':'없는 상대','request_id':rid()})),
+        ('self',lambda:send('employee',{'text':'나에게','request_id':rid()})),
+        ('conflict',lambda:send('other',{'text':'바뀐 본문','request_id':first12[0]})),
+        ('resend',lambda:send('other',{'text':'시도 상한 0','request_id':first12[0]}))]
+ while len(rows12)<120:
+  k,fn=kinds[len(rows12)%len(kinds)];attempt(k,fn)
+ for k,fn in [('resend',kinds[4][1]),('bad-shape',kinds[0][1]),('unknown-peer',kinds[1][1]),('conflict',kinds[3][1])]:attempt(k+'-over',fn)
+ elapsed12=round(time.time()-t12,1)
+ expect12={'new':201,'new-31st':429,'bad-shape':400,'unknown-peer':404,'self':400,'conflict':409,'resend':200}
+ within=[x for x in rows12 if x[0]<=120]
+ blocked=[x[0] for x in rows12 if x[2]==429 and x[1]!='new-31st']
+ resend_ok=[x[0] for x in rows12 if x[1]=='resend' and x[2]==200]
+ check(elapsed12<55,'⑫ 124 attempts finished inside one rate window ('+str(elapsed12)+'s)')
+ check(all(x[2]==expect12[x[1]] for x in within),'⑫ attempts 1-120 keep their own answers (201×30 · 429 31st new · 400 · 404 · 409 · 200) — not cut by the attempt limit')
+ check(rows12[30][2]==429 and rows12[30][4]=='60' and count("body='시도 상한 31번째 새 글'")==0,'⑫ 31st new message is still 429 with Retry-After 60 (new-row limit 30 unchanged)')
+ check(bool(resend_ok) and all(x[3]==first12[1] for x in rows12 if x[1]=='resend' and x[2]==200),'⑫ resends within 120 answer 200 with the same id (last 200 resend at attempt #'+str(max(resend_ok) if resend_ok else 0)+')')
+ check(blocked==[121,122,123,124],'⑫ first attempt blocked by the attempt limit is #'+str(blocked[0] if blocked else 0)+' (121st) and every later attempt is 429')
+ check(all(x[4]=='60' for x in rows12[120:]),'⑫ attempt-limit 429 carries Retry-After: 60')
+ check(attempt_hits('employee')==124 and count("body LIKE '시도 상한 %'")==30,'⑫ attempt counter counts every POST (124) · only 30 new rows written')
+ other12=send('employee',{'text':'다른 사람은 영향 없음','request_id':rid()},user='other')
+ check(other12.status_code==201 and attempt_hits('other')==1,'⑫ another member is unaffected (201, own counter 1)')
+ check(tb('GET','/api/messages/'+str(oth)).status_code==200,'⑫ reading the conversation (GET) is not limited by the attempt counter')
+ reset_rate()
+ after12=send('other',{'text':'시도 상한 0','request_id':first12[0]})
+ check(after12.status_code==200 and after12.json()=={'ok':True,'id':first12[1]},'⑫ after the window passes the same resend answers 200 with the same id again')
 finally:
  (out/'messenger-http-results.json').write_text(json.dumps(checks,ensure_ascii=False,indent=2))
  print('RESULT pass='+str(sum(x['pass'] for x in checks))+' fail='+str(sum(not x['pass'] for x in checks)),flush=True)

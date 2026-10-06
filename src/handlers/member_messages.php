@@ -17,6 +17,8 @@ if ($params===[]) {
         SQL,[':uid1'=>$uid,':uid2'=>$uid,':uid3'=>$uid,':uid4'=>$uid,':q1'=>$like,':q2'=>$like])->fetchAll();
     Http::json(['people'=>$rows]); exit;
 }
+// Q:F-11 C-1 (R-118 전송 시도 상한): 모든 POST 시도 분당 120 — 상대·본문 검사 전, 트랜잭션 밖이라 없는 상대 404·모양 틀림 400·재전송 200/409 도 센다(새 행 30 은 아래 그대로).
+if (Http::method()==='POST') Member::rate('message-attempt',(string)$uid,120);
 $peer=Member::peer((int)$params[0],$user); $pid=(int)$peer['id'];
 if (Http::method()==='POST') {
     // Q:F-11 지시서 A-4 (R-118): request_id(UUIDv4) 필수 — 같은 사람·같은 request_id 는 한 행(여러 탭·재시도).
