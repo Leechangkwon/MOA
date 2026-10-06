@@ -1,6 +1,6 @@
 # ChatGPT 원격 MCP — 내 기록·사진·여행 연결
 
-- 상태: 클라우드 검증 완료·서버 검증 대기
+- 상태: 서버 검증·v2.49.0 운영 반영 완료(기본 비활성) (2026-10-06)
 - 작업 브랜치: `cloud/chatgpt-remote-mcp`
 - 기준 main 커밋: `b4e2ad6` (v2.47.0 서버 검증 기록 포함)
 - 후보 커밋: PR head로 고정
@@ -56,4 +56,8 @@ MCP DB migration은 사용자 보안 epoch와 새 표를 추가한다. 비밀번
 
 ## 배포 결과 (서버에서만 작성)
 
-미배포. 실제 ChatGPT OAuth/도구/휴대폰 확인은 미검증.
+2026-10-06 사용자 지시(「PR #4 진행」·「PR #4 반영 + 메신저 기획 병행」)로 PR #4 후보 `af88127` 을 v2.48.0 main 위에 통합(`5af8138`·시험 보정 `82d6cd9`)하고 v2.49.0 `302d415` 로 운영에 **기본 비활성**(MCP_REMOTE_ENABLED 미설정) 반영했다. 변경62파일 모의 적용·최종 해시 일치, migration `2026-10-15_remote_mcp.sql` 1개(사용자 보안 epoch 열·트리거 + mcp_* 표5 · 추가 전용), nginx 3파일(정확 위치·요청 제한·로그 가림) 운영 `nginx -t` 통과 후 reload, PHP-FPM reload. 반영 전 운영 /etc nginx 와 v2.48.0 저장소 바이트 동일(드리프트0). 독립 검토(Fable 새 문맥, 2026-10-06 00:36): 차단·중요0, 경미2 — PHP 단위 oauth141·protocol94·tools61·photo15, 실 PHP+격리 DB remote_http738, 격리 인스턴스 직접 공격(OAuth·/mcp·IDOR·닫힌 실패), 후보 nginx 실기동, 회귀 travel62·story65·memories138·social134·실화면19·stdio MCP114·return-path85·guard23·합성 연결48·여행15·로그인36·공통교차162, 운영 사본 migration 2회·owner/ACL 보존. 운영 HTTPS 71/71: MCP 창구 전부 503(닫힘)·연결 화면 「기능 꺼짐」·설정 진입 링크·로그인 화면 CSP/프레임 보호 유지·기존 기능·자산 바이트·390/1440px·JS 오류0·5xx0·접근 로그에 MCP/OAuth/로그인 원문 0·app.log 새 예외0. 기존 행(users 는 새 열 제외)·owner/ACL·저장 원본1028파일 SHA-256 보존. 실제 ChatGPT 등록·OAuth 왕복·휴대폰·앞단 프록시 로그·사용자 자기 공격은 미검증(기능을 켜기 전 할 일).
+
+백업 `/var/backups/tbox-v2/remote-mcp-20261006`(암호화·복호화 확인), 비공개 실행 증거 `/home/changkwon/qaredi-remote-mcp-results-20261006`(검토 `review/REPORT.md`, 배포 `deploy/`). 첫 운영 확인 실행에서 시험 가정 2건이 틀려 실패했다(머리글 두 벌이 합쳐진 값 비교 · access_log off 위치에 가림 줄을 기대) — 사이트 응답 원문으로 확인 후 시험만 고쳐 전체 재실행 71/71, 첫 실패 기록 보존.
+
+켜기 전 남은 일: 운영 `.env` 에 `MCP_REMOTE_ENABLED=1`·실제 ChatGPT callback 의 정확한 `MCP_OAUTH_REDIRECT_URIS` → 앞단 프록시 로그 실측 → 실제 ChatGPT 등록·승인·도구·연결 해제·휴대폰 확인 → 사용자 자기 공격.

@@ -2825,3 +2825,4 @@ insta6bdbdf3 서버 검증: HTTP138·실제화면19·합성브라우저38·공�
 
 | 2026-10-04 | 검토·보정 | 익명 client 보존, 원격 감사, 웹/MCP 여행 연결 revision 일관성 보정 후 남은 정적 차단 지적 없음 | 연결48·여행15·로그인36 합성 화면, return-path85·guard23·기존MCP114, lint0. PHP/DB/실제HTTP/ChatGPT/실물 미검증; 서버 검사 전 기본 비활성 |
 | 2026-10-04 | 인계 | Git2 cloud/chatgpt-remote-mcp 후보, 사용 안내·서버 수락/동시성/감사·설정·복귀 절차 준비 | `docs/chatgpt-remote-mcp.md`, `docs/work-items/chatgpt-remote-mcp.md`; 운영/현재 채팅 연결 완료를 뜻하지 않음 |
+| 2026-10-06 | 운영 완료 | PR #4 v2.49.0 302d415 기본 비활성 반영 — migration1·nginx3·HTTPS71, 독립 검토 차단·중요0 | `docs/work-items/chatgpt-remote-mcp.md`; 실제 ChatGPT·휴대폰·자기 공격 미검증 |

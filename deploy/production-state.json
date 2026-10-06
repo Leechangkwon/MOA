@@ -1,12 +1,12 @@
 {
   "schema_version": 1,
-  "version": "2.48.0",
-  "verified_runtime_commit": "941cb848411c3743c49ba77eeadd912303409054",
-  "verified_checkout_commit": "941cb848411c3743c49ba77eeadd912303409054",
-  "verified_tree": "a51d9ed7512d667d0f64477811ed39542b2e32d9",
-  "verified_at": "2026-10-04T20:31:15+09:00",
+  "version": "2.49.0",
+  "verified_runtime_commit": "302d41564dc23628d1ed548059e6d441b60f4552",
+  "verified_checkout_commit": "302d41564dc23628d1ed548059e6d441b60f4552",
+  "verified_tree": "401621a5bfcf944a23300b308f3cbaa7aa21debd",
+  "verified_at": "2026-10-06T10:03:02+09:00",
   "record_type": "last_verified_server_snapshot_not_live_status",
-  "release_commit": "941cb848411c3743c49ba77eeadd912303409054",
+  "release_commit": "302d41564dc23628d1ed548059e6d441b60f4552",
   "automatic_deployment": false,
   "server_only": [
     "database",
@@ -15,12 +15,14 @@
     "service_configuration"
   ],
   "verification": {
-    "https_pass": 128,
+    "https_pass": 71,
     "https_fail": 0,
     "records_unchanged": true,
     "changed_files_verified": true,
-    "deployment_changed_files": 20,
-    "migrations": [],
+    "deployment_changed_files": 62,
+    "migrations": [
+      "db/migrations/2026-10-15_remote_mcp.sql"
+    ],
     "services_active": [
       "nginx",
       "php8.1-fpm",
@@ -28,27 +30,28 @@
     ],
     "original_database_owners_preserved": true,
     "storage_files_preserved": 1028,
-    "synthetic_browser_scenarios": 12,
     "isolated_php_browser_pass": 19,
-    "existing_live_posts_checked": 3,
     "live_viewport_widths": [
       390,
       1440
     ],
     "live_js_errors": 0,
     "live_5xx": 0,
-    "synthetic_gallery_scenarios": 8,
     "cross_regression_pass": 162,
-    "live_mobile_touch_swipe": true
+    "nginx_files_changed": 3,
+    "nginx_drift_before": 0,
+    "remote_mcp_enabled": false,
+    "remote_http_pass": 738,
+    "independent_review_blocking": 0
   },
   "evidence": [
-    "docs/work-items/story-preview-gallery.md",
-    "docs/work-items/story-preview-fix.md"
+    "docs/work-items/chatgpt-remote-mcp.md"
   ],
   "remaining": [
     "real_handset_user_check",
     "windows_assistant_installer_validation",
-    "chat_mcp_connection",
-    "photo_video_editor"
+    "photo_video_editor",
+    "remote_mcp_enable_with_real_chatgpt",
+    "front_proxy_log_check"
   ]
 }

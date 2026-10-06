@@ -1,5 +1,8 @@
 # 휴가 중 클라우드 작업 인계 — 2026-10-03
 
+> 2026-10-06 최신 운영: PR #4 v2.49.0 `302d415` 배포 완료(ChatGPT 원격 MCP, **기본 비활성**). migration1·nginx3, 운영 HTTPS71, 데이터·원본1028파일 보존. 켜기 전 실제 ChatGPT·프록시 로그·휴대폰 확인 필요. `docs/work-items/chatgpt-remote-mcp.md`와 `deploy/production-state.json` 참조. 아래 기록은 이전 배포다.
+
+
 > 2026-10-04 최신 운영: PR #6 v2.48.0 `941cb84` 배포 완료. 요약 카드 사진 스와이프·이전/다음·번호 표시. gallery8/social12/격리PHP19/공통162/운영HTTPS128, 데이터·원본1028파일 보존. `docs/work-items/story-preview-gallery.md`와 `deploy/production-state.json` 참조. 아래 기록은 이전 배포다.
 
 
