@@ -250,7 +250,7 @@ try:
    check(not t.is_open(),'Q:T-12 window starts closed in a fresh tab')
    t.open();check(p.evaluate("document.activeElement.id")=='message-search','Q:T-12 opened by a person: focus moves into the window (search box in list view)')
    t.person('합성 상대 A')
-   p.wait_for_function("document.activeElement&&document.activeElement.id==='message-text'",timeout=5000)
+   p.wait_for_function("()=>!!document.activeElement&&document.activeElement.id==='message-text'",timeout=5000)   # 함수 꼴 — 글자 식은 eval 로 돌아 CSP(unsafe-eval 없음)에 막힌다
    check(p.evaluate("document.activeElement.id")=='message-text','Q:T-12 opening a conversation focuses the composer')
    p.locator('#message-text').type('ㄱㄴㄷ');p.wait_for_function('k=>localStorage.getItem(k)!==null',arg=A_PREFIX+'message:'+str(pa),timeout=8000)
    p.evaluate("(()=>{const l=document.getElementById('message-list');l.scrollTop=Math.max(0,l.scrollHeight-l.clientHeight-260);})()")
