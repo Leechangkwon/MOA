@@ -690,6 +690,23 @@ try:
     check(t.clean('c5-'+str(width)),'C-5 '+str(width)+' no page errors / 5xx / script console output')
     ctx.close()
 
+  # ─── 지시서 C-6 사이드바 — 옛 /messages 링크 0 · 「메신저」 는 떠 있는 창 단추 하나 ─────────────────────────────
+  if want('c6'):
+   tok=new_session('employee')
+   ctx=browser.new_context(viewport={'width':1440,'height':900},locale='ko-KR',user_agent=UA);ctx.add_cookies(cookie(tok))
+   t=Tab(ctx);p=t.page
+   for path in ('/tbox/','/community/'):
+    t.go(path)
+    side=p.evaluate("""(()=>{const s=document.getElementById('sidebar');const links=[...s.querySelectorAll('a[href]')].filter(a=>new URL(a.href,location.href).pathname.replace(/\\/$/,'')==='/tbox/messages').length;
+      return {links:links,text:(s.textContent.match(/메신저/g)||[]).length,openers:s.querySelectorAll('[data-messenger-open]').length,space:[...s.querySelectorAll('.moa-space-nav > a')].map(a=>a.textContent.replace(/\\s+/g,' ').trim())};})()""")
+    metrics['c6_sidebar'+path.replace('/','_')]=side
+    check(side['links']==0,'C-6 '+path+' sidebar: /messages link 0 '+json.dumps(side,ensure_ascii=False))
+    check(side['text']==1 and side['openers']==1,'C-6 '+path+' sidebar: 「메신저」 text once — the floating window opener')
+   t.open();p.locator('#messenger-window .modal__head a').filter(has_text='크게 보기').click();p.wait_for_url('**/tbox/messages',timeout=10000)
+   check(p.url.endswith('/tbox/messages') and p.locator('#message-form').count()==1,'C-6 full screen is reached from the window head 「크게 보기」 (/messages)')
+   check(t.clean('c6'),'C-6 no page errors / 5xx / script console output')
+   ctx.close()
+
   # ─── 화면 결함 감사(ui_snapshot.py 의 AUDIT_JS 글자 그대로 · 1440·1280) — 창 닫힘/열림 ───────────
   if want('snap'):
    tok=new_session('admin')

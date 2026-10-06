@@ -417,7 +417,6 @@ if (!headers_sent()) {
     <nav class="moa-space-nav" aria-label="모아 공간 이동">
       <a href="<?= Http::communityUrl('/') ?>"<?= $shellMod === 'community' ? ' aria-current="page"' : '' ?>><span class="icon" data-icon="community"></span><span><strong>커뮤니티</strong><small>소식과 문서 나누기</small></span></a>
       <a href="<?= Http::url('/') ?>"<?= $shellMod !== 'community' ? ' aria-current="page"' : '' ?>><span class="icon" data-icon="library"></span><span><strong>자료실</strong><small>파일 찾고 공유하기</small></span></a>
-      <?php if ($shellCommunityWrite && !$shellActing): ?><a href="<?= Http::url('/messages') ?>"><span class="icon" data-icon="messages"></span><span><strong>메신저</strong><small>동료·AI와 대화하기</small></span></a><?php endif; ?>
     </nav>
 
     <!-- 검색 (5-B → Q:F-2 두 앱 공통) — 누르거나 Ctrl+K(⌘K). 창과 동작은 search.js, 무엇이 나오나는 각 앱의 서버
