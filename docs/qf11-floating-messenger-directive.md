@@ -214,3 +214,22 @@ B 가 끝나면 멈춘다 — 메인 세션이 묶음 전체 diff 로 독립 검
 | C-4 도움말 | `src/help/community.php:69` 「메신저에서 회원과 대화합니다. GPT는 서버 연결 설정이 있어야 사용할 수 있습니다.」 → 어느 화면에서나 여는 떠 있는 메신저 · 모아 AI(Google 전송 고지는 `/messages` 문구와 같은 뜻) 로. 위키·다른 도움말 파일은 고치지 않는다(메인 세션 몫 — 「GPT」가 남은 곳을 grep 해 보고만) |
 | C-5 AI 도구 창 | `src/views/member_assist.php` 의 `#message-assist-dialog` 를 DESIGN 2.7 모달 규칙(머리 ✕ `aria-label="닫기"` · 바닥 줄)에 맞춰 마크업만 고친다 — 기존 클래스만, `member-assist.js` 가 쓰는 id 는 그대로. `tests/browser/dbg_u2_ui.py` 의 MODAL_RULE 을 B 와 같은 방식(격리 인스턴스)으로 돌려 이 창 위반 0 |
 | C-6 사이드바(사용자 결정 「옛 링크 빼기」) | `shell_top.php:420` 「모아 공간 이동」 줄의 「메신저 · 동료·AI와 대화하기」(→ `/messages`) 링크를 뺀다. 사이드바의 「메신저」는 떠 있는 창 단추 하나 — 전체 화면은 창 머리 「크게 보기」. `messenger_window_browser.py` 에 「사이드바에 `/messages` 링크 0 · 「메신저」 글자 1」 단언 |
+
+---
+
+## 보정 D — 묶음 독립 검토 반영 (2026-10-06 Fable `~/qaredi-qf11-results-20261006/review-bundle/REPORT.md` · 판정 통과: 차단 0 · 중요 0 · 경미 4)
+
+```
+목표        : 묶음 검토 경미 ①~③ 을 고친다(보안 핵심 파일 0). ④ 는 메인 세션이 SECURITY R-117 에 적는다.
+수정 파일   : public/assets/messenger.js(D-1) · tests/community/messenger_window_browser.py(D-1 단언) ·
+              tests/community/memories_http.py · tests/community/memories_runtime_browser.py(D-2) · tests/community/asset_version.sh(D-3)
+              여기 없는 파일은 만들거나 고치지 않는다.
+완료 기준   : D-1~D-3 단언 + messenger_window_browser 전체 · messenger_store_browser · memories_http · memories_runtime_browser · asset_version.sh ·
+              security_lint 0 · node --check · php scripts/community_asset_version.php --check(messenger.js 를 고치면 판 문자열 갱신이 필요한지 확인)
+```
+
+| 번호 | 할 일 |
+|---|---|
+| D-1 이어 열 상대 404(검토 ①) | 창 모드에서 저장된 상대가 `GET /api/messages/{num}` 404 이면 상태만 지우고 `peer` 변수가 남아 `pagehide` 의 `saveState()` 가 그 번호를 다시 쓴다 → 화면마다 404 GET 반복 · 숨은 머리 「불러오는 중…」 · 입력 칸 enabled. `messenger.js:823`(또는 `:665`) 의 404 갈래에서 `peer=null; peerProfile=null;` 세대 증가 · 입력 칸 disabled · 목록 보기로. 단언: 없는 상대 번호를 상태에 넣고 화면 둘을 옮겨 다님 → 404 요청 **1회** · 다음 화면 상태에 그 번호 0 · 입력 칸 disabled · 콘솔 0 |
+| D-2 옛 창을 부르는 시험(검토 ②) | `tests/community/memories_http.py:91-116`(`GET /api/messenger` 401 기대 → 이제 404) 를 「사람 대화 6 라우트 404 · GPT 2 라우트 휴면(GET 200 `{enabled:false}` · POST 503)」 확인으로 바꾸고, `tests/community/memories_runtime_browser.py:41-47` 의 `#community-messenger` 대기를 떠 있는 창(`#messenger-window` · `[data-messenger-open]`)으로 바꾼다. 두 스위트가 끝까지 도는 출력 원문 |
+| D-3 부품 판 시험(검토 ③) | `tests/community/asset_version.sh` `fresh_copy()`(:39-43) 가 `public/assets/messenger.js` 도 임시 사본에 복사 → ② 통과(기준선 36/0 과 같은 수) |
