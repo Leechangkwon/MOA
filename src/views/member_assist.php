@@ -1,5 +1,13 @@
+<?php
+/*
+ * src/views/member_assist.php — 메시지 AI 도구 창(모달 · `/messages` 와 떠 있는 메신저 창이 함께 쓴다). 동작은 public/assets/member-assist.js(id 로만 찾는다).
+ * 창 규칙 DESIGN 2.7(사이트 Q:F-11 지시서 C-5): 머리 ✕(`#assist-close` · aria-label 「닫기」) · 바닥 줄 「닫기」(테두리) 하나 — 바닥 「닫기」는
+ * `form method="dialog"` 라 스크립트 없이 창을 닫는다(닫힘 정리는 member-assist.js 의 `close` 이벤트 한 곳). 창마다 도구·결과가 바뀌어 바닥에
+ * 놓을 주요 동작 하나가 없으므로 본문의 실행·적용 단추는 테두리다(2.7 ④ 「검정은 많아야 하나이고 바닥에만」).
+ */
+?>
 <dialog id="message-assist-dialog" class="moa-assist-dialog" aria-labelledby="assist-title">
-  <header class="moa-assist-head"><div><p class="moa-kicker">A LITTLE HELP, A BETTER MESSAGE</p><h2 id="assist-title">말이 조금 더 잘 전해지도록</h2><p id="assist-recipient" class="moa-muted"></p></div><button id="assist-close" type="button" class="btn btn--quiet" aria-label="AI 도구 닫기">닫기 ×</button></header>
+  <header class="moa-assist-head modal__head"><div><p class="moa-kicker">A LITTLE HELP, A BETTER MESSAGE</p><h2 id="assist-title">말이 조금 더 잘 전해지도록</h2><p id="assist-recipient" class="moa-muted"></p></div><button id="assist-close" type="button" class="btn btn--icon btn--plain" aria-label="닫기"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg></button></header>
   <div class="moa-assist-body">
     <div class="moa-assist-providers" role="group" aria-label="AI 사용 방법 선택">
       <button type="button" data-assist-provider="gemini" aria-pressed="true"><strong>모아 공용 Gemini</strong><small>웹에서 바로 처리</small></button>
@@ -21,7 +29,7 @@
     <div class="moa-assist-run"><small id="assist-input-count" class="moa-muted">0 / 4,000자</small><button id="assist-restore-input" type="button" class="btn btn--quiet btn--small">처음 원문으로</button></div>
     <p id="assist-source-note" class="moa-muted" hidden>선택한 메시지만 번역합니다. 결과는 나에게만 보입니다.</p>
     <p id="assist-disclosure" class="moa-assist-disclosure">위 내용만 Google AI로 보냅니다. 무료 API에는 개인정보·기밀을 입력하지 마세요. 결과를 확인한 뒤 작성란에 넣거나 첨부할 수 있습니다.</p>
-    <div id="assist-gemini-run" class="moa-assist-run"><button type="button" id="assist-run" class="btn" disabled>문장 다듬기</button><span id="assist-quota" class="moa-muted"></span></div>
+    <div id="assist-gemini-run" class="moa-assist-run"><button type="button" id="assist-run" class="btn btn--quiet" disabled>문장 다듬기</button><span id="assist-quota" class="moa-muted"></span></div>
     <section id="assist-local" class="moa-assist-result" aria-label="로컬 비서로 직접 옮기기" hidden>
       <h3>내 PC에서 작업하고, 여기서 이어 쓰세요.</h3>
       <p id="assist-local-task"></p>
@@ -29,10 +37,10 @@
       <div id="assist-local-text-steps">
         <p>새 공유본의 ‘모아 웹 연결’에서 코드를 만든 뒤 연결하세요. 원문은 ‘PC에서 처리’를 누른 뒤 전송되며, PC에서 한 번 더 확인합니다.</p>
         <label class="field"><span>PC 비서의 일회용 페어링 코드</span><input id="assist-local-code" type="text" maxlength="32" autocomplete="off" spellcheck="false"></label>
-        <div class="moa-assist-run"><button id="assist-local-pair" type="button" class="btn btn--quiet">PC 연결</button><button id="assist-local-unpair" type="button" class="btn btn--quiet">연결 해제</button><button id="assist-local-run" type="button" class="btn">PC에서 처리</button><button id="assist-local-cancel" type="button" class="btn btn--quiet">요청 취소</button></div>
+        <div class="moa-assist-run"><button id="assist-local-pair" type="button" class="btn btn--quiet">PC 연결</button><button id="assist-local-unpair" type="button" class="btn btn--quiet">연결 해제</button><button id="assist-local-run" type="button" class="btn btn--quiet">PC에서 처리</button><button id="assist-local-cancel" type="button" class="btn btn--quiet">요청 취소</button></div>
         <p id="assist-local-state" role="status">PC 연결 전 · 직접 복사도 사용할 수 있습니다.</p>
         <ol><li>아래 버튼으로 <strong>원문만 복사</strong>합니다.</li><li>PC 비서에서 위 작업·언어를 선택하고 원문을 붙여 넣어 처리합니다.</li><li>PC 비서의 ‘완료 결과 복사’를 누른 뒤 아래 결과 칸에 붙여 넣습니다.</li></ol>
-        <button id="assist-local-copy" type="button" class="btn">원문만 복사</button>
+        <button id="assist-local-copy" type="button" class="btn btn--quiet">원문만 복사</button>
       </div>
       <?php require __DIR__ . '/member_local_buddy.php'; ?>
     </section>
@@ -49,7 +57,8 @@
       <p id="assist-result-origin" class="moa-muted"></p>
       <label id="assist-text-result" class="field"><span class="sr-only">AI가 제안한 문장</span><textarea id="assist-output" rows="5" readonly></textarea></label>
       <img id="assist-image" alt="AI로 만든 이미지 미리보기" hidden>
-      <div class="moa-assist-result-actions"><button type="button" id="assist-apply" class="btn">작성란에 넣기</button><button type="button" id="assist-copy" class="btn btn--quiet">결과 복사</button></div>
+      <div class="moa-assist-result-actions"><button type="button" id="assist-apply" class="btn btn--quiet">작성란에 넣기</button><button type="button" id="assist-copy" class="btn btn--quiet">결과 복사</button></div>
     </section>
   </div>
+  <form method="dialog" class="modal__foot"><button type="submit" class="btn btn--quiet">닫기</button></form>
 </dialog>

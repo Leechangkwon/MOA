@@ -641,6 +641,55 @@ try:
    ctx.close()
    guide('dismissed')
 
+  # ─── 지시서 C-5 AI 도구 창 — DESIGN 2.7 머리 ✕ · 바닥 줄(MODAL_RULE 글자 그대로) ──────────────────────────────
+  if want('c5'):
+   tok=new_session('employee')
+   for width in (1440,390):
+    ctx=browser.new_context(viewport={'width':width,'height':900 if width>=720 else 844},locale='ko-KR',user_agent=UA);ctx.add_cookies(cookie(tok))
+    t=Tab(ctx);p=t.page
+    t.go('/tbox/')
+    mine=[b for b in p.evaluate(MODAL_RULE,False)['bad'] if b[0]=='message-assist-dialog']
+    check(mine==[],'C-5 '+str(width)+' AI tool dialog (closed, floating-window screen): MODAL_RULE violations 0 '+json.dumps(mine,ensure_ascii=False))
+    t.open();t.person('합성 상대 A');p.locator('#message-text').fill('도구 창 시험 문장')
+    p.locator('#message-assist').click();expect(p.locator('#message-assist-dialog')).to_be_visible()
+    states={}
+    for prov in ('local','web','gemini'):
+     p.locator('[data-assist-provider="'+prov+'"]').click();p.wait_for_timeout(150)
+     states[prov]=[b for b in p.evaluate(MODAL_RULE,True)['bad'] if b[0]=='message-assist-dialog']
+    expect(p.locator('#assist-run')).to_be_enabled(timeout=10000)
+    p.locator('#assist-run').click();expect(p.locator('#assist-result')).to_be_visible(timeout=20000)
+    states['result']=[b for b in p.evaluate(MODAL_RULE,True)['bad'] if b[0]=='message-assist-dialog']
+    metrics['c5_modal_rule_'+str(width)]=states
+    check(all(v==[] for v in states.values()),'C-5 '+str(width)+' open AI tool dialog (PC · ChatGPT web · Gemini · result): MODAL_RULE violations 0 '+json.dumps(states,ensure_ascii=False))
+    geo=p.evaluate("""(()=>{const d=document.getElementById('message-assist-dialog');const x=d.querySelector(':scope > .modal__head > #assist-close');const f=d.querySelectorAll(':scope > .modal__foot');
+      const fb=f.length?[...f[0].querySelectorAll(':scope > button')]:[];const xr=x?x.getBoundingClientRect():null,dr=d.getBoundingClientRect();
+      return {x:!!x&&x.matches('.btn--icon')&&x.getAttribute('aria-label')==='닫기',foots:f.length,foot:fb.map(b=>b.textContent.trim()+'|'+b.className),
+        xTop:xr?Math.round(xr.top-dr.top):-1,xRight:xr?Math.round(dr.right-xr.right):-1,footBottom:f.length?Math.round(dr.bottom-f[0].getBoundingClientRect().bottom):-1,
+        black:[...d.querySelectorAll('.btn')].filter(b=>!b.matches('.btn--quiet,.btn--danger,.btn--plain,.btn--icon')).map(b=>b.id||b.textContent.trim()),
+        over:document.documentElement.scrollWidth-document.documentElement.clientWidth,dw:Math.round(dr.width)};})()""")
+    metrics['c5_geometry_'+str(width)]=geo
+    check(geo['x'] and geo['foots']==1 and geo['foot']==['닫기|btn btn--quiet'] and geo['black']==[],'C-5 '+str(width)+' head ✕ (aria-label 닫기) · one foot with 「닫기」 (outline) · no black button '+json.dumps(geo,ensure_ascii=False))
+    check(0<=geo['xTop']<=40 and 0<=geo['xRight']<=40 and 0<=geo['footBottom']<=2 and geo['over']<=0,'C-5 '+str(width)+' ✕ at the head first line right end · foot at the dialog bottom · no horizontal overflow')
+    if width<720:
+     touch_bad=p.evaluate(TOUCH_JS,'#message-assist-dialog > .modal__head button, #message-assist-dialog > .modal__foot button')
+     check(touch_bad==[],'C-5 390 ✕ and 「닫기」 tap areas 44 '+json.dumps(touch_bad,ensure_ascii=False))
+    p.screenshot(path=str(shots/('c5-assist-'+str(width)+'.png')))
+    # 바닥 「닫기」(form method=dialog — 스크립트 없이) · ✕ · Esc — 떠 있는 창과 쓰던 글은 그대로
+    p.locator('#message-assist-dialog > .modal__foot button').click();p.wait_for_timeout(250)
+    foot_closed=not p.locator('#message-assist-dialog').is_visible();focus=p.evaluate("document.activeElement&&document.activeElement.id")
+    check(foot_closed and t.is_open(),'C-5 '+str(width)+' foot 「닫기」 closes the tool; the floating window stays open (focus → '+str(focus)+')')
+    p.locator('#message-assist').click();expect(p.locator('#message-assist-dialog')).to_be_visible();p.locator('#assist-close').click();p.wait_for_timeout(200)
+    x_closed=not p.locator('#message-assist-dialog').is_visible()
+    p.locator('#message-assist').click();expect(p.locator('#message-assist-dialog')).to_be_visible();p.keyboard.press('Escape');p.wait_for_timeout(200)
+    check(x_closed and not p.locator('#message-assist-dialog').is_visible() and t.is_open(),'C-5 '+str(width)+' ✕ and Esc close the tool; the floating window stays open')
+    check(p.locator('#message-text').input_value()=='도구 창 시험 문장','C-5 '+str(width)+' closing the tool leaves the composer text as it was')
+    if width==1440:
+     t.go('/tbox/messages')
+     mine=[b for b in p.evaluate(MODAL_RULE,False)['bad'] if b[0]=='message-assist-dialog']
+     check(mine==[],'C-5 /messages (page) AI tool dialog: MODAL_RULE violations 0 '+json.dumps(mine,ensure_ascii=False))
+    check(t.clean('c5-'+str(width)),'C-5 '+str(width)+' no page errors / 5xx / script console output')
+    ctx.close()
+
   # ─── 화면 결함 감사(ui_snapshot.py 의 AUDIT_JS 글자 그대로 · 1440·1280) — 창 닫힘/열림 ───────────
   if want('snap'):
    tok=new_session('admin')
