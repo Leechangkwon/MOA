@@ -482,6 +482,11 @@ try:
                     # 묶지 않은 보드(빠른 「보드」 단추)는 전처럼 상태 열
                     pg.locator('[data-db-view="' + board_view + '"]').click()
                     pg.wait_for_timeout(300)
+                    # Q:F-12 D — 프로젝트 화면의 보기 탭은 저장한 보기(목록 · 보드 · 타임라인 · 달력)뿐이고 빠른 「표 · 보드 · 리스트」 단추는 숨는다(DESIGN 2.22 보기 탭) →
+                    # 「프로젝트 메뉴 › 문서로 보기」로 옛 데이터베이스 화면에 가서 같은 단추를 누른다(기대값 바꿈 — 단언은 그대로)
+                    pg.locator('#project-menu > summary').click()
+                    pg.locator('#project-as-doc').click()
+                    pg.wait_for_timeout(300)
                     pg.locator('[data-db-type="board"]').click()
                     pg.wait_for_timeout(300)
                     heads3 = pg.eval_on_selector_all('#db-board .db-board__head', 'els => els.map(e => e.textContent.replace(/ [0-9]+$/, ""))')

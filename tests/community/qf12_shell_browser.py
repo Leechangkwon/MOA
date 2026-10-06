@@ -460,11 +460,11 @@ try:
                 check(p.locator('#nav-community-trash').is_visible(), 'C-2 「더보기」 opens and shows 「내 휴지통」')
                 check(p.locator('#sidebar [data-messenger-open]').count() == 1, 'C-2 업무 sidebar: one messenger opener')
                 p.screenshot(path=str(shots / 'sidebar-work-1440.png'))
-                # 「＋ 새로 만들기」 메뉴 — 문서 하나만 보이고(작업·프로젝트는 D 가 연다) 누르면 새 페이지
+                # 「＋ 새로 만들기」 메뉴 — 작업 · 프로젝트 · 문서(작업·프로젝트는 조각 D 가 연다 — 기대값 바꿈 2026-10-07 D: 전엔 둘이 hidden) · 문서를 누르면 새 페이지
                 p.click('#nav-new-menu > summary')
                 p.wait_for_timeout(200)
                 vis = p.evaluate("[...document.querySelectorAll('#nav-new-menu .menu__item')].map(b=>[b.id,!b.hidden&&b.getClientRects().length>0])")
-                check(vis == [['nav-new-task', False], ['nav-new-project', False], ['nav-community-new', True]], 'C-2 새로 만들기 menu: 작업 · 프로젝트 hidden (D) · 문서 visible ' + json.dumps(vis))
+                check(vis == [['nav-new-task', True], ['nav-new-project', True], ['nav-community-new', True]], 'C-2 새로 만들기 menu: 작업 · 프로젝트 · 문서 visible (D opened 작업 · 프로젝트) ' + json.dumps(vis))
                 bg = p.evaluate("(()=>{const e=document.querySelector('#nav-new-menu > summary');const s=getComputedStyle(e);return [s.backgroundColor,s.color,Math.round(e.getBoundingClientRect().width)];})()")
                 fgc, bgc = parse_color(bg[1]), parse_color(bg[0])
                 check(fgc is not None and bgc is not None and ratio(fgc, bgc) >= 4.5 and bg[2] >= 200, 'C-2 새로 만들기 (open) stays a full-width black button, text contrast ≥ 4.5 ' + json.dumps(bg))

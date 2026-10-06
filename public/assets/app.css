@@ -2339,3 +2339,169 @@ a.app-menu__app:hover { background: var(--muted-bg); text-decoration: none; }
 
 /* Private access controls must remain usable on phones and touch tablets. */
 #grants-dialog .btn, #access-request .btn { min-height: 44px; min-width: 44px; }
+
+/* ─── 업무 화면 (사이트 Q:F-12 · DESIGN 2.19 ~ 2.22 · 시안 v1) ─────────────────────────────────────────────
+   홈 · 내 작업 · 프로젝트(작업 목록 + 오른쪽 작업 상세 칸) · 포트폴리오. 새 색값 0 — 색은 전부 1.1 토큰과 모아 바로가기 네 색(`.moa-peach` …)
+   의 글자색을 `currentColor` 로 빌린다(DESIGN 2.22 「프로젝트 색」). 인라인 style 0 — 진행 폭은 CSSOM `--pct` 또는 10% 계단 클래스.
+   배치 클래스 둘(`.work-stack` 세로 쌓기 · `.work-cols` 세 칸)은 원칙 6 의 「배치 한 줄짜리」다. */
+.work-stack { display: flex; flex-direction: column; gap: 20px; min-width: 0; }
+.work-cols { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(15rem, 100%), 1fr)); gap: 16px; align-items: start; }
+
+/* 프로젝트 색 네모(14px · 줄 10px · 머리 36px) — 색은 `.moa-peach|lilac|mint|sand` 의 글자색(currentColor). 색이 없으면 회색 */
+.task-color { display: inline-block; flex: none; width: 14px; height: 14px; border-radius: 4px; background: var(--muted-2); }
+.task-color--sm { width: 10px; height: 10px; border-radius: 3px; }
+.task-color--lg { width: 36px; height: 36px; border-radius: var(--r-ctl); }
+.task-color:is(.moa-peach, .moa-lilac, .moa-mint, .moa-sand) { background: currentColor; }
+
+/* 사람 표시 — 이니셜 원(줄 22 · 상세 24 · 프로젝트 머리 28 겹침) */
+.task-avatar { display: inline-flex; align-items: center; justify-content: center; flex: none; width: 22px; height: 22px; border-radius: 50%; background: var(--muted-bg); color: var(--fg-2); font-size: 12px; font-weight: 600; line-height: 1; }
+.task-avatar--md { width: 24px; height: 24px; }
+.task-avatar--lg { width: 28px; height: 28px; }
+.task-avatars { display: inline-flex; align-items: center; }
+.task-avatars .task-avatar + .task-avatar { margin-left: -6px; box-shadow: 0 0 0 2px var(--surface); }
+
+/* 프로젝트 상태 점(8px — DESIGN 2.22: 순조로움 ok · 위험 warn · 늦어짐 danger · 보류 muted · 완료 accent + ✓) */
+.status-dot { display: inline-block; flex: none; width: 8px; height: 8px; border-radius: 50%; background: var(--muted-2); }
+.status-dot--on_track { background: var(--ok-fg); }
+.status-dot--at_risk { background: var(--warn-fg); }
+.status-dot--off_track { background: var(--danger); }
+.status-dot--on_hold { background: var(--muted); }
+.status-dot--complete { background: var(--accent); }
+
+/* 진행률 `.progress` (DESIGN 2.22) — 높이 6 · 바탕 --muted-bg · 채움 --primary · 둥글기 3. 채움 폭은 `--pct`(JS 는 CSSOM, 서버는 계단 클래스) */
+.progress-line { display: inline-flex; align-items: center; gap: 8px; min-width: 0; width: 100%; }
+.progress { position: relative; display: inline-block; flex: 1 1 auto; min-width: 48px; height: 6px; border-radius: 3px; background: var(--muted-bg); overflow: hidden; }
+.progress::after { content: ""; position: absolute; top: 0; bottom: 0; left: 0; width: var(--pct, 0%); border-radius: 3px; background: var(--primary); }
+.progress--p0 { --pct: 0%; } .progress--p10 { --pct: 10%; } .progress--p20 { --pct: 20%; } .progress--p30 { --pct: 30%; }
+.progress--p40 { --pct: 40%; } .progress--p50 { --pct: 50%; } .progress--p60 { --pct: 60%; } .progress--p70 { --pct: 70%; }
+.progress--p80 { --pct: 80%; } .progress--p90 { --pct: 90%; } .progress--p100 { --pct: 100%; }
+.progress__text { flex: none; font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
+
+/* 작업 목록 `.task-list` (DESIGN 2.20) — 표가 아니다(묶음 접기 · 하위 펼침 · 그 자리 입력). 칸: 내 작업 = 이름 · 프로젝트 · 마감 /
+   프로젝트 = 이름 · 담당자 · 마감 · ＋ / 홈 요약 = 이름 · 마감 */
+.task-list { display: flex; flex-direction: column; min-width: 0; }
+.task-list.panel { gap: 0; }
+.task-list__head { display: grid; grid-template-columns: minmax(0, 1fr) 10rem 6.5rem; gap: 12px; padding: 0 8px 8px; border-bottom: 1px solid var(--line); color: var(--muted); font-size: 13px; font-weight: 500; }
+.task-list--project .task-list__head { grid-template-columns: minmax(0, 1fr) 10.5rem 6.5rem 32px; align-items: center; }
+.task-list__rows { list-style: none; margin: 0; padding: 0; }
+.task-group { display: flex; flex-direction: column; }
+.task-group + .task-group { margin-top: 8px; }
+.task-group__toggle { display: inline-flex; align-items: center; gap: 6px; align-self: flex-start; min-height: 36px; padding: 0 6px; border: 0; border-radius: var(--r-sm); background: transparent; color: var(--fg); font: inherit; font-size: 14px; font-weight: 600; cursor: pointer; }
+.task-group__toggle:hover { background: var(--muted-bg); }
+.task-group__toggle:focus-visible { outline: none; box-shadow: 0 0 0 3px var(--ring-soft); }
+.task-group__toggle .icon { display: inline-flex; color: var(--muted); transition: transform .12s; }
+.task-group__toggle[aria-expanded="false"] .icon { transform: rotate(-90deg); }
+.task-group__name { display: flex; align-items: baseline; gap: 6px; margin: 0 0 4px; font-size: 14px; font-weight: 600; }
+:is(.task-group__toggle, .task-group__name).task-group--late { color: var(--danger); }
+.task-group__count { color: var(--muted); font-size: 13px; font-weight: 400; }
+.task-group__more { align-self: flex-start; margin: 6px 0 0 8px; }
+
+.task-row { display: grid; grid-template-columns: minmax(0, 1fr) 10rem 6.5rem; gap: 12px; align-items: center; min-height: 44px; padding: 0 8px; border-top: 1px solid var(--line); }
+.task-list--project .task-row { grid-template-columns: minmax(0, 1fr) 10.5rem 6.5rem 32px; }
+.task-list--compact .task-row { grid-template-columns: minmax(0, 1fr) auto; padding: 0 4px; }
+.task-row[aria-current="true"] { background: var(--accent-soft); }
+.task-row[aria-current="true"] .task-row__title { font-weight: 600; }
+.task-row--sub { padding-left: 36px; background: var(--surface-2); }
+.task-row--done .task-row__title { color: var(--muted); text-decoration: line-through; }
+.task-row__main { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.task-row__title { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--fg); font-weight: 500; }
+.task-row__title:hover { color: var(--fg); }
+.task-row__aux { display: inline-flex; align-items: center; gap: 8px; flex: none; color: var(--muted); font-size: 12px; white-space: nowrap; }
+.task-row__cell { display: flex; align-items: center; gap: 6px; min-width: 0; overflow: hidden; color: var(--fg-2); font-size: 13px; white-space: nowrap; }
+.task-row__cell > span:not([class]) { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.task-row .badge { flex: none; }
+.task-due--late { color: var(--danger); }
+.task-due--today { color: var(--primary); font-weight: 500; }
+/* 완료 단추 — 18px 원(좁은 폭 · 터치 22px), 완료면 --ok 채움 + ✓ */
+.task-check { display: inline-flex; align-items: center; justify-content: center; flex: none; width: 18px; height: 18px; padding: 0; border: 1.5px solid var(--muted-2); border-radius: 50%; background: transparent; color: transparent; cursor: pointer; }
+.task-check .icon, .task-check svg { width: 12px; height: 12px; }
+.task-check:hover { border-color: var(--ok-fg); color: var(--ok-fg); }
+.task-check[aria-pressed="true"] { border-color: var(--ok-fg); background: var(--ok-fg); color: var(--surface); }
+.task-check:focus-visible, .task-row__expand:focus-visible { outline: none; box-shadow: 0 0 0 3px var(--ring-soft); }
+.task-row__expand { display: inline-flex; align-items: center; justify-content: center; flex: none; width: 20px; height: 20px; padding: 0; border: 0; border-radius: var(--r-sm); background: transparent; color: var(--muted); cursor: pointer; }
+.task-row__expand[aria-expanded="false"] .icon { transform: rotate(-90deg); }
+.task-row__spacer { flex: none; width: 20px; }
+/* 그 자리 추가 줄 — 테두리 --primary + 고리 --ring-soft */
+.task-add { display: flex; align-items: center; gap: 8px; padding: 6px 8px; border-top: 1px solid var(--line); }
+.task-add__input { flex: 1 1 auto; min-width: 0; height: var(--h-input); padding: 0 12px; border: 1px solid var(--primary); border-radius: var(--r-ctl); background: var(--surface); color: var(--fg); font: inherit; box-shadow: 0 0 0 3px var(--ring-soft); }
+.task-add__input:focus { outline: none; }
+.task-list__actions { display: flex; flex-wrap: wrap; gap: 8px; padding: 8px 4px 0; }
+
+/* 작업 상세 칸 `aside.task-pane` (DESIGN 2.21) — 모달·떠 있는 창이 아니라 화면의 한 칸. ≥1200: 목록 오른쪽(화면 높이 전체) ·
+   960~1199: 목록을 대신(「‹ 목록」) · 960 미만: 전체 화면. 아래 72px 은 「? 사용 안내」 단추 자리(2.17 과 같은 까닭 — 겹치지 않게) */
+.task-pane { display: flex; flex-direction: column; gap: 16px; min-width: 0; padding: 16px 20px 72px; background: var(--surface); }
+.task-pane[hidden] { display: none; }
+.task-pane__head { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.task-pane__tools { display: flex; align-items: center; gap: 4px; margin-left: auto; }
+.task-pane__title { margin: 0; font-size: 24px; font-weight: 600; line-height: 1.3; letter-spacing: -.02em; overflow-wrap: anywhere; }
+.task-pane__title-edit { width: 100%; height: auto; padding: 4px 8px; border: 1px solid var(--primary); border-radius: var(--r-ctl); background: var(--surface); color: var(--fg); font: inherit; font-size: 24px; font-weight: 600; box-shadow: 0 0 0 3px var(--ring-soft); }
+.task-pane__props { display: grid; grid-template-columns: 88px minmax(0, 1fr); gap: 10px 12px; align-items: center; margin: 0; }
+.task-pane__props dt { color: var(--muted); font-size: 13px; }
+.task-pane__props dd { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; min-width: 0; margin: 0; font-size: 14px; overflow-wrap: anywhere; }
+.task-pane__props input[type="date"], .task-pane__props select { height: 32px; padding: 0 8px; border: 1px solid var(--line); border-radius: var(--r-ctl); background: var(--surface); color: var(--fg); font: inherit; font-size: 13px; }
+.task-pane__note { margin: 0; padding: 8px 12px; border-radius: var(--r-ctl); background: var(--surface-2); color: var(--muted); font-size: 13px; }
+.task-pane__section { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.task-pane__section-head { display: flex; align-items: center; gap: 8px; margin: 0; font-size: 14px; font-weight: 600; }
+.task-pane__section-head .btn { margin-left: auto; }
+.task-pane__doc { min-width: 0; }
+.task-pane__activity { display: flex; flex-direction: column; gap: 8px; margin: 0; padding: 0; list-style: none; }
+.task-event { color: var(--muted); font-size: 13px; overflow-wrap: anywhere; }
+.task-comment { padding: 8px 12px; border-radius: var(--r-ctl); background: var(--q-canvas); font-size: 14px; white-space: pre-wrap; overflow-wrap: anywhere; }
+.task-comment__who { display: block; margin-bottom: 2px; color: var(--muted); font-size: 12px; white-space: normal; }
+.task-pane__foot { display: flex; flex-direction: column; gap: 8px; padding-top: 12px; border-top: 1px solid var(--line); }
+.task-pane__foot textarea { width: 100%; min-height: 64px; padding: 8px 12px; border: 1px solid var(--line); border-radius: var(--r-ctl); background: var(--surface); color: var(--fg); font: inherit; resize: vertical; }
+.task-pane__foot .btn { align-self: flex-end; }
+.task-pane .task-row { grid-template-columns: minmax(0, 1fr) auto auto; min-height: 40px; }
+.task-pane .menu__list input[type="search"] { width: 100%; height: 32px; margin-bottom: 4px; padding: 0 8px; border: 1px solid var(--line); border-radius: var(--r-ctl); background: var(--surface); color: var(--fg); font: inherit; font-size: 13px; }
+@media (min-width: 1200px) {
+  .task-pane { position: fixed; top: 0; right: 0; bottom: 0; width: clamp(400px, 34vw, 480px); overflow-y: auto; border-left: 1px solid var(--line); scrollbar-width: thin; }
+  body[data-task-open] .main { padding-right: calc(clamp(400px, 34vw, 480px) + 32px); }
+  .task-pane__back { display: none; }
+}
+@media (max-width: 1199.98px) {
+  /* 칸이 목록을 대신한다 — main 의 다른 칸은 숨는다(창 · 「역할로 보기」 띠는 그대로) */
+  body[data-task-open] .main > :not(.task-pane):not(dialog):not(.act-banner) { display: none !important; }
+  .task-pane { padding: 0 0 72px; }
+}
+
+/* 프로젝트 화면 — `<body data-project-view>`(work.js 가 행 목록 창구의 `database.purpose` 를 보고 단다) 동안 페이지 머리 · 속성 줄 · 문서 본문을 가리고
+   프로젝트 머리 · 보기 탭 · 작업 목록만 보인다(「프로젝트 메뉴 › 문서로 보기」가 표식을 뗀다). 자리는 id 규칙이다. */
+body[data-project-view] .main > :not(#project-head):not(#db-wrap):not(#task-pane):not(#msg):not(#page-crumb):not(dialog):not(.act-banner) { display: none !important; }
+body[data-project-view] #db-wrap { border: 0; box-shadow: none; padding: 0; background: transparent; }
+body[data-project-view] :is(#db-title, #db-count, #db-add-prop, #db-view-form, #db-add-row, #db-list, .db-filter, [data-db-type], #db-wrap > .toolbar:first-child, .db-viewbar > .editor-toolbar__sep) { display: none !important; }
+body[data-project-view] #db-wrap { gap: 12px; }
+body[data-project-view] #project-head .toolbar { flex-wrap: nowrap; min-width: 0; }
+body[data-project-view] #project-title { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* 포트폴리오 표(2.4 폭 규칙 — 그 표의 thead 순서) · 이름(색 네모) · 상태 · 진행률 · 담당 · 마감 · 최근 상태 글(한 줄 줄임) */
+#portfolio-rows td:nth-child(1) { min-width: 12rem; overflow-wrap: anywhere; }
+#portfolio-rows td:nth-child(1) a { display: inline-flex; align-items: center; gap: 8px; }
+#portfolio-rows td:nth-child(3) { min-width: 9rem; }
+#portfolio-rows td:nth-child(6) { max-width: 18rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#portfolio-counts { margin: 8px 0 0; gap: 6px; }
+#portfolio-counts .badge { gap: 6px; }
+
+@media (max-width: 719.98px) {
+  /* 칸 줄 없이 두 줄 카드: 제목 / (색 네모 · 프로젝트 · 맡긴 표시) + 오른쪽 마감 */
+  .task-list__head { display: none; }
+  .task-row, .task-list--project .task-row { grid-template-columns: minmax(0, 1fr) auto; grid-auto-flow: row; row-gap: 2px; padding-top: 6px; padding-bottom: 6px; }
+  .task-row > .task-row__main { grid-column: 1; grid-row: 1; flex-wrap: wrap; }
+  .task-row > .task-row__cell--meta { grid-column: 1; grid-row: 2; padding-left: 34px; }
+  .task-row > .task-row__cell--due { grid-column: 2; grid-row: 1 / span 2; }
+  .task-row > .task-row__cell--more { grid-column: 2; grid-row: 1 / span 2; }
+  .task-row > .task-row__cell:empty { display: none; }
+  .task-row--sub { padding-left: 24px; }
+  .task-pane__props { grid-template-columns: 76px minmax(0, 1fr); }
+}
+@media (max-width: 719.98px), (pointer: coarse) {
+  .task-check { width: 22px; height: 22px; }
+  /* 세로로 쌓이는 줄(묶음 머리)은 넓히지 않고 줄을 키운다(4장 ②) */
+  .task-group__toggle { min-height: 44px; }
+  .task-group__toggle::before { content: none; }
+  .task-list__actions .btn { margin-top: 6px; margin-bottom: 6px; }
+}
+/* 업무 화면 머리의 검정 단추(작업 추가 · 프로젝트 넣기) — 검정 단추의 `::before` 는 테마의 반짝임(design.css)이 쓰므로 넓힌 누름 자리 대신
+   폰 폭 · 터치에서 단추 자체를 44px 로(메신저 「보내기」와 같은 처리 — DESIGN 2.17 확인 결과) */
+@media (max-width: 719.98px), (pointer: coarse) {
+  :is(#work-home-add, #my-tasks-add, #portfolio-add, #project-add-task) { min-height: 44px; }
+}

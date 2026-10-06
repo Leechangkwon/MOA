@@ -28,7 +28,7 @@ declare(strict_types=1);
  */
 $homeWriteHidden = Authz::canCommunityWrite($user) ? '' : ' hidden';
 
-$pageTitle   = '커뮤니티';
+$pageTitle   = '내 문서';   // Q:F-12 D — 업무 앱의 「문서 › 내 문서」 화면(제목만 바뀌었다 — C 넘김)
 $activeNav   = 'community-home';
 $pageKey     = 'community-home';
 $pageHelp    = 'community-home';
@@ -41,7 +41,7 @@ require __DIR__ . '/../../views/shell_top.php';
     <header class="page-head">
       <div class="page-head__text">
         <!-- 제목·설명은 고른 공간에 따라 editor.js 가 textContent 로 바꾼다 (4-B). -->
-        <h1 class="page-head__title">커뮤니티</h1>
+        <h1 class="page-head__title">내 문서</h1>
         <!-- 디버깅 묶음 U3 — 손님(쓰기 자격 없음 — 「새 페이지」를 숨기는 것과 같은 값 Authz::canCommunityWrite)에게는 읽기 안내(editor.js GUEST_SPACE_SUB 와 같은 글자) -->
         <p id="community-space-sub" class="page-head__sub"><?= $homeWriteHidden === '' ? '나만의 생각과 자료를 모으는 공간입니다. 자유롭게 페이지를 만들어 보세요.' : '손님 계정은 읽기만 합니다. 공유받은 페이지와 볼 수 있는 게시판 글을 읽을 수 있습니다.' ?></p>
       </div>

@@ -591,10 +591,29 @@ if ($shellMod === 'community'): ?>
         <button class="btn btn--quiet" type="button" data-recent-close>닫기</button>
       </div>
     </dialog>
-    <!-- 프로젝트 · 포트폴리오 (Q:F-12 DESIGN 2.19 ④⑤) — 자리만 둔다. 항목은 업무 화면 조각(D)의 스크립트가 창구의 답(볼 수 있는 프로젝트 ·
-         내가 볼 수 있는 팀 공간의 포트폴리오 — ARCH 23.7)으로 채우고, 채울 것이 없으면 제목째 숨은 채다(이 파일에는 판단이 없다). -->
-    <p id="nav-work-projects-title" class="nav-title" hidden>프로젝트</p>
-    <nav id="nav-work-projects" class="nav" aria-label="프로젝트" hidden></nav>
+    <!-- 프로젝트 · 포트폴리오 (Q:F-12 DESIGN 2.19 ④⑤ · 조각 D) —
+         「프로젝트」는 서버가 여기서 그린다: `community_work_projects()` — 보는 사람의 **검색 조건절 안**(관리자·게시판 관리자 갈래를 끈 판)의
+         프로젝트만, 내 즐겨찾기 → 최근 본 것 → 최근 고친 것 순으로 10개(더 있으면 「모든 프로젝트」 = 업무 홈의 목록). 이 파일에는 판단이 없다 —
+         목록을 고르는 것은 그 조건절이고, 「＋ 프로젝트」는 쓰기 자격(판정 함수 값)일 때만이다. 값(제목 · id · 색 이름)은 전부 htmlspecialchars,
+         색은 허용 목록 넷만 클래스가 된다. 「포트폴리오」는 work.js 가 팀 공간마다 `GET /api/spaces/{num}/portfolios`(decidePortfolioRead)의 답으로 채우고,
+         채울 것이 없으면 제목째 숨은 채다. -->
+<?php
+$shellProjects = function_exists('community_work_projects') && $shellUser !== []
+    ? community_work_projects($shellUser, 10) : ['items' => [], 'more' => false];
+$shellProjectsShown = $shellProjects['items'] !== [] || $shellCommunityWrite;
+?>
+    <p id="nav-work-projects-title" class="nav-title"<?= $shellProjectsShown ? '' : ' hidden' ?>>프로젝트</p>
+    <nav id="nav-work-projects" class="nav" aria-label="프로젝트"<?= $shellProjectsShown ? '' : ' hidden' ?>>
+<?php foreach ($shellProjects['items'] as $shellProject): ?>
+      <a class="nav__item" href="<?= Http::communityUrl('/p/') ?><?= htmlspecialchars((string) $shellProject['id'], ENT_QUOTES, 'UTF-8') ?>" data-project-id="<?= htmlspecialchars((string) $shellProject['id'], ENT_QUOTES, 'UTF-8') ?>" data-project-purpose="<?= $shellProject['purpose'] === 'my_tasks' ? 'my_tasks' : 'project' ?>"><span class="task-color<?= $shellProject['color'] === null ? '' : ' moa-' . htmlspecialchars((string) $shellProject['color'], ENT_QUOTES, 'UTF-8') ?>" aria-hidden="true"></span><span><?= htmlspecialchars((string) $shellProject['title'], ENT_QUOTES, 'UTF-8') ?></span></a>
+<?php endforeach; ?>
+<?php if ($shellProjects['more']): ?>
+      <a id="nav-work-all-projects" class="nav__item" href="<?= Http::communityUrl('/') ?>#work-projects"><span class="icon" data-icon="log"></span><span>모든 프로젝트</span></a>
+<?php endif; ?>
+<?php if ($shellCommunityWrite): ?>
+      <button id="nav-work-new-project" class="nav__item" type="button" data-work-new-project aria-haspopup="dialog"><span class="icon" data-icon="plus"></span><span>프로젝트</span></button>
+<?php endif; ?>
+    </nav>
     <p id="nav-work-portfolios-title" class="nav-title" hidden>포트폴리오</p>
     <nav id="nav-work-portfolios" class="nav" aria-label="포트폴리오" hidden></nav>
     <!-- 팀 (4-B → Q:F-12 2.19 ⑥) — 항목은 `editor.js` 가 창구 `GET /community/api/spaces` 의 답으로

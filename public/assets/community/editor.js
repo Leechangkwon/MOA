@@ -1,4 +1,4 @@
-import { hydrateDashboard } from './dashboard.js?v=f0a214b1ead3';
+import { hydrateDashboard } from './dashboard.js?v=ad03113a4884';
 /**
  * public/assets/community/editor.js — 커뮤니티 화면의 동작 한 벌 (모듈 스크립트)
  *
@@ -41,20 +41,22 @@ import { inputRules, textblockTypeInputRule, InputRule } from './vendor/pm/prose
 import { dropCursor } from './vendor/pm/prosemirror-dropcursor.js?v=5823578fa61a';
 import { gapCursor } from './vendor/pm/prosemirror-gapcursor.js?v=5823578fa61a';
 
-import { createSuggestions, bindMySuggestions, buildSuggestionOps, suggestionTypeAllowed, suggestionEqual } from './suggestions.js?v=f0a214b1ead3';
-import { renderDoc, embedHost } from './doc-render.js?v=f0a214b1ead3';
-import { createDatabaseView } from './database.js?v=f0a214b1ead3';
-import { bindTemplateGallery, createTemplateSave } from './templates.js?v=f0a214b1ead3';
-import { bindEmbedAdmin } from './embeds.js?v=f0a214b1ead3';
-import { bindPopular } from './popular.js?v=f0a214b1ead3';
-import { bindPalettes } from './palettes.js?v=f0a214b1ead3';
-import { schema, toDoc, fromDoc, uuid4, colorAllowed, schemeOkForEditor, mentionAllowed, editorDomParser, clipboardDomParser, COLORS, BLOCK_TYPES } from './editor-schema.js?v=f0a214b1ead3';
-import { drawAutomationPage, drawAutomationSpace, bindAutomations, loadAutomations } from './automations.js?v=f0a214b1ead3';
-import { drawTrust, bindProcedures } from './procedures.js?v=f0a214b1ead3';
-import { createPageExport } from './export.js?v=f0a214b1ead3';
-import { createDrafts } from './drafts.js?v=f0a214b1ead3';
-import { drawPageAi, bindAiCenter } from './ai.js?v=f0a214b1ead3';
-import { drawIntegrations, bindIntegrations } from './integrations.js?v=f0a214b1ead3';
+import { createSuggestions, bindMySuggestions, buildSuggestionOps, suggestionTypeAllowed, suggestionEqual } from './suggestions.js?v=ad03113a4884';
+import { renderDoc, embedHost } from './doc-render.js?v=ad03113a4884';
+import { createDatabaseView } from './database.js?v=ad03113a4884';
+import { bindTemplateGallery, createTemplateSave } from './templates.js?v=ad03113a4884';
+import { bindEmbedAdmin } from './embeds.js?v=ad03113a4884';
+import { bindPopular } from './popular.js?v=ad03113a4884';
+import { bindPalettes } from './palettes.js?v=ad03113a4884';
+import { schema, toDoc, fromDoc, uuid4, colorAllowed, schemeOkForEditor, mentionAllowed, editorDomParser, clipboardDomParser, COLORS, BLOCK_TYPES } from './editor-schema.js?v=ad03113a4884';
+import { drawAutomationPage, drawAutomationSpace, bindAutomations, loadAutomations } from './automations.js?v=ad03113a4884';
+import { drawTrust, bindProcedures } from './procedures.js?v=ad03113a4884';
+import { createPageExport } from './export.js?v=ad03113a4884';
+import { createDrafts } from './drafts.js?v=ad03113a4884';
+import { drawPageAi, bindAiCenter } from './ai.js?v=ad03113a4884';
+import { drawIntegrations, bindIntegrations } from './integrations.js?v=ad03113a4884';
+// Q:F-12 D — 업무 화면(홈 · 내 작업 · 프로젝트 목록 · 작업 상세 칸 · 포트폴리오 · 「새로 만들기」). 이 파일은 고리 몇 개만 이어 준다
+import { createWork } from './work.js?v=ad03113a4884';
 
 /* ─── 주소와 공통 도우미 ─────────────────────────────────────── */
 
@@ -491,14 +493,18 @@ function fillSpaceNav(spaces) {
  * 내가 볼 수 있는 공간들. **팀 공간이 아직 없으면 창구가 그 자리에서 만든다**(C:T-36) —
  * 그래서 이 호출은 화면을 여는 것만으로 팀 공간을 여는 일을 겸한다. 두 번 불러도 같다.
  */
+/** Q:F-12 D — 이 화면에서 받은 공간 목록(같은 화면에서 다시 묻지 않게 work.js 가 나눠 쓴다) */
+let lastSpaces = null;
 function loadSpaces() {
-  return api('GET', '/api/spaces').then((result) => {
+  if (lastSpaces) { return lastSpaces; }
+  lastSpaces = api('GET', '/api/spaces').then((result) => {
     if (result.status !== 200) { return []; }
     const spaces = Array.isArray(result.data.spaces) ? result.data.spaces : [];
     fillSpaceNav(spaces);
     fillSidebarTrees(spaces);
     return spaces;
   }).catch(() => []);
+  return lastSpaces;
 }
 
 /* ─── 사이드바 페이지 트리 (5-A′, 사용자 지적 2026-09-23) ─────────────
@@ -2865,7 +2871,9 @@ const NOTIFY_TEXT = {
   suggestion_stale: '수정 제안의 원문이 바뀌었습니다',
   // t-box G-0 (F-73) — 권한 요청(페이지 없이 · 창구가 `access` 칸을 준다)
   access_request: '님이 권한을 요청했습니다',
-  access_decided: '님이 권한 요청을 결정했습니다'
+  access_decided: '님이 권한 요청을 결정했습니다',
+  // Q:F-12 (ARCH 23.9) — 담당으로 정해졌다(받는 사람 기준 다시 판정한 알림 · 「○○ 님이 작업을 맡겼어요」)
+  assigned: '님이 작업을 맡겼어요'
 };
 /** t-box G-0 — 결정 알림은 상태로 글자를 고른다(서버가 준 status 그대로) */
 const NOTIFY_DECIDED = { approved: '님이 권한 요청을 허락했습니다', rejected: '님이 권한 요청을 거절했습니다' };
@@ -4530,7 +4538,9 @@ function initPage() {
     base: COMMUNITY_BASE, statusLabels: STATUS_LABELS, genericError: GENERIC_ERROR, toLogin: toLogin,
     tboxBase: APP_BASE, spaceId: () => (state.space ? state.space.id : 0),
     // 디버깅 묶음 U2 · 독립 검토 L-2 — 데이터베이스의 쓰기 단추도 `/api/me` 의 쓰기 자격과 **둘 다** 참일 때만(페이지 머리와 같은 규칙)
-    canWrite: () => meCanWrite
+    canWrite: () => meCanWrite,
+    // Q:F-12 D — 쓰임이 프로젝트면 work.js 가 프로젝트 화면(머리 · 작업 목록 · 상세 칸)을 그린다(행 목록 창구의 `database.purpose`)
+    project: work ? work.projectHooks() : null
   });
   const moveButton = document.getElementById('page-move');
   const pageExport = createPageExport({ base: COMMUNITY_BASE, pageId, beforeOpen: async () => {
@@ -5043,6 +5053,7 @@ function initPage() {
       drawRead();
       state.database = result.data.database || null;
       drawChildren(result.data.children);
+      if (work) { work.pageLoaded(pageId, result.data); }
       dbView.draw(pageId, result.data);
       templateSave.draw(pageId, result.data);
       pageExport.draw(result.data);
@@ -7333,12 +7344,80 @@ let booted = false;
  */
 let meCanWrite = true;
 
+/** Q:F-12 D — 업무 화면 한 벌(work.js). boot 가 `/api/me` 를 받은 뒤 만든다 */
+let work = null;
+
+/**
+ * Q:F-12 D — 작업 상세 칸 안에서 본문을 고치는 작은 편집기(DESIGN 2.21 「설명 — 읽기 기본, 누르면 편집」).
+ * 페이지 화면 편집기와 **같은 스키마 · 같은 키 동작 · 같은 저장 창구**(`PATCH /api/pages/{id}` — `doc_version` 으로 409)를 쓴다.
+ * 문자 꾸미기 · 블록 추가 창 · 아톰 고치기 · 임시저장은 없다(전체 화면에서). 409 면 멈추고 「전체 화면에서 열어 확인」을 알린다.
+ *
+ * @param {HTMLElement} mount
+ * @param {{pageId:string, doc:Object, version:number, titles:Object, onState:Function, onSaved:Function, onError:Function}} opts
+ * @return {{flush:Function, destroy:Function, focus:Function}|null}
+ */
+function mountPaneEditor(mount, opts) {
+  let pmDoc;
+  try { pmDoc = fromDoc(opts.doc, { child_titles: opts.titles.child_titles, link_titles: opts.titles.link_titles, file_titles: opts.titles.file_titles, mention_labels: opts.titles.mention_labels }); }
+  catch (e) { opts.onError(e && e.message ? e.message : GENERIC_ERROR); return null; }
+  let version = opts.version;
+  let dirty = false;
+  let stopped = false;
+  let timer = null;
+  let inFlight = Promise.resolve();
+  const pmState = EditorState.create({
+    schema: schema,
+    doc: schema.nodeFromJSON(pmDoc),
+    plugins: [
+      buildInputRules(),
+      keymap({ 'Mod-z': undo, 'Mod-y': redo, 'Shift-Mod-z': redo, Enter: chainCommands(commandCodeEnter, commandEnter),
+        'Shift-Enter': commandShiftEnter, Backspace: commandBackspace, Tab: () => true, 'Shift-Tab': () => true }),
+      keymap(baseKeymap), history(), dropCursor(), gapCursor(), uniqueBlockIds
+    ]
+  });
+  function save() {
+    if (!dirty || stopped) { return inFlight; }
+    dirty = false;
+    const doc = toDoc(view.state.doc.toJSON());
+    inFlight = api('PATCH', '/api/pages/' + opts.pageId, { doc_version: version, doc: doc }).then((r) => {
+      if (r.status === 401) { toLogin(); return; }
+      if (r.status === 200) { version = r.data.doc_version; opts.onState(dirty ? '저장 중…' : '저장됨'); opts.onSaved(doc, version); if (dirty) { return save(); } return; }
+      stopped = true;
+      opts.onState('저장 못 함');
+      opts.onError(r.status === 409 ? '다른 곳에서 먼저 저장되었습니다. 전체 화면으로 열어 확인하세요.' : errorMessage(r.data));
+    }).catch(() => { opts.onState('저장 못 함'); opts.onError(GENERIC_ERROR); });
+    return inFlight;
+  }
+  const view = new EditorView(mount, {
+    state: pmState,
+    attributes: { class: 'doc editor', 'aria-label': '작업 설명' },
+    domParser: editorDomParser,
+    clipboardParser: clipboardDomParser,
+    dispatchTransaction(tr) {
+      view.updateState(view.state.apply(tr));
+      if (tr.docChanged && !stopped) {
+        dirty = true;
+        opts.onState('저장 중…');
+        window.clearTimeout(timer);
+        timer = window.setTimeout(save, 1500);
+      }
+    }
+  });
+  return {
+    flush: () => { window.clearTimeout(timer); return inFlight.then(save); },
+    destroy: () => { window.clearTimeout(timer); view.destroy(); },
+    focus: () => view.focus()
+  };
+}
+
 function boot() {
   if (booted) { return; }
   booted = true;
 
   const page = body && body.dataset ? body.dataset.page : '';
-  if (page !== 'community-home' && page !== 'community-page' && page !== 'community-board' && page !== 'community-ai' && page !== 'community-threads') { return; }
+  // Q:F-12 D — 업무 홈 · 포트폴리오(`community-overview`) · 내 작업(`community-today`)도 이 한 벌로 시작한다(셸 키는 C 가 정한 그대로)
+  if (page !== 'community-home' && page !== 'community-page' && page !== 'community-board' && page !== 'community-ai' && page !== 'community-threads'
+      && page !== 'community-overview' && page !== 'community-today') { return; }
   if (COMMUNITY_BASE === '' || APP_BASE === '') { return; }
 
   // CSRF 토큰은 t-box 창구가 준다 — 한 앱·한 세션이라 같은 토큰이 커뮤니티 창구에도 통한다.
@@ -7358,6 +7437,13 @@ function boot() {
         // 디버깅 묶음 U H3 — 쓰기 자격(서버 판정 값). false 일 때만 끈다
         meCanWrite = me.can_community_write !== false;
         drafts.sweep();
+        // Q:F-12 D — 업무 화면 한 벌. 쓰는 단추는 창구의 can_* 와 이 쓰기 자격(`meCanWrite`)이 둘 다 참일 때만이다(work.js)
+        work = createWork({
+          api: api, base: COMMUNITY_BASE, tboxBase: APP_BASE, setText: setText, show: show, clear: clear, errorMessage: errorMessage,
+          genericError: GENERIC_ERROR, toLogin: toLogin, statusLabels: STATUS_LABELS, personLabel: personLabel, shortWhen: shortWhen,
+          makeIcon: makeIcon, canWrite: () => meCanWrite, meName: () => meUsername || '', loadSpaces: loadSpaces, mountEditor: mountPaneEditor
+        });
+        work.bindShell();
         bindNewPage();
         bindIntegrations(api).catch(() => {});
         bindAiCenter(api).catch(() => {});
@@ -7366,6 +7452,16 @@ function boot() {
         loadFavoritesNav();
         if (page !== 'community-page') { loadRecentNav(); }
         if (page === 'community-ai' || page === 'community-threads') { loadSpaces(); }
+        else if (page === 'community-overview') {
+          // Q:F-12 D — 업무 홈 · 포트폴리오 화면(같은 셸 키 — 화면은 자기 뼈대의 id 로 고른다)
+          loadSpaces();
+          work.initHome();
+          work.initPortfolio();
+        } else if (page === 'community-today') {
+          // Q:F-12 D — 내 작업(옛 「오늘」 키를 잇는다)
+          loadSpaces();
+          work.initMyTasks();
+        }
         else if (page === 'community-home') {
           if (location.pathname === COMMUNITY_BASE + '/ai') { loadSpaces(); } else if (location.pathname === COMMUNITY_BASE + '/integrations') { loadSpaces(); } else if (location.pathname === COMMUNITY_BASE + '/suggestions') { bindMySuggestions(api, COMMUNITY_BASE); loadSpaces(); } else if (location.pathname === COMMUNITY_BASE + '/automations') { bindAutomations(api, COMMUNITY_BASE); loadSpaces(); } else if (location.pathname === COMMUNITY_BASE + '/procedures') { bindProcedures(api, COMMUNITY_BASE); loadSpaces(); } else { initHome(); }
         } else if (page === 'community-board') {

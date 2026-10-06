@@ -73,6 +73,10 @@ $loginDataTo = $loginReturn !== null ? $loginReturn : $loginTo;
 $loginPane   = $loginTo;
 if ($loginReturn !== null && strpos($loginReturn, COMMUNITY_BASE . '/') === 0) {
     $loginPane = 'community';
+    // Q:F-12 D — 이야기 앱(`/community/memories…` — WK-15 A 주소 그대로)으로 돌아가는 사람에게는 이야기 판(글자만 — 고정 표의 키)
+    if (strpos($loginReturn, COMMUNITY_BASE . '/memories') === 0) {
+        $loginPane = 'story';
+    }
 }
 
 /* 들어가려는 앱에 맞춘 왼쪽 판 (사용자 지적 2026-09-23 「t-box·커뮤니티 둘 다 눌렀을 때 전부 t-box 로
@@ -81,7 +85,9 @@ if ($loginReturn !== null && strpos($loginReturn, COMMUNITY_BASE . '/') === 0) {
    위 허용 목록을 지난 키뿐이다. */
 $loginApps = [
     'tbox'      => ['name' => '모아 자료실',  'into' => '자료실로',  'sub' => '사내 파일 공유',                  'icon' => 'shield'],
-    'community' => ['name' => '커뮤니티', 'into' => '커뮤니티로', 'sub' => '함께라서 더 좋은 일상', 'icon' => 'grid'],
+    // Q:F-12 D (WK-10) — 커뮤니티 갈래는 이제 「업무」(작업 · 프로젝트 · 문서) 앱이다. 이야기(`/community/memories`)로 돌아가는 사람도 같은 갈래(한 로그인)
+    'community' => ['name' => '모아 업무', 'into' => '업무로', 'sub' => '작업 · 프로젝트 · 문서', 'icon' => 'grid'],
+    'story'     => ['name' => '모아 이야기', 'into' => '이야기로', 'sub' => '스레드 · 여행 — 일상 나누기', 'icon' => 'grid'],
 ];
 $loginApp = $loginApps[$loginPane === '' ? 'tbox' : $loginPane];
 ?>

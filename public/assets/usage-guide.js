@@ -18,15 +18,16 @@
   const pick = (selector) => Array.from(document.querySelectorAll(selector)).find(visible);
   const step = (selector, title, text) => ({ selector, title, text });
   const tours = {
+    // Q:F-12 D — 업무 홈(첫 화면 `/community/`). 옛 둘러보기 안내를 잇는다 — 맥락 이름(overview)은 저장된 진행 상태와 맞추려고 그대로 둔다
     overview: [
-      step('#overview-welcome','모아의 여러 공간을 둘러보세요','일상 기록, 사람들의 이야기, 업무 문서, 여행 계획, 자료실과 메신저를 한곳에서 시작해요. 안내를 마친 뒤 원하는 버튼을 눌러 보세요.'),
-      step('#overview-memories','나만의 사진과 이야기','나의 스레드에서 사진·영상과 짧은 메모를 남겨요. 공개 범위를 직접 고르고 AI로 글을 다듬을 수도 있어요.'),
-      step('#overview-feed','팔로잉과 발견','팔로우한 사람의 공개 가능한 기록은 팔로잉에 모여요. 발견에는 주인이 직접 공개 게시한 이야기만 나타나요.'),
-      step('#overview-workspace','함께 쓰는 문서와 게시판','개인·팀 문서, 공지와 질문, 표·보드·달력도 사용할 수 있어요. 문서 화면의 사용 안내에서 작성·검색·공유 방법을 더 자세히 볼 수 있어요.'),
-      step('#overview-travel','계획에 맞추고, 바뀌면 고치고','여행 일정과 장소를 정리하고 기록을 연결해요. 예정대로 가지 못한 날이나 뜻밖의 들렀던 곳도 유연하게 남길 수 있어요.'),
-      step('#overview-files','파일을 보관하는 자료실','사진과 업무 자료를 폴더에 정리하고 검색·미리보기·공유로 활용해요. 업무 문서와 자료실은 같은 계정으로 이어져요.'),
-      step('#overview-messenger','회원 대화와 AI 도움','메신저는 현재 화면 위의 창에서 열려요. AI 기능은 연결 상태와 안내를 확인하고 사용할 수 있어요. 전송 버튼을 누르기 전까지 작성한 내용은 보내지지 않아요.'),
-      step('#overview-account','로그인과 설치는 내 방식대로','시작 안내에서 OTP·패스키와 모바일·PC 설치를 선택해요. 각 화면의 물음표를 누르면 그 화면이나 열린 창의 버튼을 다시 설명해 드려요.')
+      step('#work-home-welcome','업무 홈','오늘 할 일과 맡은 작업, 내 프로젝트를 한눈에 봐요. 이야기와 자료실은 왼쪽 아이콘 줄이나 앱 이름 메뉴에서 옮겨 가요.'),
+      step('#work-home-tasks','내 작업 요약','기한이 지난 작업 · 오늘 · 이번 주 작업을 세 칸에 모아요. 동그라미를 누르면 완료, 이름을 누르면 상세가 열려요.'),
+      step('#work-projects','내 프로젝트','볼 수 있는 프로젝트와 진행률이에요. 진행률은 내가 볼 수 있는 작업만 세어서 사람마다 숫자가 다를 수 있어요.'),
+      step('#nav-new-menu','새로 만들기','작업 · 프로젝트 · 문서를 여기서 만들어요. 프로젝트는 섹션과 목록 · 보드 · 타임라인 · 달력 보기를 갖춰 만들어져요.'),
+      step('#nav-work-my-tasks','내 작업','나에게 맡겨진 작업과 내 할 일을 기한별로 모아 봐요. 맡긴 사람이 있는 작업에는 「○○ 님이 맡김」이 붙어요.'),
+      step('#nav-community-bell','받은 알림','작업을 맡기거나 댓글에서 나를 부르면 여기로 알려 드려요. 볼 수 없게 된 페이지는 제목 없이 보여요.'),
+      step('#work-home-notice','공지 한 줄','아직 읽지 않은 공지는 작업과 섞지 않고 한 줄로 따로 보여 줘요.'),
+      step('#work-home-docs','문서','회의록 · 절차서 · 게시판 같은 문서는 「내 문서」와 사이드바 「문서」 묶음에 그대로 있어요.')
     ],
     threads: [
       step('.threads-tabs','나의 기록과 사람들의 소식','나의 스레드는 내 개인 페이지예요. 팔로잉은 내가 따르는 사람, 발견은 주인이 공개 게시한 기록을 보여 줘요.'),
@@ -71,7 +72,7 @@
       step('#welcome-buddy','AI 비서는 나중에 해도 좋아요','설치와 연결은 선택 사항이에요. 웹앱은 로그인한 계정으로 쓰며 외부 비서는 지원되는 설치·연결 방법을 먼저 확인하세요.'),
       step('#welcome-install,#member-install','모바일과 컴퓨터 설치','기기에 맞는 설치 안내를 따라요. 설치 후 같은 계정으로 로그인하면 내 기록과 이어지고 웹앱용 별도 토큰을 복사할 필요가 없어요.'),
       step('#welcome-token-form','외부 비서용 연결 토큰','필요한 경우에만 사용할 기능을 골라 발급해요. 이 값은 AI 제공자의 API 키와 다르며 타인에게 공유하면 안 됩니다.'),
-      step('#welcome-steps','언제든 다시 이어가기','선택 항목은 나중에 설정해도 돼요. 커뮤니티 둘러보기에서 일상 기록과 업무 기능을 함께 살펴보세요.')
+      step('#welcome-steps','언제든 다시 이어가기','선택 항목은 나중에 설정해도 돼요. 업무 홈과 이야기에서 일과 일상 기록을 함께 살펴보세요.')
     ],
     // 떠 있는 메신저 창(#messenger-window — DESIGN 2.17). 창은 목록 ↔ 대화 중 하나만 보이므로 보이는 단계만 남는다.
     messenger: [
@@ -100,10 +101,12 @@
       step('#travel-steps','진행 상태와 기록','예정·완료·건너뜀 같은 상태를 표시하고 사진 기록을 연결해요. 계획과 달라졌다는 이유로 기록을 지울 필요는 없어요.'),
       step('#travel-save,#travel-plan-save','변경 내용 저장','수정 내용을 확인한 뒤 저장해요. 사진 기록을 쓸 때 여행 계획과 일정은 선택적으로 연결할 수 있어요.')
     ],
+    // Q:F-12 D — 내 작업(`/community/my-tasks` — 옛 「오늘」 맥락 이름을 잇는다)
     today: [
-      step('#briefing-top','오늘의 최우선','내가 볼 수 있는 업무 중 기한과 검토 상태를 기준으로 중요한 일을 모아 보여 줘요.'),
-      step('#briefing-others-box','그 밖의 할 일','접힌 목록을 펼쳐 나머지 업무를 확인해요. 문서를 열어 상세 내용과 진행 상태를 확인할 수 있어요.'),
-      step('#briefing-refresh','최신 상태로 다시 보기','업무가 바뀌었다면 새로고침으로 다시 불러오세요. 이 버튼은 문서 내용을 수정하지 않아요.')
+      step('#my-tasks-list','기한으로 묶은 내 작업','지난 기한 · 오늘 · 이번 주 · 나중에 · 기한 없음으로 묶어요. 묶음 이름을 누르면 접고 펼쳐요.'),
+      step('#my-tasks-add,[data-add-bucket]','바로 적기','「작업 추가」에서 이름을 적고 Enter 를 누르면 저장하고 다음 줄로 가요. 프로젝트 없이 적은 작업은 나만 보는 「내 할 일」에 모여요.'),
+      step('[data-my-view]','목록 · 보드 · 달력','같은 작업을 묶음별 보드나 기한 달력으로도 볼 수 있어요. 「끝난 작업 보기」로 끝낸 작업을 다시 봐요.'),
+      step('#my-tasks-groups .task-row__title','작업 상세','이름을 누르면 오른쪽에 상세가 열려요. 담당자 · 마감 · 상태를 바꾸고 댓글과 모든 활동을 한 줄기로 봐요.')
     ]
   };
   tours.travel.push(step('#travel-record','여행 중의 순간 기록','이 여행에 연결할 새 사진과 글을 작성해요. 여행 계획은 유연하게 고치고 기록은 별도로 남길 수 있어요.'));
@@ -126,10 +129,10 @@
     if (from && from !== dialog && modalContexts.has(from.id)) return modalContexts.get(from.id);
     const opened = openDialogs().pop();
     if (opened && modalContexts.has(opened.id)) return modalContexts.get(opened.id);
-    if ($('community-overview')) return 'overview';
+    if ($('work-home')) return 'overview';
+    if ($('work-my-tasks')) return 'today';
     if ($('community-threads')) return 'threads';
     if ($('welcome-security') || document.body.dataset.page === 'settings' || document.body.dataset.memberPage === 'welcome') return 'account';
-    if ($('briefing-refresh')) return 'today';
     if ($('moa-file-list')) return 'files';
     return 'workspace';
   }
@@ -203,7 +206,7 @@
     const actions=node('div','','usage-guide-actions'); actions.append(button('나중에',()=>finish('dismissed')));
     if(index>0) actions.append(button('이전',()=>{ index--; render(); persist('active').catch((e)=>notice(e.message)); }));
     if(index===steps.length-1 && context!=='overview' && !openDialogs().length) {
-      actions.append(button('모아 전체 기능 둘러보기',async()=>{
+      actions.append(button('업무 홈 안내 보기',async()=>{
         context='overview'; index=0;
         try { await persist('active'); } catch(e) { notice(e.message); }
         location.assign(base+'/');
@@ -252,7 +255,7 @@
       const opened=context==='messenger' ? await messengerWindow() : openDialogs().pop();
       if (dialog) return;
       steps=(tours[context]||tours.workspace).map((s)=>({...s,el:pick(s.selector)})).filter((s)=>s.el && (!opened || opened.contains(s.el) || s.el===opened));
-      if (!steps.length) { notice('이 화면은 메뉴의 사용 방법을 참고해 주세요. 커뮤니티 둘러보기에서는 모아의 전체 기능을 안내해 드려요.'); return; }
+      if (!steps.length) { notice('이 화면은 메뉴의 사용 방법을 참고해 주세요. 업무 홈에서는 작업 · 프로젝트 · 문서를 차례로 안내해 드려요.'); return; }
       index=resume&&saved?.context===context ? Math.min(saved.step||0,steps.length-1) : 0;
       if (!dialog) makeDialog(); render(); persist('active').catch((e)=>notice(e.message));
     } finally { starting = false; }

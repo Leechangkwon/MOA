@@ -1,6 +1,6 @@
-import { drawCalendar, rangeFor, shifted } from './calendar.js?v=f0a214b1ead3';
-import { drawChart } from './charts.js?v=f0a214b1ead3';
-import { openViewSettings } from './db-view-config.js?v=f0a214b1ead3';
+import { drawCalendar, rangeFor, shifted } from './calendar.js?v=ad03113a4884';
+import { drawChart } from './charts.js?v=ad03113a4884';
+import { openViewSettings } from './db-view-config.js?v=ad03113a4884';
 /*
  * public/assets/community/database.js — 데이터베이스(6-A) 화면: DB 페이지의 **표**와 행 페이지의 **속성 줄**.
  *
@@ -17,7 +17,7 @@ import { openViewSettings } from './db-view-config.js?v=f0a214b1ead3';
  * editor.js 가 `createDatabaseView(deps)` 로 한 번 만들고, 페이지를 읽을 때마다 `draw(data)` 를 부른다.
  * 7-B — 새 행 고르개(「빈 행」 + 이 DB 의 행 템플릿 · 고른 템플릿 지우기)는 `templates.js` 의 `createRowTemplatePicker` 가 맡는다.
  */
-import { createRowTemplatePicker } from './templates.js?v=f0a214b1ead3';
+import { createRowTemplatePicker } from './templates.js?v=ad03113a4884';
 
 const TYPE_LABELS = {
   text: '글', number: '숫자', checkbox: '체크', url: '주소', email: '메일', phone: '전화',
@@ -91,7 +91,12 @@ export function createDatabaseView(deps) {
   let summary = null;
   let calendarAnchor=new Date().toISOString().slice(0,10);
   const advanced=document.createElement('div');advanced.className='panel db-widget';wrap.appendChild(advanced);
-  const addView=document.createElement('button');addView.type='button';addView.className='btn btn--quiet';addView.textContent='폼 · 일정 · 차트 추가';wrap.appendChild(addView);
+  const addView=document.createElement('button');addView.type='button';addView.id='db-add-view';addView.className='btn btn--quiet';addView.textContent='폼 · 일정 · 차트 추가';wrap.appendChild(addView);
+  /* Q:F-12 D — 쓰임이 프로젝트(「내 할 일」 포함)면 목록 보기를 work.js 의 작업 목록(DESIGN 2.20)이 그린다. 고리가 없으면(옛 호출) 전과 같다 */
+  const projectHooks = deps.project || null;
+  const projectListEl = $('project-list');
+  let projectPicked = false;
+  const isProjectView = () => !!projectHooks && !!db && (db.purpose === 'project' || db.purpose === 'my_tasks') && document.body.hasAttribute('data-project-view');
   addView.addEventListener('click',()=>openViewSettings(db,api,views=>{savedViews=views;const v=views[views.length-1];viewId=v.id;viewType=v.type;loadRows();}));
 
   /* ── 값 → 보이는 글자·요소 ── */
@@ -493,6 +498,17 @@ export function createDatabaseView(deps) {
       Object.assign(titles.rel, r.data.relation_titles || {});
       Object.assign(titles.file, r.data.file_titles || {});
       savedViews = Array.isArray(r.data.views) ? r.data.views : [];
+      db.purpose = typeof r.data.database.purpose === 'string' ? r.data.database.purpose : null;
+      db.color = typeof r.data.database.color === 'string' ? r.data.database.color : null;
+      if (projectHooks) {
+        // 프로젝트를 처음 열면 첫 「목록」 보기(섹션 묶음)로 시작한다 — 보기 모양은 서버가 저장한 것 그대로(요청에서 모양을 만들지 않는다)
+        if (!projectPicked && (db.purpose === 'project' || db.purpose === 'my_tasks') && viewId === null) {
+          const first = savedViews.find((v) => v.type === 'list') || null;
+          if (first) { viewId = first.id; viewType = 'list'; }
+        }
+        projectPicked = true;
+        projectHooks.onRows({ db: db, rows: rows, views: savedViews, viewId: viewId, reload: loadRows });
+      }
       setText(countEl, (r.data.truncated?'500개까지 표시 · ':'') + '행 ' + String(r.data.total) + '개' + (filter || viewId ? ' (거른 결과)' : ''));
       show(addRowForm, db.can_add_rows);
       show(addPropButton, db.can_manage_schema);
@@ -530,8 +546,12 @@ export function createDatabaseView(deps) {
     }
     show(tableWrap, viewType === 'table');
     show(boardEl, viewType === 'board');
-    show(listEl, viewType === 'list');
-    if (viewType === 'board') { drawBoard(); } else if (viewType === 'list') { drawList(); } else { drawTable(); }
+    const projectList = viewType === 'list' && isProjectView() && !!projectListEl;
+    show(listEl, viewType === 'list' && !projectList);
+    show(projectListEl, projectList);
+    if (viewType === 'board') { drawBoard(); }
+    else if (projectList) { projectHooks.drawList(projectListEl, { db: db, rows: rows, views: savedViews, viewId: viewId, reload: loadRows }); }
+    else if (viewType === 'list') { drawList(); } else { drawTable(); }
     paintBoardMore();
   }
 

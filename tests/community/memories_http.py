@@ -104,7 +104,8 @@ try:
  sql("INSERT INTO community.gpt_turns(user_id,request_id,prompt,reply) VALUES("+str(users['employee']['id'])+",gen_random_uuid(),'synthetic own prompt','synthetic own reply')")
  check(call('GET','/api/messenger/gpt',user='other')['turns']==[],'other user cannot see GPT history')
  check(len(call('GET','/api/messenger/gpt')['turns'])==1,'owner reads own GPT history even disabled')
- for url in ['/', '/workspace','/?space=1','/today','/ai']:
+ # Q:F-12 — 옛 「오늘」(/today)은 B 부터 308 /my-tasks(넘김을 따라가면 손으로 단 Cookie 머리가 빠져 로그인 화면이 된다) → 그 자리를 이은 「내 작업」 화면을 본다(D)
+ for url in ['/', '/workspace','/?space=1','/my-tasks','/ai']:
   r=raw('GET',url);check(r.status_code==200 and 'id="community-messenger"' not in r.text and r.text.count('id="messenger-window"')==1 and 'data-messenger-open' in r.text,'floating messenger replaces the old community window, actual PHP '+url)
  private=root.parent/'storage/private-ai';private.mkdir(mode=0o700);(private/'gemini.key').write_text('synthetic-credential-not-an-upload')
  integrity=subprocess.run(['php','scripts/consistency_check.php','--strict','--quiet'],cwd=root,capture_output=True)

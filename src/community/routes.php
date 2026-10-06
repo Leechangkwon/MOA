@@ -163,7 +163,12 @@ const COMMUNITY_ROUTES = [
     ['GET', '/api/my-tasks', 'my_tasks.php', 'community.read'],
     ['GET', '/api/briefing', 'briefing.php', 'community.read'],
     // ── 화면 ─────────────────────────────────────────────────
-    ['GET',    '/',                          'overview_page.php',   'community.read'],
+    /* Q:F-12 D (WK-7 ② · ARCH 23.8) — `/community/` = **업무 홈**(옛 둘러보기 overview_page.php 는 없앴다 — 그 파일의 `?view=` ·
+       문서 공간 꼬리표 넘김은 새 홈 핸들러가 이어받는다). 내 작업 화면 · 포트폴리오 화면도 화면 정책 community.read —
+       화면은 뼈대만 그리고 내용은 창구(`/api/my-tasks` · `/api/portfolios/{id}`)가 요청마다 판정·조건절로 거른 것만 받는다. */
+    ['GET',    '/',                          'work_home_page.php',  'community.read'],
+    ['GET',    '/my-tasks',                  'my_tasks_page.php',   'community.read'],
+    ['GET',    '/portfolios/{id}',           'portfolio_page.php',  'community.read'],
     ['GET', '/workspace', 'home_page.php', 'community.read'],
     ['GET',    '/p/{id}',                    'page_view.php',       'community.read'],
     ['GET', '/p/{id}/print', 'page_print.php', 'community.write'],
@@ -2934,6 +2939,93 @@ function community_project_color(array $u, int $spaceId): string
     $r = Db::instance()->run($sql, array_merge($visBind, [':pc_space' => $spaceId]))->fetch();
     $n = is_array($r) ? (int) $r['n'] : 0;
     return DbProps::PROJECT_COLORS[$n % count(DbProps::PROJECT_COLORS)];
+}
+
+/**
+ * Q:F-12 D — 업무 화면이 그리는 **볼 수 있는 프로젝트** 목록(DESIGN 2.19 ④ 사이드바 「프로젝트」 · 업무 홈 「내 프로젝트」 ·
+ * 포트폴리오 「프로젝트 넣기」 고르개). 화면 핸들러·셸이 서버에서 그린다(따로 창구를 두지 않는다).
+ *
+ * ★ 판정이 없다 — 보는 사람의 **검색 조건절**(`community_search_pages_where` — 관리자·게시판 관리자 갈래를 끈 판) 안에서만 고른다.
+ *   Admin 이어도 남의 비공개 프로젝트는 줄이 없다(관리자의 비공개 문서 열람은 문서를 열 때 한 건씩 감사되는 길로만 — A 검토 RV-A1 과 같은 까닭).
+ *   포트폴리오 넣기 판정(`decidePortfolioAdd` — 관리자 특권 말고 볼 수 있어야)과 같은 범위라 고르개에 넣을 수 없는 프로젝트가 나오지 않는다.
+ * ★ 진행률(`$withProgress`)도 같은 조건절을 지난 행만 센다 — 사람마다 숫자가 다를 수 있다(포트폴리오와 같은 규칙, ARCH 23.7).
+ * ★ 순서는 내 즐겨찾기(그 순서) → 내가 최근 본 것 → 최근 고친 것. 팀·소유 비교로 줄 세우지 않는다(판정 두 벌 0).
+ * 글자로 들어가는 것은 이 함수의 고정 조각뿐이고 값은 전부 바인딩이다. `$limit` 은 1~100 으로 자른다.
+ *
+ * @param  array<string,mixed> $u
+ * @param  bool $projectsOnly 참이면 「내 할 일」(`purpose='my_tasks'`)을 뺀다 — 포트폴리오에는 프로젝트만 넣는다(`not_project`)
+ * @return array{items:list<array<string,mixed>>,more:bool}
+ */
+function community_work_projects(array $u, int $limit, bool $projectsOnly = false, bool $withProgress = false): array
+{
+    $limit = max(1, min(100, $limit));
+    [$visible, $visBind] = community_search_pages_where($u);
+    $sql = <<<SQL
+        SELECT d.id AS db_id, p.public_id, p.title, p.icon, d.color, d.purpose, fav.page_id AS fav_page
+          FROM community.databases d
+          JOIN community.pages p ON p.id = d.page_id
+          JOIN community.spaces s ON s.id = p.space_id
+          LEFT JOIN public.users owner ON owner.id = s.owner_user_id
+          LEFT JOIN community.page_favorites fav ON fav.page_id = p.id AND fav.user_id = CAST(:wp_me AS bigint)
+          LEFT JOIN community.page_recent rec ON rec.page_id = p.id AND rec.user_id = CAST(:wp_me2 AS bigint)
+         WHERE d.purpose IS NOT NULL
+           AND (NOT CAST(:wp_only AS boolean) OR d.purpose = 'project')
+           AND p.deleted_at IS NULL
+           AND {$visible}
+         ORDER BY (fav.page_id IS NULL), fav.position, rec.last_viewed_at DESC NULLS LAST, p.updated_at DESC, p.id DESC
+         LIMIT CAST(:wp_lim AS int)
+        SQL;
+    $db = Db::instance();
+    $rows = $db->run($sql, array_merge($visBind, [
+        ':wp_me' => (int) $u['id'], ':wp_me2' => (int) $u['id'],
+        ':wp_only' => $projectsOnly ? 'true' : 'false', ':wp_lim' => $limit + 1,
+    ]))->fetchAll();
+    $more = count($rows) > $limit;
+    $rows = array_slice($rows, 0, $limit);
+
+    $progress = [];
+    if ($withProgress && $rows !== []) {
+        $sqlProgress = <<<SQL
+            SELECT p.database_id, count(*) AS total, count(*) FILTER (WHERE p.status = 'done') AS done
+              FROM community.pages p
+              JOIN community.spaces s ON s.id = p.space_id
+              LEFT JOIN public.users owner ON owner.id = s.owner_user_id
+             WHERE p.database_id = ANY (CAST(string_to_array(CAST(:wp_dbs AS text), ',') AS bigint[]))
+               AND p.deleted_at IS NULL
+               AND {$visible}
+             GROUP BY p.database_id
+            SQL;
+        $ids = implode(',', array_map(static fn (array $r): int => (int) $r['db_id'], $rows));
+        foreach ($db->run($sqlProgress, array_merge($visBind, [':wp_dbs' => $ids]))->fetchAll() as $g) {
+            $progress[(int) $g['database_id']] = ['done' => (int) $g['done'], 'total' => (int) $g['total']];
+        }
+    }
+
+    $items = [];
+    foreach ($rows as $r) {
+        $color = $r['color'] === null ? null : (string) $r['color'];
+        $items[] = [
+            'id'       => (string) $r['public_id'],
+            'title'    => (string) $r['title'],
+            'icon'     => $r['icon'] === null ? null : (string) $r['icon'],
+            // 색은 DB CHECK 의 넷뿐이지만 화면의 클래스 이름이 되므로 허용 목록을 한 번 더 지난다
+            'color'    => in_array($color, DbProps::PROJECT_COLORS, true) ? $color : null,
+            'purpose'  => (string) $r['purpose'],
+            'favorite' => $r['fav_page'] !== null,
+            'progress' => $withProgress ? ($progress[(int) $r['db_id']] ?? ['done' => 0, 'total' => 0]) : null,
+        ];
+    }
+    return ['items' => $items, 'more' => $more];
+}
+
+/**
+ * Q:F-12 D — 진행률의 10% 계단 클래스 이름(`progress--p0` … `progress--p100`, DESIGN 2.22 — 서버가 그리는 화면은 인라인 style 대신 이 계단).
+ * 값은 이 함수가 만든 숫자뿐이다(요청 값 0).
+ */
+function community_progress_step(int $done, int $total): string
+{
+    $pct = $total > 0 ? (int) (floor(($done / $total) * 10) * 10) : 0;
+    return 'progress--p' . (string) max(0, min(100, $pct));
 }
 
 /**

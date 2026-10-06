@@ -98,11 +98,13 @@ $total    = is_array($countRow) ? (int) $countRow['n'] : 0;
 $canSeeIdentity=CommunityAuthz::canSeeFormIdentity($user,$dbPage);
 $sqlList = <<<SQL
     SELECT p.public_id, p.title, p.icon, p.form_view_id, p.form_anonymous, author.username AS author_name, author.display_name AS author_display_name, p.status, p.properties, p.due_date, p.verified_at, p.verify_expires_at, p.created_at, p.updated_at,
-           owner.username AS owner_name, owner.display_name AS owner_display_name
+           owner.username AS owner_name, owner.display_name AS owner_display_name,
+           who.username AS assignee_name, who.display_name AS assignee_display_name
       FROM community.pages p
       JOIN community.spaces s ON s.id = p.space_id
       LEFT JOIN public.users owner ON owner.id = s.owner_user_id
       LEFT JOIN public.users author ON author.id=p.author_id
+      LEFT JOIN public.users who ON who.id = p.assignee_id
      WHERE p.database_id = CAST(:db AS bigint)
        AND p.deleted_at IS NULL
        AND {$visible}
@@ -125,6 +127,12 @@ foreach (Db::instance()->run($sqlList, $listBind)->fetchAll() as $r) {
             'username'     => (string) $r['owner_name'],
             'display_name' => $r['owner_display_name'] === null ? null : (string) $r['owner_display_name'],
         ],
+        /* Q:F-12 D (DESIGN 2.20 「담당자」 칸) — 행의 담당. 키는 계정명 · 표시 이름 **둘뿐**(계정 번호 · 역할 · 팀 0 — 후보 창구와 같은 모양).
+           행 자체가 위 목록 조건절을 지난 것이라 가시성은 그대로다. 담당은 볼·고칠 권한이 아니라 표시일 뿐이다(ARCH 23.1). */
+        'assignee'   => $r['assignee_name'] === null ? null : [
+            'username'     => (string) $r['assignee_name'],
+            'display_name' => $r['assignee_display_name'] === null ? null : (string) $r['assignee_display_name'],
+        ],
         'form_response' => $r['form_view_id']===null ? null : ['anonymous'=>$r['form_anonymous']===true,'hidden'=>$r['form_anonymous']===true&&!$canSeeIdentity,
             'username'=>$r['form_anonymous']===true&&!$canSeeIdentity ? null : $r['author_name'],
             'display_name'=>$r['form_anonymous']===true&&!$canSeeIdentity ? '익명 응답' : $r['author_display_name']],
@@ -143,6 +151,13 @@ foreach ($rows as &$outRow) {
 }
 unset($outRow);
 
+// Q:F-12 D — 이 데이터베이스의 쓰임(`project` · `my_tasks` · null)과 프로젝트 색. 화면이 프로젝트 화면(작업 목록 · 상세 칸)으로 그릴지 고르는 값이다.
+// 위 관문(그 DB 페이지를 볼 수 있다)을 지난 뒤의 값이고 권한이 아니다 — 쓰는 창구는 전처럼 요청마다 판정한다.
+$useRow = Db::instance()->run(
+    'SELECT purpose, color FROM community.databases WHERE id = CAST(:id AS bigint)',
+    [':id' => (int) $dbRow['id']]
+)->fetch();
+
 // 화면 편의 값 — 행마다 판정하지 않고 DB 페이지의 판정을 보인다(행 값 창구가 행마다 다시 막는다).
 Http::json([
     'views'           => $views,
@@ -153,6 +168,8 @@ Http::json([
         'id'      => (string) $dbRow['public_id'],
         'page_id' => (string) $dbRow['page_public_id'],
         'schema'  => $schema,
+        'purpose' => is_array($useRow) && $useRow['purpose'] !== null ? (string) $useRow['purpose'] : null,
+        'color'   => is_array($useRow) && $useRow['color'] !== null ? (string) $useRow['color'] : null,
     ],
     'rows'              => $rows,
     'total'             => $total,

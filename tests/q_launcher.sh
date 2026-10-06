@@ -408,7 +408,8 @@ if [ -n "$ADM_CSRF" ]; then
   expect "로그인 뒤 타일 순서 자료실 · 업무 · 이야기" "자료실 업무 이야기" "$(tr -d '\n' < "$WORK/root2.html" | sed -n 's/.*<nav class="moa-shortcuts"//p' | grep -oE '<strong>[^<]+' | head -3 | sed 's/<strong>//' | paste -sd' ')"
   expect "로그인 뒤 배지 준비 중 0건" "0" "$(grep -c '준비 중' "$WORK/root2.html" | tr -d ' ')"
   expect "로그인 뒤 자료실 타일이 /tbox/ 로 간다" "1" "$(grep -c 'href="/tbox/"' "$WORK/root2.html" | tr -d ' ')"
-  expect "로그인 뒤 이야기(머리 링크 · 타일)가 /community/memories 로 간다" "2" "$(grep -o 'href="/community/memories"' "$WORK/root2.html" | wc -l | tr -d ' ')"
+  # Q:F-12 D — 본문의 일상 이야기 부름 다섯(둘러보기 · 전체 보기 · 이어가기 · 시작하기 · 나누기)도 이야기 앱으로(옛 둘러보기 `/community/` 는 업무 홈이 됐다) → 2 + 5
+  expect "로그인 뒤 이야기(머리 링크 · 타일 · 본문 부름 다섯)가 /community/memories 로 간다" "7" "$(grep -o 'href="/community/memories"' "$WORK/root2.html" | wc -l | tr -d ' ')"
   expect "로그인 뒤 로그인 단추 0" "0" "$(grep -c 'href="/tbox/login">로그인<' "$WORK/root2.html" | tr -d ' ')"
   expect "로그인 뒤 런처 Set-Cookie 0(세션은 읽기만)" "0" "$(grep -ci '^Set-Cookie:' "$WORK/root2.head" | tr -d ' ')"
 fi

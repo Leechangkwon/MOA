@@ -108,6 +108,10 @@ require __DIR__ . '/../../views/shell_top.php';
             <button id="page-unpublish" class="menu__item" type="button" hidden>게시 해제</button>
             <button id="page-hide" class="menu__item" type="button" hidden>숨기기</button>
             <button id="page-resolve" class="menu__item" type="button" hidden>해결됨으로 표시</button>
+            <!-- Q:F-12 (WK-16 A) — 데이터베이스 페이지를 「프로젝트로 쓰기」(섹션 칸 · 기본 보기 넷 · 색 — 서버 상수) · 프로젝트 화면에서는 「프로젝트로 보기」.
+                 보이는 것은 행 목록 창구가 준 쓰임 · 관리 자격(can_manage_schema)대로 work.js 가 연다. 판정은 스키마 창구의 decidePageManage. -->
+            <button id="page-use-project" class="menu__item" type="button" hidden><span class="icon" data-icon="work"></span>프로젝트로 쓰기</button>
+            <button id="page-as-project" class="menu__item" type="button" hidden><span class="icon" data-icon="work"></span>프로젝트로 보기</button>
             <hr class="menu__sep">
             <button id="page-delete" class="menu__item menu__item--danger" type="button" hidden>
               <span class="icon" data-icon="trash"></span>지우기
@@ -119,6 +123,45 @@ require __DIR__ . '/../../views/shell_top.php';
         </button>
         <button id="page-done" class="btn" type="button" hidden>
           <span class="icon" data-icon="check"></span>편집 끝
+        </button>
+      </div>
+    </header>
+
+    <!-- ─── 프로젝트 화면 (사이트 Q:F-12 · DESIGN 2.20 ~ 2.22 · 기획 5.3 (c)(d)) ──────────────────────────────────────
+         이 데이터베이스의 쓰임이 「프로젝트」·「내 할 일」(행 목록 창구의 `database.purpose`)이면 work.js 가 `<body data-project-view>` 를 달고
+         위의 페이지 머리 대신 이 머리를 보인다(CSS 가 문서 본문·속성 줄을 가린다 — 「프로젝트 메뉴 › 문서로 보기」로 언제든 돌아간다).
+         값은 전부 창구가 준 것(제목 · 공간 · 소유자 · 프로젝트 상태 · 공유 수)을 work.js 가 textContent 로 넣는다 — 이 파일은 판단하지 않는다.
+         쓰는 단추(상태 · 작업 추가 · 공유)는 창구의 can_*(+ `/api/me` 의 쓰기 자격)가 참일 때만 열린다(역할 비교 0). -->
+    <header id="project-head" class="page-head" hidden>
+      <div class="page-head__text">
+        <div class="toolbar">
+          <span id="project-color" class="task-color task-color--lg" aria-hidden="true"></span>
+          <h1 id="project-title" class="page-head__title">프로젝트</h1>
+          <!-- 프로젝트 메뉴(DESIGN 2.15) — 문서로 보기 · 표로 쓰기(관리 자격) · 이력 · 지우기(관리 자격, 맨 아래 빨강) -->
+          <details id="project-menu" class="menu">
+            <summary class="btn btn--icon btn--plain" aria-label="프로젝트 메뉴"><span class="icon" data-icon="chevron"></span></summary>
+            <div class="menu__list">
+              <button id="project-as-doc" class="menu__item" type="button"><span class="icon" data-icon="files"></span>문서로 보기</button>
+              <button id="project-history" class="menu__item" type="button" aria-haspopup="dialog" hidden><span class="icon" data-icon="log"></span>이력</button>
+              <button id="project-as-table" class="menu__item" type="button" hidden><span class="icon" data-icon="files"></span>표로 쓰기</button>
+              <hr class="menu__sep">
+              <button id="project-delete" class="menu__item menu__item--danger" type="button" hidden><span class="icon" data-icon="trash"></span>지우기</button>
+            </div>
+          </details>
+          <button id="project-fav" class="btn btn--icon btn--plain" type="button" aria-pressed="false" aria-label="즐겨찾기에 넣기" hidden><span class="icon" data-icon="star"></span></button>
+          <button id="project-status" class="btn btn--quiet btn--small" type="button" aria-haspopup="dialog" aria-label="프로젝트 상태 바꾸기 — 지금 상태 없음">
+            <span id="project-status-dot" class="status-dot" aria-hidden="true"></span><span id="project-status-text">상태 없음</span>
+          </button>
+        </div>
+        <p id="project-sub" class="page-head__sub"></p>
+      </div>
+      <div class="page-head__actions">
+        <span id="project-members" class="task-avatars" hidden></span>
+        <button id="project-share" class="btn btn--quiet" type="button" aria-haspopup="dialog" hidden>
+          <span class="icon" data-icon="users"></span><span>공유</span>
+        </button>
+        <button id="project-add-task" class="btn" type="button" hidden>
+          <span class="icon" data-icon="plus"></span><span>작업 추가</span>
         </button>
       </div>
     </header>
@@ -295,6 +338,8 @@ require __DIR__ . '/../../views/shell_top.php';
       <p id="db-board-more" class="help" hidden>옆으로 밀면 열이 더 있습니다.</p>
       <!-- 6-B 리스트 — 한 줄 = 제목 + 속성 칩 -->
       <ul id="db-list" class="list db-list" hidden></ul>
+      <!-- Q:F-12 — 프로젝트의 목록 보기(DESIGN 2.20 `.task-list` — 섹션 묶음 · 작업 줄 · 그 자리 추가 · 하위 작업 펼침). database.js 가 work.js 에 넘겨 그린다 -->
+      <div id="project-list" class="task-list task-list--project" hidden></div>
       <form id="db-add-row" class="toolbar" hidden>
         <input id="db-add-row-title" class="input" type="text" maxlength="200" autocomplete="off" placeholder="새 행 제목" aria-label="새 행 제목">
         <!-- 7-B — 이 DB 의 행 템플릿(없으면 숨은 채). 고르면 제목은 비워도 된다 -->
@@ -899,6 +944,40 @@ require __DIR__ . '/../../views/shell_top.php';
     </dialog>
 
     <!-- 페이지 id 를 전하는 자리. 값은 라우터가 UUID 로만 통과시킨 뒤 이스케이프한 것이다. -->
+    <!-- Q:F-12 작업 상세 칸(DESIGN 2.21) — 모달이 아니라 화면의 한 칸(aside). 프로젝트 화면에서 줄을 누르면 열린다(주소 `?task={public_id}` ·
+         뒤로 가기로 앞 작업 · 닫힘). 안쪽은 work.js 가 창구 답으로 createElement/textContent 로 그린다. -->
+    <aside id="task-pane" class="task-pane" aria-label="작업 상세" hidden></aside>
+
+    <!-- Q:F-12 프로젝트 상태 쓰기 창(DESIGN 2.22 · 2.7 `.modal--form`) — 상태 다섯 + 짧은 글 280자. 남긴 상태는 고치거나 지우지 않는다(다음 상태로 덮는다).
+         여는 단추는 고칠 수 있는 사람에게만(창구 can_edit) · 막는 것은 `POST /api/projects/{id}/status` 의 decidePageChange. -->
+    <dialog id="project-status-dialog" class="modal modal--form" aria-labelledby="project-status-title">
+      <div class="modal__head">
+        <h2 id="project-status-title" class="modal__title">프로젝트 상태</h2>
+        <button class="btn btn--icon btn--plain" type="button" data-project-status-close aria-label="닫기"><span class="icon" data-icon="x"></span></button>
+      </div>
+      <form id="project-status-form" class="modal__body form" method="dialog">
+        <fieldset class="field field--full">
+          <legend class="field__label">지금 상태</legend>
+          <label><input type="radio" name="project-status" value="on_track" required> <span class="status-dot status-dot--on_track" aria-hidden="true"></span> 순조로움</label>
+          <label><input type="radio" name="project-status" value="at_risk"> <span class="status-dot status-dot--at_risk" aria-hidden="true"></span> 위험</label>
+          <label><input type="radio" name="project-status" value="off_track"> <span class="status-dot status-dot--off_track" aria-hidden="true"></span> 늦어짐</label>
+          <label><input type="radio" name="project-status" value="on_hold"> <span class="status-dot status-dot--on_hold" aria-hidden="true"></span> 보류</label>
+          <label><input type="radio" name="project-status" value="complete"> <span class="status-dot status-dot--complete" aria-hidden="true"></span> 완료</label>
+        </fieldset>
+        <label class="field field--full">
+          <span class="field__label">이번에 무엇이 바뀌었나요? (선택 · 280자까지)</span>
+          <textarea id="project-status-note" rows="3" maxlength="280" spellcheck="false"></textarea>
+        </label>
+        <p class="help">남긴 상태는 고치거나 지울 수 없어요 — 바뀌면 새 상태를 남기세요.</p>
+        <ul id="project-status-history" class="list" aria-label="지난 상태" hidden></ul>
+      </form>
+      <div class="form-actions">
+        <p id="project-status-msg" class="msg" role="alert" aria-live="polite"></p>
+        <button class="btn btn--quiet" type="button" data-project-status-close>닫기</button>
+        <button id="project-status-save" class="btn" type="submit" form="project-status-form">상태 남기기</button>
+      </div>
+    </dialog>
+
     <span id="page-meta" hidden data-page-id="<?= htmlspecialchars($viewPageId, ENT_QUOTES, 'UTF-8') ?>"></span>
     <!-- 즐겨찾기 아이콘 둘(☆·★)은 Q:F-3a 라운드 B 부터 셸(src/views/shell_top.php — 커뮤니티 사이드바)에 있다 — 사이드바 트리 줄의 ☆ 가
          세 화면 모두에서 쓰므로 한 곳으로 옮겼다(같은 id 두 번 금지). 이 화면의 「더보기」 ☆ 도 그 템플릿을 쓴다. -->

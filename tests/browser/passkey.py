@@ -270,7 +270,7 @@ with sync_playwright() as p:
     step("감사 auth.login allow passkey(e2)", sql("SELECT count(*) FROM audit_logs WHERE action='auth.login' AND reason='passkey' AND target_name='claude_employee02' AND happened_at > now() - interval '2 minutes'") != "0")
 
     # ═══ PK-T13 누름 수 — 새 탭(표시 있음) · 로그아웃 상태 · 시작 주소 /community/ ═══════
-    sub("PK-T13 목표 지표 — 홈 화면 → 지문 → 둘러보기 → 문서 공간 → 새 페이지")
+    sub("PK-T13 목표 지표 — 홈 화면 → 지문 → 업무 홈 → 내 문서 → 새 페이지")
     c1.clear_cookies()
     pg2 = c1.new_page()
     watch(pg2, "taps")
@@ -287,21 +287,22 @@ with sync_playwright() as p:
     taps["n"] += 1
     pg2.click("#passkey-login-btn")
     pg2.wait_for_url(re.compile(r".*/community/$"), timeout=20000)
-    pg2.wait_for_selector("#community-overview", timeout=10000)
-    step("패스키 선택 → 커뮤니티 둘러보기", pg2.url.endswith("/community/") and taps["n"] == 2, pg2.url)
+    # Q:F-12 D — `/community/` 는 업무 홈(옛 둘러보기 #community-overview · #overview-workspace 는 없어졌다). 「내 문서」는 머리의 링크 하나(누름 수 같음)
+    pg2.wait_for_selector("#work-home", timeout=10000)
+    step("패스키 선택 → 업무 홈", pg2.url.endswith("/community/") and taps["n"] == 2, pg2.url)
     taps["n"] += 1
-    pg2.click("#overview-workspace a")
+    pg2.click("#work-home-docs")
     pg2.wait_for_url(re.compile(r".*/community/workspace$"), timeout=10000)
     pg2.wait_for_selector("#community-new:not([hidden])", timeout=10000)
-    step("둘러보기에서 문서 공간 열기", pg2.url.endswith("/community/workspace") and taps["n"] == 3, pg2.url)
+    step("업무 홈에서 「내 문서」 열기", pg2.url.endswith("/community/workspace") and taps["n"] == 3, pg2.url)
     step("  로그인 창구 요청 1 · 사용자가 로그인 방법을 선택", passkey_reqs(log2, "/tbox/api/login/passkey") == 1)
     taps["n"] += 1
     pg2.click("#community-new")
     pg2.wait_for_url(re.compile(r".*/community/p/[0-9a-f-]{36}(\?edit=1)?$"), timeout=15000)
     pg2.wait_for_selector("[contenteditable='true']", timeout=15000)
     step("「새 페이지」 → 곧바로 편집 모드(쓸 수 있는 본문 · 주소의 ?edit=1 은 지움)", pg2.is_visible("[contenteditable='true']") and "?edit" not in pg2.url, pg2.url)
-    print("  · PK-T13 누름 %d · 지문 1 · 글자 %d (전체 기능 둘러보기에서 문서 공간 선택 포함)" % (taps["n"], taps["chars"]), flush=True)
-    step("PK-T13 둘러보기 포함 누름 ≤ 4 · 글자 0", taps["n"] <= 4 and taps["chars"] == 0, taps)
+    print("  · PK-T13 누름 %d · 지문 1 · 글자 %d (업무 홈에서 내 문서 선택 포함)" % (taps["n"], taps["chars"]), flush=True)
+    step("PK-T13 업무 홈 포함 누름 ≤ 4 · 글자 0", taps["n"] <= 4 and taps["chars"] == 0, taps)
     new_page_id = pg2.url.rsplit("/", 1)[1].split("?")[0]
     snap(va2)
     pg2.close()

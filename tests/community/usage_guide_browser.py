@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
-"""Chromium + shipped tour assets/overview markup, synthetic HTTP only (not PHP/DB coverage)."""
+"""Chromium + shipped tour assets/work home markup, synthetic HTTP only (not PHP/DB coverage).
+
+Q:F-12 D — 옛 둘러보기(overview_page.php)를 없애고 `/community/` 가 업무 홈(work_home_page.php)이 되어 그 뼈대로 안내를 시험한다(기대값 바꿈)."""
 import copy
 import json
 import os
@@ -14,11 +16,12 @@ ORIGIN = 'http://127.0.0.1:8769'
 
 def fixture(mode='overview', theme='light'):
     if mode == 'overview':
-        source = (ROOT / 'src/community/handlers/overview_page.php').read_text()
-        source = source[source.index('<section class="community-overview"'):source.index("<?php require __DIR__ . '/../../views/shell_bottom.php'")]
+        source = (ROOT / 'src/community/handlers/work_home_page.php').read_text()
+        source = source[source.index('<div id="work-home"'):source.index("<?php\n$pageMsgTop")]
         source = re.sub(r"<\?= Http::communityUrl\('([^']*)'\) \?>", lambda m: '/community' + m[1], source)
         source = re.sub(r"<\?= Http::url\('([^']*)'\) \?>", lambda m: '/tbox' + m[1], source)
         source = re.sub(r'<\?php.*?\?>', '', source, flags=re.S)
+        source = re.sub(r'<\?=.*?\?>', '', source, flags=re.S)
     else:
         markup = (ROOT / 'src/community/handlers/memories_page.php').read_text()
         composer = markup[markup.index('<dialog id="compose-dialog"'):markup.index('<dialog id="studio-dialog"')]
@@ -27,7 +30,7 @@ def fixture(mode='overview', theme='light'):
         travel = re.sub(r'<\?php.*?\?>', '', travel, flags=re.S)
         source = '<section id="community-threads" class="community-threads"><div class="threads-tabs">스레드</div>' + composer + travel + '</section>'
     return f'''<!doctype html><html lang="ko" data-theme="{theme}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width">
-    <link rel="stylesheet" href="/tbox/assets/app.css"><link rel="stylesheet" href="/tbox/assets/community/overview.css"><link rel="stylesheet" href="/tbox/assets/community/memories.css"><link rel="stylesheet" href="/tbox/assets/community/travel-plans.css"><link rel="stylesheet" href="/tbox/assets/usage-guide.css">
+    <link rel="stylesheet" href="/tbox/assets/app.css"><link rel="stylesheet" href="/tbox/assets/community/memories.css"><link rel="stylesheet" href="/tbox/assets/community/travel-plans.css"><link rel="stylesheet" href="/tbox/assets/usage-guide.css">
     </head><body>{source}<div id="usage-guide-root" data-base="/community"><button class="usage-guide-launch" type="button" data-usage-guide-open>사용 안내</button><p id="usage-guide-notice" role="status" hidden></p></div>
     <script defer src="/tbox/assets/usage-guide.js"></script></body></html>'''
 
@@ -78,28 +81,32 @@ def main():
             page.reload(); page.wait_for_timeout(900)
             check(page.locator('.usage-guide-dialog').count() == 0, 'skipped guide does not reappear on reload')
             page.locator('.usage-guide-launch').click()
-            page.get_by_role('heading', name='모아의 여러 공간을 둘러보세요').wait_for()
+            page.get_by_role('heading', name='업무 홈', exact=True).wait_for()
             check(page.locator('#usage-guide-outline').get_attribute('width') != '0', 'target has highlight rectangle under strict CSP')
             page.get_by_role('button', name='다음', exact=True).click()
-            page.get_by_role('heading', name='나만의 사진과 이야기').wait_for()
+            page.get_by_role('heading', name='내 작업 요약').wait_for()
             page.wait_for_timeout(100)
             page.reload()
-            page.get_by_role('heading', name='나만의 사진과 이야기').wait_for()
+            page.get_by_role('heading', name='내 작업 요약').wait_for()
             check(state['step'] == 1, 'consented guide resumes saved step')
             page.keyboard.press('ArrowLeft')
-            page.get_by_role('heading', name='모아의 여러 공간을 둘러보세요').wait_for()
+            page.get_by_role('heading', name='업무 홈', exact=True).wait_for()
             page.keyboard.press('Tab')
             check(page.evaluate("document.activeElement.closest('.usage-guide-dialog') !== null"), 'focus remains within native modal')
-            for _ in range(7):
+            # 사이드바 단계(새로 만들기 · 내 작업 · 받은 알림)와 숨은 공지 한 줄은 이 합성 뼈대에 없어 건너뛴다 — 보이는 단계만 센다
+            for _ in range(10):
+                if page.get_by_role('button', name='안내 마치기').count():
+                    break
                 page.get_by_role('button', name='다음', exact=True).click()
                 card = page.locator('.usage-guide-card').bounding_box()
                 check(card['x'] >= 0 and card['x'] + card['width'] <= viewport['width'] + 1, 'tour card fits viewport')
+            check(page.locator('.usage-guide-progress').inner_text().startswith('4 / 4'), 'work home tour: visible steps only (4 in this skeleton)')
             page.get_by_role('button', name='안내 마치기').click()
             page.wait_for_timeout(120)
             check(state['status'] == 'completed', 'completion persists')
-            check(page.locator('#overview-workspace a').get_attribute('href') == '/community/workspace', 'document workspace is first-class destination')
-            check(page.locator('#overview-memories a').get_attribute('href') == '/community/memories?view=mine', 'personal threads do not replace community entrance')
-            check(page.locator('#overview-files a').get_attribute('href') == '/tbox/', 'overview exposes files alongside social')
+            check(page.locator('#work-home-docs').get_attribute('href') == '/community/workspace', 'documents stay a first-class destination (내 문서)')
+            check(page.locator('#work-home-tasks a.btn').get_attribute('href') == '/community/my-tasks', 'home links the full 내 작업 screen')
+            check(page.locator('#overview-memories, #overview-files, #community-overview').count() == 0, 'old overview cards are gone (Q:F-12 D)')
             check(page.evaluate("document.documentElement.scrollWidth <= innerWidth"), 'no horizontal overflow')
 
             # Opening a guide over an existing composer must never submit, modify,

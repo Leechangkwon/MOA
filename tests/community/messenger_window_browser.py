@@ -168,7 +168,7 @@ try:
  if want('t11'):
   screens=[('employee','/tbox/','t-box 홈'),('employee','/tbox/settings','설정'),('employee','/tbox/activity','활동'),('employee','/tbox/trash','내 휴지통'),
            ('admin','/tbox/wiki','위키'),('admin','/tbox/admin','관리 허브'),
-           ('employee','/community/','커뮤니티 개요'),('employee','/community/workspace','내 문서'),('employee','/community/p/'+page_id,'페이지'),
+           ('employee','/community/','업무 홈'),('employee','/community/workspace','내 문서'),('employee','/community/p/'+page_id,'페이지'),
            ('employee','/community/b/'+str(board_id),'게시판'),('employee','/community/f/'+did+'/'+form['id'],'응답 양식'),('employee','/community/procedures','절차서'),
            ('employee','/community/ai','문서 AI'),('employee','/community/integrations','공유·연동'),('employee','/community/memories','스레드'),
            ('employee','/tbox/welcome','시작 안내'),('employee','/','런처')]
@@ -238,7 +238,7 @@ try:
    ctx=browser.new_context(viewport={'width':1440,'height':900},locale='ko-KR',user_agent=UA);ctx.add_cookies(cookie(tok))
    t=Tab(ctx);p=t.page
    for path,opener,label,me_max in (('/tbox/settings','#messenger-open','셸 사이드바',1),('/community/workspace','#messenger-open','커뮤니티 셸 사이드바',1),('/tbox/welcome','#messenger-open','시작 안내 nav',2),('/','#messenger-open','런처 타일',2),
-                                    ('/community/','#overview-messenger [data-messenger-open]','커뮤니티 개요 카드',1),('/community/memories','.threads-quick [data-messenger-open]','스레드 단추',1)):
+                                    ('/community/','#messenger-open','업무 홈 사이드바(Q:F-12 D — 개요 카드 없어짐)',1),('/community/memories','.threads-quick [data-messenger-open]','스레드 단추',1)):
     mark=time.time();t.go(path);p.wait_for_timeout(1200)
     me=[r for r in t.requests if r[0]>=mark and r[2]=='/tbox/api/me'];badge=[r for r in t.requests if r[0]>=mark and r[2]=='/tbox/api/messages?q=']
     metrics['api_me-'+path]=len(me);metrics['first_badge-'+path]=len(badge)
@@ -282,7 +282,7 @@ try:
    p.locator('#message-text').type('AI 이어 열기 질문');p.locator('#message-send').click();expect(p.locator('#message-list')).to_contain_text('합성 꾸미기 답변입니다.')
    thread=t.state(E)['thread'];check(t.state(E)['kind']=='ai' and isinstance(thread,int),'Q:T-12 AI thread number saved')
    p.locator('#message-text').type('AI 초안');p.wait_for_function('k=>localStorage.getItem(k)!==null',arg=A_PREFIX+'ai:'+str(thread),timeout=8000)
-   for path,label in (('/community/','커뮤니티 개요'),('/tbox/settings','설정')):
+   for path,label in (('/community/','업무 홈'),('/tbox/settings','설정')):
     t.go(path);expect(p.locator('#message-peer-name')).to_have_text('모아 AI');expect(p.locator('#message-list')).to_contain_text('AI 이어 열기 질문')
     check(t.is_open() and t.state(E)['thread']==thread and p.locator('#message-ai-threads').input_value()==str(thread),'Q:T-12 '+label+': same AI thread restored')
     check(p.locator('#message-text').input_value()=='AI 초안' and t.focus_outside(),'Q:T-12 '+label+': AI draft restored, focus untouched')
@@ -312,7 +312,7 @@ try:
    check(v['disabled'] and v['send'] and v['value']=='' and v['toolbar'],'D-1 자료실 홈: composer disabled and empty, send disabled, assist toolbar hidden')
    check('불러오는 중' not in v['head'],'D-1 자료실 홈: conversation head no longer 「불러오는 중…」 ('+v['head']+')')
    check(st is None or st.get('peer')!=ghost,'D-1 자료실 홈: state does not carry the missing peer number')
-   for path,label in (('/tbox/settings','설정'),('/community/','커뮤니티 개요')):
+   for path,label in (('/tbox/settings','설정'),('/community/','업무 홈')):
     t.go(path);p.wait_for_timeout(600)
     st=t.state(E);v=composer();metrics['d1'+path.replace('/','_')]=dict(v,gets=ghost_gets(),state=st)
     check(ghost_gets()==1,'D-1 '+label+': no second 404 GET to that peer (total '+str(ghost_gets())+')')
@@ -636,9 +636,9 @@ try:
    check(guide_row().startswith('dismissed:messenger:'),'C-3 Esc saves dismissed')
    # ③ 화면 안내 — 떠 있는 창이 열려 있어도 그 화면의 단계로(전: 열린 창 안 단계만 골라 「이 화면은 …」 알림만)
    t.go('/community/')
-   check(t.is_open(),'C-3 precondition: window restored open on the community overview')
+   check(t.is_open(),'C-3 precondition: window restored open on the work home (Q:F-12 D)')
    p.locator('.usage-guide-launch').click()
-   expect(p.locator('#usage-guide-title')).to_have_text('모아의 여러 공간을 둘러보세요',timeout=5000)
+   expect(p.locator('#usage-guide-title')).to_have_text('업무 홈',timeout=5000)   # Q:F-12 D — 개요 대신 업무 홈 안내(맥락 이름 overview 그대로)
    check(t.is_open() and guide_row().startswith('active:overview:'),'C-3 the page tour (overview) runs while the floating window is open')
    p.keyboard.press('Escape');p.wait_for_timeout(300)
    # ④ 처음 안내 제안 — 떠 있는 창이 열려 있어도 뜬다(전: dialog[open] 하나에 막혔다)
@@ -729,7 +729,9 @@ try:
    for path in ('/tbox/','/community/','/community/memories'):
     t.go(path)
     side=p.evaluate("""(()=>{const s=document.getElementById('sidebar');const links=[...s.querySelectorAll('a[href]')].filter(a=>new URL(a.href,location.href).pathname.replace(/\\/$/,'')==='/tbox/messages').length;
-      return {links:links,text:(s.textContent.match(/메신저/g)||[]).length,openers:s.querySelectorAll('[data-messenger-open]').length,rail:[...document.querySelectorAll('nav.app-rail a.app-rail__item')].map(a=>a.textContent.replace(/\\s+/g,' ').trim())};})()""")
+      // Q:F-12 D — 업무 홈(/community/)도 이제 사이드바의 트리 · 최근 · 프로젝트 목록을 채운다(전엔 개요 화면이 채우지 않았다) — 사람이 붙인 제목(「메신저 창 시험 페이지」)은 세지 않는다
+      const ui=s.cloneNode(true);ui.querySelectorAll('#nav-community-tree,#nav-community-fav,#nav-community-recent,#nav-work-projects,#nav-community-shared,#nav-community-boards,#nav-community-teams').forEach(n=>n.remove());
+      return {links:links,text:(ui.textContent.match(/메신저/g)||[]).length,openers:s.querySelectorAll('[data-messenger-open]').length,rail:[...document.querySelectorAll('nav.app-rail a.app-rail__item')].map(a=>a.textContent.replace(/\\s+/g,' ').trim())};})()""")
     metrics['c6_sidebar'+path.replace('/','_')]=side
     check(side['links']==0,'C-6 '+path+' sidebar: /messages link 0 '+json.dumps(side,ensure_ascii=False))
     check(side['text']==1 and side['openers']==1,'C-6 '+path+' sidebar: 「메신저」 text once — the floating window opener')
