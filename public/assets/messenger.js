@@ -754,9 +754,10 @@ async function mount(options) {
 
   /* ─── 떠 있는 창(B-1~B-3) — 'page' 에서는 아래 함수들이 아무것도 하지 않는다 ─── */
   let timer = null, ticking = false, again = false, started = false, opener = null, freshAt = 0;
-  // 대표가 되면 곧바로 한 번(방금 이 탭이 읽었으면 30초 뒤), 대표를 놓으면 닫힌 창의 폴링을 멈춘다
+  // 대표는 **닫힌 창**의 배지 폴링만 맡는다(열린 창은 대표와 상관없이 8초). 대표가 되면 곧바로 한 번(방금 읽었으면 30초 뒤), 놓으면 멈춘다
   const lead = isWindow ? leadership(owner, (on) => {
-    if (on) { schedule(dialog.open || Date.now() - freshAt > 5000 ? 0 : CLOSED_POLL_MS); } else if (!dialog.open) { schedule(null); }
+    if (dialog.open) { return; }
+    schedule(on ? (Date.now() - freshAt > 5000 ? 0 : CLOSED_POLL_MS) : null);
   }) : null;
 
   function setView(next) {
