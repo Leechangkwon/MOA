@@ -201,7 +201,60 @@ foreach ($files as $rel) {
     }
 }
 
-echo "부품 버전 $appVer · ProseMirror 버전 $vendorVer · 파일 " . count($files) . "개 · 상대 import {$imports}개\n";
+/*
+ * 커뮤니티 폴더 **밖**의 진입 파일이 커뮤니티 부품을 부르는 import (사이트 Q:F-11 · A 독립 검토 3번, 지시서 B-7).
+ *   `public/assets/messenger.js` 가 `./community/drafts.js?v=…` 를 부른다. 커뮤니티 화면에서는 editor.js 도 같은
+ *   drafts.js 를 부르므로 **같은 주소**(같은 부품 버전)여야 모듈이 한 벌이고, 옛 부품이 캐시에서 섞이지 않는다.
+ *   이 파일들은 부품 버전 해시에 넣지 않는다(진입 파일이지 부품이 아니다 — editor.js 와 달리 폴더 밖이다).
+ *   찍는 규칙은 폴더 안과 같다: `./community/` 아래만 허용, 가리키는 파일이 있어야 하고, vendor 면 ProseMirror 버전.
+ */
+const OUTSIDE_ENTRIES = ['messenger.js'];
+$outside = 0;
+foreach (OUTSIDE_ENTRIES as $entry) {
+    $path = $root . '/public/assets/' . $entry;
+    if (!is_file($path)) {
+        $problems[] = "$entry: 커뮤니티 부품을 부르는 진입 파일이 없다";
+        continue;
+    }
+    $src = file_get_contents($path);
+    if ($src === false) {
+        fwrite(STDERR, "읽을 수 없다: $entry\n");
+        exit(2);
+    }
+    $outside++;
+    $want = preg_replace_callback(IMPORT_RE, static function (array $m) use ($entry, $files, $vendorVer, $appVer, &$problems, &$imports): string {
+        $imports++;
+        if (strpos($m[3], './community/') !== 0) {
+            $problems[] = "$entry: 커뮤니티 부품이 아닌 상대 import — {$m[3]}";
+            return $m[0];
+        }
+        $target = resolve_rel('entry.js', './' . substr($m[3], strlen('./community/')));
+        if ($target === null || !in_array($target, $files, true)) {
+            $problems[] = "$entry: 가리키는 파일이 없다 — {$m[3]}";
+            return $m[0];
+        }
+        return $m[1] . $m[2] . $m[3] . '?v=' . (is_vendor($target) ? $vendorVer : $appVer) . $m[2];
+    }, $src);
+    if (!is_string($want)) {
+        fwrite(STDERR, "정규식 실패: $entry\n");
+        exit(2);
+    }
+    $rest = (string) preg_replace(IMPORT_RE, '', $want);
+    if (preg_match_all(BARE_REL_RE, $rest, $bare) > 0) {
+        foreach ($bare[0] as $b) {
+            $problems[] = "$entry: import 문으로 보이지 않는 상대 경로 — $b (줄 머리의 import/export … from 만 버전을 찍는다)";
+        }
+    }
+    if ($want !== $src) {
+        $changed[] = '../' . $entry;
+        if ($mode === 'write' && file_put_contents($path, $want) === false) {
+            fwrite(STDERR, "쓸 수 없다: $entry\n");
+            exit(2);
+        }
+    }
+}
+
+echo "부품 버전 $appVer · ProseMirror 버전 $vendorVer · 파일 " . count($files) . "개 · 상대 import {$imports}개 · 폴더 밖 진입 {$outside}개\n";
 foreach ($problems as $p) {
     echo "  ✖ $p\n";
 }

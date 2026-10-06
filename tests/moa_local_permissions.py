@@ -41,7 +41,11 @@ check('real welcome includes local guide',r:=req('/welcome',employee),200,'welco
 check('missing CSRF blocks send',req('/api/messages/2',employee,'POST',{'text':'not sent'}),403)
 check('wrong CSRF blocks AI tools',req('/api/messages/assist',employee,'POST',{}, {'X-CSRF-Token':'invalid'}),403)
 check('wrong CSRF blocks AI chat',req('/api/messages/ai',employee,'POST',{}, {'X-CSRF-Token':'invalid'}),403)
-check('4001 code points rejected by real message handler',req('/api/messages/2',employee,'POST',{'text':'가'*4001},{'X-CSRF-Token':csrf}),400)
+# Q:F-11 B-7(A 독립 검토 4) — request_id 가 유효해야 400 이 「글자 수」 규칙에서 난다(없으면 본문 키 검사에서 먼저 400).
+# 본문은 브라우저처럼 UTF-8 그대로 보낸다 — requests 의 json= 은 한글을 \uXXXX(6바이트)로 써서 본문 상한(24000바이트)에 먼저 걸린다.
+r=requests.post(base+'/tbox/api/messages/2',data=json.dumps({'text':'가'*4001,'request_id':str(uuid.uuid4())},ensure_ascii=False).encode(),timeout=10,allow_redirects=False,
+                headers={'User-Agent':'tbox-review/2026-10-02','Cookie':'__Host-tbox_session='+employee,'X-CSRF-Token':csrf,'Content-Type':'application/json'})
+check('4001 code points rejected by real message handler (length rule)',r,400,r.json().get('error')=='메시지를 1~4,000자로 입력해 주세요.')
 check('sender sees synthetic own conversation',r:=req('/api/messages/2',employee),200,'Synthetic private message' in r.text)
 check('third party cannot read conversation',r:=req('/api/messages/1',third),200,'Synthetic private message' not in r.text)
 check('AI history belongs to requester',r:=req('/api/messages/assist?peer=2',employee),200,'Synthetic private result' in r.text)

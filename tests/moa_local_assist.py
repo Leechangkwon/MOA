@@ -3,9 +3,11 @@
 Run: python3 tests/moa_local_assist.py
 Requires an already installed Playwright Chromium. Does not touch a database.
 """
+import base64
 import json
 import os
 from pathlib import Path
+import secrets
 import subprocess
 from urllib.parse import urlsplit, parse_qs
 from playwright.sync_api import sync_playwright, expect
@@ -14,6 +16,15 @@ ROOT = Path(__file__).resolve().parents[1]
 ARTIFACTS = Path(os.environ.get('MOA_TEST_ARTIFACTS', '/tmp/moa-local-assist-results'))
 ARTIFACTS.mkdir(parents=True, exist_ok=True)
 checks = []
+# Q:F-11 B-7(A 독립 검토 5) — 메신저 모듈이 쓰던 글을 암호화할 때 부르는 열쇠 창구의 합성 답(이 시험 안에서만 · 32바이트 base64url).
+FIXTURE_DRAFT_KEY = base64.urlsafe_b64encode(secrets.token_bytes(32)).rstrip(b'=').decode()
+# 저장소 점검: 메신저 창 상태(sessionStorage)와 쓰던 글 암호문(localStorage)만 남고, PC 도우미 자격 증명·페어링 코드는 어디에도 없다.
+STORE_ITEMS = "() => { const out = []; for (const s of [localStorage, sessionStorage]) for (let i = 0; i < s.length; i++) { const k = s.key(i); out.push([k, s.getItem(k)]); } return out; }"
+def no_helper_credential(page):
+    items = page.evaluate(STORE_ITEMS)
+    named = all(k == 'qaredi-messenger:v1:claude_employee01' or k.startswith('qaredi-draft:v1:claude_employee01:') for k, _ in items)
+    clean = all(secret not in (k + (v or '')) for k, v in items for secret in ('c'*43, 'p'*43, 'a'*32))
+    return named and clean
 def check(name, condition):
     checks.append({'name': name, 'passed': bool(condition)})
     print(('PASS ' if condition else 'FAIL ') + name, flush=True)
@@ -71,6 +82,11 @@ class Fixture:
         elif path.startswith('/tbox/api/messages/attachments/'):
             import base64
             route.fulfill(content_type='image/png', body=base64.b64decode('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jRZkAAAAASUVORK5CYII=')); return
+        elif path == '/community/api/me/draft-key' and request.method == 'GET':
+            data = {'v':1, 'key':FIXTURE_DRAFT_KEY}
+        elif path == '/community/api/me/guide' and request.method == 'GET':
+            # 사용 안내(029f753 이 모아 머리에 넣은 usage_guide.php)가 화면마다 상태를 읽는다 — 이미 닫은 사람의 합성 상태
+            data = {'guide':{'version':1,'status':'dismissed','context':'overview','step':0,'offer':False}, 'csrf_token':'fixture-csrf'}
         elif path == '/tbox/api/messages/ai':
             if self.fail_ai: route.fulfill(status=503,json={'error':'fixture unavailable'}); return
             if request.method == 'POST':
@@ -205,14 +221,15 @@ with sync_playwright() as p:
     expect(page.locator('#welcome-buddy')).to_be_visible()
     page.locator('#welcome-local-buddy summary').click()
     guide=page.locator('#welcome-local-buddy')
-    check('welcome explains unconfirmed connection and private repository', '연결 조건 확인 중' in guide.inner_text() and '비공개 저장소' in guide.inner_text())
-    check('correct branch link, no token input in local guide', 'AI-%EB%B9%84%EC%84%9C%28%EB%A1%9C%EC%BB%AC%29' in guide.locator('a').get_attribute('href') and guide.locator('input').count()==0)
+    # 안내 문구는 029f753(2026-10-03 「가입 선택과 … 사용성 개선」)이 의도적으로 바꿨다 — 「비공개 Git2 저장소」 · 공유 브랜치 링크 → 고정 판 ZIP·README 링크.
+    check('welcome explains unconfirmed connection and private repository', '연결 조건 확인 중' in guide.inner_text() and '비공개 Git2 저장소' in guide.inner_text())
+    check('correct shared-copy ZIP link, no token input in local guide', 'archive/f7caeb47f56f91720f645e635cb3a384bd64b665.zip' in guide.locator('a').first.get_attribute('href') and guide.locator('input').count()==0)
     page.goto('https://changkwon.mso.so/tbox/messages')
     open_tool('local', '  PC 전송 원문 😀\n둘째 줄  ')
     check('no loopback request before user pairs', not f.local_posts)
     page.locator('#assist-local-code').fill('a'*32); page.locator('#assist-local-pair').click()
     expect(page.locator('#assist-local-state')).to_contain_text('PC 연결됨')
-    check('pairing clears code and stores no browser credential', page.locator('#assist-local-code').input_value() == '' and page.evaluate('localStorage.length + sessionStorage.length') == 0)
+    check('pairing clears code and stores no browser credential', page.locator('#assist-local-code').input_value() == '' and no_helper_credential(page))
     page.locator('#assist-local-run').click(); expect(page.locator('#assist-output')).to_have_value('PC 완료 결과 <script>문자</script>')
     sent = next(item for item in f.local_posts if item[0] == '/v1/jobs')
     check('bridge payload exact fields and original whitespace', set(sent[1]) == {'schema_version','request_id','action','text','target_language'} and sent[1]['text'] == '  PC 전송 원문 😀\n둘째 줄  ')
@@ -225,7 +242,7 @@ with sync_playwright() as p:
     page.locator('#assist-local-cancel').click(); page.wait_for_timeout(1000)
     check('cancel does not paint late result', not page.locator('#assist-result').is_visible() and any(x[0].endswith('/cancel') for x in f.local_posts))
     page.locator('#assist-local-unpair').click(); expect(page.locator('#assist-local-run')).to_be_disabled()
-    check('unpair clears tab credential', page.evaluate('localStorage.length + sessionStorage.length') == 0)
+    check('unpair clears tab credential', no_helper_credential(page))
     page.locator('#assist-close').click()
     check('no unexpected/local/OpenAI network requests', not f.other_requests)
     check('no browser runtime errors', not f.errors)
