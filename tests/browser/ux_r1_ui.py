@@ -734,7 +734,7 @@ with sync_playwright() as p:
         pg.click("#appbar-apps")
         pg.wait_for_timeout(300)
         act = pg.evaluate("() => document.activeElement ? document.activeElement.getAttribute('href') : null")
-        step("Q:T-16 t-box 에서는 커뮤니티에 초점", (act or "").startswith("/community"), act)
+        step("Q:T-16 t-box 에서는 업무(앱 목록 순서의 다음 앱 — Q:F-12 자료실 · 업무 · 이야기)에 초점", (act or "") == "/community/", act)
         pg.click("#appbar-apps")
         pg.wait_for_timeout(200)
         step("Q:T-16 다시 누르면 접고 서랍을 닫는다", pg.evaluate("() => document.getElementById('sidebar').hidden && !document.querySelector('details.appbar__apps').open"))

@@ -11742,7 +11742,9 @@ function initShell(me, csrfToken) {
 
   /* 사용감 라운드 1 UX-12 (DESIGN 2.9 「폰 윗줄」) — 윗줄 앱 이름 = 앱 전환. 서랍을 열고 그 안의 앱 메뉴(`<details class="appbar__apps">`)를
      펼친 뒤 **다른 앱**(지금 앱이 아닌 첫 줄)에 초점을 둔다 → ☰ · 앱 전환 · t-box 세 번이 앱 이름 · t-box 두 번. 이미 펼쳐 있으면 접고 서랍을 닫는다.
-     새 메뉴를 만들지 않는다 — 앱 목록은 서랍의 그 메뉴 한 벌(Apps::all)이고, 이동은 그 링크다(권한 판단 0). */
+     새 메뉴를 만들지 않는다 — 앱 목록은 서랍의 그 메뉴 한 벌(Apps::all)이고, 이동은 그 링크다(권한 판단 0).
+     Q:F-12 — 목록이 셋(자료실 · 업무 · 이야기)이 되어도 같은 규칙: 목록 순서에서 지금 앱이 아닌 첫 줄(업무·이야기 → 자료실, 자료실 → 업무).
+     그다음 앱은 Tab 으로 닿는다. 넓은 화면은 아이콘 줄이 같은 일을 한 번에 한다(DESIGN 2.18). */
   if (appsButton && sidebar && navToggle && appsBox) {
     appsButton.addEventListener('click', function () {
       var showing = sidebar.hidden !== true && appsBox.open === true;
@@ -11764,6 +11766,20 @@ function initShell(me, csrfToken) {
     });
     appsBox.addEventListener('toggle', function () {
       appsButton.setAttribute('aria-expanded', sidebar.hidden !== true && appsBox.open ? 'true' : 'false');
+    });
+  }
+
+  /* 사이트 Q:F-12 C-2 (DESIGN 2.19 「이야기」) — 이야기 사이드바의 「＋ 새 이야기」는 스레드 화면이 내놓은 쓰기 창 창구
+     (`window.MemoryComposer.open` — memories.js, 화면 안 「지금 어떤 이야기를…」 단추와 같은 함수)를 부른다. 쓸 수 있는지는
+     그 함수가 `/api/me` 의 can_write 로 다시 보고, 막는 것은 쓰기 창구의 라우트 정책이다 — 여기에는 판단이 없다(역할 비교 0).
+     좁은 폭이면 서랍을 먼저 닫는다(쓰기 창이 서랍과 겹쳐 보이지 않게). */
+  var storyCompose = document.querySelector('[data-story-compose]');
+  if (storyCompose) {
+    storyCompose.addEventListener('click', function () {
+      var composer = window.MemoryComposer;
+      if (!composer || typeof composer.open !== 'function') { return; }
+      if (sidebar && navToggle && navToggle.getAttribute('aria-expanded') === 'true') { navToggle.click(); }
+      composer.open();
     });
   }
 

@@ -47,6 +47,13 @@ require_once __DIR__ . '/../Design.php';
  *
  * ★ 인라인 <script>·style 속성·on* 이벤트 속성을 쓰지 않는다 (CSP: script-src 'self', style-src 'self').
  *   아이콘은 shell_bottom.php 의 <template> 을 app.js 가 cloneNode 로 붙인다 (문자열 → HTML 변환 0).
+ *
+ * ★ Q:F-12 지시서 C (사이트 — WK-2 ① · WK-10 · WK-11 · WK-15, DESIGN 2.18 · 2.19, 커뮤니티 ARCHITECTURE 23.8):
+ *   · 세 앱(자료실 · 업무 · 이야기) 공통 **앱 아이콘 줄**(`nav.app-rail`)을 이 파일 **한 곳**에서 그린다 — 목록은 Apps::all() 순서 그대로,
+ *     아이콘은 Apps::ICON_PATHS(moa_icon.php), 지금 앱에 `aria-current="page"`. 960px 미만은 CSS 가 그리지 않는다(폰은 윗줄 앱 이름 ▾).
+ *   · 커뮤니티 셸을 두 모드로 나눴다 — `$shellModule = 'community'`(업무: 홈 · 내 작업 · 프로젝트 · 문서 …) ·
+ *     `'story'`(이야기: 스레드 · 여행 — memories_page.php 하나). 주소·라우트 정책은 그대로다(WK-15 A — 이 파일은 링크만 그린다).
+ *   · 옛 사이드바의 세 공간 상시 표시(`nav.moa-space-nav`)는 아이콘 줄이 대신해 없앴다.
  */
 
 /** 내비·본문 키의 허용 목록. 여기 없는 값은 빈 문자열이 된다. */
@@ -67,17 +74,47 @@ $shellKeys = [
  * t-box 셸**이다 — 기본값이 t-box 라는 뜻이고, t-box 화면 스무 곳을 고칠 일이 없다.
  * 값은 허용 목록 안의 것만 통과한다(핸들러의 오타가 속성값으로 새지 않는다).
  */
-$shellModuleKeys = ['community'];
+// Q:F-12 C-2 — `story`(이야기 앱 — 스레드 · 여행)를 더했다. 허용 목록 밖 값은 지금처럼 t-box 셸이 된다.
+$shellModuleKeys = ['community', 'story'];
 $shellMod = isset($shellModule) && is_string($shellModule) && in_array($shellModule, $shellModuleKeys, true)
     ? $shellModule
     : '';
 
-/** 셸이 보이는 이름 — 브랜드·`<title>` 꼬리표·그리드의 현재 앱이 이 값 하나를 따른다 */
-$shellBrandName = $shellMod === 'community' ? '모아 커뮤니티' : '모아 자료실';
-$shellBrandSub  = $shellMod === 'community' ? '소식 · 질문 · 함께 쓰는 문서' : '파일 보관 · 찾기 · 공유';
-$shellBrandIcon = $shellMod === 'community' ? 'community' : 'library';
-/** 그리드 팝업에서 `aria-current="page"` 가 붙는 앱의 key (`config/apps.json` 의 key) */
-$shellCurrentApp = $shellMod === 'community' ? 'community' : 'tbox';
+/** 그리드 팝업·아이콘 줄에서 `aria-current="page"` 가 붙는 앱의 key (`config/apps.json` 의 key — 모드 이름과 같다) */
+$shellCurrentApp = $shellMod === '' ? 'tbox' : $shellMod;
+
+/*
+ * 앱 메뉴·아이콘 줄의 목록 (Qaredi C — ARCH-launcher 6장 · Q:F-12 DESIGN 2.18). 런처와 **같은 한 곳**에서 읽는다.
+ * 부트스트랩의 require 목록에 새 줄을 더하지 않고 쓰는 곳에서 읽어 온다(Changelog.php 와 같은 방식).
+ * 값은 저장소가 추적하는 `config/apps.json` 이고 요청 값이 한 글자도 섞이지 않는다.
+ */
+require_once __DIR__ . '/../Apps.php';
+$shellApps = Apps::all();
+
+/**
+ * 셸이 보이는 이름 — 브랜드·`<title>` 꼬리표·윗줄 앱 전환 단추가 이 값 하나를 따른다.
+ * Q:F-12 (WK-10) — 이름·설명·아이콘은 앱 목록의 지금 앱 줄에서 읽는다(「모아 자료실」 · 「모아 업무」 · 「모아 이야기」).
+ * 목록에서 그 앱을 빼도 셸은 그려지도록 고정 글자를 기본값으로 둔다(값은 전부 코드·저장소 상수).
+ */
+$shellHereDefaults = [
+    'tbox'      => ['자료실', '파일 보관 · 찾기 · 공유', 'library'],
+    'community' => ['업무', '작업 · 프로젝트 · 문서', 'work'],
+    'story'     => ['이야기', '스레드 · 여행 — 일상 나누기', 'community'],
+];
+[$shellHereName, $shellBrandSub, $shellBrandIcon] = $shellHereDefaults[$shellCurrentApp];
+foreach ($shellApps as $shellHereRow) {
+    if ($shellHereRow['key'] === $shellCurrentApp) {
+        $shellHereName  = (string) $shellHereRow['name'];
+        $shellBrandSub  = (string) $shellHereRow['desc'];
+        $shellBrandIcon = (string) $shellHereRow['icon'];
+    }
+}
+$shellBrandName = '모아 ' . $shellHereName;
+/** 브랜드 표시의 색 갈래(moa.css 의 `.moa-module-mark--tbox|community` 둘뿐 — 이야기는 옛 커뮤니티 것 그대로) */
+$shellMarkKey = $shellCurrentApp === 'tbox' ? 'tbox' : 'community';
+/** 브랜드를 누르면 가는 그 앱의 첫 화면 — 고정 경로뿐 */
+$shellBrandHref = $shellMod === 'community' ? Http::communityUrl('/')
+    : ($shellMod === 'story' ? Http::communityUrl('/memories') : Http::url('/'));
 
 $shellUser   = isset($user) && is_array($user) ? $user : [];
 // 5-A″ — 「이름 (아이디)」, 이름이 없으면 「아이디」(모양은 bootstrap `tbox_person_label` 한 벌).
@@ -201,13 +238,8 @@ $themeAttr = Http::themeAttr();
 /** 자산 주소에 파일이 마지막으로 바뀐 시각(정수)을 붙여 옛 파일이 남지 않게 한다 (11단계) */
 $shellCssVersion = (int) filemtime(__DIR__ . '/../../public/assets/app.css');
 
-/*
- * 앱 그리드 단추의 목록 (Qaredi C — ARCH-launcher 6장). 런처와 **같은 한 곳**에서 읽는다.
- * 부트스트랩의 require 목록에 새 줄을 더하지 않고 쓰는 곳에서 읽어 온다(Changelog.php 와 같은 방식).
- * 값은 저장소가 추적하는 `config/apps.json` 이고 요청 값이 한 글자도 섞이지 않는다.
- */
-require_once __DIR__ . '/../Apps.php';
-$shellApps = Apps::all();
+/** 앱 아이콘 줄 아래 끝 「내 계정」 — aria-label 에 표시 이름(이름이 없으면 아이디). 이스케이프는 여기서 한 번(PRD S-03) */
+$shellRailMe = htmlspecialchars($shellRawName, ENT_QUOTES, 'UTF-8');
 
 /**
  * 25단계 — 화면이 더 싣는 스타일시트. **허용 목록 안의 이름만** 통과한다.
@@ -278,9 +310,11 @@ if (!headers_sent()) {
 <?php if ($shellPalette !== ''): ?>
 <link id="palette-css" rel="stylesheet" href="<?= COMMUNITY_BASE ?>/palette.css?v=<?= $shellPalette ?>">
 <?php endif; ?>
-<?php if ($shellMod === 'community' && $shellPage === 'community-today'): ?>
-<script type="module" src="<?= Http::url('/assets/community/briefing.js') ?>?v=<?= (int) filemtime(__DIR__ . '/../../public/assets/community/briefing.js') ?>"></script>
-<?php elseif ($shellMod === 'community'): ?>
+<?php
+/* Q:F-12 C-2 — 옛 「오늘」 화면(briefing.js 로 따로 시작하던 `community-today`)은 B 에서 308 넘김이 되어 이 셸을 그리지 않는다 —
+   그 갈래를 지워, 같은 키를 쓰는 업무 화면도 다른 업무 화면처럼 editor.js 한 벌로 시작한다.
+   이야기 셸(`story`)은 editor.js 를 싣지 않는다 — 업무 사이드바(트리·팀·게시판·알림)가 없고, 스레드 화면은 memories.js 가 맡는다. */
+if ($shellMod === 'community'): ?>
 <!-- 커뮤니티 화면의 동작 한 벌 (커뮤니티 ARCHITECTURE.md 21.3). `type="module"` 은 기본이
      defer 라 <head> 에 두어도 본문이 다 그려진 뒤 돌아간다 — shell_bottom 을 고치지 않고
      모듈 스크립트를 싣는 자리다. CSP 는 `script-src 'self'` 그대로이고 import map 을 쓰지
@@ -321,6 +355,21 @@ if (!headers_sent()) {
 <body data-page="<?= $shellPage ?>" data-base="<?= TBOX_BASE ?>"<?= $shellMod === '' ? '' : ' data-community-base="' . COMMUNITY_BASE . '"' ?>>
 <a class="skip" href="#main">본문으로 건너뛰기</a>
 <div class="app">
+  <!-- ─── 앱 아이콘 줄 (사이트 Q:F-12 · WK-11 ② · DESIGN 2.18) ───────────────────────────────
+       자료실 · 업무 · 이야기 사이를 한 번에 옮기는 맨 왼쪽 좁은 줄. **세 앱 셸 모두 이 마크업 한 벌**이다(앱마다 따로 그리지 않는다).
+       목록은 런처·앱 메뉴와 같은 Apps::all() 순서 그대로이고 `status: soon` 앱은 그리지 않는다. 손님·「역할로 보기」도 같은 목록이다 —
+       앱 안의 판정은 각 앱(라우트 정책)이 한다. 아이콘은 Apps::ICON_PATHS 의 고정 path(moa_icon.php) — 새 SVG 를 화면에 직접 쓰지 않는다.
+       960px 미만은 CSS 가 그리지 않는다(display:none — 화면 읽기에 같은 목록이 두 번 나오지 않게, 폰은 윗줄 앱 이름 ▾).
+       메신저는 여기 넣지 않는다(DESIGN 2.17 — 여는 단추 자리는 사이드바 「메신저」 · 폰 윗줄 말풍선 그대로). 스크립트 0 · 인라인 style 0. -->
+  <nav class="app-rail" aria-label="앱 바꾸기">
+    <a class="app-rail__home" href="/" aria-label="모아 홈"><span class="moa-symbol" aria-hidden="true">m.</span></a>
+<?php foreach ($shellApps as $shellRailApp): ?>
+<?php   if (($shellRailApp['status'] ?? '') === 'soon') { continue; } ?>
+    <a class="app-rail__item" href="<?= htmlspecialchars((string) $shellRailApp['path'], ENT_QUOTES, 'UTF-8') ?>"<?= $shellRailApp['key'] === $shellCurrentApp ? ' aria-current="page"' : '' ?>><?php $moaIcon = (string) $shellRailApp['icon']; require __DIR__ . '/moa_icon.php'; ?><span><?= htmlspecialchars((string) $shellRailApp['name'], ENT_QUOTES, 'UTF-8') ?></span></a>
+<?php endforeach; ?>
+    <span class="app-rail__spacer"></span>
+    <a class="app-rail__me" href="<?= Http::url('/settings') ?>" aria-label="내 계정 — <?= $shellRailMe ?>"><span aria-hidden="true"><?= $shellInitial ?></span></a>
+  </nav>
   <!-- 좁은 화면(960px 미만)에서만 보이는 상단 바. 메뉴 단추가 좌측 내비를 접었다 편다.
        넓은 화면에서는 CSS 가 이 줄을 감추고 내비를 늘 펼쳐 둔다. -->
   <header class="appbar">
@@ -359,8 +408,8 @@ if (!headers_sent()) {
   <aside id="sidebar" class="sidebar" hidden>
     <div class="moa-shell-links"><a href="/">모아 홈</a><a href="<?= Http::url('/welcome') ?>">계정·비서 설정</a></div>
     <div class="brand moa-brand">
-      <a class="moa-brand-home" href="<?= $shellMod === 'community' ? Http::communityUrl('/') : Http::url('/') ?>" aria-label="<?= htmlspecialchars($shellBrandName, ENT_QUOTES, 'UTF-8') ?> 첫 화면으로">
-        <span class="brand__mark moa-module-mark moa-module-mark--<?= $shellCurrentApp ?>"><?php $moaIcon=$shellBrandIcon; require __DIR__.'/moa_icon.php'; ?></span>
+      <a class="moa-brand-home" href="<?= $shellBrandHref ?>" aria-label="<?= htmlspecialchars($shellBrandName, ENT_QUOTES, 'UTF-8') ?> 첫 화면으로">
+        <span class="brand__mark moa-module-mark moa-module-mark--<?= $shellMarkKey ?>"><?php $moaIcon=$shellBrandIcon; require __DIR__.'/moa_icon.php'; ?></span>
         <span class="brand__text"><span class="brand__name"><?= htmlspecialchars($shellBrandName, ENT_QUOTES, 'UTF-8') ?></span><span class="brand__sub"><?= htmlspecialchars($shellBrandSub, ENT_QUOTES, 'UTF-8') ?></span></span>
       </a>
       <!-- ─── 앱 메뉴 (사용자 지시 2026-09-23) ───────────────────────────────────
@@ -372,9 +421,11 @@ if (!headers_sent()) {
            시험(Q:T-8)·문서가 쓰는 이름이라 유지한다. 앱 목록은 런처와 **같은** `Apps::all()` 이다.
            관리자 페이지 줄의 열고 닫음은 사이드바 관리 링크와 같은 표시용 값(`can_admin`)을
            app.js 가 쓰고, 막는 것은 여전히 라우트 정책·재인증 관문이다 (PRD S-01). -->
+      <!-- Q:F-12 (DESIGN 2.19 ①) — 앱 이름 단추 「업무 ▾」(「이야기 ▾」 · 「자료실 ▾」) = 이 앱 메뉴의 summary. 글자만 앱 이름으로 바뀌었다(전: 「메뉴」).
+           접근 이름은 보이는 글자로 시작한다(보이는 이름이 접근 이름 안에 — WCAG 2.5.3). -->
       <details class="appbar__apps">
-        <summary class="brand__switch moa-brand-menu" aria-label="계정과 공간 이동 메뉴" title="계정과 공간 이동 메뉴">
-          <span>메뉴</span>
+        <summary class="brand__switch moa-brand-menu" aria-label="<?= htmlspecialchars($shellHereName, ENT_QUOTES, 'UTF-8') ?> 메뉴 — 앱 바꾸기와 계정" title="<?= htmlspecialchars($shellHereName, ENT_QUOTES, 'UTF-8') ?> 메뉴 — 앱 바꾸기와 계정">
+          <span><?= htmlspecialchars($shellHereName, ENT_QUOTES, 'UTF-8') ?></span>
           <span class="brand__chev icon" data-icon="chevron"></span>
         </summary>
         <div class="panel app-menu">
@@ -414,10 +465,53 @@ if (!headers_sent()) {
       </details>
     </div>
 
-    <nav class="moa-space-nav" aria-label="모아 공간 이동">
-      <a href="<?= Http::communityUrl('/') ?>"<?= $shellMod === 'community' ? ' aria-current="page"' : '' ?>><span class="icon" data-icon="community"></span><span><strong>커뮤니티</strong><small>소식과 문서 나누기</small></span></a>
-      <a href="<?= Http::url('/') ?>"<?= $shellMod !== 'community' ? ' aria-current="page"' : '' ?>><span class="icon" data-icon="library"></span><span><strong>자료실</strong><small>파일 찾고 공유하기</small></span></a>
+<?php if ($shellMod === 'community'): ?>
+    <!-- ─── 업무 앱의 사이드바 위쪽 (Q:F-12 · DESIGN 2.19 ②③ — 시안 v1) ─────────────────────────────
+         「＋ 새로 만들기」(셸의 검정 하나 · 쓰기 자격이 없으면 그리지 않는다 — `can_community_write` 와 같은 판정 함수) →
+         홈 · 내 작업 · 받은 알림 → (아래 공용) 검색 · 메신저. 「오늘 할 일」은 없어졌다(옛 주소 `/community/today` 는 308 `/community/my-tasks`).
+         메뉴는 2.15 `.menu` 틀 그대로 — 여닫기는 <details>, 밖 누르기·Esc·항목 누르기는 app.js initMenus 한 곳.
+         「문서」 = 지금의 새 페이지(`#nav-community-new` — editor.js bindNewPage). 「작업」·「프로젝트」는 업무 화면 조각(D)이 동작을 붙이며 열 때까지 hidden 이다
+         (2.15 — 보이는 항목이 하나뿐인 것은 괜찮다). 막는 것은 서버다: `POST /community/api/pages` 는 정책 community.write. -->
+<?php   if ($shellCommunityWrite): ?>
+    <details id="nav-new-menu" class="menu">
+      <summary class="btn"><span class="icon" data-icon="plus"></span><span>새로 만들기</span></summary>
+      <div class="menu__list">
+        <button id="nav-new-task" class="menu__item" type="button" hidden><span class="icon" data-icon="check"></span><span>작업</span></button>
+        <button id="nav-new-project" class="menu__item" type="button" hidden><span class="icon" data-icon="work"></span><span>프로젝트</span></button>
+        <button id="nav-community-new" class="menu__item" type="button"><span class="icon" data-icon="files"></span><span>문서</span></button>
+      </div>
+    </details>
+<?php   endif; ?>
+    <!-- 홈 = 업무의 첫 화면(`/community/` — 업무 홈은 D 가 그린다) · 내 작업 = `/community/my-tasks`(D). 켜는 열쇠는 이 파일의 허용 목록 안 값만 —
+         홈은 지금 첫 화면 키(`community-overview`), 내 작업은 옛 「오늘」 키(`community-today` — 그 화면을 잇는다). -->
+    <!-- 알림 (5-D, PRD F-22) — 종 아이콘 + 안 읽은 수. 30초마다 `GET /community/api/notifications?unread=1`(editor.js initNotifications).
+         누르면 알림 창 — 목록은 창구가 **지금도 볼 수 있는 페이지만** 제목을 준다(아니면 「볼 수 없는 페이지」). Q:F-12 — 이름 「받은 알림」(2.19 ③). -->
+    <nav class="nav" aria-label="업무">
+      <a id="nav-work-home" class="<?= $shellNavClass('community-overview') ?>" href="<?= Http::communityUrl('/') ?>"><span class="icon" data-icon="home"></span><span>홈</span></a>
+      <a id="nav-work-my-tasks" class="<?= $shellNavClass('community-today') ?>" href="<?= Http::communityUrl('/my-tasks') ?>"><span class="icon" data-icon="check"></span><span>내 작업</span></a>
+      <button id="nav-community-bell" class="nav__item" type="button" aria-haspopup="dialog">
+        <span class="icon" data-icon="bell"></span><span>받은 알림</span>
+        <span id="nav-community-bell-count" class="badge badge--internal" hidden></span>
+      </button>
     </nav>
+<?php elseif ($shellMod === 'story'): ?>
+    <!-- ─── 이야기 앱의 사이드바 (Q:F-12 · DESIGN 2.19 「이야기」 · WK-2 ① · WK-15 A — 주소는 지금 그대로 `/community/memories*`) ───
+         「＋ 새 이야기」(검정 · 지금 스레드 쓰기 창 — 스레드 화면의 `window.MemoryComposer`, app.js 가 이어 준다) → 팔로잉 스레드 · 나의 스레드 ·
+         새로운 이야기 발견(켜짐 표시는 memories.js 가 `data-thread-nav` 로) · 여행 계획(지금 여행 창 — travel-plans.js 가 `?travel=1` 에서 연다) → (아래 공용) 검색 · 메신저.
+         업무 묶음(프로젝트 · 문서 · 팀 · 게시판)은 그리지 않는다. 쓰는 단추(새 이야기 · 여행 계획)는 쓰기 자격이 있을 때만 — 판정 함수 값, 역할 비교 0
+         (숨김은 편의 — 쓰기 창구 `POST /community/api/memories` · 여행 창구는 라우트 정책이 다시 막는다). -->
+<?php   if ($shellCommunityWrite): ?>
+    <button id="nav-story-new" class="btn" type="button" data-story-compose aria-haspopup="dialog" aria-controls="compose-dialog"><span class="icon" data-icon="plus"></span><span>새 이야기</span></button>
+<?php   endif; ?>
+    <nav class="nav" aria-label="이야기">
+      <a class="nav__item" data-thread-nav="feed" href="<?= Http::communityUrl('/memories') ?>"><span class="icon" data-icon="home"></span><span>팔로잉 스레드</span></a>
+      <a class="nav__item" data-thread-nav="mine" href="<?= Http::communityUrl('/memories') ?>?view=mine"><span class="icon" data-icon="users"></span><span>나의 스레드</span></a>
+      <a class="nav__item" data-thread-nav="discover" href="<?= Http::communityUrl('/memories') ?>?view=discover"><span class="icon" data-icon="search"></span><span>새로운 이야기 발견</span></a>
+<?php   if ($shellCommunityWrite): ?>
+      <a id="nav-story-travel" class="nav__item" href="<?= Http::communityUrl('/memories') ?>?travel=1"><span class="icon" data-icon="log"></span><span>여행 계획</span></a>
+<?php   endif; ?>
+    </nav>
+<?php endif; ?>
 
     <!-- 검색 (5-B → Q:F-2 두 앱 공통) — 누르거나 Ctrl+K(⌘K). 창과 동작은 search.js, 무엇이 나오나는 각 앱의 서버
          (커뮤니티 search.php — 페이지·댓글 / t-box files_list.php — 파일 전역 검색). 창에 커뮤니티 기준 주소를 싣는다
@@ -436,7 +530,7 @@ if (!headers_sent()) {
       <p id="search-note" class="search-dialog__note muted" role="status"></p>
     </dialog>
 <?php if ($shellMessenger): ?>
-    <!-- Q:F-11 — 메신저(떠 있는 창, DESIGN 2.17). 두 모드 공용 · 같은 자리(검색 바로 아래). 창은 shell_bottom 이 messenger_window.php 로 붙인다. -->
+    <!-- Q:F-11 — 메신저(떠 있는 창, DESIGN 2.17). 세 모드 공용 · 같은 자리(검색 바로 아래 — Q:F-12 에서도 바뀌지 않음). 창은 shell_bottom 이 messenger_window.php 로 붙인다. -->
     <nav class="nav" aria-label="메신저">
       <button id="messenger-open" class="nav__item" type="button" data-messenger-open aria-haspopup="dialog" aria-controls="messenger-window" aria-expanded="false">
         <span class="icon" data-icon="messages"></span><span>메신저</span><span class="badge badge--internal" data-message-unread hidden></span>
@@ -444,26 +538,13 @@ if (!headers_sent()) {
     </nav>
 <?php endif; ?>
 <?php if ($shellMod === 'community'): ?>
-    <!-- ─── 커뮤니티 모듈의 내비 (커뮤니티 ARCHITECTURE.md 21.3) ───────────────────
-         항목 둘이다. 「내 공간」은 링크, 「새 페이지」는 만들자마자 그 페이지로 가야 해서
-         단추다(누르면 editor.js 가 `POST /community/api/pages` 를 부르고 이동한다).
+    <!-- ─── 업무 앱의 사이드바 아래쪽 (커뮤니티 ARCHITECTURE.md 21.3 → Q:F-12 DESIGN 2.19 ④~⑧) ───────────────────
+         즐겨찾기 · 최근(있을 때만) → 프로젝트 → 포트폴리오 → 팀 → 문서 → 공유받은 페이지 → 「더보기」(접힘).
          단추에도 같은 `.nav__item` 을 쓴다 — 화면 전용 클래스를 만들지 않는다(DESIGN 원칙 6).
-         t-box 의 파일·설정·관리 묶음은 이 모드에서 **그리지 않는다**: 다른 앱의 내비이고,
-         앱 사이 이동은 위 그리드 단추가 맡는다. -->
-    <!-- 알림 (5-D, PRD F-22) — 종 아이콘 + 안 읽은 수. 30초마다 `GET /community/api/notifications?unread=1`.
-         누르면 알림 창 — 목록은 창구가 **지금도 볼 수 있는 페이지만** 제목을 준다(아니면 「볼 수 없는 페이지」). -->
-    <nav class="nav" aria-label="오늘의 업무">
-      <a id="nav-community-today" class="<?= $shellNavClass('community-today') ?>" href="<?= Http::communityUrl('/today') ?>"><span class="icon" data-icon="check"></span><span>오늘 할 일</span></a>
-    </nav>
-    <nav class="nav" aria-label="알림"<?= $shellPage === 'community-today' ? ' hidden' : '' ?>>
-      <button id="nav-community-bell" class="nav__item" type="button" aria-haspopup="dialog">
-        <span class="icon" data-icon="bell"></span><span>알림</span>
-        <span id="nav-community-bell-count" class="badge badge--internal" hidden></span>
-      </button>
-    </nav>
+         t-box 의 파일·설정·관리 묶음과 이야기 묶음은 이 모드에서 **그리지 않는다**: 다른 앱의 내비이고, 앱 사이 이동은 아이콘 줄 · 앱 메뉴가 맡는다. -->
     <dialog id="notify-dialog" class="modal modal--form modal--stack" aria-labelledby="notify-title">
       <div class="modal__head">
-        <h2 id="notify-title" class="modal__title">알림</h2>
+        <h2 id="notify-title" class="modal__title">받은 알림</h2>
         <button class="btn btn--icon btn--plain" type="button" data-notify-close aria-label="닫기">
           <span class="icon" data-icon="x"></span>
         </button>
@@ -478,8 +559,8 @@ if (!headers_sent()) {
         <button id="notify-all-read" class="btn" type="button">모두 읽음</button>
       </div>
     </dialog>
-    <!-- 즐겨찾기 · 최근 (개발 대기열 6 · Q:F-3a 라운드 A — 결정 M-1 순서: 즐겨찾기(접을 수 있음) → 최근 → 내 공간 → 팀 공간 →
-         공유받은 페이지). 항목은 editor.js 가 창구 `GET /community/api/me/favorites` · `GET /community/api/me/recent` 의 답 —
+    <!-- 즐겨찾기 · 최근 (개발 대기열 6 · Q:F-3a 라운드 A — 결정 M-1 순서: 즐겨찾기(접을 수 있음) → 최근 → … Q:F-12 2.19 「프로젝트 위에 그대로」).
+         항목은 editor.js 가 창구 `GET /community/api/me/favorites` · `GET /community/api/me/recent` 의 답 —
          **지금 볼 수 있는 것만**(검색과 같은 조건절) — 으로 채운다. 이 파일에는 판단이 없다. 없으면 묶음째 숨는다.
          새 클래스 0: 제목은 `.nav-title`, 줄은 사이드바 트리와 같은 `.nav-tree` 줄(5-A′). 접기·펼치기는 <details> 가 한다
          (여닫는 스크립트 0 · 키보드로도 열린다 — DESIGN 2.14 페이지 트리와 같은 방식). 즐겨찾기 순서는 줄을 끌어 놓거나
@@ -510,42 +591,28 @@ if (!headers_sent()) {
         <button class="btn btn--quiet" type="button" data-recent-close>닫기</button>
       </div>
     </dialog>
-    <p class="nav-title">우리의 이야기</p>
-    <nav class="nav" aria-label="스레드와 대화">
-      <a class="nav__item" href="<?= Http::communityUrl('/') ?>"><span class="icon" data-icon="grid"></span><span>커뮤니티 둘러보기</span></a>
-      <a class="nav__item" data-thread-nav="mine" href="<?= Http::communityUrl('/memories') ?>?view=mine"><span class="icon" data-icon="users"></span><span>나의 스레드</span></a>
-      <a class="nav__item" data-thread-nav="feed" href="<?= Http::communityUrl('/memories') ?>"><span class="icon" data-icon="home"></span><span>팔로잉 스레드</span></a>
-      <a class="nav__item" data-thread-nav="discover" href="<?= Http::communityUrl('/memories') ?>?view=discover"><span class="icon" data-icon="search"></span><span>새로운 이야기 발견</span></a>
-    </nav>
-    <p class="nav-title">내 공간</p>
-    <nav class="nav" aria-label="커뮤니티">
+    <!-- 프로젝트 · 포트폴리오 (Q:F-12 DESIGN 2.19 ④⑤) — 자리만 둔다. 항목은 업무 화면 조각(D)의 스크립트가 창구의 답(볼 수 있는 프로젝트 ·
+         내가 볼 수 있는 팀 공간의 포트폴리오 — ARCH 23.7)으로 채우고, 채울 것이 없으면 제목째 숨은 채다(이 파일에는 판단이 없다). -->
+    <p id="nav-work-projects-title" class="nav-title" hidden>프로젝트</p>
+    <nav id="nav-work-projects" class="nav" aria-label="프로젝트" hidden></nav>
+    <p id="nav-work-portfolios-title" class="nav-title" hidden>포트폴리오</p>
+    <nav id="nav-work-portfolios" class="nav" aria-label="포트폴리오" hidden></nav>
+    <!-- 팀 (4-B → Q:F-12 2.19 ⑥) — 항목은 `editor.js` 가 창구 `GET /community/api/spaces` 의 답으로
+         채운다. **이 파일에는 팀 판단이 없다**: 내 팀이 무엇인지도, 팀 공간이 있는지도
+         서버가 정하고 화면은 받은 것만 그린다 (PRD S-01, DESIGN 원칙 1).
+         팀 공간이 없으면 이 자리는 끝까지 비어 있고 제목 줄도 보이지 않는다. -->
+    <p id="nav-community-team-title" class="nav-title" hidden>팀</p>
+    <nav id="nav-community-teams" class="nav" aria-label="팀 공간" hidden></nav>
+    <!-- 문서 (Q:F-12 2.19 ⑦) — 내 문서(`/community/workspace` 그대로) · 내 페이지 트리(5-A′ — editor.js 가 `?tree=1` 의 답으로 채운다) · 절차서,
+         이어서 「게시판」 목록(볼 수 있는 게시판만 — 게시판 모음 화면이 따로 없어 목록째 이 묶음 끝에 둔다). -->
+    <p class="nav-title">문서</p>
+    <nav class="nav" aria-label="문서">
       <a id="nav-community-home" class="<?= $shellNavClass('community-home') ?>" href="<?= Http::communityUrl('/workspace') ?>">
         <span class="icon" data-icon="files"></span><span>내 문서</span>
       </a>
-      <a class="nav__item" href="<?= Http::communityUrl('/automations') ?>"><span class="icon" data-icon="log"></span><span>자동 작업</span></a>
-      <a class="nav__item" href="<?= Http::communityUrl('/procedures') ?>"><span class="icon" data-icon="files"></span><span>절차서</span></a>
-      <a class="nav__item" href="<?= Http::communityUrl('/suggestions') ?>"<?= $shellCommunityWrite ? '' : ' hidden' ?>><span class="icon" data-icon="files"></span><span>내 제안</span></a>
-      <a class="nav__item" href="<?= Http::communityUrl('/integrations') ?>"><span class="icon" data-icon="files"></span><span>공유·연동 설정</span></a>
-      <a class="nav__item" href="<?= Http::communityUrl('/ai') ?>"><span class="icon" data-icon="files"></span><span>문서 AI</span></a>
-      <!-- 내 페이지 트리 (5-A′) — editor.js 가 `?tree=1` 의 답으로 채운다 -->
       <div id="nav-community-tree" class="nav-tree-box"></div>
-      <button id="nav-community-new" class="nav__item" type="button"<?= $shellCommunityWrite ? '' : ' hidden' ?>>
-        <span class="icon" data-icon="plus"></span><span>새 문서</span>
-      </button>
-      <!-- 디버깅 묶음 U3 — 「내 휴지통」: t-box 사이드바와 **같은 이름 · 같은 자리**(첫 묶음의 끝, DESIGN 2.9). 전에는 커뮤니티 첫 화면
-           「더보기 → 휴지통」에만 있었다. 누르면 커뮤니티 첫 화면의 휴지통 창이 열린다(꼬리표 `trash=1` — 고정 글자, 첫 화면에서는 이동 없이 창만).
-           목록은 전과 같이 창구 `GET /community/api/me/trash` 가 주는 것뿐이다. 쓰기 자격이 없는 사람(손님)은 지울 수 없어 늘 비어 있으므로
-           「새 페이지」와 같은 값으로 숨긴다(편의 — 창구가 다시 판단한다). -->
-      <a id="nav-community-trash" class="nav__item" href="<?= Http::communityUrl('/workspace') ?>?trash=1"<?= $shellCommunityWrite ? '' : ' hidden' ?>>
-        <span class="icon" data-icon="trash"></span><span>내 휴지통</span>
-      </a>
-      <!-- 팀 공간 (4-B) — 항목은 `editor.js` 가 창구 `GET /community/api/spaces` 의 답으로
-           채운다. **이 파일에는 팀 판단이 없다**: 내 팀이 무엇인지도, 팀 공간이 있는지도
-           서버가 정하고 화면은 받은 것만 그린다 (PRD S-01, DESIGN 원칙 1).
-           팀 공간이 없으면 이 자리는 끝까지 비어 있고 제목 줄도 보이지 않는다. -->
+      <a class="nav__item" href="<?= Http::communityUrl('/procedures') ?>"><span class="icon" data-icon="log"></span><span>절차서</span></a>
     </nav>
-    <p id="nav-community-team-title" class="nav-title" hidden>팀 공간</p>
-    <nav id="nav-community-teams" class="nav" aria-label="팀 공간" hidden></nav>
     <!-- 게시판 (5-C) — 항목은 editor.js 가 창구 `GET /community/api/boards` 의 답(볼 수 있는 게시판만)으로
          채운다. 종류마다 아이콘(공지·토론·질문답변)이 다르고, 보관 중인 게시판에는 「보관」이 붙는다.
          볼 수 있는 게시판이 하나도 없으면 제목째 숨는다. 이 파일에는 게시판 판단이 없다. -->
@@ -554,11 +621,30 @@ if (!headers_sent()) {
     <!-- 공유받은 페이지 (5-A · 5-A′) — 있을 때만 제목째 보인다 -->
     <p id="nav-community-shared-title" class="nav-title" hidden>공유받은 페이지</p>
     <nav id="nav-community-shared" class="nav" aria-label="공유받은 페이지" hidden></nav>
+    <!-- 「더보기」 (Q:F-12 DESIGN 2.19 ⑧ — 시안 v1 승인) — 처음엔 접혀 있는 <details>(즐겨찾기 묶음과 같은 틀 · 여닫는 스크립트 0).
+         자동 작업 · 내 제안 · 공유·연동 설정 · 문서 AI · **내 휴지통**. 2.9 「휴지통 자리 — 두 앱이 같게」를 업무 앱에서는 이렇게 고쳤다(자료실은 그대로).
+         「내 휴지통」(디버깅 묶음 U3): 누르면 「내 문서」 화면의 휴지통 창이 열린다(꼬리표 `trash=1` — 고정 글자, 그 화면에서는 이동 없이 창만).
+         목록은 전과 같이 창구 `GET /community/api/me/trash` 가 주는 것뿐이다. 쓰기 자격이 없는 사람(손님)은 지울 수 없어 늘 비어 있으므로
+         「내 제안」과 같은 값으로 숨긴다(편의 — 창구가 다시 판단한다). -->
+    <details id="nav-community-more-box">
+      <summary class="nav-title">더보기</summary>
+      <nav class="nav" aria-label="더보기">
+        <a class="nav__item" href="<?= Http::communityUrl('/automations') ?>"><span class="icon" data-icon="log"></span><span>자동 작업</span></a>
+        <a class="nav__item" href="<?= Http::communityUrl('/suggestions') ?>"<?= $shellCommunityWrite ? '' : ' hidden' ?>><span class="icon" data-icon="files"></span><span>내 제안</span></a>
+        <a class="nav__item" href="<?= Http::communityUrl('/integrations') ?>"><span class="icon" data-icon="link"></span><span>공유·연동 설정</span></a>
+        <a class="nav__item" href="<?= Http::communityUrl('/ai') ?>"><span class="icon" data-icon="assistant"></span><span>문서 AI</span></a>
+        <a id="nav-community-trash" class="nav__item" href="<?= Http::communityUrl('/workspace') ?>?trash=1"<?= $shellCommunityWrite ? '' : ' hidden' ?>>
+          <span class="icon" data-icon="trash"></span><span>내 휴지통</span>
+        </a>
+      </nav>
+    </details>
     <!-- 즐겨찾기 아이콘 둘(빈 별 = 넣기 · 찬 별 = 빼기). DESIGN 2.11 규격(24×24 · stroke 1.8, lucide star) — t-box 파일 화면(home.php)과 같은 글자.
          Q:F-3a 라운드 B — 사이드바 트리 줄의 ☆ · 「내 공간」 선택 막대가 세 화면 모두에서 쓰므로 페이지 화면(page_view.php)에서 여기로 옮겼다
          (같은 id 가 두 번 나오지 않게 한 곳에만). 고정 문자열이고 사용자 입력이 한 글자도 없다 — editor.js 는 cloneNode 로만 붙인다. -->
     <template id="tpl-icon-star"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m12 2.5 2.9 5.9 6.5.9-4.7 4.6 1.1 6.5L12 17.3l-5.8 3.1 1.1-6.5-4.7-4.6 6.5-.9z"/></svg></template>
     <template id="tpl-icon-star-fill"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m12 2.5 2.9 5.9 6.5.9-4.7 4.6 1.1 6.5L12 17.3l-5.8 3.1 1.1-6.5-4.7-4.6 6.5-.9z"/></svg></template>
+<?php elseif ($shellMod === 'story'): ?>
+    <!-- 이야기 앱에는 사이드바 아래쪽 묶음이 없다(DESIGN 2.19 「이야기」 — 업무 묶음은 그리지 않는다) -->
 <?php else: ?>
     <p class="nav-title">파일</p>
     <nav class="nav" aria-label="파일">

@@ -20,7 +20,9 @@ $activeNav = 'community-threads';
 $pageKey = 'community-threads';
 $pageHelp = 'community-threads';
 $pageCss = ['community/community.css', 'community/memories.css', 'community/travel-plans.css'];
-$shellModule = 'community';
+// Q:F-12 C-2 (WK-2 ① · ARCH 23.8) — 스레드·여행은 「이야기」 앱이다: 셸이 이야기 사이드바(DESIGN 2.19)와 아이콘 줄의 「이야기」 켜짐으로 그린다.
+// 주소·라우트 정책은 그대로(WK-15 A — `/community/memories*` · 공개 공유 `/memories/s/{token}` 은 셸을 쓰지 않는다).
+$shellModule = 'story';
 $pagePalette = $isShared ? '' : community_palette_version();
 $cssVersion = filemtime(__DIR__ . '/../../../public/assets/community/memories.css');
 $jsVersion = filemtime(__DIR__ . '/../../../public/assets/community/memories.js');

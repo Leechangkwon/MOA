@@ -80,7 +80,7 @@ with sync_playwright() as p:
  page.set_viewport_size({'width':1440,'height':1000});page.goto(SITE+'/tbox/settings',wait_until='networkidle')
  page.locator('[data-design-open]').first.click();page.locator('[data-design-choice="astra"]').click();page.locator('#q-design-save').click();page.locator('[data-design-close]').click()
  page.goto(SITE+'/community/',wait_until='networkidle');expect(page.locator('html')).to_have_attribute('data-design','astra')
- check('community unchanged script boot',page.locator('.brand__name').inner_text()=='커뮤니티')
+ check('community unchanged script boot',page.locator('.brand__name').inner_text()=='모아 업무')  # 원래 어긋남(「모아 커뮤니티」) → Q:F-12 C 업무 셸 이름
  # Theme popup is not subject to other dialogs' IDs or app.js dispatch.
  page.locator('[data-design-open]').first.click();check('actual popup visible',page.locator('#q-design-dialog').is_visible());page.screenshot(path=str(OUT/'theme-picker.png'));page.keyboard.press('Escape')
  anon=browser.new_context(user_agent='tbox-review/2026-10-01');ap=anon.new_page()

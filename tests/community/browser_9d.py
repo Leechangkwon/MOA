@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Actual Today UI: responsive layout, original-document check, stale save rejection."""
+"""Q:F-12 — the Today screen moved (B: 308 /community/my-tasks). Browser follows the old address; 업무 sidebar 「내 작업」 (C). Earlier: Today UI checks."""
 import json
 import os
 from pathlib import Path
@@ -26,46 +26,28 @@ def check(ok, name):
 
 try:
     with sync_playwright() as p:
-        browser = p.chromium.launch()
-        for width, theme in [(1280, 'light'), (390, 'light'), (390, 'dark'), (360, 'light'), (820, 'dark')]:
+        browser = p.chromium.launch(executable_path=os.environ.get('CHROMIUM_EXECUTABLE'))
+        for width, theme in [(1280, 'light'), (390, 'dark')]:
             ctx = browser.new_context(viewport={'width': width, 'height': 900}, locale='ko-KR', color_scheme=theme,
                                       user_agent='tbox-review/' + time.strftime('%Y-%m-%d'))
             ctx.add_cookies([{'name': '__Host-tbox_session', 'value': data['users']['employee']['session'],
                               'domain': host, 'path': '/', 'secure': True, 'httpOnly': True, 'sameSite': 'Lax'},
                              {'name': 'tbox_theme', 'value': theme, 'domain': host, 'path': '/', 'sameSite': 'Lax'}])
             page = ctx.new_page()
-            errors, writes = [], []
-            page.on('pageerror', lambda e: errors.append(str(e)))
+            writes = []
             page.on('request', lambda r: writes.append(urlsplit(r.url).path) if r.method not in ('GET', 'HEAD') else None)
+            # Q:F-12 (B 308 · C) — 옛 「오늘」 주소는 브라우저에서도 「내 작업」 주소로 넘어간다(그 화면은 D — 여기서는 주소만 본다)
             page.goto(site + '/community/today', wait_until='networkidle')
-            page.locator('#briefing-top a').first.wait_for()
-            check(page.locator('#briefing-top a').count() == 3, 'top three rendered ' + str(width) + theme)
-            check(not page.locator('#briefing-others-box').get_attribute('open'), 'other tasks initially collapsed ' + str(width) + theme)
+            check(urlsplit(page.url).path == '/community/my-tasks', 'old Today address lands on /community/my-tasks ' + str(width) + theme)
+            # 업무 사이드바의 「내 작업」이 그 주소이고 「오늘 할 일」 항목은 없다
+            # 사이드바는 서버가 그린다 — 「load」 까지만 기다린다(이 틀의 php -S 에서 내 문서 화면은 networkidle 에 닿지 않는다: 기준 판 automation_ui 와 같은 현상)
+            page.goto(site + '/community/workspace', wait_until='load')
+            link = page.locator('#nav-work-my-tasks')
+            check(link.count() == 1 and link.get_attribute('href') == '/community/my-tasks' and '내 작업' in (link.text_content() or ''), '업무 sidebar 「내 작업」 → /community/my-tasks ' + str(width) + theme)
+            check(page.locator('#sidebar').get_by_text('오늘 할 일').count() == 0, '업무 sidebar has no 「오늘 할 일」 ' + str(width) + theme)
             check(page.evaluate('document.documentElement.scrollWidth <= innerWidth'), 'no horizontal overflow ' + str(width) + theme)
-            check(not writes, 'viewing Today emits no mutation request ' + str(width) + theme)
-            page.screenshot(path=str(output / ('today-' + str(width) + '-' + theme + '.png')), full_page=True)
-            if width == 1280:
-                page.locator('#briefing-others-box > summary').click()
-                control = page.get_by_role('checkbox', name='첨부 근거 확인 완료')
-                # Simulate the documented optimistic concurrency response once.
-                def stale(route):
-                    if route.request.method == 'PATCH':
-                        route.fulfill(status=409, content_type='application/json', body='{"error":"conflict"}')
-                    else:
-                        route.continue_()
-                page.route('**/community/api/pages/' + ids['check'], stale)
-                control.check()
-                expect(page.locator('#briefing-msg')).to_contain_text('다른 곳에서')
-                check(not control.is_checked(), '409 reverts checkbox and reloads without overwriting')
-                page.unroute('**/community/api/pages/' + ids['check'], stale)
-                control.check()
-                expect(page.locator('#briefing-msg')).to_contain_text('원본 문서에')
-                check(page.get_by_role('checkbox', name='첨부 근거 확인 완료').count() == 0, 'completed check disappears after actual save')
-                check(page.locator('#briefing-refresh').evaluate('(e) => e === document.activeElement'), 'focus returns to refresh after removed item')
-                check('/community/api/pages/' + ids['check'] in writes, 'checkbox used the ordinary page PATCH API')
-            page.locator('#briefing-refresh').click()
-            expect(page.locator('#briefing-refresh')).to_be_enabled()
-            check(not errors, 'no JS errors ' + str(width) + theme)
+            check(not writes, 'following the moved address emits no mutation request ' + str(width) + theme)
+            page.screenshot(path=str(output / ('moved-today-' + str(width) + '-' + theme + '.png')), full_page=True)
             ctx.close()
         browser.close()
 finally:

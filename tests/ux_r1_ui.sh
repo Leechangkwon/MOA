@@ -258,7 +258,8 @@ expect "「내 공간」 — 「최근」 판(처음 hidden · 목록 자리)" "
   "$(grep -c '<section class="panel panel--tight" id="community-home-recent" aria-labelledby="community-home-recent-title" hidden>' "$WORK/home.html") $(grep -c '<div id="community-home-recent-list"></div>' "$WORK/home.html")"
 expect "페이지 — 제목 칸 자리표시 「제목」 · 더보기 맨 위 사용 방법·이력(처음 hidden)" "1 1 1" \
   "$(grep -c 'id="page-title-input" type="text" maxlength="200" autocomplete="off" spellcheck="false" placeholder="제목" enterkeyhint="next">' "$WORK/page.html") $(grep -c '<button id="page-more-help" class="menu__item" type="button" data-help-open aria-haspopup="dialog" hidden>' "$WORK/page.html") $(grep -c '<button id="page-more-history" class="menu__item" type="button" aria-haspopup="dialog" hidden>' "$WORK/page.html")"
-expect "화면 HTML 에 계정 이름이 셸 글자 밖으로 새지 않는다(윗줄 단추 aria-label 은 앱 이름뿐)" "1" "$(grep -c 'aria-label="모아 커뮤니티 — 앱 전환"' "$WORK/home.html")"
+# Q:F-12 C — 커뮤니티 셸의 업무 쪽 이름은 「모아 업무」(DESIGN 2.19 · WK-10)
+expect "화면 HTML 에 계정 이름이 셸 글자 밖으로 새지 않는다(윗줄 단추 aria-label 은 앱 이름뿐)" "1" "$(grep -c 'aria-label="모아 업무 — 앱 전환"' "$WORK/home.html")"
 
 hr "UXR1-B 화면 — tests/browser/ux_r1_ui.py (360 · 412 · 820 터치 · 1280 × 라이트 · 다크 + 흐름)"
 if [ "${UXR1_SKIP_BROWSER:-0}" = "1" ]; then

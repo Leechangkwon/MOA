@@ -96,7 +96,8 @@ echo "KEYLIST=", implode(",", $keys), "\n";
 echo "NOTE_감사로그=", preg_match_all("/감사 로그/u", $all), "\n";
 ' "$ROOT/src/help/screens.php" > "$OUT/a-screens.txt" 2>&1
 cat "$OUT/a-screens.txt"
-expect "키 13개(F-43 fetch-hosts·커뮤니티 셋 포함 — 5-C 게시판)" 13 "$(sed -n 's/^KEYS=//p' "$OUT/a-screens.txt")"
+# 원래 어긋남(Q:F-12 C 에서 함께 고침) — 키는 18개: t-box 10 + 커뮤니티 8(ai · form · integrations · today · threads · home · page · board)
+expect "키 18개(F-43 fetch-hosts · 커뮤니티 여덟)" 18 "$(sed -n 's/^KEYS=//p' "$OUT/a-screens.txt")"
 expect "모든 문자열에 '<' 없음" 0 "$(sed -n 's/^LT=//p' "$OUT/a-screens.txt")"
 expect "구조 설명 문구 0건" 0 "$(sed -n 's/^BANNED=//p' "$OUT/a-screens.txt")"
 
@@ -122,7 +123,8 @@ done
 expect "로그인·재인증·2단계 등록·위키 0건" 0 "$n_bad"
 
 sub "저장소 전체에서 \$pageHelp 를 넘기는 파일 수"
-expect "정확히 13개(F-43 fetch-hosts·커뮤니티 셋 포함 — 5-C 게시판)" 13 "$(grep -rl '^\$pageHelp' "$ROOT/src" | wc -l)"
+# 원래 어긋남(Q:F-12 C 에서 함께 고침) — 넘기는 파일 16개: t-box 10 + 커뮤니티 6(home_page · memories_page · ai_page · board_view · form_view · page_view)
+expect "정확히 16개(F-43 fetch-hosts · 커뮤니티 여섯)" 16 "$(grep -rl '^\$pageHelp' "$ROOT/src" | wc -l)"
 
 # ─────────────────────────────────────────────────────────────
 hr "(c) 화면의 「사용 방법」 단추"

@@ -249,13 +249,6 @@ html[data-theme="dark"] .moa-module-mark--tbox { color:#edb978; }
 .moa-brand .appbar__apps { position:static; flex:none; }
 .moa-brand .moa-brand-menu { padding:8px 3px; margin:0; gap:2px; font-size:9px; color:var(--muted); flex-direction:column; }
 .moa-brand .app-menu { left:0; right:0; top:calc(100% - 10px); }
-.moa-space-nav { display:flex; flex-direction:column; gap:5px; padding-bottom:15px; margin-bottom:15px; border-bottom:1px solid var(--line); }
-.moa-space-nav>a { display:flex; align-items:center; gap:12px; padding:11px 12px; color:var(--fg); text-decoration:none; border-radius:12px; border:1px solid transparent; }
-.moa-space-nav>a[aria-current="page"] { background:var(--accent-soft); border-color:color-mix(in srgb,var(--accent) 18%,var(--line)); }
-.moa-space-nav>a:hover { background:var(--surface-2); }
-.moa-space-nav .icon { width:25px; height:25px; color:var(--accent); }
-.moa-space-nav strong { display:block; font-size:12px; font-weight:600; }
-.moa-space-nav small { display:block; font-size:10px; color:var(--muted); margin-top:3px; }
 .moa-purpose { border:1px solid var(--line); border-radius:20px; padding:25px; margin:22px 0 30px; background:linear-gradient(145deg,color-mix(in srgb,var(--accent-soft) 55%,var(--surface)),var(--surface) 50%); }
 .moa-purpose-heading { display:flex; align-items:center; gap:15px; margin-bottom:22px; }
 .moa-purpose-mark { width:52px; height:52px; display:grid; place-items:center; border-radius:17px; flex-shrink:0; }

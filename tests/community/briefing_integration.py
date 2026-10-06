@@ -152,22 +152,24 @@ def run():
     call('/community/today', user=None, expected=302)
     empty = call('/community/api/briefing', user='guest').json()
     check(empty['total'] == 0, 'empty read-only guest briefing is valid')
-    html = call('/community/today').text
-    check('briefing.js' in html and 'community/editor.js' not in html, 'Today uses independent read-only startup')
+    # Q:F-12 (B · C) — 옛 「오늘」 화면은 「내 작업」으로 308 넘김(화면은 D). 요약 창구 /api/briefing 은 그대로다.
+    moved = call('/community/today', expected=308)
+    check(moved.headers.get('Location') == '/community/my-tasks', 'Today moved: 308 Location /community/my-tasks (replaces independent startup check)')
     launch = call('/')
-    check('id="launcher-briefing"' in launch.text and '오늘 ' + str(result['count']) + '건' in launch.text and 'no-store' in launch.headers.get('Cache-Control', ''), 'C:T-464 launcher count is SSR and no-store')
+    check('class="moa-briefing"' in launch.text and ('<strong>' + str(result['count']) + '<small>건</small>') in launch.text and 'no-store' in launch.headers.get('Cache-Control', ''), 'C:T-464 launcher count is SSR and no-store')
     check(all(i['title'] not in launch.text for i in items), 'launcher contains count only, no source titles')
-    check('id="launcher-briefing"' not in call('/', user=None).text, 'prelogin launcher has no briefing or data query')
+    check('class="moa-briefing"' not in call('/', user=None).text, 'prelogin launcher has no briefing or data query')
     check(snapshot() == baseline, 'C:T-465 API, Today, launcher do not insert or change any community rows')
     sql('REVOKE SELECT ON community.automation_runs FROM tbox_app')
     failed = call('/')
-    check('id="launcher-briefing"' not in failed.text, 'C:T-464 failed community query omits only count; launcher remains 200')
+    check('class="moa-briefing"' not in failed.text, 'C:T-464 failed community query omits only count; launcher remains 200')
     sql('GRANT SELECT ON community.automation_runs TO tbox_app')
     output.joinpath('fixture-ids.json').write_text(json.dumps({'check': checkbox, 'block': check_doc['blocks'][0]['id']}))
+    # Q:F-12 C — 「오늘」 화면(체크를 그 자리에서 하던 C:T-463)은 B 에서 없어졌다. browser_9d.py 는 이제 옛 주소가 브라우저에서도
+    # 「내 작업」 주소로 넘어가고 업무 사이드바의 「내 작업」이 그 주소인지를 본다(쓰기 0). 체크 원본 문서 그대로인지는 여기서 확인한다.
     subprocess.run(['python3', str(Path(__file__).with_name('browser_9d.py'))], check=True, env=os.environ.copy())
     events = sql('SELECT count(*) FROM community.checklist_events WHERE page_id=(SELECT id FROM community.pages WHERE public_id=' + literal(checkbox) + ')')
-    checked = sql("SELECT doc->'blocks'->0->>'checked' FROM community.pages WHERE public_id=" + literal(checkbox))
-    check(events == '1' and checked == 'true', 'C:T-463 browser check updates actual document and exactly one event')
+    check(events == '0', 'Q:F-12 viewing the moved Today address writes no checklist event')
 
 
 try:

@@ -572,7 +572,9 @@ with sync_playwright() as p:
         pg = page_of(c)
 
         def chome():
-            go(pg, "/community/")
+            # 원래 어긋남(Q:F-12 C 에서 함께 고침): 「더보기」(#community-more)·휴지통·템플릿·선택하기가 있는 커뮤니티 홈은
+            # 둘러보기가 `/community/` 를 차지한 뒤로 `/community/workspace`(업무 앱 「내 문서」)다.
+            go(pg, "/community/workspace")
             no_overflow(pg, "커뮤니티 홈 " + tag)
             modal_rule(pg, "커뮤니티 홈의 창 전부 " + tag, need=5)
             words(pg, "커뮤니티 홈 " + tag)

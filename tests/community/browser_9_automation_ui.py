@@ -35,14 +35,16 @@ def api(method, path, body=None):
 
 try:
     with sync_playwright() as p:
-        browser = p.chromium.launch()
+        browser = p.chromium.launch(executable_path=os.environ.get('CHROMIUM_EXECUTABLE'))
         setup = browser.new_context(user_agent=headers['User-Agent'])
         setup.add_cookies([{'name': '__Host-tbox_session', 'value': user['session'], 'domain': host, 'path': '/', 'secure': True, 'httpOnly': True, 'sameSite': 'Lax'}])
-        initial = setup.new_page(); initial.goto(site + '/community/today', wait_until='networkidle')
+        # Q:F-12 C — 옛 「오늘」 화면은 308 넘김이 되었고 사이드바 「새 문서」는 「＋ 새로 만들기 → 문서」 안으로 옮겼다(DESIGN 2.19 ②)
+        initial = setup.new_page(); initial.goto(site + '/community/workspace', wait_until='load')   # 사이드바는 서버가 그린다
+        initial.locator('#nav-new-menu > summary').click()
         initial.locator('#nav-community-new').click()
         initial.wait_for_url('**/community/p/*')
         pid = urlsplit(initial.url).path.rsplit('/', 1)[-1]
-        check(bool(uuid.UUID(pid)), 'first-time user creates a page from Today without pre-existing space')
+        check(bool(uuid.UUID(pid)), 'first-time user creates a page from the sidebar 새로 만들기 → 문서 without pre-existing space')
         current = api('GET', '/api/pages/' + pid)
         api('PATCH', '/api/pages/' + pid, {'doc_version': current['page']['doc_version'], 'title': '월마감 절차서 UI 검증', 'doc': {'schema': 1, 'blocks': [
             {'id': str(uuid.uuid4()), 'type': 'to_do', 'checked': False, 'text': [{'t': '첨부파일 확인', 'm': {}}]},

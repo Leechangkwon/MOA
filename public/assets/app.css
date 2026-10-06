@@ -65,6 +65,12 @@
   /* DESIGN 2.17 (사이트 Q:F-11) — 떠 있는 창(비모달 dialog)의 층. 사용 안내 단추(45)보다 위, showModal 창(최상위 층)보다 아래.
      색이 아니라 다크·고대비 블록에는 없다. 층을 숫자로 새로 적지 말고 이 토큰을 쓴다. */
   --z-floating: 60;
+  /* DESIGN 2.18 (사이트 Q:F-12 · WK-11 ②) — 앱 아이콘 줄(`nav.app-rail`)의 폭 하나와 색 둘. 색은 **기존 토큰에서 끌어온다(새 색값 0)**:
+     밝게 = 짙은 바탕(본문 글자색) 위 밝은 글자(본문 바탕색) · 어둡게 = 아래 다크 두 블록이 사이드바 바탕 · 내비 글자로 바꾼다.
+     테마(design.css · moa.css)나 고대비(2.16)가 --fg · --bg · --surface-2 · --fg-2 를 바꾸면 줄도 함께 따라간다 — 그래서 고대비 블록에는 따로 적지 않는다. */
+  --rail-w: 64px;
+  --rail-bg: var(--fg);
+  --rail-fg: var(--bg);
 
   --font: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Apple SD Gothic Neo", "Malgun Gothic", "Noto Sans KR", sans-serif;
   --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
@@ -257,6 +263,69 @@ button.appbar__brand .icon { display: inline-flex; color: var(--muted); }
   gap: 20px;
   padding: 28px 32px 40px;
 }
+
+/* ─── 앱 아이콘 줄 `nav.app-rail` (DESIGN 2.18 · 사이트 Q:F-12 WK-11 ②) ─────────────────────────────
+   자료실 · 업무 · 이야기 사이를 한 번에 옮기는 맨 왼쪽 좁은 줄 — 셸 `.app` 의 첫 칸, 사이드바(240px) 왼쪽에 붙는다.
+   **960px 미만에는 그리지 않는다**(아래 `min-width: 960px` 에서만 보인다 — 폰은 윗줄 앱 이름 ▾ 그대로).
+   색은 토큰 셋(--rail-w · --rail-bg · --rail-fg)뿐 — 지금 앱 바탕과 다른 앱 글자는 그 둘을 섞은 값이다(새 색값 0).
+   마크업은 shell_top.php 한 벌(세 앱 공통). 스크립트 0. */
+.app-rail { display: none; }
+.app-rail__home {
+  display: inline-flex;
+  flex-shrink: 0;
+  margin-bottom: 14px;
+  border-radius: var(--r-ctl);
+  text-decoration: none;
+}
+.app-rail__home:hover { text-decoration: none; }
+/* 모아 표시(`.moa-symbol` — moa.css)를 줄 폭에 맞춰 36px 로 */
+.app-rail__home .moa-symbol { width: 36px; height: 36px; font-size: 24px; letter-spacing: -2px; padding: 0 4px 4px 0; }
+.app-rail__item {
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  width: 56px;
+  min-height: 52px;
+  padding: 8px 0 6px;
+  border-radius: var(--r-ctl);
+  color: color-mix(in srgb, var(--rail-fg) 82%, var(--rail-bg));
+  font-size: 12px;
+  line-height: 1.2;
+  text-decoration: none;
+}
+.app-rail__item .moa-module-icon { width: 20px; height: 20px; }
+.app-rail__item:hover { color: var(--rail-fg); background: color-mix(in srgb, var(--rail-fg) 14%, transparent); text-decoration: none; }
+.app-rail__item[aria-current="page"] { color: var(--rail-fg); background: color-mix(in srgb, var(--rail-fg) 14%, transparent); font-weight: 600; }
+.app-rail__spacer { flex-grow: 1; min-height: 12px; }
+/* 아래 끝 「내 계정」 — 이니셜 36px 원(줄 색을 뒤집은 것) */
+.app-rail__me {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: var(--rail-fg);
+  color: var(--rail-bg);
+  font-size: 13px;
+  font-weight: 600;
+  text-decoration: none;
+}
+.app-rail__me:hover { color: var(--rail-bg); text-decoration: none; }
+/* 초점 고리 3px — DESIGN 2.18 은 `--ring` 이지만 짙은 줄 위에서는 밝은 화면 테마 다섯과 고대비(밝게)에서 줄 바탕과의 대비가 3:1 미만(1.0~2.33,
+   qf12_shell_browser 실측)이라 보이지 않았다. 줄 글자색 `--rail-fg`(같은 줄의 글자와 같은 대비 — 모든 테마 ≥ 7.7)로 그린다. 새 색값 0. */
+.app-rail a:focus-visible { outline: none; box-shadow: 0 0 0 3px var(--rail-fg); }
+
+/* Q:F-12 (DESIGN 2.19 ②) — 사이드바의 검정 단추 하나(업무 「＋ 새로 만들기」 메뉴 · 이야기 「＋ 새 이야기」)는 폭 전체.
+   메뉴가 열려도 검정 그대로 — 2.15 의 「열림 = 회색 바탕」은 quiet 단추 몫이고, 검정 단추에 덮으면 글자가 바탕에 묻힌다. */
+.sidebar > .menu,
+.sidebar > .btn { flex-shrink: 0; width: 100%; margin: 4px 0 8px; }
+.sidebar > .menu > summary.btn { display: flex; width: 100%; }
+.sidebar > .menu[open] > summary.btn { background: var(--primary-hover); border-color: var(--primary-hover); }
 
 .page-head {
   display: flex;
@@ -1569,6 +1638,23 @@ dialog.modal--upload .upload-status { font-size: 14px; }
 
 @media (min-width: 960px) {
   .appbar { display: none; }
+  /* DESIGN 2.18 — 앱 아이콘 줄은 이 폭부터만 그린다(사이드바처럼 화면 높이 전체 · 따라 내려오지 않게 sticky) */
+  .app-rail {
+    position: sticky;
+    top: 0;
+    display: flex;
+    flex-direction: column;
+    flex: 0 0 var(--rail-w);
+    align-items: center;
+    gap: 4px;
+    width: var(--rail-w);
+    height: 100vh;
+    padding: 14px 0 16px;
+    overflow-y: auto;
+    scrollbar-width: none;
+    background: var(--rail-bg);
+    color: var(--rail-fg);
+  }
   .sidebar {
     position: sticky;
     top: 0;
@@ -1986,6 +2072,8 @@ dialog.search-dialog { width: min(640px, calc(100vw - 32px)); margin-top: 12vh; 
     --violet-bg: rgba(167, 139, 250, .12);
     --violet-line: rgba(167, 139, 250, .35);
     --brand-navy: #000000;
+    --rail-bg: var(--surface-2);   /* DESIGN 2.18 — 어두운 화면의 아이콘 줄: 사이드바 바탕 · 내비 글자 */
+    --rail-fg: var(--fg-2);
     --shadow-xs: 0 1px 2px 0 rgb(0 0 0 / .4);
     --shadow-sm: 0 1px 3px 0 rgb(0 0 0 / .5), 0 1px 2px -1px rgb(0 0 0 / .5);
     --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / .6), 0 4px 6px -4px rgb(0 0 0 / .6);
@@ -2024,6 +2112,8 @@ dialog.search-dialog { width: min(640px, calc(100vw - 32px)); margin-top: 12vh; 
   --violet-bg: rgba(167, 139, 250, .12);
   --violet-line: rgba(167, 139, 250, .35);
   --brand-navy: #000000;
+  --rail-bg: var(--surface-2);   /* DESIGN 2.18 — 위 OS 다크 블록과 같은 값 */
+  --rail-fg: var(--fg-2);
   --shadow-xs: 0 1px 2px 0 rgb(0 0 0 / .4);
   --shadow-sm: 0 1px 3px 0 rgb(0 0 0 / .5), 0 1px 2px -1px rgb(0 0 0 / .5);
   --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / .6), 0 4px 6px -4px rgb(0 0 0 / .6);

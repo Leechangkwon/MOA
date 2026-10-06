@@ -272,7 +272,8 @@ with sync_playwright() as p:
          wait_until(lambda: page.get_attribute("#page-fav", "aria-pressed") == "true" and (page.locator("#page-fav-label").text_content() or "") == "즐겨찾기에서 빼기"))
     step("6 사이드바 「최근」에 그 페이지(열었으니)", wait_until(lambda: page.locator("#nav-community-recent a[href$='/p/%s']" % P1).count() == 1))
     order_side = page.evaluate("() => [...document.querySelectorAll('.sidebar .nav-title')].map(e => e.textContent.trim()).filter(t => t)")
-    step("6 사이드바 순서 즐겨찾기 → 최근 → 내 공간(결정 M-1)", order_side[:3] == ["즐겨찾기", "최근", "내 공간"], order_side[:5])
+    # Q:F-12 C (DESIGN 2.19 — 「즐겨찾기 · 최근 묶음은 「프로젝트」 위에 그대로」) — 「내 공간」 묶음은 「문서」 로 바뀌었다(그 사이 프로젝트 · 포트폴리오 · 팀)
+    step("6 사이드바 순서 즐겨찾기 → 최근 → … → 문서(결정 M-1 · DESIGN 2.19)", order_side[:2] == ["즐겨찾기", "최근"] and "문서" in order_side[2:], order_side[:8])
 
     print("── 7. 순서 바꾸기(Alt+↓) · 접기")
     page.request.put(COMMUNITY + "/api/pages/%s/favorite" % P2, headers={"X-CSRF-Token": tok})

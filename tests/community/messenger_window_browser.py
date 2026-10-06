@@ -6,6 +6,8 @@ memories_harness.py 만 부른다(합성 DB · 임시 복사본 · 로컬 php -S
 결과 파일에는 단언 이름과 참/거짓·수치만(세션·CSRF·응답 본문 0). 스크린샷은 결과 폴더에.
 
   Q:T-11 단추      t-box 셸(직원: 홈·설정·활동·내 휴지통 / 관리자: 위키·관리 허브) · 커뮤니티 9 · /welcome · 런처 — 같은 id 의 단추 1개 · 창 1개 ·
+                   (Q:F-12 C — 옛 「오늘」 /community/today 는 308 넘김이 되어 커뮤니티 셸 대표 화면을 /community/procedures · /community/workspace 로 바꿨다 ·
+                    C-6 사이드바는 이야기 셸 /community/memories 도 보고, 옛 nav.moa-space-nav 대신 아이콘 줄 목록을 적는다)
                    /messages 는 창 0 · 손님·역할로 보기는 단추·창·스크립트 0(그래도 POST /api/messages/{n} 403) · 미로그인 런처 창·스크립트 0 · Set-Cookie 0
   Q:T-12 이동 복원  커뮤니티 글 → 자료실 홈 → 설정 → 런처: 창 열림·상대·입력·스크롤 같음 · AI 스레드도 · 복원 때 초점은 창 밖
                    보정 D-1: 이어 열 상대가 없으면(404) 번호를 잊는다 — 화면 둘을 더 옮겨도 404 요청 1회 · 상태에 그 번호 0 · 입력 칸 잠김
@@ -167,7 +169,7 @@ try:
   screens=[('employee','/tbox/','t-box 홈'),('employee','/tbox/settings','설정'),('employee','/tbox/activity','활동'),('employee','/tbox/trash','내 휴지통'),
            ('admin','/tbox/wiki','위키'),('admin','/tbox/admin','관리 허브'),
            ('employee','/community/','커뮤니티 개요'),('employee','/community/workspace','내 문서'),('employee','/community/p/'+page_id,'페이지'),
-           ('employee','/community/b/'+str(board_id),'게시판'),('employee','/community/f/'+did+'/'+form['id'],'응답 양식'),('employee','/community/today','오늘 할 일'),
+           ('employee','/community/b/'+str(board_id),'게시판'),('employee','/community/f/'+did+'/'+form['id'],'응답 양식'),('employee','/community/procedures','절차서'),
            ('employee','/community/ai','문서 AI'),('employee','/community/integrations','공유·연동'),('employee','/community/memories','스레드'),
            ('employee','/tbox/welcome','시작 안내'),('employee','/','런처')]
   for who,path,label in screens:
@@ -235,7 +237,7 @@ try:
    tok=new_session('employee')
    ctx=browser.new_context(viewport={'width':1440,'height':900},locale='ko-KR',user_agent=UA);ctx.add_cookies(cookie(tok))
    t=Tab(ctx);p=t.page
-   for path,opener,label,me_max in (('/tbox/settings','#messenger-open','셸 사이드바',1),('/community/today','#messenger-open','커뮤니티 셸 사이드바',1),('/tbox/welcome','#messenger-open','시작 안내 nav',2),('/','#messenger-open','런처 타일',2),
+   for path,opener,label,me_max in (('/tbox/settings','#messenger-open','셸 사이드바',1),('/community/workspace','#messenger-open','커뮤니티 셸 사이드바',1),('/tbox/welcome','#messenger-open','시작 안내 nav',2),('/','#messenger-open','런처 타일',2),
                                     ('/community/','#overview-messenger [data-messenger-open]','커뮤니티 개요 카드',1),('/community/memories','.threads-quick [data-messenger-open]','스레드 단추',1)):
     mark=time.time();t.go(path);p.wait_for_timeout(1200)
     me=[r for r in t.requests if r[0]>=mark and r[2]=='/tbox/api/me'];badge=[r for r in t.requests if r[0]>=mark and r[2]=='/tbox/api/messages?q=']
@@ -724,10 +726,10 @@ try:
    tok=new_session('employee')
    ctx=browser.new_context(viewport={'width':1440,'height':900},locale='ko-KR',user_agent=UA);ctx.add_cookies(cookie(tok))
    t=Tab(ctx);p=t.page
-   for path in ('/tbox/','/community/'):
+   for path in ('/tbox/','/community/','/community/memories'):
     t.go(path)
     side=p.evaluate("""(()=>{const s=document.getElementById('sidebar');const links=[...s.querySelectorAll('a[href]')].filter(a=>new URL(a.href,location.href).pathname.replace(/\\/$/,'')==='/tbox/messages').length;
-      return {links:links,text:(s.textContent.match(/메신저/g)||[]).length,openers:s.querySelectorAll('[data-messenger-open]').length,space:[...s.querySelectorAll('.moa-space-nav > a')].map(a=>a.textContent.replace(/\\s+/g,' ').trim())};})()""")
+      return {links:links,text:(s.textContent.match(/메신저/g)||[]).length,openers:s.querySelectorAll('[data-messenger-open]').length,rail:[...document.querySelectorAll('nav.app-rail a.app-rail__item')].map(a=>a.textContent.replace(/\\s+/g,' ').trim())};})()""")
     metrics['c6_sidebar'+path.replace('/','_')]=side
     check(side['links']==0,'C-6 '+path+' sidebar: /messages link 0 '+json.dumps(side,ensure_ascii=False))
     check(side['text']==1 and side['openers']==1,'C-6 '+path+' sidebar: 「메신저」 text once — the floating window opener')

@@ -337,7 +337,11 @@ if [ -n "$EMP_CSRF" ]; then
   for pg in "" /settings /activity; do
     curl -s -b "$EMP_JAR" -A "$UA" "$BASE/${pg#/}" -o "$WORK/shell.html"
     expect "GET /tbox/${pg#/} 에 appbar__apps 1개 (사이드바 brand 줄)" "1" "$(grep -c 'details class="appbar__apps"' "$WORK/shell.html" | tr -d ' ')"
-    expect "GET /tbox/${pg#/} 항목 Qaredi 홈" "1" "$(grep -c '>Qaredi 홈<' "$WORK/shell.html" | tr -d ' ')"
+    # 원래 어긋남(Q:F-12 C 에서 함께 고침) — 앱 메뉴의 첫 줄 이름은 「모아 홈」(모아 디자인 2026-10-02)
+    expect "GET /tbox/${pg#/} 항목 모아 홈" "1" "$(grep -c '>모아 홈<' "$WORK/shell.html" | tr -d ' ')"
+    # Q:F-12 C (DESIGN 2.18) — 앱 아이콘 줄 하나 · 자료실 · 업무 · 이야기 순 · 자료실 켜짐
+    expect "GET /tbox/${pg#/} 앱 아이콘 줄 1개" "1" "$(grep -c '<nav class="app-rail" aria-label="앱 바꾸기">' "$WORK/shell.html" | tr -d ' ')"
+    expect "GET /tbox/${pg#/} 아이콘 줄 지금 앱 = 자료실" "1" "$(grep -c '<a class="app-rail__item" href="/tbox/" aria-current="page">' "$WORK/shell.html" | tr -d ' ')"
     expect "GET /tbox/${pg#/} 아이콘 단추의 title 0건 (D-3)" "0" \
       "$(grep -cE 'btn--icon[^>]*title=' "$WORK/shell.html" | tr -d ' ')"
     expect "GET /tbox/${pg#/} 의 /tbox 밖 절대 경로 (Qaredi 홈 제외) 0건" "0" "$(bad_links "$WORK/shell.html")"
@@ -393,18 +397,18 @@ if [ -n "$ADM_CSRF" ]; then
   sub "Q:T-1 — 로그인 상태의 런처 (사용자 칩)"
   curl -s -b "$ADM_JAR" -A "$UA" -o "$WORK/root2.html" -D "$WORK/root2.head" "$SITE/"
   expect "로그인 상태 런처 상태" "200" "$(status_of "$WORK/root2.head")"
-  expect "로그인 상태 런처에 사용자 배지 (page-head__actions 1)" "1" "$(grep -c 'page-head__actions' "$WORK/root2.html" | tr -d ' ')"
+  # 원래 어긋남(Q:F-12 C 에서 함께 고침) — 모아 런처(2026-10-02)의 사용자 표시는 머리 줄 `a.moa-account`(「이름 님」 · 내 계정)
+  expect "로그인 상태 런처에 사용자 표시 (moa-account 1)" "1" "$(grep -c 'class="moa-account"' "$WORK/root2.html" | tr -d ' ')"
   expect "로그인 상태 런처에도 userchip 0건" "0" "$(grep -c 'userchip' "$WORK/root2.html" | tr -d ' ')"
   contains "칩에 표시 이름" "claude_admin01" "$(cat "$WORK/root2.html")"
   expect "로그인 상태 런처 테마·내 작업·메신저 창 script 5건(Q:F-11 B — 창 스크립트 셋 +3)" "5" "$(grep -c '<script' "$WORK/root2.html" | tr -d ' ')"
-  # 로그인 뒤는 전과 같다 — 타일 둘(링크)·격자 · 로그인 단추 0 (S2 는 로그인 전만 바꿨다)
-  contains "로그인 뒤 타일 t-box" "t-box" "$(cat "$WORK/root2.html")"
-  contains "로그인 뒤 타일 커뮤니티" "커뮤니티" "$(cat "$WORK/root2.html")"
-  expect "로그인 뒤 배지 준비 중 0건 (커뮤니티가 열렸다)" "0" "$(grep -c '준비 중' "$WORK/root2.html" | tr -d ' ')"
-  contains "로그인 뒤 타일 클래스 card--link" "card card--link" "$(cat "$WORK/root2.html")"
-  contains "로그인 뒤 격자 card-grid" "card-grid" "$(cat "$WORK/root2.html")"
-  expect "로그인 뒤 t-box 타일이 /tbox/ 로 간다" "1" "$(grep -c 'href="/tbox/"' "$WORK/root2.html" | tr -d ' ')"
-  expect "로그인 뒤 커뮤니티 타일이 /community/ 로 간다" "1" "$(grep -c 'href="/community/"' "$WORK/root2.html" | tr -d ' ')"
+  # 로그인 뒤 — 바로가기 타일(Q:F-12 C-1 · Q:T-38: 자료실 · 업무 · 이야기 → 메신저 · PC 비서). 모아 런처의 타일 격자는 `nav.moa-shortcuts`
+  # (원래 어긋남: card--link · card-grid · 「t-box」 · 「커뮤니티」 타일은 모아 디자인 2026-10-02 에서 없어졌다 — Q:F-12 C 에서 함께 고침)
+  contains "로그인 뒤 바로가기 격자 moa-shortcuts" 'class="moa-shortcuts"' "$(cat "$WORK/root2.html")"
+  expect "로그인 뒤 타일 순서 자료실 · 업무 · 이야기" "자료실 업무 이야기" "$(tr -d '\n' < "$WORK/root2.html" | sed -n 's/.*<nav class="moa-shortcuts"//p' | grep -oE '<strong>[^<]+' | head -3 | sed 's/<strong>//' | paste -sd' ')"
+  expect "로그인 뒤 배지 준비 중 0건" "0" "$(grep -c '준비 중' "$WORK/root2.html" | tr -d ' ')"
+  expect "로그인 뒤 자료실 타일이 /tbox/ 로 간다" "1" "$(grep -c 'href="/tbox/"' "$WORK/root2.html" | tr -d ' ')"
+  expect "로그인 뒤 이야기(머리 링크 · 타일)가 /community/memories 로 간다" "2" "$(grep -o 'href="/community/memories"' "$WORK/root2.html" | wc -l | tr -d ' ')"
   expect "로그인 뒤 로그인 단추 0" "0" "$(grep -c 'href="/tbox/login">로그인<' "$WORK/root2.html" | tr -d ' ')"
   expect "로그인 뒤 런처 Set-Cookie 0(세션은 읽기만)" "0" "$(grep -ci '^Set-Cookie:' "$WORK/root2.head" | tr -d ' ')"
 fi

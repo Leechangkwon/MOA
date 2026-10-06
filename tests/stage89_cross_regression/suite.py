@@ -222,7 +222,9 @@ try:
         ctx=browser.new_context(viewport={'width':1280,'height':900},user_agent=ua)
         ctx.add_cookies([{'name':'__Host-tbox_session','value':users['employee']['session'],'domain':'127.0.0.1','path':'/','secure':True,'httpOnly':True,'sameSite':'Lax'}])
         page=ctx.new_page();errors=[];page.on('pageerror',lambda error:errors.append(str(error)))
-        for route in ['/tbox/','/tbox/settings','/community/','/community/today']:
+        # Q:F-12 C — 옛 「오늘」(/community/today)은 308 /community/my-tasks 로 넘긴다(화면은 D). 도움말 화면은 이야기 셸(/community/memories)로.
+        moved=call('GET','/community/today',expected=308);check(moved.headers.get('Location')=='/community/my-tasks','Q:F-12 /community/today 308 Location /community/my-tasks')
+        for route in ['/tbox/','/tbox/settings','/community/','/community/memories']:
             response=page.goto(origin+route);check(response.status==200,'browser route '+route)
             if route == '/community/':
                 page.locator('#overview-welcome [data-usage-guide-open]').click()
@@ -238,11 +240,11 @@ try:
             dialog=page.locator('#help-dialog');expect(dialog).to_be_visible()
             check(len(dialog.inner_text().strip())>25,'visible help text '+route)
             page.keyboard.press('Escape');expect(dialog).not_to_be_visible()
-        page.goto(origin+'/community/today');page.locator('[data-help-open]').click()
-        page.screenshot(path=str(output/'help-today-1280-light.png'),full_page=True)
+        page.goto(origin+'/community/memories');page.locator('[data-help-open]').click()
+        page.screenshot(path=str(output/'help-threads-1280-light.png'),full_page=True)
         page.keyboard.press('Escape');page.set_viewport_size({'width':390,'height':844})
         page.evaluate("document.documentElement.setAttribute('data-theme','dark')")
-        page.locator('[data-help-open]').click();page.screenshot(path=str(output/'help-today-390-dark.png'),full_page=True)
+        page.locator('[data-help-open]').click();page.screenshot(path=str(output/'help-threads-390-dark.png'),full_page=True)
         check(page.evaluate('document.documentElement.scrollWidth <= innerWidth'),'390px help has no page overflow')
         check(not errors,'current source browser has no uncaught JS errors',error_count=len(errors))
         browser.close()

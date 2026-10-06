@@ -536,12 +536,15 @@ with sync_playwright() as p:
 
         # ── 5 휴지통 자리 ──────────────────────────────────────
         def trash():
-            go(pg, "/community/")
+            # Q:F-12 C (DESIGN 2.19 ⑧ — 시안 v1 승인): 업무 앱의 「내 휴지통」은 접힌 「더보기」 묶음의 끝이다(자료실은 그대로 첫 묶음의 끝).
+            # 「내 문서」 화면(/community/workspace — `/community/` 는 둘러보기·업무 홈)에서 이동 없이 창이 열린다(원래 어긋남: 전에는 `/community/` 를 첫 화면으로 봤다).
+            go(pg, "/community/workspace")
             open_drawer(pg)
+            pg.evaluate("() => { const d = document.getElementById('nav-community-more-box'); if (d) d.open = true; }")
             pos = pg.evaluate("""() => { const a = document.getElementById('nav-community-trash'); if (!a) return null; const nav = a.closest('nav');
                   const items = nav ? [...nav.querySelectorAll(':scope > .nav__item')] : []; return {text: a.textContent.trim(), nav: nav && nav.getAttribute('aria-label'),
-                  last: items[items.length - 1] === a, hidden: a.hidden, href: a.getAttribute('href')}; }""")
-            step("5 커뮤니티 사이드바 「내 휴지통」 — 첫 묶음(내 공간)의 끝 " + tag, bool(pos) and pos["text"] == "내 휴지통" and pos["last"] and not pos["hidden"], pos)
+                  last: items[items.length - 1] === a, hidden: a.hidden, href: a.getAttribute('href'), more: !!a.closest('details#nav-community-more-box')}; }""")
+            step("5 업무 사이드바 「내 휴지통」 — 「더보기」 묶음의 끝(DESIGN 2.19 ⑧) " + tag, bool(pos) and pos["text"] == "내 휴지통" and pos["last"] and pos["more"] and not pos["hidden"], pos)
             sub = pg.evaluate("() => (document.getElementById('community-space-sub') || {}).textContent || ''").strip()
             step("13 직원 「내 공간」 설명은 그대로(공개 범위 문장) " + tag, "공개 범위" in sub, sub)
             if w == 1280 or phone:
@@ -550,18 +553,19 @@ with sync_playwright() as p:
                 pg.click("#nav-community-trash")
                 pg.wait_for_timeout(500)
                 st = pg.evaluate("() => ({open: !!document.querySelector('dialog#trash-dialog[open]'), url: location.pathname + location.search, title: (document.getElementById('trash-title') || {}).textContent})")
-                step("5 첫 화면에서 누르면 옮겨 가지 않고 휴지통 창 「내 휴지통」 " + tag, st["open"] and st["url"] == "/community/" and (st["title"] or "").strip() == "내 휴지통", st)
+                step("5 「내 문서」 화면에서 누르면 옮겨 가지 않고 휴지통 창 「내 휴지통」 " + tag, st["open"] and st["url"] == "/community/workspace" and (st["title"] or "").strip() == "내 휴지통", st)
                 shot(pg, "c-trash-dialog-%s" % tag)
                 pg.keyboard.press("Escape")
                 pg.wait_for_timeout(200)
                 if P_OWN and w in (412, 1280):
                     go(pg, "/community/p/" + P_OWN)
                     open_drawer(pg)
+                    pg.evaluate("() => { const d = document.getElementById('nav-community-more-box'); if (d) d.open = true; }")
                     pg.click("#nav-community-trash")
                     pg.wait_for_load_state("networkidle")
                     pg.wait_for_timeout(600)
                     st = pg.evaluate("() => ({open: !!document.querySelector('dialog#trash-dialog[open]'), url: location.pathname + location.search})")
-                    step("5 글 화면에서 누르면 첫 화면으로 가 휴지통 창 · 주소에서 꼬리표를 뗀다 " + tag, st["open"] and st["url"] == "/community/", st)
+                    step("5 글 화면에서 누르면 「내 문서」 화면으로 가 휴지통 창 · 주소에서 꼬리표를 뗀다 " + tag, st["open"] and st["url"] == "/community/workspace", st)
                     pg.keyboard.press("Escape")
             go(pg, "/tbox/")
             open_drawer(pg)

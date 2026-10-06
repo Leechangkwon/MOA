@@ -48,9 +48,13 @@ def page_html(shared='', profile='', post=''):
     if shared:
         return head+'<body class="threads-public">'+component+'</body></html>'
     shell = (ROOT / 'src/views/shell_top.php').read_text()
-    nav = shell[shell.index('    <p class="nav-title">우리의 이야기'):shell.index('    <p class="nav-title">내 공간')]
+    # Q:F-12 C — 스레드는 「이야기」 앱 셸(DESIGN 2.19): 사이드바 이야기 묶음(팔로잉 · 나의 · 발견 · 여행 계획)을 그대로 잘라 온다.
+    # 쓰기 자격 조건(<?php if ($shellCommunityWrite): ?>)은 고정 사용자가 쓸 수 있으므로 내용만 남긴다.
+    start = shell.index('    <nav class="nav" aria-label="이야기">')
+    nav = shell[start:shell.index('    </nav>\n', start) + len('    </nav>\n')]
+    nav = nav.replace('<?php   if ($shellCommunityWrite): ?>\n', '').replace('<?php   endif; ?>\n', '')
     nav = render_expressions(nav)
-    wrapper = '<body data-page="community-threads" data-base="/tbox" data-community-base="/community"><div class="app"><header class="appbar"><span class="appbar__brand">커뮤니티</span><button class="btn btn--quiet" data-messenger-open>메신저</button></header><aside class="sidebar"><div class="brand"><span class="brand__name">커뮤니티</span></div><p class="brand__sub">일상 · 이야기 · 함께하는 공간</p>'+nav+'<p class="nav-title">내 공간</p><nav class="nav"><a class="nav__item" href="/community/workspace">내 공간</a><a class="nav__item" href="/community/today">오늘</a><a class="nav__item" href="/community/workspace?space=team">팀 공간</a><a class="nav__item" href="/community/workspace">게시판</a></nav></aside><main id="main" class="main">'
+    wrapper = '<body data-page="community-threads" data-base="/tbox" data-community-base="/community"><div class="app"><header class="appbar"><span class="appbar__brand">모아 이야기</span><button class="btn btn--quiet" data-messenger-open>메신저</button></header><aside class="sidebar"><div class="brand"><span class="brand__name">모아 이야기</span></div><p class="brand__sub">스레드 · 여행 — 일상 나누기</p>'+nav+'</aside><main id="main" class="main">'
     result = head+wrapper+component+'</main></div></body></html>'
     assert '<?' not in result
     return result

@@ -5,14 +5,22 @@
     "desc": "파일 보관 · 찾기 · 공유",
     "path": "/tbox/",
     "icon": "library",
-    "order": 2
+    "order": 1
   },
   {
     "key": "community",
-    "name": "커뮤니티",
-    "desc": "일상과 여행 · 나의 스레드 · 함께 쓰는 공간",
+    "name": "업무",
+    "desc": "작업 · 프로젝트 · 문서",
     "path": "/community/",
+    "icon": "work",
+    "order": 2
+  },
+  {
+    "key": "story",
+    "name": "이야기",
+    "desc": "스레드 · 여행 — 일상 나누기",
+    "path": "/community/memories",
     "icon": "community",
-    "order": 1
+    "order": 3
   }
 ]
