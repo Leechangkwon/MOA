@@ -41,6 +41,16 @@
 
 H 가 끝나면 멈춘다 — 메인 세션이 독립 검토 · 발행(patch) · 운영 반영(cron 포함)을 한다.
 
+### H-1 검토 반영 — 재지시 1 (2026-10-07 · 메인 독립 검토 `SECURITY.md` 7장)
+
+```
+목표        : 깨진 시험 그림 때문에 실패하는 단위 시험을 고친다(코드 변경 없음).
+요구사항    : 독립 검토 보정 H-1 — tests/community/memory_ai_unit.php 의 1×1 PNG 고정값을 CRC 가 맞는 같은 픽셀의 PNG 로.
+수정 파일   : tests/community/memory_ai_unit.php 만.
+금지 패턴   : 「공통」 표. 코드·다른 시험 변경 0.
+완료 기준   : php tests/community/memory_ai_unit.php 통과(출력 원문) + tests/community/memories_check.sh 가 돌릴 수 있으면 그 결과 + git diff --check.
+보고 형식   : 「공통」. 확정한 값: 바꾼 줄 · 커밋 해시.
+```
 ---
 
 # 지시서 P — 처리방침·약관 게시 · 동의 · 보관 기간 정리 · 탈퇴 (2026-10-07, Q:F-12 묶음 운영 반영 뒤 시작)
