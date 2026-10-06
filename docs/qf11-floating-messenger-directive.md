@@ -186,3 +186,31 @@ A 가 끝나면 **멈춘다** — 메인 세션(Fable)이 독립 검토(CLAUDE.m
 | 6 초안 20개 공용 상한 | 지시서대로 둔다(보안 영향 0) — 변경 없음 |
 
 B 가 끝나면 멈춘다 — 메인 세션이 묶음 전체 diff 로 독립 검토·회귀·운영 반영(마이그레이션 → 코드 → 검증)·`STAGES.md`·`wiki/qaredi`·`SECURITY.md` 7장·발행 v2.50.0 을 한다.
+
+---
+
+## 지시서 C — A·B 뒤 정리 (2026-10-06 · B 보고 「못 한 것」 + A 검토 경미 1 사용자 결정 + 사이드바 결정)
+
+```
+목표        : B 가 목록 밖이라 남긴 깨진 참조·옛 창 안내를 정리하고, 사용자가 정한 전송 시도 상한과 사이드바 정리를 넣는다.
+요구사항    : 이 절 C-1~C-6 · SECURITY R-118(전송 시도 상한 — 2026-10-06 사용자 결정) · DESIGN.md 2.7(모달) · 2.17(떠 있는 창) + 6장 체크리스트(새 클래스·색값 0) — 해당 절을 읽고 시작할 것
+수정 파일   : src/handlers/member_messages.php(C-1 한 줄 + 주석) · tests/community/messenger_http.py(C-1 단언) ·
+              tests/community/memories_check.sh · tests/community/memories_browser.py(C-2) ·
+              public/assets/usage-guide.js · tests/community/usage_guide_browser.py · tests/community/usage_guide_unit.php(C-3 — 고칠 필요가 있을 때만) ·
+              src/help/community.php(C-4) · src/views/member_assist.php(C-5 — 마크업만) · src/views/shell_top.php(C-6 :420 한 줄) ·
+              tests/community/messenger_window_browser.py(C-3·C-5·C-6 단언) · tests/catalog.json(covers 갱신만)
+              여기 없는 파일은 만들거나 고치지 않는다. public/index.php · src/bootstrap.php · src/Auth*.php · src/Http.php · src/Member.php · db/** · deploy/** 는 손대지 않는다.
+금지 패턴   : 「공통」 표 + B 금지 패턴 그대로.
+완료 기준   : C-1~C-6 의 단언 + A-5·B-6 재실행(messenger_http · messenger_store_browser · messenger_window_browser) · usage_guide_browser · memories_check.sh(격리로 돌 수 있는 부분) ·
+              tests/stage89_cross_regression/run.py · security_lint 0 · php -l · node --check · asset --check · git diff --check · wiki_check
+보고 형식   : 「공통」 표. 확정한 값: 사용 안내 투어 새 단계 문구 원문 · 도움말 문구 원문 · 429 상한 실측(몇 번째에서 막히나).
+```
+
+| 번호 | 할 일 |
+|---|---|
+| C-1 전송 시도 상한(R-118 · 사용자 결정 「느슨한 상한 추가」) | `member_messages.php` POST 갈래 **맨 앞**(본문 읽기·검사 전, 트랜잭션 밖)에 `Member::rate('message-attempt',(string)$uid,120)` — 모양 틀림(400)·재전송(200/409)·없는 상대(404)를 모두 센다. 새 행만 세는 기존 30 은 그대로(트랜잭션 안). 시험: 한 사용자가 1분 안에 121번째 시도 → 429(`Retry-After: 60`) · 120 안의 재전송은 200 같은 id · 새 메시지 31번째 429(전과 같음) · 다른 사용자는 영향 0 |
+| C-2 지운 파일 참조 | `tests/community/memories_check.sh` 의 `community/messenger.js`·`messenger_browser.py` 줄을 빼고(대신 `messenger_window_browser.py` 는 격리 틀이 필요하니 주석으로 실행 명령만 안내) · `tests/community/memories_browser.py` 의 `community_messenger.php`·`messenger.css` 렌더 부분을 뺀다. 남은 단언이 그대로 도는지 출력 원문 |
+| C-3 사용 안내 투어 | `usage-guide.js:73-78` 의 옛 커뮤니티 창 단계를 **떠 있는 창**(`#messenger-window` 의 id 들 — 목록·검색·모아 AI·입력·「크게 보기」·닫기)으로 다시 쓰고 「GPT」 글자 0 · `:108` 매핑을 새 창으로 · 열린 dialog 검사(`:117`·`:195`·`:208`·`:232`·`:233`)에서 **`dialog.floating` 은 빼고**(비모달이라 자동 제안·투어를 막지 않는다) · 투어가 창 안 단계를 보일 때 창이 닫혀 있으면 모듈의 열기(`[data-messenger-open]` click)로 연다 |
+| C-4 도움말 | `src/help/community.php:69` 「메신저에서 회원과 대화합니다. GPT는 서버 연결 설정이 있어야 사용할 수 있습니다.」 → 어느 화면에서나 여는 떠 있는 메신저 · 모아 AI(Google 전송 고지는 `/messages` 문구와 같은 뜻) 로. 위키·다른 도움말 파일은 고치지 않는다(메인 세션 몫 — 「GPT」가 남은 곳을 grep 해 보고만) |
+| C-5 AI 도구 창 | `src/views/member_assist.php` 의 `#message-assist-dialog` 를 DESIGN 2.7 모달 규칙(머리 ✕ `aria-label="닫기"` · 바닥 줄)에 맞춰 마크업만 고친다 — 기존 클래스만, `member-assist.js` 가 쓰는 id 는 그대로. `tests/browser/dbg_u2_ui.py` 의 MODAL_RULE 을 B 와 같은 방식(격리 인스턴스)으로 돌려 이 창 위반 0 |
+| C-6 사이드바(사용자 결정 「옛 링크 빼기」) | `shell_top.php:420` 「모아 공간 이동」 줄의 「메신저 · 동료·AI와 대화하기」(→ `/messages`) 링크를 뺀다. 사이드바의 「메신저」는 떠 있는 창 단추 하나 — 전체 화면은 창 머리 「크게 보기」. `messenger_window_browser.py` 에 「사이드바에 `/messages` 링크 0 · 「메신저」 글자 1」 단언 |
