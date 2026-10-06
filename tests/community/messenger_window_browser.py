@@ -430,8 +430,11 @@ try:
    check(t.is_open() and p.locator('#files-body tr').count()>=1,'Q:T-17 opening a folder behind (file table filled) keeps the window open')
    mark=time.time();p.locator('#search-sort').select_option('name');p.locator('#search-form button[type=submit]').click();p.wait_for_timeout(800)
    check(t.is_open() and any('sort=name' in r[2] for r in t.requests if r[0]>=mark),'Q:T-17 sorting the file table behind (sort=name request) keeps the window open')
-   p.mouse.click(200,450);p.wait_for_timeout(200)
-   check(t.is_open(),'Q:T-17 clicking outside the window does not close it')
+   # 창 밖의 누를 것 없는 자리(화면 제목)를 누른다 — 고정 좌표(200,450)는 C-6 으로 사이드바 줄이 하나 줄자 내비 링크에 닿아 화면을 옮겼다
+   metrics['t17_point_200_450']=p.evaluate("(()=>{const e=document.elementFromPoint(200,450);const a=e&&e.closest('a,button');return e?(a?a.tagName+' '+a.textContent.replace(/\\s+/g,' ').trim().slice(0,20):e.tagName):null;})()")
+   url0=p.url;outside=p.locator('main h1').first;metrics['t17_outside_click']=outside.evaluate("e=>e.tagName+' '+e.textContent.trim().slice(0,20)")
+   outside.click();p.wait_for_timeout(200)
+   check(t.is_open() and p.url==url0,'Q:T-17 clicking outside the window (page title) does not close it')
    p.evaluate("window.scrollTo(0,0)");p.mouse.wheel(0,400);p.wait_for_timeout(300)
    check(t.is_open(),'Q:T-17 page scroll keeps the window open')
    p.locator('#main').focus() if p.locator('#main').count() else None
