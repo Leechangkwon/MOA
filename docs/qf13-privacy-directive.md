@@ -51,6 +51,11 @@ H 가 끝나면 멈춘다 — 메인 세션이 독립 검토 · 발행(patch) ·
 완료 기준   : php tests/community/memory_ai_unit.php 통과(출력 원문) + tests/community/memories_check.sh 가 돌릴 수 있으면 그 결과 + git diff --check.
 보고 형식   : 「공통」. 확정한 값: 바꾼 줄 · 커밋 해시.
 ```
+
+## H 운영 반영 결과 (2026-10-07 02:40 KST · 메인 세션)
+
+v2.50.1 `073ff04`(태그 `v2.50.1`, 기준 `selftest-base/qf13h`=d23db4b · 검토 `review-base/qf13h`=043627e — 검토 뒤 H-1 시험 고정값 한 줄 · main 위로 다시 쌓음). 순서: 독립 검토(메인 재실행 `memory_ai_http` 91/0 · `qf13h_privacy_browser` 38/0 · `memory_ai_unit` 24 통과 · lint 0) → 운영 점검(작업 트리 깨끗 · `313844b` 에서 바로 이어짐 · 설치된 cron = 저장소 · 정리 dry run `unattached uploads older than seven days: 0` — 켜도 지금 지워질 것 0) → 코드 ff-merge · `php8.1-fpm` reload → `/etc/cron.d/tbox-v2` 설치(644 root, 저장소와 같음) → 운영 HTTPS(UA `tbox-review/2026-10-07`): `/` 200 · `/tbox/login` 200 · `/community/memories` 302(로그인) · 운영 `app.js?v=1791308373` 에 `clearTravelDraft` · 서버 `MemoryAi.php` 에 원본 그대로 갈래 0 · `php -l` → push(main · v2.50.1 · 검토 태그 둘). DB 변경 0 · nginx 변경 0.
+남은 것(따로): `tests/community/memories_render.php` 의 `Authz` 스텁에 `canAdmin` 이 없어 `memories_check.sh` 가 그 단계에서 멈춤(Q:F-11 B 부터의 기존 실패) · 같은 깨진 PNG 고정값이 `memories_http.py:29` · `memory_social_http.py:85` · `moa_local_assist.py:84` 에도 있음(지금 다시 인코딩 길을 타지 않아 통과) · `memories_cleanup.php` 감사 기록 없음(P2 파기와 함께) · 실제 root cron 첫 실행(04:20)은 다음 날 확인.
 ---
 
 # 지시서 P — 처리방침·약관 게시 · 동의 · 보관 기간 정리 · 탈퇴 (2026-10-07, Q:F-12 묶음 운영 반영 뒤 시작)
