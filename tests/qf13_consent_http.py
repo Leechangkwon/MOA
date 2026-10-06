@@ -481,7 +481,7 @@ def suite(instance, work, out, config, users, sql, port):
     check(req('GET', TB + '/api/files', vsess).status_code == 200, 'VERSION member with current consent is not gated')
     lj = instance / 'config/legal.json'
     original = lj.read_text()
-    newver = '0000-00-01'
+    newver = '9999-12-31'   # 어떤 실제 시행일보다 뒤인 판(목록은 오름차순이어야 한다 — 발행 날 자리 값 0000-00-00 이 실제 날짜로 바뀌어도 그대로 돈다)
     (instance / ('content/legal/terms-' + newver + '.html')).write_bytes((instance / 'content/legal/terms-{}.html'.format(VER['terms'])).read_bytes())
     data = json.loads(original)
     data['terms'].append({'version': newver, 'file': 'terms-' + newver + '.html'})
