@@ -11637,6 +11637,69 @@ function clearMessengerState(owner) {
   }
 }
 
+/* 사이트 Q:F-13 G-3 — 로그아웃 때 그 사람의 여행 임시 글·사진도 지운다. 사진 기록 화면(`community/memories.js`)이
+ * IndexedDB `qaredi-travel-drafts` 의 `drafts` 저장소에 **아이디를 열쇠로** 글과 고른 사진 파일을 암호화 없이 남긴다.
+ * 로그아웃은 어느 화면에서든 이 단추 하나로만 일어나므로 여기서 지운다(그 모듈을 부르지 않는다 — 다른 화면에는 없다).
+ * 그 화면은 글쓰기 창(모달)이 열려 있을 때만 임시 저장을 쓰고, 그 창이 열려 있으면 머리의 로그아웃 단추를 누를 수 없다.
+ * 그 사람 열쇠 하나만 지운다(다른 사람 몫·값은 읽지 않는다). 이 브라우저에 저장소가 없으면 새로 만들지 않는다(처음 여는 것이면 취소).
+ * 지우기는 비동기라 끝난 뒤에(늦어도 2초) 로그인 화면으로 간다 — 떠나면서 끊기지 않게. 실패해도 로그아웃은 그대로 끝난다. */
+var TRAVEL_DRAFT_DB = 'qaredi-travel-drafts';
+
+function clearTravelDraft(owner) {
+  return new Promise(function (resolve) {
+    var settled = false;
+    var timer = null;
+    function finish() {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      if (timer !== null) {
+        window.clearTimeout(timer);
+      }
+      resolve();
+    }
+    if (typeof owner !== 'string' || !/^[a-z0-9_.-]{3,64}$/.test(owner)) {
+      finish();
+      return;
+    }
+    timer = window.setTimeout(finish, 2000);
+    try {
+      var request = window.indexedDB.open(TRAVEL_DRAFT_DB);
+      request.onupgradeneeded = function () {
+        // 처음 여는 것 = 이 브라우저에 여행 임시 글이 없다. 빈 저장소를 남기지 않는다.
+        request.transaction.abort();
+      };
+      request.onerror = function (event) {
+        event.preventDefault();
+        finish();
+      };
+      request.onsuccess = function () {
+        var db = request.result;
+        try {
+          if (!db.objectStoreNames.contains('drafts')) {
+            db.close();
+            finish();
+            return;
+          }
+          var tx = db.transaction('drafts', 'readwrite');
+          tx.oncomplete = tx.onerror = tx.onabort = function () {
+            db.close();
+            finish();
+          };
+          tx.objectStore('drafts').delete(owner);
+        } catch (e) {
+          db.close();
+          finish();
+        }
+      };
+    } catch (e) {
+      // IndexedDB 가 없거나 막힌 브라우저 — 남은 것이 없다
+      finish();
+    }
+  });
+}
+
 /**
  * G-0 (t-box PRD F-73 ④) — 사이드바 「권한 요청 n」. n 은 서버가 준 **기다리는 요청 수**(`/api/me` · 받은 요청 목록의 pending)뿐이고
  * 0 이면 항목째 숨긴다. 강제 절차 중에는 다른 항목과 함께 닫힌다. 글자는 textContent.
@@ -11845,8 +11908,11 @@ function initShell(me, csrfToken) {
             try { document.dispatchEvent(new CustomEvent('qaredi:logout')); } catch (e) { /* 옛 브라우저 — 지우기는 그대로 */ }
             clearMyDrafts(me.username);
             clearMessengerState(me.username);
-            toLogin();
-            return null;
+            // Q:F-13 G-3 — 여행 임시 글·사진(IndexedDB)은 비동기라 지우기가 끝난 뒤에 떠난다(늦어도 2초)
+            return clearTravelDraft(me.username).then(function () {
+              toLogin();
+              return null;
+            });
           }
           return readJson(response).then(function (body) {
             setText(msg, errorMessage(body));

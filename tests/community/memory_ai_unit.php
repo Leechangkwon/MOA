@@ -23,7 +23,7 @@ foreach ([['consent'=>false],['revision'=>0],['revision'=>'1'],['media_ids'=>[$i
 }
 $dir = sys_get_temp_dir() . '/memory-ai-unit-' . bin2hex(random_bytes(6)); mkdir($dir,0700);
 // Complete tiny PNG, also used by the real HTTP fixture.
-$bytes = base64_decode('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jRZkAAAAASUVORK5CYII=');
+$bytes = base64_decode('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR4nGP8/x8AAwMCAHwG0LwAAAAASUVORK5CYII=');
 $row = ['id'=>$id,'mime'=>'image/png','bytes'=>strlen($bytes),'sha256'=>hash('sha256',$bytes)];
 try {
     file_put_contents($dir.'/'.$id,$bytes);

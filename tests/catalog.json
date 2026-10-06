@@ -5787,6 +5787,79 @@
       "est_sec": 600,
       "writes_prod": false,
       "notes": "사이트 Q:F-11 지시서 B-5·B-6 「messenger_window_browser.py」 — tests/community/messenger_browser.py(커뮤니티 모달·모의 HTTP)를 대체. memories_harness 의 빈 합성 DB + 로컬 php -S + Chromium(CHROMIUM_EXECUTABLE). fixture claude_ 계정과 합성 대화 상대 둘만. 떠 있는 창: 셸(두 모드)·커뮤니티 9·시작 안내·런처의 같은 id 단추(손님·역할로 보기·미로그인 런처 0 · Set-Cookie 0) · 같은 탭 이동 복원(열림·상대·초안·스크롤·AI 스레드, 초점 그대로) · 여러 탭(BroadcastChannel 로 초안 지움·배지 같음 · 같은 UUID 동시 전송 1행 · navigator.locks 대표 탭 승계) · 로그아웃·계정 바뀜 · 390/412(터치·마우스)/820/1440 × 밝게·어둡게 × 고대비(아래 시트·사용 안내 단추와 겹침 0·누름 44) · 비모달(확인·AI 도구·재인증 창이 위) · 폴링 65초 관찰(닫힘 30초·열림 8초·숨김 0·last_seen 불변) · 커뮤니티 사람 대화 라우트 6개 404·GPT 휴면 · 꾸미기 → 모아 AI. dbg_u2 MODAL_RULE·ui_snapshot AUDIT_JS 를 글자 그대로 읽어 같은 인스턴스에서. 결과 파일은 단언 이름·참/거짓과 수치(metrics)만. QF11B_ONLY=t11,t12,… 로 묶음만 돌릴 수 있다."
+    },
+    {
+      "id": "community.memory_ai_http",
+      "cmd": "python3 tests/community/memories_harness.py --suite memory_ai_http.py --output /tmp/qaredi-memory-ai-http-results",
+      "module": "community",
+      "env": "temp-instance",
+      "status": "required",
+      "needs": [
+        "browser"
+      ],
+      "covers": [
+        "src/community/MemoryAi.php",
+        "src/community/Memories.php",
+        "src/community/handlers/memories_ai.php",
+        "src/community/handlers/memories_page.php",
+        "src/MemberAi.php",
+        "src/MemberAssist.php",
+        "src/handlers/member_ai.php",
+        "src/handlers/member_assist.php",
+        "src/Fetch.php",
+        "public/assets/community/memories.js",
+        "tests/community/memory_ai_http.py",
+        "tests/community/memory_ai_transport.php.fixture",
+        "tests/community/memories_harness.py",
+        "tests/community/memories_http.py",
+        "tests/community/memories_fixture.php",
+        "tests/community/export_router.php",
+        "db/schema.sql",
+        "db/grants.sql",
+        "db/community/schema.sql",
+        "db/community/grants.sql",
+        ".env.example"
+      ],
+      "requirements": [],
+      "risks": [],
+      "est_sec": 120,
+      "writes_prod": false,
+      "notes": "사진 기록 「Gemini로 글쓰기」 — memories_harness 의 빈 합성 DB + 로컬 php -S(127.0.0.1:8768·8769) + Chromium 390. 제공자는 임시 복사본의 Fetch.php 에서만 합성 응답(외부 요청 0) · fixture claude_ 만. 기존: 설정·키 없으면 요청 0 · 원장 멱등 · 409·429·504 · 두 번째 작업자에서 글이 바뀌면 늦은 답 거부 · 일반 대화·글 도구 그대로 · 390px 미리보기·명시 저장. 사이트 Q:F-13 지시서 H G-1: GPS·카메라 정보·XMP 가 든 작은 JPEG(900×600 ≤600KB)·큰 JPEG(2400×1600)를 사진 이야기·글 형식으로 보내면 합성 provider 가 받은 사진은 다시 인코딩한 JPEG(APP1·Exif·XMP·GPS·카메라 표식 0, 작은 것은 해상도 그대로·큰 것은 긴 변 1280) · 저장된 원본 파일·내려받는 바이트·글은 sha256 그대로 · 디코딩되지 않는 사진(머리만 맞는 PNG)은 요청 0·실패 미리보기 · 이 시험에서 제공자에 닿은 사진 전부 메타데이터 0 · 메신저 글 도구 요청에 사진 0. 기본 사진은 CRC 가 맞는 1×1 PNG(memories_http.py 의 PNG 는 IDAT CRC 가 틀려 디코딩되지 않는다 — memory_story_http.py 도 이 머리를 빌려 쓴다). 결과 파일은 단언 이름·참/거짓만."
+    },
+    {
+      "id": "community.qf13h_privacy_browser",
+      "cmd": "python3 tests/community/memories_harness.py --suite qf13h_privacy_browser.py --output /tmp/qaredi-qf13h-privacy-results",
+      "module": "community",
+      "env": "temp-instance",
+      "status": "required",
+      "needs": [
+        "browser"
+      ],
+      "covers": [
+        "public/assets/app.js",
+        "public/assets/community/memories.js",
+        "src/views/shell_top.php",
+        "src/handlers/logout.php",
+        "src/community/handlers/memories_page.php",
+        "src/community/Memories.php",
+        "scripts/memories_cleanup.php",
+        "deploy/cron.d/tbox-v2",
+        "tests/community/qf13h_privacy_browser.py",
+        "tests/community/memories_harness.py",
+        "tests/community/memories_http.py",
+        "tests/community/memories_fixture.php",
+        "tests/community/export_router.php",
+        "db/schema.sql",
+        "db/grants.sql",
+        "db/community/schema.sql",
+        "db/community/grants.sql",
+        ".env.example"
+      ],
+      "requirements": [],
+      "risks": [],
+      "est_sec": 90,
+      "writes_prod": false,
+      "notes": "사이트 Q:F-13 지시서 H — memories_harness 의 빈 합성 DB + 로컬 php -S(127.0.0.1:8768·8769) + Chromium(CHROMIUM_EXECUTABLE, 1280·390) · fixture claude_ 만 · 외부 요청 0. G-6: cron 조각 정적 검사(칸 수·시각 칸·04:20 한 줄·purge 와 같은 실행 계정 root·경로) · memories_cleanup.php 를 이 합성 DB 에 dry run(지우는 것 0) 뒤 --apply — 7일 지난 붙지 않은 업로드(두 소유자)만 행·파일 삭제, 붙은 사진·6일 23시간 된 것은 남음, 두 번째 --apply 0. G-3: IndexedDB qaredi-travel-drafts(열쇠 = 아이디)의 여행 임시 글·사진 — 커뮤니티 홈(사진 기록 모듈 없음) 로그아웃 → 그 사람 항목 0 · 다시 로그인한 B 에게 이전 임시 글 0 · 사진 기록 화면 머리 로그아웃(qaredi:logout 을 알리는 길) → A 항목 0, B 항목은 그대로 · 글쓰기 창은 모달이라 쓰는 동안 머리 메뉴에 닿지 않음 · B 로그아웃 → 항목 0 · 임시 글이 없던 브라우저(390)에서 로그아웃해도 빈 저장소를 만들지 않음 · 콘솔(화면 코드) 0 · 페이지 오류·5xx 0. 브라우저 자원 줄 중 /favicon.ico 404 와 로그인 화면 lake.jpg 404(시험 라우터가 .jpg 를 내지 않음)는 이미 있던 것으로 따로 허용. 결과 파일은 단언 이름·참/거짓만."
     }
   ]
 }

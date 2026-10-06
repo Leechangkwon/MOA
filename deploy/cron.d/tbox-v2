@@ -38,6 +38,8 @@ SHELL=/bin/bash
 0    4   *   *  *     root  php  /var/www/qaredi/tbox-v2/scripts/purge_trash.php
 # 커뮤니티 휴지통 30일 정리(7-A) — 파일 정리(04:00) 뒤, 백업 검증(04:30) 앞 (사용자 승인 2026-09-24, 취합 보고서)
 10   4   *   *  *     root  php  /var/www/qaredi/tbox-v2/scripts/community_purge.php --run --max 500
+# 04:20  사진 기록 — 7일 넘게 어느 글에도 붙지 않은 업로드 정리(행·파일, 한 번에 최대 500개). 붙은 사진·7일 안 된 것은 남긴다 (Q:F-13 G-6)
+20   4   *   *  *     root  php  /var/www/qaredi/tbox-v2/scripts/memories_cleanup.php --apply
 # 04:30  백업 검증 (sha256sum -c + gpg 복호화 시험). 2회 연속 실패 → AL-8
 30   4   *   *  *     root  bash /var/www/qaredi/tbox-v2/scripts/verify_backup.sh
 # 00:05  감사 로그 해시 체인 — **어제**(logrotate 가 00:00 에 회전시킨 파일)를 봉인한다.
