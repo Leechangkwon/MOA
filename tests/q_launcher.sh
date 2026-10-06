@@ -396,7 +396,7 @@ if [ -n "$ADM_CSRF" ]; then
   expect "로그인 상태 런처에 사용자 배지 (page-head__actions 1)" "1" "$(grep -c 'page-head__actions' "$WORK/root2.html" | tr -d ' ')"
   expect "로그인 상태 런처에도 userchip 0건" "0" "$(grep -c 'userchip' "$WORK/root2.html" | tr -d ' ')"
   contains "칩에 표시 이름" "claude_admin01" "$(cat "$WORK/root2.html")"
-  expect "로그인 상태 런처 테마·내 작업 script 2건" "2" "$(grep -c '<script' "$WORK/root2.html" | tr -d ' ')"
+  expect "로그인 상태 런처 테마·내 작업·메신저 창 script 5건(Q:F-11 B — 창 스크립트 셋 +3)" "5" "$(grep -c '<script' "$WORK/root2.html" | tr -d ' ')"
   # 로그인 뒤는 전과 같다 — 타일 둘(링크)·격자 · 로그인 단추 0 (S2 는 로그인 전만 바꿨다)
   contains "로그인 뒤 타일 t-box" "t-box" "$(cat "$WORK/root2.html")"
   contains "로그인 뒤 타일 커뮤니티" "커뮤니티" "$(cat "$WORK/root2.html")"

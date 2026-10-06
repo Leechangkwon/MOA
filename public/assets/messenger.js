@@ -25,7 +25,7 @@
  *   · 다른 사람 접두의 값은 읽지 않는다 — 이름으로만 골라 지운다(계정이 바뀐 탭).
  *   · 쓰던 글은 서버로 보내지 않는다. AES 열쇠는 drafts.js 모듈 안에만(여기·전역·쿠키·저장소 0). 탭 사이에는 본문 대신 SHA-256 요약만.
  *   · 외부 주소 0 · 콘솔 0 · 새 창구 0(열쇠는 기존 `GET /community/api/me/draft-key`, 안 읽은 수는 기존 `GET /api/messages?q=`).
- *   · PC 도우미(127.0.0.1:43821)는 `/messages` 에서만 — 이 파일은 그 주소로 가지 않는다(member-assist.js 가 창에서는 안내만 보인다).
+ *   · PC 도우미(내 PC 의 loopback 주소)는 `/messages` 에서만 — 이 파일에는 그 주소가 없다(member-assist.js 가 창에서는 안내만 보인다).
  *   · 역할 비교 0 — `/api/me` 의 `can_community_write`·`acting` 만 본다(근거는 서버 `Member::requireMessenger`).
  */
 import { createDrafts } from './community/drafts.js?v=f0a214b1ead3';

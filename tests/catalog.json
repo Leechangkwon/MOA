@@ -5493,6 +5493,78 @@
       "est_sec": 180,
       "writes_prod": false,
       "notes": "사이트 Q:F-11 지시서 A-5 「messenger_store_browser.py」 — memories_harness 의 빈 합성 DB + 로컬 php -S + Chromium(CHROMIUM_EXECUTABLE, 1440·390). /messages 에서 쓰던 글 암호화 저장·복원(평문 0) · 창 상태 sessionStorage(번호·스크롤만) · 보낸 뒤 삭제 · 상대·AI 스레드별 초안 · 스크롤 이어 열기 · qaredi:logout 이벤트와 커뮤니티 홈 로그아웃 단추(app.js) 둘 다 접두·상태 0 · 같은 탭 B 로그인 때 A 의 메신저 항목 삭제(커뮤니티 페이지 초안은 그대로 — C:R-10) · APP_SECRET 을 짧게 한 세 번째 php -S(127.0.0.1:8770, 임시 복사본) 의 열쇠 503 → 「임시저장 못 함」·저장 0·다시 조르지 않음 · Gemini 대화·AI 도구·이미지 첨부(새로고침 뒤 서버 목록으로 확인해 다시 붙임)·번역·PC 도우미 단추 · 모듈이 member.js 보다 먼저 실행 · 콘솔(화면 코드) 0 · 가로 넘침 0. AI 제공자는 임시 복사본의 Fetch.php 에서만 합성 응답(외부 요청 0). 대화 상대로 합성 구성원 둘(synthetic_peer_a/b — 로그인 없음)을 이 DB 에만 만든다(사람 목록이 claude_ 를 빼므로). 브라우저 자원 줄 중 /favicon.ico 404 와 로그인 화면 lake.jpg 404(시험 라우터가 .jpg 를 내지 않음)는 이미 있던 것으로 따로 허용."
+    },
+    {
+      "id": "tbox.messenger_window_browser",
+      "cmd": "python3 tests/community/memories_harness.py --suite messenger_window_browser.py --output /tmp/qaredi-messenger-window-results",
+      "module": "tbox",
+      "env": "temp-instance",
+      "status": "required",
+      "needs": [
+        "browser"
+      ],
+      "covers": [
+        "src/views/messenger_window.php",
+        "src/views/shell_top.php",
+        "src/views/shell_bottom.php",
+        "src/views/member_top.php",
+        "src/handlers/member_welcome_page.php",
+        "src/views/launcher.php",
+        "src/site/launcher_page.php",
+        "src/handlers/member_messages_page.php",
+        "public/assets/messenger.js",
+        "public/assets/member-assist.js",
+        "public/assets/member-ai.js",
+        "public/assets/app.css",
+        "public/assets/moa.css",
+        "public/assets/community/memories.js",
+        "src/community/handlers/memories_page.php",
+        "src/community/handlers/overview_page.php",
+        "src/community/routes.php",
+        "src/community/handlers/messenger_api.php",
+        "src/community/Messenger.php",
+        "src/handlers/member_messages.php",
+        "src/handlers/member_ai.php",
+        "src/handlers/member_assist.php",
+        "src/views/member_assist.php",
+        "src/community/handlers/draft_key.php",
+        "public/assets/community/drafts.js",
+        "public/assets/app.js",
+        "scripts/ui_snapshot.py",
+        "tests/browser/dbg_u2_ui.py",
+        "tests/community/messenger_window_browser.py",
+        "tests/community/memories_harness.py",
+        "tests/community/memories_http.py",
+        "tests/community/memories_fixture.php",
+        "tests/community/export_router.php",
+        "db/schema.sql",
+        "db/grants.sql",
+        "db/community/schema.sql",
+        "db/community/grants.sql",
+        ".env.example"
+      ],
+      "requirements": [
+        "Q:T-11",
+        "Q:T-12",
+        "Q:T-13",
+        "Q:T-14",
+        "Q:T-15",
+        "Q:T-16",
+        "Q:T-17",
+        "Q:T-18",
+        "Q:T-19",
+        "Q:T-20",
+        "Q:T-21",
+        "Q:T-22"
+      ],
+      "risks": [
+        "R-116",
+        "R-117",
+        "R-118"
+      ],
+      "est_sec": 600,
+      "writes_prod": false,
+      "notes": "사이트 Q:F-11 지시서 B-5·B-6 「messenger_window_browser.py」 — tests/community/messenger_browser.py(커뮤니티 모달·모의 HTTP)를 대체. memories_harness 의 빈 합성 DB + 로컬 php -S + Chromium(CHROMIUM_EXECUTABLE). fixture claude_ 계정과 합성 대화 상대 둘만. 떠 있는 창: 셸(두 모드)·커뮤니티 9·시작 안내·런처의 같은 id 단추(손님·역할로 보기·미로그인 런처 0 · Set-Cookie 0) · 같은 탭 이동 복원(열림·상대·초안·스크롤·AI 스레드, 초점 그대로) · 여러 탭(BroadcastChannel 로 초안 지움·배지 같음 · 같은 UUID 동시 전송 1행 · navigator.locks 대표 탭 승계) · 로그아웃·계정 바뀜 · 390/412(터치·마우스)/820/1440 × 밝게·어둡게 × 고대비(아래 시트·사용 안내 단추와 겹침 0·누름 44) · 비모달(확인·AI 도구·재인증 창이 위) · 폴링 65초 관찰(닫힘 30초·열림 8초·숨김 0·last_seen 불변) · 커뮤니티 사람 대화 라우트 6개 404·GPT 휴면 · 꾸미기 → 모아 AI. dbg_u2 MODAL_RULE·ui_snapshot AUDIT_JS 를 글자 그대로 읽어 같은 인스턴스에서. 결과 파일은 단언 이름·참/거짓과 수치(metrics)만. QF11B_ONLY=t11,t12,… 로 묶음만 돌릴 수 있다."
     }
   ]
 }

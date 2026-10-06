@@ -227,11 +227,12 @@ try:
    tok=new_session('employee')
    ctx=browser.new_context(viewport={'width':1440,'height':900},locale='ko-KR',user_agent=UA);ctx.add_cookies(cookie(tok))
    t=Tab(ctx);p=t.page
-   for path,opener,label,me_max in (('/tbox/settings','#messenger-open','셸 사이드바',1),('/tbox/welcome','#messenger-open','시작 안내 nav',2),('/','#messenger-open','런처 타일',2),
+   for path,opener,label,me_max in (('/tbox/settings','#messenger-open','셸 사이드바',1),('/community/today','#messenger-open','커뮤니티 셸 사이드바',1),('/tbox/welcome','#messenger-open','시작 안내 nav',2),('/','#messenger-open','런처 타일',2),
                                     ('/community/','#overview-messenger [data-messenger-open]','커뮤니티 개요 카드',1),('/community/memories','.threads-quick [data-messenger-open]','스레드 단추',1)):
     mark=time.time();t.go(path);p.wait_for_timeout(1200)
     me=[r for r in t.requests if r[0]>=mark and r[2]=='/tbox/api/me'];badge=[r for r in t.requests if r[0]>=mark and r[2]=='/tbox/api/messages?q=']
     metrics['api_me-'+path]=len(me);metrics['first_badge-'+path]=len(badge)
+    metrics['community_base-'+path]=p.evaluate("document.body.getAttribute('data-community-base')")   # B-7 2 — 없으면 messenger.js 가 '/community' 를 쓴다
     check(len(me)<=me_max,'Q:T-11 '+label+': /api/me requests on this screen '+str(len(me))+' (≤'+str(me_max)+' — one more at most, shell reuses app.js)')
     check(len(badge)==1 and all(r[3]=='1' for r in badge),'Q:T-11 '+label+': one background badge request on load')
     before=p.url;p.locator(opener).first.click();expect(p.locator('#messenger-window')).to_be_visible();p.wait_for_timeout(300)
@@ -384,6 +385,14 @@ try:
        check(touch_bad==[],'Q:T-16 '+tag+' '+path+': every visible button in the sheet has a 44px tap area '+json.dumps(touch_bad,ensure_ascii=False))
        closes=p.evaluate("[...document.querySelectorAll('#messenger-window [data-messenger-close]')].filter(b=>b.getClientRects().length).map(b=>b.textContent.trim()||b.getAttribute('aria-label'))")
        check(sorted(closes)==sorted(['닫기','닫기']),'Q:T-16 '+tag+' '+path+': sheet has both ✕ (head) and 「닫기」 (bottom)')
+       if path=='/tbox/' and not contrast:
+        # 시트가 열린 채 ☰(서랍)를 열면 메뉴가 시트 위에 — 로그아웃까지 누를 수 있다
+        p.locator('#appbar-apps').click();p.wait_for_timeout(200)
+        if not p.locator('#logout').is_visible():p.locator('details.appbar__apps > summary').click()
+        p.locator('#logout').scroll_into_view_if_needed();p.wait_for_timeout(200)
+        hit=p.evaluate("(()=>{const b=document.getElementById('logout').getBoundingClientRect();const e=document.elementFromPoint(b.left+b.width/2,b.top+b.height/2);return !!(e&&e.closest('#logout'))&&document.getElementById('messenger-window').open;})()")
+        check(hit,'Q:T-16 '+tag+': with the sheet open the drawer menu opens above it (logout hit-testable, sheet still open)')
+        p.locator('#appbar-apps').click();p.wait_for_timeout(200)
       else:
        g=geo['guide']
        overlap=0 if g is None else max(0,min(geo['right'],g['right'])-max(geo['left'],g['left']))*max(0,min(geo['bottom'],g['bottom'])-max(geo['top'],g['top']))
@@ -405,11 +414,12 @@ try:
    ctx=browser.new_context(viewport={'width':1440,'height':900},locale='ko-KR',user_agent=UA);ctx.add_cookies(cookie(tok))
    t=Tab(ctx);p=t.page
    t.go('/tbox/');t.open();t.person('합성 상대 A')
-   # 뒤 화면: 표 머리 정렬 단추 · 링크 · 스크롤 · 창 밖 클릭
-   sort=p.locator('table.files th button').first
-   if sort.count():
-    before=p.evaluate("location.href");sort.click();p.wait_for_timeout(500)
-    check(t.is_open(),'Q:T-17 sorting the file table behind keeps the window open')
+   # 뒤 화면: 폴더 링크 → 파일 표 · 정렬 바꾸기 · 스크롤 · 창 밖 클릭
+   p.locator('.foldertree__item').filter(has_text='synthetic-a').first.click()
+   expect(p.locator('#files-body tr').first).to_be_visible(timeout=10000)
+   check(t.is_open() and p.locator('#files-body tr').count()>=1,'Q:T-17 opening a folder behind (file table filled) keeps the window open')
+   mark=time.time();p.locator('#search-sort').select_option('name');p.locator('#search-form button[type=submit]').click();p.wait_for_timeout(800)
+   check(t.is_open() and any('sort=name' in r[2] for r in t.requests if r[0]>=mark),'Q:T-17 sorting the file table behind (sort=name request) keeps the window open')
    p.mouse.click(200,450);p.wait_for_timeout(200)
    check(t.is_open(),'Q:T-17 clicking outside the window does not close it')
    p.evaluate("window.scrollTo(0,0)");p.mouse.wheel(0,400);p.wait_for_timeout(300)
