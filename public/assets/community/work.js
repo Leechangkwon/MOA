@@ -1,5 +1,5 @@
-import { drawCalendar, rangeFor } from './calendar.js?v=ad03113a4884';
-import { renderDoc } from './doc-render.js?v=ad03113a4884';
+import { drawCalendar, rangeFor } from './calendar.js?v=3cdf1225a5b6';
+import { renderDoc } from './doc-render.js?v=3cdf1225a5b6';
 /*
  * public/assets/community/work.js — 업무 화면(사이트 Q:F-12 · 조각 D): 업무 홈 · 내 작업 · 프로젝트(작업 목록 + 오른쪽 작업 상세 칸 ·
  * 프로젝트 머리 · 상태) · 포트폴리오 · 「새로 만들기」(작업 · 프로젝트) · 사이드바 포트폴리오 묶음.
@@ -1251,6 +1251,7 @@ export function createWork(deps) {
     const w = canWrite();
     setText($('project-title'), page.title || '');
     document.title = (page.title || '') + ' · 모아 업무';
+    setText(document.querySelector('.appbar__page'), '프로젝트');   // 폰 윗줄의 화면 이름(서버는 「페이지」로 그렸다)
     const color = $('project-color');
     if (color) { color.className = 'task-color task-color--lg' + (PROJECT_COLORS.indexOf(project.db.color) !== -1 ? ' moa-' + project.db.color : ''); }
     show($('project-head'), !asDoc);

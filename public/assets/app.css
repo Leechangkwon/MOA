@@ -2434,6 +2434,7 @@ a.app-menu__app:hover { background: var(--muted-bg); text-decoration: none; }
 .task-pane__head { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 .task-pane__tools { display: flex; align-items: center; gap: 4px; margin-left: auto; }
 .task-pane__title { margin: 0; font-size: 24px; font-weight: 600; line-height: 1.3; letter-spacing: -.02em; overflow-wrap: anywhere; }
+.task-pane__title:focus { outline: none; }   /* 칸을 열 때 초점을 받는 머리글(tabindex -1 — Tab 순서 밖) — 고리는 누르는 것에만 */
 .task-pane__title-edit { width: 100%; height: auto; padding: 4px 8px; border: 1px solid var(--primary); border-radius: var(--r-ctl); background: var(--surface); color: var(--fg); font: inherit; font-size: 24px; font-weight: 600; box-shadow: 0 0 0 3px var(--ring-soft); }
 .task-pane__props { display: grid; grid-template-columns: 88px minmax(0, 1fr); gap: 10px 12px; align-items: center; margin: 0; }
 .task-pane__props dt { color: var(--muted); font-size: 13px; }

@@ -37,7 +37,8 @@ try:
             writes = []
             page.on('request', lambda r: writes.append(urlsplit(r.url).path) if r.method not in ('GET', 'HEAD') else None)
             # Q:F-12 (B 308 · C) — 옛 「오늘」 주소는 브라우저에서도 「내 작업」 주소로 넘어간다(그 화면은 D — 여기서는 주소만 본다)
-            page.goto(site + '/community/today', wait_until='networkidle')
+            # D 뒤로 /community/my-tasks 는 실제 업무 화면(editor.js 한 벌)이라 이 틀의 php -S 에서 내 문서 화면처럼 networkidle 에 닿지 않는다 → 「load」(기대값 바꿈)
+            page.goto(site + '/community/today', wait_until='load')
             check(urlsplit(page.url).path == '/community/my-tasks', 'old Today address lands on /community/my-tasks ' + str(width) + theme)
             # 업무 사이드바의 「내 작업」이 그 주소이고 「오늘 할 일」 항목은 없다
             # 사이드바는 서버가 그린다 — 「load」 까지만 기다린다(이 틀의 php -S 에서 내 문서 화면은 networkidle 에 닿지 않는다: 기준 판 automation_ui 와 같은 현상)

@@ -296,6 +296,17 @@ try:
                 p.wait_for_selector('#task-pane:not([hidden]) #task-pane-title', timeout=10000)
                 p.wait_for_timeout(500)
                 p.screenshot(path=str(shots / 'project-pane-1440.png'))
+                # DESIGN 2.8 ★ · 6장 — 스크롤 칸(상세 칸 · 사이드바)의 아이콘 단추에 올려도 칸 · 문서의 scrollHeight · scrollWidth 그대로
+                dims = "() => { const p = document.getElementById('task-pane'), s = document.getElementById('sidebar'), d = document.documentElement; return [p.scrollHeight, p.scrollWidth, s.scrollHeight, s.scrollWidth, d.scrollHeight, d.scrollWidth]; }"
+                for sel in ('#task-pane .task-pane__section-head .btn--icon', '#task-pane .task-pane__tools .btn--icon[aria-label="닫기"]', '#sidebar .theme-toggle'):
+                    p.mouse.move(5, 5)
+                    p.wait_for_timeout(150)
+                    before = p.evaluate(dims)
+                    p.locator(sel).first.hover()
+                    p.wait_for_timeout(250)
+                    after = p.evaluate(dims)
+                    metrics['hover_' + sel] = [before, after]
+                    check(before == after, 'DESIGN 2.8 hover ' + sel + ': pane · sidebar · document scroll sizes unchanged ' + json.dumps([before, after]))
                 check(t.clean('t41-1440'), 'Q:T-41 1440 console 0 · page errors 0 · 5xx 0')
                 ctx.close()
 
@@ -585,14 +596,14 @@ try:
 
         # ─── Q:T-42 새 화면 점검 — 화면 넷 + 이야기 셸 × 폭 × 밝기 ─────────────────────────────────────────────
         if want('t42'):
-            screens = [('home', '/community/'), ('my-tasks', '/community/my-tasks'), ('project', '/community/p/' + pteam['id'] + '?task=' + rows[0]['id']),
+            screens = [('home', '/community/'), ('my-tasks', '/community/my-tasks'), ('project-list', '/community/p/' + pteam['id']), ('project', '/community/p/' + pteam['id'] + '?task=' + rows[0]['id']),
                        ('portfolio', '/community/portfolios/' + pf['id']), ('story', '/community/memories')]
             widths = [(360, False), (412, True), (412, False), (820, False), (1280, False), (1440, False)]
             summary = {}
-            for mode in ('light', 'dark', 'hc'):
-                sql('UPDATE users SET high_contrast=' + ('true' if mode == 'hc' else 'false') + ' WHERE id=' + str(emp))
+            for mode in ('light', 'dark', 'hc', 'hc-dark'):
+                sql('UPDATE users SET high_contrast=' + ('true' if mode.startswith('hc') else 'false') + ' WHERE id=' + str(emp))
                 for width, touch in widths:
-                    ctx = context('employee', width, 900 if width > 800 else 915, touch=touch, extra={'tbox_theme': 'dark' if mode == 'dark' else 'light'})
+                    ctx = context('employee', width, 900 if width > 800 else 915, touch=touch, extra={'tbox_theme': 'dark' if mode.endswith('dark') else 'light'})
                     t = Tab(ctx)
                     p = t.page
                     for name, path in screens:
@@ -601,6 +612,8 @@ try:
                             t.go(path)
                             if name == 'project':
                                 p.wait_for_selector('#task-pane:not([hidden]) #task-pane-title', timeout=15000)
+                            elif name == 'project-list':
+                                p.wait_for_selector('#project-list .task-row[data-task]', timeout=15000)
                             elif name == 'my-tasks':
                                 p.wait_for_selector('#my-tasks-groups .task-group', timeout=15000)
                             elif name == 'portfolio':
