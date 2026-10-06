@@ -148,6 +148,11 @@ A-8 이 끝나면 멈추지 않고 **지시서 B** 로 이어 간다(A-8 은 커
 
 B 가 끝나면 C 로 이어 간다(검토는 묶음 끝).
 
+**B 결과(2026-10-07 · A-8 `58e4d9f` · B `650ab5c`)와 뒤 조각에 넘기는 것** — 수락 `qf12_server_http.py` 204/0 · `qf12_floor_http.py` 250/0(메인 재실행 250/0) · 회귀 직전 판과 같은 수.
+- B 가 정한 동작(메인 수락 — ARCH 23.4·23.5 에 적음): 빠른 추가 행은 상태 `todo` 로 시작 · 「내 할 일」은 「표로 쓰기」 불가(400) · 「프로젝트로 쓰기」 때 같은 이름 「섹션」 칸이 있으면 400 `name_taken` · 공지는 `top`·`missed` 에서만 빠지고 `others` 에 남음(홈 공지 한 줄은 여기서).
+- **C 로**: `/community/today` 308 로 실패하는 기존 시험 4 — `tests/community/briefing_integration.py:155` · `tests/stage89_cross_regression/suite.py:225` · `tests/community/messenger_window_browser.py:170·238` · `tests/community/browser_9_automation_ui.py:41` — 기대값을 `/community/my-tasks`(C 단계에선 308 `Location` 만, 화면은 D). 이미 C 의 수정 파일(기획 11장 목록)에 든다.
+- **D 로**: 행 목록 응답(`database_rows.php`)에 담당 값이 없다 → D 에서 추가 · 부품 버전(`community_asset_version.php --check`)이 `database.js` 변경으로 실패 — D 끝에 한 번 다시 찍는다.
+
 ---
 
 ## 지시서 C — 셸 · 앱 나누기: 아이콘 줄 · 업무/이야기 사이드바 · 앱 목록 · 런처
@@ -189,18 +194,20 @@ C 가 끝나면 D 로 이어 간다.
 수정 파일   : ★ src/community/routes.php(화면 라우트: GET / → 업무 홈 · GET /my-tasks · GET /portfolios/{id} — 정책 community.read) ·
               src/community/handlers/work_home_page.php(새 — overview_page.php 의 ?view= 넘김을 이어받음) · src/community/handlers/overview_page.php(삭제) ·
               src/community/handlers/my_tasks_page.php(새) · src/community/handlers/portfolio_page.php(새) · src/community/handlers/page_view.php(프로젝트 화면 · ?task=) ·
-              src/community/handlers/notifications_list.php(kind assigned 허용 — A 보고에 따라) ·
+              src/community/handlers/notifications_list.php(바꿀 것 없음 — A 보고: kind 를 거르지 않는다. 화면 문구만 work.js/app.js 쪽) ·
+              src/community/handlers/database_rows.php(행 응답에 담당 — `{username, display_name}` 만, 가시성 그대로) ·
               public/assets/community/work.js(새 — 홈·내 작업·작업 목록·상세 칸·포트폴리오 · type="module") · public/assets/community/database.js(프로젝트 목록 보기를 work.js 작업 목록으로 넘기는 최소 변경) ·
               public/assets/community/editor.js(상세 칸 안 본문 편집 재사용에 필요한 최소 변경 — 바꾼 함수 목록을 보고) ·
               public/assets/app.css(DESIGN 2.20~2.22 구성 요소) · src/views/shell_top.php(업무 사이드바의 프로젝트·포트폴리오 묶음 채우기 자리만) ·
               src/help/community.php · public/assets/usage-guide.js(업무 홈·내 작업 투어) · wiki/community/*.json(새 화면 안내) ·
               DESIGN.md(2.20~2.22 「확인 결과」 줄만) · docs/design-guide.html(작업 목록·상세 칸·진행률 견본) ·
               tests/community/qf12_work_browser.py(새) · tests/community/memories_harness.py(choices) · tests/catalog.json ·
-              기대값이 바뀌는 시험(overview 를 보는 것 — usage_guide_browser.py · stage89 suite.py:225-236 · passkey.py:284-296 등, 바꾼 이유를 보고)
+              기대값이 바뀌는 시험(overview 를 보는 것 — usage_guide_browser.py · stage89 suite.py:225-236 · passkey.py:284-296 등, 바꾼 이유를 보고) ·
+              부품 버전 다시 찍기 — `php scripts/community_asset_version.php`(찍는 명령은 그 파일 머리에서 확인) 로 import 줄이 바뀌는 `public/assets/community/*.js`(dashboard · editor · suggestions · templates · messenger · database · work)와 그 목록 파일
               여기 없는 파일 금지.
 금지 패턴   : 「공통」 표. 더해서: 화면은 창구가 준 can_* 로만 단추를 숨긴다(역할 비교 0) · 진행률 폭은 CSSOM(DESIGN 2.22) ·
               상세 칸은 dialog 가 아니다(aside) · 떠 있는 단추 0(휴대폰 「작업 추가」는 목록 위) · 시안의 예시 이름을 코드·시험에 넣지 않는다.
-완료 기준   : D-2 시험 전부 + DESIGN 6장 체크리스트 전부(화면 넷 + 이야기 셸) + scripts/ui_snapshot.sh 1440·1280 결함 0 · 콘솔 0 +
+완료 기준   : D-2 시험 전부 + `php scripts/community_asset_version.php --check` 0 + DESIGN 6장 체크리스트 전부(화면 넷 + 이야기 셸) + scripts/ui_snapshot.sh 1440·1280 결함 0 · 콘솔 0 +
               messenger_window_browser · stage89 교차 회귀 · 카탈로그에서 covers 가 이 조각 파일과 겹치는 시험 전부 + security_lint 0 + php -l + node --check + git diff --check.
 보고 형식   : 「공통」. 확정한 값: 화면 주소 · 단추·안내 문구 원문(맡김 안내 · 포트폴리오 안내 · 빈 화면) · ?task= 동작 · 좁은 폭 동작 · 화면 사본 경로(1440·1199·412).
 ```
