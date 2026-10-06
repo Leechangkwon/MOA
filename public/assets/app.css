@@ -1088,10 +1088,11 @@ dialog.floating > .modal__head > .btn--icon:last-child { position: relative; top
   /* iOS 는 16px 미만 입력 칸에 초점이 가면 화면을 확대한다 */
   dialog.floating textarea, dialog.floating input { font-size: 16px; }
 }
-/* 960px 미만의 서랍 사이드바(☰ · 앱 이름으로 사람이 연다)는 떠 있는 창·시트 **위**에 펼친다 — 아니면 시트가 열린 채 ☰ 를 눌러도 메뉴가 시트 밑에 열려
-   보이지 않는다(로그아웃·이동 단추를 누를 수 없다). 층은 같은 토큰에서 한 칸 위(새 숫자 0). 넓은 화면의 사이드바는 창과 겹치지 않는다. */
+/* 960px 미만: 사람이 ☰(앱 이름)로 서랍 사이드바를 연 동안에는 떠 있는 창·시트를 **접어 둔다**(열림 상태·대화·초안은 그대로 — 서랍을 닫으면
+   다시 보인다). 아니면 시트가 화면 대부분을 덮어 서랍 메뉴(로그아웃·이동)를 누를 수 없다. 층을 새로 만들지 않는다(사이드바를 창 위로 올리면
+   스크롤 때 사이드바가 sticky 윗줄(☰)까지 덮는다). 넓은 화면의 사이드바는 창과 겹치지 않는다. */
 @media (max-width: 959.98px) {
-  .sidebar:not([hidden]) { position: relative; z-index: calc(var(--z-floating) + 1); }
+  .app:has(> .sidebar:not([hidden])) ~ dialog.floating[open] { display: none; }
 }
 /* 여는 단추 — 셸 사이드바 항목(두 모드 공용 · 커뮤니티의 `.nav button.nav__item` 과 같은 초기화)과 폰 윗줄 아이콘(종 옆). 숫자는 `.badge--internal` */
 #messenger-open.nav__item { width: 100%; border: 0; background: none; font-family: inherit; text-align: left; cursor: pointer; }
