@@ -1049,10 +1049,10 @@ POST /tbox/api/me/api-tokens scope=["community.read","session.open"] (묶음이 
 | GET/POST `/api/invites` | 초대 목록 / `{label,team_id,max_uses,days}` 발급 | 관리자·재인증·CSRF |
 | DELETE `/api/invites/{num}` | 초대 회수 | 관리자·재인증·CSRF |
 | POST `/api/member-installer` | `{url}` HTTPS 설치 주소, 빈 문자열은 해제 | 관리자·재인증·CSRF |
-| GET `/messages` | 웹 1:1 메신저 | 구성원 세션 |
-| GET `/api/messages?q=` | 대화 가능 구성원·미읽음 수 | 구성원 세션 |
+| GET `/messages` | 웹 1:1 메신저 — 넓은 화면용 페이지(Q:F-11 뒤에도 남는다 · 떠 있는 창과 같은 모듈이 「붙박이」로 돈다 · PC 도우미 loopback 은 이 페이지만) | 구성원 세션 |
+| GET `/api/messages?q=` | 대화 가능 구성원·미읽음 수. Q:F-11: 떠 있는 창이 닫혀 있을 때 안 읽은 수 배지도 이 응답의 `unread` 합으로(30초 · `X-Qaredi-Background: 1`) | 구성원 세션 |
 | GET `/api/messages/{num}?before=` | 나와 해당 구성원의 최근/이전 메시지 60개 | 구성원 세션 |
-| POST `/api/messages/{num}` | `{text}` 전송, 최대 4,000자 | 구성원 세션·CSRF |
+| POST `/api/messages/{num}` | `{text, request_id[, attachment_id]}` 전송, 최대 4,000자. **Q:F-11(지시서 A)부터 `request_id`(UUIDv4) 필수** — 같은 사람·같은 `request_id` 는 기존 행을 돌려주고(200 `{ok,id}`), 상대나 본문이 다르면 **409** 「전송 내용을 확인하고 새로 보내 주세요.」(커뮤니티 창이 쓰던 규칙). 없거나 모양이 틀리면 400 | 구성원 세션·CSRF |
 | PATCH `/api/messages/{num}` | `{through}` 지정 메시지까지 수신 메시지 읽음 처리 | 구성원 세션·CSRF |
 
 `/api/me`에는 `member_id`(본인 번호)가 추가된다. 비서 설치 파일은 별도 배포 주소가 있어야 다운로드할 수 있다. 웹 화면은 PC 프로그램 설치 완료나 연결 성공을 자동 판정하지 않는다.
@@ -1072,6 +1072,15 @@ POST /tbox/api/me/api-tokens scope=["community.read","session.open"] (묶음이 
 - 기존 `POST /api/messages/<user_id>`에 선택적 `attachment_id`(UUID/null) 추가. 완료한 본인 이미지와 해당 상대 일치 검증. 첨부만 보낼 때 기본 본문 표시, 이미지 재전송 중복 억제. GET 메시지에 ai_attachment_id/image_url 추가.
 - 관리자 `/api/member-ai-settings`는 image_enabled/image_user_daily(1~20)/image_site_daily(1~200) 추가. 기존 4필드 요청은 이미지 설정을 보존한다. 기본 false/3/20.
 - 모두 기존 세션·CSRF·가입 완료 관문 및 메신저 권한을 적용. Guest/역할 보기/일반 파일 API 토큰으로 우회 불가.
+
+### 커뮤니티 대화 창 창구 — 제거·휴면 (사이트 Q:F-11 · 사용자 결정 2026-10-06)
+
+`src/community/routes.php` 의 메신저 창구 8개(정책 `community.write`, 이 문서에는 적힌 적이 없었다)는 모아 메신저가 공용 창이 되면서 다음과 같이 된다. 표 `community.conversations` · `community.messages`(운영 0건) · `community.gpt_turns` 는 **그대로 둔다**(삭제는 별도 사용자 결정).
+
+| 창구 | 처리 |
+|---|---|
+| `GET /community/api/messenger` · `GET …/messenger/members` · `POST …/messenger/conversations` · `GET …/messenger/conversations/{id}` · `POST …/conversations/{id}/messages` · `POST …/conversations/{id}/read` | **제거**(라우트 표에서 지움 → 404). 대화는 `/tbox/api/messages*` 하나로 |
+| `GET /community/api/messenger/gpt` · `POST /community/api/messenger/gpt` | **휴면** — 라우트·핸들러·`Messenger::gpt*` 는 남고 화면에서 부르는 곳이 없다. 키가 없어 지금처럼 503(「GPT 연결이 아직 설정되지 않았어요」). 되살리거나 지우는 것은 별도 사용자 결정 |
 
 
 ### 개인 ChatGPT 수동 전달 (2026-10-02)
