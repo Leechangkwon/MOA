@@ -8,6 +8,7 @@ memories_harness.py 만 부른다(합성 DB · 임시 복사본 · 로컬 php -S
   Q:T-11 단추      t-box 셸(직원: 홈·설정·활동·내 휴지통 / 관리자: 위키·관리 허브) · 커뮤니티 9 · /welcome · 런처 — 같은 id 의 단추 1개 · 창 1개 ·
                    /messages 는 창 0 · 손님·역할로 보기는 단추·창·스크립트 0(그래도 POST /api/messages/{n} 403) · 미로그인 런처 창·스크립트 0 · Set-Cookie 0
   Q:T-12 이동 복원  커뮤니티 글 → 자료실 홈 → 설정 → 런처: 창 열림·상대·입력·스크롤 같음 · AI 스레드도 · 복원 때 초점은 창 밖
+                   보정 D-1: 이어 열 상대가 없으면(404) 번호를 잊는다 — 화면 둘을 더 옮겨도 404 요청 1회 · 상태에 그 번호 0 · 입력 칸 잠김
   Q:T-13 여러 탭    전송 → 다른 탭 초안 비고 목록에 뜸 · 배지 같음 · 같은 UUID 동시 전송 1행 · 대표 탭(navigator.locks)을 닫으면 다른 탭이 잇는다
   Q:T-14·15        로그아웃(셸 단추) → 접두·상태 0 · B 로그인 → 창 닫힘·초안 없음
   Q:T-16 폭·테마    390 · 412(터치·마우스) · 820 · 1440 × 밝게·어둡게 × 고대비: 넘침 0 · 콘솔 0 · <720 아래 시트 · ≥720 사용 안내 단추와 겹침 0 · 누름 자리 44
@@ -291,6 +292,31 @@ try:
    expect(p.locator('#message-text')).to_have_value('AI 초안',timeout=8000)   # 제목은 열 때 바로, 입력 칸은 그 스레드를 읽은 뒤에 채워진다
    check(p.locator('#message-text').input_value()=='AI 초안' and t.state(E)['thread']==thread,'Q:T-12 reopening returns to the same AI thread and draft')
    check(t.clean('t12'),'Q:T-12 no page errors / 5xx / script console output')
+   ctx.close()
+   # 보정 D-1(묶음 검토 ①) — 이어 열 상대가 이제 없으면(404) 그 번호를 잊는다: 화면을 옮겨도 같은 404 를 다시 치지 않는다
+   ghost=int(sql('SELECT coalesce(max(id),0)+100000 FROM users'));ghost_path='/tbox/api/messages/'+str(ghost)
+   check(tb('GET','/api/messages/'+str(ghost)).status_code==404,'D-1 the stored peer number answers 404 (no such member)')
+   ctx=browser.new_context(viewport={'width':1440,'height':900},locale='ko-KR',user_agent=UA);ctx.add_cookies(cookie(new_session('employee')))
+   t=Tab(ctx);p=t.page
+   p.goto(TB+'/assets/moa.css',wait_until='load')   # 모듈이 없는 같은 출처 주소에서 넣는다(모듈 화면이면 떠날 때 pagehide 가 덮어쓴다)
+   p.evaluate('([k,v])=>sessionStorage.setItem(k,v)',[A_STATE,json.dumps({'v':1,'open':True,'kind':'person','peer':ghost,'thread':None,'scroll':{'fromBottom':0},'at':int(time.time()*1000)})])
+   def ghost_gets():return len([r for r in t.requests if r[1]=='GET' and r[2]==ghost_path])
+   def composer():return p.evaluate("(()=>{const d=document.getElementById('messenger-window'),x=document.getElementById('message-text');return {open:d.open,view:d.getAttribute('data-view'),disabled:x.disabled,value:x.value,send:document.getElementById('message-send').disabled,head:document.getElementById('message-peer-name').textContent,toolbar:document.getElementById('message-assist-toolbar').hidden};})()")
+   t.go('/tbox/')
+   p.wait_for_function("()=>{const d=document.getElementById('messenger-window');return !!d&&d.open&&d.getAttribute('data-view')==='list'&&document.querySelectorAll('#message-people button').length>0;}",timeout=8000)
+   v=composer();st=t.state(E);metrics['d1_restore']=dict(v,gets=ghost_gets(),state=st)
+   check(ghost_gets()==1,'D-1 자료실 홈: one GET to the missing peer ('+str(ghost_gets())+')')
+   check(v['open'] and v['view']=='list','D-1 자료실 홈: window open on the people list')
+   check(v['disabled'] and v['send'] and v['value']=='' and v['toolbar'],'D-1 자료실 홈: composer disabled and empty, send disabled, assist toolbar hidden')
+   check('불러오는 중' not in v['head'],'D-1 자료실 홈: conversation head no longer 「불러오는 중…」 ('+v['head']+')')
+   check(st is None or st.get('peer')!=ghost,'D-1 자료실 홈: state does not carry the missing peer number')
+   for path,label in (('/tbox/settings','설정'),('/community/','커뮤니티 개요')):
+    t.go(path);p.wait_for_timeout(600)
+    st=t.state(E);v=composer();metrics['d1'+path.replace('/','_')]=dict(v,gets=ghost_gets(),state=st)
+    check(ghost_gets()==1,'D-1 '+label+': no second 404 GET to that peer (total '+str(ghost_gets())+')')
+    check(st is None or st.get('peer')!=ghost,'D-1 '+label+': state does not carry the missing peer number')
+    check(v['disabled'],'D-1 '+label+': composer disabled')
+   check(t.clean('d1') and resource_lines(t.console)<={('404',ghost_path)}|CONSOLE_OK,'D-1 console 0 (script) — only the one expected 404 resource line, no page errors / 5xx')
    ctx.close()
 
   # ─── Q:T-13 여러 탭 ────────────────────────────────────────────────────────────────

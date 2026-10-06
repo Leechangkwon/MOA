@@ -490,6 +490,8 @@ async function mount(options) {
 
   let peer = null, generation = 0, oldest = null, latest = 0, loading = false, peopleSeq = 0, lastPeople = null;
   const currentMessages = new Map();
+  /** 상대를 고르기 전 대화 머리(서버가 그린 글자) — 이어 열 상대가 없어졌을 때 되돌린다(forgetPeer) */
+  const idleHead = { name: $('message-peer-name').textContent, meta: $('message-peer-meta').textContent };
   let peerProfile = null;
   const sendingPeers = new Set(), verifying = new Set(), verified = new Set();
   const peerDraft = (id) => store.get('message', id);
@@ -666,6 +668,17 @@ async function mount(options) {
       say(e.message); return false;
     }
   }
+  /**
+   * 이어 열 상대가 이제 없다(404 — 보정 D-1). 그 번호를 잊고 처음 모습(상대 없음 · 입력 칸 잠금 · 목록)으로 되돌린다.
+   * 남겨 두면 떠날 때 saveState() 가 그 번호를 다시 써서 화면마다 같은 404 를 또 친다.
+   */
+  function forgetPeer() {
+    peer = null; peerProfile = null; generation++;
+    currentMessages.clear(); oldest = null; latest = 0; $('message-list').replaceChildren();
+    $('message-peer-name').textContent = idleHead.name; $('message-peer-meta').textContent = idleHead.meta;
+    $('message-text').value = ''; $('message-text').disabled = true; $('message-send').disabled = true; $('message-older').hidden = true;
+    assist.sync(); setView('list');
+  }
 
   /* ─── 탭 사이로 받은 것(B-3) — 전부 cleanShare 를 지난 데이터 ─── */
   /** 다른 탭이 이 상대의 대화를 읽었다 — 같은 상대를 보고 있으면 합쳐 그린다(읽음 처리는 그 탭이 했다) */
@@ -820,7 +833,7 @@ async function mount(options) {
     if (saved !== null && saved.kind === 'person' && saved.peer !== Number(me.member_id)) {
       const result = await open(saved.peer, true);
       if (result === true) { applyScroll(saved.fromBottom); saveState(); opened = true; }
-      else if (result === 404) { drop(sessionArea(), stateKey(owner)); }
+      else if (result === 404) { forgetPeer(); drop(sessionArea(), stateKey(owner)); }
     } else if (saved !== null && saved.kind === 'ai') {
       if (await ai.setState({ thread: saved.thread })) { applyScroll(saved.fromBottom); saveState(); }
       else if (ai.active && peer === null) { drop(sessionArea(), stateKey(owner)); await ai.open(); }
