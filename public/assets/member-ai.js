@@ -1,13 +1,17 @@
 'use strict';
 
 // Uses the same authenticated session and CSRF helper as the human messenger.
-window.MoaAiConversation = function ({api, me, say, node, date, activate}) {
+// Q:F-11 (지시서 A): the messenger module may pass `drafts` — a Map-like {get,set,delete} keyed by
+// thread number (0 = new conversation) that keeps the text encrypted in this browser (without it, memory only) —
+// and `onState`, told when the open thread is known (loaded, or created by the first answer) so the tab can resume it.
+window.MoaAiConversation = function ({api, me, say, node, date, activate, drafts: store, onState}) {
   const $ = id => document.getElementById(id);
   let active = false, generation = 0, thread = null, oldest = null, ready = false;
   let sending = false, loading = false, pending = false, lastAttempt = null, optimistic = null;
-  let refreshedAt = 0;
+  let refreshedAt = 0, filled = false;
   let turns = new Map();
-  const drafts = new Map();
+  const drafts = store || new Map();
+  const notify = () => { if (typeof onState === 'function') onState(); };
   const key = () => thread || 0;
 
   function controls() {
@@ -104,9 +108,10 @@ window.MoaAiConversation = function ({api, me, say, node, date, activate}) {
     if (changed) render(!older && nearBottom, older);
   }
   async function open(id) {
-    if (sending) { say('AI 답변을 받고 있어요. 답변이 도착한 뒤 AI 대화를 열어 주세요.'); return; }
-    if (active) drafts.set(key(), $('message-text').value);
-    active = true; generation++; const ticket = generation;
+    if (sending) { say('AI 답변을 받고 있어요. 답변이 도착한 뒤 AI 대화를 열어 주세요.'); return false; }
+    // Save only a composer that was filled for this thread (a switch before loading must not blank a saved draft).
+    if (active && filled) drafts.set(key(), $('message-text').value);
+    active = true; filled = false; generation++; const ticket = generation;
     thread = id === undefined ? null : (Number(id) || null);
     oldest = null; pending = false; ready = false; turns = new Map(); optimistic = null;
     activate();
@@ -120,14 +125,16 @@ window.MoaAiConversation = function ({api, me, say, node, date, activate}) {
     say(''); controls();
     try {
       const data = await api('/api/messages/ai' + (id === undefined ? '' : '?thread=' + (Number(id) || 0)), 'GET', undefined, false, true);
-      if (!active || ticket !== generation) return;
-      apply(data); $('message-text').value = drafts.get(key()) || '';
+      if (!active || ticket !== generation) return false;
+      apply(data); $('message-text').value = drafts.get(key()) || ''; filled = true;
       if (!data.ready) say(data.notice);
-    } catch (e) { if (active && ticket === generation) say(e.message); }
+      notify();
+      return true;
+    } catch (e) { if (active && ticket === generation) say(e.message); return false; }
   }
   function close() {
-    if (active) drafts.set(key(), $('message-text').value);
-    active = false; generation++;
+    if (active && filled) drafts.set(key(), $('message-text').value);
+    active = false; filled = false; generation++;
     $('message-ai').setAttribute('aria-pressed', 'false');
     $('message-ai-new').hidden = true; $('message-ai-tools').hidden = true; $('message-ai-notice').hidden = true;
     $('message-send').textContent = '보내기 ↑';
@@ -146,7 +153,7 @@ window.MoaAiConversation = function ({api, me, say, node, date, activate}) {
       const result = await api('/api/messages/ai', 'POST', attempt);
       lastAttempt = null;
       if (!active || ticket !== generation) return;
-      const turn = result.turn; thread = turn.thread_id; optimistic = null; turns.set(turn.id, turn);
+      const turn = result.turn; thread = turn.thread_id; optimistic = null; turns.set(turn.id, turn); notify();
       pending = turn.state === 'pending';
       if (turn.state !== 'failed') { $('message-text').value = ''; drafts.delete(originalThread || 0); }
       render(); await load(false, true);
@@ -162,5 +169,9 @@ window.MoaAiConversation = function ({api, me, say, node, date, activate}) {
   $('message-ai').addEventListener('click', () => open());
   $('message-ai-new').addEventListener('click', () => open(0));
   $('message-ai-threads').addEventListener('change', e => open(Number(e.target.value)));
-  return {get active() {return active;}, open, close, load, send};
+  // Q:F-11 restore hooks: read the current thread / reopen a saved one (null = new conversation screen).
+  // setState resolves true when that thread was loaded (open() resolves the same; existing callers ignore it).
+  const getState = () => ({active, thread});
+  const setState = ({thread: saved} = {}) => open(saved === null || saved === undefined ? 0 : saved);
+  return {get active() {return active;}, open, close, load, send, getState, setState};
 };

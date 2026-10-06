@@ -105,74 +105,6 @@
     $('invite-copy').addEventListener('click',()=>copy($('invite-url')));
     $('installer-form').addEventListener('submit',e=>{e.preventDefault();busy(e.currentTarget,async()=>{await api('/api/member-installer','POST',{url:$('installer-url').value});say('설치 파일 주소를 저장했습니다.');});});
   }
-  async function messenger(){
-    let peer=null,generation=0,oldest=null,latest=0,loading=false,peopleSeq=0;
-    let currentMessages=new Map();
-    let peerProfile=null;
-    const drafts=new Map(),sendingPeers=new Set();
-    const remember=()=>{if(peer)drafts.set(peer,$('message-text').value);};
-    const assist=window.MoaMessageAssist({api,node,say,context:()=>({peer,name:peerProfile?label(peerProfile):'대화 상대',ready:Boolean(peerProfile),sending:sendingPeers.has(peer)})});
-    const ai=window.MoaAiConversation({api,me,say,node,date,activate:()=>{remember();peer=null;peerProfile=null;generation++;currentMessages.clear();assist.sync();people().catch(e=>say(e.message));}});
-    $('message-text').addEventListener('input',remember);
-    async function people(){const ticket=++peopleSeq;const data=await api('/api/messages?q='+encodeURIComponent($('message-search').value),'GET',undefined,false,true);if(ticket!==peopleSeq)return;$('message-people').replaceChildren();for(const p of data.people){const b=node('button',undefined,'moa-person');b.type='button';b.setAttribute('aria-pressed',String(peer===Number(p.id)));b.append(node('span',label(p).slice(0,1),'moa-avatar'),node('span',label(p)),node('small',p.username));if(Number(p.unread)>0)b.append(node('span',p.unread,'moa-unread'));b.addEventListener('click',()=>open(Number(p.id)));$('message-people').append(b);}if(!data.people.length)$('message-people').append(node('p','찾는 구성원이 없습니다.','moa-muted'));}
-    function render(scroll){
-      const list=$('message-list'),previous=list.scrollHeight,previousTop=list.scrollTop;list.replaceChildren();
-      for(const m of [...currentMessages.values()].sort((a,b)=>Number(a.id)-Number(b.id))){
-        const mine=Number(m.sender_id)===Number(me.member_id);
-        const bubble=node('article',undefined,'moa-bubble'+(mine?' moa-bubble--mine':''));
-        bubble.append(node('strong',mine?'나 · '+me.username:'상대 · '+(peerProfile?.username||'대화 상대'),'moa-message-author'),node('p',m.body));
-        if(typeof m.ai_attachment_id==='string'&&/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(m.ai_attachment_id)){
-          const link=node('a',undefined,'moa-message-image'),image=node('img');
-          link.href=base+'/api/messages/attachments/'+m.ai_attachment_id;link.target='_blank';link.rel='noopener noreferrer';link.setAttribute('aria-label','AI로 만든 이미지 크게 보기');
-          image.src=link.href;image.alt='대화에 첨부한 AI 생성 이미지';image.loading='lazy';link.append(image);bubble.append(link,node('small','AI로 만든 이미지'));
-        }
-        const footer=node('div',undefined,'moa-bubble-footer');
-        footer.append(node('small',date(m.sent_at)+(mine?(m.read_at?' · 읽음':' · 전송됨'):'')));
-        if(!mine){const translate=node('button','번역','moa-message-translate');translate.type='button';translate.setAttribute('aria-label','이 메시지 번역하기');translate.addEventListener('click',()=>assist.open(m));footer.append(translate);}
-        bubble.append(footer);list.append(bubble);
-      }
-      if(!currentMessages.size)list.append(node('p','첫 인사를 건네 보세요.','moa-empty'));
-      if(scroll)list.scrollTop=list.scrollHeight;else if(loading)list.scrollTop=previousTop+list.scrollHeight-previous;else list.scrollTop=previousTop;
-    }
-    async function load(older=false){if(ai.active){await ai.load(older);return;}if(!peer||document.hidden)return;const ticket=generation,id=peer;const list=$('message-list'),nearBottom=list.scrollHeight-list.scrollTop-list.clientHeight<100;
-      const data=await api('/api/messages/'+id+(older&&oldest?'?before='+oldest:''),'GET',undefined,false,true);if(ticket!==generation)return;
-      peerProfile=data.peer;$('message-send').disabled=sendingPeers.has(id);assist.sync();
-      $('message-peer-name').textContent=label(data.peer)+' 님과의 대화';$('message-peer-meta').textContent='대화 상대 @'+data.peer.username+' · 1:1 대화';
-      let changed=false;for(const m of data.messages){const prior=currentMessages.get(Number(m.id));if(!prior||prior.read_at!==m.read_at)changed=true;currentMessages.set(Number(m.id),m);latest=Math.max(latest,Number(m.id));}
-      if(data.messages.length){oldest=Math.min(...currentMessages.keys());if(older||currentMessages.size<=60)$('message-older').hidden=!data.has_more;}
-      if(changed||!currentMessages.size)render(!older&&nearBottom);
-      if(latest&&!document.hidden&&ticket===generation)await api('/api/messages/'+id,'PATCH',{through:latest},false,true);
-    }
-    async function open(id){
-      remember();ai.close();peer=id;peerProfile=null;generation++;const ticket=generation;
-      $('message-peer-name').textContent='대화를 불러오는 중…';$('message-peer-meta').textContent='';
-      currentMessages.clear();oldest=null;latest=0;$('message-list').replaceChildren();
-      $('message-text').value=drafts.get(id)||'';$('message-text').disabled=false;$('message-send').disabled=true;
-      $('message-older').hidden=true;assist.sync();say('');
-      try{await load();if(ticket!==generation)return;await people();if(ticket!==generation)return;$('message-send').disabled=sendingPeers.has(id);assist.sync();$('message-text').focus();}
-      catch(e){if(ticket===generation)say(e.message);}
-    }
-    $('message-form').addEventListener('submit',async e=>{
-      e.preventDefault();if(Array.from($('message-text').value).length>4000){say('메시지는 4,000자까지 보낼 수 있습니다. 내용을 줄여 주세요.');return;}if(ai.active){await ai.send();return;}if(!peer||!peerProfile||$('message-send').disabled||sendingPeers.has(peer))return;
-      const id=peer,ticket=generation,text=$('message-text').value,attachment=assist.attachment(id);
-      if(!text.trim()&&!attachment)return;
-      remember();sendingPeers.add(id);$('message-send').disabled=true;assist.sync();
-      try{
-        await api('/api/messages/'+id,'POST',{text,attachment_id:attachment});
-        if(drafts.get(id)===text)drafts.delete(id);assist.sent(id,attachment);
-        if(peer!==id)return;
-        if($('message-text').value===text)$('message-text').value='';
-        const refreshGeneration=generation;await load();if(peer!==id||refreshGeneration!==generation)return;$('message-list').scrollTop=$('message-list').scrollHeight;await people();if(peer===id&&refreshGeneration===generation)say('');
-      }catch(error){if(peer===id&&ticket===generation)say(error.message);}
-      finally{sendingPeers.delete(id);if(peer===id)$('message-send').disabled=!peerProfile;assist.sync();}
-    });
-    $('message-text').addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey&&!e.isComposing){e.preventDefault();if(!$('message-send').disabled)$('message-form').requestSubmit();}});
-    $('message-older').addEventListener('click',async()=>{if(loading)return;loading=true;$('message-older').disabled=true;try{await load(true);}catch(e){say(e.message);}finally{loading=false;$('message-older').disabled=false;}});
-    let searchTimer;$('message-search').addEventListener('input',()=>{clearTimeout(searchTimer);searchTimer=setTimeout(()=>people().catch(e=>say(e.message)),250);});
-    await people();
-    await ai.open();
-    async function poll(){if(!document.hidden)try{await load();await people();}catch(e){say(e.message);}setTimeout(poll,8000);}setTimeout(poll,8000);
-  }
   async function initAiSettings(){
     const form=$('ai-settings-form');if(!form)return;
     const notice=$('ai-settings-status');
@@ -194,5 +126,5 @@
     addEventListener('pagehide',()=>{$('ai-settings-key').value='';});
     try{paint(await api('/api/member-ai-settings'));}catch(error){notice.textContent=error.message;}
   }
-  api('/api/me').then(async data=>{me=data;csrf=data.csrf_token;if(page==='mcp-connect')await window.MoaMcpConnect.init({api,me});if(page==='welcome')await welcome();if(admin)await Promise.all([initInvites(),initAiSettings()]);if(page==='messages')await messenger();}).catch(e=>{if(page==='mcp-connect'&&window.MoaMcpConnect)window.MoaMcpConnect.failure(e);else say(e.message);});
+  api('/api/me').then(async data=>{me=data;csrf=data.csrf_token;if(page==='mcp-connect')await window.MoaMcpConnect.init({api,me});if(page==='welcome')await welcome();if(admin)await Promise.all([initInvites(),initAiSettings()]);if(page==='messages'){if(!window.MoaMessenger)throw Error('메신저를 불러오지 못했습니다. 새로고침해 주세요.');await window.MoaMessenger.mount({api,me,node,say,date,label,mode:'page'});}}).catch(e=>{if(page==='mcp-connect'&&window.MoaMcpConnect)window.MoaMcpConnect.failure(e);else say(e.message);});
 })();

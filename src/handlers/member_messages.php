@@ -19,17 +19,30 @@ if ($params===[]) {
 }
 $peer=Member::peer((int)$params[0],$user); $pid=(int)$peer['id'];
 if (Http::method()==='POST') {
-    Member::rate('message',(string)$uid,30);
+    // Q:F-11 지시서 A-4 (R-118): request_id(UUIDv4) 필수 — 같은 사람·같은 request_id 는 한 행(여러 탭·재시도).
     $body=Http::jsonBody(24000);
-    $keys=array_keys($body);sort($keys);$attachment=$body['attachment_id']??null;
-    if (!in_array($keys,[['text'],['attachment_id','text']],true) || !is_string($body['text']) || preg_match('//u',$body['text'])!==1
-        || ($attachment!==null && (!is_string($attachment)||preg_match('/\A[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\z/',$attachment)!==1))) Http::error(400,Http::MSG_BAD_REQUEST);
+    $uuidRe='/\A[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\z/';
+    $keys=array_keys($body);sort($keys);$attachment=$body['attachment_id']??null;$request=$body['request_id']??null;
+    if (!in_array($keys,[['request_id','text'],['attachment_id','request_id','text']],true) || !is_string($body['text']) || preg_match('//u',$body['text'])!==1
+        || !is_string($request) || preg_match($uuidRe,$request)!==1
+        || ($attachment!==null && (!is_string($attachment)||preg_match($uuidRe,$attachment)!==1))) Http::error(400,Http::MSG_BAD_REQUEST);
     $message=trim($body['text']);
     if ($attachment!==null && $message==='') $message='AI로 만든 이미지';
     if ($message==='' || iconv_strlen($message,'UTF-8')>4000 || preg_match('/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/',$message)) Http::error(400,'메시지를 1~4,000자로 입력해 주세요.');
-    if ($attachment!==null) {
-        $db->begin();
-        try {
+    $db->begin();
+    try {
+        // One send per sender at a time. NO KEY UPDATE (not FOR UPDATE): the INSERT's foreign-key check takes
+        // FOR KEY SHARE on the recipient's users row, so two people writing to each other must not deadlock.
+        $lock='SELECT id FROM users WHERE id=:uid FOR NO KEY UPDATE';
+        $db->run($lock,[':uid'=>$uid]);
+        $old=$db->run('SELECT id,recipient_id,body,ai_attachment_id FROM member_messages WHERE sender_id=:uid AND request_id=CAST(:request AS uuid)',
+            [':uid'=>$uid,':request'=>$request])->fetch();
+        if ($old) {
+            $db->commit();
+            if ((int)$old['recipient_id']!==$pid || $old['body']!==$message || $old['ai_attachment_id']!==$attachment) Http::error(409,'전송 내용을 확인하고 새로 보내 주세요.');
+            Http::json(['ok'=>true,'id'=>(int)$old['id']]); exit;
+        }
+        if ($attachment!==null) {
             $image=$db->run("SELECT id FROM member_ai_assists WHERE id=CAST(:id AS uuid) AND user_id=:uid AND peer_id=:peer AND action='image' AND state='complete' AND stored_name IS NOT NULL FOR UPDATE",
                 [':id'=>$attachment,':uid'=>$uid,':peer'=>$pid])->fetch();
             if (!$image) { $db->rollback();Http::error(404,'이 대화에 첨부할 수 있는 이미지가 아닙니다.'); }
@@ -40,14 +53,13 @@ if (Http::method()==='POST') {
                 if ($prior['body']!==$message) Http::error(409,'이미 보낸 이미지입니다. 대화에서 전송 결과를 확인해 주세요.');
                 Http::json(['ok'=>true,'id'=>(int)$prior['id']]);exit;
             }
-            $row=$db->run('INSERT INTO member_messages(sender_id,recipient_id,body,ai_attachment_id) VALUES(:me,:peer,:body,CAST(:image AS uuid)) RETURNING id,sent_at',
-                [':me'=>$uid,':peer'=>$pid,':body'=>$message,':image'=>$attachment])->fetch();
-            $db->commit();
-        } catch (Throwable $e) { $db->rollback();throw $e; }
-    } else {
-        $row=$db->run('INSERT INTO member_messages(sender_id,recipient_id,body) VALUES(:me,:peer,:body) RETURNING id,sent_at',
-            [':me'=>$uid,':peer'=>$pid,':body'=>$message])->fetch();
-    }
+        }
+        // The per-minute limit counts only a new row (a resend of the same request does not use it up).
+        Member::rate('message',(string)$uid,30);
+        $row=$db->run('INSERT INTO member_messages(sender_id,recipient_id,body,ai_attachment_id,request_id) VALUES(:me,:peer,:body,CAST(:image AS uuid),CAST(:request AS uuid)) RETURNING id,sent_at',
+            [':me'=>$uid,':peer'=>$pid,':body'=>$message,':image'=>$attachment,':request'=>$request])->fetch();
+        $db->commit();
+    } catch (Throwable $e) { $db->rollback();throw $e; }
     Audit::allow('member.message.send',
         ['target_type'=>'user','target_id'=>$pid]);
     Http::json(['ok'=>true,'id'=>(int)$row['id']],201); exit;

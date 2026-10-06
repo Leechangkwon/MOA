@@ -1,7 +1,10 @@
 'use strict';
 
-window.MoaMessageAssist = function ({api, node, context, say}) {
+// Q:F-11 (지시서 A): `changed(peer)` (optional) is told when a pending AI image attachment is set or removed,
+// so the messenger module can keep the draft's attachment_id; `restore()` re-attaches a verified image after reload.
+window.MoaMessageAssist = function ({api, node, context, say, changed}) {
   const $ = id => document.getElementById(id), dialog = $('message-assist-dialog');
+  const notify = peer => { if (typeof changed === 'function') changed(peer); };
   const titles = {polish:'문장 다듬기', spelling:'맞춤법 검사', translate:'번역하기', image:'이미지 만들기'};
   const labels = {polish:'다듬을 문장', spelling:'맞춤법을 확인할 문장', translate:'번역할 문장', image:'어떤 이미지를 만들까요?'};
   const languages = {ko:'한국어', en:'영어', ja:'일본어', zh:'중국어', vi:'베트남어', es:'스페인어'};
@@ -267,7 +270,7 @@ window.MoaMessageAssist = function ({api, node, context, say}) {
     const current = context();
     if (!result || result.state !== 'complete' || current.peer !== target || !current.ready || current.sending) return;
     if ((result.manual || result.local) && result.revision !== editRevision) return;
-    if (result.image_url && safeImage(result.image_url)) attachments.set(target, {id:result.id, image_url:result.image_url});
+    if (result.image_url && safeImage(result.image_url)) { attachments.set(target, {id:result.id, image_url:result.image_url}); notify(target); }
     else {
       if (!validText(result.result || '', $('assist-output'), '결과')) return;
       if ($('message-text').value !== draftAtOpen) { tell('작성 중인 문장이 바뀌었습니다. 결과를 복사해 필요한 부분에 붙여 넣어 주세요.'); return; }
@@ -299,10 +302,15 @@ window.MoaMessageAssist = function ({api, node, context, say}) {
     $('message-text').value = undo.before; $('message-text').dispatchEvent(new Event('input', {bubbles:true}));
     undos.delete(peer); sync(); $('message-text').focus();
   });
-  $('message-attachment-remove').addEventListener('click', () => { attachments.delete(context().peer); sync(); });
+  $('message-attachment-remove').addEventListener('click', () => { const peer = context().peer; attachments.delete(peer); sync(); notify(peer); });
   return {
     open, sync,
     attachment: peer => attachments.get(peer)?.id || null,
     sent(peer, attachment) { if (attachment && attachments.get(peer)?.id === attachment) attachments.delete(peer); undos.delete(peer); sync(); },
+    // Only a server-listed, completed image of this requester/peer (checked by the caller) with a safe URL.
+    restore(peer, id, imageUrl) {
+      if (attachments.has(peer) || typeof id !== 'string' || !/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(id) || !safeImage(imageUrl) || imageUrl.slice(imagePrefix.length) !== id) return false;
+      attachments.set(peer, {id, image_url:imageUrl}); sync(); return true;
+    },
   };
 };

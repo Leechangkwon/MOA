@@ -1,4 +1,4 @@
-import os,requests,subprocess,json,re,time,base64,hmac,hashlib,struct,secrets
+import os,requests,subprocess,json,re,time,base64,hmac,hashlib,struct,secrets,uuid
 from concurrent.futures import ThreadPoolExecutor
 DB=os.environ['MOA_TEST_DB'];ROOT=os.environ['MOA_TEST_BASE'];
 assert re.fullmatch(r'tbox_moa_[a-z0-9_]+',DB) and ROOT.startswith('http://localhost:'), 'isolated Moa review database and localhost are required'
@@ -62,16 +62,16 @@ again=session();p=req(again,'/join');again.headers['X-Join-CSRF']=re.search('dat
 check('one-use invitation exhausted',req(again,'/api/register','POST',body|{'username':name+'b'}).status_code==410)
 check('guest cannot use messenger',req(guest,'/api/messages').status_code==403)
 check('member list',req(emp,'/api/messages').status_code==200)
-check('self message rejected',req(emp,'/api/messages/'+str(em['member_id']),'POST',{'text':'self'}).status_code==400)
-check('blank message rejected',req(emp,'/api/messages/'+str(om['member_id']),'POST',{'text':' '}).status_code==400)
+check('self message rejected',req(emp,'/api/messages/'+str(em['member_id']),'POST',{'text':'self','request_id':str(uuid.uuid4())}).status_code==400)
+check('blank message rejected',req(emp,'/api/messages/'+str(om['member_id']),'POST',{'text':' ','request_id':str(uuid.uuid4())}).status_code==400)
 text='안녕 <script>alert(1)</script> & <b>모아</b>'
-r=req(emp,'/api/messages/'+str(om['member_id']),'POST',{'text':text});check('message sent',r.status_code==201);mid=r.json().get('id')
+r=req(emp,'/api/messages/'+str(om['member_id']),'POST',{'text':text,'request_id':str(uuid.uuid4())});check('message sent',r.status_code==201);mid=r.json().get('id')
 r=req(other,'/api/messages/'+str(em['member_id']));data=r.json();check('recipient can read plain text',any(m['body']==text for m in data.get('messages',[])))
 r=req(fresh,'/api/messages/'+str(em['member_id']));check('third party cannot see other conversation',text not in r.text)
 r=req(other,'/api/messages/'+str(em['member_id']),'PATCH',{'through':mid});check('read receipt',r.status_code==200)
 r=req(emp,'/api/messages/'+str(om['member_id']));check('sender sees receipt',any(m['id']==mid and m['read_at'] for m in r.json()['messages']))
-r=req(emp,'/api/messages/'+str(om['member_id']),'POST',{'text':'x'*4001});check('message length enforced',r.status_code==400)
-r=req(emp,'/api/messages/'+str(om['member_id']),'POST',{'text':'x'},headers={'X-CSRF-Token':'wrong'});check('message CSRF enforced',r.status_code==403)
+r=req(emp,'/api/messages/'+str(om['member_id']),'POST',{'text':'x'*4001,'request_id':str(uuid.uuid4())});check('message length enforced',r.status_code==400)
+r=req(emp,'/api/messages/'+str(om['member_id']),'POST',{'text':'x','request_id':str(uuid.uuid4())},headers={'X-CSRF-Token':'wrong'});check('message CSRF enforced',r.status_code==403)
 r=req(admin,'/api/member-installer','POST',{'url':'javascript:alert(1)'});check('unsafe installer rejected',r.status_code==400)
 r=req(admin,'/api/member-installer','POST',{'url':'https://example.com/buddy.exe'});check('installer saved',r.status_code==200)
 check('installer displayed', 'https://example.com/buddy.exe' in req(fresh,'/welcome').text)

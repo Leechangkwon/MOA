@@ -11621,6 +11621,22 @@ function clearMyDrafts(owner) {
   }
 }
 
+/* 사이트 Q:F-11 지시서 A-2 — 로그아웃 때 그 사람의 메신저 창 상태(sessionStorage `qaredi-messenger:v1:<아이디>`)도 지운다.
+ * 값은 상대·스레드 **번호**와 스크롤뿐이지만(본문 0) 다음 사람에게 남기지 않는다. 메신저 모듈(`messenger.js`)도
+ * `qaredi:logout` 에서 같은 열쇠를 지운다 — 이 셸에는 B 전까지 그 모듈이 없어 여기서 한 번 더 지운다. 값을 읽지 않는다. */
+var MESSENGER_STATE_PREFIX = 'qaredi-messenger:v1:';
+
+function clearMessengerState(owner) {
+  if (typeof owner !== 'string' || !/^[a-z0-9_.-]{3,64}$/.test(owner)) {
+    return;
+  }
+  try {
+    window.sessionStorage.removeItem(MESSENGER_STATE_PREFIX + owner);
+  } catch (e) {
+    // 막힌 저장소 — 남은 것이 없다
+  }
+}
+
 /**
  * G-0 (t-box PRD F-73 ④) — 사이드바 「권한 요청 n」. n 은 서버가 준 **기다리는 요청 수**(`/api/me` · 받은 요청 목록의 pending)뿐이고
  * 0 이면 항목째 숨긴다. 강제 절차 중에는 다른 항목과 함께 닫힌다. 글자는 textContent.
@@ -11812,6 +11828,7 @@ function initShell(me, csrfToken) {
             // 지우기 **전에** 커뮤니티 편집기에 알려 떠나는 길이 사본을 다시 쓰지 않게 한다(독립 검토 M-1).
             try { document.dispatchEvent(new CustomEvent('qaredi:logout')); } catch (e) { /* 옛 브라우저 — 지우기는 그대로 */ }
             clearMyDrafts(me.username);
+            clearMessengerState(me.username);
             toLogin();
             return null;
           }

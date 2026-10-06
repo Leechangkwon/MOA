@@ -576,6 +576,9 @@ CREATE INDEX IF NOT EXISTS member_ai_assists_created_idx ON public.member_ai_ass
 CREATE INDEX IF NOT EXISTS member_ai_assists_pending_idx ON public.member_ai_assists(created_at) WHERE state='pending';
 ALTER TABLE public.member_messages ADD COLUMN IF NOT EXISTS ai_attachment_id uuid REFERENCES public.member_ai_assists(id);
 CREATE UNIQUE INDEX IF NOT EXISTS member_messages_ai_attachment_idx ON public.member_messages(ai_attachment_id) WHERE ai_attachment_id IS NOT NULL;
+-- Q:F-11 (지시서 A-4 · R-118): 문자 메시지 멱등 — 같은 보낸 사람·같은 request_id 는 한 행. 업그레이드는 2026-10-06_member_messages_request_id.sql.
+ALTER TABLE public.member_messages ADD COLUMN IF NOT EXISTS request_id uuid;
+CREATE UNIQUE INDEX IF NOT EXISTS member_messages_request_idx ON public.member_messages(sender_id, request_id) WHERE request_id IS NOT NULL;
 
 -- 비서 실행 MVP: 새 설치와 업그레이드가 동일 DDL을 사용한다.
 \ir assistant.sql

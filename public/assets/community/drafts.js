@@ -11,6 +11,11 @@
  *
  * 보관 열쇠·모양 (설계 1)
  *   `qaredi-draft:v1:<사용자>:page:<페이지 uuid>` · `qaredi-draft:v1:<사용자>:comment:<페이지 uuid>:<답글 대상 uuid 또는 new>`
+ *   사이트 Q:F-11(2026-10-06, 떠 있는 메신저 — 사이트 `docs/persistent-messenger-plan.md` 4.2 · SECURITY R-116) 두 종류:
+ *   `qaredi-draft:v1:<사용자>:message:<상대 번호>`(사람 1:1 쓰던 글) · `qaredi-draft:v1:<사용자>:ai:<스레드 번호 또는 0>`(모아 AI).
+ *   번호는 `^[1-9][0-9]{0,9}$`(ai 는 `0` 도). 암호화·AAD·7일·20개·sweep·shutdown 은 페이지·댓글과 **같다**.
+ *   `entries()` 는 부르는 쪽이 종류를 고르지 않으면 페이지·댓글만 돌려준다(커뮤니티 화면이 메신저 항목을 그리지 않게) —
+ *   정리(`sweep`·20개 `trim`)는 네 종류 전부를 센다.
  *   값 `{"v":1,"iv":"…","ct":"…","saved_at":<ms>}` — `ct` 는 `{base_version,title,doc}`(댓글은 `{body}`) JSON 을 암호화한 것.
  *   **평문은 `saved_at` 하나**(7일 정리용). `<사용자>` 는 **진짜 사용자**의 아이디다(역할로 보기 중이어도 — `/api/me` 의
  *   `username` 은 언제나 실제 계정). 아이디 글자 집합(`[a-z0-9_.-]`)에 `:` 가 없어 접두가 다른 사람과 겹치지 않는다.
@@ -37,6 +42,12 @@ const PREFIX = 'qaredi-draft:v1:';
 /** 사람 아이디 — `Auth::USERNAME_RE` 와 같은 글자 집합(`:` 없음) */
 const OWNER_RE = /^[a-z0-9_.-]{3,64}$/;
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+/** 메신저 상대 번호(Q:F-11) — 사람은 1 이상 */
+const PEER_RE = /^[1-9][0-9]{0,9}$/;
+/** 모아 AI 스레드 번호(Q:F-11) — 새 대화는 0 */
+const THREAD_RE = /^(?:0|[1-9][0-9]{0,9})$/;
+/** 종류를 고르지 않은 `entries()` 가 돌려주는 것 — 커뮤니티 화면(editor.js)이 쓰던 그대로 */
+const DEFAULT_KINDS = ['page', 'comment'];
 /** 7일(W-2) */
 export const DRAFT_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 /** 한 사람 몫 상한 */
@@ -120,8 +131,8 @@ export function createDrafts(owner, loadKey) {
     return keyPromise;
   }
 
-  /** 내 항목들 — 값은 `saved_at` 만 본다(암호문은 풀지 않는다). 모양이 틀린 내 항목은 지운다. */
-  function entries() {
+  /** 내 항목 전부(네 종류) — 값은 `saved_at` 만 본다(암호문은 풀지 않는다). 모양이 틀린 내 항목은 지운다. */
+  function allEntries() {
     const s = storage();
     if (!usable || s === null) { return []; }
     const names = [];
@@ -145,11 +156,25 @@ export function createDrafts(owner, loadKey) {
       } else if (parts.length === 3 && parts[0] === 'comment' && UUID_RE.test(parts[1])
                  && (parts[2] === 'new' || UUID_RE.test(parts[2]))) {
         entry = { key: k, kind: 'comment', pageId: parts[1], target: parts[2], savedAt: savedAt };
+      } else if (parts.length === 2 && parts[0] === 'message' && PEER_RE.test(parts[1])) {
+        entry = { key: k, kind: 'message', pageId: null, target: null, peer: parts[1], savedAt: savedAt };
+      } else if (parts.length === 2 && parts[0] === 'ai' && THREAD_RE.test(parts[1])) {
+        entry = { key: k, kind: 'ai', pageId: null, target: null, thread: parts[1], savedAt: savedAt };
       }
       if (entry === null || !isFinite(savedAt)) { remove(k); continue; }
       out.push(entry);
     }
     return out;
+  }
+
+  /**
+   * 내 항목들 — 종류를 고른다(`['message','ai']` 등). 고르지 않으면 페이지·댓글만(커뮤니티 화면이 쓰던 그대로).
+   *
+   * @param {string[]=} kinds  'page' · 'comment' · 'message' · 'ai' 중에서
+   */
+  function entries(kinds) {
+    const want = Array.isArray(kinds) ? kinds : DEFAULT_KINDS;
+    return allEntries().filter((e) => want.indexOf(e.kind) !== -1);
   }
 
   function remove(storageKey) {
@@ -162,7 +187,7 @@ export function createDrafts(owner, loadKey) {
   function sweep(now) {
     const t = typeof now === 'number' ? now : Date.now();
     let n = 0;
-    for (const e of entries()) {
+    for (const e of allEntries()) {
       if (t - e.savedAt > DRAFT_TTL_MS) { remove(e.key); n += 1; }
     }
     return n;
@@ -170,7 +195,7 @@ export function createDrafts(owner, loadKey) {
 
   /** 새 항목 자리를 만든다 — 이 열쇠를 빼고 `DRAFT_MAX - 1` 개만 남긴다(오래된 것부터 버림) */
   function trim(exceptKey) {
-    const others = entries().filter((e) => e.key !== exceptKey).sort((a, b) => a.savedAt - b.savedAt);
+    const others = allEntries().filter((e) => e.key !== exceptKey).sort((a, b) => a.savedAt - b.savedAt);
     while (others.length > DRAFT_MAX - 1) { remove(others.shift().key); }
   }
 
@@ -184,11 +209,21 @@ export function createDrafts(owner, loadKey) {
     return mine + 'comment:' + pageId + ':' + t;
   }
 
+  /** 메신저 사람 1:1 쓰던 글(Q:F-11) — 상대 번호가 모양이 아니면 null */
+  function messageKey(peer) {
+    return mine !== null && PEER_RE.test(String(peer)) ? mine + 'message:' + String(peer) : null;
+  }
+
+  /** 모아 AI 쓰던 글(Q:F-11) — 스레드 번호, 새 대화는 0 */
+  function aiKey(thread) {
+    return mine !== null && THREAD_RE.test(String(thread)) ? mine + 'ai:' + String(thread) : null;
+  }
+
   /**
    * 암호화해서 쓴다. 열쇠가 없으면 **쓰지 않는다**(평문 대체 0).
    *
-   * @param {string}   storageKey  pageKey/commentKey 가 만든 내 열쇠
-   * @param {Object}   payload     `{base_version,title,doc}` 또는 `{body}`
+   * @param {string}   storageKey  pageKey/commentKey/messageKey/aiKey 가 만든 내 열쇠
+   * @param {Object}   payload     `{base_version,title,doc}` · `{body}` · 메신저 `{text, attachment_id, request_id}` · AI `{text}`
    * @param {Function} stillWanted 암호화가 끝난 뒤 쓰기 직전에 다시 묻는다 — 그사이 서버에 저장됐거나 더 새 쓰기가
    *                               시작됐으면 false(그러면 쓰지 않고 넘어간다 — 지우지도 않는다)
    * @return Promise<boolean> 썼거나 쓸 필요가 없어졌으면 true, 못 썼으면(열쇠 없음·용량·막힌 저장소) false
@@ -257,6 +292,8 @@ export function createDrafts(owner, loadKey) {
     sweep: sweep,
     pageKey: pageKey,
     commentKey: commentKey,
+    messageKey: messageKey,
+    aiKey: aiKey,
     write: write,
     read: read,
     remove: remove
