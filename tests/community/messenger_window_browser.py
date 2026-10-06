@@ -16,6 +16,10 @@ memories_harness.py 만 부른다(합성 DB · 임시 복사본 · 로컬 php -S
   Q:T-19 대체       커뮤니티 옛 창 0 · 사람 대화 라우트 6개 404 · 휴면 GPT 두 갈래 동작 그대로 · 화면 글자에 「GPT」「OpenAI」 0
   Q:T-20 꾸미기     「모아 AI 에게 묻기」 → 창의 모아 AI 칸에 요청문(전송 0) → 답변 「꾸미기 화면으로」 → #studio-result · 다른 답변엔 단추 없음
   더해서            dbg_u2_ui.py 의 창 바닥 규칙(MODAL_RULE)·ui_snapshot.py 의 결함 감사(AUDIT_JS)를 같은 글자 그대로 이 인스턴스에서 · /messages CSP 헤더 불변
+  지시서 C          C-3 사용 안내: 창 안 「? 이 창 사용 안내」 → 떠 있는 창 단계(목록·검색·모아 AI·입력·크게 보기·닫기, 「GPT」 0) · 떠 있는 창이 열려 있어도
+                   자동 제안·화면 안내가 뜬다 · 메신저 안내를 이어 볼 때 창이 닫혀 있으면 여는 단추로 연다(링크 단추여도 이동 0) · 안내는 보내기·닫기·글 변경 0
+                   C-4 스레드 도움말(떠 있는 창 · 모아 AI Google 고지 · 「GPT」 0) · C-5 AI 도구 창 MODAL_RULE 0(닫힘·열림 네 상태 · 1440·390) · 바닥 「닫기」 ·
+                   C-6 사이드바 /messages 링크 0 · 「메신저」 글자 1(창 단추) · 전체 화면은 창 머리 「크게 보기」
 """
 from pathlib import Path
 exec(compile(Path(__file__).with_name('memories_http.py').read_text().split('try:\n for u in users:')[0],__file__,'exec'))
@@ -541,6 +545,98 @@ try:
    check(p.locator('#studio-result').input_value()=='합성 꾸미기 답변입니다.' and not t.is_open(),'Q:T-20 「꾸미기 화면으로」 → #studio-result filled, studio reopened, window closed')
    check(t.clean('t20'),'Q:T-20 no page errors / 5xx / script console output')
    ctx.close()
+
+  # ─── 지시서 C-3 사용 안내 — 떠 있는 창 안내 · 떠 있는 창(비모달)은 자동 제안·화면 안내·이어 보기를 막지 않는다 ─────────────
+  if want('c3'):
+   src_guide=(root/'public/assets/usage-guide.js').read_text()
+   check(not re.search(r'(?<!Chat)GPT|OpenAI',src_guide) and 'community-messenger' not in src_guide and "['messenger-window','messenger']" in src_guide,
+         'C-3 usage-guide.js: 「GPT」「OpenAI」 0 · old #community-messenger 0 · #messenger-window → messenger tour')
+   mgr=uid('manager');M=users['manager']['username'];tok=new_session('manager')
+   def guide(status,context='overview',step=0):
+    sql('DELETE FROM community.usage_guides WHERE user_id='+str(mgr))
+    if status:sql("INSERT INTO community.usage_guides(user_id,version,status,context,step) VALUES("+str(mgr)+",1,'"+status+"','"+context+"',"+str(step)+")")
+   def guide_row():return sql("SELECT coalesce(max(status||':'||context||':'||step),'') FROM community.usage_guides WHERE user_id="+str(mgr))
+   def sent():return int(sql('SELECT count(*) FROM member_messages WHERE sender_id='+str(mgr)))
+   OUTLINE_IN_WINDOW="""(()=>{const o=document.getElementById('usage-guide-outline');const w=document.getElementById('messenger-window').getBoundingClientRect();
+     const x=+o.getAttribute('x'),y=+o.getAttribute('y'),wd=+o.getAttribute('width'),h=+o.getAttribute('height');
+     return wd>0&&h>0&&x>=w.left-7&&y>=w.top-7&&x+wd<=w.right+7&&y+h<=w.bottom+7;})()"""
+   def walk(p):
+    """안내를 끝까지 넘기며 제목·본문·강조 자리를 모은다(마지막 「안내 마치기」는 누르지 않는다)."""
+    titles,bodies,inside=[],[],[]
+    for _ in range(10):
+     expect(p.locator('#usage-guide-title')).to_be_visible()
+     titles.append(p.locator('#usage-guide-title').inner_text());bodies.append(p.locator('#usage-guide-body').inner_text());inside.append(p.evaluate(OUTLINE_IN_WINDOW))
+     primary=p.locator('.usage-guide-actions .usage-guide-primary')
+     if primary.inner_text()=='안내 마치기':break
+     primary.click();p.wait_for_timeout(120)
+    return titles,bodies,inside
+   guide('dismissed')
+   ctx=browser.new_context(viewport={'width':1440,'height':900},locale='ko-KR',user_agent=UA);ctx.add_cookies(cookie(tok))
+   t=Tab(ctx);p=t.page
+   sent0=sent()
+   # ① 창 안 「? 이 창 사용 안내」(머리 바로 아래 하나) → 메신저 안내 — 목록 보기
+   t.go('/tbox/');t.open()
+   helpbtn=p.locator('#messenger-window > .modal__head + button[data-usage-guide-open]')
+   expect(helpbtn).to_have_count(1)
+   metrics['c3_help_button']=helpbtn.inner_text()
+   check(p.locator('#messenger-window [data-usage-guide-open]').count()==1,'C-3 one 「'+metrics['c3_help_button']+'」 right under the floating window head')
+   helpbtn.click()
+   titles,bodies,inside=walk(p)
+   metrics['c3_tour_list_view']=[a+' — '+b for a,b in zip(titles,bodies)]
+   check(titles==['대화 상대 목록','사람 찾기','모아 AI와 전달되는 내용','크게 보기','닫아도 이어져요'],'C-3 list-view messenger tour steps '+json.dumps(titles,ensure_ascii=False))
+   check(all(inside),'C-3 every list-view step highlights a target inside the floating window '+json.dumps(inside))
+   check(not any(re.search(r'(?<!Chat)GPT|OpenAI',x) for x in titles+bodies),'C-3 tour titles and texts have no 「GPT」/「OpenAI」')
+   check(guide_row().startswith('active:messenger:'),'C-3 progress saved with context messenger ('+guide_row()+')')
+   p.locator('.usage-guide-actions .usage-guide-primary').click();p.wait_for_timeout(300)
+   check(guide_row().startswith('completed:messenger:') and t.is_open() and p.locator('.usage-guide-dialog').count()==0,'C-3 「안내 마치기」 saves completed; the floating window stays open')
+   # ② 대화 보기 — 안내는 쓰던 글·전송·창을 건드리지 않는다
+   t.person('합성 상대 A');p.locator('#message-text').fill('');p.locator('#message-text').type('C-3 안내 중 초안')
+   p.wait_for_function('k=>localStorage.getItem(k)!==null',arg='qaredi-draft:v1:'+M+':message:'+str(pa),timeout=8000)
+   mark=time.time();helpbtn.click()
+   titles,bodies,inside=walk(p)
+   metrics['c3_tour_conversation_view']=[a+' — '+b for a,b in zip(titles,bodies)]
+   check(titles==['대화 상대 목록','작성과 전송','크게 보기','닫아도 이어져요'] and all(inside),'C-3 conversation-view messenger tour steps '+json.dumps(titles,ensure_ascii=False))
+   p.keyboard.press('Escape');p.wait_for_timeout(300)
+   check(p.locator('.usage-guide-dialog').count()==0 and t.is_open() and p.locator('#message-text').input_value()=='C-3 안내 중 초안','C-3 Esc closes only the tour — window open, draft unchanged')
+   check(not [r for r in t.requests if r[0]>=mark and r[1]=='POST' and r[2].startswith('/tbox/api/messages')] and sent()==sent0,'C-3 the tour sends nothing')
+   check(guide_row().startswith('dismissed:messenger:'),'C-3 Esc saves dismissed')
+   # ③ 화면 안내 — 떠 있는 창이 열려 있어도 그 화면의 단계로(전: 열린 창 안 단계만 골라 「이 화면은 …」 알림만)
+   t.go('/community/')
+   check(t.is_open(),'C-3 precondition: window restored open on the community overview')
+   p.locator('.usage-guide-launch').click()
+   expect(p.locator('#usage-guide-title')).to_have_text('모아의 여러 공간을 둘러보세요',timeout=5000)
+   check(t.is_open() and guide_row().startswith('active:overview:'),'C-3 the page tour (overview) runs while the floating window is open')
+   p.keyboard.press('Escape');p.wait_for_timeout(300)
+   # ④ 처음 안내 제안 — 떠 있는 창이 열려 있어도 뜬다(전: dialog[open] 하나에 막혔다)
+   guide(None)
+   g=requests.get(base+'/api/me/guide',headers={'User-Agent':UA,'Cookie':'__Host-tbox_session='+tok},timeout=35)
+   check(g.status_code==200 and g.json().get('guide',{}).get('offer') is True,'C-3 precondition: first-time offer is due for the manager fixture')
+   t.go('/tbox/settings')
+   expect(p.locator('#usage-guide-title')).to_have_text('모아 사용 방법을 안내해 드릴까요?',timeout=6000)
+   check(t.is_open(),'C-3 the first-time offer appears while the floating window is open')
+   p.get_by_role('button',name='나중에 볼게요').click();p.wait_for_timeout(300)
+   check(guide_row().startswith('dismissed:'),'C-3 「나중에 볼게요」 saved')
+   # ⑤ 이어 보기 — 메신저 안내가 진행 중인데 창이 닫혀 있으면 창의 여는 단추로 연다(셸 단추)
+   p.locator('#messenger-window [data-messenger-close].btn--icon').click();p.wait_for_timeout(200)
+   check(not t.is_open() and t.state(M)['open'] is False,'C-3 precondition: window closed (state open:false)')
+   guide('active','messenger',1)
+   t.go('/tbox/')
+   expect(p.locator('#usage-guide-title')).to_have_text('작성과 전송',timeout=10000)
+   check(t.is_open() and p.url.endswith('/tbox/') and p.evaluate("document.getElementById('usage-guide-outline').getAttribute('width')")!='0',
+         'C-3 resuming the messenger tour opens the closed window (restored conversation, saved step 2 highlighted)')
+   check(p.locator('#message-text').input_value()=='C-3 안내 중 초안' and sent()==sent0,'C-3 resume keeps the draft and sends nothing')
+   p.keyboard.press('Escape');p.wait_for_timeout(300)
+   # ⑥ 링크 단추(시작 안내 머리의 「메신저」 — /messages 링크)여도 안내가 누를 때 /messages 로 옮겨 가지 않는다
+   p.locator('#messenger-window [data-messenger-close].btn--icon').click();p.wait_for_timeout(200)
+   guide('active','messenger',0)
+   t.go('/tbox/welcome')
+   expect(p.locator('#usage-guide-title')).to_have_text('대화 상대 목록',timeout=10000)
+   check(t.is_open() and p.url.endswith('/tbox/welcome') and p.locator('a#messenger-open[href$="/messages"]').count()==1,'C-3 on /welcome (opener is a /messages link) the tour opens the window in place — no navigation')
+   p.keyboard.press('Escape');p.wait_for_timeout(300)
+   metrics['c3_guide_after']=guide_row()
+   check(t.clean('c3'),'C-3 no page errors / 5xx / script console output')
+   ctx.close()
+   guide('dismissed')
 
   # ─── 화면 결함 감사(ui_snapshot.py 의 AUDIT_JS 글자 그대로 · 1440·1280) — 창 닫힘/열림 ───────────
   if want('snap'):

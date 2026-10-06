@@ -1,5 +1,9 @@
 /* Optional, account-persisted tours. Only guide preferences are written; tour steps
- * never click application controls, submit a form, or open/close an existing modal. */
+ * never click application controls, submit a form, or open/close an existing modal.
+ * One exception (site Q:F-11 C-3): the messenger tour shows the floating messenger window (DESIGN 2.17). If that
+ * window is closed when the tour needs it, the tour presses the window's own opener ([data-messenger-open]) once,
+ * the same as a person would — it never sends, closes the window or changes what was typed. The floating window is
+ * non-modal, so it never blocks the offer, a page tour or resuming (it is left out of every open-dialog check). */
 (() => {
   'use strict';
   const root = document.getElementById('usage-guide-root');
@@ -69,13 +73,14 @@
       step('#welcome-token-form','외부 비서용 연결 토큰','필요한 경우에만 사용할 기능을 골라 발급해요. 이 값은 AI 제공자의 API 키와 다르며 타인에게 공유하면 안 됩니다.'),
       step('#welcome-steps','언제든 다시 이어가기','선택 항목은 나중에 설정해도 돼요. 커뮤니티 둘러보기에서 일상 기록과 업무 기능을 함께 살펴보세요.')
     ],
+    // 떠 있는 메신저 창(#messenger-window — DESIGN 2.17). 창은 목록 ↔ 대화 중 하나만 보이므로 보이는 단계만 남는다.
     messenger: [
-      step('#community-messenger .messenger-tabs','회원 대화와 GPT 대화','회원에게 보내는 메시지와 GPT에게 보내는 요청은 별도 탭이에요. 상대와 선택한 탭을 확인한 뒤 작성하세요.'),
-      step('#messenger-search','새 대화 찾기','이름이나 아이디를 두 글자 이상 입력해 상대를 찾아요. 안내에서는 검색하거나 대화를 만들지 않아요.'),
-      step('#messenger-conversations','이어서 이야기하기','기존 대화를 고르면 이전 메시지를 볼 수 있어요. 작은 화면에서는 목록 버튼으로 돌아오세요.'),
-      step('#messenger-gpt-unavailable,#messenger-gpt .messenger-note','AI 연결과 전달되는 내용','GPT가 연결된 경우 내가 전송한 글과 최근 GPT 대화가 전달돼요. 회원 대화와 사진·영상은 자동으로 전달되지 않아요.'),
-      step('#messenger-body','작성과 전송은 별개','Enter는 줄바꿈, 보내기 또는 Ctrl+Enter는 전송이에요. 안내를 닫아도 작성 중인 내용을 유지해요.'),
-      step('#messenger-close','원래 화면으로 돌아가기','닫으면 보던 커뮤니티 화면으로 돌아가요. 새 페이지로 이동하지 않고 대화를 이어갈 수 있어요.')
+      step('#messenger-window #messenger-back,#messenger-window #message-people','대화 상대 목록','함께하는 사람과 모아 AI가 목록에 있어요. 사람을 고르면 이전 대화를 이어서 보고, 대화 중에는 ‹ 목록으로 돌아와요.'),
+      step('#messenger-window #message-search','사람 찾기','이름이나 아이디로 함께하는 사람을 찾아요. 안내 중에는 검색하거나 대화를 열지 않아요.'),
+      step('#messenger-window #message-ai,#messenger-window #message-ai-notice','모아 AI와 전달되는 내용','모아 AI는 공용 Gemini로 답하고 대화 기록은 나만 봐요. AI에게 보낸 내용과 최근 AI 대화가 Google로 전송되니 개인정보·기밀은 입력하지 마세요.'),
+      step('#messenger-window #message-text','작성과 전송','Enter는 전송, Shift+Enter는 줄바꿈이에요. 쓰던 글은 이 기기에 암호화해 두어 다른 화면에서 창을 열어도 이어서 쓸 수 있어요.'),
+      step('#messenger-window .modal__head a[href]','크게 보기','메신저를 전체 화면으로 열어요. 내 PC의 비서 연결도 전체 화면에서 할 수 있어요.'),
+      step('#messenger-window .modal__head [data-messenger-close]','닫아도 이어져요','창은 보던 화면 위에 떠 있어 뒤 화면을 그대로 쓸 수 있어요. 닫아도 상대와 쓰던 글은 남고, 다른 화면으로 옮기면 열어 둔 창이 그대로 돌아와요.')
     ],
     story: [
       step('#memory-detail-dialog,#post-detail-dialog,#detail-dialog,#studio-dialog .dialog-head','사진과 이야기를 자세히','피드에서 접어 둔 사진과 글을 여기서 이어서 읽어요. 닫으면 원래 피드로 돌아가요.'),
@@ -105,7 +110,7 @@
   tours.travel.push(step('#travel-linked','이미 쓴 글도 연결하기','내 기록을 불러와 이 여행에 연결할 수 있어요. 연결을 바꿔도 원래 사진과 글은 그대로 유지돼요.'));
   tours.travel.push(step('#travel-ai-prompt','AI와 계획 다듬기','요청문을 복사해 ChatGPT 등에 상담할 수 있어요. MCP가 연결되어 있으면 허용한 여행 읽기·쓰기 범위 안에서 계획을 다룰 수 있어요.'));
   const modalContexts = new Map([
-    ['community-messenger','messenger'],['compose-dialog','composer'],['studio-dialog','story'],
+    ['messenger-window','messenger'],['compose-dialog','composer'],['studio-dialog','story'],
     ['comments-dialog','story'],['share-dialog','story'],['memory-detail-dialog','story'],
     ['post-detail-dialog','story'],['detail-dialog','story'],['travel-dialog','travel'],['travel-plans-dialog','travel']
   ]);
@@ -113,8 +118,13 @@
   tours.threads.push(step('#social-list','팔로잉·팔로워 목록','상대의 프로필을 열거나 팔로우 상태를 바꿀 수 있어요. 팔로워 공개 글은 나를 팔로우한 모든 회원에게 보이므로 글을 올리기 전에 범위를 확인해 주세요.'));
   tours.threads.push(step('#default-visibility','새 글의 기본 공개 범위','새로 작성하는 글의 기본값을 정해요. 기존 기록은 바뀌지 않고 발견에는 직접 선택한 공개 글만 소개돼요.'));
   modalContexts.set('social-dialog','threads'); modalContexts.set('privacy-dialog','threads');
-  function currentContext() {
-    const opened = Array.from(document.querySelectorAll('dialog[open]')).filter((el) => el !== dialog).pop();
+  /** 열린 창 — 안내 창과 떠 있는 창(비모달 · DESIGN 2.17)은 뺀다: 떠 있는 창은 자동 제안·화면 안내·이어 보기를 막지 않는다 */
+  const openDialogs = () => Array.from(document.querySelectorAll('dialog[open]')).filter((el) => el !== dialog && !el.matches('dialog.floating'));
+  /** origin: 안내를 연 단추 — 창 안의 「? 이 창 사용 안내」면 그 창(떠 있는 창 포함)의 안내 */
+  function currentContext(origin = null) {
+    const from = origin instanceof Element ? origin.closest('dialog') : null;
+    if (from && from !== dialog && modalContexts.has(from.id)) return modalContexts.get(from.id);
+    const opened = openDialogs().pop();
     if (opened && modalContexts.has(opened.id)) return modalContexts.get(opened.id);
     if ($('community-overview')) return 'overview';
     if ($('community-threads')) return 'threads';
@@ -192,7 +202,7 @@
     const title=node('h2',s.title); title.id='usage-guide-title'; const body=node('p',s.text); body.id='usage-guide-body'; card.append(title,body);
     const actions=node('div','','usage-guide-actions'); actions.append(button('나중에',()=>finish('dismissed')));
     if(index>0) actions.append(button('이전',()=>{ index--; render(); persist('active').catch((e)=>notice(e.message)); }));
-    if(index===steps.length-1 && context!=='overview' && !document.querySelector('dialog[open]:not(.usage-guide-dialog)')) {
+    if(index===steps.length-1 && context!=='overview' && !openDialogs().length) {
       actions.append(button('모아 전체 기능 둘러보기',async()=>{
         context='overview'; index=0;
         try { await persist('active'); } catch(e) { notice(e.message); }
@@ -204,12 +214,48 @@
   function next() { if(index===steps.length-1) { finish('completed'); return; } index++; render(); persist('active').catch((e)=>notice(e.message)); }
   function close() { if(!dialog) return; dialog.close(); dialog.remove(); dialog=null; target=null; if (returnFocus?.isConnected && visible(returnFocus)) returnFocus.focus({preventScroll:true}); }
   function finish(status) { persist(status).catch((e)=>notice(e.message)); close(); }
-  function start(resume=false) {
-    context=currentContext(); const opened=Array.from(document.querySelectorAll('dialog[open]')).filter((el)=>el!==dialog).pop();
-    steps=(tours[context]||tours.workspace).map((s)=>({...s,el:pick(s.selector)})).filter((s)=>s.el && (!opened || opened.contains(s.el) || s.el===opened));
-    if (!steps.length) { notice('이 화면은 메뉴의 사용 방법을 참고해 주세요. 커뮤니티 둘러보기에서는 모아의 전체 기능을 안내해 드려요.'); return; }
-    index=resume&&saved?.context===context ? Math.min(saved.step||0,steps.length-1) : 0;
-    if (!dialog) makeDialog(); render(); persist('active').catch((e)=>notice(e.message));
+  /**
+   * 메신저 안내가 보일 떠 있는 창 — 닫혀 있으면 그 창의 여는 단추를 한 번 누른다(창 모듈이 아직 붙지 않았으면 1초마다 다시, 5초까지).
+   * 여는 단추가 링크(런처 타일·모아 머리)여도 이 누름으로는 /messages 로 옮겨 가지 않는다(모듈이 붙기 전 기본 동작을 막는다).
+   */
+  async function messengerWindow() {
+    const win = $('messenger-window');
+    if (!win) return null;
+    const wasOpen = win.open;
+    for (let tick = 0; tick < 50 && !win.open; tick++) {
+      if (tick % 10 === 0) {
+        const opener = pick('button[data-messenger-open]') || pick('[data-messenger-open]') || document.querySelector('[data-messenger-open]');
+        if (!opener) return null;
+        const stay = (event) => event.preventDefault();
+        window.addEventListener('click', stay, { once:true });
+        opener.click();
+        window.removeEventListener('click', stay);
+      }
+      await new Promise((done) => setTimeout(done, 100));
+    }
+    // 안내가 연 창은 모듈이 이어 열 자리(목록 ↔ 대화)를 정할 때까지 기다린다 — 보기(data-view)가 0.6초 그대로면, 길어도 4초
+    if (win.open && !wasOpen) {
+      let view = win.getAttribute('data-view'), same = 0;
+      for (let tick = 0; tick < 40 && same < 6; tick++) {
+        await new Promise((done) => setTimeout(done, 100));
+        if (win.getAttribute('data-view') === view) same++; else { view = win.getAttribute('data-view'); same = 0; }
+      }
+    }
+    return win.open ? win : null;
+  }
+  let starting = false;
+  async function start(resume=false, origin=null, wanted=null) {
+    if (starting) return;
+    starting = true;
+    try {
+      context=wanted||currentContext(origin);
+      const opened=context==='messenger' ? await messengerWindow() : openDialogs().pop();
+      if (dialog) return;
+      steps=(tours[context]||tours.workspace).map((s)=>({...s,el:pick(s.selector)})).filter((s)=>s.el && (!opened || opened.contains(s.el) || s.el===opened));
+      if (!steps.length) { notice('이 화면은 메뉴의 사용 방법을 참고해 주세요. 커뮤니티 둘러보기에서는 모아의 전체 기능을 안내해 드려요.'); return; }
+      index=resume&&saved?.context===context ? Math.min(saved.step||0,steps.length-1) : 0;
+      if (!dialog) makeDialog(); render(); persist('active').catch((e)=>notice(e.message));
+    } finally { starting = false; }
   }
   function consent() {
     if(dialog) return; context=currentContext(); index=0; makeDialog(); dialog.classList.add('is-consent'); target=null; position();
@@ -218,18 +264,19 @@
     const actions=node('div','','usage-guide-actions'); actions.append(button('나중에 볼게요',()=>finish('dismissed')),button('네, 안내해 주세요',()=>{ close(); start(); },true));
     card.append(title,body,actions); actions.lastElementChild.focus();
   }
-  document.addEventListener('click',(event)=>{ if(event.target instanceof Element && event.target.closest('[data-usage-guide-open]')) { if(dialog) return; load().catch(()=>{}); start(saved?.status==='active'); } });
+  document.addEventListener('click',(event)=>{ if(event.target instanceof Element && event.target.closest('[data-usage-guide-open]')) { if(dialog) return; load().catch(()=>{}); start(saved?.status==='active', event.target); } });
   function addModalHelp() {
     for (const [id] of modalContexts) {
       const modal=$(id); if(!modal?.open || modal.querySelector('[data-usage-guide-open]')) continue;
       const help=node('button','? 이 창 사용 안내','usage-guide-modal-help'); help.type='button'; help.setAttribute('data-usage-guide-open','');
-      const head=modal.querySelector('header'); if(head) head.insertAdjacentElement('afterend',help); else modal.prepend(help);
+      // 떠 있는 창은 머리(.modal__head) 바로 아래 — 그 안의 대화 머리(header)는 목록 보기에서 숨는다
+      const head=modal.matches('dialog.floating') ? modal.querySelector(':scope > .modal__head') : modal.querySelector('header'); if(head) head.insertAdjacentElement('afterend',help); else modal.prepend(help);
     }
   }
   new MutationObserver(addModalHelp).observe(document.body,{subtree:true,childList:true,attributes:true,attributeFilter:['open']}); addModalHelp();
   window.addEventListener('resize',schedulePosition); document.addEventListener('scroll',schedulePosition,true);
   load().then((s)=>{
-    if(s.offer) setTimeout(()=>{ if(!document.querySelector('dialog[open]') && !document.hidden && !document.activeElement?.matches('input,textarea,[contenteditable="true"]')) consent(); },700);
-    else if(s.status==='active' && s.context===currentContext() && !document.querySelector('dialog[open]')) start(true);
+    if(s.offer) setTimeout(()=>{ if(!openDialogs().length && !document.hidden && !document.activeElement?.matches('input,textarea,[contenteditable="true"]')) consent(); },700);
+    else if(s.status==='active' && !openDialogs().length && (s.context===currentContext() || (s.context==='messenger' && $('messenger-window')))) start(true, null, s.context);
   }).catch(()=>{});
 })();
