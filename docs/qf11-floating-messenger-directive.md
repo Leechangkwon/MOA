@@ -12,7 +12,7 @@
 |---|---|
 | 구현 자리 | 격리 worktree **`/home/changkwon/qaredi-qf11-20261006`**(브랜치 `feat/qf11-floating-messenger`, main `057c4a8` 위의 문서 커밋에서 시작 — 메인 세션이 만든다). 운영 `/var/www/qaredi/tbox-v2` 와 운영 DB(`tbox_re`)·운영 8082 는 **건드리지 않는다**(읽기도 하지 않는다). `tests/stage89_cross_regression/run.py:14` 와 `tests/community/memories_harness.py` 는 `/var/www/` 아래에서 돌기를 거부한다 — worktree 에서만 돈다 |
 | 격리 PHP+PostgreSQL 틀 | `python3 tests/community/memories_harness.py --suite <파일> --output <결과 폴더>` — 합성 DB(`tbox_memories_test_*`)·임시 복사본·로컬 PHP 서버, 끝나면 삭제. **새 스위트는 `memories_harness.py:37` 의 `--suite` 허용 목록(choices)에 이름을 더해야 돈다**(그 줄만 고친다). 스위트가 틀에 붙는 모양은 `tests/community/memory_story_http.py`(머리 — 공유 fixture·`call`·`check`·`sql` 헬퍼) · `tests/mcp/remote_http.py`(결과 파일에 단언 이름·참/거짓만, 응답·자격 출력 0)를 따른다 |
-| 브라우저 | `. /home/changkwon/qaredi-remote-mcp-results-20261006/env.sh` 로 `CHROMIUM_EXECUTABLE`·`PYTHONPATH`(Playwright)·`PATH` 를 받는다. 실제 PHP 위의 브라우저 시험은 위 틀 안에서(`memories_runtime_browser.py` 방식), 모의 HTTP 만 쓰는 구성 요소 시험은 `tests/community/memories_browser.py` 의 `Mock`/`render_expressions` 방식 |
+| 브라우저 | `. /home/changkwon/qaredi-qf11-results-20261006/env.sh` 로 `CHROMIUM_EXECUTABLE`·`PYTHONPATH`(Playwright)·`PATH` **만** 받는다(2026-10-06 A 때 다른 결과 폴더의 `env.sh` 가 셸 변수 `R`·`W` 까지 덮어 결과가 남의 폴더에 쓰이고 `rm -rf` 가 그 폴더에서 돈 사고 — 다른 폴더의 `env.sh` 금지 · 셸 변수는 고유한 이름 · `rm -rf` 는 자기 결과 폴더 안 절대 경로만). 실제 PHP 위의 브라우저 시험은 위 틀 안에서(`memories_runtime_browser.py` 방식), 모의 HTTP 만 쓰는 구성 요소 시험은 `tests/community/memories_browser.py` 의 `Mock`/`render_expressions` 방식 |
 | 교차 회귀 | `python3 tests/stage89_cross_regression/run.py --output <폴더>`(빈 합성 DB · 공통 영향 경로) — A·B 각각 끝에 한 번 |
 | 기존 메신저 시험 | `tests/member_onboarding.py`(`MOA_TEST_DB=tbox_moa_<이름>` · `MOA_TEST_BASE=http://localhost:<포트>` · `sudo -n -u postgres psql` 필요 — 돌릴 수 있으면 돌리고, 못 돌리면 **못 돌렸다고** 보고) · `tests/moa_local_assist.py` · `tests/moa_local_permissions.py` · `tests/community/messenger_browser.py`(B 에서 **대체** — 아래) |
 | 계정·표식 | 격리 틀의 fixture 계정(틀이 만든다 — 운영 아님). 운영 8082 를 치는 시험은 이 지시서에 **없다**. 어쩔 수 없이 운영을 읽을 일이 생기면 멈추고 보고. `claude_` 검토 계정 5개 + UA `tbox-review/<날짜>` 규칙은 메인 세션의 검토 몫. 시드 계정(`admin01` …) 사용 금지. **주의**: 사람 목록 SQL 이 `claude_%`·`qa_%` 아이디를 **뺀다**(`src/handlers/member_messages.php:14`) — 검토 계정끼리의 대화 시험은 목록이 아니라 `GET/POST /api/messages/{num}` 을 번호로 친다 |
@@ -171,5 +171,18 @@ A 가 끝나면 **멈춘다** — 메인 세션(Fable)이 독립 검토(CLAUDE.m
 | Q:T-21 회귀 | A-5 전부 · `moa_local_*.py` · `member_onboarding.py`(가능하면) · `/messages` 의 CSP 두 헤더 값(격리 틀은 PHP 헤더만 — nginx 는 메인 세션 몫으로 「미검증」 표기) | 전과 같은 수 |
 | Q:T-22 정적 | `security_lint.sh` · `php -l` · 구문 · `tests/browser/dbg_u2_ui.py` · `php scripts/wiki_check.php`(위키는 메인 세션 몫 — 0건이 아니면 보고만) | 0건 |
 | Q:T-23 사이트 회귀 | `tests/stage89_cross_regression/run.py` · `tests/q_launcher.sh` 의 기대값(로그인 런처 스크립트 수) 갱신 | 통과 |
+
+### B-7 A 독립 검토 반영 — 경미 항목 (2026-10-06 Fable 검토 `~/qaredi-qf11-results-20261006/review-A/REPORT.md` · 판정 통과: 차단 0 · 중요 0 · 경미 6)
+
+수정 파일(B 의 목록에 **더한다**): `scripts/community_asset_version.php` · `tests/moa_local_permissions.py` · `tests/moa_local_assist.py`.
+
+| 검토 번호 | 할 일 |
+|---|---|
+| 3 부품 판 스크립트 공백 | `scripts/community_asset_version.php` 가 `public/assets/messenger.js` 의 `community/drafts.js?v=` import 판도 찍고(`--check` 가 어긋남을 잡게) 검사한다. 스크립트를 돌린 전후 출력 원문 보고 |
+| 4 글자 수 규칙 시험 공백 | `tests/moa_local_permissions.py:44` 근처 「4001 code points」 요청에 유효한 `request_id` 를 넣어, 400 이 **글자 수 문구**(「메시지를 1~4,000자로 입력해 주세요.」)로 나는지 단언한다 |
+| 5 `moa_local_assist.py` 2건 | 모의 서버에 `GET /community/api/me/draft-key` 합성 열쇠(`{"v":1,"key":…}` 32바이트 base64url)를 더하고, 「저장소 0」 단언은 메신저 창 상태 열쇠를 빼고 **PC 도우미 자격 증명이 저장소에 없음**을 본다. 기준선에서도 앞쪽 묵은 단언(「welcome explains unconfirmed connection and private repository」)에서 멈추던 것은 원인을 `git log -S` 로 찾아 보고하고, 화면 문구가 의도적으로 바뀐 것이 확인될 때만 기대값을 맞춘다 — 뒤 단언이 실제로 돌았다는 출력 원문 필수 |
+| 2 보고 ⑪ 정정 | `messenger.js:45` 는 `data-community-base` 를 **읽는다**(A 보고와 다름). 창 모드로 커뮤니티·t-box·런처 화면에 뜰 때 그 값이 무엇인지 확인해 보고(코드 변경은 필요할 때만) |
+| 1 전송 한도 계산 | `src/handlers/member_messages.php` 는 B 범위 밖 — **사용자 결정 대기**. 결정되면 메인 세션이 따로 지시한다 |
+| 6 초안 20개 공용 상한 | 지시서대로 둔다(보안 영향 0) — 변경 없음 |
 
 B 가 끝나면 멈춘다 — 메인 세션이 묶음 전체 diff 로 독립 검토·회귀·운영 반영(마이그레이션 → 코드 → 검증)·`STAGES.md`·`wiki/qaredi`·`SECURITY.md` 7장·발행 v2.50.0 을 한다.
