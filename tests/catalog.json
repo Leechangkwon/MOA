@@ -5530,6 +5530,8 @@
         "src/community/handlers/draft_key.php",
         "public/assets/community/drafts.js",
         "public/assets/app.js",
+        "public/assets/usage-guide.js",
+        "src/help/community.php",
         "scripts/ui_snapshot.py",
         "tests/browser/dbg_u2_ui.py",
         "tests/community/messenger_window_browser.py",
