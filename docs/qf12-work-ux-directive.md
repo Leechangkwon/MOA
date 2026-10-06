@@ -97,6 +97,26 @@ fixture: 팀 X 구성원 A·B(쓰기) · 팀 Y 구성원 C · 손님 G · Admin 
 
 A 가 끝나면 **멈춘다** — 메인 세션이 독립 검토(CLAUDE.md 3장, 보안 바닥 — 3.1 예외)를 한 뒤 B 를 시작한다.
 
+### A-8 검토 반영 — 재지시 1 (2026-10-07 · 메인 독립 검토 `SECURITY.md` 7장)
+
+```
+목표        : 독립 검토의 보정 둘을 고친다 — RV-A1 포트폴리오가 관리자 열람 길이 되지 않게, RV-A2 속성 창구의 거부 감사가 DB 에 남게.
+요구사항    : ../../community/ARCHITECTURE.md 23.7(고친 판 — 항목·진행률 = community_search_pages_where), SECURITY C:R-16 · S-07(감사) — 해당 절을 읽고 시작할 것.
+수정 파일   : ★ src/community/routes.php(community_portfolio_items 의 조건절 두 곳만) · src/community/handlers/pages_properties.php(거부 두 갈래만) ·
+              tests/community/qf12_floor_http.py(시험 추가) · API.md(포트폴리오 절 한 문장 — 「관리자도 자기 몫으로 볼 수 있는 프로젝트만」)
+              여기 없는 파일 금지.
+금지 패턴   : 「공통」 표. 판정 함수·마이그레이션·권한은 고치지 않는다.
+완료 기준   : 아래 시험이 **고치기 전 판(b9e3c2c)에서 실패하고 고친 판에서 통과**함을 둘 다 보인다 + qf12_floor_http.py 전부 + security_lint 0 + php -l + git diff --check.
+보고 형식   : 「공통」. 확정한 값: 고친 줄 · 고치기 전/뒤 시험 출력 원문.
+```
+
+| # | 고칠 것 | 시험(qf12_floor_http.py 에 추가) |
+|---|---|---|
+| RV-A1 | `community_portfolio_items` 의 항목·진행률 질의 조건절을 `community_visible_pages_where` → `community_search_pages_where`(바인드 이름이 다르면 맞춤) | A 가 자기 **비공개** 프로젝트를 PF 에 넣은 뒤: ① Admin M(팀 X 아님 — `admin_all` 로 PF 를 읽는 사람) ② 팀 X 구성원이기도 한 Admin(fixture 에 하나 추가 — 시험 준비로만) 두 사람의 `GET /api/portfolios/{PF}` 응답에 그 프로젝트 줄 0 · 총수·상태별 수에 안 셈 · 응답 원문에 제목·`public_id` 0. 진행률: 그 사람이 볼 수 없는 행이 분모에 안 들어감 |
+| RV-A2 | `pages_properties.php` 의 `page.read` 거부(:130 근처)와 `page.property` 거부(:205 근처) — `Audit::deny` **앞에** `$db->rollback()` (다른 거부 갈래와 같은 모양) | ① 볼 수 없는 사람이 `PATCH …/properties {status}` → 403 뒤 `audit_logs` 에 `page.read|deny|not_owner` **DB 행 +1** ② 볼 수는 있으나 고칠 수 없는 사람(사내 공개 페이지의 다른 사람) → 403 뒤 `page.property|deny|not_owner` DB 행 +1 · 페이지 값 불변 |
+
+A-8 이 끝나면 멈추지 않고 **지시서 B** 로 이어 간다(A-8 은 커밋 하나로 따로).
+
 ---
 
 ## 지시서 B — 서버: 내 작업 · 「오늘」 · 프로젝트 만들기 · 「내 할 일」 · 섹션 묶기 · 담당 칸
