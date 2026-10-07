@@ -427,6 +427,23 @@ def suite(instance, work, out, config, users, sql, port):
     cpx = req('GET', TB + '/consent?to=https%3A%2F%2Fevil.example%2F', msess, html=True)
     check(cpx.status_code == 200 and 'data-consent-to' not in cpx.text, 'GATE consent page drops a ?to= outside the allow-list (no open redirect)')
     check(audit_count('auth.gate', mid, 'consent_required') >= 10, 'GATE every blocked request leaves auth.gate|deny|consent_required')
+    # P2-R1(RV-P2-1) — 동의하지 않은 사람의 탈퇴 길: 탈퇴 요청 두 창구만 관문을 지난다(재인증은 핸들러가 묻는다)
+    check('id="consent-delete-request"' in cp.text and 'id="consent-logout"' in cp.text and '/tbox/assets/app.js?v=' in cp.text
+          and 'id="tpl-icon-x"' in cp.text, 'R1 consent page (consent missing): 「탈퇴 요청」 next to 「로그아웃」 · loads the shared dialogs (app.js · ✕ icon template)')
+    gate_n = audit_count('auth.gate', mid, 'consent_required')
+    r = req('GET', TB + '/api/me/delete-request', msess)
+    check(r.status_code == 200 and r.json() == {'request': None}, 'R1 GET /api/me/delete-request passes the consent gate (200 · request null)')
+    r = req('POST', TB + '/api/me/delete-request', msess, {'confirm': True})
+    samples['403 POST /tbox/api/me/delete-request (consent missing · no fresh re-auth)'] = r.text
+    check(r.status_code == 403 and r.json().get('next') == 'reauth' and 'code' not in r.json()
+          and audit_count('auth.gate', mid, 'consent_required') == gate_n and audit_count('auth.gate', mid, 'reauth_required') == 1
+          and sql('SELECT count(*) FROM account_deletion_requests WHERE user_id=' + str(mid)) == '0',
+          'R1 POST /api/me/delete-request passes the consent gate and reaches the handler: 403 next:reauth (no consent_required) · no row')
+    r = req('POST', TB + '/api/me/reauth', msess, {'password': PASSWORD})
+    samples['403 POST /tbox/api/me/reauth (consent missing)'] = r.text
+    check(is_gate(r), 'R1 GAP (decision pending): POST /api/me/reauth while consent is missing → 403 consent_required (only the two delete-request routes were opened)')
+    for method, url, body in (('GET', TB + '/api/files', None), ('GET', TB + '/api/admin/deletion-requests', None), ('GET', CB + '/api/me/space', None)):
+        check(is_gate(req(method, url, msess, body)), 'R1 other session API still gated after opening the two routes: ' + method + ' ' + url.replace(site, '') + ' → 403 consent_required')
     # 개인 토큰 창구는 막지 않는다
     tok = secrets.token_hex(24)
     sql("INSERT INTO api_tokens(user_id,name,token_hash,hint,created_by,scope,expires_at) VALUES(" + str(mid) + ",'qf13','" +
@@ -462,6 +479,9 @@ def suite(instance, work, out, config, users, sql, port):
     check(req('GET', TB + '/api/files', msess).status_code == 200 and req('GET', TB + '/', msess, html=True).status_code == 200
           and req('GET', CB + '/', msess, html=True).status_code == 200 and req('GET', CB + '/api/me/space', msess).status_code == 200,
           'GATE after consent: t-box and community screens and APIs are normal')
+    cpd = req('GET', TB + '/consent', msess, html=True)
+    check(cpd.status_code == 200 and 'id="consent-delete-request"' not in cpd.text and '/assets/app.js' not in cpd.text and 'id="consent-done"' in cpd.text,
+          'R1 consent page after consent: no 「탈퇴 요청」 there (the 「내 계정」 panel has it) · app.js not loaded')
     # 계정 절차가 먼저
     sid = make_user('qf13_steps', must_change=True)
     ssess = make_session(sid)
@@ -722,6 +742,68 @@ def browser_suite(site, TB, CB, users, sql, make_user, make_session, storage, pr
         check(pg.locator('#consent-ai-state').inner_text() == '동의하지 않음' and sql("SELECT string_agg(doc||':'||action,',' ORDER BY id) FROM user_consents WHERE user_id=" + str(hid)) ==
               'terms:agree,privacy:agree,ai_overseas:agree,ai_overseas:withdraw', 'UI AI withdraw button → 동의하지 않음 · rows appended')
         check(code_console(lines) == [] and errors == [], 'UI consent flow: console errors 0 · page errors 0')
+        ctx.close()
+
+        # ── P2-R1(RV-P2-1 · RV-P2-3) 동의하지 않은 회원의 「탈퇴 요청」 길 — 공용 확인 창 → 공용 재인증 창(탈퇴 문구) → 요청 ──
+        did = make_user('qf13_delete')
+        dsess = make_session(did)
+        def del_rows():
+            return sql('SELECT count(*) FROM account_deletion_requests WHERE user_id=' + str(did))
+        ctx = browser.new_context(viewport={'width': 412, 'height': 900}, user_agent=UA, has_touch=True)
+        ctx.add_cookies(cookie(dsess))
+        pg = ctx.new_page(); lines = []; errors = []; apis = []
+        pg.on('console', lambda m: lines.append((m.text, m.location.get('url', ''))) if m.type == 'error' else None)
+        pg.on('pageerror', lambda e: errors.append(str(e)))
+        pg.on('request', lambda r: apis.append(r.method + ' ' + r.url.replace(site, '').split('?')[0]) if '/api/' in r.url else None)
+        pg.goto(TB + '/consent'); pg.wait_for_load_state('networkidle')
+        expect(pg.locator('#consent-delete-request')).to_be_visible()
+        check(pg.locator('#consent-logout').is_visible() and pg.locator('#consent-delete-state').is_hidden()
+              and sorted(apis) == ['GET /tbox/api/me', 'GET /tbox/api/me/delete-request'],
+              'UI R1 consent screen: 「탈퇴 요청」 beside 「로그아웃」 · on load only GET /api/me + GET /api/me/delete-request (app.js adds no calls)')
+        pg.click('#consent-delete-request')
+        confirm = pg.locator('#confirm-dialog')
+        expect(confirm).to_be_visible()
+        check(pg.locator('#confirm-dialog-title').inner_text() == '탈퇴를 요청할까요?' and confirm.locator('.modal__head button[aria-label="닫기"] svg').count() == 1
+              and confirm.locator('.btn--danger').inner_text() == '탈퇴 요청' and del_rows() == '0',
+              'UI R1 「탈퇴 요청」 → the shared confirm dialog (title · ✕ icon · red 「탈퇴 요청」) · nothing sent yet')
+        pg.keyboard.press('Escape')
+        expect(confirm).not_to_be_visible()
+        check(del_rows() == '0' and 'POST /tbox/api/me/delete-request' not in apis, 'UI R1 closing the confirm dialog (Esc) sends nothing')
+        pg.click('#consent-delete-request')
+        confirm.locator('.btn--danger').click()
+        pw_input = pg.locator('#reauth-dialog-form input[type=password]')
+        expect(pw_input).to_be_visible()
+        meta = pg.locator('dialog.modal[open]:has(#reauth-dialog-form) .modal__meta').inner_text()
+        check(meta.startswith('탈퇴를 요청하려면 비밀번호를 다시 확인해 주세요') and '관리 기능' not in meta and del_rows() == '0'
+              and apis.count('POST /tbox/api/me/delete-request') == 1,
+              'UI R1 confirm → POST 403 next:reauth → the shared re-auth dialog says 「탈퇴를 요청하려면 비밀번호를 다시 확인해 주세요」 · no row yet')
+        pg.screenshot(path=str(out / 'r1-consent-delete-reauth-412.png'))
+        pw_input.fill(PASSWORD)
+        pw_input.press('Enter')
+        reauth_msg = pg.locator('dialog.modal[open]:has(#reauth-dialog-form) .modal__foot .msg')
+        expect(reauth_msg).not_to_be_empty()
+        check(reauth_msg.inner_text() == '이용약관 동의와 개인정보 처리방침 확인을 먼저 마쳐 주세요' and del_rows() == '0'
+              and sql('SELECT count(*) FROM sessions WHERE user_id=' + str(did) + ' AND reauth_at IS NOT NULL') == '0',
+              'UI R1 GAP (decision pending): the password cannot be confirmed from the consent screen — POST /api/me/reauth is gated (dialog shows the consent message) · no window · no row')
+        pg.screenshot(path=str(out / 'r1-consent-delete-reauth-gap-412.png'))
+        pg.keyboard.press('Escape')
+        expect(pg.locator('#reauth-dialog-form')).to_have_count(0)
+        # 재인증 창을 시험 DB 에서 연다(위 GAP — 창구로는 열 수 없다) → 같은 화면 길이 201 까지 가는지
+        sql('UPDATE sessions SET reauth_at=now() WHERE user_id=' + str(did))
+        pg.click('#consent-delete-request')
+        confirm.locator('.btn--danger').click()
+        expect(pg.locator('#consent-delete-state')).to_be_visible(timeout=15000)
+        check('탈퇴를 요청했습니다' in pg.locator('#consent-delete-state').inner_text() and pg.locator('#consent-delete-request').is_hidden()
+              and sql("SELECT count(*) FROM account_deletion_requests WHERE status='pending' AND user_id=" + str(did)) == '1'
+              and sql('SELECT count(*) FROM user_consents WHERE user_id=' + str(did)) == '0',
+              'UI R1 with a fresh re-auth window (opened in the test DB): confirm → request 201 → 「탈퇴를 요청했습니다」 · button hidden · still no consent rows')
+        pg.screenshot(path=str(out / 'r1-consent-delete-requested-412.png'), full_page=True)
+        pg.reload(); pg.wait_for_load_state('networkidle')
+        expect(pg.locator('#consent-delete-state')).to_be_visible()
+        over = pg.evaluate("() => document.documentElement.scrollWidth - document.documentElement.clientWidth")
+        check(pg.locator('#consent-delete-request').is_hidden() and over <= 0, 'UI R1 reload: the consent screen shows the open request (GET) · horizontal overflow 0 at 412')
+        check(code_console([l for l in lines if 'status of 403' not in l[0]]) == [] and errors == [],
+              'UI R1 consent-screen withdrawal: console errors 0 besides the expected 403 resource lines · page errors 0')
         ctx.close()
 
         # ── 메신저 모아 AI: 409 → 동의 창 → 동의하면 같은 요청 한 번 다시 / 닫으면 호출 0 ──

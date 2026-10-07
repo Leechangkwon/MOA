@@ -80,6 +80,16 @@ if (!tbox_username_format_ok($username)) {   // d74 — Auth::USERNAME_RE 한 �
     $rejectBadRequest($body);
 }
 $username = (string) $username;
+// Q:F-13 P2-R1(RV-P2-2) — `deleted-` 는 탈퇴 익명화(privacy_purge_accounts → `deleted-<번호>`)만 쓰는 접두다. 사람이 그 이름을 먼저
+// 가지면 익명화가 이름 충돌로 멈추고(name_conflict) 남의 글이 탈퇴한 사람의 것처럼 보인다 → 형식 오류(bad_request)로 400.
+// 문구는 초대 가입(member_register.php) · 아이디 바꾸기(users_update.php)와 같은 글자.
+if (str_starts_with($username, 'deleted-')) {
+    Audit::deny('user.create', 'bad_request', [
+        'target_type' => 'user',
+        'target_name' => $username,
+    ]);
+    Http::error(400, '탈퇴한 계정 전용 접두(deleted-)로 시작하는 아이디는 쓸 수 없습니다 — 다른 아이디로 정해 주세요');
+}
 
 // ─── [3] 비밀번호는 받지 않는다 (11단계 F-16 ①) ─────────────────
 //        임시 비밀번호는 아래 [10] 에서 서버가 만든다. `password` 키가 오면

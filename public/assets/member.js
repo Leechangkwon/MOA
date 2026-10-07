@@ -110,6 +110,21 @@
         location.assign(next);
       });});
       $('consent-logout').addEventListener('click',()=>busy(form.parentElement,async()=>{await api('/api/logout','POST',{});location.assign('/');}));
+      /* 사이트 Q:F-13 P2-R1(RV-P2-1) — 동의하지 않는 사람의 탈퇴 길(약관 제3조). 「내 계정」과 같은 흐름: 공용 확인 창 → POST {confirm:true} →
+         403 next:reauth 면 공용 재인증 창(탈퇴 문구) → 같은 요청 한 번 더. 창은 app.js 의 것(qarediOpenConfirm · qarediHandleReauth) 그대로.
+         대상은 서버가 세션 본인으로 고정한다 — 보내는 값은 confirm 하나뿐이다. 글자는 textContent 로만. */
+      const del=$('consent-delete-request'),delState=$('consent-delete-state');
+      const delShow=request=>{if(!request||typeof request.status!=='string')return;const at=String(request.requested_at||'').match(/^\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}/);del.hidden=true;delState.hidden=false;delState.textContent='탈퇴를 요청했습니다 — 관리자가 처리할 때까지 기다려 주세요.'+(at?' 요청한 때: '+at[0].replace('T',' '):'');};
+      const delSend=()=>busy(form.parentElement,async()=>{
+        if(typeof window.qarediSetCsrf==='function')window.qarediSetCsrf(csrf);
+        try{delShow((await api('/api/me/delete-request','POST',{confirm:true})).request);say('탈퇴를 요청했어요. 관리자가 처리하면 로그인할 수 없게 됩니다.');}
+        catch(e){if(e.status===403&&e.data?.next==='reauth'&&typeof window.qarediHandleReauth==='function'){window.qarediHandleReauth({status:403},e.data,delSend,'delete-request');return;}throw e;}
+      });
+      del.addEventListener('click',()=>{
+        if(typeof window.qarediOpenConfirm!=='function'){say('화면을 다 불러오지 못했습니다. 새로고침해 주세요.');return;}
+        window.qarediOpenConfirm({title:'탈퇴를 요청할까요?',lead:'관리자가 처리하면 바로 로그인할 수 없게 됩니다. 남길 자료는 미리 내려받거나 다른 사람에게 넘겨 주세요.',note:'최근에 비밀번호를 확인하지 않았다면 비밀번호를 한 번 더 묻습니다.',okLabel:'탈퇴 요청'},delSend);
+      });
+      api('/api/me/delete-request').then(d=>delShow(d.request)).catch(e=>say(e.message));
     }
     const agree=$('consent-ai-agree'),withdraw=$('consent-ai-withdraw');
     if(!agree||!withdraw)return;

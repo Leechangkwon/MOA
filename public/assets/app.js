@@ -893,8 +893,9 @@ function setSessionCsrf(token) {
  *
  * @param retry 성공 뒤 다시 보낼 요청(함수). 없으면 화면이 등록한 로더, 그것도 없으면
  *              현재 화면을 다시 읽는다(reload) — 어느 쪽이든 **원래 요청이 다시 나간다**.
+ * @param purpose 창 머리 문구를 고르는 고정 키(Q:F-13 P2-R1 RV-P2-3) — 'delete-request' 면 탈퇴 문맥, 그 밖은 관리 기능 문구.
  */
-function handleReauth(response, data, retry) {
+function handleReauth(response, data, retry, purpose) {
   if (!response || response.status !== 403
       || !data || data.next !== 'reauth') {
     return false;
@@ -909,7 +910,7 @@ function handleReauth(response, data, retry) {
       return;
     }
     window.location.reload();
-  });
+  }, purpose);
   return true;
 }
 
@@ -982,8 +983,8 @@ window.qarediHandleReauth = handleReauth;
 /* 커뮤니티의 일괄 「이어서 하기」도 셸의 토큰을 같은 함수로 바꾼다(모듈은 이 파일의 변수에 닿지 못한다) */
 window.qarediSetCsrf = setSessionCsrf;
 
-/** 모달 하나를 만들어 띄운다. 성공하면 onDone() 을 부르고 닫는다. */
-function openReauthModal(onDone) {
+/** 모달 하나를 만들어 띄운다. 성공하면 onDone() 을 부르고 닫는다. purpose 는 handleReauth 의 머리 문구 키. */
+function openReauthModal(onDone, purpose) {
   if (reauthOpen) {
     return;
   }
@@ -1008,7 +1009,10 @@ function openReauthModal(onDone) {
 
   var lead = document.createElement('span');
   lead.className = 'modal__meta';
-  setText(lead, '관리 기능을 쓰려면 비밀번호를 다시 확인합니다. 확인한 창은 15분 동안 열려 있습니다.');
+  // Q:F-13 P2-R1(RV-P2-3) — 탈퇴 요청에서 뜬 창은 탈퇴 문맥으로(DESIGN 2.23). 그 밖은 전과 같은 관리 기능 문구.
+  setText(lead, purpose === 'delete-request'
+    ? '탈퇴를 요청하려면 비밀번호를 다시 확인해 주세요. 확인한 창은 15분 동안 열려 있습니다.'
+    : '관리 기능을 쓰려면 비밀번호를 다시 확인합니다. 확인한 창은 15분 동안 열려 있습니다.');
   head.appendChild(lead);
 
   // 디버깅 묶음 U2 M3 — 모든 창의 머리에 ✕(DESIGN 2.7 「✕ 와 「닫기」 둘 다」)
@@ -9988,7 +9992,7 @@ function initDeleteRequest(csrfToken) {
         }
         return readJson(response).then(function (data) {
           open.disabled = false;
-          if (handleReauth(response, data, send)) {   // 확인이 끝나면 같은 요청을 한 번 더
+          if (handleReauth(response, data, send, 'delete-request')) {   // 확인이 끝나면 같은 요청을 한 번 더 · 창 문구는 탈퇴 문맥(RV-P2-3)
             return null;
           }
           if (toGate(response, data)) {

@@ -715,6 +715,117 @@ try:
           and audits('account.purge', 'name_conflict', users['clash']['id']) == 1 and audits('account.purge', 'still_active', users['react']['id']) == 1,
           'DEL a name clash (deleted-<id> taken) and a re-activated account are skipped with error audits (not anonymized)')
 
+    # ═════════ P2-R1 (RV-P2-1) — 동의하지 않은 회원도 탈퇴는 요청한다 · 관문은 두 창구만 더 열린다 ═════════
+    gate = subprocess.run(['php', '-r', 'require "src/bootstrap.php"; echo json_encode(Auth::CONSENT_GATE_ALLOW);'], cwd=root, capture_output=True, text=True, check=True).stdout
+    save_text('r1-consent-gate-allow.json', gate + '\n')
+    check(json.loads(gate) == ['GET /consent', 'GET /api/me', 'GET /api/me/consents', 'POST /api/me/consents', 'POST /api/logout',
+                               'GET /api/me/delete-request', 'POST /api/me/delete-request'],
+          'R1 Auth::CONSENT_GATE_ALLOW = the five P1 routes + exactly GET/POST /api/me/delete-request (nothing else)')
+    NC = make_user('ncdel', 'qf13r_ncdel', consents=())
+    new_session('ncdel')
+    r = tb('GET', '/api/me/delete-request', user='ncdel')
+    check(r.status_code == 200 and 'request' in jbody(r) and jbody(r)['request'] is None,
+          'R1 non-consented member: GET /api/me/delete-request passes the consent gate (200 · request null)')
+    gate_audits = audits('auth.gate', 'consent_required', NC)
+    r = tb('POST', '/api/me/delete-request', {'confirm': True}, user='ncdel')
+    samples['r1_nc_request_reauth_403'] = jbody(r)
+    check(r.status_code == 403 and jbody(r).get('next') == 'reauth' and jbody(r).get('code') != 'consent_required'
+          and audits('auth.gate', 'reauth_required', NC) == 1 and audits('auth.gate', 'consent_required', NC) == gate_audits
+          and count('SELECT count(*) FROM account_deletion_requests WHERE user_id=' + str(NC)) == 0,
+          'R1 non-consented member: POST without a fresh password check → 403 next:reauth from the handler (not consent_required) · no row')
+    check(tb('POST', '/api/me/delete-request', {'confirm': True}, user='ncdel', csrf=False).status_code == 403
+          and tb('POST', '/api/me/delete-request', {'confirm': True, 'user_id': O}, user='ncdel').status_code == 400
+          and count('SELECT count(*) FROM account_deletion_requests WHERE user_id=' + str(NC)) == 0,
+          'R1 non-consented member: the opened route still needs CSRF (403) and the exact body (400)')
+    r = tb('POST', '/api/me/reauth', {'password': PW}, user='ncdel')
+    samples['r1_nc_reauth'] = {'status': r.status_code, 'body': jbody(r)}
+    check(r.status_code == 403 and jbody(r).get('code') == 'consent_required' and q('SELECT reauth_at IS NULL FROM sessions WHERE user_id=' + str(NC)) == 't',
+          'R1 GAP (decision pending): POST /api/me/reauth for a non-consented member → 403 consent_required (not in the two opened routes) — the window cannot be opened from the consent screen')
+    # 재인증 창을 시험 DB 에서 연다(위 GAP — 창구로는 열 수 없어 sessions.reauth_at 만 now()) → 같은 요청이 201 이 되는지 · 관리자 처리까지
+    q('UPDATE sessions SET reauth_at=now() WHERE user_id=' + str(NC))
+    r = tb('POST', '/api/me/delete-request', {'confirm': True}, user='ncdel')
+    samples['r1_nc_request_201'] = jbody(r)
+    nc_req = jbody(r).get('request', {}).get('id')
+    check(r.status_code == 201 and jbody(r)['request']['status'] == 'pending' and audits('account.delete_request', target=NC, result='allow') == 1
+          and q('SELECT count(*) FROM user_consents WHERE user_id=' + str(NC)) == '0',
+          'R1 non-consented member with a fresh re-auth window (opened in the test DB) → 201 pending + account.delete_request audit · still no consent rows')
+    check(jbody(tb('GET', '/api/me/delete-request', user='ncdel')).get('request', {}).get('id') == nc_req
+          and tb('POST', '/api/me/delete-request', {'confirm': True}, user='ncdel').status_code == 409,
+          'R1 non-consented member: GET shows the own request · a second request → 409')
+    for method, path, body in (('GET', '/api/files', None), ('GET', '/api/me/activity', None), ('POST', '/api/folders', {'name': 'x'}),
+                               ('GET', '/api/admin/deletion-requests', None), ('POST', '/api/admin/deletion-requests/' + str(nc_req), {'confirm': True})):
+        r = tb(method, path, body, user='ncdel')
+        check(r.status_code == 403 and jbody(r).get('code') == 'consent_required', 'R1 other session API still gated: ' + method + ' ' + path.replace(str(nc_req), '{num}') + ' → 403 consent_required')
+    r = requests.get(site + '/community/api/me/space', headers={'User-Agent': UA, 'Cookie': '__Host-tbox_session=' + users['ncdel']['session']}, timeout=30, allow_redirects=False)
+    check(r.status_code == 403 and jbody(r).get('code') == 'consent_required', 'R1 community session API still gated: GET /community/api/me/space → 403 consent_required')
+    for path, loc in (('/settings', '/tbox/consent?to=%2Ftbox%2Fsettings'), ('/', '/tbox/consent'), ('/messages', '/tbox/consent?to=%2Ftbox%2Fmessages')):
+        r = tb('GET', path, user='ncdel', html=True)
+        check(r.status_code == 302 and r.headers.get('Location') == loc, 'R1 screens still gated: /tbox' + path + ' → 302 ' + loc)
+    # 관리자 쪽 창구는 열리지 않았다 — 동의하지 않은 관리자(재인증 창 열림)도 목록·처리 403 consent_required
+    make_user('ncadmin', 'qf13r_ncadmin', role='Admin', mfa=True, consents=())
+    new_session('ncadmin', reauth=True)
+    check(all(tb(m, p, b, user='ncadmin').status_code == 403 and jbody(tb(m, p, b, user='ncadmin')).get('code') == 'consent_required'
+              for m, p, b in (('GET', '/api/admin/deletion-requests', None), ('POST', '/api/admin/deletion-requests/' + str(nc_req), {'confirm': True})))
+          and q('SELECT status FROM account_deletion_requests WHERE id=' + str(nc_req)) == 'pending',
+          'R1 a non-consented admin (fresh re-auth) still cannot list or process deletion requests (403 consent_required · still pending)')
+    # 처리는 그대로 — 동의한 관리자가 재인증하고 처리 → 즉시 로그인 불가
+    check(tb('POST', '/api/me/reauth', {'password': PW}, user='boss').status_code == 200, 'R1 consented admin re-enters the password')
+    lst = jbody(tb('GET', '/api/admin/deletion-requests', user='boss'))
+    check([x['status'] for x in lst.get('requests', []) if x['id'] == nc_req] == ['pending'], 'R1 admin list shows the non-consented member request (pending)')
+    r = tb('POST', '/api/admin/deletion-requests/' + str(nc_req), {'confirm': True}, user='boss')
+    samples['r1_process_200'] = jbody(r)
+    check(r.status_code == 200 and jbody(r)['request']['status'] == 'processed' and q('SELECT is_active FROM users WHERE id=' + str(NC)) == 'f'
+          and count('SELECT count(*) FROM sessions WHERE user_id=' + str(NC)) == 0 and tb('GET', '/api/me', user='ncdel').status_code == 401
+          and audits('account.delete_process', target=NC, result='allow') == 1,
+          'R1 admin processes it → 200 processed · account inactive · sessions 0 · old session 401 · account.delete_process audit')
+
+    # ═════════ P2-R1 (RV-P2-2) — `deleted-` 아이디 예약: 계정 만들기 · 초대 가입 · 아이디 바꾸기 ═════════
+    MSG_DELETED = '탈퇴한 계정 전용 접두(deleted-)로 시작하는 아이디는 쓸 수 없습니다 — 다른 아이디로 정해 주세요'
+    check(tb('POST', '/api/me/reauth', {'password': PW}, user='boss').status_code == 200, 'R1 admin re-auth before the user-management calls')
+    bad_before = audits('user.create', 'bad_request')
+    for name in ('deleted-424242', 'deleted-' + str(T), 'deleted-x'):
+        r = tb('POST', '/api/users', {'username': name, 'role': 'Employee', 'reason_text': 'qf13r P2-R1 시험'}, user='boss')
+        samples['r1_create_' + name.replace(str(T), 'T')] = jbody(r)
+        check(r.status_code == 400 and jbody(r).get('error') == MSG_DELETED and count("SELECT count(*) FROM users WHERE username='" + name + "'") == (1 if name == 'deleted-' + str(T) else 0),
+              'R1 admin create username ' + name.replace(str(T), '<purged id>') + ' → 400 with the deleted- message (no new account)')
+    check(audits('user.create', 'bad_request') == bad_before + 3, 'R1 admin create deleted-… rejections leave user.create|deny|bad_request audits (3)')
+    r = tb('POST', '/api/users', {'username': 'qf13r-deleted-ok', 'role': 'Employee', 'reason_text': 'qf13r P2-R1 대조'}, user='boss')
+    check(r.status_code == 201 and count("SELECT count(*) FROM users WHERE username='qf13r-deleted-ok'") == 1,
+          'R1 control: a name that only contains deleted- (qf13r-deleted-ok) is still created (201)')
+    code = secrets.token_hex(32)
+    q("INSERT INTO member_invites(code_hash,label,team_id,created_by,expires_at,max_uses) VALUES('" + hashlib.sha256(code.encode()).hexdigest()
+      + "','qf13r R1',NULL," + str(ADM) + ",now()+interval '1 day',5)")
+    join = requests.get(TB + '/join', headers={'User-Agent': UA, 'Accept': 'text/html'}, timeout=30)
+    jcsrf = re.search(r'data-join-csrf="([a-f0-9]{64})"', join.text).group(1)
+    jh = {'User-Agent': UA, 'X-Join-CSRF': jcsrf, 'Cookie': '__Host-moa_join=' + jcsrf}
+
+    def register(name):
+        q("UPDATE member_rate_limits SET window_start=now()-interval '2 minutes'")
+        return requests.post(TB + '/api/register', json={'invite': code, 'username': name, 'display_name': '합성 가입', 'password': PW,
+                                                         'agree_terms': True, 'age14': True}, headers=jh, timeout=40, allow_redirects=False)
+    for name in ('deleted-31337', 'deleted-' + str(T)):
+        r = register(name)
+        samples['r1_register_' + name.replace(str(T), 'T')] = jbody(r)
+        check(r.status_code == 400 and jbody(r).get('error') == MSG_DELETED and 'set-cookie' not in {k.lower() for k in r.headers}
+              and q("SELECT used_count FROM member_invites WHERE label='qf13r R1'") == '0'
+              and count("SELECT count(*) FROM users WHERE username='" + name + "'") == (1 if name == 'deleted-' + str(T) else 0),
+              'R1 invite sign-up username ' + name.replace(str(T), '<purged id>') + ' → 400 with the same message · no account · invite unused · no session cookie')
+    r = register('qf13r_join_ok')
+    check(r.status_code == 201 and q("SELECT used_count FROM member_invites WHERE label='qf13r R1'") == '1', 'R1 control: invite sign-up with a normal name → 201')
+    ren = make_user('rename', 'qf13r_rename')
+    upd_before = audits('user.update', 'bad_request', ren)
+    r = tb('PATCH', '/api/users/' + str(ren), {'username': 'deleted-' + str(ren), 'reason_text': 'qf13r P2-R1 시험'}, user='boss')
+    samples['r1_rename_400'] = jbody(r)
+    check(r.status_code == 400 and jbody(r).get('error') == MSG_DELETED and q('SELECT username FROM users WHERE id=' + str(ren)) == 'qf13r_rename'
+          and audits('user.update', 'bad_request', ren) == upd_before + 1
+          and q("SELECT count(*) FROM audit_logs WHERE action='user.update' AND target_id=" + str(ren) + " AND (detail::text LIKE '%deleted-%' OR target_name LIKE 'deleted-%')") == '0',
+          'R1 username change to deleted-<id> → 400 with the same message · name unchanged · user.update|deny|bad_request audit without the tried name')
+    r = tb('PATCH', '/api/users/' + str(ren), {'username': 'qf13r_renamed', 'reason_text': 'qf13r P2-R1 대조'}, user='boss')
+    check(r.status_code == 200 and q('SELECT username FROM users WHERE id=' + str(ren)) == 'qf13r_renamed', 'R1 control: username change to a normal name → 200')
+    r = tb('PATCH', '/api/users/' + str(T), {'username': 'deleted-' + str(T), 'reason_text': 'qf13r P2-R1 같은 이름'}, user='boss')
+    check(r.status_code == 400 and jbody(r).get('error') != MSG_DELETED and q('SELECT username FROM users WHERE id=' + str(T)) == 'deleted-' + str(T),
+          'R1 sending the purged account its own deleted-<id> name is not a rename (no deleted- message — the usual nothing-changed 400)')
+
     # ═════════ 감사 사슬 — 3년 지난 날 접기 · 검증 시작점 ═════════
     import datetime
     today = datetime.date.today()
@@ -856,6 +967,10 @@ try:
         tab.locator('#delete-request-open').click()
         tab.locator('#confirm-dialog .btn--danger').click()
         expect(tab.locator('#reauth-dialog-form input[type=password]')).to_be_visible()
+        reauth_meta = tab.locator('dialog.modal[open]:has(#reauth-dialog-form) .modal__meta').inner_text()
+        samples['r1_settings_reauth_meta'] = reauth_meta
+        check(reauth_meta.startswith('탈퇴를 요청하려면 비밀번호를 다시 확인해 주세요') and '관리 기능' not in reauth_meta,
+              'R1 UI settings: the re-auth dialog for the withdrawal request says 「탈퇴를 요청하려면 비밀번호를 다시 확인해 주세요」 (not the admin-function wording)')
         tab.screenshot(path=str(out / 'ui-settings-reauth.png'))
         tab.locator('#reauth-dialog-form input[type=password]').fill(PW)
         tab.locator('#reauth-dialog-form input[type=password]').press('Enter')
@@ -864,6 +979,14 @@ try:
               and count("SELECT count(*) FROM account_deletion_requests WHERE status='pending' AND user_id=" + str(users['ui']['id'])) == 1,
               'UI settings: confirm → shared re-auth dialog → the same request is sent once → state 「탈퇴를 요청했습니다」')
         tab.screenshot(path=str(out / 'ui-settings-requested.png'), full_page=True)
+        # 대조 — 목적 키 없이 부르는 공용 재인증 창(관리 기능 · 커뮤니티 모듈들)은 전과 같은 문구
+        tab.evaluate("window.qarediHandleReauth({status: 403}, {next: 'reauth'}, function () {})")
+        expect(tab.locator('#reauth-dialog-form input[type=password]')).to_be_visible()
+        admin_meta = tab.locator('dialog.modal[open]:has(#reauth-dialog-form) .modal__meta').inner_text()
+        check(admin_meta.startswith('관리 기능을 쓰려면 비밀번호를 다시 확인합니다') and '탈퇴' not in admin_meta,
+              'R1 UI control: the shared re-auth dialog without the withdrawal key keeps the admin-function wording')
+        tab.keyboard.press('Escape')
+        expect(tab.locator('#reauth-dialog-form')).to_have_count(0)
         ui_req = q("SELECT id FROM account_deletion_requests WHERE user_id=" + str(users['ui']['id']))
         ctx.clear_cookies()
         ctx.add_cookies(cookie('uiadmin'))

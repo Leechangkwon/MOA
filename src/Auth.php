@@ -782,6 +782,8 @@ final class Auth
         'GET /api/me/consents',
         'POST /api/me/consents',
         'POST /api/logout',
+        'GET /api/me/delete-request',    // Q:F-13 P2-R1(RV-P2-1) — 동의하지 않은 사람도 탈퇴는 요청한다(약관 제3조 · ARCH 4.11 「탈퇴」) · 재인증은 핸들러가 묻는다
+        'POST /api/me/delete-request',
     ];
 
     /**

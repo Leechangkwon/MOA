@@ -226,6 +226,13 @@ if (array_key_exists('username', $body)) {
         Audit::deny('user.update', 'bad_request', $auditTarget);
         Http::error(400, tbox_username_message('bad_format'));
     }
+    // Q:F-13 P2-R1(RV-P2-2) — `deleted-` 는 탈퇴 익명화(`deleted-<번호>`)만 쓰는 접두 — **새로** 그 이름으로 바꾸는 것만 막는다
+    // (지금 이름 그대로 보내는 요청은 바꾸는 것이 아니다). 형식 오류와 같은 사유(bad_request) · 시도한 이름은 감사에 남기지 않는다(d74).
+    // 문구는 계정 만들기(users_create.php) · 초대 가입(member_register.php)과 같은 글자.
+    if ($body['username'] !== $targetName && str_starts_with($body['username'], 'deleted-')) {
+        Audit::deny('user.update', 'bad_request', $auditTarget);
+        Http::error(400, '탈퇴한 계정 전용 접두(deleted-)로 시작하는 아이디는 쓸 수 없습니다 — 다른 아이디로 정해 주세요');
+    }
     $newUsername = (string) $body['username'];
 }
 

@@ -44,7 +44,9 @@ $consentWhen = static function (?array $row): string {
 <p class="legal-links"><a href="<?= Http::url('/terms') ?>" target="_blank" rel="noopener">이용약관 전문 보기</a> · <a href="<?= Http::url('/privacy') ?>" target="_blank" rel="noopener"><strong>개인정보 처리방침</strong> 전문 보기</a></p>
 <button class="btn moa-primary" type="submit">동의하고 계속하기</button>
 </form>
-<p class="help">동의하지 않으면 모아를 쓸 수 없어요. <button id="consent-logout" class="btn btn--quiet btn--small" type="button">로그아웃</button></p>
+<p class="help">동의하지 않으면 모아를 쓸 수 없어요. <button id="consent-logout" class="btn btn--quiet btn--small" type="button">로그아웃</button> <button id="consent-delete-request" class="btn btn--quiet btn--small" type="button">탈퇴 요청</button></p>
+<?php /* Q:F-13 P2-R1(RV-P2-1) — 동의하지 않는 사람의 탈퇴 길(약관 제3조 · DESIGN 2.23). 상태 글은 member.js 가 GET /api/me/delete-request 로 채운다. */ ?>
+<p class="help" id="consent-delete-state" hidden></p>
 </section>
 <?php else: ?>
 <section class="moa-setup-card" id="consent-done" aria-labelledby="consent-done-title">
@@ -67,4 +69,10 @@ $consentWhen = static function (?array $row): string {
 <p class="help">지금 상태: <strong id="consent-ai-state"><?= $consentAi ? '동의함' : '동의하지 않음' ?></strong> · <a href="<?= htmlspecialchars($consentNotice['policy_url'], ENT_QUOTES, 'UTF-8') ?>">처리방침 제7조 보기</a></p>
 <div class="moa-setup-actions"><button id="consent-ai-agree" class="btn" type="button"<?= $consentAi ? ' hidden' : '' ?>>국외 전송에 동의하기</button><button id="consent-ai-withdraw" class="btn btn--danger" type="button"<?= $consentAi ? '' : ' hidden' ?>>동의 철회하기</button><a href="/">모아 둘러보기 →</a></div>
 </section>
-</main></body></html>
+</main>
+<?php if ($consentNeeded): /* Q:F-13 P2-R1(RV-P2-1) — 「탈퇴 요청」 은 지금 확인 창·재인증 창(app.js 의 qarediOpenConfirm · qarediHandleReauth)을 그대로 쓴다.
+   이 화면은 셸이 아니라 app.js 의 화면 분기는 아무것도 하지 않는다(data-page 없음 · #nav-files 없음). 창 머리 ✕ 그림은 셸 바닥과 같은 틀. */ ?>
+<template id="tpl-icon-x"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg></template>
+<script defer src="<?= Http::url('/assets/app.js') ?>?v=<?= (int) filemtime(__DIR__ . '/../../public/assets/app.js') ?>"></script>
+<?php endif; ?>
+</body></html>

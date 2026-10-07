@@ -14,6 +14,8 @@ if (($body['agree_terms'] ?? null) !== true || ($body['age14'] ?? null) !== true
 $code=$body['invite']??null; $username=$body['username']??null; $name=$body['display_name']??null; $password=$body['password']??null;
 if (!is_string($code) || !preg_match('/\A[a-f0-9]{64}\z/',$code)) Http::error(400,'초대 링크를 다시 확인해 주세요.');
 if (!tbox_username_format_ok($username)) Http::error(400,tbox_username_message('bad_format'));
+// Q:F-13 P2-R1(RV-P2-2) — `deleted-` 는 탈퇴 익명화(`deleted-<번호>`)만 쓰는 접두 — 계정 만들기·아이디 바꾸기와 같은 400 · 같은 문구.
+if (str_starts_with($username,'deleted-')) Http::error(400,'탈퇴한 계정 전용 접두(deleted-)로 시작하는 아이디는 쓸 수 없습니다 — 다른 아이디로 정해 주세요');
 if (!is_string($name) || preg_match('//u',$name)!==1 || trim($name)==='' || iconv_strlen(trim($name),'UTF-8')>40 || preg_match('/\p{C}/u',$name)) Http::error(400,'이름은 1~40자로 입력해 주세요.');
 if (!is_string($password) || preg_match('//u',$password)!==1 || strlen($password)>Auth::MAX_PASSWORD_BYTES || iconv_strlen($password,'UTF-8')<Auth::MIN_PASSWORD_CHARS) Http::error(400,'비밀번호는 10자 이상으로 정해 주세요.');
 $db=Db::instance();
