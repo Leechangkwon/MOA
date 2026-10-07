@@ -1179,7 +1179,7 @@ POST /tbox/api/me/api-tokens scope=["community.read","session.open"] (묶음이 
 ### 23-2. 동의 관문 — 세션이 있는 모든 요청(t-box · 커뮤니티)
 
 로그인 뒤 지금 판의 `terms`·`privacy` 동의 줄(문서별 마지막 줄이 agree 이고 판이 지금 판)이 없으면 `Auth::requireLogin` 이 막는다.
-열린 창구는 `GET /consent` · `GET|POST /api/me/consents` · `GET /api/me` · `POST /api/logout` 뿐. 최초 로그인 절차(비밀번호 변경 · 2단계 등록)가 남았으면 그 관문이 먼저다.
+열린 창구는 `GET /consent` · `GET|POST /api/me/consents` · `GET /api/me` · `POST /api/logout` · `GET|POST /api/me/delete-request` · `POST /api/me/reauth`(비밀번호 재인증 — 권한을 주지 않는다) 여덟뿐(동의하지 않은 사람도 탈퇴는 요청한다 — 약관 제3조, P2-R1·R2). 패스키 재인증 창구는 열지 않는다. 최초 로그인 절차(비밀번호 변경 · 2단계 등록)가 남았으면 그 관문이 먼저다.
 
 | 막힌 것 | 응답 |
 |---|---|
@@ -1229,7 +1229,7 @@ POST /tbox/api/messages/ai {"thread_id":null,"text":"…","request_id":"<UUIDv4>
 ## 24. 보관 기간 정리 · 탈퇴 요청·처리 (사이트 Q:F-13 P2, 2026-10-07 · 웹 화면 · 세션)
 
 기획 `../docs/privacy-terms-plan.md` 5.1(보관 기간 표) · 5.2 「탈퇴」 「보관 기간 파기」 「감사 3년」 · 표 `account_deletion_requests`(앱 계정 SELECT · INSERT(user_id) · UPDATE(status·processed_by·processed_at) — DELETE 없음).
-**토큰 창구 집합(`TBOX_API_TOKEN_ROUTES`)은 그대로다** — 아래 창구는 사람의 세션으로만 부른다. 동의 관문(23-2)도 그대로 지난다(약관 동의 전에는 탈퇴 요청도 403 `consent_required`).
+**토큰 창구 집합(`TBOX_API_TOKEN_ROUTES`)은 그대로다** — 아래 창구는 사람의 세션으로만 부른다. 동의 관문(23-2)은 탈퇴 요청 두 창구를 열어 둔다 — 약관에 동의하지 않은 사람도 동의 화면에서 비밀번호 재인증 → 탈퇴 요청을 할 수 있다(관리자 처리 창구는 동의 뒤에만).
 파기(1년 · 30일 · 3년 · 탈퇴 30일 뒤 익명화)는 창구가 없다 — root cron 04:40 `scripts/privacy_purge.php --run` 이 **표 소유자 전용 함수** 둘(`public.privacy_purge_expired` · `public.privacy_purge_accounts`)을 부른다(앱 계정은 42501).
 
 ### 24-1. 내 탈퇴 요청 — `GET|POST /tbox/api/me/delete-request`
