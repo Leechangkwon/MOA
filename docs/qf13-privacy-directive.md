@@ -156,3 +156,20 @@ v2.50.1 `073ff04`(태그 `v2.50.1`, 기준 `selftest-base/qf13h`=d23db4b · 검�
 금지 패턴   : 「공통」 표. 열린 목록에 그 한 줄 말고 더하지 않는다.
 완료 기준   : 동의하지 않은 회원: 비밀번호 재인증 200 → 탈퇴 요청 201(화면에서도) · 재인증 뒤에도 다른 창구 403/302 그대로 · 두 시험 전부 + lint 0 + php -l + node --check + git diff --check.
 ```
+
+### P2-R3 — 재지시 3 (2026-10-07 · 메인 운영 읽기로 찾은 R-120 소유자 어긋남)
+
+```
+목표        : 운영에서 `postgres` 소유로 어긋난 표·시퀀스·함수를 `tbox_owner` 로 바로잡는 마이그레이션을 더해, privacy_purge(소유자 계정)가 운영에서도 정리 대상을 다루게 한다.
+요구사항    : SECURITY R-120 · ARCHITECTURE 10장 끝 「마이그레이션 적용 계정」 — 해당 절을 읽고 시작할 것.
+수정 파일   : ★ db/migrations/2026-10-22_owner_fix.sql(새) · tests/qf13_owner_fix.sh 또는 .py(새 — 스크래치 DB 시험) · tests/catalog.json · tests/community/memories_harness.py(migrations 목록 끝 한 줄 — 틀이 이 파일도 두 번 적용)
+              여기 없는 파일 금지.
+대상(운영 실측 2026-10-07 — 이 목록만): 표 community.memory_follows · community.memory_preferences · community.travel_plan_records · community.travel_plans · community.usage_guide_versions ·
+              community.usage_guides · public.api_tokens · public.fetch_hosts · public.folders · public.mcp_clients · public.mcp_codes · public.mcp_grants · public.mcp_pending ·
+              public.mcp_tokens · public.share_links / 시퀀스 public.api_tokens_id_seq · public.fetch_hosts_id_seq · public.folders_id_seq · public.share_links_id_seq / 함수 public.mcp_bump_security_epoch()
+금지 패턴   : 「공통」 표 + 목록 밖 객체를 바꾸지 않는다 · 지금 소유자가 `postgres` 일 때만 바꾼다(있고·그 소유자일 때 — DO 블록) · 권한(GRANT/REVOKE)을 새로 주거나 빼지 않는다 · 행을 건드리지 않는다.
+완료 기준   : 스크래치 DB(`sudo -n -u postgres createdb …` — 운영 tbox_re 아님, 끝나면 dropdb)에 지금 운영 모양을 흉내(그 객체들을 postgres 소유 + tbox_app·tbox_backup 권한)한 뒤 마이그레이션 2회:
+              ① 목록 객체 소유자 = tbox_owner ② tbox_app·tbox_backup 권한(relacl 에서 소유자 항목을 뺀 나머지)이 전과 같음 ③ has_table_privilege('tbox_owner', 그 표, 'DELETE') = true
+              ④ 목록 밖 postgres 소유 객체(시험이 하나 만들어 둠)는 그대로 ⑤ 두 번째 적용 변화 0 · 기존 qf13_retention_http · qf13_consent_http 는 이 파일이 들어가도 통과 · lint 0 · git diff --check.
+보고 형식   : 「공통」. 확정한 값: 마이그레이션 원문 요약 · 시험 출력 원문 · 커밋 해시.
+```

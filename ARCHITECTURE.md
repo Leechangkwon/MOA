@@ -2922,6 +2922,8 @@ php_admin_value[disable_functions]   = fsockopen,pfsockopen,stream_socket_client
 
 ---
 
+**마이그레이션 적용 계정 (2026-10-07 · R-120)**: 운영 마이그레이션은 `postgres` 로 붙되 **첫 줄 `SET ROLE tbox_owner;`** 로 적용한다 — 새 표·시퀀스·함수의 소유자가 `tbox_owner` 가 되어야 소유자 전용 정리 함수(`community_purge` · `privacy_purge`)가 그 표를 다룬다. `postgres` 로 그냥 적용해 소유자가 어긋난 표 15 · 시퀀스 4 · 함수 1 은 `2026-10-22_owner_fix.sql` 로 바로잡는다.
+
 ## 11. 운영 — 백업과 복구 (PRD S-08)
 
 ### 11.1 백업 일정 (cron `/etc/cron.d/tbox-v2`, root 실행 — 9단계 확정 2026-09-11)
