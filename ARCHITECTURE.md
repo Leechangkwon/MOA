@@ -605,7 +605,7 @@ t-box 라우터는 origin·라우트 패턴을 인자로 넘긴다. 커뮤니티
 | 단계 | 규칙 |
 |---|---|
 | 자리 | `Auth::requireLogin()` 안의 `requireConsent()` — t-box·커뮤니티 두 라우터의 **세션 경로가 모두** 이 함수를 지난다. 프로그램 토큰 경로([2-T] `requireApiToken`)·런처·공개 화면은 지나지 않는다 |
-| 순서 | 최초 로그인 절차(비밀번호 변경·2단계 등록 — `nextStep`)가 남았으면 그 관문이 먼저(이 관문은 지나간다 — 서로 돌려보내는 고리 0) → 열어 둔 다섯(`GET /consent` · `GET /api/me` · `GET|POST /api/me/consents` · `POST /api/logout`) → `Legal::needsConsent`(DB `user_consents` 문서별 마지막 줄 = 지금 판 agree 인가) |
+| 순서 | 최초 로그인 절차(비밀번호 변경·2단계 등록 — `nextStep`)가 남았으면 그 관문이 먼저(이 관문은 지나간다 — 서로 돌려보내는 고리 0) → 열어 둔 여덟(`GET /consent` · `GET /api/me` · `GET|POST /api/me/consents` · `POST /api/logout` · `GET|POST /api/me/delete-request` · `POST /api/me/reauth`) — 재인증은 권한을 주지 않고 「방금 비밀번호를 확인했다」 표시만 남기므로 열어도 다른 창구는 그대로 막힌다(P2-R2 · 동의 화면은 비밀번호 재인증만 — 패스키 재인증 창구는 열지 않는다) → `Legal::needsConsent`(DB `user_consents` 문서별 마지막 줄 = 지금 판 agree 인가) |
 | 막힘 | 화면 → 302 `/tbox/consent`(`?to=` 는 `Http::returnPath` 허용 목록만) · API → 403 `{error, next:"consent", code:"consent_required"}` · 감사 `auth.gate|deny|consent_required` — **배경 요청(`X-Qaredi-Background: 1`)은 감사 없이 같은 403**(P2-a) |
 | 탈퇴 | **동의하지 않은 사람도 탈퇴는 요청할 수 있다**(약관 제3조) — `GET|POST /api/me/delete-request` 를 열어 둔 목록에 넣고, 동의 화면에 「탈퇴 요청」 길(재인증 포함)을 둔다(P2 검토 RV-P2-1). 처리는 관리자(`role:Admin` + 재인증) · 처리 즉시 비활성·로그인 수단 회수 · 30일 뒤 `privacy_purge_accounts` 가 익명화(`deleted-<번호>` · 「탈퇴한 사용자 #번호」)와 개인 공간 삭제 |
 | 보관 기간 | `scripts/privacy_purge.php`(cron 04:40, root → 소유자 계정 `owner.pgpass`) → 소유자만 부르는 함수 `public.privacy_purge_expired` · `public.privacy_purge_accounts` · `community.privacy_purge_pages` · `community.privacy_purge_memory_posts`(모두 `SECURITY INVOKER`, 소유자 `tbox_owner`, PUBLIC 실행 회수) — 기획 5.1 표 · 감사 파일 사본 logrotate `rotate 1096` · 일별 해시 사슬은 3년 지난 날을 접어 「시작점」을 적고 검증 |
