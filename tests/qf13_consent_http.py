@@ -439,11 +439,41 @@ def suite(instance, work, out, config, users, sql, port):
           and audit_count('auth.gate', mid, 'consent_required') == gate_n and audit_count('auth.gate', mid, 'reauth_required') == 1
           and sql('SELECT count(*) FROM account_deletion_requests WHERE user_id=' + str(mid)) == '0',
           'R1 POST /api/me/delete-request passes the consent gate and reaches the handler: 403 next:reauth (no consent_required) · no row')
+    # P2-R2 — 비밀번호 재인증 창구도 관문을 지난다(창구로 창을 연다 — 시험 DB 에 reauth_at 을 넣지 않는다) → 같은 요청 201
+    msess_digest = hashlib.sha256(msess['session'].encode()).hexdigest()
+    def m_window():
+        return sql("SELECT reauth_at IS NOT NULL FROM sessions WHERE id='" + msess_digest + "'")
+    check(m_window() == 'f', 'R2 the logged-in session of the non-consented member has no re-auth window yet')
+    r = req('POST', TB + '/api/me/reauth', msess, {'password': PASSWORD + 'x'})
+    check(r.status_code == 400 and 'code' not in r.json() and m_window() == 'f' and audit_count('auth.reauth', mid, 'bad_credentials') == 1
+          and audit_count('auth.gate', mid, 'consent_required') == gate_n,
+          'R2 POST /api/me/reauth with a wrong password while consent is missing → 400 from the handler (no consent_required) · no window')
     r = req('POST', TB + '/api/me/reauth', msess, {'password': PASSWORD})
-    samples['403 POST /tbox/api/me/reauth (consent missing)'] = r.text
-    check(is_gate(r), 'R1 GAP (decision pending): POST /api/me/reauth while consent is missing → 403 consent_required (only the two delete-request routes were opened)')
-    for method, url, body in (('GET', TB + '/api/files', None), ('GET', TB + '/api/admin/deletion-requests', None), ('GET', CB + '/api/me/space', None)):
-        check(is_gate(req(method, url, msess, body)), 'R1 other session API still gated after opening the two routes: ' + method + ' ' + url.replace(site, '') + ' → 403 consent_required')
+    samples['200 POST /tbox/api/me/reauth (consent missing)'] = r.text
+    check(r.status_code == 200 and r.json().get('ok') is True and isinstance(r.json().get('reauth_until'), str) and m_window() == 't'
+          and audit_count('auth.gate', mid, 'consent_required') == gate_n and consent_rows(mid) == ''
+          and int(sql("SELECT count(*) FROM audit_logs WHERE action='auth.reauth' AND result='allow' AND target_id=" + str(mid))) == 1,
+          'R2 POST /api/me/reauth (password) while consent is missing → 200 {ok, reauth_until} · window opened by the route · auth.reauth|allow · no consent rows')
+    r = req('POST', TB + '/api/me/delete-request', msess, {'confirm': True})
+    samples['201 POST /tbox/api/me/delete-request (consent missing · after the password re-auth)'] = r.text
+    check(r.status_code == 201 and r.json().get('request', {}).get('status') == 'pending'
+          and sql("SELECT count(*) FROM account_deletion_requests WHERE status='pending' AND user_id=" + str(mid)) == '1'
+          and int(sql("SELECT count(*) FROM audit_logs WHERE action='account.delete_request' AND result='allow' AND target_id=" + str(mid))) == 1
+          and consent_rows(mid) == '' and audit_count('auth.gate', mid, 'consent_required') == gate_n,
+          'R2 non-consented member: password re-auth 200 → POST /api/me/delete-request 201 pending · still no consent rows')
+    check(req('POST', TB + '/api/me/delete-request', msess, {'confirm': True}).status_code == 409, 'R2 a second request → 409')
+    after_reauth = (('GET', TB + '/api/files', None), ('GET', TB + '/api/me/activity', None), ('POST', TB + '/api/folders', {'name': 'x'}),
+                    ('GET', TB + '/api/messages', None), ('GET', TB + '/api/admin/deletion-requests', None), ('GET', TB + '/api/users', None),
+                    ('POST', TB + '/api/me/reauth/passkey/options', {}), ('POST', TB + '/api/me/reauth/passkey', {}),
+                    ('GET', CB + '/api/me/space', None), ('GET', CB + '/api/search?q=x', None))
+    for method, url, body in after_reauth:
+        check(is_gate(req(method, url, msess, body)), 'R2 after the password re-auth, other session API still gated: ' + method + ' ' + url.replace(site, '') + ' → 403 consent_required')
+    check(audit_count('auth.gate', mid, 'consent_required') == gate_n + len(after_reauth), 'R2 each of those blocked calls leaves auth.gate|deny|consent_required')
+    for url, loc in ((TB + '/settings', '/tbox/consent?to=%2Ftbox%2Fsettings'), (TB + '/', '/tbox/consent'), (CB + '/memories', '/tbox/consent?to=%2Fcommunity%2Fmemories')):
+        r = req('GET', url, msess, html=True)
+        check(r.status_code == 302 and r.headers.get('Location') == loc, 'R2 after the re-auth, screens still gated: ' + url.replace(site, '') + ' → 302 ' + loc)
+    r = req('GET', TB + '/reauth', msess, html=True)
+    check(r.status_code == 302 and (r.headers.get('Location') or '').startswith('/tbox/consent'), 'R2 the re-auth screen GET /tbox/reauth stays gated → 302 /tbox/consent…')
     # 개인 토큰 창구는 막지 않는다
     tok = secrets.token_hex(24)
     sql("INSERT INTO api_tokens(user_id,name,token_hash,hint,created_by,scope,expires_at) VALUES(" + str(mid) + ",'qf13','" +
@@ -778,30 +808,39 @@ def browser_suite(site, TB, CB, users, sql, make_user, make_session, storage, pr
               and apis.count('POST /tbox/api/me/delete-request') == 1,
               'UI R1 confirm → POST 403 next:reauth → the shared re-auth dialog says 「탈퇴를 요청하려면 비밀번호를 다시 확인해 주세요」 · no row yet')
         pg.screenshot(path=str(out / 'r1-consent-delete-reauth-412.png'))
-        pw_input.fill(PASSWORD)
-        pw_input.press('Enter')
-        reauth_msg = pg.locator('dialog.modal[open]:has(#reauth-dialog-form) .modal__foot .msg')
-        expect(reauth_msg).not_to_be_empty()
-        check(reauth_msg.inner_text() == '이용약관 동의와 개인정보 처리방침 확인을 먼저 마쳐 주세요' and del_rows() == '0'
-              and sql('SELECT count(*) FROM sessions WHERE user_id=' + str(did) + ' AND reauth_at IS NOT NULL') == '0',
-              'UI R1 GAP (decision pending): the password cannot be confirmed from the consent screen — POST /api/me/reauth is gated (dialog shows the consent message) · no window · no row')
-        pg.screenshot(path=str(out / 'r1-consent-delete-reauth-gap-412.png'))
-        pg.keyboard.press('Escape')
-        expect(pg.locator('#reauth-dialog-form')).to_have_count(0)
-        # 재인증 창을 시험 DB 에서 연다(위 GAP — 창구로는 열 수 없다) → 같은 화면 길이 201 까지 가는지
-        sql('UPDATE sessions SET reauth_at=now() WHERE user_id=' + str(did))
-        pg.click('#consent-delete-request')
-        confirm.locator('.btn--danger').click()
+        # P2-R2 — 같은 창에서 비밀번호를 넣으면 실제 재인증 창구가 200 → 같은 탈퇴 요청이 한 번 다시 → 201(시험 DB 에 reauth_at 을 넣지 않는다)
+        check(sql('SELECT count(*) FROM sessions WHERE user_id=' + str(did) + ' AND reauth_at IS NOT NULL') == '0', 'UI R2 no re-auth window before the password is entered')
+        with pg.expect_response(lambda r: r.url.split('?')[0] == TB + '/api/me/reauth' and r.request.method == 'POST') as reauth_res:
+            pw_input.fill(PASSWORD)
+            pw_input.press('Enter')
         expect(pg.locator('#consent-delete-state')).to_be_visible(timeout=15000)
+        check(reauth_res.value.status == 200 and sql('SELECT count(*) FROM sessions WHERE user_id=' + str(did) + ' AND reauth_at IS NOT NULL') == '1',
+              'UI R2 the password in the shared re-auth dialog → POST /tbox/api/me/reauth 200 while consent is missing · the window is opened by the route')
+        expect(pg.locator('#reauth-dialog-form')).to_have_count(0)
         check('탈퇴를 요청했습니다' in pg.locator('#consent-delete-state').inner_text() and pg.locator('#consent-delete-request').is_hidden()
               and sql("SELECT count(*) FROM account_deletion_requests WHERE status='pending' AND user_id=" + str(did)) == '1'
-              and sql('SELECT count(*) FROM user_consents WHERE user_id=' + str(did)) == '0',
-              'UI R1 with a fresh re-auth window (opened in the test DB): confirm → request 201 → 「탈퇴를 요청했습니다」 · button hidden · still no consent rows')
-        pg.screenshot(path=str(out / 'r1-consent-delete-requested-412.png'), full_page=True)
+              and sql('SELECT count(*) FROM user_consents WHERE user_id=' + str(did)) == '0'
+              and apis.count('POST /tbox/api/me/reauth') == 1 and apis.count('POST /tbox/api/me/delete-request') == 2,
+              'UI R2 consent screen: 「탈퇴 요청」 → confirm → 403 next:reauth → password → re-auth 200 → the same request once more → 201 「탈퇴를 요청했습니다」 · dialog closed · button hidden · still no consent rows')
+        pg.screenshot(path=str(out / 'r2-consent-delete-requested-412.png'), full_page=True)
         pg.reload(); pg.wait_for_load_state('networkidle')
         expect(pg.locator('#consent-delete-state')).to_be_visible()
         over = pg.evaluate("() => document.documentElement.scrollWidth - document.documentElement.clientWidth")
         check(pg.locator('#consent-delete-request').is_hidden() and over <= 0, 'UI R1 reload: the consent screen shows the open request (GET) · horizontal overflow 0 at 412')
+        # 재인증 창이 열린 뒤에도 다른 화면·창구는 그대로 막힌다
+        pg.goto(TB + '/settings'); pg.wait_for_load_state('networkidle')
+        check(pg.url == TB + '/consent?to=%2Ftbox%2Fsettings' and pg.locator('#consent-form').count() == 1,
+              'UI R2 after the re-auth, opening /tbox/settings still lands on the consent screen')
+        def d_gated(method, url, body=None):
+            r = requests.request(method, url, json=body, timeout=40, allow_redirects=False,
+                                 headers={'User-Agent': UA, 'Cookie': '__Host-tbox_session=' + dsess['session'], 'X-CSRF-Token': dsess['csrf']})
+            try:
+                d = r.json()
+            except ValueError:
+                return False
+            return r.status_code == 403 and d.get('code') == 'consent_required' and d.get('next') == 'consent'
+        check(d_gated('GET', TB + '/api/files') and d_gated('POST', TB + '/api/me/reauth/passkey/options', {}),
+              'UI R2 after the re-auth, the same session still gets 403 consent_required (GET /api/files · passkey re-auth options)')
         check(code_console([l for l in lines if 'status of 403' not in l[0]]) == [] and errors == [],
               'UI R1 consent-screen withdrawal: console errors 0 besides the expected 403 resource lines · page errors 0')
         ctx.close()

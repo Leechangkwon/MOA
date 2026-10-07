@@ -76,7 +76,7 @@ const TBOX_ROUTES = [
      *                            이전 판 `?v=YYYY-MM-DD` 는 목록(config/legal.json)에 **있는 판 글자**만 — 그 밖은 404(경로를 요청 값으로 만들지 않는다).
      *   GET  /consent            정책 authenticated — 기존 회원 안내 화면(약관 동의 + 처리방침 확인 · AI 국외 전송 동의·철회).
      *   GET·POST /api/me/consents 정책 authenticated — 지금 동의 상태 · 동의 줄 더하기(추가만). 대상은 언제나 **세션의 본인**.
-     *   ★ 동의 관문(Auth::requireLogin → requireConsent)은 `/consent`·`/api/me/consents` 둘·`/api/me`·`/api/logout` 만 열어 둔다.
+     *   ★ 동의 관문(Auth::requireLogin → requireConsent)이 열어 두는 창구는 Auth::CONSENT_GATE_ALLOW 한 곳에 적는다(ARCH 4.11 「순서」의 여덟).
      *   ★ `TBOX_API_TOKEN_ROUTES` 에 넣지 않는다 — 동의는 사람이 세션으로 한다(토큰으로 부르면 세션이 없어 401). */
     ['GET',  '/privacy',         'legal_page.php',   Authz::POLICY_PUBLIC],
     ['GET',  '/terms',           'legal_page.php',   Authz::POLICY_PUBLIC],
@@ -87,7 +87,9 @@ const TBOX_ROUTES = [
      *   GET·POST /api/me/delete-request  정책 authenticated — 대상은 언제나 **세션의 본인**. POST 는 재인증 15분 창을 **핸들러가** 묻는다
      *                                   (정책이 authenticated 라 관문 [3-2] 가 묻지 않는다 — files_restore.php 와 같은 방식 · 같은 403 모양).
      *   GET  /api/admin/deletion-requests · POST /api/admin/deletion-requests/{num}  정책 role:Admin — 재인증 관문 [3-2] 가 자동으로 붙는다.
-     *   ★ 동의 관문 열린 목록(Auth::CONSENT_GATE_ALLOW)에 넣지 않았다 — 약관 동의 전에는 탈퇴 요청도 막힌다(열어 둘지는 결정 대기).
+     *   ★ GET·POST /api/me/delete-request 와 POST /api/me/reauth 는 동의 관문 열린 목록(Auth::CONSENT_GATE_ALLOW)에 있다 — 동의하지 않은 사람도
+     *     동의 화면에서 비밀번호 재인증 → 탈퇴 요청을 한다(약관 제3조 · ARCH 4.11 「순서」「탈퇴」 · P2-R1 · P2-R2). 재인증은 권한을 주지 않으므로
+     *     다른 창구는 그대로 막힌다. 패스키 재인증 창구와 관리자 처리 창구는 열지 않았다.
      *   ★ `TBOX_API_TOKEN_ROUTES` 에 넣지 않는다 — 사람이 세션으로 한다. */
     ['GET',  '/api/me/delete-request',            'me_delete_request.php',       Authz::POLICY_AUTHENTICATED],
     ['POST', '/api/me/delete-request',            'me_delete_request.php',       Authz::POLICY_AUTHENTICATED],

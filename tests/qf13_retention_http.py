@@ -141,11 +141,11 @@ def make_user(key, name, role='Employee', mfa=False, consents=('terms', 'privacy
     return uid
 
 
-def new_session(key, reauth=False):
+def new_session(key):
     token = secrets.token_hex(32)
     digest = hashlib.sha256(token.encode()).hexdigest()
-    q("INSERT INTO sessions(id,user_id,expires_at,ip,user_agent" + (",reauth_at" if reauth else "") + ") VALUES('" + digest + "',"
-      + str(users[key]['id']) + ",clock_timestamp()+interval '8 hours','127.0.0.1','" + UA + "'" + (",now()" if reauth else "") + ")")
+    q("INSERT INTO sessions(id,user_id,expires_at,ip,user_agent) VALUES('" + digest + "',"
+      + str(users[key]['id']) + ",clock_timestamp()+interval '8 hours','127.0.0.1','" + UA + "')")
     users[key]['session'] = token
     users[key]['csrf'] = hmac.new(APP['APP_SECRET'].encode(), ('csrf:' + digest).encode(), hashlib.sha256).hexdigest()
 
@@ -715,12 +715,12 @@ try:
           and audits('account.purge', 'name_conflict', users['clash']['id']) == 1 and audits('account.purge', 'still_active', users['react']['id']) == 1,
           'DEL a name clash (deleted-<id> taken) and a re-activated account are skipped with error audits (not anonymized)')
 
-    # ═════════ P2-R1 (RV-P2-1) — 동의하지 않은 회원도 탈퇴는 요청한다 · 관문은 두 창구만 더 열린다 ═════════
+    # ═════════ P2-R1 (RV-P2-1) · P2-R2 — 동의하지 않은 회원도 탈퇴는 요청한다 · 관문은 탈퇴 요청 둘 + 비밀번호 재인증 하나만 더 열린다 ═════════
     gate = subprocess.run(['php', '-r', 'require "src/bootstrap.php"; echo json_encode(Auth::CONSENT_GATE_ALLOW);'], cwd=root, capture_output=True, text=True, check=True).stdout
-    save_text('r1-consent-gate-allow.json', gate + '\n')
+    save_text('r2-consent-gate-allow.json', gate + '\n')
     check(json.loads(gate) == ['GET /consent', 'GET /api/me', 'GET /api/me/consents', 'POST /api/me/consents', 'POST /api/logout',
-                               'GET /api/me/delete-request', 'POST /api/me/delete-request'],
-          'R1 Auth::CONSENT_GATE_ALLOW = the five P1 routes + exactly GET/POST /api/me/delete-request (nothing else)')
+                               'GET /api/me/delete-request', 'POST /api/me/delete-request', 'POST /api/me/reauth'],
+          'R2 Auth::CONSENT_GATE_ALLOW = the five P1 routes + GET/POST /api/me/delete-request + POST /api/me/reauth (eight · nothing else · no passkey re-auth route)')
     NC = make_user('ncdel', 'qf13r_ncdel', consents=())
     new_session('ncdel')
     r = tb('GET', '/api/me/delete-request', user='ncdel')
@@ -737,37 +737,65 @@ try:
           and tb('POST', '/api/me/delete-request', {'confirm': True, 'user_id': O}, user='ncdel').status_code == 400
           and count('SELECT count(*) FROM account_deletion_requests WHERE user_id=' + str(NC)) == 0,
           'R1 non-consented member: the opened route still needs CSRF (403) and the exact body (400)')
+    # P2-R2 — 비밀번호 재인증 창구가 동의 관문을 지난다(실제 창구 · 시험 DB 에 reauth_at 을 직접 넣지 않는다)
+    check(q('SELECT reauth_at IS NULL FROM sessions WHERE user_id=' + str(NC)) == 't', 'R2 non-consented member starts with no re-auth window (sessions.reauth_at NULL)')
+    gate_audits = audits('auth.gate', 'consent_required', NC)
+    r = tb('POST', '/api/me/reauth', {'password': PW + 'x'}, user='ncdel')
+    samples['r2_nc_reauth_wrong_400'] = jbody(r)
+    check(r.status_code == 400 and jbody(r).get('code') != 'consent_required' and audits('auth.reauth', 'bad_credentials', NC) == 1
+          and audits('auth.gate', 'consent_required', NC) == gate_audits and q('SELECT reauth_at IS NULL FROM sessions WHERE user_id=' + str(NC)) == 't',
+          'R2 non-consented member: wrong password at POST /api/me/reauth → 400 from the handler (not consent_required) · auth.reauth|deny|bad_credentials · no window')
+    check(tb('POST', '/api/me/reauth', {'password': PW}, user='ncdel', csrf=False).status_code == 403
+          and tb('POST', '/api/me/reauth', {'password': PW, 'user_id': O}, user='ncdel').status_code == 400
+          and q('SELECT reauth_at IS NULL FROM sessions WHERE user_id=' + str(NC)) == 't',
+          'R2 non-consented member: the opened re-auth route still needs CSRF (403) and the exact body (400) · no window')
     r = tb('POST', '/api/me/reauth', {'password': PW}, user='ncdel')
-    samples['r1_nc_reauth'] = {'status': r.status_code, 'body': jbody(r)}
-    check(r.status_code == 403 and jbody(r).get('code') == 'consent_required' and q('SELECT reauth_at IS NULL FROM sessions WHERE user_id=' + str(NC)) == 't',
-          'R1 GAP (decision pending): POST /api/me/reauth for a non-consented member → 403 consent_required (not in the two opened routes) — the window cannot be opened from the consent screen')
-    # 재인증 창을 시험 DB 에서 연다(위 GAP — 창구로는 열 수 없어 sessions.reauth_at 만 now()) → 같은 요청이 201 이 되는지 · 관리자 처리까지
-    q('UPDATE sessions SET reauth_at=now() WHERE user_id=' + str(NC))
+    samples['r2_nc_reauth_200'] = {'status': r.status_code, 'keys': sorted(jbody(r).keys())}
+    check(r.status_code == 200 and jbody(r).get('ok') is True and isinstance(jbody(r).get('reauth_until'), str)
+          and q('SELECT reauth_at IS NOT NULL FROM sessions WHERE user_id=' + str(NC)) == 't'
+          and audits('auth.reauth', target=NC, result='allow') == 1 and audits('auth.gate', 'consent_required', NC) == gate_audits
+          and q('SELECT count(*) FROM user_consents WHERE user_id=' + str(NC)) == '0',
+          'R2 non-consented member: POST /api/me/reauth (password) → 200 {ok, reauth_until} · window opened by the route · auth.reauth|allow · no consent_required · still no consent rows')
     r = tb('POST', '/api/me/delete-request', {'confirm': True}, user='ncdel')
     samples['r1_nc_request_201'] = jbody(r)
     nc_req = jbody(r).get('request', {}).get('id')
     check(r.status_code == 201 and jbody(r)['request']['status'] == 'pending' and audits('account.delete_request', target=NC, result='allow') == 1
           and q('SELECT count(*) FROM user_consents WHERE user_id=' + str(NC)) == '0',
-          'R1 non-consented member with a fresh re-auth window (opened in the test DB) → 201 pending + account.delete_request audit · still no consent rows')
+          'R2 non-consented member: password re-auth 200 → POST /api/me/delete-request 201 pending + account.delete_request audit · still no consent rows')
     check(jbody(tb('GET', '/api/me/delete-request', user='ncdel')).get('request', {}).get('id') == nc_req
           and tb('POST', '/api/me/delete-request', {'confirm': True}, user='ncdel').status_code == 409,
           'R1 non-consented member: GET shows the own request · a second request → 409')
-    for method, path, body in (('GET', '/api/files', None), ('GET', '/api/me/activity', None), ('POST', '/api/folders', {'name': 'x'}),
-                               ('GET', '/api/admin/deletion-requests', None), ('POST', '/api/admin/deletion-requests/' + str(nc_req), {'confirm': True})):
+    # 재인증 창이 열린 뒤에도 다른 창구는 그대로 — 재인증은 권한을 주지 않는다 · 패스키 재인증 창구·재인증 화면은 열지 않았다
+    gate_audits = audits('auth.gate', 'consent_required', NC)
+    nc_gated = (('GET', '/api/files', None), ('GET', '/api/me/activity', None), ('POST', '/api/folders', {'name': 'x'}), ('GET', '/api/messages', None),
+                ('GET', '/api/admin/deletion-requests', None), ('POST', '/api/admin/deletion-requests/' + str(nc_req), {'confirm': True}),
+                ('POST', '/api/me/reauth/passkey/options', {}), ('POST', '/api/me/reauth/passkey', {}))
+    for method, path, body in nc_gated:
         r = tb(method, path, body, user='ncdel')
-        check(r.status_code == 403 and jbody(r).get('code') == 'consent_required', 'R1 other session API still gated: ' + method + ' ' + path.replace(str(nc_req), '{num}') + ' → 403 consent_required')
+        check(r.status_code == 403 and jbody(r).get('code') == 'consent_required',
+              'R2 after the password re-auth, other session API still gated: ' + method + ' ' + path.replace(str(nc_req), '{num}') + ' → 403 consent_required')
+    check(audits('auth.gate', 'consent_required', NC) == gate_audits + len(nc_gated), 'R2 each of those blocked calls leaves auth.gate|deny|consent_required')
     r = requests.get(site + '/community/api/me/space', headers={'User-Agent': UA, 'Cookie': '__Host-tbox_session=' + users['ncdel']['session']}, timeout=30, allow_redirects=False)
-    check(r.status_code == 403 and jbody(r).get('code') == 'consent_required', 'R1 community session API still gated: GET /community/api/me/space → 403 consent_required')
+    check(r.status_code == 403 and jbody(r).get('code') == 'consent_required', 'R2 after the re-auth, community session API still gated: GET /community/api/me/space → 403 consent_required')
     for path, loc in (('/settings', '/tbox/consent?to=%2Ftbox%2Fsettings'), ('/', '/tbox/consent'), ('/messages', '/tbox/consent?to=%2Ftbox%2Fmessages')):
         r = tb('GET', path, user='ncdel', html=True)
-        check(r.status_code == 302 and r.headers.get('Location') == loc, 'R1 screens still gated: /tbox' + path + ' → 302 ' + loc)
-    # 관리자 쪽 창구는 열리지 않았다 — 동의하지 않은 관리자(재인증 창 열림)도 목록·처리 403 consent_required
+        check(r.status_code == 302 and r.headers.get('Location') == loc, 'R2 after the re-auth, screens still gated: /tbox' + path + ' → 302 ' + loc)
+    r = tb('GET', '/reauth', user='ncdel', html=True)
+    check(r.status_code == 302 and (r.headers.get('Location') or '').startswith('/tbox/consent'), 'R2 the re-auth screen GET /tbox/reauth stays gated → 302 /tbox/consent…')
+    # 관리자 쪽 창구는 열리지 않았다 — 동의하지 않은 관리자가 **실제 창구로** 재인증해도 목록·처리·계정 관리 403 consent_required
     make_user('ncadmin', 'qf13r_ncadmin', role='Admin', mfa=True, consents=())
-    new_session('ncadmin', reauth=True)
+    new_session('ncadmin')
+    r = tb('POST', '/api/me/reauth', {'password': PW}, user='ncadmin')
+    check(r.status_code == 200 and q("SELECT reauth_at IS NOT NULL FROM sessions WHERE user_id=" + str(users['ncadmin']['id'])) == 't'
+          and audits('auth.reauth', target=users['ncadmin']['id'], result='allow') == 1,
+          'R2 a non-consented admin re-authenticates through POST /api/me/reauth → 200 (window open)')
     check(all(tb(m, p, b, user='ncadmin').status_code == 403 and jbody(tb(m, p, b, user='ncadmin')).get('code') == 'consent_required'
-              for m, p, b in (('GET', '/api/admin/deletion-requests', None), ('POST', '/api/admin/deletion-requests/' + str(nc_req), {'confirm': True})))
+              for m, p, b in (('GET', '/api/admin/deletion-requests', None), ('POST', '/api/admin/deletion-requests/' + str(nc_req), {'confirm': True}),
+                              ('GET', '/api/users', None)))
           and q('SELECT status FROM account_deletion_requests WHERE id=' + str(nc_req)) == 'pending',
-          'R1 a non-consented admin (fresh re-auth) still cannot list or process deletion requests (403 consent_required · still pending)')
+          'R2 that non-consented admin (fresh re-auth via the route) still cannot list or process deletion requests or list users (403 consent_required · still pending)')
+    r = tb('GET', '/admin', user='ncadmin', html=True)
+    check(r.status_code == 302 and (r.headers.get('Location') or '').startswith('/tbox/consent'), 'R2 that admin\'s admin screen GET /tbox/admin → 302 /tbox/consent…')
     # 처리는 그대로 — 동의한 관리자가 재인증하고 처리 → 즉시 로그인 불가
     check(tb('POST', '/api/me/reauth', {'password': PW}, user='boss').status_code == 200, 'R1 consented admin re-enters the password')
     lst = jbody(tb('GET', '/api/admin/deletion-requests', user='boss'))
@@ -933,7 +961,9 @@ try:
     make_user('ui', 'qf13r_ui')
     make_user('uiadmin', 'qf13r_uiadmin', role='Admin', mfa=True)
     new_session('ui')
-    new_session('uiadmin', reauth=True)
+    new_session('uiadmin')
+    # P2-R2 — 재인증 창은 실제 창구로 연다(시험 DB 에 reauth_at 을 넣지 않는다)
+    check(tb('POST', '/api/me/reauth', {'password': PW}, user='uiadmin').status_code == 200, 'UI admin re-enters the password (POST /api/me/reauth 200) before opening /tbox/admin')
     host = urlsplit(site).hostname
 
     def cookie(key):

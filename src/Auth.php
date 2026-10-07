@@ -784,6 +784,7 @@ final class Auth
         'POST /api/logout',
         'GET /api/me/delete-request',    // Q:F-13 P2-R1(RV-P2-1) — 동의하지 않은 사람도 탈퇴는 요청한다(약관 제3조 · ARCH 4.11 「탈퇴」) · 재인증은 핸들러가 묻는다
         'POST /api/me/delete-request',
+        'POST /api/me/reauth',           // Q:F-13 P2-R2 — 동의 화면 탈퇴 요청의 비밀번호 재인증 · 권한을 주지 않는다(창 표시만 — ARCH 4.11 「순서」) · 패스키 재인증 창구는 열지 않는다
     ];
 
     /**
