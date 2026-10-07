@@ -5957,6 +5957,45 @@
       "est_sec": 150,
       "writes_prod": false,
       "notes": "사이트 Q:F-13 지시서 P2 — memories_harness 의 빈 합성 DB + 로컬 php -S(127.0.0.1:8768·8769) + Chromium(CHROMIUM_EXECUTABLE) · fixture claude_ 와 이 시험의 qf13r_ 합성 계정만 · 외부 요청 0. 소유자 함수는 합성 DB 소유자(tbox_testdb)로 부른다(작업 폴더의 0600 pgpass · TBOX_OWNER_PGPASS/ROLE — 시험 끝에 작업 폴더째 지움) · 체인 파일은 TBOX_AUDIT_CHAIN_FILE 로 작업 폴더에. 파기: 366일·31일·3년+1일 줄과 경계 안 줄(364일·29일·3년−1일) → dry 는 수만 · --run 뒤 지난 것만 0 · 사진·AI 그림 파일 0 · 두 번째 0 · 정합성 --strict 통과 · 출력·감사에 내용 0. 권한: 앱 계정 함수 넷·audit_logs DELETE/UPDATE·탈퇴 요청 DELETE/purged_at/상태 INSERT 42501 · 처리 때 당기기·되돌리기 트리거 P0001 · 함수 소유자만 EXECUTE. 탈퇴: 요청 재인증 403 → 201 → 409 · 관리자 재인증 403 → 목록(남은 자료 수) → 자기 자신 400 · 처리 200 → 즉시 비활성·OTP·비밀번호·세션·패스키·토큰 0 · 로그인·옛 세션·토큰 거부 → 30일 당긴 뒤 deleted-<번호>·「탈퇴한 사용자 #번호」·개인 공간 문서·사진(파일)·여행 0 · 팀 글·게시판 글·댓글·자료실 파일 남음(게시판 writer 표시 바뀜) · 감사 셋 · 이름 충돌·다시 켠 계정 건너뜀. G-2: GPS·XMP·주석·뒤 그림이 든 JPEG · eXIf/tEXt/iTXt PNG · EXIF/XMP WebP → 저장 파일 메타 0 · 픽셀 같음 · JPEG 방향만 남김 · DB 지문 = 저장 파일 · 옛 사진 그대로. 감사 사슬: 3년 지난 날 접기(start 줄) · 검증 통과 · 파기 뒤 통과 · 남은 날 변조·가짜 시작점은 실패. 마이그레이션: main 스키마 위 2회 = 새 설치 모양. P2-a~e. 화면: 「내 계정」 탈퇴(확인 창 → 재인증 창 → 한 번) · 관리자 「탈퇴 요청」(확인 창 → 처리) · 360·412·820·1440 × 밝게·어둡게 · 고대비 가로 넘침 0 · 콘솔 0. 결과: qf13-retention-results.json(단언·참거짓) · samples.json(응답 견본 — 개인 데이터 0) · 명령 출력(건수만) · 화면 PNG. 앱 접속 키 넷만 memories_harness.py 와 같은 자리에서 읽는다."
+    },
+    {
+      "id": "tbox.qf13_owner_fix",
+      "cmd": "python3 tests/qf13_owner_fix.py --output /tmp/qaredi-qf13-owner-fix-results",
+      "module": "tbox",
+      "env": "temp-instance",
+      "status": "required",
+      "needs": [
+        "sudo"
+      ],
+      "covers": [
+        "db/migrations/2026-10-22_owner_fix.sql",
+        "db/schema.sql",
+        "db/assistant.sql",
+        "db/community/schema.sql",
+        "db/migrations/2026-09-29_community_trust.sql",
+        "db/migrations/2026-09-30_community_automation.sql",
+        "db/migrations/2026-10-01_community_suggestions.sql",
+        "db/migrations/2026-10-18_community_ai.sql",
+        "db/migrations/2026-10-03_community_memories.sql",
+        "db/migrations/2026-10-03_community_messenger.sql",
+        "db/migrations/2026-10-03_memory_story.sql",
+        "db/migrations/2026-10-14_memory_social.sql",
+        "db/migrations/2026-10-14_optional_member_auth.sql",
+        "db/migrations/2026-10-14_usage_guide.sql",
+        "db/migrations/2026-10-14_travel_plans.sql",
+        "db/migrations/2026-10-14_travel_scopes.sql",
+        "db/migrations/2026-10-15_remote_mcp.sql",
+        "db/migrations/2026-10-19_qf12_work.sql",
+        "db/migrations/2026-10-21_privacy_retention.sql",
+        "tests/qf13_owner_fix.py"
+      ],
+      "requirements": [],
+      "risks": [
+        "R-120"
+      ],
+      "est_sec": 20,
+      "writes_prod": false,
+      "notes": "사이트 Q:F-13 재지시 P2-R3 — 소유자 바로잡기 마이그레이션의 스크래치 DB 시험. 운영 클러스터에 sudo -n -u postgres createdb qf13_owner_fix_<pid>_<무작위>(소유자 tbox_owner) → 끝나면(실패해도) dropdb · 남은 것 0 확인. 운영 tbox_re 접속 0(모든 psql 은 스크래치 이름만 -d · 흘려 넣는 SQL 에 \\c·DATABASE tbox_re 가 있으면 시작 안 함) · 앱 서버·포트·브라우저 없음. 흉내: 새 설치 스키마를 파일마다 SET ROLE tbox_owner 로 → 목록 표 15·함수 1 을 postgres 소유로(BIGSERIAL 시퀀스 4 는 함께) · 운영 권한 모양 (tbox_app arwd·arw·r·시퀀스 rU / tbox_backup r · 함수 PUBLIC 회수) · 목록 밖 postgres 카나리아 다섯(표+시퀀스 · 따로 선 시퀀스 · 다른 스키마 같은 이름 표 community.fetch_hosts · 다른 인자 같은 이름 함수) · 합성 행. 단언: 빈 DB 적용 0 · 사전 R-120 재현(tbox_owner DELETE 거짓 · DELETE … WHERE false 42501 · privacy_purge_expired(dry) 42501) · SET ROLE tbox_owner 적용 거부·변화 0 · ① 목록 20 소유자 tbox_owner(+인덱스) ② 소유자 항목 뺀 앱·백업 권한 전과 같음·기대 모양 · 함수 PUBLIC/tbox_app 실행 0 ③ tbox_owner DELETE·UPDATE 참 · 실제 DELETE 통과 · privacy_purge_expired dry·실제(되돌림) 통과 ④ 카나리아 그대로 · 카탈로그 전체 비교에서 목록과 딸림 밖 변화 0 · 행 지문 그대로 ⑤ 2회 「바꾼 것 0」·카탈로그 같음 · 덤: 앱 계정 users UPDATE 트리거(되돌림) · B 갈래(딸리지 않은 시퀀스 · postgres 아닌 소유자). 결과: owner-fix-results.json(단언·참거짓) · migration-runs.log(psql 원문) · acl-before-after.txt. 실측 약 12초."
     }
   ]
 }

@@ -128,7 +128,7 @@ def main():
                            '2026-10-14_travel_plans.sql', '2026-10-14_travel_scopes.sql',
                            '2026-10-15_remote_mcp.sql', '2026-10-19_qf12_work.sql',
                            # Q:F-13 P2 — 탈퇴 요청 표 · 소유자 전용 파기 함수(합성 DB 에서는 소유자 = tbox_testdb, 위 갈음)
-                           '2026-10-21_privacy_retention.sql']
+                           '2026-10-21_privacy_retention.sql', '2026-10-22_owner_fix.sql']  # P2-R3 소유자 바로잡기 — 합성 DB 는 소유자 tbox_testdb 라 바꿀 것 0
         for _ in range(2):
             for migration in migrations:
                 logs.append(sql_file(instance / 'db/migrations' / migration).stdout)
