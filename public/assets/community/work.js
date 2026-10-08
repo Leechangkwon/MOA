@@ -1,5 +1,5 @@
-import { drawCalendar, rangeFor } from './calendar.js?v=fef92ce34ea2';
-import { renderDoc } from './doc-render.js?v=fef92ce34ea2';
+import { drawCalendar, rangeFor } from './calendar.js?v=3794f9453afa';
+import { renderDoc } from './doc-render.js?v=3794f9453afa';
 /*
  * public/assets/community/work.js — 업무 화면(사이트 Q:F-12 · 조각 D): 업무 홈 · 내 작업 · 프로젝트(작업 목록 + 오른쪽 작업 상세 칸 ·
  * 프로젝트 머리 · 상태) · 포트폴리오 · 「새로 만들기」(작업 · 프로젝트) · 사이드바 포트폴리오 묶음.
@@ -903,7 +903,8 @@ export function createWork(deps) {
      * 담당 고르기(DESIGN 2.21) — 「바꾸기」 → 2.15 `.menu` 안 찾기 칸 + **창구가 준 후보만**(`assignee-candidates` — 그 작업을 고칠 수 있는 사람) ·
      * 맨 아래 「담당 없음」. 화면은 사람을 거르지도 더하지도 않는다(0장 1). 고른 값은 `PATCH /properties {assignee}` 가 다시 판정한다.
      * U1-a(2026-10-08 — 기획 13장): 메뉴를 열면 곧바로 빈 검색어로 부른다(창구가 나 먼저 · 최대 10) · 입력하면 200ms 뒤 좁힌다 ·
-     * 늦게 온 답은 버린다(seq). 빈 검색어 답에서 후보가 0이거나 나 한 명뿐이면 후보 아래 안내 한 줄 — 「나」는 `/api/me` 의 아이디로만 견준다.
+     * 늦게 온 답은 버린다(seq). 빈 검색어 답에서 후보가 0이거나 나 한 명뿐이면 후보 아래 안내 한 줄(그때는 「고칠 수 있는 사람만 나와요」를 숨긴다) —
+     * 「나」는 `/api/me` 의 아이디로만 견준다.
      */
     function assignPicker(id, current, msg) {
       const box = el('details', 'menu');
@@ -948,10 +949,13 @@ export function createWork(deps) {
           if (mine !== seq) { return; }
           clear(found);
           solo.hidden = true;
+          hint.hidden = false;
           if (r.status !== 200) { found.appendChild(el('p', 'msg', failMessage(r))); return; }
           const people = Array.isArray(r.data.candidates) ? r.data.candidates : [];
           const me = meName();
           solo.hidden = !(text === '' && (people.length === 0 || (people.length === 1 && me !== '' && people[0].username === me)));
+          // 같은 말을 두 번 하지 않는다(검토 RV-U1-1) — 「나뿐이에요」가 보이면 「고칠 수 있는 사람만 나와요」는 숨긴다
+          hint.hidden = !solo.hidden;
           for (const p of people) {
             const b = el('button', 'menu__item');
             b.type = 'button';

@@ -2468,6 +2468,14 @@ a.app-menu__app:hover { background: var(--muted-bg); text-decoration: none; }
 .task-pane .menu__list input[type="search"] { width: 100%; height: 32px; margin-bottom: 4px; padding: 0 8px; border: 1px solid var(--line); border-radius: var(--r-ctl); background: var(--surface); color: var(--fg); font: inherit; font-size: 13px; }
 /* 담당 고르기 안내(U1-a 「나뿐이에요」 한 줄 · 「고칠 수 있는 사람만」)는 칸 폭만큼 꺾는다 — 넓은 화면에서 메뉴가 안내 한 줄 길이로 목록 위까지 늘어나지 않게 */
 .task-pane .menu__list > .help { max-width: 20rem; }
+/* 좁은 폭(720 미만)의 담당 고르기 메뉴 — 「바꾸기」가 줄 가운데쯤이라 왼쪽(기본) · 오른쪽 어느 쪽으로 펼쳐도 화면 끝에 닿았다(검토 RV-U1-2, 412 에서 x 0).
+   「바꾸기」 아래 화면 폭 전체 칸에 왼쪽 맞춤으로 두고 좌우 16px 를 비운다(아래가 모자라면 위로). 2.15 공용 규칙과 같은 조건(앵커를 아는 브라우저)에서만 —
+   상세 칸 속성 줄(.task-pane__props)의 메뉴 하나만 바꾼다. 720 이상은 공용 규칙 그대로 */
+@media (max-width: 719.98px) {
+  @supports (anchor-name: --menu) and (anchor-scope: --menu) {
+    .task-pane__props .menu__list { position-area: bottom span-all; justify-self: start; margin: 6px 16px; position-try-fallbacks: flip-block; }
+  }
+}
 @media (min-width: 1200px) {
   .task-pane { position: fixed; top: 0; right: 0; bottom: 0; width: clamp(400px, 34vw, 480px); overflow-y: auto; border-left: 1px solid var(--line); scrollbar-width: thin; }
   body[data-task-open] .main { padding-right: calc(clamp(400px, 34vw, 480px) + 32px); }

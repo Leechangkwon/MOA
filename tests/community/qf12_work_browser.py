@@ -438,7 +438,9 @@ try:
                 metrics['assign_open_empty_q'] = {'api': want0, 'ui': shown0}
                 check(shown0 == want0 and want0[:1] == [users['employee']['username']] and len(want0) >= 2,
                       'U1-a candidates right after opening == API empty-q answer · me first ' + json.dumps(shown0))
-                check(p.locator('#task-assign p.help', has_text='이 작업을 고칠 수 있는 사람이 나뿐이에요.').is_hidden(), 'U1-a team task with other candidates: 「나뿐이에요」 help hidden')
+                check(p.locator('#task-assign p.help', has_text='이 작업을 고칠 수 있는 사람이 나뿐이에요.').is_hidden()
+                      and p.locator('#task-assign p.help', has_text='이 작업을 고칠 수 있는 사람만 나와요.').is_visible(),
+                      'U1-a team task with other candidates: 「나뿐이에요」 help hidden · 「고칠 수 있는 사람만 나와요」 hint shown')
                 for q, label in ((users['manager']['username'], 'team member'), (users['other']['username'], 'other team (cannot edit)'), ('claude_', 'prefix')):
                     api_ = call('GET', '/api/pages/' + rows[2]['id'] + '/assignee-candidates?q=' + q, user='employee')
                     want_names = [c['username'] for c in api_['candidates']]
@@ -890,7 +892,9 @@ try:
                 ctx.close()
 
             def u1_assign_solo():
-                for width, touch in ((1440, False), (412, True)):
+                # RV-U1-1 안내 한 번만 · RV-U1-2 좁은 폭(360 · 412 터치 · 412 마우스) 메뉴가 화면 좌우 16px 안
+                for width, touch in ((1440, False), (412, True), (412, False), (360, False)):
+                    shot = 'u1-assign-solo-%d%s.png' % (width, 'm' if (width == 412 and not touch) else '')
                     ctx = context('employee', width, 900 if width > 800 else 915, touch=touch)
                     t = Tab(ctx)
                     p = t.page
@@ -901,20 +905,28 @@ try:
                     shown = p.evaluate("[...document.querySelectorAll('#task-assign [data-candidate]')].map(b => b.getAttribute('data-candidate'))")
                     solo = p.locator('#task-assign p.help', has_text=SOLO)
                     check(shown == want_ == [users['employee']['username']] and solo.count() == 1 and solo.is_visible(),
-                          'U1-a %d private task (owner only): candidates == API == [me] · help 「나뿐이에요 …」 shown' % width)
-                    check(p.locator('#task-assign p.help', has_text='이 작업을 고칠 수 있는 사람만 나와요.').is_visible(), 'U1-a %d existing hint 「이 작업을 고칠 수 있는 사람만 나와요.」 kept' % width)
-                    rect = p.evaluate("() => { const r = document.querySelector('#task-assign .menu__list').getBoundingClientRect(); return [Math.round(r.left), Math.round(r.right), Math.round(r.width), innerWidth]; }")
-                    metrics['u1_assign_menu_%d' % width] = rect
-                    check(rect[0] >= 0 and rect[1] <= rect[3], 'U1-a %d candidate menu inside the viewport %s' % (width, json.dumps(rect)))
-                    p.screenshot(path=str(shots / ('u1-assign-solo-%d.png' % width)), caret='initial')
+                          'U1-a %s private task (owner only): candidates == API == [me] · help 「나뿐이에요 …」 shown' % shot)
+                    hint = p.locator('#task-assign p.help', has_text='이 작업을 고칠 수 있는 사람만 나와요.')
+                    check(hint.count() == 1 and hint.is_hidden(), 'RV-U1-1 %s empty query · solo help shown → hint 「고칠 수 있는 사람만 나와요」 hidden (said once)' % shot)
+                    rect = p.evaluate("() => { const r = document.querySelector('#task-assign .menu__list').getBoundingClientRect(); return [r.left, r.right, r.width, innerWidth]; }")
+                    metrics['u1_assign_menu_' + shot] = rect
+                    if width < 720:
+                        check(rect[0] >= 16 and rect[1] <= rect[3] - 16, 'RV-U1-2 %s candidate menu inside the 16px side gutters (left %.1f ≥ 16 · right %.1f ≤ %d)' % (shot, rect[0], rect[1], rect[3] - 16))
+                    else:
+                        check(rect[0] >= 0 and rect[1] <= rect[3], 'U1-a %s candidate menu inside the viewport %s' % (shot, json.dumps(rect)))
+                    p.screenshot(path=str(shots / shot), caret='initial')
                     # 입력하면 좁힘 — 빈 검색어가 아니면 안내 없음
                     q = p.locator('#task-assign input[type="search"]')
                     q.fill('zzz')
                     with p.expect_response(lambda r: '/assignee-candidates?q=zzz' in r.url):
                         q.press('Enter')
                     p.wait_for_timeout(250)
-                    check(solo.is_hidden() and p.locator('#task-assign [data-candidate]').count() == 0, 'U1-a %d typed query narrows · solo help only for the empty query' % width)
-                    check(t.clean('u1-solo-%d' % width), 'U1-a %d console 0' % width)
+                    check(solo.is_hidden() and hint.is_visible() and p.locator('#task-assign [data-candidate]').count() == 0,
+                          'RV-U1-1 %s typed query narrows · solo help hidden · hint shown' % shot)
+                    if width < 720:
+                        rect = p.evaluate("() => { const r = document.querySelector('#task-assign .menu__list').getBoundingClientRect(); return [r.left, r.right, r.width, innerWidth]; }")
+                        check(rect[0] >= 16 and rect[1] <= rect[3] - 16, 'RV-U1-2 %s with a typed query the menu stays inside the 16px gutters %s' % (shot, json.dumps(rect)))
+                    check(t.clean('u1-solo-' + shot), 'U1-a %s console 0' % shot)
                     ctx.close()
 
             def u1_readers():
@@ -1024,7 +1036,8 @@ try:
                             until(p, "() => document.querySelectorAll('#task-assign [data-candidate]').length > 0", 8000)
                             audit('assign-open')
                             rect = p.evaluate("() => { const r = document.querySelector('#task-assign .menu__list').getBoundingClientRect(); return [r.left, r.right, innerWidth]; }")
-                            check(rect[0] >= 0 and rect[1] <= rect[2], 'U1 %s candidate menu inside the viewport' % tag)
+                            gutter = 16 if width < 720 else 0
+                            check(rect[0] >= gutter and rect[1] <= rect[2] - gutter, 'U1 %s candidate menu inside the viewport (side gutter %d) %s' % (tag, gutter, json.dumps(rect)))
                             if shoot:
                                 p.screenshot(path=str(shots / ('u1-assign-open-%d.png' % width)), caret='initial')
                             p.keyboard.press('Escape')
