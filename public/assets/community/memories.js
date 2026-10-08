@@ -28,7 +28,19 @@
   function icon(name) { const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg'); const use = document.createElementNS(svg.namespaceURI, 'use'); use.setAttribute('href', '#i-' + name); svg.setAttribute('aria-hidden', 'true'); svg.append(use); return svg; }
   function button(label, className, handler, glyph) { const n = el('button', className); n.type = 'button'; if (glyph) n.append(icon(glyph)); if (label) n.append(el('span', '', label)); if (handler) n.addEventListener('click', handler); return n; }
   function iconButton(label, glyph, handler) { const n = button('', 'icon-button', handler, glyph); n.setAttribute('aria-label', label); n.title = label; return n; }
-  function toast(message) { clearTimeout(toastTimer); $('memory-toast').textContent = message; $('memory-toast').hidden = false; toastTimer = setTimeout(() => { $('memory-toast').hidden = true; }, 4500); }
+  function toast(message) {
+    clearTimeout(toastTimer);
+    const notice = $('memory-toast');
+    const dialogs = [...surface.querySelectorAll('dialog[open]')];
+    const host = dialogs.at(-1) || surface;
+    host.append(notice);
+    notice.classList.toggle('toast--dialog', host !== surface);
+    notice.textContent = message; notice.hidden = false;
+    toastTimer = setTimeout(() => { notice.hidden = true; }, 4500);
+  }
+  surface.querySelectorAll('dialog').forEach((dialog) => dialog.addEventListener('close', () => {
+    if (dialog.contains($('memory-toast'))) { $('memory-toast').hidden = true; surface.append($('memory-toast')); }
+  }));
   function errorText(error) { return error.message || '연결을 확인하고 다시 시도해 주세요.'; }
   /* 사이트 Q:F-13 P1 — AI 국외 전송 동의 창(결정 PT-8). 서버가 409 `{code:"ai_consent_required", notice}` 로 막은 요청에서만 연다.
      글자는 서버가 준 notice(src/Legal.php 한 곳)를 textContent 로. 「동의하고 계속하기」면 `POST /tbox/api/me/consents {doc:"ai_overseas"}` 뒤 참 —
@@ -93,7 +105,7 @@
     if (!response.ok) { const error = new Error(response.status === 401 ? '로그인이 만료됐어요. 이 기기의 임시 저장을 확인하고 다시 로그인해 주세요.' : data.error || '요청을 처리하지 못했어요.'); error.status = response.status; throw error; }
     return data;
   }
-  function writerElements() { surface.querySelectorAll('[data-writer]').forEach((n) => { n.hidden = !state.me?.can_write || Boolean(shared); }); }
+  function writerElements() { surface.querySelectorAll('[data-writer]').forEach((n) => { n.hidden = !state.me?.can_write || Boolean(shared); }); $('reader-notice').hidden = Boolean(shared) || !state.me || state.me.can_write; }
   function profileLayout(stats = {}) {
     const isProfile = state.view === 'mine' || Boolean(state.profile) || Boolean(shared);
     $('hero').hidden = isProfile || Boolean(state.post);
@@ -118,13 +130,13 @@
     }
     surface.querySelectorAll('[data-view]').forEach((n) => { n.classList.toggle('active', n.dataset.view === state.view); n.setAttribute('aria-pressed', String(n.dataset.view === state.view)); });
     document.querySelectorAll('[data-thread-nav]').forEach((n) => { const active = n.dataset.threadNav === state.view && !state.profile; n.classList.toggle('is-active', active); if (active) n.setAttribute('aria-current', 'page'); else n.removeAttribute('aria-current'); });
-    $('empty-title').textContent = state.search ? '아직 찾지 못한 순간' : '아직 비어 있는 첫 페이지';
+    $('empty-title').textContent = state.search ? '검색 결과가 없습니다' : '아직 게시글이 없습니다';
     $('empty-copy').textContent = state.search ? '다른 장소나 여행 이름으로 찾아보세요.' : shared ? '이 페이지에 공유한 기록이 아직 없어요.' : state.view === 'discover' ? '발견에 공개한 이야기가 아직 없어요. 공개 범위와 발견 게시는 작성자가 직접 선택합니다.' : state.view === 'feed' ? '팔로우한 사람과 나의 기록이 모여요. 사람 찾기에서 친구를 팔로우하거나 발견에서 새로운 이야기를 만나보세요.' : '완벽한 사진이 아니어도 괜찮아요. 지금 남기는 한 장이, 내일의 추억이 될 테니까요.';
   }
   async function load(append = false) {
     const request = ++state.request;
     state.controller?.abort(); state.controller = new AbortController();
-    $('feed-status').hidden = false; $('feed-status').textContent = '순간들을 불러오고 있어요…';
+    $('feed-status').hidden = false; $('feed-status').textContent = '게시글을 불러오는 중…';
     $('load-more').disabled = true;
     if (!append) { state.posts = []; $('feed').replaceChildren(); $('empty').hidden = true; }
     const query = new URLSearchParams({ offset: String(append ? state.next || 0 : 0) });
@@ -132,6 +144,7 @@
     if (append && state.cursor) query.set('cursor', state.cursor);
     if (state.profile) query.set('profile', state.profile);
     if (state.search) query.set('q', state.search);
+    query.set('include_stats', !append && (state.view === 'mine' || state.profile || shared) ? '1' : '0');
     try {
       const data = await api((shared ? '/memories/s/' + shared + '/feed' : '/api/memories') + '?' + query, { signal: state.controller.signal });
       if (request !== state.request) return;
@@ -142,7 +155,8 @@
       state.posts = append ? state.posts.concat(posts) : posts;
       state.next = state.post ? null : data.next_offset;
       state.cursor = state.post ? null : data.next_cursor;
-      writerElements(); profileLayout(data.stats); render();
+      if (!append) state.stats = data.stats || {};
+      writerElements(); profileLayout(state.stats); render();
       $('feed-status').hidden = true;
       if (!draft && state.me?.can_write) await recoverDraft();
     } catch (e) { if (e.name !== 'AbortError' && request === state.request) { $('feed-status').hidden = false; $('feed-status').textContent = errorText(e); $('load-more').hidden = true; } }
@@ -290,7 +304,7 @@
     if (!shared) {
       if (!detailed) actions.append(iconButton('내용 더 보기', 'photo', () => openDetail(post)));
       const like = iconButton('좋아요', 'heart', async () => {
-        if (!state.me?.can_write) { toast('읽기 전용 계정에서는 마음을 남길 수 없어요.'); return; }
+        if (!state.me?.can_write) { toast('읽기 전용 계정에서는 좋아요를 누를 수 없습니다.'); return; }
         like.disabled = true;
         try {
           await api('/api/memories/' + post.id + '/like', { method: post.liked ? 'DELETE' : 'POST' });
@@ -510,13 +524,44 @@
       $('revoke-links').hidden = false; $('share-feedback').textContent = ''; showDialog('share-dialog');
     } catch (e) { toast(errorText(e)); }
   }
+  let commentsCursor = null, commentsTicket = 0, commentsLoading = false, commentsSending = false;
   async function openComments(post) {
-    commentPost = post; $('comments-list').textContent = '마음을 불러오는 중…'; $('comment-error').textContent = ''; $('comment-body').value = ''; $('comment-form').hidden = !state.me?.can_write;
-    showDialog('comments-dialog');
-    try { const data = await api('/api/memories/' + post.id + '/comments'); if (commentPost?.id === post.id) renderComments(data.comments); }
-    catch (e) { $('comments-list').textContent = errorText(e); }
+    commentPost = post; ++commentsTicket; commentsLoading = false; commentsCursor = null;
+    $('comments-list').textContent = '댓글을 불러오는 중…'; $('comment-error').textContent = '';
+    $('comment-body').value = ''; $('comment-form').hidden = !state.me?.can_write;
+    $('comments-readonly').hidden = Boolean(state.me?.can_write); $('comments-older').hidden = true;
+    showDialog('comments-dialog'); await loadComments();
   }
-  function renderComments(comments) { $('comments-list').replaceChildren(...comments.map((c) => { const n = el('article', 'comment'); n.append(el('strong', '', c.display_name || c.username), el('time', '', date(c.created_at)), el('p', '', c.body)); return n; })); if (!comments.length) $('comments-list').textContent = '첫 마음을 남겨 주세요.'; }
+  async function loadComments(older = false) {
+    if (commentsLoading || !commentPost) return;
+    const ticket = commentsTicket, post = commentPost, scroll = $('comments-scroll');
+    const height = scroll.scrollHeight, top = scroll.scrollTop;
+    commentsLoading = true; $('comments-older').disabled = true;
+    try {
+      const suffix = older && commentsCursor ? '?before=' + encodeURIComponent(commentsCursor) : '';
+      const data = await api('/api/memories/' + post.id + '/comments' + suffix);
+      if (ticket !== commentsTicket) return;
+      renderComments(data.comments, older); commentsCursor = data.next_cursor || null;
+      $('comments-older').hidden = !commentsCursor;
+      scroll.scrollTop = older ? top + scroll.scrollHeight - height : scroll.scrollHeight;
+    } catch (e) {
+      if (ticket === commentsTicket) {
+        if (!older) $('comments-list').textContent = errorText(e);
+        else toast(errorText(e));
+        $('comments-older').hidden = false;
+        $('comments-older').textContent = '댓글 다시 불러오기';
+      }
+    } finally {
+      if (ticket === commentsTicket) { commentsLoading = false; $('comments-older').disabled = false; }
+    }
+  }
+  function renderComments(comments, older = false) {
+    const nodes = comments.map((c) => { const n = el('article', 'comment'); n.append(el('strong', '', c.display_name || c.username), el('time', '', date(c.created_at)), el('p', '', c.body)); return n; });
+    if (older) $('comments-list').prepend(...nodes); else $('comments-list').replaceChildren(...nodes);
+    if (!$('comments-list').children.length) $('comments-list').textContent = '아직 댓글이 없습니다. 첫 댓글을 남겨 보세요.';
+    $('comments-older').textContent = '이전 댓글 불러오기';
+  }
+  $('comments-older').addEventListener('click', () => loadComments(Boolean(commentsCursor)));
   function studioPrompt() {
     if (!studioPost) return;
     const kind = $('studio-kind').value, tone = $('studio-tone').value;
@@ -617,7 +662,25 @@
   $('copy-link').addEventListener('click', async () => { $('share-feedback').textContent = await clipboard($('share-url').value, $('share-url')) ? '링크를 복사했어요.' : '주소를 길게 눌러 복사해 주세요.'; });
   $('native-share').addEventListener('click', async () => { try { if (navigator.share) await navigator.share({ title: '나의 여행 기록 · Qaredi', url: $('share-url').value }); else $('copy-link').click(); } catch (e) { if (e.name !== 'AbortError') $('share-feedback').textContent = '기기 공유를 열지 못했어요. 링크를 복사해 보내 주세요.'; } });
   $('revoke-links').addEventListener('click', () => confirm('모든 여행 공유 링크를 해제할까요?', '이전에 친구에게 보낸 여행 링크는 더 이상 열리지 않아요. 새 링크는 나중에 만들 수 있어요.', '공유 해제', async () => { await api('/api/memories/links', { method: 'DELETE' }); $('share-dialog').close(); toast('기존 여행 공유 링크를 해제했어요.'); }));
-  $('comment-form').addEventListener('submit', async (e) => { e.preventDefault(); const submit = e.submitter; if (submit) submit.disabled = true; const post = commentPost; try { const data = await api('/api/memories/' + post.id + '/comments', { method: 'POST', body: JSON.stringify({ body: $('comment-body').value }) }); if (commentPost?.id === post.id) { renderComments(data.comments); $('comment-body').value = ''; $('comment-error').textContent = ''; } post.comments++; surface.querySelectorAll('[data-comment-post]').forEach((button) => { if (button.dataset.commentPost === post.id) { button.setAttribute('aria-label', `댓글 ${post.comments}개 보기`); button.title = `댓글 ${post.comments}개 보기`; } }); } catch (err) { $('comment-error').textContent = errorText(err); } finally { if (submit) submit.disabled = false; } });
+  $('comment-form').addEventListener('submit', async (e) => {
+    e.preventDefault(); if (commentsSending || !commentPost) return;
+    const submit = $('comment-form').querySelector('[type="submit"]'), post = commentPost;
+    const ticket = ++commentsTicket, text = $('comment-body').value;
+    commentsLoading = false; commentsSending = true; submit.disabled = true; $('comments-older').disabled = true;
+    try {
+      const data = await api('/api/memories/' + post.id + '/comments', { method: 'POST', body: JSON.stringify({ body: text }) });
+      if (ticket === commentsTicket) {
+        renderComments(data.comments); commentsCursor = data.next_cursor || null;
+        $('comments-older').hidden = !commentsCursor; $('comments-older').disabled = false;
+        if ($('comment-body').value === text) $('comment-body').value = '';
+        $('comment-error').textContent = ''; $('comments-scroll').scrollTop = $('comments-scroll').scrollHeight;
+        if ($('comments-dialog').open && [submit, document.body, $('comment-body')].includes(document.activeElement)) $('comment-body').focus({ preventScroll: true });
+      }
+      post.comments++;
+      surface.querySelectorAll('[data-comment-post]').forEach((button) => { if (button.dataset.commentPost === post.id) { button.setAttribute('aria-label', `댓글 ${post.comments}개 보기`); button.title = `댓글 ${post.comments}개 보기`; } });
+    } catch (err) { if (ticket === commentsTicket) $('comment-error').textContent = errorText(err); }
+    finally { commentsSending = false; submit.disabled = false; if (ticket === commentsTicket) $('comments-older').disabled = false; }
+  });
   // Q:F-11 B-4 — 떠 있는 메신저 창의 모아 AI 칸에 요청문을 미리 채운다(보내기는 사람이 누른다). 답변의 「꾸미기 화면으로」가 qaredi:ai-result 로 돌아온다.
   $('studio-chat').addEventListener('click', () => { $('studio-dialog').close(); window.dispatchEvent(new CustomEvent('qaredi:messenger', { detail: { mode: 'ai', prompt: $('studio-prompt').value } })); });
   $('gemini-generate').addEventListener('click', generateCaption);

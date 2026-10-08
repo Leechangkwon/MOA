@@ -1,0 +1,308 @@
+{
+  "baseline_commit": "663d50f",
+  "database": "PostgreSQL 14, isolated synthetic database",
+  "client": "PHP built-in server, one local HTTP client, OPcache disabled",
+  "samples_per_case": 5,
+  "capacity_claim": false,
+  "initial": [
+    {
+      "rows": 10000,
+      "version": "before",
+      "case": "feed",
+      "samples": 5,
+      "median_ms": 205.73,
+      "max_ms": 215.39,
+      "sql_calls": 41
+    },
+    {
+      "rows": 10000,
+      "version": "before",
+      "case": "deep",
+      "samples": 5,
+      "median_ms": 195.52,
+      "max_ms": 206.28,
+      "sql_calls": 40
+    },
+    {
+      "rows": 10000,
+      "version": "before",
+      "case": "mine",
+      "samples": 5,
+      "median_ms": 105.19,
+      "max_ms": 139.71,
+      "sql_calls": 31
+    },
+    {
+      "rows": 10000,
+      "version": "before",
+      "case": "discover",
+      "samples": 5,
+      "median_ms": 149.51,
+      "max_ms": 228.26,
+      "sql_calls": 31
+    },
+    {
+      "rows": 10000,
+      "version": "before",
+      "case": "search",
+      "samples": 5,
+      "median_ms": 98.49,
+      "max_ms": 117.91,
+      "sql_calls": 31
+    },
+    {
+      "rows": 10000,
+      "version": "after",
+      "case": "feed",
+      "samples": 5,
+      "median_ms": 60.06,
+      "max_ms": 97.7,
+      "sql_calls": 13
+    },
+    {
+      "rows": 10000,
+      "version": "after",
+      "case": "deep",
+      "samples": 5,
+      "median_ms": 58.94,
+      "max_ms": 105.23,
+      "sql_calls": 12
+    },
+    {
+      "rows": 10000,
+      "version": "after",
+      "case": "mine",
+      "samples": 5,
+      "median_ms": 75.59,
+      "max_ms": 114.89,
+      "sql_calls": 13
+    },
+    {
+      "rows": 10000,
+      "version": "after",
+      "case": "discover",
+      "samples": 5,
+      "median_ms": 107.66,
+      "max_ms": 119.85,
+      "sql_calls": 13
+    },
+    {
+      "rows": 10000,
+      "version": "after",
+      "case": "search",
+      "samples": 5,
+      "median_ms": 61.71,
+      "max_ms": 79.23,
+      "sql_calls": 13
+    },
+    {
+      "rows": 100000,
+      "version": "before",
+      "case": "feed",
+      "samples": 5,
+      "median_ms": 1359.94,
+      "max_ms": 1378.35,
+      "sql_calls": 41
+    },
+    {
+      "rows": 100000,
+      "version": "before",
+      "case": "deep",
+      "samples": 5,
+      "median_ms": 1417.66,
+      "max_ms": 1441.58,
+      "sql_calls": 40
+    },
+    {
+      "rows": 100000,
+      "version": "before",
+      "case": "mine",
+      "samples": 5,
+      "median_ms": 288.22,
+      "max_ms": 288.69,
+      "sql_calls": 31
+    },
+    {
+      "rows": 100000,
+      "version": "before",
+      "case": "discover",
+      "samples": 5,
+      "median_ms": 692.41,
+      "max_ms": 707.53,
+      "sql_calls": 31
+    },
+    {
+      "rows": 100000,
+      "version": "before",
+      "case": "search",
+      "samples": 5,
+      "median_ms": 428.59,
+      "max_ms": 497.19,
+      "sql_calls": 31
+    },
+    {
+      "rows": 100000,
+      "version": "after",
+      "case": "feed",
+      "samples": 5,
+      "median_ms": 90.97,
+      "max_ms": 203.07,
+      "sql_calls": 13
+    },
+    {
+      "rows": 100000,
+      "version": "after",
+      "case": "deep",
+      "samples": 5,
+      "median_ms": 108.59,
+      "max_ms": 166.43,
+      "sql_calls": 12
+    },
+    {
+      "rows": 100000,
+      "version": "after",
+      "case": "mine",
+      "samples": 5,
+      "median_ms": 90.17,
+      "max_ms": 128.67,
+      "sql_calls": 13
+    },
+    {
+      "rows": 100000,
+      "version": "after",
+      "case": "discover",
+      "samples": 5,
+      "median_ms": 441.67,
+      "max_ms": 520.86,
+      "sql_calls": 13
+    },
+    {
+      "rows": 100000,
+      "version": "after",
+      "case": "search",
+      "samples": 5,
+      "median_ms": 54.91,
+      "max_ms": 56.89,
+      "sql_calls": 13
+    },
+    {
+      "rows": 1000000,
+      "version": "before",
+      "case": "feed",
+      "samples": 5,
+      "median_ms": 7043.72,
+      "max_ms": 7552.51,
+      "sql_calls": 41
+    },
+    {
+      "rows": 1000000,
+      "version": "before",
+      "case": "deep",
+      "samples": 5,
+      "median_ms": 6536.94,
+      "max_ms": 7151.1,
+      "sql_calls": 40
+    },
+    {
+      "rows": 1000000,
+      "version": "before",
+      "case": "mine",
+      "samples": 5,
+      "median_ms": 2786.77,
+      "max_ms": 3439.36,
+      "sql_calls": 31
+    },
+    {
+      "rows": 1000000,
+      "version": "before",
+      "case": "discover",
+      "samples": 5,
+      "median_ms": 6598.43,
+      "max_ms": 7483.23,
+      "sql_calls": 31
+    },
+    {
+      "rows": 1000000,
+      "version": "before",
+      "case": "search",
+      "samples": 5,
+      "median_ms": 4214.43,
+      "max_ms": 4639.8,
+      "sql_calls": 31
+    },
+    {
+      "rows": 1000000,
+      "version": "after",
+      "case": "feed",
+      "samples": 5,
+      "median_ms": 65.89,
+      "max_ms": 93.06,
+      "sql_calls": 13
+    },
+    {
+      "rows": 1000000,
+      "version": "after",
+      "case": "deep",
+      "samples": 5,
+      "median_ms": 64.92,
+      "max_ms": 89.67,
+      "sql_calls": 12
+    },
+    {
+      "rows": 1000000,
+      "version": "after",
+      "case": "mine",
+      "samples": 5,
+      "median_ms": 53.92,
+      "max_ms": 68.49,
+      "sql_calls": 13
+    },
+    {
+      "rows": 1000000,
+      "version": "after",
+      "case": "discover",
+      "samples": 5,
+      "median_ms": 3874.42,
+      "max_ms": 3925.66,
+      "sql_calls": 13
+    },
+    {
+      "rows": 1000000,
+      "version": "after",
+      "case": "search",
+      "samples": 5,
+      "median_ms": 55.37,
+      "max_ms": 56.19,
+      "sql_calls": 13
+    }
+  ],
+  "discovery_final_and_missing_search": [
+    {
+      "rows": 1000000,
+      "version": "after",
+      "case": "discover",
+      "samples": 5,
+      "median_ms": 151.72,
+      "max_ms": 173.2,
+      "sql_calls": 14
+    },
+    {
+      "rows": 1000000,
+      "version": "after",
+      "case": "discover_deep",
+      "samples": 5,
+      "median_ms": 246.86,
+      "max_ms": 320.57,
+      "sql_calls": 13
+    },
+    {
+      "rows": 1000000,
+      "version": "after",
+      "case": "search_miss",
+      "samples": 5,
+      "median_ms": 1029.44,
+      "max_ms": 1185.22,
+      "sql_calls": 10
+    }
+  ]
+}

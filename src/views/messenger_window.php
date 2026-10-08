@@ -34,12 +34,12 @@ $messengerAsset = static function (string $file): string {
       <button id="message-ai" class="moa-person moa-person--ai" type="button" aria-pressed="false">
         <span class="moa-avatar moa-ai-spark" aria-hidden="true">✦</span><span>모아 AI <b class="moa-ai-badge">AI</b></span><small>공용 Gemini · 나만의 대화 기록</small>
       </button>
-      <label class="field"><span>함께하는 사람들</span><input type="search" id="message-search" placeholder="이름 또는 아이디" maxlength="64"></label>
+      <label class="field"><span>동료 · 1:1 대화</span><input type="search" id="message-search" placeholder="이름 또는 아이디" maxlength="64"></label>
       <div id="message-people"></div>
     </aside>
     <section class="moa-conversation" aria-label="대화">
       <header>
-        <div class="moa-chat-heading"><div><h3 id="message-peer-name">어떤 이야기를 나눌까요?</h3><p id="message-peer-meta" class="moa-muted">대화 상대를 골라 주세요.</p></div><button id="message-ai-new" type="button" class="btn btn--quiet btn--small" hidden>＋ 새 대화</button></div>
+        <div class="moa-chat-heading"><div><h3 id="message-peer-name">대화 상대를 선택하세요</h3><p id="message-peer-meta" class="moa-muted">대화 상대를 골라 주세요.</p></div><button id="message-ai-new" type="button" class="btn btn--quiet btn--small" hidden>＋ 새 대화</button></div>
         <div id="message-ai-tools" class="moa-ai-tools" hidden><label><span class="sr-only">내 AI 대화 기록</span><select id="message-ai-threads" aria-label="내 AI 대화 기록"><option value="0">새 대화</option></select></label><span id="message-ai-remaining"></span></div>
       </header>
       <div id="message-ai-notice" class="moa-ai-notice" hidden><span>AI에게 보낸 내용과 최근 AI 대화가 Google로 전송됩니다. 무료 API에는 개인정보·기밀을 입력하지 마세요.</span><?php if (Authz::canManageUsers($messengerUser)): ?><a href="<?= Http::url('/users') ?>#member-ai-settings">AI 연결 설정 ↗</a><?php endif; ?></div>

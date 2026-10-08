@@ -95,11 +95,19 @@ if (str_ends_with($route, '/comments')) {
         Db::instance()->run($sql, [':id' => tbox_uuid_v4(), ':post' => $id, ':actor' => (int) $user['id'], ':body' => $text]);
         Memories::audit('comment'); Db::instance()->commit();
     }
-    $sql = <<<'SQL'
-        SELECT c.id,c.body,c.created_at,u.username,u.display_name FROM community.memory_comments c
-        JOIN public.users u ON u.id=c.user_id WHERE c.post_id=CAST(:post AS uuid)
-        ORDER BY c.created_at DESC,c.id DESC LIMIT 100
-        SQL;
-    Http::json(['comments' => array_reverse(Db::instance()->run($sql, [':post' => $id])->fetchAll())]); exit;
+    $bind = [':post' => $id];
+    $before = $method === 'GET' ? ($_GET['before'] ?? null) : null;
+    $scope = hash('sha256', 'comments:' . $id);
+    $cursor = MemorySocial::cursor($before, $scope);
+    $sql = 'SELECT c.id,c.body,c.created_at,u.username,u.display_name FROM community.memory_comments c JOIN public.users u ON u.id=c.user_id WHERE c.post_id=CAST(:post AS uuid)';
+    if ($cursor !== null) {
+        $sql .= ' AND (c.created_at,c.id)<(CAST(:created AS timestamptz),CAST(:last AS uuid))';
+        $bind[':created'] = $cursor['created']; $bind[':last'] = $cursor['id'];
+    }
+    $sql .= ' ORDER BY c.created_at DESC,c.id DESC LIMIT 31';
+    $rows = Db::instance()->run($sql, $bind)->fetchAll();
+    $more = count($rows) > 30; $rows = array_slice($rows, 0, 30);
+    $next = $more ? MemorySocial::encodeCursor($scope, $rows[29]['created_at'], $rows[29] + ['feed_rank' => 0]) : null;
+    Http::json(['comments' => array_reverse($rows), 'next_cursor' => $next]); exit;
 }
 Http::json(['post' => Memories::output($post, $user, $prefix)]);

@@ -199,6 +199,7 @@ if (isset($shellMessenger) && $shellMessenger === true) {
     require __DIR__ . '/messenger_window.php';
 }
 ?>
+<?php if (!empty($shellUser) && !$shellMessenger): require __DIR__.'/messenger_unavailable.php'; endif; ?>
 <?php require __DIR__ . '/usage_guide.php'; ?>
 <?php include __DIR__ . '/design_controls.php'; ?>
 </body>

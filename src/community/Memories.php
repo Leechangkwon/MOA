@@ -130,7 +130,53 @@ final class Memories
         return array_values(array_filter(array_map(static fn ($id) => $map[$id] ?? null, $ids)));
     }
 
-    public static function output(array $row, ?array $user, string $prefix): array
+    /** Only call after the feed has filtered every post by the current reader's access. */
+    public static function outputMany(array $rows, ?array $user, string $prefix): array
+    {
+        if (!$rows) { return []; }
+        $db = Db::instance();
+        $ids = json_encode(array_column($rows, 'id'));
+        $counts = [];
+        $sql = <<<'SQL'
+            SELECT post_id,count(*) AS total,bool_or(user_id=:viewer) AS liked
+            FROM community.memory_likes
+            WHERE post_id IN (SELECT value::uuid FROM jsonb_array_elements_text(CAST(:ids AS jsonb)))
+            GROUP BY post_id
+            SQL;
+        foreach ($db->run($sql, [':viewer' => (int) ($user['id'] ?? 0), ':ids' => $ids])->fetchAll() as $row) {
+            $counts[$row['post_id']] = ['likes' => (int) $row['total'], 'liked' => (bool) $row['liked']];
+        }
+        $sql = <<<'SQL'
+            SELECT post_id,count(*) AS total FROM community.memory_comments
+            WHERE post_id IN (SELECT value::uuid FROM jsonb_array_elements_text(CAST(:ids AS jsonb)))
+            GROUP BY post_id
+            SQL;
+        foreach ($db->run($sql, [':ids' => $ids])->fetchAll() as $row) {
+            $counts[$row['post_id']]['comments'] = (int) $row['total'];
+        }
+        $following = [];
+        if ($user !== null) {
+            $sql = <<<'SQL'
+                SELECT followed_user_id FROM community.memory_follows WHERE follower_user_id=:viewer
+                AND followed_user_id IN (SELECT value::bigint FROM jsonb_array_elements_text(CAST(:owners AS jsonb)))
+                SQL;
+            foreach ($db->run($sql, [':viewer' => (int) $user['id'], ':owners' => json_encode(array_values(array_unique(array_column($rows, 'owner_user_id'))))])->fetchAll() as $row) {
+                $following[(int) $row['followed_user_id']] = true;
+            }
+        }
+        $mediaIds = [];
+        foreach ($rows as $row) {
+            $mediaIds = array_merge($mediaIds, json_decode($row['media_ids'], true));
+            if ($user !== null && (int) $row['owner_user_id'] === (int) $user['id']) {
+                $mediaIds = array_merge($mediaIds, json_decode($row['original_media_ids'], true));
+            }
+        }
+        $media = array_column(self::mediaList(array_values(array_unique($mediaIds)), $prefix), null, 'id');
+        $batch = ['counts' => $counts, 'following' => $following, 'media' => $media];
+        return array_map(static fn ($row) => self::output($row, $user, $prefix, $batch), $rows);
+    }
+
+    public static function output(array $row, ?array $user, string $prefix, ?array $batch = null): array
     {
         $owner = $user !== null && (int) $row['owner_user_id'] === (int) $user['id'];
         $sql = <<<'SQL'
@@ -138,16 +184,20 @@ final class Memories
                    (SELECT count(*) FROM community.memory_comments WHERE post_id=CAST(:commented AS uuid)) AS comments,
                    EXISTS(SELECT 1 FROM community.memory_likes WHERE post_id=CAST(:post AS uuid) AND user_id=:viewer) AS liked
             SQL;
-        $counts = Db::instance()->run($sql, [':liked' => $row['id'], ':commented' => $row['id'], ':post' => $row['id'], ':viewer' => (int) ($user['id'] ?? 0)])->fetch();
+        $counts = $batch === null
+            ? Db::instance()->run($sql, [':liked' => $row['id'], ':commented' => $row['id'], ':post' => $row['id'], ':viewer' => (int) ($user['id'] ?? 0)])->fetch()
+            : (($batch['counts'][$row['id']] ?? []) + ['likes' => 0, 'comments' => 0, 'liked' => false]);
+        $mediaFor = static fn (array $ids): array => $batch === null ? self::mediaList($ids, $prefix)
+            : array_values(array_filter(array_map(static fn ($id) => $batch['media'][$id] ?? null, $ids)));
         $out = array_intersect_key($row, array_flip(['id', 'caption', 'location', 'trip', 'taken_on', 'visibility', 'created_at', 'username', 'display_name']));
         $out['story'] = isset($row['story']) ? json_decode($row['story'], true) : null;
         $out['discoverable'] = (bool) ($row['discoverable'] ?? false);
-        $out['following'] = $user !== null && MemorySocial::follows((int) $user['id'], (int) $row['owner_user_id']);
-        $out += ['mine' => $owner, 'revision' => (int) $row['revision'], 'media' => self::mediaList(json_decode($row['media_ids'], true), $prefix),
+        $out['following'] = $user !== null && ($batch === null ? MemorySocial::follows((int) $user['id'], (int) $row['owner_user_id']) : isset($batch['following'][(int) $row['owner_user_id']]));
+        $out += ['mine' => $owner, 'revision' => (int) $row['revision'], 'media' => $mediaFor(json_decode($row['media_ids'], true)),
             'likes' => (int) $counts['likes'], 'comments' => (int) $counts['comments'], 'liked' => (bool) $counts['liked']];
         if ($owner) {
             $out['original_caption'] = $row['original_caption'];
-            $out['original_media'] = self::mediaList(json_decode($row['original_media_ids'], true), $prefix);
+            $out['original_media'] = $mediaFor(json_decode($row['original_media_ids'], true));
         }
         return $out;
     }
@@ -194,7 +244,9 @@ final class Memories
         $base = ' FROM community.memory_posts p JOIN public.users u ON u.id=p.owner_user_id WHERE ';
         $base .= implode(' AND ', $where);
         $statsSql = "SELECT count(*) AS posts, count(DISTINCT NULLIF(p.trip,'')) AS trips, coalesce(sum(jsonb_array_length(p.media_ids)),0) AS moments";
-        $stats = Db::instance()->run($statsSql . $base, $bind)->fetch();
+        $includeStats = $_GET['include_stats'] ?? '1';
+        if (!in_array($includeStats, ['0', '1'], true)) { Http::error(400, Http::MSG_BAD_REQUEST); }
+        $stats = $includeStats === '1' ? Db::instance()->run($statsSql . $base, $bind)->fetch() : null;
 
         // Freshness plus a small deterministic author/viewer/day rotation, not inferred interests.
         // Freeze the day and creation cutoff in the cursor. Likes/comments do not reorder later pages.
@@ -204,23 +256,56 @@ final class Memories
             $bind[':rank_viewer'] = (int) $user['id'];
             $bind[':rank_day'] = (new DateTimeImmutable($snapshot))->format('Y-m-d');
         }
-        $query = 'WITH visible AS (SELECT p.*,u.username,u.display_name,';
-        $query .= $rank . ' AS feed_rank' . $base . ')';
-        $query .= ' SELECT * FROM visible';
+        $ranked = !$link && $view === 'discover';
+        if ($ranked) {
+            // Boost is always 0..21599 seconds. Once we have N eligible recent rows,
+            // anything >21600 seconds older than their oldest cannot enter the top N.
+            // Both seed and final query keep the same live visibility predicates.
+            $seed = 'SELECT p.created_at'; $seed .= $base;
+            $seedBind = $bind;
+            if ($cursor !== null) {
+                $seed .= ' AND p.created_at<to_timestamp(CAST(:seed_rank AS bigint)+1)';
+                $seed .= ' AND (' . $rank . ',p.created_at,p.id)<(CAST(:seed_rank AS bigint),CAST(:seed_created AS timestamptz),CAST(:seed_id AS uuid))';
+                $seedBind += [':seed_rank' => $cursor['rank'], ':seed_created' => $cursor['created'], ':seed_id' => $cursor['id']];
+            } else {
+                unset($seedBind[':rank_viewer'], $seedBind[':rank_day']);
+            }
+            $seed .= ' ORDER BY p.created_at DESC,p.id DESC LIMIT CAST(:seed_limit AS integer)';
+            $seedBind[':seed_limit'] = $cursor === null ? $offset + 21 : 21;
+            $recent = Db::instance()->run($seed, $seedBind)->fetchAll();
+            if ($recent) {
+                $base .= " AND p.created_at>=CAST(:rank_floor AS timestamptz)-interval '21600 seconds'";
+                $bind[':rank_floor'] = $recent[count($recent) - 1]['created_at'];
+            } else {
+                $base .= ' AND FALSE';
+            }
+        }
+        $select = 'SELECT p.*,u.username,u.display_name,';
+        $query = $select . $rank . ' AS feed_rank' . $base;
+        if ($ranked) {
+            $tail = ') SELECT * FROM visible';
+            $query = 'WITH visible AS (' . $query . $tail;
+        }
         if ($cursor !== null) {
-            $query .= ' WHERE (feed_rank,created_at,id)<(CAST(:last_rank AS bigint),CAST(:last_created AS timestamptz),CAST(:last_id AS uuid))';
-            $bind[':last_rank'] = $cursor['rank']; $bind[':last_created'] = $cursor['created']; $bind[':last_id'] = $cursor['id'];
+            if ($ranked) {
+                $query .= ' WHERE (feed_rank,created_at,id)<(CAST(:last_rank AS bigint),CAST(:last_created AS timestamptz),CAST(:last_id AS uuid))';
+                $bind[':last_rank'] = $cursor['rank'];
+            } else {
+                $query .= ' AND (p.created_at,p.id)<(CAST(:last_created AS timestamptz),CAST(:last_id AS uuid))';
+            }
+            $bind[':last_created'] = $cursor['created']; $bind[':last_id'] = $cursor['id'];
             $offset = 0;
         }
-        $query .= ' ORDER BY feed_rank DESC,created_at DESC,id DESC LIMIT 21 OFFSET CAST(:offset AS integer)';
+        $query .= $ranked ? ' ORDER BY feed_rank DESC,created_at DESC,id DESC' : ' ORDER BY p.created_at DESC,p.id DESC';
+        $query .= ' LIMIT 21 OFFSET CAST(:offset AS integer)';
         $rows = Db::instance()->run($query, $bind + [':offset' => $offset])->fetchAll();
         $more = count($rows) > 20;
         $page = array_slice($rows, 0, 20);
         $prefix = Http::communityUrl($link ? '/memories/s/' . $token . '/media/' : '/api/memories/media/');
-        $out = ['posts' => array_map(static fn ($r) => self::output($r, $user, $prefix), $page),
+        $out = ['posts' => self::outputMany($page, $user, $prefix),
             'next_offset' => $more ? $offset + 20 : null,
             'next_cursor' => $more ? MemorySocial::encodeCursor($scope, $snapshot, $page[19]) : null,
-            'stats' => array_map('intval', $stats)];
+            'stats' => $stats === null ? null : array_map('intval', $stats)];
         if ($user) {
             $out['me'] = ['username' => $user['username'], 'display_name' => $user['display_name'] ?? null,
                 'can_write' => Authz::canCommunityWrite($user), 'csrf_token' => Auth::csrfToken(),

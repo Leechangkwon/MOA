@@ -258,7 +258,8 @@ try:
    t=Tab(ctx);p=t.page
    t.go('/community/p/'+page_id)
    check(not t.is_open(),'Q:T-12 window starts closed in a fresh tab')
-   t.open();check(p.evaluate("document.activeElement.id")=='message-search','Q:T-12 opened by a person: focus moves into the window (search box in list view)')
+   t.open();expect(p.locator('#message-search')).to_be_focused()  # initial draft/list loading is asynchronous
+   check(True,'Q:T-12 opened by a person: focus moves into the window (search box in list view)')
    t.person('합성 상대 A')
    p.wait_for_function("()=>!!document.activeElement&&document.activeElement.id==='message-text'",timeout=5000)   # 함수 꼴 — 글자 식은 eval 로 돌아 CSP(unsafe-eval 없음)에 막힌다
    check(p.evaluate("document.activeElement.id")=='message-text','Q:T-12 opening a conversation focuses the composer')
@@ -280,6 +281,7 @@ try:
    # AI 스레드로 바꾼 뒤 이동
    p.locator('#messenger-back').click();p.locator('#message-ai').click();expect(p.locator('#message-peer-name')).to_have_text('모아 AI');expect(p.locator('#message-text')).to_be_enabled()
    p.locator('#message-text').type('AI 이어 열기 질문');p.locator('#message-send').click();expect(p.locator('#message-list')).to_contain_text('합성 꾸미기 답변입니다.')
+   expect(p.locator('#message-text')).to_be_focused();check(True,'FB-4 AI send restores composer focus')
    thread=t.state(E)['thread'];check(t.state(E)['kind']=='ai' and isinstance(thread,int),'Q:T-12 AI thread number saved')
    p.locator('#message-text').type('AI 초안');p.wait_for_function('k=>localStorage.getItem(k)!==null',arg=A_PREFIX+'ai:'+str(thread),timeout=8000)
    for path,label in (('/community/','업무 홈'),('/tbox/settings','설정')):

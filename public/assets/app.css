@@ -2546,3 +2546,10 @@ body[data-project-view] #project-title { min-width: 0; overflow: hidden; text-ov
 .moa-nav:has(> .legal-links) { flex-wrap: wrap; row-gap: 2px; }
 .moa-nav > .legal-links { flex: 1 0 100%; text-align: right; }
 .sidebar > .legal-links { padding: 0 8px 8px; }
+
+/* FB-2/5: clear access labels and actual pointer targets. */
+.messenger-access-note { font-size:12px; color:var(--muted); margin-inline-start:8px; white-space:nowrap; }
+[data-messenger-open], #appbar-messenger, #messenger-window button, .moa-compose button, .moa-nav nav a { min-height:44px; }
+#appbar-messenger, #messenger-window .btn--icon { min-width:44px; }
+#messenger-window .modal__title { font-size:18px; }
+#messenger-window .moa-ai-card { box-shadow:none; }

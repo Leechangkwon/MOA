@@ -28,7 +28,7 @@
  *   · PC 도우미(내 PC 의 loopback 주소)는 `/messages` 에서만 — 이 파일에는 그 주소가 없다(member-assist.js 가 창에서는 안내만 보인다).
  *   · 역할 비교 0 — `/api/me` 의 `can_community_write`·`acting` 만 본다(근거는 서버 `Member::requireMessenger`).
  */
-import { createDrafts } from './community/drafts.js?v=3794f9453afa';
+import { createDrafts } from './community/drafts.js?v=51ba23cbf8fd';
 
 /** 창 상태 열쇠 접두 — 뒤에 진짜 사용자 아이디(`/api/me` 의 username — 역할로 보기 중에도 실제 계정) */
 const STATE_PREFIX = 'qaredi-messenger:v1:';
@@ -792,10 +792,22 @@ async function mount(options) {
     onSent(msg.peer, msg.data.digest).catch(() => null);
   }
 
+  function composerFocus() {
+    const input = $('message-text'), send = $('message-send');
+    let restore = document.activeElement === input || document.activeElement === send;
+    const moved = (event) => { if (event.target !== input && event.target !== send) restore = false; };
+    document.addEventListener('focusin', moved);
+    document.addEventListener('pointerdown', moved);
+    return (current) => {
+      document.removeEventListener('focusin', moved);
+      document.removeEventListener('pointerdown', moved);
+      if (current && restore && !input.disabled && input.getClientRects().length && !document.hidden) input.focus({ preventScroll: true });
+    };
+  }
   $('message-form').addEventListener('submit', async (e) => {
     e.preventDefault();
     if (Array.from($('message-text').value).length > 4000) { say('메시지는 4,000자까지 보낼 수 있습니다. 내용을 줄여 주세요.'); return; }
-    if (ai.active) { await ai.send(); return; }
+    if (ai.active) { const restore = composerFocus(); try { await ai.send(); } finally { restore(ai.active); } return; }
     if (!peer || !peerProfile || $('message-send').disabled || sendingPeers.has(peer)) { return; }
     const id = peer, ticket = generation, text = $('message-text').value, attachment = assist.attachment(id);
     if (!text.trim() && !attachment) { return; }
@@ -804,6 +816,7 @@ async function mount(options) {
     // 같은 글·같은 첨부를 다시 보내면 같은 request_id(서버가 한 행으로 묶는다) — 글이 바뀌었으면 새로.
     const request = draft && draft.text === text && draft.attachment_id === attachment && draft.request_id ? draft.request_id : uuid();
     store.put('message', String(id), { text, attachment_id: attachment, request_id: request });
+    const restore = composerFocus();
     sendingPeers.add(id); $('message-send').disabled = true; assist.sync();
     try {
       await call('/api/messages/' + id, 'POST', { text, attachment_id: attachment, request_id: request });
@@ -822,7 +835,7 @@ async function mount(options) {
         if (now && now.request_id === request) { store.put('message', String(id), { text: now.text, attachment_id: now.attachment_id, request_id: null }); }
       }
       if (peer === id && ticket === generation) { say(error.message); }
-    } finally { sendingPeers.delete(id); if (peer === id) { $('message-send').disabled = !peerProfile; } assist.sync(); }
+    } finally { sendingPeers.delete(id); if (peer === id) { $('message-send').disabled = !peerProfile; } assist.sync(); restore(peer === id && ticket === generation && !ai.active); }
   });
   $('message-text').addEventListener('input', () => {
     if (ai.active) { store.put('ai', String(ai.getState().thread || 0), { text: $('message-text').value }); } else { remember(); }

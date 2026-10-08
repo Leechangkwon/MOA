@@ -536,6 +536,8 @@ if ($shellMod === 'community'): ?>
         <span class="icon" data-icon="messages"></span><span>메신저</span><span class="badge badge--internal" data-message-unread hidden></span>
       </button>
     </nav>
+<?php elseif (!empty($shellUser)): ?>
+    <nav class="nav" aria-label="메신저"><a class="nav__item" href="<?= Http::url('/messages') ?>"><span class="icon" data-icon="messages"></span><span>메신저</span></a></nav>
 <?php endif; ?>
 <?php if ($shellMod === 'community'): ?>
     <!-- ─── 업무 앱의 사이드바 아래쪽 (커뮤니티 ARCHITECTURE.md 21.3 → Q:F-12 DESIGN 2.19 ④~⑧) ───────────────────

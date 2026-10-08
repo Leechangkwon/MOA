@@ -2827,3 +2827,9 @@ insta6bdbdf3 서버 검증: HTTP138·실제화면19·합성브라우저38·공�
 | 2026-10-04 | 인계 | Git2 cloud/chatgpt-remote-mcp 후보, 사용 안내·서버 수락/동시성/감사·설정·복귀 절차 준비 | `docs/chatgpt-remote-mcp.md`, `docs/work-items/chatgpt-remote-mcp.md`; 운영/현재 채팅 연결 완료를 뜻하지 않음 |
 | 2026-10-06 | 운영 완료 | PR #4 v2.49.0 302d415 기본 비활성 반영 — migration1·nginx3·HTTPS71, 독립 검토 차단·중요0 | `docs/work-items/chatgpt-remote-mcp.md`; 실제 ChatGPT·휴대폰·자기 공격 미검증 |
 | 2026-10-06 | 운영 완료 | Q:F-11 v2.50.0 03f77ac 어느 화면에서나 이어지는 메신저 — migration1(member_messages.request_id)·코드59+삭제4·nginx0·HTTPS78, 바닥·묶음 독립 검토 차단·중요0 | `docs/qf11-floating-messenger-directive.md`, 사이트 `STAGES.md`; 실물 휴대폰·자기 공격 미검증 |
+
+## 2026-10-08 사용자 피드백 개선 (FB-1~7)
+
+사용자 「좋아 진행하자」에 따라 모달 알림·제한 계정 안내·댓글 입력·메신저 초점·터치·조회 비용을 개선한다. 기획/변경/시험은 `docs/feedback-20261008.md`. 운영과 분리된 worktree에서 개발하고 합성 DB로 검증한다. 원본 스크린샷은 접근할 수 없어 해당 콘솔 오류는 미검증이다.
+
+격리 검증: social HTTP 134/0 · feedback HTTP 53/0 · feedback UI 30/0 · 공통164/0. 메신저 선택 그룹359/1의 비동기 초점 시험 타이밍 보정 후 해당 t12 재검49/0(다른 그룹 최초 통과). 합성 100만 건 단일 요청 중앙값 일반 피드7044→66ms, 발견6598→152ms. 동시 부하/원본 콘솔/실물 기기는 미검증. 최종 운영 결과는 배포 후 기록한다.
