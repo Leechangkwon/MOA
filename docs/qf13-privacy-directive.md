@@ -173,3 +173,14 @@ v2.50.1 `073ff04`(태그 `v2.50.1`, 기준 `selftest-base/qf13h`=d23db4b · 검�
               ④ 목록 밖 postgres 소유 객체(시험이 하나 만들어 둠)는 그대로 ⑤ 두 번째 적용 변화 0 · 기존 qf13_retention_http · qf13_consent_http 는 이 파일이 들어가도 통과 · lint 0 · git diff --check.
 보고 형식   : 「공통」. 확정한 값: 마이그레이션 원문 요약 · 시험 출력 원문 · 커밋 해시.
 ```
+
+## P 운영 반영 결과 (2026-10-08 16:40 KST · 메인 세션)
+
+v2.52.0 `b90a766`(태그 `v2.52.0`, 기준 운영 `83aa6ce` · 검토 `review-base/qf13p`=db4c726 · 게시 준비 `5cbd718`). 게시 전 남은 것 둘을 메인이 직접: 결정 **PT-11**(사용자 2026-10-08 「무료」) → 처리방침 제7조 「국가 · 보유·이용」과 동의 창 `Legal::AI_NOTICE` 같은 줄 · 시행일 `0000-00-00` → `2026-10-08`(목록 · 두 파일 `git mv` · 본문). 시험 고정값 하나(`qf13_retention_http` 제7조 표시 조건). 재실행 `qf13_consent` 235/0 · `qf13_retention` 169/0 · `qf13h_privacy_browser` 38/0 · `memory_ai_http` 91/0 · lint 0 · 부품 버전 0 · wiki 0.
+
+순서: 운영 DB 사본(10-08 pg_dump) 마이그레이션 2회 점검 통과 → 암호화 백업 `/var/backups/tbox-v2/qf13-privacy-20261008`(복호화 검증) → `deploy.py --plan`(73파일 모의 적용) → `--apply`: owner_fix(postgres) → user_consents · privacy_retention(tbox_owner) → ff-merge · php-fpm reload · cron·logrotate 설치 → 보존 확인 → 운영 확인 **41/0**(`~/qaredi-qf13p-results-20261007/post/`).
+
+반영 스크립트 고침 둘(둘 다 운영 변경 전에 멈춤): ① 계획 비교 튜플/리스트 ② 소유자·권한 보존 비교를 owner_fix 를 감안한 정규화로(옛 부분집합 비교는 소유자가 바뀌면 반드시 실패 — Q:F-12 반영 때 마지막 보고 줄이 실패했던 것과 같은 종류).
+
+남은 것: 04:40 cron 첫 실제 실행(감사 `privacy.purge`·`account.purge` 로 확인) · 관문 ③(사용자) · 기존 회원은 다음 요청 때 동의 화면으로 간다.
+
