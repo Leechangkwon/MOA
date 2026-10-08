@@ -218,8 +218,8 @@ try:
           'LOGROTATE copy of the shipped file parses (logrotate -d, temp paths): 1096 rotations, no error')
     r = tb('GET', '/privacy', html=True)
     check(r.status_code == 200 and '다른 법령이 보존을 요구하는 경우에는 그 법령이 정한 기간 동안 다른 정보와 분리해 보관합니다.' in r.text
-          and '[법령에 따라' not in r.text and r.text.count('— 확인]') == 2,
-          'P2-e privacy 제4조 sentence replaced; the two 제7조 [… — 확인] markers untouched')
+          and '[법령에 따라' not in r.text and '— 확인]' not in r.text and 'Gemini API 무료 등급을 씁니다' in r.text,
+          'P2-e privacy 제4조 sentence replaced; 제7조 published per PT-11 (free tier, no [… — 확인] markers)')
 
     # ═════════ P2-a 배경 요청은 동의 관문 감사 없이 403 ═════════
     make_user('noconsent', 'qf13r_noconsent', consents=())

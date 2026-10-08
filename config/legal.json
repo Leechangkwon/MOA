@@ -1,9 +1,9 @@
 {
   "privacy": [
-    {"version": "0000-00-00", "file": "privacy-0000-00-00.html"}
+    {"version": "2026-10-08", "file": "privacy-2026-10-08.html"}
   ],
   "terms": [
-    {"version": "0000-00-00", "file": "terms-0000-00-00.html"}
+    {"version": "2026-10-08", "file": "terms-2026-10-08.html"}
   ],
-  "ai_overseas": {"version": "0000-00-00"}
+  "ai_overseas": {"version": "2026-10-08"}
 }
