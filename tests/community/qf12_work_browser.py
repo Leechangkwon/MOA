@@ -13,6 +13,10 @@
   D-2 더해서           내 작업 그 자리 추가 → 「내 할 일」 생성 · 목록 반영 / 담당 바꾸기 — 후보는 창구 결과만(화면 = 창구 답) /
                        포트폴리오 숨은 프로젝트 줄 0(화면에서도 · 제목 · id 0) / `/community/` = 업무 홈 · `#overview-*` 0 · overview_page.php 0
   ui_snapshot          scripts/ui_snapshot.py(AUDIT_JS) 를 이 인스턴스에서 1440 · 1280 — 화면마다 결함 수(기준 판과 대조는 결과 폴더 두 벌로)
+  U1(사용감 라운드)    「바꾸기」 열자마자 후보 = 창구 빈 q 답 · 나뿐이면 안내 / 설명 누르면 편집(링크 · 글자 고르기는 제외 · Tab+Enter · 「편집 마침」 뒤 다시) /
+                       하위 작업 제목 그 자리 고치기(Enter = 서버 값 · Esc · 빈 값 · 떠나면 저장) · › 열기 · 「＋ 하위 작업 추가」 / 보기 공유 · 손님 고치기 0 /
+                       새 프로젝트 창 첫 값 = 팀 공간 · 팀 없는 계정 = 내 공간 하나 / 360 · 412(터치) · 820 · 1199 · 1280 · 1440 × 밝게 · 어둡게 · 고대비
+                       (넘침 0 · 콘솔 0 · 누름 자리 44 · 인라인 style 0) — 묶음 이름 u1 (QF12D_ONLY=u1)
 """
 from pathlib import Path
 exec(compile(Path(__file__).with_name('memories_http.py').read_text().split('try:\n for u in users:')[0], __file__, 'exec'))
@@ -423,13 +427,24 @@ try:
                     p.screenshot(path=str(shots / 'debug-assign.png'))
                     metrics['debug_assign'] = {'pane': p.locator('#task-pane').inner_text()[:600], 'console': code_console(t.console)[:5], 'errors': t.errors[:5]}
                 p.wait_for_selector('#task-pane #task-assign summary', timeout=5000)
-                p.locator('#task-assign summary').click()
+                # U1-a — 「바꾸기」를 열자마자(입력 없이) 빈 q 로 부르고 그 답을 그린다(화면 = 창구 빈 q 답). 이 답이 다 그려진 뒤에 입력 단언으로 간다
+                api0 = call('GET', '/api/pages/' + rows[2]['id'] + '/assignee-candidates?q=', user='employee')
+                want0 = [c['username'] for c in api0['candidates']]
+                with p.expect_response(lambda r: '/assignee-candidates' in r.url) as first_resp:
+                    p.locator('#task-assign summary').click()
+                check(urlsplit(first_resp.value.url).query == 'q=' and first_resp.value.status == 200, 'U1-a opening 「바꾸기」 calls the candidates API with an empty q (no typing)')
+                until(p, "() => document.querySelectorAll('#task-assign [data-candidate]').length > 0", 8000)
+                shown0 = p.evaluate("[...document.querySelectorAll('#task-assign [data-candidate]')].map(b => b.getAttribute('data-candidate'))")
+                metrics['assign_open_empty_q'] = {'api': want0, 'ui': shown0}
+                check(shown0 == want0 and want0[:1] == [users['employee']['username']] and len(want0) >= 2,
+                      'U1-a candidates right after opening == API empty-q answer · me first ' + json.dumps(shown0))
+                check(p.locator('#task-assign p.help', has_text='이 작업을 고칠 수 있는 사람이 나뿐이에요.').is_hidden(), 'U1-a team task with other candidates: 「나뿐이에요」 help hidden')
                 for q, label in ((users['manager']['username'], 'team member'), (users['other']['username'], 'other team (cannot edit)'), ('claude_', 'prefix')):
                     api_ = call('GET', '/api/pages/' + rows[2]['id'] + '/assignee-candidates?q=' + q, user='employee')
                     want_names = [c['username'] for c in api_['candidates']]
                     box = p.locator('#task-assign input[type="search"]')
                     box.fill(q)
-                    with p.expect_response(lambda r: '/assignee-candidates' in r.url):
+                    with p.expect_response(lambda r, q=q: '/assignee-candidates?q=' + q in r.url):
                         box.press('Enter')
                     p.wait_for_timeout(250)
                     shown = p.evaluate("[...document.querySelectorAll('#task-assign [data-candidate]')].map(b => b.getAttribute('data-candidate'))")
@@ -670,6 +685,369 @@ try:
                 for path, c in counts.items():
                     work_defects = [x for k, v in c.items() if isinstance(v, list) for x in v if any(w in x for w in ('task-', 'work-', 'project-', 'portfolio', 'progress', 'status-dot', 'nav-work'))]
                     check(not work_defects and not c.get('overflow_x') and not c.get('console_errors'), 'ui_snapshot %d %s: work screens add 0 defects · overflow 0 · console 0 %s' % (width, path, json.dumps(work_defects, ensure_ascii=False)))
+        # ─── 사용감 라운드 U1(2026-10-08 — 기획 work-ux-plan.md 13장 · DESIGN 2.21 「담당 고르기」 · 「누르면 편집」 · 2.18 「새 프로젝트 창」) ─────
+        #   U1-a 열자마자 후보(화면 = 창구 빈 q 답 · 나뿐이면 안내) · U1-b 설명 누르면 편집(링크는 제 동작 · Tab+Enter · 「편집 마침」 뒤 다시 누름 자리) ·
+        #   U1-c 하위 작업 제목 그 자리 고치기(Enter 저장 = 서버 값 · Esc 되돌림 · 빈 값 저장 0 · 떠나면 저장) · › 열기 · 「＋ 하위 작업 추가」 ·
+        #   읽는 사람(보기 공유 · 손님) 고치기 0 · U1-d 새 프로젝트 창 첫 값 = 팀 공간 / 팀 없는 계정 = 내 공간 하나 ·
+        #   폭 여섯 × 밝게 · 어둡게 · 고대비 넘침 0 · 콘솔 0 · 누름 자리 44(폰 · 터치) · 인라인 style 0. 다른 묶음 뒤에 돈다(합성 준비를 따로 만든다).
+        if want('u1'):
+            pu1 = call('POST', '/api/pages', {'database': True, 'preset': 'project', 'title': 'U1 팀 프로젝트', 'space_id': team['id']}, user='manager', expected=201)['page']
+            u1task = call('POST', '/api/pages', {'parent_id': pu1['id'], 'title': 'U1 작업', 'properties': {'section': '01. 진행'}}, user='manager', expected=201)['page']
+            call('PATCH', '/api/pages/' + u1task['id'] + '/properties', {'status': 'todo'}, user='manager')
+            gdoc = call('GET', '/api/pages/' + u1task['id'], user='manager')
+            u1doc = {'schema': 1, 'blocks': [
+                {'id': str(uuid.uuid4()), 'type': 'paragraph', 'text': [{'t': 'U1 설명 첫 문단 — 여기를 누르면 그 자리에서 고친다', 'm': {}}]},
+                {'id': str(uuid.uuid4()), 'type': 'paragraph', 'text': [{'t': '참고 ', 'm': {}}, {'t': 'U1 링크', 'm': {'link': {'href': 'https://example.com/u1'}}}]}]}
+            call('PATCH', '/api/pages/' + u1task['id'], {'doc_version': gdoc['page']['doc_version'], 'doc': u1doc}, user='manager')
+            u1subs = []
+            for title in ('U1 하위 하나', 'U1 하위 둘 — 아주 긴 하위 작업 제목이 한 줄에서 말줄임으로 끝나는지 폭마다 보는 합성 제목입니다 가나다라마바사아자차카타파하'):
+                r = call('POST', '/api/pages', {'parent_id': u1task['id'], 'title': title}, user='manager', expected=201)['page']
+                call('PATCH', '/api/pages/' + r['id'] + '/properties', {'status': 'todo'}, user='manager')
+                u1subs.append(r)
+            # 비공개 프로젝트(직원 소유 · 공유 0) — 고칠 수 있는 사람 = 나뿐
+            pu1p = call('POST', '/api/pages', {'database': True, 'preset': 'project', 'title': 'U1 비공개 프로젝트'}, user='employee', expected=201)['page']
+            u1priv = call('POST', '/api/pages', {'parent_id': pu1p['id'], 'title': 'U1 비공개 작업', 'properties': {'section': '01. 진행'}}, user='employee', expected=201)['page']
+            # 보기 공유 프로젝트(ppriv)의 작업 prow 아래 하위 작업 하나 — 읽는 사람 문맥에서 제목이 글자 · › 만
+            u1rsub = call('POST', '/api/pages', {'parent_id': prow['id'], 'title': 'U1 공유 하위'}, user='employee', expected=201)['page']
+            call('PATCH', '/api/pages/' + u1rsub['id'] + '/properties', {'status': 'todo'}, user='employee')
+            SOLO = '이 작업을 고칠 수 있는 사람이 나뿐이에요. 「공유」에서 편집 권한을 주거나 팀 공간 프로젝트에 두면 맡길 수 있어요.'
+            NEWP_HELP = ('팀 공간에 만들면 팀원이 보고 맡을 수 있어요. 내 공간에 만들면 나만 보고 나만 맡을 수 있어요. '
+                         '섹션(00. 준비 · 01. 진행 · 02. 마무리)과 목록 · 보드 · 타임라인 · 달력 보기가 함께 만들어져요.')
+            DOC_STATE = """() => { const d = document.querySelector('#task-pane .task-pane__doc');
+                return d ? {editable: d.classList.contains('task-pane__doc--editable'), tabindex: d.getAttribute('tabindex'), label: d.getAttribute('aria-label'),
+                            role: d.getAttribute('role'), editors: d.querySelectorAll('[contenteditable="true"]').length,
+                            active: document.activeElement === d} : null; }"""
+            sub_row = lambda pg, sid: pg.locator('#task-pane .task-row[data-task="' + sid + '"]')
+            subs_ready = "() => document.querySelectorAll('#task-pane .task-row button.task-row__title').length >= 2"
+
+            def open_u1(t, path, ready=subs_ready):
+                t.go(path)
+                t.page.wait_for_selector('#task-pane:not([hidden]) #task-pane-title', timeout=15000)
+                if ready:
+                    until(t.page, ready, 10000)
+                t.page.wait_for_timeout(200)
+
+            def end_edit(p):
+                p.locator('#task-pane .task-pane__section-head button', has_text='편집 마침').click()
+                until(p, "() => { const d = document.querySelector('#task-pane .task-pane__doc'); return d && d.classList.contains('task-pane__doc--editable'); }", 8000)
+
+            def u1_functional():
+                ctx = context('employee', 1440)
+                t = Tab(ctx)
+                p = t.page
+                patch_sub = []
+                p.on('request', lambda rq: patch_sub.append(rq.url) if rq.method == 'PATCH' and '/api/pages/' in rq.url and not rq.url.endswith('/properties') else None)
+                open_u1(t, '/community/p/' + pu1['id'] + '?task=' + u1task['id'])
+                # ── U1-b 설명 ──
+                st = p.evaluate(DOC_STATE)
+                metrics['u1_doc_initial'] = st
+                check(st['editable'] and st['tabindex'] == '0' and st['label'] == '설명 — Enter 로 고치기' and st['editors'] == 0,
+                      'U1-b can_edit: description is a press target (.task-pane__doc--editable · tabindex 0 · aria-label 「설명 — Enter 로 고치기」)')
+                p.screenshot(path=str(shots / 'u1-desc-before-1440.png'), caret='initial')
+                p.locator('#task-pane .task-pane__doc p', has_text='U1 설명 첫 문단').first.hover()
+                p.wait_for_timeout(150)
+                hov = p.evaluate("() => { const d = document.querySelector('#task-pane .task-pane__doc'); const s = getComputedStyle(d); return {hover: d.matches(':hover'), cursor: s.cursor, bg: s.backgroundColor !== 'rgba(0, 0, 0, 0)', shadow: s.boxShadow !== 'none'}; }")
+                metrics['u1_doc_hover'] = hov
+                check(hov['hover'] and hov['cursor'] == 'text' and hov['bg'] and hov['shadow'], 'U1-b hover on the editable description: cursor text · background (--surface-2) on')
+                p.screenshot(path=str(shots / 'u1-desc-hover-1440.png'), caret='initial')
+                # 설명 안 링크 — 제 동작(새 창은 시험이 막는다) · 편집기는 열리지 않는다
+                p.evaluate("() => document.addEventListener('click', (e) => { if (e.target instanceof Element && e.target.closest('#task-pane .task-pane__doc a')) { e.preventDefault(); } }, true)")
+                p.locator('#task-pane .task-pane__doc a', has_text='U1 링크').click()
+                p.wait_for_timeout(400)
+                st = p.evaluate(DOC_STATE)
+                check(st['editors'] == 0 and st['editable'], 'U1-b clicking a link inside the description does not open the editor')
+                # 끌어서 글자를 고른 뒤의 누름 — 편집으로 들어가지 않는다
+                para = p.locator('#task-pane .task-pane__doc p', has_text='U1 설명 첫 문단').first
+                box = para.bounding_box()
+                p.mouse.move(box['x'] + 4, box['y'] + box['height'] / 2)
+                p.mouse.down()
+                p.mouse.move(box['x'] + min(box['width'] - 4, 220), box['y'] + box['height'] / 2, steps=8)
+                p.mouse.up()
+                p.wait_for_timeout(300)
+                sel_len = p.evaluate('String(window.getSelection()).length')
+                st = p.evaluate(DOC_STATE)
+                check(sel_len > 0 and st['editors'] == 0, 'U1-b drag-select text then release → no editor (selection kept, %d chars)' % sel_len)
+                p.evaluate('window.getSelection().removeAllRanges()')
+                # 누름 → 칸 안 편집기
+                para.click()
+                until(p, "() => document.querySelectorAll('#task-pane .task-pane__doc [contenteditable=\"true\"]').length === 1", 8000)
+                st = p.evaluate(DOC_STATE)
+                metrics['u1_doc_editing'] = st
+                check(st['editors'] == 1 and not st['editable'] and st['tabindex'] is None and st['label'] is None,
+                      'U1-b click description → editor element inside the pane · editable class/tabindex removed while editing')
+                check(p.locator('#task-pane .task-pane__section-head button', has_text='편집 마침').count() == 1, 'U1-b editing shows 「편집 마침」')
+                p.screenshot(path=str(shots / 'u1-desc-editing-1440.png'), caret='initial')
+                end_edit(p)
+                st = p.evaluate(DOC_STATE)
+                check(st['editable'] and st['tabindex'] == '0' and st['editors'] == 0, 'U1-b after 「편집 마침」 the description is a press target again')
+                p.screenshot(path=str(shots / 'u1-desc-after-1440.png'), caret='initial')
+                # 키보드 — 상태 고르개에서 Tab 한 번 → 설명 칸 → Enter → 편집기
+                p.locator('#task-pane select[aria-label="상태"]').focus()
+                p.keyboard.press('Tab')
+                st = p.evaluate(DOC_STATE)
+                check(st['active'], 'U1-b keyboard: Tab from the status select reaches the description box')
+                p.keyboard.press('Enter')
+                until(p, "() => document.querySelectorAll('#task-pane .task-pane__doc [contenteditable=\"true\"]').length === 1", 8000)
+                check(True, 'U1-b keyboard: Enter on the description box → editor')
+                end_edit(p)
+                # 더보기 「본문 고치기」도 같은 일
+                p.locator('#task-pane .task-pane__tools details.menu > summary').click()
+                p.locator('#task-pane .menu__item', has_text='본문 고치기').click()
+                until(p, "() => document.querySelectorAll('#task-pane .task-pane__doc [contenteditable=\"true\"]').length === 1", 8000)
+                check(p.evaluate(DOC_STATE)['editable'] is False, 'U1-b more › 「본문 고치기」 opens the same pane editor')
+                end_edit(p)
+                # ── U1-c 하위 작업 ──
+                s0, s1 = u1subs
+                r0 = sub_row(p, s0['id'])
+                check(r0.locator('button.task-row__title').count() == 1 and r0.locator('button.task-row__title').get_attribute('type') == 'button'
+                      and r0.locator('a.btn--icon[aria-label="하위 작업 열기"]').count() == 1, 'U1-c editable subtask row: title is button[type=button] · › is a.btn--icon 「하위 작업 열기」')
+                # Tab 순서: 완료 원 → 제목 → ›
+                r0.locator('.task-check').focus()
+                p.keyboard.press('Tab')
+                a1 = p.evaluate("() => document.activeElement && document.activeElement.matches('#task-pane .task-row button.task-row__title')")
+                p.keyboard.press('Tab')
+                a2 = p.evaluate("() => document.activeElement && document.activeElement.matches('#task-pane .task-row a[aria-label=\"하위 작업 열기\"]')")
+                check(a1 and a2, 'U1-c tab order in a subtask row: check → title → ›')
+                # 키보드 Enter 로도 같은 그 자리 입력(저장 없이 열리기만) → Esc
+                n_before_key = len(patch_sub)
+                p.keyboard.press('Shift+Tab')
+                p.keyboard.press('Enter')
+                p.wait_for_timeout(200)
+                kin = r0.locator('input.task-add__input')
+                check(kin.count() == 1 and kin.input_value() == 'U1 하위 하나' and len(patch_sub) == n_before_key,
+                      'U1-c keyboard Enter on the title button → the same in-place input (no save yet)')
+                kin.press('Escape')
+                p.wait_for_timeout(200)
+                # 누름 → 입력 → 새 제목 Enter → 서버 값
+                r0.locator('button.task-row__title').click()
+                inp = r0.locator('input.task-add__input')
+                check(inp.count() == 1 and p.evaluate("() => document.activeElement && document.activeElement.matches('#task-pane .task-row input.task-add__input')")
+                      and inp.input_value() == 'U1 하위 하나' and inp.get_attribute('maxlength') == '200',
+                      'U1-c click title → in-place input (.task-add__input · focused · current title · maxLength 200)')
+                p.screenshot(path=str(shots / 'u1-subtitle-input-1440.png'), caret='initial')
+                inp.fill('U1 하위 하나 고침')
+                with p.expect_response(lambda r: r.url.endswith('/api/pages/' + s0['id']) and r.request.method == 'PATCH') as resp:
+                    inp.press('Enter')
+                check(resp.value.status == 200, 'U1-c Enter → PATCH /api/pages/{subtask} {doc_version,title} 200')
+                check(call('GET', '/api/pages/' + s0['id'], user='employee')['page']['title'] == 'U1 하위 하나 고침', 'U1-c server value changed (API GET title)')
+                until(p, "() => { const b = document.querySelector('#task-pane .task-row[data-task=\"" + s0['id'] + "\"] button.task-row__title'); return b && b.textContent === 'U1 하위 하나 고침'; }", 8000)
+                check(True, 'U1-c pane redrawn with the new subtask title')
+                # Esc → 옛 제목 · 저장 0
+                n_patch = len(patch_sub)
+                r0 = sub_row(p, s0['id'])
+                r0.locator('button.task-row__title').click()
+                r0.locator('input.task-add__input').fill('U1 버릴 제목')
+                r0.locator('input.task-add__input').press('Escape')
+                p.wait_for_timeout(300)
+                check(r0.locator('input.task-add__input').count() == 0 and r0.locator('button.task-row__title').inner_text() == 'U1 하위 하나 고침'
+                      and len(patch_sub) == n_patch and call('GET', '/api/pages/' + s0['id'], user='employee')['page']['title'] == 'U1 하위 하나 고침',
+                      'U1-c Esc → old title back · no save request · server unchanged')
+                check(p.evaluate("() => document.activeElement && document.activeElement.matches('#task-pane .task-row button.task-row__title')"), 'U1-c after Esc focus returns to the title button')
+                # 빈 값 Enter → 저장 0 · 되돌림
+                r0.locator('button.task-row__title').click()
+                r0.locator('input.task-add__input').fill('   ')
+                r0.locator('input.task-add__input').press('Enter')
+                p.wait_for_timeout(300)
+                check(r0.locator('button.task-row__title').inner_text() == 'U1 하위 하나 고침' and len(patch_sub) == n_patch, 'U1-c empty title + Enter → no save · old title back')
+                # 같은 값 Enter → 저장 0
+                r0.locator('button.task-row__title').click()
+                r0.locator('input.task-add__input').press('Enter')
+                p.wait_for_timeout(300)
+                check(len(patch_sub) == n_patch, 'U1-c same title + Enter → no save request')
+                # 칸을 떠나면 저장(blur)
+                r0.locator('button.task-row__title').click()
+                r0.locator('input.task-add__input').fill('U1 떠나면 저장')
+                with p.expect_response(lambda r: r.url.endswith('/api/pages/' + s0['id']) and r.request.method == 'PATCH') as resp:
+                    p.locator('#task-pane .task-pane__note').click()
+                check(resp.value.status == 200 and call('GET', '/api/pages/' + s0['id'], user='employee')['page']['title'] == 'U1 떠나면 저장', 'U1-c leaving the input (blur) saves (server value)')
+                until(p, "() => { const b = document.querySelector('#task-pane .task-row[data-task=\"" + s0['id'] + "\"] button.task-row__title'); return b && b.textContent === 'U1 떠나면 저장'; }", 8000)
+                # 프로젝트 목록 줄은 그대로(하위 작업 제목이 단추가 아니다 — kind 'pane' 만)
+                check(p.locator('#project-list button.task-row__title').count() == 0, 'U1-c project list rows unchanged (no title buttons outside the pane)')
+                # › → 그 하위 작업이 칸에 열리고 주소 ?task=
+                go = sub_row(p, s1['id']).locator('a[aria-label="하위 작업 열기"]')
+                check((go.get_attribute('href') or '').endswith('?task=' + s1['id']), 'U1-c › href = pane address ?task={subtask}')
+                go.click()
+                until(p, "() => { const h = document.getElementById('task-pane-title'); return h && h.textContent.startsWith('U1 하위 둘'); }", 10000)
+                check(parse_qs(p.evaluate('location.search').lstrip('?')).get('task') == [s1['id']], 'U1-c › opens the subtask in the pane · ?task={subtask}')
+                p.go_back()
+                until(p, "() => { const h = document.getElementById('task-pane-title'); return h && h.textContent === 'U1 작업'; }", 10000)
+                until(p, subs_ready, 10000)
+                # 「＋ 하위 작업 추가」 → 입력 → Enter → 하나 늘어남
+                before = len(call('GET', '/api/pages/' + u1task['id'], user='employee')['children'])
+                add = p.locator('#task-pane .task-pane__section > button', has_text='＋ 하위 작업 추가')
+                check(add.count() == 1 and 'btn--quiet' in (add.get_attribute('class') or '') and 'btn--small' in (add.get_attribute('class') or ''), 'U1-c list end has button.btn--quiet.btn--small 「＋ 하위 작업 추가」')
+                add.click()
+                ainp = p.locator('#task-pane .task-add > input.task-add__input')
+                check(ainp.count() == 1 and add.is_hidden(), 'U1-c 「＋ 하위 작업 추가」 → in-place add line (button hidden while adding)')
+                ainp.fill('U1 새 하위')
+                with p.expect_response(lambda r: r.url.endswith('/community/api/pages') and r.request.method == 'POST') as resp:
+                    ainp.press('Enter')
+                check(resp.value.status == 201, 'U1-c add line Enter → POST /api/pages 201')
+                until(p, "() => [...document.querySelectorAll('#task-pane .task-row .task-row__title')].some(e => e.textContent === 'U1 새 하위')", 10000)
+                after = len(call('GET', '/api/pages/' + u1task['id'], user='employee')['children'])
+                check(after == before + 1, 'U1-c one more subtask (API children %d → %d)' % (before, after))
+                check(t.clean('u1-functional'), 'U1 functional 1440 console 0 · page errors 0 · 5xx 0')
+                ctx.close()
+
+            def u1_assign_solo():
+                for width, touch in ((1440, False), (412, True)):
+                    ctx = context('employee', width, 900 if width > 800 else 915, touch=touch)
+                    t = Tab(ctx)
+                    p = t.page
+                    open_u1(t, '/community/p/' + pu1p['id'] + '?task=' + u1priv['id'], ready=None)
+                    want_ = [c['username'] for c in call('GET', '/api/pages/' + u1priv['id'] + '/assignee-candidates?q=', user='employee')['candidates']]
+                    p.locator('#task-assign summary').click()
+                    until(p, "() => document.querySelectorAll('#task-assign [data-candidate]').length > 0", 8000)
+                    shown = p.evaluate("[...document.querySelectorAll('#task-assign [data-candidate]')].map(b => b.getAttribute('data-candidate'))")
+                    solo = p.locator('#task-assign p.help', has_text=SOLO)
+                    check(shown == want_ == [users['employee']['username']] and solo.count() == 1 and solo.is_visible(),
+                          'U1-a %d private task (owner only): candidates == API == [me] · help 「나뿐이에요 …」 shown' % width)
+                    check(p.locator('#task-assign p.help', has_text='이 작업을 고칠 수 있는 사람만 나와요.').is_visible(), 'U1-a %d existing hint 「이 작업을 고칠 수 있는 사람만 나와요.」 kept' % width)
+                    rect = p.evaluate("() => { const r = document.querySelector('#task-assign .menu__list').getBoundingClientRect(); return [Math.round(r.left), Math.round(r.right), Math.round(r.width), innerWidth]; }")
+                    metrics['u1_assign_menu_%d' % width] = rect
+                    check(rect[0] >= 0 and rect[1] <= rect[3], 'U1-a %d candidate menu inside the viewport %s' % (width, json.dumps(rect)))
+                    p.screenshot(path=str(shots / ('u1-assign-solo-%d.png' % width)), caret='initial')
+                    # 입력하면 좁힘 — 빈 검색어가 아니면 안내 없음
+                    q = p.locator('#task-assign input[type="search"]')
+                    q.fill('zzz')
+                    with p.expect_response(lambda r: '/assignee-candidates?q=zzz' in r.url):
+                        q.press('Enter')
+                    p.wait_for_timeout(250)
+                    check(solo.is_hidden() and p.locator('#task-assign [data-candidate]').count() == 0, 'U1-a %d typed query narrows · solo help only for the empty query' % width)
+                    check(t.clean('u1-solo-%d' % width), 'U1-a %d console 0' % width)
+                    ctx.close()
+
+            def u1_readers():
+                for key in ('other', 'guest'):
+                    ctx = context(key, 1440)
+                    t = Tab(ctx)
+                    p = t.page
+                    open_u1(t, '/community/p/' + ppriv['id'] + '?task=' + prow['id'], ready="() => document.querySelectorAll('#task-pane a[aria-label=\"하위 작업 열기\"]').length >= 1")
+                    w = p.evaluate("""() => { const pane = document.getElementById('task-pane');
+                        return {editable: pane.querySelectorAll('.task-pane__doc--editable, .task-pane__doc[tabindex]').length,
+                                titleButtons: pane.querySelectorAll('button.task-row__title').length,
+                                titleSpans: pane.querySelectorAll('span.task-row__title').length,
+                                add: [...pane.querySelectorAll('button')].filter(b => b.textContent.includes('하위 작업 추가')).length,
+                                open: pane.querySelectorAll('a.btn--icon[aria-label="하위 작업 열기"]').length}; }""")
+                    metrics['u1_reader_' + key] = w
+                    check(w['editable'] == 0 and w['titleButtons'] == 0 and w['add'] == 0 and w['titleSpans'] >= 1 and w['open'] >= 1,
+                          'U1 ' + key + ' (view share): description editable 0 · subtask title button 0 · 「＋ 하위 작업 추가」 0 (title is text · › only) ' + json.dumps(w, ensure_ascii=False))
+                    p.locator('#task-pane .task-pane__doc').click()
+                    p.wait_for_timeout(300)
+                    check(p.locator('#task-pane [contenteditable="true"]').count() == 0, 'U1 ' + key + ': clicking the description opens no editor')
+                    check(t.clean('u1-reader-' + key), 'U1 ' + key + ' console 0')
+                    ctx.close()
+
+            def new_project_state(p):
+                p.evaluate("() => document.getElementById('nav-new-project').click()")
+                p.wait_for_selector('#work-new-project-dialog[open]', timeout=5000)
+                until(p, "() => document.querySelectorAll('#work-new-project-dialog select option').length > 0", 8000)
+                return p.evaluate("""() => { const sel = document.querySelector('#work-new-project-dialog select');
+                    return {options: [...sel.options].map(o => [o.textContent, o.value]), value: sel.value,
+                            help: [...document.querySelectorAll('#work-new-project-dialog .help')].map(h => h.textContent)}; }""")
+
+            def u1_new_project():
+                ctx = context('employee', 1440)
+                t = Tab(ctx)
+                p = t.page
+                t.go('/community/my-tasks')
+                st = new_project_state(p)
+                metrics['u1_new_project_employee'] = st
+                check(st['options'] == [[team['name'] + ' (팀 공간)', str(team['id'])], ['내 공간', st['options'][-1][1]]] and st['value'] == str(team['id']),
+                      'U1-d new project (team account): team space first and selected · 내 공간 last ' + json.dumps(st['options'], ensure_ascii=False))
+                check(st['help'] == [NEWP_HELP], 'U1-d help: team/my space sentence first, then sections · views (old 「개인 공간에 만들면 처음에는 나만 봐요.」 gone)')
+                p.screenshot(path=str(shots / 'u1-new-project-1440.png'), caret='initial')
+                check(t.clean('u1-newp-employee'), 'U1-d employee console 0')
+                ctx.close()
+                old_team = sql('SELECT team_id FROM users WHERE id=' + str(oth))
+                sql('UPDATE users SET team_id=NULL WHERE id=' + str(oth))
+                try:
+                    ctx = context('other', 1440)
+                    t = Tab(ctx)
+                    p = t.page
+                    t.go('/community/my-tasks')
+                    st = new_project_state(p)
+                    metrics['u1_new_project_noteam'] = st
+                    check([o[0] for o in st['options']] == ['내 공간'] and st['value'] == st['options'][0][1], 'U1-d account without a team space: one option 「내 공간」 (selected)')
+                    check(t.clean('u1-newp-noteam'), 'U1-d no-team console 0')
+                    ctx.close()
+                finally:
+                    sql('UPDATE users SET team_id=' + old_team + ' WHERE id=' + str(oth))
+
+            # 상세 칸이 스스로 스크롤하는 폭(≥1200 — overflow-y auto)에서만 칸 안의 가로 넘침을 잰다. 그보다 좁으면 칸은 흐름 안이라 문서 넘침(AUDIT_JS)이 그 값이다
+            #   (좁은 폭 터치 자리 ::before 가 칸 오른쪽 끝 아이콘 단추에서 6px 나가지만 .main 안쪽 여백 안 — 문서 넘침 0)
+            PANE_OVER = "() => { const p = document.getElementById('task-pane'); if (!p || getComputedStyle(p).overflowX === 'visible') { return 0; } return p.scrollWidth - p.clientWidth; }"
+
+            def u1_matrix():
+                widths = [(360, False), (412, True), (820, False), (1199, False), (1280, False), (1440, False)]
+                summary = {}
+                for mode in ('light', 'dark', 'hc'):
+                    sql('UPDATE users SET high_contrast=' + ('true' if mode == 'hc' else 'false') + ' WHERE id=' + str(emp))
+                    for width, touch in widths:
+                        tag = '%d%s-%s' % (width, 't' if touch else '', mode)
+                        shoot = mode == 'light' and (width, touch) in ((1440, False), (412, True))
+                        ctx = context('employee', width, 900 if width > 800 else 915, touch=touch, extra={'tbox_theme': 'dark' if mode == 'dark' else 'light'})
+                        t = Tab(ctx)
+                        p = t.page
+
+                        def audit(state):
+                            a = p.evaluate(AUDIT_JS, touch or width < 720)
+                            inner = p.evaluate(PANE_OVER)
+                            summary[tag + '-' + state] = {'overflow': a['overflow'], 'pane': inner, 'small': a['smallCount'], 'inline': a['inlineStyle']}
+                            check(a['overflow'] <= 0 and inner <= 0, 'U1 %s %s horizontal overflow 0 (page %d · pane %d)' % (tag, state, a['overflow'], inner))
+                            if touch or width < 720:
+                                check(a['smallCount'] == 0, 'U1 %s %s tap targets ≥ 44 (%d small: %s)' % (tag, state, a['smallCount'], json.dumps(a['small'], ensure_ascii=False)))
+                            check(a['inlineStyle'] == 0, 'U1 %s %s inline style attributes 0' % (tag, state))
+
+                        def one():
+                            open_u1(t, '/community/p/' + pu1['id'] + '?task=' + u1task['id'])
+                            audit('pane')
+                            if shoot:
+                                p.locator('#task-pane .task-pane__doc').scroll_into_view_if_needed()
+                                p.screenshot(path=str(shots / ('u1-desc-before-%d.png' % width)), caret='initial')
+                            p.locator('#task-pane .task-pane__doc p').first.click()
+                            until(p, "() => document.querySelectorAll('#task-pane .task-pane__doc [contenteditable=\"true\"]').length === 1", 8000)
+                            audit('desc-edit')
+                            if shoot:
+                                p.screenshot(path=str(shots / ('u1-desc-editing-%d.png' % width)), caret='initial')
+                            end_edit(p)
+                            row = p.locator('#task-pane .task-row button.task-row__title').last
+                            row.scroll_into_view_if_needed()
+                            row.click()
+                            p.wait_for_selector('#task-pane .task-row input.task-add__input', timeout=5000)
+                            audit('sub-input')
+                            if shoot:
+                                p.screenshot(path=str(shots / ('u1-subtitle-input-%d.png' % width)), caret='initial')
+                            p.keyboard.press('Escape')
+                            p.locator('#task-assign summary').scroll_into_view_if_needed()
+                            p.locator('#task-assign summary').click()
+                            until(p, "() => document.querySelectorAll('#task-assign [data-candidate]').length > 0", 8000)
+                            audit('assign-open')
+                            rect = p.evaluate("() => { const r = document.querySelector('#task-assign .menu__list').getBoundingClientRect(); return [r.left, r.right, innerWidth]; }")
+                            check(rect[0] >= 0 and rect[1] <= rect[2], 'U1 %s candidate menu inside the viewport' % tag)
+                            if shoot:
+                                p.screenshot(path=str(shots / ('u1-assign-open-%d.png' % width)), caret='initial')
+                            p.keyboard.press('Escape')
+                            st = new_project_state(p)
+                            check(st['value'] == str(team['id']), 'U1 %s new project first value = team space' % tag)
+                            d = p.evaluate("() => { const d = document.getElementById('work-new-project-dialog'); const r = d.getBoundingClientRect(); return {l: r.left, r: r.right, vw: innerWidth, sw: d.scrollWidth - d.clientWidth, inline: document.querySelectorAll('[style]:not(.progress)').length, doc: document.documentElement.scrollWidth - innerWidth}; }")
+                            summary[tag + '-new-project'] = d
+                            check(d['l'] >= 0 and d['r'] <= d['vw'] and d['sw'] <= 0 and d['doc'] <= 0 and d['inline'] == 0, 'U1 %s new project dialog inside the viewport · overflow 0 · inline style 0 %s' % (tag, json.dumps(d)))
+                            if shoot:
+                                p.screenshot(path=str(shots / ('u1-new-project-%d.png' % width)), caret='initial')
+                            p.keyboard.press('Escape')
+                        guard('U1 matrix ' + tag, one)
+                        check(t.clean('u1-' + tag), 'U1 %s console 0 · page errors 0 · 5xx 0' % tag)
+                        ctx.close()
+                sql('UPDATE users SET high_contrast=false WHERE id=' + str(emp))
+                metrics['u1_matrix'] = summary
+
+            guard('U1 functional', u1_functional)
+            guard('U1 assign solo', u1_assign_solo)
+            guard('U1 readers', u1_readers)
+            guard('U1 new project', u1_new_project)
+            guard('U1 matrix', u1_matrix)
+
         browser.close()
 finally:
     (out / 'qf12-work-browser-metrics.json').write_text(json.dumps(metrics, ensure_ascii=False, indent=1))

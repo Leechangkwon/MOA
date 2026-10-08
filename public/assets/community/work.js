@@ -1,5 +1,5 @@
-import { drawCalendar, rangeFor } from './calendar.js?v=98028bf77ecd';
-import { renderDoc } from './doc-render.js?v=98028bf77ecd';
+import { drawCalendar, rangeFor } from './calendar.js?v=fef92ce34ea2';
+import { renderDoc } from './doc-render.js?v=fef92ce34ea2';
 /*
  * public/assets/community/work.js — 업무 화면(사이트 Q:F-12 · 조각 D): 업무 홈 · 내 작업 · 프로젝트(작업 목록 + 오른쪽 작업 상세 칸 ·
  * 프로젝트 머리 · 상태) · 포트폴리오 · 「새로 만들기」(작업 · 프로젝트) · 사이드바 포트폴리오 묶음.
@@ -539,10 +539,31 @@ export function createWork(deps) {
         drawActivity(events);
       }).catch(() => {});
 
-      /* 설명 — 블록 본문(읽기 기본 · 고칠 수 있으면 「본문 고치기」로 그 자리 편집) */
+      /* 설명 — 블록 본문(읽기 기본 · 누르면 편집 — U1-b 2026-10-08, DESIGN 2.21 「누르면 편집」). 고칠 수 있으면(can_edit) 설명 칸을
+         누르거나(링크 · 단추 · 입력 · 임베드 · 접기 머리를 누른 것은 제 동작) 칸에 초점을 두고 Enter → 「본문 고치기」와 같은 함수 하나 */
+      if (editor) {
+        // 편집 중에 칸을 다시 그리면(하위 작업 · 상태 저장 뒤) 옛 편집기는 저장을 마치고 걷는다 — 다시 누를 수 있게
+        const stale = editor;
+        editor = null;
+        stale.flush().catch(() => {});
+        stale.destroy();
+      }
       const docSec = el('section', 'task-pane__section');
       docSec.appendChild(el('h3', 'task-pane__section-head', '설명'));
       const docBox = el('div', 'task-pane__doc');
+      const docEditable = canEdit && typeof deps.mountEditor === 'function';
+      const setDocEditable = (on) => {
+        docBox.classList.toggle('task-pane__doc--editable', on);
+        if (on) {
+          docBox.tabIndex = 0;
+          docBox.setAttribute('role', 'group');
+          docBox.setAttribute('aria-label', '설명 — Enter 로 고치기');
+        } else {
+          docBox.removeAttribute('tabindex');
+          docBox.removeAttribute('role');
+          docBox.removeAttribute('aria-label');
+        }
+      };
       const readCtx = {
         child_titles: data.child_titles || {}, link_titles: data.link_titles || {}, file_titles: data.file_titles || {},
         synced: data.synced || {}, embeds: data.embeds || { hosts: [], frames: false }, base: base, tbox_base: tboxBase,
@@ -551,7 +572,7 @@ export function createWork(deps) {
       const drawDoc = () => {
         clear(docBox);
         const blocks = page.doc && Array.isArray(page.doc.blocks) ? page.doc.blocks : [];
-        const empty = () => docBox.appendChild(el('p', 'muted', canEdit ? '설명이 없어요. 더보기 › 본문 고치기로 적어 보세요.' : '설명이 없어요.'));
+        const empty = () => docBox.appendChild(el('p', 'muted', docEditable ? '누르면 설명을 적을 수 있어요.' : '설명이 없어요.'));
         if (blocks.length === 0) { empty(); return; }
         let node = null;
         try { node = renderDoc(page.doc, readCtx); } catch (e) { docBox.appendChild(el('p', 'muted', '본문을 그릴 수 없어요 — 전체 화면으로 열어 보세요.')); return; }
@@ -560,12 +581,16 @@ export function createWork(deps) {
         docBox.appendChild(node);
       };
       drawDoc();
+      setDocEditable(docEditable);
       docSec.appendChild(docBox);
       const editState = el('span', 'badge');
       editState.hidden = true;
       docSec.firstChild.appendChild(editState);
-      editItem.addEventListener('click', () => {
-        if (editor || typeof deps.mountEditor !== 'function') { return; }
+      // 「본문 고치기」(더보기) · 설명 누르기 · 설명에서 Enter — 세 길이 같은 일을 한다
+      const startDocEdit = () => {
+        if (editor || !docEditable || !docBox.isConnected) { return; }
+        more.open = false;
+        setDocEditable(false);
         clear(docBox);
         const mount = el('div', 'panel');
         docBox.appendChild(mount);
@@ -577,17 +602,47 @@ export function createWork(deps) {
           onSaved: (doc, version) => { page.doc = doc; page.doc_version = version; },
           onError: (t) => setText(msg, t)
         });
-        if (!editor) { drawDoc(); endBtn.remove(); return; }
+        if (!editor) { drawDoc(); endBtn.remove(); setDocEditable(true); return; }
         editor.focus();
+        const mine = editor;
         endBtn.addEventListener('click', () => {
-          const ed = editor;
+          if (editor !== mine) { return; }
           editor = null;
-          ed.flush().finally(() => { ed.destroy(); endBtn.remove(); show(editState, false); drawDoc(); if (ctx.onChanged) { ctx.onChanged(id); } });
+          mine.flush().finally(() => {
+            mine.destroy();
+            endBtn.remove();
+            show(editState, false);
+            drawDoc();
+            setDocEditable(true);
+            if (docBox.isConnected) { docBox.focus({ preventScroll: true }); }
+            if (ctx.onChanged) { ctx.onChanged(id); }
+          });
         });
-      });
+      };
+      editItem.addEventListener('click', startDocEdit);
+      if (docEditable) {
+        docBox.addEventListener('click', (e) => {
+          if (!docBox.classList.contains('task-pane__doc--editable')) { return; }
+          const hit = e.target instanceof Element ? e.target.closest('a, button, input, textarea, select, iframe, label, summary, [contenteditable]') : null;
+          if (hit && docBox.contains(hit)) { return; }
+          // 끌어서 글자를 고른 뒤의 누름은 편집으로 들어가지 않는다(복사하려던 것)
+          const sel = typeof window.getSelection === 'function' ? window.getSelection() : null;
+          if (sel && String(sel) !== '') { return; }
+          startDocEdit();
+        });
+        docBox.addEventListener('keydown', (e) => {
+          if (e.key !== 'Enter' || e.isComposing || e.target !== docBox || !docBox.classList.contains('task-pane__doc--editable')) { return; }
+          e.preventDefault();
+          startDocEdit();
+        });
+      }
       paneEl.appendChild(docSec);
 
-      /* 하위 작업(WK-6 ① — 하위 페이지 = 하위 작업). 상태 · 기한은 그 공간 트리(보는 사람이 볼 수 있는 것만)에서 */
+      /* 하위 작업(WK-6 ① — 하위 페이지 = 하위 작업). 상태 · 기한은 그 공간 트리(보는 사람이 볼 수 있는 것만)에서.
+         U1-c(WK-18 A, 2026-10-08 — DESIGN 2.21 「누르면 편집」): 고칠 수 있는 줄(부모 can_edit · 트리에 보이는 하위 작업)은 제목이 단추 —
+         누르거나 Enter → 그 자리 입력(Enter 저장 · Esc 되돌림 · 떠나면 저장 · 빈 값 · 같은 값은 저장 없이 되돌림). 저장은 상세 칸 큰 제목과
+         같은 창구(`PATCH /api/pages/{하위 작업} {doc_version, title}` — 판 번호는 그 하위 작업을 GET 으로 읽어서)이고 서버가 하위 작업마다
+         다시 판정한다. 고칠 수 없으면 제목은 글자. 줄 끝 › = 그 하위 작업 열기(주소 ?task=) · 목록 끝 「＋ 하위 작업 추가」(고칠 수 있을 때) */
       const subSec = el('section', 'task-pane__section');
       const subHead = el('h3', 'task-pane__section-head', '하위 작업');
       const subCount = el('span', 'task-group__count');
@@ -596,6 +651,43 @@ export function createWork(deps) {
       const subList = el('ul', 'task-list__rows');
       subSec.appendChild(subList);
       const children = Array.isArray(data.children) ? data.children : [];
+      // 하위 작업 제목 그 자리 고치기 — 상세 칸 큰 제목(startTitle)과 같은 순서 · 같은 저장 창구
+      const startSubTitle = (c, btn) => {
+        if (!btn.isConnected) { return; }
+        const input = el('input', 'task-add__input');
+        input.type = 'text';
+        input.maxLength = 200;   // 페이지 제목 상한 = 서버 SaveDoc.php 의 iconv_strlen(title) > 200 거부
+        input.autocomplete = 'off';
+        input.value = c.title || '';
+        input.setAttribute('aria-label', '하위 작업 제목');
+        btn.replaceWith(input);
+        input.focus();
+        let ended = false;
+        const back = (focus) => {
+          if (input.isConnected) { input.replaceWith(btn); }
+          if (focus && btn.isConnected) { btn.focus(); }
+        };
+        const end = (save, byKey) => {
+          if (ended) { return; }
+          ended = true;
+          const next = input.value.trim();
+          if (!save || next === '' || next === c.title) { back(byKey); return; }
+          input.disabled = true;
+          setText(msg, '');
+          api('GET', '/api/pages/' + c.id).then((g) => (g.status !== 200 ? g
+            : api('PATCH', '/api/pages/' + c.id, { doc_version: g.data.page.doc_version, title: next }))).then((r) => {
+            if (r.status !== 200) { back(byKey); setText(msg, failMessage(r)); return; }
+            forgetTree(data.space ? data.space.id : null);
+            // 설명을 고치던 중이면 그 저장을 먼저 마친 뒤 다시 그린다(다시 읽은 본문이 옛 판이 되지 않게)
+            Promise.resolve(editor ? editor.flush() : null).catch(() => {}).then(() => changed(id));
+          }).catch(() => { back(byKey); setText(msg, genericError); });
+        };
+        input.addEventListener('keydown', (e) => {
+          if (e.key === 'Enter' && !e.isComposing) { e.preventDefault(); end(true, true); }
+          if (e.key === 'Escape') { e.preventDefault(); end(false, true); }
+        });
+        input.addEventListener('blur', () => end(true, false));
+      };
       const drawSubs = (tree) => {
         clear(subList);
         const byId = {};
@@ -605,11 +697,35 @@ export function createWork(deps) {
           const t = byId[c.id] || {};
           const item = { id: c.id, title: c.title, icon: c.icon, status: t.status || null, due: t.due || null, assignee: t.assignee || null };
           if (item.status === 'done') { done += 1; }
-          subList.appendChild(taskRow(item, {
-            kind: 'pane', today: today, canCheck: canEdit && !!byId[c.id],
-            onCheck: (it, d) => setDone(it.id, d).then(() => changed(id)).catch((e) => setText(msg, e.message)),
-            onOpen: (it) => open(it.id, { push: true })
-          }));
+          const editable = canEdit && !!byId[c.id];
+          const row = taskRow(item, {
+            kind: 'pane', today: today, canCheck: editable,
+            onCheck: (it, d) => setDone(it.id, d).then(() => changed(id)).catch((e) => setText(msg, e.message))
+          });
+          // 제목 — 고칠 수 있으면 단추(글자 모양), 아니면 글자. 여는 길은 줄 끝 › 하나
+          const label = (item.icon ? item.icon + ' ' : '') + item.title;
+          let head;
+          if (editable) {
+            head = el('button', 'task-row__title', label);
+            head.type = 'button';
+            head.setAttribute('aria-label', '제목 고치기 — ' + item.title);
+            head.addEventListener('click', () => startSubTitle(c, head));
+          } else {
+            head = el('span', 'task-row__title', label);
+          }
+          const link = row.querySelector('a.task-row__title');
+          if (link) { link.replaceWith(head); }
+          const go = el('a', 'btn btn--icon btn--plain');
+          go.href = urlFor(c.id);
+          go.setAttribute('aria-label', '하위 작업 열기');
+          go.appendChild(icon('chevron'));
+          go.addEventListener('click', (e) => {
+            if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) { return; }
+            e.preventDefault();
+            open(c.id, { push: true });
+          });
+          row.appendChild(go);
+          subList.appendChild(row);
         }
         setText(subCount, children.length ? done + '/' + children.length : '');
         if (!children.length) { subList.appendChild(el('li', 'muted', '하위 작업이 없어요.')); }
@@ -618,8 +734,13 @@ export function createWork(deps) {
       if (children.length && data.space) {
         treeOf(data.space.id).then(drawSubs).catch(() => {});
       }
+      // 목록 끝 「＋ 하위 작업 추가」(U1-c) — 머리 ＋ · 더보기 「하위 작업 더하기」와 같은 그 자리 입력 줄을 연다(그 자리에 입력 줄이 선다)
+      let addBtn = null;
       const addSub = () => {
         subItem.closest('details').open = false;
+        const already = subSec.querySelector('.task-add__input');
+        if (already) { already.focus(); return; }
+        if (addBtn) { addBtn.hidden = true; }
         addLine(subSec, '하위 작업 이름', (t) => api('POST', '/api/pages', { parent_id: id, title: t }).then((r) => {
           if (r.status !== 201) { throw new Error(failMessage(r)); }
           return api('PATCH', '/api/pages/' + r.data.page.id + '/properties', { status: 'todo' });
@@ -629,6 +750,9 @@ export function createWork(deps) {
         const plus = iconButton('plus', '하위 작업 더하기');
         plus.addEventListener('click', addSub);
         subHead.appendChild(plus);
+        addBtn = textButton('＋ 하위 작업 추가', 'btn btn--quiet btn--small');
+        addBtn.addEventListener('click', addSub);
+        subSec.appendChild(addBtn);
       }
       subItem.addEventListener('click', addSub);
       paneEl.appendChild(subSec);
@@ -778,6 +902,8 @@ export function createWork(deps) {
     /**
      * 담당 고르기(DESIGN 2.21) — 「바꾸기」 → 2.15 `.menu` 안 찾기 칸 + **창구가 준 후보만**(`assignee-candidates` — 그 작업을 고칠 수 있는 사람) ·
      * 맨 아래 「담당 없음」. 화면은 사람을 거르지도 더하지도 않는다(0장 1). 고른 값은 `PATCH /properties {assignee}` 가 다시 판정한다.
+     * U1-a(2026-10-08 — 기획 13장): 메뉴를 열면 곧바로 빈 검색어로 부른다(창구가 나 먼저 · 최대 10) · 입력하면 200ms 뒤 좁힌다 ·
+     * 늦게 온 답은 버린다(seq). 빈 검색어 답에서 후보가 0이거나 나 한 명뿐이면 후보 아래 안내 한 줄 — 「나」는 `/api/me` 의 아이디로만 견준다.
      */
     function assignPicker(id, current, msg) {
       const box = el('details', 'menu');
@@ -796,6 +922,10 @@ export function createWork(deps) {
       found.setAttribute('role', 'group');
       found.setAttribute('aria-label', '담당 후보');
       list.appendChild(found);
+      // U1-a — 빈 검색어 답이 0명이거나 나 한 명뿐일 때만 보이는 안내(후보 아래)
+      const solo = el('p', 'help', '이 작업을 고칠 수 있는 사람이 나뿐이에요. 「공유」에서 편집 권한을 주거나 팀 공간 프로젝트에 두면 맡길 수 있어요.');
+      solo.hidden = true;
+      list.appendChild(solo);
       const hint = el('p', 'help', '이 작업을 고칠 수 있는 사람만 나와요.');
       list.appendChild(hint);
       // 「담당 없음」은 늘 보인다(메뉴는 보이는 항목이 없으면 통째로 숨는다 — 2.15) · 지금 담당이 없으면 누를 일이 없어 비활성
@@ -814,12 +944,14 @@ export function createWork(deps) {
       const search = () => {
         const text = q.value.trim();
         const mine = ++seq;
-        if (text === '') { clear(found); return; }
         api('GET', '/api/pages/' + id + '/assignee-candidates?q=' + encodeURIComponent(text)).then((r) => {
           if (mine !== seq) { return; }
           clear(found);
+          solo.hidden = true;
           if (r.status !== 200) { found.appendChild(el('p', 'msg', failMessage(r))); return; }
           const people = Array.isArray(r.data.candidates) ? r.data.candidates : [];
+          const me = meName();
+          solo.hidden = !(text === '' && (people.length === 0 || (people.length === 1 && me !== '' && people[0].username === me)));
           for (const p of people) {
             const b = el('button', 'menu__item');
             b.type = 'button';
@@ -834,7 +966,14 @@ export function createWork(deps) {
       };
       q.addEventListener('input', () => { window.clearTimeout(timer); timer = window.setTimeout(search, 200); });
       q.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); window.clearTimeout(timer); search(); } });
-      box.addEventListener('toggle', () => { if (box.open) { q.focus(); } });
+      // 열자마자 후보(U1-a) — 빈 검색어로 곧바로 부른다
+      box.addEventListener('toggle', () => {
+        if (!box.open) { return; }
+        window.clearTimeout(timer);
+        q.value = '';
+        q.focus();
+        search();
+      });
       return box;
     }
 
@@ -1816,7 +1955,9 @@ export function createWork(deps) {
       field(m.form, '프로젝트 이름', name);
       const space = el('select');
       field(m.form, '어디에 만들까요', space);
-      m.form.appendChild(el('p', 'help', '섹션(00. 준비 · 01. 진행 · 02. 마무리)과 목록 · 보드 · 타임라인 · 달력 보기가 함께 만들어져요. 개인 공간에 만들면 처음에는 나만 봐요.'));
+      // WK-17 A(U1-d) — 팀 공간 먼저. 앞 문장이 「개인 공간이면 나만 봐요」를 대신한다
+      m.form.appendChild(el('p', 'help', '팀 공간에 만들면 팀원이 보고 맡을 수 있어요. 내 공간에 만들면 나만 보고 나만 맡을 수 있어요. '
+        + '섹션(00. 준비 · 01. 진행 · 02. 마무리)과 목록 · 보드 · 타임라인 · 달력 보기가 함께 만들어져요.'));
       m.form.addEventListener('submit', (e) => {
         e.preventDefault();
         const t = name.value.trim();
@@ -1834,12 +1975,17 @@ export function createWork(deps) {
       newProject = { m: m, name: name, space: space };
     }
     clear(newProject.space);
+    // 「어디에 만들까요」(WK-17 A · U1-d) — 쓸 수 있는 팀 공간 먼저(이름 가나다 순) · 내 공간은 끝. 첫 값 = 첫 팀 공간(없으면 내 공간).
+    // 고르개의 순서만 정한다 — 그 공간에 만들 수 있나는 만들기 창구가 다시 판정한다
     spacesOnce().then((spaces) => {
       clear(newProject.space);
-      for (const s of spaces) {
-        if (s.can_write !== true) { continue; }
-        newProject.space.appendChild(new Option(s.kind === 'team' ? s.name + ' (팀 공간)' : '내 공간', String(s.id)));
+      const writable = spaces.filter((s) => s.can_write === true);
+      const teams = writable.filter((s) => s.kind === 'team').sort((a, b) => String(a.name).localeCompare(String(b.name), 'ko'));
+      for (const s of teams) { newProject.space.appendChild(new Option(s.name + ' (팀 공간)', String(s.id))); }
+      for (const s of writable) {
+        if (s.kind !== 'team') { newProject.space.appendChild(new Option('내 공간', String(s.id))); }
       }
+      newProject.space.selectedIndex = newProject.space.options.length ? 0 : -1;
     });
     setText(newProject.m.msg, '');
     newProject.m.dialog.showModal();

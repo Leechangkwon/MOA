@@ -2445,6 +2445,18 @@ a.app-menu__app:hover { background: var(--muted-bg); text-decoration: none; }
 .task-pane__section-head { display: flex; align-items: center; gap: 8px; margin: 0; font-size: 14px; font-weight: 600; }
 .task-pane__section-head .btn { margin-left: auto; }
 .task-pane__doc { min-width: 0; }
+/* 누르면 편집(U1-b · U1-c, 2026-10-08 — DESIGN 2.21 「누르면 편집」). 새 색값 0 · 새 클래스는 설명 칸 하나(`--editable`).
+   설명: 고칠 수 있을 때 칸 전체가 누름 자리 — 커서 text · 올리면 바탕 --surface-2 + 둥글기 --r-ctl · 키보드 초점은 4장 고리(--ring-soft 3px).
+   올린 바탕은 같은 색 그림자로 둘레 6px 를 더 칠한다 — 여백 · 바깥 여백을 바꾸지 않아 글자 자리도 칸의 가로 폭도 그대로다. 편집 중에는 화면이 이 클래스를 뗀다 */
+.task-pane__doc--editable { border-radius: var(--r-ctl); cursor: text; }
+.task-pane__doc--editable:hover { background: var(--surface-2); box-shadow: 0 0 0 6px var(--surface-2); }
+.task-pane__doc--editable:focus-visible { outline: none; box-shadow: 0 0 0 3px var(--ring-soft); }
+/* 하위 작업 줄: 제목 단추는 글자 모양(테두리 · 바탕 없음 · 한 줄 줄임은 .task-row__title 그대로) · 그 자리 입력은 .task-add__input 그대로 ·
+   줄 끝 › 는 .btn--icon(아래 아이콘 칸 하나 — 내림 꺾쇠를 오른쪽으로 돌린다) · 목록 끝 「＋ 하위 작업 추가」는 줄 폭이 아니라 글자 폭 */
+.task-pane button.task-row__title { padding: 0; border: 0; border-radius: var(--r-sm); background: transparent; font: inherit; font-weight: 500; text-align: left; cursor: text; }
+.task-pane button.task-row__title:focus-visible { outline: none; box-shadow: 0 0 0 3px var(--ring-soft); }
+.task-pane .task-row > .btn--icon .icon { transform: rotate(-90deg); }
+.task-pane__section > .btn { align-self: flex-start; }
 .task-pane__activity { display: flex; flex-direction: column; gap: 8px; margin: 0; padding: 0; list-style: none; }
 .task-event { color: var(--muted); font-size: 13px; overflow-wrap: anywhere; }
 .task-comment { padding: 8px 12px; border-radius: var(--r-ctl); background: var(--q-canvas); font-size: 14px; white-space: pre-wrap; overflow-wrap: anywhere; }
@@ -2452,8 +2464,10 @@ a.app-menu__app:hover { background: var(--muted-bg); text-decoration: none; }
 .task-pane__foot { display: flex; flex-direction: column; gap: 8px; padding-top: 12px; border-top: 1px solid var(--line); }
 .task-pane__foot textarea { width: 100%; min-height: 64px; padding: 8px 12px; border: 1px solid var(--line); border-radius: var(--r-ctl); background: var(--surface); color: var(--fg); font: inherit; resize: vertical; }
 .task-pane__foot .btn { align-self: flex-end; }
-.task-pane .task-row { grid-template-columns: minmax(0, 1fr) auto auto; min-height: 40px; }
+.task-pane .task-row { grid-template-columns: minmax(0, 1fr) auto auto auto; min-height: 40px; }
 .task-pane .menu__list input[type="search"] { width: 100%; height: 32px; margin-bottom: 4px; padding: 0 8px; border: 1px solid var(--line); border-radius: var(--r-ctl); background: var(--surface); color: var(--fg); font: inherit; font-size: 13px; }
+/* 담당 고르기 안내(U1-a 「나뿐이에요」 한 줄 · 「고칠 수 있는 사람만」)는 칸 폭만큼 꺾는다 — 넓은 화면에서 메뉴가 안내 한 줄 길이로 목록 위까지 늘어나지 않게 */
+.task-pane .menu__list > .help { max-width: 20rem; }
 @media (min-width: 1200px) {
   .task-pane { position: fixed; top: 0; right: 0; bottom: 0; width: clamp(400px, 34vw, 480px); overflow-y: auto; border-left: 1px solid var(--line); scrollbar-width: thin; }
   body[data-task-open] .main { padding-right: calc(clamp(400px, 34vw, 480px) + 32px); }
@@ -2463,6 +2477,13 @@ a.app-menu__app:hover { background: var(--muted-bg); text-decoration: none; }
   /* 칸이 목록을 대신한다 — main 의 다른 칸은 숨는다(창 · 「역할로 보기」 띠는 그대로) */
   body[data-task-open] .main > :not(.task-pane):not(dialog):not(.act-banner) { display: none !important; }
   .task-pane { padding: 0 0 72px; }
+}
+@media (max-width: 719.98px) {
+  /* 하위 작업 줄이 두 줄 카드가 될 때(아래 「칸 줄 없이 두 줄 카드」) 줄 끝 › 는 마감 오른쪽에서 두 줄을 걸친다 */
+  .task-pane .task-row { grid-template-columns: minmax(0, 1fr) auto auto; }
+  .task-pane .task-row > .btn--icon { grid-column: 3; grid-row: 1 / span 2; }
+  /* 상세 칸 줄은 완료 원 · 제목뿐이라 꺾지 않는다 — 긴 제목이 완료 원 아래 줄로 내려가지 않고 그 줄에서 줄임표로 끝난다 */
+  .task-pane .task-row > .task-row__main { flex-wrap: nowrap; }
 }
 
 /* 프로젝트 화면 — `<body data-project-view>`(work.js 가 행 목록 창구의 `database.purpose` 를 보고 단다) 동안 페이지 머리 · 속성 줄 · 문서 본문을 가리고

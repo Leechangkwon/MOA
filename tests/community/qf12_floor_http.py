@@ -10,7 +10,7 @@ fixture (지시서 A-7): 팀 X 구성원 A=claude_employee01 · B=claude_manager
 잠시 팀 X 로) · 비활성 I(합성 한 줄). A 의 개인 공간 비공개 P1 · B 에게 「보기」 공유 P2 · 「편집」 공유 P3 · 팀 X 공간 T1 ·
 양식 데이터베이스 F(소유 A, 응답 1건).
 
-  Q:T-24 담당 정하기        Q:T-25 담당 후보           Q:T-26 맡겨도 권한 0      Q:T-27 양식 신원·응답 알림
+  Q:T-24 담당 정하기        Q:T-25 담당 후보(빈 q · 판정 상한 50 — U1-a)  Q:T-26 맡겨도 권한 0  Q:T-27 양식 신원·응답 알림
   Q:T-28 기록 불변(권한)    Q:T-33 프로젝트 상태        Q:T-34 포트폴리오 읽기     Q:T-35 숨은 프로젝트
   Q:T-36 넣기 판정·사건     Q:T-37 진행률               마이그레이션 2회 멱등 · 옛 assignee_id 보존 · 새 설치 = 마이그레이션 SAME
 """
@@ -190,11 +190,66 @@ try:
     check(st == 200 and set(t1c) == {'claude_employee01', 'claude_manager01'}, 'Q:T-25 candidates T1: exactly the active writers of team X (A, B)')
     check(all(set(c) == {'username', 'display_name'} for c in req('GET', '/api/pages/' + T1 + '/assignee-candidates?q=claude', None, 'A').json()['candidates']),
           'Q:T-25 candidate rows carry username/display_name only (no id/role/team)')
-    check(cands(P1, 'A', '')[1] == [], 'Q:T-25 empty q → empty list')
     check(cands(P2, 'B')[0] == 403, 'Q:T-25 caller who cannot assign (B on P2) → 403')
     check(cands(P1, 'M')[0] == 403, 'Q:T-25 Admin on A private page → 403')
     check(cands(T1, 'G')[0] == 403, 'Q:T-25 Guest → 403 (route policy community.write)')
     check(cands(P1, 'C')[0] == 403, 'Q:T-25 C cannot read P1 → 403')
+
+    # ── Q:T-25 고침 — 빈 q(사용감 라운드 U1-a, 2026-10-08 · 기획 13장 · 커뮤니티 ARCH 23.3 「창구」 빈 q 줄) ──────────────
+    #    빈 목록 대신 「그 작업을 고칠 수 있는 사람」 — 활성 사용자를 부르는 사람 먼저 · 아이디 순으로 50명까지 판정해 통과한 10명
+    def cands_raw(page, user='A', qtext=''):
+        r = req('GET', '/api/pages/' + page + '/assignee-candidates' + ('' if qtext is None else '?q=' + qtext), None, user)
+        return r.status_code, (r.json() if r.status_code == 200 else None)
+
+    def names_of(body):
+        return [c['username'] for c in body['candidates']] if body else None
+    st, e1 = cands_raw(P1)
+    check(st == 200 and names_of(e1) == ['claude_employee01'], 'Q:T-25 empty q P1 (private, owner A) → [A] ' + json.dumps(names_of(e1)))
+    started = time.time()
+    st, et = cands_raw(T1)
+    codes['empty_q_T1_ms'] = round((time.time() - started) * 1000)
+    et_names = names_of(et) or []
+    check(st == 200 and len(et_names) == 2 and set(et_names) == {'claude_employee01', 'claude_manager01'}, 'Q:T-25 empty q T1 → exactly {A, B} ' + json.dumps(et_names))
+    check(et_names[:1] == ['claude_employee01'], 'Q:T-25 empty q T1 called by A → A is the first row')
+    st, eb = cands_raw(T1, 'B')
+    check(st == 200 and names_of(eb) == ['claude_manager01', 'claude_employee01'], 'Q:T-25 empty q T1 called by B → B first, then A (caller first · then username) ' + json.dumps(names_of(eb)))
+    st, e2 = cands_raw(P2)
+    check(st == 200 and 'claude_manager01' not in names_of(e2) and names_of(e2) == ['claude_employee01'], 'Q:T-25 empty q P2: B (view share only) absent → [A]')
+    check(set(et) == {'candidates'} and all(set(c) == {'username', 'display_name'} for c in et['candidates']),
+          'Q:T-25 empty q response: one top key (candidates) · rows carry the two keys username/display_name only')
+    st, en = cands_raw(T1, 'A', None)
+    check(st == 200 and names_of(en) == et_names, 'Q:T-25 no q parameter = empty q (same list)')
+    check(cands_raw(P2, 'B')[0] == 403, 'Q:T-25 empty q: caller who cannot assign (B on P2) → 403')
+    check(cands_raw(P1, 'M')[0] == 403, 'Q:T-25 empty q: Admin on A private page → 403')
+    check(cands_raw(T1, 'G')[0] == 403, 'Q:T-25 empty q: Guest → 403')
+    check(cands_raw(P1, 'C')[0] == 403, 'Q:T-25 empty q: C cannot read P1 → 403')
+
+    # ── 빈 q 판정 상한 50 — 활성 합성 사용자 60명 넘게 ────────────────────────────────────────────────────────────
+    #    아이디가 누구보다 앞에 오는 「T1 을 못 고치는」 합성 사용자(팀 Y) 60명 + 「T1 을 고칠 수 있는」 합성 사용자(팀 X) aaau1ok 하나.
+    #    부르는 사람(A) 다음 순서가 막는 사람들이라, 판정이 몇 번째에서 멈추는지가 결과(aaau1ok · B 가 나오나)로 드러난다.
+    blockers = ['aaau1blk%02d' % i for i in range(60)]
+    sql('INSERT INTO users(username,password_hash,role,team_id,is_active) VALUES '
+        + ','.join("('" + u + "','x','Employee'," + str(team_y) + ',true)' for u in blockers))
+    sql("INSERT INTO users(username,password_hash,role,team_id,is_active) VALUES('aaau1ok','x','Employee'," + str(team_x) + ',true)')
+    codes['cap_active_users'] = n('SELECT count(*) FROM users WHERE is_active')
+    check(codes['cap_active_users'] > 60, 'cap fixture: active users > 60 (%d)' % codes['cap_active_users'])
+    st, okq = cands_raw(T1, 'A', 'aaau1ok')
+    check(st == 200 and names_of(okq) == ['aaau1ok'], 'cap fixture: aaau1ok can edit T1 (found by q) — absence below is the cap, not the rule')
+    st, okb = cands_raw(T1, 'A', 'aaau1blk')
+    check(st == 200 and names_of(okb) == [], 'cap fixture: blockers cannot edit T1 (q=aaau1blk → none)')
+    st, c60 = cands_raw(T1)
+    check(st == 200 and names_of(c60) == ['claude_employee01'],
+          'cap: 60 blockers first → empty q judges A + 49 blockers (50) and stops → [A] (B · aaau1ok not judged) ' + json.dumps(names_of(c60)))
+    sql("UPDATE users SET is_active=false WHERE username IN (" + ','.join("'" + u + "'" for u in blockers[49:]) + ')')
+    st, c49 = cands_raw(T1)
+    check(st == 200 and names_of(c49) == ['claude_employee01'], 'cap boundary: 49 blockers → aaau1ok is the 51st → not judged → [A] ' + json.dumps(names_of(c49)))
+    sql("UPDATE users SET is_active=false WHERE username='aaau1blk48'")
+    st, c48 = cands_raw(T1)
+    check(st == 200 and names_of(c48) == ['claude_employee01', 'aaau1ok'],
+          'cap boundary: 48 blockers → aaau1ok is the 50th → judged → [A, aaau1ok] (cap = exactly 50) ' + json.dumps(names_of(c48)))
+    codes['empty_q_judge_cap'] = 50
+    sql("UPDATE users SET is_active=false WHERE username LIKE 'aaau1%'")
+    check(n("SELECT count(*) FROM users WHERE is_active AND username LIKE 'aaau1%'") == 0, 'cap fixture: synthetic cap users deactivated (later checks unaffected)')
 
     # ════════ Q:T-26 맡겨도 권한 0 ════════════════════════════════════
     g = req('GET', '/api/pages/' + T1, None, 'A').json()
