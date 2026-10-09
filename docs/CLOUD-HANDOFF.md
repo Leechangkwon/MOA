@@ -1,5 +1,7 @@
 # 휴가 중 클라우드 작업 인계 — 2026-10-03
 
+> 2026-10-09 최신 운영: v2.52.3 `ce9a486`, PC 비서 받기·설치·GPT 선택 안내 갱신. 실제 HTTPS44/0, DB/설정 변경0, 원본1030파일 보존. Windows 앱 b86a602의 실제 로그인/짧은 응답은 확인했고 웹 링크는 실행 코드가 같은 927f919 ZIP이다. 실Windows 웹↔PC 전체 페어링은 별도 확인 대상. `docs/work-items/buddy-download-flow.md`, `deploy/production-state.json`을 따른다. 아래는 이전 기록이다.
+
 > 2026-10-06 최신 운영: Q:F-11 v2.50.0 `03f77ac` 배포 완료(어느 화면에서나 이어지는 떠 있는 메신저 · 커뮤니티 옛 대화 창 대체). migration1(`member_messages.request_id`)·nginx0, 운영 HTTPS78, 데이터·원본1029파일 보존. ChatGPT 원격 MCP(v2.49.0)는 여전히 **기본 비활성**. 지시서 `docs/qf11-floating-messenger-directive.md`와 `deploy/production-state.json` 참조. 아래 기록은 이전 배포다.
 > 2026-10-06 이전 운영: PR #4 v2.49.0 `302d415` 배포 완료(ChatGPT 원격 MCP, **기본 비활성**). migration1·nginx3, 운영 HTTPS71, 데이터·원본1028파일 보존. 켜기 전 실제 ChatGPT·프록시 로그·휴대폰 확인 필요. `docs/work-items/chatgpt-remote-mcp.md`와 `deploy/production-state.json` 참조. 아래 기록은 이전 배포다.
 

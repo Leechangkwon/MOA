@@ -1,12 +1,12 @@
 {
   "schema_version": 1,
-  "version": "2.50.0",
-  "verified_runtime_commit": "03f77acea2c6d3617dda6b6847916995aefa9466",
-  "verified_checkout_commit": "03f77acea2c6d3617dda6b6847916995aefa9466",
-  "verified_tree": "77a9caec6f15467e9763b1df36a6114886ac4b72",
-  "verified_at": "2026-10-06T17:20:00+09:00",
+  "version": "2.52.3",
+  "verified_runtime_commit": "ce9a486c993fa56155687e2eff25cf6aa4fa29bb",
+  "verified_checkout_commit": "ce9a486c993fa56155687e2eff25cf6aa4fa29bb",
+  "verified_tree": "2f35cceaa9579e28da301ad4707e663e76f8c495",
+  "verified_at": "2026-10-09T13:03:54+09:00",
   "record_type": "last_verified_server_snapshot_not_live_status",
-  "release_commit": "03f77acea2c6d3617dda6b6847916995aefa9466",
+  "release_commit": "ce9a486c993fa56155687e2eff25cf6aa4fa29bb",
   "automatic_deployment": false,
   "server_only": [
     "database",
@@ -15,42 +15,46 @@
     "service_configuration"
   ],
   "verification": {
-    "https_pass": 78,
+    "scope": "PC assistant download/setup/provider UI update; previous features unchanged",
+    "https_pass": 44,
     "https_fail": 0,
     "records_unchanged": true,
     "changed_files_verified": true,
-    "deployment_changed_files": 59,
-    "deployment_deleted_files": 4,
-    "migrations": [
-      "db/migrations/2026-10-06_member_messages_request_id.sql"
-    ],
+    "deployment_changed_files": 14,
+    "deployment_deleted_files": 0,
+    "migrations": [],
     "services_active": [
       "nginx",
       "php8.1-fpm",
       "postgresql"
     ],
     "original_database_owners_preserved": true,
-    "storage_files_preserved": 1029,
+    "storage_files_preserved": 1030,
     "nginx_files_changed": 0,
     "nginx_unchanged": true,
-    "migration_copy_rehearsal": true,
-    "floating_window_browser_pass": 454,
-    "messenger_http_pass": 75,
-    "messenger_store_browser_pass": 75,
-    "cross_regression_pass": 162,
+    "file_apply_rehearsal": true,
+    "local_assist_synthetic_browser_pass": 73,
+    "messenger_window_selected_pass": 31,
+    "messenger_store_pass": 75,
+    "cross_regression_pass": 164,
     "live_viewport_widths": [
       390,
       1280
     ],
     "live_js_errors": 0,
     "live_5xx": 0,
-    "remote_mcp_enabled": false,
-    "independent_review_blocking": 0,
-    "independent_review_important": 0
+    "live_content_writes": 0,
+    "live_provider_requests": 0,
+    "review_context": "same Codex session; no independent review claimed",
+    "windows_app_verified_commit": "b86a6026e9141b7b704f24613fbb73d39455e500",
+    "windows_app_report": "76 tests passed, 1 skipped; actual sign-in/models/short response/DPAPI restoration",
+    "assistant_zip_commit": "927f9198785c3fef1abaa90930713f4953d2dc9a",
+    "assistant_zip_sha256": "43dfd390d78b71d57395752690f9fd4e8f1f4c69cbf866699dee66e07119884a"
   },
   "evidence": [
-    "docs/qf11-floating-messenger-directive.md",
-    "SECURITY.md R-116~R-118 · 7장 2026-10-06 Q:F-11"
+    "docs/work-items/buddy-download-flow.md",
+    "docs/feedback-20261008.md",
+    "SECURITY.md 7장 검토 이력"
   ],
   "remaining": [
     "real_handset_user_check",
@@ -59,6 +63,7 @@
     "remote_mcp_enable_with_real_chatgpt",
     "front_proxy_log_check",
     "real_handset_messenger_check",
-    "user_self_attack_qf11"
+    "user_self_attack_qf11",
+    "real_windows_browser_pc_roundtrip"
   ]
 }
