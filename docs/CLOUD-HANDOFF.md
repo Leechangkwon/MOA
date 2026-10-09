@@ -1,5 +1,7 @@
 # 휴가 중 클라우드 작업 인계 — 2026-10-03
 
+> 2026-10-09 최신 운영: **v2.53.4 `6bf9816`** 모바일 메뉴를 본문 위의 native modal로 변경. 본문 위치/스크롤 불변, 배경 차단·바깥 클릭/닫기/Escape·모달 안 메뉴 전환·PC복원. 셸173/0·공통164/0·실제HTTPS79/0, 기존1031파일/1040행 보존. `docs/work-items/mobile-menu-modal.md`. 아래 v2.53.3 인라인 메뉴 구조를 대체한다.
+
 > 2026-10-09 최신 운영: **v2.53.3 `12e8dce`** 모바일 사이드바 정리. ☰=현재 앱 내비, 앱 이름=앱·계정 메뉴 한 판씩. 최근/프로젝트/문서 기본 접기·하나씩 열기, PC 탐색/즐겨찾기 취향 유지. 최종 셸137/0·공통164/0·실제HTTPS55/0, 원본1031파일/1040파일행 보존. AI 비서 update.2 사내 게시 유지. `docs/work-items/mobile-sidebar.md` 참조.
 
 > 2026-10-09 최신 운영: v2.53.2 `739445c`, 기존 비서 update.cmd·파일 팔레트 AI(Ctrl+J) 안내. Gemini 실응답 대기. **preview.1/2와 update.1 게시 금지**. 최종 update.2는 사용자 직접 게시 지시에 따라 **사내 게시 완료**(17:14 KST). 정상 관리자 인증/운영 ClamAV/일반 구성원 다운로드 SHA 일치, HTTPS24·브라우저10 통과. `docs/work-items/buddy-update2-prepublish.md`가 현재 파일/해시/게시 절차다. HTTPS30/0·원본1030파일 보존. `docs/work-items/buddy-update1-prepublish.md` 참조.

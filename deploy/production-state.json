@@ -1,12 +1,12 @@
 {
   "schema_version": 1,
-  "version": "2.53.3",
-  "verified_runtime_commit": "12e8dce01cb30bd8d4a5567d91592d8e4f231c5b",
-  "verified_checkout_commit": "12e8dce01cb30bd8d4a5567d91592d8e4f231c5b",
-  "verified_tree": "989f9c7e433a1604a373541eb05114dce1174c7e",
-  "verified_at": "2026-10-09T17:29:37+09:00",
+  "version": "2.53.4",
+  "verified_runtime_commit": "6bf9816441880368645f7e68707502f050409215",
+  "verified_checkout_commit": "6bf9816441880368645f7e68707502f050409215",
+  "verified_tree": "e5793e8d17e5bb2dc0cd170f05e655a359ec18eb",
+  "verified_at": "2026-10-09T18:08:17+09:00",
   "record_type": "last_verified_server_snapshot_not_live_status",
-  "release_commit": "12e8dce01cb30bd8d4a5567d91592d8e4f231c5b",
+  "release_commit": "6bf9816441880368645f7e68707502f050409215",
   "automatic_deployment": false,
   "server_only": [
     "database",
@@ -15,15 +15,14 @@
     "service_configuration"
   ],
   "verification": {
-    "scope": "Mobile sidebar: mutually exclusive navigation/app-account panels, compact accordion groups, desktop preference preservation.",
-    "https_pass": 55,
+    "scope": "Mobile native modal navigation: unchanged main layout and scroll, background inert, backdrop/close/Escape, internal mode switching and desktop restoration.",
+    "https_pass": 79,
     "https_fail": 0,
-    "mobile_shell_final_pass": 137,
+    "mobile_shell_final_pass": 173,
     "mobile_shell_final_fail": 0,
-    "initial_shell_seven_width_pass": 191,
     "cross_regression_pass": 164,
     "changed_files_verified": true,
-    "deployment_changed_files": 20,
+    "deployment_changed_files": 14,
     "deployment_deleted_files": 0,
     "migrations": [],
     "services_active": [
@@ -57,6 +56,7 @@
     }
   },
   "evidence": [
+    "docs/work-items/mobile-menu-modal.md",
     "docs/work-items/mobile-sidebar.md",
     "docs/work-items/buddy-update2-prepublish.md",
     "docs/work-items/buddy-update1-prepublish.md",
