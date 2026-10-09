@@ -1,6 +1,6 @@
 # 모바일 사이드바 묶음 정리
 
-- 상태: 격리 검증 완료·운영 반영 준비
+- 상태: 운영 배포 완료
 - 브랜치: cloud/mobile-sidebar
 - 기준 main: 992de8b0fa65
 - 담당 환경: Qaredi 서버의 격리 작업본
@@ -23,3 +23,11 @@
 - 공통 교차 회귀164/0. 마지막 취향·Escape 보완은 최종 셸 시험으로 확인했고 DB/API 공통 흐름은 바뀌지 않아 같은 묶음을 반복하지 않았다.
 - PHP·JS 문법/보안린트/부품버전/위키/diff 검사 통과. 실제 휴대폰은 미검증이며 Chromium 터치·화면 폭 모의 시험이다. 독립 에이전트 검토를 주장하지 않는다.
 - 증거: /home/changkwon/qaredi-mobile-sidebar-results-20261009/{shell,final-shell,final-shell2,cross}. 초기 실패도 보존.
+
+## 운영 배포 결과
+
+- v2.53.3, 런타임12e8dce01cb30bd8d4a5567d91592d8e4f231c5b. 20파일 반영·삭제0, DB/패키지/설정/cron변경0.
+- 암호화 백업 /var/backups/tbox-v2/mobile-sidebar-20261009: DB·코드/설정·저장소 SHA/복호화/파일 수 확인 완료. 모의 파일 적용20개와 서버/원격 드리프트0 확인 뒤 main FF, PHP-FPM reload.
+- 실제 HTTPS55/0: 390/820 모바일 × 자료실/업무/이야기, 다크 화면·그룹 펼침/하나만 열림·Escape,1280 PC 메뉴, 운영 JS/CSS 바이트 일치·JS/5xx0. 공개된 AI 비서 update.2 현행1건 유지.
+- 저장 원본1031파일 SHA256, files1040행, 이야기5표, DB 소유자/ACL, nginx/cron설정 보존. 삭제/복원/재시드0.
+- 운영 증거 /home/changkwon/qaredi-mobile-sidebar-results-20261009/{deploy,post}. 실물 휴대폰은 새로고침 후 사용자 확인이 남고, 여기서 통과한 것은 실제 HTTPS에 연결한 Chromium이다.
