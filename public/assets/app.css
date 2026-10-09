@@ -2571,3 +2571,16 @@ body[data-project-view] #project-title { min-width: 0; overflow: hidden; text-ov
   }
   #sidebar [data-sidebar-group] > summary:focus-visible { outline: 2px solid var(--ring); outline-offset: -2px; }
 }
+
+/* 모바일 내비는 native dialog: 배경을 밀지 않고 최상위 레이어에서 연다. */
+html.mobile-nav-open { overflow: hidden; }
+.mobile-nav-dialog { padding: 0; color: var(--fg); background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-ctl); box-shadow: var(--shadow-lg); }
+.mobile-nav-dialog::backdrop { background: rgba(0, 0, 0, .5); }
+.mobile-nav-dialog__head { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 8px 12px; border-bottom: 1px solid var(--line); flex: none; }
+.mobile-nav-dialog__head > div { display: flex; gap: 4px; }
+.mobile-nav-dialog__head button { min-height: 44px; }
+.mobile-nav-dialog__head button[aria-pressed="true"] { background: var(--muted-bg); color: var(--fg); }
+@media (max-width: 959.98px) {
+  .mobile-nav-dialog[open] { display: flex; flex-direction: column; position: fixed; inset: 16px auto auto 16px; margin: 0; width: min(384px, calc(100vw - 32px)); max-width: none; max-height: calc(100dvh - 32px); overflow: hidden; }
+  #mobile-nav-dialog #sidebar { flex: 1 1 auto; min-height: 0; width: auto; max-height: none; border: 0; overscroll-behavior: contain; padding: 16px 12px; }
+}

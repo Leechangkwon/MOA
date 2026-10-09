@@ -405,6 +405,16 @@ if ($shellMod === 'community'): ?>
     </span>
   </header>
 
+  <dialog id="mobile-nav-dialog" class="mobile-nav-dialog" aria-label="탐색 메뉴">
+    <div class="mobile-nav-dialog__head">
+      <div role="group" aria-label="메뉴 종류">
+        <button class="btn btn--quiet" type="button" data-mobile-nav-mode="nav" aria-pressed="false">메뉴</button>
+        <button class="btn btn--quiet" type="button" data-mobile-nav-mode="apps" aria-pressed="false">앱·계정</button>
+      </div>
+      <button id="mobile-nav-close" class="btn btn--icon btn--plain" type="button" aria-label="메뉴 닫기"><span class="icon" data-icon="x"></span></button>
+    </div>
+  </dialog>
+
   <aside id="sidebar" class="sidebar" hidden>
     <div class="moa-shell-links"><a href="/">모아 홈</a><a href="<?= Http::url('/welcome') ?>">계정·비서 설정</a></div>
     <div class="brand moa-brand">

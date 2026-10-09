@@ -11978,6 +11978,12 @@ function initMobileSidebar(sidebar, navToggle) {
   var groups = Array.from(sidebar.querySelectorAll('details[data-sidebar-group]'));
   var desktopOpen = groups.map(function (group) { return group.open; });
   var opener = navToggle;
+  var modal = document.getElementById('mobile-nav-dialog');
+  var closeButton = document.getElementById('mobile-nav-close');
+  var parent = sidebar.parentNode;
+  var anchor = document.createComment('sidebar home');
+  parent.insertBefore(anchor, sidebar);
+  var switches = modal ? Array.from(modal.querySelectorAll('[data-mobile-nav-mode]')) : [];
 
   function setDrawer(mode) {
     sidebar.hidden = !mode;
@@ -11987,11 +11993,26 @@ function initMobileSidebar(sidebar, navToggle) {
     if (appsButton) { appsButton.setAttribute('aria-expanded', mode === 'apps' ? 'true' : 'false'); }
     if (appsBox) { appsBox.open = mode === 'apps'; }
     sidebar.querySelectorAll('details.menu[open]').forEach(function (menu) { menu.open = false; });
+    switches.forEach(function (button) {
+      button.setAttribute('aria-pressed', button.dataset.mobileNavMode === mode ? 'true' : 'false');
+    });
+    if (modal && mode && media.matches) {
+      modal.appendChild(sidebar);
+      document.documentElement.classList.add('mobile-nav-open');
+      if (!modal.open) {
+        modal.showModal();
+        if (closeButton) { closeButton.focus({preventScroll: true}); }
+      }
+    } else if (modal) {
+      if (modal.open) { modal.close(); }
+      parent.insertBefore(sidebar, anchor);
+      document.documentElement.classList.remove('mobile-nav-open');
+    }
     if (mode) { sidebar.scrollTop = 0; }
   }
   function closeDrawer() {
     setDrawer(null);
-    if (opener) { opener.focus(); }
+    if (opener) { opener.focus({preventScroll: true}); }
   }
   function collapseGroups() { groups.forEach(function (group) { group.open = false; }); }
   setDrawer(null);
@@ -12017,12 +12038,35 @@ function initMobileSidebar(sidebar, navToggle) {
       groups.forEach(function (other) { if (other !== group) { other.open = false; } });
     });
   });
-  document.addEventListener('keydown', function (event) {
-    if (event.key !== 'Escape' || !media.matches || sidebar.hidden
-        || document.querySelector('dialog:modal')) { return; }
-    event.preventDefault();
-    closeDrawer();
-  });
+  if (modal) {
+    if (closeButton) { closeButton.addEventListener('click', closeDrawer); }
+    switches.forEach(function (button) {
+      button.addEventListener('click', function () {
+        if (button.dataset.mobileNavMode === 'nav') { collapseGroups(); }
+        setDrawer(button.dataset.mobileNavMode);
+      });
+    });
+    modal.addEventListener('cancel', function (event) { event.preventDefault(); closeDrawer(); });
+    modal.addEventListener('close', function () {
+      if (!modal.open && !sidebar.hidden) { closeDrawer(); }
+    });
+    function outside(event) {
+      var rect = modal.getBoundingClientRect();
+      return event.target === modal && (event.clientX < rect.left || event.clientX > rect.right
+        || event.clientY < rect.top || event.clientY > rect.bottom);
+    }
+    var backdropDown = false;
+    modal.addEventListener('pointerdown', function (event) { backdropDown = outside(event); });
+    modal.addEventListener('click', function (event) {
+      if (backdropDown && outside(event)) { closeDrawer(); }
+      backdropDown = false;
+    });
+    // Close before the chosen action opens another dialog or a floating messenger.
+    sidebar.addEventListener('click', function (event) {
+      var action = event.target.closest('a[href], button.nav__item, button.menu__item');
+      if (media.matches && modal.open && action) { closeDrawer(); }
+    }, true);
+  }
   media.addEventListener('change', function () {
     if (media.matches) {
       desktopOpen = groups.map(function (group) { return group.open; });

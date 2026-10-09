@@ -197,6 +197,8 @@ try:
     record=next(t for t in tokens if t['name']=='Cross-new-token')
     check(re.fullmatch(r'[A-Za-z0-9]{48}',issued_token) is not None and record['hint']==issued_token[:6],'issued token random shape and hint')
     expiry_text=re.sub(r'([+-]\d{2})$',r'\1:00',record['expires_at'].replace('Z','+00:00'))
+    # PostgreSQL omits trailing fractional zeros; Python 3.10 requires 3 or 6 digits.
+    expiry_text=re.sub(r'(\.\d{1,6})(?=[+-]\d{2}:\d{2}$)',lambda m:m.group(1).ljust(7,'0'),expiry_text)
     expiry=datetime.fromisoformat(expiry_text)
     check(abs((expiry-datetime.now(timezone.utc)).total_seconds()-180*86400)<90,'issued token expires in 180 days')
     check(all('token' not in t and 'token_hash' not in t for t in tokens),'self token list never exposes token/hash')
