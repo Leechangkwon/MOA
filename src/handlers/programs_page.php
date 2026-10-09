@@ -14,7 +14,7 @@ require dirname(__DIR__) . '/views/shell_top.php';
 <div id="programs-root" data-base="<?= $e(rtrim(Http::url('/'),'/')) ?>" data-csrf="<?= $e(Auth::csrfToken()) ?>">
 <p id="programs-status" class="help" role="status" aria-live="polite"></p>
 <?php if (!$programs): ?>
-<section class="card card--pad"><h2>기존 비서 업데이트를 준비하고 있어요</h2><p>기존 앱에 Gemini와 GPT를 통합하고 있습니다. 트레이 상주·Ctrl+Alt+Space·기존 파일 팔레트 동작을 확인한 업데이트가 올라오면 여기서 받을 수 있습니다.</p><p class="help">기존 비서 폴더와 설정은 보존합니다. 업데이트 게시 전에는 준비 중으로 표시합니다.</p></section>
+<section class="card card--pad"><h2>기존 비서 업데이트를 준비하고 있어요</h2><p>기존 앱에 Gemini와 GPT를 통합한 업데이트의 게시를 준비하고 있습니다. AI는 기존 파일 팔레트(Ctrl+Shift+Space)에서 AI 단추 또는 Ctrl+J로 엽니다.</p><p class="help">기존 바로가기·파일 팔레트·단일 트레이를 유지합니다. 현재 검증 PC의 Ctrl+Alt+Space 등록 충돌과 실제 Gemini 응답 확인은 남아 있습니다.</p></section>
 <?php endif; ?>
 <?php foreach ($programs as $program): ?>
 <section class="card card--pad">
@@ -26,7 +26,7 @@ require dirname(__DIR__) . '/views/shell_top.php';
 <p><label><input type="checkbox" name="ack" required> PC에서 실행하는 프로그램입니다. 게시자와 버전을 확인하고 내려받습니다.</label></p>
 <button class="btn btn--primary" type="submit">기존 비서 업데이트 ZIP 받기</button>
 </form>
-<p>기존 비서 폴더와 설정을 백업한 뒤 동봉된 업데이트 안내를 따라 기존 앱에 적용하세요. 업데이트 후에도 기존 바로가기를 사용합니다.</p>
+<p>기존 비서 폴더와 설정을 백업하고 트레이에서 종료한 뒤, 압축을 푼 업데이트의 update.cmd로 기존 설치 폴더를 선택하세요. 업데이트 후에도 기존 바로가기를 사용합니다.</p>
 </section>
 <?php endforeach; ?>
 <?php if ($publisher): ?>
