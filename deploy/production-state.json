@@ -1,12 +1,12 @@
 {
   "schema_version": 1,
-  "version": "2.52.3",
-  "verified_runtime_commit": "ce9a486c993fa56155687e2eff25cf6aa4fa29bb",
-  "verified_checkout_commit": "ce9a486c993fa56155687e2eff25cf6aa4fa29bb",
-  "verified_tree": "2f35cceaa9579e28da301ad4707e663e76f8c495",
-  "verified_at": "2026-10-09T13:03:54+09:00",
+  "version": "2.53.0",
+  "verified_runtime_commit": "a17a5e9dfb763cbe01a63af6939e26cc4ea2958c",
+  "verified_checkout_commit": "a17a5e9dfb763cbe01a63af6939e26cc4ea2958c",
+  "verified_tree": "a319d9f3f06fccd9efb867d0ffd1e7be408ef6b4",
+  "verified_at": "2026-10-09T15:09:35+09:00",
   "record_type": "last_verified_server_snapshot_not_live_status",
-  "release_commit": "ce9a486c993fa56155687e2eff25cf6aa4fa29bb",
+  "release_commit": "a17a5e9dfb763cbe01a63af6939e26cc4ea2958c",
   "automatic_deployment": false,
   "server_only": [
     "database",
@@ -15,27 +15,32 @@
     "service_configuration"
   ],
   "verification": {
-    "scope": "PC assistant download/setup/provider UI update; previous features unchanged",
-    "https_pass": 44,
+    "scope": "PC assistant personal-token Gemini adapter and authenticated distribution; no release ZIP published",
+    "https_pass": 30,
     "https_fail": 0,
     "records_unchanged": true,
     "changed_files_verified": true,
-    "deployment_changed_files": 14,
+    "deployment_changed_files": 32,
     "deployment_deleted_files": 0,
-    "migrations": [],
+    "migrations": [
+      "2026-10-09_program_distribution.sql"
+    ],
     "services_active": [
       "nginx",
       "php8.1-fpm",
       "postgresql"
     ],
     "original_database_owners_preserved": true,
+    "original_file_fields_unchanged": true,
     "storage_files_preserved": 1030,
     "nginx_files_changed": 0,
     "nginx_unchanged": true,
     "file_apply_rehearsal": true,
+    "assistant_chat_synthetic_pass": 38,
+    "program_distribution_synthetic_pass": 45,
+    "assistant_http_pass": 376,
+    "assistant_unit_pass": 52,
     "local_assist_synthetic_browser_pass": 73,
-    "messenger_window_selected_pass": 31,
-    "messenger_store_pass": 75,
     "cross_regression_pass": 164,
     "live_viewport_widths": [
       390,
@@ -45,15 +50,12 @@
     "live_5xx": 0,
     "live_content_writes": 0,
     "live_provider_requests": 0,
+    "published_programs": 0,
     "review_context": "same Codex session; no independent review claimed",
-    "windows_app_verified_commit": "b86a6026e9141b7b704f24613fbb73d39455e500",
-    "windows_app_report": "76 tests passed, 1 skipped; actual sign-in/models/short response/DPAPI restoration",
-    "assistant_zip_commit": "927f9198785c3fef1abaa90930713f4953d2dc9a",
-    "assistant_zip_sha256": "43dfd390d78b71d57395752690f9fd4e8f1f4c69cbf866699dee66e07119884a"
+    "windows_integrated_report": "Local session reports actual GPT response; Gemini personal-token setup and hotkey conflict resolution remain pending"
   },
   "evidence": [
-    "docs/work-items/buddy-download-flow.md",
-    "docs/feedback-20261008.md",
+    "docs/work-items/buddy-server-contract.md",
     "SECURITY.md 7장 검토 이력"
   ],
   "remaining": [
@@ -64,6 +66,9 @@
     "front_proxy_log_check",
     "real_handset_messenger_check",
     "user_self_attack_qf11",
-    "real_windows_browser_pc_roundtrip"
+    "real_windows_browser_pc_roundtrip",
+    "real_windows_gemini_response",
+    "windows_hotkey_conflict_resolution",
+    "verified_integrated_zip_publication"
   ]
 }
