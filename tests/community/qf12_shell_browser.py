@@ -323,6 +323,65 @@ try:
     with sync_playwright() as pw:
         browser = pw.chromium.launch(executable_path=os.environ.get('CHROMIUM_EXECUTABLE'))
 
+        # Mobile drawer: separate navigation/app panel, bounded lists, keyboard and resize.
+        if want('mobile'):
+            for width in (360, 412, 820):
+                ctx = browser.new_context(viewport={'width': width, 'height': 844}, locale='ko-KR', user_agent=UA, has_touch=True)
+                ctx.add_cookies(cookie(new_session('admin'), {'qaredi_motion': 'reduce', 'tbox_theme': 'dark' if width == 412 else 'light'}))
+                ctx.add_init_script("localStorage.setItem('qaredi-nav-fav-open', '0')")
+                t = Tab(ctx); p = t.page
+                def mobile_drawer():
+                    for path, main_link in (('/community/workspace', '#nav-work-home'), ('/tbox/', '#nav-files'), ('/community/memories', '[data-thread-nav="feed"]')):
+                        t.go(path)
+                        p.locator('#nav-toggle').click()
+                        check(p.locator(main_link).is_visible() and not p.locator('.app-menu').is_visible(), 'mobile %d %s navigation only' % (width,path))
+                        check(not p.locator('#sidebar .moa-shell-links').is_visible() and not p.locator('#sidebar .moa-brand-home').is_visible(), 'mobile %d %s no duplicate brand links' % (width,path))
+                        if path == '/community/workspace':
+                            # Lots of synthetic rows reproduce a long sidebar without touching production data.
+                            p.evaluate("""() => {const box=document.getElementById('nav-community-tree');for(let i=0;i<35;i++){const a=document.createElement('a');a.className='nav__item';a.href='#';a.textContent='합성 문서 '+i;box.append(a);}}""")
+                            check(p.locator('#sidebar details[data-sidebar-group][open]').count()==0, 'mobile %d all secondary groups start closed' % width)
+                            docs=p.locator('#nav-community-documents-box')
+                            docs.locator('summary').click()
+                            check(docs.get_attribute('open') is not None and p.locator('#nav-community-home').is_visible(), 'mobile %d documents expand on demand' % width)
+                            p.locator('#nav-work-projects-group > summary').click()
+                            expect(docs).not_to_have_attribute('open','')
+                            check(p.locator('#sidebar details[data-sidebar-group][open]').count()==1, 'mobile %d only selected group open' % width)
+                            dims=p.locator('#sidebar [data-sidebar-group] > summary:visible').evaluate_all('(els)=>els.map(e=>e.getBoundingClientRect().height)')
+                            check(dims and min(dims)>=44, 'mobile %d group summary touch targets >=44' % width)
+                            p.screenshot(path=str(shots/('mobile-nav-%d.png' % width)))
+                        p.locator('#appbar-apps').click()
+                        check(p.locator('.app-menu').is_visible() and not p.locator(main_link).is_visible(), 'mobile %d %s apps only' % (width,path))
+                        check(p.locator('#menu-settings').is_visible() and p.locator('#menu-admin').is_visible(), 'mobile %d %s account/admin reachable' % (width,path))
+                        check(p.locator('#appbar-apps').get_attribute('aria-expanded')=='true' and p.locator('#nav-toggle').get_attribute('aria-expanded')=='false', 'mobile %d %s exclusive expanded state' % (width,path))
+                        check(p.evaluate('document.documentElement.scrollWidth<=innerWidth'), 'mobile %d %s no horizontal overflow' % (width,path))
+                        p.screenshot(path=str(shots/('mobile-apps-%d-%s.png' % (width,path.split('/')[1]))))
+                        p.keyboard.press('Escape')
+                        check(not p.locator('#sidebar').is_visible() and p.locator('#appbar-apps').evaluate('(e)=>document.activeElement===e'), 'mobile %d %s Escape closes and restores focus' % (width,path))
+                        p.locator('#appbar-apps').click();p.locator('#nav-toggle').click()
+                        check(p.locator(main_link).is_visible() and not p.locator('.app-menu').is_visible(), 'mobile %d %s app panel switches directly to navigation' % (width,path))
+                        p.locator('#nav-toggle').click();p.locator('#nav-toggle').click()
+                        check(p.locator('#sidebar').evaluate('(e)=>e.scrollTop')==0 and p.locator('#sidebar [data-sidebar-group][open]').count()==0, 'mobile %d %s reopen starts compact at top' % (width,path))
+                    # A floating messenger hidden behind the drawer must not swallow Escape.
+                    p.keyboard.press('Escape')
+                    p.locator('#appbar-messenger').click()
+                    expect(p.locator('#messenger-window')).to_be_visible()
+                    p.locator('#nav-toggle').click()
+                    p.keyboard.press('Escape')
+                    check(not p.locator('#sidebar').is_visible(), 'mobile %d Escape closes drawer with floating messenger open' % width)
+                    t.go('/community/workspace');p.locator('#appbar-apps').click()
+                    p.set_viewport_size({'width':1280,'height':900})
+                    expect(p.locator('#nav-community-home')).to_be_visible()
+                    check(not p.locator('.app-menu').is_visible() and p.locator('#nav-community-home').is_visible(), 'mobile %d resize restores desktop navigation and expanded docs' % width)
+                    expect(p.locator('#nav-community-fav-box')).not_to_have_attribute('open','')
+                    check(p.evaluate("localStorage.getItem('qaredi-nav-fav-open')")=='0', 'mobile %d desktop favorite preference preserved' % width)
+                    p.set_viewport_size({'width':width,'height':844})
+                    expect(p.locator('#sidebar')).not_to_be_visible()
+                    p.locator('#nav-toggle').click()
+                    check(p.locator('#sidebar [data-sidebar-group][open]').count()==0, 'mobile %d resize to mobile resets groups' % width)
+                    check(t.clean('mobile-'+str(width)), 'mobile %d no browser errors' % width)
+                guard('mobile drawer '+str(width), mobile_drawer)
+                ctx.close()
+
         # ─── Q:T-40 아이콘 줄 — 폭 · 켜짐 · 넘침 ───────────────────────────────────────────────────────
         if want('t40'):
             tok = new_session('employee')

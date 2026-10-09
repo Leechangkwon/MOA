@@ -1,4 +1,4 @@
-import { hydrateDashboard } from './dashboard.js?v=51ba23cbf8fd';
+import { hydrateDashboard } from './dashboard.js?v=2f3e656e2297';
 /**
  * public/assets/community/editor.js — 커뮤니티 화면의 동작 한 벌 (모듈 스크립트)
  *
@@ -41,22 +41,22 @@ import { inputRules, textblockTypeInputRule, InputRule } from './vendor/pm/prose
 import { dropCursor } from './vendor/pm/prosemirror-dropcursor.js?v=5823578fa61a';
 import { gapCursor } from './vendor/pm/prosemirror-gapcursor.js?v=5823578fa61a';
 
-import { createSuggestions, bindMySuggestions, buildSuggestionOps, suggestionTypeAllowed, suggestionEqual } from './suggestions.js?v=51ba23cbf8fd';
-import { renderDoc, embedHost } from './doc-render.js?v=51ba23cbf8fd';
-import { createDatabaseView } from './database.js?v=51ba23cbf8fd';
-import { bindTemplateGallery, createTemplateSave } from './templates.js?v=51ba23cbf8fd';
-import { bindEmbedAdmin } from './embeds.js?v=51ba23cbf8fd';
-import { bindPopular } from './popular.js?v=51ba23cbf8fd';
-import { bindPalettes } from './palettes.js?v=51ba23cbf8fd';
-import { schema, toDoc, fromDoc, uuid4, colorAllowed, schemeOkForEditor, mentionAllowed, editorDomParser, clipboardDomParser, COLORS, BLOCK_TYPES } from './editor-schema.js?v=51ba23cbf8fd';
-import { drawAutomationPage, drawAutomationSpace, bindAutomations, loadAutomations } from './automations.js?v=51ba23cbf8fd';
-import { drawTrust, bindProcedures } from './procedures.js?v=51ba23cbf8fd';
-import { createPageExport } from './export.js?v=51ba23cbf8fd';
-import { createDrafts } from './drafts.js?v=51ba23cbf8fd';
-import { drawPageAi, bindAiCenter } from './ai.js?v=51ba23cbf8fd';
-import { drawIntegrations, bindIntegrations } from './integrations.js?v=51ba23cbf8fd';
+import { createSuggestions, bindMySuggestions, buildSuggestionOps, suggestionTypeAllowed, suggestionEqual } from './suggestions.js?v=2f3e656e2297';
+import { renderDoc, embedHost } from './doc-render.js?v=2f3e656e2297';
+import { createDatabaseView } from './database.js?v=2f3e656e2297';
+import { bindTemplateGallery, createTemplateSave } from './templates.js?v=2f3e656e2297';
+import { bindEmbedAdmin } from './embeds.js?v=2f3e656e2297';
+import { bindPopular } from './popular.js?v=2f3e656e2297';
+import { bindPalettes } from './palettes.js?v=2f3e656e2297';
+import { schema, toDoc, fromDoc, uuid4, colorAllowed, schemeOkForEditor, mentionAllowed, editorDomParser, clipboardDomParser, COLORS, BLOCK_TYPES } from './editor-schema.js?v=2f3e656e2297';
+import { drawAutomationPage, drawAutomationSpace, bindAutomations, loadAutomations } from './automations.js?v=2f3e656e2297';
+import { drawTrust, bindProcedures } from './procedures.js?v=2f3e656e2297';
+import { createPageExport } from './export.js?v=2f3e656e2297';
+import { createDrafts } from './drafts.js?v=2f3e656e2297';
+import { drawPageAi, bindAiCenter } from './ai.js?v=2f3e656e2297';
+import { drawIntegrations, bindIntegrations } from './integrations.js?v=2f3e656e2297';
 // Q:F-12 D — 업무 화면(홈 · 내 작업 · 프로젝트 목록 · 작업 상세 칸 · 포트폴리오 · 「새로 만들기」). 이 파일은 고리 몇 개만 이어 준다
-import { createWork } from './work.js?v=51ba23cbf8fd';
+import { createWork } from './work.js?v=2f3e656e2297';
 
 /* ─── 주소와 공통 도우미 ─────────────────────────────────────── */
 
@@ -753,7 +753,7 @@ function fillSidebarTrees(spaces) {
 function markActiveVisible(box) {
   const row = box.querySelector('.nav-tree__row.is-active');
   const side = document.getElementById('sidebar');
-  if (!row || !side) { return; }
+  if (!row || !side || row.getClientRects().length === 0) { return; }
   const r = row.getBoundingClientRect();
   const b = side.getBoundingClientRect();
   if (r.top < b.top || r.bottom > b.bottom) {
@@ -909,10 +909,17 @@ function loadFavoritesNav() {
 function bindFavoritesFold() {
   const box = document.getElementById('nav-community-fav-box');
   if (!box) { return; }
-  try {
-    if (window.localStorage.getItem(FAV_OPEN_KEY) === '0') { box.open = false; }
-  } catch (e) { /* 저장소를 못 쓰면 늘 펼친 채로 시작한다 */ }
+  const narrow = window.matchMedia('(max-width: 959.98px)');
+  function restoreDesktopFold() {
+    if (narrow.matches) { return; }
+    try { box.open = window.localStorage.getItem(FAV_OPEN_KEY) !== '0'; } catch (e) { /* 기본 펼침 */ }
+  }
+  restoreDesktopFold();
+  const sidebar = document.getElementById('sidebar');
+  if (sidebar) { sidebar.addEventListener('qaredi:sidebar-layout', restoreDesktopFold); }
   box.addEventListener('toggle', () => {
+    // 모바일 묶음 접기가 PC에서 사용자가 정한 즐겨찾기 취향을 덮지 않는다.
+    if (narrow.matches) { return; }
     try { window.localStorage.setItem(FAV_OPEN_KEY, box.open ? '1' : '0'); } catch (e) { /* 무시 */ }
   });
 }

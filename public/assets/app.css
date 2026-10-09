@@ -2553,3 +2553,21 @@ body[data-project-view] #project-title { min-width: 0; overflow: hidden; text-ov
 #appbar-messenger, #messenger-window .btn--icon { min-width:44px; }
 #messenger-window .modal__title { font-size:18px; }
 #messenger-window .moa-ai-card { box-shadow:none; }
+
+/* 모바일에서는 앱 전환과 현재 앱 내비를 한 판씩 표시한다. */
+.sidebar > details[data-sidebar-group] { flex-shrink: 0; }
+.sidebar > details[data-sidebar-group]:has(> summary[hidden]) { display: none; }
+@media (max-width: 959.98px) {
+  #sidebar[data-mobile-panel] { max-height: calc(100dvh - 52px); overscroll-behavior: contain; }
+  #sidebar[data-mobile-panel] > .moa-shell-links,
+  #sidebar[data-mobile-panel="nav"] > .brand { display: none; }
+  #sidebar[data-mobile-panel="apps"] > :not(.brand):not(dialog):not(template) { display: none !important; }
+  #sidebar[data-mobile-panel="apps"] > .brand { display: block; padding: 0; }
+  #sidebar[data-mobile-panel="apps"] .moa-brand-home,
+  #sidebar[data-mobile-panel="apps"] .appbar__apps > summary { display: none; }
+  #sidebar[data-mobile-panel="apps"] .app-menu { margin: 0; border: 0; padding: 0; box-shadow: none; }
+  #sidebar [data-sidebar-group] > summary.nav-title {
+    min-height: 44px; margin: 0; padding: 12px 8px; cursor: pointer; font-size: 14px; color: var(--fg);
+  }
+  #sidebar [data-sidebar-group] > summary:focus-visible { outline: 2px solid var(--ring); outline-offset: -2px; }
+}

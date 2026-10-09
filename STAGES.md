@@ -2874,3 +2874,7 @@ v2.53.2 739445c 운영 안내 반영: update.cmd·기존 팔레트 Ctrl+J·Gemin
 2026-10-09 사용자 결정: 「우리가 관리잔데 일단 올려라」. 최종 update.2 관리자 작업 계정 정상 인증 업로드·사내 게시·다운로드 확인까지 직접 진행한다. 이전 사용자 직접 게시 대기를 대체한다. `docs/work-items/buddy-update2-prepublish.md`.
 
 최종 update.2 사내 게시 완료(2026-10-09 17:14 KST): 지정 관리자 정상 인증·F65 업로드201·운영 ClamAV clean·F67 게시201. 구성원 실제 다운로드200/해시 일치, HTTPS24/0·브라우저10/0. 기존 files1039행/저장 원본1030개 해시 보존. Gemini 실응답·Ctrl+Alt+Space 충돌은 남음. `docs/work-items/buddy-update2-prepublish.md`.
+
+2026-10-09 사용자 지적: 모바일에서 앱·계정과 업무의 최근/문서 세부 목록이 동시에 펼쳐져 복잡함. 모바일 메뉴 분리와 묶음 기본 접기, 넓은 화면 기본 유지로 개선. `docs/work-items/mobile-sidebar.md`.
+
+모바일 사이드바 검증: 앱/계정과 현재 앱 메뉴 분리·보조 목록 접기. 첫 셸191/0, PC 즐겨찾기 취향 회귀3건 보정 후 최종 셸137/0·공통164/0. 상세 `docs/work-items/mobile-sidebar.md`, 사용법 `wiki/qaredi/guide-site.json`. 운영 반영 준비.

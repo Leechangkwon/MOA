@@ -567,12 +567,14 @@ if ($shellMod === 'community'): ?>
          새 클래스 0: 제목은 `.nav-title`, 줄은 사이드바 트리와 같은 `.nav-tree` 줄(5-A′). 접기·펼치기는 <details> 가 한다
          (여닫는 스크립트 0 · 키보드로도 열린다 — DESIGN 2.14 페이지 트리와 같은 방식). 즐겨찾기 순서는 줄을 끌어 놓거나
          Alt+↑/↓ 로 바꾼다(editor.js — `PATCH /community/api/me/favorites`). -->
-    <details id="nav-community-fav-box" open hidden>
+    <details id="nav-community-fav-box" data-sidebar-group open hidden>
       <summary class="nav-title">즐겨찾기</summary>
       <nav id="nav-community-fav" class="nav" aria-label="즐겨찾기"></nav>
     </details>
-    <p id="nav-community-recent-title" class="nav-title" hidden>최근</p>
+    <details id="nav-community-recent-group" data-sidebar-group open>
+    <summary id="nav-community-recent-title" class="nav-title" hidden>최근</summary>
     <nav id="nav-community-recent" class="nav" aria-label="최근 본 페이지" hidden></nav>
+    </details>
     <!-- 「최근」 더 보기 창 — 최근 본 페이지 전부(50까지)와 「최근 기록 지우기」(내 줄만 · 두 번 눌러야 — 댓글 지우기와 같은 방식,
          DESIGN 2.14 5-D). 목록은 알림 창과 같은 `.list`(2.13). 좁은 화면에서는 editor.js 가 창을 body 끝으로 옮긴다(알림 창과 같다). -->
     <dialog id="recent-dialog" class="modal modal--form modal--stack" aria-labelledby="recent-title">
@@ -604,7 +606,8 @@ $shellProjects = function_exists('community_work_projects') && $shellUser !== []
     ? community_work_projects($shellUser, 10) : ['items' => [], 'more' => false];
 $shellProjectsShown = $shellProjects['items'] !== [] || $shellCommunityWrite;
 ?>
-    <p id="nav-work-projects-title" class="nav-title"<?= $shellProjectsShown ? '' : ' hidden' ?>>프로젝트</p>
+    <details id="nav-work-projects-group" data-sidebar-group open>
+    <summary id="nav-work-projects-title" class="nav-title"<?= $shellProjectsShown ? '' : ' hidden' ?>>프로젝트</summary>
     <nav id="nav-work-projects" class="nav" aria-label="프로젝트"<?= $shellProjectsShown ? '' : ' hidden' ?>>
 <?php foreach ($shellProjects['items'] as $shellProject): ?>
       <a class="nav__item" href="<?= Http::communityUrl('/p/') ?><?= htmlspecialchars((string) $shellProject['id'], ENT_QUOTES, 'UTF-8') ?>" data-project-id="<?= htmlspecialchars((string) $shellProject['id'], ENT_QUOTES, 'UTF-8') ?>" data-project-purpose="<?= $shellProject['purpose'] === 'my_tasks' ? 'my_tasks' : 'project' ?>"><span class="task-color<?= $shellProject['color'] === null ? '' : ' moa-' . htmlspecialchars((string) $shellProject['color'], ENT_QUOTES, 'UTF-8') ?>" aria-hidden="true"></span><span><?= htmlspecialchars((string) $shellProject['title'], ENT_QUOTES, 'UTF-8') ?></span></a>
@@ -616,17 +619,23 @@ $shellProjectsShown = $shellProjects['items'] !== [] || $shellCommunityWrite;
       <button id="nav-work-new-project" class="nav__item" type="button" data-work-new-project aria-haspopup="dialog"><span class="icon" data-icon="plus"></span><span>프로젝트</span></button>
 <?php endif; ?>
     </nav>
-    <p id="nav-work-portfolios-title" class="nav-title" hidden>포트폴리오</p>
+    </details>
+    <details id="nav-work-portfolios-group" data-sidebar-group open>
+    <summary id="nav-work-portfolios-title" class="nav-title" hidden>포트폴리오</summary>
     <nav id="nav-work-portfolios" class="nav" aria-label="포트폴리오" hidden></nav>
+    </details>
     <!-- 팀 (4-B → Q:F-12 2.19 ⑥) — 항목은 `editor.js` 가 창구 `GET /community/api/spaces` 의 답으로
          채운다. **이 파일에는 팀 판단이 없다**: 내 팀이 무엇인지도, 팀 공간이 있는지도
          서버가 정하고 화면은 받은 것만 그린다 (PRD S-01, DESIGN 원칙 1).
          팀 공간이 없으면 이 자리는 끝까지 비어 있고 제목 줄도 보이지 않는다. -->
-    <p id="nav-community-team-title" class="nav-title" hidden>팀</p>
+    <details id="nav-community-teams-group" data-sidebar-group open>
+    <summary id="nav-community-team-title" class="nav-title" hidden>팀</summary>
     <nav id="nav-community-teams" class="nav" aria-label="팀 공간" hidden></nav>
+    </details>
     <!-- 문서 (Q:F-12 2.19 ⑦) — 내 문서(`/community/workspace` 그대로) · 내 페이지 트리(5-A′ — editor.js 가 `?tree=1` 의 답으로 채운다) · 절차서,
          이어서 「게시판」 목록(볼 수 있는 게시판만 — 게시판 모음 화면이 따로 없어 목록째 이 묶음 끝에 둔다). -->
-    <p class="nav-title">문서</p>
+    <details id="nav-community-documents-box" data-sidebar-group open>
+    <summary class="nav-title">문서</summary>
     <nav class="nav" aria-label="문서">
       <a id="nav-community-home" class="<?= $shellNavClass('community-home') ?>" href="<?= Http::communityUrl('/workspace') ?>">
         <span class="icon" data-icon="files"></span><span>내 문서</span>
@@ -634,20 +643,25 @@ $shellProjectsShown = $shellProjects['items'] !== [] || $shellCommunityWrite;
       <div id="nav-community-tree" class="nav-tree-box"></div>
       <a class="nav__item" href="<?= Http::communityUrl('/procedures') ?>"><span class="icon" data-icon="log"></span><span>절차서</span></a>
     </nav>
+    </details>
     <!-- 게시판 (5-C) — 항목은 editor.js 가 창구 `GET /community/api/boards` 의 답(볼 수 있는 게시판만)으로
          채운다. 종류마다 아이콘(공지·토론·질문답변)이 다르고, 보관 중인 게시판에는 「보관」이 붙는다.
          볼 수 있는 게시판이 하나도 없으면 제목째 숨는다. 이 파일에는 게시판 판단이 없다. -->
-    <p id="nav-community-board-title" class="nav-title" hidden>게시판</p>
+    <details id="nav-community-boards-group" data-sidebar-group open>
+    <summary id="nav-community-board-title" class="nav-title" hidden>게시판</summary>
     <nav id="nav-community-boards" class="nav" aria-label="게시판" hidden></nav>
+    </details>
     <!-- 공유받은 페이지 (5-A · 5-A′) — 있을 때만 제목째 보인다 -->
-    <p id="nav-community-shared-title" class="nav-title" hidden>공유받은 페이지</p>
+    <details id="nav-community-shared-group" data-sidebar-group open>
+    <summary id="nav-community-shared-title" class="nav-title" hidden>공유받은 페이지</summary>
     <nav id="nav-community-shared" class="nav" aria-label="공유받은 페이지" hidden></nav>
+    </details>
     <!-- 「더보기」 (Q:F-12 DESIGN 2.19 ⑧ — 시안 v1 승인) — 처음엔 접혀 있는 <details>(즐겨찾기 묶음과 같은 틀 · 여닫는 스크립트 0).
          자동 작업 · 내 제안 · 공유·연동 설정 · 문서 AI · **내 휴지통**. 2.9 「휴지통 자리 — 두 앱이 같게」를 업무 앱에서는 이렇게 고쳤다(자료실은 그대로).
          「내 휴지통」(디버깅 묶음 U3): 누르면 「내 문서」 화면의 휴지통 창이 열린다(꼬리표 `trash=1` — 고정 글자, 그 화면에서는 이동 없이 창만).
          목록은 전과 같이 창구 `GET /community/api/me/trash` 가 주는 것뿐이다. 쓰기 자격이 없는 사람(손님)은 지울 수 없어 늘 비어 있으므로
          「내 제안」과 같은 값으로 숨긴다(편의 — 창구가 다시 판단한다). -->
-    <details id="nav-community-more-box">
+    <details id="nav-community-more-box" data-sidebar-group>
       <summary class="nav-title">더보기</summary>
       <nav class="nav" aria-label="더보기">
         <a class="nav__item" href="<?= Http::communityUrl('/automations') ?>"><span class="icon" data-icon="log"></span><span>자동 작업</span></a>

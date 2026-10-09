@@ -948,3 +948,5 @@ insta6bdbdf3 서버 검증: HTTP138·실제화면19·합성브라우저38·공�
 최종 배포 대상 교체: update.2 SHA256 65bff9f6fd5e3c1579b10eef962aad2fcefcc740f9e0e3a687245ba15ad2f009,258850 bytes·79명세파일 일치·Upload F-65 확인 필요·ClamAV1.5.4 감염0. 사전 검사와 운영 업로드 후 감사 기록을 구분한다. preview.1/2·update.1 게시 금지, 운영 프로그램0건. 관리자 인증 전까지라는 사용자 범위 준수.
 
 2026-10-09 사용자 명시 지시로 update.2 직접 게시: 지정 작업 관리자 claude_admin01 정상 HTTPS 로그인·필수 약관 확인·요청별 비밀번호/새 OTP, 운영 ClamAV clean 및 해시 결합 감사 후 internal 게시. 초기 약관 관문을 확인한 뒤 정상 동의 창구로 진행했고 인증/스캔/DB 게시 필드 우회0. F65 업로드·file.scan·program.publish·program.download allow 기록 확인, 일반 구성원 실제 다운로드 SHA 일치, 익명401 유지. HTTPS24/0·브라우저10/0, 기존 파일1039행/저장 원본1030개 불변. 게시자의 실행 프로그램 배포 위험(R-94)은 기존과 같음. 미검증은 실제 Gemini 응답·단축키 충돌·웹↔PC 전체 연결이며 다음 조치는 PC 검증. `docs/work-items/buddy-update2-prepublish.md`.
+
+2026-10-09 모바일 사이드바: ① 기존 서버 목록/권한/출력 유지, UI 표시만 분리·접기. 격리 셸 최종137/0·7폭 검사 포함 첫 셸191/0·공통164/0·정적 검사 통과. ② UI 숨김은 권한 방어가 아니며 기존 서버 Authz 유지; DB/라우트/세션 변경0. ③ 실물 휴대폰 미검증, 같은 세션 자체 검토이며 독립 검토 아님. ④ 백업/모의 적용 뒤 운영 HTTPS 확인. 중간 화면 폭 전환 시 PC 즐겨찾기 접힘 보존 실패3건은 콜백 순서 보정 뒤 최종 시험 통과. `docs/work-items/mobile-sidebar.md`.

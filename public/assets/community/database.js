@@ -1,6 +1,6 @@
-import { drawCalendar, rangeFor, shifted } from './calendar.js?v=51ba23cbf8fd';
-import { drawChart } from './charts.js?v=51ba23cbf8fd';
-import { openViewSettings } from './db-view-config.js?v=51ba23cbf8fd';
+import { drawCalendar, rangeFor, shifted } from './calendar.js?v=2f3e656e2297';
+import { drawChart } from './charts.js?v=2f3e656e2297';
+import { openViewSettings } from './db-view-config.js?v=2f3e656e2297';
 /*
  * public/assets/community/database.js — 데이터베이스(6-A) 화면: DB 페이지의 **표**와 행 페이지의 **속성 줄**.
  *
@@ -17,7 +17,7 @@ import { openViewSettings } from './db-view-config.js?v=51ba23cbf8fd';
  * editor.js 가 `createDatabaseView(deps)` 로 한 번 만들고, 페이지를 읽을 때마다 `draw(data)` 를 부른다.
  * 7-B — 새 행 고르개(「빈 행」 + 이 DB 의 행 템플릿 · 고른 템플릿 지우기)는 `templates.js` 의 `createRowTemplatePicker` 가 맡는다.
  */
-import { createRowTemplatePicker } from './templates.js?v=51ba23cbf8fd';
+import { createRowTemplatePicker } from './templates.js?v=2f3e656e2297';
 
 const TYPE_LABELS = {
   text: '글', number: '숫자', checkbox: '체크', url: '주소', email: '메일', phone: '전화',

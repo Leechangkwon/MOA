@@ -1,5 +1,5 @@
-import { drawCalendar, rangeFor } from './calendar.js?v=51ba23cbf8fd';
-import { renderDoc } from './doc-render.js?v=51ba23cbf8fd';
+import { drawCalendar, rangeFor } from './calendar.js?v=2f3e656e2297';
+import { renderDoc } from './doc-render.js?v=2f3e656e2297';
 /*
  * public/assets/community/work.js — 업무 화면(사이트 Q:F-12 · 조각 D): 업무 홈 · 내 작업 · 프로젝트(작업 목록 + 오른쪽 작업 상세 칸 ·
  * 프로젝트 머리 · 상태) · 포트폴리오 · 「새로 만들기」(작업 · 프로젝트) · 사이드바 포트폴리오 묶음.
