@@ -1,5 +1,15 @@
 [
     {
+        "version": "2.52.3",
+        "level": "patch",
+        "released_at": "2026-10-09 13:00",
+        "title": "개인 ChatGPT PC 비서 연결 안내",
+        "changes": [
+            "검증된 PC 비서 받기와 설치·로그인 순서를 안내합니다.",
+            "메신저 AI 도구에서 기본 Gemini와 내 ChatGPT를 구분하고 PC 연결 만료를 표시합니다."
+        ]
+    },
+    {
         "version": "2.52.2",
         "level": "patch",
         "released_at": "2026-10-08 22:33",
