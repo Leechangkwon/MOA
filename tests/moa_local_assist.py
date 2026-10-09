@@ -233,7 +233,7 @@ with sync_playwright() as p:
     check('welcome distinguishes integrated release from GPT test', '통합' in guide.inner_text() and '연결 시험본' in guide.inner_text() and 'Git 계정은 필요하지 않습니다' in guide.inner_text())
     check('authenticated T-box distribution link, no token input in local guide', guide.locator('a').first.get_attribute('href') == '/tbox/programs' and guide.locator('input').count()==0)
     check('guide distinguishes same-PC pairing and phone alternative', '같은 PC' in guide.inner_text() and '휴대폰에서는 다른 PC' in guide.inner_text())
-    check('guide preserves old folders and explains subsequent launch', '새 폴더' in guide.inner_text() and '다음부터는 run.cmd' in guide.inner_text())
+    check('guide updates the existing app and preserves its settings and shortcut', '기존 비서 폴더와 설정을 백업' in guide.inner_text() and '기존 바로가기' in guide.inner_text() and '트레이 아이콘이 하나' in guide.inner_text())
     page.goto('https://changkwon.mso.so/tbox/messages')
     open_tool('local', '  PC 전송 원문 😀\n둘째 줄  ')
     check('no loopback request before user pairs', not f.local_posts)

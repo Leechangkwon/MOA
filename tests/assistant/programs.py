@@ -37,7 +37,7 @@ def publish(fid,sha,version='1.0.0',level='internal',team=None,**kw):
 try:
     call('GET','/api/programs',session=False,status=401)
     call('GET','/api/programs',session=False,token=users['admin']['read']['token'],status=401)
-    r=call('GET','/programs'); check('설치본을 준비하고' in r.content.decode('utf-8'),'honest empty authenticated distribution page')
+    r=call('GET','/programs'); check('기존 비서 업데이트를 준비하고' in r.content.decode('utf-8'),'honest empty authenticated distribution page')
     call('POST','/api/programs',body={},status=403)
     call('POST','/api/programs',user='admin',body={},csrf=False,status=403)
     call('POST','/api/programs',user='admin',body={},status=400)

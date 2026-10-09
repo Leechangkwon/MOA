@@ -18,14 +18,14 @@
     form.addEventListener('submit', async event => {
       event.preventDefault();
       const button = form.querySelector('button'); button.disabled = true;
-      status.textContent = '설치 파일을 준비하고 있습니다…';
+      status.textContent = '업데이트 파일을 준비하고 있습니다…';
       try {
         const response = await post('/api/programs/' + encodeURIComponent(form.dataset.id) + '/download', {ack: true});
         const blob = await response.blob();
         const url = URL.createObjectURL(blob), link = document.createElement('a');
         link.href = url; link.download = form.dataset.name; document.body.appendChild(link); link.click(); link.remove();
         setTimeout(() => URL.revokeObjectURL(url), 30000);
-        status.textContent = '다운로드를 시작했습니다. ZIP을 모두 풀고 설치 안내를 따라 주세요.';
+        status.textContent = '다운로드를 시작했습니다. 기존 비서 폴더와 설정을 백업한 뒤 동봉된 업데이트 안내를 따라 주세요.';
       } catch (error) { status.textContent = error.message; }
       finally { button.disabled = false; }
     });

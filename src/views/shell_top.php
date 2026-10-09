@@ -678,7 +678,7 @@ $shellProjectsShown = $shellProjects['items'] !== [] || $shellCommunityWrite;
            열지 않는다. **이 파일에는 역할 비교가 없다.** 되살려 열어도 보이는 행은 데이터 창구의
            SQL WHERE(Authz::restorableFilesWhere)가 정한다 (PRD S-01·S-02).
            `data-no-reauth` — 본인 휴지통은 재인증 대상이 아니므로 D-9 재인증 모달(armReauthLinks)을 걸지 않는다. -->
-      <a id="nav-programs" class="<?= $shellNavClass('programs') ?>" href="<?= Http::url('/programs') ?>"><span class="icon" data-icon="files"></span><span>AI 비서 받기</span></a>
+      <a id="nav-programs" class="<?= $shellNavClass('programs') ?>" href="<?= Http::url('/programs') ?>"><span class="icon" data-icon="files"></span><span>AI 비서 업데이트</span></a>
       <a id="nav-my-trash" class="<?= $shellNavClass('trash') ?>" href="<?= Http::url('/trash') ?>" data-no-reauth hidden>
         <span class="icon" data-icon="trash"></span><span>내 휴지통</span>
       </a>
