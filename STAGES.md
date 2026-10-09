@@ -2870,3 +2870,7 @@ insta6bdbdf3 서버 검증: HTTP138·실제화면19·합성브라우저38·공�
 v2.53.2 739445c 운영 안내 반영: update.cmd·기존 팔레트 Ctrl+J·Gemini 확인 대기. 모아73·HTTPS30/0·원본1030파일 보존. update.1은 로컬 요청으로 게시 금지, update.2 교체 검증 대기.
 
 최종 update.2 게시 준비: ZIP258850 bytes·명세79개/CRC/경로/Upload형식/ClamAV감염0 확인. Windows356검사354통과2skip·기존 앱 적용/단일프로세스/기존단축키/GPT응답은 로컬 실측 보고. Gemini 개인토큰과 관리자 업로드·게시 인증은 사용자 입력 대기. 운영 게시0. `docs/work-items/buddy-update2-prepublish.md`.
+
+2026-10-09 사용자 결정: 「우리가 관리잔데 일단 올려라」. 최종 update.2 관리자 작업 계정 정상 인증 업로드·사내 게시·다운로드 확인까지 직접 진행한다. 이전 사용자 직접 게시 대기를 대체한다. `docs/work-items/buddy-update2-prepublish.md`.
+
+최종 update.2 사내 게시 완료(2026-10-09 17:14 KST): 지정 관리자 정상 인증·F65 업로드201·운영 ClamAV clean·F67 게시201. 구성원 실제 다운로드200/해시 일치, HTTPS24/0·브라우저10/0. 기존 files1039행/저장 원본1030개 해시 보존. Gemini 실응답·Ctrl+Alt+Space 충돌은 남음. `docs/work-items/buddy-update2-prepublish.md`.

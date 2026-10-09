@@ -15,7 +15,7 @@
     "service_configuration"
   ],
   "verification": {
-    "scope": "Existing assistant update.cmd and palette Ctrl+J guidance; actual Gemini pending. No ZIP published.",
+    "scope": "Existing assistant update.cmd and palette Ctrl+J guidance; actual Gemini pending. Final update.2 now published internally; publication evidence recorded separately.",
     "https_pass": 30,
     "https_fail": 0,
     "records_unchanged": true,
@@ -48,7 +48,7 @@
     "live_5xx": 0,
     "live_content_writes": 0,
     "live_provider_requests": 0,
-    "published_programs": 0,
+    "published_programs": 1,
     "review_context": "same Codex session; no independent review claimed",
     "windows_integrated_report": "Local session: update.2 extracted on Python3.11, 354 passed/2 skipped; applied to existing app, config/queue/activity hashes preserved, one process, existing Ctrl+Shift+Space and palette Ctrl+J confirmed, GPT live response confirmed. Gemini token pending.",
     "feature_logic_unchanged_from": "a17a5e9dfb763cbe01a63af6939e26cc4ea2958c",
@@ -56,8 +56,8 @@
       "filename": "tbox-buddy-4.0.0-tray-update.2.zip",
       "sha256": "65bff9f6fd5e3c1579b10eef962aad2fcefcc740f9e0e3a687245ba15ad2f009",
       "size_bytes": 258850,
-      "status": "READY_FOR_ADMIN_AUTHENTICATED_UPLOAD_AND_PUBLICATION",
-      "published": false
+      "status": "PUBLISHED_INTERNAL",
+      "published": true
     }
   },
   "evidence": [
@@ -76,7 +76,23 @@
     "user_self_attack_qf11",
     "real_windows_browser_pc_roundtrip",
     "real_windows_gemini_response",
-    "windows_hotkey_conflict_resolution",
-    "verified_integrated_zip_publication"
-  ]
+    "windows_hotkey_conflict_resolution"
+  ],
+  "program_publication": {
+    "verified_at": "2026-10-09T17:14:33+0900",
+    "version": "4.0.0-tray-update.2",
+    "filename": "tbox-buddy-4.0.0-tray-update.2.zip",
+    "file_id": "657a9013-b400-42a6-a26c-a5d85725d43f",
+    "sha256": "65bff9f6fd5e3c1579b10eef962aad2fcefcc740f9e0e3a687245ba15ad2f009",
+    "size_bytes": 258850,
+    "scope": "internal",
+    "normal_password_otp_upload_and_publish": true,
+    "production_scan": "clean",
+    "https_pass": 24,
+    "browser_pass": 10,
+    "download_hash_verified": true,
+    "existing_file_rows_preserved": 1039,
+    "previously_verified_storage_hashes_preserved": 1030,
+    "evidence": "docs/work-items/buddy-update2-prepublish.md"
+  }
 }
