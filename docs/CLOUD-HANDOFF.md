@@ -1,5 +1,7 @@
 # 휴가 중 클라우드 작업 인계 — 2026-10-03
 
+> 2026-10-09 최신 운영: v2.53.1 `1ebd78d`, 기존 트레이 비서 **업데이트**로 안내 정정. 기존 바로가기·파일 팔레트·단일 트레이 유지. preview.1/2 **게시 금지 유지**, 프로그램0건. Gemini 계약은 v2.53.0과 같다. 실제 HTTPS30/0·원본1030파일 보존. `docs/work-items/buddy-existing-app-update.md` 참조.
+
 > 2026-10-09 최신 운영: v2.53.0 `a17a5e9`, 개인 assistant.run Gemini 창구와 T-box AI 비서 배포함. 실제 HTTPS30/0·기존 파일1030 보존. **통합 설치 ZIP은 아직 미게시**. 실Windows Gemini 및 단축키 충돌 처리는 로컬 세션 후속. `docs/work-items/buddy-server-contract.md`가 현재 계약/게시 절차다. 아래 기록은 이전 판이다.
 
 > 2026-10-09 최신 운영: v2.52.3 `ce9a486`, PC 비서 받기·설치·GPT 선택 안내 갱신. 실제 HTTPS44/0, DB/설정 변경0, 원본1030파일 보존. Windows 앱 b86a602의 실제 로그인/짧은 응답은 확인했고 웹 링크는 실행 코드가 같은 927f919 ZIP이다. 실Windows 웹↔PC 전체 페어링은 별도 확인 대상. `docs/work-items/buddy-download-flow.md`, `deploy/production-state.json`을 따른다. 아래는 이전 기록이다.

@@ -1,12 +1,12 @@
 {
   "schema_version": 1,
-  "version": "2.53.0",
-  "verified_runtime_commit": "a17a5e9dfb763cbe01a63af6939e26cc4ea2958c",
-  "verified_checkout_commit": "a17a5e9dfb763cbe01a63af6939e26cc4ea2958c",
-  "verified_tree": "a319d9f3f06fccd9efb867d0ffd1e7be408ef6b4",
-  "verified_at": "2026-10-09T15:09:35+09:00",
+  "version": "2.53.1",
+  "verified_runtime_commit": "1ebd78d04fada46718d196ba5f939026ebf509a8",
+  "verified_checkout_commit": "1ebd78d04fada46718d196ba5f939026ebf509a8",
+  "verified_tree": "293bc10faedc1225cb98fc61c1a5241cc44a72a8",
+  "verified_at": "2026-10-09T15:17:15+09:00",
   "record_type": "last_verified_server_snapshot_not_live_status",
-  "release_commit": "a17a5e9dfb763cbe01a63af6939e26cc4ea2958c",
+  "release_commit": "1ebd78d04fada46718d196ba5f939026ebf509a8",
   "automatic_deployment": false,
   "server_only": [
     "database",
@@ -15,16 +15,14 @@
     "service_configuration"
   ],
   "verification": {
-    "scope": "PC assistant personal-token Gemini adapter and authenticated distribution; no release ZIP published",
+    "scope": "Copy correction: update the existing resident assistant; original shortcut, palette and single tray retained. Preview 1/2 unpublished.",
     "https_pass": 30,
     "https_fail": 0,
     "records_unchanged": true,
     "changed_files_verified": true,
-    "deployment_changed_files": 32,
+    "deployment_changed_files": 16,
     "deployment_deleted_files": 0,
-    "migrations": [
-      "2026-10-09_program_distribution.sql"
-    ],
+    "migrations": [],
     "services_active": [
       "nginx",
       "php8.1-fpm",
@@ -52,11 +50,13 @@
     "live_provider_requests": 0,
     "published_programs": 0,
     "review_context": "same Codex session; no independent review claimed",
-    "windows_integrated_report": "Local session reports actual GPT response; Gemini personal-token setup and hotkey conflict resolution remain pending"
+    "windows_integrated_report": "Existing-app integration in progress in local session; verify Ctrl+Alt+Space after stopping old process. Alternate-hotkey request withdrawn.",
+    "feature_logic_unchanged_from": "a17a5e9dfb763cbe01a63af6939e26cc4ea2958c"
   },
   "evidence": [
+    "docs/work-items/buddy-existing-app-update.md",
     "docs/work-items/buddy-server-contract.md",
-    "SECURITY.md 7장 검토 이력"
+    "SECURITY.md"
   ],
   "remaining": [
     "real_handset_user_check",
