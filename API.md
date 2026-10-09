@@ -1406,3 +1406,13 @@ OAuth 범위: `memories.read`, `photos.read`, `memories.write`, `travel.read`, `
 `GET /community/api/memories/{id}/comments?before=<next_cursor>`: 최대 30개, 페이지 안에서는 오래된 순으로 반환한다. 응답은 `{comments:[...], next_cursor:string|null}`. 커서는 해당 글에만 사용할 수 있고 매 요청 글 접근 권한을 검사한다. POST 응답도 최신 30개와 이전 댓글 커서를 반환한다. 같은 시각 댓글은 UUID로 순서를 확정한다. 기본 메신저 페이지의 제한 계정 응답은 403 HTML 안내이고, 메신저 API는 기존 403 JSON을 유지한다.
 
 발견 정렬은 점수 가산폭(최대 21599초)을 이용해 후보 시간 범위를 제한한다. 커서·현재 공개 범위·정렬 의미는 유지하며, 최신 대상 N개의 최저 시각에서 21600초 이전의 행은 계산 후보에서 제외한다. N은 커서 사용 시 21, OFFSET 호환 시 offset+21이다.
+
+### PC 비서 Gemini · 설치본 배포함 (2026-10-09)
+
+`GET|POST /tbox/api/assistant/chat`는 개인 `assistant.run` 토큰 전용이다. 기존 `/api/assistant/runs` 읽기 도구와 별개이며 공용 Gemini 설정·한도·본인 동의를 재사용한다. 요청/응답/오류/타임아웃 복구의 정확한 계약은 `docs/work-items/buddy-server-contract.md` 「PC Gemini 계약 v1」. Google 키나 GPT 자격을 PC/웹 사이에 전달하지 않는다.
+
+배포함은 브라우저 세션 전용이다. `GET /tbox/programs` 화면, `GET /tbox/api/programs`는 현재 사용자의 파일 읽기 권한에 맞는 현재 설치본 목록을 반환한다. 미게시/검사 미완료/권한 밖이면 빈 목록. 응답 `{programs:[{id,name,version,sha256,size_bytes,access_level,published_at,uploaded_by}]}`.
+
+`POST /tbox/api/programs`: 관리자만, CSRF 필수. JSON 정확히 `{file_id,version,sha256,level,team_id,password,otp,ack:true}`. 먼저 기존 웹 `/api/files`의 F-65 확인 절차로 본인이 root/admin-only에 올린 실행 ZIP이어야 한다. 검사 clean+해시 일치 감사 기록·원본 해시를 확인하고 매 요청 비밀번호·OTP를 검사한다. 정책 file.upload 뒤 `Authz::canUploadExec(user,'admin-only')`로 관리자/비대행/비토큰을 판정한다. F-65와 같이 재인증 시간을 열지 않는다. level은 public/internal/team/admin-only, team_id는 team일 때만 정수이고 나머지는 null. 버전은 영문·숫자로 시작하는 1~64자의 영문/숫자/`.`/`_`/`+`/`-`. 성공201 `{ok:true}`. 새 판 게시가 이전 판을 삭제하지 않는다. 최초 제품은 tbox-buddy 하나다.
+
+`POST /tbox/api/programs/{uuid}/download`: CSRF와 `{ack:true}` 필수. 현재 판·본인 파일 읽기 권한·clean·SHA256 대조 후 attachment로 스트림한다. 받는 사람에게 OTP를 요구하지 않는다. 공유 링크·API 토큰·일반/실행 파일 받기로 우회할 수 없다. 권한403, 이전판/없는파일404, 검사미완료423, 해시불일치500. 다운로더는 오류 JSON을 ZIP으로 저장하지 않는다.

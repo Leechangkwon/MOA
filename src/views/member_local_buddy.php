@@ -1,9 +1,9 @@
 <div class="moa-install-note">
-  <h3>개인 ChatGPT PC 비서 받기</h3>
-  <p>Windows PC에서 내 ChatGPT 계정으로 문장을 다듬고 번역합니다. 먼저 앱에서 로그인한 뒤, <strong>같은 PC의 모아 브라우저</strong>와 연결하세요.</p>
-  <p><a class="btn btn--quiet" href="https://git2.tla.so/changkwon/T-Box_Re/archive/927f9198785c3fef1abaa90930713f4953d2dc9a.zip" target="_blank" rel="noopener noreferrer">Windows PC 비서 ZIP 받기 ↗</a> <a href="https://git2.tla.so/changkwon/T-Box_Re/src/commit/927f9198785c3fef1abaa90930713f4953d2dc9a/README.md" target="_blank" rel="noopener noreferrer">설치 설명 보기 ↗</a></p>
-  <p class="moa-muted">Python 3.10 이상과 Tk가 필요한 소스 ZIP입니다. EXE 설치파일이나 휴대폰 앱은 아닙니다. <strong>비공개 Git2 저장소의 읽기 권한과 로그인이 필요합니다.</strong> 접근이 거절되면 저장소 관리자에게 권한을 요청하세요. 모아 가입만으로 Git2 권한이 생기지는 않습니다.</p>
-  <details><summary>처음 설치하나요? 실행·로그인·연결 순서 보기</summary>
+  <h3>PC AI 비서 받기</h3>
+  <p>기존 트레이 비서에 Gemini 기본 선택과 개인 GPT 연결을 통합하고 있습니다. 검증이 끝난 설치본은 T-box 배포함에서 받을 수 있습니다.</p>
+  <p><a class="btn btn--quiet" href="<?= Http::url('/programs') ?>">AI 비서 배포함 열기</a></p>
+  <p class="moa-muted">기존 GPT 연결 시험본은 트레이 상주 통합본이 아닙니다. 배포함에 버전이 표시된 뒤 내려받으세요. Git 계정은 필요하지 않습니다.</p>
+  <details><summary>개인 GPT와 모아 웹 연결 방법</summary>
   <ol>
     <li><strong>받고 실행하기.</strong> ZIP을 새 폴더에 모두 풀고 <code>setup.cmd</code>를 실행합니다. 설치가 끝나면 <code>run.cmd</code>로 엽니다. 다음부터는 <code>run.cmd</code>만 실행하세요. 기존 Qaredi·비서 폴더는 덮어쓰지 않습니다.</li>
     <li><strong>내 ChatGPT 연결하기.</strong> PC 앱의 ‘계정 연결 · 설정’에서 <strong>Continue with ChatGPT</strong>로 로그인하고 모델을 선택합니다. ‘연결 시험’에서 짧은 답변의 응답 완료까지 확인하세요.</li>

@@ -55,6 +55,8 @@ const TBOX_ROUTES = [
     ['GET', '/api/messages/{num}', 'member_messages.php', Authz::POLICY_AUTHENTICATED],
     ['POST', '/api/messages/{num}', 'member_messages.php', Authz::POLICY_AUTHENTICATED],
     ['PATCH', '/api/messages/{num}', 'member_messages.php', Authz::POLICY_AUTHENTICATED],
+    ['GET',  '/api/assistant/chat',              'assistant_chat.php', 'assistant.run'],
+    ['POST', '/api/assistant/chat',              'assistant_chat.php', 'assistant.run'],
     ['POST', '/api/assistant/runs',              'assistant_runs.php', 'assistant.run'],
     ['GET',  '/api/assistant/runs',              'assistant_runs.php', 'assistant.run'],
     ['GET',  '/api/assistant/runs/{id}',         'assistant_runs.php', 'assistant.run'],
@@ -266,6 +268,10 @@ const TBOX_ROUTES = [
     //   재인증 302 는 핸들러가), 그 밖에는 「내 휴지통」(본인이 올리고 본인이 지운 파일)이다.
     ['GET',    '/trash',                    'trash_page.php',    Authz::POLICY_AUTHENTICATED],
     ['GET',    '/settings',                 'settings_page.php', Authz::POLICY_AUTHENTICATED],
+    ['GET', '/programs', 'programs_page.php', 'file.read'],
+    ['GET', '/api/programs', 'programs.php', 'file.read'],
+    ['POST', '/api/programs', 'programs.php', 'file.upload'],
+    ['POST', '/api/programs/{id}/download', 'programs.php', 'file.read'],
 
     // 12-3 — 조직·권한 (PRD F-19 · 5.4 · 8장 `/api/org/*` 행, ARCH 5.9).
     //   org.manage : Admin 만 (Authz::canManageOrg). 나머지 역할은 여기서 끝나고
@@ -593,6 +599,7 @@ const TBOX_HOME_PATH = '/';
  * 넓히려면 여기 + R-82/R-83/R-89/R-90/R-91/R-113 재검토.
  */
 const TBOX_ASSISTANT_API_ROUTES = [
+    'GET /api/assistant/chat', 'POST /api/assistant/chat',
     'POST /api/assistant/runs', 'GET /api/assistant/runs',
     'GET /api/assistant/runs/{id}', 'GET /api/assistant/runs/{id}/events',
     'POST /api/assistant/runs/{id}/cancel', 'POST /api/assistant/runs/{id}/confirm',

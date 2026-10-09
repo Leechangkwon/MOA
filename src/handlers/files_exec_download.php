@@ -98,6 +98,7 @@ $sqlFind = <<<'SQL'
            f.sha256,
            f.scan_status,
            f.exec_content,
+           f.program,
            'file' AS item_kind   -- G-0 종류 표식(개인 등급 판정 — Authz::decideRead [P])
       FROM files f
      WHERE f.public_id = CAST(:pid AS uuid)
@@ -143,6 +144,11 @@ if (!$mayRead) {
  * 보통 파일을 여기로 받으려는 요청은 400 이다 — 창구를 하나로 합치면 「어떤 파일에는
  * 확인이 없다」 가 되고, 그 갈래를 고르는 것은 요청이 된다. 응답은 통일 문구다.
  */
+if ($file['program'] === true) {
+    unset($rawPassword, $rawOtp);
+    Http::error(403, 'AI 비서 배포함에서 내려받아 주세요.');
+}
+
 if ($file['exec_content'] !== true) {
     unset($rawPassword, $rawOtp);
     Audit::deny('file.download_exec', 'bad_request', $auditTarget + ['detail' => $auditWhat]);

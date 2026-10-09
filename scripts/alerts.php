@@ -866,7 +866,7 @@ if ($want('AL-21')) {
                 string_agg(DISTINCT COALESCE(actor_name, ''), chr(10)) AS accounts,
                 bool_and(COALESCE(user_agent, '') LIKE :review_ua)     AS all_marked
            FROM audit_logs
-          WHERE action = 'file.upload_exec' AND result = 'allow'
+          WHERE action IN ('file.upload_exec','program.publish') AND result = 'allow'
             AND happened_at > now() - interval '5 minutes'
           GROUP BY target_name",
         $reviewUa

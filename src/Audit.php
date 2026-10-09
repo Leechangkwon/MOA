@@ -169,7 +169,7 @@ final class Audit
          *   shared    — 공용 경로였나 (토큰 종류 분류어와 짝을 이루는 true/false)
          * `before`·`after`·`reason_text` 는 이미 등록부에 있고 금지 목록에 걸리지 않는다.
          */
-        'kind', 'target_id', 'file_id', 'sha256', 'rows', 'updated',
+        'kind', 'target_id', 'file_id', 'sha256', 'rows', 'updated', 'version',
         'why', 'lines', 'added', 'shared',
         /*
          * F-43 URL 가져오기 허용 사이트 · 공개 링크 변환 (PRD F-43, ARCH 5.22 · 7.5 등록부).
@@ -481,6 +481,15 @@ final class Audit
         /* F-65 실행 파일이 든 압축본 — ARCH 7.4 표의 16행을 **글자 그대로** 옮긴 것이다
          * (PRD F-65, ARCH 5.29). 새 action 둘(`file.upload_exec`·`file.download_exec`)과
          * 기존 action 의 새 사유 넷(`file.download` 둘 · `share.create` · `file.update`). */
+        'program.publish|allow' => '{actor} 이(가) 검증한 AI 비서 설치본 「{target}」 을(를) 게시했습니다',
+        'program.publish|deny|bad_credentials' => '{actor} 이(가) 설치본 게시 인증에 실패했습니다',
+        'program.publish|deny|bad_code' => '{actor} 이(가) 설치본 게시 인증에 실패했습니다',
+        'program.publish|deny|code_reused' => '{actor} 이(가) 설치본 게시에 이미 쓴 인증 코드를 제출했습니다',
+        'program.publish|deny|mfa_not_enabled' => '{actor} 이(가) 2단계 인증 없이 설치본을 게시하려 해서 거부했습니다',
+        'program.download|allow' => '{actor} 이(가) AI 비서 설치본 「{target}」 을(를) 내려받았습니다',
+        'program.download|deny|role_not_permitted' => '{actor} 이(가) 권한 없는 설치본을 받으려 해서 거부했습니다',
+        'program.download|deny|team_mismatch' => '{actor} 이(가) 다른 팀 설치본을 받으려 해서 거부했습니다',
+        'program.download|error|hash_mismatch' => '설치본 「{target}」 의 해시가 달라 내려받기를 중단했습니다',
         'file.upload_exec|allow'                  => '{actor} 이(가) 실행 파일이 든 압축본 「{target}」 을(를) 내용을 확인했다고 밝히고 비밀번호·2단계 코드를 다시 확인한 뒤 admin-only 등급으로 올렸습니다 (항목 수는 상세 기록)',
         'file.upload_exec|deny|exec_ack_required' => '{actor} 이(가) 실행 파일이 든 압축본 「{target}」 을(를) 확인 절차 없이 올리려 해서 확인을 요청했습니다',
         'file.upload_exec|deny|bad_credentials'   => '{actor} 이(가) 실행 파일이 든 압축본 「{target}」 을(를) 올리며 비밀번호를 틀려 거부했습니다',

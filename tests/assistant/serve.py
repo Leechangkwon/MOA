@@ -98,6 +98,11 @@ def main():
         db_cmd('createdb', db_options[:0] + ['-O', 'tbox_testdb', db_name])
         created = True
         logs = [psql_file(instance / 'db/schema.sql').stdout]
+        psql_sql('CREATE SCHEMA community;')
+        logs.append(psql_file(instance / 'db/community/schema.sql').stdout)
+        for migration in ('2026-09-29_community_trust.sql','2026-09-30_community_automation.sql','2026-10-14_usage_guide.sql'):
+            logs.append(psql_file(instance / 'db/migrations' / migration).stdout)
+        logs.append(psql_file(instance / 'db/community/grants.sql').stdout)
         grant_text = (instance / 'db/grants.sql').read_text().replace('tbox_re', db_name)
         if 'tbox_re' in grant_text or not db_name.startswith('tbox_assistant_test_'):
             raise RuntimeError('Temporary grants guard failed')
@@ -108,6 +113,8 @@ def main():
         psql_sql("ALTER TABLE api_tokens DROP CONSTRAINT api_tokens_scope_check; ALTER TABLE api_tokens ADD CONSTRAINT api_tokens_scope_check CHECK(scope IN ('read','read+upload','read+upload+delete','community.write','session.open'));")
         metadata_sql = "SELECT conname,pg_get_constraintdef(oid) FROM pg_constraint WHERE conrelid IN ('assistant_runs'::regclass,'assistant_events'::regclass,'api_tokens'::regclass) ORDER BY conname; SELECT indexdef FROM pg_indexes WHERE tablename IN ('assistant_runs','assistant_events') ORDER BY indexname;"
         logs.append(psql_file(instance / 'db/migrations/2026-10-13_assistant_runs.sql').stdout)
+        logs.append(psql_file(instance / 'db/migrations/2026-10-09_program_distribution.sql').stdout)
+        logs.append(psql_file(instance / 'db/migrations/2026-10-09_program_distribution.sql').stdout)
         first = psql_sql(metadata_sql)
         logs.append(psql_file(instance / 'db/migrations/2026-10-13_assistant_runs.sql').stdout)
         if first != psql_sql(metadata_sql):
@@ -119,13 +126,24 @@ def main():
                                  input=str(credentials).encode(), cwd=instance,
                                  env=fixture_env, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=True)
         (args.output / 'fixture.log').write_bytes(fixture.stdout)
+        # Simulate an existing pre-F67 schema with real synthetic rows; additive migration must preserve them.
+        psql_sql('ALTER TABLE files DROP COLUMN program CASCADE, DROP COLUMN program_version, DROP COLUMN program_current, DROP COLUMN program_published_at;')
+        files_before = psql_sql("SELECT md5(string_agg(to_jsonb(f)::text,'' ORDER BY id)) FROM files f;")
+        program_migration = instance / 'db/migrations/2026-10-09_program_distribution.sql'
+        psql_file(program_migration)
+        psql_file(program_migration)
+        files_after = psql_sql("SELECT md5(string_agg((to_jsonb(f)-'program'-'program_version'-'program_current'-'program_published_at')::text,'' ORDER BY id)) FROM files f;")
+        if files_before != files_after:
+            raise RuntimeError('Program migration changed original file data')
+        (args.output / 'program-migration.log').write_text('EXISTING_SYNTHETIC_FILES_UNCHANGED=1; REPEAT_APPLY=1\n')
+
         manifest = dict(base_url=values['APP_URL'] + '/tbox', database=db_name, instance=str(instance),
                         credentials_file=str(credentials), parent_pid=os.getpid(),
                         expires_at=int(time.time()) + args.ttl, provider='unconfigured', inference_available=False)
         private_write(work / 'manifest.json', json.dumps(manifest, ensure_ascii=False, indent=2))
         server_log = open(work / 'logs/php.log', 'wb')
         server_env = dict(os.environ, PHP_CLI_SERVER_WORKERS='4')
-        server = subprocess.Popen(['php', '-S', '127.0.0.1:{}'.format(args.port), '-t', 'public', 'public/index.php'],
+        server = subprocess.Popen(['php', '-S', '127.0.0.1:{}'.format(args.port), '-t', 'public', 'tests/community/export_router.php'],
                                   cwd=instance, env=server_env, stdout=server_log, stderr=server_log,
                                   start_new_session=True)
         for _ in range(50):
@@ -146,6 +164,8 @@ def main():
             (args.output / 'http.log').write_bytes((work / 'logs/php.log').read_bytes())
             if result.returncode:
                 raise RuntimeError('Integration failed; sanitized report contains checks')
+            subprocess.run([sys.executable, str(ROOT / 'tests/assistant/chat.py')], env=test_env, cwd=instance, check=True)
+            subprocess.run([sys.executable, str(ROOT / 'tests/assistant/programs.py')], env=test_env, cwd=instance, check=True)
         else:
             private_dir = args.output / 'private'
             private_dir.mkdir(mode=0o700, exist_ok=True)
@@ -170,6 +190,9 @@ def main():
         print('HARNESS_FAILURE={}; details kept in private temporary file'.format(type(error).__name__))
         raise SystemExit(1)
     finally:
+        http_log = work / 'logs/php.log'
+        if http_log.exists():
+            private_write(args.output / 'http.log', http_log.read_text(errors='replace'))
         if server is not None:
             try:
                 os.killpg(server.pid, signal.SIGTERM)

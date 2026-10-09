@@ -3268,3 +3268,9 @@ MCP는 stateless Streamable HTTP JSON 응답이며 initialize/ping/notifications
 
 
 원격 감사 문장 등록부: `mcp.connect|allow`, `mcp.disconnect|allow`, `mcp.auth|deny|invalid_token`, `mcp.oauth|deny|rejected`, `mcp.refresh|deny|reuse`, `mcp.revoke|allow`, `mcp.tool|allow`, `mcp.tool|deny|denied`. `auth=mcp_oauth`와 검증된 grant_id, 고정 도구 이름만 기록하고 incidental 세션 쿠키·요청 본문·자격·사진·UA는 귀속/상세에 사용하지 않는다. 저장 결과 생성 및 도구 감사가 실패하면 바깥 트랜잭션이 함께 rollback한다. 연결 변경도 `TravelPlans::record` 한곳에서 revision을 증가시킨다.
+
+### PC 트레이 비서 연결·배포함 (2026-10-09, T:F-67)
+
+Gemini 개인 토큰 어댑터는 `src/assistant/Chat.php`와 `assistant_chat.php`에 격리한다. 고정 모델·질문 검증·본인 UUID 결과 조회를 제공하고 생성/예약/공통한도/국외전송동의는 MemberAi를 그대로 부른다. 타임아웃 조회는 생성하지 않는다. 생성 종료 후 토큰/계정 권한을 다시 검사한다. 기존 runs의 inference_available은 바꾸지 않는다.
+
+배포함은 기존 F-65 업로드 뒤 별도 게시 단계다. `files`의 program/program_version/program_current/program_published_at만 추가하고 기존 stored_name/sha256/uploaded_by를 유지한다. 첫 제품 tbox-buddy의 현재 판은 부분 UNIQUE 인덱스로 한 개, 게시 트랜잭션을 고정 advisory lock으로 직렬화한다. 이전 판은 current=false로 보존한다. 본인 F-65 ZIP·root/admin-only·민감정보 없음·ClamAV clean 감사 증거가 있어야 게시 가능하다. 일반 업로드/검사/실행 파일 표식은 그대로이며 `exec_content=true`가 기존 공유/토큰/미리보기/등급변경 차단을 유지한다. 받기는 세션+CSRF+경고확인 후 기존 Authz/Storage를 사용한다. 목록 SQL에 Authz visibleFilesWhere가 들어간다. 감사 program.publish/program.download, 상세 version/sha256/otp_verified, AL-21 게시 감시. DB migration 후 코드 순서, 기존 소유권/ACL 변경 없음.

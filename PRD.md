@@ -963,3 +963,5 @@
 | Q:MCP-6 운영 검증 | 실제 PHP/DB/OAuth/HTTPS/ChatGPT 및 휴대폰 확인을 합성 브라우저 검사와 구분 |
 
 설계/검증/배포 기준: `docs/chatgpt-remote-mcp-directive.md`, `docs/work-items/chatgpt-remote-mcp.md`.
+
+2026-10-09 T:F-67 첫 구현 범위: 기존 트레이 AI 비서(tbox-buddy) 한 제품의 인증 배포함. 기존 F-65 업로드 → clean 검사 → 관리자 비밀번호/OTP와 검증 해시로 게시 → 접근 등급에 맞는 회원이 경고 확인 후 다운로드한다. 새 판은 이전 판을 삭제하지 않고 현재 목록에서 내린다. 완성 ZIP은 로컬 실물 검증·SHA256 전달 후 별도로 게시한다. 여러 프로그램 카탈로그·EXE 자동 설치·자동 업데이트는 이번 범위에 포함하지 않는다. Gemini 기본 연결은 개인 assistant.run 창구를 통해 기존 웹 공급자/한도를 사용한다.
