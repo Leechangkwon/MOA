@@ -2868,3 +2868,5 @@ insta6bdbdf3 서버 검증: HTTP138·실제화면19·합성브라우저38·공�
 2026-10-09 update.1 인계: 로컬에서 기존 앱에 적용·단일 프로세스·config/queue/activity 해시 보존 보고. 서버는 전달 ZIP 해시/명세/업로드 형식/업데이트 도구/악성코드 검사를 진행하고 게시 전 준비만 수행한다. 관리자 재인증·업로드·게시는 사용자 직접 수행. `docs/work-items/buddy-update1-prepublish.md`.
 
 v2.53.2 739445c 운영 안내 반영: update.cmd·기존 팔레트 Ctrl+J·Gemini 확인 대기. 모아73·HTTPS30/0·원본1030파일 보존. update.1은 로컬 요청으로 게시 금지, update.2 교체 검증 대기.
+
+최종 update.2 게시 준비: ZIP258850 bytes·명세79개/CRC/경로/Upload형식/ClamAV감염0 확인. Windows356검사354통과2skip·기존 앱 적용/단일프로세스/기존단축키/GPT응답은 로컬 실측 보고. Gemini 개인토큰과 관리자 업로드·게시 인증은 사용자 입력 대기. 운영 게시0. `docs/work-items/buddy-update2-prepublish.md`.

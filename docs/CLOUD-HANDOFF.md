@@ -1,6 +1,6 @@
 # 휴가 중 클라우드 작업 인계 — 2026-10-03
 
-> 2026-10-09 최신 운영: v2.53.2 `739445c`, 기존 비서 update.cmd·파일 팔레트 AI(Ctrl+J) 안내. Gemini 실응답 대기. **preview.1/2와 update.1 미게시**, update.2 교체 검증 대기. HTTPS30/0·원본1030파일 보존. `docs/work-items/buddy-update1-prepublish.md` 참조.
+> 2026-10-09 최신 운영: v2.53.2 `739445c`, 기존 비서 update.cmd·파일 팔레트 AI(Ctrl+J) 안내. Gemini 실응답 대기. **preview.1/2와 update.1 게시 금지**. 최종 update.2 검증 완료·관리자 인증 전 미게시. `docs/work-items/buddy-update2-prepublish.md`가 현재 파일/해시/게시 절차다. HTTPS30/0·원본1030파일 보존. `docs/work-items/buddy-update1-prepublish.md` 참조.
 
 > 2026-10-09 최신 운영: v2.53.1 `1ebd78d`, 기존 트레이 비서 **업데이트**로 안내 정정. 기존 바로가기·파일 팔레트·단일 트레이 유지. preview.1/2 **게시 금지 유지**, 프로그램0건. Gemini 계약은 v2.53.0과 같다. 실제 HTTPS30/0·원본1030파일 보존. `docs/work-items/buddy-existing-app-update.md` 참조.
 
