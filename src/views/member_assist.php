@@ -10,8 +10,8 @@
   <header class="moa-assist-head modal__head"><div><p class="moa-kicker">A LITTLE HELP, A BETTER MESSAGE</p><h2 id="assist-title">말이 조금 더 잘 전해지도록</h2><p id="assist-recipient" class="moa-muted"></p></div><button id="assist-close" type="button" class="btn btn--icon btn--plain" aria-label="닫기"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg></button></header>
   <div class="moa-assist-body">
     <div class="moa-assist-providers" role="group" aria-label="AI 사용 방법 선택">
-      <button type="button" data-assist-provider="gemini" aria-pressed="true"><strong>모아 공용 Gemini</strong><small>웹에서 바로 처리</small></button>
-      <button type="button" data-assist-provider="local" aria-pressed="false"><strong>내 PC의 ChatGPT</strong><small>PC 연결 · 직접 복사</small></button>
+      <button type="button" data-assist-provider="gemini" aria-pressed="true"><strong>Gemini 3.5 Flash · 기본</strong><small>모아에서 바로 처리</small></button>
+      <button type="button" data-assist-provider="local" aria-pressed="false"><strong>GPT · 내 ChatGPT</strong><small>내 구독 · Windows PC 연결</small></button>
       <button type="button" data-assist-provider="web" aria-pressed="false"><strong>ChatGPT 웹</strong><small>새 창에서 직접 작업</small></button>
     </div>
     <div class="moa-assist-actions" role="group" aria-label="AI 도구 선택">
@@ -30,19 +30,20 @@
     <p id="assist-source-note" class="moa-muted" hidden>선택한 메시지만 번역합니다. 결과는 나에게만 보입니다.</p>
     <p id="assist-disclosure" class="moa-assist-disclosure">위 내용만 Google AI로 보냅니다. 무료 API에는 개인정보·기밀을 입력하지 마세요. 결과를 확인한 뒤 작성란에 넣거나 첨부할 수 있습니다.</p>
     <div id="assist-gemini-run" class="moa-assist-run"><button type="button" id="assist-run" class="btn btn--quiet" disabled>문장 다듬기</button><span id="assist-quota" class="moa-muted"></span></div>
-    <section id="assist-local" class="moa-assist-result" aria-label="로컬 비서로 직접 옮기기" hidden>
+    <section id="assist-local" class="moa-assist-result" aria-label="내 ChatGPT로 처리하기" hidden>
       <h3>내 PC에서 작업하고, 여기서 이어 쓰세요.</h3>
+      <?php require __DIR__ . '/member_local_buddy.php'; ?>
       <p id="assist-local-task"></p>
       <p id="assist-local-image-note" hidden>개인 ChatGPT 로컬 연결은 이미지 생성을 지원하지 않습니다. 위에서 모아 공용 Gemini 또는 ChatGPT 웹을 선택해 주세요.</p>
       <div id="assist-local-text-steps">
-        <p>새 공유본의 ‘모아 웹 연결’에서 코드를 만든 뒤 연결하세요. 원문은 ‘PC에서 처리’를 누른 뒤 전송되며, PC에서 한 번 더 확인합니다.</p>
+        <h3>앱을 준비했다면 PC 연결</h3>
+        <p>PC 앱의 로그인·연결 시험을 마친 뒤 ‘모아 웹 연결’에서 코드를 만드세요. 원문은 ‘PC에서 처리’를 누른 뒤 전송되며 PC에서 한 번 더 확인합니다.</p>
         <label class="field"><span>PC 비서의 일회용 페어링 코드</span><input id="assist-local-code" type="text" maxlength="32" autocomplete="off" spellcheck="false"></label>
         <div class="moa-assist-run"><button id="assist-local-pair" type="button" class="btn btn--quiet">PC 연결</button><button id="assist-local-unpair" type="button" class="btn btn--quiet">연결 해제</button><button id="assist-local-run" type="button" class="btn btn--quiet">PC에서 처리</button><button id="assist-local-cancel" type="button" class="btn btn--quiet">요청 취소</button></div>
         <p id="assist-local-state" role="status">PC 연결 전 · 직접 복사도 사용할 수 있습니다.</p>
         <ol><li>아래 버튼으로 <strong>원문만 복사</strong>합니다.</li><li>PC 비서에서 위 작업·언어를 선택하고 원문을 붙여 넣어 처리합니다.</li><li>PC 비서의 ‘완료 결과 복사’를 누른 뒤 아래 결과 칸에 붙여 넣습니다.</li></ol>
         <button id="assist-local-copy" type="button" class="btn btn--quiet">원문만 복사</button>
       </div>
-      <?php require __DIR__ . '/member_local_buddy.php'; ?>
     </section>
     <details id="assist-external" class="moa-assist-external" open hidden><summary>내 ChatGPT에서 직접 작업하기 ↗</summary><p>요청문을 복사하고 ChatGPT를 열어 붙여 넣으세요. 그곳에 로그인한 계정의 요금제와 한도로 사용합니다. 모아에 계정이 연결되거나 결과가 자동으로 돌아오지는 않습니다.</p><div><button id="assist-external-copy" type="button" class="btn btn--quiet btn--small">요청문 복사</button><a href="https://chatgpt.com/" target="_blank" rel="noopener noreferrer" class="btn btn--quiet btn--small">ChatGPT 열기 ↗</a></div><textarea id="assist-external-prompt" rows="4" readonly aria-label="ChatGPT에 붙여 넣을 요청문" hidden></textarea></details>
     <section id="assist-manual-result" class="moa-assist-result" aria-label="직접 가져온 결과" hidden>

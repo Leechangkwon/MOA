@@ -37,7 +37,7 @@ class Fixture:
     def __init__(self):
         self.posts = []; self.errors = []; self.other_requests = []; self.ready = True; self.images = True
         self.jobs = []; self.turns = []; self.fail_ai = False
-        self.local_posts = []; self.local_jobs = {}; self.local_mode = 'completed'
+        self.local_posts = []; self.local_jobs = {}; self.local_mode = 'completed'; self.local_error = 'eligibility_unconfirmed'
     def route(self, route):
         request = route.request; u = urlsplit(request.url); path = u.path
         if u.netloc == '127.0.0.1:43821':
@@ -48,7 +48,7 @@ class Fixture:
             elif path.startswith('/v1/pair/'): data = {'request_id':path.rsplit('/',1)[1], 'state':'approved', 'credential':'c'*43, 'expires_in':1800}
             elif path == '/v1/unpair': data = {'state':'unpaired'}
             elif path == '/v1/jobs':
-                data = {'request_id':body['request_id'], 'state':self.local_mode, 'provider':'openai_chatgpt_plan', 'model':'synthetic', 'text':'PC 완료 결과 <script>문자</script>', 'error_code': 'eligibility_unconfirmed' if self.local_mode == 'failed' else None}
+                data = {'request_id':body['request_id'], 'state':self.local_mode, 'provider':'openai_chatgpt_plan', 'model':'synthetic', 'text':'PC 완료 결과 <script>문자</script>', 'error_code': self.local_error if self.local_mode == 'failed' else None}
                 self.local_jobs[body['request_id']] = data
             elif path.endswith('/cancel'): data = {'state':'cancelled'}
             else: data = self.local_jobs[path.rsplit('/',1)[1]]
@@ -119,6 +119,14 @@ with sync_playwright() as p:
         page.locator('#assist-manual-input').fill(text); page.locator('#assist-manual-preview').click()
     def posts(path): return [item for item in f.posts if item[0] == path]
 
+    peer(); page.locator('#message-text').fill('공급자를 고르기 전 초안'); page.locator('#message-assist').click()
+    expect(page.locator('[data-assist-provider="gemini"]')).to_have_attribute('aria-pressed', 'true')
+    check('Gemini remains default without generation or PC request', not f.posts and not f.local_posts)
+    page.locator('[data-assist-provider="local"]').click()
+    check('explicit GPT selection keeps draft and makes no generation request', page.locator('#assist-input').input_value() == '공급자를 고르기 전 초안' and not f.posts and not f.local_posts)
+    check('download is visible before opening detailed instructions', page.locator('#assist-local a[href$=".zip"]').is_visible())
+    check('GPT setup no longer claims login is blocked', '보류' not in page.locator('#assist-local').inner_text() and '보류' not in page.locator('#assist-status').inner_text())
+    page.locator('#assist-close').click()
     open_tool()
     source = page.locator('#assist-input').input_value()
     check('local mode hides Gemini request/quota', not page.locator('#assist-gemini-run').is_visible())
@@ -222,8 +230,10 @@ with sync_playwright() as p:
     page.locator('#welcome-local-buddy summary').click()
     guide=page.locator('#welcome-local-buddy')
     # 안내 문구는 029f753(2026-10-03 「가입 선택과 … 사용성 개선」)이 의도적으로 바꿨다 — 「비공개 Git2 저장소」 · 공유 브랜치 링크 → 고정 판 ZIP·README 링크.
-    check('welcome explains unconfirmed connection and private repository', '연결 조건 확인 중' in guide.inner_text() and '비공개 Git2 저장소' in guide.inner_text())
-    check('correct shared-copy ZIP link, no token input in local guide', 'archive/f7caeb47f56f91720f645e635cb3a384bd64b665.zip' in guide.locator('a').first.get_attribute('href') and guide.locator('input').count()==0)
+    check('welcome explains tested login and private repository', '짧은 응답' in guide.inner_text() and '비공개 Git2 저장소' in guide.inner_text() and '보류' not in guide.inner_text())
+    check('tested shared-copy ZIP link, no token input in local guide', 'archive/927f9198785c3fef1abaa90930713f4953d2dc9a.zip' in guide.locator('a').first.get_attribute('href') and guide.locator('input').count()==0)
+    check('guide distinguishes same-PC pairing and phone alternative', '같은 PC' in guide.inner_text() and '휴대폰에서는 다른 PC' in guide.inner_text())
+    check('guide preserves old folders and explains subsequent launch', '새 폴더' in guide.inner_text() and '다음부터는 run.cmd' in guide.inner_text())
     page.goto('https://changkwon.mso.so/tbox/messages')
     open_tool('local', '  PC 전송 원문 😀\n둘째 줄  ')
     check('no loopback request before user pairs', not f.local_posts)
@@ -238,9 +248,22 @@ with sync_playwright() as p:
     check('PC result only fills draft without sending', page.locator('#message-text').input_value() == 'PC 완료 결과 <script>문자</script>' and len(posts('/tbox/api/messages/1002')) == count)
     open_tool('local','배포 자격 미확인 검사'); f.local_mode='failed'; page.locator('#assist-local-run').click()
     expect(page.locator('#assist-status')).to_contain_text('배포 자격'); check('eligibility failure exposes no result', not page.locator('#assist-result').is_visible())
+    for code, message in [('reauth_required','다시 로그인'),('model_required','모델을 선택'),('usage_limit','사용 한도'),('protocol_error','완료하지 못')]:
+        f.local_error=code; count=len(f.posts); local_count=len([x for x in f.local_posts if x[0]=='/v1/jobs'])
+        page.locator('#assist-local-run').click(); expect(page.locator('#assist-status')).to_contain_text(message)
+        expect(page.locator('#assist-local-run')).to_be_enabled()
+        check(code+' preserves original with no fallback or automatic retry', not page.locator('#assist-result').is_visible() and page.locator('#assist-input').input_value()=='배포 자격 미확인 검사' and len(f.posts)==count and len([x for x in f.local_posts if x[0]=='/v1/jobs'])==local_count+1)
     f.local_mode='running'; page.locator('#assist-local-run').click(); expect(page.locator('#assist-local-cancel')).to_be_enabled()
     page.locator('#assist-local-cancel').click(); page.wait_for_timeout(1000)
     check('cancel does not paint late result', not page.locator('#assist-result').is_visible() and any(x[0].endswith('/cancel') for x in f.local_posts))
+    count=len(f.local_posts)
+    page.evaluate('window.realNow=Date.now; Date.now=()=>window.realNow()+1801000')
+    expect(page.locator('#assist-local-run')).to_be_disabled()
+    expect(page.locator('#assist-local-state')).to_contain_text('새 코드')
+    check('expired connection updates controls without network probing', len(f.local_posts)==count and 'PC 연결됨' not in page.locator('#assist-local-state').inner_text())
+    page.evaluate('Date.now=window.realNow')
+    page.locator('#assist-local-code').fill('a'*32);page.locator('#assist-local-pair').click()
+    expect(page.locator('#assist-local-run')).to_be_enabled()
     page.locator('#assist-local-unpair').click(); expect(page.locator('#assist-local-run')).to_be_disabled()
     check('unpair clears tab credential', no_helper_credential(page))
     page.locator('#assist-close').click()

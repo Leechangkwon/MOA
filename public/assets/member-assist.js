@@ -20,7 +20,7 @@ window.MoaMessageAssist = function ({api, node, context, say, changed}) {
     return note;
   })();
   const bridgeConnected = () => localBridge !== null && localBridge.connected();
-  let localBusy = false;
+  let localBusy = false, connectionTimer = null;
   let epoch = 0, target = null, action = 'polish', source = null, sourceText = '', ready = false;
   let imageEnabled = false, running = false, waiting = false, result = null, attempt = null, jobs = [], timer = null;
   let draftAtOpen = '';
@@ -32,6 +32,9 @@ window.MoaMessageAssist = function ({api, node, context, say, changed}) {
 
   function buttons() {
     const image = action === 'image', bridgeless = provider === 'local' && localBridge === null;
+    $('assist-local-state').textContent = bridgeConnected()
+      ? 'PC 연결됨 · 연결 후 30분 동안 사용 · ChatGPT 로그인은 PC 앱에서 확인'
+      : 'PC 연결 전 · 만료되었으면 앱에서 새 코드를 만들어 연결하세요.';
     $('assist-local-pair').disabled = running || waiting;
     $('assist-local-run').disabled = running || waiting || !bridgeConnected() || image;
     $('assist-local-unpair').disabled = !bridgeConnected() && !localBusy;
@@ -92,7 +95,7 @@ window.MoaMessageAssist = function ({api, node, context, say, changed}) {
   }
   function providerNote() {
     if (provider === 'local' && localBridge === null) return 'PC 비서 연결은 메신저 전체 화면에서 할 수 있습니다.';
-    if (provider === 'local') return 'PC 연결 또는 직접 복사를 이용하세요. 현재 공유본의 ChatGPT 연결은 배포 자격 확인 전까지 보류됩니다.';
+    if (provider === 'local') return 'PC 앱에서 ChatGPT 로그인과 연결 시험을 마친 뒤 같은 PC에서 연결하세요. 내 요금제 또는 사용 가능한 크레딧으로 처리하며 유료 API로 자동 전환하지 않습니다.';
     if (provider === 'web') return '요청문을 복사해 ChatGPT에서 작업한 뒤 결과를 직접 가져오세요.';
     return ready ? '원문을 확인하고 원하는 도구를 실행하세요.' : '관리자가 Gemini 키를 등록하고 AI 사용을 켜면 이용할 수 있습니다.';
   }
@@ -167,6 +170,9 @@ window.MoaMessageAssist = function ({api, node, context, say, changed}) {
     $('assist-history').replaceChildren(); $('assist-recipient').textContent = current.name + ' 님과의 대화를 돕습니다.';
     ready = false; running = false; waiting = false; attempt = null; clearResult(); buttons(); tell('모아 공용 Gemini 설정을 확인하고 있어요…');
     if (!dialog.open) dialog.showModal();
+    clearInterval(connectionTimer);
+    // No network probe: expire the UI using the existing tab credential's clock.
+    connectionTimer = setInterval(() => { if (dialog.open && provider === 'local') buttons(); }, 1000);
     $('assist-input').focus();
     try {
       const data = await api('/api/messages/assist?peer=' + target);
@@ -176,7 +182,7 @@ window.MoaMessageAssist = function ({api, node, context, say, changed}) {
   }
   $('message-assist').addEventListener('click', () => open());
   $('assist-close').addEventListener('click', () => dialog.close());
-  dialog.addEventListener('close', () => { if (localBridge !== null) localBridge.cancel(); localBusy = false; ++epoch; clearTimeout(timer); running = false; waiting = false; });
+  dialog.addEventListener('close', () => { if (localBridge !== null) localBridge.cancel(); localBusy = false; ++epoch; clearTimeout(timer); clearInterval(connectionTimer); connectionTimer = null; running = false; waiting = false; });
   for (const button of dialog.querySelectorAll('[data-assist-provider]')) button.addEventListener('click', () => {
     if (running || waiting || button.dataset.assistProvider === provider) return;
     provider = button.dataset.assistProvider; edited(); tell(providerNote());
@@ -200,7 +206,7 @@ window.MoaMessageAssist = function ({api, node, context, say, changed}) {
     running = localBusy = true; buttons(); tell('PC 비서 창에서 연결을 승인해 주세요.');
     try {
       await localBridge.pair(code);
-      if (matches(ticket) && revision === editRevision) { $('assist-local-state').textContent = 'PC 연결됨 · 30분 후 만료'; tell('원문을 확인한 뒤 “PC에서 처리”를 누르세요.'); }
+      if (matches(ticket) && revision === editRevision) tell('PC 연결을 승인했습니다. 원문을 확인한 뒤 “PC에서 처리”를 누르세요.');
     } catch (error) { if (matches(ticket) && revision === editRevision) tell(error.message); }
     finally { if (matches(ticket) && revision === editRevision) { running = localBusy = false; buttons(); } }
   });
@@ -209,7 +215,7 @@ window.MoaMessageAssist = function ({api, node, context, say, changed}) {
     const ticket = epoch; ++editRevision; localBusy = running = waiting = false; clearResult();
     try { await localBridge.disconnect(); if (matches(ticket)) tell('PC 연결을 해제했습니다.'); }
     catch (error) { if (matches(ticket)) tell('웹 연결 정보를 지웠습니다. PC 비서에서도 연결 중지를 눌러 주세요.'); }
-    finally { if (matches(ticket)) { $('assist-local-state').textContent = 'PC 연결 전'; buttons(); } }
+    finally { if (matches(ticket)) buttons(); }
   });
   $('assist-local-cancel').addEventListener('click', () => {
     if (localBridge === null) return;
