@@ -1,6 +1,15 @@
 <?php
 declare(strict_types=1);
 require_once __DIR__.'/../Member.php';
+// Read-only, focused guide; existing route authentication and account guards remain in force.
+if (($_GET['section'] ?? null) === 'pc-assistant') {
+    $memberTitle='PC 비서 연결'; $memberPage='buddy-guide';
+    require __DIR__.'/../views/member_top.php';
+    require __DIR__.'/../views/member_pc_buddy_guide.php';
+    echo '</main></body></html>';
+    return;
+}
+
 $memberTitle='시작 안내'; $memberPage='welcome'; $installer=Member::installer();
 $memberWindow=true; // 사이트 Q:F-11 B-1 — 이 화면에도 떠 있는 메신저 창(nav 「메신저」가 연다)
 require __DIR__.'/../views/member_top.php';

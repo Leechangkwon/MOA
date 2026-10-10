@@ -23,6 +23,7 @@ final class Db {
     public function fetch(): array { return ['value' => '']; }
 }
 $page = $argv[1] ?? 'messages';
-if (!in_array($page, ['messages', 'welcome'], true)) throw new RuntimeException('Unknown fixture');
+if (!in_array($page, ['messages', 'welcome', 'buddy-guide'], true)) throw new RuntimeException('Unknown fixture');
 $user = ['id'=>1001, 'username'=>'claude_employee01', 'fixture_admin'=>($argv[2] ?? '') === 'admin'];
+if ($page === 'buddy-guide') { $_GET['section'] = 'pc-assistant'; $page = 'welcome'; }
 require dirname(__DIR__, 2) . '/src/handlers/member_' . $page . '_page.php';

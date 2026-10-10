@@ -11,6 +11,7 @@ require dirname(__DIR__) . '/views/shell_top.php';
 ?>
 <header class="page-head"><div class="page-head__text"><h1 class="page-head__title">AI 비서 배포함</h1>
 <p class="page-head__sub">사용하던 PC 비서의 업데이트를 내려받습니다. 기존 바로가기·파일 팔레트·하나의 트레이를 유지합니다.</p></div></header>
+<p><a class="btn btn--quiet" href="<?= Http::url('/welcome?section=pc-assistant') ?>">받은 다음 어떻게 하나요? 설치·연결 안내</a></p>
 <div id="programs-root" data-base="<?= $e(rtrim(Http::url('/'),'/')) ?>" data-csrf="<?= $e(Auth::csrfToken()) ?>">
 <p id="programs-status" class="help" role="status" aria-live="polite"></p>
 <?php if (!$programs): ?>
@@ -26,7 +27,7 @@ require dirname(__DIR__) . '/views/shell_top.php';
 <p><label><input type="checkbox" name="ack" required> PC에서 실행하는 프로그램입니다. 게시자와 버전을 확인하고 내려받습니다.</label></p>
 <button class="btn btn--primary" type="submit">기존 비서 업데이트 ZIP 받기</button>
 </form>
-<p>기존 비서 폴더와 설정을 백업하고 트레이에서 종료한 뒤, 압축을 푼 업데이트의 update.cmd로 기존 설치 폴더를 선택하세요. 업데이트 후에도 기존 바로가기를 사용합니다.</p>
+<p>기존 비서 폴더와 설정을 백업하고 트레이에서 종료한 뒤, ZIP을 모두 풀어 주세요. 기존 비서는 update.cmd로 원래 설치 폴더를 선택하고, 처음 설치하면 setup.cmd → run.cmd 순서로 실행합니다. 자세한 버튼 위치는 위 설치·연결 안내를 따라 주세요.</p>
 </section>
 <?php endforeach; ?>
 <?php if ($publisher): ?>

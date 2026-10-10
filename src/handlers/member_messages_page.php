@@ -24,7 +24,7 @@ $memberTitle='메신저';$memberPage='messages'; require __DIR__.'/../views/memb
 <button id="message-ai" class="moa-person moa-person--ai" type="button" aria-pressed="false">
   <span class="moa-avatar moa-ai-spark" aria-hidden="true">✦</span><span>모아 AI <b class="moa-ai-badge">AI</b></span><small>공용 Gemini · 나만의 대화 기록</small>
 </button>
-<a class="moa-assist-settings" href="<?= Http::url('/welcome') ?>#welcome-local-buddy">내 PC의 개인 ChatGPT 사용 안내 ↗</a>
+<a class="moa-assist-settings" href="<?= Http::url('/welcome?section=pc-assistant') ?>">내 PC의 개인 ChatGPT 사용 안내 ↗</a>
 <label class="field"><span>동료 · 1:1 대화</span><input type="search" id="message-search" placeholder="이름 또는 아이디" maxlength="64"></label><div id="message-people"></div>
 </aside><section class="moa-conversation" aria-label="대화"><header>
 <div class="moa-chat-heading"><div><h2 id="message-peer-name">대화 상대를 선택하세요</h2><p id="message-peer-meta" class="moa-muted">대화 상대를 골라 주세요.</p></div><button id="message-ai-new" type="button" class="btn btn--quiet btn--small" hidden>＋ 새 대화</button></div>

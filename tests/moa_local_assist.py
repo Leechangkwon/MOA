@@ -239,7 +239,7 @@ with sync_playwright() as p:
     guide=page.locator('#welcome-local-buddy')
     # 안내 문구는 029f753(2026-10-03 「가입 선택과 … 사용성 개선」)이 의도적으로 바꿨다 — 「비공개 Git2 저장소」 · 공유 브랜치 링크 → 고정 판 ZIP·README 링크.
     check('welcome explains first approval and remembered connection', 'GPT 연결' in guide.inner_text() and '30일' in guide.inner_text())
-    check('authenticated T-box distribution link, no token input in local guide', guide.locator('a').first.get_attribute('href') == '/tbox/programs' and guide.locator('input').count()==0)
+    check('authenticated T-box distribution link, no token input in local guide', guide.locator('a[href="/tbox/programs"]').count() == 1 and guide.locator('input').count()==0)
     check('guide distinguishes same-PC pairing and phone alternative', '같은 PC' in guide.inner_text() and '휴대폰에서 다른 PC' in guide.inner_text())
     check('guide updates the existing app and preserves its settings and shortcut', 'update.cmd' in guide.inner_text() and '기존 바로가기' in guide.inner_text())
     page.goto('https://changkwon.mso.so/tbox/messages')
