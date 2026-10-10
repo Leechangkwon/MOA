@@ -1,6 +1,6 @@
 # 홈에서 시작하는 PC 비서 연결 안내
 
-- 상태: 개발 중
+- 상태: 운영 배포·Git2 반영 완료
 - 브랜치: cloud/pc-buddy-guide
 - 기준 main: 9f49cc0
 - 환경: 서버 Codex 직접 구현·검토
@@ -18,3 +18,10 @@ PHP/Playwright 모바일·PC 안내/기존 시작 안내 분기, 기존 AI 도�
 - 전용 안내 Playwright 27/0 (360/820/1280px), 기존 AI 도구79/0, 공통 격리 회귀164/0.
 - PHP 문법·보안 린트·부품 버전·위키 검사 통과. 실제 PC 소스의 run/setup/update 및 트레이 메뉴 명칭과 안내를 대조함.
 - 안내 화면을 방문해도 PC 실행/연결·공급자 요청0. 실제 Windows 실행은 이번 변경 범위가 아님.
+
+## 운영 결과
+- v2.53.6 `65d85b60fb19aa56be49fe84978a515b892630c4`, 기능 `7336b2d`.
+- 백업 `/var/backups/tbox-v2/pc-buddy-guide-20261010`: DB/코드/설정/스토리지 암호화 및 복호화 확인. 변경18파일·삭제0 모의 적용→원격/로컬 HEAD 드리프트 확인→fast-forward→PHP-FPM reload.
+- 실제 HTTPS25/0: 홈의 PC 비서 연결 클릭→전용 안내, 다운로드 새 탭의 update.3 표시/안내 복귀, 메신저 새 탭과 원래 안내 유지, 390/1280px 가로 넘침0·JS오류0·5xx0·PC 요청0. 이전 일반 시작 안내 유지 확인.
+- 기존 스토리지996개 SHA·파일1041행 전체 필드·커뮤니티5테이블/소유권/ACL·시스템 설정 불변. 게시된 PC update.3 자체 변경 없음.
+- main/v2.53.6/cloud/pc-buddy-guide atomic push 성공. 증거 `/home/changkwon/qaredi-pc-buddy-guide-results-20261010`.
