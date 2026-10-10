@@ -17,8 +17,8 @@
 ## 검사
 
 - PHP launcher와 fixture 문법, JS 두 파일 문법: 통과.
-- `tests/home_dashboard.py`: 합성 API와 PHP 렌더/Chromium. 결과 `outputs/group-dashboard-checks/checks.json`; 계정 분리·손상 설정·저장 차단·동의/최초 계정 관문·안전 출력·편집/복구·360/390/820/1280 밝게/어둡게·작은 카드·고대비 포함.
-- `tests/service_home.py`: 기존 로그인 목적지·홈·테마·메신저 없는 합성 fixture·이야기 지연 로딩 회귀. 결과 `outputs/group-dashboard-regression/checks.json`.
+- `tests/home_dashboard.py`: 57/0. 합성 API와 PHP 렌더/Chromium. 결과 `outputs/group-dashboard-checks/checks.json`; 계정 분리·손상 설정·저장 차단·동의/최초 계정 관문·안전 출력·편집/복구·360/390/820/1280 밝게/어둡게·작은 카드·고대비 포함.
+- `tests/service_home.py`: 70/0. 기존 로그인 목적지·홈·테마·메신저 없는 합성 fixture·이야기 지연 로딩 회귀. 결과 `outputs/group-dashboard-regression/checks.json`.
 - `bash scripts/security_lint.sh`: 금지 패턴 0건.
 - `php scripts/community_asset_version.php --check`: 통과(community 자산 수정 없음).
 - `php scripts/wiki_check.php`: 구조/누락 0건(69편), 서버 공통 문서는 Git 전달 사본 사용.

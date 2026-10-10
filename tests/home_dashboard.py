@@ -72,6 +72,7 @@ with sync_playwright() as pw:
  page.locator('header a[href="#services"]').click();check(page.locator('#services').is_visible(),'service navigation temporarily reveals hidden services')
  check(not page.evaluate('JSON.parse(localStorage.getItem("moa-home:v1:1001")).widgets.find(w=>w.id==="services").visible'),'temporary reveal leaves stored layout unchanged')
  edit();page.locator('#home-reset').click();save()
+ page.set_viewport_size({'width':1280,'height':900});page.evaluate('document.documentElement.dataset.contrast=""');edit();page.screenshot(path=str(OUT/'home-editor-1280.png'));page.keyboard.press('Escape')
  # Invalid settings are discarded, not partially used.
  page.evaluate('localStorage.setItem("moa-home:v1:1001",JSON.stringify({version:1,widgets:[{id:"evil"}],source:"evil",view:"bad"}))');visit()
  check(page.locator('#home-layout-status').inner_text().find('기본 홈')>=0,'malformed preferences recover')
