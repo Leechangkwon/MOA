@@ -1,5 +1,15 @@
 [
     {
+        "version": "2.53.5",
+        "level": "patch",
+        "released_at": "2026-10-10 14:33",
+        "title": "GPT 간편 연결",
+        "changes": [
+            "처음 PC에서 승인하면 다음부터 GPT를 선택해 연결할 수 있습니다.",
+            "PC 비서 실행과 구버전 코드 연결을 안내합니다."
+        ]
+    },
+    {
         "version": "2.53.4",
         "level": "patch",
         "released_at": "2026-10-09 18:06",
