@@ -1,5 +1,7 @@
 # 휴가 중 클라우드 작업 인계 — 2026-10-03
 
+> 2026-10-10 운영: **v2.53.7 `77ed769`** 일반 로그인→모아 홈. 업무·자료실·AI 비서·이야기 목적별 안내, 최근 작업 우선, 이야기 접어서 보존. 기본 모아 테마 서비스별 색상·중립 본문. 명시 목적지/PC 안내 복귀 유지. 홈70/0·격리196/0·AI79/0·운영HTTPS37/0. 996파일/1041행 보존, Git2 main/tag/작업 브랜치 반영 완료. `docs/work-items/service-home.md`.
+
 > 2026-10-10 운영: **v2.53.6 `65d85b6`** 홈 PC 비서 연결을 전용 단계별 안내로 변경(`/welcome?section=pc-assistant`). 처음 설치/기존 업데이트·실제 트레이 메뉴·ChatGPT 로그인·웹 GPT 위치/성공 표시. 안내27/0·기존AI79/0·공통164/0·운영HTTPS25/0. 원본996파일/1041행 보존, PC update.3 변경0. Git2 main/tag/작업 브랜치 반영 완료. `docs/work-items/pc-buddy-guide.md`.
 
 > 2026-10-10 운영: **v2.53.5 `13cea0c`** GPT 간편 연결. 웹 GPT 연결→최초 PC 승인→기억한 브라우저 재연결. update.3 사내 게시 완료/회원 다운로드 SHA 일치. 웹79·실제 loopback7·공통164·운영 HTTPS22·게시23 통과. PC110+URI2 통과, Windows 전용3 skip; **이번 실제 Windows 동작/응답은 미검증**. Git2 연결 복구 후 main/tag/PC·웹 브랜치 atomic push 완료(2026-10-10 재확인). `docs/work-items/gpt-easy-connect.md` 참조.

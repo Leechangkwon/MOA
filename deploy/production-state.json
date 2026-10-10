@@ -1,12 +1,12 @@
 {
   "schema_version": 1,
-  "version": "2.53.6",
-  "verified_runtime_commit": "65d85b60fb19aa56be49fe84978a515b892630c4",
-  "verified_checkout_commit": "65d85b60fb19aa56be49fe84978a515b892630c4",
-  "verified_tree": "4d4d0b606f7eeb29edd9408538844ca9d8c9c0c6",
-  "verified_at": "2026-10-10T18:48:26+09:00",
+  "version": "2.53.7",
+  "verified_runtime_commit": "77ed76938ee6f40d04e2c47cf7519c38069a0716",
+  "verified_checkout_commit": "77ed76938ee6f40d04e2c47cf7519c38069a0716",
+  "verified_tree": "151c6688cd6e537b5e141d77e6d7b81eadb69671",
+  "verified_at": "2026-10-10T23:43:13+09:00",
   "record_type": "last_verified_server_snapshot_not_live_status",
-  "release_commit": "65d85b60fb19aa56be49fe84978a515b892630c4",
+  "release_commit": "77ed76938ee6f40d04e2c47cf7519c38069a0716",
   "automatic_deployment": false,
   "server_only": [
     "database",
@@ -15,14 +15,13 @@
     "service_configuration"
   ],
   "verification": {
-    "scope": "Home shortcut opens focused PC assistant setup guide; actual HTTPS home click, download and messenger popup flow. No desktop or bridge runtime changes.",
-    "https_pass": 25,
+    "scope": "General password/OTP login reaches service home; explicit destinations retained; four service colors and homepage guide on mobile/desktop. No DB, packages or PC app changes.",
+    "https_pass": 37,
     "https_fail": 0,
-    "guide_browser_pass": 27,
     "existing_assist_browser_pass": 79,
-    "cross_regression_pass": 164,
+    "cross_regression_pass": 196,
     "changed_files_verified": true,
-    "deployment_changed_files": 18,
+    "deployment_changed_files": 26,
     "deployment_deleted_files": 0,
     "migrations": [],
     "original_database_owners_preserved": true,
@@ -46,9 +45,11 @@
       "status": "PUBLISHED_INTERNAL",
       "published": true,
       "windows_live_test": false
-    }
+    },
+    "home_browser_pass": 70
   },
   "evidence": [
+    "docs/work-items/service-home.md",
     "docs/work-items/pc-buddy-guide.md",
     "docs/work-items/gpt-easy-connect.md",
     "docs/work-items/mobile-menu-modal.md",
@@ -108,11 +109,11 @@
   "git_sync": {
     "status": "synchronized",
     "remote_live_verified": true,
-    "last_fetched_origin_main": "65d85b60fb19aa56be49fe84978a515b892630c4",
+    "last_fetched_origin_main": "77ed76938ee6f40d04e2c47cf7519c38069a0716",
     "pc_branch": "cloud/buddy-easy-connect",
     "pc_commit": "a3798a3",
-    "web_branch": "cloud/pc-buddy-guide",
-    "reason": "Live remote base checked before deployment; main, v2.53.6 and feature branch atomic push succeeded.",
-    "verified_at": "2026-10-10T18:48:26+09:00"
+    "web_branch": "cloud/service-home",
+    "reason": "Live remote base verified before deployment; main, feature branch and v2.53.7 atomic push succeeded.",
+    "verified_at": "2026-10-10T23:43:13+09:00"
   }
 }
