@@ -70,8 +70,7 @@
     "real_windows_browser_pc_roundtrip",
     "real_windows_gemini_response",
     "windows_hotkey_conflict_resolution",
-    "windows_easy_connect_protocol_dpapi_tray_roundtrip",
-    "git_push_after_git2_recovers"
+    "windows_easy_connect_protocol_dpapi_tray_roundtrip"
   ],
   "program_publication": {
     "verified_at": "2026-10-10T14:36:03+0900",
@@ -108,12 +107,13 @@
     "evidence": "docs/work-items/buddy-update2-prepublish.md"
   },
   "git_sync": {
-    "status": "pending_remote_unreachable",
-    "remote_live_verified": false,
-    "last_fetched_origin_main": "5187bb3f5e51",
+    "status": "synchronized",
+    "remote_live_verified": true,
+    "last_fetched_origin_main": "1c7c792341cb",
     "pc_branch": "cloud/buddy-easy-connect",
     "pc_commit": "a3798a3",
     "web_branch": "cloud/gpt-easy-connect",
-    "reason": "git2.tla.so:443 connection timeout; local clean HEAD/hash/backup/rehearsal verified, no remote ref rewritten"
+    "reason": "Git2 HTTPS and Git access recovered; atomic push of main, v2.53.5 and both feature branches succeeded.",
+    "verified_at": "2026-10-10T18:14:24+09:00"
   }
 }

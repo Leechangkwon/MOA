@@ -1,6 +1,6 @@
 # GPT 간편 연결
 
-- 상태: 운영 웹 반영·업데이트 게시 완료 / Git2 push 대기 / 실제 Windows 확인 대기
+- 상태: 운영 웹 반영·업데이트 게시·Git2 동기화 완료 / 실제 Windows 확인 대기
 - 작업 브랜치: cloud/gpt-easy-connect (웹), cloud/buddy-easy-connect (PC)
 - 기준 main: 5187bb3
 - 담당: 서버 Codex, 동일 세션 구현/검토 (독립 검토 아님)
@@ -37,3 +37,7 @@ DB/서비스 설정 변경 없음. 격리 검증 → 암호화 백업/복호화 
 - 84 manifest 파일을 합성 기존 설치 폴더에 실제 updater로 적용하여 해시 일치, config/queue/activity3개 보존과 백업 생성을 확인했다.
 - 최종 증거: `/home/changkwon/qaredi-gpt-easy-results-20261010/` (browser-final,roundtrip,pc/tests-final.log,cross,deploy,publication,post,package).
 - 남은 검증: 실제 Windows URL 프로토콜 등록·DPAPI·트레이 재시작·ChatGPT 실응답. Linux 시험을 Windows 성공으로 표시하지 않음. 휴대폰→다른 PC 연결은 별도 작업.
+
+## Git2 연결 복구 확인
+
+2026-10-10 재확인에서 git2.tla.so와 모아 웹 HTTPS200, 원격 Git 조회/fetch 성공. 원격 main이 이전 기준 5187bb3임을 확인한 뒤 main(1c7c792), v2.53.5, cloud/buddy-easy-connect(a3798a3), cloud/gpt-easy-connect를 atomic push했다. 연결 장애의 근본 원인은 확정하지 않았으며 시간 초과가 해소된 사실만 확인했다. 기존 Windows 미검증 범위는 그대로다.

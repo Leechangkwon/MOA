@@ -1,6 +1,6 @@
 # 휴가 중 클라우드 작업 인계 — 2026-10-03
 
-> 2026-10-10 운영: **v2.53.5 `13cea0c`** GPT 간편 연결. 웹 GPT 연결→최초 PC 승인→기억한 브라우저 재연결. update.3 사내 게시 완료/회원 다운로드 SHA 일치. 웹79·실제 loopback7·공통164·운영 HTTPS22·게시23 통과. PC110+URI2 통과, Windows 전용3 skip; **이번 실제 Windows 동작/응답은 미검증**. Git2 연결 장애로 main/tag/PC 브랜치 push 대기. 로컬 코드 반영과 Git 동기화 상태를 구분한다. `docs/work-items/gpt-easy-connect.md` 참조.
+> 2026-10-10 운영: **v2.53.5 `13cea0c`** GPT 간편 연결. 웹 GPT 연결→최초 PC 승인→기억한 브라우저 재연결. update.3 사내 게시 완료/회원 다운로드 SHA 일치. 웹79·실제 loopback7·공통164·운영 HTTPS22·게시23 통과. PC110+URI2 통과, Windows 전용3 skip; **이번 실제 Windows 동작/응답은 미검증**. Git2 연결 복구 후 main/tag/PC·웹 브랜치 atomic push 완료(2026-10-10 재확인). `docs/work-items/gpt-easy-connect.md` 참조.
 
 > 2026-10-09 최신 운영: **v2.53.4 `6bf9816`** 모바일 메뉴를 본문 위의 native modal로 변경. 본문 위치/스크롤 불변, 배경 차단·바깥 클릭/닫기/Escape·모달 안 메뉴 전환·PC복원. 셸173/0·공통164/0·실제HTTPS79/0, 기존1031파일/1040행 보존. `docs/work-items/mobile-menu-modal.md`. 아래 v2.53.3 인라인 메뉴 구조를 대체한다.
 
