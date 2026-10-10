@@ -11,7 +11,7 @@
   const tabs = [...panel.querySelectorAll('[data-start-view]')];
   const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
   let seq = 0;
-  let current = 'recent';
+  let current = panel.dataset.startDefault || 'recent';
   let started = false;
   const get = url => fetch(url, {credentials:'same-origin', cache:'no-store'}).then(async response => {
     let data = null;
@@ -31,7 +31,7 @@
     }
   }
   async function load(view) {
-    if (!['recent','favorites'].includes(view) || root.dataset.design === 'claude') return;
+    if (!['recent','favorites'].includes(view) || root.dataset.design === 'claude' || panel.hidden) return;
     started = true; current = view;
     const ticket = ++seq;
     tabs.forEach(tab => tab.setAttribute('aria-pressed',String(tab.dataset.startView === view)));
@@ -43,8 +43,10 @@
       status.textContent = me.data && me.data.next ? '계정 설정을 마치면 내 작업을 이어 볼 수 있습니다.' : '내 작업을 불러오지 못했습니다. 다시 불러오기를 눌러 주세요.';
       panel.setAttribute('aria-busy','false'); return;
     }
-    const [files,pages] = await Promise.all([get(base+'/api/files/'+view),get(communityBase+'/api/me/'+view)]);
-    if (ticket !== seq || root.dataset.design === 'claude') return;
+    const source = panel.dataset.startSource || 'all';
+    const empty = {status:200,data:{files:[],pages:[]}};
+    const [files,pages] = await Promise.all([source === 'pages' ? empty : get(base+'/api/files/'+view),source === 'files' ? empty : get(communityBase+'/api/me/'+view)]);
+    if (ticket !== seq || root.dataset.design === 'claude' || panel.hidden) return;
     if (files.status === 401 || pages.status === 401) {
       status.textContent='로그인 상태를 확인한 뒤 다시 열어 주세요.'; panel.setAttribute('aria-busy','false'); return;
     }
@@ -70,5 +72,9 @@
     if (root.dataset.design === 'claude') { seq++; started=false; list.replaceChildren(); panel.setAttribute('aria-busy','false'); }
     else if (!started) load(current);
   }).observe(root,{attributes:true,attributeFilter:['data-design']});
-  load('recent');
+  panel.addEventListener('home-layout-change',() => {
+    seq++; list.replaceChildren(); panel.setAttribute('aria-busy','false');
+    if (!panel.hidden) load(panel.dataset.startDefault || 'recent');
+  });
+  load(current);
 })();

@@ -112,5 +112,5 @@ body { background: var(--bg); color: var(--fg); }
 function label(b){b.setAttribute('aria-label',cur()==='dark'?'밝은 화면으로':'어두운 화면으로');}
 document.querySelectorAll('[data-theme-toggle]').forEach(function(b){label(b);b.addEventListener('click',function(){root.setAttribute('data-theme',cur()==='dark'?'light':'dark');document.querySelectorAll('[data-theme-toggle]').forEach(label);});});})();
 </script>
-</body>
+<section class="panel"><h2>개인 홈 구성</h2><p>넓은/작은 기존 위젯을 두 열에 배치하고 900px 이하 한 열로 표시합니다. 로그인 런처의 홈 구성하기에서 위젯 표시·순서·폭·자료 선택을 편집합니다.</p></section></body>
 </html>
