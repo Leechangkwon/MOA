@@ -1,6 +1,6 @@
 # GPT 간편 연결
 
-- 상태: 개발 중
+- 상태: 운영 웹 반영·업데이트 게시 완료 / Git2 push 대기 / 실제 Windows 확인 대기
 - 작업 브랜치: cloud/gpt-easy-connect (웹), cloud/buddy-easy-connect (PC)
 - 기준 main: 5187bb3
 - 담당: 서버 Codex, 동일 세션 구현/검토 (독립 검토 아님)
@@ -26,3 +26,14 @@ DB/서비스 설정 변경 없음. 격리 검증 → 암호화 백업/복호화 
 
 - PC 검증 최종: 113개 중 110 통과·Windows 전용 3 skip + URI/단일 인스턴스 2/2. 초기 서버 PyJWT2.3과 43821 고정 포트 경합을 확인하여 테스트 전용 PyJWT2.10.1 및 격리 포트 사용. 설치 의존성 변경0.
 - PC 소스 커밋: 07af253 (cloud/buddy-easy-connect). update.3 ZIP 266615 bytes, SHA256 2e38f86b552b9ee8cbdfe38df685efae1fa79e0f81e08fb753a4f2dc9974be44. 84 manifest 파일 CRC/크기/해시 일치. 실제 Windows 미검증을 USAGE/검증 문서에 명시.
+
+## 운영 결과 — 2026-10-10
+- v2.53.5 `13cea0c5032f8f586ec339d977f22967e1add46b`, 기능 `fd3b389`, PC 소스 `07af253` + README 안내 `a3798a3`.
+- 암호화 DB/코드/설정/스토리지 백업 `/var/backups/tbox-v2/gpt-easy-connect-20261010` 복호화 확인. 파일 모의 적용17개·삭제0·DB/시스템 설정 변경0. 로컬 운영 HEAD·파일 해시 드리프트0, fast-forward 후 PHP-FPM reload.
+- Git2 HTTPS 반복 시간 초과. 원격 최신 HEAD는 실측하지 못했다. 로컬 마지막 fetch 기준 5187bb3 및 운영 HEAD/트리 일치를 확인해 사용자 승인한 파일 반영만 수행했다. 원격 ref 변경/강제 push 없음. 복구 후 원격 fetch→차이 검토→main/tag/PC 브랜치 push 필요.
+- 실제 HTTPS22/0 (390/1280px, 신규 버튼·코드 접기·기기 범위·자산 SHA·오류0·공급자 요청0). 운영 QA 동료가 검색에 나타나지 않아 최초 대화 선택 검사는 타임아웃; 최종 운영 검사는 인증된 렌더링 대화창을 직접 열어 UI를 검사했다. 실제 동료 대화→도구 전체 흐름은 합성 브라우저79/0 증거로 분리한다.
+- 게시: 정상 관리자 비밀번호/일회용 OTP → ZIP 업로드201 → 운영 ClamAV clean → 게시201 → 일반 구성원 다운로드 SHA 일치,23/0. 현재 update.3, 이전 update.2 파일 삭제0(현재 게시 표시만 정상 변경). 파일 UUID c7bd84a0-ebf5-4fff-976f-cee3bfe0a731.
+- 원본 파일 레코드1040(이전 program_current 표시 제외 필드 불변), 작업 시작 기준 스토리지995 SHA 보존, 게시 후996. 커뮤니티5테이블/owner/ACL/시스템파일 유지.
+- 84 manifest 파일을 합성 기존 설치 폴더에 실제 updater로 적용하여 해시 일치, config/queue/activity3개 보존과 백업 생성을 확인했다.
+- 최종 증거: `/home/changkwon/qaredi-gpt-easy-results-20261010/` (browser-final,roundtrip,pc/tests-final.log,cross,deploy,publication,post,package).
+- 남은 검증: 실제 Windows URL 프로토콜 등록·DPAPI·트레이 재시작·ChatGPT 실응답. Linux 시험을 Windows 성공으로 표시하지 않음. 휴대폰→다른 PC 연결은 별도 작업.
