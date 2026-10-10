@@ -39,9 +39,9 @@
     "live_local_bridge_requests": 0,
     "review_context": "same Codex session; no independent review claimed",
     "prepared_update": {
-      "filename": "tbox-buddy-4.0.0-tray-update.3.zip",
-      "sha256": "2e38f86b552b9ee8cbdfe38df685efae1fa79e0f81e08fb753a4f2dc9974be44",
-      "size_bytes": 266615,
+      "filename": "tbox-buddy-4.0.0-tray-update.4.zip",
+      "sha256": "9701b63fa83a2dc5033fdc68a843436a08ec34d0c34496bb7bfcb752593690e1",
+      "size_bytes": 271127,
       "status": "PUBLISHED_INTERNAL",
       "published": true,
       "windows_live_test": false
@@ -49,6 +49,7 @@
     "home_browser_pass": 70
   },
   "evidence": [
+    "docs/work-items/buddy-startup-fix.md",
     "docs/work-items/service-home.md",
     "docs/work-items/pc-buddy-guide.md",
     "docs/work-items/gpt-easy-connect.md",
@@ -70,9 +71,27 @@
     "real_windows_browser_pc_roundtrip",
     "real_windows_gemini_response",
     "windows_hotkey_conflict_resolution",
-    "windows_easy_connect_protocol_dpapi_tray_roundtrip"
+    "windows_easy_connect_protocol_dpapi_tray_roundtrip",
+    "windows_update4_tray_start_after_port_access_denied"
   ],
   "program_publication": {
+    "verified_at": "2026-10-11T04:08:10+09:00",
+    "version": "4.0.0-tray-update.4",
+    "filename": "tbox-buddy-4.0.0-tray-update.4.zip",
+    "file_id": "84c72359-015c-4cfc-a45b-5c1302dc1469",
+    "sha256": "9701b63fa83a2dc5033fdc68a843436a08ec34d0c34496bb7bfcb752593690e1",
+    "size_bytes": 271127,
+    "scope": "internal",
+    "normal_password_otp_upload_and_publish": true,
+    "production_scan": "clean",
+    "https_pass": 23,
+    "download_hash_verified": true,
+    "existing_file_rows_preserved_except_current_flag": 1041,
+    "previously_verified_storage_hashes_preserved": 974,
+    "windows_live_test": false,
+    "evidence": "docs/work-items/buddy-startup-fix.md"
+  },
+  "previous_program_publication": {
     "verified_at": "2026-10-10T14:36:03+0900",
     "version": "4.0.0-tray-update.3",
     "filename": "tbox-buddy-4.0.0-tray-update.3.zip",
@@ -89,29 +108,12 @@
     "windows_live_test": false,
     "evidence": "docs/work-items/gpt-easy-connect.md"
   },
-  "previous_program_publication": {
-    "verified_at": "2026-10-09T17:14:33+0900",
-    "version": "4.0.0-tray-update.2",
-    "filename": "tbox-buddy-4.0.0-tray-update.2.zip",
-    "file_id": "657a9013-b400-42a6-a26c-a5d85725d43f",
-    "sha256": "65bff9f6fd5e3c1579b10eef962aad2fcefcc740f9e0e3a687245ba15ad2f009",
-    "size_bytes": 258850,
-    "scope": "internal",
-    "normal_password_otp_upload_and_publish": true,
-    "production_scan": "clean",
-    "https_pass": 24,
-    "browser_pass": 10,
-    "download_hash_verified": true,
-    "existing_file_rows_preserved": 1039,
-    "previously_verified_storage_hashes_preserved": 1030,
-    "evidence": "docs/work-items/buddy-update2-prepublish.md"
-  },
   "git_sync": {
     "status": "synchronized",
     "remote_live_verified": true,
     "last_fetched_origin_main": "77ed76938ee6f40d04e2c47cf7519c38069a0716",
-    "pc_branch": "cloud/buddy-easy-connect",
-    "pc_commit": "a3798a3",
+    "pc_branch": "cloud/buddy-startup-diagnostic",
+    "pc_commit": "7a0ff3f",
     "web_branch": "cloud/service-home",
     "reason": "Live remote base verified before deployment; main, feature branch and v2.53.7 atomic push succeeded.",
     "verified_at": "2026-10-10T23:43:13+09:00"

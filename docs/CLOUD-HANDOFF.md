@@ -1,5 +1,7 @@
 # 휴가 중 클라우드 작업 인계 — 2026-10-03
 
+> 2026-10-11 PC 비서 **update.4 사내 게시 완료**: Windows WinError10013(50573 사용 거부)을 기존 실행으로 오판하던 문제 수정. 지정 예비 포트·연결 실패 표시·시작 오류 창·run-diagnose·setup 종료 pause. PC `7a0ff3f`, 16/0·87파일 업데이트 및 설정 보존·게시/다운로드 23/0. Windows 최종 트레이는 사용자 확인 대기. 웹 런타임 v2.53.7 유지. `docs/work-items/buddy-startup-fix.md`.
+
 > 2026-10-10 운영: **v2.53.7 `77ed769`** 일반 로그인→모아 홈. 업무·자료실·AI 비서·이야기 목적별 안내, 최근 작업 우선, 이야기 접어서 보존. 기본 모아 테마 서비스별 색상·중립 본문. 명시 목적지/PC 안내 복귀 유지. 홈70/0·격리196/0·AI79/0·운영HTTPS37/0. 996파일/1041행 보존, Git2 main/tag/작업 브랜치 반영 완료. `docs/work-items/service-home.md`.
 
 > 2026-10-10 운영: **v2.53.6 `65d85b6`** 홈 PC 비서 연결을 전용 단계별 안내로 변경(`/welcome?section=pc-assistant`). 처음 설치/기존 업데이트·실제 트레이 메뉴·ChatGPT 로그인·웹 GPT 위치/성공 표시. 안내27/0·기존AI79/0·공통164/0·운영HTTPS25/0. 원본996파일/1041행 보존, PC update.3 변경0. Git2 main/tag/작업 브랜치 반영 완료. `docs/work-items/pc-buddy-guide.md`.
