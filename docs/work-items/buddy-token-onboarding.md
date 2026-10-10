@@ -1,6 +1,6 @@
 # PC 비서 첫 연결 토큰 안내
 
-- 상태: 서버 검증 완료·배포 대기
+- 상태: 배포 완료
 - 작업 브랜치: cloud/buddy-token-onboarding
 - 기준 main 커밋: ec4c4da55bb3
 - 담당 환경: 서버, Codex 직접 구현·검토(독립 검토로 보고하지 않음)
@@ -25,4 +25,8 @@
 
 ## 배포 결과
 
-아직 미배포.
+v2.53.8 `97cc6d868b5917d999e7c0595f834649a2d8786b` 운영 반영 완료 (2026-10-11T04:21:29+09:00). 변경16파일/삭제0, DB/패키지/시스템 설정 변경0. 암호화 DB·코드/설정·저장소 백업과 복호화 확인: `/var/backups/tbox-v2/buddy-token-onboarding-20261011`. 모의 적용과 원격/운영 drift0 확인 뒤 fast-forward·PHP-FPM reload.
+실제 HTTPS28/0: 정상 검토 계정 비밀번호+새 OTP 로그인 및 새 UI 발급201, assistant.run 토큰 whoami200·파일 접근403·테스트 토큰만 정상 회수200·회수 후401. 실제 사용자의 토큰을 만들거나 변경하지 않았다. 페이지 개방만으로 발급/PC 연결/AI 요청0. JS 오류/5xx0. 화면390/1280px overflow0.
+기존 저장소975파일 SHA·파일1042행 모든 필드·업무 콘텐츠5표·DB 소유권/ACL·nginx/cron 유지. 백업976파일은 자동화 커서1 포함.
+검사 증거: `/home/changkwon/qaredi-buddy-token-results-20261011/` (setup41, guide27, assist79, cross196, post28).
+PC update.4 재설치 불필요. 실제 Windows 토큰 붙여넣기 및 Gemini 응답은 사용자 확인 필요. 기존 프로그램 ZIP과 GPT 인증 방식 변경 없음.

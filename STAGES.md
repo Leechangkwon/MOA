@@ -2914,4 +2914,4 @@ GPT 간편 연결: 같은 Windows PC의 비서에 로그인한 뒤 웹에서 GPT
 - 기본 AI·파일·개인 GPT 선택, 같은 화면의 OTP 등록 및 필요한 토큰 발급, 복사·트레이 메뉴·사용 순서로 개선. 파일은 읽기 기본/업로드 명시 선택, Gemini는 assistant.run 단독.
 - 검증: 첫 연결 합성 브라우저 41/0, 안내27/0, 기존 AI79/0, 격리 PHP/DB 공통196/0. 토큰·코드·비밀번호는 URL/저장소에 넣지 않고 입력 종료·화면 이탈 시 지운다. 실Windows 등록/응답은 미검증.
 - 사용자 update.4 설치 완료 보고. Windows 실행 포트 문제의 별도 실기기 재현은 추가로 하지 않음.
-- 근거: docs/work-items/buddy-token-onboarding.md. 운영 배포 결과는 서버 확인 뒤 기록한다.
+- 근거: docs/work-items/buddy-token-onboarding.md. 운영 v2.53.8 반영 완료. 실제 HTTPS28/0, 저장소975파일·파일1042행 보존.
