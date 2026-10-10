@@ -435,7 +435,7 @@ dialog.floating[data-view="conversation"] .moa-people { display:none; }
 .home-widgets>.moa-home-tools { display:flex; flex-wrap:wrap; }
 .home-widgets>.moa-home-tools>a { flex:1 1 180px; min-width:0; }
 .home-editor { width:min(680px,calc(100% - 32px)); max-height:calc(100dvh - 32px); overflow:auto; border:1px solid var(--line); border-radius:var(--r-card); padding:24px; color:var(--fg); background:var(--surface); }
-.home-editor::backdrop { background:var(--overlay); }
+.home-editor::backdrop { background:color-mix(in srgb,var(--fg) 55%,transparent); }
 .home-editor fieldset { min-width:0; margin:16px 0; }
 .home-editor .btn { min-height:44px; }
 @media(max-width:900px) { .home-widgets { grid-template-columns:minmax(0,1fr); } }
@@ -443,3 +443,6 @@ dialog.floating[data-view="conversation"] .moa-people { display:none; }
 @media(max-width:600px) { .home-widgets>.moa-choose:not(.home-widget--wide) .moa-services { grid-template-columns:minmax(0,1fr); } }
 .home-widgets>.moa-home-extra:not(.home-widget--wide) .moa-story-grid { grid-template-columns:minmax(0,1fr); }
 .home-widgets>.moa-home-extra:not(.home-widget--wide) .moa-section-head { flex-wrap:wrap; }
+
+.home-editor label.field:has(input[type="checkbox"]) { display:flex; align-items:center; gap:10px; min-height:44px; }
+.home-editor input[type="checkbox"] { width:20px; height:20px; flex-shrink:0; }
