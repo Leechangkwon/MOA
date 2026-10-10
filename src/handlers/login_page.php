@@ -27,13 +27,13 @@ require_once __DIR__ . '/../Design.php';
  * 커뮤니티 화면을 미로그인으로 열면 `/tbox/login?to=community` 로 오는데, 로그인을 마치고
  * t-box 홈으로 떨어지면 「가려던 곳」을 잃는다. 그 한 가지를 고치는 값이다.
  *
- * ★ 옛 키 둘(`tbox`·`community`)은 그대로 받는다. 그 밖의 값은 **`Http::returnPath()` 를 통과한 정규형**만 받는다
+ * ★ 홈 키(`home`)와 옛 키 둘(`tbox`·`community`)을 받는다. 그 밖의 값은 **`Http::returnPath()` 를 통과한 정규형**만 받는다
  *   (Q:F-7 B1-1 — 허용 목록 경로 · 길이·디코딩·위험 글자 규칙은 그 함수 한 곳). 통과하지 못하면 **무시**한다
- *   (속성 자체를 그리지 않는다 — 로그인 뒤 첫 화면). 화면(app.js loginDestination)이 같은 규칙으로 한 번 더 거른다 —
+ *   (속성 자체를 그리지 않는다 — 로그인 뒤 모아 홈). 화면(app.js loginDestination)이 같은 규칙으로 한 번 더 거른다 —
  *   속성을 개발자도구로 고쳐도 목록 밖으로는 못 간다. 값은 htmlspecialchars 를 거쳐 속성에만 들어간다.
  */
-$loginToAllowed = ['tbox', 'community'];
-$loginToRaw     = $_GET['to'] ?? 'community';
+$loginToAllowed = ['home', 'tbox', 'community'];
+$loginToRaw     = $_GET['to'] ?? 'home';
 $loginTo        = '';
 $loginReturn    = null;   // 허용 목록 경로의 정규형(있으면)
 if (is_string($loginToRaw) && in_array($loginToRaw, $loginToAllowed, true)) {
@@ -47,7 +47,7 @@ if (Auth::currentUser() !== null) {
     if ($loginReturn !== null) {
         Http::redirectReturn($loginReturn);
     }
-    Http::redirect($loginTo === 'community' ? Http::communityUrl('/') : Http::url(TBOX_HOME_PATH));
+    Http::redirect($loginTo === 'community' ? Http::communityUrl('/') : ($loginTo === 'tbox' ? Http::url(TBOX_HOME_PATH) : '/'));
 }
 
 if (!headers_sent()) {
@@ -67,7 +67,7 @@ $loginIconVersion = (int) filemtime(__DIR__ . '/../../public/assets/qaredi-icon-
    S-09(버전 비노출)와 무관하다. */
 $themeAttr = Http::themeAttr();
 
-/* `<body data-to>` 에 넣을 값 — 옛 키 또는 정규형 경로(둘 중 하나). 보던 곳이 커뮤니티 경로면 왼쪽 판도 커뮤니티로
+/* `<body data-to>` 에 넣을 값 — 고정 키 또는 정규형 경로(둘 중 하나). 보던 곳이 커뮤니티 경로면 왼쪽 판도 커뮤니티로
    (판 글자는 아래 고정 표에서만 고른다 — 요청 값이 판을 고르는 데 쓰이는 것은 키 둘뿐이다). */
 $loginDataTo = $loginReturn !== null ? $loginReturn : $loginTo;
 $loginPane   = $loginTo;
@@ -84,12 +84,14 @@ if ($loginReturn !== null && strpos($loginReturn, COMMUNITY_BASE . '/') === 0) {
    커뮤니티 타일을 누른 사람도 t-box 로 가는 줄 알았다. 글자는 **고정 표**에서만 고른다 — 요청 값은
    위 허용 목록을 지난 키뿐이다. */
 $loginApps = [
+    'home' => ['name' => '모아', 'into' => '모아 홈으로', 'sub' => '업무 · 자료 · AI 비서 · 이야기', 'icon' => 'grid'],
     'tbox'      => ['name' => '모아 자료실',  'into' => '자료실로',  'sub' => '사내 파일 공유',                  'icon' => 'shield'],
     // Q:F-12 D (WK-10) — 커뮤니티 갈래는 이제 「업무」(작업 · 프로젝트 · 문서) 앱이다. 이야기(`/community/memories`)로 돌아가는 사람도 같은 갈래(한 로그인)
     'community' => ['name' => '모아 업무', 'into' => '업무로', 'sub' => '작업 · 프로젝트 · 문서', 'icon' => 'grid'],
     'story'     => ['name' => '모아 이야기', 'into' => '이야기로', 'sub' => '스레드 · 여행 — 일상 나누기', 'icon' => 'grid'],
 ];
-$loginApp = $loginApps[$loginPane === '' ? 'tbox' : $loginPane];
+$loginApp = $loginApps[$loginPane === '' ? 'home' : $loginPane];
+if ($loginReturn !== null) { $loginApp['into'] = '원래 열려던 화면으로'; }
 ?>
 <!doctype html>
 <html lang="ko"<?= $themeAttr ?><?= Design::attrs() ?>>
@@ -128,7 +130,7 @@ $loginApp = $loginApps[$loginPane === '' ? 'tbox' : $loginPane];
     </div>
     <div>
       <h2 class="login__lead"><?= htmlspecialchars($loginApp['sub'], ENT_QUOTES, 'UTF-8') ?></h2>
-      <p class="login__brand-sub">소소한 이야기부터 함께 쓰는 자료까지. 모아에서 우리의 일상을 이어가세요.</p>
+      <p class="login__brand-sub">할 일과 자료를 정리하고 AI의 도움을 받아 보세요. 모아에서 필요한 도구로 바로 시작하세요.</p>
     </div>
 
     <!-- Qaredi C — 로그인 화면에는 「Qaredi 홈」 텍스트 링크 하나만 (ARCH-launcher 6장).

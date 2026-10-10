@@ -352,7 +352,7 @@ if ($shellMod === 'community'): ?>
 <?php endif; ?>
 <?= Design::assets() ?>
 </head>
-<body data-page="<?= $shellPage ?>" data-base="<?= TBOX_BASE ?>"<?= $shellMod === '' ? '' : ' data-community-base="' . COMMUNITY_BASE . '"' ?>>
+<body data-service="<?= $shellMod === 'community' ? 'work' : ($shellMod === 'story' ? 'story' : 'library') ?>" data-page="<?= $shellPage ?>" data-base="<?= TBOX_BASE ?>"<?= $shellMod === '' ? '' : ' data-community-base="' . COMMUNITY_BASE . '"' ?>>
 <a class="skip" href="#main">본문으로 건너뛰기</a>
 <div class="app">
   <!-- ─── 앱 아이콘 줄 (사이트 Q:F-12 · WK-11 ② · DESIGN 2.18) ───────────────────────────────

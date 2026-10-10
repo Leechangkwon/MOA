@@ -5,7 +5,7 @@ declare(strict_types=1);
 final class Design
 {
     public const THEMES = [
-        'moa' => ['모아', '숲빛 그린 · 따뜻한 여백'],
+        'moa' => ['모아', '서비스별 컬러 · 차분한 작업 공간'],
         'claude' => ['Claude', '기존의 차분한 흑백'],
         'astra' => ['Astra', '코발트 블루 · 민트'],
         'aurora' => ['Aurora', '에메랄드 · 골드'],

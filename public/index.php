@@ -970,10 +970,10 @@ if ($policy !== Authz::POLICY_PUBLIC) {
     // 그런 요청까지 남기면 실제 공격 흔적이 묻힌다 (PRD S-07 취지).
     if (Auth::currentUser() === null && strpos($reqPath, '/api/') !== 0) {
         /* Q:F-7 B1-1 — 보던 화면이 허용 목록(Http::returnPath) 안이면 꼬리표로 싣는다. 요청 주소 원문은 **그 함수만** 지나고,
-           Location 에는 그 정규형을 rawurlencode 한 글자만 들어간다(Http::redirect 가 한 번 더 확인). 첫 화면이면 꼬리표 없이. */
+           Location 에는 그 정규형을 rawurlencode 한 글자만 들어간다(Http::redirect 가 한 번 더 확인). 자료실 첫 화면도 목적지로 보존한다. */
         $tboxReturn = Http::returnPath((string) ($_SERVER['REQUEST_URI'] ?? ''));
         Http::redirect(Http::url(TBOX_LOGIN_PATH)
-            . ($tboxReturn !== null && $tboxReturn !== Http::url(TBOX_HOME_PATH) ? '?to=' . rawurlencode($tboxReturn) : ''));
+            . ($tboxReturn !== null ? '?to=' . rawurlencode($tboxReturn) : ''));
     }
     $user = Auth::requireLogin();          // 실패 시 401 + Audit::deny (Auth 안에서)
     Http::requireCsrf();                   // 상태 변경 요청의 토큰 검사 (PRD S-09-3)

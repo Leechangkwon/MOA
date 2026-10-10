@@ -217,6 +217,15 @@ try:
     audit=sql('SELECT COALESCE(json_agg(a)::text,\'[]\') FROM audit_logs a')
     check(all(secret not in audit for secret in [issued_token,payload['password'],payload['otp']]),'audit contains no issued token/password/OTP')
 
+    # Service-home destinations use the production handlers and allow-list.
+    for path,want in [('/tbox/login','/'),('/tbox/login?to=home','/'),('/tbox/login?to=tbox','/tbox/'),('/tbox/login?to=community','/community/'),('/tbox/login?to=https%3A%2F%2Fevil.example','/'),('/tbox/login?to=%2Ftbox%2Fwelcome%3Fsection%3Dpc-assistant','/tbox/welcome?section=pc-assistant')]:
+        response=call('GET',path,expected=302)
+        check(response.headers.get('Location')==want,'server login redirect '+path)
+    response=call('GET','/tbox/',user=None,expected=302)
+    check(response.headers.get('Location')=='/tbox/login?to=%2Ftbox%2F','anonymous file library retains intended destination')
+    response=call('GET','/tbox/welcome?section=pc-assistant',user=None,expected=302)
+    check(response.headers.get('Location')=='/tbox/login?to=%2Ftbox%2Fwelcome%3Fsection%3Dpc-assistant','anonymous PC guide retains intended destination')
+
     # Actual help UI on current source. PHP test router substitutes only static path serving.
     from playwright.sync_api import sync_playwright, expect
     with sync_playwright() as playwright:
@@ -233,7 +242,7 @@ try:
                 page.locator('#work-home-welcome [data-usage-guide-open]').click()
                 guide=page.locator('.usage-guide-dialog');expect(guide).to_be_visible()
                 check(len(guide.inner_text().strip())>25,'visible work home guided help text')
-                with page.expect_response(lambda r: r.url.endswith('/community/api/me/guide') and r.request.method=='PATCH'):
+                with page.expect_response(lambda r: r.url.endswith('/community/api/me/guide') and r.request.method=='PATCH' and r.request.post_data_json.get('status')=='dismissed'):
                     page.keyboard.press('Escape')
                 expect(guide).to_have_count(0)
                 state=call('GET','/community/api/me/guide',expected=200).json()
@@ -249,6 +258,15 @@ try:
         page.evaluate("document.documentElement.setAttribute('data-theme','dark')")
         page.locator('[data-help-open]').click();page.screenshot(path=str(output/'help-threads-390-dark.png'),full_page=True)
         check(page.evaluate('document.documentElement.scrollWidth <= innerWidth'),'390px help has no page overflow')
+        page.keyboard.press('Escape')
+        for route,service in [('/tbox/','library'),('/community/','work'),('/community/memories','story'),('/tbox/messages','assistant')]:
+            for width,theme in [(390,'dark'),(1280,'light')]:
+                page.set_viewport_size({'width':width,'height':900})
+                page.goto(origin+route,wait_until='networkidle')
+                page.evaluate('(t)=>document.documentElement.dataset.theme=t',theme)
+                check(page.locator('body').get_attribute('data-service')==service,'service identity '+service+theme)
+                check(page.evaluate('document.documentElement.scrollWidth<=innerWidth'),'service overflow '+service+theme)
+                page.screenshot(path=str(output/('service-'+service+'-'+str(width)+'.png')))
         check(not errors,'current source browser has no uncaught JS errors',error_count=len(errors))
         browser.close()
     api('GET','/api/health',user=None,expected=200)

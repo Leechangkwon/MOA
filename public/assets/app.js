@@ -66,6 +66,7 @@ var COMMUNITY_BASE = (document.body && document.body.getAttribute('data-communit
  * data 속성에서 만들지 않는다(재인증 REAUTH_PATHS 와 같은 방식, 오픈 리다이렉트 0).
  */
 var LOGIN_TO_PATHS = {
+  'home': '/',
   'tbox': HOME_PATH,
   'community': COMMUNITY_BASE + '/'
 };
@@ -103,7 +104,9 @@ var RETURN_UUID = '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}'
 var RETURN_RULES = [
   [/^\/tbox\/$/, [['folder', /^[1-9][0-9]{0,8}$/], ['q', 'text200'], ['sort', /^(name|created_at|size)$/],
     ['dir', /^(asc|desc)$/], ['page', /^[1-9][0-9]{0,5}$/]]],
-  [/^\/tbox\/(settings|activity|welcome|messages)$/, []],
+  [/^\/tbox\/(settings|activity|messages)$/, []],
+  [/^\/tbox\/welcome$/, [['section', /^pc-assistant$/]]],
+  [/^\/community\/my-tasks$/, []],
   [/^\/tbox\/mcp-connect$/, [['pending', /^[A-Za-z0-9_-]{43}$/]]],
   [/^\/community\/$/, [['space', /^[1-9][0-9]{0,17}$/], ['view', /^(mine|shared)$/]]],
   [/^\/community\/workspace$/, [['space', /^[1-9][0-9]{0,17}$/], ['trash', /^1$/]]],
@@ -235,7 +238,7 @@ function loginDestination() {
     return LOGIN_TO_PATHS[to];
   }
   var rp = to === null ? null : returnPath(to);
-  return rp !== null ? rp : HOME_PATH;
+  return rp !== null ? rp : '/';
 }
 
 /* 지문·얼굴 로그인(passkey.js)·편집기(editor.js)도 같은 거르기와 같은 이동을 쓴다 — 이름만 내놓는다 */
@@ -735,9 +738,9 @@ function readJson(response) {
 
 function toLogin() {
   forgetMe();   // P-5a — 로그인 화면으로 가기 전에 나눠 쓰던 `/api/me` 답을 버린다(다음 화면은 새로 묻는다)
-  // Q:F-7 B1-1 — 지금 화면이 허용 목록 안이면 꼬리표로 싣는다(첫 화면이면 꼬리표 없이 — 로그인 뒤 기본값과 같다)
+  // Q:F-7 B1-1 — 지금 화면이 허용 목록 안이면 꼬리표로 싣는다(자료실 첫 화면도 목적지로 보존한다)
   var here = returnPath(window.location.pathname + window.location.search);
-  window.location.assign(here !== null && here !== HOME_PATH ? LOGIN_PATH + '?to=' + rawEncode(here) : LOGIN_PATH);
+  window.location.assign(here !== null ? LOGIN_PATH + '?to=' + rawEncode(here) : LOGIN_PATH);
 }
 
 /* ─── `GET /api/me` 는 한 화면에 한 번 (Q:F-4 P-5a) ─────────────────────────
