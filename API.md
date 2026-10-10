@@ -1416,3 +1416,9 @@ OAuth 범위: `memories.read`, `photos.read`, `memories.write`, `travel.read`, `
 `POST /tbox/api/programs`: 관리자만, CSRF 필수. JSON 정확히 `{file_id,version,sha256,level,team_id,password,otp,ack:true}`. 먼저 기존 웹 `/api/files`의 F-65 확인 절차로 본인이 root/admin-only에 올린 실행 ZIP이어야 한다. 검사 clean+해시 일치 감사 기록·원본 해시를 확인하고 매 요청 비밀번호·OTP를 검사한다. 정책 file.upload 뒤 `Authz::canUploadExec(user,'admin-only')`로 관리자/비대행/비토큰을 판정한다. F-65와 같이 재인증 시간을 열지 않는다. level은 public/internal/team/admin-only, team_id는 team일 때만 정수이고 나머지는 null. 버전은 영문·숫자로 시작하는 1~64자의 영문/숫자/`.`/`_`/`+`/`-`. 성공201 `{ok:true}`. 새 판 게시가 이전 판을 삭제하지 않는다. 최초 제품은 tbox-buddy 하나다.
 
 `POST /tbox/api/programs/{uuid}/download`: CSRF와 `{ack:true}` 필수. 현재 판·본인 파일 읽기 권한·clean·SHA256 대조 후 attachment로 스트림한다. 받는 사람에게 OTP를 요구하지 않는다. 공유 링크·API 토큰·일반/실행 파일 받기로 우회할 수 없다. 권한403, 이전판/없는파일404, 검사미완료423, 해시불일치500. 다운로더는 오류 JSON을 ZIP으로 저장하지 않는다.
+
+
+### 2026-10-10 GPT 간편 연결
+
+GPT 간편 연결: 같은 Windows PC의 비서에 로그인한 뒤 웹에서 GPT 연결을 눌러 한 번 승인한다. 브라우저 연결을 최대 30일 기억하고 이후 GPT 선택 때 재연결한다. 원문은 GPT로 처리 버튼을 눌러야 전송되며 결과는 미리보기로만 돌아온다. PC 비서 실행 링크와 구버전 코드 연결을 제공한다. 휴대폰에서 다른 PC로 원격 연결하는 기능은 아직 없다.
+상세: `docs/work-items/gpt-easy-connect.md`. DB/서버 API 변경 없음. Windows 앱 프로토콜/로그인 실검증은 별도.

@@ -12,7 +12,7 @@ window.MoaMessageAssist = function ({api, node, context, say, changed}) {
   // Q:F-11 (지시서 B-3 · 기획 4.6-A): the PC helper (loopback) is wired only on /messages, where moa-local-bridge.js is loaded
   // and that page's CSP allows it. In the floating window there is no bridge: 「내 PC의 ChatGPT」 shows one line and a link to the
   // full messenger instead — no code path here reaches the loopback address.
-  const localBridge = typeof window.MoaLocalBridge === 'function' ? window.MoaLocalBridge() : null;
+  const localBridge = typeof window.MoaLocalBridge === 'function' ? window.MoaLocalBridge(dialog.dataset.pcUser) : null;
   const bridgeNote = localBridge !== null ? null : (() => {
     const note = node('p', 'PC 비서 연결은 메신저 전체 화면에서 할 수 있습니다. ', 'moa-muted'), link = node('a', '크게 보기');
     link.href = document.body.dataset.base + '/messages';
@@ -33,11 +33,12 @@ window.MoaMessageAssist = function ({api, node, context, say, changed}) {
   function buttons() {
     const image = action === 'image', bridgeless = provider === 'local' && localBridge === null;
     $('assist-local-state').textContent = bridgeConnected()
-      ? 'PC 연결됨 · 연결 후 30분 동안 사용 · ChatGPT 로그인은 PC 앱에서 확인'
-      : 'PC 연결 전 · 만료되었으면 앱에서 새 코드를 만들어 연결하세요.';
+      ? 'PC 연결됨 · 웹에서 직접 누른 요청만 처리합니다.'
+      : localBridge?.remembered() ? '기억한 PC · GPT 연결로 다시 연결할 수 있습니다.' : 'PC 연결 전 · GPT 연결 후 PC 승인창을 확인하세요.';
+    $('assist-local-connect').disabled = running || waiting || bridgeConnected();
     $('assist-local-pair').disabled = running || waiting;
-    $('assist-local-run').disabled = running || waiting || !bridgeConnected() || image;
-    $('assist-local-unpair').disabled = !bridgeConnected() && !localBusy;
+    $('assist-local-run').disabled = running || waiting || (!bridgeConnected() && !localBridge?.remembered()) || image;
+    $('assist-local-unpair').disabled = !bridgeConnected() && !localBusy && !localBridge?.remembered();
     $('assist-local-cancel').disabled = !localBusy;
     const manual = provider !== 'gemini';
     for (const button of dialog.querySelectorAll('[data-assist-provider]')) {
@@ -68,7 +69,7 @@ window.MoaMessageAssist = function ({api, node, context, say, changed}) {
     $('assist-local-task').textContent = image ? 'PC 비서에서는 문장 다듬기·맞춤법·번역을 사용할 수 있습니다.' : 'PC 비서에서 선택할 작업: ' + titles[action] + (action === 'translate' ? ' · 목표 언어: ' + languages[$('assist-language').value] : ' · 원문의 언어 유지');
     $('assist-disclosure').textContent = bridgeless ? 'PC 비서 연결은 메신저 전체 화면에서 할 수 있습니다.'
       : provider === 'local'
-      ? 'PC 연결 후 “PC에서 처리”를 누르면 위 원문·작업·목표 언어만 내 PC로 보냅니다. PC에서 승인하면 OpenAI가 처리합니다. 결과는 미리보기로 돌아오며 상대에게 자동으로 보내지 않습니다. 직접 복사도 가능합니다.'
+      ? 'PC 연결 후 “GPT로 처리”를 누르면 위 원문·작업·목표 언어만 내 PC로 보냅니다. 처음 연결에서 허용한 브라우저는 추가 PC 확인 없이 OpenAI가 처리합니다. 코드 연결은 매번 PC 확인이 필요합니다. 결과는 미리보기로 돌아오며 상대에게 자동으로 보내지 않습니다. 직접 복사도 가능합니다.'
       : manual
       ? '직접 복사·붙여 넣는 방식입니다. 모아는 PC나 ChatGPT의 연결 상태를 확인하지 않으며, 위 원문을 자동으로 보내지 않습니다.'
       : '위 내용만 Google AI로 보냅니다. 무료 API에는 개인정보·기밀을 입력하지 마세요. 이미지는 별도 유료 기능이며 결과를 확인한 뒤 첨부합니다.';
@@ -95,7 +96,7 @@ window.MoaMessageAssist = function ({api, node, context, say, changed}) {
   }
   function providerNote() {
     if (provider === 'local' && localBridge === null) return 'PC 비서 연결은 메신저 전체 화면에서 할 수 있습니다.';
-    if (provider === 'local') return 'PC 앱에서 ChatGPT 로그인과 연결 시험을 마친 뒤 같은 PC에서 연결하세요. 내 요금제 또는 사용 가능한 크레딧으로 처리하며 유료 API로 자동 전환하지 않습니다.';
+    if (provider === 'local') return '처음에는 ‘GPT 연결’을 누르고 PC에서 승인하세요. 이후에는 기억한 연결을 사용합니다. 내 요금제 또는 사용 가능한 크레딧으로 처리하며 유료 API로 자동 전환하지 않습니다.';
     if (provider === 'web') return '요청문을 복사해 ChatGPT에서 작업한 뒤 결과를 직접 가져오세요.';
     return ready ? '원문을 확인하고 원하는 도구를 실행하세요.' : '관리자가 Gemini 키를 등록하고 AI 사용을 켜면 이용할 수 있습니다.';
   }
@@ -186,6 +187,7 @@ window.MoaMessageAssist = function ({api, node, context, say, changed}) {
   for (const button of dialog.querySelectorAll('[data-assist-provider]')) button.addEventListener('click', () => {
     if (running || waiting || button.dataset.assistProvider === provider) return;
     provider = button.dataset.assistProvider; edited(); tell(providerNote());
+    if (provider === 'local' && localBridge?.remembered() && !bridgeConnected()) connectLocal();
   });
   for (const button of dialog.querySelectorAll('[data-assist-action]')) button.addEventListener('click', () => {
     if (running || waiting) return;
@@ -200,15 +202,19 @@ window.MoaMessageAssist = function ({api, node, context, say, changed}) {
     if ($('assist-restore-input').disabled) return;
     $('assist-input').value = originalAtOpen; edited(); tell('이 창을 열었을 때의 원문으로 되돌렸습니다.'); $('assist-input').focus();
   });
-  $('assist-local-pair').addEventListener('click', async () => {
+  async function connectLocal(code) {
     if (running || waiting || localBridge === null) return;
-    const ticket = epoch, revision = editRevision, code = $('assist-local-code').value.trim(); $('assist-local-code').value = '';
-    running = localBusy = true; buttons(); tell('PC 비서 창에서 연결을 승인해 주세요.');
+    const ticket = epoch, revision = editRevision;
+    running = localBusy = true; buttons(); tell('PC 비서에서 처음 한 번 연결을 승인해 주세요.');
     try {
       await localBridge.pair(code);
-      if (matches(ticket) && revision === editRevision) tell('PC 연결을 승인했습니다. 원문을 확인한 뒤 “PC에서 처리”를 누르세요.');
+      if (matches(ticket) && revision === editRevision) tell('PC 연결됨. 원문을 확인한 뒤 “GPT로 처리”를 누르세요.');
     } catch (error) { if (matches(ticket) && revision === editRevision) tell(error.message); }
     finally { if (matches(ticket) && revision === editRevision) { running = localBusy = false; buttons(); } }
+  }
+  $('assist-local-connect').addEventListener('click', () => connectLocal());
+  $('assist-local-pair').addEventListener('click', () => {
+    const code = $('assist-local-code').value.trim(); $('assist-local-code').value = ''; connectLocal(code);
   });
   $('assist-local-unpair').addEventListener('click', async () => {
     if (localBridge === null) return;
@@ -226,7 +232,7 @@ window.MoaMessageAssist = function ({api, node, context, say, changed}) {
     const text = $('assist-input').value;
     if (!validText(text, $('assist-input'), '원문')) return;
     const ticket = epoch, revision = editRevision;
-    running = localBusy = true; clearResult(); buttons(); tell('PC 비서에서 원문과 작업을 확인해 주세요.');
+    running = localBusy = true; clearResult(); buttons(); tell(localBridge.remembered() ? '연결한 PC에서 GPT로 처리 중입니다.' : 'PC 비서에서 원문과 작업을 확인해 주세요.');
     try {
       const data = await localBridge.run({action, text, target_language:action === 'translate' ? $('assist-language').value : null});
       if (!matches(ticket) || revision !== editRevision) return;

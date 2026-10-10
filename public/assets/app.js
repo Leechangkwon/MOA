@@ -12707,3 +12707,13 @@ document.addEventListener('DOMContentLoaded', function () {
   }
   bootPage(page);
 });
+
+// Explicit logout forgets PC grants even outside the full messenger page.
+document.addEventListener('qaredi:logout', function () {
+  try {
+    for (var i = localStorage.length - 1; i >= 0; i--) {
+      var key = localStorage.key(i);
+      if (key && key.indexOf('moa-pc:v2:') === 0) localStorage.removeItem(key);
+    }
+  } catch (_) { /* Storage may be unavailable. */ }
+});

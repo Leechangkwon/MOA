@@ -37,14 +37,21 @@ class Fixture:
     def __init__(self):
         self.posts = []; self.errors = []; self.other_requests = []; self.ready = True; self.images = True
         self.jobs = []; self.turns = []; self.fail_ai = False
-        self.local_posts = []; self.local_jobs = {}; self.local_mode = 'completed'; self.local_error = 'eligibility_unconfirmed'
+        self.local_posts = []; self.local_jobs = {}; self.local_mode = 'completed'; self.local_error = 'eligibility_unconfirmed'; self.easy=False; self.resume_denied=False
     def route(self, route):
         request = route.request; u = urlsplit(request.url); path = u.path
         if u.netloc == '127.0.0.1:43821':
             body = request.post_data_json if request.method == 'POST' else None
             if body is not None: self.local_posts.append((path, body, request.headers))
             headers = {'Access-Control-Allow-Origin':'https://changkwon.mso.so', 'Access-Control-Allow-Headers':'Authorization, Content-Type'}
-            if path == '/v1/pair': data = {'request_id':body['request_id'], 'state':'awaiting_confirmation', 'poll_token':'p'*43}
+            if path == '/v2/connect':
+                self.easy=True; data = {'request_id':body['request_id'], 'state':'awaiting_confirmation', 'poll_token':'p'*43}
+            elif path == '/v2/resume':
+                if self.resume_denied:
+                    route.fulfill(status=403,json={'error_code':'permission_denied'},headers=headers); return
+                data = {'credential':'c'*43, 'expires_in':1800, 'remembered':True}
+            elif path == '/v2/forget': data = {'state':'unpaired'}
+            elif path == '/v1/pair': data = {'request_id':body['request_id'], 'state':'awaiting_confirmation', 'poll_token':'p'*43}
             elif path.startswith('/v1/pair/'): data = {'request_id':path.rsplit('/',1)[1], 'state':'approved', 'credential':'c'*43, 'expires_in':1800}
             elif path == '/v1/unpair': data = {'state':'unpaired'}
             elif path == '/v1/jobs':
@@ -52,6 +59,7 @@ class Fixture:
                 self.local_jobs[body['request_id']] = data
             elif path.endswith('/cancel'): data = {'state':'cancelled'}
             else: data = self.local_jobs[path.rsplit('/',1)[1]]
+            if path.startswith('/v1/pair/') and self.easy: data['remember_token']='r'*43
             route.fulfill(json=data, headers=headers); return
         if u.netloc not in ('moa.example', 'changkwon.mso.so'):
             self.other_requests.append(request.url); route.abort(); return
@@ -130,7 +138,7 @@ with sync_playwright() as p:
     open_tool()
     source = page.locator('#assist-input').input_value()
     check('local mode hides Gemini request/quota', not page.locator('#assist-gemini-run').is_visible())
-    page.locator('#assist-local-copy').click()
+    page.locator('#assist-local-copy').evaluate('(el) => el.closest("details").open = true'); page.locator('#assist-local-copy').click()
     check('local clipboard contains exact original only', page.evaluate('fixtureClipboard.at(-1)') == source)
     check('copy performs no provider or messenger POST', not f.posts)
     page.evaluate('fixtureClipboardFails = true'); page.locator('#assist-local-copy').click()
@@ -153,7 +161,7 @@ with sync_playwright() as p:
     check('apply undo restores draft', page.locator('#message-text').input_value() == source)
 
     open_tool(text='😀'*4000)
-    page.locator('#assist-local-copy').click()
+    page.locator('#assist-local-copy').evaluate('(el) => el.closest("details").open = true'); page.locator('#assist-local-copy').click()
     check('4000 Unicode code points accepted without truncation', page.evaluate('fixtureClipboard.at(-1)') == '😀'*4000)
     before = page.evaluate('fixtureClipboard.length')
     page.locator('#assist-input').fill('가'*4001);page.locator('#assist-local-copy').click()
@@ -197,7 +205,7 @@ with sync_playwright() as p:
     peer();page.locator('.moa-message-translate').first.click();page.locator('[data-assist-provider="local"]').click()
     check('received translation defaults Korean and readonly source', page.locator('#assist-language').input_value() == 'ko' and page.locator('#assist-input').evaluate('e=>e.readOnly') and page.locator('#assist-input').input_value() == 'Hello, how are you?')
     check('received translation prevents unrelated source operations', page.locator('[data-assist-action="polish"]').is_disabled())
-    page.locator('#assist-local-copy').click();check('received text copy excludes sender and history', page.evaluate('fixtureClipboard.at(-1)') == 'Hello, how are you?')
+    page.locator('#assist-local-copy').evaluate('(el) => el.closest("details").open = true'); page.locator('#assist-local-copy').click();check('received text copy excludes sender and history', page.evaluate('fixtureClipboard.at(-1)') == 'Hello, how are you?')
     page.locator('#assist-close').click()
 
     open_tool('gemini','Gemini 검토 문장');page.locator('#assist-run').click()
@@ -230,14 +238,14 @@ with sync_playwright() as p:
     page.locator('#welcome-local-buddy summary').click()
     guide=page.locator('#welcome-local-buddy')
     # 안내 문구는 029f753(2026-10-03 「가입 선택과 … 사용성 개선」)이 의도적으로 바꿨다 — 「비공개 Git2 저장소」 · 공유 브랜치 링크 → 고정 판 ZIP·README 링크.
-    check('welcome distinguishes integrated release from GPT test', '통합' in guide.inner_text() and '연결 시험본' in guide.inner_text() and 'Git 계정은 필요하지 않습니다' in guide.inner_text())
+    check('welcome explains first approval and remembered connection', 'GPT 연결' in guide.inner_text() and '30일' in guide.inner_text())
     check('authenticated T-box distribution link, no token input in local guide', guide.locator('a').first.get_attribute('href') == '/tbox/programs' and guide.locator('input').count()==0)
-    check('guide distinguishes same-PC pairing and phone alternative', '같은 PC' in guide.inner_text() and '휴대폰에서는 다른 PC' in guide.inner_text())
-    check('guide updates the existing app and preserves its settings and shortcut', '기존 비서 폴더와 설정을 백업' in guide.inner_text() and '기존 바로가기' in guide.inner_text() and '트레이 아이콘이 하나' in guide.inner_text())
+    check('guide distinguishes same-PC pairing and phone alternative', '같은 PC' in guide.inner_text() and '휴대폰에서 다른 PC' in guide.inner_text())
+    check('guide updates the existing app and preserves its settings and shortcut', 'update.cmd' in guide.inner_text() and '기존 바로가기' in guide.inner_text())
     page.goto('https://changkwon.mso.so/tbox/messages')
     open_tool('local', '  PC 전송 원문 😀\n둘째 줄  ')
     check('no loopback request before user pairs', not f.local_posts)
-    page.locator('#assist-local-code').fill('a'*32); page.locator('#assist-local-pair').click()
+    page.locator('#assist-local-code').evaluate('(el) => el.closest("details").open = true'); page.locator('#assist-local-code').fill('a'*32); page.locator('#assist-local-pair').click()
     expect(page.locator('#assist-local-state')).to_contain_text('PC 연결됨')
     check('pairing clears code and stores no browser credential', page.locator('#assist-local-code').input_value() == '' and no_helper_credential(page))
     page.locator('#assist-local-run').click(); expect(page.locator('#assist-output')).to_have_value('PC 완료 결과 <script>문자</script>')
@@ -259,14 +267,35 @@ with sync_playwright() as p:
     count=len(f.local_posts)
     page.evaluate('window.realNow=Date.now; Date.now=()=>window.realNow()+1801000')
     expect(page.locator('#assist-local-run')).to_be_disabled()
-    expect(page.locator('#assist-local-state')).to_contain_text('새 코드')
+    expect(page.locator('#assist-local-state')).to_contain_text('PC 연결 전')
     check('expired connection updates controls without network probing', len(f.local_posts)==count and 'PC 연결됨' not in page.locator('#assist-local-state').inner_text())
     page.evaluate('Date.now=window.realNow')
-    page.locator('#assist-local-code').fill('a'*32);page.locator('#assist-local-pair').click()
+    page.locator('#assist-local-code').evaluate('(el) => el.closest("details").open = true'); page.locator('#assist-local-code').fill('a'*32);page.locator('#assist-local-pair').click()
     expect(page.locator('#assist-local-run')).to_be_enabled()
     page.locator('#assist-local-unpair').click(); expect(page.locator('#assist-local-run')).to_be_disabled()
     check('unpair clears tab credential', no_helper_credential(page))
     page.locator('#assist-close').click()
+    # Remembered connections: user gesture, account-scoped storage, resume, expiry and revocation.
+    f.local_mode='completed';open_tool('local','간편 연결 검사');page.locator('#assist-local-connect').click()
+    expect(page.locator('#assist-local-state')).to_contain_text('PC 연결됨')
+    saved=page.evaluate("JSON.parse(localStorage.getItem('moa-pc:v2:1001'))")
+    check('easy connection stores only a scoped grant, never session or account credentials', saved['token']=='r'*43 and 'c'*43 not in str(page.evaluate(STORE_ITEMS)))
+    check('easy approval sends account identifier without source text', set(next(x[1] for x in f.local_posts if x[0]=='/v2/connect'))=={'request_id','user'})
+    count=len([x for x in f.local_posts if x[0]=='/v1/jobs'])
+    page.reload();open_tool('local','새로 연 원문')
+    expect(page.locator('#assist-local-state')).to_contain_text('PC 연결됨')
+    check('GPT selection resumes after reload without re-pair or automatic generation', len([x for x in f.local_posts if x[0]=='/v2/connect'])==1 and len([x for x in f.local_posts if x[0]=='/v1/jobs'])==count)
+    page.locator('#assist-local-run').click();expect(page.locator('#assist-output')).to_have_value('PC 완료 결과 <script>문자</script>')
+    page.locator('#assist-local-unpair').click();expect(page.locator('#assist-local-run')).to_be_disabled()
+    check('disconnect removes saved grant and revokes PC trust', page.evaluate("localStorage.getItem('moa-pc:v2:1001')")==None and any(x[0]=='/v2/forget' for x in f.local_posts))
+    page.locator('#assist-local-connect').click();expect(page.locator('#assist-local-state')).to_contain_text('PC 연결됨')
+    f.resume_denied=True;page.reload();open_tool('local','계정 전환 검사')
+    expect(page.locator('#assist-status')).to_contain_text('승인이 거절')
+    check('rejected resume clears stale grant without sending text',page.evaluate("localStorage.getItem('moa-pc:v2:1001')")==None)
+    f.resume_denied=False;page.locator('#assist-local-connect').click();expect(page.locator('#assist-local-state')).to_contain_text('PC 연결됨')
+    page.evaluate("document.dispatchEvent(new Event('qaredi:logout'))")
+    expect(page.locator('#assist-local-run')).to_be_disabled()
+    check('logout clears remembered connection',page.evaluate("localStorage.getItem('moa-pc:v2:1001')")==None)
     check('no unexpected/local/OpenAI network requests', not f.other_requests)
     check('no browser runtime errors', not f.errors)
     (ARTIFACTS/'results.json').write_text(json.dumps(checks,ensure_ascii=False,indent=2))

@@ -6,7 +6,7 @@
  * 놓을 주요 동작 하나가 없으므로 본문의 실행·적용 단추는 테두리다(2.7 ④ 「검정은 많아야 하나이고 바닥에만」).
  */
 ?>
-<dialog id="message-assist-dialog" class="moa-assist-dialog" aria-labelledby="assist-title">
+<dialog id="message-assist-dialog" data-pc-user="<?= (int)$user['id'] ?>" class="moa-assist-dialog" aria-labelledby="assist-title">
   <header class="moa-assist-head modal__head"><div><p class="moa-kicker">A LITTLE HELP, A BETTER MESSAGE</p><h2 id="assist-title">말이 조금 더 잘 전해지도록</h2><p id="assist-recipient" class="moa-muted"></p></div><button id="assist-close" type="button" class="btn btn--icon btn--plain" aria-label="닫기"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg></button></header>
   <div class="moa-assist-body">
     <div class="moa-assist-providers" role="group" aria-label="AI 사용 방법 선택">
@@ -36,13 +36,19 @@
       <p id="assist-local-task"></p>
       <p id="assist-local-image-note" hidden>개인 ChatGPT 로컬 연결은 이미지 생성을 지원하지 않습니다. 위에서 모아 공용 Gemini 또는 ChatGPT 웹을 선택해 주세요.</p>
       <div id="assist-local-text-steps">
-        <h3>앱을 준비했다면 PC 연결</h3>
-        <p>PC 앱의 로그인·연결 시험을 마친 뒤 ‘모아 웹 연결’에서 코드를 만드세요. 원문은 ‘PC에서 처리’를 누른 뒤 전송되며 PC에서 한 번 더 확인합니다.</p>
-        <label class="field"><span>PC 비서의 일회용 페어링 코드</span><input id="assist-local-code" type="text" maxlength="32" autocomplete="off" spellcheck="false"></label>
-        <div class="moa-assist-run"><button id="assist-local-pair" type="button" class="btn btn--quiet">PC 연결</button><button id="assist-local-unpair" type="button" class="btn btn--quiet">연결 해제</button><button id="assist-local-run" type="button" class="btn btn--quiet">PC에서 처리</button><button id="assist-local-cancel" type="button" class="btn btn--quiet">요청 취소</button></div>
-        <p id="assist-local-state" role="status">PC 연결 전 · 직접 복사도 사용할 수 있습니다.</p>
+        <h3>처음 한 번만 PC에서 승인하세요</h3>
+        <p>같은 Windows PC의 비서에 ChatGPT로 로그인한 뒤 ‘GPT 연결’을 누르세요. 승인한 브라우저는 30일간 기억합니다.</p>
+        <div class="moa-assist-run"><button id="assist-local-connect" type="button" class="btn btn--quiet">GPT 연결</button><a class="btn btn--quiet" href="tbox-buddy://connect">PC 비서 실행</a><button id="assist-local-unpair" type="button" class="btn btn--quiet">연결 해제</button><button id="assist-local-run" type="button" class="btn btn--quiet">GPT로 처리</button><button id="assist-local-cancel" type="button" class="btn btn--quiet">요청 취소</button></div>
+        <p id="assist-local-state" role="status">PC 연결 전</p>
+        <details><summary>구버전 비서 · 코드로 연결</summary>
+          <label class="field"><span>PC 비서의 일회용 페어링 코드</span><input id="assist-local-code" type="text" maxlength="32" autocomplete="off" spellcheck="false"></label>
+          <button id="assist-local-pair" type="button" class="btn btn--quiet">코드로 PC 연결</button>
+          <p>PC 앱의 ‘모아 웹 연결’에서 코드를 만드세요. 이 방식은 원문 처리 때마다 PC에서 확인합니다.</p>
+        </details>
+        <details><summary>연결 없이 직접 복사하기</summary>
         <ol><li>아래 버튼으로 <strong>원문만 복사</strong>합니다.</li><li>PC 비서에서 위 작업·언어를 선택하고 원문을 붙여 넣어 처리합니다.</li><li>PC 비서의 ‘완료 결과 복사’를 누른 뒤 아래 결과 칸에 붙여 넣습니다.</li></ol>
         <button id="assist-local-copy" type="button" class="btn btn--quiet">원문만 복사</button>
+        </details>
       </div>
     </section>
     <details id="assist-external" class="moa-assist-external" open hidden><summary>내 ChatGPT에서 직접 작업하기 ↗</summary><p>요청문을 복사하고 ChatGPT를 열어 붙여 넣으세요. 그곳에 로그인한 계정의 요금제와 한도로 사용합니다. 모아에 계정이 연결되거나 결과가 자동으로 돌아오지는 않습니다.</p><div><button id="assist-external-copy" type="button" class="btn btn--quiet btn--small">요청문 복사</button><a href="https://chatgpt.com/" target="_blank" rel="noopener noreferrer" class="btn btn--quiet btn--small">ChatGPT 열기 ↗</a></div><textarea id="assist-external-prompt" rows="4" readonly aria-label="ChatGPT에 붙여 넣을 요청문" hidden></textarea></details>
