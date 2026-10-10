@@ -168,5 +168,5 @@
     addEventListener('pagehide',()=>{$('ai-settings-key').value='';});
     try{paint(await api('/api/member-ai-settings'));}catch(error){notice.textContent=error.message;}
   }
-  api('/api/me').then(async data=>{me=data;csrf=data.csrf_token;if(page==='mcp-connect')await window.MoaMcpConnect.init({api,me});if(page==='welcome')await welcome();if(page==='consent')await consent();if(admin)await Promise.all([initInvites(),initAiSettings()]);if(page==='messages'){if(!window.MoaMessenger)throw Error('메신저를 불러오지 못했습니다. 새로고침해 주세요.');await window.MoaMessenger.mount({api,me,node,say,date,label,mode:'page'});}}).catch(e=>{if(page==='mcp-connect'&&window.MoaMcpConnect)window.MoaMcpConnect.failure(e);else say(e.message);});
+  api('/api/me').then(async data=>{me=data;csrf=data.csrf_token;if(page==='mcp-connect')await window.MoaMcpConnect.init({api,me});if(page==='welcome')await welcome();if(page==='buddy-guide')await window.MoaBuddySetup.init({api,me});if(page==='consent')await consent();if(admin)await Promise.all([initInvites(),initAiSettings()]);if(page==='messages'){if(!window.MoaMessenger)throw Error('메신저를 불러오지 못했습니다. 새로고침해 주세요.');await window.MoaMessenger.mount({api,me,node,say,date,label,mode:'page'});}}).catch(e=>{if(page==='mcp-connect'&&window.MoaMcpConnect)window.MoaMcpConnect.failure(e);else say(e.message);});
 })();

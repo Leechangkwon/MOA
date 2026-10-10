@@ -1,9 +1,9 @@
 {
   "slug": "guide-start",
   "title": "처음 시작하기 — 로그인 선택과 앱 설치",
-  "summary": "로그인 방법과 앱 설치를 선택하고, Windows PC 비서로 내 ChatGPT를 연결하는 순서를 안내합니다.",
+  "summary": "홈의 PC 비서 연결에서 기본 Gemini·파일·개인 GPT를 선택하고, 필요한 연결 토큰을 같은 화면에서 발급합니다.",
   "group": "guide",
-  "updated": "2026-10-09",
+  "updated": "2026-10-11",
   "sections": [
     {
       "id": "protect",
@@ -26,16 +26,30 @@
       ]
     },
     {
+      "id": "pc-token",
+      "heading": "설치 후 기본 AI와 파일 연결",
+      "blocks": [
+        {
+          "type": "p",
+          "text": "홈 → PC 비서 연결에서 기본 AI 연결을 선택합니다. OTP가 없으면 같은 화면에서 인증 앱을 등록하세요. 로그인·등록에 사용한 숫자가 바뀐 뒤 비밀번호와 새 코드를 입력하면 필요한 범위의 토큰이 만들어집니다. 복사해서 Windows 트레이 비서의 비서 실행용 토큰 등록에 넣고 AI 창에서 Gemini를 사용하세요."
+        },
+        {
+          "type": "p",
+          "text": "파일 탐색도 쓰려면 파일 연결에서 별도 토큰을 만들어 트레이의 API 토큰 변경에 넣습니다. 기본은 파일 읽기이며 업로드는 원하는 경우 선택합니다. 토큰은 발급할 때만 볼 수 있고, 내 계정에서 쓰지 않는 토큰을 회수할 수 있습니다. 개인 GPT는 이 토큰 없이 PC의 ChatGPT 로그인으로 연결합니다."
+        }
+      ]
+    },
+    {
       "id": "personal-chatgpt",
       "heading": "내 ChatGPT로 문장 다듬기",
       "blocks": [
         {
           "type": "p",
-          "text": "시작 안내의 개인 ChatGPT PC 비서에서 Windows ZIP을 받습니다. 비공개 Git2 읽기 권한이 필요합니다. 새 폴더에 모두 풀고 setup.cmd를 처음 한 번 실행한 뒤 run.cmd로 엽니다. 앱에서 Continue with ChatGPT로 로그인하고 연결 시험의 응답 완료를 확인합니다."
+          "text": "홈 → PC 비서 연결의 설치 안내에서 최신 Windows ZIP을 받습니다. 압축을 모두 풀고 setup.cmd → run.cmd를 실행합니다. 이미 설치했다면 기존 폴더를 선택해 update.cmd로 업데이트합니다. 개인 GPT 연결을 선택한 뒤, PC 비서의 개인 ChatGPT · 텍스트 / 연결 설정에서 Continue with ChatGPT로 로그인하고 연결 시험을 확인합니다."
         },
         {
           "type": "p",
-          "text": "같은 Windows PC에서 모아 메신저를 크게 열고 동료 대화의 AI 도구를 누릅니다. 기본은 Gemini 3.5 Flash이며 GPT · 내 ChatGPT를 직접 선택하면 개인 계정으로 문장을 다듬거나 번역할 수 있습니다. 앱의 모아 웹 연결에서 만든 일회용 코드를 입력하고 PC에서 승인하세요. 원문을 확인해 PC에서 처리한 뒤 돌아온 결과를 작성란에 넣고 별도로 보냅니다. 연결은 30분 뒤 만료됩니다."
+          "text": "같은 Windows PC에서 모아 메신저를 크게 열고 동료 대화의 AI 도구 → GPT · 내 ChatGPT → GPT 연결을 누릅니다. PC 승인창에서 모아 주소를 확인하고 승인하면 웹에 PC 연결됨이 표시됩니다. 승인한 브라우저는 최대 30일 기억합니다. 처리 결과를 읽고 작성란에 넣은 뒤 별도로 보내세요."
         },
         {
           "type": "p",

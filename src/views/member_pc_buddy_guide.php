@@ -1,19 +1,71 @@
 <div class="moa-setup-heading">
   <p class="moa-kicker">PC ASSISTANT</p>
   <h1>PC 비서 연결하기</h1>
-  <p>비서를 설치하고, PC에서 ChatGPT로 로그인한 뒤 웹에서 한 번 승인하세요.</p>
+  <p>설치했다면 아래에서 사용할 기능을 고르세요. 기본 AI부터 연결할 수 있어요.</p>
 </div>
 <p id="member-status" role="status" aria-live="polite"></p>
 <p><strong>같은 Windows PC에서 진행해 주세요.</strong> 휴대폰에서는 이 안내를 읽을 수 있지만, 다른 PC의 비서에 연결할 수는 없어요.</p>
-<nav class="moa-setup-actions" aria-label="PC 비서 연결 순서">
-  <a href="#pc-install">1. 설치·업데이트</a><a href="#pc-login">2. PC에서 로그인</a><a href="#pc-connect">3. 웹 연결</a><a href="#pc-use">4. 사용하기</a>
-</nav>
+<section class="moa-setup-card" id="pc-setup">
+  <h2>설치했어요. 이제 연결할게요</h2>
+  <p>처음이라면 <strong>기본 AI 연결</strong>로 시작하세요. 모아에서 연결 토큰을 만들고 PC 비서에 한 번 등록합니다.</p>
+  <div class="moa-setup-actions" aria-label="연결할 기능">
+    <button class="btn" type="button" id="pc-mode-ai" aria-pressed="true">기본 AI 연결 · Gemini</button>
+    <button class="btn btn--quiet" type="button" id="pc-mode-files" aria-pressed="false">파일 연결</button>
+    <button class="btn btn--quiet" type="button" id="pc-mode-gpt" aria-pressed="false">개인 GPT 연결</button>
+  </div>
+  <p id="pc-setup-status" role="status" aria-live="polite">내 계정의 연결 가능 기능을 확인하고 있어요…</p>
+  <div id="pc-token-setup" hidden>
+    <h3 id="pc-token-heading">1. 기본 AI 연결 토큰 만들기</h3>
+    <p id="pc-token-description"></p>
+    <p id="pc-token-unavailable" hidden>현재 이 계정에서는 이 기능의 연결 토큰을 발급할 수 없어요. 관리자에게 이용 가능 여부를 확인해 주세요.</p>
+    <section id="pc-otp-setup" hidden>
+      <h3>먼저 인증 앱을 한 번 등록하세요</h3>
+      <p>PC 비서가 내 계정으로 동작하도록 연결하려면 본인 확인이 필요해요. 휴대폰의 Google Authenticator 또는 Microsoft Authenticator 같은 인증 앱을 준비하세요.</p>
+      <p class="moa-muted">등록하면 비밀번호로 로그인할 때도 인증 앱의 6자리 코드를 입력합니다. 패스키 로그인은 그대로 사용할 수 있어요.</p>
+      <button class="btn" type="button" id="pc-otp-start">인증 앱 등록 시작</button>
+      <div id="pc-otp-enrollment" hidden>
+        <p>인증 앱에서 <strong>계정 추가 → QR 코드 스캔</strong>으로 등록하세요.</p>
+        <canvas id="pc-otp-qr" role="img" aria-label="인증 앱 등록용 QR 코드"></canvas>
+        <details><summary>QR 코드를 읽을 수 없어요</summary><p>인증 앱에서 ‘설정 키 직접 입력’을 선택하고 아래 키를 입력하세요. 유형은 시간 기반입니다.</p><code id="pc-otp-secret"></code></details>
+        <form id="pc-otp-form" class="form">
+          <label class="field"><span>인증 앱의 6자리 코드</span><input id="pc-otp-code" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]{6}" maxlength="6" required></label>
+          <button class="btn" type="submit">등록 확인하고 계속</button>
+        </form>
+      </div>
+    </section>
+    <form id="pc-token-form" class="form" hidden>
+      <label class="field" id="pc-upload-field" hidden><span><input id="pc-upload" type="checkbox"> 파일 업로드도 사용하기</span></label>
+      <details><summary>PC 이름 바꾸기 (선택)</summary><label class="field"><span>나중에 구분할 PC 이름</span><input id="pc-token-name" maxlength="50" value="내 PC 비서" required></label></details>
+      <label class="field"><span>모아 로그인 비밀번호</span><input id="pc-token-password" type="password" autocomplete="current-password" maxlength="1024" required></label>
+      <label class="field"><span>인증 앱의 새로운 6자리 코드</span><input id="pc-token-otp" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]{6}" maxlength="6" required></label>
+      <p class="moa-muted">방금 로그인이나 등록에 쓴 코드는 다시 쓸 수 없어요. 인증 앱의 숫자가 바뀐 뒤 입력하세요.</p>
+      <button class="btn" type="submit" id="pc-token-issue">기본 AI 연결 토큰 만들기</button>
+    </form>
+    <section id="pc-token-result" hidden>
+      <h3>2. 복사해서 PC 비서에 등록하세요</h3>
+      <p><strong id="pc-token-result-label"></strong> 발급이 완료됐어요. 이제 아래 순서로 PC에 등록하세요.</p>
+      <label class="field"><span>이번에 발급한 연결 토큰</span><input id="pc-token-value" type="password" readonly autocomplete="off" spellcheck="false"></label>
+      <button class="btn" type="button" id="pc-token-copy">연결 토큰 복사</button>
+      <p id="pc-token-expiry" class="moa-muted"></p>
+      <ol>
+        <li>Windows 작업 표시줄 오른쪽 <strong>∧ → 비서 아이콘 우클릭</strong>으로 메뉴를 엽니다.</li>
+        <li><strong id="pc-token-menu"></strong>을 누르고, 복사한 토큰을 붙여 넣은 뒤 확인합니다.</li>
+        <li id="pc-token-use"></li>
+      </ol>
+      <p>토큰은 이 화면에서만 확인할 수 있어요. 다른 사람에게 전달하지 마세요. 이 페이지는 PC에 등록됐는지 자동으로 확인하지 않습니다.</p>
+      <p><a href="<?= Http::url('/settings') ?>" target="_blank" rel="noopener noreferrer">내 계정에서 기존 토큰 관리 · 새 탭</a></p>
+    </section>
+  </div>
+  <p id="pc-gpt-note" hidden>개인 GPT는 아래 안내에 따라 <strong>PC에서 ChatGPT 로그인</strong>으로 연결하세요. 위의 모아 연결 토큰을 발급할 필요는 없어요.</p>
+  <noscript><p>연결 토큰 발급을 사용하려면 브라우저에서 JavaScript를 켜 주세요.</p></noscript>
+</section>
+<details class="moa-setup-card" id="pc-install-guide"><summary>아직 설치하지 않았거나 업데이트가 필요해요</summary>
 <section class="moa-setup-card" id="pc-install">
   <span class="moa-step-number">01</span><h2>PC 비서를 준비하세요</h2>
-  <p>배포함에서 <strong>update.3 이상</strong> ZIP을 받으세요. 다운로드 확인란을 체크한 뒤 다운로드 버튼을 누릅니다.</p>
+  <p>배포함에서 <strong>update.4 이상</strong> ZIP을 받으세요. 다운로드 확인란을 체크한 뒤 다운로드 버튼을 누릅니다.</p>
   <p><a class="btn" href="<?= Http::url('/programs') ?>" target="_blank" rel="noopener noreferrer">AI 비서 다운로드 · 새 탭</a></p>
   <p><strong>ZIP 파일을 우클릭해 ‘압축 풀기’ 또는 ‘모두 추출’을 먼저 하세요.</strong> 압축 파일 안에서 바로 실행하면 필요한 파일을 찾지 못할 수 있어요.</p>
-  <details open><summary>이미 쓰던 PC 비서가 있어요 — 업데이트</summary>
+  <details><summary>이미 쓰던 PC 비서가 있어요 — 업데이트</summary>
     <ol>
       <li>작업 표시줄 오른쪽의 <strong>숨겨진 아이콘 표시(∧)</strong>를 열고, 비서 아이콘을 우클릭해 <strong>종료</strong>합니다.</li>
       <li>새로 압축을 푼 폴더에서 <code>update.cmd</code>를 실행합니다.</li>
@@ -31,6 +83,9 @@
   </details>
   <p><strong>다음 단계로 가기 전:</strong> 작업 표시줄의 ∧ 안에 비서 아이콘이 보이는지 확인하세요. 실행할 때 파일 탐색 창이 먼저 열릴 수 있습니다.</p>
 </section>
+</details>
+<div id="pc-gpt-guide" hidden>
+<nav class="moa-setup-actions" aria-label="GPT 연결 순서"><a href="#pc-login">1. PC에서 로그인</a><a href="#pc-connect">2. 웹 연결</a><a href="#pc-use">3. 사용하기</a></nav>
 <section class="moa-setup-card" id="pc-login">
   <span class="moa-step-number">02</span><h2>PC 비서에서 ChatGPT로 로그인하세요</h2>
   <ol>
@@ -70,12 +125,13 @@
   <p>승인한 브라우저는 최대 30일 기억합니다. 다음에도 PC 비서가 켜져 있으면 웹에서 GPT를 선택해 다시 연결할 수 있어요. PC 창을 닫아도 비서는 트레이에서 대기합니다.</p>
   <p>PC에서 GPT와 직접 대화하려면 파일 팔레트의 <strong>AI</strong> 단추 또는 <kbd>Ctrl+J</kbd> → 공급자 <strong>ChatGPT</strong>를 선택하세요. 팔레트는 기본 <kbd>Ctrl+Shift+Space</kbd> 또는 트레이의 <strong>빠른 비서 · 파일/폴더 탐색</strong>으로 엽니다.</p>
 </section>
+</div>
 <section class="moa-setup-card" id="pc-help">
   <h2>막히는 지점이 있나요?</h2>
   <details><summary>‘모듈을 찾을 수 없다’거나 실행하자마자 꺼져요</summary><p>ZIP을 모두 풀었는지 확인하고, 실제 실행할 설치 폴더에서 <code>setup.cmd</code>를 다시 실행하세요. <strong>Setup complete</strong> 후 같은 폴더의 <code>run.cmd</code>를 사용합니다. 설치 실패가 나오면 화면의 오류를 확인해야 해요.</p></details>
   <details><summary>Ctrl+Alt+Space를 눌러도 안 열려요</summary><p>다른 프로그램이 단축키를 사용 중일 수 있습니다. <strong>Ctrl+Shift+Space → AI 또는 Ctrl+J</strong>를 사용하거나 트레이에서 <strong>AI 대화 · 빠른 비서에서 Ctrl+J</strong>를 누르세요.</p></details>
   <details><summary>연결됨인데 답변이 안 나와요</summary><p>PC 연결과 ChatGPT 응답 권한은 별개예요. PC의 <strong>연결 시험</strong>을 확인하고, 재로그인·구독 사용 권한·사용 한도 안내를 따라 주세요. 다른 유료 API로 자동 전환하지 않습니다.</p></details>
-  <details><summary>PC 비서의 기본 Gemini를 쓰고 싶어요</summary><p>PC Gemini는 모아에서 발급한 <strong>비서 실행(assistant.run)</strong> 토큰이 필요해요. <a href="<?= Http::url('/welcome') ?>#welcome-external-buddy">기존 시작 안내의 외부 PC 비서용 연결 토큰</a>에서 해당 기능을 골라 발급한 뒤, PC 트레이의 <strong>비서 실행용 토큰 등록</strong>에 넣습니다. 발급에는 OTP가 필요합니다. 이 토큰은 개인 GPT 연결에는 쓰지 않습니다.</p></details>
+  <details><summary>토큰이 없다고 나오거나 발급에 실패했어요</summary><p>이 페이지 위쪽의 <a href="#pc-setup">기본 AI 연결 / 파일 연결</a>에서 필요한 기능을 고르세요. AI 토큰은 ‘비서 실행용 토큰 등록’, 파일 토큰은 ‘API 토큰 변경’에 넣습니다. 비밀번호와 새 OTP 코드를 확인하고, 기존 토큰이 5개라면 <a href="<?= Http::url('/settings') ?>" target="_blank" rel="noopener noreferrer">내 계정 · 새 탭</a>에서 쓰지 않는 토큰을 회수한 뒤 발급하세요. 잃어버린 토큰 원문은 다시 볼 수 없습니다.</p></details>
   <details><summary>연결을 지우거나 다른 계정으로 바꾸고 싶어요</summary><p>웹 AI 도구의 <strong>연결 해제</strong> 또는 PC의 <strong>모아 웹 연결 → 연결 중지 · 모두 해제</strong>를 누릅니다. 새 브라우저를 승인하면 이전 브라우저의 연결 기억은 바뀝니다.</p></details>
 </section>
 <p><a href="/">모아 홈으로</a> · <a href="<?= Http::url('/welcome') ?>">계정 시작 안내</a></p>

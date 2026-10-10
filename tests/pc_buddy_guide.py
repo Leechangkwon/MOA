@@ -1,4 +1,4 @@
-"""Read-only rendered guide in Chromium; no DB, installer or provider execution."""
+"""Rendered guide navigation in Chromium; no DB, installer or provider execution."""
 import json,os,subprocess
 from pathlib import Path
 from urllib.parse import urlsplit
@@ -16,7 +16,7 @@ with sync_playwright() as pw:
   u=urlsplit(r.request.url)
   if u.hostname!='moa.example':unexpected.append(r.request.url);r.abort();return
   if u.path=='/tbox/welcome':r.fulfill(content_type='text/html',body=render('buddy-guide' if u.query=='section=pc-assistant' else 'welcome'));return
-  if u.path=='/tbox/api/me':r.fulfill(json=dict(member_id=1001,username='claude_employee01',csrf_token='synthetic',mfa_enabled=True,next=None,token_scopes=['assistant.run']));return
+  if u.path=='/tbox/api/me':r.fulfill(json=dict(member_id=1001,username='claude_employee01',csrf_token='synthetic',mfa_enabled=True,can_issue_tokens=True,next=None,token_scopes=['assistant.run']));return
   if u.path.startswith('/tbox/assets/'):
    f=ROOT/'public/assets'/u.path.removeprefix('/tbox/assets/')
    if f.is_file():r.fulfill(body=f.read_bytes(),content_type={'.js':'text/javascript','.css':'text/css','.svg':'image/svg+xml'}.get(f.suffix,'application/octet-stream'));return
@@ -28,11 +28,13 @@ with sync_playwright() as pw:
   page.set_viewport_size(dict(width=width,height=900));page.goto('https://moa.example/tbox/welcome?section=pc-assistant',wait_until='networkidle')
   check('focused title '+str(width),page.locator('h1').inner_text()=='PC 비서 연결하기')
   check('no security or token form in connection guide '+str(width),page.locator('#welcome-security,#welcome-token-form').count()==0)
-  check('four visible step links '+str(width),page.locator('nav[aria-label="PC 비서 연결 순서"] a').count()==4)
+  check('three functional choices '+str(width),page.locator('[aria-label="연결할 기능"] button').count()==3)
+  page.locator('#pc-mode-gpt').click()
   check('no horizontal overflow '+str(width),page.evaluate('document.documentElement.scrollWidth<=innerWidth'))
   check('real app menu names and success condition '+str(width),'개인 ChatGPT · 텍스트 / 연결 설정' in page.inner_text('main') and 'PC 연결됨' in page.inner_text('main'))
   page.locator('a[href="#pc-connect"]').click();check('web connection step reachable '+str(width),page.locator('#pc-connect').is_visible())
   check('messenger opens keeping guide available '+str(width),page.locator('#pc-connect a[href="/tbox/messages"]').get_attribute('target')=='_blank')
+  page.locator('#pc-install-guide > summary').click()
   page.locator('#pc-install summary').filter(has_text='처음 설치').click()
   check('new install exact commands '+str(width),'setup.cmd' in page.locator('#pc-install').inner_text() and '처음 설치할 때는 update.cmd를 쓰지 않습니다' in page.locator('#pc-install').inner_text())
   page.evaluate('scrollTo(0,0)');page.screenshot(path=str(OUT/('guide-'+str(width)+'.png')))

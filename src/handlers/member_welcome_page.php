@@ -1,7 +1,7 @@
 <?php
 declare(strict_types=1);
 require_once __DIR__.'/../Member.php';
-// Read-only, focused guide; existing route authentication and account guards remain in force.
+// Focused PC onboarding; existing route authentication and account guards remain in force.
 if (($_GET['section'] ?? null) === 'pc-assistant') {
     $memberTitle='PC 비서 연결'; $memberPage='buddy-guide';
     require __DIR__.'/../views/member_top.php';
