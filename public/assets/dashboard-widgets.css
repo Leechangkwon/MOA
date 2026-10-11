@@ -8,3 +8,5 @@
 .moa-site .dashboard-refresh{color:var(--fg);background:transparent}
 
 .dashboard-locked:has(.dashboard-widget) .dashboard-widget-head{padding-right:54px}
+
+.dashboard-inspector-source{font-size:14px;line-height:1.5;color:var(--fg);overflow-wrap:anywhere}.dashboard-inspector-domain .help{font-size:14px;line-height:1.5;margin:0 0 12px}.dashboard-inspector-domain .btn{color:var(--fg);margin:0}

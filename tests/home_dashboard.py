@@ -27,14 +27,28 @@ with sync_playwright() as pw:
    r.fulfill(json={'pages':[{'id':PAGE,'title':'테스트 문서','last_viewed_at':'2026-10-10'}]});return
   if u.path=='/community/api/boards':r.fulfill(json={'boards':[]});return
   r.fulfill(json={})
+ def close_inspector():
+  if page.locator(".dashboard-inspector-dialog[open]").count():page.locator(".dashboard-inspector-dialog .dashboard-inspector-close").click()
+ def inspector():
+  selected=page.locator('.dashboard-selected [data-dashboard-settings]')
+  if selected.count():selected.click()
+ def batch():
+  inspector()
+  summary=page.locator('.dashboard-batch summary')
+  if not summary.evaluate('(n)=>n.parentElement.open'):summary.click()
+ def hide_selected():
+  inspector()
+  summary=page.locator('.dashboard-selection .dashboard-more summary')
+  if not summary.evaluate('(n)=>n.parentElement.open'):summary.click()
+  page.locator('.dashboard-selection').get_by_role('button',name='숨기기',exact=True).click();close_inspector()
  context.route('**/*',route)
  def visit(mode='signed'):page.goto('https://moa.example/'+('' if mode=='signed' else '?'+mode),wait_until='networkidle')
  def edit():page.locator('#home-edit').click()
- def save():page.get_by_role('button',name='배치 저장·완료',exact=True).click();page.wait_for_timeout(100)
+ def save():close_inspector();page.get_by_role('button',name='배치 저장·완료',exact=True).click();page.wait_for_timeout(100)
  visit();check(page.locator('#q-start-list a').count()==2,'authorized synthetic items rendered; malformed ID ignored')
  check(page.locator('#q-start-list img').count()==0,'titles are text without HTML execution')
  check(page.locator('#home-widgets').evaluate('(n)=>n.firstElementChild.dataset.homeWidget')=='recent','recent first by default')
- edit();page.locator('[data-dashboard-move=tools]').focus();page.get_by_role('button',name='연락과 시작 안내 숨기기',exact=True).click();page.get_by_label('최근 작업 자료 선택').select_option('files');page.get_by_label('처음 표시할 목록').select_option('favorites');page.locator('[data-dashboard-resize=services]').focus();page.keyboard.press('Shift+ArrowLeft');save()
+ edit();page.locator('[data-dashboard-move=tools]').focus();hide_selected();batch();page.get_by_label('최근 작업 자료 선택').select_option('files');page.get_by_label('처음 표시할 목록').select_option('favorites');page.locator('[data-dashboard-resize=services]').focus();page.keyboard.press('Shift+ArrowLeft');save()
  check(not page.locator('[data-home-widget=tools]').is_visible(),'hide widget applies')
  check(page.locator('[data-dashboard-widget=services]').bounding_box()['width']<page.locator('#home-widgets').bounding_box()['width'],'keyboard resize applies')
  page.wait_for_function('()=>document.querySelectorAll("#q-start-list a").length===1');check(page.locator('#q-start-list a').count()==1,'files source filters endpoints and result')
@@ -43,10 +57,10 @@ with sync_playwright() as pw:
  check(set(stored)=={'version','widgets','source','view','guide'} and '테스트' not in json.dumps(stored),'only layout prefs stored')
  visit();check(not page.locator('[data-home-widget=tools]').is_visible(),'layout persists after reload')
  calls.clear();visit();check('/community/api/me/favorites' not in calls,'unselected source not requested')
- edit();page.get_by_label('위젯 추가',exact=True).select_option('tools');page.keyboard.press('Escape');check(not page.locator('[data-home-widget=tools]').is_visible(),'Escape cancels draft')
+ edit();batch();page.get_by_label('위젯 추가',exact=True).select_option('tools');close_inspector();page.keyboard.press('Escape');check(not page.locator('[data-home-widget=tools]').is_visible(),'Escape cancels draft')
  check(page.locator('#home-edit').evaluate('(n)=>n===document.activeElement'),'focus returns to opener')
- edit();page.get_by_role('button',name='기본 배치',exact=True).click();page.get_by_role('button',name='취소',exact=True).click();check(not page.locator('[data-home-widget=tools]').is_visible(),'reset remains draft until save')
- edit();page.get_by_role('button',name='기본 배치',exact=True).click();save();check(page.locator('[data-home-widget=tools]').is_visible(),'reset save restores widgets')
+ edit();batch();page.get_by_role('button',name='기본 배치',exact=True).click();close_inspector();page.get_by_role('button',name='취소',exact=True).click();check(not page.locator('[data-home-widget=tools]').is_visible(),'reset remains draft until save')
+ edit();batch();page.get_by_role('button',name='기본 배치',exact=True).click();save();check(page.locator('[data-home-widget=tools]').is_visible(),'reset save restores widgets')
  for width in [360,390,820,1280]:
   for theme in ['light','dark']:
    page.set_viewport_size({'width':width,'height':900});page.evaluate('(t)=>document.documentElement.dataset.theme=t',theme)
@@ -66,12 +80,12 @@ with sync_playwright() as pw:
  page.evaluate('document.documentElement.dataset.contrast="high"');edit()
  check(page.locator('.dashboard-editor').is_visible(),'high contrast editor works');page.keyboard.press('Escape')
  edit()
- for wid,title in [('recent','최근 작업 · 즐겨찾기'),('services','서비스 바로가기'),('tools','연락과 시작 안내'),('stories','이야기와 읽을거리')]:page.locator('[data-dashboard-move='+wid+']').focus();page.get_by_role('button',name=title+' 숨기기',exact=True).click()
+ for wid,title in [('recent','최근 작업 · 즐겨찾기'),('services','서비스 바로가기'),('tools','연락과 시작 안내'),('stories','이야기와 읽을거리')]:page.locator('[data-dashboard-move='+wid+']').focus();hide_selected()
  save();check('표시할 위젯이 없습니다' in page.locator('.notice').first.inner_text(),'all hidden empty state')
  calls.clear();visit();check(not any(p.startswith('/tbox/api/files/') or p.startswith('/community/api/me/') for p in calls),'hidden recent sends no content request; preference account check allowed')
  page.locator('header a[href="#services"]').click();check(page.locator('#services').is_visible(),'service navigation temporarily reveals hidden services')
  check(not page.evaluate('JSON.parse(localStorage.getItem("moa-home:v1:1001")).widgets.find(w=>w.id==="services").visible'),'temporary reveal leaves stored layout unchanged')
- edit();page.get_by_role('button',name='기본 배치',exact=True).click();save()
+ edit();batch();page.get_by_role('button',name='기본 배치',exact=True).click();save()
  page.set_viewport_size({'width':1280,'height':900});page.evaluate('document.documentElement.dataset.contrast=""');edit();page.screenshot(path=str(OUT/'home-editor-1280.png'));page.keyboard.press('Escape')
  # Invalid settings are discarded, not partially used.
  page.evaluate('localStorage.setItem("moa-home:v1:1001",JSON.stringify({version:1,widgets:[{id:"evil"}],source:"evil",view:"bad"}))');visit()

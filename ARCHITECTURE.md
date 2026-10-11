@@ -3287,3 +3287,6 @@ public.product_spaces와 public.product_space_members는 별도 제품 멤버십
 ### 콘텐츠 중심 위젯 v3 — 2026-10-11 승인
 
 v1/v2 호환을 유지하면서 v3는 인스턴스 ID·타입·검증된 출처·잠금·화면별 좌표/표현 크기 및 guide 선호만 JSONB에 저장한다. GET은 기존 설정을 변환하지 않는다. 개인7종/공동5종과 레거시 타입 allowlist, 출처 멤버십 및 원본 조회 권한을 각각 검증한다. task/event dashboard 조회는 SQL에서 완료/기간/담당 필터·우선 정렬 후 LIMIT를 적용한다. 공통 canvas는 배치, widgets는 원본 데이터와 크기별 콘텐츠를 담당한다. 상세 확정 계약: docs/dashboard-widgets-directive.md. DB/패키지 변경 없음.
+
+
+대시보드 편집 UI 보완(2026-10-11): 공통 canvas는 편집 workspace와 inspector/dialog 생명주기를 관리하고 selectedActions 훅으로 개인/공동 출처 동작을 받는다. 패널 여닫기는 저장 JSON을 변경하지 않는다. 저장·취소·권한회수·공간전환 시 임시 DOM/예약폭/이벤트를 정리하며 layout/API/DB 계약은 그대로다. docs/dashboard-inspector-directive.md.

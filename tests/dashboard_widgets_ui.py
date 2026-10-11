@@ -60,7 +60,7 @@ with sync_playwright()as pw:
  page.screenshot(path=str(OUT/'personal-seven-light-1280.png'),full_page=True)
  page.locator('#home-edit').click();check(page.locator('.dashboard-editor').is_visible(),'in-page editor begins')
  check(page.locator('[data-widget-type=recent] a[href]').count()==0,'original navigation suspended in edit')
- check(page.locator('[data-widget-type=space_task] button:enabled').count()==1,'completion disabled during edit while source choice remains')
+ check(page.locator('[data-widget-type=space_task] button:enabled').count()==0,'completion disabled during edit and source controls in inspector')
  page.locator('[data-dashboard-move="widget-0"]').focus();page.get_by_role('button',name='내 작업 소 크기',exact=True).click();check(page.locator('[data-widget-type=my_tasks] .dashboard-widget-row').count()==1,'small task one row')
  page.get_by_role('button',name='내 작업 대 크기',exact=True).click();page.wait_for_timeout(150);check(page.locator('[data-widget-type=my_tasks] .dashboard-widget-row').count()in [6,7,8],'large task more actual rows')
  page.get_by_role('button',name='배치 저장·완료',exact=True).click();page.wait_for_timeout(80);check(layout['widgets'][0]['desktop']['size']=='l','size stored with whole layout')

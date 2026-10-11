@@ -27,15 +27,29 @@ with sync_playwright()as pw:
     check(r.request.post_data_json['revision']==revision,'correct revision transmitted');layout=r.request.post_data_json['layout'];revision+=1
    r.fulfill(json={'layout':layout,'revision':revision});return
   r.fulfill(json={'files':[],'pages':[],'boards':[]})
+ def close_inspector():
+  if page.locator(".dashboard-inspector-dialog[open]").count():page.locator(".dashboard-inspector-dialog .dashboard-inspector-close").click()
+ def inspector():
+  selected=page.locator('.dashboard-selected [data-dashboard-settings]')
+  if selected.count():selected.click()
+ def batch():
+  inspector()
+  summary=page.locator('.dashboard-batch summary')
+  if not summary.evaluate('(n)=>n.parentElement.open'):summary.click()
+ def hide_selected():
+  inspector()
+  summary=page.locator('.dashboard-selection .dashboard-more summary')
+  if not summary.evaluate('(n)=>n.parentElement.open'):summary.click()
+  page.locator('.dashboard-selection').get_by_role('button',name='숨기기',exact=True).click();close_inspector()
  page.route('**/*',route);page.goto('https://moa.example/',wait_until='networkidle')
  check(not page.locator('[data-home-widget=tools]').is_visible(),'server saved layout applied');check('회사 공간'in page.locator('#product-home').inner_text(),'authorized cross-space activity rendered');check(page.locator('#product-home a').get_attribute('href').endswith('/spaces?space=11111111-1111-4111-8111-111111111111'),'activity opens correct space')
  check('계정의 홈 구성'in page.locator('#home-layout-status').inner_text(),'account sync clearly identified')
- page.locator('#home-edit').click();page.get_by_label('위젯 추가',exact=True).select_option('tools');page.get_by_role('button',name='배치 저장·완료',exact=True).click();page.wait_for_timeout(100)
+ page.locator('#home-edit').click();batch();page.get_by_label('위젯 추가',exact=True).select_option('tools');page.get_by_role('button',name='배치 저장·완료',exact=True).click();page.wait_for_timeout(100)
  check(page.locator('[data-home-widget=tools]').is_visible(),'account layout save applied')
  check(page.evaluate('localStorage.getItem("moa-home:v1:1001")')is None,'server save does not silently mirror or overwrite browser migration data')
  other=browser.new_page();other.route('**/*',route);other.goto('https://moa.example/',wait_until='networkidle');check(other.locator('[data-home-widget=tools]').is_visible(),'second browser context reads synchronized layout');other.close()
  page.reload(wait_until='networkidle');check(page.locator('[data-home-widget=tools]').is_visible(),'server layout survives reload')
- fail=True;page.locator('#home-edit').click();page.locator('[data-dashboard-move=tools]').focus();page.get_by_role('button',name='연락과 시작 안내 숨기기',exact=True).click();page.get_by_role('button',name='배치 저장·완료',exact=True).click();page.wait_for_timeout(100)
+ fail=True;page.locator('#home-edit').click();page.locator('[data-dashboard-move=tools]').focus();hide_selected();page.get_by_role('button',name='배치 저장·완료',exact=True).click();page.wait_for_timeout(100)
  check(page.locator('.dashboard-editor').is_visible(),'conflicting save retains draft')
  check(not page.locator('[data-home-widget=tools]').is_visible(),'failed save keeps live draft visible')
  check('다른 기기'in page.locator('.dashboard-editor [role=status]').inner_text(),'conflict recovery message');check(layout['widgets'][2]['visible'],'conflict leaves server data unchanged')

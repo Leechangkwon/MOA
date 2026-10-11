@@ -69,24 +69,37 @@
   prepare(w){
    const item=this.wrappers[w.id];if(!item||item.prepared)return;item.prepared=true;
    item.move.textContent='이동';item.wrapper.addEventListener('pointerdown',()=>this.select(w.id));item.move.addEventListener('focus',()=>this.select(w.id));
-   const hide=item.wrapper.querySelector('.dashboard-card-chrome button:nth-child(2)');
-   hide.addEventListener('click',event=>{if(this.current(w.id)?.locked||this.busy){event.preventDefault();event.stopImmediatePropagation();}},true);
+   const old=item.wrapper.querySelector('.dashboard-card-chrome button:nth-child(2)'),settings=this.button('설정',()=>{this.select(w.id);this.openInspector();});settings.className='btn btn--quiet dashboard-card-settings';settings.dataset.dashboardSettings=w.id;settings.setAttribute('aria-label',this.name(w.id)+' 위젯 설정');old.replaceWith(settings);item.settings=settings;
   }
   current(id){return this.layout.widgets.find(w=>w.id===id);}
   select(id){this.selected=id;for(const [key,item]of Object.entries(this.wrappers))item.wrapper.classList.toggle('dashboard-selected',key===id);this.updateTools();}
   begin(value){
    if(this.editing||this.dead)return;if(!this.layout)this.mount(value);this.layout=upgrade(this.layout,this.nodes,this.options.context||{});super.begin(value);
-   this.toolbar.classList.add('dashboard-editor--sticky');this.controls.querySelector('button:last-child').textContent='배치 저장·완료';
-   this.selection=el('div',undefined,'dashboard-selection');this.toolbar.append(this.selection);this.selection.setAttribute('aria-label','선택한 위젯 크기와 잠금');
-   this.controls.querySelectorAll('button').forEach(b=>{if(b.textContent==='기본 배치')b.addEventListener('click',event=>{event.stopImmediatePropagation();this.reset();},true);});
-   if(this.options.requestAdd){const add=this.button('새 위젯 추가',()=>{if(!this.busy)this.options.requestAdd(this);});this.controls.prepend(add);}
+   this.toolbar.classList.add('dashboard-editor--top');this.controls.querySelector('button:last-child').textContent='배치 저장·완료';this.controls.querySelector('button:last-child').classList.add('dashboard-save');
+   this.workspace=el('div',undefined,'dashboard-workspace');this.host.before(this.workspace);this.workspace.append(this.host);
+   this.inspector=el('aside',undefined,'dashboard-inspector');this.inspector.setAttribute('aria-label','위젯 설정');this.workspace.append(this.inspector);
+   this.inspectorContent=el('div',undefined,'dashboard-inspector-content');this.inspector.append(this.inspectorContent);const heading=el('div',undefined,'dashboard-inspector-heading');heading.append(el('h2','위젯 설정'));const close=this.button('닫기',()=>this.closeInspector());close.className='btn btn--quiet dashboard-inspector-close';heading.append(close);this.inspectorContent.append(heading);
+   this.selection=el('section',undefined,'dashboard-selection');this.selection.setAttribute('aria-label','선택한 위젯 크기와 잠금');this.inspectorContent.append(this.selection);
+   this.batch=el('details',undefined,'dashboard-batch');this.batch.append(el('summary','배치 옵션'));const batchBody=el('div',undefined,'dashboard-batch-body');this.batch.append(batchBody);batchBody.append(this.add);this.add.addEventListener('change',()=>{if(this.busy)return;const id=this.selectedRestore;if(id&&this.current(id)?.visible)this.select(id);this.selectedRestore=null;});this.add.addEventListener('change',()=>{this.selectedRestore=this.add.value;},true);for(const b of [...this.controls.querySelectorAll('button')])if(b.textContent==='기본 배치'){b.addEventListener('click',e=>{e.stopImmediatePropagation();this.reset();},true);batchBody.append(b);}batchBody.append(this.extra);this.inspectorContent.append(this.batch);
+   this.settingsOpener=this.button('위젯 설정',()=>this.openInspector());this.settingsOpener.className='btn btn--quiet dashboard-open-inspector';this.controls.prepend(this.settingsOpener);
+   if(this.options.requestAdd){const add=this.button('새 위젯 추가',()=>{if(!this.busy){this.closeInspector(false);this.options.requestAdd(this);}});this.controls.prepend(add);}
+   this.drawer=el('dialog',undefined,'dashboard-inspector-dialog');this.drawer.setAttribute('aria-label','위젯 설정');document.body.append(this.drawer);this.drawer.addEventListener('cancel',e=>{e.preventDefault();if(!this.busy)this.closeInspector();});this.drawer.addEventListener('close',()=>{document.body.classList.toggle('dashboard-inspector-open',Boolean(document.querySelector('.dashboard-inspector-dialog[open]')));if(this.inspectorContent?.parentNode===this.drawer)this.inspector.append(this.inspectorContent);});this.drawer.addEventListener('click',e=>{if(e.target===this.drawer&&!this.busy){const r=this.drawer.getBoundingClientRect();if(e.clientX<r.left||e.clientX>r.right||e.clientY<r.top||e.clientY>r.bottom)this.closeInspector();}});
+   this.inspectorResize=()=>{if(window.innerWidth>=1100&&this.drawer?.open)this.closeInspector(false);};window.addEventListener('resize',this.inspectorResize);
    this.select(this.layout.widgets.find(w=>w.visible)?.id);this.paint();
   }
+  refreshSelectedActions(){if(this.dead||!this.editing)return;this.toolsKey=null;this.updateTools();this.syncInspectorBusy();}
+  openInspector(){if(!this.editing||this.busy)return;if(window.innerWidth>=1100){this.selection.querySelector('button')?.focus();return;}if(this.drawer.open)return;this.cancelGesture();this.inspectorOpener=document.activeElement;this.drawer.append(this.inspectorContent);this.drawer.showModal();document.body.classList.add('dashboard-inspector-open');this.inspectorContent.querySelector('button')?.focus();}
+  closeInspector(restore=true){if(!this.drawer?.open)return;this.drawer.close();document.body.classList.toggle('dashboard-inspector-open',Boolean(document.querySelector('.dashboard-inspector-dialog[open]')));this.inspector.append(this.inspectorContent);if(restore){const item=this.wrappers[this.selected],target=[item?.settings,this.inspectorOpener,this.settingsOpener].find(n=>n?.isConnected&&!n.disabled&&n.tabIndex>=0&&n.checkVisibility());target?.focus();}}
+  teardownEditor(){window.removeEventListener('resize',this.inspectorResize);if(this.drawer?.open)this.drawer.close();this.drawer?.remove();document.body.classList.toggle('dashboard-inspector-open',Boolean(document.querySelector('.dashboard-inspector-dialog[open]')));this.selection=null;this.toolsKey=null;this.inspector?.remove();if(this.workspace?.isConnected){this.workspace.before(this.host);this.workspace.remove();}this.workspace=null;this.inspector=null;this.drawer=null;}
+  async save(){await super.save();if(!this.editing&&!this.dead){this.teardownEditor();this.paint();}}
+  destroy(){this.teardownEditor();super.destroy();}
   updateTools(){
-   if(!this.selection)return;const preserve=this.selection.contains(document.activeElement)?document.activeElement.dataset.canvasAction:null;this.selection.replaceChildren();const w=this.current(this.selected);if(!w)return;
-   this.selection.append(el('strong',this.name(w.id)));for(const [size,label]of [['s','소'],['m','중'],['l','대']]){const b=this.button(label,()=>this.setSize(w.id,size));b.dataset.canvasAction='size-'+size;b.disabled=this.busy||w.locked;b.setAttribute('aria-label',this.name(w.id)+' '+label+' 크기');b.setAttribute('aria-pressed',String(w[mode()].size===size));this.selection.append(b);}
+   if(!this.selection||!this.editing)return;const w=this.current(this.selected),key=JSON.stringify([w?.id,w?.locked,w?.[mode()].size,w?.type,w?.source,this.busy,mode()]);if(key===this.toolsKey)return;this.toolsKey=key;
+   const preserve=this.selection.contains(document.activeElement)?document.activeElement.dataset.canvasAction:null,moreOpen=this.selection.querySelector('details')?.open;this.selection.replaceChildren();if(!w){this.selection.append(el('p','위젯을 선택하거나 추가해 주세요.','help'));return;}
+   this.selection.append(el('h3',this.name(w.id)),el('p','소·중·대는 표시할 내용과 카드 크기를 함께 바꿉니다.','help'));const segment=el('div',undefined,'dashboard-size-segment');segment.setAttribute('role','group');segment.setAttribute('aria-label','위젯 크기');for(const [size,label]of [['s','소'],['m','중'],['l','대']]){const b=this.button(label,()=>this.setSize(w.id,size));b.dataset.canvasAction='size-'+size;b.disabled=this.busy||w.locked;b.setAttribute('aria-label',this.name(w.id)+' '+label+' 크기');b.setAttribute('aria-pressed',String(w[mode()].size===size));segment.append(b);}this.selection.append(segment);
    const lock=this.button(w.locked?'잠금 해제':'위치·크기 잠금',()=>{if(this.busy)return;this.toggleLock(w.id);this.announce(this.current(w.id).locked?'위젯의 위치와 크기를 잠갔습니다.':'위젯 잠금을 해제했습니다.');});lock.dataset.canvasAction='lock';lock.disabled=this.busy;lock.setAttribute('aria-pressed',String(w.locked));this.selection.append(lock);
-   const more=el('details',undefined,'dashboard-more');more.append(el('summary','더보기'));const hide=this.button('숨기기',()=>{if(this.busy||this.current(w.id).locked)return;this.current(w.id).visible=false;this.paint();});hide.disabled=this.busy||w.locked;const resize=this.button('직접 크기 조절',()=>{if(this.busy||this.current(w.id).locked)return;this.wrappers[w.id].resize.focus();this.announce('오른쪽 아래 손잡이를 끌거나 방향키로 크기를 조절하세요.');});resize.disabled=this.busy||w.locked;more.append(hide,resize);this.selection.append(more);if(preserve)this.selection.querySelector('[data-canvas-action="'+preserve+'"]')?.focus();
+   const actions=el('div',undefined,'dashboard-selected-actions dashboard-inspector-domain');this.selection.append(actions);this.options.selectedActions?.(actions,w,this);if(this.busy)for(const n of actions.querySelectorAll('button,input,select'))n.disabled=true;
+   const more=el('details',undefined,'dashboard-more');more.open=Boolean(moreOpen);more.append(el('summary','더보기'));const hide=this.button('숨기기',()=>{if(this.busy||this.current(w.id).locked)return;this.current(w.id).visible=false;this.select(this.layout.widgets.find(v=>v.visible)?.id);this.paint();});hide.disabled=this.busy||w.locked;const resize=this.button('직접 크기 조절',()=>{if(this.busy||this.current(w.id).locked)return;this.closeInspector(false);this.wrappers[w.id].resize.focus();this.wrappers[w.id].resize.scrollIntoView({block:'center'});this.announce('오른쪽 아래 손잡이를 끌거나 방향키로 크기를 조절하세요.');});resize.disabled=this.busy||w.locked;more.append(hide,resize);this.selection.append(more);if(preserve)this.selection.querySelector('[data-canvas-action="'+preserve+'"]')?.focus();
   }
   toggleLock(id){
    if(this.busy)return false;const next=clone(this.layout),w=next.widgets.find(v=>v.id===id);if(!w)return false;
@@ -105,11 +118,12 @@
   paint(){
    if(!this.layout)return;super.paint();for(const w of this.layout.widgets){const item=this.wrappers[w.id];if(!item)continue;
     item.move.disabled=this.busy||Boolean(w.locked);item.resize.disabled=this.busy||Boolean(w.locked);item.wrapper.classList.toggle('dashboard-locked',Boolean(w.locked));item.wrapper.dataset.dashboardSize=w[mode()].size||'';
-    const hiddenButton=item.wrapper.querySelector('.dashboard-card-chrome button:nth-child(2)');if(hiddenButton)hiddenButton.disabled=this.busy||Boolean(w.locked);
+    const hiddenButton=item.wrapper.querySelector('.dashboard-card-chrome button:nth-child(2)');if(hiddenButton)hiddenButton.disabled=this.busy;
     if(!w.visible)item.sizeKey=null;
     if(w.visible&&this.layout.version===3){const g=w[mode()],actualWidth=g.w/width(mode())*this.host.getBoundingClientRect().width;let size=g.size;if(size==='l'&&(actualWidth<300||g.h<300))size='m';if(size==='m'&&(actualWidth<220||g.h<220))size='s';const key=mode()+':'+size+':'+w.type+':'+JSON.stringify(w.source);if(item.sizeKey!==key){item.sizeKey=key;this.options.onSize?.(w,size,mode(),item.node);}}
-   }this.updateTools();
+   }this.updateTools();this.syncInspectorBusy();
   }
+  syncInspectorBusy(){if(!this.inspectorContent)return;this.disabledBeforeBusy??=new WeakMap();for(const n of this.inspectorContent.querySelectorAll('button,input,select,textarea')){if(this.busy){if(!this.disabledBeforeBusy.has(n))this.disabledBeforeBusy.set(n,n.disabled);n.disabled=true;}else if(this.disabledBeforeBusy.has(n)){n.disabled=this.disabledBeforeBusy.get(n);this.disabledBeforeBusy.delete(n);}}}
   start(event,id,kind){if(this.current(id)?.locked)return;this.select(id);super.start(event,id,kind);}
   key(event,id,kind){if(this.current(id)?.locked)return;this.select(id);super.key(event,id,kind);}
   adjust(id,kind,dx,dy,base,m){

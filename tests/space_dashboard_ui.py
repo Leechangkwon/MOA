@@ -42,15 +42,29 @@ with sync_playwright()as pw:
   page.locator('#space-menu').click();page.get_by_role('button',name=name,exact=True).click()
  def register(name):
   page.locator('#space-register').click();page.get_by_role('button',name=name,exact=True).click()
+ def close_inspector():
+  if page.locator(".dashboard-inspector-dialog[open]").count():page.locator(".dashboard-inspector-dialog .dashboard-inspector-close").click()
+ def inspector():
+  selected=page.locator('.dashboard-selected [data-dashboard-settings]')
+  if selected.count():selected.click()
+ def batch():
+  inspector()
+  summary=page.locator('.dashboard-batch summary')
+  if not summary.evaluate('(n)=>n.parentElement.open'):summary.click()
+ def hide_selected():
+  inspector()
+  summary=page.locator('.dashboard-selection .dashboard-more summary')
+  if not summary.evaluate('(n)=>n.parentElement.open'):summary.click()
+  page.locator('.dashboard-selection').get_by_role('button',name='숨기기',exact=True).click();close_inspector()
  page.route('**/*',route);page.goto('https://moa.example/tbox/spaces',wait_until='networkidle')
  check(page.locator('#space-title').inner_text()=='회사 공간','first membership rendered')
  check(page.locator('#space-cards img').count()==0,'content is escaped text')
  check(page.locator('#space-cards section').count()==5,'five genuine widget types')
  check(page.locator('[data-widget-type=space_task]').get_by_text('남아 있는 할 일이 없습니다.',exact=True).count()==1,'empty actual content message')
- management('대시보드 편집');page.locator('[data-dashboard-move=story]').focus();page.get_by_role('button',name='이야기 숨기기',exact=True).click();page.get_by_role('button',name='배치 저장·완료',exact=True).click();page.wait_for_timeout(100)
+ management('대시보드 편집');page.locator('[data-dashboard-move=story]').focus();hide_selected();page.get_by_role('button',name='배치 저장·완료',exact=True).click();page.wait_for_timeout(100)
  check(page.locator('#space-cards section:visible').count()==4,'shared layout save applied')
  check(any(m=='PATCH'and p.endswith('/dashboard')for m,p in calls),'revision PATCH contract used')
- management('대시보드 편집');page.get_by_label('위젯 추가',exact=True).select_option('story');page.keyboard.press('Escape');check(page.locator('#space-cards section:visible').count()==4,'escape cancels draft')
+ management('대시보드 편집');batch();page.get_by_label('위젯 추가',exact=True).select_option('story');close_inspector();page.keyboard.press('Escape');check(page.locator('#space-cards section:visible').count()==4,'escape cancels draft')
  conflict=True;management('대시보드 편집');page.get_by_role('button',name='배치 저장·완료',exact=True).click();page.wait_for_timeout(100);check(page.locator('.dashboard-editor').is_visible(),'conflict retains editor');check('다른 사람이'in page.locator('.dashboard-editor').inner_text(),'conflict actionable message');page.keyboard.press('Escape');conflict=False
  register('공지 등록하기');page.get_by_label('제목',exact=True).fill('새 공지');page.get_by_label('내용',exact=True).fill('공지 내용');page.get_by_role('button',name='저장하기',exact=True).click();page.wait_for_timeout(100);check(any(m=='POST'and p.endswith('/items')for m,p in calls),'scoped content creation')
  register('할 일 등록하기');page.get_by_label('제목',exact=True).fill('준비 작업');page.locator('[name=assignee_id]').select_option('1002');page.get_by_label('마감일',exact=True).fill('2026-10-12T10:00');page.get_by_role('button',name='저장하기',exact=True).click();page.wait_for_timeout(100);check(any(b.get('assignee_id')==1002 and b.get('due_at','').endswith('Z') for _,b in bodies),'task assignee numeric and date explicit timezone')
