@@ -132,14 +132,14 @@
     "evidence": "docs/work-items/gpt-easy-connect.md"
   },
   "git_sync": {
-    "status": "push_pending",
-    "remote_live_verified": false,
-    "last_fetched_origin_main": "7708d36b929497ca4066353f1af1ae1247000896",
+    "status": "synchronized",
+    "remote_live_verified": true,
+    "last_fetched_origin_main": "5964fba79ca9e42dd77aa0f1f3d67368aed3e7af",
     "pc_branch": "cloud/buddy-startup-diagnostic",
     "pc_commit": "7a0ff3f",
     "web_branch": "cloud/space-actions-cleanup",
-    "reason": "v2.54.3 operational HTTPS and source preservation verified; deployment record pending atomic Git2 push.",
-    "verified_at": "2026-10-11T13:58:16+09:00"
+    "reason": "Verified v2.54.3 HTTPS and preservation; atomic main/cloud/space-actions-cleanup/v2.54.3 push and fetch confirmed both branches at5964fba79ca9. This metadata-only follow-up is synchronized with the same branches.",
+    "verified_at": "2026-10-11T13:58:36+09:00"
   },
   "previous_verification": {
     "version": "2.54.2",
