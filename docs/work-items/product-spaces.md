@@ -11,7 +11,7 @@
 주요 파일: db/{schema,grants}.sql, db/migrations/2026-10-11_product_spaces.sql, src/site/{ProductSpaceAuthz,ProductSpaces}.php, src/handlers/product_spaces.php, src/views/{launcher,space_page}.php, public/index.php, src/Audit.php, public/assets/{home-dashboard,space-page,product-home}.js, space-page.css, moa.css, start.js, tests/관련 합성 및 HTTP 검사, 제품/위키 문서.
 
 ## 검사
-최종 구현 검사: `python3 tests/product_spaces_backend.py` 51/0, `python3 tests/community/memories_harness.py --suite product_spaces_http.py --port 8768 --output <outputs/product-spaces-http-final>` 72/0. 독립 검토 서비스54/0·경합3/0·실제HTTP65/0. `python3 tests/stage89_cross_regression/run.py --port 8548 --output <outputs/product-spaces-cross-final>` 196/0. 프런트 공간25/0·동기화15/0·홈57/0·기존서비스70/0·늦은 응답12/0 통과. 독립 프런트 UI25/0·동기화15/0·지연 응답3개 시나리오 실행 통과. PHP/JS 문법·보안린트0·자산버전·위키69편 검사 통과. 원래 tbox_owner 역할로 빈 DB에 변경 전 스키마 적용→실제 migration 2회→기존owner/ACL 및 신규6표 최소권한 검증 통과. 초기 테스트 DB 접속은 owner.pgpass DB 한정 및 peer 권한 문제로 중단했고 새 빈 DB에서 postgres의 SET ROLE tbox_owner로 반복검증을 완료했다. 서비스 단위 검사만으로 인증/CSRF/Audit 검증을 주장하지 않는다. 독립 검토는 정확한 시드 권한 매트릭스의 새 합성 DB를 사용하며 운영 사용자 자료를 복제하지 않는다. 기존 파일 권한 취소·다른 공간 UUID·마지막 소유자·초대 횟수·동시 revision·탈퇴 후 접근을 포함한다. 실제 HTTP 및 운영 QA는 별도 증거다.
+최종 구현 검사: `python3 tests/product_spaces_backend.py` 51/0, `python3 tests/community/memories_harness.py --suite product_spaces_http.py --port 8768 --output <outputs/product-spaces-http-final>` 72/0, 실제 페이지 라우트 검증 추가 최종75/0. 독립 검토 서비스54/0·경합3/0·실제HTTP65/0. `python3 tests/stage89_cross_regression/run.py --port 8548 --output <outputs/product-spaces-cross-final>` 196/0. 프런트 공간25/0·동기화15/0·홈57/0·기존서비스70/0·늦은 응답12/0 통과. 독립 프런트 UI25/0·동기화15/0·지연 응답3개 시나리오 실행 통과. PHP/JS 문법·보안린트0·자산버전·위키69편 검사 통과. 원래 tbox_owner 역할로 빈 DB에 변경 전 스키마 적용→실제 migration 2회→기존owner/ACL 및 신규6표 최소권한 검증 통과. 초기 테스트 DB 접속은 owner.pgpass DB 한정 및 peer 권한 문제로 중단했고 새 빈 DB에서 postgres의 SET ROLE tbox_owner로 반복검증을 완료했다. 서비스 단위 검사만으로 인증/CSRF/Audit 검증을 주장하지 않는다. 독립 검토는 정확한 시드 권한 매트릭스의 새 합성 DB를 사용하며 운영 사용자 자료를 복제하지 않는다. 기존 파일 권한 취소·다른 공간 UUID·마지막 소유자·초대 횟수·동시 revision·탈퇴 후 접근을 포함한다. 실제 HTTP 및 운영 QA는 별도 증거다.
 
 ## 서버 적용
 - DB: 6개 public.product_* 표와 필요한 인덱스만 추가. migration transaction, tbox_owner 소유, PUBLIC 권한0, tbox_app SELECT/INSERT/UPDATE, tbox_backup SELECT. 기존 owner/ACL 변경0. 신규·반복 적용을 새 합성 DB에서 검증.
@@ -21,4 +21,4 @@
 - 실물 휴대폰·사용자 자기 공격은 별도 미검증.
 
 ## 배포 결과
-아직 운영 미적용. 검증 후 실제 결과만 기록한다.
+v2.54.0 API/스키마 반영 후 실제 화면 확인에서 `/spaces` 페이지 라우트 누락을 발견했다. 인증된 페이지 라우트/고정 뷰 핸들러를 추가하고 실제 HTTP75/0(페이지200·익명로그인·약관이동 포함), 별도 정책 검토를 마쳤다. 최종 운영 검증 뒤 배포 결과를 기록한다.

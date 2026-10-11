@@ -36,6 +36,7 @@ require_once dirname(__DIR__) . '/src/bootstrap.php';
  * `/` 는 1단계의 public 에서 authenticated 로 바뀌었다 — 로그인 없이는 아무것도 못 본다.
  */
 const TBOX_ROUTES = [
+    ['GET', '/spaces', 'product_spaces_page.php', Authz::POLICY_AUTHENTICATED],
     // Product spaces: session-only, existing CSRF/consent/first-login gates, central per-space authorization.
     ['GET', '/api/me/home-dashboard', 'product_spaces.php', Authz::POLICY_AUTHENTICATED],
     ['PATCH', '/api/me/home-dashboard', 'product_spaces.php', Authz::POLICY_AUTHENTICATED],

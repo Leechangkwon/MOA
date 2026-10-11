@@ -4,6 +4,10 @@ from pathlib import Path
 exec(compile(Path(__file__).with_name('memories_http.py').read_text().split('try:\n for u in users:')[0],__file__,'exec'))
 base=site+'/tbox'
 try:
+ page=raw('GET','/spaces')
+ check(page.status_code==200 and 'id="space-app"' in page.text and 'space-page.js' in page.text,'authenticated real space page renders application')
+ anonymous=requests.get(base+'/spaces',headers={'User-Agent':'tbox-review/'+time.strftime('%Y-%m-%d')},allow_redirects=False,timeout=35)
+ check(anonymous.status_code==302 and anonymous.headers.get('Location','').startswith('/tbox/login'),'anonymous space page redirects to login')
  call('GET','/api/product-spaces',user=None,expected=401)
  call('POST','/api/product-spaces',{'name':'x','kind':'group'},csrf=False,expected=403)
  call('POST','/api/product-spaces',{'name':'x','kind':'group'},user='guest',expected=403)
@@ -67,6 +71,8 @@ try:
  call('GET',path+'/home',user='manager',expected=401);sql('UPDATE users SET is_active=true WHERE id='+str(users['manager']['id']))
  sql("INSERT INTO user_consents(user_id,doc,version,action,ip) SELECT user_id,doc,'2000-01-01','agree','127.0.0.1' FROM user_consents WHERE user_id="+str(users['other']['id'])+" AND doc='terms' ORDER BY id DESC LIMIT 1")
  call('GET','/api/product-spaces/'+g+'/home',user='other',expected=403)
+ consentpage=requests.get(base+'/spaces',headers={'User-Agent':'tbox-review/'+time.strftime('%Y-%m-%d'),'Cookie':'__Host-tbox_session='+users['other']['session']},allow_redirects=False,timeout=35)
+ check(consentpage.status_code==302 and '/tbox/consent' in consentpage.headers.get('Location',''),'space page enforces consent before rendering')
  # Fresh session after disabling intentionally invalidates old sessions; owner unaffected.
  call('DELETE',path+'/members/'+str(users['employee']['id']),expected=409)
  transfer=call('POST',path+'/transfer',{'user_id':users['other']['id'],'password':'not-the-password'},expected=403)
