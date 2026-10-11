@@ -1000,3 +1000,7 @@ insta6bdbdf3 서버 검증: HTTP138·실제화면19·합성브라우저38·공�
 ② 불안전한 이유: 검토에서 발견한 초대 발급자 권한 상실·Guest 인계/배정·private 파일 식별·날짜 부분 수정·mbstring 의존·Audit registry/UUID 식별 문제를 수정했다. 프런트 과거 응답 차단도 별도 검토에서 지연 목록·초대·작업 변경 성공/403 응답을 실제 실행해 수정 확인했다. 공간 UI25/0·서버동기화15/0 독립 실행, 추가 늦은 응답 수락12/0 통과.
 ③ 미검증: 운영 HTTPS/데이터 보존은 실제 적용 후 기록하며 실물 휴대폰·사용자 자기 공격은 별도이다.
 ④ 다음: 암호화 백업 복호화·원래 소유자 tbox_owner인 빈 DB에서 실제 migration 2회·신규6표 최소ACL·기존owner/ACL 보존 검증 완료. 프런트 늦은 응답 수정 검증 완료. 운영 적용 후 실제 HTTPS/원본 보존을 별도로 기록한다. 신규 검토 증거 outputs/product-spaces-* 및 work/review-space-security/.
+
+
+### 2026-10-11 제품 공간 운영 최종 검증
+v2.54.1 `31848a82c4b5` 실제HTTPS56/0·JS오류/5xx0. 추가된 페이지 라우트 실제HTTP75/0/별도검토 완료. 기존14표/파일1042행 ownerACL 및 원본975 SHA 보존, 스케줄 worker cursor 1개는 운영 상태로 구분. 새표6개 tbox_owner·app S/I/U·backup SELECT, 기존설정 SHA 동일. 검토 계정과 새QA공간만 쓰고 최종 보관/취향복구. docs/work-items/product-spaces.md. 실물/자기공격 미검증은 유지한다.

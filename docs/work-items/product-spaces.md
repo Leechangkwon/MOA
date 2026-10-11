@@ -1,6 +1,6 @@
 # 회사·모임 공간과 공동 대시보드
 
-- 상태: 서버 격리 검증 완료·운영 반영 대기
+- 상태: 배포 완료
 - 작업 브랜치: cloud/group-dashboard
 - 기준 main: e1cece55b10dd6b241ca7d41201e6ca8438c9962
 - 담당 환경: 서버의 격리 worktree. 구현 백엔드/프런트 에이전트, 별도 보안 검토 에이전트, root 운영 반영.
@@ -21,4 +21,8 @@
 - 실물 휴대폰·사용자 자기 공격은 별도 미검증.
 
 ## 배포 결과
-v2.54.0 API/스키마 반영 후 실제 화면 확인에서 `/spaces` 페이지 라우트 누락을 발견했다. 인증된 페이지 라우트/고정 뷰 핸들러를 추가하고 실제 HTTP75/0(페이지200·익명로그인·약관이동 포함), 별도 정책 검토를 마쳤다. 최종 운영 검증 뒤 배포 결과를 기록한다.
+v2.54.1 `31848a82c4b5c79341e388b3aa09bd05f35ba7cc` / 2026-10-11T13:19:38+09:00. v2.54.0 스키마/API 반영 후 실제 `/spaces` 페이지 라우트 누락을 발견하여 인증된 페이지 라우트/고정 핸들러를 추가했다. 최종 실제HTTP75/0에 페이지200·익명로그인·동의이동 검사를 포함했고 별도 정책 검토/PHP·린트도 통과했다.
+암호화 DB(원래owner/ACL 포함)·코드·설정/storage 백업과 전체 복호화·목록 확인: /var/backups/tbox-v2/product-spaces-20261011. 첫 복호화 목록 검사는 pg_restore의 조기종료로 파이프가 끊겼고 남은 입력 소비를 추가해 전체 검증했다. 빈 DB 원래 tbox_owner 역할로 실제 migration2회/기존ownerACL/신규6표 권한 검증. 후보43파일 모의 적용·삭제0 및 페이지 수정4파일 별도 모의 적용, 운영/원격 드리프트 확인, main FF·migration1·PHP-FPM reload 완료. nginx/cron/패키지/PC 앱 변경0.
+운영 실제HTTPS56/0: 예약 claude_ 검토 계정의 정상비밀번호/OTP 세션, 다중멤버십/초대/공지권한/기록/날짜부분수정/공동revision409/비회원404/탈퇴후404, 390·1280px 화면/공지 실제렌더/넘침0, 브라우저 공동홈 저장, 새 브라우저 개인홈 동기화·활동집계. JS오류0·5xx0. 초기 운영 검사는 동의가 남은 검토 계정의 기존403을 공간404로 예상해 실패했고 QA 계정만 정상 동의 API를 통해 완료했다. 운영/실제 사용자 동의는 바꾸지 않았다. 원래 공간 모델에 없던 새 QA 공간만 작성하고 최종 보관했다. 검토 계정의 개인 홈은 기본값으로 복구했다.
+기존 파일1042행·14개 기존 표의 모든 행/ownerACL·저장 원본975개 SHA 보존. storage 총976개 중 기존 cron이 갱신하는 community-automations.cursor.json 1개는 업로드 원본이 아닌 운영 상태로 명시 제외했다. 작업 전후 nginx/PHP/cron/비밀 설정 SHA 동일. 데이터 삭제/복원/재시드0. 증거 outputs/product-spaces-preservation.json, product-spaces-live/results.json, product-spaces-code-rehearsal/results.json, product-spaces-migration-rehearsal/results.json, product-spaces-page-fix/product-spaces-checks.json.
+실물 휴대폰·사용자 자기 공격·Google Drive 실제 연동·공간 AI/기존사진자동이전은 미검증/별도 기능이며 완료라고 주장하지 않는다.

@@ -1,12 +1,12 @@
 {
   "schema_version": 1,
-  "version": "2.53.8",
-  "verified_runtime_commit": "97cc6d868b5917d999e7c0595f834649a2d8786b",
-  "verified_checkout_commit": "97cc6d868b5917d999e7c0595f834649a2d8786b",
-  "verified_tree": "fb2a36268bb77a72d858490336157694fb7a9849",
-  "verified_at": "2026-10-11T04:21:29+09:00",
+  "version": "2.54.1",
+  "verified_runtime_commit": "31848a82c4b5c79341e388b3aa09bd05f35ba7cc",
+  "verified_checkout_commit": "31848a82c4b5c79341e388b3aa09bd05f35ba7cc",
+  "verified_tree": "07ad14b9e42ee43ef94dbeeeeb3898a47858d453",
+  "verified_at": "2026-10-11T13:19:38+09:00",
   "record_type": "last_verified_server_snapshot_not_live_status",
-  "release_commit": "97cc6d868b5917d999e7c0595f834649a2d8786b",
+  "release_commit": "31848a82c4b5c79341e388b3aa09bd05f35ba7cc",
   "automatic_deployment": false,
   "server_only": [
     "database",
@@ -15,41 +15,57 @@
     "service_configuration"
   ],
   "verification": {
-    "scope": "PC onboarding: Gemini-first scoped token issuance and inline OTP enrollment; actual normal QA password/OTP token issuance, scope and revocation verified. PC package unchanged.",
-    "https_pass": 28,
+    "scope": "Moa multi-company/group memberships and roles, invites/archive/transfer, scoped actual records/original-rights file links, shared dashboard revision and personal home account sync; authenticated space page and live browser flows verified.",
+    "https_pass": 56,
     "https_fail": 0,
-    "existing_assist_browser_pass": 79,
+    "feature_http_pass": 75,
+    "feature_backend_pass": 51,
     "cross_regression_pass": 196,
+    "space_ui_pass": 25,
+    "space_stale_response_pass": 12,
+    "personal_sync_pass": 15,
+    "home_layout_pass": 57,
+    "existing_home_pass": 70,
+    "independent_backend_service_pass": 54,
+    "independent_concurrency_pass": 3,
+    "independent_feature_http_pass": 65,
+    "independent_space_ui_pass": 25,
+    "independent_personal_sync_pass": 15,
     "changed_files_verified": true,
-    "deployment_changed_files": 16,
+    "deployment_changed_files": 47,
     "deployment_deleted_files": 0,
-    "migrations": [],
+    "migrations": [
+      "2026-10-11_product_spaces.sql"
+    ],
+    "new_tables": 6,
     "original_database_owners_preserved": true,
+    "original_database_acl_preserved": true,
+    "original_legacy_tables_preserved": 14,
     "original_file_fields_unchanged": true,
     "file_records_preserved": 1042,
     "storage_files_preserved": 975,
+    "storage_total_files": 976,
+    "excluded_volatile_operational_state": [
+      "community-automations.cursor.json"
+    ],
     "nginx_unchanged": true,
+    "php_configuration_unchanged": true,
+    "cron_unchanged": true,
+    "secrets_configuration_unchanged": true,
     "file_apply_rehearsal": true,
+    "exact_owner_migration_rehearsal": true,
+    "migration_reapplication_count": 2,
+    "encrypted_backup_decryption_verified": true,
     "live_viewport_widths": [
       390,
       1280
     ],
     "live_js_errors": 0,
     "live_5xx": 0,
-    "live_local_bridge_requests": 0,
-    "review_context": "same Codex session; no independent review claimed",
-    "prepared_update": {
-      "filename": "tbox-buddy-4.0.0-tray-update.4.zip",
-      "sha256": "9701b63fa83a2dc5033fdc68a843436a08ec34d0c34496bb7bfcb752593690e1",
-      "size_bytes": 271127,
-      "status": "PUBLISHED_INTERNAL",
-      "published": true,
-      "windows_live_test": false
-    },
-    "setup_browser_pass": 41,
-    "guide_browser_pass": 27
+    "review_context": "Separate backend/frontend implementation and independent security review agent; root actual operational verification."
   },
   "evidence": [
+    "docs/work-items/product-spaces.md",
     "docs/work-items/buddy-token-onboarding.md",
     "docs/work-items/buddy-startup-fix.md",
     "docs/work-items/service-home.md",
@@ -111,13 +127,13 @@
     "evidence": "docs/work-items/gpt-easy-connect.md"
   },
   "git_sync": {
-    "status": "synchronized",
+    "status": "verified_release_record_ready_for_atomic_push",
     "remote_live_verified": true,
-    "last_fetched_origin_main": "ec4c4da55bb3",
+    "last_fetched_origin_main": "e1cece55b10dd6b241ca7d41201e6ca8438c9962",
     "pc_branch": "cloud/buddy-startup-diagnostic",
     "pc_commit": "7a0ff3f",
-    "web_branch": "cloud/buddy-token-onboarding",
-    "reason": "Live origin/main and operating HEAD verified before deployment. Main, feature branch and v2.53.8 pushed after verified release record.",
-    "verified_at": "2026-10-11T04:21:29+09:00"
+    "web_branch": "cloud/group-dashboard",
+    "reason": "Live main/origin drift checked before pinned deploy. Actual HTTPS and preservation completed; final record, main, feature branch and tags will be atomically pushed together.",
+    "verified_at": "2026-10-11T13:19:38+09:00"
   }
 }
