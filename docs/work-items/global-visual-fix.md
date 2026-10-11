@@ -20,3 +20,5 @@ Chromium native control/6디자인/밝음·어두움/360·390·1280px·고대비
 
 ## 배포 결과
 고정 후보5f4e4ef→main FF, v2.54.2 런타임 `c22d993d84a2666dd9cd4d02fad0c6702d40182e` / 2026-10-11T13:47:19+09:00. 코드7파일 정확 모의 적용/삭제0, 실제 변경CSS2개·발행이력3개, DB migration0·패키지/설정/PC 변경0. 암호화3종 SHA/전체복호화/원본975 storage SHA 확인; 기존 cron cursor로 tar directorymtime 경고 발생했으나 원본데이터 정상 검증. PHP-FPM reload 후 실제HTTPS42/0, 밝음·어두움390/1280px 한글 glyph 여유/모바일16px/checkbox가로/overflow0/Escape/JS·5xx0·CSS 정확바이트 확인. 기존14표+제품6표 모든 원래행 및 ownerACL·파일1042행/975원본SHA 보존,85설정파일 SHA 동일. DB복원/재시드0. Git2 atomic push는 아래 동기화 기록을 따른다. 실물 Android nativepopup/WebKit 미검증은 유지.
+
+Git2 최종: main·cloud/global-visual-fix·v2.54.2 atomic push 완료. fetch로 두브랜치 ed9273974fc2 일치 확인. 이 동기화 기록 후속은 같은브랜치로 전달하며 태그는 검증된 런타임 c22d993 유지.
