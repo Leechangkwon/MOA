@@ -1,0 +1,30 @@
+.dashboard-canvas{display:block!important;position:relative;width:100%;min-width:0;margin-block:20px}
+.dashboard-card{position:absolute;box-sizing:border-box;min-width:0;border:1px solid var(--line);border-radius:var(--r-card,16px);background:var(--surface);overflow:hidden;display:flex;flex-direction:column;container-type:inline-size}
+.dashboard-card-body{min-height:0;min-width:0;flex:1;overflow:auto;overscroll-behavior:contain;scrollbar-gutter:stable}
+.dashboard-card-body>*{box-sizing:border-box;margin:0!important;width:100%;min-width:0;min-height:100%;border:0!important;box-shadow:none!important;border-radius:0!important;overflow-wrap:anywhere}
+.dashboard-card-body .moa-service-cards,.dashboard-card-body .moa-tool-cards,.dashboard-card-body .home-tools-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,200px),1fr));min-width:0}
+.dashboard-card-body .q-start-columns{grid-template-columns:repeat(auto-fit,minmax(min(100%,220px),1fr))}
+.dashboard-card-body img{max-width:100%}.dashboard-card-body a,.dashboard-card-body p,.dashboard-card-body strong{overflow-wrap:anywhere}
+.dashboard-card-chrome,.dashboard-resize{display:none!important}
+.dashboard-card-editing{outline:2px solid var(--primary);outline-offset:-2px}
+.dashboard-editing .dashboard-card-chrome{display:flex!important;flex:0 0 auto;gap:8px;align-items:center;justify-content:space-between;padding:6px;background:var(--surface-2,var(--surface));border-bottom:1px solid var(--line)}
+.dashboard-editing .dashboard-resize{display:block!important;position:absolute;right:0;bottom:0;min-width:44px;min-height:44px;z-index:2;touch-action:none;cursor:nwse-resize}
+.dashboard-move{touch-action:none;cursor:move;min-width:0;overflow-wrap:anywhere;text-align:left}
+.dashboard-editor{margin-block:16px;padding:16px;position:relative}.dashboard-editor h2{margin-top:0}.dashboard-editor .toolbar{display:flex;gap:8px;flex-wrap:wrap}.dashboard-add{max-width:260px}.dashboard-editor-extra{display:flex;gap:16px;flex-wrap:wrap;margin-top:12px}.dashboard-editor-extra label{flex:1;min-width:180px}
+.dashboard-flow{height:auto!important;display:flex!important;flex-direction:column;gap:16px}.dashboard-flow .dashboard-card{position:relative;left:auto!important;top:auto!important;width:100%!important;height:auto!important;max-height:2000px}
+@container(max-width:420px){.dashboard-card-body .moa-services-grid,.dashboard-card-body .moa-grid,.dashboard-card-body .moa-service-cards,.dashboard-card-body .q-start-grid,.dashboard-card-body .q-start-columns{grid-template-columns:minmax(0,1fr)!important}.dashboard-card-body .space-card-head{flex-wrap:wrap}.dashboard-card-body .moa-story{padding:12px}}
+@media(forced-colors:active){.dashboard-card-editing{outline-color:Highlight}.dashboard-card-chrome{border-color:CanvasText}}
+
+.dashboard-card-body .moa-services,.dashboard-card-body .moa-home-tools,.dashboard-card-body .moa-story-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,200px),1fr));min-width:0}
+@container(max-width:420px){.dashboard-card-body .moa-services,.dashboard-card-body .moa-home-tools,.dashboard-card-body .moa-story-grid{grid-template-columns:minmax(0,1fr)!important}}
+
+.dashboard-card-body>.moa-choose,.dashboard-card-body>.moa-home-extra,.dashboard-card-body>.moa-home-tools{padding:16px}
+.dashboard-editor .dashboard-back{font-size:14px}
+.dashboard-card-body .toolbar{display:flex;flex-wrap:wrap;min-width:0;gap:8px}
+.dashboard-card-body .toolbar>*{min-width:0;max-width:100%;white-space:normal;overflow-wrap:anywhere}
+.dashboard-card-body .q-start-list{grid-template-columns:repeat(auto-fit,minmax(min(100%,220px),1fr))}
+.dashboard-card-body .q-start-item{flex-wrap:wrap;padding:12px;gap:8px}
+.dashboard-card-body .q-start-head>*{min-width:0;max-width:100%}
+@container(max-width:260px){.dashboard-card-body .q-start{padding:10px!important}.dashboard-card-body .moa-choose,.dashboard-card-body .moa-home-extra,.dashboard-card-body .moa-home-tools{padding:10px}.dashboard-card-body .q-start-item{padding:8px}.dashboard-card-body .q-start-head h2{font-size:18px}}
+.dashboard-card-body .btn{white-space:normal;max-width:100%;min-width:0}
+.dashboard-card-chrome .btn{white-space:normal;max-width:100%;color:var(--fg)}

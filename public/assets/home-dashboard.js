@@ -8,18 +8,11 @@
   const nodes = Object.fromEntries(ids.map(id => [id,host.querySelector('[data-home-widget="'+id+'"]')]));
   if (ids.some(id => !nodes[id])) return;
   const key = 'moa-home:v1:'+host.dataset.owner;
-  const dialog = document.getElementById('home-editor');
-  const rows = document.getElementById('home-editor-rows');
   const note = document.getElementById('home-layout-status');
   const defaults = () => ({version:1,widgets:ids.map(id => ({id,visible:true,size:'wide'})),source:'all',view:'recent'});
-  function valid(value) {
-    return value && value.version === 1 && Array.isArray(value.widgets) && value.widgets.length === ids.length
-      && new Set(value.widgets.map(w => w?.id)).size === ids.length
-      && value.widgets.every(w => w && ids.includes(w.id) && typeof w.visible === 'boolean' && ['wide','small'].includes(w.size))
-      && ['all','files','pages'].includes(value.source) && ['recent','favorites'].includes(value.view);
-  }
-  // Canonicalize even valid input: unknown keys are never retained or re-saved.
-  const clean = value => ({version:1,widgets:value.widgets.map(({id,visible,size}) => ({id,visible,size})),source:value.source,view:value.view});
+  const engine=window.MoaDashboardCanvas;
+  const valid=value=>engine.valid(value,ids),clean=engine.clean;
+  let canvas=null;
   let saved = defaults();
   try {
     const raw = localStorage.getItem(key);
@@ -27,11 +20,9 @@
   } catch (_) { note.textContent='브라우저 저장소를 사용할 수 없어 기본 홈을 표시합니다.'; }
   const empty = el('p','표시할 위젯이 없습니다. 홈 구성하기에서 필요한 위젯을 추가하세요.');
   empty.className = 'notice'; host.before(empty);
-  let draft;
   let revision=null, csrf='', serverReady=false, saving=false;
   const browserCandidate=clean(saved);
   const base=nodes.recent.dataset.base||'/tbox';
-  const editorStatus=document.getElementById('home-editor-status');
   const editButton=document.getElementById('home-edit');editButton.disabled=true;note.textContent='계정의 홈 구성을 불러오는 중입니다.';
   async function request(method,body) {
     const response=await fetch(base+'/api/me/home-dashboard',{method,credentials:'same-origin',cache:'no-store',headers:body?{'Content-Type':'application/json','X-CSRF-Token':csrf}:{},body:body?JSON.stringify(body):undefined});
@@ -40,20 +31,28 @@
     return data;
   }
   const importButton=el('button','이 브라우저 구성을 계정으로 가져오기');importButton.type='button';importButton.className='btn btn--quiet';importButton.hidden=true;note.after(importButton);
-  importButton.addEventListener('click',async()=>{importButton.disabled=true;try{const data=await request('PATCH',{layout:browserCandidate,revision});revision=data.revision;saved=clean(browserCandidate);apply();serverReady=true;importButton.hidden=true;note.textContent='브라우저 구성을 계정에 저장했습니다.';}catch(error){note.textContent=error.message;}finally{importButton.disabled=false;}});
+  importButton.addEventListener('click',async()=>{if(canvas?.editing||saving)return;importButton.disabled=true;editButton.disabled=true;try{const data=await request('PATCH',{layout:browserCandidate,revision});revision=data.revision;saved=clean(browserCandidate);apply();serverReady=true;importButton.hidden=true;note.textContent='브라우저 구성을 계정에 저장했습니다.';}catch(error){note.textContent=error.message;}finally{importButton.disabled=false;editButton.disabled=Boolean(canvas?.editing);}});
 
   function apply() {
+    canvas?.destroy();canvas=null;
     for (const widget of saved.widgets) {
-      const node = nodes[widget.id];
-      host.append(node); node.hidden = !widget.visible;
-      node.classList.toggle('home-widget--wide',widget.size === 'wide');
-      if (!widget.visible && widget.id === 'stories') node.open = false;
+      const node=nodes[widget.id];host.append(node);node.hidden=!widget.visible;
+      node.classList.toggle('home-widget--wide',widget.size==='wide');
+      if(!widget.visible&&widget.id==='stories')node.open=false;
     }
-    empty.hidden = saved.widgets.some(widget => widget.visible);
-    nodes.recent.dataset.startSource = saved.source;
-    nodes.recent.dataset.startDefault = saved.view;
-    nodes.recent.dispatchEvent(new Event('home-layout-change'));
+    empty.hidden=saved.widgets.some(w=>w.visible);
+    contentSettings(saved);
+    if(saved.version===2){canvas=makeCanvas();canvas.mount(saved);}
   }
+  function contentSettings(layout){nodes.recent.dataset.startSource=layout.source;nodes.recent.dataset.startDefault=layout.view;nodes.recent.dispatchEvent(new Event('home-layout-change'));}
+  function makeCanvas(){return new engine.Canvas(host,nodes,names,{
+    title:'내 홈 대시보드 편집',changed:layout=>{empty.hidden=layout.widgets.some(w=>w.visible);const visible=layout.widgets.find(w=>w.id==='recent').visible;if(nodes.recent.dataset.canvasVisible!==String(visible)){nodes.recent.dataset.canvasVisible=String(visible);contentSettings(layout);}},notice:text=>note.textContent=text,
+    editChange:active=>{editButton.disabled=active;importButton.disabled=active;},
+    extra:(extra,layout)=>{extra.append(select('최근 작업 자료 선택',[['all','자료와 문서'],['files','자료실 파일'],['pages','업무 문서']],layout.source,value=>{canvas.layout.source=value;contentSettings(canvas.layout);}),select('처음 표시할 목록',[['recent','최근 작업'],['favorites','즐겨찾기']],layout.view,value=>{canvas.layout.view=value;contentSettings(canvas.layout);}));},
+    save:async next=>{saving=true;try{if(serverReady){const data=await request('PATCH',{layout:next,revision});revision=data.revision;note.textContent='홈 배치를 계정에 저장했습니다. 다른 기기에서도 적용됩니다.';}else{localStorage.setItem(key,JSON.stringify(next));note.textContent='계정 동기화를 사용할 수 없어 이 브라우저에 저장했습니다.';}saved=clean(next);}catch(error){note.textContent=serverReady?error.message:'홈 배치를 저장하지 못했습니다. 브라우저 저장소 설정을 확인하세요.';throw Error(note.textContent);}finally{saving=false;}},
+    saved:()=>{empty.hidden=saved.widgets.some(w=>w.visible);contentSettings(saved);editButton.focus();},
+    cancel:()=>{canvas=null;apply();note.textContent='저장 전 배치로 돌아왔습니다.';editButton.focus();}
+  });}
   function el(tag,text) {const node=document.createElement(tag);if(text)node.textContent=text;return node;}
   function select(label,choices,value,change) {
     const field=el('label');field.className='field';field.append(el('span',label));
@@ -61,41 +60,11 @@
     for(const [id,name] of choices){const option=el('option',name);option.value=id;input.append(option);}
     input.value=value;input.addEventListener('change',()=>change(input.value));field.append(input);return field;
   }
-  function draw(focusId) {
-    rows.replaceChildren();
-    draft.widgets.forEach((widget,index) => {
-      const row=el('fieldset');row.className='panel';row.append(el('legend',names[widget.id]));
-      const label=el('label');label.className='field';const checkbox=el('input');checkbox.type='checkbox';checkbox.checked=widget.visible;checkbox.dataset.homeToggle=widget.id;
-      checkbox.addEventListener('change',()=>widget.visible=checkbox.checked);label.append(checkbox,el('span','홈에 표시하기'));row.append(label);
-      row.append(select(names[widget.id]+' 카드 폭',[['wide','넓게'],['small','작게']],widget.size,value=>widget.size=value));
-      const controls=el('div');controls.className='toolbar';
-      for(const [direction,text] of [[-1,'위로'],[1,'아래로']]){
-        const button=el('button',text);button.type='button';button.className='btn btn--quiet';button.setAttribute('aria-label',names[widget.id]+' '+text);button.disabled=index+direction<0||index+direction>=draft.widgets.length;
-        button.addEventListener('click',()=>{[draft.widgets[index],draft.widgets[index+direction]]=[draft.widgets[index+direction],draft.widgets[index]];draw(widget.id);document.getElementById('home-editor-status').textContent=names[widget.id]+' 순서를 변경했습니다.';});controls.append(button);
-      }
-      row.append(controls);rows.append(row);
-    });
-    rows.append(select('최근 작업 자료 선택',[['all','자료와 문서'],['files','자료실 파일'],['pages','업무 문서']],draft.source,value=>draft.source=value));
-    rows.append(select('처음 표시할 목록',[['recent','최근 작업'],['favorites','즐겨찾기']],draft.view,value=>draft.view=value));
-    if(focusId)rows.querySelector('[data-home-toggle="'+focusId+'"]').focus();
-  }
   for (const link of document.querySelectorAll('a[href="#services"]')) link.addEventListener('click',() => {
-    if (nodes.services.hidden) { nodes.services.hidden = false; empty.hidden = true; note.textContent = '서비스 바로가기를 잠시 표시합니다. 저장한 홈 구성은 유지됩니다.'; }
+    if (nodes.services.hidden) { nodes.services.hidden = false; canvas?.revealTemporary('services'); empty.hidden = true; note.textContent = '서비스 바로가기를 잠시 표시합니다. 저장한 홈 구성은 유지됩니다.'; }
     const heading = document.getElementById('moa-choose-title'); heading.tabIndex = -1; heading.focus({preventScroll:true});
   });
-  document.getElementById('home-edit').addEventListener('click',()=>{draft=clean(saved);draw();document.getElementById('home-editor-status').textContent='';dialog.showModal();});
-  document.getElementById('home-editor-close').addEventListener('click',()=>dialog.close());
-  document.getElementById('home-reset').addEventListener('click',()=>{draft=defaults();draw();document.getElementById('home-editor-status').textContent='기본 구성을 선택했습니다. 저장하면 적용됩니다.';});
-  document.getElementById('home-editor-form').addEventListener('submit',async event=>{
-    event.preventDefault();if(saving)return;saving=true;const next=clean(draft),submit=event.submitter; if(submit)submit.disabled=true;document.getElementById('home-editor-close').disabled=true;document.getElementById('home-reset').disabled=true;
-    try {
-      if(serverReady){const data=await request('PATCH',{layout:next,revision});revision=data.revision;note.textContent='홈 구성을 계정에 저장했습니다. 다른 기기에서도 적용됩니다.';}
-      else {localStorage.setItem(key,JSON.stringify(next));note.textContent='계정 동기화를 사용할 수 없어 이 브라우저에 저장했습니다.';}
-      saved=next;apply();dialog.close();
-    }catch(error){editorStatus.textContent=serverReady?error.message:'홈 구성을 저장하지 못했습니다. 브라우저 저장소 설정을 확인하세요.';note.textContent=editorStatus.textContent;}finally{saving=false;if(submit)submit.disabled=false;document.getElementById('home-editor-close').disabled=false;document.getElementById('home-reset').disabled=false;}
-  });
-  dialog.addEventListener('cancel',event=>{if(saving)event.preventDefault();});
-  dialog.addEventListener('close',()=>document.getElementById('home-edit').focus());
+  editButton.addEventListener('click',()=>{if(saving)return;if(!canvas)canvas=makeCanvas();canvas.begin(saved);});
   apply();
   (async()=>{try{
     const response=await fetch(base+'/api/me',{credentials:'same-origin',cache:'no-store'});const me=await response.json();if(!response.ok||me.next||String(me.member_id??me.id??me.user?.id)!==host.dataset.owner)throw Error('계정 확인을 완료하지 못했습니다.');csrf=me.csrf_token;if(typeof csrf!=='string'||!csrf)throw Error('계정 확인을 완료하지 못했습니다.');

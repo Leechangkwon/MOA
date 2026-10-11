@@ -46,6 +46,7 @@ denied(fn()=>$svc['owner']->dashboardSave($sid,$layout),409,'stale shared layout
 denied(fn()=>$svc['viewer']->dashboardSave($sid,$saved),403,'viewer layout readonly');
 $personal=$svc['guest']->dashboard(null);$personal['layout']['source']='files';check($svc['guest']->dashboardSave(null,$personal)['revision']===1,'personal preferences guest allowed');check($svc['other']->dashboard(null)['revision']===0,'personal settings isolated');
 $bad=$saved;$bad['layout']['widgets'][1]['id']=$bad['layout']['widgets'][0]['id'];denied(fn()=>$svc['owner']->dashboardSave($sid,$bad),400,'duplicate widget rejected');
+require __DIR__.'/product_spaces_layout.php';
 $invite=$svc['owner']->inviteCreate($sid,['role'=>'member','max_uses'=>1]);$raw=$db->run('SELECT token_hash FROM product_space_invites WHERE id=:id',
   [':id'=>$invite['invite']['id']])->fetchColumn();check($raw!==$invite['token']&&$raw===hash('sha256',$invite['token']),'invite secret hashed');
 $svc['other']->join(['token'=>$invite['token']]);denied(fn()=>$svc['globaladmin']->join(['token'=>$invite['token']]),404,'exhausted invite rejected');

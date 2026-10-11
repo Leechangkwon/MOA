@@ -167,11 +167,24 @@ final class ProductSpaces
         return ['version'=>1,'widgets'=>array_map(static fn($id)=>['id'=>$id,'visible'=>true,'size'=>'wide'],$ids),'source'=>'all','view'=>'recent'];
     }
     private function layout(mixed $value,bool $personal): array {
-        if(!is_array($value)||strlen(json_encode($value,JSON_THROW_ON_ERROR))>4096)$this->fail(400);
+        if(!is_array($value))$this->fail(400);
+        $version=$value['version']??null;
+        if(!in_array($version,[1,2],true)||strlen(json_encode($value,JSON_THROW_ON_ERROR))>($version===2?8192:4096))$this->fail(400);
         $this->exact($value,['version','widgets','source','view']);$ids=$personal?['recent','services','tools','stories']:self::KINDS;
-        if(($value['version']??null)!==1||!isset($value['widgets'])||!is_array($value['widgets'])||!array_is_list($value['widgets'])||count($value['widgets'])!==count($ids)||!in_array($value['source']??null,['all','files','pages'],true)||!in_array($value['view']??null,['recent','favorites'],true))$this->fail(400);
-        $seen=[];foreach($value['widgets'] as $w){if(!is_array($w))$this->fail(400);$this->exact($w,['id','visible','size']);if(!in_array($w['id']??null,$ids,true)||isset($seen[$w['id']])||!is_bool($w['visible']??null)||!in_array($w['size']??null,['wide','small'],true))$this->fail(400);$seen[$w['id']]=true;}
+        if(!isset($value['widgets'])||!is_array($value['widgets'])||!array_is_list($value['widgets'])||count($value['widgets'])!==count($ids)||!in_array($value['source']??null,['all','files','pages'],true)||!in_array($value['view']??null,['recent','favorites'],true))$this->fail(400);
+        $seen=[];foreach($value['widgets'] as $w){
+            if(!is_array($w))$this->fail(400);$this->exact($w,$version===1?['id','visible','size']:['id','visible','desktop','mobile']);
+            if(!in_array($w['id']??null,$ids,true)||isset($seen[$w['id']])||!is_bool($w['visible']??null))$this->fail(400);$seen[$w['id']]=true;
+            if($version===1){if(!in_array($w['size']??null,['wide','small'],true))$this->fail(400);}
+            else{$this->geometry($w['desktop']??null,1200,240);$this->geometry($w['mobile']??null,360,160);}
+        }
         return $value;
+    }
+    private function geometry(mixed $value,int $width,int $minWidth): void {
+        if(!is_array($value))$this->fail(400);$this->exact($value,['x','y','w','h']);
+        foreach(['x','y','w','h'] as $key)if(!is_int($value[$key]??null))$this->fail(400);
+        // Subtraction keeps attacker-supplied large integers out of overflowing sums.
+        if($value['w']<$minWidth||$value['w']>$width||$value['h']<160||$value['h']>2000||$value['x']<0||$value['x']>$width-$value['w']||$value['y']<0||$value['y']>20000-$value['h'])$this->fail(400);
     }
     public function dashboard(?string $id): array {
         $space=$id!==null?$this->space($id):null;

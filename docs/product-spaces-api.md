@@ -25,6 +25,7 @@
 - GET `{layout,revision}`; 저장하지 않은 홈 revision0, GET 쓰기0. PATCH `{layout,revision}`→ 새 revision; 동시 저장409 `reason:revision_conflict`.
 - layout `{version:1,widgets:[{id,visible:boolean,size:wide|small}],source:all|files|pages,view:recent|favorites}`. 개인 IDs recent/services/tools/stories 정확4, 공간 notice/task/event/file/story 정확5, 중복/추가/누락/임의 소스 거부,4KiB 상한. 공간 홈 editor 이상 편집(전역 쓰기 자격), 개인 홈 본인만(guest 취향 저장 가능), 역할로 보기 저장 금지.
 - 회사 초기 순서 notice/task/file/event/story, 모임 event/task/notice/story/file. 샘플 자료 생성0.
+- 자유 배치 v2: root `{version:2,widgets,source,view}`, 각 위젯 정확히 `{id,visible,desktop,mobile}`, 양 배치 정확히 `{x,y,w,h}` 정수. IDs/visible/source/view는 v1과 동일. desktop 폭1200·w240..1200, mobile 폭360·w160..360, x/y≥0, h160..2000, x+w≤해당 폭, y+h≤20000. JSON8KiB 상한, 추가/누락/중복/잘못된 형식 거부. 기존 v1은4KiB 기준으로 계속 허용. GET 자동변환/쓰기0; 사용자 저장으로만 v2 전환. 배치 UI는 760px 미만에서 mobile, 그 외 desktop을 사용한다. x/w는 폭 비례, y/h는 CSS px. 상세 docs/freeform-dashboard-directive.md.
 
 ## 실제 기록과 위젯
 

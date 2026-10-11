@@ -1022,3 +1022,10 @@ v2.54.1 `31848a82c4b5` 실제HTTPS56/0·JS오류/5xx0. 추가된 페이지 라�
 ④ 암호화백업3종 전체복호화/원본975 SHA·설정85개/제품6표사전hash완료. 후보고정/모의/드리프트 뒤 운영검증한다. docs/work-items/space-actions-cleanup.md.
 
 운영최종: v2.54.3 `0e49267d3df0` 실제HTTPS95/0, QA보관공간읽기·메뉴/기존폼취소만, 제품쓰기0. exactCSS/JS/JS오류0/5xx0·기존14표+제품6표·1042파일행·975원본SHA·ownerACL·설정85개보존. 실물/Safari미검증 유지.
+
+
+### 2026-10-11 자유 배치 대시보드 — 독립 검토
+① 저장은 exact-key v2 정수 좌표 allowlist와 bounds(overflow-safe subtraction), v1 호환, 기존 session/CSRF·Authz·revision·본인/공간 분리 유지. CSSOM에 검증된 수치만 사용, HTML/임의스타일/URL 저장0, 새외부요청0. 독립 타입경계186/0·격리DB333/0·HTTP214/0, 최종strict-CSP 브라우저142/0·추가55/0·권한회수20/0. root 공통196/0·lint금지0·자산/위키69 통과.
+② v2 공간403에서 canvas.destroy가 오래된 노드를 복구하는 정리순서 문제를 독립 재현 후 destroy→DOM/상태purge로 수정. 저장/refresh/전체보기403 세경로20/0 재검증. 임시서비스겹침·최소폭넘침·연속revision·gesture설정보존도 수정검증. 최종 미해결차단0, runtime7 검토해시동일.
+③ 실물Android·Safari/WebKit·사용자 자기공격 미검증. Chromium touch CDP와 viewport 시험이며 실기기라고 주장하지 않는다.
+④ 암호화백업3종 전체복호화/975원본SHA/85설정 baseline 완료. 고정후보 모의적용·drift·운영HTTPS/원본보존 후 결과 추가. DBmigration/복원/재시드0. docs/work-items/freeform-dashboard.md.

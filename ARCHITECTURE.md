@@ -3280,3 +3280,5 @@ Gemini 개인 토큰 어댑터는 `src/assistant/Chat.php`와 `assistant_chat.ph
 public.product_spaces와 public.product_space_members는 별도 제품 멤버십 경계다. global Admin이라도 공간 멤버십을 우회하지 않으며 ProductSpaceAuthz가 기존 Authz::canCommunityWrite·acting 제한과 공간 역할을 함께 검사한다. 기존 team_id/문서 공유 컨테이너는 그대로 유지한다.
 6개 신규 표: product_spaces, product_space_members, product_space_invites, product_space_dashboards, product_personal_dashboards, product_space_items. 초대는 SHA256 해시·만료·횟수·발급자 현재 권한을 검사한다. 모든 변경은 Prepared SQL, 공간→멤버/초대/항목/설정 잠금 순서, revision 충돌 판정, 감사 기록을 적용한다. 마지막 소유자 제거는 공간 잠금 아래 금지하며 소유권 이전은 비밀번호 및 MFA 새 OTP를 요구한다.
 목록·집계는 현재 활성 멤버십 JOIN과 원본 파일 Authz WHERE를 적용하고 다운로드는 같은 공간 경계 및 기존 파일 핸들러를 재사용한다. 새 연결은 파일 권한을 확대하지 않는다. 개인 홈은 본인 user_id, 공동 홈은 space_id 서버 설정으로 분리한다. 기존 자료/문서/사진을 자동 이동하지 않는다. 계약 docs/product-spaces-api.md, 적용 기록 docs/work-items/product-spaces.md.
+
+2026-10-11 자유 배치: 개인/공간 JSONB layout은 v1과 v2를 허용한다. v2는 allowlist 위젯의 desktop/mobile 정수 좌표만 저장하고 다른 사용자/공간 ID·본문·CSS를 받지 않는다. 기존 저장행은 GET 시 변환하지 않으며 브라우저가 명시 저장 시 v2로 전환한다. 공통 dashboard-canvas는 UI만 담당하며 서버 revision·멤버십·원본 권한을 대체하지 않는다. DB migration 없음.
