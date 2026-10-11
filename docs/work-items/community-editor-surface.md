@@ -1,6 +1,6 @@
 # 커뮤니티 읽기 본문 배경색
 
-- 상태: 운영 배포·실제 읽기·원본 보존 검증 완료, 원격 기록 동기화 중
+- 상태: 운영 배포·실제 읽기·원본 보존 검증 및 원격 동기화 완료
 - 기준: main45a7b909fdbb0db381d402f2ec09022435fc9421, v2.57.0
 - 브랜치: cloud/community-editor-fix
 - 계약: docs/community-editor-surface-directive.md
@@ -32,3 +32,5 @@
 운영 최종: v2.57.1 `3b9611168e38` / 2026-10-11T21:46:40+09:00. 고정 후보 `3ea11741296a`의 13파일 모의 적용·서버/원격 드리프트 통과, 코드 FF/patch 릴리스와 PHP-FPM reload 완료. 실제 지목한 글 HTTPS62/0·CSS2 정확 바이트·JS/5xx0·브라우저 쓰기0. PC/모바일 Aurora/Moa 및 Claude에서 본문 바탕과 지정 강조색·표 스크롤 정상, 원문 제목/본문/서식/버전1 동일. 기존14표·제품6표 모든 원래행(기존 QA 취향 포함, 제외0)·1042파일행·975원본 SHA·ownerACL·85설정 보존. 암호화3종 checksum/전체복호화 완료, worker cursor1은 운영 상태로 제외. DBmigration/설정/패키지 변경0. 실물휴대폰·Safari·스크린리더 미검증.
 
 증거: outputs/community-editor-live/{results.json,aurora-dark-1280.png}, community-editor-live.log, community-editor-preservation.log, community-editor-product-preservation.log, community-editor-fix-rehearsal.json. root가 실제 운영 Aurora dark 캡처를 직접 확인했다. 원문을 다시 저장하거나 권한을 바꾸지 않았다. 검토 최종 보고는 outputs/community-editor-review/review.md.
+
+원격 동기화: main/cloud/community-editor-fix와 v2.57.1·selftest/review 기준 태그를 atomic push 후 fetch하여 `61ad5f5185d560842374e0b6994dbcb6744360e7` 일치를 확인했다. 이 기록 보완도 같은 두 브랜치로 전달한다. 부모 문서는 현재 작업 절만 선택 병합하여 로컬 `86cad0f`에 기록했다.

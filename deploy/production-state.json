@@ -139,14 +139,14 @@
     "evidence": "docs/work-items/gpt-easy-connect.md"
   },
   "git_sync": {
-    "status": "pending_push",
-    "remote_live_verified": false,
-    "last_fetched_origin_main": "3602b0f5ea7d2b7559c570b7245fc4c41d43c4c1",
+    "status": "synchronized",
+    "remote_live_verified": true,
+    "last_fetched_origin_main": "61ad5f5185d560842374e0b6994dbcb6744360e7",
     "pc_branch": "cloud/buddy-startup-diagnostic",
     "pc_commit": "7a0ff3f",
     "web_branch": "cloud/community-editor-fix",
-    "reason": "Release and server read/preservation verification complete; records and atomic push pending.",
-    "verified_at": "2026-10-11T21:46:40+09:00"
+    "reason": "Atomic main/cloud/community-editor-fix and release/baseline tags pushed and fetched. Both branches verified at 61ad5f5185d560842374e0b6994dbcb6744360e7. This metadata-only follow-up uses the same branches. v2.57.1 points to verified release 3b9611168e38.",
+    "verified_at": "2026-10-11T21:47:29+09:00"
   },
   "previous_verification": {
     "version": "2.57.0",
