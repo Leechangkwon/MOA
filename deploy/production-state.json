@@ -1,12 +1,12 @@
 {
   "schema_version": 1,
-  "version": "2.54.3",
-  "verified_runtime_commit": "0e49267d3df03e30b00ce8deab7bbe5d8e9625e1",
-  "verified_checkout_commit": "0e49267d3df03e30b00ce8deab7bbe5d8e9625e1",
-  "verified_tree": "f31ebfe02bd8724041776318fa70676c1aa9e4d6",
-  "verified_at": "2026-10-11T13:58:16+09:00",
+  "version": "2.55.0",
+  "verified_runtime_commit": "586a8eacb27ac1abdcba9229d2fc13e4eca00aa2",
+  "verified_checkout_commit": "586a8eacb27ac1abdcba9229d2fc13e4eca00aa2",
+  "verified_tree": "203e2ffd4ef1bb37f032a72b104373f0010e91c2",
+  "verified_at": "2026-10-11T18:30:46+09:00",
   "record_type": "last_verified_server_snapshot_not_live_status",
-  "release_commit": "0e49267d3df03e30b00ce8deab7bbe5d8e9625e1",
+  "release_commit": "586a8eacb27ac1abdcba9229d2fc13e4eca00aa2",
   "automatic_deployment": false,
   "server_only": [
     "database",
@@ -15,44 +15,40 @@
     "service_configuration"
   ],
   "verification": {
-    "scope": "Space home grouped registration and space management native dialogs, contextual record actions; existing backend/API/auth unchanged. Reserved archived QA space live read-only menu and cancellation verification.",
-    "https_pass": 95,
+    "scope": "Personal and shared space freeform dashboards, arbitrary pointer position and width/height, independent desktop/mobile geometry, strict v2 layout validation with v1 compatibility. Actual HTTPS using reserved QA only.",
+    "https_pass": 84,
     "https_fail": 0,
-    "space_actions_ui_pass": 96,
-    "space_ui_pass": 26,
-    "stale_response_pass": 14,
-    "independent_ui_pass": 170,
-    "independent_space_ui_pass": 26,
-    "independent_stale_pass": 14,
-    "independent_additional_delayed_response_pass": 18,
+    "direct_ui_pass": 420,
+    "independent_ui_pass": 142,
+    "independent_additional_gesture_pass": 55,
+    "independent_revocation_pass": 20,
+    "backend_service_pass": 333,
+    "backend_http_pass": 214,
+    "independent_validator_pass": 186,
     "cross_regression_pass": 196,
-    "always_visible_action_buttons": 2,
-    "previous_action_buttons": 14,
-    "mobile_first_card_top_px": 294.8,
-    "previous_mobile_first_card_top_px": 576.6,
-    "independent_minimum_plain_control_contrast": 10.61,
     "live_viewport_widths": [
       390,
       1280
     ],
-    "live_modes": [
-      "light",
-      "dark"
-    ],
     "live_js_errors": 0,
     "live_5xx": 0,
-    "live_browser_mutations": 0,
     "exact_live_asset_bytes_verified": true,
     "runtime_changed_files": [
+      "public/assets/dashboard-canvas.js",
+      "public/assets/dashboard-canvas.css",
+      "public/assets/home-dashboard.js",
       "public/assets/space-page.js",
-      "public/assets/space-page.css",
+      "src/site/ProductSpaces.php",
+      "src/views/launcher.php",
       "src/views/space_page.php",
-      "wiki/qaredi/guide-start.json"
+      "wiki/qaredi/guide-start.json",
+      "wiki/qaredi/index.json"
     ],
     "migrations": [],
     "deleted_files": 0,
     "original_legacy_tables_preserved": 14,
-    "product_tables_rows_preserved": 6,
+    "product_tables_original_rows_preserved": 6,
+    "product_preservation_exception": "Reserved claude_admin01 personal preference saved then original layout restored through API; revision/timestamp advances retained. Newly created synthetic QA space archived. All other original product rows preserved.",
     "original_database_owners_preserved": true,
     "original_database_acl_preserved": true,
     "file_records_preserved": 1042,
@@ -67,9 +63,12 @@
     "file_apply_rehearsal": true,
     "physical_android_verified": false,
     "safari_verified": false,
-    "evidence": "docs/work-items/space-actions-cleanup.md"
+    "screenreader_verified": false,
+    "evidence": "docs/work-items/freeform-dashboard.md"
   },
   "evidence": [
+    "docs/work-items/freeform-dashboard.md",
+    "docs/work-items/space-actions-cleanup.md",
     "docs/work-items/product-spaces.md",
     "docs/work-items/buddy-token-onboarding.md",
     "docs/work-items/buddy-startup-fix.md",
@@ -132,19 +131,19 @@
     "evidence": "docs/work-items/gpt-easy-connect.md"
   },
   "git_sync": {
-    "status": "synchronized",
-    "remote_live_verified": true,
+    "status": "pending",
+    "remote_live_verified": false,
     "last_fetched_origin_main": "5964fba79ca9e42dd77aa0f1f3d67368aed3e7af",
     "pc_branch": "cloud/buddy-startup-diagnostic",
     "pc_commit": "7a0ff3f",
-    "web_branch": "cloud/space-actions-cleanup",
-    "reason": "Verified v2.54.3 HTTPS and preservation; atomic main/cloud/space-actions-cleanup/v2.54.3 push and fetch confirmed both branches at5964fba79ca9. This metadata-only follow-up is synchronized with the same branches.",
-    "verified_at": "2026-10-11T13:58:36+09:00"
+    "web_branch": "cloud/freeform-dashboard",
+    "reason": "Verified v2.55.0 runtime and preservation; this deployment record awaits atomic main/feature/tag push.",
+    "verified_at": "2026-10-11T18:30:46+09:00"
   },
   "previous_verification": {
-    "version": "2.54.2",
-    "runtime_commit": "c22d993d84a2666dd9cd4d02fad0c6702d40182e",
-    "verified_at": "2026-10-11T13:47:19+09:00",
-    "evidence": "docs/work-items/global-visual-fix.md"
+    "version": "2.54.3",
+    "runtime_commit": "0e49267d3df03e30b00ce8deab7bbe5d8e9625e1",
+    "verified_at": "2026-10-11T13:58:16+09:00",
+    "evidence": "docs/work-items/space-actions-cleanup.md"
   }
 }

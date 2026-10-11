@@ -1,6 +1,6 @@
 # 대시보드 위젯 자유 이동·크기 조절
 
-- 상태: 개발 중
+- 상태: 운영 v2.55.0 반영 및 HTTPS·원본 보존 검증 완료
 - 작업 브랜치: cloud/freeform-dashboard
 - 기준 main: 3a8145187bc7db0c02c16c8490749b3b9f7f565d
 - 담당 환경: 서버의 격리 worktree
@@ -11,7 +11,7 @@
 
 ## 검사
 
-진행 중. 직접/독립 backend 새 격리 Postgres333/0·실제HTTP214/0 및 별도 독립 타입·경계186/0. GET 행/수정시각/감사 무변경, v1/v2 양 홈 저장, 거부된 저장의 무변경, 역할/acting/archive/revision·원본파일 권한 확인. frontend 최종 동결 완료·운영검증 대기. 직접 strict-CSP 실제 마우스/터치142/0, 기존 홈57/0·서비스홈70/0·동기화15/0·공간26/0·지연14/0·메뉴96/0(합278/0). 최종 동결본 독립 브라우저142/0·추가55/0·권한 회수20/0 통과, 검토한 runtime7 SHA 동일. root 격리 공통 교차회귀196/0(새 합성 DB만, 운영원본 복제0, 정리완료), 자산버전·위키69편·diff 검사 통과. 새 PHP/JS 문법과 backend 보안lint 통과. 실물 Android/Safari는 별도로 구분한다. 증거 outputs/freeform-review/backend/test.log.
+진행 중. 직접/독립 backend 새 격리 Postgres333/0·실제HTTP214/0 및 별도 독립 타입·경계186/0. GET 행/수정시각/감사 무변경, v1/v2 양 홈 저장, 거부된 저장의 무변경, 역할/acting/archive/revision·원본파일 권한 확인. frontend 최종 동결 및 운영검증 완료. 직접 strict-CSP 실제 마우스/터치142/0, 기존 홈57/0·서비스홈70/0·동기화15/0·공간26/0·지연14/0·메뉴96/0(합278/0). 최종 동결본 독립 브라우저142/0·추가55/0·권한 회수20/0 통과, 검토한 runtime7 SHA 동일. root 격리 공통 교차회귀196/0(새 합성 DB만, 운영원본 복제0, 정리완료), 자산버전·위키69편·diff 검사 통과. 새 PHP/JS 문법과 backend 보안lint 통과. 실물 Android/Safari는 별도로 구분한다. 증거 outputs/freeform-review/backend/test.log.
 
 ## 서버 적용
 
@@ -23,7 +23,7 @@
 
 ## 배포 결과
 
-아직 반영 전.
+후보5c4e894a242b → main FF, v2.55.0 `586a8eacb27ac1abdcba9229d2fc13e4eca00aa2` / 2026-10-11T18:30:46+09:00. 25파일 고정후보 모의적용 정확바이트·삭제0, runtime7 검토SHA 일치, 운영/원격3a8145 clean drift 확인 후 PHP-FPM reload. 실제 HTTPS84/0: 개인/공간 각각PC1280 및모바일390 touch CDP로 실제 이동/양방향resize/저장/reload/취소/다음저장·반대viewport보존 확인. JS오류/5xx0·서비스active·정확자산바이트확인. 기존14표/파일1042행/975원본SHA/ownerACL/85설정 보존. 제품6표 기존행보존(검토계정 개인홈만 API저장 후 원래설정복구; 신규합성QA공간 최종보관). DB migration/설정/패키지/cron/PC변경0, DB복원/재시드0. 운영증거 outputs/freeform-live/results.json, outputs/freeform-live-run.log. 실물기기/WebKit/스크린리더 미검증. Git2동기화 후속기록.
 
 ## 검토 중 수정
 
