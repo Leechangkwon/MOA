@@ -134,14 +134,14 @@
     "evidence": "docs/work-items/gpt-easy-connect.md"
   },
   "git_sync": {
-    "status": "push_pending",
-    "remote_live_verified": false,
-    "last_fetched_origin_main": "b4152f9e1a04699703c55bf401306a15f58a483a",
+    "status": "synchronized",
+    "remote_live_verified": true,
+    "last_fetched_origin_main": "30335cb531f1475d41d74340c96878af9485673d",
     "pc_branch": "cloud/buddy-startup-diagnostic",
     "pc_commit": "7a0ff3f",
     "web_branch": "cloud/dashboard-inspector",
-    "reason": "Server release and HTTPS/preservation verified; atomic main/feature/release/baseline push is next.",
-    "verified_at": "2026-10-11T20:28:07+09:00"
+    "reason": "Atomic main/cloud/dashboard-inspector plus release/baseline tags pushed and fetched. Both branches verified at 30335cb531f1475d41d74340c96878af9485673d. This metadata-only follow-up uses the same branches. v2.56.2 dereferences to verified release8010bf0.",
+    "verified_at": "2026-10-11T20:28:54+09:00"
   },
   "previous_verification": {
     "version": "2.56.1",

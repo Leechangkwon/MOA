@@ -38,3 +38,5 @@
 - 기능후보: `e05f738970d49283ab3375414b864eabb820b480`,24파일 모의 exact bytes 일치, runtime6·삭제0·migration0. 운영과 origin/main이0331485로 일치한 뒤 fast-forward 및 patch 발행. 기존 발행 스크립트의 작업 경로와 작성자 표기만 정확히 지정한 로컬 사본 사용.
 - 운영 증거: outputs/inspector-live/results.json 및 화면, outputs/inspector-preservation.log, outputs/inspector-rehearsal.json. PostgreSQL 읽기 시 작업 디렉터리 접근 경고가 있었지만 모든 쿼리/비교 exit0 및 원본 동일; DB 작업/데이터 권한 실패는 없었다.
 - nginx/php8.1-fpm active, FPM reload 완료. DB/설정/패키지 변경 없이 코드만 적용. 검토된6자산과 실제HTTPS6자산이 정확히 일치한다.
+
+Git2 main/작업브랜치·v2.56.2·두 baseline태그 atomic push 후 fetch 확인: `30335cb531f1475d41d74340c96878af9485673d`. 이 후속은 동기화 상태 문서만 갱신하며 같은 두 브랜치에 올린다. 운영 런타임은8010bf0과 동일하다. 부모 STAGES 원본에는 이번 절만 병합했다(`5577edf`), 기존 이력 보존.
