@@ -7,6 +7,8 @@ $path=(string)parse_url((string)($_SERVER['REQUEST_URI']??''),PHP_URL_PATH);
 if(str_starts_with($path,TBOX_BASE.'/'))$path=substr($path,strlen(TBOX_BASE));
 try {
     if(isset($_GET['kind'])&&!is_string($_GET['kind']))throw new ProductSpaceError(400);
+    $itemOptions=array_intersect_key($_GET,array_flip(['view','assignee','limit']));
+    if(array_key_exists('view',$_GET))$itemOptions=array_diff_key($_GET,['kind'=>true]);
     $body=in_array($verb,['POST','PATCH'],true)?Http::jsonBody():[];
     if($path==='/api/me/home-dashboard')$result=$verb==='PATCH'?$service->dashboardSave(null,$body):$service->dashboard(null);
     elseif($path==='/api/me/product-home')$result=$service->home(null);
@@ -20,11 +22,14 @@ try {
             $params=[$fileId];require __DIR__.'/files_download.php';exit;
         }
         elseif(str_ends_with($path,'/transfer'))$result=$service->transfer($sid,$body);
-        elseif(str_ends_with($path,'/home'))$result=$service->home($sid);
+        elseif(str_ends_with($path,'/home')){
+            if($_GET!==[]&&$_GET!==['view'=>'layout'])throw new ProductSpaceError(400);
+            $result=$service->home($sid,$_GET===[]);
+        }
         elseif(str_ends_with($path,'/dashboard'))$result=$verb==='PATCH'?$service->dashboardSave($sid,$body):$service->dashboard($sid);
         elseif(preg_match('~/members(?:/[0-9]+)?$~',$path))$result=count($params)>1?$service->memberChange($sid,(int)$params[1],$verb==='DELETE'?null:$body):$service->members($sid);
         elseif(preg_match('~/invites(?:/[0-9a-f-]{36})?$~',$path))$result=count($params)>1?$service->inviteRevoke($sid,$params[1]):($verb==='POST'?$service->inviteCreate($sid,$body):$service->invites($sid));
-        elseif(preg_match('~/items(?:/[0-9a-f-]{36})?$~',$path))$result=count($params)>1?($verb==='GET'?$service->item($sid,$params[1]):$service->itemChange($sid,$params[1],$verb==='DELETE'?null:$body)):($verb==='POST'?$service->itemCreate($sid,$body):$service->items($sid,isset($_GET['kind'])&&is_string($_GET['kind'])?$_GET['kind']:null));
+        elseif(preg_match('~/items(?:/[0-9a-f-]{36})?$~',$path))$result=count($params)>1?($verb==='GET'?$service->item($sid,$params[1]):$service->itemChange($sid,$params[1],$verb==='DELETE'?null:$body)):($verb==='POST'?$service->itemCreate($sid,$body):$service->items($sid,isset($_GET['kind'])&&is_string($_GET['kind'])?$_GET['kind']:null,$itemOptions));
         else $result=$verb==='PATCH'?$service->update($sid,$body):$service->get($sid);
     }
     Http::json($result,$verb==='POST'&&$path!=='/api/product-spaces/join'&&!str_ends_with($path,'/transfer')?201:200);

@@ -1,75 +1,40 @@
-/* Account-specific layout only. No content, credentials, space IDs or permission cache. */
+/* Personal dashboard: server revision, source permissions and explicit legacy migration. */
 (() => {
-  'use strict';
-  const host = document.getElementById('home-widgets');
-  if (!host || !/^[1-9][0-9]*$/.test(host.dataset.owner || '')) return;
-  const ids = ['recent','services','tools','stories'];
-  const names = {recent:'최근 작업 · 즐겨찾기',services:'서비스 바로가기',tools:'연락과 시작 안내',stories:'이야기와 읽을거리'};
-  const nodes = Object.fromEntries(ids.map(id => [id,host.querySelector('[data-home-widget="'+id+'"]')]));
-  if (ids.some(id => !nodes[id])) return;
-  const key = 'moa-home:v1:'+host.dataset.owner;
-  const note = document.getElementById('home-layout-status');
-  const defaults = () => ({version:1,widgets:ids.map(id => ({id,visible:true,size:'wide'})),source:'all',view:'recent'});
-  const engine=window.MoaDashboardCanvas;
-  const valid=value=>engine.valid(value,ids),clean=engine.clean;
-  let canvas=null;
-  let saved = defaults();
-  try {
-    const raw = localStorage.getItem(key);
-    if (raw) { const value = JSON.parse(raw); if (valid(value)) saved = clean(value); else note.textContent='저장된 구성을 읽을 수 없어 기본 홈을 표시합니다.'; }
-  } catch (_) { note.textContent='브라우저 저장소를 사용할 수 없어 기본 홈을 표시합니다.'; }
-  const empty = el('p','표시할 위젯이 없습니다. 홈 구성하기에서 필요한 위젯을 추가하세요.');
-  empty.className = 'notice'; host.before(empty);
-  let revision=null, csrf='', serverReady=false, saving=false;
-  const browserCandidate=clean(saved);
-  const base=nodes.recent.dataset.base||'/tbox';
-  const editButton=document.getElementById('home-edit');editButton.disabled=true;note.textContent='계정의 홈 구성을 불러오는 중입니다.';
-  async function request(method,body) {
-    const response=await fetch(base+'/api/me/home-dashboard',{method,credentials:'same-origin',cache:'no-store',headers:body?{'Content-Type':'application/json','X-CSRF-Token':csrf}:{},body:body?JSON.stringify(body):undefined});
-    const data=await response.json();
-    if(!response.ok)throw Error(response.status===409?'다른 기기에서 홈 구성이 변경되었습니다. 취소 후 새로고침해 주세요.':data.error?.message||(typeof data.error==='string'?data.error:null)||data.message||'계정에 홈 구성을 저장하지 못했습니다.');
-    return data;
-  }
-  const importButton=el('button','이 브라우저 구성을 계정으로 가져오기');importButton.type='button';importButton.className='btn btn--quiet';importButton.hidden=true;note.after(importButton);
-  importButton.addEventListener('click',async()=>{if(canvas?.editing||saving)return;importButton.disabled=true;editButton.disabled=true;try{const data=await request('PATCH',{layout:browserCandidate,revision});revision=data.revision;saved=clean(browserCandidate);apply();serverReady=true;importButton.hidden=true;note.textContent='브라우저 구성을 계정에 저장했습니다.';}catch(error){note.textContent=error.message;}finally{importButton.disabled=false;editButton.disabled=Boolean(canvas?.editing);}});
+'use strict';
+const host=document.getElementById('home-widgets');if(!host||!/^[1-9][0-9]*$/.test(host.dataset.owner||''))return;
+const engine=window.MoaDashboardCanvas,W=window.MoaDashboardWidgets,el=W.element,copy=W.copy;
+const ids=['recent','services','tools','stories'],legacy=Object.fromEntries(ids.map(id=>[id,host.querySelector('[data-home-widget="'+id+'"]')]));if(ids.some(id=>!legacy[id]))return;
+const names={recent:'최근 작업 · 즐겨찾기',services:'서비스 바로가기',tools:'연락과 시작 안내',stories:'이야기와 읽을거리'},key='moa-home:v1:'+host.dataset.owner,note=document.getElementById('home-layout-status'),editButton=document.getElementById('home-edit'),base=legacy.recent.dataset.base||'/tbox',community=legacy.recent.dataset.communityBase||'/community';
+let saved={version:1,widgets:ids.map(id=>({id,visible:true,size:'wide'})),source:'all',view:'recent'},revision=null,csrf='',serverReady=false,saving=false,canvas=null,spaces=[],nodes={},nodeNames={},initializing=true,canUpload=false,blocked=false;
+let browserRaw=null;try{browserRaw=localStorage.getItem(key);if(browserRaw){const candidate=JSON.parse(browserRaw);if(engine.valid(candidate,ids))saved=engine.clean(candidate);}}catch(_){}
+const browserCandidate=copy(saved),empty=el('p','표시할 위젯이 없습니다. 편집에서 필요한 위젯을 추가하세요.','notice');host.before(empty);
+const guide=el('section',undefined,'dashboard-guide');host.before(guide);
+const chooser=el('dialog',undefined,'dashboard-widget-picker');chooser.setAttribute('aria-label','위젯 종류와 출처 선택');document.body.append(chooser);let chooserOpener=null;
+chooser.addEventListener('close',()=>{chooser.replaceChildren();if(chooserOpener?.isConnected)chooserOpener.focus();});
+const loaded=new Set();function loadScript(name){if(loaded.has(name))return;const url=host.dataset[name];if(!url)return;loaded.add(name);const script=el('script');script.src=url;script.async=false;document.head.append(script);}
+function legacySettings(layout){const visible=layout.widgets.some(w=>w.visible&&(w.type==='legacy_recent'||(!w.type&&w.id==='recent')));legacy.recent.hidden=!visible;legacy.recent.dataset.startSource=layout.source;legacy.recent.dataset.startDefault=layout.view;if(visible&&!initializing){loadScript('startScript');loadScript('productScript');}legacy.recent.dispatchEvent(new Event('home-layout-change'));}
+async function request(url,method='GET',body){const r=await fetch(url,{method,credentials:'same-origin',cache:'no-store',headers:body?{'Content-Type':'application/json','X-CSRF-Token':csrf}:{},body:body?JSON.stringify(body):undefined});const d=await r.json();if(!r.ok){const e=Error(r.status===409?'다른 기기에서 홈 구성이 변경되었습니다. 취소 후 새로고침해 주세요.':typeof d.error==='string'?d.error:d.error?.message||'요청을 처리하지 못했습니다.');e.status=r.status;throw e;}return d;}
+const renderer=new W.Renderer({base,community,request,spaces:()=>spaces,source:w=>openChooser(canvas,w),denied:(e,w)=>{if(e.status===401){renderer.clear();note.textContent='로그인이 만료되었습니다. 다시 로그인해 주세요.';}else note.textContent='일부 공간 출처에 접근할 수 없습니다. 편집에서 출처를 바꾸거나 위젯을 제거해 주세요.';},complete:async(w,i)=>{await request(base+'/api/product-spaces/'+w.source.space_id+'/items/'+i.id,'PATCH',{status:'done',revision:i.revision});}});
+const importButton=el('button','이 브라우저 구성을 계정으로 가져오기','btn btn--quiet');importButton.type='button';importButton.hidden=true;note.after(importButton);const refreshButton=el('button','내용 새로고침','btn btn--plain dashboard-refresh');refreshButton.type='button';refreshButton.addEventListener('click',()=>{if(!canvas?.editing)renderer.refresh();});importButton.after(refreshButton);
+async function persist(layout){saving=true;try{if(serverReady){const d=await request(base+'/api/me/home-dashboard','PATCH',{layout,revision});revision=d.revision;}else localStorage.setItem(key,JSON.stringify(layout));saved=engine.clean(layout);note.textContent=serverReady?'홈 구성을 계정에 저장했습니다. 다른 기기에서도 적용됩니다.':'계정 동기화를 사용할 수 없어 이 브라우저에 저장했습니다.';}catch(e){note.textContent=serverReady?e.message:'홈 구성을 저장하지 못했습니다. 브라우저 저장소 설정을 확인하세요.';throw Error(note.textContent);}finally{saving=false;}}
+importButton.addEventListener('click',async()=>{if(canvas?.editing||saving)return;editButton.disabled=true;importButton.disabled=true;try{await persist(browserCandidate);apply();importButton.hidden=true;}catch(e){note.textContent=e.message;}finally{editButton.disabled=false;importButton.disabled=false;}});
+function apply(){canvas?.destroy();canvas=null;renderer.clear();for(const n of Object.values(nodes))if(!Object.values(legacy).includes(n))n.remove();for(const n of Object.values(legacy)){n.hidden=true;host.append(n);}nodes={};nodeNames={};for(const w of saved.widgets){const legacyId=w.type?.startsWith('legacy_')?w.type.slice(7):!w.type?w.id:null;const n=legacyId?legacy[legacyId]:renderer.node(w);if(!n)continue;n.dataset.homeWidget=w.id;n.hidden=!w.visible;nodes[w.id]=n;nodeNames[w.id]=legacyId?names[legacyId]:W.titles[w.type];host.append(n);if(!w.type)n.classList.toggle('home-widget--wide',w.size==='wide');}
+empty.hidden=saved.widgets.some(w=>w.visible);legacySettings(saved);if(saved.version>=2){canvas=makeCanvas();canvas.mount(saved);}renderGuide();}
+function onSize(w,size,mode,node){if(!w.type?.startsWith('legacy_')&&w.type)renderer.render(w,size,mode,node);}
+function makeCanvas(){return new engine.Canvas(host,nodes,nodeNames,{context:{personal:true},title:'내 홈 대시보드 편집',onSize,requestAdd:openChooser,changed:layout=>{empty.hidden=layout.widgets.some(w=>w.visible);legacySettings(layout);renderer.syncLayout(layout);},notice:text=>note.textContent=text,
+ editChange:active=>{editButton.disabled=active;importButton.disabled=active;renderer.edit(active);refreshButton.disabled=active;guide.hidden=active;},
+ extra:(area,layout)=>{if(layout.widgets.some(w=>w.type==='legacy_recent')){const kind=selectField(area,'최근 작업 자료 선택',[['all','자료와 문서'],['files','자료실 파일'],['pages','업무 문서']],layout.source);kind.addEventListener('change',()=>{canvas.layout.source=kind.value;legacySettings(canvas.layout);});const view=selectField(area,'처음 표시할 목록',[['recent','최근 작업'],['favorites','즐겨찾기']],layout.view);view.addEventListener('change',()=>{canvas.layout.view=view.value;legacySettings(canvas.layout);});}const field=el('label',undefined,'field'),input=el('select');field.append(el('span','시작 안내'),input);for(const [value,name]of [['pending','보기'],['later','나중에'],['done','완료']]){const option=el('option',name);option.value=value;input.append(option);}input.value=layout.guide||'pending';input.addEventListener('change',()=>canvas.layout.guide=input.value);area.append(field);},
+ save:persist,saved:()=>{renderer.edit(false);renderGuide();editButton.focus();},cancel:()=>{canvas=null;apply();note.textContent='저장 전 구성으로 돌아왔습니다.';editButton.focus();}});}
+function control(text,action){const b=el('button',text,'btn btn--quiet');b.type='button';b.addEventListener('click',action);return b;}
+function selectField(parent,label,choices,value){const wrap=el('label',undefined,'field'),input=el('select',undefined,'input');input.setAttribute('aria-label',label);for(const [id,name]of choices){const option=el('option',name);option.value=id;input.append(option);}input.value=value;wrap.append(el('span',label),input);parent.append(wrap);return input;}
+function openChooser(target,existing){chooserOpener=document.activeElement;chooser.replaceChildren();chooser.append(el('h2',existing?'출처 변경':'위젯 추가'));const type=selectField(chooser,'위젯 종류',Object.keys(W.titles).filter(t=>!['space_file','space_story'].includes(t)).map(t=>[t,W.titles[t]]),existing?.type||'recent'),source=el('div'),description=el('p','','help'),error=el('p','','help');chooser.append(description,source,error);type.disabled=Boolean(existing);let spaceSelect,scopeSelect,kindSelect;function choices(){description.textContent=type.value==='my_tasks'?'업무 문서에서 내게 배정된 작업입니다. 소 1개 · 중 최대 4개 · 대 최대 8개.':type.value==='space_task'?'선택한 회사·모임 공간의 할 일입니다. 소 1개 · 중 최대 4개 · 대 최대 8개.':type.value==='space_notice'?'선택한 공간의 최근 공지입니다. 소 1개 · 중 최대 3개 · 대 최대 6개.':['recent','favorites'].includes(type.value)?'자료실과 업무 문서의 목록입니다. 소 최대 2개 · 중 최대 4개 · 대 최대 8개.':'오늘 필요한 소식이나 다가오는 일정입니다. 소 1개 · 중 최대 4개 · 대 최대 8개.';source.replaceChildren();spaceSelect=scopeSelect=kindSelect=null;if(type.value.startsWith('space_')){spaceSelect=selectField(source,'출처 공간',spaces.filter(s=>s.status==='active').map(s=>[s.id,s.name]),existing?.source.space_id||spaces.find(s=>s.status==='active')?.id||'');if(type.value==='space_task')scopeSelect=selectField(source,'담당 범위',[['all','모든 할 일'],['mine','나의 담당']],existing?.source.scope||'all');}else if(['recent','favorites'].includes(type.value))kindSelect=selectField(source,'자료 출처',[['all','자료와 문서'],['files','자료실'],['pages','업무 문서']],existing?.source.kind||'all');}type.addEventListener('change',choices);choices();if(existing&&target.removeWidget)chooser.append(control('위젯 제거',()=>{if(target.removeWidget(existing.id))chooser.close();}));chooser.append(control('취소',()=>chooser.close()),control(existing?'출처 적용':'추가하기',()=>{const t=type.value;if(t.startsWith('space_')&&!spaceSelect.value){error.textContent='참여 중인 공간이 필요합니다.';return;}const w={id:'widget-'+crypto.randomUUID(),type:t,source:t.startsWith('space_')?{space_id:spaceSelect.value,scope:scopeSelect?.value||'all'}:['recent','favorites'].includes(t)?{kind:kindSelect.value}:{},visible:true,locked:false,desktop:{x:0,y:0,w:480,h:420,size:'m'},mobile:{x:0,y:0,w:360,h:420,size:'m'}};if(existing){const live=target.layout.widgets.find(i=>i.id===existing.id);if(live){live.source=w.source;target.paint();}}else{const n=renderer.node(w);if(target.addWidget(w,n,W.titles[t])){nodes[w.id]=n;nodeNames[w.id]=W.titles[t];}}chooser.close();}));chooser.showModal();type.focus();}
+function recommendation(){const active=spaces.filter(s=>s.status==='active'),space=active.length===1?active[0]:null;const types=space?.kind==='company'?['space_task','space_notice','space_event','recent','favorites']:space?.kind==='group'?['space_event','space_notice','recent','favorites']:['recent','favorites','briefing'];const number={recent:1,favorites:2,briefing:3,space_task:4,space_notice:5,space_event:6},rows=[];let mobileY=0;const widgets=types.map(type=>{const size=['favorites','briefing','space_notice'].includes(type)?'s':'m',w=size==='s'?300:480,h=size==='s'?220:420;let index=rows.findIndex(r=>r.next+w<=1200);if(index<0){index=rows.length;rows.push({next:0,height:0});}const desktop={x:rows[index].next,y:index,w,h,size};rows[index].next+=w+24;rows[index].height=Math.max(rows[index].height,h);const mobile={x:0,y:mobileY,w:360,h,size};mobileY+=h+16;return {id:'widget-00000000-0000-4000-8000-'+String(number[type]).padStart(12,'0'),type,source:type.startsWith('space_')?{space_id:space.id,scope:'all'}:['recent','favorites'].includes(type)?{kind:'all'}:{},visible:true,locked:false,desktop,mobile};});let top=0;for(const row of rows){row.top=top;top+=row.height+24;}for(const w of widgets)w.desktop.y=rows[w.desktop.y].top;return {version:3,source:'all',view:'recent',guide:'pending',widgets};}
 
-  function apply() {
-    canvas?.destroy();canvas=null;
-    for (const widget of saved.widgets) {
-      const node=nodes[widget.id];host.append(node);node.hidden=!widget.visible;
-      node.classList.toggle('home-widget--wide',widget.size==='wide');
-      if(!widget.visible&&widget.id==='stories')node.open=false;
-    }
-    empty.hidden=saved.widgets.some(w=>w.visible);
-    contentSettings(saved);
-    if(saved.version===2){canvas=makeCanvas();canvas.mount(saved);}
-  }
-  function contentSettings(layout){nodes.recent.dataset.startSource=layout.source;nodes.recent.dataset.startDefault=layout.view;nodes.recent.dispatchEvent(new Event('home-layout-change'));}
-  function makeCanvas(){return new engine.Canvas(host,nodes,names,{
-    title:'내 홈 대시보드 편집',changed:layout=>{empty.hidden=layout.widgets.some(w=>w.visible);const visible=layout.widgets.find(w=>w.id==='recent').visible;if(nodes.recent.dataset.canvasVisible!==String(visible)){nodes.recent.dataset.canvasVisible=String(visible);contentSettings(layout);}},notice:text=>note.textContent=text,
-    editChange:active=>{editButton.disabled=active;importButton.disabled=active;},
-    extra:(extra,layout)=>{extra.append(select('최근 작업 자료 선택',[['all','자료와 문서'],['files','자료실 파일'],['pages','업무 문서']],layout.source,value=>{canvas.layout.source=value;contentSettings(canvas.layout);}),select('처음 표시할 목록',[['recent','최근 작업'],['favorites','즐겨찾기']],layout.view,value=>{canvas.layout.view=value;contentSettings(canvas.layout);}));},
-    save:async next=>{saving=true;try{if(serverReady){const data=await request('PATCH',{layout:next,revision});revision=data.revision;note.textContent='홈 배치를 계정에 저장했습니다. 다른 기기에서도 적용됩니다.';}else{localStorage.setItem(key,JSON.stringify(next));note.textContent='계정 동기화를 사용할 수 없어 이 브라우저에 저장했습니다.';}saved=clean(next);}catch(error){note.textContent=serverReady?error.message:'홈 배치를 저장하지 못했습니다. 브라우저 저장소 설정을 확인하세요.';throw Error(note.textContent);}finally{saving=false;}},
-    saved:()=>{empty.hidden=saved.widgets.some(w=>w.visible);contentSettings(saved);editButton.focus();},
-    cancel:()=>{canvas=null;apply();note.textContent='저장 전 배치로 돌아왔습니다.';editButton.focus();}
-  });}
-  function el(tag,text) {const node=document.createElement(tag);if(text)node.textContent=text;return node;}
-  function select(label,choices,value,change) {
-    const field=el('label');field.className='field';field.append(el('span',label));
-    const input=el('select');input.className='input';input.setAttribute('aria-label',label);
-    for(const [id,name] of choices){const option=el('option',name);option.value=id;input.append(option);}
-    input.value=value;input.addEventListener('change',()=>change(input.value));field.append(input);return field;
-  }
-  for (const link of document.querySelectorAll('a[href="#services"]')) link.addEventListener('click',() => {
-    if (nodes.services.hidden) { nodes.services.hidden = false; canvas?.revealTemporary('services'); empty.hidden = true; note.textContent = '서비스 바로가기를 잠시 표시합니다. 저장한 홈 구성은 유지됩니다.'; }
-    const heading = document.getElementById('moa-choose-title'); heading.tabIndex = -1; heading.focus({preventScroll:true});
-  });
-  editButton.addEventListener('click',()=>{if(saving)return;if(!canvas)canvas=makeCanvas();canvas.begin(saved);});
-  apply();
-  (async()=>{try{
-    const response=await fetch(base+'/api/me',{credentials:'same-origin',cache:'no-store'});const me=await response.json();if(!response.ok||me.next||String(me.member_id??me.id??me.user?.id)!==host.dataset.owner)throw Error('계정 확인을 완료하지 못했습니다.');csrf=me.csrf_token;if(typeof csrf!=='string'||!csrf)throw Error('계정 확인을 완료하지 못했습니다.');
-    const data=await request('GET');revision=data.revision;serverReady=true;if(revision===0&&localStorage.getItem(key))importButton.hidden=false;
-    if(data.layout&&valid(data.layout)){saved=clean(data.layout);apply();note.textContent='계정에 저장된 홈 구성입니다. 다른 기기에서도 적용됩니다.';}
-    else {note.textContent='계정에 홈 구성을 저장하면 다른 기기에서도 적용됩니다.';importButton.hidden=!localStorage.getItem(key);}
-  }catch(_){note.textContent='계정 동기화를 사용할 수 없어 이 브라우저의 홈 구성을 표시합니다.';}finally{editButton.disabled=false;}})();
+function preview(){if(saving||initializing)return;const original=copy(saved);saved=recommendation();apply();const target=canvas;target.options.cancel=()=>{canvas=null;saved=original;apply();note.textContent='추천 미리보기를 취소했습니다.';editButton.focus();};canvas.begin(saved);saved=original;note.textContent='추천 구성 미리보기입니다. 배치 저장·완료를 누르면 계정에 적용됩니다.';}
+async function guideState(state){if(canvas?.editing||saving)return;const next=saved.version===3?copy(saved):engine.upgrade(saved,nodes,{personal:true});next.guide=state;try{await persist(next);apply();}catch(e){note.textContent=e.message;}}
+function renderGuide(){guide.replaceChildren();guide.hidden=Boolean(canvas?.editing);const pending=saved.version!==3||saved.guide==='pending';if(pending){guide.append(el('h2','내 홈 시작하기'),el('p',spaces.length>1?'여러 공간에 참여 중입니다. 필요한 공간의 위젯을 골라 추가하세요.':'공간에 참여하고, 첫 자료를 올리고, 필요한 위젯을 골라 보세요.','help'));const links=el('div',undefined,'toolbar');for(const [text,url]of [['공간 보기',base+'/spaces'],...(canUpload?[['첫 자료 올리기',base+'/']]:[])]){const a=el('a',text);a.href=url;links.append(a);}links.append(control('홈 구성하기',()=>editButton.click()),control('나중에',()=>guideState('later')));const more=el('details');more.append(el('summary','안내 옵션'),control('안내 완료',()=>guideState('done')),control('추천 구성 미리보기',preview));guide.append(links,more);}else guide.append(control('시작 안내 다시 보기',()=>guideState('pending')),control('추천 구성 미리보기',preview));}
+for(const link of document.querySelectorAll('a[href="#services"]'))link.addEventListener('click',event=>{if(saved.version===3&&!saved.widgets.some(w=>w.type==='legacy_services')){event.preventDefault();const nav=document.getElementById('dashboard-services');nav?.scrollIntoView();nav?.focus();return;}if(legacy.services.hidden){legacy.services.hidden=false;canvas?.revealTemporary('services');empty.hidden=true;}const heading=document.getElementById('moa-choose-title');heading.tabIndex=-1;heading.focus({preventScroll:true});});
+editButton.disabled=true;editButton.addEventListener('click',()=>{if(saving||initializing)return;if(!canvas)canvas=makeCanvas();canvas.begin(saved);});
+for(const n of Object.values(legacy))n.hidden=true;note.textContent='계정의 홈 구성을 불러오는 중입니다.';
+(async()=>{try{const me=await request(base+'/api/me');if(me.next||String(me.member_id??me.id??me.user?.id)!==host.dataset.owner||!me.csrf_token)throw Error('계정 확인 실패');csrf=me.csrf_token;canUpload=Array.isArray(me.upload_levels)&&me.upload_levels.length>0&&me.acting!==true;const data=await request(base+'/api/me/home-dashboard');try{spaces=(await request(base+'/api/product-spaces')).spaces||[];}catch(_){spaces=[];}revision=data.revision;serverReady=true;if(data.layout&&engine.valid(data.layout,ids))saved=engine.clean(data.layout);importButton.hidden=!(revision===0&&browserRaw);note.textContent='계정의 홈 구성입니다. 다른 기기에서도 적용됩니다.';}catch(e){if(e.status===401||e.status===403){blocked=true;saved={version:3,widgets:[],source:'all',view:'recent',guide:'later'};}note.textContent='계정 동기화를 사용할 수 없어 이 브라우저의 홈 구성을 표시합니다.';}finally{initializing=false;apply();editButton.disabled=blocked;}})();
 })();

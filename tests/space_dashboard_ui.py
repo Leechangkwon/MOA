@@ -1,7 +1,7 @@
 """Rendered PHP space view with synthetic API contract; no operational data."""
 import json,os,subprocess
 from pathlib import Path
-from urllib.parse import urlsplit
+from urllib.parse import urlsplit,parse_qs
 from playwright.sync_api import sync_playwright
 ROOT=Path(__file__).resolve().parents[1]
 OUT=Path(os.environ.get('SPACE_RESULTS','/tmp/space-dashboard-checks'));OUT.mkdir(parents=True,exist_ok=True)
@@ -26,7 +26,12 @@ with sync_playwright()as pw:
    r.fulfill(json={'spaces':spaces});return
   if p.endswith('/home'):
    if denied:r.fulfill(status=403,json={'error':'권한이 없습니다.'});return
-   s=next(s for s in spaces if s['id']==p.split('/')[-2]);r.fulfill(json={'space':s,'layout':layout,'revision':revision,'widgets':{'notice':[{'id':'n1','title':'<img src=x onerror=alert(1)>','body':'공지 본문'}]if s['kind']=='company'else[],'task':[],'event':[],'file':[],'story':[]}});return
+   s=next(s for s in spaces if s['id']==p.split('/')[-2]);
+   if layout['version']==3:
+    for w in layout['widgets']:w['source']['space_id']=s['id']
+   r.fulfill(json={'space':s,'layout':layout,'revision':revision,'widgets':{'notice':[{'id':'n1','title':'<img src=x onerror=alert(1)>','body':'공지 본문'}]if s['kind']=='company'else[],'task':[],'event':[],'file':[],'story':[]}});return
+  if p.endswith('/items')and m=='GET':
+   kind=parse_qs(urlsplit(r.request.url).query).get('kind',['notice'])[0];r.fulfill(json={'items':[{'id':'n1','title':'<img src=x onerror=alert(1)>','body':'공지 본문'}]if kind=='notice'and spaces[0]['id']in p else[]});return
   if p.endswith('/members'):r.fulfill(json={'members':[{'user_id':1001,'display_name':'공간 소유자','role':'owner'},{'user_id':1002,'display_name':'팀원','role':'member'}]});return
   if p.endswith('/dashboard'):
    if conflict:r.fulfill(status=409,json={'error':'conflict'});return
@@ -41,12 +46,12 @@ with sync_playwright()as pw:
  check(page.locator('#space-title').inner_text()=='회사 공간','first membership rendered')
  check(page.locator('#space-cards img').count()==0,'content is escaped text')
  check(page.locator('#space-cards section').count()==5,'five genuine widget types')
- check(page.get_by_text('아직 등록된 할 일이 없습니다.',exact=True).count()==1,'empty actual content message')
- management('대시보드 편집');page.get_by_role('button',name='이야기 숨기기',exact=True).click();page.get_by_role('button',name='저장',exact=True).click();page.wait_for_timeout(100)
+ check(page.locator('[data-widget-type=space_task]').get_by_text('남아 있는 할 일이 없습니다.',exact=True).count()==1,'empty actual content message')
+ management('대시보드 편집');page.locator('[data-dashboard-move=story]').focus();page.get_by_role('button',name='이야기 숨기기',exact=True).click();page.get_by_role('button',name='배치 저장·완료',exact=True).click();page.wait_for_timeout(100)
  check(page.locator('#space-cards section:visible').count()==4,'shared layout save applied')
  check(any(m=='PATCH'and p.endswith('/dashboard')for m,p in calls),'revision PATCH contract used')
  management('대시보드 편집');page.get_by_label('위젯 추가',exact=True).select_option('story');page.keyboard.press('Escape');check(page.locator('#space-cards section:visible').count()==4,'escape cancels draft')
- conflict=True;management('대시보드 편집');page.get_by_role('button',name='저장',exact=True).click();page.wait_for_timeout(100);check(page.locator('.dashboard-editor').is_visible(),'conflict retains editor');check('다른 사람이'in page.locator('.dashboard-editor').inner_text(),'conflict actionable message');page.keyboard.press('Escape');conflict=False
+ conflict=True;management('대시보드 편집');page.get_by_role('button',name='배치 저장·완료',exact=True).click();page.wait_for_timeout(100);check(page.locator('.dashboard-editor').is_visible(),'conflict retains editor');check('다른 사람이'in page.locator('.dashboard-editor').inner_text(),'conflict actionable message');page.keyboard.press('Escape');conflict=False
  register('공지 등록하기');page.get_by_label('제목',exact=True).fill('새 공지');page.get_by_label('내용',exact=True).fill('공지 내용');page.get_by_role('button',name='저장하기',exact=True).click();page.wait_for_timeout(100);check(any(m=='POST'and p.endswith('/items')for m,p in calls),'scoped content creation')
  register('할 일 등록하기');page.get_by_label('제목',exact=True).fill('준비 작업');page.locator('[name=assignee_id]').select_option('1002');page.get_by_label('마감일',exact=True).fill('2026-10-12T10:00');page.get_by_role('button',name='저장하기',exact=True).click();page.wait_for_timeout(100);check(any(b.get('assignee_id')==1002 and b.get('due_at','').endswith('Z') for _,b in bodies),'task assignee numeric and date explicit timezone')
  register('자료 등록하기');page.wait_for_timeout(100);page.get_by_label('연결할 자료',exact=True).select_option('44444444-4444-4444-8444-444444444444');check(page.get_by_label('제목',exact=True).input_value()=='회의자료.pdf','file chooser displays authorized file name');page.get_by_role('button',name='저장하기',exact=True).click();page.wait_for_timeout(100);check(any(b.get('file_id')=='44444444-4444-4444-8444-444444444444' for _,b in bodies),'existing file linked without user entering identifier')

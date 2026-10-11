@@ -3282,3 +3282,8 @@ public.product_spaces와 public.product_space_members는 별도 제품 멤버십
 목록·집계는 현재 활성 멤버십 JOIN과 원본 파일 Authz WHERE를 적용하고 다운로드는 같은 공간 경계 및 기존 파일 핸들러를 재사용한다. 새 연결은 파일 권한을 확대하지 않는다. 개인 홈은 본인 user_id, 공동 홈은 space_id 서버 설정으로 분리한다. 기존 자료/문서/사진을 자동 이동하지 않는다. 계약 docs/product-spaces-api.md, 적용 기록 docs/work-items/product-spaces.md.
 
 2026-10-11 자유 배치: 개인/공간 JSONB layout은 v1과 v2를 허용한다. v2는 allowlist 위젯의 desktop/mobile 정수 좌표만 저장하고 다른 사용자/공간 ID·본문·CSS를 받지 않는다. 기존 저장행은 GET 시 변환하지 않으며 브라우저가 명시 저장 시 v2로 전환한다. 공통 dashboard-canvas는 UI만 담당하며 서버 revision·멤버십·원본 권한을 대체하지 않는다. DB migration 없음.
+
+
+### 콘텐츠 중심 위젯 v3 — 2026-10-11 승인
+
+v1/v2 호환을 유지하면서 v3는 인스턴스 ID·타입·검증된 출처·잠금·화면별 좌표/표현 크기 및 guide 선호만 JSONB에 저장한다. GET은 기존 설정을 변환하지 않는다. 개인7종/공동5종과 레거시 타입 allowlist, 출처 멤버십 및 원본 조회 권한을 각각 검증한다. task/event dashboard 조회는 SQL에서 완료/기간/담당 필터·우선 정렬 후 LIMIT를 적용한다. 공통 canvas는 배치, widgets는 원본 데이터와 크기별 콘텐츠를 담당한다. 상세 확정 계약: docs/dashboard-widgets-directive.md. DB/패키지 변경 없음.

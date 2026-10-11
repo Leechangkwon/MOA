@@ -156,13 +156,22 @@ def run():
     moved = call('/community/today', expected=308)
     check(moved.headers.get('Location') == '/community/my-tasks', 'Today moved: 308 Location /community/my-tasks (replaces independent startup check)')
     launch = call('/')
-    check('class="moa-briefing"' in launch.text and ('<strong>' + str(result['count']) + '<small>건</small>') in launch.text and 'no-store' in launch.headers.get('Cache-Control', ''), 'C:T-464 launcher count is SSR and no-store')
-    check(all(i['title'] not in launch.text for i in items), 'launcher contains count only, no source titles')
-    check('class="moa-briefing"' not in call('/', user=None).text, 'prelogin launcher has no briefing or data query')
+    # v3 loads private source content only for visible widgets after authentication.
+    check('오늘 챙길 일 ' not in launch.text and 'id="home-widgets"' in launch.text and 'no-store' in launch.headers.get('Cache-Control', ''), 'C:T-464 launcher private widget shell has no eager count and is no-store')
+    check(all(i['title'] not in launch.text for i in items), 'launcher SSR contains no private source titles')
+    anonymous = call('/', user=None)
+    check('오늘 챙길 일 ' not in anonymous.text and 'id="home-widgets"' not in anonymous.text, 'prelogin launcher has no briefing count or private widget shell')
     check(snapshot() == baseline, 'C:T-465 API, Today, launcher do not insert or change any community rows')
+    server_log = root.parent / 'logs/php.log'
+    log_before = server_log.stat().st_size
     sql('REVOKE SELECT ON community.automation_runs FROM tbox_app')
     failed = call('/')
-    check('class="moa-briefing"' not in failed.text, 'C:T-464 failed community query omits only count; launcher remains 200')
+    check('오늘 챙길 일 ' not in failed.text and 'id="home-widgets"' in failed.text, 'C:T-464 launcher works without briefing source SELECT permission')
+    call('/', user=None)
+    with server_log.open('rb') as log:
+        log.seek(log_before)
+        fresh_log = log.read().decode(errors='replace')
+    check('briefing_unavailable' not in fresh_log and 'permission denied for table automation_runs' not in fresh_log, 'signed and anonymous launcher do not attempt unavailable briefing query')
     sql('GRANT SELECT ON community.automation_runs TO tbox_app')
     output.joinpath('fixture-ids.json').write_text(json.dumps({'check': checkbox, 'block': check_doc['blocks'][0]['id']}))
     # Q:F-12 C — 「오늘」 화면(체크를 그 자리에서 하던 C:T-463)은 B 에서 없어졌다. browser_9d.py 는 이제 옛 주소가 브라우저에서도

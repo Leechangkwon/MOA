@@ -1031,3 +1031,10 @@ v2.54.1 `31848a82c4b5` 실제HTTPS56/0·JS오류/5xx0. 추가된 페이지 라�
 ④ 암호화백업3종 전체복호화/975원본SHA/85설정 baseline 완료. 고정후보 모의적용·drift·운영HTTPS/원본보존 후 결과 추가. DBmigration/복원/재시드0. docs/work-items/freeform-dashboard.md.
 
 운영최종: v2.55.0 `586a8eacb27a` / 2026-10-11T18:30:46+09:00, 실제HTTPS84/0·자산바이트일치·JS/5xx0. 기존14표/제품6표(검토계정취향만 원래값복구, 신규QA공간보관)·1042파일행·975원본SHA·ownerACL·85설정 보존. 고정25파일모의적용/백업전체복호화·설정/DBmigration변경0. 상세 docs/work-items/freeform-dashboard.md.
+
+
+### 2026-10-11 콘텐츠 위젯 v3 — 최종 독립 검토
+① 안전한 이유: exact-key/타입/범위/출처 검증 및 기존 CSRF·revision·멤버십/원본 권한 유지. root validator257/0·Briefing17/0·캔버스15/0, 별도 렌더러403 정리·숨김/제거/캐시7/0. 구현 service508/0·HTTP303/0·UI383/0·canvas52/0·기존자유배치142/0. 격리 공통196/0과 최종 보완별 전용 회귀 통과. security_lint 금지0, 해시 동결 일치.
+② 보정: 잠금 좌표 정규화/초기 mount/터치 breakpoint 순서/숨김복원, 모바일 행 잘림·날짜·색상, 완료403 후 잔존/숨긴 내 작업의 중복 제거 상태/완료와 더보기 버튼 겹침을 수정하고 재검증했다. 현재 발견된 미해결 차단 사항 없음은 이번 검사 범위에 한정한다.
+③ 미검증: 실제 휴대폰·Safari/WebKit·스크린리더·사용자 자기 공격. Chromium 터치 모의를 실기기로 부르지 않는다. 세부 검사 스냅샷 범위는 docs/work-items/dashboard-widgets.md.
+④ 암호화3종 전체 복호화·원본975 SHA·설정85개/제품6표 baseline 완료. 고정후보 모의 적용·drift 후 운영 HTTPS/원본 보존을 별도 기록한다. DBmigration/운영DB복원/재시드 없음.

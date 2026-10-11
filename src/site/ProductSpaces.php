@@ -166,10 +166,76 @@ final class ProductSpaces
         $ids=$personal?['recent','services','tools','stories']:($kind==='group'?['event','task','notice','story','file']:['notice','task','file','event','story']);
         return ['version'=>1,'widgets'=>array_map(static fn($id)=>['id'=>$id,'visible'=>true,'size'=>'wide'],$ids),'source'=>'all','view'=>'recent'];
     }
+    /** Pure recommendation shared with dashboard-widgets.js; no settings row is created on GET. */
+    public static function defaultWidgetLayout(?array $space=null,bool $shared=false): array {
+        if($shared)$types=($space['kind']??'company')==='group'?['space_event','space_task','space_notice','space_story','space_file']:['space_notice','space_task','space_file','space_event','space_story'];
+        elseif($space===null)$types=['recent','favorites','briefing'];
+        elseif($space['kind']==='company')$types=['space_task','space_notice','space_event','recent','favorites'];
+        else $types=['space_event','space_notice','recent','favorites'];
+        $ids=['recent'=>1,'favorites'=>2,'briefing'=>3,'space_task'=>4,'space_notice'=>5,'space_event'=>6,'space_file'=>7,'space_story'=>8];
+        $widgets=[];$rows=[];$mobileY=0;
+        foreach($types as $type){
+            $size=in_array($type,['favorites','briefing','space_notice','space_file'],true)?'s':'m';
+            [$width,$height]=$size==='s'?[300,220]:[480,420];
+            $rowIndex=count($rows);foreach($rows as $index=>$row)if($row['next']+$width<=1200){$rowIndex=$index;break;}
+            if(!isset($rows[$rowIndex]))$rows[$rowIndex]=['next'=>0,'height'=>0];
+            $source=str_starts_with($type,'space_')?['space_id'=>$space['id'],'scope'=>'all']:(in_array($type,['recent','favorites'],true)?['kind'=>'all']:(object)[]);
+            $widgets[]=['id'=>'widget-00000000-0000-4000-8000-'.str_pad((string)$ids[$type],12,'0',STR_PAD_LEFT),'type'=>$type,'source'=>$source,'visible'=>true,'locked'=>false,
+                'desktop'=>['x'=>$rows[$rowIndex]['next'],'y'=>$rowIndex,'w'=>$width,'h'=>$height,'size'=>$size],
+                'mobile'=>['x'=>0,'y'=>$mobileY,'w'=>360,'h'=>$height,'size'=>$size]];
+            $rows[$rowIndex]['next']+=$width+24;$rows[$rowIndex]['height']=max($rows[$rowIndex]['height'],$height);$mobileY+=$height+16;
+        }
+        $top=0;foreach($rows as &$row){$row['top']=$top;$top+=$row['height']+24;}unset($row);
+        foreach($widgets as &$widget)$widget['desktop']['y']=$rows[$widget['desktop']['y']]['top'];unset($widget);
+        return ['version'=>3,'widgets'=>$widgets,'source'=>'all','view'=>'recent','guide'=>'pending'];
+    }
+    private static function objectSources(array $layout): array {
+        if(($layout['version']??null)===3)foreach($layout['widgets'] as &$widget)if(($widget['source']??null)===[])$widget['source']=(object)[];
+        unset($widget);return $layout;
+    }
+    private function layoutV3(array $value,bool $personal): array {
+        $this->exact($value,['version','widgets','source','view','guide']);
+        if(count($value)!==5||!in_array($value['guide']??null,['pending','later','done'],true)||!in_array($value['source']??null,['all','files','pages'],true)||!in_array($value['view']??null,['recent','favorites'],true)
+            ||!is_array($value['widgets']??null)||!array_is_list($value['widgets'])||count($value['widgets'])>20)$this->fail(400);
+        $types=$personal?['my_tasks','briefing','recent','favorites','space_notice','space_event','space_task','legacy_recent','legacy_services','legacy_tools','legacy_stories']:['space_notice','space_task','space_event','space_file','space_story'];
+        $seen=[];$legacy=[];$anchors=['desktop'=>[],'mobile'=>[]];
+        foreach($value['widgets'] as &$widget){
+            if(!is_array($widget))$this->fail(400);$this->exact($widget,['id','type','source','visible','locked','desktop','mobile']);
+            if(count($widget)!==7||!is_string($widget['id']??null)||preg_match('/^[a-z][a-z0-9_-]{0,63}$/D',$widget['id'])!==1||isset($seen[$widget['id']])
+                ||!in_array($widget['type']??null,$types,true)||!is_bool($widget['visible']??null)||!is_bool($widget['locked']??null))$this->fail(400);
+            $seen[$widget['id']]=true;$type=$widget['type'];
+            if(str_starts_with($type,'legacy_')){if(isset($legacy[$type]))$this->fail(400);$legacy[$type]=true;}
+            $source=$widget['source'];if($source instanceof stdClass)$source=(array)$source;if(!is_array($source))$this->fail(400);
+            if(str_starts_with($type,'space_')){
+                $this->exact($source,['space_id','scope']);
+                if(count($source)!==2||!is_string($source['space_id']??null)||strlen($source['space_id'])!==36||!self::uuid($source['space_id'])||!in_array($source['scope']??null,['all','mine'],true)||($source['scope']==='mine'&&($type!=='space_task'||!$personal)))$this->fail(400);
+                $widget['source']=['space_id'=>strtolower($source['space_id']),'scope'=>$source['scope']];
+            }elseif(in_array($type,['recent','favorites'],true)){
+                $this->exact($source,['kind']);if(count($source)!==1||!in_array($source['kind']??null,['all','files','pages'],true))$this->fail(400);$widget['source']=$source;
+            }else{if($source!==[])$this->fail(400);$widget['source']=(object)[];}
+            foreach(['desktop'=>[1200,240],'mobile'=>[360,160]] as $screen=>[$width,$minimum]){
+                $this->geometry($widget[$screen],$width,$minimum,true);
+                if($widget['visible']&&$widget['locked']){
+                    $box=$widget[$screen];foreach($anchors[$screen] as $other)if($box['x']<$other['x']+$other['w']&&$other['x']<$box['x']+$box['w']&&$box['y']<$other['y']+$other['h']&&$other['y']<$box['y']+$box['h'])$this->fail(400,'locked_overlap');
+                    $anchors[$screen][]=$box;
+                }
+            }
+        }
+        unset($widget);return $value;
+    }
+    private function layoutSources(array $layout,?string $id): void {
+        if($layout['version']!==3)return;$checked=[];
+        foreach($layout['widgets'] as $widget){
+            if(!str_starts_with($widget['type'],'space_'))continue;$source=$widget['source']['space_id'];
+            if($id!==null){if($source!==strtolower($id))$this->fail(400);continue;}
+            if(!isset($checked[$source])){$space=$this->space($source);if($space['status']!=='active')$this->fail(403,'source_unavailable');$checked[$source]=true;}
+        }
+    }
     private function layout(mixed $value,bool $personal): array {
         if(!is_array($value))$this->fail(400);
         $version=$value['version']??null;
-        if(!in_array($version,[1,2],true)||strlen(json_encode($value,JSON_THROW_ON_ERROR))>($version===2?8192:4096))$this->fail(400);
+        if(!in_array($version,[1,2,3],true)||strlen(json_encode($value,JSON_THROW_ON_ERROR))>($version===3?32768:($version===2?8192:4096)))$this->fail(400);
+        if($version===3)return $this->layoutV3($value,$personal);
         $this->exact($value,['version','widgets','source','view']);$ids=$personal?['recent','services','tools','stories']:self::KINDS;
         if(!isset($value['widgets'])||!is_array($value['widgets'])||!array_is_list($value['widgets'])||count($value['widgets'])!==count($ids)||!in_array($value['source']??null,['all','files','pages'],true)||!in_array($value['view']??null,['recent','favorites'],true))$this->fail(400);
         $seen=[];foreach($value['widgets'] as $w){
@@ -180,8 +246,9 @@ final class ProductSpaces
         }
         return $value;
     }
-    private function geometry(mixed $value,int $width,int $minWidth): void {
-        if(!is_array($value))$this->fail(400);$this->exact($value,['x','y','w','h']);
+    private function geometry(mixed $value,int $width,int $minWidth,bool $sized=false): void {
+        if(!is_array($value))$this->fail(400);$this->exact($value,$sized?['x','y','w','h','size']:['x','y','w','h']);
+        if($sized&&!in_array($value['size']??null,['s','m','l'],true))$this->fail(400);
         foreach(['x','y','w','h'] as $key)if(!is_int($value[$key]??null))$this->fail(400);
         // Subtraction keeps attacker-supplied large integers out of overflowing sums.
         if($value['w']<$minWidth||$value['w']>$width||$value['h']<160||$value['h']>2000||$value['x']<0||$value['x']>$width-$value['w']||$value['y']<0||$value['y']>20000-$value['h'])$this->fail(400);
@@ -191,7 +258,12 @@ final class ProductSpaces
         $row=$id===null?$this->db()->run('SELECT layout,revision FROM product_personal_dashboards WHERE user_id=:uid',
                 [':uid'=>$this->uid()])->fetch():$this->db()->run('SELECT layout,revision FROM product_space_dashboards WHERE space_id=:sid',
                 [':sid'=>$id])->fetch();
-        return ['layout'=>$row?json_decode($row['layout'],true,512,JSON_THROW_ON_ERROR):self::defaultLayout($id===null,$space['kind']??'company'),'revision'=>$row?(int)$row['revision']:0];
+        if($row)return ['layout'=>self::objectSources(json_decode($row['layout'],true,512,JSON_THROW_ON_ERROR)),'revision'=>(int)$row['revision']];
+        if($id===null){
+            $spaces=$this->db()->run('SELECT s.id,s.kind FROM product_spaces s JOIN product_space_members m ON m.space_id=s.id AND m.user_id=:uid AND m.active=true WHERE s.status=\'active\' ORDER BY s.id LIMIT 2',
+                [':uid'=>$this->uid()])->fetchAll();$space=count($spaces)===1?$spaces[0]:null;
+        }
+        return ['layout'=>self::defaultWidgetLayout($space,$id!==null),'revision'=>0];
     }
     public function dashboardSave(?string $id,array $b): array {
         $this->exact($b,['layout','revision']);if(!is_int($b['revision']??null)||$b['revision']<0)$this->fail(400);$layout=$this->layout($b['layout']??null,$id===null);
@@ -200,7 +272,7 @@ final class ProductSpaces
             if($id!==null){$s=$this->space($id,true);if(!ProductSpaceAuthz::editHome($this->u,$s))$this->fail(403);}
             else $this->db()->run('SELECT id FROM users WHERE id=:uid FOR UPDATE',
                 [':uid'=>$this->uid()]);
-            $current=$this->dashboard($id);if($current['revision']!==$b['revision'])$this->fail(409,'revision_conflict');$json=json_encode($layout,JSON_THROW_ON_ERROR);
+            $current=$this->dashboard($id);if($current['revision']!==$b['revision'])$this->fail(409,'revision_conflict');$this->layoutSources($layout,$id);$json=json_encode($layout,JSON_THROW_ON_ERROR);
             if($id===null)$this->db()->run('INSERT INTO product_personal_dashboards(user_id,layout) VALUES(:uid,CAST(:layout AS jsonb)) ON CONFLICT(user_id) DO UPDATE SET layout=EXCLUDED.layout,revision=product_personal_dashboards.revision+1,updated_at=now()',
                 [':uid'=>$this->uid(),':layout'=>$json]);
             else $this->db()->run('INSERT INTO product_space_dashboards(space_id,layout,updated_by) VALUES(:sid,CAST(:layout AS jsonb),:uid) ON CONFLICT(space_id) DO UPDATE SET layout=EXCLUDED.layout,revision=product_space_dashboards.revision+1,updated_by=EXCLUDED.updated_by,updated_at=now()',
@@ -249,8 +321,42 @@ final class ProductSpaces
         $space=['member_active'=>$i['member_active'],'role'=>$i['role'],'status'=>$i['space_status']];$edit=ProductSpaceAuthz::editItem($this->u,$space,$i);
         return ['id'=>$i['id'],'space_id'=>$i['space_id'],'space_name'=>$i['space_name'],'kind'=>$i['kind'],'title'=>$i['title'],'body'=>$i['body'],'status'=>$i['status'],'assignee_id'=>$i['assignee_id']===null?null:(int)$i['assignee_id'],'due_at'=>$i['due_at']===null?null:(new DateTimeImmutable($i['due_at']))->format(DateTimeInterface::ATOM),'starts_at'=>$i['starts_at']===null?null:(new DateTimeImmutable($i['starts_at']))->format(DateTimeInterface::ATOM),'ends_at'=>$i['ends_at']===null?null:(new DateTimeImmutable($i['ends_at']))->format(DateTimeInterface::ATOM),'file_id'=>$i['file_id'],'revision'=>(int)$i['revision'],'created_by'=>(int)$i['created_by'],'created_at'=>$i['created_at'],'updated_at'=>$i['updated_at'],'can_edit'=>$edit,'can_delete'=>$edit,'download_url'=>$i['kind']==='file'?Http::url('/api/product-spaces/'.$i['space_id'].'/items/'.$i['id'].'/download'):null];
     }
-    public function items(string $id,?string $kind=null): array {
+    private function dashboardItems(string $id,string $kind,array $options): array {
+        $this->exact($options,['view','assignee','limit']);
+        $assignee=$options['assignee']??'all';$limit=$options['limit']??8;
+        if(($options['view']??null)!=='dashboard'||!in_array($assignee,['all','me'],true)||($assignee==='me'&&$kind!=='task'))$this->fail(400);
+        if(is_string($limit)&&preg_match('/^[1-8]$/D',$limit)===1)$limit=(int)$limit;
+        if(!is_int($limit)||$limit<1||$limit>8)$this->fail(400);
+        $now=new DateTimeImmutable('now',new DateTimeZone('Asia/Seoul'));$asOf=$now->format(DateTimeInterface::ATOM);
+        [$fileWhere,$fileParams]=Authz::visibleFilesWhere($this->u);
+        // The only SQL fragment is the existing Authz predicate. All filters and dates are bound.
+        $sql=<<<SQL
+            SELECT i.*,m.role,m.active AS member_active,s.status AS space_status,s.name AS space_name
+              FROM product_space_items i
+              JOIN product_spaces s ON s.id=i.space_id
+              JOIN product_space_members m ON m.space_id=i.space_id AND m.user_id=:dashboard_member AND m.active=true
+              LEFT JOIN files f ON f.public_id=i.file_id
+             WHERE i.space_id=:dashboard_space AND i.kind=:dashboard_kind AND i.deleted_at IS NULL
+               AND (i.kind<>'file' OR (f.public_id IS NOT NULL AND ({$fileWhere})))
+               AND (i.kind<>'task' OR i.status<>'done')
+               AND (CAST(:dashboard_assignee AS text)='all' OR i.assignee_id=:dashboard_owner)
+               AND (i.kind<>'event'
+                    OR (i.ends_at IS NOT NULL AND i.ends_at>CAST(:dashboard_now AS timestamptz))
+                    OR (i.ends_at IS NULL AND i.starts_at>=CAST(:dashboard_day AS timestamptz)))
+             ORDER BY CASE WHEN i.kind='event' AND i.ends_at IS NOT NULL AND i.starts_at<=CAST(:dashboard_order_now AS timestamptz) THEN 0 ELSE 1 END,
+                      CASE WHEN i.kind='event' THEN i.starts_at END ASC NULLS LAST,
+                      CASE WHEN i.kind='task' THEN i.due_at END ASC NULLS LAST,
+                      i.updated_at DESC,i.id
+             LIMIT :dashboard_limit
+            SQL;
+        $rows=$this->db()->run($sql,$fileParams+[':dashboard_member'=>$this->uid(),':dashboard_space'=>$id,':dashboard_kind'=>$kind,
+            ':dashboard_assignee'=>$assignee,':dashboard_owner'=>$this->uid(),':dashboard_now'=>$asOf,':dashboard_day'=>$now->setTime(0,0)->format(DateTimeInterface::ATOM),
+            ':dashboard_order_now'=>$asOf,':dashboard_limit'=>$limit+1])->fetchAll();
+        return ['items'=>array_map(fn($i)=>$this->outItem($i),array_slice($rows,0,$limit)),'truncated'=>count($rows)>$limit,'as_of'=>$asOf];
+    }
+    public function items(string $id,?string $kind=null,array $options=[]): array {
         $this->space($id);if($kind!==null&&!in_array($kind,self::KINDS,true))$this->fail(400);
+        if($options!==[]){if($kind===null)$this->fail(400);return $this->dashboardItems($id,$kind,$options);}
         $rows=$this->visibleItemRows($id,$kind,null,101);return ['items'=>array_map(fn($i)=>$this->outItem($i),array_slice($rows,0,100)),'truncated'=>count($rows)>100];
     }
     public function item(string $id,string $iid): array {
@@ -279,8 +385,9 @@ final class ProductSpaces
             $this->audit('item.update',$id,['record_id'=>$iid]);return $this->item($id,$iid);
         });
     }
-    public function home(?string $id): array {
+    public function home(?string $id,bool $includeContents=true): array {
         $space=$id===null?[]:$this->get($id);
+        if(!$includeContents)return $space+$this->dashboard($id)+['widgets'=>(object)[],'truncated'=>(object)[]];
         $widgets=[];$truncated=[];foreach(self::KINDS as $kind){$rows=$this->visibleItemRows($id,$kind,null,7);$widgets[$kind]=array_map(fn($i)=>$this->outItem($i),array_slice($rows,0,6));$truncated[$kind]=count($rows)>6;}
         return $space+$this->dashboard($id)+['widgets'=>$widgets,'truncated'=>$truncated];
     }

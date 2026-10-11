@@ -1,7 +1,7 @@
 """Space actions hierarchy: actual PHP view, synthetic transport and role capabilities."""
 import json,os,subprocess
 from pathlib import Path
-from urllib.parse import urlsplit
+from urllib.parse import urlsplit,parse_qs
 from playwright.sync_api import sync_playwright
 ROOT=Path(__file__).resolve().parents[1];OUT=Path(os.environ.get('SPACE_RESULTS','/tmp/space-actions-checks'));OUT.mkdir(parents=True,exist_ok=True)
 SID='11111111-1111-4111-8111-111111111111';checks=[];scenario='owner';calls=[]
@@ -22,6 +22,8 @@ with sync_playwright()as pw:
   if p=='/tbox/api/product-spaces':r.fulfill(json={'spaces':[]if scenario=='empty'else[space()]});return
   if p.endswith('/home'):
    s=space();r.fulfill(json={'space':s,'layout':layout,'revision':1,'widgets':{'notice':[{'id':'n1','title':'다음 모임 안내','body':'사진과 자료를 함께 준비해요.','can_edit':s['can_edit_home'],'can_delete':s['can_edit_home']}],'task':[{'id':'t1','title':'발표 자료 준비','status':'todo','revision':1,'can_edit':s['can_write'],'can_delete':s['can_write']}]}});return
+  if p.endswith('/items')and r.request.method=='GET':
+   s=space();kind=parse_qs(urlsplit(r.request.url).query).get('kind',['notice'])[0];r.fulfill(json={'items':[{'id':'n1','title':'다음 모임 안내','body':'사진과 자료를 함께 준비해요.','can_edit':s['can_edit_home'],'can_delete':s['can_edit_home']}]if kind=='notice'else[{'id':'t1','title':'발표 자료 준비','status':'todo','revision':1,'can_edit':s['can_write'],'can_delete':s['can_write']}]if kind=='task'else[]});return
   if p.endswith('/members'):r.fulfill(json={'me':1001,'members':[{'user_id':1001,'display_name':'검토 사용자','role':space()['role']},{'user_id':1002,'display_name':'팀원','role':'member'}]});return
   if p.endswith('/invites'):r.fulfill(json={'invites':[],'token':'synthetic-invite'});return
   r.fulfill(json={'items':[],'ok':True})

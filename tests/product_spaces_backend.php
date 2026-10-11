@@ -41,12 +41,15 @@ denied(fn()=>$svc['member']->itemChange($sid,$task['id'],['revision'=>1,'status'
 denied(fn()=>$svc['member']->itemCreate($sid,['kind'=>'event','title'=>'bad','starts_at'=>'2026-10-20','ends_at'=>'2026-10-19']),400,'invalid event range rejected');
 denied(fn()=>$svc['member']->itemCreate($sid,['kind'=>'task','title'=>'bad','assignee_id'=>(int)$users['other']['id']]),400,'cross space assignee rejected');
 $layout=$svc['owner']->dashboard($sid);check($layout['revision']===0,'GET dashboard no row creation');
+check($layout['layout']['version']===3&&$layout['layout']['widgets'][0]['type']==='space_notice','new shared dashboard recommends v3 notice first');
+$layout['layout']=ProductSpaces::defaultLayout(false);
 $layout['layout']['widgets'][0]['visible']=false;$saved=$svc['editor']->dashboardSave($sid,$layout);check($saved['revision']===1,'designated editor saves shared layout');
 denied(fn()=>$svc['owner']->dashboardSave($sid,$layout),409,'stale shared layout rejected');
 denied(fn()=>$svc['viewer']->dashboardSave($sid,$saved),403,'viewer layout readonly');
-$personal=$svc['guest']->dashboard(null);$personal['layout']['source']='files';check($svc['guest']->dashboardSave(null,$personal)['revision']===1,'personal preferences guest allowed');check($svc['other']->dashboard(null)['revision']===0,'personal settings isolated');
+$personal=$svc['guest']->dashboard(null);check(array_column($personal['layout']['widgets'],'type')===['recent','favorites','briefing'],'new account receives three real widget defaults');$personal['layout']=ProductSpaces::defaultLayout(true);$personal['layout']['source']='files';check($svc['guest']->dashboardSave(null,$personal)['revision']===1,'personal preferences guest allowed');check($svc['other']->dashboard(null)['revision']===0,'personal settings isolated');
 $bad=$saved;$bad['layout']['widgets'][1]['id']=$bad['layout']['widgets'][0]['id'];denied(fn()=>$svc['owner']->dashboardSave($sid,$bad),400,'duplicate widget rejected');
 require __DIR__.'/product_spaces_layout.php';
+require __DIR__.'/product_spaces_widgets.php';
 $invite=$svc['owner']->inviteCreate($sid,['role'=>'member','max_uses'=>1]);$raw=$db->run('SELECT token_hash FROM product_space_invites WHERE id=:id',
   [':id'=>$invite['invite']['id']])->fetchColumn();check($raw!==$invite['token']&&$raw===hash('sha256',$invite['token']),'invite secret hashed');
 $svc['other']->join(['token'=>$invite['token']]);denied(fn()=>$svc['globaladmin']->join(['token'=>$invite['token']]),404,'exhausted invite rejected');

@@ -4,7 +4,11 @@ from pathlib import Path
 from copy import deepcopy
 exec(compile(Path(__file__).with_name('memories_http.py').read_text().split('try:\n for u in users:')[0],__file__,'exec'))
 base=site+'/tbox'
-def v2(settings):
+def legacy(settings,personal=False):
+ ids=['recent','services','tools','stories'] if personal else ['notice','task','file','event','story']
+ return {'layout':{'version':1,'widgets':[{'id':identifier,'visible':True,'size':'wide'} for identifier in ids],'source':'all','view':'recent'},'revision':settings['revision']}
+def v2(settings,personal=False):
+ if settings['layout']['version']==3:settings=legacy(settings,personal)
  upgraded=deepcopy(settings);upgraded['layout']['version']=2
  for i,widget in enumerate(upgraded['layout']['widgets']):
   widget.pop('size',None)
@@ -27,10 +31,10 @@ try:
  call('GET',path,user='admin',expected=404)
  call('GET',path+'/home',user='other',expected=404)
  check(sql('SELECT count(*) FROM product_space_dashboards')==before,'space GET no default dashboard write')
- check(call('GET',path+'/dashboard')['layout']['widgets'][0]['id']=='notice','company initial home starts notice')
+ check(call('GET',path+'/dashboard')['layout']['widgets'][0]['type']=='space_notice','company initial v3 home starts notice')
  untouched=dashboards();call('GET','/api/me/home-dashboard');call('GET',path+'/dashboard');check(dashboards()==untouched,'fresh personal/shared dashboard GET creates no rows or audit')
  g=call('POST','/api/product-spaces',{'name':'모임','kind':'group'},user='other',expected=201)['space']['id']
- check(call('GET','/api/product-spaces/'+g+'/dashboard',user='other')['layout']['widgets'][0]['id']=='event','gathering home starts schedule')
+ check(call('GET','/api/product-spaces/'+g+'/dashboard',user='other')['layout']['widgets'][0]['type']=='space_event','gathering initial v3 home starts schedule')
  invite=call('POST',path+'/invites',{'role':'editor','max_uses':1},expected=201)
  join=call('POST','/api/product-spaces/join',{'token':invite['token']},user='manager')['space'];check(join['role']=='editor','hashed invitation adds second space role')
  call('POST','/api/product-spaces/join',{'token':invite['token']},user='other',expected=404)
@@ -42,7 +46,7 @@ try:
  story=call('POST',path+'/items',{'kind':'story','title':'활동 후기','body':'공간 안에서 기록'},user='manager',expected=201)['item']
  home=call('GET',path+'/home');check(len(home['widgets']['task'])==1 and len(home['widgets']['event'])==1 and len(home['widgets']['story'])==1,'widgets come from persisted scoped records')
  # Explicit v1 saves still work; GET must not upgrade the row automatically.
- settings=call('GET',path+'/dashboard');settings['layout']['widgets'][0]['size']='small'
+ settings=legacy(call('GET',path+'/dashboard'));settings['layout']['widgets'][0]['size']='small'
  settings=call('PATCH',path+'/dashboard',settings,user='manager');untouched=dashboards()
  check(call('GET',path+'/dashboard')==settings and settings['layout']['version']==1,'legacy shared v1 roundtrip retained')
  check(dashboards()==untouched,'legacy shared GET leaves layout revision timestamp and audit unchanged')
@@ -58,7 +62,7 @@ try:
  personal=call('GET','/api/me/home-dashboard');personal['layout']['source']='files';call('PATCH','/api/me/home-dashboard',personal);check(call('GET','/api/me/home-dashboard')['layout']['source']=='files','server personal configuration sync')
  check(call('GET','/api/me/home-dashboard',user='other')['layout']['source']=='all','personal sync not cross-account')
  call('PATCH','/api/me/home-dashboard',personal,expected=409)
- personal=v2(call('GET','/api/me/home-dashboard'));personal['layout']['source']='pages';personal['layout']['view']='favorites'
+ personal=v2(call('GET','/api/me/home-dashboard'),True);personal['layout']['source']='pages';personal['layout']['view']='favorites'
  savedpersonal=call('PATCH','/api/me/home-dashboard',personal)
  check(savedpersonal['layout']==personal['layout'] and savedpersonal['revision']==personal['revision']+1,'personal v2 arbitrary coordinates and source/view persisted')
  untouched=dashboards();check(call('GET','/api/me/home-dashboard')==savedpersonal,'personal v2 exact reload');call('GET',path+'/dashboard');call('GET',path+'/home');call('GET','/api/me/product-home')
@@ -86,7 +90,7 @@ try:
  call('PATCH',path+'/dashboard',shared,user='admin',expected=404)
  viewerinvite=call('POST',path+'/invites',{'role':'viewer','max_uses':1},expected=201);call('POST','/api/product-spaces/join',{'token':viewerinvite['token']},user='other')
  call('PATCH',path+'/dashboard',shared,user='other',expected=403)
- guest=v2(call('GET','/api/me/home-dashboard',user='guest'));guestsaved=call('PATCH','/api/me/home-dashboard',guest,user='guest')
+ guest=v2(call('GET','/api/me/home-dashboard',user='guest'),True);guestsaved=call('PATCH','/api/me/home-dashboard',guest,user='guest')
  check(guestsaved['layout']==guest['layout'],'guest can save own v2 preferences')
  check(call('GET','/api/me/home-dashboard',user='other')['revision']==0,'guest and employee v2 writes remain account scoped')
  f=json.loads(Path(manifest['credentials_file']).read_text())['files']['main']['id']
@@ -97,6 +101,8 @@ try:
  check(not call('GET',path+'/items?kind=file',user='manager')['items'],'revoked file original rights hide linked title')
  call('GET',path+'/items/'+link['id'],user='manager',expected=404);call('GET',path+'/items/'+link['id']+'/download',user='manager',expected=404)
  call('GET',path+'/items/'+link['id']+'/download',user='other',expected=404)
+
+ exec(compile(Path(__file__).with_name('dashboard_widgets_http.py').read_text(),str(Path(__file__).with_name('dashboard_widgets_http.py')),'exec'))
 
  # Independent race space, preserving the transfer target test in the original company.
  race=call('POST','/api/product-spaces',{'name':'동시성 모임','kind':'group'},expected=201)['space']['id'];racepath='/api/product-spaces/'+race

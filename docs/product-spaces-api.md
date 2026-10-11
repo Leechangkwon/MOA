@@ -42,3 +42,13 @@
 ## 보존과 한계
 
 새 표6개만 추가, 기존 DB owner/ACL/자료 범위 변경 없음. 기존 커뮤니티 DB뷰 dashboard 유지. 원본 파일 링크는 기존 권한도 필요하므로 공간 멤버라고 자동 내려받지 못한다. 현재 공간 이야기/업무/일정은 독립 plain-text 기록이며 기존 커뮤니티 데이터 자동 이동·사진 업로드·AI 권한 연동은 이 API가 제공하지 않는다.
+
+
+## 콘텐츠 위젯 v3 — 구현 계약 (2026-10-11)
+
+기존 v1/v2 읽기·저장을 보존한다. v3 root는 `version,widgets,source,view,guide`이며 guide=`pending|later|done`. widget는 고유 안전 ID, type, 검증한 source, visible/locked boolean, desktop/mobile 정수 geometry와 `size=s|m|l`만 저장한다. 20개/32KiB 상한, visible locked 앵커끼리 겹침 거부. 개인 첫7종 및 레거시4종, 공동5종의 타입과 출처 allowlist는 docs/dashboard-widgets-directive.md를 따른다. 공동 출처는 현재 공간+all로 고정한다. 개인 공간 출처는 저장 시 멤버십·활성 상태를 확인하고 콘텐츠 요청은 다시 권한을 검사한다. GET은 기본값을 제공해도 DB에 쓰지 않는다.
+
+`GET /{id}/items?view=dashboard&kind=notice|task|event|file|story&assignee=me|all&limit=1..8`은 별도 읽기 표현이다. 기본 목록 동작은 유지한다. task는 완료 제외 후 마감 우선, event는 종료된 일정 제외 후 진행 중·가까운 시작 순으로 SQL에서 정렬한 다음 LIMIT+1을 적용한다. null 종료 시각은 당일 시작 항목까지만 기본 목록에 남긴다(Asia/Seoul). 응답 `items,truncated,as_of`는 표시 범위이며 전체 건수로 부르지 않는다.
+
+
+공동 홈의 새 렌더러는 `/home?view=layout`을 사용한다. 이 선택형 조회는 기존 멤버십과 layout revision 검증을 거친 `space,layout,revision` 및 빈 `widgets,truncated` 객체만 반환한다. 콘텐츠5종 SQL을 수행하지 않으며 표시된 각 위젯만 `/items`로 읽는다. 쿼리 없는 기존 `/home`은 기존 응답을 유지한다. 잘못된 view는400. 따라서 레거시 배치를 읽는 새 브라우저도 숨김 위젯 때문에 불필요한 콘텐츠 조회를 하지 않는다.

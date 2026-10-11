@@ -10,6 +10,7 @@ $e=static fn($value)=>htmlspecialchars((string)$value,ENT_QUOTES,'UTF-8');
 <link rel="stylesheet" href="<?= Http::url('/assets/space-page.css') ?>?v=<?= filemtime(__DIR__.'/../../public/assets/space-page.css') ?>">
 <link rel="stylesheet" href="<?= Http::url('/assets/dashboard-canvas.css') ?>?v=<?= filemtime(__DIR__.'/../../public/assets/dashboard-canvas.css') ?>">
 <script defer src="<?= Http::url('/assets/dashboard-canvas.js') ?>?v=<?= filemtime(__DIR__.'/../../public/assets/dashboard-canvas.js') ?>"></script>
+<link rel="stylesheet" href="<?= Http::url('/assets/dashboard-widgets.css') ?>?v=<?= filemtime(__DIR__.'/../../public/assets/dashboard-widgets.css') ?>"><script defer src="<?= Http::url('/assets/dashboard-widgets.js') ?>?v=<?= filemtime(__DIR__.'/../../public/assets/dashboard-widgets.js') ?>"></script>
 <script defer src="<?= Http::url('/assets/space-page.js') ?>?v=<?= filemtime(__DIR__.'/../../public/assets/space-page.js') ?>"></script>
 </head><body><main class="space-layout" id="space-app" data-base="<?= $e(rtrim(Http::url('/'),'/')) ?>">
 <nav class="toolbar space-breadcrumb" aria-label="모아 홈"><a href="/">내 홈으로</a><a href="<?= Http::url('/') ?>">자료실 열기</a></nav>

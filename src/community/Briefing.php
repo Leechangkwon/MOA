@@ -130,7 +130,7 @@ final class Briefing
 
     private static function pageItem(array $row, string $kind, BriefingText $text): array
     {
-        return ['key' => 'page:' . $row['public_id'], 'kind' => $kind,
+        return ['key' => 'page:' . $row['public_id'], 'page_id' => (string) $row['public_id'], 'kind' => $kind,
             'title' => (string) $row['title'], 'summary' => $text->summary($kind),
             'url' => Http::communityUrl('/p/' . $row['public_id']), 'at' => (string) $row['updated_at'],
             'due' => $row['due_date'] === null ? null : (string) $row['due_date'], 'missed' => false];
@@ -186,9 +186,21 @@ final class Briefing
             ?: (strtotime($b['at']) <=> strtotime($a['at'])) ?: strcmp($a['key'], $b['key']));
         $unique = [];
         foreach ($items as $item) {
+            $reason = array_intersect_key($item, array_fill_keys(['kind', 'summary', 'at', 'due', 'missed', 'check', 'expires_at'], true));
             if (isset($unique[$item['key']])) {
                 $unique[$item['key']]['missed'] = $unique[$item['key']]['missed'] || $item['missed'];
+                $found = false;
+                foreach ($unique[$item['key']]['reasons'] as &$existing) {
+                    if ($existing['kind'] === $reason['kind']) {
+                        $existing['missed'] = $existing['missed'] || $reason['missed'];
+                        $found = true;
+                        break;
+                    }
+                }
+                unset($existing);
+                if (!$found) $unique[$item['key']]['reasons'][] = $reason;
             } else {
+                $item['reasons'] = [$reason];
                 $unique[$item['key']] = $item;
             }
         }

@@ -11,13 +11,13 @@ declare(strict_types=1);
  *
  * 이 화면이 하는 일
  *   · **로그인한 사람에게만** `config/apps.json` 의 앱 목록(이름·설명·경로·아이콘)을 타일로 그린다.
- *     로그인 관문을 마친 사용자에게는 오늘의 업무 수만 더한다(C:F-42). 제목·파일 본문은 내보내지 않는다.
+ *     개인 위젯의 업무·자료 내용은 인증 후 각 읽기 전용 창구에서 가져온다. 서버 화면에는 제목·파일 본문을 넣지 않는다.
  *   · 로그인하지 않았으면 사이트 이름과 「로그인」 단추만 — 앱 이름·설명·경로는 0 이다(디버깅 묶음 S2 · 사용자 결정 d72 ① ·
  *     R-98 — 인터넷 공개 전제에서 「무엇이 있나」를 로그인 전에 알려 주지 않는다). 목록은 **여기서 비운다** — 뷰가 역할을 따지지 않는다.
  *   · 세션이 있으면 사용자 칩(표시 이름·역할)을 더한다. 세션은 **읽기만** 하고
  *     만들지 않는다 — 새 세션 `Set-Cookie` 가 이 응답에 없다 (Q:T-1). 예외는 하나 — 옛 이름 쿠키(`tbox_session`)가
  *     실려 오면 그것을 치우는 만료 머리(Max-Age=0)가 붙는다(`Auth::dropLegacyCookie`, S2).
- *   · 오늘의 업무 수는 서버에서 계산하며 추가 스크립트가 없다. 기존 테마·시작 도구는 유지한다.
+ *   · 숨긴 위젯의 출처를 조회하지 않도록 업무 수를 미리 집계하지 않는다. 기존 테마·시작 도구는 유지한다.
  *
  * 쿠키가 없으면 DB 질의도 0 이다(`Auth::currentUser()` 가 쿠키부터 본다).
  */
@@ -37,17 +37,6 @@ if ($launcherUser === null) {
 }
 /** 로그인 전 화면의 단추 하나 — 고정 경로(`Http::url` 이 모듈 접두를 붙인다). 요청 값 0. */
 $launcherLoginUrl = Http::url('/login');
-
-// C:F-42: count only, after the same first-login gates; failure must not break the launcher.
-$launcherBriefingCount = null;
-if (is_array($launcherUser) && Auth::nextStep($launcherUser) === null) {
-    try {
-        require_once __DIR__ . '/../community/routes.php';
-        $launcherBriefingCount = Briefing::collect($launcherUser, new DateTimeImmutable('now'))['count'];
-    } catch (Throwable $error) {
-        error_log('[tbox] request_id=' . TBOX_REQUEST_ID . ' briefing_unavailable=' . get_class($error));
-    }
-}
 
 if (!headers_sent()) {
     header('Content-Type: text/html; charset=utf-8');

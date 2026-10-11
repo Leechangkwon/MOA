@@ -1,7 +1,7 @@
 """Delayed synthetic responses must not restore another space's data or dialogs."""
 import asyncio,json,subprocess
 from pathlib import Path
-from urllib.parse import urlsplit
+from urllib.parse import urlsplit,parse_qs
 from playwright.async_api import async_playwright
 ROOT=Path(__file__).resolve().parents[1]
 A='11111111-1111-4111-8111-111111111111';B='22222222-2222-4222-8222-222222222222'
@@ -29,6 +29,8 @@ async def main():
    if p=='/tbox/api/product-spaces':await r.fulfill(json={'spaces':spaces});return
    if p.endswith('/home'):
     s=next(s for s in spaces if s['id']==p.split('/')[-2]);await r.fulfill(json={'space':s,'layout':layout,'revision':1,'widgets':{'notice':[{'id':'n1','title':s['name']+' 공지'}],'task':[{'id':'t1','title':'준비 작업','status':'todo','can_edit':True,'revision':1}]}});return
+   if p.endswith('/items')and r.request.method=='GET':
+    kind=parse_qs(urlsplit(r.request.url).query).get('kind',['notice'])[0];s=next(s for s in spaces if s['id']in p);await r.fulfill(json={'items':[{'id':'n1','title':s['name']+' 공지'}]if kind=='notice'else[{'id':'t1','title':'준비 작업','status':'todo','can_edit':True,'revision':1}]if kind=='task'else[]});return
    if p.endswith('/members'):await r.fulfill(json={'me':1001,'members':[]});return
    if p.endswith('/invites'):await r.fulfill(json={'invites':[{'id':'i1','role':'member','expires_at':'2026-10-12','uses':0,'max_uses':1}]});return
    await r.fulfill(json={'items':[]})
@@ -36,7 +38,7 @@ async def main():
   def gate(path,error=False):
    value={'started':asyncio.Event(),'release':asyncio.Event(),'error':error};gates[path]=value;return value
   async def switch(id):
-   await page.evaluate('(id)=>{const n=document.getElementById("space-picker");n.value=id;n.dispatchEvent(new Event("change"));}',id);await page.wait_for_function('(name)=>document.getElementById("space-title").textContent===name',arg='공간 A'if id==A else'공간 B')
+   await page.evaluate('(id)=>{const n=document.getElementById("space-picker");n.value=id;n.dispatchEvent(new Event("change"));}',id);await page.wait_for_function('(name)=>document.getElementById("space-cards").textContent.includes(name+" 공지")',arg='공간 A'if id==A else'공간 B')
   old=gate('/tbox/api/product-spaces/'+A+'/home');await page.locator('#space-picker').select_option(A);await old['started'].wait()
   refresh=gate('/tbox/api/product-spaces');await page.locator('#space-menu').click();await page.get_by_role('button',name='새로 불러오기',exact=True).click();await refresh['started'].wait();old['release'].set();await page.wait_for_timeout(100)
   check(await page.locator('#space-cards').inner_text()=='','old home cannot repopulate while refresh pending');refresh['release'].set();await page.wait_for_function('document.getElementById("space-title").textContent==="공간 A"')

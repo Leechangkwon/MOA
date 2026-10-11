@@ -1,0 +1,30 @@
+<?php
+declare(strict_types=1);
+if(PHP_SAPI!=='cli')exit(2);
+require dirname(__DIR__).'/src/community/Briefing.php';
+$checks=0;
+function reasonCheck(bool $ok,string $label): void {global $checks;if(!$ok)throw new RuntimeException('FAIL '.$label);$checks++;echo 'PASS '.$label."\n";}
+$make=static fn(string $key,string $kind,bool $missed=false):array=>['key'=>$key,'page_id'=>'page-a','kind'=>$kind,'title'=>'합성 문서','summary'=>$kind.' 이유','at'=>'2026-10-14T09:00:00+09:00','due'=>'2026-10-14','missed'=>$missed];
+$items=[$make('page:a','review'),$make('page:a','due_today'),$make('page:a','verify_expired'),$make('page:a','due_today',true),$make('comment:a','mention')];
+$original=$items;$out=Briefing::group($items,new DateTimeImmutable('2026-10-14T12:00:00+09:00'));
+$all=array_merge($out['top'],$out['missed'],$out['others']);$page=array_values(array_filter($all,fn($item)=>$item['key']==='page:a'))[0];
+reasonCheck($items===$original,'group does not mutate input items');
+reasonCheck($out['total']===2&&$out['count']===2,'existing unique-item count contract preserved');
+reasonCheck($page['kind']==='due_today'&&$page['summary']==='due_today 이유','existing primary reason priority preserved');
+reasonCheck(array_column($page['reasons'],'kind')===['due_today','review','verify_expired'],'secondary reasons survive page deduplication');
+reasonCheck($page['missed']&&$page['reasons'][0]['missed'],'same-kind duplicate merges missed flag without duplicate reason');
+reasonCheck($page['page_id']==='page-a'&&$page['reasons'][1]['due']==='2026-10-14','source ID and reason context retained');
+$withoutDeadline=array_values(array_filter($page['reasons'],fn($reason)=>!in_array($reason['kind'],['overdue','due_today'],true)));
+reasonCheck(array_column($withoutDeadline,'kind')===['review','verify_expired'],'frontend can suppress displayed task deadline without losing review');
+$notice=Briefing::group([$make('page:n','notice',true)],new DateTimeImmutable('2026-10-14T12:00:00+09:00'));
+reasonCheck($notice['top']===[]&&$notice['missed']===[]&&count($notice['others'])===1&&$notice['count']===0,'notice remains outside task top and missed groups');
+$check=$make('check:a','unchecked');$check['check']=['page_id'=>'page-a','block_id'=>'block-a','label'=>'할 일','can_attempt'=>true];
+$shared=$make('share:a','expiring_share');$shared['expires_at']='2026-10-15T00:00:00+09:00';
+$context=Briefing::group([$check,$shared],new DateTimeImmutable('2026-10-14T12:00:00+09:00'));
+$byKey=array_column($context['top'],null,'key');
+reasonCheck($byKey['check:a']['reasons'][0]['check']===$check['check'],'existing check context remains available');
+reasonCheck($byKey['share:a']['reasons'][0]['expires_at']===$shared['expires_at'],'share expiry reason preserves expiry context');
+$many=[];for($i=0;$i<10;$i++)$many[]=$make('page:'.$i,'review',$i%2===0);
+$bounded=Briefing::group($many,new DateTimeImmutable('2026-10-14T12:00:00+09:00'));
+reasonCheck(count($bounded['top'])===3&&count($bounded['missed'])===2&&count($bounded['others'])===5,'original bounded group split retained');
+echo 'PASS '.$checks." checks\n";
