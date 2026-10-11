@@ -32,3 +32,13 @@ DB/패키지/설정 변경 없음. 후보 검증 후 암호화 백업3종 전체
 ## 최종 자체 검증
 
 production과 동일한 import URL에서 편집 UI45/45, 읽기 회귀317/317 통과. 실제 PHP markup·PM·Doc::validate와 합성 API를 사용하여 한글 셀 수정/저장 payload/reload·undo/redo·무수정 정확 보존·취소·403/409 실패 UI·fresh readonly 진입차단을 확인했다. 거부된 페이지의 pagehide 재저장이 readonly 관측과 섞이는 하네스 문제를 새 context로 분리해 해결했다. browser_5e.py는 격자 selector/표 기대값 수정과 compile만 수행했으며 기존 운영 쓰기 wrapper 전체 실행으로 주장하지 않는다. 실물 IME/Safari/스크린리더 미검증. 보안 lint금지0, 자산40파일/71import, 위키69편, PHP/JS 문법·diff check 통과.
+
+## 운영 1차와 경계 보정
+
+고정후보1b7993c20a86의25파일/runtime11 모의적용·fresh main/origin f3bec350 drift통과, v2.58.0 0847dcc4a05d472dd6ac7cfd32ceea8b7167b332 FF/reload. 신규QA 한셀100→1005 실제PATCH200·API문서정확보존·reload통과. 390px #main은 client390/scroll447로 검사 실패: page-editor350/PM316/모달358 자체는 맞고 기존 inline-toolbar 링크/멘션 버튼의 행이 넘친다. 합성 화면에 없는 실제 toolbar 폭 문제라서 assertion을 없애지 않고 최소CSS와 회귀를 보충한다. 아직 전체 운영 검증 완료로 판정하지 않는다.
+
+## 도구줄 보정 검증
+
+부모 editor-toolbar__row의 flex-wrap 한 속성만 추가했다. 독립 actual PHP/production JS 4테마×5폭과 색·배경·링크·멘션105/0, 390px main390/390 확인. 자체 전체 geometry·Tab·모달 접근성 검사도 통과했으나, 30초 편집상태 heartbeat POST를 문서쓰기로 오인한 하네스 마지막 assertion이 실패했다. heartbeat만 합성200 응답으로 처리하고 실제 문서 PATCH 및 그 밖 쓰기 금지는 유지하여 최종 재실행한다. 앱/인가/저장 코드 변경0.
+
+최종 보정 검증: 독립105/0, 자체 전체 matrix의 geometry/키보드/모달372항목 통과(마지막 heartbeat 오분류 하네스 실패 로그 보존), heartbeat만 합성 정상응답으로 보정한 좁은390px 최종24/0·JS/CSP0·문서쓰기0. CSS a807b324256d51d35d0f2df59f36205e284b7839fc709a4f0530cf82c0216372, 나머지 runtime10 바이트 불변. 전체 기존45/317/391 재실행으로 과장하지 않으며 변경된 한 속성에 대한 별도 검증이다.

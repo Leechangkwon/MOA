@@ -1078,3 +1078,7 @@ v2.54.1 `31848a82c4b5` 실제HTTPS56/0·JS오류/5xx0. 추가된 페이지 라�
 ④ 다음: 암호화3종 checksum/전체복호화·원본975 SHA·파일1042행·설정85·기존14표/제품6표 baseline 완료. 고정 후보 모의/드리프트→운영→HTTPS/모든원래행·파일·ownerACL 보존→기록/push. 운영 원문 쓰기0. docs/work-items/community-rich-table.md.
 
 최종 자체 검증 추가: 편집 UI45/45·읽기317/317, production import URL과 동일한 모듈로 실행. 합성 API/실제 PHP Doc 검증이며 운영 저장은 반영 후 별도로 검증한다. browser_5e.py는 compile만, 격리 공통196/0과 구분.
+
+운영 경계 보정: 첫 실제 QA 저장/서식보존은 통과했으나390px에서 부모 도구줄 nowrap으로 main447px 넘침을 발견했다. .editor-toolbar__row에 flex-wrap:wrap 한 속성 추가. 독립 실제 PHP/production JS 좁은폭·색/배경/링크/멘션105/0, 390px main390/390·가시 버튼 화면밖0. 나머지 runtime10 바이트 유지. 실제 운영 재검증 전 전체 완료로 주장하지 않는다.
+
+최종 보정 검증: 독립105/0, 자체 전체 matrix의 geometry/키보드/모달372항목 통과(마지막 heartbeat 오분류 하네스 실패 로그 보존), heartbeat만 합성 정상응답으로 보정한 좁은390px 최종24/0·JS/CSP0·문서쓰기0. CSS a807b324256d51d35d0f2df59f36205e284b7839fc709a4f0530cf82c0216372, 나머지 runtime10 바이트 불변. 전체 기존45/317/391 재실행으로 과장하지 않으며 변경된 한 속성에 대한 별도 검증이다.

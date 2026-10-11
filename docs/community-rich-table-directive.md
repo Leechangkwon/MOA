@@ -20,3 +20,9 @@ root: 이 지시서·DESIGN/견본·SECURITY/STAGES·ARCHITECTURE 사본·위키
 ## 완료 기준
 
 실제 편집 버튼→표 고치기→한 셀 한글/숫자 변경→적용/저장/재열기, 변경하지 않은 JSON/서식/열폭·링크·멘션·합침 보존. 원문 모양 익명 fixture도 문서 편집이 열릴 것. 무수정·취소·undo/redo·부분수정·IME·행열·합침·200×20 경계, strict CSP와 잘못된 링크/붙여넣기/403/409 경합, hidden/can_edit 권한 보존. 실제 PHP Doc 검증/JS·PHP 렌더 동등성. 모바일 360/390/412/820/1280과 주요 밝음/어둠/고대비, 실제 셀 높이/전체표폭 전후 측정. 기존 표/본문/다른 atom 회귀와 격리 공통 회귀, lint·자산·위키검사. 최종 코드 hash 고정, 암호화 백업3종 전체복호화, 모의 적용·drift·patch/minor 릴리스·실제 HTTPS/원본 보존·기록/push. 실물/Safari/스크린리더는 별도 미검증 기록.
+
+## 운영 후 발견 경계 보정
+
+v2.58.0 신규 예약QA에서 셀100→1005 실제 저장과 원문서식 보존은 통과했다. 390px에서 page-editor/PM/표 모달은 맞지만 inline-toolbar의 link/mention이 #main scrollWidth447px를 만들어 내부 가로 넘침이 재현됐다. 기존 .editor-toolbar__row의 nowrap을 최소 CSS로 보정하고 실제 toolbar markup을 포함해 좁은 화면 회귀를 추가한다. 본래 좁은 화면 편집 폭 완료 기준을 끝내는 변경이며 다른 화면 재설계/서버 수정은 하지 않는다. 기존 암호화 baseline/원본보존은 계속 유지하며 QA샘플은 최초 자기문서만 정리한다. 보정 후보도 고정/정확모의/drift 후 patch 반영과 실제 검증을 완료한다.
+
+보정 검사는 tests/community/editor_toolbar_fit.py에서 실제 PHP page_view·production editor JS·합성 API로 수행하며, toolbar와 각 팝오버·Tab·표 모달까지 main 내부 가로 폭을 검사한다.

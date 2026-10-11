@@ -857,3 +857,5 @@ GPT 간편 연결: 같은 Windows PC의 비서에 로그인한 뒤 웹에서 GPT
 표는 글씨 크기를 유지하면서 짧은 수량·금액 칸의 강제 최소폭과 과도한 줄 간격을 줄인다. 긴 품목명/문장은 적당한 폭에서 줄바꿈하고 표 안에서만 가로 스크롤한다. 색 있는 표도 문서를 편집할 수 있으며 표 고치기에서 셀을 선택해 기존 서식을 보존한 채 글을 고친다. 취소·무수정 적용은 원본을 보존하고, 내용이 사라지는 행·열 삭제는 먼저 확인한다. 계약 docs/community-rich-table-directive.md.
 
 화면 전용 용지 폭은 좁은 컨테이너 안에 맞춘다. A4/A3/Letter 선택과 인쇄 치수는 유지한다. 표 편집 구성요소는 .table-cell-preview(선택 가능한 셀), .table-cell-editor/__label(선택 셀), .table-cell-toolbar, .table-cell-input, .table-delete-confirm(명시 삭제 확인)이며 기존 색 토큰을 사용한다.
+
+좁은 화면 편집 도구줄은 `.editor-toolbar__row`를 줄바꿈하여 색·배경·링크·멘션 버튼을 모두 화면 안에 둔다. 표 자체의 내부 가로 스크롤은 유지한다.
