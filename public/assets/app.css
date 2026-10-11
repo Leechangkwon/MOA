@@ -2584,3 +2584,31 @@ html.mobile-nav-open { overflow: hidden; }
   .mobile-nav-dialog[open] { display: flex; flex-direction: column; position: fixed; inset: 16px auto auto 16px; margin: 0; width: min(384px, calc(100vw - 32px)); max-width: none; max-height: calc(100dvh - 32px); overflow: hidden; }
   #mobile-nav-dialog #sidebar { flex: 1 1 auto; min-height: 0; width: auto; max-height: none; border: 0; overscroll-behavior: contain; padding: 16px 12px; }
 }
+
+/* Native select glyphs need their own content box, independent of text input sizing.
+   Moa used to add 24px vertical padding inside a fixed 36px control. */
+select,.field select,.toolbar select,select.input,.task-pane__props select {
+ box-sizing:border-box;
+ min-height:44px;
+ height:auto;
+ padding:8px 12px;
+ font-family:inherit;
+ font-size:14px;
+ line-height:normal;
+ max-width:100%;
+}
+@media(max-width:719.98px) {
+ select,.field select,.toolbar select,select.input,.task-pane__props select { font-size:16px; }
+}
+
+/* Text controls share the same content-box guarantee; non-text inputs keep native sizing. */
+.field input:is([type="text"],[type="password"],[type="search"],[type="email"],[type="url"],[type="tel"],[type="number"],[type="date"],[type="time"],[type="datetime-local"]),
+.field input:not([type]),input.input:not([type]),.toolbar input[type="search"],
+.moa-site input:is([type="text"],[type="password"],[type="search"],[type="email"],[type="url"],[type="tel"],[type="number"],[type="date"],[type="time"],[type="datetime-local"]) {
+ box-sizing:border-box; min-height:44px; height:auto; padding:8px 12px; font-size:14px; line-height:normal;
+}
+@media(max-width:719.98px) {
+ .field input:is([type="text"],[type="password"],[type="search"],[type="email"],[type="url"],[type="tel"],[type="number"],[type="date"],[type="time"],[type="datetime-local"]),
+ .field input:not([type]),input.input:not([type]),.toolbar input[type="search"],
+ .moa-site input:is([type="text"],[type="password"],[type="search"],[type="email"],[type="url"],[type="tel"],[type="number"],[type="date"],[type="time"],[type="datetime-local"]) { font-size:16px; }
+}

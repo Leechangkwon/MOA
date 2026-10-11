@@ -1,0 +1,15 @@
+<?php
+declare(strict_types=1);
+if(PHP_SAPI!=='cli'){http_response_code(404);exit;}
+$e=static fn($v)=>htmlspecialchars((string)$v,ENT_QUOTES,'UTF-8');
+$mode=$argv[1]??'home';$design=$argv[2]??'moa';$theme=$argv[3]??'light';
+?>
+<!doctype html><html lang="ko" data-design="<?= $e($design) ?>" data-theme="<?= $e($theme) ?>"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>합성 화면 · 선택 메뉴 검사</title>
+<link rel="stylesheet" href="/tbox/assets/app.css"><link rel="stylesheet" href="/tbox/assets/design.css"><link rel="stylesheet" href="/tbox/assets/moa.css"><link rel="stylesheet" href="/tbox/assets/space-page.css"></head>
+<body<?= $mode==='home'?' class="moa-site moa-home"':'' ?><?= $mode==='library'?' data-service="library"':'' ?>><main class="space-layout">
+<header class="page-head"><h1><?= ['home'=>'내 홈','library'=>'자료실','space'=>'우리 공간'][$mode]??'내 홈' ?></h1><p class="help">합성 자료로 화면과 한글 선택 메뉴를 확인합니다.</p></header>
+<div class="toolbar"><label class="field"><span>자료 선택</span><select id="toolbar-select"><option>자료와 업무 문서</option><option>자료실 파일</option></select></label><button class="btn" type="button">새 항목 만들기</button></div>
+<div class="space-cards"><section class="panel space-card"><h2>최근 자료</h2><p>회의 자료와 다음 모임의 준비 내용을 확인하세요.</p><label class="field"><span>진행 상태</span><select class="input" id="field-select"><option>진행 중인 업무</option><option>완료된 업무</option></select></label><label class="field"><span>자료 이름</span><input class="input" id="text-control" type="text" value="합성 회의 자료"></label></section>
+<section class="panel space-card"><h2>다음 활동</h2><p class="help">표시할 활동이 없습니다.</p><div class="task-pane__props"><select id="compact-select" aria-label="담당자"><option>담당자를 선택하세요</option><option>검토 사용자</option></select></div><label class="field"><span><input type="checkbox" checked> 홈에 표시하기</span></label></section></div>
+<nav class="moa-services" aria-label="서비스"><a class="moa-service-card" data-service="work"><h3>업무</h3><p>함께할 일을 정리해요.</p></a><a class="moa-service-card" data-service="library"><h3>자료실</h3><p>필요한 자료를 함께 써요.</p></a><a class="moa-service-card" data-service="assistant"><h3>AI 비서</h3><p>읽고 쓰는 일을 도와요.</p></a><a class="moa-service-card" data-service="story"><h3>이야기</h3><p>함께한 순간을 남겨요.</p></a></nav>
+</main><dialog id="editor" class="<?= $mode==='space'?'space-dialog':'home-editor' ?>"><form class="form"><h2>홈 구성하기</h2><fieldset class="panel"><legend>최근 작업 · 즐겨찾기</legend><label class="field"><span>카드 폭</span><select class="input" id="modal-select"><option>넓게 표시하기</option><option>작게 표시하기</option></select></label><label class="field"><span>처음 표시할 목록</span><select id="modal-view"><option>최근 작업과 즐겨찾기</option><option>즐겨찾기</option></select></label></fieldset><label class="field" id="checkbox-row"><input type="checkbox" checked><span>홈에 표시하기</span></label><label class="field"><span>비밀번호</span><input id="password-control" type="password" value="합성 비밀번호"></label><div class="moa-ai-tools"><select id="plain-select"><option>선택한 문서를 요약하기</option></select></div><div class="toolbar"><button class="btn" type="button">구성 저장하기</button></div></form></dialog></body></html>

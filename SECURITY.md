@@ -1004,3 +1004,10 @@ insta6bdbdf3 서버 검증: HTTP138·실제화면19·합성브라우저38·공�
 
 ### 2026-10-11 제품 공간 운영 최종 검증
 v2.54.1 `31848a82c4b5` 실제HTTPS56/0·JS오류/5xx0. 추가된 페이지 라우트 실제HTTP75/0/별도검토 완료. 기존14표/파일1042행 ownerACL 및 원본975 SHA 보존, 스케줄 worker cursor 1개는 운영 상태로 구분. 새표6개 tbox_owner·app S/I/U·backup SELECT, 기존설정 SHA 동일. 검토 계정과 새QA공간만 쓰고 최종 보관/취향복구. docs/work-items/product-spaces.md. 실물/자기공격 미검증은 유지한다.
+
+
+### 2026-10-11 전역 선택창·화면 명도 — 독립 검토
+① CSS2개만 운영 변경, 인증/인가/escaping/JS/API/DB 변경0. 별도 검토1408/0·공간 UI26/0·기하72case/잘림0, root 격리 공통196/0. 원인은36px고정 높이 안의24px세로padding로 content10px가 한글 glyph보다 작았음. 내용26px·모바일16px로 개선.
+② 검토 중 일반 AI 선택창 장식 퇴행 수정 확인. 현재 차단 사항 없음; 보안 lint 금지패턴0.
+③ WebKit 실행파일없음 명시skip, 실물 Android nativepopup·사용자 자기 공격 미검증. 운영HTTPS는 적용 후 별도 기록.
+④ 암호화 백업3종 전체복호화·원본975 SHA 확인 완료. 백업 tar storage directorymtime 경고는 기존scheduledworker cursor 변경이며 전체압축목록/해시 검증으로 원본 정상 확인. DB복원/재시드0. docs/work-items/global-visual-fix.md.
