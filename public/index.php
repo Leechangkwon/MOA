@@ -36,6 +36,32 @@ require_once dirname(__DIR__) . '/src/bootstrap.php';
  * `/` 는 1단계의 public 에서 authenticated 로 바뀌었다 — 로그인 없이는 아무것도 못 본다.
  */
 const TBOX_ROUTES = [
+    // Product spaces: session-only, existing CSRF/consent/first-login gates, central per-space authorization.
+    ['GET', '/api/me/home-dashboard', 'product_spaces.php', Authz::POLICY_AUTHENTICATED],
+    ['PATCH', '/api/me/home-dashboard', 'product_spaces.php', Authz::POLICY_AUTHENTICATED],
+    ['GET', '/api/me/product-home', 'product_spaces.php', Authz::POLICY_AUTHENTICATED],
+    ['GET', '/api/product-spaces', 'product_spaces.php', Authz::POLICY_AUTHENTICATED],
+    ['POST', '/api/product-spaces', 'product_spaces.php', Authz::POLICY_AUTHENTICATED],
+    ['POST', '/api/product-spaces/join', 'product_spaces.php', Authz::POLICY_AUTHENTICATED],
+    ['GET', '/api/product-spaces/{id}', 'product_spaces.php', Authz::POLICY_AUTHENTICATED],
+    ['PATCH', '/api/product-spaces/{id}', 'product_spaces.php', Authz::POLICY_AUTHENTICATED],
+    ['GET', '/api/product-spaces/{id}/home', 'product_spaces.php', Authz::POLICY_AUTHENTICATED],
+    ['GET', '/api/product-spaces/{id}/dashboard', 'product_spaces.php', Authz::POLICY_AUTHENTICATED],
+    ['PATCH', '/api/product-spaces/{id}/dashboard', 'product_spaces.php', Authz::POLICY_AUTHENTICATED],
+    ['GET', '/api/product-spaces/{id}/members', 'product_spaces.php', Authz::POLICY_AUTHENTICATED],
+    ['PATCH', '/api/product-spaces/{id}/members/{num}', 'product_spaces.php', Authz::POLICY_AUTHENTICATED],
+    ['DELETE', '/api/product-spaces/{id}/members/{num}', 'product_spaces.php', Authz::POLICY_AUTHENTICATED],
+    ['GET', '/api/product-spaces/{id}/invites', 'product_spaces.php', Authz::POLICY_AUTHENTICATED],
+    ['POST', '/api/product-spaces/{id}/invites', 'product_spaces.php', Authz::POLICY_AUTHENTICATED],
+    ['DELETE', '/api/product-spaces/{id}/invites/{id}', 'product_spaces.php', Authz::POLICY_AUTHENTICATED],
+    ['POST', '/api/product-spaces/{id}/transfer', 'product_spaces.php', Authz::POLICY_AUTHENTICATED],
+    ['GET', '/api/product-spaces/{id}/items', 'product_spaces.php', Authz::POLICY_AUTHENTICATED],
+    ['POST', '/api/product-spaces/{id}/items', 'product_spaces.php', Authz::POLICY_AUTHENTICATED],
+    ['GET', '/api/product-spaces/{id}/items/{id}', 'product_spaces.php', Authz::POLICY_AUTHENTICATED],
+    ['PATCH', '/api/product-spaces/{id}/items/{id}', 'product_spaces.php', Authz::POLICY_AUTHENTICATED],
+    ['DELETE', '/api/product-spaces/{id}/items/{id}', 'product_spaces.php', Authz::POLICY_AUTHENTICATED],
+    ['GET', '/api/product-spaces/{id}/items/{id}/download', 'product_spaces.php', Authz::POLICY_AUTHENTICATED],
+
     ['GET', '/join', 'member_join_page.php', Authz::POLICY_PUBLIC],
     ['POST', '/api/register', 'member_register.php', Authz::POLICY_PUBLIC],
     ['GET', '/welcome', 'member_welcome_page.php', Authz::POLICY_AUTHENTICATED],

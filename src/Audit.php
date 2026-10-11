@@ -71,6 +71,8 @@ final class Audit
     }
 
     private const ALLOWED_DETAIL_KEYS = [
+        // Product-space membership/record identifiers and fixed roles; no credentials or content.
+        'member_id','role_before','role_after','record_id',
         'format','tree','pages','skipped','bytes','page_ids',
         'automation_id', 'run_id', 'automations', 'procedure_count', 'suggestion_id',
         'sessions_revoked',
@@ -314,6 +316,21 @@ final class Audit
      * @var array<string,string>
      */
     private const SUMMARY_TEMPLATES = [
+        // Product space records never include invitation secrets or credentials.
+        'product.transfer|deny|bad_credentials' => '{actor} 이(가) 공간 소유권 이전 인증에 실패했습니다',
+        'product.request|deny|not_authorized' => '{actor} 이(가) 권한이 없는 공간 요청을 보내 막았습니다',
+        'product.space.create|allow' => '{actor} 이(가) 공간을 만들었습니다 (대상 {target})',
+        'product.space.update|allow' => '{actor} 이(가) 공간 설정을 변경했습니다 (대상 {target})',
+        'product.member.change|allow' => '{actor} 이(가) 공간 멤버를 변경했습니다 (대상 {target})',
+        'product.owner.transfer|allow' => '{actor} 이(가) 공간 소유권을 이전했습니다 (대상 {target})',
+        'product.invite.create|allow' => '{actor} 이(가) 공간 초대를 만들었습니다 (대상 {target})',
+        'product.invite.revoke|allow' => '{actor} 이(가) 공간 초대를 회수했습니다 (대상 {target})',
+        'product.member.join|allow' => '{actor} 이(가) 공간에 참여했습니다 (대상 {target})',
+        'product.dashboard.save|allow' => '{actor} 이(가) 홈 구성을 저장했습니다 (대상 {target})',
+        'product.item.create|allow' => '{actor} 이(가) 공간 기록을 만들었습니다 (대상 {target})',
+        'product.item.update|allow' => '{actor} 이(가) 공간 기록을 수정했습니다 (대상 {target})',
+        'product.item.delete|allow' => '{actor} 이(가) 공간 기록을 삭제했습니다 (대상 {target})',
+
         'mcp.auth|deny|invalid_token' => 'ChatGPT 연결 인증이 거부되었습니다',
         'mcp.oauth|deny|rejected' => 'ChatGPT 연결의 OAuth 요청이 거부되었습니다',
         'mcp.refresh|deny|reuse' => '재사용된 갱신 자격으로 ChatGPT 연결이 회수되었습니다',

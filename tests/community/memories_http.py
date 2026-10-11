@@ -13,7 +13,8 @@ def raw(method,path,body=None,user='employee',csrf=True,headers=None,files=None,
  if user:
   h['Cookie']='__Host-tbox_session='+users[user]['session']
   if csrf:h['X-CSRF-Token']=users[user]['csrf']
- h.update(headers or {});url=base if port is None else base.replace(':8768',':'+str(port))
+ h.update(headers or {});from urllib.parse import urlsplit,urlunsplit
+ parsed=urlsplit(base);url=base if port is None else urlunsplit((parsed.scheme,parsed.hostname+':'+str(port),parsed.path,parsed.query,parsed.fragment))
  return requests.request(method,url+path,json=body,headers=h,files=files,timeout=35)
 def call(method,path,body=None,user='employee',expected=200,**kw):
  r=raw(method,path,body,user,**kw)

@@ -1422,3 +1422,7 @@ OAuth 범위: `memories.read`, `photos.read`, `memories.write`, `travel.read`, `
 
 GPT 간편 연결: 같은 Windows PC의 비서에 로그인한 뒤 웹에서 GPT 연결을 눌러 한 번 승인한다. 브라우저 연결을 최대 30일 기억하고 이후 GPT 선택 때 재연결한다. 원문은 GPT로 처리 버튼을 눌러야 전송되며 결과는 미리보기로만 돌아온다. PC 비서 실행 링크와 구버전 코드 연결을 제공한다. 휴대폰에서 다른 PC로 원격 연결하는 기능은 아직 없다.
 상세: `docs/work-items/gpt-easy-connect.md`. DB/서버 API 변경 없음. Windows 앱 프로토콜/로그인 실검증은 별도.
+
+
+## 회사·모임 제품 공간 — 2026-10-11
+세션 인증된 `/tbox/api/product-spaces` 및 `/tbox/api/me/{home-dashboard,product-home}`는 기존 동의·첫 로그인·CSRF 관문을 적용한다. 프로그램 토큰 범위를 확대하지 않는다. 공간 역할·초대·소유권 재인증·설정 revision·기록/다운로드 계약은 [제품 공간 API](docs/product-spaces-api.md)를 따른다. 기존 community `/api/spaces` 문서 컨테이너와 별개이다.

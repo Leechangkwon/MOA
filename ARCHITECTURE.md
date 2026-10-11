@@ -3274,3 +3274,9 @@ MCP는 stateless Streamable HTTP JSON 응답이며 initialize/ping/notifications
 Gemini 개인 토큰 어댑터는 `src/assistant/Chat.php`와 `assistant_chat.php`에 격리한다. 고정 모델·질문 검증·본인 UUID 결과 조회를 제공하고 생성/예약/공통한도/국외전송동의는 MemberAi를 그대로 부른다. 타임아웃 조회는 생성하지 않는다. 생성 종료 후 토큰/계정 권한을 다시 검사한다. 기존 runs의 inference_available은 바꾸지 않는다.
 
 배포함은 기존 F-65 업로드 뒤 별도 게시 단계다. `files`의 program/program_version/program_current/program_published_at만 추가하고 기존 stored_name/sha256/uploaded_by를 유지한다. 첫 제품 tbox-buddy의 현재 판은 부분 UNIQUE 인덱스로 한 개, 게시 트랜잭션을 고정 advisory lock으로 직렬화한다. 이전 판은 current=false로 보존한다. 본인 F-65 ZIP·root/admin-only·민감정보 없음·ClamAV clean 감사 증거가 있어야 게시 가능하다. 일반 업로드/검사/실행 파일 표식은 그대로이며 `exec_content=true`가 기존 공유/토큰/미리보기/등급변경 차단을 유지한다. 받기는 세션+CSRF+경고확인 후 기존 Authz/Storage를 사용한다. 목록 SQL에 Authz visibleFilesWhere가 들어간다. 감사 program.publish/program.download, 상세 version/sha256/otp_verified, AL-21 게시 감시. DB migration 후 코드 순서, 기존 소유권/ACL 변경 없음.
+
+
+## 회사·모임 제품 공간 — 2026-10-11
+public.product_spaces와 public.product_space_members는 별도 제품 멤버십 경계다. global Admin이라도 공간 멤버십을 우회하지 않으며 ProductSpaceAuthz가 기존 Authz::canCommunityWrite·acting 제한과 공간 역할을 함께 검사한다. 기존 team_id/문서 공유 컨테이너는 그대로 유지한다.
+6개 신규 표: product_spaces, product_space_members, product_space_invites, product_space_dashboards, product_personal_dashboards, product_space_items. 초대는 SHA256 해시·만료·횟수·발급자 현재 권한을 검사한다. 모든 변경은 Prepared SQL, 공간→멤버/초대/항목/설정 잠금 순서, revision 충돌 판정, 감사 기록을 적용한다. 마지막 소유자 제거는 공간 잠금 아래 금지하며 소유권 이전은 비밀번호 및 MFA 새 OTP를 요구한다.
+목록·집계는 현재 활성 멤버십 JOIN과 원본 파일 Authz WHERE를 적용하고 다운로드는 같은 공간 경계 및 기존 파일 핸들러를 재사용한다. 새 연결은 파일 권한을 확대하지 않는다. 개인 홈은 본인 user_id, 공동 홈은 space_id 서버 설정으로 분리한다. 기존 자료/문서/사진을 자동 이동하지 않는다. 계약 docs/product-spaces-api.md, 적용 기록 docs/work-items/product-spaces.md.

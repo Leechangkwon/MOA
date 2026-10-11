@@ -387,3 +387,11 @@ DO $$ BEGIN
   GRANT SELECT ON public.mcp_clients,public.mcp_pending,public.mcp_grants,public.mcp_codes,public.mcp_tokens TO tbox_backup;
  END IF;
 END $$;
+
+-- Product spaces: new additive tables only. No cross-space global privilege.
+DO $$ BEGIN
+ IF to_regclass('public.product_spaces') IS NOT NULL THEN
+  GRANT SELECT,INSERT,UPDATE ON public.product_spaces,public.product_space_members,public.product_space_invites,public.product_space_dashboards,public.product_personal_dashboards,public.product_space_items TO tbox_app;
+  GRANT SELECT ON public.product_spaces,public.product_space_members,public.product_space_invites,public.product_space_dashboards,public.product_personal_dashboards,public.product_space_items TO tbox_backup;
+ END IF;
+END $$;

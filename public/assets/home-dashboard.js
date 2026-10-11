@@ -28,6 +28,20 @@
   const empty = el('p','표시할 위젯이 없습니다. 홈 구성하기에서 필요한 위젯을 추가하세요.');
   empty.className = 'notice'; host.before(empty);
   let draft;
+  let revision=null, csrf='', serverReady=false, saving=false;
+  const browserCandidate=clean(saved);
+  const base=nodes.recent.dataset.base||'/tbox';
+  const editorStatus=document.getElementById('home-editor-status');
+  const editButton=document.getElementById('home-edit');editButton.disabled=true;note.textContent='계정의 홈 구성을 불러오는 중입니다.';
+  async function request(method,body) {
+    const response=await fetch(base+'/api/me/home-dashboard',{method,credentials:'same-origin',cache:'no-store',headers:body?{'Content-Type':'application/json','X-CSRF-Token':csrf}:{},body:body?JSON.stringify(body):undefined});
+    const data=await response.json();
+    if(!response.ok)throw Error(response.status===409?'다른 기기에서 홈 구성이 변경되었습니다. 취소 후 새로고침해 주세요.':data.error?.message||(typeof data.error==='string'?data.error:null)||data.message||'계정에 홈 구성을 저장하지 못했습니다.');
+    return data;
+  }
+  const importButton=el('button','이 브라우저 구성을 계정으로 가져오기');importButton.type='button';importButton.className='btn btn--quiet';importButton.hidden=true;note.after(importButton);
+  importButton.addEventListener('click',async()=>{importButton.disabled=true;try{const data=await request('PATCH',{layout:browserCandidate,revision});revision=data.revision;saved=clean(browserCandidate);apply();serverReady=true;importButton.hidden=true;note.textContent='브라우저 구성을 계정에 저장했습니다.';}catch(error){note.textContent=error.message;}finally{importButton.disabled=false;}});
+
   function apply() {
     for (const widget of saved.widgets) {
       const node = nodes[widget.id];
@@ -72,12 +86,21 @@
   document.getElementById('home-edit').addEventListener('click',()=>{draft=clean(saved);draw();document.getElementById('home-editor-status').textContent='';dialog.showModal();});
   document.getElementById('home-editor-close').addEventListener('click',()=>dialog.close());
   document.getElementById('home-reset').addEventListener('click',()=>{draft=defaults();draw();document.getElementById('home-editor-status').textContent='기본 구성을 선택했습니다. 저장하면 적용됩니다.';});
-  document.getElementById('home-editor-form').addEventListener('submit',event=>{
-    event.preventDefault();saved=clean(draft);
-    try {localStorage.setItem(key,JSON.stringify(saved));note.textContent='홈 구성을 이 브라우저에 저장했습니다.';}
-    catch (_){note.textContent='이 화면에는 적용했지만 저장하지 못했습니다. 브라우저 저장소 설정을 확인하세요.';}
-    apply();dialog.close();
+  document.getElementById('home-editor-form').addEventListener('submit',async event=>{
+    event.preventDefault();if(saving)return;saving=true;const next=clean(draft),submit=event.submitter; if(submit)submit.disabled=true;document.getElementById('home-editor-close').disabled=true;document.getElementById('home-reset').disabled=true;
+    try {
+      if(serverReady){const data=await request('PATCH',{layout:next,revision});revision=data.revision;note.textContent='홈 구성을 계정에 저장했습니다. 다른 기기에서도 적용됩니다.';}
+      else {localStorage.setItem(key,JSON.stringify(next));note.textContent='계정 동기화를 사용할 수 없어 이 브라우저에 저장했습니다.';}
+      saved=next;apply();dialog.close();
+    }catch(error){editorStatus.textContent=serverReady?error.message:'홈 구성을 저장하지 못했습니다. 브라우저 저장소 설정을 확인하세요.';note.textContent=editorStatus.textContent;}finally{saving=false;if(submit)submit.disabled=false;document.getElementById('home-editor-close').disabled=false;document.getElementById('home-reset').disabled=false;}
   });
+  dialog.addEventListener('cancel',event=>{if(saving)event.preventDefault();});
   dialog.addEventListener('close',()=>document.getElementById('home-edit').focus());
   apply();
+  (async()=>{try{
+    const response=await fetch(base+'/api/me',{credentials:'same-origin',cache:'no-store'});const me=await response.json();if(!response.ok||me.next||String(me.member_id??me.id??me.user?.id)!==host.dataset.owner)throw Error('계정 확인을 완료하지 못했습니다.');csrf=me.csrf_token;if(typeof csrf!=='string'||!csrf)throw Error('계정 확인을 완료하지 못했습니다.');
+    const data=await request('GET');revision=data.revision;serverReady=true;if(revision===0&&localStorage.getItem(key))importButton.hidden=false;
+    if(data.layout&&valid(data.layout)){saved=clean(data.layout);apply();note.textContent='계정에 저장된 홈 구성입니다. 다른 기기에서도 적용됩니다.';}
+    else {note.textContent='계정에 홈 구성을 저장하면 다른 기기에서도 적용됩니다.';importButton.hidden=!localStorage.getItem(key);}
+  }catch(_){note.textContent='계정 동기화를 사용할 수 없어 이 브라우저의 홈 구성을 표시합니다.';}finally{editButton.disabled=false;}})();
 })();
