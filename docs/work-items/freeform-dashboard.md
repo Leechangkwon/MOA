@@ -30,3 +30,5 @@
 드래그 뒤 숨김의 오래된 객체 참조, 연속 저장 revision, 임시 서비스 표시의 겹침, 최소폭의 최근 버튼 넘침을 수정했다. v2 공간에서403 뒤 canvas 정리가 콘텐츠를 다시 붙이는 순서 결함을 독립 재현하고 destroy→데이터/DOM purge 순서로 수정했다. 저장403·새로고침403·전체보기403의 콘텐츠/멤버/편집기 제거20/0으로 재검증했다. 표시용 좌표 snapshot이 자료 종류 설정을 되돌리지 않게 현재 설정과 현재 화면의 좌표만 결합한다.
 
 최종 증거: outputs/freeform-dashboard-checks/acceptance-summary.json(자체 UI420/0), outputs/freeform-review/final-integration.log(142/0), final-probes.log(55/0), revocation.log(20/0), reviewed-hashes.json(runtime7), outputs/freeform-cross/results.json(196/0). 실제 실물 휴대폰/WebKit·사용자 자기공격 미검증.
+
+Git2: main·cloud/freeform-dashboard·v2.55.0 및 기준 검토태그 atomic push/fetch 완료, 두브랜치 cee2958da31d8353f819ee7035eb80814e092fa7 일치. 태그는 검증런타임586a8ea를 가리킨다. 이 메타데이터 후속도 같은 두브랜치로 전달한다.

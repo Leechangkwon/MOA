@@ -131,14 +131,14 @@
     "evidence": "docs/work-items/gpt-easy-connect.md"
   },
   "git_sync": {
-    "status": "pending",
-    "remote_live_verified": false,
-    "last_fetched_origin_main": "5964fba79ca9e42dd77aa0f1f3d67368aed3e7af",
+    "status": "synchronized",
+    "remote_live_verified": true,
+    "last_fetched_origin_main": "cee2958da31d8353f819ee7035eb80814e092fa7",
     "pc_branch": "cloud/buddy-startup-diagnostic",
     "pc_commit": "7a0ff3f",
     "web_branch": "cloud/freeform-dashboard",
-    "reason": "Verified v2.55.0 runtime and preservation; this deployment record awaits atomic main/feature/tag push.",
-    "verified_at": "2026-10-11T18:30:46+09:00"
+    "reason": "Verified v2.55.0 HTTPS84 and preservation. Atomic main/cloud/freeform-dashboard/v2.55.0 push and fetch confirmed both branches at cee2958da31d8353f819ee7035eb80814e092fa7. This metadata-only follow-up is delivered to the same branches; tag dereferences to verified release586a8ea.",
+    "verified_at": "2026-10-11T18:31:25+09:00"
   },
   "previous_verification": {
     "version": "2.54.3",
