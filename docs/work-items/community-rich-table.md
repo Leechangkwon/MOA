@@ -1,6 +1,6 @@
 # 커뮤니티 표 밀도와 서식 보존 편집
 
-- 상태: 후보 검증 완료, 운영 적용 준비
+- 상태: 운영 검증 완료, Git 동기화 준비
 - 작업 브랜치: cloud/community-rich-table
 - 기준 main: f3bec3509f271fb549731bf52780781e7baa68c3, v2.57.1
 - 담당 환경: 서버 접근 가능한 Codex, 구현/독립 검토 분리
@@ -42,3 +42,11 @@ production과 동일한 import URL에서 편집 UI45/45, 읽기 회귀317/317 �
 부모 editor-toolbar__row의 flex-wrap 한 속성만 추가했다. 독립 actual PHP/production JS 4테마×5폭과 색·배경·링크·멘션105/0, 390px main390/390 확인. 자체 전체 geometry·Tab·모달 접근성 검사도 통과했으나, 30초 편집상태 heartbeat POST를 문서쓰기로 오인한 하네스 마지막 assertion이 실패했다. heartbeat만 합성200 응답으로 처리하고 실제 문서 PATCH 및 그 밖 쓰기 금지는 유지하여 최종 재실행한다. 앱/인가/저장 코드 변경0.
 
 최종 보정 검증: 독립105/0, 자체 전체 matrix의 geometry/키보드/모달372항목 통과(마지막 heartbeat 오분류 하네스 실패 로그 보존), heartbeat만 합성 정상응답으로 보정한 좁은390px 최종24/0·JS/CSP0·문서쓰기0. CSS a807b324256d51d35d0f2df59f36205e284b7839fc709a4f0530cf82c0216372, 나머지 runtime10 바이트 불변. 전체 기존45/317/391 재실행으로 과장하지 않으며 변경된 한 속성에 대한 별도 검증이다.
+
+## 운영 최종 검증
+
+운영 최종: v2.58.1 `ac847cec7dcb` / 2026-10-11T22:29:11+09:00. 서식 표 원본 JSON 보존·선택 셀 편집과 읽기 밀도 개선. 초기25파일/runtime11 고정 모의 적용 후 실제 모바일 toolbar 넘침을 발견해 CSS1 경계 보정·별도 고정 모의/드리프트·patch/FPM reload까지 완료. 실제 HTTPS 최초 저장18항목·후속36항목 통과: 예약QA 신규 글 한셀100→1005 실제 저장/reload, 나머지 모든 블록·색·링크·열폭 정확 보존, 390/820/1280 편집·모달·취소/내부폭 확인. 원래 사용자 글은 읽기만 했고 제목/본문/서식/버전 동일. JS/5xx0·라이브자산5 바이트 일치·최종runtime11 검토hash 동일. 기존14표·제품6표 모든 원래행·1042파일행·975원본SHA·ownerACL·85설정 보존. QA 신규 문서2개만 정상 API로 soft-delete, 기존 자료 수정0. 암호화3종 checksum/전체복호화·DBmigration/설정/패키지변경0. 실물IME/휴대폰·Safari·스크린리더 미검증. 상세 docs/work-items/community-rich-table.md.
+
+증거: outputs/community-rich-table-live/results.json 및 실제 화면 캡처, community-rich-table-preservation.log, community-rich-table-product-preservation.log, community-rich-table-rehearsal.json 및 community-rich-table-toolbar-rehearsal.json. 첫 실패 로그와 QA 정리 로그도 별도 보존했다.
+
+실제 HTTPS 최종 검증의 첫 세션은 저장·정확서식보존·reload·390 내부폭까지18항목 통과한 뒤 Escape 한 번으로 모달이 닫힌다고 가정한 하네스가 뒤의 완료 버튼 클릭에서 timeout했다. 모달의 명시적 닫기 버튼으로 취소를 확인하도록 하네스만 수정하고 이미 저장된 같은 QA 문서에서 이어 검사했다. 추가 문서 수정 없이 원래 기대JSON exact equality부터 확인하고 390/820/1280 모달열기/닫기·원문읽기·5자산·JS/5xx·soft-delete36항목 통과. 두 세션은 동일 최종 runtime이며 Escape 닫힘 검증으로 주장하지 않는다. 첫 실패 로그 community-rich-table-live-second.log와 후속 community-rich-table-live-resume.log를 함께 보존한다.
