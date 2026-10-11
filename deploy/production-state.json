@@ -1,12 +1,12 @@
 {
   "schema_version": 1,
-  "version": "2.55.0",
-  "verified_runtime_commit": "586a8eacb27ac1abdcba9229d2fc13e4eca00aa2",
-  "verified_checkout_commit": "586a8eacb27ac1abdcba9229d2fc13e4eca00aa2",
-  "verified_tree": "203e2ffd4ef1bb37f032a72b104373f0010e91c2",
-  "verified_at": "2026-10-11T18:30:46+09:00",
+  "version": "2.56.1",
+  "verified_runtime_commit": "392e768bdb77493a64e2e3e3a65792e56ef4154f",
+  "verified_checkout_commit": "392e768bdb77493a64e2e3e3a65792e56ef4154f",
+  "verified_tree": "1645a2eb4483e1ca05de9b3cf9eed7aebd28ac0b",
+  "verified_at": "2026-10-11T19:51:59+09:00",
   "record_type": "last_verified_server_snapshot_not_live_status",
-  "release_commit": "586a8eacb27ac1abdcba9229d2fc13e4eca00aa2",
+  "release_commit": "392e768bdb77493a64e2e3e3a65792e56ef4154f",
   "automatic_deployment": false,
   "server_only": [
     "database",
@@ -15,17 +15,29 @@
     "service_configuration"
   ],
   "verification": {
-    "scope": "Personal and shared space freeform dashboards, arbitrary pointer position and width/height, independent desktop/mobile geometry, strict v2 layout validation with v1 compatibility. Actual HTTPS using reserved QA only.",
-    "https_pass": 84,
+    "scope": "Seven personal and five shared content-aware S/M/L widgets, per-widget locks, freeform placement and save, contextual defaults and guide; preserved existing layouts. Reserved QA only.",
+    "https_integration_pass": 97,
+    "https_integration_version": "2.56.0",
+    "https_final_readonly_pass": 24,
+    "https_final_version": "2.56.1",
     "https_fail": 0,
-    "direct_ui_pass": 420,
-    "independent_ui_pass": 142,
-    "independent_additional_gesture_pass": 55,
-    "independent_revocation_pass": 20,
-    "backend_service_pass": 333,
-    "backend_http_pass": 214,
-    "independent_validator_pass": 186,
+    "direct_ui_pass": 383,
+    "final_display_patch_ui_pass": 15,
+    "canvas_ui_pass": 52,
+    "legacy_freeform_ui_pass": 142,
+    "service_home_pass": 70,
+    "backend_service_pass": 508,
+    "backend_http_pass": 303,
+    "briefing_unit_pass": 11,
+    "briefing_http_pass": 28,
+    "briefing_browser_pass": 10,
+    "independent_validator_pass": 257,
+    "independent_briefing_pass": 17,
+    "independent_canvas_pass": 15,
+    "independent_renderer_sync_pass": 7,
+    "independent_revocation_verified": true,
     "cross_regression_pass": 196,
+    "cross_regression_scope": "Isolated common PHP/DB/HTTP snapshot before final SSR/layout-only/display additions; those additions covered by final targeted regressions. Not the eight original operating shell scripts.",
     "live_viewport_widths": [
       390,
       1280
@@ -34,21 +46,24 @@
     "live_5xx": 0,
     "exact_live_asset_bytes_verified": true,
     "runtime_changed_files": [
-      "public/assets/dashboard-canvas.js",
       "public/assets/dashboard-canvas.css",
+      "public/assets/dashboard-canvas.js",
+      "public/assets/dashboard-widgets.css",
+      "public/assets/dashboard-widgets.js",
       "public/assets/home-dashboard.js",
       "public/assets/space-page.js",
+      "src/community/Briefing.php",
+      "src/handlers/product_spaces.php",
       "src/site/ProductSpaces.php",
+      "src/site/launcher_page.php",
       "src/views/launcher.php",
-      "src/views/space_page.php",
-      "wiki/qaredi/guide-start.json",
-      "wiki/qaredi/index.json"
+      "src/views/space_page.php"
     ],
     "migrations": [],
     "deleted_files": 0,
     "original_legacy_tables_preserved": 14,
     "product_tables_original_rows_preserved": 6,
-    "product_preservation_exception": "Reserved claude_admin01 personal preference saved then original layout restored through API; revision/timestamp advances retained. Newly created synthetic QA space archived. All other original product rows preserved.",
+    "product_preservation_exception": "Reserved QA personal preference restored using API, revision/timestamp retained; new synthetic QA space archived. All other original product rows preserved.",
     "original_database_owners_preserved": true,
     "original_database_acl_preserved": true,
     "file_records_preserved": 1042,
@@ -64,9 +79,10 @@
     "physical_android_verified": false,
     "safari_verified": false,
     "screenreader_verified": false,
-    "evidence": "docs/work-items/freeform-dashboard.md"
+    "evidence": "docs/work-items/dashboard-widgets.md"
   },
   "evidence": [
+    "docs/work-items/dashboard-widgets.md",
     "docs/work-items/freeform-dashboard.md",
     "docs/work-items/space-actions-cleanup.md",
     "docs/work-items/product-spaces.md",
@@ -131,19 +147,19 @@
     "evidence": "docs/work-items/gpt-easy-connect.md"
   },
   "git_sync": {
-    "status": "synchronized",
-    "remote_live_verified": true,
-    "last_fetched_origin_main": "cee2958da31d8353f819ee7035eb80814e092fa7",
+    "status": "push_pending",
+    "remote_live_verified": false,
+    "last_fetched_origin_main": "93668ff466ba604d99deb266c26a50707c83b62f",
     "pc_branch": "cloud/buddy-startup-diagnostic",
     "pc_commit": "7a0ff3f",
-    "web_branch": "cloud/freeform-dashboard",
-    "reason": "Verified v2.55.0 HTTPS84 and preservation. Atomic main/cloud/freeform-dashboard/v2.55.0 push and fetch confirmed both branches at cee2958da31d8353f819ee7035eb80814e092fa7. This metadata-only follow-up is delivered to the same branches; tag dereferences to verified release586a8ea.",
-    "verified_at": "2026-10-11T18:31:25+09:00"
+    "web_branch": "cloud/dashboard-usability",
+    "reason": "Final runtime and preservation verified; pushing deployment record and release tags follows.",
+    "verified_at": "2026-10-11T19:51:59+09:00"
   },
   "previous_verification": {
-    "version": "2.54.3",
-    "runtime_commit": "0e49267d3df03e30b00ce8deab7bbe5d8e9625e1",
-    "verified_at": "2026-10-11T13:58:16+09:00",
-    "evidence": "docs/work-items/space-actions-cleanup.md"
+    "version": "2.55.0",
+    "runtime_commit": "586a8eacb27ac1abdcba9229d2fc13e4eca00aa2",
+    "verified_at": "2026-10-11T18:30:46+09:00",
+    "evidence": "docs/work-items/freeform-dashboard.md"
   }
 }
