@@ -13,7 +13,7 @@ function denied(callable $fn,int $status,string $label): void {try{$fn();}catch(
 $users=[];foreach(['owner','admin','editor','member','viewer','other','guest','globaladmin','secondowner'] as $name){
  $role=$name==='guest'?'Guest':($name==='globaladmin'?'Admin':'Employee');
  $users[$name]=$db->run('INSERT INTO users(username,password_hash,role,expires_at) VALUES(:name,:hash,:role,now()+interval \'30 days\') RETURNING *',
- 
+
  [':name'=>'claude_'.$name,':hash'=>'synthetic-hash',':role'=>$role])->fetch();
 }
 $svc=[];foreach($users as $k=>$u)$svc[$k]=new ProductSpaces($u);
