@@ -1,6 +1,6 @@
 # 홈 상단과 아이콘 바로가기
 
-- 상태: 운영 v2.57.0 검증 완료, 원격 동기화 기록 예정
+- 상태: 운영 v2.57.0 검증·원격 동기화 완료
 - 기준: main `7c48db11db777fdea8a7ad8521a6443bdeb73930` / 운영 v2.56.2
 - 작업 브랜치: `cloud/compact-home`
 - 계약·허용 범위: `docs/compact-home-directive.md`
@@ -42,3 +42,7 @@
 운영최종: v2.57.0 `1c274b62639f` / 2026-10-11T21:21:33+09:00. 단일 홈 편집·아이콘 바로가기 표시/순서 계정저장·접힌 안내, 첫 위젯 PC271px/모바일261px. 실제HTTPS145/0·정확자산·JS0/5xx0, 저장/reload/취소·소중대/잠금·반대기기좌표 보존 확인. 기존14표/제품6표 모든 원래행(기존QA포함·제외0)·1042파일행·975원본SHA·ownerACL·85설정 보존. 새 예약QA취향은 원래 유효 기본값으로 API정규화, 새 합성공간2개 보관. 고정31파일 모의적용·암호화3종전체복호화, DBmigration/설정/패키지변경0. 실물휴대폰·Safari·스크린리더 미검증. 상세 docs/work-items/compact-home.md.
 
 후보 `d271f9debab99c2f75ac97bd5b46ab2355211078`를31개파일 exact-byte 모의 적용한 뒤 clean 운영/원격7c48db1에서 fast-forward했다. 릴리스 `1c274b62639f10fa2f66ad984574a9bf9c3ce16d`·tag v2.57.0·PHP-FPM reload, nginx/PHP active와 최종6런타임 SHA를 확인했다. PC1280/Aurora dark·mobile390/Moa light에서 개인7종·공동5종 실제 데이터/아이콘 순서·저장/취소·빈 바로가기와 전체 메뉴 접근 확인. 첫 운영 검사49항목 후 하네스가 summary 자체ID 아래 summary를 찾다가 중단됐다. 앱결함이 아닌 selector를 실제 DOM에 맞춰 고쳤으며 당시 QA기본값 복구/새공간보관 완료 및 중단로그를 보존했다. 재검사145/0의 completed=true·프로세스 exit0과 finally정리 성공을 별도로 확인했다. 증거 outputs/compact-home-live{,-selector-attempt}/, compact-home-live.log, compact-preservation.log, compact-product-preservation.log, compact-home-rehearsal.json, compact-drift.json.
+
+## Git 인계
+
+2026-10-11T21:22:11+09:00 main/cloud/compact-home·v2.57.0·selftest/review baseline 태그 atomic push 후 fetch로 3602b0f5ea7d2b7559c570b7245fc4c41d43c4c1 동기화를 확인했다. 이 후속 커밋은 동기화 기록만 갱신하며 같은 두 브랜치로 올린다. 운영런타임은1c274b6과동일하다. 부모기획/단계는이번절만선별병합하고435f7c1로기록했다.
