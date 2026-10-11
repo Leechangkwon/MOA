@@ -1,5 +1,5 @@
 # 공간 홈 버튼 정리
-- 상태: 후보/독립 검증 완료 · 서버 적용 준비
+- 상태: 운영 v2.54.3 반영/HTTPS·원본 보존 완료
 - 작업 브랜치: cloud/space-actions-cleanup
 - 기준 main: 7708d36b929497ca4066353f1af1ae1247000896
 - 담당: 서버의 격리 worktree 구현, 별도 독립 검토, root 운영.
@@ -14,4 +14,4 @@
 암호화백업/전체복호화·원본SHA·고정커밋·모의파일적용·드리프트/main FF·release/PHP reload·실제HTTPS 및 원본보존 후 기록. DB복원/재시드/삭제0. 실패시 코드복귀만 별도 판단.
 
 ## 배포 결과
-실제 검증 후 기록.
+후보a5931cd→main FF·v2.54.3 `0e49267d3df03e30b00ce8deab7bbe5d8e9625e1` / 2026-10-11T13:58:16+09:00. 고정11파일모의정확바이트/삭제0·DBmigration0. PHP-FPM reload 후 실제HTTPS95/0(밝음/어두움390/1280·기존archivedQA공간읽기/메뉴/회원/새공간·참여취소만). live메뉴와서브창Escape초점복귀·복구기능보존·보관된쓰기숨김·overflow/JS/5xx0·정확CSS/JS바이트확인. live제품쓰기0. 백업3종 SHA/전체복호화/원본975 SHA 검증,14기존표+6제품표 원래행/파일1042행/975원본SHA·ownerACL 보존 및85설정 SHA 동일. 패키지/nginx/cron/PC변경0·DB복원/재시드0. 실물/Safari미검증 유지. Git2동기화는후속기록.

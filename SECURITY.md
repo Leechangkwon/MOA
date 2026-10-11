@@ -1020,3 +1020,5 @@ v2.54.1 `31848a82c4b5` 실제HTTPS56/0·JS오류/5xx0. 추가된 페이지 라�
 ② 초안에서 allItems epoch선언 누락·plain버튼 흰글씨·refresh중오래된등록표시 발견 후 수정 검증. 이후 차단사항0. 비교해시동일.
 ③ 실물Android·Safari·사용자자기공격 미검증. 운영HTTPS는 적용 후 별도기록.
 ④ 암호화백업3종 전체복호화/원본975 SHA·설정85개/제품6표사전hash완료. 후보고정/모의/드리프트 뒤 운영검증한다. docs/work-items/space-actions-cleanup.md.
+
+운영최종: v2.54.3 `0e49267d3df0` 실제HTTPS95/0, QA보관공간읽기·메뉴/기존폼취소만, 제품쓰기0. exactCSS/JS/JS오류0/5xx0·기존14표+제품6표·1042파일행·975원본SHA·ownerACL·설정85개보존. 실물/Safari미검증 유지.
